@@ -19,7 +19,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useManagers } from './useManagers'
 import { usePeers } from './usePeers'
-import { NULL_PEER_ID } from '../peers/peerId'
 import { useChatsStore } from '../../stores/chatsStore'
 import type { ChatMember, ChatCard } from '../managers/groupsManager'
 import type { ChannelFull, Chat } from '../peers/peer'
@@ -89,7 +88,6 @@ export interface ChatInfoCard {
   /** Может ли зритель отправлять медиа/голосовые/вложения. */
   canSendMedia: boolean
   discussionPeerId: PeerId
-  discussionsEnabled: boolean
   /** Live count of online group members (derived from chatsStore.presence). */
   onlineCount: number
 }
@@ -151,9 +149,6 @@ export function useChatInfoCard(args: {
   // `linked_chat_id` конструктора — СЫРОЙ положительный id чата; знаковый ключ
   // из него делает `getLinkedChatPeerId`, единственное место с этим переходом.
   const discussionPeerId = getLinkedChatPeerId(full?.fullChat)
-  // `!== NULL_PEER_ID`, а не «> 0»: ключ группы обсуждения ОТРИЦАТЕЛЬНЫЙ, и
-  // сравнение с нулём по знаку выключило бы обсуждения у всех каналов разом.
-  const discussionsEnabled = isRealChat && isChannel && discussionPeerId !== NULL_PEER_ID
   // Вещательный канал: писать может тот, у кого есть `post_messages` (создателю
   // `hasRights` отвечает «да» на всё сразу — порт, `pFlags.creator`).
   const canPostChannel = hasRights(chat, 'post_messages')
@@ -188,5 +183,5 @@ export function useChatInfoCard(args: {
     return n
   })
 
-  return { full, chat, permissionsKnown, canType, canSendText, canSendMedia, discussionPeerId, discussionsEnabled, onlineCount }
+  return { full, chat, permissionsKnown, canType, canSendText, canSendMedia, discussionPeerId, onlineCount }
 }

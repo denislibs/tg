@@ -589,6 +589,51 @@ func (r *MessagesRepo) RegisterChannelViews(ctx context.Context, chatID, userID,
 	return err
 }
 
+// RegisterPostViews records that userID has seen exactly the listed channel
+// posts, incrementing messages.views once per (post, user) pair, and returns the
+// NEW counter of every post whose counter actually grew (a re-view returns
+// nothing for that post).
+//
+// The list form is what the client actually knows: the feed sees WHICH posts
+// scrolled into view, not a read horizon — the same split Telegram makes
+// between messages.readHistory and messages.getMessagesViews{increment:true}.
+// Dedup, the channel gate and the deleted gate are the same ones
+// RegisterChannelViews relies on: the message_views PK (ON CONFLICT DO NOTHING)
+// and the JOIN to chats.
+func (r *MessagesRepo) RegisterPostViews(ctx context.Context, chatID, userID int64, ids []int64) (map[int64]int64, error) {
+	out := map[int64]int64{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	q := querier(ctx, r.pool)
+	rows, err := q.Query(ctx, `
+		WITH ins AS (
+			INSERT INTO message_views (message_id, user_id)
+			SELECT m.id, $2
+			FROM messages m
+			JOIN chats c ON c.id = m.chat_id AND c.type = 'channel'
+			WHERE m.chat_id = $1 AND m.id = ANY($3) AND m.deleted_at IS NULL
+			ON CONFLICT DO NOTHING
+			RETURNING message_id
+		)
+		UPDATE messages m SET views = views + 1
+		FROM ins WHERE m.id = ins.message_id
+		RETURNING m.id, m.views`,
+		chatID, userID, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, views int64
+		if e := rows.Scan(&id, &views); e != nil {
+			return nil, e
+		}
+		out[id] = views
+	}
+	return out, rows.Err()
+}
+
 // ViewCounts returns the current view count for each of the given message ids
 // (missing ids are absent). Empty input → empty map.
 func (r *MessagesRepo) ViewCounts(ctx context.Context, ids []int64) (map[int64]int64, error) {

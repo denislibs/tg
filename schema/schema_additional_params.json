@@ -1008,6 +1008,25 @@
     "type": "Update"
   },
   {
+    "id": "3355586488",
+    "predicate": "updateChannelMessageReplies",
+    "params": [
+      {
+        "name": "channel_id",
+        "type": "long"
+      },
+      {
+        "name": "id",
+        "type": "int"
+      },
+      {
+        "name": "replies",
+        "type": "int"
+      }
+    ],
+    "type": "Update"
+  },
+  {
     "id": "2073577300",
     "predicate": "updateBotCallbackAnswer",
     "params": [

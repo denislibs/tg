@@ -474,10 +474,26 @@ count.
 (`messages.messages`/`messagesSlice`) с тех пор несёт оба предмета внутри самого
 конструктора `message`: `views:flags.10?int` приезжает прямо из строки
 (`messages.views` — та же колонка, из которой читает `view_counts`), а
-`replies:flags.23?MessageReplies` доводится батчем в
-`usecase/chat/messagescontainer.go`. Отдельный поход клиента за счётчиками
-нужен теперь только для ОБНОВЛЕНИЯ уже показанной ленты, и правильная форма
-этого обновления — кадр, а не опрос.
+`replies:flags.23?MessageReplies` доводится в `usecase/chat/messagescontainer.go`
+— тем же `threadReplies`, каким его берёт живой кадр. Обновление уже показанной
+ленты идёт КАДРАМИ (`views_update`, `replies_update` ниже), а не опросом.
+
+### POST /channels/{chatID}/views  · auth
+**РЕГИСТРАЦИЯ просмотра** постов, доехавших до экрана (не чтение счётчика — им
+занят `GET view_counts` выше). Счётчик поста растёт РОВНО ОДИН РАЗ на пару
+«пост + зритель»: повторный показ ничего не меняет.
+
+Список, а не горизонт прочтения: у ленты нет горизонта — есть набор постов,
+которые показались. То же деление у оригинала: прочтение — `messages.readHistory`,
+регистрация просмотра — `messages.getMessagesViews` с `increment: true`
+(`appMessagesManager.ts:9136-9156`), а список видимых номеров собирает
+интерсектор ленты с дебаунсом в секунду (`bubbles.ts:2129-2147`).
+- Request: `{ "ids": [55, 56, 57] }` — НОМЕРА постов канала.
+- 200: контейнер `messages.messageViews` — вектор `views` ПОЗИЦИОННЫЙ (i-й
+  элемент отвечает i-му номеру запроса) и несёт УЖЕ НОВЫЕ значения. Про номер,
+  которому не отвечает пост этого канала, едет `messageViews` без параметров.
+- Побочный эффект: каждому посту, чей счётчик вырос, в топик канала уезжает
+  кадр `views_update` (`updateChannelMessageViews`, см. каталог апдейтов).
 
 ### POST /chats/{chatID}/pin  · auth
 Pin/unpin the dialog at the top of the chat list (per-user). At most **5**
@@ -1016,6 +1032,8 @@ Delete the caller's own story.
 | `media_read` | `updateReadPeerMessagesContents` | наш конструктор, причина та же, что у удаления |
 | `pin_message` | `updatePinnedMessages` | «открепили» — ТОТ ЖЕ конструктор с опущенным битом `pFlags.pinned` |
 | `reaction` | `updateMessageReactions` | АБСОЛЮТНЫЙ агрегат с `pFlags.min`; платная ⭐-реакция — чип `reactionPaid` в том же векторе |
+| `views_update` | `updateChannelMessageViews` | `{channel_id, id, views}` — счётчик просмотров поста вырос; `id` это НОМЕР поста. Курсора нет: кадр уезжает в топик канала, а авторитетное значение приезжает с историей |
+| `replies_update` | `updateChannelMessageReplies` | наш конструктор: апдейта у предмета в схеме нет. `{channel_id, id, replies}` — счётчик комментариев поста стал таким (АБСОЛЮТНЫЙ, не дифф). Тоже в топик канала и тоже без курсора |
 | `draft_update` | `updateDraftMessage` | «черновик снят» — конструктор `draftMessageEmpty` внутри |
 | `dialog_pin` | `updateDialogPinned` | `peer: dialogPeer`; закрепление — бит |
 | `dialog_archive` | `updateFolderPeers` | вектор `folderPeer` с НОМЕРОМ папки; возврат из архива — папка 0 |

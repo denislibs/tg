@@ -22,7 +22,7 @@
 //   гео-трансляции, реакции (включая платную ⭐), свой голос/отметка,
 //   «проверка фактов» и просмотры поста канала едут той же операцией, что и
 //   всё остальное (таблица в web-client/CLAUDE.md).
-import type { MyMessage } from '../models'
+import type { MessageFields, MyMessage } from '../models'
 import { applyOp, dedupAsc, type MessageOp } from '../realtime/messageOps'
 import rootScope from '@lib/rootScope'
 
@@ -166,6 +166,12 @@ export function resetMessagesMirror(): void {
 // сегмент — тот самый peerId, которым tweb адресует history_delete/message_edit.
 const peerIdOf = (key: string): number => Number(key.split(':')[0])
 
+/** Имя ЕДИНСТВЕННОГО параметра патча, если он один (иначе `undefined`). */
+const onlyPatchedField = (fields: MessageFields): string | undefined => {
+  const keys = Object.keys(fields)
+  return keys.length === 1 ? keys[0] : undefined
+}
+
 // Применить операции воркера к зеркалу и объявить изменения событиями.
 //
 // Отображение операций на каталог tweb (имена и формы 1:1, tweb
@@ -184,6 +190,17 @@ const peerIdOf = (key: string): number => Number(key.split(':')[0])
 //     'history_update' было бы отступлением от оригинала с конкретной ценой:
 //     обработчик history_update в bubbles.ts на message.mid === item.mid
 //     логирует «wow what» и выходит, то есть правка молча не доехала бы.
+//   patch РОВНО ОДНИМ счётчиком поста      → 'messages_views' / 'replies_updated'
+//     У оригинала «просмотров стало N» и «комментариев стало N» — свои события
+//     (rootScope.ts:92 и :112), а не 'message_edit': их потребитель переписывает
+//     ОДИН узел уже отрисованного бабла (bubbles.ts:2094-2124 — текст
+//     `.post-views`; replies.ts:17-22 — текст футера треда), тогда как
+//     'message_edit' у нас пересобирает содержимое бабла целиком (докблок
+//     `onMessageEdit` в chat/bubbles.ts). Различает их НАБОР ПАРАМЕТРОВ патча, и
+//     это не догадка по содержимому: патч ровно одним `views` порождает только
+//     `messages.cacheViews`, ровно одним `replies` — только
+//     `messages.cacheReplies`, и оба существуют ровно ради этих двух кадров
+//     (правка сообщения объявляет ВСЕ параметры разом — `messageFields`).
 //   remove                                 → 'history_delete'
 //
 // События собираются в callbacks и отправляются ПОСЛЕ применения всей пачки
@@ -196,6 +213,11 @@ const peerIdOf = (key: string): number => Number(key.split(':')[0])
 // (инвариант rootScope, см. web-client/CLAUDE.md).
 export function applyOpsToMirror(ops: MessageOp[]): void {
   const callbacks: (() => void)[] = []
+  // Просмотры копятся ПАЧКОЙ на весь набор операций — порт `pushBatchUpdate
+  // ('messages_views', this.batchUpdateViews, ...)` (tweb
+  // appMessagesManager.ts:8457): у оригинала это тоже вектор троек, потому что
+  // регистрация просмотра идёт сразу по нескольким видимым постам.
+  const viewsBatch: { peerId: number; mid: number; views: number }[] = []
   // Изменилось ли хоть одно окно. Считаем ОТДЕЛЬНО от `callbacks`: применённая
   // операция не всегда рождает событие (insert, чьего сообщения после слияния в
   // окне не оказалось, — `continue` ниже), а React-потребителю зеркала менять
@@ -222,6 +244,21 @@ export function applyOpsToMirror(ops: MessageOp[]): void {
     // оптимистикой / патча), а не сырым op.msg — лента рисует то, что лежит.
     const message = next.find((m) => m.id === mid)
     if (!message) continue
+    if (op.op === 'patch') {
+      // Счётчики поста канала — своим событием, а не общей правкой (см. докблок).
+      const only = onlyPatchedField(op.fields)
+      if (only === 'views') {
+        // Значение берём из ЗЕРКАЛА, а не из `op.fields`: объявляем то, что
+        // легло, — тем же правилом, что и `message` строкой выше.
+        const views = message._ === 'message' ? message.views : undefined
+        if (typeof views === 'number') viewsBatch.push({ peerId, mid, views })
+        continue
+      }
+      if (only === 'replies') {
+        callbacks.push(() => rootScope.dispatchEventSingle('replies_updated', { storageKey: op.key, peerId, mid, message }))
+        continue
+      }
+    }
     if (op.op !== 'insert') {
       callbacks.push(() => rootScope.dispatchEventSingle('message_edit', { storageKey: op.key, peerId, mid, message }))
       continue
@@ -235,6 +272,7 @@ export function applyOpsToMirror(ops: MessageOp[]): void {
     if (optimistic) callbacks.push(() => rootScope.dispatchEventSingle('history_update', { storageKey: op.key, message, tempId: optimistic.id, sequential: op.sequential }))
     else callbacks.push(() => rootScope.dispatchEventSingle('history_append', { storageKey: op.key, message }))
   }
+  if (viewsBatch.length) callbacks.push(() => rootScope.dispatchEventSingle('messages_views', viewsBatch))
   // Версию поднимаем ОДИН раз на пачку и до событий `rootScope` — по той же
   // причине, по которой события собирались в `callbacks`: подписчик обязан
   // увидеть пачку применённой целиком.

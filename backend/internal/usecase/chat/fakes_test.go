@@ -1440,6 +1440,34 @@ func (r fakeMsgs) RegisterChannelViews(_ context.Context, chatID, userID, upToSe
 	return nil
 }
 
+func (r fakeMsgs) RegisterPostViews(_ context.Context, chatID, userID int64, ids []int64) (map[int64]int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	grown := map[int64]int64{}
+	if r.s.chatType[chatID] != "channel" {
+		return grown, nil
+	}
+	want := map[int64]bool{}
+	for _, id := range ids {
+		want[id] = true
+	}
+	for idx, m := range r.s.messages[chatID] {
+		if !want[m.ID] || m.Deleted {
+			continue
+		}
+		if r.s.viewed[m.ID] == nil {
+			r.s.viewed[m.ID] = map[int64]bool{}
+		}
+		if r.s.viewed[m.ID][userID] {
+			continue
+		}
+		r.s.viewed[m.ID][userID] = true
+		r.s.messages[chatID][idx].Views++
+		grown[m.ID] = r.s.messages[chatID][idx].Views
+	}
+	return grown, nil
+}
+
 func (r fakeMsgs) ClearMediaUnread(_ context.Context, msgID int64) (bool, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

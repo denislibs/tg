@@ -84,11 +84,11 @@ div.bubbles-group                                    ← нет bubbles-group-av
 | аватар-колонка | нет; `needAvatar = isLikeGroup && !isOutMessage` (`bubbles.ts:11706`) | ✅ |
 | `signature_profiles` | канал становится `isLikeGroup` → имена и аватарки возвращаются | ❌ флаг есть в карточке, в рендере не используется |
 | подпись автора | `.time-post-author` из `post_author`, только при `!isLikeGroup` (`chat.ts:1419-1432`) | ❌ |
-| класс `channel-post` | по `message.views` (`bubbles.ts:7673`) | 🟡 по `discussionsEnabled` (`ChatFeed.tsx:296`) |
+| класс `channel-post` | по `message.views` (`bubbles.ts:7673`) | 🟡 по виду чата (`bubbleClasses.ts:148`, `ctx.isChannel`): наш сервер нулевой счётчик опускает (`views,omitempty`), поэтому вопрос «есть ли поле» на свежем посте отвечает «нет» |
 | просмотры в `.time` | `.post-views` + иконка `channelviews`, tooltip `ViewsTooltip`/`SharesTooltip` | 🟡 счётчик есть, tooltip с пересылками нет |
-| инкремент просмотров | IntersectionObserver → дебаунс 1000 мс → `getMessagesViews{increment}` | 🟡 бэк инкрементит по прочитанному seq (`usecase/chat/message.go:636`), клиент только читает `/view_counts` |
+| инкремент просмотров | IntersectionObserver → дебаунс 1000 мс → `getMessagesViews{increment}` (`bubbles.ts:2305-2328`, `:2129-2147`, `appMessagesManager.ts:9136-9156`) | ✅ то же: `viewsObserverCallback` ленты (одноразовое наблюдение) → дебаунс 1000 мс → `POST /channels/{id}/views` (`channelsManager.registerViews`). Ответ применяется у себя, как в оригинале; чужие просмотры приезжают кадром `views_update` (`updateChannelMessageViews`) → `messages.cacheViews` → событие `messages_views` → лента переписывает `.post-views` (порт `bubbles.ts:2094-2124`) |
 | кнопка «переслать» сбоку | `.bubble-beside-button.with-hover.forward` + `with-beside-button` | 🟡 рендерится, но привязана к `channel-post`, т.е. к обсуждениям |
-| футер комментариев | `replies-element` при `replies.pFlags.comments` | ✅ `CommentsBar` (детали — в доке от 08-13) |
+| футер комментариев | `replies-element` при `replies.pFlags.comments` (`appMessagesManager.ts:9237-9247`) | ✅ тот же гейт — `getMessageWithCommentReplies` в `chat/bubbles.ts`; узел строит `chat/replies.ts`. Счётчик живится кадром `replies_update` (`updateChannelMessageReplies`) → `messages.cacheReplies` → событие `replies_updated` → `setRepliesElementCount` (порт `replies.ts:17-22`, `bubbles.ts:1137-1142`) |
 | группировка постов | общее правило `canItemsBeGrouped`, `newGroupDiff = 121 c` (`bubbleGroups.ts:360,578`) | не проверял на совпадение порога |
 | рекламные посты | `is-sponsored`, `topbarSponsored`, меню «About this ad / Report / Remove ads» | ❌ рекламы нет как подсистемы |
 

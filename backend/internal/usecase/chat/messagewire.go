@@ -35,29 +35,50 @@ import (
 // пространстве чисел, поэтому утёкший ключ почти наверняка попадёт в
 // существующее сообщение другого чата — молчаливая подмена вместо промаха.
 func (i *Interactor) MessagesWire(ctx context.Context, viewerID int64, msgs []domain.Message) ([]domain.MTMessage, error) {
-	out, _, err := i.messagesWire(ctx, viewerID, msgs)
-	return out, err
+	return i.messagesWire(ctx, viewerID, msgs, i.chatKinds(ctx, msgs), nil)
 }
 
-// messagesWire — тот же перевод, но отдающий ВТОРЫМ значением вид каждого чата
-// пачки (chatID -> 'private'|'group'|'channel'|'saved').
+// chatKinds — вид чата каждого сообщения пачки (chatID ->
+// 'private'|'group'|'channel'|'saved'), по одному запросу на ЧАТ.
 //
-// Вид уже читается здесь по одному разу на чат — ради «это пост канала». Тому,
-// кто доделывает пачку дальше (MessagesContainer со счётчиками треда), он нужен
-// ровно за тем же: спросить его ВТОРОЙ раз значило бы добавить запрос на каждый
-// чат страницы, в том числе на личный, где считать нечего вовсе.
+// Отдельным проходом, а не внутри сборки конструкторов: вид нужен ДО неё —
+// именно он решает, у кого из пачки вообще бывает тред (threadReplies), а тред
+// едет параметром самого сообщения. Спросить вид второй раз значило бы добавить
+// запрос на каждый чат страницы, в том числе на личный, где считать нечего.
+func (i *Interactor) chatKinds(ctx context.Context, msgs []domain.Message) map[int64]string {
+	kinds := make(map[int64]string, 1)
+	if i.chats == nil {
+		return kinds
+	}
+	for _, m := range msgs {
+		if _, ok := kinds[m.ChatID]; ok {
+			continue
+		}
+		kinds[m.ChatID], _ = i.chats.ChatType(ctx, m.ChatID)
+	}
+	return kinds
+}
+
+// messagesWire — тот же перевод, но с уже готовыми видами чатов и тредами.
+//
+// threads — тред по КЛЮЧУ СТРОКИ сообщения (см. threadReplies); nil значит «у
+// этой пачки тредов не спрашивали». Тред приезжает сюда, а не дописывается в
+// готовый конструктор после: replies — параметр самого `message`, и ставит его
+// та же единственная сборка (Message.ToWire), что и остальные.
 //
 // Длина результата равна длине входа, и порядок сохранён: доводчики пачки
 // адресуют сообщения по позиции.
-func (i *Interactor) messagesWire(ctx context.Context, viewerID int64, msgs []domain.Message) ([]domain.MTMessage, map[int64]string, error) {
+func (i *Interactor) messagesWire(
+	ctx context.Context, viewerID int64, msgs []domain.Message,
+	kinds map[int64]string, threads map[int64]domain.MessageReplies,
+) ([]domain.MTMessage, error) {
 	ext, err := i.ExternalizeThreadRoots(ctx, msgs)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	ext = i.HydrateMessagePeers(ctx, ext)
 
 	peers := make(map[int64]domain.PeerID, 1)
-	kinds := make(map[int64]string, 1)
 	out := make([]domain.MTMessage, 0, len(ext))
 	for _, m := range ext {
 		peer, ok := peers[m.ChatID]
@@ -66,10 +87,9 @@ func (i *Interactor) messagesWire(ctx context.Context, viewerID int64, msgs []do
 			// форма адреса, и клиент отнёс бы сообщение к чужому пиру.
 			peer, err = i.ChatIDToPeer(ctx, viewerID, m.ChatID)
 			if err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 			peers[m.ChatID] = peer
-			kinds[m.ChatID], _ = i.chats.ChatType(ctx, m.ChatID)
 		}
 		out = append(out, m.ToWire(domain.MessageContext{
 			Peer: domain.NewPeer(peer),
@@ -77,10 +97,21 @@ func (i *Interactor) messagesWire(ctx context.Context, viewerID int64, msgs []do
 			// Автор строки — ЗРИТЕЛЬ. Именно строки, а не проводного from_id: у
 			// сообщения от лица канала автором на проводе становится канал, но
 			// отправил его всё равно человек.
-			Out: m.SenderID == viewerID,
+			Out:     m.SenderID == viewerID,
+			Replies: repliesOf(threads, m.ID),
 		}))
 	}
-	return out, kinds, nil
+	return out, nil
+}
+
+// repliesOf — тред сообщения из карты пачки. «Треда нет» — nil, а не пустой
+// messageReplies: у конструктора message параметр необязательный.
+func repliesOf(threads map[int64]domain.MessageReplies, msgID int64) *domain.MessageReplies {
+	rep, ok := threads[msgID]
+	if !ok {
+		return nil
+	}
+	return &rep
 }
 
 // EmptyMessages — конструкторы «дыры» для номеров, у которых сообщения нет

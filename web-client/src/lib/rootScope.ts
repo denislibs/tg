@@ -17,6 +17,7 @@ import type {
   GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, StoryUpdateEvt,
   SentStoryReactionEvt, ReadStoriesEvt, ConnState, UserUpdateEvt, DialogPinEvt, DialogArchiveEvt, DialogMuteEvt,
   PollUpdateEvt, ChecklistUpdateEvt, GiveawayUpdateEvt, BoostUpdateEvt, BalanceUpdateEvt,
+  ViewsUpdateEvt, RepliesUpdateEvt,
 } from '@core/realtime/events'
 import type { MyMessage } from '@core/models'
 import type { GroupCallFrame } from '@core/calls/groupCallEngine'
@@ -81,6 +82,13 @@ export type BroadcastEvents = {
   [RT.paidMediaUnlock]: [NewMessageEvt, EventMeta?]
   [RT.webPageUpdate]: [WebPageUpdateEvt, EventMeta?]
   [RT.factCheckUpdate]: [FactCheckUpdateEvt, EventMeta?]
+  // Счётчики поста канала. Курсора кадры не несут (счётчики приближённы,
+  // догонять их разрывом незачем) — `EventMeta` у них поэтому нет. Сырой кадр
+  // до витрины доезжает без потребителей: окно правит ВЛАДЕЛЕЦ (messages.
+  // cacheViews/cacheReplies → rt:message_op), а лента слушает уже
+  // messages_views/replies_updated ниже — как в оригинале.
+  [RT.viewsUpdate]: [ViewsUpdateEvt]
+  [RT.repliesUpdate]: [RepliesUpdateEvt]
 
   // ── ephemeral (без pts, прямая трансляция) и bespoke (спец-обработка на onFrame) ──
   [RT.typing]: [TypingEvt]
@@ -174,6 +182,18 @@ export type BroadcastEvents = {
   'history_update': [{ storageKey: string; message: MyMessage; tempId?: number; sequential?: boolean }]
   'message_edit': [{ storageKey: string; peerId: number; mid: number; message: MyMessage }]
   'history_delete': [{ peerId: number; msgs: Set<number> }]
+  // Счётчики поста канала — ОТДЕЛЬНО от `message_edit`, и это порт, а не
+  // оптимизация. У оригинала «просмотров стало N» это своё событие
+  // (`messages_views`, tweb rootScope.ts:92, форма 1:1 — вектор троек), а
+  // «комментариев стало N» — своё (`replies_updated`, :112, payload это само
+  // сообщение, из которого потребитель читает ТОЛЬКО число, bubbles.ts:1141).
+  // Оба потребителя переписывают ОДИН УЗЕЛ бабла (`.post-views`,
+  // bubbles.ts:2094-2124; текст футера треда, replies.ts:17-22), тогда как
+  // `message_edit` у нас пересобирает содержимое бабла целиком (см. докблок
+  // `onMessageEdit`): пост канала, который смотрят, перебирал бы своё вложение
+  // раз в секунду.
+  'messages_views': [{ peerId: number; mid: number; views: number }[]]
+  'replies_updated': [{ storageKey: string; peerId: number; mid: number; message: MyMessage }]
 
   // ── служебные ──
   'rt:resync': [null]

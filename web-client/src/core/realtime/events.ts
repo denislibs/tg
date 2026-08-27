@@ -21,6 +21,14 @@ export const RT = {
   typing: 'rt:typing',
   presence: 'rt:presence',
   reaction: 'rt:reaction',
+  // Счётчики поста канала. Событий ДВА, а не одно «счётчики поста»: у
+  // оригинала это тоже две разные подсистемы с разными владельцами —
+  // просмотры приезжают конструктором схемы `updateChannelMessageViews`
+  // (tweb appMessagesManager.ts:8448-8459), а число комментариев бампится
+  // приходом сообщения в тред (:8658-8680). Общим у них только то, что оба —
+  // числа на одном и том же посте.
+  viewsUpdate: 'rt:views_update',
+  repliesUpdate: 'rt:replies_update',
   ack: 'rt:ack',
   messageError: 'rt:message_error',
   // Пяти событий rt:pending_* больше нет: жизненный цикл неотправленного
@@ -519,6 +527,49 @@ export interface ReactionEvt {
   msg_id: number
   reactions: MessageReactions
 }
+/**
+ * updateChannelMessageViews#f226ac08 channel_id:long id:int views:int = Update;
+ *
+ * Счётчик просмотров поста ВЫРОС. `id` — номер поста в канале (серверное
+ * пространство: границу переводит получатель, `generateMessageId`).
+ *
+ * Кадр — ПОБОЧНЫЙ ЭФФЕКТ регистрации просмотра, а не ответ на опрос: видимые
+ * посты объявляет интерсектор ленты (tweb bubbles.ts:2305-2328), а счётчик
+ * растёт один раз на пару «пост + зритель». У оригинала тот же конструктор
+ * появляется ЛОКАЛЬНО — из ответа `messages.getMessagesViews{increment:true}`
+ * (appMessagesManager.ts:9145-9155); у нас его производит сервер, потому что
+ * зрителей у поста много, а увидеть чужой просмотр должны все.
+ *
+ * Курсора нет вовсе: кадр уезжает в топик канала, а авторитетное значение
+ * приезжает внутри самого сообщения со страницей истории.
+ */
+export interface ViewsUpdateEvt {
+  _: 'updateChannelMessageViews'
+  channel_id: number
+  id: number
+  views: number
+}
+/**
+ * updateChannelMessageReplies#c8022fb8 channel_id:long id:int replies:int
+ * = Update; — НАШ конструктор.
+ *
+ * Счётчик комментариев поста стал таким (АБСОЛЮТНОЕ число, не дифф). Апдейта
+ * у предмета в схеме нет: у оригинала число бампит сам клиент, когда сообщение
+ * приходит в тред (tweb appMessagesManager.ts:8658-8680), — ему видна вся
+ * группа обсуждения. Нашему клиенту она не видна, пока тред не открыт, поэтому
+ * на вопрос «сколько там теперь комментариев» отвечает сервер.
+ *
+ * Едет ЧИСЛО, а не `MessageReplies` целиком: тред у поста уже есть (он приезжает
+ * с самим постом), меняется в нём ровно счётчик — его и читает потребитель у
+ * оригинала (`setBubbleRepliesCount(bubble, message.replies.replies)`,
+ * tweb bubbles.ts:1141).
+ */
+export interface RepliesUpdateEvt {
+  _: 'updateChannelMessageReplies'
+  channel_id: number
+  id: number
+  replies: number
+}
 /** Бусты канала — НАШ конструктор (кадра бустов ЗРИТЕЛЮ в схеме нет:
  *  `updateBotChatBoost` про бота, следящего за чужим каналом). Сам статус —
  *  предмет схемный, `premium.boostsStatus`.
@@ -572,6 +623,8 @@ export type Update =
   | ReadEvt
   | MediaReadEvt
   | ReactionEvt
+  | ViewsUpdateEvt
+  | RepliesUpdateEvt
   | DraftUpdateEvt
   | DialogPinEvt
   | DialogArchiveEvt

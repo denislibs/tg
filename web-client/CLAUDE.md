@@ -124,7 +124,8 @@ npx vite build --outDir ../client-build
   | свой голос в опросе | `messages.votePoll` → `patch {media}` | вызыватель → `setPollMedia` |
   | своя отметка в чек-листе | `messages.toggleChecklistItem`/`addChecklistItems` → `patch {media}` | вызыватель → `setChecklistMedia` |
   | «проверка фактов» своим действием | `messages.setFactCheck`/`removeFactCheck` → `patch {factcheck}` | вызыватель → `applyFactCheck` |
-  | просмотры поста канала | `messages.cacheViews`, которую зовёт `channels.viewCounts` в воркере → `patch {views}` | `core/hooks/useChannelExtras.ts` → `patchViews` |
+  | просмотры поста канала | `messages.cacheViews` → `patch {views}`; зовущих ДВА, оба в воркере — ответ `channels.registerViews` и кадр `updateChannelMessageViews` | `core/hooks/useChannelExtras.ts` → `patchViews` (опрос, который слал клиентские номера и потому не работал ни разу) |
+  | число комментариев под постом канала | `messages.cacheReplies` → `patch {replies}` по кадру `updateChannelMessageReplies` | НИЧЕГО: счётчик приезжал с историей и замирал до перезагрузки окна |
   | расшифровка голосового/кружка | `messages.transcribe` → `patch {transcription}` | НИЧЕГО не объявляли: параметр ложился только в SSOT воркера и доезжал до окна лишь перезагрузкой чата, хотя бабл рисует именно его (`components/messages/Transcription.tsx:20-21`) |
 
   Удаление своего сообщения в эту таблицу не попало: `messages.deleteMessage`

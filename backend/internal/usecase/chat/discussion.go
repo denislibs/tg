@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"slices"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -232,6 +233,51 @@ func (i *Interactor) ListComments(ctx context.Context, channelID, postID, userID
 	return msgs, cnt, err
 }
 
+// publishPostReplies — счётчик комментариев поста канала изменился: кадр
+// updateChannelMessageReplies в топик канала.
+//
+// Зовут её оба конца жизни комментария — приход (Send) и снятие
+// (DeleteMessage), — и оба отдают ей САМ комментарий: «а был ли это вообще
+// комментарий» решает она, по корню треда, а не место вызова. У оригинала
+// ровно так же: одна updateMessageRepliesIfNeeded с признаком add на оба
+// случая (tweb appMessagesManager.ts:8658-8680).
+//
+// Счётчик едет АБСОЛЮТНЫЙ (пересчитанный), а не «плюс один»: кадр в топик
+// канала доставляется без курсора и без догона разрыва, поэтому дифф,
+// потерянный подписчиком, разошёлся бы с истиной навсегда. У оригинала дифф
+// допустим потому, что клиенту видна вся группа обсуждения целиком.
+//
+// Best-effort и после коммита: счётчик комментариев не имеет права ни уронить
+// отправку, ни уехать раньше, чем сам комментарий доступен на чтение.
+func (i *Interactor) publishPostReplies(ctx context.Context, comment domain.Message) {
+	if i.chPub == nil || i.msgs == nil || comment.ThreadRootID == nil {
+		return
+	}
+	// Корень треда — ЗЕРКАЛО поста в группе обсуждения (см. PostComment).
+	// Тред форум-топика сюда не долетает: у его корня зеркальных полей нет.
+	root, err := i.msgs.GetByID(ctx, *comment.ThreadRootID)
+	if err != nil || !root.IsDiscussionMirror || root.FwdFromChatID == nil || root.FwdFromMsgID == nil {
+		return
+	}
+	channelID, postID := *root.FwdFromChatID, *root.FwdFromMsgID
+	counts, err := i.msgs.ThreadReplyCounts(ctx, comment.ChatID, []int64{root.ID})
+	if err != nil {
+		return
+	}
+	// Пост адресуется НОМЕРОМ в канале — тем же, что и во всех остальных
+	// кадрах; ключ строки наружу не выходит.
+	seqByID, err := i.msgs.SeqsByIDs(ctx, []int64{postID})
+	if err != nil {
+		return
+	}
+	seq, ok := seqByID[postID]
+	if !ok {
+		return // пост удалили — комментировать больше нечего
+	}
+	_ = i.chPub.PublishToChannel(ctx, channelID,
+		frame("replies_update", domain.NewUpdateChannelMessageReplies(channelID, seq, int64(counts[root.ID]))))
+}
+
 // RecentRepliersLimit — сколько аватаров показывает футер «N комментариев»
 // (Telegram рисует стек последних комментаторов).
 const RecentRepliersLimit = 3
@@ -316,4 +362,66 @@ func (i *Interactor) CommentCounts(ctx context.Context, channelID int64, postIDs
 // commentCounts read path — the client fetches these per open to stay fresh.
 func (i *Interactor) ViewCounts(ctx context.Context, postIDs []int64) (map[int64]int64, error) {
 	return i.msgs.ViewCounts(ctx, postIDs)
+}
+
+// RegisterViews — РЕГИСТРАЦИЯ просмотра перечисленных постов зрителем, а не
+// чтение счётчика: считанные посты уезжают в message_views, счётчик поста
+// растёт (один раз на пару «пост + зритель»), а тем, у кого канал открыт,
+// уезжает кадр updateChannelMessageViews.
+//
+// Почему СПИСКОМ, а не горизонтом прочтения (RegisterChannelViews на
+// MarkRead). Лента знает ровно то, какие посты ПОКАЗАЛИСЬ на экране, — их
+// собирает интерсектор; горизонта у канала при этом может не быть вовсе
+// (подписчик пролистал ленту, ничего не «прочитав»). Это же деление делает
+// оригинал: прочтение — messages.readHistory, а регистрация просмотра —
+// messages.getMessagesViews с increment:true по списку видимых номеров
+// (tweb appMessagesManager.ts:9136-9156, сбор списка — bubbles.ts:2129-2147,
+// дебаунс 1 с).
+//
+// Отдаёт СВЕЖИЕ счётчики всех запрошенных постов, а не только выросших:
+// вызывающий получил их за тот же поход, и второй запрос на чтение ему не
+// нужен — ровно как у оригинала, где ответ метода и есть новые значения.
+//
+// Кадр уезжает ТОЛЬКО про выросшие: повторный просмотр того же поста тем же
+// зрителем ничего не меняет, и рассылать про него нечего.
+func (i *Interactor) RegisterViews(ctx context.Context, channelID, viewerID int64, postIDs []int64) (map[int64]int64, error) {
+	grown, err := i.msgs.RegisterPostViews(ctx, channelID, viewerID, postIDs)
+	if err != nil {
+		return nil, err
+	}
+	counts, err := i.msgs.ViewCounts(ctx, postIDs)
+	if err != nil {
+		return nil, err
+	}
+	i.publishViewCounts(ctx, channelID, grown)
+	return counts, nil
+}
+
+// publishViewCounts — кадры о выросших счётчиках в ТОПИК канала (одна
+// публикация на всех подписчиков, как у самого поста), best-effort: просмотры
+// приближённы и не имеют права уронить их регистрацию.
+//
+// Номер поста, а не ключ строки: кадр адресует пост тем же числом, что и все
+// остальные кадры (см. ExternalizeThreadRoots про пространства номеров).
+func (i *Interactor) publishViewCounts(ctx context.Context, channelID int64, grown map[int64]int64) {
+	if i.chPub == nil || len(grown) == 0 {
+		return
+	}
+	ids := make([]int64, 0, len(grown))
+	for id := range grown {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids) // порядок кадров детерминирован, а не по обходу карты
+	seqByID, err := i.msgs.SeqsByIDs(ctx, ids)
+	if err != nil {
+		return
+	}
+	for _, id := range ids {
+		seq, ok := seqByID[id]
+		if !ok {
+			continue // пост удалили между инкрементом и публикацией
+		}
+		_ = i.chPub.PublishToChannel(ctx, channelID,
+			frame("views_update", domain.NewUpdateChannelMessageViews(channelID, seq, grown[id])))
+	}
 }

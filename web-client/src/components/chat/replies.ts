@@ -28,12 +28,13 @@
 //  • ключ `ViewInChat` (replies.ts:102) — ветка чата `Replies`
 //    (`REPLIES_PEER_ID`), которого у нас нет как пира.
 //  • `subscribeRepliesThread` + `updateMessage(..., 'replies_updated')`
-//    (replies.ts:138-142) и глобальный слушатель `replies_updated`
-//    (replies.ts:17-22) — отдельной актуализации счётчика у нас нет: тред
-//    приезжает ВНУТРИ самого сообщения
-//    (`backend/internal/usecase/chat/messagescontainer.go::hydrateThreads`), а
-//    перерисовку футера объявляет `message_edit` — тот же путь, что у любой
-//    другой правки сообщения.
+//    (replies.ts:138-142) — ЗАПРОС свежего счётчика, который оригинал делает при
+//    первом показе футера. Предмета у него нет: счётчик приезжает ВНУТРИ самого
+//    сообщения (`backend/internal/usecase/chat/messagescontainer.go::
+//    hydrateThreads`), а дальше его двигает кадр `replies_update`
+//    (`updateChannelMessageReplies`). Сам глобальный слушатель `replies_updated`
+//    (replies.ts:17-22) ПОРТИРОВАН — он живёт у ленты (`bubbles.ts`), как и все
+//    прочие её подписки, и зовёт `setRepliesElementCount` ниже.
 //  • `ripple(rippleContainer)` (replies.ts:126) — ванильного `ripple` у нас нет
 //    вовсе (React-порт живёт в `shared/ui/Ripple/useRipple.tsx`), поэтому узла
 //    `.c-ripple` внутри `div.rp` нет; тот же вычет уже записан в
@@ -161,6 +162,31 @@ export function createRepliesElement(options: RepliesElementOptions): HTMLElemen
 
   element.append(textSpan, Icon('next', 'replies-footer-icon', 'replies-footer-icon-next'), rippleContainer)
   return element
+}
+
+/**
+ * Переписать ЧИСЛО в уже отрисованном футере — порт ветки текста
+ * `RepliesElement.render` (tweb replies.ts:95-100), которую запускает глобальный
+ * слушатель `replies_updated` (:17-22).
+ *
+ * Узел ПЕРЕЖИВАЕТ обновление, а не пересобирается: у оригинала на этом стоят
+ * `compareAndUpdate`/`replaceContent`, а внутри футера живут аватарки
+ * комментаторов, которые пересборка перезагрузила бы. По той же причине
+ * счётчик и приезжает ЧИСЛОМ (см. `updateChannelMessageReplies` в
+ * `core/realtime/events.ts`): кто именно комментировал, кадр не несёт, а
+ * подставить сюда пустой стек значило бы стереть известное.
+ */
+export function setRepliesElementCount(element: HTMLElement, count: number): void {
+  // tweb :131-135 — у beside-варианта текст один, компактным форматом.
+  const beside = element.querySelector<HTMLElement>('.replies-beside-text')
+  if (beside) {
+    beside.textContent = count ? fmtViews(count) : ''
+    return
+  }
+  const i18n = element.querySelector<HTMLElement>('.replies-footer-text .i18n')
+  if (!i18n) return
+  const { t, lang } = useI18nStore.getState()
+  i18n.textContent = commentsLabel(count, lang, t)
 }
 
 /**

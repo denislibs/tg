@@ -25,6 +25,7 @@ const real = (m: MyMessage): MessageReal => m as MessageReal
 
 // Собирает все четыре события истории в порядке отправки.
 type HistoryEventName = 'history_append' | 'history_update' | 'message_edit' | 'history_delete'
+  | 'messages_views' | 'replies_updated'
 type Captured = { [K in HistoryEventName]: { name: K; payload: BroadcastEvents[K][0] } }[HistoryEventName]
 
 const captured: Captured[] = []
@@ -33,6 +34,8 @@ const listeners = {
   history_update: (payload: BroadcastEvents['history_update'][0]) => { captured.push({ name: 'history_update', payload }) },
   message_edit: (payload: BroadcastEvents['message_edit'][0]) => { captured.push({ name: 'message_edit', payload }) },
   history_delete: (payload: BroadcastEvents['history_delete'][0]) => { captured.push({ name: 'history_delete', payload }) },
+  messages_views: (payload: BroadcastEvents['messages_views'][0]) => { captured.push({ name: 'messages_views', payload }) },
+  replies_updated: (payload: BroadcastEvents['replies_updated'][0]) => { captured.push({ name: 'replies_updated', payload }) },
 }
 
 beforeEach(() => {
@@ -42,6 +45,8 @@ beforeEach(() => {
   rootScope.addEventListener('history_update', listeners.history_update)
   rootScope.addEventListener('message_edit', listeners.message_edit)
   rootScope.addEventListener('history_delete', listeners.history_delete)
+  rootScope.addEventListener('messages_views', listeners.messages_views)
+  rootScope.addEventListener('replies_updated', listeners.replies_updated)
 })
 
 afterEach(() => {
@@ -49,6 +54,8 @@ afterEach(() => {
   rootScope.removeEventListener('history_update', listeners.history_update)
   rootScope.removeEventListener('message_edit', listeners.message_edit)
   rootScope.removeEventListener('history_delete', listeners.history_delete)
+  rootScope.removeEventListener('messages_views', listeners.messages_views)
+  rootScope.removeEventListener('replies_updated', listeners.replies_updated)
 })
 
 const ids = (key: string) => (mirrorWindow(key) ?? []).map((m) => m.id)
@@ -212,13 +219,61 @@ describe('messagesMirror — операции объявляются событ�
     seed(`${CHAT}:${THREAD}`, [msg({ id: 800 }, THREAD)])
     captured.length = 0
     applyOpsToMirror([
-      { op: 'patch', key: `${CHAT}:${THREAD}`, msgId: 800, fields: { views: 3 } },
+      { op: 'patch', key: `${CHAT}:${THREAD}`, msgId: 800, fields: { message: 'правка' } },
       { op: 'remove', key: `${CHAT}:${THREAD}`, msgId: 800 },
     ])
     expect(captured.map((c) => c.name)).toEqual(['message_edit', 'history_delete'])
     expect((captured[0].payload as BroadcastEvents['message_edit'][0]).storageKey).toBe(`${CHAT}:${THREAD}`)
     expect((captured[0].payload as BroadcastEvents['message_edit'][0]).peerId).toBe(CHAT)
     expect((captured[1].payload as BroadcastEvents['history_delete'][0]).peerId).toBe(CHAT)
+  })
+
+  // Счётчики поста канала объявляются СВОИМИ событиями (tweb rootScope.ts:92 и
+  // :112), а не общей правкой: их потребитель переписывает один узел уже
+  // отрисованного бабла, тогда как `message_edit` пересобирает содержимое
+  // целиком (докблок `onMessageEdit` в chat/bubbles.ts) — пост, который
+  // смотрят, перебирал бы своё вложение раз в секунду.
+  it('патч ОДНИМИ просмотрами — messages_views ПАЧКОЙ, а не message_edit', () => {
+    seed(String(CHAT), [msg({ id: 10 }), msg({ id: 11 })])
+    captured.length = 0
+    applyOpsToMirror([
+      { op: 'patch', key: String(CHAT), msgId: 10, fields: { views: 9200 } },
+      { op: 'patch', key: String(CHAT), msgId: 11, fields: { views: 7 } },
+    ])
+    // Одно событие на всю пачку — порт pushBatchUpdate (appMessagesManager.ts:8457).
+    expect(captured.map((c) => c.name)).toEqual(['messages_views'])
+    expect(captured[0].payload as BroadcastEvents['messages_views'][0]).toEqual([
+      { peerId: CHAT, mid: 10, views: 9200 },
+      { peerId: CHAT, mid: 11, views: 7 },
+    ])
+    expect(real(mirrorWindow(String(CHAT))![0]).views).toBe(9200)
+  })
+
+  it('патч ОДНИМ тредом — replies_updated с самим сообщением', () => {
+    const replies = { _: 'messageReplies' as const, pFlags: { comments: true as const }, replies: 0, channel_id: 77 }
+    seed(String(CHAT), [msg({ id: 10, replies })])
+    captured.length = 0
+    applyOpsToMirror([
+      { op: 'patch', key: String(CHAT), msgId: 10, fields: { replies: { ...replies, replies: 3 } } },
+    ])
+    expect(captured.map((c) => c.name)).toEqual(['replies_updated'])
+    const payload = captured[0].payload as BroadcastEvents['replies_updated'][0]
+    expect(payload.storageKey).toBe(String(CHAT))
+    expect(payload.peerId).toBe(CHAT)
+    expect(payload.mid).toBe(10)
+    expect(real(payload.message).replies!.replies).toBe(3)
+  })
+
+  // Правка сообщения объявляет ВСЕ его параметры разом (`messageFields`), и
+  // просмотры среди них — она обязана остаться `message_edit`, иначе лента
+  // перерисовала бы одно число вместо всего изменившегося бабла.
+  it('правка, среди параметров которой есть просмотры, остаётся message_edit', () => {
+    seed(String(CHAT), [msg({ id: 10 })])
+    captured.length = 0
+    applyOpsToMirror([
+      { op: 'patch', key: String(CHAT), msgId: 10, fields: { views: 5, message: 'правка' } },
+    ])
+    expect(captured.map((c) => c.name)).toEqual(['message_edit'])
   })
 
   // Операция, ничего не изменившая (ack-then-echo дубль, remove по чужому id,

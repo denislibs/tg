@@ -402,6 +402,52 @@ func (h *ChannelHandler) ViewCounts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewMessagesMessageViews(out, nil))
 }
 
+// RegisterViews — РЕГИСТРАЦИЯ просмотра постов, показавшихся на экране (а не
+// чтение счётчика, которым занят GET view_counts выше).
+//
+// POST, потому что вызов МЕНЯЕТ состояние: посты уезжают в message_views и
+// счётчик поста растёт — один раз на пару «пост + зритель». У оригинала обе
+// половины делает один метод, различая их флагом
+// (messages.getMessagesViews{increment}); у нас читающая половина уже была
+// ручкой, поэтому пишущая стала соседней, а не флагом на GET.
+//
+// Ответ — тот же контейнер messages.messageViews с ПОЗИЦИОННЫМ вектором, что и
+// у чтения: у оригинала ответ на increment это те же новые значения.
+func (h *ChannelHandler) RegisterViews(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := peerChatID(w, r, h.uc)
+	if !ok {
+		return
+	}
+	var b struct {
+		IDs []int64 `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	// Снаружи посты адресуются НОМЕРАМИ канала — как и везде.
+	postIDs, bySeq, err := msgSeqIDs(r.Context(), h.uc, chatID, b.IDs)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	counts, err := h.uc.RegisterViews(r.Context(), chatID, user.ID, postIDs)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	out := make([]domain.MessageViews, 0, len(b.IDs))
+	for _, seq := range b.IDs {
+		if id, ok := bySeq[seq]; ok {
+			out = append(out, domain.NewMessageViewsCount(counts[id]))
+			continue
+		}
+		out = append(out, domain.NewMessageViewsEmpty())
+	}
+	writeJSON(w, http.StatusOK, domain.NewMessagesMessageViews(out, nil))
+}
+
 func (h *ChannelHandler) Difference(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	chatID, ok := peerChatID(w, r, h.uc)

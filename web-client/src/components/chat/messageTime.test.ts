@@ -63,11 +63,14 @@ describe('createMessageTime', () => {
     expect(time.parentElement!.classList.contains('reactions')).toBe(true)
   })
 
-  it('просмотры поста идут ПЕРЕД временем (порядок частей оригинала)', () => {
+  it('просмотры поста идут ПЕРЕД временем и пишутся КОМПАКТНО', () => {
     const el = createMessageTime(at('2026-08-15T12:34:00', { views: 9200 }))
 
     const views = el.querySelector('.post-views')!
-    expect(views.textContent).toBe('9200')
+    // tweb messageRender.ts:276 — `formatNumber(message.views, 1)`. Тем же
+    // форматом пишет живое обновление счётчика (`messages_views` у ленты),
+    // иначе первый кадр менял бы не число, а формат.
+    expect(views.textContent).toBe('9.2K')
     // Время последнее — :340-342.
     expect(el.firstElementChild).toBe(views)
   })

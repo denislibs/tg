@@ -227,7 +227,9 @@ func pinPayload(peer domain.PeerID, seq int64, pinned bool) map[string]any {
 // кадра приклеивается позже (withPeer), поэтому здесь допустим NullPeerID.
 //
 // Post берётся из ВИДА ЧАТА: «это пост канала» — свойство чата, и прежде тот же
-// факт выражала целая отдельная проводная форма (channelPostPayload).
+// факт выражала целая отдельная проводная форма (channelPostPayload). Вид чата
+// решает и второе — есть ли у сообщения ТРЕД, — поэтому читается он один раз на
+// обоих потребителей.
 func (i *Interactor) messageContext(ctx context.Context, m domain.Message, peer domain.PeerID) domain.MessageContext {
 	out := domain.MessageContext{}
 	if peer != domain.NullPeerID {
@@ -236,9 +238,30 @@ func (i *Interactor) messageContext(ctx context.Context, m domain.Message, peer 
 	if i.chats != nil {
 		if typ, err := i.chats.ChatType(ctx, m.ChatID); err == nil {
 			out.Post = typ == domain.ChatTypeChannel
+			out.Replies = i.messageThread(ctx, m, typ)
 		}
 	}
 	return out
+}
+
+// messageThread — тред ОДНОГО сообщения для живого кадра.
+//
+// Второго ответа на «откуда берётся replies» здесь нет: спрашивается тот же
+// threadReplies, которым доводится пачка истории (messagescontainer.go).
+// Прежде кадр не спрашивал вовсе — Message.toReal параметр не ставил, и у
+// поста, приехавшего кадром `new_message`, тред был пуст: футер «N
+// комментариев» появлялся только после перезагрузки истории, а гейт футера на
+// клиенте пришлось держать на факте привязанного чата обсуждения вместо
+// `replies.pFlags.comments`, как у оригинала (tweb appMessagesManager.ts:9241,
+// getMessageWithCommentReplies).
+//
+// Карточки последних комментаторов здесь отбрасываются: вектора `users` рядом с
+// кадром у нас пока нет вовсе (см. mtupdates.go — именно из-за этого у нас
+// появились конструкторы-снимки). Тред при этом ссылается на них по-прежнему —
+// ССЫЛКАМИ, как в схеме.
+func (i *Interactor) messageThread(ctx context.Context, m domain.Message, kind string) *domain.MessageReplies {
+	threads, _ := i.threadReplies(ctx, []domain.Message{m}, map[int64]string{m.ChatID: kind})
+	return repliesOf(threads, m.ID)
 }
 
 // geoLiveUpdatePayload — тело фрейма geo_live_update (обновление координат

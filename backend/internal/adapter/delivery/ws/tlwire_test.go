@@ -105,3 +105,37 @@ func newSubprotocolRequest(t *testing.T, value string) *http.Request {
 	r.Header.Set("Sec-Websocket-Protocol", value)
 	return r
 }
+
+// Счётчики поста канала кодируются в TL так же, как всё остальное: своим
+// конструктором из таблицы схемы. Просмотры — конструктор ОРИГИНАЛА
+// (updateChannelMessageViews#f226ac08), комментарии — наш
+// (updateChannelMessageReplies#c8022fb8, id назначен тем же правилом CRC32 по
+// строке определения, что и у остальных наших).
+//
+// Курсора у обоих нет ни в конструкторе, ни в конверте — оболочкой становится
+// updateShort, как у любого кадра без курсора (печатает/присутствие).
+func TestTLEncodeUpdateFrame_PostCounters(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		typ  string
+		body any
+	}{
+		{"просмотры", "views_update", domain.NewUpdateChannelMessageViews(42, 7, 1234)},
+		{"комментарии", "replies_update", domain.NewUpdateChannelMessageReplies(42, 7, 3)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, err := json.Marshal(tc.body)
+			if err != nil {
+				t.Fatalf("тело кадра: %v", err)
+			}
+			frame, _ := json.Marshal(map[string]any{"t": tc.typ, "d": json.RawMessage(raw)})
+			out, ok := tlEncodeUpdateFrame(frame)
+			if !ok {
+				t.Fatal("кадр с конструктором обязан кодироваться в TL")
+			}
+			if got := hex.EncodeToString(out[:4]); got != "c1ded478" {
+				t.Fatalf("оболочка = %s, ожидался updateShort", got)
+			}
+		})
+	}
+}

@@ -35,6 +35,11 @@ export const UPDATE_RT = {
   updateReadHistoryOutbox: RT.read,
   updateReadPeerMessagesContents: RT.mediaRead,
   updateMessageReactions: RT.reaction,
+  // Счётчики поста канала. Курсора у обоих нет (см. CHANNEL_CURSOR ниже), но в
+  // реестре они на общих основаниях: воронка гейтит по числу, а его отсутствие
+  // — тоже ответ.
+  updateChannelMessageViews: RT.viewsUpdate,
+  updateChannelMessageReplies: RT.repliesUpdate,
   updateMessageFactCheck: RT.factCheckUpdate,
   updateMessageWebPage: RT.webPageUpdate,
   updateMessagePoll: RT.pollUpdate,
@@ -75,6 +80,15 @@ export const UPDATE_RT = {
  * `updateNewChannelMessage` — обычный pts, а канальный он потому, что таков
  * КОНСТРУКТОР. Прежде вид курсора решало имя ключа (`channel_pts` против
  * `pts`) — второе имя одного и того же поля.
+ *
+ * `updateChannelMessageViews`/`updateChannelMessageReplies` сюда НЕ входят,
+ * хотя канальные по имени: курсора у них нет вовсе — счётчики приближённы, и
+ * догонять их разрывом незачем (авторитетное значение приезжает внутри самого
+ * сообщения со страницей истории). Набор здесь — не «кадры канала», а «кадры,
+ * чей pts канальный»; попади они сюда, `channelPeerId` вернул бы `undefined`,
+ * и развилка в `workerCore.ts::onFrame` всё равно пропустила бы их дальше
+ * (там канальная ветка требует ЧИСЛА и в `peerId`, и в `pts`) — то есть строка
+ * была бы неверной и при этом безвредной, а таких не заводим.
  */
 export const CHANNEL_CURSOR: ReadonlySet<string> = new Set<UpdatePredicate>([
   'updateNewChannelMessage',

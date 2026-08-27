@@ -8412,6 +8412,11 @@ var schemaConstructors = []Constructor{
 		{Name: "pts", Type: "int"},
 		{Name: "pts_count", Type: "int"},
 	}},
+	{ID: -939380808, Predicate: "updateChannelMessageReplies", Type: "Update", Params: []Param{
+		{Name: "channel_id", Type: "long"},
+		{Name: "id", Type: "int"},
+		{Name: "replies", Type: "int"},
+	}},
 	{ID: 2073577300, Predicate: "updateBotCallbackAnswer", Type: "Update", Params: []Param{
 		{Name: "alert", Type: "true", Flags: "flags", Bit: 0},
 		{Name: "message", Type: "string"},

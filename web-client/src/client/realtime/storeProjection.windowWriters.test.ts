@@ -340,4 +340,48 @@ describe('окно сообщений: своё действие доезжае�
     expect(seen).toHaveLength(1)
     rootScope.removeEventListener('rt:message_op', off as never)
   })
+
+  // Счётчик комментариев — тот же владелец и тот же приём: число живёт ВНУТРИ
+  // сообщения (`replies.replies`), поэтому объявляет его окно, а не витрина.
+  it('cacheReplies() двигает счётчик треда в зеркале, не трогая остальной тред', async () => {
+    const { mgr } = await setup()
+    const replies = { _: 'messageReplies' as const, pFlags: { comments: true }, replies: 0, channel_id: 55 }
+    // Тред у сообщения появляется вместе с ним; здесь его заводит правка — тот
+    // же путь, которым его приносит живой кадр `new_message`.
+    rootScope.dispatchEventSingle('rt:message_op', {
+      ops: mgr.cacheEdit({
+        _: 'updateEditMessage',
+        message: { ...makeRawMessage({ id: getServerMessageId(cid(3)), peerId: CHAT, fromId: 2, text: 'пост' }), replies },
+      } as unknown as EditMessageEvt),
+    })
+    expect(inMirror(cid(3))?.replies?.replies).toBe(0)
+
+    mgr.cacheReplies(CHAT, cid(3), 3)
+    expect(inMirror(cid(3))?.replies?.replies).toBe(3)
+    // Кадр везёт ОДНО число — всё остальное в треде обязано пережить его.
+    expect(inMirror(cid(3))?.replies?.channel_id).toBe(55)
+    expect(inMirror(cid(3))?.replies?.pFlags?.comments).toBe(true)
+
+    // То же число второй раз — не событие (как у cacheViews выше): лишний патч
+    // рвал бы ссылку сообщения и перерисовывал бабл на ровном месте.
+    const seen: unknown[] = []
+    const off = (e: unknown) => { seen.push(e) }
+    rootScope.addEventListener('rt:message_op', off as never)
+    mgr.cacheReplies(CHAT, cid(3), 3)
+    expect(seen).toHaveLength(0)
+    rootScope.removeEventListener('rt:message_op', off as never)
+  })
+
+  // Сообщение БЕЗ треда кадром не обзаводится: `channel_id` и `pFlags.comments`
+  // в нём не едут, и подставить их было бы выдумкой.
+  it('cacheReplies() молчит на сообщении без треда', async () => {
+    const { mgr } = await setup()
+    const seen: unknown[] = []
+    const off = (e: unknown) => { seen.push(e) }
+    rootScope.addEventListener('rt:message_op', off as never)
+    mgr.cacheReplies(CHAT, cid(2), 3)
+    expect(inMirror(cid(2))?.replies).toBeUndefined()
+    expect(seen).toHaveLength(0)
+    rootScope.removeEventListener('rt:message_op', off as never)
+  })
 })

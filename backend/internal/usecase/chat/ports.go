@@ -330,6 +330,11 @@ type MessageRepo interface {
 	// RegisterChannelViews records userID's view of every channel post in chatID
 	// up to upToSeq (deduped per viewer); a no-op for non-channel chats.
 	RegisterChannelViews(ctx context.Context, chatID, userID, upToSeq int64) error
+	// RegisterPostViews records userID's view of exactly the listed channel posts
+	// (deduped per viewer, a no-op for non-channel chats) and returns the NEW
+	// counter of every post whose counter actually grew — a re-view of a post
+	// returns nothing for it.
+	RegisterPostViews(ctx context.Context, chatID, userID int64, ids []int64) (map[int64]int64, error)
 	// ViewCounts returns current view counts for the given message ids.
 	ViewCounts(ctx context.Context, ids []int64) (map[int64]int64, error)
 	// IncrementForwards bumps a post's forward counter (Telegram message.forwards)

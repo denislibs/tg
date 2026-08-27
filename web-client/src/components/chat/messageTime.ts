@@ -20,6 +20,7 @@
 import type { MyMessage } from '@core/models'
 import Icon from '@components/icon'
 import type { IconName } from '@core/tgico-icons'
+import { fmtViews } from '@core/format/fmtViews'
 import { useI18nStore } from '../../i18n'
 
 /** «HH:MM» — тот же формат, что у витрины списка (`messageToConvMsg.hhmm`). */
@@ -48,11 +49,15 @@ export function createMessageTime(message: MyMessage): HTMLElement {
   const parts = (): HTMLElement[] => {
     const out: HTMLElement[] = []
 
-    // Просмотры поста канала (:264 — `span.post-views`).
+    // Просмотры поста канала (:264-276 — `span.post-views`). Формат — КОМПАКТНЫЙ
+    // (`formatNumber(message.views, 1)`, :276): «9200» пишется как «9.2K». Тот же
+    // `fmtViews` пишет сюда и живое обновление счётчика (`messages_views` в
+    // `chat/bubbles.ts`) — иначе первый же кадр менял бы не только число, но и
+    // его формат.
     if (real?.views) {
       const views = document.createElement('span')
       views.classList.add('post-views')
-      views.textContent = String(real.views)
+      views.textContent = fmtViews(real.views)
       out.push(views)
     }
 

@@ -72,6 +72,7 @@
 //    `showName`, который лента считает `needName`.
 import Scrollable, { type SliceSides } from '@components/scrollable'
 import StickyIntersector from '@components/stickyIntersector'
+import SuperIntersectionObserver from '@helpers/dom/superIntersectionObserver'
 import ListenerSetter from '@helpers/listenerSetter'
 import { getMiddleware, type Middleware } from '@helpers/middleware'
 import middlewarePromise from '@helpers/middlewarePromise'
@@ -83,7 +84,7 @@ import findUpClassName from '@helpers/dom/findUpClassName'
 import getViewportSlice from '@helpers/dom/getViewportSlice'
 import ScrollSaver from '@helpers/scrollSaver'
 import debounce, { type DebounceReturnType } from '@helpers/schedulers/debounce'
-import { fastRafPromise } from '@helpers/schedulers'
+import { fastRaf, fastRafPromise } from '@helpers/schedulers'
 import { FocusDirection, type ScrollStartCallbackDimensions } from '@helpers/fastSmoothScroll'
 import windowSize from '@helpers/windowSize'
 import mediaSizes from '@helpers/mediaSizes'
@@ -97,6 +98,7 @@ import { mirrorWindow, putMirrorPage, replaceMirrorWindow } from '@core/history/
 import { isLocalMessageId } from '@core/history/messageId'
 import { messageToConvMsg } from '@core/messageToConvMsg'
 import { dayLabel } from '@core/format/dayLabel'
+import { fmtViews } from '@core/format/fmtViews'
 import { getMessageText, isOurMessage, isOutMessage, type MessageReal, type MessageReplies, type MessageService, type MyMessage, type OurMessageChat } from '@core/models'
 import { isAnyChat, toPeerId } from '@core/peers/peerId'
 import type { HistoryArgs, HistoryResult } from '@core/managers/messagesManager'
@@ -113,7 +115,7 @@ import { createDateBubble as createServiceDateBubble, createServiceBubble } from
 import { createReplyContainer } from './replyContainer'
 import { createMessageTime, setRepliesCount, setSendingStatus } from './messageTime'
 import { createReactionsElement } from './reactions'
-import { renderReplies } from './replies'
+import { renderReplies, setRepliesElementCount } from './replies'
 import { attachReplySwipe, findDoubleClickReplyBubble } from './replySwipe'
 import type ChatContextMenu from './contextMenu'
 import type { ContextMenuBubbles } from './contextMenu'
@@ -378,6 +380,17 @@ export interface BubblesManagers extends PeerTitleManagers {
   realtime: {
     markRead(args: { peerId: number, upToId: number }): Promise<unknown>
   }
+  /** Порт `appMessagesManager.incrementMessageViews(peerId, mids)` — РЕГИСТРАЦИЯ
+   *  просмотра показавшихся постов (tweb bubbles.ts:2145 из
+   *  `sendViewCountersDebounced`). Не опрос счётчика: он приезжает внутри самого
+   *  сообщения.
+   *
+   *  Опционален по той же причине, что `messages.react`/`unreact` выше: без него
+   *  лента рисует посты, но просмотров не регистрирует, — так поднимается тест,
+   *  которому канал нужен только как разметка. */
+  channels?: {
+    registerViews(peerId: number, msgIds: number[]): Promise<void>
+  }
 }
 
 /** Порт tweb bubbles.ts:308. Ошибка, которой `BatchProcessor` отвергает пачку,
@@ -486,15 +499,20 @@ export default class ChatBubbles implements BubbleGroupsHost {
   private firstUnreadBubble?: HTMLElement
   private attachedUnreadBubble = false
 
-  // ─── отметка о прочтении (tweb bubbles.ts:551-561) ────────────────────────
-  // Наблюдатель за непрочитанными баблами. В tweb на его месте
-  // `SuperIntersectionObserver` (bubbles.ts:2127) — мультиплексор, который
-  // раздаёт ОДИН `IntersectionObserver` восьми разным колбэкам ленты
-  // (непрочитанные, непрочитанное содержимое, просмотры, метрики чтения,
-  // эффекты стикера и сообщения, подсказка guest-chat). У нас потребитель
-  // ОДИН, поэтому мультиплексора нет: он был бы механизмом без второго
-  // клиента. Корень — тот же (`scrollable.container`).
-  private observer?: IntersectionObserver
+  // ─── пересечения ленты (tweb bubbles.ts:2127) ─────────────────────────────
+  // ОДИН наблюдатель на все вопросы «что сейчас видно», как в оригинале:
+  // `new SuperIntersectionObserver({root: this.scrollable.container})`
+  // раздаёт свои записи восьми колбэкам ленты (непрочитанные, непрочитанное
+  // содержимое, просмотры, метрики чтения, эффекты стикера и сообщения,
+  // подсказка guest-chat). У нас колбэка ДВА — непрочитанные
+  // (`unreadedObserverCallback`) и просмотры поста (`viewsObserverCallback`);
+  // остальные шесть приедут вместе со своими подсистемами. Прежде здесь стоял
+  // голый `IntersectionObserver` с единственным колбэком — «мультиплексор без
+  // второго клиента»; клиент появился (просмотры), и второй наблюдатель рядом
+  // был бы не портом, а нашей развилкой: у оригинала вопрос «что сейчас видно»
+  // задаёт РОВНО ОДИН объект, и снятие наблюдения адресуется КОЛБЭКУ, а не
+  // узлу (tweb :4314-4329 снимает семь колбэков с одного бабла по одному).
+  private observer?: SuperIntersectionObserver
   // tweb :551/553. Карта «наблюдаемый узел → номер, до которого он читает» и
   // набор УВИДЕННЫХ номеров, ждущих отправки.
   private unreaded = new Map<HTMLElement, number>()
@@ -504,6 +522,13 @@ export default class ChatBubbles implements BubbleGroupsHost {
   // ручки не пустой (`{ok: true}`), а гасить его лишним `.then(noop)` значило
   // бы завести строку ради типа.
   private readPromise?: Promise<unknown>
+  // ─── просмотры поста канала (tweb bubbles.ts:601-602) ─────────────────────
+  // Номера постов, которые ПОКАЗАЛИСЬ и ещё не зарегистрированы, и дебаунс
+  // регистрации. У оригинала в наборе `FullMid` (пир + номер), потому что его
+  // лента умеет режим `GLOBAL_MIDS`; у нас окно всегда одного пира — см.
+  // сборку дебаунса в `setScroll`.
+  private viewsMids = new Set<number>()
+  private sendViewCountersDebounced?: DebounceReturnType<() => void>
   /**
    * Горизонт прочтения окна — порт tweb `getRenderReadMaxId`
    * (bubbles.ts:664-669, `memoizeAsyncWithTTL(getReadMaxIdIfUnread, …, 0)`).
@@ -1215,6 +1240,27 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // канала он другой (см. ниже, у времени).
     if(!this.chat.isBroadcast) {
       setUnreadObserver?.(bubble)
+    }
+
+    // Просмотры — порт tweb :7671/:7683-7690. Наблюдаемый узел — САМ бабл, в
+    // отличие от отметки прочтения (та у поста канала висит на времени: пост
+    // бывает выше вьюпорта, и «прочитан» он, только когда домотали до конца, а
+    // «просмотрен» — как только показался край).
+    //
+    // РАСХОЖДЕНИЕ в гейте, и оно вынужденное. У оригинала спрашивается НАЛИЧИЕ
+    // счётчика (`isMessage && message.views`), потому что MTProto у поста канала
+    // шлёт его ВСЕГДА (`views:flags.10?int` выставлен с первой публикации). Наш
+    // сервер нулевой счётчик опускает (`Views int64 json:"views,omitempty"`,
+    // backend/internal/domain/mtmessage.go:233), поэтому тот же вопрос — «это
+    // пост канала?» — задаётся виду чата: спроси мы про поле, свежий пост не
+    // зарегистрировал бы ни одного просмотра НИКОГДА, и ноль остался бы нулём.
+    //
+    // `!message.pFlags.is_outgoing` (:7683) у нас выражает ДРОБНЫЙ номер: своя
+    // ещё не отправленная публикация номера в канале не имеет, регистрировать
+    // просмотр нечему. Ветки `previewOnly` и метрик чтения (:7686-7690) предмета
+    // не имеют — превью-ленты и метрик у нас нет.
+    if(this.chat.isBroadcast && message._ === 'message' && !isLocalMessageId(message.id)) {
+      this.observer?.observe(bubble, this.viewsObserverCallback)
     }
 
     // Медиа — после сборки каркаса: ветке нужен и `bubbleContainer` (куда
@@ -2993,10 +3039,31 @@ export default class ChatBubbles implements BubbleGroupsHost {
     this.onUnreadedInViewport(target, mid)
   }
 
+  /**
+   * Пост канала показался — ЗАРЕГИСТРИРОВАТЬ просмотр. Порт tweb :2305-2328.
+   *
+   * Наблюдение ОДНОРАЗОВОЕ (:2308 снимает его первым же делом): просмотр
+   * считается один раз на пару «пост + зритель», второй показ того же поста
+   * ничего не меняет — ни здесь, ни на сервере.
+   *
+   * Ветки `chat.isPreview` (:2310) и спонсорских сообщений (:2313-2322) не
+   * портированы: превью-ленты у нас нет как режима, спонсорских сообщений нет
+   * как предмета.
+   */
+  private viewsObserverCallback = (entry: IntersectionObserverEntry) => {
+    if(!entry.isIntersecting) return
+    const bubble = entry.target as HTMLElement
+    this.observer?.unobserve(bubble, this.viewsObserverCallback)
+    const mid = Number(bubble.dataset.mid)
+    if(!mid) return
+    this.viewsMids.add(mid)
+    void this.sendViewCountersDebounced?.()
+  }
+
   /** Порт tweb `onUnreadedInViewport` (:2914-2926) в объёме типа `'history'`. */
   private onUnreadedInViewport(target: HTMLElement, mid: number) {
     this.unreadedSeen.add(mid)
-    this.observer?.unobserve(target)
+    this.observer?.unobserve(target, this.unreadedObserverCallback)
     this.unreaded.delete(target)
     this.readUnreaded()
   }
@@ -3072,7 +3139,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
   private setUnreadObserver(element: HTMLElement, mid: number) {
     if(!this.observer) return
 
-    this.observer.observe(element)
+    this.observer.observe(element, this.unreadedObserverCallback)
     this.unreaded.set(element, mid)
   }
 
@@ -3616,14 +3683,23 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // `recomputePaddings`).
     this.applyStickyRootMargin()
 
-    // Наблюдатель за непрочитанными — tweb bubbles.ts:2127
-    // (`new SuperIntersectionObserver({root: this.scrollable.container})`).
-    // Корень тот же, мультиплексора нет (см. поле `observer`).
-    this.observer = new IntersectionObserver((entries) => {
-      for(const entry of entries) {
-        this.unreadedObserverCallback(entry)
-      }
-    }, { root: this.scrollable.container })
+    // tweb bubbles.ts:2127 — один наблюдатель на все вопросы «что сейчас
+    // видно», корень тот же (см. поле `observer`).
+    this.observer = new SuperIntersectionObserver({ root: this.scrollable.container })
+
+    // Порт tweb :2129-2147. Дебаунс на СЕКУНДУ и не по переднему фронту
+    // (третий аргумент `false`): прокрутка мимо десятка постов не должна
+    // порождать десять запросов.
+    //
+    // Разбивки `byPeers` (tweb :2133-2143) у нас нет: она обслуживает режим
+    // `GLOBAL_MIDS`, где в одном окне лежат сообщения РАЗНЫХ пиров и `fullMid`
+    // несёт пир внутри себя. У нашей ленты окно всегда одного пира, поэтому
+    // адресат — `this.peerId`, а набор хранит голые номера.
+    this.sendViewCountersDebounced = debounce(() => {
+      const mids = [...this.viewsMids]
+      this.viewsMids.clear()
+      void this.managers.channels?.registerViews(this.peerId, mids).catch(noop)
+    }, 1000, false, true)
 
     // tweb bubbles.ts:1411-1413.
     if(!DO_NOT_SLICE_VIEWPORT_ON_SCROLL) {
@@ -3738,6 +3814,80 @@ export default class ChatBubbles implements BubbleGroupsHost {
       this.onMessageEdit(message)
     })
 
+    /**
+     * Просмотры поста — порт tweb bubbles.ts:2094-2124.
+     *
+     * Переписывается ОДИН узел уже отрисованного бабла, а не бабл целиком, и
+     * это существенно: у поста канала просмотры тикают у каждого зрителя, а
+     * пересборка тела перезапустила бы вложение (см. докблок `onMessageEdit`).
+     *
+     * `.post-views` в бабле ДВА — часть времени дублируется в `.time-inner`
+     * (`messageTime.ts`), поэтому запрос возвращает список, а не один узел.
+     *
+     * `ScrollSaver` заводится ЛЕНИВО и только когда текст реально меняется
+     * (:2109-2117): число другой длины меняет ширину времени, а у поста, стоящего
+     * над вьюпортом, это сдвинуло бы ленту под пальцем. `different` в оригинале
+     * взводится один раз на бабл — второй узел переписывается уже безусловно,
+     * чтобы дубль не разъехался с видимой копией.
+     *
+     * Гейт `chat.type === Scheduled` (:2095) предмета не имеет: отложенные у нас
+     * живут отдельным экраном, а не типом ленты. `GLOBAL_MIDS` — тоже (окно
+     * всегда одного пира).
+     */
+    this.listenerSetter.add(rootScope)('messages_views', (arr) => {
+      fastRaf(() => {
+        let scrollSaver: ScrollSaver | undefined
+        for (const { peerId, mid, views } of arr) {
+          if (this.peerId !== peerId) continue
+
+          const bubble = this.getBubble(makeFullMid(peerId, mid))
+          if (!bubble) continue
+
+          const postViewsElements = Array.from(bubble.querySelectorAll<HTMLElement>('.post-views'))
+          if (!postViewsElements.length) continue
+
+          const str = fmtViews(views)
+          let different = false
+          postViewsElements.forEach((postViews) => {
+            if (different || postViews.textContent !== str) {
+              if (!scrollSaver) {
+                scrollSaver = this.createScrollSaver(true)
+                scrollSaver.save()
+              }
+
+              different = true
+              postViews.textContent = str
+            }
+          })
+        }
+
+        scrollSaver?.restore()
+      })
+    })
+
+    /**
+     * Комментарии поста — порт глобального слушателя `replies_updated`
+     * (tweb replies.ts:17-22) вместе с приёмом :1137-1142: потребитель читает
+     * ТОЛЬКО ЧИСЛО.
+     *
+     * Футер адресуется `data-post-key`, а не картой баблов, и это из оригинала:
+     * у АЛЬБОМА тред лежит на одном сообщении группы, а футер рисуется один на
+     * альбом — поэтому номер в ключе футера не обязан совпадать с `data-mid`
+     * бабла, под которым тот висит (`getMessageWithCommentReplies`).
+     *
+     * Ветки `setBubbleRepliesCount` (число у времени, tweb :6410-6431) здесь
+     * нет: она про сообщение ГРУППЫ с ответами, а кадр — канальный
+     * (`updateChannelMessageReplies`). Счётчик группы двигает обычная правка
+     * сообщения, как и всё остальное её содержимое.
+     */
+    this.listenerSetter.add(rootScope)('replies_updated', ({ storageKey, peerId, mid, message }) => {
+      if (storageKey !== this.chat.messagesStorageKey) return
+      const replies = message._ === 'message' ? message.replies : undefined
+      if (!replies) return
+      const elements = this.chatInner.querySelectorAll<HTMLElement>(`replies-element[data-post-key="${peerId}_${mid}"]`)
+      elements.forEach((element) => { setRepliesElementCount(element, replies.replies) })
+    })
+
     // tweb bubbles.ts:1903
     this.listenerSetter.add(rootScope)('history_delete', ({ peerId, msgs }) => {
       if (peerId !== this.peerId) return
@@ -3821,7 +3971,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     const oldTime = messageDiv.querySelector<HTMLElement>('.time')
     const observedMid = oldTime ? this.unreaded.get(oldTime) : undefined
     if (oldTime && observedMid !== undefined) {
-      this.observer?.unobserve(oldTime)
+      this.observer?.unobserve(oldTime, this.unreadedObserverCallback)
       this.unreaded.delete(oldTime)
     }
 
@@ -3868,20 +4018,25 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
       this.bubbleGroups.removeAndUnmountBubble(bubble)
 
-      // tweb :4314-4316 снимает наблюдение с САМОГО бабла. У поста канала
-      // наблюдаемый узел не бабл, а время внутри него (:7639), поэтому здесь
-      // обход по вхождению: иначе подрезка вьюпорта оставляла бы в карте
-      // оторванный от документа узел на каждый удалённый пост.
+      // tweb :4314-4316 снимает наблюдение непрочитанных с САМОГО бабла. У
+      // поста канала наблюдаемый узел не бабл, а время внутри него (:7638-7640),
+      // поэтому здесь обход по вхождению: иначе подрезка вьюпорта оставляла бы
+      // в карте оторванный от документа узел на каждый удалённый пост.
       if (this.observer) {
         // Удаление ТЕКУЩЕГО ключа по ходу обхода `Map` определено спецификацией
         // (пропускается только запись, удалённая ДО того, как её посетили), —
         // копию делать не за чем.
         for (const element of this.unreaded.keys()) {
           if (element === bubble || bubble.contains(element)) {
-            this.observer.unobserve(element)
+            this.observer.unobserve(element, this.unreadedObserverCallback)
             this.unreaded.delete(element)
           }
         }
+        // tweb :4321-4322 — просмотры своей парой: наблюдаемый узел здесь сам
+        // бабл (:7685), а накопленный номер уходит из набора, чтобы дебаунс не
+        // зарегистрировал просмотр удалённого поста.
+        this.observer.unobserve(bubble, this.viewsObserverCallback)
+        this.viewsMids.delete(splitFullMid(fullMid).mid)
       }
     }
 
@@ -3918,6 +4073,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
     this.observer?.disconnect()
     this.unreaded.clear()
     this.unreadedSeen.clear()
+    // tweb bubbles.ts:4982 — накопленные видимые посты принадлежат ПРОШЛОМУ окну.
+    this.viewsMids.clear()
     this.readPromise = undefined
     this.renderReadMaxSeq = 0
     this.getHistoryTopPromise = this.getHistoryBottomPromise = undefined
@@ -3977,6 +4134,10 @@ export default class ChatBubbles implements BubbleGroupsHost {
     this.selection?.cleanup()
     this.removeHeavyAnimationListener?.()
     this.sliceViewportDebounced?.clearTimeout()
+    // Дебаунс просмотров переживает ленту (таймер висит на окне) и на срабатывании
+    // прочитал бы `this.peerId` уже умершего инстанса — гасим вместе с ней, тем же
+    // приёмом, что и подрезку вьюпорта строкой выше.
+    this.sendViewCountersDebounced?.clearTimeout()
     // tweb bubbles.ts:4891-4897.
     this.observer?.disconnect()
     this.observer = undefined

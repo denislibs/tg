@@ -4,6 +4,7 @@ import { mapMyMessage, mapSuggestedPost, type MyMessage, type RawMyMessage, type
 import type { Chat, MessagesChatFull, UserReal } from '../peers/peer'
 import type { Peer } from '../peers/peerId'
 import { getPeerId } from '../peers/peerId'
+import { getServerMessageId } from '../history/messageId'
 import type { PeersManager } from './peersManager'
 
 // Аргументы «предложить пост в канал» (Telegram suggested posts). publishAt —
@@ -31,18 +32,33 @@ export interface ContactsFound {
 // Кандидат в группу-обсуждение канала (Telegram getGroupsForDiscussion).
 export interface DiscussionCandidate { peerId: PeerId; title: string; username: string; memberCount: number }
 
-// Счётчиков поста (просмотры, тред комментариев) здесь БОЛЬШЕ НЕТ, и это не
-// перенос кода, а исчезновение предмета: оба — параметры самого сообщения
+// ОПРОСА счётчиков поста (просмотры, тред комментариев) здесь больше нет, и это
+// не перенос кода, а исчезновение предмета: оба — параметры самого сообщения
 // (`views`, `replies`) и приезжают внутри пачки истории. Ручки
 // `/channels/{id}/view_counts` и `/channels/{id}/comment_counts` читали ТЕ ЖЕ
 // данные вторым запросом (docs/contracts.md:473, docs/readiness/
-// tl-message-analysis.md:473). У оригинала отдельный запрос за просмотрами
-// существует, но он про другое — `messages.getMessagesViews` с `increment: true`
-// РЕГИСТРИРУЕТ просмотр видимого поста (tweb bubbles.ts:2127-2147 →
-// appMessagesManager.ts:9136), а не опрашивает счётчик; наш опрос порождал
-// только трафик.
+// tl-message-analysis.md:473); обновление уже показанной ленты идёт кадрами.
+//
+// Осталась РЕГИСТРАЦИЯ просмотра — `registerViews` ниже. Это другое действие:
+// оригинал делает его тем же методом с флагом (`messages.getMessagesViews` с
+// `increment: true`, tweb appMessagesManager.ts:9136-9156), у нас читающая
+// половина уже была ручкой, поэтому пишущая стала соседней.
 
-export function newChannelsManager({ rest, beforeSending, peers }: {
+/**
+ * `messages.messageViews` — контейнер ответа на регистрацию просмотра.
+ *
+ * Вектор ПОЗИЦИОННЫЙ (i-й элемент отвечает i-му номеру запроса) и несёт уже
+ * НОВЫЕ значения; номеру, которому не отвечает пост канала, приезжает
+ * `messageViews` без параметров — отсюда `views?`.
+ */
+interface MessagesMessageViews {
+  _: 'messages.messageViews'
+  views: { _: 'messageViews'; views?: number }[]
+  chats: Chat[]
+  users: UserReal[]
+}
+
+export function newChannelsManager({ rest, beforeSending, peers, cacheViews }: {
   rest: Pick<RestClient, 'post' | 'get' | 'put' | 'del'>
   /** Временный бабл поста — та же механика, что у обычной отправки
    *  (messages.beforeMessageSending + веер операций), см. workerCore.ts. */
@@ -52,6 +68,13 @@ export function newChannelsManager({ rest, beforeSending, peers }: {
    *  фолбэком и ходит за теми же карточками вторым запросом. Порт правила
    *  оригинала «каждый ответ прогоняется через saveApiPeers». */
   peers: Pick<PeersManager, 'saveApiPeers'>
+  /** Владелец счётчика просмотров — окно (`messages.cacheViews`): число живёт
+   *  ВНУТРИ сообщения. Ответ на регистрацию несёт уже новые значения, и
+   *  оригинал применяет их у себя тем же путём, что и кадр, —
+   *  `processLocalUpdate({_: 'updateChannelMessageViews', …})` на каждый номер
+   *  (tweb appMessagesManager.ts:9148-9155). Инъекцией, а не импортом: тем же
+   *  приёмом сюда приходит `beforeSending`. */
+  cacheViews: (peerId: number, views: Map<number, number>) => void
 }) {
   return {
     /**
@@ -119,6 +142,38 @@ export function newChannelsManager({ rest, beforeSending, peers }: {
         username: ('username' in c ? c.username : '') ?? '',
         memberCount: ('participants_count' in c ? c.participants_count : 0) ?? 0,
       }))
+    },
+    /**
+     * РЕГИСТРАЦИЯ просмотра постов, доехавших до экрана, — порт
+     * `appMessagesManager.incrementMessageViews` (tweb :9136-9156).
+     *
+     * Не опрос: счётчик поста растёт ровно один раз на пару «пост + зритель»,
+     * повторный показ ничего не меняет. Кого регистрировать, решает интерсектор
+     * ленты с дебаунсом в секунду (`chat/bubbles.ts`, порт tweb :2129-2147 и
+     * :2305-2328) — здесь только запрос.
+     *
+     * Ответ применяется У СЕБЯ, как в оригинале: он несёт уже новые значения, а
+     * кадр `views_update`, который сервер шлёт в топик канала, — доставка
+     * best-effort. Владелец числа при этом один и тот же (`messages.cacheViews`),
+     * поэтому второй записи в окно не возникает, а повтор идемпотентен —
+     * одинаковое значение `cacheViews` не патчит.
+     *
+     * Пустой список отсекается здесь же (tweb :9137-9139): дебаунс срабатывает и
+     * на уже опустошённом наборе.
+     */
+    async registerViews(peerId: number, msgIds: number[]): Promise<void> {
+      if (!msgIds.length) return
+      const r = await rest.post<MessagesMessageViews>(`/channels/${peerId}/views`, {
+        ids: msgIds.map(getServerMessageId),
+      })
+      // tweb :9146 — карточки, приехавшие с ответом, в зеркало ПЕРЕД применением.
+      peers.saveApiPeers(r)
+      const views = new Map<number, number>()
+      msgIds.forEach((msgId, i) => {
+        const n = r.views?.[i]?.views
+        if (typeof n === 'number') views.set(msgId, n)
+      })
+      cacheViews(peerId, views)
     },
     // Подпись постов автором (Telegram toggleSignatures). profiles — показывать профиль.
     async setSignatures(channelId: number, signatures: boolean, profiles: boolean): Promise<void> {

@@ -65,6 +65,16 @@ type MessageContext struct {
 	// вопрос «отправил ли это зритель». Оговорка стоит здесь потому, что
 	// неверная её версия однажды уже уехала в постановку порта фронта.
 	Out bool
+	// Replies — ТРЕД сообщения (message.replies). Строка messages его не знает
+	// по той же причине, что и Post: тред — свойство ВИДА ЧАТА и содержимого
+	// ДРУГОГО чата (комментарии поста физически лежат в группе обсуждения),
+	// а не колонка сообщения. Единственный, кто на этот вопрос отвечает, —
+	// Interactor.threadReplies (usecase/chat/messagescontainer.go): и пачка
+	// истории, и живой кадр берут тред оттуда.
+	//
+	// nil — «треда нет»: у конструктора message параметр replies
+	// необязательный (flags.23), и «нет» выражается его отсутствием.
+	Replies *MessageReplies
 }
 
 // ToWire собирает конструктор схемы: messageService, когда у сообщения есть
@@ -133,6 +143,7 @@ func (m Message) toReal(ctx MessageContext) MessageReal {
 	r.Entities = m.Entities
 	r.Views = m.Views
 	r.Forwards = m.Forwards
+	r.Replies = ctx.Replies
 	if m.EditedAt != nil {
 		r.EditDate = unixSeconds(*m.EditedAt)
 	}

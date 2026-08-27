@@ -179,7 +179,7 @@ describe('ChatBubbles — наблюдатель непрочитанных', ()
     expect(managers.markRead).toHaveBeenCalledTimes(1)
   })
 
-  it('у поста канала наблюдаемый узел — ВРЕМЯ, а не бабл', async () => {
+  it('у поста канала читающий узел — ВРЕМЯ, а не бабл', async () => {
     const managers = managersWith([msg(11)])
     managers.getReadMaxSeqIfUnread.mockResolvedValue(10)
     bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managers)
@@ -189,9 +189,17 @@ describe('ChatBubbles — наблюдатель непрочитанных', ()
     const bubble = bubbleOf(bubbles, 11)
     const time = bubble.querySelector<HTMLElement>('.time')!
     // tweb :7638-7640: пост бывает выше вьюпорта, и «увиден» он, только когда
-    // пользователь домотал до его конца.
-    expect(observerOf(bubble)).toBeUndefined()
-    expect(observerOf(time)).toBeDefined()
+    // пользователь домотал до его конца. Спрашивается ПОВЕДЕНИЕ, а не набор
+    // наблюдаемых узлов: наблюдатель у ленты один на все её вопросы (порт
+    // `SuperIntersectionObserver`), и сам бабл он тоже держит на учёте — ради
+    // просмотров поста (:7685).
+    intersect(bubble)
+    await settle()
+    expect(managers.markRead).not.toHaveBeenCalled()
+
+    intersect(time)
+    await settle()
+    expect(managers.markRead).toHaveBeenCalledWith({ peerId: CHAT, upToId: 11 })
   })
 
   // Правка пересобирает конец тела бабла, а вместе с ним и узел времени. У

@@ -22,7 +22,7 @@ export interface MessagesSearchResultsCalendar {
   messages: RawMyMessage[]
   users: UserReal[]
 }
-import { getThreadRootId, mapMyMessage, type MyMessage, type MessageReal, type MessageEntity, type MessageFields, type RawMyMessage, type SecretMedia } from '../models'
+import { getThreadRootId, mapMyMessage, type MyMessage, type MessageReal, type MessageEntity, type MessageFields, type MessageReplies, type RawMyMessage, type SecretMedia } from '../models'
 import { getPeerId, type Peer } from '../peers/peerId'
 import type { UserReal, Chat } from '../peers/peer'
 import { generateMessageId, getServerMessageId } from '../history/messageId'
@@ -813,11 +813,15 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
     /**
      * Свежие счётчики просмотров постов канала («9.2K 👁») → SSOT + операции.
      *
-     * Владелец числа — воркер: он его и запрашивает (`channels.viewCounts`,
-     * который зовёт этот метод сразу после разбора ответа). Прежде ответ ручки
-     * писала в окно ВИТРИНА (`useChannelExtras` → zustand-копия окна), то есть
-     * мимо операций — и до зеркала (`core/history/messagesMirror.ts`), из
-     * которого рисует лента, счётчик не доезжал вовсе.
+     * Владелец числа — воркер, и зовущих у метода ДВА, оба его:
+     * ответ регистрации просмотра (`channels.registerViews`, разбирается сразу
+     * после запроса) и кадр `updateChannelMessageViews`. Второго ответа на
+     * вопрос «сколько просмотров» это не заводит — оба пути кладут число сюда.
+     *
+     * Прежде ответ ручки писал в окно ВИТРИНА (`useChannelExtras` →
+     * zustand-копия окна), то есть мимо операций — и до зеркала
+     * (`core/history/messagesMirror.ts`), из которого рисует лента, счётчик не
+     * доезжал вовсе.
      *
      * Патчатся только РЕАЛЬНО изменившиеся: одинаковое значение не событие, а
      * лишний патч разорвал бы ссылку сообщения в окне (мемоизированные баблы
@@ -833,6 +837,43 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
         for (const key of opWindowsFor(peerId, id)) ops.push({ op: 'patch', key, msgId: id, fields: { views: count } })
       }
       emitOps(ops)
+    },
+
+    /**
+     * Свежий счётчик комментариев поста канала → SSOT + операции.
+     *
+     * Тот же приём, что у `cacheViews` выше, и по той же причине: число живёт
+     * ВНУТРИ сообщения (`replies.replies`), поэтому владелец у него один —
+     * окно, а объявляется изменение операцией.
+     *
+     * Кадр несёт АБСОЛЮТНОЕ число, а не дельту, — его и кладём. У оригинала на
+     * этом месте инкремент (`replies.replies + (add ? 1 : -1)`,
+     * tweb appMessagesManager.ts:8672), потому что там счётчик двигает САМ
+     * клиент, увидевший сообщение треда; у нас двигает сервер, и дельта,
+     * потерянная кадром без курсора, разошлась бы навсегда.
+     *
+     * Патчится только РЕАЛЬНО изменившееся и только там, где тред вообще есть:
+     * `replies` у поста приезжает вместе с ним, и подставлять его здесь из
+     * одного числа значило бы выдумать `channel_id` и `pFlags.comments`,
+     * которых в кадре нет.
+     */
+    cacheReplies(peerId: number, msgId: number, count: number): void {
+      let replies: MessageReplies | undefined
+      patchMsg(
+        peerId,
+        (m) => m.id === msgId,
+        // `null` — «применять нечего» (контракт patchMsg): у пилюли треда нет
+        // вовсе, у сообщения без треда его не из чего собрать (ни `channel_id`,
+        // ни `pFlags.comments` кадр не несёт), а то же число — не изменение.
+        (m) => {
+          if (m._ !== 'message' || !m.replies || m.replies.replies === count) return null
+          replies = { ...m.replies, replies: count }
+          return { ...m, replies }
+        },
+      )
+      const next = replies
+      if (!next) return
+      emitOps(opWindowsFor(peerId, msgId).map((key): MessageOp => ({ op: 'patch', key, msgId, fields: { replies: next } })))
     },
 
     // Live-правка от любого участника → единый объект в SSOT + операции по всем

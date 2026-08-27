@@ -36,11 +36,13 @@ import (
 // где список пришёл из ГЛОБАЛЬНОГО поиска по чужим чатам. В остальных случаях
 // чат уже известен клиенту из списка диалогов.
 func (i *Interactor) MessagesContainer(ctx context.Context, viewerID int64, msgs []domain.Message) ([]domain.MTMessage, []domain.UserReal, error) {
-	wire, kinds, err := i.messagesWire(ctx, viewerID, msgs)
+	kinds := i.chatKinds(ctx, msgs)
+	threads, repliers := i.threadReplies(ctx, msgs, kinds)
+	wire, err := i.messagesWire(ctx, viewerID, msgs, kinds, threads)
 	if err != nil {
 		return nil, nil, err
 	}
-	users := mergeUserCards(i.messageAuthors(ctx, msgs), i.hydrateThreads(ctx, msgs, kinds, wire))
+	users := mergeUserCards(i.messageAuthors(ctx, msgs), repliers)
 	i.gateAuthorPhotos(ctx, viewerID, users)
 	return wire, users, nil
 }
@@ -71,12 +73,19 @@ func (i *Interactor) messageAuthors(ctx context.Context, msgs []domain.Message) 
 	return authors
 }
 
-// hydrateThreads проставляет сообщениям пачки `replies` — тред конструктором
-// messageReplies — и отдаёт карточки последних комментаторов, на которых тред
-// ссылается (в схеме recent_repliers это Vector<Peer>, то есть ССЫЛКИ).
+// threadReplies — ЕДИНСТВЕННЫЙ ответ на вопрос «какой у сообщения тред»:
+// messageReplies по КЛЮЧУ СТРОКИ плюс карточки последних комментаторов, на
+// которых тред ссылается (в схеме recent_repliers это Vector<Peer>, то есть
+// ССЫЛКИ).
+//
+// Спрашивают её двое, и оба кладут результат в одно и то же место —
+// domain.MessageContext.Replies, откуда его берёт Message.ToWire: пачка
+// истории (MessagesContainer выше) и ЖИВОЙ КАДР (messageContext в frame.go).
+// Прежде кадр не спрашивал вовсе, и у поста, приехавшего кадром, тред был
+// пуст — футер «N комментариев» появлялся только после перезагрузки истории.
 //
 // ГДЕ ЕСТЬ ПРЕДМЕТ. Тред — свойство ВИДА ЧАТА, а не строки, поэтому решает
-// `kinds`, уже прочитанный messagesWire:
+// `kinds` (chatKinds, messagewire.go):
 //
 //   - канал: у поста тред есть тогда, когда каналу привязана группа обсуждения
 //     (CommentCounts сам возвращает пустоту без привязки, discussion.go:255).
@@ -92,11 +101,11 @@ func (i *Interactor) messageAuthors(ctx context.Context, msgs []domain.Message) 
 //
 // Сбой подсчёта не роняет выдачу — то же правило, что у messageAuthors: чат
 // без счётчика читается, упавший чат не читается никак.
-//
-// Позиции wire и msgs совпадают по построению (см. messagesWire).
-func (i *Interactor) hydrateThreads(ctx context.Context, msgs []domain.Message, kinds map[int64]string, wire []domain.MTMessage) []domain.UserReal {
+func (i *Interactor) threadReplies(
+	ctx context.Context, msgs []domain.Message, kinds map[int64]string,
+) (map[int64]domain.MessageReplies, []domain.UserReal) {
 	if i.msgs == nil || len(msgs) == 0 {
-		return nil
+		return nil, nil
 	}
 	byChat := make(map[int64][]int64, 1)
 	for _, m := range msgs {
@@ -106,7 +115,7 @@ func (i *Interactor) hydrateThreads(ctx context.Context, msgs []domain.Message, 
 		}
 	}
 	if len(byChat) == 0 {
-		return nil
+		return nil, nil
 	}
 	threads := make(map[int64]domain.MessageReplies, len(msgs))
 	var repliers []domain.UserReal
@@ -133,24 +142,10 @@ func (i *Interactor) hydrateThreads(ctx context.Context, msgs []domain.Message, 
 			threads[rootID] = domain.NewMessageReplies(n, 0, nil)
 		}
 	}
-	if len(threads) == 0 {
-		return repliers
-	}
-	for idx := range wire {
-		rep, ok := threads[msgs[idx].ID]
-		if !ok {
-			continue
-		}
-		body, ok := wire[idx].(domain.MessageReal)
-		if !ok {
-			// Служебное сообщение (messageService) параметра replies не имеет:
-			// у конструктора его нет вовсе.
-			continue
-		}
-		body.Replies = &rep
-		wire[idx] = body
-	}
-	return repliers
+	// Служебное сообщение (messageService) параметра replies не имеет вовсе —
+	// его отсекает сама сборка конструктора (toService про ctx.Replies не
+	// знает), поэтому отдельной проверки здесь нет.
+	return threads, repliers
 }
 
 // mergeUserCards склеивает векторы карточек в ОДИН, по карточке на человека:

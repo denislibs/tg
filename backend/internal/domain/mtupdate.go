@@ -66,6 +66,8 @@ const (
 	UpdateReadPeerMessagesContentsTag = "updateReadPeerMessagesContents"
 	UpdatePinnedMessagesTag           = "updatePinnedMessages"
 	UpdateMessageReactionsTag         = "updateMessageReactions"
+	UpdateChannelMessageViewsTag      = "updateChannelMessageViews"
+	UpdateChannelMessageRepliesTag    = "updateChannelMessageReplies"
 	UpdateDialogPinnedTag             = "updateDialogPinned"
 	UpdateFolderPeersTag              = "updateFolderPeers"
 	UpdateNotifySettingsTag           = "updateNotifySettings"
@@ -317,6 +319,74 @@ func NewUpdatePinnedMessages(peer Peer, ids []int64, pinned bool, pts int64) Upd
 		u.PFlags = map[string]bool{"pinned": true}
 	}
 	return u
+}
+
+// ── Счётчики поста канала ───────────────────────────────────────────────────
+//
+// Просмотры и комментарии живут ОТДЕЛЬНЫМИ кадрами, а не правкой поста
+// целиком: у оригинала это ровно так — `updateChannelMessageViews` схемы и
+// локальный бамп счётчика треда, который лента ловит событием
+// `replies_short_update` (tweb appMessagesManager.ts:8658-8680,
+// bubbles.ts:1137-1142). Прислать вместо них updateEditMessage значило бы
+// переписать в ленте весь бабл ради одного числа.
+//
+// Курсора у обоих нет вовсе, и это не пропуск: счётчики ПРИБЛИЖЁННЫ (просмотр
+// регистрируется дедуплицированно, но кадр о нём — не факт истории), догонять
+// их разрывом незачем — актуальное значение приезжает со страницей истории.
+// Поэтому оба кадра уезжают в ТОПИК КАНАЛА (одна публикация на всех
+// подписчиков), а не веером по пер-юзерному журналу.
+
+// updateChannelMessageViews#f226ac08 channel_id:long id:int views:int = Update;
+//
+// Счётчик просмотров поста вырос. `id` — НОМЕР поста в канале (seq), тот же,
+// которым пост адресуется во всех остальных кадрах.
+type UpdateChannelMessageViews struct {
+	Underscore string `json:"_"`
+	ChannelID  int64  `json:"channel_id"`
+	ID         int64  `json:"id"`
+	Views      int64  `json:"views"`
+}
+
+func (UpdateChannelMessageViews) isUpdate()     {}
+func (u UpdateChannelMessageViews) Tag() string { return u.Underscore }
+
+func NewUpdateChannelMessageViews(channelID, id, views int64) UpdateChannelMessageViews {
+	return UpdateChannelMessageViews{
+		Underscore: UpdateChannelMessageViewsTag,
+		ChannelID:  channelID, ID: id, Views: views,
+	}
+}
+
+// updateChannelMessageReplies#c8022fb8 channel_id:long id:int replies:int
+// = Update; — НАШ конструктор.
+//
+// Счётчик комментариев поста изменился. Апдейта у предмета в схеме нет: у
+// оригинала число бампит САМ КЛИЕНТ, когда сообщение приходит в тред
+// (appMessagesManager.ts:8670-8675), — ему видна вся группа обсуждения. У нас
+// клиент группы обсуждения не видит, пока тред не открыт, поэтому ответ на
+// «сколько там теперь комментариев» даёт сервер.
+//
+// Едет ЧИСЛО, а не MessageReplies целиком, и это не обрезка: тред у поста уже
+// есть (он приезжает с самим постом), меняется в нём ровно счётчик — его и
+// читает потребитель у оригинала (`setBubbleRepliesCount(bubble,
+// message.replies.replies)`, tweb bubbles.ts:1141). Вези кадр весь
+// конструктор — в нём поехали бы ССЫЛКИ recent_repliers, а вектора users
+// рядом с кадром у нас пока нет вовсе.
+type UpdateChannelMessageReplies struct {
+	Underscore string `json:"_"`
+	ChannelID  int64  `json:"channel_id"`
+	ID         int64  `json:"id"`
+	Replies    int64  `json:"replies"`
+}
+
+func (UpdateChannelMessageReplies) isUpdate()     {}
+func (u UpdateChannelMessageReplies) Tag() string { return u.Underscore }
+
+func NewUpdateChannelMessageReplies(channelID, id, replies int64) UpdateChannelMessageReplies {
+	return UpdateChannelMessageReplies{
+		Underscore: UpdateChannelMessageRepliesTag,
+		ChannelID:  channelID, ID: id, Replies: replies,
+	}
 }
 
 // ── Реакции ─────────────────────────────────────────────────────────────────

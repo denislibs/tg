@@ -50,9 +50,10 @@ import { newCursor } from './realtime/cursor'
 import { newChannelFunnel, type ChannelDiff } from './realtime/channelFunnel'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type Update } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type RepliesUpdateEvt, type Update } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
-import { getPeerId } from './peers/peerId'
+import { generateMessageId } from './history/messageId'
+import { getPeerId, toPeerId } from './peers/peerId'
 import { LOGGED_WITHOUT_CONSTRUCTOR, PASS_THROUGH } from './realtime/transportFrames'
 import { CHANNEL_CURSOR, UPDATE_RT, channelPeerId, frameKey, updatePredicate } from './realtime/updateCatalog'
 import { idbGet, idbSet } from './store/idbKv'
@@ -327,7 +328,11 @@ export function createWorkerCore() {
       getMessageByPeer: (peerId, seq) => messages.getMessageByPeer(peerId, seq),
     },
   })
-  const channels = newChannelsManager({ rest, beforeSending, peers })
+  // cacheViews — владелец счётчика просмотров: ответ на регистрацию просмотра
+  // несёт уже новые значения, и применяет их та же точка, что и кадр
+  // `views_update` (реестр CACHE выше). Стрелкой, а не ссылкой: `messages`
+  // собран выше, но зависимость объявляется здесь, у вызывателя.
+  const channels = newChannelsManager({ rest, beforeSending, peers, cacheViews: (peerId, views) => { messages.cacheViews(peerId, views) } })
   const presence = newPresenceManager({ rest })
   const stories = newStoriesManager({ rest })
   const contacts = newContactsManager({ rest })
@@ -409,6 +414,15 @@ export function createWorkerCore() {
     updateEditMessage:              (p) => messages.cacheEdit(p),
     updateDeletePeerMessages:       (p) => messages.cacheDelete(p),
     updateMessageReactions:         (p) => messages.cacheReaction(p),
+    // Счётчики поста канала. Оба числа живут ВНУТРИ сообщения, поэтому владелец
+    // у них тот же, что у всего окна, — messages; кадр лишь называет пост и
+    // новое значение. Номер поста приезжает в СЕРВЕРНОМ пространстве (как во
+    // всех кадрах), ключ канала — числом `channel_id`: перевод обоих и есть
+    // граница разбора (`core/history/messageId.ts`, `core/peers/peerId.ts`).
+    updateChannelMessageViews:      (p: ViewsUpdateEvt) =>
+      messages.cacheViews(toPeerId(p.channel_id, true), new Map([[generateMessageId(p.id), p.views]])),
+    updateChannelMessageReplies:    (p: RepliesUpdateEvt) =>
+      messages.cacheReplies(toPeerId(p.channel_id, true), generateMessageId(p.id), p.replies),
     updateMessageFactCheck:         (p) => messages.cacheFactCheck(p),
     updateMessagePoll:              (p) => messages.cachePoll(p),
     updateMessageToDo:              (p) => messages.cacheChecklist(p),
