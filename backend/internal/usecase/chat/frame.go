@@ -240,6 +240,7 @@ func (i *Interactor) messageContext(ctx context.Context, m domain.Message, peer 
 			out.Post = typ == domain.ChatTypeChannel
 			out.Replies = i.messageThread(ctx, m, typ)
 			out.CanSeeReactionsList = domain.CanSeeReactionsList(typ)
+			out.CanViewReactionsList = domain.CanViewReactionsList(typ)
 		}
 	}
 	return out

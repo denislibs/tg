@@ -559,3 +559,44 @@ describe('ChatContextMenu — «кто просмотрел» (views без ре
     expect(managers.messages.viewers).not.toHaveBeenCalled()
   })
 })
+
+// ВЕЩАТЕЛЬНЫЙ КАНАЛ: реакции там анонимны, и пункта `views` у оригинала нет
+// ВОВСЕ — не «есть, но не открывает список». Оба терма его verify
+// (contextMenu.ts:1257-1258) там ложны: `recent_reactions` сервер не присылает
+// (право на список — то же `can_see_list`, которого в канале нет), а
+// `canViewMessageReadParticipants` отсекает broadcast явно
+// (appMessagesManager.ts:9109-9116). Задача #93.
+describe('ChatContextMenu — пункт `views` в вещательном канале (tweb :1257-1258)', () => {
+  const CHANNEL = -7
+
+  it('реакции есть, права на список нет — пункта нет и `messages.viewers` не спрашивается', async() => {
+    applyPeerOps([{ op: 'upsert', peers: [{ _: 'channel', id: 7, title: 'ch', pFlags: {}, photo: undefined, date: 0 } as never] }])
+    putMirrorPage(KEY, [message(1, {
+      peerId: CHANNEL,
+      peer_id: { _: 'peerChannel', channel_id: 7 },
+      pFlags: { out: true },
+      // Агрегат едет, вектора recent_reactions в нём нет — ровно то, что
+      // отдаёт сервер без права на список (domain/messagewire.go).
+      reactions: {
+        _: 'messageReactions',
+        results: [{ _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '👍' }, count: 2 }],
+      },
+    })])
+
+    const managers = makeManagers()
+    const { bubble, content } = makeBubble(1, { out: true, peerId: CHANNEL })
+    container.append(bubble)
+    const menu = new ChatContextMenu(makeChat({ peerId: CHANNEL }), {}, managers, makePopups())
+    menu.attachTo(container)
+    rightClick(content)
+    await flush()
+    await flush()
+
+    // Меню ОТКРЫТО — иначе «пункта нет» ничего не значило бы.
+    expect(itemTexts()).toContain('Reply')
+    const views = Array.from(menuElement()?.querySelectorAll<HTMLElement>('.btn-menu-item') ?? [])
+      .find((el) => /Seen by|Nobody viewed|Loading|Reacted/.test(el.querySelector('.btn-menu-item-text')?.textContent ?? ''))
+    expect(views).toBeUndefined()
+    expect(managers.messages.viewers).not.toHaveBeenCalled()
+  })
+})

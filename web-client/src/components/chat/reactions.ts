@@ -25,8 +25,7 @@
 //    а у нас вход стикера — плоский номер файла без превью-ступеней (задача #47).
 import type { MessageReactions, Reaction, ReactionCount } from '@core/models'
 import type { AvailableReaction } from '@core/managers/reactionsManager'
-import { isChosen, reactionKey, recentOf, totalReactions } from '@core/reactions/messageReactions'
-import { isUser } from '@core/peers/peerId'
+import { canViewReactionsList, isChosen, reactionKey, recentOf, totalReactions } from '@core/reactions/messageReactions'
 import { getHeavyAnimationPromise } from '@core/dom/heavyAnimation'
 import StackedAvatars from '@components/stackedAvatars'
 import type { AvatarManagers } from '@components/avatar'
@@ -543,15 +542,15 @@ export function createReactionsElement(
   })
 
   // tweb reactions.ts:304-307 — условие ЦЕЛИКОМ. Аватарки вместо числа
-  // показываются там, где видно, КТО поставил реакцию: либо это сказал сервер
-  // (`can_see_list` — «можно получить messages.getMessageReactionsList»; в
-  // группе можно, в вещательном канале реакции анонимны), либо это личка, где
-  // собеседник ровно один и спрашивать некого.
+  // показываются там, где видно, КТО поставил реакцию, — и это ТОТ ЖЕ вопрос,
+  // которым гейтится сам запрос списка (`canViewReactionsList`,
+  // `core/reactions/messageReactions.ts`): ответ у него один на клиента, иначе
+  // копия, забывшая личку, молча отключила бы аватарки в личных чатах.
   //
   // `!!options` — не терм оригинала, а наша граница: без каталога, зоны
   // актуальности и менеджеров аватарку рисовать нечем (см. `renderAvatars`).
   const canRenderAvatars = !!options &&
-    (!!reactions!.pFlags?.can_see_list || isUser(options.peerId)) &&
+    canViewReactionsList(reactions, options.peerId) &&
     totalReactions(reactions) < REACTIONS_DISPLAY_COUNTER_AT
 
   const container = document.createElement('div')

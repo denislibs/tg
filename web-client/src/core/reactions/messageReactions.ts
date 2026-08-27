@@ -21,7 +21,28 @@
 // абсолютного агрегата из кадра со своим выбором и предикаты для чипов.
 
 import type { MessageReactions, ReactionCount, Reaction } from '../models'
-import { getPeerId } from '../peers/peerId'
+import { getPeerId, isUser } from '../peers/peerId'
+
+/**
+ * Может ли зритель получить СПИСОК реагировавших этого сообщения —
+ * `messages.getMessageReactionsList`.
+ *
+ * Порт терма `canViewList` (tweb `components/chat/reactionContextMenu.ts:95`
+ * `!!message.reactions?.pFlags.can_see_list || message.peerId.isUser()`); тот же
+ * терм слово в слово стоит ещё в двух местах оригинала —
+ * `components/chat/contextMenu.ts:404-407` (открывать ли меню чипа) и
+ * `components/chat/reactions.ts:305-306` (аватарки вместо числа в чипе).
+ *
+ * Ответ ОДИН на клиента и живёт здесь, потому что термов у него два и они из
+ * разных источников: право в группе объявляет СЕРВЕР флагом `can_see_list`, а
+ * личку договаривает КЛИЕНТ по ключу пира — в личке флага не бывает вовсе
+ * (`domain/reaction.go::CanSeeReactionsList` на бэкенде ставит его только
+ * группе). Разъехаться этим двум термам по копиям нельзя: копия, забывшая
+ * личку, молча отключила бы список в личных чатах.
+ */
+export function canViewReactionsList(agg: MessageReactions | undefined, peerId: PeerId): boolean {
+  return !!agg?.pFlags?.can_see_list || isUser(peerId)
+}
 
 /** Ключ чипа: у эмодзи-реакции это сам эмодзи, у платной — сам конструктор. */
 export function reactionKey(r: Reaction): string {

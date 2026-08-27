@@ -464,6 +464,67 @@ func TestReactions_HTTP_CanSeeListInGroup(t *testing.T) {
 	}
 }
 
+// Ручка «кто отреагировал» и есть то, что право can_see_list обязано
+// ОГРАНИЧИВАТЬ, а не только объявлять. До задачи #93 её гейт проверял лишь
+// членство: подписчик вещательного канала, где реакции анонимны и флаг не
+// стоит, получал поимённый список одним GET.
+func TestReactionUsers_HTTP_ForbiddenInBroadcast(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990000025")
+
+	// Группа — список есть.
+	rec := authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{"title": "Team"})
+	gid := itoa(createdPeerID(t, rec))
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+gid+"/messages", tokenA, map[string]any{"text": "hi"})
+	var gmsg struct {
+		ID int64 `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &gmsg)
+	gmid := itoa(gmsg.ID)
+	if rec = authedReq(t, h, http.MethodPost, "/chats/"+gid+"/messages/"+gmid+"/reactions", tokenA, map[string]string{"emoji": "🔥"}); rec.Code != http.StatusOK {
+		t.Fatalf("реакция в группе: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+gid+"/messages/"+gmid+"/reactions/users", tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("список реагировавших в группе: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// Вещательный канал — того же списка не существует.
+	rec = authedReq(t, h, http.MethodPost, "/channels", tokenA, map[string]any{
+		"title": "News", "username": "news93", "is_public": true,
+	})
+	cid := itoa(createdPeerID(t, rec))
+	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{"text": "post"})
+	var post struct {
+		ID int64 `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &post)
+	cmid := itoa(post.ID)
+	if rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/messages/"+cmid+"/reactions", tokenA, map[string]string{"emoji": "🔥"}); rec.Code != http.StatusOK {
+		t.Fatalf("реакция в канале: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/messages/"+cmid+"/reactions/users", tokenA, nil)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("список реагировавших в канале = %d %s; ждали 403", rec.Code, rec.Body.String())
+	}
+
+	// Тот же список, урезанный до трёх, — вектор recent_reactions внутри
+	// сообщения. В группе он едет (из него чип рисует аватарки), в канале его
+	// быть не должно: иначе право снова осталось бы разметкой, а поимённый
+	// список — на проводе.
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+gid+"/history?limit=10", tokenA, nil)
+	if !strings.Contains(rec.Body.String(), "recent_reactions") {
+		t.Fatalf("в истории группы нет recent_reactions: %s", rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/history?limit=10", tokenA, nil)
+	if !strings.Contains(rec.Body.String(), "reactionEmoji") {
+		t.Fatalf("в истории канала нет самой реакции — проверять нечего: %s", rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "recent_reactions") {
+		t.Fatalf("в истории канала уехал recent_reactions: %s", rec.Body.String())
+	}
+}
+
 // msgWithMedia — сообщение с вложением, собранным ровно тем же путём, каким его
 // собирает read-модель истории (hydrateMedia → domain.BuildMessageMedia).
 func msgWithMedia(kind string, s domain.MediaSource) domain.Message {

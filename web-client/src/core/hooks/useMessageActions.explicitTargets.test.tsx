@@ -189,3 +189,82 @@ describe('useMessageActions — общий список «отреагирова
     expect(view.result.current.reacted?.rows).toEqual([{ name: 'Аня', photoId: undefined, emoji: '👍' }])
   })
 })
+
+// Гейт «а вправе ли зритель видеть, КТО поставил реакцию». У оригинала это терм
+// `canViewList` — `!!message.reactions?.pFlags.can_see_list ||
+// message.peerId.isUser()` (tweb `components/chat/reactionContextMenu.ts:95`), и
+// он гейтит сам вызов `getMessageReactionsList` (:99-106
+// `canViewList ? … : undefined`). Тот же терм слово в слово стоит в
+// `contextMenu.ts:404-407` и `reactions.ts:305-306`; у нас он посчитан ОДИН раз
+// (`canViewReactionsList`, `core/reactions/messageReactions.ts`).
+//
+// Ручка `/reactions/users` теперь отказывает там, где права нет (403), поэтому
+// безусловный вызов не «лишний запрос», а сломанный попап.
+describe('useMessageActions — гейт списка реагировавших (`canViewList`)', () => {
+  const REACTED = { _: 'user' as const, id: 7, first_name: 'Аня' }
+  const CHANNEL: PeerId = -100
+
+  function renderFor(peerId: PeerId, reactions?: MyMessage['reactions']) {
+    const managers = {
+      messages: {
+        ...mockManagers().messages,
+        reactionUsers: vi.fn().mockResolvedValue([{ user: REACTED, emoji: '👍' }]),
+        viewers: vi.fn().mockResolvedValue([]),
+      },
+      peers: { getUsers: vi.fn().mockResolvedValue([]) },
+    }
+    putMirrorPage(winKey(peerId as unknown as number), [
+      { ...makeMessage({ id: MID, peerId, fromId: 2, text: 'hi' }), ...(reactions ? { reactions } : {}) },
+    ])
+    const view = renderHook(
+      () =>
+        useMessageActions({
+          chat, numericChatId: peerId as unknown as number, isRealChat: true, meId: 10,
+          setReply: () => {}, setEditing: vi.fn(), clearSelection: () => {},
+        }),
+      { wrapper: wrapper(managers) },
+    )
+    return { managers, view }
+  }
+
+  const withFlag: MyMessage['reactions'] = {
+    _: 'messageReactions',
+    pFlags: { can_see_list: true },
+    results: [{ _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '👍' }, count: 1 }],
+  }
+  const noFlag: MyMessage['reactions'] = {
+    _: 'messageReactions',
+    results: [{ _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '👍' }, count: 1 }],
+  }
+
+  it('вещательный канал без can_see_list — ручка НЕ зовётся, остаются просмотревшие', async () => {
+    const { managers, view } = renderFor(CHANNEL, noFlag)
+
+    await act(async () => { await view.result.current.showReactedUsers(MID, 0, 0) })
+
+    expect(managers.messages.reactionUsers).not.toHaveBeenCalled()
+    // Вторая половина того же списка правом на реакции не гейтится.
+    expect(managers.messages.viewers).toHaveBeenCalledWith(CHANNEL, MID)
+    expect(view.result.current.reacted?.rows).toEqual([])
+  })
+
+  it('группа с can_see_list — ручка зовётся', async () => {
+    const { managers, view } = renderFor(CHANNEL, withFlag)
+
+    await act(async () => { await view.result.current.showReactedUsers(MID, 0, 0) })
+
+    expect(managers.messages.reactionUsers).toHaveBeenCalledWith(CHANNEL, MID)
+    expect(view.result.current.reacted?.rows).toEqual([{ name: 'Аня', photoId: undefined, emoji: '👍' }])
+  })
+
+  // Второй терм условия: в личке флага не бывает вовсе, и отвечает на вопрос
+  // клиент по ключу пира. Копия гейта, забывшая личку, молча отключила бы
+  // список в личных чатах — ровно поэтому терм один на весь клиент.
+  it('личка без can_see_list — ручка всё равно зовётся', async () => {
+    const { managers, view } = renderFor(CHAT as unknown as PeerId, noFlag)
+
+    await act(async () => { await view.result.current.showReactedUsers(MID, 0, 0) })
+
+    expect(managers.messages.reactionUsers).toHaveBeenCalledWith(CHAT, MID)
+  })
+})

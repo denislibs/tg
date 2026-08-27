@@ -19,6 +19,22 @@ package domain
 // мы её здесь — у вопроса стало бы два ответа, расходящихся при первой правке.
 func CanSeeReactionsList(chatType string) bool { return chatType == ChatTypeGroup }
 
+// CanViewReactionsList — ПРАВО ДОСТУПА к списку реагировавших: может ли зритель
+// вообще получить messages.getMessageReactionsList в чате этого вида.
+//
+// Это НЕ второй ответ на тот же вопрос, а тот же ответ целиком. Флаг
+// can_see_list выше — только ПОЛОВИНА права, та, которую объявляет сервер;
+// вторую половину (личку) у оригинала договаривает клиент по ключу пира, и все
+// три места tweb пишут её вторым термом одного условия: `!!reactions.pFlags
+// .can_see_list || peerId.isUser()` (reactionContextMenu.ts:95,
+// contextMenu.ts:404-407, reactions.ts:305-306). Гейт ручки — сервер, клиента
+// над собой у него нет, поэтому договаривать личку приходится здесь; ровно
+// поэтому правило выражено ЧЕРЕЗ CanSeeReactionsList, а не рядом с ним:
+// разойтись с флагом оно не может по построению.
+func CanViewReactionsList(chatType string) bool {
+	return CanSeeReactionsList(chatType) || chatType == ChatTypePrivate
+}
+
 type ReactionCount struct {
 	Emoji string `json:"emoji"`
 	Count int    `json:"count"`

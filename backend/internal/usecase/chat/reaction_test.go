@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -131,5 +132,78 @@ func TestMessageContext_CanSeeListFollowsChatKind(t *testing.T) {
 				t.Fatalf("CanSeeReactionsList в контексте кадра = %v; want %v", got, c.want)
 			}
 		})
+	}
+}
+
+// seedReactedMessage кладёт строку сообщения, на которую ставятся реакции.
+// Отправкой её завести нельзя: в вещательный канал пишет только админ, а тест
+// спрашивает ОДИН вопрос — гейт списка, — и разные пути появления сообщения ему
+// только мешали бы.
+func seedReactedMessage(s *store) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.messages[canSeeChat] = append(s.messages[canSeeChat],
+		domain.Message{ID: canSeeMsg, ChatID: canSeeChat, Seq: 1, SenderID: canSeeOwner})
+}
+
+// canViewKinds — тот же вопрос, что и canSeeKinds, но заданный ПРАВУ ДОСТУПА, а
+// не флагу: личка здесь ждёт ИСТИНУ. Разница ровно в ней, и она не косметика —
+// список реагировавших в личном чате существует, флага там просто не бывает.
+var canViewKinds = []struct {
+	kind string
+	want bool
+}{
+	{domain.ChatTypeGroup, true},
+	{domain.ChatTypePrivate, true},
+	{domain.ChatTypeChannel, false},
+}
+
+// Гейт ручки «кто отреагировал». До задачи #93 он проверял ТОЛЬКО членство:
+// право «видеть список» существовало как разметка на проводе (can_see_list) и
+// ничего не ограничивало — участник вещательного канала, где реакции анонимны,
+// получал поимённый список одним GET.
+func TestReactionUsers_RequiresListRight(t *testing.T) {
+	ctx := context.Background()
+	for _, c := range canViewKinds {
+		t.Run(c.kind, func(t *testing.T) {
+			in, s := newInteractor()
+			s.seedChat(canSeeChat, c.kind, canSeeOwner, canSeeMate)
+			seedReactedMessage(s)
+			if err := in.reactions.Add(ctx, canSeeMsg, canSeeMate, "🔥"); err != nil {
+				t.Fatalf("Add: %v", err)
+			}
+
+			users, err := in.ReactionUsers(ctx, canSeeChat, canSeeMsg, canSeeOwner)
+			if !c.want {
+				if !errors.Is(err, domain.ErrForbidden) {
+					t.Fatalf("ReactionUsers в %s = (%#v, %v); ждали ErrForbidden", c.kind, users, err)
+				}
+				// Отказ, а не «пустой список»: пустой утверждал бы, что никто
+				// не реагировал.
+				if users != nil {
+					t.Fatalf("вместе с отказом уехал список: %#v", users)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ReactionUsers в %s: %v", c.kind, err)
+			}
+			if len(users) != 1 || users[0].User.ID != canSeeMate {
+				t.Fatalf("список реагировавших в %s = %#v", c.kind, users)
+			}
+		})
+	}
+}
+
+// Право не подменяет членство: чужому чат по-прежнему не существует (404), и
+// узнать вид чужого чата через отказ 403 нельзя.
+func TestReactionUsers_StrangerStillGetsNotFound(t *testing.T) {
+	ctx := context.Background()
+	in, s := newInteractor()
+	s.seedChat(canSeeChat, domain.ChatTypeGroup, canSeeOwner)
+	seedReactedMessage(s)
+
+	if _, err := in.ReactionUsers(ctx, canSeeChat, canSeeMsg, canSeeMate); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("ReactionUsers чужому = %v; ждали ErrNotFound", err)
 	}
 }

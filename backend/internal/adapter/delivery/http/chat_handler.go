@@ -1964,6 +1964,13 @@ func (h *ChatHandler) ReactionUsers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "message not found")
 		return
 	}
+	// Списка реагировавших в этом чате не существует (вещательный канал —
+	// реакции там анонимны). Не 404: сообщение на месте и зритель его видит,
+	// нет именно ПРАВА на список.
+	if errors.Is(err, domain.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "reactions list is not available here")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load reactions")
 		return

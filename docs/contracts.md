@@ -726,9 +726,7 @@ backwards (a stale lower `up_to_seq` is a no-op).
 { "_": "messageReactions",
   "pFlags": { "can_see_list": true },
   "results": [ { "_": "reactionCount", "reaction": { "_": "reactionEmoji", "emoticon": "🔥" },
-                 "count": 2, "chosen_order": 0 } ],
-  "recent_reactions": [ { "_": "messagePeerReaction", "peer_id": { "_": "peerUser", "user_id": 5 },
-                          "date": 0, "reaction": { "_": "reactionEmoji", "emoticon": "🔥" } } ] }
+                 "count": 2, "chosen_order": 0 } ] }
 ```
 - `pFlags.can_see_list` — зритель может получить СПИСОК реагировавших
   (`/reactions/users`). Ставится по ВИДУ ЧАТА: в группе — да, в вещательном канале
@@ -737,11 +735,36 @@ backwards (a stale lower `up_to_seq` is a no-op).
   `domain.CanSeeReactionsList`, и второго ответа у него нет.
 - `chosen_order` — порядковый номер среди реакций зрителя, а не булево «моя»:
   «не поставил» выражается отсутствием параметра.
+- `recent_reactions` этой ручкой не едет: до трёх последних реагировавших нужны
+  ЧИПУ, а чип рисуется из сообщения — см. ниже.
 - 404: `{ "_": "error", "code": 404, "text": "message not found" }`
+
+### GET /chats/{chatID}/messages/{msgID}/reactions/users  · auth
+Кто отреагировал и каким эмодзи — конструктор `messages.messageReactionsList`
+(строки `messagePeerReaction` ссылками на пиров + вектор `users` с карточками).
+- 200: `{ "_": "messages.messageReactionsList", "count": 1,
+  "reactions": [ { "_": "messagePeerReaction", "peer_id": { "_": "peerUser", "user_id": 5 },
+                   "date": 0, "reaction": { "_": "reactionEmoji", "emoticon": "🔥" } } ],
+  "chats": [], "users": [ … ] }`
+- 403: `{ "_": "error", "code": 403, "text": "reactions list is not available here" }` —
+  списка реагировавших в этом чате НЕ СУЩЕСТВУЕТ (вещательный канал: реакции там
+  анонимны). Это то самое право, которое объявляет `can_see_list`, целиком:
+  `domain.CanViewReactionsList` = группа И личка (в личке флага не бывает, но список
+  есть — второй терм условия оригинала, tweb `chat/reactionContextMenu.ts:95`).
+  Клиент в запретный чат не ходит вовсе — тем же термом
+  (`canViewReactionsList`, `core/reactions/messageReactions.ts`).
+- 404: `{ "_": "error", "code": 404, "text": "message not found" }` — в том числе
+  когда зритель не участник: чужой чат для него не существует, и вид его через
+  403 не выясняется.
 
 Message DTO истории (`GET /chats/{chatID}/messages`, `/messages/around`) несёт тот же
 агрегат полем `reactions` (omitted, когда реакций нет) — клиент рендерит чипы без
-отдельного GET. Live-обновления приходят кадром `reaction` с АБСОЛЮТНЫМ агрегатом
+отдельного GET. Там же едет `recent_reactions` — до трёх последних реагировавших
+ССЫЛКАМИ на пиров, из них чип рисует аватарки вместо числа. Вектор подчиняется тому
+же ПРАВУ, что и `/reactions/users` (`domain.CanViewReactionsList`), а не флагу
+`can_see_list`: в личке флага нет, а аватарки есть; в вещательном канале нет ни
+того, ни другого — это тот же поимённый список, урезанный до трёх.
+Live-обновления приходят кадром `reaction` с АБСОЛЮТНЫМ агрегатом
 (конструктор `updateMessageReactions`, `pFlags.min` — пер-зрительской части в общем
 теле кадра нет; см. WS).
 

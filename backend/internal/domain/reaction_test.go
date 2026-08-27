@@ -28,6 +28,37 @@ func TestCanSeeReactionsList_GroupsOnly(t *testing.T) {
 	}
 }
 
+// ПРАВО на список — то же правило целиком, вместе с личкой. Пин держит ровно
+// разницу с флагом: копия, забывшая личку, отказала бы в списке реагировавших в
+// личных чатах, а копия, забывшая канал, вернула бы утечку, ради которой всё и
+// затевалось (задача #93). Терм оригинала — tweb
+// src/components/chat/reactionContextMenu.ts:95 `!!message.reactions?.pFlags
+// .can_see_list || message.peerId.isUser()`.
+func TestCanViewReactionsList_GroupsAndPrivate(t *testing.T) {
+	cases := map[string]bool{
+		ChatTypeGroup:   true,
+		ChatTypePrivate: true,
+		// Вещательный канал — единственный, где списка нет.
+		ChatTypeChannel: false,
+		ChatTypeSaved:   false,
+		ChatTypeSecret:  false,
+		// Вид чата неизвестен — доступ не утверждается.
+		"": false,
+	}
+	for typ, want := range cases {
+		if got := CanViewReactionsList(typ); got != want {
+			t.Errorf("CanViewReactionsList(%q) = %v; want %v", typ, got, want)
+		}
+	}
+	// Право не может быть уже флага: флаг — его половина, а не соседнее
+	// правило. Пин ловит попытку развести их по копиям.
+	for _, typ := range []string{ChatTypeGroup, ChatTypeChannel, ChatTypePrivate, ChatTypeSaved, ChatTypeSecret, ""} {
+		if CanSeeReactionsList(typ) && !CanViewReactionsList(typ) {
+			t.Errorf("%q: флаг утверждён, а права нет", typ)
+		}
+	}
+}
+
 // Флаг — ЗНАЧЕНИЕ правила, а не «поставили однажды»: снятое право снимает и
 // параметр, а пустой pFlags не едет на провод вовсе.
 func TestMessageReactions_SetCanSeeList(t *testing.T) {

@@ -80,6 +80,12 @@ type MessageContext struct {
 	// той же причине, что и Post: признак у ЧАТА, а не у сообщения. Ответ даёт
 	// CanSeeReactionsList(chatType) — см. domain/reaction.go.
 	CanSeeReactionsList bool
+	// CanViewReactionsList — ПРАВО ДОСТУПА к тому же списку, флага целиком
+	// (CanViewReactionsList(chatType), там же). От флага выше отличается ровно
+	// личкой, и потому оно, а не флаг, решает, ехать ли вектору
+	// recent_reactions: аватарки в чипе личного чата рисуются из него, а флага
+	// в личке не бывает.
+	CanViewReactionsList bool
 }
 
 // ToWire собирает конструктор схемы: messageService, когда у сообщения есть
@@ -165,7 +171,7 @@ func (m Message) toReal(ctx MessageContext) MessageReal {
 	if m.GroupedID != nil {
 		r.GroupedID = *m.GroupedID
 	}
-	r.Reactions = m.reactions(ctx.CanSeeReactionsList)
+	r.Reactions = m.reactions(ctx.CanSeeReactionsList, ctx.CanViewReactionsList)
 	// Срок самоуничтожения ехал ТОЛЬКО внутри ветки шифрованного сообщения —
 	// на обычном он терялся на проводе, хотя колонка одна и та же.
 	if m.TTLSeconds != nil {
@@ -252,14 +258,17 @@ func (m Message) replyHeader() *MessageReplyHeader {
 // WireReactions — тот же агрегат, что едет внутри сообщения. Экспортирован для
 // кадра реакций: второй сборки у этого объекта быть не должно.
 //
-// canSeeList — параметр, а не умолчание: «виден ли список реагировавших» знает
-// только вызывающий (у него на руках вид чата), и пропустить вопрос молча
-// нельзя — именно так флаг однажды и не доехал до клиента.
-func (m Message) WireReactions(canSeeList bool) *MessageReactions {
-	return m.reactions(canSeeList)
+// canSeeList и canViewList — параметры, а не умолчания: «виден ли список
+// реагировавших» знает только вызывающий (у него на руках вид чата), и
+// пропустить вопрос молча нельзя — именно так флаг однажды и не доехал до
+// клиента. Их ДВА, потому что права ровно два состояния и одно из них сервер
+// объявить не может: canSeeList — флаг can_see_list (группа), canViewList —
+// само право (группа И личка, CanViewReactionsList в domain/reaction.go).
+func (m Message) WireReactions(canSeeList, canViewList bool) *MessageReactions {
+	return m.reactions(canSeeList, canViewList)
 }
 
-func (m Message) reactions(canSeeList bool) *MessageReactions {
+func (m Message) reactions(canSeeList, canViewList bool) *MessageReactions {
 	if len(m.Reactions) == 0 && m.StarReactionTotal == 0 {
 		return nil
 	}
@@ -268,6 +277,19 @@ func (m Message) reactions(canSeeList bool) *MessageReactions {
 	for _, rc := range m.Reactions {
 		emoji := NewReactionEmoji(rc.Emoji)
 		results = append(results, NewReactionCount(emoji, rc.Count, rc.Mine))
+		if !canViewList {
+			// Без права на список реагировавших вектор recent_reactions не
+			// едет ВОВСЕ: это тот же список, только урезанный до трёх, и в
+			// вещательном канале он раскрывал бы ровно то, что там анонимно.
+			// Оригинал его там тоже не присылает — на этом стоит и гейт пункта
+			// `views` меню сообщения (tweb contextMenu.ts:1257-1258: пункт
+			// показывается по recent_reactions.length, а второй его терм,
+			// canViewMessageReadParticipants, в вещательном канале ложен —
+			// appMessagesManager.ts:9109-9116), и локальная модель tweb
+			// (appReactionsManager.ts:718-727: recent_reactions есть ровно
+			// тогда, когда есть право).
+			continue
+		}
 		for _, p := range rc.Recent {
 			// Времени постановки реакции витрина не несёт (колонки нет), а
 			// параметр date обязателен — едет нулём.

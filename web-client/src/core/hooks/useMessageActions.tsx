@@ -38,6 +38,8 @@ import { winKey } from '../history/messagesMirror'
 import { cachedPeer } from '../peerCache'
 import type { ReplyState, EditState } from './useChatSend'
 import { getPeerTitle, getUserTitle } from '../peers/getPeerTitle'
+import { canViewReactionsList } from '../reactions/messageReactions'
+import type { ReactionUser } from '../managers/messages/reactionMethods'
 import { getPeerPhotoId } from '../peers/peer'
 
 // peerId — адресат удаления: действие приходит парой «пир + номера» (её же
@@ -261,8 +263,21 @@ export function useMessageActions({
     // Оба запроса уходят ПАРАЛЛЕЛЬНО одним `Promise.all` (tweb :9053-9057), и
     // упавший список просмотревших даёт пустой вектор, а не рушит весь попап
     // (`.catch(() => [])` там же).
+    // СПИСОК реагировавших запрашивается, только если зритель ВПРАВЕ его
+    // видеть: у оригинала ровно этот терм гейтит вызов
+    // `getMessageReactionsList` (tweb `chat/reactionContextMenu.ts:95,99-106` —
+    // `canViewList ? managers.appReactionsManager.getMessageReactionsList(...)
+    // : undefined`). Право звучит один раз на весь клиент
+    // (`canViewReactionsList`, `core/reactions/messageReactions.ts`) — тем же
+    // термом чип решает, показывать аватарки или число.
+    //
+    // Без права остаётся ВТОРАЯ половина того же списка — просмотревшие: попап
+    // у нас один на оба (порт `PopupReactedList`), и «реакции видеть нельзя» не
+    // значит «просмотры видеть нельзя».
     const [users, viewerIds] = await Promise.all([
-      managers.messages.reactionUsers(numericChatId, msgId),
+      canViewReactionsList(raw.reactions, raw.peerId)
+        ? managers.messages.reactionUsers(numericChatId, msgId)
+        : Promise.resolve([] as ReactionUser[]),
       managers.messages.viewers(numericChatId, msgId).catch(() => [] as number[]),
     ])
     // Просмотревший, который УЖЕ отреагировал, из второго списка вычёркивается —

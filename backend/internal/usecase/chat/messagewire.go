@@ -102,7 +102,8 @@ func (i *Interactor) messagesWire(
 			// «Виден ли список реагировавших» — тот же вид чата, что решает
 			// Post и наличие треда, и тот же единственный ответ
 			// (domain.CanSeeReactionsList). Второго запроса за ним нет.
-			CanSeeReactionsList: domain.CanSeeReactionsList(kinds[m.ChatID]),
+			CanSeeReactionsList:  domain.CanSeeReactionsList(kinds[m.ChatID]),
+			CanViewReactionsList: domain.CanViewReactionsList(kinds[m.ChatID]),
 		}))
 	}
 	return out, nil

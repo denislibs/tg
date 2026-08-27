@@ -142,7 +142,8 @@ func (i *Interactor) messageReactionsAggregate(ctx context.Context, chatID, mess
 	if err != nil {
 		return domain.MessageReactions{}, err
 	}
-	canSeeList := i.CanSeeReactionsList(ctx, chatID)
+	kind := i.chatKind(ctx, chatID)
+	canSeeList := domain.CanSeeReactionsList(kind)
 	m := domain.Message{Reactions: byMsg[messageID]}
 	if i.starReaction != nil {
 		stars, e := i.starReaction.AggregatesFor(ctx, []int64{messageID}, 0)
@@ -151,7 +152,7 @@ func (i *Interactor) messageReactionsAggregate(ctx context.Context, chatID, mess
 		}
 		m.StarReactionTotal = stars[messageID].Total
 	}
-	if r := m.WireReactions(canSeeList); r != nil {
+	if r := m.WireReactions(canSeeList, domain.CanViewReactionsList(kind)); r != nil {
 		return *r, nil
 	}
 	// Реакций не осталось. Внутри СООБЩЕНИЯ это выражается отсутствием
@@ -162,21 +163,25 @@ func (i *Interactor) messageReactionsAggregate(ctx context.Context, chatID, mess
 	return empty, nil
 }
 
-// CanSeeReactionsList — видит ли зритель СПИСОК реагировавших в этом чате.
-// Тонкая обёртка над единственным правилом (domain.CanSeeReactionsList) поверх
-// вида чата: своего ответа на этот вопрос у usecase нет.
-//
-// Вид чата неизвестен — «нельзя»: флаг УТВЕРЖДАЕТ право, и утверждать его,
-// не зная чата, нельзя.
-func (i *Interactor) CanSeeReactionsList(ctx context.Context, chatID int64) bool {
+// chatKind — вид чата ОДНИМ вопросом для правил реакций. Неизвестен — пустая
+// строка, и правила ниже отвечают на неё «нельзя»: и флаг, и право УТВЕРЖДАЮТ
+// доступ, а утверждать его, не зная чата, нельзя.
+func (i *Interactor) chatKind(ctx context.Context, chatID int64) string {
 	if i.chats == nil {
-		return false
+		return ""
 	}
 	typ, err := i.chats.ChatType(ctx, chatID)
 	if err != nil {
-		return false
+		return ""
 	}
-	return domain.CanSeeReactionsList(typ)
+	return typ
+}
+
+// CanSeeReactionsList — видит ли зритель СПИСОК реагировавших в этом чате.
+// Тонкая обёртка над единственным правилом (domain.CanSeeReactionsList) поверх
+// вида чата: своего ответа на этот вопрос у usecase нет.
+func (i *Interactor) CanSeeReactionsList(ctx context.Context, chatID int64) bool {
+	return domain.CanSeeReactionsList(i.chatKind(ctx, chatID))
 }
 
 // ReactionsOf returns aggregated reaction counts for a message the user can see.
@@ -218,6 +223,18 @@ func (i *Interactor) ReactionUsers(ctx context.Context, chatID, messageID, userI
 	}
 	if !ok {
 		return nil, domain.ErrNotFound
+	}
+	// ЧЛЕНСТВА мало: список реагировавших существует не в каждом чате. В
+	// вещательном канале реакции анонимны, и ручка обязана отказать — иначе
+	// право остаётся разметкой (can_see_list на проводе) и не становится
+	// ограничением доступа. Правило то же самое, что рисует флаг, целиком:
+	// domain.CanViewReactionsList (группа И личка).
+	//
+	// Отказ, а не пустой список: пустой список УТВЕРЖДАЛ БЫ, что никто не
+	// реагировал, — это другой ответ, и клиент нарисовал бы по нему пустой
+	// попап вместо того, чтобы не открывать его вовсе.
+	if !domain.CanViewReactionsList(i.chatKind(ctx, chatID)) {
+		return nil, domain.ErrForbidden
 	}
 	return i.reactions.ReactionUsers(ctx, messageID)
 }

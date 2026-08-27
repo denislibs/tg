@@ -540,6 +540,43 @@ func TestMessageWire_CanSeeReactionsListComesFromContext(t *testing.T) {
 	}
 }
 
+// Вектор recent_reactions — ТОТ ЖЕ список реагировавших, урезанный до трёх, и
+// уезжает он только с ПРАВОМ на список (CanViewReactionsList), а не с флагом
+// can_see_list: в личке флага не бывает вовсе, но аватарки в чипе рисуются
+// именно из этого вектора. В вещательном канале его нет — там реакции анонимны,
+// и оригинал его оттуда не присылает (на этом стоит гейт пункта `views` меню
+// сообщения, tweb components/chat/contextMenu.ts:1257-1258). Задача #93.
+func TestMessageWire_RecentReactionsNeedViewRight(t *testing.T) {
+	m := wireMessage()
+
+	recentOf := func(ctx MessageContext) []any {
+		t.Helper()
+		j := wireObject(t, m.ToWire(ctx))
+		reactions, _ := j["reactions"].(map[string]any)
+		if reactions == nil {
+			t.Fatal("у строки витрины нет агрегата реакций — проверять нечего")
+		}
+		recent, _ := reactions["recent_reactions"].([]any)
+		return recent
+	}
+
+	// Вещательный канал: ни флага, ни права.
+	if got := recentOf(MessageContext{Peer: NewPeerChannel(9)}); got != nil {
+		t.Fatalf("список реагировавших уехал в канал без права: %#v", got)
+	}
+	// Группа: и флаг, и право.
+	if got := recentOf(MessageContext{
+		Peer: NewPeerChannel(9), CanSeeReactionsList: true, CanViewReactionsList: true,
+	}); len(got) != 1 {
+		t.Fatalf("в группе recent_reactions = %#v; ждали одну запись", got)
+	}
+	// Личка: флага НЕТ, право есть — и вектор обязан доехать, иначе чип в
+	// личном чате остаётся без аватарок (и без числа, tweb reaction.ts:1029).
+	if got := recentOf(MessageContext{Peer: NewPeerUser(42), CanViewReactionsList: true}); len(got) != 1 {
+		t.Fatalf("в личке recent_reactions = %#v; ждали одну запись", got)
+	}
+}
+
 // Время обновления живой трансляции — это message.edit_date, и второго смысла
 // у него не бывает. Внутри вложения его нет.
 func TestMessageWire_GeoHasNoOwnEditedAt(t *testing.T) {
