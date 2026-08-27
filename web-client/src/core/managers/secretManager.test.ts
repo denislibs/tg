@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { generateKeyPair, exportPublicKey, b64FromBytes } from '../secret/crypto'
-import { loadPending } from '../secret/keyStore'
+import { loadKey, loadPending } from '../secret/keyStore'
 import { createSecretManager, type SecretDeps } from './secretManager'
 import { RT } from '../realtime/events'
 
@@ -55,6 +55,21 @@ function makeDeps() {
     beforeSending: (p) => { pendings.push(p) },
   }
   return { deps, restCalls, getCalls, sends, events, uploads, getState, pendings, failed }
+}
+
+// Задача #92. Хранилище ключей бывает не пустым, а НЕДОСТУПНЫМ: keyStore.open()
+// отклоняется по `req.onerror`, и вместе с ним отклоняется `loadKey`. Стаб
+// воспроизводит ровно это — indexedDB, чей open() всегда падает; ошибку отдаём
+// следующей микрозадачей, потому что обработчики keyStore вешает синхронно
+// сразу после вызова open() (как и настоящий IDB, который раньше не стреляет).
+function breakIndexedDB(): void {
+  indexedDB = {
+    open: () => {
+      const req = { error: new Error('idb unavailable'), onupgradeneeded: null, onsuccess: null, onerror: null } as unknown as IDBOpenDBRequest
+      queueMicrotask(() => { req.onerror?.(new Event('error')) })
+      return req
+    },
+  } as unknown as IDBFactory
 }
 
 describe('secretManager', () => {
@@ -220,6 +235,56 @@ describe('secretManager', () => {
     const { deps } = makeDeps()
     const mgr = createSecretManager(deps)
     expect(await mgr.decryptMessage(99, 'garbage')).toBeNull()
+  })
+
+  // ── Задача #92: «ключа взять негде» — ОДИН исход ─────────────────────────
+  // Контроль самого инструмента. Без него оба кейса ниже были бы зелёными при
+  // ЛЮБОМ прод-коде: на исправном пустом IDB «ключа нет» и так даёт null, и
+  // тест не отличил бы сломанное хранилище от отсутствующего ключа.
+  it('стаб сломанного хранилища действительно ОТКЛОНЯЕТ чтение ключа (контроль инструмента)', async () => {
+    breakIndexedDB()
+    await expect(loadKey(1)).rejects.toBeTruthy()
+  })
+
+  // Раньше исходы расходились: ключа нет → null (кадр применяется
+  // нерасшифрованным, пустым баблом), IDB недоступен → отказ всего метода
+  // (кадр не применяется вовсе, дыра в pts; страница истории падает целиком в
+  // Promise.all у messagesManager.decryptPage). Причина одна — ключа взять
+  // негде, — значит и ответ обязан быть один.
+  it('decryptMessage: «ключа нет» и «хранилище отказало» дают ОДИН исход — null', async () => {
+    const { deps, sends } = makeDeps()
+    const mgr = createSecretManager(deps)
+    const initiatorKp = await generateKeyPair()
+    mgr.stashRequest(1, b64FromBytes(await exportPublicKey(initiatorKp.publicKey)))
+    await mgr.accept(1)
+    await mgr.sendText({ peerId: 1, text: 'секрет', clientMsgId: 'cm92', ttlSeconds: null })
+    const encBody = sends[0].encBody!
+    // Шифртекст ЗАВЕДОМО расшифровываемый — иначе null ниже не значил бы ничего.
+    expect(await mgr.decryptMessage(1, encBody)).toEqual({ text: 'секрет', entities: [] })
+
+    const missingKey = await mgr.decryptMessage(777, encBody) // ключа нет
+    breakIndexedDB()
+    const brokenStore = await mgr.decryptMessage(1, encBody) // тот же чат, тот же шифртекст, мёртвый IDB
+
+    expect(brokenStore).toBeNull()
+    expect(brokenStore).toEqual(missingKey)
+  })
+
+  // Та же болезнь у соседей по файлу не заводится: у sendText/sendMedia чтение
+  // ключа стоит ВНУТРИ try, поэтому обе причины кончаются одинаково — красная
+  // пометка на бабле и отказ вызова. Текст ошибки при этом разный (свой
+  // 'key missing' против ошибки IDB) — совпадать обязан ИСХОД, а не причина.
+  it('sendText: «ключа нет» и «хранилище отказало» дают ОДИН исход — упавший бабл и отказ', async () => {
+    const { deps, failed, sends } = makeDeps()
+    const mgr = createSecretManager(deps)
+    const optimistic = { senderId: 5, type: 'text' }
+
+    await expect(mgr.sendText({ peerId: 99, text: 'x', clientMsgId: 'no-key', ttlSeconds: null, optimistic })).rejects.toThrow()
+    breakIndexedDB()
+    await expect(mgr.sendText({ peerId: 99, text: 'x', clientMsgId: 'broken-idb', ttlSeconds: null, optimistic })).rejects.toThrow()
+
+    expect(failed).toEqual(['no-key', 'broken-idb'])
+    expect(sends).toHaveLength(0) // шифртекста нет — на провод не ушло ничего
   })
 
   it('complete: без pending (не инициатор) — ничего не делает', async () => {

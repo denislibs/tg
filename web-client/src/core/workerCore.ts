@@ -689,10 +689,12 @@ export function createWorkerCore() {
         const encBody = m._ === 'message' ? m.enc_body : undefined
         if (m._ === 'message' && encBody) {
           const peerId = getPeerId(m.peer_id)
-          // Отказ расшифровки (недоступен IDB с ключом) глотаем — поведение то же,
-          // что было до обработчика: кадр не применяется, дыру в pts закроет
-          // обычный catch-up. Ключа нет — decryptMessage отдаёт null, и это ДРУГОЙ
-          // случай: там кадр применяется нерасшифрованным (ветка `if (dec)`).
+          // Ключа взять негде (его нет ЛИБО недоступен IDB) — decryptMessage
+          // отдаёт null одинаково на обе причины (задача #92), и кадр
+          // применяется нерасшифрованным: пустой бабл вместо дыры в pts.
+          // `.catch` оставлен страховкой от unhandled rejection (задача #91):
+          // сам decryptMessage больше не отклоняется, но в `.then` стоит
+          // applyUpdate.
           void secret.decryptMessage(peerId, encBody).then((dec) => {
             if (dec) {
               m.message = dec.text

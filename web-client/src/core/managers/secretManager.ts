@@ -244,10 +244,38 @@ export function createSecretManager(deps: SecretDeps) {
 
     // Дешифрует enc_body сообщения → {text, entities} и/или {media}. Воркер и
     // history-путь зовут до кэша/broadcast. media присутствует у медиа-сообщений.
+    //
+    // `null` — ЕДИНСТВЕННЫЙ ответ на «расшифровать не вышло», и чтение ключа
+    // стоит ВНУТРИ try именно поэтому (задача #92). Раньше `loadKey` стоял
+    // снаружи, и одна причина давала два исхода: ключа нет (`null`) — кадр
+    // применялся нерасшифрованным, а недоступный IDB (`loadKey` ОТКЛОНЯЕТСЯ,
+    // keyStore.ts: `req.onerror = () => reject`) — отклонял весь метод, и кадр
+    // не применялся ВОВСЕ, оставляя дыру в pts (workerCore.ts::onFrame гасит
+    // отказ `.catch`), а страницу истории ронял целиком (`Promise.all` в
+    // `messagesManager.decryptPage`). Между тем для ВЫЗЫВАЮЩЕГО обе причины —
+    // одна: ключа взять негде.
+    //
+    // Свели к `null`, а не к отказу, по трём причинам:
+    //  • это ОБРАТИМАЯ деградация. Отказ выбрасывает кадр насовсем: дыру
+    //    закроет catch-up, но история тоже идёт через этот метод — на мёртвом
+    //    IDB она упала бы страницей, то есть починка сама не сходилась бы;
+    //  • «применить нерасшифрованным» здесь НЕ значит показать лишнее.
+    //    Плейнтекста в кадре нет по построению (на провод уходит `text: ''`,
+    //    см. sendText/sendMedia выше), а `enc_body` делает вид сообщения
+    //    `encrypted` (messages/messageKind.ts) → пустой текстовый бабл. Ни
+    //    шифртекст, ни блоб медиа наружу не рисуются: ветку медиа открывает
+    //    `secretMedia`, а он приезжает только вместе с расшифровкой. Персист
+    //    такое сообщение тоже не берёт (store/persist.ts фильтрует `enc_body`);
+    //  • это ровно тот ответ, который путь истории уже давал на отсутствующий
+    //    ключ (`{...m, secret: true}`), и тот же выбор, что у `sendText`/
+    //    `sendMedia` в этом файле: чтение ключа стоит внутри их try, и «ключа
+    //    нет»/«IDB умер» одинаково кончаются `failSending` + отказ отправки.
+    // Гарантии E2E это не трогает: без ключа мы не расшифровываем и не
+    // притворяемся расшифровавшими — только перестаём терять кадр.
     async decryptMessage(peerId: number, encBody: string): Promise<{ text: string; entities: unknown[]; media?: SecretMedia } | null> {
-      const stored = await loadKey(peerId)
-      if (!stored) return null
       try {
+        const stored = await loadKey(peerId)
+        if (!stored) return null
         const p = await decryptPayload<DecryptedPayload>(stored.key, encBody)
         return { text: p.text ?? '', entities: p.entities ?? [], media: p.media }
       } catch {
