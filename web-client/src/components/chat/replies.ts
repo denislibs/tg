@@ -19,6 +19,10 @@
 // `.replies-beside`, `.replies-footer` со всеми модификаторами, и
 // `_stackedAvatars.scss`), поэтому CSS здесь не заводится.
 //
+// Сам стек аватарок — общий компонент `components/stackedAvatars.ts` (порт tweb
+// `components/stackedAvatars.ts`), как и в оригинале: у него потребителей
+// несколько, и второй уже появился — чип реакции (`chat/reactions.ts`).
+//
 // ─── Чего здесь нет и почему ────────────────────────────────────────────────
 //  • `is-unread` (синяя точка, replies.ts:105-116). Признак считается по
 //    `replies.read_max_id < replies.max_id`, а этих параметров сервер не
@@ -41,7 +45,8 @@
 //    `components/AttachMenu.tsx:13`. Сам `div.rp` остаётся — на нём висит
 //    область клика (`_chatBubble.scss:2131-2140`).
 import Icon from '@components/icon'
-import { avatarNew, type AvatarManagers } from '@components/avatar'
+import type { AvatarManagers } from '@components/avatar'
+import StackedAvatars from '@components/stackedAvatars'
 import type { Middleware } from '@helpers/middleware'
 import { getPeerId, type Peer } from '@core/peers/peerId'
 import type { MessageReplies } from '@core/models'
@@ -54,45 +59,6 @@ const TAG_NAME = 'replies-element'
 
 /** tweb replies.ts:63-69 — размер аватарки в стеке футера. */
 const AVATAR_SIZE = 30
-
-/**
- * Стек аватарок последних комментаторов — порт `StackedAvatars.render`
- * (tweb `components/stackedAvatars.ts:36-80`) в объёме ОДНОГО построения.
- *
- * В оригинале это отдельный переиспользуемый компонент (чип реакции,
- * закреплённое, бусты); у нас все прочие его потребители — React
- * (снесённый `messages/StackedAvatars.tsx`), а ванильный потребитель ровно
- * один — этот футер. Поэтому порт лежит здесь, а не заводит второй общий
- * модуль: разъезжаться двум копиям негде, пока копия одна.
- *
- * `reverse` и срез последних трёх — из оригинала (:38-41): в макете аватарки
- * накладываются в порядке, обратном порядку данных.
- */
-function createStackedAvatars(
-  peerIds: PeerId[],
-  middleware: Middleware,
-  managers: AvatarManagers,
-): HTMLElement {
-  const container = document.createElement('div')
-  container.classList.add('stacked-avatars')
-  container.style.setProperty('--avatar-size', AVATAR_SIZE + 'px')
-
-  const ids = peerIds.slice().reverse().slice(-3)
-  ids.forEach((peerId, idx) => {
-    const avatarContainer = document.createElement('div')
-    avatarContainer.classList.add('stacked-avatars-avatar-container')
-    // tweb :69-70 — края стека помечены, по ним CSS снимает наложение.
-    avatarContainer.classList.toggle('is-first', idx === 0)
-    avatarContainer.classList.toggle('is-last', idx === ids.length - 1)
-
-    const avatar = avatarNew({ peerId, size: AVATAR_SIZE, middleware, managers })
-    avatar.node.classList.add('stacked-avatars-avatar')
-    avatarContainer.append(avatar.node)
-    container.append(avatarContainer)
-  })
-
-  return container
-}
 
 export interface RepliesElementOptions {
   /** тред, уже прошедший гейт `getMessageWithCommentReplies` */
@@ -136,10 +102,11 @@ export function createRepliesElement(options: RepliesElementOptions): HTMLElemen
   // Левая часть: аватарки комментаторов, а без них — иконка (tweb :56-84).
   const recent = replies.recent_repliers
   if (recent?.length) {
-    const stack = createStackedAvatars(recent.map((peer: Peer) => getPeerId(peer)), middleware, managers)
+    const stack = new StackedAvatars({ avatarSize: AVATAR_SIZE, middleware, managers })
     // tweb :69 — стек внутри футера несёт свой класс-модификатор.
-    stack.classList.add('replies-footer-avatars')
-    element.append(stack)
+    stack.container.classList.add('replies-footer-avatars')
+    element.append(stack.container)
+    void stack.render(recent.map((peer: Peer) => getPeerId(peer)))
   } else {
     element.append(Icon('comments', 'replies-footer-icon', 'replies-footer-icon-comments'))
   }
