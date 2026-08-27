@@ -550,6 +550,14 @@ export function saveDocument(doc: MyDocument): MyDocument {
       case 'documentAttributeAudio':
         if (doc.type === 'round') break
         doc.duration = attribute.duration
+        // Гейт по mime — оригинал 1:1, и он ОБЯЗЫВАЕТ отправителя: голосовое
+        // едет только в ogg. Своя запись это правило соблюдает — она кодирует
+        // opus сама и заворачивает его в ogg (`core/audio/nativeVoiceRecorder.ts`,
+        // порт tweb `chatRecording.ts:141`), а не отдаётся `MediaRecorder`,
+        // который в Chrome пишет webm. Пока отдавалась, ветка `voice` не
+        // открывалась НИ РАЗУ на своих записях — ни у бабла «отправляется…», ни
+        // у эха (сервер возвращает тот же mime, с которым файл залит), и
+        // голосовое рисовалось музыкой.
         doc.type = attribute.pFlags?.voice && doc.mime_type === MIME_OGG ? 'voice' : 'audio'
         break
       case 'documentAttributeVideo':
