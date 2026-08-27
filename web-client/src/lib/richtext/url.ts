@@ -59,8 +59,8 @@ export function setBlankToAnchor(anchor: HTMLAnchorElement) {
 /**
  * Порт tweb `wrapUrl.ts` — дописывает схему и распознаёт внутренние t.me-ссылки.
  *
- * Не портированы: ветка `tg://iv?url=` c `safe` (нужен предпросмотр статей),
- * проверка `window[onclick]` (у нас исполнителя решает лента) и `MOUNT_CLASS_TO`.
+ * Не портированы: проверка `window[onclick]` (у нас исполнителя решает лента)
+ * и `MOUNT_CLASS_TO`. Про `tg://iv` и флаг `safe` — см. ниже по коду.
  */
 export function wrapUrl(url: string): { url: string, action?: AnchorAction } {
   if (!matchUrlProtocol(url)) {
@@ -103,6 +103,31 @@ export function wrapUrl(url: string): { url: string, action?: AnchorAction } {
     action = 'im'
   } else if ((tgMatch = url.match(/tg:(?:\/\/)?(.+?)(?:\?|$)/))) {
     action = 'tg_' + tgMatch[1].split('/')[0]
+
+    // `tg://iv?url=…` — Instant View. Оригинал (`wrapUrl.ts:67-81`) на этом месте
+    // ПОДМЕНЯЕТ адрес ссылки содержимым `?url=`, но только если у сущности стоит
+    // `safe`; иначе снимает действие (`onclick = undefined`).
+    //
+    // `safe` не проводной: в схеме `messageEntityTextUrl` — offset/length/url
+    // (`schema/schema.json`), флаг дописан клиентской надстройкой
+    // (`schema/schema_additional_params.json`, тот же файл в tweb — `:1308-1315`)
+    // и выставляется ровно в двух местах, оба — внутри читалки Instant View, где
+    // текст собран из `page.RichText` (tweb `wrapTelegramRichText.ts:114`,
+    // `instantView.tsx:443`). Такой читалки у нас нет и не планируется: статью
+    // отдаёт своя ручка `/iv` плоскими блоками (`core/managers/ivManager.ts`,
+    // решение зафиксировано в `core/media/messageMedia.ts` у `webPage.has_iv`),
+    // вход в неё — карточка ссылки, а не сущность-ссылка. Значит `safe` у нас
+    // истинным не бывает, а `tg://iv?url=…` может прийти ТОЛЬКО из чужого
+    // сообщения (`tg:` в allow-list и на бэке, и в `@core/safeUrl`).
+    //
+    // Поэтому подмену адреса не портируем вовсе — она разворачивала бы
+    // подконтрольный отправителю адрес, — а действие снимаем: это ровно то, что
+    // оригинал отдаёт на любом возможном у нас вводе. Снимаем по имени действия,
+    // а не по `tgMatch[1] === 'iv'` как в `switch` оригинала: так под гейт
+    // попадает и `tg://iv/…` (у tweb там остаётся живой `tg_iv`).
+    if (action === 'tg_iv') {
+      action = undefined
+    }
   }
 
   out.action = action
@@ -111,7 +136,9 @@ export function wrapUrl(url: string): { url: string, action?: AnchorAction } {
 
 /**
  * `wrapUrl` + allow-list. `undefined` — ссылку показывать нельзя (рисуем `<span>`).
- * Схему проверяем ДО и ПОСЛЕ `wrapUrl`: он может и дописать схему, и подменить url.
+ * Схему проверяем ДО и ПОСЛЕ `wrapUrl`: он дописывает схему, а в оригинале мог бы
+ * и подменить адрес (`tg://iv`), так что вторая проверка обязана остаться —
+ * что бы `wrapUrl` ни вернул, это проходит тот же allow-list.
  */
 export function safeWrapUrl(url: string): { url: string, action?: AnchorAction } | undefined {
   if (!safeUrl(url)) {

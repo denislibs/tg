@@ -144,6 +144,22 @@ describe('#3 никаких inline-обработчиков: действия �
   })
 })
 
+describe('tg://iv из чужого сообщения — содержимое `?url=` никуда не доходит', () => {
+  // Разбор решения и юнит-тесты — `url.test.ts`; здесь проверка на готовом DOM.
+  it('payload не становится ни href, ни действием', () => {
+    const url = 'tg://iv?url=' + encodeURIComponent('javascript:alert(document.cookie)')
+    const host = render('статья', [{ _: 'messageEntityTextUrl', offset: 0, length: 6, url }])
+
+    const a = host.querySelector('a')!
+    expect(a.getAttribute('href')).toBe(url)
+    // `tg_iv` (действие оригинала) снято; остаётся общий для замаскированных
+    // ссылок `showMaskedAlert` — ровно то, чем кончает tweb при пустом `safe`
+    // (`wrapUrl.ts:71-77` → `wrapRichText.ts:584-590`)
+    expect(a.getAttribute('data-anchor-action')).toBe('showMaskedAlert')
+    expect(host.textContent).toBe('статья')
+  })
+})
+
 describe('#4 electron-ветка не портирована', () => {
   it('href никогда не начинается с javascript: — даже когда ссылка внутренняя', () => {
     const host = render('t.me/durov/1 https://example.com', [])
