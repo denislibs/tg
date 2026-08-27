@@ -114,7 +114,7 @@ import BubbleGroups, {
 import { createDateBubble as createServiceDateBubble, createServiceBubble } from './serviceMessage'
 import { createReplyContainer } from './replyContainer'
 import { createMessageTime, setRepliesCount, setSendingStatus } from './messageTime'
-import { createReactionsElement } from './reactions'
+import { createReactionsElement, type ReactionsManagers } from './reactions'
 import { renderReplies, setRepliesElementCount } from './replies'
 import { attachReplySwipe, findDoubleClickReplyBubble } from './replySwipe'
 import type ChatContextMenu from './contextMenu'
@@ -396,6 +396,12 @@ export interface BubblesManagers extends PeerTitleManagers {
   channels?: {
     registerViews(peerId: number, msgIds: number[]): Promise<void>
   }
+  /** Каталог доступных реакций — единственный источник файлов иконки чипа
+   *  (`center`/`static`) и эффекта вокруг него (`around`/`center`); у оригинала
+   *  это `apiManagerProxy.getReaction` (reaction.ts:805, :1476). Опционален по
+   *  той же причине, что `messages.react` и `channels` выше: без него лента
+   *  рисует чипы текстовым эмодзи и не играет эффект. */
+  reactions?: ReactionsManagers['reactions']
 }
 
 /** Порт tweb bubbles.ts:308. Ошибка, которой `BatchProcessor` отвергает пачку,
@@ -1390,6 +1396,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // Снимает его ВЛАДЕЛЕЦ — иначе «что здесь лежит» пришлось бы знать ещё и
     // вызывателю. Время у сообщения с реакциями лежит внутри `.reactions`
     // (:9855) и уходит вместе с контейнером, поэтому обход — по прямым детям.
+    // Прошлое поколение контейнера забирается ДО сноса: только в нём живёт
+    // предыдущая версия агрегата, по которой считается `changedResults`
+    // (порт appMessagesManager.ts:10651-10677 — у tweb обе версии на руках у
+    // владельца сообщения, у нас `message_edit` несёт только новую).
+    const previousReactions = messageDiv.querySelector<HTMLElement>(':scope > .reactions')
     messageDiv.querySelectorAll(':scope > .time, :scope > .reactions').forEach((node) => node.remove())
 
     // Точка вставки у оригинала меняется (подпись документа, floating), но
@@ -1421,6 +1432,15 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     const reactionsElement = createReactionsElement(
       message._ === 'message' ? message.reactions : undefined,
+      {
+        peerId: this.peerId,
+        bubble,
+        middleware: this.getMiddleware(),
+        managers: this.managers,
+        isOut: !!message.pFlags.out,
+        previous: previousReactions,
+        scrollable: this.scrollable,
+      },
     )
     if (reactionsElement) {
       reactionsElement.append(timeSpan)

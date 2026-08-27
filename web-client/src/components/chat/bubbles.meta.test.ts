@@ -264,6 +264,36 @@ describe('ChatBubbles — время и реакции в бабле', () => {
     })
   })
 
+  // ПРОВОДКА реакций из ленты. Сам агрегат покрыт `reactions.test.ts`, но он
+  // видит только `createReactionsElement(reactions, options)` — то, что лента
+  // ДАЁТ ему `options`, оттуда не видно. А без них порт молча сваливается в
+  // ветку оригинала `canRenderAvatars === false`: чипы рисуются текстом, эффект
+  // не играет, аватарок нет. Снятие второго аргумента в `renderMessageMeta` не
+  // красило ни одного теста — ровно тот случай, который норма покрытия требует
+  // закрыть.
+  it('лента отдаёт агрегату своё окружение: в личке чип показывает аватарки', async () => {
+    const withRecent: MessageReactions = {
+      ...reactions,
+      recent_reactions: [{
+        _: 'messagePeerReaction',
+        peer_id: { _: 'peerUser', user_id: 2 },
+        reaction: { _: 'reactionEmoji', emoticon: '👍' },
+      }],
+    } as MessageReactions
+    // `CHAT = 80` — положительный ключ, то есть ЛИЧКА (`isUser`), а реакций
+    // меньше четырёх: обе половины условия `canRenderAvatars` (tweb
+    // reactions.ts:304-307) истинны — но только если `options` доехали.
+    bubbles = new ChatBubbles(chatContext(), managersWith([msg(1, { reactions: withRecent })]))
+    await openFeed(bubbles)
+    await settle()
+
+    const chip = bubbleOf(bubbles, 1).querySelector<HTMLElement>('.reaction')!
+    expect(chip).not.toBeNull()
+    expect(chip.querySelector('.stacked-avatars')).not.toBeNull()
+    // И зеркальная половина: место числа занято аватарками, а не счётчиком.
+    expect(chip.querySelector('.reaction-counter')).toBeNull()
+  })
+
   it('без реакций контейнера нет вовсе — пустой занял бы строку', async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([msg(1)]))
     await openFeed(bubbles)
