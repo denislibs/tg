@@ -19,6 +19,12 @@ import ChatContextMenu, { type ContextMenuPopups } from './contextMenu'
 import ChatSelection from './selection'
 import { useManagers } from '@core/hooks/useManagers'
 import { useSearchStore } from '../../stores/searchStore'
+import { startOutgoing } from '../../core/calls/callEngine'
+import { cachedUser } from '../../core/peerCache'
+import { getUserTitle } from '../../core/peers/getPeerTitle'
+import { getPeerPhotoId } from '../../core/peers/peer'
+import { gradientFor } from '../../core/dialogToChat'
+import { isAnyChat } from '@core/peers/peerId'
 import noop from '@helpers/noop'
 
 /**
@@ -198,6 +204,34 @@ export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBot
         navigation: {
           openDatePicker: (initDate, onPick) => gesture.current.onOpenDatePicker?.(initDate, onPick),
           openDiscussion: (args) => gesture.current.onOpenDiscussion?.(args),
+          // ПЕРЕЗВОН по баблу лога звонка — порт `appImManager.callUser(peerId
+          // .toUserId(), type)` (tweb bubbles.ts:3194). Роль `appImManager`
+          // здесь исполняет хост, потому что у нашего движка звонков вход не по
+          // одному ключу: `startOutgoing` берёт КАРТОЧКУ собеседника, и
+          // собирается она ровно так же, как в журнале звонков
+          // (`components/CallsView.tsx:35-52`) — из зеркала пиров.
+          //
+          // Гейт `toUserId()` оригинала (звонок бывает только личный) у нас
+          // выражается знаком ключа: `isAnyChat` — «это группа или канал».
+          // Лог звонка в группе не появляется вовсе, но проверка стоит по той
+          // же причине, что у оригинала: `callUser` принимает ТОЛЬКО
+          // пользователя.
+          callUser: (type) => {
+            if (isAnyChat(peerId)) return
+            const user = cachedUser(peerId)
+            const name = getUserTitle(user)
+            startOutgoing(
+              {
+                id: peerId,
+                name,
+                avatar: gradientFor(peerId),
+                avatarText: name.charAt(0).toUpperCase(),
+                photoId: user?._ === 'user' ? getPeerPhotoId(user.photo) : 0,
+              },
+              type === 'video',
+              peerId,
+            )
+          },
         },
         // Меню сообщения — владелец хост, как `Chat` в оригинале: пункты
         // открывают попапы, а попапы наши React-овские. ВСЁ, что меню зовёт

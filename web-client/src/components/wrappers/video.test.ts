@@ -66,6 +66,11 @@ vi.mock('@helpers/blur', () => ({
   }),
 }))
 
+// Отметка «кружок просмотрен» уходит в воркер (`realtime.markMediaRead`); здесь
+// мокается ГРАНИЦА — сама ручка, как и `managers.media.*` выше.
+const { markMediaPlayed } = vi.hoisted(() => ({ markMediaPlayed: vi.fn() }))
+vi.mock('@core/mediaRead', () => ({ markMediaPlayed }))
+
 type FakeMedia = HTMLMediaElement & { _playing?: boolean, _time?: number, _dur?: number }
 
 let wrapVideo: typeof import('./video').default
@@ -151,6 +156,7 @@ beforeEach(async () => {
   streamUrl.mockImplementation((id) => Promise.resolve(`/dnp-stream/${id}?size=1&mime=video%2Fmp4`))
   tokenInfo.mockReset()
   tokenInfo.mockResolvedValue(TOKEN('T1'))
+  markMediaPlayed.mockClear()
   await setup()
 })
 
@@ -617,6 +623,100 @@ describe('wrapVideo: кружок', () => {
     expect(queue.map((t) => t.mediaId)).toEqual([71, 72])
     expect(index).toBe(0)
 
+    playback.resetPlayback()
+  })
+
+  // «КРУЖОК ПРОСМОТРЕН» — порт tweb appMediaPlaybackController.ts:452-456:
+  // одноразовый `timeupdate` на элементе коллекции гасит `media_unread` у
+  // ЧУЖОГО непросмотренного кружка. У оригинала слушатель висит в контроллере
+  // (он заводит элемент и знает сообщение), у нас — во владельце узла: нашему
+  // контроллеру сообщение не передаётся (`AudioTrack`), тем же приёмом это уже
+  // сделано для голосового (`components/audio.ts:540`).
+  it('первое движение времени гасит media_unread у ЧУЖОГО кружка — один раз', async () => {
+    mediaUrl.applyMediaToken(TOKEN('T1'))
+    const container = box()
+
+    await wrapVideo({
+      doc: roundDoc(), container, message: { mid: 5, peerId: 42, mediaUnread: true },
+      ...REGULAR, middleware: getMiddleware().get(),
+    })
+    await flush()
+
+    const globalVideo = playback.mediaPlayback.getMedia(7) as FakeMedia
+    expect(markMediaPlayed).not.toHaveBeenCalled()
+
+    globalVideo.dispatchEvent(new Event('timeupdate'))
+    expect(markMediaPlayed).toHaveBeenCalledWith(42, 5)
+
+    // Слушатель одноразовый (`{once: true}`, как `{once: true}` оригинала):
+    // отметка о просмотре шлётся один раз, а не каждым кадром.
+    globalVideo.dispatchEvent(new Event('timeupdate'))
+    expect(markMediaPlayed).toHaveBeenCalledTimes(1)
+
+    playback.resetPlayback()
+  })
+
+  it('СВОЙ кружок просмотренным не отмечается', async () => {
+    mediaUrl.applyMediaToken(TOKEN('T1'))
+    const container = box()
+
+    await wrapVideo({
+      doc: roundDoc(), container, message: { mid: 5, peerId: 42, mediaUnread: true, out: true },
+      ...REGULAR, middleware: getMiddleware().get(),
+    })
+    await flush()
+
+    const globalVideo = playback.mediaPlayback.getMedia(7) as FakeMedia
+    globalVideo.dispatchEvent(new Event('timeupdate'))
+    expect(markMediaPlayed).not.toHaveBeenCalled()
+
+    playback.resetPlayback()
+  })
+
+  it('уже просмотренный кружок отметку не шлёт', async () => {
+    mediaUrl.applyMediaToken(TOKEN('T1'))
+    const container = box()
+
+    await wrapVideo({
+      doc: roundDoc(), container, message: { mid: 5, peerId: 42 },
+      ...REGULAR, middleware: getMiddleware().get(),
+    })
+    await flush()
+
+    const globalVideo = playback.mediaPlayback.getMedia(7) as FakeMedia
+    globalVideo.dispatchEvent(new Event('timeupdate'))
+    expect(markMediaPlayed).not.toHaveBeenCalled()
+
+    playback.resetPlayback()
+  })
+
+  // Обратная сторона той же точки: кадр прочтения снимает `is-unread` со ВСЕХ
+  // живых узлов сообщения — и с `audio-element`, и с `.media-round`
+  // (tweb audio.ts:47-54, один селектор на обе цели).
+  it('кадр прочтения медиа снимает точку с ЖИВОГО кружка', async () => {
+    mediaUrl.applyMediaToken(TOKEN('T1'))
+    const container = box()
+    document.body.append(container) // слушатель ищет узлы по документу
+
+    await wrapVideo({
+      doc: roundDoc(), container, message: { mid: 5, peerId: 42, mediaUnread: true },
+      ...REGULAR, middleware: getMiddleware().get(),
+    })
+    await flush()
+
+    const divRound = container.querySelector('div.media-round') as HTMLElement
+    expect(divRound.classList.contains('is-unread')).toBe(true)
+
+    const rootScope = (await import('@lib/rootScope')).default
+    const { RT } = await import('@core/realtime/events')
+    rootScope.dispatchEventSingle(RT.mediaRead, {
+      _: 'updateReadPeerMessagesContents',
+      peer: { _: 'peerUser', user_id: 42 },
+      messages: [5],
+    })
+
+    expect(divRound.classList.contains('is-unread')).toBe(false)
+    container.remove()
     playback.resetPlayback()
   })
 

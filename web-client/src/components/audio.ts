@@ -80,8 +80,15 @@ const UNMOUNT_PRELOADER = true
 rootScope.addEventListener(RT.mediaRead, (evt) => {
   // Кадр — конструктор: пир внутри него объединением `Peer`, номера вектором.
   const peerId = getPeerId(evt.peer)
+  // Обе цели оригинала (tweb audio.ts:50): `audio-element` голосового и
+  // `.media-round` видео-кружка. Кружок — не `audio-element`, но точку у него
+  // гасит ровно этот же слушатель: узла ни у кого на руках нет, адрес —
+  // `data-mid`/`data-peer-id` (их ставит `wrappers/video.ts`).
   const selector = evt.messages
-    .map((mid) => `audio-element.is-unread[data-mid="${mid}"][data-peer-id="${peerId}"]`)
+    .flatMap((mid) => {
+      const attr = `[data-mid="${mid}"][data-peer-id="${peerId}"]`
+      return [`audio-element.is-unread${attr}`, `.media-round.is-unread${attr}`]
+    })
     .join(',')
   if (!selector) return
   document.querySelectorAll<HTMLElement>(selector).forEach((element) => {

@@ -360,6 +360,17 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
 и сбрасывают карту позиций (`clearChatPositions()`) — иначе соседний тест
 открывал бы чат ВОЗВРАТОМ.
 
+**Три из четырёх «действий бабла» закрыты** (пины — `chat/bubbles.actions.test.ts`,
+`wrappers/video.test.ts`): отмена отдачи файла с бабла (`uploadPromiseFor` даёт врапперу
+отменяемый промис — наша замена реестру `appDownloadManager.getUpload(uploadingFileName)`;
+кольцо с крестиком и `promise.cancel()` уже были портированы в `preloader.ts`/`wrappers/*`),
+точка «не прослушано» у голосового и кружка (`mediaUnread`/`out` доезжают до врапперов;
+отметку шлёт одноразовый `timeupdate` — порт `appMediaPlaybackController.ts:452-456`, а
+гасит точку общий слушатель `components/audio.ts`, теперь и по `.media-round`) и перезвон
+по баблу лога звонка (бабл `.bubble-call` — порт tweb :8650-8704, ветка клика — :3192-3196,
+`callUser` отдаёт хост `VanillaFeed`, как `appImManager` в оригинале). Четвёртое —
+разблокировка платного медиа — в таблице ниже: у неё нет ни узла, ни попапа подтверждения.
+
 Остальное:
 
 | Долг | Где был | Куда портировать |
@@ -367,11 +378,11 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
 | сдвиг градиента обоев вместе с прокруткой к новому сообщению | эффект в `Chat.tsx` + `core/chat/activeGradient.ts` | `chat/bubbles.ts::scrollToBubble` startCallback (tweb :4710-4714) |
 | плашка «Обсуждение началось» в треде комментариев | `winV` в `Chat.tsx` | `chat/bubbles.ts::performHistoryResult` (tweb `generateThreadServiceStartMessage`) |
 | очередь голосовых/кружков для глобального плеера | `useVoiceQueue` | `chat/bubbles.ts` — владелец аудио-бабла |
-| «кружок прослушан» (`media_unread`), отмена аплоада с бабла, разблокировка платного медиа, перезвон по баблу звонка | обработчики в `Chat.tsx` | сами баблы в `chat/bubbles.ts` |
+| разблокировка платного медиа | обработчик в `Chat.tsx` | **не обработчиком**: у tweb это ЦЕЛАЯ ветка рендера `messageMediaPaidMedia` (bubbles.ts:8840-9030 — псевдо-фото из превью, ценник `.extended-media-buy`, `DotRenderer`, опрос `extendedMediaMessages`) плюс `PopupPayment` с подтверждением суммы (:3199-3232). У нас заблокированный бабл сегодня пуст (`getBubbleMedia` → `undefined`), попапа платежей нет, а ручка `starsManager.unlockPaidMedia` списывает звёзды молча — разбор в докблоке `chat/bubbles.ts::renderMedia` |
 | фильтр «Избранного» по тегу-реакции | `feedMsgs` в `Chat.tsx` (панель `SavedTagsPanel` осталась) | `chat/bubbles.ts` (tweb `savedReaction` в `setPeer`) |
 | автозагрузка медиа по настройкам чата | `useChatAutoDownload` → пропы React-ленты | `chat/bubbles.ts` → `wrappers/video.ts`/`album.ts` (параметр `autoDownload` у них уже есть) |
 | «Переотправить» упавшее сообщение, «Перевести», ⭐-реакция, «Ответить в другом чате», «Сохранить GIF», «Copy Media» | пункты React-меню сообщения | **никуда — предмета нет**, разбор каждого в шапке `chat/contextMenu.ts` («Семь пунктов React-меню»). Четыре из шести пунктами tweb `ChatContextMenu` не являются вовсе (⭐-реакция — клик по платному чипу, «Ответить в другом чате» — меню плашки ответа `chat/input.ts:647-651`, «Copy Media» и повтор упавшей отправки в tweb отсутствуют), у «Перевести» и «Сохранить GIF» дословный порт даёт вечно ложный `verify` — мёртвую кнопку. Седьмой пункт прежней строки, «Кто просмотрел», ПОРТИРОВАН: это `views`-пункт группы (`messages.viewers` → «Seen by N»), тесты — `contextMenu.test.ts` |
-| ручной повтор упавшей отправки: `messages.retryPending`/`cancelPending` (`core/managers/messages/pending.ts:569-586`) остались без единого вызывающего | пункт «Переотправить» React-меню | решать не пунктом меню: у tweb ручного повтора нет по построению (сорванную отправку переигрывает транспорт, `message.error` даёт лишь право удалить бабл). Это расхождение нашей модели отправки с оригиналом — ему место в `docs/readiness/port-divergences.md`, а не в порте меню |
+| ручной повтор упавшей отправки: `messages.retryPending` (`core/managers/messages/pending.ts:570`) остался без единого вызывающего | пункт «Переотправить» React-меню | решать не пунктом меню: у tweb ручного повтора нет по построению (сорванную отправку переигрывает транспорт, `message.error` даёт лишь право удалить бабл). Это расхождение нашей модели отправки с оригиналом — ему место в `docs/readiness/port-divergences.md`, а не в порте меню. **`cancelPending` вызывающего обрёл**: его зовёт крестик кольца отдачи на неотправленном бабле (`chat/bubbles.ts::uploadPromiseFor`) |
 | эффект вокруг чипа реакции (`fireAroundAnimation`), аватары реагировавших | `ReactionAroundEffect`/`StackedAvatars` | `chat/reactions.ts` + порт tweb `stackedAvatars.ts` |
 | приветствие пустого чата и «Похожие каналы» | `messages/EmptyChatGreeting.tsx`, `messages/SimilarChannels.tsx` — **файлы оставлены** и сейчас никем не импортируются | `chat/bubbles.ts` (tweb `renderEmptyPlaceholder('greeting')` :10516, `SimilarChannels` :7083) |
 

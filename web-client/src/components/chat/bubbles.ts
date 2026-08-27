@@ -134,6 +134,9 @@ import { collectLightboxItems } from '@components/mediaViewer/collectLightboxIte
 import { cachedPeer } from '@core/peerCache'
 import { getBubbleMedia, getStrippedThumb, isMediaSpoiler, type MyDocument } from '@core/media/messageMedia'
 import { getMediaId, getMessageKind } from '@core/messages/messageKind'
+import type { MessageActionPhoneCall } from '@core/messages/messageAction'
+import Icon from '@components/icon'
+import { formatVideoTime } from '@components/messages/videoPlayback'
 import PeerTitle, { type PeerTitleManagers } from './peerTitle'
 import { avatarNew } from '@components/avatar'
 import ProgressivePreloader from '@components/preloader'
@@ -229,6 +232,23 @@ export interface BubblesNavigation {
    * перед открытием нет.
    */
   openDiscussion?(args: { peerId: PeerId, postMid: number }): void
+  /**
+   * ПЕРЕЗВОНИТЬ по баблу лога звонка — порт ветки tweb bubbles.ts:3192-3196
+   * (`this.chat.appImManager.callUser(this.peerId.toUserId(), callDiv.dataset
+   * .type)`).
+   *
+   * Здесь, а не внутри ленты, ровно по адресу самого поля `navigation`: у
+   * оригинала это вызов `appImManager` — окружения, а не ленты. Наш звонок
+   * поднимает `core/calls/callEngine::startOutgoing`, и ему нужна КАРТОЧКА
+   * собеседника (имя, градиент, id фотографии), которой лента не владеет;
+   * собирает её хост (`VanillaFeed`) — тем же способом, что список звонков
+   * (`components/CallsView.tsx`).
+   *
+   * Тип едет тем же значением, что лежит в `data-type` бабла: `'voice'` либо
+   * `'video'` (tweb `CallType`). Не передан — клик по баблу звонка ничего не
+   * делает, как и любая другая непереданная ручка навигации.
+   */
+  callUser?(type: 'voice' | 'video'): void
 }
 
 /** Срез `Chat`, которым пользуется лента (см. расхождения в шапке). */
@@ -353,6 +373,25 @@ export interface BubblesManagers extends PeerTitleManagers {
      *  поднимается тест, которому реакции нужны только как разметка. */
     react?(peerId: number, msgId: number, emoji: string): Promise<void>
     unreact?(peerId: number, msgId: number, emoji: string): Promise<void>
+    /**
+     * ОТМЕНА ОТДАЧИ ФАЙЛА с бабла — единственный вызыватель ручки
+     * `messages.cancelPending` (`core/managers/messages/pending.ts:748`).
+     *
+     * У tweb на этом месте не ручка менеджера, а `cancel()` самого промиса
+     * аплоада: кольцо зовёт `this.promise?.cancel?.()` (preloader.ts:144-146),
+     * промис рвёт отдачу, а `appMessagesManager` уже по его отказу зовёт
+     * `cancelPendingMessage(random_id)` (appMessagesManager.ts:1486). У нас
+     * байты отдаёт ВОРКЕР (`messages.sendFile`), реестра аплоадов по имени
+     * файла (`appDownloadManager.getUpload`) на вкладке нет вовсе — поэтому
+     * промис ленте приходится строить самой (`uploadPromiseFor`), а его
+     * `cancel` ведёт в ту же самую точку оригинала одним вызовом: воркер и
+     * рвёт отдачу, и выкидывает неотправленный бабл операцией `remove`.
+     *
+     * Опциональна по той же причине, что `react`/`unreact`: без неё лента
+     * рисует кольцо отдачи, но крестик ничего не отменяет, — так поднимается
+     * тест, которому аплоад не нужен.
+     */
+    cancelPending?(args: { clientMsgId: string }): Promise<unknown>
   }
   /** Порт двух источников границы непрочитанных: `appMessagesManager
    *  .getReadMaxIdIfUnread` и `Chat.getHistoryMaxId` (tweb bubbles.ts:11570-11572).
@@ -626,6 +665,20 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  жеста висят на контейнере и снимаются на `destroy`. */
   private replySwipeHandler?: { removeListeners(): void }
 
+  /**
+   * Живые отдачи файлов этой ленты: `clientMsgId` → промис, которым кормится
+   * кольцо прогресса на неотправленном бабле.
+   *
+   * Роль реестра в оригинале играет `appDownloadManager.getUpload(
+   * uploadingFileName)` (tweb wrappers/photo.ts:238-239, video.ts:503-508):
+   * враппер спрашивает по ИМЕНИ ФАЙЛА промис отдачи, который завёл
+   * `appMessagesManager.sendFile`. У нас отдачей владеет воркер, вкладке
+   * приезжает только поток прогресса (`media:upload_progress`), — поэтому
+   * промис ей приходится строить самой, а ключ реестра — тот же
+   * `clientMsgId`, которым адресован и сам кадр прогресса, и ручка отмены.
+   */
+  private uploads = new Map<string, CancellablePromise<unknown>>()
+
   private listenerSetter = new ListenerSetter()
   public middlewareHelper = getMiddleware()
 
@@ -887,6 +940,50 @@ export default class ChatBubbles implements BubbleGroupsHost {
   }
 
   /**
+   * ОТДАЧА ФАЙЛА ЭТОГО БАББЛА — промис, которым враппер кормит кольцо
+   * прогресса и по которому крестик отменяет отправку.
+   *
+   * Порт связки tweb `uploadingFileName` → `appDownloadManager.getUpload(
+   * uploadingFileName)` (wrappers/photo.ts:229-239, video.ts:503-508,
+   * album.ts:97): бабл отвечает на вопрос «этот файл сейчас отдаётся?» и, если
+   * да, отдаёт врапперу ОТМЕНЯЕМЫЙ промис. Дальше всё поведение уже в
+   * портированных врапперах: `new ProgressivePreloader({isUpload: true})` +
+   * `attachPromise` — то есть кольцо с КРЕСТИКОМ (`preloader-close`,
+   * preloader.ts:108-124), клик по которому идёт в `onClick` (:148-158) и, раз
+   * кольцо не `manual`, зовёт `promise.cancel()`.
+   *
+   * УСЛОВИЕ ДОСТУПНОСТИ. У оригинала это НАЛИЧИЕ `message.uploadingFileName` —
+   * поля, которое `sendFile` держит ровно пока идёт отдача. У нас того же
+   * смысла поля нет: отдачей владеет воркер. Тот же факт выражается парой
+   * признаков неотправленного бабла — ДРОБНЫЙ номер (`isLocalMessageId`:
+   * серверного ещё нет) и `random_id` (тот самый `clientMsgId`, которым
+   * адресуются и кадр прогресса, и ручка отмены). Упавшая отправка (`failed`)
+   * исключена: отдавать там уже нечего, кольцо было бы вечным.
+   *
+   * Промис ОДИН НА СООБЩЕНИЕ, а не на вызов: у альбома вложение каждого
+   * элемента спрашивает его отдельно, но отдача у сообщения одна.
+   */
+  private uploadPromiseFor(message: MyMessage): CancellablePromise<unknown> | undefined {
+    if (message._ !== 'message' || message.failed) return undefined
+    const clientMsgId = message.random_id
+    if (!clientMsgId || !isLocalMessageId(message.id)) return undefined
+
+    const existing = this.uploads.get(clientMsgId)
+    if (existing) return existing
+
+    const promise = deferredPromise<unknown>()
+    // Ручка ОДНА и делает всё, что у оригинала делают две (рвёт отдачу и
+    // выкидывает бабл), — см. докблок `BubblesManagers.messages.cancelPending`.
+    // Кольцо она гасит не сама: воркер отвечает кадром `done`, который
+    // разрешает этот же промис.
+    promise.cancel = () => {
+      void this.managers.messages.cancelPending?.({ clientMsgId }).catch(noop)
+    }
+    this.uploads.set(clientMsgId, promise)
+    return promise
+  }
+
+  /**
    * Медиа-ветка бабла — порт медиа-switch tweb (bubbles.ts:7878-7935 для фото).
    *
    * Здесь и только здесь создаётся `attachmentDiv` (:7874-7875) и вставляется
@@ -911,6 +1008,30 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * `USE_MEDIA_TAILS` и `canHaveTail`, а хвостов у нашего бабла ещё нет вовсе
    * (этап 6). Ставить класс, под который нет ни SVG-хвоста, ни его CSS, значило
    * бы объявить наличие того, чего нет.
+   *
+   * НЕ ПОРТИРОВАНА ВЕТКА `messageMediaPaidMedia` (:8840-9030), а с нею и
+   * РАЗБЛОКИРОВКА ПЛАТНОГО МЕДИА (ветка клика `is-buy`, :3199-3232).
+   *
+   * Ручка у действия есть — `starsManager.unlockPaidMedia`
+   * (`core/managers/starsManager.ts:163`, раскрытие приезжает кадром
+   * `rt:paid_media_unlock`), — но УЗЛА И УСЛОВИЯ ПОКАЗА нет вовсе, и одним
+   * обработчиком их не завести:
+   *   • неоплаченное платное медиа файла не несёт (приезжает
+   *     `messageExtendedMediaPreview`), поэтому `getBubbleMedia` отвечает
+   *     `undefined` и эта ветка выходит СРАЗУ — заблокированный бабл сегодня
+   *     рисуется пустым. Класс `is-buy` оригинал вешает на `attachmentDiv`
+   *     (:8897), которого в этом случае никто не создаёт;
+   *   • сам показ — это отдельная сборка: псевдо-фото из превью
+   *     (`generatePhotoForExtendedMediaPreview`, :8926-8931), ценник
+   *     `.extended-media-buy` с `PaidMedia.Unlock` (:8899-8907), заслонка
+   *     (`spoilered: !isAlreadyPaid`), «шум» `DotRenderer` (:9010-9020) и опрос
+   *     `extendedMediaMessages` (:9003-9008), которым бабл узнаёт об оплате;
+   *   • владелец клика у оригинала — `PopupPayment` с подтверждением суммы
+   *     (:3210-3216). Попапа платежей у нас нет, а `unlockPaidMedia` списывает
+   *     звёзды МОЛЧА: дословный порт ветки дал бы кнопку, которая тратит деньги
+   *     без подтверждения, — расхождение хуже отсутствия.
+   * Это самостоятельная работа «платное медиа в ванильной ленте», а не
+   * потерянный обработчик; строка о ней — в таблице долгов `web-client/CLAUDE.md`.
    */
   private renderMedia(message: MyMessage, bubbleContainer: HTMLElement, messageDiv: HTMLElement): void {
     if (message._ !== 'message') return
@@ -958,12 +1079,17 @@ export default class ChatBubbles implements BubbleGroupsHost {
     const groupMessages = groupedId ? this.groupedMessages(groupedId) : []
     if (groupMessages.length > 1) {
       bubble?.classList.add('is-album', 'is-grouped')
+      const albumMessages = groupMessages.filter((m): m is MessageReal => m._ === 'message')
       wrapAlbum({
-        messages: groupMessages.filter((m): m is MessageReal => m._ === 'message'),
+        messages: albumMessages,
         attachmentDiv,
         middleware,
         animationGroup: 'chat',
         spoilered: isMediaSpoiler(message),
+        // tweb album.ts:97 — у альбома отдача СВОЯ у каждой ячейки
+        // (`uploadingFileName?.[idx]`): фотографии уходят по одной, и крестик
+        // на ячейке отменяет именно её.
+        uploadPromises: albumMessages.map((m) => this.uploadPromiseFor(m)),
       })
       messageDiv.before(attachmentDiv)
       attachmentDiv.classList.add('no-brb')
@@ -971,11 +1097,15 @@ export default class ChatBubbles implements BubbleGroupsHost {
       return
     }
 
+    // Отдача файла этого бабла — она же отмена по крестику (см. `uploadPromiseFor`).
+    const uploadPromise = this.uploadPromiseFor(message)
+
     const promise = (isVideo && doc
       ? wrapVideo({
         doc,
         container: attachmentDiv,
         middleware,
+        uploadPromise,
         boxWidth: mediaSizes.active.regular.width,
         boxHeight: mediaSizes.active.regular.height,
         group: 'chat',
@@ -984,6 +1114,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
           mid: message.id,
           peerId: this.peerId,
           mediaUnread: !!message.pFlags?.media_unread,
+          // Свой кружок «просмотренным» не отмечается — гейт оригинала
+          // (`message.fromId !== rootScope.myId`, appMediaPlaybackController.ts:452).
+          out: !!message.pFlags?.out,
           // tweb `noInfo: message.mid <= 0` (:8571) — у неотправленного нет ни
           // времени, ни счётчика просмотров, показывать нечего.
           isOutgoing: message.id <= 0,
@@ -1001,6 +1134,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
         boxHeight: mediaSizes.active.regular.height,
         hasMessage: true,
         hasMessageBlock,
+        uploadPromise,
       })
     ).catch(noop)
 
@@ -1068,6 +1202,71 @@ export default class ChatBubbles implements BubbleGroupsHost {
   }
 
   /**
+   * ЛОГ ЗВОНКА — порт ветки tweb `messageMediaCall` (bubbles.ts:8650-8704).
+   *
+   * Бабл у звонка ОБЫЧНЫЙ, а не служебная пилюля: у оригинала за это отвечает
+   * `SERVICE_AS_REGULAR` (:278 — в наборе ровно один элемент,
+   * `messageActionPhoneCall`), у нас ту же роль играет `getMessageKind`
+   * (`'call'`, а не `'service'`), см. ветку сервисного бабла в `renderMessage`.
+   *
+   * Узел встаёт В ТЕЛО сообщения (`messageDiv.append(div)`, :8703) — как и
+   * строка документа, вложения (`attachment`) у ветки нет вовсе
+   * (`noAttachmentDivNeeded`, :8699). `data-type` на самом `.bubble-call`
+   * (:8656-8657) — не украшение: по нему обработчик клика узнаёт, каким
+   * перезванивать (`callDiv.dataset.type`, :3194).
+   *
+   * РАСХОЖДЕНИЕ ОДНО, и оно в подписи длительности: оригинал зовёт
+   * `wrapCallDuration` → `formatDuration(duration, 2)` (wrapDuration.ts:32),
+   * то есть «1 минута 20 секунд» через МНОЖЕСТВЕННЫЕ формы langPack. Ни
+   * `formatDuration`, ни плюрализации у нашего словаря нет вовсе, поэтому
+   * длительность идёт тем же `m:ss`, что у таймкода видео
+   * (`formatVideoTime`), — как её и рисовала снесённая React-лента.
+   */
+  private renderCall(action: MessageActionPhoneCall, isOut: boolean, bubble: HTMLElement, messageDiv: HTMLElement): void {
+    const t = useI18nStore.getState().t
+
+    const div = document.createElement('div')
+    div.classList.add('bubble-call')
+    div.append(Icon(action.pFlags?.video ? 'videocamera' : 'phone', 'bubble-call-icon'))
+
+    // tweb :8656-8657 — тип звонка на самом узле; его читает обработчик клика.
+    div.dataset.type = action.pFlags?.video ? 'video' : 'voice'
+
+    const title = document.createElement('div')
+    title.classList.add('bubble-call-title')
+    // tweb :8662-8665 — четыре ключа: сторона × «видео или нет».
+    title.textContent = t(isOut
+      ? (action.pFlags?.video ? 'Outgoing video call' : 'Outgoing call')
+      : (action.pFlags?.video ? 'Incoming video call' : 'Incoming call'))
+
+    const subtitle = document.createElement('div')
+    subtitle.classList.add('bubble-call-subtitle')
+
+    // tweb :8669-8688 — СОСТОЯВШИЙСЯ звонок отличает НАЛИЧИЕ длительности, а не
+    // причина: она есть у любого завершённого. Ветка `default` оригинала
+    // (`phoneCallDiscardReasonHangup` и всё прочее) — «отменён».
+    if(action.duration !== undefined) {
+      subtitle.append(document.createTextNode(formatVideoTime(action.duration)))
+    } else {
+      subtitle.classList.add('is-reason') // tweb :8687
+      subtitle.append(document.createTextNode(t(
+        action.reason?._ === 'phoneCallDiscardReasonBusy' ? 'Busy'
+        : action.reason?._ === 'phoneCallDiscardReasonMissed' ? 'Missed call'
+        : 'Cancelled call',
+      )))
+    }
+
+    // tweb :8691 — стрелка ПЕРЕД текстом, зелёная у состоявшегося звонка и
+    // красная у сорвавшегося.
+    subtitle.prepend(Icon('arrow_next', 'bubble-call-arrow', 'bubble-call-arrow-' + (action.duration !== undefined ? 'green' : 'red')))
+
+    div.append(title, subtitle)
+
+    bubble.classList.add('call-message') // tweb :8702
+    messageDiv.append(div)
+  }
+
+  /**
    * Документ, голосовое, музыка — порт ветки tweb :8588-8646 в применимом
    * объёме.
    *
@@ -1098,7 +1297,19 @@ export default class ChatBubbles implements BubbleGroupsHost {
     const node = wrapDocument({
       doc,
       middleware: this.getMiddleware(),
-      message: { mid: message.id, peerId: this.peerId },
+      // `mediaUnread`/`out` — не украшение сообщения, а ГЕЙТ точки «не
+      // прослушано» у голосового: её ставит `AudioElement.render`
+      // (`components/audio.ts:470`, порт tweb audio.ts:571-574), а гасит по
+      // первому движению времени `markPlayed` (:540, порт
+      // appMediaPlaybackController.ts:452-456). Без этих двух полей голосовое
+      // рисовалось бы всегда прослушанным, а отправитель не узнавал бы, что
+      // его послушали.
+      message: {
+        mid: message.id,
+        peerId: this.peerId,
+        mediaUnread: !!message.pFlags?.media_unread,
+        out: !!message.pFlags?.out,
+      },
       sizeType: 'documentName',
     })
 
@@ -1327,6 +1538,14 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // встаёт вложение), и сам `bubble` (классы `photo`/`video`/`round`).
     this.renderMedia(message, bubbleContainer, messageDiv)
 
+    // Лог звонка — соседняя ветка того же switch'а оригинала (:8650), поэтому
+    // и здесь она стоит рядом с медиа. Само сообщение при этом СЛУЖЕБНОЕ:
+    // из пилюли его увёл `getMessageKind` (см. ветку сервисного бабла выше),
+    // как `SERVICE_AS_REGULAR` уводит его в tweb.
+    if(message._ === 'messageService' && message.action._ === 'messageActionPhoneCall') {
+      this.renderCall(message.action, this.isOutMessage(message), bubble, messageDiv)
+    }
+
     this.renderReply(message, bubbleContainer, messageDiv)
 
     this.renderMessageMeta(message, bubble, bubbleContainer, messageDiv, setUnreadObserver)
@@ -1418,7 +1637,15 @@ export default class ChatBubbles implements BubbleGroupsHost {
     setSendingStatus(timeSpan, messageToConvMsg(message, rootScope.myId, {
       isMegagroup: this.chat.isMegagroup,
     }).status)
-    messageDiv.append(timeSpan)
+    // У ЛОГА ЗВОНКА время уезжает В ПОДПИСЬ — tweb `appendBubbleTime(bubble,
+    // subtitle, () => subtitle.append(timeSpan))` (:8693): длительность и время
+    // стоят одной строкой, иначе бабл в две строки распирало бы третьей.
+    // Реестр `bubble.timeAppenders` оригинала (:468-470) не портируется: он
+    // нужен, чтобы ПЕРЕВЫЛОЖИТЬ время, когда бабл меняет форму, а из наших
+    // веток такую точку вставки объявляет ровно одна.
+    const callSubtitle = messageDiv.querySelector<HTMLElement>('.bubble-call-subtitle')
+    callSubtitle?.querySelector(':scope > .time')?.remove()
+    ;(callSubtitle ?? messageDiv).append(timeSpan)
 
     // tweb :7638-7640. У ПОСТА КАНАЛА читающий узел — время, а не бабл: пост
     // бывает выше вьюпорта, и «увиден» он, только когда пользователь домотал до
@@ -2206,6 +2433,21 @@ export default class ChatBubbles implements BubbleGroupsHost {
         this.selection.toggleByElement(findUpClassName(target, 'grouped-item') || bubble)
         return
       }
+    }
+
+    // Бабл звонка — ПЕРЕЗВОНИТЬ (tweb bubbles.ts:3192-3196). Ветка стоит здесь,
+    // как у оригинала: раньше крышки спойлера (:3236) и чипа реакции (:3245),
+    // но ПОЗЖЕ гейта выделения (:3156) — в режиме выделения клик по баблу
+    // звонка выбирает бабл, а не звонит.
+    //
+    // Каким звонить, знает САМ УЗЕЛ (`data-type`, tweb :3194) — второй раз
+    // спрашивать это у сообщения незачем. `cancelEvent` у оригинала здесь нет,
+    // и его нет здесь: под баблом звонка нет ничего, что могло бы перехватить
+    // клик.
+    const callDiv = target.closest<HTMLElement>('.bubble-call')
+    if (callDiv) {
+      navigation?.callUser?.(callDiv.dataset.type as 'voice' | 'video')
+      return
     }
 
     // Крышка спойлера — tweb bubbles.ts:3236-3243. Ветка стоит ЗДЕСЬ, а не
@@ -4099,6 +4341,32 @@ export default class ChatBubbles implements BubbleGroupsHost {
       void this.renderNewMessage(message)
     })
 
+    // ПРОГРЕСС ОТДАЧИ ФАЙЛА → кольцо на неотправленном бабле. В tweb этого
+    // слушателя нет вовсе: там промис отдачи ЖИВОЙ объект, который
+    // `apiFileManager` двигает сам (`promise.notifyAll({done, total})`), а
+    // враппер берёт его из реестра по имени файла. У нас байты отдаёт воркер, и
+    // единственное, что доезжает до вкладки, — кадр `media:upload_progress`;
+    // здесь он и переводится обратно в те же `notifyAll`, которых ждёт
+    // `ProgressivePreloader.attachPromise` (preloader.ts:218-224).
+    //
+    // `done` (аплоад кончился — успехом, ошибкой или отменой) РАЗРЕШАЕТ промис,
+    // а не отклоняет: отклонение у оригинала нужно, чтобы кольцо осталось с
+    // ретраем (`tryAgainOnFail`), а у нас неудачную отправку помечает сам бабл
+    // (`failed`), отменённый бабл воркер выкидывает операцией `remove`, — то
+    // есть кольцу в обоих случаях остаётся ровно одно: уйти.
+    this.listenerSetter.add(rootScope)('media:upload_progress', ({ id, loaded, total, done }) => {
+      const promise = this.uploads.get(id)
+      if (!promise) return
+
+      if (done) {
+        this.uploads.delete(id)
+        promise.resolve?.(undefined)
+        return
+      }
+
+      if (total > 0) promise.notifyAll?.({ done: loaded, total })
+    })
+
     // Смена идентификатора сообщения (ack оптимистичного бабла): бабл НЕ
     // пересоздаётся, переклеивается только его ключ в карте и data-mid —
     // порт tweb bubbles.ts:900-906; следом бабл переезжает на своё место по
@@ -4449,6 +4717,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
     this.unreadedSeen.clear()
     // tweb bubbles.ts:4982 — накопленные видимые посты принадлежат ПРОШЛОМУ окну.
     this.viewsMids.clear()
+    // Реестр отдач держит промисы, к которым привязаны кольца ПРОШЛОГО окна:
+    // сами узлы уходят вместе с ним, а новый рендер того же неотправленного
+    // бабла заведёт новый промис (`uploadPromiseFor`). У оригинала реестр
+    // переживает смену окна, потому что живёт не в ленте, а в
+    // `appDownloadManager`; у нас он ленточный — см. поле `uploads`.
+    this.uploads.clear()
     this.readPromise = undefined
     this.renderReadMaxSeq = 0
     this.getHistoryTopPromise = this.getHistoryBottomPromise = undefined

@@ -110,6 +110,7 @@ import type { ChatAutoDownload } from '@core/hooks/useChatAutoDownload'
 import type { LazyLoadQueue } from '@core/lazyLoadQueue'
 import getMediaThumbIfNeeded from '@core/media/getStrippedThumbIfNeeded'
 import { getStrippedThumb, type MyDocument } from '@core/media/messageMedia'
+import { markMediaPlayed } from '@core/mediaRead'
 import { resolveStreamUrl, subscribeMediaToken } from '@core/mediaUrl'
 import { IS_SAFARI } from '@environment/userAgent'
 import { animateSingle } from '@helpers/animation'
@@ -200,6 +201,10 @@ export interface WrapVideoMessage {
   peerId?: number
   /** кружок ещё не просмотрен (tweb `message.pFlags.media_unread`) */
   mediaUnread?: boolean
+  /** исходящее (tweb `message.pFlags.out`) — свой кружок «просмотренным» не
+   *  отмечается: у оригинала тот же гейт `message.fromId !== rootScope.myId`
+   *  (appMediaPlaybackController.ts:452) */
+  out?: boolean
   /** сообщение ещё не отправлено (tweb `message.pFlags.is_outgoing`; у нас id < 0) */
   isOutgoing?: boolean
 }
@@ -796,6 +801,21 @@ function wrapRound({
       track,
       autoload: !noAutoDownload,
     }) as HTMLVideoElement
+
+    // ЧУЖОЙ НЕПРОСМОТРЕННЫЙ КРУЖОК: точка `is-unread` гаснет по первому
+    // реальному движению времени. Порт tweb appMediaPlaybackController.ts:452-456
+    // — там ОДИН одноразовый `timeupdate` на `addMedia` покрывает и голосовое, и
+    // кружок (`doc.type !== 'audio'`), потому что элемент обоим заводит
+    // контроллер. У нас контроллер узла не знает («что за сообщение» ему не
+    // передаётся, см. `AudioTrack`), поэтому тот же слушатель вешает владелец
+    // узла — здесь для кружка и в `components/audio.ts:540` для голосового;
+    // ручку `readMessages` менеджера у нас несёт `markMediaPlayed`.
+    const { mid, peerId, mediaUnread, out } = message ?? {}
+    if(mediaUnread && !out && mid !== undefined && peerId !== undefined) {
+      globalVideo.addEventListener('timeupdate', () => {
+        markMediaPlayed(peerId, mid)
+      }, { once: true })
+    }
 
     const onFrame = () => {
       if (ctx) ctx.drawImage(globalVideo, 0, 0)

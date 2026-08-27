@@ -775,10 +775,15 @@ export default function Chat({ chat, onBack, thread }: Props) {
   }
   // Смена чата / unmount: vanilla-вьювер живёт в body — закрываем сами.
   useEffect(() => () => closeMediaViewer(), [numericChatId])
-  // Голосовая очередь плеера, перезвон по баблу звонка, отметка «кружок
-  // прослушан», отмена аплоада и разблокировка платного медиа жили на
-  // React-ленте и уходят вместе с ней — в tweb владелец каждого из этих
-  // действий сам бабл (`ChatBubbles`), см. долги этапа 7 в web-client/CLAUDE.md.
+  // Перезвон по баблу звонка, отметка «кружок/голосовое прослушано» и отмена
+  // отдачи файла ПОРТИРОВАНЫ в саму ленту — там их владелец и в tweb
+  // (`chat/bubbles.ts`: `renderCall` + ветка клика `.bubble-call`,
+  // `uploadPromiseFor`, проброс `mediaUnread`/`out` в врапперы). Здесь остался
+  // только адресат перезвона: `VanillaFeed` собирает карточку собеседника и
+  // зовёт `startOutgoing` — роль `appImManager` в оригинале.
+  //
+  // Голосовая очередь плеера и разблокировка платного медиа — по-прежнему долги
+  // этапа 7, см. web-client/CLAUDE.md.
 
   // (Ack reconcile + send-rejection run in realtimeBridge → зеркало окна; live
   // edit/delete keyed by chat_id; pinned-bar state in usePinnedBar. Отметка
