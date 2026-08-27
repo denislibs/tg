@@ -126,10 +126,10 @@
  *    пункт показывает только текст со счётчиком;
  *  • список за пунктом `views` группы у оригинала ОБЩИЙ: `PopupReactedList`
  *    рисует и реакции, и просмотревших — их одним ответом отдаёт
- *    `getMessageReactionsListAndReadParticipants` (:1586). Наш
- *    `popups.showReactedList` показывает только реакции
- *    (`messages.reactionUsers`), поэтому клик по «Seen by N» открывает пустой
- *    список; чинится в хозяине попапа, не здесь;
+ *    `getMessageReactionsListAndReadParticipants` (:1586). У нас он теперь
+ *    тоже общий: `popups.showReactedList` → `useMessageActions.showReactedUsers`
+ *    сливает `messages.reactionUsers` и `messages.viewers` тем же правилом
+ *    (реакции, следом не-реагировавшие просмотревшие);
  *  • `ContextMenuDeleteOptionText` (:1268-1279) — вторая строка под «Удалить»
  *    с датой самоуничтожения: компонент подписи не портирован, пункт остаётся
  *    однострочным (класс `with-subtitle` вместе с ним не ставится);

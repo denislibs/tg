@@ -515,6 +515,82 @@ describe('MessagesManager.cacheFactCheck', () => {
   })
 })
 
+// «Проверка фактов» СВОИМ действием. Оптимистика: `patch {factcheck}` уходит в
+// окно ДО ответа сервера, а на упавшей сети откатывается предыдущим значением —
+// та же форма, что у своей реакции (`messages/reactionMethods.ts::react`).
+// Долг снесённой React-ленты: прежде «показать сразу» делал main-сторный
+// мутатор по второй копии окна, и вместе с ней отклик до эха исчез.
+//
+// У tweb оптимистики здесь нет вовсе (`updateFactCheck`,
+// `lib/appManagers/appMessagesManager.ts:10812-10830`, просто ждёт `Updates`) —
+// это наша модель отклика на своё действие, и она объявлена расхождением.
+describe('MessagesManager.setFactCheck (оптимистика)', () => {
+  /** REST, у которого POST зависает до ручного `release` — только так видно,
+   *  что патч объявлен РАНЬШЕ ответа, а не «где-то до конца вызова». */
+  function pendingPostRest() {
+    const { rest: base } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    let release!: (v: RawMessageReal) => void
+    let reject!: (e: unknown) => void
+    const answer = new Promise<RawMessageReal>((res, rej) => { release = res; reject = rej })
+    const rest = {
+      ...(base as unknown as { get: RestClient['get'] }),
+      post: () => answer,
+    } as unknown as RestClient
+    return { rest, release: (v: RawMessageReal) => release(v), reject: (e: unknown) => reject(e) }
+  }
+
+  const CHECK = { _: 'factCheck' as const, country: 'RU', text: { _: 'textWithEntities' as const, text: 'проверено', entities: [] } }
+
+  it('объявляет patch {factcheck} ДО ответа сервера', async () => {
+    const { rest, release } = pendingPostRest()
+    const ops: MessageOp[] = []
+    const mgr = newMessagesManager({ rest, broadcast: (_e, p) => { ops.push(...(p as { ops: MessageOp[] }).ops) } })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+
+    const promise = mgr.setFactCheck(1, cid(2), 'проверено', [], 'RU')
+    // Сеть ещё не ответила — а окно уже знает.
+    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(2), fields: { factcheck: CHECK } }])
+
+    release({ ...makeRawMessage({ id: 2, peerId: 1, fromId: 1, text: 'm2' }), factcheck: CHECK } as RawMessageReal)
+    await promise
+    // Серверное значение объявляется вторым патчем — он абсолютный, поэтому
+    // повтор идемпотентен.
+    expect(ops[ops.length - 1]).toEqual({ op: 'patch', key: '1', msgId: cid(2), fields: { factcheck: CHECK } })
+  })
+
+  it('на упавшей сети откатывает объявленное предыдущим значением', async () => {
+    const { rest, reject } = pendingPostRest()
+    const ops: MessageOp[] = []
+    const mgr = newMessagesManager({ rest, broadcast: (_e, p) => { ops.push(...(p as { ops: MessageOp[] }).ops) } })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+
+    const promise = mgr.setFactCheck(1, cid(2), 'проверено', [], 'RU')
+    reject(new Error('offline'))
+    await expect(promise).rejects.toThrow('offline')
+
+    // Проверки на сообщении не было — откат объявляет ОТСУТСТВИЕ параметра.
+    expect(ops).toEqual([
+      { op: 'patch', key: '1', msgId: cid(2), fields: { factcheck: CHECK } },
+      { op: 'patch', key: '1', msgId: cid(2), fields: { factcheck: undefined } },
+    ])
+  })
+
+  // Имя поля модели — `factcheck` нижним регистром; здесь уже был дефект, где
+  // патчился несуществующий `factCheck`, и SSOT воркера правки не видел.
+  it('пишет оптимистику в SSOT воркера полем `factcheck`', async () => {
+    const { rest, release } = pendingPostRest()
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+
+    const promise = mgr.setFactCheck(1, cid(2), 'проверено', [], 'RU')
+    const page = await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    expect(real(page.messages.find((m) => m.id === cid(2)))?.factcheck).toEqual(CHECK)
+
+    release({ ...makeRawMessage({ id: 2, peerId: 1, fromId: 1, text: 'm2' }), factcheck: CHECK } as RawMessageReal)
+    await promise
+  })
+})
+
 describe('MessagesManager.cacheMediaRead', () => {
   function voicePage(unread: boolean) {
     return {

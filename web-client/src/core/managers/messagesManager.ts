@@ -309,6 +309,15 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
   const emitFactCheckOps = (peerId: number, msgId: number, factcheck: MessageReal['factcheck']): void => {
     emitOps(opWindowsFor(peerId, msgId).map((key): MessageOp => ({ op: 'patch', key, msgId, fields: { factcheck } })))
   }
+  // Значение «проверки фактов» в SSOT воркера + объявление его окну одним шагом:
+  // ими пользуются оптимистика и её откат (`setFactCheck`) и снятие
+  // (`removeFactCheck`). ИМЯ ПАРАМЕТРА — `factcheck`, нижним регистром: это
+  // модельное поле (`core/models.ts:324`), и здесь уже был дефект, где патчился
+  // несуществующий `factCheck`.
+  const applyLocalFactCheck = (peerId: number, msgId: number, factcheck: MessageReal['factcheck']): void => {
+    patchMsg(peerId, (m) => m.id === msgId, (m) => (m._ !== 'message' ? m : { ...m, factcheck }))
+    emitFactCheckOps(peerId, msgId, factcheck)
+  }
   const ctx = { rest, patchMsg, getMeId, opWindowsFor, emitOps, readMsg, peers }
   // Локальной ссылкой (а не только спредом ниже) — её зовёт cacheLive, чтобы эхо
   // своей отправки убирало временный бабл из SSOT (порт tweb checkPendingMessage).
@@ -524,10 +533,38 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
     // «Проверка фактов» (Telegram editFactCheck): прикрепить/изменить блок на
     // сообщении канала (право проверяет бэк — автор/админ канала). Возвращает
     // обновлённое сообщение и патчит SSOT.
+    //
+    // ОПТИМИСТИКА: правка объявляется окну ДО ответа сервера, а на упавшей сети
+    // откатывается предыдущим значением — та же форма, что у своей реакции
+    // (`messages/reactionMethods.ts::react`: локальная дельта до сети, обратная
+    // дельта в catch). Прежде отклик был только по серверному эху; долг
+    // достался от снесённой React-ленты, где «показать сразу» делал main-сторный
+    // мутатор по ВТОРОЙ копии окна.
+    //
+    // РАСХОЖДЕНИЕ С ОРИГИНАЛОМ, осознанное: у tweb оптимистики здесь нет вовсе —
+    // `updateFactCheck` (`lib/appManagers/appMessagesManager.ts:10812-10830`)
+    // просто ждёт `Updates` и отдаёт их `processUpdateMessage`. Это наша
+    // модель отклика на своё действие, а не порт.
     async setFactCheck(peerId: number, msgId: number, text: string, entities?: MessageEntity[], country?: string): Promise<MyMessage> {
-      const updated = await rest.post<RawMyMessage>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/factcheck`, {
-        text, entities: entities ?? null, country: country ?? '',
+      // Что откатывать — читаем ДО патча; `undefined` = проверки не было.
+      const before = readMsg(peerId, msgId)
+      const prev = before?._ === 'message' ? before.factcheck : undefined
+      // Ровно тот конструктор, что приедет с провода (`core/models.ts:539-544`):
+      // страна делит бит с текстом, пустая строка = параметра нет.
+      applyLocalFactCheck(peerId, msgId, {
+        _: 'factCheck',
+        country: country || undefined,
+        text: { _: 'textWithEntities', text, entities: entities ?? [] },
       })
+      let updated: RawMyMessage
+      try {
+        updated = await rest.post<RawMyMessage>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/factcheck`, {
+          text, entities: entities ?? null, country: country ?? '',
+        })
+      } catch (e) {
+        applyLocalFactCheck(peerId, msgId, prev)
+        throw e
+      }
       const m = await mapNet(updated)
       if (msgsFor(peerId).has(m.id)) put(hkey(peerId), [m])
       // Окно правит операция, а не вызыватель. Кадр `factcheck_update` фанится
@@ -535,7 +572,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
       // logAndPublishPerPeer по `members`), так что следом придёт та же правка
       // операцией из cacheFactCheck; здесь она объявляется раньше — ровно тот
       // отклик на своё действие, который прежде делал main-сторный applyFactCheck.
-      // Патч абсолютный, поэтому повтор идемпотентен.
+      // Патч абсолютный, поэтому повтор идемпотентен (и поверх оптимистики тоже).
       emitFactCheckOps(peerId, m.id, m._ === 'message' ? m.factcheck : undefined)
       return m
     },
@@ -546,8 +583,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
       // «Снято» — ОТСУТСТВИЕ параметра; в модели окна это undefined. Прежде
       // здесь патчился несуществующий ключ `factCheck` (camelCase), то есть SSOT
       // воркера снятие вообще не видел — модельное имя параметра `factcheck`.
-      patchMsg(peerId, (m) => m.id === msgId, (m) => ({ ...m, factcheck: undefined }))
-      emitFactCheckOps(peerId, msgId, undefined)
+      applyLocalFactCheck(peerId, msgId, undefined)
     },
 
     // Delete a message. revoke=true → for everyone; false → only for me. Deleted

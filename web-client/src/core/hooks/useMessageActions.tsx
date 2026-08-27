@@ -44,7 +44,11 @@ import { getPeerPhotoId } from '../peers/peer'
 // передаёт ванильное меню, tweb contextMenu.ts:2056 `PopupDeleteMessages(
 // peerId, mids, chatType)`).
 type DelState = { peerId: number; ids: number[]; canRevoke: boolean }
-type ReactedRow = { name: string; photoId?: number; emoji: string }
+// Строка объединённого списка «кто отреагировал / просмотрел». `emoji` есть
+// только у реагировавшего — у просмотревшего реакции нет, и оригинал рисует его
+// строку без стикера (tweb `processDialogElementForReaction`,
+// `popups/reactedList.ts:49-72`: стикер добавляется только `if(reaction)`).
+type ReactedRow = { name: string; photoId?: number; emoji?: string }
 type ReactedState = { x: number; y: number; rows: ReactedRow[] }
 
 interface UseMessageActionsArgs {
@@ -241,15 +245,42 @@ export function useMessageActions({
     a.remove()
   }
 
-  // Кто отреагировал (long-press / правый клик по чипу реакции): попап со списком
-  // «аватар + имя + его эмодзи». Тап по чипу остаётся тогглом своей реакции.
+  // Кто отреагировал И кто просмотрел — ОДИН список. Открывается и по пункту
+  // `views` меню сообщения («Seen by N» / «Reacted N»), и long-press'ом по чипу
+  // реакции; тап по чипу остаётся тогглом своей реакции.
+  //
+  // Порт `getMessageReactionsListAndReadParticipants`
+  // (tweb `lib/appManagers/appMessagesManager.ts:9037-9088`) — у оригинала это
+  // ОДИН ответ на оба списка, и из него же кормится единственный список
+  // `PopupReactedList` (`popups/reactedList.ts:221-224`) и подпись пункта меню
+  // (`components/chat/contextMenu.ts:1586`). Второго списка заводить нельзя.
   const showReactedUsers = useEvent(async (msgId: number, x: number, y: number) => {
     if (!isRealChat) return
     const raw = winMsgs.find((m) => m.id === msgId)
     if (!raw || raw.id < 0) return
-    const users = await managers.messages.reactionUsers(numericChatId, msgId)
-    // Имя и аватарка живут в КАРТОЧКЕ (`u.user`), а не плоскими полями рядом.
-    const rows = users.map((u) => ({ name: getUserTitle(u.user), photoId: getPeerPhotoId(u.user.photo) || undefined, emoji: u.emoji }))
+    // Оба запроса уходят ПАРАЛЛЕЛЬНО одним `Promise.all` (tweb :9053-9057), и
+    // упавший список просмотревших даёт пустой вектор, а не рушит весь попап
+    // (`.catch(() => [])` там же).
+    const [users, viewerIds] = await Promise.all([
+      managers.messages.reactionUsers(numericChatId, msgId),
+      managers.messages.viewers(numericChatId, msgId).catch(() => [] as number[]),
+    ])
+    // Просмотревший, который УЖЕ отреагировал, из второго списка вычёркивается —
+    // одна строка на человека (tweb :9058-9063, `forEachReverse` + `splice`).
+    const reactedIds = new Set(users.map((u) => u.user.id))
+    const onlyViewers = viewerIds.filter((id) => !reactedIds.has(id))
+    // Ручка просмотревших отдаёт только КЛЮЧИ (вектор `readParticipantDate`),
+    // как и `messages.getMessageReadParticipants` у оригинала (:9089-9098):
+    // имя и аватарку строка достаёт сама (`addDialogNew({peerId})`,
+    // `reactedList.ts:225-235`) — у нас это карточки из воркера.
+    const viewerCards = onlyViewers.length ? await managers.peers.getUsers(onlyViewers) : []
+    // Порядок ленты — реагировавшие, следом просмотревшие (tweb :9065-9080:
+    // `combined` строится из реакций и КОНКАТЕНИРУЕТСЯ отфильтрованными
+    // просмотревшими). Имя и аватарка живут в КАРТОЧКЕ, а не плоскими полями.
+    const rows: ReactedRow[] = [
+      ...users.map((u) => ({ name: getUserTitle(u.user), photoId: getPeerPhotoId(u.user.photo) || undefined, emoji: u.emoji })),
+      ...viewerCards.map((u) => ({ name: getUserTitle(u), photoId: getPeerPhotoId(u.photo) || undefined })),
+    ]
     setReacted({ x: Math.min(x, window.innerWidth - 240), y: Math.min(y, window.innerHeight - 320), rows })
   })
 
@@ -278,11 +309,12 @@ export function useMessageActions({
     if (!edit || !isRealChat) return
     const parsed = parseMarkdown(text)
     if (!parsed.text.trim()) return
-    // Воркер пишет свой SSOT; в окно проверка приезжает кадром
-    // `factcheck_update` (`messagesManager.ts::cacheFactCheck` → операция
-    // `patch`). ДОЛГ этапа 7: оптимистики «показать сразу, до эха» здесь
-    // больше нет — она писала во ВТОРУЮ копию окна, снесённую вместе с
-    // React-лентой; вернуть её можно только операцией владельца.
+    // Окно правит ВЛАДЕЛЕЦ: `messages.setFactCheck` объявляет `patch {factcheck}`
+    // СРАЗУ, до ответа сервера, и откатывает его на упавшей сети
+    // (`core/managers/messagesManager.ts::setFactCheck`), а следом ту же правку
+    // приносит кадр `factcheck_update` → `cacheFactCheck`. Долг этапа 7
+    // («оптимистики здесь больше нет») закрыт там, а не здесь: своей копии окна
+    // у вью нет и заводить её нельзя. Ошибку глотаем — откат уже объявлен.
     await managers.messages.setFactCheck(numericChatId, edit.msgId, parsed.text, parsed.entities, country || undefined).catch(() => null)
   }
 

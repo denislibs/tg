@@ -511,7 +511,6 @@ const ru: Dict = {
   Unpin: 'Открепить',
   Viewers: 'Просмотры',
   'Seen by': 'Просмотрено',
-  'No views yet': 'Ещё нет просмотров',
   Selected: 'Выбрано',
   Message: 'Сообщение',
   'Auto-delete': 'Автоудаление',

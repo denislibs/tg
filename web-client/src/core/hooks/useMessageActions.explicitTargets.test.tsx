@@ -124,3 +124,68 @@ describe('useMessageActions — правка (`startEditFor`)', () => {
     expect(view.setEditing).not.toHaveBeenCalled()
   })
 })
+
+// «Кто отреагировал / просмотрел» — ОДИН список. У оригинала оба списка отдаёт
+// один ответ `getMessageReactionsListAndReadParticipants`
+// (tweb `lib/appManagers/appMessagesManager.ts:9037-9088`), и из него же
+// кормится единственный `PopupReactedList` (`popups/reactedList.ts:221-224`).
+// Прежде здесь спрашивались только реакции, поэтому клик по «Seen by N»
+// открывал пустой попап.
+describe('useMessageActions — общий список «отреагировал / просмотрел»', () => {
+  const REACTED = { _: 'user' as const, id: 7, first_name: 'Аня' }
+  const VIEWER = { _: 'user' as const, id: 8, first_name: 'Боря' }
+
+  function listManagers(over: Partial<{ reactionUsers: unknown; viewers: unknown }> = {}) {
+    return {
+      messages: {
+        ...mockManagers().messages,
+        reactionUsers: vi.fn().mockResolvedValue([{ user: REACTED, emoji: '👍' }]),
+        viewers: vi.fn().mockResolvedValue([REACTED.id, VIEWER.id]),
+        ...over,
+      },
+      // Карточки просмотревших едут из воркера по ключам — ручка отдаёт
+      // только их (вектор `readParticipantDate`, tweb :9089-9098).
+      peers: { getUsers: vi.fn(async (ids: number[]) => [REACTED, VIEWER].filter((u) => ids.includes(u.id))) },
+    }
+  }
+
+  it('сливает реагировавших и просмотревших: реакции первыми, у просмотревшего эмодзи нет', async () => {
+    const managers = listManagers()
+    const view = renderActions(managers as never)
+
+    await act(async () => { await view.result.current.showReactedUsers(MID, 0, 0) })
+
+    // Порядок tweb :9065-9078 — реакции, следом просмотревшие.
+    expect(view.result.current.reacted?.rows).toEqual([
+      { name: 'Аня', photoId: undefined, emoji: '👍' },
+      { name: 'Боря', photoId: undefined },
+    ])
+    // Просмотревший, который УЖЕ отреагировал, вычеркнут (tweb :9058-9063):
+    // за карточками ушёл ТОЛЬКО оставшийся.
+    expect(managers.peers.getUsers).toHaveBeenCalledWith([VIEWER.id])
+  })
+
+  it('оба запроса уходят даже когда реакций нет — иначе «Seen by N» открывает пустое', async () => {
+    const managers = listManagers({ reactionUsers: vi.fn().mockResolvedValue([]) })
+    const view = renderActions(managers as never)
+
+    await act(async () => { await view.result.current.showReactedUsers(MID, 0, 0) })
+
+    expect(managers.messages.viewers).toHaveBeenCalledWith(CHAT, MID)
+    expect(view.result.current.reacted?.rows).toEqual([
+      { name: 'Аня', photoId: undefined },
+      { name: 'Боря', photoId: undefined },
+    ])
+  })
+
+  // tweb :9053-9057: список просмотревших идёт с `.catch(() => [])` — упавшая
+  // ручка не должна ронять весь попап.
+  it('упавший список просмотревших оставляет реакции', async () => {
+    const managers = listManagers({ viewers: vi.fn().mockRejectedValue(new Error('403')) })
+    const view = renderActions(managers as never)
+
+    await act(async () => { await view.result.current.showReactedUsers(MID, 0, 0) })
+
+    expect(view.result.current.reacted?.rows).toEqual([{ name: 'Аня', photoId: undefined, emoji: '👍' }])
+  })
+})

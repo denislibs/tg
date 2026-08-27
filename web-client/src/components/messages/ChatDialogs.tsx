@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react'
 // Presentational chat dialogs/popups extracted from Chat: delete
-// confirm, forward target picker, "seen by" popup, add-member picker, and the
-// discard-voice confirm. Each is dumb — it self-sources i18n + motion constants
+// confirm, forward target picker, the reacted/seen list, add-member picker, and
+// the discard-voice confirm. Each is dumb — it self-sources i18n + motion constants
 // and emits its actions via callbacks; the parent owns the state.
 import Text from '../../shared/ui/Text'
 import classNames from '../../shared/lib/classNames'
@@ -344,43 +344,40 @@ export function ChatPicker({ dialogs, title, onPick, onClose }: {
   )
 }
 
-// "Seen by" popup anchored at (x, y).
-export function ViewersPopup({ x, y, names, onClose }: {
-  x: number
-  y: number
-  names: string[]
-  onClose: () => void
-}) {
-  const t = useT()
-  return createPortal(
-    <div className={s.overlayBare} onClick={onClose}>
-      <div
-        className={classNames(s.card, s.viewers)}
-        onClick={(e) => e.stopPropagation()}
-        style={{ top: y, left: x }}
-      >
-        <Text size={13} color="var(--secondary-text-color)" className={s.viewersTitle}>
-          {names.length ? t('Seen by') : t('No views yet')}
-        </Text>
-        {names.map((n, i) => (
-          <div key={i} className={s.viewersRow}>
-            <Avatar background={peerColor(n)} text={n[0] ?? '?'} size={28} />
-            <Text noWrap size={14.5} color="var(--primary-text-color)">{n}</Text>
-          </div>
-        ))}
-      </div>
-    </div>,
-    document.body,
-  )
-}
-// Кто отреагировал: как ViewersPopup, но в каждой строке — эмодзи реакции справа.
+/**
+ * Кто отреагировал И кто просмотрел — ОДИН список (порт tweb `PopupReactedList`,
+ * `popups/reactedList.ts`). Списка «просмотревших» отдельно от «отреагировавших»
+ * у оригинала нет: обе категории лежат в одной ленте строк, которую одним
+ * ответом отдаёт `getMessageReactionsListAndReadParticipants`
+ * (`appManagers/appMessagesManager.ts:9037-9088`, ветка `combined`).
+ *
+ * Строку просмотревшего от строки реагировавшего отличает ОТСУТСТВИЕ реакции:
+ * `processDialogElementForReaction` добавляет стикер только `if(reaction)`
+ * (`reactedList.ts:49-72`), поэтому у нас `emoji` необязателен и у просмотревшего
+ * его нет.
+ *
+ * АДАПТАЦИИ (у оригинала это модальный попап по центру, у нас — позиционируемый
+ * список, см. докблок `ContextMenuPopups.showReactedList` в `chat/contextMenu.ts`):
+ *  • заголовок — два счётчика «иконка + число», ровно то, что оригинал держит
+ *    ФАЛЬШИВЫМИ табами `reactions`/`checks` в шапке (`createFakeReaction`,
+ *    `reactedList.ts:344-361`, вставка — `:156-181`): у них тоже только глиф и
+ *    число, без подписи;
+ *  • самих табов (фильтра по конкретной реакции, `horizontalMenu` :274-292) нет —
+ *    показывается сразу объединённая лента, то есть содержимое таба по умолчанию;
+ *  • вторая строка ряда (время прочтения / статус пользователя, `:74-87`) не
+ *    портирована: дат прочтения бэк не хранит (см. `messages.viewers`).
+ */
 export function ReactedUsersPopup({ x, y, rows, onClose }: {
   x: number
   y: number
-  rows: { name: string; photoId?: number; emoji: string }[]
+  rows: { name: string; photoId?: number; emoji?: string }[]
   onClose: () => void
 }) {
   const t = useT()
+  // Счётчики берутся с САМИХ строк: список уже объединён владельцем действия
+  // (`useMessageActions.showReactedUsers`), и второго источника чисел нет.
+  const reactedCount = rows.filter((r) => r.emoji).length
+  const viewedCount = rows.length - reactedCount
   return createPortal(
     <div className={s.overlayBare} onClick={onClose}>
       <div
@@ -389,13 +386,18 @@ export function ReactedUsersPopup({ x, y, rows, onClose }: {
         style={{ top: y, left: x }}
       >
         <Text size={13} color="var(--secondary-text-color)" className={s.viewersTitle}>
-          {rows.length ? t('Reactions') : t('No reactions yet')}
+          {rows.length ? (
+            <>
+              {!!reactedCount && <><TgIcon name="reactions" size={14} /> {reactedCount}{'  '}</>}
+              {!!viewedCount && <><TgIcon name="checks" size={14} /> {viewedCount}</>}
+            </>
+          ) : t('Nobody viewed')}
         </Text>
         {rows.map((r, i) => (
           <div key={i} className={s.viewersRow}>
             <UserAvatar name={r.name} photoId={r.photoId} size={28} />
             <Text noWrap size={14.5} color="var(--primary-text-color)" style={{ flex: 1 }}>{r.name}</Text>
-            <span style={{ fontSize: 18 }}>{r.emoji}</span>
+            {!!r.emoji && <span style={{ fontSize: 18 }}>{r.emoji}</span>}
           </div>
         ))}
       </div>
