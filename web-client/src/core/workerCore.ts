@@ -80,7 +80,9 @@ export function createWorkerCore() {
   // сервер умеет обе формы (заголовок `Accept`). Разбор грузится динамически,
   // чтобы схема не попадала в бандл при выключенном флаге.
   if (AppConfig.tlWire) {
-    void import('./net/tlFrames').then((m) => { rest.useTLWire(m.decodeTLValue) })
+    // Отказ глотаем: не подгрузился разбор TL — REST остаётся на JSON, ту же форму
+    // сервер отдаёт по тому же `Accept`. Это деградация, а не повод для unhandled rejection.
+    void import('./net/tlFrames').then((m) => { rest.useTLWire(m.decodeTLValue) }).catch(() => {})
   }
   // Stage 1C.2 (Task 1): текущий пользователь — воркер единственный владелец.
   // Раньше здесь жил голый `meId: number | null` для внутренних нужд (кэш
@@ -555,7 +557,9 @@ export function createWorkerCore() {
     dispatch,
     getDifference: (peerId, sincePts) => rest.get<ChannelDiff>(`/channels/${peerId}/difference`, { pts: sincePts }),
     loadPts: (peerId) => idbGet<number>(`chpts:${peerId}`).then((v) => (typeof v === 'number' ? v : null)),
-    savePts: (peerId, pts) => { void idbSet(`chpts:${peerId}`, pts) },
+    // Отказ IDB глотаем: сохранённый курсор — кэш. Без него open() просто не сидирует,
+    // и базу возьмёт первый живой кадр канала (channelFunnel.applyLive).
+    savePts: (peerId, pts) => { void idbSet(`chpts:${peerId}`, pts).catch(() => {}) },
   })
 
   const sync = newSyncEngine({
@@ -584,7 +588,14 @@ export function createWorkerCore() {
     cursor,
     isCursorReady: () => cursorReady,
     isSyncing: () => sync.isSyncing(),
-    catchUp: () => { void sync.catchUp() },
+    // Задача #91. Воронка ждёт `() => void` — здесь адаптер, и отказ глотать обязан
+    // именно он: упавший /sync иначе даёт unhandled rejection на КАЖДОМ живом кадре с
+    // pts, пока курсор не гидрирован (globalFunnel.ts: `if (!isCursorReady())`). Глотать
+    // безопасно — курсор не сдвинулся, следующий кадр с дырой (или hello реконнекта)
+    // позовёт catch-up снова, а пару synchronizing/synchronized держит .finally внутри
+    // самого catchUp(). Сам catchUp() отказ пробрасывает СОЗНАТЕЛЬНО: его наблюдает тот,
+    // кто его дожидается (syncEngine.test.ts) — глушим здесь, у fire-and-forget вызова.
+    catchUp: () => { void sync.catchUp().catch(() => {}) },
   })
   const conn = newConnectionManager({
     ws, getToken: () => tokens.get(),
@@ -592,7 +603,9 @@ export function createWorkerCore() {
     // they're restored into the outbox and resent on the next connect.
     outboxStore: {
       load: () => idbGet<import('./realtime/connectionManager').SendArgs[]>('outbox'),
-      save: (list) => { void idbSet('outbox', list) },
+      // Отказ IDB глотаем: outbox переживает перезагрузку как удобство, а не как
+      // гарантию, — in-memory копия (та же Map) резендом на реконнекте не зависит от диска.
+      save: (list) => { void idbSet('outbox', list).catch(() => {}) },
     },
     // onReady: гарантируем гидратацию курсора из IDB (гейт первого apply). Сам
     // catch-up на (ре)коннекте инициирует hello-кадр (fast-reconnect без REST,
@@ -612,7 +625,10 @@ export function createWorkerCore() {
           // Реконнект с расхождением pts: catch-up добёрет разницу — придержанные
           // out-of-order кадры теперь оторваны от новой базы, сбрасываем (инвариант
           // tweb: getDifference чистит pendingPtsUpdates), чтобы не всплыли позже.
-          void cursor.ready().then(() => { if (want !== cursor.get().pts) { funnel.clear(); void sync.catchUp() } })
+          // Задача #91: catch-up вчленён в цепочку (return), поэтому один .catch в её
+          // хвосте кроет и его отказ, и любой бросок из самого колбэка. cursor.ready()
+          // не отклоняется по построению (cursor.ts терминирует его .catch'ем).
+          void cursor.ready().then(() => { if (want !== cursor.get().pts) { funnel.clear(); return sync.catchUp() } }).catch(() => {})
         }
         return
       }
@@ -673,6 +689,10 @@ export function createWorkerCore() {
         const encBody = m._ === 'message' ? m.enc_body : undefined
         if (m._ === 'message' && encBody) {
           const peerId = getPeerId(m.peer_id)
+          // Отказ расшифровки (недоступен IDB с ключом) глотаем — поведение то же,
+          // что было до обработчика: кадр не применяется, дыру в pts закроет
+          // обычный catch-up. Ключа нет — decryptMessage отдаёт null, и это ДРУГОЙ
+          // случай: там кадр применяется нерасшифрованным (ветка `if (dec)`).
           void secret.decryptMessage(peerId, encBody).then((dec) => {
             if (dec) {
               m.message = dec.text
@@ -681,7 +701,7 @@ export function createWorkerCore() {
               if (dec.media) m.secretMedia = dec.media
             }
             funnel.applyUpdate(pred, p.pts, payload, true)
-          })
+          }).catch(() => {})
         } else {
           funnel.applyUpdate(pred, p.pts, payload, true)
         }
@@ -715,7 +735,9 @@ export function createWorkerCore() {
       }
       if (type === 'secret_chat_accept') {
         const p = payload as { peer_id?: number; responder_pub?: string }
-        if (p.peer_id && p.responder_pub) void secret.complete(p.peer_id, p.responder_pub)
+        // Отказ глотаем: не свёлся хендшейк — ключа нет, кадры чата приедут
+        // нерасшифрованными; повторный accept сведёт заново.
+        if (p.peer_id && p.responder_pub) void secret.complete(p.peer_id, p.responder_pub).catch(() => {})
         return
       }
       // Кадры-«обёртки» по префиксу (звонки/трансляции) → один RT с {t,d}.

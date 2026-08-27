@@ -46,7 +46,13 @@ export function newCursor(store: KV, persistDelay = 1000): Cursor {
   let timer: ReturnType<typeof setTimeout> | null = null
   const persist = (): void => {
     if (timer) return
-    timer = setTimeout(() => { timer = null; void store.set('pts', pts); void store.set('date', date) }, persistDelay)
+    // Отказ записи глотаем (KV = idbSet, он отклоняется на недоступном IDB): персист
+    // курсора — кэш, при потере он гидрируется нулём и первый же /sync его восстановит.
+    timer = setTimeout(() => {
+      timer = null
+      void store.set('pts', pts).catch(() => {})
+      void store.set('date', date).catch(() => {})
+    }, persistDelay)
   }
 
   return {

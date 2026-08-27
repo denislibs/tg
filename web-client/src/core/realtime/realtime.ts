@@ -119,7 +119,10 @@ export function newRealtime({ conn, sync, tokens, messages, broadcast, channelFu
     async sendCallFrame(args: { type: string; data: Record<string, unknown> }) { conn.sendCallFrame(args.type, args.data); return { ok: true } },
     // Подписка на канал = вход в per-channel funnel: подписаться на топик (живые
     // кадры) + open (сид курсора из IDB и добор пропущенного через difference).
-    async subscribeChannel(args: { peerId: number }) { conn.subscribeChannel(args.peerId); void channelFunnel.open(args.peerId); return { ok: true } },
+    // open() отклоняется на недоступном IDB (loadPts) — глотаем: канал остаётся
+    // несидированным, базу возьмёт первый живой кадр. Сам catchUp() внутри funnel'а
+    // отказ уже глотает (channelFunnel.ts), так что кроем ровно чтение курсора.
+    async subscribeChannel(args: { peerId: number }) { conn.subscribeChannel(args.peerId); void channelFunnel.open(args.peerId).catch(() => {}); return { ok: true } },
     async unsubscribeChannel(args: { peerId: number }) { conn.unsubscribeChannel(args.peerId); channelFunnel.close(args.peerId); return { ok: true } },
   }
 }
