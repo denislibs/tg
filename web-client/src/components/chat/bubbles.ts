@@ -48,11 +48,11 @@
 //    `Chat`-хоста нет.
 //  • `processBatch` портирован вместе со скроллом (`changedTop`/`changedBottom`
 //    → `reverse` → `prepareToSaveScroll`/`restoreScroll`) и ожиданиями
-//    (`getHeavyAnimationPromise`, `setUnreadDelimiter`, `fastRafPromise`). Вне
-//    порта осталось то, у чего нет предмета: ожидание медиа-промисов единицы
-//    (наш состав бабла синхронный), подмена баблов
-//    (`bubblesToReplace`/`ejectBubbles`), лесенка (`canAnimateLadder`),
-//    выделение, sponsored, `lazyLoadQueue` — построчно перечислено у метода.
+//    (`getHeavyAnimationPromise`, `setUnreadDelimiter`, `fastRafPromise`) и
+//    запуском лестницы (`canAnimateLadder`). Вне порта осталось то, у чего нет
+//    предмета: ожидание медиа-промисов единицы (наш состав бабла синхронный),
+//    подмена баблов (`bubblesToReplace`/`ejectBubbles`), выделение, sponsored,
+//    `lazyLoadQueue` — построчно перечислено у метода.
 //  • Ре-кей бабла на новый идентификатор в tweb живёт в подписке `message_sent`
 //    (bubbles.ts:900-906: `delete this.bubbles[fullTempMid]` →
 //    `this.bubbles[fullMid] = bubble` → `bubble.dataset.mid = mid`), а
@@ -136,6 +136,11 @@ import { getBubbleMedia, getStrippedThumb, isMediaSpoiler, type MyDocument } fro
 import { getMediaId, getMessageKind } from '@core/messages/messageKind'
 import PeerTitle, { type PeerTitleManagers } from './peerTitle'
 import { avatarNew } from '@components/avatar'
+import ProgressivePreloader from '@components/preloader'
+import liteMode from '@helpers/liteMode'
+import deferredPromise, { type CancellablePromise } from '@helpers/cancellablePromise'
+import { animateLadderLists, type LadderStep } from '@core/dom/ladder'
+import { deleteChatPosition, getChatPosition, saveChatPosition, type ChatPosition } from '@core/chat/chatPositions'
 import { useI18nStore } from '../../i18n'
 
 /** Адрес бабла — порт tweb `FullMid` (`${peerId}_${mid}`, bubbles.ts:440-449).
@@ -410,6 +415,11 @@ interface RenderedMessage {
    *  дописывается НАД вьюпортом». Из него `processBatch` выводит направление
    *  якоря `ScrollSaver` для всей пачки. */
   reverse: boolean
+  /** Порт поля `canAnimateLadder` единицы очереди (tweb bubbles.ts:6277,
+   *  :6284): «этот бабл — часть страницы истории, а не точечная дорисовка».
+   *  Взводит его один вызывающий — `performHistoryResult` (:10061); из него
+   *  `processBatch` решает, дёргать ли лестницу (:5905). */
+  canAnimateLadder?: boolean
 }
 
 // tweb bubbles.ts:307. Ближе этого к низу лента считается «прижатой» —
@@ -552,6 +562,46 @@ export default class ChatBubbles implements BubbleGroupsHost {
   // `onRenderScrollSet`: когда скролл всё равно поедет, липкие даты можно
   // включать сразу, без задержки в 600мс (bubbles.ts:10192).
   private willScrollOnLoad?: boolean
+
+  // ─── первое открытие чата (tweb bubbles.ts:566, :587, :598, :569) ─────────
+  /**
+   * Спиннер ПЕРВОЙ загрузки — порт tweb bubbles.ts:752-754 (`new
+   * ProgressivePreloader({cancelable: false})`). Один на всю жизнь ленты, как
+   * в оригинале.
+   *
+   * Он не про «грузится ещё одна страница»: вешается РОВНО в одной точке —
+   * `setPeer`, ветка «пир сменился И страница не из кэша» (:5378-5379), —
+   * и снимается, едва окно смонтировано (:5393). Пагинация к нему не
+   * обращается вовсе: там прежнее окно на экране, и накрывать его спиннером
+   * нечего.
+   */
+  private preloader: ProgressivePreloader
+  // tweb bubbles.ts:587 — «эта лента ещё ни одной страницы не отрисовала».
+  // Взводится сменой пира (:5237), гасится первым же запросом истории (:11479):
+  // из него `getHistory` выводит `isFirstMessageRender` — единственный гейт
+  // лестницы.
+  private isFirstLoad = true
+  // tweb bubbles.ts:569 — «когда пачка домонтируется, запусти лестницу».
+  // Ставит его `getHistory` (:11543), зовут оба места, где пачка доехала:
+  // очередь рендера (:5905) и `performHistoryResult` (:10159).
+  private messagesQueueOnRenderAdditional?: () => void
+  // tweb bubbles.ts:598 — отложенная лестница. Лестница, вызванная ВНУТРИ
+  // `setPeer` (окно ещё собирается в оторванном узле), сохраняет себя сюда, а
+  // выполняется, когда `setPeer` домонтировал дерево (:5395-5397).
+  private resolveLadderAnimation?: () => Promise<unknown> | undefined
+  /**
+   * Порт `Chat.setPeerPromise` (tweb chat.ts:108; ставится на :1124 и гасится
+   * на :1127-1128) — «прямо сейчас идёт смена окна». Читает его РОВНО одно
+   * место — `animateAsLadder` (:10318), чтобы отложить каскад до монтирования.
+   *
+   * В оригинале поле живёт на `Chat`, потому что `Chat.setPeer` — обёртка
+   * вокруг `bubbles.setPeer` и промис у неё под рукой ДО того, как лента уйдёт
+   * в запрос. У нас роль `Chat` исполняет хост (`VanillaFeed`), но факт
+   * «идёт смена окна» целиком выводится внутри ленты, а хосту он не нужен, —
+   * поэтому поле здесь, а промис отложенный: свой собственный возвращаемый
+   * промис асинхронный метод назвать не может.
+   */
+  private setPeerPromise?: CancellablePromise<void>
   // Отписка от шины тяжёлых анимаций (в tweb её снимает `listenerSetter`,
   // которому `useHeavyAnimationCheck` передан третьим аргументом).
   private removeHeavyAnimationListener?: () => void
@@ -580,6 +630,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
     this.batchProcessor = new BatchProcessor({
       process: this.processBatch,
       possibleError: PEER_CHANGED_ERROR,
+    })
+    // tweb bubbles.ts:752-754 — ровно там же, сразу за очередью. `cancelable:
+    // false`: у спиннера первой загрузки нет ни крестика отмены, ни ретрая —
+    // отменять нечего, окно всё равно соберётся.
+    this.preloader = new ProgressivePreloader({
+      cancelable: false,
     })
     this.constructPeerHelpers()
     this.attachContainerListeners()
@@ -1242,24 +1298,22 @@ export default class ChatBubbles implements BubbleGroupsHost {
       setUnreadObserver?.(bubble)
     }
 
-    // Просмотры — порт tweb :7671/:7683-7690. Наблюдаемый узел — САМ бабл, в
+    // Просмотры — порт tweb :7672/:7684-7690. Наблюдаемый узел — САМ бабл, в
     // отличие от отметки прочтения (та у поста канала висит на времени: пост
     // бывает выше вьюпорта, и «прочитан» он, только когда домотали до конца, а
     // «просмотрен» — как только показался край).
     //
-    // РАСХОЖДЕНИЕ в гейте, и оно вынужденное. У оригинала спрашивается НАЛИЧИЕ
-    // счётчика (`isMessage && message.views`), потому что MTProto у поста канала
-    // шлёт его ВСЕГДА (`views:flags.10?int` выставлен с первой публикации). Наш
-    // сервер нулевой счётчик опускает (`Views int64 json:"views,omitempty"`,
-    // backend/internal/domain/mtmessage.go:233), поэтому тот же вопрос — «это
-    // пост канала?» — задаётся виду чата: спроси мы про поле, свежий пост не
-    // зарегистрировал бы ни одного просмотра НИКОГДА, и ноль остался бы нулём.
+    // Гейт — НАЛИЧИЕ счётчика (`isMessage && message.views`, :7672), а не вид
+    // чата: у поста канала `views:flags.10?int` стоит с первой публикации и
+    // нулевым не бывает (минимум единица — как у своего ещё не отправленного
+    // поста в оригинале, appMessagesManager.ts:2930). Наш сервер шлёт пару
+    // views/forwards ровно у поста и всегда — domain.MessageReal.PostCounters.
     //
-    // `!message.pFlags.is_outgoing` (:7683) у нас выражает ДРОБНЫЙ номер: своя
+    // `!message.pFlags.is_outgoing` (:7684) у нас выражает ДРОБНЫЙ номер: своя
     // ещё не отправленная публикация номера в канале не имеет, регистрировать
-    // просмотр нечему. Ветки `previewOnly` и метрик чтения (:7686-7690) предмета
+    // просмотр нечему. Ветки `previewOnly` и метрик чтения (:7687-7690) предмета
     // не имеют — превью-ленты и метрик у нас нет.
-    if(this.chat.isBroadcast && message._ === 'message' && !isLocalMessageId(message.id)) {
+    if(message._ === 'message' && message.views && !isLocalMessageId(message.id)) {
       this.observer?.observe(bubble, this.viewsObserverCallback)
     }
 
@@ -1666,6 +1720,14 @@ export default class ChatBubbles implements BubbleGroupsHost {
       lastMid === newLastMid,
     )
 
+    // tweb bubbles.ts:5905-5907 (ровно здесь, между `prepareToSaveScroll` и
+    // монтированием) — первая из двух точек, где доехавшая пачка запускает
+    // лестницу. Гейт `canAnimateLadder` отсекает точечные дорисовки (новое
+    // сообщение, правка): каскад — про СТРАНИЦУ.
+    if (queue.some((details) => details.canAnimateLadder)) {
+      this.messagesQueueOnRenderAdditional?.()
+    }
+
     this.bubbleGroups.mountUnmountGroups(groups)
 
     restoreScroll?.()
@@ -1698,7 +1760,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  когда поколение ленты умерло за время её обработки. Здесь результат никому
    *  не нужен (в tweb он тоже отбрасывается — :6360), а необработанное
    *  отвержение шумело бы в консоли. */
-  private safeRenderMessage(message: MyMessage, reverse: boolean): RenderedMessage | undefined {
+  private safeRenderMessage(message: MyMessage, reverse: boolean, canAnimateLadder?: boolean): RenderedMessage | undefined {
     // Альбом рисуется ОДНИМ баблом: бабл получает главное сообщение группы,
     // остальные не рисуются вовсе (tweb :6600-6605 — `renderMessage` уходит
     // `return` до создания узла). Адресуется такой бабл по mid ЛЮБОГО
@@ -1731,7 +1793,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     }
     bubble.dataset.maxBubbleMid = String(this.maxBubbleMid(message))
 
-    const details: RenderedMessage = { message, bubble, reverse }
+    const details: RenderedMessage = { message, bubble, reverse, canAnimateLadder }
     this.renderMessagesQueue(details).catch(noop)
     return details
   }
@@ -2358,10 +2420,26 @@ export default class ChatBubbles implements BubbleGroupsHost {
     for (const item of history) {
       const message = typeof item === 'number' ? this.getMessage(item) : item
       if (!message) continue
-      this.safeRenderMessage(message, reverse)
+      // `canAnimateLadder: true` — tweb bubbles.ts:10058-10062: страницу
+      // истории лестница анимирует, точечную дорисовку — нет.
+      this.safeRenderMessage(message, reverse, true)
     }
 
     await this.awaitMessagesQueue()
+
+    // tweb bubbles.ts:10159-10161 — вторая точка запуска лестницы: пачка
+    // разобрана, а очередь до неё не дотянулась (например, все сообщения
+    // страницы уже были отрисованы и `queue` оказалась пустой). Гейт
+    // `loadedAll.top` — оригинала: пока верх не сведён, каскад запускать рано.
+    //
+    // Повторный вызов оригинала (`this.messagesQueueOnRenderAdditional?.()`,
+    // :10161 — «can set it second time») не портирован: он обслуживает
+    // счётчик `times = 2` из ветки `isAdditionRender`, которой у нас нет
+    // (см. докблок `getHistory`), а без счётчика первый же вызов гасит поле и
+    // второй становится пустым.
+    if (this.scrollable.loadedAll.top && this.messagesQueueOnRenderAdditional) {
+      this.messagesQueueOnRenderAdditional()
+    }
   }
 
   /** Порт tweb `getHistory1` (bubbles.ts:11326) — обёртка над `getHistory`,
@@ -2502,6 +2580,18 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     const historyResult = await this.requestHistory(maxId, loadCount, backLimit)
 
+    // tweb bubbles.ts:11467, :11479 — ЕДИНСТВЕННЫЙ гейт лестницы, и он тройной:
+    //  • `isFirstLoad` — эта лента ещё ничего не рисовала (взводится сменой
+    //    пира, :5237);
+    //  • `!cached` — страница приехала СЕТЬЮ. Из кэша окно встаёт мгновенно, и
+    //    анимировать нечего: каскад маскирует ожидание, а его не было;
+    //  • `loadCount > 0` — это страница, а не догрузка «новее» с обнулённым
+    //    `loadCount` (:11418).
+    // Слагаемое `isAdditionRender` формулы оригинала опущено вместе с самой
+    // веткой дополнительного рендера (см. разбор ниже).
+    const isFirstMessageRender = this.isFirstLoad && !historyResult.cached && loadCount > 0
+    this.isFirstLoad = false
+
     // Ветка `additionalFullMid` (:11425-11453) не портирована, и причина у неё
     // НЕ «`setPeer` ещё нет» — он есть (:5219-5220 его и вычисляют). Причина в
     // том, что оба дела этой ветки здесь беспредметны.
@@ -2587,6 +2677,31 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     const promise = processPromise()
 
+    // tweb bubbles.ts:11540-11559 — лестница ВООРУЖАЕТСЯ здесь, а стреляет
+    // тогда, когда пачка домонтировалась: сама `getHistory` не знает, доехали
+    // ли уже баблы. `liteMode.isAvailable('animations')` — гейт оригинала
+    // (:11540): при выключенных анимациях окно просто появляется.
+    //
+    // Счётчик `times` оригинала (:11541, :11545) не портирован: он равен двум
+    // только под `isAdditionRender`, которого у нас нет, а при единице
+    // `if(--times) return` — тождественно ложное условие.
+    //
+    // Предзагрузка соседней страницы по концу каскада (:11551-11554) —
+    // оригинала: пока играет лестница, сеть свободна.
+    if (isFirstMessageRender && liteMode.isAvailable('animations')) {
+      this.messagesQueueOnRenderAdditional = () => {
+        this.messagesQueueOnRenderAdditional = undefined
+
+        void this.animateAsLadder(backLimit, maxId).then(() => {
+          setTimeout(() => { // preload messages
+            this.loadMoreHistory(reverse, true)
+          }, 0)
+        })
+      }
+    } else {
+      this.messagesQueueOnRenderAdditional = undefined
+    }
+
     return { cached: !!historyResult.cached, promise, waitPromise: promise }
   }
 
@@ -2614,15 +2729,14 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * ЧЕГО ЗДЕСЬ НЕТ И ПОЧЕМУ (каждый пункт — с предметом, а не «потом»):
    *  • СМЕНА ПИРА. Ветка `!samePeer` портирована ровно в тех строках, которые
    *    ничего не требуют от окружения (класс нового `chatInner` :5249,
-   *    мгновенный скролл `FocusDirection.Static` :5468). Всё остальное в ней —
-   *    `chat.onChangePeer` (:5061), `chat.finishPeerChange` (:5372/:5389),
-   *    прелоадер (:5379), фон чата `revealPreparedBackground` (:5377/:5407),
+   *    мгновенный скролл `FocusDirection.Static` :5468, спиннер первой
+   *    загрузки :5378-5379, сохранённая позиция :5100-5103/:5437-5438). Всё
+   *    остальное в ней — `chat.onChangePeer` (:5061), `chat.finishPeerChange`
+   *    (:5372/:5389), фон чата `revealPreparedBackground` (:5377/:5407),
    *    ранги админов (:5282-5335), `sharedMediaTab` — это окружение `Chat`, которого
    *    у ленты нет. У нас пир меняет ХОСТ, пересоздавая ленту эффектом по
    *    `peerId` (`VanillaFeed.tsx`), поэтому «тот же инстанс на новый пир»
    *    предмета пока не имеет.
-   *  • `savedPosition` (:5100-5103, :5437-5438) — сохранённая позиция чата живёт в
-   *    `appImManager.getChatSavedPosition`, у нас такого хранилища нет.
    *  • `followingUnread` (:5121-5133, :5453/:5463/:5471) — открытие чата на первом
    *    непрочитанном.
    *    Требует `!samePeer` И `dialog.unread_count !== 1`; счётчика диалога
@@ -2634,8 +2748,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *    (см. её докблок).
    *  • `followStack` (:5157-5159) — стек возврата: кнопка «вернуться» живёт в
    *    окружении `Chat`.
-   *  • sponsored (:5279), лесенка (`resolveLadderAnimation` :5395-5397),
-   *    плейсхолдеры (:5410-5414), `mediaTimestamp`/`startParam`/`pollOption`,
+   *  • sponsored (:5279), плейсхолдеры (:5410-5414),
+   *    `mediaTimestamp`/`startParam`/`pollOption`,
    *    `ChatType.Search/Pinned/Scheduled/Logs`, `lazyLoadQueue`,
    *    `dispatchEvent('setPeer')`, `setFetchHistoryInterval` — подсистем нет.
    *
@@ -2662,6 +2776,20 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     const m = middlewarePromise(middleware, PEER_CHANGED_ERROR)
 
+    // Порт `Chat.setPeerPromise` (chat.ts:1124-1129) — «идёт смена окна».
+    // Взводится СИНХРОННО, до первого `await`: единственный читатель,
+    // `animateAsLadder`, спрашивает его из очереди рендера, то есть ещё внутри
+    // запроса истории. В оригинале это делает обёртка `Chat.setPeer`, у нас
+    // обёртки нет (см. поле `setPeerPromise`), поэтому отложенный промис.
+    const setPeerDeferred = this.setPeerPromise = deferredPromise<void>()
+    const finishSetPeer = () => {
+      if(this.setPeerPromise === setPeerDeferred) {
+        this.setPeerPromise = undefined
+      }
+
+      setPeerDeferred.resolve?.()
+    }
+
     let lastMsgFullMid: FullMid = lastMsgId ? makeFullMid(peerId, lastMsgId) : EMPTY_FULL_MID
 
     // tweb :5079-5081 берёт `historyStorage.maxId` синхронно; у нас последнее
@@ -2679,10 +2807,30 @@ export default class ChatBubbles implements BubbleGroupsHost {
     const topMessageFullMid: FullMid = historyMaxId ? makeFullMid(peerId, historyMaxId) : EMPTY_FULL_MID
     const isTarget = lastMsgFullMid !== EMPTY_FULL_MID
 
-    // tweb :5135 (ветка `else` разбора цели без прыжка): цели нет — идём к
-    // последнему сообщению чата.
-    if(!isTarget && topMessageFullMid !== EMPTY_FULL_MID) {
-      lastMsgFullMid = topMessageFullMid
+    // tweb :5100-5135. Цели нет — прежде чем уходить к последнему сообщению
+    // чата, спрашиваем СОХРАНЁННУЮ ПОЗИЦИЮ.
+    //
+    // Оба гейта — оригинала, и оба существенные:
+    //  • `!isTarget` (:5101): у прыжка цель названа явно, и подменять её тем,
+    //    где чат был оставлен, нельзя;
+    //  • `!samePeer` (:5102): позиция — про ВОЗВРАЩЕНИЕ в чат. Прыжок внутри
+    //    уже открытого чата (`setMessageId`) читать её не должен — иначе
+    //    кнопка «вниз» уводила бы обратно в середину.
+    // Третий гейт оригинала — тип чата (`Chat/Discussion/Saved`,
+    // appImManager.ts:2152): у ленты типов чата нет как понятия.
+    //
+    // Ветка `savedPosition?.mids` (:5109) в оригинале ПУСТА — она лишь
+    // перехватывает управление у «уйти к последнему сообщению» ниже. Здесь она
+    // выражена тем же условием в `else if`.
+    let savedPosition: ChatPosition | undefined
+    if(!isTarget) {
+      if(!samePeer) {
+        savedPosition = getChatPosition(peerId, this.chat.threadId)
+      }
+
+      if(!savedPosition && topMessageFullMid !== EMPTY_FULL_MID) {
+        lastMsgFullMid = topMessageFullMid
+      }
     }
 
     // tweb :5137-5138. `followingUnread` в формуле нет — ветки, которая его
@@ -2710,6 +2858,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
           void this.scrollToEnd()
         }
 
+        finishSetPeer()
         return null
       }
     }
@@ -2726,6 +2875,13 @@ export default class ChatBubbles implements BubbleGroupsHost {
       if(maxBubbleFullMid === EMPTY_FULL_MID) {
         maxBubbleFullMid = this.getRenderedHistory('desc', true)[0] ?? EMPTY_FULL_MID
       }
+    } else {
+      // tweb :5236-5238 — чат открыт заново, значит следующая же страница будет
+      // ПЕРВОЙ для этого окна; из этого признака `getHistory` выводит лестницу.
+      // `forceIsFirstLoad` оригинала (:5235) не портирован: его взводит
+      // `Chat.setPeer` при возврате по стеку, а стека возврата у ленты нет
+      // (см. `followStack` в докблоке).
+      this.isFirstLoad = true
     }
 
     // tweb :5241-5250. Новое окно собирается в ОТОРВАННОМ узле и въезжает в
@@ -2767,27 +2923,93 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // номера, не имеет со старым ни одного общего бабла. Без этого аргумента
     // страница прыжка СЛИВАЛАСЬ бы с прежним окном у низа истории: между ними
     // дыра, а лента и React читали бы их как одно непрерывное окно.
-    const result = await m(this.getHistory1(
-      !isJump && lastMsgFullMid === topMessageFullMid ? EMPTY_FULL_MID : lastMsgFullMid,
-      true,
-      isJump,
-      undefined,
-      true,
-    ))
+    // tweb :5375-5380 — спиннер первой загрузки. Условия оригинала два:
+    // `!samePeer` («это открытие чата, а не прыжок внутри») и `!cached`
+    // («страница летит по сети, а не встаёт из кэша»). Старое окно при этом
+    // убирается из `Scrollable` — иначе спиннер висел бы поверх чужих баблов.
+    //
+    // РАСХОЖДЕНИЕ ПО МЕСТУ ВЫЗОВА, И ОНО СОХРАНЯЕТ ПОВЕДЕНИЕ, А НЕ ЛОМАЕТ ЕГО.
+    // У оригинала обе проверки стоят ПОСЛЕ `await getHistory1`, и это ничего не
+    // стоит: там `requestHistory` — ПОДТВЕРЖДЁННЫЙ вызов
+    // (`managers.acknowledged.*` → `AckedResult {cached, result}`, tweb
+    // bubbles.ts:11458, :10276), то есть внешний промис резолвится, едва воркер
+    // ПОДТВЕРДИЛ запрос, и `cached` известен ДО того, как приедут данные;
+    // страница летит во втором промисе (`result.result`). У нас
+    // подтверждённых вызовов нет вовсе — `requestHistory` ждёт сами данные (см.
+    // её докблок), и дословная расстановка строк дала бы спиннер, который
+    // появляется РОВНО ТОГДА, когда ждать уже нечего, — то есть ровно ту
+    // пустоту вместо спиннера, ради которой механизм и портируется.
+    // Поэтому спиннер вешается до запроса, а условие `!cached` проверяется
+    // сразу после (`detach` ниже). Видимого «моргания» на кэше это не даёт:
+    // `attach` показывает узел не сразу, а через кадр (`useRafs` в
+    // `SetTransition`, `preloader.ts:243-256`), и `detach` этот кадр отменяет.
+    //
+    // `finishPeerChange`/`revealPreparedBackground` соседних строк оригинала —
+    // окружение `Chat`, которого у ленты нет (см. докблок).
+    if(!samePeer) {
+      this.scrollable.replaceChildren(this.paddingTop, this.paddingBottom)
+      this.preloader.attach(this.container)
+    }
+
+    // tweb :5337-5352 — с сохранённой позицией запроса НЕТ ВОВСЕ: окно
+    // восстанавливается из тех самых номеров, которые были отрисованы на
+    // выходе, и объявляется `cached` (то есть без спиннера — показывать нечего,
+    // окно встаёт мгновенно). `waitPromise` там `Promise.resolve()`: догонять
+    // сеть нечем.
+    let result: Awaited<ReturnType<ChatBubbles['getHistory']>>
+    if(!savedPosition) {
+      result = await m(this.getHistory1(
+        !isJump && lastMsgFullMid === topMessageFullMid ? EMPTY_FULL_MID : lastMsgFullMid,
+        true,
+        isJump,
+        undefined,
+        true,
+      ))
+    } else {
+      const mids = savedPosition.mids
+      result = {
+        promise: getHeavyAnimationPromise().then(() => {
+          return this.performHistoryResult(mids, true)
+        }),
+        cached: true,
+        waitPromise: Promise.resolve(),
+      }
+    }
 
     // `getHistory` отдаёт `null` только под `justLoad` (:11525), которого здесь
     // нет; ветка нужна тайпчекеру, а не рантайму.
     if(!result) {
+      finishSetPeer()
       return null
     }
 
     const { promise, cached } = result
+
+    // Вторая половина гейта `!cached` (tweb :5375): страница пришла из кэша —
+    // окно встанет мгновенно, спиннеру предмета нет. См. разбор выше.
+    if(cached) {
+      this.preloader.detach()
+    }
 
     const setPeerPromise: Promise<void> = m(promise).then(async() => {
       // tweb :5386. Бабл цели ищется ПОСЛЕ отрисовки страницы — до неё его нет.
       const mountedByLastMsgId = haveToScrollToBubble ?
         await m(lastMsgFullMid !== EMPTY_FULL_MID ? this.getMountedBubble(lastMsgFullMid) : { bubble: this.getLastBubble() }) :
         undefined
+
+      // tweb :5393. Окно собрано — спиннеру конец, ещё ДО того, как дерево
+      // въедет в документ: `detach` уводит его переходом, и они не мигают друг
+      // об друга.
+      this.preloader.detach()
+
+      // tweb :5395-5397. Лестница, отложенная на время сборки окна, стреляет
+      // здесь — тоже до `replaceChildren`: классы стартового состояния надо
+      // навесить ДО того, как дерево станет видимым, иначе первый кадр покажет
+      // баблы уже на месте.
+      if(this.resolveLadderAnimation) {
+        void this.resolveLadderAnimation()
+        this.resolveLadderAnimation = undefined
+      }
 
       const scrollable = this.scrollable
       scrollable.lastScrollDirection = 0
@@ -2797,7 +3019,13 @@ export default class ChatBubbles implements BubbleGroupsHost {
       // tweb :5420.
       this.container.classList.toggle('has-groups', !!Object.keys(this.dateMessages).length)
 
-      if(haveToScrollToBubble) {
+      // tweb :5436-5438 — восстановленное окно ставится на ту же позицию, с
+      // которой чат был оставлен, и ПЕРВОЙ веткой: `haveToScrollToBubble` в
+      // этом случае истинен (цели нет, значит `isJump`), и без перехвата
+      // скролл уехал бы к последнему сообщению.
+      if(savedPosition) {
+        scrollable.setScrollPositionSilently(savedPosition.top)
+      } else if(haveToScrollToBubble) {
         let unsetPadding: (() => void) | undefined
         if(scrollFromDown) {
           scrollable.setScrollPositionSilently(99999)
@@ -2858,6 +3086,22 @@ export default class ChatBubbles implements BubbleGroupsHost {
         scrollable.onScroll()
       })
     })
+
+    // tweb :5557-5563 — окно вытеснено следующим `setPeer`: спиннер снимать
+    // некому (ветка `.then` не выполнится), а висеть он останется поверх
+    // нового окна.
+    //
+    // Вторая половина — гашение признака «идёт смена окна». В оригинале это
+    // делает `Chat.setPeer` (chat.ts:1126-1129) на СВОЕЙ цепочке, отдавая
+    // наружу исходный промис; сверка `this.setPeerPromise === setPeerDeferred`
+    // оттуда же — вытесненный `setPeer` не должен гасить признак у нового.
+    void setPeerPromise.catch((err) => {
+      if(!middleware()) {
+        this.preloader.detach()
+      }
+
+      throw err
+    }).catch(noop).finally(finishSetPeer)
 
     return { cached, promise: setPeerPromise }
   }
@@ -3322,17 +3566,18 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  Поле гасится в конце (:10202), как в оригинале: признак живёт ровно один
    *  проход.
    *
-   *  Не портирован гейт `isLoading` (`!this.preloader.detached`) — прелоадер
-   *  первой загрузки у нас живёт в `Chat.tsx`, не в ленте. */
+   *  Гейт `isLoading` (:10170) — оригинала: пока висит спиннер первой
+   *  загрузки, высоты мерить бессмысленно (окно ещё не смонтировано, лента
+   *  ровно в клиентскую высоту), и липкие даты включаются авансом. */
   private onRenderScrollSet(state?: { scrollHeight: number, clientHeight: number }) {
     const className = 'has-sticky-dates'
     if(!this.container.classList.contains(className)) {
-      state ??= {
+      const isLoading = !this.preloader.detached
+
+      if(isLoading || (state ??= {
         scrollHeight: this.scrollable.scrollSize,
         clientHeight: this.scrollable.clientSize,
-      }
-
-      if(state.scrollHeight !== state.clientHeight) {
+      }, state.scrollHeight !== state.clientHeight)) {
         const middleware = this.getMiddleware()
         const callback = () => {
           if(!middleware()) return
@@ -3418,6 +3663,112 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     const slice = this.getViewportSlice(true)
     this.deleteViewportSlice(slice)
+  }
+
+  /**
+   * «Лестница» появления баблов — порт tweb `animateAsLadder`
+   * (bubbles.ts:10313-10464). Механика перехода живёт в `core/dom/ladder.ts`
+   * (её же гоняет приветствие пустого чата); ЗДЕСЬ — то, ради чего метод
+   * существует: КОГО и в каком порядке анимировать.
+   *
+   * КОГО: не сами `.bubble`, а их последнего ребёнка —
+   * `.bubble-content-wrapper` (:10379 `bubble.lastElementChild`), плюс аватар
+   * серии, но только у ПОСЛЕДНЕГО её сообщения (:10386-10390): аватар в tweb
+   * один на серию и прилипает к её низу.
+   *
+   * В КАКОМ ПОРЯДКЕ: каскад идёт ОТ сообщения, к которому лента приехала
+   * (`targetMid`), в обе стороны (:10352-10355) — вверх по `topIds`, вниз по
+   * `bottomIds` (перевёрнутым, чтобы отсчёт шёл от цели), а сама цель едет
+   * первой и без сдвига. При открытии чата целью оказывается самое нижнее
+   * отрисованное сообщение, и лестница читается снизу вверх.
+   *
+   * КОГДА НЕ АНИМИРУЕТ (все гейты — оригинала):
+   *  • `setPeer` ещё в полёте (:10318) — окно собирается в ОТОРВАННОМ узле,
+   *    анимировать невидимое бессмысленно; каскад откладывается в
+   *    `resolveLadderAnimation` и стреляет из `setPeer` сразу после
+   *    монтирования (:5395-5397);
+   *  • окно пустое (:10327-10330);
+   *  • страница пришла из кэша, лента уже что-то рисовала, анимации выключены
+   *    — это гейты `isFirstMessageRender`/`liteMode` у самого вооружения
+   *    лестницы (`getHistory`, :11467/:11540).
+   *
+   * Параметры оригинала `additionalFullMid`/`additionalFullMids`/
+   * `isAdditionalRender` не портированы вместе с самой веткой дополнительного
+   * рендера (см. докблок `getHistory`): без неё `isAdditionalRender` тождественно
+   * ложно, а значит `delay`/`offsetIndex` — константы 40/1 (:10364-10365),
+   * `middleIds`/`bottomIds` не обнуляются, и фильтровать `sortedFullMids`
+   * (:10337-10339) нечем.
+   */
+  private async animateAsLadder(backLimit: number, maxId: FullMid): Promise<unknown> {
+    // tweb :10318-10322.
+    if(this.setPeerPromise && !this.resolveLadderAnimation) {
+      this.resolveLadderAnimation = this.animateAsLadder.bind(this, backLimit, maxId)
+      return
+    }
+
+    const fullMids = this.getRenderedHistory('desc')
+
+    if(!fullMids.length) {
+      return
+    }
+
+    const sortedFullMids = fullMids.slice()
+
+    // tweb :10341-10350. `maxId || …`: `EMPTY_FULL_MID` — строка `'0_0'`, то
+    // есть истинная, поэтому при `backLimit` цель всегда берётся из аргумента —
+    // ровно как в оригинале, где `FullMid` тоже строка (tweb bubbles.ts:441).
+    const targetMid: FullMid = backLimit ? (maxId || sortedFullMids[0]) : sortedFullMids[0]
+
+    // tweb :10352-10354, ДОСЛОВНО, включая сравнение `targetMid > mid`. Оно
+    // ЛЕКСИКОГРАФИЧЕСКОЕ: `FullMid` — строка (tweb bubbles.ts:441, у нас :151),
+    // и это остаток миграции оригинала с числовых `mid`. На открытии чата, ради
+    // которого лестница и существует, цель — `sortedFullMids[0]`, и границы
+    // считаются верно при любых номерах: первое же сравнение с соседом даёт
+    // `topIds` = «всё, кроме цели», `bottomIds` = пусто. Расходится оно с
+    // числовым порядком только на прыжке через разрядность номера (`'1_100' >
+    // '1_99'` ложно) — там `findIndex` вернёт −1, и `slice(-1)` возьмёт хвост.
+    // Чинить это здесь нельзя: расхождение с оригиналом — это отсебятина.
+    const topIds = sortedFullMids.slice(sortedFullMids.findIndex((mid) => targetMid > mid))
+    const middleIds = [targetMid]
+    const bottomIds = sortedFullMids.slice(0, sortedFullMids.findIndex((mid) => targetMid >= mid)).reverse()
+
+    // tweb :10376-10391 — из адреса в узлы, которые поедут одним шагом.
+    const toSteps = (ids: FullMid[]): LadderStep[] => {
+      const steps: LadderStep[] = []
+      for(const fullMid of ids) {
+        const bubble = this.getBubble(fullMid)
+        if(!bubble) {
+          continue
+        }
+
+        // `bubble not ready yet` оригинала (:10381): у tweb состав бабла
+        // асинхронный, у нас `renderMessage` синхронен — узел либо есть
+        // целиком, либо его нет в `getRenderedHistory`. Проверка остаётся
+        // сторожем типа (`lastElementChild` нуллабелен), а не веткой поведения.
+        const contentWrapper = bubble.lastElementChild as HTMLElement | null
+        if(!contentWrapper) {
+          continue
+        }
+
+        const elementsToAnimate: HTMLElement[] = [contentWrapper]
+        const item = this.bubbleGroups.getItemByBubble(bubble)
+        if(item?.group?.avatar && item.group.lastItem === item) {
+          elementsToAnimate.push(item.group.avatar.node)
+        }
+
+        steps.push(elementsToAnimate)
+      }
+
+      return steps
+    }
+
+    // tweb :10420-10422 — три списка, у крайних отсчёт задержек сдвинут на шаг
+    // (:10365), у цели — нет.
+    return animateLadderLists(this.chatInner, [
+      { steps: toSteps(topIds), offsetIndex: 1 },
+      { steps: toSteps(middleIds) },
+      { steps: toSteps(bottomIds), offsetIndex: 1 },
+    ], { delay: 40 })
   }
 
   /** Порт tweb bubbles.ts:4630. */
@@ -4067,6 +4418,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
     this.previousStickyDate = undefined
     this.firstUnreadBubble = undefined
     this.attachedUnreadBubble = false
+    // tweb bubbles.ts:4988 — отложенная лестница держит замыкание на баблы
+    // ПРОШЛОГО окна; выполнять её после пересборки нечего.
+    this.resolveLadderAnimation = undefined
     // tweb bubbles.ts:4971-4980: наблюдатель непрочитанных смотрел на баблы
     // ПРОШЛОГО окна. `disconnect()` не убивает сам объект — наблюдать им
     // дальше можно, как и `stickyIntersector` строкой выше.
@@ -4100,12 +4454,75 @@ export default class ChatBubbles implements BubbleGroupsHost {
     this.middlewareHelper.clean()
   }
 
+  /**
+   * Порт `appImManager.saveChatPosition` (tweb lib/appImManager.ts:2111-2149)
+   * — «запомнить, где пользователь оставил чат».
+   *
+   * ГДЕ ЭТО ЖИВЁТ В ОРИГИНАЛЕ и почему здесь. В tweb метод висит на
+   * `appImManager`, потому что там же лежит и карта позиций, но ВСЕ факты,
+   * которыми он оперирует, он берёт у ленты — `chatBubbles.scrollable`,
+   * `getRenderedLength`, `getViewportSlice`, `sliceViewport`,
+   * `getRenderedHistory`. У нас карта осталась отдельным модулем
+   * (`core/chat/chatPositions.ts`), а решение — здесь, у владельца фактов.
+   *
+   * КОГДА ЗОВЁТСЯ. В оригинале — по событию `peer_changing`
+   * (appImManager.ts:378-380), то есть «этот чат сейчас уйдёт». У нас чат
+   * уходит вместе с инстансом ленты: пир меняет хост, пересоздавая её
+   * (`VanillaFeed.tsx`), — поэтому точка одна и это `destroy()`.
+   *
+   * КОГДА ПОЗИЦИЯ НЕ СОХРАНЯЕТСЯ (`shouldSavePosition`, :2122-2126) — три
+   * условия оригинала, и каждое отсекает свой случай:
+   *  • чат оставлен ПРИЖАТЫМ К НИЗУ (`getDistanceToEnd() <= 16` вместе с
+   *    `loadedAll.bottom`) — восстанавливать нечего, чат и должен открыться
+   *    внизу;
+   *  • окно пустое (`getRenderedLength()`);
+   *  • НИЖЕ ВЬЮПОРТА НИЧЕГО НЕТ (`getViewportSlice().invisibleBottom.length`)
+   *    — то же «мы у низа», но измеренное по баблам, а не по пикселям.
+   * И тогда прошлая запись УДАЛЯЕТСЯ (:2144), а не остаётся: она увела бы
+   * следующее открытие в середину истории.
+   *
+   * Слагаемое `!chat.savedReaction` (:2125) не портировано вместе с самим
+   * фильтром «Избранного» по тегу-реакции, ветка `pinnedMessages` (:2119,
+   * :2133, :2140-2142) — вместе с плашкой закрепа: и то и другое окружение
+   * чата, у ленты его нет. Гейт по типу чата (:2112) предмета не имеет —
+   * типов чата у ленты нет.
+   */
+  private saveChatPosition() {
+    const peerId = this.peerId
+    if(!peerId) {
+      return
+    }
+
+    const threadId = this.chat.threadId
+    const shouldSavePosition =
+      !(this.scrollable.getDistanceToEnd() <= 16 && this.scrollable.loadedAll.bottom) &&
+      this.getRenderedLength() &&
+      this.getViewportSlice().invisibleBottom.length // * don't save if we're close to the end
+
+    if(!shouldSavePosition) {
+      deleteChatPosition(peerId, threadId)
+      return
+    }
+
+    // tweb :2128-2134. Подрезка ПЕРЕД снятием списка — не оптимизация: без неё
+    // в позицию уехало бы всё окно целиком, и следующее открытие рисовало бы
+    // сотни баблов вместо экрана.
+    this.sliceViewport(true)
+    saveChatPosition(peerId, threadId, {
+      mids: this.getRenderedHistory('desc', true).map((fullMid) => splitFullMid(fullMid).mid),
+      top: this.scrollable.scrollPosition,
+    })
+  }
+
   /** Порт tweb bubbles.ts:4880. `batchProcessor.clear()` здесь — наше
    *  дополнение: в tweb очередь гасит `cleanup()`, который лента обязательно
    *  проходит на смене пира, а у нас `destroy()` — единственная точка гашения
    *  (`VanillaFeed` зовёт только его). Без этой строки уже стартовавшая пачка
    *  домонтировала бы серии в оторванное от документа дерево. */
   public destroy() {
+    // ПЕРВОЙ строкой, до `destroyScrollable()`: позиция читается с живого
+    // скролл-контейнера. См. докблок метода.
+    this.saveChatPosition()
     // Поколение окна — НАША строка, по той же причине, что `batchProcessor
     // .clear()` ниже: в tweb `setPeerTempId` вытесняет следующий `setPeer`,
     // который его лента обязательно проходит на смене пира, а у нас лента

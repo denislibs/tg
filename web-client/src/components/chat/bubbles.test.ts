@@ -18,6 +18,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { mirrorWindow, resetMessagesMirror } from '@core/history/messagesMirror'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
+import { clearChatPositions } from '@core/chat/chatPositions'
+import { useSettingsStore } from '@/settings'
 import { DELETED_ACCOUNT_TITLE } from '@core/peers/getPeerTitle'
 import type { UserReal } from '@core/peers/peer'
 import type { MessageReal, MyMessage } from '@core/models'
@@ -111,6 +113,17 @@ afterEach(() => {
 beforeEach(() => {
   resetMessagesMirror()
   resetPeerMirror()
+  // «Лестница» первой загрузки навешивает на `.bubble-content-wrapper` свои
+  // классы стартового состояния и держит шину тяжёлых анимаций (tweb
+  // bubbles.ts:10376-10440) — под ней и разметка бабла другая, и очередь
+  // рендера ждёт. Этот файл про состав бабла, серии и подписки, поэтому
+  // лестница выключается тем же гейтом, что в оригинале
+  // (`liteMode.isAvailable('animations')`, tweb bubbles.ts:11540). Сама она
+  // проверяется в `bubbles.firstLoad.test.ts`.
+  useSettingsStore.setState({ reduceMotion: true })
+  // Карта сохранённых позиций — синглтон модуля, и `destroy()` в `afterEach`
+  // в неё пишет: без сброса следующий тест открыл бы «тот же чат» ВОЗВРАТОМ.
+  clearChatPositions()
 })
 
 /** Карточка пира в форме владельца (`peersManager`). Кладём её в зеркало через

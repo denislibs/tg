@@ -15,6 +15,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { mirrorWindow, resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
+import { interruptHeavyAnimation } from '@core/dom/heavyAnimation'
+import { useSettingsStore } from '@/settings'
+import { clearChatPositions } from '@core/chat/chatPositions'
 import type { MyMessage } from '@core/models'
 import { makeMessage, type MessageFixture } from '@core/messages/testMessage'
 import type { HistoryArgs, HistoryResult } from '@core/managers/messagesManager'
@@ -179,6 +182,21 @@ beforeEach(() => {
   resetMessagesMirror()
   resetPeerMirror()
   rootScope.myId = 999
+  // Этот файл — про скролл и пагинацию, а не про «лестницу» первой загрузки.
+  // Лестница объявляет себя ТЯЖЁЛОЙ АНИМАЦИЕЙ на всю свою длительность
+  // (tweb bubbles.ts:10436-10440), а под ней лента по построению не грузит
+  // страниц и не подрезает вьюпорт — то есть здесь она заглушила бы ровно то,
+  // что проверяется. Выключаем её тем же гейтом, что и оригинал:
+  // `liteMode.isAvailable('animations')` (tweb bubbles.ts:11540). Побочно это
+  // делает мгновенным и `fastSmoothScroll` — что тестам только на руку:
+  // доводка скролла здесь проверяется по КОНЕЧНОЙ позиции.
+  useSettingsStore.setState({ reduceMotion: true })
+  interruptHeavyAnimation()
+  // Карта сохранённых позиций — синглтон модуля, а `destroy()` в `afterEach`
+  // пишет в неё (порт `peer_changing` → `saveChatPosition`). Без сброса
+  // следующий тест открывал бы «тот же чат» ВОЗВРАТОМ: окно восстановилось бы
+  // из прошлых номеров, и страницу у менеджера никто бы не спросил.
+  clearChatPositions()
 })
 
 afterEach(() => {

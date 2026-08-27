@@ -1224,11 +1224,6 @@ export default function Chat({ chat, onBack, thread }: Props) {
         />
         )}
 
-        {/* ДОЛГ этапа 7: спиннера первой загрузки здесь больше нет. В tweb им
-            владеет сама лента (bubbles.ts:752 `new ProgressivePreloader(...)`),
-            а React-обвязка вокруг него держалась на флагах zustand-окна, которых
-            у зеркала нет. Порт — в `chat/bubbles.ts`. */}
-
         {/* Лента целиком императивная — порт tweb `chat/bubbles.ts`. Дерево
             (`.bubbles > .scrollable.bubbles-scrollable > .bubbles-padding-top +
             .bubbles-inner + .bubbles-padding-bottom`, tweb bubbles.ts:4178-4186)

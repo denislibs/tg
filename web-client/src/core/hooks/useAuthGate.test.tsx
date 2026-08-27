@@ -116,7 +116,7 @@ describe('useAuthGate: переход активной сессии (rt:logging_
     setAppState('folders', [folder])
     useChatsStore.setState({ dialogs: [makeDialog({ peerId: 1 })] })
     useChatStackStore.getState().setPeer({ peerId: 1, type: 'chat' })
-    saveChatPosition(1, undefined, { top: 777 })
+    saveChatPosition(1, undefined, { mids: [3, 2, 1], top: 777 })
     const clearAll = vi.fn().mockResolvedValue(undefined)
     const { result } = renderHook(() => useAuthGate(), { wrapper: withManagers(testManagers(clearAll)) })
 

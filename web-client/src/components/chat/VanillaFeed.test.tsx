@@ -10,12 +10,14 @@
 // Каждая покрыта отдельным `it` ниже. Пятая — проброс `isMegagroup` в
 // `ChatContext`: без него сообщение от лица канала уезжает не на ту сторону
 // (порт `Chat.isOurMessage`, tweb chat.ts:1375-1377).
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from '@testing-library/react'
 import rootScope from '@lib/rootScope'
 import contextMenuController from '@helpers/contextMenuController'
 import { ManagersProvider } from '@core/hooks/useManagers'
 import { putMirrorPage, resetMessagesMirror, winKey } from '@core/history/messagesMirror'
+import { clearChatPositions } from '@core/chat/chatPositions'
+import { useSettingsStore } from '@/settings'
 import type { Managers } from '../../client/bootstrap'
 import type { MessageReal, MyMessage } from '@core/models'
 import { generateMessageId } from '@core/history/messageId'
@@ -71,6 +73,19 @@ function mount(
   )
   return { ...view, getHistory, messageByDate }
 }
+
+beforeEach(() => {
+  // Файл про ПРОВОДКУ ленты в React-дерево, а не про «лестницу» первой
+  // загрузки. Лестница объявляет себя тяжёлой анимацией на сотни миллисекунд
+  // (tweb bubbles.ts:10436-10440), и под ней очередь рендера ждёт — соседние
+  // тесты этого файла упирались бы в таймаут `vi.waitFor`. Гейт тот же, что в
+  // оригинале (`liteMode.isAvailable('animations')`, tweb bubbles.ts:11540).
+  useSettingsStore.setState({ reduceMotion: true })
+  // Размонтирование ленты пишет позицию чата в синглтон-карту (порт
+  // `peer_changing` → `appImManager.saveChatPosition`) — без сброса следующий
+  // тест открыл бы «тот же чат» ВОЗВРАТОМ, не спросив страницу у менеджера.
+  clearChatPositions()
+})
 
 afterEach(() => {
   cleanup()

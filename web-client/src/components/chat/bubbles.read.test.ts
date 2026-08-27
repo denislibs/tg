@@ -180,7 +180,13 @@ describe('ChatBubbles — наблюдатель непрочитанных', ()
   })
 
   it('у поста канала читающий узел — ВРЕМЯ, а не бабл', async () => {
-    const managers = managersWith([msg(11)])
+    // `views: 1` — не украшение фикстуры, а инвариант провода: пост канала
+    // всегда приезжает со счётчиком, и он не бывает нулевым
+    // (`domain.MessageReal.PostCounters`, порт `views: isBroadcast && 1`
+    // из tweb appMessagesManager.ts:2930). Именно по нему лента ставит бабл
+    // под наблюдение ради просмотров (:7672), поэтому без него тест проверял
+    // бы пост, которого на проводе не бывает.
+    const managers = managersWith([{ ...msg(11), views: 1 } as MyMessage])
     managers.getReadMaxSeqIfUnread.mockResolvedValue(10)
     bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managers)
     await openFeed(bubbles)

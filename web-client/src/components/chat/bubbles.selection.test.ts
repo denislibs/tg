@@ -8,6 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
+import { clearChatPositions } from '@core/chat/chatPositions'
+import { useSettingsStore } from '@/settings'
 import { makeMessage } from '@core/messages/testMessage'
 import type { MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
@@ -58,6 +60,14 @@ beforeEach(() => {
   resetMessagesMirror()
   resetPeerMirror()
   rootScope.myId = 1
+  // Файл про режим выделения, а не про «лестницу» первой загрузки: под ней
+  // лента держит шину тяжёлых анимаций и не рисует догруженную страницу
+  // (tweb bubbles.ts:10436-10440). Гейт тот же, что в оригинале
+  // (`liteMode.isAvailable('animations')`, tweb bubbles.ts:11540).
+  useSettingsStore.setState({ reduceMotion: true })
+  // `destroy()` в `afterEach` пишет позицию чата в синглтон-карту — без
+  // сброса следующий тест открыл бы «тот же чат» ВОЗВРАТОМ, без запроса.
+  clearChatPositions()
 })
 
 /** Лента с настоящим режимом выделения — ровно так её поднимает хост. */

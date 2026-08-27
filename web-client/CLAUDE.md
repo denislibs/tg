@@ -169,10 +169,13 @@ npx vite build --outDir ../client-build
   `useScheduledMessages`). Каждое из них дублировало факт, который владелец и
   так объявляет операцией: WS-эхо `new_message` бэкенд фанит и автору
   (`backend/internal/usecase/chat/fanout.go:163`), реакции/удаление/просмотры
-  едут `patch`/`remove`. Единственное, что ушло вместе с ними, — ОПТИМИСТИКА
-  «показать до эха» у двух путей (`setFactCheck`, и она названа долгом прямо у
-  строки в `useMessageActions.tsx`). В ЗЕРКАЛО не пишет никто, кроме проектора и
-  `putMirrorPage` (страницу истории кладёт сама лента).
+  едут `patch`/`remove`. Вместе с ними ушла и ОПТИМИСТИКА «показать до эха»
+  у «проверки фактов» — она ВЕРНУЛАСЬ операцией владельца:
+  `messages.setFactCheck` объявляет `patch {factcheck}` до ответа сервера и
+  откатывает его предыдущим значением на упавшей сети (форма `react`/`unreact`),
+  пин — `core/managers/messagesManager.test.ts`
+  (describe `MessagesManager.setFactCheck (оптимистика)`). В ЗЕРКАЛО не пишет
+  никто, кроме проектора и `putMirrorPage` (страницу истории кладёт сама лента).
 
   **Исключения для оптимистичной отправки больше нет.** Жизненный цикл
   неотправленного («отправляется…») сообщения живёт в менеджере воркера —
@@ -339,14 +342,29 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
 `VITE_VANILLA_FEED`, zustand-копия окна `stores/messagesStore` и ленточные хуки
 (`useChatScroll`/`useConvMessages`/`useVoiceQueue`/`useFeedReveal`/
 `useChatStickyDates`/`useDragSelect`/`useChatSelection`/`useMessageWindow`)
-снесены. **Долги, которые снос обнажил** — их место в ленте, а не в React:
+снесены. **Долги, которые снос обнажил** — их место в ленте, а не в React.
+
+**Первое открытие чата закрыто целиком** (пины — `chat/bubbles.firstLoad.test.ts`):
+спиннер первой загрузки (`ProgressivePreloader` в поле ленты, tweb bubbles.ts:752 →
+`setPeer` :5375-5380/:5393), «лестница» появления баблов
+(`ChatBubbles.animateAsLadder` поверх примитива `core/dom/ladder.ts`, tweb :10313)
+и восстановление позиции между открытиями (`savedPosition`: пишет
+`ChatBubbles.saveChatPosition` на `destroy()` — наш аналог tweb-события
+`peer_changing`, хранит `core/chat/chatPositions.ts`, читает `setPeer`).
+ОДНО расхождение с оригиналом по месту вызова, и оно намеренное: спиннер
+вешается ДО запроса истории, а не после (у tweb `requestHistory` —
+подтверждённый вызов `managers.acknowledged.*`, у нас подтверждений нет вовсе);
+разбор — у самой строки в `setPeer`. Тесты ленты, которые НЕ про первое
+открытие, гасят лестницу тем же гейтом, что оригинал
+(`useSettingsStore.setState({reduceMotion: true})` → `liteMode.isAvailable`),
+и сбрасывают карту позиций (`clearChatPositions()`) — иначе соседний тест
+открывал бы чат ВОЗВРАТОМ.
+
+Остальное:
 
 | Долг | Где был | Куда портировать |
 |---|---|---|
-| спиннер первой загрузки | `useFeedReveal` + оверлей в `Chat.tsx` | `chat/bubbles.ts` (tweb bubbles.ts:752 `new ProgressivePreloader`) |
-| «лестница» появления баблов при открытии чата | `useFeedReveal` + `core/dom/ladder.ts` | `chat/bubbles.ts` (tweb `animateAsLadder`, :10363) |
 | сдвиг градиента обоев вместе с прокруткой к новому сообщению | эффект в `Chat.tsx` + `core/chat/activeGradient.ts` | `chat/bubbles.ts::scrollToBubble` startCallback (tweb :4710-4714) |
-| восстановление позиции чата между открытиями | `useChatScroll` + `core/chat/chatPositions.ts` | `chat/bubbles.ts::setPeer` (tweb `savedPosition`) |
 | плашка «Обсуждение началось» в треде комментариев | `winV` в `Chat.tsx` | `chat/bubbles.ts::performHistoryResult` (tweb `generateThreadServiceStartMessage`) |
 | очередь голосовых/кружков для глобального плеера | `useVoiceQueue` | `chat/bubbles.ts` — владелец аудио-бабла |
 | «кружок прослушан» (`media_unread`), отмена аплоада с бабла, разблокировка платного медиа, перезвон по баблу звонка | обработчики в `Chat.tsx` | сами баблы в `chat/bubbles.ts` |
@@ -356,7 +374,6 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
 | ручной повтор упавшей отправки: `messages.retryPending`/`cancelPending` (`core/managers/messages/pending.ts:569-586`) остались без единого вызывающего | пункт «Переотправить» React-меню | решать не пунктом меню: у tweb ручного повтора нет по построению (сорванную отправку переигрывает транспорт, `message.error` даёт лишь право удалить бабл). Это расхождение нашей модели отправки с оригиналом — ему место в `docs/readiness/port-divergences.md`, а не в порте меню |
 | эффект вокруг чипа реакции (`fireAroundAnimation`), аватары реагировавших | `ReactionAroundEffect`/`StackedAvatars` | `chat/reactions.ts` + порт tweb `stackedAvatars.ts` |
 | приветствие пустого чата и «Похожие каналы» | `messages/EmptyChatGreeting.tsx`, `messages/SimilarChannels.tsx` — **файлы оставлены** и сейчас никем не импортируются | `chat/bubbles.ts` (tweb `renderEmptyPlaceholder('greeting')` :10516, `SimilarChannels` :7083) |
-| оптимистика «проверки фактов» до серверного эха | `useMessageActions::submitFactCheck` | операция владельца (`messages.setFactCheck` → `patch`) |
 
 ## Безопасность (критично)
 
