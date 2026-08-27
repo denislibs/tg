@@ -187,9 +187,24 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
     return mapOne(r)
   }
   // История секретного чата приходит с REST как enc_body + пустой текст —
-  // расшифровываем страницу до отдачи в UI. Без ключа текст остаётся пустым, но
-  // secret:true проставлен (UI покажет плейсхолдер). Живые сообщения
-  // дешифруются в workerCore.ts.
+  // расшифровываем страницу до отдачи в UI. Живые сообщения дешифруются в
+  // workerCore.ts (ключи и там, и здесь берутся из одного secretManager).
+  //
+  // `secret` отвечает на вопрос «в объекте лежит ОТКРЫТЫЙ E2E-текст», а не «из
+  // секретного чата» (задача #94), поэтому ставит его ТОЛЬКО удачная
+  // расшифровка. Смысл задаёт единственный исполняемый потребитель флага —
+  // фильтр персиста (`store/persist.ts`: `!m.secret && !enc_body`): условий
+  // там два ровно потому, что признака два, и `secret` отвечает за тот, что
+  // `enc_body` поймать не может, — свой оптимистичный бабл (плейнтекст есть,
+  // шифртекста нет вовсе; ставит `secretManager.sendText/sendMedia`).
+  // Нерасшифрованное шифртекстом и остаётся: на диск его не пускает `enc_body`
+  // (пин — `store/persist.test.ts`), и своего флага у него нет.
+  //
+  // Прежде здесь стояло `{...m, secret: true}` на обе ветки с обоснованием «UI
+  // покажет плейсхолдер» — оно не сходилось дважды: живой кадр так не делал
+  // (один и тот же «ключа взять негде» давал разную пометку), а плейсхолдер по
+  // этому флагу неотличим от расшифрованного бабла — у того флаг тоже стоит.
+  // Признак «не расшифровано» — `enc_body` БЕЗ `secret`.
   async function decryptPage(list: MyMessage[]): Promise<MyMessage[]> {
     if (!decryptSecret) return list
     return Promise.all(list.map(async (m) => {
@@ -197,7 +212,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
       const dec = await decryptSecret(m.peerId, m.enc_body)
       return dec
         ? { ...m, message: dec.text, entities: (dec.entities as MessageReal['entities']) ?? m.entities, secret: true, secretMedia: dec.media ?? m.secretMedia }
-        : { ...m, secret: true }
+        : m
     }))
   }
   // Кэш истории ключуется чатом ИЛИ тредом чата ("peerId" / "peerId:root") —

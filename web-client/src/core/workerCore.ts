@@ -695,6 +695,14 @@ export function createWorkerCore() {
           // `.catch` оставлен страховкой от unhandled rejection (задача #91):
           // сам decryptMessage больше не отклоняется, но в `.then` стоит
           // applyUpdate.
+          //
+          // Пометка `secret` стоит ВНУТРИ `if (dec)` и значит «в объекте лежит
+          // открытый E2E-текст», а не «из секретного чата» (задача #94): её
+          // читает фильтр персиста, и ловит она то, чего не ловит `enc_body`, —
+          // плейнтекст без шифртекста. Нерасшифрованный кадр плейнтекста не
+          // несёт, флага не получает, а на диск не идёт по `enc_body`. Тот же
+          // ответ даёт путь истории (`messagesManager.decryptPage`) — раньше он
+          // отвечал иначе.
           void secret.decryptMessage(peerId, encBody).then((dec) => {
             if (dec) {
               m.message = dec.text
