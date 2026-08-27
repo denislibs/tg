@@ -453,3 +453,109 @@ describe('ChatContextMenu — действия пунктов', () => {
     expect(popups.showReactedList).toHaveBeenCalledWith(GROUP, 1, { x: 42, y: 84 })
   })
 })
+
+// «Кто просмотрел» — это ВТОРАЯ ветка того же пункта `views` группы: реакций у
+// сообщения нет, поэтому текст пункта приезжает ответом `messages.viewers`
+// (порт tweb :1543-1644, где ту же роль играет
+// `getMessageReactionsListAndReadParticipants`). Пункт показывается только у
+// СВОЕГО сообщения в не-broadcast чате — `canViewMessageReadParticipants`
+// (appMessagesManager.ts:9109-9123), поэтому у чужого его быть не должно.
+describe('ChatContextMenu — «кто просмотрел» (views без реакций, tweb :1543-1644)', () => {
+  const GROUP = -9
+
+  function groupMessage(extra: Partial<MyMessage> = {}): MyMessage {
+    return message(1, {
+      peerId: GROUP,
+      peer_id: { _: 'peerChannel', channel_id: 9 },
+      ...extra,
+    })
+  }
+
+  function upsertGroup() {
+    applyPeerOps([{ op: 'upsert', peers: [{ _: 'channel', id: 9, title: 'gr', pFlags: { megagroup: true }, photo: undefined, date: 0 } as never] }])
+  }
+
+  async function openInGroup(managers: ReturnType<typeof makeManagers>, popups = makePopups()) {
+    const { bubble, content } = makeBubble(1, { out: true, peerId: GROUP })
+    container.append(bubble)
+    const menu = new ChatContextMenu(makeChat({ peerId: GROUP }), {}, managers, popups)
+    menu.attachTo(container)
+    rightClick(content)
+    await flush()
+    return popups
+  }
+
+  function viewsItem(): HTMLElement | undefined {
+    // пункт `views` — единственный без своего `text` в `setButtons`: его подпись
+    // ставит `init`, а иконка приезжает `prepend`-ом (`checks`/`reactions`)
+    return Array.from(menuElement()?.querySelectorAll<HTMLElement>('.btn-menu-item') ?? [])
+      .find((el) => /Seen by|Nobody viewed|Loading/.test(el.querySelector('.btn-menu-item-text')?.textContent ?? ''))
+  }
+
+  it('своё сообщение в группе без реакций: пункт спрашивает `messages.viewers` и пишет «Seen by N»', async() => {
+    upsertGroup()
+    putMirrorPage(KEY, [groupMessage({ pFlags: { out: true } })])
+
+    const managers = makeManagers()
+    managers.messages.viewers.mockResolvedValue([11, 12])
+    await openInGroup(managers)
+    await flush()
+
+    expect(managers.messages.viewers).toHaveBeenCalledWith(GROUP, 1)
+    expect(itemTexts()).toContain('Seen by 2')
+  })
+
+  it('ответ ещё в полёте — у пункта стоит «Loading» (:1574)', async() => {
+    upsertGroup()
+    putMirrorPage(KEY, [groupMessage({ pFlags: { out: true } })])
+
+    const managers = makeManagers()
+    managers.messages.viewers.mockReturnValue(new Promise(() => {}))
+    await openInGroup(managers)
+
+    expect(itemTexts()).toContain('Loading')
+  })
+
+  it('никто не просмотрел — «Nobody viewed», и клик списка не открывает (:1556, :1619-1624)', async() => {
+    upsertGroup()
+    putMirrorPage(KEY, [groupMessage({ pFlags: { out: true } })])
+
+    const managers = makeManagers() // viewers → []
+    const popups = await openInGroup(managers)
+    await flush()
+
+    expect(itemTexts()).toContain('Nobody viewed')
+    viewsItem()!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    expect(popups.showReactedList).not.toHaveBeenCalled()
+  })
+
+  it('просмотревшие есть — клик по пункту открывает список якорем (:1632-1641, :1245-1251)', async() => {
+    upsertGroup()
+    putMirrorPage(KEY, [groupMessage({ pFlags: { out: true } })])
+
+    const managers = makeManagers()
+    managers.messages.viewers.mockResolvedValue([11, 12])
+    const popups = await openInGroup(managers)
+    await flush()
+
+    viewsItem()!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: 7, clientY: 9 }))
+    expect(popups.showReactedList).toHaveBeenCalledWith(GROUP, 1, { x: 7, y: 9 })
+  })
+
+  it('чужое сообщение — пункта нет вовсе, `messages.viewers` не спрашивается (appMessagesManager.ts:9109-9123)', async() => {
+    upsertGroup()
+    putMirrorPage(KEY, [groupMessage()]) // без pFlags.out
+
+    const managers = makeManagers()
+    const { bubble, content } = makeBubble(1, { peerId: GROUP })
+    container.append(bubble)
+    const menu = new ChatContextMenu(makeChat({ peerId: GROUP }), {}, managers, makePopups())
+    menu.attachTo(container)
+    rightClick(content)
+    await flush()
+    await flush()
+
+    expect(viewsItem()).toBeUndefined()
+    expect(managers.messages.viewers).not.toHaveBeenCalled()
+  })
+})
