@@ -14,9 +14,24 @@
 // Приём — тот же, что в workerCore.pendingFrames.test.ts: частичный vi.mock,
 // чтобы перехватить onFrame и позвать его напрямую, плюс перехват самой
 // воронки.
+//
+// СЕТЬ. Кадр с `pts`, не ушедший в пер-канальную воронку, попадает в
+// пер-юзерную, а та при негидрированном курсоре сразу просит догон
+// (globalFunnel.ts: `if (!isCursorReady()) { catchUp() }`) → GET /sync. Это
+// единственная сеть, до которой доходит файл, и промис догона прод-код пускает
+// через `void sync.catchUp()` (workerCore.ts) — то есть незастабленный fetch
+// тест не ронял, а давал два Unhandled Rejection на прогон (ECONNREFUSED
+// localhost:3000), а такой отказ vitest приписывает случайному файлу и
+// предупреждает про ложноположительные прогоны.
+//
+// Стаб — тот же приём, что у соседей (workerCore.dialogFrames.test.ts,
+// workerCore.meHydration.test.ts): белый список URL, всё прочее — громкий
+// throw, чтобы новая сеть не пряталась за заглушкой. /sync отвечает ПУСТОЙ
+// страницей журнала: догон завершается штатно и ничего не применяет — предмет
+// файла (развилка воронок) от этого не зависит.
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
-import { describe, expect, it, beforeEach, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CMDeps } from './realtime/connectionManager'
 
 let capturedConnDeps: CMDeps | null = null
@@ -64,11 +79,31 @@ function boot() {
   expect(capturedConnDeps).not.toBeNull()
 }
 
+/** URL'ы догона курсора, до которых дошёл этот прогон: поход в /sync —
+ *  наблюдаемый след пер-юзерной воронки, им кейсы «мимо канальной воронки» и
+ *  доказывают, что кадр ушёл в СОСЕДНЮЮ воронку, а не потерялся молча. */
+const syncCalls: string[] = []
+
 beforeEach(() => {
   vi.stubGlobal('indexedDB', new IDBFactory())
+  syncCalls.length = 0
+  vi.stubGlobal('fetch', vi.fn(async (url: unknown) => {
+    const u = String(url)
+    if (u.includes('/sync?')) {
+      syncCalls.push(u)
+      // Пустая страница журнала: `slice: false` завершает цикл догона первым же
+      // ответом, применять нечего.
+      return new Response(JSON.stringify({
+        new_messages: [], other_updates: [], state: { pts: 0, date: 0 }, slice: false,
+      }), { status: 200 })
+    }
+    throw new Error('unexpected fetch ' + u)
+  }))
   capturedConnDeps = null
   applyLive.mockClear()
 })
+
+afterEach(() => { vi.unstubAllGlobals() })
 
 describe('createWorkerCore(): канальные кадры уходят в пер-канальную воронку', () => {
   // Тело — ровно то, что публикует сервер: КОНСТРУКТОР
@@ -127,7 +162,7 @@ describe('createWorkerCore(): канальные кадры уходят в пе
   // Тот же снимок, но ГРУППЫ, — другой конструктор и другой курсор: в
   // пер-канальную воронку он попадать не должен. Это вторая половина пары:
   // одним конструктором на оба журнала различить их было нечем.
-  it('снимок карточки ГРУППЫ мимо пер-канальной воронки', () => {
+  it('снимок карточки ГРУППЫ мимо пер-канальной воронки', async () => {
     boot()
 
     capturedConnDeps!.onFrame('chat_update', {
@@ -139,13 +174,17 @@ describe('createWorkerCore(): канальные кадры уходят в пе
     })
 
     expect(applyLive).not.toHaveBeenCalled()
+    // …и не «нигде»: курсор пер-юзерной воронки не гидрирован, поэтому она на
+    // этом кадре просит догон. Без этой половины кейс был бы зелёным и от кадра,
+    // потерянного вовсе.
+    await vi.waitFor(() => expect(syncCalls).toHaveLength(1))
   })
 
   // Обычное сообщение (не канал) в пер-канальную воронку попадать не должно —
   // и это САМЫЙ хрупкий случай новой развилки: `pts` теперь есть у обоих
   // кадров, и различает их только дискриминатор. Прочитай развилка курсор без
   // оглядки на него — каждое личное сообщение поехало бы в чужую воронку.
-  it('сообщение личного чата мимо пер-канальной воронки', () => {
+  it('сообщение личного чата мимо пер-канальной воронки', async () => {
     boot()
 
     capturedConnDeps!.onFrame('new_message', {
@@ -159,5 +198,6 @@ describe('createWorkerCore(): канальные кадры уходят в пе
     })
 
     expect(applyLive).not.toHaveBeenCalled()
+    await vi.waitFor(() => expect(syncCalls).toHaveLength(1))
   })
 })
