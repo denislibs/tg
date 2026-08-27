@@ -24,7 +24,7 @@ import { useManagers } from '../core/hooks/useManagers'
 import { useNavigationActions } from '../core/hooks/useNavigationActions'
 import { useChatStackStore } from '../stores/chatStackStore'
 import { useMirrorWindow } from '../core/hooks/useMirrorWindow'
-import { winKey } from '../core/history/messagesMirror'
+import { replaceMirrorWindow, winKey } from '../core/history/messagesMirror'
 import { useEvent } from '../core/hooks/useEvent'
 import { useFeedPageHotkeys } from '../core/hooks/useFeedPageHotkeys'
 import { useMiddlewareHelper } from '../core/hooks/useMiddlewareHelper'
@@ -507,10 +507,22 @@ export default function Chat({ chat, onBack, thread }: Props) {
     onBack?.()
   }
   // «Очистить историю» у себя: сервер поднимает персональный горизонт, затем
-  // перезагружаем окно (станет пустым) и список диалогов (превью очистится).
+  // выкидываем окно из зеркала, перезагружаем ленту и список диалогов
+  // (превью очистится).
+  //
+  // `replaceMirrorWindow(..., [])` здесь обязателен и стоит ДО перезагрузки
+  // ленты — это порт `flushStoragesByPeerId` (tweb appMessagesManager.ts:4709,
+  // :4732-4742): владелец, очистивший историю, объявляет зеркалу `delete`, и
+  // вкладка вычищает слайсы (tweb apiManagerProxy.ts:282 → :542-563), а не
+  // ждёт, пока новая страница «вытеснит» старую. Вытеснить она и не может:
+  // `putMirrorPage` умеет только СЛИТЬ, поэтому после очистки пустой ответ
+  // сервера оставил бы в зеркале всю прошлую историю — Ctrl+↑ предложил бы
+  // ответить на сообщение, которого на экране нет, а `mirrorMsgs.length === 0`
+  // (приветствие бота, клавиатура ответа ниже) так и не стало бы истиной.
   const doClearHistory = () => {
     if (!isRealChat) return
     void managers.chats.clearHistory(numericChatId)
+      .then(() => { replaceMirrorWindow(winKey(numericChatId, threadRootId), []) })
       .then(() => feedApi.current?.reload())
       .then(() => managers.dialogs.refresh())
       .catch(() => {})

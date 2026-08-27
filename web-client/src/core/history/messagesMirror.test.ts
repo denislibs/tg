@@ -7,12 +7,14 @@ import rootScope, { type BroadcastEvents } from '@lib/rootScope'
 import type { MessageReal, MyMessage } from '../models'
 import { makeMessage } from '../messages/testMessage'
 import type { MessageOp } from '../realtime/messageOps'
-import { applyOpsToMirror, mirrorVersion, mirrorWindow, putMirrorPage, resetMessagesMirror, subscribeMirror, winKey } from './messagesMirror'
+import { applyOpsToMirror, mirrorVersion, mirrorWindow, putMirrorPage, replaceMirrorWindow, resetMessagesMirror, subscribeMirror, winKey } from './messagesMirror'
 
 const CHAT = 50
 const THREAD = 60
 const ME = 1
 const OTHER = 2
+// Второй чат — только для проверки, что замена не задевает чужие окна.
+const OTHER_CHAT = 51
 
 function msg(over: Partial<MessageReal> & { id: number }, threadRootId?: number): MessageReal {
   return { ...makeMessage({ id: over.id, peerId: CHAT, fromId: OTHER, text: `m${over.id}`, date: 1_750_000_000, threadRootId }), ...over }
@@ -308,6 +310,89 @@ describe('putMirrorPage — страница истории', () => {
     putMirrorPage(winKey(CHAT, THREAD), [msg({ id: 2 }, THREAD)])
     expect(ids(winKey(CHAT))).toEqual([1])
     expect(ids(winKey(CHAT, THREAD))).toEqual([2])
+  })
+})
+
+// Замена окна — второй вход «не от операции», парный `putMirrorPage`. В tweb
+// это разные действия и различает их ВЫЗЫВАЮЩИЙ: приклеить страницу к слайсу —
+// `SlicedArray.insertSlice` (slicedArray.ts:190-240), начать окно заново —
+// путь `delete` зеркала историй (`flushStoragesByPeerId`,
+// appMessagesManager.ts:4732-4742 → `clearHistoryStorage`,
+// apiManagerProxy.ts:282 и :542-563, где слайсы сносятся `splice(0, Infinity)`).
+describe('replaceMirrorWindow — замена окна целиком', () => {
+  it('выкидывает прежнее содержимое окна, а не сливается с ним', () => {
+    seed(winKey(CHAT), [msg({ id: 1 }), msg({ id: 2 })])
+    captured.length = 0
+    replaceMirrorWindow(winKey(CHAT), [msg({ id: 90 }), msg({ id: 91 })])
+    expect(ids(winKey(CHAT))).toEqual([90, 91])
+  })
+
+  // Тот же вход, но через `putMirrorPage`, оставляет старое в окне — ради
+  // контраста, потому что различие «слить/заменить» и есть предмет примитива.
+  it('контраст: putMirrorPage на тех же данных старое СОХРАНЯЕТ', () => {
+    seed(winKey(CHAT), [msg({ id: 1 }), msg({ id: 2 })])
+    putMirrorPage(winKey(CHAT), [msg({ id: 90 }), msg({ id: 91 })])
+    expect(ids(winKey(CHAT))).toEqual([1, 2, 90, 91])
+  })
+
+  it('пустой заменой окно становится ИЗВЕСТНО пустым, а не неизвестным', () => {
+    // «Очистить историю»: `mirrorWindow` обязан вернуть [], а не undefined —
+    // на этом различии стоят приветствие бота и клавиатура ответа в Chat.tsx.
+    // Оригинал кладёт на место вычищенных слайсов пустой
+    // (apiManagerProxy.ts:549-551), а не оставляет SlicedArray без слайсов.
+    seed(winKey(CHAT), [msg({ id: 1 })])
+    replaceMirrorWindow(winKey(CHAT), [])
+    expect(mirrorWindow(winKey(CHAT))).toEqual([])
+    expect(mirrorWindow(winKey(CHAT))).not.toBeUndefined()
+  })
+
+  it('выкидывает и бабл «отправляется…» — в этом отличие от слияния', () => {
+    // `putMirrorPage` его бережёт намеренно (ключ дедупа c:${random_id}).
+    // Замена — нет: в оригинале неотправленное лежит в НИЖНЕМ слайсе
+    // (appMessagesManager.ts:7611 `historyStorage.history.unshift`), а окно
+    // вокруг далёкого номера — уже другой слайс, где этого бабла нет.
+    seed(winKey(CHAT), [msg({ id: -1, fromId: ME, random_id: 'c-1' })])
+    replaceMirrorWindow(winKey(CHAT), [msg({ id: 700 })])
+    expect(ids(winKey(CHAT))).toEqual([700])
+  })
+
+  it('заводит окно, которого ещё не было', () => {
+    replaceMirrorWindow(winKey(CHAT), [msg({ id: 5 })])
+    expect(ids(winKey(CHAT))).toEqual([5])
+  })
+
+  it('порядок и дедупликация окна те же: по возрастанию номера, побеждает последняя копия', () => {
+    replaceMirrorWindow(winKey(CHAT), [msg({ id: 9, message: 'старое' }), msg({ id: 3 }), msg({ id: 9, message: 'новое' })])
+    expect(ids(winKey(CHAT))).toEqual([3, 9])
+    expect(mirrorWindow(winKey(CHAT))?.map((m) => real(m).message)).toEqual(['m3', 'новое'])
+  })
+
+  it('не трогает окна других ключей — ни другого чата, ни треда того же чата', () => {
+    seed(winKey(CHAT), [msg({ id: 1 })])
+    seed(winKey(CHAT, THREAD), [msg({ id: 2 }, THREAD)])
+    seed(winKey(OTHER_CHAT), [msg({ id: 3 })])
+    replaceMirrorWindow(winKey(CHAT), [msg({ id: 90 })])
+    expect(ids(winKey(CHAT))).toEqual([90])
+    expect(ids(winKey(CHAT, THREAD))).toEqual([2])
+    expect(ids(winKey(OTHER_CHAT))).toEqual([3])
+  })
+
+  it('событий каталога не шлёт: новое окно рисует сам заменивший', () => {
+    seed(winKey(CHAT), [msg({ id: 1 })])
+    captured.length = 0
+    replaceMirrorWindow(winKey(CHAT), [])
+    expect(captured).toEqual([])
+  })
+
+  it('будит подписчиков и поднимает версию — ровно раз на вызов', () => {
+    seed(winKey(CHAT), [msg({ id: 1 })])
+    let calls = 0
+    const off = subscribeMirror(() => { calls++ })
+    const before = mirrorVersion()
+    replaceMirrorWindow(winKey(CHAT), [msg({ id: 90 })])
+    expect(calls).toBe(1)
+    expect(mirrorVersion()).toBe(before + 1)
+    off()
   })
 })
 
