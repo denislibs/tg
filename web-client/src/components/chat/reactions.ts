@@ -542,11 +542,16 @@ export function createReactionsElement(
     chip.stackedAvatars?.destroy()
   })
 
-  // tweb reactions.ts:304-307. Терм `reactions.pFlags.can_see_list` НЕ
-  // портирован: этого флага нет ни в модели (`core/models.ts:756-761`), ни на
-  // проводе — бэкенд его не производит (`backend/internal/domain/reaction.go`).
-  // Остаётся вторая половина того же условия — личка, где список видно всегда.
-  const canRenderAvatars = !!options && isUser(options.peerId) &&
+  // tweb reactions.ts:304-307 — условие ЦЕЛИКОМ. Аватарки вместо числа
+  // показываются там, где видно, КТО поставил реакцию: либо это сказал сервер
+  // (`can_see_list` — «можно получить messages.getMessageReactionsList»; в
+  // группе можно, в вещательном канале реакции анонимны), либо это личка, где
+  // собеседник ровно один и спрашивать некого.
+  //
+  // `!!options` — не терм оригинала, а наша граница: без каталога, зоны
+  // актуальности и менеджеров аватарку рисовать нечем (см. `renderAvatars`).
+  const canRenderAvatars = !!options &&
+    (!!reactions!.pFlags?.can_see_list || isUser(options.peerId)) &&
     totalReactions(reactions) < REACTIONS_DISPLAY_COUNTER_AT
 
   const container = document.createElement('div')

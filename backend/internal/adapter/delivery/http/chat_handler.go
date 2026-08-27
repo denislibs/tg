@@ -1940,8 +1940,12 @@ func (h *ChatHandler) ListReactions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Агрегат реакций сообщения — конструктор `messageReactions`, тот же, что
-	// едет ВНУТРИ самого сообщения: один предмет, одна форма.
-	writeJSON(w, http.StatusOK, domain.NewMessageReactions(domain.ReactionCountsOf(counts), nil))
+	// едет ВНУТРИ самого сообщения: один предмет, одна форма. Значит и флаги у
+	// него те же: «виден ли список реагировавших» отвечает тот же единственный
+	// источник, что и в истории, и в кадре.
+	agg := domain.NewMessageReactions(domain.ReactionCountsOf(counts), nil)
+	agg.SetCanSeeList(h.svc.CanSeeReactionsList(r.Context(), chatID))
+	writeJSON(w, http.StatusOK, agg)
 }
 
 // ReactionUsers — GET /chats/{chatID}/messages/{msgID}/reactions/users: кто
@@ -2162,6 +2166,7 @@ func writeStarReaction(w http.ResponseWriter, r *http.Request, svc *usecasechat.
 		reactors = append(reactors, domain.NewMyMessageReactor(int(agg.Mine)))
 	}
 	reactions := domain.NewMessageReactions(results, nil)
+	reactions.SetCanSeeList(svc.CanSeeReactionsList(r.Context(), chatID))
 	reactions.TopReactors = reactors
 
 	me, _ := UserFromContext(r.Context())

@@ -721,12 +721,29 @@ backwards (a stale lower `up_to_seq` is a no-op).
 - 200: `{ "_": "boolTrue" }` · 400 invalid · 404 not found
 
 ### GET /chats/{chatID}/messages/{msgID}/reactions  · auth
-- 200: `{ "reactions": [ { "emoji": "🔥", "count": 2, "mine": true }, { "emoji": "❤️", "count": 1 } ] }` (most popular first; `mine` — зритель тоже поставил эту реакцию, omitted when false)
+- 200: конструктор `messageReactions` — тот же, что едет ВНУТРИ сообщения:
+```json
+{ "_": "messageReactions",
+  "pFlags": { "can_see_list": true },
+  "results": [ { "_": "reactionCount", "reaction": { "_": "reactionEmoji", "emoticon": "🔥" },
+                 "count": 2, "chosen_order": 0 } ],
+  "recent_reactions": [ { "_": "messagePeerReaction", "peer_id": { "_": "peerUser", "user_id": 5 },
+                          "date": 0, "reaction": { "_": "reactionEmoji", "emoticon": "🔥" } } ] }
+```
+- `pFlags.can_see_list` — зритель может получить СПИСОК реагировавших
+  (`/reactions/users`). Ставится по ВИДУ ЧАТА: в группе — да, в вещательном канале
+  реакции анонимны, в личке флага не бывает — там на вопрос отвечает клиент по ключу
+  пира (tweb `components/chat/reactions.ts:306`). Правило —
+  `domain.CanSeeReactionsList`, и второго ответа у него нет.
+- `chosen_order` — порядковый номер среди реакций зрителя, а не булево «моя»:
+  «не поставил» выражается отсутствием параметра.
 - 404: `{ "_": "error", "code": 404, "text": "message not found" }`
 
-Message DTO истории (`GET /chats/{chatID}/messages`, `/messages/around`) несёт те же
-агрегаты полем `reactions` (omitted, когда реакций нет) — клиент рендерит чипы без
-отдельного GET. Live-обновления приходят дельтами кадром `reaction` (см. WS).
+Message DTO истории (`GET /chats/{chatID}/messages`, `/messages/around`) несёт тот же
+агрегат полем `reactions` (omitted, когда реакций нет) — клиент рендерит чипы без
+отдельного GET. Live-обновления приходят кадром `reaction` с АБСОЛЮТНЫМ агрегатом
+(конструктор `updateMessageReactions`, `pFlags.min` — пер-зрительской части в общем
+теле кадра нет; см. WS).
 
 ---
 

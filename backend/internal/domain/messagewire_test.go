@@ -516,6 +516,30 @@ func TestMessageWire_PaidReactionJoinsResults(t *testing.T) {
 	}
 }
 
+// «Виден ли список реагировавших» приходит из КОНТЕКСТА, а не из строки
+// сообщения: признак у чата, как и pFlags.post. Без этого параметра на проводе
+// клиент в группе не показывает аватарки реагировавших НИКОГДА — первый терм
+// условия оригинала (tweb src/components/chat/reactions.ts:304-307).
+func TestMessageWire_CanSeeReactionsListComesFromContext(t *testing.T) {
+	m := wireMessage()
+
+	off := wireObject(t, m.ToWire(MessageContext{Peer: NewPeerUser(42)}))
+	reactions, _ := off["reactions"].(map[string]any)
+	if reactions == nil {
+		t.Fatal("у строки витрины нет агрегата реакций — проверять нечего")
+	}
+	if pf, _ := reactions["pFlags"].(map[string]any); pf["can_see_list"] == true {
+		t.Fatalf("право на список утверждено без контекста: %#v", reactions["pFlags"])
+	}
+
+	on := wireObject(t, m.ToWire(MessageContext{Peer: NewPeerUser(42), CanSeeReactionsList: true}))
+	reactions, _ = on["reactions"].(map[string]any)
+	pf, _ := reactions["pFlags"].(map[string]any)
+	if pf["can_see_list"] != true {
+		t.Fatalf("can_see_list не доехал на провод: %#v", reactions["pFlags"])
+	}
+}
+
 // Время обновления живой трансляции — это message.edit_date, и второго смысла
 // у него не бывает. Внутри вложения его нет.
 func TestMessageWire_GeoHasNoOwnEditedAt(t *testing.T) {

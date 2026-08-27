@@ -76,7 +76,7 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 		// половинами сразу. Счётчик непрочитанных реакций в кадр не идёт вовсе:
 		// он пер-зрительский, а тело кадра одно на всех; клиент выводит бейдж
 		// сам из того, что реакция появилась на ЕГО сообщении (порт tweb).
-		agg, e := i.messageReactionsAggregate(ctx, messageID)
+		agg, e := i.messageReactionsAggregate(ctx, chatID, messageID)
 		if e != nil {
 			return e
 		}
@@ -132,11 +132,17 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 // Зрителя здесь нет намеренно: тело кадра одно на всех получателей, значит
 // пер-зрительского (мой chosen_order, мой вклад звёздами) в нём нет — витрина
 // кадра помечает агрегат `min` ровно поэтому.
-func (i *Interactor) messageReactionsAggregate(ctx context.Context, messageID int64) (domain.MessageReactions, error) {
+//
+// А вот ЧАТ здесь есть, и он не пер-зрительский: «виден ли список
+// реагировавших» (can_see_list) — свойство чата, одинаковое для всех
+// получателей кадра, и без него клиент в группе никогда не покажет аватарки
+// реагировавших (tweb src/components/chat/reactions.ts:304-307).
+func (i *Interactor) messageReactionsAggregate(ctx context.Context, chatID, messageID int64) (domain.MessageReactions, error) {
 	byMsg, err := i.reactions.ReactionsFor(ctx, []int64{messageID}, 0)
 	if err != nil {
 		return domain.MessageReactions{}, err
 	}
+	canSeeList := i.CanSeeReactionsList(ctx, chatID)
 	m := domain.Message{Reactions: byMsg[messageID]}
 	if i.starReaction != nil {
 		stars, e := i.starReaction.AggregatesFor(ctx, []int64{messageID}, 0)
@@ -145,13 +151,32 @@ func (i *Interactor) messageReactionsAggregate(ctx context.Context, messageID in
 		}
 		m.StarReactionTotal = stars[messageID].Total
 	}
-	if r := m.WireReactions(); r != nil {
+	if r := m.WireReactions(canSeeList); r != nil {
 		return *r, nil
 	}
 	// Реакций не осталось. Внутри СООБЩЕНИЯ это выражается отсутствием
 	// параметра, но кадр несёт агрегат ОБЯЗАТЕЛЬНЫМ параметром: «реакций нет» —
 	// такое же состояние, как «есть три», и едет пустым вектором.
-	return domain.NewMessageReactions(nil, nil), nil
+	empty := domain.NewMessageReactions(nil, nil)
+	empty.SetCanSeeList(canSeeList)
+	return empty, nil
+}
+
+// CanSeeReactionsList — видит ли зритель СПИСОК реагировавших в этом чате.
+// Тонкая обёртка над единственным правилом (domain.CanSeeReactionsList) поверх
+// вида чата: своего ответа на этот вопрос у usecase нет.
+//
+// Вид чата неизвестен — «нельзя»: флаг УТВЕРЖДАЕТ право, и утверждать его,
+// не зная чата, нельзя.
+func (i *Interactor) CanSeeReactionsList(ctx context.Context, chatID int64) bool {
+	if i.chats == nil {
+		return false
+	}
+	typ, err := i.chats.ChatType(ctx, chatID)
+	if err != nil {
+		return false
+	}
+	return domain.CanSeeReactionsList(typ)
 }
 
 // ReactionsOf returns aggregated reaction counts for a message the user can see.

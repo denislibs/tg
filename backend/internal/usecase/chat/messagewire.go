@@ -99,6 +99,10 @@ func (i *Interactor) messagesWire(
 			// отправил его всё равно человек.
 			Out:     m.SenderID == viewerID,
 			Replies: repliesOf(threads, m.ID),
+			// «Виден ли список реагировавших» — тот же вид чата, что решает
+			// Post и наличие треда, и тот же единственный ответ
+			// (domain.CanSeeReactionsList). Второго запроса за ним нет.
+			CanSeeReactionsList: domain.CanSeeReactionsList(kinds[m.ChatID]),
 		}))
 	}
 	return out, nil

@@ -254,3 +254,42 @@ func TestChatTails_StarReactionIsAReactionsFrame(t *testing.T) {
 		t.Fatalf("баланс остался вторым источником: %s", rec.Body.String())
 	}
 }
+
+// Агрегат ⭐-реакции — ТОТ ЖЕ конструктор messageReactions, значит и флаги у
+// него те же: в группе он утверждает право на список реагировавших. Иначе
+// платный чип, прилетевший этой витриной, стирал бы у клиента аватарки, только
+// что показанные обычным чипом того же сообщения.
+func TestChatTails_StarReactionCarriesCanSeeList(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990120003")
+
+	gid := itoa(createdPeerID(t, authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{"title": "Team"})))
+	rec := authedReq(t, h, http.MethodPost, "/chats/"+gid+"/messages", tokenA, map[string]any{"text": "пост"})
+	var sent struct {
+		ID int64 `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &sent)
+
+	if rec := authedReq(t, h, http.MethodPost, "/stars/topup", tokenA, map[string]any{"amount": 100}); rec.Code != http.StatusOK {
+		t.Fatalf("пополнение: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+gid+"/messages/"+itoa(sent.ID)+"/star_reaction", tokenA,
+		map[string]any{"count": 5, "anonymous": false})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("⭐-реакция: %d %s", rec.Code, rec.Body.String())
+	}
+
+	var out struct {
+		Updates []struct {
+			Reactions struct {
+				PFlags map[string]bool `json:"pFlags"`
+			} `json:"reactions"`
+		} `json:"updates"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("витрина не разбирается: %v (%s)", err, rec.Body.String())
+	}
+	if len(out.Updates) != 1 || !out.Updates[0].Reactions.PFlags["can_see_list"] {
+		t.Fatalf("витрина ⭐-реакции в группе без can_see_list: %s", rec.Body.String())
+	}
+}

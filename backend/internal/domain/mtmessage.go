@@ -968,8 +968,11 @@ const (
 // «кто именно поставил» вынесено отдельным вектором messagePeerReaction, и
 // потому не дублируется в каждом чипе.
 //
-// Не производятся: can_see_list (список реагировавших у нас виден всегда) и
-// reactions_as_tags (теги сохранённых сообщений).
+// Не производится reactions_as_tags (теги сохранённых сообщений).
+//
+// `can_see_list` производится — см. CanSeeReactionsList (domain/reaction.go):
+// это ответ на вопрос «можно ли получить СПИСОК реагировавших», и он зависит от
+// вида чата, а не от сообщения.
 //
 // `min` производится — и это не формальность, а тот же случай, что у
 // pollResults.min: тело кадра реакций одно на ВСЕХ получателей, значит
@@ -997,6 +1000,15 @@ type MessageReactions struct {
 // его отсутствием chosen_order. Единственный производитель такого объекта —
 // кадр реакций, тело которого одно на всех получателей.
 func (r *MessageReactions) MarkMin() { setPFlag(&r.PFlags, "min", true) }
+
+// SetCanSeeList выставляет messageReactions.pFlags.can_see_list — «зритель
+// может получить СПИСОК реагировавших» (messages.getMessageReactionsList,
+// core.telegram.org/constructor/messageReactions). Ответ на этот вопрос даёт
+// CanSeeReactionsList по виду чата; здесь только запись в агрегат.
+//
+// Сеттер, а не Mark*: «нельзя» — такое же значение, как «можно», и приходит из
+// того же правила; setPFlag со значением false снимает флаг.
+func (r *MessageReactions) SetCanSeeList(on bool) { setPFlag(&r.PFlags, "can_see_list", on) }
 
 // NewMessageReactions — агрегаты реакций сообщения.
 func NewMessageReactions(results []MTReactionCount, recent []MessagePeerReaction) MessageReactions {

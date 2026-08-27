@@ -1,5 +1,24 @@
 package domain
 
+// CanSeeReactionsList — виден ли зрителю СПИСОК реагировавших в чате этого вида.
+// Единственный ответ на этот вопрос; на проводе он называется
+// messageReactions.pFlags.can_see_list, и схема определяет его дословно как
+// «whether messages.getMessageReactionsList can be used to see how each specific
+// peer reacted to the message» (core.telegram.org/constructor/messageReactions).
+//
+// Правило — вид чата, а не сообщение и не роль: список реагировавших существует
+// В ГРУППАХ («In groups, messages.getMessageReactionsList can be used to fetch
+// the reaction list, along with the sender of each reaction» —
+// core.telegram.org/api/reactions). В вещательном канале его нет: реакции там
+// анонимны, и оригинал флага не ставит.
+//
+// ЛИЧКА сюда не входит НАМЕРЕННО, и это не пропуск: на неё отвечает клиент — по
+// ключу пира, вторым термом того же условия (tweb
+// src/components/chat/reactions.ts:306 `!!reactions.pFlags.can_see_list ||
+// this.context.peerId.isUser()`, там же reactionContextMenu.ts:95). Продублируй
+// мы её здесь — у вопроса стало бы два ответа, расходящихся при первой правке.
+func CanSeeReactionsList(chatType string) bool { return chatType == ChatTypeGroup }
+
 type ReactionCount struct {
 	Emoji string `json:"emoji"`
 	Count int    `json:"count"`

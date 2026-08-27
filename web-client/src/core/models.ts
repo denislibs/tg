@@ -750,11 +750,21 @@ export interface MessageReactor {
   count: number
 }
 
-/** messageReactions#0a339f0b flags:# … results:Vector<ReactionCount>
+/** messageReactions#0a339f0b flags:# min:flags.0?true can_see_list:flags.2?true
+ *  results:Vector<ReactionCount>
  *  recent_reactions:flags.1?Vector<MessagePeerReaction>
  *  top_reactors:flags.4?Vector<MessageReactor> = MessageReactions; */
 export interface MessageReactions {
   _: 'messageReactions'
+  /** `can_see_list` — зрителю доступен СПИСОК реагировавших
+   *  (`messages.getMessageReactionsList`). Ставит СЕРВЕР по виду чата: в группе
+   *  список есть, в вещательном канале реакции анонимны; в личке флага не
+   *  бывает вовсе — там на вопрос отвечает клиент по ключу пира, второй терм
+   *  того же условия (tweb `components/chat/reactions.ts:306`).
+   *
+   *  `min` — агрегат УРЕЗАН: пер-зрительской части (моего `chosen_order`) в нём
+   *  нет, потому что тело кадра одно на всех получателей. */
+  pFlags?: Partial<{ min: true; can_see_list: true; reactions_as_tags: true }>
   results: ReactionCount[]
   recent_reactions?: MessagePeerReaction[]
   top_reactors?: MessageReactor[]

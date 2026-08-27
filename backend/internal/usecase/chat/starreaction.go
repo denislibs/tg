@@ -87,7 +87,7 @@ func (i *Interactor) SendStarReaction(ctx context.Context, chatID, messageID, us
 		// кадра у платной реакции нет ни в схеме, ни здесь — она второй
 		// конструктор объединения Reaction в том же векторе results, и кадр,
 		// принёсший только её, стёр бы у получателя обычные чипы.
-		aggregate, e = i.messageReactionsAggregate(ctx, messageID)
+		aggregate, e = i.messageReactionsAggregate(ctx, chatID, messageID)
 		if e != nil {
 			return e
 		}

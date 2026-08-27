@@ -43,8 +43,8 @@ function fakePlayer() {
   }
 }
 
-/** Личка: только в ней у нас вычислим терм «список видно» (см. докблок
- *  `canRenderAvatars` в самом порте). */
+/** Два пира условия `canRenderAvatars` (tweb reactions.ts:304-307): в личке
+ *  «список видно» выводит сам клиент, в группе — только по флагу сервера. */
 const USER: PeerId = 42
 const CHAT: PeerId = -700
 
@@ -83,6 +83,10 @@ const agg = (...counts: { emoticon: string; count: number; mine?: boolean; recen
     reaction: { _: 'reactionEmoji' as const, emoticon: c.emoticon },
   }))),
 })
+
+/** Тот же агрегат, но сервер сказал «список реагировавших доступен»
+ *  (`messageReactions.pFlags.can_see_list`) — так он приезжает из ГРУППЫ. */
+const canSeeList = (a: MessageReactions): MessageReactions => ({ ...a, pFlags: { can_see_list: true } })
 
 /** Бабл, УЖЕ показанный в ленте: только у такого изменение реакций играет
  *  эффект (tweb `ReactionsElement.isConnected`, reactions.ts:421). */
@@ -244,13 +248,34 @@ describe('аватарки вместо числа (tweb renderAvatars/renderCou
     expect(el.querySelector('.stacked-avatars')).toBeNull()
   })
 
-  it('не личка — аватарок нет, показывается число', () => {
-    // `can_see_list` на проводе нет вовсе (см. докблок в порте), поэтому вне
-    // лички остаётся ветка оригинала `canRenderAvatars === false`.
+  it('в группе БЕЗ can_see_list — аватарок нет, показывается число', () => {
+    // Так приезжает вещательный канал: реакции там анонимны, сервер флага не
+    // ставит, и остаётся ветка оригинала `canRenderAvatars === false`.
     const el = createReactionsElement(agg({ emoticon: '👍', count: 2, recent: [7] }), options({ peerId: CHAT }))!
 
     expect(el.querySelector('.stacked-avatars')).toBeNull()
     expect(el.querySelector('.reaction-counter')!.textContent).toBe('2')
+  })
+
+  it('в группе С can_see_list — стек аватарок, числа нет (tweb reactions.ts:306)', () => {
+    const el = createReactionsElement(
+      canSeeList(agg({ emoticon: '👍', count: 2, recent: [7, 8] })),
+      options({ peerId: CHAT }),
+    )!
+
+    expect(el.querySelector('.reaction-counter')).toBeNull()
+    const stack = el.querySelector('.stacked-avatars')!
+    expect(stack.querySelectorAll('.stacked-avatars-avatar-container')).toHaveLength(2)
+  })
+
+  it('can_see_list порога не отменяет: с порога в группе снова число', () => {
+    const el = createReactionsElement(
+      canSeeList(agg({ emoticon: '👍', count: 4, recent: [7] })),
+      options({ peerId: CHAT }),
+    )!
+
+    expect(el.querySelector('.reaction-counter')!.textContent).toBe('4')
+    expect(el.querySelector('.stacked-avatars')).toBeNull()
   })
 
   it('без опций (нечем строить аватарки) — тоже число', () => {

@@ -75,6 +75,11 @@ type MessageContext struct {
 	// nil — «треда нет»: у конструктора message параметр replies
 	// необязательный (flags.23), и «нет» выражается его отсутствием.
 	Replies *MessageReplies
+	// CanSeeReactionsList — зритель может получить СПИСОК реагировавших
+	// (messageReactions.pFlags.can_see_list). Строка messages этого не знает по
+	// той же причине, что и Post: признак у ЧАТА, а не у сообщения. Ответ даёт
+	// CanSeeReactionsList(chatType) — см. domain/reaction.go.
+	CanSeeReactionsList bool
 }
 
 // ToWire собирает конструктор схемы: messageService, когда у сообщения есть
@@ -160,7 +165,7 @@ func (m Message) toReal(ctx MessageContext) MessageReal {
 	if m.GroupedID != nil {
 		r.GroupedID = *m.GroupedID
 	}
-	r.Reactions = m.reactions()
+	r.Reactions = m.reactions(ctx.CanSeeReactionsList)
 	// Срок самоуничтожения ехал ТОЛЬКО внутри ветки шифрованного сообщения —
 	// на обычном он терялся на проводе, хотя колонка одна и та же.
 	if m.TTLSeconds != nil {
@@ -246,9 +251,15 @@ func (m Message) replyHeader() *MessageReplyHeader {
 // {star_reaction:{total,mine}} рядом с обычными чипами в схеме нет.
 // WireReactions — тот же агрегат, что едет внутри сообщения. Экспортирован для
 // кадра реакций: второй сборки у этого объекта быть не должно.
-func (m Message) WireReactions() *MessageReactions { return m.reactions() }
+//
+// canSeeList — параметр, а не умолчание: «виден ли список реагировавших» знает
+// только вызывающий (у него на руках вид чата), и пропустить вопрос молча
+// нельзя — именно так флаг однажды и не доехал до клиента.
+func (m Message) WireReactions(canSeeList bool) *MessageReactions {
+	return m.reactions(canSeeList)
+}
 
-func (m Message) reactions() *MessageReactions {
+func (m Message) reactions(canSeeList bool) *MessageReactions {
 	if len(m.Reactions) == 0 && m.StarReactionTotal == 0 {
 		return nil
 	}
@@ -264,6 +275,7 @@ func (m Message) reactions() *MessageReactions {
 		}
 	}
 	out := NewMessageReactions(results, recent)
+	out.SetCanSeeList(canSeeList)
 	if m.StarReactionTotal > 0 {
 		out.Results = append(out.Results,
 			NewReactionCount(NewReactionPaid(), int(m.StarReactionTotal), m.StarReactionMine > 0))

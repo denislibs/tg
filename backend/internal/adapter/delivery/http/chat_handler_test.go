@@ -397,7 +397,8 @@ func TestReactions_HTTP(t *testing.T) {
 	// Агрегат — конструктор messageReactions, тот же, что едет ВНУТРИ самого
 	// сообщения: чип это `reactionCount` с объединением `Reaction` внутри.
 	var listed struct {
-		Underscore string `json:"_"`
+		Underscore string          `json:"_"`
+		PFlags     map[string]bool `json:"pFlags"`
 		Results    []struct {
 			Reaction struct {
 				Emoticon string `json:"emoticon"`
@@ -410,6 +411,11 @@ func TestReactions_HTTP(t *testing.T) {
 		listed.Results[0].Reaction.Emoticon != "🔥" || listed.Results[0].Count != 1 {
 		t.Fatalf("reactions = %s", rec.Body.String())
 	}
+	// Личка: право на список реагировавших сервер не утверждает — на этот
+	// вопрос отвечает клиент по ключу пира (tweb components/chat/reactions.ts:306).
+	if listed.PFlags["can_see_list"] {
+		t.Fatalf("в личке утверждено can_see_list: %s", rec.Body.String())
+	}
 
 	// Remove it (emoji is URL-escaped by the client).
 	rec = authedReq(t, h, http.MethodDelete, "/chats/"+cid+"/messages/"+mid+"/reactions/"+url.PathEscape("🔥"), tokenA, nil)
@@ -421,6 +427,40 @@ func TestReactions_HTTP(t *testing.T) {
 	_ = json.Unmarshal(rec.Body.Bytes(), &listed)
 	if len(listed.Results) != 0 {
 		t.Fatalf("expected no reactions after remove, got %s", rec.Body.String())
+	}
+}
+
+// Та же ручка в ГРУППЕ утверждает право на список реагировавших: это и есть
+// messageReactions.pFlags.can_see_list — «можно вызвать
+// messages.getMessageReactionsList». Без флага клиент показывает в группе
+// ЧИСЛО вместо аватарок реагировавших, сколько бы реакций ни было (задача #89,
+// первый терм условия tweb components/chat/reactions.ts:304-307).
+func TestReactions_HTTP_CanSeeListInGroup(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990000024")
+
+	rec := authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{"title": "Team"})
+	gid := itoa(createdPeerID(t, rec))
+
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+gid+"/messages", tokenA, map[string]any{"text": "hi"})
+	var msg struct {
+		ID int64 `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &msg)
+	mid := itoa(msg.ID)
+
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+gid+"/messages/"+mid+"/reactions", tokenA, map[string]string{"emoji": "🔥"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("add reaction: %d %s", rec.Code, rec.Body.String())
+	}
+
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+gid+"/messages/"+mid+"/reactions", tokenA, nil)
+	var listed struct {
+		PFlags map[string]bool `json:"pFlags"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &listed)
+	if !listed.PFlags["can_see_list"] {
+		t.Fatalf("в группе не утверждено can_see_list: %s", rec.Body.String())
 	}
 }
 
