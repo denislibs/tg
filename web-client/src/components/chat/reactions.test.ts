@@ -6,6 +6,7 @@
 // (`fireAroundAnimation`) — кто его запускает и что он рисует.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MessageReactions } from '@core/models'
+import type { AvailableReaction } from '@core/managers/reactionsManager'
 import LottiePlayer from '@lib/lottie/lottiePlayer'
 import { getMiddleware } from '@helpers/middleware'
 import { resetPeerMirror } from '@core/peerCache'
@@ -50,11 +51,22 @@ const CHAT: PeerId = -700
 const AROUND_ID = 111
 const CENTER_ID = 222
 
-const catalog = {
-  list: vi.fn(async () => [
-    { emoji: '👍', title: '', position: 0, premium: false, inactive: false, aroundMediaId: AROUND_ID, centerMediaId: CENTER_ID },
-  ]),
+const STATIC_ID = 333
+
+type CatalogEntry = Partial<AvailableReaction> & { emoji: string }
+
+/** Каталог мемоизируется по объекту-менеджеру (порт кэша оригинала,
+ *  appReactionsManager.ts:169), поэтому двойник у каждого теста СВОЙ — иначе
+ *  счёт вызовов `list` тёк бы между тестами. */
+function makeCatalog(...entries: CatalogEntry[]) {
+  return {
+    list: vi.fn(async () => entries.map((e) => ({
+      title: '', position: 0, premium: false, inactive: false, ...e,
+    } as AvailableReaction))),
+  }
 }
+
+let catalog: ReturnType<typeof makeCatalog>
 
 const agg = (...counts: { emoticon: string; count: number; mine?: boolean; recent?: PeerId[] }[]): MessageReactions => ({
   _: 'messageReactions',
@@ -95,6 +107,10 @@ beforeEach(() => {
   document.body.replaceChildren()
   vi.clearAllMocks()
   useSettingsStore.setState({ reduceMotion: false })
+  catalog = makeCatalog({ emoji: '👍', aroundMediaId: AROUND_ID, centerMediaId: CENTER_ID })
+  wrapStickerMock.mockReturnValue({
+    render: Promise.resolve(fakePlayer().player), width: 22, height: 22, destroy: vi.fn(),
+  })
   wrapStickerAnimationMock.mockImplementation(() => ({
     animationDiv: document.createElement('div'),
     stickerPromise: Promise.resolve(fakePlayer().player),
@@ -137,6 +153,65 @@ describe('createReactionsElement', () => {
 
     const stickers = [...el.querySelectorAll('.reaction-sticker')].map((s) => s.textContent)
     expect(stickers).toEqual(['👍', '🔥'])
+  })
+})
+
+describe('иконка чипа из каталога (tweb ReactionElement.render/renderDoc)', () => {
+  const flushIcon = async () => {
+    for (let i = 0; i < 5; ++i) await new Promise((resolve) => setTimeout(resolve, 0))
+  }
+
+  it('роль каталога — center, размер REACTIONS_SIZE[Block], класс is-regular', async () => {
+    const el = createReactionsElement(agg({ emoticon: '\u{1F44D}', count: 1 }), options())!
+    await flushIcon()
+
+    // tweb reaction.ts:817 + :888-897.
+    expect(wrapStickerMock).toHaveBeenCalledWith(expect.objectContaining({
+      mediaId: CENTER_ID, width: 22, height: 22, play: false, loop: false, needFadeIn: false,
+    }))
+    // tweb :807-811.
+    const sticker = el.querySelector('.reaction-sticker')!
+    expect(sticker.classList.contains('is-regular')).toBe(true)
+    expect(sticker.classList.contains('is-static')).toBe(false)
+    // Текстовое эмодзи — только подложка на время загрузки, иконка его снимает.
+    expect(sticker.textContent).toBe('')
+  })
+
+  it('нет center — берётся static и класс is-static (tweb :807-808,:817)', async () => {
+    catalog = makeCatalog({ emoji: '\u{1F44D}', staticMediaId: STATIC_ID })
+
+    const el = createReactionsElement(agg({ emoticon: '\u{1F44D}', count: 1 }), options())!
+    await flushIcon()
+
+    expect(wrapStickerMock).toHaveBeenCalledWith(expect.objectContaining({ mediaId: STATIC_ID }))
+    const sticker = el.querySelector('.reaction-sticker')!
+    expect(sticker.classList.contains('is-static')).toBe(true)
+  })
+
+  it('inactive-реакция помечает ЧИП (tweb :813-815)', async () => {
+    catalog = makeCatalog({ emoji: '\u{1F44D}', centerMediaId: CENTER_ID, inactive: true })
+
+    const el = createReactionsElement(agg({ emoticon: '\u{1F44D}', count: 1 }), options())!
+    await flushIcon()
+
+    expect(el.querySelector('.reaction')!.classList.contains('is-inactive')).toBe(true)
+  })
+
+  it('реакции нет в каталоге — остаётся текстовое эмодзи, стикер не грузится', async () => {
+    const el = createReactionsElement(agg({ emoticon: '\u{1F525}', count: 1 }), options())!
+    await flushIcon()
+
+    expect(wrapStickerMock).not.toHaveBeenCalled()
+    expect(el.querySelector('.reaction-sticker')!.textContent).toBe('\u{1F525}')
+  })
+
+  it('каталог читается ОДИН раз на все чипы (порт кэша appReactionsManager.ts:169)', async () => {
+    const opts = options()
+    createReactionsElement(agg({ emoticon: '\u{1F44D}', count: 1 }, { emoticon: '\u{1F525}', count: 1 }), opts)
+    createReactionsElement(agg({ emoticon: '\u{1F44D}', count: 2 }), opts)
+    await flushIcon()
+
+    expect(catalog.list).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -218,7 +293,10 @@ describe('fireAroundAnimation', () => {
       mediaId: AROUND_ID, size: 80, target: stickerContainer, play: false,
     })
     // tweb :1233-1245 — иконка эффекта размером REACTIONS_SIZE[Block] + 18.
-    expect(wrapStickerMock.mock.calls[0][0]).toMatchObject({
+    // `wrapSticker` теперь зовут и чипы (иконка, 22), поэтому вызов эффекта
+    // ищется по своему размеру, а не по порядку.
+    const effectCall = wrapStickerMock.mock.calls.find(([o]) => o.width === 40)![0]
+    expect(effectCall).toMatchObject({
       mediaId: CENTER_ID, width: 40, height: 40, play: false, loop: false,
     })
 
@@ -279,12 +357,61 @@ describe('fireAroundAnimation', () => {
     expect(wrapStickerAnimationMock).not.toHaveBeenCalled()
   })
 
+  /** tweb :1446-1456 — оверлей на последнем кадре снимается СРАЗУ, только если
+   *  иконка самого чипа уже показана; иначе сначала ждём её. */
+  describe('снятие оверлея ждёт иконку чипа (tweb wrapStickerPromise)', () => {
+    /** Развести двойники: 22 — иконка чипа, 40 — иконка эффекта. */
+    const splitByWidth = (chipRender: Promise<LottiePlayer>, effect: LottiePlayer) => {
+      wrapStickerMock.mockImplementation((o) => ({
+        render: o.width === 40 ? Promise.resolve(effect) : chipRender,
+        width: o.width, height: o.height, destroy: vi.fn(),
+      }))
+    }
+
+    const fireLastFrame = async (previousCount: number) => {
+      const icon = fakePlayer()
+      const previous = previousWith({ emoticon: '👍', count: previousCount })
+      const el = createReactionsElement(
+        agg({ emoticon: '👍', count: previousCount + 1, mine: true }),
+        options({ previous }),
+      )!
+      await vi.waitFor(() => expect(wrapStickerAnimationMock).toHaveBeenCalled())
+      await flush()
+      const sticker = el.querySelector<HTMLElement>('.reaction-sticker')!
+      return { icon, sticker }
+    }
+
+    it('иконка чипа уже показана — оверлей снимается на последнем кадре', async () => {
+      const effect = fakePlayer()
+      splitByWidth(Promise.resolve(fakePlayer().player), effect.player)
+
+      const { sticker } = await fireLastFrame(1)
+      effect.fireFirstFrame()
+      expect(sticker.classList.contains('has-animation')).toBe(true)
+
+      effect.fireFrame(effect.player.maxFrame)
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
+      expect(sticker.classList.contains('has-animation')).toBe(false)
+    })
+
+    it('иконка чипа ещё грузится — оверлей на последнем кадре остаётся', async () => {
+      const effect = fakePlayer()
+      splitByWidth(new Promise<LottiePlayer>(() => {}), effect.player)
+
+      const { sticker } = await fireLastFrame(1)
+      effect.fireFirstFrame()
+      effect.fireFrame(effect.player.maxFrame)
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
+      expect(sticker.classList.contains('has-animation')).toBe(true)
+    })
+  })
+
   it('реакции нет в каталоге — играть нечем', async () => {
     const previous = previousWith({ emoticon: '🔥', count: 1 })
     createReactionsElement(agg({ emoticon: '🔥', count: 2, mine: true }), options({ previous }))
 
-    await vi.waitFor(() => expect(catalog.list).toHaveBeenCalled())
     await flush()
+    expect(catalog.list).toHaveBeenCalled()
     expect(wrapStickerAnimationMock).not.toHaveBeenCalled()
   })
 })
