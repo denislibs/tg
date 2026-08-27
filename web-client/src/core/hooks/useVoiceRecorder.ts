@@ -5,15 +5,18 @@
 // logic): when a recording finishes it hands the result back via onComplete,
 // and the caller uploads + sends it.
 //
-// Рекордеров ДВА, как и у оригинала (`chatRecording.ts::constructRecorder`):
-// голосовое кодирует свой энкодер в ogg/opus (`core/audio/nativeVoiceRecorder.ts`),
-// потому что голосовым сообщение делает именно контейнер (см. VOICE_MIME);
-// кружок пишет `MediaRecorder`, он же остаётся запасным путём для голоса на
-// платформах без WebCodecs.
+// Рекордеров голоса ДВА — ровно как у оригинала
+// (`chatRecording.ts::constructRecorder`, :129-155): свой энкодер на WebCodecs
+// (`core/audio/nativeVoiceRecorder.ts`) там, где он есть, и opus-recorder на
+// WASM (`core/audio/opusRecorderLoader.ts`) там, где его нет — на Safari до 26.
+// Оба пишут ogg/opus, потому что голосовым сообщение делает именно контейнер
+// (см. VOICE_MIME). Кружок пишет `MediaRecorder`; он же остаётся последним
+// запасным путём для голоса — но уже только там, где ogg не даёт НИКТО.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useEvent } from './useEvent'
 import VoiceWaveformAnalyser from '../audio/voiceWaveformAnalyser'
 import NativeVoiceRecorder, { isNativeVoiceRecorderSupported } from '../audio/nativeVoiceRecorder'
+import { createOpusRecorder, type VoiceOggRecorder } from '../audio/opusRecorderLoader'
 
 export const REC_WAVE_BARS = 90 // live recording waveform bar count (fills the pill width)
 
@@ -43,6 +46,13 @@ export const VOICE_MIME = 'audio/ogg'
 // Порядок предпочтений для запасного пути (WebCodecs нет): Firefox умеет ogg
 // сам, остальные — только webm. Голосовым webm НЕ становится (см. VOICE_MIME).
 const FALLBACK_VOICE_MIMES = ['audio/ogg;codecs=opus', 'audio/webm;codecs=opus']
+
+/** Умеет ли `MediaRecorder` сам писать ogg (это Firefox). Если умеет — второй
+ *  рекордер не нужен: 385 КБ вендорного энкодера ради контейнера, который
+ *  платформа даёт даром, не тянем. */
+function mediaRecorderWritesOgg(): boolean {
+  return typeof MediaRecorder !== 'undefined' && !!MediaRecorder.isTypeSupported?.(FALLBACK_VOICE_MIMES[0])
+}
 
 /** Контейнер без параметров кодека — порт tweb `nativeVideoRecorder.ts:258-261`
  *  («drop `;codecs=…`»): в mime файла едет контейнер, а не строка энкодера. */
@@ -99,9 +109,9 @@ export function useVoiceRecorder(opts: VoiceRecorderOptions): VoiceRecorder {
   const timer = useRef<number | undefined>(undefined)
   const vizTimer = useRef<number | undefined>(undefined)
   const mediaRec = useRef<MediaRecorder | null>(null)
-  // Голосовое пишет свой энкодер (ogg/opus), кружок — MediaRecorder: активен
-  // ровно один из двух.
-  const nativeRec = useRef<NativeVoiceRecorder | null>(null)
+  // Голосовое пишет ogg-рекордер (свой энкодер или opus-recorder), кружок —
+  // MediaRecorder: активен ровно один из двух.
+  const nativeRec = useRef<VoiceOggRecorder | null>(null)
   const oggBytes = useRef<Uint8Array | null>(null)
   const chunks = useRef<Blob[]>([])
   const stream = useRef<MediaStream | null>(null)
@@ -188,11 +198,16 @@ export function useVoiceRecorder(opts: VoiceRecorderOptions): VoiceRecorder {
     chunks.current = []
     const ogg = oggBytes.current
     oggBytes.current = null
-    const native = nativeRec.current !== null
+    const oggRec = nativeRec.current
     nativeRec.current = null
-    // Голосовое своего энкодера — всегда ogg (порт tweb `chatRecording.ts:223`);
+    // opus-recorder глушит микрофон, но свой AudioContext оставляет открытым —
+    // закрываем его здесь, иначе несколько записей подряд упрутся в лимит
+    // контекстов на вкладку. У `NativeVoiceRecorder` метода нет: он закрывает
+    // контекст сам внутри `stop()`.
+    void oggRec?.close?.()
+    // Голосовое ogg-рекордера — всегда ogg (порт tweb `chatRecording.ts:223`);
     // запасной MediaRecorder отдаёт контейнер, которым его сконфигурировали.
-    const mime = native
+    const mime = oggRec
       ? VOICE_MIME
       : containerMime(mediaRec.current?.mimeType) || (modeRef.current === 'round' ? 'video/webm' : 'audio/webm')
     mediaRec.current = null
@@ -200,7 +215,7 @@ export function useVoiceRecorder(opts: VoiceRecorderOptions): VoiceRecorder {
     // `as BlobPart` — тот же приём, что у оригинала (`chatRecording.ts:223`):
     // у `Uint8Array` буфер объявлен как `ArrayBufferLike`, а `BlobPart` требует
     // `ArrayBuffer`.
-    const bytes: BlobPart[] = native ? (ogg?.length ? [ogg as BlobPart] : []) : recordedChunks
+    const bytes: BlobPart[] = oggRec ? (ogg?.length ? [ogg as BlobPart] : []) : recordedChunks
     const blob = bytes.length ? new Blob(bytes, { type: mime }) : null
     o.current.onComplete({ secs: recordedSecs, blob, mime, mode: modeRef.current, waveform })
   }
@@ -228,15 +243,23 @@ export function useVoiceRecorder(opts: VoiceRecorderOptions): VoiceRecorder {
     chunks.current = []
     oggBytes.current = null
     waveformPeaks.current = null
-    // Голосовое: свой энкодер ogg/opus (порт tweb `chatRecording.ts:141`), поток
-    // и AudioContext он открывает сам.
-    if (m === 'voice' && isNativeVoiceRecorderSupported()) {
-      const rec = new NativeVoiceRecorder({ mediaTrackConstraints: MIC_CONSTRAINTS })
+    // Голосовое: ogg-рекордер. Первым идёт свой энкодер на WebCodecs (порт tweb
+    // `chatRecording.ts:141`), вторым — opus-recorder на WASM (:150). Оба
+    // открывают поток и AudioContext сами. Второй не берём там, где ogg даёт сам
+    // `MediaRecorder` (Firefox): вендорный чанк ради уже имеющегося контейнера —
+    // лишние 385 КБ по сети.
+    const oggRec: VoiceOggRecorder | null = m !== 'voice' ? null
+      : isNativeVoiceRecorderSupported() ? new NativeVoiceRecorder({ mediaTrackConstraints: MIC_CONSTRAINTS })
+        : mediaRecorderWritesOgg() ? null
+          : await createOpusRecorder({ mediaTrackConstraints: MIC_CONSTRAINTS, encoderSampleRate: 48000, numberOfChannels: 1, monitorGain: 0, recordingGain: 1 })
+    if (oggRec) {
+      const rec = oggRec
       rec.ondataavailable = (data) => { oggBytes.current = data }
       rec.onstop = () => { void finish() }
       try {
         await rec.start()
       } catch {
+        void rec.close?.()
         return // no mic / permission denied
       }
       modeRef.current = m

@@ -113,6 +113,41 @@ function noWebCodecs() {
   setGlobal('AudioData', undefined)
 }
 
+/** Вендорный чанк opus-recorder (`public/opus/recorder.min.js`) уже в глобали —
+ *  ровно то состояние, в котором его застаёт оригинал (`chatRecording.ts:148`,
+ *  кладёт `bootstrapIm.ts:49`). Пишет ogg своим WASM-энкодером, микрофон и
+ *  AudioContext открывает сам. */
+let opusRecorders: FakeOpusRecorder[] = []
+class FakeOpusRecorder {
+  static isRecordingSupported = (): boolean => true
+  public sourceNode!: FakeNode
+  public ondataavailable: (data: Uint8Array) => void = () => {}
+  public onstop: () => void = () => {}
+  public closed = false
+  private ctx = new FakeAudioContext()
+  constructor(public config: Record<string, unknown>) { opusRecorders.push(this) }
+  start(): Promise<void> {
+    this.sourceNode = new FakeNode(this.ctx)
+    return Promise.resolve()
+  }
+  stop(): Promise<void> {
+    this.ondataavailable(OPUS_PACKET)
+    this.onstop()
+    return Promise.resolve()
+  }
+  pause(): Promise<void> { return Promise.resolve() }
+  resume(): void {}
+  close(): Promise<void> {
+    this.closed = true
+    return this.ctx.close()
+  }
+}
+
+function installOpusRecorder() {
+  setGlobal('AudioContext', FakeAudioContext)
+  setGlobal('Recorder', FakeOpusRecorder)
+}
+
 /** MediaRecorder с заданным набором поддерживаемых mime. */
 function installMediaRecorder(supported: string[]) {
   setGlobal('AudioContext', FakeAudioContext)
@@ -136,7 +171,11 @@ function installMediaRecorder(supported: string[]) {
 beforeEach(() => {
   vi.useFakeTimers()
   workletNodes = []
+  opusRecorders = []
   teardown = []
+  // По умолчанию вендорного чанка нет: каждый тест включает его сам, чтобы
+  // ветки «есть» и «нет» различались, а не сливались в одну.
+  setGlobal('Recorder', undefined)
   Object.defineProperty(globalThis.navigator, 'mediaDevices', {
     configurable: true,
     value: { getUserMedia: vi.fn(async () => fakeStream()) },
@@ -273,19 +312,55 @@ describe('useVoiceRecorder: контейнер записи', () => {
     expect(r?.waveform).toBeNull() // пики считаются только для голосового
   })
 
-  it('нет AudioWorklet — свой энкодер не собрать, идём тем же запасным путём', async () => {
+  it('нет AudioWorklet — свой энкодер не собрать, пишет второй рекордер', async () => {
     // Гейт (порт `isNativeSupported.ts`) требует ВСЕХ кусков: PCM отводит
     // worklet, без него энкодеру нечего кодировать.
     installWebCodecs()
     setGlobal('AudioWorkletNode', undefined)
+    installOpusRecorder()
     installMediaRecorder(['audio/webm;codecs=opus'])
     const r = await record()
 
-    expect(r?.mime).toBe('audio/webm')
+    expect(opusRecorders).toHaveLength(1)
+    expect(r?.mime).toBe('audio/ogg')
   })
 
-  it('ОСТАТОК: без WebCodecs и без ogg остаётся webm — и это уже не голосовое', async () => {
+  it('Safari до 26 (WebCodecs-аудио нет) → пишет opus-recorder, и это ogg', async () => {
     noWebCodecs()
+    installOpusRecorder()
+    installMediaRecorder(['audio/webm;codecs=opus'])
+    const r = await record()
+
+    expect(opusRecorders).toHaveLength(1)
+    expect(r?.mime).toBe('audio/ogg')
+    expect(r?.blob?.type).toBe('audio/ogg')
+    // Энкодер вендора конфигурируем сами — путь до чанка иначе искался бы рядом
+    // с документом, а не в /opus/.
+    expect(opusRecorders[0].config.encoderPath).toBe('/opus/encoderWorker.min.js')
+    // Его AudioContext закрыт: вендор в stop() этого не делает, а лимит
+    // контекстов на вкладку — единицы.
+    expect(opusRecorders[0].closed).toBe(true)
+  })
+
+  it('Firefox (MediaRecorder сам умеет ogg) — вендорный чанк не трогаем вовсе', async () => {
+    noWebCodecs()
+    installOpusRecorder()
+    installMediaRecorder(['audio/ogg;codecs=opus', 'audio/webm;codecs=opus'])
+    const r = await record()
+
+    expect(opusRecorders).toHaveLength(0)
+    expect(r?.mime).toBe('audio/ogg')
+  })
+
+  it('ОСТАТОК: вендорный чанк не поднялся — последний рубеж webm, и это не голосовое', async () => {
+    noWebCodecs()
+    // Конструктор вендора бросает (нет WebAssembly, чанк битый): у оригинала он
+    // тоже под try/catch (`chatRecording.ts:150-154`).
+    class BrokenRecorder {
+      static isRecordingSupported = (): boolean => true
+      constructor() { throw new Error('Recording is not supported in this browser') }
+    }
+    setGlobal('Recorder', BrokenRecorder)
     installMediaRecorder(['audio/webm;codecs=opus'])
     const r = await record()
 
@@ -314,6 +389,10 @@ describe('useVoiceRecorder: своя запись описывается оди�
 
   it('на webm тот же путь дал бы РАЗНЫЕ описания только вместе — оба съезжают в audio', async () => {
     noWebCodecs()
+    class BrokenRecorder {
+      static isRecordingSupported = (): boolean => false
+    }
+    setGlobal('Recorder', BrokenRecorder)
     installMediaRecorder(['audio/webm;codecs=opus'])
     const r = await record()
     const { doc: optimistic, uploadMime } = await optimisticDocument(r!.blob!, r!.mime)

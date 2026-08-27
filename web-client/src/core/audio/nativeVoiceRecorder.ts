@@ -8,7 +8,7 @@
 // а `MediaRecorder` отдаёт ogg только в Firefox — в Chrome это webm, в Safari
 // mp4. Оригинал по этой же причине пишет голос своим кодеком: WebCodecs, где он
 // есть (`chatRecording.ts:141`), и opus-recorder на WASM там, где его нет
-// (`chatRecording.ts:150`, чанк грузится лениво — `bootstrapIm.ts:32-37`).
+// (`chatRecording.ts:150`, чанк грузится лениво — `bootstrapIm.ts:34-37`).
 //
 // ── Отступления от оригинала ────────────────────────────────────────────────
 //  • поток открываем `navigator.mediaDevices.getUserMedia`, а не через

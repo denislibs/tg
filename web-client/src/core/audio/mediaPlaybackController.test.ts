@@ -11,6 +11,21 @@ vi.mock('../mediaUrl', () => ({
   primeMediaToken: () => Promise.resolve(),
 }))
 vi.mock('../secret/crypto', () => ({ decryptMedia: () => Promise.resolve(new ArrayBuffer(0)) }))
+// Платформа, которая ogg играет сама (Chrome/Firefox/Safari 18.4+) — так src
+// подаётся синхронно. happy-dom отвечает на canPlayType пустой строкой, то есть
+// БЕЗ этой подмены весь файл проверял бы ветку конвертации; она — предмет
+// отдельного файла mediaPlaybackController.opus.test.ts.
+vi.mock('@environment/opusSupport', () => ({ default: true }))
+// Конвертер подменён, чтобы было чем доказать обратное направление гейта: на
+// такой платформе к нему не ходят ВООБЩЕ (см. последний describe файла).
+const voicePlaybackUrl = vi.fn(() => Promise.resolve(undefined))
+const oggBytesToWavUrl = vi.fn(() => Promise.resolve('blob:wav'))
+vi.mock('../media/voiceOpus', () => ({
+  voicePlaybackUrl: () => voicePlaybackUrl(),
+  oggBytesToWavUrl: () => oggBytesToWavUrl(),
+  isOggContainer: (mime: string | undefined) => mime === 'audio/ogg',
+  resetVoiceOpusCache: () => {},
+}))
 
 // Проводка «кружок играет → видео-анимации стоят» (порт tweb
 // appMediaPlaybackController.ts:265-273). Интерсектор подменён: проверяем сам
@@ -323,5 +338,17 @@ describe('скорость — своя на тип медиа (tweb playbackRat
       playbackRates: Record<string, number>
     }
     expect(saved.playbackRates.audio).toBe(0.5)
+  })
+})
+
+describe('платформа играет ogg сама (Chrome/Firefox/Safari 18.4+)', () => {
+  it('src подаётся СИНХРОННО, конвертер не трогаем — ни лишнего RPC, ни libopus', () => {
+    const media = mediaPlayback.addMedia({ track: voice(11) }) as FakeMedia
+
+    // Ни одного await: URL уже на элементе к моменту возврата addMedia — от этого
+    // зависит, останется ли .play() в рамках user-gesture.
+    expect(media.src).toBe('blob:media-11')
+    expect(voicePlaybackUrl).not.toHaveBeenCalled()
+    expect(oggBytesToWavUrl).not.toHaveBeenCalled()
   })
 })

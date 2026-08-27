@@ -14,6 +14,14 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { saveDocument, type MyDocument } from '@core/media/messageMedia'
 
+// Платформа ИГРАЕТ ogg сама — это ~97% трафика и путь, ради которого написан
+// весь файл: подача src синхронна, конвертации нет. Объявлять приходится явно,
+// потому что в jsdom `canPlayType` возвращает пустую строку, то есть по умолчанию
+// стенд изображал бы Safari ниже 18.4 и гонял АСИНХРОННУЮ ветку
+// (`core/audio/mediaPlaybackController.ts::ensureSrc`). Сама эта ветка покрыта
+// отдельно — `core/audio/mediaPlaybackController.opus.test.ts`.
+vi.mock('@environment/opusSupport', () => ({ default: true }))
+
 vi.mock('@core/mediaUrl', () => ({
   resolveMediaContentUrl: (id: number) => `https://media/${id}`,
   mediaContentUrl: (id: number) => `https://media/${id}`,

@@ -18,6 +18,8 @@
 // сознательно не трогает.
 import { decryptMedia } from '../secret/crypto'
 import { mediaContentUrl, primeMediaToken, resolveStreamUrl } from '../mediaUrl'
+import IS_OPUS_SUPPORTED from '@environment/opusSupport'
+import { isOggContainer, oggBytesToWavUrl, resetVoiceOpusCache, voicePlaybackUrl } from '../media/voiceOpus'
 import { useAudioStore, type AudioTrack } from '../../stores/audioStore'
 import { useSettingsStore } from '../../settings'
 import safePlay from '@helpers/dom/safePlay'
@@ -143,7 +145,11 @@ export function prefetchSecretAudio(mediaId: number, secret: { keyB64: string; i
     if (!res.ok) throw new Error(`secret audio ${res.status}`)
     const cipher = await res.arrayBuffer()
     const buf = await decryptMedia(cipher, secret.keyB64, secret.ivB64)
-    const objectUrl = URL.createObjectURL(new Blob([buf], { type: secret.mime }))
+    // Секретное голосовое — тот же ogg, и на платформе без ogg он так же нем.
+    // Байты уже расшифрованы, скачивать нечего — сразу в декодер.
+    const objectUrl = !IS_OPUS_SUPPORTED && isOggContainer(secret.mime)
+      ? await oggBytesToWavUrl(new Uint8Array(buf))
+      : URL.createObjectURL(new Blob([buf], { type: secret.mime }))
     secretUrlCache.set(mediaId, objectUrl)
     return objectUrl
   })()
@@ -158,11 +164,22 @@ export function prefetchSecretAudio(mediaId: number, secret: { keyB64: string; i
  * :510-538); у нас URL резолвится здесь — СИНХРОННО, где можем (обычный трек
  * при DNP-OFF, секретный из кэша префетча), чтобы play() остался в рамках
  * user-gesture, и промисом на редком промахе.
+ *
+ * ПЛАТФОРМЕННАЯ половина гейта конвертации (`!IS_OPUS_SUPPORTED` из
+ * `apiFileManager.ts:670`) — здесь и только здесь. Там, где ogg играется сам
+ * (Chrome, Firefox, Safari от 18.4 — это ~97% трафика), ветка ниже не
+ * исполняется вовсе и подача src остаётся синхронной; форматная половина
+ * (`=== 'audio/ogg'`) живёт в `core/media/voiceOpus.ts`, потому что mime знает
+ * воркер и спрашивать его есть смысл только на второй половине пути.
  */
 function ensureSrc(entry: MediaEntry): Promise<void> {
   if (entry.src) return entry.src
   const { track, media } = entry
-  const ready = track.secret ? secretUrlCache.get(track.mediaId) : resolveStreamUrl(track.mediaId)
+  // На платформе без ogg решение зависит от mime, а mime знает воркер — синхронно
+  // подать src нельзя даже при готовом токене.
+  const ready = !IS_OPUS_SUPPORTED ? undefined
+    : track.secret ? secretUrlCache.get(track.mediaId)
+      : resolveStreamUrl(track.mediaId)
   if (typeof ready === 'string') {
     media.src = ready
     entry.loaded = true
@@ -170,9 +187,14 @@ function ensureSrc(entry: MediaEntry): Promise<void> {
   }
 
   const job = (async () => {
-    media.src = track.secret
-      ? await prefetchSecretAudio(track.mediaId, track.secret)
-      : await (ready as Promise<string>)
+    if (track.secret) {
+      media.src = await prefetchSecretAudio(track.mediaId, track.secret)
+      entry.loaded = true
+      return
+    }
+    // Файл может оказаться ogg — тогда играть надо не его, а wav из декодера.
+    const wav = IS_OPUS_SUPPORTED ? undefined : await voicePlaybackUrl(track.mediaId)
+    media.src = wav ?? await (ready ?? resolveStreamUrl(track.mediaId))
     entry.loaded = true
   })()
   entry.src = job
@@ -265,6 +287,7 @@ export function resetPlayback(): void {
   for (const entry of collection.values()) unregister(entry)
   secretUrlCache.forEach((url) => URL.revokeObjectURL(url))
   secretUrlCache.clear()
+  resetVoiceOpusCache()
 }
 
 /** Снять элемент с учёта (tweb `stop`, ветка `details.clean`, :930-947). */
