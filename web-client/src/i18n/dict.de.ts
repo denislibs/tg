@@ -384,6 +384,13 @@ const de: Dict = {
   Comments: 'Kommentare',
   Comment: 'Kommentar',
   'Discussion started': 'Diskussion gestartet',
+  'No messages here yet...': 'Hier gibt es noch keine Nachrichten…',
+  'Send a message or tap the greeting below.': 'Sende eine Nachricht oder tippe auf den Gruß unten.',
+  'Your cloud storage': 'Dein Cloud-Speicher',
+  'Forward messages here to save them': 'Leite Nachrichten hierher weiter, um sie zu speichern',
+  'Send media and files to store them': 'Sende Medien und Dateien, um sie zu speichern',
+  'Access this chat from any device': 'Greife von jedem Gerät auf diesen Chat zu',
+  'Use search to quickly find things': 'Nutze die Suche, um Dinge schnell zu finden',
   // settings screens (#71–#79)
   "Edit Profile": "Profil bearbeiten",
   "Name": "Name",

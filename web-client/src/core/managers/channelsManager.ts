@@ -207,14 +207,6 @@ export function newChannelsManager({ rest, beforeSending, peers, cacheViews }: {
       const r = await rest.post<RawSuggestedPost>(`/suggested_posts/${id}/reject`, {})
       return mapSuggestedPost(r)
     },
-    // Похожие каналы (по пересечению аудитории). count — общее число найденных
-    // (может превышать длину chats: хвост открывается по Premium).
-    // Похожие каналы (Telegram getChannelRecommendations) — вектор
-    // конструкторов `channel`, а не плоские снимки.
-    async similar(peerId: PeerId): Promise<{ chats: Chat[]; count: number }> {
-      const r = await rest.get<{ chats: Chat[]; count: number }>(`/channels/${peerId}/similar`)
-      return { chats: r.chats ?? [], count: r.count ?? 0 }
-    },
     async search(q: string): Promise<ContactsFound> {
       // Allow "@username" queries: usernames are stored without the @, so strip
       // a leading one before hitting the directory search.

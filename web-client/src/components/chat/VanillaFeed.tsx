@@ -14,6 +14,7 @@ import { useLayoutEffect, useRef, type RefObject } from 'react'
 import { winKey } from '@core/history/messagesMirror'
 import contextMenuController from '@helpers/contextMenuController'
 import { getMediaId } from '@core/messages/messageKind'
+import type { MyDocument } from '@core/media/messageMedia'
 import ChatBubbles, { type ChatContext } from './bubbles'
 import ChatContextMenu, { type ContextMenuPopups } from './contextMenu'
 import ChatSelection from './selection'
@@ -55,9 +56,15 @@ export interface ChatFeedApi {
    *  открытии чата. Нужна там, где история изменилась ЦЕЛИКОМ, а события об
    *  этом нет: «Очистить историю» (`chats.clearHistory` апдейта не порождает). */
   reload(): void
+  /** Порт tweb `appImManager.chat.setMessageId({savedReaction})`
+   *  (topbarSearch.tsx:1055-1060 — поставить тег, :1071-1075 — снять):
+   *  фильтр «Избранного» по тегу-реакции. `null` — фильтр снят. Окно
+   *  ПЕРЕЗАПРАШИВАЕТСЯ, а не отбирается из отрисованного (см. поле
+   *  `ChatBubbles.savedReaction`). */
+  setSavedReaction(reaction: string | null): void
 }
 
-export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBottomPx, peerId, threadRootId, isLikeGroup, isBroadcast, isMegagroup, canSend, canSendPlain, onReply, onEdit, onDownload, menuPopups, mediaViewerActions, onSelection, onOpenDatePicker, onOpenDiscussion }: {
+export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBottomPx, peerId, threadRootId, isLikeGroup, isBroadcast, isMegagroup, canSend, canSendPlain, onReply, onEdit, onDownload, onSendSticker, menuPopups, mediaViewerActions, onSelection, onOpenDatePicker, onOpenDiscussion }: {
   /** Ручки ленты наружу — заполняются на маунте, гасятся на размонтировании. */
   api?: RefObject<ChatFeedApi | null>
   /** Скролл-контейнер ленты (`Scrollable.container`) — тем же способом, что
@@ -101,6 +108,13 @@ export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBot
    *  в нашей адресации медиа: меню знает сообщение, хост — как достать байты по
    *  `mediaId` (тот же вызов делает пункт «Download» React-меню). */
   onDownload?: (mediaId: number) => void
+  /**
+   * Порт `chat.input.emoticonsDropdown.onMediaClick` (tweb bubbles.ts:10588) —
+   * отправка стикера-приветствия из плейсхолдера пустого чата. Отправкой
+   * владеет композер, поэтому лента отдаёт наружу сам документ, а хост шлёт его
+   * тем же путём, что стикер из панели эмодзи.
+   */
+  onSendSticker?: (doc: MyDocument) => void
   /**
    * Носители попапов контекстного меню — порт `ContextMenuPopups`
    * (`chat/contextMenu.ts`). В tweb пункты меню сами зовут
@@ -148,8 +162,8 @@ export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBot
   const bubblesRef = useRef<ChatBubbles | null>(null)
   const paddingRef = useRef({ top: paddingTopPx, bottom: paddingBottomPx })
   paddingRef.current = { top: paddingTopPx, bottom: paddingBottomPx }
-  const gesture = useRef({ canSend, canSendPlain, onReply, onEdit, onDownload, menuPopups, mediaViewerActions, onSelection, onOpenDatePicker, onOpenDiscussion })
-  gesture.current = { canSend, canSendPlain, onReply, onEdit, onDownload, menuPopups, mediaViewerActions, onSelection, onOpenDatePicker, onOpenDiscussion }
+  const gesture = useRef({ canSend, canSendPlain, onReply, onEdit, onDownload, onSendSticker, menuPopups, mediaViewerActions, onSelection, onOpenDatePicker, onOpenDiscussion })
+  gesture.current = { canSend, canSendPlain, onReply, onEdit, onDownload, onSendSticker, menuPopups, mediaViewerActions, onSelection, onOpenDatePicker, onOpenDiscussion }
 
   // Одно место, где состояние выделения уходит наверх: и счётчик, и признак
   // режима, и способ его снять (плашка снимает выбор кликом по счётчику —
@@ -302,6 +316,7 @@ export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBot
         canSend: () => gesture.current.canSend ?? false,
         canSendPlain: () => gesture.current.canSendPlain ?? false,
         initMessageReply: (mid) => gesture.current.onReply?.(mid),
+        sendSticker: (doc) => gesture.current.onSendSticker?.(doc),
         // Через реф — по той же причине, что попапы меню: ни один из колбэков
         // не стабилен между рендерами хоста, а лента создаётся один раз.
         mediaViewerActions: {
@@ -321,6 +336,10 @@ export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBot
         startSelection: () => { feedSelection?.toggleSelection(true, true) },
         cancelSelection: () => { feedSelection?.cancelSelection() },
         reload: () => { void bubbles.setPeer().then((result) => result?.promise).catch(noop) },
+        // Ключ обязан ПРИСУТСТВОВАТЬ в объекте даже при снятии фильтра — по
+        // его наличию `setPeer` и понимает, что выдача сменилась (порт
+        // `hasOwnProperty`-механики tweb chat.ts:1093).
+        setSavedReaction: (reaction) => { void bubbles.setMessageId({ savedReaction: reaction ?? undefined }).catch(noop) },
       }
     }
     if (scrollerRef) scrollerRef.current = bubbles.scrollable.container

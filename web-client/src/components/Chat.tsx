@@ -185,13 +185,18 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const isGroup = chat.type === 'group'
   const isSecret = chat.type === 'secret'
   const isSaved = chat.type === 'saved'
-  // Активный фильтр по тегу-реакции «Избранного».
+  // Активный фильтр по тегу-реакции «Избранного». Само состояние здесь только
+  // ради подсветки активного чипа: ФИЛЬТРУЕТ лента — тег едет к ней ручкой
+  // `ChatFeedApi.setSavedReaction`, и она перезапрашивает историю (порт tweb
+  // `appImManager.chat.setMessageId({savedReaction})`, topbarSearch.tsx:1057).
   const [savedTagFilter, setSavedTagFilter] = useState<string | null>(null)
   // ДОЛГ этапа 7: настройки автозагрузки медиа (`useChatAutoDownload`, порт
   // tweb `chat.autoDownload`) читала React-лента и раздавала их баблам.
   // Императивная лента их не спрашивает — врапперы качают всегда.
 
-  // Сброс фильтра тегов «Избранного» при смене чата.
+  // Сброс фильтра тегов «Избранного» при смене чата. Ленте его снимать не надо:
+  // на смене пира она пересоздаётся целиком (`VanillaFeed` держит эффект по
+  // `peerId`), то есть рождается без тега.
   useEffect(() => { setSavedTagFilter(null) }, [numericChatId])
   // Сколько тегов реально есть — от этого зависит, показывать ли стек плейтов.
   const [savedTagsCount, setSavedTagsCount] = useState(0)
@@ -477,6 +482,13 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // (`selection.toggleSelection(true, true)`): режим включает ЛЕНТА, иначе в
   // баблах не появились бы чекбоксы.
   const startSelectMode = useEvent(() => { feedApi.current?.startSelection() })
+  // Клик по чипу тега «Избранного» — единственный вход фильтра: подсветка чипа
+  // и выдача ленты меняются одним действием. Порт tweb topbarSearch.tsx:1044-1060
+  // (эффект по сигналу `reaction` зовёт `setMessageId({savedReaction})`).
+  const onSavedTagFilter = useEvent((reaction: string | null) => {
+    setSavedTagFilter(reaction)
+    feedApi.current?.setSavedReaction(reaction)
+  })
   // Классы режима выделения на `.bubbles` — ровно как tweb SetTransition в
   // ChatSelection.onToggleSelection (selection.ts:1019-1030): `is-selecting` +
   // `forwards`/`backwards` + `animating` на 200 мс. От `forwards` зависят сдвиг
@@ -1122,7 +1134,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
         />
       )}
       {isSaved && !thread && (
-        <SavedTagsPanel activeTag={savedTagFilter} onFilter={setSavedTagFilter} onCountChange={setSavedTagsCount} />
+        <SavedTagsPanel activeTag={savedTagFilter} onFilter={onSavedTagFilter} onCountChange={setSavedTagsCount} />
       )}
     </>
   )
@@ -1241,7 +1253,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
             группа это `channel` с `pFlags.megagroup` (`core/peers/peer.ts:325`).
             Берётся из диалога, а не из карточки пира: карточка приезжает позже,
             и до неё баблы моргнули бы стороной. */}
-        <VanillaFeed api={feedApi} scrollerRef={feedScrollRef} paddingTopPx={padTopPx} paddingBottomPx={padBottomPx} mediaViewerActions={mediaViewerActions} peerId={numericChatId} threadRootId={threadRootId} isLikeGroup={isGroup} isBroadcast={isChannel} isMegagroup={isGroup} canSend={canType} canSendPlain={composerUsable} onReply={onFeedReply} onEdit={startEditFor} onDownload={downloadMedia} menuPopups={feedMenuPopups} onSelection={onFeedSelection} onOpenDatePicker={showDatePicker} onOpenDiscussion={openFeedDiscussion} />
+        <VanillaFeed api={feedApi} scrollerRef={feedScrollRef} paddingTopPx={padTopPx} paddingBottomPx={padBottomPx} mediaViewerActions={mediaViewerActions} peerId={numericChatId} threadRootId={threadRootId} isLikeGroup={isGroup} isBroadcast={isChannel} isMegagroup={isGroup} canSend={canType} canSendPlain={composerUsable} onReply={onFeedReply} onEdit={startEditFor} onDownload={downloadMedia} onSendSticker={canSendStickers ? onComposerPickSticker : undefined} menuPopups={feedMenuPopups} onSelection={onFeedSelection} onOpenDatePicker={showDatePicker} onOpenDiscussion={openFeedDiscussion} />
 
         {/* Композер и его замены — tweb .chat-input.chat-input-main (absolute
             bottom 0 внутри #column-center) > .chat-input-container (max-width

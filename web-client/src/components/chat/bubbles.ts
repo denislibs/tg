@@ -95,12 +95,13 @@ import { getHeavyAnimationPromise, onHeavyAnimation as useHeavyAnimationCheck } 
 import rootScope from '@lib/rootScope'
 import { ANCHOR_ACTION_ATTRIBUTE, wrapMessageText, type AnchorAction } from '@lib/richtext'
 import { mirrorWindow, putMirrorPage, replaceMirrorWindow } from '@core/history/messagesMirror'
-import { isLocalMessageId } from '@core/history/messageId'
+import { generateTempMessageId, isLocalMessageId } from '@core/history/messageId'
 import { messageToConvMsg } from '@core/messageToConvMsg'
 import { dayLabel } from '@core/format/dayLabel'
 import { fmtViews } from '@core/format/fmtViews'
 import { getMessageText, isOurMessage, isOutMessage, type MessageReal, type MessageReplies, type MessageService, type MyMessage, type OurMessageChat } from '@core/models'
-import { isAnyChat, toPeerId } from '@core/peers/peerId'
+import { getOutputPeer, isAnyChat, toPeerId } from '@core/peers/peerId'
+import { hasReactionEmoticon } from '@core/reactions/messageReactions'
 import type { HistoryArgs, HistoryResult } from '@core/managers/messagesManager'
 import { bubbleClasses, type BubbleCtx } from '../messages/bubbleClasses'
 import BubbleGroups, {
@@ -328,6 +329,18 @@ export interface ChatContext {
    *  владелец композера (`Chat.tsx` через `draftReplyState`). */
   initMessageReply?(mid: number): void
   /**
+   * ОТПРАВИТЬ СТИКЕР — порт клика по стикеру-приветствию пустого чата
+   * (tweb bubbles.ts:10586-10589: `attachClickEvent(stickerDiv, … this.chat
+   * .input.emoticonsDropdown.onMediaClick({target}, undefined, undefined,
+   * true))`).
+   *
+   * Здесь, а не внутри ленты, ровно по адресу оригинала: отправкой владеет
+   * КОМПОЗЕР (`chat.input`), которого у ленты нет. Хост отдаёт тот же путь,
+   * которым стикер уходит из панели эмодзи (`Chat.tsx::onComposerPickSticker`).
+   * Не передан — стикер приветствия просто не кликается.
+   */
+  sendSticker?(doc: MyDocument): void
+  /**
    * Действия МЕДИАВЬЮВЕРА, которых у самой ленты быть не может: прыжок к
    * сообщению, пересылка, удаление и догрузка соседей за пределами окна.
    *
@@ -392,6 +405,42 @@ export interface BubblesManagers extends PeerTitleManagers {
      * тест, которому аплоад не нужен.
      */
     cancelPending?(args: { clientMsgId: string }): Promise<unknown>
+    /**
+     * Страница истории, ОТФИЛЬТРОВАННАЯ по тегу-реакции «Избранного» — вторая
+     * ветка `requestHistory` (см. её докблок).
+     *
+     * У tweb отдельного метода здесь нет: `savedReaction` — обычное поле
+     * `RequestHistoryOptions`, из-за которого `requestHistory` подставляет
+     * `inputFilter ??= inputMessagesFilterEmpty` и уходит методом
+     * `messages.search` с полем `saved_reaction`
+     * (appMessagesManager.ts:9947-9948, :9982). Наш бэкенд отвечает на тот же
+     * вопрос отдельной ручкой (`GET /chats/{id}/search?reaction=`,
+     * `chat_handler.go:896`), поэтому и метод отдельный.
+     *
+     * Опционален по той же причине, что `react`/`unreact`: без него панель
+     * тегов не появляется вовсе (её показ гейтит `Chat.tsx`), а лента остаётся
+     * нефильтрованной.
+     */
+    searchMessages?(peerId: number, q: string, opts: {
+      reaction?: string, offset?: number, limit?: number,
+    }): Promise<{ messages: MyMessage[], count: number }>
+  }
+  /**
+   * Порт `appStickersManager.getGreetingSticker`
+   * (appStickersManager.ts:135-163) — стикер-приветствие для плейсхолдера
+   * пустого личного чата (`renderEmptyPlaceholder('greeting')`).
+   *
+   * У оригинала это `getStickersByEmoticon({emoticon: '👋⭐️',
+   * includeServerStickers: true})` — служебная пара эмодзи, по которой сервер
+   * Telegram отдаёт ИМЕННО набор приветствий. Наш `GET /stickers/search?emoji=`
+   * ищет по эмодзи самого стикера (`stickers_handler.go:313`), поэтому пара
+   * вырождается в одиночное `👋`.
+   *
+   * Опционален: без него карточка приветствия рисуется без стикера — ровно как
+   * у оригинала, когда `getGreetingSticker` отказал (`NO_STICKERS`).
+   */
+  stickers?: {
+    searchByEmoji(emoji: string): Promise<MyDocument[]>
   }
   /** Порт двух источников границы непрочитанных: `appMessagesManager
    *  .getReadMaxIdIfUnread` и `Chat.getHistoryMaxId` (tweb bubbles.ts:11570-11572).
@@ -470,6 +519,16 @@ interface RenderedMessage {
 // tweb bubbles.ts:307. Ближе этого к низу лента считается «прижатой» —
 // и кнопка «вниз» гаснет, и новое сообщение доводится скроллом.
 const SCROLLED_DOWN_THRESHOLD = 300
+
+/** Вид плейсхолдера пустого чата — порт `EmptyPlaceholderType`
+ *  (tweb bubbles.ts, объединение имён веток `renderEmptyPlaceholder`) в том
+ *  объёме, у которого есть предмет; разбор пропущенных — у
+ *  `checkIfEmptyPlaceholderNeeded`. */
+type EmptyPlaceholderType = 'saved' | 'greeting' | 'noMessages'
+
+/** Бокс стикера-приветствия — `_chatBubble.scss:4051-4058`
+ *  (`.empty-bubble-placeholder-sticker { width: 200px; height: 200px }`). */
+const GREETING_STICKER_SIZE = 200
 
 // tweb bubbles.ts:310-312 — рубильники подрезки вьюпорта. Значения дословные:
 // подрезка включена везде, кроме Safari (он не умеет вернуть скролл после
@@ -607,6 +666,45 @@ export default class ChatBubbles implements BubbleGroupsHost {
   // `onRenderScrollSet`: когда скролл всё равно поедет, липкие даты можно
   // включать сразу, без задержки в 600мс (bubbles.ts:10192).
   private willScrollOnLoad?: boolean
+
+  // ─── фильтр «Избранного» по тегу-реакции (tweb chat.ts:98 `savedReaction`) ──
+  /**
+   * Активный тег-реакция «Избранного» — порт поля `Chat.savedReaction`
+   * (chat.ts:98) в нашей адресации реакции (эмодзи-строка вместо конструктора
+   * `Reaction`; у оригинала поле — ВЕКТОР, потому что MTProto принимает
+   * несколько тегов сразу, а наша ручка — один).
+   *
+   * Это ОДИН ИЗ КЛЮЧЕЙ ПОИСКА (tweb `CHAT_SEARCH_KEYS`, chat.ts:73-74), а не
+   * фильтр по отрисованному: смена ключа перезапрашивает историю с нуля
+   * (`setPeer` с `sameSearch: false`), пагинация идёт по ОТФИЛЬТРОВАННОМУ
+   * набору, а новое входящее проверяется на тег перед отрисовкой
+   * (`_renderNewMessage`, tweb :4559-4568). Снятие фильтра — тот же путь с
+   * `undefined`.
+   *
+   * Прежняя React-лента фильтровала УЖЕ ЗАГРУЖЕННОЕ окно (`feedMsgs` в
+   * `Chat.tsx`) — то есть показывала не «все сообщения с этим тегом», а «те из
+   * последних сорока, у которых он есть». Это была наша выдумка, а не порт.
+   */
+  private savedReaction?: string
+  /**
+   * Сколько отфильтрованных сообщений уже забрано — смещение следующей
+   * страницы фильтра.
+   *
+   * РАСХОЖДЕНИЕ С ОРИГИНАЛОМ, И ОНО НАВЯЗАНО РУЧКОЙ. tweb листает
+   * отфильтрованную историю тем же `offset_id`, что и обычную
+   * (`messages.search` принимает `offset_id`/`add_offset`,
+   * appMessagesManager.ts:9970-9984), поэтому отдельного счётчика ему не нужно.
+   * Наш `GET /chats/{id}/search` принимает только `offset`/`limit`
+   * (`chat_handler.go:890-891` → `messagesrepo.go:186` `LIMIT $n OFFSET $n`),
+   * то есть ПОРЯДКОВЫЙ номер в выдаче, — его и приходится вести самому.
+   * Сбрасывается вместе с окном (`cleanup`).
+   */
+  private savedReactionOffset = 0
+
+  /** Порт tweb bubbles.ts:599 — бабл-плейсхолдер пустого чата, если он сейчас
+   *  показан. Он же гейт «второй раз не рисуем»
+   *  (`checkIfEmptyPlaceholderNeeded`, :11305). */
+  private emptyPlaceholderBubble?: HTMLElement
 
   // ─── первое открытие чата (tweb bubbles.ts:566, :587, :598, :569) ─────────
   /**
@@ -814,10 +912,14 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  меняет ответ на вопрос «прижат ли низ», и пересчитать это надо ДО того,
    *  как пользователь тронет колесо.
    *
-   *  Не портированы `checkPlaceholders`-ветки (`setPeerLanguageLoaded`,
-   *  sponsored, плейсхолдеры бота/пустого чата/неизвестного пользователя,
-   *  `checkIfEmptyPlaceholderNeeded`) — ни одной из этих подсистем в ленте ещё
-   *  нет; вместе с ними отпадает и сам параметр `checkPlaceholders`. */
+   *  Из `checkPlaceholders`-веток портирована одна — `checkIfEmptyPlaceholderNeeded`
+   *  (:11096): это ЕДИНСТВЕННОЕ место оригинала, где плейсхолдер пустого чата
+   *  появляется на открытии, и логично так: пусто — это «оба края сведены, а
+   *  баблов нет», а края взводит именно этот метод. Остальные
+   *  (`setPeerLanguageLoaded`, sponsored, плейсхолдеры бота, botforum-темы и
+   *  неизвестного пользователя) не портированы — ни одной из этих подсистем у
+   *  ленты нет; вместе с ними отпадает и сам параметр `checkPlaceholders`,
+   *  которым оригинал гасит ВСЮ пачку разом. */
   private setLoaded(side: SliceSides, value: boolean) {
     const willChange = this.scrollable.loadedAll[side] !== value
     if(!willChange) {
@@ -826,6 +928,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     this.scrollable.loadedAll[side] = value
     this.scrollable.onScroll() // ! WARNING
+
+    void this.checkIfEmptyPlaceholderNeeded()
   }
 
   private destroyScrollable() {
@@ -2085,12 +2189,20 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * — последний бабл или сама лента.
    *
    * Не портированы: треды/монофорум-фильтр (`getMessageThreadId` — окно треда у
-   * нас отдельное, чужое сюда не приезжает), `savedReaction` (фильтр окна по
-   * своей реакции — подсистемы нет), `cancelPreservePaddingScroll` (нижняя
-   * распорка композера — окружение `Chat`), ветка `ChatType.Scheduled`.
+   * нас отдельное, чужое сюда не приезжает), `cancelPreservePaddingScroll`
+   * (нижняя распорка композера — окружение `Chat`), ветка `ChatType.Scheduled`.
    */
   private async _renderNewMessage(message: MyMessage, scrolledDown?: boolean): Promise<void> {
     if (!this.scrollable.loadedAll.bottom) { // seems search active or sliced
+      return
+    }
+
+    // tweb :4558-4568 — окно ОТФИЛЬТРОВАНО по тегу, и новое сообщение попадает в
+    // него только с этим тегом. Проверка у оригинала «все названные теги
+    // присутствуют» (`savedReaction.every`), у нас тег один — отсюда одно
+    // сравнение. Сравнивается ЭМОДЗИ чипа: реакция у нас это он (см. поле
+    // `savedReaction`), а `reactionsEqual` оригинала разбирает конструктор.
+    if(this.savedReaction && !hasReactionEmoticon(message.reactions, this.savedReaction)) {
       return
     }
 
@@ -2679,12 +2791,25 @@ export default class ChatBubbles implements BubbleGroupsHost {
       if (isEnd?.bottom) this.setLoaded('bottom', true)
     }
 
+    let first: MyMessage | undefined
     for (const item of history) {
       const message = typeof item === 'number' ? this.getMessage(item) : item
       if (!message) continue
+      first ??= message
       // `canAnimateLadder: true` — tweb bubbles.ts:10058-10062: страницу
       // истории лестница анимирует, точечную дорисовку — нет.
       this.safeRenderMessage(message, reverse, true)
+    }
+
+    // Плашка «Обсуждение началось» — см. `threadServiceStartMessage`. Рисуется
+    // ТОЙ ЖЕ пачкой, что и корень: у оригинала она и вставляется в тот же
+    // слайс истории (appMessagesManager.ts:9782-9797), то есть приезжает в
+    // ленту неотличимо от настоящего сообщения.
+    if (isEnd?.top && first) {
+      const service = this.threadServiceStartMessage(first)
+      if (service) {
+        this.safeRenderMessage(service, reverse, true)
+      }
     }
 
     await this.awaitMessagesQueue()
@@ -2701,6 +2826,62 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // второй становится пустым.
     if (this.scrollable.loadedAll.top && this.messagesQueueOnRenderAdditional) {
       this.messagesQueueOnRenderAdditional()
+    }
+  }
+
+  /**
+   * Плашка «Обсуждение началось» в ветке комментариев — порт
+   * `appMessagesManager.generateThreadServiceStartMessage`
+   * (appMessagesManager.ts:6109-6135).
+   *
+   * ЧТО ЭТО. КЛИЕНТСКОЕ служебное сообщение с действием
+   * `messageActionDiscussionStarted`: сервер его не присылает и не может —
+   * события с таким смыслом в чате нет, есть только сам пост. Оригинал строит
+   * его один раз на тред (`threadsServiceMessagesIdsStorage`) и кладёт в СЛАЙС
+   * истории треда сразу за корнем, когда верх треда сведён
+   * (appMessagesManager.ts:9776-9797: `addSlice = [threadServiceMid, ...mids]`
+   * в убывающем слайсе, то есть по возрастанию — корень, плашка, комментарии).
+   *
+   * ГДЕ ЭТО У НАС. В ленте, а не в менеджере, потому что вставка в слайс — это
+   * ровно «дорисовать бабл страницей истории», а слайсами треда на главном
+   * потоке владеет она (см. шапку файла про зеркало). Условие оригинала
+   * перенесено дословно: `threadId` И `isTopEnd`. Роль реестра
+   * `threadsServiceMessagesIdsStorage` играет детерминированный номер плашки
+   * вместе с проверкой `safeRenderMessage` («бабл с таким адресом уже есть»):
+   * второй раз она не появится.
+   *
+   * КОРЕНЬ — ПЕРВОЕ сообщение сведённой с верхом страницы. У оригинала он
+   * берётся адресно (`getMessageByPeer(peerId, options.threadId)`), у нас так
+   * нельзя: клиент адресует тред номером ПОСТА (внешний контракт), а в окне
+   * лежит его ЗЕРКАЛО в группе обсуждения — с другим номером
+   * (`usecase/chat/sync.go:27-33`, `resolveThreadRootForQuery`). Зато бэкенд
+   * гарантирует, что корень в сведённом с верхом окне ЕСТЬ и стоит первым:
+   * SQL берёт его условием `thread_root_id=root OR id=root`, а не попавший в
+   * страницу — подшивает синтетическим `seq=0`
+   * (`usecase/chat/sync.go:112-135`, `prependForeignThreadRoot`).
+   *
+   * НОМЕР — дробь поверх корня (`generateTempMessageId`, порт того же вызова в
+   * оригинале, :6121): плашка обязана встать сразу за ним, а сортировка окна
+   * идёт по номеру. Отрицательного номера, как у прочих локальных сообщений
+   * tweb, у нас нет вовсе — клиентское пространство номеров это дроби
+   * (`core/history/messageId.ts`).
+   *
+   * `from_id` не ставится: у оригинала там `peerUser(NULL_PEER_ID)` — заглушка
+   * ради типа, а фраза плашки автора не упоминает (`serviceMsg.ts:110`).
+   */
+  private threadServiceStartMessage(root: MyMessage): MessageService | undefined {
+    if(!this.chat.threadId) {
+      return undefined
+    }
+
+    return {
+      _: 'messageService',
+      pFlags: {},
+      id: generateTempMessageId(root.id),
+      peer_id: getOutputPeer(this.peerId),
+      peerId: this.peerId,
+      date: root.date,
+      action: { _: 'messageActionDiscussionStarted' },
     }
   }
 
@@ -2788,6 +2969,15 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *     Размер окна тот же, что у оригинала после разворота, — `loadCount +
    *     backLimit`. */
   private requestHistory(maxId: FullMid, loadCount: number, backLimit: number): Promise<HistoryResult> {
+    // ФИЛЬТР ПО ТЕГУ — ВТОРАЯ ФОРМА СТРАНИЦЫ, и она у оригинала тоже отдельная:
+    // `requestHistory` под `savedReaction` уходит НЕ методом
+    // `messages.getHistory`, а `messages.search` (appMessagesManager.ts:9947,
+    // :9970-9984). Отсюда и здесь — ветка до всей арифметики `offsetId`:
+    // адресация у отфильтрованной страницы своя (см. `savedReactionOffset`).
+    if(this.savedReaction) {
+      return this.requestSavedReactionHistory(loadCount || backLimit)
+    }
+
     const { mid } = splitFullMid(maxId)
     const offsetId = mid || 0
 
@@ -2804,6 +2994,44 @@ export default class ChatBubbles implements BubbleGroupsHost {
       addOffset: backLimit ? -backLimit : (offsetId ? 1 : 0),
       limit: loadCount || backLimit,
     })
+  }
+
+  /**
+   * Страница ОТФИЛЬТРОВАННОЙ по тегу истории — та же роль, что у `requestHistory`
+   * выше, но у оригинала это не отдельный метод, а другая ветка того же
+   * (см. `BubblesManagers.messages.searchMessages`).
+   *
+   * Три вывода из ответа, и каждый — оригинала по смыслу:
+   *  • ПОРЯДОК. Выдача поиска идёт от нового к старому (`ORDER BY m.seq DESC`,
+   *    `messagesrepo.go:186`), а `HistoryResult.messages` у нас — по
+   *    возрастанию (контракт `messages.getHistory`); отсюда `reverse()`.
+   *    В tweb тем же занимается `SlicedArray`, который хранит убывающий слайс,
+   *    а наружу отдаёт то, что попросили.
+   *  • НИЗ СВЕДЁН ВСЕГДА. Первая страница фильтра берётся от `offset: 0`, то
+   *    есть от самого нового отмеченного сообщения: ниже него по фильтру ничего
+   *    нет. У tweb тот же вывод делает `historyStorage.searchHistory`
+   *    (bubbles.ts:5082-5083 берёт `first[0]` как «верх» окна поиска).
+   *  • ВЕРХ СВЕДЁН, когда выбрано всё: `count` — общее число совпадений
+   *    (`messagesrepo.go:182-185`), поэтому `offset + длина >= count` и есть
+   *    «страниц больше нет».
+   */
+  private async requestSavedReactionHistory(limit: number): Promise<HistoryResult> {
+    const reaction = this.savedReaction
+    const search = this.managers.messages.searchMessages
+    if(!reaction || !search) {
+      return { messages: [], count: 0, reachedTop: true, reachedBottom: true }
+    }
+
+    const offset = this.savedReactionOffset
+    const { messages, count } = await search(this.chat.peerId, '', { reaction, offset, limit })
+    this.savedReactionOffset = offset + messages.length
+
+    return {
+      messages: messages.slice().reverse(),
+      count,
+      reachedTop: this.savedReactionOffset >= count,
+      reachedBottom: offset === 0,
+    }
   }
 
   /**
@@ -3027,8 +3255,26 @@ export default class ChatBubbles implements BubbleGroupsHost {
      *  ХОСТ — первый вызов после создания ленты идёт с `false`, прыжок внутри
      *  открытого чата (`setMessageId`) — с `true`. */
     samePeer?: boolean,
+    /**
+     * Порт КЛЮЧА ПОИСКА `savedReaction` из `ChatSearchKeys` (tweb chat.ts:73).
+     * Механика оригинала дословная и держится на `hasOwnProperty`
+     * (chat.ts:1093-1098): САМО ПРИСУТСТВИЕ ключа в `options` означает «поиск
+     * задан заново», даже если значение то же; отсюда `'savedReaction' in
+     * options` ниже, а не сравнение значений.
+     */
+    savedReaction?: string,
   } = {}): Promise<{ cached: boolean, promise: Promise<void> } | null> {
     const { lastMsgId, samePeer = false } = options
+
+    // tweb chat.ts:1092-1099. Ключ поиска переписывается, если пир сменился ЛИБО
+    // вызывающий назвал ключ; `sameSearch` — «выдача та же, что была». Дальше он
+    // работает ровно там же, где в оригинале: гасит кэш-ветку (:5155) и
+    // `canScroll` (:5254) — окно надо пересобрать, а не доводить скроллом.
+    let sameSearch = true
+    if(!samePeer || 'savedReaction' in options) {
+      this.savedReaction = options.savedReaction
+      sameSearch = false
+    }
     const peerId = this.peerId
     const tempId = ++this.setPeerTempId
 
@@ -3109,7 +3355,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // tweb :5156-5200 — цель УЖЕ в окне. Ленту не трогаем: только скролл и
     // подсветка. Ветка `skippedMids` (:5161-5164) не портирована — пропущенных
     // при рендере сообщений у нас не бывает.
-    if(samePeer) {
+    //
+    // `sameSearch` (:5155) — вторая половина гейта оригинала: смена тега
+    // «Избранного» меняет ВЫДАЧУ, и отрисованное окно к ней отношения не имеет,
+    // сколько бы целей в нём ни было смонтировано.
+    if(samePeer && sameSearch) {
       const mounted = await m(this.getMountedBubble(lastMsgFullMid))
       const bubble = mounted?.bubble
       if(bubble) {
@@ -3151,6 +3401,10 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // окно видно всё время полёта запроса, а `prepareToSaveScroll` не якорит
     // рендер (его гейт `isMounted`).
     const oldChatInner = this.chatInner
+    // tweb :5242 — плейсхолдер ПРОШЛОГО окна снимается не здесь, а после того,
+    // как новое дерево въехало в документ (:5410-5412): иначе между уборкой и
+    // приездом страницы лента мигнула бы пустотой.
+    const oldPlaceholderBubble = this.emptyPlaceholderBubble
     this.cleanup()
     // ПОСЛЕ `cleanup()`: он сбрасывает снимок вместе с картой наблюдения.
     this.renderReadMaxSeq = readMaxSeq
@@ -3162,9 +3416,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
       chatInner.classList.add('bubbles-inner')
     }
 
-    // tweb :5254-5270. `sameSearch` в множителе нет — поиска по чату у ленты
-    // нет как понятия.
-    const canScroll = samePeer
+    // tweb :5254-5270.
+    const canScroll = samePeer && sameSearch
     const haveToScrollToBubble = canScroll || (topMessageFullMid !== EMPTY_FULL_MID && isJump) || isTarget
     const fromUp = maxBubbleFullMid !== EMPTY_FULL_MID && (
       lastMsgFullMid === EMPTY_FULL_MID ||
@@ -3278,6 +3531,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
       scrollable.lastScrollPosition = 0
       scrollable.replaceChildren(this.paddingTop, chatInner, this.paddingBottom)
 
+      // tweb :5410-5412.
+      if(oldPlaceholderBubble) {
+        this.cleanupPlaceholders(oldPlaceholderBubble)
+      }
+
       // tweb :5420.
       this.container.classList.toggle('has-groups', !!Object.keys(this.dateMessages).length)
 
@@ -3372,8 +3630,13 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  цель». В оригинале обёртка досыпает в `setPeer` координаты чата
    *  (`peerId`/`threadId`), у нас лента владеет ОДНИМ окном и досыпать нечего,
    *  кроме `samePeer: true`, — но входом обёртка остаётся: прыжок зовут и клик
-   *  по reply-заголовку, и календарь, и (придёт с окружением) поиск. */
-  public setMessageId(options: { lastMsgId?: number } = {}) {
+   *  по reply-заголовку, и календарь, и (придёт с окружением) поиск.
+   *
+   *  Через неё же ставится и СНИМАЕТСЯ тег «Избранного» — ровно как в оригинале
+   *  (`appImManager.chat.setMessageId({savedReaction: …})`, topbarSearch.tsx:1057
+   *  и :1071-1075). Ключ обязан ПРИСУТСТВОВАТЬ в объекте даже со значением
+   *  `undefined`: по его наличию `setPeer` и понимает, что выдача сменилась. */
+  public setMessageId(options: { lastMsgId?: number, savedReaction?: string } = {}) {
     const promise = this.setPeer({ ...options, samePeer: true })
     // Порт chat.ts:1119-1126: `Chat` заводит СВОЮ цепочку до второго промиса и
     // гасит её `.catch(noop)`, а наружу отдаёт исходный. Без этой строки
@@ -4682,8 +4945,227 @@ export default class ChatBubbles implements BubbleGroupsHost {
     this.scrollable.ignoreNextScrollEvent()
     this.deleteEmptyDateGroups()
 
+    // tweb :11654 — чат мог опустеть ИМЕННО этим удалением; края окна при этом
+    // не меняются, поэтому `setLoaded` сюда не приведёт и спросить надо здесь.
+    void this.checkIfEmptyPlaceholderNeeded()
+
     if (!ignoreOnScroll) {
       this.scrollable.onScroll()
+    }
+  }
+
+  /**
+   * Плейсхолдер ПУСТОГО ЧАТА — порт tweb `checkIfEmptyPlaceholderNeeded`
+   * (bubbles.ts:11302-11316) вместе с выбором ветки (:10798-10857).
+   *
+   * УСЛОВИЕ ОРИГИНАЛА, три слагаемых из его пяти:
+   *  • оба края окна сведены (`loadedAll.top && loadedAll.bottom`) — «истории
+   *    больше нет ни сверху, ни снизу», а не «страница ещё едет»;
+   *  • плейсхолдера ещё нет (`emptyPlaceholderBubble === undefined`);
+   *  • ИСТОРИЯ ПУСТА — `!this.chat.getHistoryStorage().count` оригинала. Роль
+   *    счётчика хранилища у нас играет длина окна в зеркале: другого ответа на
+   *    вопрос «сколько сообщений в этом окне» на главном потоке нет. Спрашивать
+   *    вместо него `getRenderedLength()` НЕЛЬЗЯ — отрисовка асинхронна
+   *    (очередь), а края взводит `performHistoryResult` ДО неё, и на непустой
+   *    странице карточка успевала бы выскочить в это окно.
+   * Второе слагаемое оригинала на том же месте — `Object.keys(this.bubbles)
+   * .length && !this.getRenderedLength()` — не портировано: оно обслуживает
+   * ПРОПУЩЕННЫЕ при рендере сообщения (`skippedMids`), которых у нас не бывает
+   * (см. кэш-ветку `setPeer`). Не портированы и `chat.isRestricted`/
+   * `ChatType.Logs`/`ChatType.Scheduled` — типов чата и ограничений у ленты нет
+   * как понятия; `shouldShowUnknownUserPlaceholder`/`isBotforum` — подсистемы,
+   * которых нет.
+   *
+   * ВЕТКА выбирается цепочкой оригинала (:10798-10857) в применимом объёме:
+   *  • `saved` — «Избранное» (`rootScope.myId === peerId`, :10837);
+   *  • `greeting` — личный чат, куда можно писать (:10839-10850). Слагаемое
+   *    `!isBot` опущено: признака «это бот» у ленты нет вовсе (в `ChatContext`
+   *    его не передаёт никто); `premiumRequired`/`paidMessages` — подсистем
+   *    нет;
+   *  • `noMessages` — всё остальное (:10856), последняя ветка и у оригинала.
+   * Пропущены ветки, у которых нет предмета: `restricted`, `directChannelMessages`,
+   * `group` (нужен `pFlags.creator` пира), `noScheduledMessages`, `topic`,
+   * `logs`, бот и sponsored.
+   */
+  private async checkIfEmptyPlaceholderNeeded(): Promise<void> {
+    if(
+      !this.scrollable.loadedAll.top ||
+      !this.scrollable.loadedAll.bottom ||
+      this.emptyPlaceholderBubble !== undefined ||
+      mirrorWindow(this.chat.messagesStorageKey)?.length
+    ) {
+      return
+    }
+
+    const middleware = this.getMiddleware()
+    const type: EmptyPlaceholderType =
+      rootScope.myId === this.peerId ? 'saved' :
+      !isAnyChat(this.peerId) && await this.chat.canSend?.() ? 'greeting' :
+      'noMessages'
+
+    if(!middleware()) {
+      return
+    }
+
+    return this.renderEmptyPlaceholder(type, middleware)
+  }
+
+  /**
+   * Порт tweb `renderEmptyPlaceholder` (bubbles.ts:10466) вместе с той частью
+   * `processLocalMessageRender` (:10745-10930), которая строит и вешает узел.
+   *
+   * ОДНО РАСХОЖДЕНИЕ ПО ФОРМЕ, и оно осознанное: у оригинала плейсхолдер — это
+   * НАСТОЯЩЕЕ локальное сообщение (`generateLocalFirstMessage(true)`, :11320),
+   * которое едет через `safeRenderMessage` и очередь рендера. Здесь узел
+   * строится напрямую, потому что у нашего служебного бабла содержимое
+   * выводится ИЗ ДЕЙСТВИЯ (`serviceMsgSegs`), а у плейсхолдера действия нет
+   * вовсе — сообщение-носитель было бы пустой формальностью, и `renderMessage`
+   * нарисовал бы по нему «действие не поддерживается». Каркас и классы при
+   * этом дословные (:10769, :10785-10787, :10739, :10743), поэтому SCSS
+   * (`_chatBubble.scss:3884` — порт 1:1) подхватывает узел без правок.
+   *
+   * СОСТАВ ВЕТОК — оригинала (:10474-10600):
+   *  • заголовок: `saved` → «Your cloud storage», `greeting`/`noMessages` →
+   *    «No messages here yet...»;
+   *  • `saved` — четыре строки списка с буллетом «•» (:10510-10515, :10728-10735);
+   *  • `greeting` — подпись «Send a message or tap the greeting below.» и
+   *    СТИКЕР-ПРИВЕТСТВИЕ (:10516-10600). Ветка `business_intro` (:10531-10566)
+   *    не портирована: делового профиля у нас нет.
+   * Каждому элементу дописывается `-line`, а сам бабл получает
+   * `has-service-description`, если элементов больше одного (:10738-10742) —
+   * именно этот класс делает пилюлю КАРТОЧКОЙ (колонка, крупный заголовок,
+   * радиус 1.5rem; `_chatBubble.scss:2672-2690`).
+   */
+  private async renderEmptyPlaceholder(type: EmptyPlaceholderType, middleware: Middleware): Promise<void> {
+    const t = useI18nStore.getState().t
+    const BASE_CLASS = 'empty-bubble-placeholder'
+
+    const bubble = document.createElement('div')
+    // tweb :10769 (`is-group-first`/`is-group-last` — плейсхолдер всегда один),
+    // :10785 (`bubble-first`), :10473 (`BASE_CLASS` + вид).
+    bubble.className = `bubble service is-group-first is-group-last bubble-first ${BASE_CLASS} ${BASE_CLASS}-${type}`
+
+    const contentWrapper = document.createElement('div')
+    contentWrapper.classList.add('bubble-content-wrapper')
+    const bubbleContainer = document.createElement('div')
+    bubbleContainer.classList.add('bubble-content')
+    const serviceMsg = document.createElement('div')
+    serviceMsg.classList.add('service-msg')
+    bubbleContainer.append(serviceMsg)
+    contentWrapper.append(bubbleContainer)
+    bubble.append(contentWrapper)
+
+    const line = (text: string, cls: string) => {
+      const span = document.createElement('span')
+      span.classList.add('i18n', 'center', cls)
+      span.textContent = text
+      return span
+    }
+
+    const elements: HTMLElement[] = [
+      line(t(type === 'saved' ? 'Your cloud storage' : 'No messages here yet...'), `${BASE_CLASS}-title`),
+    ]
+
+    if(type === 'saved') {
+      // tweb :10510-10515 + :10728-10735 — буллет как ОТДЕЛЬНЫЙ узел перед
+      // строкой, а не символ в тексте.
+      const items = [
+        'Forward messages here to save them',
+        'Send media and files to store them',
+        'Access this chat from any device',
+        'Use search to quickly find things',
+      ]
+      for(const key of items) {
+        const span = document.createElement('span')
+        span.classList.add(`${BASE_CLASS}-list-item`)
+        const bullet = document.createElement('span')
+        bullet.classList.add(`${BASE_CLASS}-list-bullet`)
+        bullet.textContent = '•'
+        span.append(bullet, t(key))
+        elements.push(span)
+      }
+    } else if(type === 'greeting') {
+      elements.push(line(t('Send a message or tap the greeting below.'), `${BASE_CLASS}-subtitle`))
+
+      const stickerDiv = document.createElement('div')
+      stickerDiv.classList.add(`${BASE_CLASS}-sticker`)
+      elements.push(stickerDiv)
+      // Стикер догоняет карточку — как в оригинале, где `wrapSticker` тоже
+      // асинхронен, а место под него в раскладке уже занято (200×200,
+      // `_chatBubble.scss:4051-4058`).
+      void this.renderGreetingSticker(stickerDiv, middleware)
+    }
+
+    // tweb :10738-10742.
+    if(elements.length > 1) {
+      bubble.classList.add('has-service-description')
+    }
+
+    for(const element of elements) {
+      element.classList.add(`${BASE_CLASS}-line`)
+    }
+
+    serviceMsg.prepend(...elements)
+
+    if(!middleware()) {
+      return
+    }
+
+    // tweb :10795 (`appendTo = this.container`) + :10781 — плейсхолдер живёт НЕ
+    // в скролл-контейнере, а в самой `.bubbles`: CSS центрирует его по ней
+    // абсолютом (`_chatBubble.scss:3884-3889`), поэтому он не уезжает вместе с
+    // прокруткой и не участвует в раскладке окна.
+    this.container.append(bubble)
+    this.emptyPlaceholderBubble = bubble
+  }
+
+  /**
+   * Стикер-приветствие — порт tweb :10520-10589 (`getGreetingSticker` →
+   * `wrapSticker` → `attachClickEvent`).
+   *
+   * Случайный из выдачи — как в оригинале: там набор перемешивается один раз
+   * (`greetingStickers.sort(() => Math.random() - Math.random())`,
+   * appStickersManager.ts:148) и дальше выдаётся по кругу. Круга у нас нет —
+   * карточка живёт ровно одно открытие чата, и второго стикера ей не нужно.
+   */
+  private async renderGreetingSticker(div: HTMLElement, middleware: Middleware): Promise<void> {
+    const docs = await this.managers.stickers?.searchByEmoji('👋').catch(() => [] as MyDocument[])
+    if(!middleware() || !docs?.length) {
+      return
+    }
+
+    const doc = docs[Math.floor(Math.random() * docs.length)]
+    wrapSticker({
+      mediaId: doc.id,
+      div,
+      group: 'chat',
+      middleware,
+      width: GREETING_STICKER_SIZE,
+      height: GREETING_STICKER_SIZE,
+      emoji: doc.stickerEmojiRaw,
+      liteModeKey: 'stickers_chat',
+      thumb: getStrippedThumb(doc),
+      docWidth: doc.w,
+      docHeight: doc.h,
+    }).render.catch(noop)
+
+    // tweb :10586-10589 — тап по стикеру ОТПРАВЛЯЕТ его (у оригинала через
+    // `emoticonsDropdown.onMediaClick`, у нас — ручкой хоста, см.
+    // `ChatContext.sendSticker`).
+    div.addEventListener('click', (e) => {
+      cancelEvent(e)
+      this.chat.sendSticker?.(doc)
+    })
+  }
+
+  /** Порт tweb `cleanupPlaceholders` (bubbles.ts:5014). У оригинала это
+   *  `destroyBubble` (плейсхолдер там — настоящий бабл со своим middleware); у
+   *  нас узел построен напрямую (см. `renderEmptyPlaceholder`), поэтому от
+   *  уборки остаётся ровно снятие узла. */
+  private cleanupPlaceholders(bubble = this.emptyPlaceholderBubble) {
+    bubble?.remove()
+    if(this.emptyPlaceholderBubble === bubble) {
+      this.emptyPlaceholderBubble = undefined
     }
   }
 
@@ -4725,6 +5207,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
     this.uploads.clear()
     this.readPromise = undefined
     this.renderReadMaxSeq = 0
+    // Смещение отфильтрованной выдачи принадлежит ПРОШЛОМУ окну — новое окно
+    // фильтра начинается от самого нового отмеченного сообщения. У оригинала
+    // ту же роль играет смена ключа хранилища истории (`getHistoryStorageKey`
+    // включает `savedReaction`, `getHistoryStorageKey.ts:18-22`): под новым
+    // ключом лежит пустой слайс, и листать его тоже не с чего.
+    this.savedReactionOffset = 0
     this.getHistoryTopPromise = this.getHistoryBottomPromise = undefined
     this.scrolledDown = true
 
@@ -4743,7 +5231,17 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     if (bubblesToo) {
       this.chatInner.replaceChildren()
+      // tweb :4947-4950 — узел плейсхолдера снимается ровно тогда, когда
+      // сносятся сами баблы: он живёт не в `chatInner`, а в `.bubbles`
+      // (см. `renderEmptyPlaceholder`), и `replaceChildren` его не задевает.
+      this.cleanupPlaceholders()
     }
+
+    // tweb :4990 — ССЫЛКА гасится всегда: узел прошлого окна снимет `setPeer`
+    // (он держит его в `oldPlaceholderBubble` до подмены дерева), а держать на
+    // него поле нельзя — иначе `checkIfEmptyPlaceholderNeeded` нового окна
+    // решит, что плейсхолдер уже показан.
+    this.emptyPlaceholderBubble = undefined
 
     this.middlewareHelper.clean()
   }
@@ -4775,11 +5273,13 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * И тогда прошлая запись УДАЛЯЕТСЯ (:2144), а не остаётся: она увела бы
    * следующее открытие в середину истории.
    *
-   * Слагаемое `!chat.savedReaction` (:2125) не портировано вместе с самим
-   * фильтром «Избранного» по тегу-реакции, ветка `pinnedMessages` (:2119,
-   * :2133, :2140-2142) — вместе с плашкой закрепа: и то и другое окружение
-   * чата, у ленты его нет. Гейт по типу чата (:2112) предмета не имеет —
-   * типов чата у ленты нет.
+   * Четвёртое условие оригинала — `!chat.savedReaction` (:2125): позиция в
+   * ОТФИЛЬТРОВАННОЙ по тегу выдаче к обычной истории отношения не имеет, и
+   * восстанавливать по ней следующее открытие чата нельзя.
+   *
+   * Ветка `pinnedMessages` (:2119, :2133, :2140-2142) не портирована вместе с
+   * плашкой закрепа — это окружение чата, у ленты его нет. Гейт по типу чата
+   * (:2112) предмета не имеет — типов чата у ленты нет.
    */
   private saveChatPosition() {
     const peerId = this.peerId
@@ -4791,6 +5291,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     const shouldSavePosition =
       !(this.scrollable.getDistanceToEnd() <= 16 && this.scrollable.loadedAll.bottom) &&
       this.getRenderedLength() &&
+      !this.savedReaction &&
       this.getViewportSlice().invisibleBottom.length // * don't save if we're close to the end
 
     if(!shouldSavePosition) {

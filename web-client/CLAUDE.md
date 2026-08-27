@@ -371,19 +371,46 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
 `callUser` отдаёт хост `VanillaFeed`, как `appImManager` в оригинале). Четвёртое —
 разблокировка платного медиа — в таблице ниже: у неё нет ни узла, ни попапа подтверждения.
 
+**Пустая лента и лента под фильтром закрыты** (пины — `chat/bubbles.emptyPlaceholder.test.ts`,
+`chat/bubbles.savedReaction.test.ts`, `chat/bubbles.thread.test.ts`):
+
+- **плейсхолдер пустого чата** — `checkIfEmptyPlaceholderNeeded` (tweb :11302) зовёт `setLoaded`,
+  ветку выбирает цепочка оригинала (:10798-10857) в трёх её видах, у которых есть предмет:
+  `saved` (Избранное), `greeting` (личный чат, куда можно писать — с настоящим стикером-приветствием
+  через `stickers.searchByEmoji('👋')`, порт `getGreetingSticker`) и `noMessages`. Узел строится
+  напрямую, а не локальным сообщением через `safeRenderMessage`: у нашей пилюли содержимое выводится
+  ИЗ ДЕЙСТВИЯ, а у плейсхолдера действия нет — разбор у самого метода. Классы дословные, поэтому
+  SCSS (`styles/tweb/_chatBubble.scss:3884`, порт 1:1) подходит без правок, включая гашение карточки
+  классом `has-groups`, когда в чате появляется первое сообщение. `EmptyChatGreeting.tsx` снесён;
+- **плашка «Обсуждение началось»** — `performHistoryResult` под `threadId` + сведённым верхом
+  (порт `generateThreadServiceStartMessage`, appMessagesManager.ts:6109-6135 и его вставки в слайс
+  треда, :9776-9797). Корень берётся ПЕРВЫМ сообщением страницы, а не адресно по `threadId`, как в
+  оригинале: клиент адресует тред номером ПОСТА, а в окне лежит его зеркало в группе обсуждения с
+  другим номером (`usecase/chat/sync.go:27-33`);
+- **фильтр «Избранного» по тегу-реакции** — `savedReaction` стал КЛЮЧОМ ПОИСКА, как в tweb
+  (`CHAT_SEARCH_KEYS`, chat.ts:73-74): смена тега идёт через `setMessageId({savedReaction})` →
+  `setPeer` с `sameSearch: false`, окно перезапрашивается целиком, пагинация идёт по отфильтрованной
+  выдаче, входящее без тега в окно не попадает (:4559-4568), позиция чата под фильтром не
+  сохраняется (appImManager.ts:2125). Панель `SavedTagsPanel` больше не врёт: её `onFilter` зовёт
+  `ChatFeedApi.setSavedReaction`. **Одно расхождение**, навязанное ручкой: страницы берутся
+  `GET /chats/{id}/search?reaction=` со смещением `offset`, а не `offset_id`, как у tweb
+  (`messages.search` с `saved_reaction`). Ручка `GET /chats/{id}/history?tag=` — точнее по форме
+  (тот же `offset_id`, и фильтр по МОЕЙ реакции, `messagesrepo.go:662`), но она идёт через
+  `messages.getHistory`, чьи срез и кэш в воркере ключуются БЕЗ тега: отфильтрованная страница
+  отравила бы обычное окно. У tweb этого нет, потому что ключ хранилища истории включает
+  `savedReaction` (`getHistoryStorageKey.ts:18-22`), — вот это и есть настоящий остаток.
+
 Остальное:
 
 | Долг | Где был | Куда портировать |
 |---|---|---|
 | сдвиг градиента обоев вместе с прокруткой к новому сообщению | эффект в `Chat.tsx` + `core/chat/activeGradient.ts` | `chat/bubbles.ts::scrollToBubble` startCallback (tweb :4710-4714) |
-| плашка «Обсуждение началось» в треде комментариев | `winV` в `Chat.tsx` | `chat/bubbles.ts::performHistoryResult` (tweb `generateThreadServiceStartMessage`) |
 | очередь голосовых/кружков для глобального плеера | `useVoiceQueue` | `chat/bubbles.ts` — владелец аудио-бабла |
 | разблокировка платного медиа | обработчик в `Chat.tsx` | **не обработчиком**: у tweb это ЦЕЛАЯ ветка рендера `messageMediaPaidMedia` (bubbles.ts:8840-9030 — псевдо-фото из превью, ценник `.extended-media-buy`, `DotRenderer`, опрос `extendedMediaMessages`) плюс `PopupPayment` с подтверждением суммы (:3199-3232). У нас заблокированный бабл сегодня пуст (`getBubbleMedia` → `undefined`), попапа платежей нет, а ручка `starsManager.unlockPaidMedia` списывает звёзды молча — разбор в докблоке `chat/bubbles.ts::renderMedia` |
-| фильтр «Избранного» по тегу-реакции | `feedMsgs` в `Chat.tsx` (панель `SavedTagsPanel` осталась) | `chat/bubbles.ts` (tweb `savedReaction` в `setPeer`) |
 | автозагрузка медиа по настройкам чата | `useChatAutoDownload` → пропы React-ленты | `chat/bubbles.ts` → `wrappers/video.ts`/`album.ts` (параметр `autoDownload` у них уже есть) |
 | «Переотправить» упавшее сообщение, «Перевести», ⭐-реакция, «Ответить в другом чате», «Сохранить GIF», «Copy Media» | пункты React-меню сообщения | **никуда — предмета нет**, разбор каждого в шапке `chat/contextMenu.ts` («Семь пунктов React-меню»). Четыре из шести пунктами tweb `ChatContextMenu` не являются вовсе (⭐-реакция — клик по платному чипу, «Ответить в другом чате» — меню плашки ответа `chat/input.ts:647-651`, «Copy Media» и повтор упавшей отправки в tweb отсутствуют), у «Перевести» и «Сохранить GIF» дословный порт даёт вечно ложный `verify` — мёртвую кнопку. Седьмой пункт прежней строки, «Кто просмотрел», ПОРТИРОВАН: это `views`-пункт группы (`messages.viewers` → «Seen by N»), тесты — `contextMenu.test.ts` |
 | ручной повтор упавшей отправки: `messages.retryPending` (`core/managers/messages/pending.ts:570`) остался без единого вызывающего | пункт «Переотправить» React-меню | решать не пунктом меню: у tweb ручного повтора нет по построению (сорванную отправку переигрывает транспорт, `message.error` даёт лишь право удалить бабл). Это расхождение нашей модели отправки с оригиналом — ему место в `docs/readiness/port-divergences.md`, а не в порте меню. **`cancelPending` вызывающего обрёл**: его зовёт крестик кольца отдачи на неотправленном бабле (`chat/bubbles.ts::uploadPromiseFor`) |
-| приветствие пустого чата и «Похожие каналы» | `messages/EmptyChatGreeting.tsx`, `messages/SimilarChannels.tsx` — **файлы оставлены** и сейчас никем не импортируются | `chat/bubbles.ts` (tweb `renderEmptyPlaceholder('greeting')` :10516, `SimilarChannels` :7083) |
+| «Похожие каналы» | `messages/SimilarChannels.tsx` + `core/hooks/useSimilarChannels.ts` + `channels.similar` — **снесены** | **никуда, пока нет предмета — и предмета не хватает ДВАЖДЫ.** У tweb это не блок под лентой, а довесок СЛУЖЕБНОГО бабла `messageActionChannelJoined` (bubbles.ts:7028-7118: класс `is-similar-channels`, контейнер `.bubble-similar-channels` после `bubble-content`, раскрытие кликом по пилюле). Сам бабл — клиентский: `insertChannelJoinedService` (appMessagesManager.ts:6888-6980) вставляет его в историю по ДАТЕ ВСТУПЛЕНИЯ (`channel.date`). У нас (1) даты вступления на проводе нет вовсе — `domain.ChatCard` её не несёт, `group_handler.go:581-590` не пишет (в БД она есть: `chat_members.joined_at`); (2) ручка `/channels/{id}/similar` отдаёт ПЛОСКИЕ снимки `{id,type,title,username,member_count}` (`channel_handler.go:427-433`), а не конструкторы `channel`, — снесённый компонент читал `chat._ === 'channel'` и потому всегда показывал 0 подписчиков и пустые аватарки |
 
 ## Безопасность (критично)
 
