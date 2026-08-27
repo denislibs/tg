@@ -297,6 +297,34 @@ describe('VanillaFeed — контекстное меню сообщения в 
     expect(popups.showDeleteMessages).toHaveBeenCalledWith(CHAT, [cid(1)])
   })
 
+  // Отвязка (`destroy()`) и ЗАКРЫТИЕ — разные вещи: `ChatContextMenu.destroy()`
+  // это только `cleanup()` + `attachListenerSetter.removeAll()` (порт tweb
+  // contextMenu.ts:689-692), а узел меню лежит в `document.body` и переживает
+  // смерть ленты. В tweb этого не видно — кликнуть по другому чату сквозь
+  // `.btn-menu-overlay` нельзя (_button.scss:590-599); у нас лента умирает и
+  // без клика, поэтому владелец закрывает меню сам — тем же вызовом, каким
+  // оригинал закрывает меню на исчезновении его цели (tweb contextMenu.ts:322-346).
+  it('размонтирование ЗАКРЫВАЕТ открытое меню, а не бросает его в body', async () => {
+    const { container, unmount } = await mountWithMenu([msg(cid(1))])
+
+    rightClick(container.querySelector<HTMLElement>('.bubble:not(.service) .bubble-content')!)
+    await flushMenu()
+    const element = menuElement()
+    expect(element, 'меню не открылось — тест ниже проверял бы пустоту').not.toBeNull()
+    expect(element!.classList.contains('active')).toBe(true)
+
+    unmount()
+
+    // `close()` снимает `active` синхронно...
+    expect(element!.classList.contains('active')).toBe(false)
+    // ...а сам узел убирает `destroy()` через 300мс (порт tweb
+    // contextMenu.ts:565-580 → 1762 `element.remove()`) — то есть по цепочке,
+    // которую запускает ИМЕННО закрытие.
+    await vi.waitFor(() => {
+      expect(menuElement()).toBeNull()
+    }, { timeout: 1000 })
+  })
+
   it('размонтирование отвязывает меню (`contextMenu.destroy()` в bubbles.destroy)', async () => {
     const { container, unmount } = await mountWithMenu([msg(cid(1))])
     // Дерево уходит из документа вместе с хостом — держим ссылку, иначе после

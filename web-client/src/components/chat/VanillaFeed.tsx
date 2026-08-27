@@ -12,6 +12,7 @@
 // `.bubbles` остаётся flex-ребёнком `.chat`, как в оригинале.
 import { useLayoutEffect, useRef, type RefObject } from 'react'
 import { winKey } from '@core/history/messagesMirror'
+import contextMenuController from '@helpers/contextMenuController'
 import { getMediaId } from '@core/messages/messageKind'
 import ChatBubbles, { type ChatContext } from './bubbles'
 import ChatContextMenu, { type ContextMenuPopups } from './contextMenu'
@@ -311,6 +312,37 @@ export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBot
       if (api) api.current = null
       if (scrollerRef) scrollerRef.current = null
       bubblesRef.current = null
+      // Открытое меню сообщения принадлежит НЕ ленте, а синглтону
+      // `contextMenuController`, и живёт оно в `document.body`
+      // (`contextMenu.ts:851`, порт tweb contextMenu.ts:1753
+      // `getOverlayRoot().append(element)`). Отвязка меню в `bubbles.destroy()`
+      // его не закрывает: `ChatContextMenu.destroy()` — это ровно
+      // `cleanup()` + `attachListenerSetter.removeAll()` (tweb
+      // contextMenu.ts:689-692), а узел убирает только путь ЗАКРЫТИЯ —
+      // `close()` → `dispatchEvent('toggle', false)` (tweb
+      // overlayClickHandler.ts:53) → `onClose` из `openBtnMenu` →
+      // `setTimeout(destroy, 300)` → `element.remove()` (tweb
+      // contextMenu.ts:565-580, 1762).
+      //
+      // В tweb смена пира меню не закрывает НИГДЕ: ни `appImManager.setPeer`/
+      // `spliceChats` (appImManager.ts:2672-2830), ни `Chat.destroy`
+      // (chat.ts:837-861) к контроллеру не обращаются, а
+      // `removeByType('chat')` снимает только слои типа 'chat', оставляя слой
+      // 'menu' (appNavigationController.ts:434-445). Оригиналу это и не нужно:
+      // пока меню открыто, поверх всего лежит `.btn-menu-overlay` —
+      // `position: fixed; inset: 0` (tweb scss/partials/_button.scss:590-599),
+      // который глотает любой клик и сам закрывает меню
+      // (tweb overlayClickHandler.ts:92-95, 99-105, 121). Кликнуть по другому
+      // чату, не закрыв меню, там физически нельзя.
+      //
+      // У нас лента умирает не только от клика по чату, но и от смены пропов
+      // (`peerId`, вид чата, `managers` — зависимости этого эффекта), то есть
+      // без единого клика. Поэтому закрываем ровно по тому правилу, которое
+      // tweb применяет, когда ЦЕЛЬ меню перестала существовать: удаление
+      // сообщения-цели там зовёт `contextMenuController.close()`
+      // (tweb contextMenu.ts:322-346). Смерть ленты — тот же случай для всех
+      // её сообщений сразу.
+      contextMenuController.close()
       bubbles.destroy()
       chatColumn.classList.remove('is-go-down-visible')
     }
