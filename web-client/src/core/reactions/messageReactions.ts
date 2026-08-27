@@ -108,6 +108,20 @@ function withResults(agg: MessageReactions | undefined, results: ReactionCount[]
 }
 
 /**
+ * Кто и где кликнул по реакции.
+ *
+ * Ключ зрителя и ключ ЧАТА ездят парой, потому что оптимистичный
+ * `recent_reactions` требует обоих: чей пир дописать — знает первый, а можно ли
+ * его дописывать вообще — только второй.
+ */
+export interface ReactionClick {
+  /** Ключ ЗРИТЕЛЯ: его пир встаёт в `recent_reactions` первым. */
+  me: PeerId
+  /** Ключ ЧАТА, где стоит сообщение. */
+  peerId: PeerId
+}
+
+/**
  * Дельта СВОЕГО клика (count±1 по эмодзи) — общая для главного стора
  * (оптимистичный клик + эхо) и воркер-кэша (SSOT). Единственная реализация,
  * чтобы стор и воркер не разошлись.
@@ -120,10 +134,9 @@ export function reactionDelta(
   emoji: string,
   action: 'add' | 'remove',
   mine: boolean,
-  /** КЛЮЧ зрителя — своя реакция сразу попадает в `recent_reactions` (tweb
-   *  добавляет свой пир оптимистично), иначе чип успевает мигнуть числом и лишь
-   *  потом, с серверным эхом, сменится на аватары. */
-  me?: PeerId,
+  /** Кто и ГДЕ кликнул. Не задан — оптимистичного `recent_reactions` нет вовсе
+   *  (эхо чужого клика, тест кэш-методов). */
+  by?: ReactionClick,
 ): MessageReactions | undefined | null {
   const results = [...(agg?.results ?? [])]
   const i = results.findIndex((c) => c.reaction._ === 'reactionEmoji' && c.reaction.emoticon === emoji)
@@ -146,7 +159,7 @@ export function reactionDelta(
         ...(mine && !isChosen(results[i]) ? { chosen_order: myEmoticons(agg).length } : {}),
       }
     }
-    return withResults(withRecent(agg, emoji, mine ? me : undefined, 'add'), results)
+    return withResults(withRecent(agg, emoji, mine ? by : undefined, 'add'), results)
   }
 
   if (i < 0) return null
@@ -155,24 +168,51 @@ export function reactionDelta(
   if (mine) delete next.chosen_order
   if (next.count <= 0) results.splice(i, 1)
   else results[i] = next
-  return withResults(withRecent(agg, emoji, mine ? me : undefined, 'remove'), results)
+  return withResults(withRecent(agg, emoji, mine ? by : undefined, 'remove'), results)
 }
 
-/** Свежие реагировавшие: свой пир первым, дублей нет, не больше трёх. */
+/**
+ * Свежие реагировавшие: свой пир первым, дублей нет, не больше трёх.
+ *
+ * Вектор `recent_reactions` — ТОТ ЖЕ поимённый список реагировавших, урезанный
+ * до трёх, и там, где зрителю не положено знать, КТО реагировал, его не
+ * существует: у оригинала свой пир дописывается внутри
+ * `if(reactions.recent_reactions)` (tweb `appReactionsManager.ts:840-856`), а
+ * сам вектор заводится только при `canSeeList` (`:718-725`
+ * `recent_reactions: canSeeList ? [] : undefined`, `:836-838`).
+ *
+ * Права на это два ответа не заводится: спрашивается `canViewReactionsList` —
+ * тот же предикат, которым гейтится запрос списка (`useMessageActions`) и
+ * аватарки вместо числа в чипе (`components/chat/reactions.ts`). Без гейта свой
+ * клик в вещательном канале порождал бы вектор, которого сервер туда не шлёт, и
+ * пункт меню `views` мигал бы до прихода кадра (`contextMenu.ts:799`, порт
+ * tweb `contextMenu.ts:1256-1257`).
+ *
+ * РАСХОЖДЕНИЕ, названное намеренно: у оригинала терм здесь шире на
+ * `!isBroadcast` (`:718-720`), потому что он ФАБРИКУЕТ отсутствующий флаг
+ * `can_see_list` для агрегата, которого сервер ещё не присылал (`:721-730`).
+ * Мы флаг не фабрикуем, поэтому на ПЕРВОЙ реакции в группе (агрегата нет —
+ * флага нет) свой пир в вектор не попадает: чип покажет число и сменится на
+ * аватарку с кадром. Фабрикация флага требует вида чата в воркере и по промаху
+ * кэша чатов отвечала бы «не канал» — то есть открывала бы ровно ту течь,
+ * которую этот гейт закрывает.
+ */
 function withRecent(
   agg: MessageReactions | undefined,
   emoji: string,
-  me: PeerId | undefined,
+  by: ReactionClick | undefined,
   action: 'add' | 'remove',
 ): MessageReactions | undefined {
-  if (me === undefined) return agg
+  if (by === undefined || !canViewReactionsList(agg, by.peerId)) return agg
   const rest = (agg?.recent_reactions ?? []).filter(
-    (x) => !(getPeerId(x.peer_id) === me && reactionKey(x.reaction) === emoji),
+    (x) => !(getPeerId(x.peer_id) === by.me && reactionKey(x.reaction) === emoji),
   )
-  if (action === 'remove') return { ...(agg ?? EMPTY), recent_reactions: rest }
+  // Снятие ВЫЧЁРКИВАЕТ строку из вектора, а не заводит его: у оригинала splice
+  // тоже стоит под `if(reactions.recent_reactions)` (`:705-711`).
+  if (action === 'remove') return agg?.recent_reactions ? { ...agg, recent_reactions: rest } : agg
   const mineEntry = {
     _: 'messagePeerReaction' as const,
-    peer_id: { _: 'peerUser' as const, user_id: me },
+    peer_id: { _: 'peerUser' as const, user_id: by.me },
     date: 0,
     reaction: { _: 'reactionEmoji' as const, emoticon: emoji },
   }

@@ -177,11 +177,16 @@ export function newReactionMethods({ rest, patchMsg, getMeId, opWindowsFor, emit
   // внутренним протоколом менеджера. Кадр теперь несёт абсолютное состояние без
   // диффа, и собственный клик — единственное место, где дельта вообще
   // осмысленна.
-  const applyLocalDelta = (peerId: number, msgId: number, emoji: string, action: 'add' | 'remove'): void => {
+  //
+  // Зритель и чат уходят в дельту ПАРОЙ (`ReactionClick`): свой пир дописывается
+  // в `recent_reactions` сразу, иначе чип мигнёт числом и лишь потом, с кадром,
+  // сменится на аватарку, — но существует ли этот вектор в чате вообще, решает
+  // право видеть список, и без ключа чата его не спросить.
+  const applyLocalDelta = (peerId: number, msgId: number, emoji: string, action: 'add' | 'remove', me: PeerId): void => {
     const id = generateMessageId(msgId)
     let applied = false
     patchMsg(peerId, (m) => m.id === id, (m: MyMessage) => {
-      const next = reactionDelta(m.reactions, emoji, action, true)
+      const next = reactionDelta(m.reactions, emoji, action, true, { me, peerId })
       if (next === null) return null // эхо своего уже применённого действия
       applied = true
       return { ...m, reactions: next }
@@ -244,25 +249,26 @@ export function newReactionMethods({ rest, patchMsg, getMeId, opWindowsFor, emit
 
     // Реакции: поставить/снять свою. Оптимистика в SSOT воркера (tweb sendReaction)
     // — применяем локально ДО сети; на ошибке сети — откат обратной дельтой. meId
-    // обязателен для верной деривации `mine`; пока не разрешён (старт) — ждём эхо.
+    // обязателен и для деривации `mine`, и для своего пира в `recent_reactions`;
+    // пока не разрешён (старт) — ждём эхо.
     async react(peerId: number, msgId: number, emoji: string): Promise<void> {
       const me = getMeId?.() ?? null
-      if (me != null) applyLocalDelta(peerId, getServerMessageId(msgId), emoji, 'add')
+      if (me != null) applyLocalDelta(peerId, getServerMessageId(msgId), emoji, 'add', me)
       try {
         await rest.post(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/reactions`, { emoji })
       } catch (e) {
-        if (me != null) applyLocalDelta(peerId, getServerMessageId(msgId), emoji, 'remove')
+        if (me != null) applyLocalDelta(peerId, getServerMessageId(msgId), emoji, 'remove', me)
         throw e
       }
     },
 
     async unreact(peerId: number, msgId: number, emoji: string): Promise<void> {
       const me = getMeId?.() ?? null
-      if (me != null) applyLocalDelta(peerId, getServerMessageId(msgId), emoji, 'remove')
+      if (me != null) applyLocalDelta(peerId, getServerMessageId(msgId), emoji, 'remove', me)
       try {
         await rest.del(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/reactions/${encodeURIComponent(emoji)}`)
       } catch (e) {
-        if (me != null) applyLocalDelta(peerId, getServerMessageId(msgId), emoji, 'add')
+        if (me != null) applyLocalDelta(peerId, getServerMessageId(msgId), emoji, 'add', me)
         throw e
       }
     },

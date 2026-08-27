@@ -54,9 +54,14 @@ describe('агрегат реакций', () => {
   })
 })
 
+// Ключ ЧАТА в кликах ниже: личка это ключ собеседника (положительный), группа и
+// вещательный канал — отрицательные, и различает их только флаг `can_see_list`.
+const DM = 42
+const CHAT = -100
+
 describe('reactionDelta — свой клик', () => {
   it('первая реакция получает chosen_order 0 и свой пир в recent', () => {
-    const next = reactionDelta(undefined, '👍', 'add', true, 7)!
+    const next = reactionDelta(undefined, '👍', 'add', true, { me: 7, peerId: DM })!
     expect(next.results).toEqual([{ _: 'reactionCount', reaction: emoji('👍'), count: 1, chosen_order: 0 }])
     expect(recentOf(next, emoji('👍'))).toEqual([7])
   })
@@ -69,8 +74,8 @@ describe('reactionDelta — свой клик', () => {
   })
 
   it('снятие убирает chosen_order и сам чип, когда счётчик обнулился', () => {
-    const withMine = reactionDelta(undefined, '👍', 'add', true, 7)!
-    const removed = reactionDelta(withMine, '👍', 'remove', true, 7)
+    const withMine = reactionDelta(undefined, '👍', 'add', true, { me: 7, peerId: DM })!
+    const removed = reactionDelta(withMine, '👍', 'remove', true, { me: 7, peerId: DM })
     expect(removed).toBeUndefined()
   })
 
@@ -85,6 +90,53 @@ describe('reactionDelta — свой клик', () => {
   it('эхо своего уже применённого действия возвращает null', () => {
     expect(reactionDelta(agg({ results: [count('👍', 1, 0)] }), '👍', 'add', true)).toBeNull()
     expect(reactionDelta(agg({ results: [count('👍', 1)] }), '👍', 'remove', true)).toBeNull()
+  })
+})
+
+// Вектор `recent_reactions` — тот же поимённый список реагировавших, урезанный
+// до трёх. В вещательном канале его не существует (реакции там анонимны, сервер
+// вектора не шлёт), и оптимистика не вправе дописать туда себя: пункт меню
+// `views` гейтится ровно термом `recent_reactions?.length`
+// (`components/chat/contextMenu.ts:799`, порт tweb `contextMenu.ts:1256-1257`),
+// и мигнул бы после своего клика до прихода кадра.
+//
+// Эталон: tweb `appReactionsManager.ts:718-725` строит локальный агрегат как
+// `recent_reactions: canSeeList ? [] : undefined`, а свой пир дописывает внутри
+// `if(reactions.recent_reactions)` (`:836-856`).
+describe('reactionDelta — оптимистичный recent гейтится правом видеть список', () => {
+  it('в вещательном канале свой клик вектора не порождает', () => {
+    const next = reactionDelta(undefined, '👍', 'add', true, { me: 7, peerId: CHAT })!
+    expect(next.recent_reactions).toBeUndefined()
+    expect(recentOf(next, emoji('👍'))).toEqual([])
+    // Сам чип при этом ставится: гейт закрывает поимённый список, а не реакцию.
+    expect(next.results[0].count).toBe(1)
+    expect(isChosen(next.results[0])).toBe(true)
+  })
+
+  it('в группе с правом (can_see_list) — порождает, свой пир первым', () => {
+    const before = agg({ results: [count('👍', 1)], pFlags: { can_see_list: true } })
+    const next = reactionDelta(before, '👍', 'add', true, { me: 7, peerId: CHAT })!
+    expect(recentOf(next, emoji('👍'))).toEqual([7])
+  })
+
+  it('в личке — порождает без всякого флага: право там договаривает ключ пира', () => {
+    const next = reactionDelta(undefined, '👍', 'add', true, { me: 7, peerId: DM })!
+    expect(recentOf(next, emoji('👍'))).toEqual([7])
+  })
+
+  // Снятие ВЫЧЁРКИВАЕТ строку, а не заводит вектор: пустой `recent_reactions: []`
+  // — то же утверждение «список есть», просто нулевой длины. У оригинала splice
+  // тоже стоит под `if(reactions.recent_reactions)` (tweb `:705-711`).
+  it('снятие не заводит вектор там, где его не было', () => {
+    const before = agg({ results: [count('👍', 2, 0)] })
+    const next = reactionDelta(before, '👍', 'remove', true, { me: 7, peerId: DM })!
+    expect(next.recent_reactions).toBeUndefined()
+  })
+
+  it('снятие в личке вычёркивает свой пир из вектора', () => {
+    const withMine = reactionDelta(agg({ results: [count('👍', 1)] }), '👍', 'add', true, { me: 7, peerId: DM })!
+    const next = reactionDelta(withMine, '👍', 'remove', true, { me: 7, peerId: DM })!
+    expect(recentOf(next, emoji('👍'))).toEqual([])
   })
 })
 
