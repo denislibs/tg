@@ -698,3 +698,43 @@ func TestMessageWire_WebPageYieldsToRealMedia(t *testing.T) {
 		t.Fatalf("media = %#v, ждали фотографию, а не карточку ссылки", j["media"])
 	}
 }
+
+// Счётчики поста канала: пара views/forwards едет ТОЛЬКО у поста и тогда ВСЕГДА.
+//
+// Граница — ctx.Post, то есть тот же вопрос «пост ли это», которым ставится
+// pFlags.post. Прежде границей служило ЗНАЧЕНИЕ (omitempty на числе), и свежий
+// пост попадал не на ту сторону: параметра у него не было вовсе, хотя у
+// оригинала бит flags.10 выставлен с первой публикации.
+func TestMessageWire_PostCountersPairedAndPostOnly(t *testing.T) {
+	fresh := Message{Seq: 5, CreatedAt: time.Unix(1_700_000_000, 0)}
+
+	// Свежий пост: просмотров не было ни одного, но параметры едут — иначе
+	// оригинальный гейт наблюдения (`isMessage && message.views`,
+	// tweb bubbles.ts:7672) не пустил бы пост под интерсектор НИКОГДА, и
+	// первый просмотр не зарегистрировался бы.
+	j := wireObject(t, fresh.ToWire(MessageContext{Peer: NewPeerChannel(9), Post: true}))
+	if j["views"] != float64(1) {
+		t.Errorf("просмотры свежего поста = %#v, ждали 1: у оригинала поста с нулём просмотров не бывает (tweb appMessagesManager.ts:2930)", j["views"])
+	}
+	if j["forwards"] != float64(0) {
+		t.Errorf("репосты свежего поста = %#v, ждали 0: бит у пары ОДИН (flags.10), репостов при этом и правда нуль", j["forwards"])
+	}
+
+	// Пост с накопленными счётчиками отдаёт их как есть: нижняя граница — это
+	// граница, а не подмена значения.
+	grown := fresh
+	grown.Views, grown.Forwards = 42, 3
+	j = wireObject(t, grown.ToWire(MessageContext{Peer: NewPeerChannel(9), Post: true}))
+	if j["views"] != float64(42) || j["forwards"] != float64(3) {
+		t.Errorf("счётчики выросшего поста = %#v/%#v, ждали 42/3", j["views"], j["forwards"])
+	}
+
+	// НЕ пост: ни личка, ни группа счётчиков не несут — их нет и у оригинала,
+	// а пара нулей на каждом сообщении стоила бы провода.
+	j = wireObject(t, grown.ToWire(MessageContext{Peer: NewPeerUser(42)}))
+	for _, key := range []string{"views", "forwards"} {
+		if v, ok := j[key]; ok {
+			t.Errorf("у сообщения вне канала приехал %q = %#v", key, v)
+		}
+	}
+}

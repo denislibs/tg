@@ -141,8 +141,18 @@ func (m Message) toReal(ctx MessageContext) MessageReal {
 	r.Media = m.mediaWire()
 	r.ReplyMarkup = m.ReplyMarkup
 	r.Entities = m.Entities
-	r.Views = m.Views
-	r.Forwards = m.Forwards
+	// Счётчики поста — только у ПОСТА, и тогда всегда. Второго ответа на
+	// вопрос «пост ли это» здесь нет: спрашивается тот же ctx.Post, которым
+	// ставится pFlags.post строкой выше, и заполняют его оба потребителя —
+	// пачка истории (usecase/chat/messagewire.go) и живой кадр (frame.go).
+	//
+	// В личке и в группе параметров быть не должно: там их нет и у оригинала,
+	// а раздувать каждое сообщение парой нулей значило бы платить за это
+	// проводом. Прежде границей служило значение (`omitempty` на числе), и
+	// свежий пост попадал не на ту сторону.
+	if ctx.Post {
+		r.PostCounters(m.Views, m.Forwards)
+	}
 	r.Replies = ctx.Replies
 	if m.EditedAt != nil {
 		r.EditDate = unixSeconds(*m.EditedAt)

@@ -234,6 +234,112 @@ func TestGroupMessage_NoRepliesFrame(t *testing.T) {
 	}
 }
 
+// Счётчики поста едут С ПЕРВОЙ ПУБЛИКАЦИИ — обоими путями, каким пост доезжает
+// до ленты: живым кадром `new_message` и пачкой истории. Просмотров у свежего
+// поста ещё нет ни одного, и раньше это значило «параметра нет вовсе»: гейт
+// наблюдения в ленте пришлось держать на виде чата вместо `message.views`
+// (tweb bubbles.ts:7672), а узел `.post-views` у поста не появлялся до
+// перезагрузки окна — переписывать было нечего.
+func TestChannelPost_CarriesCountersFromFirstPublication(t *testing.T) {
+	i, fg, _, fpub := newChannelTestInteractor(t)
+	ctx := context.Background()
+	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+	post, err := i.PostToChannel(ctx, ch, 7, "свежий пост", nil, "p1")
+	if err != nil {
+		t.Fatalf("PostToChannel: %v", err)
+	}
+
+	assertPostCounters(t, "живой кадр new_message", fpub.lastMessage(t), 1, 0)
+	assertPostCounters(t, "история", postFromHistory(t, i, 7, post.ID), 1, 0)
+
+	// Нижняя граница не подменяет реальный счётчик: два зрителя — двойка обоими
+	// путями. Кадр здесь не перепубликовывается (его шлёт RegisterViews),
+	// поэтому живой путь проверяется на СЛЕДУЮЩЕМ посте.
+	_ = fg.AddMember(ctx, ch, 8, domain.RoleSubscriber, 0)
+	_ = fg.AddMember(ctx, ch, 9, domain.RoleSubscriber, 0)
+	if _, err := i.RegisterViews(ctx, ch, 8, []int64{post.ID}); err != nil {
+		t.Fatalf("RegisterViews зрителем 8: %v", err)
+	}
+	if _, err := i.RegisterViews(ctx, ch, 9, []int64{post.ID}); err != nil {
+		t.Fatalf("RegisterViews зрителем 9: %v", err)
+	}
+	assertPostCounters(t, "история после двух зрителей", postFromHistory(t, i, 7, post.ID), 2, 0)
+}
+
+// Сообщение группы счётчиков не несёт ВООБЩЕ — ни живым кадром, ни историей.
+// `views`/`forwards` есть только у поста канала: у оригинала их нет ни в личке,
+// ни в группе, и раздувать каждое сообщение парой нулей значило бы платить за
+// это проводом.
+func TestGroupMessage_CarriesNoPostCounters(t *testing.T) {
+	i, fg, _, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	gid, _ := fg.CreateMultiMember(ctx, "group", "Chat", "", "", false, 7)
+	_ = fg.AddMember(ctx, gid, 7, domain.RoleCreator, domain.AllRights)
+	msg, err := i.Send(ctx, SendInput{ChatID: gid, SenderID: 7, Type: "text", Text: "привет"})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	// Тело живого кадра группы уходит веером по участникам, а не в топик
+	// канала, поэтому спрашивается сам производитель тела.
+	body, ok := asWire(t, i.messageUpdatePayload(ctx, msg))["message"].(map[string]any)
+	if !ok {
+		t.Fatalf("в теле кадра нет сообщения: %+v", i.messageUpdatePayload(ctx, msg))
+	}
+	assertNoPostCounters(t, "живой кадр new_message", body)
+	assertNoPostCounters(t, "история", postFromHistory(t, i, 7, msg.ID))
+}
+
+// postFromHistory — сообщение, каким его отдаёт ПАЧКА ИСТОРИИ: строка читается
+// из хранилища заново, потому что локальная копия заведена до просмотров.
+func postFromHistory(t *testing.T, i *Interactor, viewerID, msgID int64) map[string]any {
+	t.Helper()
+	rows, err := i.msgs.GetByIDs(context.Background(), []int64{msgID})
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("GetByIDs = %d, %v", len(rows), err)
+	}
+	wire, _, err := i.MessagesContainer(context.Background(), viewerID, rows)
+	if err != nil {
+		t.Fatalf("MessagesContainer: %v", err)
+	}
+	return asWire(t, wire[0])
+}
+
+// asWire — объект в виде обычной карты JSON. Нужен потому, что тела кадров
+// приезжают из ToWireMap с числами json.Number, а разобранный кадр — с float64:
+// сравнивать их одним утверждением можно, только приведя к одной форме.
+func asWire(t *testing.T, v any) map[string]any {
+	t.Helper()
+	raw, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("сериализация: %v", err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("разбор: %v", err)
+	}
+	return out
+}
+
+func assertPostCounters(t *testing.T, where string, wire map[string]any, views, forwards float64) {
+	t.Helper()
+	if wire["views"] != views {
+		t.Errorf("%s: просмотры = %#v, ждали %v", where, wire["views"], views)
+	}
+	if wire["forwards"] != forwards {
+		t.Errorf("%s: репосты = %#v, ждали %v (бит у пары ОДИН, flags.10)", where, wire["forwards"], forwards)
+	}
+}
+
+func assertNoPostCounters(t *testing.T, where string, wire map[string]any) {
+	t.Helper()
+	for _, key := range []string{"views", "forwards"} {
+		if v, ok := wire[key]; ok {
+			t.Errorf("%s: у сообщения вне канала приехал %q = %#v", where, key, v)
+		}
+	}
+}
+
 // repliesFrame — единственный кадр updateChannelMessageReplies среди пачки.
 func repliesFrame(t *testing.T, frames []map[string]any) map[string]any {
 	t.Helper()

@@ -228,10 +228,18 @@ type MessageReal struct {
 	ReplyMarkup ReplyMarkup `json:"reply_markup,omitempty"`
 	// Entities — flags.7?Vector<MessageEntity> (mtentity.go).
 	Entities MessageEntities `json:"entities,omitempty"`
-	// Views и Forwards делят ОДИН бит (flags.10): у оригинала они едут парой
-	// или не едут вовсе. На фазе 0 это ничего не требует, на фазе 2 — требует.
-	Views    int64 `json:"views,omitempty"`
-	Forwards int64 `json:"forwards,omitempty"`
+	// Views и Forwards делят ОДИН бит (flags.10, предикат `message` в
+	// schema/schema.json): у оригинала они едут парой или не едут вовсе.
+	//
+	// Пара выражена УКАЗАТЕЛЯМИ, а не числами с omitempty, и ставит её ровно
+	// один метод — PostCounters. Числа отвечали на вопрос «есть ли счётчик?»
+	// значением, и нулевой счётчик был неотличим от отсутствующего: у поста с
+	// нулём просмотров параметра на проводе не было вовсе. Указатели же
+	// различают «нуль» и «нечего сказать», а единственный сеттер не даёт
+	// собрать состояние «views есть, forwards нет», которого на проводе не
+	// существует — на фазе 2 оно было бы кодеку невыразимым.
+	Views    *int64 `json:"views,omitempty"`
+	Forwards *int64 `json:"forwards,omitempty"`
 	// Replies — flags.23?MessageReplies: тред комментариев под постом канала.
 	Replies *MessageReplies `json:"replies,omitempty"`
 	// EditDate — flags.15?int: время правки. У нас это же поле бампится при
@@ -324,6 +332,32 @@ func NewMessage(id int64, peer Peer, date time.Time, text string, f MessageFlags
 	setPFlag(&m.PFlags, "post", f.Post)
 	setPFlag(&m.PFlags, "pinned", f.Pinned)
 	return m
+}
+
+// PostCounters — счётчики ПОСТА КАНАЛА: просмотры и репосты. Единственный
+// производитель параметров views/forwards, потому что бит у них ОДИН (flags.10)
+// и «есть один, нет другого» — состояние, которого на проводе не бывает.
+//
+// Нижняя граница просмотров — ЕДИНИЦА, и это не округление в свою пользу.
+// Поста канала с нулём просмотров у оригинала не существует: свой, ещё не
+// отправленный пост tweb собирает с `views: isBroadcast && 1`
+// (appMessagesManager.ts:2930), а ВСЕ читатели параметра спрашивают его на
+// истинность, а не на наличие, — и рисование счётчика под постом
+// (messageRender.ts:273), и класс `channel-post` вместе с постановкой бабла под
+// наблюдение просмотров (bubbles.ts:7672), и распознавание поста, пересланного
+// в мегагруппу (bubbles.ts:9629). Для них нуль на проводе значил бы ровно то же,
+// что отсутствие параметра: пост, который никогда не зарегистрирует первый
+// просмотр, потому что под наблюдение его не поставят.
+//
+// Живому кадру updateChannelMessageViews это ничего не ломает: регистрация
+// показа всегда даёт счётчик не меньше единицы, а оригинал принимает кадр
+// только на РОСТ (`message.views < views`, appMessagesManager.ts:8453).
+func (m *MessageReal) PostCounters(views, forwards int64) {
+	if views < 1 {
+		views = 1
+	}
+	m.Views = &views
+	m.Forwards = &forwards
 }
 
 // messageService#7a800e0a flags:# out:flags.1?true mentioned:flags.4?true

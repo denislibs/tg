@@ -130,8 +130,7 @@ func allMessageConstructors() []any {
 		NewKeyboardButtonRow(NewKeyboardButtonURL("сайт", "https://example.org")),
 	})
 	full.Entities = MessageEntities{NewMessageEntityItalic(0, 5)}
-	full.Views = 900
-	full.Forwards = 7
+	full.PostCounters(900, 7)
 	full.Replies = ptr(NewMessageReplies(12, 9, []Peer{NewPeerUser(42), NewPeerUser(43)}))
 	full.EditDate = unixSeconds(now.Add(time.Minute))
 	full.GroupedID = 555
