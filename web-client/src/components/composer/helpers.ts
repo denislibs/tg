@@ -2,17 +2,17 @@
 // Чистые хелперы и константы композера, вынесенные из Composer.tsx: лимит длины,
 // клавиатурные шорткаты форматирования, выбор эффектов сообщения, TTL секретных
 // чатов, санитайзинг вставленного HTML и работа с кареткой.
-import { serialize } from '../../core/richtext/markdown'
-import type { EntityType, MessageEntity } from '../../core/models'
+import { serialize, type ComposerEntityType } from '../../core/richtext/markdown'
+import type { MessageEntity } from '@layer'
 import type { EmojiEffectKind } from '../../core/effects/emojiEffects'
 
 // Max message length (matches the backend's maxMessageRunes / Telegram's 4096).
 export const MAX_LEN = 4096
 
-// Ctrl/Cmd + key → format. text_link is handled by the tooltip (needs a URL).
-export const SHORTCUTS: Record<string, EntityType> = {
-  KeyB: 'bold', KeyI: 'italic', KeyU: 'underline',
-  KeyS: 'strikethrough', KeyM: 'code', KeyP: 'spoiler',
+// Ctrl/Cmd + key → format. messageEntityTextUrl is handled by the tooltip (needs a URL).
+export const SHORTCUTS: Record<string, ComposerEntityType> = {
+  KeyB: 'messageEntityBold', KeyI: 'messageEntityItalic', KeyU: 'messageEntityUnderline',
+  KeyS: 'messageEntityStrike', KeyM: 'messageEntityCode', KeyP: 'messageEntitySpoiler',
 }
 
 // Выбор эффекта сообщения в send-меню: эмодзи → вид canvas-эффекта.
@@ -58,7 +58,7 @@ export function htmlToRich(html: string): { text: string; entities: MessageEntit
     .replace(/<!--[\s\S]*?-->/g, '')
   const doc = new DOMParser().parseFromString(cleaned, 'text/html')
   const { text, entities } = serialize(doc.body)
-  return { text, entities: entities.filter((e) => e.type !== 'text_link' || isSafeUrl(e.url)) }
+  return { text, entities: entities.filter((e) => e._ !== 'messageEntityTextUrl' || isSafeUrl(e.url)) }
 }
 
 export function placeCaretEnd(el: HTMLElement) {

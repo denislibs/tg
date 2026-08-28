@@ -22,6 +22,10 @@ func NewGroupCallStore(client *goredis.Client) *GroupCallStore {
 
 const groupCallTTL = 6 * time.Hour
 
+// groupCallKey — ключ ВНУТРЕННИЙ: список участников звонка живёт по chats.id,
+// как строки в chat_members, и наружу не выходит (клиент адресует звонок
+// peer_id, разрешение — в usecase/chat/peeraddr.go). Переводить его на знаковый
+// ключ значило бы добавить конверсию там, где адреса нет вовсе.
 func groupCallKey(chatID int64) string { return fmt.Sprintf("groupcall:%d", chatID) }
 
 func (s *GroupCallStore) Join(ctx context.Context, chatID, userID int64) error {

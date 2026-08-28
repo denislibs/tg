@@ -20,24 +20,36 @@ function wrapper(managers: unknown) {
   )
 }
 
-// myRole:'member' (не creator/admin) → deleteOrLeave идёт self-leave-веткой
-// (removeMember), а не deleteGroup; canInvite=false — мount-эффект не зовёт
-// listInvites/listBans/listRestrictions, фейку не нужно их отдавать.
+// Обычный участник (нет `pFlags.creator`, нет `admin_rights`) → deleteOrLeave
+// идёт self-leave-веткой (removeMember), а не deleteGroup; админских разделов
+// нет — mount-эффект не зовёт listInvites/listBans/listRestrictions, фейку не
+// нужно их отдавать.
 function fakeManagers(overrides: { removeMember?: () => Promise<void>; applyRemoved?: () => Promise<void> } = {}) {
   return {
     groups: {
+      // Карточка — ПАРА конструкторов (`channel` + `channelFull`), как её
+      // отдаёт владелец: роли отдельным полем больше нет.
       card: async () => ({
-        id: CHAT_ID, type: 'group', title: 't', username: '', about: '',
-        memberCount: 2, isPublic: false, myRole: 'member', myRights: 0, discussionChatId: 0,
-        defaultPermissions: 31, slowmodeSeconds: 0, reactionsMode: 'all', reactionsAllowed: [],
-        historyForNew: true, chargeStars: 0, signatures: false, signatureProfiles: false, muted: false,
+        peerId: -CHAT_ID,
+        chat: {
+          _: 'channel', id: CHAT_ID, title: 't',
+          photo: { _: 'chatPhotoEmpty' }, date: 0,
+          pFlags: { megagroup: true }, participants_count: 2,
+        },
+        fullChat: {
+          _: 'channelFull', id: CHAT_ID, about: '',
+          read_inbox_max_id: 0, read_outbox_max_id: 0, unread_count: 0, chat_photo: null,
+        },
+        muted: false, creatorId: 1,
       }),
       members: async () => [],
       removeMember: overrides.removeMember ?? vi.fn(async () => {}),
       deleteGroup: vi.fn(async () => { throw new Error('deleteGroup не должен зваться в self-leave ветке') }),
     },
     peers: { getUsers: async () => [] },
-    auth: { me: async () => ({ id: 7, phone: '+1', username: null, firstName: '', lastName: '', displayName: 'Me', bio: '', birthday: null, avatarUrl: '', avatarPreview: '', phoneVisibility: 'contacts', premium: false, emojiStatus: '' }) },
+    // Своя личность — ПАРА конструкторов (`user` + `userFull`), та же, что у
+    // любого профиля: третьей формы «свой пользователь» больше нет.
+    auth: { me: async () => ({ user: { _: 'user', id: 7, phone: '+1', first_name: 'Me' }, fullUser: { _: 'userFull', id: 7 }, canMessage: true }) },
     dialogs: { applyRemoved: overrides.applyRemoved ?? vi.fn(async () => {}), refresh: vi.fn(async () => {}) },
   }
 }

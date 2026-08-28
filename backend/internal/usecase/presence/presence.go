@@ -32,6 +32,9 @@ type PresenceStore interface {
 	SetOffline(ctx context.Context, userID int64, lastSeen int64) error
 	IsOnline(ctx context.Context, userID int64) (bool, error)
 	LastSeen(ctx context.Context, userID int64) (int64, error)
+	// OnlineExpires — дедлайн ключа присутствия (userStatusOnline.expires).
+	// Нулевое время — пир не онлайн.
+	OnlineExpires(ctx context.Context, userID int64) (time.Time, error)
 }
 
 type Manager struct {
@@ -92,24 +95,60 @@ func (m *Manager) IsOnline(ctx context.Context, userID int64) (bool, error) {
 	return m.store.IsOnline(ctx, userID)
 }
 
-// Snapshot returns whether a user is currently online and their last-seen (ms).
-func (m *Manager) Snapshot(ctx context.Context, userID int64) (online bool, lastSeen int64) {
+// Status — снимок присутствия в том виде, из которого собирается UserStatus
+// схемы: онлайн ли пир, ДО КАКОГО МОМЕНТА (дедлайн TTL ключа) и когда заходил
+// в последний раз. Реализует шов PresenceSnapshot у privacy и delivery.
+//
+// Срок годности — не украшение. Без него потерянный кадр присутствия оставлял
+// человека онлайн навсегда; с ним клиент деградирует online → offline сам,
+// даже не получив ни одного кадра (tweb appUsersManager.ts:880-889).
+func (m *Manager) Status(ctx context.Context, userID int64) (online bool, expires, lastSeen time.Time) {
 	online, _ = m.store.IsOnline(ctx, userID)
-	lastSeen, _ = m.store.LastSeen(ctx, userID)
-	return online, lastSeen
+	if online {
+		expires, _ = m.store.OnlineExpires(ctx, userID)
+	}
+	if ms, _ := m.store.LastSeen(ctx, userID); ms > 0 {
+		lastSeen = time.UnixMilli(ms)
+	}
+	return online, expires, lastSeen
 }
 
-func (m *Manager) fanout(ctx context.Context, userID int64, online bool, lastSeen int64) error {
+// UserStatus — готовый конструктор UserStatus для пира. visible=false —
+// правило приватности last_seen не пускает зрителя: это userStatusRecently,
+// то есть скрытость выражена САМИМ статусом, а не флагом рядом с обнулённым
+// временем.
+func (m *Manager) UserStatus(ctx context.Context, userID int64, visible bool) domain.UserStatus {
+	if !visible {
+		return domain.NewUserStatusRecently(false)
+	}
+	return domain.PresenceStatus(m.Status(ctx, userID))
+}
+
+// fanout рассылает партнёрам смену присутствия КОНСТРУКТОРОМ UserStatus.
+//
+// Прежде кадр нёс пару {online, last_seen} — и у «online» не было срока
+// годности: потерянный кадр оставлял человека онлайн навсегда.
+// userStatusOnline несёт expires, и клиент гасит статус по таймеру сам.
+//
+// Скрытое правилом last_seen присутствие — не «пустой кадр с online:false», а
+// ДРУГОЙ конструктор: userStatusRecently. Приватность выражена выбором
+// конструктора, ровно как в оригинале.
+func (m *Manager) fanout(ctx context.Context, userID int64, online bool, lastSeenMS int64) error {
 	partners, err := m.partners(ctx, userID)
 	if err != nil {
 		return err
 	}
+	var expires, lastSeen time.Time
+	if online {
+		expires, _ = m.store.OnlineExpires(ctx, userID)
+	}
+	if lastSeenMS > 0 {
+		lastSeen = time.UnixMilli(lastSeenMS)
+	}
 	frame, _ := json.Marshal(map[string]any{
 		"t": "presence",
-		"d": map[string]any{"user_id": userID, "online": online, "last_seen": lastSeen},
+		"d": domain.NewUpdateUserStatus(userID, domain.PresenceStatus(online, expires, lastSeen)),
 	})
-	// Партнёрам, которым правило last_seen не разрешает видеть статус, уходит
-	// «пустой» кадр — иначе их клиент оставил бы устаревший «online».
 	var hidden []byte
 	for _, p := range partners {
 		f := frame
@@ -118,7 +157,7 @@ func (m *Manager) fanout(ctx context.Context, userID int64, online bool, lastSee
 				if hidden == nil {
 					hidden, _ = json.Marshal(map[string]any{
 						"t": "presence",
-						"d": map[string]any{"user_id": userID, "online": false, "last_seen": int64(0)},
+						"d": domain.NewUpdateUserStatus(userID, domain.NewUserStatusRecently(false)),
 					})
 				}
 				f = hidden

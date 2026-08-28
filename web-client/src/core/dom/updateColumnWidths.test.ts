@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
+import mediaSizes from './mediaSizes'
 import updateColumnWidths, {
+  installColumnWidthsUpdater,
   DEFAULT_COLUMN_WIDTH,
   MAX_SIDEBAR_WIDTH,
   MIN_SIDEBAR_WIDTH,
@@ -12,8 +14,16 @@ import updateColumnWidths, {
 
 const read = (name: string) => document.documentElement.style.getPropertyValue(name)
 
-function atWidth(width: number) {
+// Брейкпоинт (isMobile / isLessThanFloatingLeftSidebar) модуль берёт у
+// `mediaSizes`, а тот пересчитывается по window-`resize` через rAF — тестам
+// нужен синхронный снимок, поэтому пересчёт зовётся напрямую (в tweb он приватный).
+function setWidth(width: number) {
   Object.defineProperty(window, 'innerWidth', { value: width, configurable: true })
+  ;(mediaSizes as unknown as { handleResize: () => void }).handleResize()
+}
+
+function atWidth(width: number) {
+  setWidth(width)
   updateColumnWidths()
 }
 
@@ -81,7 +91,7 @@ describe('updateColumnWidths', () => {
 // модуль держит предпочтения в своём состоянии, сбросить его нечем.
 describe('updateColumnWidths — предпочтения ресайза', () => {
   beforeEach(() => {
-    Object.defineProperty(window, 'innerWidth', { value: 1728, configurable: true })
+    setWidth(1728)
     updateColumnWidths()
   })
 
@@ -112,8 +122,23 @@ describe('updateColumnWidths — предпочтения ресайза', () =>
 
   it('в floating-диапазоне (601-925) свёрнутость игнорируется', () => {
     setUserPreferredLeft(0)
-    Object.defineProperty(window, 'innerWidth', { value: 800, configurable: true })
+    setWidth(800)
     updateColumnWidths()
     expect(read('--left-column-visual-width')).toBe(`${DEFAULT_COLUMN_WIDTH}px`)
+  })
+})
+
+// Проводка (tweb :385). Идёт последней: `installed` — модульный флаг, снять его
+// извне нечем, а после установки любой `setWidth` уже сам дёргает пересчёт.
+describe('installColumnWidthsUpdater', () => {
+  it('ресайз через mediaSizes пересчитывает переменные без прямого вызова', () => {
+    setWidth(1728)
+    installColumnWidthsUpdater()
+    expect(read('--middle-column-width')).toBe('1696px') // vw − 2×16
+
+    // никакого updateColumnWidths() здесь: событие `mediaSizes` — единственный путь
+    setWidth(500)
+    expect(read('--middle-column-width')).toBe('500px')
+    expect(read('--page-chats-padding')).toBe('0px')
   })
 })

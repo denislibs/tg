@@ -20,13 +20,17 @@ const maxMessageRunes = 4096
 // quote), bounding storage/render cost independently of the full message limit.
 const maxReplyQuoteRunes = 1024
 
-// replySnapshotMaxRunes caps the cross-chat reply preview text snapshot (a short
-// preview line, not the whole message).
-const replySnapshotMaxRunes = 120
-
-// replyAuthorName resolves the display name of a replied-to message's author for
-// the cross-chat reply snapshot: the send-as channel/group title when posted
-// under one, else the sender's display name.
+// replyAuthorName — имя автора отвечаемого сообщения для КРОСС-ЧАТНОГО ответа:
+// название канала/группы, от чьего имени он опубликован, иначе имя человека.
+//
+// Единственное место, где сервер по-прежнему склеивает имя, и это не оплошность:
+// оригинал того ответа зрителю НЕДОСТУПЕН (публичного ключа у чата-источника не
+// существует), поэтому карточки пира у него не будет никогда. На проводе имя
+// едет как reply_from.from_name — ровно тем же параметром, каким оригинал
+// выражает скрытую атрибуцию пересылки.
+//
+// Снимка ТЕКСТА оригинала здесь больше нет: в схеме превью недоступного
+// оригинала строится из цитаты и вложения, а не из обрезанного сервером текста.
 func (i *Interactor) replyAuthorName(ctx context.Context, orig domain.Message) string {
 	if orig.SendAsChatID != nil && i.groups != nil {
 		if briefs, err := i.groups.ChatBriefs(ctx, []int64{*orig.SendAsChatID}); err == nil {
@@ -35,67 +39,24 @@ func (i *Interactor) replyAuthorName(ctx context.Context, orig domain.Message) s
 			}
 		}
 	}
-	return i.userCard(ctx, orig.SenderID).DisplayName
-}
-
-// replySnapshotText builds the cross-chat reply preview text: the original text
-// (truncated), or a short media label when the original has no text.
-func replySnapshotText(orig domain.Message) string {
-	if orig.Text != "" {
-		if utf8.RuneCountInString(orig.Text) > replySnapshotMaxRunes {
-			return string([]rune(orig.Text)[:replySnapshotMaxRunes])
-		}
-		return orig.Text
-	}
-	return mediaLabel(orig.Type)
-}
-
-// mediaLabel is the short type label for caption-less media in a reply preview,
-// mirroring the frontend mediaLabel (core/dialogToChat.ts).
-func mediaLabel(typ string) string {
-	switch typ {
-	case "photo":
-		return "Фото"
-	case "video":
-		return "Видео"
-	case "roundVideo":
-		return "Видеосообщение"
-	case "voice":
-		return "Голосовое сообщение"
-	case "audio":
-		return "Аудио"
-	case "document":
-		return "Файл"
-	case "sticker":
-		return "Стикер"
-	case "call":
-		return "Звонок"
-	case "poll":
-		return "📊 Опрос"
-	case "geo":
-		return "📍 Геолокация"
-	case "contact":
-		return "👤 Контакт"
-	case "gift":
-		return "🎁 Подарок"
-	default:
-		return ""
-	}
+	return i.userCard(ctx, orig.SenderID).Title()
 }
 
 // mentionedUserIDs collects the distinct target users of a message's
 // "text_mention" entities (Telegram's mention-of-a-user-without-username, which
 // carries the user id inline). Plain "@username" mentions aren't resolved here —
 // they don't carry a user id — so they don't feed the unread-mentions counter.
-func mentionedUserIDs(entities []domain.MessageEntity) map[int64]bool {
+func mentionedUserIDs(entities domain.MessageEntities) map[int64]bool {
 	var out map[int64]bool
 	for _, e := range entities {
-		if e.Type == "text_mention" && e.UserID != 0 {
-			if out == nil {
-				out = map[int64]bool{}
-			}
-			out[e.UserID] = true
+		v, ok := e.(domain.MessageEntityMentionName)
+		if !ok || v.UserID == 0 {
+			continue
 		}
+		if out == nil {
+			out = map[int64]bool{}
+		}
+		out[v.UserID] = true
 	}
 	return out
 }
@@ -123,26 +84,57 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			return domain.Message{}, domain.ErrNotFound
 		}
 	}
-	if in.Type == "" {
+	// Вид ДОСТАВКИ — свойство ПИРА, а не ручки. У оригинала метод отправки один
+	// (messages.sendMessage/sendMedia), а «пост канала» получается из того, что
+	// получатель — broadcast: сервер отвечает updateNewChannelMessage, а не
+	// веером по подписчикам. У нас развилка стояла в ДРУГОМ месте — в выборе
+	// ручки (PostToChannel против Send), — и потому обходилась: ручка постинга
+	// принимает только текст, так что пост С КАРТИНКОЙ уезжал обычной
+	// отправкой, мимо журнала канала и мимо гейта прав.
+	chatType, err := i.chats.ChatType(ctx, in.ChatID)
+	if err != nil {
+		return domain.Message{}, err
+	}
+	broadcast := chatType == domain.ChatTypeChannel
+	// Вид строки выводится ИЗ ДЕЙСТВИЯ, а не приходит полем: «служебное ли» —
+	// это выбор конструктора, и клиент его назначить не может (у него в теле
+	// запроса действия нет вовсе). Лог звонка при этом остаётся отдельным видом
+	// строки: по нему идёт выборка журнала звонков.
+	switch {
+	case in.Action == nil && in.Type == "":
 		in.Type = "text"
+	case in.Action == nil:
+	default:
+		in.Text, in.Entities = "", nil
+		if _, isCall := in.Action.(domain.MessageActionPhoneCall); isCall {
+			in.Type = "call"
+		} else {
+			in.Type = "service"
+		}
 	}
 	if utf8.RuneCountInString(in.Text) > maxMessageRunes {
 		return domain.Message{}, domain.ErrTooLong
 	}
 	in.Entities = sanitizeEntities(in.Entities)
-	// Ответ на сообщение: источник истины — ФАКТИЧЕСКИЙ чат оригинала, а не
-	// присланный клиентом reply_to_peer_id (клиенту не доверяем). Резолвим
-	// оригинал по ReplyToID всегда, когда ответ есть.
-	//   • оригинал в ДРУГОМ чате → кросс-чат-ответ (Telegram reply_to_peer_id):
+	// Ответ на сообщение: адрес оригинала — пара «пир + номер»
+	// (messageReplyHeader: reply_to_msg_id осмыслен только вместе с
+	// reply_to_peer_id, отсутствие которого значит «тот же пир»). Резолвим
+	// оригинал всегда, когда ответ есть.
+	//   • пир указан и он ДРУГОЙ → кросс-чат-ответ (Telegram reply_to_peer_id):
 	//     проверяем членство отправителя в том чате (нет доступа → forbidden) и
 	//     собираем снимок превью (имя автора + текст/лейбл) прямо на ответе, т.к.
 	//     получатель может не иметь доступа к исходному чату;
-	//   • оригинал в текущем чате → обычный ответ (снимки пустые, peer nil);
-	//   • оригинал не найден/удалён → как ненайденный reply: не падаем, снимков нет.
+	//   • пира нет → обычный ответ в этом же чате (снимки пустые, peer nil);
+	//   • оригинал не найден/удалён → как ненайденный reply: не падаем, снимков
+	//     нет, ссылка на чужой пир сбрасывается (непроверенный чат наружу не едет).
 	var replyPeerID *int64
-	var snapName, snapText string
+	var snapName string
 	if in.ReplyToID != nil {
-		orig, err := i.msgs.GetByID(ctx, *in.ReplyToID)
+		srcChat := in.ChatID
+		if in.ReplyToPeerID != nil {
+			srcChat = *in.ReplyToPeerID
+		}
+		orig, err := i.messageBySeq(ctx, srcChat, *in.ReplyToID)
 		switch {
 		case errors.Is(err, domain.ErrNotFound):
 			// ненайденный оригинал — обычный reply без снимка (не ошибка)
@@ -158,10 +150,10 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			if !ok {
 				return domain.Message{}, domain.ErrForbidden // нет доступа к исходному чату
 			}
-			srcChat := orig.ChatID
-			replyPeerID = &srcChat
+			src := orig.ChatID
+			replyPeerID = &src
 			snapName = i.replyAuthorName(ctx, orig)
-			snapText = replySnapshotText(orig)
+
 		}
 	}
 	// Reply quote: осмыслен только при ответе; обрезаем длину, пустой — сбрасываем.
@@ -230,10 +222,10 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			return domain.Message{}, domain.ErrForbidden
 		}
 		c := i.userCard(ctx, *in.ContactUserID)
-		if c.DisplayName == "" && c.Phone == "" {
+		if c.Title() == "" && c.Phone == "" {
 			return domain.Message{}, domain.ErrNotFound // такого аккаунта нет
 		}
-		name, phone := c.DisplayName, c.Phone
+		name, phone := c.Title(), c.Phone
 		contactName, contactPhone = &name, &phone
 	} else {
 		in.ContactUserID = nil
@@ -254,13 +246,28 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	// Групповые дефолтные разрешения + slowmode (сервисные сообщения генерирует
 	// сам сервер — их не ограничиваем).
 	if in.Type != "service" {
-		if err := i.checkSendAllowed(ctx, in); err != nil {
-			return domain.Message{}, err
-		}
-		// Приватный чат: настройки получателя «кто может отправлять мне
-		// сообщения / голосовые» + чёрный список.
-		if err := i.checkPrivateSendPrivacy(ctx, in); err != nil {
-			return domain.Message{}, err
+		switch {
+		case broadcast:
+			// В канал пишут ПО ПРАВУ ПОСТИНГА. Дефолтная маска участника
+			// группы здесь не годится: подписчик — read-only роль
+			// (domain/rights.go), а маска чата по умолчанию (31) отправку
+			// разрешает — и checkSendAllowed, у которого ветки для подписчика
+			// нет вовсе, пропускал его. То есть подписчик мог опубликовать в
+			// канал что угодно, послав обычное сообщение вместо вызова ручки
+			// постинга. Слоумод и приватность получателя предмета у broadcast
+			// не имеют.
+			if err := i.requireRight(ctx, in.ChatID, in.SenderID, domain.RightPostMessages); err != nil {
+				return domain.Message{}, err
+			}
+		default:
+			if err := i.checkSendAllowed(ctx, in); err != nil {
+				return domain.Message{}, err
+			}
+			// Приватный чат: настройки получателя «кто может отправлять мне
+			// сообщения / голосовые» + чёрный список.
+			if err := i.checkPrivateSendPrivacy(ctx, in); err != nil {
+				return domain.Message{}, err
+			}
 		}
 	}
 
@@ -282,30 +289,20 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		}
 	}
 
-	// Sender's short name rides along in the new_message payload so clients can
-	// prefix group chat-list previews ("Имя: …") without an extra lookup.
-	senderName := i.userCard(ctx, in.SenderID).ShortName()
-
-	// PERF (send hot path): гидратация read-моделей (send-as/poll/checklist/
-	// giveaway/gift) читает ПРЕД-существующие строки по input-ID и не зависит от
+	// PERF (send hot path): гидратация read-моделей (poll/checklist/giveaway/
+	// gift) читает ПРЕД-существующие строки по input-ID и не зависит от
 	// msg.ID/Seq — делаем ДО транзакции, чтобы не держать row-lock строки чата
 	// (IncUnreadBulk) на этих чтениях. Результаты применяются к msg после Insert.
 	// Media-мета (hydrateMedia) и все записи (charge/SetPrice/fan-out) — в tx.
+	//
+	// Снимка send-as здесь больше нет: отображаемый автор едет ссылкой на пир
+	// (from_id), а его название и аватарка — карточкой чата.
 	var (
-		preSendAsTitle   string
-		preSendAsPhotoID *int64
-		prePoll          *domain.PollInfo
-		preChecklist     *domain.ChecklistInfo
-		preGiveaway      *domain.GiveawayInfo
-		preGift          *domain.GiftInfo
+		prePoll      *domain.PollInfo
+		preChecklist *domain.ChecklistInfo
+		preGiveaway  *domain.GiveawayInfo
+		preGift      *domain.GiftInfo
 	)
-	if in.SendAsChatID != nil && i.groups != nil {
-		if briefs, e := i.groups.ChatBriefs(ctx, []int64{*in.SendAsChatID}); e == nil {
-			if b, ok := briefs[*in.SendAsChatID]; ok {
-				preSendAsTitle, preSendAsPhotoID = b.Title, b.PhotoID
-			}
-		}
-	}
 	if in.PollID != nil && i.polls != nil {
 		if info, e := i.pollInfoFor(ctx, *in.PollID, 0); e == nil {
 			prePoll = &info
@@ -328,17 +325,21 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	}
 
 	var msg domain.Message
-	var extRoot *int64     // thread_root_id, как его видит клиент — см. externalThreadRoot
 	var recipients []int64 // non-nil only when a NEW message was inserted
-	var charge paidCharge  // платная группа: списание/начисление (публикуем после коммита)
+	// channelPts — курсор журнала канала, полученный при записи поста; 0 значит
+	// «в журнал ничего не легло» (не канал либо дедуп по client_msg_id).
+	// channelPayload — ТО ЖЕ тело, что легло в журнал: живой кадр строится из
+	// него, а не собирается заново, иначе догон разрыва и live разъедутся.
+	var channelPts int64
+	var channelPayload map[string]any
+	var charge paidCharge // платная группа: списание/начисление (публикуем после коммита)
 	// Зеркало поста канала (если вставленное сообщение — пост в канал с
 	// обсуждением, см. mirrorChannelPost): доставка публикуется ПОСЛЕ коммита
 	// этой же transaction, тем же publishMessageDelivery, что и msg ниже.
 	var mirrorDeliv *mirrorDelivery
-	// Per-recipient pts (dense cursor) + authoritative unread, captured INSIDE the
-	// tx so the live frame carries exactly the values persisted for each member.
+	// Per-recipient pts (dense cursor), captured INSIDE the tx so the live frame
+	// carries exactly the value persisted for each member.
 	ptsByUser := map[int64]int64{}
-	unreadByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if in.ClientMsgID != "" {
 			if existing, e := i.msgs.FindByClientMsgID(ctx, in.ChatID, in.SenderID, in.ClientMsgID); e == nil {
@@ -363,15 +364,18 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		if in.ClientMsgID != "" {
 			cmid = &in.ClientMsgID
 		}
-		var groupedID *string
-		if in.GroupedID != "" && len(in.GroupedID) <= 32 {
+		// grouped_id — схемный long: непрозрачный ключ медиагруппы, который
+		// генерирует отправитель. 0 значит «не в группе» (в схеме это
+		// отсутствие flags.17), поэтому отдельного «пустого» значения нет.
+		var groupedID *int64
+		if in.GroupedID != 0 {
 			groupedID = &in.GroupedID
 		}
 		msg, e = i.msgs.Insert(ctx, domain.Message{
 			ChatID: in.ChatID, Seq: seq, SenderID: in.SenderID,
 			Type: in.Type, Text: in.Text, Entities: in.Entities, ReplyToID: in.ReplyToID, ClientMsgID: cmid,
 			ReplyQuoteText: in.ReplyQuoteText, ReplyQuoteOffset: in.ReplyQuoteOffset,
-			ReplyToPeerID: replyPeerID, ReplySnapshotName: snapName, ReplySnapshotText: snapText,
+			ReplyToPeerID: replyPeerID, ReplySnapshotName: snapName, Action: in.Action,
 			MediaID: in.MediaID, ThreadRootID: in.ThreadRootID, GroupedID: groupedID, PollID: in.PollID,
 			ChecklistID: in.ChecklistID,
 			GiveawayID:  in.GiveawayID,
@@ -382,6 +386,9 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			ContactUserID: in.ContactUserID, ContactName: contactName, ContactPhone: contactPhone,
 			EncBody: in.EncBody, TTLSeconds: in.TTLSeconds, Effect: in.Effect,
 			SendAsChatID: in.SendAsChatID,
+			// Спойлер — свойство вложения, без медиа он бессмысленен (так же
+			// гейтится PaidMediaPrice ниже: только при msg.MediaID != nil).
+			MediaSpoiler: in.MediaSpoiler && in.MediaID != nil,
 			// Voice/round content starts "unlistened" (Telegram media_unread).
 			MediaUnread: in.Type == "voice" || in.Type == "roundVideo",
 		})
@@ -398,11 +405,9 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			return e
 		}
 		mirrorDeliv = md
-		msg.SenderName = senderName
-		// Применяем гидратацию, посчитанную ДО транзакции (send-as title/photo,
-		// poll/checklist/giveaway/gift-представления одинаковы для всех получателей
-		// и не зависят от только что вставленной строки). Пустые — no-op.
-		msg.SendAsTitle, msg.SendAsPhotoID = preSendAsTitle, preSendAsPhotoID
+		// Применяем гидратацию, посчитанную ДО транзакции (представления
+		// poll/checklist/giveaway/gift одинаковы для всех получателей и не
+		// зависят от только что вставленной строки). Пустые — no-op.
 		msg.Poll = prePoll
 		msg.Checklist = preChecklist
 		msg.Giveaway = preGiveaway
@@ -428,39 +433,43 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			}
 			msg.PaidMediaPrice = &price
 		}
+		// Канал: ОДНА запись в журнал канала вместо веера по подписчикам —
+		// O(1) на пост независимо от числа читателей, и ровно эта запись
+		// отдаётся догоном разрыва (/difference). Тело кадра одно на всех, оно
+		// же уходит живьём (см. публикацию после коммита), поэтому
+		// пер-зрительских вариантов — out, locked у платного медиа, счётчиков
+		// непрочитанного и упоминаний — здесь нет вовсе: см. channelPostPayload.
+		if broadcast {
+			channelPayload = i.channelPostPayload(ctx, msg)
+			payload, err := json.Marshal(channelPayload)
+			if err != nil {
+				return err
+			}
+			channelPts, err = i.channels.AppendUpdate(ctx, in.ChatID, "new_message", payload)
+			return err
+		}
 		// Упоминания: пользователи, явно указанные в тексте (text_mention несёт
 		// user_id). @username-упоминания сервер не резолвит — их user_id нет в
 		// entity (клиентский mention), поэтому в счётчик они не попадают.
 		mentioned := mentionedUserIDs(msg.Entities)
-		// thread_root_id наружу — id поста, а не зеркала (см. externalThreadRoot):
-		// WS-эхо обязано совпадать с тем, что уже отдаёт HTTP (тот же чокпоинт,
-		// messagesJSON/messageJSONOut в chat_handler.go), иначе один и тот же
-		// комментарий уезжает наружу то с id поста, то с id зеркала.
-		extRoot = i.externalThreadRoot(ctx, msg)
-		outMsg := messageUpdatePayload(msg)
-		outMsg["thread_root_id"] = extRoot
-		payload, e := json.Marshal(outMsg)
-		if e != nil {
-			return e
-		}
+		// Корень треда едет ВНУТРИ сообщения (reply_to.reply_to_top_id) —
+		// messageUpdatePayload его туда и кладёт. Отдельного ключа на уровне
+		// кадра больше нет: это был второй источник того же факта, и именно
+		// такие «каждый вызывающий дописывает сам» терялись поодиночке.
+		outMsg := i.messageUpdatePayload(ctx, msg)
 		// Платное медиа: получателям (не автору) в персональный апдейт кладём
 		// заблокированный вариант — без ссылок на контент, только blur+цена.
-		var payloadLocked []byte
+		var outLocked map[string]any
 		if msg.PaidMediaPrice != nil {
-			lockedOut := messageUpdatePayload(lockedPaidCopy(msg))
-			lockedOut["thread_root_id"] = extRoot
-			payloadLocked, e = json.Marshal(lockedOut)
-			if e != nil {
-				return e
-			}
+			outLocked = i.messageUpdatePayload(ctx, lockedPaidCopy(msg))
 		}
 		// Веер по участникам чата (pts-лог + unread + упоминания), батчами: 3
 		// запроса вместо 3×M. Раньше на каждого участника шли AppendUpdate (2
 		// запроса) + IncUnread — под локом строки chats это O(M) запросов в
 		// одной транзакции (замер: 0.34 мс/участник, 200 → 70 мс). Общий с
 		// доставкой зеркала поста канала — см. fanOutNewMessage.
-		recipients, ptsByUser, unreadByUser, e = i.fanOutNewMessage(
-			ctx, in.ChatID, in.SenderID, msg.ID, msg.Seq, payload, payloadLocked, mentioned)
+		recipients, ptsByUser, e = i.fanOutNewMessage(
+			ctx, in.ChatID, in.SenderID, msg.ID, msg.Seq, outMsg, outLocked, mentioned)
 		return e
 	})
 	if err != nil {
@@ -473,14 +482,21 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			i.publishBalance(ctx, charge.creatorID, charge.creatorBal)
 		}
 	}
+	// Канал: одна публикация в топик канала вместо веера. Кадр несёт
+	// channel_pts — тот же конверт, который переигрывает /difference, поэтому
+	// клиент гейтит его по пер-канальному курсору и не получает дубля.
+	if channelPts != 0 && i.chPub != nil {
+		_ = i.chPub.PublishToChannel(ctx, in.ChatID, frameChannelMessage("new_message", channelPayload, channelPts))
+	}
 	if recipients != nil {
 		// Кэш диалогов + realtime-кадры получателям — общий с доставкой
 		// зеркала поста канала путь (см. publishMessageDelivery/fanout.go).
-		i.publishMessageDelivery(ctx, msg, extRoot, in.SenderID, recipients, ptsByUser, unreadByUser)
+		i.publishMessageDelivery(ctx, msg, in.SenderID, recipients, ptsByUser)
 		if i.notifier != nil && !in.Silent {
 			for _, uid := range recipients {
 				if uid != in.SenderID {
-					i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.ID, msg.Seq, msg.SenderID, msg.Text)
+					peer, _ := i.ChatIDToPeer(ctx, uid, msg.ChatID)
+					i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.Seq, msg.SenderID, msg.Text, peer)
 				}
 			}
 		}
@@ -489,12 +505,16 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			i.clearDraftAfterSend(ctx, in.SenderID, in.ChatID)
 		}
 	}
+	// Комментарий к посту канала (сообщение в тред зеркала): счётчик «N
+	// комментариев» у самого поста вырос — рассылаем его подписчикам канала.
+	// «Комментарий ли это» решает сама publishPostReplies, по корню треда.
+	i.publishPostReplies(ctx, msg)
 	// Зеркало поста канала (если было создано выше) — доставляем участникам
 	// группы обсуждения ТЕМ ЖЕ путём, тоже после коммита. Отдельно от блока
 	// выше: зеркало живёт в ДРУГОМ чате (группе обсуждения), не in.ChatID.
 	if mirrorDeliv != nil {
-		i.publishMessageDelivery(ctx, mirrorDeliv.msg, nil, mirrorDeliv.msg.SenderID,
-			mirrorDeliv.recipients, mirrorDeliv.ptsByUser, mirrorDeliv.unreadByUser)
+		i.publishMessageDelivery(ctx, mirrorDeliv.msg, mirrorDeliv.msg.SenderID,
+			mirrorDeliv.recipients, mirrorDeliv.ptsByUser)
 	}
 	// Серверное превью ссылки (Telegram-семантика: превью строит сервер и
 	// рассылает всем): для нового текстового сообщения с http/https-ссылкой —
@@ -546,6 +566,7 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 	var effective int64
 	var advanced bool
 	var unread int
+	var readAddr chatAddress
 	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		cur, e := i.chats.CurrentReadSeq(ctx, chatID, userID)
@@ -593,18 +614,20 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 		}
 		slices.Sort(m)
 		members = m
-		// Один и тот же base для лога и live-кадра: authoritative unread — это unread
-		// самого читателя (единое значение); клиент применяет его, только если
-		// user_id == me (у остальных участников это read-receipt по up_to_seq).
-		base := map[string]any{
-			"chat_id": chatID, "user_id": userID, "up_to_seq": effective, "unread": unread,
-		}
-		payload, e := json.Marshal(base)
+		// Тело кадра — КОНСТРУКТОР, и он разный у читателя и у остальных:
+		// updateReadHistoryInbox несёт мой счётчик непрочитанного,
+		// updateReadHistoryOutbox — только горизонт (см. readPayload).
+		addr, e := i.peerAddress(ctx, chatID)
 		if e != nil {
 			return e
 		}
+		readAddr = addr
 		date := nowMillis()
 		for _, uid := range members {
+			payload, e := json.Marshal(readPayload(addr.forViewer(uid), effective, unread, uid == userID))
+			if e != nil {
+				return e
+			}
 			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "read", payload)
 			if e != nil {
 				return e
@@ -623,9 +646,9 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 	// Only fan out when the read marker actually advanced — a no-op re-read
 	// must not spam every member with a redundant read frame.
 	if i.publisher != nil && advanced {
-		base := map[string]any{"chat_id": chatID, "user_id": userID, "up_to_seq": effective, "unread": unread}
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, framePts("read", base, ptsByUser[uid]))
+			body := readPayload(readAddr.forViewer(uid), effective, unread, uid == userID)
+			_ = i.publisher.PublishToUser(ctx, uid, framePts("read", body, ptsByUser[uid]))
 		}
 	}
 	// Channel posts track a per-viewer view count: register this reader's view of
@@ -653,7 +676,7 @@ func (i *Interactor) OutboxReadDate(ctx context.Context, chatID, msgID, viewerID
 	if err != nil {
 		return time.Time{}, err
 	}
-	if kind != "private" {
+	if kind != domain.ChatTypePrivate {
 		return time.Time{}, domain.ErrNotFound
 	}
 	msg, err := i.msgs.GetByID(ctx, msgID)
@@ -719,16 +742,16 @@ func (i *Interactor) OutboxReadDate(ctx context.Context, chatID, msgID, viewerID
 	return at, nil
 }
 
-// NextMention returns the seq/message id of the caller's earliest unread mention
-// past afterSeq (Telegram getUnreadMentions / «jump to next @»). Not a member →
-// domain.ErrNotFound; also domain.ErrNotFound when there is no such mention.
-func (i *Interactor) NextMention(ctx context.Context, chatID, userID, afterSeq int64) (seq, msgID int64, err error) {
+// NextMention returns the id (номер в чате) of the caller's earliest unread
+// mention past afterSeq (Telegram getUnreadMentions / «jump to next @»). Not a
+// member → domain.ErrNotFound; also domain.ErrNotFound when there is none.
+func (i *Interactor) NextMention(ctx context.Context, chatID, userID, afterSeq int64) (seq int64, err error) {
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil {
-		return 0, 0, err
+		return 0, err
 	}
 	if !ok {
-		return 0, 0, domain.ErrNotFound
+		return 0, domain.ErrNotFound
 	}
 	return i.chats.NextMention(ctx, chatID, userID, afterSeq)
 }
@@ -800,6 +823,7 @@ func (i *Interactor) ReadMedia(ctx context.Context, chatID, userID, msgID int64)
 	}
 	var members []int64
 	var cleared bool
+	var mediaReadAddr chatAddress
 	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		c, e := i.msgs.ClearMediaUnread(ctx, msgID)
@@ -813,12 +837,17 @@ func (i *Interactor) ReadMedia(ctx context.Context, chatID, userID, msgID int64)
 		}
 		slices.Sort(m)
 		members = m
-		payload, e := json.Marshal(map[string]any{"chat_id": chatID, "msg_id": msgID})
+		addr, e := i.peerAddress(ctx, chatID)
 		if e != nil {
 			return e
 		}
+		mediaReadAddr = addr
 		date := nowMillis()
 		for _, uid := range members {
+			payload, e := json.Marshal(mediaReadPayload(addr.forViewer(uid), msg.Seq))
+			if e != nil {
+				return e
+			}
 			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "media_read", payload)
 			if e != nil {
 				return e
@@ -831,9 +860,9 @@ func (i *Interactor) ReadMedia(ctx context.Context, chatID, userID, msgID int64)
 		return err
 	}
 	if cleared && i.publisher != nil {
-		base := map[string]any{"chat_id": chatID, "msg_id": msgID}
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, framePts("media_read", base, ptsByUser[uid]))
+			body := mediaReadPayload(mediaReadAddr.forViewer(uid), msg.Seq)
+			_ = i.publisher.PublishToUser(ctx, uid, framePts("media_read", body, ptsByUser[uid]))
 		}
 	}
 	return nil
@@ -850,7 +879,7 @@ func (i *Interactor) checkPrivateSendPrivacy(ctx context.Context, in SendInput) 
 	if err != nil {
 		return err
 	}
-	if typ != "private" {
+	if typ != domain.ChatTypePrivate {
 		return nil
 	}
 	members, err := i.chats.MemberIDs(ctx, in.ChatID)
@@ -913,15 +942,13 @@ func (i *Interactor) RelayCall(ctx context.Context, frameType string, fromUserID
 
 // Typing publishes an ephemeral typing indicator to the other chat members.
 // No DB write. No-op if the user isn't a member or no publisher is attached.
-func (i *Interactor) Typing(ctx context.Context, chatID, userID int64, action string) error {
+//
+// Действие приходит КОНСТРУКТОРОМ объединения SendMessageAction: белый список
+// значений здесь больше не нужен — разбор с провода и есть единственное место,
+// где неизвестное сводится к обычной печати (domain.SendMessageActionByTag).
+func (i *Interactor) Typing(ctx context.Context, chatID, userID int64, action domain.SendMessageAction) error {
 	if i.publisher == nil {
 		return nil
-	}
-	switch action {
-	case "voice", "video", "upload_file", "upload_photo", "upload_video", "upload_audio":
-		// keep (upload_* — «отправляет файл/фото/…» на время аплоада, tweb sendMessageUpload*Action)
-	default:
-		action = "typing"
 	}
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil || !ok {
@@ -931,11 +958,18 @@ func (i *Interactor) Typing(ctx context.Context, chatID, userID int64, action st
 	if err != nil {
 		return err
 	}
-	f := frame("typing", map[string]any{"chat_id": chatID, "user_id": userID, "action": action})
+	addr, err := i.peerAddress(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	// Тело одно на всех: адрес кадр несёт САМ (конструктором), пер-зрительского
+	// в нём ничего нет — поэтому и развёртки по ключам пира здесь больше нет.
+	body := frame("typing", typingPayload(addr, userID, action))
 	for _, uid := range members {
-		if uid != userID {
-			_ = i.publisher.PublishToUser(ctx, uid, f)
+		if uid == userID {
+			continue
 		}
+		_ = i.publisher.PublishToUser(ctx, uid, body)
 	}
 	return nil
 }

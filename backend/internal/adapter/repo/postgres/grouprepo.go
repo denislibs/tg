@@ -71,10 +71,9 @@ func (r *GroupRepo) GetMember(ctx context.Context, chatID, userID int64) (domain
 	var m domain.Member
 	var rights int
 	err := q.QueryRow(ctx,
-		`SELECT chat_id, user_id, role, rights,
-		        (muted OR (muted_until IS NOT NULL AND muted_until > now()))
+		`SELECT chat_id, user_id, role, rights
 		   FROM chat_members WHERE chat_id=$1 AND user_id=$2`,
-		chatID, userID).Scan(&m.ChatID, &m.UserID, &m.Role, &rights, &m.Muted)
+		chatID, userID).Scan(&m.ChatID, &m.UserID, &m.Role, &rights)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Member{}, domain.ErrNotFound
 	}
@@ -92,11 +91,36 @@ func (r *GroupRepo) SetRole(ctx context.Context, chatID, userID int64, role stri
 	return err
 }
 
-func (r *GroupRepo) SetMuted(ctx context.Context, chatID, userID int64, muted bool, until *time.Time) error {
+// SetMuted записывает СРОК мьюта: nil снимает его, domain.MuteUntilForever —
+// «навсегда». Булева аргумента здесь больше нет — второй способ сказать то же
+// самое и был тем, из-за чего «заглушить на час» работало как «навсегда»
+// (решение Р4).
+func (r *GroupRepo) SetMuted(ctx context.Context, chatID, userID int64, until *time.Time) error {
 	_, err := querier(ctx, r.pool).Exec(ctx,
-		`UPDATE chat_members SET muted=$3, muted_until=$4 WHERE chat_id=$1 AND user_id=$2`,
-		chatID, userID, muted, until)
+		`UPDATE chat_members SET muted_until=$3 WHERE chat_id=$1 AND user_id=$2`,
+		chatID, userID, until)
 	return err
+}
+
+// NotifySettings — пер-чатное переопределение уведомлений участника целиком.
+// Читается после мутации мьюта, чтобы кадр dialog_mute нёс НАСТОЯЩИЕ настройки,
+// а не пересобранный из аргументов огрызок: превью и звук мьют не менял, но в
+// конструкторе они есть, и «не знаю» от «переопределения нет» неотличимо.
+func (r *GroupRepo) NotifySettings(ctx context.Context, chatID, userID int64) (domain.PeerNotifySettings, error) {
+	var muteUntil *time.Time
+	var preview *bool
+	var sound *string
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT muted_until, notify_preview, notify_sound
+		   FROM chat_members WHERE chat_id=$1 AND user_id=$2`,
+		chatID, userID).Scan(&muteUntil, &preview, &sound)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.PeerNotifySettings{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return domain.PeerNotifySettings{}, err
+	}
+	return peerNotifySettings(muteUntil, preview, sound, time.Now()), nil
 }
 
 // SetNotify обновляет per-chat настройки уведомлений; nil-поля не меняются
@@ -344,32 +368,61 @@ func (r *GroupRepo) DeleteChat(ctx context.Context, chatID int64) error {
 	return err
 }
 
-func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.ChatCard, error) {
+// Card — строка чата ГЛАЗАМИ зрителя: всё, из чего собираются оба
+// конструктора схемы (краткий `channel` и полный `channelFull`). Геометрия
+// фото приезжает из media: channelFull.chat_photo это ПОЛНОЕ Photo с лестницей
+// размеров — экран информации открывает аватарку в медиавьювере.
+func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.ChatRecord, error) {
 	q := querier(ctx, r.pool)
-	var c domain.ChatCard
+	var c domain.ChatRecord
+	c.ViewerID = viewerID
 	var rights *int
 	var role *string
-	var muted *bool
+	var muteUntil *time.Time
+	var joinedAt *time.Time
+	var notifyPreview *bool
+	var notifySound *string
 	var perms int
 	var allowed []byte
 	err := q.QueryRow(ctx,
 		`SELECT c.id, c.type, c.title, COALESCE(c.username,''), c.about, c.photo_media_id,
-		        COALESCE(c.creator_id,0), c.member_count, c.is_public,
+		        pm.blur_preview, COALESCE(pm.width,0), COALESCE(pm.height,0), COALESCE(pm.size,0),
+		        COALESCE(c.creator_id,0), c.member_count, c.created_at, c.is_forum,
 		        COALESCE(c.discussion_chat_id,0), c.signatures, c.signature_profiles,
-		        c.default_permissions, c.slowmode_seconds, c.reactions_mode, c.reactions_allowed, c.history_for_new, c.charge_stars,
-		        m.role, m.rights, (m.muted OR (m.muted_until IS NOT NULL AND m.muted_until > now()))
+		        c.default_permissions, c.slowmode_seconds, c.reactions_mode, c.reactions_allowed,
+		        c.history_for_new, c.charge_stars, COALESCE(c.auto_delete_period,0),
+		        -- pinned_msg_id: наружу едет НОМЕР сообщения в чате (в схеме
+		        -- chatFull.pinned_msg_id адресует сообщение в его пире), а
+		        -- pinned_messages.msg_id — внутренний ключ строки.
+		        COALESCE((SELECT pinm.seq FROM pinned_messages p JOIN messages pinm ON pinm.id=p.msg_id
+		                   WHERE p.chat_id=c.id ORDER BY p.pinned_at DESC LIMIT 1),0),
+		        COALESCE(m.last_read_seq,0), COALESCE(m.unread_count,0),
+		        COALESCE((SELECT MIN(om.last_read_seq) FROM chat_members om WHERE om.chat_id=c.id AND om.user_id<>$2),0),
+		        m.role, m.rights, m.muted_until, m.notify_preview, m.notify_sound,
+		        COALESCE(ct.theme_id,''),
+		        -- Дата вступления ЗРИТЕЛЯ — из той же строки членства, что role
+		        -- и rights; NULL, когда зритель не состоит (LEFT JOIN не нашёл
+		        -- строки) или когда зрителя нет вовсе. Наружу уходит
+		        -- обязательным channel.date, см. ChatRecord.ChannelDate.
+		        m.joined_at
 		   FROM chats c
+		   LEFT JOIN media pm ON pm.id = c.photo_media_id
+		   LEFT JOIN chat_theme ct ON ct.chat_id = c.id
 		   LEFT JOIN chat_members m ON m.chat_id=c.id AND m.user_id=$2
 		  WHERE c.id=$1`,
-		chatID, viewerID).Scan(&c.ID, &c.Type, &c.Title, &c.Username, &c.About, &c.PhotoMediaID,
-		&c.CreatorID, &c.MemberCount, &c.IsPublic, &c.DiscussionChatID, &c.Signatures, &c.SignatureProfiles,
-		&perms, &c.Settings.SlowmodeSeconds, &c.Settings.ReactionsMode, &allowed, &c.Settings.HistoryForNew, &c.Settings.ChargeStars,
-		&role, &rights, &muted)
+		chatID, viewerID).Scan(&c.ID, &c.Type, &c.Title, &c.Username, &c.About, &c.PhotoID,
+		&c.PhotoPreview, &c.PhotoW, &c.PhotoH, &c.PhotoSize,
+		&c.CreatorID, &c.MemberCount, &c.CreatedAt, &c.IsForum,
+		&c.DiscussionChatID, &c.Signatures, &c.SignatureProfiles,
+		&perms, &c.Settings.SlowmodeSeconds, &c.Settings.ReactionsMode, &allowed,
+		&c.Settings.HistoryForNew, &c.Settings.ChargeStars, &c.Settings.AutoDeletePeriod,
+		&c.PinnedMsgID, &c.ReadInboxMaxID, &c.UnreadCount, &c.ReadOutboxMaxID,
+		&role, &rights, &muteUntil, &notifyPreview, &notifySound, &c.ThemeEmoticon, &joinedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.ChatCard{}, domain.ErrNotFound
+		return domain.ChatRecord{}, domain.ErrNotFound
 	}
 	if err != nil {
-		return domain.ChatCard{}, err
+		return domain.ChatRecord{}, err
 	}
 	if role != nil {
 		c.MyRole = *role
@@ -377,8 +430,16 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 	if rights != nil {
 		c.MyRights = domain.Rights(*rights)
 	}
-	if muted != nil {
-		c.Muted = *muted
+	if joinedAt != nil {
+		c.MyJoinedAt = *joinedAt
+	}
+	// notify_settings зритель-зависимы: без зрителя (снимок chat_update — один
+	// на всех участников) их нет вовсе, и пустой конструктор здесь был бы не
+	// «неизвестно», а «переопределения нет» — то есть чужой ответ, разосланный
+	// всем.
+	if viewerID != 0 && role != nil {
+		ns := peerNotifySettings(muteUntil, notifyPreview, notifySound, time.Now())
+		c.NotifySettings = &ns
 	}
 	c.Settings.DefaultPerms = domain.MemberPerms(perms)
 	if len(allowed) > 0 {
@@ -395,8 +456,7 @@ func (r *GroupRepo) ListMembers(ctx context.Context, chatID int64, offset, limit
 		offset = 0
 	}
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT chat_id, user_id, role, rights,
-		        (muted OR (muted_until IS NOT NULL AND muted_until > now()))
+		`SELECT chat_id, user_id, role, rights
 		   FROM chat_members
 		  WHERE chat_id=$1 ORDER BY role DESC, user_id LIMIT $2 OFFSET $3`,
 		chatID, limit, offset)
@@ -408,7 +468,7 @@ func (r *GroupRepo) ListMembers(ctx context.Context, chatID int64, offset, limit
 	for rows.Next() {
 		var m domain.Member
 		var rights int
-		if err := rows.Scan(&m.ChatID, &m.UserID, &m.Role, &rights, &m.Muted); err != nil {
+		if err := rows.Scan(&m.ChatID, &m.UserID, &m.Role, &rights); err != nil {
 			return nil, err
 		}
 		m.Rights = domain.Rights(rights)
@@ -473,7 +533,7 @@ func (r *GroupRepo) IsForum(ctx context.Context, chatID int64) (bool, error) {
 
 // DiscussionCandidates lists non-forum 'group' chats where actorID is
 // creator/admin and which aren't already some channel's discussion group.
-func (r *GroupRepo) DiscussionCandidates(ctx context.Context, actorID int64) ([]domain.ChatCard, error) {
+func (r *GroupRepo) DiscussionCandidates(ctx context.Context, actorID int64) ([]domain.ChatRecord, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT c.id, c.title, COALESCE(c.username,''), c.member_count
 		   FROM chats c
@@ -485,9 +545,9 @@ func (r *GroupRepo) DiscussionCandidates(ctx context.Context, actorID int64) ([]
 		return nil, err
 	}
 	defer rows.Close()
-	out := make([]domain.ChatCard, 0)
+	out := make([]domain.ChatRecord, 0)
 	for rows.Next() {
-		var c domain.ChatCard
+		var c domain.ChatRecord
 		c.Type = "group"
 		if err := rows.Scan(&c.ID, &c.Title, &c.Username, &c.MemberCount); err != nil {
 			return nil, err
@@ -527,14 +587,16 @@ func (r *GroupRepo) ChatBriefs(ctx context.Context, ids []int64) (map[int64]doma
 		return out, nil
 	}
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT id, type, COALESCE(title,''), photo_media_id FROM chats WHERE id = ANY($1)`, ids)
+		`SELECT c.id, c.type, COALESCE(c.title,''), c.photo_media_id, m.blur_preview
+		   FROM chats c LEFT JOIN media m ON m.id = c.photo_media_id
+		  WHERE c.id = ANY($1)`, ids)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var b domain.ChatBrief
-		if err := rows.Scan(&b.ID, &b.Type, &b.Title, &b.PhotoID); err != nil {
+		if err := rows.Scan(&b.ID, &b.Type, &b.Title, &b.PhotoID, &b.PhotoPreview); err != nil {
 			return nil, err
 		}
 		out[b.ID] = b
@@ -542,20 +604,20 @@ func (r *GroupRepo) ChatBriefs(ctx context.Context, ids []int64) (map[int64]doma
 	return out, rows.Err()
 }
 
-func (r *GroupRepo) UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserCard, error) {
+func (r *GroupRepo) UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserReal, error) {
 	if len(ids) == 0 {
-		return []domain.UserCard{}, nil
+		return []domain.UserReal{}, nil
 	}
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT id, COALESCE(username,''), display_name, COALESCE(first_name,''), COALESCE(avatar_url,''), avatar_preview, phone FROM users WHERE id = ANY($1)`, ids)
+		`SELECT `+userRealCols("u.")+` FROM users u WHERE u.id = ANY($1)`, ids)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []domain.UserCard
+	var out []domain.UserReal
 	for rows.Next() {
-		var u domain.UserCard
-		if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.FirstName, &u.AvatarURL, &u.AvatarPreview, &u.Phone); err != nil {
+		u, err := scanUserReal(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, u)

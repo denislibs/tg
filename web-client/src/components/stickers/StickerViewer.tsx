@@ -53,21 +53,10 @@ export default function StickerViewer({ sticker }: { sticker: Sticker }) {
       <div className={classNames('sticker-viewer-backdrop', s.backdrop)} />
       <div className={classNames('sticker-viewer-transformer', s.transformer)}>
         <div className={classNames('sticker-viewer-sticker', s.sticker)}>
-          <StickerMedia
-            mediaId={sticker.mediaId}
-            width={SIZE}
-            height={SIZE}
-            autoplay
-            loop
-            group="STICKER-VIEWER"
-            thumb={sticker.thumb}
-            pathThumb={sticker.pathThumb}
-            docWidth={sticker.width}
-            docHeight={sticker.height}
-          />
+          <StickerMedia doc={sticker} width={SIZE} height={SIZE} autoplay loop group="STICKER-VIEWER" />
         </div>
         <div className={classNames('sticker-viewer-emoji', s.emoji)}>
-          <Emoji e={sticker.emoji} size={48} />
+          <Emoji e={sticker.stickerEmojiRaw ?? ''} size={48} />
         </div>
       </div>
     </div>,

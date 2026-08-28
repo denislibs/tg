@@ -1,65 +1,121 @@
 // src/core/dialogToChat.test.ts
 import { describe, it, expect } from 'vitest'
 import { dialogToChat, GRADIENTS } from './dialogToChat'
-import type { Dialog } from './models'
+import { makeDialog, makeLastMessage } from './dialogs/testDialog'
+import type { Chat, User } from './peers/peer'
+import { MUTE_UNTIL_FOREVER } from './dialogs/notifySettings'
 
-const base: Dialog = { chatId: 1, type: 'private', lastReadSeq: 0, peerReadSeq: 0, unread: 0, muted: false, pinned: false, archived: false }
+// Карточки пиров приезжают вектором `chats`/`users` контейнера `/chats`; здесь
+// они подставляются напрямую — функция чистая и зеркало берёт аргументом.
+const lookup = (map: Record<number, User | Chat>) => (id: PeerId) => map[id]
+const NONE = lookup({})
 
 describe('dialogToChat', () => {
-  it('uses peer display name + initial for private chats', () => {
-    const c = dialogToChat({ ...base, peer: { id: 2, displayName: 'Bob', avatarUrl: '' } })
-    expect(c.id).toBe('1')
+  it('собирает имя приватного чата из конструктора user (display_name с провода убран)', () => {
+    const c = dialogToChat(makeDialog({ peerId: 2 }), null,
+      lookup({ 2: { _: 'user', id: 2, first_name: 'Bob' } }))
+    expect(c.id).toBe('2')
     expect(c.name).toBe('Bob')
     expect(c.avatarText).toBe('B')
     expect(c.type).toBe('private')
   })
 
-  it('falls back to "Chat N" for groups without a title', () => {
-    const c = dialogToChat({ ...base, chatId: 9, type: 'group' })
-    expect(c.name).toBe('Chat 9')
-    expect(c.avatarText).toBe('C')
+  it('без карточки пользователя — фолбэк оригинала, а не пустая строка', () => {
+    const c = dialogToChat(makeDialog({ peerId: 2 }), null, NONE)
+    expect(c.name).toBe('Удалённый аккаунт')
   })
 
-  it('uses the group title when present', () => {
-    const c = dialogToChat({ ...base, chatId: 9, type: 'group', title: 'My Group' })
+  it('вид чата ВЫВОДИТСЯ из конструктора и флагов, а не приезжает строкой', () => {
+    const group = makeDialog({ peerId: -9 })
+    expect(dialogToChat(group, null, lookup({
+      [-9]: { _: 'channel' as const, id: 9, title: 'My Group', photo: { _: 'chatPhotoEmpty' as const }, date: 0, pFlags: { megagroup: true as const } },
+    })).type).toBe('group')
+    expect(dialogToChat(group, null, lookup({
+      [-9]: { _: 'channel' as const, id: 9, title: 'Канал', photo: { _: 'chatPhotoEmpty' as const }, date: 0, pFlags: { broadcast: true as const } },
+    })).type).toBe('channel')
+    // «Избранное» — пир, равный зрителю.
+    expect(dialogToChat(makeDialog({ peerId: 5 }), 5, NONE).type).toBe('saved')
+    // Секретный — наш параметр вне схемы (решение Р9).
+    expect(dialogToChat(makeDialog({ peerId: 5, secret: true }), null, NONE).type).toBe('secret')
+  })
+
+  it('заголовок группы берётся из карточки чата, а не из строки диалога', () => {
+    const c = dialogToChat(makeDialog({ peerId: -9 }), null, lookup({
+      [-9]: { _: 'channel' as const, id: 9, title: 'My Group', photo: { _: 'chatPhotoEmpty' as const }, date: 0, pFlags: { megagroup: true as const } },
+    }))
     expect(c.name).toBe('My Group')
     expect(c.avatarText).toBe('M')
   })
 
-  it('prefers a private peer display name over title', () => {
-    const c = dialogToChat({
-      ...base,
-      peer: { id: 2, displayName: 'Bob', avatarUrl: '' },
-      title: 'Ignored',
-    })
-    expect(c.name).toBe('Bob')
+  it('группа без карточки — фолбэк «Chat N» (у чата пустое имя, не «Удалённый аккаунт»)', () => {
+    const c = dialogToChat(makeDialog({ peerId: -9 }), null, NONE)
+    expect(c.name).toBe('Chat -9')
   })
 
-  it('passes preview/date/unread from last_message', () => {
-    const c = dialogToChat({
-      ...base,
+  it('превью/дата/непрочитанные — из ЦЕЛОГО последнего сообщения', () => {
+    const c = dialogToChat(makeDialog({
+      peerId: 1,
       unread: 3,
-      lastMessage: { seq: 4, text: 'yo', senderId: 2, at: '2026-06-24T10:00:00Z' },
-    })
+      lastMessage: makeLastMessage({ peerId: 1, id: 4, fromId: 2, text: 'yo', createdAt: '2026-06-24T10:00:00Z' }),
+    }), null, NONE)
     expect(c.preview).toBe('yo')
     expect(c.date).not.toBe('2026-06-24T10:00:00Z')
     expect(c.date.length).toBeGreaterThan(0)
     expect(c.unread).toBe(3)
   })
 
+  it('имя автора превью в группе собирает КЛИЕНТ по пиру (sender_name с провода убран)', () => {
+    const c = dialogToChat(makeDialog({
+      peerId: -9,
+      lastMessage: makeLastMessage({ peerId: -9, id: 4, fromId: 77, text: 'привет' }),
+    }), 1, lookup({
+      [-9]: { _: 'channel' as const, id: 9, title: 'Группа', photo: { _: 'chatPhotoEmpty' as const }, date: 0, pFlags: { megagroup: true as const } },
+      77: { _: 'user', id: 77, first_name: 'Аня', last_name: 'Петрова' },
+    }))
+    expect(c.preview).toBe('Аня: привет')
+  })
+
+  it('автора без карточки подписывает фолбэком оригинала, а не молчит', () => {
+    const c = dialogToChat(makeDialog({
+      peerId: -9,
+      lastMessage: makeLastMessage({ peerId: -9, id: 4, fromId: 77, text: 'привет' }),
+    }), 1, lookup({
+      [-9]: { _: 'channel' as const, id: 9, title: 'Группа', photo: { _: 'chatPhotoEmpty' as const }, date: 0, pFlags: { megagroup: true as const } },
+    }))
+    expect(c.preview).toBe('Удалён: привет')
+  })
+
+  it('«замьючен» — это СРОК, а не признак', () => {
+    const now = 1_700_000_000
+    expect(dialogToChat(makeDialog({ peerId: 1, muteUntil: now + 3600 }), null, NONE, now).muted).toBe(true)
+    // Срок вышел — иконка гаснет сама, даже если поле в строке осталось.
+    expect(dialogToChat(makeDialog({ peerId: 1, muteUntil: now - 1 }), null, NONE, now).muted).toBeUndefined()
+    expect(dialogToChat(makeDialog({ peerId: 1, muteUntil: true }), null, NONE, now).muted).toBe(true)
+    expect(dialogToChat(makeDialog({ peerId: 1 }), null, NONE, now).muted).toBeUndefined()
+  })
+
+  it('«навсегда» — тот же механизм, просто далёкий срок', () => {
+    const d = makeDialog({ peerId: 1, muteUntil: true })
+    expect(d.notify_settings.mute_until).toBe(MUTE_UNTIL_FOREVER)
+  })
+
+  it('архив — номер папки, а не булево строки', () => {
+    expect(dialogToChat(makeDialog({ peerId: 1, archived: true }), null, NONE).archived).toBe(true)
+    expect(dialogToChat(makeDialog({ peerId: 1 }), null, NONE).archived).toBeUndefined()
+  })
+
   it('omits unread badge when zero', () => {
-    expect(dialogToChat(base).unread).toBeUndefined()
+    expect(dialogToChat(makeDialog({ peerId: 1 }), null, NONE).unread).toBeUndefined()
   })
 
   it('passes unreadReactions through only when > 0', () => {
-    expect(dialogToChat({ ...base, unreadReactions: 2 }).unreadReactions).toBe(2)
-    expect(dialogToChat({ ...base, unreadReactions: 0 }).unreadReactions).toBeUndefined()
-    expect(dialogToChat(base).unreadReactions).toBeUndefined()
+    expect(dialogToChat(makeDialog({ peerId: 1, unreadReactions: 2 }), null, NONE).unreadReactions).toBe(2)
+    expect(dialogToChat(makeDialog({ peerId: 1, unreadReactions: 0 }), null, NONE).unreadReactions).toBeUndefined()
   })
 
   it('picks a stable gradient from the chat id', () => {
-    const a = dialogToChat({ ...base, chatId: 5 })
-    const b = dialogToChat({ ...base, chatId: 5 })
+    const a = dialogToChat(makeDialog({ peerId: 5 }), null, NONE)
+    const b = dialogToChat(makeDialog({ peerId: 5 }), null, NONE)
     expect(a.avatar).toBe(b.avatar)
     expect(GRADIENTS).toContain(a.avatar)
   })

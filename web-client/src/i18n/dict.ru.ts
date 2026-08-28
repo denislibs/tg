@@ -6,6 +6,12 @@ const ru: Dict = {
   'Your channels': 'Ваши каналы',
   Anonymously: 'Анонимно',
   'Personal account': 'Личный аккаунт',
+  // ── Спойлер на медиа (tweb EnablePhotoSpoiler/DisablePhotoSpoiler,
+  //    Popup.Attach.EnableSpoilers/RemoveSpoilers) ──
+  'Hide with spoiler': 'Скрыть спойлером',
+  'Remove spoiler': 'Убрать спойлер',
+  'Hide all with spoilers': 'Скрыть всё спойлерами',
+  'Remove all spoilers': 'Убрать все спойлеры',
   // ── Paid media (медиа за Stars) ──
   'Make paid': 'Сделать платным',
   'Paid media': 'Платное медиа',
@@ -505,7 +511,6 @@ const ru: Dict = {
   Unpin: 'Открепить',
   Viewers: 'Просмотры',
   'Seen by': 'Просмотрено',
-  'No views yet': 'Ещё нет просмотров',
   Selected: 'Выбрано',
   Message: 'Сообщение',
   'Auto-delete': 'Автоудаление',
@@ -831,6 +836,13 @@ const ru: Dict = {
   Comments: 'Комментарии',
   Comment: 'Комментарий',
   'Discussion started': 'Начало обсуждения',
+  'No messages here yet...': 'Здесь пока нет сообщений…',
+  'Send a message or tap the greeting below.': 'Отправьте сообщение или нажмите на приветствие ниже.',
+  'Your cloud storage': 'Ваше облачное хранилище',
+  'Forward messages here to save them': 'Пересылайте сюда сообщения, чтобы сохранить их',
+  'Send media and files to store them': 'Отправляйте медиа и файлы, чтобы хранить их',
+  'Access this chat from any device': 'Доступ к этому чату с любого устройства',
+  'Use search to quickly find things': 'Используйте поиск, чтобы быстро находить нужное',
   'Search comments': 'Поиск по комментариям',
   'Hide pinned message': 'Скрыть закреплённое',
   'Show pinned message': 'Показать закреплённое',
@@ -1272,6 +1284,14 @@ const ru: Dict = {
     'Вы уверены, что хотите удалить аккаунт? Это действие необратимо.',
   'This will delete your account and all your data. Your messages will remain but appear as sent by a «Deleted Account».':
     'Аккаунт и все данные будут удалены. Сообщения останутся, но будут отображаться как отправленные «Удалённым аккаунтом».',
+  Album: 'Альбом',
+  Photo: 'Фото',
+  Video: 'Видео',
+  GIF: 'GIF',
+  Sticker: 'Стикер',
+  Giveaway: 'Розыгрыш',
+  'Live location': 'Трансляция геопозиции',
+  'Unsupported message': 'Неподдерживаемое сообщение',
 }
 
 export default ru

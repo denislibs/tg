@@ -68,7 +68,7 @@ func TestReactionsFor_RecentUserIDs(t *testing.T) {
 	recentIDs := func(rc *domain.ReactionCount) []int64 {
 		ids := make([]int64, len(rc.Recent))
 		for i, p := range rc.Recent {
-			ids[i] = p.ID
+			ids[i] = int64(domain.GetPeerID(p))
 		}
 		return ids
 	}
@@ -80,9 +80,10 @@ func TestReactionsFor_RecentUserIDs(t *testing.T) {
 	if got, want := recentIDs(thumbs), []int64{u4, u3, u2}; !equalInt64(got, want) {
 		t.Fatalf("👍 recent = %v, want %v (свежие первыми, cap 3)", got, want)
 	}
-	// карточка несёт display_name (в сидере = phone) и пустой avatar.
-	if thumbs.Recent[0].Name != "+7004" || thumbs.Recent[0].Avatar != "" {
-		t.Fatalf("👍 recent[0] card = %+v, want name=+7004 avatar=''", thumbs.Recent[0])
+	// В чипе едет ССЫЛКА на пир, а не снимок карточки: имя и фото клиент берёт
+	// из своего кэша (как recent_reactions в схеме).
+	if thumbs.Recent[0].Tag() != domain.PeerUserTag {
+		t.Fatalf("👍 recent[0] = %+v, want peerUser", thumbs.Recent[0])
 	}
 
 	// ❤️: 1 реакция от u1, зритель u2 её не ставил, recent = [u1].

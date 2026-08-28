@@ -1,0 +1,791 @@
+// src/core/managers/messages/pending.ts
+//
+// Жизненный цикл оптимистичного («неотправленного») сообщения И САМА ОТПРАВКА —
+// В МЕНЕДЖЕРЕ ВОРКЕРА, как в tweb. Порт формы `appMessagesManager`:
+//
+//   tweb                          → здесь
+//   sendText()                    → sendText()
+//   sendFile()                    → sendFile()
+//   pendingByRandomId             → pendingByClientId
+//   beforeMessageSending()        → beforeMessageSending()
+//   finalizePendingMessage()      → finalizePendingMessage()
+//   checkPendingMessage()         → checkPendingMessage() (зовёт cacheLive)
+//   cancelPendingMessage()        → cancelPendingMessage()
+//   message.error / pFlags.is_outgoing → MyMessage.failed
+//
+// ТРАНСПОРТ — ВНУТРИ. В tweb хвост `beforeMessageSending` — это `message.send()`
+// (appMessagesManager.ts:2846-2853), где `send` — закрытие, поставленное
+// `sendText`/`sendFile` (`message.send = upload`, :1782). Здесь так же: сам кадр
+// шлёт `ctx.send`, а закрытие собирает `sendText`/`sendFile`. Циклического
+// импорта нет по той же причине, что и в оригинале: зависимость приходит
+// ИНЪЕКЦИЕЙ при сборке (workerCore подставляет `conn.sendMessage`), менеджер
+// connectionManager не импортирует.
+//
+// АПЛОАД — ВНУТРИ `sendFile`, тоже как в tweb: там `upload()` и последующий
+// `invokeSend(inputMedia)` живут в одном методе менеджера, отдельной фазы
+// «вкладка догрузила байты и попросила отправить» не существует. Метаданные
+// файла (width/height/duration) считает ГЛАВНЫЙ ПОТОК и передаёт аргументами —
+// это тоже 1:1 с оригиналом (поля `width`/`height`/`duration` в `SendFileArgs`,
+// :415): им нужен DOM (<video> для длительности, canvas для масштабирования).
+//
+// ЗАЧЕМ переносили. До этого временный бабл жил ТОЛЬКО в zustand каждой вкладки:
+// воркер получал `appendPending` и просто бродкастил эхо, своего состояния не
+// держал. Следствия, каждое воспроизводилось:
+//   • вкладка, открытая ПОСЛЕ отправки, неотправленного бабла не видела вовсе —
+//     SuperMessagePort кадры не буферизует, а в SSOT воркера бабла не было;
+//   • переоткрытие чата читало историю из SSOT воркера — без своего же бабла;
+//   • реконсиляция ack шла независимо в каждой вкладке (N разборов одного факта)
+//     вместо одного применения владельцем.
+// В tweb ничего этого нет by construction: временное сообщение лежит в ТОМ ЖЕ
+// хранилище, что и настоящие (`messagesStorage`), а его id — в том же
+// `historyStorage.history` (SlicedArray). Здесь так же: `msgsByChat` + `slices`.
+//
+// ЧТО НАРУЖУ. Только `MessageOp` — тот же канал, которым воркер объявляет любое
+// изменение окна. Пяти событий `rt:pending_*` больше нет: «бабл появился» это
+// `insert`, «доехал ack» это `insert` финального (слияние по clientId живёт в
+// messageOps.insert), «ошибка отправки» это `patch {failed:true}`, «отменили» это
+// `remove`. Тем самым исчезает исключение из инварианта «окно правит только
+// applyOps», которое раньше приходилось держать в CLAUDE.md.
+//
+// ЧЕГО НЕ ДЕЛАЕМ. Временный бабл НЕ персистится в IndexedDB. В tweb неотправленное
+// не переживает перезагрузку — и не должно: воскресший из IDB «отправляется…»
+// без живого outbox навсегда останется висеть. Поэтому здесь пишем в Map SSOT
+// напрямую, минуя write-through `put()`.
+//
+// ЧТО ОСТАЛОСЬ НА ВКЛАДКЕ (и это НЕ отступление от tweb):
+//   • метаданные файла — `scaleImageForSend`, `probeMediaDuration`
+//     (core/hooks/useChatSend.ts): им нужен DOM (canvas, <video>), tweb считает
+//     их там же и передаёт полями `width`/`height`/`duration` в `SendFileArgs`;
+//   • секретные чаты идут не сюда, а в `secretManager` (тоже воркер): по проводу
+//     уходит шифртекст, а не текст бабла. Секретных чатов у tweb нет вовсе —
+//     сравнивать не с чем, это наша фича, а не расхождение с оригиналом;
+//   • пост канала уходит по REST (`channelsManager.post`) — транспорт другой,
+//     но владелец бабла тот же: он зовёт `beforeMessageSending` явно.
+import type { MyMessage, MessageReal, MessageEntity } from '../../models'
+import {
+  saveDocument, THUMB_TYPE_FULL,
+  type DocumentAttribute, type MessageMedia, type MyDocument,
+} from '../../media/messageMedia'
+import type { MessageOp } from '../../realtime/messageOps'
+import type { AckEvt, PendingMedia, PendingNewEvt, SendMessageAction } from '../../realtime/events'
+import type { SendArgs as WireSendArgs } from '../../realtime/connectionManager'
+import type { UploadArgs } from '../mediaManager'
+import { b64FromBytes } from '../../secret/crypto'
+import SlicedArray, { SliceEnd } from '../../history/slicedArray'
+import { generateMessageId, generateTempMessageId } from '../../history/messageId'
+import { getOutputPeer } from '../../peers/peerId'
+import { sendingParamsToWire, splitSendingParams, type MessageSendingParams, type SendingParamsWireFields } from './sendingParams'
+
+/** Данные временного бабла, которых нет в проводных полях send_message: автор,
+ *  локальная мета файла, имя контакта, заголовок send-as, метка секретного чата.
+ *  Присутствие объекта = «завести бабл»; пути без оптимистики (черновик →
+ *  createPrivate, комментарий к форварду, переотправка уже существующего бабла)
+ *  его не передают. */
+export interface SendOptimistic {
+  senderId: number
+  media?: PendingMedia
+  /** имя контакта для бабла — проводной contactUserId имени не несёт */
+  contactName?: string
+  /** send-as: бабл сразу от лица выбранного канала/группы. Едет ССЫЛКА
+   *  (знаковый ключ), а не снимок `{title, photo_id}`: имя и аватарку автор
+   *  бабла берёт из зеркала карточек — как и у серверного эха, где `from_id`
+   *  указывает на тот же канал. */
+  sendAs?: PeerId
+  /** секретный чат: бабл с плейнтекстом, помеченный secret */
+  secret?: boolean
+}
+
+/** Проводные поля кадра МИНУС те, что целиком покрыты пакетом параметров:
+ *  передать `replyToId`/`silent`/`effect`/… мимо пакета теперь нельзя даже
+ *  типом — ровно то свойство, ради которого форма пакета и портируется. */
+export type SendWireArgs = Omit<WireSendArgs, keyof SendingParamsWireFields>
+
+/** Аргументы `sendText` — проводные поля send_message + ПАКЕТ ПАРАМЕТРОВ +
+ *  заявка на бабл. Порт tweb `sendText(options: MessageSendingParams & {...})`
+ *  (:1290); наш `sendText` покрывает и `sendOther` (стикер/гиф/гео/контакт): у
+ *  них ровно та же форма — байтов нет, кадр один, пакет тот же. */
+export interface SendTextArgs extends SendWireArgs, MessageSendingParams {
+  optimistic?: SendOptimistic
+}
+
+/** Порт tweb `SendFileArgs = MessageSendingParams & SendFileDetails & {...}`
+ *  (:415) — включая САМ ПАКЕТ параметров, ровно как в оригинале. Совпадающие
+ *  поля — `file`, `width`, `height`, `duration`, `waveform`, `caption`,
+ *  `entities`, `groupId`, `isMedia`; `objectURL` у нас нет СОЗНАТЕЛЬНО
+ *  (см. sendFile: blob-URL минтит воркер, а не вкладка). */
+export interface SendFileArgs extends MessageSendingParams {
+  peerId: number
+  clientMsgId: string
+  senderId: number
+  file: Blob
+  /** photo/video/audio/document/voice/roundVideo — как в проводном send_message */
+  type: string
+  mime?: string
+  fileName?: string
+  caption?: string
+  entities?: MessageEntity[]
+  width?: number
+  height?: number
+  duration?: number
+  waveform?: Uint8Array
+  /** альбом (Telegram grouped_id): общий id на все сообщения группы */
+  groupedId?: number
+  paidMediaPrice?: number | null
+  /** tweb `isMedia`: фото/видео «как медиа» — бабл сразу с локальным превью */
+  isMedia?: boolean
+  /** tweb `isAnimated` (appMessagesManager.ts:2010-2014): файл отправляется
+   * ГИФКОЙ — в документ уходит `documentAttributeAnimated`, из которого
+   * `saveDocument` и выводит `doc.type === 'gif'` */
+  isAnimated?: boolean
+  /** tweb `sendFile({spoiler})` (appMessagesManager.ts:134): отправитель прячет
+   * медиа под спойлером — признак едет и в кадр, и в оптимистичный бабл */
+  spoiler?: boolean
+  /** «отправляет фото/файл…» у собеседника на время аплоада (tweb sendMessageUpload*Action) */
+  uploadAction?: SendMessageAction
+}
+
+/** Регистрация неотправленного сообщения — аналог tweb PendingMessageDetails. */
+interface PendingDetails {
+  peerId: number
+  threadRootId?: number | null
+  /** позиция в окне (у нас порядок задаёт seq, в tweb — временный mid) */
+  tempId: number
+  /** окна, куда бабл вставлен: основное чата и, для тред-сообщения, окно треда */
+  keys: string[]
+  /** Порт поля tweb `PendingMessageDetails.sequential` (appMessagesManager.ts:228):
+   *  кадр отправки ушёл в том же ходу, что и появление бабла, — значит серверный
+   *  идентификатор сохранит уже занятую баблом позицию внизу окна. Заводится
+   *  здесь, уезжает наружу полем операции `insert` из `finalizePendingMessage`
+   *  (в tweb — полем события `history_update` из `checkPendingMessage`,
+   *  appMessagesManager.ts:8730-8737). */
+  sequential?: boolean
+}
+
+/** Внутренности хранилища истории, которые нужны pending-механике. Отдельно от
+ *  `MessagesCtx`: тем под-модулям (опросы/реакции) хватает точечного patchMsg, а
+ *  здесь нужна сама структура окна — как в tweb, где beforeMessageSending трогает
+ *  и `messagesStorage`, и `historyStorage.history`. */
+export interface PendingCtx {
+  hkey: (peerId: number, threadRoot?: number | null) => string
+  slices: Map<string, SlicedArray<number>>
+  msgsFor: (peerId: number) => Map<number, MyMessage>
+  /** id текущего пользователя. Временному баблу он больше НЕ нужен для `out`
+   *  (флаг производит сервер, а у бабла он исходящий по определению) — нужен
+   *  границе разбора, которая уточняет служебное действие. Геттер, а не
+   *  значение: `me` у воркера разрешается лениво. */
+  getMeId: () => number | null
+  /** Порт `appPeersManager.isBroadcast(peerId)` в единственной роли, ради
+   *  которой его зовёт `generateFlags` (tweb appMessagesManager.ts:3128-3130):
+   *  временный бабл поста вещательного канала обязан родиться с `pFlags.post` —
+   *  этот флаг решает СТОРОНУ бабла (`isOurMessage`, chat.ts:1379), и без него
+   *  пост стоял бы справа до ответа сервера и прыгал влево на эхе. Читается
+   *  синхронно из кэша карточек воркера, как и в оригинале. */
+  isBroadcastChat: (peerId: number) => boolean
+  /** Публикация изменений окна всем вкладкам (rt:message_op). Правило: публикует
+   *  ТОТ, КТО инициировал изменение. Пути отправки инициирует этот модуль —
+   *  поэтому emit здесь; кадры message_ack/message_error инициирует роутер
+   *  кадров (workerCore.ts::onFrame), там публикация и остаётся. */
+  emit: (ops: MessageOp[]) => void
+  /** Транспорт: кадр send_message в WS. Инъекция при сборке (workerCore
+   *  подставляет conn.sendMessage) — так же, как tweb раздаёт менеджерам
+   *  зависимости через реестр AppManagers, а не импортом. */
+  send: (args: WireSendArgs) => void
+  /** Отгрузка байтов медиа (mediaManager.upload воркера) → media_id. */
+  upload: (a: UploadArgs) => Promise<number>
+  /** Оборвать активный аплоад по progressId (=clientMsgId). */
+  cancelUpload: (progressId: string) => void
+  /** «Отправляет фото/файл…» на время аплоада (conn.sendTyping). */
+  sendTyping: (peerId: number, action: SendMessageAction) => void
+  /** Прогресс аплоада вкладкам (media:upload_progress). `done` — аплоад
+   *  закончился (успехом, ошибкой или отменой): кольцо на бабле снимается. */
+  uploadProgress: (id: string, loaded: number, total: number, done?: boolean) => void
+}
+
+/** Период пинга «отправляет фото/файл…» (TTL приёмника — 6 с). */
+const UPLOAD_TYPING_MS = 3000
+
+/**
+ * Порт tweb `makeDocumentAndMetaForSendingFile` (appMessagesManager.ts:1908-2112)
+ * в той его роли, ради которой он и зовётся из `sendFile`: собрать ВЛОЖЕНИЕ
+ * отправляемого файла — настоящий `messageMediaPhoto`/`messageMediaDocument` —
+ * ещё до аплоада, чтобы бабл «отправляется…» рисовался тем же кодом, что и
+ * пришедшее с сервера сообщение (в оригинале это `message.media = media`,
+ * :1596-1631: `photo`/`document`, собранные тут же, кладутся прямо в бабл).
+ *
+ * `attachType` берётся ГОТОВЫМ (проводное поле `type` кадра), а не выводится
+ * заново из mime, как в оригинале (:1932-2017): у нас этот вывод уже сделан
+ * вкладкой, уезжает на сервер полем кадра и там же описывает медиа
+ * (`domain.MediaSource.Kind`). Второй вывод того же факта здесь был бы вторым
+ * источником истины, а не портом.
+ *
+ * ── Чего нет и почему ───────────────────────────────────────────────────────
+ *  • `strippedBytes` (ступень `photoStrippedSize` в начало лестницы) — оригинал
+ *    получает stripped-байты из попапа отправки, где превью уже посчитано; у нас
+ *    их до аплоада не считает никто, роль подложки бабла несёт `localUrl`;
+ *  • `thumb` + `thumbsStorage.setCacheContextURL` — ступени в оригинале нужны,
+ *    чтобы повесить на них локальный objectURL; у нас его несёт `MyMessage.localUrl`
+ *    (blob-URL минтит воркер, см. `sendFile`), а ступени адресуются id медиа,
+ *    которого до аплоада ещё нет. Поэтому `thumbs` у локального документа пуст.
+ */
+function makeDocumentAndMetaForSendingFile(o: PendingMedia & {
+  /** tweb `mediaTempId` (:1554): id, под которым файл живёт до ответа сервера */
+  mediaTempId: number
+  /** tweb `attachType` — 'photo' | 'video' | 'roundVideo' | 'voice' | 'audio' | … */
+  attachType: string
+}): MessageMedia {
+  const mime = o.mime ?? ''
+  // tweb `pFlags: {...(options.spoiler ? {spoiler: true} : {})}` (:1600-1602);
+  // у нас «выключено» — это ОТСУТСТВИЕ ключа, поэтому и самого pFlags нет.
+  const pFlags = o.spoiler ? { pFlags: { spoiler: true as const } } : {}
+
+  // tweb :1957-1979 — фото «как медиа» едет messageMediaPhoto с одной ступенью
+  // THUMB_TYPE_FULL (`photoSize` с размерами кадра и размером файла).
+  if (o.attachType === 'photo') {
+    return {
+      _: 'messageMediaPhoto',
+      ...pFlags,
+      photo: {
+        _: 'photo',
+        id: o.mediaTempId,
+        sizes: [{ _: 'photoSize', type: THUMB_TYPE_FULL, w: o.width ?? 0, h: o.height ?? 0, size: o.size ?? 0 }],
+      },
+    }
+  }
+
+  const attributes: DocumentAttribute[] = []
+  switch (o.attachType) {
+    // tweb :1932-1955 — аудио и голосовое отличаются одним битом атрибута.
+    case 'voice':
+    case 'audio':
+      attributes.push({
+        _: 'documentAttributeAudio',
+        ...(o.attachType === 'voice' ? { pFlags: { voice: true as const } } : {}),
+        duration: o.duration ?? 0,
+        ...(o.waveform ? { waveform: o.waveform } : {}),
+      })
+      break
+    // tweb :1991-2009 — видео и кружок, тоже одним битом (`round_message`).
+    case 'video':
+    case 'roundVideo':
+      attributes.push({
+        _: 'documentAttributeVideo',
+        pFlags: {
+          ...(o.attachType === 'roundVideo' ? { round_message: true as const } : {}),
+          supports_streaming: true,
+        },
+        duration: o.duration ?? 0,
+        w: o.width ?? 0,
+        h: o.height ?? 0,
+      })
+      break
+  }
+  // tweb :2010-2014 — «must follow after video attribute».
+  if (o.animated) attributes.push({ _: 'documentAttributeAnimated' })
+  // tweb :2019 — имя файла дописывается всегда, последним из «своих».
+  attributes.push({ _: 'documentAttributeFilename', file_name: o.name ?? '' })
+  // tweb :2043-2047 — картинка, отправленная файлом, описывается кадром: именно
+  // из этого атрибута оригинал выводит `doc.type === 'photo'`.
+  if (mime.startsWith('image/')) {
+    attributes.push({ _: 'documentAttributeImageSize', w: o.width ?? 0, h: o.height ?? 0 })
+  }
+
+  // tweb :2027-2098 — документ собирается и прогоняется через `saveDoc`: тип
+  // выводится из атрибутов и mime, а не задаётся отправителем.
+  const document: MyDocument = saveDocument({
+    _: 'document',
+    id: o.mediaTempId,
+    mime_type: mime,
+    size: o.size ?? 0,
+    attributes,
+    thumbs: [],
+  })
+  return { _: 'messageMediaDocument', ...pFlags, document }
+}
+
+/** Тот же документ/фото, но под настоящим id медиа: аплоад завершился, и файл,
+ *  живший под временным id (tweb `mediaTempId`), получил адрес на сервере.
+ *  Остальные конструкторы объединения файла не несут вовсе — им нечего
+ *  переадресовывать. */
+function withMediaId(media: MessageMedia, id: number): MessageMedia {
+  if (media._ === 'messageMediaDocument') return { ...media, document: { ...media.document, id } }
+  if (media._ === 'messageMediaPhoto') return { ...media, photo: { ...media.photo, id } }
+  return media
+}
+
+/**
+ * Вложение бабла гео-сообщения. Три конструктора, ровно как на проводе: живая
+ * трансляция, место с подписью и просто точка — выбор тот же, что делает
+ * `geoWire` бэкенда, потому что это ОДНО правило, а не два.
+ *
+ * У свежей трансляции `period` едет полным: она только что началась, и
+ * «остановлена» (истёкший срок) до эха сервера быть не может.
+ */
+function makeGeoMedia(geo: NonNullable<PendingNewEvt['geo']>): MessageMedia {
+  const point = { _: 'geoPoint' as const, long: geo.lng, lat: geo.lat }
+  if (geo.livePeriod) {
+    return { _: 'messageMediaGeoLive', geo: point, period: geo.livePeriod, ...(geo.heading ? { heading: geo.heading } : {}) }
+  }
+  if (geo.title || geo.address) {
+    return { _: 'messageMediaVenue', geo: point, title: geo.title ?? '', address: geo.address ?? '' }
+  }
+  return { _: 'messageMediaGeo', geo: point }
+}
+
+/**
+ * Вложение бабла визитки. Все пять параметров схемы ОБЯЗАТЕЛЬНЫЕ и стоят
+ * всегда, в том числе пустыми: телефон гидрирует сервер (приедет с эхом), и до
+ * эха это пустая СТРОКА-значение, а не отсутствие параметра.
+ */
+function makeContactMedia(contact: NonNullable<PendingNewEvt['contact']>): MessageMedia {
+  return {
+    _: 'messageMediaContact',
+    phone_number: contact.phone ?? '',
+    first_name: contact.name ?? '',
+    last_name: '',
+    vcard: '',
+    user_id: contact.user_id,
+  }
+}
+
+export function newPendingMethods(ctx: PendingCtx) {
+  const { hkey, slices, msgsFor, emit } = ctx
+  const pendingByClientId = new Map<string, PendingDetails>()
+
+  /** Окна чата, готовые принять вставку: срез должен держать НИЗ истории, иначе
+   *  позиция нового сообщения неизвестна (тот же гейт, что в cacheLive). */
+  const targetKeys = (peerId: number, threadRootId?: number | null): string[] => {
+    const keys = threadRootId ? [hkey(peerId), hkey(peerId, threadRootId)] : [hkey(peerId)]
+    return keys.filter((k) => slices.get(k)?.first.isEnd(SliceEnd.Bottom))
+  }
+
+  /** ВРЕМЕННЫЙ номер бабла — порт tweb `generateTempMessageId`: ДРОБЬ поверх
+   *  последнего занятого номера окна, а не «максимум + 1» и не отрицательное
+   *  число. Дробь и есть признак «номер назначен клиентом» (`isLocalMessageId`),
+   *  и она же держит бабл ПОСЛЕ последнего сообщения при сортировке. */
+  const tentativeId = (peerId: number, keys: string[]): number => {
+    const c = msgsFor(peerId)
+    let max = 0
+    for (const key of keys) {
+      const sa = slices.get(key)
+      if (!sa) continue
+      for (const slice of sa.slices) for (const s of slice) if (s > max) max = s
+    }
+    for (const s of c.keys()) if (s > max) max = s
+    // Пустое окно: до первого сообщения занятых номеров нет, и клиентская
+    // граница начинается с самого порога.
+    return generateTempMessageId(Math.max(max, generateMessageId(0)))
+  }
+
+  /** Снять временный бабл из SSOT и срезов. Возвращает, был ли он там. */
+  const dropTemp = (d: PendingDetails): boolean => {
+    const c = msgsFor(d.peerId)
+    const existed = c.delete(d.tempId)
+    for (const key of d.keys) slices.get(key)?.delete(d.tempId)
+    return existed
+  }
+
+  /** Точечно поправить временный бабл в SSOT. */
+  const patchTemp = (d: PendingDetails, upd: (m: MyMessage) => MyMessage): MyMessage | undefined => {
+    const c = msgsFor(d.peerId)
+    const cur = c.get(d.tempId)
+    if (!cur) return undefined
+    const next = upd(cur)
+    c.set(d.tempId, next)
+    return next
+  }
+
+  const opsFor = (d: PendingDetails, make: (key: string) => MessageOp): MessageOp[] =>
+    d.keys.map(make)
+
+  /** Порт tweb `finalizePendingMessage`: временный бабл уходит из SSOT и срезов,
+   *  на его место встаёт настоящее сообщение. Наружу — `insert` финального:
+   *  слияние с оптимистичным по clientId (перенос clientId/localUrl/secret)
+   *  живёт в `messageOps.insert` и работает одинаково у всех потребителей. */
+  const finalizePendingMessage = (clientMsgId: string, final: MyMessage): MessageOp[] => {
+    const d = pendingByClientId.get(clientMsgId)
+    if (!d) return []
+    pendingByClientId.delete(clientMsgId)
+    dropTemp(d)
+    const c = msgsFor(d.peerId)
+    c.set(final.id, final)
+    for (const key of d.keys) {
+      const sa = slices.get(key)
+      if (sa && !sa.findSlice(final.id)) sa.unshift(final.id)
+    }
+    // `sequential` объявляется вместе с финальным сообщением — ровно как в tweb,
+    // где `checkPendingMessage` кладёт `pendingData.sequential` в `history_update`
+    // (appMessagesManager.ts:8730-8737). Лента по нему решает, надо ли вообще
+    // перекладывать бабл (`chat/bubbles.ts`, порт bubbles.ts:802-819).
+    return opsFor(d, (key) => ({ op: 'insert', key, msg: final, sequential: d.sequential }))
+  }
+
+  /** Порт tweb `beforeMessageSending`: временное сообщение попадает в SSOT и в
+   *  срез окна ДО ухода на сервер, регистрируется в pending-реестре, наружу
+   *  уходит `insert` — И ТОЛЬКО ПОТОМ зовётся `send` (в оригинале это
+   *  `message.send()`, appMessagesManager.ts:2846-2853). Порядок обязателен:
+   *  сперва бабл на экран, затем сеть.
+   *
+   *  Пустой результат = ни одно окно чата не держит низ истории (бабл появится
+   *  обычным эхом при следующей загрузке); `send` при этом всё равно зовётся —
+   *  отсутствие открытого окна не отменяет отправку. */
+  const beforeMessageSending = (e: PendingNewEvt, send?: () => void): MessageOp[] => {
+    const ops = insertPending(e)
+    emit(ops)
+    send?.()
+    return ops
+  }
+
+  /** Превью ответа для ВРЕМЕННОГО бабла. Порт tweb `generateReplyHeader`
+   *  (appMessagesManager.ts:2926 — исходящее сообщение получает `reply_to` ещё
+   *  до ухода на сервер): без этого бабл появлялся бы без цитаты и «прыгал» бы,
+   *  когда её принесёт эхо. Оригинал ищем в SSOT воркера — той же единой Map
+   *  сообщений чата, из которой живёт окно (у главного потока для входящих ту же
+   *  работу делает `storeProjection`, но у СВОЕЙ отправки владелец бабла — здесь). */
+  /** Ссылка на отвечаемое для ВРЕМЕННОГО бабла. Порт tweb `generateReplyHeader`
+   *  (appMessagesManager.ts:2926 — исходящее сообщение получает `reply_to` ещё
+   *  до ухода на сервер): без этого бабл появлялся бы без цитаты и «прыгал» бы,
+   *  когда её принесёт эхо.
+   *
+   *  Это именно ССЫЛКА, а не снимок: превью строит тот, кто рисует, разрешив
+   *  номер в своём окне. Резолвить оригинал здесь больше незачем — снимка
+   *  `{msgId, seq, senderId, text, type, mediaId}` в модели больше нет. */
+  const replyHeaderFor = (e: PendingNewEvt): MyMessage['reply_to'] => {
+    if (e.reply_to_id == null && e.thread_root_id == null) return undefined
+    return {
+      _: 'messageReplyHeader',
+      ...(e.reply_to_id != null ? { reply_to_msg_id: e.reply_to_id } : {}),
+      ...(e.thread_root_id != null ? { reply_to_top_id: e.thread_root_id } : {}),
+      ...(e.reply_to_peer_id != null ? { reply_to_peer_id: getOutputPeer(e.reply_to_peer_id) } : {}),
+      ...(e.reply_quote_text ? { pFlags: { quote: true as const }, quote_text: e.reply_quote_text } : {}),
+    }
+  }
+
+  const insertPending = (e: PendingNewEvt): MessageOp[] => {
+    const keys = targetKeys(e.peer_id, e.thread_root_id)
+    if (!keys.length) return []
+    // Номер назначен КЛИЕНТОМ: дробь поверх последнего занятого (порт
+    // `generateTempMessageId`). Отрицательного id больше нет — dedupKey отличает
+    // бабл по самой дробности, а не по знаку.
+    const id = tentativeId(e.peer_id, keys)
+    const msg: MyMessage = {
+      _: 'message',
+      // `out` у бабла: он ИСХОДЯЩИЙ по определению — это сообщение зрителя,
+      // которое ещё не ушло. Сторону бабла решает витрина (`isOurMessage`, порт
+      // `Chat.isOurMessage`), и в мегагруппе она берёт ровно этот флаг: бабл
+      // send-as (отправка от лица канала) с первого кадра стоит справа, как и
+      // его эхо с сервера.
+      pFlags: {
+        out: true,
+        // Порт `generateFlags` (tweb :3128-3130): в вещательном канале бабл
+        // рождается постом. Флаг решает сторону (`isOurMessage`, chat.ts:1379),
+        // поэтому ставить его на эхе поздно — бабл прыгнул бы.
+        ...(ctx.isBroadcastChat(e.peer_id) ? { post: true as const } : {}),
+        // Сервер ставит media_unread на голосовые и кружки — отражаем сразу,
+        // чтобы точка не «моргала» после ack.
+        ...(e.type === 'voice' || e.type === 'roundVideo' ? { media_unread: true as const } : {}),
+      },
+      id,
+      // Автор бабла — send-as личность, если она выбрана: на проводе у эха там
+      // будет тот же канал, и имя с аватаркой берутся из зеркала карточек.
+      from_id: getOutputPeer(e.send_as ?? e.sender_id),
+      fromId: e.send_as ?? e.sender_id,
+      peer_id: getOutputPeer(e.peer_id),
+      peerId: e.peer_id,
+      reply_to: replyHeaderFor(e),
+      date: Math.floor(Date.now() / 1000),
+      message: e.text,
+      entities: e.entities,
+      grouped_id: e.grouped_id,
+      random_id: e.client_msg_id,
+      // localUrl — обычное поле SSOT: blob-URL минтит ВОРКЕР (sendFile ниже), а
+      // воркерный blob виден всем вкладкам (тот же приём, что у downloadMediaURL
+      // в mediaManager). Раньше поля здесь не было, потому что URL создавала
+      // вкладка и вкладка же накладывала его на операцию у себя.
+      localUrl: e.local_url,
+      // Вложение бабла — НАСТОЯЩЕЕ `MessageMedia`, собранное здесь же (порт tweb
+      // `sendFile`: `message.media = media`, где media — результат
+      // `makeDocumentAndMetaForSendingFile`). Поэтому «отправляется…» рисуется
+      // тем же кодом, что и серверное сообщение: волна голосового, кадр видео,
+      // имя/размер файла и заслонка спойлера стоят на бабле сразу, а не после эха.
+      //
+      // id файла: настоящий, если он уже есть (сохранённый GIF/стикер уходят с
+      // `media_id` — это ветка `isDocument` оригинала, :1538-1541, где в бабл
+      // кладётся УЖЕ сохранённый документ), иначе временный — id самого бабла,
+      // ровно как tweb `mediaTempId = message.id` (:1554).
+      //
+      // Гео и визитка собираются здесь же и тем же приёмом: они КОНСТРУКТОРЫ
+      // того же объединения, а не собственные поля сообщения рядом с медиа, —
+      // значит и у бабла им место ровно одно.
+      media: e.media
+        ? makeDocumentAndMetaForSendingFile({ ...e.media, mediaTempId: e.media_id ?? id, attachType: e.type ?? 'document' })
+        : e.geo ? makeGeoMedia(e.geo)
+        : e.contact ? makeContactMedia(e.contact)
+        : undefined,
+      secret: e.secret,
+    }
+    const d: PendingDetails = { peerId: e.peer_id, threadRootId: e.thread_root_id, tempId: id, keys, sequential: e.sequential }
+    pendingByClientId.set(e.client_msg_id, d)
+    msgsFor(e.peer_id).set(id, msg)
+    for (const key of keys) {
+      const sa = slices.get(key)
+      if (sa && !sa.findSlice(id)) sa.unshift(id)
+    }
+    return opsFor(d, (key) => ({ op: 'insert', key, msg }))
+  }
+
+  /** Аплоад завершился — к неотправленному баблу приклеился настоящий mediaId.
+   *  В tweb ту же роль играет подмена temp-документа настоящим внутри `sendFile`;
+   *  зовётся отсюда же, из `sendFile`, а не вторым RPC с вкладки. Вместе с
+   *  `mediaId` настоящий адрес получает и сам файл вложения (`mediaTempId`
+   *  оригинала перестаёт быть временным) — иначе бабл остался бы с вложением,
+   *  указывающим в никуда. */
+  const attachPendingMedia = (clientMsgId: string, mediaId: number): MessageOp[] => {
+    const d = pendingByClientId.get(clientMsgId)
+    if (!d) return []
+    // Плоского `media_id` рядом с вложением больше нет: адрес файла живёт ВНУТРИ
+    // `messageMediaPhoto`/`messageMediaDocument`, и подменять надо ровно его.
+    let fields: Partial<MessageReal> = {}
+    const next = patchTemp(d, (m) => {
+      if (m._ !== 'message' || !m.media) return m
+      fields = { media: withMediaId(m.media, mediaId) }
+      return { ...m, ...fields }
+    })
+    if (!next) return []
+    return opsFor(d, (key) => ({ op: 'patch', key, msgId: next.id, fields }))
+  }
+
+  /** Сервер отверг отправку (`message_error`) либо сорвался аплоад. Бабл
+   *  остаётся с красной пометкой — решение (переслать/удалить) за пользователем,
+   *  поэтому регистрация в pending СОХРАНЯЕТСЯ: ack после ретрая должен найти
+   *  тот же бабл (tweb держит `message.error` ровно так же). */
+  const failPendingMessage = (clientMsgId: string): MessageOp[] => {
+    const d = pendingByClientId.get(clientMsgId)
+    if (!d) return []
+    const next = patchTemp(d, (m) => ({ ...m, failed: true }))
+    if (!next) return []
+    return opsFor(d, (key) => ({ op: 'patch', key, msgId: next.id, fields: { failed: true } }))
+  }
+
+  /** Пользователь нажал «повторить»: снимаем пометку ошибки, бабл снова «в пути». */
+  const retryPendingMessage = (clientMsgId: string): MessageOp[] => {
+    const d = pendingByClientId.get(clientMsgId)
+    if (!d) return []
+    const next = patchTemp(d, (m) => ({ ...m, failed: undefined }))
+    if (!next) return []
+    return opsFor(d, (key) => ({ op: 'patch', key, msgId: next.id, fields: { failed: undefined } }))
+  }
+
+  /** Порт tweb `cancelPendingMessage`: отмена аплоада / удаление неотправленного. */
+  const cancelPendingMessage = (clientMsgId: string): MessageOp[] => {
+    const d = pendingByClientId.get(clientMsgId)
+    if (!d) return []
+    pendingByClientId.delete(clientMsgId)
+    const cur = msgsFor(d.peerId).get(d.tempId)
+    if (!dropTemp(d) || !cur) return []
+    return opsFor(d, (key) => ({ op: 'remove', key, msgId: cur.id }))
+  }
+
+  /** Порт tweb `upload()` внутри `sendFile` (:1642-1775): отгрузка байтов, затем
+   *  отправка кадра уже с media_id. Пинг «отправляет фото/файл…» — порт
+   *  `setTyping(peerId, {_: actionName})` из того же места. Ошибка/отмена —
+   *  `cancelPendingMessage`/`toggleError` там же. */
+  const uploadAndSend = async (o: SendFileArgs, mime: string, wire: WireSendArgs): Promise<number | null> => {
+    ctx.uploadProgress(o.clientMsgId, 0, 1)
+    // Пинг сразу и каждые UPLOAD_TYPING_MS — TTL приёмника вдвое больше.
+    const action = o.uploadAction
+    let ping: ReturnType<typeof setInterval> | null = null
+    if (action) {
+      ctx.sendTyping(o.peerId, action)
+      ping = setInterval(() => ctx.sendTyping(o.peerId, action), UPLOAD_TYPING_MS)
+    }
+    try {
+      const mediaId = await ctx.upload({
+        blob: o.file, mime, size: o.file.size,
+        width: o.width, height: o.height, duration: o.duration,
+        fileName: o.fileName, waveform: o.waveform, progressId: o.clientMsgId,
+      })
+      emit(attachPendingMedia(o.clientMsgId, mediaId))
+      ctx.send({ ...wire, mediaId })
+      return mediaId
+    } catch {
+      // Отменённый аплоад бабл уже снял (cancelPending) — fail тогда no-op.
+      emit(failPendingMessage(o.clientMsgId))
+      return null
+    } finally {
+      if (ping !== null) clearInterval(ping)
+      ctx.uploadProgress(o.clientMsgId, 0, 0, true)
+    }
+  }
+
+  return {
+    finalizePendingMessage,
+    beforeMessageSending,
+    attachPendingMedia,
+    failPendingMessage,
+    retryPendingMessage,
+    cancelPendingMessage,
+
+    /** Порт tweb `sendText` (:1290) — и `sendOther` (стикер/гиф/гео/контакт):
+     *  байтов нет, поэтому весь метод — бабл + один кадр. Единственная точка
+     *  отправки сообщения без файла; транспорт зовётся ВНУТРИ
+     *  `beforeMessageSending`, как `message.send()` в оригинале. */
+    async sendText({ optimistic, ...o }: SendTextArgs): Promise<{ ok: true }> {
+      const { params, rest } = splitSendingParams(o)
+      const args: WireSendArgs = { ...rest, ...sendingParamsToWire(params) }
+      const send = () => ctx.send(args)
+      if (!optimistic) { send(); return { ok: true } }
+      beforeMessageSending({
+        peer_id: args.peerId,
+        thread_root_id: params.threadId ?? null,
+        client_msg_id: args.clientMsgId,
+        sender_id: optimistic.senderId,
+        text: args.text,
+        type: args.type,
+        entities: args.entities ?? undefined,
+        media_id: args.mediaId ?? null,
+        grouped_id: args.groupedId,
+        media: optimistic.media,
+        geo: args.geo,
+        // Телефон гидрирует сервер (приедет с эхом new_message) — в бабле пока
+        // только локальный снимок имени.
+        contact: args.contactUserId != null ? { user_id: args.contactUserId, name: optimistic.contactName ?? '', phone: '' } : undefined,
+        secret: optimistic.secret,
+        send_as: optimistic.sendAs,
+        reply_to_id: params.replyToMsgId ?? null,
+        reply_quote_text: params.replyToQuote?.text,
+        reply_to_peer_id: params.replyToPeerId ?? undefined,
+        // Порт tweb `sendText → beforeMessageSending({sequential: true})`
+        // (appMessagesManager.ts:1503-1508): байтов нет, кадр уходит тем же
+        // ходом, что и бабл, — позиция внизу окна за ним и останется.
+        sequential: true,
+      }, send)
+      return { ok: true }
+    },
+
+    /** Порт tweb `sendFile` (:1526): бабл → аплоад → отправка, всё внутри одного
+     *  метода менеджера. Двух фаз («вкладка догрузила и попросила отправить»)
+     *  нет — как и в оригинале.
+     *
+     *  Превью МИНТИМ ЗДЕСЬ, в воркере, а не принимаем `objectURL` аргументом,
+     *  как tweb: blob-URL резолвится только в породившем контексте, и вкладочный
+     *  был бы битым во всех остальных вкладках, а воркерный валиден во всех
+     *  (blob-стор общий на origin). Это не отступление от модели tweb, а её
+     *  последовательное применение: владелец медиа-факта — воркер, ровно так же
+     *  минтит URL `mediaManager.downloadMediaURL`.
+     *
+     *  Возвращает media_id — он нужен вызывающему для действий над УЖЕ
+     *  загруженным файлом (автосохранение отправленного Tenor-гифа в /gifs/saved);
+     *  `null` = аплоад сорвался или был отменён. */
+    async sendFile(o: SendFileArgs): Promise<{ mediaId: number | null }> {
+      const mime = o.mime || o.file.type || 'application/octet-stream'
+      const localUrl = o.isMedia ? URL.createObjectURL(o.file) : undefined
+      const { params } = splitSendingParams(o)
+      const wire: WireSendArgs = {
+        peerId: o.peerId,
+        text: o.caption ?? '',
+        entities: o.entities ?? null,
+        clientMsgId: o.clientMsgId,
+        type: o.type,
+        groupedId: o.groupedId,
+        paidMediaPrice: o.paidMediaPrice ?? null,
+        mediaSpoiler: o.spoiler,
+        ...sendingParamsToWire(params),
+      }
+      let sent: Promise<number | null> = Promise.resolve(null)
+      beforeMessageSending({
+        peer_id: o.peerId,
+        thread_root_id: params.threadId ?? null,
+        client_msg_id: o.clientMsgId,
+        reply_to_id: params.replyToMsgId ?? null,
+        reply_quote_text: params.replyToQuote?.text,
+        reply_to_peer_id: params.replyToPeerId ?? undefined,
+        sender_id: o.senderId,
+        text: o.caption ?? '',
+        type: o.type,
+        entities: o.entities,
+        grouped_id: o.groupedId,
+        local_url: localUrl,
+        media: {
+          width: o.width, height: o.height, mime, size: o.file.size, name: o.fileName,
+          duration: o.duration,
+          // tweb `isAnimated` → `documentAttributeAnimated` в собранном документе.
+          animated: o.isAnimated,
+          // Те же байты пиков, что уедут в аплоад: волна на бабле «отправляется…»
+          // рисуется сразу и не меняется после ack — сервер вернёт их же.
+          waveform: o.waveform ? b64FromBytes(o.waveform) : undefined,
+          // Своя отправка со спойлером обязана показать спойлер СРАЗУ: в tweb
+          // попап отправки уже накрыл превью (applyMediaSpoiler), и бабл не
+          // должен на миг обнажить медиа до эха сервера.
+          spoiler: o.spoiler,
+        },
+        // `sequential` здесь НЕ ставится — 1:1 с tweb `sendFile`
+        // (appMessagesManager.ts:1784-1790, единственный send-путь оригинала без
+        // этой опции): между баблом и кадром стоит аплоад, за время которого
+        // вперёд успевает уйти другое сообщение, и серверный порядок разойдётся
+        // с позицией бабла. Такой бабл лента перекладывает общим путём.
+      }, () => { sent = uploadAndSend(o, mime, wire) })
+      return { mediaId: await sent }
+    },
+
+    /** Отправка сорвалась на пути, который идёт мимо `sendFile` (секретный чат:
+     *  нет ключа / оффлайн / упал аплоад шифртекста) — красная пометка на бабле
+     *  с публикацией. Зовёт владелец этого пути, из воркера. */
+    async failPending(args: { clientMsgId: string }): Promise<{ ok: true }> {
+      emit(failPendingMessage(args.clientMsgId))
+      return { ok: true }
+    },
+
+    /** «Повторить» на упавшем бабле: снимаем пометку ошибки. Сам кадр вкладка
+     *  шлёт следом обычным `sendText` (бабл уже есть, optimistic не передаётся). */
+    async retryPending(args: { clientMsgId: string }): Promise<{ ok: true }> {
+      emit(retryPendingMessage(args.clientMsgId))
+      return { ok: true }
+    },
+
+    /** Отмена аплоада с бабла / «удалить» на упавшем. Аплоад рвём здесь же:
+     *  им владеет воркер (порт tweb — `cancelPendingMessage` внутри обработчика
+     *  ошибки `uploadPromise`, :1666-1673). */
+    async cancelPending(args: { clientMsgId: string }): Promise<{ ok: true }> {
+      ctx.cancelUpload(args.clientMsgId)
+      ctx.uploadProgress(args.clientMsgId, 0, 0, true)
+      emit(cancelPendingMessage(args.clientMsgId))
+      return { ok: true }
+    },
+
+    /** Сервер подтвердил отправку (`message_ack`): у временного бабла появляются
+     *  настоящие id/seq/дата, остальное содержимое остаётся своим. Настоящее
+     *  сообщение придёт следом обычным `new_message` и сольётся по clientId. */
+    ackPendingMessage(ack: AckEvt): MessageOp[] {
+      const d = pendingByClientId.get(ack.client_msg_id)
+      if (!d) return []
+      const cur = msgsFor(d.peerId).get(d.tempId)
+      if (!cur) return []
+      return finalizePendingMessage(ack.client_msg_id, {
+        ...cur,
+        // Номер приезжает СЕРВЕРНЫЙ — переводим на границе, как и всё, что
+        // приходит с провода.
+        id: generateMessageId(ack.id),
+        date: Math.floor(new Date(ack.created_at).getTime() / 1000),
+        failed: undefined,
+      })
+    },
+
+    /** Порт tweb `checkPendingMessage`: пришло настоящее сообщение — если это эхо
+     *  нашей же отправки, снимаем временный бабл из SSOT воркера. Вставку самого
+     *  сообщения делает вызывающий (cacheLive), здесь только уборка временного:
+     *  без неё в SSOT осталось бы два объекта, и переоткрытие чата показало бы
+     *  «отправляется…» рядом с отправленным. */
+    checkPendingMessage(clientMsgId: string | undefined): void {
+      if (!clientMsgId) return
+      const d = pendingByClientId.get(clientMsgId)
+      if (!d) return
+      pendingByClientId.delete(clientMsgId)
+      dropTemp(d)
+    },
+
+    /** Есть ли ещё неотправленные — для тестов и диагностики. */
+    hasPending(clientMsgId: string): boolean {
+      return pendingByClientId.has(clientMsgId)
+    },
+  }
+}

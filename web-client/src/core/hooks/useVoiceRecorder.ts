@@ -1,12 +1,22 @@
 // src/core/hooks/useVoiceRecorder.ts
-// Owns the voice-message recording mechanics extracted from Chat:
-// getUserMedia + MediaRecorder + the live waveform analyser + the elapsed/viz
-// timers + recording state. It is deliberately decoupled from the app (no
-// managers / chat / send logic): when a recording finishes it hands the result
-// back via onComplete, and the caller uploads + sends it.
+// Owns the voice-message recording mechanics extracted from Chat: the recorder
+// itself + the live waveform analyser + the elapsed/viz timers + recording
+// state. It is deliberately decoupled from the app (no managers / chat / send
+// logic): when a recording finishes it hands the result back via onComplete,
+// and the caller uploads + sends it.
+//
+// Рекордеров голоса ДВА — ровно как у оригинала
+// (`chatRecording.ts::constructRecorder`, :129-155): свой энкодер на WebCodecs
+// (`core/audio/nativeVoiceRecorder.ts`) там, где он есть, и opus-recorder на
+// WASM (`core/audio/opusRecorderLoader.ts`) там, где его нет — на Safari до 26.
+// Оба пишут ogg/opus, потому что голосовым сообщение делает именно контейнер
+// (см. VOICE_MIME). Кружок пишет `MediaRecorder`; он же остаётся последним
+// запасным путём для голоса — но уже только там, где ogg не даёт НИКТО.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useEvent } from './useEvent'
 import VoiceWaveformAnalyser from '../audio/voiceWaveformAnalyser'
+import NativeVoiceRecorder, { isNativeVoiceRecorderSupported } from '../audio/nativeVoiceRecorder'
+import { createOpusRecorder, type VoiceOggRecorder } from '../audio/opusRecorderLoader'
 
 export const REC_WAVE_BARS = 90 // live recording waveform bar count (fills the pill width)
 
@@ -16,6 +26,39 @@ export type RecordingMode = 'voice' | 'round'
 // с капом длительности 60с (лимит официальных клиентов).
 const ROUND_SIZE = 400
 const ROUND_MAX_SECS = 60
+
+/** Ограничения микрофона — одни на оба пути записи (свой энкодер и MediaRecorder). */
+const MIC_CONSTRAINTS: MediaTrackConstraints = {
+  channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true,
+}
+
+/** Контейнер голосового — порт tweb `chatRecording.ts:223`
+ *  (`new Blob([typedArray], {type: 'audio/ogg'})`).
+ *
+ *  Это не «предпочтительный» формат, а ЕДИНСТВЕННЫЙ, при котором сообщение
+ *  вообще является голосовым: тип документа выводится из атрибута + mime, и
+ *  ветку `voice` открывает ровно `audio/ogg` (`core/media/messageMedia.ts`,
+ *  порт `appDocsManager.saveDoc:157`). Поэтому голос кодируется своим
+ *  энкодером (`core/audio/nativeVoiceRecorder.ts`), а не отдаётся
+ *  `MediaRecorder`, который в Chrome пишет webm, а в Safari — mp4. */
+export const VOICE_MIME = 'audio/ogg'
+
+// Порядок предпочтений для запасного пути (WebCodecs нет): Firefox умеет ogg
+// сам, остальные — только webm. Голосовым webm НЕ становится (см. VOICE_MIME).
+const FALLBACK_VOICE_MIMES = ['audio/ogg;codecs=opus', 'audio/webm;codecs=opus']
+
+/** Умеет ли `MediaRecorder` сам писать ogg (это Firefox). Если умеет — второй
+ *  рекордер не нужен: 385 КБ вендорного энкодера ради контейнера, который
+ *  платформа даёт даром, не тянем. */
+function mediaRecorderWritesOgg(): boolean {
+  return typeof MediaRecorder !== 'undefined' && !!MediaRecorder.isTypeSupported?.(FALLBACK_VOICE_MIMES[0])
+}
+
+/** Контейнер без параметров кодека — порт tweb `nativeVideoRecorder.ts:258-261`
+ *  («drop `;codecs=…`»): в mime файла едет контейнер, а не строка энкодера. */
+function containerMime(mime: string | undefined): string {
+  return (mime ?? '').split(';')[0].trim()
+}
 
 export interface VoiceResult {
   secs: number
@@ -66,6 +109,10 @@ export function useVoiceRecorder(opts: VoiceRecorderOptions): VoiceRecorder {
   const timer = useRef<number | undefined>(undefined)
   const vizTimer = useRef<number | undefined>(undefined)
   const mediaRec = useRef<MediaRecorder | null>(null)
+  // Голосовое пишет ogg-рекордер (свой энкодер или opus-recorder), кружок —
+  // MediaRecorder: активен ровно один из двух.
+  const nativeRec = useRef<VoiceOggRecorder | null>(null)
+  const oggBytes = useRef<Uint8Array | null>(null)
   const chunks = useRef<Blob[]>([])
   const stream = useRef<MediaStream | null>(null)
   const shouldSend = useRef(false)
@@ -74,6 +121,19 @@ export function useVoiceRecorder(opts: VoiceRecorderOptions): VoiceRecorder {
   const analyser = useRef<AnalyserNode | null>(null)
   // Анализатор пиков waveform (голосовое) — считает финальные пики при записи.
   const waveformAnalyser = useRef<VoiceWaveformAnalyser | null>(null)
+  const waveformPeaks = useRef<Uint8Array | null>(null)
+
+  // Пики снимаются РОВНО ОДИН РАЗ и запоминаются: у голосового анализатор висит
+  // на графе самого рекордера, а тот закрывает свой AudioContext внутри stop()
+  // — после закрытия снимать уже нечего.
+  const takeWaveform = (): Uint8Array | null => {
+    const wa = waveformAnalyser.current
+    if (wa) {
+      waveformAnalyser.current = null
+      waveformPeaks.current = wa.finish()
+    }
+    return waveformPeaks.current
+  }
 
   // Keep the latest options in a ref so the async timers / MediaRecorder.onstop
   // callbacks always see fresh closures (onComplete with current managers/chat),
@@ -118,8 +178,8 @@ export function useVoiceRecorder(opts: VoiceRecorderOptions): VoiceRecorder {
     analyser.current = null
     // Финализируем пики waveform ДО закрытия AudioContext (finish отключает свой
     // ScriptProcessor от графа). null для кружка / если анализатор не создавался.
-    const waveform = waveformAnalyser.current?.finish() ?? null
-    waveformAnalyser.current = null
+    const waveform = takeWaveform()
+    waveformPeaks.current = null
     const ac = audioCtx.current
     audioCtx.current = null
     if (ac) void ac.close()
@@ -136,65 +196,119 @@ export function useVoiceRecorder(opts: VoiceRecorderOptions): VoiceRecorder {
     shouldSend.current = false
     const recordedChunks = chunks.current
     chunks.current = []
-    const mime = mediaRec.current?.mimeType || (modeRef.current === 'round' ? 'video/webm' : 'audio/webm')
+    const ogg = oggBytes.current
+    oggBytes.current = null
+    const oggRec = nativeRec.current
+    nativeRec.current = null
+    // opus-recorder глушит микрофон, но свой AudioContext оставляет открытым —
+    // закрываем его здесь, иначе несколько записей подряд упрутся в лимит
+    // контекстов на вкладку. У `NativeVoiceRecorder` метода нет: он закрывает
+    // контекст сам внутри `stop()`.
+    void oggRec?.close?.()
+    // Голосовое ogg-рекордера — всегда ogg (порт tweb `chatRecording.ts:223`);
+    // запасной MediaRecorder отдаёт контейнер, которым его сконфигурировали.
+    const mime = oggRec
+      ? VOICE_MIME
+      : containerMime(mediaRec.current?.mimeType) || (modeRef.current === 'round' ? 'video/webm' : 'audio/webm')
     mediaRec.current = null
     if (!send || recordedSecs < 1) { o.current.onComplete(null); return }
-    const blob = recordedChunks.length ? new Blob(recordedChunks, { type: mime }) : null
+    // `as BlobPart` — тот же приём, что у оригинала (`chatRecording.ts:223`):
+    // у `Uint8Array` буфер объявлен как `ArrayBufferLike`, а `BlobPart` требует
+    // `ArrayBuffer`.
+    const bytes: BlobPart[] = oggRec ? (ogg?.length ? [ogg as BlobPart] : []) : recordedChunks
+    const blob = bytes.length ? new Blob(bytes, { type: mime }) : null
     o.current.onComplete({ secs: recordedSecs, blob, mime, mode: modeRef.current, waveform })
   }
 
   const modeRef = useRef<RecordingMode>('voice')
 
+  // Анализаторы вешаются на УЗЕЛ ГРАФА записи — тот же приём, что у оригинала
+  // (`chatRecording.ts:1027-1029`: оба анализатора строятся от
+  // `recorder.sourceNode`). Пики waveform считаем только для голосового.
+  const attachAnalysers = (src: MediaStreamAudioSourceNode, m: RecordingMode) => {
+    try {
+      const an = src.context.createAnalyser()
+      an.fftSize = 512
+      src.connect(an)
+      analyser.current = an
+      if (m === 'voice') waveformAnalyser.current = new VoiceWaveformAnalyser(src)
+      setBars([])
+      startVizTimer()
+    } catch { /* visualizer optional */ }
+  }
+
   // Start capturing: open the mic (+камеру для кружка), wire the recorder +
   // live waveform analyser.
   const start = useEvent(async (m: RecordingMode = 'voice') => {
-    try {
-      const s = await navigator.mediaDevices.getUserMedia({
-        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        video: m === 'round' ? { width: ROUND_SIZE, height: ROUND_SIZE, frameRate: 30, facingMode: 'user' } : false,
-      })
+    chunks.current = []
+    oggBytes.current = null
+    waveformPeaks.current = null
+    // Голосовое: ogg-рекордер. Первым идёт свой энкодер на WebCodecs (порт tweb
+    // `chatRecording.ts:141`), вторым — opus-recorder на WASM (:150). Оба
+    // открывают поток и AudioContext сами. Второй не берём там, где ogg даёт сам
+    // `MediaRecorder` (Firefox): вендорный чанк ради уже имеющегося контейнера —
+    // лишние 385 КБ по сети.
+    const oggRec: VoiceOggRecorder | null = m !== 'voice' ? null
+      : isNativeVoiceRecorderSupported() ? new NativeVoiceRecorder({ mediaTrackConstraints: MIC_CONSTRAINTS })
+        : mediaRecorderWritesOgg() ? null
+          : await createOpusRecorder({ mediaTrackConstraints: MIC_CONSTRAINTS, encoderSampleRate: 48000, numberOfChannels: 1, monitorGain: 0, recordingGain: 1 })
+    if (oggRec) {
+      const rec = oggRec
+      rec.ondataavailable = (data) => { oggBytes.current = data }
+      rec.onstop = () => { void finish() }
+      try {
+        await rec.start()
+      } catch {
+        void rec.close?.()
+        return // no mic / permission denied
+      }
       modeRef.current = m
       setMode(m)
-      stream.current = s
-      chunks.current = []
-      if (m === 'round') setPreviewStream(s)
-      // Prefer Opus at a decent bitrate (default browser bitrate is low → poor
-      // quality); fall back to whatever the platform supports.
-      const recOpts: MediaRecorderOptions =
-        m === 'round'
-          ? { videoBitsPerSecond: 2_000_000, audioBitsPerSecond: 64_000 }
-          : { audioBitsPerSecond: 96000 }
-      // vp9 даёт заметно лучшее качество на том же битрейте; fallback на vp8
-      const wantMimes = m === 'round'
-        ? ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus']
-        : ['audio/webm;codecs=opus']
-      for (const mt of wantMimes) {
-        if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported?.(mt)) {
-          recOpts.mimeType = mt
-          break
-        }
-      }
-      const mr = new MediaRecorder(s, recOpts)
-      mediaRec.current = mr
-      mr.ondataavailable = (e) => { if (e.data.size) chunks.current.push(e.data) }
-      mr.onstop = () => { void finish() }
-      mr.start()
+      nativeRec.current = rec
+      attachAnalysers(rec.sourceNode, m)
+    } else {
+      // Кружок (всегда) и голос без WebCodecs: MediaRecorder на общем потоке.
       try {
-        const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-        const ac = new Ctor()
-        audioCtx.current = ac
-        const an = ac.createAnalyser()
-        an.fftSize = 512
-        const src = ac.createMediaStreamSource(s)
-        src.connect(an)
-        analyser.current = an
-        // Пики waveform считаем только для голосового (у кружка waveform не нужен).
-        if (m === 'voice') waveformAnalyser.current = new VoiceWaveformAnalyser(src)
-        setBars([])
-        startVizTimer()
-      } catch { /* visualizer optional */ }
-    } catch {
-      return // no mic / permission denied
+        const s = await navigator.mediaDevices.getUserMedia({
+          audio: MIC_CONSTRAINTS,
+          video: m === 'round' ? { width: ROUND_SIZE, height: ROUND_SIZE, frameRate: 30, facingMode: 'user' } : false,
+        })
+        modeRef.current = m
+        setMode(m)
+        stream.current = s
+        if (m === 'round') setPreviewStream(s)
+        // Prefer Opus at a decent bitrate (default browser bitrate is low → poor
+        // quality); fall back to whatever the platform supports.
+        const recOpts: MediaRecorderOptions =
+          m === 'round'
+            ? { videoBitsPerSecond: 2_000_000, audioBitsPerSecond: 64_000 }
+            : { audioBitsPerSecond: 96000 }
+        // vp9 даёт заметно лучшее качество на том же битрейте; fallback на vp8.
+        // Голос без WebCodecs: ogg, если платформа его умеет (Firefox), иначе
+        // webm — и тогда сообщение голосовым НЕ станет (см. VOICE_MIME).
+        const wantMimes = m === 'round'
+          ? ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus']
+          : FALLBACK_VOICE_MIMES
+        for (const mt of wantMimes) {
+          if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported?.(mt)) {
+            recOpts.mimeType = mt
+            break
+          }
+        }
+        const mr = new MediaRecorder(s, recOpts)
+        mediaRec.current = mr
+        mr.ondataavailable = (e) => { if (e.data.size) chunks.current.push(e.data) }
+        mr.onstop = () => { void finish() }
+        mr.start()
+        try {
+          const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+          const ac = new Ctor()
+          audioCtx.current = ac
+          attachAnalysers(ac.createMediaStreamSource(s), m)
+        } catch { /* visualizer optional */ }
+      } catch {
+        return // no mic / permission denied
+      }
     }
     setRecording(true)
     setPaused(false)
@@ -207,13 +321,16 @@ export function useVoiceRecorder(opts: VoiceRecorderOptions): VoiceRecorder {
   // Pause / resume the recording (tweb's pause-toggle).
   const togglePause = useEvent(() => {
     const mr = mediaRec.current
+    const nrec = nativeRec.current
     if (paused) {
+      nrec?.resume()
       mr?.resume()
       startSecsTimer()
       startVizTimer()
       waveformAnalyser.current?.setPaused(false)
       setPaused(false)
     } else {
+      void nrec?.pause()
       mr?.pause()
       window.clearInterval(timer.current)
       window.clearInterval(vizTimer.current)
@@ -226,6 +343,14 @@ export function useVoiceRecorder(opts: VoiceRecorderOptions): VoiceRecorder {
     window.clearInterval(timer.current)
     setRecording(false)
     shouldSend.current = send
+    const nrec = nativeRec.current
+    if (nrec) {
+      // Пики снимаем ДО stop(): рекордер закрывает свой AudioContext, а
+      // анализатор висит на его графе.
+      takeWaveform()
+      void nrec.stop() // → ondataavailable → onstop → finish
+      return
+    }
     const mr = mediaRec.current
     if (mr && mr.state !== 'inactive') mr.stop() // → onstop → finish
     else void finish()

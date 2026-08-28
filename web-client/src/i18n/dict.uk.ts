@@ -386,6 +386,13 @@ const uk: Dict = {
   Comments: 'Коментарі',
   Comment: 'Коментар',
   'Discussion started': 'Початок обговорення',
+  'No messages here yet...': 'Тут ще немає повідомлень…',
+  'Send a message or tap the greeting below.': 'Надішліть повідомлення або торкніться привітання нижче.',
+  'Your cloud storage': 'Ваше хмарне сховище',
+  'Forward messages here to save them': 'Пересилайте сюди повідомлення, щоб зберегти їх',
+  'Send media and files to store them': 'Надсилайте медіа та файли, щоб зберігати їх',
+  'Access this chat from any device': 'Доступ до цього чату з будь-якого пристрою',
+  'Use search to quickly find things': 'Використовуйте пошук, щоб швидко знаходити потрібне',
   // settings screens (#71–#79)
   "Edit Profile": "Редагувати профіль",
   "Name": "Ім'я",
@@ -704,6 +711,14 @@ const uk: Dict = {
     'Ви впевнені, що хочете видалити акаунт? Цю дію не можна скасувати.',
   'This will delete your account and all your data. Your messages will remain but appear as sent by a «Deleted Account».':
     'Акаунт і всі дані буде видалено. Повідомлення залишаться, але відображатимуться як надіслані «Видаленим акаунтом».',
+  Album: 'Альбом',
+  Photo: 'Фото',
+  Video: 'Відео',
+  GIF: 'GIF',
+  Sticker: 'Стікер',
+  Giveaway: 'Розіграш',
+  'Live location': 'Трансляція геопозиції',
+  'Unsupported message': 'Непідтримуване повідомлення',
 }
 
 export default uk

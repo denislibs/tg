@@ -10,11 +10,12 @@ describe('PushManager', () => {
   })
 
   it('subscribe posts endpoint/p256dh/auth', async () => {
-    const post = vi.fn(async () => ({ ok: true }))
+    // Ответ действия — конструктор `boolTrue`, и читать из него нечего:
+    // менеджер проверяет доставку запроса, а не содержимое ответа.
+    const post = vi.fn(async () => ({ _: 'boolTrue' }))
     const rest = { post } as unknown as RestClient
     const mgr = newPushManager({ rest })
-    const r = await mgr.subscribe({ endpoint: 'https://fcm/x', p256dh: 'p', auth: 'a' })
-    expect(r.ok).toBe(true)
+    await mgr.subscribe({ endpoint: 'https://fcm/x', p256dh: 'p', auth: 'a' })
     expect(post).toHaveBeenCalledWith('/push/subscribe', { endpoint: 'https://fcm/x', p256dh: 'p', auth: 'a' })
   })
 })

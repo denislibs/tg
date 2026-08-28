@@ -17,3 +17,4 @@ describe('readDnpConfig', () => {
     expect(c.serverStaticPublicKeys).toEqual(['a', 'b', 'c'])
   })
 })
+

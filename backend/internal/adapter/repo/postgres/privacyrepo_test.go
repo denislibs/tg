@@ -23,7 +23,7 @@ func TestPrivacyRepo_RulesAndBlocks(t *testing.T) {
 	}
 
 	// Upsert + Get + повторный Upsert (обновление).
-	rule := domain.PrivacyRule{Key: domain.PrivacyCalls, Value: domain.PrivacyContacts, AllowUserIDs: []int64{stranger}}
+	rule := domain.PrivacyRuleRecord{Key: domain.PrivacyCalls, Value: domain.PrivacyContacts, AllowUserIDs: []int64{stranger}}
 	if err := r.Upsert(ctx, owner, rule); err != nil {
 		t.Fatalf("Upsert: %v", err)
 	}
@@ -68,7 +68,8 @@ func TestPrivacyRepo_RulesAndBlocks(t *testing.T) {
 		t.Fatal("IsBlocked = false after Block")
 	}
 	list, total, err := r.BlockedList(ctx, owner, 0, 50)
-	if err != nil || total != 1 || len(list) != 1 || list[0].UserID != stranger {
+	if err != nil || total != 1 || len(list) != 1 || list[0].User.ID != stranger ||
+		domain.GetPeerID(list[0].Blocked.PeerID) != domain.PeerID(stranger) {
 		t.Fatalf("BlockedList = %+v, %d, %v", list, total, err)
 	}
 	if found, _ := r.Unblock(ctx, owner, stranger); !found {
@@ -99,9 +100,9 @@ func TestPrivacyRepo_VisibleMap(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	must(r.Upsert(ctx, closed, domain.PrivacyRule{Key: domain.PrivacyLastSeen, Value: domain.PrivacyNobody}))
-	must(r.Upsert(ctx, friend, domain.PrivacyRule{Key: domain.PrivacyLastSeen, Value: domain.PrivacyContacts}))
-	must(r.Upsert(ctx, excepted, domain.PrivacyRule{Key: domain.PrivacyLastSeen, Value: domain.PrivacyNobody, AllowUserIDs: []int64{viewer}}))
+	must(r.Upsert(ctx, closed, domain.PrivacyRuleRecord{Key: domain.PrivacyLastSeen, Value: domain.PrivacyNobody}))
+	must(r.Upsert(ctx, friend, domain.PrivacyRuleRecord{Key: domain.PrivacyLastSeen, Value: domain.PrivacyContacts}))
+	must(r.Upsert(ctx, excepted, domain.PrivacyRuleRecord{Key: domain.PrivacyLastSeen, Value: domain.PrivacyNobody, AllowUserIDs: []int64{viewer}}))
 	_, err := pool.Exec(ctx, `INSERT INTO contacts (owner_id, user_id, first_name) VALUES ($1,$2,'V')`, friend, viewer)
 	must(err)
 	must(r.Block(ctx, blocker, viewer))

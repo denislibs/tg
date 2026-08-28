@@ -48,31 +48,51 @@ func TestGroupRepo_CreateAndMembership(t *testing.T) {
 		t.Fatalf("promote: %+v", m2)
 	}
 
-	if err := r.SetMuted(ctx, chatID, u2, true, nil); err != nil {
+	// Мьют — СРОК, а не булево: «навсегда» это domain.MuteUntilForever, и
+	// временный мьют доезжает наружу вместе со своим сроком. Прежде витрина
+	// схлопывала его в булево, и «заглушить на час» работало как «навсегда».
+	forever := time.Unix(domain.MuteUntilForever, 0)
+	if err := r.SetMuted(ctx, chatID, u2, &forever); err != nil {
 		t.Fatal(err)
 	}
-	m3, _ := r.GetMember(ctx, chatID, u2)
-	if !m3.Muted {
+	ns, err := r.NotifySettings(ctx, chatID, u2)
+	if err != nil {
+		t.Fatalf("NotifySettings: %v", err)
+	}
+	if ns.MuteUntil == nil || *ns.MuteUntil != domain.MuteUntilForever {
+		t.Fatalf("«навсегда» = %v; want срок %d", ns.MuteUntil, domain.MuteUntilForever)
+	}
+	if !ns.Muted(time.Now()) {
 		t.Fatal("mute not set")
 	}
 
-	// Временный mute: muted=false + muted_until в будущем → эффективно muted;
-	// muted_until в прошлом → нет.
-	future := time.Now().Add(time.Hour)
-	if err := r.SetMuted(ctx, chatID, u2, false, &future); err != nil {
+	future := time.Now().Add(time.Hour).Truncate(time.Second)
+	if err := r.SetMuted(ctx, chatID, u2, &future); err != nil {
 		t.Fatal(err)
 	}
-	m4, _ := r.GetMember(ctx, chatID, u2)
-	if !m4.Muted {
+	ns, _ = r.NotifySettings(ctx, chatID, u2)
+	if !ns.Muted(time.Now()) {
 		t.Fatal("temporary mute not effective")
 	}
+	// Срок обязан доехать НАРУЖУ: без него клиент не покажет «до 15:00» и не
+	// погасит иконку в назначенный час сам.
+	if ns.MuteUntil == nil || int64(*ns.MuteUntil) != future.Unix() {
+		t.Fatalf("срок временного мьюта = %v; want %d", ns.MuteUntil, future.Unix())
+	}
 	past := time.Now().Add(-time.Hour)
-	if err := r.SetMuted(ctx, chatID, u2, false, &past); err != nil {
+	if err := r.SetMuted(ctx, chatID, u2, &past); err != nil {
 		t.Fatal(err)
 	}
-	m5, _ := r.GetMember(ctx, chatID, u2)
-	if m5.Muted {
+	ns, _ = r.NotifySettings(ctx, chatID, u2)
+	if ns.Muted(time.Now()) {
 		t.Fatal("expired mute still effective")
+	}
+	if err := r.SetMuted(ctx, chatID, u2, nil); err != nil {
+		t.Fatal(err)
+	}
+	ns, _ = r.NotifySettings(ctx, chatID, u2)
+	if ns.MuteUntil != nil {
+		t.Fatalf("снятый мьют = %v; want отсутствие переопределения", ns.MuteUntil)
 	}
 
 	if err := r.RemoveMember(ctx, chatID, u2); err != nil {

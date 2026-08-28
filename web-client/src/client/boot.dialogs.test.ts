@@ -20,11 +20,9 @@ import { useChatsStore } from '../stores/chatsStore'
 import type { Dialog } from '../core/models'
 import type { DialogOp } from '../core/dialogs/dialogOps'
 import type { Managers } from './bootstrap'
+import { makeDialog } from '../core/dialogs/testDialog'
 
-const dialog = (chatId: number): Dialog => ({
-  chatId, type: 'private', title: 't' + chatId, unread: 0, unreadMentions: 0, unreadReactions: 0,
-  lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false,
-} as Dialog)
+const dialog = (peerId: number): Dialog => makeDialog({ peerId })
 
 /**
  * `netOp` — то, чем отвечает сетевой догон (`refresh()`); `op` тесты передают
@@ -75,7 +73,7 @@ describe('boot: холодный старт диалогов — зеркало 
 
       await applyDialogsMirror(op, managers, false)
 
-      expect(useChatsStore.getState().dialogs.map((d) => d.chatId)).toEqual([2, 1])
+      expect(useChatsStore.getState().dialogs.map((d) => d.peerId)).toEqual([2, 1])
       expect(useChatsStore.getState().loaded).toBe(true)
     })
 
@@ -101,7 +99,7 @@ describe('boot: холодный старт диалогов — зеркало 
 
       await applyDialogsMirror(cacheOp, managers, false)
 
-      expect(useChatsStore.getState().dialogs.map((d) => d.chatId)).toEqual([2, 1])
+      expect(useChatsStore.getState().dialogs.map((d) => d.peerId)).toEqual([2, 1])
     })
 
     it('догон вернул null (ответ совпал с памятью) — зеркало не трогаем', async () => {
@@ -110,7 +108,7 @@ describe('boot: холодный старт диалогов — зеркало 
 
       await applyDialogsMirror(cacheOp, managers, false)
 
-      expect(useChatsStore.getState().dialogs.map((d) => d.chatId)).toEqual([1])
+      expect(useChatsStore.getState().dialogs.map((d) => d.peerId)).toEqual([1])
     })
 
     // Minor #3: refresh() пробрасывает HttpError — промис догона, который уезжает
@@ -121,7 +119,7 @@ describe('boot: холодный старт диалогов — зеркало 
       ;(refresh as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('401'))
 
       await expect(applyDialogsMirror(cacheOp, managers, false)).resolves.toBeUndefined()
-      expect(useChatsStore.getState().dialogs.map((d) => d.chatId)).toEqual([1])
+      expect(useChatsStore.getState().dialogs.map((d) => d.peerId)).toEqual([1])
     })
   })
 

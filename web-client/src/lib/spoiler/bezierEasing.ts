@@ -88,7 +88,3 @@ export default function BezierEasing(
 
   return (x: number) => (x === 0 || x === 1 ? x : calcBezier(getTForX(x), mY1, mY2))
 }
-
-// tweb helpers/easings.ts
-export const defaultEasing = BezierEasing(0.42, 0.0, 0.58, 1.0)
-export const unwrapEasing = BezierEasing(0.45, 0.37, 0.29, 1)

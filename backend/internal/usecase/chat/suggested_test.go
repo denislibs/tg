@@ -261,3 +261,74 @@ func TestListSuggestedPosts_AdminVsAuthor(t *testing.T) {
 		t.Fatalf("author list = %+v, want 1 own", mine)
 	}
 }
+
+// Решение по предложке уезжает автору СЛУЖЕБНЫМ сообщением, а не текстом.
+//
+// Дефект, который держит этот тест, был живым: notifyAuthorDecision слал
+// JSON-действие через PostServiceMessage, а тот зовёт Send БЕЗ типа — то есть
+// подставлялся дефолт "text". Клиент включает разбор действия по ВИДУ
+// сообщения, поэтому автор видел в чате сырой `{"action":"suggest_post_...`.
+//
+// Корень путаницы — имя: «service» в PostServiceMessage означает аккаунт-
+// отправитель, а не вид сообщения. Поэтому проверяем ОБА пути: действие едет
+// как service, а человекочитаемое уведомление (вход в аккаунт) — как text.
+func TestSuggestedDecision_GoesAsServiceMessage(t *testing.T) {
+	in, fg, _, _, _ := newSuggestTestInteractor(t)
+	ctx := context.Background()
+	id, _ := in.CreateChannel(ctx, 7, "News", "", "", true)
+	_ = fg.AddMember(ctx, id, 8, domain.RoleSubscriber, 0)
+	info, _ := in.SuggestPost(ctx, id, 8, "hello", nil, nil, nil)
+
+	if _, err := in.ApproveSuggestedPost(ctx, info.ID, 7, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	msg, ok := findServiceAccountMessage(t, in, 8)
+	if !ok {
+		t.Fatal("автор не получил сообщения из чата с сервисным аккаунтом")
+	}
+	// Решение по предложке — ДЕЙСТВИЕ, а не текст: прежде оно уезжало обычным
+	// текстовым сообщением, и автор видел сырой JSON.
+	approval, ok := msg.Action.(domain.MessageActionSuggestedPostApproval)
+	if !ok {
+		t.Fatalf("действие = %#v, want messageActionSuggestedPostApproval", msg.Action)
+	}
+	// Одобрено: pFlags.rejected нет ВОВСЕ, а не false.
+	if approval.PFlags["rejected"] {
+		t.Fatalf("одобренная предложка помечена отказом: %#v", approval)
+	}
+	if msg.Text != "" {
+		t.Fatalf("текст = %q, у служебного сообщения текста нет", msg.Text)
+	}
+	// Канал назван ССЫЛКОЙ. Без неё фраза вырождается в «ваш пост одобрен» без
+	// ответа на вопрос «где»: у оригинала канал это peer_id пилюли, а у нас она
+	// приходит в чат с сервисным аккаунтом. Имя соберёт клиент из карточки —
+	// строкой название не едет (урок дефекта «Пользователь добавил(а)…»).
+	if want := int64(domain.ToPeerID(id, true)); approval.ChannelID != want {
+		t.Fatalf("канал в действии = %d, want %d", approval.ChannelID, want)
+	}
+
+	// Обратная сторона: обычное уведомление остаётся ТЕКСТОМ.
+	if err := in.PostServiceMessage(ctx, 8, "Новый вход в аккаунт"); err != nil {
+		t.Fatal(err)
+	}
+	last, _ := findServiceAccountMessage(t, in, 8)
+	if last.Type != "text" {
+		t.Fatalf("уведомление о входе = %q, want \"text\": его читает человек, а не разборщик действий", last.Type)
+	}
+}
+
+// findServiceAccountMessage — последнее сообщение в приватном чате userID с
+// сервисным аккаунтом.
+func findServiceAccountMessage(t *testing.T, in *Interactor, userID int64) (domain.Message, bool) {
+	t.Helper()
+	chatID, err := in.chats.FindPrivate(context.Background(), userID, domain.ServiceUserID)
+	if err != nil {
+		return domain.Message{}, false
+	}
+	msgs, err := in.msgs.GetHistory(context.Background(), chatID, userID, 0, 0, 50, nil, 0, "")
+	if err != nil || len(msgs) == 0 {
+		return domain.Message{}, false
+	}
+	return msgs[0], true
+}

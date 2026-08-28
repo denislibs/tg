@@ -18,7 +18,7 @@ func TestSend_TextMentionBumpsUnreadMentions(t *testing.T) {
 
 	_, err := in.Send(ctx, SendInput{
 		ChatID: chatID, SenderID: a, Text: "hi @b",
-		Entities: []domain.MessageEntity{{Type: "text_mention", Offset: 3, Length: 2, UserID: b}},
+		Entities: domain.MessageEntities{domain.NewMessageEntityMentionName(3, 2, b)},
 	})
 	if err != nil {
 		t.Fatalf("Send: %v", err)
@@ -42,7 +42,7 @@ func TestMarkRead_ClearsMentions(t *testing.T) {
 	const a, b int64 = 1, 2
 	chatID, _ := in.CreatePrivateChat(ctx, a, b)
 
-	ent := []domain.MessageEntity{{Type: "text_mention", Offset: 0, Length: 1, UserID: b}}
+	ent := domain.MessageEntities{domain.NewMessageEntityMentionName(0, 1, b)}
 	m1, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "@", Entities: ent})
 	m2, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "@", Entities: ent})
 
@@ -51,12 +51,12 @@ func TestMarkRead_ClearsMentions(t *testing.T) {
 	}
 
 	// next unread mention past seq 0 is the first message
-	seq, msgID, err := in.NextMention(ctx, chatID, b, 0)
+	seq, err := in.NextMention(ctx, chatID, b, 0)
 	if err != nil {
 		t.Fatalf("NextMention: %v", err)
 	}
-	if seq != m1.Seq || msgID != m1.ID {
-		t.Fatalf("NextMention = seq %d msg %d, want seq %d msg %d", seq, msgID, m1.Seq, m1.ID)
+	if seq != m1.Seq {
+		t.Fatalf("NextMention = %d, want %d", seq, m1.Seq)
 	}
 
 	// read up to the first mention only → one left
@@ -67,7 +67,7 @@ func TestMarkRead_ClearsMentions(t *testing.T) {
 		t.Fatalf("after partial read = %d, want 1", d[0].UnreadMentionsCount)
 	}
 	// the remaining one is m2
-	seq, _, err = in.NextMention(ctx, chatID, b, m1.Seq)
+	seq, err = in.NextMention(ctx, chatID, b, m1.Seq)
 	if err != nil || seq != m2.Seq {
 		t.Fatalf("NextMention after read = seq %d err %v, want seq %d", seq, err, m2.Seq)
 	}
@@ -79,7 +79,7 @@ func TestMarkRead_ClearsMentions(t *testing.T) {
 	if d, _ := in.ListDialogs(ctx, b); d[0].UnreadMentionsCount != 0 {
 		t.Fatalf("after full read = %d, want 0", d[0].UnreadMentionsCount)
 	}
-	if _, _, err := in.NextMention(ctx, chatID, b, 0); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := in.NextMention(ctx, chatID, b, 0); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("NextMention when none: want ErrNotFound, got %v", err)
 	}
 }

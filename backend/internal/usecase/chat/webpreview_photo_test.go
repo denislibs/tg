@@ -211,7 +211,7 @@ func TestHydrateMedia_FillsWebPagePhoto(t *testing.T) {
 	in := New(fakeTx{}, fakeChats{s}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, newFakeGroupRepo(), nil, nil, nil, nil)
 	const photoID int64 = 555
 	s.seedMedia(photoID, 1)
-	s.seedMediaDims(photoID, MediaDims{Width: 1280, Height: 720, Mime: "image/jpeg", Blur: []byte{1, 2, 3}, HasThumb: true})
+	s.seedMediaDims(photoID, domain.MediaSource{Width: 1280, Height: 720, Mime: "image/jpeg", Blur: []byte{1, 2, 3}, HasThumb: true})
 
 	msgs := []domain.Message{{ID: 1, WebPage: &domain.WebPagePreview{URL: "https://example.com", PhotoID: photoID}}}
 	if err := in.hydrateMedia(context.Background(), msgs); err != nil {

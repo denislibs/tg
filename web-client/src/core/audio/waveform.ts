@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
+import mediaSizes from '@core/dom/mediaSizes'
+import clamp from '@helpers/number/clamp'
 import { decryptMedia, b64ToBytes } from '../secret/crypto'
 // mediaContentUrl здесь — БАЙТЫ аудио для декода волны (fetch + decodeAudioData),
 // не картинка: Task 7 (перевод картинок на downloadMediaURL) их не трогает.
 import { mediaContentUrl, primeMediaToken, resolveMediaContentUrl } from '../mediaUrl'
-import { unpack5bit, WAVEFORM_SAMPLES_COUNT } from './voiceWaveformAnalyser'
+import { unpack5bit, WAVEFORM_BYTES_LENGTH, WAVEFORM_SAMPLES_COUNT } from './voiceWaveformAnalyser'
 
 // ПЕРЕДАННЫЕ пики (посчитаны при записи): base64 → 5-бит распаковка в СЫРЫЕ
 // значения 0..31, как у tweb `decodeWaveform`. Приоритетнее client-recompute:
@@ -18,16 +20,26 @@ export function decodeTransmittedPeaks(waveformB64: string): number[] {
     return []
   }
   if (!bytes.length) return []
-  return unpack5bit(bytes, WAVEFORM_SAMPLES_COUNT)
+  // 1:1 tweb `wrapVoiceMessage`: `decodeWaveform(waveform.slice(0, 63))` — не
+  // больше 63 байт (100 сэмплов), число значений выводится из длины буфера.
+  return unpack5bit(bytes.slice(0, WAVEFORM_BYTES_LENGTH))
 }
 
 // ── Геометрия волны — порт tweb `createWaveformBars` (components/audio.ts:83-126)
 const BAR_WIDTH = 2
 const BAR_MARGIN = 2
 const BAR_HEIGHT_MIN = 4
+// tweb: `mediaSizes.isMobile && false ? 16 : 23` (audio.ts:86) — мобильная
+// высота отключена константой `&& false` в самом оригинале, поэтому здесь
+// только 23; ветки-предмета нет.
 const BAR_HEIGHT_MAX = 23
-const WAVE_MIN_W = 190 // desktop minW
-const WAVE_MAX_W = 256 // desktop maxW
+// Ширина волны — пара по текущему экрану (tweb audio.ts:88-89): 152/190 на
+// мобиле против 190/256 на десктопе. Владелец факта один — `mediaSizes`
+// (`core/dom/mediaSizes.ts`, порт tweb `helpers/mediaSizes.ts`).
+const WAVE_MIN_W_MOBILE = 152
+const WAVE_MAX_W_MOBILE = 190
+const WAVE_MIN_W_DESKTOP = 190
+const WAVE_MAX_W_DESKTOP = 256
 
 export const WAVEFORM_BAR_WIDTH = BAR_WIDTH
 export const WAVEFORM_BAR_MARGIN = BAR_MARGIN
@@ -40,10 +52,13 @@ export const WAVEFORM_HEIGHT = BAR_HEIGHT_MAX
  * поэтому тихие места остаются низкими, а не сливаются в сплошную полосу.
  */
 export function buildWaveformBars(peaks: number[], duration: number): { bars: number[]; width: number } {
-  const wfSize = peaks.length
-  if (!wfSize) return { bars: [], width: WAVE_MIN_W }
+  const minW = mediaSizes.isMobile ? WAVE_MIN_W_MOBILE : WAVE_MIN_W_DESKTOP
+  const maxW = mediaSizes.isMobile ? WAVE_MAX_W_MOBILE : WAVE_MAX_W_DESKTOP
 
-  const availW = Math.min(WAVE_MAX_W, Math.max(WAVE_MIN_W, (duration / 60) * WAVE_MAX_W))
+  const wfSize = peaks.length
+  if (!wfSize) return { bars: [], width: minW }
+
+  const availW = clamp((duration / 60) * maxW, minW, maxW)
   const barCount = Math.min((availW / (BAR_WIDTH + BAR_MARGIN)) | 0, wfSize)
   const normValue = Math.max(...peaks)
   const maxDelta = BAR_HEIGHT_MAX - BAR_HEIGHT_MIN
@@ -129,11 +144,18 @@ export async function computeWaveform(mediaId: number, url: string): Promise<num
 
 // React hook: returns the decoded waveform for a media id (empty until ready).
 // secret — расшифровать ciphertext (голос в E2E-чате).
-export function useWaveform(mediaId: number, secret?: WaveSecret): number[] {
-  const [bars, setBars] = useState<number[]>(() => cache.get(mediaId) ?? [])
+//
+// ПРЕДМЕТА В tweb НЕТ: оригинал волну из аудиофайла не считает НИКОГДА — пики
+// приезжают в документе сообщения (documentAttributeAudio.waveform). Пересчёт
+// остаётся ровно одному сценарию — голос в СЕКРЕТНОМ чате: сервер видит там
+// только шифртекст, посчитать и сохранить пики ему не с чего, а секретных чатов
+// у tweb нет вовсе. Отсюда `enabled`: обычное голосовое сюда не ходит.
+export function useWaveform(mediaId: number, secret?: WaveSecret, enabled = true): number[] {
+  const [bars, setBars] = useState<number[]>(() => (enabled ? cache.get(mediaId) ?? [] : []))
   const keyB64 = secret?.keyB64
   const ivB64 = secret?.ivB64
   useEffect(() => {
+    if (!enabled) return
     const hit = cache.get(mediaId)
     if (hit) {
       setBars(hit)
@@ -152,6 +174,6 @@ export function useWaveform(mediaId: number, secret?: WaveSecret): number[] {
     return () => {
       alive = false
     }
-  }, [mediaId, keyB64, ivB64])
+  }, [mediaId, keyB64, ivB64, enabled])
   return bars
 }

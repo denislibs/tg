@@ -183,8 +183,10 @@ func (f *fakeBotAPI) WizardClear(_ context.Context, uid int64) error {
 	delete(f.wizard, uid)
 	return nil
 }
-func (f *fakeBotAPI) UserBrief(_ context.Context, _ int64) (string, string, error) {
-	return "tester", "Tester", nil
+func (f *fakeBotAPI) UserBrief(_ context.Context, id int64) (domain.UserReal, error) {
+	u := domain.NewUser(id, domain.UserFlags{})
+	u.Username, u.FirstName = "tester", "Tester"
+	return u, nil
 }
 
 // botFatherInteractor: чат владельца(1) ↔ @BotFather.

@@ -22,55 +22,6 @@
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
 }
 
-// оверлей спиннера первой загрузки
-// Спиннер первой загрузки. Состояния — как у tweb ProgressivePreloader
-// (`_preloader.scss:44-55`): в покое `opacity: 0`, видимым делает пара классов
-// `is-visible.forwards`, переход навешивается только вне `animation-level-0`.
-// Классы приезжают из `useMountTransition` (порт SetTransition), поэтому здесь
-// они глобальные, а не модульные.
-.spinnerOverlay {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-  opacity: 0;
-
-  :global(body:not(.animation-level-0)) & {
-    transition: opacity 0.2s ease;
-  }
-
-  &:global(.is-visible.forwards) {
-    opacity: 1;
-  }
-}
-
-// Скролл-контейнер ленты: позицию, размеры, overflow и маску фейдов задают
-// портированные партиалы tweb (_scrollable.scss `.scrollable.scrollable-y` +
-// _chat.scss `.bubbles-scrollable`). Здесь — только видимый тонкий скроллбар:
-// в tweb его рисует собственный .scrollable-thumb (JS), который не портирован.
-.scroll {
-  &::-webkit-scrollbar {
-    width: 6px;
-  }
-  &::-webkit-scrollbar-thumb {
-    background: transparent;
-    border-radius: 3px;
-    transition: background 0.2s;
-  }
-  &:hover::-webkit-scrollbar-thumb {
-    background: var(--secondary-text-color);
-  }
-}
-
-// Контент ленты: ширину/раскладку даёт .bubbles-inner из _chat.scss —
-// остаётся только плавное проявление после первой загрузки.
-.content {
-  transition: opacity 0.2s ease;
-}
-
 // reply-клавиатура бота над композером (tweb replyKeyboardMarkup)
 .replyKeyboard {
   position: absolute;

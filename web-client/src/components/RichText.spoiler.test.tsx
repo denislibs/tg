@@ -5,15 +5,26 @@
 // класс не вешался и скрытый текст читался сразу. Проверяем не разметку саму по
 // себе, а НАБЛЮДАЕМОЕ свойство: под настоящими правилами `styles/tweb/_spoiler.scss`
 // текст спойлера невидим, пока его не раскрыли.
-import { beforeAll, describe, it, expect } from 'vitest'
+import { beforeAll, describe, it, expect, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { compileString } from 'sass'
 import { render } from '@testing-library/react'
-import RichText from './RichText'
+
+// Проверяем НИЖНИЙ уровень деградации — чистый CSS без оверлея частиц. В tweb он
+// включается ровно в одном браузере: `bubbles.ts:addMessageSpoilerOverlay` не
+// вешает оверлей в Firefox. Его и изображаем — иначе в DOM появится
+// `.message-spoiler-overlay`, а он по партиалу гасит CSS-заливку
+// (`:has(.message-spoiler-overlay) .spoiler{background-color: unset}`).
+vi.mock('@environment/userAgent', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@environment/userAgent')>()),
+  IS_FIREFOX: true,
+}))
+
+const { default: RichText } = await import('./RichText')
 import type { MessageEntity } from '../core/models'
 
-const SPOILER: MessageEntity[] = [{ type: 'spoiler', offset: 0, length: 6 }]
+const SPOILER: MessageEntity[] = [{ _: 'messageEntitySpoiler', offset: 0, length: 6 }]
 
 beforeAll(() => {
   // тот самый эталонный партиал — тест падает, если разметка перестанет ему соответствовать

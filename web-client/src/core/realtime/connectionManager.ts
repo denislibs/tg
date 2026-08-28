@@ -1,10 +1,9 @@
 // src/core/realtime/connectionManager.ts
 import type { Transport } from '../net/transport'
-import type { ConnState, TypingAction } from './events'
+import type { ConnState, SendMessageAction } from './events'
 import type { MessageEntity } from '../models'
-import { FRAME_TYPES } from './eventCatalog'
 
-export interface SendArgs { chatId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; replyToPeerId?: number | null; replyQuoteText?: string | null; replyQuoteOffset?: number | null; mediaId?: number | null; type?: string; groupedId?: string; geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }; contactUserId?: number; threadRootId?: number | null; encBody?: string; ttlSeconds?: number | null; silent?: boolean; effect?: string | null; paidMediaPrice?: number | null; sendAsChatId?: number | null }
+export interface SendArgs { peerId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; replyToPeerId?: number | null; replyQuoteText?: string | null; replyQuoteOffset?: number | null; mediaId?: number | null; type?: string; groupedId?: number; geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }; contactUserId?: number; threadRootId?: number | null; encBody?: string; ttlSeconds?: number | null; silent?: boolean; effect?: string | null; paidMediaPrice?: number | null; sendAsPeerId?: number | null; /** медиа скрыто спойлером — tweb sendFile({spoiler}) → inputMedia.pFlags.spoiler */ mediaSpoiler?: boolean }
 
 export interface CMDeps {
   ws: Transport
@@ -19,7 +18,10 @@ export interface CMDeps {
   // Передаётся вторым аргументом ТОЛЬКО когда есть (scheduleReconnect); остальные
   // переходы состояния зовут onState одним аргументом — так же, как раньше.
   onState: (s: ConnState, retryAt?: number) => void
-  onFrame: (type: string, payload: unknown) => void // new_message/read/typing/presence/reaction/message_ack
+  // new_message/read/typing/presence/reaction/message_ack. envPts — курсор из
+  // КОНВЕРТА: он приезжает у кадров, чей конструктор схемы своего `pts` не
+  // объявляет (см. Frame.pts).
+  onFrame: (type: string, payload: unknown, envPts?: number) => void
   /** Durable outbox storage (IndexedDB in the worker): unacked sends survive a
    * page reload and are resent on the next connect. */
   outboxStore?: { load: () => Promise<SendArgs[] | undefined>; save: (list: SendArgs[]) => void }
@@ -102,16 +104,20 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
     })
     ws.onClose(() => { stopHeartbeat(); if (state !== 'offline') scheduleReconnect() })
     ws.onError(() => { /* onClose will follow */ })
-    for (const t of FRAME_TYPES) {
-      ws.on(t, (d) => {
-        if (t === 'pong') { missedPongs = 0; return }
-        if (t === 'message_ack') { const id = (d as { client_msg_id?: string })?.client_msg_id; if (id) { outbox.delete(id); persistOutbox() } }
-        // A rejected send (e.g. too long): drop it from the outbox so it isn't
-        // resent forever on every reconnect; the UI marks the bubble failed.
-        if (t === 'message_error') { const id = (d as { client_msg_id?: string })?.client_msg_id; if (id) { outbox.delete(id); persistOutbox() } }
-        onFrame(t, d)
-      })
-    }
+    // Подписка ОДНА на все кадры: список типов, на которые «подписываемся», —
+    // не источник правды о кадрах, а способ их потерять (кадр незнакомого типа
+    // исчезал молча, так однажды и пропали тринадцать штук). Здесь остаются
+    // только транспортные заботы самого соединения — heartbeat и очередь
+    // неподтверждённой отправки; маршрутизацию делает тот, кто знает
+    // КОНСТРУКТОР.
+    ws.onFrame((t, d, envPts) => {
+      if (t === 'pong') { missedPongs = 0; return }
+      if (t === 'message_ack') { const id = (d as { client_msg_id?: string })?.client_msg_id; if (id) { outbox.delete(id); persistOutbox() } }
+      // A rejected send (e.g. too long): drop it from the outbox so it isn't
+      // resent forever on every reconnect; the UI marks the bubble failed.
+      if (t === 'message_error') { const id = (d as { client_msg_id?: string })?.client_msg_id; if (id) { outbox.delete(id); persistOutbox() } }
+      onFrame(t, d, envPts)
+    })
   }
 
   function startHeartbeat() {
@@ -150,7 +156,7 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
   }
 
   function sendFrame(m: SendArgs) {
-    ws.send('send_message', { chat_id: m.chatId, type: m.type ?? 'text', text: m.text, entities: m.entities ?? null, client_msg_id: m.clientMsgId, reply_to_id: m.replyToId ?? null, reply_to_peer_id: m.replyToPeerId ?? null, reply_quote_text: m.replyQuoteText ?? null, reply_quote_offset: m.replyQuoteOffset ?? null, media_id: m.mediaId ?? null, grouped_id: m.groupedId ?? '', geo_lat: m.geo?.lat ?? null, geo_lng: m.geo?.lng ?? null, geo_title: m.geo?.title ?? null, geo_address: m.geo?.address ?? null, geo_live_period: m.geo?.livePeriod ?? null, geo_heading: m.geo?.heading ?? null, contact_user_id: m.contactUserId ?? null, thread_root_id: m.threadRootId ?? null, enc_body: m.encBody ?? null, ttl_seconds: m.ttlSeconds ?? null, silent: m.silent ?? false, paid_media_price: m.paidMediaPrice ?? null, send_as_chat_id: m.sendAsChatId ?? null })
+    ws.send('send_message', { peer_id: m.peerId, type: m.type ?? 'text', text: m.text, entities: m.entities ?? null, client_msg_id: m.clientMsgId, reply_to_id: m.replyToId ?? null, reply_to_peer_id: m.replyToPeerId ?? null, reply_quote_text: m.replyQuoteText ?? null, reply_quote_offset: m.replyQuoteOffset ?? null, media_id: m.mediaId ?? null, grouped_id: m.groupedId ?? 0, geo_lat: m.geo?.lat ?? null, geo_lng: m.geo?.lng ?? null, geo_title: m.geo?.title ?? null, geo_address: m.geo?.address ?? null, geo_live_period: m.geo?.livePeriod ?? null, geo_heading: m.geo?.heading ?? null, contact_user_id: m.contactUserId ?? null, thread_root_id: m.threadRootId ?? null, enc_body: m.encBody ?? null, ttl_seconds: m.ttlSeconds ?? null, silent: m.silent ?? false, effect: m.effect ?? '', paid_media_price: m.paidMediaPrice ?? null, send_as_peer_id: m.sendAsPeerId ?? null, media_spoiler: m.mediaSpoiler ?? false })
   }
 
   return {
@@ -169,24 +175,28 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
     retryAt: () => lastRetryAt,
     outboxSize: () => outbox.size,
     sendMessage(m: SendArgs) { outbox.set(m.clientMsgId, m); persistOutbox(); if (ws.isOpen()) sendFrame(m) },
-    markRead(chatId: number, upToSeq: number) {
+    markRead(peerId: number, upToSeq: number) {
       if (!ws.isOpen()) return
       // Не шлём, если для этого чата уже отправлен такой же или больший upToSeq —
       // повторный кадр на тот же прочитанный рубеж серверу не нужен. Растущий
       // upToSeq (реально прочитали дальше) дедуп не гасит: last=5 не блокирует 7.
-      const last = lastReadSeq.get(chatId)
+      const last = lastReadSeq.get(peerId)
       if (last != null && upToSeq <= last) return
-      lastReadSeq.set(chatId, upToSeq)
-      ws.send('read', { chat_id: chatId, up_to_seq: upToSeq })
+      lastReadSeq.set(peerId, upToSeq)
+      ws.send('read', { peer_id: peerId, up_to_seq: upToSeq })
     },
     // «Прослушано/просмотрено» для голосового/кружка (tweb readMessageContents).
-    markMediaRead(chatId: number, msgId: number) { if (ws.isOpen()) ws.send('read_media', { chat_id: chatId, msg_id: msgId }) },
-    sendTyping(chatId: number, action: TypingAction = 'typing') { if (ws.isOpen()) ws.send('typing', { chat_id: chatId, action }) },
+    markMediaRead(peerId: number, msgId: number) { if (ws.isOpen()) ws.send('read_media', { peer_id: peerId, msg_id: msgId }) },
+    // Действие едет КОНСТРУКТОРОМ (у оригинала это messages.setTyping{peer,
+    // action}) — одна форма на обе стороны провода.
+    sendTyping(peerId: number, action: SendMessageAction = { _: 'sendMessageTypingAction' }) {
+      if (ws.isOpen()) ws.send('typing', { peer_id: peerId, action })
+    },
     // Call signaling is ephemeral (no outbox): a frame lost while offline is
     // meaningless seconds later — WebRTC re-negotiates on its own timers.
     sendCallFrame(type: string, data: Record<string, unknown>) { if (ws.isOpen()) ws.send(type, data) },
-    subscribeChannel(chatId: number) { if (ws.isOpen()) ws.send('subscribe_channel', { chat_id: chatId }) },
-    unsubscribeChannel(chatId: number) { if (ws.isOpen()) ws.send('unsubscribe_channel', { chat_id: chatId }) },
+    subscribeChannel(peerId: number) { if (ws.isOpen()) ws.send('subscribe_channel', { peer_id: peerId }) },
+    unsubscribeChannel(peerId: number) { if (ws.isOpen()) ws.send('unsubscribe_channel', { peer_id: peerId }) },
   }
 }
 

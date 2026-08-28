@@ -182,39 +182,60 @@ func (r *ChatsRepo) ChatPartners(ctx context.Context, userID int64) ([]int64, er
 	return out, rows.Err()
 }
 
-// ListDialogs returns a user's chats with read state and last message, newest first.
-func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dialog, error) {
+// ListDialogs — строки списка чатов зрителя, свежие сверху.
+//
+// Последнее сообщение здесь адресуется ЧИСЛОМ (messages.id) и объектом не
+// едет: выжимка last_text/last_type/last_sender_name с провода ушла (решение
+// Р3), а сам объект достаётся пакетным запросом по странице — см.
+// Interactor.DialogsPage. Поэтому LATERAL отдаёт один id вместо девяти полей,
+// и вместе с ним ушёл подзапрос sender_name по users: имя автора собирает
+// клиент из конструктора `user`, который едет вектором users контейнера.
+//
+// Пер-юзерная очистка истории (seq > m.cleared_max_seq) остаётся здесь: без
+// неё очищенная история вернулась бы в превью списка.
+func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.DialogRecord, error) {
 	q := querier(ctx, r.pool)
 	rows, err := q.Query(ctx,
 		`SELECT c.id, c.type, c.title, COALESCE(c.username,''),
-		        COALESCE('/media/' || c.photo_media_id || '/content', ''), pm.blur_preview,
+		        c.photo_media_id, pm.blur_preview,
 		        m.last_read_seq, m.unread_count, m.unread_mentions_count, m.unread_reactions,
-		        (m.muted OR (m.muted_until IS NOT NULL AND m.muted_until > now())),
+		        -- Мьют едет СРОКОМ, а не булевым: предикат «замьючен ли сейчас»
+		        -- в домене один (PeerNotifySettings.Muted), и пяти копий условия
+		        -- в SQL больше нет.
+		        m.muted_until,
 		        m.pinned_at IS NOT NULL, m.archived, c.is_forum,
-		        COALESCE(m.notify_preview, true), COALESCE(m.notify_sound, 'default'),
+		        m.notify_preview, m.notify_sound,
 		        COALESCE(CASE
 		          WHEN c.type = 'private' THEN (SELECT om.last_read_seq FROM chat_members om WHERE om.chat_id = c.id AND om.user_id <> $1 LIMIT 1)
 		          WHEN c.type = 'group'   THEN (SELECT MIN(om.last_read_seq) FROM chat_members om WHERE om.chat_id = c.id AND om.user_id <> $1)
 		          ELSE 0
 		        END, 0) AS peer_read_seq,
-		        lm.seq, lm.text, lm.sender_id, lm.created_at, COALESCE(lm.media_id,0), lm.type, lm.forwarded, lm.sender_name, lm.enc_body,
-		        peer.id, peer.display_name, peer.avatar_url, peer.avatar_preview, peer.is_verified, peer.is_premium, peer.emoji_status, peer.is_bot,
-		        c.auto_delete_period, COALESCE(ct.theme_id, '')
+		        lm.id, COALESCE(lm.seq, 0),
+		        -- LEFT JOIN LATERAL: у не-приватного чата собеседника нет, и ВСЕ
+		        -- колонки пира приходят NULL — обязательные приводим здесь.
+		        peer.id, COALESCE(peer.first_name,''), COALESCE(peer.last_name,''),
+		        peer.username, peer.avatar_media_id, peer.avatar_preview,
+		        COALESCE(peer.is_bot,false), COALESCE(peer.is_verified,false),
+		        COALESCE(peer.is_premium,false), COALESCE(peer.emoji_status,''),
+		        COALESCE(peer.deleted,false),
+		        c.auto_delete_period,
+		        -- Дата ВСТУПЛЕНИЯ зрителя — обязательный channel.date краткой
+		        -- формы (DialogRecord.ToChannel). Выборка идёт ОТ его строки
+		        -- членства, так что она здесь есть всегда.
+		        m.joined_at
 		 FROM chat_members m
 		 JOIN chats c ON c.id = m.chat_id
-		 LEFT JOIN chat_theme ct ON ct.chat_id = c.id
 		 -- stripped-превью фото группы/канала — из media по photo_media_id
 		 LEFT JOIN media pm ON pm.id = c.photo_media_id
 		 LEFT JOIN LATERAL (
-		   SELECT seq, text, sender_id, created_at, media_id, type, enc_body,
-		          (fwd_from_user_id IS NOT NULL OR fwd_from_chat_id IS NOT NULL) AS forwarded,
-		          (SELECT COALESCE(NULLIF(u.first_name,''), u.display_name) FROM users u WHERE u.id = messages.sender_id) AS sender_name
+		   SELECT id, seq, created_at
 		   FROM messages
 		   WHERE chat_id = c.id AND deleted_at IS NULL AND seq > m.cleared_max_seq
 		   ORDER BY seq DESC LIMIT 1
 		 ) lm ON true
 		 LEFT JOIN LATERAL (
-		   SELECT u.id, u.display_name, u.avatar_url, u.avatar_preview, u.is_verified, u.is_premium, u.emoji_status, u.is_bot
+		   SELECT u.id, u.first_name, u.last_name, u.username, u.avatar_media_id, u.avatar_preview,
+		          u.is_bot, u.is_verified, u.is_premium, u.emoji_status, u.deleted_at IS NOT NULL AS deleted
 		   FROM chat_members om JOIN users u ON u.id = om.user_id
 		   WHERE om.chat_id = c.id AND om.user_id <> $1
 		   LIMIT 1
@@ -231,73 +252,37 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		return nil, err
 	}
 	defer rows.Close()
-	var out []domain.Dialog
+	now := time.Now()
+	var out []domain.DialogRecord
 	for rows.Next() {
-		var d domain.Dialog
-		var seq *int64
-		var text *string
-		var senderID *int64
-		var at *time.Time
-		var mediaID *int64
-		var msgType *string
-		var forwarded *bool
-		var senderName *string
-		var encBody []byte
+		var d domain.DialogRecord
+		var muteUntil *time.Time
+		var archived bool
+		var notifyPreview *bool
+		var notifySound *string
+		var topMessageID *int64
 		var peerID *int64
-		var peerName *string
-		var peerAvatar *string
-		var peerAvatarPreview []byte
-		var peerVerified *bool
-		var peerPremium *bool
-		var peerEmojiStatus *string
-		var peerIsBot *bool
-		if err := rows.Scan(&d.ChatID, &d.Type, &d.Title, &d.Username, &d.PhotoURL, &d.PhotoPreview, &d.LastReadSeq, &d.UnreadCount, &d.UnreadMentionsCount, &d.UnreadReactionsCount, &d.Muted, &d.Pinned, &d.Archived, &d.IsForum, &d.NotifyPreview, &d.NotifySound, &d.PeerReadSeq,
-			&seq, &text, &senderID, &at, &mediaID, &msgType, &forwarded, &senderName, &encBody,
-			&peerID, &peerName, &peerAvatar, &peerAvatarPreview, &peerVerified, &peerPremium, &peerEmojiStatus, &peerIsBot, &d.AutoDeletePeriod, &d.ThemeID); err != nil {
+		var peer userRealScan
+		if err := rows.Scan(&d.ChatID, &d.Type, &d.Title, &d.Username, &d.PhotoID, &d.PhotoPreview,
+			&d.LastReadSeq, &d.UnreadCount, &d.UnreadMentionsCount, &d.UnreadReactionsCount,
+			&muteUntil, &d.Pinned, &archived, &d.IsForum, &notifyPreview, &notifySound, &d.PeerReadSeq,
+			&topMessageID, &d.TopMessageSeq,
+			&peerID, &peer.firstName, &peer.lastName, &peer.username, &peer.photoID, &peer.photoPreview,
+			&peer.isBot, &peer.isVerified, &peer.isPremium, &peer.emojiStatus, &peer.deleted,
+			&d.TTLPeriod, &d.JoinedAt); err != nil {
 			return nil, err
 		}
-		if forwarded != nil {
-			d.LastForwarded = *forwarded
+		if archived {
+			d.Folder = domain.FolderArchive
 		}
-		if seq != nil {
-			d.HasLast = true
-			d.LastSeq = *seq
-			d.LastText = *text
-			d.LastSenderID = *senderID
-			d.LastAt = *at
-			if mediaID != nil {
-				d.LastMediaID = *mediaID
-			}
-			if msgType != nil {
-				d.LastType = *msgType
-			}
-			if senderName != nil {
-				d.LastSenderName = *senderName
-			}
-			d.LastEncBody = encBody
+		d.NotifySettings = peerNotifySettings(muteUntil, notifyPreview, notifySound, now)
+		if topMessageID != nil {
+			d.TopMessageID = *topMessageID
 		}
 		if peerID != nil {
-			p := domain.DialogPeer{ID: *peerID}
-			if peerName != nil {
-				p.DisplayName = *peerName
-			}
-			if peerAvatar != nil {
-				p.AvatarURL = *peerAvatar
-			}
-			p.AvatarPreview = peerAvatarPreview
-			if peerVerified != nil {
-				p.Verified = *peerVerified
-			}
-			if peerPremium != nil {
-				p.Premium = *peerPremium
-			}
-			if peerEmojiStatus != nil {
-				p.EmojiStatus = *peerEmojiStatus
-			}
-			if peerIsBot != nil {
-				p.IsBot = *peerIsBot
-			}
-			d.Peer = &p
+			peer.id = *peerID
+			u := peer.user(true)
+			d.Peer = &u
 		}
 		out = append(out, d)
 	}
@@ -494,19 +479,19 @@ func (r *ChatsRepo) ClearMentions(ctx context.Context, chatID, userID, uptoSeq i
 	return remaining, err
 }
 
-// NextMention returns the seq/message id of the member's earliest unread mention
+// NextMention returns the number (seq) of the member's earliest unread mention
 // past afterSeq; domain.ErrNotFound when there is none.
-func (r *ChatsRepo) NextMention(ctx context.Context, chatID, userID, afterSeq int64) (int64, int64, error) {
+func (r *ChatsRepo) NextMention(ctx context.Context, chatID, userID, afterSeq int64) (int64, error) {
 	q := querier(ctx, r.pool)
-	var seq, msgID int64
+	var seq int64
 	err := q.QueryRow(ctx,
-		`SELECT seq, message_id FROM message_mentions
+		`SELECT seq FROM message_mentions
 		 WHERE chat_id=$1 AND user_id=$2 AND seq>$3
-		 ORDER BY seq ASC LIMIT 1`, chatID, userID, afterSeq).Scan(&seq, &msgID)
+		 ORDER BY seq ASC LIMIT 1`, chatID, userID, afterSeq).Scan(&seq)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, 0, domain.ErrNotFound
+		return 0, domain.ErrNotFound
 	}
-	return seq, msgID, err
+	return seq, err
 }
 
 // MaxSeq returns the chat's current maximum sequence (chats.last_seq), i.e. the

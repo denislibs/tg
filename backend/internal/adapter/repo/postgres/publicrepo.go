@@ -3,8 +3,6 @@ package postgres
 import (
 	"context"
 	"errors"
-	"regexp"
-	"strconv"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -21,31 +19,31 @@ func NewPublicRepo(pool *pgxpool.Pool) *PublicRepo { return &PublicRepo{pool: po
 
 var _ usecasepublic.Repo = (*PublicRepo)(nil)
 
-// avatar_url хранится content-путём ('/media/N/content') — достаём media id
-var avatarMediaRe = regexp.MustCompile(`/media/(\d+)/content`)
-
 func (r *PublicRepo) Resolve(ctx context.Context, username string) (domain.PublicProfile, error) {
 	q := querier(ctx, r.pool)
 
 	// Публичная страница анонимна: bio и фото показываются только при
 	// privacy-правиле everybody (отсутствие строки = дефолт everybody).
+	// Заголовок публичной страницы — единственное место, где сервер сам
+	// склеивает имя: страницу читает АНОНИМ, у которого кэша пиров нет вовсе,
+	// и собрать «Имя Фамилия» на клиенте некому.
 	var p domain.PublicProfile
-	var avatarURL string
+	var avatarMediaID *int64
 	err := q.QueryRow(ctx,
-		`SELECT COALESCE(NULLIF(u.display_name,''), u.first_name),
+		`SELECT btrim(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')),
 		        CASE WHEN COALESCE(pra.value,'everybody')='everybody' THEN COALESCE(u.bio,'') ELSE '' END,
-		        CASE WHEN COALESCE(prp.value,'everybody')='everybody' THEN u.avatar_url ELSE '' END,
+		        CASE WHEN COALESCE(prp.value,'everybody')='everybody' THEN u.avatar_media_id END,
 		        u.is_verified
 		   FROM users u
 		   LEFT JOIN privacy_rules pra ON pra.user_id = u.id AND pra.key = 'about'
 		   LEFT JOIN privacy_rules prp ON prp.user_id = u.id AND prp.key = 'profile_photo'
 		  WHERE u.username = $1 AND NOT u.is_service`, username).
-		Scan(&p.Title, &p.About, &avatarURL, &p.Verified)
+		Scan(&p.Title, &p.About, &avatarMediaID, &p.Verified)
 	if err == nil {
 		p.Kind = "user"
 		p.Username = username
-		if m := avatarMediaRe.FindStringSubmatch(avatarURL); m != nil {
-			p.AvatarMediaID, _ = strconv.ParseInt(m[1], 10, 64)
+		if avatarMediaID != nil {
+			p.AvatarMediaID = *avatarMediaID
 		}
 		return p, nil
 	}

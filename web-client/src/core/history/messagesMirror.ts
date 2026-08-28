@@ -1,0 +1,281 @@
+// src/core/history/messagesMirror.ts
+//
+// НЕреактивное зеркало окон сообщений на главном потоке — порт модели tweb
+// `apiManagerProxy.mirrors` (обычные структуры, читаются СИНХРОННО на рендере:
+// `getMessageByPeer`, tweb lib/apiManagerProxy.ts:1108) + объявление изменений
+// типизированными событиями `rootScope` (`history_append`/`history_update`/
+// `message_edit`/`history_delete`, tweb lib/rootScope.ts:77-88).
+//
+// Почему НЕ zustand: ленте (`chat/bubbles.ts`) нужно не «подписка на срез →
+// перерисовка», а синхронное чтение окна и точечное «изменилось вот это».
+// Реактивная копия окна существовала рядом ради React-ленты и снесена вместе с
+// ней (этап 7) — теперь копия одна, и кормит её ОДИН поток операций
+// (`core/realtime/messageOps.ts`) из ОДНОЙ точки — `client/realtime/
+// storeProjection.ts`. Второй независимый вход сюда заводить нельзя (см.
+// «Владение фактами» в web-client/CLAUDE.md).
+//
+// Чего здесь нет и почему:
+// * `history_multiappend`/`history_reload`/`history_reply_markup` из каталога
+//   tweb — у нас нет источника (наш поток операций per-окно, а multiappend в
+//   tweb per-сообщение);
+// * применения кадров мимо операций — их больше нет вовсе: правка, координаты
+//   гео-трансляции, реакции (включая платную ⭐), свой голос/отметка,
+//   «проверка фактов» и просмотры поста канала едут той же операцией, что и
+//   всё остальное (таблица в web-client/CLAUDE.md).
+import type { MessageFields, MyMessage } from '../models'
+import { applyOp, dedupAsc, type MessageOp } from '../realtime/messageOps'
+import rootScope from '@lib/rootScope'
+
+/** Ключ окна: основное окно чата ("50") или его тред — форум-топик /
+ *  комментарии ("50:60"). Аналог tweb `chat.messagesStorageKey`, которым
+ *  подписки `bubbles.ts` отсеивают события чужого окна.
+ *
+ *  Живёт здесь, а не в сторе: ключ — свойство САМОГО окна. Прежде его держал
+ *  `stores/messagesStore` и реэкспортировал отсюда; стор снесён вместе с
+ *  React-лентой (этап 7). */
+export const winKey = (peerId: number, threadRootId?: number | null): string =>
+  threadRootId ? `${peerId}:${threadRootId}` : String(peerId)
+
+// key (winKey: "peerId" | "peerId:threadRoot") → сообщения окна, по возрастанию номера
+// — тот же порядок и та же дедупликация, что у окна в сторе.
+const windows = new Map<string, MyMessage[]>()
+
+// Окно, которого ещё нет: применяем операцию поверх пустого списка. Для
+// replace/remove/patch `applyOp` вернёт ЭТУ ЖЕ ссылку (нечего править) — окно не
+// заведётся; заводит его только `insert`, то есть ровно то, что в окне реально
+// появилось. Так зеркало ведёт себя как `apiManagerProxy.mirrors` в tweb: оно
+// зеркалит всё, что объявил владелец, а не только открытый чат (bubbles.ts
+// отсеивает чужое сам — сверкой `storageKey`/`peerId`). У zustand-копии гейт
+// другой (окно должно быть открыто React'ом) — единственное структурное
+// расхождение копий, см. storeProjection.mirror.test.ts.
+const EMPTY: MyMessage[] = []
+
+// ── Мост в React ────────────────────────────────────────────────────────────
+//
+// Зеркало НЕреактивно: императивный потребитель (`chat/bubbles.ts`) читает его
+// синхронно и перерисовывает то, о чём ему сказали события `rootScope`.
+// React-потребителю (плашка ответа над композером, счётчики канала, «Общие
+// медиа») нужно другое — «перерисуйся, когда окно изменилось».
+//
+// Мост здесь ОДИН на приложение и устроен как у двух соседних зеркал витрины
+// (`core/peerCache.ts`, `core/chatFullCache.ts`): счётчик версии + набор
+// подписчиков, поверх которых React-сторона держит единственный хук
+// `core/hooks/useMirrorWindow.ts` (`useSyncExternalStore`). Снимок — ЧИСЛО, а не
+// коллекция: `getSnapshot` обязан возвращать стабильное значение, а окно —
+// массив, который пересобирается на каждой правке.
+//
+// Почему не по одному мосту на компонент: подписка на `rootScope`
+// (`history_append`/`message_edit`/…) в каждом хуке — это N независимых выводов
+// одного факта «окно изменилось», каждый со своим фильтром по peerId и своим
+// шансом промахнуться мимо типа события (правка молча не доехала бы, ровно как
+// в разборе `history_update` в шапке ниже).
+let version = 0
+const subs = new Set<() => void>()
+
+export function subscribeMirror(cb: () => void): () => void {
+  subs.add(cb)
+  return () => { subs.delete(cb) }
+}
+
+export function mirrorVersion(): number {
+  return version
+}
+
+const bump = (): void => { ++version; subs.forEach((f) => f()) }
+
+/** Синхронное чтение окна (аналог `historyStorage.history` в tweb).
+ *  undefined — про это окно зеркало ещё ничего не знает. */
+export function mirrorWindow(key: string): readonly MyMessage[] | undefined {
+  return windows.get(key)
+}
+
+// Синхронного чтения ОДНОГО сообщения (аналог tweb `getMessageByPeer`) здесь
+// больше нет: `mirrorMessage(peerId, msgId)` не звал никто, кроме собственного
+// теста, — инвентарь разбора нашёл его в списке «с нулём читателей». Заведётся
+// обратно вместе с потребителем, а не «на будущее».
+
+/** Положить в окно страницу истории — единственный вход, которым в зеркало
+ *  попадает НЕ операция воркера, а результат `messages.getHistory`.
+ *
+ *  Так же устроен tweb: `historyStorage` наполняет тот, кто грузит историю
+ *  (`appMessagesManager.getHistory` → `mergeHistoryResult`), а лента
+ *  (`bubbles.ts::performHistoryResult`) уже читает загруженное. Событий здесь
+ *  НЕТ намеренно: `history_append` в tweb объявляет появление НОВОГО сообщения,
+ *  а не доезд страницы — страницу рисует сам загрузивший, синхронно после
+ *  этого вызова.
+ *
+ *  Слияние (а не подмена окна) идёт через тот же `dedupAsc`, что и операции:
+ *  ключ неотправленного бабла — `c:${random_id}`, серверного — `s:${id}`
+ *  (`core/realtime/messageOps.ts::dedupKey`), поэтому страница не может
+ *  вытеснить из окна бабл «отправляется…», который воркер уже объявил
+ *  операцией, а пришедшая позже страница выигрывает у своей же более старой
+ *  копии того же сообщения. */
+export function putMirrorPage(key: string, msgs: readonly MyMessage[]): void {
+  const prev = windows.get(key) ?? EMPTY
+  windows.set(key, dedupAsc([...prev, ...msgs]))
+  bump()
+}
+
+/** ЗАМЕНИТЬ окно целиком: всё, что в нём лежало, из зеркала выкидывается.
+ *
+ *  Второй примитив рядом с `putMirrorPage` — потому что «дослить страницу» и
+ *  «начать окно заново» это в оригинале два РАЗНЫХ действия, и различает их
+ *  вызывающий, а не хранилище:
+ *   • дослить — `SlicedArray.insertSlice`, которая приклеивает страницу к уже
+ *     существующему слайсу, если та с ним стыкуется по границам
+ *     (tweb src/helpers/slicedArray.ts:190-240);
+ *   • начать заново — путь `delete` у зеркала историй: владелец объявляет его
+ *     явным вызовом (`flushStoragesByPeerId`, tweb
+ *     src/lib/appManagers/appMessagesManager.ts:4732-4742), а вкладка исполняет
+ *     `clearHistoryStorage` — `slicedArray.slices.splice(0, Infinity)` и пустой
+ *     слайс на его место (tweb src/lib/apiManagerProxy.ts:279-283 и :542-563).
+ *
+ *  Пустой массив — законный аргумент и означает «окно ИЗВЕСТНО пустое», а не
+ *  «про окно ничего не знаем»: `mirrorWindow(key)` после этого вернёт `[]`, а
+ *  не `undefined`. Разница видна снаружи — на ней стоят приветствие бота и
+ *  клавиатура ответа (`components/Chat.tsx`, `mirrorMsgs.length === 0`).
+ *  Оригинал ведёт себя так же: `clearHistoryStorage` кладёт на место
+ *  вычищенных слайсов ПУСТОЙ (tweb apiManagerProxy.ts:549-551), а не оставляет
+ *  `SlicedArray` без слайсов вовсе.
+ *
+ *  `dedupAsc` остаётся: порядок и дедупликация окна — свойство самого окна, а
+ *  не способа его наполнения. А вот защиты бабла «отправляется…» здесь нет
+ *  намеренно — это и есть смысл замены: в оригинале неотправленное лежит в
+ *  НИЖНЕМ слайсе (`historyStorage.history.unshift(message.mid)`, tweb
+ *  appMessagesManager.ts:7611), и окно, собранное вокруг далёкого номера, — уже
+ *  другой слайс, где этого бабла нет.
+ *
+ *  Событий каталога не шлём по той же причине, что и `putMirrorPage`: новое
+ *  окно рисует сам заменивший, синхронно после вызова. */
+export function replaceMirrorWindow(key: string, msgs: readonly MyMessage[]): void {
+  windows.set(key, dedupAsc([...msgs]))
+  bump()
+}
+
+/** Кадр rt:logging_out: окна прошлой сессии обязаны исчезнуть — зеркало отдаёт
+ *  сообщения синхронно на рендере, и без сброса лента следующего аккаунта
+ *  прочитала бы чужую историю (та же причина, что у
+ *  `core/mediaCache.ts::resetMediaUrlMirror`). */
+export function resetMessagesMirror(): void {
+  if (!windows.size) return
+  windows.clear()
+  bump()
+}
+
+// Чат окна: и у основного ключа ("50"), и у ключа треда ("50:60") это первый
+// сегмент — тот самый peerId, которым tweb адресует history_delete/message_edit.
+const peerIdOf = (key: string): number => Number(key.split(':')[0])
+
+/** Имя ЕДИНСТВЕННОГО параметра патча, если он один (иначе `undefined`). */
+const onlyPatchedField = (fields: MessageFields): string | undefined => {
+  const keys = Object.keys(fields)
+  return keys.length === 1 ? keys[0] : undefined
+}
+
+// Применить операции воркера к зеркалу и объявить изменения событиями.
+//
+// Отображение операций на каталог tweb (имена и формы 1:1, tweb
+// rootScope.ts:77-88):
+//   insert нового сообщения                → 'history_append'
+//   insert, слившийся с оптимистичным      → 'history_update' + tempId
+//     баблом — порт finalizePendingMessage → checkPendingMessage
+//     (tweb appMessagesManager.ts:8722-8737: там tempId тоже несёт id
+//     временного). В tweb 'history_update' значит ровно это и только это —
+//     «у сообщения сменился идентификатор, переставь бабл»
+//     (bubbles.ts:765-830 репозиционирует бабл, содержимое не трогает).
+//   replace / patch                        → 'message_edit'
+//     Изменение СОДЕРЖИМОГО уже существующего сообщения tweb объявляет именно
+//     этим событием (appMessagesManager.ts:7921/8577/8977, подписчик —
+//     bubbles.ts:1104 → onMessageEdit перерисовывает бабл). Отправить сюда
+//     'history_update' было бы отступлением от оригинала с конкретной ценой:
+//     обработчик history_update в bubbles.ts на message.mid === item.mid
+//     логирует «wow what» и выходит, то есть правка молча не доехала бы.
+//   patch РОВНО ОДНИМ счётчиком поста      → 'messages_views' / 'replies_updated'
+//     У оригинала «просмотров стало N» и «комментариев стало N» — свои события
+//     (rootScope.ts:92 и :112), а не 'message_edit': их потребитель переписывает
+//     ОДИН узел уже отрисованного бабла (bubbles.ts:2094-2124 — текст
+//     `.post-views`; replies.ts:17-22 — текст футера треда), тогда как
+//     'message_edit' у нас пересобирает содержимое бабла целиком (докблок
+//     `onMessageEdit` в chat/bubbles.ts). Различает их НАБОР ПАРАМЕТРОВ патча, и
+//     это не догадка по содержимому: патч ровно одним `views` порождает только
+//     `messages.cacheViews`, ровно одним `replies` — только
+//     `messages.cacheReplies`, и оба существуют ровно ради этих двух кадров
+//     (правка сообщения объявляет ВСЕ параметры разом — `messageFields`).
+//   remove                                 → 'history_delete'
+//
+// События собираются в callbacks и отправляются ПОСЛЕ применения всей пачки
+// (порт приёма tweb `callbacks.push(...)`, appMessagesManager.ts:2791):
+// подписчик, читающий зеркало синхронно, обязан видеть пачку применённой
+// целиком, а не наполовину.
+//
+// Отправляем `dispatchEventSingle`: событие выведено НА ВКЛАДКЕ из уже
+// принятого кадра, обычный `dispatchEvent` уехал бы в воркер и закольцевался
+// (инвариант rootScope, см. web-client/CLAUDE.md).
+export function applyOpsToMirror(ops: MessageOp[]): void {
+  const callbacks: (() => void)[] = []
+  // Просмотры копятся ПАЧКОЙ на весь набор операций — порт `pushBatchUpdate
+  // ('messages_views', this.batchUpdateViews, ...)` (tweb
+  // appMessagesManager.ts:8457): у оригинала это тоже вектор троек, потому что
+  // регистрация просмотра идёт сразу по нескольким видимым постам.
+  const viewsBatch: { peerId: number; mid: number; views: number }[] = []
+  // Изменилось ли хоть одно окно. Считаем ОТДЕЛЬНО от `callbacks`: применённая
+  // операция не всегда рождает событие (insert, чьего сообщения после слияния в
+  // окне не оказалось, — `continue` ниже), а React-потребителю зеркала менять
+  // ему нечего только тогда, когда не изменилось САМО окно.
+  let changed = false
+  for (const op of ops) {
+    const prev = windows.get(op.key) ?? EMPTY
+    const next = applyOp(prev, op)
+    // Операция ничего не изменила (ack-then-echo дубль, remove/patch по
+    // отсутствующему id, идемпотентный реплей) — applyOp вернул ту же ссылку,
+    // объявлять нечего.
+    if (next === prev) continue
+    windows.set(op.key, next)
+    changed = true
+
+    const peerId = peerIdOf(op.key)
+    if (op.op === 'remove') {
+      callbacks.push(() => rootScope.dispatchEventSingle('history_delete', { peerId, msgs: new Set([op.msgId]) }))
+      continue
+    }
+
+    const mid = op.op === 'patch' ? op.msgId : op.msg.id
+    // Сообщение объявляем таким, каким оно легло в зеркало (после слияния с
+    // оптимистикой / патча), а не сырым op.msg — лента рисует то, что лежит.
+    const message = next.find((m) => m.id === mid)
+    if (!message) continue
+    if (op.op === 'patch') {
+      // Счётчики поста канала — своим событием, а не общей правкой (см. докблок).
+      const only = onlyPatchedField(op.fields)
+      if (only === 'views') {
+        // Значение берём из ЗЕРКАЛА, а не из `op.fields`: объявляем то, что
+        // легло, — тем же правилом, что и `message` строкой выше.
+        const views = message._ === 'message' ? message.views : undefined
+        if (typeof views === 'number') viewsBatch.push({ peerId, mid, views })
+        continue
+      }
+      if (only === 'replies') {
+        callbacks.push(() => rootScope.dispatchEventSingle('replies_updated', { storageKey: op.key, peerId, mid, message }))
+        continue
+      }
+    }
+    if (op.op !== 'insert') {
+      callbacks.push(() => rootScope.dispatchEventSingle('message_edit', { storageKey: op.key, peerId, mid, message }))
+      continue
+    }
+    // Слияние с оптимистичным баблом: в окне БЫЛ временный с тем же random_id
+    // (его id — tempId события, как в tweb pendingData.tempId).
+    const optimistic = op.msg.random_id ? prev.find((m) => m.random_id === op.msg.random_id) : undefined
+    // `sequential` едет от отправителя как есть: его посчитал владелец бабла
+    // (`managers/messages/pending.ts`), зеркало его не выводит — ровно как в
+    // tweb, где `checkPendingMessage` кладёт в событие `pendingData.sequential`.
+    if (optimistic) callbacks.push(() => rootScope.dispatchEventSingle('history_update', { storageKey: op.key, message, tempId: optimistic.id, sequential: op.sequential }))
+    else callbacks.push(() => rootScope.dispatchEventSingle('history_append', { storageKey: op.key, message }))
+  }
+  if (viewsBatch.length) callbacks.push(() => rootScope.dispatchEventSingle('messages_views', viewsBatch))
+  // Версию поднимаем ОДИН раз на пачку и до событий `rootScope` — по той же
+  // причине, по которой события собирались в `callbacks`: подписчик обязан
+  // увидеть пачку применённой целиком.
+  if (changed) bump()
+  for (const fire of callbacks) fire()
+}

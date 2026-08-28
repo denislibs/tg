@@ -11,18 +11,20 @@ export type CallPhase = 'outgoing' | 'incoming' | 'connecting' | 'active' | 'end
 export type CallEndReason = 'hangup' | 'declined' | 'busy' | 'missed' | 'failed' | 'privacy'
 
 export interface CallPeer {
-  id: number
+  id: PeerId
   name: string
   avatar: string // gradient background
   avatarText?: string
-  avatarUrl?: string
+  /** id медиа аватарки (`user.photo.photo_id`); 0/undefined — фото нет */
+  photoId?: number
 }
 
 export interface ActiveCall {
   callId: string
   peer: CallPeer
-  /** numeric id приватного чата (для записи лога звонка в историю); null у входящего */
-  chatId: number | null
+  /** знаковый ключ приватного диалога (для записи лога звонка в историю) —
+   *  он же id собеседника; null у входящего до принятия */
+  peerId: PeerId | null
   outgoing: boolean
   video: boolean // видеозвонок (камера включена при старте)
   phase: CallPhase

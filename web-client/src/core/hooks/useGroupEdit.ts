@@ -5,10 +5,15 @@
 // то, что видно в сайдбаре: название/фото/тип).
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useManagers } from './useManagers'
-import type { GroupCard, InviteLink } from '../managers/groupsManager'
+import type { ChatCard, InviteLink } from '../managers/groupsManager'
 import type { DiscussionCandidate } from '../managers/channelsManager'
-import type { Peer } from '../managers/peersManager'
-import type { User } from '../managers/authManager'
+import type { ChatMember } from '../managers/groupsManager'
+import type { UserReal } from '../peers/peer'
+import { getLinkedChatPeerId, getPeerPhotoId } from '../peers/peer'
+import { hasRights } from '../peers/rights'
+import { NULL_PEER_ID } from '../peers/peerId'
+import { getUserTitle } from '../peers/getPeerTitle'
+import type { PeerProfile } from '../managers/authManager'
 
 // Битовая маска «возможностей участников» (зеркало domain.MemberPerms).
 export const PERMS = [
@@ -29,7 +34,9 @@ export interface EditMember {
   userId: number
   name: string
   username?: string
-  avatarUrl?: string
+  /** id медиа аватарки (`user.photo.photo_id`); прежний `avatarUrl` был строкой
+   *  `/media/N/content`, из которой этот же номер выпарсивался регуляркой. */
+  photoId?: number
   role: string
   rights: number
 }
@@ -37,7 +44,7 @@ export interface EditMember {
 export interface BannedRow {
   userId: number
   name: string
-  avatarUrl?: string
+  photoId?: number
 }
 
 // Строка гранулярного ограничения (Telegram ChatBannedRights): битовая маска
@@ -45,7 +52,7 @@ export interface BannedRow {
 export interface RestrictedRow {
   userId: number
   name: string
-  avatarUrl?: string
+  photoId?: number
   deniedRights: number
   untilDate?: string
 }
@@ -54,7 +61,7 @@ export interface RestrictedRow {
 export interface ImporterRow {
   userId: number
   name: string
-  avatarUrl?: string
+  photoId?: number
   joinedAt: string
 }
 
@@ -63,12 +70,12 @@ export interface CreateInviteOpts { title?: string; usageLimit?: number; require
 // Частичный патч ссылки (Telegram editExportedChatInvite).
 export interface InvitePatch { title?: string; usageLimit?: number | null; requiresApproval?: boolean; expireSeconds?: number; revoked?: boolean }
 // Инфо о связанной группе-обсуждении (для экрана Discussion).
-export interface DiscussionGroup { id: number; title: string; username: string; memberCount: number }
+export interface DiscussionGroup { peerId: PeerId; title: string; username: string; memberCount: number }
 
 interface Managers {
   groups: {
-    card(chatId: number): Promise<GroupCard>
-    members(chatId: number): Promise<{ userId: number; role: string; online: boolean }[]>
+    card(chatId: PeerId): Promise<ChatCard | null>
+    members(peerId: PeerId): Promise<ChatMember[]>
     editInfo(chatId: number, args: { title: string; about?: string; username?: string }): Promise<void>
     setType(chatId: number, isPublic: boolean, username: string): Promise<void>
     setPermissions(chatId: number, permissions: number, slowmodeSeconds: number): Promise<void>
@@ -102,8 +109,8 @@ interface Managers {
     setSignatures(channelId: number, signatures: boolean, profiles: boolean): Promise<void>
   }
   media: { upload(args: { bytes: ArrayBuffer; mime: string; size: number; width?: number; height?: number }): Promise<number> }
-  peers: { getUsers(ids: number[]): Promise<Peer[]> }
-  auth: { me(): Promise<User | null> }
+  peers: { getUsers(ids: PeerId[]): Promise<UserReal[]> }
+  auth: { me(): Promise<PeerProfile | null> }
   // Task 4 (действия без оптимистики, fix ревью Important): self-leave
   // (removeMember(chatId, me.id)) применяет владельца локально сразу после
   // успеха — не дожидаясь WS chat_removed (см. deleteOrLeave ниже).
@@ -115,7 +122,7 @@ interface Managers {
 }
 
 export interface GroupEdit {
-  card: GroupCard | null
+  card: ChatCard | null
   members: EditMember[]
   admins: EditMember[]
   invites: InviteLink[]
@@ -155,12 +162,9 @@ export interface GroupEdit {
   deleteOrLeave: () => Promise<void>
 }
 
-const MANAGE_ADMINS = 128
-const BAN_USERS = 8
-
 export function useGroupEdit(chatId: number): GroupEdit {
   const managers: Managers = useManagers()
-  const [card, setCard] = useState<GroupCard | null>(null)
+  const [card, setCard] = useState<ChatCard | null>(null)
   const [members, setMembers] = useState<EditMember[]>([])
   const [invites, setInvites] = useState<InviteLink[]>([])
   const [revokedInvites, setRevokedInvites] = useState<InviteLink[]>([])
@@ -169,16 +173,18 @@ export function useGroupEdit(chatId: number): GroupEdit {
   const [tick, setTick] = useState(0)
   const reload = useCallback(() => setTick((x) => x + 1), [])
 
-  const isCreator = card?.myRole === 'creator'
-  const canBan = isCreator || (card?.myRole === 'admin' && (card.myRights & BAN_USERS) !== 0)
-  const canManageAdmins = isCreator || (card?.myRole === 'admin' && (card.myRights & MANAGE_ADMINS) !== 0)
+  // Роль и права — у конструктора `channel`: `pFlags.creator` и НАЛИЧИЕ
+  // `admin_rights` (полей `my_role`/`my_rights` на проводе больше нет).
+  const isCreator = !!(card && card.chat.pFlags?.creator)
+  const canBan = hasRights(card?.chat, 'ban_users')
+  const canManageAdmins = hasRights(card?.chat, 'add_admins')
 
   useEffect(() => {
     let alive = true
     void (async () => {
       try {
         const c = await managers.groups.card(chatId)
-        if (!alive) return
+        if (!alive || !c) return
         setCard(c)
         const ms = await managers.groups.members(chatId)
         const users = await managers.peers.getUsers(ms.map((m) => m.userId))
@@ -186,13 +192,14 @@ export function useGroupEdit(chatId: number): GroupEdit {
         if (!alive) return
         setMembers(ms.map((m) => ({
           userId: m.userId,
-          name: byId.get(m.userId)?.displayName || `User ${m.userId}`,
+          name: getUserTitle(byId.get(m.userId)),
           username: byId.get(m.userId)?.username || undefined,
-          avatarUrl: byId.get(m.userId)?.avatarUrl || undefined,
+          photoId: getPeerPhotoId(byId.get(m.userId)?.photo) || undefined,
           role: m.role,
           rights: 0,
         })))
-        const canInvite = c.myRole === 'creator' || c.myRole === 'admin'
+        // Разделы ссылок/банов/ограничений — админские (tweb `just_admin`).
+        const canInvite = hasRights(c.chat, 'just_admin')
         if (canInvite) {
           const inv = await managers.groups.listInvites(chatId)
           if (alive) setInvites(inv)
@@ -204,8 +211,8 @@ export function useGroupEdit(chatId: number): GroupEdit {
           if (alive) {
             setBans(bs.map((b) => ({
               userId: b.userId,
-              name: banById.get(b.userId)?.displayName || `User ${b.userId}`,
-              avatarUrl: banById.get(b.userId)?.avatarUrl || undefined,
+              name: getUserTitle(banById.get(b.userId)),
+              photoId: getPeerPhotoId(banById.get(b.userId)?.photo) || undefined,
             })))
           }
           const rs = await managers.groups.listRestrictions(chatId).catch(() => [])
@@ -214,8 +221,8 @@ export function useGroupEdit(chatId: number): GroupEdit {
           if (alive) {
             setRestricted(rs.map((r) => ({
               userId: r.userId,
-              name: resById.get(r.userId)?.displayName || `User ${r.userId}`,
-              avatarUrl: resById.get(r.userId)?.avatarUrl || undefined,
+              name: getUserTitle(resById.get(r.userId)),
+              photoId: getPeerPhotoId(resById.get(r.userId)?.photo) || undefined,
               deniedRights: r.deniedRights,
               untilDate: r.untilDate,
             })))
@@ -237,7 +244,7 @@ export function useGroupEdit(chatId: number): GroupEdit {
   return {
     card, members, admins, invites, revokedInvites, bans, restricted, canBan, canManageAdmins, isCreator, reload,
     saveInfo: async (title, about) => {
-      await managers.groups.editInfo(chatId, { title, about, username: card?.username ?? '' })
+      await managers.groups.editInfo(chatId, { title, about, username: card?.chat.username ?? '' })
       reload()
       await refreshDialogs()
     },
@@ -292,8 +299,8 @@ export function useGroupEdit(chatId: number): GroupEdit {
       const byId = new Map(users.map((u) => [u.id, u]))
       return importers.map((i) => ({
         userId: i.userId,
-        name: byId.get(i.userId)?.displayName || `User ${i.userId}`,
-        avatarUrl: byId.get(i.userId)?.avatarUrl || undefined,
+        name: getUserTitle(byId.get(i.userId)),
+        photoId: getPeerPhotoId(byId.get(i.userId)?.photo) || undefined,
         joinedAt: i.joinedAt,
       }))
     },
@@ -322,10 +329,13 @@ export function useGroupEdit(chatId: number): GroupEdit {
     },
     loadDiscussionCandidates: () => managers.channels.discussionCandidates(chatId),
     loadDiscussionGroup: async () => {
-      const id = card?.discussionChatId ?? 0
-      if (!id) return null
-      const c = await managers.groups.card(id)
-      return { id, title: c.title, username: c.username, memberCount: c.memberCount }
+      // Знаковый ключ обсуждения: `linked_chat_id` конструктора — СЫРОЙ
+      // положительный id, переводит его одна функция.
+      const peerId = getLinkedChatPeerId(card?.fullChat)
+      if (peerId === NULL_PEER_ID) return null
+      const c = await managers.groups.card(peerId)
+      if (!c) return null
+      return { peerId, title: c.chat.title, username: c.chat.username ?? '', memberCount: c.chat.participants_count ?? 0 }
     },
     kick: async (userId) => {
       await managers.groups.removeMember(chatId, userId)
@@ -366,7 +376,7 @@ export function useGroupEdit(chatId: number): GroupEdit {
       } else {
         const me = await managers.auth.me()
         if (me) {
-          await managers.groups.removeMember(chatId, me.id)
+          await managers.groups.removeMember(chatId, me.user.id)
           // Fix (ревью Task 4, Important): removeMember обслуживает и кик
           // ДРУГОГО участника (см. `remove` выше), сам не знает, ушёл ли Я —
           // здесь контекст однозначен (self-leave: userId===me.id), поэтому

@@ -39,43 +39,49 @@ func TestProfileEndpoints_HTTP(t *testing.T) {
 	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	token, _ := signInToken(t, h, "+79990000001")
 
-	// PATCH /me — set names, bio, birthday, phone visibility.
+	// PATCH /me — set names, bio, birthday. phone_visibility здесь больше нет:
+	// видимость номера это правило приватности (/me/privacy/phone_number).
 	rec := reqJSONAuth(t, h, http.MethodPatch, "/me", map[string]any{
-		"first_name":       "Denis",
-		"last_name":        "M",
-		"bio":              "designer",
-		"birthday":         map[string]any{"day": 15, "month": 3, "year": 2000},
-		"phone_visibility": "nobody",
+		"first_name": "Denis",
+		"last_name":  "M",
+		"bio":        "designer",
+		"birthday":   map[string]any{"day": 15, "month": 3, "year": 2000},
 	}, token)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("PATCH /me: %d %s", rec.Code, rec.Body.String())
 	}
-	var me struct {
-		DisplayName     string `json:"display_name"`
-		Bio             string `json:"bio"`
-		PhoneVisibility string `json:"phone_visibility"`
-		Birthday        *struct {
-			Day, Month int
-			Year       *int
-		} `json:"birthday"`
+	// Своя витрина — ТА ЖЕ пара конструкторов, что и чужая (users.userFull):
+	// краткая карточка `user` с именем, полная `userFull` с bio и днём рождения.
+	me := decodeMe(t, rec)
+	if me.Underscore != "users.userFull" {
+		t.Fatalf("GET /me отдал не users.userFull: %s", rec.Body.String())
 	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &me)
-	if me.DisplayName != "Denis M" || me.Bio != "designer" || me.PhoneVisibility != "nobody" {
-		t.Fatalf("unexpected profile: %+v", me)
+	if len(me.Users) != 1 || me.Users[0].FirstName != "Denis" || me.Users[0].LastName != "M" {
+		t.Fatalf("краткая карточка: %s", rec.Body.String())
 	}
-	if me.Birthday == nil || me.Birthday.Day != 15 || me.Birthday.Month != 3 || me.Birthday.Year == nil || *me.Birthday.Year != 2000 {
-		t.Fatalf("unexpected birthday: %+v", me.Birthday)
+	if me.FullUser.Underscore != "userFull" || me.FullUser.About != "designer" {
+		t.Fatalf("полная карточка: %s", rec.Body.String())
+	}
+	b := me.FullUser.Birthday
+	if b == nil || b.Underscore != "birthday" || b.Day != 15 || b.Month != 3 || b.Year != 2000 {
+		t.Fatalf("день рождения: %s", rec.Body.String())
+	}
+	// Имя на проводе собирается из first_name/last_name — денормализованного
+	// display_name нет вовсе.
+	if bytes.Contains(rec.Body.Bytes(), []byte(`"display_name"`)) {
+		t.Fatalf("display_name уехал на провод: %s", rec.Body.String())
 	}
 
 	// GET /me reflects the update (fresh from DB).
 	rec = reqJSONAuth(t, h, http.MethodGet, "/me", nil, token)
-	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(`"display_name":"Denis M"`)) {
+	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(`"first_name":"Denis"`)) {
 		t.Fatalf("GET /me: %d %s", rec.Code, rec.Body.String())
 	}
 
 	// Username availability + set.
+	// Ответ проверки имени — конструктор Bool, как у account.checkUsername.
 	rec = reqJSONAuth(t, h, http.MethodGet, "/username/available?u=Denis_M", nil, token)
-	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(`"available":true`)) {
+	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(`"boolTrue"`)) {
 		t.Fatalf("check username: %d %s", rec.Code, rec.Body.String())
 	}
 	rec = reqJSONAuth(t, h, http.MethodPut, "/me/username", map[string]string{"username": "Denis_M"}, token)
@@ -86,7 +92,7 @@ func TestProfileEndpoints_HTTP(t *testing.T) {
 	// A second user can't take the same username (case-insensitive) → 409.
 	token2, _ := signInToken(t, h, "+79990000002")
 	rec = reqJSONAuth(t, h, http.MethodGet, "/username/available?u=DENIS_M", nil, token2)
-	if !bytes.Contains(rec.Body.Bytes(), []byte(`"available":false`)) {
+	if !bytes.Contains(rec.Body.Bytes(), []byte(`"boolFalse"`)) {
 		t.Fatalf("expected taken, got %s", rec.Body.String())
 	}
 	rec = reqJSONAuth(t, h, http.MethodPut, "/me/username", map[string]string{"username": "DENIS_M"}, token2)
@@ -94,16 +100,51 @@ func TestProfileEndpoints_HTTP(t *testing.T) {
 		t.Fatalf("expected 409, got %d %s", rec.Code, rec.Body.String())
 	}
 
-	// Avatar set stores the media content path. Превьюер не подключён (медиа в
-	// этих тестах не поднимается) — avatar_preview null, ответ не ломается (то же
-	// поведение у старых аватарок без превью).
+	// Аватарка едет ОДНИМ конструктором userProfilePhoto с готовым photo_id —
+	// тем числом, которого ждёт клиентский downloadMediaURL. Строки
+	// «/media/N/content» на проводе больше нет. Превьюер не подключён (медиа в
+	// этих тестах не поднимается) — stripped_thumb просто отсутствует.
 	rec = reqJSONAuth(t, h, http.MethodPut, "/me/avatar", map[string]any{"media_id": 42}, token)
-	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(`"avatar_url":"/media/42/content"`)) {
+	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(`"_":"userProfilePhoto","photo_id":42`)) {
 		t.Fatalf("set avatar: %d %s", rec.Code, rec.Body.String())
 	}
-	if !bytes.Contains(rec.Body.Bytes(), []byte(`"avatar_preview":null`)) {
-		t.Fatalf("avatar_preview absent/non-null without previewer: %s", rec.Body.String())
+	if bytes.Contains(rec.Body.Bytes(), []byte(`/media/42/content`)) {
+		t.Fatalf("content-путь аватарки уехал на провод: %s", rec.Body.String())
 	}
+	if bytes.Contains(rec.Body.Bytes(), []byte(`"stripped_thumb"`)) {
+		t.Fatalf("stripped_thumb без превьюера: %s", rec.Body.String())
+	}
+}
+
+// meResponse — форма ответа /me: конструктор users.userFull В КОРНЕ, а
+// can_message — наш клиентский параметр ВНУТРИ него.
+type meResponse struct {
+	Underscore string `json:"_"`
+	CanMessage bool   `json:"can_message"`
+	FullUser   struct {
+		Underscore string `json:"_"`
+		About      string `json:"about"`
+		Birthday   *struct {
+			Underscore string `json:"_"`
+			Day        int    `json:"day"`
+			Month      int    `json:"month"`
+			Year       int    `json:"year"`
+		} `json:"birthday"`
+	} `json:"full_user"`
+	Users []struct {
+		Underscore string `json:"_"`
+		FirstName  string `json:"first_name"`
+		LastName   string `json:"last_name"`
+	} `json:"users"`
+}
+
+func decodeMe(t *testing.T, rec *httptest.ResponseRecorder) meResponse {
+	t.Helper()
+	var out meResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("разбор /me: %v (%s)", err, rec.Body.String())
+	}
+	return out
 }
 
 // httpFakePreviewer — AvatarPreviewer для HTTP-теста: фиксированное stripped-превью.
@@ -122,7 +163,7 @@ func TestSetAvatarPreview_HTTP(t *testing.T) {
 	h := NewRouter(authUC, newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	token, _ := signInToken(t, h, "+79990000021")
 
-	const wantB64 = `"avatar_preview":"/9j/4AU="` // base64([ff d8 ff e0 05])
+	const wantB64 = `"stripped_thumb":"/9j/4AU="` // base64([ff d8 ff e0 05])
 	rec := reqJSONAuth(t, h, http.MethodPut, "/me/avatar", map[string]any{"media_id": 7}, token)
 	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(wantB64)) {
 		t.Fatalf("set avatar with preview: %d %s", rec.Code, rec.Body.String())

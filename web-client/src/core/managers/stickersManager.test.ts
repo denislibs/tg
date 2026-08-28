@@ -1,6 +1,13 @@
 // src/core/managers/stickersManager.test.ts
+//
+// Мапперов у менеджера больше нет: сервер отдаёт конструкторы схемы, форма
+// провода и форма модели совпали. Поэтому тесты проверяют не «перекладывание
+// snake в camel», а то, что осталось предметом: правильный маршрут и что
+// документ проходит `saveDocument` — тип файла, размеры, эмодзи и набор
+// выводятся ИЗ АТРИБУТОВ, а не приезжают готовыми полями.
 import { describe, it, expect } from 'vitest'
 import { newStickersManager } from './stickersManager'
+import { makeSticker, makeStickerSet } from '../stickers/testSticker'
 import type { RestClient } from '../net/restClient'
 
 function fakeRest(getResult: unknown = {}, postResult: unknown = {}) {
@@ -23,40 +30,38 @@ function fakeRest(getResult: unknown = {}, postResult: unknown = {}) {
 }
 
 describe('StickersManager', () => {
-  it('recent maps snake->camel', async () => {
-    const { rest, calls } = fakeRest({ stickers: [{ id: 1, set_id: 2, media_id: 33, emoji: '🔥' }] })
+  it('recent — маршрут и документы как есть', async () => {
+    const { rest, calls } = fakeRest({ stickers: [makeSticker({ id: 33, setId: 2, emoji: '🔥' })] })
     const mgr = newStickersManager({ rest })
     const list = await mgr.recent()
     expect(calls[0]).toEqual({ method: 'GET', path: '/stickers/recent', query: undefined })
-    expect(list).toEqual([
-      { id: 1, setId: 2, mediaId: 33, emoji: '🔥', width: 0, height: 0, mime: '', thumb: '' },
-    ])
+    expect(list.map((d) => d.id)).toEqual([33])
   })
 
-  // Метаданные файла едут вместе со стикером: по width/height бокс вписывается по
-  // пропорции, по mime выбирается рендерер, thumb (base64 JPEG) показывается
-  // нижним слоем, пока файл летит. Потеря любого поля в маппинге = стикер
-  // рисуется квадратом и мигает пустотой до первого кадра.
-  it('маппинг несёт метаданные файла (w/h, mime, stripped-превью)', async () => {
+  // Тип файла, размеры, эмодзи и набор ВЫВОДЯТСЯ из атрибутов — тем же
+  // saveDocument, что и у документа из ленты. Если менеджер перестанет его
+  // звать, стикер приедет без `type`/`w`/`h` и нарисуется квадратом.
+  it('документ проходит saveDocument: тип, размеры, эмодзи и набор — из атрибутов', async () => {
     const { rest } = fakeRest({
-      stickers: [
-        { id: 1, set_id: 2, media_id: 33, emoji: '🔥', width: 512, height: 384, mime: 'image/webp', thumb: '/9j/' },
-      ],
+      stickers: [makeSticker({ id: 33, setId: 2, emoji: '🔥', width: 512, height: 384, thumb: '/9j/' })],
     })
     const mgr = newStickersManager({ rest })
-    expect(await mgr.recent()).toEqual([
-      { id: 1, setId: 2, mediaId: 33, emoji: '🔥', width: 512, height: 384, mime: 'image/webp', thumb: '/9j/' },
-    ])
+    const [doc] = await mgr.recent()
+    expect(doc.type).toBe('sticker')
+    expect([doc.w, doc.h]).toEqual([512, 384])
+    expect(doc.stickerEmojiRaw).toBe('🔥')
+    expect(doc.stickerSetInput).toEqual({ _: 'inputStickerSetID', id: 2 })
   })
 
-  // Старый бэк (или медиа без прогона процессинга) метаданных не пришлёт —
-  // маппинг обязан дать нули и пустые строки, а не undefined: витрина различает
-  // «нет превью» по пустой строке, а undefined утёк бы в src картинки.
-  it('отсутствующие метаданные схлопываются в нули, а не в undefined', async () => {
-    const { rest } = fakeRest({ stickers: [{ id: 1, set_id: 2, media_id: 33, emoji: '🔥', thumb: null }] })
+  // Медиа без прогона процессинга: ступеней и атрибута размеров нет вовсе — в
+  // схеме «неизвестно» это ОТСУТСТВИЕ элемента вектора, а не элемент с нулями.
+  it('без метаданных документ едет без ступеней, а не с пустыми', async () => {
+    const bare = { _: 'document' as const, id: 33, mime_type: 'image/webp', size: 0, attributes: [] }
+    const { rest } = fakeRest({ stickers: [bare] })
     const mgr = newStickersManager({ rest })
-    const [sticker] = await mgr.recent()
-    expect(sticker).toEqual({ id: 1, setId: 2, mediaId: 33, emoji: '🔥', width: 0, height: 0, mime: '', thumb: '' })
+    const [doc] = await mgr.recent()
+    expect(doc.thumbs).toBeUndefined()
+    expect(doc.w).toBeUndefined()
   })
 
   it('recent/faved tolerate a missing stickers array', async () => {
@@ -84,47 +89,60 @@ describe('StickersManager', () => {
     ])
   })
 
-  it('searchByEmoji passes emoji as a query param and maps rows', async () => {
-    const { rest, calls } = fakeRest({ stickers: [{ id: 9, set_id: 1, media_id: 12, emoji: '👍' }] })
+  it('searchByEmoji передаёт эмодзи параметром запроса', async () => {
+    const { rest, calls } = fakeRest({ stickers: [makeSticker({ id: 12, setId: 1, emoji: '👍' })] })
     const mgr = newStickersManager({ rest })
     const list = await mgr.searchByEmoji('👍')
     expect(calls[0]).toEqual({ method: 'GET', path: '/stickers/search', query: { emoji: '👍' } })
-    expect(list).toEqual([
-      { id: 9, setId: 1, mediaId: 12, emoji: '👍', width: 0, height: 0, mime: '', thumb: '' },
-    ])
+    expect(list.map((d) => d.stickerEmojiRaw)).toEqual(['👍'])
   })
 
-  it('setBySlug returns the set and mapped stickers', async () => {
-    const set = { id: 1, slug: 'duck', title: 'Duck', kind: 'sticker', count: 2 }
-    const { rest, calls } = fakeRest({ set, stickers: [{ id: 1, set_id: 1, media_id: 10, emoji: '🦆' }] })
+  it('getStickerSet по короткому имени: набор и его документы', async () => {
+    const set = makeStickerSet({ id: 1, shortName: 'duck', title: 'Duck', count: 2 })
+    const { rest, calls } = fakeRest({ set, documents: [makeSticker({ id: 10, setId: 1, emoji: '🦆' })] })
     const mgr = newStickersManager({ rest })
-    const r = await mgr.setBySlug('duck')
+    const r = await mgr.getStickerSet({ shortName: 'duck' })
     expect(calls[0].path).toBe('/sticker-sets/duck')
     expect(r.set).toEqual(set)
-    expect(r.stickers).toEqual([
-      { id: 1, setId: 1, mediaId: 10, emoji: '🦆', width: 0, height: 0, mime: '', thumb: '' },
-    ])
+    expect(r.stickers.map((d) => d.id)).toEqual([10])
   })
 
-  // Task 2 covered sets: featured/search отдают наборы ВМЕСТЕ с превью
-  // (карта setID→стикеры, ключи строками — JSON не умеет числовые ключи) —
-  // строка экрана поиска рисует силуэт без отдельного setBySlug на каждую.
-  it('featuredSets маппит covers (строковые ключи бэка) в Map<number, Sticker[]> тем же mapSticker', async () => {
+  // Второй конструктор того же адреса (InputStickerSet): им пользуется клик по
+  // стикеру в чате — документ несёт ЧИСЛО набора, а короткого имени в нём нет.
+  it('getStickerSet по числу набора бьёт в маршрут id', async () => {
+    const set = makeStickerSet({ id: 7, shortName: 'duck', title: 'Duck', count: 1 })
+    const { rest, calls } = fakeRest({ set, documents: [] })
+    const mgr = newStickersManager({ rest })
+    const r = await mgr.getStickerSet({ id: 7 })
+    expect(calls[0].path).toBe('/sticker-sets/id/7')
+    expect(r.set.id).toBe(7)
+  })
+
+  // Набор едет ВМЕСТЕ со своими документами одним конструктором
+  // (stickerSetFullCovered) — отдельной карты превью на проводе больше нет,
+  // менеджер раскладывает её сам для быстрого lookup при рендере строки.
+  it('featuredSets раскладывает covered-наборы в пару «наборы, карта превью»', async () => {
+    const set = makeStickerSet({ id: 1, shortName: 'duck', title: 'Duck', count: 5 })
     const { rest, calls } = fakeRest({
-      sets: [{ id: 1, slug: 'duck', title: 'Duck', kind: 'sticker', count: 5 }],
-      covers: { '1': [{ id: 10, set_id: 1, media_id: 100, emoji: '🦆', width: 512, height: 512, mime: 'image/webp', thumb: '/9j/', path_thumb: 'AAA' }] },
+      sets: [{
+        _: 'stickerSetFullCovered',
+        set,
+        packs: [{ _: 'stickerPack', emoticon: '🦆', documents: [100] }],
+        documents: [makeSticker({ id: 100, setId: 1, emoji: '🦆', thumb: '/9j/', pathThumb: 'AAA' })],
+      }],
     })
     const mgr = newStickersManager({ rest })
     const r = await mgr.featuredSets()
     expect(calls[0]).toEqual({ method: 'GET', path: '/sticker-sets/featured', query: undefined })
-    expect(r.sets).toEqual([{ id: 1, slug: 'duck', title: 'Duck', kind: 'sticker', count: 5 }])
+    expect(r.sets).toEqual([set])
     expect(r.covers).toBeInstanceOf(Map)
-    expect(r.covers.get(1)).toEqual([
-      { id: 10, setId: 1, mediaId: 100, emoji: '🦆', width: 512, height: 512, mime: 'image/webp', thumb: '/9j/', pathThumb: 'AAA' },
-    ])
+    expect(r.covers.get(1)?.map((d) => d.id)).toEqual([100])
+    // Документ превью тоже прошёл saveDocument — иначе строка выдачи рисовала
+    // бы его без нижнего слоя.
+    expect(r.covers.get(1)?.[0].type).toBe('sticker')
   })
 
-  it('searchSets маппит covers так же; отсутствующая карта (старый бэк) даёт пустую Map, а не падает', async () => {
+  it('searchSets — тот же разбор; пустая выдача даёт пустую Map, а не падает', async () => {
     const { rest, calls } = fakeRest({ sets: [] })
     const mgr = newStickersManager({ rest })
     const r = await mgr.searchSets('duck')
@@ -146,10 +164,17 @@ describe('StickersManager', () => {
 
   // ── GIF ──
 
-  it('savedGifs maps media_id -> mediaId and tolerates an empty payload', async () => {
-    const { rest, calls } = fakeRest({ gifs: [{ media_id: 42 }, { media_id: 7 }] })
+  it('savedGifs — документы, а не голые ссылки; пустой ответ терпим', async () => {
+    const gif = (id: number) => ({
+      _: 'document' as const, id, mime_type: 'video/mp4', size: 100,
+      attributes: [{ _: 'documentAttributeAnimated' as const }],
+    })
+    const { rest, calls } = fakeRest({ gifs: [gif(42), gif(7)] })
     const mgr = newStickersManager({ rest })
-    expect(await mgr.savedGifs()).toEqual([{ mediaId: 42 }, { mediaId: 7 }])
+    const gifs = await mgr.savedGifs()
+    expect(gifs.map((d) => d.id)).toEqual([42, 7])
+    // Вид файла выводится из атрибута, а не приезжает полем.
+    expect(gifs[0].type).toBe('gif')
     expect(calls[0]).toEqual({ method: 'GET', path: '/gifs/saved', query: undefined })
     const { rest: emptyRest } = fakeRest({})
     expect(await newStickersManager({ rest: emptyRest }).savedGifs()).toEqual([])

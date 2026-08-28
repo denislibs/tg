@@ -21,7 +21,7 @@ export function MembersScreen({ g, isChannel, onBack }: { g: GroupEdit; isChanne
   const [restricting, setRestricting] = useState<EditMember | null>(null)
   const memberIds = useMemo(() => new Set(g.members.map((m) => m.userId)), [g.members])
   const addable = useMemo(
-    () => candidates.filter((c) => !memberIds.has(c.id)).map((c) => ({ userId: c.id, name: c.name, avatarUrl: c.avatarUrl, role: 'member', rights: 0 })),
+    () => candidates.filter((c) => !memberIds.has(c.id)).map((c) => ({ userId: c.id, name: c.name, photoId: c.photoId, role: 'member', rights: 0 })),
     [candidates, memberIds],
   )
 

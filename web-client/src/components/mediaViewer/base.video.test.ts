@@ -8,7 +8,7 @@
 // readyState/networkState/buffered стабятся на прототипе, события видео
 // диспатчатся руками.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import AppMediaViewerBase, { type ViewerMedia } from './base'
+import AppMediaViewerBase, { type ViewerMedia, type ViewerNavigationItem } from './base'
 import type VideoPlayer from '@lib/mediaPlayer'
 import ListLoader from './listLoader'
 import { resetMediaUrlMirror } from '@core/mediaCache'
@@ -49,6 +49,7 @@ class TestViewer extends AppMediaViewerBase<never, 'forward' | 'delete', Target>
 
   zoomIn() { this.addZoomStep(true) }
   zoomReset() { this.resetZoom() }
+  get navigationItemPub() { return this.navigationItem }
 }
 
 function makeViewer() {
@@ -194,6 +195,20 @@ describe('_openMedia video: добивка VIDEO_MIN_WIDTH (tweb :2479-2493)', (
   })
 })
 
+// tweb :2471 отдаёт в setAttachmentSize САМО медиа (`photo: media`), и у
+// документа дефолт натурального размера 512×512 (setAttachmentSize.ts:52-56).
+// Пока подставлялось общее 100, видео без размеров кадра в атрибутах открывалось
+// квадратиком 200×200 (покрытие MIN_SIDE_SIZE) вместо 512×512.
+describe('_openMedia video: дефолт натурального размера документа (tweb :52-56)', () => {
+  it('видео без размеров открывается от 512, а не от 100', async () => {
+    const v = makeViewer()
+    await openWithPlayer(v, vid({ width: 0, height: 0 }))
+    // окно happy-dom 1024×768 → бокс 1024×578, 512×512 влезает целиком (noZoom)
+    expect(v.contentMap.media.style.width).toBe('512px')
+    expect(v.contentMap.media.style.height).toBe('512px')
+  })
+})
+
 describe('_openMedia video: loop-порог (tweb :2603-2605)', () => {
   it('duration < 60 → loop', async () => {
     const v = makeViewer()
@@ -300,5 +315,38 @@ describe('updateVideoControlsLock: зум запирает контролы (twe
 
     v.zoomReset()
     expect(wrapper.classList.contains('disable-hover')).toBe(false)
+  })
+})
+
+// Пауза слоя Esc/Back на время картинки-в-картинке — tweb :2682-2685.
+// Вьювера на экране нет (overlay снят, мувер прозрачный), и Esc/Back обязаны
+// уйти тому, кто под ним, а не «закрывать» невидимое окно.
+describe('_openMedia video: PiP снимает слой Esc/Back (tweb :2682-2685)', () => {
+  it('вход в PiP снимает слой, возврат — ставит обратно', async () => {
+    // Кнопка PiP (а с ней и слушатели enter/leave) создаётся только при
+    // поддержке видео-PiP браузером; в happy-dom её нет.
+    const saved = Object.getOwnPropertyDescriptor(Document.prototype, 'pictureInPictureEnabled')
+    Object.defineProperty(document, 'pictureInPictureEnabled', { configurable: true, value: true })
+
+    const pushItem = vi.fn<(item: ViewerNavigationItem) => void>()
+    const removeItem = vi.fn<(item: ViewerNavigationItem) => void>()
+    const v = makeViewer()
+    v.navigation = { pushItem, removeItem }
+
+    const video = await openWithPlayer(v, vid({ duration: 30 }))
+    expect(pushItem).toHaveBeenCalledTimes(1)
+    const item = v.navigationItemPub!
+
+    video.dispatchEvent(new Event('enterpictureinpicture'))
+    await vi.advanceTimersByTimeAsync(100) // debouncePipTime
+    expect(removeItem).toHaveBeenCalledWith(item)
+
+    video.dispatchEvent(new Event('leavepictureinpicture'))
+    await vi.advanceTimersByTimeAsync(100)
+    expect(pushItem).toHaveBeenCalledTimes(2)
+    expect(pushItem.mock.calls[1][0]).toBe(item) // тот же слой, не новый
+
+    Reflect.deleteProperty(document, 'pictureInPictureEnabled')
+    if (saved) Object.defineProperty(Document.prototype, 'pictureInPictureEnabled', saved)
   })
 })

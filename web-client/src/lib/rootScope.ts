@@ -12,19 +12,21 @@ import EventListenerBase from '@helpers/eventListenerBase'
 import { RT } from '@core/realtime/events'
 import type {
   NewMessageEvt, EditMessageEvt, DeleteMessageEvt, PinMessageEvt, ReadEvt, MediaReadEvt,
-  TypingEvt, PresenceEvt, ReactionEvt, StarReactionEvt, AckEvt, MessageErrorEvt, CallFrameEvt,
+  TypingEvt, PresenceEvt, ReactionEvt, AckEvt, MessageErrorEvt, CallFrameEvt,
   ChatRemovedEvt, DraftUpdateEvt, ChatThemeUpdateEvt, ChatUpdateEvt, SuggestedPostEvt, BotCallbackAnswerEvt,
-  GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, StoryNewEvt, StoryDeletedEvt,
-  StoryReactionEvt, ConnState, PendingNewEvt, PendingMediaEvt, PendingRouteEvt, UserUpdateEvt,
+  GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, StoryUpdateEvt,
+  SentStoryReactionEvt, ReadStoriesEvt, ConnState, UserUpdateEvt, DialogPinEvt, DialogArchiveEvt, DialogMuteEvt,
+  PollUpdateEvt, ChecklistUpdateEvt, GiveawayUpdateEvt, BoostUpdateEvt, BalanceUpdateEvt,
+  ViewsUpdateEvt, RepliesUpdateEvt,
 } from '@core/realtime/events'
-import type { RawPoll, RawChecklist, RawBoostStatus, RawGiveaway } from '@core/models'
+import type { MyMessage } from '@core/models'
 import type { GroupCallFrame } from '@core/calls/groupCallEngine'
 import type { LivestreamFrame } from '@core/calls/livestreamEngine'
 import type { FolderUpdateEvt } from '@stores/foldersStore'
 import type { MessageOp } from '@core/realtime/messageOps'
 import type { PeerOp } from '@core/managers/peersManager'
 import type { DialogOp } from '@core/dialogs/dialogOps'
-import type { User } from '@core/managers/authManager'
+import type { PeerProfile } from '@core/managers/authManager'
 import type { MediaTokenInfo, MediaUrlEvt } from '@core/managers/mediaManager'
 import type { StickerSet } from '@core/managers/stickersManager'
 
@@ -32,8 +34,8 @@ export type { EventMeta } from '@rpc/superMessagePort'
 import type { EventMeta } from '@rpc/superMessagePort'
 
 // Каталог 1:1 переносит бывший core/realtime/eventBus.ts:RtEventMap (ключ за ключом,
-// удалён — все потребители переведены на rootScope), дополненный: pending*-событиями
-// оптимистичной отправки, RT.folderUpdate/userUpdate (в RtEventMap их не было),
+// удалён — все потребители переведены на rootScope), дополненный:
+// RT.folderUpdate/userUpdate (в RtEventMap их не было),
 // служебными rt:resync/media:upload_progress/state:mirror и бывшими UI-командами
 // core/hooks/uiEvents.ts (toast, savedTagsChanged; тоже удалён).
 export type BroadcastEvents = {
@@ -48,7 +50,6 @@ export type BroadcastEvents = {
   [RT.read]: [ReadEvt, EventMeta?]
   [RT.mediaRead]: [MediaReadEvt, EventMeta?]
   [RT.reaction]: [ReactionEvt, EventMeta?]
-  [RT.starReaction]: [StarReactionEvt, EventMeta?]
   [RT.chatRemoved]: [ChatRemovedEvt, EventMeta?]
   [RT.draftUpdate]: [DraftUpdateEvt, EventMeta?]
   [RT.chatThemeUpdate]: [ChatThemeUpdateEvt, EventMeta?]
@@ -62,17 +63,32 @@ export type BroadcastEvents = {
   // Stage «владение диалогами» (этап 1) — публикует dialogsManager воркера. Без
   // EventMeta по той же причине, что и rt:peer_op: не funnel курсора.
   [RT.dialogOp]: [{ ops: DialogOp[] }]
-  [RT.dialogPin]: [{ chat_id: number; pinned: boolean }, EventMeta?]
-  [RT.dialogArchive]: [{ chat_id: number; archived: boolean }, EventMeta?]
-  [RT.dialogMute]: [{ chat_id: number; muted: boolean }, EventMeta?]
-  [RT.pollUpdate]: [{ chat_id: number; poll: RawPoll }, EventMeta?]
-  [RT.checklistUpdate]: [{ chat_id: number; checklist: RawChecklist }, EventMeta?]
-  [RT.boostUpdate]: [{ chat_id: number; status: RawBoostStatus }, EventMeta?]
-  [RT.giveawayUpdate]: [{ chat_id: number; giveaway: RawGiveaway }, EventMeta?]
-  [RT.balanceUpdate]: [{ balance: number }, EventMeta?]
+  // Кадры диалогов — конструкторы схемы, а не пары «ключ пира + признак»:
+  // закрепление это БИТ, архив это НОМЕР ПАПКИ, мьют это СРОК внутри настроек.
+  // Прежние типы здесь описывали форму, которой на проводе не существовало уже
+  // у мьюта (кадр вёз конструктор настроек, а тип обещал `muted: boolean`).
+  [RT.dialogPin]: [DialogPinEvt, EventMeta?]
+  [RT.dialogArchive]: [DialogArchiveEvt, EventMeta?]
+  [RT.dialogMute]: [DialogMuteEvt, EventMeta?]
+  // Опрос/чек-лист/розыгрыш едут ТЕМ ЖЕ конструктором, что и внутри сообщения,
+  // под ключом `media`: собственных ключей `poll`/`checklist`/`giveaway` на
+  // проводе больше нет. Номера сообщения в кадре нет и не нужно — сообщение
+  // находят по идентификатору внутри вложения.
+  [RT.pollUpdate]: [PollUpdateEvt, EventMeta?]
+  [RT.checklistUpdate]: [ChecklistUpdateEvt, EventMeta?]
+  [RT.boostUpdate]: [BoostUpdateEvt, EventMeta?]
+  [RT.giveawayUpdate]: [GiveawayUpdateEvt, EventMeta?]
+  [RT.balanceUpdate]: [BalanceUpdateEvt, EventMeta?]
   [RT.paidMediaUnlock]: [NewMessageEvt, EventMeta?]
   [RT.webPageUpdate]: [WebPageUpdateEvt, EventMeta?]
   [RT.factCheckUpdate]: [FactCheckUpdateEvt, EventMeta?]
+  // Счётчики поста канала. Курсора кадры не несут (счётчики приближённы,
+  // догонять их разрывом незачем) — `EventMeta` у них поэтому нет. Сырой кадр
+  // до витрины доезжает без потребителей: окно правит ВЛАДЕЛЕЦ (messages.
+  // cacheViews/cacheReplies → rt:message_op), а лента слушает уже
+  // messages_views/replies_updated ниже — как в оригинале.
+  [RT.viewsUpdate]: [ViewsUpdateEvt]
+  [RT.repliesUpdate]: [RepliesUpdateEvt]
 
   // ── ephemeral (без pts, прямая трансляция) и bespoke (спец-обработка на onFrame) ──
   [RT.typing]: [TypingEvt]
@@ -85,12 +101,12 @@ export type BroadcastEvents = {
   [RT.livestream]: [LivestreamFrame]
   [RT.botCallbackAnswer]: [BotCallbackAnswerEvt]
   [RT.geoLiveUpdate]: [GeoLiveUpdateEvt]
-  [RT.secretRequest]: [{ chat_id: number; initiator_id: number; responder_id: number }]
-  [RT.secretAccept]: [{ chat_id: number; state?: string; fingerprint?: string[] }]
-  [RT.secretReject]: [{ chat_id: number }]
-  [RT.storyNew]: [StoryNewEvt]
-  [RT.storyDeleted]: [StoryDeletedEvt]
-  [RT.storyReaction]: [StoryReactionEvt]
+  [RT.secretRequest]: [{ peer_id: PeerId; initiator_id: number; responder_id: number }]
+  [RT.secretAccept]: [{ peer_id: PeerId; state?: string; fingerprint?: string[] }]
+  [RT.secretReject]: [{ peer_id: PeerId }]
+  [RT.story]: [StoryUpdateEvt]
+  [RT.storyReaction]: [SentStoryReactionEvt]
+  [RT.storyRead]: [ReadStoriesEvt]
   // ВНИМАНИЕ читающему payload любого из трёх событий ниже: он НЕ источник правды
   // (см. events.ts:RT.state и докблок realtime.ts:getStatus — там же точная
   // граница, что тут 1:1 с tweb, а что нет). Автомат (Задача 3) обязан на
@@ -98,14 +114,17 @@ export type BroadcastEvents = {
   // оттуда — иначе получим два источника факта, ровно тот дубль, который
   // параллельно вычищает этап 1C.2.
   //
-  // Для RT.state эта pull-дисциплина 1:1 с tweb: `connectionStatus.ts:47-51` на
-  // `connection_status_change` игнорирует payload и пуллит getConnectionStatus()
-  // (:87-91) отдельным запросом. Для RT.stateSynchronizing/RT.stateSynchronized —
-  // НЕ порт: у tweb (:53-64) `this.updating` берётся из самого факта события
-  // (никакого pull), `updating` вообще не входит в getConnectionStatus()
-  // (`rootScope.ts:293` отдаёт только карту `connectionStatus`). Пуллить и здесь
-  // тоже — наше сознательное расширение той же дисциплины на вторую ось
-  // (обоснование — докблок getStatus в realtime.ts), не факт оригинала.
+  // Это ПРО RT.state, и там дисциплина 1:1 с tweb: `connectionStatus.ts:47-51`
+  // на `connection_status_change` игнорирует payload и пуллит
+  // getConnectionStatus() (:87-91) отдельным запросом.
+  //
+  // RT.stateSynchronizing/RT.stateSynchronized устроены ИНАЧЕ — тоже 1:1 с tweb
+  // (:53-64): значение `updating` берётся из самого ФАКТА события, без pull.
+  // Пулять и здесь тоже мы пробовали; получалось два наблюдаемых дефекта —
+  // короткая синхронизация не показывалась вовсе, а инверсия ответов оставляла
+  // залипший спиннер (разбор — `components/connectionStatus.ts::construct`).
+  // Из pull осталась ровно одна вещь: засев `updating`, пока ни одного события
+  // синхронизации ещё не видели (вкладка, поднявшаяся в середине догона).
   [RT.state]: [{ state: ConnState; retryAt?: number }]
   // tweb apiUpdatesManager.ts:460-469 (state_synchronizing/state_synchronized) —
   // начало/конец catch-up (/sync); автомат витрины (Задача 3) слушает пару.
@@ -115,7 +134,7 @@ export type BroadcastEvents = {
   [RT.stateSynchronized]: [null]
   // Stage 1C.2 (Task 1): `me` — воркер единственный владелец (workerCore.ts::
   // setMe), payload — полный снимок пользователя (null — разлогинен).
-  [RT.me]: [User | null]
+  [RT.me]: [PeerProfile | null]
   // Stage 1C.2 (Task 1, раунд 4): намерение перехода сессии (порт tweb
   // `logging_out`, см. докблок в core/realtime/events.ts). `migrateTo` — id
   // аккаунта, на который переехала сессия; null — активного не осталось.
@@ -132,17 +151,55 @@ export type BroadcastEvents = {
   // {id, thumb, url, size}. Витрина (core/mediaCache.ts) его только зеркалит.
   [RT.mediaUrl]: [MediaUrlEvt]
 
-  // ── оптимистичная отправка (tweb pending): жизненный цикл бабла, синтетические
-  //    клиентские события — вне funnel'а сервера, meta не несут ──
-  [RT.pendingNew]: [PendingNewEvt]
-  [RT.pendingMedia]: [PendingMediaEvt]
-  [RT.pendingFail]: [PendingRouteEvt]
-  [RT.pendingRetry]: [PendingRouteEvt]
-  [RT.pendingRemove]: [PendingRouteEvt]
+  // Пяти событий rt:pending_* здесь больше нет: жизненный цикл неотправленного
+  // бабла живёт в менеджере воркера (core/managers/messages/pending.ts) и
+  // объявляется наружу теми же MessageOp (RT.messageOp выше), что и любое другое
+  // изменение окна.
+
+  // ── история окна сообщений (порт tweb rootScope.ts:77-88, имена и формы 1:1) ──
+  // Порождает их НЕ воркер, а зеркало окон главного потока
+  // (core/history/messagesMirror.ts) при переигрывании MessageOp: «в этом
+  // хранилище появилось/изменилось/исчезло вот это сообщение». Подписчик —
+  // императивная лента (порт chat/bubbles.ts:765, 882, 1104, 1860, 1903).
+  //
+  // `storageKey` у tweb — ключ MessagesStorage (`${peerId}_history`); у нас —
+  // ключ окна (winKey: "peerId" | "peerId:threadRoot"), то же назначение:
+  // подписчик сверяет его со своим окном и чужие пропускает.
+  // `tempId` — id временного (оптимистичного) сообщения, которое заменил
+  // серверный ответ (tweb pendingData.tempId); `history_update` в tweb значит
+  // ровно смену идентификатора, а не правку содержимого — правку объявляет
+  // `message_edit`.
+  // играет `Message.id` (у неотправленного бабла он отрицательный, а `seq` —
+  // выдумка владельца, поэтому адресуем именно по id).
+  // `sequential` — 1:1 с tweb (rootScope.ts:78): признак приходит от отправителя
+  // (`pendingData.sequential`, у нас `PendingDetails.sequential` в
+  // `core/managers/messages/pending.ts`) и означает «кадр отправки ушёл тем же
+  // ходом, что и появление бабла», то есть серверный идентификатор сохранит уже
+  // занятую баблом позицию внизу окна. До ленты он доезжает полем операции
+  // `insert` (`core/realtime/messageOps.ts`) — канал «воркер → вкладка» у нас
+  // один; сюда его перекладывает зеркало окон.
+  'history_append': [{ storageKey: string; message: MyMessage }]
+  'history_update': [{ storageKey: string; message: MyMessage; tempId?: number; sequential?: boolean }]
+  'message_edit': [{ storageKey: string; peerId: number; mid: number; message: MyMessage }]
+  'history_delete': [{ peerId: number; msgs: Set<number> }]
+  // Счётчики поста канала — ОТДЕЛЬНО от `message_edit`, и это порт, а не
+  // оптимизация. У оригинала «просмотров стало N» это своё событие
+  // (`messages_views`, tweb rootScope.ts:92, форма 1:1 — вектор троек), а
+  // «комментариев стало N» — своё (`replies_updated`, :112, payload это само
+  // сообщение, из которого потребитель читает ТОЛЬКО число, bubbles.ts:1141).
+  // Оба потребителя переписывают ОДИН УЗЕЛ бабла (`.post-views`,
+  // bubbles.ts:2094-2124; текст футера треда, replies.ts:17-22), тогда как
+  // `message_edit` у нас пересобирает содержимое бабла целиком (см. докблок
+  // `onMessageEdit`): пост канала, который смотрят, перебирал бы своё вложение
+  // раз в секунду.
+  'messages_views': [{ peerId: number; mid: number; views: number }[]]
+  'replies_updated': [{ storageKey: string; peerId: number; mid: number; message: MyMessage }]
 
   // ── служебные ──
   'rt:resync': [null]
-  'media:upload_progress': [{ id: string; loaded: number; total: number }]
+  // done — аплоад завершился (успех/ошибка/отмена): кольцо на бабле снимается.
+  // Границы аплоада объявляет владелец (messages.sendFile в воркере), а не вкладка.
+  'media:upload_progress': [{ id: string; loaded: number; total: number; done?: boolean }]
   'state:mirror': [{ key: string; value: unknown }]
 
   // ── стикеры ──
@@ -166,19 +223,64 @@ export type BroadcastEventsListeners = {
 }
 
 /** Порт в воркер. Отдельным сеттером, а не импортом bootstrap: rootScope не
- *  должен тянуть за собой поднятие SharedWorker (его импортируют и тесты). */
+ *  должен тянуть за собой поднятие SharedWorker (его импортируют и тесты).
+ *
+ *  Слотов РОВНО два: кадр провода — `{kind:'event', event, payload, meta}`
+ *  (`rpc/superMessagePort.ts:19`), третьего места в нём нет. В tweb наружу
+ *  уходит весь список (`rootScope.ts:283-289`: `args` целиком), и это различие
+ *  не косметическое: третий элемент кортежа события ушёл бы соседним вкладкам
+ *  молча обрезанным. Поэтому «третьего элемента не бывает» — не соглашение, а
+ *  проверяемый компилятором инвариант: см. `AssertWireArgs` ниже. */
 interface RootScopePort { emit(event: string, payload: unknown, meta?: EventMeta): void }
 
+/**
+ * Пин ширины провода. Кортеж каждого события каталога обязан укладываться в два
+ * слота кадра — иначе `never` в отображённом типе краснит `tsc --noEmit` прямо
+ * на записи каталога, а не молча теряет аргумент на другой вкладке. Расширять
+ * этот тип нельзя: сначала третий слот должен появиться в самом кадре
+ * (`superMessagePort`), в воркерном веере (`core/realtime/workerScope.ts`) и в
+ * насосе вкладки (`client/realtimeBridge.ts`).
+ */
+type WireArgs<T> = T extends [] | [unknown] | [unknown, (EventMeta | undefined)?] ? T : never
+type AssertWireArgs = { [K in keyof BroadcastEvents]: WireArgs<BroadcastEvents[K]> }
+// Присваивание существует только ради того, чтобы отображение выше реально
+// инстанцировалось: сам по себе неиспользуемый type-alias компилятор проверяет
+// лениво и `never` внутри него не заметит. Здесь же каждое поле каталога
+// сверяется со своим `WireArgs<…>`, и трёхэлементный кортеж (=`never`) краснит.
+export const WIRE_ARGS_PIN: AssertWireArgs = undefined as unknown as BroadcastEvents
+
 export class RootScope extends EventListenerBase<BroadcastEventsListeners> {
+  /** Порт tweb `rootScope.myId` (rootScope.ts:253): id текущего пользователя
+   *  публичным полем шины. Императивной ленте (`chat/bubbles.ts`, порт tweb —
+   *  там `rootScope.myId` читают bubbles.ts:740, 813, 928, 2719, 4236) нужен
+   *  синхронный доступ к своей личности, а тянуть в неё zustand нельзя.
+   *  Начальное значение у tweb — `NULL_PEER_ID`; у нас id — обычное число, и
+   *  «никого» это 0.
+   *
+   *  РАСХОЖДЕНИЕ С TWEB, СОЗНАТЕЛЬНОЕ. В оригинале поле пишет сам rootScope из
+   *  своей подписки на `user_auth` (rootScope.ts:265-267). У нас так нельзя:
+   *  это завело бы ВТОРОГО писателя факта `me` мимо проектора, вопреки таблице
+   *  владения фактами (web-client/CLAUDE.md). Пишет ровно та же единственная
+   *  точка, что пишет `chatsStore.meId` — проектор на событие `rt:me`
+   *  (`client/realtime/storeProjection.ts`): один писатель на два зеркала, как
+   *  `[RT.messageOp]` там же пишет и стор, и `messagesMirror`. Держит пин
+   *  `stores/noDuplicateMe.test.ts` (скан `.myId = `). */
+  public myId: number
+
   private port: RootScopePort | null = null
 
   constructor() {
     super()
+    this.myId = 0
     // Порождённое вкладкой событие уходит и локальным подписчикам, и в воркер —
     // тот ретранслирует его ОСТАЛЬНЫМ вкладкам (tweb rootScope.ts:280-290).
     // Принятое из воркера ре-эмитится через dispatchEventSingle, иначе кольцо.
     this.dispatchEvent = (name, ...args) => {
       super.dispatchEvent(name, ...args)
+      // Двух слотов ХВАТАЕТ на весь каталог, и это держит компилятор
+      // (`AssertWireArgs` выше), а не соглашение: третий элемент кортежа
+      // краснит `tsc` на самой записи каталога — иначе он ушёл бы соседним
+      // вкладкам молча обрезанным.
       this.port?.emit(name as string, args[0], args[1] as EventMeta | undefined)
     }
   }

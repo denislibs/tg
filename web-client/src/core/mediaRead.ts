@@ -4,6 +4,6 @@
 // а серверу отправляет read_media (у отправителя точка гаснет по его live-кадру).
 import { startClient } from '../client/bootstrap'
 
-export function markMediaPlayed(chatId: number, msgId: number): void {
-  void startClient().managers.realtime.markMediaRead({ chatId, msgId })
+export function markMediaPlayed(peerId: number, msgId: number): void {
+  void startClient().managers.realtime.markMediaRead({ peerId, msgId })
 }

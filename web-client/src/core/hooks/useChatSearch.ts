@@ -6,15 +6,16 @@
 // докачка страницами по 30, сброс при смене ключа запроса. Открытость панели
 // живёт в searchStore (её видят пин-бар и колонка чата), сам запрос — в компоненте.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Message } from '../models'
+import type { MyMessage } from '../models'
 import { useManagers } from './useManagers'
 import { usePeers } from './usePeers'
+import { getPeerTitle } from '../peers/getPeerTitle'
 
 // tweb topbarSearch.tsx:118 / :181 — limit: 30 у обоих загрузчиков
 const LIMIT = 30
 
 export interface MessageSearchLoader {
-  messages: Message[]
+  messages: MyMessage[]
   /** tweb count() — сколько СТРОК уже отрисовано (от него считается высота списка) */
   count: number | undefined
   /** tweb totalCount() — сколько всего нашёл сервер */
@@ -30,13 +31,13 @@ export interface MessageSearchLoader {
  * держит список схлопнутым (topbarSearch.tsx:819).
  */
 export function useMessageSearchLoader(
-  chatId: number,
+  peerId: number,
   o: { enabled: boolean; query: string; fromPeerId?: number; reaction?: string },
 ): MessageSearchLoader {
   const managers = useManagers()
   const { enabled, query, fromPeerId, reaction } = o
 
-  const [messages, setMessages] = useState<Message[]>([])
+  const [messages, setMessages] = useState<MyMessage[]>([])
   const [count, setCount] = useState<number | undefined>(undefined)
   const [totalCount, setTotalCount] = useState<number | undefined>(undefined)
   const [isEnd, setIsEnd] = useState(false)
@@ -47,7 +48,7 @@ export function useMessageSearchLoader(
   const idle = !enabled || (isEmptyQuery && !fromPeerId && !reaction)
 
   // Ключ запроса: его смена — это новый загрузчик (tweb пересоздаёт createSearchLoader).
-  const key = `${chatId}|${query}|${fromPeerId ?? ''}|${reaction ?? ''}|${idle}`
+  const key = `${peerId}|${query}|${fromPeerId ?? ''}|${reaction ?? ''}|${idle}`
   const keyRef = useRef(key)
   const busyRef = useRef(false)
 
@@ -57,7 +58,7 @@ export function useMessageSearchLoader(
       busyRef.current = true
       setLoading(true)
       try {
-        const r = await managers.messages.searchMessages(chatId, query.trim(), {
+        const r = await managers.messages.searchMessages(peerId, query.trim(), {
           senderId: fromPeerId,
           reaction,
           offset,
@@ -73,7 +74,7 @@ export function useMessageSearchLoader(
         busyRef.current = false
       }
     },
-    [managers, chatId, query, fromPeerId, reaction],
+    [managers, peerId, query, fromPeerId, reaction],
   )
 
   useEffect(() => {
@@ -115,7 +116,7 @@ export interface SenderSearchLoader {
  * запросу идёт на клиенте по имени/@username. Серверный поиск по участникам —
  * в отчёте как требование к бэкенду.
  */
-export function useSenderSearchLoader(chatId: number, o: { enabled: boolean; query: string }): SenderSearchLoader {
+export function useSenderSearchLoader(peerId: number, o: { enabled: boolean; query: string }): SenderSearchLoader {
   const managers = useManagers()
   const [members, setMembers] = useState<number[] | null>(null)
   const [loading, setLoading] = useState(false)
@@ -128,12 +129,12 @@ export function useSenderSearchLoader(chatId: number, o: { enabled: boolean; que
     let alive = true
     setLoading(true)
     void managers.groups
-      .members(chatId)
+      .members(peerId)
       .then((m) => { if (alive) setMembers(m.map((x) => x.userId)) })
       .catch(() => { if (alive) setMembers([]) })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [o.enabled, chatId, managers])
+  }, [o.enabled, peerId, managers])
 
   const ids = useMemo(() => members ?? [], [members])
   const peers = usePeers(ids)
@@ -144,7 +145,9 @@ export function useSenderSearchLoader(chatId: number, o: { enabled: boolean; que
     if (!q) return members
     return members.filter((id) => {
       const p = peers.get(id)
-      return (p?.displayName ?? '').toLowerCase().includes(q) || (p?.username ?? '').toLowerCase().includes(q)
+      // Имя собирает клиент; юзернейм есть только у конструктора `user`.
+      return getPeerTitle({ peerId: id, peer: p }).toLowerCase().includes(q) ||
+        (p?._ === 'user' ? p.username ?? '' : '').toLowerCase().includes(q)
     })
   }, [members, peers, o.query])
 

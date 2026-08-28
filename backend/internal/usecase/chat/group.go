@@ -31,51 +31,44 @@ func (i *Interactor) requireRight(ctx context.Context, chatID, userID int64, r d
 	return nil
 }
 
-// serviceText builds the JSON stored in a service message's text. The client
-// parses it and renders a localized pill (mirrors tweb's messageAction: the
-// action + peer names travel as data, not as baked-in prose).
-func serviceText(action string, actor domain.UserCard, target *domain.UserCard) string {
-	m := map[string]any{"action": action, "actor_id": actor.ID, "actor": actor.DisplayName}
-	if target != nil {
-		m["user_id"] = target.ID
-		m["user"] = target.DisplayName
-	}
-	b, _ := json.Marshal(m)
-	return string(b)
-}
-
-// postGroupService inserts a group service message through the normal Send
-// pipeline (seq, updates log, live new_message fan-out to every member). This
-// doubles as the "chat appeared" signal: a just-added member receives the frame
-// for an unknown chat_id and refetches dialogs. Best-effort — the membership
-// change itself has already been committed.
-func (i *Interactor) postGroupService(ctx context.Context, chatID, actorID int64, text string) {
+// postGroupService кладёт служебное сообщение обычным путём Send (seq, журнал
+// обновлений, live-веер каждому участнику). Заодно это сигнал «чат появился»:
+// только что добавленный участник получает кадр незнакомого чата и
+// перезапрашивает диалоги. Best-effort — само изменение состава уже
+// закоммичено.
+//
+// Действие едет КОНСТРУКТОРОМ (schema messageService.action). Прежде здесь
+// собирался JSON `{"action": …, "actor_id": …}` и клался в ТЕКСТ, а клиент
+// опознавал его по `raw.startsWith('{')` — дискриминатор был подделан дважды.
+// actor_id из действия при этом ушёл целиком: автор служебного сообщения и так
+// известен, он from_id.
+func (i *Interactor) postGroupService(ctx context.Context, chatID, actorID int64, action domain.MessageAction) {
 	if i.msgs == nil || i.updates == nil {
 		return // wired without a message pipeline (some unit-test setups)
 	}
-	_, _ = i.Send(ctx, SendInput{ChatID: chatID, SenderID: actorID, Type: "service", Text: text})
+	_, _ = i.Send(ctx, SendInput{ChatID: chatID, SenderID: actorID, Action: action})
 }
 
-// postGroupServiceMedia is postGroupService for actions that carry a photo
-// (tweb messageActionChatEditPhoto): the new group avatar rides on the service
-// message's media_id, so clients render a clickable round thumbnail under the
-// pill. The media must belong to the actor (Send re-checks ownership).
-func (i *Interactor) postGroupServiceMedia(ctx context.Context, chatID, actorID, mediaID int64, text string) {
+// postGroupServiceMedia — postGroupService для действий, несущих фото
+// (messageActionChatEditPhoto): аватарка висит на media_id служебного
+// сообщения, а на провод уезжает ВНУТРИ действия конструктором photo. Медиа
+// обязано принадлежать актору (Send это перепроверяет).
+func (i *Interactor) postGroupServiceMedia(ctx context.Context, chatID, actorID, mediaID int64, action domain.MessageAction) {
 	if i.msgs == nil || i.updates == nil {
 		return // wired without a message pipeline (some unit-test setups)
 	}
 	mid := mediaID
-	_, _ = i.Send(ctx, SendInput{ChatID: chatID, SenderID: actorID, Type: "service", Text: text, MediaID: &mid})
+	_, _ = i.Send(ctx, SendInput{ChatID: chatID, SenderID: actorID, Action: action, MediaID: &mid})
 }
 
 // userCard looks up a user for service-message attribution (zero card on miss).
-func (i *Interactor) userCard(ctx context.Context, id int64) domain.UserCard {
+func (i *Interactor) userCard(ctx context.Context, id int64) domain.UserReal {
 	if i.groups == nil {
-		return domain.UserCard{ID: id}
+		return domain.NewUser(id, domain.UserFlags{})
 	}
 	us, err := i.groups.UsersByIDs(ctx, []int64{id})
 	if err != nil || len(us) == 0 {
-		return domain.UserCard{ID: id}
+		return domain.NewUser(id, domain.UserFlags{})
 	}
 	return us[0]
 }
@@ -84,8 +77,12 @@ func (i *Interactor) userCard(ctx context.Context, id int64) domain.UserCard {
 // "created the group" service message (which fans out live to every member).
 func (i *Interactor) CreateGroup(ctx context.Context, creatorID int64, title, about, username string, isPublic bool, memberIDs []int64) (int64, error) {
 	var chatID int64
+	// added — те, кто РЕАЛЬНО добавлен: без создателя и без повторов. Именно
+	// они уезжают в messageActionChatCreate.users; сырой memberIDs отдал бы
+	// клиенту список, которого в чате нет.
+	var added []int64
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		id, e := i.groups.CreateMultiMember(ctx, "group", title, about, username, isPublic, creatorID)
+		id, e := i.groups.CreateMultiMember(ctx, domain.ChatTypeGroup, title, about, username, isPublic, creatorID)
 		if e != nil {
 			return e
 		}
@@ -93,6 +90,7 @@ func (i *Interactor) CreateGroup(ctx context.Context, creatorID int64, title, ab
 		if e := i.groups.AddMember(ctx, id, creatorID, domain.RoleCreator, domain.AllRights); e != nil {
 			return e
 		}
+		added = added[:0]
 		seen := map[int64]bool{creatorID: true}
 		for _, uid := range memberIDs {
 			if seen[uid] {
@@ -102,6 +100,7 @@ func (i *Interactor) CreateGroup(ctx context.Context, creatorID int64, title, ab
 			if e := i.groups.AddMember(ctx, id, uid, domain.RoleMember, 0); e != nil {
 				return e
 			}
+			added = append(added, uid)
 		}
 		return nil
 	})
@@ -112,7 +111,10 @@ func (i *Interactor) CreateGroup(ctx context.Context, creatorID int64, title, ab
 	if i.invites != nil {
 		_, _ = i.invites.Create(ctx, chatID, creatorID, tokenGen(), "", nil, false, nil)
 	}
-	i.postGroupService(ctx, chatID, creatorID, serviceText("group_create", i.userCard(ctx, creatorID), nil))
+	// Название и позванные сразу участники — параметры конструктора: прежде в
+	// действии ехал один actor_id, и пилюля читалась «Имя создал(а) группу» без
+	// названия и без списка.
+	i.postGroupService(ctx, chatID, creatorID, domain.NewMessageActionChatCreate(title, added))
 	return chatID, nil
 }
 
@@ -145,8 +147,8 @@ func (i *Interactor) AddMember(ctx context.Context, chatID, actorID, userID int6
 	if err := i.groups.AddMember(ctx, chatID, userID, domain.RoleMember, 0); err != nil {
 		return err
 	}
-	target := i.userCard(ctx, userID)
-	i.postGroupService(ctx, chatID, actorID, serviceText("add_user", i.userCard(ctx, actorID), &target))
+	targetID := userID
+	i.postGroupService(ctx, chatID, actorID, domain.NewMessageActionChatAddUser([]int64{targetID}))
 	// Число участников изменилось — рассылаем свежий снимок метаданных чата.
 	i.publishChatUpdate(ctx, chatID)
 	return nil
@@ -165,13 +167,15 @@ func (i *Interactor) RemoveMember(ctx context.Context, chatID, actorID, userID i
 	if _, err := i.groups.GetMember(ctx, chatID, userID); err != nil {
 		return err // not a member — nothing to remove, no service message
 	}
-	if actorID == userID {
-		i.postGroupService(ctx, chatID, actorID, serviceText("leave", i.userCard(ctx, actorID), nil))
-	} else {
-		target := i.userCard(ctx, userID)
-		i.postGroupService(ctx, chatID, actorID, serviceText("kick_user", i.userCard(ctx, actorID), &target))
-	}
-	payload := map[string]any{"chat_id": chatID, "removed": true}
+	// «Вышел сам» и «выгнали» — ОДИН конструктор: различие выводит клиент по
+	// совпадению from_id с user_id, ровно как appMessagesManager уточняет его до
+	// синтетического messageActionChatLeave. Сервер сообщает ФАКТ, формулировку
+	// выбирает клиент.
+	i.postGroupService(ctx, chatID, actorID, domain.NewMessageActionChatDeleteUser(userID))
+	// chat_removed бывает только у группы/канала — приватный диалог не
+	// «удаляется», поэтому ключ пира здесь один на всех: -chatID.
+	payload := map[string]any{"_": domain.UpdateChatRemovedTag,
+		"peer": domain.NewPeer(domain.ToPeerID(chatID, true))}
 	var pts int64
 	var havePts bool
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
@@ -240,7 +244,8 @@ func (i *Interactor) EditInfo(ctx context.Context, chatID, actorID int64, title,
 	// Смена названия — сервисное сообщение (tweb messageActionChatEditTitle); его
 	// fan-out заодно обновляет диалог у всех участников live.
 	if old.Title != "" && old.Title != title {
-		i.postGroupService(ctx, chatID, actorID, serviceText("edit_title", i.userCard(ctx, actorID), nil))
+		// Новое название — параметр конструктора: прежде его не ехало вовсе.
+		i.postGroupService(ctx, chatID, actorID, domain.NewMessageActionChatEditTitle(title))
 	}
 	i.publishChatUpdate(ctx, chatID) // title/about/username изменились
 	return nil
@@ -266,7 +271,10 @@ func (i *Interactor) SetChatPhoto(ctx context.Context, chatID, actorID, mediaID 
 	}
 	// Фото едет медиа-полем сервисного сообщения (tweb messageActionChatEditPhoto
 	// несёт photo) — клиент рисует кликабельную круглую миниатюру под пилюлей.
-	i.postGroupServiceMedia(ctx, chatID, actorID, mediaID, serviceText("edit_photo", i.userCard(ctx, actorID), nil))
+	// Photo подставляется на границе из media_id сообщения (Message.ToWire):
+	// собранный конструктор photo в jsonb колонки не кладётся — его вектор
+	// PhotoSize обратно не разобрать.
+	i.postGroupServiceMedia(ctx, chatID, actorID, mediaID, domain.NewMessageActionChatEditPhoto(nil))
 	i.publishChatUpdate(ctx, chatID) // фото чата изменилось
 	return nil
 }
@@ -276,20 +284,36 @@ func (i *Interactor) SetChatPhoto(ctx context.Context, chatID, actorID, mediaID 
 // логируется + шлётся dialog_mute на устройства владельца: раньше это был
 // клиентский fake-echo (groupsManager), теперь сервер эмитит его сам, так что
 // mute доезжает и на другие вкладки/устройства и через /sync (плотный pts).
+//
+// «Навсегда» ниже становится СРОКОМ (domain.MuteUntilForever), а не отдельным
+// флагом: в схеме мьют выражает peerNotifySettings.mute_until, и второй способ
+// сказать то же самое и был тем, из-за чего «на час» работало как «навсегда».
+//
+// Кадр несёт notify_settings ЦЕЛИКОМ и читает их обратно из базы, а не
+// пересобирает из аргументов: превью и звук мьют не менял, но в конструкторе
+// они есть, и собранный из аргументов огрызок сказал бы клиенту, что
+// переопределений нет.
 func (i *Interactor) SetMute(ctx context.Context, chatID, userID int64, muted bool, until *time.Time) error {
-	if !muted {
-		until = nil
+	var muteUntil *time.Time
+	switch {
+	case !muted:
+		muteUntil = nil
+	case until != nil:
+		muteUntil = until
+	default:
+		forever := time.Unix(domain.MuteUntilForever, 0)
+		muteUntil = &forever
 	}
-	forever := muted && until == nil
-	if err := i.groups.SetMuted(ctx, chatID, userID, forever, until); err != nil {
+	if err := i.groups.SetMuted(ctx, chatID, userID, muteUntil); err != nil {
 		return err
 	}
-	payload := map[string]any{"chat_id": chatID, "muted": muted}
-	if until != nil {
-		payload["muted_until"] = until.Unix()
+	settings, err := i.groups.NotifySettings(ctx, chatID, userID)
+	if err != nil {
+		return err
 	}
 	// best-effort: мутация закоммичена — сбой лога/публикации не возвращаем как ошибку.
-	_ = i.logAndPublish(ctx, []int64{userID}, "dialog_mute", payload)
+	_ = i.logAndPublishPerPeer(ctx, chatID, []int64{userID}, "dialog_mute",
+		func(peer domain.PeerID) map[string]any { return notifySettingsPayload(peer, settings) })
 	return nil
 }
 
@@ -299,11 +323,11 @@ func (i *Interactor) SetChatNotify(ctx context.Context, chatID, userID int64, pr
 	return i.groups.SetNotify(ctx, chatID, userID, preview, sound)
 }
 
-func (i *Interactor) ChatCard(ctx context.Context, chatID, viewerID int64) (domain.ChatCard, error) {
+func (i *Interactor) ChatCard(ctx context.Context, chatID, viewerID int64) (domain.ChatRecord, error) {
 	return i.groups.Card(ctx, chatID, viewerID)
 }
 
-func (i *Interactor) UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserCard, error) {
+func (i *Interactor) UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserReal, error) {
 	return i.groups.UsersByIDs(ctx, ids)
 }
 
@@ -411,10 +435,15 @@ func (i *Interactor) JoinByToken(ctx context.Context, token string, userID int64
 	if err != nil {
 		return false, err
 	}
-	// Вступление по инвайт-ссылке — отдельное сервисное сообщение (tweb
-	// messageActionChatJoinedByLink / ActionInviteUser «… по ссылке-приглашению»),
-	// а не add_user: добавил не админ, пользователь вошёл сам. Actor — вступивший.
-	i.postGroupService(ctx, link.ChatID, userID, serviceText("joined_by_link", i.userCard(ctx, userID), nil))
+	// Вступление по инвайт-ссылке — отдельный конструктор
+	// (messageActionChatJoinedByLink), а не add_user: добавил не админ,
+	// пользователь вошёл сам.
+	//
+	// В действии едет СОЗДАТЕЛЬ ССЫЛКИ, а не вошедший — долг шага A. Прежде
+	// подставлялся actor_id, то есть вошедший, хотя он и так известен: он
+	// from_id самого служебного сообщения, и параметр inviter_id дублировал его
+	// вместо того, чтобы назвать пригласившего.
+	i.postGroupService(ctx, link.ChatID, userID, domain.NewMessageActionChatJoinedByLink(link.CreatedBy))
 	return false, nil
 }
 

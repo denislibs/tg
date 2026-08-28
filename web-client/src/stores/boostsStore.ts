@@ -1,25 +1,21 @@
 import { create } from 'zustand'
-import type { BoostStatus } from '../core/models'
+import type { BoostsStatus } from '../core/models'
+import { mergeBoosts, type ChannelBoosts } from '../core/boosts/boostsStatus'
 
-// Состояние бустов каналов по chatId. setStatus — полный ответ на свой
-// запрос/буст (с boostedByMe/slots). applyStatus — live-кадр boost_update
-// (несёт только счётчик/уровень; своё boostedByMe/slots сохраняем локально).
+// Бусты каналов по peerId. setStatus — ответ ручки (там и «бустнул ли я», и
+// свободные слоты). applyStatus — живой кадр boost_update: тело одно на всех
+// подписчиков, поэтому пер-зрительскую часть он не несёт и она сохраняется из
+// прежнего состояния (см. mergeBoosts).
 interface BoostsState {
-  byChat: Record<number, BoostStatus>
-  setStatus: (chatId: number, status: BoostStatus) => void
-  applyStatus: (chatId: number, status: BoostStatus) => void
+  byChat: Record<number, ChannelBoosts>
+  setStatus: (peerId: number, boosts: ChannelBoosts) => void
+  applyStatus: (peerId: number, status: BoostsStatus) => void
 }
 
 export const useBoostsStore = create<BoostsState>((set) => ({
   byChat: {},
-  setStatus: (chatId, status) =>
-    set((s) => ({ byChat: { ...s.byChat, [chatId]: status } })),
-  applyStatus: (chatId, status) =>
-    set((s) => {
-      const prev = s.byChat[chatId]
-      const merged: BoostStatus = prev
-        ? { ...status, boostedByMe: prev.boostedByMe, slots: prev.slots }
-        : status
-      return { byChat: { ...s.byChat, [chatId]: merged } }
-    }),
+  setStatus: (peerId, boosts) =>
+    set((s) => ({ byChat: { ...s.byChat, [peerId]: boosts } })),
+  applyStatus: (peerId, status) =>
+    set((s) => ({ byChat: { ...s.byChat, [peerId]: mergeBoosts(s.byChat[peerId], status) } })),
 }))

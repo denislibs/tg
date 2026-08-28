@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -53,51 +54,44 @@ func TestChatFlow_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create chat: %d %s", rec.Code, rec.Body.String())
 	}
-	var created struct {
-		ChatID int64 `json:"chat_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	created := createdPeerFrom(t, rec)
 
 	// A sends a message.
-	path := "/chats/" + itoa(created.ChatID) + "/messages"
+	path := "/chats/" + itoa(created) + "/messages"
 	rec = authedReq(t, h, http.MethodPost, path, tokenA, map[string]any{"text": "hello", "client_msg_id": "c1"})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("send: %d %s", rec.Code, rec.Body.String())
 	}
 
 	// History shows it.
-	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(created.ChatID)+"/history?limit=10", tokenA, nil)
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(created)+"/history?limit=10", tokenA, nil)
 	var hist struct {
 		Count    int `json:"count"`
 		Messages []struct {
-			Text string `json:"text"`
+			// Текст на проводе называется message — так он назван в схеме.
+			Message string `json:"message"`
 		} `json:"messages"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &hist)
-	if hist.Count != 1 || len(hist.Messages) != 1 || hist.Messages[0].Text != "hello" {
+	if hist.Count != 1 || len(hist.Messages) != 1 || hist.Messages[0].Message != "hello" {
 		t.Fatalf("history = %+v", hist)
 	}
 
-	// GET /chats includes the private-chat peer (B) so the UI can show a name.
-	rec = authedReq(t, h, http.MethodGet, "/chats", tokenA, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("list chats: %d %s", rec.Code, rec.Body.String())
+	// GET /chats отдаёт собеседника приватного чата вектором users контейнера —
+	// внутри строки диалога его больше нет (решение Р1): пир один на все ссылки,
+	// а не копия в каждой строке.
+	body := getChats(t, h, tokenA, "")
+	if len(body.Dialogs) != 1 || body.Dialogs[0].Peer.Underscore != "peerUser" {
+		t.Fatalf("expected one dialog addressed by peerUser, got %+v", body.Dialogs)
 	}
-	var dialogs struct {
-		Chats []struct {
-			ChatID int64 `json:"chat_id"`
-			Peer   *struct {
-				ID          int64  `json:"id"`
-				DisplayName string `json:"display_name"`
-			} `json:"peer"`
-		} `json:"chats"`
+	var peer map[string]any
+	for _, u := range body.Users {
+		if int64(u["id"].(float64)) == idB {
+			peer = u
+		}
 	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &dialogs)
-	if len(dialogs.Chats) != 1 || dialogs.Chats[0].Peer == nil {
-		t.Fatalf("expected one chat with a peer, got %s", rec.Body.String())
-	}
-	if dialogs.Chats[0].Peer.ID != idB {
-		t.Fatalf("peer id = %d; want %d", dialogs.Chats[0].Peer.ID, idB)
+	if peer == nil || peer["_"] != "user" {
+		t.Fatalf("собеседника %d нет в users: %v", idB, body.Users)
 	}
 }
 
@@ -122,13 +116,10 @@ func TestGetHistory_ThreadRoot_ForeignChat_NotLeaked(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create private chat: %d %s", rec.Code, rec.Body.String())
 	}
-	var xy struct {
-		ChatID int64 `json:"chat_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &xy)
+	xy := createdPeerFrom(t, rec)
 
 	const secretText = "совершенно секретный текст X и Y"
-	rec = authedReq(t, h, http.MethodPost, "/chats/"+itoa(xy.ChatID)+"/messages", tokenX, map[string]any{
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+itoa(xy)+"/messages", tokenX, map[string]any{
 		"text": secretText, "client_msg_id": "s1",
 	})
 	if rec.Code != http.StatusOK {
@@ -146,13 +137,10 @@ func TestGetHistory_ThreadRoot_ForeignChat_NotLeaked(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create group: %d %s", rec.Code, rec.Body.String())
 	}
-	var g struct {
-		ChatID int64 `json:"chat_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &g)
+	gPeerID := createdPeerID(t, rec)
 
 	// B запрашивает историю G с thread_root, указывающим на ЧУЖОЕ (X↔Y) сообщение.
-	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(g.ChatID)+"/history?thread_root="+itoa(secret.ID), tokenB, nil)
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(gPeerID)+"/history?thread_root="+itoa(secret.ID), tokenB, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("history: %d %s", rec.Code, rec.Body.String())
 	}
@@ -163,34 +151,64 @@ func TestGetHistory_ThreadRoot_ForeignChat_NotLeaked(t *testing.T) {
 		} `json:"messages"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &hist)
+	// Сверяем ТЕКСТ, а не число: адрес сообщения стал по-пирным, и один и тот
+	// же номер живёт в каждом чате — сравнение чисел из разных пиров больше
+	// ничего не значит. Утечка проявилась бы содержимым.
 	for _, m := range hist.Messages {
-		if m.ID == secret.ID || m.Text == secretText {
+		if m.Text == secretText {
 			t.Fatalf("секретное сообщение чужого чата утекло через thread_root: %s", rec.Body.String())
 		}
 	}
 }
 
-// getChats делает GET /chats(+query) с токеном и декодирует ответ в форму
-// {chats, count, is_end}; падает тестом, если код ответа не 200.
-func getChats(t *testing.T, h http.Handler, token, query string) struct {
-	Chats []struct {
-		ChatID int64 `json:"chat_id"`
-	} `json:"chats"`
-	Count int  `json:"count"`
-	IsEnd bool `json:"is_end"`
-} {
+// dialogsContainer — ответ /chats в форме контейнера схемы. Конструктор `_`
+// читается наравне с содержимым: именно он отвечает на вопрос «это всё?» —
+// messages.dialogs идёт БЕЗ count, messages.dialogsSlice — с ним.
+type dialogsContainer struct {
+	Underscore string `json:"_"`
+	Count      int    `json:"count"`
+	Dialogs    []struct {
+		Underscore string `json:"_"`
+		Peer       struct {
+			Underscore string `json:"_"`
+			UserID     int64  `json:"user_id"`
+			ChannelID  int64  `json:"channel_id"`
+		} `json:"peer"`
+		TopMessage     int64           `json:"top_message"`
+		FolderID       int             `json:"folder_id"`
+		UnreadCount    int             `json:"unread_count"`
+		NotifySettings map[string]any  `json:"notify_settings"`
+		PFlags         map[string]bool `json:"pFlags"`
+	} `json:"dialogs"`
+	Messages []map[string]any `json:"messages"`
+	Chats    []map[string]any `json:"chats"`
+	Users    []map[string]any `json:"users"`
+}
+
+// peerIDs — знаковые ключи пиров строк диалогов, в порядке выдачи. Ключ теперь
+// выводится из КОНСТРУКТОРА пира, а не едет плоским числом: peerUser — сам id,
+// peerChannel — он же со знаком минус (порт getPeerId).
+func (c dialogsContainer) peerIDs() []int64 {
+	out := make([]int64, 0, len(c.Dialogs))
+	for _, d := range c.Dialogs {
+		if d.Peer.Underscore == "peerUser" {
+			out = append(out, d.Peer.UserID)
+			continue
+		}
+		out = append(out, -d.Peer.ChannelID)
+	}
+	return out
+}
+
+// getChats делает GET /chats(+query) с токеном и декодирует контейнер;
+// падает тестом, если код ответа не 200.
+func getChats(t *testing.T, h http.Handler, token, query string) dialogsContainer {
 	t.Helper()
 	rec := authedReq(t, h, http.MethodGet, "/chats"+query, token, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET /chats%s: %d %s", query, rec.Code, rec.Body.String())
 	}
-	var out struct {
-		Chats []struct {
-			ChatID int64 `json:"chat_id"`
-		} `json:"chats"`
-		Count int  `json:"count"`
-		IsEnd bool `json:"is_end"`
-	}
+	var out dialogsContainer
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatalf("decode /chats%s: %v", query, err)
 	}
@@ -213,67 +231,54 @@ func TestListDialogs_Pagination_HTTP(t *testing.T) {
 		}
 	}
 
-	// 1) выдача без параметров: прежняя форма + count/is_end
+	// 1) выдача без параметров: список отдан ЦЕЛИКОМ, и это выражает сам
+	// конструктор — count у messages.dialogs нет вовсе (tweb: isEnd = !count).
 	full := getChats(t, h, tokenA, "")
-	if full.Count != 3 || !full.IsEnd {
-		t.Fatalf("count=%d is_end=%v", full.Count, full.IsEnd)
+	if full.Underscore != "messages.dialogs" || full.Count != 0 {
+		t.Fatalf("весь список обязан ехать messages.dialogs без count: _=%q count=%d",
+			full.Underscore, full.Count)
 	}
-	if len(full.Chats) != 3 {
-		t.Fatalf("want 3 chats, got %d", len(full.Chats))
+	if len(full.Dialogs) != 3 {
+		t.Fatalf("want 3 dialogs, got %d", len(full.Dialogs))
 	}
 
 	// 2) проход курсором по одному
 	var walked []int64
 	var cursor int64
-	// Ограничитель итераций: без него регрессия курсора (напр. offset_chat_id
+	// Ограничитель итераций: без него регрессия курсора (напр. offset_peer_id
 	// игнорируется) не роняет тест, а вешает его — в CI это таймаут всего
 	// прогона вместо внятной ошибки.
-	maxIter := full.Count + 2
+	maxIter := len(full.Dialogs) + 2
 	for iter := 0; ; iter++ {
 		if iter >= maxIter {
 			t.Fatalf("курсор не сходится за %d шагов, собрано: %v", maxIter, walked)
 		}
-		p := getChats(t, h, tokenA, fmt.Sprintf("?limit=1&offset_chat_id=%d", cursor))
-		if p.Count != 3 {
-			t.Fatalf("count на странице=%d", p.Count)
+		p := getChats(t, h, tokenA, fmt.Sprintf("?limit=1&offset_peer_id=%d", cursor))
+		// Кусок обязан нести размер набора: без него клиент решит, что видел
+		// весь список, и догрузка остановится на первой же странице.
+		if p.Underscore != "messages.dialogsSlice" || p.Count != 3 {
+			t.Fatalf("страница = %q count=%d; want messages.dialogsSlice 3", p.Underscore, p.Count)
 		}
-		if len(p.Chats) > 1 {
-			t.Fatalf("limit=1 нарушен: %d", len(p.Chats))
+		if len(p.Dialogs) > 1 {
+			t.Fatalf("limit=1 нарушен: %d", len(p.Dialogs))
 		}
-		for _, c := range p.Chats {
-			walked = append(walked, c.ChatID)
-		}
-		if p.IsEnd {
+		walked = append(walked, p.peerIDs()...)
+		// Конец выводит клиент — по размеру набора, как оригинал.
+		if len(walked) >= p.Count || len(p.Dialogs) == 0 {
 			break
 		}
 		cursor = walked[len(walked)-1]
 	}
 
 	// 3) совпадает с полной выдачей — порядок и состав
-	if len(walked) != len(full.Chats) {
-		t.Fatalf("прошли %v, полная выдача %v", walked, full.Chats)
+	want := full.peerIDs()
+	if len(walked) != len(want) {
+		t.Fatalf("прошли %v, полная выдача %v", walked, want)
 	}
 	for i := range walked {
-		if walked[i] != full.Chats[i].ChatID {
-			t.Fatalf("порядок разошёлся: %v vs %v", walked, full.Chats)
+		if walked[i] != want[i] {
+			t.Fatalf("порядок разошёлся: %v vs %v", walked, want)
 		}
-	}
-}
-
-// doGet делает GET /chats(+query) с токеном и декодирует ответ через body.
-func doGet(t *testing.T, h http.Handler, token, query string) *httptest.ResponseRecorder {
-	t.Helper()
-	rec := authedReq(t, h, http.MethodGet, query, token, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("GET %s: %d %s", query, rec.Code, rec.Body.String())
-	}
-	return rec
-}
-
-func decode(t *testing.T, rr *httptest.ResponseRecorder, out any) {
-	t.Helper()
-	if err := json.Unmarshal(rr.Body.Bytes(), out); err != nil {
-		t.Fatalf("decode %s: %v", rr.Body.String(), err)
 	}
 }
 
@@ -292,11 +297,8 @@ func TestListDialogsFolderID(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("create chat: %d %s", rec.Code, rec.Body.String())
 		}
-		var created struct {
-			ChatID int64 `json:"chat_id"`
-		}
-		_ = json.Unmarshal(rec.Body.Bytes(), &created)
-		chatIDs = append(chatIDs, created.ChatID)
+		created := createdPeerFrom(t, rec)
+		chatIDs = append(chatIDs, created)
 	}
 
 	// Архивируем третий чат — фикстура: 2 обычных + 1 архивный.
@@ -305,44 +307,36 @@ func TestListDialogsFolderID(t *testing.T) {
 		t.Fatalf("archive: %d %s", rec.Code, rec.Body.String())
 	}
 
-	t.Run("folder_id=1 — только архив и его count", func(t *testing.T) {
-		rr := doGet(t, h, tokenA, "/chats?folder_id=1")
-		var body struct {
-			Chats []map[string]any `json:"chats"`
-			Count int              `json:"count"`
-			IsEnd bool             `json:"is_end"`
+	t.Run("folder_id=1 — только архив", func(t *testing.T) {
+		body := getChats(t, h, tokenA, "?folder_id=1")
+		if len(body.Dialogs) != 1 {
+			t.Fatalf("dialogs=%d, want 1", len(body.Dialogs))
 		}
-		decode(t, rr, &body)
-		if len(body.Chats) != 1 || body.Count != 1 || !body.IsEnd {
-			t.Fatalf("chats=%d count=%d isEnd=%v, want 1 1 true", len(body.Chats), body.Count, body.IsEnd)
-		}
-		if body.Chats[0]["archived"] != true {
-			t.Fatalf("отдан не архивный диалог: %v", body.Chats[0])
+		// Архив на проводе — folder_id=1, а не булево `archived`; общий список
+		// ключа не несёт вовсе (у оригинала folder_id это flags.4?int).
+		if body.Dialogs[0].FolderID != 1 {
+			t.Fatalf("отдан не архивный диалог: folder_id=%d", body.Dialogs[0].FolderID)
 		}
 	})
 
-	t.Run("folder_id=0 — всё, кроме архива", func(t *testing.T) {
-		rr := doGet(t, h, tokenA, "/chats?folder_id=0")
-		var body struct {
-			Chats []map[string]any `json:"chats"`
-			Count int              `json:"count"`
+	t.Run("folder_id=0 — всё, кроме архива, и без ключа folder_id", func(t *testing.T) {
+		body := getChats(t, h, tokenA, "?folder_id=0")
+		if len(body.Dialogs) != 2 {
+			t.Fatalf("dialogs=%d, want 2", len(body.Dialogs))
 		}
-		decode(t, rr, &body)
-		if len(body.Chats) != 2 || body.Count != 2 {
-			t.Fatalf("chats=%d count=%d, want 2 2", len(body.Chats), body.Count)
+		for _, d := range body.Dialogs {
+			if d.FolderID != 0 {
+				t.Fatalf("общий список отдал folder_id=%d", d.FolderID)
+			}
 		}
 	})
 
 	// Отсутствие параметра — прежний контракт: весь набор. Мутация «по
 	// умолчанию FolderAll» краснит здесь.
-	t.Run("без folder_id — весь набор", func(t *testing.T) {
-		rr := doGet(t, h, tokenA, "/chats")
-		var body struct {
-			Count int `json:"count"`
-		}
-		decode(t, rr, &body)
-		if body.Count != 3 {
-			t.Fatalf("count=%d, want 3", body.Count)
+	t.Run("без folder_id — весь набор, архив вместе с остальными", func(t *testing.T) {
+		body := getChats(t, h, tokenA, "")
+		if len(body.Dialogs) != 3 {
+			t.Fatalf("dialogs=%d, want 3", len(body.Dialogs))
 		}
 	})
 }
@@ -353,11 +347,8 @@ func TestSync_HTTP(t *testing.T) {
 	tokenB, idB := signUp(t, h, pool, "+79990000004")
 
 	rec := authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": idB})
-	var created struct {
-		ChatID int64 `json:"chat_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	_ = authedReq(t, h, http.MethodPost, "/chats/"+itoa(created.ChatID)+"/messages", tokenA, map[string]any{"text": "hi"})
+	created := createdPeerFrom(t, rec)
+	_ = authedReq(t, h, http.MethodPost, "/chats/"+itoa(created)+"/messages", tokenA, map[string]any{"text": "hi"})
 
 	// B syncs from pts=0 and sees one new_message.
 	rec = authedReq(t, h, http.MethodGet, "/sync?pts=0", tokenB, nil)
@@ -385,11 +376,8 @@ func TestReactions_HTTP(t *testing.T) {
 	_, idB := signUp(t, h, pool, "+79990000021")
 
 	rec := authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": idB})
-	var created struct {
-		ChatID int64 `json:"chat_id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	cid := itoa(created.ChatID)
+	created := createdPeerFrom(t, rec)
+	cid := itoa(created)
 
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/messages", tokenA, map[string]any{"text": "hi"})
 	var msg struct {
@@ -406,15 +394,27 @@ func TestReactions_HTTP(t *testing.T) {
 
 	// List shows 🔥:1.
 	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/messages/"+mid+"/reactions", tokenA, nil)
+	// Агрегат — конструктор messageReactions, тот же, что едет ВНУТРИ самого
+	// сообщения: чип это `reactionCount` с объединением `Reaction` внутри.
 	var listed struct {
-		Reactions []struct {
-			Emoji string `json:"emoji"`
-			Count int    `json:"count"`
-		} `json:"reactions"`
+		Underscore string          `json:"_"`
+		PFlags     map[string]bool `json:"pFlags"`
+		Results    []struct {
+			Reaction struct {
+				Emoticon string `json:"emoticon"`
+			} `json:"reaction"`
+			Count int `json:"count"`
+		} `json:"results"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &listed)
-	if len(listed.Reactions) != 1 || listed.Reactions[0].Emoji != "🔥" || listed.Reactions[0].Count != 1 {
-		t.Fatalf("reactions = %+v", listed.Reactions)
+	if listed.Underscore != "messageReactions" || len(listed.Results) != 1 ||
+		listed.Results[0].Reaction.Emoticon != "🔥" || listed.Results[0].Count != 1 {
+		t.Fatalf("reactions = %s", rec.Body.String())
+	}
+	// Личка: право на список реагировавших сервер не утверждает — на этот
+	// вопрос отвечает клиент по ключу пира (tweb components/chat/reactions.ts:306).
+	if listed.PFlags["can_see_list"] {
+		t.Fatalf("в личке утверждено can_see_list: %s", rec.Body.String())
 	}
 
 	// Remove it (emoji is URL-escaped by the client).
@@ -423,36 +423,368 @@ func TestReactions_HTTP(t *testing.T) {
 		t.Fatalf("remove reaction: %d %s", rec.Code, rec.Body.String())
 	}
 	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/messages/"+mid+"/reactions", tokenA, nil)
+	listed.Results = nil
 	_ = json.Unmarshal(rec.Body.Bytes(), &listed)
-	if len(listed.Reactions) != 0 {
-		t.Fatalf("expected no reactions after remove, got %+v", listed.Reactions)
+	if len(listed.Results) != 0 {
+		t.Fatalf("expected no reactions after remove, got %s", rec.Body.String())
 	}
 }
 
-// Контракт медиа-меты в JSON сообщения: теги трека едут как media_title /
-// media_performer и отсутствуют у файла без тегов (клиент тогда подписывает бабл
-// размером файла — tweb audio.ts).
-func TestMessageJSON_AudioTags(t *testing.T) {
-	j := messageJSON(domain.Message{
-		ID: 1, ChatID: 2, Type: "audio",
-		MediaDuration: 139, MediaSize: 3300000, MediaName: "track.mp3",
-		MediaTitle: "Track One", MediaPerformer: "denis1488",
-	})
-	if j["media_title"] != "Track One" {
-		t.Fatalf("media_title = %v", j["media_title"])
+// Та же ручка в ГРУППЕ утверждает право на список реагировавших: это и есть
+// messageReactions.pFlags.can_see_list — «можно вызвать
+// messages.getMessageReactionsList». Без флага клиент показывает в группе
+// ЧИСЛО вместо аватарок реагировавших, сколько бы реакций ни было (задача #89,
+// первый терм условия tweb components/chat/reactions.ts:304-307).
+func TestReactions_HTTP_CanSeeListInGroup(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990000024")
+
+	rec := authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{"title": "Team"})
+	gid := itoa(createdPeerID(t, rec))
+
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+gid+"/messages", tokenA, map[string]any{"text": "hi"})
+	var msg struct {
+		ID int64 `json:"id"`
 	}
-	if j["media_performer"] != "denis1488" {
-		t.Fatalf("media_performer = %v", j["media_performer"])
-	}
-	if j["media_duration"] != 139 {
-		t.Fatalf("media_duration = %v", j["media_duration"])
+	_ = json.Unmarshal(rec.Body.Bytes(), &msg)
+	mid := itoa(msg.ID)
+
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+gid+"/messages/"+mid+"/reactions", tokenA, map[string]string{"emoji": "🔥"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("add reaction: %d %s", rec.Code, rec.Body.String())
 	}
 
-	bare := messageJSON(domain.Message{ID: 1, ChatID: 2, Type: "audio", MediaSize: 3300000})
-	if _, ok := bare["media_title"]; ok {
-		t.Fatalf("media_title must be absent without tags: %v", bare["media_title"])
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+gid+"/messages/"+mid+"/reactions", tokenA, nil)
+	var listed struct {
+		PFlags map[string]bool `json:"pFlags"`
 	}
-	if _, ok := bare["media_performer"]; ok {
-		t.Fatalf("media_performer must be absent without tags: %v", bare["media_performer"])
+	_ = json.Unmarshal(rec.Body.Bytes(), &listed)
+	if !listed.PFlags["can_see_list"] {
+		t.Fatalf("в группе не утверждено can_see_list: %s", rec.Body.String())
 	}
+}
+
+// Ручка «кто отреагировал» и есть то, что право can_see_list обязано
+// ОГРАНИЧИВАТЬ, а не только объявлять. До задачи #93 её гейт проверял лишь
+// членство: подписчик вещательного канала, где реакции анонимны и флаг не
+// стоит, получал поимённый список одним GET.
+func TestReactionUsers_HTTP_ForbiddenInBroadcast(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990000025")
+
+	// Группа — список есть.
+	rec := authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{"title": "Team"})
+	gid := itoa(createdPeerID(t, rec))
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+gid+"/messages", tokenA, map[string]any{"text": "hi"})
+	var gmsg struct {
+		ID int64 `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &gmsg)
+	gmid := itoa(gmsg.ID)
+	if rec = authedReq(t, h, http.MethodPost, "/chats/"+gid+"/messages/"+gmid+"/reactions", tokenA, map[string]string{"emoji": "🔥"}); rec.Code != http.StatusOK {
+		t.Fatalf("реакция в группе: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+gid+"/messages/"+gmid+"/reactions/users", tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("список реагировавших в группе: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// Вещательный канал — того же списка не существует.
+	rec = authedReq(t, h, http.MethodPost, "/channels", tokenA, map[string]any{
+		"title": "News", "username": "news93", "is_public": true,
+	})
+	cid := itoa(createdPeerID(t, rec))
+	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{"text": "post"})
+	var post struct {
+		ID int64 `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &post)
+	cmid := itoa(post.ID)
+	if rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/messages/"+cmid+"/reactions", tokenA, map[string]string{"emoji": "🔥"}); rec.Code != http.StatusOK {
+		t.Fatalf("реакция в канале: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/messages/"+cmid+"/reactions/users", tokenA, nil)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("список реагировавших в канале = %d %s; ждали 403", rec.Code, rec.Body.String())
+	}
+
+	// Тот же список, урезанный до трёх, — вектор recent_reactions внутри
+	// сообщения. В группе он едет (из него чип рисует аватарки), в канале его
+	// быть не должно: иначе право снова осталось бы разметкой, а поимённый
+	// список — на проводе.
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+gid+"/history?limit=10", tokenA, nil)
+	if !strings.Contains(rec.Body.String(), "recent_reactions") {
+		t.Fatalf("в истории группы нет recent_reactions: %s", rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/history?limit=10", tokenA, nil)
+	if !strings.Contains(rec.Body.String(), "reactionEmoji") {
+		t.Fatalf("в истории канала нет самой реакции — проверять нечего: %s", rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "recent_reactions") {
+		t.Fatalf("в истории канала уехал recent_reactions: %s", rec.Body.String())
+	}
+}
+
+// msgWithMedia — сообщение с вложением, собранным ровно тем же путём, каким его
+// собирает read-модель истории (hydrateMedia → domain.BuildMessageMedia).
+func msgWithMedia(kind string, s domain.MediaSource) domain.Message {
+	s.Kind = kind
+	mid := int64(77)
+	s.MediaID = mid
+	return domain.Message{ID: 1, ChatID: 2, Type: kind, MediaID: &mid,
+		MediaSpoiler: s.Spoiler, Media: domain.BuildMessageMedia(s)}
+}
+
+// mediaOf достаёт вложение из витрины истории — именно как объект модели
+// оригинала, а не как набор плоских ключей.
+func mediaOf(t *testing.T, m domain.Message) domain.MessageMedia {
+	t.Helper()
+	wire, ok := m.ToWire(domain.MessageContext{Peer: domain.NewPeer(domain.ToPeerID(m.ChatID, true))}).(domain.MessageReal)
+	if !ok {
+		t.Fatalf("витрина отдала не message: %#v", wire)
+	}
+	if wire.Media == nil {
+		t.Fatal("media отсутствует в витрине")
+	}
+	return wire.Media
+}
+
+// wireKeys — ключи витрины одного сообщения, как они реально уезжают.
+func wireKeys(t *testing.T, m domain.Message) map[string]any {
+	t.Helper()
+	raw, err := json.Marshal(m.ToWire(domain.MessageContext{Peer: domain.NewPeer(domain.ToPeerID(m.ChatID, true))}))
+	if err != nil {
+		t.Fatalf("сериализация витрины: %v", err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("разбор витрины: %v", err)
+	}
+	return out
+}
+
+// Контракт витрины истории: медиа едет ОДНИМ вложенным объектом в форме
+// оригинала (messageMediaPhoto/messageMediaDocument), а тип документа выводится
+// из атрибутов — плоских ключей media_* и подделанных флагов в витрине больше
+// нет. По одному случаю на каждый тип медиа.
+func TestMessageJSON_MediaShape(t *testing.T) {
+	t.Run("photo — лестница размеров, без mime и имени файла", func(t *testing.T) {
+		md := mediaOf(t, msgWithMedia("photo", domain.MediaSource{
+			Width: 1600, Height: 1200, Mime: "image/jpeg", Size: 900000,
+			Blur: []byte{1, 2, 3}, HasThumb: true, FileName: "pic.jpg",
+		}))
+		photo, ok := md.(*domain.MessageMediaPhoto)
+		if !ok || photo.Photo == nil {
+			t.Fatalf("photo → %#v", md)
+		}
+		if photo.Photo.ID != 77 {
+			t.Fatalf("photo.id = %d, want 77", photo.Photo.ID)
+		}
+		// i (stripped) → y (серверное превью, вписано в 1280) → w (оригинал).
+		var got []string
+		for _, sz := range photo.Photo.Sizes {
+			switch v := sz.(type) {
+			case domain.PhotoSizeReal:
+				got = append(got, v.Underscore+"/"+v.Type)
+			case domain.PhotoStrippedSize:
+				got = append(got, v.Underscore+"/"+v.Type)
+			case domain.PhotoPathSize:
+				got = append(got, v.Underscore+"/"+v.Type)
+			}
+		}
+		want := []string{"photoStrippedSize/i", "photoSize/y", "photoSize/w"}
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Fatalf("лестница = %v, want %v", got, want)
+		}
+		if v := photo.Photo.Sizes[1].(domain.PhotoSizeReal); v.W != 1280 || v.H != 960 {
+			t.Fatalf("ступень 'y' = %dx%d, want 1280x960", v.W, v.H)
+		}
+		if v := photo.Photo.Sizes[2].(domain.PhotoSizeReal); v.W != 1600 || v.H != 1200 || v.Size != 900000 {
+			t.Fatalf("ступень 'w' = %dx%d/%d", v.W, v.H, v.Size)
+		}
+	})
+
+	t.Run("audio — теги трека в documentAttributeAudio, имя файла отдельным атрибутом", func(t *testing.T) {
+		md := mediaOf(t, msgWithMedia("audio", domain.MediaSource{
+			Duration: 139, Size: 3300000, FileName: "track.mp3",
+			Title: "Track One", Performer: "denis1488", Mime: "audio/mpeg",
+		}))
+		doc, ok := md.(*domain.MessageMediaDocument)
+		if !ok || doc.Document == nil {
+			t.Fatalf("audio → %#v", md)
+		}
+		a, ok := domain.MediaAudioAttr(md)
+		if !ok || a.Title != "Track One" || a.Performer != "denis1488" || a.Duration != 139 {
+			t.Fatalf("documentAttributeAudio = %#v", a)
+		}
+		if a.PFlags["voice"] {
+			t.Fatalf("музыка не должна быть voice: %#v", a.PFlags)
+		}
+		if domain.MediaFileName(md) != "track.mp3" {
+			t.Fatalf("documentAttributeFilename = %q", domain.MediaFileName(md))
+		}
+		if doc.Document.Size != 3300000 || doc.Document.MimeType != "audio/mpeg" {
+			t.Fatalf("document = %#v", doc.Document)
+		}
+		// Файл без тегов: атрибут есть (длительность нужна), тегов в нём нет —
+		// клиент подписывает бабл размером файла (tweb audio.ts).
+		bare := mediaOf(t, msgWithMedia("audio", domain.MediaSource{Duration: 10, Size: 3300000}))
+		if a, ok := domain.MediaAudioAttr(bare); !ok || a.Title != "" || a.Performer != "" {
+			t.Fatalf("теги без тегов: %#v", a)
+		}
+	})
+
+	t.Run("voice — pFlags.voice и волна в атрибуте, а не отдельным ключом", func(t *testing.T) {
+		peaks := []byte{0x1f, 0x00, 0x2a, 0xff, 0x07}
+		md := mediaOf(t, msgWithMedia("voice", domain.MediaSource{
+			Duration: 7, Size: 4200, FileName: "voice.ogg", Waveform: peaks, Mime: "audio/ogg",
+		}))
+		a, ok := domain.MediaAudioAttr(md)
+		if !ok || !a.PFlags["voice"] || string(a.Waveform) != string(peaks) {
+			t.Fatalf("documentAttributeAudio = %#v", a)
+		}
+		// Не голосовое — волны нет вовсе, клиент считает её из файла.
+		photo := mediaOf(t, msgWithMedia("photo", domain.MediaSource{Width: 100, Height: 100}))
+		if domain.MediaHasAttribute(photo, domain.AttrAudio) {
+			t.Fatalf("у фото не должно быть аудио-атрибута")
+		}
+	})
+
+	t.Run("video — documentAttributeVideo с кадром и длительностью", func(t *testing.T) {
+		md := mediaOf(t, msgWithMedia("video", domain.MediaSource{
+			Width: 1280, Height: 720, Mime: "video/mp4", Duration: 61, Size: 9e6, HasThumb: true,
+		}))
+		a, ok := domain.MediaVideoAttr(md)
+		if !ok || a.W != 1280 || a.H != 720 || a.Duration != 61 {
+			t.Fatalf("documentAttributeVideo = %#v", a)
+		}
+		if a.PFlags["round_message"] {
+			t.Fatalf("обычное видео не кружок")
+		}
+		if domain.MediaHasAttribute(md, domain.AttrAnimated) {
+			t.Fatalf("обычное видео не гифка — атрибута animated быть не должно")
+		}
+		// thumbs документа — только превью, без ступени оригинала: сам файл
+		// адресуется id документа, а кадр описан атрибутом.
+		for _, sz := range md.(*domain.MessageMediaDocument).Document.Thumbs {
+			if v, ok := sz.(domain.PhotoSizeReal); ok && v.Type == domain.SizeTypeFull {
+				t.Fatalf("в thumbs документа не должно быть ступени оригинала: %#v", v)
+			}
+		}
+	})
+
+	t.Run("gif — documentAttributeAnimated (из него оригинал выводит doc.type gif)", func(t *testing.T) {
+		md := mediaOf(t, msgWithMedia("gif", domain.MediaSource{
+			Width: 320, Height: 240, Mime: "video/mp4", Duration: 3, Size: 400000,
+			FileName: "cat.mp4", Animated: true,
+		}))
+		if !domain.MediaHasAttribute(md, domain.AttrAnimated) {
+			t.Fatalf("гифка без documentAttributeAnimated: %#v", md)
+		}
+		if a, ok := domain.MediaVideoAttr(md); !ok || a.Duration != 3 {
+			t.Fatalf("documentAttributeVideo = %#v", a)
+		}
+	})
+
+	t.Run("round — pFlags.round_message", func(t *testing.T) {
+		md := mediaOf(t, msgWithMedia("round", domain.MediaSource{
+			Width: 384, Height: 384, Mime: "video/mp4", Duration: 9,
+		}))
+		if a, ok := domain.MediaVideoAttr(md); !ok || !a.PFlags["round_message"] {
+			t.Fatalf("кружок = %#v", md)
+		}
+	})
+
+	t.Run("sticker — векторный контур доезжает до сообщения ступенью photoPathSize", func(t *testing.T) {
+		outline := []byte{'M', '0', '0'}
+		md := mediaOf(t, msgWithMedia("sticker", domain.MediaSource{
+			Width: 512, Height: 512, Mime: "image/webp", Size: 30000, PathThumb: outline,
+		}))
+		if !domain.MediaHasAttribute(md, domain.AttrSticker) {
+			t.Fatalf("стикер без documentAttributeSticker: %#v", md)
+		}
+		if string(domain.MediaPathThumb(md)) != string(outline) {
+			t.Fatalf("контур не доехал: %#v", md)
+		}
+		// У не-стикера контура нет.
+		plain := mediaOf(t, msgWithMedia("photo", domain.MediaSource{Width: 10, Height: 10}))
+		if domain.MediaPathThumb(plain) != nil {
+			t.Fatalf("контур у обычного фото: %#v", plain)
+		}
+	})
+
+	t.Run("file — imageSize только у картинки, имя файла всегда", func(t *testing.T) {
+		md := mediaOf(t, msgWithMedia("document", domain.MediaSource{
+			Mime: "application/pdf", Size: 1024, FileName: "doc.pdf",
+		}))
+		if domain.MediaHasAttribute(md, domain.AttrImageSize) {
+			t.Fatalf("у pdf нет кадра — imageSize быть не должно")
+		}
+		if domain.MediaFileName(md) != "doc.pdf" {
+			t.Fatalf("documentAttributeFilename = %q", domain.MediaFileName(md))
+		}
+	})
+
+	t.Run("спойлер — в media.pFlags, не отдельным ключом витрины", func(t *testing.T) {
+		hidden := mediaOf(t, msgWithMedia("photo", domain.MediaSource{
+			Width: 1280, Height: 960, Mime: "image/jpeg", Spoiler: true,
+		}))
+		if !hidden.(*domain.MessageMediaPhoto).PFlags["spoiler"] {
+			t.Fatalf("spoiler = %#v", hidden)
+		}
+		plain := mediaOf(t, msgWithMedia("photo", domain.MediaSource{Width: 1280, Height: 960}))
+		if plain.(*domain.MessageMediaPhoto).PFlags["spoiler"] {
+			t.Fatalf("у обычного медиа заслонки быть не должно: %#v", plain)
+		}
+	})
+}
+
+// Шаг expand/contract завершён: плоских медиа-ключей в витрине больше нет
+// вообще, вся мета едет ВНУТРИ `media`. Тест держит именно отсутствие — иначе
+// плоский ключ легко вернётся «на минутку» под конкретного потребителя, а
+// вместе с ним вернётся и второй источник истины, из-за которого расходились
+// бокс, тип документа и превью.
+func TestMessageJSON_NoFlatMediaKeys(t *testing.T) {
+	msg := msgWithMedia("video", domain.MediaSource{
+		Width: 1280, Height: 720, Mime: "video/mp4", Duration: 61, Size: 9e6,
+		FileName: "clip.mp4", Blur: []byte{1, 2, 3}, HasThumb: true, Spoiler: true,
+	})
+	j := wireKeys(t, msg)
+
+	if _, ok := j["media"]; !ok {
+		t.Fatal("вложение в витрине отсутствует")
+	}
+	for _, k := range []string{"media_w", "media_h", "media_mime", "media_blur",
+		"media_has_thumb", "media_duration", "media_size", "media_name", "media_waveform",
+		"media_title", "media_performer", "media_animated", "media_spoiler"} {
+		if v, ok := j[k]; ok {
+			t.Fatalf("плоский ключ %q вернулся в витрину: %v", k, v)
+		}
+	}
+
+	// Медиа нет — нет и самого ключа `media`.
+	bare := wireKeys(t, domain.Message{ID: 1, ChatID: 2, Type: "text"})
+	if _, ok := bare["media"]; ok {
+		t.Fatalf("ключ media у сообщения без медиа: %v", bare["media"])
+	}
+}
+
+// createdPeerFrom — ключ пира из ответа `POST /chats`.
+//
+// Ответ этих ручек — КОНСТРУКТОР ключа (`peerUser`/`peerChannel`), а не число
+// под именем поля: адрес у оригинала это `Peer`, и обёртки вокруг него нет.
+func createdPeerFrom(t *testing.T, rec *httptest.ResponseRecorder) int64 {
+	t.Helper()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("создание чата: %d %s", rec.Code, rec.Body.String())
+	}
+	p, err := domain.UnmarshalPeer(rec.Body.Bytes())
+	if err != nil {
+		t.Fatalf("ключ пира не разбирается: %v (%s)", err, rec.Body.String())
+	}
+	id := p.PeerID()
+	if id == 0 {
+		t.Fatalf("ключ пира пуст: %s", rec.Body.String())
+	}
+	return int64(id)
 }

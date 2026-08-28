@@ -20,6 +20,7 @@ import StickersSearchTab from './StickersSearchTab'
 import { ManagersProvider } from '../../core/hooks/useManagers'
 import type { Managers } from '../../client/bootstrap'
 import type { Sticker } from '../../core/managers/stickersManager'
+import { makeSticker as makeStickerDoc, makeStickerSet } from '../../core/stickers/testSticker'
 
 const noop = () => {}
 
@@ -52,17 +53,15 @@ let runSeq = 0
 // mediaId МОДУЛЬНЫМ кэшем (не сбрасывается между тестами этого файла), и
 // пересекающиеся id между тестами тихо возвращали бы уже закэшированный с
 // прошлого теста промис МИМО очереди — тест перестал бы вообще что-то мерить.
-const makeSticker = (runId: number, setN: number, i: number): Sticker => ({
-  id: setN * 100 + i, setId: setN, mediaId: runId * 1_000_000 + setN * 1000 + i, emoji: '🦆',
-  width: 512, height: 512, mime: 'image/webp', thumb: '',
-})
+const makeSticker = (runId: number, setN: number, i: number): Sticker =>
+  makeStickerDoc({ id: runId * 1_000_000 + setN * 1000 + i, setId: setN, emoji: '🦆' })
 
 /** setCount наборов по perSet превью каждый; covers приезжают сразу для ВСЕХ
  * (в одном пакете с выдачей — Task 2), независимо от видимости строки. */
 function makeManagers(setCount: number, perSet: number) {
   const runId = ++runSeq
   const prefix = `lset_r${runId}_`
-  const makeSet = (n: number) => ({ id: n, slug: `${prefix}${n}`, title: `Set ${n}`, kind: 'sticker' as const, count: perSet })
+  const makeSet = (n: number) => makeStickerSet({ id: n, shortName: `${prefix}${n}`, title: `Set ${n}`, count: perSet })
   const sets = Array.from({ length: setCount }, (_, i) => makeSet(i + 1))
   const covers = new Map(sets.map((s) => [s.id, Array.from({ length: perSet }, (_, i) => makeSticker(runId, s.id, i))]))
   const fns = {

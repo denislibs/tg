@@ -5,7 +5,8 @@
 // наблюдаются ОДНИМ IntersectionObserver'ом вместо своего IO на каждый элемент.
 // Он решает за них play/pause по четырём причинам:
 //   • элемент уехал из вьюпорта (основной случай — лента чата, пикер);
-//   • вкладка ушла в фон (`visibilitychange`);
+//   • окно простаивает — blur или «ещё не тронули после загрузки»
+//     (`helpers/idleController`, tweb `idleController`);
 //   • идёт тяжёлая анимация (см. `core/dom/heavyAnimation.ts`);
 //   • группа заблокирована (`onlyOnePlayableGroup` — поверх открыт вьюер
 //     стикера/попап, играет только он).
@@ -13,9 +14,11 @@
 // Отличия от tweb (всё остальное — 1:1):
 //   • нет `getAppWindow`/`onAppWindowChange` (Document PiP, куда tweb переносит
 //     весь DOM и пересоздаёт наблюдателя) — у нас такого механизма нет;
-//   • `idleController` (blur/focus/mousemove окна) заменён на `visibilitychange`:
-//     из его API здесь нужен ровно признак «вкладку не видно», а `overrideIdleGroups`
-//     некому звать — выкинут;
+//   • нет `overrideIdleGroups`/`setOverrideIdleGroup`: единственный, кто зовёт
+//     их в оригинале, — меню реакций (`chat/reactionsMenu.ts`), которого у нас
+//     нет. Множество всегда было бы пустым, а терм `|| overrideIdleGroups.has(
+//     player.group)` — тождественно ложным; заведётся меню — вернуть вместе
+//     с ним;
 //   • сам наблюдатель создаётся ЛЕНИВО, на первой регистрации: в jsdom/happy-dom
 //     `IntersectionObserver` появляется только после стаба в тесте, а модуль —
 //     синглтон и импортируется раньше;
@@ -29,6 +32,7 @@ import indexOfAndSplice from '@helpers/array/indexOfAndSplice';
 import {fastRaf} from '@helpers/schedulers';
 import {useSettingsStore} from '@/settings';
 import {onHeavyAnimation} from '@core/dom/heavyAnimation';
+import idleController from '@helpers/idleController';
 import isInDOM from '@helpers/dom/isInDOM';
 
 export type AnimationItemGroup = '' | 'none' | 'chat' | 'lock' |
@@ -93,7 +97,8 @@ export class AnimationIntersector {
   private onlyOnePlayableGroup: AnimationItemGroup;
 
   private intersectionLockedGroups: {[group in AnimationItemGroup]?: true};
-  private idle: boolean;
+  /** tweb :59 — пока играет кружок, все видео-анимации стоят (см. toggleMediaPause). */
+  private videosLocked: boolean;
 
   constructor() {
     this.onObserve = (entries) => {
@@ -136,16 +141,12 @@ export class AnimationIntersector {
     this.onlyOnePlayableGroup = '';
 
     this.intersectionLockedGroups = {};
-    this.idle = false;
+    this.videosLocked = false;
 
-    // tweb глушит анимации, пока вкладка не видна (там это idleController по
-    // blur/focus окна, см. шапку файла).
-    if(typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', () => {
-        this.idle = document.hidden;
-        this.checkAnimations2(this.idle);
-      });
-    }
+    // tweb :137-139 — пока окно простаивает, анимации стоят.
+    idleController.addEventListener('change', (idle) => {
+      this.checkAnimations2(idle);
+    });
 
     // tweb appImManager.ts:336-342 — на время тяжёлой анимации играет только
     // группа 'lock' (её ни у кого нет, то есть не играет ничто).
@@ -164,6 +165,53 @@ export class AnimationIntersector {
     }
 
     return this.observer = new IntersectionObserver(this.onObserve);
+  }
+
+  /**
+   * tweb :148-158. Зовёт контроллер воспроизведения: `paused === false` значит
+   * «поехал кружок» — на это время ВСЕ зарегистрированные видео (видео-стикеры,
+   * гифки в ленте) встают, чтобы рядом с кружком ничего не дёргалось; `true`
+   * (кружок встал) снимает запрет. Инверсия имени — из оригинала: аргумент
+   * описывает состояние ПЛЕЕРА, а не видео-анимаций.
+   */
+  public toggleMediaPause(paused: boolean) {
+    if(paused) {
+      if(this.videosLocked) {
+        this.videosLocked = false;
+        this.checkAnimations2();
+      }
+    } else {
+      this.videosLocked = true;
+      this.checkAnimations2();
+    }
+  }
+
+  /**
+   * tweb :160-184. Остановить (или вернуть) КАЖДОЕ зарегистрированное видео,
+   * чей наблюдаемый узел лежит внутри `element`, и залочить его, чтобы
+   * наблюдатель не отыграл состояние обратно. Правая колонка прячется
+   * ТРАНСФОРМОМ — узел остаётся смонтированным, а IntersectionObserver
+   * перечитывает пересечение только при самом наблюдении, а не при трансформе
+   * предка, — поэтому «уехало за вьюпорт» здесь не срабатывает и видео
+   * продолжает крутиться в закрытой панели.
+   */
+  public toggleVideosUnder(element: HTMLElement | null | undefined, paused: boolean) {
+    if(!element) {
+      return;
+    }
+
+    this.byPlayer.forEach((item) => {
+      if(item.type !== 'video' || !element.contains(item.el)) {
+        return;
+      }
+
+      this.toggleItemLock(item, paused);
+      if(paused) {
+        item.animation.pause();
+      } else {
+        this.checkAnimation(item);
+      }
+    });
   }
 
   public getAnimations(element: HTMLElement) {
@@ -312,7 +360,9 @@ export class AnimationIntersector {
 
     if(
       blurred ||
-      (this.onlyOnePlayableGroup && this.onlyOnePlayableGroup !== group)
+      (this.onlyOnePlayableGroup && this.onlyOnePlayableGroup !== group) ||
+      // tweb :342 — третий терм: пока играет кружок, видео не крутятся
+      (player.type === 'video' && this.videosLocked)
     ) {
       if(!animation.paused) {
         animation.pause();
@@ -322,7 +372,7 @@ export class AnimationIntersector {
       this.visible.has(player) &&
       animation.autoplay &&
       (!this.onlyOnePlayableGroup || this.onlyOnePlayableGroup === group) &&
-      !this.idle
+      !idleController.isIdle
     ) {
       safePlay(animation);
     }

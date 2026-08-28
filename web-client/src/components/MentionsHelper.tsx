@@ -16,9 +16,10 @@
 import { useEffect, useRef } from 'react'
 import Avatar from '../shared/ui/Avatar'
 import classNames from '../shared/lib/classNames'
-import { useAvatarSrc } from './useAvatarSrc'
+import { useMediaUrl } from '../core/hooks/useMediaUrl'
 import { gradientFor } from '../core/dialogToChat'
-import type { Peer } from '../core/managers/peersManager'
+import { getPeerPhotoId, getPeerPhotoStrippedThumb, type UserReal } from '../core/peers/peer'
+import { getUserTitle } from '../core/peers/getPeerTitle'
 
 // autocompletePeerHelper.ts:11-12 — базовые имена классов строки списка.
 const BASE = 'autocomplete-peer-helper-list-element'
@@ -34,9 +35,10 @@ const OWN = 'mentions-helper-list-element'
 // обратного прохода (fade-out перед скрытием) у нас нет.
 const ROOT_CLASS = 'autocomplete-helper z-depth-1 autocomplete-peer-helper mentions-helper is-visible forwards'
 
-function Row({ peer, active, onPick }: { peer: Peer; active: boolean; onPick: (p: Peer) => void }) {
-  const avatarSrc = useAvatarSrc(peer.avatarUrl)
-  const name = peer.displayName || peer.username || `#${peer.id}`
+function Row({ peer, active, onPick }: { peer: UserReal; active: boolean; onPick: (p: UserReal) => void }) {
+  const avatarSrc = useMediaUrl(getPeerPhotoId(peer.photo) || null)
+  // Имя собирает клиент; фолбэки (username, «Удалённый аккаунт») внутри.
+  const name = getUserTitle(peer)
   return (
     <div
       className={classNames(BASE, OWN, active ? 'active' : '')}
@@ -48,7 +50,7 @@ function Row({ peer, active, onPick }: { peer: Peer; active: boolean; onPick: (p
         className={`${BASE}-avatar ${OWN}-avatar`}
         background={gradientFor(peer.id)}
         src={avatarSrc}
-        preview={peer.avatarPreview}
+        preview={getPeerPhotoStrippedThumb(peer.photo)}
         text={name.charAt(0).toUpperCase()}
         size={30}
       />
@@ -63,9 +65,9 @@ export default function MentionsHelper({
   activeIdx,
   onPick,
 }: {
-  peers: Peer[]
+  peers: UserReal[]
   activeIdx: number
-  onPick: (p: Peer) => void
+  onPick: (p: UserReal) => void
 }) {
   const listRef = useRef<HTMLDivElement>(null)
   useEffect(() => {

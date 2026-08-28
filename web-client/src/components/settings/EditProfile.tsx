@@ -5,34 +5,24 @@ import Input from '../../shared/ui/Input'
 import Spinner from '../../shared/ui/Spinner'
 import TgIcon from '../TgIcon'
 import Avatar from '../../shared/ui/Avatar'
-import { useAvatarSrc } from '../useAvatarSrc'
+import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import BirthdayModal from './BirthdayModal'
 import AvatarCropper from './AvatarCropper'
 import { useT, useLang } from '../../i18n'
-import { SettingsScreen, Section, Row } from './kit'
+import { SettingsScreen } from './kit'
 import s from './EditProfile.module.scss'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
 import { gradientFor } from '../../core/dialogToChat'
-import type { Birthday, PhoneVisibility } from '../../core/managers/authManager'
+import type { Birthday } from '../../core/peers/peer'
+import { getPeerPhotoId, getPeerPhotoStrippedThumb } from '../../core/peers/peer'
+import { getUserTitle } from '../../core/peers/getPeerTitle'
+import { formatBirthday } from '../../core/format/birthday'
 
 const BIO_MAX = 70
 const USERNAME_RE = /^[a-z0-9_]{5,32}$/
 
 type UnameState = 'idle' | 'checking' | 'available' | 'taken' | 'invalid' | 'tooShort'
-
-const PHONE_VIS: { key: PhoneVisibility; label: string }[] = [
-  { key: 'everybody', label: 'Everybody' },
-  { key: 'contacts', label: 'My Contacts' },
-  { key: 'nobody', label: 'Nobody' },
-]
-
-function formatBirthday(b: Birthday, lang: string): string {
-  const opts: Intl.DateTimeFormatOptions = b.year
-    ? { day: 'numeric', month: 'long', year: 'numeric' }
-    : { day: 'numeric', month: 'long' }
-  return new Date(b.year ?? 2000, b.month - 1, b.day).toLocaleDateString(lang, opts)
-}
 
 export default function EditProfile({ onBack }: { onBack: () => void }) {
   const managers = useManagers()
@@ -41,12 +31,13 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
   const me = useChatsStore((s) => s.me)
   const setMe = useChatsStore((s) => s.setMe)
 
-  const [first, setFirst] = useState(me?.firstName ?? '')
-  const [last, setLast] = useState(me?.lastName ?? '')
-  const [bio, setBio] = useState(me?.bio ?? '')
-  const [username, setUsername] = useState(me?.username ?? '')
-  const [birthday, setBirthday] = useState<Birthday | null>(me?.birthday ?? null)
-  const [phoneVis, setPhoneVis] = useState<PhoneVisibility>(me?.phoneVisibility ?? 'contacts')
+  // Пара конструкторов: имя/фамилия/username живут в кратком `user`, bio и
+  // день рождения — в полном `fullUser` (граница схемы, а не наша прежняя).
+  const [first, setFirst] = useState(me?.user.first_name ?? '')
+  const [last, setLast] = useState(me?.user.last_name ?? '')
+  const [bio, setBio] = useState(me?.fullUser.about ?? '')
+  const [username, setUsername] = useState(me?.user.username ?? '')
+  const [birthday, setBirthday] = useState<Birthday | null>(me?.fullUser.birthday ?? null)
   const [bdayOpen, setBdayOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [unameState, setUnameState] = useState<UnameState>('idle')
@@ -55,12 +46,13 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
   const [avatarError, setAvatarError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const avatarSrc = useAvatarSrc(me?.avatarUrl)
-  const avatarBg = me ? gradientFor(me.id) : 'linear-gradient(135deg,#ff8a5b,#ff6a3d)'
-  const avatarText = (first || me?.displayName || me?.phone || 'Д').trim().charAt(0).toUpperCase()
+  const avatarSrc = useMediaUrl(getPeerPhotoId(me?.user.photo) || null)
+  const avatarPreview = getPeerPhotoStrippedThumb(me?.user.photo) || undefined
+  const avatarBg = me ? gradientFor(me.user.id) : 'linear-gradient(135deg,#ff8a5b,#ff6a3d)'
+  const avatarText = (first || (me ? getUserTitle(me.user) : '') || 'Д').trim().charAt(0).toUpperCase()
 
   const uname = username.trim().toLowerCase()
-  const usernameChanged = uname !== (me?.username ?? '')
+  const usernameChanged = uname !== (me?.user.username ?? '')
 
   // Debounced availability check for a changed, well-formed username.
   useEffect(() => {
@@ -74,8 +66,8 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
     }
     setUnameState('checking')
     const id = window.setTimeout(() => {
-      void managers.profile.checkUsername(uname).then((r) => {
-        setUnameState(r.available ? 'available' : 'taken')
+      void managers.profile.checkUsername(uname).then((free) => {
+        setUnameState(free ? 'available' : 'taken')
       })
     }, 400)
     return () => window.clearTimeout(id)
@@ -103,13 +95,13 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
       const bytes = await blob.arrayBuffer()
       const mediaId = await managers.media.upload({ bytes, mime: 'image/jpeg', size: blob.size, width, height })
       // Add to the profile-photo gallery; the backend promotes it to the current
-      // avatar, so we reflect the new avatar_url in the store optimistically.
+      // avatar, so we reflect the new `user.photo` in the store optimistically.
       const photo = await managers.profile.addPhoto(mediaId)
       // Оптимистичное исключение из «пишет только проектор» (Stage 1C.2, Task 1
       // — см. докблок setMe в chatsStore.ts, stores/noDuplicateMe.test.ts):
       // кроппер закрывается сразу — ждать rt:me из воркера заметно замедлило бы
       // отклик. Воркер (profileManager.addPhoto → onMeChanged, тот же merge
-      // {...me, avatarUrl}) ТОЖЕ разошлёт снимок остальным вкладкам —
+      // {...me, user.photo}) ТОЖЕ разошлёт снимок остальным вкладкам —
       // повторное применение здесь идемпотентно, флика не даёт.
       // Читаем useChatsStore.getState() здесь, а не замыкание рендера, где
       // вызван onCropConfirm — так короче писать, но ЗАЩИТЫ от гонки это
@@ -124,7 +116,7 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
       // не протухает даже если профиль поменяли с другого устройства между
       // loadChats() и этим addPhoto — см. task-1-report.md.
       const cur = useChatsStore.getState().me
-      if (cur) setMe({ ...cur, avatarUrl: photo.url })
+      if (cur) setMe({ ...cur, user: { ...cur.user, photo: { _: 'userProfilePhoto', photo_id: photo.mediaId } } })
     } finally {
       setUploading(false)
     }
@@ -173,7 +165,7 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
       // Оптимистичное исключение — то же обоснование, что у onCropConfirm выше
       // (включая то, чего чтение стора здесь НЕ гарантирует — см. комментарий там).
       const cur = useChatsStore.getState().me
-      if (cur) setMe({ ...cur, avatarUrl: photo.url })
+      if (cur) setMe({ ...cur, user: { ...cur.user, photo: { _: 'userProfilePhoto', photo_id: photo.mediaId } } })
     } catch {
       setAvatarError(t('Could not process this video.'))
     } finally {
@@ -204,7 +196,6 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
         lastName: last.trim(),
         bio,
         birthday,
-        phoneVisibility: phoneVis,
       })
       // Оптимистичное исключение из «пишет только проектор» (Stage 1C.2, Task 1
       // — см. докблок setMe в chatsStore.ts, stores/noDuplicateMe.test.ts):
@@ -232,7 +223,7 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
       {/* avatar with camera overlay */}
       <div className={s.avatarWrap}>
         <div className={s.avatar} onClick={() => fileInputRef.current?.click()}>
-          <Avatar background={avatarBg} src={avatarSrc} preview={me?.avatarPreview} text={avatarText} size="profile" />
+          <Avatar background={avatarBg} src={avatarSrc} preview={avatarPreview} text={avatarText} size="profile" />
           <div className={s.avatarOverlay}>
             {uploading ? <Spinner size={36} color="#fff" /> : <TgIcon name="camera" size={40} color="#fff" />}
           </div>
@@ -294,20 +285,6 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
       <Text size={14} color="var(--secondary-text-color)" style={{ paddingLeft: '24px', paddingRight: '24px', paddingTop: '8px', lineHeight: 1.45 }}>
         {t('You can choose a public username so people can find you and contact you without knowing your phone number.')}
       </Text>
-
-      {/* phone-number visibility (privacy) */}
-      <div className={s.phoneWrap}>
-        <Section caption="Who can see my phone number">
-          {PHONE_VIS.map((o) => (
-            <Row
-              key={o.key}
-              label={o.label}
-              onClick={() => setPhoneVis(o.key)}
-              selected={phoneVis === o.key}
-            />
-          ))}
-        </Section>
-      </div>
 
       <BirthdayModal
         open={bdayOpen}

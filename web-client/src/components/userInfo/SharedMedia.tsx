@@ -17,19 +17,31 @@ import classNames from '../../shared/lib/classNames'
 import { useT, useLang } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
-import { useMessagesStore } from '../../stores/messagesStore'
+import { useMirrorWindow } from '../../core/hooks/useMirrorWindow'
+import { winKey } from '../../core/history/messagesMirror'
 import { useAudioStore, type AudioTrack } from '../../stores/audioStore'
 import { markMediaPlayed } from '../../core/mediaRead'
+import { getDocumentFromMessage, getMediaFromMessage, hasServerThumb } from '../../core/media/messageMedia'
 import { friendlyMsgTime } from '../../core/format/friendlyTime'
 import { EXT_COLORS, extOf, firstUrl, fmtDur, fmtSize, hostOf } from '../../core/format/sharedMediaFmt'
 import MediaGridThumb from '../MediaGridThumb'
-import { fmtWhen, mediaLabel } from '../../core/dialogToChat'
+import { fmtWhen, previewOf } from '../../core/dialogToChat'
 import { roleLabel, type RealMember } from '../../core/hooks/useGroupInfo'
 import type { SavedDialog } from '../../core/managers/chatsManager'
-import type { GiftInfo } from '../../core/managers/starsManager'
-import type { Message } from '../../core/models'
+import { isGiftHidden, type SavedStarGift } from '../../core/managers/starsManager'
+import { getPeerId, isUser } from '../../core/peers/peerId'
+import { getPeerPhotoId } from '../../core/peers/peer'
+import { getChatPhoto } from '../../core/peers/predicates'
+import { getMessageText, type MyMessage } from '../../core/models'
+import { getMediaId, getMessageKind } from '../../core/messages/messageKind'
+import { messageDateISO } from '../../core/messageToConvMsg'
 import type { OpenPeer } from '../../data'
-import { usePeersStore } from '../../stores/peersStore'
+import { cachedPeer } from '../../core/peerCache'
+import type { Chat as PeerChat, User } from '../../core/peers/peer'
+import { isUserStatusOnline } from '../../core/peers/peer'
+import { getPeerTitle, getUserTitle } from '../../core/peers/getPeerTitle'
+import { usePeers } from '../../core/hooks/usePeers'
+import { userStatusLabel } from '../../core/presence'
 import { messageToViewerItem } from '../mediaViewer/collectLightboxItems'
 import { openMediaViewer } from '../mediaViewer/openMediaViewer'
 import DeferredSortedVirtualList, {
@@ -85,8 +97,8 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
   /** «Избранное»: сохранённые диалоги для первого таба «Чаты» */
   savedDialogs?: SavedDialog[]
   /** подарки профиля пользователя (таб «Подарки») */
-  gifts?: GiftInfo[]
-  onOpenGift?: (g: GiftInfo) => void
+  gifts?: SavedStarGift[]
+  onOpenGift?: (g: SavedStarGift) => void
   /** открыть попап отправки подарка из пустого состояния (только чужой профиль) */
   onSendGift?: () => void
   isChannel?: boolean
@@ -103,6 +115,9 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
   const t = useT()
   const [lang] = useLang()
   const managers = useManagers()
+  // Имена дарителей собирает КЛИЕНТ из ссылок на пиры: серверной склейки
+  // `from_name` на проводе больше нет.
+  const giftSenders = usePeers((gifts ?? []).map((g) => (g.from_id ? getPeerId(g.from_id) : 0)).filter(Boolean))
   // Глобальный плеер: клик по строке «Музыка»/«Голосовые» ставит очередь из
   // сообщений таба; плеер-плашка выезжает над шапкой чата (NowPlayingBar).
   const meId = useChatsStore((st) => st.meId)
@@ -112,7 +127,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
   const audioPlaying = useAudioStore((st) => st.playing)
   // Кэш по фильтру с infinite scroll (tweb searchSuper.load + loadMutex):
   // страницы аккумулируются, hasMore гасится по total count с бэка.
-  const [byFilter, setByFilter] = useState<Partial<Record<string, { msgs: Message[]; hasMore: boolean }>>>({})
+  const [byFilter, setByFilter] = useState<Partial<Record<string, { msgs: MyMessage[]; hasMore: boolean }>>>({})
   const byFilterRef = useRef(byFilter)
   byFilterRef.current = byFilter
   // guard от параллельных загрузок одного фильтра (tweb loadMutex)
@@ -143,7 +158,14 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
 
   // Live: новое сообщение в открытом чате инвалидирует кэш табов — активный
   // таб перезагрузится и свежая отправка (голосовое/фото/…) появится сразу.
-  const winLen = useMessagesStore((st) => (chatId != null ? st.byKey[String(chatId)]?.msgs.length ?? 0 : 0))
+  //
+  // Сигнал — ДЛИНА окна из зеркала (`core/history/messagesMirror.ts`), а не из
+  // zustand-копии: копия живёт только у React-ленты и уходит вместе с ней
+  // (этап 7), а панель к рисованию баблов отношения не имеет. Молчаливая цена
+  // ошибки здесь выше обычного: потеря сигнала не роняет ничего — вкладки
+  // просто перестают обновляться, поэтому её ловит отдельный тест
+  // (`SharedMedia.invalidate.test.tsx`).
+  const winLen = useMirrorWindow(chatId != null ? winKey(chatId) : null).length
   useEffect(() => {
     genRef.current++
     loadingRef.current.clear()
@@ -210,43 +232,48 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
     return () => io.disconnect()
   }, [filter, tab, hasMore, msgs?.length])
 
-  const when = (m: Message) => friendlyMsgTime(m.createdAt, lang)
+  const when = (m: MyMessage) => friendlyMsgTime(messageDateISO(m.date), lang)
 
   // Клик по строке: текущий трек — play/pause, иначе очередь из всего таба
   // с этой позиции; чужое непрослушанное голосовое гасит media_unread.
-  const playRow = (m: Message, title: string) => {
-    if (m.mediaId == null || chatId == null) return
-    if (m.mediaId === curMediaId) {
+  const playRow = (m: MyMessage, title: string) => {
+    if (getMediaId(m) == null || chatId == null) return
+    if (getMediaId(m) === curMediaId) {
       togglePlay()
       return
     }
-    const list = (msgs ?? []).filter((x) => x.mediaId != null)
+    const list = (msgs ?? []).filter((x) => getMediaId(x) != null)
     const tracks: AudioTrack[] = list.map((x) => ({
-      mediaId: x.mediaId as number,
-      title: x.type === 'audio' ? x.mediaName || t('Audio') : title,
+      mediaId: getMediaId(x) as number,
+      title: getMessageKind(x) === 'audio' ? getDocumentFromMessage(x)?.file_name || t('Audio') : title,
       subtitle: when(x),
       chatId,
       msgId: x.id,
     }))
     playQueue(tracks, list.indexOf(m))
-    if (m.senderId !== meId && m.mediaUnread) markMediaPlayed(chatId, m.id)
+    if ((m.fromId ?? 0) !== meId && m.pFlags.media_unread) markMediaPlayed(chatId, m.id)
   }
 
   // Просмотрщик медиа — тот же vanilla-вьювер, что в чате (клик по тайлу,
   // Task 16). items — из сообщений таба (messageToViewerItem); имена авторов —
-  // из зеркала карточек пиров (peersStore), фолбэков чата у панели нет.
+  // из зеркала карточек пиров (core/peerCache), фолбэков чата у панели нет.
   // jump/forward/delete не пробрасываются — их не было и у старого лайтбокса.
   const openMedia = (rawIndex: number, e: React.MouseEvent<HTMLDivElement>) => {
-    const list = (msgs ?? []).filter((m) => m.mediaId != null)
+    const list = (msgs ?? []).filter((m) => getMediaId(m) != null)
     // индекс грида — по msgs целиком; во вьювер идёт индекс в отфильтрованном
     const clicked = msgs?.[rawIndex]
     const index = clicked ? list.indexOf(clicked) : -1
     if (index < 0) return
-    const peersById = usePeersStore.getState().byId
+    // Своё имя собирает клиент из краткого конструктора `user` — `display_name`
+    // с провода убран.
+    const me = useChatsStore.getState().me
     const ctx = {
       meId,
-      meName: useChatsStore.getState().me?.displayName,
-      peers: new Map(list.map((m) => [m.senderId, peersById[m.senderId]]).filter((p): p is [number, (typeof peersById)[number]] => !!p[1])),
+      meName: me ? getUserTitle(me.user) : undefined,
+      peers: new Map(
+        list.map((m) => [(m.fromId ?? 0), cachedPeer((m.fromId ?? 0))] as const)
+          .filter((p): p is [PeerId, User | PeerChat] => !!p[1]),
+      ),
       lang,
     }
     const el = e.currentTarget
@@ -347,10 +374,10 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
                       key={mem.userId}
                       className="row no-wrap row-with-padding row-clickable hover-effect chatlist-chat chatlist-chat-abitbigger rp"
                       data-peer-id={mem.userId}
-                      onClick={() => onOpenPeer?.({ id: mem.userId, displayName: mem.displayName, username: mem.username, avatarUrl: mem.avatarUrl })}
+                      onClick={() => onOpenPeer?.({ id: mem.userId, title: mem.title, username: mem.username, photoId: mem.photoId })}
                     >
                       <div className="row-row row-title-row dialog-title">
-                        <div className="row-title">{mem.displayName}</div>
+                        <div className="row-title">{mem.title}</div>
                         {/* роль — правым слотом заголовка (tweb row-title-right-secondary) */}
                         <div
                           className="row-title row-title-right row-title-right-secondary"
@@ -360,13 +387,13 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
                         </div>
                       </div>
                       <div className="row-row row-subtitle-row dialog-subtitle">
-                        <div className="row-subtitle">{mem.online ? t('online') : t('last seen recently')}</div>
+                        <div className="row-subtitle">{userStatusLabel(mem.status, lang)}</div>
                       </div>
                       <UserAvatar
                         id={mem.userId}
-                        name={mem.displayName}
-                        avatarUrl={mem.avatarUrl}
-                        online={mem.online}
+                        name={mem.title}
+                        photoId={mem.photoId}
+                        online={isUserStatusOnline(mem.status, Date.now() / 1000)}
                         className="dialog-avatar row-media row-media-abitbigger"
                       />
                     </a>
@@ -402,21 +429,26 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         ) : (
           <div className={classNames(giftsGrid.grid, giftsGrid.viewProfile)}>
             {gifts.map((g) => {
-              const anon = g.anonymous || (!g.fromName && g.fromId == null)
+              // Аноним — это ОТСУТСТВИЕ `from_id` (флаг `name_hidden` и значит
+              // «дарителя не показываем»), а не пустая карточка рядом с флагом.
+              const fromId = g.from_id ? getPeerId(g.from_id) : undefined
+              const anon = !!g.pFlags?.name_hidden || fromId == null
               return (
-                <div key={g.id} className={giftsGrid.gridItem} onClick={() => onOpenGift?.(g)}>
-                  {g.hidden && <TgIcon name="hide" size={16} className={giftsGrid.itemLock} />}
-                  {g.gift.total != null && <span className={giftsGrid.badgeResale}>{t('Limited')}</span>}
+                <div key={g.saved_id ?? g.date} className={giftsGrid.gridItem} onClick={() => onOpenGift?.(g)}>
+                  {isGiftHidden(g) && <TgIcon name="hide" size={16} className={giftsGrid.itemLock} />}
+                  {g.gift.pFlags?.limited && <span className={giftsGrid.badgeResale}>{t('Limited')}</span>}
                   <span className={giftsGrid.itemSticker}>{g.gift.emoji}</span>
                   <span className={giftsGrid.itemPrice}>
                     <StarIcon size={12} />
-                    {g.gift.priceStars}
+                    {g.gift.stars}
                   </span>
                   <div className={giftsGrid.itemFrom}>
                     {anon ? (
                       <span className={giftsGrid.itemFromAnonymous}>?</span>
                     ) : (
-                      <UserAvatar id={g.fromId ?? undefined} name={g.fromName} size={18} />
+                      // Имя дарителя собирает КЛИЕНТ из ссылки на пир: серверной
+                      // склейки `from_name` на проводе больше нет.
+                      <UserAvatar id={fromId} name={getPeerTitle({ peerId: fromId, peer: giftSenders.get(fromId) })} size={18} />
                     )}
                   </div>
                 </div>
@@ -437,10 +469,10 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         <div className="grid">
           {msgs.map((m, i) => (
             <div key={m.id} className="grid-item search-super-item media-container" data-mid={m.id} onClick={(e) => openMedia(i, e)}>
-              {m.mediaId != null && (
-                <MediaGridThumb className="grid-item-media" mediaId={m.mediaId} hasThumb={!!m.mediaHasThumb} />
+              {getMediaId(m) != null && (
+                <MediaGridThumb className="grid-item-media" mediaId={getMediaId(m)!} hasThumb={hasServerThumb(getMediaFromMessage(m))} />
               )}
-              {m.type === 'video' && <span className="video-time">{fmtDur(m.mediaDuration)}</span>}
+              {getMessageKind(m) === 'video' && <span className="video-time">{fmtDur(getDocumentFromMessage(m)?.duration)}</span>}
             </div>
           ))}
         </div>
@@ -459,7 +491,10 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
             `.document-size` (дамп 03-document). Цвет квадрата даёт
             `--background-color`, как у оригинала. */}
         {msgs.map((m) => {
-          const ext = extOf(m.mediaName)
+          // tweb wrapDocument: расширение/имя/размер — у САМОГО документа
+          // (`doc.file_name`, `doc.size`), а не отдельными полями сообщения.
+          const doc = getDocumentFromMessage(m)
+          const ext = extOf(doc?.file_name)
           return (
             <div key={m.id} className="document-container">
               <div className="document-wrapper">
@@ -470,9 +505,9 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
                   <div className="document-ico">
                     <span className="document-ico-text">{ext.slice(0, 4) || 'file'}</span>
                   </div>
-                  <div className="document-name">{m.mediaName || t('Document')}</div>
+                  <div className="document-name">{doc?.file_name || t('Document')}</div>
                   <div className="document-size">
-                    <span>{[fmtSize(m.mediaSize), when(m)].filter(Boolean).join(' · ')}</span>
+                    <span>{[fmtSize(doc?.size), when(m)].filter(Boolean).join(' · ')}</span>
                   </div>
                 </div>
               </div>
@@ -494,7 +529,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
             слева (`_searchSuper.scss` → `.search-super-content-links`):
             превью-квадрат, заголовок хоста и сам url. */}
         {msgs.map((m) => {
-          const url = firstUrl(m.text)
+          const url = firstUrl(getMessageText(m))
           return (
             <div key={m.id} className="search-super-item rp" onClick={() => window.open(url, '_blank', 'noopener')}>
               <div className="row-media">{hostOf(url).charAt(0).toUpperCase()}</div>
@@ -522,14 +557,14 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         {msgs.map((m) => (
           <div key={m.id} className="document-container">
             <div className="document-wrapper">
-              <div className="audio" onClick={() => playRow(m, m.mediaName || t('Audio'))}>
-                <div className={classNames('audio-toggle audio-ico', audioPlaying && m.mediaId === curMediaId ? 'playing' : '')}>
-                  <PlayPauseGlyph playing={audioPlaying && m.mediaId === curMediaId} size={22} />
+              <div className="audio" onClick={() => playRow(m, getDocumentFromMessage(m)?.file_name || t('Audio'))}>
+                <div className={classNames('audio-toggle audio-ico', audioPlaying && getMediaId(m) === curMediaId ? 'playing' : '')}>
+                  <PlayPauseGlyph playing={audioPlaying && getMediaId(m) === curMediaId} size={22} />
                 </div>
                 <div className="audio-details">
-                  <div className="audio-title">{m.mediaName || t('Audio')}</div>
+                  <div className="audio-title">{getDocumentFromMessage(m)?.file_name || t('Audio')}</div>
                   <div className="audio-subtitle">
-                    <div className="audio-time">{[fmtDur(m.mediaDuration), when(m)].filter(Boolean).join(' · ')}</div>
+                    <div className="audio-time">{[fmtDur(getDocumentFromMessage(m)?.duration), when(m)].filter(Boolean).join(' · ')}</div>
                   </div>
                 </div>
               </div>
@@ -550,14 +585,14 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         {msgs.map((m) => (
           <div key={m.id} className="document-container">
             <div className="document-wrapper">
-              <div className="audio" onClick={() => playRow(m, m.type === 'roundVideo' ? t('Video message') : t('Voice message'))}>
-                <div className={classNames('audio-toggle audio-ico', audioPlaying && m.mediaId === curMediaId ? 'playing' : '')}>
-                  <PlayPauseGlyph playing={audioPlaying && m.mediaId === curMediaId} size={22} />
+              <div className="audio" onClick={() => playRow(m, getMessageKind(m) === 'roundVideo' ? t('Video message') : t('Voice message'))}>
+                <div className={classNames('audio-toggle audio-ico', audioPlaying && getMediaId(m) === curMediaId ? 'playing' : '')}>
+                  <PlayPauseGlyph playing={audioPlaying && getMediaId(m) === curMediaId} size={22} />
                 </div>
                 <div className="audio-details">
-                  <div className="audio-title">{m.type === 'roundVideo' ? t('Video message') : t('Voice message')}</div>
+                  <div className="audio-title">{getMessageKind(m) === 'roundVideo' ? t('Video message') : t('Voice message')}</div>
                   <div className="audio-subtitle">
-                    <div className="audio-time">{[fmtDur(m.mediaDuration), when(m)].filter(Boolean).join(' · ')}</div>
+                    <div className="audio-time">{[fmtDur(getDocumentFromMessage(m)?.duration), when(m)].filter(Boolean).join(' · ')}</div>
                   </div>
                 </div>
               </div>
@@ -660,7 +695,7 @@ function SavedDialogsList({ dialogs, onOpenPeer }: {
   // Обновление набора приходит только новым ответом RPC, где новы и сами
   // `SavedDialog` — кэш по id всё равно промахнулся бы на каждой строке.
   const items = useMemo<readonly DeferredSortedVirtualListItem<SavedDialog>[]>(
-    () => dialogs.map((d) => ({ id: `${d.kind}:${d.peerId}`, value: d })),
+    () => dialogs.map((d) => ({ id: String(d.peerId), value: d })),
     [dialogs],
   )
 
@@ -704,8 +739,16 @@ function SavedDialogRow({ dialog, onOpenPeer, itemRef }: {
   itemRef: (el: HTMLElement | null) => void
 }) {
   const t = useT()
-  const isSelf = dialog.kind === 'self'
-  const title = isSelf ? t('My Notes') : dialog.title
+  const meId = useChatsStore((st) => st.meId)
+  // «Мои заметки» — строка, чей ИСТОЧНИК это сам зритель: вида строкой
+  // (`kind`) на проводе больше нет, его отвечает сам ключ.
+  const isSelf = dialog.peerId === meId
+  const peer = cachedPeer(dialog.peerId)
+  // Имя и аватарку даёт КАРТОЧКА пира (она приезжает векторами того же
+  // контейнера), а не снимок, подклеенный сервером в строку.
+  const title = isSelf ? t('My Notes') : getPeerTitle({ peerId: dialog.peerId, peer })
+  const photoId = getPeerPhotoId(isUser(dialog.peerId) && peer?._ === 'user' ? peer.photo : getChatPhoto(peer as PeerChat | undefined)) || undefined
+  const lm = dialog.lastMessage
 
   return (
     // Строка «Избранного» — тот же `chatlist-chat`, что у списка чатов и у
@@ -720,21 +763,24 @@ function SavedDialogRow({ dialog, onOpenPeer, itemRef }: {
       data-peer-id={dialog.peerId}
       onClick={() => {
         if (isSelf) return
-        if (dialog.kind === 'user') onOpenPeer({ id: dialog.peerId, displayName: dialog.title, avatarUrl: dialog.photoUrl })
-        else onOpenPeer({ id: 0, displayName: dialog.title, chatId: dialog.peerId })
+        // Ключ ЗНАКОВЫЙ и уже посчитан на проводе — различать «человек это или
+        // чат» вторым полем рядом больше не нужно: знак и есть ответ.
+        onOpenPeer({ id: dialog.peerId, title, photoId })
       }}
     >
       <div className="row-row row-title-row dialog-title">
         <div className="row-title">{title}</div>
-        <div className="row-title row-title-right row-title-right-secondary">{fmtWhen(dialog.last.at)}</div>
+        <div className="row-title row-title-right row-title-right-secondary">
+          {fmtWhen(lm ? messageDateISO(lm.date) : undefined)}
+        </div>
       </div>
       <div className="row-row row-subtitle-row dialog-subtitle">
-        <div className="row-subtitle">{dialog.last.text || mediaLabel(dialog.last.type)}</div>
+        <div className="row-subtitle">{previewOf(lm).text}</div>
       </div>
       {isSelf ? (
         <Avatar size="md" background="var(--tg-accentGradient)" emoji="saved" className="dialog-avatar row-media row-media-abitbigger" />
       ) : (
-        <UserAvatar id={dialog.peerId} name={title} avatarUrl={dialog.photoUrl} className="dialog-avatar row-media row-media-abitbigger" />
+        <UserAvatar id={dialog.peerId} name={title} photoId={photoId} className="dialog-avatar row-media row-media-abitbigger" />
       )}
     </div>
   )

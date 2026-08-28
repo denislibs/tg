@@ -6,6 +6,7 @@ import { RT } from '../../core/realtime/events'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useSettingsStore } from '../../settings'
 import { mapEffect } from '../../core/models'
+import { getPeerId } from '../../core/peers/peerId'
 import { playMessageSent } from '../../core/audio/sounds'
 import { playEmojiEffect } from '../../core/effects/emojiEffects'
 
@@ -22,9 +23,14 @@ export function registerSoundSubscriber(): void {
     // Кадр из catch-up (reconnect/backfill) — уже «прошлое»: звук и нотификация не
     // играют. Раньше это держалось только на дедупе funnel'а по pts.
     if (meta?.catchUp) return
-    const effect = mapEffect(evt.effect)
+    // Эффект — НАШ параметр вне схемы (`effect_name`) у конструктора `message`:
+    // у пилюли и у дыры его нет и быть не может.
+    const msg = evt.message
+    if (msg._ !== 'message') return
+    const effect = mapEffect(msg.effect_name)
     if (!effect) return
     const cs = useChatsStore.getState()
-    if (evt.sender_id !== cs.meId && cs.activeChatId === evt.chat_id) playEmojiEffect(effect)
+    const peerId = getPeerId(msg.peer_id)
+    if (getPeerId(msg.from_id) !== cs.meId && cs.activePeerId === peerId) playEmojiEffect(effect)
   })
 }

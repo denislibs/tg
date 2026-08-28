@@ -22,7 +22,7 @@ export default function EmojiStatusPicker({ open, onClose }: { open: boolean; on
   const t = useT()
   const managers = useManagers()
   const setMe = useChatsStore((st) => st.setMe)
-  const current = useChatsStore((st) => st.me?.emojiStatus) ?? ''
+  const current = useChatsStore((st) => st.me?.user.emoji_status_emoticon) ?? ''
   const { mounted, cls } = usePopupTransition(open)
 
   const set = async (emoji: string) => {

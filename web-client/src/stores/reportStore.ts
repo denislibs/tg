@@ -6,7 +6,7 @@
 import { create } from 'zustand'
 
 export interface ReportTarget {
-  chatId: number
+  peerId: number
   /** id сообщения; не задан — жалоба на чат целиком */
   msgId?: number
 }

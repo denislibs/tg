@@ -35,7 +35,7 @@ describe('DnpTransport', () => {
       privateKey: fromHex(fixture.initEphemeralPriv), publicKey: new Uint8Array(0),
     })
     const opened = vi.fn(); const got = vi.fn()
-    t.onOpen(opened); t.on('presence', got)
+    t.onOpen(opened); t.onFrame(got)
     t.connect('good-token')
 
     const ws = FakeWS.instances[0]
@@ -63,14 +63,14 @@ describe('DnpTransport', () => {
     const presenceJson = new TextEncoder().encode(JSON.stringify({ t: 'presence', d: { user_id: 5, online: true } }))
     const frame = sealFrame(serverSend, withKind(0x00, presenceJson))
     ws.message(frame)
-    expect(got).toHaveBeenCalledWith({ user_id: 5, online: true })
+    expect(got).toHaveBeenCalledWith('presence', { user_id: 5, online: true }, undefined)
   })
 
   it('доставляет kind 0x01 в onBinary, не трогая JSON-подписчиков', () => {
     const t = new DnpTransport('/ws', [fixture.serverStaticPub], {
       privateKey: fromHex(fixture.initEphemeralPriv), publicKey: new Uint8Array(0),
     })
-    const got = vi.fn(); t.on('presence', got)
+    const got = vi.fn(); t.onFrame(got)
     const chunks: Uint8Array[] = []
     t.onBinary((d) => chunks.push(d))
     t.connect('good-token')
@@ -88,11 +88,11 @@ describe('DnpTransport', () => {
     expect(chunks).toHaveLength(1)
     expect(Array.from(chunks[0])).toEqual([0xaa, 0xbb])
 
-    // JSON (kind 0x00) в той же ready-сессии по-прежнему доходит до on(type)
+    // JSON (kind 0x00) в той же ready-сессии по-прежнему доходит до onFrame
     const presenceJson = new TextEncoder().encode(JSON.stringify({ t: 'presence', d: { user_id: 7, online: false } }))
     const jsonFrame = sealFrame(serverSend, withKind(0x00, presenceJson))
     ws.message(jsonFrame)
-    expect(got).toHaveBeenCalledWith({ user_id: 7, online: false })
+    expect(got).toHaveBeenCalledWith('presence', { user_id: 7, online: false }, undefined)
   })
 
   it('sendBinary отправляет sealed-кадр с kind 0x02', () => {

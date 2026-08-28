@@ -4,9 +4,14 @@
 // используем happy-dom, он даёт тот же document/head/style/classList API.
 import { describe, it, expect } from 'vitest'
 import { setTheme, getCurrentPreset, deriveChatThemeVars, applyChatTheme, clearChatTheme } from './themeController'
-import { presetToColorMap } from '../../config/themePresets'
+import { DEFAULT_HIGHLIGHTING_COLORS, presetToColorMap } from '../../config/themePresets'
+import { hslaStringToHex } from '../../shared/lib/color'
 
-const rootStyle = () => document.getElementById('theme')!.textContent || ''
+const styleText = () => document.getElementById('theme')!.textContent || ''
+// В `<style id="theme">` два блока: `:root{}` активной темы и зеркало `.night{}`
+// (tweb _setTheme :339-342). Проверки палитры активной темы смотрят в первый —
+// иначе ловят ночные значения зеркала.
+const rootStyle = () => styleText().split('.night{')[0]
 
 describe('themeController', () => {
   it('injects primary-color + derived + rgb for day', () => {
@@ -43,6 +48,8 @@ describe('themeController', () => {
 
     setTheme('day')
     expect(rootStyle()).not.toContain('--message-out-primary-color:#ffffff')
+    // …но зеркало `.night{}` его несёт всегда — оно про ночную палитру.
+    expect(styleText()).toContain('--message-out-primary-color:#ffffff')
   })
 
   it('darkens primary-color with darkenAlpha=0.04, not the generic 0.08 (tweb applyTheme:805-809)', () => {
@@ -163,5 +170,65 @@ describe('deriveChatThemeVars', () => {
     clearChatTheme(el)
     expect(el.style.getPropertyValue('--primary-color')).toBe('')
     expect(el.style.getPropertyValue('--light-primary-color')).toBe('')
+  })
+
+  // tweb themeController.ts:320-345 (_setTheme) — три вещи помимо переменных.
+  describe('нативный хром и зеркало .night (tweb _setTheme :323-342)', () => {
+    const meta = (name: string) => {
+      let el = document.head.querySelector(`[name="${name}"]`)
+      if (!el) {
+        el = document.createElement('meta')
+        el.setAttribute('name', name)
+        document.head.appendChild(el)
+      }
+      return el
+    }
+
+    it('color-scheme следует за яркостью темы', () => {
+      const el = meta('color-scheme')
+      setTheme('day')
+      expect(el.getAttribute('content')).toBe('light')
+      setTheme('night')
+      expect(el.getAttribute('content')).toBe('dark')
+      setTheme('tinted') // tinted тоже ночная (NIGHT_THEME_NAMES)
+      expect(el.getAttribute('content')).toBe('dark')
+      setTheme('light')
+      expect(el.getAttribute('content')).toBe('light')
+    })
+
+    it('theme-color заполняется цветом поверхности темы, дальше — накопленной подсветкой', () => {
+      const el = meta('theme-color')
+      el.setAttribute('content', '#000000')
+      setTheme('day')
+      // Первый вызов (накопленного themeColor ещё нет) — surface-color темы.
+      expect(el.getAttribute('content')!.toLowerCase()).not.toBe('#000000')
+      expect(el.getAttribute('content')).toMatch(/^#|^hsl/)
+
+      // tweb :328 против :344 — setThemeColor идёт ДО applyHighlightingColor,
+      // поэтому со второй темы в мету едет hex подсветки, накопленный ПРЕДЫДУЩЕЙ
+      // (на не-тач-устройствах, IS_TOUCH_SUPPORTED === false в happy-dom).
+      setTheme('night')
+      expect(el.getAttribute('content')).toBe(hslaStringToHex(DEFAULT_HIGHLIGHTING_COLORS.day))
+    })
+
+    it('зеркало .night{} несёт ночную палитру, когда активна светлая тема', () => {
+      setTheme('day')
+      const css = styleText()
+      const night = css.slice(css.indexOf('.night{'))
+      expect(night).toContain('.night{')
+      // В :root — дневная поверхность, в .night{} — ночная.
+      expect(rootStyle()).toContain(
+        `--surface-color:${presetToColorMap('day')['surface-color']}`,
+      )
+      expect(night).toContain(`--surface-color:${presetToColorMap('night')['surface-color']}`)
+    })
+
+    it('на активной тёмной теме зеркало .night{} несёт ЕЁ палитру, а не статичную night', () => {
+      setTheme('tinted')
+      const css = styleText()
+      const night = css.slice(css.indexOf('.night{'))
+      expect(night).toContain(`--surface-color:${presetToColorMap('tinted')['surface-color']}`)
+      expect(night).not.toContain(`--surface-color:${presetToColorMap('night')['surface-color']}`)
+    })
   })
 })

@@ -18,7 +18,7 @@ type fakeRepo struct {
 	nextSet   int64
 	nextStick int64
 	clock     int64 // логическое время для used_at/faved_at/saved_at
-	sets      map[int64]domain.StickerSet
+	sets      map[int64]domain.StickerSetRecord
 	stickers  map[int64]domain.Sticker
 	installed map[int64]map[int64]int   // userID -> setID -> position
 	recent    map[int64]map[int64]int64 // userID -> stickerID -> usedAt
@@ -31,7 +31,7 @@ type fakeRepo struct {
 
 func newFakeRepo() *fakeRepo {
 	return &fakeRepo{
-		sets:      map[int64]domain.StickerSet{},
+		sets:      map[int64]domain.StickerSetRecord{},
 		stickers:  map[int64]domain.Sticker{},
 		installed: map[int64]map[int64]int{},
 		recent:    map[int64]map[int64]int64{},
@@ -43,12 +43,12 @@ func newFakeRepo() *fakeRepo {
 
 func (f *fakeRepo) tick() int64 { f.clock++; return f.clock }
 
-func (f *fakeRepo) CreateSet(_ context.Context, set domain.StickerSet) (domain.StickerSet, error) {
+func (f *fakeRepo) CreateSet(_ context.Context, set domain.StickerSetRecord) (domain.StickerSetRecord, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, s := range f.sets {
 		if s.Slug == set.Slug {
-			return domain.StickerSet{}, domain.ErrConflict
+			return domain.StickerSetRecord{}, domain.ErrConflict
 		}
 	}
 	f.nextSet++
@@ -57,7 +57,7 @@ func (f *fakeRepo) CreateSet(_ context.Context, set domain.StickerSet) (domain.S
 	return set, nil
 }
 
-func (f *fakeRepo) SetBySlug(_ context.Context, slug string) (domain.StickerSet, error) {
+func (f *fakeRepo) SetBySlug(_ context.Context, slug string) (domain.StickerSetRecord, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, s := range f.sets {
@@ -65,28 +65,17 @@ func (f *fakeRepo) SetBySlug(_ context.Context, slug string) (domain.StickerSet,
 			return s, nil
 		}
 	}
-	return domain.StickerSet{}, domain.ErrNotFound
+	return domain.StickerSetRecord{}, domain.ErrNotFound
 }
 
-func (f *fakeRepo) SetByID(_ context.Context, id int64) (domain.StickerSet, error) {
+func (f *fakeRepo) SetByID(_ context.Context, id int64) (domain.StickerSetRecord, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	s, ok := f.sets[id]
 	if !ok {
-		return domain.StickerSet{}, domain.ErrNotFound
+		return domain.StickerSetRecord{}, domain.ErrNotFound
 	}
 	return s, nil
-}
-
-func (f *fakeRepo) SetByMediaID(_ context.Context, mediaID int64) (domain.StickerSet, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for _, st := range f.stickers {
-		if st.MediaID == mediaID {
-			return f.sets[st.SetID], nil
-		}
-	}
-	return domain.StickerSet{}, domain.ErrNotFound
 }
 
 func (f *fakeRepo) Stickers(_ context.Context, setID int64) ([]domain.Sticker, error) {
@@ -127,14 +116,31 @@ func (f *fakeRepo) AddStickerAt(_ context.Context, setID, mediaID int64, emoji s
 	return s, nil
 }
 
-func (f *fakeRepo) StickerByID(_ context.Context, id int64) (domain.Sticker, error) {
+func (f *fakeRepo) StickerByMediaID(_ context.Context, mediaID int64) (domain.Sticker, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	s, ok := f.stickers[id]
+	s, ok := f.byMediaLocked(mediaID)
 	if !ok {
 		return domain.Sticker{}, domain.ErrNotFound
 	}
 	return s, nil
+}
+
+// byMediaLocked — резолв стикера по КЛЮЧУ ФАЙЛА. Строк с одним media_id может
+// быть несколько (файл в двух наборах), берётся наименьший id — как ORDER BY
+// st.id LIMIT 1 у настоящего репозитория.
+func (f *fakeRepo) byMediaLocked(mediaID int64) (domain.Sticker, bool) {
+	var out domain.Sticker
+	found := false
+	for _, st := range f.stickers {
+		if st.MediaID != mediaID {
+			continue
+		}
+		if !found || st.ID < out.ID {
+			out, found = st, true
+		}
+	}
+	return out, found
 }
 
 func (f *fakeRepo) Install(_ context.Context, userID, setID int64) error {
@@ -158,11 +164,11 @@ func (f *fakeRepo) Uninstall(_ context.Context, userID, setID int64) error {
 	return nil
 }
 
-func (f *fakeRepo) InstalledSets(_ context.Context, userID int64) ([]domain.StickerSet, error) {
+func (f *fakeRepo) InstalledSets(_ context.Context, userID int64) ([]domain.StickerSetRecord, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	type row struct {
-		set domain.StickerSet
+		set domain.StickerSetRecord
 		pos int
 	}
 	var rows []row
@@ -170,17 +176,17 @@ func (f *fakeRepo) InstalledSets(_ context.Context, userID int64) ([]domain.Stic
 		rows = append(rows, row{f.sets[setID], pos})
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].pos < rows[j].pos })
-	out := make([]domain.StickerSet, 0, len(rows))
+	out := make([]domain.StickerSetRecord, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, r.set)
 	}
 	return out, nil
 }
 
-func (f *fakeRepo) SearchSets(_ context.Context, q string, limit int) ([]domain.StickerSet, error) {
+func (f *fakeRepo) SearchSets(_ context.Context, q string, limit int) ([]domain.StickerSetRecord, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	var out []domain.StickerSet
+	var out []domain.StickerSetRecord
 	for _, s := range f.sets {
 		if strings.Contains(strings.ToLower(s.Title), strings.ToLower(q)) ||
 			strings.Contains(strings.ToLower(s.Slug), strings.ToLower(q)) {
@@ -194,12 +200,12 @@ func (f *fakeRepo) SearchSets(_ context.Context, q string, limit int) ([]domain.
 	return out, nil
 }
 
-func (f *fakeRepo) FeaturedSets(_ context.Context, limit int) ([]domain.StickerSet, error) {
+func (f *fakeRepo) FeaturedSets(_ context.Context, limit int) ([]domain.StickerSetRecord, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.featuredLimit = limit
 	// Новейшие первыми (id растёт с созданием), не больше limit — как SQL-реализация.
-	var out []domain.StickerSet
+	var out []domain.StickerSetRecord
 	for _, s := range f.sets {
 		out = append(out, s)
 	}
@@ -321,15 +327,18 @@ func newestFirst(f *fakeRepo, m map[int64]int64, limit int) []domain.Sticker {
 		if len(out) == limit {
 			break
 		}
-		out = append(out, f.stickers[r.id])
+		// Ключ карты — media_id (Р2), поэтому резолвим по файлу.
+		if st, ok := f.byMediaLocked(r.id); ok {
+			out = append(out, st)
+		}
 	}
 	return out
 }
 
-func (f *fakeRepo) TouchRecent(_ context.Context, userID, stickerID int64, keep int) error {
+func (f *fakeRepo) TouchRecent(_ context.Context, userID, mediaID int64, keep int) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	touch(f.recent, userID, stickerID, f.tick(), keep)
+	touch(f.recent, userID, mediaID, f.tick(), keep)
 	return nil
 }
 
@@ -340,23 +349,30 @@ func (f *fakeRepo) ClearRecent(_ context.Context, userID int64) error {
 	return nil
 }
 
-func (f *fakeRepo) Recent(_ context.Context, userID int64, limit int) ([]domain.Sticker, error) {
+func (f *fakeRepo) Recent(_ context.Context, userID int64, limit int) ([]domain.RecentSticker, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return newestFirst(f, f.recent[userID], limit), nil
+	sts := newestFirst(f, f.recent[userID], limit)
+	out := make([]domain.RecentSticker, 0, len(sts))
+	for _, st := range sts {
+		// Логическое время фейка (tick) — в момент времени: важен ПОРЯДОК, а
+		// не абсолютное значение, и параллельность векторов на проводе.
+		out = append(out, domain.RecentSticker{Sticker: st, UsedAt: time.Unix(f.recent[userID][st.MediaID], 0)})
+	}
+	return out, nil
 }
 
-func (f *fakeRepo) Fave(_ context.Context, userID, stickerID int64, keep int) error {
+func (f *fakeRepo) Fave(_ context.Context, userID, mediaID int64, keep int) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	touch(f.faved, userID, stickerID, f.tick(), keep)
+	touch(f.faved, userID, mediaID, f.tick(), keep)
 	return nil
 }
 
-func (f *fakeRepo) Unfave(_ context.Context, userID, stickerID int64) error {
+func (f *fakeRepo) Unfave(_ context.Context, userID, mediaID int64) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	delete(f.faved[userID], stickerID)
+	delete(f.faved[userID], mediaID)
 	return nil
 }
 
@@ -434,13 +450,16 @@ func (f *fakeRepo) IsStickerMedia(_ context.Context, mediaID int64) (bool, error
 }
 
 // seedSet — набор из n стикеров; возвращает набор и id стикеров.
-func seedSet(t *testing.T, in *Interactor, f *fakeRepo, owner int64, slug string, n int) (domain.StickerSet, []int64) {
+// seedSet — набор из n стикеров. Возвращает САМИ стикеры: после перехода
+// избранного и недавних на ключ файла (Р2) тестам нужен и media_id, и
+// суррогатный ключ строки.
+func seedSet(t *testing.T, in *Interactor, f *fakeRepo, owner int64, slug string, n int) (domain.StickerSetRecord, []domain.Sticker) {
 	t.Helper()
 	set, err := in.CreateSet(context.Background(), owner, slug, "Набор "+slug, "sticker")
 	if err != nil {
 		t.Fatalf("CreateSet(%s): %v", slug, err)
 	}
-	ids := make([]int64, 0, n)
+	sts := make([]domain.Sticker, 0, n)
 	for k := 0; k < n; k++ {
 		mediaID := int64(1000 + len(f.media))
 		f.media[mediaID] = true
@@ -448,9 +467,9 @@ func seedSet(t *testing.T, in *Interactor, f *fakeRepo, owner int64, slug string
 		if err != nil {
 			t.Fatalf("AddSticker: %v", err)
 		}
-		ids = append(ids, s.ID)
+		sts = append(sts, s)
 	}
-	return set, ids
+	return set, sts
 }
 
 func TestCreateSet_Validation(t *testing.T) {
@@ -524,11 +543,12 @@ func TestRecent_LimitAndOrder(t *testing.T) {
 	f := newFakeRepo()
 	in := New(f)
 	ctx := context.Background()
-	_, ids := seedSet(t, in, f, 1, "many_set", 25)
+	_, seeded := seedSet(t, in, f, 1, "many_set", 25)
 	const user = int64(7)
-	for _, id := range ids {
-		if err := in.Use(ctx, user, id); err != nil {
-			t.Fatalf("Use(%d): %v", id, err)
+	// Адресуем ФАЙЛ: messages.saveRecentSticker принимает InputDocument (Р2).
+	for _, s := range seeded {
+		if err := in.Use(ctx, user, s.MediaID); err != nil {
+			t.Fatalf("Use(%d): %v", s.MediaID, err)
 		}
 	}
 	got, err := in.Recent(ctx, user)
@@ -536,8 +556,8 @@ func TestRecent_LimitAndOrder(t *testing.T) {
 		t.Fatalf("Recent: want 20, got %d (%v)", len(got), err)
 	}
 	// Новые первыми: последний использованный — в начале.
-	if got[0].ID != ids[24] {
-		t.Fatalf("Recent[0]: want %d, got %d", ids[24], got[0].ID)
+	if got[0].MediaID != seeded[24].MediaID {
+		t.Fatalf("Recent[0]: want %d, got %d", seeded[24].MediaID, got[0].MediaID)
 	}
 	if err := in.Use(ctx, user, 424242); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("Use несуществующего: want ErrNotFound, got %v", err)
@@ -548,18 +568,18 @@ func TestFaved_Limit(t *testing.T) {
 	f := newFakeRepo()
 	in := New(f)
 	ctx := context.Background()
-	_, ids := seedSet(t, in, f, 1, "fav_set", 12)
+	_, seeded := seedSet(t, in, f, 1, "fav_set", 12)
 	const user = int64(7)
-	for _, id := range ids {
-		if err := in.Fave(ctx, user, id); err != nil {
-			t.Fatalf("Fave(%d): %v", id, err)
+	for _, s := range seeded {
+		if err := in.Fave(ctx, user, s.MediaID); err != nil {
+			t.Fatalf("Fave(%d): %v", s.MediaID, err)
 		}
 	}
 	got, err := in.Faved(ctx, user)
 	if err != nil || len(got) != 10 {
 		t.Fatalf("Faved: want 10, got %d (%v)", len(got), err)
 	}
-	if err := in.Unfave(ctx, user, got[0].ID); err != nil {
+	if err := in.Unfave(ctx, user, got[0].MediaID); err != nil {
 		t.Fatalf("Unfave: %v", err)
 	}
 	if got, _ = in.Faved(ctx, user); len(got) != 9 {
@@ -596,8 +616,8 @@ func TestSearchByEmoji_InstalledOnly(t *testing.T) {
 	f := newFakeRepo()
 	in := New(f)
 	ctx := context.Background()
-	installedSet, installedIDs := seedSet(t, in, f, 1, "installed_set", 2)
-	_, otherIDs := seedSet(t, in, f, 1, "other_set", 2)
+	installedSet, installedSts := seedSet(t, in, f, 1, "installed_set", 2)
+	_, otherSts := seedSet(t, in, f, 1, "other_set", 2)
 	const user = int64(7)
 	if err := in.Install(ctx, user, installedSet.ID); err != nil {
 		t.Fatalf("Install: %v", err)
@@ -606,9 +626,9 @@ func TestSearchByEmoji_InstalledOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SearchByEmoji: %v", err)
 	}
-	want := map[int64]bool{installedIDs[0]: true, installedIDs[1]: true}
+	want := map[int64]bool{installedSts[0].ID: true, installedSts[1].ID: true}
 	if len(got) != 2 || !want[got[0].ID] || !want[got[1].ID] {
-		t.Fatalf("SearchByEmoji: want %v, got %+v (лишний из %v?)", installedIDs, got, otherIDs)
+		t.Fatalf("SearchByEmoji: want %v, got %+v (лишний из %v?)", installedSts, got, otherSts)
 	}
 	if _, err := in.SearchByEmoji(ctx, user, ""); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("пустой emoji: want ErrInvalid, got %v", err)
@@ -623,31 +643,12 @@ func TestSearchGifs_NoProviderIsEmptyPage(t *testing.T) {
 	}
 }
 
-// SetByMediaID — usecase лишь пробрасывает вызов в репозиторий (см. SetByMediaID
-// в stickersrepo.go для SQL-версии); здесь проверяем сам факт проводки.
-func TestSetByMediaID(t *testing.T) {
-	f := newFakeRepo()
-	in := New(f)
-	ctx := context.Background()
-	set, ids := seedSet(t, in, f, 1, "media_id_set", 1)
-	sticker, _ := f.StickerByID(ctx, ids[0])
-
-	got, err := in.SetByMediaID(ctx, sticker.MediaID)
-	if err != nil || got.ID != set.ID {
-		t.Fatalf("SetByMediaID: %+v, %v", got, err)
-	}
-
-	if _, err := in.SetByMediaID(ctx, 999999); !errors.Is(err, domain.ErrNotFound) {
-		t.Fatalf("чужое media: want ErrNotFound, got %v", err)
-	}
-}
-
 func TestCanUseStickerMedia(t *testing.T) {
 	f := newFakeRepo()
 	in := New(f)
 	ctx := context.Background()
-	_, ids := seedSet(t, in, f, 1, "media_set", 1)
-	s, _ := f.StickerByID(ctx, ids[0])
+	_, seeded := seedSet(t, in, f, 1, "media_set", 1)
+	s := seeded[0]
 	if ok, err := in.CanUseStickerMedia(ctx, 7, s.MediaID); err != nil || !ok {
 		t.Fatalf("стикер-медиа: want true, got %v, %v", ok, err)
 	}
@@ -662,8 +663,8 @@ func TestFeatured_NewestFirstAndLimit(t *testing.T) {
 	f := newFakeRepo()
 	in := New(f)
 	ctx := context.Background()
-	older, olderIDs := seedSet(t, in, f, 1, "older_set", 1)
-	newer, newerIDs := seedSet(t, in, f, 1, "newer_set", 1)
+	older, olderSts := seedSet(t, in, f, 1, "older_set", 1)
+	newer, newerSts := seedSet(t, in, f, 1, "newer_set", 1)
 
 	got, covers, err := in.Featured(ctx)
 	if err != nil {
@@ -674,11 +675,11 @@ func TestFeatured_NewestFirstAndLimit(t *testing.T) {
 	}
 	// Превью (covered sets) едут вместе с наборами — одним запросом на всю
 	// выдачу, без похода по SetBySlug на каждую строку.
-	if len(covers[newer.ID]) != 1 || covers[newer.ID][0].ID != newerIDs[0] {
-		t.Fatalf("covers[newer]: %+v, want [%d]", covers[newer.ID], newerIDs[0])
+	if len(covers[newer.ID]) != 1 || covers[newer.ID][0].ID != newerSts[0].ID {
+		t.Fatalf("covers[newer]: %+v, want [%d]", covers[newer.ID], newerSts[0].ID)
 	}
-	if len(covers[older.ID]) != 1 || covers[older.ID][0].ID != olderIDs[0] {
-		t.Fatalf("covers[older]: %+v, want [%d]", covers[older.ID], olderIDs[0])
+	if len(covers[older.ID]) != 1 || covers[older.ID][0].ID != olderSts[0].ID {
+		t.Fatalf("covers[older]: %+v, want [%d]", covers[older.ID], olderSts[0].ID)
 	}
 	// Потолок должен быть заведомо выше реального каталога: он страхует от
 	// раздувания выдачи чужими наборами (POST /sticker-sets открыт всем), а не
@@ -699,7 +700,7 @@ func TestSearchSets_ReturnsCovers(t *testing.T) {
 	f := newFakeRepo()
 	in := New(f)
 	ctx := context.Background()
-	duck, duckIDs := seedSet(t, in, f, 1, "duck_pack", 3)
+	duck, duckSts := seedSet(t, in, f, 1, "duck_pack", 3)
 	seedSet(t, in, f, 1, "cat_pack", 1) // не матчится по запросу
 
 	sets, covers, err := in.SearchSets(ctx, "duck")
@@ -709,8 +710,8 @@ func TestSearchSets_ReturnsCovers(t *testing.T) {
 	if len(sets) != 1 || sets[0].ID != duck.ID {
 		t.Fatalf("SearchSets: %+v, want [%d]", sets, duck.ID)
 	}
-	if len(covers[duck.ID]) != 3 || covers[duck.ID][0].ID != duckIDs[0] {
-		t.Fatalf("covers[duck]: %+v, want превью из %v", covers[duck.ID], duckIDs)
+	if len(covers[duck.ID]) != 3 || covers[duck.ID][0].ID != duckSts[0].ID {
+		t.Fatalf("covers[duck]: %+v, want превью из %v", covers[duck.ID], duckSts)
 	}
 
 	sets, covers, err = in.SearchSets(ctx, "  ")

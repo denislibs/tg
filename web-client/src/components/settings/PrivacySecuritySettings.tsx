@@ -14,7 +14,6 @@ import PrivacyRule, { RULE_META } from './PrivacyRule'
 import AutoDeleteMessages, { autoDeleteLabel } from './AutoDeleteMessages'
 import PasscodeLock from './PasscodeLock'
 import ConfirmDialog from './ConfirmDialog'
-import { setAllDrafts } from '../../stores/draftsStore'
 import { useSettingsStore } from '../../settings'
 import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
@@ -173,7 +172,9 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
           action={t('Delete')}
           danger
           onConfirm={() => {
-            void managers.drafts.clearAll().then(() => setAllDrafts([])).catch(() => {})
+            // Черновики — поля диалогов, поэтому после очистки список
+            // перечитывает их владелец: своего стора у черновиков нет.
+            void managers.drafts.clearAll().then(() => managers.dialogs.refresh()).catch(() => {})
           }}
           onClose={() => setClearDrafts(false)}
         />

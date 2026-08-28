@@ -6,16 +6,13 @@
 // своих сторах IndexedDB (tweb config/databases/state.ts:5) — State целиком
 // перезаписывается на каждое изменение ключа, и сущности сделали бы это тяжёлым.
 import type { Folder } from '../managers/foldersManager'
-import type { Draft } from '../models'
 
 export interface AppState {
   /** версия схемы State (tweb STATE_VERSION) — при несовпадении стартуем с STATE_INIT */
   version: number
   /** папки-фильтры (tweb `filtersArr`) */
   folders: Folder[]
-  /** облачные черновики по чатам (tweb `drafts`) */
-  drafts: Draft[]
-  /** свёрнутые пользователем пин-плашки: chatId → msgId (tweb `hiddenPinnedMessages`) */
+  /** свёрнутые пользователем пин-плашки: peerId → msgId (tweb `hiddenPinnedMessages`) */
   hiddenPinnedMessages: Record<number, number>
   /**
    * недавние в глобальном поиске (tweb `recentSearch`). У tweb там числовые
@@ -23,7 +20,7 @@ export interface AppState {
    * храним строки: разница модели, не поведения.
    */
   recentSearch: string[]
-  /** порядок закреплённых по папкам: folderId → chatId[] (tweb `pinnedOrders`) */
+  /** порядок закреплённых по папкам: folderId → peerId[] (tweb `pinnedOrders`) */
   pinnedOrders: Record<number, number[]>
   /**
    * баланс звёзд; null — ни разу не загружался. Отличие от списков: у баланса `0`
@@ -33,13 +30,16 @@ export interface AppState {
   starsBalance: number | null
 }
 
-export const STATE_VERSION = 1
+// 2 — черновик переехал в САМ ДИАЛОГ (`dialog.draft`), ключа `drafts` в State
+// больше нет. Старое состояние отбрасывается целиком, как у оригинала при
+// несовпадении версии: список чатов и папки приедут с сервера, а черновики —
+// вместе с диалогами.
+export const STATE_VERSION = 2
 
 /** tweb `STATE_INIT` — дефолты и одновременно источник списка ключей. */
 export const STATE_INIT: AppState = {
   version: STATE_VERSION,
   folders: [],
-  drafts: [],
   hiddenPinnedMessages: {},
   recentSearch: [],
   pinnedOrders: {},

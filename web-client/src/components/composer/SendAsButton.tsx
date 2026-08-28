@@ -12,30 +12,47 @@ import Text from '../../shared/ui/Text'
 import Avatar from '../../shared/ui/Avatar'
 import Menu from '../../shared/ui/Menu'
 import { useT } from '../../i18n'
-import { useAvatarSrc } from '../useAvatarSrc'
+import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import { peerColor } from '../peerColor'
 import { useSetTransition } from '../../core/hooks/useSetTransition'
 import classNames from '../../shared/lib/classNames'
-import type { SendAsPeer } from '../../core/managers/chatsManager'
+import { isUser } from '../../core/peers/peerId'
+import { isMegagroupPeer } from '../../core/peerCache'
+import type { SendAsRow as SendAsRowVM } from '../../core/hooks/useSendAs'
 import s from './extras.module.scss'
 
 // _chat.scss:853 — `--send-as-size: 2.5rem`.
 const AVATAR_SIZE = 40
 
 export interface SendAsProps {
-  peers: SendAsPeer[]
-  currentId: number
-  onSelect: (peerId: number) => void
+  peers: SendAsRowVM[]
+  currentId: PeerId
+  onSelect: (peerId: PeerId) => void
+  /** ключ ОТКРЫТОГО чата — второй вопрос подписи строки (см. ниже) про него */
+  chatPeerId: PeerId
 }
 
-export default function SendAsButton({ peers, currentId, onSelect }: SendAsProps) {
+export default function SendAsButton({ peers, currentId, onSelect, chatPeerId }: SendAsProps) {
   const t = useT()
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState<{ left: number; bottom: number } | null>(null)
   const current = peers.find((p) => p.peerId === currentId) ?? peers[0]
-  const curSrc = useAvatarSrc(current.avatarUrl)
+  const curSrc = useMediaUrl(current.photoId || null)
   // input.ts:2639-2644 — появление идёт через SetTransition, duration 300.
   const visible = useSetTransition(true, 'is-visible', 300)
+
+  // Порт `sendAs.ts:143-149`. Подпись строки — это ДВА разных вопроса, и
+  // прежнее поле `kind` рядом со строкой отвечало на них одним словом:
+  //   1) «это я сам» — читается из ЗНАКА ключа;
+  //   2) «это сама супергруппа, в которой я пишу» — вопрос НЕ про пира, а про
+  //      его отношение к открытому чату, из карточки одного пира не выводится
+  //      вовсе.
+  const subtitleFor = (peerId: PeerId): string => {
+    if (isUser(peerId)) return t('Personal account')
+    if (peerId === chatPeerId && isMegagroupPeer(peerId)) return t('Anonymously')
+    return t('Your channels')
+  }
+
   return (
     <>
       <div
@@ -70,7 +87,7 @@ export default function SendAsButton({ peers, currentId, onSelect }: SendAsProps
               key={p.peerId}
               peer={p}
               active={p.peerId === currentId}
-              subtitle={p.kind === 'user' ? t('Personal account') : p.kind === 'group' ? t('Anonymously') : t('Your channels')}
+              subtitle={subtitleFor(p.peerId)}
               onClick={() => { onSelect(p.peerId); setOpen(false) }}
             />
           ))}
@@ -80,8 +97,8 @@ export default function SendAsButton({ peers, currentId, onSelect }: SendAsProps
   )
 }
 
-function SendAsRow({ peer, active, subtitle, onClick }: { peer: SendAsPeer; active: boolean; subtitle: string; onClick: () => void }) {
-  const src = useAvatarSrc(peer.avatarUrl)
+function SendAsRow({ peer, active, subtitle, onClick }: { peer: SendAsRowVM; active: boolean; subtitle: string; onClick: () => void }) {
+  const src = useMediaUrl(peer.photoId || null)
   return (
     <button type="button" className={s.sendAsRow} data-active={active || undefined} onClick={onClick}>
       <Avatar background={peerColor(peer.title)} text={peer.title[0] ?? '#'} src={src || undefined} size={32} />

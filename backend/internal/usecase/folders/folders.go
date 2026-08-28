@@ -23,9 +23,9 @@ var (
 )
 
 type Repo interface {
-	List(ctx context.Context, ownerID int64) ([]domain.Folder, error)
-	Create(ctx context.Context, ownerID int64, f domain.Folder) (domain.Folder, error)
-	Update(ctx context.Context, ownerID int64, f domain.Folder) (domain.Folder, error) // domain.ErrNotFound если не своя/нет
+	List(ctx context.Context, ownerID int64) ([]domain.DialogFilter, error)
+	Create(ctx context.Context, ownerID int64, f domain.DialogFilter) (domain.DialogFilter, error)
+	Update(ctx context.Context, ownerID int64, f domain.DialogFilter) (domain.DialogFilter, error) // domain.ErrNotFound если не своя/нет
 	Delete(ctx context.Context, ownerID, folderID int64) error
 	Count(ctx context.Context, ownerID int64) (int, error)
 
@@ -71,12 +71,22 @@ type UpdateLog interface {
 	AppendUpdate(ctx context.Context, userID int64, ptsCount int, date int64, typ string, payload json.RawMessage) (int64, error)
 }
 
+// Peers — слой разрешения peerId ↔ внутренний chatID (реализуется
+// usecase/chat, см. peeraddr.go). Списки include/exclude папки едут наружу
+// ключами пиров: id строки в chats приватного диалога наружу не выходит.
+// Optional — без него списки уезжают пустыми, а не с внутренними id.
+type Peers interface {
+	PeerToChatID(ctx context.Context, viewerID int64, peer domain.PeerID) (int64, error)
+	ChatIDToPeer(ctx context.Context, viewerID, chatID int64) (domain.PeerID, error)
+}
+
 type Interactor struct {
 	repo    Repo
 	chats   Chats
 	tx      TxManager
 	pub     EventPublisher // optional
 	updates UpdateLog      // optional
+	peers   Peers          // optional
 }
 
 func New(repo Repo, chats Chats, tx TxManager) *Interactor {
@@ -89,15 +99,49 @@ func (i *Interactor) SetPublisher(p EventPublisher) { i.pub = p }
 // SetUpdateLog attaches the per-user update log (optional).
 func (i *Interactor) SetUpdateLog(u UpdateLog) { i.updates = u }
 
+// SetPeers подключает слой разрешения peerId ↔ chatID (optional).
+func (i *Interactor) SetPeers(p Peers) { i.peers = p }
+
+// PeersToChatIDs — входящий список ключей пиров во внутренние chatID глазами
+// владельца папки. Нерешаемые ключи (диалога ещё нет) отбрасываются: правило
+// папки на несуществующий чат бессмысленно.
+func (i *Interactor) PeersToChatIDs(ctx context.Context, ownerID int64, peers []domain.PeerID) []int64 {
+	if i.peers == nil || len(peers) == 0 {
+		return nil
+	}
+	out := make([]int64, 0, len(peers))
+	for _, p := range peers {
+		if id, err := i.peers.PeerToChatID(ctx, ownerID, p); err == nil {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// ChatIDsToPeers — обратное направление для витрин и кадров.
+func (i *Interactor) ChatIDsToPeers(ctx context.Context, ownerID int64, ids []int64) []domain.PeerID {
+	out := make([]domain.PeerID, 0, len(ids))
+	if i.peers == nil {
+		return out
+	}
+	for _, id := range ids {
+		if p, err := i.peers.ChatIDToPeer(ctx, ownerID, id); err == nil {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // folderJSON — абсолютный снимок папки для folder_update (клиент заменяет
 // определение целиком, порядок доставки апдейтов не важен — идемпотентно).
-func folderJSON(f domain.Folder) map[string]any {
+func (i *Interactor) folderJSON(ctx context.Context, ownerID int64, f domain.DialogFilter) map[string]any {
 	return map[string]any{
 		"id": f.ID, "title": f.Title, "pos": f.Pos,
 		"contacts": f.Contacts, "non_contacts": f.NonContacts,
 		"groups": f.Groups, "broadcasts": f.Broadcasts, "bots": f.Bots,
 		"exclude_muted": f.ExcludeMuted, "exclude_read": f.ExcludeRead,
-		"include_chats": f.IncludeChats, "exclude_chats": f.ExcludeChats,
+		"include_peers": i.ChatIDsToPeers(ctx, ownerID, f.IncludeChats),
+		"exclude_peers": i.ChatIDsToPeers(ctx, ownerID, f.ExcludeChats),
 	}
 }
 
@@ -132,38 +176,38 @@ func (i *Interactor) emitFolderUpdate(ctx context.Context, ownerID int64, base m
 	_ = i.pub.PublishToUser(ctx, ownerID, frame)
 }
 
-func (i *Interactor) List(ctx context.Context, ownerID int64) ([]domain.Folder, error) {
+func (i *Interactor) List(ctx context.Context, ownerID int64) ([]domain.DialogFilter, error) {
 	return i.repo.List(ctx, ownerID)
 }
 
-func (i *Interactor) Create(ctx context.Context, ownerID int64, f domain.Folder) (domain.Folder, error) {
+func (i *Interactor) Create(ctx context.Context, ownerID int64, f domain.DialogFilter) (domain.DialogFilter, error) {
 	if err := validate(&f); err != nil {
-		return domain.Folder{}, err
+		return domain.DialogFilter{}, err
 	}
 	n, err := i.repo.Count(ctx, ownerID)
 	if err != nil {
-		return domain.Folder{}, err
+		return domain.DialogFilter{}, err
 	}
 	if n >= domain.MaxFoldersPerUser {
-		return domain.Folder{}, ErrTooMany
+		return domain.DialogFilter{}, ErrTooMany
 	}
 	created, err := i.repo.Create(ctx, ownerID, f)
 	if err != nil {
-		return domain.Folder{}, err
+		return domain.DialogFilter{}, err
 	}
-	i.emitFolderUpdate(ctx, ownerID, map[string]any{"folder": folderJSON(created)})
+	i.emitFolderUpdate(ctx, ownerID, map[string]any{"folder": i.folderJSON(ctx, ownerID, created)})
 	return created, nil
 }
 
-func (i *Interactor) Update(ctx context.Context, ownerID int64, f domain.Folder) (domain.Folder, error) {
+func (i *Interactor) Update(ctx context.Context, ownerID int64, f domain.DialogFilter) (domain.DialogFilter, error) {
 	if err := validate(&f); err != nil {
-		return domain.Folder{}, err
+		return domain.DialogFilter{}, err
 	}
 	updated, err := i.repo.Update(ctx, ownerID, f)
 	if err != nil {
-		return domain.Folder{}, err
+		return domain.DialogFilter{}, err
 	}
-	i.emitFolderUpdate(ctx, ownerID, map[string]any{"folder": folderJSON(updated)})
+	i.emitFolderUpdate(ctx, ownerID, map[string]any{"folder": i.folderJSON(ctx, ownerID, updated)})
 	return updated, nil
 }
 
@@ -254,7 +298,7 @@ func (i *Interactor) JoinInvite(ctx context.Context, userID int64, slug string, 
 		want = inv.ChatIDs
 	}
 	joined := make([]int64, 0, len(want))
-	var created domain.Folder
+	var created domain.DialogFilter
 	var haveFolder bool
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		for _, id := range want {
@@ -279,7 +323,7 @@ func (i *Interactor) JoinInvite(ctx context.Context, userID int64, slug string, 
 		if !domain.ValidFolderTitle(title) {
 			title = truncateTitle(title)
 		}
-		f, e := i.repo.Create(ctx, userID, domain.Folder{Title: title, IncludeChats: joined})
+		f, e := i.repo.Create(ctx, userID, domain.DialogFilter{Title: title, IncludeChats: joined})
 		if e != nil {
 			return e
 		}
@@ -291,24 +335,24 @@ func (i *Interactor) JoinInvite(ctx context.Context, userID int64, slug string, 
 	}
 	// Новая папка появилась на устройствах вступившего — шлём folder_update.
 	if haveFolder {
-		i.emitFolderUpdate(ctx, userID, map[string]any{"folder": folderJSON(created)})
+		i.emitFolderUpdate(ctx, userID, map[string]any{"folder": i.folderJSON(ctx, userID, created)})
 	}
 	return nil
 }
 
 // ownedFolder возвращает папку folderID пользователя ownerID; domain.ErrNotFound
 // если папки нет или она чужая.
-func (i *Interactor) ownedFolder(ctx context.Context, ownerID, folderID int64) (domain.Folder, error) {
+func (i *Interactor) ownedFolder(ctx context.Context, ownerID, folderID int64) (domain.DialogFilter, error) {
 	list, err := i.repo.List(ctx, ownerID)
 	if err != nil {
-		return domain.Folder{}, err
+		return domain.DialogFilter{}, err
 	}
 	for _, f := range list {
 		if f.ID == folderID {
 			return f, nil
 		}
 	}
-	return domain.Folder{}, domain.ErrNotFound
+	return domain.DialogFilter{}, domain.ErrNotFound
 }
 
 // shareableChats оставляет из ids только публичные группы/каналы.
@@ -329,7 +373,7 @@ func (i *Interactor) shareableChats(ctx context.Context, ids []int64) ([]int64, 
 	return out, nil
 }
 
-func validate(f *domain.Folder) error {
+func validate(f *domain.DialogFilter) error {
 	f.Title = strings.TrimSpace(f.Title)
 	if !domain.ValidFolderTitle(f.Title) {
 		return ErrBadTitle

@@ -2,11 +2,11 @@ package domain
 
 import "time"
 
-// Contact is one entry in a user's address book: the owner (OwnerID) saved another
+// ContactRecord is one entry in a user's address book: the owner (OwnerID) saved another
 // user (UserID) under a name of their own choosing, optionally with a note and a
 // "let them see my phone number" flag. The saved name is the owner's — it does not
 // change the contact's own profile name.
-type Contact struct {
+type ContactRecord struct {
 	OwnerID    int64
 	UserID     int64
 	FirstName  string
@@ -14,17 +14,18 @@ type Contact struct {
 	Note       string
 	SharePhone bool
 	CreatedAt  time.Time
-	// Enriched from the users table by the read model (not stored on the contacts
-	// row) so a list can render the peer's avatar/username/phone without a second
-	// round-trip. Zero/nil when looked up without the join.
-	Username  *string
-	AvatarURL string
-	// AvatarPreview — stripped-превью аватарки пира (см. domain.User.AvatarPreview).
-	AvatarPreview []byte
-	Phone         string
-	DisplayName   string
-	// HasCustomPhoto — у владельца задано личное фото этого контакта (AvatarURL
-	// уже подменён им). Позволяет UI показать «Изменить»/«Сбросить» фото.
+	// User — сам пир в форме конструктора `user`, наполняется read-моделью (в
+	// строке contacts его нет). Прежде здесь лежала россыпь плоских полей —
+	// username, avatar_url, avatar_preview, phone, display_name, — то есть
+	// ВТОРАЯ форма того же пользователя рядом с первой.
+	//
+	// Имя в карточке — то, под которым контакт сохранил ВЛАДЕЛЕЦ (FirstName/
+	// LastName выше): ровно так работает импорт контактов в оригинале, где
+	// видимая владельцу карточка пира несёт его вариант имени.
+	User UserReal
+	// HasCustomPhoto — у владельца задано личное фото этого контакта (User.Photo
+	// уже подменён им и несёт pFlags.personal). Позволяет UI показать
+	// «Изменить»/«Сбросить» фото.
 	HasCustomPhoto bool
 	// IsBot — контакт является ботом (users.is_bot). Ботов нельзя держать в
 	// адресной книге (Telegram), поэтому read-model их отфильтровывает.

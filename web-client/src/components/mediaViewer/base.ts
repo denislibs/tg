@@ -23,19 +23,23 @@
 // tweb mediaViewer.scss:725,730) — не переставлять (пин — base.test.ts).
 //
 // Адаптации (поведение не менялось):
-//   • ButtonIcon/Icon tweb (`button.ts`/`buttonIcon.ts`/`icon.ts`) → локальные
-//     `btnIcon`/`iconSpan`: та же разметка `button.btn-icon > span.tgico.button-icon`,
+//   • Icon tweb (`icon.ts`) — общий модуль `@components/icon` (был локальной
+//     копией `iconSpan` прямо здесь; копий было три — вынесены в один порт, как
+//     в оригинале). ButtonIcon (`button.ts`/`buttonIcon.ts`) → локальный
+//     `btnIcon`: та же разметка `button.btn-icon > span.tgico.button-icon`,
 //     глифы — из нашей карты `@core/tgico-icons` (шрифт tgico); свап иконки
 //     zoomin↔zoomout — локальный `replaceButtonIcon` (порт tweb button.ts:48-53
-//     поверх `iconSpan`). Ripple у mobile-close (в tweb ButtonIcon без noRipple
+//     поверх `Icon`). Ripple у mobile-close (в tweb ButtonIcon без noRipple
 //     вешает `rp` + `div.c-ripple`) не портирован: наш ripple — React-хук
 //     (`shared/ui/Ripple`), vanilla-порт поедет вместе с оживлением кнопок в Task 13
 //   • onClick: ветки live-стрима (PiP по клику в фон, admin-popup-container)
 //     не портированы — RTMP-стримов нет (фичи не существует)
 //   • Esc в tweb закрывает вьювер не клавиатурным листенером, а
-//     `appNavigationController` (navigationItem в _openMedia :2429-2450) — у
-//     нас Esc/Back вешает контроллер openMediaViewer.ts (Task 16): pushEsc +
-//     pushLayer, close по обоим
+//     `appNavigationController` (navigationItem в _openMedia :2429-2450). Сам
+//     `navigationItem` (постановка, снятие, вето на снятие во время полёта
+//     мувера, пауза на время картинки-в-картинке) живёт ЗДЕСЬ, как в оригинале;
+//     наружу вынесена только механика стека — контроллер openMediaViewer.ts
+//     (Task 16) отдаёт её инъекцией `navigation` (pushEsc + pushLayer)
 //   • `getOverlayRoot()` в tweb (`helpers/appWindow.ts:33`) возвращает body
 //     АКТИВНОГО окна (приложение целиком умеет переезжать в Document-PiP);
 //     у нас в PiP уходит только видео (`core/pip.ts`) — всегда body главного
@@ -48,17 +52,21 @@ import { createElement, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
 import EventListenerBase from '@helpers/eventListenerBase'
-import { getMiddleware, type Middleware, type MiddlewareHelper } from '@helpers/middleware'
+import { getMiddleware, type MiddlewareHelper } from '@helpers/middleware'
 import deferredPromise from '@helpers/cancellablePromise'
 import cancelEvent from '@helpers/dom/cancelEvent'
 import { attachClickEvent, hasMouseMovedSinceDown } from '@helpers/dom/clickEvent'
 import findUpAsChild from '@helpers/dom/findUpAsChild'
 import findUpClassName from '@helpers/dom/findUpClassName'
+// Была локальная 16-строчная копия прямо в этом файле — вынесена в общий порт
+// (`helpers/dom/createVideo.ts`), чтобы у императивной ленты и вьювера был один
+// и тот же элемент, а не два разных набора атрибутов.
+import createVideo from '@helpers/dom/createVideo'
 import { isFullScreen } from '@helpers/dom/fullScreen'
 import getVisibleRect from '@helpers/dom/getVisibleRect'
 import liteMode from '@helpers/liteMode'
 import { MediaSize } from '@helpers/mediaSize'
-import mediaSizes from '@helpers/mediaSizes'
+import mediaSizes, { setAttachmentSize } from '@helpers/mediaSizes'
 import clamp from '@helpers/number/clamp'
 import isBetween from '@helpers/number/isBetween'
 import { doubleRaf, fastRaf } from '@helpers/schedulers'
@@ -67,8 +75,8 @@ import windowSize from '@helpers/windowSize'
 import blur from '@helpers/blur'
 import renderImageFromUrl, { renderImageFromUrlPromise } from '@helpers/dom/renderImageFromUrl'
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
-import { glyph, type IconName } from '@core/tgico-icons'
-import { getHeavyAnimationPromise } from '@core/dom/heavyAnimation'
+import { type IconName } from '@core/tgico-icons'
+import Icon from '@components/icon'
 import { calcImageInBox } from '@core/dom/calcImageInBox'
 import SwipeHandler, { type ZoomDetails } from '@core/dom/swipeHandler'
 import { cachedMediaUrl } from '@core/mediaCache'
@@ -124,12 +132,13 @@ export type ViewerMedia = {
   /** stripped-превью (base64 JPEG, как `blur` бабла) — канвас-блюр в ghost */
   blurPreview?: string
   kind: 'photo' | 'video'
-  /** GIF-режим (tweb `document.type === 'gif'`): автоплей-цикл без плеера;
-   * Task 16 заполняет из isGifLike (core/gifs.ts) по mime/имени файла */
+  /** GIF-режим (tweb `document.type === 'gif'`): автоплей-цикл без плеера.
+   * Заполняется ровно этим — типом документа сообщения, выведенным
+   * `saveDocument` (collectLightboxItems) */
   gif?: boolean
-  /** длительность видео в секундах (tweb `media.duration`); < 60 → loop.
-   * У нашего бэка длительность видео может отсутствовать (см. core/gifs.ts) —
-   * тогда 0/undefined трактуется как «короткое» (loop), безвредно */
+  /** длительность видео в секундах (tweb `media.duration` = `doc.duration`);
+   * < 60 → loop. Атрибута видео у медиа может не быть — тогда 0/undefined
+   * трактуется как «короткое» (loop), безвредно */
   duration?: number
   /** Адаптация Task 16: источник байтов МИМО воркерного конвейера —
    * downloadMediaURL/resolveStreamUrl не зовутся. Секретные E2E-медиа
@@ -149,6 +158,30 @@ export type ViewerAuthor = {
   date: string
   /** stripped `avatar_preview` пира (Task 9) — слой под полной аватаркой */
   avatarPreview?: string
+}
+
+/**
+ * Слой Esc/Back вьювера — порт tweb `NavigationItem` (appNavigationController.ts:10-22)
+ * в объёме одного поля. `onPop` возвращает `false` — ВЕТО: слой отказывается
+ * сниматься (tweb base.ts:2434-2436 — пока летит мувер), и стек обязан вернуть
+ * его на место (tweb appNavigationController.ts:290-296).
+ *
+ * Не портированы поля `type`/`onEscape`/`noHistory`/`noBlurOnPop`: у нашего
+ * стека (`core/navigation/navigationStack.ts` + `core/hotkeys.ts`) нет ни типов
+ * слоёв, ни отдельного Esc-протокола, ни blur-на-pop.
+ */
+export type ViewerNavigationItem = { onPop: () => boolean | void }
+
+/**
+ * Механика стека, которую вьюверу отдаёт контроллер (`openMediaViewer.ts`) —
+ * в tweb это глобальный `appNavigationController` (pushItem/removeItem), у нас
+ * пара «Esc-стек + слой Back». Инъекция, а не импорт: у вьювера уже есть
+ * контроллер-владелец, и второй источник Esc/Back означал бы два слоя на один
+ * вьювер.
+ */
+export type ViewerNavigation = {
+  pushItem(item: ViewerNavigationItem): void
+  removeItem(item: ViewerNavigationItem): void
 }
 
 // tweb base.ts:107-111 — стопка зум/пан (живёт на moversContainer,
@@ -172,33 +205,6 @@ function resolveDirectMediaUrl(media: ViewerMedia): Promise<string> | undefined 
   return Promise.resolve(typeof url === 'function' ? url() : url)
 }
 
-// Порт tweb `helpers/dom/createVideo.ts` в объёме вьювера: элемент +
-// playsinline + уборка src по смерти middleware после тяжёлой анимации;
-// `pip` — разрешить видео уходить в Picture-in-Picture (живое видео плеера;
-// снапшоты/gif остаются с запретом, tweb createVideo:22). HLS/stream-учёт
-// tweb (`initVideoHls`/`toggleStreamInUse`) не портирован — HLS-качеств нет.
-function createVideo({ pip, middleware }: { pip?: boolean, middleware: Middleware }): HTMLVideoElement {
-  const video = document.createElement('video')
-  if (!pip) video.disablePictureInPicture = true
-  video.setAttribute('playsinline', 'true')
-  middleware.onDestroy(async () => {
-    await getHeavyAnimationPromise()
-    video.src = ''
-    video.load()
-  })
-  return video
-}
-
-// span.tgico — порт tweb `Icon()` (icon.ts:28-37): глиф шрифтом tgico + классы.
-// RTL-отражение (`icon-reflect`) не портировано — RTL-локалей у нас нет.
-// Экспорт: подкласс AppMediaViewer строит из них пункты ⋮-меню и кнопку more.
-export function iconSpan(icon: IconName, ...classes: string[]): HTMLSpanElement {
-  const span = document.createElement('span')
-  span.classList.add('tgico', ...classes)
-  span.textContent = glyph(icon)
-  return span
-}
-
 // button.btn-icon > span.tgico.button-icon — порт tweb `ButtonIcon()` в объёме
 // вьювера (все кнопки топбара в tweb идут с `noRipple: true`; про mobile-close
 // см. шапку файла). `onlyMobile` → `only-handhelds` (button.ts:33-35).
@@ -208,18 +214,18 @@ export function btnIcon(icon: IconName, options: { onlyMobile?: boolean } = {}):
   if (options.onlyMobile) {
     button.classList.add('only-handhelds')
   }
-  button.append(iconSpan(icon, 'button-icon'))
+  button.append(Icon(icon, 'button-icon'))
   return button
 }
 
-// Порт tweb `replaceButtonIcon` (button.ts:48-53) поверх нашего `iconSpan`:
+// Порт tweb `replaceButtonIcon` (button.ts:48-53) поверх общего `Icon`:
 // свап глифа кнопки заменой span.button-icon (зум-кнопка zoomin↔zoomout).
 // Экспорт: VolumeSelector/VideoPlayer (Task 15) свапают иконки тем же путём —
 // в tweb хелпер живёт в components/button.ts, у нас порт остался здесь; цикл
 // модулей base ↔ mediaPlayer идентичен tweb (их VideoPlayer тоже импортирует
 // mediaViewer/base ради типа), исполнение везде отложено до рантайма.
 export function replaceButtonIcon(element: HTMLElement, icon: IconName) {
-  const newIcon = iconSpan(icon, 'button-icon')
+  const newIcon = Icon(icon, 'button-icon')
   const oldIcon = element.querySelector('.button-icon')
   if (oldIcon) oldIcon.replaceWith(newIcon)
   else element.append(newIcon)
@@ -295,6 +301,13 @@ export default class AppMediaViewerBase<
   // как в tweb, её накрывает сам вьювер).
   public onAuthorClick?: (author: ViewerAuthor) => void
   public onClose?: () => void
+
+  // Слой Esc/Back (tweb `navigationItem`, base.ts:270 + :2432-2447). САМ стек
+  // вьювер не знает — его даёт контроллер (openMediaViewer.ts) через
+  // `navigation`; здесь живёт то, что в tweb лежит прямо в base: момент
+  // постановки/снятия слоя и ВЕТО на снятие.
+  public navigation?: ViewerNavigation
+  protected navigationItem?: ViewerNavigationItem
 
   // Промис полёта закрытия: повторный close() возвращает его же (tweb :984
   // отдаёт setMoverAnimationPromise — тот же deferred по часам; у нас
@@ -482,11 +495,11 @@ export default class AppMediaViewerBase<
 
     this.buttons.prev = document.createElement('div')
     this.buttons.prev.className = `${MEDIA_VIEWER_CLASSNAME}-switcher ${MEDIA_VIEWER_CLASSNAME}-switcher-left`
-    this.buttons.prev.append(iconSpan('previous', `${MEDIA_VIEWER_CLASSNAME}-sibling-button`, `${MEDIA_VIEWER_CLASSNAME}-prev-button`))
+    this.buttons.prev.append(Icon('previous', `${MEDIA_VIEWER_CLASSNAME}-sibling-button`, `${MEDIA_VIEWER_CLASSNAME}-prev-button`))
 
     this.buttons.next = document.createElement('div')
     this.buttons.next.className = `${MEDIA_VIEWER_CLASSNAME}-switcher ${MEDIA_VIEWER_CLASSNAME}-switcher-right`
-    this.buttons.next.append(iconSpan('next', `${MEDIA_VIEWER_CLASSNAME}-sibling-button`, `${MEDIA_VIEWER_CLASSNAME}-next-button`))
+    this.buttons.next.append(Icon('next', `${MEDIA_VIEWER_CLASSNAME}-sibling-button`, `${MEDIA_VIEWER_CLASSNAME}-next-button`))
 
     this.moversContainer = document.createElement('div')
     this.moversContainer.classList.add(MEDIA_VIEWER_CLASSNAME + '-movers')
@@ -1071,8 +1084,6 @@ export default class AppMediaViewerBase<
   // Порт tweb base.ts:975-1024 в нашем объёме. Не портированы (каждое помечено):
   //   • disposeSolid (:976) — solid-островов нет, наши React-острова умирают в
   //     destroyIslands ниже;
-  //   • navigationItem (:992-994, appNavigationController) — Esc/Back-слои
-  //     снимает контроллер openMediaViewer.ts в onClose (см. шапку файла);
   //   • lazyLoadQueue.clear() (:996) — очереди нет (шапка файла, Task 14);
   //   • author.avatarMiddlewareHelper.destroy() (:997) — остров аватарки
   //     уничтожает destroyIslands в finally;
@@ -1101,6 +1112,13 @@ export default class AppMediaViewerBase<
 
     this.closing = true
     this.swipeHandler?.removeListeners()
+
+    // tweb :991-993 — слой снимается В НАЧАЛЕ закрытия, а не по концу полёта:
+    // Esc/Back во время улёта мувера уже ничего не закрывают.
+    if (this.navigationItem) {
+      this.navigation?.removeItem(this.navigationItem)
+      this.navigationItem = undefined
+    }
 
     const promise = this.closePromise =
       this.setMoverToTarget(this.target?.element, true).then(({ onAnimationEnd }) => onAnimationEnd)
@@ -1151,10 +1169,10 @@ export default class AppMediaViewerBase<
 
   // Порт tweb base.ts:1036-1053 (в объёме окна: у tweb — getAppWindow(),
   // активное окно Document-PiP; у нас приложение в PiP не переезжает — всегда
-  // главный window). Ресайз: в tweb `mediaSizes.addEventListener('resize', ...)`
-  // (:1044, :1052); наш helpers/mediaSizes — шим без событийной части
-  // (см. его шапку) — слушаем window 'resize' напрямую, источник у tweb тот же
-  // (mediaSizes пересчитывается на resize окна). Esc — не здесь: см. шапку
+  // главный window). Ресайз — как в оригинале, событием `mediaSizes`
+  // (:1044, :1052): у него уже есть событийная часть (порт tweb
+  // helpers/mediaSizes.ts в `core/dom/mediaSizes.ts`), и снимок окна у вьювера с
+  // брейкпоинтом общий. Esc — не здесь: см. шапку
   // файла (appNavigationController → pushEsc контроллера openMediaViewer.ts).
   protected toggleGlobalListeners(active: boolean) {
     if (active) this.setGlobalListeners()
@@ -1164,13 +1182,13 @@ export default class AppMediaViewerBase<
   protected removeGlobalListeners() {
     window.removeEventListener('keydown', this.onKeyDown)
     window.removeEventListener('keyup', this.onKeyUp)
-    window.removeEventListener('resize', this.applyLayoutVariables)
+    mediaSizes.removeEventListener('resize', this.applyLayoutVariables)
   }
 
   protected setGlobalListeners() {
     window.addEventListener('keydown', this.onKeyDown)
     window.addEventListener('keyup', this.onKeyUp)
-    window.addEventListener('resize', this.applyLayoutVariables)
+    mediaSizes.addEventListener('resize', this.applyLayoutVariables)
   }
 
   // Порт tweb base.ts:2195-2205: вьюпорт изменился → пере-вписать content.media
@@ -2271,7 +2289,7 @@ export default class AppMediaViewerBase<
 
   // Порт tweb base.ts:2320-3005 (фото + видео). Из веток tweb не портированы
   // (каждая помечена на месте): live-стрим RTMP (фичи нет), HLS/quality-меню
-  // (HLS-качеств нет), navigationItem (Task 16). Вход — наш дескриптор
+  // (HLS-качеств нет). Вход — наш дескриптор
   // ViewerMedia вместо MyPhoto/MyDocument: байты и URL живут в воркерном
   // конвейере downloadMediaURL (Task 6), стрим видео — resolveStreamUrl.
   protected async _openMedia({
@@ -2343,8 +2361,26 @@ export default class AppMediaViewerBase<
       this.moveTheMover(this.content.mover as MoverElement, fromRight === 1)
       this.setNewMover()
     } else {
-      // navigationItem + appNavigationController.pushItem (tweb :2437-2455) —
-      // Esc/Back вешает контроллер openMediaViewer.ts (см. шапку файла)
+      // tweb :2432-2447 — слой Esc/Back ставится ровно здесь, на ПЕРВОМ открытии
+      // (при листании соседей ветка `wasActive` его не трогает).
+      this.navigationItem = {
+        onPop: () => {
+          // tweb :2434-2436 — вето: пока летит мувер, слой не снимается.
+          // Без него Back в этот момент снимал слой навсегда, а вьювер
+          // оставался открытым: его `close()` во время полёта отклоняется.
+          if (this.setMoverAnimationPromise) {
+            return false
+          }
+
+          // tweb :2438-2440 (`!canAnimate && IS_MOBILE_SAFARI` → мгновенный снос
+          // wholeDiv) не портирован: `canAnimate` даёт appNavigationController
+          // из своего swipe-back-детектора Safari, которого у нас нет.
+          void this.close()
+        },
+      }
+
+      this.navigation?.pushItem(this.navigationItem)
+
       this.toggleOverlay(true)
       this.setGlobalListeners()
       this.mountToOverlay()
@@ -2353,14 +2389,28 @@ export default class AppMediaViewerBase<
 
     const mover = this.content.mover as MoverElement
 
-    // setAttachmentSize-эквивалент (tweb :2463-2477): вписать натуральные
-    // размеры медиа в mediaBoxSize (окно минус резервы, tweb :2267-2274) и
-    // прибить px на layout-ghost — от него считается containerRect всего полёта.
-    // noZoom на десктопе — как tweb (`noZoom: mediaSizes.isMobile ? false : true`).
+    // tweb :2463-2477 — бокс считает ОБЩАЯ `setAttachmentSize`, та же, что у
+    // баблов; она же и ставит px на layout-ghost (от него считается
+    // containerRect всего полёта). Своего расчёта у вьювера нет — иначе он
+    // терял бы минимальную сторону 200 (`MIN_SIDE_SIZE`), которую оригинал
+    // получает даром. `message` вьювер не передаёт, поэтому минимальная ШИРИНА
+    // (120/368) здесь не применяется — это ветка медиа В СООБЩЕНИИ.
+    // noZoom — как tweb (`noZoom: mediaSizes.isMobile ? false : true`).
     const mediaBoxSize = this.mediaBoxSize
-    const fit = calcImageInBox(media.width, media.height, mediaBoxSize.width, mediaBoxSize.height, !mediaSizes.isMobile)
-    container.style.width = `${fit.width}px`
-    container.style.height = `${fit.height}px`
+    setAttachmentSize({
+      width: media.width,
+      height: media.height,
+      element: container,
+      boxWidth: mediaBoxSize.width,
+      boxHeight: mediaBoxSize.height,
+      noZoom: mediaSizes.isMobile ? false : true,
+      // tweb :2471 `photo: media` — вьювер отдаёт то же медиа, что и лента, а
+      // оно у него либо фото, либо документ-видео (tweb :2359-2360 считает
+      // `isDocument` ровно так же — по типу медиа). Отсюда дефолт натурального
+      // размера 512 у видео без размеров кадра в атрибутах (:52-56).
+      isDocument: isVideo,
+      documentType: isVideo ? (media.gif ? 'gif' : 'video') : undefined,
+    })
 
     // Порт tweb :2479-2493: узкое видео с UI плеера добивается до
     // VIDEO_MIN_WIDTH (контролы не влезают), с сохранением пропорции и
@@ -2433,7 +2483,7 @@ export default class AppMediaViewerBase<
       // обслуживает голос/музыку), mediaTimestamp (таймкоды сообщений — Task 14
       // их не собирает), storyboard, handleVideoLeak/shouldIgnoreVideoError
       // (фиксы crbug/утечек MTProto-стримов — наш стрим обычный HTTP-range),
-      // updateMediaSource (см. фото-ветку), navigationItem в onPip (Task 16).
+      // updateMediaSource (см. фото-ветку).
       const middleware = mover.middlewareHelper.get()
       const video = createVideo({ pip: !media.gif, middleware })
 
@@ -2508,6 +2558,14 @@ export default class AppMediaViewerBase<
               this.toggleWholeActive(!pip)
               this.toggleOverlay(!pip)
               this.toggleGlobalListeners(!pip)
+
+              // tweb :2682-2685 — на время картинки-в-картинке слой снимается:
+              // вьювера на экране нет, и Esc/Back обязаны уйти тому, кто под
+              // ним (закрыть чат/панель), а не «закрывать» невидимое окно.
+              if (this.navigationItem) {
+                if (pip) this.navigation?.removeItem(this.navigationItem)
+                else this.navigation?.pushItem(this.navigationItem)
+              }
             },
             onPipClose: () => {
               void this.close()
@@ -2618,8 +2676,10 @@ export default class AppMediaViewerBase<
               video.removeEventListener('error', onError)
             })
 
-            // void: видео-ветка renderImageFromUrl синхронна (src + колбэк),
-            // тип-объединение с промисом — от картинок (oxlint no-floating-promises)
+            // void: без колбэка видео-ветка renderImageFromUrl только назначает
+            // `src` и возвращает undefined (ожидание `onMediaLoad` включается
+            // ТОЛЬКО когда колбэк передан) — тип-объединение с промисом идёт от
+            // картинок (oxlint no-floating-promises)
             void renderImageFromUrl(video, url)
 
             // tweb :2886-2889 onMediaLoadPromise.then(createPlayer): у нас гейт

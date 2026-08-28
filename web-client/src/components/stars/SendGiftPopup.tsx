@@ -10,10 +10,10 @@ import Text from '../../shared/ui/Text'
 import TgSwitch from '../TgSwitch'
 import TgIcon from '../TgIcon'
 import { useManagers } from '../../core/hooks/useManagers'
-import { useStarsBalance, setStarsBalance } from '../../stores/starsStore'
+import { useStarsBalance } from '../../stores/starsStore'
 import { usePortalContainer } from '../../core/pip'
 import { useT } from '../../i18n'
-import type { StarGift } from '../../core/managers/starsManager'
+import type { StarGift } from '../../core/messages/messageAction'
 import StarIcon from './StarIcon'
 import { usePopupTransition } from '../settings/kit'
 import StarsPopup from './StarsPopup'
@@ -57,15 +57,16 @@ export default function SendGiftPopup({
     setChosen(null); setMessage(''); setAnonymous(false)
   }, [open, managers])
 
-  const enough = chosen ? balance >= chosen.priceStars : false
+  const enough = chosen ? balance >= chosen.stars : false
 
   const send = async () => {
     if (!chosen || busy) return
     if (!enough) { setTopupOpen(true); return }
     setBusy(true)
     try {
-      const { balance: bal } = await managers.stars.send(toUserId, chosen.id, message.trim(), anonymous)
-      setStarsBalance(bal)
+      // Баланс после списания приезжает кадром `updateStarsBalance` — своего
+      // значения ответ больше не несёт (второй источник одного факта).
+      await managers.stars.send(toUserId, chosen.id, message.trim(), anonymous)
       onSent?.()
       onClose()
     } finally {
@@ -97,16 +98,18 @@ export default function SendGiftPopup({
                   {catalog.map((g) => (
                     <div
                       key={g.id}
-                      className={s.giftCard + (g.soldOut ? ' ' + s.giftSoldOut : '')}
-                      onClick={() => !g.soldOut && setChosen(g)}
+                      className={s.giftCard + (g.pFlags?.sold_out ? ' ' + s.giftSoldOut : '')}
+                      onClick={() => !g.pFlags?.sold_out && setChosen(g)}
                     >
-                      {g.total != null && (
-                        <span className={s.giftLimitedBadge}>{g.soldOut ? t('Sold Out') : t('Limited')}</span>
+                      {g.pFlags?.limited && (
+                        <span className={s.giftLimitedBadge}>
+                          {g.pFlags.sold_out ? t('Sold Out') : t('Limited')}
+                        </span>
                       )}
                       <span className={s.giftEmoji}>{g.emoji}</span>
                       <span className={s.giftPrice}>
                         <StarIcon size={13} />
-                        {g.priceStars}
+                        {g.stars}
                       </span>
                     </div>
                   ))}
@@ -132,7 +135,7 @@ export default function SendGiftPopup({
                   <button type="button" className={s.payBtn} disabled={busy} onClick={() => void send()}>
                     {enough ? (
                       <>
-                        {t('Send for')} <StarIcon size={16} /> {chosen.priceStars}
+                        {t('Send for')} <StarIcon size={16} /> {chosen.stars}
                       </>
                     ) : (
                       t('Top up Stars')

@@ -382,6 +382,13 @@ const es: Dict = {
   Comments: 'Comentarios',
   Comment: 'Comentario',
   'Discussion started': 'Discusión iniciada',
+  'No messages here yet...': 'Aún no hay mensajes aquí…',
+  'Send a message or tap the greeting below.': 'Envía un mensaje o toca el saludo de abajo.',
+  'Your cloud storage': 'Tu almacenamiento en la nube',
+  'Forward messages here to save them': 'Reenvía mensajes aquí para guardarlos',
+  'Send media and files to store them': 'Envía multimedia y archivos para almacenarlos',
+  'Access this chat from any device': 'Accede a este chat desde cualquier dispositivo',
+  'Use search to quickly find things': 'Usa la búsqueda para encontrar cosas rápidamente',
   // settings screens (#71–#79)
   "Edit Profile": "Editar perfil",
   "Name": "Nombre",
@@ -700,6 +707,14 @@ const es: Dict = {
     '¿Seguro que quieres eliminar tu cuenta? Esta acción no se puede deshacer.',
   'This will delete your account and all your data. Your messages will remain but appear as sent by a «Deleted Account».':
     'Esto eliminará tu cuenta y todos tus datos. Tus mensajes permanecerán, pero aparecerán como enviados por una «Cuenta eliminada».',
+  Album: 'Álbum',
+  Photo: 'Foto',
+  Video: 'Vídeo',
+  GIF: 'GIF',
+  Sticker: 'Sticker',
+  Giveaway: 'Sorteo',
+  'Live location': 'Ubicación en tiempo real',
+  'Unsupported message': 'Mensaje no compatible',
 }
 
 export default es

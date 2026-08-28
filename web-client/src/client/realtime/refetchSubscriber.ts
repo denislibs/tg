@@ -7,6 +7,7 @@
 // проектором не важен.
 import rootScope from '@lib/rootScope'
 import { RT, type PinMessageEvt } from '../../core/realtime/events'
+import { getPeerId } from '../../core/peers/peerId'
 import { useChatsStore } from '../../stores/chatsStore'
 import { usePinsStore } from '../../stores/pinsStore'
 import { applyFolderUpdate, type FolderUpdateEvt } from '../../stores/foldersStore'
@@ -46,7 +47,10 @@ export function registerRefetchSubscriber(managers: Managers): void {
   // Pin/unpin: перечитать пины чата (usePinnedBar читает из стора).
   rootScope.addEventListener(RT.pinMessage, (raw) => {
     const e = raw as PinMessageEvt
-    void managers.messages.listPins(e.chat_id).then((p) => usePinsStore.getState().setPins(e.chat_id, p))
+    // Пир кадра — конструктор `Peer` (как у прочтения): ключ считает getPeerId,
+    // а не сервер числом.
+    const peerId = getPeerId(e.peer)
+    void managers.messages.listPins(peerId).then((p) => usePinsStore.getState().setPins(peerId, p))
   })
   // Метаданные чата сменились (title/photo/права/участники/…). Бэкенд шлёт
   // АБСОЛЮТНЫЙ снимок (backend chat_update.go:18-42). Карточка чата (число
@@ -64,7 +68,7 @@ export function registerRefetchSubscriber(managers: Managers): void {
   // КАЖДЫЙ chat_update, а publishChatUpdate зовётся из 13 мест бэкенда — и
   // рефетч прилетал каждому участнику чата.
   rootScope.addEventListener(RT.chatUpdate, (evt) => {
-    if (!useChatsStore.getState().dialogs.some((d) => d.chatId === evt.chat_id)) {
+    if (!useChatsStore.getState().dialogs.some((d) => d.peerId === getPeerId(evt.peer))) {
       scheduleChatsReload(managers)
     }
   })

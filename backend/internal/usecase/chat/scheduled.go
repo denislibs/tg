@@ -42,7 +42,7 @@ func (i *Interactor) ScheduleMessage(ctx context.Context, in SendInput, sendAt t
 		if e != nil {
 			return domain.ScheduledMessage{}, e
 		}
-		if typ != "private" {
+		if typ != domain.ChatTypePrivate {
 			return domain.ScheduledMessage{}, domain.ErrForbidden
 		}
 		sendAt = time.Now() // заглушка: при when_online поле не используется
@@ -181,7 +181,7 @@ func (i *Interactor) DispatchDueScheduled(ctx context.Context) (int, error) {
 // senderID); 0 — если чат не приватный или собеседник не найден.
 func (i *Interactor) privatePeer(ctx context.Context, chatID, senderID int64) int64 {
 	typ, err := i.chats.ChatType(ctx, chatID)
-	if err != nil || typ != "private" {
+	if err != nil || typ != domain.ChatTypePrivate {
 		return 0
 	}
 	members, err := i.chats.MemberIDs(ctx, chatID)

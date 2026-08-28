@@ -9,7 +9,6 @@ import { saveStateKey, loadStateAll } from './persist'
 // поэтому чистим содержимое стора, а не удаляем БД (иначе повиснет versionchange).
 beforeEach(async () => {
   await saveStateKey('folders', [])
-  await saveStateKey('drafts', [])
   await saveStateKey('recentSearch', [])
   await saveStateKey('hiddenPinnedMessages', {})
 })
@@ -31,7 +30,7 @@ describe('persist: стор state', () => {
 
     const all = await loadStateAll()
     expect(Object.keys(all).sort()).toEqual(
-      ['drafts', 'folders', 'hiddenPinnedMessages', 'recentSearch', 'version'],
+      ['folders', 'hiddenPinnedMessages', 'recentSearch', 'version'],
     )
     expect(all.version).toBe(1)
   })

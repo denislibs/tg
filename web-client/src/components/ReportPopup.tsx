@@ -44,7 +44,7 @@ export default function ReportPopup() {
     setBusy(true)
     try {
       await managers.report.report({
-        chatId: target.chatId,
+        peerId: target.peerId,
         msgId: target.msgId,
         reason,
         comment: comment.trim() || undefined,

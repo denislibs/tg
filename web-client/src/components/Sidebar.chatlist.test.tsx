@@ -22,6 +22,7 @@ import { useAppStateStore } from '../stores/appState'
 import { ALL_FOLDER_ID } from '../core/folderIds'
 import type { Managers } from '../client/bootstrap'
 import type { Dialog } from '../core/models'
+import { makeDialog } from '../core/dialogs/testDialog'
 
 const HOST_HEIGHT = 720
 const DIALOGS = 500
@@ -49,10 +50,7 @@ function fakeManagers() {
   return { managers, getDialogs }
 }
 
-const dialog = (chatId: number): Dialog => ({
-  chatId, type: 'private', title: 't' + chatId, unread: 0, unreadMentions: 0, unreadReactions: 0,
-  lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false,
-} as Dialog)
+const dialog = (peerId: PeerId): Dialog => makeDialog({ peerId })
 
 const scrollers = () => [...document.querySelectorAll<HTMLElement>('.folders-scrollable')]
 const activeScroller = () => document.querySelector<HTMLElement>('.folders-scrollable.active')!
@@ -75,7 +73,7 @@ beforeEach(() => {
     items: Array.from({ length: DIALOGS }, (_, i) => ({ dialog: dialog(i + 1), index: DIALOGS - i })),
   }])
   useFoldersStore.setState({ contactIds: new Set(), selectedId: ALL_FOLDER_ID })
-  useAppStateStore.setState({ folders: [FOLDER], drafts: [] })
+  useAppStateStore.setState({ folders: [FOLDER] })
   useNotifyStore.setState({ settings: { private: { muted: false, preview: true }, groups: { muted: false, preview: true }, channels: { muted: false, preview: true } } })
 
   if (!sizeStubbed) {

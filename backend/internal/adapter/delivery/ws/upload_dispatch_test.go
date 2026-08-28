@@ -27,7 +27,7 @@ func (f *fakeUploader) WriteChunk(_ context.Context, userID, mediaID, offset, to
 func newTestConnWithUpload(t *testing.T, up UploadDispatcher, userID int64) *Conn {
 	t.Helper()
 	c := &Conn{
-		user:      domain.User{ID: userID},
+		user:      domain.UserRecord{ID: userID},
 		userID:    userID,
 		send:      make(chan outFrame, 4),
 		uploadSem: make(chan struct{}, uploadMaxConcurrent),

@@ -2,22 +2,34 @@ package presence
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/messenger-denis/backend/internal/domain"
 )
 
 type fakePub struct {
-	mu  sync.Mutex
-	got map[int64]int
+	mu    sync.Mutex
+	got   map[int64]int
+	frame map[int64][]byte
 }
 
-func newFakePub() *fakePub { return &fakePub{got: map[int64]int{}} }
-func (p *fakePub) PublishToUser(_ context.Context, userID int64, _ []byte) error {
+func newFakePub() *fakePub { return &fakePub{got: map[int64]int{}, frame: map[int64][]byte{}} }
+func (p *fakePub) PublishToUser(_ context.Context, userID int64, frame []byte) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.got[userID]++
+	p.frame[userID] = frame
 	return nil
+}
+
+// last — последний кадр, ушедший получателю.
+func (p *fakePub) last(userID int64) []byte {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.frame[userID]
 }
 func (p *fakePub) count(userID int64) int {
 	p.mu.Lock()
@@ -97,6 +109,17 @@ func (s *fakeStore) LastSeen(_ context.Context, userID int64) (int64, error) {
 	return s.lastSeen[userID], nil
 }
 
+// OnlineExpires — дедлайн ключа присутствия (userStatusOnline.expires): именно
+// его отсутствие оставляло пира онлайн навсегда при потерянном кадре.
+func (s *fakeStore) OnlineExpires(_ context.Context, userID int64) (time.Time, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.onlineLocked(userID) {
+		return time.Time{}, nil
+	}
+	return s.expiry[userID], nil
+}
+
 func newManager(t *testing.T) (*Manager, *fakePub, *fakeStore) {
 	t.Helper()
 	store := newFakeStore()
@@ -124,7 +147,7 @@ func TestManager_OnlineDedupAndOffline(t *testing.T) {
 	if pub.count(2) != 1 {
 		t.Fatalf("expected 1 online announce, got %d", pub.count(2))
 	}
-	if online, _ := m.Snapshot(ctx, 1); !online {
+	if online, _, _ := m.Status(ctx, 1); !online {
 		t.Fatal("expected user 1 online")
 	}
 
@@ -135,9 +158,9 @@ func TestManager_OnlineDedupAndOffline(t *testing.T) {
 	if pub.count(2) != 2 {
 		t.Fatalf("expected offline announce, total=%d", pub.count(2))
 	}
-	online, lastSeen := m.Snapshot(ctx, 1)
-	if online || lastSeen == 0 {
-		t.Fatalf("after offline: online=%v lastSeen=%d", online, lastSeen)
+	online, _, lastSeen := m.Status(ctx, 1)
+	if online || lastSeen.IsZero() {
+		t.Fatalf("after offline: online=%v lastSeen=%v", online, lastSeen)
 	}
 }
 
@@ -151,7 +174,7 @@ func TestManager_HeartbeatRefreshes(t *testing.T) {
 		t.Fatalf("heartbeat: %v", err)
 	}
 	store.fastForward(20 * time.Second) // 40s total, but heartbeat reset the 30s TTL at 20s
-	if online, _ := m.Snapshot(ctx, 1); !online {
+	if online, _, _ := m.Status(ctx, 1); !online {
 		t.Fatal("expected still online after heartbeat refresh")
 	}
 }
@@ -172,7 +195,65 @@ func TestManager_HeartbeatReestablishesWhenExpired(t *testing.T) {
 	if pub.count(2) != 2 {
 		t.Fatalf("expected re-announce after expiry, got %d", pub.count(2))
 	}
-	if online, _ := m.Snapshot(ctx, 1); !online {
+	if online, _, _ := m.Status(ctx, 1); !online {
 		t.Fatal("expected online after heartbeat re-establish")
+	}
+}
+
+// Присутствие на проводе — конструктор UserStatus со СРОКОМ ГОДНОСТИ.
+//
+// Здесь проверяется дефект 1 разбора: прежний кадр {online:true, last_seen}
+// срока годности не имел, и потерянный кадр оставлял человека онлайн НАВСЕГДА.
+// В схеме userStatusOnline несёт expires, и клиент деградирует online →
+// offline по таймеру сам (tweb appUsersManager.ts:880-889). Источник у нас был
+// всегда — TTL ключа присутствия, — просто на провод не выпускался.
+func TestManager_UserStatusCarriesExpiry(t *testing.T) {
+	m, pub, store := newManager(t)
+	ctx := context.Background()
+
+	if err := m.Online(ctx, 1); err != nil {
+		t.Fatalf("online: %v", err)
+	}
+	st := m.UserStatus(ctx, 1, true)
+	online, ok := st.(domain.UserStatusOnline)
+	if !ok {
+		t.Fatalf("статус онлайна = %#v; want userStatusOnline", st)
+	}
+	if online.Tag() != domain.UserStatusOnlineTag {
+		t.Fatalf("дискриминатор = %q", online.Tag())
+	}
+	// Дедлайн — ровно TTL ключа присутствия от текущего момента фейкового часа.
+	want := store.now.Add(30 * time.Second).Unix()
+	if int64(online.Expires) != want {
+		t.Fatalf("expires = %d; want %d (дедлайн TTL ключа)", online.Expires, want)
+	}
+
+	// Тот же дедлайн уходит партнёру в кадре: без него клиент не смог бы
+	// погасить статус, не получив следующего кадра.
+	var live struct {
+		D struct {
+			Status struct {
+				Underscore string `json:"_"`
+				Expires    int64  `json:"expires"`
+			} `json:"status"`
+		} `json:"d"`
+	}
+	if err := json.Unmarshal(pub.last(2), &live); err != nil {
+		t.Fatalf("разбор кадра: %v", err)
+	}
+	if live.D.Status.Underscore != domain.UserStatusOnlineTag || live.D.Status.Expires != want {
+		t.Fatalf("кадр присутствия = %+v; want userStatusOnline с expires=%d", live.D.Status, want)
+	}
+
+	// Скрытое правилом last_seen присутствие — ДРУГОЙ конструктор, а не
+	// «онлайн с нулевым временем»: приватность выражена самим статусом.
+	if hidden := m.UserStatus(ctx, 1, false); hidden.Tag() != domain.UserStatusRecentlyTag {
+		t.Fatalf("скрытый статус = %q; want userStatusRecently", hidden.Tag())
+	}
+
+	// Ключ истёк — статус становится офлайном с временем последнего захода.
+	_ = m.Offline(ctx, 1)
+	if st := m.UserStatus(ctx, 1, true); st.Tag() != domain.UserStatusOfflineTag {
+		t.Fatalf("после Offline статус = %q; want userStatusOffline", st.Tag())
 	}
 }

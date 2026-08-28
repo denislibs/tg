@@ -12,6 +12,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
+	"github.com/messenger-denis/backend/internal/domain"
 	"github.com/messenger-denis/backend/internal/pkg/saferun"
 )
 
@@ -37,9 +38,9 @@ type Sink interface {
 
 type Hub struct {
 	mu          sync.RWMutex
-	conns       map[int64]map[Sink]struct{} // by user id
-	deviceConns map[int64]map[Sink]struct{} // by device id
-	channelSubs map[int64]map[Sink]struct{} // by channel id (live channel posts)
+	conns       map[int64]map[Sink]struct{}         // by user id
+	deviceConns map[int64]map[Sink]struct{}         // by device id
+	channelSubs map[domain.PeerID]map[Sink]struct{} // by channel peer id (live channel posts)
 	rdb         *redis.Client
 	pubsub      *redis.PubSub
 }
@@ -48,7 +49,7 @@ func NewHub(ctx context.Context, rdb *redis.Client) *Hub {
 	h := &Hub{
 		conns:       make(map[int64]map[Sink]struct{}),
 		deviceConns: make(map[int64]map[Sink]struct{}),
-		channelSubs: make(map[int64]map[Sink]struct{}),
+		channelSubs: make(map[domain.PeerID]map[Sink]struct{}),
 		rdb:         rdb,
 		pubsub:      rdb.Subscribe(ctx),
 	}
@@ -58,7 +59,12 @@ func NewHub(ctx context.Context, rdb *redis.Client) *Hub {
 
 func userChannel(userID int64) string     { return "user:" + strconv.FormatInt(userID, 10) }
 func deviceChannel(deviceID int64) string { return "device:" + strconv.FormatInt(deviceID, 10) }
-func channelTopic(channelID int64) string { return "channel:" + strconv.FormatInt(channelID, 10) }
+
+// channelTopic — тот же ключ, что у публикующей стороны
+// (adapter/realtime/redis.ChannelTopic): знаковый идентификатор пира.
+func channelTopic(peer domain.PeerID) string {
+	return "channel:" + strconv.FormatInt(int64(peer), 10)
+}
 
 func idFromChannel(ch, prefix string) (int64, bool) {
 	if !strings.HasPrefix(ch, prefix) {
@@ -83,7 +89,7 @@ func (h *Hub) route(msg *redis.Message) {
 	} else if deviceID, ok := idFromChannel(msg.Channel, "device:"); ok {
 		h.closeDevice(deviceID)
 	} else if chID, ok := idFromChannel(msg.Channel, "channel:"); ok {
-		h.deliverChannel(chID, []byte(msg.Payload))
+		h.deliverChannel(domain.PeerID(chID), []byte(msg.Payload))
 	}
 }
 
@@ -127,7 +133,7 @@ func (h *Hub) Unregister(ctx context.Context, userID, deviceID int64, s Sink) (l
 	// Drop this sink from every channel subscription so a disconnecting conn
 	// doesn't leak channel topic subscriptions; collect now-empty topics to
 	// unsubscribe outside the lock.
-	var emptiedChannels []int64
+	var emptiedChannels []domain.PeerID
 	for chID, subs := range h.channelSubs {
 		if _, ok := subs[s]; ok {
 			delete(subs, s)
@@ -152,41 +158,41 @@ func (h *Hub) Unregister(ctx context.Context, userID, deviceID int64, s Sink) (l
 
 // SubscribeChannel adds a sink to a channel's local subscriber set, subscribing
 // the Redis topic on the first local subscriber.
-func (h *Hub) SubscribeChannel(ctx context.Context, channelID int64, s Sink) {
+func (h *Hub) SubscribeChannel(ctx context.Context, peer domain.PeerID, s Sink) {
 	h.mu.Lock()
-	subs := h.channelSubs[channelID]
+	subs := h.channelSubs[peer]
 	first := len(subs) == 0
 	if first {
 		subs = make(map[Sink]struct{})
-		h.channelSubs[channelID] = subs
+		h.channelSubs[peer] = subs
 	}
 	subs[s] = struct{}{}
 	h.mu.Unlock()
 	if first {
-		h.sub(ctx, channelTopic(channelID))
+		h.sub(ctx, channelTopic(peer))
 	}
 }
 
 // UnsubscribeChannel removes a sink from a channel's local subscriber set,
 // unsubscribing the Redis topic when the last local subscriber leaves.
-func (h *Hub) UnsubscribeChannel(ctx context.Context, channelID int64, s Sink) {
+func (h *Hub) UnsubscribeChannel(ctx context.Context, peer domain.PeerID, s Sink) {
 	h.mu.Lock()
-	subs := h.channelSubs[channelID]
+	subs := h.channelSubs[peer]
 	last := false
 	if subs != nil {
 		delete(subs, s)
 		if len(subs) == 0 {
-			delete(h.channelSubs, channelID)
+			delete(h.channelSubs, peer)
 			last = true
 		}
 	}
 	h.mu.Unlock()
 	if last {
-		h.unsub(ctx, channelTopic(channelID))
+		h.unsub(ctx, channelTopic(peer))
 	}
 }
 
-func (h *Hub) deliverChannel(channelID int64, frame []byte) {
+func (h *Hub) deliverChannel(peer domain.PeerID, frame []byte) {
 	// Send держим ПОД RLock (как deliver), а не по снимку с отпущенным локом:
 	// иначе между снимком и Send сокет мог быть Unregister'ен (write-lock) и
 	// его send-канал закрыт (conn.run: close после Unregister) — и Send в
@@ -195,7 +201,7 @@ func (h *Hub) deliverChannel(channelID int64, frame []byte) {
 	// сокет уже удалён из channelSubs и в итерацию не попадёт. Send неблокирующий.
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	for s := range h.channelSubs[channelID] {
+	for s := range h.channelSubs[peer] {
 		s.Send(frame)
 	}
 }

@@ -8,10 +8,15 @@ import { useChatsStore } from '../stores/chatsStore'
 import { useManagers } from '../core/hooks/useManagers'
 import { useStoriesStore } from '../stores/storiesStore'
 import { gradientFor } from '../core/dialogToChat'
+import { getUserTitle } from '../core/peers/getPeerTitle'
+import { cachedUser } from '../core/peerCache'
+import { isUser } from '../core/peers/peerId'
+import type { UserReal } from '../core/peers/peer'
 import rootScope from '@lib/rootScope'
 import { useT } from '../i18n'
 import classNames from '../shared/lib/classNames'
-import type { StoryItem, StoryPrivacy } from '../core/managers/storiesManager'
+import type { StoryItem, StoryPrivacy } from '../core/stories/story'
+import { storyAllowIds, storyCaption, storyPrivacy } from '../core/stories/story'
 import s from './AddStorySheet.module.scss'
 
 const MAX_CAPTION_LEN = 2048
@@ -41,14 +46,20 @@ export default function EditStorySheet({
   const managers = useManagers()
   const dialogs = useChatsStore((st) => st.dialogs)
   const applyStoryEdit = useStoriesStore((st) => st.applyStoryEdit)
-  const contacts = dialogs.filter((d) => d.type === 'private' && d.peer).map((d) => d.peer!)
+  // Собеседники живут в зеркале пиров (вектор `users` контейнера `/chats`), а не
+  // внутри строки диалога; «приватный» — это ключ пользователя.
+  const contacts = dialogs
+    .filter((d) => isUser(d.peerId))
+    .map((d) => cachedUser(d.peerId))
+    .filter((u): u is UserReal => !!u && u._ === 'user')
 
-  const [caption, setCaption] = useState(story.caption)
-  const [privacy, setPrivacy] = useState<StoryPrivacy>(story.privacy)
-  // Предзаполняем allow-лист текущей аудиторией истории (бэк отдаёт allowIds
-  // только для своих selected-историй).
-  const [allow, setAllow] = useState<Set<number>>(() => new Set(story.allowIds ?? []))
+  const [caption, setCaption] = useState(storyCaption(story))
+  // Вид аудитории ВЫВОДИТСЯ из флагов конструктора: строки `privacy` на проводе
+  // больше нет, а allow-лист — правило `privacyValueAllowUsers` внутри `privacy`.
+  const [privacy, setPrivacy] = useState<StoryPrivacy>(storyPrivacy(story))
+  const [allow, setAllow] = useState<Set<number>>(() => new Set(storyAllowIds(story)))
   const [busy, setBusy] = useState(false)
+  const meId = useChatsStore((st) => st.meId)
 
   const toggleContact = (id: number) =>
     setAllow((prev) => {
@@ -61,10 +72,10 @@ export default function EditStorySheet({
   const save = async () => {
     if (busy) return
     setBusy(true)
-    const privacyChanged = privacy !== story.privacy
+    const privacyChanged = privacy !== storyPrivacy(story)
     // Считаем allow-лист изменившимся по сравнению множеств, а не по смене
     // приватности: у уже-selected истории аудиторию можно править без смены режима.
-    const initialAllow = story.allowIds ?? []
+    const initialAllow = storyAllowIds(story)
     const allowChanged =
       privacy === 'selected' && (allow.size !== initialAllow.length || initialAllow.some((id) => !allow.has(id)))
     // Бэк пересобирает story_allow только когда privacy передана (Edit при
@@ -72,7 +83,8 @@ export default function EditStorySheet({
     const sendPrivacy = privacyChanged || allowChanged
     const sendAllow = privacy === 'selected' && sendPrivacy
     try {
-      await managers.stories.editStory(story.id, {
+      // Своя история, поэтому автор — сам зритель; адрес всё равно пара.
+      await managers.stories.editStory(meId ?? 0, story.id, {
         caption: caption.trim(),
         privacy: sendPrivacy ? privacy : undefined,
         allowIds: sendAllow ? [...allow] : undefined,
@@ -158,14 +170,14 @@ export default function EditStorySheet({
                     key={c.id}
                     role="checkbox"
                     aria-checked={checked}
-                    aria-label={c.displayName}
+                    aria-label={getUserTitle(c)}
                     tabIndex={0}
                     onClick={() => toggleContact(c.id)}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleContact(c.id) } }}
                     className={s.contactRow}
                   >
-                    <Avatar background={gradientFor(c.id)} text={c.displayName.charAt(0).toUpperCase()} size="sm" />
-                    <Text noWrap size={16} color="var(--primary-text-color)" className={s.contactName}>{c.displayName}</Text>
+                    <Avatar background={gradientFor(c.id)} text={getUserTitle(c).charAt(0).toUpperCase()} size="sm" />
+                    <Text noWrap size={16} color="var(--primary-text-color)" className={s.contactName}>{getUserTitle(c)}</Text>
                     <div className={classNames(s.check, checked ? s.checkOn : '')}>
                       {checked && <TgIcon name="check" size={16} />}
                     </div>

@@ -1,17 +1,17 @@
 import { useCallback, useEffect } from 'react'
 import { useManagers } from './useManagers'
 import { useBoostsStore } from '../../stores/boostsStore'
-import type { BoostStatus } from '../models'
+import type { ChannelBoosts } from '../boosts/boostsStatus'
 
 // ViewModel-хук бустов канала: читает статус из стора, при монтировании
 // подгружает актуальный, отдаёт действие boost(). Live-обновления счётчика
 // приходят через realtimeBridge (boost_update) — здесь только read+command.
 export function useChannelBoosts(chatId: number): {
-  status: BoostStatus | undefined
-  boost: () => Promise<BoostStatus>
+  boosts: ChannelBoosts | undefined
+  boost: () => Promise<ChannelBoosts>
 } {
   const managers = useManagers()
-  const status = useBoostsStore((s) => s.byChat[chatId])
+  const boosts = useBoostsStore((s) => s.byChat[chatId])
 
   useEffect(() => {
     let alive = true
@@ -28,5 +28,5 @@ export function useChannelBoosts(chatId: number): {
     return st
   }, [chatId, managers])
 
-  return { status, boost }
+  return { boosts, boost }
 }

@@ -67,15 +67,15 @@ func newFakeSearchRepo() *fakeSearchRepo {
 	return &fakeSearchRepo{usernames: map[string]int64{}}
 }
 
-func (r *fakeSearchRepo) SearchChats(_ context.Context, _ string, _ int) ([]domain.ChatCard, error) {
+func (r *fakeSearchRepo) SearchChats(_ context.Context, _ string, _ int) ([]domain.ChatRecord, error) {
 	return nil, nil
 }
 
-func (r *fakeSearchRepo) SearchUsers(_ context.Context, _ string, _ int) ([]domain.UserCard, error) {
+func (r *fakeSearchRepo) SearchUsers(_ context.Context, _ string, _ int) ([]domain.UserReal, error) {
 	return nil, nil
 }
 
-func (r *fakeSearchRepo) SimilarChannels(_ context.Context, _, _ int64, _ int) ([]domain.ChatCard, int, error) {
+func (r *fakeSearchRepo) SimilarChannels(_ context.Context, _, _ int64, _ int) ([]domain.ChatRecord, int, error) {
 	return nil, 0, nil
 }
 
@@ -121,15 +121,61 @@ func (p *fakeChannelPublisher) lastPayload(t *testing.T) map[string]any {
 	return env.D
 }
 
-// groupMembershipChats adapts a fakeGroupRepo as a ChatRepo for IsMember checks
-// (the only ChatRepo method the channel usecase needs).
-type groupMembershipChats struct{ fg *fakeGroupRepo }
+// lastMessage — САМО СООБЩЕНИЕ последнего кадра: кадр несёт его конструктором
+// под ключом `message`, как updateNewMessage у оригинала, а pts лежит рядом.
+func (p *fakeChannelPublisher) lastMessage(t *testing.T) map[string]any {
+	t.Helper()
+	m, ok := p.lastPayload(t)["message"].(map[string]any)
+	if !ok {
+		t.Fatalf("в кадре нет сообщения: %+v", p.lastPayload(t))
+	}
+	return m
+}
 
-func (c groupMembershipChats) FindPrivate(context.Context, int64, int64) (int64, error) {
+// groupMembershipChats adapts a fakeGroupRepo as a ChatRepo for IsMember checks
+// (the ChatRepo methods the channel usecase needs).
+//
+// Приватные чаты здесь НЕ заглушка, и это важно: `CreatePrivate`, возвращавший
+// `(0, nil)`, делал недостижимым весь путь «сообщение от сервисного аккаунта» —
+// уведомление автору о решении по предложке уезжало в чат 0 и терялось. Из-за
+// этого дефект «решение едет текстом, а не действием» не мог покраснеть ни в
+// одном тесте. Чат заводится в ТОМ ЖЕ store, что и сообщения, иначе
+// `fakeMsgs.NextSeq` его не найдёт.
+type groupMembershipChats struct {
+	fg *fakeGroupRepo
+	s  *store
+}
+
+func (c groupMembershipChats) FindPrivate(_ context.Context, a, b int64) (int64, error) {
+	if c.s == nil {
+		return 0, domain.ErrNotFound
+	}
+	c.s.mu.Lock()
+	defer c.s.mu.Unlock()
+	for cid, typ := range c.s.chatType {
+		if typ != "private" {
+			continue
+		}
+		m := c.s.members[cid]
+		if m[a] != nil && m[b] != nil {
+			return cid, nil
+		}
+	}
 	return 0, domain.ErrNotFound
 }
-func (c groupMembershipChats) CreatePrivate(context.Context, int64, int64) (int64, error) {
-	return 0, nil
+
+func (c groupMembershipChats) CreatePrivate(_ context.Context, a, b int64) (int64, error) {
+	if c.s == nil {
+		return 0, nil
+	}
+	c.s.mu.Lock()
+	defer c.s.mu.Unlock()
+	c.s.nextChatID++
+	cid := c.s.nextChatID
+	c.s.chatType[cid] = "private"
+	c.s.chatSeq[cid] = 0
+	c.s.members[cid] = map[int64]*member{a: {}, b: {}}
+	return cid, nil
 }
 func (c groupMembershipChats) CreateSecret(context.Context, int64, int64) (int64, error) {
 	return 0, nil
@@ -159,11 +205,17 @@ func (c groupMembershipChatsFanout) MemberIDs(_ context.Context, chatID int64) (
 }
 func (c groupMembershipChats) IsMember(_ context.Context, chatID, userID int64) (bool, error) {
 	c.fg.mu.Lock()
-	defer c.fg.mu.Unlock()
 	_, ok := c.fg.members[chatID][userID]
-	return ok, nil
+	c.fg.mu.Unlock()
+	if ok || c.s == nil {
+		return ok, nil
+	}
+	// Приватные чаты живут в store (см. CreatePrivate выше), а не в группах.
+	c.s.mu.Lock()
+	defer c.s.mu.Unlock()
+	return c.s.members[chatID][userID] != nil, nil
 }
-func (c groupMembershipChats) ListDialogs(context.Context, int64) ([]domain.Dialog, error) {
+func (c groupMembershipChats) ListDialogs(context.Context, int64) ([]domain.DialogRecord, error) {
 	return nil, nil
 }
 func (c groupMembershipChats) ChatPartners(context.Context, int64) ([]int64, error)     { return nil, nil }
@@ -196,15 +248,33 @@ func (c groupMembershipChats) AddMention(context.Context, int64, int64, int64, i
 func (c groupMembershipChats) ClearMentions(context.Context, int64, int64, int64) (int, error) {
 	return 0, nil
 }
-func (c groupMembershipChats) NextMention(context.Context, int64, int64, int64) (int64, int64, error) {
-	return 0, 0, domain.ErrNotFound
+func (c groupMembershipChats) NextMention(context.Context, int64, int64, int64) (int64, error) {
+	return 0, domain.ErrNotFound
 }
 func (c groupMembershipChats) MaxSeq(context.Context, int64) (int64, error)             { return 0, nil }
 func (c groupMembershipChats) ClearedSeq(context.Context, int64, int64) (int64, error)  { return 0, nil }
 func (c groupMembershipChats) SetClearedSeq(context.Context, int64, int64, int64) error { return nil }
-func (c groupMembershipChats) ChatType(context.Context, int64) (string, error)          { return "channel", nil }
-func (c groupMembershipChats) PinMessage(context.Context, int64, int64, int64) error    { return nil }
-func (c groupMembershipChats) UnpinMessage(context.Context, int64, int64) error         { return nil }
+
+// ChatType отвечает из ОБЩЕГО store — того же, куда onCreate кладёт тип
+// созданного чата. Прежде здесь стояло безусловное "channel": группа
+// обсуждения, заведённая EnableDiscussion типом "group", для usecase выглядела
+// каналом. Пока по типу решался только вопрос «зеркалить ли пост» (там гейтом
+// работала привязка обсуждения), ложь не проявлялась; с появлением развилки
+// доставки она сделала бы непокрасневшим целый класс тестов.
+func (c groupMembershipChats) ChatType(_ context.Context, chatID int64) (string, error) {
+	if c.s == nil {
+		return domain.ChatTypeChannel, nil
+	}
+	c.s.mu.Lock()
+	defer c.s.mu.Unlock()
+	if typ, ok := c.s.chatType[chatID]; ok {
+		return typ, nil
+	}
+	return domain.ChatTypeChannel, nil
+}
+
+func (c groupMembershipChats) PinMessage(context.Context, int64, int64, int64) error { return nil }
+func (c groupMembershipChats) UnpinMessage(context.Context, int64, int64) error      { return nil }
 func (c groupMembershipChats) ListPins(context.Context, int64) ([]domain.Message, error) {
 	return nil, nil
 }
@@ -231,7 +301,7 @@ func newChannelTestInteractorMsgs(t *testing.T, msgs func(*store) MessageRepo) (
 	fch := newFakeChannelRepo()
 	fs := newFakeSearchRepo()
 	fpub := &fakeChannelPublisher{}
-	in := New(fakeTx{}, groupMembershipChats{fg}, msgs(s), nil, nil, fakeMedia{s}, fg, nil, fch, fs, nil)
+	in := New(fakeTx{}, groupMembershipChats{fg, s}, msgs(s), nil, nil, fakeMedia{s}, fg, nil, fch, fs, nil)
 	in.SetChannelPublisher(fpub)
 	// Media-фикстура для тестов Send с медиа (TestSendToChannel_CreatesMirror):
 	// mediaID=42 принадлежит пользователю 7 — стандартному создателю канала
@@ -242,9 +312,9 @@ func newChannelTestInteractorMsgs(t *testing.T, msgs func(*store) MessageRepo) (
 	s.seedMedia(102, 7)
 	// fakeMsgs.NextSeq requires the chat to exist in the store's chatType map;
 	// register channels there as fg.CreateMultiMember creates them.
-	fg.onCreate = func(id int64) {
+	fg.onCreate = func(id int64, typ string) {
 		s.mu.Lock()
-		s.chatType[id] = "channel"
+		s.chatType[id] = typ
 		s.chatSeq[id] = 0
 		s.mu.Unlock()
 	}
@@ -301,8 +371,10 @@ func TestPostToChannel_EchoCarriesClientMsgID(t *testing.T) {
 		t.Fatalf("PostToChannel: %v", err)
 	}
 
-	if got, _ := fpub.lastPayload(t)["client_msg_id"].(string); got != "opt-7" {
-		t.Fatalf("client_msg_id живого кадра = %q, want opt-7", got)
+	// Ключ сопоставления эха называется random_id — клиентским параметром
+	// оригинала, а не нашим client_msg_id.
+	if got, _ := fpub.lastMessage(t)["random_id"].(string); got != "opt-7" {
+		t.Fatalf("random_id живого кадра = %q, want opt-7", got)
 	}
 }
 
@@ -326,8 +398,9 @@ func TestChannelDifference_CarriesClientMsgID(t *testing.T) {
 	if err := json.Unmarshal(ups[len(ups)-1].Payload, &d); err != nil {
 		t.Fatalf("разбор payload: %v", err)
 	}
-	if got, _ := d["client_msg_id"].(string); got != "opt-8" {
-		t.Fatalf("client_msg_id в difference = %q, want opt-8", got)
+	msg, _ := d["message"].(map[string]any)
+	if got, _ := msg["random_id"].(string); got != "opt-8" {
+		t.Fatalf("random_id в difference = %q, want opt-8", got)
 	}
 }
 
@@ -343,8 +416,8 @@ func TestPostToChannel_NoClientMsgID_NoField(t *testing.T) {
 		t.Fatalf("PostToChannel: %v", err)
 	}
 
-	if _, ok := fpub.lastPayload(t)["client_msg_id"]; ok {
-		t.Fatal("client_msg_id присутствует в кадре, хотя его не присылали")
+	if _, ok := fpub.lastMessage(t)["random_id"]; ok {
+		t.Fatal("random_id присутствует в кадре, хотя его не присылали")
 	}
 }
 
@@ -355,7 +428,7 @@ func TestPostToChannel_KeepsEntities(t *testing.T) {
 	i, _, _, fpub := newChannelTestInteractor(t)
 	ctx := context.Background()
 	id, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
-	ents := []domain.MessageEntity{{Type: "bold", Offset: 0, Length: 6}}
+	ents := domain.MessageEntities{domain.NewMessageEntityBold(0, 6)}
 
 	msg, err := i.PostToChannel(ctx, id, 7, "Голова: Мария", ents, "e1")
 	if err != nil {
@@ -364,17 +437,17 @@ func TestPostToChannel_KeepsEntities(t *testing.T) {
 
 	// 1. дошли до Insert и вернулись в сохранённом сообщении (иначе история —
 	// та, что читается из БД, — приедет без разметки)
-	if len(msg.Entities) != 1 || msg.Entities[0].Type != "bold" {
+	if len(msg.Entities) != 1 || msg.Entities[0].Tag() != domain.EntityBold {
 		t.Fatalf("Entities сохранённого сообщения = %+v, want один bold", msg.Entities)
 	}
 
 	// 2. уехали в живом кадре (иначе подписчик видит голый текст до перезагрузки)
-	raw, ok := fpub.lastPayload(t)["entities"]
+	raw, ok := fpub.lastMessage(t)["entities"]
 	if !ok {
 		t.Fatal("в живом кадре нет entities — форматирование поста теряется")
 	}
 	got, _ := json.Marshal(raw)
-	if !strings.Contains(string(got), `"bold"`) {
+	if !strings.Contains(string(got), `"messageEntityBold"`) {
 		t.Fatalf("entities кадра = %s, want bold", got)
 	}
 
@@ -387,7 +460,8 @@ func TestPostToChannel_KeepsEntities(t *testing.T) {
 	if err := json.Unmarshal(ups[len(ups)-1].Payload, &d); err != nil {
 		t.Fatalf("разбор payload: %v", err)
 	}
-	if _, ok := d["entities"]; !ok {
+	dmsg, _ := d["message"].(map[string]any)
+	if _, ok := dmsg["entities"]; !ok {
 		t.Fatal("в difference нет entities — реплей разойдётся с живым кадром")
 	}
 }
@@ -401,9 +475,9 @@ func TestPostToChannel_SanitizesEntities(t *testing.T) {
 	// text_link с javascript:-схемой — ровно то, что sanitizeEntities выбрасывает
 	// (sanitize.go:75, safeLinkURL). Рядом валидный bold: он обязан уцелеть,
 	// иначе тест прошёл бы и при «выкинули всё подряд».
-	bad := []domain.MessageEntity{
-		{Type: "text_link", Offset: 0, Length: 5, URL: "javascript:alert(1)"},
-		{Type: "bold", Offset: 0, Length: 5},
+	bad := domain.MessageEntities{
+		domain.NewMessageEntityTextURL(0, 5, "javascript:alert(1)"),
+		domain.NewMessageEntityBold(0, 5),
 	}
 
 	msg, err := i.PostToChannel(ctx, id, 7, "hello", bad, "")
@@ -411,7 +485,7 @@ func TestPostToChannel_SanitizesEntities(t *testing.T) {
 		t.Fatalf("PostToChannel: %v", err)
 	}
 
-	if len(msg.Entities) != 1 || msg.Entities[0].Type != "bold" {
+	if len(msg.Entities) != 1 || msg.Entities[0].Tag() != domain.EntityBold {
 		t.Fatalf("Entities = %+v, want только bold (javascript:-ссылка должна быть выброшена)", msg.Entities)
 	}
 }

@@ -9,7 +9,7 @@ import TgIcon from '../TgIcon'
 import LottieSticker from '../LottieSticker'
 import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
-import { useAvatarSrc } from '../useAvatarSrc'
+import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import { useFoldersStore } from '../../stores/foldersStore'
 import type { Folder, FolderInput, FolderInvite } from '../../core/managers/foldersManager'
 import type { Chat } from '../../data'
@@ -29,7 +29,7 @@ const TYPE_LABELS: Record<string, { icon: string; label: string }> = {
 }
 
 function ChatPreviewRow({ chat }: { chat: Chat }) {
-  const src = useAvatarSrc(chat.avatarUrl)
+  const src = useMediaUrl(chat.photoId ?? null)
   return (
     <Row
       icon={<Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={src} preview={chat.avatarPreview} size={32} />}

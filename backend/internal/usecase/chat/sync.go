@@ -27,19 +27,19 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	// Комментарии: клиент адресует тред id ПОСТА (внешний контракт), а
 	// физически он висит на id ЗЕРКАЛА в группе обсуждения — резолвим перед
 	// запросом к хранилищу (см. resolveThreadRootForQuery). queryRoot (не
-	// исходный threadRoot) идёт и в prependForeignThreadRoot ниже: корневой
-	// бабл треда — это САМО зеркало (см. её комментарий), а зеркало лежит в
-	// ЭТОМ чате под id queryRoot, а не под id поста в канале.
+	// исходный threadRoot) отдаёт хранилищу условие `thread_root_id=root OR
+	// id=root`, поэтому корневой бабл треда приезжает окном сам: зеркало лежит
+	// в ЭТОМ чате под id queryRoot, а не под id поста в канале.
+	//
+	// Синтетической подшивки корня ИЗ ДРУГОГО чата здесь больше нет. Она
+	// существовала только ради вырожденного пути (thread_root долетел
+	// непереведённым) и подставляла корню seq=0 при сохранённом чужом
+	// содержимом: наружу сообщение адресуется парой «пир + seq», номера чужого
+	// чата в этом пространстве не существует вовсе, а 0 значит «самое новое».
 	queryRoot := i.resolveThreadRootForQuery(ctx, chatID, threadRoot)
 	msgs, err := i.msgs.GetHistory(ctx, chatID, userID, offsetSeq, addOffset, limit, queryRoot, cleared, tag)
 	if err != nil {
 		return HistoryResult{}, err
-	}
-	// Верх треда достигнут (короткая страница при чтении от新ейших/старее) —
-	// подшиваем корневой бабл треда первым сообщением, если пагинация его не
-	// зацепила (tweb: пост форварднут в discussion-группу и открывает тред).
-	if threadRoot != nil && len(msgs) < limit && addOffset >= 0 {
-		msgs = i.prependForeignThreadRoot(ctx, chatID, userID, *queryRoot, msgs)
 	}
 	if e := i.hydrateReplies(ctx, msgs); e != nil {
 		return HistoryResult{}, e
@@ -54,7 +54,6 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	i.hydratePaidMedia(ctx, userID, msgs)
 	_ = i.hydrateReactions(ctx, userID, msgs)
 	i.hydrateStarReactions(ctx, userID, msgs)
-	i.hydrateSendAs(ctx, msgs)
 	var count int
 	switch {
 	case tag != "":
@@ -69,69 +68,6 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 		return HistoryResult{}, err
 	}
 	return HistoryResult{Messages: msgs, Count: count}, nil
-}
-
-// prependForeignThreadRoot подшивает корневой бабл треда первым сообщением
-// окна синтетическим seq=0, если пагинация его не захватила. root —
-// РЕЗОЛВЛЕННЫЙ id (см. вызывающих: queryRoot из resolveThreadRootForQuery) —
-// для discussion-группы это id ЗЕРКАЛА поста (лежит в ТОМ ЖЕ чате chatID,
-// не в канале), для форум-топика — id сообщения темы (тоже в chatID).
-//
-// История правок (обе — находки ревью):
-//
-//  1. Раньше сюда передавали исходный threadRoot (id ПОСТА, внешний
-//     контракт) — сравнение `m.ID == threadRoot` никогда не совпадало с
-//     зеркалом (у него другой, внутренний id), поэтому функция каждый раз
-//     считала, что корня в окне нет, шла в канал за ОРИГИНАЛОМ поста
-//     (GetByID(id поста)) и подшивала его — а зеркало с тем же текстом уже
-//     приезжало в msgs через SQL-условие `thread_root_id=root OR id=root`
-//     (MessagesRepo.GetHistory/GetAround). Один и тот же пост дважды.
-//     Почина — сравнивать по РЕЗОЛВЛЕННОМУ root (см. сигнатуру).
-//  2. Фикс (1) по пути снял проверку `rootMsg.ChatID == chatID` — идея
-//     была «зеркало обязано быть видно всегда, эти фильтры на него не
-//     действуют». Регрессия: для форум-топика (root физически в ЭТОМ ЖЕ
-//     chatID) это заставляло синтетически показывать корень темы, даже
-//     если персональная видимость (message_hides/clearedSeq/
-//     history_for_new) намеренно его скрыла — то, что раньше уважалось.
-//     Проверка возвращена: если root физически в ЭТОМ ЖЕ чате, но не попал
-//     в окно — значит видимость исключила его намеренно, форсировать показ
-//     нельзя (ни для форум-топика, ни для зеркала — единообразно, без
-//     специального обхода для зеркала: обход не был частью исходного
-//     требования блокера, только дедупликация).
-//
-// Если root физически в ДРУГОМ чате (после резолва queryRoot это уже НЕ
-// штатный кейс discussion-группы — там root всегда в chatID; остаётся
-// только вырожденный путь resolveThreadRootForQuery, когда i.groups==nil
-// или сбоит IsDiscussionGroup, и thread_root долетает сюда НЕпереведённым,
-// всё ещё указывая на пост в другом чате) — GetByID сам по себе доступ не
-// проверяет (PK-резолв по любому чату), поэтому без явной проверки
-// членства `?thread_root=<id чужого сообщения>` подшивал бы контент ИЗ
-// ЛЮБОГО чужого чата, включая приватные, независимо от того, есть ли у
-// запрашивающего туда доступ (дыра, найдена ревью). Подшиваем такой корень,
-// только если userID реально состоит в его чате.
-func (i *Interactor) prependForeignThreadRoot(ctx context.Context, chatID, userID, root int64, msgs []domain.Message) []domain.Message {
-	for _, m := range msgs {
-		if m.ID == root {
-			return msgs // корень уже в окне
-		}
-	}
-	rootMsg, err := i.msgs.GetByID(ctx, root)
-	if err != nil || rootMsg.Deleted {
-		return msgs
-	}
-	if rootMsg.ChatID == chatID {
-		// В своём чате, но вне окна — видимость (message_hides/clearedSeq/
-		// history_for_new) исключила его намеренно; не форсируем показ.
-		return msgs
-	}
-	// Чужой чат — легитимно только в вырожденном случае, см. комментарий
-	// функции; проверяем реальный доступ, а не доверяем самому факту «не
-	// тот чат».
-	if ok, e := i.chats.IsMember(ctx, rootMsg.ChatID, userID); e != nil || !ok {
-		return msgs
-	}
-	rootMsg.Seq = 0
-	return append([]domain.Message{rootMsg}, msgs...)
 }
 
 // checkHistoryAccess: член чата — всегда; не-член — только тред в discussion-
@@ -150,38 +86,6 @@ func (i *Interactor) checkHistoryAccess(ctx context.Context, chatID, userID int6
 		}
 	}
 	return domain.ErrNotFound
-}
-
-// hydrateSendAs fills SendAsTitle/SendAsPhotoID (the displayed author) on
-// messages sent "as" a channel/group (send_as), batch-fetching chat briefs.
-// Best-effort: cosmetic, a failure must not break history.
-func (i *Interactor) hydrateSendAs(ctx context.Context, msgs []domain.Message) {
-	if i.groups == nil {
-		return
-	}
-	var ids []int64
-	seen := map[int64]bool{}
-	for _, m := range msgs {
-		if m.SendAsChatID != nil && !seen[*m.SendAsChatID] {
-			seen[*m.SendAsChatID] = true
-			ids = append(ids, *m.SendAsChatID)
-		}
-	}
-	if len(ids) == 0 {
-		return
-	}
-	briefs, err := i.groups.ChatBriefs(ctx, ids)
-	if err != nil {
-		return
-	}
-	for k := range msgs {
-		if msgs[k].SendAsChatID == nil {
-			continue
-		}
-		if b, ok := briefs[*msgs[k].SendAsChatID]; ok {
-			msgs[k].SendAsTitle, msgs[k].SendAsPhotoID = b.Title, b.PhotoID
-		}
-	}
 }
 
 // hydrateReactions fills Reactions (emoji aggregates + the viewer's mine flag) on
@@ -207,33 +111,44 @@ func (i *Interactor) hydrateReactions(ctx context.Context, viewerID int64, msgs 
 	return nil
 }
 
-// hydrateReplies fills ReplyTo on each message that replies to another, batch-
-// fetching the targets by id (one query). Deleted/missing targets are skipped.
+// hydrateReplies fills ReplyTo on each message that replies to another,
+// batch-fetching the targets by their NUMBER in the chat (one query per chat).
+// Deleted/missing targets are skipped.
+//
+// Адрес отвечаемого — пара «пир + seq» (messages.reply_to_id хранит номер, а
+// не ключ строки), поэтому выборка идёт по (chat_id, seq): список может быть
+// из разных чатов (глобальный поиск), и группировка по чату здесь не
+// оптимизация, а условие корректности — один и тот же номер в двух чатах
+// означает два разных сообщения.
 func (i *Interactor) hydrateReplies(ctx context.Context, msgs []domain.Message) error {
-	ids := make([]int64, 0)
-	seen := map[int64]bool{}
+	seqsByChat := map[int64][]int64{}
+	seen := map[[2]int64]bool{}
 	for _, m := range msgs {
 		// Кросс-чат-ответ: оригинал в ДРУГОМ чате — его контент НЕ подтягиваем
 		// (клиент рисует превью из снимка reply_snapshot_*). Иначе любой участник
 		// вычитал бы содержимое чужого чата через историю.
-		if m.ReplyToPeerID != nil {
+		if m.ReplyToPeerID != nil || m.ReplyToID == nil {
 			continue
 		}
-		if m.ReplyToID != nil && !seen[*m.ReplyToID] {
-			seen[*m.ReplyToID] = true
-			ids = append(ids, *m.ReplyToID)
+		k := [2]int64{m.ChatID, *m.ReplyToID}
+		if seen[k] {
+			continue
 		}
+		seen[k] = true
+		seqsByChat[m.ChatID] = append(seqsByChat[m.ChatID], *m.ReplyToID)
 	}
-	if len(ids) == 0 {
+	if len(seqsByChat) == 0 {
 		return nil
 	}
-	targets, err := i.msgs.GetByIDs(ctx, ids)
-	if err != nil {
-		return err
-	}
-	byID := make(map[int64]domain.Message, len(targets))
-	for _, t := range targets {
-		byID[t.ID] = t
+	byAddr := make(map[[2]int64]domain.Message, len(seen))
+	for chatID, seqs := range seqsByChat {
+		targets, err := i.msgs.GetBySeqs(ctx, chatID, seqs)
+		if err != nil {
+			return err
+		}
+		for _, t := range targets {
+			byAddr[[2]int64{t.ChatID, t.Seq}] = t
+		}
 	}
 	for idx := range msgs {
 		// Кросс-чат-ответ рисуется из снимка — реальный оригинал не отдаём.
@@ -244,10 +159,8 @@ func (i *Interactor) hydrateReplies(ctx context.Context, msgs []domain.Message) 
 		if rid == nil {
 			continue
 		}
-		t, ok := byID[*rid]
-		// defense-in-depth: оригинал только из того же чата, что и ответ; иначе
-		// пропускаем (не даём просочиться контенту чужого чата).
-		if !ok || t.Deleted || t.ChatID != msgs[idx].ChatID {
+		t, ok := byAddr[[2]int64{msgs[idx].ChatID, *rid}]
+		if !ok || t.Deleted {
 			continue
 		}
 		text := t.Text
@@ -264,7 +177,7 @@ func (i *Interactor) hydrateReplies(ctx context.Context, msgs []domain.Message) 
 		if msgs[idx].ReplyQuoteText != nil {
 			quote = *msgs[idx].ReplyQuoteText
 		}
-		msgs[idx].ReplyTo = &domain.ReplyPreview{MsgID: t.ID, Seq: t.Seq, SenderID: t.SenderID, Text: text, Entities: entities, Type: t.Type, MediaID: t.MediaID, QuoteText: quote}
+		msgs[idx].ReplyTo = &domain.ReplyPreview{Seq: t.Seq, SenderID: t.SenderID, Text: text, Entities: entities, Type: t.Type, MediaID: t.MediaID, QuoteText: quote}
 	}
 	return nil
 }
@@ -311,28 +224,21 @@ func (i *Interactor) hydrateMedia(ctx context.Context, msgs []domain.Message) er
 		if msgs[idx].MediaID == nil {
 			continue
 		}
-		if d, ok := dims[*msgs[idx].MediaID]; ok {
-			msgs[idx].MediaWidth = d.Width
-			msgs[idx].MediaHeight = d.Height
-			msgs[idx].MediaMime = d.Mime
-			msgs[idx].MediaBlur = d.Blur
-			msgs[idx].MediaHasThumb = d.HasThumb
-			msgs[idx].MediaDuration = d.Duration
-			msgs[idx].MediaSize = d.Size
-			msgs[idx].MediaName = d.FileName
-			msgs[idx].MediaTitle = d.Title
-			msgs[idx].MediaPerformer = d.Performer
-		}
+		// Вложение собирается ВСЕГДА, когда у сообщения есть media_id — даже если
+		// строки media ещё нет (медиа не обработано): у сообщения с медиа не
+		// бывает состояния «вложения нет вовсе», иначе клиенту пришлось бы
+		// держать вторую ветку рендера на этот случай. Незаполненное вложение —
+		// это документ без атрибутов и без превью, а не отсутствующий объект.
+		msgs[idx].Media = buildMedia(msgs[idx], dims[*msgs[idx].MediaID])
 	}
 	return nil
 }
 
-// AroundResult is a jump-to-message window: messages around a seq + end flags.
+// AroundResult — окно «перейти к сообщению»: сообщения вокруг seq плюс размер
+// полного набора. Концы окна выводит клиент (см. MessagesRepo.GetAround).
 type AroundResult struct {
-	Messages      []domain.Message
-	ReachedTop    bool
-	ReachedBottom bool
-	Count         int
+	Messages []domain.Message
+	Count    int
 }
 
 // GetHistoryAround returns a window centered on centerSeq (for jump-to-message),
@@ -348,15 +254,11 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 	if err != nil {
 		return AroundResult{}, err
 	}
-	// см. GetHistory — тот же перевод id поста -> id зеркала для запроса,
-	// queryRoot (не исходный threadRoot) идёт и в prependForeignThreadRoot.
+	// см. GetHistory — тот же перевод id поста -> id зеркала для запроса.
 	queryRoot := i.resolveThreadRootForQuery(ctx, chatID, threadRoot)
-	msgs, top, bottom, err := i.msgs.GetAround(ctx, chatID, userID, centerSeq, limit, queryRoot, cleared)
+	msgs, err := i.msgs.GetAround(ctx, chatID, userID, centerSeq, limit, queryRoot, cleared)
 	if err != nil {
 		return AroundResult{}, err
-	}
-	if threadRoot != nil && top {
-		msgs = i.prependForeignThreadRoot(ctx, chatID, userID, *queryRoot, msgs)
 	}
 	if e := i.hydrateReplies(ctx, msgs); e != nil {
 		return AroundResult{}, e
@@ -371,7 +273,6 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 	i.hydratePaidMedia(ctx, userID, msgs)
 	_ = i.hydrateReactions(ctx, userID, msgs)
 	i.hydrateStarReactions(ctx, userID, msgs)
-	i.hydrateSendAs(ctx, msgs)
 	var count int
 	if threadRoot != nil {
 		count, err = i.msgs.CountThread(ctx, chatID, *queryRoot)
@@ -381,7 +282,7 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 	if err != nil {
 		return AroundResult{}, err
 	}
-	return AroundResult{Messages: msgs, ReachedTop: top, ReachedBottom: bottom, Count: count}, nil
+	return AroundResult{Messages: msgs, Count: count}, nil
 }
 
 // SearchMessages returns messages in a chat matching q (newest first) + total count.
@@ -466,19 +367,6 @@ func (i *Interactor) MessageSeqByDate(ctx context.Context, chatID, userID int64,
 		return 0, domain.ErrNotFound
 	}
 	return i.msgs.MessageSeqByDate(ctx, chatID, from)
-}
-
-// CalendarMonth — медиа-превью по дням месяца для пикера даты (tweb
-// getSearchResultsCalendar). Полуинтервал [from, to). Не участник — ErrNotFound.
-func (i *Interactor) CalendarMonth(ctx context.Context, chatID, userID int64, from, to time.Time) ([]domain.CalendarDay, error) {
-	ok, err := i.chats.IsMember(ctx, chatID, userID)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return nil, domain.ErrNotFound
-	}
-	return i.msgs.CalendarMonth(ctx, chatID, from, to)
 }
 
 // GlobalSearchMessages searches messages across every chat the user belongs to

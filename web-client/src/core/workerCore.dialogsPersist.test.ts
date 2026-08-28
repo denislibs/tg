@@ -32,17 +32,20 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { createWorkerCore } from './workerCore'
 import { saveDialogs, loadDialogs, loadMe } from './store/persist'
 import type { Dialog } from './models'
+import { makeDialog } from './dialogs/testDialog'
+import { MUTE_UNTIL_FOREVER, type PeerNotifySettings } from './dialogs/notifySettings'
 
-const dialog = (chatId: number): Dialog => ({
-  chatId, type: 'private', title: 't' + chatId, unread: 0, unreadMentions: 0, unreadReactions: 0,
-  lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false,
-} as Dialog)
+/** «Навсегда» — далёкий срок; «снять» — отсутствие переопределения. */
+const MUTED: PeerNotifySettings = { _: 'peerNotifySettings', mute_until: MUTE_UNTIL_FOREVER }
+const UNMUTED: PeerNotifySettings = { _: 'peerNotifySettings' }
+
+const dialog = (peerId: number): Dialog => makeDialog({ peerId })
 
 beforeEach(() => { indexedDB = new IDBFactory() })
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
 
 describe('createWorkerCore(): персист диалогов пишет владелец, не main (Task 5)', () => {
-  it('applyMute() публикует операцию и с дебаунсом реально пишет свежий список через saveDialogs', async () => {
+  it('applyNotifySettings() публикует операцию и с дебаунсом реально пишет свежий список через saveDialogs', async () => {
     await saveDialogs([dialog(1)])
     // ТОЛЬКО setTimeout/clearTimeout: fake-indexeddb едет на setImmediate
     // (гейт RestClient на tokens.ready) — заморозив и его, тест повис бы.
@@ -51,14 +54,14 @@ describe('createWorkerCore(): персист диалогов пишет вла�
     const core = createWorkerCore()
     await core.registry.dialogs.fillMirror() // hydrate: читает [dialog(1)] с диска
 
-    core.registry.dialogs.applyMute(1, true)
+    core.registry.dialogs.applyNotifySettings(1, MUTED)
 
     // Раньше 1с (PERSIST_DEBOUNCE_MS в dialogsManager.ts) — запись ещё не ушла.
     await vi.advanceTimersByTimeAsync(500)
-    expect((await loadDialogs())[0]?.muted).toBe(false)
+    expect((await loadDialogs())[0]?.notify_settings).toEqual(UNMUTED)
 
     await vi.advanceTimersByTimeAsync(600)
-    expect((await loadDialogs())[0]?.muted).toBe(true) // saveCache реально вызван
+    expect((await loadDialogs())[0]?.notify_settings).toEqual(MUTED) // saveCache реально вызван
   })
 
   // Сценарий 1: таймер ЕЩЁ НЕ выстрелил — cancelPersist() гасит его, писать
@@ -70,7 +73,7 @@ describe('createWorkerCore(): персист диалогов пишет вла�
 
     const core = createWorkerCore()
     await core.registry.dialogs.fillMirror()
-    core.registry.dialogs.applyMute(1, true) // планирует запись через 1с — таймер ещё не сработал
+    core.registry.dialogs.applyNotifySettings(1, MUTED) // планирует запись через 1с — таймер ещё не сработал
 
     // Без активной сессии logout() не ходит в REST (см. workerCore.test.ts,
     // «authManager.onLoggingOut → broadcast») — резолвится локально, зовёт
@@ -99,7 +102,7 @@ describe('createWorkerCore(): персист диалогов пишет вла�
 
     const core = createWorkerCore()
     await core.registry.dialogs.fillMirror()
-    core.registry.dialogs.applyMute(1, true) // планирует запись через 1с
+    core.registry.dialogs.applyNotifySettings(1, MUTED) // планирует запись через 1с
 
     // СИНХРОННЫЙ advance (не Async!): таймер срабатывает прямо здесь, callback
     // синхронно обнуляет saveTimer и запускает `saveDialogs(items)` — та
@@ -131,8 +134,12 @@ describe('createWorkerCore(): персист диалогов пишет вла�
   it('setMe() пишет свежего `me` write-through (честный новый дом после удаления dialogsPersist.ts)', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: unknown) => {
       if (String(url).endsWith('/auth/sign_in')) {
+        // Исход шага входа — конструктор `auth.authorization` с КРАТКОЙ
+        // карточкой: полной формы вход не отдаёт, её приносит первый /me.
         return new Response(JSON.stringify({
-          token: 'TOK', user: { id: 42, phone: '+7', display_name: 'Д' },
+          _: 'auth.authorization',
+          token: 'TOK',
+          user: { _: 'user', pFlags: { self: true }, id: 42, phone: '+7' },
         }), { status: 200 })
       }
       throw new Error('unexpected fetch ' + String(url))
@@ -141,6 +148,6 @@ describe('createWorkerCore(): персист диалогов пишет вла�
     const core = createWorkerCore()
     await core.registry.auth.signIn('+7', '12345', 'web', 'browser')
 
-    expect((await loadMe())?.id).toBe(42)
+    expect((await loadMe())?.user.id).toBe(42)
   })
 })

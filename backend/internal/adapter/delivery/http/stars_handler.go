@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -21,7 +23,7 @@ func (h *ChatHandler) StarsBalance(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load balance")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"balance": bal})
+	writeJSON(w, http.StatusOK, domain.NewStarsStatus(bal))
 }
 
 // TopUpStars — POST /stars/topup {amount}: dev-пополнение (без реальной оплаты).
@@ -46,7 +48,7 @@ func (h *ChatHandler) TopUpStars(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "top-up failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"balance": bal})
+	writeJSON(w, http.StatusOK, domain.NewStarsStatus(bal))
 }
 
 // StarsTransactions — GET /stars/transactions?offset&limit: история движений
@@ -63,20 +65,41 @@ func (h *ChatHandler) StarsTransactions(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, "could not load transactions")
 		return
 	}
-	if txs == nil {
-		txs = []domain.StarTransaction{}
+	// История едет ТЕМ ЖЕ конструктором, что и остаток: у оригинала это один
+	// ответ `payments.starsStatus`, где `history` — необязательный параметр.
+	// Остаток спрашивается здесь же: без него конструктор неполон, а клиенту
+	// он всё равно нужен на том же экране.
+	bal, err := h.svc.StarsBalance(r.Context(), h.meID(r))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load balance")
+		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"transactions": txs})
+	out := make([]domain.StarsTransaction, 0, len(txs))
+	for _, tx := range txs {
+		// Вид операции больше не строка: «это подарок» говорит ФЛАГ, вторую
+		// сторону — конструктор, а «начисление или списание» — знак суммы.
+		out = append(out, domain.NewStarsTransaction(tx.ID, tx.Amount, unixOf(tx.Date), tx.PeerID, tx.Title,
+			strings.HasPrefix(tx.Kind, "gift")))
+	}
+	writeJSON(w, http.StatusOK, domain.NewStarsStatusWithHistory(bal, out))
 }
 
-// UnlockPaidMedia — POST /messages/{msgID}/unlock: разблокировать платное медиа
-// за звёзды. Списывает цену у покупателя, начисляет автору, отдаёт медиа.
+// UnlockPaidMedia — POST /chats/{peerID}/messages/{msgSeq}/unlock: разблокировать
+// платное медиа за звёзды. Списывает цену у покупателя, начисляет автору,
+// отдаёт медиа.
+//
+// Ключ пира в адресе обязателен: сообщение адресуется парой «пир + номер», и
+// без пира этот путь мог существовать только на внутреннем ключе строки.
 func (h *ChatHandler) UnlockPaidMedia(w http.ResponseWriter, r *http.Request) {
-	msgID, ok := pathInt(w, r, "msgID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
-	msg, bal, err := h.svc.UnlockPaidMedia(r.Context(), msgID, h.meID(r))
+	msgID, ok := msgSeqID(w, r, h.svc, chatID)
+	if !ok {
+		return
+	}
+	msg, _, err := h.svc.UnlockPaidMedia(r.Context(), msgID, h.meID(r))
 	if errors.Is(err, domain.ErrPaidRequired) {
 		writeError(w, http.StatusPaymentRequired, "not enough stars")
 		return
@@ -89,10 +112,18 @@ func (h *ChatHandler) UnlockPaidMedia(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not unlock")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"message": messageJSONOut(r.Context(), h.svc, msg), "balance": bal})
+	// Ответ — само СООБЩЕНИЕ. Баланса рядом больше нет: его владелец —
+	// кадр `updateStarsBalance`, который и так уходит по сокету, а второе
+	// значение того же факта в теле ответа расходилось бы с ним.
+	writeMessage(w, r, h.svc, msg)
 }
 
 // GiftCatalog — GET /gifts/catalog: доступные подарки.
+//
+// Позиция каталога едет конструктором starGift — ТЕМ ЖЕ, каким она уже ехала
+// внутри savedStarGift и messageActionStarGift. Прежде та же позиция имела
+// вторую, плоскую форму (price_stars/sold_out/total/remains): каталог был
+// единственным местом, куда строка domain.StarGift выходила на провод как есть.
 func (h *ChatHandler) GiftCatalog(w http.ResponseWriter, r *http.Request) {
 	gifts, err := h.svc.GiftCatalog(r.Context())
 	if errors.Is(err, domain.ErrNotFound) {
@@ -103,10 +134,11 @@ func (h *ChatHandler) GiftCatalog(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load catalog")
 		return
 	}
-	if gifts == nil {
-		gifts = []domain.StarGift{}
+	out := make([]domain.MTStarGift, 0, len(gifts))
+	for _, g := range gifts {
+		out = append(out, domain.NewStarGift(g))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"gifts": gifts})
+	writeJSON(w, http.StatusOK, domain.NewPaymentsStarGifts(out))
 }
 
 // SendGift — POST /gifts/send {to_user_id, gift_id, message, anonymous}.
@@ -121,7 +153,7 @@ func (h *ChatHandler) SendGift(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	msg, bal, err := h.svc.SendGift(r.Context(), h.meID(r), b.ToUserID, b.GiftID, b.Message, b.Anonymous)
+	msg, _, err := h.svc.SendGift(r.Context(), h.meID(r), b.ToUserID, b.GiftID, b.Message, b.Anonymous)
 	if errors.Is(err, domain.ErrForbidden) {
 		writeError(w, http.StatusPaymentRequired, "not enough stars")
 		return
@@ -138,7 +170,10 @@ func (h *ChatHandler) SendGift(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not send gift")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"message": messageJSONOut(r.Context(), h.svc, msg), "balance": bal})
+	// Ответ — само СООБЩЕНИЕ. Баланса рядом больше нет: его владелец —
+	// кадр `updateStarsBalance`, который и так уходит по сокету, а второе
+	// значение того же факта в теле ответа расходилось бы с ним.
+	writeMessage(w, r, h.svc, msg)
 }
 
 // ProfileGifts — GET /users/{userID}/gifts: подарки в профиле пользователя.
@@ -156,10 +191,13 @@ func (h *ChatHandler) ProfileGifts(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load gifts")
 		return
 	}
-	if gifts == nil {
-		gifts = []domain.GiftInfo{}
+	// Витрина профиля отдаёт savedStarGift — тот же подарок, что приходит в
+	// ленту действием messageActionStarGift, но в форме своего конструктора.
+	out := make([]domain.SavedStarGift, 0, len(gifts))
+	for _, g := range gifts {
+		out = append(out, g.ToSaved())
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"gifts": gifts})
+	writeJSON(w, http.StatusOK, domain.NewPaymentsSavedStarGifts(out))
 }
 
 // ConvertGift — POST /gifts/{giftID}/convert: обменять подарок на звёзды.
@@ -181,7 +219,7 @@ func (h *ChatHandler) ConvertGift(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not convert")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"balance": bal})
+	writeJSON(w, http.StatusOK, domain.NewStarsStatus(bal))
 }
 
 // SetGiftHidden — POST /gifts/{giftID}/hidden {hidden}: показать/скрыть в профиле.
@@ -211,4 +249,14 @@ func (h *ChatHandler) SetGiftHidden(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// unixOf — дата строки истории в секундах эпохи. Наш столбец хранит её
+// строкой RFC 3339; конструктор просит число, как и у любой другой даты схемы.
+func unixOf(v string) int {
+	t, err := time.Parse(time.RFC3339, v)
+	if err != nil {
+		return 0
+	}
+	return int(t.Unix())
 }

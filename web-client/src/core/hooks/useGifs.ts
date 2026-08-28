@@ -34,12 +34,12 @@ export function useGifsPanel(active: boolean, query: string) {
         managers.stickers.savedGifs().catch(() => []),
         managers.stickers.searchGifs('', '').catch(() => ({ gifs: [], next: '' })),
       ])
-      const metas = await Promise.all(savedGifs.map((g) => managers.media.meta(g.mediaId).catch(() => null)))
+      const metas = await Promise.all(savedGifs.map((g) => managers.media.meta(g.id).catch(() => null)))
       if (!alive) return
       setSaved(savedGifs.flatMap((g, i) => {
         const m = metas[i]
         if (!m) return []
-        return [{ key: `s-${g.mediaId}`, mediaId: g.mediaId, width: m.width, height: m.height, mime: m.mime, size: m.size, fileName: m.fileName }]
+        return [{ key: `s-${g.id}`, mediaId: g.id, width: m.width, height: m.height, mime: m.mime, size: m.size, fileName: m.fileName }]
       }))
       setFeatured(feat.gifs.map(tenorToItem))
       setTenorAvailable(feat.gifs.length > 0)

@@ -5,7 +5,7 @@ import type { Transport } from '../transport'
 
 class FakeTransport implements Transport {
   sent: Array<{ t: string; d: unknown }> = []
-  private frameCbs = new Map<string, Array<(d: unknown) => void>>()
+  private frameCbs: Array<(t: string, d: unknown) => void> = []
   private closeCbs: Array<() => void> = []
   private open = true
   connect(): void {}
@@ -14,12 +14,12 @@ class FakeTransport implements Transport {
   onOpen(): void {}
   onClose(cb: () => void): void { this.closeCbs.push(cb) }
   onError(): void {}
-  on(t: string, cb: (d: unknown) => void): void { const a = this.frameCbs.get(t) ?? []; a.push(cb); this.frameCbs.set(t, a) }
+  onFrame(cb: (t: string, d: unknown) => void): void { this.frameCbs.push(cb) }
   onBinary(): void {}
   send(t: string, d?: unknown): void { this.sent.push({ t, d }) }
   sendBinary(): void {}
   // test helpers
-  emit(t: string, d: unknown): void { for (const cb of this.frameCbs.get(t) ?? []) cb(d) }
+  emit(t: string, d: unknown): void { for (const cb of this.frameCbs) cb(t, d) }
   fireClose(): void { this.open = false; for (const cb of this.closeCbs) cb() }
 }
 

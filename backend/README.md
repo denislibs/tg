@@ -196,7 +196,7 @@ Postgres (назначает монотонный `seq`) → `message_ack` от�
 | `REDIS_URL` | `redis://localhost:6379` | подключение Redis |
 | `DEV_OTP_CODE` | `12345` | OTP-код в dev-режиме |
 | `ACCOUNT_RESET_WAIT` | `168h` | окно ожидания сброса аккаунта («забыли пароль» без почты). Укорачивать только на стенде: в проде короче недели старт запрещён |
-| `SEED_DEMO` | `false` | посев демо-пользователей при старте |
+| `SEED_DEMO` | `false` | посев демо-стенда при старте: 20 профилей + каналы, группы, посты, опросы, закрепления и реакции (`internal/demoseed`) |
 | `MEDIA_URL_SECRET` | `dev-media-url-secret-change-me` | секрет подписи токенов скачивания медиа |
 | `MINIO_ENDPOINT` | `localhost:9000` | адрес MinIO |
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | `minioadmin` | доступы MinIO |
@@ -207,6 +207,17 @@ Postgres (назначает монотонный `seq`) → `message_ack` от�
 | `GEOIP_DB_PATH` | (опц.) | путь к GeoLite2-City.mmdb; без него гео в login-алертах опускается |
 
 Пример — [`../.env.example`](../.env.example).
+
+`SEED_DEMO` наполняет стенд ЧЕРЕЗ chat-usecase (те же вызовы, что у живого клиента),
+поэтому появляются и служебные сообщения, и записи `updates` с pts. Каталоги стикеров
+и реакций он не трогает — они гигабайтные, в git их нет и в образ они не попадают.
+Залить их на стенд можно отдельными командами (сначала выкачать ассеты):
+
+```bash
+tools/.venv/bin/python tools/fetch_stickers.py --reactions --skip-sets   # ассеты реакций
+cd backend && DATABASE_URL=... MINIO_ENDPOINT=... go run ./cmd/seed-reactions
+cd backend && DATABASE_URL=... MINIO_ENDPOINT=... go run ./cmd/seed-stickers
+```
 
 ## Тесты
 

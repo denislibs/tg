@@ -39,12 +39,14 @@ import type { Managers } from '../../client/bootstrap'
 vi.mock('../../stores/chatsStore', () => ({
   loadChats: vi.fn(async () => {}),
   loadPresence: vi.fn(async () => {}),
+  // Деградация присутствия по `expires` — свой интервал; здесь заглушка, а её
+  // собственный пин живёт в stores/chatsStore.test.ts.
+  startPresenceDegradation: vi.fn(() => () => {}),
 }))
 vi.mock('../../stores/storiesStore', () => ({ loadStories: vi.fn(async () => {}) }))
 vi.mock('../../stores/notifyStore', () => ({ loadNotifySettings: vi.fn(async () => {}) }))
 vi.mock('../../stores/foldersStore', () => ({ loadFolders: vi.fn(async () => {}) }))
 vi.mock('../../stores/privacyStore', () => ({ loadPrivacy: vi.fn(async () => {}) }))
-vi.mock('../../stores/draftsStore', () => ({ loadDrafts: vi.fn(async () => {}) }))
 vi.mock('../../stores/starsStore', () => ({ loadStars: vi.fn(async () => {}) }))
 vi.mock('../mediaUrl', () => ({ primeMediaToken: vi.fn(async () => {}) }))
 vi.mock('../mediaCache', () => ({ syncCacheSettingsToSW: vi.fn() }))

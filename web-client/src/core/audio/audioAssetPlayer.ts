@@ -1,18 +1,20 @@
-// Ported 1:1 from tweb's src/helpers/audioAssetPlayer.ts (self-contained: the
-// safePlay / deepEqual / tsNow helpers are inlined). Plays short UI sound assets
-// (message sent, notification, call tones) from public/assets/audio. One shared
-// off-screen container holds the <audio> elements.
+// Порт tweb `helpers/audioAssetPlayer.ts`. Короткие UI-звуки из
+// `public/assets/audio` (отправка сообщения, уведомление, тоны звонка). К
+// контроллеру воспроизведения медиа отношения не имеет — в tweb это тоже
+// отдельный файл со своим скрытым контейнером.
+//
+// Единственное расхождение с оригиналом: контейнер вешается на `document.body`,
+// а не в `getOverlayRoot()`. У tweb есть понятие вынесенного окна (popout), у
+// нас его нет, и заводить пустой оверлей-рут ради совпадения строки — отсебятина.
+//
+// Отличие в лучшую сторону, сохранено сознательно: в `console.error` уходит
+// `options.name`, а не глобальный `name` (tweb `:47` печатает `window.name` —
+// там это опечатка).
+import safePlay from '@helpers/dom/safePlay'
+import deepEqual from '@helpers/object/deepEqual'
+import tsNow from '@helpers/tsNow'
 
 const ASSETS_PATH = `${import.meta.env.BASE_URL}assets/audio/`
-
-const now = () => Date.now() / 1000
-
-// Browsers reject autoplay until a user gesture; swallow the rejected promise so
-// a blocked sound never throws (tweb's safePlay).
-function safePlay(audio: HTMLAudioElement): void {
-  const p = audio.play()
-  if (p && typeof p.catch === 'function') p.catch(() => {})
-}
 
 interface PlayOptions<AssetMap extends Record<string, string>> {
   name: keyof AssetMap
@@ -21,28 +23,30 @@ interface PlayOptions<AssetMap extends Record<string, string>> {
 }
 
 export default class AudioAssetPlayer<AssetMap extends Record<string, string>> {
-  private static container: HTMLElement | undefined
-  private audio: HTMLAudioElement | undefined
-  private tempId = 0
-  private assetName: keyof AssetMap | undefined
-  private lastOptions: PlayOptions<AssetMap> | undefined
-  private nextAt = 0
+  private static container: HTMLElement
+  // `!` — только из-за нашего strictPropertyInitialization, которого нет в
+  // конфиге tweb: поля заполняются при первом `play`, форма кода оригинальная.
+  private audio!: HTMLAudioElement
+  private tempId: number
+  private assetName!: keyof AssetMap
+  private lastOptions!: PlayOptions<AssetMap>
+  private nextAt!: number
 
   constructor(private assets: AssetMap) {
-    if (typeof document === 'undefined') return
+    this.tempId = 0
+
     if (!AudioAssetPlayer.container) {
-      const c = document.createElement('div')
-      c.id = 'audio-asset-player'
-      document.body.append(c)
-      AudioAssetPlayer.container = c
+      AudioAssetPlayer.container = document.createElement('div')
+      AudioAssetPlayer.container.id = 'audio-asset-player'
+      document.body.append(AudioAssetPlayer.container)
     }
   }
 
-  play(options: PlayOptions<AssetMap>): void {
-    if (!AudioAssetPlayer.container) return
+  public play(options: PlayOptions<AssetMap>): void {
     ++this.tempId
     this.assetName = options.name
     this.lastOptions = options
+
     try {
       const audio = this.createAudio()
       audio.autoplay = true
@@ -57,37 +61,59 @@ export default class AudioAssetPlayer<AssetMap extends Record<string, string>> {
     }
   }
 
-  // Don't replay the same sound more often than `throttle` ms (e.g. a burst of
-  // sent messages → one "pak", not ten).
-  playWithThrottle(options: PlayOptions<AssetMap>, throttle: number): void {
-    const t = now()
-    if (this.nextAt && t < this.nextAt && this.lastOptions?.name === options.name) return
-    this.nextAt = t + throttle / 1000
+  /** Не повторять звук чаще, чем раз в `throttle` мс. Сравниваются ВСЕ опции
+   *  (tweb `deepEqual`), а не одно имя: тот же звук с другой громкостью — это
+   *  другой звук, и глушить его нельзя. */
+  public playWithThrottle(options: PlayOptions<AssetMap>, throttle: number): void {
+    const now = tsNow()
+    if (this.nextAt && now < this.nextAt && deepEqual(this.lastOptions, options)) {
+      return
+    }
+
+    this.nextAt = now + throttle
     this.play(options)
   }
 
-  playIfDifferent(options: PlayOptions<AssetMap>): void {
-    if (this.assetName !== options.name) this.play(options)
+  public playIfDifferent(options: PlayOptions<AssetMap>): void {
+    if (this.assetName !== options.name) {
+      this.play(options)
+    }
   }
 
-  private createAudio(): HTMLAudioElement {
-    if (this.audio) return this.audio
-    this.audio = new Audio()
-    return this.audio
+  /** `safePlay` на только что созданном элементе — не описка: браузер снимает
+   *  запрет автоплея с КОНКРЕТНОГО элемента, тронутого в жесте пользователя,
+   *  поэтому оригинал «прогревает» его сразу при создании (tweb `:73-75`). Без
+   *  этого первый звук после загрузки страницы молча не играет. */
+  public createAudio(): HTMLAudioElement {
+    let { audio } = this
+    if (audio) {
+      return audio
+    }
+
+    audio = this.audio = new Audio()
+    safePlay(audio)
+    return audio
   }
 
-  stop(): void {
-    this.audio?.pause()
+  public stop(): void {
+    if (!this.audio) {
+      return
+    }
+
+    this.audio.pause()
   }
 
-  cancelDelayedPlay(): void {
+  public cancelDelayedPlay(): void {
     ++this.tempId
   }
 
-  playWithTimeout(options: PlayOptions<AssetMap>, timeout: number): void {
+  public playWithTimeout(options: PlayOptions<AssetMap>, timeout: number): void {
     const tempId = ++this.tempId
     setTimeout(() => {
-      if (this.tempId !== tempId) return
+      if (this.tempId !== tempId) {
+        return
+      }
+
       this.play(options)
     }, timeout)
   }

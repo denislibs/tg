@@ -1,5 +1,10 @@
 // src/core/realtime/events.ts
-import type { MessageEntity, RawGeo } from '../models'
+import type { MessageEntity, RawMyMessage, MessageReactions, Reaction } from '../models'
+import type { MessageMedia } from '../media/messageMedia'
+import type { MessagesChatFull, UserReal, UserStatus } from '../peers/peer'
+import type { PeerNotifySettings } from '../dialogs/notifySettings'
+import type { StoryItem } from '../stories/story'
+import type { Peer } from '../peers/peerId'
 // Worker -> UI event names (over SuperMessagePort.emit). Live frames AND /sync
 // catch-up both surface through these, so the UI handles them uniformly.
 export const RT = {
@@ -16,18 +21,21 @@ export const RT = {
   typing: 'rt:typing',
   presence: 'rt:presence',
   reaction: 'rt:reaction',
-  starReaction: 'rt:star_reaction',
+  // Счётчики поста канала. Событий ДВА, а не одно «счётчики поста»: у
+  // оригинала это тоже две разные подсистемы с разными владельцами —
+  // просмотры приезжают конструктором схемы `updateChannelMessageViews`
+  // (tweb appMessagesManager.ts:8448-8459), а число комментариев бампится
+  // приходом сообщения в тред (:8658-8680). Общим у них только то, что оба —
+  // числа на одном и том же посте.
+  viewsUpdate: 'rt:views_update',
+  repliesUpdate: 'rt:replies_update',
   ack: 'rt:ack',
   messageError: 'rt:message_error',
-  // Оптимистичная отправка (tweb pending): воркер — funnel жизненного цикла бабла,
-  // storeProjection единственный писатель окна. new — вставка бабла; media —
-  // проставить серверный media_id после аплоада; fail — пометить ошибкой (аплоад
-  // не удался); retry — снять ошибку перед переотправкой; remove — убрать бабл.
-  pendingNew: 'rt:pending_new',
-  pendingMedia: 'rt:pending_media',
-  pendingFail: 'rt:pending_fail',
-  pendingRetry: 'rt:pending_retry',
-  pendingRemove: 'rt:pending_remove',
+  // Пяти событий rt:pending_* больше нет: жизненный цикл неотправленного
+  // сообщения переехал в менеджер воркера (core/managers/messages/pending.ts),
+  // и наружу он объявляет только MessageOp (rt:message_op) — «бабл появился» это
+  // insert, «доехал ack» — insert финального, «ошибка» — patch {failed}, «отмена»
+  // — remove. Окно правит ТОЛЬКО applyOps, исключений больше нет.
   call: 'rt:call',
   chatRemoved: 'rt:chat_removed',
   draftUpdate: 'rt:draft_update',
@@ -54,7 +62,7 @@ export const RT = {
   // пробел (fillMirror) либо изменился сам факт (user_update). Обычные чтения
   // карточек (getUsers) кадров не порождают. Рассылается всем вкладкам: карточка
   // пира — общий факт сессии (avatar_url приватен per-viewer, но зритель у всех
-  // вкладок один). peersStore зеркалит операции через storeProjection и больше
+  // вкладок один). core/peerCache.ts зеркалит операции через storeProjection и больше
   // ниоткуда не пишется (пин — stores/noDuplicatePeers.test.ts).
   peerOp: 'rt:peer_op',
   // Stage «владение диалогами» (этап 1): список диалогов — владелец воркерный
@@ -77,9 +85,11 @@ export const RT = {
   secretRequest: 'rt:secret_chat_request',
   secretAccept: 'rt:secret_chat_accept',
   secretReject: 'rt:secret_chat_reject',
-  storyNew: 'rt:story_new',
-  storyDeleted: 'rt:story_deleted',
+  // История появилась ЛИБО исчезла — ОДНО событие: различает их конструктор
+  // внутри кадра (`storyItem` против `storyItemDeleted`), а не имя кадра.
+  story: 'rt:story',
   storyReaction: 'rt:story_reaction',
+  storyRead: 'rt:story_read',
   // rt:state / rt:state_synchronizing / rt:state_synchronized — УВЕДОМЛЕНИЯ
   // «что-то изменилось», НЕ источник значения. Значение — всегда через RPC
   // managers.realtime.getStatus() (realtime.ts, докблок метода — там же разбор,
@@ -143,46 +153,122 @@ export const RT = {
 
 export type ConnState = 'connecting' | 'ready' | 'reconnecting' | 'offline'
 
-export interface NewMessageEvt { chat_id: number; msg_id: number; seq: number; sender_id: number; type: string; text: string; entities?: MessageEntity[] | null; media_id: number | null; created_at: string; thread_root_id?: number | null; reply_to_id?: number | null; reply_quote_text?: string; reply_quote_offset?: number | null;
-  /** кросс-чат ответ (tweb ReplyToAnotherChat): исходный чат оригинала + готовый
-   * снимок превью (имя автора + текст/медиа-лейбл) — оригинала нет в текущем чате */
-  reply_to_peer_id?: number | null; reply_snapshot_name?: string; reply_snapshot_text?: string;
-  fwd_from_user_id?: number | null; fwd_from_chat_id?: number | null; fwd_from_msg_id?: number | null; fwd_date?: string | null; media_unread?: boolean; sender_name?: string; grouped_id?: string | null; geo?: RawGeo | null; contact?: { user_id: number; name?: string; phone?: string } | null; gift?: import('../models').RawMessage['gift']; reply_markup?: import('../models').RawMessage['reply_markup'];
-  // Медиа-мета live-кадра (те же ключи, что history read model) — файл/фото
-  // рисуется полноценно сразу, без ожидания перезагрузки истории.
-  media_w?: number; media_h?: number; media_mime?: string; media_blur?: string; media_has_thumb?: boolean; media_duration?: number; media_size?: number; media_name?: string;
-  /** ID3-теги трека (tweb documentAttributeAudio.title/performer) — опциональны */
-  media_title?: string; media_performer?: string;
-  /** E2E-медиа секретного чата — инжектится воркером после расшифровки enc_body (не проводное поле сервера) */
-  secret_media?: import('../models').SecretMedia;
-  /** вид эффекта сообщения (наш аналог Telegram message effects) */
-  effect?: string | null;
-  /** платное медиа (Telegram paid media): цена в звёздах + заблокировано ли для
-   * получателя (у заблокированного кадра media_id отсутствует) */
-  paid_media?: { price: number; locked: boolean } | null;
-  /** Wave 3: эхо своей отправки несёт client_msg_id → applyIncoming/reconcileAck
-   * матчат оптимистичный бабл по нему (а не по фабричному tentative seq). */
-  client_msg_id?: string;
+/**
+ * Кадр с новым сообщением — форма `updateNewMessage` схемы: сообщение ЦЕЛИКОМ
+ * лежит под ключом `message`, а `pts` рядом с ним.
+ *
+ * Прежде поля сообщения лежали вперемешку с полями конверта (`msg_id`, `seq`,
+ * `sender_id`, `type`, `text`, `sender_name`, `client_msg_id`, `grouped_id`,
+ * `send_as`, `reply_snapshot_*`, …), и это была ВТОРАЯ проводная форма
+ * сообщения, расходившаяся с витриной в обе стороны. Теперь форма одна —
+ * решение Р5 разбора.
+ *
+ * `peer_id` внутри сообщения зависит от ПОЛУЧАТЕЛЯ (у приватного диалога
+ * стороны видят разный ключ) и приклеивается сервером на выходе; `pFlags.out`
+ * — тоже пер-зритель и приезжает там же.
+ */
+export interface NewMessageEvt {
+  /**
+   * ДВА конструктора с одинаковым телом: различает их курсор, который двигает
+   * кадр, — общий пер-юзерный у `updateNewMessage`, пер-канальный у
+   * `updateNewChannelMessage`. Ровно так же устроена схема, и ровно поэтому
+   * тела совпадают: предмет один.
+   */
+  _: 'updateNewMessage' | 'updateNewChannelMessage'
+  message: import('../models').RawMessage
   /** плотный монотонный pts (funnel-дедуп/гейт/gap). */
-  pts?: number;
-  /** авторитетный счётчик непрочитанных диалога (только получателям): стор берёт
-   * его verbatim вместо локального +1. Отсутствует у старого бэка → fallback. */
-  unread?: number }
-export interface EditMessageEvt { chat_id: number; msg_id: number; seq: number; text: string; entities?: MessageEntity[] | null; edited_at: string; reply_markup?: import('../models').RawMessage['reply_markup'] }
-// Live-обновление координат гео-трансляции (geo_live_update).
-export interface GeoLiveUpdateEvt { chat_id: number; msg_id: number; seq: number; geo: RawGeo }
+  pts?: number
+}
+/** Патч уже нарисованного бабла: правка текста/разметки/клавиатуры. Кадром-
+ *  конструктором `Message` он НЕ является — в схеме это `updateEditMessage`,
+ *  несущий сообщение целиком, и приведение кадров-патчей к нему принадлежит
+ *  подсистеме ОБНОВЛЕНИЙ, а не сообщения (названный остаток шага витрин).
+ *
+ *  `action` едет здесь потому, что правка служебного сообщения существует ровно
+ *  одна — принятие предложенного фото, и меняется в ней только действие. */
+/**
+ * Правка — `updateEditMessage{message, pts, pts_count}`: сообщение ЦЕЛИКОМ, а
+ * не патч полей. Прежде кадр вёз собственный набор (id + текст + сущности +
+ * дата + разметка) — вторую проводную форму сообщения.
+ */
+export interface EditMessageEvt {
+  _: 'updateEditMessage'
+  message: RawMyMessage
+  pts?: number
+}
+// Live-обновление координат гео-трансляции (geo_live_update). Координаты едут
+// ТЕМ ЖЕ конструктором, что и в самом сообщении (`messageMediaGeoLive` под
+// ключом `media`); собственный ключ `geo` с плоской точкой внутри был второй
+// формой гео на проводе.
+//
+// Время обновления едет ОТДЕЛЬНЫМ ключом edit_date, а не внутри вложения: одно
+// и то же поле прежде значило и «время правки», и «время обновления координат».
+// Оно же решает, каким приедет `period` остановленной трансляции, поэтому едут
+// они парой.
+export interface GeoLiveUpdateEvt { peer_id: PeerId; id: number; media: MessageMedia; edit_date?: number }
 // Догоняющее серверное превью ссылки (web_page_update): строится после
 // отправки, кадр патчит уже отрисованное сообщение карточкой web page.
-export interface WebPageUpdateEvt { chat_id: number; msg_id: number; seq: number; web_page: import('../models').RawWebPage }
+//
+// Карточка приезжает ТЕМ ЖЕ конструктором, что и в самом сообщении
+// (`messageMediaWebPage` под ключом `media`) — ровно как у `geo_live_update`,
+// `poll_update` и остальных кадров с вложением. Собственного ключа `web_page`
+// с плоским снимком read-модели (`site_name`/`photo_id`/`photo_w`/`photo_blur`)
+// на проводе больше нет, а вместе с ним исчез и переходник на границе, который
+// ДУБЛИРОВАЛ арифметику ступеней `domain.fitThumb`.
+export interface WebPageUpdateEvt {
+  _: 'updateMessageWebPage'
+  peer: Peer
+  msg_id: number
+  media: MessageMedia
+}
 // «Проверка фактов» прикреплена/изменена/снята (factcheck_update): кадр патчит
 // блок fact-check в уже отрисованном бабле. factcheck===null — проверка снята.
-export interface FactCheckUpdateEvt { chat_id: number; msg_id: number; seq: number; factcheck: import('../models').RawFactCheck | null }
+export interface FactCheckUpdateEvt {
+  _: 'updateMessageFactCheck'
+  peer: Peer
+  msg_id: number
+  /** «Проверку сняли» — ОТСУТСТВИЕ параметра, а не null под тем же ключом. */
+  factcheck?: import('../models').FactCheck
+}
+/** Опрос: адресуется СВОИМ id — как у оригинала (updateMessagePoll), где
+ *  сообщение лишь необязательная подсказка. */
+export interface PollUpdateEvt {
+  _: 'updateMessagePoll'
+  /** Пир — необязательный параметр схемы, и мы его ПРОИЗВОДИМ: окна разложены
+   *  по чатам, без него пришлось бы искать опрос во всех сразу. */
+  peer: Peer
+  poll_id: number
+  poll?: import('../media/messageMedia').MessageMediaPoll['poll']
+  results: import('../media/messageMedia').MessageMediaPoll['results']
+}
+/** Чек-лист и розыгрыш адресуются своим id внутри вложения — по той же причине,
+ *  что и опрос: объект самостоятельный. Конструкторы НАШИ (апдейтов у них в
+ *  схеме нет вовсе). */
+export interface ChecklistUpdateEvt { _: 'updateMessageToDo'; peer: Peer; media: MessageMedia }
+export interface GiveawayUpdateEvt { _: 'updateMessageGiveaway'; peer: Peer; media: MessageMedia }
+/** Платное вложение разблокировано: кадр несёт РОВНО предмет — вектор позиций,
+ *  ставших настоящими вместо заглушек, а не копию всего сообщения. */
+export interface PaidMediaUnlockEvt {
+  _: 'updateMessageExtendedMedia'
+  peer: Peer
+  msg_id: number
+  extended_media: import('../media/messageMedia').MessageMediaPaidMedia['extended_media']
+}
 // Ответ бота на callback уже после таймаута синхронного ожидания — тост по WS.
-export interface BotCallbackAnswerEvt { text: string; alert: boolean }
+/** Поздний ответ бота на callback — НАШ конструктор: у оригинала это ОТВЕТ
+ *  метода `messages.getBotCallbackAnswer`, а не апдейт. Кадр существует потому,
+ *  что ответ может прийти уже после таймаута синхронного ожидания.
+ *
+ *  «Показать модалкой» — БИТ (`pFlags.alert`), а не поле `alert: false`. */
+export interface BotCallbackAnswerEvt {
+  _: 'updateBotCallbackAnswer'
+  pFlags?: { alert?: true }
+  message: string
+}
 // Рукопожатие секретного чата (request/accept/reject) — realtimeBridge
 // маппит snake_case-кадр в этот camelCase-вид; воркер бродкастит сырой payload.
 export interface SecretHandshakeEvt {
-  chatId: number
+  peerId: PeerId
   initiatorId: number
   responderId: number
   initiatorPub?: string // base64 (в request)
@@ -191,29 +277,140 @@ export interface SecretHandshakeEvt {
 }
 // Новая/решённая предложка поста (suggested_post_update): админам — новые/решённые,
 // автору — статус его предложки. post — сырая read-модель backend.
-export interface SuggestedPostEvt { chat_id: number; post: import('../models').RawSuggestedPost }
-// Юзер сменил всегда-публичные поля (имя/username). avatar_changed — сигнал, что
-// аватар изменился: url в кадре не несём (он приватен per-viewer у /users), клиент
-// до-фетчит карточку, и сервер применит PrivacyProfilePhoto.
-export interface UserUpdateEvt { id: number; username: string; display_name: string; avatar_changed: boolean }
-export interface DeleteMessageEvt { chat_id: number; msg_id: number; seq: number; for_me: boolean }
-export interface PinMessageEvt { chat_id: number; msg_id: number; pinned: boolean }
-export interface ReadEvt { chat_id: number; user_id: number; up_to_seq: number;
-  /** авторитетный счётчик непрочитанных диалога после этого read (Wave 3): стор
-   * берёт его verbatim вместо локального =0. Отсутствует у старого бэка → fallback. */
-  unread?: number; pts?: number }
+export interface SuggestedPostEvt { peer_id: PeerId; post: import('../models').RawSuggestedPost }
+// Карточка пользователя изменилась. Кадр несёт КОНСТРУКТОР `user` целиком —
+// АБСОЛЮТНЫЙ снимок, который получатель кладёт в кэш пиров ровно так же, как
+// объект из любого списка. Прежний кадр вместо этого сообщал `display_name`
+// (имени на проводе больше нет — его собирает клиент) и флажок
+// `avatar_changed`, по которому карточку надо было перезапрашивать отдельной
+// ручкой; на упавшем до-фетче витрина оставалась со старым аватаром.
+//
+// Аватарка гасится ПОКАЖДОМУ получателю: `photo` живёт внутри `user`, и
+// правило `profile_photo` применяется на бэкенде при сборке кадра.
+/**
+ * Карточка пользователя изменилась — НАШ конструктор `updateUserSnapshot`.
+ *
+ * В схеме на этом месте `updateUser{user_id}` («перечитай карточку»), а сама
+ * карточка едет вектором `users` КОНТЕЙНЕРА `updates`. Контейнера у нас пока
+ * нет, а один id дал бы шторм запросов карточки — поэтому карточка едет внутри
+ * кадра, и конструктор объявлен своим, с явным id (`schema_additional_params`).
+ *
+ * Своего `pts` у него нет — курсор едет в КОНВЕРТЕ (`Frame.pts`).
+ */
+export interface UserUpdateEvt { _: 'updateUserSnapshot'; user: UserReal }
+/**
+ * Удаление — НАШ конструктор `updateDeletePeerMessages`. Схемный
+ * `updateDeleteMessages` пира не несёт вовсе: у оригинала номер сообщения
+ * уникален в «ящике» получателя, а у нас он пер-чатный, и кадр без пира
+ * означал бы «удалить №12 везде».
+ *
+ * Признака `for_me` больше нет: «удалено у меня» — тот же кадр, просто
+ * разосланный одному получателю. Потребителей у поля не было ни одного.
+ */
+export interface DeleteMessageEvt {
+  _: 'updateDeletePeerMessages'
+  peer: Peer
+  messages: number[]
+  pts?: number
+}
+/**
+ * Закрепление — `updatePinnedMessages`. «Открепили» это ТОТ ЖЕ конструктор с
+ * опущенным битом: `pFlags.pinned` отсутствует, а не равен `false`. Номера
+ * едут вектором — у оригинала одно действие закрепляет сразу пачку.
+ */
+export interface PinMessageEvt {
+  _: 'updatePinnedMessages'
+  peer: Peer
+  messages: number[]
+  pFlags?: { pinned?: true }
+  pts?: number
+}
+/**
+ * Прочтение — ДВА конструктора, а не один кадр с `user_id` внутри.
+ *
+ * `updateReadHistoryInbox` — прочитал Я: несёт мой горизонт и авторитетный
+ * счётчик оставшегося непрочитанного. `updateReadHistoryOutbox` — прочитали
+ * МЕНЯ: только горизонт собеседника (чужой непрочитанный меня не касается,
+ * поэтому счётчика у конструктора нет вовсе).
+ *
+ * Прежде кадр был один, и «чьё это» каждый получатель выводил сам, сравнивая
+ * `user_id` с собой, — тот же вывод повторялся в трёх местах разбора.
+ */
+export interface ReadHistoryInboxEvt {
+  _: 'updateReadHistoryInbox'
+  peer: Peer
+  /** Горизонт в СЕРВЕРНЫХ номерах (клиентский получается через generateMessageId). */
+  max_id: number
+  still_unread_count: number
+  pts?: number
+}
+export interface ReadHistoryOutboxEvt {
+  _: 'updateReadHistoryOutbox'
+  peer: Peer
+  max_id: number
+  pts?: number
+}
+export type ReadEvt = ReadHistoryInboxEvt | ReadHistoryOutboxEvt
 // Голосовое/кружок прослушано получателем → у сообщения гаснет точка media_unread.
-export interface MediaReadEvt { chat_id: number; msg_id: number }
-// Меня удалили из группы / я вышел — диалог убирается из списка.
-export interface ChatRemovedEvt { chat_id: number; removed: true }
+/** Вложение прослушано (голосовое, кружок) — наш `updateReadPeerMessagesContents`
+ * по той же причине, что и удаление: схемный конструктор пира не несёт. */
+export interface MediaReadEvt {
+  _: 'updateReadPeerMessagesContents'
+  peer: Peer
+  messages: number[]
+  pts?: number
+}
+/** Меня удалили из группы / я вышел — диалог убирается из списка. НАШ
+ *  конструктор: предмета «чат исчез» в схеме нет вовсе (у оригинала выход
+ *  выражается сообщением-действием и перечитыванием карточки).
+ *
+ *  Поле `removed: true` ушло — оно было константой: «кадр удаления сообщает об
+ *  удалении». Вид кадра несёт дискриминатор. */
+export interface ChatRemovedEvt { _: 'updateChatRemoved'; peer: Peer }
 // Тема оформления чата сменилась (chat_theme_update) — общая для чата, приходит
 // обоим участникам. theme_id пустой — тема сброшена к дефолту.
-export interface ChatThemeUpdateEvt { chat_id: number; theme_id: string }
+export interface ChatThemeUpdateEvt { _: 'updateChatTheme'; peer: Peer; theme_id: string }
 // Пин/архив/mute диалога с другого устройства/вкладки (Task 4: применяет владелец
-// dialogsManager из workerCore.ts::dispatch, см. applyPinned/applyArchived/applyMute).
-export interface DialogPinEvt { chat_id: number; pinned: boolean }
-export interface DialogArchiveEvt { chat_id: number; archived: boolean }
-export interface DialogMuteEvt { chat_id: number; muted: boolean; muted_until?: number }
+// dialogsManager из workerCore.ts::dispatch, см. applyPinned/applyArchived/
+// applyNotifySettings).
+/**
+ * Закрепление диалога — `updateDialogPinned{peer: DialogPeer}`. «Открепили» это
+ * ТОТ ЖЕ конструктор с опущенным битом `pFlags.pinned`, а не поле
+ * `pinned: false` и не второй кадр: то же правило, что у закрепления сообщения.
+ *
+ * Своего `pts` у конструктора нет — курсор такого кадра едет в КОНВЕРТЕ
+ * (`Frame.pts`), а не в теле.
+ */
+export interface DialogPinEvt {
+  _: 'updateDialogPinned'
+  peer: import('../models').DialogPeer
+  pFlags?: { pinned?: true }
+}
+/**
+ * Переезд диалога МЕЖДУ ПАПКАМИ — `updateFolderPeers{folder_peers, pts}`.
+ *
+ * Архив это ПАПКА, а не признак: прежний `archived: boolean` подделывал
+ * значение (номер папки) признаком — тот же дефект, что был у мьюта булевым.
+ * «Вернуть из архива» — тот же кадр с `folder_id = 0`. Вектор потому, что у
+ * оригинала одно действие переносит сразу пачку.
+ */
+export interface DialogArchiveEvt {
+  _: 'updateFolderPeers'
+  folder_peers: import('../models').FolderPeer[]
+  pts?: number
+}
+/**
+ * Мьют чата сменился. Кадр несёт КОНСТРУКТОР настроек ЦЕЛИКОМ, а не пару
+ * `{muted, muted_until}`: мьют это СРОК (`notify_settings.mute_until`), и
+ * прежняя булева форма его теряла — «заглушить на час» доезжало как
+ * «навсегда». Бэкенд читает настройки обратно из базы, поэтому в кадре едут и
+ * превью со звуком, которых мьют не менял (usecase/chat/group.go::SetMute).
+ */
+export interface DialogMuteEvt {
+  _: 'updateNotifySettings'
+  peer: import('../models').NotifyPeer
+  notify_settings: PeerNotifySettings
+}
 // АБСОЛЮТНЫЙ снимок метаданных чата после мутации (переименование, фото, права,
 // участники, настройки) — backend/internal/usecase/chat/chat_update.go:18-42,
 // функция chatUpdatePayload. Абсолютность и делает применение идемпотентным:
@@ -222,63 +419,321 @@ export interface DialogMuteEvt { chat_id: number; muted: boolean; muted_until?: 
 // (core/models.ts:88-118); остальные (`about`, `is_public`, `settings`,
 // `signatures`, …) живут в карточке чата, которую грузит useChatInfoCard.
 export interface ChatUpdateEvt {
-  chat_id: number
-  title?: string
-  username?: string
-  /** id медиа фото чата; `null` — фото снято (chat_update.go:19-22) */
-  photo_media_id?: number | null
+  /** Пара по КУРСОРУ, как у кадра сообщения: канальный снимок едет журналом
+   *  канала (`updateChannelFullSnapshot`), групповой — пер-юзерным веером. */
+  _: 'updateChatFullSnapshot' | 'updateChannelFullSnapshot'
+  peer: Peer
+  /** ТОТ ЖЕ объект, что отдаёт `GET /chats/{peerID}/card` — `messages.chatFull`
+   *  с краткой формой чата внутри (`chats[0]`). Прежде одна карточка ехала
+   *  двумя разными формами: плоско с `id` у ручки и вложенно в кадре, из-за
+   *  чего кадр приходилось разбирать своим кодом. */
+  chat_full: MessagesChatFull
+  pts?: number
 }
-// Черновик изменён на другом устройстве/вкладке (draft null — удалён).
-export interface DraftUpdateEvt { chat_id: number; draft: import('../models').RawDraft | null }
-// upload_* — на время аплоада медиа (tweb sendMessageUpload*Action: «отправляет файл/фото/…»)
-export type TypingAction = 'typing' | 'voice' | 'video' | 'upload_file' | 'upload_photo' | 'upload_video' | 'upload_audio'
-export interface TypingEvt { chat_id: number; user_id: number; action?: TypingAction }
-export interface PresenceEvt { user_id: number; online: boolean; last_seen: number }
-// Реакция (Wave 3, АБСОЛЮТНАЯ): counts — полный агрегат сообщения (набор
-// {emoji,count}); `mine` не приходит с сервера и деривится клиентом (см.
-// applyReaction). emoji/action/user_id описывают конкретное действие → нужны только
-// чтобы поставить/снять `mine` у реагирующего (когда user_id===meId). Оптимистичный
-// клик бродкастит этот же тип БЕЗ counts (дельта до эха) — потребитель ветвится по
-// наличию counts. pts — для funnel-дедупа/гейта.
-export interface ReactionEvt { chat_id: number; msg_id: number; user_id: number; author_id?: number; emoji: string; action: 'add' | 'remove'; counts?: { emoji: string; count: number }[]; unread_reactions?: number; pts?: number }
-// Обновление платной ⭐-реакции: новый агрегат звёзд сообщения (total) + вклад
-// отправителя (mine, у sender_id). Получатель правит total; sender_id===me — и mine.
-export interface StarReactionEvt { chat_id: number; msg_id: number; sender_id: number; total: number; mine: number }
+/**
+ * Черновик изменён на другом устройстве/вкладке — `updateDraftMessage`.
+ *
+ * «Снят» выражает КОНСТРУКТОР `draftMessageEmpty` внутри того же параметра, а
+ * не `draft: null`: отсутствие — выбор конструктора, как у любого объединения.
+ *
+ * Своего `pts` у конструктора нет — курсор едет в КОНВЕРТЕ (`Frame.pts`).
+ */
+export interface DraftUpdateEvt {
+  _: 'updateDraftMessage'
+  peer: Peer
+  draft: import('../models').DraftMessage
+}
+/**
+ * Что именно делает собеседник — ОБЪЕДИНЕНИЕ `SendMessageAction`, а не строка
+ * из шести значений с дефолтом «печатает».
+ *
+ * Разница не в форме: у `sendMessageUpload*Action` есть параметр `progress`, то
+ * есть полоска «отправляет фото 40%» у оригинала ВЫРАЗИМА, а строкой её
+ * выразить нечем. Мы его пока не производим (прогресс живёт у отправителя и
+ * наружу не выходит) — отсутствует значение, а не возможность.
+ *
+ * Объявлены ровно те конструкторы, что производит наш клиент; остальные
+ * пятнадцать (геолокация, выбор контакта, игра, кружок, эмодзи-интеракции, …)
+ * предмета у нас не имеют.
+ */
+export type SendMessageAction =
+  | { _: 'sendMessageTypingAction' }
+  | { _: 'sendMessageRecordAudioAction' }
+  | { _: 'sendMessageRecordVideoAction' }
+  | { _: 'sendMessageUploadDocumentAction'; progress?: number }
+  | { _: 'sendMessageUploadPhotoAction'; progress?: number }
+  | { _: 'sendMessageUploadVideoAction'; progress?: number }
+  | { _: 'sendMessageUploadAudioAction'; progress?: number }
+
+/**
+ * «Печатает» — ДВА конструктора, и выбирает между ними тип чата.
+ *
+ * В личном чате ключа пира у кадра нет вовсе: пир — это сам печатающий
+ * (`updateUserTyping.user_id`). В группе адрес чата и автор — разные параметры,
+ * потому что это разные вопросы (`updateChannelUserTyping`).
+ */
+export interface UserTypingEvt {
+  _: 'updateUserTyping'
+  user_id: number
+  action: SendMessageAction
+}
+export interface ChannelUserTypingEvt {
+  _: 'updateChannelUserTyping'
+  channel_id: number
+  from_id: Peer
+  action: SendMessageAction
+}
+export type TypingEvt = UserTypingEvt | ChannelUserTypingEvt
+/**
+ * Присутствие — объединение `UserStatus` схемы, а не пара `{online, last_seen}`.
+ *
+ * Это не перестановка полей: у `userStatusOnline` есть `expires` (дедлайн), и
+ * клиент гасит статус ПО ТАЙМЕРУ сам (порт `appUsersManager.ts:880-889`,
+ * предикат `isUserStatusOnline`). У прежнего `online: true` срока годности не
+ * было — потерянный кадр оставлял человека онлайн НАВСЕГДА. Источник
+ * (TTL ключа `presence:{id}`) существовал всегда, просто не выпускался на провод.
+ *
+ * Скрытое правилом приватности «был в сети» выражает САМ КОНСТРУКТОР
+ * (`userStatusRecently`), а не флаг `last_seen_visible` рядом с обнулённым
+ * временем.
+ */
+export interface PresenceEvt {
+  _: 'updateUserStatus'
+  user_id: number
+  status: UserStatus
+}
+/**
+ * Реакции — `updateMessageReactions{peer, msg_id, reactions}`: АБСОЛЮТНОЕ
+ * состояние агрегата, тем же конструктором, что едет внутри сообщения.
+ *
+ * Диффа (кто, какой эмодзи, добавил или снял) в кадре больше нет: он был второй
+ * формой того же факта, и при гонке двух реакций клиент верил разным полям
+ * по-разному. Разницу выводит сам клиент — из состояния, которое у него уже
+ * есть.
+ *
+ * Агрегат помечен `pFlags.min`: тело кадра одно на всех получателей, значит
+ * моего `chosen_order` в нём нет и быть не может, — свой выбор клиент
+ * сохраняет, а не затирает отсутствием. По той же причине в нём нет и моего
+ * вклада ЗВЁЗДАМИ (`top_reactors`).
+ *
+ * Платная ⭐-реакция своего кадра не имеет: она приезжает ЗДЕСЬ же — вторым
+ * конструктором объединения `Reaction` (`reactionPaid`) в том же векторе
+ * `results`. Прежде их было два, и каждый вёз ПОЛОВИНУ агрегата, то есть
+ * утверждал, что другой половины не существует.
+ */
+export interface ReactionEvt {
+  _: 'updateMessageReactions'
+  peer: Peer
+  msg_id: number
+  reactions: MessageReactions
+}
+/**
+ * updateChannelMessageViews#f226ac08 channel_id:long id:int views:int = Update;
+ *
+ * Счётчик просмотров поста ВЫРОС. `id` — номер поста в канале (серверное
+ * пространство: границу переводит получатель, `generateMessageId`).
+ *
+ * Кадр — ПОБОЧНЫЙ ЭФФЕКТ регистрации просмотра, а не ответ на опрос: видимые
+ * посты объявляет интерсектор ленты (tweb bubbles.ts:2305-2328), а счётчик
+ * растёт один раз на пару «пост + зритель». У оригинала тот же конструктор
+ * появляется ЛОКАЛЬНО — из ответа `messages.getMessagesViews{increment:true}`
+ * (appMessagesManager.ts:9145-9155); у нас его производит сервер, потому что
+ * зрителей у поста много, а увидеть чужой просмотр должны все.
+ *
+ * Курсора нет вовсе: кадр уезжает в топик канала, а авторитетное значение
+ * приезжает внутри самого сообщения со страницей истории.
+ */
+export interface ViewsUpdateEvt {
+  _: 'updateChannelMessageViews'
+  channel_id: number
+  id: number
+  views: number
+}
+/**
+ * updateChannelMessageReplies#c8022fb8 channel_id:long id:int replies:int
+ * = Update; — НАШ конструктор.
+ *
+ * Счётчик комментариев поста стал таким (АБСОЛЮТНОЕ число, не дифф). Апдейта
+ * у предмета в схеме нет: у оригинала число бампит сам клиент, когда сообщение
+ * приходит в тред (tweb appMessagesManager.ts:8658-8680), — ему видна вся
+ * группа обсуждения. Нашему клиенту она не видна, пока тред не открыт, поэтому
+ * на вопрос «сколько там теперь комментариев» отвечает сервер.
+ *
+ * Едет ЧИСЛО, а не `MessageReplies` целиком: тред у поста уже есть (он приезжает
+ * с самим постом), меняется в нём ровно счётчик — его и читает потребитель у
+ * оригинала (`setBubbleRepliesCount(bubble, message.replies.replies)`,
+ * tweb bubbles.ts:1141).
+ */
+export interface RepliesUpdateEvt {
+  _: 'updateChannelMessageReplies'
+  channel_id: number
+  id: number
+  replies: number
+}
+/** Бусты канала — НАШ конструктор (кадра бустов ЗРИТЕЛЮ в схеме нет:
+ *  `updateBotChatBoost` про бота, следящего за чужим каналом). Сам статус —
+ *  предмет схемный, `premium.boostsStatus`.
+ *
+ *  Курсор пер-КАНАЛЬНЫЙ: кадр едет журналом канала. */
+export interface BoostUpdateEvt {
+  _: 'updateChannelBoostStatus'
+  peer: Peer
+  status: import('../models').BoostsStatus
+  pts?: number
+}
+/** Баланс звёзд — `updateStarsBalance{balance: StarsAmount}`. Число едет
+ *  конструктором, потому что у оригинала звёзды ДРОБНЫЕ (nanos), и целое —
+ *  частный случай, а не форма. */
+export interface BalanceUpdateEvt {
+  _: 'updateStarsBalance'
+  balance: { _: 'starsAmount'; amount: number; nanos: number }
+}
 // Истории (Stories realtime): новая история автора / удаление / изменение реакции.
-export interface StoryNewEvt { id: number; author_id: number; media_id: number; caption: string; expires_at: string }
-export interface StoryDeletedEvt { story_id: number; author_id: number }
-export interface StoryReactionEvt { story_id: number; user_id: number; reaction: string | null; reactions_count: number }
-export interface AckEvt { client_msg_id: string; msg_id: number; seq: number; created_at: string }
+/** updateStory#75b3b798 peer:Peer story:StoryItem = Update;
+ *
+ *  История едет ЦЕЛИКОМ — тем же конструктором, что и на витрине, вместе со
+ *  ступенью медиа. Плоский кадр прошлой формы историю построить не мог: в нём
+ *  был только номер файла, и витрине приходилось перечитывать ленту. */
+export interface StoryUpdateEvt { _: 'updateStory'; peer: Peer; story: StoryItem }
+/** updateSentStoryReaction#7d627683 peer:Peer story_id:int reaction:Reaction;
+ *
+ *  МОЙ выбор — эхо на другие устройства зрителя. Общий агрегат сюда не входит:
+ *  он одинаков для всех и едет внутри самой истории (`storyViews`). */
+export interface SentStoryReactionEvt { _: 'updateSentStoryReaction'; peer: Peer; story_id: number; reaction?: Reaction }
+/** updateReadStories#f74e932b peer:Peer max_id:int = Update;
+ *
+ *  ГОРИЗОНТ прочтения историй автора сдвинулся — один номер вместо признака на
+ *  каждой истории, ровно как `updateReadHistoryInbox` у сообщений. Кадр уезжает
+ *  на ДРУГИЕ устройства зрителя: кольцо непрочитанного гаснет везде. */
+export interface ReadStoriesEvt { _: 'updateReadStories'; peer: Peer; max_id: number }
+/**
+ * Объединение `Update` — все кадры, у которых ЕСТЬ конструктор.
+ *
+ * Отсюда выводится `UpdatePredicate`, и он же держит реестр маршрутизации
+ * полным: пропущенный конструктор — ошибка компиляции, а не молчаливо
+ * проигнорированный кадр. Кадры БЕЗ конструктора (транспорт и непортированные
+ * предметы) сюда не входят и опознаются типом конверта — их список в
+ * `transportFrames.ts`.
+ */
+export type Update =
+  | NewMessageEvt
+  | EditMessageEvt
+  | DeleteMessageEvt
+  | PinMessageEvt
+  | ReadEvt
+  | MediaReadEvt
+  | ReactionEvt
+  | ViewsUpdateEvt
+  | RepliesUpdateEvt
+  | DraftUpdateEvt
+  | DialogPinEvt
+  | DialogArchiveEvt
+  | DialogMuteEvt
+  | TypingEvt
+  | PresenceEvt
+  | UserUpdateEvt
+  | PollUpdateEvt
+  | ChecklistUpdateEvt
+  | GiveawayUpdateEvt
+  | WebPageUpdateEvt
+  | FactCheckUpdateEvt
+  | PaidMediaUnlockEvt
+  | ChatRemovedEvt
+  | ChatThemeUpdateEvt
+  | ChatUpdateEvt
+  | BoostUpdateEvt
+  | BalanceUpdateEvt
+  | BotCallbackAnswerEvt
+  | StoryUpdateEvt
+  | SentStoryReactionEvt
+  | ReadStoriesEvt
+
+/** Значение дискриминатора `_` — то же, что `predicate` в схеме. */
+export type UpdatePredicate = Update['_']
+
+/** Сервер подтвердил отправку: у бабла появляется НАСТОЯЩИЙ номер в чате
+ *  (серверное пространство — владелец переводит его в клиентское) и дата. */
+export interface AckEvt { client_msg_id: string; id: number; created_at: string }
 // Server rejected a send (e.g. text too long). The client drops it from the outbox
 // (no infinite retry) and removes the optimistic bubble.
 export interface MessageErrorEvt { client_msg_id: string; reason: string }
 
-// Оптимистичный бабл отправки (worker → UI). Поля 1:1 с аргументами
-// messagesStore.appendOptimistic; localUrl/размеры — превью до аплоада (blob-URL
-// валиден только во вкладке-инициаторе, в других — плейсхолдер до echo).
-export interface PendingMedia { localUrl?: string; width?: number; height?: number; mime?: string; size?: number; name?: string }
+// Заявка на временный («неотправленный») бабл — вход
+// messages.beforeMessageSending (core/managers/messages/pending.ts). Событием это
+// больше НЕ является: наружу воркер объявляет только MessageOp.
+//
+// Локальная мета файла (размеры/mime/имя) нужна, чтобы бабл документа/фото
+// нарисовался до аплоада. `local_url` — blob-URL превью, СМИНЧЕННЫЙ ВОРКЕРОМ
+// (messages.sendFile): воркерный blob-URL резолвится во всех вкладках, поэтому
+// он лежит в SSOT как обычное поле. Вкладочного blob-URL здесь быть не может —
+// он был бы битым во всех вкладках, кроме породившей.
+
+// Локальная мета отправляемого файла — АРГУМЕНТЫ сборки вложения, а не само
+// вложение: порт `MakeDocumentAndMetaForSendingFileArgs` из tweb
+// (appMessagesManager.ts:1908 — `width`/`height`/`duration`/`waveform`/
+// `isAnimated`/`spoiler` приходят в менеджер плоскими, ровно так же). Настоящий
+// `messageMediaPhoto`/`messageMediaDocument` собирает из них САМ менеджер —
+// `makeDocumentAndMetaForSendingFile` в `core/managers/messages/pending.ts`,
+// как это делает `sendFile` оригинала.
+export interface PendingMedia { width?: number; height?: number; mime?: string; size?: number; name?: string;
+  /** tweb `isAnimated` — файл отправляется гифкой: в документ уходит
+   * `documentAttributeAnimated`, из него выводится `doc.type === 'gif'` */
+  animated?: boolean;
+  /** длительность голосового/видео (сек) — посчитана вкладкой при записи/probe */
+  duration?: number;
+  /** пики волны голосового, base64 — те же, что уедут в media.waveform: бабл
+   * «отправляется…» рисует волну сразу, не дожидаясь эха сервера */
+  waveform?: string;
+  /** медиа скрыто спойлером — своя отправка обязана показать спойлер СРАЗУ,
+   * до эха сервера (tweb applyMediaSpoiler в попапе отправки уже накрыл превью) */
+  spoiler?: boolean }
 export interface PendingNewEvt {
-  chat_id: number
+  peer_id: PeerId
   thread_root_id?: number | null
   client_msg_id: string
   sender_id: number
-  // id вкладки-инициатора: media.localUrl (blob-URL) валиден только в ней —
-  // storeProjection вырезает localUrl в остальных вкладках (иначе битый бабл).
-  origin_tab?: number
   text: string
   type?: string
   media_id?: number | null
   entities?: MessageEntity[]
-  grouped_id?: string
+  /** ключ альбома — ЧИСЛО (в схеме `grouped_id:flags.17?long`) */
+  grouped_id?: number
   media?: PendingMedia
-  geo?: { lat: number; lng: number }
-  contact?: { userId: number; name: string; phone: string }
+  /** blob-URL локального превью, сминченный воркером (см. выше) */
+  local_url?: string
+  /** АРГУМЕНТЫ сборки гео-вложения бабла (как и `media` выше — не само
+   *  вложение): три конструктора из них собирает `makeGeoMedia`. */
+  geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }
+  /** То же для визитки: телефон гидрирует сервер, до эха его нет. */
+  contact?: { user_id: number; name?: string; phone?: string }
   secret?: boolean
-  send_as?: { chatId: number; title: string; photoId?: number }
+  /** send-as: бабл сразу от лица канала/группы. Едет ССЫЛКА (знаковый ключ), а
+   *  не снимок `{title, photo_id}`: имя и фото автор бабла берёт из зеркала
+   *  карточек — ровно так же, как их берёт серверное эхо, у которого `from_id`
+   *  указывает на тот же канал. */
+  send_as?: PeerId
+  /** Ответ на сообщение — в бабле СРАЗУ, до подтверждения сервера (порт tweb
+   *  `generateOutgoingMessage → reply_to: generateReplyHeader(...)`,
+   *  appMessagesManager.ts:2926). Номер — в КЛИЕНТСКОМ пространстве. */
+  reply_to_id?: number | null
+  /** Текст цитаты (reply quote) — в превью бабла вместо текста оригинала. */
+  reply_quote_text?: string
+  /** Кросс-чат ответ: чат оригинала. Оригинала нет в этом чате, поэтому превью
+   *  строится из `reply_to.reply_from`/`reply_media`, которые приедут с эхом; до
+   *  него плашка показывает ссылку. */
+  reply_to_peer_id?: PeerId
+  /** Порт ОПЦИИ tweb `beforeMessageSending({sequential})` (не проводного поля:
+   *  наружу этот признак уходит не кадром, а полем операции `insert`, см.
+   *  `core/realtime/messageOps.ts`). Смысл в оригинале — «кадр отправки уходит
+   *  на сервер В ТОМ ЖЕ ходу, что и появление бабла», поэтому серверный
+   *  идентификатор сохранит ту позицию внизу окна, которую бабл уже занял.
+   *  tweb ставит его у `sendText`/`sendOther`/`forwardMessages` и НЕ ставит у
+   *  `sendFile`/`sendPoll` — там между баблом и кадром стоит аплоад, за время
+   *  которого вперёд может уйти другое сообщение. Мы ставим его по тому же
+   *  правилу (`messages.sendText`, `channels.post`), а лента на нём срезает
+   *  перекладку бабла — `chat/bubbles.ts`, подписка `history_update`. */
+  sequential?: boolean
 }
-// Лёгкие кадры жизненного цикла: chat_id/thread_root_id — маршрут к окну.
-export interface PendingRouteEvt { chat_id: number; thread_root_id?: number | null; client_msg_id: string }
-export interface PendingMediaEvt extends PendingRouteEvt { media_id: number }
 
 // One envelope for every 1:1 call signaling frame (call_request / call_accept /
 // call_decline / call_end / call_signal); `d.from_user_id` is stamped by the server.

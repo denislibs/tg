@@ -29,7 +29,8 @@ type member struct {
 	unread      int
 	mentions    int
 	reactions   int
-	muted       bool
+	// mutedUntil — срок мьюта, а не булево: «навсегда» это domain.MuteUntilForever.
+	mutedUntil *time.Time
 }
 
 // mentionRow mirrors a message_mentions row in the fake store.
@@ -53,7 +54,7 @@ type store struct {
 	members    map[int64]map[int64]*member         // chatID -> userID -> member
 	messages   map[int64][]domain.Message          // chatID -> messages (by seq order)
 	owners     map[int64]int64                     // mediaID -> ownerID
-	mediaDims  map[int64]MediaDims                 // mediaID -> мета медиа (read model)
+	mediaDims  map[int64]domain.MediaSource        // mediaID -> мета медиа (read model)
 	reactions  map[int64]map[int64]map[string]bool // msgID -> userID -> emoji set
 	hidden     map[int64]map[int64]bool            // userID -> msgID -> hidden ("delete for me")
 	pins       map[int64][]int64                   // chatID -> pinned msgIDs (newest first)
@@ -73,7 +74,7 @@ type store struct {
 	// per-user update log
 	pts     map[int64]int64
 	date    map[int64]int64
-	updates map[int64][]domain.Update // userID -> updates (pts asc)
+	updates map[int64][]domain.UpdateRecord // userID -> updates (pts asc)
 
 	// self-destruct: аргументы каждого вызова SetDestructOnRead (для проверки,
 	// что MarkRead запускает таймер).
@@ -89,12 +90,12 @@ func newStore() *store {
 		members:        map[int64]map[int64]*member{},
 		messages:       map[int64][]domain.Message{},
 		owners:         map[int64]int64{},
-		mediaDims:      map[int64]MediaDims{},
+		mediaDims:      map[int64]domain.MediaSource{},
 		reactions:      map[int64]map[int64]map[string]bool{},
 		viewed:         map[int64]map[int64]bool{},
 		pts:            map[int64]int64{},
 		date:           map[int64]int64{},
-		updates:        map[int64][]domain.Update{},
+		updates:        map[int64][]domain.UpdateRecord{},
 		discussionChat: map[int64]int64{},
 	}
 }
@@ -108,6 +109,20 @@ func (s *store) seedDiscussion(channelID, groupID int64) {
 	s.discussionChat[channelID] = groupID
 }
 
+// seedChat заводит чат заданного типа с участниками (эквивалент строки в chats
+// + строк в chat_members).
+func (s *store) seedChat(chatID int64, typ string, members ...int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.chatType[chatID] = typ
+	s.chatSeq[chatID] = 0
+	m := map[int64]*member{}
+	for _, uid := range members {
+		m[uid] = &member{}
+	}
+	s.members[chatID] = m
+}
+
 func (s *store) seedMedia(mediaID, ownerID int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -116,7 +131,7 @@ func (s *store) seedMedia(mediaID, ownerID int64) {
 
 // seedMediaDims задаёт мету медиа, которую read-модель подмешивает в сообщение
 // (hydrateMedia). Без неё DimsByIDs ничего не возвращает — как для необработанного медиа.
-func (s *store) seedMediaDims(mediaID int64, d MediaDims) {
+func (s *store) seedMediaDims(mediaID int64, d domain.MediaSource) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.mediaDims[mediaID] = d
@@ -201,32 +216,39 @@ func (r fakeChats) IsMember(_ context.Context, chatID, userID int64) (bool, erro
 	return r.s.members[chatID][userID] != nil, nil
 }
 
-func (r fakeChats) ListDialogs(_ context.Context, userID int64) ([]domain.Dialog, error) {
+func (r fakeChats) ListDialogs(_ context.Context, userID int64) ([]domain.DialogRecord, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
-	var out []domain.Dialog
+	var out []domain.DialogRecord
 	for cid, m := range r.s.members {
 		mem := m[userID]
 		if mem == nil {
 			continue
 		}
-		d := domain.Dialog{
+		var until time.Time
+		if mem.mutedUntil != nil {
+			until = *mem.mutedUntil
+		}
+		d := domain.DialogRecord{
 			ChatID:               cid,
 			Type:                 r.s.chatType[cid],
 			LastReadSeq:          mem.lastReadSeq,
 			UnreadCount:          mem.unread,
 			UnreadMentionsCount:  mem.mentions,
 			UnreadReactionsCount: mem.reactions,
-			Muted:                mem.muted,
+			NotifySettings:       domain.NewPeerNotifySettings(until, nil, nil),
 		}
-		msgs := r.s.messages[cid]
-		if len(msgs) > 0 {
-			last := msgs[len(msgs)-1]
-			d.HasLast = true
-			d.LastSeq = last.Seq
-			d.LastText = last.Text
-			d.LastSenderID = last.SenderID
-			d.LastAt = last.CreatedAt
+		// Последнее сообщение адресуется ЧИСЛОМ: сам объект едет вектором
+		// messages контейнера, а не выжимкой внутри строки диалога. Очистка
+		// истории учитывается так же, как в SQL (seq > cleared_max_seq).
+		for i := len(r.s.messages[cid]) - 1; i >= 0; i-- {
+			if last := r.s.messages[cid][i]; last.Seq > mem.clearedSeq {
+				// Ключ строки и НОМЕР едут из одной строки выборки: собирать
+				// номер поиском по загруженным сообщениям нельзя — промах дал бы
+				// 0, то есть «самое новое».
+				d.TopMessageID, d.TopMessageSeq = last.ID, last.Seq
+				break
+			}
 		}
 		out = append(out, d)
 	}
@@ -396,7 +418,7 @@ func (r fakeChats) ClearMentions(_ context.Context, chatID, userID, uptoSeq int6
 	return remaining, nil
 }
 
-func (r fakeChats) NextMention(_ context.Context, chatID, userID, afterSeq int64) (int64, int64, error) {
+func (r fakeChats) NextMention(_ context.Context, chatID, userID, afterSeq int64) (int64, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	var best *mentionRow
@@ -410,9 +432,9 @@ func (r fakeChats) NextMention(_ context.Context, chatID, userID, afterSeq int64
 		}
 	}
 	if best == nil {
-		return 0, 0, domain.ErrNotFound
+		return 0, domain.ErrNotFound
 	}
-	return best.seq, best.msgID, nil
+	return best.seq, nil
 }
 
 func (r fakeChats) MaxSeq(_ context.Context, chatID int64) (int64, error) {
@@ -608,8 +630,8 @@ func (r fakeMsgs) LastMessageAt(_ context.Context, chatID, senderID int64) (time
 	return time.Time{}, domain.ErrNotFound
 }
 
-func (r fakeMsgs) SavedDialogs(_ context.Context, _, _ int64) ([]domain.SavedDialog, error) {
-	return []domain.SavedDialog{}, nil
+func (r fakeMsgs) SavedDialogs(_ context.Context, _, _ int64) ([]domain.SavedDialogRecord, error) {
+	return []domain.SavedDialogRecord{}, nil
 }
 
 func (r fakeMsgs) FindByClientMsgID(_ context.Context, chatID, senderID int64, clientMsgID string) (domain.Message, error) {
@@ -636,7 +658,7 @@ func (r fakeMsgs) GetByID(_ context.Context, msgID int64) (domain.Message, error
 	return domain.Message{}, domain.ErrNotFound
 }
 
-func (r fakeMsgs) GetAround(_ context.Context, chatID, userID, centerSeq int64, limit int, _ *int64, clearedSeq int64) ([]domain.Message, bool, bool, error) {
+func (r fakeMsgs) GetAround(_ context.Context, chatID, userID, centerSeq int64, limit int, _ *int64, clearedSeq int64) ([]domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	if limit <= 0 {
@@ -655,15 +677,17 @@ func (r fakeMsgs) GetAround(_ context.Context, chatID, userID, centerSeq int64, 
 			newer = append(newer, m)
 		}
 	}
-	reachedTop := len(older) <= half+1
-	reachedBottom := len(newer) <= half
-	if len(older) > half+1 {
-		older = older[len(older)-(half+1):]
+	// Раскладка окна — та же, что у настоящего репозитория: верхняя половина
+	// ВКЛЮЧАЕТ центр, нижняя добирает остаток до limit. Фейк держал снизу `half`
+	// и отдавал окно на элемент шире, чем production.
+	wantOlder := half + 1
+	if len(older) > wantOlder {
+		older = older[len(older)-wantOlder:]
 	}
-	if len(newer) > half {
-		newer = newer[:half]
+	if wantNewer := limit - wantOlder; len(newer) > wantNewer {
+		newer = newer[:wantNewer]
 	}
-	return append(older, newer...), reachedTop, reachedBottom, nil
+	return append(older, newer...), nil
 }
 
 func (r fakeMsgs) CallLog(context.Context, int64, int, int) ([]domain.CallLogEntry, error) {
@@ -729,6 +753,20 @@ func (r fakeMsgs) ByChecklistID(_ context.Context, checklistID int64) ([]domain.
 	for _, all := range r.s.messages {
 		for _, m := range all {
 			if m.ChecklistID != nil && *m.ChecklistID == checklistID && !m.Deleted {
+				out = append(out, m)
+			}
+		}
+	}
+	return out, nil
+}
+
+func (r fakeMsgs) ByGiveawayID(_ context.Context, giveawayID int64) ([]domain.Message, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var out []domain.Message
+	for _, all := range r.s.messages {
+		for _, m := range all {
+			if m.GiveawayID != nil && *m.GiveawayID == giveawayID && !m.Deleted {
 				out = append(out, m)
 			}
 		}
@@ -868,19 +906,34 @@ func (r fakeMsgs) SearchMessages(_ context.Context, chatID int64, q string, f Se
 func (r fakeMsgs) CalendarMonth(_ context.Context, chatID int64, from, to time.Time) ([]domain.CalendarDay, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
-	var out []domain.CalendarDay
-	seen := map[string]bool{}
+	// Агрегат по дню, как у настоящего запроса: границы номеров, счётчик и
+	// номер сообщения-превью. Превью — ПОСЛЕДНЕЕ сообщение дня.
+	byDay := map[string]*domain.CalendarDay{}
+	order := []string{}
 	for _, m := range r.s.messages[chatID] {
 		if m.Deleted || m.MediaID == nil || m.CreatedAt.Before(from) || !m.CreatedAt.Before(to) {
 			continue
 		}
 		day := m.CreatedAt.UTC().Truncate(24 * time.Hour)
 		key := day.Format("2006-01-02")
-		if seen[key] {
+		d, ok := byDay[key]
+		if !ok {
+			byDay[key] = &domain.CalendarDay{Day: day, MinSeq: m.Seq, MaxSeq: m.Seq, Count: 1, TopSeq: m.Seq}
+			order = append(order, key)
 			continue
 		}
-		seen[key] = true
-		out = append(out, domain.CalendarDay{Day: day, MsgID: m.ID, Seq: m.Seq, MediaID: *m.MediaID, Type: m.Type})
+		d.Count++
+		if m.Seq < d.MinSeq {
+			d.MinSeq = m.Seq
+		}
+		if m.Seq > d.MaxSeq {
+			d.MaxSeq = m.Seq
+			d.TopSeq = m.Seq
+		}
+	}
+	out := make([]domain.CalendarDay, 0, len(order))
+	for _, key := range order {
+		out = append(out, *byDay[key])
 	}
 	return out, nil
 }
@@ -910,6 +963,69 @@ func (r fakeMsgs) MessageSeqByDate(_ context.Context, chatID int64, from time.Ti
 	return 0, domain.ErrNotFound
 }
 
+// IDBySeq/IDsBySeqs/SeqsByIDs/GetBySeqs — слой адресации: снаружи сообщение
+// адресуется парой «пир + номер», внутри живёт ключ строки (msgaddr.go).
+func (r fakeMsgs) IDBySeq(_ context.Context, chatID, seq int64) (int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for _, m := range r.s.messages[chatID] {
+		if m.Seq == seq {
+			return m.ID, nil
+		}
+	}
+	return 0, domain.ErrNotFound
+}
+
+func (r fakeMsgs) IDsBySeqs(_ context.Context, chatID int64, seqs []int64) (map[int64]int64, error) {
+	want := map[int64]bool{}
+	for _, s := range seqs {
+		want[s] = true
+	}
+	out := map[int64]int64{}
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for _, m := range r.s.messages[chatID] {
+		if want[m.Seq] {
+			out[m.Seq] = m.ID
+		}
+	}
+	return out, nil
+}
+
+func (r fakeMsgs) SeqsByIDs(_ context.Context, ids []int64) (map[int64]int64, error) {
+	want := map[int64]bool{}
+	for _, id := range ids {
+		want[id] = true
+	}
+	out := map[int64]int64{}
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for _, msgs := range r.s.messages {
+		for _, m := range msgs {
+			if want[m.ID] {
+				out[m.ID] = m.Seq
+			}
+		}
+	}
+	return out, nil
+}
+
+func (r fakeMsgs) GetBySeqs(_ context.Context, chatID int64, seqs []int64) ([]domain.Message, error) {
+	want := map[int64]bool{}
+	for _, s := range seqs {
+		want[s] = true
+	}
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var out []domain.Message
+	for _, m := range r.s.messages[chatID] {
+		if want[m.Seq] {
+			out = append(out, m)
+		}
+	}
+	return out, nil
+}
+
 func (r fakeMsgs) GetByIDs(_ context.Context, ids []int64) ([]domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
@@ -928,7 +1044,7 @@ func (r fakeMsgs) GetByIDs(_ context.Context, ids []int64) ([]domain.Message, er
 	return out, nil
 }
 
-func (r fakeMsgs) UpdateText(_ context.Context, msgID int64, text string, entities []domain.MessageEntity) (domain.Message, error) {
+func (r fakeMsgs) UpdateText(_ context.Context, msgID int64, text string, entities domain.MessageEntities) (domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	now := time.Now()
@@ -946,7 +1062,24 @@ func (r fakeMsgs) UpdateText(_ context.Context, msgID int64, text string, entiti
 	return domain.Message{}, domain.ErrNotFound
 }
 
-func (r fakeMsgs) UpdateReplyMarkup(_ context.Context, msgID int64, markup *domain.ReplyMarkup) (domain.Message, error) {
+func (r fakeMsgs) UpdateAction(_ context.Context, msgID int64, action domain.MessageAction) (domain.Message, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	now := time.Now()
+	for chatID, msgs := range r.s.messages {
+		for idx, m := range msgs {
+			if m.ID == msgID {
+				m.Action = action
+				m.EditedAt = &now
+				r.s.messages[chatID][idx] = m
+				return m, nil
+			}
+		}
+	}
+	return domain.Message{}, domain.ErrNotFound
+}
+
+func (r fakeMsgs) UpdateReplyMarkup(_ context.Context, msgID int64, markup domain.ReplyMarkup) (domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	now := time.Now()
@@ -1099,7 +1232,7 @@ func (r fakeMsgs) ListThread(_ context.Context, chatID, threadRootID int64, offs
 // не «переезжает», если первый элемент альбома потом удалили.
 // Вызывается уже под r.s.mu — своей блокировки не берёт.
 func (r fakeMsgs) resolveAlbumRoot(channelID, postID int64) int64 {
-	var grouped *string
+	var grouped *int64
 	for _, m := range r.s.messages[channelID] {
 		if m.ID == postID {
 			grouped = m.GroupedID
@@ -1202,37 +1335,13 @@ func (r fakeMsgs) MirrorsByPosts(_ context.Context, channelID int64, postIDs []i
 // r.s.messages[chatID] уже упорядочен по возрастанию ID (Insert только
 // добавляет в конец под общим счётчиком r.s.nextMsgID), досортировывать не
 // нужно.
-func (r fakeMsgs) AlbumMessages(_ context.Context, chatID int64, groupedID string) ([]domain.Message, error) {
+func (r fakeMsgs) AlbumMessages(_ context.Context, chatID int64, groupedID int64) ([]domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	var out []domain.Message
 	for _, m := range r.s.messages[chatID] {
 		if m.GroupedID != nil && *m.GroupedID == groupedID {
 			out = append(out, m)
-		}
-	}
-	return out, nil
-}
-
-// PostsByMirrors — обратный резолв к MirrorsByPosts: по id сообщений отдаёт
-// id постов, зеркалами которых они являются (перебор по PRIMARY KEY id, без
-// привязки к «текущей» группе обсуждения — см. комментарий у Postgres-версии).
-func (r fakeMsgs) PostsByMirrors(_ context.Context, ids []int64) (map[int64]int64, error) {
-	out := map[int64]int64{}
-	if len(ids) == 0 {
-		return out, nil
-	}
-	r.s.mu.Lock()
-	defer r.s.mu.Unlock()
-	want := map[int64]bool{}
-	for _, id := range ids {
-		want[id] = true
-	}
-	for _, msgs := range r.s.messages {
-		for _, m := range msgs {
-			if m.IsDiscussionMirror && !m.Deleted && want[m.ID] && m.FwdFromMsgID != nil {
-				out[m.ID] = *m.FwdFromMsgID
-			}
 		}
 	}
 	return out, nil
@@ -1270,6 +1379,25 @@ func (r fakeMsgs) CountThread(_ context.Context, chatID, threadRootID int64) (in
 		}
 	}
 	return n, nil
+}
+
+// ThreadReplyCounts — батч CountThread: корни без ответов в карту НЕ попадают
+// (как GROUP BY в Postgres-версии), иначе «тред пуст» стало бы неотличимо от
+// «треда нет».
+func (r fakeMsgs) ThreadReplyCounts(_ context.Context, chatID int64, rootIDs []int64) (map[int64]int, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	want := map[int64]bool{}
+	for _, id := range rootIDs {
+		want[id] = true
+	}
+	out := map[int64]int{}
+	for _, m := range r.s.messages[chatID] {
+		if m.ThreadRootID != nil && want[*m.ThreadRootID] && !m.Deleted {
+			out[*m.ThreadRootID]++
+		}
+	}
+	return out, nil
 }
 
 func (r fakeMsgs) CountMessages(_ context.Context, chatID int64) (int, error) {
@@ -1310,6 +1438,34 @@ func (r fakeMsgs) RegisterChannelViews(_ context.Context, chatID, userID, upToSe
 		r.s.messages[chatID][idx].Views++
 	}
 	return nil
+}
+
+func (r fakeMsgs) RegisterPostViews(_ context.Context, chatID, userID int64, ids []int64) (map[int64]int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	grown := map[int64]int64{}
+	if r.s.chatType[chatID] != "channel" {
+		return grown, nil
+	}
+	want := map[int64]bool{}
+	for _, id := range ids {
+		want[id] = true
+	}
+	for idx, m := range r.s.messages[chatID] {
+		if !want[m.ID] || m.Deleted {
+			continue
+		}
+		if r.s.viewed[m.ID] == nil {
+			r.s.viewed[m.ID] = map[int64]bool{}
+		}
+		if r.s.viewed[m.ID][userID] {
+			continue
+		}
+		r.s.viewed[m.ID][userID] = true
+		r.s.messages[chatID][idx].Views++
+		grown[m.ID] = r.s.messages[chatID][idx].Views
+	}
+	return grown, nil
 }
 
 func (r fakeMsgs) ClearMediaUnread(_ context.Context, msgID int64) (bool, error) {
@@ -1382,7 +1538,7 @@ func (r fakeUpdates) AppendUpdate(_ context.Context, userID int64, ptsCount int,
 	r.s.pts[userID] += int64(ptsCount)
 	r.s.date[userID] = date
 	newPts := r.s.pts[userID]
-	r.s.updates[userID] = append(r.s.updates[userID], domain.Update{
+	r.s.updates[userID] = append(r.s.updates[userID], domain.UpdateRecord{
 		Pts: newPts, PtsCount: ptsCount, Type: typ, Payload: payload,
 	})
 	return newPts, nil
@@ -1396,7 +1552,7 @@ func (r fakeUpdates) AppendUpdateBulk(_ context.Context, userIDs []int64, ptsCou
 		r.s.pts[userID] += int64(ptsCount)
 		r.s.date[userID] = date
 		newPts := r.s.pts[userID]
-		r.s.updates[userID] = append(r.s.updates[userID], domain.Update{
+		r.s.updates[userID] = append(r.s.updates[userID], domain.UpdateRecord{
 			Pts: newPts, PtsCount: ptsCount, Type: typ, Payload: payload,
 		})
 		out[userID] = newPts
@@ -1429,10 +1585,10 @@ func (r fakeUpdates) GetUserState(_ context.Context, userID int64) (domain.UserS
 	return domain.UserState{Pts: r.s.pts[userID], Date: r.s.date[userID]}, nil
 }
 
-func (r fakeUpdates) UpdatesSince(_ context.Context, userID, sincePts int64, limit int) ([]domain.Update, error) {
+func (r fakeUpdates) UpdatesSince(_ context.Context, userID, sincePts int64, limit int) ([]domain.UpdateRecord, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
-	var out []domain.Update
+	var out []domain.UpdateRecord
 	for _, u := range r.s.updates[userID] {
 		if u.Pts > sincePts {
 			out = append(out, u)
@@ -1508,7 +1664,7 @@ func (r fakeReactions) ReactionUsers(_ context.Context, messageID int64) ([]doma
 	var out []domain.ReactionUser
 	for userID, emojis := range r.s.reactions[messageID] {
 		for e := range emojis {
-			out = append(out, domain.ReactionUser{User: domain.UserCard{ID: userID}, Emoji: e})
+			out = append(out, domain.ReactionUser{User: domain.UserReal{ID: userID}, Emoji: e})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -1524,10 +1680,10 @@ func (r fakeReactions) ReactionUsers(_ context.Context, messageID int64) ([]doma
 
 type fakeMedia struct{ s *store }
 
-func (r fakeMedia) DimsByIDs(_ context.Context, ids []int64) (map[int64]MediaDims, error) {
+func (r fakeMedia) DimsByIDs(_ context.Context, ids []int64) (map[int64]domain.MediaSource, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
-	out := map[int64]MediaDims{}
+	out := map[int64]domain.MediaSource{}
 	for _, id := range ids {
 		if d, ok := r.s.mediaDims[id]; ok {
 			out[id] = d
@@ -1613,7 +1769,7 @@ type fakeNotifier struct {
 	recipients []int64
 }
 
-func (n *fakeNotifier) NotifyNewMessage(_ context.Context, recipientID, _, _, _, _ int64, _ string) {
+func (n *fakeNotifier) NotifyNewMessage(_ context.Context, recipientID, _, _, _ int64, _ string, _ domain.PeerID) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.recipients = append(n.recipients, recipientID)

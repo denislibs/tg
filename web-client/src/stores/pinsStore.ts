@@ -4,14 +4,14 @@
 // here); usePinnedBar just reads. Keeps the "only realtimeBridge subscribes to the
 // socket" invariant — no view-layer listener.
 import { create } from 'zustand'
-import type { Message } from '../core/models'
+import type { MyMessage } from '../core/models'
 
 interface PinsState {
-  byChat: Record<number, Message[]>
-  setPins: (chatId: number, pins: Message[]) => void
+  byChat: Record<number, MyMessage[]>
+  setPins: (peerId: number, pins: MyMessage[]) => void
 }
 
 export const usePinsStore = create<PinsState>((set) => ({
   byChat: {},
-  setPins: (chatId, pins) => set((s) => ({ byChat: { ...s.byChat, [chatId]: pins } })),
+  setPins: (peerId, pins) => set((s) => ({ byChat: { ...s.byChat, [peerId]: pins } })),
 }))

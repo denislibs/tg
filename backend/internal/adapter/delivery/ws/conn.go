@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"strings"
 	"time"
 
@@ -28,9 +29,15 @@ type plainCodec struct{}
 
 func (plainCodec) decode(raw []byte) (byte, []byte, error) { return frameKindJSON, raw, nil }
 
-// kind игнорируется: plain-WS шлёт JSON-текст as-is; бинарные file-кадры на
-// plain-путь не попадают.
-func (plainCodec) encode(_ byte, frame []byte) (int, []byte) { return websocket.TextMessage, frame }
+// JSON едет текстом as-is, TL — бинарём: на проводе TL кадр это байты
+// контейнера Updates, а не строка. Бинарные file-кадры на plain-путь не
+// попадают, поэтому их kind здесь и не разбирается.
+func (plainCodec) encode(kind byte, frame []byte) (int, []byte) {
+	if kind == frameKindTL {
+		return websocket.BinaryMessage, frame
+	}
+	return websocket.TextMessage, frame
+}
 
 // dnpCodec — Noise-канал: binary + шифрование каждого кадра. send использует
 // только writePump, recv — только readPump (гонок нет).
@@ -49,6 +56,11 @@ const frameKindFile byte = 0x01
 
 // frameKindFileUp — бинарный upload-чанк клиент→сервер (DNP L5 upload).
 const frameKindFileUp byte = 0x02
+
+// frameKindTL — кадр реального времени, закодированный в TL (контейнер
+// Updates). Отдельный kind, а не «бинарь вообще»: file-чанк и апдейт — разные
+// предметы, и путать их по одному признаку «не текст» нельзя.
+const frameKindTL byte = 0x03
 
 func (c *dnpCodec) decode(raw []byte) (byte, []byte, error) {
 	plain, err := dnp.DecryptFrame(c.recv, raw)
@@ -88,7 +100,7 @@ type Presence interface {
 // RPCDispatcher реплеит rpc-запрос канала (реализуется в пакете http через
 // RouterRPC). Несёт user+deviceID, чтобы ws не зависел от http.
 type RPCDispatcher interface {
-	Dispatch(ctx context.Context, user domain.User, deviceID int64, method, path string, body []byte) (int, []byte)
+	Dispatch(ctx context.Context, user domain.UserRecord, deviceID int64, method, path string, body []byte) (int, []byte)
 }
 
 const rpcMaxConcurrent = 16
@@ -106,7 +118,10 @@ func rpcRespFrame(reqID string, status int, body []byte) []byte {
 		body = []byte("null")
 	case !json.Valid(body):
 		// chi's stock 404/500 handlers write plain text — wrap so the frame stays valid JSON.
-		if w, err := json.Marshal(map[string]string{"error": strings.TrimSpace(string(body))}); err == nil {
+		// Оболочка — тот же конструктор `error`, что у обычного ответа-ошибки:
+		// разбирает отказы на клиенте одно место (restClient), и двух форм у
+		// него быть не должно.
+		if w, err := json.Marshal(domain.NewError(status, strings.TrimSpace(string(body)))); err == nil {
 			body = w
 		} else {
 			body = []byte("null")
@@ -134,7 +149,7 @@ type Conn struct {
 	hub       *Hub
 	svc       *usecasechat.Interactor
 	presence  Presence
-	user      domain.User
+	user      domain.UserRecord
 	userID    int64
 	deviceID  int64
 	send      chan outFrame
@@ -148,9 +163,13 @@ type Conn struct {
 	// активный групповой звонок этого соединения (0 — нет): при обрыве
 	// сокета участника автоматически выводим из звонка.
 	groupCallChat int64
+	// wireTL — соединение выбрало провод TL (подпротокол `tl.1` на
+	// рукопожатии). Свойство соединения, а не сервера: соседняя вкладка того же
+	// пользователя может остаться на JSON.
+	wireTL bool
 }
 
-func newConn(ws *websocket.Conn, hub *Hub, svc *usecasechat.Interactor, presence Presence, user domain.User, deviceID int64, codec frameCodec, rpc RPCDispatcher, file FileDispatcher) *Conn {
+func newConn(ws *websocket.Conn, hub *Hub, svc *usecasechat.Interactor, presence Presence, user domain.UserRecord, deviceID int64, codec frameCodec, rpc RPCDispatcher, file FileDispatcher) *Conn {
 	return &Conn{
 		ws: ws, hub: hub, svc: svc, presence: presence,
 		user: user, userID: user.ID, deviceID: deviceID,
@@ -164,13 +183,30 @@ func newConn(ws *websocket.Conn, hub *Hub, svc *usecasechat.Interactor, presence
 // SetUploadDispatcher связывает upload-диспетчер после сборки роутера (как SetFileDispatcher).
 func (c *Conn) SetUploadDispatcher(u UploadDispatcher) { c.upload = u }
 
+// SetWireTL переводит соединение на провод TL. Зовётся ДО conn.run(), то есть
+// до запуска насосов, — гонок с writePump нет.
+func (c *Conn) SetWireTL(on bool) { c.wireTL = on }
+
 // Close force-closes the underlying socket (used by the hub on revoke). The
 // read pump then exits and run() cleans up.
 func (c *Conn) Close() { _ = c.ws.Close() }
 
-// Send queues a JSON frame (kind 0x00) for the writer. Drops the frame if the
-// buffer is full (a stuck client must not block fan-out).
-func (c *Conn) Send(frame []byte) { c.enqueue(outFrame{frameKindJSON, frame}) }
+// Send queues a frame for the writer. Drops the frame if the buffer is full (a
+// stuck client must not block fan-out).
+//
+// Формат провода — свойство СОЕДИНЕНИЯ (выбран подпротоколом на рукопожатии), а
+// не кадра: один и тот же апдейт уезжает JSON-текстом одной вкладке и байтами
+// TL другой. Кадр без конструктора кодировать нечем — он уезжает JSON-текстом
+// на любом проводе (см. tlEncodeUpdateFrame).
+func (c *Conn) Send(frame []byte) {
+	if c.wireTL {
+		if body, ok := tlEncodeUpdateFrame(frame); ok {
+			c.enqueue(outFrame{frameKindTL, body})
+			return
+		}
+	}
+	c.enqueue(outFrame{frameKindJSON, frame})
+}
 
 // SendBinary queues a raw binary payload (kind 0x01, media-чанк). Drop-if-full
 // как Send. Плейн-conn его не зовёт (file_req обслуживается лишь при c.file != nil).
@@ -310,7 +346,10 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		if json.Unmarshal(f.D, &d) != nil {
 			return
 		}
-		if d.Type == "service" { // server-only type (group action pills)
+		// «Служебное ли» и «лог звонка ли» — ВЫБОР КОНСТРУКТОРА, а не значение
+		// поля type: клиент называет исход звонка полем call, всё остальное
+		// служебное производит сервер.
+		if d.Type == "service" || d.Type == "call" {
 			return
 		}
 		var encBody []byte
@@ -326,12 +365,25 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			})
 			c.Send(f)
 		}
-		// thread_root_id с клиента — id ПОСТА (внешний контракт); в discussion-группе
+		replyPeer, rerr := replyPeerChatID(ctx, c.svc, c.userID, d.ReplyToPeerID)
+		if rerr != nil {
+			nack("not_found")
+			return
+		}
+		// thread_root_id с клиента — НОМЕР ПОСТА (внешний контракт); в discussion-группе
 		// физически нужен id зеркала (см. ResolveThreadRootForSend). Резолвим здесь,
 		// на входе, а не внутри Send — PostComment туда уже шлёт id зеркала.
 		// Ошибка (нет зеркала и дозавести нечего) — понятный NACK, а не запись
 		// sentinel-нуля в thread_root_id (см. комментарий ResolveThreadRootForSend).
-		threadRoot, terr := c.svc.ResolveThreadRootForSend(ctx, d.ChatID, d.ThreadRootID)
+		// Адрес пира → внутренний chatID; приватного диалога может ещё не быть —
+		// первое сообщение собеседнику его и заводит (как в оригинале, где
+		// «создать чат» отдельной операцией не существует).
+		chatID, perr := c.svc.PeerToChatIDOrCreate(ctx, c.userID, d.PeerID)
+		if perr != nil {
+			nack("not_found")
+			return
+		}
+		threadRoot, terr := c.svc.ResolveThreadRootForSend(ctx, chatID, d.ThreadRootID)
 		if errors.Is(terr, domain.ErrNotFound) {
 			nack("not_found")
 			return
@@ -341,8 +393,9 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			return
 		}
 		msg, err := c.svc.Send(ctx, usecasechat.SendInput{
-			ChatID: d.ChatID, SenderID: c.userID, Type: d.Type, Text: d.Text, Entities: d.Entities,
-			ReplyToID: d.ReplyToID, ReplyQuoteText: d.ReplyQuoteText, ReplyQuoteOffset: d.ReplyQuoteOffset,
+			ChatID: chatID, SenderID: c.userID, Type: d.Type, Text: d.Text, Entities: d.Entities,
+			ReplyToID: d.ReplyToID, ReplyToPeerID: replyPeer,
+			ReplyQuoteText: d.ReplyQuoteText, ReplyQuoteOffset: d.ReplyQuoteOffset,
 			ClientMsgID: d.ClientMsgID, MediaID: d.MediaID, GroupedID: d.GroupedID,
 			GeoLat: d.GeoLat, GeoLng: d.GeoLng, ContactUserID: d.ContactUserID,
 			GeoTitle: d.GeoTitle, GeoAddress: d.GeoAddress,
@@ -351,7 +404,9 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			EncBody:      encBody, TTLSeconds: d.TTLSeconds,
 			Silent: d.Silent, Effect: d.Effect,
 			PaidMediaPrice: d.PaidMediaPrice,
-			SendAsChatID:   d.SendAsChatID,
+			MediaSpoiler:   d.MediaSpoiler,
+			SendAsChatID:   sendAsChatID(d.SendAsPeerID),
+			Action:         callAction(d.Call),
 		})
 		if err != nil {
 			// NACK the sender so the client stops retrying and can clear the bubble.
@@ -372,7 +427,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		}
 		ack, _ := json.Marshal(map[string]any{
 			"t": "message_ack",
-			"d": map[string]any{"client_msg_id": d.ClientMsgID, "msg_id": msg.ID, "seq": msg.Seq, "created_at": msg.CreatedAt},
+			"d": map[string]any{"client_msg_id": d.ClientMsgID, "id": msg.Seq, "created_at": msg.CreatedAt},
 		})
 		c.Send(ack)
 	case "read":
@@ -380,32 +435,38 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		if json.Unmarshal(f.D, &d) != nil {
 			return
 		}
-		_ = c.svc.MarkRead(ctx, d.ChatID, c.userID, d.UpToSeq)
+		if chatID, err := c.svc.PeerToChatID(ctx, c.userID, d.PeerID); err == nil {
+			_ = c.svc.MarkRead(ctx, chatID, c.userID, d.UpToSeq)
+		}
 	case "read_media":
 		var d readMediaData
 		if json.Unmarshal(f.D, &d) != nil {
 			return
 		}
-		_ = c.svc.ReadMedia(ctx, d.ChatID, c.userID, d.MsgID)
+		if chatID, err := c.svc.PeerToChatID(ctx, c.userID, d.PeerID); err == nil {
+			// Номер в чате — во внутренний ключ строки; нет такого номера —
+			// нечего и отмечать (кадр без ответа, как и раньше при промахе).
+			if msgID, e := c.svc.MessageIDBySeq(ctx, chatID, d.Seq); e == nil {
+				_ = c.svc.ReadMedia(ctx, chatID, c.userID, msgID)
+			}
+		}
 	case "typing":
 		var d typingData
 		if json.Unmarshal(f.D, &d) != nil {
 			return
 		}
-		_ = c.svc.Typing(ctx, d.ChatID, c.userID, d.Action)
-	case "subscribe_channel":
-		var d struct {
-			ChatID int64 `json:"chat_id"`
+		if chatID, err := c.svc.PeerToChatID(ctx, c.userID, d.PeerID); err == nil {
+			_ = c.svc.Typing(ctx, chatID, c.userID, domain.SendMessageActionByTag(d.Action.Underscore))
 		}
-		if json.Unmarshal(f.D, &d) == nil && d.ChatID != 0 {
-			c.hub.SubscribeChannel(ctx, d.ChatID, c)
+	case "subscribe_channel":
+		var d peerData
+		if json.Unmarshal(f.D, &d) == nil && d.PeerID.IsAnyChat() {
+			c.hub.SubscribeChannel(ctx, d.PeerID, c)
 		}
 	case "unsubscribe_channel":
-		var d struct {
-			ChatID int64 `json:"chat_id"`
-		}
-		if json.Unmarshal(f.D, &d) == nil && d.ChatID != 0 {
-			c.hub.UnsubscribeChannel(ctx, d.ChatID, c)
+		var d peerData
+		if json.Unmarshal(f.D, &d) == nil && d.PeerID.IsAnyChat() {
+			c.hub.UnsubscribeChannel(ctx, d.PeerID, c)
 		}
 	// 1:1 call signaling (WebRTC): the server is a dumb relay — the frame is
 	// re-addressed to every device of to_user_id with from_user_id stamped in.
@@ -420,24 +481,28 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 	// Групповой звонок: join/leave меняют список участников (+фан-аут
 	// group_call_update членам чата), signal — адресное реле SDP/ICE.
 	case "group_call_join":
-		var d struct {
-			ChatID int64 `json:"chat_id"`
-		}
-		if json.Unmarshal(f.D, &d) != nil || d.ChatID == 0 {
+		var d peerData
+		if json.Unmarshal(f.D, &d) != nil {
 			return
 		}
-		if _, err := c.svc.JoinGroupCall(ctx, d.ChatID, c.userID); err == nil {
-			c.groupCallChat = d.ChatID
+		chatID, err := c.svc.PeerToChatID(ctx, c.userID, d.PeerID)
+		if err != nil {
+			return
+		}
+		if _, err := c.svc.JoinGroupCall(ctx, chatID, c.userID); err == nil {
+			c.groupCallChat = chatID
 		}
 	case "group_call_leave":
-		var d struct {
-			ChatID int64 `json:"chat_id"`
-		}
-		if json.Unmarshal(f.D, &d) != nil || d.ChatID == 0 {
+		var d peerData
+		if json.Unmarshal(f.D, &d) != nil {
 			return
 		}
-		_ = c.svc.LeaveGroupCall(ctx, d.ChatID, c.userID)
-		if c.groupCallChat == d.ChatID {
+		chatID, err := c.svc.PeerToChatID(ctx, c.userID, d.PeerID)
+		if err != nil {
+			return
+		}
+		_ = c.svc.LeaveGroupCall(ctx, chatID, c.userID)
+		if c.groupCallChat == chatID {
 			c.groupCallChat = 0
 		}
 	case "group_call_signal":
@@ -446,9 +511,16 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			return
 		}
 		to, _ := d["to_user_id"].(float64)
-		chatID, _ := d["chat_id"].(float64)
+		peerRaw, _ := d["peer_id"].(float64)
 		delete(d, "to_user_id")
-		_ = c.svc.RelayGroupCallSignal(ctx, c.userID, int64(chatID), int64(to), d)
+		// peer_id в реле пересобирается для ПОЛУЧАТЕЛЯ (см. RelayGroupCallSignal):
+		// у приватного звонка ключ у сторон разный.
+		delete(d, "peer_id")
+		chatID, err := c.svc.PeerToChatID(ctx, c.userID, domain.PeerID(int64(peerRaw)))
+		if err != nil {
+			return
+		}
+		_ = c.svc.RelayGroupCallSignal(ctx, c.userID, chatID, int64(to), d)
 	case "rpc_req":
 		if c.rpc == nil {
 			return // plain-conn: RPC не обслуживает
@@ -461,7 +533,8 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		select {
 		case c.rpcSem <- struct{}{}:
 		default:
-			c.Send(rpcRespFrame(d.ReqID, 503, []byte(`{"error":"rpc busy"}`)))
+			busy, _ := json.Marshal(domain.NewError(http.StatusServiceUnavailable, "rpc busy"))
+			c.Send(rpcRespFrame(d.ReqID, 503, busy))
 			return
 		}
 		rpc, user, deviceID := c.rpc, c.user, c.deviceID

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -19,8 +20,8 @@ func NewPrivacyRepo(pool *pgxpool.Pool) *PrivacyRepo { return &PrivacyRepo{pool:
 
 var _ usecaseprivacy.Repo = (*PrivacyRepo)(nil)
 
-func scanRule(row pgx.Row) (domain.PrivacyRule, error) {
-	var r domain.PrivacyRule
+func scanRule(row pgx.Row) (domain.PrivacyRuleRecord, error) {
+	var r domain.PrivacyRuleRecord
 	var allowRaw, denyRaw []byte
 	err := row.Scan(&r.Key, &r.Value, &allowRaw, &denyRaw)
 	if err != nil {
@@ -31,14 +32,14 @@ func scanRule(row pgx.Row) (domain.PrivacyRule, error) {
 	return r, nil
 }
 
-func (r *PrivacyRepo) Rules(ctx context.Context, userID int64) ([]domain.PrivacyRule, error) {
+func (r *PrivacyRepo) Rules(ctx context.Context, userID int64) ([]domain.PrivacyRuleRecord, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT key, value, allow_user_ids, deny_user_ids FROM privacy_rules WHERE user_id=$1`, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := make([]domain.PrivacyRule, 0)
+	out := make([]domain.PrivacyRuleRecord, 0)
 	for rows.Next() {
 		rule, err := scanRule(rows)
 		if err != nil {
@@ -49,17 +50,17 @@ func (r *PrivacyRepo) Rules(ctx context.Context, userID int64) ([]domain.Privacy
 	return out, rows.Err()
 }
 
-func (r *PrivacyRepo) Get(ctx context.Context, userID int64, key domain.PrivacyKey) (domain.PrivacyRule, error) {
+func (r *PrivacyRepo) Get(ctx context.Context, userID int64, key domain.PrivacyKey) (domain.PrivacyRuleRecord, error) {
 	rule, err := scanRule(querier(ctx, r.pool).QueryRow(ctx,
 		`SELECT key, value, allow_user_ids, deny_user_ids FROM privacy_rules WHERE user_id=$1 AND key=$2`,
 		userID, key))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.PrivacyRule{}, domain.ErrNotFound
+		return domain.PrivacyRuleRecord{}, domain.ErrNotFound
 	}
 	return rule, err
 }
 
-func (r *PrivacyRepo) Upsert(ctx context.Context, userID int64, rule domain.PrivacyRule) error {
+func (r *PrivacyRepo) Upsert(ctx context.Context, userID int64, rule domain.PrivacyRuleRecord) error {
 	allow, err := json.Marshal(orEmpty(rule.AllowUserIDs))
 	if err != nil {
 		return err
@@ -120,7 +121,7 @@ func (r *PrivacyRepo) BlockedList(ctx context.Context, userID int64, offset, lim
 	// Телефон в ряду показывается по правилу phone_number заблокированного
 	// относительно блокировщика (блок направлен в другую сторону и его не гасит).
 	rows, err := q.Query(ctx,
-		`SELECT u.id, COALESCE(u.username,''), u.display_name, COALESCE(u.avatar_url,''),
+		`SELECT `+userRealCols("u.")+`, b.created_at,
 		        CASE WHEN `+privacyAllowsSQL("u.id", "$1", "pr")+` THEN u.phone ELSE '' END
 		   FROM user_blocks b
 		   JOIN users u ON u.id = b.blocked_id
@@ -134,11 +135,18 @@ func (r *PrivacyRepo) BlockedList(ctx context.Context, userID int64, offset, lim
 	defer rows.Close()
 	out := make([]domain.BlockedUser, 0)
 	for rows.Next() {
-		var u domain.BlockedUser
-		if err := rows.Scan(&u.UserID, &u.Username, &u.DisplayName, &u.AvatarURL, &u.Phone); err != nil {
+		var s userRealScan
+		var blockedAt time.Time
+		var phone string
+		if err := rows.Scan(append(s.dest(), &blockedAt, &phone)...); err != nil {
 			return nil, 0, err
 		}
-		out = append(out, u)
+		u := s.user(true)
+		u.Phone = phone
+		out = append(out, domain.BlockedUser{
+			Blocked: domain.NewPeerBlocked(domain.NewPeerUser(u.ID), blockedAt),
+			User:    u,
+		})
 	}
 	return out, total, rows.Err()
 }
@@ -151,7 +159,7 @@ func (r *PrivacyRepo) IsContact(ctx context.Context, ownerID, userID int64) (boo
 	return yes, err
 }
 
-// privacyAllowsSQL — SQL-эквивалент domain.PrivacyRule.Allows для правила из
+// privacyAllowsSQL — SQL-эквивалент domain.PrivacyRuleRecord.Allows для правила из
 // алиаса pr (может быть NULL — тогда дефолт ключа считает вызывающий запрос
 // через privacyDefaultSQL). owner/viewer — SQL-выражения с id сторон.
 // Порядок tweb: deny → allow → значение (contacts = owner сохранил viewer).
@@ -201,38 +209,52 @@ func (r *PrivacyRepo) VisibleMap(ctx context.Context, viewerID int64, ownerIDs [
 	return out, rows.Err()
 }
 
-func (r *PrivacyRepo) GetUser(ctx context.Context, id int64) (domain.User, error) {
-	var u domain.User
+func (r *PrivacyRepo) GetUser(ctx context.Context, id int64) (domain.UserRecord, error) {
+	var u domain.UserRecord
 	err := querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT id, phone, username, COALESCE(first_name,''), COALESCE(last_name,''),
-		        display_name, COALESCE(bio,''), birthday, COALESCE(avatar_url,''), avatar_preview, phone_visibility,
-		        is_premium, COALESCE(emoji_status,'')
+		`SELECT id, COALESCE(phone,''), username, COALESCE(first_name,''), COALESCE(last_name,''),
+		        COALESCE(bio,''), birthday, avatar_media_id, avatar_preview,
+		        is_premium, is_verified, is_bot, deleted_at IS NOT NULL, COALESCE(emoji_status,'')
 		   FROM users WHERE id=$1`, id).
 		Scan(&u.ID, &u.Phone, &u.Username, &u.FirstName, &u.LastName,
-			&u.DisplayName, &u.Bio, &u.Birthday, &u.AvatarURL, &u.AvatarPreview, &u.PhoneVisibility,
-			&u.IsPremium, &u.EmojiStatus)
+			&u.Bio, &u.Birthday, &u.PhotoID, &u.PhotoPreview,
+			&u.IsPremium, &u.IsVerified, &u.IsBot, &u.Deleted, &u.EmojiStatus)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.User{}, domain.ErrNotFound
+		return domain.UserRecord{}, domain.ErrNotFound
 	}
 	return u, err
 }
 
-func (r *PrivacyRepo) IsVerified(ctx context.Context, id int64) (bool, error) {
-	var v bool
+// TTLPeriod — период автоудаления переписки зрителя с этим пиром: сначала
+// auto_delete_period самого приватного чата, а пока чата нет — глобальный
+// дефолт ЗРИТЕЛЯ, которым такой чат заведётся (chatsrepo делает ровно это при
+// создании приватного чата). Отдельных запросов два только на бумаге: COALESCE
+// внутри одного.
+func (r *PrivacyRepo) TTLPeriod(ctx context.Context, viewerID, targetID int64) (int, error) {
+	var ttl int
 	err := querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT is_verified FROM users WHERE id=$1`, id).Scan(&v)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return false, domain.ErrNotFound
-	}
-	return v, err
+		`SELECT COALESCE(
+		          (SELECT c.auto_delete_period FROM chats c
+		             JOIN chat_members a ON a.chat_id = c.id AND a.user_id = $1
+		             JOIN chat_members b ON b.chat_id = c.id AND b.user_id = $2
+		            WHERE c.type = 'private' LIMIT 1),
+		          (SELECT auto_delete_period FROM users WHERE id = $1),
+		          0)`, viewerID, targetID).Scan(&ttl)
+	return ttl, err
 }
 
-func (r *PrivacyRepo) IsBot(ctx context.Context, id int64) (bool, error) {
-	var v bool
+// ChatTheme — тема оформления переписки зрителя с этим пиром: chat_theme того
+// самого приватного чата. Чата ещё нет — темы тоже нет, и это "" , а не дефолт:
+// «тема не задана» у нас и означает дефолтное оформление.
+func (r *PrivacyRepo) ChatTheme(ctx context.Context, viewerID, targetID int64) (string, error) {
+	var theme string
 	err := querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT is_bot FROM users WHERE id=$1`, id).Scan(&v)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
-	}
-	return v, err
+		`SELECT COALESCE(
+		          (SELECT ct.theme_id FROM chats c
+		             JOIN chat_members a ON a.chat_id = c.id AND a.user_id = $1
+		             JOIN chat_members b ON b.chat_id = c.id AND b.user_id = $2
+		             JOIN chat_theme ct ON ct.chat_id = c.id
+		            WHERE c.type = 'private' LIMIT 1),
+		          '')`, viewerID, targetID).Scan(&theme)
+	return theme, err
 }

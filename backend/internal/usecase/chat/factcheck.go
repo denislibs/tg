@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -18,7 +17,7 @@ const maxFactCheckRunes = 1024
 // (Telegram messages.editFactCheck) и рассылает членам апдейт factcheck_update,
 // чтобы блок обновился в бабле у всех вживую. Право — автор/админ канала
 // (RightPostMessages); только каналы (в группах/приватных — запрещено).
-func (i *Interactor) SetFactCheck(ctx context.Context, chatID, msgID, userID int64, text string, entities []domain.MessageEntity, country string) (domain.Message, error) {
+func (i *Interactor) SetFactCheck(ctx context.Context, chatID, msgID, userID int64, text string, entities domain.MessageEntities, country string) (domain.Message, error) {
 	if err := i.requireFactCheckRight(ctx, chatID, userID); err != nil {
 		return domain.Message{}, err
 	}
@@ -68,7 +67,7 @@ func (i *Interactor) requireFactCheckRight(ctx context.Context, chatID, userID i
 	if err != nil {
 		return err
 	}
-	if typ != "channel" {
+	if typ != domain.ChatTypeChannel {
 		return domain.ErrForbidden
 	}
 	return i.requireRight(ctx, chatID, userID, domain.RightPostMessages)
@@ -79,7 +78,6 @@ func (i *Interactor) requireFactCheckRight(ctx context.Context, chatID, userID i
 func (i *Interactor) applyFactCheck(ctx context.Context, chatID, msgID int64, fc *domain.FactCheck) (domain.Message, error) {
 	var msg domain.Message
 	var members []int64
-	ptsByUser := map[int64]int64{}
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		m, e := i.msgs.SetFactCheck(ctx, msgID, fc)
 		if e != nil {
@@ -92,29 +90,15 @@ func (i *Interactor) applyFactCheck(ctx context.Context, chatID, msgID int64, fc
 		}
 		slices.Sort(mem)
 		members = mem
-		payload, e := json.Marshal(factCheckUpdatePayload(msg))
-		if e != nil {
-			return e
-		}
-		date := nowMillis()
-		for _, uid := range members {
-			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "factcheck_update", payload)
-			if e != nil {
-				return e
-			}
-			ptsByUser[uid] = pts
-		}
 		return nil
 	})
 	if err != nil {
 		return domain.Message{}, err
 	}
-	if i.publisher != nil {
-		base := factCheckUpdatePayload(msg)
-		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, framePts("factcheck_update", base, ptsByUser[uid]))
-		}
-	}
+	// Тело строится ПО КЛЮЧУ ПИРА: у конструктора кадра место пира своё, и
+	// приклеить его снаружи общей функцией нельзя (см. logAndPublishPerPeer).
+	_ = i.logAndPublishPerPeer(ctx, chatID, members, "factcheck_update",
+		func(peer domain.PeerID) map[string]any { return factCheckUpdatePayload(peer, msg) })
 	return msg, nil
 }
 

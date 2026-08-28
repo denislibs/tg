@@ -3,109 +3,163 @@
 // Опросы + чек-листы + розыгрыши (порт tweb appPolls). Выделено из God-объекта
 // messagesManager: зависит только от rest и точечного патча SSOT (patchMsg через
 // ctx). Публичный API не меняется — методы спредятся в объект messagesManager.
-import { mapMessage, mapPoll, mapChecklist, mapGiveaway, type Message, type Poll, type Checklist, type Giveaway, type RawMessage, type RawPoll, type RawChecklist, type RawGiveaway } from '../../models'
+//
+// Все три подсистемы — КОНСТРУКТОРЫ объединения `MessageMedia`, а не собственные
+// поля сообщения, поэтому маппера у них больше нет вовсе: ручки и кадры несут
+// `{media}` в той же форме, в какой вложение лежит в сообщении. Сообщение
+// адресуется не номером, а идентификатором внутри вложения — так его и находят
+// (`byPollId`/`byTodoId`/`byGiveawayId`).
+import { mapMyMessage, type MyMessage, type MessageReal, type RawMyMessage, type GiveawayState } from '../../models'
+import { saveMessageMedia, type MessageMedia, type MessageMediaPoll, type MessageMediaToDo } from '../../media/messageMedia'
 import type { MessageOp } from '../../realtime/messageOps'
+import { getPeerId } from '../../peers/peerId'
+import type { ChecklistUpdateEvt, GiveawayUpdateEvt, PollUpdateEvt } from '../../realtime/events'
 import type { MessagesCtx } from './ctx'
+import { sendingParamsToWire, type MessageSendingParams } from './sendingParams'
 
-export function newPollMethods({ rest, patchMsg, opWindowsFor }: MessagesCtx) {
-  // Чек-лист → SSOT: отметки глобальны (нет локального состояния), полная замена.
-  // Возвращает id патченного сообщения (для построения операций у cacheChecklist) —
-  // undefined, если чек-лист ни на одном сообщении SSOT не найден.
-  const applyChecklistToCache = (chatId: number, raw: RawChecklist): number | undefined => {
-    const checklist = mapChecklist(raw)
+/** Вложение сообщения — опрос с этим идентификатором. */
+const byPollId = (id: number) => (m: MyMessage): boolean =>
+  m._ === 'message' && m.media?._ === 'messageMediaPoll' && m.media.poll.id === id
+
+/** Вложение сообщения — чек-лист с этим идентификатором. */
+const byTodoId = (id: number) => (m: MyMessage): boolean =>
+  m._ === 'message' && m.media?._ === 'messageMediaToDo' && m.media.todo.id === id
+
+/** Вложение сообщения — розыгрыш с этим идентификатором, в любой из двух
+ *  стадий: идущий и состоявшийся — РАЗНЫЕ конструкторы одного розыгрыша. */
+const byGiveawayId = (id: number) => (m: MyMessage): boolean =>
+  m._ === 'message'
+  && (m.media?._ === 'messageMediaGiveaway' || m.media?._ === 'messageMediaGiveawayResults')
+  && m.media.id === id
+
+/** Идентификатор розыгрыша внутри вложения; `undefined` — вложение не розыгрыш. */
+function giveawayIdOf(media: MessageMedia): number | undefined {
+  return media._ === 'messageMediaGiveaway' || media._ === 'messageMediaGiveawayResults' ? media.id : undefined
+}
+
+export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor, emitOps }: MessagesCtx) {
+  // Та же граница маппинга, что в messagesManager: `pFlags.out` производит
+  // сервер, здесь остаются перевод номеров и уточнение служебного действия.
+  const mapOne = (r: RawMyMessage): MyMessage => mapMyMessage(r, getMeId?.() ?? null)
+
+  /** Заменить вложение сообщения, найденного предикатом; вернуть его номер. */
+  const setMedia = (peerId: number, match: (m: MyMessage) => boolean, media: MessageMedia): number | undefined => {
     let msgId: number | undefined
-    patchMsg(chatId, (m) => m.checklist?.id === checklist.id, (m) => { msgId = m.id; return { ...m, checklist } })
+    patchMsg(peerId, match, (m) => { msgId = m.id; return { ...m, media } as MessageReal })
     return msgId
   }
 
+  /** Операции patch по всем окнам, где сообщение видно. */
+  const ops = (peerId: number, msgId: number | undefined, media: MessageMedia): MessageOp[] =>
+    msgId === undefined ? [] : opWindowsFor(peerId, msgId).map((key): MessageOp => ({ op: 'patch', key, msgId, fields: { media } }))
+
   return {
     // ── Опросы (Telegram Poll) ──
-    async sendPoll(chatId: number, p: { question: string; options: string[]; anonymous: boolean; multiple: boolean; quiz: boolean; correctOption?: number; clientMsgId?: string }): Promise<Message> {
-      const r = await rest.post<RawMessage>(`/chats/${chatId}/polls`, {
+    // Пакет параметров отправки — как у всех остальных путей (порт tweb: опрос
+    // уходит `sendOther({...sendingParams, inputMedia: inputMediaPoll})`,
+    // appMessagesManager.ts:2413). `effect` пакета сюда не едет СОЗНАТЕЛЬНО:
+    // бэкенд снимает эффект с типа 'poll' по whitelist (sanitizeEffect,
+    // backend/internal/usecase/chat/sanitize.go:29-32) — как и Telegram, который
+    // эффекты на опросах не показывает.
+    async sendPoll(peerId: number, p: { question: string; options: string[]; anonymous: boolean; multiple: boolean; quiz: boolean; correctOption?: number; clientMsgId?: string } & MessageSendingParams): Promise<MyMessage> {
+      const wire = sendingParamsToWire(p)
+      const r = await rest.post<RawMyMessage>(`/chats/${peerId}/polls`, {
         question: p.question, options: p.options, anonymous: p.anonymous,
         multiple: p.multiple, quiz: p.quiz, correct_option: p.correctOption ?? null,
         client_msg_id: p.clientMsgId ?? '',
+        reply_to_id: wire.replyToId, reply_quote_text: wire.replyQuoteText,
+        reply_quote_offset: wire.replyQuoteOffset, thread_root_id: wire.threadRootId,
+        silent: wire.silent, send_as_peer_id: wire.sendAsPeerId,
       })
-      return mapMessage(r)
+      return mapOne(r)
     },
-    // Голос (пустой список — отзыв); ответ авторитетен и несёт МОЙ выбор (myVotes),
-    // которого нет в общем WS-событии poll_update. Ставим опрос ПОЛНОСТЬЮ в SSOT
-    // воркера; main-стор обновляет вызыватель результатом (setPoll, не merge), иначе
-    // WS-merge потерял бы myVotes. WS poll_update затем реконсилит агрегат.
-    async votePoll(chatId: number, pollId: number, options: number[]): Promise<Poll> {
-      const r = await rest.post<{ poll: RawPoll }>(`/polls/${pollId}/vote`, { options })
-      const poll = mapPoll(r.poll)
-      patchMsg(chatId, (m) => m.poll?.id === poll.id, (m) => ({ ...m, poll }))
-      return poll
+    // Голос (пустой список — отзыв). Ответ АВТОРИТЕТЕН и несёт мой выбор —
+    // `results.results[].pFlags.chosen` — которого нет в общем WS-кадре
+    // poll_update (он собирается для «зрителя 0»). Ставим вложение ПОЛНОСТЬЮ и в
+    // SSOT воркера, и в окно — операцией.
+    async votePoll(peerId: number, pollId: number, options: number[]): Promise<MessageMediaPoll> {
+      // Опрос приезжает САМИМ конструктором: обёртки `{media: …}` больше нет.
+      const r = await rest.post<MessageMediaPoll>(`/polls/${pollId}/vote`, { options })
+      // Окно правит операция, а не вызыватель ответа. Ответ авторитетен и несёт
+      // МОЙ выбор (`results.results[].pFlags.chosen`), которого в общем кадре
+      // poll_update нет и быть не может — значит этот путь единственный, кто
+      // может объявить окну персональные итоги. `patch()` в messageOps сохраняет
+      // выбор окна только у УРЕЗАННЫХ итогов (`pFlags.min`), а здесь итоги
+      // полные — они и лягут как есть.
+      emitOps(ops(peerId, setMedia(peerId, byPollId(pollId), r), r))
+      return r
     },
     async closePoll(pollId: number): Promise<void> {
       await rest.post(`/polls/${pollId}/close`, {})
     },
 
     // ── Чек-листы (Telegram todo list) ──
-    async sendChecklist(chatId: number, c: { title: string; items: string[]; othersCanAdd: boolean; othersCanMark: boolean; clientMsgId?: string }): Promise<Message> {
-      const r = await rest.post<RawMessage>(`/chats/${chatId}/checklists`, {
+    async sendChecklist(peerId: number, c: { title: string; items: string[]; othersCanAdd: boolean; othersCanMark: boolean; clientMsgId?: string }): Promise<MyMessage> {
+      const r = await rest.post<RawMyMessage>(`/chats/${peerId}/checklists`, {
         title: c.title, items: c.items,
         others_can_add: c.othersCanAdd, others_can_mark: c.othersCanMark,
         client_msg_id: c.clientMsgId ?? '',
       })
-      return mapMessage(r)
+      return mapOne(r)
     },
     // Отметить/снять отметку «выполнено» на пункте. Ответ авторитетен (несёт мою
-    // отметку) → пушим в SSOT; main-стор обновляет вызыватель (storeProjection чист).
-    async toggleChecklistItem(chatId: number, checklistId: number, itemId: number): Promise<Checklist> {
-      const r = await rest.post<{ checklist: RawChecklist }>(`/checklists/${checklistId}/items/${itemId}/toggle`, {})
-      applyChecklistToCache(chatId, r.checklist)
-      return mapChecklist(r.checklist)
+    // отметку) → пушим в SSOT и объявляем окну операцией: окно правят только они.
+    async toggleChecklistItem(peerId: number, checklistId: number, itemId: number): Promise<MessageMediaToDo> {
+      const r = await rest.post<MessageMediaToDo>(`/checklists/${checklistId}/items/${itemId}/toggle`, {})
+      emitOps(ops(peerId, setMedia(peerId, byTodoId(checklistId), r), r))
+      return r
     },
-    // Добавить пункты; ответ авторитетен → пуш в SSOT.
-    async addChecklistItems(chatId: number, checklistId: number, items: string[]): Promise<Checklist> {
-      const r = await rest.post<{ checklist: RawChecklist }>(`/checklists/${checklistId}/items`, { items })
-      applyChecklistToCache(chatId, r.checklist)
-      return mapChecklist(r.checklist)
+    // Добавить пункты; ответ авторитетен → пуш в SSOT + операция окну.
+    async addChecklistItems(peerId: number, checklistId: number, items: string[]): Promise<MessageMediaToDo> {
+      const r = await rest.post<MessageMediaToDo>(`/checklists/${checklistId}/items`, { items })
+      emitOps(ops(peerId, setMedia(peerId, byTodoId(checklistId), r), r))
+      return r
     },
 
-    // Участвовать в розыгрыше. Ответ несёт МОЁ participating/iWon, которого нет в
-    // общем WS giveaway_update → ставим розыгрыш ПОЛНОСТЬЮ в SSOT воркера; main-стор
-    // обновляет вызыватель результатом (setGiveaway, не merge). WS реконсилит агрегат.
-    async participateGiveaway(chatId: number, giveawayId: number): Promise<Giveaway> {
-      const r = await rest.post<{ giveaway: RawGiveaway }>(`/giveaways/${giveawayId}/participate`, {})
-      const giveaway = mapGiveaway(r.giveaway)
-      patchMsg(chatId, (m) => m.giveaway?.id === giveaway.id, (m) => ({ ...m, giveaway }))
-      return giveaway
+    // Участвовать в розыгрыше. Ответ — ЛИЧНОЕ состояние зрителя
+    // (`payments.giveawayInfo`), и в сообщение оно не кладётся вовсе: тело кадра
+    // одно на всех получателей, а «участвую ли я» у каждого своё. Раньше этот
+    // ответ патчил вложение — ровно та ловушка, что уже поймана у `pFlags.out`.
+    async participateGiveaway(giveawayId: number): Promise<GiveawayState> {
+      // Ответ — САМ конструктор объединения `payments.GiveawayInfo`.
+      return rest.post<GiveawayState>(`/giveaways/${giveawayId}/participate`, {})
     },
 
     // ── Live-кадры funnel'а (worker APPLY зовёт messages.cacheX) → SSOT + операции ──
-    // Опрос: свой выбор (myVotes) — локальный, WS его не несёт (poll_update шлёт
-    // только агрегат). SSOT воркера всё равно сохраняем как раньше (m.poll!.myVotes
-    // из своей же копии — эта мутация не про операцию, а про офлайн-кэш воркера).
-    // Операция же (Stage 1B.3, Task 4) несёт ТОЛЬКО агрегат mapPoll(evt.poll), БЕЗ
-    // myVotes — окно вкладки сохраняет свой локальный выбор само при слиянии патча
-    // (см. patch() в core/realtime/messageOps.ts и карту обогащений §3.1): если бы
-    // операция несла myVotes из SSOT воркера, в многовкладочном сценарии она
-    // навязала бы окну чужую (воркерную) копию локального выбора.
-    cachePoll(evt: { chat_id: number; poll: RawPoll }): MessageOp[] {
-      const poll = mapPoll(evt.poll)
-      let msgId: number | undefined
-      patchMsg(evt.chat_id, (m) => m.poll?.id === poll.id, (m) => { msgId = m.id; return { ...m, poll: { ...poll, myVotes: m.poll!.myVotes } } })
-      if (msgId === undefined) return []
-      return opWindowsFor(evt.chat_id, msgId).map((key): MessageOp => ({ op: 'patch', key, msgId: msgId!, fields: { poll } }))
+    // Опрос: свой выбор (`pFlags.chosen` у варианта) — локальный, кадр его не
+    // несёт (`publishPollUpdate` собирает итоги для «зрителя 0»). SSOT воркера
+    // всё равно обновляем целиком — это офлайн-кэш воркера, а не операция; сама
+    // операция несёт агрегат КАК ПРИШЁЛ, а окно вкладки сохраняет свой выбор при
+    // слиянии патча (см. `patch()` в core/realtime/messageOps.ts).
+    //
+    // Кадр адресуется СВОИМ id (updateMessagePoll.poll_id) и несёт опрос с
+    // итогами ОТДЕЛЬНЫМИ параметрами, а не внутри вложения: у оригинала
+    // сообщение здесь лишь подсказка для поиска. Вложение собираем обратно —
+    // окно хранит опрос именно вложением сообщения.
+    cachePoll(evt: PollUpdateEvt): MessageOp[] {
+      const peerId = getPeerId(evt.peer)
+      const media = saveMessageMedia({ _: 'messageMediaPoll', poll: evt.poll!, results: evt.results }) as MessageMediaPoll
+      return ops(peerId, setMedia(peerId, byPollId(media.poll.id), media), media)
     },
-    // Чек-лист: отметки глобальны — локального выбора нет, полная замена агрегата.
-    cacheChecklist(evt: { chat_id: number; checklist: RawChecklist }): MessageOp[] {
-      const checklist = mapChecklist(evt.checklist)
-      const msgId = applyChecklistToCache(evt.chat_id, evt.checklist)
-      if (msgId === undefined) return []
-      return opWindowsFor(evt.chat_id, msgId).map((key): MessageOp => ({ op: 'patch', key, msgId, fields: { checklist } }))
+    // Чек-лист: отметки глобальны — локального выбора нет, полная замена.
+    cacheChecklist(evt: ChecklistUpdateEvt): MessageOp[] {
+      const peerId = getPeerId(evt.peer)
+      const media = saveMessageMedia(evt.media) as MessageMediaToDo
+      return ops(peerId, setMedia(peerId, byTodoId(media.todo.id), media), media)
     },
-    // Розыгрыш: своё участие (participating/iWon) — локальное, симметрично опросу
-    // (см. комментарий у cachePoll выше и карту обогащений §3.2).
-    cacheGiveaway(evt: { chat_id: number; giveaway: RawGiveaway }): MessageOp[] {
-      const giveaway = mapGiveaway(evt.giveaway)
-      let msgId: number | undefined
-      patchMsg(evt.chat_id, (m) => m.giveaway?.id === giveaway.id, (m) => { msgId = m.id; return { ...m, giveaway: { ...giveaway, participating: m.giveaway!.participating, iWon: m.giveaway!.iWon } } })
-      if (msgId === undefined) return []
-      return opWindowsFor(evt.chat_id, msgId).map((key): MessageOp => ({ op: 'patch', key, msgId: msgId!, fields: { giveaway } }))
+    // Розыгрыш: локального выбора у вложения БОЛЬШЕ НЕТ — участие уехало в
+    // отдельную ручку, — поэтому исключения в `patch()` розыгрышу больше не
+    // нужно, замена полная.
+    //
+    // `saveMessageMedia` здесь не формальность: у состоявшегося розыгрыша он
+    // переводит `launch_msg_id` в клиентское пространство номеров — кадр несёт
+    // его ровно так же, как витрина сообщения.
+    cacheGiveaway(evt: GiveawayUpdateEvt): MessageOp[] {
+      const peerId = getPeerId(evt.peer)
+      const media = saveMessageMedia(evt.media)!
+      const id = giveawayIdOf(media)
+      if (id === undefined) return []
+      return ops(peerId, setMedia(peerId, byGiveawayId(id), media), media)
     },
   }
 }

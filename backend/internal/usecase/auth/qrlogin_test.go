@@ -54,7 +54,7 @@ func TestQRLogin_NewStatusConfirmFlow(t *testing.T) {
 	}
 
 	// An authenticated user confirms.
-	confirming := domain.User{ID: 7, Phone: "+700", DisplayName: "+700"}
+	confirming := domain.UserRecord{ID: 7, Phone: "+700", FirstName: "Семь"}
 	if err := i.ConfirmQRLogin(ctx, token, confirming); err != nil {
 		t.Fatalf("ConfirmQRLogin: %v", err)
 	}

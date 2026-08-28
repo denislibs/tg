@@ -3,7 +3,7 @@
 // затем «Все чаты» и папки (иконка по типу или эмодзи из названия + имя +
 // badge непрочитанных), снизу кнопка настроек папок (equalizer). Показывается
 // при «Расположение папок → Слева от чатов» (settings.tabsInSidebar).
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import classNames from '../../shared/lib/classNames'
 import TgIcon from '../TgIcon'
@@ -13,6 +13,7 @@ import { useT } from '../../i18n'
 import { ALL_FOLDER_ID } from '../../core/folderIds'
 import type { Folder } from '../../core/managers/foldersManager'
 import { extractFolderEmoji } from './labels'
+import { onActiveGradientRendererChange } from '../../core/chat/activeGradient'
 import s from './FoldersSidebar.module.scss'
 
 // tweb getIconForFilter: один включённый тип без точечных чатов — иконка типа,
@@ -89,13 +90,50 @@ export default function FoldersSidebar({
 }) {
   const t = useT()
   const [menuOpen, setMenuOpen] = useState(false)
+  const backgroundCanvasRef = useRef<HTMLCanvasElement>(null)
+  const [hasGradient, setHasGradient] = useState(false)
+  const [isDarkPattern, setIsDarkPattern] = useState(false)
+
+  // Зеркалим градиент обоев чата в свой холст — дешёвая замена
+  // `backdrop-filter: blur(40px)` (порт tweb foldersSidebarContent/index.tsx:94-116).
+  // Колонка всегда лежит поверх фона чата, поэтому видимый результат тяжёлого
+  // блюра над этой областью математически близок к самому градиенту.
+  useEffect(() => {
+    let detachMirror: (() => void) | undefined
+    const unsubscribe = onActiveGradientRendererChange((renderer, meta) => {
+      detachMirror?.()
+      detachMirror = undefined
+      const canvas = backgroundCanvasRef.current
+      if (renderer && canvas) {
+        detachMirror = renderer.attachMirror(canvas)
+        setHasGradient(true)
+      } else {
+        setHasGradient(false)
+      }
+      setIsDarkPattern(!!meta?.isDarkMaskPattern)
+    })
+    return () => {
+      unsubscribe()
+      detachMirror?.()
+    }
+  }, [])
 
   // Портал в #main-columns: в tweb #folders-sidebar — соседняя колонка каркаса
   // (живой DOM §1), а не потомок #column-left.
   return createPortal(
     <div id="folders-sidebar" className={classNames('folders-sidebar', 'sidebar-left-common', s.root)}>
-      {/* tweb folders-sidebar__background: тинт + блюр обоев под колонкой */}
-      <div className={s.background} />
+      {/* tweb folders-sidebar__background: зеркало градиента обоев + тинт
+          (ветка --no-gradient — падение обратно на backdrop-filter) */}
+      <div
+        className={classNames(
+          s.background,
+          hasGradient ? '' : s.backgroundNoGradient,
+          isDarkPattern ? s.backgroundDarkPattern : '',
+        )}
+      >
+        <canvas ref={backgroundCanvasRef} className={s.backgroundGradient} />
+        <div className={s.backgroundTint} />
+      </div>
       {/* tweb folders-sidebar__menu-button.is-first — бургер главного меню */}
       <div className={classNames(s.item, s.menuButton)} onClick={() => setMenuOpen(true)}>
         <TgIcon name="menu" size={24} />

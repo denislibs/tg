@@ -8,6 +8,7 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	rtredis "github.com/messenger-denis/backend/internal/adapter/realtime/redis"
+	"github.com/messenger-denis/backend/internal/domain"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -96,7 +97,8 @@ func TestHub_DeliversChannelFrame(t *testing.T) {
 	defer hub.Close()
 
 	sink := newFakeSink()
-	hub.SubscribeChannel(ctx, 5, sink)
+	// Топик канала адресуется знаковым ключом пира (-5), как и всё остальное.
+	hub.SubscribeChannel(ctx, domain.ToPeerID(5, true), sink)
 	// Give the subscription a moment to register on miniredis.
 	time.Sleep(100 * time.Millisecond)
 
@@ -115,7 +117,7 @@ func TestHub_DeliversChannelFrame(t *testing.T) {
 	}
 
 	// After unsubscribe, no further delivery.
-	hub.UnsubscribeChannel(ctx, 5, sink)
+	hub.UnsubscribeChannel(ctx, domain.ToPeerID(5, true), sink)
 	time.Sleep(100 * time.Millisecond)
 	_ = pub.PublishToChannel(ctx, 5, []byte(`again`))
 	select {
@@ -141,8 +143,8 @@ func (s *closedChanSink) Close()            {}
 // route не должен пропускать панику из Send наружу (иначе горутина hub.run и весь
 // процесс падают). Проверяем оба фан-аут-пути — канальный и пользовательский.
 func TestHub_RouteRecoversFromPanickingSink(t *testing.T) {
-	chHub := &Hub{channelSubs: map[int64]map[Sink]struct{}{5: {newClosedChanSink(): {}}}}
-	chHub.route(&redis.Message{Channel: "channel:5", Payload: "x"})
+	chHub := &Hub{channelSubs: map[domain.PeerID]map[Sink]struct{}{-5: {newClosedChanSink(): {}}}}
+	chHub.route(&redis.Message{Channel: "channel:-5", Payload: "x"})
 
 	userHub := &Hub{conns: map[int64]map[Sink]struct{}{7: {newClosedChanSink(): {}}}}
 	userHub.route(&redis.Message{Channel: "user:7", Payload: "y"})

@@ -27,6 +27,7 @@ type Interactor struct {
 	repo    ContactsRepo
 	privacy PrivacyChecker
 	photos  CustomPhotoRepo
+	close   CloseFriendsRepo
 }
 
 func New(repo ContactsRepo) *Interactor { return &Interactor{repo: repo} }
@@ -37,17 +38,22 @@ func (i *Interactor) SetPrivacy(p PrivacyChecker) { i.privacy = p }
 // SetCustomPhotos подключает хранилище личных фото контактов (optional).
 func (i *Interactor) SetCustomPhotos(p CustomPhotoRepo) { i.photos = p }
 
-// SetCustomPhoto задаёт личное фото контакта: url подменяет настоящий аватар
-// contactUserID в глазах ownerID (список диалогов/контактов/шапка чата). Требует
-// подключённого CustomPhotoRepo.
-func (i *Interactor) SetCustomPhoto(ctx context.Context, ownerID, contactUserID int64, url string) error {
+// SetCloseFriends подключает список близких друзей (optional): признак едет
+// флагом карточки контакта, как у оригинала.
+func (i *Interactor) SetCloseFriends(p CloseFriendsRepo) { i.close = p }
+
+// SetCustomPhoto задаёт личное фото контакта: mediaID подменяет настоящий
+// аватар contactUserID в глазах ownerID (список диалогов/контактов/шапка чата).
+// На проводе это userProfilePhoto с pFlags.personal. Требует подключённого
+// CustomPhotoRepo.
+func (i *Interactor) SetCustomPhoto(ctx context.Context, ownerID, contactUserID, mediaID int64) error {
 	if i.photos == nil {
 		return domain.ErrNotFound
 	}
 	if contactUserID == ownerID {
 		return ErrSelfContact
 	}
-	return i.photos.SetCustomPhoto(ctx, ownerID, contactUserID, url)
+	return i.photos.SetCustomPhoto(ctx, ownerID, contactUserID, mediaID)
 }
 
 // ClearCustomPhoto сбрасывает личное фото контакта — владелец снова видит его
@@ -71,15 +77,15 @@ type AddInput struct {
 // Add saves a contact in ownerID's address book. Re-adding the same user edits the
 // existing entry (upsert). Returns the stored contact enriched with the peer's
 // profile fields.
-func (i *Interactor) Add(ctx context.Context, ownerID int64, in AddInput) (domain.Contact, error) {
+func (i *Interactor) Add(ctx context.Context, ownerID int64, in AddInput) (domain.ContactRecord, error) {
 	if in.UserID == ownerID {
-		return domain.Contact{}, ErrSelfContact
+		return domain.ContactRecord{}, ErrSelfContact
 	}
 	first := strings.TrimSpace(in.FirstName)
 	if first == "" {
-		return domain.Contact{}, ErrNameRequired
+		return domain.ContactRecord{}, ErrNameRequired
 	}
-	c, err := i.repo.Add(ctx, domain.Contact{
+	c, err := i.repo.Add(ctx, domain.ContactRecord{
 		OwnerID:    ownerID,
 		UserID:     in.UserID,
 		FirstName:  first,
@@ -88,13 +94,13 @@ func (i *Interactor) Add(ctx context.Context, ownerID int64, in AddInput) (domai
 		SharePhone: in.SharePhone,
 	})
 	if err != nil {
-		return domain.Contact{}, err
+		return domain.ContactRecord{}, err
 	}
 	// Бот в контактах недопустим (Telegram). Upsert уже вернул обогащённый is_bot —
 	// откатываем запись и отдаём ошибку (defense-in-depth к фронт-фильтру).
 	if c.IsBot {
 		_, _ = i.repo.Delete(ctx, ownerID, in.UserID)
-		return domain.Contact{}, ErrCannotAddBot
+		return domain.ContactRecord{}, ErrCannotAddBot
 	}
 	return c, nil
 }
@@ -113,33 +119,33 @@ type AddByPhoneInput struct {
 // адресную книгу ownerID. domain.ErrNotFound — номер не зарегистрирован (как
 // tweb NO_USER); domain.ErrPrivacy — цель запрещает добавление по номеру
 // (правило added_by_phone). first_name обязателен.
-func (i *Interactor) AddByPhone(ctx context.Context, ownerID int64, in AddByPhoneInput) (domain.Contact, error) {
+func (i *Interactor) AddByPhone(ctx context.Context, ownerID int64, in AddByPhoneInput) (domain.ContactRecord, error) {
 	phone := domain.NormalizePhone(in.Phone)
 	if phone == "" {
-		return domain.Contact{}, ErrPhoneRequired
+		return domain.ContactRecord{}, ErrPhoneRequired
 	}
 	first := strings.TrimSpace(in.FirstName)
 	if first == "" {
-		return domain.Contact{}, ErrNameRequired
+		return domain.ContactRecord{}, ErrNameRequired
 	}
 	userID, err := i.repo.ResolveByPhone(ctx, phone)
 	if err != nil {
-		return domain.Contact{}, err // domain.ErrNotFound → «номер не зарегистрирован»
+		return domain.ContactRecord{}, err // domain.ErrNotFound → «номер не зарегистрирован»
 	}
 	if userID == ownerID {
-		return domain.Contact{}, ErrSelfContact
+		return domain.ContactRecord{}, ErrSelfContact
 	}
 	// Enforcement added_by_phone: цель может ограничить, кто добавляет её по номеру.
 	if i.privacy != nil {
 		ok, err := i.privacy.Check(ctx, userID, ownerID, domain.PrivacyAddedByPhone)
 		if err != nil {
-			return domain.Contact{}, err
+			return domain.ContactRecord{}, err
 		}
 		if !ok {
-			return domain.Contact{}, domain.ErrPrivacy
+			return domain.ContactRecord{}, domain.ErrPrivacy
 		}
 	}
-	c, err := i.repo.Add(ctx, domain.Contact{
+	c, err := i.repo.Add(ctx, domain.ContactRecord{
 		OwnerID:    ownerID,
 		UserID:     userID,
 		FirstName:  first,
@@ -148,18 +154,18 @@ func (i *Interactor) AddByPhone(ctx context.Context, ownerID int64, in AddByPhon
 		SharePhone: in.SharePhone,
 	})
 	if err != nil {
-		return domain.Contact{}, err
+		return domain.ContactRecord{}, err
 	}
 	if c.IsBot {
 		_, _ = i.repo.Delete(ctx, ownerID, userID)
-		return domain.Contact{}, ErrCannotAddBot
+		return domain.ContactRecord{}, ErrCannotAddBot
 	}
 	return c, nil
 }
 
 // List returns ownerID's address book, ordered by saved name. Телефон контакта
 // скрывается, когда его правило «кто видит мой номер» не разрешает показ.
-func (i *Interactor) List(ctx context.Context, ownerID int64) ([]domain.Contact, error) {
+func (i *Interactor) List(ctx context.Context, ownerID int64) ([]domain.ContactRecord, error) {
 	list, err := i.repo.List(ctx, ownerID)
 	if err != nil || len(list) == 0 {
 		return list, err
@@ -186,7 +192,7 @@ func (i *Interactor) List(ctx context.Context, ownerID int64) ([]domain.Contact,
 		}
 		for idx := range list {
 			if !vis[list[idx].UserID] {
-				list[idx].Phone = ""
+				list[idx].User.Phone = ""
 			}
 		}
 	}
@@ -197,10 +203,29 @@ func (i *Interactor) List(ctx context.Context, ownerID int64) ([]domain.Contact,
 			return nil, err
 		}
 		for idx := range list {
-			if url, ok := custom[list[idx].UserID]; ok {
-				list[idx].AvatarURL = url
+			if mediaID, ok := custom[list[idx].UserID]; ok {
+				// pFlags.personal — фото задано ЗРИТЕЛЕМ (tweb personal_photo);
+				// сам контакт о нём не знает.
+				list[idx].User.Photo = domain.NewUserProfilePhoto(mediaID, nil, false, true)
 				list[idx].HasCustomPhoto = true
 			}
+		}
+	}
+	// Близкие друзья — ФЛАГ КАРТОЧКИ, а не отдельная витрина-список: у
+	// оригинала метода чтения нет вовсе, признак читается с самого `user`
+	// (`pFlags.close_friend`). Один запрос на весь список, как у фото и
+	// приватности выше.
+	if i.close != nil {
+		friends, err := i.close.CloseFriends(ctx, ownerID)
+		if err != nil {
+			return nil, err
+		}
+		inList := make(map[int64]bool, len(friends))
+		for _, id := range friends {
+			inList[id] = true
+		}
+		for idx := range list {
+			list[idx].User.MarkCloseFriend(inList[list[idx].UserID])
 		}
 	}
 	return list, nil

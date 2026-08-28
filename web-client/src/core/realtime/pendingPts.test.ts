@@ -10,7 +10,7 @@ function harness(startPts: number) {
   return { getCursor: () => cursor, apply, applied, cur: () => cursor }
 }
 
-const item = (pts: number): PendingItem => ({ t: 'reaction', pts, d: { pts } })
+const item = (pts: number): PendingItem => ({ key: 'updateMessageReactions', pts, d: { pts } })
 
 describe('newPendingPts', () => {
   it('drains contiguous items once the hole is filled', () => {

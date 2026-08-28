@@ -9,8 +9,12 @@
 import type { SpoilerRendererInMessage, SpoilerRendererOutMessage } from './spoilerRenderer.worker'
 
 export interface SpoilerRendererConnection {
-  /** `transfer` нужен оверлею: он отдаёт воркеру OffscreenCanvas своей канвы. */
-  postMessage: (message: SpoilerRendererInMessage, transfer?: Transferable[]) => void
+  /**
+   * `transfer` нужен оверлею: он отдаёт воркеру OffscreenCanvas своей канвы.
+   * Голый `ImageBitmap` — это кадр блеф-маски из legacy-пути: симуляция крутится
+   * в главном потоке, а кодирует его воркер (tweb `encodeMaskFrame`).
+   */
+  postMessage: (message: SpoilerRendererInMessage | ImageBitmap, transfer?: Transferable[]) => void
   release: () => void
 }
 

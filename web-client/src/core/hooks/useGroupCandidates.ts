@@ -6,11 +6,16 @@ import { useEffect, useMemo, useState } from 'react'
 import { useManagers } from './useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
 import { SERVICE_USER_ID } from '../dialogToChat'
+import { cachedUser } from '../peerCache'
+import { isUser } from '../peers/peerId'
+import { getPeerPhotoId } from '../peers/peer'
+import { getUserTitle } from '../peers/getPeerTitle'
 
 export interface GroupCandidate {
-  id: number
+  id: PeerId
   name: string
-  avatarUrl?: string
+  /** id медиа аватарки (`user.photo.photo_id`); 0/undefined — фото нет */
+  photoId?: number
 }
 
 export function useGroupCandidates(): GroupCandidate[] {
@@ -23,7 +28,9 @@ export function useGroupCandidates(): GroupCandidate[] {
     managers.contacts
       .list()
       .then((cs) => {
-        if (alive) setContacts(cs.map((c) => ({ id: c.userId, name: c.displayName, avatarUrl: c.avatarUrl || undefined })))
+        // Имя и аватарка живут в КАРТОЧКЕ контакта (`c.user`), а не плоскими
+        // полями рядом с ней: имя собирает клиент, аватарка это `photo.photo_id`.
+        if (alive) setContacts(cs.map((c) => ({ id: c.userId, name: getUserTitle(c.user), photoId: getPeerPhotoId(c.user.photo) || undefined })))
       })
       .catch(() => {}) // адресная книга недоступна — остаются пиры диалогов
     return () => {
@@ -32,11 +39,17 @@ export function useGroupCandidates(): GroupCandidate[] {
   }, [managers])
 
   return useMemo(() => {
-    const map = new Map<number, GroupCandidate>()
+    const map = new Map<PeerId, GroupCandidate>()
     for (const d of dialogs) {
       // Ботов нельзя добавить в группу как участника (Telegram) — исключаем.
-      if (d.type === 'private' && d.peer && d.peer.id !== SERVICE_USER_ID && !d.peer.isBot) {
-        map.set(d.peer.id, { id: d.peer.id, name: d.peer.displayName, avatarUrl: d.peer.avatarUrl || undefined })
+      // «Бот» — флаг конструктора (`pFlags.bot`), а не поле витрины рядом.
+      // «Приватный» — это ключ ПОЛЬЗОВАТЕЛЯ (`core/peers/peerId.ts`), а не
+      // снятая с провода строка `type`; сам собеседник живёт в зеркале пиров,
+      // а не внутри строки диалога.
+      if (!isUser(d.peerId) || d.peerId === SERVICE_USER_ID) continue
+      const user = cachedUser(d.peerId)
+      if (user && user._ === 'user' && !user.pFlags?.bot) {
+        map.set(d.peerId, { id: d.peerId, name: getUserTitle(user), photoId: getPeerPhotoId(user.photo) || undefined })
       }
     }
     for (const c of contacts) if (!map.has(c.id)) map.set(c.id, c)

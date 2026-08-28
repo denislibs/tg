@@ -328,6 +328,13 @@ export class LottieLoader {
 
     player.addEventListener('error', (err) => {
       this.log.error('animation failed', err);
+      // tweb lottieLoader.ts:354. Снятие с интерсектора обязано быть здесь:
+      // `loadAnimationWorker` регистрирует плеер безусловно
+      // (animationIntersector.addAnimation), а автоснятие есть только у
+      // `controlled: middleware` — без middleware упавший плеер остаётся в
+      // byPlayer/byGroups/byElement навсегда, элемент продолжает наблюдаться,
+      // и checkAnimations дёргает play/pause у уничтоженного плеера.
+      animationIntersector.removeAnimationByPlayer(player);
       player.remove();
     });
 

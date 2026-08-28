@@ -61,7 +61,14 @@
 
 1. `ChatType.Static` → выход (стр. 351).
 2. Ищет `bubble-content-wrapper` → `bubble`, либо `bubbles-group-avatar` (стр. 356–360).
-   Дата-бабл (`bubble-first`) без аватарки — выход (стр. 363).
+   Без бабла и без аватарки — выход, и там же отсекается `bubble-first` (стр. 363).
+   **Осторожно, комментарий у этой строки вводит в заблуждение**: он говорит про
+   дата-бабл, но `bubble-first` — это НЕ дата-бабл. Класс ставится
+   ПЛЕЙСХОЛДЕРУ пустого чата (bubbles.ts:10785, ветка `renderEmptyPlaceholder`),
+   а дата-бабл (`bubble service is-date`, bubbles.ts:4801) его не несёт вовсе и
+   до обработчика не доходит по другой причине — у `.is-date` стоит
+   `pointer-events: none` (`_chatBubble.scss:486`), о чём сам комментарий и
+   пишет («there is no pointer-events»).
 3. `preventDefault` только для мыши; повторный вызов при активном меню — выход (стр. 370–374).
 4. Спец-цели до общего меню:
    - `.reaction.is-paid` → `PopupStarReaction` (стр. 386–390);
@@ -680,9 +687,20 @@ time|code-header-button|reaction|bubble-beside-button|poll-message-content`; ц�
 3. **Edit**: нет попапа discard-editing при отмене с изменённым текстом, нет media-edit,
    нет «пустой текст при edit → попап удаления».
 4. **Forward**: нет плашки forward над композером и радиогрупп hide sender/caption.
-5. **Selection**: режим целиком отсутствует (drag-выделение мышью, long-press, чекбоксы,
-   плашка delete/count/forward вместо композера).
-6. **Свайп-ответ** на таче отсутствует (порог 48px, MAX 64px, иконка `reply_filled`).
+5. **Selection**: ядро портировано в `web-client/src/components/chat/selection.ts`
+   (`AppSelection` + `ChatSelection`): стейт `selectedMids`, drag-выделение мышью с
+   `getElementsBetween`, чекбоксы (`components/checkboxField.ts`, урезан до формы
+   `{round: true}`), альбомы, `canSelectBubble`, `updateContainer`. Порт живёт без
+   окружения `Chat`, поэтому НЕ портированы: плашка delete/count/forward вместо
+   композера (вынесена в порт-интерфейс `SelectionPlate`), попапы delete/forward/sendNow,
+   report-режим, вход на таче по long-press (нужен `attachContextMenuListener`),
+   `SearchSelection`. Лента даёт порт `SelectionBubbles`
+   (`getRenderedHistory`/`getBubble`/`getBubbleGroupedItems`/`getMountedBubble`).
+6. **Свайп-ответ** портирован в `web-client/src/components/chat/replySwipe.ts`
+   (`createReplySwipeController` + привязка + предикат даблклика) и заведён в
+   императивную ленту развилкой оригинала: даблклик на десктопе, свайп на таче.
+   НЕ портированы: трекпадный `attachReplyWheelSwipe` (форк-специфика, см.
+   предупреждение в шапке этого дока) и `cancelContextMenuOpening` в `move`.
 7. **Реакции**: у нас нет оптимистики уровня менеджера с локальным
    `updateMessageReactions` + откатом по `REACTION_INVALID`, нет тегов Saved Messages и
    paid-реакций (последние нам и не нужны).

@@ -35,7 +35,8 @@ func (i *Interactor) PinDialog(ctx context.Context, chatID, userID int64, pinned
 	if err := i.groups.SetPinned(ctx, chatID, userID, pinned); err != nil {
 		return err
 	}
-	i.publishDialogFlag(ctx, userID, "dialog_pin", map[string]any{"chat_id": chatID, "pinned": pinned})
+	_ = i.logAndPublishPerPeer(ctx, chatID, []int64{userID}, "dialog_pin",
+		func(peer domain.PeerID) map[string]any { return dialogPinPayload(peer, pinned) })
 	return nil
 }
 
@@ -51,13 +52,14 @@ func (i *Interactor) ArchiveDialog(ctx context.Context, chatID, userID int64, ar
 	if err := i.groups.SetArchived(ctx, chatID, userID, archived); err != nil {
 		return err
 	}
-	i.publishDialogFlag(ctx, userID, "dialog_archive", map[string]any{"chat_id": chatID, "archived": archived})
+	folder := domain.FolderAll
+	if archived {
+		folder = domain.FolderArchive
+	}
+	_ = i.logAndPublishPerPeer(ctx, chatID, []int64{userID}, "dialog_archive",
+		func(peer domain.PeerID) map[string]any { return dialogFolderPayload(peer, folder) })
 	return nil
 }
 
-// publishDialogFlag логирует и шлёт dialog_pin / dialog_archive на устройства
-// владельца: запись в апдейт-лог даёт плотный pts-курсор, так что пин/архив
-// доезжают и через /sync (editPeerFolders).
-func (i *Interactor) publishDialogFlag(ctx context.Context, userID int64, t string, payload map[string]any) {
-	_ = i.logAndPublish(ctx, []int64{userID}, t, payload)
-}
+// Кадры уходят на ВСЕ устройства владельца и пишутся в его журнал: запись даёт
+// плотный курсор, так что пин и переезд между папками доезжают и через /sync.

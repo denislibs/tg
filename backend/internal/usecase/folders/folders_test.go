@@ -10,19 +10,19 @@ import (
 // --- фейки ---
 
 type fakeRepo struct {
-	folders map[int64]domain.Folder // by id
-	owner   map[int64]int64         // folder id → owner id
+	folders map[int64]domain.DialogFilter // by id
+	owner   map[int64]int64               // folder id → owner id
 	nextID  int64
 	invites map[string]domain.FolderInvite // by slug
-	created []domain.Folder                // папки, созданные JoinInvite
+	created []domain.DialogFilter          // папки, созданные JoinInvite
 }
 
 func newFakeRepo() *fakeRepo {
-	return &fakeRepo{folders: map[int64]domain.Folder{}, owner: map[int64]int64{}, invites: map[string]domain.FolderInvite{}, nextID: 1}
+	return &fakeRepo{folders: map[int64]domain.DialogFilter{}, owner: map[int64]int64{}, invites: map[string]domain.FolderInvite{}, nextID: 1}
 }
 
-func (r *fakeRepo) List(_ context.Context, ownerID int64) ([]domain.Folder, error) {
-	out := []domain.Folder{}
+func (r *fakeRepo) List(_ context.Context, ownerID int64) ([]domain.DialogFilter, error) {
+	out := []domain.DialogFilter{}
 	for id, f := range r.folders {
 		if r.owner[id] == ownerID {
 			out = append(out, f)
@@ -30,7 +30,7 @@ func (r *fakeRepo) List(_ context.Context, ownerID int64) ([]domain.Folder, erro
 	}
 	return out, nil
 }
-func (r *fakeRepo) Create(_ context.Context, ownerID int64, f domain.Folder) (domain.Folder, error) {
+func (r *fakeRepo) Create(_ context.Context, ownerID int64, f domain.DialogFilter) (domain.DialogFilter, error) {
 	f.ID = r.nextID
 	r.nextID++
 	r.folders[f.ID] = f
@@ -38,7 +38,7 @@ func (r *fakeRepo) Create(_ context.Context, ownerID int64, f domain.Folder) (do
 	r.created = append(r.created, f)
 	return f, nil
 }
-func (r *fakeRepo) Update(_ context.Context, _ int64, f domain.Folder) (domain.Folder, error) {
+func (r *fakeRepo) Update(_ context.Context, _ int64, f domain.DialogFilter) (domain.DialogFilter, error) {
 	return f, nil
 }
 func (r *fakeRepo) Delete(_ context.Context, _, _ int64) error { return nil }
@@ -132,7 +132,7 @@ func setup() (*Interactor, *fakeRepo, *fakeChats) {
 func TestCreateInvite_FiltersShareable(t *testing.T) {
 	uc, repo, _ := setup()
 	ctx := context.Background()
-	f, _ := repo.Create(ctx, 1, domain.Folder{Title: "Mix", IncludeChats: []int64{10, 11, 12, 13}})
+	f, _ := repo.Create(ctx, 1, domain.DialogFilter{Title: "Mix", IncludeChats: []int64{10, 11, 12, 13}})
 
 	inv, err := uc.CreateInvite(ctx, 1, f.ID, "")
 	if err != nil {
@@ -150,7 +150,7 @@ func TestCreateInvite_FiltersShareable(t *testing.T) {
 func TestCreateInvite_ForeignFolder(t *testing.T) {
 	uc, repo, _ := setup()
 	ctx := context.Background()
-	f, _ := repo.Create(ctx, 1, domain.Folder{Title: "Mine", IncludeChats: []int64{10}})
+	f, _ := repo.Create(ctx, 1, domain.DialogFilter{Title: "Mine", IncludeChats: []int64{10}})
 	if _, err := uc.CreateInvite(ctx, 2, f.ID, ""); err != domain.ErrNotFound {
 		t.Fatalf("foreign CreateInvite = %v, want ErrNotFound", err)
 	}
@@ -159,7 +159,7 @@ func TestCreateInvite_ForeignFolder(t *testing.T) {
 func TestCreateInvite_NoShareable(t *testing.T) {
 	uc, repo, _ := setup()
 	ctx := context.Background()
-	f, _ := repo.Create(ctx, 1, domain.Folder{Title: "Priv", IncludeChats: []int64{12, 13}})
+	f, _ := repo.Create(ctx, 1, domain.DialogFilter{Title: "Priv", IncludeChats: []int64{12, 13}})
 	if _, err := uc.CreateInvite(ctx, 1, f.ID, ""); err != ErrNoShareable {
 		t.Fatalf("CreateInvite = %v, want ErrNoShareable", err)
 	}
@@ -168,7 +168,7 @@ func TestCreateInvite_NoShareable(t *testing.T) {
 func TestJoinInvite_JoinsAndCreatesFolder(t *testing.T) {
 	uc, repo, chats := setup()
 	ctx := context.Background()
-	f, _ := repo.Create(ctx, 1, domain.Folder{Title: "Team", IncludeChats: []int64{10, 11}})
+	f, _ := repo.Create(ctx, 1, domain.DialogFilter{Title: "Team", IncludeChats: []int64{10, 11}})
 	inv, _ := uc.CreateInvite(ctx, 1, f.ID, "")
 
 	// пользователь 2 уже в чате 10
@@ -194,7 +194,7 @@ func TestJoinInvite_JoinsAndCreatesFolder(t *testing.T) {
 func TestJoinInvite_IgnoresChatsNotInInvite(t *testing.T) {
 	uc, repo, chats := setup()
 	ctx := context.Background()
-	f, _ := repo.Create(ctx, 1, domain.Folder{Title: "Team", IncludeChats: []int64{10}})
+	f, _ := repo.Create(ctx, 1, domain.DialogFilter{Title: "Team", IncludeChats: []int64{10}})
 	inv, _ := uc.CreateInvite(ctx, 1, f.ID, "")
 
 	// пытаемся вступить в 11, которого нет в ссылке

@@ -44,8 +44,10 @@ beforeEach(() => {
   useChatsStore.setState({ meId: 1 })
   useStoriesStore.setState({
     groups: [{
-      author: { id: 2, displayName: 'Алиса', avatarUrl: '' },
-      stories: [{ id: 10, viewed: false }] as never,
+      author: { _: 'user', id: 2, first_name: 'Алиса' },
+      // «Непрочитанная» — номер ВЫШЕ горизонта группы; признака на истории нет.
+      stories: [{ _: 'storyItem', id: 10 }] as never,
+      maxReadId: 0,
     }],
   })
 })

@@ -1,16 +1,33 @@
 // src/stores/storiesStore.test.ts
+//
+// Истории лежат в зеркале КОНСТРУКТОРАМИ схемы, поэтому и проверяется тут форма
+// конструктора: «моя реакция» — параметр `sent_reaction` истории, общий агрегат
+// — `views`, закреп и правка — флаги `pFlags`, а «моя» в чипе разбивки это
+// `chosen_order`, а не булево поле.
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useStoriesStore, loadStories } from './storiesStore'
-import type { StoryGroup, StoryItem } from '../core/managers/storiesManager'
+import type { StoryGroup } from '../core/managers/storiesManager'
+import type { ReactionCount } from '../core/models'
+import type { StoryItem, StoryItemReal } from '../core/stories/story'
+import { isStoryEdited, isStoryPinned, isStoryRead, storyCaption, storyMyReaction, storyPrivacy, storyReactionsCount } from '../core/stories/story'
 
-const mkStory = (over: Partial<StoryItem> = {}): StoryItem => ({
-  id: 1, mediaId: 11, caption: '', createdAt: 't0', viewed: false,
-  reactionsCount: 0, myReaction: null, reactions: [],
-  privacy: 'contacts', pinned: false, edited: false, expiresAt: 't1', mediaAreas: [], ...over,
+const media = { _: 'messageMediaPhoto' as const, photo: { _: 'photo' as const, id: 11, sizes: [] } }
+
+const mkStory = (over: Partial<StoryItemReal> = {}): StoryItem => ({
+  _: 'storyItem', id: 1, date: 1787334148, expire_date: 1787420548, media, ...over,
+})
+
+/** Агрегат реакций истории. `chosen_order` ставится только своей реакции. */
+const views = (count: number, results: ReactionCount[] = []): StoryItemReal['views'] =>
+  ({ _: 'storyViews', views_count: 0, reactions: results, reactions_count: count })
+
+const chip = (emoticon: string, count: number, mine = false): ReactionCount => ({
+  _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon }, count,
+  ...(mine ? { chosen_order: 0 } : {}),
 })
 
 const groups: StoryGroup[] = [
-  { author: { id: 7, displayName: 'Me', avatarUrl: '' }, stories: [mkStory()] },
+  { author: { _: 'user' as const, id: 7, first_name: 'Me' }, stories: [mkStory()], maxReadId: 0 },
 ]
 
 function fakeManagers(over: Partial<{ groups: StoryGroup[] }> = {}) {
@@ -19,6 +36,10 @@ function fakeManagers(over: Partial<{ groups: StoryGroup[] }> = {}) {
   }
 }
 
+const bob = { _: 'user' as const, id: 2, first_name: 'Bob' }
+const me = { _: 'user' as const, id: 7, first_name: 'Me' }
+const first = () => useStoriesStore.getState().groups[0].stories[0]
+
 describe('storiesStore', () => {
   beforeEach(() => useStoriesStore.setState({ groups: [], loaded: false }))
 
@@ -26,7 +47,7 @@ describe('storiesStore', () => {
     await loadStories(fakeManagers() as never)
     const s = useStoriesStore.getState()
     expect(s.groups).toHaveLength(1)
-    expect(s.groups[0].author.displayName).toBe('Me')
+    expect(s.groups[0].author.first_name).toBe('Me')
     expect(s.loaded).toBe(true)
   })
 
@@ -37,8 +58,22 @@ describe('storiesStore', () => {
     expect(s.loaded).toBe(true)
   })
 
+  it('markRead двигает ГОРИЗОНТ группы и только вперёд', () => {
+    useStoriesStore.getState().setGroups([{ author: bob, stories: [mkStory({ id: 3 })], maxReadId: 0 }])
+    // Прочитанность — свойство ГРУППЫ: у самой истории признака больше нет.
+    useStoriesStore.getState().markRead(2, 3)
+    expect(useStoriesStore.getState().groups[0].maxReadId).toBe(3)
+    expect(isStoryRead(first(), useStoriesStore.getState().groups[0].maxReadId)).toBe(true)
+    // Повторное чтение старой истории горизонт не откатывает.
+    useStoriesStore.getState().markRead(2, 1)
+    expect(useStoriesStore.getState().groups[0].maxReadId).toBe(3)
+    // Чужой автор не задет.
+    useStoriesStore.getState().markRead(999, 9)
+    expect(useStoriesStore.getState().groups[0].maxReadId).toBe(3)
+  })
+
   it('addStory appends to the author group, skipping duplicates and unknown authors', () => {
-    useStoriesStore.getState().setGroups([{ author: { id: 2, displayName: 'Bob', avatarUrl: '' }, stories: [mkStory({ id: 1 })] }])
+    useStoriesStore.getState().setGroups([{ author: bob, stories: [mkStory({ id: 1 })], maxReadId: 0 }])
     useStoriesStore.getState().addStory(2, mkStory({ id: 2 }))
     expect(useStoriesStore.getState().groups[0].stories.map((s) => s.id)).toEqual([1, 2])
     // duplicate id → no-op
@@ -50,63 +85,80 @@ describe('storiesStore', () => {
   })
 
   it('removeStory drops the story and empties out the group', () => {
-    useStoriesStore.getState().setGroups([{ author: { id: 2, displayName: 'Bob', avatarUrl: '' }, stories: [mkStory({ id: 1 }), mkStory({ id: 2 })] }])
+    useStoriesStore.getState().setGroups([{ author: bob, stories: [mkStory({ id: 1 }), mkStory({ id: 2 })], maxReadId: 0 }])
     useStoriesStore.getState().removeStory(2, 1)
     expect(useStoriesStore.getState().groups[0].stories.map((s) => s.id)).toEqual([2])
     useStoriesStore.getState().removeStory(2, 2)
     expect(useStoriesStore.getState().groups).toHaveLength(0) // empty group removed
   })
 
-  it('applyStoryReaction sets count; myReaction only when provided', () => {
-    useStoriesStore.getState().setGroups([{ author: { id: 2, displayName: 'Bob', avatarUrl: '' }, stories: [mkStory({ id: 5, myReaction: '❤', reactionsCount: 1 })] }])
-    // event about another user → count updates, myReaction untouched
+  it('applyStoryReaction ставит счётчик; свою реакцию — только когда она передана', () => {
+    useStoriesStore.getState().setGroups([{
+      author: bob,
+      stories: [mkStory({ id: 5, sent_reaction: { _: 'reactionEmoji', emoticon: '❤' }, views: views(1) })],
+      maxReadId: 0,
+    }])
+    // событие про ЧУЖОЕ действие → счётчик обновился, своя реакция не тронута
     useStoriesStore.getState().applyStoryReaction(5, 4)
-    expect(useStoriesStore.getState().groups[0].stories[0]).toMatchObject({ reactionsCount: 4, myReaction: '❤' })
-    // event about me (myReaction provided, even null)
+    expect(storyReactionsCount(first())).toBe(4)
+    expect(storyMyReaction(first())).toBe('❤')
+    // событие про меня (реакция передана, пусть и null)
     useStoriesStore.getState().applyStoryReaction(5, 3, null)
-    expect(useStoriesStore.getState().groups[0].stories[0]).toMatchObject({ reactionsCount: 3, myReaction: null })
+    expect(storyReactionsCount(first())).toBe(3)
+    expect(storyMyReaction(first())).toBeNull()
   })
 
-  it('setMyReaction adds/switches/removes optimistically with count + breakdown', () => {
-    useStoriesStore.getState().setGroups([{ author: { id: 2, displayName: 'Bob', avatarUrl: '' }, stories: [mkStory({ id: 5, reactionsCount: 1, reactions: [{ emoji: '🔥', count: 1, mine: false }] })] }])
+  it('setMyReaction добавляет/меняет/снимает оптимистично: счётчик и чипы', () => {
+    useStoriesStore.getState().setGroups([{
+      author: bob,
+      stories: [mkStory({ id: 5, views: views(1, [chip('🔥', 1)]) })],
+      maxReadId: 0,
+    }])
     // add ❤
     useStoriesStore.getState().setMyReaction(5, '❤')
-    let st = useStoriesStore.getState().groups[0].stories[0]
-    expect(st.myReaction).toBe('❤')
-    expect(st.reactionsCount).toBe(2)
-    expect(st.reactions).toContainEqual({ emoji: '❤', count: 1, mine: true })
+    expect(storyMyReaction(first())).toBe('❤')
+    expect(storyReactionsCount(first())).toBe(2)
+    expect((first() as StoryItemReal).views?.reactions).toContainEqual(chip('❤', 1, true))
     // switch ❤ → 🔥 (count unchanged, breakdown moves)
     useStoriesStore.getState().setMyReaction(5, '🔥')
-    st = useStoriesStore.getState().groups[0].stories[0]
-    expect(st.myReaction).toBe('🔥')
-    expect(st.reactionsCount).toBe(2)
-    expect(st.reactions.find((r) => r.emoji === '🔥')).toEqual({ emoji: '🔥', count: 2, mine: true })
-    expect(st.reactions.find((r) => r.emoji === '❤')).toBeUndefined()
-    // remove
+    expect(storyMyReaction(first())).toBe('🔥')
+    expect(storyReactionsCount(first())).toBe(2)
+    const results = () => (first() as StoryItemReal).views?.reactions ?? []
+    expect(results().find((r) => r.reaction._ === 'reactionEmoji' && r.reaction.emoticon === '🔥')).toEqual(chip('🔥', 2, true))
+    expect(results().find((r) => r.reaction._ === 'reactionEmoji' && r.reaction.emoticon === '❤')).toBeUndefined()
+    // remove — своя пометка СНИМАЕТСЯ, а не становится ложной: `chosen_order`
+    // отсутствует, потому что «не поставил» это отсутствие параметра.
     useStoriesStore.getState().setMyReaction(5, null)
-    st = useStoriesStore.getState().groups[0].stories[0]
-    expect(st.myReaction).toBeNull()
-    expect(st.reactionsCount).toBe(1)
-    expect(st.reactions.find((r) => r.emoji === '🔥')).toEqual({ emoji: '🔥', count: 1, mine: false })
+    expect(storyMyReaction(first())).toBeNull()
+    expect(storyReactionsCount(first())).toBe(1)
+    expect(results().find((r) => r.reaction._ === 'reactionEmoji' && r.reaction.emoticon === '🔥')).toEqual(chip('🔥', 1))
   })
 
-  it('setStoryPinned toggles the pinned flag of the matching story', () => {
-    useStoriesStore.getState().setGroups([{ author: { id: 7, displayName: 'Me', avatarUrl: '' }, stories: [mkStory({ id: 5, pinned: false })] }])
+  it('setStoryPinned переключает ФЛАГ истории, а снятый флаг исчезает', () => {
+    useStoriesStore.getState().setGroups([{ author: me, stories: [mkStory({ id: 5 })], maxReadId: 0 }])
     useStoriesStore.getState().setStoryPinned(5, true)
-    expect(useStoriesStore.getState().groups[0].stories[0].pinned).toBe(true)
+    expect(isStoryPinned(first())).toBe(true)
     useStoriesStore.getState().setStoryPinned(5, false)
-    expect(useStoriesStore.getState().groups[0].stories[0].pinned).toBe(false)
+    expect(isStoryPinned(first())).toBe(false)
+    expect((first() as StoryItemReal).pFlags?.pinned).toBeUndefined()
   })
 
-  it('applyStoryEdit patches caption/privacy and marks edited (unset fields kept)', () => {
-    useStoriesStore.getState().setGroups([{ author: { id: 7, displayName: 'Me', avatarUrl: '' }, stories: [mkStory({ id: 5, caption: 'old', privacy: 'contacts', edited: false })] }])
-    // change both
+  it('applyStoryEdit правит подпись/аудиторию и поднимает флаг edited', () => {
+    useStoriesStore.getState().setGroups([{
+      author: me,
+      stories: [mkStory({ id: 5, caption: 'old', pFlags: { contacts: true } })],
+      maxReadId: 0,
+    }])
     useStoriesStore.getState().applyStoryEdit(5, { caption: 'new', privacy: 'close' })
-    let st = useStoriesStore.getState().groups[0].stories[0]
-    expect(st).toMatchObject({ caption: 'new', privacy: 'close', edited: true })
-    // omitting a field keeps the previous value, still flags edited
+    expect(storyCaption(first())).toBe('new')
+    expect(storyPrivacy(first())).toBe('close')
+    expect(isStoryEdited(first())).toBe(true)
+    // Аудитория едет и ВЕКТОРОМ ПРАВИЛ — той же формой, что приезжает с провода.
+    expect((first() as StoryItemReal).privacy).toEqual([{ _: 'privacyValueAllowCloseFriends' }])
+    // Пропущенное поле сохраняет прежнее значение, флаг edited остаётся.
     useStoriesStore.getState().applyStoryEdit(5, { caption: 'newer' })
-    st = useStoriesStore.getState().groups[0].stories[0]
-    expect(st).toMatchObject({ caption: 'newer', privacy: 'close', edited: true })
+    expect(storyCaption(first())).toBe('newer')
+    expect(storyPrivacy(first())).toBe('close')
+    expect(isStoryEdited(first())).toBe(true)
   })
 })

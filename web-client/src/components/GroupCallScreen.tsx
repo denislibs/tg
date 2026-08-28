@@ -11,6 +11,7 @@ import classNames from '../shared/lib/classNames'
 import { useGroupCallStore } from '../stores/groupCallStore'
 import { useChatsStore } from '../stores/chatsStore'
 import { usePeers } from '../core/hooks/usePeers'
+import { getPeerTitle } from '../core/peers/getPeerTitle'
 import { getLocalStream, getRemoteStream, leaveGroupCall, toggleGroupCam, toggleGroupMic } from '../core/calls/groupCallEngine'
 import { gradientFor } from '../core/dialogToChat'
 import { useT } from '../i18n'
@@ -46,7 +47,7 @@ function VideoTile({ stream, label, muted }: { stream: MediaStream; label: strin
 
 export default function GroupCallScreen({ chatName }: { chatName: string }) {
   const t = useT()
-  const chatId = useGroupCallStore((st) => st.chatId)
+  const peerId = useGroupCallStore((st) => st.peerId)
   const participants = useGroupCallStore((st) => st.participants)
   const micOn = useGroupCallStore((st) => st.micOn)
   const camOn = useGroupCallStore((st) => st.camOn)
@@ -55,9 +56,11 @@ export default function GroupCallScreen({ chatName }: { chatName: string }) {
   const ids = Object.keys(participants).map(Number)
   const peers = usePeers(ids)
 
-  if (chatId == null) return null
+  if (peerId == null) return null
 
-  const nameOf = (id: number) => peers.get(id)?.displayName || peers.get(id)?.username || `#${id}`
+  // Имя собирает клиент из карточки пира; фолбэки («Удалённый аккаунт») уже
+  // внутри `getPeerTitle`.
+  const nameOf = (id: PeerId) => getPeerTitle({ peerId: id, peer: peers.get(id) })
   const localStream = getLocalStream()
   const videoTiles: { stream: MediaStream; label: string; muted?: boolean }[] = []
   if (camOn && localStream && localStream.getVideoTracks().some((tr) => tr.enabled)) {

@@ -4,16 +4,21 @@
 // строка объявления пробела иначе не покрыта ничем (её удаление оставляет приложение без
 // имён и аватаров, не покрасив ни одного теста — построчная норма,
 // web-client/CLAUDE.md «Тесты»), а возврат прежнего `.then(upsert)` вернул бы
-// второго писателя стора.
+// второго писателя зеркала.
 //
 // Отдельный файл от usePeers.test.ts (там чистые тесты peersKey) — потому что
 // этим нужен React-рендер и JSX-обёртка ManagersProvider.
+//
+// `applyPeerOps` здесь — не второй писатель факта, а ПОДГОТОВКА СТЕНДА (аналог
+// прежнего `usePeersStore.setState`): тестовый файл в скан
+// core/noDuplicatePeers.test.ts не попадает по построению (walk отбрасывает
+// *.test.*).
 import type { ReactNode } from 'react'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { usePeers } from './usePeers'
 import { ManagersProvider } from './useManagers'
-import { usePeersStore } from '../../stores/peersStore'
+import { applyPeerOps, cachedPeer, resetPeerMirror } from '../peerCache'
 
 function wrapper(managers: unknown) {
   return ({ children }: { children: ReactNode }) => (
@@ -22,12 +27,12 @@ function wrapper(managers: unknown) {
 }
 
 describe('usePeers — запрос недостающих карточек', () => {
-  beforeEach(() => { usePeersStore.setState({ byId: {} }) })
+  beforeEach(() => { resetPeerMirror() })
 
   it('спрашивает у воркера ровно те id, которых нет в сторе', async () => {
-    usePeersStore.setState({ byId: { 2: { id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '', avatarPreview: '' } } })
-    const asked: number[][] = []
-    const managers = { peers: { fillMirror: async (ids: number[]) => { asked.push(ids) } } }
+    applyPeerOps([{ op: 'upsert', peers: [{ _: 'user', id: 2, username: 'bob', first_name: 'Боб' }] }])
+    const asked: PeerId[][] = []
+    const managers = { peers: { fillMirror: async (ids: PeerId[]) => { asked.push(ids) } } }
 
     renderHook(() => usePeers([2, 3]), { wrapper: wrapper(managers) })
     await act(async () => {})
@@ -35,12 +40,12 @@ describe('usePeers — запрос недостающих карточек', ()
     expect(asked).toEqual([[3]])
   })
 
-  it('хук сам в стор не пишет — это делает проектор по операции', async () => {
+  it('хук сам в зеркало не пишет — это делает проектор по операции', async () => {
     const managers = { peers: { fillMirror: async () => {} } }
 
     renderHook(() => usePeers([3]), { wrapper: wrapper(managers) })
     await act(async () => {})
 
-    expect(usePeersStore.getState().byId[3]).toBeUndefined()
+    expect(cachedPeer(3)).toBeUndefined()
   })
 })

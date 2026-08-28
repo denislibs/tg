@@ -1,6 +1,15 @@
-// Кастомные теги из разметки tweb, которые мы рендерим как есть, чтобы совпадали
-// селекторы портированных партиалов (`_audio.scss`, `_reactions.scss` и др.).
-// В tweb это настоящие web-components; у нас поведение на React, а узел — тот же.
+// Кастомные теги из разметки tweb, которые React рендерит как есть, чтобы
+// совпадали селекторы портированных партиалов (`_audio.scss`, `_reactions.scss`
+// и др.). В tweb это настоящие web-components; в React-ленте узел тот же, а
+// поведение живёт в компоненте.
+//
+// ВАЖНО: два из них теперь ЗАРЕГИСТРИРОВАНЫ как настоящие web-components и
+// объявления здесь их не описывают — это только JSX-имена для React:
+//   • `audio-element` → `components/audio.ts` (порт tweb `AudioElement`);
+//   • `middle-ellipsis-element` → `components/middleEllipsis.ts`.
+// Регистрация происходит при импорте этих модулей — их тянет императивная
+// лента (`components/chat/bubbles.ts`). Остальные три тега здесь по-прежнему
+// поведения не несут.
 import type { DetailedHTMLProps, HTMLAttributes } from 'react'
 
 type TwebElement = DetailedHTMLProps<HTMLAttributes<HTMLElement>, HTMLElement> & {

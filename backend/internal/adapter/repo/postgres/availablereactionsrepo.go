@@ -82,3 +82,22 @@ func (r *AvailableReactionsRepo) Upsert(ctx context.Context, rc domain.Available
 		rc.EffectMediaID, rc.AroundMediaID, rc.CenterMediaID)
 	return err
 }
+
+// IsReactionMedia — принадлежит ли файл каталогу реакций (любой из ролей).
+//
+// Каталог публичен: иконку реакции рисует каждый, кто открыл чат, а файлы
+// принадлежат сервисному аккаунту и ни в одном чате не лежат. Без этой
+// проверки гейт доступа к медиа отдавал на них 404 — пикер реакций и реакции
+// на баблах были пустыми у всех (найдено на стенде, как только каталог залили).
+//
+// Роли перечислены поимённо, а не собраны из схемы: новая роль обязана
+// появиться и здесь, иначе её файл молча станет недоступным.
+func (r *AvailableReactionsRepo) IsReactionMedia(ctx context.Context, mediaID int64) (bool, error) {
+	var exists bool
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM available_reactions
+		   WHERE static_media_id = $1 OR appear_media_id = $1 OR select_media_id = $1
+		      OR activate_media_id = $1 OR effect_media_id = $1 OR around_media_id = $1
+		      OR center_media_id = $1)`, mediaID).Scan(&exists)
+	return exists, err
+}

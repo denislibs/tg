@@ -19,11 +19,16 @@ export function useCloseFriends(onClose: () => void): {
   const [busy, setBusy] = useState(false)
   const [loaded, setLoaded] = useState(false)
 
+  // Кто уже отмечен, видно ПО КАРТОЧКАМ контактов: `pFlags.close_friend` —
+  // признак зрителя, и едет он вместе с адресной книгой. Отдельной ручки
+  // «список близких» больше нет — её нет и у оригинала.
   useEffect(() => {
     let alive = true
-    managers.stories
-      .closeFriends()
-      .then((ids) => { if (alive) setSelected(new Set(ids)) })
+    managers.contacts
+      .list()
+      .then((cs) => {
+        if (alive) setSelected(new Set(cs.filter((c) => c.user.pFlags?.close_friend).map((c) => c.userId)))
+      })
       .catch(() => {})
       .finally(() => { if (alive) setLoaded(true) })
     return () => { alive = false }

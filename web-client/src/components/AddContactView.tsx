@@ -12,7 +12,7 @@ import Text from '../shared/ui/Text'
 import Input from '../shared/ui/Input'
 import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
-import { useAvatarSrc } from './useAvatarSrc'
+import { useMediaUrl } from '../core/hooks/useMediaUrl'
 import { useManagers } from '../core/hooks/useManagers'
 import type { Chat } from '../data'
 import s from './AddContactView.module.scss'
@@ -42,17 +42,20 @@ export default function AddContactView({
   const [note, setNote] = useState('')
   const [sharePhone, setSharePhone] = useState(true)
   const [saving, setSaving] = useState(false)
-  const avatarSrc = useAvatarSrc(chat.avatarUrl)
+  const avatarSrc = useMediaUrl(chat.photoId ?? null)
   const displayFirst = first.trim() || chat.name
 
-  const canSave = !!chat.peerId && first.trim().length > 0 && !saving
+  // Ключ собеседника — сам `chat.id` (знаковый): у приватного диалога он и
+  // есть id человека, второго поля рядом больше нет.
+  const peerId = Number(chat.id)
+  const canSave = Number.isFinite(peerId) && first.trim().length > 0 && !saving
 
   const submit = async () => {
     if (!canSave) return
     setSaving(true)
     try {
       await managers.contacts.add({
-        contactId: chat.peerId!,
+        contactId: peerId,
         firstName: first.trim(),
         lastName: last.trim(),
         note: note.trim(),

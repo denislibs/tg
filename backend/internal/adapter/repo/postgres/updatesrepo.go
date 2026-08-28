@@ -105,7 +105,7 @@ func (r *UpdatesRepo) GetUserState(ctx context.Context, userID int64) (domain.Us
 }
 
 // UpdatesSince returns updates with pts>sincePts, oldest first, up to limit.
-func (r *UpdatesRepo) UpdatesSince(ctx context.Context, userID, sincePts int64, limit int) ([]domain.Update, error) {
+func (r *UpdatesRepo) UpdatesSince(ctx context.Context, userID, sincePts int64, limit int) ([]domain.UpdateRecord, error) {
 	q := querier(ctx, r.pool)
 	rows, err := q.Query(ctx,
 		`SELECT pts, pts_count, type, payload FROM updates
@@ -114,9 +114,9 @@ func (r *UpdatesRepo) UpdatesSince(ctx context.Context, userID, sincePts int64, 
 		return nil, err
 	}
 	defer rows.Close()
-	var out []domain.Update
+	var out []domain.UpdateRecord
 	for rows.Next() {
-		var u domain.Update
+		var u domain.UpdateRecord
 		if err := rows.Scan(&u.Pts, &u.PtsCount, &u.Type, &u.Payload); err != nil {
 			return nil, err
 		}

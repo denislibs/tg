@@ -51,5 +51,5 @@ func (h *PushHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not subscribe")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }

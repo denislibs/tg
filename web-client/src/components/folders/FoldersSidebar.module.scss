@@ -17,17 +17,54 @@
   z-index: 1;
 }
 
-// tweb .folders-sidebar__background (ветка --no-gradient): тинт-подложка +
-// backdrop-filter blur(40px) — колонка размывает обои страницы под собой.
+// tweb .folders-sidebar__background (_foldersSidebar.scss:40-84).
 .background {
   position: absolute;
   inset: 0;
   border-radius: inherit;
   overflow: hidden;
-  background-color: var(--folders-sidebar-background);
-  backdrop-filter: blur(40px);
-  -webkit-backdrop-filter: blur(40px);
   z-index: -1;
+}
+
+// Зеркало градиента обоев вместо backdrop-filter: blur(40px). Источник 50×50
+// растягивается CSS — билинейное увеличение и даёт мягкую «блюр-подобную»
+// заливку, которая едет за фоном чата. Геометрия — как у самого градиента
+// обоев (`height: 150%; top: -25%`), чтобы видимый кусок совпадал с тем, что
+// лежит под колонкой на странице.
+.backgroundGradient {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -25%;
+  height: 150%;
+}
+
+// Тинт поверх градиента — постоянное затемнение, которое дал бы тяжёлый блюр
+// узора обоев, плюс исходный тинт колонки.
+.backgroundTint {
+  position: absolute;
+  inset: 0;
+  background-color: var(--folders-sidebar-background);
+}
+
+// Рендерера градиента нет (обои картинкой/сплошным цветом) — прячем пустой
+// холст и падаем обратно на backdrop-filter, чтобы колонка осталась полупрозрачной.
+.backgroundNoGradient {
+  .backgroundGradient {
+    display: none;
+  }
+
+  .backgroundTint {
+    backdrop-filter: blur(40px);
+    -webkit-backdrop-filter: blur(40px);
+  }
+}
+
+// Тёмный узор через маску (ночная тема): чат гасит яркий градиент чёрной
+// маской, а колонка зеркалит только сырой градиент. Без этого она светилась бы
+// ярко-фиолетовым над тёмным чатом — сильный тинт заменяет затемнение маской.
+.backgroundDarkPattern {
+  --folders-sidebar-background: rgba(0, 0, 0, 0.8);
 }
 
 .scroll {

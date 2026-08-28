@@ -5,10 +5,11 @@
 // же пробрасывается колбэк отправки — см. проп `onPickSticker` ниже.
 //
 // Открытие по клику на стикер В ЧАТЕ (tweb wrapSticker → showStickersPopup) —
-// в `StickerRealBubble` (`components/messages/MessageContent.tsx`): бэк
-// резолвит mediaId в набор ручкой `GET /stickers/by-media/{mediaID}`
-// (`stickersManager.setByMediaId`), т.к. `ConvMsg` несёт только mediaId, не
-// slug. `onPickSticker` там — `feedFns.sendSticker` (проводка через
+// в бабле стикера (`chat/bubbles.ts`). Адрес набора берётся ИЗ САМОГО
+// ДОКУМЕНТА (`doc.stickerSetInput`, порт `saveDocument`), поэтому клик в сеть
+// не ходит вовсе; прежде на его месте был обратный поиск
+// `GET /stickers/by-media/{mediaID}`, которого у оригинала не
+// существует. `onPickSticker` там — отправка стикера (проводка через
 // `Chat.tsx`, тот же `sendSticker` из `useChatSend`, что и у композера):
 // клик по стикеру ВНУТРИ попапа отправляет его в текущий чат, ровно как в
 // tweb `onStickersClick` (там нет read-only режима в зависимости от точки
@@ -25,7 +26,7 @@
 //
 // У tweb `showStickersPopup` принимает МАССИВ слагов (режим кастомных
 // эмодзи — несколько наборов сразу, `sets.length > 1`); наш контракт
-// (`StickerSetModal.slug: string`) — только один набор за раз, поэтому
+// (`StickerSetModal.address`) — только один набор за раз, поэтому
 // ветка с несколькими наборами (общий заголовок «Emoji», подзаголовок-Row
 // на каждый вложенный набор, EmojiPackCount) не портирована — она не
 // достижима ни из одного места, которое открывает эту модалку.
@@ -54,7 +55,7 @@ import { useManagers } from '../../core/hooks/useManagers'
 import { useMiddlewareHelper } from '../../core/hooks/useMiddlewareHelper'
 import { useRipple } from '../../shared/ui/Ripple/useRipple'
 import classNames from '../../shared/lib/classNames'
-import type { Sticker, StickerSet } from '../../core/managers/stickersManager'
+import type { InputStickerSetAddress, Sticker, StickerSet } from '../../core/managers/stickersManager'
 
 // tweb stickers.tsx:35 — своя группа animationIntersector: пока попап открыт,
 // играет ТОЛЬКО она (setOnlyOnePlayableGroup), остальные стикеры на странице
@@ -102,18 +103,7 @@ function StickerCell({ st, visible, register, onPick }: {
       onClick={onPick}
     >
       {visible && (
-        <StickerMedia
-          mediaId={st.mediaId}
-          width={ITEM_SIZE}
-          height={ITEM_SIZE}
-          autoplay
-          loop
-          group={ANIMATION_GROUP}
-          thumb={st.thumb}
-          pathThumb={st.pathThumb}
-          docWidth={st.width}
-          docHeight={st.height}
-        />
+        <StickerMedia doc={st} width={ITEM_SIZE} height={ITEM_SIZE} autoplay loop group={ANIMATION_GROUP} />
       )}
     </div>
   )
@@ -128,8 +118,13 @@ function stickerWord(n: number): string {
   return 'стикеров'
 }
 
-export default function StickerSetModal({ slug, open = true, onClose, onExitComplete, onPickSticker }: {
-  slug: string
+export default function StickerSetModal({ address, open = true, onClose, onExitComplete, onPickSticker }: {
+  /**
+   * Адрес набора — объединение схемы InputStickerSet: короткое имя (клик по
+   * заголовку в поиске стикеров) либо число (клик по стикеру в чате: документ
+   * несёт `stickerSetInput`, а короткого имени в нём нет).
+   */
+  address: InputStickerSetAddress
   /**
    * Контракт popupStore «open-controlled» (см. stores/popupStore): владелец из
    * стека попапов ведёт закрытие сам (`open={p.open}` + `onExitComplete`), а
@@ -191,6 +186,12 @@ export default function StickerSetModal({ slug, open = true, onClose, onExitComp
   const managersRef = useRef(managers)
   managersRef.current = managers
 
+  // Ключ адреса для списка зависимостей эффекта: сам адрес — литерал,
+  // пересобираемый вызывающим на каждый рендер.
+  const addressKey = 'shortName' in address ? `name:${address.shortName}` : `id:${address.id}`
+  const addressRef = useRef(address)
+  addressRef.current = address
+
   useEffect(() => {
     const middleware = middlewareHelper.get()
     const managers = managersRef.current
@@ -198,7 +199,7 @@ export default function StickerSetModal({ slug, open = true, onClose, onExitComp
     setStickers([])
     setInstalled(false)
 
-    void managers.stickers.setBySlug(slug).then(
+    void managers.stickers.getStickerSet(addressRef.current).then(
       (r) => {
         if (!middleware()) return
         setSet(r.set)
@@ -224,7 +225,10 @@ export default function StickerSetModal({ slug, open = true, onClose, onExitComp
     return () => {
       animationIntersector.setOnlyOnePlayableGroup()
     }
-  }, [slug, middlewareHelper])
+    // Зависимость — СТРОКОВЫЙ ключ адреса, а не сам объект: вызывающий строит
+    // литерал на каждом рендере, и объект в списке перезапускал бы загрузку
+    // бесконечно.
+  }, [addressKey, middlewareHelper])
 
   // Своё состояние «установлен» ведёт не toggle, а подписка на объявление
   // (tweb popups/stickers.tsx:114-115 onStickerSetUpdate): набор могли поставить
@@ -264,7 +268,7 @@ export default function StickerSetModal({ slug, open = true, onClose, onExitComp
   const [menuOpen, setMenuOpen] = useState(false)
   const copyLink = () => {
     if (!set) return
-    void navigator.clipboard.writeText(`https://t.me/addstickers/${set.slug}`)
+    void navigator.clipboard.writeText(`https://t.me/addstickers/${set.short_name}`)
     rootScope.dispatchEvent('ui:toast', 'Ссылка на набор скопирована')
     setMenuOpen(false)
   }
@@ -380,11 +384,11 @@ export const STICKER_SET_POPUP_KIND = 'sticker-set'
  * «какой набор открыт» жило в строке ленты — прунинг ленты или смена чата
  * убивали открытый попап.
  */
-export function openStickerSetModal(slug: string, onPickSticker?: (st: Sticker) => void) {
+export function openStickerSetModal(address: InputStickerSetAddress, onPickSticker?: (st: Sticker) => void) {
   return openPopup(
     (p) => (
       <StickerSetModal
-        slug={slug}
+        address={address}
         open={p.open}
         onClose={p.requestClose}
         onExitComplete={p.onExitComplete}

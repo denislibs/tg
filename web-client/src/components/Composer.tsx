@@ -26,10 +26,11 @@ import { stickerSuggestEmoji } from './StickersHelper'
 import type { Sticker } from '../core/managers/stickersManager'
 import type { GifItem } from '../core/gifs'
 import type { InlineResult } from '../core/managers/botsManager'
-import type { Peer } from '../core/managers/peersManager'
-import type { SendAsPeer } from '../core/managers/chatsManager'
+import type { UserReal } from '../core/peers/peer'
+import type { SendAsRow } from '../core/hooks/useSendAs'
+import { NULL_PEER_ID } from '../core/peers/peerId'
 import MarkupTooltip from './MarkupTooltip'
-import { serialize, apply as applyMarkup, entitiesToFragment, parseMarkdown } from '../core/richtext/markdown'
+import { serialize, apply as applyMarkup, entitiesToFragment, parseMarkdown, type ComposerEntityType } from '../core/richtext/markdown'
 import SendAsButton from './composer/SendAsButton'
 import RoundRecordPreview from './composer/RoundRecordPreview'
 import ReplyWrapper from './composer/ReplyWrapper'
@@ -47,7 +48,7 @@ import { useComposerClipboard } from './composer/useComposerClipboard'
 import { useComposerHotkeys } from './composer/useComposerHotkeys'
 import { useSetTransition } from '../core/hooks/useSetTransition'
 import { playEmojiEffect, type EmojiEffectKind } from '../core/effects/emojiEffects'
-import type { EntityType, MessageEntity } from '../core/models'
+import type { MessageEntity } from '@layer'
 import { type VoiceRecorder } from '../core/hooks/useVoiceRecorder'
 import { useT } from '../i18n'
 import rootScope from '@lib/rootScope'
@@ -64,10 +65,10 @@ const EmojiDropdown = lazy(() => import('./emoji/EmojiDropdown'))
 // chatRecording.ts:893 — long-press по кнопке отправки открывает выбор голос/кружок.
 const LONG_PRESS_MS = 400
 
-export interface ReplyState { msgId?: number; name: string; text: string; color: string; /** id автора оригинала — в `data-peer-id` на `span.peer-title` (tweb wrapPeerTitle) */ peerId?: number; quote?: { text: string; offset: number }; chatId?: number; snapshotName?: string; snapshotText?: string }
+export interface ReplyState { msgId?: number; name: string; text: string; color: string; /** ключ автора оригинала — в `data-peer-id` на `span.peer-title` (tweb wrapPeerTitle) */ peerId?: PeerId; quote?: { text: string; offset: number }; /** кросс-чат ответ: ключ ИСХОДНОГО чата оригинала (tweb ReplyToAnotherChat) */ sourcePeerId?: PeerId; snapshotName?: string; snapshotText?: string }
 export interface EditState { msgId: number; text: string; entities?: MessageEntity[] }
 // Плашка форварда (tweb forwarding): превью пересылаемого + опции меню.
-export interface ForwardBar { sourceChatId: number; msgIds: number[]; count: number; text: string; hasCaption: boolean; dropAuthor: boolean; dropCaption: boolean }
+export interface ForwardBar { sourcePeerId: PeerId; msgIds: number[]; count: number; text: string; hasCaption: boolean; dropAuthor: boolean; dropCaption: boolean }
 
 interface Props {
   reply: ReplyState | null
@@ -103,7 +104,7 @@ interface Props {
   initialDraft?: string
   onDraftChange?: (text: string) => void
   // Кандидаты @упоминаний (участники группы без себя) — включает mentions-хелпер.
-  mentions?: Peer[]
+  mentions?: UserReal[]
   // Inline-режим: резолв «@bot query» → результаты (null — не бот/пусто) и
   // отправка выбранного результата (tweb InlineHelper + sendInlineResult).
   onInlineQuery?: (username: string, query: string) => Promise<InlineResult[] | null>
@@ -138,9 +139,9 @@ interface Props {
   onReplyPrev?: () => void
   // Send-as (Telegram send_as): доступные «личности отправителя» (>1 → слева от
   // инпута аватар текущей + попап выбора). onSelect родитель запоминает per-chat.
-  sendAs?: { peers: SendAsPeer[]; currentId: number; onSelect: (peerId: number) => void }
+  sendAs?: { peers: SendAsRow[]; currentId: PeerId; onSelect: (peerId: PeerId) => void }
   // data-peer-id инпута (input.ts) — маркер «инпут этого пира».
-  peerId?: number
+  peerId?: PeerId
 }
 
 function Composer({
@@ -347,7 +348,7 @@ function Composer({
     if (ed) { ed.focus(); placeCaretEnd(ed) }
   }
 
-  const applyFmt = (type: EntityType, url?: string) => {
+  const applyFmt = (type: ComposerEntityType, url?: string) => {
     const root = editorRef.current
     if (!root) return
     applyMarkup(root, type, url)
@@ -370,7 +371,7 @@ function Composer({
   }
   // Вставка кастом-эмодзи из пикера (tweb onEmojiSelected с docId): атомарный
   // contenteditable=false span с fallback-глифом + data-doc-id. serialize()
-  // на отправке превратит его в entity custom_emoji с document_id (media id).
+  // на отправке превратит его в messageEntityCustomEmoji с document_id (media id).
   const insertCustomEmoji = (documentId: number, emoji: string) => {
     const root = editorRef.current
     if (!root) return
@@ -499,7 +500,7 @@ function Composer({
           >
             {/* Send-as и кнопка меню бота в tweb PREPEND-ятся в строку и лежат
                 абсолютом (_chat.scss:865-874) — порядок остальных детей не меняют. */}
-            {sendAs && <SendAsButton {...sendAs} />}
+            {sendAs && <SendAsButton {...sendAs} chatPeerId={peerId ?? NULL_PEER_ID} />}
             {botMenuButton && (
               <div
                 className="new-message-bot-commands"

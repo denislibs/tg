@@ -43,20 +43,20 @@ interface LivestreamDeps {
 export function newLivestreamManager({ rest }: LivestreamDeps) {
   return {
     // Статус трансляции чата (активна ли, число зрителей; креды — только админу).
-    async status(chatId: number): Promise<LivestreamStatus> {
-      return map(await rest.get<RawLivestream>(`/chats/${chatId}/livestream`))
+    async status(peerId: number): Promise<LivestreamStatus> {
+      return map(await rest.get<RawLivestream>(`/chats/${peerId}/livestream`))
     },
     // Запустить трансляцию (админ) → в ответе креды для OBS.
-    async start(chatId: number): Promise<LivestreamStatus> {
-      return map(await rest.post<RawLivestream>(`/chats/${chatId}/livestream/start`, {}))
+    async start(peerId: number): Promise<LivestreamStatus> {
+      return map(await rest.post<RawLivestream>(`/chats/${peerId}/livestream/start`, {}))
     },
     // Завершить трансляцию (админ).
-    async stop(chatId: number): Promise<void> {
-      await rest.post(`/chats/${chatId}/livestream/stop`, {})
+    async stop(peerId: number): Promise<void> {
+      await rest.post(`/chats/${peerId}/livestream/stop`, {})
     },
     // Перевыпустить stream key (админ) → новые креды.
-    async revokeKey(chatId: number): Promise<LivestreamStatus> {
-      return map(await rest.post<RawLivestream>(`/chats/${chatId}/livestream/revoke_key`, {}))
+    async revokeKey(peerId: number): Promise<LivestreamStatus> {
+      return map(await rest.post<RawLivestream>(`/chats/${peerId}/livestream/revoke_key`, {}))
     },
   }
 }

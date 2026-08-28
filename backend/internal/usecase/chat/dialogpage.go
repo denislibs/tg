@@ -4,17 +4,18 @@ import "github.com/messenger-denis/backend/internal/domain"
 
 // scopeDialogs — оставить диалоги запрошенной реальной папки. Порт tweb
 // getFolderDialogs (dialogs.ts:433): выборка режется ДО подсчёта, поэтому
-// Count и IsEnd относятся к папке, а не к полному набору, — без этого у
-// клиента нет размера набора архива и его список не догружается вовсе
-// (спека, «Размер набора известен только для Всех чатов»).
-func scopeDialogs(all []domain.Dialog, f domain.DialogFolder) []domain.Dialog {
-	if f == domain.FolderGlobal {
+// Count относится к папке, а не к полному набору, — без этого у клиента нет
+// размера набора архива и его список не догружается вовсе (спека, «Размер
+// набора известен только для Всех чатов»).
+//
+// nil — папка не указана (tweb GLOBAL_FOLDER_ID = undefined): весь набор.
+func scopeDialogs(all []domain.DialogRecord, f *domain.FolderID) []domain.DialogRecord {
+	if f == nil {
 		return all
 	}
-	want := f == domain.FolderArchive
-	out := make([]domain.Dialog, 0, len(all))
+	out := make([]domain.DialogRecord, 0, len(all))
 	for _, d := range all {
-		if d.Archived == want {
+		if d.Folder == *f {
 			out = append(out, d)
 		}
 	}
@@ -27,7 +28,7 @@ func scopeDialogs(all []domain.Dialog, f domain.DialogFolder) []domain.Dialog {
 // там курсор — значение сортировочного ключа и позиция ищется линейным поиском
 // по кэшу; у нас сортировочный ключ наружу не выходит, поэтому опорой служит
 // chat_id (см. докблок domain.DialogPage).
-func sliceDialogPage(all []domain.Dialog, p domain.DialogPage) domain.DialogPageResult {
+func sliceDialogPage(all []domain.DialogRecord, p domain.DialogPage) domain.DialogPageResult {
 	all = scopeDialogs(all, p.Folder)
 	count := len(all)
 
@@ -51,6 +52,10 @@ func sliceDialogPage(all []domain.Dialog, p domain.DialogPage) domain.DialogPage
 	return domain.DialogPageResult{
 		Dialogs: all[from:to],
 		Count:   count,
-		IsEnd:   to >= count,
+		// Набор отдан ЦЕЛИКОМ только когда страница совпала с ним от начала до
+		// конца. Именно этот ответ выбирает конструктор контейнера, и он строже
+		// прежнего is_end: «дошли до конца» с середины списка — это всё ещё
+		// КУСОК, и count в нём обязателен, иначе клиент решит, что видел всё.
+		Whole: from == 0 && to == count,
 	}
 }

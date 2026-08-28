@@ -15,10 +15,10 @@
 // (docs/superpowers/specs/2026-08-12-dialogs-ownership-and-virtual-list-design.md).
 // `boot.ts::applyDialogsMirror` по-прежнему применяет диалоги к зеркалу СРАЗУ,
 // синхронно в bootstrap() — этому не нужен отдельный промис в bootData.
-import type { User } from '../core/managers/authManager'
+import type { PeerProfile } from '../core/managers/authManager'
 
 export interface BootData {
-  me: Promise<User | null>
+  me: Promise<PeerProfile | null>
   /**
    * Сетевой догон списка диалогов, запущенный boot'ом (`applyDialogsMirror`):
    * резолвится, когда ответ `/chats` УЖЕ применён к зеркалу; не отклоняется
@@ -79,7 +79,7 @@ export function setBootData(d: BootData): void {
  * запущенного сетевого догона: он ровно так же одноразов (принадлежит сессии,
  * под которой страница загрузилась) и потому ходит тем же каналом, что `me`.
  */
-export function bootPrefetch(): { me: Promise<User | null>; dialogsReady: Promise<void> } | null {
+export function bootPrefetch(): { me: Promise<PeerProfile | null>; dialogsReady: Promise<void> } | null {
   if (!bootData || bootData.locked || !prefetchValid) return null
   return { me: bootData.me, dialogsReady: bootData.dialogsReady }
 }

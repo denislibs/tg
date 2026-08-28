@@ -5,9 +5,11 @@
 import { useCallback, useEffect } from 'react'
 import { useManagers } from './useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
+import { isPeerMuted } from '../dialogs/notifySettings'
 import { useNavigationStore } from '../../stores/navigationStore'
 import { useChatStackStore, selectOpenThreadDesc } from '../../stores/chatStackStore'
 import { initHotkeys } from '../hotkeys'
+import { parsePeerId } from '../peers/peerId'
 
 export function useAppHotkeys(): void {
   const managers = useManagers()
@@ -24,15 +26,15 @@ export function useAppHotkeys(): void {
   }, [])
 
   // Task 4 (действия без оптимистики): локальный апдейт применяет владелец
-  // (dialogsManager.applyMute) ПОСЛЕ успешного REST-ответа (groupsManager.ts) —
+  // (dialogsManager.applyNotifySettings) ПОСЛЕ успешного REST-ответа (groupsManager.ts) —
   // как и в ChatListItem/Chat.tsx.
   const muteCurrentChat = useCallback(() => {
     const id = useNavigationStore.getState().selectedId
     if (!id || id.startsWith('draft:')) return
-    const chatId = Number(id)
-    const dlg = useChatsStore.getState().dialogs.find((d) => d.chatId === chatId)
+    const peerId = parsePeerId(id)
+    const dlg = useChatsStore.getState().dialogs.find((d) => d.peerId === peerId)
     if (!dlg) return
-    void managers.groups.setMute(chatId, !dlg.muted).catch(() => {})
+    void managers.groups.setMute(peerId, !isPeerMuted(dlg.notify_settings, Math.floor(Date.now() / 1000))).catch(() => {})
   }, [managers])
 
   // Ctrl/Cmd+0 — «Избранное»: тот же путь, что бургер-меню сайдбара.
@@ -49,9 +51,9 @@ export function useAppHotkeys(): void {
     const list = useChatsStore.getState().dialogs
     if (!list.length) return
     const cur = useNavigationStore.getState().selectedId
-    const idx = list.findIndex((d) => String(d.chatId) === cur)
+    const idx = list.findIndex((d) => String(d.peerId) === cur)
     const nextIdx = idx < 0 ? (dir === 1 ? 0 : list.length - 1) : (idx + dir + list.length) % list.length
-    useNavigationStore.getState().selectChat(String(list[nextIdx].chatId))
+    useNavigationStore.getState().selectChat(String(list[nextIdx].peerId))
   }, [])
 
   useEffect(

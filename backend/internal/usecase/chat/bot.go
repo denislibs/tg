@@ -149,41 +149,43 @@ func demoBotInline(query string) []domain.InlineResult {
 const webAppURL = "/webapp-demo.html"
 
 // demoBotReply — сценарий демо-бота: текст ответа + клавиатура.
-func demoBotReply(text string) (string, *domain.ReplyMarkup) {
+func demoBotReply(text string) (string, domain.ReplyMarkup) {
 	switch strings.TrimSpace(strings.ToLower(text)) {
 	case "/start":
-		return "Привет! Я демо-бот 🤖. Вот что я умею:", &domain.ReplyMarkup{
-			Inline: [][]domain.InlineButton{
-				{{Text: "Показать alert", Callback: "alert"}, {Text: "Сайт Telegram", URL: "https://telegram.org"}},
-				{{Text: "🚀 Открыть mini-app", WebApp: webAppURL}},
-				{{Text: "Ещё сообщение", Callback: "more"}},
-			},
-		}
+		return "Привет! Я демо-бот 🤖. Вот что я умею:", domain.NewReplyInlineMarkup([]domain.KeyboardButtonRow{
+			domain.NewKeyboardButtonRow(
+				domain.NewKeyboardButtonCallback("Показать alert", []byte("alert")),
+				domain.NewKeyboardButtonURL("Сайт Telegram", "https://telegram.org")),
+			domain.NewKeyboardButtonRow(domain.NewKeyboardButtonWebView("🚀 Открыть mini-app", webAppURL)),
+			domain.NewKeyboardButtonRow(domain.NewKeyboardButtonCallback("Ещё сообщение", []byte("more"))),
+		})
 	case "/app":
-		return "Нажмите кнопку, чтобы открыть mini-app 👇", &domain.ReplyMarkup{
-			Inline: [][]domain.InlineButton{{{Text: "🚀 Открыть mini-app", WebApp: webAppURL}}},
-		}
+		return "Нажмите кнопку, чтобы открыть mini-app 👇", domain.NewReplyInlineMarkup([]domain.KeyboardButtonRow{
+			domain.NewKeyboardButtonRow(domain.NewKeyboardButtonWebView("🚀 Открыть mini-app", webAppURL)),
+		})
 	case "/inline":
 		return "Inline-режим: в любом чате напишите «@demobot запрос» и выберите результат из списка — он отправится в чат.", nil
 	case "/help":
 		return "Команды:\n/start — запустить\n/buttons — inline-кнопки\n/keyboard — клавиатура\n/hide — скрыть клавиатуру\n/app — открыть mini-app\n/inline — про inline-режим", nil
 	case "/buttons":
-		return "Выберите кнопку:", &domain.ReplyMarkup{
-			Inline: [][]domain.InlineButton{
-				{{Text: "🔔 Alert", Callback: "alert"}, {Text: "🔁 Эхо", Callback: "echo"}},
-				{{Text: "🌐 Открыть сайт", URL: "https://telegram.org"}},
-			},
-		}
+		return "Выберите кнопку:", domain.NewReplyInlineMarkup([]domain.KeyboardButtonRow{
+			domain.NewKeyboardButtonRow(
+				domain.NewKeyboardButtonCallback("🔔 Alert", []byte("alert")),
+				domain.NewKeyboardButtonCallback("🔁 Эхо", []byte("echo"))),
+			domain.NewKeyboardButtonRow(domain.NewKeyboardButtonURL("🌐 Открыть сайт", "https://telegram.org")),
+		})
 	case "/keyboard":
-		return "Клавиатура снизу 👇", &domain.ReplyMarkup{
-			Keyboard: [][]string{{"Кнопка A", "Кнопка B"}, {"/hide"}},
-			Resize:   true,
-		}
+		return "Клавиатура снизу 👇", domain.NewReplyKeyboardMarkup([]domain.KeyboardButtonRow{
+			domain.NewKeyboardButtonRow(domain.NewKeyboardButton("Кнопка A"), domain.NewKeyboardButton("Кнопка B")),
+			domain.NewKeyboardButtonRow(domain.NewKeyboardButton("/hide")),
+		}, domain.ReplyKeyboardFlags{Resize: true}, "")
 	case "/hide":
-		return "Клавиатура скрыта.", &domain.ReplyMarkup{Keyboard: [][]string{}}
+		// Отдельный конструктор объединения, а не пустая клавиатура: «убрать» и
+		// «показать пустую» в оригинале — разные вещи.
+		return "Клавиатура скрыта.", domain.NewReplyKeyboardHide(false)
 	default:
-		return fmt.Sprintf("Вы написали: «%s»", text), &domain.ReplyMarkup{
-			Inline: [][]domain.InlineButton{{{Text: "🔁 Повторить", Callback: "echo"}}},
-		}
+		return fmt.Sprintf("Вы написали: «%s»", text), domain.NewReplyInlineMarkup([]domain.KeyboardButtonRow{
+			domain.NewKeyboardButtonRow(domain.NewKeyboardButtonCallback("🔁 Повторить", []byte("echo"))),
+		})
 	}
 }

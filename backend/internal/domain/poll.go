@@ -18,16 +18,21 @@ type Poll struct {
 // PollInfo — представление опроса для конкретного зрителя (read-модель):
 // сам опрос + агрегаты голосов + выбор зрителя. CorrectOption раскрывается
 // только когда викторина закрыта или зритель уже ответил.
+//
+// json-тегов здесь БОЛЬШЕ НЕТ: на провод эта запись не выходит ни одним путём —
+// и витрина сообщения, и кадр poll_update, и ответ ручки голосования отдают
+// конструкторы схемы (PollInfo.ToMedia, mtpoll.go). Оставленные теги были бы
+// приглашением завести вторую форму опроса.
 type PollInfo struct {
-	ID            int64  `json:"id"`
-	Question      string `json:"question"`
-	Options       []string `json:"options"`
-	Anonymous     bool   `json:"anonymous"`
-	Multiple      bool   `json:"multiple"`
-	Quiz          bool   `json:"quiz"`
-	Closed        bool   `json:"closed"`
-	CorrectOption *int   `json:"correct_option,omitempty"`
-	Counts        []int  `json:"counts"`       // голосов на вариант
-	TotalVoters   int    `json:"total_voters"` // уникальных проголосовавших
-	MyVotes       []int  `json:"my_votes"`     // индексы, выбранные зрителем
+	ID            int64
+	Question      string
+	Options       []string
+	Anonymous     bool
+	Multiple      bool
+	Quiz          bool
+	Closed        bool
+	CorrectOption *int
+	Counts        []int // голосов на вариант
+	TotalVoters   int   // уникальных проголосовавших
+	MyVotes       []int // индексы, выбранные зрителем
 }

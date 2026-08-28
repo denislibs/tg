@@ -36,7 +36,7 @@ vi.mock('../StickerMedia', () => ({
 vi.mock('../../core/hooks/useManagers', () => ({
   useManagers: () => ({
     stickers: {
-      setBySlug: async () => ({ set, stickers }),
+      getStickerSet: async () => ({ set, stickers }),
       mySets: async () => installed,
       install,
       uninstall,
@@ -59,13 +59,13 @@ describe('StickerSetModal', () => {
   })
 
   it('показывает заголовок набора и кнопку с числом стикеров', async () => {
-    render(<StickerSetModal slug="utyaduck" onClose={() => {}} />)
+    render(<StickerSetModal address={{ shortName: "utyaduck" }} onClose={() => {}} />)
     await waitFor(() => expect(screen.getByText('Duck')).toBeTruthy())
     expect(screen.getByRole('button', { name: /добавить 40 стикеров/i })).toBeTruthy()
   })
 
   it('рисует все стикеры набора', async () => {
-    render(<StickerSetModal slug="utyaduck" onClose={() => {}} />)
+    render(<StickerSetModal address={{ shortName: "utyaduck" }} onClose={() => {}} />)
     await waitFor(() => expect(screen.getAllByTestId('sticker')).toHaveLength(40))
   })
 
@@ -75,7 +75,7 @@ describe('StickerSetModal', () => {
   // LazyLoadQueue (popups/stickers.tsx:196) и отдаёт её каждому wrapSticker.
   it('медиа грузят только видимые ячейки; сами ячейки сетки на месте все', async () => {
     ioVisibleLimit = 3
-    render(<StickerSetModal slug="utyaduck" onClose={() => {}} />)
+    render(<StickerSetModal address={{ shortName: "utyaduck" }} onClose={() => {}} />)
 
     await waitFor(() => expect(document.querySelectorAll('.sticker-set-sticker')).toHaveLength(40))
     expect(screen.getAllByTestId('sticker')).toHaveLength(3)
@@ -85,7 +85,7 @@ describe('StickerSetModal', () => {
   // (popups/stickers.tsx:339-342) — у попапа уже есть свои заголовок и кнопка,
   // и «скелет набора» дорисовывал бы фантомную вторую пару.
   it('на время загрузки — прелоадер tweb в теле .is-loading, без заглушки набора', () => {
-    render(<StickerSetModal slug="utyaduck" onClose={() => {}} />)
+    render(<StickerSetModal address={{ shortName: "utyaduck" }} onClose={() => {}} />)
     const body = document.querySelector('.popup-body')!
     expect(body.classList.contains('is-loading')).toBe(true)
     expect(body.querySelector(':scope > .preloader > svg.preloader-circular')).not.toBeNull()
@@ -93,7 +93,7 @@ describe('StickerSetModal', () => {
   })
 
   it('добавляет набор по клику на кнопку', async () => {
-    render(<StickerSetModal slug="utyaduck" onClose={() => {}} />)
+    render(<StickerSetModal address={{ shortName: "utyaduck" }} onClose={() => {}} />)
     const button = await screen.findByRole('button', { name: /добавить 40 стикеров/i })
     fireEvent.click(button)
     expect(install).toHaveBeenCalledWith(7)
@@ -101,7 +101,7 @@ describe('StickerSetModal', () => {
 
   it('у установленного набора кнопка удаляет набор — с числом и падежом, как в tweb', async () => {
     installed = [set]
-    render(<StickerSetModal slug="utyaduck" onClose={() => {}} />)
+    render(<StickerSetModal address={{ shortName: "utyaduck" }} onClose={() => {}} />)
     const button = await screen.findByRole('button', { name: /удалить 40 стикеров/i })
     fireEvent.click(button)
     expect(uninstall).toHaveBeenCalledWith(7)
@@ -115,7 +115,7 @@ describe('StickerSetModal', () => {
   it('клик по стикеру (mousedown→mouseup→click) шлёт его через onPickSticker и закрывает попап (tweb onStickersClick)', async () => {
     const onPickSticker = vi.fn()
     const onClose = vi.fn()
-    render(<StickerSetModal slug="utyaduck" onClose={onClose} onPickSticker={onPickSticker} />)
+    render(<StickerSetModal address={{ shortName: "utyaduck" }} onClose={onClose} onPickSticker={onPickSticker} />)
     await waitFor(() => expect(screen.getAllByTestId('sticker')).toHaveLength(40))
     // сетка кликабельна — без is-read-only, когда есть колбэк отправки
     expect(document.querySelector('.sticker-set-stickers')!.classList.contains('is-read-only')).toBe(false)
@@ -131,7 +131,7 @@ describe('StickerSetModal', () => {
 
   it('без onPickSticker сетка помечена is-read-only и клик по стикеру ничего не делает', async () => {
     const onClose = vi.fn()
-    render(<StickerSetModal slug="utyaduck" onClose={onClose} />)
+    render(<StickerSetModal address={{ shortName: "utyaduck" }} onClose={onClose} />)
     await waitFor(() => expect(screen.getAllByTestId('sticker')).toHaveLength(40))
     expect(document.querySelector('.sticker-set-stickers')!.classList.contains('is-read-only')).toBe(true)
     fireEvent.click(document.querySelector('.sticker-set-sticker')!)
@@ -146,7 +146,7 @@ describe('StickerSetModal', () => {
   // реальное время, поэтому оверлей успевает открыться.
   it('долгое зажатие ЛКМ на стикере открывает предпросмотр (tweb popups/stickers.tsx:310), отпускание закрывает его; клик после такого удержания стикер НЕ отправляет', async () => {
     const onPickSticker = vi.fn()
-    render(<StickerSetModal slug="utyaduck" onClose={() => {}} onPickSticker={onPickSticker} />)
+    render(<StickerSetModal address={{ shortName: "utyaduck" }} onClose={() => {}} onPickSticker={onPickSticker} />)
     await waitFor(() => expect(screen.getAllByTestId('sticker')).toHaveLength(40))
 
     // Фейковые часы включаем ПОСЛЕ waitFor выше — он сам опирается на реальные
@@ -171,7 +171,7 @@ describe('StickerSetModal', () => {
 
   it('пока попап открыт, играет только его группа animationIntersector; на закрытии — сброс', async () => {
     const spy = vi.spyOn(animationIntersector, 'setOnlyOnePlayableGroup')
-    const { unmount } = render(<StickerSetModal slug="utyaduck" onClose={() => {}} />)
+    const { unmount } = render(<StickerSetModal address={{ shortName: "utyaduck" }} onClose={() => {}} />)
     await waitFor(() => expect(screen.getByText('Duck')).toBeTruthy())
     expect(spy).toHaveBeenCalledWith('STICKERS-POPUP')
     unmount()

@@ -34,14 +34,14 @@ func (f *fakePreviewer) calls() []string {
 func TestFirstURL(t *testing.T) {
 	cases := []struct {
 		name, text, want string
-		entities         []domain.MessageEntity
+		entities         domain.MessageEntities
 	}{
 		{name: "bare url", text: "смотри https://example.com/a?b=1, круто", want: "https://example.com/a?b=1"},
 		{name: "no url", text: "просто текст", want: ""},
 		{name: "text_link wins", text: "тут", want: "https://linked.example/x",
-			entities: []domain.MessageEntity{{Type: "text_link", Offset: 0, Length: 3, URL: "https://linked.example/x"}}},
+			entities: domain.MessageEntities{domain.NewMessageEntityTextURL(0, 3, "https://linked.example/x")}},
 		{name: "non-http text_link ignored", text: "и голая http://plain.example/y",
-			entities: []domain.MessageEntity{{Type: "text_link", Offset: 0, Length: 1, URL: "javascript:alert(1)"}},
+			entities: domain.MessageEntities{domain.NewMessageEntityTextURL(0, 1, "javascript:alert(1)")},
 			want:     "http://plain.example/y"},
 	}
 	for _, c := range cases {
@@ -101,31 +101,116 @@ func TestSend_AttachesWebPreviewAsync(t *testing.T) {
 	if stored.WebPage == nil || stored.WebPage.Title != "Заголовок" {
 		t.Fatalf("web_page not stored: %+v", stored.WebPage)
 	}
-	// Кадр несёт chat_id/msg_id/seq/web_page.
-	pub.mu.Lock()
-	var wpFrame []byte
-	for _, f := range pub.frames {
-		if strings.Contains(string(f.frame), `"web_page_update"`) {
-			wpFrame = f.frame
-			break
+	// Кадр несёт peer_id/id/media. И peer_id у СТОРОН РАЗНЫЙ: для a это id b,
+	// для b — id a. Внутренний chatID не появляется ни в одном из них, а
+	// сообщение адресуется ОДНИМ числом — номером в чате.
+	//
+	// Карточка едет КОНСТРУКТОРОМ messageMediaWebPage — тем же, что и в самом
+	// сообщении. Собственного ключа web_page с плоским снимком read-модели у
+	// кадра больше нет: это была вторая форма превью на проводе.
+	frameFor := func(userID int64) webPageFrame {
+		pub.mu.Lock()
+		var raw []byte
+		for _, f := range pub.frames {
+			if f.userID == userID && strings.Contains(string(f.frame), `"web_page_update"`) {
+				raw = f.frame
+				break
+			}
+		}
+		pub.mu.Unlock()
+		var env webPageFrame
+		if err := json.Unmarshal(raw, &env); err != nil {
+			t.Fatalf("frame json for %d: %v", userID, err)
+		}
+		return env
+	}
+	envA, envB := frameFor(a), frameFor(b)
+	if envA.D.Underscore != domain.UpdateMessageWebPageTag {
+		t.Fatalf("кадр = %q", envA.D.Underscore)
+	}
+	if got := framePeerID(t, envA.D.Peer); got != domain.PeerID(b) {
+		t.Fatalf("пир для a = %d; want %d (собеседник)", got, b)
+	}
+	if got := framePeerID(t, envB.D.Peer); got != domain.PeerID(a) {
+		t.Fatalf("пир для b = %d; want %d (собеседник)", got, a)
+	}
+	if envA.D.MsgID != msg.Seq {
+		t.Fatalf("frame payload = %+v", envA.D)
+	}
+	if envA.D.Media.Underscore != domain.MessageMediaWebPageTag {
+		t.Fatalf("вложение кадра = %+v; ждали messageMediaWebPage", envA.D.Media)
+	}
+	page := envA.D.Media.WebPage
+	if page == nil || page.Underscore != domain.WebPageTag {
+		t.Fatalf("карточка кадра = %+v", page)
+	}
+	if page.SiteName != "Example" || page.Title != "Заголовок" || page.Description != "Описание" {
+		t.Fatalf("карточка кадра = %+v", page)
+	}
+	// display_url — тот же адрес без схемы; он есть только у конструктора, в
+	// плоском снимке его не было вовсе.
+	if page.DisplayURL != "example.com/post" {
+		t.Fatalf("display_url = %q", page.DisplayURL)
+	}
+	raw := string(mustFrame(t, pub, a, "web_page_update"))
+	// Ни второй формы карточки, ни второго числа адреса. `msg_id` из этого
+	// списка ушёл: это ИМЯ АДРЕСА у конструктора схемы, а запрет был на наши
+	// прежние имена внутреннего ключа.
+	for _, gone := range []string{`"web_page"`, `"photo_id"`, `"photo_w"`, `"photo_h"`, `"photo_blur"`, `"photo_has_thumb"`, `"chat_id"`, `"peer_id"`} {
+		if strings.Contains(raw, gone) {
+			t.Fatalf("в кадре осталось %s: %s", gone, raw)
 		}
 	}
-	pub.mu.Unlock()
-	var env struct {
-		T string `json:"t"`
-		D struct {
-			ChatID  int64                 `json:"chat_id"`
-			MsgID   int64                 `json:"msg_id"`
-			Seq     int64                 `json:"seq"`
-			WebPage domain.WebPagePreview `json:"web_page"`
-		} `json:"d"`
+	_ = chatID
+}
+
+// webPageFrame — кадр web_page_update глазами клиента: конверт плюс вложение
+// конструктором схемы. Отдельный тип, потому что читают его два теста.
+type webPageFrame struct {
+	T string `json:"t"`
+	D struct {
+		Underscore string    `json:"_"`
+		Peer       framePeer `json:"peer"`
+		// Адрес сообщения в кадре ОДИН, и имя ему даёт схема: msg_id со
+		// значением номера в чате.
+		MsgID int64                      `json:"msg_id"`
+		Media domain.MessageMediaWebPage `json:"media"`
+	} `json:"d"`
+}
+
+// framePeer — ссылка на пир, прочитанная ГЛАЗАМИ КЛИЕНТА: разбор по
+// дискриминатору, а не по типу Go.
+type framePeer struct {
+	Underscore string `json:"_"`
+	UserID     int64  `json:"user_id"`
+	ChannelID  int64  `json:"channel_id"`
+}
+
+// framePeerID — знаковый ключ пира: тот же вывод, что делает клиент.
+func framePeerID(t *testing.T, p framePeer) domain.PeerID {
+	t.Helper()
+	switch p.Underscore {
+	case "peerUser":
+		return domain.PeerID(p.UserID)
+	case "peerChannel":
+		return domain.PeerID(-p.ChannelID)
 	}
-	if err := json.Unmarshal(wpFrame, &env); err != nil {
-		t.Fatalf("frame json: %v", err)
+	t.Fatalf("неизвестный конструктор пира: %#v", p)
+	return 0
+}
+
+// mustFrame — сырой кадр типа t для получателя userID.
+func mustFrame(t *testing.T, pub *fakePublisher, userID int64, typ string) []byte {
+	t.Helper()
+	pub.mu.Lock()
+	defer pub.mu.Unlock()
+	for _, f := range pub.frames {
+		if f.userID == userID && strings.Contains(string(f.frame), `"`+typ+`"`) {
+			return f.frame
+		}
 	}
-	if env.D.ChatID != chatID || env.D.MsgID != msg.ID || env.D.Seq != msg.Seq || env.D.WebPage.SiteName != "Example" {
-		t.Fatalf("frame payload = %+v", env.D)
-	}
+	t.Fatalf("кадр %s для %d не найден", typ, userID)
+	return nil
 }
 
 // Сообщение без ссылки превьюер не дёргает.

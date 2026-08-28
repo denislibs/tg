@@ -58,19 +58,6 @@ const ALLOWED: Record<string, number> = {
   // пишут поле `this.scrollTop` (снапшот позиции, ОДНОимённое с DOM-свойством,
   // но это поле класса, не DOM) — 3 присваивания.
   'helpers/scrollSaver.ts': 3,
-  // core/hooks/useChatScroll.ts:95 — фолбэк внутри setScrollTopSilently на то
-  // единственное окно между монтированием React-узла и коммитом эффекта, который
-  // создаёт Scrollable (scrollableRef.current ещё null): как только Scrollable
-  // смонтирован, вся корректирующая запись идёт через его
-  // setScrollPositionSilently, эта ветка больше не исполняется.
-  'core/hooks/useChatScroll.ts': 1,
-  // core/dom/smoothScrollToElement.ts:15 — одноразовый cap-прыжок перед нативным
-  // `container.scrollTo({behavior:'smooth'})` при центрировании бабла
-  // (jump-to-message). Не дублирует ScrollSaver (тот хранит и восстанавливает
-  // позицию при пересчёте контента над вьюпортом, тут разовая анимация к цели) и
-  // не портируется на вендорный `fastSmoothScroll` — перевод плавных скроллов
-  // приложения на него вне периметра этого этапа (см. task-5-brief.md, Self-Review).
-  'core/dom/smoothScrollToElement.ts': 1,
   // components/DatePickerPopup.tsx:195 — одноразовая начальная позиция при
   // открытии попапа календаря (месяц initDate), ДО первого показа. Попап, не
   // лента; нет ни подгрузки контента, ни необходимости восстанавливать позицию.

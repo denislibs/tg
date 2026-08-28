@@ -46,11 +46,14 @@ export const usePrivacyStore = create<PrivacyState>((set) => ({
 }))
 
 export async function loadPrivacy(managers: {
-  privacy: { rules(): Promise<PrivacyRule[]>; blocked(offset?: number, limit?: number): Promise<{ total: number }> }
+  // `count` — параметр конструктора `contacts.blockedSlice` («сколько всего в
+  // чёрном списке»); прежнее `total` было именем нашей обёртки, которой больше
+  // нет: ответ И ЕСТЬ конструктор схемы.
+  privacy: { rules(): Promise<PrivacyRule[]>; blocked(offset?: number, limit?: number): Promise<{ count: number }> }
 }): Promise<void> {
   try {
     usePrivacyStore.getState().set(await managers.privacy.rules())
-    usePrivacyStore.getState().setBlockedTotal((await managers.privacy.blocked(0, 1)).total)
+    usePrivacyStore.getState().setBlockedTotal((await managers.privacy.blocked(0, 1)).count)
   } catch {
     /* оффлайн/ошибка — остаются дефолты */
   }

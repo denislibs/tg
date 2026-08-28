@@ -19,7 +19,7 @@ import StickersHelper from '../StickersHelper'
 import MentionsHelper from '../MentionsHelper'
 import InlineResultsHelper from '../InlineResultsHelper'
 import type { Sticker } from '../../core/managers/stickersManager'
-import type { Peer } from '../../core/managers/peersManager'
+import type { UserReal } from '../../core/peers/peer'
 import type { InlineResult } from '../../core/managers/botsManager'
 
 /** Пустой контейнер хелпера — состояние «ещё не инициализирован» из tweb. */
@@ -39,8 +39,8 @@ interface Props {
   onPickStickerSuggestion: (st: Sticker) => void
   emojiSug: { list: string[]; idx: number } | null
   onPickEmoji: (e: string) => void
-  mentionSug: { list: Peer[]; idx: number } | null
-  onPickMention: (p: Peer) => void
+  mentionSug: { list: UserReal[]; idx: number } | null
+  onPickMention: (p: UserReal) => void
   inlineSug: { list: InlineResult[]; idx: number } | null
   onPickInline: (r: InlineResult) => void
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -74,7 +75,7 @@ func (h *PasskeyHandler) takeSession(token string) *webauthn.SessionData {
 	return s.data
 }
 
-// waUser адаптирует domain.User к webauthn.User; ID — десятичная строка.
+// waUser адаптирует domain.UserRecord к webauthn.User; ID — десятичная строка.
 type waUser struct {
 	id          int64
 	name        string
@@ -104,7 +105,7 @@ func (h *PasskeyHandler) userCredentials(r *http.Request, userID int64) []webaut
 // BeginRegistration — POST /me/passkeys/begin → {session, options}.
 func (h *PasskeyHandler) BeginRegistration(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	name := user.DisplayName
+	name := strings.TrimSpace(user.FirstName + " " + user.LastName)
 	if name == "" {
 		name = user.Phone
 	}
@@ -129,7 +130,7 @@ func (h *PasskeyHandler) FinishRegistration(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusBadRequest, "session expired")
 		return
 	}
-	name := user.DisplayName
+	name := strings.TrimSpace(user.FirstName + " " + user.LastName)
 	if name == "" {
 		name = user.Phone
 	}
@@ -206,7 +207,7 @@ func (h *PasskeyHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // BeginLogin — POST /auth/passkey/begin (публичный) → {session, options}.
@@ -220,7 +221,8 @@ func (h *PasskeyHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 // FinishLogin — POST /auth/passkey/finish?session=...&device=...&platform=...
-// (тело — assertion) → {token, user}.
+// (тело — assertion) → тот же исход входа, что у остальных путей
+// (`auth.Authorization`).
 func (h *PasskeyHandler) FinishLogin(w http.ResponseWriter, r *http.Request) {
 	session := h.takeSession(r.URL.Query().Get("session"))
 	if session == nil {
@@ -255,5 +257,5 @@ func (h *PasskeyHandler) FinishLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"token": res.Token, "user": userJSON(res.User)})
+	writeSignInResult(w, res)
 }

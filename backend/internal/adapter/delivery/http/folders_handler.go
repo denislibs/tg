@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -19,43 +20,39 @@ func NewFoldersHandler(uc *usecasefolders.Interactor) *FoldersHandler {
 }
 
 type folderBody struct {
-	Title        string  `json:"title"`
-	Contacts     bool    `json:"contacts"`
-	NonContacts  bool    `json:"non_contacts"`
-	Groups       bool    `json:"groups"`
-	Broadcasts   bool    `json:"broadcasts"`
-	Bots         bool    `json:"bots"`
-	ExcludeMuted bool    `json:"exclude_muted"`
-	ExcludeRead  bool    `json:"exclude_read"`
-	IncludeChats []int64 `json:"include_chats"`
-	ExcludeChats []int64 `json:"exclude_chats"`
+	Title        string          `json:"title"`
+	Contacts     bool            `json:"contacts"`
+	NonContacts  bool            `json:"non_contacts"`
+	Groups       bool            `json:"groups"`
+	Broadcasts   bool            `json:"broadcasts"`
+	Bots         bool            `json:"bots"`
+	ExcludeMuted bool            `json:"exclude_muted"`
+	ExcludeRead  bool            `json:"exclude_read"`
+	IncludePeers []domain.PeerID `json:"include_peers"`
+	ExcludePeers []domain.PeerID `json:"exclude_peers"`
 }
 
-func (b folderBody) toDomain(id int64) domain.Folder {
-	return domain.Folder{
+// toDomain — правила папки приезжают ключами пиров; внутрь домена они идут
+// внутренними chatID (слой разрешения, usecase/chat/peeraddr.go).
+func (b folderBody) toDomain(ctx context.Context, uc *usecasefolders.Interactor, ownerID, id int64) domain.DialogFilter {
+	return domain.DialogFilter{
 		ID: id, Title: b.Title,
 		Contacts: b.Contacts, NonContacts: b.NonContacts, Groups: b.Groups,
 		Broadcasts: b.Broadcasts, Bots: b.Bots,
 		ExcludeMuted: b.ExcludeMuted, ExcludeRead: b.ExcludeRead,
-		IncludeChats: b.IncludeChats, ExcludeChats: b.ExcludeChats,
+		IncludeChats: uc.PeersToChatIDs(ctx, ownerID, b.IncludePeers),
+		ExcludeChats: uc.PeersToChatIDs(ctx, ownerID, b.ExcludePeers),
 	}
 }
 
-func folderJSON(f domain.Folder) map[string]any {
-	inc := f.IncludeChats
-	if inc == nil {
-		inc = []int64{}
-	}
-	exc := f.ExcludeChats
-	if exc == nil {
-		exc = []int64{}
-	}
+func folderJSON(ctx context.Context, uc *usecasefolders.Interactor, ownerID int64, f domain.DialogFilter) map[string]any {
 	return map[string]any{
 		"id": f.ID, "title": f.Title, "pos": f.Pos,
 		"contacts": f.Contacts, "non_contacts": f.NonContacts, "groups": f.Groups,
 		"broadcasts": f.Broadcasts, "bots": f.Bots,
 		"exclude_muted": f.ExcludeMuted, "exclude_read": f.ExcludeRead,
-		"include_chats": inc, "exclude_chats": exc,
+		"include_peers": uc.ChatIDsToPeers(ctx, ownerID, f.IncludeChats),
+		"exclude_peers": uc.ChatIDsToPeers(ctx, ownerID, f.ExcludeChats),
 	}
 }
 
@@ -82,7 +79,7 @@ func (h *FoldersHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]map[string]any, 0, len(list))
 	for _, f := range list {
-		out = append(out, folderJSON(f))
+		out = append(out, folderJSON(r.Context(), h.uc, user.ID, f))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"folders": out})
 }
@@ -94,12 +91,12 @@ func (h *FoldersHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	f, err := h.uc.Create(r.Context(), user.ID, b.toDomain(0))
+	f, err := h.uc.Create(r.Context(), user.ID, b.toDomain(r.Context(), h.uc, user.ID, 0))
 	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, folderJSON(f))
+	writeJSON(w, http.StatusOK, folderJSON(r.Context(), h.uc, user.ID, f))
 }
 
 func (h *FoldersHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -113,12 +110,12 @@ func (h *FoldersHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	f, err := h.uc.Update(r.Context(), user.ID, b.toDomain(folderID))
+	f, err := h.uc.Update(r.Context(), user.ID, b.toDomain(r.Context(), h.uc, user.ID, folderID))
 	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, folderJSON(f))
+	writeJSON(w, http.StatusOK, folderJSON(r.Context(), h.uc, user.ID, f))
 }
 
 func (h *FoldersHandler) Delete(w http.ResponseWriter, r *http.Request) {
@@ -131,19 +128,21 @@ func (h *FoldersHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // --- Ссылки-приглашения в папку (chatlist invites) ---
 
+// inviteJSON — приглашение в папку. Расшариваются только публичные группы и
+// каналы, поэтому ключ пира здесь чистая арифметика: -chatID.
 func inviteJSON(inv domain.FolderInvite) map[string]any {
-	ids := inv.ChatIDs
-	if ids == nil {
-		ids = []int64{}
+	peers := make([]domain.PeerID, 0, len(inv.ChatIDs))
+	for _, id := range inv.ChatIDs {
+		peers = append(peers, domain.ToPeerID(id, true))
 	}
 	return map[string]any{
 		"slug": inv.Slug, "url": "/addlist/" + inv.Slug,
-		"title": inv.Title, "chat_ids": ids,
+		"title": inv.Title, "peer_ids": peers,
 	}
 }
 
@@ -193,7 +192,7 @@ func (h *FoldersHandler) RevokeInvite(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // PreviewInvite: GET /folder_invites/{slug} → {title, chats:[{id,title,type,members}]}.
@@ -207,23 +206,30 @@ func (h *FoldersHandler) PreviewInvite(w http.ResponseWriter, r *http.Request) {
 	out := make([]map[string]any, 0, len(chats))
 	for _, c := range chats {
 		out = append(out, map[string]any{
-			"id": c.ID, "title": c.Title, "type": c.Type, "members": c.MemberCount,
+			"peer_id": domain.ToPeerID(c.ID, true), "title": c.Title, "type": c.Type, "members": c.MemberCount,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"title": title, "chats": out})
 }
 
-// JoinInvite: POST /folder_invites/{slug}/join {chat_ids:[...]}.
+// JoinInvite: POST /folder_invites/{slug}/join {peer_ids:[...]}.
 func (h *FoldersHandler) JoinInvite(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	slug := chi.URLParam(r, "slug")
 	var b struct {
-		ChatIDs []int64 `json:"chat_ids"`
+		PeerIDs []domain.PeerID `json:"peer_ids"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&b)
-	if err := h.uc.JoinInvite(r.Context(), user.ID, slug, b.ChatIDs); err != nil {
+	// Вступают только в группы/каналы — обратная арифметика inviteJSON.
+	ids := make([]int64, 0, len(b.PeerIDs))
+	for _, p := range b.PeerIDs {
+		if p.IsAnyChat() {
+			ids = append(ids, p.ToChatID())
+		}
+	}
+	if err := h.uc.JoinInvite(r.Context(), user.ID, slug, ids); err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }

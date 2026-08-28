@@ -8,11 +8,12 @@ import Input from '../../../shared/ui/Input'
 import classNames from '../../../shared/lib/classNames'
 import { useT } from '../../../i18n'
 import { type GroupEdit, PERMS, SLOWMODE_STEPS, slowmodeLabel } from '../../../core/hooks/useGroupEdit'
+import { allowedMemberPerms } from '../../../core/peers/rights'
 
 export function PermissionsScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
   const t = useT()
-  const [perms, setPerms] = useState(g.card?.defaultPermissions ?? 31)
-  const [slowIdx, setSlowIdx] = useState(Math.max(0, SLOWMODE_STEPS.indexOf(g.card?.slowmodeSeconds ?? 0)))
+  const [perms, setPerms] = useState(allowedMemberPerms(g.card?.chat))
+  const [slowIdx, setSlowIdx] = useState(Math.max(0, SLOWMODE_STEPS.indexOf(g.card?.fullChat.slowmode_seconds ?? 0)))
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // изменения сохраняются с коротким дебаунсом (tweb батчит галочкой; здесь — авто)
@@ -24,7 +25,7 @@ export function PermissionsScreen({ g, onBack }: { g: GroupEdit; onBack: () => v
   }
 
   // Платные сообщения (Telegram paid messages): плата в звёздах, меняет только владелец.
-  const [charge, setCharge] = useState(g.card?.chargeStars ?? 0)
+  const [charge, setCharge] = useState(g.card?.fullChat.send_paid_messages_stars ?? 0)
   const chargeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pushCharge = (next: number) => {
     const v = Math.max(0, Math.min(10000, Math.round(next) || 0))

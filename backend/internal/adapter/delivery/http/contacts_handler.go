@@ -17,25 +17,29 @@ func NewContactsHandler(uc *usecasecontacts.Interactor) *ContactsHandler {
 }
 
 // contactJSON is the wire shape for one address-book entry.
-func contactJSON(c domain.Contact) map[string]any {
-	var username any
-	if c.Username != nil {
-		username = *c.Username
+// contactJSON — одна запись адресной книги: НАША часть (заметка, «показывать
+// мой номер», дата) плюс сам пир конструктором `user`. Раскладка та же, что у
+// contacts.contacts в схеме: строка контакта отдельно, тело пира отдельно.
+// contactsContainer — адресная книга контейнером `contacts.contacts`.
+//
+// СТРОКА книги это ссылка (`contact{user_id, mutual}`), а карточки едут
+// вектором `users`: прежде карточка была вклеена в каждую строку рядом со
+// ссылкой — тот же снимок-вместо-ссылки, что убирался у диалогов.
+//
+// Наши поля строки (`note`, `share_phone`, `has_custom_photo`, `created_at`)
+// у конструктора места не имеют. Заметка и «делиться номером» — предмет,
+// которого у оригинала нет вовсе (там заметок нет, а номером делятся правилом
+// приватности); названо задачей.
+func contactsContainer(list []domain.ContactRecord) domain.ContactsContacts {
+	rows := make([]domain.Contact, 0, len(list))
+	cards := make([]domain.UserReal, 0, len(list))
+	for _, c := range list {
+		// Взаимности мы не храним: строка книги односторонняя. Названо
+		// в OmittedWithoutSubject как отсутствие ЗНАЧЕНИЯ.
+		rows = append(rows, domain.NewContact(c.UserID, false))
+		cards = append(cards, c.User)
 	}
-	return map[string]any{
-		"user_id":          c.UserID,
-		"first_name":       c.FirstName,
-		"last_name":        c.LastName,
-		"note":             c.Note,
-		"share_phone":      c.SharePhone,
-		"username":         username,
-		"avatar_url":       c.AvatarURL,
-		"avatar_preview":   c.AvatarPreview,
-		"phone":            c.Phone,
-		"display_name":     c.DisplayName,
-		"has_custom_photo": c.HasCustomPhoto,
-		"created_at":       c.CreatedAt,
-	}
+	return domain.NewContactsContacts(rows, cards)
 }
 
 type addContactBody struct {
@@ -62,7 +66,7 @@ func (h *ContactsHandler) Add(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		c   domain.Contact
+		c   domain.ContactRecord
 		err error
 	)
 	if body.ContactID == 0 && body.Phone != "" {
@@ -106,7 +110,7 @@ func (h *ContactsHandler) Add(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "add contact failed")
 		return
 	}
-	writeJSON(w, http.StatusCreated, contactJSON(c))
+	writeJSON(w, http.StatusCreated, contactsContainer([]domain.ContactRecord{c}))
 }
 
 // List returns the current user's address book: GET /contacts.
@@ -121,11 +125,7 @@ func (h *ContactsHandler) List(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "list contacts failed")
 		return
 	}
-	out := make([]map[string]any, 0, len(contacts))
-	for _, c := range contacts {
-		out = append(out, contactJSON(c))
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"contacts": out})
+	writeJSON(w, http.StatusOK, contactsContainer(contacts))
 }
 
 // Delete removes a contact: DELETE /contacts/{userID}.
@@ -148,5 +148,5 @@ func (h *ContactsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "contact not found")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }

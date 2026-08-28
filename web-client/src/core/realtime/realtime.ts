@@ -7,14 +7,20 @@
 // подхватывается в реестре воркера (WorkerRegistry) → UI-тип Managers.realtime
 // генерится автоматически, ручной RealtimeApi больше не нужен.
 //
-// sendMessage принимает SendArgs напрямую (единый контракт с транспортом
-// connectionManager) — три копии аргументов схлопываются в одну.
+// ОТПРАВКИ СООБЩЕНИЙ ЗДЕСЬ БОЛЬШЕ НЕТ. Она переехала к владельцу окна —
+// `messages.sendText` / `messages.sendFile` (core/managers/messages/pending.ts),
+// как в tweb, где `beforeMessageSending` заканчивается вызовом `message.send()`
+// внутри самого appMessagesManager. Транспорт (`conn.sendMessage`) приходит туда
+// инъекцией при сборке (workerCore.ts), поэтому кольца импортов не возникает.
+// Здесь остались только то, что и правда про соединение: старт, статус,
+// read-маркеры, typing, подписка на каналы.
 
 import type { newConnectionManager } from './connectionManager'
-import type { SendArgs } from './connectionManager'
 import type { ChannelFunnel } from './channelFunnel'
-import { RT, type TypingAction, type PendingNewEvt } from './events'
+import { getOutputPeer } from '../peers/peerId'
+import { RT, type MediaReadEvt, type SendMessageAction } from './events'
 import type { MessageOp } from './messageOps'
+import { getServerMessageId } from '../history/messageId'
 
 type Conn = ReturnType<typeof newConnectionManager>
 
@@ -30,7 +36,9 @@ export interface RealtimeDeps {
   // однажды уже дал компилятору молча проглотить их потерю (Regression 1,
   // финальное ревью feat/remaining-ops) — markMediaRead звал cacheMediaRead и
   // выбрасывал результат.
-  messages: { cacheMediaRead(p: { chat_id: number; msg_id: number }): MessageOp[] }
+  messages: {
+    cacheMediaRead(p: MediaReadEvt): MessageOp[]
+  }
   broadcast: (event: string, payload: unknown) => void
   channelFunnel: ChannelFunnel
 }
@@ -45,22 +53,26 @@ export function newRealtime({ conn, sync, tokens, messages, broadcast, channelFu
     // INITIAL_DELAY (:66-69), если события ещё не было. Событие там — лишь «что-то
     // изменилось, дёрни pull», значение всегда приходит запросом.
     //
-    // `syncing` — НЕ порт, а НАШЕ РАСШИРЕНИЕ той же дисциплины на вторую ось.
-    // В tweb `state_synchronizing`/`state_synchronized` (:53-64) устроены иначе:
+    // `syncing` — НЕ порт, и дисциплина у него ДРУГАЯ, чем у `state`.
+    // В tweb `state_synchronizing`/`state_synchronized` (:53-64) устроены так:
     // `this.updating = true/false` берётся из самого ФАКТА события (никакого pull),
     // и `updating` вообще не входит в `getConnectionStatus()` — `rootScope.ts:293`
     // отдаёт только карту `connectionStatus`, про синхронизацию там ничего нет.
-    // Мы намеренно применили тот же pull-паттерн к `syncing` тоже (чтобы не иметь
-    // двух разных дисциплин чтения в одном автомате — см. rootScope.ts/events.ts),
-    // но выдавать это за букву оригинала было бы неточной ссылкой; это осознанное
-    // расширение поверх 1:1, обоснование то же, что у гарантии парности onSyncEnd
-    // в syncEngine.ts (последствие для UI, а не цитата из tweb).
+    // Так же теперь и у нас (`components/connectionStatus.ts`): pull-паттерн,
+    // распространённый когда-то и на эту ось, давал два наблюдаемых дефекта —
+    // короткая синхронизация (началась и кончилась быстрее ответа RPC) не
+    // показывалась вовсе, а инверсия ответов оставляла залипший спиннер.
     //
-    // Итог для RT.state/RT.stateSynchronizing/synchronized (rootScope.ts): все три
-    // остаются событиями-УВЕДОМЛЕНИЯМИ (автомату нужно знать МОМЕНТ изменения), их
-    // payload — не источник правды; при получении любого из них следует звать
-    // getStatus() и брать значение оттуда. Это делает модель иммунной к потере
-    // события by construction: SuperMessagePort не буферизует кадры, а
+    // Поэтому `syncing` здесь остаётся, но у него ОДИН потребитель — стартовый
+    // pull автомата (INITIAL_DELAY), пока ни одного события синхронизации ещё не
+    // видели: вкладка, поднявшаяся в СЕРЕДИНЕ догона, иначе не узнает о нём
+    // никогда. Это и есть остаток расширения, и он безопасен ровно потому, что
+    // после первого события значение из pull к `updating` больше не применяется.
+    //
+    // Итог для RT.state (rootScope.ts): событие-УВЕДОМЛЕНИЕ (автомату нужно знать
+    // МОМЕНТ изменения), его payload — не источник правды; при получении следует
+    // звать getStatus() и брать значение оттуда. Это делает модель иммунной к
+    // потере события by construction: SuperMessagePort не буферизует кадры, а
     // `smp.on(...)` вешается в realtimeBridge из эффекта (useAppBootstrap.ts),
     // ПОСЛЕ первого рендера — ранние события физически теряются (тот же класс
     // дыры, что у loadChats vs push для `me`). Пропущенное уведомление не страшно:
@@ -78,32 +90,39 @@ export function newRealtime({ conn, sync, tokens, messages, broadcast, channelFu
     // другой — сверяющий не должен читать ЭТО как расхождение с оригиналом
     // (в отличие от `syncing` выше, которое расхождение и есть).
     async getStatus() { return { state: conn.state(), retryAt: conn.retryAt(), syncing: sync.isSyncing() } },
-    async sendMessage(args: SendArgs) { conn.sendMessage(args); return { ok: true } },
-    async markRead(args: { chatId: number; upToSeq: number }) { conn.markRead(args.chatId, args.upToSeq); return { ok: true } },
-    async markMediaRead(args: { chatId: number; msgId: number }) {
+    // Горизонт чтения уходит на сервер СЕРВЕРНЫМ номером — как и всё остальное,
+    // что покидает клиентское пространство (core/history/messageId.ts).
+    async markRead(args: { peerId: number; upToId: number }) { conn.markRead(args.peerId, getServerMessageId(args.upToId)); return { ok: true } },
+    async markMediaRead(args: { peerId: number; msgId: number }) {
       // Локально гасим точку media_unread в SSOT + рассылаем операции всем вкладкам
       // (окно теперь правит ТОЛЬКО applyOps(RT.messageOp) — сырой rt:media_read
       // проектор больше не слушает), затем шлём read_media серверу (у отправителя
       // точка гаснет по его серверному media_read-кадру).
-      const ops = messages.cacheMediaRead({ chat_id: args.chatId, msg_id: args.msgId })
+      // ГРАНИЦА: наружу (кадр серверу и его же форма в broadcast) уходит
+      // СЕРВЕРНЫЙ номер, внутрь SSOT — клиентский.
+      const serverId = getServerMessageId(args.msgId)
+      // Своя оптимистика лепит кадр ТОЙ ЖЕ формы, что придёт с сервера, —
+      // конструктором: иначе у одного факта было бы две формы, и разбор
+      // разъехался бы ровно там, где его труднее всего заметить.
+      const frame: MediaReadEvt = {
+        _: 'updateReadPeerMessagesContents',
+        peer: getOutputPeer(args.peerId),
+        messages: [serverId],
+      }
+      const ops = messages.cacheMediaRead(frame)
       if (ops.length) broadcast(RT.messageOp, { ops })
-      broadcast(RT.mediaRead, { chat_id: args.chatId, msg_id: args.msgId })
-      conn.markMediaRead(args.chatId, args.msgId)
+      broadcast(RT.mediaRead, frame)
+      conn.markMediaRead(args.peerId, serverId)
       return { ok: true }
     },
-    // Оптимистичный бабл отправки: воркер — funnel жизненного цикла, бродкастит эхо
-    // всем вкладкам → storeProjection (единственный писатель окна). Транспорт (outbox)
-    // и reconcile ack/err — прежним путём (conn), ack/err воркер обогащает маршрутом.
-    async appendPending(p: PendingNewEvt) { broadcast(RT.pendingNew, p); return { ok: true } },
-    async attachPendingMedia(args: { chatId: number; threadRootId?: number | null; clientMsgId: string; mediaId: number }) { broadcast(RT.pendingMedia, { chat_id: args.chatId, thread_root_id: args.threadRootId ?? null, client_msg_id: args.clientMsgId, media_id: args.mediaId }); return { ok: true } },
-    async failPending(args: { chatId: number; threadRootId?: number | null; clientMsgId: string }) { broadcast(RT.pendingFail, { chat_id: args.chatId, thread_root_id: args.threadRootId ?? null, client_msg_id: args.clientMsgId }); return { ok: true } },
-    async retryPending(args: { chatId: number; threadRootId?: number | null; clientMsgId: string }) { broadcast(RT.pendingRetry, { chat_id: args.chatId, thread_root_id: args.threadRootId ?? null, client_msg_id: args.clientMsgId }); return { ok: true } },
-    async removePending(args: { chatId: number; threadRootId?: number | null; clientMsgId: string }) { broadcast(RT.pendingRemove, { chat_id: args.chatId, thread_root_id: args.threadRootId ?? null, client_msg_id: args.clientMsgId }); return { ok: true } },
-    async sendTyping(args: { chatId: number; action?: TypingAction }) { conn.sendTyping(args.chatId, args.action ?? 'typing'); return { ok: true } },
+    async sendTyping(args: { peerId: number; action?: SendMessageAction }) { conn.sendTyping(args.peerId, args.action ?? { _: 'sendMessageTypingAction' }); return { ok: true } },
     async sendCallFrame(args: { type: string; data: Record<string, unknown> }) { conn.sendCallFrame(args.type, args.data); return { ok: true } },
     // Подписка на канал = вход в per-channel funnel: подписаться на топик (живые
     // кадры) + open (сид курсора из IDB и добор пропущенного через difference).
-    async subscribeChannel(args: { chatId: number }) { conn.subscribeChannel(args.chatId); void channelFunnel.open(args.chatId); return { ok: true } },
-    async unsubscribeChannel(args: { chatId: number }) { conn.unsubscribeChannel(args.chatId); channelFunnel.close(args.chatId); return { ok: true } },
+    // open() отклоняется на недоступном IDB (loadPts) — глотаем: канал остаётся
+    // несидированным, базу возьмёт первый живой кадр. Сам catchUp() внутри funnel'а
+    // отказ уже глотает (channelFunnel.ts), так что кроем ровно чтение курсора.
+    async subscribeChannel(args: { peerId: number }) { conn.subscribeChannel(args.peerId); void channelFunnel.open(args.peerId).catch(() => {}); return { ok: true } },
+    async unsubscribeChannel(args: { peerId: number }) { conn.unsubscribeChannel(args.peerId); channelFunnel.close(args.peerId); return { ok: true } },
   }
 }

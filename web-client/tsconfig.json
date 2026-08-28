@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2020",
     "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": ["ES2020", "ES2021.WeakRef", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
     "moduleResolution": "bundler",
@@ -25,6 +25,7 @@
       "@shared/*": ["./src/shared/*"],
       "@rpc/*": ["./src/rpc/*"],
       "@types": ["./src/types.d.ts"],
+      "@layer": ["./src/layer.d.ts"],
       "@/*": ["./src/*"]
     },
     "strict": true,

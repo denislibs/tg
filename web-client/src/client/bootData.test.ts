@@ -19,9 +19,9 @@
 // же правилу инвалидации.
 import { describe, expect, it, beforeEach } from 'vitest'
 import { bootPrefetch, invalidateBootPrefetch, setBootData } from './bootData'
-import type { User } from '../core/managers/authManager'
+import type { PeerProfile } from '../core/managers/authManager'
 
-const me = Promise.resolve(null as User | null)
+const me = Promise.resolve(null as PeerProfile | null)
 const dialogsReady = Promise.resolve()
 
 beforeEach(() => {

@@ -219,7 +219,7 @@ func (s *Interactor) process(m domain.Media) {
 	if err := s.repo.UpdateProcessed(ctx, m.ID, ProcessedMeta{
 		Width: res.Width, Height: res.Height, Duration: res.Duration,
 		Title: res.Title, Performer: res.Performer, ThumbKey: thumbKey,
-		BlurPreview: res.Stripped,
+		BlurPreview: res.Stripped, Animated: res.Animated,
 	}); err != nil {
 		log.Printf("media: process %d: update: %v", m.ID, err)
 	}
@@ -252,7 +252,9 @@ func (s *Interactor) StrippedPreview(ctx context.Context, id int64) ([]byte, err
 		return nil, err
 	}
 	// Пустые поля ProcessedMeta не затирают уже записанное (см. UpdateProcessed).
-	if err := s.repo.UpdateProcessed(ctx, m.ID, ProcessedMeta{BlurPreview: res.Stripped}); err != nil {
+	// Animated передаём явно: он пишется безусловно, и нулевое значение здесь
+	// сбросило бы признак гифки, выставленный фоновой обработкой.
+	if err := s.repo.UpdateProcessed(ctx, m.ID, ProcessedMeta{BlurPreview: res.Stripped, Animated: res.Animated}); err != nil {
 		log.Printf("media: stripped %d: update: %v", m.ID, err)
 	}
 	return res.Stripped, nil

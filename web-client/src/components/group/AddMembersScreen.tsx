@@ -15,7 +15,9 @@ import { useT, useLang } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useGroupCandidates } from '../../core/hooks/useGroupCandidates'
 import { useChatsStore } from '../../stores/chatsStore'
-import { lastSeenLabel } from '../../core/presence'
+import { userStatusLabel } from '../../core/presence'
+import { getPeerPhotoId, peerKey } from '../../core/peers/peer'
+import { getUserTitle } from '../../core/peers/getPeerTitle'
 
 export default function AddMembersScreen({
   chatId,
@@ -41,7 +43,7 @@ export default function AddMembersScreen({
 
   // Глобальный поиск людей по имени/username (как в Telegram): результаты
   // подмешиваются к контактам при вводе запроса.
-  const [found, setFound] = useState<{ id: number; name: string; avatarUrl?: string }[]>([])
+  const [found, setFound] = useState<{ id: PeerId; name: string; photoId?: number }[]>([])
   useEffect(() => {
     const query = q.trim()
     if (query.length < 2) {
@@ -51,7 +53,7 @@ export default function AddMembersScreen({
     let alive = true
     const tm = setTimeout(() => {
       void managers.channels.search(query).then((r) => {
-        if (alive) setFound(r.users.map((u) => ({ id: u.id, name: u.displayName || u.username, avatarUrl: u.avatarUrl || undefined })))
+        if (alive) setFound(r.users.map((u) => ({ id: peerKey(u), name: getUserTitle(u), photoId: getPeerPhotoId(u.photo) || undefined })))
       }).catch(() => {})
     }, 250)
     return () => {
@@ -73,8 +75,8 @@ export default function AddMembersScreen({
       return {
         id: c.id,
         name: c.name,
-        avatarUrl: c.avatarUrl,
-        subtitle: p?.online ? t('online') : lastSeenLabel(p?.lastSeen ?? 0, lang),
+        photoId: c.photoId,
+        subtitle: userStatusLabel(p, lang),
         // уже участник: галочка стоит, снять нельзя, чипа не даёт
         disabled: existing.has(c.id),
         checked: existing.has(c.id),

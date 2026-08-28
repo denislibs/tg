@@ -10,10 +10,13 @@ import type { GroupEdit, DiscussionGroup } from '../../../core/hooks/useGroupEdi
 import type { DiscussionCandidate } from '../../../core/managers/channelsManager'
 import { gradientFor } from '../../../core/dialogToChat'
 import { initials } from './shared'
+import { getLinkedChatPeerId } from '../../../core/peers/peer'
 
 export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
   const t = useT()
-  const linkedId = g.card?.discussionChatId ?? 0
+  // Ключ обсуждения: `linked_chat_id` конструктора — СЫРОЙ положительный id,
+  // знаковый вид делает одна функция (`getLinkedChatPeerId`).
+  const linkedId = getLinkedChatPeerId(g.card?.fullChat)
   const [linked, setLinked] = useState<DiscussionGroup | null>(null)
   const [candidates, setCandidates] = useState<DiscussionCandidate[]>([])
   const [confirming, setConfirming] = useState<DiscussionCandidate | null>(null)
@@ -52,7 +55,7 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
               {/* Привязанная группа — вендорная строка чата (`chatlist-chat`,
                   дамп 15-right-11), а не своя карточка. */}
               <Row
-                icon={<Avatar size="md" background={gradientFor(linked.id)} text={initials(linked.title)} />}
+                icon={<Avatar size="md" background={gradientFor(linked.peerId)} text={initials(linked.title)} />}
                 label={linked.title}
                 sublabel={linked.username ? `@${linked.username}` : `${linked.memberCount} ${t('members')}`}
                 translate={false}
@@ -68,8 +71,8 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
           <Row icon={<TgIcon name="newgroup" size={22} color="var(--primary-color)" />} label="Create a New Group" accent onClick={() => void g.enableDiscussion()} />
           {candidates.map((c) => (
             <Row
-              key={c.id}
-              icon={<Avatar size="md" background={gradientFor(c.id)} text={initials(c.title)} />}
+              key={c.peerId}
+              icon={<Avatar size="md" background={gradientFor(c.peerId)} text={initials(c.title)} />}
               label={c.title}
               sublabel={c.username ? `@${c.username}` : `${c.memberCount} ${t('members')}`}
               translate={false}
@@ -85,7 +88,7 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
           text={`${t('Do you want to set')} «${confirming.title}» ${t('as the discussion board for this channel?')}`}
           action={t('Link Group')}
           zIndex={90}
-          onConfirm={() => void g.linkDiscussion(confirming.id)}
+          onConfirm={() => void g.linkDiscussion(confirming.peerId)}
           onClose={() => setConfirming(null)}
         />
       )}

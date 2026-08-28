@@ -100,8 +100,8 @@ import ChatList, { type ChatListProps } from './ChatList'
 const HOST_HEIGHT = 720
 const ITEM = 72
 
-const dialog = (chatId: number, over: Partial<Dialog> = {}): Dialog => ({
-  chatId, type: 'private', title: 't' + chatId, unread: 0, unreadMentions: 0, unreadReactions: 0,
+const dialog = (peerId: PeerId, over: Partial<Dialog> = {}): Dialog => ({
+  peerId, type: 'private', title: 't' + peerId, unread: 0, unreadMentions: 0, unreadReactions: 0,
   lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false, ...over,
 } as Dialog)
 
@@ -121,7 +121,10 @@ function seedDialogs(count: number) {
 function fakeManagers(response: DialogsPage | ((o: { filterId: number }) => DialogsPage)) {
   const getDialogs = vi.fn(async (o: { filterId: number }) =>
     typeof response === 'function' ? response(o) : response)
-  return { managers: { dialogs: { getDialogs } } as never, getDialogs }
+  // `peers.fillMirror` — объявление пробела зеркала пиров: строка списка берёт
+  // из него имя и аватарку (они уехали из диалога в карточку). Здесь пробел
+  // объявлять нечем, важно лишь не уронить хук.
+  return { managers: { dialogs: { getDialogs }, peers: { fillMirror: vi.fn(async () => {}) } } as never, getDialogs }
 }
 
 /**
@@ -209,7 +212,7 @@ beforeEach(() => {
   listRenderItems.length = 0
   seedMirror([])
   useFoldersStore.setState({ contactIds: new Set() })
-  useAppStateStore.setState({ folders: [], drafts: [] })
+  useAppStateStore.setState({ folders: [] })
   useNotifyStore.setState({ settings: { private: { muted: false, preview: true }, groups: { muted: false, preview: true }, channels: { muted: false, preview: true } } })
 
   if (!sizeStubbed) {
@@ -298,7 +301,6 @@ describe('ChatList — ul виртуального списка', () => {
     seedDialogs(3)
     useAppStateStore.setState({
       folders: [{ id: 7, title: 'Папка', pos: 0, contacts: false, nonContacts: false, groups: false, broadcasts: false, excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [] }],
-      drafts: [],
     })
     // Папка 7 у владельца пуста — иначе её `count` породил бы «дырки», и каждая
     // из них попросила бы свою страницу сверх запроса самой смены папки.
@@ -531,7 +533,7 @@ describe('ChatList — свой скроллер и свой ul на кажду�
 
   async function renderTwoFolders(props: HarnessProps = {}) {
     seedDialogs(500)
-    useAppStateStore.setState({ folders: [WORK], drafts: [] })
+    useAppStateStore.setState({ folders: [WORK] })
     const { managers, getDialogs } = fakeManagers(page({ count: 500 }))
     const view = await renderList(managers, { folderOrder: ORDER, ...props })
     return { ...view, getDialogs }

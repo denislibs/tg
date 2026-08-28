@@ -41,7 +41,7 @@ export function useStickersPanel(active: boolean) {
           managers.stickers.faved(),
           managers.stickers.mySets(),
         ])
-        const full = await Promise.all(mySets.map((s) => managers.stickers.setBySlug(s.slug)))
+        const full = await Promise.all(mySets.map((s) => managers.stickers.getStickerSet({ shortName: s.short_name })))
         if (alive) setData({ recent, faved, sets: full, loaded: true })
       } catch {
         if (alive) setData((d) => ({ ...d, loaded: true }))
@@ -61,7 +61,7 @@ export function useStickersPanel(active: boolean) {
     const scope = middlewareHelper.get().create()
     const middleware = scope.get()
     const onInstalled = (set: StickerSet) => {
-      void managers.stickers.setBySlug(set.slug).then(
+      void managers.stickers.getStickerSet({ shortName: set.short_name }).then(
         (full) => {
           if (!middleware() || full.stickers.length === 0) return
           setData((d) => (d.sets.some((x) => x.set.id === set.id) ? d : { ...d, sets: [...d.sets, full] }))
@@ -151,9 +151,10 @@ export function useCustomEmojiSets(active: boolean): { set: StickerSet; stickers
       try {
         const mySets = await managers.stickers.mySets()
         const slugs = Array.from(
-          new Set([ANIMATED_EMOJI_SLUG, ...mySets.filter((x) => x.kind === 'emoji').map((x) => x.slug)]),
+          // Вид набора — ФЛАГ pFlags.emojis: в схеме вид сущности не бывает строкой.
+          new Set([ANIMATED_EMOJI_SLUG, ...mySets.filter((x) => x.pFlags?.emojis).map((x) => x.short_name)]),
         )
-        const full = await Promise.all(slugs.map((sl) => managers.stickers.setBySlug(sl).catch(() => null)))
+        const full = await Promise.all(slugs.map((sl) => managers.stickers.getStickerSet({ shortName: sl }).catch(() => null)))
         if (alive) setSets(full.filter((x): x is { set: StickerSet; stickers: Sticker[] } => !!x && x.stickers.length > 0))
       } catch {
         /* нет наборов — вкладка кастом-эмодзи просто пустая */

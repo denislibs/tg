@@ -17,7 +17,7 @@ import type { Cursor } from './cursor'
 
 describe('realtime.markMediaRead', () => {
   it('broadcasts the MessageOp[] returned by cacheMediaRead as rt:message_op', async () => {
-    const ops: MessageOp[] = [{ op: 'patch', key: '1', msgId: 7, fields: { mediaUnread: false } }]
+    const ops: MessageOp[] = [{ op: 'patch', key: '1', msgId: 7, fields: { pFlags: {} } }]
     const conn = { markMediaRead: vi.fn() } as unknown as Parameters<typeof newRealtime>[0]['conn']
     const messages = { cacheMediaRead: vi.fn(() => ops) }
     const broadcast = vi.fn()
@@ -30,7 +30,7 @@ describe('realtime.markMediaRead', () => {
       channelFunnel: { open: async () => undefined, close: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
     })
 
-    await rt.markMediaRead({ chatId: 1, msgId: 7 })
+    await rt.markMediaRead({ peerId: 1, msgId: 7 })
 
     expect(broadcast).toHaveBeenCalledWith(RT.messageOp, { ops })
   })
@@ -48,7 +48,7 @@ describe('realtime.markMediaRead', () => {
       channelFunnel: { open: async () => undefined, close: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
     })
 
-    await rt.markMediaRead({ chatId: 1, msgId: 7 })
+    await rt.markMediaRead({ peerId: 1, msgId: 7 })
 
     expect(broadcast).not.toHaveBeenCalledWith(RT.messageOp, expect.anything())
   })
@@ -105,7 +105,7 @@ describe('realtime.getStatus — иммунность к потере push-ув�
     return {
       client: {
         connect: vi.fn(), onOpen: (cb: () => void) => { openCb = cb }, onClose: (cb: () => void) => { closeCb = cb },
-        onError: () => {}, on: () => {}, send: () => {}, isOpen: () => true, close: vi.fn(() => closeCb()),
+        onError: () => {}, onFrame: () => {}, send: () => {}, isOpen: () => true, close: vi.fn(() => closeCb()),
       },
       fireOpen: () => openCb(), fireClose: () => closeCb(),
     }
@@ -155,3 +155,9 @@ describe('realtime.getStatus — иммунность к потере push-ув�
     expect(after.syncing).toBe(false)
   })
 })
+
+// Отправка сообщений из этого файла УШЛА: она переехала к владельцу окна
+// (core/managers/messages/pending.ts — sendText/sendFile, порт tweb), вместе с
+// аплоадом и с транспортом, который туда приходит инъекцией. Её тесты — там же
+// (managers/messages/pending.test.ts): бабл → аплоад → attach → ровно один
+// кадр, ошибка и отмена аплоада.

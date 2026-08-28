@@ -293,16 +293,18 @@ describe('createWorkerCore(): `me` — воркер публикует rt:me н�
     vi.stubGlobal('fetch', vi.fn(async (url: unknown) => {
       const u = String(url)
       if (u.endsWith('/me/photos')) {
-        return new Response(JSON.stringify({ id: 9, url: '/media/9/content', video_url: null, created_at: 'x' }), { status: 200 })
+        return new Response(JSON.stringify({ _: 'photos.photo', photo: { _: 'photo', id: 9, sizes: [] } }), { status: 200 })
       }
       if (u.endsWith('/me/premium/checkout')) {
-        // Сырой snake_case с проволоки — менеджер сам зовёт mapUser/mapSubscription
-        // (premiumManager.ts:44-52), не подсовываем ему уже смапленное.
+        // Сырой ответ с проволоки — менеджер сам его разбирает
+        // (premiumManager.ts), не подсовываем ему уже разобранное.
         return new Response(JSON.stringify({
           user: {
-            id: 1, phone: '+7', username: null, first_name: '', last_name: '', display_name: 'Д',
-            bio: '', birthday: null, avatar_url: '/media/9/content', phone_visibility: 'contacts',
-            premium: true, emoji_status: '',
+            _: 'users.userFull',
+            full_user: { _: 'userFull', id: 1 },
+            chats: [],
+            users: [{ _: 'user', pFlags: { self: true, premium: true }, id: 1, phone: '+7', photo: { _: 'userProfilePhoto', photo_id: 9 } }],
+            can_message: true,
           },
           subscription: { plan: '1m', price_cents: 100, started_at: 'x', expires_at: 'y', auto_renew: true },
         }), { status: 200 })
@@ -315,17 +317,17 @@ describe('createWorkerCore(): `me` — воркер публикует rt:me н�
       core.workerScope.scope.addEventListener('rt:me', (p) => local.push(p))
       // auth.me() и registry.auth — ОДИН и тот же объект (registry = {..., auth}),
       // подмена метода на нём — то, что реально вызовет boot-цепочка внутри
-      // start(). auth.me() отдаёт УЖЕ смапленного User (mapUser внутри
-      // authManager) — camelCase, не сырые snake_case-поля с проволоки.
+      // start(). auth.me() отдаёт УЖЕ разобранный профиль — пару конструкторов
+      // `users.userFull`, а не сырой ответ с проволоки.
       core.registry.auth.me = async () => ({
-        id: 1, phone: '+7', username: null, firstName: '', lastName: '', displayName: 'Д',
-        bio: '', birthday: null, avatarUrl: '/old.jpg', avatarPreview: '', phoneVisibility: 'contacts',
-        premium: false, emojiStatus: '',
+        user: { _: 'user' as const, pFlags: { self: true as const }, id: 1, phone: '+7', photo: { _: 'userProfilePhoto' as const, photo_id: 5 } },
+        fullUser: { _: 'userFull' as const, id: 1 },
+        canMessage: true,
       })
 
       core.start()
       await vi.waitFor(() => { expect(local.length).toBeGreaterThan(0) })
-      expect(local[0]).toMatchObject({ id: 1, avatarUrl: '/old.jpg' })
+      expect(local[0]).toMatchObject({ user: { id: 1, photo: { photo_id: 5 } } })
 
       // Фикс ревью п.3: `getMe: () => me` (workerCore.ts, deps профиля) раньше
       // не был покрыт НИ тестом, НИ пометкой — мутация `() => null` проходила
@@ -336,7 +338,9 @@ describe('createWorkerCore(): `me` — воркер публикует rt:me н�
       // onMeChanged») — второго события просто не было бы.
       await core.registry.profile.addPhoto(9)
       expect(local).toHaveLength(2)
-      expect(local[1]).toMatchObject({ id: 1, displayName: 'Д', avatarUrl: '/media/9/content' })
+      // Мердж кладёт в кэш КОНСТРУКТОР `userProfilePhoto` с id медиа, а не
+      // строку `/media/9/content`: URL и был вторым видом того же числа.
+      expect(local[1]).toMatchObject({ user: { id: 1, phone: '+7', photo: { _: 'userProfilePhoto', photo_id: 9 } } })
 
       // Второе ревью (мутационная батарея по всем трём deps.onMeChanged этого
       // файла): profile и auth красят СВОИ тесты при снятии `onMeChanged: setMe`
@@ -348,7 +352,7 @@ describe('createWorkerCore(): `me` — воркер публикует rt:me н�
       // расхождения, который и убирает вся задача.
       await core.registry.premium.checkout('1m', { number: '4242424242424242', expiry: '12/30', cvc: '123' })
       expect(local).toHaveLength(3)
-      expect(local[2]).toMatchObject({ id: 1, premium: true, avatarUrl: '/media/9/content' })
+      expect(local[2]).toMatchObject({ user: { id: 1, pFlags: { premium: true } } })
 
       // logout() не ждёт REST в этой ветке (без активной сессии — store.get()
       // пуст) — та же проводка onMeChanged, что боевая, четвёртый независимый вход.
@@ -394,8 +398,12 @@ describe('createWorkerCore(): намерение перехода сессии �
     // persist() (общая точка всех путей входа) объявляет кадр.
     vi.stubGlobal('fetch', vi.fn(async (url: unknown) => {
       if (String(url).endsWith('/auth/sign_in')) {
+        // Исход шага входа — конструктор `auth.authorization` с КРАТКОЙ
+        // карточкой: полной формы вход не отдаёт, её приносит первый /me.
         return new Response(JSON.stringify({
-          token: 'TOK', user: { id: 42, phone: '+7', display_name: '+7' },
+          _: 'auth.authorization',
+          token: 'TOK',
+          user: { _: 'user', pFlags: { self: true }, id: 42, phone: '+7' },
         }), { status: 200 })
       }
       throw new Error('unexpected fetch ' + String(url))
@@ -411,7 +419,7 @@ describe('createWorkerCore(): намерение перехода сессии �
 })
 
 // Stage 1C.2 (Task 2): карточки пиров — воркерный peersManager единственный
-// владелец, а `peersStore` витрины — зеркало. Проводка веера (`onPeerOps` →
+// владелец, а `core/peerCache.ts` витрины — зеркало. Проводка веера (`onPeerOps` →
 // `broadcast(RT.peerOp, …)` в workerCore.ts) подпадает под построчную норму: без
 // неё менеджер по-прежнему честно ходит в /users и наполняет свой кэш, RPC
 // возвращает вкладке карточки — а стор не наполняется ничем и все имена/аватары
@@ -422,7 +430,7 @@ describe('createWorkerCore(): карточки пиров — воркер пу�
     vi.stubGlobal('fetch', vi.fn(async (url: unknown) => {
       if (String(url).includes('/users?ids=2')) {
         return new Response(JSON.stringify({
-          users: [{ id: 2, username: 'bob', display_name: 'Боб', avatar_url: '/a.png' }],
+          users: [{ _: 'user', id: 2, username: 'bob', first_name: 'Боб', photo: { _: 'userProfilePhoto', photo_id: 9 } }],
         }), { status: 200 })
       }
       throw new Error('unexpected fetch ' + String(url))
@@ -434,7 +442,7 @@ describe('createWorkerCore(): карточки пиров — воркер пу�
 
       await core.registry.peers.fillMirror([2])
 
-      expect(got).toEqual([{ ops: [{ op: 'upsert', peers: [{ id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '/a.png', avatarPreview: '' }] }] }])
+      expect(got).toEqual([{ ops: [{ op: 'upsert', peers: [{ _: 'user', id: 2, username: 'bob', first_name: 'Боб', photo: { _: 'userProfilePhoto', photo_id: 9 } }] }] }])
     } finally {
       vi.unstubAllGlobals()
     }

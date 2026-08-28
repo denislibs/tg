@@ -1,107 +1,202 @@
 import type { RestClient } from '../net/restClient'
-import { mapMessage, mapSuggestedPost, type Message, type RawMessage, type MessageEntity, type SuggestedPost, type RawSuggestedPost } from '../models'
+import type { PendingNewEvt } from '../realtime/events'
+import { mapMyMessage, mapSuggestedPost, type MyMessage, type RawMyMessage, type MessageEntity, type SuggestedPost, type RawSuggestedPost } from '../models'
+import type { Chat, MessagesChatFull, UserReal } from '../peers/peer'
+import type { Peer } from '../peers/peerId'
+import { getPeerId } from '../peers/peerId'
+import { getServerMessageId } from '../history/messageId'
+import type { PeersManager } from './peersManager'
 
 // Аргументы «предложить пост в канал» (Telegram suggested posts). publishAt —
 // желаемое время публикации в unix-секундах (0/undefined — как можно скорее).
 export interface SuggestPostArgs { text: string; entities?: MessageEntity[]; mediaId?: number | null; publishAt?: number }
 
-export interface SearchResult {
-  chats: { id: number; type: string; title: string; username: string; memberCount: number }[]
-  users: { id: number; username: string; displayName: string; avatarUrl: string }[]
+/**
+ * Ответ поиска — конструктор `contacts.found` схемы В КОРНЕ ответа (без нашей
+ * обёртки): `results` это вектор `Peer`, а сами карточки лежат в `chats`/
+ * `users`. Прежние плоские снимки ({id, display_name, avatar_url} у юзеров,
+ * {id, type, title} у чатов) исчезли: вид чата теперь выбор конструктора, имя
+ * собирает клиент, аватарка это `photo.photo_id`.
+ *
+ * `contacts.found#b3134d9d my_results:Vector<Peer> results:Vector<Peer>
+ *  chats:Vector<Chat> users:Vector<User> = contacts.Found;`
+ */
+export interface ContactsFound {
+  _: 'contacts.found'
+  my_results: Peer[]
+  results: Peer[]
+  chats: Chat[]
+  users: UserReal[]
 }
 
 // Кандидат в группу-обсуждение канала (Telegram getGroupsForDiscussion).
-export interface DiscussionCandidate { id: number; title: string; username: string; memberCount: number }
+export interface DiscussionCandidate { peerId: PeerId; title: string; username: string; memberCount: number }
 
-// Последний комментатор поста — карточка под стек аватаров в футере
-// «N комментариев» (бэкенд отдаёт их вместе со счётчиками).
-export interface CommentReplier { id: number; name: string; avatarUrl?: string }
-interface RawReplier { id: number; display_name: string; avatar_url: string }
+// ОПРОСА счётчиков поста (просмотры, тред комментариев) здесь больше нет, и это
+// не перенос кода, а исчезновение предмета: оба — параметры самого сообщения
+// (`views`, `replies`) и приезжают внутри пачки истории. Ручки
+// `/channels/{id}/view_counts` и `/channels/{id}/comment_counts` читали ТЕ ЖЕ
+// данные вторым запросом (docs/contracts.md:473, docs/readiness/
+// tl-message-analysis.md:473); обновление уже показанной ленты идёт кадрами.
+//
+// Осталась РЕГИСТРАЦИЯ просмотра — `registerViews` ниже. Это другое действие:
+// оригинал делает его тем же методом с флагом (`messages.getMessagesViews` с
+// `increment: true`, tweb appMessagesManager.ts:9136-9156), у нас читающая
+// половина уже была ручкой, поэтому пишущая стала соседней.
 
-export function newChannelsManager({ rest }: { rest: Pick<RestClient, 'post' | 'get' | 'put' | 'del'> }) {
+/**
+ * `messages.messageViews` — контейнер ответа на регистрацию просмотра.
+ *
+ * Вектор ПОЗИЦИОННЫЙ (i-й элемент отвечает i-му номеру запроса) и несёт уже
+ * НОВЫЕ значения; номеру, которому не отвечает пост канала, приезжает
+ * `messageViews` без параметров — отсюда `views?`.
+ */
+interface MessagesMessageViews {
+  _: 'messages.messageViews'
+  views: { _: 'messageViews'; views?: number }[]
+  chats: Chat[]
+  users: UserReal[]
+}
+
+export function newChannelsManager({ rest, beforeSending, peers, cacheViews }: {
+  rest: Pick<RestClient, 'post' | 'get' | 'put' | 'del'>
+  /** Временный бабл поста — та же механика, что у обычной отправки
+   *  (messages.beforeMessageSending + веер операций), см. workerCore.ts. */
+  beforeSending: (p: PendingNewEvt) => void
+  /** Владелец карточек пиров: авторы последних комментариев приезжают попутно
+   *  с ответом и обязаны попасть в зеркало — иначе стек аватаров рисует их
+   *  фолбэком и ходит за теми же карточками вторым запросом. Порт правила
+   *  оригинала «каждый ответ прогоняется через saveApiPeers». */
+  peers: Pick<PeersManager, 'saveApiPeers'>
+  /** Владелец счётчика просмотров — окно (`messages.cacheViews`): число живёт
+   *  ВНУТРИ сообщения. Ответ на регистрацию несёт уже новые значения, и
+   *  оригинал применяет их у себя тем же путём, что и кадр, —
+   *  `processLocalUpdate({_: 'updateChannelMessageViews', …})` на каждый номер
+   *  (tweb appMessagesManager.ts:9148-9155). Инъекцией, а не импортом: тем же
+   *  приёмом сюда приходит `beforeSending`. */
+  cacheViews: (peerId: number, views: Map<number, number>) => void
+}) {
   return {
+    /**
+     * Создать канал. Ответ — СОЗДАННЫЙ объект (`messages.chatFull`), тем же
+     * конструктором, что у карточки чата; адреса в безымянной обёртке больше
+     * нет. Карточка сразу уезжает в зеркало пиров.
+     */
     async createChannel(args: { title: string; about?: string; username?: string; isPublic?: boolean }): Promise<number> {
-      const r = await rest.post<{ chat_id: number }>('/channels', {
+      const r = await rest.post<MessagesChatFull>('/channels', {
         title: args.title, about: args.about ?? '', username: args.username ?? '', is_public: args.isPublic ?? false,
       })
-      return r.chat_id
+      peers.saveApiPeers(r)
+      const chat = r?.chats?.[0]
+      return chat ? getPeerId({ _: 'peerChannel', channel_id: chat.id }) : 0
     },
     // entities — разметка поста (bold/text_link/mention/hashtag…): тот же формат,
     // что у обычной отправки; на бэке проходит sanitizeEntities.
-    async post(chatId: number, text: string, clientMsgId: string, entities?: MessageEntity[]): Promise<Message> {
-      const r = await rest.post<RawMessage>(`/channels/${chatId}/messages`, { text, entities, client_msg_id: clientMsgId })
-      return mapMessage(r)
+    // optimistic — временный бабл поста (тот же владелец, что у обычной отправки:
+    // messages.beforeMessageSending, см. workerCore.ts). Пост канала уходит по
+    // REST, а не по WS, поэтому messages.sendText тут не участвует — бабл
+    // заводится здесь, живое эхо приезжает кадром new_message и сливается по
+    // clientMsgId, как у всех остальных путей. Транспорт другой, владелец бабла
+    // тот же — это и есть граница tweb.
+    async post(peerId: number, text: string, clientMsgId: string, entities?: MessageEntity[], optimistic?: { senderId: number; threadRootId?: number | null }): Promise<MyMessage> {
+      if (optimistic) {
+        beforeSending({
+          peer_id: peerId, thread_root_id: optimistic.threadRootId ?? null, client_msg_id: clientMsgId,
+          sender_id: optimistic.senderId, text, type: 'text', entities,
+          // Тот же класс, что `messages.sendText` в tweb: между баблом и уходом
+          // запроса ничего не ждём, поэтому позиция бабла внизу окна переживёт
+          // финализацию (см. докблок `PendingNewEvt.sequential`).
+          sequential: true,
+        })
+      }
+      const r = await rest.post<RawMyMessage>(`/channels/${peerId}/messages`, { text, entities, client_msg_id: clientMsgId })
+      return mapMyMessage(r)
     },
     // catch-up канала (GET /channels/{id}/difference) ведёт per-channel funnel в
     // воркере (channelFunnel), а не менеджер — курсор и гейтинг живут там же, где
     // funnel обычных апдейтов. Здесь только команды/запросы к бэку.
     async join(username: string): Promise<void> { await rest.post('/channels/join', { username }) },
-    async enableDiscussion(channelId: number): Promise<number> {
-      const r = await rest.post<{ discussion_chat_id: number }>(`/channels/${channelId}/discussion`, {})
-      return r.discussion_chat_id
+    async enableDiscussion(channelPeerId: PeerId): Promise<PeerId> {
+      const r = await rest.post<{ discussion_peer_id: PeerId }>(`/channels/${channelPeerId}/discussion`, {})
+      return r.discussion_peer_id
     },
     // Привязать существующую группу как обсуждение (Telegram setDiscussionGroup).
-    async linkDiscussion(channelId: number, groupId: number): Promise<number> {
-      const r = await rest.put<{ discussion_chat_id: number }>(`/channels/${channelId}/discussion`, { group_id: groupId })
-      return r.discussion_chat_id
+    async linkDiscussion(channelPeerId: PeerId, groupPeerId: PeerId): Promise<PeerId> {
+      const r = await rest.put<{ discussion_peer_id: PeerId }>(`/channels/${channelPeerId}/discussion`, { group_peer_id: groupPeerId })
+      return r.discussion_peer_id
     },
     // Отвязать обсуждение (Telegram setDiscussionGroup с пустой группой).
-    async unlinkDiscussion(channelId: number): Promise<void> {
-      await rest.del(`/channels/${channelId}/discussion`)
+    async unlinkDiscussion(channelPeerId: PeerId): Promise<void> {
+      await rest.del(`/channels/${channelPeerId}/discussion`)
     },
     // Группы, доступные для привязки как обсуждение (Telegram getGroupsForDiscussion).
-    async discussionCandidates(channelId: number): Promise<DiscussionCandidate[]> {
-      const r = await rest.get<{ chats: { id: number; title: string; username: string; member_count: number }[] }>(`/channels/${channelId}/discussion_candidates`)
-      return (r.chats ?? []).map((c) => ({ id: c.id, title: c.title, username: c.username, memberCount: c.member_count }))
+    async discussionCandidates(channelPeerId: PeerId): Promise<DiscussionCandidate[]> {
+      // Кандидаты — КАРТОЧКИ чатов (`messages.chats`), а не выжимка из
+      // четырёх полей: имя, username и число участников живут в самом
+      // конструкторе `channel`, а ключ выводится из него же.
+      const r = await rest.get<{ _: 'messages.chats'; chats: Chat[] }>(`/channels/${channelPeerId}/discussion_candidates`)
+      peers.saveApiPeers({ chats: r.chats })
+      return (r.chats ?? []).map((c) => ({
+        peerId: getPeerId({ _: 'peerChannel', channel_id: c.id }),
+        title: 'title' in c ? c.title : '',
+        username: ('username' in c ? c.username : '') ?? '',
+        memberCount: ('participants_count' in c ? c.participants_count : 0) ?? 0,
+      }))
+    },
+    /**
+     * РЕГИСТРАЦИЯ просмотра постов, доехавших до экрана, — порт
+     * `appMessagesManager.incrementMessageViews` (tweb :9136-9156).
+     *
+     * Не опрос: счётчик поста растёт ровно один раз на пару «пост + зритель»,
+     * повторный показ ничего не меняет. Кого регистрировать, решает интерсектор
+     * ленты с дебаунсом в секунду (`chat/bubbles.ts`, порт tweb :2129-2147 и
+     * :2305-2328) — здесь только запрос.
+     *
+     * Ответ применяется У СЕБЯ, как в оригинале: он несёт уже новые значения, а
+     * кадр `views_update`, который сервер шлёт в топик канала, — доставка
+     * best-effort. Владелец числа при этом один и тот же (`messages.cacheViews`),
+     * поэтому второй записи в окно не возникает, а повтор идемпотентен —
+     * одинаковое значение `cacheViews` не патчит.
+     *
+     * Пустой список отсекается здесь же (tweb :9137-9139): дебаунс срабатывает и
+     * на уже опустошённом наборе.
+     */
+    async registerViews(peerId: number, msgIds: number[]): Promise<void> {
+      if (!msgIds.length) return
+      const r = await rest.post<MessagesMessageViews>(`/channels/${peerId}/views`, {
+        ids: msgIds.map(getServerMessageId),
+      })
+      // tweb :9146 — карточки, приехавшие с ответом, в зеркало ПЕРЕД применением.
+      peers.saveApiPeers(r)
+      const views = new Map<number, number>()
+      msgIds.forEach((msgId, i) => {
+        const n = r.views?.[i]?.views
+        if (typeof n === 'number') views.set(msgId, n)
+      })
+      cacheViews(peerId, views)
     },
     // Подпись постов автором (Telegram toggleSignatures). profiles — показывать профиль.
     async setSignatures(channelId: number, signatures: boolean, profiles: boolean): Promise<void> {
       await rest.put(`/channels/${channelId}/sign_messages`, { signatures, profiles })
     },
-    async postComment(channelId: number, postId: number, text: string, clientMsgId: string): Promise<Message> {
-      const r = await rest.post<RawMessage>(`/channels/${channelId}/posts/${postId}/comments`, { text, client_msg_id: clientMsgId })
-      return mapMessage(r)
+    async postComment(channelId: number, postId: number, text: string, clientMsgId: string): Promise<MyMessage> {
+      const r = await rest.post<RawMyMessage>(`/channels/${channelId}/posts/${postId}/comments`, { text, client_msg_id: clientMsgId })
+      return mapMyMessage(r)
     },
-    async listComments(channelId: number, postId: number, offset = 0, limit = 50): Promise<{ messages: Message[]; count: number }> {
-      const r = await rest.get<{ messages: RawMessage[]; count: number }>(`/channels/${channelId}/posts/${postId}/comments`, { offset, limit })
-      return { messages: (r.messages ?? []).map(mapMessage), count: r.count }
-    },
-    // Счётчики комментариев + авторы последних комментариев по каждому посту
-    // (стек аватаров в футере «N комментариев», как в Telegram).
-    async commentCounts(channelId: number, postIds: number[]): Promise<{ counts: Record<number, number>; recent: Record<number, CommentReplier[]> }> {
-      if (!postIds.length) return { counts: {}, recent: {} }
-      const r = await rest.get<{ counts: Record<string, number>; recent_repliers?: Record<string, RawReplier[]> }>(
-        `/channels/${channelId}/comment_counts`, { ids: postIds.join(',') })
-      const counts: Record<number, number> = {}
-      for (const k in r.counts) counts[+k] = r.counts[k]
-      const recent: Record<number, CommentReplier[]> = {}
-      for (const k in r.recent_repliers ?? {}) {
-        recent[+k] = (r.recent_repliers![k] ?? []).map((u) => ({
-          id: u.id, name: u.display_name, avatarUrl: u.avatar_url || undefined,
-        }))
-      }
-      return { counts, recent }
-    },
-    // Current view counts per channel post ("9.2K 👁"), fetched per open to stay
-    // fresh (mirrors commentCounts — channel posts are cached by pts, so a snapshot
-    // field would go stale).
-    async viewCounts(channelId: number, postIds: number[]): Promise<Record<number, number>> {
-      if (!postIds.length) return {}
-      const r = await rest.get<{ counts: Record<string, number> }>(`/channels/${channelId}/view_counts`, { ids: postIds.join(',') })
-      const out: Record<number, number> = {}
-      for (const k in r.counts) out[+k] = r.counts[k]
-      return out
+    async listComments(channelId: number, postId: number, offset = 0, limit = 50): Promise<{ messages: MyMessage[]; count: number }> {
+      const r = await rest.get<{ messages: RawMyMessage[]; count: number }>(`/channels/${channelId}/posts/${postId}/comments`, { offset, limit })
+      return { messages: (r.messages ?? []).map((m) => mapMyMessage(m)), count: r.count }
     },
     // Предложка постов (Telegram suggested posts).
-    async suggestPost(chatId: number, args: SuggestPostArgs): Promise<SuggestedPost> {
-      const r = await rest.post<RawSuggestedPost>(`/channels/${chatId}/suggested_posts`, {
+    async suggestPost(peerId: number, args: SuggestPostArgs): Promise<SuggestedPost> {
+      const r = await rest.post<RawSuggestedPost>(`/channels/${peerId}/suggested_posts`, {
         text: args.text, entities: args.entities ?? undefined,
         media_id: args.mediaId ?? null, publish_at: args.publishAt ?? 0,
       })
       return mapSuggestedPost(r)
     },
-    async listSuggestedPosts(chatId: number): Promise<SuggestedPost[]> {
-      const r = await rest.get<{ posts: RawSuggestedPost[] }>(`/channels/${chatId}/suggested_posts`)
+    async listSuggestedPosts(peerId: number): Promise<SuggestedPost[]> {
+      const r = await rest.get<{ posts: RawSuggestedPost[] }>(`/channels/${peerId}/suggested_posts`)
       return (r.posts ?? []).map(mapSuggestedPost)
     },
     async approveSuggestedPost(id: number, publishAt?: number): Promise<SuggestedPost> {
@@ -112,25 +207,15 @@ export function newChannelsManager({ rest }: { rest: Pick<RestClient, 'post' | '
       const r = await rest.post<RawSuggestedPost>(`/suggested_posts/${id}/reject`, {})
       return mapSuggestedPost(r)
     },
-    // Похожие каналы (по пересечению аудитории). count — общее число найденных
-    // (может превышать длину chats: хвост открывается по Premium).
-    async similar(chatId: number): Promise<{ chats: SearchResult['chats']; count: number }> {
-      const r = await rest.get<{ chats: { id: number; type: string; title: string; username: string; member_count: number }[]; count: number }>(`/channels/${chatId}/similar`)
-      return {
-        chats: (r.chats ?? []).map((c) => ({ id: c.id, type: c.type, title: c.title, username: c.username, memberCount: c.member_count })),
-        count: r.count ?? 0,
-      }
-    },
-    async search(q: string): Promise<SearchResult> {
+    async search(q: string): Promise<ContactsFound> {
       // Allow "@username" queries: usernames are stored without the @, so strip
       // a leading one before hitting the directory search.
       const query = q.trim().replace(/^@+/, '')
-      if (!query) return { chats: [], users: [] }
-      const r = await rest.get<{ chats: { id: number; type: string; title: string; username: string; member_count: number }[]; users: { id: number; username: string; display_name: string; avatar_url: string }[] }>('/search', { q: query })
-      return {
-        chats: (r.chats ?? []).map((c) => ({ id: c.id, type: c.type, title: c.title, username: c.username, memberCount: c.member_count })),
-        users: (r.users ?? []).map((u) => ({ id: u.id, username: u.username, displayName: u.display_name, avatarUrl: u.avatar_url })),
-      }
+      const empty: ContactsFound = { _: 'contacts.found', my_results: [], results: [], chats: [], users: [] }
+      if (!query) return empty
+      // Маппера нет: ответ И ЕСТЬ модель — конструктор схемы приходит в корне.
+      const r = await rest.get<ContactsFound>('/search', { q: query })
+      return { ...empty, ...r }
     },
   }
 }

@@ -1,19 +1,18 @@
 // Темы оформления конкретного чата (Telegram messages.setChatTheme): REST-часть
-// в воркере. Тема общая для чата — сервер рассылает смену обоим участникам
-// фреймом chat_theme_update (workerCore.ts::dispatch → dialogs.applyTheme).
-// Пустой themeId — сброс.
+// в воркере. Пустой themeId — сброс.
+//
+// Локального применения здесь БОЛЬШЕ НЕТ, и это следствие решения Р7: в схеме
+// тема живёт не в строке диалога, а в ПОЛНОЙ карточке
+// (`chatFull`/`userFull.theme_emoticon`), и владельца-в-воркере у неё поэтому
+// не осталось. Сервер рассылает смену всем участникам кадром
+// `chat_theme_update` — включая инициатора, — и применяет её единственный
+// читатель карточки: `client/realtime/storeProjection.ts` → `core/chatFullCache.ts`.
 import type { RestClient } from '../net/restClient'
-import type { DialogsManager } from './dialogsManager'
 
-export function newChatThemesManager({ rest, dialogs }: {
-  rest: Pick<RestClient, 'put'>
-  dialogs: Pick<DialogsManager, 'applyTheme'>
-}) {
+export function newChatThemesManager({ rest }: { rest: Pick<RestClient, 'put'> }) {
   return {
-    async setChatTheme(chatId: number, themeId: string): Promise<void> {
-      await rest.put(`/chats/${chatId}/theme`, { theme_id: themeId })
-      // Оптимистики нет (Task 4, порт tweb): применяем ПОСЛЕ ответа сети.
-      dialogs.applyTheme(chatId, themeId)
+    async setChatTheme(peerId: number, themeId: string): Promise<void> {
+      await rest.put(`/chats/${peerId}/theme`, { theme_id: themeId })
     },
   }
 }

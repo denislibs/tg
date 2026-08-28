@@ -47,6 +47,8 @@ export default class ConnectionStatusComponent {
   private retryAt: number | undefined
   private connecting = false
   private updating = false
+  /** Видели ли хоть одно RT.stateSynchronizing/Synchronized — см. гейт в `setConnectionStatus`. */
+  private sawSyncEvent = false
 
   private managers!: Managers
   private inputSearch!: InputSearchStatus
@@ -66,19 +68,23 @@ export default class ConnectionStatusComponent {
     this.inputSearch = inputSearch
     this.setStatusText('Search') // tweb :45
 
-    // tweb :47-64 — три подписки. У оригинала обработчики разные:
-    // `connection_status_change` (:47-51) игнорирует payload и зовёт pull, а
-    // `state_synchronizing`/`state_synchronized` (:53-64) пишут `this.updating`
-    // прямо из ФАКТА события. У нас все три — одно и то же уведомление «дёрни
-    // pull»: `syncing` приезжает тем же `getStatus()`. Для `RT.state` это 1:1 с
-    // tweb, для пары синхронизации — осознанное расширение той же дисциплины на
-    // вторую ось (разбор и граница порт/расширение — докблок `getStatus` в
-    // `core/realtime/realtime.ts`). Payload не читается ни у одного из трёх:
-    // подписка вешается после первого рендера, а `SuperMessagePort` кадры не
-    // буферизует, поэтому единственный источник значения — pull.
+    // tweb :47-64 — три подписки, и обработчики у них РАЗНЫЕ.
+    //
+    // `connection_status_change` (:47-51) игнорирует payload и зовёт pull:
+    // значение состояния соединения всегда приходит запросом (:87-91). Это у нас
+    // 1:1 — см. докблок `getStatus` в `core/realtime/realtime.ts`.
+    //
+    // А `state_synchronizing`/`state_synchronized` (:53-64) пишут `this.updating`
+    // прямо из ФАКТА события и зовут `setState()` синхронно — никакого pull.
+    // Раньше и эта пара шла через pull (`syncing` из `getStatus()`), и это
+    // ломалось двумя способами, оба недостижимы для фактовой ветки:
+    //   • короткая синхронизация (началась и кончилась быстрее, чем вернулся
+    //     RPC) не показывалась вовсе — оба pull'а возвращали `syncing: false`;
+    //   • при инверсии ответов (pull «начала» вернулся ПОЗЖЕ pull'а «конца»)
+    //     побеждало протухшее `true`, и спиннер залипал до следующего события.
     rootScope.addEventListener(RT.state, this.setConnectionStatus)
-    rootScope.addEventListener(RT.stateSynchronizing, this.setConnectionStatus)
-    rootScope.addEventListener(RT.stateSynchronized, this.setConnectionStatus)
+    rootScope.addEventListener(RT.stateSynchronizing, this.onSyncStart)
+    rootScope.addEventListener(RT.stateSynchronized, this.onSyncEnd)
 
     // Смена языка. НЕ порт, а узкое отступление, и это надо читать именно так: у
     // tweb перерисовка живых узлов — обязанность самой подсистемы i18n
@@ -116,8 +122,8 @@ export default class ConnectionStatusComponent {
     // Гасит уже летящий pull: RPC мог уйти до размонтирования и вернуться после.
     this.middlewareHelper.destroy()
     rootScope.removeEventListener(RT.state, this.setConnectionStatus)
-    rootScope.removeEventListener(RT.stateSynchronizing, this.setConnectionStatus)
-    rootScope.removeEventListener(RT.stateSynchronized, this.setConnectionStatus)
+    rootScope.removeEventListener(RT.stateSynchronizing, this.onSyncStart)
+    rootScope.removeEventListener(RT.stateSynchronized, this.onSyncEnd)
     this.unsubscribeLang?.()
     if (this.setFirstConnectionTimeout) clearTimeout(this.setFirstConnectionTimeout)
     if (this.setStateTimeout) clearTimeout(this.setStateTimeout)
@@ -129,6 +135,20 @@ export default class ConnectionStatusComponent {
     // `<span>` остаётся видимым — снятие его интервала заморозило бы живой
     // отсчёт. А вот пережить размонтирование они не должны.
     for (const interval of this.timerIntervals) clearInterval(interval)
+  }
+
+  /** tweb :53-57 — `updating` из факта события, `setState()` сразу. */
+  private onSyncStart = () => {
+    this.sawSyncEvent = true
+    this.updating = true
+    this.setState()
+  }
+
+  /** tweb :59-64 — то же на конец синхронизации. */
+  private onSyncEnd = () => {
+    this.sawSyncEvent = true
+    this.updating = false
+    this.setState()
   }
 
   // tweb :87-118. Значение всегда берётся отсюда, из pull (:88-91 тянет
@@ -154,8 +174,16 @@ export default class ConnectionStatusComponent {
       if (online && !this.hadConnect) this.hadConnect = true
       this.connecting = !online // tweb :113
       this.retryAt = retryAt // tweb :114
-      // У tweb `updating` сюда не входит (см. подписки в `construct`).
-      this.updating = syncing
+      // У tweb `updating` сюда не входит вовсе (см. подписки в `construct`):
+      // `getConnectionStatus()` про синхронизацию ничего не отдаёт. Наше
+      // сохранённое расширение — РОВНО одно: засеять `updating` ответом pull'а,
+      // пока НИ ОДНОГО события синхронизации ещё не видели. Оно закрывает дыру,
+      // которой у tweb нет: подписка вешается после первого рендера, а
+      // SuperMessagePort кадры не буферизует — вкладка, смонтировавшаяся в
+      // середине догона, без этого сидела бы с «Поиск» до конца догона. Гейт по
+      // `sawSyncEvent` и есть то, что делает расширение безопасным: инвертировать
+      // факт события протухший ответ уже не может.
+      if (!this.sawSyncEvent) this.updating = syncing
       this.setState() // tweb :116
     })
   }

@@ -13,6 +13,9 @@ type PresenceStore struct{ rdb *goredis.Client }
 
 func NewPresenceStore(rdb *goredis.Client) *PresenceStore { return &PresenceStore{rdb: rdb} }
 
+// presKey/lastSeenKey ключуются id ПОЛЬЗОВАТЕЛЯ, а у пользователя peerId
+// совпадает с id (isUser: peerId >= 0) — переход на знаковый ключ их не меняет
+// ни по имени, ни по значению.
 func presKey(userID int64) string     { return "presence:" + strconv.FormatInt(userID, 10) }
 func lastSeenKey(userID int64) string { return "lastseen:" + strconv.FormatInt(userID, 10) }
 
@@ -32,6 +35,19 @@ func (s *PresenceStore) SetOffline(ctx context.Context, userID int64, lastSeen i
 	s.rdb.Del(ctx, presKey(userID))
 	s.rdb.Set(ctx, lastSeenKey(userID), lastSeen, 0)
 	return nil
+}
+
+// OnlineExpires — момент, когда ключ присутствия истечёт: ровно то, что схема
+// зовёт userStatusOnline.expires. Информация была у нас всегда (TTL ключа), но
+// наружу не выпускалась — из-за чего потерянный кадр оставлял человека онлайн
+// навсегда. Нулевое время — ключа нет либо он бессрочный (у presence такого не
+// бывает: TTL ставится и SetNX, и Expire).
+func (s *PresenceStore) OnlineExpires(ctx context.Context, userID int64) (time.Time, error) {
+	ttl, err := s.rdb.PTTL(ctx, presKey(userID)).Result()
+	if err != nil || ttl <= 0 {
+		return time.Time{}, err
+	}
+	return time.Now().Add(ttl), nil
 }
 
 // IsOnline reports whether the presence key exists.

@@ -21,7 +21,7 @@ import (
 // SuggestPost кладёт предложенный пост в очередь канала (status=pending) и
 // уведомляет админов. Предлагать может участник канала БЕЗ права постинга — у
 // кого право есть, тот постит напрямую.
-func (i *Interactor) SuggestPost(ctx context.Context, chatID, authorID int64, text string, entities []domain.MessageEntity, mediaID *int64, publishAt *time.Time) (domain.SuggestedPostInfo, error) {
+func (i *Interactor) SuggestPost(ctx context.Context, chatID, authorID int64, text string, entities domain.MessageEntities, mediaID *int64, publishAt *time.Time) (domain.SuggestedPostInfo, error) {
 	if i.suggested == nil {
 		return domain.SuggestedPostInfo{}, domain.ErrNotFound
 	}
@@ -243,12 +243,7 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 				msg = one[0]
 			}
 		}
-		// thread_root_id наружу — id поста, а не зеркала (см. externalThreadRoot);
-		// публикация одобренного поста сама не проставляет ThreadRootID (см.
-		// комментарий выше) — no-op без лишнего запроса, но чокпоинт применяем
-		// безусловно, тем же путём, что Send/ForwardMessages.
-		spOut := messageUpdatePayload(msg)
-		spOut["thread_root_id"] = i.externalThreadRoot(ctx, msg)
+		spOut := i.channelPostPayload(ctx, msg)
 		payload, e := json.Marshal(spOut)
 		if e != nil {
 			return e
@@ -260,13 +255,12 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 		return domain.Message{}, err
 	}
 	if i.chPub != nil {
-		base := messageUpdatePayload(msg)
-		base["thread_root_id"] = i.externalThreadRoot(ctx, msg)
-		_ = i.chPub.PublishToChannel(ctx, sp.ChatID, frameChannelPts("new_message", base, pts))
+		base := i.channelPostPayload(ctx, msg)
+		_ = i.chPub.PublishToChannel(ctx, sp.ChatID, frameChannelMessage("new_message", base, pts))
 	}
 	if mirrorDeliv != nil {
-		i.publishMessageDelivery(ctx, mirrorDeliv.msg, nil, mirrorDeliv.msg.SenderID,
-			mirrorDeliv.recipients, mirrorDeliv.ptsByUser, mirrorDeliv.unreadByUser)
+		i.publishMessageDelivery(ctx, mirrorDeliv.msg, mirrorDeliv.msg.SenderID,
+			mirrorDeliv.recipients, mirrorDeliv.ptsByUser)
 	}
 	return msg, nil
 }
@@ -290,8 +284,8 @@ func (i *Interactor) channelMediaType(ctx context.Context, mediaID int64) string
 // suggestedPostInfo — read-модель предложенного поста (с именем автора).
 func (i *Interactor) suggestedPostInfo(ctx context.Context, sp domain.SuggestedPost) domain.SuggestedPostInfo {
 	info := domain.SuggestedPostInfo{
-		ID: sp.ID, ChatID: sp.ChatID, AuthorID: sp.AuthorID,
-		AuthorName: i.userCard(ctx, sp.AuthorID).DisplayName,
+		ID: sp.ID, PeerID: domain.ToPeerID(sp.ChatID, true), AuthorID: sp.AuthorID,
+		AuthorName: i.userCard(ctx, sp.AuthorID).Title(),
 		Text:       sp.Text, Entities: sp.Entities, MediaID: sp.MediaID,
 		Status: sp.Status, CreatedAt: sp.CreatedAt.UnixMilli(),
 	}
@@ -311,18 +305,16 @@ func (i *Interactor) suggestedPostInfo(ctx context.Context, sp domain.SuggestedP
 // (в приватный чат с сервисным аккаунтом). Название канала едет данными — клиент
 // собирает локализованную фразу.
 func (i *Interactor) notifyAuthorDecision(ctx context.Context, sp domain.SuggestedPost, approved bool) {
-	action := "suggest_post_rejected"
-	if approved {
-		action = "suggest_post_approved"
-	}
-	title := ""
-	if i.groups != nil {
-		if card, err := i.groups.Card(ctx, sp.ChatID, sp.AuthorID); err == nil {
-			title = card.Title
-		}
-	}
-	b, _ := json.Marshal(map[string]any{"action": action, "chat": title})
-	_ = i.PostServiceMessage(ctx, sp.AuthorID, string(b))
+	// Одобрение и отказ — ОДИН конструктор, решение выражает pFlags.rejected.
+	// Канал едет ССЫЛКОЙ (наш параметр вне схемы, см. докблок конструктора):
+	// у оригинала пилюля лежит в самом канале и называть его незачем, а у нас
+	// она приходит в чат с сервисным аккаунтом. Имя канала соберёт клиент из
+	// карточки пира — строкой оно НЕ едет, этот урок уже оплачен.
+	//
+	// Именно PostServiceAction: это ДЕЙСТВИЕ, а не текст. Через
+	// PostServiceMessage клиент разбор не включал вовсе — он смотрит на вид
+	// сообщения — и автор видел сырой JSON.
+	_ = i.PostServiceAction(ctx, sp.AuthorID, domain.NewMessageActionSuggestedPostApproval(!approved, sp.ChatID))
 }
 
 // publishSuggestedToAdmins рассылает состояние предложки решающим её админам.
@@ -334,10 +326,7 @@ func (i *Interactor) publishSuggestedToAdmins(ctx context.Context, chatID int64,
 	if err != nil {
 		return
 	}
-	f := frame("suggested_post_update", map[string]any{"chat_id": chatID, "post": info})
-	for _, uid := range admins {
-		_ = i.publisher.PublishToUser(ctx, uid, f)
-	}
+	i.publishPeerFrame(ctx, chatID, admins, 0, "suggested_post_update", map[string]any{"post": info})
 }
 
 // publishSuggestedToAuthor рассылает автору статус его предложки.
@@ -345,6 +334,5 @@ func (i *Interactor) publishSuggestedToAuthor(ctx context.Context, authorID int6
 	if i.publisher == nil {
 		return
 	}
-	f := frame("suggested_post_update", map[string]any{"chat_id": info.ChatID, "post": info})
-	_ = i.publisher.PublishToUser(ctx, authorID, f)
+	i.publishPeerFrame(ctx, info.PeerID.ToChatID(), []int64{authorID}, 0, "suggested_post_update", map[string]any{"post": info})
 }

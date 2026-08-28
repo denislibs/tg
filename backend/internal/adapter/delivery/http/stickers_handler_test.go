@@ -3,78 +3,125 @@ package http
 import (
 	"context"
 	"encoding/json"
-	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/messenger-denis/backend/internal/domain"
 	usecasestickers "github.com/messenger-denis/backend/internal/usecase/stickers"
 )
 
-// Представление стикера для клиента: кроме идентификаторов обязаны ехать
-// метаданные файла. Без width/height фронт не может вписать стикер в бокс по
-// пропорции, без mime — выбрать рендерер до загрузки байтов, без thumb — показать
-// нижний слой, пока файл летит, без path_thumb (векторный контур) — нарисовать
-// SVG-силуэт мгновенно, до самого thumb. Байты превью едут base64-строкой — тем
-// же способом, что blur_preview у медиа и avatar_preview у аватарок.
-func TestStickersJSON_CarriesMediaMetadata(t *testing.T) {
-	raw, err := json.Marshal(stickersJSON([]domain.Sticker{{
+// Стикер уезжает клиенту ДОКУМЕНТОМ схемы: своего типа у него нет вовсе
+// (Р1 разбора). Метаданные файла при этом не исчезают, а переезжают туда, где
+// им место у оригинала: размеры — в `documentAttributeImageSize`, эмодзи и
+// набор — в `documentAttributeSticker`, превью и векторный контур — ступенями
+// `thumbs`. Без них фронт не вписал бы стикер в бокс по пропорции, не выбрал
+// бы рендерер до загрузки байтов и не показал бы нижний слой, пока файл летит.
+//
+// Байты ступеней едут base64-строкой — тем же способом, что blur_preview у
+// медиа и avatar_preview у аватарок.
+func TestStickerDocument_CarriesMediaMetadata(t *testing.T) {
+	raw, err := json.Marshal(domain.StickerDocument(domain.Sticker{
 		ID: 7, SetID: 3, MediaID: 42, Emoji: "😀", Position: 1,
-		Width: 512, Height: 384, Mime: "image/webp", Thumb: []byte{0xFF, 0xD8, 0xFF},
-		PathThumb: []byte{0x4D, 0x7A},
-	}}))
+		Width: 512, Height: 384, Mime: "image/webp", Size: 4096,
+		Thumb: []byte{0xFF, 0xD8, 0xFF}, PathThumb: []byte{0x4D, 0x7A},
+	}))
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	var got []map[string]any
+	var got map[string]any
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if len(got) != 1 {
-		t.Fatalf("получено %d элементов, want 1", len(got))
+	if got["_"] != "document" || got["id"] != float64(42) || got["mime_type"] != "image/webp" {
+		t.Fatalf("документ = %#v", got)
+	}
+	if got["size"] != float64(4096) {
+		t.Fatalf("size = %#v, want 4096", got["size"])
 	}
 
-	want := map[string]any{
-		"id": float64(7), "set_id": float64(3), "media_id": float64(42), "emoji": "😀",
-		"width": float64(512), "height": float64(384), "mime": "image/webp",
-		"thumb":      "/9j/", // base64 от {0xFF,0xD8,0xFF}
-		"path_thumb": "TXo=", // base64 от {0x4D,0x7A}
+	// Ступени: stripped-превью и векторный контур — в том же порядке, что у
+	// вложения сообщения (их собирает общий BuildDocument).
+	thumbs, _ := got["thumbs"].([]any)
+	if len(thumbs) != 2 {
+		t.Fatalf("ступеней %d, want 2 (stripped + контур): %#v", len(thumbs), got["thumbs"])
 	}
-	for k, v := range want {
-		if got[0][k] != v {
-			t.Fatalf("поле %q = %#v, want %#v", k, got[0][k], v)
-		}
+	stripped, _ := thumbs[0].(map[string]any)
+	path, _ := thumbs[1].(map[string]any)
+	if stripped["_"] != "photoStrippedSize" || stripped["bytes"] != "/9j/" {
+		t.Fatalf("stripped-ступень = %#v", stripped)
+	}
+	if path["_"] != "photoPathSize" || path["bytes"] != "TXo=" {
+		t.Fatalf("ступень контура = %#v", path)
+	}
+
+	// Атрибуты: размеры кадра, затем эмодзи и НАБОР (Р3).
+	//
+	// ПОРЯДОК проверяется намеренно. Разбор документа идёт по атрибутам подряд,
+	// и `documentAttributeImageSize` безусловно ставит `type='photo'` — стоя
+	// ПОСЛЕ атрибута стикера, он затирает его, и разобранный стикер становится
+	// документом-фотографией. У Telegram размер идёт первым; переставь их
+	// местами — тест обязан покраснеть.
+	attrs, _ := got["attributes"].([]any)
+	if len(attrs) != 2 {
+		t.Fatalf("атрибутов %d, want 2: %#v", len(attrs), got["attributes"])
+	}
+	size, _ := attrs[0].(map[string]any)
+	if size["_"] != "documentAttributeImageSize" || size["w"] != float64(512) || size["h"] != float64(384) {
+		t.Fatalf("первый атрибут = %#v, want размеры кадра", size)
+	}
+	st, _ := attrs[1].(map[string]any)
+	if st["_"] != "documentAttributeSticker" || st["alt"] != "😀" {
+		t.Fatalf("второй атрибут = %#v, want стикер", st)
+	}
+	set, _ := st["stickerset"].(map[string]any)
+	if set["_"] != "inputStickerSetID" || set["id"] != float64(3) {
+		t.Fatalf("набор в атрибуте = %#v", set)
 	}
 }
 
-// Стикер, у медиа которого процессинг не отработал: поля обязаны присутствовать
-// с нулевыми значениями, а не исчезать — клиент отличает «нет превью» от
-// «поле не приехало» и деградирует до квадрата без нижнего слоя.
-func TestStickersJSON_EmptyMetadataStaysPresent(t *testing.T) {
-	raw, err := json.Marshal(stickersJSON([]domain.Sticker{{ID: 1, SetID: 1, MediaID: 2, Emoji: ""}}))
+// Стикер, у медиа которого процессинг не отработал: ступеней и атрибута
+// размеров нет вовсе — в схеме «неизвестно» это ОТСУТСТВИЕ элемента вектора, а
+// не элемент с нулями. Клиент деградирует до квадрата без нижнего слоя.
+//
+// Набор при этом обязан остаться: он не из media, а из строки стикера.
+func TestStickerDocument_NoMetadataMeansNoSizes(t *testing.T) {
+	raw, err := json.Marshal(domain.StickerDocument(domain.Sticker{ID: 1, SetID: 4, MediaID: 2}))
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	var got []map[string]any
+	var got map[string]any
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	for _, k := range []string{"width", "height", "mime", "thumb", "path_thumb"} {
-		if _, ok := got[0][k]; !ok {
-			t.Fatalf("поле %q пропало из ответа", k)
-		}
+	if _, ok := got["thumbs"]; ok {
+		t.Fatalf("ступени приехали пустыми: %#v", got["thumbs"])
 	}
-	if got[0]["width"] != float64(0) || got[0]["height"] != float64(0) {
-		t.Fatalf("размеры %v/%v, want 0/0", got[0]["width"], got[0]["height"])
+	attrs, _ := got["attributes"].([]any)
+	if len(attrs) != 1 {
+		t.Fatalf("атрибутов %d, want 1 (только стикер): %#v", len(attrs), got["attributes"])
 	}
-	if got[0]["thumb"] != nil {
-		t.Fatalf("thumb = %#v, want null", got[0]["thumb"])
+	st, _ := attrs[0].(map[string]any)
+	set, _ := st["stickerset"].(map[string]any)
+	if set["_"] != "inputStickerSetID" || set["id"] != float64(4) {
+		t.Fatalf("набор потерян: %#v", st)
 	}
-	if got[0]["path_thumb"] != nil {
-		t.Fatalf("path_thumb = %#v, want null", got[0]["path_thumb"])
+}
+
+// Файл, не числящийся ни в одном наборе, обязан ехать с «набора нет», а не с
+// подставленным нулём: ноль выглядел бы как настоящий адрес.
+func TestStickerDocument_NoSetIsEmptyConstructor(t *testing.T) {
+	raw, _ := json.Marshal(domain.StickerDocument(domain.Sticker{MediaID: 2}))
+	var got map[string]any
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	attrs, _ := got["attributes"].([]any)
+	st, _ := attrs[0].(map[string]any)
+	set, _ := st["stickerset"].(map[string]any)
+	if set["_"] != "inputStickerSetEmpty" {
+		t.Fatalf("адрес набора = %#v, want inputStickerSetEmpty", set)
 	}
 }
 
@@ -83,11 +130,11 @@ func TestStickersJSON_EmptyMetadataStaysPresent(t *testing.T) {
 // остальные методы (встроенный nil-интерфейс) в этом хендлере не вызываются.
 type featuredRepoStub struct {
 	usecasestickers.Repo
-	sets   []domain.StickerSet
+	sets   []domain.StickerSetRecord
 	covers map[int64][]domain.Sticker
 }
 
-func (s *featuredRepoStub) FeaturedSets(context.Context, int) ([]domain.StickerSet, error) {
+func (s *featuredRepoStub) FeaturedSets(context.Context, int) ([]domain.StickerSetRecord, error) {
 	return s.sets, nil
 }
 
@@ -106,7 +153,7 @@ func (s *featuredRepoStub) CoverStickers(_ context.Context, setIDs []int64, _ in
 // поиска рисует силуэт стикеров, не дожидаясь отдельного похода за набором.
 func TestFeatured_ReturnsSets(t *testing.T) {
 	h := NewStickersHandler(usecasestickers.New(&featuredRepoStub{
-		sets: []domain.StickerSet{
+		sets: []domain.StickerSetRecord{
 			{ID: 2, Slug: "newer", Title: "Newer", Kind: "sticker", StickerCount: 5},
 			{ID: 1, Slug: "older", Title: "Older", Kind: "sticker", StickerCount: 3},
 		},
@@ -120,34 +167,62 @@ func TestFeatured_ReturnsSets(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatalf("code = %d, want 200", w.Code)
 	}
-	var body struct {
-		Sets   []domain.StickerSet         `json:"sets"`
-		Covers map[string][]map[string]any `json:"covers"`
-	}
+	// Тренды — messages.featuredStickers: наборы едут вектором `sets`
+	// конструкторов stickerSetFullCovered, и ПОРЯДОК вектора и есть порядок
+	// выдачи (отдельного `rank` на проводе нет — Р8).
+	var body coveredBody
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("unmarshal: %v (body %s)", err, w.Body.String())
 	}
-	if len(body.Sets) != 2 || body.Sets[0].ID != 2 || body.Sets[1].ID != 1 {
-		t.Fatalf("sets = %+v, want порядок репозитория [2 1]", body.Sets)
+	if body.Underscore != "messages.featuredStickers" {
+		t.Fatalf("конструктор = %q", body.Underscore)
 	}
-	cover2, ok := body.Covers["2"]
-	if !ok || len(cover2) != 1 || cover2[0]["id"] != float64(20) {
-		t.Fatalf("covers[2] = %+v, want превью стикера 20", body.Covers["2"])
+	if body.Count != 2 {
+		t.Fatalf("count = %d, want 2", body.Count)
 	}
-	if _, ok := body.Covers["1"]; ok {
-		t.Fatalf("covers[1] не должен присутствовать — набор без превью в стабе")
+	if len(body.Sets) != 2 || body.Sets[0].Set.ID != 2 || body.Sets[1].Set.ID != 1 {
+		t.Fatalf("порядок наборов = %+v, want [2 1]", body.Sets)
 	}
+	if len(body.Sets[0].Documents) != 1 || body.Sets[0].Documents[0].ID != 200 {
+		t.Fatalf("превью первого набора = %+v, want документ 200", body.Sets[0].Documents)
+	}
+	// Набор без превью — ПУСТОЙ вектор документов, а не отсутствие набора:
+	// строка выдачи для него всё равно рисуется.
+	if len(body.Sets[1].Documents) != 0 {
+		t.Fatalf("превью второго набора = %+v, want пусто", body.Sets[1].Documents)
+	}
+}
+
+// coveredBody — общий разбор ответа трендов и поиска: у обоих вектор
+// `sets` из stickerSetFullCovered.
+type coveredBody struct {
+	Underscore string `json:"_"`
+	Count      int    `json:"count"`
+	Sets       []struct {
+		Underscore string `json:"_"`
+		Set        struct {
+			ID        int64  `json:"id"`
+			ShortName string `json:"short_name"`
+		} `json:"set"`
+		Documents []struct {
+			ID int64 `json:"id"`
+		} `json:"documents"`
+		Packs []struct {
+			Emoticon  string  `json:"emoticon"`
+			Documents []int64 `json:"documents"`
+		} `json:"packs"`
+	} `json:"sets"`
 }
 
 // searchSetsRepoStub — стаб порта stickers.Repo под SearchSets и CoverStickers
 // (SearchSets зовёт оба, тем же приёмом, что Featured).
 type searchSetsRepoStub struct {
 	usecasestickers.Repo
-	sets   []domain.StickerSet
+	sets   []domain.StickerSetRecord
 	covers map[int64][]domain.Sticker
 }
 
-func (s *searchSetsRepoStub) SearchSets(context.Context, string, int) ([]domain.StickerSet, error) {
+func (s *searchSetsRepoStub) SearchSets(context.Context, string, int) ([]domain.StickerSetRecord, error) {
 	return s.sets, nil
 }
 
@@ -165,7 +240,7 @@ func (s *searchSetsRepoStub) CoverStickers(_ context.Context, setIDs []int64, _ 
 // строка поиска не пуста до отдельного похода за полным набором.
 func TestSearchSets_ReturnsCovers(t *testing.T) {
 	h := NewStickersHandler(usecasestickers.New(&searchSetsRepoStub{
-		sets: []domain.StickerSet{{ID: 5, Slug: "duck_pack", Title: "Duck", Kind: "sticker"}},
+		sets: []domain.StickerSetRecord{{ID: 5, Slug: "duck_pack", Title: "Duck", Kind: "sticker"}},
 		covers: map[int64][]domain.Sticker{
 			5: {{ID: 50, SetID: 5, MediaID: 500, Emoji: "🦆"}},
 		},
@@ -176,90 +251,32 @@ func TestSearchSets_ReturnsCovers(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatalf("code = %d, want 200 (body %s)", w.Code, w.Body.String())
 	}
-	var body struct {
-		Sets   []domain.StickerSet         `json:"sets"`
-		Covers map[string][]map[string]any `json:"covers"`
-	}
+	// Поиск — СВОЙ конструктор (messages.foundStickerSets): у него нет ни
+	// `count`, ни `unread`, и общий тип с трендами сказал бы «ноль наборов в
+	// каталоге» там, где вопрос не задавался.
+	var body coveredBody
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("unmarshal: %v (body %s)", err, w.Body.String())
 	}
-	if len(body.Sets) != 1 || body.Sets[0].ID != 5 {
-		t.Fatalf("sets = %+v, want [5]", body.Sets)
+	if body.Underscore != "messages.foundStickerSets" {
+		t.Fatalf("конструктор = %q", body.Underscore)
 	}
-	cover5, ok := body.Covers["5"]
-	if !ok || len(cover5) != 1 || cover5[0]["id"] != float64(50) {
-		t.Fatalf("covers[5] = %+v, want превью стикера 50", body.Covers["5"])
+	if len(body.Sets) != 1 || body.Sets[0].Set.ID != 5 || body.Sets[0].Set.ShortName != "duck_pack" {
+		t.Fatalf("наборы = %+v", body.Sets)
 	}
-}
-
-// setByMediaIDRepoStub — стаб порта stickers.Repo только под SetByMediaID.
-type setByMediaIDRepoStub struct {
-	usecasestickers.Repo
-	set domain.StickerSet
-	err error
-}
-
-func (s *setByMediaIDRepoStub) SetByMediaID(context.Context, int64) (domain.StickerSet, error) {
-	return s.set, s.err
-}
-
-// requestWithMediaID — httptest-запрос с chi-параметром {mediaID}, как если бы
-// его положил роутер (в тесте хендлер зовётся напрямую, без реального роутера).
-func requestWithMediaID(mediaID string) *http.Request {
-	r := httptest.NewRequest("GET", "/stickers/by-media/"+mediaID, nil)
-	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("mediaID", mediaID)
-	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
-}
-
-// GET /stickers/by-media/{mediaID}: медиа принадлежит набору → 200 с набором
-// в конверте {"set": …} (клик по стикеру в чате, ConvMsg несёт только media_id).
-func TestSetByMediaID_Found(t *testing.T) {
-	h := NewStickersHandler(usecasestickers.New(&setByMediaIDRepoStub{
-		set: domain.StickerSet{ID: 7, Slug: "utyaduck", Title: "Duck", Kind: "sticker"},
-	}))
-
-	w := httptest.NewRecorder()
-	h.SetByMediaID(w, requestWithMediaID("42"))
-	if w.Code != 200 {
-		t.Fatalf("code = %d, want 200 (body %s)", w.Code, w.Body.String())
+	if len(body.Sets[0].Documents) != 1 || body.Sets[0].Documents[0].ID != 500 {
+		t.Fatalf("превью = %+v, want документ 500", body.Sets[0].Documents)
 	}
-	var body struct {
-		Set domain.StickerSet `json:"set"`
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if body.Set.Slug != "utyaduck" {
-		t.Fatalf("set.slug = %q, want utyaduck", body.Set.Slug)
+	// Обратный индекс едет вместе с набором (Р6): подсказку по эмодзи клиент
+	// считает сам, отдельного запроса к серверу для этого больше не нужно.
+	if len(body.Sets[0].Packs) != 1 || body.Sets[0].Packs[0].Emoticon != "🦆" ||
+		len(body.Sets[0].Packs[0].Documents) != 1 || body.Sets[0].Packs[0].Documents[0] != 500 {
+		t.Fatalf("обратный индекс = %+v", body.Sets[0].Packs)
 	}
 }
 
-// Медиа без набора (не стикер / стикер удалён) → 404, как и остальные
-// stickers-ручки на domain.ErrNotFound.
-func TestSetByMediaID_NotFound(t *testing.T) {
-	h := NewStickersHandler(usecasestickers.New(&setByMediaIDRepoStub{err: domain.ErrNotFound}))
-
-	w := httptest.NewRecorder()
-	h.SetByMediaID(w, requestWithMediaID("999999"))
-	if w.Code != 404 {
-		t.Fatalf("code = %d, want 404 (body %s)", w.Code, w.Body.String())
-	}
-}
-
-// Нечисловой mediaID в пути → 400, как у остальных pathInt-ручек.
-func TestSetByMediaID_BadParam(t *testing.T) {
-	h := NewStickersHandler(usecasestickers.New(&setByMediaIDRepoStub{}))
-
-	w := httptest.NewRecorder()
-	h.SetByMediaID(w, requestWithMediaID("not-a-number"))
-	if w.Code != 400 {
-		t.Fatalf("code = %d, want 400 (body %s)", w.Code, w.Body.String())
-	}
-}
-
-// Пустая выдача сериализуется как {"sets":[],"covers":{}}, а не null — клиент
-// мапит r.sets ?? [] и обходит r.covers объектом, не ожидая null.
+// Пустая выдача — вектор нулевой длины, а не null: в схеме пустой Vector это
+// вектор из нуля элементов, и клиент обходит его без гейта на null.
 func TestFeatured_EmptyIsArray(t *testing.T) {
 	h := NewStickersHandler(usecasestickers.New(&featuredRepoStub{}))
 
@@ -275,7 +292,7 @@ func TestFeatured_EmptyIsArray(t *testing.T) {
 	if string(body["sets"]) != "[]" {
 		t.Fatalf(`sets = %s, want []`, body["sets"])
 	}
-	if string(body["covers"]) != "{}" {
-		t.Fatalf(`covers = %s, want {}`, body["covers"])
+	if string(body["unread"]) != "[]" {
+		t.Fatalf(`unread = %s, want []`, body["unread"])
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -78,11 +79,11 @@ func (f *fakeChecklists) Info(_ context.Context, checklistID int64) (domain.Chec
 		Items: make([]domain.ChecklistItemInfo, 0, len(c.Items)),
 	}
 	for _, it := range c.Items {
-		by := []int64{}
+		marks := []domain.ChecklistMark{}
 		for uid := range f.marks[checklistID][it.ID] {
-			by = append(by, uid)
+			marks = append(marks, domain.ChecklistMark{UserID: uid, At: time.Unix(1_700_000_000, 0)})
 		}
-		info.Items = append(info.Items, domain.ChecklistItemInfo{ID: it.ID, Text: it.Text, MarkedBy: by})
+		info.Items = append(info.Items, domain.ChecklistItemInfo{ID: it.ID, Text: it.Text, Marks: marks})
 	}
 	return info, nil
 }
@@ -90,7 +91,7 @@ func (f *fakeChecklists) Info(_ context.Context, checklistID int64) (domain.Chec
 func markedBy(info domain.ChecklistInfo, itemID int) int {
 	for _, it := range info.Items {
 		if it.ID == itemID {
-			return len(it.MarkedBy)
+			return len(it.Marks)
 		}
 	}
 	return -1

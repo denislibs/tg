@@ -15,13 +15,24 @@ import (
 
 // SessionCache stores auth sessions in Redis under "session:{tokenHash}". It
 // implements the auth usecase's SessionCache port.
+//
+// ⚠ Та же ловушка развёртывания, что у DialogsCache: значение — JSON
+// domain.Session БЕЗ json-тегов, ключи кэша это имена полей Go. Ключ
+// адресации пиров не касается и шагом B не менялся.
+//
+// Шаг C форму ИЗМЕНИЛ: Session.User это теперь domain.UserRecord, где нет
+// DisplayName/AvatarURL/PhoneVisibility, зато есть PhotoID/PhotoPreview и
+// флаги. Старый блоб, прочитанный новым кодом, отдал бы пользователя без
+// аватарки и без флагов — молча, потому что json.Unmarshal лишние ключи
+// игнорирует, а недостающие оставляет нулями. Поэтому префикс ключа поднят:
+// промах кэша безопаснее тихо неверного попадания.
 type SessionCache struct{ rdb *goredis.Client }
 
 var _ usecaseauth.SessionCache = (*SessionCache)(nil)
 
 func NewSessionCache(rdb *goredis.Client) *SessionCache { return &SessionCache{rdb: rdb} }
 
-func sessionKey(tokenHash string) string { return "session:" + tokenHash }
+func sessionKey(tokenHash string) string { return "session2:" + tokenHash }
 
 func (c *SessionCache) GetSession(ctx context.Context, tokenHash string) (*domain.Session, error) {
 	b, err := c.rdb.Get(ctx, sessionKey(tokenHash)).Bytes()

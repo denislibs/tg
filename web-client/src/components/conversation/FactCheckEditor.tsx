@@ -19,7 +19,7 @@ const MAX = 1024
 
 export default function FactCheckEditor({ initial, onClose, onSubmit }: Props) {
   const t = useT()
-  const [text, setText] = useState(initial?.text ?? '')
+  const [text, setText] = useState(initial?.text?.text ?? '')
   const [country, setCountry] = useState(initial?.country ?? '')
   const trimmed = text.trim()
 

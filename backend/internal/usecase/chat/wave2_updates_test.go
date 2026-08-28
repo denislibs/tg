@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -16,9 +17,9 @@ import (
 func newLoggedGroupInteractor() (*Interactor, *store, *fakeGroupRepo, *fakePublisher) {
 	fg := newFakeGroupRepo()
 	s := newStore()
-	fg.onCreate = func(id int64) {
+	fg.onCreate = func(id int64, typ string) {
 		s.mu.Lock()
-		s.chatType[id] = "group"
+		s.chatType[id] = typ
 		s.mu.Unlock()
 	}
 	in := New(fakeTx{}, groupChats{fg}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, fg, newFakeInviteRepo(), nil, nil, newFakeJoinRequestRepo())
@@ -74,8 +75,9 @@ func assertLiveFramePts(t *testing.T, pub *fakePublisher, userID int64, typ stri
 			continue
 		}
 		var env struct {
-			T string         `json:"t"`
-			D map[string]any `json:"d"`
+			T   string         `json:"t"`
+			D   map[string]any `json:"d"`
+			Pts *float64       `json:"pts"`
 		}
 		if err := json.Unmarshal(pub.frames[i].frame, &env); err != nil {
 			continue
@@ -83,7 +85,13 @@ func assertLiveFramePts(t *testing.T, pub *fakePublisher, userID int64, typ stri
 		if env.T != typ {
 			continue
 		}
+		// Курсор лежит в теле либо в конверте — выбирает СХЕМА кадра
+		// (TestFramePts_LivesWhereSchemaSaysIt). Здесь важно лишь, что он есть
+		// и совпадает со строкой журнала.
 		pts, ok := env.D["pts"].(float64)
+		if !ok && env.Pts != nil {
+			pts, ok = *env.Pts, true
+		}
 		if !ok {
 			t.Fatalf("%q frame for %d missing pts: %v", typ, userID, env.D)
 		}
@@ -150,10 +158,20 @@ func TestChatUpdate_LoggedAndLiveToMembers(t *testing.T) {
 		assertLiveFramePts(t, pub, uid, "chat_update", pts)
 		assertInDifference(t, in, uid, "chat_update", pts)
 	}
-	// Snapshot is absolute: the frame carries the new title.
+	// Снимок абсолютный: кадр несёт messages.chatFull с новым заголовком
+	// внутри краткой формы чата — ту же пару конструкторов, что и ручка карточки.
 	d := lastFrameFor(t, pub, member)
-	if d["title"] != "Renamed" {
-		t.Fatalf("chat_update title = %v; want Renamed", d["title"])
+	cf, _ := d["chat_full"].(map[string]any)
+	if cf == nil || cf["_"] != "messages.chatFull" {
+		t.Fatalf("chat_update без messages.chatFull: %v", d)
+	}
+	chats, _ := cf["chats"].([]any)
+	if len(chats) != 1 {
+		t.Fatalf("chat_update chats = %v", cf["chats"])
+	}
+	chat, _ := chats[0].(map[string]any)
+	if chat["_"] != "channel" || chat["title"] != "Renamed" {
+		t.Fatalf("chat_update chat = %v; want channel «Renamed»", chat)
 	}
 }
 
@@ -176,6 +194,35 @@ func TestPollUpdate_LoggedAndDiff(t *testing.T) {
 		pts := assertLoggedRow(t, s, uid, "poll_update")
 		assertLiveFramePts(t, pub, uid, "poll_update", pts)
 		assertInDifference(t, in, uid, "poll_update", pts)
+	}
+
+	// Итоги кадра собраны для «зрителя 0»: тело одно на всех получателей, а
+	// chosen/correct — пер-зрительские. В схеме это pollResults.pFlags.min, и
+	// именно по нему клиент СОХРАНЯЕТ свой выбор вместо того, чтобы затереть
+	// его отсутствием chosen. Голосовавший в кадре не отмечен — без флага его
+	// выбор пропал бы при первом же кадре.
+	// Кадр — конструктор схемы: опрос адресуется СВОИМ id, итоги лежат
+	// отдельным параметром (не внутри вложения, как было у нас).
+	var env struct {
+		D struct {
+			Underscore string             `json:"_"`
+			PollID     int64              `json:"poll_id"`
+			Results    domain.PollResults `json:"results"`
+		} `json:"d"`
+	}
+	if err := json.Unmarshal(mustFrame(t, pub, voter, "poll_update"), &env); err != nil {
+		t.Fatalf("кадр poll_update не разбирается: %v", err)
+	}
+	if env.D.Underscore != domain.UpdateMessagePollTag || env.D.PollID == 0 {
+		t.Errorf("кадр = %q, poll_id = %d", env.D.Underscore, env.D.PollID)
+	}
+	if !env.D.Results.PFlags["min"] {
+		t.Errorf("итоги кадра без pFlags.min: %+v", env.D.Results)
+	}
+	for _, r := range env.D.Results.Results {
+		if r.PFlags["chosen"] {
+			t.Errorf("кадр несёт пер-зрительский chosen: %+v", r)
+		}
 	}
 }
 
@@ -243,8 +290,15 @@ func TestBalanceUpdate_Logged(t *testing.T) {
 	pts := assertLoggedRow(t, s, uid, "balance_update")
 	assertLiveFramePts(t, pub, uid, "balance_update", pts)
 	assertInDifference(t, in, uid, "balance_update", pts)
-	if d := lastFrameFor(t, pub, uid); asInt64(t, d["balance"]) != 42 {
-		t.Fatalf("balance_update balance = %v; want 42", d["balance"])
+	// Баланс едет КОНСТРУКТОРОМ starsAmount, а не голым числом: у оригинала
+	// звёзды дробные (nanos), и «целое» — частный случай, а не форма.
+	d := lastFrameFor(t, pub, uid)
+	if d["_"] != domain.UpdateStarsBalanceTag {
+		t.Fatalf("кадр баланса = %v", d["_"])
+	}
+	balance, _ := d["balance"].(map[string]any)
+	if balance["_"] != domain.StarsAmountTag || asInt64(t, balance["amount"]) != 42 {
+		t.Fatalf("balance_update balance = %v; want starsAmount 42", d["balance"])
 	}
 }
 
@@ -254,7 +308,62 @@ func TestLogAndPublish_NoUpdateLogNoOp(t *testing.T) {
 	fg := newFakeGroupRepo()
 	// updates=nil, publisher=nil (as newGroupTestInteractor does).
 	in := New(fakeTx{}, groupChats{fg}, nil, nil, nil, nil, fg, newFakeInviteRepo(), nil, nil, newFakeJoinRequestRepo())
-	if err := in.logAndPublish(context.Background(), []int64{1, 2}, "draft_update", map[string]any{"x": 1}); err != nil {
+	if err := in.logAndPublish(context.Background(), 0, []int64{1, 2}, "draft_update", map[string]any{"x": 1}); err != nil {
 		t.Fatalf("logAndPublish with nil update log: %v", err)
+	}
+}
+
+// Кадр dialog_mute несёт notify_settings ЦЕЛИКОМ, а не пару {muted, muted_until}
+// (решение Р4). Дефект, который это чинит, был сквозным: UI предлагал «на час»,
+// клиент слал срок, база его хранила — а кадр отдавал булево, и «на час»
+// работало как «навсегда».
+func TestDialogMuteFrameCarriesNotifySettings(t *testing.T) {
+	in, _, _, pub := newLoggedGroupInteractor()
+	ctx := context.Background()
+	const owner int64 = 7
+	chatID, err := in.CreateGroup(ctx, owner, "Team", "", "", false, nil)
+	if err != nil {
+		t.Fatalf("CreateGroup: %v", err)
+	}
+
+	settingsOf := func(t *testing.T) map[string]any {
+		t.Helper()
+		d := lastFrameFor(t, pub, owner)
+		ns, _ := d["notify_settings"].(map[string]any)
+		if ns == nil || ns["_"] != domain.PeerNotifySettingsTag {
+			t.Fatalf("кадр без конструктора notify_settings: %v", d)
+		}
+		if _, ok := d["muted"]; ok {
+			t.Errorf("булев мьют остался в кадре: %v", d)
+		}
+		return ns
+	}
+
+	// Временный мьют: срок обязан доехать своим числом.
+	until := time.Now().Add(time.Hour).Truncate(time.Second)
+	pub.reset()
+	if err := in.SetMute(ctx, chatID, owner, true, &until); err != nil {
+		t.Fatalf("SetMute(на час): %v", err)
+	}
+	if got := settingsOf(t)["mute_until"]; got == nil || int64(got.(float64)) != until.Unix() {
+		t.Fatalf("mute_until = %v; want %d", got, until.Unix())
+	}
+
+	// «Навсегда» — это тот же срок, только далёкий (порт MUTE_UNTIL tweb).
+	pub.reset()
+	if err := in.SetMute(ctx, chatID, owner, true, nil); err != nil {
+		t.Fatalf("SetMute(навсегда): %v", err)
+	}
+	if got := settingsOf(t)["mute_until"]; got == nil || int64(got.(float64)) != domain.MuteUntilForever {
+		t.Fatalf("«навсегда» = %v; want %d", got, domain.MuteUntilForever)
+	}
+
+	// Снятие — отсутствие переопределения, а не срок в прошлом.
+	pub.reset()
+	if err := in.SetMute(ctx, chatID, owner, false, &until); err != nil {
+		t.Fatalf("SetMute(снять): %v", err)
+	}
+	if got, ok := settingsOf(t)["mute_until"]; ok {
+		t.Fatalf("после снятия mute_until = %v; want отсутствие ключа", got)
 	}
 }

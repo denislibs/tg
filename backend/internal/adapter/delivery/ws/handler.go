@@ -13,7 +13,7 @@ import (
 
 // Authenticator resolves a token to the authenticated user + device.
 type Authenticator interface {
-	Authenticate(ctx context.Context, token string) (domain.User, int64, error)
+	Authenticate(ctx context.Context, token string) (domain.UserRecord, int64, error)
 }
 
 // Handler upgrades HTTP to WebSocket, authenticates via the ?token= query
@@ -68,7 +68,10 @@ func NewHandler(hub *Hub, auth Authenticator, chatSvc *usecasechat.Interactor, p
 			// ВАЖНО: токен 'dnp.2' через '.', а не '/': '/' — separator по RFC 2616,
 			// браузерный WebSocket-конструктор такой subprotocol отвергает. Noise-
 			// prologue при этом остаётся 'dnp/2' (noise.go) — это отдельные байты.
-			Subprotocols: []string{"bearer", "dnp.2"},
+			// `tl.1` ПЕРВЫМ: gorilla выбирает первый из СВОЕГО списка, который
+			// нашёлся у клиента, а клиент шлёт ['tl.1', 'bearer', <token>] —
+			// иначе выбрался бы 'bearer' и провод остался бы JSON.
+			Subprotocols: []string{"tl.1", "bearer", "dnp.2"},
 			// Анти-CSWSH: пускаем только с allow-list origin'ов (те же, что WebAuthn).
 			// Пустой Origin (нативные клиенты/тесты — не браузер) допускаем; аутентификация
 			// по токену (subprotocol/query), origin-гейт снимает cross-site-подключение.
@@ -118,8 +121,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return // Upgrade already wrote the error
 	}
 	conn := newConn(wsConn, h.hub, h.chatSvc, h.presence, user, deviceID, plainCodec{}, nil, nil)
+	// Формат провода выбирает КЛИЕНТ подпротоколом — это флаг раскатки, а не
+	// настройка сервера: обе формы собираются из одной модели, и сервер отдаёт
+	// ту, которую соединение попросило.
+	conn.SetWireTL(hasSubprotocol(r, wireTLSubprotocol))
 	conn.run(r.Context())
 }
+
+// wireTLSubprotocol — подпротокол «говори со мной на TL».
+const wireTLSubprotocol = "tl.1"
 
 func hasSubprotocol(r *http.Request, want string) bool {
 	for _, p := range websocket.Subprotocols(r) {
@@ -133,11 +143,16 @@ func hasSubprotocol(r *http.Request, want string) bool {
 // wsToken достаёт сессионный токен из WS-subprotocol (клиент шлёт ['bearer',
 // <token>] в Sec-WebSocket-Protocol — токен НЕ в URL). Fallback — устаревший
 // ?token= (старые вкладки до раскатки; query оседает в логах — см. SEC-6).
+//
+// Токеном считается всё, что не является ИЗВЕСТНЫМ подпротоколом: список
+// именно поэтому явный. Пропусти в нём `tl.1` — и «токеном» стало бы имя
+// подпротокола, то есть выбор формата провода ломал бы аутентификацию.
 func wsToken(r *http.Request) string {
 	for _, p := range websocket.Subprotocols(r) {
-		if p != "" && p != "bearer" {
-			return p
+		if p == "" || p == "bearer" || p == wireTLSubprotocol || p == "dnp.2" {
+			continue
 		}
+		return p
 	}
 	return r.URL.Query().Get("token")
 }

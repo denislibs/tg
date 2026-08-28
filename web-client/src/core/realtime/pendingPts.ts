@@ -15,7 +15,7 @@
 // в воркере (`workerCore.ts`: два concurrent decrypt резолвятся не в порядке pts).
 // Модуль чистый (без таймеров) — таймаут/фолбэк на catch-up держит вызывающий.
 
-export interface PendingItem { t: string; pts: number; d: unknown }
+export interface PendingItem { key: string; pts: number; d: unknown }
 
 export interface PendingPts {
   /**

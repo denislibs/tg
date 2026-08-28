@@ -30,11 +30,11 @@ func TestTopicsRepo_GeneralPinEditOrder(t *testing.T) {
 	}
 
 	// Две обычные темы.
-	a, err := r.Create(ctx, domain.ForumTopic{ChatID: chat, RootMsgID: 0, Title: "Alpha", IconColor: 1, CreatedBy: user})
+	a, err := r.Create(ctx, domain.ForumTopicRecord{ChatID: chat, RootMsgID: 0, Title: "Alpha", IconColor: 1, CreatedBy: user})
 	if err != nil {
 		t.Fatalf("create Alpha: %v", err)
 	}
-	b, err := r.Create(ctx, domain.ForumTopic{ChatID: chat, RootMsgID: 0, Title: "Beta", IconEmoji: "🔥", CreatedBy: user})
+	b, err := r.Create(ctx, domain.ForumTopicRecord{ChatID: chat, RootMsgID: 0, Title: "Beta", IconEmoji: "🔥", CreatedBy: user})
 	if err != nil {
 		t.Fatalf("create Beta: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestTopicsRepo_ReadStateMuteUnread(t *testing.T) {
 		chat, me).Scan(&rootID); err != nil {
 		t.Fatalf("seed root msg: %v", err)
 	}
-	topic, err := r.Create(ctx, domain.ForumTopic{ChatID: chat, RootMsgID: rootID, Title: "Topic", CreatedBy: me})
+	topic, err := r.Create(ctx, domain.ForumTopicRecord{ChatID: chat, RootMsgID: rootID, Title: "Topic", CreatedBy: me})
 	if err != nil {
 		t.Fatalf("create topic: %v", err)
 	}
@@ -124,7 +124,9 @@ func TestTopicsRepo_ReadStateMuteUnread(t *testing.T) {
 	}
 
 	// До прочтения: только чужое сообщение (seq 2) непрочитано → unread=1,
-	// своё (seq 3) не считается; last_out=true (последнее — от me), last_seq=3.
+	// своё (seq 3) не считается. Последнее сообщение выдаётся ССЫЛКОЙ — ключ
+	// строки плюс номер в чате; «моё ли оно» выводит клиент из самого
+	// сообщения, серверного last_out больше нет.
 	list, err := r.ListByChat(ctx, chat, me)
 	if err != nil {
 		t.Fatalf("ListByChat: %v", err)
@@ -133,11 +135,14 @@ func TestTopicsRepo_ReadStateMuteUnread(t *testing.T) {
 	if row.UnreadCount != 1 {
 		t.Fatalf("unread before read = %d; want 1", row.UnreadCount)
 	}
-	if !row.LastOut {
-		t.Fatalf("last_out want true (last msg from me)")
+	if row.LastMsgID != meMsg {
+		t.Fatalf("last_msg_id = %d; want %d", row.LastMsgID, meMsg)
 	}
 	if row.LastMsgSeq != 3 {
 		t.Fatalf("last_seq = %d; want 3", row.LastMsgSeq)
+	}
+	if row.LastReadSeq != 0 {
+		t.Fatalf("read_inbox_max_id before read = %d; want 0", row.LastReadSeq)
 	}
 	if row.Muted {
 		t.Fatalf("muted want false by default")
@@ -150,6 +155,10 @@ func TestTopicsRepo_ReadStateMuteUnread(t *testing.T) {
 	row = find(mustList(t, r, chat, me))
 	if row.UnreadCount != 0 {
 		t.Fatalf("unread after read = %d; want 0", row.UnreadCount)
+	}
+	// Горизонт чтения зрителя едет наружу (read_inbox_max_id конструктора).
+	if row.LastReadSeq != 3 {
+		t.Fatalf("read_inbox_max_id after read = %d; want 3", row.LastReadSeq)
 	}
 	// GREATEST: повторная пометка меньшим seq не откатывает.
 	if err := r.SetTopicRead(ctx, chat, rootID, me, 1); err != nil {
@@ -173,13 +182,12 @@ func TestTopicsRepo_ReadStateMuteUnread(t *testing.T) {
 		t.Fatalf("muted want false after unmute")
 	}
 
-	// Со стороны other: последнее сообщение — от me → last_out=false; своё seq3
-	// прочитано? нет — other ничего не читал, чужие для него = seq1(service? нет,
-	// service не в треде) + seq3(me). unread для other считает seq2(own→нет)+seq3(me)=1.
-	_ = meMsg
+	// Со стороны other: ссылка на последнее сообщение ОДНА И ТА ЖЕ (она не
+	// зависит от зрителя), а состояние чтения — своё. other ничего не читал,
+	// чужие для него seq2(own→нет)+seq3(me) = 1.
 	rowOther := find(mustList(t, r, chat, other))
-	if rowOther.LastOut {
-		t.Fatalf("last_out for other want false")
+	if rowOther.LastMsgID != meMsg || rowOther.LastMsgSeq != 3 {
+		t.Fatalf("ссылка на последнее для other = %d/%d; want %d/3", rowOther.LastMsgID, rowOther.LastMsgSeq, meMsg)
 	}
 	if rowOther.UnreadCount != 1 {
 		t.Fatalf("unread for other = %d; want 1 (seq3 from me)", rowOther.UnreadCount)

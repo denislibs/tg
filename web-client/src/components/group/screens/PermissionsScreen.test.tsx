@@ -25,9 +25,26 @@ function makeGroupEdit(over: Partial<GroupEdit>): GroupEdit {
   })
 }
 
+// ⚠ ПОЛЯРНОСТЬ: `default_banned_rights` это ЧТО НЕЛЬЗЯ. Здесь запрещены
+// send_media / pin_messages / change_info, значит РАЗРЕШЕНЫ send_messages (1) и
+// invite_users (4) — тот же набор, что раньше выражался `defaultPermissions: 5`.
 const g = makeGroupEdit({
-  // 1 (Send Messages) и 4 (Add Users) включены, остальные — сняты
-  card: { defaultPermissions: 5, slowmodeSeconds: 0, chargeStars: 0 } as GroupEdit['card'],
+  card: {
+    chat: {
+      _: 'channel', id: 1, title: 'G', photo: { _: 'chatPhotoEmpty' }, date: 0,
+      pFlags: { megagroup: true },
+      default_banned_rights: {
+        _: 'chatBannedRights',
+        pFlags: { send_media: true, pin_messages: true, change_info: true },
+        until_date: 0,
+      },
+    },
+    fullChat: {
+      _: 'channelFull', id: 1, about: '',
+      read_inbox_max_id: 0, read_outbox_max_id: 0, unread_count: 0, chat_photo: null,
+    },
+    peerId: -1,
+  },
   isCreator: false,
 })
 

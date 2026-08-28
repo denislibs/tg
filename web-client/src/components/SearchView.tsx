@@ -7,26 +7,32 @@ import { useEffect, useState } from 'react'
 import Text from '../shared/ui/Text'
 import Avatar from '../shared/ui/Avatar'
 import SidebarSection from '../shared/ui/SidebarSection'
-import { useAvatarSrc } from './useAvatarSrc'
+import { useMediaUrl } from '../core/hooks/useMediaUrl'
 import VerifiedBadge from './VerifiedBadge'
 import PremiumBadge from './PremiumBadge'
 import EmojiStatus from './EmojiStatus'
 import PlayPauseGlyph from './PlayPauseGlyph'
 import ConfirmDialog from './settings/ConfirmDialog'
 import type { Chat, OpenPeer } from '../data'
-import type { SearchResult } from '../core/managers/channelsManager'
-import type { Message } from '../core/models'
+import type { ContactsFound } from '../core/managers/channelsManager'
+import { getMessageText, type MyMessage } from '../core/models'
+import { getMediaId, getMessageKind } from '../core/messages/messageKind'
+import { messageDateISO } from '../core/messageToConvMsg'
 import { useGlobalSearch, type SearchFilter } from '../core/hooks/useGlobalSearch'
 import { useSearchStore } from '../stores/searchStore'
 import { useAppStateKey, useAppStateStore, setAppState } from '../stores/appState'
 import { useChatsStore } from '../stores/chatsStore'
 import { useAudioStore, type AudioTrack } from '../stores/audioStore'
 import { markMediaPlayed } from '../core/mediaRead'
+import { getDocumentFromMessage, getMediaFromMessage, hasServerThumb } from '../core/media/messageMedia'
 import MediaGridThumb from './MediaGridThumb'
 import { friendlyMsgTime } from '../core/format/friendlyTime'
 import { gradientFor, mediaLabel } from '../core/dialogToChat'
 import { EXT_COLORS, extOf, firstUrl, fmtDur, fmtSize, hostOf } from '../core/format/sharedMediaFmt'
 import { useLang, useT } from '../i18n'
+import { getChatTitle, isBroadcast } from '../core/peers/predicates'
+import { getUserTitle } from '../core/peers/getPeerTitle'
+import { getPeerPhoto, getPeerPhotoId, peerKey, type Chat as PeerChat, type UserReal } from '../core/peers/peer'
 import { Tabs, TabSlide } from '../shared/ui/Tabs'
 import s from './SearchView.module.scss'
 
@@ -52,12 +58,12 @@ interface Props {
   query: string
   chats: Chat[]
   onSelect: (id: string) => void
-  searchReal?: (q: string) => Promise<SearchResult>
+  searchReal?: (q: string) => Promise<ContactsFound>
   onJoin?: (username: string) => void
   onOpenPeer?: (peer: OpenPeer) => void
 }
 
-const EMPTY_RESULT: SearchResult = { chats: [], users: [] }
+const EMPTY_RESULT: ContactsFound = { _: 'contacts.found', my_results: [], results: [], chats: [], users: [] }
 
 // подсветка вхождения запроса (tweb messageEntityHighlight → .text-highlight)
 function Highlighted({ text, q }: { text: string; q: string }) {
@@ -77,7 +83,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
   const t = useT()
   const [lang] = useLang()
   const [tab, setTab] = useState(0)
-  const [results, setResults] = useState<SearchResult>(EMPTY_RESULT)
+  const [results, setResults] = useState<ContactsFound>(EMPTY_RESULT)
   const recentIds = useAppStateKey('recentSearch')
   const [confirmClear, setConfirmClear] = useState(false)
 
@@ -110,19 +116,23 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
     pushRecent(id)
     onSelect(id)
   }
-  // Результат-чат из директории: свой диалог → открыть; чужой → вступить по @username.
-  const onResultChat = (id: number, username: string) => {
-    const sid = String(id)
+  // Результат-чат из директории: свой диалог → открыть; чужой → вступить по
+  // @username. Ключ ЗНАКОВЫЙ (`peerKey`): внутри конструктора `id` —
+  // положительный сырой идентификатор, а список диалогов индексирован знаковым
+  // ключом, и сравнение сырого id с ним не совпало бы НИКОГДА.
+  const onResultChat = (c: PeerChat) => {
+    const sid = String(peerKey(c))
+    const username = c._ === 'channel' ? c.username ?? '' : ''
     if (byId.has(sid)) openDialog(sid)
     else if (username && onJoin) onJoin(username)
   }
-  const onResultUser = (u: { id: number; displayName: string; username: string; avatarUrl: string }) => {
-    onOpenPeer?.({ id: u.id, displayName: u.displayName || u.username || `#${u.id}`, username: u.username, avatarUrl: u.avatarUrl })
+  const onResultUser = (u: UserReal) => {
+    onOpenPeer?.({ id: peerKey(u), title: getUserTitle(u), username: u.username, photoId: getPeerPhotoId(u.photo) || undefined })
   }
   // Клик по сообщению: открыть чат и прыгнуть к seq (pendingJump потребляет Chat)
-  const openMessage = (m: Message) => {
-    useSearchStore.getState().setPendingJump(m.chatId, m.seq)
-    openDialog(String(m.chatId))
+  const openMessage = (m: MyMessage) => {
+    useSearchStore.getState().setPendingJump(m.peerId, m.id)
+    openDialog(String(m.peerId))
   }
 
   // Музыка/голосовые: очередь глобального плеера из строк таба (как в панели инфо)
@@ -131,22 +141,22 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
   const togglePlay = useAudioStore((st) => st.toggle)
   const curMediaId = useAudioStore((st) => st.track?.mediaId)
   const audioPlaying = useAudioStore((st) => st.playing)
-  const playRow = (m: Message, title: string) => {
-    if (m.mediaId == null) return
-    if (m.mediaId === curMediaId) {
+  const playRow = (m: MyMessage, title: string) => {
+    if (getMediaId(m) == null) return
+    if (getMediaId(m) === curMediaId) {
       togglePlay()
       return
     }
-    const list = (msgs ?? []).filter((x) => x.mediaId != null)
+    const list = (msgs ?? []).filter((x) => getMediaId(x) != null)
     const tracks: AudioTrack[] = list.map((x) => ({
-      mediaId: x.mediaId as number,
-      title: x.type === 'audio' ? x.mediaName || t('Audio') : title,
-      subtitle: friendlyMsgTime(x.createdAt, lang),
-      chatId: x.chatId,
+      mediaId: getMediaId(x) as number,
+      title: getMessageKind(x) === 'audio' ? getDocumentFromMessage(x)?.file_name || t('Audio') : title,
+      subtitle: friendlyMsgTime(messageDateISO(x.date), lang),
+      peerId: x.peerId,
       msgId: x.id,
     }))
     playQueue(tracks, list.indexOf(m))
-    if (m.senderId !== meId && m.mediaUnread) markMediaPlayed(m.chatId, m.id)
+    if ((m.fromId ?? 0) !== meId && m.pFlags.media_unread) markMediaPlayed(m.peerId, m.id)
   }
 
   const goTab = (i: number) => setTab(i)
@@ -161,14 +171,15 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
   const clearRecent = () => { setAppState('recentSearch', []) }
 
   // Ряд сообщения: аватар/имя чата + дата + сниппет с подсветкой (tweb setLastMessageN)
-  const MsgRow = ({ m }: { m: Message }) => {
-    const chat = byId.get(String(m.chatId))
-    const snippet = m.text || m.mediaName || mediaLabel(m.type)
+  const MsgRow = ({ m }: { m: MyMessage }) => {
+    const chat = byId.get(String(m.peerId))
+    const msgAvatarSrc = useMediaUrl(chat?.photoId ?? null)
+    const snippet = getMessageText(m) || getDocumentFromMessage(m)?.file_name || mediaLabel(getMessageKind(m))
     return (
       <div className={s.row} onClick={() => openMessage(m)}>
         <Avatar
-          background={chat?.avatar ?? gradientFor(m.chatId)}
-          src={chat?.avatarUrl}
+          background={chat?.avatar ?? gradientFor(m.peerId)}
+          src={msgAvatarSrc}
           text={chat?.avatarText ?? (chat?.name ?? '?').charAt(0).toUpperCase()}
           emoji={chat?.avatarEmoji}
           size="lg"
@@ -176,9 +187,9 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
         <div className={s.body}>
           <div className={s.top}>
             <Text noWrap size={16} weight={600} color="var(--primary-text-color)" className={s.titleFlex}>
-              {chat?.name ?? `#${m.chatId}`}
+              {chat?.name ?? `#${m.peerId}`}
             </Text>
-            <Text size={13} color="var(--secondary-text-color)">{friendlyMsgTime(m.createdAt, lang)}</Text>
+            <Text size={13} color="var(--secondary-text-color)">{friendlyMsgTime(messageDateISO(m.date), lang)}</Text>
           </div>
           <Text noWrap size={15} color="var(--secondary-text-color)">
             <Highlighted text={snippet} q={q} />
@@ -239,20 +250,21 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                       {results.chats.map((c) => (
                         <ResultRow
                           key={`c-${c.id}`}
-                          bg={gradientFor(c.id)}
-                          t={(c.title || '?').charAt(0).toUpperCase()}
-                          title={c.title}
-                          subtitle={`@${c.username}, ${c.memberCount} ${t(c.type === 'channel' ? 'subscribers' : 'members')}`}
-                          onClick={() => onResultChat(c.id, c.username)}
+                          bg={gradientFor(peerKey(c))}
+                          photoId={getPeerPhotoId(getPeerPhoto(c)) || undefined}
+                          t={(getChatTitle(c) || '?').charAt(0).toUpperCase()}
+                          title={getChatTitle(c)}
+                          subtitle={chatResultSubtitle(c, t)}
+                          onClick={() => onResultChat(c)}
                         />
                       ))}
                       {results.users.map((u) => (
                         <ResultRow
                           key={`u-${u.id}`}
-                          bg={gradientFor(u.id)}
-                          src={u.avatarUrl}
-                          t={(u.displayName || u.username || '?').charAt(0).toUpperCase()}
-                          title={u.displayName || u.username}
+                          bg={gradientFor(peerKey(u))}
+                          photoId={getPeerPhotoId(u.photo) || undefined}
+                          t={(getUserTitle(u) || '?').charAt(0).toUpperCase()}
+                          title={getUserTitle(u)}
                           subtitle={u.username ? `@${u.username}` : ''}
                           onClick={() => onResultUser(u)}
                         />
@@ -271,16 +283,17 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
 
               {tab === 1 && (
                 q ? (
-                  results.chats.filter((c) => c.type === 'channel').length > 0 ? (
+                  results.chats.filter(isBroadcast).length > 0 ? (
                     <SidebarSection>
-                      {results.chats.filter((c) => c.type === 'channel').map((c) => (
+                      {results.chats.filter(isBroadcast).map((c) => (
                         <ResultRow
                           key={c.id}
-                          bg={gradientFor(c.id)}
-                          t={(c.title || '?').charAt(0).toUpperCase()}
-                          title={c.title}
-                          subtitle={`${c.memberCount} ${t('subscribers')}`}
-                          onClick={() => onResultChat(c.id, c.username)}
+                          bg={gradientFor(peerKey(c))}
+                          photoId={getPeerPhotoId(getPeerPhoto(c)) || undefined}
+                          t={(getChatTitle(c) || '?').charAt(0).toUpperCase()}
+                          title={getChatTitle(c)}
+                          subtitle={`${participantsCount(c)} ${t('subscribers')}`}
+                          onClick={() => onResultChat(c)}
                         />
                       ))}
                     </SidebarSection>
@@ -304,10 +317,10 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                   <div className={s.mediaGrid}>
                     {msgs.map((m) => (
                       <div key={m.id} className={s.mediaTile} onClick={() => openMessage(m)}>
-                        {m.mediaId != null && (
-                          <MediaGridThumb className={s.tileImg} mediaId={m.mediaId} hasThumb={!!m.mediaHasThumb} />
+                        {getMediaId(m) != null && (
+                          <MediaGridThumb className={s.tileImg} mediaId={getMediaId(m)!} hasThumb={hasServerThumb(getMediaFromMessage(m))} />
                         )}
-                        {m.type === 'video' && <span className={s.tileDuration}>{fmtDur(m.mediaDuration)}</span>}
+                        {getMessageKind(m) === 'video' && <span className={s.tileDuration}>{fmtDur(getDocumentFromMessage(m)?.duration)}</span>}
                       </div>
                     ))}
                   </div>
@@ -321,7 +334,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                 msgs.length > 0 ? (
                   <SidebarSection>
                     {msgs.map((m) => {
-                      const url = firstUrl(m.text)
+                      const url = firstUrl(getMessageText(m))
                       return (
                         <div key={m.id} className={s.row} onClick={() => window.open(url, '_blank', 'noopener')}>
                           <div className={s.rowSquare} style={{ background: 'var(--tg-accentGradient)' }}>
@@ -344,21 +357,27 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
               {tab === 4 && msgs != null && (
                 msgs.length > 0 ? (
                   <SidebarSection>
-                    {msgs.map((m) => (
+                    {msgs.map((m) => {
+                      // tweb wrapDocument: имя, расширение и размер — у САМОГО
+                      // документа (`doc.file_name`, `doc.size`), не отдельными
+                      // полями сообщения.
+                      const doc = getDocumentFromMessage(m)
+                      return (
                       <div key={m.id} className={s.row} onClick={() => openMessage(m)}>
-                        <div className={s.rowSquare} style={{ background: EXT_COLORS[extOf(m.mediaName)] ?? 'var(--primary-color)' }}>
-                          {extOf(m.mediaName).toUpperCase().slice(0, 4) || 'FILE'}
+                        <div className={s.rowSquare} style={{ background: EXT_COLORS[extOf(doc?.file_name)] ?? 'var(--primary-color)' }}>
+                          {extOf(doc?.file_name).toUpperCase().slice(0, 4) || 'FILE'}
                         </div>
                         <div className={s.body}>
                           <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">
-                            <Highlighted text={m.mediaName || t('Document')} q={q} />
+                            <Highlighted text={doc?.file_name || t('Document')} q={q} />
                           </Text>
                           <Text size={13.5} color="var(--secondary-text-color)">
-                            {[fmtSize(m.mediaSize), friendlyMsgTime(m.createdAt, lang)].filter(Boolean).join(' · ')}
+                            {[fmtSize(doc?.size), friendlyMsgTime(messageDateISO(m.date), lang)].filter(Boolean).join(' · ')}
                           </Text>
                         </div>
                       </div>
-                    ))}
+                      )
+                    })}
                   </SidebarSection>
                 ) : (
                   emptyState
@@ -370,20 +389,21 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                 msgs.length > 0 ? (
                   <SidebarSection>
                     {msgs.map((m) => {
+                      const doc = getDocumentFromMessage(m)
                       const title = tab === 5
-                        ? m.mediaName || t('Audio')
-                        : m.type === 'roundVideo' ? t('Video message') : t('Voice message')
+                        ? doc?.file_name || t('Audio')
+                        : getMessageKind(m) === 'roundVideo' ? t('Video message') : t('Voice message')
                       return (
                         <div key={m.id} className={s.row} onClick={() => playRow(m, title)}>
                           <div className={s.rowPlay}>
-                            <PlayPauseGlyph playing={audioPlaying && m.mediaId === curMediaId} size={22} className={s.rowGlyph} />
+                            <PlayPauseGlyph playing={audioPlaying && getMediaId(m) === curMediaId} size={22} className={s.rowGlyph} />
                           </div>
                           <div className={s.body}>
                             <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">
                               <Highlighted text={title} q={q} />
                             </Text>
                             <Text size={13.5} color="var(--secondary-text-color)">
-                              {[fmtDur(m.mediaDuration), friendlyMsgTime(m.createdAt, lang)].filter(Boolean).join(' · ')}
+                              {[fmtDur(doc?.duration), friendlyMsgTime(messageDateISO(m.date), lang)].filter(Boolean).join(' · ')}
                             </Text>
                           </div>
                         </div>
@@ -414,9 +434,22 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
 }
 
 // ── helpers ─────────────────────────────────────────────────────────
+/** Число участников есть только у `channel`/`chat` — у `*Forbidden` его нет по
+ *  схеме, а не «равно нулю». */
+function participantsCount(c: PeerChat): number {
+  return c._ === 'channel' || c._ === 'chat' ? c.participants_count ?? 0 : 0
+}
+
+/** Подпись строки директории: «@username, N подписчиков/участников». Канал от
+ *  супергруппы отличает `isBroadcast`, а не строка вида чата. */
+function chatResultSubtitle(c: PeerChat, t: (s: string) => string): string {
+  const username = c._ === 'channel' && c.username ? `@${c.username}, ` : ''
+  return `${username}${participantsCount(c)} ${t(isBroadcast(c) ? 'subscribers' : 'members')}`
+}
+
 // Ряд своего диалога (недавние / локальные совпадения / мои каналы)
 function ChatRow({ chat, q, onClick }: { chat: Chat; q?: string; onClick: () => void }) {
-  const avatarSrc = useAvatarSrc(chat.avatarUrl)
+  const avatarSrc = useMediaUrl(chat.photoId ?? null)
   return (
     <div className={s.row} onClick={onClick}>
       <Avatar background={chat.avatar} src={avatarSrc} preview={chat.avatarPreview} text={chat.avatarText} emoji={chat.avatarEmoji} size="lg" />
@@ -437,16 +470,16 @@ function ChatRow({ chat, q, onClick }: { chat: Chat; q?: string; onClick: () => 
   )
 }
 
-function ResultRow({ bg, src, t, title, subtitle, verified, onClick }: {
+function ResultRow({ bg, photoId, t, title, subtitle, verified, onClick }: {
   bg: string
-  src?: string
+  photoId?: number
   t: string
   title: string
   subtitle: string
   verified?: boolean
   onClick?: () => void
 }) {
-  const avatarSrc = useAvatarSrc(src)
+  const avatarSrc = useMediaUrl(photoId ?? null)
   return (
     <div className={s.row} onClick={onClick}>
       <Avatar background={bg} src={avatarSrc} text={t} size="lg" />

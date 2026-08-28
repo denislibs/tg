@@ -5,49 +5,24 @@ import "time"
 // Story is a full stories row.
 type Story struct {
 	ID, AuthorID, MediaID int64
-	Caption, Privacy      string
-	CreatedAt, ExpiresAt  time.Time
+	// Seq — номер истории ВНУТРИ автора: то, чем она адресуется снаружи.
+	// Внутренний ключ строки (`ID`) наружу не выходит — приём и причина те же,
+	// что у сообщения (`messages.seq` против `messages.id`).
+	Seq                  int64
+	Caption, Privacy     string
+	CreatedAt, ExpiresAt time.Time
 	// Pinned — история закреплена в профиле (показывается всегда, в т.ч. истёкшая).
 	// Edited — история редактировалась после публикации (флаг edited в tweb).
 	Pinned, Edited bool
-	// MediaAreas — интерактивные области поверх истории (tweb media_areas).
-	MediaAreas []StoryMediaArea
+	// MediaAreas — интерактивные области поверх истории (`Vector<MediaArea>`).
+	MediaAreas MediaAreas
 	// FwdFrom — ссылка на исходную историю при репосте (tweb fwd_from); nil у оригинала.
 	FwdFrom *StoryFwd
 }
 
-// StoryAreaCoordinates — положение области на истории в процентах (0..100),
-// как tweb mediaAreaCoordinates (rotation в градусах).
-type StoryAreaCoordinates struct {
-	X        float64 `json:"x"`
-	Y        float64 `json:"y"`
-	W        float64 `json:"w"`
-	H        float64 `json:"h"`
-	Rotation float64 `json:"rotation"`
-}
-
-// StoryMediaArea — интерактивная область поверх истории (tweb MediaArea).
-// Type: geo|venue|reaction|url. Поля заполняются по типу (omitempty), общий
-// блок — координаты. Сериализуется как элемент jsonb-массива stories.media_areas.
-type StoryMediaArea struct {
-	Type        string               `json:"type"`
-	Coordinates StoryAreaCoordinates `json:"coordinates"`
-	// geo/venue: координаты точки; venue дополнительно несёт title/address.
-	Lat  *float64 `json:"lat,omitempty"`
-	Long *float64 `json:"long,omitempty"`
-	// Title — geo/venue (подпись точки); Address — venue.
-	Title   string `json:"title,omitempty"`
-	Address string `json:"address,omitempty"`
-	// reaction (tweb mediaAreaSuggestedReaction): эмодзи + флаги оформления.
-	Reaction string `json:"reaction,omitempty"`
-	Dark     bool   `json:"dark,omitempty"`
-	Flipped  bool   `json:"flipped,omitempty"`
-	// url (tweb mediaAreaUrl).
-	URL string `json:"url,omitempty"`
-}
-
-// StoryFwd — ссылка репоста на исходную историю (tweb fwd_from): автор и id
-// оригинала.
+// StoryFwd — ссылка репоста на исходную историю (tweb fwd_from): автор и НОМЕР
+// оригинала внутри него. Глобального ключа здесь нет: на проводе
+// `storyFwdHeader{from, story_id}` адресует пиром плюс номером.
 type StoryFwd struct {
 	AuthorID int64
 	StoryID  int64
@@ -61,16 +36,22 @@ type StoryOrigin struct {
 	MediaID    int64
 }
 
-// StoryItem is one story in a feed group, with the viewer's seen state and its
-// reaction aggregate for the viewer (tweb story views.reactions / sent_reaction).
-type StoryItem struct {
+// StoryRecord — ПЛОСКАЯ строка выборки историй: то, что отдаёт SQL, вместе с
+// пер-зрительским состоянием (просмотрено, моя реакция).
+//
+// Суффикс Record — тот же приём и та же причина, что у DialogRecord/UserRecord/
+// ChatRecord: `StoryItem` это имя ОБЪЕДИНЕНИЯ схемы (mtstory.go), и плоская
+// строка выборки объединением не является. Разбор полей (что куда уезжает) —
+// docs/readiness/tl-stories-analysis.md, исполняется шагом B.
+type StoryRecord struct {
 	ID, MediaID int64
-	Caption     string
+	// Seq — номер внутри автора; наружу едет он, а не ключ строки.
+	Seq     int64
+	Caption string
 	// Privacy отдаётся как есть, чтобы фронт показал иконку (close friends и т.п.).
 	Privacy   string
 	CreatedAt time.Time
 	ExpiresAt time.Time
-	Viewed    bool
 	// Pinned/Edited — состояние жизненного цикла истории (закреп в профиле / правка).
 	Pinned, Edited bool
 	// ReactionsCount — всего реакций на историю; MyReaction — эмодзи текущего
@@ -82,16 +63,37 @@ type StoryItem struct {
 	// только для собственных историй зрителя (автор==зритель), чтобы автор мог
 	// отредактировать аудиторию; для чужих историй остаётся nil (не раскрываем).
 	AllowIDs []int64
-	// MediaAreas — интерактивные области поверх истории (tweb media_areas).
-	MediaAreas []StoryMediaArea
+	// MediaAreas — интерактивные области поверх истории (`Vector<MediaArea>`).
+	MediaAreas MediaAreas
 	// FwdFrom — ссылка на исходную историю при репосте (tweb fwd_from); nil у оригинала.
 	FwdFrom *StoryFwd
+	// Media — ВЛОЖЕНИЕ истории ступенью (`storyItem.media`). В строке `stories`
+	// его нет: там лежит только номер файла, а метаданные — в `media`. Поле
+	// вычисляемое, наполняет его read-модель (usecase/story) тем же приёмом,
+	// каким `DialogRecord` получает последнее сообщение.
+	Media MessageMedia
+}
+
+// StoryViewers — просмотры истории вместе с карточками зрителей: ровно то, из
+// чего собирается контейнер `stories.storyViewsList`.
+//
+// Прежде наружу ехали ГОЛЫЕ карточки, и вместе с ними терялись оба параметра
+// `storyView`: когда посмотрел (предмет есть — `story_views.viewed_at`) и чем
+// отреагировал.
+type StoryViewers struct {
+	Views []StoryView
+	Users []UserReal
 }
 
 // StoryGroup bundles an author's active stories for the feed read model.
 type StoryGroup struct {
-	Author  UserCard
-	Stories []StoryItem
+	Author  UserReal
+	Stories []StoryRecord
+	// MaxReadID — ГОРИЗОНТ прочтения зрителя у этого автора
+	// (`peerStories.max_read_id`). Один номер на автора вместо признака на
+	// каждой истории: «непрочитанная» это `story.id > MaxReadID`, и выводит это
+	// клиент — ровно как непрочитанность сообщения по `read_inbox_max_id`.
+	MaxReadID int64
 }
 
 // StealthMode — эфемерное состояние «невидимого просмотра» историй пользователя

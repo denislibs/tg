@@ -12,7 +12,7 @@ import (
 
 func TestWorker_SendsPrunes410AndAcks(t *testing.T) {
 	q := &fakeQueue{}
-	_ = q.Enqueue(context.Background(), Job{RecipientID: 7, ChatID: 3, MsgID: 100, Seq: 5, SenderID: 9, Text: "hi", Preview: true})
+	_ = q.Enqueue(context.Background(), Job{RecipientID: 7, ChatID: 3, PeerID: -3, Seq: 5, SenderID: 9, Text: "hi", Preview: true})
 
 	subs := &fakeSubs{byUser: map[int64][]domain.PushSubscription{
 		7: {
@@ -59,7 +59,12 @@ func TestWorker_SendsPrunes410AndAcks(t *testing.T) {
 	if got["badge"].(float64) != 4 {
 		t.Fatalf("payload badge = %v", got["badge"])
 	}
-	if got["chat_id"].(float64) != 3 || got["msg_id"].(float64) != 100 || got["seq"].(float64) != 5 {
+	// В теле пуша — ключ пира (а не внутренний chat_id) и ОДИН адрес
+	// сообщения: `id` со значением номера в чате.
+	if _, ok := got["msg_id"]; ok {
+		t.Fatalf("в пуше осталось второе число: %v", got)
+	}
+	if got["peer_id"].(float64) != -3 || got["id"].(float64) != 5 {
 		t.Fatalf("payload ids = %v", got)
 	}
 }

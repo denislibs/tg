@@ -215,6 +215,46 @@ export function computePerceivedBrightness(color: ColorRgb): number {
   return (color[0] * 0.2126 + color[1] * 0.7152 + color[2] * 0.0722) / 255
 }
 
+/**
+ * Относительная яркость по WCAG (tweb `helpers/color.ts:310-316`) — с
+ * ЛИНЕАРИЗАЦИЕЙ sRGB-гаммы, в отличие от дешёвых `computePerceivedBrightness` /
+ * `calculateLuminance` выше. Нужна там, где считается настоящий контраст
+ * (например прижатие цвета к контрастному отношению относительно белого).
+ * @param rgb r, g, b в [0, 255]
+ */
+export function relativeLuminance(rgb: ColorRgb): number {
+  const lin = (c: number) => {
+    c /= 255
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  }
+  return 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2])
+}
+
+/**
+ * Масштабирует цвет `#rrggbb` к чёрному, пока его относительная яркость (WCAG)
+ * не станет ≤ `maxL`, сохраняя тон (отношения r:g:b). Цвет, уже укладывающийся
+ * в `maxL`, возвращается как есть; не-`#rrggbb` — не трогается.
+ * Порт tweb `helpers/color.ts:318-336` (двоичный поиск по множителю, 20 шагов):
+ * ОДНО деление `maxL / lum` здесь неверно — яркость нелинейна по множителю,
+ * и деление уводит цвет заметно темнее нужного.
+ */
+export function darkenToMaxLuminance(hex: string, maxL: number): string {
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) return hex
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  if (relativeLuminance([r, g, b]) <= maxL) return hex
+  let lo = 0
+  let hi = 1
+  for (let i = 0; i < 20; i++) {
+    const f = (lo + hi) / 2
+    if (relativeLuminance([r * f, g * f, b * f]) > maxL) hi = f
+    else lo = f
+  }
+  const c = (v: number) => Math.round(v * lo).toString(16).padStart(2, '0')
+  return '#' + c(r) + c(g) + c(b)
+}
+
 export function getAverageColor(color1: ColorRgb, color2: ColorRgb): ColorRgb {
   return color1.map((v, i) => Math.round((v + color2[i]) / 2)) as ColorRgb
 }

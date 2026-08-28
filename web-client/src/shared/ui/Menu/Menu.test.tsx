@@ -4,11 +4,12 @@
 // правку и мотивировали:
 //   1. панель реально получает переданный класс-угол (а не теряет его при сборке classNames);
 //   2. `cornerFrom` — хелпер для рантайм-флипа у края экрана (ChatListItem,
-//      MessageContextMenu) — переводит origin в класс строго по соответствию из
+//      снесённое React-меню сообщения) — переводит origin в класс строго по соответствию из
 //      `_button.scss:228-262` (инверсия «класс → origin»).
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
 import Menu, { cornerFrom } from './Menu'
+import { initHotkeys } from '../../../core/hotkeys'
 
 afterEach(cleanup)
 
@@ -86,5 +87,43 @@ describe('Menu — конец закрытия', () => {
     document.querySelector('.btn-menu')!.dispatchEvent(new Event('transitionend', { bubbles: true }))
 
     expect(done).toHaveBeenCalled()
+  })
+})
+
+// Открытое меню — ВЕРХНИЙ слой, и Esc обязан снять именно его. У tweb это один
+// навигационный элемент: `open()` кладёт его в стек
+// (`overlayClickHandler.ts:74-81`), а `onKeyDown` снимает ПОСЛЕДНИЙ
+// (`appNavigationController.ts:216-222`). У нас `Menu` в стеке не значился
+// вовсе, поэтому Escape проваливался в `escFallback` — «закрыть открытый чат»:
+// на стенде один Escape при открытом аккаунт-меню закрывал ЧАТ, а меню
+// оставалось висеть вместе с бэкдропом на весь экран (z-index 2000), то есть
+// приложение переставало принимать клики.
+describe('Menu — закрытие по Esc (верхний слой)', () => {
+  it('Escape закрывает меню и НЕ доходит до фолбэка «закрыть чат»', async () => {
+    const escFallback = vi.fn()
+    initHotkeys({ escFallback })
+    const onClose = vi.fn()
+    render(<Menu open onClose={onClose}><div>item</div></Menu>)
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    // Фолбэк в `core/hotkeys` отложен на тик (уступает легаси-оверлеям со своим
+    // keydown), поэтому его отсутствие проверяем после макрозадачи, а не сразу.
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(escFallback).not.toHaveBeenCalled()
+  })
+
+  it('контроль: без открытого меню тот же Escape доходит до фолбэка', async () => {
+    const escFallback = vi.fn()
+    initHotkeys({ escFallback })
+    const onClose = vi.fn()
+    render(<Menu open={false} onClose={onClose}><div>item</div></Menu>)
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(onClose).not.toHaveBeenCalled()
+    expect(escFallback).toHaveBeenCalledTimes(1)
   })
 })

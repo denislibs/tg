@@ -11,15 +11,15 @@ import { openPopup } from '../../stores/popupStore'
 import { useT } from '../../i18n'
 import { useManagers } from './useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
-import { useMessagesStore } from '../../stores/messagesStore'
 import type { Chat, OpenPeer } from '../../data'
-import type { Message } from '../models'
+import type { MyMessage } from '../models'
 import type { ThreadInfo } from '../../components/Chat'
+import type { MessageSendingParams } from '../managers/messages/sendingParams'
 import HeaderMenu from '../../components/HeaderMenu'
 import AttachMenu from '../../components/AttachMenu'
 import Menu, { MenuItem } from '../../shared/ui/Menu'
 import Avatar from '../../shared/ui/Avatar'
-import { useAvatarSrc } from '../../components/useAvatarSrc'
+import { useMediaUrl } from './useMediaUrl'
 import TgIcon from '../../components/TgIcon'
 import { TopicIcon as _TopicIcon } from '../../components/TopicsPanel'
 import ConfirmDialog from '../../components/settings/ConfirmDialog'
@@ -39,6 +39,7 @@ import SuggestPostPopup from '../../components/SuggestPostPopup'
 import SuggestedPostsView from '../../components/SuggestedPostsView'
 import CreatePollPopup from '../../components/CreatePollPopup'
 import CreateChecklistPopup from '../../components/CreateChecklistPopup'
+import { getUserTitle } from '../peers/getPeerTitle'
 
 // TopicIcon импортируется на случай будущего использования в тред-меню (аватар темы).
 void _TopicIcon
@@ -56,20 +57,27 @@ export interface ChatPopupDeps {
   canAddMember: boolean
   canCreateGiveaway: boolean
   canUnpinAll: boolean
-  pins: Message[]
+  pins: MyMessage[]
   deleteLabels: { title: string; text: string; action: string }
   livestreamActive: boolean
   /** инфо-панель живёт локальным стейтом в Chat (toggle + сосуществует с gift) */
   setInfoOpen: (v: boolean | ((o: boolean) => boolean)) => void
   applyMute: (next: boolean, seconds?: number | null) => void
   toggleMute: () => void
+  /** Вход в режим выделения — порт tweb topbar.ts:560
+   *  (`selection.toggleSelection(true, true)`): режимом владеет лента. */
   startSelectMode: () => void
-  setSelectionMode: (v: boolean) => void
   doDeleteChat: () => void
   doClearHistory: () => void
   openPicker: (accept: string, asFile: boolean) => void
   sendGeo: (lat: number, lng: number, opts?: { title?: string; address?: string; livePeriod?: number; heading?: number }) => void
   sendContact: (userId: number, name: string) => void
+  /** Пакет параметров отправки (`useChatSend.getMessageSendingParams`, порт tweb
+   *  `Chat.getMessageSendingParams`) — опрос уходит своим REST-путём, но поля
+   *  отправки собирает не сам, а получает пакетом, как и все остальные пути. */
+  getMessageSendingParams: () => MessageSendingParams
+  /** Сброс плашки ответа после отправки (порт tweb `ChatInput.onMessageSent`). */
+  onMessageSent: () => void
   setPendingMedia: (v: { files: File[]; asFile: boolean } | null) => void
   slowmodeMarkSent: () => void
   jumpToSeq: (seq: number) => void
@@ -82,13 +90,16 @@ export function useChatPopups(d: ChatPopupDeps) {
   const t = useT()
   const managers = useManagers()
   const meId = useChatsStore((s) => s.meId)
-  const meName = useChatsStore((s) => s.me?.displayName)
+  // Имя собирает клиент: `display_name` с провода убран.
+  const meName = useChatsStore((s) => (s.me ? getUserTitle(s.me.user) : undefined))
   const allDialogs = useChatsStore((s) => s.dialogs)
   const { chat, numericChatId, isRealChat, isChannel } = d
 
   const openGift = () => {
-    if (chat.type !== 'private' || chat.peerId == null) return
-    const toUserId = chat.peerId
+    // Ключ приватного диалога И ЕСТЬ id собеседника — второго поля рядом с `id`
+    // больше нет.
+    if (chat.type !== 'private') return
+    const toUserId = Number(chat.id)
     openPopup((p) => (
       <SendGiftPopup open={p.open} onClose={p.requestClose} onExitComplete={p.onExitComplete} toUserId={toUserId} toName={chat.name} />
     ))
@@ -99,7 +110,9 @@ export function useChatPopups(d: ChatPopupDeps) {
   ))
 
   // Аватар чата для хедера MutePopup (tweb PopupMute → PopupPeer peerId → avatarNew 32)
-  const chatAvatarSrc = useAvatarSrc(chat.avatarUrl)
+  // id медиа аватарки приезжает ГОТОВЫМ (`photo.photo_id`) — регулярка
+  // `/media/(\d+)/content` по нашей же строке ушла вместе с самой строкой.
+  const chatAvatarSrc = useMediaUrl(chat.photoId ?? null)
   const openMute = () => openPopup((p) => (
     <MutePopup
       open={p.open}
@@ -181,7 +194,7 @@ export function useChatPopups(d: ChatPopupDeps) {
         p.destroy()
         void managers.boosts
           .createGiveaway(numericChatId, { ...a, clientMsgId: crypto.randomUUID() })
-          .then((msg) => useMessagesStore.getState().applyIncoming(numericChatId, msg))
+          .then(() => {})
       }}
     />
   ))
@@ -199,9 +212,11 @@ export function useChatPopups(d: ChatPopupDeps) {
       onClose={p.destroy}
       onCreate={(poll) => {
         p.destroy()
+        const sendingParams = d.getMessageSendingParams()
+        d.onMessageSent()
         void managers.messages
-          .sendPoll(numericChatId, { ...poll, clientMsgId: crypto.randomUUID() })
-          .then((msg) => useMessagesStore.getState().applyIncoming(numericChatId, msg))
+          .sendPoll(numericChatId, { ...poll, clientMsgId: crypto.randomUUID(), ...sendingParams })
+          .then(() => {})
       }}
     />
   ))
@@ -213,7 +228,7 @@ export function useChatPopups(d: ChatPopupDeps) {
         p.destroy()
         void managers.messages
           .sendChecklist(numericChatId, { ...c, clientMsgId: crypto.randomUUID() })
-          .then((msg) => useMessagesStore.getState().applyIncoming(numericChatId, msg))
+          .then(() => {})
       }}
     />
   ))
@@ -251,11 +266,11 @@ export function useChatPopups(d: ChatPopupDeps) {
       onToggleMute={isRealChat ? d.toggleMute : undefined}
       onAddMember={d.canAddMember ? () => d.setInfoOpen(true) : undefined}
       onSelectMessages={d.startSelectMode}
-      onAddContact={chat.type === 'private' && chat.peerId != null ? openAddContact : undefined}
+      onAddContact={chat.type === 'private' ? openAddContact : undefined}
       onDeleteChat={isRealChat ? openConfirmDelete : undefined}
       onClearHistory={isRealChat && chat.type !== 'channel' ? openConfirmClear : undefined}
       onChangeTheme={isRealChat && (chat.type === 'private' || chat.type === 'group') ? openThemePicker : undefined}
-      onSendGift={chat.type === 'private' && chat.peerId != null && chat.peerId !== meId ? openGift : undefined}
+      onSendGift={chat.type === 'private' && Number(chat.id) !== meId ? openGift : undefined}
       onBoost={isChannel && isRealChat ? openBoost : undefined}
       onCreateGiveaway={d.canCreateGiveaway ? openGiveaway : undefined}
       onStartStream={isChannel && isRealChat && d.owned ? openStream : undefined}
@@ -277,7 +292,7 @@ export function useChatPopups(d: ChatPopupDeps) {
         <MenuItem
           icon={<TgIcon name="checkround" size={20} />}
           label={t('Select Messages')}
-          onClick={() => { p.requestClose(); d.setSelectionMode(true) }}
+          onClick={() => { p.requestClose(); d.startSelectMode() }}
         />
         <MenuItem
           icon={<TgIcon name={d.muted ? 'unmute' : 'mute'} size={20} />}

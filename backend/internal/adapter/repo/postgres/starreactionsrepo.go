@@ -70,8 +70,7 @@ func (r *StarReactionsRepo) AggregatesFor(ctx context.Context, messageIDs []int6
 // прячет read-модель usecase).
 func (r *StarReactionsRepo) TopSenders(ctx context.Context, messageID int64, limit int) ([]domain.StarReactionSender, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT u.id, COALESCE(u.username,''), u.display_name, COALESCE(u.avatar_url,''),
-		        sr.stars, sr.anonymous
+		`SELECT `+userRealCols("u.")+`, sr.stars, sr.anonymous
 		   FROM star_reactions sr
 		   JOIN users u ON u.id = sr.user_id
 		  WHERE sr.message_id = $1
@@ -85,9 +84,11 @@ func (r *StarReactionsRepo) TopSenders(ctx context.Context, messageID int64, lim
 	out := make([]domain.StarReactionSender, 0)
 	for rows.Next() {
 		var s domain.StarReactionSender
-		if e := rows.Scan(&s.User.ID, &s.User.Username, &s.User.DisplayName, &s.User.AvatarURL, &s.Stars, &s.Anonymous); e != nil {
+		var u userRealScan
+		if e := rows.Scan(append(u.dest(), &s.Stars, &s.Anonymous)...); e != nil {
 			return nil, e
 		}
+		s.User = u.user(true)
 		out = append(out, s)
 	}
 	return out, rows.Err()

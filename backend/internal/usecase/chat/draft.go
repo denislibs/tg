@@ -14,7 +14,7 @@ import (
 // вкладки/устройства держали один и тот же черновик (updateDraftMessage).
 
 // SaveDraft сохраняет (или удаляет — при пустом тексте без reply) черновик.
-func (i *Interactor) SaveDraft(ctx context.Context, userID, chatID int64, text string, entities []domain.MessageEntity, replyToID *int64) (*domain.Draft, error) {
+func (i *Interactor) SaveDraft(ctx context.Context, userID, chatID int64, text string, entities domain.MessageEntities, replyToID *int64) (*domain.Draft, error) {
 	if i.drafts == nil {
 		return nil, domain.ErrNotFound
 	}
@@ -28,17 +28,16 @@ func (i *Interactor) SaveDraft(ctx context.Context, userID, chatID int64, text s
 	if utf8.RuneCountInString(text) > maxMessageRunes {
 		return nil, domain.ErrTooLong
 	}
-	// reply_to_id валидируется мягко: сообщение должно существовать в этом же
-	// чате, иначе просто NULL (черновик сохраняется без reply, не ошибка).
+	// reply_to_id — НОМЕР сообщения в этом же чате (у черновика чужого пира
+	// нет: reply_to_peer_id в draftMessage схемы отсутствует). Валидируется
+	// мягко: нет такого номера — просто NULL (черновик сохраняется без reply).
 	if replyToID != nil {
-		m, err := i.msgs.GetByID(ctx, *replyToID)
+		_, err := i.messageBySeq(ctx, chatID, *replyToID)
 		switch {
 		case errors.Is(err, domain.ErrNotFound):
 			replyToID = nil
 		case err != nil:
 			return nil, err
-		case m.ChatID != chatID:
-			replyToID = nil
 		}
 	}
 	if text == "" && replyToID == nil {
@@ -110,19 +109,9 @@ func (i *Interactor) deleteDraft(ctx context.Context, userID, chatID int64) erro
 }
 
 // publishDraft логирует и шлёт draft_update на все устройства владельца (d nil —
-// удалён): запись в апдейт-лог даёт плотный pts-курсор, так что смена черновика
-// доезжает и через /sync (updateDraftMessage). Recipients — владелец (свои устройства).
+// черновик снят): запись в апдейт-лог даёт плотный курсор, так что смена
+// черновика доезжает и через /sync.
 func (i *Interactor) publishDraft(ctx context.Context, userID, chatID int64, d *domain.Draft) {
-	payload := map[string]any{"chat_id": chatID, "draft": nil}
-	if d != nil {
-		payload["draft"] = draftJSON(*d)
-	}
-	_ = i.logAndPublish(ctx, []int64{userID}, "draft_update", payload)
-}
-
-func draftJSON(d domain.Draft) map[string]any {
-	return map[string]any{
-		"chat_id": d.ChatID, "text": d.Text, "entities": d.Entities,
-		"reply_to_id": d.ReplyToID, "updated_at": d.UpdatedAt,
-	}
+	_ = i.logAndPublishPerPeer(ctx, chatID, []int64{userID}, "draft_update",
+		func(peer domain.PeerID) map[string]any { return draftPayload(peer, d) })
 }

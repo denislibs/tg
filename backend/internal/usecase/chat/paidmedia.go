@@ -62,12 +62,20 @@ func (i *Interactor) hydratePaidMedia(ctx context.Context, viewerID int64, msgs 
 // медиа (media_id и метаданные контента), оставляя плейсхолдер: размеры + blur.
 func stripLockedMedia(m *domain.Message) {
 	m.MediaID = nil
-	m.MediaMime = ""
-	m.MediaName = ""
-	m.MediaHasThumb = false
-	m.MediaDuration = 0
-	m.MediaTitle = ""
-	m.MediaPerformer = ""
+	// От вложения остаётся только то, по чему нельзя получить байты: размеры
+	// кадра и stripped-подложка (domain.StripLockedMedia). Ни mime, ни имени
+	// файла, ни длительности, ни волны, ни атрибутов документа в нём нет — вместе
+	// с ними уходит и всё, что можно было бы узнать о содержимом неоплаченного
+	// медиа. На провод остаток уходит конструктором messageExtendedMediaPreview
+	// внутри messageMediaPaidMedia.
+	m.Media = domain.StripLockedMedia(m.Media)
+	// Спойлер снимаем не ради утечки (флаг ничего о контенте не сообщает), а
+	// ради UI: заблокированное платное медиа И ТАК скрыто — плейсхолдер с blur
+	// и кнопкой «разблокировать за N ⭐». Заслонка спойлера поверх него была бы
+	// второй крышкой и похоронила бы саму кнопку разблокировки. Флаг живёт в
+	// строке messages, поэтому после оплаты (UnlockPaidMedia перечитывает
+	// сообщение) он вернётся и медиа откроется уже под спойлером.
+	m.MediaSpoiler = false
 }
 
 // lockedPaidCopy — копия сообщения в заблокированном виде (для рассылки платного
@@ -157,12 +165,29 @@ func (i *Interactor) UnlockPaidMedia(ctx context.Context, msgID, userID int64) (
 	msg.PaidMediaPrice = &price
 	msg.PaidMediaLocked = false
 	// Realtime: раскрываем баббл только на устройствах покупателя (медиа не должно
-	// утечь другим участникам) — кадром paid_media_unlock с полным медиа. Логируем
-	// в его же апдейт-лог, чтобы разблокировка доехала и через /sync (плотный pts).
-	// thread_root_id наружу — id поста, а не зеркала (см. externalThreadRoot):
-	// платное медиа может быть и на комментарии, чокпоинт применяем безусловно.
-	unlockOut := messageUpdatePayload(msg)
-	unlockOut["thread_root_id"] = i.externalThreadRoot(ctx, msg)
-	_ = i.logAndPublish(ctx, []int64{userID}, "paid_media_unlock", unlockOut)
+	// утечь другим участникам). Логируем в его же апдейт-лог, чтобы разблокировка
+	// доехала и через /sync (плотный pts).
+	//
+	// Кадр несёт РОВНО ПРЕДМЕТ — вектор позиций, ставших настоящими вместо
+	// заглушек. Прежде на разблокировку одного вложения приезжала вторая копия
+	// ВСЕГО сообщения (тот же payload, что у нового сообщения).
+	unlocked := unlockedExtendedMedia(msg)
+	_ = i.logAndPublishPerPeer(ctx, msg.ChatID, []int64{userID}, "paid_media_unlock",
+		func(peer domain.PeerID) map[string]any {
+			return map[string]any{
+				"_": domain.UpdateMessageExtendedMediaTag, "peer": domain.NewPeer(peer),
+				"msg_id": msg.Seq, "extended_media": unlocked,
+			}
+		})
 	return msg, bal, nil
+}
+
+// unlockedExtendedMedia — позиции платного вложения ПОСЛЕ разблокировки. Их
+// собирает та же сборка, что и внутри сообщения (Message.ToWire): второй формы
+// у платного медиа нет.
+func unlockedExtendedMedia(m domain.Message) []domain.MessageExtendedMedia {
+	if paid, ok := m.WireMedia().(*domain.MessageMediaPaidMedia); ok {
+		return paid.ExtendedMedia
+	}
+	return []domain.MessageExtendedMedia{}
 }

@@ -5,7 +5,7 @@ import { useState } from 'react'
 import IconButton from '../../shared/ui/IconButton'
 import Avatar from '../../shared/ui/Avatar'
 import TgIcon from '../TgIcon'
-import { useAvatarSrc } from '../useAvatarSrc'
+import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import type { Chat } from '../../data'
 import { SettingsScreen, Section, Row } from '../settings/kit'
 
@@ -31,7 +31,7 @@ const EXCLUDE_TYPES: { key: keyof PickerFlags; icon: string; label: string }[] =
 ]
 
 function ChatPickRow({ chat, selected, onToggle }: { chat: Chat; selected: boolean; onToggle: () => void }) {
-  const src = useAvatarSrc(chat.avatarUrl)
+  const src = useMediaUrl(chat.photoId ?? null)
   return (
     <Row
       icon={<Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={src} preview={chat.avatarPreview} size={32} />}

@@ -34,7 +34,7 @@ describe('secret/crypto ECDH', () => {
     const a = await generateKeyPair(); const b = await generateKeyPair()
     const sa = await deriveSecret(a.privateKey, await exportPublicKey(b.publicKey))
     const sb = await deriveSecret(b.privateKey, await exportPublicKey(a.publicKey))
-    const payload = { text: 'привет 🔒', entities: [{ type: 'bold', offset: 0, length: 6 }] }
+    const payload = { text: 'привет 🔒', entities: [{ _: 'messageEntityBold', offset: 0, length: 6 }] }
     const blob = await encryptPayload(sa.key, payload)
     expect(typeof blob).toBe('string') // base64
     const out = await decryptPayload<typeof payload>(sb.key, blob)

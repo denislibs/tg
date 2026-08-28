@@ -123,6 +123,21 @@ func TestMediaRepo_Waveform(t *testing.T) {
 	if len(got2.Waveform) != 0 {
 		t.Fatalf("expected empty waveform for image, got %v", got2.Waveform)
 	}
+
+	// Read-модель сообщения (DimsByIDs) читает те же пики — из них строится волна
+	// в бабле, без отдельного запроса меты медиа. У не-голосового колонка NULL и
+	// scan на этом не падает.
+	access := NewMediaAccessRepo(pool)
+	dims, err := access.DimsByIDs(ctx, []int64{m.ID, m2.ID})
+	if err != nil {
+		t.Fatalf("DimsByIDs: %v", err)
+	}
+	if !bytes.Equal(dims[m.ID].Waveform, wf) {
+		t.Fatalf("dims waveform = %v, want %v", dims[m.ID].Waveform, wf)
+	}
+	if len(dims[m2.ID].Waveform) != 0 {
+		t.Fatalf("expected empty dims waveform for image, got %v", dims[m2.ID].Waveform)
+	}
 }
 
 // Теги трека, найденные ffprobe, сохраняются через UpdateProcessed и читаются
@@ -177,6 +192,61 @@ func TestMediaRepo_AudioTags(t *testing.T) {
 	dims, _ = access.DimsByIDs(ctx, []int64{tagged.ID})
 	if d := dims[tagged.ID]; d.Title != "Track One" || d.Performer != "denis1488" {
 		t.Fatalf("tags clobbered by re-process: %+v", d)
+	}
+}
+
+// Признак гифки (media.animated → tweb doc.type === 'gif') сохраняется
+// UpdateProcessed и читается read-моделью сообщений (DimsByIDs). В отличие от
+// остальных полей он пишется БЕЗУСЛОВНО — у bool нет «пустого» значения,
+// отличимого от false; владелец один (обработка ffmpeg), оба её входа кладут
+// один и тот же результат Process.
+func TestMediaRepo_AnimatedProcessed(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewMediaRepo(pool)
+	access := NewMediaAccessRepo(pool)
+	ctx := context.Background()
+	owner := seedMediaOwner(t, repo, "+793")
+
+	gif, err := repo.Create(ctx, domain.Media{
+		OwnerID: owner, Bucket: "media", ObjectKey: "gif1", Mime: "video/mp4", Size: 400000,
+	})
+	if err != nil {
+		t.Fatalf("Create gif: %v", err)
+	}
+	video, err := repo.Create(ctx, domain.Media{
+		OwnerID: owner, Bucket: "media", ObjectKey: "vid1", Mime: "video/mp4", Size: 9000000,
+	})
+	if err != nil {
+		t.Fatalf("Create video: %v", err)
+	}
+	// До обработки колонка имеет DEFAULT FALSE — «обычное видео».
+	if got, _ := repo.GetByID(ctx, gif.ID); got.Animated {
+		t.Fatalf("animated must default to false before processing")
+	}
+
+	if err := repo.UpdateProcessed(ctx, gif.ID, usecasemedia.ProcessedMeta{
+		Width: 320, Height: 240, Duration: 3, Animated: true,
+	}); err != nil {
+		t.Fatalf("UpdateProcessed gif: %v", err)
+	}
+	if err := repo.UpdateProcessed(ctx, video.ID, usecasemedia.ProcessedMeta{
+		Width: 1280, Height: 720, Duration: 61,
+	}); err != nil {
+		t.Fatalf("UpdateProcessed video: %v", err)
+	}
+
+	if got, _ := repo.GetByID(ctx, gif.ID); !got.Animated {
+		t.Fatalf("GetByID: animated not persisted")
+	}
+	dims, err := access.DimsByIDs(ctx, []int64{gif.ID, video.ID})
+	if err != nil {
+		t.Fatalf("DimsByIDs: %v", err)
+	}
+	if d := dims[gif.ID]; !d.Animated {
+		t.Fatalf("gif dims = %+v, want Animated", d)
+	}
+	if d := dims[video.ID]; d.Animated {
+		t.Fatalf("plain video dims = %+v, want !Animated", d)
 	}
 }
 

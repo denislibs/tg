@@ -22,11 +22,9 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { createWorkerCore } from './workerCore'
 import { saveDialogs, loadDialogs } from './store/persist'
 import type { Dialog } from './models'
+import { makeDialog } from './dialogs/testDialog'
 
-const dialog = (chatId: number): Dialog => ({
-  chatId, type: 'private', title: 't' + chatId, unread: 0, unreadMentions: 0, unreadReactions: 0,
-  lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false,
-} as Dialog)
+const dialog = (peerId: number): Dialog => makeDialog({ peerId })
 
 beforeEach(() => {
   vi.stubGlobal('indexedDB', new IDBFactory())
@@ -34,9 +32,12 @@ beforeEach(() => {
     const u = String(url)
     if (u.endsWith('/auth/logout')) return new Response('{}', { status: 200 })
     if (u.endsWith('/auth/sign_in')) {
+      // Исход шага входа — конструктор `auth.authorization` с КРАТКОЙ
+      // карточкой: полной формы вход не отдаёт, её приносит первый /me.
       return new Response(JSON.stringify({
+        _: 'auth.authorization',
         token: 'session-b',
-        user: { id: 5, phone: '+79990000005', username: null, display_name: 'B' },
+        user: { _: 'user', pFlags: { self: true }, id: 5, phone: '+79990000005' },
       }), { status: 200 })
     }
     throw new Error('unexpected fetch ' + u)
@@ -71,8 +72,8 @@ describe('createWorkerCore(): dialogs.resetForLogout() проводка (Task 6)
     await saveDialogs([dialog(2)])
     const op = await core.registry.dialogs.fillMirror()
 
-    expect(core.registry.dialogs.getSnapshot().map((i: { dialog: Dialog }) => i.dialog.chatId)).toEqual([2])
-    expect((op as { items: { dialog: Dialog }[] }).items.map((i) => i.dialog.chatId)).toEqual([2])
+    expect(core.registry.dialogs.getSnapshot().map((i: { dialog: Dialog }) => i.dialog.peerId)).toEqual([2])
+    expect((op as { items: { dialog: Dialog }[] }).items.map((i) => i.dialog.peerId)).toEqual([2])
   })
 
   it('вход под новым аккаунтом (rt:logged_in) тоже опустошает кэш владельца', async () => {

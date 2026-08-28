@@ -13,12 +13,32 @@ import (
 // StoryHandler serves the stories endpoints (post / feed / view / viewers /
 // delete). It delegates all logic to the story service; privacy and
 // author-gating live there.
+// peers — слой разрешения peerId ↔ chatID: «поделиться историей» адресует пиров.
 type StoryHandler struct {
-	svc *storyusecase.Service
+	svc   *storyusecase.Service
+	peers PeerResolver
 }
 
-func NewStoryHandler(svc *storyusecase.Service) *StoryHandler {
-	return &StoryHandler{svc: svc}
+func NewStoryHandler(svc *storyusecase.Service, peers PeerResolver) *StoryHandler {
+	return &StoryHandler{svc: svc, peers: peers}
+}
+
+// storyAddr разбирает ВНЕШНИЙ адрес истории из пути: пир автора плюс номер
+// внутри него. Глобального ключа снаружи больше нет — приём и причина те же,
+// что у сообщения (`/chats/{peerID}/messages/{msgSeq}`).
+//
+// Автор истории у нас всегда пользователь (каналы историй не публикуют),
+// поэтому ключ пира и есть его id; отдельного разрешения он не требует.
+func storyAddr(w http.ResponseWriter, r *http.Request) (authorID, seq int64, ok bool) {
+	authorID, ok = pathInt(w, r, "peerID")
+	if !ok {
+		return 0, 0, false
+	}
+	seq, ok = pathInt(w, r, "storySeq")
+	if !ok {
+		return 0, 0, false
+	}
+	return authorID, seq, true
 }
 
 func (h *StoryHandler) mapErr(w http.ResponseWriter, err error) {
@@ -43,6 +63,10 @@ func (h *StoryHandler) mapErr(w http.ResponseWriter, err error) {
 }
 
 // reactionsJSON serializes a per-emoji reaction breakdown (emoji/count/mine).
+//
+// Осталась ОДНОМУ потребителю — статистике историй (её форма у нас своя, см.
+// Р12 разбора). Витрины историй ей больше не пользуются: разбивка едет чипами
+// `reactionCount` внутри `storyViews`.
 func reactionsJSON(rcs []domain.ReactionCount) []map[string]any {
 	out := make([]map[string]any, 0, len(rcs))
 	for _, rc := range rcs {
@@ -51,34 +75,14 @@ func reactionsJSON(rcs []domain.ReactionCount) []map[string]any {
 	return out
 }
 
-// storyJSON is one story item in the feed, including its reaction aggregate.
-// my_reaction is null when the viewer hasn't reacted.
-func storyJSON(s domain.StoryItem) map[string]any {
-	var my any
-	if s.MyReaction != "" {
-		my = s.MyReaction
-	}
-	areas := s.MediaAreas
-	if areas == nil {
-		areas = []domain.StoryMediaArea{}
-	}
-	out := map[string]any{
-		"id": s.ID, "media_id": s.MediaID, "caption": s.Caption,
-		"privacy": s.Privacy, "pinned": s.Pinned, "edited": s.Edited,
-		"created_at": s.CreatedAt, "expires_at": s.ExpiresAt, "viewed": s.Viewed,
-		"reactions_count": s.ReactionsCount,
-		"my_reaction":     my,
-		"reactions":       reactionsJSON(s.Reactions),
-		"media_areas":     areas,
-	}
-	// fwd_from присутствует только у репоста (ссылка на исходную историю).
-	if s.FwdFrom != nil {
-		out["fwd_from"] = map[string]any{"author_id": s.FwdFrom.AuthorID, "story_id": s.FwdFrom.StoryID}
-	}
-	// allow_user_ids отдаётся только для своих selected-историй (usecase заполняет
-	// AllowIDs лишь тогда), чтобы автор мог редактировать аудиторию; чужие — nil.
-	if s.Privacy == "selected" && s.AllowIDs != nil {
-		out["allow_user_ids"] = s.AllowIDs
+// storyItems переводит строки выборки в конструкторы `storyItem`.
+//
+// `owner` — истории принадлежат зрителю: от этого зависит один параметр,
+// аудитория (`privacy`), которую видит только автор.
+func storyItems(items []domain.StoryRecord, owner bool) []domain.StoryItem {
+	out := make([]domain.StoryItem, 0, len(items))
+	for _, it := range items {
+		out = append(out, it.ToStoryItem(owner))
 	}
 	return out
 }
@@ -86,11 +90,11 @@ func storyJSON(s domain.StoryItem) map[string]any {
 func (h *StoryHandler) Post(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	var b struct {
-		MediaID      int64                   `json:"media_id"`
-		Caption      string                  `json:"caption"`
-		Privacy      string                  `json:"privacy"`
-		AllowUserIDs []int64                 `json:"allow_user_ids"`
-		MediaAreas   []domain.StoryMediaArea `json:"media_areas"`
+		MediaID      int64             `json:"media_id"`
+		Caption      string            `json:"caption"`
+		Privacy      string            `json:"privacy"`
+		AllowUserIDs []int64           `json:"allow_user_ids"`
+		MediaAreas   domain.MediaAreas `json:"media_areas"`
 		// Period — срок жизни истории в секундах (6h/12h/24h/48h; 24h по умолчанию).
 		Period int64 `json:"period"`
 	}
@@ -103,7 +107,9 @@ func (h *StoryHandler) Post(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"id": id})
+	// Ответ — САМ номер созданной истории: обёртка `{"id": …}` конструктора
+	// не имеет, а `int` это объявленный тип схемы.
+	writeJSON(w, http.StatusOK, id)
 }
 
 // Repost serves POST /stories/repost — republish an existing story as a new one
@@ -112,6 +118,8 @@ func (h *StoryHandler) Post(w http.ResponseWriter, r *http.Request) {
 // like Post.
 func (h *StoryHandler) Repost(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
+	// Источник адресуется ПАРОЙ «автор + номер»: `source_author_id` перестал
+	// быть справочным полем и стал половиной адреса.
 	var b struct {
 		SourceAuthorID int64   `json:"source_author_id"`
 		SourceStoryID  int64   `json:"source_story_id"`
@@ -120,39 +128,50 @@ func (h *StoryHandler) Repost(w http.ResponseWriter, r *http.Request) {
 		AllowUserIDs   []int64 `json:"allow_user_ids"`
 		Period         int64   `json:"period"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || b.SourceStoryID == 0 {
-		writeError(w, http.StatusBadRequest, "source_story_id required")
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || b.SourceStoryID == 0 || b.SourceAuthorID == 0 {
+		writeError(w, http.StatusBadRequest, "source_author_id and source_story_id required")
 		return
 	}
-	id, err := h.svc.Repost(r.Context(), user.ID, b.SourceStoryID, b.Caption, b.Privacy, b.AllowUserIDs, b.Period)
+	id, err := h.svc.Repost(r.Context(), user.ID, b.SourceAuthorID, b.SourceStoryID, b.Caption, b.Privacy, b.AllowUserIDs, b.Period)
 	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"id": id})
+	// Ответ — САМ номер созданной истории: обёртка `{"id": …}` конструктора
+	// не имеет, а `int` это объявленный тип схемы.
+	writeJSON(w, http.StatusOK, id)
 }
 
 // Share serves POST /stories/{storyID}/share — post the story into the given
-// chats as a regular media message with an attribution caption. Body: {chat_ids}.
+// chats as a regular media message with an attribution caption. Body: {peer_ids}.
 func (h *StoryHandler) Share(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	storyID, ok := pathInt(w, r, "storyID")
+	authorID, seq, ok := storyAddr(w, r)
 	if !ok {
 		return
 	}
 	var b struct {
-		ChatIDs []int64 `json:"chat_ids"`
+		PeerIDs []domain.PeerID `json:"peer_ids"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || len(b.ChatIDs) == 0 {
-		writeError(w, http.StatusBadRequest, "chat_ids required")
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || len(b.PeerIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "peer_ids required")
 		return
 	}
-	sent, err := h.svc.Share(r.Context(), storyID, user.ID, b.ChatIDs)
+	chatIDs := make([]int64, 0, len(b.PeerIDs))
+	for _, p := range b.PeerIDs {
+		id, ok := resolveBodyPeer(w, r, h.peers, p, true)
+		if !ok {
+			return
+		}
+		chatIDs = append(chatIDs, id)
+	}
+	sent, err := h.svc.Share(r.Context(), authorID, seq, user.ID, chatIDs)
 	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"sent": sent})
+	// Ответ — САМО число чатов, куда история ушла.
+	writeJSON(w, http.StatusOK, sent)
 }
 
 func (h *StoryHandler) Feed(w http.ResponseWriter, r *http.Request) {
@@ -162,62 +181,84 @@ func (h *StoryHandler) Feed(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	out := make([]map[string]any, 0, len(groups))
-	for _, g := range groups {
-		stories := make([]map[string]any, 0, len(g.Stories))
-		for _, s := range g.Stories {
-			stories = append(stories, storyJSON(s))
-		}
-		out = append(out, map[string]any{
-			"author": map[string]any{
-				"id": g.Author.ID, "display_name": g.Author.DisplayName, "avatar_url": g.Author.AvatarURL,
-			},
-			"stories": stories,
-		})
+	// Контейнер `stories.allStories`: карточки авторов едут ОДИН раз вектором
+	// `users`, а внутри группы стоит ссылка `peer` — то же решение, что порт
+	// диалогов принял для контейнера `/chats`.
+	peerStories := make([]domain.PeerStories, 0, len(groups))
+	users := make([]domain.User, 0, len(groups))
+	for i := range groups {
+		author := &groups[i].Author
+		peerStories = append(peerStories, domain.NewPeerStories(
+			domain.NewPeer(domain.PeerID(author.ID)),
+			groups[i].MaxReadID,
+			storyItems(groups[i].Stories, author.ID == user.ID),
+		))
+		users = append(users, author)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"groups": out})
+	// Stealth-окно приезжает ВМЕСТЕ с лентой, как у оригинала. Хранилище
+	// опционально — тогда окна просто нет (оба срока отсутствуют).
+	stealth, _ := h.svc.StealthState(r.Context(), user.ID)
+	writeJSON(w, http.StatusOK, domain.NewStoriesAllStories(peerStories, users, stealthMode(stealth)))
 }
 
 func (h *StoryHandler) View(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	storyID, ok := pathInt(w, r, "storyID")
+	authorID, seq, ok := storyAddr(w, r)
 	if !ok {
 		return
 	}
-	if err := h.svc.View(r.Context(), storyID, user.ID); err != nil {
+	if err := h.svc.View(r.Context(), authorID, seq, user.ID); err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *StoryHandler) Viewers(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	storyID, ok := pathInt(w, r, "storyID")
+	authorID, seq, ok := storyAddr(w, r)
 	if !ok {
 		return
 	}
-	viewers, err := h.svc.Viewers(r.Context(), storyID, user.ID)
+	viewers, err := h.svc.Viewers(r.Context(), authorID, seq, user.ID)
 	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	out := make([]map[string]any, 0, len(viewers))
-	for _, v := range viewers {
-		out = append(out, map[string]any{"id": v.ID, "display_name": v.DisplayName, "avatar_url": v.AvatarURL})
+	// Контейнер `stories.storyViewsList`: сам просмотр (кто, КОГДА и чем
+	// отреагировал) отдельно, карточки зрителей — вектором `users`.
+	writeJSON(w, http.StatusOK, domain.NewStoriesStoryViewsList(viewers.Views, usersOf(viewers.Users), reactedCount(viewers.Views)))
+}
+
+// usersOf поднимает карточки до объединения `User` — вектор контейнера.
+func usersOf(in []domain.UserReal) []domain.User {
+	out := make([]domain.User, 0, len(in))
+	for i := range in {
+		out = append(out, &in[i])
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"viewers": out, "count": len(out)})
+	return out
+}
+
+// reactedCount — сколько зрителей отреагировали (`storyViewsList.reactions_count`).
+func reactedCount(views []domain.StoryView) int {
+	n := 0
+	for _, v := range views {
+		if v.Reaction != nil {
+			n++
+		}
+	}
+	return n
 }
 
 // Stats serves GET /stories/{storyID}/stats — view statistics for the author's
 // own story (tweb stats.getStoryStats): total views + a per-day views series.
 func (h *StoryHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	storyID, ok := pathInt(w, r, "storyID")
+	authorID, seq, ok := storyAddr(w, r)
 	if !ok {
 		return
 	}
-	st, err := h.svc.Stats(r.Context(), storyID, user.ID)
+	st, err := h.svc.Stats(r.Context(), authorID, seq, user.ID)
 	if err != nil {
 		h.mapErr(w, err)
 		return
@@ -234,7 +275,7 @@ func (h *StoryHandler) Stats(w http.ResponseWriter, r *http.Request) {
 // caller's reaction on a story they can see (tweb stories.sendReaction).
 func (h *StoryHandler) SetReaction(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	storyID, ok := pathInt(w, r, "storyID")
+	authorID, seq, ok := storyAddr(w, r)
 	if !ok {
 		return
 	}
@@ -245,51 +286,46 @@ func (h *StoryHandler) SetReaction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "reaction required")
 		return
 	}
-	if err := h.svc.SetReaction(r.Context(), storyID, user.ID, b.Reaction); err != nil {
+	if err := h.svc.SetReaction(r.Context(), authorID, seq, user.ID, b.Reaction); err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // RemoveReaction serves DELETE /stories/{storyID}/reaction — clear the caller's
 // reaction on a story they can see.
 func (h *StoryHandler) RemoveReaction(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	storyID, ok := pathInt(w, r, "storyID")
+	authorID, seq, ok := storyAddr(w, r)
 	if !ok {
 		return
 	}
-	if err := h.svc.RemoveReaction(r.Context(), storyID, user.ID); err != nil {
+	if err := h.svc.RemoveReaction(r.Context(), authorID, seq, user.ID); err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *StoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	storyID, ok := pathInt(w, r, "storyID")
+	_, seq, ok := storyAddr(w, r)
 	if !ok {
 		return
 	}
-	if err := h.svc.Delete(r.Context(), storyID, user.ID); err != nil {
+	if err := h.svc.Delete(r.Context(), seq, user.ID); err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
-// CloseFriends serves GET /me/close_friends → {user_ids:[...]}.
-func (h *StoryHandler) CloseFriends(w http.ResponseWriter, r *http.Request) {
-	user, _ := UserFromContext(r.Context())
-	ids, err := h.svc.CloseFriends(r.Context(), user.ID)
-	if err != nil {
-		h.mapErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"user_ids": ids})
-}
+// Витрины чтения списка близких друзей здесь НЕТ, и это форма оригинала:
+// список пишет `contacts.editCloseFriends`, а читается признак с карточки
+// контакта (`user.pFlags.close_friend`) — метода чтения схема не объявляет
+// вовсе. Прежде такая ручка была и отдавала голый `Vector<long>`, который на
+// проводе TL не разбирается: тип элемента из потока не восстановить.
 
 // SetCloseFriends serves PUT /me/close_friends body {user_ids:[...]} — full
 // replacement of the caller's close-friends list.
@@ -306,19 +342,22 @@ func (h *StoryHandler) SetCloseFriends(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
-// stealthJSON serializes a stealth-mode window; timestamps are null when unset.
-func stealthJSON(m domain.StealthMode) map[string]any {
-	var active, cooldown any
+// stealthMode переводит окно stealth-режима в конструктор схемы.
+//
+// Даты становятся секундами эпохи, а «окна нет» — ОТСУТСТВИЕМ параметра, а не
+// значением null под тем же ключом (Р10 разбора).
+func stealthMode(m domain.StealthMode) domain.StoriesStealthMode {
+	var active, cooldown int64
 	if !m.ActiveUntil.IsZero() {
-		active = m.ActiveUntil
+		active = m.ActiveUntil.Unix()
 	}
 	if !m.CooldownUntil.IsZero() {
-		cooldown = m.CooldownUntil
+		cooldown = m.CooldownUntil.Unix()
 	}
-	return map[string]any{"active_until": active, "cooldown_until": cooldown}
+	return domain.NewStoriesStealthMode(active, cooldown)
 }
 
 // StealthState serves GET /stories/stealth → current stealth window.
@@ -329,7 +368,7 @@ func (h *StoryHandler) StealthState(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, stealthJSON(m))
+	writeJSON(w, http.StatusOK, stealthMode(m))
 }
 
 // ActivateStealth serves POST /stories/stealth/activate → the new window, or
@@ -341,7 +380,7 @@ func (h *StoryHandler) ActivateStealth(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, stealthJSON(m))
+	writeJSON(w, http.StatusOK, stealthMode(m))
 }
 
 // Archive serves GET /stories/archive?limit&offset_id → the caller's own expired
@@ -355,7 +394,7 @@ func (h *StoryHandler) Archive(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"stories": storyItemsJSON(items)})
+	writeJSON(w, http.StatusOK, domain.NewStoriesStories(storyItems(items, true), nil))
 }
 
 // Pinned serves GET /stories/pinned?peer={userID} → a peer's pinned stories
@@ -371,14 +410,14 @@ func (h *StoryHandler) Pinned(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"stories": storyItemsJSON(items)})
+	writeJSON(w, http.StatusOK, domain.NewStoriesStories(storyItems(items, peer == user.ID), nil))
 }
 
 // Pin serves POST /stories/{storyID}/pin body {pinned} — owner toggles the
 // profile-pin of a story.
 func (h *StoryHandler) Pin(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	storyID, ok := pathInt(w, r, "storyID")
+	_, seq, ok := storyAddr(w, r)
 	if !ok {
 		return
 	}
@@ -389,11 +428,11 @@ func (h *StoryHandler) Pin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if err := h.svc.SetPinned(r.Context(), storyID, user.ID, b.Pinned); err != nil {
+	if err := h.svc.SetPinned(r.Context(), seq, user.ID, b.Pinned); err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // Edit serves PATCH /stories/{storyID} body {caption?, privacy?, allow_user_ids?}
@@ -401,32 +440,23 @@ func (h *StoryHandler) Pin(w http.ResponseWriter, r *http.Request) {
 // left unchanged.
 func (h *StoryHandler) Edit(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	storyID, ok := pathInt(w, r, "storyID")
+	_, seq, ok := storyAddr(w, r)
 	if !ok {
 		return
 	}
 	var b struct {
-		Caption      *string                  `json:"caption"`
-		Privacy      *string                  `json:"privacy"`
-		AllowUserIDs []int64                  `json:"allow_user_ids"`
-		MediaAreas   *[]domain.StoryMediaArea `json:"media_areas"`
+		Caption      *string            `json:"caption"`
+		Privacy      *string            `json:"privacy"`
+		AllowUserIDs []int64            `json:"allow_user_ids"`
+		MediaAreas   *domain.MediaAreas `json:"media_areas"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if err := h.svc.EditStory(r.Context(), storyID, user.ID, b.Caption, b.Privacy, b.AllowUserIDs, b.MediaAreas); err != nil {
+	if err := h.svc.EditStory(r.Context(), seq, user.ID, b.Caption, b.Privacy, b.AllowUserIDs, b.MediaAreas); err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
-}
-
-// storyItemsJSON serializes a flat story-item list (archive/pinned).
-func storyItemsJSON(items []domain.StoryItem) []map[string]any {
-	out := make([]map[string]any, 0, len(items))
-	for _, it := range items {
-		out = append(out, storyJSON(it))
-	}
-	return out
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }

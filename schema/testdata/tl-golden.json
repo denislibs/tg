@@ -1,0 +1,70 @@
+{
+  "_comment": [
+    "Эталонные байты провода TL. Один источник на обе стороны:",
+    "  - backend/internal/pkg/tl/tl_test.go собирает значение своим кодеком и сверяет байты;",
+    "  - web-client/scripts/crosscheck разбирает те же байты НЕИЗМЕНЁННЫМ десериализатором tweb.",
+    "Разъехаться незаметно нельзя: эталон один, а проверяют его две независимые реализации."
+  ],
+  "vectors": [
+    {
+      "name": "photoStrippedSize",
+      "type": "PhotoSize",
+      "hex": "2ebcb0e00169000003010203",
+      "note": "photoStrippedSize#e0b0bc2e type:string bytes:bytes = PhotoSize; type='i', bytes=[1,2,3]"
+    },
+    {
+      "name": "messageEntityBold",
+      "type": "MessageEntity",
+      "hex": "c90b61bd050000000b000000",
+      "note": "messageEntityBold#bd610bc9 offset:int length:int; offset=5, length=11"
+    },
+    {
+      "name": "messageEntityTextUrl",
+      "type": "MessageEntity",
+      "hex": "27d3a67600000000040000001368747470733a2f2f6578616d706c652e6f7267",
+      "note": "messageEntityTextUrl#76a6d327 offset:int length:int url:string; url=https://example.org"
+    },
+    {
+      "name": "messageEntityBlockquoteCollapsed",
+      "type": "MessageEntity",
+      "hex": "acaaccf101000000020000001e000000",
+      "note": "messageEntityBlockquote#f1ccaaac flags:# collapsed:flags.0?true offset:int length:int; бит поднят, само поле на проводе не занимает ничего"
+    },
+    {
+      "name": "messageEntityBlockquotePlain",
+      "type": "MessageEntity",
+      "hex": "acaaccf100000000020000001e000000",
+      "note": "та же цитата с нулевой маской: длина записи ТА ЖЕ — «выключено» это отсутствие, а не значение"
+    },
+    {
+      "name": "replyInlineMarkup",
+      "type": "ReplyMarkup",
+      "hex": "5402a34815c4b51c01000000838b607715c4b51c02000000ff0c177d00000000026f6b00ec250cd80000000002676f000c68747470733a2f2f612e696f000000",
+      "note": "replyInlineMarkup#48a30254 rows:Vector<KeyboardButtonRow>; один ряд из двух кнопок — keyboardButton{text=ok} и keyboardButtonUrl{text=go,url=https://a.io}. Вложенные векторы: Vector<KeyboardButtonRow> внутри которого Vector<KeyboardButton>."
+    },
+    {
+      "name": "documentSticker",
+      "type": "Document",
+      "hex": "d8c4d48f010000004d0000000000000000000000000000000000000000000000176170706c69636174696f6e2f782d7467737469636b6572001000000000000015c4b51c010000002ebcb0e001690000030102030000000015c4b51c020000005cc1376c000200000002000012d619630000000004f09f988000000069a2e79d05000000000000000000000000000000",
+      "note": "document#8fd4c4d8 — целый документ-стикер из нашей модели: id=77, mime=application/x-tgsticker, size=4096, ступень photoStrippedSize, атрибуты documentAttributeImageSize(512x512) и documentAttributeSticker{alt=😀, stickerset=inputStickerSetID{id=5}}. Реквизиты транспорта MTProto (access_hash, file_reference, date, dc_id) — НАЗВАННЫЕ заглушки: предмета у них нет, но место в потоке они занимают, иначе все последующие поля уехали бы. Порядок атрибутов не косметика: documentAttributeImageSize безусловно ставит type='photo', поэтому imageSize идёт ПЕРВЫМ, а sticker — вторым."
+    },
+    {
+      "name": "updateNewMessage",
+      "type": "Update",
+      "hex": "fd0a2b1fd3b9007600000000000000000c000000221751590700000000000000048e886a0cd0bfd180d0b8d0b2d0b5d1820000002900000001000000",
+      "note": "updateNewMessage#1f2b0afd message:Message pts:int pts_count:int — целый КАДР реального времени из нашей модели: сообщение id=12 в личном чате с peerUser{user_id=7}, текст 'привет' (UTF-8, выравнивание), курсор pts=41. Кадр у нас был конвертом {t: \"new_message\", d: {…}} с типом СТРОКОЙ и курсором, дописанным рядом с телом; здесь тип — четыре байта id конструктора, а pts — обычный параметр."
+    },
+    {
+      "name": "updateShortNewMessage",
+      "type": "Updates",
+      "hex": "c1ded478fd0a2b1fd3b9007600000000000000000c000000221751590700000000000000048e886a0cd0bfd180d0b8d0b2d0b5d1820000002900000001000000048e886a",
+      "note": "updateShort#78d4dec1 update:Update date:int = Updates; — ОБОЛОЧКА кадра на проводе TL. Конверта {t,d} в TL нет, и оболочку даёт схема: у кадра, чей конструктор объявляет pts (здесь updateNewMessage), курсор внутри тела, поэтому контейнеру добавить нечего."
+    },
+    {
+      "name": "updatesDialogPinned",
+      "type": "Updates",
+      "hex": "4042ae7415c4b51c010000001ce56f6e0100000005bf6de522175159070000000000000015c4b51c0000000015c4b51c00000000048e886a2a000000",
+      "note": "updates#74ae4240 updates:Vector<Update> users:Vector<User> chats:Vector<Chat> date:int seq:int = Updates; — вторая оболочка. У updateDialogPinned параметра pts нет вовсе, поэтому курсор кадра едет seq КОНТЕЙНЕРА: решение Р7 разбора. Векторы users/chats пока пустые."
+    }
+  ]
+}

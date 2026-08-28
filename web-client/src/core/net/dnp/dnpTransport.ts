@@ -43,7 +43,7 @@ export class DnpTransport implements Transport {
   private cipherSend: CipherState | null = null
   private cipherRecv: CipherState | null = null
   private token = ''
-  private listeners = new Map<string, Array<(d: unknown) => void>>()
+  private frameCbs: Array<(type: string, d: unknown, pts?: number) => void> = []
   private binaryCbs: Array<(data: Uint8Array) => void> = []
   private openCbs: Array<() => void> = []
   private closeCbs: Array<() => void> = []
@@ -104,7 +104,7 @@ export class DnpTransport implements Transport {
         }
         if (plain[0] !== KIND_JSON) { this.fail(); return }
         const f: Frame = decodeFrame(new TextDecoder().decode(plain.subarray(1)))
-        for (const cb of this.listeners.get(f.t) ?? []) cb(f.d)
+        for (const cb of this.frameCbs) cb(f.t, f.d, f.pts)
       } catch {
         this.fail() // сбой decrypt = необратимый рассинхрон nonce → close → rehandshake
       }
@@ -114,10 +114,7 @@ export class DnpTransport implements Transport {
   // fail: закрыть WS, НЕ глуша onclose — сработает onClose → connectionManager решедулит reconnect.
   private fail(): void { this.ws?.close() }
 
-  on(type: string, cb: (d: unknown) => void): void {
-    const arr = this.listeners.get(type) ?? []
-    arr.push(cb); this.listeners.set(type, arr)
-  }
+  onFrame(cb: (type: string, d: unknown, pts?: number) => void): void { this.frameCbs.push(cb) }
   onBinary(cb: (data: Uint8Array) => void): void { this.binaryCbs.push(cb) }
   onOpen(cb: () => void): void { this.openCbs.push(cb) }
   onClose(cb: () => void): void { this.closeCbs.push(cb) }

@@ -6,39 +6,42 @@ import (
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
-// chatUpdatePayload — АБСОЛЮТНЫЙ снимок метаданных чата (не дифф): title/photo/
-// username/публичность/число участников + групповые настройки (и подписи для
-// канала). Как и у reaction/poll, абсолютное представление делает catch-up через
+// chatUpdatePayload — АБСОЛЮТНЫЙ снимок чата (не дифф) в форме оригинала:
+// messages.chatFull, то есть полная карточка ВМЕСТЕ с краткой формой самого
+// чата. Как и у reaction/poll, абсолютное представление делает catch-up через
 // /sync идемпотентным — клиент просто заменяет карточку чата на этот снимок,
 // в каком бы порядке апдейты ни доехали.
-func chatUpdatePayload(c domain.ChatCard) map[string]any {
-	var photo any
-	if c.PhotoMediaID != nil {
-		photo = *c.PhotoMediaID
+//
+// Это ТОТ ЖЕ объект, что отдаёт ручка карточки (GroupHandler.Card). Раньше
+// одна и та же ChatCard ехала здесь и там в двух разных формах — плоско с id
+// против вложенно, — и клиент разбирал их двумя разными путями.
+//
+// Снимок БЕЗ ЗРИТЕЛЯ (кадр один на всех участников), и это видно в самом
+// объекте: флагов членства нет вовсе (см. ChatRecord.ViewerID), а обязательные
+// горизонты чтения channelFull едут нулями. Их зритель-зависимые значения
+// приезжают ручкой карточки, которую клиент и без того открывает поимённо.
+func chatUpdatePayload(peer domain.PeerID, c domain.ChatRecord) map[string]any {
+	return chatFullSnapshotPayload(domain.UpdateChatFullSnapshotTag, peer, c)
+}
+
+// channelUpdatePayload — тот же снимок, но кадром КАНАЛЬНОГО журнала.
+//
+// Конструктор второй, и это не дубль: он и есть ответ на вопрос «какой курсор
+// двигать». Схема отвечает на него ровно так же — updateNewMessage против
+// updateNewChannelMessage, — потому что предмет один, а журнала два. По самому
+// снимку различить журналы нельзя: наша группа в модели тоже channel (решение
+// №2 порта пиров), так что «канальность» здесь свойство ДОСТАВКИ.
+func channelUpdatePayload(peer domain.PeerID, c domain.ChatRecord) map[string]any {
+	return chatFullSnapshotPayload(domain.UpdateChannelFullSnapshotTag, peer, c)
+}
+
+func chatFullSnapshotPayload(tag string, peer domain.PeerID, c domain.ChatRecord) map[string]any {
+	return map[string]any{
+		"_":         tag,
+		"peer":      domain.NewPeer(peer),
+		"chat_full": domain.NewMessagesChatFull(c.ToChannelFull(), c.ToChannel()),
+		"pts_count": domain.PtsCountOne,
 	}
-	p := map[string]any{
-		"chat_id":        c.ID,
-		"type":           c.Type,
-		"title":          c.Title,
-		"about":          c.About,
-		"username":       c.Username,
-		"is_public":      c.IsPublic,
-		"member_count":   c.MemberCount,
-		"photo_media_id": photo, // nil — фото снято
-		"settings": map[string]any{
-			"default_perms":     int(c.Settings.DefaultPerms),
-			"slowmode_seconds":  c.Settings.SlowmodeSeconds,
-			"reactions_mode":    c.Settings.ReactionsMode,
-			"reactions_allowed": c.Settings.ReactionsAllowed,
-			"history_for_new":   c.Settings.HistoryForNew,
-			"charge_stars":      c.Settings.ChargeStars,
-		},
-	}
-	if c.Type == "channel" {
-		p["signatures"] = c.Signatures
-		p["signature_profiles"] = c.SignatureProfiles
-	}
-	return p
 }
 
 // publishChatUpdate логирует и рассылает участникам chat_update — абсолютный
@@ -54,18 +57,20 @@ func (i *Interactor) publishChatUpdate(ctx context.Context, chatID int64) {
 	if err != nil {
 		return
 	}
-	payload := chatUpdatePayload(card)
 	// Канал: один channel-broadcast (O(1)) по channel-конверту вместо N+1 fan-out
 	// в per-user лог каждого подписчика. Подписчики получают кадр живым, остальные
 	// добирают снимок при открытии через /channels/{id}/difference. Группа —
-	// прежний per-user путь (у групп нет channel_pts/топика).
-	if card.Type == "channel" {
-		_ = i.logAndPublishChannel(ctx, chatID, "chat_update", payload)
+	// прежний per-user путь (у групп нет канального курсора/топика).
+	if card.Type == domain.ChatTypeChannel {
+		// Ключ канала один на всех подписчиков — пер-зрительского в нём нет.
+		_ = i.logAndPublishChannel(ctx, chatID, "chat_update",
+			channelUpdatePayload(domain.ToPeerID(chatID, true), card))
 		return
 	}
 	members, err := i.chats.MemberIDs(ctx, chatID)
 	if err != nil {
 		return
 	}
-	_ = i.logAndPublish(ctx, members, "chat_update", payload)
+	_ = i.logAndPublishPerPeer(ctx, chatID, members, "chat_update",
+		func(peer domain.PeerID) map[string]any { return chatUpdatePayload(peer, card) })
 }

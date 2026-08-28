@@ -24,16 +24,28 @@ func NewContactsRepo(pool *pgxpool.Pool) *ContactsRepo { return &ContactsRepo{po
 // contactSelect joins the saved contact row with the peer's live profile so a
 // listing renders the avatar/username/phone without a second round-trip. Column
 // order matches scanContact.
-const contactSelect = `
+var contactSelect = `
 	SELECT c.owner_id, c.user_id, c.first_name, c.last_name, c.note, c.share_phone, c.created_at,
-	       u.username, u.avatar_url, u.avatar_preview, u.phone, u.display_name, u.is_bot
+	       ` + userRealCols("u.") + `, u.phone
 	FROM contacts c JOIN users u ON u.id = c.user_id`
 
-func scanContact(row pgx.Row) (domain.Contact, error) {
-	var c domain.Contact
-	err := row.Scan(&c.OwnerID, &c.UserID, &c.FirstName, &c.LastName, &c.Note, &c.SharePhone,
-		&c.CreatedAt, &c.Username, &c.AvatarURL, &c.AvatarPreview, &c.Phone, &c.DisplayName, &c.IsBot)
-	return c, err
+func scanContact(row pgx.Row) (domain.ContactRecord, error) {
+	var c domain.ContactRecord
+	var u userRealScan
+	var phone string
+	dest := []any{&c.OwnerID, &c.UserID, &c.FirstName, &c.LastName, &c.Note, &c.SharePhone, &c.CreatedAt}
+	dest = append(dest, u.dest()...)
+	dest = append(dest, &phone)
+	if err := row.Scan(dest...); err != nil {
+		return domain.ContactRecord{}, err
+	}
+	c.IsBot = u.isBot
+	c.User = u.user(true)
+	c.User.Phone = phone
+	// Имя карточки — сохранённое ВЛАДЕЛЬЦЕМ, а не профильное: это и есть
+	// смысл адресной книги.
+	c.User.FirstName, c.User.LastName = c.FirstName, c.LastName
+	return c, nil
 }
 
 // isForeignKeyViolation reports a Postgres FK error (e.g. adding a non-existent user).
@@ -42,7 +54,7 @@ func isForeignKeyViolation(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23503"
 }
 
-func (r *ContactsRepo) Add(ctx context.Context, c domain.Contact) (domain.Contact, error) {
+func (r *ContactsRepo) Add(ctx context.Context, c domain.ContactRecord) (domain.ContactRecord, error) {
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO contacts (owner_id, user_id, first_name, last_name, note, share_phone)
 		 VALUES ($1,$2,$3,$4,$5,$6)
@@ -50,22 +62,22 @@ func (r *ContactsRepo) Add(ctx context.Context, c domain.Contact) (domain.Contac
 		 DO UPDATE SET first_name=$3, last_name=$4, note=$5, share_phone=$6`,
 		c.OwnerID, c.UserID, c.FirstName, c.LastName, c.Note, c.SharePhone)
 	if isForeignKeyViolation(err) {
-		return domain.Contact{}, domain.ErrNotFound // the contact user doesn't exist
+		return domain.ContactRecord{}, domain.ErrNotFound // the contact user doesn't exist
 	}
 	if err != nil {
-		return domain.Contact{}, err
+		return domain.ContactRecord{}, err
 	}
 	// Re-read with the user join so the response carries the enriched fields.
 	return scanContact(r.pool.QueryRow(ctx, contactSelect+` WHERE c.owner_id=$1 AND c.user_id=$2`, c.OwnerID, c.UserID))
 }
 
-func (r *ContactsRepo) List(ctx context.Context, ownerID int64) ([]domain.Contact, error) {
+func (r *ContactsRepo) List(ctx context.Context, ownerID int64) ([]domain.ContactRecord, error) {
 	rows, err := r.pool.Query(ctx, contactSelect+` WHERE c.owner_id=$1 ORDER BY c.first_name, c.last_name, c.user_id`, ownerID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := make([]domain.Contact, 0)
+	out := make([]domain.ContactRecord, 0)
 	for rows.Next() {
 		c, err := scanContact(rows)
 		if err != nil {
@@ -99,12 +111,12 @@ func (r *ContactsRepo) Delete(ctx context.Context, ownerID, userID int64) (bool,
 }
 
 // SetCustomPhoto upserts the owner's personal photo for a contact.
-func (r *ContactsRepo) SetCustomPhoto(ctx context.Context, ownerID, contactUserID int64, url string) error {
+func (r *ContactsRepo) SetCustomPhoto(ctx context.Context, ownerID, contactUserID, mediaID int64) error {
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO contact_custom_photo (owner_id, contact_user_id, url)
+		`INSERT INTO contact_custom_photo (owner_id, contact_user_id, media_id)
 		 VALUES ($1,$2,$3)
-		 ON CONFLICT (owner_id, contact_user_id) DO UPDATE SET url=$3, created_at=now()`,
-		ownerID, contactUserID, url)
+		 ON CONFLICT (owner_id, contact_user_id) DO UPDATE SET media_id=$3, created_at=now()`,
+		ownerID, contactUserID, mediaID)
 	if isForeignKeyViolation(err) {
 		return domain.ErrNotFound
 	}
@@ -120,25 +132,24 @@ func (r *ContactsRepo) ClearCustomPhoto(ctx context.Context, ownerID, contactUse
 
 // CustomPhotoMap returns the owner's personal photos for the given contacts,
 // keyed by contact user id (absent when there is no personal photo).
-func (r *ContactsRepo) CustomPhotoMap(ctx context.Context, ownerID int64, contactIDs []int64) (map[int64]string, error) {
-	out := make(map[int64]string)
+func (r *ContactsRepo) CustomPhotoMap(ctx context.Context, ownerID int64, contactIDs []int64) (map[int64]int64, error) {
+	out := make(map[int64]int64)
 	if len(contactIDs) == 0 {
 		return out, nil
 	}
 	rows, err := r.pool.Query(ctx,
-		`SELECT contact_user_id, url FROM contact_custom_photo WHERE owner_id=$1 AND contact_user_id = ANY($2)`,
+		`SELECT contact_user_id, media_id FROM contact_custom_photo WHERE owner_id=$1 AND contact_user_id = ANY($2)`,
 		ownerID, contactIDs)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var id int64
-		var url string
-		if err := rows.Scan(&id, &url); err != nil {
+		var id, mediaID int64
+		if err := rows.Scan(&id, &mediaID); err != nil {
 			return nil, err
 		}
-		out[id] = url
+		out[id] = mediaID
 	}
 	return out, rows.Err()
 }

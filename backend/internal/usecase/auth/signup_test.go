@@ -39,7 +39,7 @@ func TestSignUp_NewPhoneFlow(t *testing.T) {
 	if res.Token == "" || res.User.ID == 0 {
 		t.Fatalf("SignUp вернул пустую сессию: %+v", res)
 	}
-	if res.User.FirstName != "Денис" || res.User.LastName != "Уревич" || res.User.DisplayName != "Денис Уревич" {
+	if res.User.FirstName != "Денис" || res.User.LastName != "Уревич" {
 		t.Fatalf("имя не сохранено: %+v", res.User)
 	}
 	if got, _, err := i.Authenticate(ctx, res.Token); err != nil || got.ID != res.User.ID {

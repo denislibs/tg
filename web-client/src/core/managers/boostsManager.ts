@@ -1,10 +1,10 @@
 import type { RestClient } from '../net/restClient'
 import {
-  mapBoostStatus, mapGiveaway, mapMessage,
-  type BoostStatus, type RawBoostStatus,
-  type Giveaway, type RawGiveaway,
-  type Message, type RawMessage,
+  mapMyMessage,
+  type GiveawayState,
+  type MyMessage, type RawMyMessage,
 } from '../models'
+import type { ChannelBoosts } from '../boosts/boostsStatus'
 
 // Бусты каналов + розыгрыши. Буст доступен только premium-пользователю и тратит
 // его слот; розыгрыш создаётся владельцем канала как сообщение типа 'giveaway'.
@@ -18,20 +18,29 @@ export interface CreateGiveawayArgs {
   clientMsgId?: string
 }
 
-export function newBoostsManager({ rest }: { rest: Pick<RestClient, 'get' | 'post'> }) {
+export function newBoostsManager({ rest, getMeId }: {
+  rest: Pick<RestClient, 'get' | 'post'>
+  /** id текущего пользователя — созданный розыгрыш вкладка кладёт прямо в окно
+   *  (useChatPopups → applyIncoming), минуя SSOT воркера и его маппер, поэтому
+   *  `out` (порт tweb pFlags.out) выводится здесь тем же предикатом. Лениво,
+   *  геттер: `me` у воркера разрешается асинхронно. */
+  getMeId?: () => number | null
+}) {
   return {
-    async status(chatId: number): Promise<BoostStatus> {
-      const r = await rest.get<RawBoostStatus>(`/channels/${chatId}/boosts`)
-      return mapBoostStatus(r)
+    // Ответ ручки — КОНСТРУКТОР схемы плюс наше число свободных слотов рядом:
+    // в схеме на этом месте `my_boost_slots` — вектор идентификаторов ЗАНЯТЫХ
+    // слотов, то есть другой предмет под похожим именем.
+    async status(peerId: number): Promise<ChannelBoosts> {
+      // Маппера нет: форма провода и форма модели совпали.
+      return rest.get<ChannelBoosts>(`/channels/${peerId}/boosts`)
     },
     // Бустит канал (расходует слот premium): возвращает обновлённый статус.
-    async boost(chatId: number): Promise<BoostStatus> {
-      const r = await rest.post<RawBoostStatus>(`/channels/${chatId}/boost`, {})
-      return mapBoostStatus(r)
+    async boost(peerId: number): Promise<ChannelBoosts> {
+      return rest.post<ChannelBoosts>(`/channels/${peerId}/boost`, {})
     },
     // Создаёт розыгрыш; возвращает сообщение-баббл розыгрыша.
-    async createGiveaway(chatId: number, a: CreateGiveawayArgs): Promise<Message> {
-      const r = await rest.post<RawMessage>(`/channels/${chatId}/giveaways`, {
+    async createGiveaway(peerId: number, a: CreateGiveawayArgs): Promise<MyMessage> {
+      const r = await rest.post<RawMyMessage>(`/channels/${peerId}/giveaways`, {
         prize_kind: a.prizeKind,
         months: a.months ?? 0,
         stars: a.stars ?? 0,
@@ -39,13 +48,19 @@ export function newBoostsManager({ rest }: { rest: Pick<RestClient, 'get' | 'pos
         until_date: a.untilDate,
         client_msg_id: a.clientMsgId ?? '',
       })
-      return mapMessage(r)
+      // `pFlags.out` производит сервер; клиенту остаётся перевод номеров и
+      // уточнение действия — их делает сам маппер.
+      return mapMyMessage(r, getMeId?.() ?? null)
     },
-    // participateGiveaway перенесён в messagesManager (single-writer: пуш в SSOT
-    // сообщений + broadcast → storeProjection). Здесь остаётся только чтение статуса.
-    async getGiveaway(id: number): Promise<Giveaway> {
-      const r = await rest.get<{ giveaway: RawGiveaway }>(`/giveaways/${id}`)
-      return mapGiveaway(r.giveaway)
+    // ЛИЧНОЕ состояние зрителя (`payments.giveawayInfo`): «участвую ли»,
+    // «выиграл ли», сколько участников. Сами условия розыгрыша едут вложением
+    // сообщения и здесь не повторяются — второй формы розыгрыша на проводе нет.
+    // Участие (`participateGiveaway`) живёт в messagesManager и возвращает ЭТО
+    // ЖЕ состояние: сообщение оно больше не трогает.
+    async getGiveaway(id: number): Promise<GiveawayState> {
+      // Ответ — САМ конструктор объединения `payments.GiveawayInfo`: обёртки
+      // вокруг него у оригинала нет.
+      return rest.get<GiveawayState>(`/giveaways/${id}`)
     },
   }
 }

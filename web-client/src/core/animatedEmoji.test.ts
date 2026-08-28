@@ -2,19 +2,23 @@
 // грузится один раз, лукап работает и с вариационным селектором, и без.
 import { describe, it, expect, vi } from 'vitest'
 
-const setBySlug = vi.fn(async (slug: string) => ({
-  set: { id: 1, slug, title: 'Animated Emoji', kind: 'emoji' as const, count: 2 },
+const getStickerSet = vi.fn(async (input: { shortName: string }) => ({
+  set: { id: 1, slug: input.shortName, title: 'Animated Emoji', kind: 'emoji' as const, count: 2 },
   stickers: [
-    { id: 1, setId: 1, mediaId: 42, emoji: '❤️' }, // с FE0F — в кэше должен лежать без него
-    { id: 2, setId: 1, mediaId: 43, emoji: '😂' },
+    makeSticker({ id: 42, setId: 1, emoji: '❤️' }), // с FE0F — в кэше должен лежать без него
+    makeSticker({ id: 43, setId: 1, emoji: '😂' }),
   ],
 }))
 
 vi.mock('../client/bootstrap', () => ({
-  startClient: () => ({ managers: { stickers: { setBySlug } } }),
+  startClient: () => ({ managers: { stickers: { getStickerSet } } }),
 }))
 
 import { normalizeEmoji, buildEmojiMap, getAnimatedEmoji, peekAnimatedEmoji } from './animatedEmoji'
+import { makeSticker } from './stickers/testSticker'
+
+/** Стикер-документ с заданным эмодзи и номером файла. */
+const doc = (emoji: string, id: number) => makeSticker({ id, emoji })
 
 describe('normalizeEmoji', () => {
   it('срезает вариационный селектор FE0F и пробелы', () => {
@@ -46,15 +50,15 @@ describe('normalizeEmoji', () => {
 
 describe('buildEmojiMap', () => {
   it('ключи нормализованы — лукап совпадает для ❤️ и ❤', () => {
-    const map = buildEmojiMap([{ emoji: '❤️', mediaId: 42 }])
-    expect(map.get(normalizeEmoji('❤️'))).toBe(42)
-    expect(map.get(normalizeEmoji('❤'))).toBe(42)
+    const map = buildEmojiMap([doc('❤️', 42)])
+    expect(map.get(normalizeEmoji('❤️'))?.id).toBe(42)
+    expect(map.get(normalizeEmoji('❤'))?.id).toBe(42)
     expect(map.get('❤️')).toBeUndefined() // сырой ключ с FE0F в кэше не живёт
   })
 
   it('дубль эмодзи не перетирает первый mediaId', () => {
-    const map = buildEmojiMap([{ emoji: '🔥', mediaId: 1 }, { emoji: '🔥', mediaId: 2 }])
-    expect(map.get('🔥')).toBe(1)
+    const map = buildEmojiMap([doc('🔥', 1), doc('🔥', 2)])
+    expect(map.get('🔥')?.id).toBe(1)
   })
 
   // Набор из 599 эмодзи хранит альты в исходном виде Telegram — с FE0F,
@@ -62,31 +66,31 @@ describe('buildEmojiMap', () => {
   // же правилом, каким построен ключ, независимо от того, какой вариант
   // реально лёг в БД.
   it('лукап независим от селектора вариации на других реальных парах', () => {
-    const map = buildEmojiMap([{ emoji: '☺', mediaId: 1 }, { emoji: '😚', mediaId: 2 }])
-    expect(map.get(normalizeEmoji('☺️'))).toBe(1) // с FE0F
-    expect(map.get(normalizeEmoji('☺'))).toBe(1) // без
-    expect(map.get(normalizeEmoji('😚'))).toBe(2)
+    const map = buildEmojiMap([doc('☺', 1), doc('😚', 2)])
+    expect(map.get(normalizeEmoji('☺️'))?.id).toBe(1) // с FE0F
+    expect(map.get(normalizeEmoji('☺'))?.id).toBe(1) // без
+    expect(map.get(normalizeEmoji('😚'))?.id).toBe(2)
   })
 
   it('лукап независим от модификатора тона кожи', () => {
-    const map = buildEmojiMap([{ emoji: '👍', mediaId: 5 }])
-    expect(map.get(normalizeEmoji('👍🏽'))).toBe(5)
-    expect(map.get(normalizeEmoji('👍🏻'))).toBe(5)
+    const map = buildEmojiMap([doc('👍', 5)])
+    expect(map.get(normalizeEmoji('👍🏽'))?.id).toBe(5)
+    expect(map.get(normalizeEmoji('👍🏻'))?.id).toBe(5)
   })
 })
 
 describe('getAnimatedEmoji / peekAnimatedEmoji', () => {
   it('находит mediaId независимо от FE0F, набор грузится один раз', async () => {
-    expect(await getAnimatedEmoji('❤')).toEqual({ mediaId: 42 })
-    expect(await getAnimatedEmoji('❤️')).toEqual({ mediaId: 42 })
-    expect(await getAnimatedEmoji('😂')).toEqual({ mediaId: 43 })
+    expect((await getAnimatedEmoji('❤'))?.id).toBe(42)
+    expect((await getAnimatedEmoji('❤️'))?.id).toBe(42)
+    expect((await getAnimatedEmoji('😂'))?.id).toBe(43)
     expect(await getAnimatedEmoji('🍕')).toBeNull()
-    expect(setBySlug).toHaveBeenCalledTimes(1)
-    expect(setBySlug).toHaveBeenCalledWith('animated_emoji')
+    expect(getStickerSet).toHaveBeenCalledTimes(1)
+    expect(getStickerSet).toHaveBeenCalledWith({ shortName: 'animated_emoji' })
   })
 
   it('sync-кэш после загрузки отдаёт то же самое', () => {
-    expect(peekAnimatedEmoji('❤️')).toEqual({ mediaId: 42 })
+    expect(peekAnimatedEmoji('❤️')?.id).toBe(42)
     expect(peekAnimatedEmoji('🍕')).toBeNull()
   })
 })

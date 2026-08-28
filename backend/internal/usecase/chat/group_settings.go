@@ -264,13 +264,16 @@ func (i *Interactor) RestrictMember(ctx context.Context, chatID, actorID, target
 	}); err != nil {
 		return err
 	}
-	actor := i.userCard(ctx, actorID)
-	target := i.userCard(ctx, targetID)
-	text, _ := json.Marshal(map[string]any{
-		"action": "restrict", "actor_id": actor.ID, "actor": actor.DisplayName,
-		"user_id": target.ID, "user": target.DisplayName, "denied_rights": int(deniedRights),
-	})
-	i.postGroupService(ctx, chatID, actorID, string(text))
+	// Содержимое действия — сам набор запретов конструктором chatBannedRights,
+	// а не битмаск `denied_rights` числом, которого не читал ни один клиент.
+	// Срок ограничения там же (until_date): прежде он хранился, но наружу не
+	// ехал вовсе. Нулевое время — «навсегда», ровно как у прав чата.
+	var untilTime time.Time
+	if until != nil {
+		untilTime = *until
+	}
+	i.postGroupService(ctx, chatID, actorID, domain.NewMessageActionRestrict(
+		targetID, domain.NewChatBannedRights(domain.AllMemberPerms&^deniedRights, untilTime)))
 	return nil
 }
 
@@ -318,7 +321,10 @@ func (i *Interactor) DeleteGroup(ctx context.Context, chatID, actorID int64) err
 		return err
 	}
 	slices.Sort(members)
-	payload := map[string]any{"chat_id": chatID, "removed": true}
+	// chat_removed бывает только у группы/канала — приватный диалог не
+	// «удаляется», поэтому ключ пира здесь один на всех: -chatID.
+	payload := map[string]any{"_": domain.UpdateChatRemovedTag,
+		"peer": domain.NewPeer(domain.ToPeerID(chatID, true))}
 	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if i.updates != nil {

@@ -4,10 +4,15 @@
 // (blob:-URL декодируются один раз — повторный рендер синхронный).
 // Не портированы (помечено):
 //   • SVGImageElement-ветка (`setAttributeNS href`) — SVG-медиа у нас нет;
-//   • `processImageOnLoad` — ни один наш вызов его не передаёт;
-//   • видео-колбэк через `onMediaLoad(elem)` — хелпера onMediaLoad в дереве ещё
-//     нет, приедет с vanilla-плеером в Task 15; до него видео-ветка зовёт
-//     колбэк сразу после назначения src (у картинок поведение 1:1).
+//   • `processImageOnLoad` — ни один наш вызов его не передаёт.
+//
+// Видео-ветка (`onMediaLoad(elem).then(callback)`, tweb :39-41) восстановлена:
+// в первой редакции этого порта её обошли колбэком сразу после назначения src,
+// потому что `helpers/onMediaLoad.ts` тогда ещё не был портирован. Он приехал —
+// отступление устарело. Ждать здесь обязательно: у видео назначение `src` НЕ
+// означает готовности, и колбэк «сразу» отдаёт вызывающему элемент с
+// readyState 0 — кадра ещё нет, размеров ещё нет.
+import onMediaLoad from '@helpers/onMediaLoad'
 
 export const loadedURLs: { [url: string]: boolean } = {}
 
@@ -33,7 +38,15 @@ export default function renderImageFromUrl(
   const isVideo = elem instanceof HTMLVideoElement
   if ((loadedURLs[url] && useCache) || isVideo) {
     set(elem, url)
-    callback?.() // видео: onMediaLoad-ожидание — Task 15 (см. шапку)
+
+    if (callback) {
+      if (isVideo) {
+        return onMediaLoad(elem).then(callback)
+      }
+
+      callback()
+    }
+
     return
   }
 

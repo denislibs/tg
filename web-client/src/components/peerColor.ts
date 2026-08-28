@@ -14,6 +14,32 @@ export function peerColorById(peerId: number): string {
   return PEER_COLORS[peerColorIndex(peerId)]
 }
 
+// ── Цвет аватарки: ИМЯ, а не hex ────────────────────────────────────────────
+// Аватарка в tweb цвет инлайном не ставит вовсе: узел получает
+// `data-color="red|orange|…"` (avatarNew.tsx:1076), а сам градиент собирает CSS
+// из токенов `--peer-avatar-{color}-{top,bottom}` (`_avatar.scss:18-66`, у нас
+// портирован). Поэтому здесь нужен ТОТ ЖЕ индекс, что и выше, но выраженный
+// именем — второго правила выбора не заводим.
+
+/** Порт `DialogColors` (`getPeerColorById.ts:6`) — порядок значим, это и есть
+ *  соответствие «индекс → имя». */
+export const PEER_COLOR_NAMES = ['red', 'orange', 'violet', 'green', 'cyan', 'blue', 'pink'] as const
+export type PeerColorName = typeof PEER_COLOR_NAMES[number]
+
+/**
+ * Порт `getPeerAvatarColorByPeer` (`getPeerColorById.ts:14-42`) в применимом
+ * объёме: `undefined` там, где оригинал возвращает `undefined` (карточки пира
+ * нет — `getPeerColorIndexByPeer` отдаёт -1, :44), иначе имя по индексу.
+ *
+ * Не портирована ветка кастомной палитры (`peer.color`, `DialogColorsFg`,
+ * пересчёт по hue): поля `color` в нашей карточке пира нет вовсе
+ * (`core/peers/peer.ts:193-221`), значит `getPeerColorIndexByPeer` сводится к
+ * `getPeerColorIndexById(peer.id)` — это `peerColorIndex` выше.
+ */
+export function peerAvatarColorByPeer(peerId: number, peerExists: boolean): PeerColorName | undefined {
+  return peerExists ? PEER_COLOR_NAMES[peerColorIndex(peerId)] : undefined
+}
+
 /** Фолбэк по имени: id недоступен (черновик/строка поиска) — детерминированный хеш. */
 export function peerColor(name: string): string {
   let h = 0

@@ -3,7 +3,7 @@ import { useSecretChatStore } from './secretChatStore'
 
 describe('secretChatStore', () => {
   beforeEach(() => useSecretChatStore.setState({ byChat: {} }))
-  it('setStatus хранит стадию handshake по chatId', () => {
+  it('setStatus хранит стадию handshake по peerId', () => {
     useSecretChatStore.getState().setStatus(7, 'requested')
     expect(useSecretChatStore.getState().byChat[7]?.status).toBe('requested')
     useSecretChatStore.getState().setStatus(7, 'established')

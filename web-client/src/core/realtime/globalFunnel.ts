@@ -11,8 +11,10 @@ import { newPendingPts } from './pendingPts'
 import type { EventMeta } from '../../rpc/superMessagePort'
 
 export interface GlobalFunnelDeps {
-  /** Отражение апдейта в SSOT воркера + broadcast в вкладки (worker.dispatch). */
-  dispatch: (t: string, d: unknown, meta?: EventMeta) => void
+  /** Отражение апдейта в SSOT воркера + broadcast в вкладки (worker.dispatch).
+   *  `key` — КОНСТРУКТОР кадра (см. updateCatalog.frameKey); воронка его не
+   *  интерпретирует, а лишь передаёт дальше — её дело арифметика курсора. */
+  dispatch: (key: string, d: unknown, meta?: EventMeta) => void
   cursor: Cursor                       // из './cursor'
   /** Курсор гидратирован из IDB (гейт перед первым apply). */
   isCursorReady: () => boolean
@@ -25,7 +27,7 @@ export interface GlobalFunnelDeps {
 }
 
 export function newGlobalFunnel(deps: GlobalFunnelDeps): {
-  applyUpdate(t: string, pts: number | undefined, d: unknown, live: boolean): void
+  applyUpdate(key: string, pts: number | undefined, d: unknown, live: boolean): void
   clear(): void
 } {
   // Буфер out-of-order живых кадров (порт pendingPtsUpdates tweb). Дыру в pts не
@@ -57,17 +59,22 @@ export function newGlobalFunnel(deps: GlobalFunnelDeps): {
     pendingPts.drain(() => deps.cursor.get().pts, (item) => {
       // Кадр в буфере — живой (пришёл по WS, лишь придержан переупорядочиванием),
       // поэтому catchUp:false — происхождение не меняется от факта буферизации.
-      deps.dispatch(item.t, item.d, { pts: item.pts, catchUp: false })
+      deps.dispatch(item.key, item.d, { pts: item.pts, catchUp: false })
       deps.cursor.advance(item.pts)
     })
     if (!pendingPts.has() && ptsSyncTimer) { clearTimeout(ptsSyncTimer); ptsSyncTimer = null }
   }
 
-  // Единый funnel. live=true — WS-кадр (pts внутри payload), live=false — элемент /sync
-  // (pts сверху). Арифметика курсора: dup→drop, next→apply+advance, gap(live)→буфер.
-  function applyUpdate(t: string, pts: number | undefined, d: unknown, live: boolean): void {
-    // Без pts — эфемерный/устаревший бэк: транслируем как есть, не гейтим.
-    if (typeof pts !== 'number') { deps.dispatch(t, d); return }
+  // Единый funnel. live=true — WS-кадр (pts внутри payload либо в конверте),
+  // live=false — элемент /sync (pts сверху). Арифметика курсора: dup→drop,
+  // next→apply+advance, gap(live)→буфер.
+  //
+  // Без pts кадр не гейтится вовсе — и это не «устаревший бэк», а СТРУКТУРА:
+  // у части конструкторов (updateUserTyping, updateUserStatus) параметра pts
+  // нет, потому что курсор им не нужен.
+  function applyUpdate(key: string, pts: number | undefined, d: unknown, live: boolean): void {
+    // Курсора нет — гейтить нечем и незачем: транслируем как есть.
+    if (typeof pts !== 'number') { deps.dispatch(key, d); return }
     if (live) {
       // Гейт гидратации: до загрузки курсора из IDB не применяем вслепую — catch-up
       // (он ждёт cursor.ready()) добёрет по порядку.
@@ -81,18 +88,18 @@ export function newGlobalFunnel(deps: GlobalFunnelDeps): {
         // Out-of-order живой кадр: буферизуем и ждём, что дыру закроют следующие
         // кадры (тогда drainPending применит по порядку без round-trip). Переполнение
         // буфера — дыра слишком велика, чтобы пересидеть → сразу catch-up.
-        if (!pendingPts.push({ t, pts, d })) { clearPtsSync(); deps.catchUp(); return }
+        if (!pendingPts.push({ key, pts, d })) { clearPtsSync(); deps.catchUp(); return }
         schedulePtsSync()
         return
       }
-      deps.dispatch(t, d, { pts, catchUp: false })
+      deps.dispatch(key, d, { pts, catchUp: false })
       deps.cursor.advance(pts)
       drainPending()
       return
     }
     // /sync-путь: применяем строго вперёд, дубли (уже применённые live) отсекаем.
     if (classifyPts(deps.cursor.get().pts, pts) === 'dup') return
-    deps.dispatch(t, d, { pts, catchUp: true })
+    deps.dispatch(key, d, { pts, catchUp: true })
     deps.cursor.advance(pts)
   }
 

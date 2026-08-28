@@ -14,8 +14,12 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { newPeersManager } from './peersManager'
 import { loadUsers, saveUsers } from '../store/persist'
 import { HttpError, type RestClient } from '../net/restClient'
+import type { UserReal } from '../peers/peer'
 
-function fakeRest(users: { id: number; username: string; display_name: string; avatar_url: string }[]) {
+const bob: UserReal = { _: 'user', id: 2, first_name: 'Боб', username: 'bob', photo: { _: 'userProfilePhoto', photo_id: 9 } }
+const bobby: UserReal = { _: 'user', id: 2, first_name: 'Бобби', username: 'bobby', photo: { _: 'userProfilePhoto', photo_id: 77 } }
+
+function fakeRest(users: UserReal[]) {
   return {
     async get<R>(_path: string, query?: Record<string, string | number>): Promise<R> {
       const requested = new Set(String(query?.ids ?? '').split(',').filter(Boolean).map(Number))
@@ -38,22 +42,22 @@ beforeEach(() => { globalThis.indexedDB = new IDBFactory() })
 
 describe('PeersManager — write-through в офлайн-стор', () => {
   it('ответ /users уезжает на диск (офлайн-резолв имён после перезагрузки)', async () => {
-    const mgr = newPeersManager({ rest: fakeRest([{ id: 2, username: 'bob', display_name: 'Боб', avatar_url: '/a.png' }]) })
+    const mgr = newPeersManager({ rest: fakeRest([bob]) })
 
     await mgr.getUsers([2])
     await new Promise((r) => setTimeout(r, 0)) // saveUsers — fire-and-forget
 
-    expect(await loadUsers()).toEqual([{ id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '/a.png', avatarPreview: '' }])
+    expect(await loadUsers()).toEqual([bob])
   })
 
-  it('патч имени по user_update тоже уезжает на диск', async () => {
-    const mgr = newPeersManager({ rest: fakeRest([{ id: 2, username: 'bob', display_name: 'Боб', avatar_url: '/a.png' }]) })
+  it('кадр user_update тоже уезжает на диск', async () => {
+    const mgr = newPeersManager({ rest: fakeRest([bob]) })
     await mgr.getUsers([2])
 
-    mgr.applyUserUpdate({ id: 2, username: 'bobby', display_name: 'Бобби', avatar_changed: false })
+    mgr.applyUserUpdate(bobby)
     await new Promise((r) => setTimeout(r, 0))
 
-    expect(await loadUsers()).toEqual([{ id: 2, username: 'bobby', displayName: 'Бобби', avatarUrl: '/a.png', avatarPreview: '' }])
+    expect(await loadUsers()).toEqual([bobby])
   })
 })
 
@@ -67,7 +71,7 @@ describe('PeersManager — write-through в офлайн-стор', () => {
 describe('PeersManager — офлайн-фолбэк ловит только отсутствие сети', () => {
   it('HTTP-ошибка пробрасывается, а не подменяется карточками с диска', async () => {
     // Диск прогрет предыдущей (успешной) сессией.
-    const warm = newPeersManager({ rest: fakeRest([{ id: 2, username: 'bob', display_name: 'Боб', avatar_url: '/a.png' }]) })
+    const warm = newPeersManager({ rest: fakeRest([bob]) })
     await warm.getUsers([2])
     await new Promise((r) => setTimeout(r, 0))
     expect(await loadUsers()).toHaveLength(1) // фолбэку есть чем подменить — иначе пин был бы вакуумным
@@ -79,13 +83,13 @@ describe('PeersManager — офлайн-фолбэк ловит только о�
   })
 
   it('сетевая ошибка → карточки поднимаются с диска', async () => {
-    const warm = newPeersManager({ rest: fakeRest([{ id: 2, username: 'bob', display_name: 'Боб', avatar_url: '/a.png' }]) })
+    const warm = newPeersManager({ rest: fakeRest([bob]) })
     await warm.getUsers([2])
     await new Promise((r) => setTimeout(r, 0))
 
     const mgr = newPeersManager({ rest: failingRest(new TypeError('Failed to fetch')) })
 
-    expect(await mgr.getUsers([2])).toEqual([{ id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '/a.png', avatarPreview: '' }])
+    expect(await mgr.getUsers([2])).toEqual([bob])
   })
 
   // Подъём с диска НЕ должен затирать то, что уже в памяти: диск бывает старее
@@ -102,18 +106,18 @@ describe('PeersManager — офлайн-фолбэк ловит только о�
       async get<R>(_path: string, query?: Record<string, string | number>): Promise<R> {
         if (net.offline) throw new TypeError('Failed to fetch')
         const requested = new Set(String(query?.ids ?? '').split(',').filter(Boolean).map(Number))
-        return { users: [{ id: 2, username: 'bobby', display_name: 'Бобби', avatar_url: '/new.png' }].filter((u) => requested.has(u.id)) } as unknown as R
+        return { users: [bobby].filter((u) => requested.has(u.id)) } as unknown as R
       },
     } as unknown as RestClient
     const mgr = newPeersManager({ rest })
     await mgr.getUsers([2]) // память: свежая карточка
     // На диске — копия постарше (запись другой сессии / ещё не долетевший write-through).
-    await saveUsers([{ id: 2, username: 'bob', displayName: 'Боб', avatarUrl: '/old.png' }])
+    await saveUsers([bob])
 
     // Сетевая ошибка по ЧУЖОМУ id: фолбэк поднимает с диска ВСЕХ, включая id 2.
     net.offline = true
     expect(await mgr.getUsers([3])).toEqual([])
 
-    expect(await mgr.getUsers([2])).toEqual([{ id: 2, username: 'bobby', displayName: 'Бобби', avatarUrl: '/new.png', avatarPreview: '' }])
+    expect(await mgr.getUsers([2])).toEqual([bobby])
   })
 })

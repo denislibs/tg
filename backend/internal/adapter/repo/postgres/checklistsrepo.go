@@ -83,20 +83,23 @@ func (r *ChecklistsRepo) Info(ctx context.Context, checklistID int64) (domain.Ch
 	if err != nil {
 		return domain.ChecklistInfo{}, err
 	}
-	marks := make(map[int][]int64, len(c.Items))
+	// marked_at выбирается вместе с автором, а не только сортирует: в схеме
+	// отметка это todoCompletion{id, completed_by, date}, где date ОБЯЗАТЕЛЕН.
+	// Колонка была здесь всегда — наружу не выходила.
+	marks := make(map[int][]domain.ChecklistMark, len(c.Items))
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT item_id, user_id FROM checklist_marks WHERE checklist_id=$1 ORDER BY marked_at`, checklistID)
+		`SELECT item_id, user_id, marked_at FROM checklist_marks WHERE checklist_id=$1 ORDER BY marked_at`, checklistID)
 	if err != nil {
 		return domain.ChecklistInfo{}, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var itemID int
-		var userID int64
-		if e := rows.Scan(&itemID, &userID); e != nil {
+		var mark domain.ChecklistMark
+		if e := rows.Scan(&itemID, &mark.UserID, &mark.At); e != nil {
 			return domain.ChecklistInfo{}, e
 		}
-		marks[itemID] = append(marks[itemID], userID)
+		marks[itemID] = append(marks[itemID], mark)
 	}
 	if err := rows.Err(); err != nil {
 		return domain.ChecklistInfo{}, err
@@ -106,11 +109,7 @@ func (r *ChecklistsRepo) Info(ctx context.Context, checklistID int64) (domain.Ch
 		Items: make([]domain.ChecklistItemInfo, 0, len(c.Items)),
 	}
 	for _, it := range c.Items {
-		by := marks[it.ID]
-		if by == nil {
-			by = []int64{}
-		}
-		info.Items = append(info.Items, domain.ChecklistItemInfo{ID: it.ID, Text: it.Text, MarkedBy: by})
+		info.Items = append(info.Items, domain.ChecklistItemInfo{ID: it.ID, Text: it.Text, Marks: marks[it.ID]})
 	}
 	return info, nil
 }

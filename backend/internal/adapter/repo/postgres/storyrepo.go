@@ -15,7 +15,7 @@ import (
 
 // marshalMediaAreas encodes media areas as a jsonb string ("[]" for empty). Per
 // CLAUDE.md we pass string(json), not []byte, so pgx stores jsonb (not bytea).
-func marshalMediaAreas(areas []domain.StoryMediaArea) (string, error) {
+func marshalMediaAreas(areas domain.MediaAreas) (string, error) {
 	if len(areas) == 0 {
 		return "[]", nil
 	}
@@ -28,8 +28,8 @@ func marshalMediaAreas(areas []domain.StoryMediaArea) (string, error) {
 
 // unmarshalMediaAreas decodes the jsonb media_areas column into a slice; an
 // empty/NULL column yields a non-nil empty slice so payloads always carry an array.
-func unmarshalMediaAreas(raw []byte) ([]domain.StoryMediaArea, error) {
-	out := make([]domain.StoryMediaArea, 0)
+func unmarshalMediaAreas(raw []byte) (domain.MediaAreas, error) {
+	out := make(domain.MediaAreas, 0)
 	if len(raw) == 0 {
 		return out, nil
 	}
@@ -58,34 +58,94 @@ var _ storyusecase.StoryRepo = (*StoryRepo)(nil)
 
 func NewStoryRepo(pool *pgxpool.Pool) *StoryRepo { return &StoryRepo{pool: pool} }
 
-func (r *StoryRepo) Create(ctx context.Context, s domain.Story, allowIDs []int64) (int64, error) {
+// Create возвращает внутренний ключ строки И номер внутри автора: первый нужен
+// связанным таблицам (просмотры, реакции, allow-лист), второй — проводу.
+func (r *StoryRepo) Create(ctx context.Context, s domain.Story, allowIDs []int64) (int64, int64, error) {
 	q := querier(ctx, r.pool)
 	areas, err := marshalMediaAreas(s.MediaAreas)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	var fwdAuthor, fwdStory *int64
 	if s.FwdFrom != nil {
 		fwdAuthor, fwdStory = &s.FwdFrom.AuthorID, &s.FwdFrom.StoryID
 	}
-	var id int64
+	// Номер внутри автора выдаёт его счётчик — тем же приёмом, каким `seq`
+	// сообщения выдаёт `chats.last_seq`: инкремент и вставка идут одним
+	// запросом, поэтому двух историй с одним номером не бывает.
+	var id, seq int64
+	if err = q.QueryRow(ctx,
+		`UPDATE users SET last_story_seq = last_story_seq + 1 WHERE id=$1 RETURNING last_story_seq`,
+		s.AuthorID).Scan(&seq); err != nil {
+		return 0, 0, err
+	}
 	err = q.QueryRow(ctx,
-		`INSERT INTO stories (author_id, media_id, caption, privacy, expires_at, media_areas, fwd_from_author_id, fwd_from_story_id)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-		s.AuthorID, s.MediaID, s.Caption, s.Privacy, s.ExpiresAt, areas, fwdAuthor, fwdStory).Scan(&id)
+		`INSERT INTO stories (author_id, seq, media_id, caption, privacy, expires_at, media_areas, fwd_from_author_id, fwd_from_story_id)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+		s.AuthorID, seq, s.MediaID, s.Caption, s.Privacy, s.ExpiresAt, areas, fwdAuthor, fwdStory).Scan(&id)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	if s.Privacy == "selected" {
 		for _, uid := range allowIDs {
 			if _, err := q.Exec(ctx,
 				`INSERT INTO story_allow (story_id, user_id) VALUES ($1,$2)
 				 ON CONFLICT DO NOTHING`, id, uid); err != nil {
-				return 0, err
+				return 0, 0, err
 			}
 		}
 	}
-	return id, nil
+	return id, seq, nil
+}
+
+// IDBySeq — внешний адрес (автор + номер) во внутренний ключ строки. Обычный
+// поиск по UNIQUE (author_id, seq) из миграции 0126 — ни кэша, ни переходника;
+// тот же приём, что у сообщения (`MessagesRepo.IDBySeq`).
+func (r *StoryRepo) IDBySeq(ctx context.Context, authorID, seq int64) (int64, error) {
+	var id int64
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT id FROM stories WHERE author_id=$1 AND seq=$2`, authorID, seq).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, domain.ErrNotFound
+	}
+	return id, err
+}
+
+// SetRead двигает ГОРИЗОНТ прочтения зрителя у автора: только вперёд, как
+// `read_inbox_max_id` у диалога. Возвращает горизонт ПОСЛЕ применения — кадру
+// нужно ровно это число, а не то, что прислал клиент.
+func (r *StoryRepo) SetRead(ctx context.Context, viewerID, authorID, maxID int64) (int64, error) {
+	var out int64
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`INSERT INTO story_read (viewer_id, author_id, max_read_id) VALUES ($1,$2,$3)
+		 ON CONFLICT (viewer_id, author_id)
+		 DO UPDATE SET max_read_id = GREATEST(story_read.max_read_id, EXCLUDED.max_read_id)
+		 RETURNING max_read_id`, viewerID, authorID, maxID).Scan(&out)
+	return out, err
+}
+
+// ReadHorizons — горизонты зрителя у перечисленных авторов. Отсутствие строки
+// значит «не читал ни одной» и в карту не попадает.
+func (r *StoryRepo) ReadHorizons(ctx context.Context, viewerID int64, authorIDs []int64) (map[int64]int64, error) {
+	out := make(map[int64]int64, len(authorIDs))
+	if len(authorIDs) == 0 {
+		return out, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT author_id, max_read_id FROM story_read WHERE viewer_id=$1 AND author_id = ANY($2)`,
+		viewerID, authorIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var author, maxID int64
+		if e := rows.Scan(&author, &maxID); e != nil {
+			return nil, e
+		}
+		out[author] = maxID
+	}
+	return out, rows.Err()
 }
 
 func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []int64) ([]domain.StoryGroup, error) {
@@ -93,16 +153,15 @@ func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []
 		return []domain.StoryGroup{}, nil
 	}
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT s.id, s.author_id, s.media_id, s.caption, s.privacy, s.pinned, s.edited,
+		`SELECT s.id, s.seq, s.author_id, s.media_id, s.caption, s.privacy, s.pinned, s.edited,
 		        s.media_areas, s.fwd_from_author_id, s.fwd_from_story_id,
 		        s.created_at, s.expires_at,
-		        u.id, u.display_name, COALESCE(u.avatar_url,''),
-		        (sv.viewer_id IS NOT NULL) AS viewed,
+		        `+userRealCols("u.")+`,
 		        (SELECT count(*) FROM story_reactions sr WHERE sr.story_id = s.id) AS reactions_count,
-		        COALESCE((SELECT sr.reaction FROM story_reactions sr WHERE sr.story_id = s.id AND sr.user_id = $1), '') AS my_reaction
+		        COALESCE((SELECT sr.reaction FROM story_reactions sr WHERE sr.story_id = s.id AND sr.user_id = $1), '') AS my_reaction,
+		        COALESCE((SELECT rd.max_read_id FROM story_read rd WHERE rd.viewer_id = $1 AND rd.author_id = s.author_id), 0) AS max_read_id
 		   FROM stories s
 		   JOIN users u ON u.id = s.author_id
-		   LEFT JOIN story_views sv ON sv.story_id = s.id AND sv.viewer_id = $1
 		  WHERE s.expires_at > now()
 		    -- author set: own + chat partners ($2), плюс авторы, у которых зритель в
 		    -- close_friends (их 'close'-истории) или в allow-листе (их 'selected'), даже
@@ -124,25 +183,27 @@ func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []
 	out := make([]domain.StoryGroup, 0)
 	// byID maps a story id to a pointer into the built groups, so the reactions
 	// breakdown (fetched in a second batched query) can be merged back in.
-	byID := make(map[int64]*domain.StoryItem)
+	byID := make(map[int64]*domain.StoryRecord)
 	storyIDs := make([]int64, 0)
 	var curAuthor int64
 	idx := -1
 	for rows.Next() {
 		var (
-			item                domain.StoryItem
-			author              domain.UserCard
+			item                domain.StoryRecord
+			au                  userRealScan
 			discard             int64 // s.author_id (== u.id via JOIN)
 			areasRaw            []byte
 			fwdAuthor, fwdStory *int64
 		)
-		if err := rows.Scan(&item.ID, &discard, &item.MediaID, &item.Caption, &item.Privacy, &item.Pinned, &item.Edited,
-			&areasRaw, &fwdAuthor, &fwdStory,
-			&item.CreatedAt, &item.ExpiresAt,
-			&author.ID, &author.DisplayName, &author.AvatarURL, &item.Viewed,
-			&item.ReactionsCount, &item.MyReaction); err != nil {
+		var maxRead int64
+		dest := []any{&item.ID, &item.Seq, &discard, &item.MediaID, &item.Caption, &item.Privacy, &item.Pinned, &item.Edited,
+			&areasRaw, &fwdAuthor, &fwdStory, &item.CreatedAt, &item.ExpiresAt}
+		dest = append(dest, au.dest()...)
+		dest = append(dest, &item.ReactionsCount, &item.MyReaction, &maxRead)
+		if err := rows.Scan(dest...); err != nil {
 			return nil, err
 		}
+		author := au.user(true)
 		areas, err := unmarshalMediaAreas(areasRaw)
 		if err != nil {
 			return nil, err
@@ -151,7 +212,8 @@ func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []
 		item.FwdFrom = fwdFrom(fwdAuthor, fwdStory)
 		_ = discard
 		if idx < 0 || author.ID != curAuthor {
-			out = append(out, domain.StoryGroup{Author: author, Stories: []domain.StoryItem{}})
+			// Горизонт — свойство ГРУППЫ, а не истории: один номер на автора.
+			out = append(out, domain.StoryGroup{Author: author, MaxReadID: maxRead, Stories: []domain.StoryRecord{}})
 			idx++
 			curAuthor = author.ID
 		}
@@ -178,7 +240,7 @@ func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []
 // attachReactions loads the per-emoji reaction breakdown for the given stories
 // in one query and fills each item's Reactions (with Mine set for the viewer's
 // own emoji).
-func (r *StoryRepo) attachReactions(ctx context.Context, storyIDs []int64, viewerID int64, byID map[int64]*domain.StoryItem) error {
+func (r *StoryRepo) attachReactions(ctx context.Context, storyIDs []int64, viewerID int64, byID map[int64]*domain.StoryRecord) error {
 	if len(storyIDs) == 0 {
 		return nil
 	}
@@ -216,24 +278,39 @@ func (r *StoryRepo) MarkViewed(ctx context.Context, storyID, viewerID int64) err
 	return err
 }
 
-func (r *StoryRepo) Viewers(ctx context.Context, storyID int64) ([]domain.UserCard, error) {
+// Viewers отдаёт просмотры истории ВМЕСТЕ с карточками зрителей — форма
+// контейнера `stories.storyViewsList`.
+//
+// Дата просмотра и реакция зрителя приезжают тем же запросом: оба параметра
+// объявлены у `storyView`, предмет у обоих есть (`story_views.viewed_at` и
+// `story_reactions.reaction`), и терялись они только потому, что наружу ехали
+// голые карточки.
+func (r *StoryRepo) Viewers(ctx context.Context, storyID int64) (domain.StoryViewers, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT u.id, COALESCE(u.username,''), u.display_name, COALESCE(u.avatar_url,'')
+		`SELECT `+userRealCols("u.")+`, sv.viewed_at, COALESCE(sr.reaction,'')
 		   FROM story_views sv
 		   JOIN users u ON u.id = sv.viewer_id
+		   LEFT JOIN story_reactions sr ON sr.story_id = sv.story_id AND sr.user_id = sv.viewer_id
 		  WHERE sv.story_id = $1
 		  ORDER BY sv.viewed_at`, storyID)
 	if err != nil {
-		return nil, err
+		return domain.StoryViewers{}, err
 	}
 	defer rows.Close()
-	out := make([]domain.UserCard, 0)
+	out := domain.StoryViewers{Views: []domain.StoryView{}, Users: []domain.UserReal{}}
 	for rows.Next() {
-		var u domain.UserCard
-		if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.AvatarURL); err != nil {
-			return nil, err
+		var us userRealScan
+		var viewedAt time.Time
+		var reaction string
+		if err := rows.Scan(append(us.dest(), &viewedAt, &reaction)...); err != nil {
+			return domain.StoryViewers{}, err
 		}
-		out = append(out, u)
+		var r domain.Reaction
+		if reaction != "" {
+			r = domain.NewReactionEmoji(reaction)
+		}
+		out.Views = append(out.Views, domain.NewStoryView(us.id, viewedAt.Unix(), r))
+		out.Users = append(out.Users, us.user(true))
 	}
 	return out, rows.Err()
 }
@@ -364,26 +441,25 @@ func (r *StoryRepo) Visible(ctx context.Context, storyID, viewerID int64, partne
 
 // storyItemCols is the column list + reaction subqueries shared by Archive and
 // Pinned (flat single-peer lists, no author grouping). $1 is the viewer.
-const storyItemCols = `s.id, s.media_id, s.caption, s.privacy, s.pinned, s.edited,
+const storyItemCols = `s.id, s.seq, s.media_id, s.caption, s.privacy, s.pinned, s.edited,
 	s.media_areas, s.fwd_from_author_id, s.fwd_from_story_id, s.created_at, s.expires_at,
-	(sv.viewer_id IS NOT NULL) AS viewed,
 	(SELECT count(*) FROM story_reactions sr WHERE sr.story_id = s.id) AS reactions_count,
 	COALESCE((SELECT sr.reaction FROM story_reactions sr WHERE sr.story_id = s.id AND sr.user_id = $1), '') AS my_reaction`
 
 // scanStoryItems reads a flat story-item list (Archive/Pinned) and attaches the
 // per-emoji reaction breakdown for viewerID in one extra batched query.
-func (r *StoryRepo) scanStoryItems(ctx context.Context, rows pgx.Rows, viewerID int64) ([]domain.StoryItem, error) {
+func (r *StoryRepo) scanStoryItems(ctx context.Context, rows pgx.Rows, viewerID int64) ([]domain.StoryRecord, error) {
 	defer rows.Close()
-	out := make([]domain.StoryItem, 0)
+	out := make([]domain.StoryRecord, 0)
 	for rows.Next() {
 		var (
-			it                  domain.StoryItem
+			it                  domain.StoryRecord
 			areasRaw            []byte
 			fwdAuthor, fwdStory *int64
 		)
-		if err := rows.Scan(&it.ID, &it.MediaID, &it.Caption, &it.Privacy, &it.Pinned, &it.Edited,
+		if err := rows.Scan(&it.ID, &it.Seq, &it.MediaID, &it.Caption, &it.Privacy, &it.Pinned, &it.Edited,
 			&areasRaw, &fwdAuthor, &fwdStory, &it.CreatedAt, &it.ExpiresAt,
-			&it.Viewed, &it.ReactionsCount, &it.MyReaction); err != nil {
+			&it.ReactionsCount, &it.MyReaction); err != nil {
 			return nil, err
 		}
 		areas, err := unmarshalMediaAreas(areasRaw)
@@ -397,7 +473,7 @@ func (r *StoryRepo) scanStoryItems(ctx context.Context, rows pgx.Rows, viewerID 
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	byID := make(map[int64]*domain.StoryItem, len(out))
+	byID := make(map[int64]*domain.StoryRecord, len(out))
 	storyIDs := make([]int64, 0, len(out))
 	for i := range out {
 		byID[out[i].ID] = &out[i]
@@ -472,7 +548,7 @@ func (r *StoryRepo) SetPinned(ctx context.Context, storyID, authorID int64, pinn
 // Edit updates caption/privacy (COALESCE keeps unset fields), flags edited, and
 // re-syncs story_allow: for 'selected' it replaces the allowlist, for any other
 // explicit privacy it clears it; an unchanged privacy leaves the allowlist as-is.
-func (r *StoryRepo) Edit(ctx context.Context, storyID, authorID int64, caption, privacy *string, allowIDs []int64, mediaAreas *[]domain.StoryMediaArea) error {
+func (r *StoryRepo) Edit(ctx context.Context, storyID, authorID int64, caption, privacy *string, allowIDs []int64, mediaAreas *domain.MediaAreas) error {
 	q := querier(ctx, r.pool)
 	// media_areas: nil — не трогаем (COALESCE оставляет прежнее); иначе полностью
 	// заменяем набор областей (tweb editStory заменяет media_areas).
@@ -509,7 +585,7 @@ func (r *StoryRepo) Edit(ctx context.Context, storyID, authorID int64, caption, 
 	return nil
 }
 
-func (r *StoryRepo) Archive(ctx context.Context, ownerID, limit, offsetID int64) ([]domain.StoryItem, error) {
+func (r *StoryRepo) Archive(ctx context.Context, ownerID, limit, offsetID int64) ([]domain.StoryRecord, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT `+storyItemCols+`
 		   FROM stories s
@@ -526,7 +602,7 @@ func (r *StoryRepo) Archive(ctx context.Context, ownerID, limit, offsetID int64)
 	return r.scanStoryItems(ctx, rows, ownerID)
 }
 
-func (r *StoryRepo) Pinned(ctx context.Context, peerID, viewerID int64) ([]domain.StoryItem, error) {
+func (r *StoryRepo) Pinned(ctx context.Context, peerID, viewerID int64) ([]domain.StoryRecord, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT `+storyItemCols+`
 		   FROM stories s
@@ -543,6 +619,33 @@ func (r *StoryRepo) Pinned(ctx context.Context, peerID, viewerID int64) ([]domai
 		return nil, err
 	}
 	return r.scanStoryItems(ctx, rows, viewerID)
+}
+
+// ByID — ОДНА история глазами зрителя по ВНУТРЕННЕМУ ключу. Нужна кадру
+// `updateStory`: история едет в нём целиком, тем же конструктором, что и на
+// витрине, — плоский кадр прошлой формы историю построить не мог (в нём был
+// только номер файла).
+//
+// Видимость здесь НЕ проверяется: кадр адресуется тому, кто историю и так
+// видит (автору либо получателю рассылки), а проверка живёт в usecase.
+func (r *StoryRepo) ByID(ctx context.Context, storyID, viewerID int64) (domain.StoryRecord, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT `+storyItemCols+`
+		   FROM stories s
+		   LEFT JOIN story_views sv ON sv.story_id = s.id AND sv.viewer_id = $1
+		  WHERE s.id = $2`,
+		viewerID, storyID)
+	if err != nil {
+		return domain.StoryRecord{}, err
+	}
+	items, err := r.scanStoryItems(ctx, rows, viewerID)
+	if err != nil {
+		return domain.StoryRecord{}, err
+	}
+	if len(items) == 0 {
+		return domain.StoryRecord{}, domain.ErrNotFound
+	}
+	return items[0], nil
 }
 
 func (r *StoryRepo) PurgeRecentViews(ctx context.Context, viewerID int64, since time.Time) error {

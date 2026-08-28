@@ -45,7 +45,7 @@ func (i *Interactor) SetChatAutoDelete(ctx context.Context, chatID, actorID int6
 	if err != nil {
 		return err
 	}
-	if typ == "group" || typ == "channel" {
+	if typ == domain.ChatTypeGroup || typ == domain.ChatTypeChannel {
 		if err := i.requireRight(ctx, chatID, actorID, domain.RightChangeInfo); err != nil {
 			return err
 		}
@@ -53,11 +53,7 @@ func (i *Interactor) SetChatAutoDelete(ctx context.Context, chatID, actorID int6
 	if err := i.chats.SetAutoDelete(ctx, chatID, seconds); err != nil {
 		return err
 	}
-	actor := i.userCard(ctx, actorID)
-	text, _ := json.Marshal(map[string]any{
-		"action": "set_ttl", "actor_id": actor.ID, "actor": actor.DisplayName, "ttl": seconds,
-	})
-	i.postGroupService(ctx, chatID, actorID, string(text))
+	i.postGroupService(ctx, chatID, actorID, domain.NewMessageActionSetMessagesTTL(seconds))
 	return nil
 }
 
@@ -73,7 +69,11 @@ func (i *Interactor) PurgeExpiredMessages(ctx context.Context) (int, error) {
 	for _, msg := range expired {
 		var members []int64
 		ptsByUser := map[int64]int64{}
-		err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		addr, err := i.peerAddress(ctx, msg.ChatID)
+		if err != nil {
+			return purged, err
+		}
+		err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 			if e := i.msgs.SoftDelete(ctx, msg.ID); e != nil {
 				return e
 			}
@@ -83,12 +83,12 @@ func (i *Interactor) PurgeExpiredMessages(ctx context.Context) (int, error) {
 			}
 			slices.Sort(m)
 			members = m
-			payload, e := json.Marshal(deleteUpdatePayload(msg.ChatID, msg.ID, msg.Seq, false))
-			if e != nil {
-				return e
-			}
 			date := nowMillis()
 			for _, uid := range members {
+				payload, e := json.Marshal(deletePayload(addr.forViewer(uid), msg.Seq))
+				if e != nil {
+					return e
+				}
 				pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "delete_message", payload)
 				if e != nil {
 					return e
@@ -102,9 +102,9 @@ func (i *Interactor) PurgeExpiredMessages(ctx context.Context) (int, error) {
 		}
 		purged++
 		if i.publisher != nil {
-			base := deleteUpdatePayload(msg.ChatID, msg.ID, msg.Seq, false)
 			for _, uid := range members {
-				_ = i.publisher.PublishToUser(ctx, uid, framePts("delete_message", base, ptsByUser[uid]))
+				body := deletePayload(addr.forViewer(uid), msg.Seq)
+				_ = i.publisher.PublishToUser(ctx, uid, framePts("delete_message", body, ptsByUser[uid]))
 			}
 		}
 	}

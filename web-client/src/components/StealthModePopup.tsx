@@ -13,8 +13,10 @@ const PAST_LABEL = '5 min'
 const FUTURE_LABEL = '25 min'
 
 // Округлённый остаток кулдауна в минутах для строки «Available in %s».
-function cooldownLabel(iso: string): string {
-  const ms = new Date(iso).getTime() - Date.now()
+// Граница кулдауна — секунды эпохи (`storiesStealthMode`), те же единицы, что у
+// сообщения и черновика.
+function cooldownLabel(until: number): string {
+  const ms = until * 1000 - Date.now()
   const mins = Math.max(1, Math.ceil(ms / 60000))
   return `${mins} min`
 }
@@ -32,7 +34,7 @@ export default function StealthModePopup({ onClose }: { onClose: () => void }) {
   const { unavailable, cooldownUntil, setUnavailable } = useStealthState()
   const [busy, setBusy] = useState(false)
 
-  const onCooldown = cooldownUntil != null && new Date(cooldownUntil).getTime() > Date.now()
+  const onCooldown = cooldownUntil != null && cooldownUntil * 1000 > Date.now()
 
   const activate = async () => {
     if (busy) return

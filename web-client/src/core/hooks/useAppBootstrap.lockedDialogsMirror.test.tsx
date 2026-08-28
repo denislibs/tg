@@ -36,7 +36,6 @@ vi.mock('../../stores/storiesStore', () => ({ loadStories: vi.fn(async () => {})
 vi.mock('../../stores/notifyStore', () => ({ loadNotifySettings: vi.fn(async () => {}) }))
 vi.mock('../../stores/foldersStore', () => ({ loadFolders: vi.fn(async () => {}) }))
 vi.mock('../../stores/privacyStore', () => ({ loadPrivacy: vi.fn(async () => {}) }))
-vi.mock('../../stores/draftsStore', () => ({ loadDrafts: vi.fn(async () => {}) }))
 vi.mock('../../stores/starsStore', () => ({ loadStars: vi.fn(async () => {}) }))
 vi.mock('../mediaUrl', () => ({ primeMediaToken: vi.fn(async () => {}) }))
 vi.mock('../mediaCache', () => ({ syncCacheSettingsToSW: vi.fn() }))
@@ -96,7 +95,7 @@ describe('useAppBootstrap: зеркало диалогов после разбл
   it('непустой аккаунт: fillMirror() гидрирует кэшем, дальше сетевой догон применяется поверх', async () => {
     setBootData({ me: Promise.resolve(null), dialogsReady: Promise.resolve(), hasToken: true, locked: true })
 
-    const dialog = { chatId: 1, type: 'private', title: 't1', unread: 0, unreadMentions: 0, unreadReactions: 0, lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false } as unknown as import('../models').Dialog
+    const dialog = { peerId: 1, type: 'private', title: 't1', unread: 0, unreadMentions: 0, unreadReactions: 0, lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false } as unknown as import('../models').Dialog
     const cacheOp: DialogOp = { op: 'reset', items: [] } // под passcode кэш владельца всегда пуст
     const netOp: DialogOp = { op: 'reset', items: [{ dialog, index: 10 }] }
     const fillMirror = vi.fn(async () => cacheOp)
@@ -107,7 +106,7 @@ describe('useAppBootstrap: зеркало диалогов после разбл
     for (let i = 0; i < 20; i++) await Promise.resolve()
 
     expect(useChatsStore.getState().loaded).toBe(true)
-    expect(useChatsStore.getState().dialogs.map((d) => d.chatId)).toEqual([1])
+    expect(useChatsStore.getState().dialogs.map((d) => d.peerId)).toEqual([1])
   })
 
   it('boot НЕ был под локом (тёплый релогин) — fillMirror() не зовётся, поведение прежнее', async () => {

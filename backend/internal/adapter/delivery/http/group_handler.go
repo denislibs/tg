@@ -15,13 +15,15 @@ import (
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 )
 
-// PresenceQuery reports whether a user is currently online. It's an optional
-// seam: when nil, the members endpoint reports everyone as offline and lets the
-// client overlay its own presence store.
+// PresenceQuery — присутствие пользователя. Опциональный шов: без него статус
+// не производится вовсе (userStatusEmpty — «неизвестно»), и клиент накладывает
+// собственный кэш присутствия.
+//
+// Status отдаёт ТРИ величины, а не две: третья — expires, дедлайн, после
+// которого клиент обязан считать пира офлайн сам. Без него потерянный кадр
+// оставлял человека онлайн навсегда.
 type PresenceQuery interface {
-	IsOnline(ctx context.Context, userID int64) (bool, error)
-	// Snapshot returns the user's online state and last-seen (ms; 0 when online).
-	Snapshot(ctx context.Context, userID int64) (online bool, lastSeen int64)
+	Status(ctx context.Context, userID int64) (online bool, expires, lastSeen time.Time)
 }
 
 type GroupHandler struct {
@@ -65,12 +67,21 @@ func (h *GroupHandler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"chat_id": id})
+	// Ответ действия — СОЗДАННЫЙ объект, а не его адрес в безымянной обёртке.
+	// У оригинала `messages.createChat` отвечает `Updates` с новым чатом
+	// внутри; контейнеров Updates мы не копируем (граница программы), поэтому
+	// отдаём ту же карточку тем же конструктором, что и ручка карточки.
+	c, err := h.uc.ChatCard(r.Context(), id, user.ID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, domain.NewMessagesChatFull(c.ToChannelFull(), c.ToChannel()))
 }
 
 func (h *GroupHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -85,12 +96,12 @@ func (h *GroupHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *GroupHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -102,14 +113,14 @@ func (h *GroupHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // SetPhoto points the chat's photo at an uploaded media object (PUT
 // /chats/{chatID}/photo). Access to the bytes is enforced by the media GET.
 func (h *GroupHandler) SetPhoto(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -124,7 +135,7 @@ func (h *GroupHandler) SetPhoto(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 var usernameRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{4,31}$`)
@@ -132,7 +143,7 @@ var usernameRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{4,31}$`)
 // SetType switches private/public (PUT /chats/{chatID}/type).
 func (h *GroupHandler) SetType(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -156,13 +167,13 @@ func (h *GroupHandler) SetType(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // SetPermissions stores default member permissions + slowmode (PUT /chats/{chatID}/permissions).
 func (h *GroupHandler) SetPermissions(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -178,13 +189,13 @@ func (h *GroupHandler) SetPermissions(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // SetReactions stores the reaction policy (PUT /chats/{chatID}/reactions).
 func (h *GroupHandler) SetReactions(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -204,13 +215,13 @@ func (h *GroupHandler) SetReactions(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // SetHistory toggles chat history visibility for new members (PUT /chats/{chatID}/history).
 func (h *GroupHandler) SetHistory(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -225,13 +236,13 @@ func (h *GroupHandler) SetHistory(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // ListBans returns the removed-users list (GET /chats/{chatID}/bans).
 func (h *GroupHandler) ListBans(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -240,17 +251,21 @@ func (h *GroupHandler) ListBans(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	out := make([]map[string]any, 0, len(bans))
+	// Выгнанный и ограниченный — ОДИН конструктор объединения
+	// (`channelParticipantBanned`): разницу выражает флаг `left`, а чем именно
+	// ограничен — маска `banned_rights`. Прежде это были два разных списка с
+	// разной формой строки.
+	out := make([]domain.ChannelParticipant, 0, len(bans))
 	for _, b := range bans {
-		out = append(out, map[string]any{"user_id": b.UserID, "banned_by": b.BannedBy})
+		out = append(out, domain.NewChannelParticipantBanned(b.UserID, b.BannedBy, 0, domain.AllMemberPerms, time.Time{}, true))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"bans": out})
+	writeJSON(w, http.StatusOK, domain.NewChannelsChannelParticipants(len(out), out, nil))
 }
 
 // Ban kicks a user and adds them to the removed-users list (POST /chats/{chatID}/bans).
 func (h *GroupHandler) Ban(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -265,13 +280,13 @@ func (h *GroupHandler) Ban(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // Unban removes a user from the removed-users list (DELETE /chats/{chatID}/bans/{userID}).
 func (h *GroupHandler) Unban(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -283,14 +298,14 @@ func (h *GroupHandler) Unban(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // ListRestrictions returns the chat's granularly-restricted members
 // (GET /chats/{chatID}/restrictions).
 func (h *GroupHandler) ListRestrictions(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -299,26 +314,29 @@ func (h *GroupHandler) ListRestrictions(w http.ResponseWriter, r *http.Request) 
 		h.mapErr(w, err)
 		return
 	}
-	out := make([]map[string]any, 0, len(list))
+	// Ограниченный — ТОТ ЖЕ конструктор объединения, что и выгнанный
+	// (`channelParticipantBanned`), только без флага `left`: он остаётся в чате.
+	// Прежде это был отдельный список со своей формой строки — вторая форма
+	// одного предмета.
+	//
+	// Срок (until_date) — обязательный параметр самого `chatBannedRights`, 0
+	// значит «бессрочно»; про полярность знает MemberRestriction.ToChatBannedRights.
+	out := make([]domain.ChannelParticipant, 0, len(list))
 	for _, res := range list {
-		row := map[string]any{
-			"user_id":       res.UserID,
-			"denied_rights": int(res.DeniedRights),
-			"restricted_by": res.RestrictedBy,
-			"until_date":    nil,
-		}
-		if res.UntilDate != nil {
-			row["until_date"] = res.UntilDate.UTC().Format(time.RFC3339)
-		}
-		out = append(out, row)
+		out = append(out, domain.ChannelParticipantBanned{
+			Underscore:   domain.ChannelParticipantBannedTag,
+			Peer:         domain.NewPeerUser(res.UserID),
+			KickedBy:     res.RestrictedBy,
+			BannedRights: res.ToChatBannedRights(),
+		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"restrictions": out})
+	writeJSON(w, http.StatusOK, domain.NewChannelsChannelParticipants(len(out), out, nil))
 }
 
 // Restrict applies a granular per-user restriction (POST /chats/{chatID}/restrictions).
 func (h *GroupHandler) Restrict(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -335,14 +353,14 @@ func (h *GroupHandler) Restrict(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // Unrestrict lifts a member's granular restriction
 // (DELETE /chats/{chatID}/restrictions/{userID}).
 func (h *GroupHandler) Unrestrict(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -354,7 +372,7 @@ func (h *GroupHandler) Unrestrict(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // DeleteInvite hard-deletes an invite link
@@ -362,7 +380,7 @@ func (h *GroupHandler) Unrestrict(w http.ResponseWriter, r *http.Request) {
 // (revoked:true); this permanently removes the row (Telegram deleteExportedChatInvite).
 func (h *GroupHandler) DeleteInvite(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -375,14 +393,14 @@ func (h *GroupHandler) DeleteInvite(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // DeleteAllRevoked hard-deletes every revoked link of the chat
 // (DELETE /chats/{chatID}/revoked_invite_links; Telegram deleteRevokedExportedChatInvites).
 func (h *GroupHandler) DeleteAllRevoked(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -390,13 +408,13 @@ func (h *GroupHandler) DeleteAllRevoked(w http.ResponseWriter, r *http.Request) 
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // DeleteGroup deletes the group for everyone (DELETE /chats/{chatID}; creator only).
 func (h *GroupHandler) DeleteGroup(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -404,12 +422,12 @@ func (h *GroupHandler) DeleteGroup(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *GroupHandler) PromoteAdmin(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -425,12 +443,12 @@ func (h *GroupHandler) PromoteAdmin(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *GroupHandler) DemoteAdmin(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -442,12 +460,12 @@ func (h *GroupHandler) DemoteAdmin(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *GroupHandler) EditInfo(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -464,12 +482,12 @@ func (h *GroupHandler) EditInfo(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *GroupHandler) SetMute(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -490,7 +508,7 @@ func (h *GroupHandler) SetMute(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // SetNotify — PUT /chats/{chatID}/notify_settings: per-chat превью/звук.
@@ -498,7 +516,7 @@ func (h *GroupHandler) SetMute(w http.ResponseWriter, r *http.Request) {
 // применяются, отсутствующие не меняются.
 func (h *GroupHandler) SetNotify(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -518,13 +536,13 @@ func (h *GroupHandler) SetNotify(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // SetPin — POST /chats/{chatID}/pin {pinned}: закрепить/открепить диалог.
 func (h *GroupHandler) SetPin(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -543,13 +561,13 @@ func (h *GroupHandler) SetPin(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // SetArchive — POST /chats/{chatID}/archive {archived}: в архив / из архива.
 func (h *GroupHandler) SetArchive(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -564,12 +582,12 @@ func (h *GroupHandler) SetArchive(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *GroupHandler) Card(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -578,23 +596,29 @@ func (h *GroupHandler) Card(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"id": c.ID, "type": c.Type, "title": c.Title, "username": c.Username, "about": c.About,
-		"photo_media_id": c.PhotoMediaID, "creator_id": c.CreatorID, "member_count": c.MemberCount,
-		"default_permissions": int(c.Settings.DefaultPerms), "slowmode_seconds": c.Settings.SlowmodeSeconds,
-		"reactions_mode": c.Settings.ReactionsMode, "reactions_allowed": c.Settings.ReactionsAllowed,
-		"history_for_new": c.Settings.HistoryForNew,
-		"charge_stars":    c.Settings.ChargeStars,
-		"is_public":       c.IsPublic, "my_role": c.MyRole, "my_rights": int(c.MyRights), "muted": c.Muted,
-		"discussion_chat_id": c.DiscussionChatID,
-		"signatures":         c.Signatures, "signature_profiles": c.SignatureProfiles,
-	})
+	// ОДИН ответ на карточку чата — messages.chatFull: полная карточка вместе
+	// с краткой формой самого чата. Ровно тот же объект уходит кадром
+	// chat_update (usecase/chat/chat_update.go): прежде эта ручка и кадр
+	// отдавали одну ChatCard в двух разных формах.
+	//
+	// Чего в конструкторах нет и почему: `my_role` исчезает (creator это
+	// pFlags.creator, admin — наличие admin_rights, решение №3), `is_public`
+	// выражено наличием username, `default_permissions` — инвертированными
+	// default_banned_rights, `history_for_new` — pFlags.hidden_prehistory с
+	// обратным знаком.
+	//
+	// Обёртки вокруг конструктора больше нет. `peer_id` был выводим из самого
+	// ответа (краткая карточка лежит в `chats`, ключ пира клиент и так строит
+	// из неё), а `creator_id` — мёртвым: его никто не читал, только хранил.
+	// «Создатель ли я» выражает `pFlags.creator` краткой карточки, а «кто
+	// создатель» — конструктор `channelParticipantCreator` в списке участников.
+	writeJSON(w, http.StatusOK, domain.NewMessagesChatFull(c.ToChannelFull(), c.ToChannel()))
 }
 
 // SetChargeStars sets the paid-message price in stars (PUT /chats/{chatID}/charge_stars).
 func (h *GroupHandler) SetChargeStars(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -609,12 +633,12 @@ func (h *GroupHandler) SetChargeStars(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *GroupHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -633,25 +657,44 @@ func (h *GroupHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 	// Онлайн показывается только тем, кому участник разрешил видеть last seen
 	// (иначе — «был(а) недавно» на клиенте).
 	viewer, _ := UserFromContext(r.Context())
+	ids := make([]int64, 0, len(members))
+	for _, m := range members {
+		ids = append(ids, m.UserID)
+	}
 	seen := map[int64]bool{}
 	if h.privacy != nil {
-		ids := make([]int64, 0, len(members))
-		for _, m := range members {
-			ids = append(ids, m.UserID)
-		}
 		if v, err := h.privacy.VisibleMap(r.Context(), viewer.ID, ids, domain.PrivacyLastSeen); err == nil {
 			seen = v
 		}
 	}
-	out := make([]map[string]any, 0, len(members))
+	// РОЛЬ — это выбор конструктора, а не строка в строке участника; ПРИСУТСТВИЕ
+	// живёт на карточке пользователя (`user.status`), а карточки едут вектором
+	// `users` того же контейнера. Прежде статус висел на участнике — второй дом
+	// у одного факта.
+	participants := make([]domain.ChannelParticipant, 0, len(members))
 	for _, m := range members {
-		online := false
-		if h.presence != nil && (h.privacy == nil || seen[m.UserID] || m.UserID == viewer.ID) {
-			online, _ = h.presence.IsOnline(r.Context(), m.UserID)
-		}
-		out = append(out, map[string]any{"user_id": m.UserID, "role": m.Role, "online": online})
+		participants = append(participants, domain.NewChannelParticipant(m, 0))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"members": out})
+	cards, err := h.uc.UsersByIDs(r.Context(), ids)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	gatePhotos(r, h.privacy, cards)
+	for i := range cards {
+		// Скрытое правилом last_seen присутствие — это ДРУГОЙ конструктор
+		// (userStatusRecently), а не online:false: приватность выражена самим
+		// статусом, как в оригинале.
+		switch {
+		case h.presence == nil:
+			cards[i].Status = domain.NewUserStatusEmpty()
+		case h.privacy != nil && !seen[cards[i].ID] && cards[i].ID != viewer.ID:
+			cards[i].Status = domain.NewUserStatusRecently(false)
+		default:
+			cards[i].Status = domain.PresenceStatus(h.presence.Status(r.Context(), cards[i].ID))
+		}
+	}
+	writeJSON(w, http.StatusOK, domain.NewChannelsChannelParticipants(len(members), participants, cards))
 }
 
 func (h *GroupHandler) Users(w http.ResponseWriter, r *http.Request) {
@@ -671,22 +714,13 @@ func (h *GroupHandler) Users(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Аватар скрывается по правилу profile_photo владельца.
-	viewer, _ := UserFromContext(r.Context())
-	photoOK := map[int64]bool{}
-	if h.privacy != nil && len(ids) > 0 {
-		if v, err := h.privacy.VisibleMap(r.Context(), viewer.ID, ids, domain.PrivacyProfilePhoto); err == nil {
-			photoOK = v
-		}
-	}
-	out := make([]map[string]any, 0, len(cards))
-	for _, c := range cards {
-		avatar, preview := c.AvatarURL, c.AvatarPreview
-		if h.privacy != nil && !photoOK[c.ID] && c.ID != viewer.ID {
-			avatar, preview = "", nil // превью гасится вместе со скрытым аватаром
-		}
-		out = append(out, map[string]any{"id": c.ID, "username": c.Username, "display_name": c.DisplayName, "avatar_url": avatar, "avatar_preview": preview})
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"users": out})
+	//
+	// Краткая карточка — конструктор `user` целиком. Прежде витрина собирала
+	// свою пятёрку полей и теряла на этом `verified` (дефект 5 разбора): поле
+	// в базе было, в выдачу не попадало.
+	gatePhotos(r, h.privacy, cards)
+	// Ответ — сам ВЕКТОР карточек: обёртка `{"users": …}` конструктора не имеет.
+	writeJSON(w, http.StatusOK, orEmptyUsers(cards))
 }
 
 // isoOrNil renders a nullable timestamp as an ISO-8601 string, or nil in JSON
@@ -698,18 +732,9 @@ func isoOrNil(t *time.Time) any {
 	return t.UTC().Format(time.RFC3339)
 }
 
-// inviteJSON renders an invite link in the shape shared by Create/List/Edit.
-func inviteLinkJSON(l domain.InviteLink) map[string]any {
-	return map[string]any{
-		"token": l.Token, "uses": l.Uses, "url": "/join/" + l.Token,
-		"requires_approval": l.RequiresApproval, "expires_at": isoOrNil(l.ExpiresAt),
-		"title": l.Title, "usage_limit": l.UsageLimit, "revoked": l.Revoked,
-	}
-}
-
 func (h *GroupHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -731,12 +756,12 @@ func (h *GroupHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, inviteLinkJSON(link))
+	writeJSON(w, http.StatusOK, domain.NewMessagesExportedChatInvite(link))
 }
 
 func (h *GroupHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -746,11 +771,7 @@ func (h *GroupHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	out := make([]map[string]any, 0, len(links))
-	for _, l := range links {
-		out = append(out, inviteLinkJSON(l))
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"invite_links": out})
+	writeJSON(w, http.StatusOK, domain.NewMessagesExportedChatInvites(links))
 }
 
 // EditInvite updates an invite link (PATCH /chats/{chatID}/invite_links/{token}).
@@ -758,7 +779,7 @@ func (h *GroupHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
 // (0 → no expiry).
 func (h *GroupHandler) EditInvite(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -811,14 +832,14 @@ func (h *GroupHandler) EditInvite(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, inviteLinkJSON(link))
+	writeJSON(w, http.StatusOK, domain.NewMessagesExportedChatInvite(link))
 }
 
 // InviteImporters lists users who joined via a link
 // (GET /chats/{chatID}/invite_links/{token}/importers).
 func (h *GroupHandler) InviteImporters(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -832,11 +853,13 @@ func (h *GroupHandler) InviteImporters(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	out := make([]map[string]any, 0, len(importers))
+	// Вошедший и ждущий одобрения — ОДИН конструктор `chatInviteImporter`,
+	// разницу выражает `pFlags.requested`. У нас это были два разных списка.
+	out := make([]domain.ChatInviteImporter, 0, len(importers))
 	for _, im := range importers {
-		out = append(out, map[string]any{"user_id": im.UserID, "joined_at": im.JoinedAt.UTC().Format(time.RFC3339)})
+		out = append(out, domain.NewChatInviteImporter(im.UserID, im.JoinedAt, false, 0))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"importers": out, "count": count})
+	writeJSON(w, http.StatusOK, domain.NewMessagesChatInviteImporters(count, out, nil))
 }
 
 func (h *GroupHandler) Join(w http.ResponseWriter, r *http.Request) {
@@ -847,16 +870,15 @@ func (h *GroupHandler) Join(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	status := "joined"
-	if requested {
-		status = "requested"
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": status})
+	// «Вошёл» и «заявка отправлена» — ОДИН конструктор `chatInviteImporter` с
+	// флагом `requested`, а не строка состояния: тот же предмет, что в списке
+	// заявок, и та же форма.
+	writeJSON(w, http.StatusOK, domain.NewChatInviteImporter(user.ID, time.Now(), requested, 0))
 }
 
 func (h *GroupHandler) JoinRequests(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -865,16 +887,19 @@ func (h *GroupHandler) JoinRequests(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	out := make([]map[string]any, 0, len(reqs))
+	// Заявка — ТОТ ЖЕ конструктор `chatInviteImporter`, что и вошедший, с
+	// флагом `requested`: у оригинала это один список, отфильтрованный по
+	// флагу, а не два разных.
+	out := make([]domain.ChatInviteImporter, 0, len(reqs))
 	for _, rq := range reqs {
-		out = append(out, map[string]any{"user_id": rq.UserID})
+		out = append(out, domain.NewChatInviteImporter(rq.UserID, rq.CreatedAt, true, 0))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"requests": out})
+	writeJSON(w, http.StatusOK, domain.NewMessagesChatInviteImporters(len(out), out, nil))
 }
 
 func (h *GroupHandler) ApproveJoinRequest(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -886,12 +911,12 @@ func (h *GroupHandler) ApproveJoinRequest(w http.ResponseWriter, r *http.Request
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *GroupHandler) DeclineJoinRequest(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -903,5 +928,14 @@ func (h *GroupHandler) DeclineJoinRequest(w http.ResponseWriter, r *http.Request
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
+}
+
+// orEmptyUsers — вектор карточек, который на проводе остаётся вектором:
+// «пусто» у обязательного вектора это `[]`, а не null.
+func orEmptyUsers(cards []domain.UserReal) []domain.UserReal {
+	if cards == nil {
+		return []domain.UserReal{}
+	}
+	return cards
 }

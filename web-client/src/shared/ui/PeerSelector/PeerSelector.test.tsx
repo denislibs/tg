@@ -21,7 +21,7 @@ import type { Managers } from '../../../client/bootstrap'
 // рендерит сам селектор, поэтому плеер здесь лишний.
 vi.mock('../../../components/LottieSticker', () => ({ default: () => null }))
 
-// Аватарка ряда идёт в зеркало медиа-URL через `useAvatarSrc` → `useMediaUrl`;
+// Аватарка ряда идёт в зеркало медиа-URL через `UserAvatar` → `useMediaUrl`;
 // от менеджеров селектору больше ничего не нужно.
 const fakeManagers = { media: { downloadMediaURL: vi.fn(async () => '') } } as unknown as Managers
 

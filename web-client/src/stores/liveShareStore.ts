@@ -10,17 +10,17 @@ interface ActiveShare {
 
 interface LiveShareState {
   active: Record<number, ActiveShare>
-  setActive: (chatId: number, share: ActiveShare) => void
-  clearActive: (chatId: number) => void
+  setActive: (peerId: number, share: ActiveShare) => void
+  clearActive: (peerId: number) => void
 }
 
 export const useLiveShareStore = create<LiveShareState>((set) => ({
   active: {},
-  setActive: (chatId, share) => set((s) => ({ active: { ...s.active, [chatId]: share } })),
-  clearActive: (chatId) =>
+  setActive: (peerId, share) => set((s) => ({ active: { ...s.active, [peerId]: share } })),
+  clearActive: (peerId) =>
     set((s) => {
       const next = { ...s.active }
-      delete next[chatId]
+      delete next[peerId]
       return { active: next }
     }),
 }))

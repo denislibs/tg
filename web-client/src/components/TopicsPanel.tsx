@@ -25,10 +25,15 @@ import { useEvent } from '../core/hooks/useEvent'
 // Тип строки данных темы. Локальный алиас — потому что `TopicRow` в этом файле
 // занят мемоизированным КОМПОНЕНТОМ строки (см. ниже).
 import type { TopicRow as Topic } from '../core/managers/groupsManager'
-import { fmtWhen, mediaLabel } from '../core/dialogToChat'
+import { fmtWhen, previewOf } from '../core/dialogToChat'
+import { messageDateISO } from '../core/messageToConvMsg'
+import { getPeerTitle } from '../core/peers/getPeerTitle'
+import { cachedPeer } from '../core/peerCache'
+import { useChatsStore } from '../stores/chatsStore'
 import { useT } from '../i18n'
 import classNames from '../shared/lib/classNames'
 import s from './TopicsPanel.module.scss'
+import { hasRights } from '../core/peers/rights'
 
 // tweb TOPIC_COLORS (constants.ts)
 export const TOPIC_COLORS = ['#6FB9F0', '#FFD67E', '#CB86DB', '#8EEE98', '#FF93B2', '#FB6F5F']
@@ -59,8 +64,6 @@ export function TopicIcon({ color, emoji, title, size = 26 }: { color: number; e
     </div>
   )
 }
-
-const CHANGE_INFO = 64
 
 /** Высота строки темы — `itemSize: 64` из tweb `forumTab/groupForumTab.ts:28`. */
 const TOPIC_ITEM_HEIGHT = 64
@@ -105,6 +108,17 @@ export const TopicRow = memo(function TopicRow({ topic, active, dimmed, onOpen, 
   ref?: Ref<HTMLDivElement>
 }) {
   const t = useT()
+  const meId = useChatsStore((st) => st.meId)
+  // Превью, время и «моё ли последнее» ВЫВОДЯТСЯ из самого сообщения: сервер
+  // больше не везёт ни `last_text`, ни `last_at`, ни склеенное подзапросом
+  // `last_sender_name` — сообщение приезжает вектором контейнера, а имя автора
+  // собирает клиент из карточки пира (то же правило, что в списке чатов).
+  const lm = topic.lastMessage
+  const lastMine = lm != null && meId != null && lm.fromId === meId
+  const preview = previewOf(lm).text
+  const author = !lastMine && lm?.fromId
+    ? getPeerTitle({ peerId: lm.fromId, peer: cachedPeer(lm.fromId), onlyFirstName: true })
+    : ''
   const titleColor = active ? '#fff' : 'var(--primary-text-color)'
   const subColor = active ? 'rgba(255,255,255,0.9)' : 'var(--secondary-text-color)'
   const metaColor = active ? 'rgba(255,255,255,0.85)' : 'var(--secondary-text-color)'
@@ -130,15 +144,17 @@ export const TopicRow = memo(function TopicRow({ topic, active, dimmed, onOpen, 
             (read-tracking исходящих в тредах нет, поэтому всегда ✓✓). */}
         {topic.closed ? (
           <TgIcon name="lock" size={16} color={metaColor} style={{ flexShrink: 0 }} />
-        ) : topic.lastOut ? (
+        ) : lastMine ? (
           <TgIcon name="checks" size={18} color={active ? '#fff' : 'var(--primary-color)'} style={{ flexShrink: 0 }} />
         ) : null}
-        <Text size={12} color={metaColor} style={{ flexShrink: 0 }}>{fmtWhen(topic.lastAt)}</Text>
+        <Text size={12} color={metaColor} style={{ flexShrink: 0 }}>
+          {fmtWhen(lm ? messageDateISO(lm.date) : undefined)}
+        </Text>
       </div>
       <div className={s.subtitleRow}>
         <Text noWrap size={16} color={subColor} style={{ flex: 1 }}>
-          {topic.lastSenderName ? `${topic.lastSenderName}: ` : ''}
-          {topic.lastText || mediaLabel(topic.lastType)}
+          {author ? `${author}: ` : ''}
+          {preview}
         </Text>
         {/* Порядок бейджей как в tweb: mention → unread; pinned вместо счётчика у прочитанной. */}
         {topic.unreadMentions > 0 && <Badge muted={topic.muted} className={s.badge}>@</Badge>}
@@ -192,7 +208,9 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
     reload()
     const middleware = middlewareHelper.get()
     void managers.groups.card(chatId).then((c) => {
-      if (middleware()) setCanManage(c.myRole === 'creator' || (c.myRights & CHANGE_INFO) !== 0)
+      // Право — у конструктора `channel` (`pFlags.creator` / `admin_rights`),
+      // а не у поля `my_role` и битмаска, которых на проводе больше нет.
+      if (middleware()) setCanManage(hasRights(c?.chat, 'change_info'))
     }).catch(() => { if (middleware()) setCanManage(false) })
     // Смена chatId/unmount гасит висящий reload() из меню и ответы эффекта.
     return () => middlewareHelper.clean()

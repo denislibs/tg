@@ -53,8 +53,9 @@ func TestBotAutoReplyEcho(t *testing.T) {
 	if !strings.Contains(last.Text, "привет") {
 		t.Fatalf("bot did not echo: %q", last.Text)
 	}
-	if last.ReplyMarkup == nil || len(last.ReplyMarkup.Inline) == 0 {
-		t.Fatal("echo reply must carry inline keyboard")
+	inline, ok := last.ReplyMarkup.(domain.ReplyInlineMarkup)
+	if !ok || len(inline.Rows) == 0 {
+		t.Fatalf("echo reply must carry replyInlineMarkup, got %#v", last.ReplyMarkup)
 	}
 }
 
@@ -64,12 +65,18 @@ func TestBotStartCommand(t *testing.T) {
 	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: 1, Type: "text", Text: "/start"})
 	last := s.messages[chatID]
 	reply := last[len(last)-1]
-	if reply.SenderID != 42 || reply.ReplyMarkup == nil || len(reply.ReplyMarkup.Inline) < 2 {
-		t.Fatalf("/start must reply with inline keyboard, got %+v", reply.ReplyMarkup)
+	inline, ok := reply.ReplyMarkup.(domain.ReplyInlineMarkup)
+	if reply.SenderID != 42 || !ok || len(inline.Rows) < 2 {
+		t.Fatalf("/start must reply with replyInlineMarkup, got %#v", reply.ReplyMarkup)
 	}
-	// первая кнопка — callback alert, есть url-кнопка
-	if reply.ReplyMarkup.Inline[0][0].Callback != "alert" {
-		t.Fatalf("unexpected first button: %+v", reply.ReplyMarkup.Inline[0][0])
+	// первая кнопка — keyboardButtonCallback с data «alert» (bytes схемы)
+	cb, ok := inline.Rows[0].Buttons[0].(domain.KeyboardButtonCallback)
+	if !ok || string(cb.Data) != "alert" {
+		t.Fatalf("unexpected first button: %#v", inline.Rows[0].Buttons[0])
+	}
+	// во втором ряду — кнопка mini-app: отдельный конструктор, а не флаг у url
+	if _, ok := inline.Rows[1].Buttons[0].(domain.KeyboardButtonWebView); !ok {
+		t.Fatalf("second row must carry keyboardButtonWebView: %#v", inline.Rows[1].Buttons[0])
 	}
 }
 
@@ -123,11 +130,13 @@ func TestBotWebAppCommand(t *testing.T) {
 	_, _ = in.Send(context.Background(), SendInput{ChatID: chatID, SenderID: 1, Type: "text", Text: "/app"})
 	msgs := s.messages[chatID]
 	reply := msgs[len(msgs)-1]
-	if reply.ReplyMarkup == nil || len(reply.ReplyMarkup.Inline) == 0 {
-		t.Fatalf("/app must reply with inline keyboard, got %+v", reply.ReplyMarkup)
+	inline, ok := reply.ReplyMarkup.(domain.ReplyInlineMarkup)
+	if !ok || len(inline.Rows) == 0 {
+		t.Fatalf("/app must reply with replyInlineMarkup, got %#v", reply.ReplyMarkup)
 	}
-	if reply.ReplyMarkup.Inline[0][0].WebApp == "" {
-		t.Fatalf("/app button must carry a webapp url, got %+v", reply.ReplyMarkup.Inline[0][0])
+	wv, ok := inline.Rows[0].Buttons[0].(domain.KeyboardButtonWebView)
+	if !ok || wv.URL == "" {
+		t.Fatalf("/app button must be keyboardButtonWebView with a url, got %#v", inline.Rows[0].Buttons[0])
 	}
 }
 
@@ -136,7 +145,28 @@ func TestBotKeyboardCommand(t *testing.T) {
 	_, _ = in.Send(context.Background(), SendInput{ChatID: chatID, SenderID: 1, Type: "text", Text: "/keyboard"})
 	msgs := s.messages[chatID]
 	reply := msgs[len(msgs)-1]
-	if reply.ReplyMarkup == nil || len(reply.ReplyMarkup.Keyboard) == 0 {
-		t.Fatalf("/keyboard must reply with reply-keyboard, got %+v", reply.ReplyMarkup)
+	kb, ok := reply.ReplyMarkup.(domain.ReplyKeyboardMarkup)
+	if !ok || len(kb.Rows) == 0 {
+		t.Fatalf("/keyboard must reply with replyKeyboardMarkup, got %#v", reply.ReplyMarkup)
+	}
+	// resize прежней формы — это pFlags.resize, а не своё поле
+	if !kb.Resize() {
+		t.Errorf("/keyboard must set pFlags.resize, got %#v", kb.PFlags)
+	}
+	if _, ok := kb.Rows[0].Buttons[0].(domain.KeyboardButtonReal); !ok {
+		t.Errorf("reply-клавиатура состоит из keyboardButton: %#v", kb.Rows[0].Buttons[0])
+	}
+}
+
+// «Убрать клавиатуру» — самостоятельный конструктор объединения, а не пустая
+// клавиатура: прежняя форма кодировала это третьим состоянием поля keyboard и
+// из-за omitempty вообще не доезжала до клиента.
+func TestBotHideCommand(t *testing.T) {
+	in, s, chatID := botInteractor(t)
+	_, _ = in.Send(context.Background(), SendInput{ChatID: chatID, SenderID: 1, Type: "text", Text: "/hide"})
+	msgs := s.messages[chatID]
+	reply := msgs[len(msgs)-1]
+	if _, ok := reply.ReplyMarkup.(domain.ReplyKeyboardHide); !ok {
+		t.Fatalf("/hide must reply with replyKeyboardHide, got %#v", reply.ReplyMarkup)
 	}
 }

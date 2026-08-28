@@ -24,7 +24,7 @@ import { useT } from '../../../i18n'
 import { useManagers } from '../../../core/hooks/useManagers'
 import MediaHeader from '../MediaHeader'
 import CodeInput from '../CodeInput'
-import useEmailPattern from '../emailPattern'
+import EmailPattern from '../emailPattern'
 import { SecondaryButton } from '../AuthButton'
 import s from '../AuthFlow.module.scss'
 
@@ -57,7 +57,6 @@ export default function EmailRecoverCard({
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [code, setCode] = useState('')
-  const pattern = useEmailPattern(emailPattern)
 
   const submit = async (value: string) => {
     if (busy) return
@@ -93,7 +92,7 @@ export default function EmailRecoverCard({
           <span className="i18n">
             {t('Enter the code we just sent to your email')}
             <br />
-            <b>{pattern}</b>
+            <EmailPattern pattern={emailPattern} />
           </span>
         </MediaHeader.Subtitle>
       </MediaHeader>

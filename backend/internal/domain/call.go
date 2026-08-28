@@ -1,16 +1,20 @@
 package domain
 
-// CallLogEntry — запись журнала звонков (вкладка «Звонки»). Агрегирует
-// сообщения type='call' из личных чатов пользователя, обогащённые собеседником.
-// Out — исходящий (инициатор — сам пользователь). Text — JSON лога звонка
-// {video, reason, duration} (парсится клиентом, как в чат-бабле). Date — RFC3339.
+// CallLogEntry — строка выборки журнала звонков (вкладка «Звонки»): служебные
+// сообщения messageActionPhoneCall из личных чатов пользователя.
+//
+// Проводной формы у неё БОЛЬШЕ НЕТ. Прежде это была десятая форма сообщения на
+// проводе: {id, peer_id, peer, out, text, date}, где text — тот же JSON лога
+// звонка, что и в бабле, а карточка собеседника ехала вклеенной в каждую
+// запись. На проводе журнал звонков теперь это обычный вектор messages плюс
+// вектор users — ровно как у оригинала, где вкладка «Звонки» собирается из
+// сообщений (messages.search с фильтром phoneCalls).
+//
+// Out тоже исчез: зритель выводит его сам (решение Р7), как у любого другого
+// сообщения.
 type CallLogEntry struct {
-	ID         int64  `json:"id"`
-	ChatID     int64  `json:"chat_id"`
-	PeerID     int64  `json:"peer_id"`
-	PeerName   string `json:"peer_name"`
-	PeerAvatar string `json:"peer_avatar,omitempty"`
-	Out        bool   `json:"out"`
-	Text       string `json:"text"`
-	Date       string `json:"date"`
+	// Message — само служебное сообщение о звонке.
+	Message Message
+	// Peer — собеседник; едет вектором users, а не карточкой внутри записи.
+	Peer UserReal
 }

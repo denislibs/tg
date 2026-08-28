@@ -107,11 +107,11 @@ export function useDeepLinks(showToast: (text: string) => void): DeepLinks {
     void (async () => {
       try {
         const res = await managers.channels.search(deep.domain!)
-        const u = res.users.find((x) => x.username.toLowerCase() === deep.domain!.toLowerCase())
+        const u = res.users.find((x) => x.username?.toLowerCase() === deep.domain!.toLowerCase())
         if (!u || cancelled) return
-        const { chat_id } = await managers.bots.start(u.id, deep.start ?? '')
+        const peerId = await managers.bots.start(u.id, deep.start ?? '')
         if (cancelled) return
-        useNavigationStore.getState().selectChat(String(chat_id))
+        useNavigationStore.getState().selectChat(String(peerId))
         void managers.dialogs.refresh().catch(() => {}) // см. .catch выше (Minor #3)
       } catch { /* ignore bad deep link */ }
     })()

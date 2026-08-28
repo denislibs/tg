@@ -6,7 +6,7 @@ export interface AudioTrack {
   mediaId: number
   title: string
   subtitle: string
-  chatId?: number
+  peerId?: number
   msgId?: number
   /** Вид медиа (tweb doc.type): голосовое, кружок или музыка. Голос и кружок —
    * одна очередь и одна скорость (tweb PlaybackMediaType 'voice'), музыка — своя
@@ -18,10 +18,14 @@ export interface AudioTrack {
   secret?: { keyB64: string; ivB64: string; mime: string }
 }
 
-// Реактивное состояние плеера (UI читает отсюда). Императивный <audio>-движок и
-// вся playback-логика — в mediaPlaybackController; действия здесь — тонкие делегаты
-// в него, чтобы публичный API стора (useAudioStore.getState().toggle() и т.п.) не
-// менялся. _sync/setState движок использует для обновления этого состояния.
+// Реактивное состояние плеера — ВИТРИНА для React-ленты и плашки плеера
+// (NowPlayingBar/VoiceMessage/SearchView/SharedMedia). Коллекцией медиа-элементов
+// и всей playback-логикой владеет mediaPlaybackController (порт tweb
+// appMediaPlaybackController); действия здесь — тонкие делегаты в него, чтобы
+// публичный API стора (useAudioStore.getState().toggle() и т.п.) не менялся.
+// _sync/setState движок использует для обновления этого состояния.
+// Ванильная лента (components/audio.ts) сюда не ходит: её узлы слушают СВОИ
+// медиа-элементы, как в оригинале.
 interface AudioState {
   track: AudioTrack | null
   queue: AudioTrack[]
@@ -79,4 +83,4 @@ export const useAudioStore = create<AudioState>((set) => ({
 
 // Префетч секретного аудио — часть движка; ре-экспорт для мест, что импортировали
 // его из audioStore (напр. VoiceMessage прогревает URL по наведению).
-export { prefetchSecretAudio, registerRoundMedia } from '../core/audio/mediaPlaybackController'
+export { prefetchSecretAudio } from '../core/audio/mediaPlaybackController'

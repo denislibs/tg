@@ -10,6 +10,7 @@ import { render, cleanup, waitFor } from '@testing-library/react'
 import StickersSearchTab from './StickersSearchTab'
 import { ManagersProvider } from '../../core/hooks/useManagers'
 import type { Managers } from '../../client/bootstrap'
+import { makeStickerSet } from '../../core/stickers/testSticker'
 
 const noop = () => {}
 
@@ -46,7 +47,7 @@ const makeSticker = (setN: number, i: number) => ({
  * пакетом с самой выдачей, Task 2), без отдельного запроса на набор. */
 function makeManagers(setCount: number, perSet: number) {
   const prefix = `qset_r${++runSeq}_`
-  const makeSet = (n: number) => ({ id: n, slug: `${prefix}${n}`, title: `Set ${n}`, kind: 'sticker' as const, count: perSet })
+  const makeSet = (n: number) => makeStickerSet({ id: n, shortName: `${prefix}${n}`, title: `Set ${n}`, count: perSet })
   const sets = Array.from({ length: setCount }, (_, i) => makeSet(i + 1))
   const covers = new Map(sets.map((s) => [s.id, Array.from({ length: perSet }, (_, i) => makeSticker(s.id, i))]))
   const fns = {

@@ -8,14 +8,15 @@ import Spinner from '../../../shared/ui/Spinner'
 import TgIcon from '../../TgIcon'
 import { useT } from '../../../i18n'
 import type { GroupEdit } from '../../../core/hooks/useGroupEdit'
+import { isPublic as chatIsPublic } from '../../../core/peers/predicates'
 
 export function ChatTypeScreen({ g, isChannel, onBack }: { g: GroupEdit; isChannel: boolean; onBack: () => void }) {
   const t = useT()
-  const [isPublic, setIsPublic] = useState(!!g.card?.isPublic)
-  const [username, setUsername] = useState(g.card?.username ?? '')
+  const [isPublic, setIsPublic] = useState(chatIsPublic(g.card?.chat))
+  const [username, setUsername] = useState(g.card?.chat.username ?? '')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const changed = isPublic !== !!g.card?.isPublic || (isPublic && username !== (g.card?.username ?? ''))
+  const changed = isPublic !== chatIsPublic(g.card?.chat) || (isPublic && username !== (g.card?.chat.username ?? ''))
   const primary = g.invites.find((l) => !l.revoked)
 
   const apply = async () => {

@@ -1,7 +1,7 @@
 import type { RestClient } from '../net/restClient'
 
 // Папка чатов (tweb DialogFilter): флаги типов + точечные include/exclude
-// списки chat_id. Сопоставление диалога папке — core/folderFilter.ts.
+// списки peer_id. Сопоставление диалога папке — core/folderFilter.ts.
 export interface Folder {
   id: number
   title: string
@@ -72,21 +72,21 @@ export interface FolderInvite {
   slug: string
   url: string // относительный путь '/addlist/<slug>' — обрабатывает SPA
   title: string
-  chatIds: number[]
+  peerIds: number[]
 }
 
 interface RawFolderInvite {
   slug: string
   url: string
   title: string
-  chat_ids: number[]
+  peer_ids: number[]
 }
 
 const mapInvite = (r: RawFolderInvite): FolderInvite => ({
   slug: r.slug,
   url: r.url,
   title: r.title,
-  chatIds: r.chat_ids ?? [],
+  peerIds: r.peer_ids ?? [],
 })
 
 // Карточка расшаренного чата на экране вступления по ссылке.
@@ -133,8 +133,8 @@ export function newFoldersManager({ rest }: { rest: Pick<RestClient, 'get' | 'po
       const r = await rest.get<{ title: string; chats: FolderInvitePreviewChat[] }>(`/folder_invites/${slug}`)
       return { title: r.title, chats: r.chats ?? [] }
     },
-    async joinInvite(slug: string, chatIds: number[]): Promise<void> {
-      await rest.post(`/folder_invites/${slug}/join`, { chat_ids: chatIds })
+    async joinInvite(slug: string, peerIds: number[]): Promise<void> {
+      await rest.post(`/folder_invites/${slug}/join`, { peer_ids: peerIds })
     },
   }
 }

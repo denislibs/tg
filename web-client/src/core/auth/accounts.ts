@@ -12,7 +12,10 @@ export interface Account {
   token: string
   id: number
   name: string
-  avatarUrl: string
+  /** id медиа аватарки (`user.photo.photo_id`); 0 — фото нет. Прежний
+   *  `avatarUrl` был строкой, из которой этот же id приходилось выпарсивать
+   *  обратно регуляркой. */
+  photoId: number
   phone: string
 }
 
@@ -47,4 +50,4 @@ export async function tokenOf(id: number): Promise<string | null> {
   return (await listAccounts()).find((x) => x.id === id)?.token ?? null
 }
 
-export const toPublic = (a: Account): PublicAccount => ({ id: a.id, name: a.name, avatarUrl: a.avatarUrl, phone: a.phone })
+export const toPublic = (a: Account): PublicAccount => ({ id: a.id, name: a.name, photoId: a.photoId, phone: a.phone })

@@ -60,6 +60,32 @@ const ALLOWED = [
  */
 const NOT_APPLICABLE = ['core/workerCore.ts']
 
+/**
+ * Второе зеркало того же факта — `rootScope.myId` (порт tweb rootScope.ts:253):
+ * его читает императивный код, которому нельзя знать про zustand (лента
+ * `components/chat/bubbles.ts`, порт tweb bubbles.ts). Скан выше его не поймал бы
+ * ВООБЩЕ (там нет `setMe(`), поэтому пин — второй, с тем же смыслом и тем же
+ * allow-list'ом: писатель у двух зеркал обязан быть один — проектор на `rt:me`.
+ * В tweb `myId` пишет сам rootScope из подписки на `user_auth`; у нас это был бы
+ * второй писатель факта `me` мимо проектора — расхождение сознательное (разбор в
+ * докблоке поля).
+ *
+ * ALLOWED_MYID уже, чем ALLOWED: оптимистичным исключениям для React-стора
+ * (EmojiStatusPicker/PremiumCheckout/EditProfile — мгновенный отклик на СВОЁ
+ * действие, где `me` меняется, а id остаётся прежним) в поле `myId` писать
+ * нечего. `stores/chatsStore.ts` (loadChats) тоже не в списке: там холодный старт
+ * запрашивает `me` у воркера, а тот на любой успешный /me публикует `rt:me` —
+ * зеркало `myId` наполняет тот же кадр через проектор.
+ */
+const ALLOWED_MYID = ['client/realtime/storeProjection.ts']
+
+/**
+ * НЕ про запись зеркала: `lib/rootScope.ts` — САМ ОБЪЯВЛЯЕТ поле и инициализирует
+ * его в конструкторе (`this.myId = 0`, порт tweb `NULL_PEER_ID`). Без этого
+ * исключения скан ловил бы объявление владельца поля, а не второго писателя.
+ */
+const NOT_APPLICABLE_MYID = ['lib/rootScope.ts']
+
 describe('chatsStore.setMe: воркер вычисляет `me`, витрина только зеркалит', () => {
   it('прямые вызовы .setMe(...) есть только в allow-list', () => {
     const offenders = walk(SRC)
@@ -74,6 +100,22 @@ describe('chatsStore.setMe: воркер вычисляет `me`, витрина
     for (const rel of ALLOWED) {
       const src = readFileSync(join(SRC, rel), 'utf8')
       expect(src, `${rel}: ожидался вызов .setMe(...)`).toMatch(/\bsetMe\(/)
+    }
+  })
+
+  it('прямые записи `.myId = ...` есть только в allow-list', () => {
+    const offenders = walk(SRC)
+      .map((f) => f.slice(SRC.length + 1).replace(/\\/g, '/'))
+      .filter((rel) => !ALLOWED_MYID.includes(rel) && !NOT_APPLICABLE_MYID.includes(rel))
+      .filter((rel) => /\.myId\s*=[^=]/.test(readFileSync(join(SRC, rel), 'utf8')))
+
+    expect(offenders).toEqual([])
+  })
+
+  it('allow-list `myId` не разбух молча: каждая запись реально пишет `.myId = ...`', () => {
+    for (const rel of ALLOWED_MYID) {
+      const src = readFileSync(join(SRC, rel), 'utf8')
+      expect(src, `${rel}: ожидалась запись .myId = ...`).toMatch(/\.myId\s*=[^=]/)
     }
   })
 })

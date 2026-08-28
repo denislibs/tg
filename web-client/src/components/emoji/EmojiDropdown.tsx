@@ -183,8 +183,8 @@ const CustomEmojiCell = memo(function CustomEmojiCell({
   onPick: (documentId: number, emoji: string) => void
 }) {
   return (
-    <span className="super-emoji super-emoji-custom" onClick={() => onPick(st.mediaId, st.emoji)}>
-      <StickerMedia mediaId={st.mediaId} width={34} height={34} playOnHover thumb={st.thumb} />
+    <span className="super-emoji super-emoji-custom" onClick={() => onPick(st.id, st.stickerEmojiRaw ?? '')}>
+      <StickerMedia doc={st} width={34} height={34} playOnHover />
     </span>
   )
 })
@@ -422,7 +422,7 @@ export default function EmojiDropdown({
   const customCats = useMemo(
     () =>
       customSets
-        .map(({ set, stickers }) => ({ key: `ce-${set.slug}`, title: set.title, thumb: setThumbMediaId(set, stickers), stickers }))
+        .map(({ set, stickers }) => ({ key: `ce-${set.short_name}`, title: set.title, thumb: setThumbMediaId(set, stickers), stickers }))
         .filter((c) => c.stickers.length > 0),
     [customSets],
   )

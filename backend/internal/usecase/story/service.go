@@ -44,7 +44,7 @@ const (
 type Service struct {
 	repo      StoryRepo
 	partners  Partners
-	media     MediaOwner
+	media     MediaAccess
 	tx        TxManager
 	publisher EventPublisher
 	stealth   StealthStore
@@ -52,7 +52,7 @@ type Service struct {
 }
 
 // New constructs the story service from its ports.
-func New(repo StoryRepo, partners Partners, media MediaOwner, tx TxManager) *Service {
+func New(repo StoryRepo, partners Partners, media MediaAccess, tx TxManager) *Service {
 	return &Service{repo: repo, partners: partners, media: media, tx: tx}
 }
 
@@ -64,6 +64,33 @@ func (s *Service) SetPublisher(p EventPublisher) { s.publisher = p }
 // nil, stealth endpoints report domain.ErrUnavailable and View always records.
 func (s *Service) SetStealthStore(st StealthStore) { s.stealth = st }
 
+// attachMedia наполняет ступень вложения (`storyItem.media`) у пачки историй
+// ОДНИМ запросом на всю пачку — тем же батчем, каким это делает модель истории
+// сообщений.
+func (s *Service) attachMedia(ctx context.Context, items []*domain.StoryRecord) error {
+	if len(items) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(items))
+	seen := map[int64]bool{}
+	for _, it := range items {
+		if it.MediaID != 0 && !seen[it.MediaID] {
+			seen[it.MediaID] = true
+			ids = append(ids, it.MediaID)
+		}
+	}
+	dims, err := s.media.DimsByIDs(ctx, ids)
+	if err != nil {
+		return err
+	}
+	for _, it := range items {
+		if src, ok := dims[it.MediaID]; ok {
+			it.Media = domain.BuildStoryMedia(it.MediaID, src)
+		}
+	}
+	return nil
+}
+
 // SetMessageSender attaches the chat message sender used by Share (optional).
 // When nil, Share reports domain.ErrUnavailable.
 func (s *Service) SetMessageSender(ms MessageSender) { s.sender = ms }
@@ -72,43 +99,53 @@ func (s *Service) SetMessageSender(ms MessageSender) { s.sender = ms }
 // bound; Telegram's editor stays well under this).
 const maxMediaAreas = 20
 
-// allowedAreaTypes — поддерживаемые типы media-area (tweb; без channel_post/weather).
-var allowedAreaTypes = map[string]bool{"geo": true, "venue": true, "reaction": true, "url": true}
-
-// validateMediaAreas checks the count bound, known type, coordinate ranges
-// (0..100) and per-type required fields. Returns domain.ErrInvalid on any
-// violation.
-func validateMediaAreas(areas []domain.StoryMediaArea) error {
+// validateMediaAreas проверяет число областей, диапазон координат (0..100) и
+// обязательные части каждого конструктора. Любое нарушение — domain.ErrInvalid.
+//
+// Списка «разрешённых типов» здесь больше нет: вид области — ВЫБОР
+// конструктора, и незнакомый конструктор до сюда не доезжает вовсе — его
+// отбрасывает разбор объединения (`domain.MediaAreas.UnmarshalJSON`). Проверять
+// осталось только содержимое.
+func validateMediaAreas(areas domain.MediaAreas) error {
 	if len(areas) > maxMediaAreas {
 		return domain.ErrInvalid
 	}
 	for _, a := range areas {
-		if !allowedAreaTypes[a.Type] {
-			return domain.ErrInvalid
-		}
-		c := a.Coordinates
+		c := a.Coords()
 		for _, v := range []float64{c.X, c.Y, c.W, c.H} {
 			if v < 0 || v > 100 {
 				return domain.ErrInvalid
 			}
 		}
-		switch a.Type {
-		case "reaction":
-			if a.Reaction == "" || len(a.Reaction) > maxReactionLen || !utf8.ValidString(a.Reaction) {
+		switch v := a.(type) {
+		case domain.MediaAreaSuggestedReaction:
+			e, ok := v.Reaction.(domain.ReactionEmoji)
+			if !ok || e.Emoticon == "" || len(e.Emoticon) > maxReactionLen || !utf8.ValidString(e.Emoticon) {
 				return domain.ErrInvalid
 			}
-		case "url":
-			if a.URL == "" {
+		case domain.MediaAreaURL:
+			if v.URL == "" {
 				return domain.ErrInvalid
 			}
-		case "geo", "venue":
-			if a.Lat == nil || a.Long == nil ||
-				*a.Lat < -90 || *a.Lat > 90 || *a.Long < -180 || *a.Long > 180 {
+		case domain.MediaAreaGeoPoint:
+			if !validGeo(v.Geo) {
+				return domain.ErrInvalid
+			}
+		case domain.MediaAreaVenue:
+			if !validGeo(v.Geo) {
 				return domain.ErrInvalid
 			}
 		}
 	}
 	return nil
+}
+
+// validGeo — точка в допустимых пределах. Отдельной проверки «координаты вообще
+// пришли» больше нет: `geo` у обоих конструкторов ОБЯЗАТЕЛЕН, и «их не дали»
+// выражается нулевой точкой, которая пределы проходит — ровно как у оригинала,
+// где нулевая широта/долгота это валидное место в Гвинейском заливе.
+func validGeo(g domain.GeoPoint) bool {
+	return g.Lat >= -90 && g.Lat <= 90 && g.Long >= -180 && g.Long <= 180
 }
 
 // ttlFor maps a requested lifetime (seconds) to a duration, falling back to 24h
@@ -126,7 +163,7 @@ func ttlFor(period int64) time.Duration {
 // persists within a transaction (so the story row and any story_allow rows
 // commit together). On success it broadcasts a story_new frame to the viewers
 // the story is visible to.
-func (s *Service) Post(ctx context.Context, authorID, mediaID int64, caption, privacy string, allowIDs []int64, mediaAreas []domain.StoryMediaArea, period int64) (int64, error) {
+func (s *Service) Post(ctx context.Context, authorID, mediaID int64, caption, privacy string, allowIDs []int64, mediaAreas domain.MediaAreas, period int64) (int64, error) {
 	owner, err := s.media.OwnerID(ctx, mediaID)
 	if err != nil {
 		return 0, err
@@ -154,28 +191,30 @@ func (s *Service) Post(ctx context.Context, authorID, mediaID int64, caption, pr
 		ExpiresAt:  time.Now().Add(ttlFor(period)),
 		MediaAreas: mediaAreas,
 	}
-	var id int64
+	var id, seq int64
 	err = s.tx.WithinTx(ctx, func(ctx context.Context) error {
 		var e error
-		id, e = s.repo.Create(ctx, story, allowIDs)
+		id, seq, e = s.repo.Create(ctx, story, allowIDs)
 		return e
 	})
 	if err != nil {
 		return 0, err
 	}
 	story.ID = id
-	s.broadcast(ctx, s.recipients(ctx, authorID, privacy, allowIDs), frame("story_new", map[string]any{
-		"id": id, "author_id": authorID, "media_id": mediaID,
-		"caption": caption, "expires_at": story.ExpiresAt,
-	}))
-	return id, nil
+	s.publishStory(ctx, s.recipients(ctx, authorID, privacy, allowIDs), authorID, id)
+	// Наружу возвращается НОМЕР внутри автора: им история и адресуется.
+	return seq, nil
 }
 
 // Repost creates a new story for authorID that references an existing story
 // (tweb fwd_from / repostInfo). The reposter must be able to see the source
 // (else domain.ErrForbidden); the new story reuses the source's media and points
 // fwd_from at the source's author+id. Privacy/period/caption behave like Post.
-func (s *Service) Repost(ctx context.Context, authorID, srcStoryID int64, caption, privacy string, allowIDs []int64, period int64) (int64, error) {
+func (s *Service) Repost(ctx context.Context, authorID, srcAuthorID, srcSeq int64, caption, privacy string, allowIDs []int64, period int64) (int64, error) {
+	srcStoryID, err := s.resolve(ctx, srcAuthorID, srcSeq)
+	if err != nil {
+		return 0, err
+	}
 	ok, err := s.canSee(ctx, srcStoryID, authorID)
 	if err != nil {
 		return 0, err
@@ -202,23 +241,21 @@ func (s *Service) Repost(ctx context.Context, authorID, srcStoryID int64, captio
 		Caption:   caption,
 		Privacy:   privacy,
 		ExpiresAt: time.Now().Add(ttlFor(period)),
-		FwdFrom:   &domain.StoryFwd{AuthorID: origin.AuthorID, StoryID: srcStoryID},
+		// Ссылка адресует источник ПАРОЙ «автор + номер», как storyFwdHeader на
+		// проводе: глобального ключа в ней больше нет.
+		FwdFrom: &domain.StoryFwd{AuthorID: origin.AuthorID, StoryID: srcSeq},
 	}
-	var id int64
+	var id, seq int64
 	err = s.tx.WithinTx(ctx, func(ctx context.Context) error {
 		var e error
-		id, e = s.repo.Create(ctx, story, allowIDs)
+		id, seq, e = s.repo.Create(ctx, story, allowIDs)
 		return e
 	})
 	if err != nil {
 		return 0, err
 	}
-	s.broadcast(ctx, s.recipients(ctx, authorID, privacy, allowIDs), frame("story_new", map[string]any{
-		"id": id, "author_id": authorID, "media_id": origin.MediaID,
-		"caption": caption, "expires_at": story.ExpiresAt,
-		"fwd_from": map[string]any{"author_id": origin.AuthorID, "story_id": srcStoryID},
-	}))
-	return id, nil
+	s.publishStory(ctx, s.recipients(ctx, authorID, privacy, allowIDs), authorID, id)
+	return seq, nil
 }
 
 // Share posts a story into each of the given chats as a regular media message
@@ -226,9 +263,13 @@ func (s *Service) Repost(ctx context.Context, authorID, srcStoryID int64, captio
 // sharer must be able to see the story (else domain.ErrForbidden); non-member
 // target chats are silently skipped. Returns how many messages were sent.
 // domain.ErrUnavailable when no message sender is wired.
-func (s *Service) Share(ctx context.Context, storyID, senderID int64, chatIDs []int64) (int, error) {
+func (s *Service) Share(ctx context.Context, authorID, seq, senderID int64, chatIDs []int64) (int, error) {
 	if s.sender == nil {
 		return 0, domain.ErrUnavailable
+	}
+	storyID, err := s.resolve(ctx, authorID, seq)
+	if err != nil {
+		return 0, err
 	}
 	ok, err := s.canSee(ctx, storyID, senderID)
 	if err != nil {
@@ -295,13 +336,38 @@ func (s *Service) Feed(ctx context.Context, viewerID int64) ([]domain.StoryGroup
 			st.AllowIDs = ids
 		}
 	}
+	refs := make([]*domain.StoryRecord, 0, len(groups))
+	for gi := range groups {
+		for si := range groups[gi].Stories {
+			refs = append(refs, &groups[gi].Stories[si])
+		}
+	}
+	if err := s.attachMedia(ctx, refs); err != nil {
+		return nil, err
+	}
 	return groups, nil
 }
 
-// View marks a story as seen by viewerID, but only if the story is visible to
-// them (own/everyone/contacts-with-partner/selected-allow); otherwise it
-// returns domain.ErrForbidden.
-func (s *Service) View(ctx context.Context, storyID, viewerID int64) error {
+// View отмечает историю просмотренной — и делает это ДВУМЯ разными записями,
+// потому что это два разных факта:
+//
+//   - `story_views` отвечает «кто посмотрел» (у оригинала это
+//     `stories.incrementStoryViews` и список `getStoryViewsList`);
+//   - `story_read` двигает ГОРИЗОНТ прочтения зрителя у автора
+//     (`stories.readStories`) — один номер вместо признака на каждой истории.
+//
+// У оригинала это два метода; у нас одна ручка делает оба, и это осознанное
+// упрощение: интерфейс всё равно вызывает их вместе.
+//
+// Горизонт двигается только вперёд, поэтому повторный просмотр старой истории
+// его не откатывает. Кадр `updateReadStories` уезжает на ДРУГИЕ устройства
+// зрителя: кольцо непрочитанного должно гаснуть везде, а не только там, где
+// историю открыли.
+func (s *Service) View(ctx context.Context, authorID, seq, viewerID int64) error {
+	storyID, err := s.resolve(ctx, authorID, seq)
+	if err != nil {
+		return err
+	}
 	ok, err := s.canSee(ctx, storyID, viewerID)
 	if err != nil {
 		return err
@@ -310,21 +376,39 @@ func (s *Service) View(ctx context.Context, storyID, viewerID int64) error {
 		return domain.ErrForbidden
 	}
 	// Stealth: пока режим активен, просмотры зрителя не записываются (tweb).
+	// Горизонт при этом не двигается тоже — иначе «невидимый просмотр» выдал бы
+	// себя погасшим кольцом на другом устройстве.
 	if s.stealth != nil {
 		if st, err := s.stealth.Get(ctx, viewerID); err == nil && time.Now().Before(st.ActiveUntil) {
 			return nil
 		}
 	}
-	return s.repo.MarkViewed(ctx, storyID, viewerID)
+	if err := s.repo.MarkViewed(ctx, storyID, viewerID); err != nil {
+		return err
+	}
+	maxRead, err := s.repo.SetRead(ctx, viewerID, authorID, seq)
+	if err != nil {
+		return err
+	}
+	if s.publisher != nil {
+		_ = s.publisher.PublishToUser(ctx, viewerID, frame("story_read", domain.NewUpdateReadStories(
+			domain.NewPeer(domain.PeerID(authorID)), int(maxRead),
+		)))
+	}
+	return nil
 }
 
 // SetReaction sets or replaces the viewer's reaction on a story they can see
 // (upsert). It returns domain.ErrForbidden when the story is not visible to the
 // viewer and domain.ErrBadReaction for an empty/oversized/invalid emoji. On
 // success it publishes a story_reaction frame to the story's author.
-func (s *Service) SetReaction(ctx context.Context, storyID, userID int64, reaction string) error {
+func (s *Service) SetReaction(ctx context.Context, authorID, seq, userID int64, reaction string) error {
 	if reaction == "" || len(reaction) > maxReactionLen || !utf8.ValidString(reaction) {
 		return domain.ErrBadReaction
+	}
+	storyID, err := s.resolve(ctx, authorID, seq)
+	if err != nil {
+		return err
 	}
 	ok, err := s.canSee(ctx, storyID, userID)
 	if err != nil {
@@ -342,7 +426,11 @@ func (s *Service) SetReaction(ctx context.Context, storyID, userID int64, reacti
 
 // RemoveReaction clears the viewer's reaction on a story they can see. It
 // publishes a story_reaction frame (reaction:null) to the story's author.
-func (s *Service) RemoveReaction(ctx context.Context, storyID, userID int64) error {
+func (s *Service) RemoveReaction(ctx context.Context, authorID, seq, userID int64) error {
+	storyID, err := s.resolve(ctx, authorID, seq)
+	if err != nil {
+		return err
+	}
 	ok, err := s.canSee(ctx, storyID, userID)
 	if err != nil {
 		return err
@@ -359,20 +447,28 @@ func (s *Service) RemoveReaction(ctx context.Context, storyID, userID int64) err
 
 // Viewers returns who has seen a story; only the story's author may read it
 // (domain.ErrForbidden otherwise).
-func (s *Service) Viewers(ctx context.Context, storyID, requesterID int64) ([]domain.UserCard, error) {
+func (s *Service) Viewers(ctx context.Context, authorID, seq, requesterID int64) (domain.StoryViewers, error) {
+	storyID, err := s.resolve(ctx, authorID, seq)
+	if err != nil {
+		return domain.StoryViewers{}, err
+	}
 	author, err := s.repo.GetAuthor(ctx, storyID)
 	if err != nil {
-		return nil, err
+		return domain.StoryViewers{}, err
 	}
 	if author != requesterID {
-		return nil, domain.ErrForbidden
+		return domain.StoryViewers{}, domain.ErrForbidden
 	}
 	return s.repo.Viewers(ctx, storyID)
 }
 
 // Stats returns view/reaction statistics for a story; only the author may read
 // them (domain.ErrForbidden otherwise, domain.ErrNotFound if the story is gone).
-func (s *Service) Stats(ctx context.Context, storyID, requesterID int64) (domain.StoryStats, error) {
+func (s *Service) Stats(ctx context.Context, authorID, seq, requesterID int64) (domain.StoryStats, error) {
+	storyID, err := s.resolve(ctx, authorID, seq)
+	if err != nil {
+		return domain.StoryStats{}, err
+	}
 	author, err := s.repo.GetAuthor(ctx, storyID)
 	if err != nil {
 		return domain.StoryStats{}, err
@@ -388,10 +484,14 @@ func (s *Service) Stats(ctx context.Context, storyID, requesterID int64) (domain
 // ownership first (like Viewers/Stats via GetAuthor): a missing story yields
 // domain.ErrNotFound and a non-owner domain.ErrForbidden — in both cases nothing
 // is deleted and no event is broadcast.
-func (s *Service) Delete(ctx context.Context, storyID, authorID int64) error {
-	author, err := s.repo.GetAuthor(ctx, storyID)
+func (s *Service) Delete(ctx context.Context, seq, authorID int64) error {
+	storyID, err := s.resolve(ctx, authorID, seq)
 	if err != nil {
 		return err // domain.ErrNotFound when the story is gone
+	}
+	author, err := s.repo.GetAuthor(ctx, storyID)
+	if err != nil {
+		return err
 	}
 	if author != authorID {
 		return domain.ErrForbidden
@@ -403,9 +503,11 @@ func (s *Service) Delete(ctx context.Context, storyID, authorID int64) error {
 	if err != nil {
 		return nil // deletion succeeded; skip fan-out if partners can't be resolved
 	}
-	s.broadcast(ctx, append(partners, authorID), frame("story_deleted", map[string]any{
-		"story_id": storyID, "author_id": authorID,
-	}))
+	// «Историю удалили» — тот же конструктор кадра, что и «вот она»: различает
+	// их выбор ВНУТРИ (`storyItemDeleted` против `storyItem`), а не имя кадра.
+	s.broadcast(ctx, append(partners, authorID), frame("story_update", domain.NewUpdateStory(
+		domain.NewPeer(domain.PeerID(authorID)), domain.NewStoryItemDeleted(int(seq)),
+	)))
 	return nil
 }
 
@@ -490,7 +592,7 @@ func (s *Service) SetPinned(ctx context.Context, storyID, authorID int64, pinned
 // and/or privacy (+allowlist for selected); marks it edited. caption/privacy are
 // pointers so "" is distinguishable from "unset". Missing story → ErrNotFound,
 // non-owner → ErrForbidden, oversized caption → ErrTooLong, bad privacy → ErrInvalid.
-func (s *Service) EditStory(ctx context.Context, storyID, authorID int64, caption, privacy *string, allowIDs []int64, mediaAreas *[]domain.StoryMediaArea) error {
+func (s *Service) EditStory(ctx context.Context, storyID, authorID int64, caption, privacy *string, allowIDs []int64, mediaAreas *domain.MediaAreas) error {
 	author, err := s.repo.GetAuthor(ctx, storyID)
 	if err != nil {
 		return err
@@ -516,17 +618,42 @@ func (s *Service) EditStory(ctx context.Context, storyID, authorID int64, captio
 
 // Archive returns the caller's own expired stories, newest first (tweb
 // stories.getStoriesArchive), paginated by offsetID (0 = from the top).
-func (s *Service) Archive(ctx context.Context, ownerID, limit, offsetID int64) ([]domain.StoryItem, error) {
+func (s *Service) Archive(ctx context.Context, ownerID, limit, offsetID int64) ([]domain.StoryRecord, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	return s.repo.Archive(ctx, ownerID, limit, offsetID)
+	items, err := s.repo.Archive(ctx, ownerID, limit, offsetID)
+	if err != nil {
+		return nil, err
+	}
+	return items, s.attachMedia(ctx, refsOf(items))
+}
+
+// refsOf — указатели на элементы среза: ступень наполняется НА МЕСТЕ, копия
+// записи оставила бы вложение за бортом.
+func refsOf(items []domain.StoryRecord) []*domain.StoryRecord {
+	out := make([]*domain.StoryRecord, 0, len(items))
+	for i := range items {
+		out = append(out, &items[i])
+	}
+	return out
 }
 
 // PinnedStories returns a peer's pinned stories (tweb stories.getPinnedStories),
 // including expired ones, filtered to what viewerID may see.
-func (s *Service) PinnedStories(ctx context.Context, peerID, viewerID int64) ([]domain.StoryItem, error) {
-	return s.repo.Pinned(ctx, peerID, viewerID)
+func (s *Service) PinnedStories(ctx context.Context, peerID, viewerID int64) ([]domain.StoryRecord, error) {
+	items, err := s.repo.Pinned(ctx, peerID, viewerID)
+	if err != nil {
+		return nil, err
+	}
+	return items, s.attachMedia(ctx, refsOf(items))
+}
+
+// resolve переводит ВНЕШНИЙ адрес истории (автор + номер) во внутренний ключ
+// строки. Тот же приём и та же граница, что у сообщения (`msgs.IDBySeq`):
+// снаружи история адресуется парой, внутри — ключом.
+func (s *Service) resolve(ctx context.Context, authorID, seq int64) (int64, error) {
+	return s.repo.IDBySeq(ctx, authorID, seq)
 }
 
 // canSee reports whether viewerID may see storyID under the current privacy
@@ -560,8 +687,16 @@ func (s *Service) recipients(ctx context.Context, authorID int64, privacy string
 	return append(partners, authorID)
 }
 
-// notifyReaction publishes a story_reaction frame (with the fresh total) to the
-// story's author. reaction=="" means the viewer removed their reaction.
+// notifyReaction рассылает изменение реакции ДВУМЯ разными кадрами, потому что
+// это два разных факта:
+//
+//   - АВТОРУ уезжает `updateStory` со свежей историей: агрегат реакций живёт
+//     внутри неё (`storyViews`) и одинаков для всех получателей;
+//   - САМОМУ ЗРИТЕЛЮ — `updateSentStoryReaction`: это его личный выбор, и на
+//     другие его устройства он попадает отдельным каналом.
+//
+// Прежний кадр `story_reaction` смешивал оба: нёс общий счётчик вместе с
+// `user_id`, и получатель решал «моё ли это» сравнением с собой.
 func (s *Service) notifyReaction(ctx context.Context, storyID, userID int64, reaction string) {
 	if s.publisher == nil {
 		return
@@ -570,18 +705,40 @@ func (s *Service) notifyReaction(ctx context.Context, storyID, userID int64, rea
 	if err != nil {
 		return
 	}
-	count, err := s.repo.ReactionsCount(ctx, storyID)
+	s.publishStory(ctx, []int64{author}, author, storyID)
+
+	// «Снял реакцию» — тоже событие, и в схеме оно выражается пустым
+	// конструктором объединения (`reactionEmpty` у оригинала нет, поэтому едет
+	// эмодзи-конструктор с пустым значением: клиент читает его как «нет»).
+	var r domain.Reaction = domain.NewReactionEmoji(reaction)
+	_ = s.publisher.PublishToUser(ctx, userID, frame("story_reaction", domain.NewUpdateSentStoryReaction(
+		domain.NewPeer(domain.PeerID(author)), int(storyID), r,
+	)))
+}
+
+// publishStory рассылает кадр `updateStory` — историю ЦЕЛИКОМ, тем же
+// конструктором, что и витрина.
+//
+// Тело кадра одно на всех получателей, поэтому пер-зрительских частей в нём
+// нет: история читается глазами АВТОРА (`viewerID = authorID`), его реакция
+// вычищается, а `privacy` — аудитория, адресованная только ему, — в кадр не
+// кладётся. Прочитанность в кадр не попадает по построению: она больше не
+// свойство истории, а горизонт группы.
+func (s *Service) publishStory(ctx context.Context, recipients []int64, authorID, storyID int64) {
+	if s.publisher == nil {
+		return
+	}
+	rec, err := s.repo.ByID(ctx, storyID, authorID)
 	if err != nil {
 		return
 	}
-	var r any
-	if reaction != "" {
-		r = reaction
+	rec.MyReaction = ""
+	if err := s.attachMedia(ctx, []*domain.StoryRecord{&rec}); err != nil {
+		return
 	}
-	_ = s.publisher.PublishToUser(ctx, author, frame("story_reaction", map[string]any{
-		"story_id": storyID, "user_id": userID,
-		"reaction": r, "reactions_count": count,
-	}))
+	s.broadcast(ctx, recipients, frame("story_update", domain.NewUpdateStory(
+		domain.NewPeer(domain.PeerID(authorID)), rec.ToStoryItem(false),
+	)))
 }
 
 // broadcast sends frame to each recipient (deduplicated) when a publisher is set.

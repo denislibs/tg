@@ -24,6 +24,7 @@ import StickersSearchTab from './StickersSearchTab'
 import { ManagersProvider } from '../../core/hooks/useManagers'
 import type { Managers } from '../../client/bootstrap'
 import type { Sticker } from '../../core/managers/stickersManager'
+import { makeSticker as makeStickerDoc, makeStickerSet } from '../../core/stickers/testSticker'
 
 const noop = () => {}
 
@@ -54,8 +55,8 @@ vi.mock('../StickerMedia', () => ({ default: () => <div data-testid="sticker-med
 let slugSeq = 0
 // slug уникален на тест: StickerSetModal (если строку кликнуть) кэширует свой
 // запрос по slug на модуль (как в StickersSearchTab.test.tsx).
-const makeSet = (id: number, title: string, count: number) => ({ id, slug: `set_${++slugSeq}`, title, kind: 'sticker' as const, count })
-const makeSticker = (id: number): Sticker => ({ id, setId: 1, mediaId: 100 + id, emoji: '🦆', width: 512, height: 512, mime: 'application/json', thumb: '' })
+const makeSet = (id: number, title: string, count: number) => makeStickerSet({ id, shortName: `set_${++slugSeq}`, title, count })
+const makeSticker = (id: number): Sticker => makeStickerDoc({ id, setId: 1, emoji: '🦆', mime: 'application/json' })
 
 function makeManagers(over: Record<string, unknown> = {}) {
   const fns = {

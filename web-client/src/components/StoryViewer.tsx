@@ -24,6 +24,10 @@ import classNames from '../shared/lib/classNames'
 import { animateStoryViewer, type StoryMorphElements } from './storyViewerMorph'
 import type { StoryTargetGetter } from './StoriesRow'
 import type { StoryGroup } from '../core/managers/storiesManager'
+import { isStoryEdited, realStory, storyCaption, storyDate, storyMediaId } from '../core/stories/story'
+import { getUserTitle } from '../core/peers/getPeerTitle'
+import { getPeerPhotoId, type UserReal } from '../core/peers/peer'
+import { useMediaUrl } from '../core/hooks/useMediaUrl'
 import s from './StoryViewer.module.scss'
 
 // Статистика своей истории (графики) — оверлей по кнопке, не первый кадр → лениво.
@@ -85,8 +89,10 @@ function calcTranslateX(diff: number, storyWidth: number): string {
 // MinutesShortAgo / HoursShortAgo / полная дата + пометка edited).
 // Отступление от tweb: у нас нет lang-пака Telegram с плюрализацией, поэтому
 // короткие формы собираем сами через t().
-function dateText(createdAt: string, edited: boolean, t: (s: string) => string): string {
-  const ts = new Date(createdAt).getTime()
+// `date` — СЕКУНДЫ эпохи (`storyItem.date`), те же единицы, что у сообщения;
+// ISO-строки на проводе больше нет.
+function dateText(date: number, edited: boolean, t: (s: string) => string): string {
+  const ts = date * 1000
   const sec = Math.max(0, Math.round((Date.now() - ts) / 1000))
   let head: string
   if (sec < 60) head = t('just now')
@@ -352,9 +358,9 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
       )}
 
       {/* Caption (+ пометка edited, payload story.edited) */}
-      {(vm.story.caption || vm.edited) && (
+      {(storyCaption(vm.story) || vm.edited) && (
         <div className={s.caption}>
-          {vm.story.caption && <Text color="#fff" size={15}>{vm.story.caption}</Text>}
+          {storyCaption(vm.story) && <Text color="#fff" size={15}>{storyCaption(vm.story)}</Text>}
           {vm.edited && <Text color="rgba(255,255,255,0.6)" size={12}>{t('edited')}</Text>}
         </div>
       )}
@@ -377,8 +383,8 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
           ) : (
             vm.viewers.map((v) => (
               <div key={v.id} className={s.viewerRow}>
-                <Avatar background={gradientFor(v.id)} text={v.displayName.charAt(0)} size={36} />
-                <Text noWrap color="#fff" size={15}>{v.displayName}</Text>
+                <Avatar background={gradientFor(v.id)} text={getUserTitle(v).charAt(0)} size={36} />
+                <Text noWrap color="#fff" size={15}>{getUserTitle(v)}</Text>
               </div>
             ))
           )}
@@ -563,7 +569,7 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
 
       {/* Статистика своей истории (full-screen оверлей над просмотрщиком) */}
       <Suspense fallback={null}>
-        {vm.showStats && <StoryStats storyId={vm.story.id} onClose={vm.closeStats} />}
+        {vm.showStats && <StoryStats authorId={vm.group!.author.id} storyId={vm.story.id} onClose={vm.closeStats} />}
       </Suspense>
 
       {/* Подтверждение удаления (tweb DeleteStoryTitle / DeleteStorySubtitle) */}
@@ -595,7 +601,7 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
           onPick={(chatIds) => {
             setShareOpen(false)
             if (!chatIds.length) return
-            void managers.stories.share(vm.story!.id, chatIds).then((n) => {
+            void managers.stories.share(vm.group!.author.id, vm.story!.id, chatIds).then((n) => {
               rootScope.dispatchEvent('ui:toast', n > 0 ? 'История отправлена' : 'Не удалось отправить')
             }).catch(() => rootScope.dispatchEvent('ui:toast', 'Не удалось отправить'))
           }}
@@ -619,10 +625,9 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
         обёртка (аватар рисует React-компонент). */}
     {hasFly && (
       <div ref={flyRef} className={s.flyAvatar}>
-        <Avatar
+        <StoryAuthorAvatar
           background={gradientFor(vm.group.author.id)}
-          src={vm.group.author.avatarUrl || undefined}
-          text={vm.group.author.displayName.charAt(0)}
+          author={vm.group.author}
           size={32}
         />
       </div>
@@ -671,7 +676,9 @@ function StoryPeer(props: StoryPeerProps) {
   } = props
   const t = useT()
   const story = group.stories[storyIndex]
-  const { url, isVideo, duration } = useStoryPreviewMedia(story?.mediaId ?? 0)
+  // Вложение приезжает СТУПЕНЬЮ вместе с историей: ни номера файла рядом, ни
+  // отдельного запроса меты на каждую историю больше нет.
+  const { url, isVideo, duration } = useStoryPreviewMedia(realStory(story)?.media)
   const videoRef = useRef<HTMLVideoElement>(null)
   const bg = gradientFor(group.author.id)
 
@@ -742,7 +749,7 @@ function StoryPeer(props: StoryPeerProps) {
                   с blur-превью — у наших историй такого превью нет */}
               {url && (isVideo ? (
                 <video
-                  key={story.mediaId}
+                  key={storyMediaId(story)}
                   ref={videoRef}
                   className={classNames('media-video', s.ViewerStoryContentMedia)}
                   src={url}
@@ -757,7 +764,7 @@ function StoryPeer(props: StoryPeerProps) {
                 />
               ) : (
                 <img
-                  key={story.mediaId}
+                  key={storyMediaId(story)}
                   className={classNames('media-photo', s.ViewerStoryContentMedia)}
                   src={url}
                   alt=""
@@ -770,7 +777,7 @@ function StoryPeer(props: StoryPeerProps) {
         </div>
 
         <div className={s.hideOnSmall}>
-          <div className={classNames(s.ViewerStoryShadow, story.caption ? s.hasCaption : '')} />
+          <div className={classNames(s.ViewerStoryShadow, storyCaption(story) ? s.hasCaption : '')} />
           <div className={s.ViewerStorySlides}>
             {group.stories.map((st, i) => (
               <div
@@ -785,20 +792,19 @@ function StoryPeer(props: StoryPeerProps) {
           </div>
           <div className={classNames(s.ViewerStoryHeader, 'night')}>
             <div className={s.ViewerStoryHeaderLeft}>
-              <Avatar
+              <StoryAuthorAvatar
                 className={s.ViewerStoryHeaderAvatar}
                 background={bg}
-                src={group.author.avatarUrl || undefined}
-                text={group.author.displayName.charAt(0)}
+                author={group.author}
                 size={32}
               />
               <div className={s.ViewerStoryHeaderInfo}>
                 <div className={s.ViewerStoryHeaderRow}>
-                  <span className={classNames('peer-title', s.ViewerStoryHeaderName)}>{group.author.displayName}</span>
+                  <span className={classNames('peer-title', s.ViewerStoryHeaderName)}>{getUserTitle(group.author)}</span>
                   <span className={s.ViewerStoryHeaderSecondary}>{`${JOINER}${storyIndex + 1}/${group.stories.length}`}</span>
                 </div>
                 <div className={classNames(s.ViewerStoryHeaderSecondary, s.ViewerStoryHeaderTime)}>
-                  {dateText(story.createdAt, story.edited, t)}
+                  {dateText(storyDate(story), isStoryEdited(story), t)}
                 </div>
               </div>
             </div>
@@ -810,18 +816,38 @@ function StoryPeer(props: StoryPeerProps) {
         {/* Заставка соседа — в isFull её нет (tweb viewer.tsx:2729-2734) */}
         {!isFull && (
           <div className={s.ViewerStoryInfo}>
-            <Avatar
+            <StoryAuthorAvatar
               className={s.ViewerStoryInfoAvatar}
               background={bg}
-              src={group.author.avatarUrl || undefined}
-              text={group.author.displayName.charAt(0)}
+              author={group.author}
               size={162}
             />
-            <span className={classNames('peer-title', s.ViewerStoryInfoName)}>{group.author.displayName}</span>
+            <span className={classNames('peer-title', s.ViewerStoryInfoName)}>{getUserTitle(group.author)}</span>
           </div>
         )}
       </div>
       {footer}
     </div>
+  )
+}
+
+/** Аватарка автора истории: id медиа (`user.photo.photo_id`) → objectURL
+ *  воркерного конвейера, имя собирает клиент. Отдельный компонент, потому что
+ *  `useMediaUrl` — хук, а мест показа автора в просмотрщике три. */
+function StoryAuthorAvatar({ author, background, size, className }: {
+  author: UserReal
+  background: string
+  size: number
+  className?: string
+}) {
+  const src = useMediaUrl(getPeerPhotoId(author.photo) || null)
+  return (
+    <Avatar
+      className={className}
+      background={background}
+      src={src || undefined}
+      text={getUserTitle(author).charAt(0)}
+      size={size}
+    />
   )
 }

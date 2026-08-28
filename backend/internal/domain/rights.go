@@ -56,7 +56,31 @@ type ChatSettings struct {
 	// ChargeStars — плата за одно сообщение в звёздах (Telegram paid messages):
 	// 0 — выключено. Списывается с не-админов при отправке, начисляется владельцу.
 	ChargeStars int
+	// AutoDeletePeriod — период автоудаления сообщений чата в секундах
+	// (chats.auto_delete_period, схемное channelFull.ttl_period); 0 — выключено.
+	AutoDeletePeriod int
 }
+
+// ToChatReactions — политика реакций как объединение схемы: наш строковый
+// ReactionsMode это ровно ВЫБОР КОНСТРУКТОРА (chatReactionsNone |
+// chatReactionsAll | chatReactionsSome), а ReactionsAllowed — параметр третьего.
+func (s ChatSettings) ToChatReactions() ChatReactions {
+	switch s.ReactionsMode {
+	case ReactionsModeNone:
+		return NewChatReactionsNone()
+	case ReactionsModeSome:
+		return NewChatReactionsSome(s.ReactionsAllowed)
+	default:
+		return NewChatReactionsAll(false)
+	}
+}
+
+// Значения ChatSettings.ReactionsMode (chats.reactions_mode).
+const (
+	ReactionsModeAll  = "all"
+	ReactionsModeSome = "some"
+	ReactionsModeNone = "none"
+)
 
 // HasRight reports whether a (role, rights) pair grants r. Creator → always true.
 func HasRight(role string, rights Rights, r Rights) bool {

@@ -11,8 +11,8 @@ import (
 // (owner, user); List/Delete are scoped to the owner so a user only ever touches
 // their own address book.
 type ContactsRepo interface {
-	Add(ctx context.Context, c domain.Contact) (domain.Contact, error)
-	List(ctx context.Context, ownerID int64) ([]domain.Contact, error)
+	Add(ctx context.Context, c domain.ContactRecord) (domain.ContactRecord, error)
+	List(ctx context.Context, ownerID int64) ([]domain.ContactRecord, error)
 	Delete(ctx context.Context, ownerID, userID int64) (found bool, err error)
 	// ResolveByPhone ищет зарегистрированного пользователя по нормализованному
 	// номеру; domain.ErrNotFound, если номер не зарегистрирован.
@@ -25,9 +25,21 @@ type ContactsRepo interface {
 // батч-выборка для наложения на список контактов. Опционален: без него личные
 // фото просто не поддерживаются.
 type CustomPhotoRepo interface {
-	SetCustomPhoto(ctx context.Context, ownerID, contactUserID int64, url string) error
+	SetCustomPhoto(ctx context.Context, ownerID, contactUserID, mediaID int64) error
 	ClearCustomPhoto(ctx context.Context, ownerID, contactUserID int64) error
-	CustomPhotoMap(ctx context.Context, ownerID int64, contactIDs []int64) (map[int64]string, error)
+	CustomPhotoMap(ctx context.Context, ownerID int64, contactIDs []int64) (map[int64]int64, error)
+}
+
+// CloseFriendsRepo отвечает на вопрос «кто из этих людей у владельца в близких
+// друзьях». Признак зависит от ЗРИТЕЛЯ и потому едет флагом карточки
+// (`user.pFlags.close_friend`), а не отдельной витриной-списком: у оригинала
+// список пишется методом `contacts.editCloseFriends`, а читается именно
+// отсюда — метода чтения в схеме нет вовсе.
+//
+// Опционален, как и остальные обогатители списка: без него флаг просто не
+// проставляется, а адресная книга работает.
+type CloseFriendsRepo interface {
+	CloseFriends(ctx context.Context, ownerID int64) ([]int64, error)
 }
 
 // PrivacyChecker решает вопросы конфиденциальности (usecase/privacy): батчем —

@@ -2,17 +2,27 @@
 import { describe, it, expect, vi } from 'vitest'
 import { newMessagesManager } from './messagesManager'
 import type { RestClient } from '../net/restClient'
-import { fromNewMessageEvt, mapFactCheck, mapWebPage, mapPoll, mapChecklist, mapGiveaway, type RawMessage, type RawPoll, type RawChecklist, type RawGiveaway } from '../models'
+import { mapMyMessage, type MessageReal, type MyMessage, type RawMessage, type RawMessageReal } from '../models'
 import type { NewMessageEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, DeleteMessageEvt } from '../realtime/events'
 import { RT } from '../realtime/events'
 import type { MessageOp } from '../realtime/messageOps'
+import { generateMessageId } from '../history/messageId'
+import { makeRawMessage } from '../messages/testMessage'
+import { getDocumentFromMessage, getMediaFromMessage, pollOptionKey, type MessageMedia, type MessageMediaPoll, type MessageMediaToDo } from '../media/messageMedia'
 
-function rawPage(seqs: number[]): { messages: RawMessage[]; count: number } {
+/** Номер в КЛИЕНТСКОМ пространстве. Чисел стало ОДНО (решение Р1): у сообщения
+ *  больше нет пары «адрес + порядок», а на проводе номера СЕРВЕРНЫЕ — граница
+ *  между пространствами и есть то, что здесь проверяется чаще всего. */
+const cid = generateMessageId
+
+const real = (m: MyMessage | undefined): MessageReal | undefined =>
+  m?._ === 'message' ? m : undefined
+
+function rawPage(ids: number[]): { messages: RawMessage[]; count: number } {
   // backend returns newest-first (DESC) for offset_id=0 / older pages
-  const messages = seqs.map((seq) => ({
-    id: seq, chat_id: 1, seq, sender_id: 1, type: 'text', text: `m${seq}`,
-    reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z',
-  }))
+  const messages = ids.map((id) => makeRawMessage({
+    id, peerId: 1, fromId: 1, text: `m${id}`, createdAt: '2026-06-24T10:00:00Z',
+  }) as RawMessage)
   return { messages, count: messages.length }
 }
 
@@ -33,16 +43,18 @@ describe('MessagesManager.getHistory', () => {
   it('fetches the newest window and returns ascending messages', async () => {
     const { rest } = countingRest({ '0:0:3': rawPage([5, 4, 3]) })
     const mgr = newMessagesManager({ rest })
-    const r = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 3 })
-    expect(r.messages.map((m) => m.seq)).toEqual([3, 4, 5]) // ascending for UI
+    const r = await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 3 })
+    // Номера на выходе КЛИЕНТСКИЕ: страница пришла с сервера, границу маппинга
+    // она уже прошла.
+    expect(r.messages.map((m) => m.id)).toEqual([cid(3), cid(4), cid(5)]) // ascending for UI
     expect(r.count).toBe(3)
   })
 
   it('serves the second identical request from cache (no extra REST call)', async () => {
     const { rest, calls } = countingRest({ '0:0:3': rawPage([5, 4, 3]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 3 })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 3 })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 3 })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 3 })
     expect(calls()).toBe(1)
   })
 
@@ -52,8 +64,8 @@ describe('MessagesManager.getHistory', () => {
       '1:1:40': rawPage([1]), // older inclusive of 1 → just [1] (< limit)
     })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const older = await mgr.getHistory({ chatId: 1, offsetSeq: 1, addOffset: 1, limit: 40 })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    const older = await mgr.getHistory({ peerId: 1, offsetId: cid(1), addOffset: 1, limit: 40 })
     expect(older.reachedTop).toBe(true)
   })
 
@@ -63,10 +75,10 @@ describe('MessagesManager.getHistory', () => {
   it('does not report reachedTop on re-open when only the newest page is cached', async () => {
     const { rest } = countingRest({ '0:0:3': rawPage([5, 4, 3]) })
     const mgr = newMessagesManager({ rest })
-    const first = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 3 })
+    const first = await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 3 })
     expect(first.reachedTop).toBe(false)
     // simulate re-open: identical initial request, now served from cache
-    const reopen = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 3 })
+    const reopen = await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 3 })
     expect(reopen.reachedBottom).toBe(true)
     expect(reopen.reachedTop).toBe(false)
   })
@@ -74,35 +86,35 @@ describe('MessagesManager.getHistory', () => {
 
 describe('MessagesManager.sendMessage', () => {
   it('POSTs and returns the created message, caching it', async () => {
-    const created: RawMessage = {
-      id: 10, chat_id: 1, seq: 6, sender_id: 1, type: 'text', text: 'hey',
-      reply_to_id: null, media_id: null, created_at: '2026-06-24T11:00:00Z',
-    }
+    const created = makeRawMessage({ id: 6, peerId: 1, fromId: 1, text: 'hey', createdAt: '2026-06-24T11:00:00Z' })
     const rest = { post: async () => created, get: async () => ({ messages: [], count: 0 }) } as unknown as RestClient
     const mgr = newMessagesManager({ rest })
-    const m = await mgr.sendMessage({ chatId: 1, text: 'hey', clientMsgId: 'c1' })
-    expect(m.seq).toBe(6)
-    expect(m.text).toBe('hey')
+    const m = await mgr.sendMessage({ peerId: 1, text: 'hey', clientMsgId: 'c1' })
+    expect(m.id).toBe(cid(6))
+    expect(real(m)?.message).toBe('hey')
   })
 
   it('forwards reply_to_peer_id for a cross-chat reply', async () => {
     let body: Record<string, unknown> = {}
-    const created: RawMessage = {
-      id: 10, chat_id: 1, seq: 6, sender_id: 1, type: 'text', text: 'hey',
-      reply_to_id: 5, media_id: null, created_at: '2026-06-24T11:00:00Z',
-    }
+    const created = makeRawMessage({ id: 6, peerId: 1, fromId: 1, text: 'hey', createdAt: '2026-06-24T11:00:00Z', replyToMsgId: 5 })
     const rest = { post: async (_p: string, b: Record<string, unknown>) => { body = b; return created } } as unknown as RestClient
     const mgr = newMessagesManager({ rest })
-    await mgr.sendMessage({ chatId: 1, text: 'hey', clientMsgId: 'c1', replyToId: 5, replyToPeerId: 99 })
+    await mgr.sendMessage({ peerId: 1, text: 'hey', clientMsgId: 'c1', replyToId: cid(5), replyToPeerId: 99 })
+    // В теле запроса номер СЕРВЕРНЫЙ: всё, что уходит на сервер, проходит через
+    // `getServerMessageId` — иначе бэкенд получил бы клиентское число и ответил
+    // бы 404 (громко, а не молчаливой подменой).
     expect(body.reply_to_id).toBe(5)
     expect(body.reply_to_peer_id).toBe(99)
   })
 })
 
 describe('MessagesManager scheduled', () => {
+  // Отдельной формы «запланированного» на проводе больше НЕТ: это обычное
+  // сообщение (`message`) с нашим параметром `send_at` — отложенность выражена
+  // полем, а не вторым конструктором и вторым маппером к нему.
   const rawScheduled = (over: Record<string, unknown> = {}) => ({
-    id: 1, chat_id: 1, sender_id: 1, type: 'text', text: 'later',
-    send_at: '2026-07-20T10:00:00Z', created_at: '2026-07-19T10:00:00Z', ...over,
+    ...makeRawMessage({ id: 1, peerId: 1, fromId: 1, text: 'later', createdAt: '2026-07-19T10:00:00Z' }),
+    send_at: 1_784_937_600, ...over,
   })
 
   it('sends when_online=true and maps the whenOnline flag', async () => {
@@ -111,7 +123,7 @@ describe('MessagesManager scheduled', () => {
     const mgr = newMessagesManager({ rest })
     const s = await mgr.scheduleMessage(1, { text: 'later', sendAt: 0, whenOnline: true })
     expect(body.when_online).toBe(true)
-    expect(s.whenOnline).toBe(true)
+    expect(real(s)?.when_online).toBe(true)
   })
 
   it('defaults when_online to false for a dated schedule', async () => {
@@ -120,76 +132,90 @@ describe('MessagesManager scheduled', () => {
     const mgr = newMessagesManager({ rest })
     const s = await mgr.scheduleMessage(1, { text: 'later', sendAt: 1_800_000_000 })
     expect(body.when_online).toBe(false)
-    expect(s.whenOnline).toBe(false)
+    // В ОТВЕТЕ ключа нет вовсе — «выключено» у флага это его отсутствие, а не
+    // `false` (то же правило, что у всех pFlags схемы).
+    expect(real(s)?.when_online).toBeUndefined()
   })
 
   it('editScheduled PATCHes the new send_at and returns the updated record', async () => {
     let path = ''
     let body: Record<string, unknown> = {}
-    const rest = { patch: async (p: string, b: Record<string, unknown>) => { path = p; body = b; return rawScheduled({ send_at: '2026-07-21T09:00:00Z' }) } } as unknown as RestClient
+    const rest = { patch: async (p: string, b: Record<string, unknown>) => { path = p; body = b; return rawScheduled({ send_at: 1_800_000_500 }) } } as unknown as RestClient
     const mgr = newMessagesManager({ rest })
-    const s = await mgr.editScheduled(1, 7, 1_800_000_500)
+    // Адрес строки — СЕРВЕРНЫЙ номер: клиентское пространство общее (границу
+    // разбора проходит всё), значит и обратно приводится тем же способом.
+    const s = await mgr.editScheduled(1, cid(7), 1_800_000_500)
     expect(path).toBe('/chats/1/scheduled/7')
     expect(body.send_at).toBe(1_800_000_500)
-    expect(s.sendAt).toBe('2026-07-21T09:00:00Z')
+    expect(real(s)?.send_at).toBe(1_800_000_500)
   })
 })
 
+/** Кадр `new_message` несёт сообщение ЦЕЛИКОМ под ключом `message` — форма
+ *  `updateNewMessage` (решение Р5). Второй проводной формы сообщения (плоские
+ *  `msg_id`/`seq`/`sender_id`/`text` прямо в кадре) и второго маппера к ней
+ *  больше нет, поэтому и фикстура кадра строится той же фабрикой, что страница
+ *  истории. */
+const liveEvt = (m: RawMessageReal, over: Partial<NewMessageEvt> = {}): NewMessageEvt =>
+  ({ _: 'updateNewMessage', message: m as RawMessage, ...over })
+
 describe('MessagesManager.cacheLive', () => {
-  // Регресс Bug 4: снимок кросс-чат-reply должен пережить кэш — иначе при
-  // переоткрытии чата из кэша превью кросс-чат-ответа не рисуется.
-  it('preserves cross-chat reply snapshot in the cache entry', async () => {
+  // Ссылка на кросс-чат ответ должна пережить кэш — иначе при переоткрытии чата
+  // из кэша плашка ответа теряет чат оригинала. Снимка `{name, text}` рядом
+  // больше нет: едет `reply_to.reply_from`/`reply_media`, а превью строит тот,
+  // кто рисует.
+  it('preserves the cross-chat reply reference in the cache entry', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    mgr.cacheLive({
-      chat_id: 1, msg_id: 4, seq: 4, sender_id: 1, type: 'text', text: 'ответ',
-      media_id: null, created_at: '2026-06-24T10:00:00Z',
-      reply_to_id: 999, reply_to_peer_id: 77,
-      reply_snapshot_name: 'Алиса', reply_snapshot_text: 'из другого чата',
-    } as NewMessageEvt)
-    const r = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const live = r.messages.find((m) => m.id === 4)
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    mgr.cacheLive(liveEvt({
+      ...makeRawMessage({ id: 4, peerId: 1, fromId: 1, text: 'ответ', createdAt: '2026-06-24T10:00:00Z' }),
+      reply_to: {
+        _: 'messageReplyHeader',
+        reply_to_msg_id: 999,
+        reply_to_peer_id: { _: 'peerChannel', channel_id: 77 },
+        reply_from: { _: 'messageFwdHeader', from_name: 'Алиса', date: 0 },
+      },
+    }))
+    const r = await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    const live = r.messages.find((m) => m.id === cid(4))
     expect(live).toBeTruthy()
-    expect(live?.replyToPeerId).toBe(77)
-    expect(live?.replySnapshotName).toBe('Алиса')
-    expect(live?.replySnapshotText).toBe('из другого чата')
+    expect(live?.reply_to?.reply_to_peer_id).toEqual({ _: 'peerChannel', channel_id: 77 })
+    expect(live?.reply_to?.reply_from?.from_name).toBe('Алиса')
+    // Номер оригинала тоже переведён в клиентское пространство — иначе плашка
+    // не нашла бы его в окне.
+    expect(live?.reply_to?.reply_to_msg_id).toBe(cid(999))
   })
 
-  // Task 6: new_message несёт client_msg_id (эхо своей отправки), и на главном
-  // потоке applyIncoming/reconcileAck матчат оптимистичный бабл именно по нему
-  // (mapMessage → msg.clientId, см. models.ts:799). cacheLive собирал модель
-  // без этого поля — переоткрытие чата из кэша воркера отдавало эхо-сообщение
-  // БЕЗ clientId, и слияние с ещё не сверенным баблом (если ack/echo по сети
-  // пока не пришли) не срабатывало бы.
-  it('preserves client_msg_id (clientId) of a live message for cache reopen', async () => {
+  // Эхо своей отправки узнаётся по `random_id` — КОНСТРУКТОРНОМУ параметру
+  // схемы, а не по нашему `client_msg_id` рядом с ним. По нему же сливается
+  // временный бабл (messageOps.insert), поэтому потеря поля в кэше означала бы
+  // «отправляется…» рядом с уже отправленным после переоткрытия чата.
+  it('preserves random_id of a live message for cache reopen', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    mgr.cacheLive({
-      chat_id: 1, msg_id: 4, seq: 4, sender_id: 1, type: 'text', text: 'hi',
-      media_id: null, created_at: '2026-06-24T10:00:00Z',
-      client_msg_id: 'c-live-1',
-    } as NewMessageEvt)
-    const r = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const live = r.messages.find((m) => m.id === 4)
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    mgr.cacheLive(liveEvt(makeRawMessage({
+      id: 4, peerId: 1, fromId: 1, text: 'hi', createdAt: '2026-06-24T10:00:00Z', randomId: 'c-live-1',
+    })))
+    const r = await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    const live = r.messages.find((m) => m.id === cid(4))
     expect(live).toBeTruthy()
-    expect(live?.clientId).toBe('c-live-1')
+    expect(live?.random_id).toBe('c-live-1')
   })
 
   // Task 3 (Stage 1B.2): cacheLive должен возвращать MessageOp[] — операции для
   // проектора на главном потоке. Обычное сообщение → одна операция insert с
-  // ключом основного окна (тот же формат, что hkey/winKey — просто String(chatId)).
+  // ключом основного окна (тот же формат, что hkey/winKey — просто String(peerId)).
   it('returns one insert op keyed to the main window for an ordinary message', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheLive({
-      chat_id: 1, msg_id: 4, seq: 4, sender_id: 1, type: 'text', text: 'hi',
-      media_id: null, created_at: '2026-06-24T10:00:00Z',
-    } as NewMessageEvt)
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheLive(liveEvt(makeRawMessage({
+      id: 4, peerId: 1, fromId: 1, text: 'hi', createdAt: '2026-06-24T10:00:00Z',
+    })))
     expect(ops).toHaveLength(1)
-    expect(ops[0]).toEqual({ op: 'insert', key: '1', msg: expect.objectContaining({ id: 4, seq: 4 }) })
+    expect(ops[0]).toEqual({ op: 'insert', key: '1', msg: expect.objectContaining({ id: cid(4) }) })
   })
 
   // Тред-сообщение при обоих загруженных срезах (основное окно чата + окно
@@ -197,8 +223,8 @@ describe('MessagesManager.cacheLive', () => {
   // который пишет в оба ключа при threadRootId).
   it('returns two insert ops (main + thread window) when both slices are loaded', async () => {
     // thread window — свой ключ истории (thread_root=100), тоже полная «нижняя»
-    // страница (offsetSeq=0 → всегда держит низ).
-    const threadPage = { messages: [{ id: 2, chat_id: 1, seq: 2, sender_id: 1, type: 'text', text: 'root reply', thread_root_id: 100, reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z' } as RawMessage], count: 1 }
+    // страница (offsetId=0 → всегда держит низ).
+    const threadPage = { messages: [makeRawMessage({ id: 2, peerId: 1, fromId: 1, text: 'root reply', threadRootId: 100, createdAt: '2026-06-24T10:00:00Z' }) as RawMessage], count: 1 }
     const rest = {
       get: async (_path: string, q?: Record<string, string | number>) => {
         if (q?.thread_root === 100) return threadPage
@@ -207,113 +233,122 @@ describe('MessagesManager.cacheLive', () => {
       post: async () => ({}),
     } as unknown as RestClient
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40, threadRoot: 100 })
-    const ops = mgr.cacheLive({
-      chat_id: 1, msg_id: 5, seq: 5, sender_id: 1, type: 'text', text: 'thread hi',
-      media_id: null, created_at: '2026-06-24T10:00:00Z', thread_root_id: 100,
-    } as NewMessageEvt)
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40, threadRoot: cid(100) })
+    // Корень треда живёт ВНУТРИ ссылки на ответ (`reply_to.reply_to_top_id`) —
+    // отдельного `thread_root_id` рядом с сообщением больше нет.
+    const ops = mgr.cacheLive(liveEvt(makeRawMessage({
+      id: 5, peerId: 1, fromId: 1, text: 'thread hi', threadRootId: 100, createdAt: '2026-06-24T10:00:00Z',
+    })))
     expect(ops).toHaveLength(2)
-    expect(ops.map((o) => o.key).sort()).toEqual(['1', '1:100'])
+    expect(ops.map((o) => o.key).sort()).toEqual(['1', `1:${cid(100)}`])
     for (const op of ops) {
       expect(op.op).toBe('insert')
-      if (op.op === 'insert') expect(op.msg.id).toBe(5)
+      if (op.op === 'insert') expect(op.msg.id).toBe(cid(5))
     }
   })
 
   // КРИТИЧНО: окно, не державшее низ истории (сохранена только «средняя»/старая
-  // страница, offsetSeq!==0 без short-page), должно дать НОЛЬ операций — та же
+  // страница, offsetId!==0 без short-page), должно дать НОЛЬ операций — та же
   // семантика, что и сам гейт вставки в SSOT (messagesManager.ts:~500-501). Иначе
   // главный поток вставит туда, где воркер не вставлял, и представления разъедутся.
   it('produces no op for a window that did not hold the bottom of history', async () => {
     const { rest } = countingRest({ '10:1:3': rawPage([9, 8, 7]) }) // paging older, full (non-short) page
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 2, offsetSeq: 10, addOffset: 1, limit: 3 })
-    const ops = mgr.cacheLive({
-      chat_id: 2, msg_id: 99, seq: 99, sender_id: 1, type: 'text', text: 'x',
-      media_id: null, created_at: '2026-06-24T10:00:00Z',
-    } as NewMessageEvt)
+    await mgr.getHistory({ peerId: 2, offsetId: cid(10), addOffset: 1, limit: 3 })
+    const ops = mgr.cacheLive(liveEvt(makeRawMessage({
+      id: 99, peerId: 2, fromId: 1, text: 'x', createdAt: '2026-06-24T10:00:00Z',
+    })))
     expect(ops).toEqual([])
   })
 })
 
-// Fix (пост-ревью Task 4): пин паритета полей между cacheLive и fromNewMessageEvt
-// (единый маппер live-кадра, models.ts). До фикса cacheLive держал СВОЙ, независимый
-// mapMessage()-литерал — он молча отставал полями (fwd_from_*/gift/reply_markup/
-// effect/media_title/media_performer/reply_to) от fromNewMessageEvt, которым
-// раньше вставлял сообщение в окно applyIncoming на главном потоке. Пока applyIncoming
-// был единственным писателем окна, расхождение было не видно — рендерился полный
-// вариант из fromNewMessageEvt. После Task 4 (проектор переигрывает ОПЕРАЦИЮ, а
-// cacheLive — единственный источник её msg) обеднённая модель стала бы молчаливой
-// регрессией данных на самом горячем пути (только что пришедшее сообщение). Фикс —
-// cacheLive теперь зовёт fromNewMessageEvt напрямую, поэтому расхождение полей
-// невозможно by construction; этот тест — регрессионный пин на СПОСОБ (не завести
-// параллельный литерал снова), красный на старой (докоммитной) реализации.
-describe('MessagesManager.cacheLive — паритет полей с fromNewMessageEvt', () => {
-  // Кадр с ВСЕМИ полями Message-модели, какие несёт NewMessageEvt (кроме тех, что
-  // резолвит main-thread — replyTo, и не относящихся к модели Message — pts/unread/
-  // sender_name/reply_quote_*, funnel/UI-only поля, не отображаемые в Message).
-  const fullEvt: NewMessageEvt = {
-    chat_id: 3, msg_id: 42, seq: 7, sender_id: 9, type: 'photo', text: 'caption',
-    entities: [{ type: 'bold', offset: 0, length: 3 }],
-    media_id: 555, created_at: '2026-08-10T13:00:00Z',
-    thread_root_id: 100,
-    reply_to_id: 41, reply_to_peer_id: 2, reply_snapshot_name: 'Алиса', reply_snapshot_text: 'оригинал',
-    fwd_from_user_id: 11, fwd_from_chat_id: 12, fwd_from_msg_id: 13, fwd_date: '2026-08-09T10:00:00Z',
-    media_unread: true, grouped_id: 'g-1',
-    geo: { lat: 1.5, lng: 2.5, title: 'Point', address: 'Addr', live_period: 900 },
-    contact: { user_id: 77, name: 'Bob', phone: '+1' },
-    gift: { id: 1, gift: { id: 2, emoji: '🎁', title: 'Gift', price_stars: 100, convert_stars: 50, total: null, remains: null, sold_out: false }, from_id: 9, anonymous: false, hidden: false, converted: false, convert_stars: 50 },
-    reply_markup: { inline: [[{ text: 'Click', callback: 'cb' }]] },
-    media_w: 640, media_h: 480, media_mime: 'image/jpeg', media_blur: 'abc',
-    media_has_thumb: true, media_duration: 12, media_size: 2048, media_name: 'photo.jpg',
-    media_title: 'Track', media_performer: 'Artist',
-    secret_media: { mediaId: 1, keyB64: 'k', ivB64: 'i', name: 'photo.jpg', mime: 'image/jpeg', size: 2048, mediaType: 'photo' },
-    effect: 'confetti',
-    paid_media: { price: 10, locked: false },
-    client_msg_id: 'c-parity-1',
-  }
+// Пин на СПОСОБ: `cacheLive` не имеет своего маппера. Раньше их было два —
+// `fromNewMessageEvt` для живого кадра и `mapMessage` для страницы истории, —
+// и они молча расходились полями (кадр нёс сообщение плоско, страница —
+// объектом). Теперь проводная форма ОДНА (`updateNewMessage`: сообщение целиком
+// под ключом `message`), поэтому маппер тоже один, и расхождение невозможно
+// by construction. Тест краснеет, если в `cacheLive` снова заведут параллельный
+// литерал сборки сообщения.
+describe('MessagesManager.cacheLive — сообщение собирает ТОТ ЖЕ маппер, что и страница истории', () => {
+  const ME = 9
+  // Кадр с максимумом полей конструктора `message`, какие несёт живое сообщение.
+  const fullMessage: RawMessageReal = {
+    ...makeRawMessage({
+      id: 42, peerId: 3, fromId: ME, text: 'caption', createdAt: '2026-08-10T13:00:00Z',
+      entities: [{ _: 'messageEntityBold', offset: 0, length: 3 }],
+      threadRootId: 100, replyToMsgId: 41, groupedId: 7007, randomId: 'c-parity-1',
+      mediaUnread: true, out: true,
+      media: {
+        _: 'messageMediaPhoto',
+        photo: {
+          _: 'photo', id: 555,
+          sizes: [
+            { _: 'photoStrippedSize', type: 'i', bytes: 'abc' },
+            { _: 'photoSize', type: 'y', w: 320, h: 240, size: 1024 },
+            { _: 'photoSize', type: 'w', w: 640, h: 480, size: 2048 },
+          ],
+        },
+      },
+    }),
+    fwd_from: { _: 'messageFwdHeader', from_id: { _: 'peerUser', user_id: 11 }, date: 1754733600, channel_post: 13 },
+    reply_markup: { _: 'replyInlineMarkup', rows: [{ _: 'keyboardButtonRow', buttons: [{ _: 'keyboardButtonCallback', text: 'Click', data: 'Y2I=' }] }] },
+    effect_name: 'confetti',
+    secretMedia: { mediaId: 1, keyB64: 'k', ivB64: 'i', name: 'photo.jpg', mime: 'image/jpeg', size: 2048, mediaType: 'photo' },
+  } as RawMessageReal
 
-  it('cacheLive(fullEvt).msg равен fromNewMessageEvt(fullEvt) без исключений', async () => {
+  it('cacheLive(evt).msg равен mapMyMessage(evt.message) без исключений', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([1]) })
-    const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 3, offsetSeq: 0, addOffset: 0, limit: 40 }) // держит низ — гейт вставки открыт
-    const ops = mgr.cacheLive(fullEvt)
+    const mgr = newMessagesManager({ rest, getMeId: () => ME })
+    await mgr.getHistory({ peerId: 3, offsetId: 0, addOffset: 0, limit: 40 }) // держит низ — гейт вставки открыт
+    const ops = mgr.cacheLive(liveEvt(fullMessage))
     const main = ops.find((o) => o.key === '3')
     expect(main?.op).toBe('insert')
-    // Исключений нет: fromNewMessageEvt уже сама делает то, что раньше cacheLive
-    // дублировал вручную (инжект secretMedia/secret, clientId) — единственный
-    // источник вставки теперь один и тот же маппер, вызванный один раз.
-    expect(main && main.op === 'insert' ? main.msg : null).toEqual(fromNewMessageEvt(fullEvt))
+    expect(main && main.op === 'insert' ? main.msg : null).toEqual(mapMyMessage(fullMessage, ME))
   })
 
   it('тред-ключ той же операции тоже несёт полный (не урезанный) msg', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([1]) })
-    const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 3, offsetSeq: 0, addOffset: 0, limit: 40 })
-    await mgr.getHistory({ chatId: 3, offsetSeq: 0, addOffset: 0, limit: 40, threadRoot: 100 })
-    const ops = mgr.cacheLive(fullEvt)
-    const thread = ops.find((o) => o.key === '3:100')
+    const mgr = newMessagesManager({ rest, getMeId: () => ME })
+    await mgr.getHistory({ peerId: 3, offsetId: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ peerId: 3, offsetId: 0, addOffset: 0, limit: 40, threadRoot: cid(100) })
+    const ops = mgr.cacheLive(liveEvt(fullMessage))
+    const thread = ops.find((o) => o.key === `3:${cid(100)}`)
     expect(thread?.op).toBe('insert')
-    expect(thread && thread.op === 'insert' ? thread.msg : null).toEqual(fromNewMessageEvt(fullEvt))
+    expect(thread && thread.op === 'insert' ? thread.msg : null).toEqual(mapMyMessage(fullMessage, ME))
+  })
+
+  // `pFlags.out` производит СЕРВЕР (решение Р7 отменено): владелец его больше не
+  // выводит и не имеет права переспорить. Прежний describe про `send_as` здесь
+  // УДАЛЁН вместе с предметом — параметра `send_as` на проводе не существует, а
+  // правило «сообщение от лица канала рисуется входящим» выражено через `from_id`
+  // (ссылку на ЧАТ, а не на человека) и пинится там, где ему место, —
+  // `core/models.test.ts` (предикат) и `core/messageToConvMsg.test.ts` (сторона
+  // бабла). Здесь остаётся ровно то, за что отвечает менеджер: флаг доезжает как есть.
+  it('pFlags.out кадра доезжает до операции неизменным', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([1]) })
+    const mgr = newMessagesManager({ rest, getMeId: () => ME })
+    await mgr.getHistory({ peerId: 3, offsetId: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheLive(liveEvt(fullMessage))
+    const main = ops.find((o) => o.key === '3')
+    expect(main && main.op === 'insert' ? main.msg.pFlags.out : null).toBe(true)
   })
 })
 
 // Баг (см. BRIEF.md): cacheEdit патчил только text/entities/editedAt и молча
 // игнорировал reply_markup из кадра edit_message, хотя витрина применяет его
-// (storeProjection.ts: RT.editMessage → applyEdit(..., e.reply_markup ? mapReplyMarkup(...) : null)).
+// (storeProjection.ts: RT.editMessage → applyEdit(..., e.reply_markup ?? null)).
 // Значит живая правка клавиатуры бота выглядела правильно (витрина её ловила
 // из сырого кадра мимо SSOT), а SSOT воркера оставался со старой клавиатурой —
 // расхождение всплывало только при переоткрытии чата/второй вкладке, поднимающей
-// окно из кэша воркера. Правило то же, что у витрины: поле есть → маппить
-// mapReplyMarkup, поля нет → клавиатура снята (бэк шлёт reply_markup абсолютным
+// окно из кэша воркера. Правило то же, что у витрины: поле есть → положить
+// значение кадра, поля нет → клавиатура снята (бэк шлёт reply_markup абсолютным
 // значением, backend/internal/usecase/chat/frame.go:243).
 describe('MessagesManager.cacheEdit — reply_markup', () => {
   function pageWithMarkup(): { messages: RawMessage[]; count: number } {
-    const messages = [3, 2, 1].map((seq) => ({
-      id: seq, chat_id: 1, seq, sender_id: 1, type: 'text', text: `m${seq}`,
-      reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z',
-      reply_markup: seq === 2 ? { inline: [[{ text: 'Old', callback: 'old' }]] } : undefined,
+    const messages = [3, 2, 1].map((id) => ({
+      ...makeRawMessage({ id, peerId: 1, fromId: 1, text: `m${id}`, createdAt: '2026-06-24T10:00:00Z' }),
+      ...(id === 2 ? { reply_markup: { _: 'replyInlineMarkup', rows: [{ _: 'keyboardButtonRow', buttons: [{ _: 'keyboardButtonCallback', text: 'Old', data: 'b2xk' }] }] } } : {}),
     }) as RawMessage)
     return { messages, count: messages.length }
   }
@@ -321,30 +356,32 @@ describe('MessagesManager.cacheEdit — reply_markup', () => {
   it('maps reply_markup into the SSOT when the edit carries a new keyboard', async () => {
     const { rest } = countingRest({ '0:0:40': pageWithMarkup() })
     const mgr = newMessagesManager({ rest })
-    const before = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    expect(before.messages.find((m) => m.id === 2)?.replyMarkup).toEqual({ inline: [[{ text: 'Old', callback: 'old' }]] })
+    const before = await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    expect(real(before.messages.find((m) => m.id === cid(2)))?.reply_markup).toEqual({ _: 'replyInlineMarkup', rows: [{ _: 'keyboardButtonRow', buttons: [{ _: 'keyboardButtonCallback', text: 'Old', data: 'b2xk' }] }] })
+    // Кадр несёт сообщение ЦЕЛИКОМ — той же формы, что приходит историей.
     mgr.cacheEdit({
-      chat_id: 1, msg_id: 2, seq: 2, text: 'edited', edited_at: '2026-08-11T10:00:00Z',
-      // one_time — поле, которого нет в фикстурах старой клавиатуры (только
-      // inline). Без него toEqual не отличил бы смаппленный ReplyMarkup от
-      // сырого RawMarkup: обе стороны несли бы один и тот же {inline}, а
-      // отсутствующие oneTime/one_time читаются toEqual как равные undefined.
-      reply_markup: { inline: [[{ text: 'New', callback: 'new' }]], one_time: true },
+      _: 'updateEditMessage',
+      message: makeRawMessage({
+        id: 2, peerId: 1, fromId: 1, text: 'edited', editDate: 1_786_536_000,
+        replyMarkup: { _: 'replyInlineMarkup', rows: [{ _: 'keyboardButtonRow', buttons: [{ _: 'keyboardButtonCallback', text: 'New', data: 'bmV3' }] }] },
+      }),
     })
-    const r = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const edited = r.messages.find((m) => m.id === 2)
-    expect(edited?.replyMarkup).toEqual({ inline: [[{ text: 'New', callback: 'new' }]], oneTime: true })
+    const r = await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    const edited = real(r.messages.find((m) => m.id === cid(2)))
+    expect(edited?.reply_markup).toEqual({ _: 'replyInlineMarkup', rows: [{ _: 'keyboardButtonRow', buttons: [{ _: 'keyboardButtonCallback', text: 'New', data: 'bmV3' }] }] })
   })
 
   it('clears replyMarkup in the SSOT when the edit carries no reply_markup (removed)', async () => {
     const { rest } = countingRest({ '0:0:40': pageWithMarkup() })
     const mgr = newMessagesManager({ rest })
-    const before = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    expect(before.messages.find((m) => m.id === 2)?.replyMarkup).toEqual({ inline: [[{ text: 'Old', callback: 'old' }]] })
-    mgr.cacheEdit({ chat_id: 1, msg_id: 2, seq: 2, text: 'edited', edited_at: '2026-08-11T10:00:00Z' })
-    const r = await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const edited = r.messages.find((m) => m.id === 2)
-    expect(edited?.replyMarkup).toBeUndefined()
+    const before = await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    expect(real(before.messages.find((m) => m.id === cid(2)))?.reply_markup).toEqual({ _: 'replyInlineMarkup', rows: [{ _: 'keyboardButtonRow', buttons: [{ _: 'keyboardButtonCallback', text: 'Old', data: 'b2xk' }] }] })
+    mgr.cacheEdit({
+      _: 'updateEditMessage',
+      message: makeRawMessage({ id: 2, peerId: 1, fromId: 1, text: 'edited', editDate: 1_786_536_000 }),
+    })
+    const r = await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    expect(real(r.messages.find((m) => m.id === cid(2)))?.reply_markup).toBeUndefined()
   })
 })
 
@@ -361,10 +398,10 @@ describe('MessagesManager.cacheEdit — reply_markup', () => {
 // чату, не по окну), поэтому это годный фикстур для проверки многооконности.
 function restWithThreadOverlap(): RestClient {
   const threadPage = {
-    messages: [{
-      id: 2, chat_id: 1, seq: 2, sender_id: 1, type: 'text', text: 'root reply',
-      thread_root_id: 100, reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z',
-    } as RawMessage],
+    messages: [makeRawMessage({
+      id: 2, peerId: 1, fromId: 1, text: 'root reply', threadRootId: 100,
+      createdAt: '2026-06-24T10:00:00Z',
+    }) as RawMessage],
     count: 1,
   }
   return {
@@ -376,21 +413,49 @@ function restWithThreadOverlap(): RestClient {
   } as unknown as RestClient
 }
 
+/** Карточка ссылки в форме кадра: конструктор, а не плоский снимок. */
+function webPageMedia(title: string): MessageMedia {
+  return {
+    _: 'messageMediaWebPage',
+    webpage: { _: 'webPage', url: 'https://x/', display_url: 'x', title },
+  }
+}
+
 describe('MessagesManager.cacheWebPage', () => {
   it('returns a patch op carrying the mapped web page for an existing message', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const evt: WebPageUpdateEvt = { chat_id: 1, msg_id: 2, seq: 2, web_page: { url: 'https://x', site_name: 'X', title: 'Title' } }
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    // Кадр несёт КОНСТРУКТОР — тот же, что и в самом сообщении, с обычной
+    // лестницей ступеней у картинки. Плоской формы (`site_name`/`photo_w`/
+    // `photo_blur` россыпью) на проводе нет, поэтому и переводить нечего.
+    const media: MessageMedia = {
+      _: 'messageMediaWebPage',
+      webpage: {
+        _: 'webPage', url: 'https://x/', display_url: 'x',
+        site_name: 'X', title: 'Title', has_iv: true,
+        photo: {
+          _: 'photo', id: 7,
+          sizes: [
+            { _: 'photoStrippedSize', type: 'i', bytes: 'Ymx1cg==' },
+            { _: 'photoSize', type: 'y', w: 1280, h: 640, size: 0 },
+            { _: 'photoSize', type: 'w', w: 2000, h: 1000, size: 0 },
+          ],
+        },
+      },
+    }
+    const evt: WebPageUpdateEvt = { _: 'updateMessageWebPage', peer: { _: 'peerUser' as const, user_id: 1 }, msg_id: 2, media }
     const ops = mgr.cacheWebPage(evt)
-    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: 2, fields: { webPage: mapWebPage(evt.web_page) } }])
+    // Номер в кадре СЕРВЕРНЫЙ, в операции — уже клиентский: иначе патч не нашёл
+    // бы сообщение в окне. Вложение доезжает как есть.
+    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(2), fields: { media } }])
   })
 
   it('produces no op for a message absent from the SSOT', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheWebPage({ chat_id: 1, msg_id: 999, seq: 999, web_page: { title: 'Title' } })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheWebPage({ _: 'updateMessageWebPage', peer: { _: 'peerUser' as const, user_id: 1 }, msg_id: 999, media: webPageMedia('Title') })
     expect(ops).toEqual([])
   })
 
@@ -400,15 +465,18 @@ describe('MessagesManager.cacheWebPage', () => {
   // одного, и окно треда осталось бы со старыми данными.
   it('returns one patch op per window when the message is visible in both the main and thread windows', async () => {
     const mgr = newMessagesManager({ rest: restWithThreadOverlap() })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40, threadRoot: 100 })
-    const evt: WebPageUpdateEvt = { chat_id: 1, msg_id: 2, seq: 2, web_page: { title: 'Title' } }
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40, threadRoot: cid(100) })
+    const evt: WebPageUpdateEvt = { _: 'updateMessageWebPage', peer: { _: 'peerUser' as const, user_id: 1 }, msg_id: 2, media: webPageMedia('Title') }
     const ops = mgr.cacheWebPage(evt)
     expect(ops).toHaveLength(2)
-    expect(ops.map((o) => o.key).sort()).toEqual(['1', '1:100'])
+    expect(ops.map((o) => o.key).sort()).toEqual(['1', `1:${cid(100)}`])
     for (const op of ops) {
       expect(op.op).toBe('patch')
-      if (op.op === 'patch') expect(op.fields).toEqual({ webPage: mapWebPage(evt.web_page) })
+      if (op.op === 'patch') {
+        expect(op.fields.media?._).toBe('messageMediaWebPage')
+        expect(op.fields.media?._ === 'messageMediaWebPage' && op.fields.media.webpage.title).toBe('Title')
+      }
     }
   })
 })
@@ -417,38 +485,126 @@ describe('MessagesManager.cacheFactCheck', () => {
   it('returns a patch op carrying the mapped fact-check for an existing message', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const evt: FactCheckUpdateEvt = { chat_id: 1, msg_id: 2, seq: 2, factcheck: { text: 'проверено', country: 'RU' } }
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    // `factCheck` — КОНСТРУКТОР схемы, приезжающий целиком (текст внутри —
+    // `textWithEntities`), поэтому маппера у него нет и быть не должно.
+    const evt: FactCheckUpdateEvt = {
+      _: 'updateMessageFactCheck', peer: { _: 'peerUser' as const, user_id: 1 }, msg_id: 2,
+      factcheck: { _: 'factCheck', country: 'RU', text: { _: 'textWithEntities', text: 'проверено', entities: [] } },
+    }
     const ops = mgr.cacheFactCheck(evt)
-    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: 2, fields: { factCheck: mapFactCheck(evt.factcheck!) } }])
+    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(2), fields: { factcheck: evt.factcheck } }])
   })
 
-  // factcheck: null — проверка снята, fields.factCheck обязан быть undefined
-  // (а не отсутствовать/null), как и cacheX/applyX в сторе (см. карту обогащений).
-  it('returns fields.factCheck: undefined when the fact-check is removed', async () => {
+  // «Сняли» — ОТСУТСТВИЕ параметра в кадре (а не null под тем же ключом);
+  // fields.factcheck при этом обязан быть undefined, как и у остальных cacheX.
+  it('returns fields.factcheck: undefined when the fact-check is removed', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheFactCheck({ chat_id: 1, msg_id: 2, seq: 2, factcheck: null })
-    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: 2, fields: { factCheck: undefined } }])
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheFactCheck({ _: 'updateMessageFactCheck', peer: { _: 'peerUser' as const, user_id: 1 }, msg_id: 2 })
+    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(2), fields: { factcheck: undefined } }])
   })
 
   it('produces no op for a message absent from the SSOT', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheFactCheck({ chat_id: 1, msg_id: 999, seq: 999, factcheck: null })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheFactCheck({ _: 'updateMessageFactCheck', peer: { _: 'peerUser' as const, user_id: 1 }, msg_id: 999 })
     expect(ops).toEqual([])
+  })
+})
+
+// «Проверка фактов» СВОИМ действием. Оптимистика: `patch {factcheck}` уходит в
+// окно ДО ответа сервера, а на упавшей сети откатывается предыдущим значением —
+// та же форма, что у своей реакции (`messages/reactionMethods.ts::react`).
+// Долг снесённой React-ленты: прежде «показать сразу» делал main-сторный
+// мутатор по второй копии окна, и вместе с ней отклик до эха исчез.
+//
+// У tweb оптимистики здесь нет вовсе (`updateFactCheck`,
+// `lib/appManagers/appMessagesManager.ts:10812-10830`, просто ждёт `Updates`) —
+// это наша модель отклика на своё действие, и она объявлена расхождением.
+describe('MessagesManager.setFactCheck (оптимистика)', () => {
+  /** REST, у которого POST зависает до ручного `release` — только так видно,
+   *  что патч объявлен РАНЬШЕ ответа, а не «где-то до конца вызова». */
+  function pendingPostRest() {
+    const { rest: base } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    let release!: (v: RawMessageReal) => void
+    let reject!: (e: unknown) => void
+    const answer = new Promise<RawMessageReal>((res, rej) => { release = res; reject = rej })
+    const rest = {
+      ...(base as unknown as { get: RestClient['get'] }),
+      post: () => answer,
+    } as unknown as RestClient
+    return { rest, release: (v: RawMessageReal) => release(v), reject: (e: unknown) => reject(e) }
+  }
+
+  const CHECK = { _: 'factCheck' as const, country: 'RU', text: { _: 'textWithEntities' as const, text: 'проверено', entities: [] } }
+
+  it('объявляет patch {factcheck} ДО ответа сервера', async () => {
+    const { rest, release } = pendingPostRest()
+    const ops: MessageOp[] = []
+    const mgr = newMessagesManager({ rest, broadcast: (_e, p) => { ops.push(...(p as { ops: MessageOp[] }).ops) } })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+
+    const promise = mgr.setFactCheck(1, cid(2), 'проверено', [], 'RU')
+    // Сеть ещё не ответила — а окно уже знает.
+    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(2), fields: { factcheck: CHECK } }])
+
+    release({ ...makeRawMessage({ id: 2, peerId: 1, fromId: 1, text: 'm2' }), factcheck: CHECK } as RawMessageReal)
+    await promise
+    // Серверное значение объявляется вторым патчем — он абсолютный, поэтому
+    // повтор идемпотентен.
+    expect(ops[ops.length - 1]).toEqual({ op: 'patch', key: '1', msgId: cid(2), fields: { factcheck: CHECK } })
+  })
+
+  it('на упавшей сети откатывает объявленное предыдущим значением', async () => {
+    const { rest, reject } = pendingPostRest()
+    const ops: MessageOp[] = []
+    const mgr = newMessagesManager({ rest, broadcast: (_e, p) => { ops.push(...(p as { ops: MessageOp[] }).ops) } })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+
+    const promise = mgr.setFactCheck(1, cid(2), 'проверено', [], 'RU')
+    reject(new Error('offline'))
+    await expect(promise).rejects.toThrow('offline')
+
+    // Проверки на сообщении не было — откат объявляет ОТСУТСТВИЕ параметра.
+    expect(ops).toEqual([
+      { op: 'patch', key: '1', msgId: cid(2), fields: { factcheck: CHECK } },
+      { op: 'patch', key: '1', msgId: cid(2), fields: { factcheck: undefined } },
+    ])
+  })
+
+  // Имя поля модели — `factcheck` нижним регистром; здесь уже был дефект, где
+  // патчился несуществующий `factCheck`, и SSOT воркера правки не видел.
+  it('пишет оптимистику в SSOT воркера полем `factcheck`', async () => {
+    const { rest, release } = pendingPostRest()
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+
+    const promise = mgr.setFactCheck(1, cid(2), 'проверено', [], 'RU')
+    const page = await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    expect(real(page.messages.find((m) => m.id === cid(2)))?.factcheck).toEqual(CHECK)
+
+    release({ ...makeRawMessage({ id: 2, peerId: 1, fromId: 1, text: 'm2' }), factcheck: CHECK } as RawMessageReal)
+    await promise
   })
 })
 
 describe('MessagesManager.cacheMediaRead', () => {
   function voicePage(unread: boolean) {
     return {
-      messages: [{
-        id: 7, chat_id: 1, seq: 7, sender_id: 1, type: 'voice', text: '',
-        reply_to_id: null, media_id: 5, created_at: '2026-06-24T10:00:00Z', media_unread: unread,
-      } as RawMessage],
+      messages: [makeRawMessage({
+        id: 7, peerId: 1, fromId: 1, text: '', createdAt: '2026-06-24T10:00:00Z',
+        mediaUnread: unread,
+        media: {
+          _: 'messageMediaDocument',
+          document: {
+            _: 'document', id: 5, mime_type: 'audio/ogg', size: 10,
+            attributes: [{ _: 'documentAttributeAudio', pFlags: { voice: true }, duration: 3 }],
+          },
+        },
+      }) as RawMessage],
       count: 1,
     }
   }
@@ -456,10 +612,12 @@ describe('MessagesManager.cacheMediaRead', () => {
   it('returns a patch op clearing mediaUnread for an unread voice message', async () => {
     const { rest } = countingRest({ '0:0:40': voicePage(true) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const evt: MediaReadEvt = { chat_id: 1, msg_id: 7 }
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    const evt: MediaReadEvt = { _: 'updateReadPeerMessagesContents', peer: { _: 'peerUser', user_id: 1 }, messages: [7] }
     const ops = mgr.cacheMediaRead(evt)
-    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: 7, fields: { mediaUnread: false } }])
+    // «Прочитано» — ОТСУТСТВИЕ флага схемы, а не `false`: пустой `pFlags`
+    // и есть снятая точка.
+    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(7), fields: { pFlags: {} } }])
   })
 
   // Гейт паритетен воркерному patchMsg: уже прочитанное сообщение не патчится в
@@ -468,48 +626,111 @@ describe('MessagesManager.cacheMediaRead', () => {
   it('produces no op when the message is already read (idempotent replay)', async () => {
     const { rest } = countingRest({ '0:0:40': voicePage(false) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheMediaRead({ chat_id: 1, msg_id: 7 })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheMediaRead({ _: 'updateReadPeerMessagesContents', peer: { _: 'peerUser', user_id: 1 }, messages: [7] })
     expect(ops).toEqual([])
   })
 
   it('produces no op for a message absent from the SSOT', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheMediaRead({ chat_id: 1, msg_id: 999 })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheMediaRead({ _: 'updateReadPeerMessagesContents', peer: { _: 'peerUser', user_id: 1 }, messages: [999] })
     expect(ops).toEqual([])
   })
 })
 
+const lockedPaid: MessageMedia = {
+  _: 'messageMediaPaidMedia',
+  stars_amount: 10,
+  extended_media: [{ _: 'messageExtendedMediaPreview', w: 640, h: 480 }],
+}
+
 describe('MessagesManager.cachePaidUnlock', () => {
   it('returns a patch op carrying the media fields + paidMedia (not a whole-message replace)', async () => {
-    const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    // Сообщение в SSOT — ЗАБЛОКИРОВАННОЕ платное: цену кадр не везёт (она
+    // свойство самого вложения), поэтому обёртку берём у сообщения.
+    const { rest } = countingRest({ '0:0:40': mediaPage(2, lockedPaid) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const evt = {
-      chat_id: 1, msg_id: 2, seq: 2, sender_id: 1, type: 'photo', text: '',
-      media_id: 55, created_at: '2026-06-24T10:00:00Z',
-      media_w: 640, media_h: 480, media_mime: 'image/jpeg', media_blur: 'abc',
-      media_has_thumb: true, media_duration: undefined, media_size: 2048, media_name: 'p.jpg',
-      paid_media: { price: 10, locked: false },
-    } as unknown as NewMessageEvt
-    const ops = mgr.cachePaidUnlock(evt)
-    expect(ops).toEqual([{
-      op: 'patch', key: '1', msgId: 2,
-      fields: {
-        mediaId: 55, mediaWidth: 640, mediaHeight: 480, mediaMime: 'image/jpeg', mediaBlur: 'abc',
-        mediaHasThumb: true, mediaDuration: undefined, mediaSize: 2048, mediaName: 'p.jpg',
-        paidMedia: { price: 10, locked: false },
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    // Кадр разблокировки несёт ВЛОЖЕНИЕ целиком: у заблокированного сервер
+    // отдавал псевдо-фото из одной stripped-ступени (LockedPlaceholder), здесь
+    // приезжает настоящая лестница.
+    const media: MessageMedia = {
+      _: 'messageMediaPhoto',
+      photo: {
+        _: 'photo',
+        id: 55,
+        sizes: [
+          { _: 'photoStrippedSize', type: 'i', bytes: 'abc' },
+          { _: 'photoSize', type: 'w', w: 640, h: 480, size: 2048 },
+        ],
       },
-    }])
+    }
+    // Оплачено — позиция вектора становится `messageExtendedMedia` с настоящим
+    // вложением внутри; цена (`stars_amount`) при этом на месте, она свойство
+    // самого платного вложения.
+    const unlocked: MessageMedia = {
+      _: 'messageMediaPaidMedia',
+      stars_amount: 10,
+      extended_media: [{ _: 'messageExtendedMedia', media }],
+    }
+    // Кадр несёт РОВНО предмет — вектор позиций; цена берётся у сообщения,
+    // потому что она свойство самого платного вложения, а не приписка кадра.
+    const ops = mgr.cachePaidUnlock({
+      _: 'updateMessageExtendedMedia', peer: { _: 'peerUser' as const, user_id: 1 }, msg_id: 2,
+      extended_media: unlocked.extended_media,
+    })
+    // Плоского `media_id` рядом нет — адрес файла живёт ВНУТРИ вложения.
+    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(2), fields: { media: unlocked } }])
+    expect(getMediaFromMessage({ media: ops[0].op === 'patch' ? ops[0].fields.media : undefined })!.id).toBe(55)
+  })
+
+  // Бэк вычищает у заблокированного медиа ВСЮ мету контента (stripLockedMedia
+  // оставляет только псевдо-фото из stripped-ступени) и возвращает её кадром
+  // разблокировки. Патч обязан нести вложение целиком и УЖЕ нормализованным
+  // (`saveMessageMedia`), иначе у оплаченного документа нет выведенного типа:
+  // оплаченное аудио остаётся без подписи, а оплаченная гифка рисуется
+  // видео-баблом до перезагрузки истории.
+  it('переносит вложение целиком, с выведенным типом документа', async () => {
+    const { rest } = countingRest({ '0:0:40': mediaPage(2, lockedPaid) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cachePaidUnlock({
+      _: 'updateMessageExtendedMedia', peer: { _: 'peerUser' as const, user_id: 1 }, msg_id: 2,
+      extended_media: [{
+        _: 'messageExtendedMedia',
+        media: {
+          _: 'messageMediaDocument',
+          document: {
+            _: 'document', id: 55, mime_type: 'video/mp4', size: 10,
+            attributes: [
+              { _: 'documentAttributeVideo', duration: 3, w: 320, h: 240 },
+              { _: 'documentAttributeAnimated' },
+              { _: 'documentAttributeFilename', file_name: 'g.mp4' },
+            ],
+          },
+        },
+      }],
+    })
+    const patch = ops[0]
+    const fields = patch?.op === 'patch' ? patch.fields : null
+    // Нормализация обязана зайти ВНУТРЬ обёртки платного медиа — иначе у
+    // оплаченного документа нет выведенного типа.
+    const doc = getDocumentFromMessage({ media: fields?.media })
+    expect(doc?.type).toBe('gif') // выведен из documentAttributeAnimated
+    expect(doc?.file_name).toBe('g.mp4')
+    expect(doc?.duration).toBe(3)
   })
 
   it('produces no op for a message absent from the SSOT', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cachePaidUnlock({ chat_id: 1, msg_id: 999, seq: 999, sender_id: 1, type: 'photo', text: '', media_id: null, created_at: '2026-06-24T10:00:00Z' } as NewMessageEvt)
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cachePaidUnlock({
+      _: 'updateMessageExtendedMedia', peer: { _: 'peerUser', user_id: 1 }, msg_id: 999,
+      extended_media: [{ _: 'messageExtendedMedia', media: { _: 'messageMediaPhoto', photo: { _: 'photo', id: 1, sizes: [] } } }],
+    })
     expect(ops).toEqual([])
   })
 })
@@ -518,17 +739,17 @@ describe('MessagesManager.cacheDelete', () => {
   it('returns a remove op for the window holding the deleted message', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const evt: DeleteMessageEvt = { chat_id: 1, msg_id: 2, seq: 2, for_me: false }
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    const evt: DeleteMessageEvt = { _: 'updateDeletePeerMessages', peer: { _: 'peerUser', user_id: 1 }, messages: [2] }
     const ops = mgr.cacheDelete(evt)
-    expect(ops).toEqual([{ op: 'remove', key: '1', msgId: 2 }])
+    expect(ops).toEqual([{ op: 'remove', key: '1', msgId: cid(2) }])
   })
 
   it('produces no op for a message absent from the SSOT', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheDelete({ chat_id: 1, msg_id: 999, seq: 999, for_me: false })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheDelete({ _: 'updateDeletePeerMessages', peer: { _: 'peerUser', user_id: 1 }, messages: [999] })
     expect(ops).toEqual([])
   })
 
@@ -537,12 +758,12 @@ describe('MessagesManager.cacheDelete', () => {
   // основное окно, ни окно треда (регресс, который эта проверка ловит).
   it('returns one remove op per window when the message is visible in both the main and thread windows', async () => {
     const mgr = newMessagesManager({ rest: restWithThreadOverlap() })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40, threadRoot: 100 })
-    const ops = mgr.cacheDelete({ chat_id: 1, msg_id: 2, seq: 2, for_me: false })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40, threadRoot: cid(100) })
+    const ops = mgr.cacheDelete({ _: 'updateDeletePeerMessages', peer: { _: 'peerUser', user_id: 1 }, messages: [2] })
     expect(ops).toHaveLength(2)
-    expect(ops.map((o) => o.key).sort()).toEqual(['1', '1:100'])
-    for (const op of ops) expect(op).toEqual({ op: 'remove', key: op.key, msgId: 2 })
+    expect(ops.map((o) => o.key).sort()).toEqual(['1', `1:${cid(100)}`])
+    for (const op of ops) expect(op).toEqual({ op: 'remove', key: op.key, msgId: cid(2) })
   })
 })
 
@@ -560,17 +781,17 @@ describe('MessagesManager.deleteMessage (RPC path)', () => {
     const rest = { ...overlap, del: async () => ({ ok: true }) } as unknown as RestClient
     const broadcast = vi.fn()
     const mgr = newMessagesManager({ rest, broadcast })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40, threadRoot: 100 })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40, threadRoot: cid(100) })
 
-    await mgr.deleteMessage(1, 2, false)
+    await mgr.deleteMessage(1, cid(2), false)
 
     expect(broadcast).toHaveBeenCalledTimes(1)
     const [event, payload] = broadcast.mock.calls[0] as [string, { ops: MessageOp[] }]
     expect(event).toBe(RT.messageOp)
     expect(payload.ops).toHaveLength(2)
-    expect(payload.ops.map((o) => o.key).sort()).toEqual(['1', '1:100'])
-    for (const op of payload.ops) expect(op).toEqual({ op: 'remove', key: op.key, msgId: 2 })
+    expect(payload.ops.map((o) => o.key).sort()).toEqual(['1', `1:${cid(100)}`])
+    for (const op of payload.ops) expect(op).toEqual({ op: 'remove', key: op.key, msgId: cid(2) })
   })
 
   it('does not broadcast when the message is absent from every window', async () => {
@@ -578,128 +799,317 @@ describe('MessagesManager.deleteMessage (RPC path)', () => {
     const rest = { ...(base as unknown as { get: RestClient['get']; post: RestClient['post'] }), del: async () => ({ ok: true }) } as unknown as RestClient
     const broadcast = vi.fn()
     const mgr = newMessagesManager({ rest, broadcast })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
 
-    await mgr.deleteMessage(1, 999, false)
+    await mgr.deleteMessage(1, cid(999), false)
 
     expect(broadcast).not.toHaveBeenCalled()
   })
 })
 
-// Task 4 (Stage 1B.3): опросы / чек-листы / розыгрыши. cachePoll/cacheGiveaway
-// продолжают мутировать SSOT воркера как раньше (сохраняя myVotes/participating/
-// iWon из своей же копии — это отдельный, не связанный с операцией офлайн-кэш),
-// но операция несёт ГОЛЫЙ агрегат mapX(evt.x) — БЕЗ этого локального поля.
-// Слияние патча поверх окна (core/realtime/messageOps.ts) подставляет локальный
-// выбор ИЗ ОКНА — эти тесты проверяют именно op.fields, а сохранение проверяет
-// messageOps.test.ts (applyOp).
-const rawPoll = (overrides?: Partial<RawPoll>): RawPoll => ({
-  id: 5, question: 'q', options: ['a', 'b'], anonymous: false, multiple: false,
-  quiz: false, closed: false, counts: [1, 0], total_voters: 1, my_votes: [],
-  ...overrides,
+// Task 4 (Stage 1B.3): опросы / чек-листы / розыгрыши. Все три едут ТЕМ ЖЕ
+// конструктором, что и внутри сообщения, под ключом `media`, и сообщение
+// находят не по номеру (его в кадре нет), а по идентификатору ВНУТРИ вложения.
+//
+// cachePoll обновляет SSOT воркера целиком — это его офлайн-кэш; операция же
+// несёт агрегат КАК ПРИШЁЛ, без `pFlags.chosen`, потому что общий кадр его и не
+// содержит (сервер собирает итоги для «зрителя 0»). Сохранение выбора ОКНА
+// проверяет messageOps.test.ts (applyOp).
+const pollMedia = (over?: { id?: number; voters?: number[]; chosen?: number; totalVoters?: number }): MessageMediaPoll => ({
+  _: 'messageMediaPoll',
+  poll: {
+    _: 'poll',
+    id: over?.id ?? 5,
+    question: { _: 'textWithEntities', text: 'q', entities: [] },
+    answers: [0, 1].map((i) => ({
+      _: 'pollAnswer' as const,
+      text: { _: 'textWithEntities' as const, text: i ? 'b' : 'a', entities: [] },
+      option: pollOptionKey(i),
+    })),
+  },
+  results: {
+    _: 'pollResults',
+    total_voters: over?.totalVoters ?? 1,
+    results: [0, 1].map((i) => ({
+      _: 'pollAnswerVoters' as const,
+      option: pollOptionKey(i),
+      voters: (over?.voters ?? [1, 0])[i],
+      ...(over?.chosen === i ? { pFlags: { chosen: true as const } } : {}),
+    })),
+  },
 })
 
-function pollPage(msgId: number, poll: RawPoll) {
+function mediaPage(msgId: number, media: MessageMedia) {
   return {
     messages: [{
-      id: msgId, chat_id: 1, seq: msgId, sender_id: 1, type: 'poll', text: '',
-      reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z', poll,
+      ...makeRawMessage({ id: msgId, peerId: 1, fromId: 1, text: '', createdAt: '2026-06-24T10:00:00Z' }),
+      media,
     } as RawMessage],
     count: 1,
   }
 }
 
 describe('MessagesManager.cachePoll', () => {
-  it('returns a patch op carrying the голый агрегат опроса (myVotes из события, не из SSOT)', async () => {
-    // SSOT уже держит МОЙ выбор (voted вариант 0) — live-кадр его не несёт.
-    const { rest } = countingRest({ '0:0:40': pollPage(2, rawPoll({ my_votes: [0] })) })
+  it('операция несёт вложение КАК ПРИШЛО — без chosen из SSOT', async () => {
+    // SSOT уже держит МОЙ выбор (вариант 0) — live-кадр его не несёт.
+    const { rest } = countingRest({ '0:0:40': mediaPage(2, pollMedia({ chosen: 0 })) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const evt = { chat_id: 1, poll: rawPoll({ counts: [1, 1], total_voters: 2, my_votes: [] }) }
-    const ops = mgr.cachePoll(evt)
-    // Операция несёт ровно mapPoll(evt.poll) — миллионном myVotes СВОЕГО события
-    // (пустой, как обычно шлёт сервер в общем broadcast), а НЕ [0] из SSOT.
-    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: 2, fields: { poll: mapPoll(evt.poll) } }])
-    expect(ops[0].op === 'patch' && ops[0].fields.poll?.myVotes).toEqual([])
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    // Кадр несёт опрос и итоги ОТДЕЛЬНЫМИ параметрами: вложение собирается
+    // обратно на границе разбора, окно хранит его вложением сообщения.
+    const media = pollMedia({ voters: [1, 1], totalVoters: 2 })
+    const ops = mgr.cachePoll({
+      _: 'updateMessagePoll', peer: { _: 'peerUser', user_id: 1 },
+      poll_id: media.poll.id, poll: media.poll, results: media.results,
+    })
+    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(2), fields: { media } }])
+    const patched = ops[0].op === 'patch' ? ops[0].fields.media : undefined
+    expect(patched?._ === 'messageMediaPoll' && patched.results.results?.some((r) => r.pFlags?.chosen)).toBe(false)
   })
 
   it('produces no op when no message in the SSOT carries this poll id', async () => {
-    const { rest } = countingRest({ '0:0:40': pollPage(2, rawPoll({ id: 5 })) })
+    const { rest } = countingRest({ '0:0:40': mediaPage(2, pollMedia({ id: 5 })) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cachePoll({ chat_id: 1, poll: rawPoll({ id: 999 }) })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cachePoll({ _: 'updateMessagePoll' as const, peer: { _: 'peerUser' as const, user_id: 1 }, poll_id: (pollMedia({ id: 999 })).poll.id, poll: (pollMedia({ id: 999 })).poll, results: (pollMedia({ id: 999 })).results })
     expect(ops).toEqual([])
   })
 })
 
-const rawChecklist = (overrides?: Partial<RawChecklist>): RawChecklist => ({
-  id: 8, title: 't', items: [{ id: 1, text: 'i1', marked_by: [] }],
-  others_can_add: false, others_can_mark: true,
-  ...overrides,
+const todoMedia = (over?: { id?: number; marked?: boolean }): MessageMediaToDo => ({
+  _: 'messageMediaToDo',
+  todo: {
+    _: 'todoList',
+    id: over?.id ?? 8,
+    pFlags: { others_can_complete: true },
+    title: { _: 'textWithEntities', text: 't', entities: [] },
+    list: [{ _: 'todoItem', id: 1, title: { _: 'textWithEntities', text: 'i1', entities: [] } }],
+  },
+  ...(over?.marked
+    ? { completions: [{ _: 'todoCompletion' as const, id: 1, completed_by: { _: 'peerUser' as const, user_id: 1 }, date: 7 }] }
+    : {}),
 })
 
-function checklistPage(msgId: number, checklist: RawChecklist) {
-  return {
-    messages: [{
-      id: msgId, chat_id: 1, seq: msgId, sender_id: 1, type: 'checklist', text: '',
-      reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z', checklist,
-    } as RawMessage],
-    count: 1,
-  }
-}
-
 describe('MessagesManager.cacheChecklist', () => {
-  it('returns a patch op carrying the mapped checklist (no local field — full replace is correct here)', async () => {
-    const { rest } = countingRest({ '0:0:40': checklistPage(3, rawChecklist()) })
+  it('returns a patch op carrying the media (no local field — full replace is correct here)', async () => {
+    const { rest } = countingRest({ '0:0:40': mediaPage(3, todoMedia()) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const evt = { chat_id: 1, checklist: rawChecklist({ items: [{ id: 1, text: 'i1', marked_by: [1] }] }) }
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    const evt = { _: 'updateMessageToDo' as const, peer: { _: 'peerUser' as const, user_id: 1 }, media: todoMedia({ marked: true }) }
     const ops = mgr.cacheChecklist(evt)
-    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: 3, fields: { checklist: mapChecklist(evt.checklist) } }])
+    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(3), fields: { media: evt.media } }])
   })
 
   it('produces no op when no message in the SSOT carries this checklist id', async () => {
-    const { rest } = countingRest({ '0:0:40': checklistPage(3, rawChecklist({ id: 8 })) })
+    const { rest } = countingRest({ '0:0:40': mediaPage(3, todoMedia({ id: 8 })) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheChecklist({ chat_id: 1, checklist: rawChecklist({ id: 999 }) })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheChecklist({ _: 'updateMessageToDo' as const, peer: { _: 'peerUser' as const, user_id: 1 }, media: todoMedia({ id: 999 }) })
     expect(ops).toEqual([])
   })
 })
 
-const rawGiveaway = (overrides?: Partial<RawGiveaway>): RawGiveaway => ({
-  id: 9, chat_id: 1, prize_kind: 'premium', months: 3, stars: 0, winners_count: 1,
-  until_date: 0, status: 'active', participants: 4, participating: false, i_won: false,
-  ...overrides,
+const giveawayMedia = (over?: { id?: number; participants?: number }): MessageMedia => ({
+  _: 'messageMediaGiveaway',
+  id: over?.id ?? 9,
+  pFlags: { winners_are_visible: true },
+  channels: [1],
+  quantity: 1,
+  months: 3,
+  until_date: 0,
 })
 
-function giveawayPage(msgId: number, giveaway: RawGiveaway) {
-  return {
-    messages: [{
-      id: msgId, chat_id: 1, seq: msgId, sender_id: 1, type: 'giveaway', text: '',
-      reply_to_id: null, media_id: null, created_at: '2026-06-24T10:00:00Z', giveaway,
-    } as RawMessage],
-    count: 1,
-  }
-}
+/** Состоявшийся розыгрыш — ДРУГОЙ конструктор того же вложения. */
+const giveawayResultsMedia = (id = 9): MessageMedia => ({
+  _: 'messageMediaGiveawayResults',
+  id,
+  channel_id: 1,
+  launch_msg_id: 4,
+  winners_count: 1,
+  unclaimed_count: 0,
+  winners: [77],
+  months: 3,
+  until_date: 0,
+})
 
 describe('MessagesManager.cacheGiveaway', () => {
-  it('returns a patch op carrying the голый агрегат розыгрыша (participating/iWon из события, не из SSOT)', async () => {
-    // SSOT уже держит МОЁ участие — live-кадр его не несёт (обычный broadcast без персонализации).
-    const { rest } = countingRest({ '0:0:40': giveawayPage(4, rawGiveaway({ participating: true, i_won: false })) })
+  it('находит сообщение по id ВНУТРИ вложения и заменяет вложение целиком', async () => {
+    const { rest } = countingRest({ '0:0:40': mediaPage(4, giveawayMedia()) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const evt = { chat_id: 1, giveaway: rawGiveaway({ participants: 5, participating: false, i_won: false }) }
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    // Розыгрыш состоялся — приезжает ДРУГОЙ конструктор с тем же id.
+    const evt = { _: 'updateMessageGiveaway' as const, peer: { _: 'peerUser' as const, user_id: 1 }, media: giveawayResultsMedia() }
     const ops = mgr.cacheGiveaway(evt)
-    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: 4, fields: { giveaway: mapGiveaway(evt.giveaway) } }])
-    expect(ops[0].op === 'patch' && ops[0].fields.giveaway?.participating).toBe(false)
+    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: cid(4), fields: { media: evt.media } }])
+    // Номер сообщения-запуска — такой же адрес, как `message.id`, и на границе
+    // кадра он переводится тем же приведением, что и на границе разбора
+    // сообщения. Иначе «перейти к сообщению-запуску» промахнулось бы: кадр
+    // несёт СЕРВЕРНОЕ число, а окно живёт в клиентском пространстве.
+    const patched = ops[0].op === 'patch' ? ops[0].fields.media : undefined
+    expect(patched?._ === 'messageMediaGiveawayResults' && patched.launch_msg_id).toBe(cid(4))
   })
 
   it('produces no op when no message in the SSOT carries this giveaway id', async () => {
-    const { rest } = countingRest({ '0:0:40': giveawayPage(4, rawGiveaway({ id: 9 })) })
+    const { rest } = countingRest({ '0:0:40': mediaPage(4, giveawayMedia({ id: 9 })) })
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ chatId: 1, offsetSeq: 0, addOffset: 0, limit: 40 })
-    const ops = mgr.cacheGiveaway({ chat_id: 1, giveaway: rawGiveaway({ id: 999 }) })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    const ops = mgr.cacheGiveaway({ _: 'updateMessageGiveaway' as const, peer: { _: 'peerUser' as const, user_id: 1 }, media: giveawayMedia({ id: 999 }) })
     expect(ops).toEqual([])
+  })
+
+  it('вложение не розыгрыш — операции нет вовсе', async () => {
+    const { rest } = countingRest({ '0:0:40': mediaPage(4, giveawayMedia()) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    expect(mgr.cacheGiveaway({ _: 'updateMessageGiveaway' as const, peer: { _: 'peerUser' as const, user_id: 1 }, media: todoMedia() })).toEqual([])
+  })
+})
+
+// ── Что владелец делает НА ГРАНИЦЕ МАППИНГА ────────────────────────────────
+// Раньше здесь выводился `out`: бэкенд флага не отдавал, и владелец вычислял
+// его сам на каждой границе. Теперь `pFlags.out` производит СЕРВЕР (решение Р7
+// отменено), выводить нечего — вопрос «моё ли это» ушёл с клиента целиком.
+//
+// Но граница маппинга работой не осталась: сервер производит только НАСТОЯЩИЕ
+// конструкторы служебного действия, а до синтетических («Вы присоединились»
+// против «X присоединился») их уточняет клиент — `refineMessageAction`, порт
+// appMessagesManager.ts:5215-5238. Для этого нужен `me`, и нужен ВЕЗДЕ, где
+// сообщение уходит наружу: ставить уточнение в `put()` недостаточно — `put`
+// единственный вход в SSOT, но мимо него отдают `getAround`, офлайн-ветка
+// `getHistory` и вся поисковая группа (они в SSOT вообще не пишут).
+describe('MessagesManager: служебное действие уточняет владелец на границе маппинга', () => {
+  const ME = 7
+  // Страница из двух пилюль: «сам себя добавил» ЗРИТЕЛЬ и «сам себя добавил»
+  // кто-то другой. Обе приезжают одним и тем же серверным конструктором —
+  // различает их только уточнение.
+  const pillsPage = (): { messages: RawMessage[]; count: number } => ({
+    messages: [
+      makeRawMessage({ id: 2, peerId: -1, fromId: 2, createdAt: '2026-06-24T10:00:00Z' }) as RawMessage,
+      makeRawMessage({ id: 1, peerId: -1, fromId: ME, createdAt: '2026-06-24T10:00:00Z' }) as RawMessage,
+    ].map((m, i) => ({
+      ...m, _: 'messageService',
+      action: { _: 'messageActionChatAddUser', users: [i === 0 ? 2 : ME] },
+    }) as unknown as RawMessage),
+    count: 2,
+  })
+
+  const actionsOf = (list: MyMessage[]) =>
+    list.map((m) => (m._ === 'messageService' ? m.action._ : m._))
+
+  it('страница истории: своё вступление → JoinedYou, чужое → Joined', async () => {
+    const { rest } = countingRest({ '0:0:40': pillsPage() })
+    const mgr = newMessagesManager({ rest, getMeId: () => ME })
+    const r = await mgr.getHistory({ peerId: -1, offsetId: 0, addOffset: 0, limit: 40 })
+    expect(actionsOf(r.messages)).toEqual(['messageActionChatJoinedYou', 'messageActionChatJoined'])
+  })
+
+  it('повторная выдача из кэша (без сети) несёт то же уточнение', async () => {
+    const { rest, calls } = countingRest({ '0:0:40': pillsPage() })
+    const mgr = newMessagesManager({ rest, getMeId: () => ME })
+    await mgr.getHistory({ peerId: -1, offsetId: 0, addOffset: 0, limit: 40 })
+    const cached = await mgr.getHistory({ peerId: -1, offsetId: 0, addOffset: 0, limit: 40 })
+    expect(cached.cached).toBe(true)
+    expect(calls()).toBe(1)
+    expect(actionsOf(cached.messages)).toEqual(['messageActionChatJoinedYou', 'messageActionChatJoined'])
+  })
+
+  it('getAround (jump-to-message) идёт мимо put — и всё равно уточняет', async () => {
+    const rest = {
+      get: async () => ({ _: 'messages.messagesSlice', ...pillsPage(), users: [], chats: [] }),
+    } as unknown as RestClient
+    const mgr = newMessagesManager({ rest, getMeId: () => ME })
+    const r = await mgr.getAround(-1, cid(2), 40)
+    expect(actionsOf(r.messages)).toEqual(['messageActionChatJoined', 'messageActionChatJoinedYou'])
+  })
+
+  // Концы окна ВЫВОДЯТСЯ клиентом: признаков в ответе нет вовсе (порт
+  // appMessagesManager.ts:9512-9518). Окно короче запрошенного с обеих сторон —
+  // значит за ним ничего нет; полное окно — значит края не достигнуты.
+  it('getAround выводит концы окна из его полноты, а не из полей ответа', async () => {
+    const page = (n: number) => ({
+      _: 'messages.messagesSlice',
+      count: 100,
+      users: [], chats: [],
+      messages: Array.from({ length: n }, (_, i) => ({
+        _: 'message', id: i + 1, peer_id: { _: 'peerChat', chat_id: 1 },
+        from_id: { _: 'peerUser', user_id: ME }, date: 1, message: 'm',
+      })),
+    })
+    const short = { get: async () => page(3) } as unknown as RestClient
+    const tiny = await newMessagesManager({ rest: short, getMeId: () => ME }).getAround(-1, cid(2), 40)
+    expect(tiny).toMatchObject({ reachedTop: true, reachedBottom: true })
+
+    const full = { get: async () => page(40) } as unknown as RestClient
+    const mid = await newMessagesManager({ rest: full, getMeId: () => ME }).getAround(-1, cid(21), 40)
+    expect(mid).toMatchObject({ reachedTop: false, reachedBottom: false })
+  })
+
+  // Карточки авторов приезжают ПОПУТНО со списком (`users` контейнера) и
+  // публикуются в общий приёмник пиров — тот же, которым питаются диалоги.
+  // Без этого бабл рисовался бы без имени до отдельного запроса о пире.
+  it('авторы из контейнера уходят в приёмник пиров', async () => {
+    const users = [{ _: 'user', id: 77, first_name: 'Аня' }]
+    const rest = { get: async () => ({ _: 'messages.messages', ...pillsPage(), users, chats: [] }) } as unknown as RestClient
+    const saveApiPeers = vi.fn()
+    const mgr = newMessagesManager({ rest, getMeId: () => ME, peers: { saveApiPeers } })
+    await mgr.listPins(-1)
+    expect(saveApiPeers).toHaveBeenCalledWith({ users, chats: [] })
+  })
+
+  it('поиск по чату (в SSOT не пишет вовсе) — тоже уточняет', async () => {
+    const rest = { get: async () => pillsPage() } as unknown as RestClient
+    const mgr = newMessagesManager({ rest, getMeId: () => ME })
+    const r = await mgr.searchMessages(-1, 'м')
+    expect(actionsOf(r.messages)).toEqual(['messageActionChatJoined', 'messageActionChatJoinedYou'])
+  })
+
+  // Гонка личности. `me` появляется у воркера асинхронно; страница, обслуженная
+  // раньше, уехала бы вкладке с ЧУЖОЙ формулировкой пилюли — молчаливая
+  // регрессия. Гейт meReady (workerCore: гидрация `me` с диска / первый setMe)
+  // обязан удержать маппинг. Мутация «убрать await whenMeReady()» красит именно
+  // этот тест: сеть отвечает микротаском, а личность приезжает макротаском,
+  // поэтому без гейта маппинг гарантированно застаёт meId === null.
+  it('ранняя страница истории ЖДЁТ готовности `me`', async () => {
+    let meId: number | null = null
+    let release!: () => void
+    const ready = new Promise<void>((resolve) => { release = resolve })
+    const { rest } = countingRest({ '0:0:40': pillsPage() })
+    const mgr = newMessagesManager({ rest, getMeId: () => meId, meReady: () => ready })
+
+    setTimeout(() => { meId = ME; release() }, 0)
+    const r = await mgr.getHistory({ peerId: -1, offsetId: 0, addOffset: 0, limit: 40 })
+
+    expect(actionsOf(r.messages)).toEqual(['messageActionChatJoinedYou', 'messageActionChatJoined'])
+  })
+})
+
+// Вид ЧАТА (вещательный канал) владельцу временного бабла приносит workerCore
+// (`isBroadcastChat`, порт `appPeersManager.isBroadcast` в роли `generateFlags`,
+// tweb appMessagesManager.ts:3128-3130). Здесь пинится ПЕРЕДАЧА признака сквозь
+// менеджер: сама механика флага — в `messages/pending.test.ts`, соединение
+// стрелки с кэшем карточек — в `workerCore.pendingPost.test.ts`. Без передачи
+// бабл поста стоял бы СПРАВА до ответа сервера и прыгал влево на эхе
+// (`isOurMessage`, tweb chat.ts:1379 — `&& !message.pFlags.post`).
+describe('MessagesManager: вид чата доходит до временного бабла', () => {
+  const pendingOp = async (isBroadcastChat: (peerId: number) => boolean) => {
+    const { rest } = countingRest({ '0:0:40': rawPage([]) })
+    const ops: MessageOp[] = []
+    const mgr = newMessagesManager({
+      rest,
+      isBroadcastChat,
+      broadcast: (_e, p) => { ops.push(...(p as { ops: MessageOp[] }).ops) },
+    })
+    // Бабл вставляется только в окно, доведённое до НИЗА истории.
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    mgr.beforeMessageSending({ peer_id: 1, client_msg_id: 'c-1', sender_id: 42, text: 'пост', type: 'text' })
+    return ops.find((o) => o.op === 'insert') as { msg: MessageReal } | undefined
+  }
+
+  it('вещательный канал → у бабла pFlags.post', async () => {
+    expect((await pendingOp(() => true))!.msg.pFlags).toEqual({ out: true, post: true })
+  })
+
+  it('обычный чат → флага нет', async () => {
+    expect((await pendingOp(() => false))!.msg.pFlags).toEqual({ out: true })
   })
 })

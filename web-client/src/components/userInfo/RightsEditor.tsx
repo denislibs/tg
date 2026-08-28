@@ -20,7 +20,9 @@ import UserAvatar from '../UserAvatar'
 import TgIcon from '../TgIcon'
 import { Row } from '../settings/kit'
 import { RIGHTS, type RealMember } from '../../core/hooks/useGroupInfo'
-import { useT } from '../../i18n'
+import { useT, useLang } from '../../i18n'
+import { userStatusLabel } from '../../core/presence'
+import { isUserStatusOnline } from '../../core/peers/peer'
 
 export default function RightsEditor({
   member,
@@ -34,6 +36,7 @@ export default function RightsEditor({
   onRemove: () => void | Promise<void>
 }) {
   const t = useT()
+  const [lang] = useLang()
   const isAdmin = member.role === 'creator' || member.role === 'admin'
   const initial = isAdmin ? RIGHTS.reduce((acc, r) => acc | r.bit, 0) : 0
   const [bits, setBits] = useState(initial)
@@ -75,18 +78,18 @@ export default function RightsEditor({
                   <ul className="chatlist chatlist-new">
                     <a className="row no-wrap row-with-padding row-clickable hover-effect chatlist-chat chatlist-chat-abitbigger" data-peer-id={member.userId}>
                       <div className="row-row row-subtitle-row dialog-subtitle">
-                        <div className="row-subtitle no-wrap">{member.online ? t('online') : t('last seen recently')}</div>
+                        <div className="row-subtitle no-wrap">{userStatusLabel(member.status, lang)}</div>
                       </div>
                       <div className="row-row row-title-row dialog-title">
                         <div className="row-title no-wrap user-title">
-                          <span className="peer-title">{member.displayName}</span>
+                          <span className="peer-title">{member.title}</span>
                         </div>
                       </div>
                       <UserAvatar
                         id={member.userId}
-                        name={member.displayName}
-                        avatarUrl={member.avatarUrl}
-                        online={member.online}
+                        name={member.title}
+                        photoId={member.photoId}
+                        online={isUserStatusOnline(member.status, Date.now() / 1000)}
                         className="dialog-avatar row-media row-media-abitbigger"
                       />
                     </a>

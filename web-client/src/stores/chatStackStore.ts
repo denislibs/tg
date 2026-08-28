@@ -85,7 +85,7 @@ export const selectRoot = (s: ChatStackState): ChatInstanceDesc | undefined => s
  *
  * Единственный безопасный для подписки (`useChatStackStore(selectOpenThreadDesc)`)
  * вариант «открыт ли тред»: селектор, который строил бы НОВЫЙ объект на каждый
- * вызов (например, `{chatId, thread}`), давал бы бесконечный ре-рендер на любой
+ * вызов (например, `{peerId, thread}`), давал бы бесконечный ре-рендер на любой
  * глубине стека > 1 — Zustand v5 сравнивает снимок подписки по ссылке
  * (`useSyncExternalStore`), и «новый» объект на каждом рендере читается как
  * изменившийся снимок (найдено на стенде: React error #185 «Maximum update

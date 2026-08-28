@@ -20,11 +20,23 @@ import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '../folderIds'
 import type { Folder } from '../managers/foldersManager'
 import type { Dialog } from '../models'
 import type { DialogsPage } from '../managers/dialogsManager'
+import { makeDialog } from '../dialogs/testDialog'
+import { applyPeerOps } from '../peerCache'
 
-const dialog = (chatId: number, over: Partial<Dialog> = {}): Dialog => ({
-  chatId, type: 'private', title: 't' + chatId, unread: 0, unreadMentions: 0, unreadReactions: 0,
-  lastReadSeq: 0, peerReadSeq: 0, muted: false, pinned: false, archived: false, ...over,
-} as Dialog)
+// Вид чата больше не приезжает строкой (решение Р8): «группа» — это
+// ОТРИЦАТЕЛЬНЫЙ ключ плюс конструктор `channel` с `pFlags.megagroup` в зеркале
+// пиров. Фикстура сама кладёт карточку туда же, куда её кладёт контейнер
+// `/chats` (`peers.saveApiPeers`).
+type Over = { archived?: boolean; unread?: number; group?: boolean }
+const dialog = (peerId: PeerId, over: Over = {}): Dialog => {
+  if (over.group) {
+    applyPeerOps([{ op: 'upsert', peers: [{
+      _: 'channel', id: Math.abs(peerId), title: 't' + peerId,
+      photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true },
+    }] }])
+  }
+  return makeDialog({ peerId, archived: over.archived, unread: over.unread })
+}
 
 const folder = (over: Partial<Folder> = {}): Folder => ({
   id: 7, title: 'Папка', pos: 0,
@@ -84,7 +96,7 @@ function fakeManagers(pages: DialogsPage[] = [page([], { isEnd: true })]) {
     return pages[Math.min(calls.length - 1, pages.length - 1)]
   })
   const { dialogs, archiveRowCalls, failNextArchiveRow } = withArchiveRow(getDialogs)
-  return { managers: { dialogs }, getDialogs, calls, archiveRowCalls, failNextArchiveRow }
+  return { managers: { dialogs, peers: { fillMirror: vi.fn(async () => {}) } }, getDialogs, calls, archiveRowCalls, failNextArchiveRow }
 }
 
 /**
@@ -118,7 +130,7 @@ function deferredManagers() {
   const pending: ((p: DialogsPage) => void)[] = []
   const getDialogs = vi.fn(() => new Promise<DialogsPage>((res) => { pending.push(res) }))
   const { dialogs } = withArchiveRow(getDialogs)
-  return { managers: { dialogs }, getDialogs, pending }
+  return { managers: { dialogs, peers: { fillMirror: vi.fn(async () => {}) } }, getDialogs, pending }
 }
 
 const originalHeight = window.innerHeight
@@ -130,7 +142,7 @@ function setWindowHeight(height: number) {
 beforeEach(() => {
   seedMirror([])
   useFoldersStore.setState({ contactIds: new Set() })
-  useAppStateStore.setState({ folders: [], drafts: [] })
+  useAppStateStore.setState({ folders: [] })
   useNotifyStore.setState({ settings: { private: { muted: false, preview: true }, groups: { muted: false, preview: true }, channels: { muted: false, preview: true } } })
 })
 
@@ -164,17 +176,17 @@ describe('useDialogListSource: items — производная от зерка�
 
   it('пользовательская папка — тот же matchesFolder, что у владельца', () => {
     seedMirror([
-      { dialog: dialog(1, { type: 'group' }), index: 30 },
+      { dialog: dialog(-1, { group: true }), index: 30 },
       { dialog: dialog(2), index: 20 },
-      { dialog: dialog(3, { type: 'group', archived: true }), index: 10 },
+      { dialog: dialog(-3, { group: true, archived: true }), index: 10 },
     ])
     useAppStateStore.setState({ folders: [folder({ id: 7, groups: true })] })
     const { managers } = fakeManagers()
 
     const { result } = renderSource(managers, 7)
 
-    // группа 1 — да; приватный 2 — нет (нет флага типа); архивная группа 3 — нет.
-    expect(result.current.items.map((i) => i.id)).toEqual([1])
+    // группа -1 — да; приватный 2 — нет (нет флага типа); архивная группа -3 — нет.
+    expect(result.current.items.map((i) => i.id)).toEqual([-1])
   })
 
   it('определения папки ещё нет — список пуст (а не «показать всё»)', () => {
@@ -196,7 +208,7 @@ describe('useDialogListSource: items — производная от зерка�
 
     const { result } = renderSource(managers, ALL_FOLDER_ID)
 
-    expect(result.current.items.map((i) => i.id)).toEqual(useChatsStore.getState().dialogs.map((d) => d.chatId))
+    expect(result.current.items.map((i) => i.id)).toEqual(useChatsStore.getState().dialogs.map((d) => d.peerId))
     expect(result.current.items.map((i) => i.id)).toEqual([2, 3, 1])
   })
 
@@ -251,7 +263,7 @@ describe('useDialogListSource: ссылки в items', () => {
     expect(before.map((i) => i.id)).toEqual([1])
 
     act(() => {
-      useChatsStore.getState().applyDialogOps([{ op: 'patch', chatId: 2, fields: { unread: 7 } }])
+      useChatsStore.getState().applyDialogOps([{ op: 'patch', peerId: 2, fields: { unread_count: 7 } }])
     })
 
     expect(result.current.items).toBe(before)
@@ -269,7 +281,7 @@ describe('useDialogListSource: ссылки в items', () => {
     const before = result.current.items
 
     act(() => {
-      useChatsStore.getState().applyDialogOps([{ op: 'patch', chatId: 2, fields: { unread: 5 } }])
+      useChatsStore.getState().applyDialogOps([{ op: 'patch', peerId: 2, fields: { unread_count: 5 } }])
     })
     const after = result.current.items
 
@@ -332,15 +344,15 @@ describe('useDialogListSource + useShouldAnimate: компенсация рав�
 describe('useDialogListSource: строки и размер набора считаются одним правилом', () => {
   it('excludeMuted + глобально заглушённый тип: чат не в списке И не в размере набора', async () => {
     seedMirror([
-      { dialog: dialog(1, { type: 'group', unread: 1 }), index: 30 },
-      { dialog: dialog(2, { type: 'group', unread: 1 }), index: 20 },
+      { dialog: dialog(-1, { group: true, unread: 1 }), index: 30 },
+      { dialog: dialog(-2, { group: true, unread: 1 }), index: 20 },
     ])
     // Сами диалоги НЕ заглушены — заглушён весь тип «группы» (tweb respectType).
     useNotifyStore.setState({ settings: { private: { muted: false, preview: true }, groups: { muted: true, preview: true }, channels: { muted: false, preview: true } } })
     useAppStateStore.setState({ folders: [folder({ id: 7, groups: true, excludeMuted: true })] })
     const { managers, getDialogs } = fakeManagers([
-      page([dialog(1, { type: 'group', unread: 1 })]),
-      page([dialog(2, { type: 'group', unread: 1 })]),
+      page([dialog(-1, { group: true, unread: 1 })]),
+      page([dialog(-2, { group: true, unread: 1 })]),
       page([], { isEnd: true }),
     ])
 

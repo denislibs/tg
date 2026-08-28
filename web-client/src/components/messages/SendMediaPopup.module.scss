@@ -146,3 +146,24 @@
   color: #fff;
   cursor: pointer;
 }
+
+// Живой спойлер поверх превью (tweb applyMediaSpoiler кладёт контейнер прямо в
+// itemDiv). Хост абсолютный на всё превью — сам `.media-spoiler-container`
+// внутри тоже абсолютный и растянут (`styles/tweb/_bridge.scss`).
+.spoilerCover {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+// Парный селектор к `.editBtn` выше и по той же причине (`.btn-icon` из
+// партиалов эмитится позже CSS-модулей).
+.previewWrap .spoilerBtn {
+  position: absolute;
+  top: 8px;
+  right: 48px;
+  background: rgba(0, 0, 0, 0.5) !important;
+}

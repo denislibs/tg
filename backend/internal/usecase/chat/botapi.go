@@ -53,16 +53,47 @@ func (i *Interactor) hub() *botPendingHub { return i.botHub }
 
 // ── генерация апдейтов ──
 
+// userBrief — поле from апдейта. Форму чужого контракта строит конвертер
+// границы (BotAPIView), а не этот файл: здесь только наша модель.
 func (i *Interactor) userBrief(ctx context.Context, id int64) map[string]any {
-	username, name, err := i.botAPI.UserBrief(ctx, id)
+	if i.botAPIView == nil {
+		return nil
+	}
+	u, err := i.botAPI.UserBrief(ctx, id)
 	if err != nil {
-		return map[string]any{"id": id, "is_bot": false}
+		u = domain.NewUser(id, domain.UserFlags{})
 	}
-	m := map[string]any{"id": id, "is_bot": false, "first_name": name}
-	if username != "" {
-		m["username"] = username
+	return i.botAPIView.User(u)
+}
+
+// BotChatType — вид чата (chats.type) для витрины Bot API. Ошибка чтения
+// деградирует в 'private': это самое узкое разрешение, а не самое широкое.
+func (i *Interactor) BotChatType(ctx context.Context, chatID int64) string {
+	typ, err := i.chats.ChatType(ctx, chatID)
+	if err != nil {
+		return domain.ChatTypePrivate
 	}
-	return m
+	return typ
+}
+
+// botChat — поле chat апдейта. Вид чата берётся из chats.type, а не
+// прибивается «private»: бот в группе получал апдейт, где его же группа
+// объявлена приватным чатом (дефект 4 разбора).
+func (i *Interactor) botChat(ctx context.Context, chatID int64) map[string]any {
+	if i.botAPIView == nil {
+		return nil
+	}
+	typ, err := i.chats.ChatType(ctx, chatID)
+	if err != nil {
+		typ = domain.ChatTypePrivate
+	}
+	var title string
+	if typ != domain.ChatTypePrivate && i.groups != nil {
+		if briefs, e := i.groups.ChatBriefs(ctx, []int64{chatID}); e == nil {
+			title = briefs[chatID].Title
+		}
+	}
+	return i.botAPIView.Chat(chatID, typ, title)
 }
 
 // dispatchBotUpdate кладёт апдейт в очередь и, если задан webhook, POST'ит его.
@@ -93,7 +124,7 @@ func (i *Interactor) dispatchMessageUpdate(ctx context.Context, bot domain.BotAc
 		"message": map[string]any{
 			"message_id": msgID,
 			"from":       i.userBrief(ctx, fromID),
-			"chat":       map[string]any{"id": chatID, "type": "private"},
+			"chat":       i.botChat(ctx, chatID),
 			"date":       time.Now().Unix(),
 			"text":       text,
 		},
@@ -120,7 +151,7 @@ func (i *Interactor) botCallbackViaAPI(ctx context.Context, bot domain.BotAccoun
 		h.mu.Unlock()
 	}()
 
-	msg := map[string]any{"chat": map[string]any{"id": chatID, "type": "private"}}
+	msg := map[string]any{"chat": i.botChat(ctx, chatID)}
 	if msgID > 0 {
 		msg["message_id"] = msgID
 	}
@@ -182,7 +213,7 @@ func (i *Interactor) BotAnswerCallback(ctx context.Context, id, text string, ale
 	}
 	// Клиент уже не ждёт синхронно → доставляем toast по WS (если знаем адресата).
 	if userID != 0 && text != "" && i.publisher != nil {
-		f := frame("bot_callback_answer", map[string]any{"text": text, "alert": alert})
+		f := frame("bot_callback_answer", domain.NewUpdateBotCallbackAnswer(text, alert))
 		_ = i.publisher.PublishToUser(ctx, userID, f)
 	}
 }
@@ -242,7 +273,7 @@ func (i *Interactor) BotGetUpdates(ctx context.Context, bot domain.BotAccount, o
 }
 
 // BotSendMessage — бот шлёт сообщение в чат (должен быть его участником).
-func (i *Interactor) BotSendMessage(ctx context.Context, bot domain.BotAccount, chatID int64, text string, markup *domain.ReplyMarkup) (domain.Message, error) {
+func (i *Interactor) BotSendMessage(ctx context.Context, bot domain.BotAccount, chatID int64, text string, markup domain.ReplyMarkup) (domain.Message, error) {
 	ok, err := i.chats.IsMember(ctx, chatID, bot.BotID)
 	if err != nil {
 		return domain.Message{}, err

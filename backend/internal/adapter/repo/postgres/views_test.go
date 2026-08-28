@@ -96,3 +96,60 @@ func TestMessagesRepo_ChannelViews(t *testing.T) {
 		t.Fatalf("group message views = %d; want 0", counts[gm.ID])
 	}
 }
+
+// RegisterPostViews на настоящей схеме: инкремент идёт РОВНО по списку
+// показавшихся постов (а не по горизонту прочтения, как RegisterChannelViews),
+// дедуплицируется по паре «пост + зритель» и отдаёт новые счётчики только тех
+// постов, у которых счётчик действительно вырос.
+func TestMessagesRepo_RegisterPostViews(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	groups := NewGroupRepo(pool)
+	msgs := NewMessagesRepo(pool)
+	ctx := context.Background()
+
+	author := seedUser(t, pool, "+7930")
+	reader := seedUser(t, pool, "+7931")
+
+	chID, err := groups.CreateMultiMember(ctx, "channel", "News", "", "", true, author)
+	if err != nil {
+		t.Fatalf("create channel: %v", err)
+	}
+	seen, _ := msgs.Insert(ctx, domain.Message{ChatID: chID, Seq: 1, SenderID: author, Type: "text", Text: "a"})
+	unseen, _ := msgs.Insert(ctx, domain.Message{ChatID: chID, Seq: 2, SenderID: author, Type: "text", Text: "b"})
+
+	grown, err := msgs.RegisterPostViews(ctx, chID, reader, []int64{seen.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if grown[seen.ID] != 1 {
+		t.Fatalf("новый счётчик показавшегося поста = %d, want 1", grown[seen.ID])
+	}
+	if _, has := grown[unseen.ID]; has {
+		t.Fatalf("пост, которого в списке не было, получил просмотр: %+v", grown)
+	}
+
+	// Повторный показ тому же зрителю: дедуп, счётчик не двигается и в
+	// «выросших» пост не появляется.
+	grown, err = msgs.RegisterPostViews(ctx, chID, reader, []int64{seen.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(grown) != 0 {
+		t.Fatalf("повторный показ вырастил счётчик: %+v", grown)
+	}
+	counts, _ := msgs.ViewCounts(ctx, []int64{seen.ID, unseen.ID})
+	if counts[seen.ID] != 1 || counts[unseen.ID] != 0 {
+		t.Fatalf("просмотры = %+v; want {seen:1, unseen:0}", counts)
+	}
+
+	// Не канал — не просмотры (тот же гейт, что у RegisterChannelViews).
+	grpID, _ := groups.CreateMultiMember(ctx, "group", "G", "", "", false, author)
+	gm, _ := msgs.Insert(ctx, domain.Message{ChatID: grpID, Seq: 1, SenderID: author, Type: "text", Text: "x"})
+	grown, err = msgs.RegisterPostViews(ctx, grpID, reader, []int64{gm.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(grown) != 0 {
+		t.Fatalf("сообщение группы набрало просмотр: %+v", grown)
+	}
+}

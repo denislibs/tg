@@ -6,6 +6,11 @@
 import { useEffect, useState } from 'react'
 import type { Chat } from '../../data'
 import { useManagers } from './useManagers'
+import type { UserStatus } from '../peers/peer'
+import { getLinkedChatPeerId, getPeerPhotoId } from '../peers/peer'
+import { getUserTitle } from '../peers/getPeerTitle'
+import { hasRights } from '../peers/rights'
+import { NULL_PEER_ID } from '../peers/peerId'
 
 // Admin-rights bits, mirroring tweb's userPermissions.tsx (one toggle per right).
 export const RIGHTS: { label: string; bit: number }[] = [
@@ -18,17 +23,21 @@ export const RIGHTS: { label: string; bit: number }[] = [
   { label: 'Изменение инфо', bit: 64 },
   { label: 'Назначение админов', bit: 128 },
 ]
-const MANAGE_ADMINS = 128
-const INVITE_USERS = 16
-const CHANGE_INFO = 64
 
 export interface RealMember {
   userId: number
   role: string
-  online: boolean
-  displayName: string
+  /** Присутствие — КОНСТРУКТОР `UserStatus` целиком, а не булев `online`:
+   *  «онлайн» это `userStatusOnline` с ещё не истёкшим `expires`
+   *  (`isUserStatusOnline`), а «был(а) недавно» — отдельный вариант, который
+   *  парой «булево + время» было не выразить. Ключа нет — статус скрыт
+   *  правилом приватности. */
+  status?: UserStatus
+  /** имя собирает клиент (`getUserTitle`) — `display_name` с провода убран */
+  title: string
   username?: string
-  avatarUrl?: string
+  /** id медиа аватарки (`user.photo.photo_id`); 0/undefined — фото нет */
+  photoId?: number
 }
 
 interface InviteLink {
@@ -40,7 +49,7 @@ interface InviteLink {
 
 interface JoinRequest {
   userId: number
-  displayName: string
+  title: string
 }
 
 export function roleLabel(role: string, isChannel: boolean): string {
@@ -62,7 +71,8 @@ export interface GroupInfo {
   // доступ к статистике (tweb chatFull.can_view_stats) — создатель/админ канала
   // или супергруппы
   canViewStats: boolean
-  discussionChatId: number
+  /** ЗНАКОВЫЙ ключ группы обсуждения; `0` — обсуждения нет (не «> 0»!). */
+  discussionPeerId: PeerId
   enablingDiscussion: boolean
   inviteLinks: InviteLink[]
   joinRequests: JoinRequest[]
@@ -94,7 +104,7 @@ export function useGroupInfo(chat: Chat): GroupInfo {
   const [canManageDiscussion, setCanManageDiscussion] = useState(false)
   const [canManageTopics, setCanManageTopics] = useState(false)
   const [canViewStats, setCanViewStats] = useState(false)
-  const [discussionChatId, setDiscussionChatId] = useState(0)
+  const [discussionPeerId, setDiscussionPeerId] = useState<PeerId>(NULL_PEER_ID)
   const [enablingDiscussion, setEnablingDiscussion] = useState(false)
 
   const [inviteLinks, setInviteLinks] = useState<InviteLink[]>([])
@@ -110,21 +120,27 @@ export function useGroupInfo(chat: Chat): GroupInfo {
       setCanManageDiscussion(false)
       setCanManageTopics(false)
       setCanViewStats(false)
-      setDiscussionChatId(0)
+      setDiscussionPeerId(NULL_PEER_ID)
       return
     }
     let alive = true
-    // Viewer role drives whether the rights editor / invite section are available.
+    // Права зрителя — у КОНСТРУКТОРА `channel` (`pFlags.creator` + наличие
+    // `admin_rights`), а не у поля `my_role`/битмаска `my_rights`, которых на
+    // проводе больше нет. Ветвление внутри `hasRights` — порт tweb.
     void managers.groups.card(numericId).then((c) => {
-      if (!alive) return
-      const isCreator = c.myRole === 'creator'
-      // Статистику видят создатель и админы (супер)группы/канала (can_view_stats).
-      setCanViewStats((isChannel || isGroup) && (isCreator || c.myRole === 'admin'))
-      setCanManageAdmins(isCreator || (c.myRights & MANAGE_ADMINS) !== 0)
-      setCanManageDiscussion(isChannel && (isCreator || (c.myRights & CHANGE_INFO) !== 0))
-      setCanManageTopics(isGroup && (isCreator || (c.myRights & CHANGE_INFO) !== 0))
-      setDiscussionChatId(c.discussionChatId ?? 0)
-      const inviteOk = isCreator || (c.myRights & INVITE_USERS) !== 0
+      if (!alive || !c) return
+      // Статистику видят создатель и админы (супер)группы/канала (can_view_stats):
+      // `just_admin` — то же «я админ», что и в оригинале (создателю `hasRights`
+      // отвечает «да» на любое действие).
+      setCanViewStats((isChannel || isGroup) && hasRights(c.chat, 'just_admin'))
+      setCanManageAdmins(hasRights(c.chat, 'add_admins'))
+      setCanManageDiscussion(isChannel && hasRights(c.chat, 'change_info'))
+      setCanManageTopics(isGroup && hasRights(c.chat, 'change_info'))
+      setDiscussionPeerId(getLinkedChatPeerId(c.fullChat))
+      // tweb `invite_links`: раздел ссылок доступен админу с `invite_users`
+      // (создателю — всегда). Это НЕ то же, что «участнику можно звать людей»
+      // (`invite_users` у обычного участника читается из ЗАПРЕТОВ).
+      const inviteOk = hasRights(c.chat, 'invite_links')
       setCanInvite(inviteOk)
       if (inviteOk) {
         void managers.groups.listInvites(numericId).then(async (links) => {
@@ -145,10 +161,7 @@ export function useGroupInfo(chat: Chat): GroupInfo {
           const byId = new Map(peers.map((p) => [p.id, p]))
           if (!alive) return
           setJoinRequests(
-            ids.map((id) => ({
-              userId: id,
-              displayName: byId.get(id)?.displayName || byId.get(id)?.username || `#${id}`,
-            })),
+            ids.map((id) => ({ userId: id, title: getUserTitle(byId.get(id)) })),
           )
         })
       }
@@ -161,10 +174,10 @@ export function useGroupInfo(chat: Chat): GroupInfo {
         mem.map((m) => ({
           userId: m.userId,
           role: m.role,
-          online: m.online,
-          displayName: byId.get(m.userId)?.displayName || byId.get(m.userId)?.username || `#${m.userId}`,
+          status: m.status,
+          title: getUserTitle(byId.get(m.userId)),
           username: byId.get(m.userId)?.username,
-          avatarUrl: byId.get(m.userId)?.avatarUrl,
+          photoId: getPeerPhotoId(byId.get(m.userId)?.photo) || undefined,
         })),
       )
     })
@@ -182,8 +195,10 @@ export function useGroupInfo(chat: Chat): GroupInfo {
       mem.map((m) => ({
         userId: m.userId,
         role: m.role,
-        online: m.online,
-        displayName: byId.get(m.userId)?.displayName || byId.get(m.userId)?.username || `#${m.userId}`,
+        status: m.status,
+        title: getUserTitle(byId.get(m.userId)),
+        username: byId.get(m.userId)?.username,
+        photoId: getPeerPhotoId(byId.get(m.userId)?.photo) || undefined,
       })),
     )
   }
@@ -220,7 +235,7 @@ export function useGroupInfo(chat: Chat): GroupInfo {
     setEnablingDiscussion(true)
     try {
       const id = await managers.channels.enableDiscussion(numericId)
-      setDiscussionChatId(id)
+      setDiscussionPeerId(id)
     } finally {
       setEnablingDiscussion(false)
     }
@@ -236,7 +251,7 @@ export function useGroupInfo(chat: Chat): GroupInfo {
     canManageDiscussion,
     canManageTopics,
     canViewStats,
-    discussionChatId,
+    discussionPeerId,
     enablingDiscussion,
     inviteLinks,
     joinRequests,

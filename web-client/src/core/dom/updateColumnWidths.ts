@@ -26,6 +26,8 @@
 //   • нет rootScope-события 'resizing_left_sidebar': пересчёт дёргается прямо из
 //     сеттеров, а побочные эффекты драга висят на `onSwipeTick` ручки ресайза.
 import clamp from '@helpers/number/clamp'
+import throttle from '@helpers/schedulers/throttle'
+import mediaSizes from './mediaSizes'
 import { useSettingsStore } from '../../settings'
 
 // Значения — 1:1 из tweb (updateColumnWidths.ts:70-101).
@@ -46,10 +48,6 @@ const PAGE_CHATS_PADDING_CHAT_HANDHELD = 8
 const PAGE_CHATS_PADDING = PAGE_CHATS_PADDING_ROOT_DESKTOP
 const CHAT_WIDTH_MAX = 696
 const RIGHT_SIDEBAR_FITS_EXTRA = 64
-
-// Брейкпоинты — те же, что в SCSS ($small-screen / $floating-left-sidebar).
-const MOBILE_SIZE = 600
-const FLOATING_LEFT_SIDEBAR_SIZE = 925
 
 // Предпочтения пользователя по ширине пристыкованных сайдбаров (tweb
 // updateColumnWidths.ts:106-111). `undefined` — «предпочтения нет, брать
@@ -85,29 +83,10 @@ function loadUserPreferences(): void {
   }
 }
 
-// Порт tweb `@helpers/schedulers/throttle` (leading + trailing) — записывать
-// настройки на каждый тик драга нельзя, tweb троттлит персист на 200 мс
-// (updateColumnWidths.ts:140-149).
-function throttle(fn: () => void, ms: number): () => void {
-  let interval: ReturnType<typeof setInterval> | null = null
-  let isPending = false
-  return () => {
-    isPending = true
-    if (interval) return
-    isPending = false
-    fn()
-    interval = setInterval(() => {
-      if (!isPending) {
-        clearInterval(interval as ReturnType<typeof setInterval>)
-        interval = null
-        return
-      }
-      isPending = false
-      fn()
-    }, ms)
-  }
-}
-
+// Записывать настройки на каждый тик драга нельзя — tweb троттлит персист на
+// 200 мс (updateColumnWidths.ts:140-149), общим `@helpers/schedulers/throttle`
+// (leading + trailing). Здесь лежала локальная копия этого хелпера — снята,
+// потребитель сведён к порту.
 const persistLeftPreference = throttle(() => {
   useSettingsStore.getState().update({
     sidebarLeftWidth: userPreferredLeftCollapsed ? 0 : userPreferredLeftWidth,
@@ -216,8 +195,11 @@ export default function updateColumnWidths(): void {
   loadUserPreferences()
   const root = document.documentElement
   const vw = window.innerWidth
-  const isMobile = vw <= MOBILE_SIZE
-  const isFloatingLeft = vw <= FLOATING_LEFT_SIDEBAR_SIZE && !isMobile
+  // Брейкпоинты — у `mediaSizes` (порт tweb `helpers/mediaSizes.ts`), ровно как
+  // в оригинале (updateColumnWidths.ts:207-208): своих констант 600/925 модуль
+  // не держит, это был второй владелец того же факта.
+  const isMobile = mediaSizes.isMobile
+  const isFloatingLeft = mediaSizes.isLessThanFloatingLeftSidebar && !isMobile
 
   // html несёт safe-area как горизонтальный padding: считаем по content-box,
   // иначе на iPhone в ландшафте чат считается по более широкому вьюпорту.
@@ -306,7 +288,9 @@ export default function updateColumnWidths(): void {
 export function installColumnWidthsUpdater(): void {
   if (installed) return
   installed = true
-  window.addEventListener('resize', updateColumnWidths)
+  // tweb :385 — пересчёт по событию `mediaSizes`, а не по своему
+  // window-слушателю: брейкпоинт и ширины считаются от ОДНОГО снимка окна.
+  mediaSizes.addEventListener('resize', updateColumnWidths)
   updateColumnWidths()
 }
 

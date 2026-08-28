@@ -146,16 +146,33 @@ async function handleNavigation(req) {
   }
 }
 
+/* Гейт кэширования — РОВНО 200, а не любой `ok` (эталон tweb
+ * `serviceWorker/cache.ts:6-8` — `isCorrectResponse`). Разница не косметическая:
+ * 206 тоже `ok`, но Cache Storage его не принимает — `put` бросает
+ * «Partial response (status code 206) is unsupported», хендлер отклоняется, и
+ * `respondWith` отдаёт браузеру network error. Под это попадал КАЖДЫЙ
+ * `<audio src="/assets/audio/*.mp3">`: медиаэлемент просит `Range: bytes=0-`,
+ * nginx отвечает 206 — звук отправки не играл ни разу, а консоль на каждое
+ * отправленное сообщение получала ERR_FAILED. В соседнем `handleMedia` условие
+ * с самого начала было правильным (`res.status === 200`) — разошёлся только
+ * путь ассетов.
+ *
+ * Внешний try/catch — оттуда же (`cache.ts:40-42`): кэш не имеет права уронить
+ * запрос, на любом отказе отдаём голую сеть. */
 async function handleImmutable(req) {
-  const cache = await caches.open(APP_SHELL)
-  const hit = await cache.match(req)
-  if (hit) return hit
-  const res = await fetch(req)
-  if (res.ok) {
-    await cache.put(req, res.clone())
-    trimShell(cache) // fire-and-forget: держим кэш в пределах SHELL_MAX
+  try {
+    const cache = await caches.open(APP_SHELL)
+    const hit = await cache.match(req)
+    if (hit) return hit
+    const res = await fetch(req)
+    if (res.status === 200) {
+      await cache.put(req, res.clone())
+      trimShell(cache) // fire-and-forget: держим кэш в пределах SHELL_MAX
+    }
+    return res
+  } catch (_e) {
+    return fetch(req)
   }
-  return res
 }
 
 // Хеш-имена уникальны, ревалидация не нужна — но старые чанки после деплоев

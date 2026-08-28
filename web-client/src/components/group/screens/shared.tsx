@@ -12,12 +12,12 @@ export const EMOJIS = ['👍', '❤️', '🔥', '🥰', '👏', '😁', '🤔',
 export const initials = (name: string): string => name.trim().charAt(0).toUpperCase() || '?'
 
 /** Строка участника → пир селектора (`shared/ui/PeerSelector`). */
-export function memberToPeer(m: { userId: number; name: string; avatarUrl?: string }, extra?: {
+export function memberToPeer(m: { userId: number; name: string; photoId?: number }, extra?: {
   subtitle?: ReactNode
   disabled?: boolean
   actions?: ReactNode
 }): SelectorPeer {
-  return { id: m.userId, name: m.name, avatarUrl: m.avatarUrl, ...extra }
+  return { id: m.userId, name: m.name, photoId: m.photoId, ...extra }
 }
 
 // ── общий пикер участника (для «добавить админа/участника/в чёрный список») ──

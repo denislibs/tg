@@ -15,7 +15,7 @@ import (
 
 // ChannelBoosts — GET /channels/{chatID}/boosts: состояние бустов канала.
 func (h *ChatHandler) ChannelBoosts(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -23,12 +23,12 @@ func (h *ChatHandler) ChannelBoosts(w http.ResponseWriter, r *http.Request) {
 	if h.boostErr(w, err) {
 		return
 	}
-	writeJSON(w, http.StatusOK, st)
+	writeJSON(w, http.StatusOK, boostStatusJSON(st))
 }
 
 // BoostChannel — POST /channels/{chatID}/boost: буст канала (только premium).
 func (h *ChatHandler) BoostChannel(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -36,7 +36,18 @@ func (h *ChatHandler) BoostChannel(w http.ResponseWriter, r *http.Request) {
 	if h.boostErr(w, err) {
 		return
 	}
-	writeJSON(w, http.StatusOK, st)
+	writeJSON(w, http.StatusOK, boostStatusJSON(st))
+}
+
+// boostStatusJSON — статус бустов ЗРИТЕЛЮ: конструктор схемы плюс наше число
+// свободных слотов рядом.
+//
+// Слоты лежат СНАРУЖИ конструктора намеренно: в схеме на этом месте
+// my_boost_slots — вектор ИДЕНТИФИКАТОРОВ занятых слотов, а у нас это счётчик
+// свободных. Разные предметы под похожим именем, и класть счётчик в вектор
+// значило бы подделать одно другим; поле ответа — наше, там ему и место.
+func boostStatusJSON(st domain.BoostStatus) map[string]any {
+	return map[string]any{"status": st.ToWire(true), "slots": st.Slots}
 }
 
 func (h *ChatHandler) boostErr(w http.ResponseWriter, err error) bool {
@@ -55,7 +66,7 @@ func (h *ChatHandler) boostErr(w http.ResponseWriter, err error) bool {
 
 // CreateGiveaway — POST /channels/{chatID}/giveaways: создать розыгрыш (админ).
 func (h *ChatHandler) CreateGiveaway(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -80,7 +91,7 @@ func (h *ChatHandler) CreateGiveaway(w http.ResponseWriter, r *http.Request) {
 	if h.giveawayErr(w, err) {
 		return
 	}
-	writeJSON(w, http.StatusOK, messageJSONOut(r.Context(), h.svc, m))
+	writeMessage(w, r, h.svc, m)
 }
 
 // ParticipateGiveaway — POST /giveaways/{id}/participate: участвовать.
@@ -93,7 +104,9 @@ func (h *ChatHandler) ParticipateGiveaway(w http.ResponseWriter, r *http.Request
 	if h.giveawayErr(w, err) {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"giveaway": info})
+	// Ответ — САМ конструктор объединения `payments.GiveawayInfo`: обёртки
+	// вокруг него у оригинала нет.
+	writeJSON(w, http.StatusOK, info.ToState())
 }
 
 // GetGiveaway — GET /giveaways/{id}: статус розыгрыша для зрителя.
@@ -106,7 +119,12 @@ func (h *ChatHandler) GetGiveaway(w http.ResponseWriter, r *http.Request) {
 	if h.giveawayErr(w, err) {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"giveaway": info})
+	// Наружу уходит ЛИЧНОЕ состояние зрителя (payments.giveawayInfo), а не
+	// розыгрыш целиком: сами условия и победители едут вложением сообщения, и
+	// повторять их здесь значило бы завести вторую форму розыгрыша.
+	// Ответ — САМ конструктор объединения `payments.GiveawayInfo`: обёртки
+	// вокруг него у оригинала нет.
+	writeJSON(w, http.StatusOK, info.ToState())
 }
 
 func (h *ChatHandler) giveawayErr(w http.ResponseWriter, err error) bool {

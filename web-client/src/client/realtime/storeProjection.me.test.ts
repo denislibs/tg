@@ -9,14 +9,14 @@ import rootScope from '@lib/rootScope'
 import { RT } from '../../core/realtime/events'
 import { useChatsStore } from '../../stores/chatsStore'
 import type { Managers } from '../bootstrap'
-import type { User } from '../../core/managers/authManager'
+import type { PeerProfile } from '../../core/managers/authManager'
 
 import { registerStoreProjection } from './storeProjection'
 
-const ME: User = {
-  id: 7, phone: '+79990000001', username: 'denis_m', firstName: 'Денис', lastName: '',
-  displayName: 'Денис', bio: '', birthday: null, avatarUrl: '', avatarPreview: '', phoneVisibility: 'contacts',
-  premium: false, emojiStatus: '',
+const ME: PeerProfile = {
+  user: { _: 'user', pFlags: { self: true }, id: 7, phone: '+79990000001', username: 'denis_m', first_name: 'Денис', photo: { _: 'userProfilePhotoEmpty' } },
+  fullUser: { _: 'userFull', id: 7 },
+  canMessage: true,
 }
 
 describe('storeProjection — rt:me применяется к chatsStore (единственный владелец — воркер)', () => {
@@ -39,7 +39,7 @@ describe('storeProjection — rt:me применяется к chatsStore (еди
   // Логаут: воркер публикует null — meId выводится из me тем же единым
   // писателем (chatsStore.ts::setMe), см. докблок там же.
   it('rt:me с null → me и meId сброшены', () => {
-    useChatsStore.setState({ me: ME, meId: ME.id })
+    useChatsStore.setState({ me: ME, meId: ME.user.id })
     rootScope.dispatchEventSingle(RT.me, null)
     const s = useChatsStore.getState()
     expect(s.me).toBeNull()
@@ -50,8 +50,26 @@ describe('storeProjection — rt:me применяется к chatsStore (еди
   // не мерджит частично, ровно как чтение реального RPC-ответа.
   it('повторный rt:me с изменённым полем полностью заменяет me', () => {
     rootScope.dispatchEventSingle(RT.me, ME)
-    const updated: User = { ...ME, displayName: 'Денис 2', avatarUrl: '/media/1/content' }
+    const updated: PeerProfile = { ...ME, user: { ...ME.user, first_name: 'Денис 2', photo: { _: 'userProfilePhoto', photo_id: 1 } } }
     rootScope.dispatchEventSingle(RT.me, updated)
     expect(useChatsStore.getState().me).toEqual(updated)
+  })
+
+  // Второе зеркало того же факта — `rootScope.myId` (порт tweb rootScope.ts:253),
+  // его читает императивная лента (`components/chat/bubbles.ts`), которой нельзя
+  // знать про zustand. Писатель обязан быть ОДИН (этот проектор) — иначе два
+  // зеркала разъедутся; пин на «нет второго писателя» — stores/noDuplicateMe.test.ts.
+  // Что ломается без строки `rootScope.myId = ...`: лента считает себя
+  // неавторизованной (myId === 0) и, например, подписывает превью ответа на своё
+  // же сообщение чужим именем вместо «Вы».
+  it('rt:me пишет и второе зеркало — rootScope.myId (для императивной ленты)', () => {
+    rootScope.myId = 0
+    rootScope.dispatchEventSingle(RT.me, ME)
+    expect(rootScope.myId).toBe(7)
+
+    // Логаут: зеркало обязано вернуться в «никого» (у tweb — NULL_PEER_ID),
+    // иначе следующий пользователь получил бы чужой id до первого rt:me.
+    rootScope.dispatchEventSingle(RT.me, null)
+    expect(rootScope.myId).toBe(0)
   })
 })

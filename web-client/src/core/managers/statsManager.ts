@@ -78,8 +78,8 @@ interface RawStats {
 
 export function newStatsManager({ rest }: { rest: Pick<RestClient, 'get'> }) {
   return {
-    async getChannelStats(chatId: number): Promise<ChannelStats> {
-      const r = await rest.get<RawStats>(`/channels/${chatId}/stats`)
+    async getChannelStats(peerId: number): Promise<ChannelStats> {
+      const r = await rest.get<RawStats>(`/channels/${peerId}/stats`)
       return {
         summary: {
           members: r.summary.members,
@@ -96,8 +96,8 @@ export function newStatsManager({ rest }: { rest: Pick<RestClient, 'get'> }) {
         })),
       }
     },
-    async getPostStats(chatId: number, msgId: number): Promise<PostStats> {
-      const r = await rest.get<RawPostStats>(`/chats/${chatId}/messages/${msgId}/stats`)
+    async getPostStats(peerId: number, msgId: number): Promise<PostStats> {
+      const r = await rest.get<RawPostStats>(`/chats/${peerId}/messages/${msgId}/stats`)
       return {
         views: r.views,
         forwards: r.forwards,

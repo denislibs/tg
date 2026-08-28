@@ -1,5 +1,7 @@
 // Поведение движка плеера (порт tweb appMediaPlaybackController + MediaProgressLine):
-// прогресс по requestAnimationFrame, общая очередь voice+round, скорость по типу медиа.
+// КОЛЛЕКЦИЯ медиа-элементов (у каждого трека свой), остановка предыдущего при
+// запуске нового, прогресс по requestAnimationFrame, общая очередь voice+round,
+// скорость по типу медиа.
 import { beforeAll, beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
 // Сеть/крипта движку в тесте не нужны: URL трека резолвится синхронно, секретных нет.
@@ -9,6 +11,29 @@ vi.mock('../mediaUrl', () => ({
   primeMediaToken: () => Promise.resolve(),
 }))
 vi.mock('../secret/crypto', () => ({ decryptMedia: () => Promise.resolve(new ArrayBuffer(0)) }))
+// Платформа, которая ogg играет сама (Chrome/Firefox/Safari 18.4+) — так src
+// подаётся синхронно. happy-dom отвечает на canPlayType пустой строкой, то есть
+// БЕЗ этой подмены весь файл проверял бы ветку конвертации; она — предмет
+// отдельного файла mediaPlaybackController.opus.test.ts.
+vi.mock('@environment/opusSupport', () => ({ default: true }))
+// Конвертер подменён, чтобы было чем доказать обратное направление гейта: на
+// такой платформе к нему не ходят ВООБЩЕ (см. последний describe файла).
+const voicePlaybackUrl = vi.fn(() => Promise.resolve(undefined))
+const oggBytesToWavUrl = vi.fn(() => Promise.resolve('blob:wav'))
+vi.mock('../media/voiceOpus', () => ({
+  voicePlaybackUrl: () => voicePlaybackUrl(),
+  oggBytesToWavUrl: () => oggBytesToWavUrl(),
+  isOggContainer: (mime: string | undefined) => mime === 'audio/ogg',
+  resetVoiceOpusCache: () => {},
+}))
+
+// Проводка «кружок играет → видео-анимации стоят» (порт tweb
+// appMediaPlaybackController.ts:265-273). Интерсектор подменён: проверяем сам
+// факт вызова, а его собственное поведение держит animationIntersector.test.ts.
+const toggleMediaPause = vi.fn()
+vi.mock('@components/animationIntersector', () => ({
+  default: { toggleMediaPause: (paused: boolean) => toggleMediaPause(paused) },
+}))
 
 // Кадры анимации — вручную: так видно, что цикл заведён и что он гаснет.
 let frames: Array<[number, FrameRequestCallback]> = []
@@ -19,13 +44,10 @@ const flushFrame = () => {
   q.forEach(([, cb]) => cb(0))
 }
 
-// Элементы <audio>, созданные движком (внутренний плеер он держит приватно).
-const created: HTMLMediaElement[] = []
-
 type FakeMedia = HTMLMediaElement & { _playing?: boolean; _time?: number; _dur?: number }
 
 let mediaPlayback: typeof import('./mediaPlaybackController').mediaPlayback
-let registerRoundMedia: typeof import('./mediaPlaybackController').registerRoundMedia
+let resetPlayback: typeof import('./mediaPlaybackController').resetPlayback
 let useAudioStore: typeof import('../../stores/audioStore').useAudioStore
 let useSettingsStore: typeof import('../../settings').useSettingsStore
 
@@ -63,16 +85,9 @@ beforeAll(async () => {
     this.dispatchEvent(new Event('pause'))
   }
 
-  const RealAudio = globalThis.Audio
-  vi.stubGlobal('Audio', function () {
-    const a = new RealAudio()
-    created.push(a)
-    return a
-  })
-
   const controller = await import('./mediaPlaybackController')
   mediaPlayback = controller.mediaPlayback
-  registerRoundMedia = controller.registerRoundMedia
+  resetPlayback = controller.resetPlayback
   useAudioStore = (await import('../../stores/audioStore')).useAudioStore
   useSettingsStore = (await import('../../settings')).useSettingsStore
 })
@@ -84,8 +99,8 @@ const music = (mediaId: number) => ({ mediaId, title: 't', subtitle: 's', type: 
 /** Дать движку дожевать асинхронный load() (резолв URL + play). */
 const settle = () => new Promise((r) => setTimeout(r, 0))
 
-/** Внутренний <audio> движка (создаётся лениво при первом воспроизведении). */
-const player = () => created[created.length - 1] as FakeMedia
+/** Элемент КОНКРЕТНОГО трека из коллекции контроллера (tweb getMedia). */
+const el = (mediaId: number) => mediaPlayback.getMedia(mediaId) as FakeMedia
 
 beforeEach(() => {
   frames = []
@@ -93,7 +108,46 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  mediaPlayback.close()
+  resetPlayback()
+})
+
+describe('коллекция медиа-элементов (tweb addMedia/getMedia/onPlay)', () => {
+  it('у каждого трека СВОЙ элемент, и он же возвращается на повторный запрос', () => {
+    const first = mediaPlayback.addMedia({ track: voice(1) })
+    const second = mediaPlayback.addMedia({ track: voice(2) })
+
+    expect(first).not.toBe(second)
+    expect(mediaPlayback.addMedia({ track: voice(1) })).toBe(first)
+    expect(mediaPlayback.getMedia(1)).toBe(first)
+  })
+
+  it('запуск нового трека останавливает предыдущий и перематывает его в начало', async () => {
+    mediaPlayback.playQueue([voice(1), voice(2)], 0)
+    await settle()
+    el(1)._time = 3
+    expect(el(1).paused).toBe(false)
+
+    mediaPlayback.next()
+    await settle()
+
+    expect(el(1).paused).toBe(true)
+    expect(el(1).currentTime).toBe(0)
+    expect(el(2).paused).toBe(false)
+    expect(useAudioStore.getState().track?.mediaId).toBe(2)
+    expect(useAudioStore.getState().playing).toBe(true)
+  })
+
+  it('элемент, который играет сам по себе, становится текущим (tweb onPlay)', async () => {
+    mediaPlayback.playQueue([voice(1), voice(2)], 0)
+    await settle()
+
+    // «клик по соседнему баблу» = play на ЕГО элементе, без хождения в контроллер
+    void (mediaPlayback.addMedia({ track: voice(2) }) as FakeMedia).play()
+
+    expect(useAudioStore.getState().track?.mediaId).toBe(2)
+    expect(useAudioStore.getState().index).toBe(1)
+    expect(el(1).paused).toBe(true)
+  })
 })
 
 describe('rAF-прогресс (tweb MediaProgressLine.onPlay)', () => {
@@ -105,12 +159,12 @@ describe('rAF-прогресс (tweb MediaProgressLine.onPlay)', () => {
     // первый кадр — синхронно в onPlay, следующий уже запланирован
     expect(frames).toHaveLength(1)
 
-    player()._time = 1.25
+    el(1)._time = 1.25
     flushFrame()
     expect(useAudioStore.getState().currentTime).toBe(1.25)
     expect(frames).toHaveLength(1)
 
-    player()._time = 2.5
+    el(1)._time = 2.5
     flushFrame()
     expect(useAudioStore.getState().currentTime).toBe(2.5)
   })
@@ -125,8 +179,8 @@ describe('rAF-прогресс (tweb MediaProgressLine.onPlay)', () => {
     expect(frames).toHaveLength(0)
 
     // timeupdate на паузе всё ещё двигает прогресс (tweb onTimeUpdate) и цикл не заводит
-    player()._time = 4
-    player().dispatchEvent(new Event('timeupdate'))
+    el(1)._time = 4
+    el(1).dispatchEvent(new Event('timeupdate'))
     expect(useAudioStore.getState().currentTime).toBe(4)
     expect(frames).toHaveLength(0)
   })
@@ -137,6 +191,50 @@ describe('rAF-прогресс (tweb MediaProgressLine.onPlay)', () => {
     mediaPlayback.close()
     expect(frames).toHaveLength(0)
   })
+
+  it('чужой элемент не пишет прогресс текущего трека', async () => {
+    mediaPlayback.playQueue([voice(1), voice(2)], 0)
+    await settle()
+    el(1)._time = 7
+    flushFrame()
+    expect(useAudioStore.getState().currentTime).toBe(7)
+
+    // сосед по очереди зачем-то дёрнул timeupdate — витрину это не касается
+    const neighbour = mediaPlayback.addMedia({ track: voice(2) }) as FakeMedia
+    neighbour._time = 42
+    neighbour.dispatchEvent(new Event('timeupdate'))
+    expect(useAudioStore.getState().currentTime).toBe(7)
+  })
+})
+
+// Строки проводки: без них видео-стикеры и гифки ленты продолжают крутиться
+// рядом с играющим кружком (в tweb этого не бывает — см. animationIntersector
+// :342 и appMediaPlaybackController.ts:265-273).
+describe('кружок глушит видео-анимации (tweb toggleMediaPause)', () => {
+  beforeEach(() => {
+    toggleMediaPause.mockClear()
+  })
+
+  it('старт кружка запирает видео, пауза — отпускает', async () => {
+    const video = document.createElement('video') as FakeMedia
+    mediaPlayback.addMedia({ track: round(1), element: video })
+    mediaPlayback.playQueue([round(1)], 0)
+    await settle()
+
+    expect(toggleMediaPause).toHaveBeenCalledWith(false)
+
+    toggleMediaPause.mockClear()
+    video.pause()
+
+    expect(toggleMediaPause).toHaveBeenCalledWith(true)
+  })
+
+  it('голосовое видео не запирает (в tweb ветка только для round)', async () => {
+    mediaPlayback.playQueue([voice(1)], 0)
+    await settle()
+
+    expect(toggleMediaPause).not.toHaveBeenCalledWith(false)
+  })
 })
 
 describe('общая очередь voice+round (tweb inputMessagesFilterRoundVoice)', () => {
@@ -145,35 +243,36 @@ describe('общая очередь voice+round (tweb inputMessagesFilterRoundVo
     await settle()
     expect(useAudioStore.getState().track?.mediaId).toBe(1)
 
-    player().dispatchEvent(new Event('ended'))
+    el(1).dispatchEvent(new Event('ended'))
     await settle()
 
     expect(useAudioStore.getState().track?.mediaId).toBe(2)
     expect(useAudioStore.getState().index).toBe(1)
-    expect(player().src).toContain('blob:media-2')
+    expect(el(2).src).toContain('blob:media-2')
     expect(useAudioStore.getState().playing).toBe(true)
   })
 
   it('после голосового едет кружок — своим элементом из бабла', async () => {
-    const play = vi.fn()
-    const unregister = registerRoundMedia(2, play)
+    // Кружок рисует бабл, поэтому его <video> ОДОЛЖЕН контроллеру (tweb clean-медиа).
+    const video = document.createElement('video') as FakeMedia
+    mediaPlayback.addMedia({ track: round(2), element: video })
+
     mediaPlayback.playQueue([voice(1), round(2)], 0)
     await settle()
 
-    player().dispatchEvent(new Event('ended'))
+    el(1).dispatchEvent(new Event('ended'))
     await settle()
 
-    expect(play).toHaveBeenCalledTimes(1)
+    expect(video.paused).toBe(false)
     expect(useAudioStore.getState().index).toBe(1)
     expect(useAudioStore.getState().track?.mediaId).toBe(2)
-    unregister()
   })
 
   it('несмонтированный кружок пропускается, играет следующее голосовое', async () => {
     mediaPlayback.playQueue([voice(1), round(2), voice(3)], 0)
     await settle()
 
-    player().dispatchEvent(new Event('ended'))
+    el(1).dispatchEvent(new Event('ended'))
     await settle()
 
     expect(useAudioStore.getState().track?.mediaId).toBe(3)
@@ -195,7 +294,7 @@ describe('общая очередь voice+round (tweb inputMessagesFilterRoundVo
     mediaPlayback.playQueue([voice(1)], 0)
     await settle()
 
-    player().dispatchEvent(new Event('ended'))
+    el(1).dispatchEvent(new Event('ended'))
     await settle()
 
     expect(useAudioStore.getState().track).toBeNull()
@@ -211,7 +310,7 @@ describe('скорость — своя на тип медиа (tweb playbackRat
 
     mediaPlayback.setRate(1.5)
     expect(useSettingsStore.getState().playbackRates).toEqual({ voice: 1.5, audio: 1 })
-    expect(player().playbackRate).toBe(1.5)
+    expect(el(1).playbackRate).toBe(1.5)
 
     // музыка — своя очередь и своя скорость, голосовая на неё не переносится
     mediaPlayback.playQueue([music(9)], 0)
@@ -229,7 +328,7 @@ describe('скорость — своя на тип медиа (tweb playbackRat
     await settle()
 
     expect(useAudioStore.getState().rate).toBe(2)
-    expect(player().playbackRate).toBe(2)
+    expect(el(1).playbackRate).toBe(2)
   })
 
   it('скорость переживает перезагрузку (localStorage)', () => {
@@ -239,5 +338,17 @@ describe('скорость — своя на тип медиа (tweb playbackRat
       playbackRates: Record<string, number>
     }
     expect(saved.playbackRates.audio).toBe(0.5)
+  })
+})
+
+describe('платформа играет ogg сама (Chrome/Firefox/Safari 18.4+)', () => {
+  it('src подаётся СИНХРОННО, конвертер не трогаем — ни лишнего RPC, ни libopus', () => {
+    const media = mediaPlayback.addMedia({ track: voice(11) }) as FakeMedia
+
+    // Ни одного await: URL уже на элементе к моменту возврата addMedia — от этого
+    // зависит, останется ли .play() в рамках user-gesture.
+    expect(media.src).toBe('blob:media-11')
+    expect(voicePlaybackUrl).not.toHaveBeenCalled()
+    expect(oggBytesToWavUrl).not.toHaveBeenCalled()
   })
 })

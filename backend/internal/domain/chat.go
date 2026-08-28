@@ -2,60 +2,73 @@ package domain
 
 import "time"
 
-type Chat struct {
-	ID      int64
-	Type    string // private | group | channel | saved | secret
-	LastSeq int64
-}
+// Виды чата в НАШЕЙ таблице chats. Наружу они не выходят: на проводе вид чата
+// это выбор конструктора (channel + pFlags.broadcast/megagroup — решение №2
+// разбора), а приватного чата как сущности нет вовсе (решение №1).
+const (
+	ChatTypePrivate = "private"
+	ChatTypeGroup   = "group"
+	ChatTypeChannel = "channel"
+	ChatTypeSaved   = "saved"
+	ChatTypeSecret  = "secret"
+)
 
-// ChatBrief — лёгкий снимок чата (для отображения «личности отправителя»
-// send-as и её автора в бабле): id, тип, заголовок, фото.
+// ChatBrief — строка chats в объёме, которого хватает на конструктор `channel`:
+// снимок «личности отправителя» send-as и её автора в бабле.
 type ChatBrief struct {
-	ID      int64
-	Type    string // group | channel | ...
-	Title   string
-	PhotoID *int64 // chats.photo_media_id (nil — фото нет)
+	ID           int64
+	Type         string // group | channel | ...
+	Title        string
+	PhotoID      *int64 // chats.photo_media_id (nil — фото нет)
+	PhotoPreview []byte // stripped-превью фото (media.blur_preview)
 }
 
-// SendAsPeer — доступная «личность отправителя» (Telegram channels.getSendAs):
+// ToChannel — конструктор `channel` из снимка. Вид чата выражен флагами
+// broadcast/megagroup, а не строкой: решение №2 разбора.
+func (b ChatBrief) ToChannel() Channel {
+	return NewChannel(b.ID, b.Title, b.ChatPhoto(), time.Time{}, ChannelFlags{
+		Broadcast: b.Type == ChatTypeChannel,
+		Megagroup: b.Type == ChatTypeGroup,
+	})
+}
+
+// ChatPhoto — объединение ChatPhoto для этого снимка: «фото нет» это
+// состояние (chatPhotoEmpty), а не пустая строка URL.
+func (b ChatBrief) ChatPhoto() ChatPhoto {
+	if b.PhotoID == nil {
+		return NewChatPhotoEmpty()
+	}
+	return NewChatPhoto(*b.PhotoID, b.PhotoPreview, false)
+}
+
+// SendAsPeerRecord — доступная «личность отправителя» (Telegram channels.getSendAs):
 // сам пользователь, канал (где он владелец/админ) или сама супергруппа
-// (анонимный админ). Kind различает вид для подписи в попапе.
-type SendAsPeer struct {
-	PeerID  int64
-	Kind    string // "user" | "channel" | "group"
-	Title   string
-	PhotoID *int64
+// (анонимный админ). Peer — ссылка на пир (peerUser | peerChannel), User/Chat —
+// её тело: ровно раскладка channels.sendAsPeers{peers, chats, users}.
+type SendAsPeerRecord struct {
+	Peer Peer
+	User *UserReal
+	Chat *Channel
 }
 
-type ChatMember struct {
-	ChatID, UserID int64
-	Role           string
-	LastReadSeq    int64
-	UnreadCount    int
-	// UnreadMentionsCount — число непрочитанных сообщений, где участник упомянут
-	// (Telegram unread_mentions_count); отдельный бейдж «@» поверх обычного unread.
-	UnreadMentionsCount int
-	Muted               bool
-}
-
-// DialogPeer is the other participant of a private chat, used to render a
-// chat's name and avatar in the chat list. It is nil for non-private chats.
-type DialogPeer struct {
-	ID          int64
-	DisplayName string
-	AvatarURL   string
-	// AvatarPreview — stripped-превью аватарки (см. domain.User.AvatarPreview);
-	// nil у старых аватарок и когда аватар скрыт privacy/подменён личным фото.
-	AvatarPreview []byte
-	Verified      bool   // official/service account (blue check)
-	Premium       bool   // Telegram Premium subscriber (gold star badge)
-	EmojiStatus   string // unicode emoji shown after the name ("" when unset)
-	IsBot         bool   // бот: клиент скрывает звонок и не даёт добавить в контакты/группу/секрет
-}
-
-// Dialog is a chat-list read model: a chat + the viewer's read state + last message.
-type Dialog struct {
-	ChatID      int64
+// DialogRecord — СТРОКА витрины списка чатов глазами зрителя, а не объект
+// провода. Наружу из неё собирается конструктор `dialog` вместе с векторами
+// контейнера messages.dialogs (см. mtdialog.go): сам dialog несёт только
+// состояние чтения и место в списке, а title/username/photo уезжают в `chats`,
+// собеседник — в `users`, последнее сообщение — в `messages` и адресуется
+// числом top_message.
+//
+// Имя с суффиксом Record — тот же приём и та же причина, что у
+// UserRecord/ChatRecord (шаг C пиров): `Dialog` это имя ОБЪЕДИНЕНИЯ схемы, а
+// плоская строка выборки объединением не является и никогда им не была.
+// Разбор полей (что куда уезжает) — docs/readiness/tl-dialogs-analysis.md,
+// исполняется шагом B.
+type DialogRecord struct {
+	ChatID int64
+	// Type — вид чата из НАШЕЙ колонки chats.type. Наружу не выходит (решение
+	// Р8): вид выражают конструктор пира и флаги Chat. Здесь он остаётся потому,
+	// что нужен серверу: по нему считается адрес пира (peeraddr.go) и собирается
+	// вектор chats контейнера.
 	Type        string
 	Title       string
 	Username    string
@@ -72,71 +85,117 @@ type Dialog struct {
 	// UnreadReactionsCount — непрочитанные реакции на сообщения зрителя в этом
 	// чате (Telegram unread_reactions_count); клиент рисует отдельный бейдж-сердце.
 	UnreadReactionsCount int
-	Muted                bool
-	// Pinned — диалог закреплён вверху списка; Archived — убран в «Архив»
-	// (пер-юзерные флаги членства, tweb pinned dialogs + folder_id=1).
-	Pinned   bool
-	Archived bool
+	// NotifySettings — пер-чатное переопределение уведомлений ЦЕЛИКОМ, а не три
+	// плоских поля (решение Р4). Прежние Muted/NotifyPreview/NotifySound
+	// схлопнулись сюда: мьют это СРОК (mute_until), а звук — объединение
+	// NotificationSound, а не строка. Замьючен ли чат сейчас, отвечает
+	// единственный предикат PeerNotifySettings.Muted.
+	NotifySettings PeerNotifySettings
+	// Pinned — диалог закреплён вверху списка (пер-юзерный флаг членства).
+	Pinned bool
+	// Folder — реальная папка диалога: FolderAll — общий список, FolderArchive —
+	// архив. Прежний `archived: bool` исчез: на проводе это folder_id, и
+	// значения перечисления совпадают с проводными (решение Р5).
+	Folder FolderID
 	// IsForum — в группе включены темы (клиент рендерит список топиков).
 	IsForum bool
-	// NotifyPreview — показывать текст сообщения в уведомлении для этого чата
-	// (per-chat override; по умолчанию true). NotifySound — 'default'|'none'
-	// (per-chat: 'none' — беззвучное уведомление без полного mute). Резолвятся из
-	// chat_members.notify_preview/notify_sound (NULL → дефолт), как tweb
-	// getPeerLocalSettings (per-peer поле поверх типа).
-	NotifyPreview bool
-	NotifySound   string
-	HasLast       bool
-	LastSeq       int64
-	LastText      string
-	LastSenderID  int64
-	LastAt        time.Time
-	// LastMediaID/LastType describe the last message's media for the sidebar
-	// preview thumbnail + type label (0/"" when it's a plain text message).
-	LastMediaID int64
-	LastType    string
-	// LastForwarded is true when the last message was forwarded (shows a forward
-	// arrow before the chat-list preview, like Telegram).
-	LastForwarded bool
-	// LastSenderName is the last message sender's short name (first name, else
-	// display name) — for the "Имя: …" preview prefix in group chats.
-	LastSenderName string
-	// LastEncBody — шифр-блоб последнего сообщения секретного чата (nil у обычных).
-	// Сервер plaintext не знает; клиент расшифровывает его ключом из IndexedDB для
-	// превью в списке (как tweb показывает расшифрованный текст).
-	LastEncBody []byte
-	// PhotoURL is the group/channel photo content path ("" when unset; private
-	// chats carry the peer's avatar in Peer instead).
-	PhotoURL string
-	// PhotoPreview — stripped-превью фото группы/канала (media.blur_preview по
-	// chats.photo_media_id); nil, если фото нет или превью ещё не сгенерировано.
+	// TopMessageID — id ПОСЛЕДНЕГО сообщения чата (messages.id) с учётом
+	// пер-юзерной очистки истории (seq > cleared_max_seq); 0 — сообщений нет.
+	// Прежняя выжимка last_* (текст, тип, имя автора, признак пересылки…) с
+	// провода ушла целиком: сообщение адресуется числом top_message, а сам
+	// объект едет вектором messages контейнера (решение Р3). Здесь хранится
+	// именно id строки: по нему сообщение достаётся пакетным запросом; на
+	// провод же уходит TopMessageSeq (см. ниже).
+	TopMessageID int64
+	// TopMessageSeq — НОМЕР того же сообщения в чате, то есть ровно то число,
+	// которым поле схемы dialog.top_message адресует сообщение наружу. Едет
+	// рядом с TopMessageID из ОДНОЙ строки выборки (тот же LATERAL): собирать
+	// его поиском по загруженным сообщениям нельзя — промах давал бы тихий 0,
+	// а 0 в этом пространстве значит «самое новое».
+	TopMessageSeq int64
+	// PhotoID/PhotoPreview — фото группы/канала (chats.photo_media_id и
+	// media.blur_preview по нему); nil — фото нет. У приватного чата аватарка
+	// едет на самом пире (Peer.Photo), как в оригинале.
+	PhotoID      *int64
 	PhotoPreview []byte
-	// Peer is the other member of a private chat (nil for non-private chats).
-	Peer *DialogPeer
-	// AutoDeletePeriod — период автоудаления сообщений чата в секундах (0 — выкл).
-	AutoDeletePeriod int
-	// ThemeID — id выбранной темы оформления чата (пресет на клиенте); ""
-	// означает «тема не задана» (дефолтное оформление). Применяется к обоим
-	// участникам (Telegram messages.setChatTheme).
-	ThemeID string
+	// Peer — собеседник приватного чата в форме конструктора `user` (nil у
+	// групп и каналов). Наружу уезжает вектором users контейнера — вместе с
+	// авторами последних сообщений.
+	Peer *UserReal
+	// TTLPeriod — период автоудаления сообщений чата в секундах (0 — выкл);
+	// на проводе ttl_period (решение Р6).
+	TTLPeriod int
+	// JoinedAt — когда ЗРИТЕЛЬ вступил в этот чат (chat_members.joined_at).
+	// Это и есть обязательный channel.date краткой формы — см. ToChannel.
+	//
+	// Подстановка даты создания, как у ChatRecord.ChannelDate, здесь не нужна:
+	// список диалогов строится ОТ членства (ListDialogs идёт по chat_members
+	// зрителя), поэтому в каждой его строке зритель — участник по построению.
+	JoinedAt time.Time
 }
 
-// DialogFolder — РЕАЛЬНАЯ папка выборки диалогов. Порт tweb REAL_FOLDER_ID
+// ToDialog — конструктор `dialog` из строки витрины. Пир и seq последнего
+// сообщения приходят снаружи: первый зависит от ЗРИТЕЛЯ (см. peeraddr.go),
+// второй читается из самого сообщения, которое едет вектором messages.
+func (d DialogRecord) ToDialog(peer Peer, topMessage int64) DialogReal {
+	out := NewDialog(peer, topMessage, d.NotifySettings, d.Pinned)
+	out.ReadInboxMaxID = d.LastReadSeq
+	out.ReadOutboxMaxID = d.PeerReadSeq
+	out.UnreadCount = d.UnreadCount
+	out.UnreadMentionsCount = d.UnreadMentionsCount
+	out.UnreadReactionsCount = d.UnreadReactionsCount
+	out.FolderID = int(d.Folder)
+	out.TTLPeriod = d.TTLPeriod
+	out.Secret = d.Type == ChatTypeSecret
+	return out
+}
+
+// ToChannel — краткий конструктор `channel` для вектора chats контейнера:
+// группа и канал различаются флагами, а не строкой (решение №2 разбора пиров).
+// У приватного чата и «Избранного» тела чата нет вовсе — там пир это
+// собеседник, поэтому вызывать имеет смысл только для многочленных чатов.
+//
+// date едет ДАТОЙ ВСТУПЛЕНИЯ зрителя (JoinedAt), а не датой создания чата: см.
+// ChatRecord.ChannelDate — там же и цена ошибки.
+func (d DialogRecord) ToChannel() Channel {
+	out := NewChannel(d.ChatID, d.Title, d.ChatPhoto(), d.JoinedAt, ChannelFlags{
+		Broadcast: d.Type == ChatTypeChannel,
+		Megagroup: d.Type == ChatTypeGroup,
+		Forum:     d.IsForum,
+	})
+	out.Username = d.Username
+	return out
+}
+
+// ChatPhoto — фото группы/канала как объединение схемы; «фото нет» это
+// состояние (chatPhotoEmpty), а не пустая строка URL.
+func (d DialogRecord) ChatPhoto() ChatPhoto {
+	if d.PhotoID == nil {
+		return NewChatPhotoEmpty()
+	}
+	return NewChatPhoto(*d.PhotoID, d.PhotoPreview, false)
+}
+
+// FolderID — РЕАЛЬНАЯ папка диалога. Порт tweb REAL_FOLDER_ID
 // (lib/appManagers/constants.ts:37-39): на сервере существуют ровно две папки,
 // «все чаты» и «архив»; пользовательские папки — клиентский фильтр поверх них
-// и до бэкенда не доходят.
-type DialogFolder int
+// (domain.DialogFilter) и до бэкенда не доходят.
+//
+// Значения совпадают с проводным dialog.folder_id, и это не совпадение: «папка
+// не указана» выражается ОТСУТСТВИЕМ значения (у запроса — нулевым указателем,
+// на проводе — отсутствием ключа), а не третьим членом перечисления. Порт tweb
+// GLOBAL_FOLDER_ID (storages/dialogs.ts:68 — это `undefined`); прежний
+// FolderGlobal был выдуман нами и разводил перечисление с проводом.
+//
+// Имя DialogFolder освобождено под конструктор схемы (решение Р2): dialogFolder
+// это СТРОКА-ПАПКА в списке чатов, а здесь перечислена сама папка.
+type FolderID int
 
 const (
-	// FolderGlobal — запрос без папки: весь набор. Нулевое значение выбрано
-	// сознательно — уже существующие domain.DialogPage{} без явного поля
-	// обязаны означать «как раньше», а не «всё, кроме архива». Порт tweb
-	// GLOBAL_FOLDER_ID (dialogs.ts:68).
-	FolderGlobal DialogFolder = iota
-	// FolderAll — всё, кроме архива (на проводе folder_id=0, tweb FOLDER_ID_ALL).
-	FolderAll
-	// FolderArchive — только архив (на проводе folder_id=1, tweb FOLDER_ID_ARCHIVE).
-	FolderArchive
+	// FolderAll — общий список чатов (на проводе folder_id=0, tweb FOLDER_ID_ALL).
+	FolderAll FolderID = 0
+	// FolderArchive — архив (на проводе folder_id=1, tweb FOLDER_ID_ARCHIVE).
+	FolderArchive FolderID = 1
 )
 
 // DialogPage — запрос страницы списка диалогов.
@@ -154,43 +213,98 @@ type DialogPage struct {
 	// в архив или быть удалён между страницами); клиент сливает страницы по
 	// chat_id, поэтому последствие — повторная страница, а не дыра.
 	OffsetChatID int64
-	// Выборка, внутри которой считаются Count, IsEnd и курсор. FolderGlobal
-	// (нулевое значение) — весь набор.
-	Folder DialogFolder
+	// Folder — выборка, внутри которой считаются Count и курсор. nil — «папка
+	// не указана», то есть весь набор: у оригинала это GLOBAL_FOLDER_ID =
+	// undefined, а не отдельное значение перечисления.
+	Folder *FolderID
 }
 
-// DialogPageResult — страница плюс метаданные для виртуального списка:
-// Count даёт высоту списка и число плейсхолдеров, IsEnd останавливает догрузку.
+// DialogPageResult — страница плюс размер набора для виртуального списка.
+//
+// Булева «это всё» здесь нет: на проводе конец списка выражает ОТСУТСТВИЕ
+// count, то есть выбор конструктора — messages.dialogs против
+// messages.dialogsSlice (решение Р1). Клиент оригинала читает именно так:
+// `isEnd = !count || dialogsLength >= count || !items.length`
+// (tweb appMessagesManager.ts:3614,3629), и наш is_end ему не нужен.
 type DialogPageResult struct {
-	Dialogs []Dialog
+	Dialogs []DialogRecord
 	// Размер ПОЛНОГО набора, не страницы; от Limit и курсора не зависит.
 	Count int
-	IsEnd bool
+	// Whole — набор отдан ЦЕЛИКОМ (ни курсора, ни отсечения по лимиту). Отвечает
+	// ровно на один вопрос: какой из двух конструкторов контейнера собирать.
+	Whole bool
 }
 
-// Member is a full membership row (role + admin rights + mute).
+// Member is a membership row (role + admin rights).
 type Member struct {
 	ChatID, UserID int64
 	Role           string
 	Rights         Rights
-	Muted          bool
 }
 
-// ChatCard is the read model for a group/channel info screen.
-type ChatCard struct {
-	ID               int64
-	Type             string
-	Title            string
-	Username         string
-	About            string
-	PhotoMediaID     *int64
-	CreatorID        int64
-	MemberCount      int
-	IsPublic         bool
-	MyRole           string
-	MyRights         Rights
-	Muted            bool
+// ChatRecord — СТРОКА таблицы chats глазами зрителя, а не объект провода.
+// Наружу из неё собираются ДВА конструктора схемы: краткий `channel` (едет со
+// списками) и полный `channelFull` (экран информации) — ToChannel/ToChannelFull
+// ниже. Прежняя ChatCard склеивала их в одну плоскую карточку, из-за чего
+// `GET /chats/{id}/card` и кадр chat_update отдавали одно и то же в двух разных
+// формах.
+type ChatRecord struct {
+	ID       int64
+	Type     string // private | group | channel | saved | secret
+	Title    string
+	Username string
+	About    string
+	// PhotoID/PhotoPreview — chats.photo_media_id и stripped-превью по нему;
+	// PhotoW/PhotoH/PhotoSize — геометрия оригинала из media (нужна лестнице
+	// размеров channelFull.chat_photo, которая едет ПОЛНЫМ Photo).
+	PhotoID      *int64
+	PhotoPreview []byte
+	PhotoW       int
+	PhotoH       int
+	PhotoSize    int64
+	CreatorID    int64
+	MemberCount  int
+	CreatedAt    time.Time
+	// ViewerID — чьими глазами прочитана строка; 0 означает СНИМОК БЕЗ ЗРИТЕЛЯ
+	// (кадр chat_update один на всех участников). Различать обязательно:
+	// «зритель не состоит в чате» и «зрителя не спрашивали» дают одинаковый
+	// пустой MyRole, но первое — это pFlags.left, а второе — отсутствие любых
+	// флагов членства. Перепутать значит разослать всем участникам снимок, в
+	// котором они из чата вышли.
+	ViewerID int64
+	// MyRole/MyRights — членство ЗРИТЕЛЯ. Отдельным полем роль наружу не
+	// выходит (решение №3): creator это pFlags.creator, admin — наличие
+	// admin_rights.
+	MyRole   string
+	MyRights Rights
+	// MyJoinedAt — когда ЗРИТЕЛЬ вступил в чат (chat_members.joined_at той же
+	// строки членства, что MyRole/MyRights). Нулевое время — зритель не
+	// состоит либо зрителя не спрашивали (ViewerID == 0). Наружу поле выходит
+	// не само по себе, а обязательным channel.date — см. ChannelDate.
+	MyJoinedAt time.Time
+	// NotifySettings — пер-чатное переопределение уведомлений ЗРИТЕЛЯ целиком
+	// (мьют сроком, превью, звук), а не плоское булево `muted` рядом с
+	// конструктором. nil — зрителя не спрашивали (ViewerID == 0): снимок
+	// chat_update один на всех участников, и чужие настройки уведомлений в нём
+	// были бы прямой ложью. Параметр channelFull.notify_settings по схеме
+	// ОБЯЗАТЕЛЬНЫЙ — поэтому это указатель, а не пустой конструктор: пустой
+	// означал бы «переопределения нет», то есть конкретный ответ.
+	NotifySettings   *PeerNotifySettings
 	DiscussionChatID int64
+	IsForum          bool
+	// ThemeEmoticon — тема оформления чата (chat_theme.theme_id); "" — тема не
+	// задана. Прежде ехала полем каждой строки списка диалогов; в схеме её место
+	// — полная карточка (chatFull/channelFull.theme_emoticon), решение Р7.
+	ThemeEmoticon string
+	// PinnedMsgID — закреплённое сообщение чата НОМЕРОМ в чате (0 — нет):
+	// в схеме chatFull.pinned_msg_id адресует сообщение в его пире.
+	PinnedMsgID int64
+	// Горизонты чтения зрителя и счётчик непрочитанного: обязательные
+	// параметры channelFull (read_inbox_max_id / read_outbox_max_id /
+	// unread_count).
+	ReadInboxMaxID  int64
+	ReadOutboxMaxID int64
+	UnreadCount     int
 	// Signatures/SignatureProfiles — подписи постов канала (Telegram
 	// channels.toggleSignatures): показывать имя постящего админа и, опционально,
 	// ссылку на его профиль. Актуальны только для каналов.
@@ -199,6 +313,113 @@ type ChatCard struct {
 	// Group-wide settings (edit screens): default member permissions, slowmode,
 	// reaction policy, history visibility for new members.
 	Settings ChatSettings
+}
+
+// ChatPhoto — объединение ChatPhoto для строки: «фото нет» это состояние.
+func (c ChatRecord) ChatPhoto() ChatPhoto {
+	if c.PhotoID == nil {
+		return NewChatPhotoEmpty()
+	}
+	return NewChatPhoto(*c.PhotoID, c.PhotoPreview, false)
+}
+
+// FullPhoto — ПОЛНОЕ Photo с лестницей размеров: channelFull.chat_photo
+// открывается в медиавьювере, поэтому одного id ему мало. nil — фото нет.
+func (c ChatRecord) FullPhoto() *Photo {
+	if c.PhotoID == nil {
+		return nil
+	}
+	sizes := make([]PhotoSize, 0, 2)
+	if len(c.PhotoPreview) > 0 {
+		sizes = append(sizes, NewPhotoStrippedSize(c.PhotoPreview))
+	}
+	sizes = append(sizes, NewPhotoSize(SizeTypeFull, c.PhotoW, c.PhotoH, c.PhotoSize))
+	return NewPhoto(*c.PhotoID, sizes)
+}
+
+// ChannelDate — что уезжает в обязательный `channel.date` (int, СЕКУНДЫ).
+//
+// По схеме это НЕ дата создания чата: date — дата ВСТУПЛЕНИЯ зрителя, и датой
+// создания она подменяется только тому, кто в чате не состоит. Пока сюда ехал
+// CreatedAt, участник получал дату создания канала — то есть поле было
+// заполнено правдоподобно и неверно.
+//
+// Читает его клиент оригинала, когда вставляет служебное «вы вступили в
+// канал»: бабл messageActionChannelJoined КЛИЕНТСКИЙ и встаёт в историю ПО
+// ЭТОЙ ДАТЕ, между сообщением новее и сообщением старее
+// (tweb appMessagesManager.ts:6888-6930, getDetailsForChannelJoinedService).
+// Дата создания, отданная участнику, увела бы бабл в самое начало истории — а
+// это единственное место, к которому у оригинала цепляются «Похожие каналы»
+// (tweb bubbles.ts:7028-7118, класс bubble-similar-channels).
+//
+// Снимок БЕЗ ЗРИТЕЛЯ (ViewerID == 0 — кадр chat_update один на всех
+// участников) отдаёт 0, ровно как соседние горизонты чтения channelFull в том
+// же снимке: «не спрашивали». Чужая дата вступления, разосланная всем, была бы
+// прямой ложью, а дата создания — ложью правдоподобной, которую клиент от
+// ответа не отличит. Ноль он отличает, и это его штатная ветка:
+// `if(!date || …) return` (tweb appMessagesManager.ts:6896).
+func (c ChatRecord) ChannelDate() time.Time {
+	// Порядок проверок значим: «зрителя не спрашивали» гасит поле ПЕРВЫМ, до
+	// любой даты. Иначе случайно заполненная MyJoinedAt утекла бы в кадр,
+	// который уходит всем участникам разом.
+	if c.ViewerID == 0 {
+		return time.Time{}
+	}
+	if c.MyJoinedAt.IsZero() {
+		return c.CreatedAt
+	}
+	return c.MyJoinedAt
+}
+
+// ToChannel — краткий конструктор `channel`: то, что едет со списками. Права
+// зрителя (admin_rights) и ограничения обычного участника
+// (default_banned_rights) — часть краткой формы по схеме.
+func (c ChatRecord) ToChannel() Channel {
+	out := NewChannel(c.ID, c.Title, c.ChatPhoto(), c.ChannelDate(), ChannelFlags{
+		Creator:           c.ViewerID != 0 && c.MyRole == RoleCreator,
+		Left:              c.ViewerID != 0 && c.MyRole == "",
+		Broadcast:         c.Type == ChatTypeChannel,
+		Megagroup:         c.Type == ChatTypeGroup,
+		Signatures:        c.Signatures,
+		SignatureProfiles: c.SignatureProfiles,
+		SlowmodeEnabled:   c.Settings.SlowmodeSeconds > 0,
+		Forum:             c.IsForum,
+		HasLink:           c.DiscussionChatID != 0,
+	})
+	out.Username = c.Username
+	out.ParticipantsCount = c.MemberCount
+	out.SendPaidMessagesStars = int64(c.Settings.ChargeStars)
+	if c.ViewerID != 0 && c.MyRights != 0 {
+		ar := NewChatAdminRights(c.MyRights)
+		out.AdminRights = &ar
+	}
+	// ChatSettings.DefaultPerms — что участнику МОЖНО, а chatBannedRights —
+	// что НЕЛЬЗЯ: NewChatBannedRights инвертирует. Ловушка выписана в его
+	// докблоке; персональные ограничения (MemberRestriction.DeniedRights) —
+	// уже готовые запреты и инверсии НЕ требуют.
+	db := NewChatBannedRights(c.Settings.DefaultPerms, time.Time{})
+	out.DefaultBanned = &db
+	return out
+}
+
+// ToChannelFull — полный конструктор `channelFull`: экран информации.
+func (c ChatRecord) ToChannelFull() ChannelFull {
+	// history_for_new («история видна новым участникам») и hidden_prehistory
+	// схемы — ОДНО И ТО ЖЕ свойство с противоположным знаком.
+	out := NewChannelFull(c.ID, c.About, c.FullPhoto(), !c.Settings.HistoryForNew)
+	out.ReadInboxMaxID = c.ReadInboxMaxID
+	out.ReadOutboxMaxID = c.ReadOutboxMaxID
+	out.UnreadCount = c.UnreadCount
+	out.ParticipantsCount = c.MemberCount
+	out.PinnedMsgID = int(c.PinnedMsgID)
+	out.LinkedChatID = c.DiscussionChatID
+	out.SlowmodeSeconds = c.Settings.SlowmodeSeconds
+	out.TTLPeriod = c.Settings.AutoDeletePeriod
+	out.AvailableReactions = c.Settings.ToChatReactions()
+	out.SendPaidMessagesStars = int64(c.Settings.ChargeStars)
+	out.ThemeEmoticon = c.ThemeEmoticon
+	out.NotifySettings = c.NotifySettings
+	return out
 }
 
 // InviteLink is a join token for a chat.
@@ -216,6 +437,10 @@ type InviteLink struct {
 	Title string
 	// ExpiresAt — срок действия ссылки; nil — бессрочная.
 	ExpiresAt *time.Time
+	// CreatedAt — когда ссылка создана (обязательный `date` конструктора
+	// chatInviteExported). Колонка была в таблице с самого начала, а до витрины
+	// не доходила.
+	CreatedAt time.Time
 }
 
 // InviteEdit carries the optional fields of an invite-link edit (PATCH). A nil
@@ -249,7 +474,6 @@ type JoinRequest struct {
 	CreatedAt time.Time
 }
 
-// UserCard is a minimal public user record (batch lookups, sender names).
 // BannedUser is one row of a chat's removed-users list.
 type BannedUser struct {
 	UserID   int64
@@ -274,36 +498,42 @@ func (r MemberRestriction) Active(now time.Time) bool {
 	return r.UntilDate == nil || r.UntilDate.After(now)
 }
 
+// ToChatBannedRights — персональное ограничение как конструктор схемы.
+//
+// ⚠ ЛОВУШКА ПОЛЯРНОСТИ, ради которой метод и существует. Тип MemberPerms в
+// нашем коде носят ДВА поля с противоположным смыслом:
+//
+//	ChatSettings.DefaultPerms  — что участнику МОЖНО (дефолт 31 = всё);
+//	MemberRestriction.DeniedRights — что участнику НЕЛЬЗЯ.
+//
+// NewChatBannedRights принимает РАЗРЕШЕНИЯ и инвертирует их сам. Значит
+// DefaultPerms передаётся как есть, а DeniedRights — перевёрнутым; передать
+// сюда DeniedRights напрямую значит выдать запрещённое за разрешённое и
+// наоборот, то есть снять с человека ровно те ограничения, которые на него
+// наложили. Единственное место, где этот переворот записан.
+func (r MemberRestriction) ToChatBannedRights() ChatBannedRights {
+	var until time.Time
+	if r.UntilDate != nil {
+		until = *r.UntilDate
+	}
+	return NewChatBannedRights(AllMemberPerms&^r.DeniedRights, until)
+}
+
 // SavedDialog is one grouped row of Saved Messages («Избранное» → таб «Чаты»):
 // all saved messages attributed to one source peer (tweb saved dialogs).
 // Kind 'self' («Мои заметки») groups the user's own non-forwarded notes.
-type SavedDialog struct {
-	Kind     string // 'self' | 'user' | 'chat'
-	PeerID   int64  // user/chat id; 0 for 'self'
-	Title    string // resolved peer title ('' for 'self' — client names it)
-	PhotoURL string
-	Count    int
-	Last     Message
-}
-
-type UserCard struct {
-	ID          int64
-	Username    string
-	DisplayName string
-	FirstName   string
-	AvatarURL   string
-	// AvatarPreview — stripped-превью аватарки (см. domain.User.AvatarPreview).
-	AvatarPreview []byte
-	Phone         string
-}
-
-// ShortName is the name Telegram uses in compact contexts (chat-list preview
-// prefix, typing label): the first name when set, else the full display name.
-func (u UserCard) ShortName() string {
-	if u.FirstName != "" {
-		return u.FirstName
-	}
-	return u.DisplayName
+type SavedDialogRecord struct {
+	// PeerID — знаковый ключ ИСТОЧНИКА пересылки. У «Моих заметок» (ничего не
+	// переслано либо переслано у себя) это сам зритель: вида строкой
+	// (`kind: 'self'|'user'|'chat'`) больше нет — его отвечает знак ключа и
+	// сравнение с собой.
+	PeerID PeerID
+	// LastMsgID — КЛЮЧ СТРОКИ последнего сохранённого сообщения источника,
+	// LastMsgSeq — тот же последний НОМЕРОМ (top_message конструктора).
+	// Ни заголовка, ни аватарки, ни счётчика здесь нет: карточки едут
+	// векторами контейнера, а счётчика у оригинала не бывает вовсе.
+	LastMsgID  int64
+	LastMsgSeq int64
 }
 
 // ChannelUpdate is one entry in a channel's per-channel updates log

@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"unicode/utf8"
 
@@ -36,35 +35,39 @@ func (i *Interactor) SetForum(ctx context.Context, chatID, actorID int64, enable
 }
 
 // CreateTopic создаёт тему: сервисное сообщение-корень + строка forum_topics.
-func (i *Interactor) CreateTopic(ctx context.Context, chatID, userID int64, title, iconEmoji string, iconColor int) (domain.ForumTopic, error) {
+func (i *Interactor) CreateTopic(ctx context.Context, chatID, userID int64, title, iconEmoji string, iconColor int) (domain.ForumTopicRecord, error) {
 	if i.topics == nil {
-		return domain.ForumTopic{}, domain.ErrNotFound
+		return domain.ForumTopicRecord{}, domain.ErrNotFound
 	}
 	title = strings.TrimSpace(title)
 	if title == "" || utf8.RuneCountInString(title) > maxTopicTitle {
-		return domain.ForumTopic{}, domain.ErrTooLong
+		return domain.ForumTopicRecord{}, domain.ErrTooLong
 	}
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil {
-		return domain.ForumTopic{}, err
+		return domain.ForumTopicRecord{}, err
 	}
 	if !ok {
-		return domain.ForumTopic{}, domain.ErrNotFound
-	}
-	name := i.userCard(ctx, userID).ShortName()
-	root, err := i.Send(ctx, SendInput{
-		ChatID: chatID, SenderID: userID, Type: "service",
-		Text: fmt.Sprintf("%s создал(а) тему «%s»", name, title),
-	})
-	if err != nil {
-		return domain.ForumTopic{}, err
+		return domain.ForumTopicRecord{}, domain.ErrNotFound
 	}
 	if iconColor < 0 {
 		iconColor = 0
 	}
+	// Корень темы — messageActionTopicCreate. Прежде это было ЕДИНСТВЕННОЕ
+	// служебное сообщение, чей текст даже не JSON, а готовая русская фраза с
+	// уже вклеенным именем автора («%s создал(а) тему «%s»») — склейка имени в
+	// самом чистом виде. Имя теперь собирает клиент из from_id, название темы
+	// едет параметром title.
+	root, err := i.Send(ctx, SendInput{
+		ChatID: chatID, SenderID: userID,
+		Action: domain.NewMessageActionTopicCreate(title, iconColor),
+	})
+	if err != nil {
+		return domain.ForumTopicRecord{}, err
+	}
 	iconEmoji = sanitizeTopicEmoji(iconEmoji)
-	return i.topics.Create(ctx, domain.ForumTopic{
-		ChatID: chatID, RootMsgID: root.ID, Title: title, IconColor: iconColor,
+	return i.topics.Create(ctx, domain.ForumTopicRecord{
+		ChatID: chatID, RootMsgID: root.ID, RootMsgSeq: root.Seq, Title: title, IconColor: iconColor,
 		IconEmoji: iconEmoji, CreatedBy: userID,
 	})
 }
@@ -128,7 +131,7 @@ func (i *Interactor) SetTopicMuted(ctx context.Context, chatID, rootMsgID, userI
 }
 
 // topicManagerOK — создатель темы или админ/создатель чата (mirror tweb manage_topics).
-func (i *Interactor) topicManagerOK(ctx context.Context, t domain.ForumTopic, userID int64) bool {
+func (i *Interactor) topicManagerOK(ctx context.Context, t domain.ForumTopicRecord, userID int64) bool {
 	if t.CreatedBy == userID {
 		return true
 	}

@@ -181,7 +181,7 @@ func (i *Interactor) chargePaidMessage(ctx context.Context, in SendInput) (paidC
 	if err != nil {
 		return paidCharge{}, err
 	}
-	if typ != "group" {
+	if typ != domain.ChatTypeGroup {
 		return paidCharge{}, nil
 	}
 	s, err := i.groups.Settings(ctx, in.ChatID)
@@ -223,5 +223,6 @@ func (i *Interactor) chargePaidMessage(ctx context.Context, in SendInput) (paidC
 // вкладки). Абсолютное значение баланса + плотный pts-курсор делают catch-up через
 // /sync идемпотентным. Recipient — сам пользователь (свои устройства).
 func (i *Interactor) publishBalance(ctx context.Context, userID, balance int64) {
-	_ = i.logAndPublish(ctx, []int64{userID}, "balance_update", map[string]any{"balance": balance})
+	_ = i.logAndPublish(ctx, 0, []int64{userID}, "balance_update",
+		map[string]any{"_": domain.UpdateStarsBalanceTag, "balance": domain.NewStarsAmount(balance)})
 }

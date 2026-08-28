@@ -4,9 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strconv"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/messenger-denis/backend/internal/domain"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 	usecasecontacts "github.com/messenger-denis/backend/internal/usecase/contacts"
@@ -43,7 +41,7 @@ func (h *ContactPhotoHandler) SetCustomPhoto(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	err := h.contacts.SetCustomPhoto(r.Context(), u.ID, userID, mediaContentURL(body.MediaID))
+	err := h.contacts.SetCustomPhoto(r.Context(), u.ID, userID, body.MediaID)
 	switch {
 	case errors.Is(err, usecasecontacts.ErrSelfContact):
 		writeError(w, http.StatusBadRequest, "cannot_set_self")
@@ -55,7 +53,9 @@ func (h *ContactPhotoHandler) SetCustomPhoto(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusInternalServerError, "set contact photo failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "url": mediaContentURL(body.MediaID)})
+	// Ответ — «получилось». Номер фото был ЭХОМ запроса: клиент прислал его
+	// сам, и второй раз он ему не нужен.
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // ClearCustomPhoto removes the owner's personal photo for a contact
@@ -78,7 +78,7 @@ func (h *ContactPhotoHandler) ClearCustomPhoto(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusInternalServerError, "clear contact photo failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // SuggestPhoto suggests a new profile photo to a contact
@@ -99,7 +99,7 @@ func (h *ContactPhotoHandler) SuggestPhoto(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	msg, err := h.chat.SuggestProfilePhoto(r.Context(), u.ID, userID, body.MediaID, mediaContentURL(body.MediaID))
+	msg, err := h.chat.SuggestProfilePhoto(r.Context(), u.ID, userID, body.MediaID)
 	if errors.Is(err, domain.ErrInvalid) {
 		writeError(w, http.StatusBadRequest, "invalid")
 		return
@@ -108,23 +108,34 @@ func (h *ContactPhotoHandler) SuggestPhoto(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusInternalServerError, "suggest photo failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "chat_id": msg.ChatID, "msg_id": msg.ID})
+	// Ответ — САМО созданное сервисное сообщение, тем же конструктором, что и
+	// любое другое: адрес тройкой полей у него больше нет.
+	writeMessage(w, r, h.chat, msg)
 }
 
 // AcceptSuggestion accepts a suggested profile photo
-// (POST /photo_suggestions/{id}/accept): the photo becomes the caller's avatar.
+// (POST /chats/{peerID}/photo_suggestions/{msgSeq}/accept): the photo becomes
+// the caller's avatar.
+//
+// Ключ пира появился в адресе не для красоты: предложение это СООБЩЕНИЕ, а
+// сообщение адресуется парой «пир + номер». Прежний /photo_suggestions/{id}
+// нёс внутренний ключ строки — единственное число, которым такой адрес
+// вообще мог существовать без пира.
 func (h *ContactPhotoHandler) AcceptSuggestion(w http.ResponseWriter, r *http.Request) {
 	u, ok := UserFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "no user")
 		return
 	}
-	msgID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err != nil || msgID <= 0 {
-		writeError(w, http.StatusBadRequest, "invalid id")
+	chatID, ok := peerChatID(w, r, h.chat)
+	if !ok {
 		return
 	}
-	err = h.chat.AcceptProfilePhotoSuggestion(r.Context(), u.ID, msgID)
+	msgID, ok := msgSeqID(w, r, h.chat, chatID)
+	if !ok {
+		return
+	}
+	err := h.chat.AcceptProfilePhotoSuggestion(r.Context(), u.ID, msgID)
 	switch {
 	case errors.Is(err, domain.ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden")
@@ -142,5 +153,5 @@ func (h *ContactPhotoHandler) AcceptSuggestion(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusInternalServerError, "accept suggestion failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }

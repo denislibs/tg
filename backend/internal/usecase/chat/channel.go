@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -11,7 +10,7 @@ import (
 func (i *Interactor) CreateChannel(ctx context.Context, creatorID int64, title, about, username string, isPublic bool) (int64, error) {
 	var chatID int64
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		id, e := i.groups.CreateMultiMember(ctx, "channel", title, about, username, isPublic, creatorID)
+		id, e := i.groups.CreateMultiMember(ctx, domain.ChatTypeChannel, title, about, username, isPublic, creatorID)
 		if e != nil {
 			return e
 		}
@@ -21,87 +20,41 @@ func (i *Interactor) CreateChannel(ctx context.Context, creatorID int64, title, 
 	return chatID, err
 }
 
-// PostToChannel inserts a channel message and delivers it O(1): bump channel_pts,
-// append a channel_update, then PUBLISH once to channel:{id}. No per-subscriber fan-out.
-func (i *Interactor) PostToChannel(ctx context.Context, channelID, actorID int64, text string, entities []domain.MessageEntity, clientMsgID string) (domain.Message, error) {
-	if err := i.requireRight(ctx, channelID, actorID, domain.RightPostMessages); err != nil {
-		return domain.Message{}, err
-	}
-	// Форматирование поста проходит ту же санитизацию, что и обычная отправка
-	// (message.go:132) — клиентским offset/length не доверяем.
-	entities = sanitizeEntities(entities)
-	var cmid *string
-	if clientMsgID != "" {
-		cmid = &clientMsgID
-	}
-	var msg domain.Message
-	var pts int64
-	// Зеркало поста (если у канала есть обсуждение) — доставляется участникам
-	// группы обсуждения ПОСЛЕ коммита, тем же publishMessageDelivery, что и
-	// обычная отправка (см. mirrorChannelPost/fanout.go).
-	var mirrorDeliv *mirrorDelivery
-	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		seq, e := i.msgs.NextSeq(ctx, channelID)
-		if e != nil {
-			return e
-		}
-		m, e := i.msgs.Insert(ctx, domain.Message{
-			ChatID: channelID, Seq: seq, SenderID: actorID, Type: "text", Text: text, Entities: entities, ClientMsgID: cmid,
-		})
-		if e != nil {
-			return e
-		}
-		msg = m
-		// Зеркало поста в группе обсуждения — в той же транзакции: пост без
-		// зеркала остался бы без треда комментариев.
-		md, e := i.mirrorChannelPost(ctx, m)
-		if e != nil {
-			return e
-		}
-		mirrorDeliv = md
-		payload, _ := json.Marshal(channelPostPayload(m, actorID))
-		pts, e = i.channels.AppendUpdate(ctx, channelID, "new_message", payload)
-		return e
+// PostToChannel публикует ТЕКСТОВЫЙ пост в канал.
+//
+// Своей реализации у неё больше нет: доставка постом канала (channel_pts +
+// запись журнала + одна публикация в топик, без веера по подписчикам) — это
+// ветка обычной отправки, выбранная по виду ПИРА, как в оригинале, где метод
+// отправки один на все виды получателей. Пока веток было две, ручка постинга
+// принимала только текст, и всё, что несёт вложение — пост с картинкой,
+// опрос, чек-лист, розыгрыш, — уходило второй веткой: мимо журнала канала (то
+// есть мимо догона разрыва) и мимо гейта прав.
+//
+// Ручка остаётся как имя действия «опубликовать в канал» — у неё своя проверка
+// на границе HTTP и своя форма ответа.
+func (i *Interactor) PostToChannel(ctx context.Context, channelID, actorID int64, text string, entities domain.MessageEntities, clientMsgID string) (domain.Message, error) {
+	return i.Send(ctx, SendInput{
+		ChatID: channelID, SenderID: actorID, Text: text, Entities: entities, ClientMsgID: clientMsgID,
 	})
-	if err != nil {
-		return domain.Message{}, err
-	}
-	// publish once after commit — the live frame carries channel_pts so the client
-	// gates it against the per-channel cursor (same envelope /difference replays).
-	if i.chPub != nil {
-		_ = i.chPub.PublishToChannel(ctx, channelID, frameChannelPts("new_message", channelPostPayload(msg, actorID), pts))
-	}
-	if mirrorDeliv != nil {
-		i.publishMessageDelivery(ctx, mirrorDeliv.msg, nil, mirrorDeliv.msg.SenderID,
-			mirrorDeliv.recipients, mirrorDeliv.ptsByUser, mirrorDeliv.unreadByUser)
-	}
-	return msg, nil
 }
 
-// channelPostPayload — снимок поста канала для channel-лога и живого кадра (единый
-// источник, чтобы difference-реплей и live совпадали побайтно, кроме channel_pts).
-func channelPostPayload(m domain.Message, actorID int64) map[string]any {
-	p := map[string]any{
-		"chat_id": m.ChatID, "msg_id": m.ID, "seq": m.Seq, "sender_id": actorID,
-		"type": "text", "text": m.Text, "media_id": nil, "created_at": m.CreatedAt,
-	}
-	// Форматирование поста. Без него подписчик получает живой кадр (и реплей
-	// difference) голым текстом: bold/text_link/mention/hashtag пропадают, а
-	// история из БД потом приезжает уже размеченной — бабл «перерисовывается»
-	// сам собой. Пустой срез не кладём — payload остаётся байт-в-байт прежним
-	// для постов без форматирования.
-	if len(m.Entities) > 0 {
-		p["entities"] = m.Entities
-	}
-	// client_msg_id — единственный ключ, которым отправитель матчит эхо со своим
-	// оптимистичным баблом: пост канала уходит REST'ом, message_ack (как у
-	// личных чатов и групп, см. messageUpdatePayload) на этом пути нет. Без
-	// поля бабл навсегда остаётся «отправляется», а эхо ложится вторым.
-	// Остальным подписчикам поле безвредно — им нечего им матчить.
-	if m.ClientMsgID != nil {
-		p["client_msg_id"] = *m.ClientMsgID
-	}
-	return p
+// channelPostPayload — тело кадра поста канала для channel-лога и живого кадра
+// (единый источник, чтобы difference-реплей и live совпадали побайтно, кроме
+// channel_pts).
+//
+// Собственной формы у него больше нет: это ТОТ ЖЕ messageUpdatePayload, что у
+// личного чата и группы. Прежде здесь была отдельная, ДЕВЯТАЯ проводная форма
+// сообщения, и она зашивала `"type": "text"` и `"media_id": nil` ЛИТЕРАЛАМИ —
+// медиа-пост этой формой передать было нельзя вовсе.
+//
+// Ключ пира здесь ставится сразу, а не приклеивается на выходе: у канала он
+// один на всех подписчиков (peerChannel), от зрителя не зависит.
+func (i *Interactor) channelPostPayload(ctx context.Context, m domain.Message) map[string]any {
+	// out здесь НЕ ставится, и это осознанно: тело поста канала одно на всех
+	// подписчиков (в канале с миллионом их разворачивать по зрителям
+	// расточительно), а `out` — пер-зритель. Автор получает верный флаг из
+	// ответа на свою же публикацию и из истории.
+	return withPeer(i.channelMessagePayload(ctx, m), domain.ToPeerID(m.ChatID, true), false)
 }
 
 // SetSignatures toggles channel post signatures (Telegram
@@ -146,7 +99,7 @@ func (i *Interactor) JoinPublic(ctx context.Context, username string, userID int
 }
 
 // SearchChats returns public chats matching q.
-func (i *Interactor) SearchChats(ctx context.Context, q string, limit int) ([]domain.ChatCard, error) {
+func (i *Interactor) SearchChats(ctx context.Context, q string, limit int) ([]domain.ChatRecord, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 20
 	}
@@ -154,7 +107,7 @@ func (i *Interactor) SearchChats(ctx context.Context, q string, limit int) ([]do
 }
 
 // SimilarChannels рекомендует публичные каналы, похожие на chatID по аудитории.
-func (i *Interactor) SimilarChannels(ctx context.Context, chatID, viewerID int64, limit int) ([]domain.ChatCard, int, error) {
+func (i *Interactor) SimilarChannels(ctx context.Context, chatID, viewerID int64, limit int) ([]domain.ChatRecord, int, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 30
 	}
@@ -162,7 +115,7 @@ func (i *Interactor) SimilarChannels(ctx context.Context, chatID, viewerID int64
 }
 
 // SearchUsers returns users matching q.
-func (i *Interactor) SearchUsers(ctx context.Context, q string, limit int) ([]domain.UserCard, error) {
+func (i *Interactor) SearchUsers(ctx context.Context, q string, limit int) ([]domain.UserReal, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 20
 	}

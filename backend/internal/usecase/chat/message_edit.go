@@ -12,7 +12,7 @@ import (
 // EditMessage replaces the text of the caller's own message, stamps edited_at,
 // and fans out an "edit_message" update to every member (so all see the new text
 // and the "edited" marker). Text-only; author-only.
-func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int64, text string, entities []domain.MessageEntity) (domain.Message, error) {
+func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int64, text string, entities domain.MessageEntities) (domain.Message, error) {
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil {
 		return domain.Message{}, err
@@ -37,6 +37,7 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 
 	var msg domain.Message
 	var members []int64
+	var pp *peerPayloads
 	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		m, e := i.msgs.UpdateText(ctx, msgID, text, entities)
@@ -50,12 +51,16 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 		}
 		slices.Sort(mem)
 		members = mem
-		payload, e := json.Marshal(editUpdatePayload(msg))
+		pp, e = i.newPeerPayloads(ctx, chatID, i.editMessagePayload(ctx, msg))
 		if e != nil {
 			return e
 		}
 		date := nowMillis()
 		for _, uid := range members {
+			payload, e := pp.payload(uid)
+			if e != nil {
+				return e
+			}
 			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "edit_message", payload)
 			if e != nil {
 				return e
@@ -68,9 +73,8 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 		return domain.Message{}, err
 	}
 	if i.publisher != nil {
-		base := editUpdatePayload(msg)
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, framePts("edit_message", base, ptsByUser[uid]))
+			_ = i.publisher.PublishToUser(ctx, uid, pp.framePts("edit_message", uid, ptsByUser[uid]))
 		}
 	}
 	return msg, nil
@@ -101,7 +105,7 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 		if e != nil {
 			return e
 		}
-		if typ != "private" {
+		if typ != domain.ChatTypePrivate {
 			if err := i.requireRight(ctx, chatID, userID, domain.RightDeleteMessages); err != nil {
 				return domain.ErrForbidden
 			}
@@ -110,6 +114,13 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 
 	var members []int64
 	ptsByUser := map[int64]int64{}
+	addr, err := i.peerAddress(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	payloadFor := func(uid int64) ([]byte, error) {
+		return json.Marshal(deletePayload(addr.forViewer(uid), cur.Seq))
+	}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		date := nowMillis()
 		if revoke {
@@ -122,11 +133,11 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 			}
 			slices.Sort(mem)
 			members = mem
-			payload, e := json.Marshal(deleteUpdatePayload(chatID, msgID, cur.Seq, false))
-			if e != nil {
-				return e
-			}
 			for _, uid := range members {
+				payload, e := payloadFor(uid)
+				if e != nil {
+					return e
+				}
 				pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "delete_message", payload)
 				if e != nil {
 					return e
@@ -140,7 +151,7 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 			return e
 		}
 		members = []int64{userID}
-		payload, e := json.Marshal(deleteUpdatePayload(chatID, msgID, cur.Seq, true))
+		payload, e := payloadFor(userID)
 		if e != nil {
 			return e
 		}
@@ -155,10 +166,16 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 		return err
 	}
 	if i.publisher != nil {
-		base := deleteUpdatePayload(chatID, msgID, cur.Seq, !revoke)
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, framePts("delete_message", base, ptsByUser[uid]))
+			body := deletePayload(addr.forViewer(uid), cur.Seq)
+			_ = i.publisher.PublishToUser(ctx, uid, framePts("delete_message", body, ptsByUser[uid]))
 		}
+	}
+	// Снятый комментарий уменьшает счётчик «N комментариев» у поста канала —
+	// тот же кадр, что и на приходе (см. publishPostReplies). Только у
+	// удаления «у всех»: «удалить у себя» тред не трогает.
+	if revoke {
+		i.publishPostReplies(ctx, cur)
 	}
 	return nil
 }

@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
 	"path"
 	"slices"
 	"strconv"
@@ -21,7 +20,7 @@ const maxBotMedia = 20 << 20 // 20 MiB на файл, загружаемый б�
 // ── редактирование/удаление сообщений ──
 
 // BotEditMessageText меняет текст (и, если задано, клавиатуру) сообщения бота.
-func (i *Interactor) BotEditMessageText(ctx context.Context, bot domain.BotAccount, chatID, msgID int64, text string, entities []domain.MessageEntity, markup *domain.ReplyMarkup, setMarkup bool) (domain.Message, error) {
+func (i *Interactor) BotEditMessageText(ctx context.Context, bot domain.BotAccount, chatID, msgID int64, text string, entities domain.MessageEntities, markup domain.ReplyMarkup, setMarkup bool) (domain.Message, error) {
 	if utf8.RuneCountInString(text) > maxMessageRunes {
 		return domain.Message{}, domain.ErrTooLong
 	}
@@ -29,11 +28,11 @@ func (i *Interactor) BotEditMessageText(ctx context.Context, bot domain.BotAccou
 }
 
 // BotEditReplyMarkup меняет только клавиатуру сообщения бота (markup=nil — убрать).
-func (i *Interactor) BotEditReplyMarkup(ctx context.Context, bot domain.BotAccount, chatID, msgID int64, markup *domain.ReplyMarkup) (domain.Message, error) {
+func (i *Interactor) BotEditReplyMarkup(ctx context.Context, bot domain.BotAccount, chatID, msgID int64, markup domain.ReplyMarkup) (domain.Message, error) {
 	return i.botEditMessage(ctx, bot, chatID, msgID, nil, nil, markup, true)
 }
 
-func (i *Interactor) botEditMessage(ctx context.Context, bot domain.BotAccount, chatID, msgID int64, text *string, entities []domain.MessageEntity, markup *domain.ReplyMarkup, setMarkup bool) (domain.Message, error) {
+func (i *Interactor) botEditMessage(ctx context.Context, bot domain.BotAccount, chatID, msgID int64, text *string, entities domain.MessageEntities, markup domain.ReplyMarkup, setMarkup bool) (domain.Message, error) {
 	cur, err := i.msgs.GetByID(ctx, msgID)
 	if err != nil {
 		return domain.Message{}, err
@@ -46,6 +45,7 @@ func (i *Interactor) botEditMessage(ctx context.Context, bot domain.BotAccount, 
 	}
 	msg := cur
 	var members []int64
+	var pp *peerPayloads
 	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if text != nil {
@@ -68,12 +68,16 @@ func (i *Interactor) botEditMessage(ctx context.Context, bot domain.BotAccount, 
 		}
 		slices.Sort(mem)
 		members = mem
-		payload, e := json.Marshal(editUpdatePayload(msg))
+		pp, e = i.newPeerPayloads(ctx, chatID, i.editMessagePayload(ctx, msg))
 		if e != nil {
 			return e
 		}
 		date := nowMillis()
 		for _, uid := range members {
+			payload, e := pp.payload(uid)
+			if e != nil {
+				return e
+			}
 			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "edit_message", payload)
 			if e != nil {
 				return e
@@ -86,9 +90,8 @@ func (i *Interactor) botEditMessage(ctx context.Context, bot domain.BotAccount, 
 		return domain.Message{}, err
 	}
 	if i.publisher != nil {
-		base := editUpdatePayload(msg)
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, framePts("edit_message", base, ptsByUser[uid]))
+			_ = i.publisher.PublishToUser(ctx, uid, pp.framePts("edit_message", uid, ptsByUser[uid]))
 		}
 	}
 	return msg, nil
@@ -113,7 +116,7 @@ func (i *Interactor) BotDeleteMessage(ctx context.Context, bot domain.BotAccount
 
 // BotSendMedia отправляет фото/видео/документ. fileRef — URL (скачиваем и кладём
 // в хранилище от имени бота) или числовой file_id (переиспользуем медиа бота).
-func (i *Interactor) BotSendMedia(ctx context.Context, bot domain.BotAccount, chatID int64, msgType, fileRef, caption string, entities []domain.MessageEntity, markup *domain.ReplyMarkup, fileName string) (domain.Message, error) {
+func (i *Interactor) BotSendMedia(ctx context.Context, bot domain.BotAccount, chatID int64, msgType, fileRef, caption string, entities domain.MessageEntities, markup domain.ReplyMarkup, fileName string) (domain.Message, error) {
 	ok, err := i.chats.IsMember(ctx, chatID, bot.BotID)
 	if err != nil {
 		return domain.Message{}, err
@@ -187,13 +190,14 @@ func (i *Interactor) BotGetChat(ctx context.Context, bot domain.BotAccount, chat
 		return nil, err
 	}
 	out := map[string]any{"id": chatID, "type": typ}
-	if typ == "private" {
+	if typ == domain.ChatTypePrivate {
 		peer := i.otherMember(ctx, chatID, bot.BotID)
 		if peer != 0 {
-			username, name, _ := i.botAPI.UserBrief(ctx, peer)
-			out["first_name"] = name
-			if username != "" {
-				out["username"] = username
+			if u, e := i.botAPI.UserBrief(ctx, peer); e == nil {
+				out["first_name"] = u.FirstName
+				if u.Username != "" {
+					out["username"] = u.Username
+				}
 			}
 		}
 		return out, nil
@@ -221,11 +225,7 @@ func (i *Interactor) BotGetChatMember(ctx context.Context, bot domain.BotAccount
 	if !ok {
 		return nil, domain.ErrForbidden
 	}
-	username, name, _ := i.botAPI.UserBrief(ctx, userID)
-	user := map[string]any{"id": userID, "is_bot": false, "first_name": name}
-	if username != "" {
-		user["username"] = username
-	}
+	user := i.userBrief(ctx, userID)
 	status := "left"
 	if i.groups != nil {
 		if m, e := i.groups.GetMember(ctx, chatID, userID); e == nil {
@@ -356,7 +356,7 @@ func (i *Interactor) BotWebAppData(ctx context.Context, viewerID, botID int64, d
 	i.dispatchBotUpdate(ctx, bot, map[string]any{
 		"message": map[string]any{
 			"from": i.userBrief(ctx, viewerID),
-			"chat": map[string]any{"id": chatID, "type": "private"},
+			"chat": i.botChat(ctx, chatID),
 			"date": time.Now().Unix(),
 			"web_app_data": map[string]any{
 				"data":        data,

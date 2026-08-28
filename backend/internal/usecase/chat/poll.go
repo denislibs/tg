@@ -26,6 +26,16 @@ type SendPollInput struct {
 	Quiz             bool
 	CorrectOption    *int
 	ClientMsgID      string
+	// Общий пакет параметров отправки (ответ/цитата/тред/тихо/от имени канала):
+	// опрос — такое же сообщение, как остальные, и уезжает тем же Send.
+	// Effect в пакет не входит: sanitizeEffect снимает эффект с типа "poll".
+	ReplyToID        *int64
+	ReplyToPeerID    *int64
+	ReplyQuoteText   *string
+	ReplyQuoteOffset *int
+	ThreadRootID     *int64
+	Silent           bool
+	SendAsChatID     *int64
 }
 
 // SendPoll валидирует и отправляет опрос: создаёт poll, затем сообщение через
@@ -78,6 +88,9 @@ func (i *Interactor) SendPoll(ctx context.Context, in SendPollInput) (domain.Mes
 	msg, err := i.Send(ctx, SendInput{
 		ChatID: in.ChatID, SenderID: in.SenderID, Type: "poll",
 		ClientMsgID: in.ClientMsgID, PollID: &p.ID,
+		ReplyToID: in.ReplyToID, ReplyToPeerID: in.ReplyToPeerID,
+		ReplyQuoteText: in.ReplyQuoteText, ReplyQuoteOffset: in.ReplyQuoteOffset,
+		ThreadRootID: in.ThreadRootID, Silent: in.Silent, SendAsChatID: in.SendAsChatID,
 	})
 	if err != nil {
 		return domain.Message{}, err
@@ -232,7 +245,20 @@ func (i *Interactor) publishPollUpdate(ctx context.Context, chatID, pollID int64
 	if err != nil {
 		return
 	}
+	media := info.ToMedia()
+	// Итоги собраны для «зрителя 0», то есть заведомо УРЕЗАНЫ: тело кадра одно
+	// на всех получателей, а chosen/correct — пер-зрительские. В схеме ровно это
+	// и называется pollResults.pFlags.min, и клиент по нему сохраняет свой
+	// выбор. Без флага «урезанность» пришлось бы подразумевать безусловно — а
+	// значит персонализированные итоги были бы молча выброшены.
+	media.Results.MarkMin()
 	// Абсолютные агрегаты опроса + плотный pts-курсор делают catch-up через /sync
 	// идемпотентным (свой выбор клиент знает сам, correct_option скрыт).
-	_ = i.logAndPublish(ctx, members, "poll_update", map[string]any{"chat_id": chatID, "poll": info})
+	_ = i.logAndPublishPerPeer(ctx, chatID, members, "poll_update",
+		func(peer domain.PeerID) map[string]any {
+			return map[string]any{
+				"_": domain.UpdateMessagePollTag, "peer": domain.NewPeer(peer),
+				"poll_id": media.Poll.ID, "poll": media.Poll, "results": media.Results,
+			}
+		})
 }

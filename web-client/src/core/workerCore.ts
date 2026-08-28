@@ -10,7 +10,7 @@ import { attachStreamBridge } from './net/dnp/streamBridge'
 import { AppConfig } from '../config/app'
 import { newHealthManager } from './managers/healthManager'
 import { TokenStore } from './auth/tokenStore'
-import { newAuthManager, type User } from './managers/authManager'
+import { newAuthManager, type PeerProfile } from './managers/authManager'
 import { newProfileManager } from './managers/profileManager'
 import { newPremiumManager } from './managers/premiumManager'
 import { newChatsManager } from './managers/chatsManager'
@@ -22,6 +22,8 @@ import { newFoldersManager } from './managers/foldersManager'
 import { newGroupsManager } from './managers/groupsManager'
 import { newChannelsManager } from './managers/channelsManager'
 import { newPeersManager } from './managers/peersManager'
+import { isBroadcast } from './peers/predicates'
+import type { Chat } from './peers/peer'
 import { newDialogsManager } from './managers/dialogsManager'
 import { newPresenceManager } from './managers/presenceManager'
 import { newStoriesManager } from './managers/storiesManager'
@@ -48,11 +50,14 @@ import { newCursor } from './realtime/cursor'
 import { newChannelFunnel, type ChannelDiff } from './realtime/channelFunnel'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type NewMessageEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type ChatThemeUpdateEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type RepliesUpdateEvt, type Update } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
-import { PASS_THROUGH, type LoggedWsType } from './realtime/eventCatalog'
+import { generateMessageId } from './history/messageId'
+import { getPeerId, toPeerId } from './peers/peerId'
+import { LOGGED_WITHOUT_CONSTRUCTOR, PASS_THROUGH } from './realtime/transportFrames'
+import { CHANNEL_CURSOR, UPDATE_RT, channelPeerId, frameKey, updatePredicate } from './realtime/updateCatalog'
 import { idbGet, idbSet } from './store/idbKv'
-import { persistScope, loadDialogs, loadStateAll, saveStateKey, saveDialogs, saveMe } from './store/persist'
+import { persistScope, loadDialogs, loadStateAll, saveStateKey, saveDialogs, saveMe, loadMe } from './store/persist'
 import { STATE_VERSION, initialState } from './state/state'
 import { newWorkerScope } from './realtime/workerScope'
 import indexOfAndSplice from '../helpers/array/indexOfAndSplice'
@@ -71,11 +76,32 @@ export function createWorkerCore() {
   // fileUpload активен только при DNP-ON: загрузка медиа чанками через канал (media.upload).
   const fileUpload = AppConfig.dnp.enabled ? newFileUpload(ws) : undefined
   const rest = new RestClient('/api', () => tokens.get(), () => tokens.ready(), channelRpc)
+  // Провод TL у REST — тем же флагом, что у сокета: формат просит КЛИЕНТ, а
+  // сервер умеет обе формы (заголовок `Accept`). Разбор грузится динамически,
+  // чтобы схема не попадала в бандл при выключенном флаге.
+  if (AppConfig.tlWire) {
+    // Отказ глотаем: не подгрузился разбор TL — REST остаётся на JSON, ту же форму
+    // сервер отдаёт по тому же `Accept`. Это деградация, а не повод для unhandled rejection.
+    void import('./net/tlFrames').then((m) => { rest.useTLWire(m.decodeTLValue) }).catch(() => {})
+  }
   // Stage 1C.2 (Task 1): текущий пользователь — воркер единственный владелец.
   // Раньше здесь жил голый `meId: number | null` для внутренних нужд (кэш
-  // «мои» реакций) — теперь кэшируем полного User и рассылаем его вкладкам
+  // «мои» реакций) — теперь кэшируем профиль целиком и рассылаем его вкладкам
   // (rt:me) через setMe при каждом изменении, а не только держим id при себе.
-  let me: User | null = null
+  let me: PeerProfile | null = null
+  // Гейт «личность известна» (Message.out — порт tweb pFlags.out). `out`
+  // выводится сравнением senderId с id текущего пользователя, а тот появляется у
+  // воркера асинхронно: раньше — только с ответом /me. Страница истории,
+  // обслуженная до него, уехала бы вкладке с out=false у ВСЕХ сообщений —
+  // молчаливая регрессия (все свои сообщения слева, без галочек). Гейт снимает
+  // либо гидрация `me` с диска в start() (симметрично write-through `saveMe`
+  // ниже — на диске лежит `me` прошлого запуска), либо первый setMe, что
+  // случится раньше; на первом в жизни браузера входе диска ещё нет, но там
+  // `me` ставит сам вход (authManager.persist → onMeChanged → setMe) ДО того,
+  // как вкладка попросит историю. Ждут гейт только сетевые пути messagesManager
+  // (см. meReady в MessagesDeps); воркер без start() истории не обслуживает.
+  let markMeReady!: () => void
+  const meReady = new Promise<void>((resolve) => { markMeReady = resolve })
   // Публикует свежий `me` всем вкладкам + обновляет локальный кэш. Зовётся на
   // старте (auth.me() ниже) и как onMeChanged профиля/премиума/логаута.
   // `broadcast` объявлен ниже — функция дёргает его лениво (тот же приём, что
@@ -94,8 +120,9 @@ export function createWorkerCore() {
   // дебаунс не нужен») — `me` меняется по явным действиям пользователя
   // (профиль/премиум/вход/выход), не потоком. Passcode-гейт — тот же, что и
   // раньше: внутри `saveMe` (core/store/persist.ts), новый путь его не обходит.
-  function setMe(u: User | null): void {
+  function setMe(u: PeerProfile | null): void {
     me = u
+    markMeReady() // личность разрешена — гейт `out` снимаем (идемпотентно)
     void saveMe(u)
     broadcast(RT.me, u)
   }
@@ -143,14 +170,59 @@ export function createWorkerCore() {
   })
   const profile = newProfileManager({ rest, onMeChanged: setMe, getMe: () => me })
   const premium = newPremiumManager({ rest, onMeChanged: setMe })
-  const chats = newChatsManager({ rest })
+  const chats = newChatsManager({
+    rest,
+    // Контейнер «Избранного» несёт векторы `chats`/`users`/`messages`: строка
+    // держит только ССЫЛКИ, и разрешаются они тем же порядком, что у
+    // контейнера диалогов. `peers`/`messages` объявлены НИЖЕ — та же ленивая
+    // forward-ссылка, что у соседних менеджеров: стрелка вызывается только на
+    // сам запрос.
+    peers: { saveApiPeers: (r) => peers.saveApiPeers(r) },
+    messages: {
+      saveApiMessages: (list) => messages.saveApiMessages(list),
+      getMessageByPeer: (peerId, seq) => messages.getMessageByPeer(peerId, seq),
+    },
+  })
   // decryptSecret дергает secret лениво — стрелка вызывается только на fetch истории
   // (после инициализации модуля), поэтому forward-ссылка на объявленный ниже secret безопасна.
   // broadcast объявлен ниже — стрелка дергает его лениво (оптимистичные мутации
   // tweb-модели: менеджер применяет к SSOT и бродкастит эхо всем вкладкам). Нужен
   // deleteMessage (RPC-путь удаления сообщения): рассылает остальным вкладкам
   // remove-операции, которых WS delete_message уже не даст (SSOT к его приходу пуст).
-  const messages = newMessagesManager({ rest, decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody), getMeId: () => me?.id ?? null, broadcast: (event, payload) => broadcast(event, payload) })
+  const messages = newMessagesManager({
+    rest,
+    decryptSecret: (peerId, encBody) => secret.decryptMessage(peerId, encBody),
+    getMeId: () => me?.user.id ?? null,
+    // Порт `appPeersManager.isBroadcast(peerId)` для `generateFlags`: бабл поста
+    // вещательного канала рождается с `pFlags.post` — иначе он стоял бы справа
+    // до эха и прыгал влево (см. `PendingCtx.isBroadcastChat`). Стрелка ленивая
+    // ровно как send/upload ниже: `peers` объявлен дальше по файлу.
+    isBroadcastChat: (peerId) => isBroadcast(peers.cachedPeer(peerId) as Chat | undefined),
+    // Гейт вывода `out` (см. объявление meReady выше).
+    meReady: () => meReady,
+    broadcast: (event, payload) => broadcast(event, payload),
+    // ТРАНСПОРТ И АПЛОАД — ИНЪЕКЦИЕЙ (порт модели tweb: менеджер получает
+    // зависимости при сборке через реестр AppManagers, а не импортирует их).
+    // Именно это снимает кольцо messagesManager ↔ connectionManager, из-за
+    // которого отправка раньше жила в realtime.ts. Все пять стрелок ленивые:
+    // conn/media объявлены НИЖЕ, но исполняются только на первой отправке —
+    // тот же приём, что у broadcast/decryptSecret выше.
+    send: (a) => conn.sendMessage(a),
+    upload: (a) => media.upload(a),
+    cancelUpload: (id) => { void media.cancelUpload(id) },
+    sendTyping: (peerId, action) => conn.sendTyping(peerId, action),
+    uploadProgress: (id, loaded, total, done) => broadcast('media:upload_progress', { id, loaded, total, done }),
+    // Пиры, приехавшие ПОПУТНО со списком сообщений (`users` контейнера
+    // messages.Messages), — тем же приёмником, что у диалогов и звонков.
+    // Стрелка ленивая: `peers` объявлен ниже по файлу.
+    peers: { saveApiPeers: (o) => peers.saveApiPeers(o) },
+  })
+  // Временный («неотправленный») бабл заводит владелец окна — messages (порт tweb
+  // beforeMessageSending), наружу это обычные операции над окном (публикует их
+  // сам менеджер). Обёртка нужна путям отправки, которые идут МИМО
+  // messages.sendText/sendFile и потому не могут позвать её сами: пост канала
+  // (уходит по REST) и секретный чат (по WS уходит шифртекст, а не текст бабла).
+  const beforeSending = (p: PendingNewEvt) => { messages.beforeMessageSending(p) }
   // broadcast объявлен ниже — замыкание дергает его лениво (к моменту первого
   // аплоада порты уже подняты)
   const media = newMediaManager({
@@ -193,7 +265,7 @@ export function createWorkerCore() {
       // (core/state/loadState.ts — при несовпадении STATE_VERSION он отдаёт
       // чистые дефолты, а не склеивает половинки схемы прошлой сборки). Без него
       // после ближайшего бампа версии main жил бы на дефолтах, а владелец
-      // сортировал бы по СТАРОМУ pinnedOrders/drafts — два разных ответа на один
+      // сортировал бы по СТАРОМУ pinnedOrders/folders — два разных ответа на один
       // вопрос. Через `loadStateOnce()` не идём сознательно: он мемоизирует
       // промис на модуль, а воркер перечитывает State заново после
       // `resetForLogout()` (смена аккаунта) — мемо отдало бы State прошлого.
@@ -202,12 +274,12 @@ export function createWorkerCore() {
       // `getDialogs({filterId})`. Читаются С ДИСКА, а не ждут `setStateKey`:
       // на холодном старте State никто не ПИШЕТ (boot.ts поднимает его
       // `setAppStateSilent`), значит канал зеркала ключа в этом кадре молчит.
-      return { pinnedOrders: gated.pinnedOrders ?? {}, drafts: gated.drafts ?? [], folders: gated.folders ?? [] }
+      return { pinnedOrders: gated.pinnedOrders ?? {}, folders: gated.folders ?? [] }
     },
     // Task 3 (realtime-кадры применяет владелец): applyNewMessage не бампит
     // бейдж на своё же эхо — тот же приём, что у messages выше (getMeId, а не
     // значение: `me` разрешается лениво асинхронным /me).
-    getMeId: () => me?.id ?? null,
+    getMeId: () => me?.user.id ?? null,
     // Task 4 (действия без оптимистики): applyPinned пишет pinnedOrders на диск и
     // рассылает зеркало ключа — тот же путь, что persistManager.stateKey ниже
     // (saveStateKey + mirrorStateKey), второй писатель того же ключа не заводим.
@@ -218,36 +290,66 @@ export function createWorkerCore() {
     // persistManager.dialogs(...) по снапшоту с main. Дебаунс — внутри
     // dialogsManager (scheduleSave), не здесь.
     saveCache: (list) => saveDialogs(list),
-    // Task 6 (диалоговая половина `loadChats` переезжает к владельцу):
-    // дешифровка превью секретных чатов. `secret` объявлен ниже — та же
-    // ленивая forward-ссылка, что у `messages` выше (decryptSecret реально
-    // зовётся только на fillMirror()/refresh(), к тому моменту `secret` уже
-    // проинициализирован).
-    decryptSecret: (chatId, encBody) => secret.decryptMessage(chatId, encBody),
+    // Шаг C диалогов: `/chats` стал КОНТЕЙНЕРОМ, и его векторы втекают в уже
+    // существующих владельцев — карточки в `peers`, сообщения в `messages`.
+    // Своих копий владелец диалогов не заводит: последнее сообщение он
+    // РАЗРЕШАЕТ по `top_message` из чужого хранилища (решение Р11), а превью
+    // секретного расшифровывает тот же `messages` тем же кодом, что и историю.
+    // `peers` объявлен НИЖЕ — та же ленивая forward-ссылка, что у `messages`
+    // выше: первый вызов случается уже после сборки всех менеджеров.
+    peers: {
+      saveApiPeers: (o) => peers.saveApiPeers(o),
+      cachedPeer: (id) => peers.cachedPeer(id),
+      hydrateFromDisk: () => peers.hydrateFromDisk(),
+    },
+    messages: {
+      saveApiMessages: (list) => messages.saveApiMessages(list),
+      getMessageByPeer: (peerId, seq) => messages.getMessageByPeer(peerId, seq),
+    },
   })
+  // Stage 1C.2 (Task 2): карточки пиров — воркер единственный владелец. Веер тот
+  // же, что у setMe/onLoggingOut выше: менеджер объявляет операцию, вкладки её
+  // переигрывают (`core/peerCache.ts` — зеркало). broadcast объявлен ниже — стрелка
+  // дёргает его лениво (к первому /users порты уже подняты), как у media/messages.
+  //
+  // Объявлен ДО `groups`: карточка чата (`groups.card`) — единственный источник
+  // конструктора `channel` на клиенте, и она отдаёт его владельцу пиров
+  // (`saveApiPeers`) прежде, чем ответить вызывающему.
+  const peers = newPeersManager({ rest, onPeerOps: (ops) => broadcast(RT.peerOp, { ops }) })
   // Task 4 (действия без оптимистики): mute/pin/archive идут сеть-сначала (порт
   // tweb toggleDialogPin/updateNotifySettings) — локальный апдейт зовёт владелец
   // ПОСЛЕ успешного REST-ответа, см. groupsManager.ts::setMute/setPin/setArchive.
-  const groups = newGroupsManager({ rest, dialogs })
-  const channels = newChannelsManager({ rest })
-  // Stage 1C.2 (Task 2): карточки пиров — воркер единственный владелец. Веер тот
-  // же, что у setMe/onLoggingOut выше: менеджер объявляет операцию, вкладки её
-  // переигрывают (peersStore — зеркало). broadcast объявлен ниже — стрелка
-  // дёргает его лениво (к первому /users порты уже подняты), как у media/messages.
-  const peers = newPeersManager({ rest, onPeerOps: (ops) => broadcast(RT.peerOp, { ops }) })
+  const groups = newGroupsManager({
+    rest,
+    dialogs,
+    peers,
+    // Контейнер списка тем несёт вектор `messages`: последнее сообщение темы
+    // разрешается по ссылке `top_message` тем же порядком, что у диалогов.
+    messages: {
+      saveApiMessages: (list) => messages.saveApiMessages(list),
+      getMessageByPeer: (peerId, seq) => messages.getMessageByPeer(peerId, seq),
+    },
+  })
+  // cacheViews — владелец счётчика просмотров: ответ на регистрацию просмотра
+  // несёт уже новые значения, и применяет их та же точка, что и кадр
+  // `views_update` (реестр CACHE выше). Стрелкой, а не ссылкой: `messages`
+  // собран выше, но зависимость объявляется здесь, у вызывателя.
+  const channels = newChannelsManager({ rest, beforeSending, peers, cacheViews: (peerId, views) => { messages.cacheViews(peerId, views) } })
   const presence = newPresenceManager({ rest })
   const stories = newStoriesManager({ rest })
   const contacts = newContactsManager({ rest })
   const privacy = newPrivacyManager({ rest })
   const drafts = newDraftsManager({ rest })
-  // Task 4: тема оформления чата — тоже сеть-сначала, applyTheme зовётся после
-  // успешного /theme (см. chatThemesManager.ts).
-  const chatThemes = newChatThemesManager({ rest, dialogs })
+  // Тема оформления чата: только REST. Её место в схеме — полная карточка
+  // (решение Р7), поэтому применяет её читатель карточки на главном потоке.
+  const chatThemes = newChatThemesManager({ rest })
   const sessions = newSessionsManager({ rest })
-  const calls = newCallsManager({ rest })
+  const calls = newCallsManager({ rest, getMeId: () => me?.user.id ?? null, peers })
   const livestream = newLivestreamManager({ rest })
   const stars = newStarsManager({ rest })
-  const boosts = newBoostsManager({ rest })
+  // getMeId — по той же причине, что у messages выше: созданный розыгрыш вкладка
+  // кладёт прямо в окно, минуя SSOT воркера, поэтому `out` на нём ставит владелец.
+  const boosts = newBoostsManager({ rest, getMeId: () => me?.user.id ?? null })
   const report = newReportManager({ rest })
   const stats = newStatsManager({ rest })
   const bots = newBotsManager({ rest })
@@ -263,7 +365,7 @@ export function createWorkerCore() {
   // указания порта рассылается по всем sendPorts (superMessagePort.ts:379).
   const persist = newPersistManager(
     mirrorStateKey,
-    // Task 1: порядок диалогов зависит от State-ключей pinnedOrders/drafts —
+    // Task 1: порядок диалогов зависит от State-ключа pinnedOrders —
     // dialogsManager узнаёт об изменении и публикует reindex (см. setStateKey).
     (key, value) => dialogs.setStateKey(key, value),
   )
@@ -290,97 +392,144 @@ export function createWorkerCore() {
   const cursor = newCursor({ get: idbGet, set: idbSet })
   let cursorReady = false
 
-  // Единый реестр маршрутизации логируемых типов: cache (в SSOT воркера, ДО broadcast —
-  // иначе переоткрытие чата из кэша теряет апдейт) + rt (имя события для UI). Замена
-  // прежних CACHE_THEN_BROADCAST + CATCHUP. new_message — спец-обработка (E2E-расшифровка
-  // + cacheLive), см. routeNewMessage.
-  // Ключи APPLY типизированы как LoggedWsType (из eventCatalog) — пропуск/лишний
-  // логируемый тип ловит компилятор, реестры не дрейфуют.
-  // cache может вернуть MessageOp[] (Stage 1B.3, Task 3: media_read/web_page_update/
-  // factcheck_update/paid_media_unlock/delete_message; Task 4: poll_update/
-  // checklist_update/giveaway_update — по образцу cacheLive, см. dispatch ниже) —
-  // тогда dispatch рассылает их ОТДЕЛЬНЫМ кадром RT.messageOp, как routeNewMessage.
-  // edit_message/geo_live_update оставлены на прежнем пути (сырой кадр) — см.
-  // комментарии у messages.cacheEdit/cacheGeoLive в messagesManager.ts. reaction/
-  // star_reaction — тоже НЕ переведены (Task 5), см. комментарий у
-  // newReactionMethods в messages/reactionMethods.ts.
-  const APPLY: Record<LoggedWsType, { rt: string; cache?: (p: never) => MessageOp[] | void }> = {
-    read:              { rt: RT.read },
-    media_read:        { rt: RT.mediaRead,       cache: (p) => messages.cacheMediaRead(p) },
-    edit_message:      { rt: RT.editMessage,     cache: (p) => messages.cacheEdit(p) },
-    delete_message:    { rt: RT.deleteMessage,   cache: (p) => messages.cacheDelete(p) },
-    pin_message:       { rt: RT.pinMessage },
-    reaction:          { rt: RT.reaction,        cache: (p) => messages.cacheReaction(p) },
-    star_reaction:     { rt: RT.starReaction,    cache: (p) => messages.cacheStarReaction(p) },
-    factcheck_update:  { rt: RT.factCheckUpdate, cache: (p) => messages.cacheFactCheck(p) },
-    chat_removed:      { rt: RT.chatRemoved },
-    draft_update:      { rt: RT.draftUpdate },
-    dialog_pin:        { rt: RT.dialogPin },
-    dialog_archive:    { rt: RT.dialogArchive },
-    dialog_mute:       { rt: RT.dialogMute },
-    poll_update:       { rt: RT.pollUpdate,      cache: (p) => messages.cachePoll(p) },
-    checklist_update:  { rt: RT.checklistUpdate, cache: (p) => messages.cacheChecklist(p) },
-    giveaway_update:   { rt: RT.giveawayUpdate,  cache: (p) => messages.cacheGiveaway(p) },
-    boost_update:      { rt: RT.boostUpdate },
-    chat_theme_update: { rt: RT.chatThemeUpdate },
-    chat_update:       { rt: RT.chatUpdate },
-    folder_update:     { rt: RT.folderUpdate },
-    web_page_update:   { rt: RT.webPageUpdate,   cache: (p) => messages.cacheWebPage(p) },
-    paid_media_unlock: { rt: RT.paidMediaUnlock, cache: (p) => messages.cachePaidUnlock(p) },
-    balance_update:    { rt: RT.balanceUpdate },
+  // Отражение кадра в SSOT воркера — ДО broadcast: иначе переоткрытие чата из
+  // кэша теряет апдейт. Ключ — КОНСТРУКТОР; имя события, которым кадр уезжает
+  // на вкладки, живёт рядом со списком конструкторов (UPDATE_RT в
+  // realtime/updateCatalog.ts), потому что менеджеров оно не знает и его же
+  // читает пин полноты.
+  //
+  // Реестр НЕПОЛНЫЙ намеренно (Partial): отражать в SSOT нужно не каждому
+  // кадру, и «здесь пусто» — это ответ, а не пропуск. Полноту держит UPDATE_RT.
+  //
+  // cache может вернуть MessageOp[] (Stage 1B.3, Task 3: media_read/
+  // web_page_update/factcheck_update/paid_media_unlock/delete_message; Task 4:
+  // poll_update/checklist_update/giveaway_update — по образцу cacheLive, см.
+  // dispatch ниже) — тогда dispatch рассылает их ОТДЕЛЬНЫМ кадром
+  // RT.messageOp, как routeNewMessage. updateEditMessage оставлен на прежнем
+  // пути (сырой кадр) — см. комментарий у messages.cacheEdit; реакции тоже НЕ
+  // переведены (Task 5), см. newReactionMethods в messages/reactionMethods.ts.
+  //
+  // Сообщение (updateNewMessage/updateNewChannelMessage) сюда не попадает —
+  // у него спец-путь routeNewMessage (E2E-расшифровка + cacheLive).
+  const CACHE: Partial<Record<keyof typeof UPDATE_RT, (p: never) => MessageOp[] | void>> = {
+    updateReadPeerMessagesContents: (p) => messages.cacheMediaRead(p),
+    updateEditMessage:              (p) => messages.cacheEdit(p),
+    updateDeletePeerMessages:       (p) => messages.cacheDelete(p),
+    updateMessageReactions:         (p) => messages.cacheReaction(p),
+    // Счётчики поста канала. Оба числа живут ВНУТРИ сообщения, поэтому владелец
+    // у них тот же, что у всего окна, — messages; кадр лишь называет пост и
+    // новое значение. Номер поста приезжает в СЕРВЕРНОМ пространстве (как во
+    // всех кадрах), ключ канала — числом `channel_id`: перевод обоих и есть
+    // граница разбора (`core/history/messageId.ts`, `core/peers/peerId.ts`).
+    updateChannelMessageViews:      (p: ViewsUpdateEvt) =>
+      messages.cacheViews(toPeerId(p.channel_id, true), new Map([[generateMessageId(p.id), p.views]])),
+    updateChannelMessageReplies:    (p: RepliesUpdateEvt) =>
+      messages.cacheReplies(toPeerId(p.channel_id, true), generateMessageId(p.id), p.replies),
+    updateMessageFactCheck:         (p) => messages.cacheFactCheck(p),
+    updateMessagePoll:              (p) => messages.cachePoll(p),
+    updateMessageToDo:              (p) => messages.cacheChecklist(p),
+    updateMessageGiveaway:          (p) => messages.cacheGiveaway(p),
+    updateMessageWebPage:           (p) => messages.cacheWebPage(p),
+    updateMessageExtendedMedia:     (p) => messages.cachePaidUnlock(p),
     // Юзер сменил профиль: кадр интерпретирует владелец карточек (peersManager) —
     // он правит свой кэш и публикует изменение операцией (rt:peer_op). Витрина
     // сырой rt:user_update не разбирает; кадр рассылается дальше как есть, чтобы
-    // не заводить исключение в общей проводке логируемых типов (потребителей у
-    // него на витрине сейчас нет).
-    user_update:       { rt: RT.userUpdate,      cache: (p) => peers.applyUserUpdate(p) },
+    // не заводить исключение в общей проводке (потребителей у него на витрине
+    // сейчас нет).
+    updateUserSnapshot:             (p) => peers.applyUserUpdate((p as UserUpdateEvt).user),
   }
-  // Эфемерные кадры (PASS_THROUGH) и логируемые (APPLY) выводятся из eventCatalog —
-  // единого реестра WS-типов. Bespoke-кадры (hello/секрет-handshake/обёртки звонков)
-  // обрабатываются явно в onFrame.
 
-  // Отражение логируемого апдейта в SSOT + broadcast (без арифметики pts — её делает
-  // applyUpdate). `d` — полезная нагрузка (для live это весь payload, для /sync это
-  // item.d). new_message — спец-путь (E2E-расшифровка + bespoke cacheLive).
+  // Отражение апдейта в SSOT + broadcast (без арифметики pts — её делает
+  // applyUpdate). `key` — КОНСТРУКТОР кадра (у единственного непортированного
+  // предмета, folder_update, — тип конверта: см. frameKey), `d` — тело.
+  // Сообщение (updateNewMessage/updateNewChannelMessage) идёт спец-путём
+  // routeNewMessage: E2E-расшифровка + cacheLive.
   // Stage 1B.3 (Task 3): если cache() вернул операции — рассылаем их ДО сырого кадра
   // (тот же порядок, что у routeNewMessage): проектор берёт окно операцией, сырой
   // кадр остаётся параллельно для того, что операциями не покрыто (переключение
   // обратимо одной строкой, как и было в 1B.2).
-  function dispatch(t: string, d: unknown, meta?: EventMeta): void {
-    if (t === 'new_message') { routeNewMessage(d as NewMessageEvt, meta); return }
-    const h = APPLY[t as LoggedWsType]
-    if (!h) return
-    const ops = h.cache?.(d as never)
+  function dispatch(key: string, d: unknown, meta?: EventMeta): void {
+    // Непортированный предмет: конструктора нет, кадр опознан типом конверта
+    // (#51). Ветка исчезнет вместе с задачей — вместе с ней и это исключение.
+    if (key === LOGGED_WITHOUT_CONSTRUCTOR) { broadcast(RT.folderUpdate, d, meta); return }
+    const pred = updatePredicate(d)
+    if (!pred || pred !== key) return
+    if (pred === 'updateNewMessage' || pred === 'updateNewChannelMessage') {
+      routeNewMessage(d as NewMessageEvt, meta); return
+    }
+    // Вопрос «выросло ли число реакций на МОЁМ сообщении» задаётся ДО того, как
+    // кадр ляжет в SSOT: после применения агрегата сравнивать было бы не с чем —
+    // окно уже содержало бы новое состояние. Порядок здесь и есть ответ.
+    const reactionsGrew = pred === 'updateMessageReactions'
+      && messages.reactionsGrewOnMyMessage(getPeerId((d as ReactionEvt).peer), (d as ReactionEvt).msg_id, (d as ReactionEvt).reactions)
+    const ops = CACHE[pred]?.(d as never)
     if (ops && ops.length) broadcast(RT.messageOp, { ops }, meta)
     // Task 3 (владение диалогами, «realtime-кадры применяет владелец»): кадры,
     // влияющие на список диалогов, применяет dialogsManager — публикует свой
     // rt:dialog_op сам (через onDialogOps), отдельно от сырого кадра ниже
     // (тот доезжает витрине как и раньше, если у него остались другие потребители).
-    if (t === 'read') dialogs.applyRead(d as ReadEvt, me?.id ?? null)
-    else if (t === 'chat_update') dialogs.applyChatMeta(d as ChatUpdateEvt)
-    else if (t === 'chat_removed') dialogs.applyRemoved((d as ChatRemovedEvt).chat_id)
+    if (pred === 'updateReadHistoryInbox' || pred === 'updateReadHistoryOutbox') dialogs.applyRead(d as ReadEvt)
+    else if (pred === 'updateChatFullSnapshot' || pred === 'updateChannelFullSnapshot') {
+      // Порт `apiUpdatesManager.processUpdateMessage` (`:239-240`): пиры,
+      // приехавшие ВМЕСТЕ с апдейтом, сохраняются ПЕРВЫМИ — до того, как
+      // апдейт применят. Кадр `chat_update` несёт `messages.chatFull`, то есть
+      // абсолютный снимок карточки; строке диалога из него нужны четыре поля,
+      // а весь остальной чат (права, `pFlags`, `default_banned_rights`) живёт
+      // в зеркале пиров и попадает туда только отсюда.
+      // Строке диалога из этого снимка больше НЕ НУЖНО ничего: имя, username,
+      // аватарка и `forum` живут в самой карточке чата (решение Р1 — они едут
+      // векторами `chats`/`users`), а не дублируются полями диалога. Прежний
+      // `dialogs.applyChatMeta` перекладывал четыре поля из карточки в строку —
+      // ровно то второе зеркало одного факта, которого этот шаг и лишает.
+      peers.saveApiPeers((d as ChatUpdateEvt).chat_full)
+    }
+    else if (pred === 'updateChatRemoved') dialogs.applyRemoved(getPeerId((d as ChatRemovedEvt).peer))
+    // Черновик — ПОЛЕ диалога, поэтому его применяет владелец списка: от даты
+    // черновика зависит место строки, и считать её на витрине значило бы
+    // держать порядок в двух местах.
+    else if (pred === 'updateDraftMessage') {
+      const e = d as DraftUpdateEvt
+      dialogs.applyDraft(getPeerId(e.peer), e.draft)
+    }
     // Task 4 (действия без оптимистики): то же действие, применённое с ДРУГОГО
     // устройства/вкладки, доезжает этим кадром (backend logAndPublish на все
     // устройства владельца/участников) — применяет владелец ровно один раз
-    // (patchDialog внутри applyMute/applyPinned/applyArchived/applyTheme
+    // (patchDialog внутри applyNotifySettings/applyPinned/applyArchived
     // сравнивает через equal() и не публикует no-op). Раньше эти 4 кадра
     // разбирала витрина напрямую (storeProjection.ts, setDialogMuted и т.п.) —
     // тот путь убран вместе с мутаторами chatsStore, второго применения нет.
-    else if (t === 'dialog_mute') dialogs.applyMute((d as DialogMuteEvt).chat_id, (d as DialogMuteEvt).muted)
-    else if (t === 'dialog_pin') dialogs.applyPinned((d as DialogPinEvt).chat_id, (d as DialogPinEvt).pinned)
-    else if (t === 'dialog_archive') dialogs.applyArchived((d as DialogArchiveEvt).chat_id, (d as DialogArchiveEvt).archived)
-    else if (t === 'chat_theme_update') dialogs.applyTheme((d as ChatThemeUpdateEvt).chat_id, (d as ChatThemeUpdateEvt).theme_id)
-    else if (t === 'reaction') {
-      // Кто-то поставил реакцию на МОЁ сообщение → бампим бейдж непрочитанных
-      // реакций диалога (перенесено из storeProjection.ts вместе с телом
-      // bumpUnreadReactions — окно сообщений эта ветка не трогает, applyReaction
-      // остаётся на main, см. CLAUDE.md «реакции в окне сообщений»).
-      const r = d as ReactionEvt
-      if (r.action === 'add' && r.author_id === me?.id && r.user_id !== me?.id) {
-        dialogs.bumpUnreadReactions(r.chat_id, r.unread_reactions)
+    // Кадр несёт КОНСТРУКТОР настроек целиком — срок мьюта больше не
+    // выбрасывается на границе (это и был последний участок цепочки, из-за
+    // которого «заглушить на час» работало как «навсегда»).
+    //
+    // Ключ пира у каждого кадра лежит в СВОЁЙ обёртке — dialogPeer, notifyPeer,
+    // folderPeer, — потому что это разные пространства адресации: у folderPeer
+    // рядом с пиром едет номер папки, а «вернуть из архива» это ноль, а не
+    // второй кадр.
+    else if (pred === 'updateNotifySettings') {
+      const e = d as DialogMuteEvt
+      dialogs.applyNotifySettings(getPeerId(e.peer.peer), e.notify_settings)
+    } else if (pred === 'updateDialogPinned') {
+      const e = d as DialogPinEvt
+      // «Открепили» — ОТСУТСТВИЕ бита, а не `pinned: false`.
+      dialogs.applyPinned(getPeerId(e.peer.peer), !!e.pFlags?.pinned)
+    } else if (pred === 'updateFolderPeers') {
+      for (const fp of (d as DialogArchiveEvt).folder_peers ?? []) {
+        dialogs.applyFolder(getPeerId(fp.peer), fp.folder_id)
       }
     }
-    broadcast(h.rt, d, meta)
+    else if (pred === 'updateMessageReactions') {
+      // Кто-то поставил реакцию на МОЁ сообщение → бампим бейдж непрочитанных
+      // реакций диалога.
+      //
+      // Кадр больше не несёт ни диффа, ни авторитетного счётчика: и «кто
+      // поставил», и «сколько теперь непрочитанных» — пер-зрительские, а тело
+      // кадра одно на всех получателей. Ответ дал владелец SSOT ВЫШЕ, до
+      // применения агрегата; авторитетное значение счётчика приезжает со
+      // строкой диалога, как и раньше.
+      if (reactionsGrew) dialogs.bumpUnreadReactions(getPeerId((d as ReactionEvt).peer))
+    }
+    broadcast(UPDATE_RT[pred], d, meta)
   }
 
   // Новое сообщение → SSOT + broadcast. Дедуп и порядок — на курсоре в applyUpdate
@@ -406,14 +555,19 @@ export function createWorkerCore() {
   // difference — типизированный конверт, курсор персистится в IDB (chpts:{id}).
   const channelFunnel = newChannelFunnel({
     dispatch,
-    getDifference: (chatId, sincePts) => rest.get<ChannelDiff>(`/channels/${chatId}/difference`, { pts: sincePts }),
-    loadPts: (chatId) => idbGet<number>(`chpts:${chatId}`).then((v) => (typeof v === 'number' ? v : null)),
-    savePts: (chatId, pts) => { void idbSet(`chpts:${chatId}`, pts) },
+    getDifference: (peerId, sincePts) => rest.get<ChannelDiff>(`/channels/${peerId}/difference`, { pts: sincePts }),
+    loadPts: (peerId) => idbGet<number>(`chpts:${peerId}`).then((v) => (typeof v === 'number' ? v : null)),
+    // Отказ IDB глотаем: сохранённый курсор — кэш. Без него open() просто не сидирует,
+    // и базу возьмёт первый живой кадр канала (channelFunnel.applyLive).
+    savePts: (peerId, pts) => { void idbSet(`chpts:${peerId}`, pts).catch(() => {}) },
   })
 
   const sync = newSyncEngine({
     rest, cursor,
-    onUpdate: (item) => funnel.applyUpdate(item.t, item.pts, item.d, false),
+    // Строка журнала опознаётся тем же ключом, что живой кадр: КОНСТРУКТОРОМ
+    // из тела. Тип строки (`item.t`) остаётся ответом только для
+    // непортированного предмета — см. frameKey.
+    onUpdate: (item) => funnel.applyUpdate(frameKey(item.t, item.d), item.pts, item.d, false),
     // Полный resync ставит курсор на серверный pts — придержанные out-of-order кадры
     // теперь либо дубли, либо оторванная «будущая» дыра; сбрасываем, чтобы не всплыли.
     // Канальные in-memory курсоры тоже забываем — переоткрытие пересидирует из IDB.
@@ -434,7 +588,14 @@ export function createWorkerCore() {
     cursor,
     isCursorReady: () => cursorReady,
     isSyncing: () => sync.isSyncing(),
-    catchUp: () => { void sync.catchUp() },
+    // Задача #91. Воронка ждёт `() => void` — здесь адаптер, и отказ глотать обязан
+    // именно он: упавший /sync иначе даёт unhandled rejection на КАЖДОМ живом кадре с
+    // pts, пока курсор не гидрирован (globalFunnel.ts: `if (!isCursorReady())`). Глотать
+    // безопасно — курсор не сдвинулся, следующий кадр с дырой (или hello реконнекта)
+    // позовёт catch-up снова, а пару synchronizing/synchronized держит .finally внутри
+    // самого catchUp(). Сам catchUp() отказ пробрасывает СОЗНАТЕЛЬНО: его наблюдает тот,
+    // кто его дожидается (syncEngine.test.ts) — глушим здесь, у fire-and-forget вызова.
+    catchUp: () => { void sync.catchUp().catch(() => {}) },
   })
   const conn = newConnectionManager({
     ws, getToken: () => tokens.get(),
@@ -442,7 +603,9 @@ export function createWorkerCore() {
     // they're restored into the outbox and resent on the next connect.
     outboxStore: {
       load: () => idbGet<import('./realtime/connectionManager').SendArgs[]>('outbox'),
-      save: (list) => { void idbSet('outbox', list) },
+      // Отказ IDB глотаем: outbox переживает перезагрузку как удобство, а не как
+      // гарантию, — in-memory копия (та же Map) резендом на реконнекте не зависит от диска.
+      save: (list) => { void idbSet('outbox', list).catch(() => {}) },
     },
     // onReady: гарантируем гидратацию курсора из IDB (гейт первого apply). Сам
     // catch-up на (ре)коннекте инициирует hello-кадр (fast-reconnect без REST,
@@ -452,7 +615,7 @@ export function createWorkerCore() {
     // при реконнекте (connectionManager.ts) — здесь он просто прокидывается дальше в
     // payload. Проверено workerCore.connectionStatus.test.ts.
     onState: (s, retryAt) => broadcast(RT.state, { state: s, retryAt }),
-    onFrame: (type, payload) => {
+    onFrame: (type, payload, envPts) => {
       // hello — первый кадр WS: {pts,date}. pts===cursor → быстрый reconnect без REST;
       // иначе catch-up доберёт разницу. cursor.ready() гейтит сравнение до гидратации.
       if (type === 'hello') {
@@ -462,45 +625,129 @@ export function createWorkerCore() {
           // Реконнект с расхождением pts: catch-up добёрет разницу — придержанные
           // out-of-order кадры теперь оторваны от новой базы, сбрасываем (инвариант
           // tweb: getDifference чистит pendingPtsUpdates), чтобы не всплыли позже.
-          void cursor.ready().then(() => { if (want !== cursor.get().pts) { funnel.clear(); void sync.catchUp() } })
+          // Задача #91: catch-up вчленён в цепочку (return), поэтому один .catch в её
+          // хвосте кроет и его отказ, и любой бросок из самого колбэка. cursor.ready()
+          // не отклоняется по построению (cursor.ts терминирует его .catch'ем).
+          void cursor.ready().then(() => { if (want !== cursor.get().pts) { funnel.clear(); return sync.catchUp() } }).catch(() => {})
         }
         return
       }
-      // Канальный кадр (пост или метаданные канала: chat_update/boost_update) несёт
-      // channel_pts + chat_id → per-channel funnel (свой курсор, difference-catch-up).
-      // Раньше new_message-ветки: посты канала приходят как new_message, но с
-      // channel_pts и без E2E (каналы — публичный broadcast, enc_body не бывает).
-      {
-        const cf = payload as { channel_pts?: number; chat_id?: number }
-        if (typeof cf?.channel_pts === 'number' && typeof cf?.chat_id === 'number') {
-          channelFunnel.applyLive(cf.chat_id, type, cf.channel_pts, payload)
+      // Развилка воронок — по КОНСТРУКТОРУ. Канальными курсор делает не имя
+      // ключа (`channel_pts` больше не существует нигде), а сам кадр:
+      // updateNewChannelMessage, updateChannelFullSnapshot,
+      // updateChannelBoostStatus едут журналом канала, у которого свой плотный
+      // pts и свой догон через /difference.
+      //
+      // Ключ канала лежит в РАЗНЫХ местах, и это не небрежность: кадр с
+      // сообщением несёт его ВНУТРИ конструктора сообщения (там peer_id —
+      // параметр самого сообщения), а кадр метаданных сообщения не несёт вовсе
+      // и держит пир своим параметром `peer`.
+      const pred = updatePredicate(payload)
+      if (pred && CHANNEL_CURSOR.has(pred)) {
+        const u = payload as Update
+        const peerId = channelPeerId(u)
+        const channelPts = (payload as { pts?: number }).pts
+        if (typeof peerId === 'number' && typeof channelPts === 'number') {
+          channelFunnel.applyLive(peerId, pred, channelPts, payload)
           return
         }
       }
-      // new_message: возможна E2E-расшифровка enc_body перед funnel → bespoke.
-      if (type === 'new_message') {
-        const p = payload as { chat_id?: number; enc_body?: string; text?: string; entities?: unknown; secret_media?: unknown; pts?: number }
-        if (p.enc_body && p.chat_id) {
-          void secret.decryptMessage(p.chat_id, p.enc_body).then((dec) => {
-            if (dec) { p.text = dec.text; p.entities = dec.entities; if (dec.media) p.secret_media = dec.media }
-            funnel.applyUpdate('new_message', p.pts, payload, true)
-          })
+      // message_ack / message_error: кадры ТРАНСПОРТНЫЕ (решение Р6 — апдейтами
+      // они не становятся, конструктора не имеют), но реконсилить по ним нужно
+      // ВРЕМЕННЫЙ БАБЛ, а он живёт в SSOT воркера (messages/pending.ts). Владелец
+      // применяет их РОВНО ОДИН РАЗ здесь и объявляет результат операциями —
+      // раньше это делала каждая вкладка у себя из сырого кадра.
+      // return НЕТ сознательно: сырой кадр летит дальше (PASS_THROUGH внизу) — у
+      // него остались другие потребители, звук «пак» на ack
+      // (client/realtime/soundSubscriber.ts) и тост paid_required на ошибке.
+      if (type === 'message_ack' || type === 'message_error') {
+        const ops = type === 'message_ack'
+          ? messages.ackPendingMessage(payload as AckEvt)
+          : messages.failPendingMessage((payload as MessageErrorEvt).client_msg_id)
+        if (ops.length) broadcast(RT.messageOp, { ops })
+      }
+      // geo_live_update: тот же класс, что и два кадра выше — эфемерный (без
+      // pts, `transportFrames.ts:35`, предмет не портирован #52), поэтому в
+      // воронку и в реестр CACHE не попадает. Владельца это не отменяет:
+      // координаты живут в сообщении, а сообщением владеет messages —
+      // применяем РОВНО ОДИН РАЗ здесь и объявляем операцией. Прежде окно правил
+      // сырой кадр на витрине (storeProjection → applyGeoLive), то есть мимо
+      // операций и мимо зеркала, а `messages.cacheGeoLive` не звался ниоткуда.
+      // return НЕТ по той же причине, что и выше: сырой кадр летит дальше.
+      if (type === 'geo_live_update') {
+        const ops = messages.cacheGeoLive(payload as GeoLiveUpdateEvt)
+        if (ops.length) broadcast(RT.messageOp, { ops })
+      }
+      // Сообщение личного чата: возможна E2E-расшифровка enc_body перед воронкой.
+      // Пост канала сюда не доходит — он ушёл в канальную воронку выше, и
+      // шифртекста у него не бывает (канал это публичный broadcast).
+      if (pred === 'updateNewMessage') {
+        const p = payload as NewMessageEvt
+        // Кадр несёт сообщение ЦЕЛИКОМ под ключом `message`, поэтому и шифртекст
+        // лежит там же — на конструкторе, а не в конверте.
+        const m = p.message
+        const encBody = m._ === 'message' ? m.enc_body : undefined
+        if (m._ === 'message' && encBody) {
+          const peerId = getPeerId(m.peer_id)
+          // Ключа взять негде (его нет ЛИБО недоступен IDB) — decryptMessage
+          // отдаёт null одинаково на обе причины (задача #92), и кадр
+          // применяется нерасшифрованным: пустой бабл вместо дыры в pts.
+          // `.catch` оставлен страховкой от unhandled rejection (задача #91):
+          // сам decryptMessage больше не отклоняется, но в `.then` стоит
+          // applyUpdate.
+          //
+          // Пометка `secret` стоит ВНУТРИ `if (dec)` и значит «в объекте лежит
+          // открытый E2E-текст», а не «из секретного чата» (задача #94): её
+          // читает фильтр персиста, и ловит она то, чего не ловит `enc_body`, —
+          // плейнтекст без шифртекста. Нерасшифрованный кадр плейнтекста не
+          // несёт, флага не получает, а на диск не идёт по `enc_body`. Тот же
+          // ответ даёт путь истории (`messagesManager.decryptPage`) — раньше он
+          // отвечал иначе.
+          void secret.decryptMessage(peerId, encBody).then((dec) => {
+            if (dec) {
+              m.message = dec.text
+              m.entities = dec.entities as typeof m.entities
+              m.secret = true
+              if (dec.media) m.secretMedia = dec.media
+            }
+            funnel.applyUpdate(pred, p.pts, payload, true)
+          }).catch(() => {})
         } else {
-          funnel.applyUpdate('new_message', p.pts, payload, true)
+          funnel.applyUpdate(pred, p.pts, payload, true)
         }
         return
       }
-      // Логируемый кадр (несёт pts) → единый funnel: дедуп/gap/cache/broadcast.
-      if (APPLY[type as LoggedWsType]) { funnel.applyUpdate(type, (payload as { pts?: number })?.pts, payload, true); return }
+      // Кадр-АПДЕЙТ → единая воронка: дедуп/gap/cache/broadcast. Курсора у него
+      // может и не быть вовсе (updateUserTyping, updateUserStatus его не
+      // объявляют) — тогда воронка не гейтит, а просто отражает кадр. Делить
+      // кадры на «логируемые» и «эфемерные» рукописным списком больше не нужно:
+      // ответ даёт СТРУКТУРА конструктора.
+      //
+      // Сам курсор лежит либо В ТЕЛЕ (конструктор объявляет параметр pts), либо
+      // в КОНВЕРТЕ (не объявляет — тогда у оригинала кадр едет в контейнере
+      // updates и порядок ему задаёт seq контейнера). Воронке безразлично,
+      // откуда он: она гейтит по числу, а место выбирает схема.
+      if (pred) {
+        funnel.applyUpdate(pred, envPts ?? (payload as { pts?: number })?.pts, payload, true)
+        return
+      }
+      // Непортированный предмет с курсором (#51): конструктора нет, кадр
+      // опознаётся типом конверта, но воронку проходить обязан.
+      if (type === LOGGED_WITHOUT_CONSTRUCTOR) {
+        funnel.applyUpdate(type, envPts ?? (payload as { pts?: number })?.pts, payload, true)
+        return
+      }
       // Секретный handshake: криптообработка в воркере до/вместо трансляции.
       if (type === 'secret_chat_request') {
-        const p = payload as { chat_id?: number; initiator_pub?: string }
-        if (p.chat_id && p.initiator_pub) secret.stashRequest(p.chat_id, p.initiator_pub)
+        const p = payload as { peer_id?: number; initiator_pub?: string }
+        if (p.peer_id && p.initiator_pub) secret.stashRequest(p.peer_id, p.initiator_pub)
         broadcast(RT.secretRequest, payload); return
       }
       if (type === 'secret_chat_accept') {
-        const p = payload as { chat_id?: number; responder_pub?: string }
-        if (p.chat_id && p.responder_pub) void secret.complete(p.chat_id, p.responder_pub)
+        const p = payload as { peer_id?: number; responder_pub?: string }
+        // Отказ глотаем: не свёлся хендшейк — ключа нет, кадры чата приедут
+        // нерасшифрованными; повторный accept сведёт заново.
+        if (p.peer_id && p.responder_pub) void secret.complete(p.peer_id, p.responder_pub).catch(() => {})
         return
       }
       // Кадры-«обёртки» по префиксу (звонки/трансляции) → один RT с {t,d}.
@@ -518,6 +765,14 @@ export function createWorkerCore() {
   const secret = createSecretManager({
     rest, conn, broadcast,
     upload: (bytes, mime, size, fileName) => media.upload({ bytes, mime, size, fileName }),
+    // Временный бабл секретной отправки заводит ТОТ ЖЕ владелец, что и у обычной
+    // (см. beforeSending выше) — жизненный цикл общий, разный только транспорт:
+    // плейнтекст на сервер не уходит, вместо него шифртекст type:'encrypted'.
+    beforeSending,
+    // Тот же владелец помечает бабл упавшим: ошибка (нет ключа / оффлайн /
+    // сорвался аплоад шифртекста) случается ЗДЕСЬ, в воркере, — вкладке не за
+    // чем возвращать её обратно вторым RPC.
+    failSending: (clientMsgId) => { void messages.failPending({ clientMsgId }) },
   })
 
   // sync передан ради getStatus() (Задача 1, ревью «сигнал только push — новая
@@ -575,7 +830,23 @@ export function createWorkerCore() {
   function start(): void {
     // Скоуп нормализованного офлайн-стора по токену: при смене аккаунта данные
     // предыдущего стираются, прежде чем воркер начнёт писать сообщения/юзеров.
-    void tokens.load().then(() => persistScope(tokens.get()))
+    //
+    // Тем же хвостом — гидрация `me` с диска и снятие гейта `out` (см. объявление
+    // meReady выше). Порядок обязателен: читать `me` можно ТОЛЬКО после
+    // persistScope — тот стирает данные прошлого аккаунта, и чтение до него
+    // отдало бы чужой профиль (а он определяет, чьи сообщения «мои»). Гейт
+    // снимаем в любом исходе, включая пустой диск и недоступный IndexedDB:
+    // подвисший навсегда гейт хуже неверного `out` — он бы заморозил историю.
+    // Значение кладём в кэш владельца молча, без setMe: setMe — точка ПУБЛИКАЦИИ
+    // факта (веер rt:me + write-through на диск), а публиковать здесь нечего —
+    // это тот же снимок, который воркер сам туда и записал, и вкладке его отдаёт
+    // её собственный boot-запрос /me.
+    void tokens.load()
+      .then(() => persistScope(tokens.get()))
+      .then(() => loadMe())
+      .then((u) => { if (u && !me) me = u })
+      .catch(() => {})
+      .finally(() => { markMeReady() })
     // Первый вывод `me` (Stage 1C.2, Task 1). Публикует сам auth.me()
     // (authManager::fetchMe зовёт onMeChanged на любой свежий ответ сервера и
     // на 401), поэтому здесь остаётся ровно один непокрытый им случай —

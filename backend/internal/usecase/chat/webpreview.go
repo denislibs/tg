@@ -32,12 +32,13 @@ var (
 
 var urlRe = regexp.MustCompile(`https?://\S+`)
 
-// firstURL — первая http/https-ссылка сообщения: сначала entities text_link
+// firstURL — первая http/https-ссылка сообщения: сначала messageEntityTextUrl
 // (несут явный URL), затем голая ссылка в тексте. Пусто — ссылок нет.
-func firstURL(text string, entities []domain.MessageEntity) string {
+func firstURL(text string, entities domain.MessageEntities) string {
 	for _, e := range entities {
-		if e.Type == "text_link" && (strings.HasPrefix(e.URL, "http://") || strings.HasPrefix(e.URL, "https://")) {
-			return e.URL
+		v, ok := e.(domain.MessageEntityTextURL)
+		if ok && (strings.HasPrefix(v.URL, "http://") || strings.HasPrefix(v.URL, "https://")) {
+			return v.URL
 		}
 	}
 	// Хвостовую пунктуацию («смотри https://a.b/c.») ссылкой не считаем.
@@ -55,7 +56,7 @@ func (i *Interactor) attachWebPreview(msg domain.Message, url string, recipients
 	defer saferun.Recover("chat.attachWebPreview")
 	ctx, cancel := context.WithTimeout(context.Background(), previewTimeout)
 	defer cancel()
-	if typ, err := i.chats.ChatType(ctx, msg.ChatID); err != nil || typ == "secret" {
+	if typ, err := i.chats.ChatType(ctx, msg.ChatID); err != nil || typ == domain.ChatTypeSecret {
 		return
 	}
 	wp, err := i.preview.Preview(ctx, url)
@@ -84,9 +85,22 @@ func (i *Interactor) attachWebPreview(msg domain.Message, url string, recipients
 		}
 		// Логируем + шлём web_page_update всем получателям: догоняющее превью доезжает
 		// и через /sync (плотный pts-курсор), а не только живым кадром.
-		_ = i.logAndPublish(wctx, recipients, "web_page_update", map[string]any{
-			"chat_id": msg.ChatID, "msg_id": msg.ID, "seq": msg.Seq, "web_page": wp,
-		})
+		//
+		// Карточка едет ТЕМ ЖЕ конструктором, что и в самом сообщении
+		// (messageMediaWebPage под ключом media): собственный ключ web_page со
+		// снимком read-модели внутри (site_name/photo_id/photo_w/photo_blur/…)
+		// был второй формой превью на проводе — ровно той плоской, ради
+		// устранения которой делался порт объединения. Клиент переводил её в
+		// первую на границе, ДУБЛИРУЯ арифметику domain.fitThumb; переводить
+		// больше нечего.
+		media := wp.ToMedia()
+		_ = i.logAndPublishPerPeer(wctx, msg.ChatID, recipients, "web_page_update",
+			func(peer domain.PeerID) map[string]any {
+				return map[string]any{
+					"_": domain.UpdateMessageWebPageTag, "peer": domain.NewPeer(peer),
+					"msg_id": msg.Seq, "media": media,
+				}
+			})
 	})
 }
 

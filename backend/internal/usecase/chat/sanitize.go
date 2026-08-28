@@ -56,31 +56,40 @@ func safeLinkURL(u string) bool {
 const maxEntities = 500
 
 // sanitizeEntities drops formatting entities that are unsafe or abusive to persist:
-//   - text_link with a disallowed URL scheme (javascript:, data:, …) — XSS;
-//   - custom_emoji without a document_id — nothing to render, so meaningless;
+//   - messageEntityTextUrl with a disallowed URL scheme (javascript:, data:, …) — XSS;
+//   - messageEntityCustomEmoji without a document_id — nothing to render, so meaningless;
 //   - entities with a non-positive length or negative offset — malformed;
 //   - anything beyond maxEntities — render-time DoS.
 //
 // The client also sanitizes at render time; this is defense-in-depth so a
 // hand-crafted payload can't be stored and later served to a client that forgets to.
-func sanitizeEntities(es []domain.MessageEntity) []domain.MessageEntity {
+//
+// Конструкторы, которых мы не знаем, отсеиваются раньше — на разборе
+// (domain.MessageEntities.UnmarshalJSON): в модель попадает только объявленное
+// объединение, поэтому здесь достаточно проверок по существу.
+func sanitizeEntities(es domain.MessageEntities) domain.MessageEntities {
 	if len(es) == 0 {
 		return es
 	}
-	out := make([]domain.MessageEntity, 0, len(es))
+	out := make(domain.MessageEntities, 0, len(es))
 	for _, e := range es {
-		if e.Offset < 0 || e.Length <= 0 {
+		offset, length := e.Span()
+		if offset < 0 || length <= 0 {
 			continue
 		}
-		if e.Type == "text_link" && !safeLinkURL(e.URL) {
-			continue
-		}
-		// custom_emoji carries the sticker document (media id) that replaces the
-		// spanned fallback glyph; without it the entity renders nothing. The media
-		// content endpoint enforces its own access, so a bogus id just falls back
-		// to the glyph on the client — a positive id is all we validate here.
-		if e.Type == "custom_emoji" && e.DocID <= 0 {
-			continue
+		switch v := e.(type) {
+		case domain.MessageEntityTextURL:
+			if !safeLinkURL(v.URL) {
+				continue
+			}
+		case domain.MessageEntityCustomEmoji:
+			// custom_emoji carries the sticker document (media id) that replaces the
+			// spanned fallback glyph; without it the entity renders nothing. The media
+			// content endpoint enforces its own access, so a bogus id just falls back
+			// to the glyph on the client — a positive id is all we validate here.
+			if v.DocumentID <= 0 {
+				continue
+			}
 		}
 		out = append(out, e)
 		if len(out) >= maxEntities {

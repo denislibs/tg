@@ -5,13 +5,14 @@
 // остался тоньше. Стикер-саджесты остаются в Composer (завязаны на clearEditor).
 import { useRef, useState, type RefObject } from 'react'
 import { searchEmojisByWord } from '../emoji/emojiData'
-import type { Peer } from '../../core/managers/peersManager'
+import type { UserReal } from '../../core/peers/peer'
+import { getUserTitle } from '../../core/peers/getPeerTitle'
 import type { InlineResult } from '../../core/managers/botsManager'
 import { placeCaretEnd } from './helpers'
 
 export interface ComposerAutocompleteArgs {
   editorRef: RefObject<HTMLDivElement | null>
-  mentions?: Peer[]
+  mentions?: UserReal[]
   onInlineQuery?: (username: string, query: string) => Promise<InlineResult[] | null>
   onPickInline?: (r: InlineResult) => void
   syncEmpty: () => void
@@ -34,7 +35,7 @@ export function useComposerAutocomplete({
   const inlineTimer = useRef<number | undefined>(undefined)
   const inlineReq = useRef(0) // токен запроса — гасим гонки
   // ── @упоминания (tweb mentionsHelper): участники группы по слову '@query' ──
-  const [mentionSug, setMentionSug] = useState<{ list: Peer[]; wordLen: number; idx: number } | null>(null)
+  const [mentionSug, setMentionSug] = useState<{ list: UserReal[]; wordLen: number; idx: number } | null>(null)
 
   // слово перед кареткой (в пределах одной текстовой ноды)
   const caretWord = (): { word: string; node: Text; end: number } | null => {
@@ -118,8 +119,9 @@ export function useComposerAutocomplete({
     const list = mentions
       .filter((p) => {
         if (!q) return true
-        if (p.username.toLowerCase().startsWith(q)) return true
-        return p.displayName.toLowerCase().split(/\s+/).some((w) => w.startsWith(q))
+        if (p.username?.toLowerCase().startsWith(q)) return true
+        // Имя собирает клиент — `display_name` с провода убран.
+        return getUserTitle(p).toLowerCase().split(/\s+/).some((w) => w.startsWith(q))
       })
       .slice(0, 20)
     if (!list.length) {
@@ -135,7 +137,7 @@ export function useComposerAutocomplete({
 
   // Выбор участника: с username — текст «@username » (распарсится как mention);
   // без username — <a data-mention-id> → text_mention entity (tweb mentionUser).
-  const pickMention = (p: Peer) => {
+  const pickMention = (p: UserReal) => {
     const cw = caretWord()
     const root = editorRef.current
     if (cw && root) {
@@ -153,7 +155,7 @@ export function useComposerAutocomplete({
         const a = document.createElement('a')
         a.className = 'md-mention'
         a.dataset.mentionId = String(p.id)
-        a.textContent = p.displayName || `#${p.id}`
+        a.textContent = getUserTitle(p)
         frag.appendChild(a)
         frag.appendChild(document.createTextNode(' '))
         insertFragment(frag)

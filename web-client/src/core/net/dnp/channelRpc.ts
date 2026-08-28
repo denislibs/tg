@@ -16,7 +16,7 @@ export class ChannelRpc {
   private seq = 0
 
   constructor(private transport: Transport) {
-    transport.on('rpc_resp', (d) => this.onResp(d))
+    transport.onFrame((t, d) => { if (t === 'rpc_resp') this.onResp(d) })
     // Обрыв канала → все in-flight запросы reject'аются (не зависать).
     transport.onClose(() => this.rejectAll('channel closed'))
   }

@@ -18,27 +18,51 @@ import (
 // privacy); the hot ones (new message, read) invalidate precisely. Realtime WS
 // events reconcile the client's view, so a few seconds of snapshot staleness is
 // acceptable.
+//
+// ⚠ Ловушка развёртывания. Значение здесь — JSON доменной структуры БЕЗ
+// json-тегов: ключи в кэше это ИМЕНА ПОЛЕЙ Go. Любое переименование/удаление
+// поля молча ломает формат на живом деплое, и ни один тест этого не покажет
+// (промах кэша выглядит как валидный ответ из БД, а вот СТАРЫЙ блоб, прочитанный
+// НОВЫМ кодом, отдаёт нули).
+//
+// Поэтому при каждой смене формы поднимается ПРЕФИКС КЛЮЧА — старые блобы
+// просто перестают находиться и дочитываются из БД. Именно bump, а не FLUSHDB:
+// сброс всей базы задел бы presence, очереди и QR-записи, не имеющие к форме
+// диалога никакого отношения.
+//
+//	dialogs2: — шаг C пиров: DialogPeer с display_name/avatar_url стал
+//	           конструктором `user`, PhotoURL/PhotoPreview — парой id+превью;
+//	dialogs3: — шаг B диалогов: выжимка последнего сообщения (девять полей
+//	           Last*) схлопнулась в один TopMessageID, Muted/NotifyPreview/
+//	           NotifySound — в NotifySettings, Archived — в Folder, а ThemeID
+//	           уехал в полную карточку. Старый блоб, прочитанный этим кодом,
+//	           отдал бы список чатов без единого последнего сообщения;
+//	dialogs4: — шаг B сообщений: рядом с TopMessageID появился TopMessageSeq —
+//	           НОМЕР последнего сообщения, то самое число, которым его
+//	           адресует dialog.top_message. Старый блоб отдал бы его нулём, а
+//	           ноль в этом пространстве значит «самое новое»: список чатов
+//	           открывался бы не на том месте.
 type DialogsCache struct{ client *goredis.Client }
 
 func NewDialogsCache(client *goredis.Client) *DialogsCache { return &DialogsCache{client: client} }
 
 const dialogsTTL = 15 * time.Second
 
-func dialogsKey(userID int64) string { return fmt.Sprintf("dialogs:%d", userID) }
+func dialogsKey(userID int64) string { return fmt.Sprintf("dialogs4:%d", userID) }
 
-func (s *DialogsCache) Get(ctx context.Context, userID int64) ([]domain.Dialog, bool) {
+func (s *DialogsCache) Get(ctx context.Context, userID int64) ([]domain.DialogRecord, bool) {
 	b, err := s.client.Get(ctx, dialogsKey(userID)).Bytes()
 	if err != nil {
 		return nil, false // miss or redis error — caller falls back to DB
 	}
-	var d []domain.Dialog
+	var d []domain.DialogRecord
 	if json.Unmarshal(b, &d) != nil {
 		return nil, false
 	}
 	return d, true
 }
 
-func (s *DialogsCache) Set(ctx context.Context, userID int64, dialogs []domain.Dialog) {
+func (s *DialogsCache) Set(ctx context.Context, userID int64, dialogs []domain.DialogRecord) {
 	b, err := json.Marshal(dialogs)
 	if err != nil {
 		return

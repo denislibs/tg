@@ -7,35 +7,44 @@ import { useNavigationStore } from '@stores/navigationStore'
 import { useChatsStore } from '@stores/chatsStore'
 import { useSearchStore } from '@stores/searchStore'
 import type { Managers } from '../../client/bootstrap'
+import { applyPeerOps, resetPeerMirror } from '../peerCache'
+import { makeDialog } from '../dialogs/testDialog'
 
 // Числовые ветки хэша менеджеров не касаются; ветка @username ходит в
 // директорию только когда чата нет в диалогах — в этих кейсах он есть.
 const managers = {} as Managers
 
 beforeEach(() => {
+  resetPeerMirror()
   useNavigationStore.getState().selectChat(null)
   useSearchStore.getState().clearPendingJump()
   useChatsStore.setState({ dialogs: [] })
 })
 
 describe('applyHash', () => {
-  it('#<chatId>/<seq> — открывает чат и ставит прыжок к сообщению', async () => {
+  it('#<peerId>/<seq> — открывает чат и ставит прыжок к сообщению', async () => {
     await applyHash('#42/7', managers)
 
     expect(useNavigationStore.getState().selectedId).toBe('42')
-    expect(useSearchStore.getState().pendingJump).toEqual({ chatId: 42, seq: 7 })
+    expect(useSearchStore.getState().pendingJump).toEqual({ peerId: 42, seq: 7 })
   })
 
   it('#@username/<seq> — то же для канала из диалогов', async () => {
-    useChatsStore.setState({ dialogs: [{ chatId: 42, username: 'durov' }] as never })
+    // Публичное имя живёт в КАРТОЧКЕ чата (`channel.username`), а не в строке
+    // диалога: тело чата едет вектором `chats` контейнера `/chats`.
+    applyPeerOps([{ op: 'upsert', peers: [{
+      _: 'channel', id: 42, title: 'Дуров', username: 'durov',
+      photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { broadcast: true },
+    }] }])
+    useChatsStore.setState({ dialogs: [makeDialog({ peerId: -42 })] })
 
     await applyHash('#@durov/9', managers)
 
-    expect(useNavigationStore.getState().selectedId).toBe('42')
-    expect(useSearchStore.getState().pendingJump).toEqual({ chatId: 42, seq: 9 })
+    expect(useNavigationStore.getState().selectedId).toBe('-42')
+    expect(useSearchStore.getState().pendingJump).toEqual({ peerId: -42, seq: 9 })
   })
 
-  it('#<chatId> без якоря — чат открывается, прыжка нет', async () => {
+  it('#<peerId> без якоря — чат открывается, прыжка нет', async () => {
     await applyHash('#42', managers)
 
     expect(useNavigationStore.getState().selectedId).toBe('42')

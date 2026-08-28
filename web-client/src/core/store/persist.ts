@@ -2,9 +2,9 @@
 // диалоги, юзеры и сообщения хранятся по id в IndexedDB и поднимаются на холодном
 // старте до сети (offline-first). В отличие от прежнего chats_cache (последние 100
 // диалогов, без сообщений) — полный нормализованный стор:
-//   • dialogs  — весь список (keyPath chatId);
-//   • users    — peer-метаданные (keyPath id);
-//   • messages — история чатов (keyPath `${chatId}:${seq}`, индекс byChat);
+//   • dialogs  — весь список (keyPath peerId);
+//   • users    — карточки пиров, конструктор `user` целиком (keyPath id);
+//   • messages — история чатов (keyPath `${peerId}:${id}`, индекс byPeer);
 //   • meta     — token (скоуп мультиаккаунта) + me (свой профиль для мгновенного UI).
 //
 // ЕДИНЫЙ writer — воркер. Все saveX/persistClearAll вызываются из менеджеров воркера:
@@ -23,28 +23,41 @@
 //
 // Чистый IndexedDB, без DOM — работает и в воркере, и в main-thread (одна БД origin).
 import { idbGet } from './idbKv'
-import type { Dialog, Message, Draft } from '../models'
-import type { User } from '../managers/authManager'
+import type { Dialog, MyMessage } from '../models'
+import type { Chat, UserReal } from '../peers/peer'
+import type { PeerProfile } from '../managers/authManager'
 import type { Folder } from '../managers/foldersManager'
 import type { AppState } from '../state/state'
 
 const DB = 'msgr-store'
 /** Текущая версия схемы. Экспортируется для тестов, чтобы они не прибивались к литералу. */
-export const DB_VERSION = 2
+export const DB_VERSION = 5
 const VERSION = DB_VERSION
 const S_META = 'meta'
 const S_DIALOGS = 'dialogs'
 const S_USERS = 'users'
+const S_CHATS = 'chats'
 const S_MESSAGES = 'messages'
 const S_STATE = 'state'
 
-// Нормализованный peer (то, что отдаёт peersManager) — минимум для офлайн-резолва
-// имени/аватара при отсутствии сети.
-// avatarPreview опционален: записи, легшие в IDB до Task 9, поля не имеют
-// (читатель — peersManager — нормализует его в '' при подъёме).
-export interface PersistUser { id: number; username: string; displayName: string; avatarUrl: string; avatarPreview?: string }
+// Карточка пира в офлайн-сторе — КОНСТРУКТОР `user` схемы целиком, ровно тот,
+// что приехал с провода. Прежняя плоская запись `{id, username, displayName,
+// avatarUrl, avatarPreview}` формы не имела: `display_name` с провода убран
+// (имя собирает клиент), а пять полей аватарки схлопнулись в `photo`.
+export type PersistUser = UserReal
 
-interface StoredMessage extends Message { pk: string }
+// Карточка ЧАТА в офлайн-сторе — конструктор `channel` схемы. Отдельный стор, а
+// не общий с пользователями: ключ там `id`, а сырые id чата и человека живут в
+// РАЗНЫХ пространствах и совпадают сплошь и рядом (`channel.id === user.id`
+// вполне обычное дело) — одна Map склеила бы две разные карточки.
+//
+// Появился вместе с контейнером `/chats` (шаг C диалогов): до него имя и
+// аватарка группы ехали в КАЖДОЙ строке диалога и персистились вместе с ней;
+// теперь тело чата едет вектором `chats` контейнера, и без этого стора холодный
+// ОФЛАЙН-старт показал бы группы без имён.
+export type PersistChat = Chat
+
+type StoredMessage = MyMessage & { pk: string }
 
 // ── Схема + миграции ────────────────────────────────────────────────────────
 // Явный детерминированный путь апгрейда (аналог build-gated VERSION-шага в tweb
@@ -66,10 +79,10 @@ const MIGRATIONS: Record<number, Migration> = {
   // частично созданной БД, но реально он исполняется лишь при oldVersion < 1.
   1: (db) => {
     if (!db.objectStoreNames.contains(S_META)) db.createObjectStore(S_META)
-    if (!db.objectStoreNames.contains(S_DIALOGS)) db.createObjectStore(S_DIALOGS, { keyPath: 'chatId' })
+    if (!db.objectStoreNames.contains(S_DIALOGS)) db.createObjectStore(S_DIALOGS, { keyPath: 'peerId' })
     if (!db.objectStoreNames.contains(S_USERS)) db.createObjectStore(S_USERS, { keyPath: 'id' })
     if (!db.objectStoreNames.contains(S_MESSAGES)) {
-      db.createObjectStore(S_MESSAGES, { keyPath: 'pk' }).createIndex('byChat', 'chatId')
+      db.createObjectStore(S_MESSAGES, { keyPath: 'pk' }).createIndex('byPeer', 'peerId')
     }
   },
   // v2 — стор `state`: единый объект персистентного состояния (порт tweb
@@ -84,6 +97,62 @@ const MIGRATIONS: Record<number, Migration> = {
       const req = meta.get(key)
       req.onsuccess = () => { if (req.result !== undefined) state.put(req.result, key) }
     }
+  },
+  // v3 — переезд на знаковый `PeerId` и модель пиров схемы TL (шаг D порта).
+  //
+  // ЕДИНСТВЕННЫЙ шаг, который данные НЕ переливает, а пересоздаёт сторы, и это
+  // назвать надо вслух (конвенция выше требует расширять, а не стирать):
+  //  • у диалогов сменился keyPath (`peerId` → `peerId`), у сообщений — имя и
+  //    поле индекса (`byChat`/`peerId` → `byPeer`/`peerId`); IndexedDB не
+  //    умеет менять ни то, ни другое на месте — только пересоздать стор;
+  //  • перелить было бы НЕЧЕМ. Ключ приватного диалога — это id СОБЕСЕДНИКА
+  //    (см. `core/peers/peerId.ts`), и вывести его из лежащего в базе
+  //    внутреннего `peerId` клиент не может: соответствие знает только сервер.
+  //    Любая попытка «догадаться» тут и есть та симметризация, которая
+  //    перепутывает диалоги;
+  //  • у карточек пиров сменилась сама форма (плоская запись → конструктор
+  //    `user`), и `display_name`, из которого только и состояло имя, с провода
+  //    убран — восстанавливать нечего.
+  //
+  // Цена — один холодный старт без офлайн-кэша: и диалоги, и история, и
+  // карточки перечитываются с сервера. Это кэш, а не источник истины: ничего,
+  // кроме скорости первого экрана, не теряется. Черновики, папки и остальное
+  // состояние лежат в `state`/`meta` и шагом не затрагиваются.
+  3: (db) => {
+    for (const store of [S_DIALOGS, S_MESSAGES, S_USERS]) {
+      if (db.objectStoreNames.contains(store)) db.deleteObjectStore(store)
+    }
+    db.createObjectStore(S_DIALOGS, { keyPath: 'peerId' })
+    db.createObjectStore(S_USERS, { keyPath: 'id' })
+    db.createObjectStore(S_MESSAGES, { keyPath: 'pk' }).createIndex('byPeer', 'peerId')
+  },
+  // v4 — офлайн-стор КАРТОЧЕК ЧАТОВ (шаг C диалогов). Только расширение: новый
+  // стор рядом с существующими, ничего не переливается и не стирается. Причина
+  // — контейнер `/chats`: тело группы/канала уехало из строки диалога в вектор
+  // `chats`, и персистить его теперь надо там же, где карточки людей.
+  4: (db) => {
+    if (!db.objectStoreNames.contains(S_CHATS)) db.createObjectStore(S_CHATS, { keyPath: 'id' })
+  },
+  // v5 — переезд СООБЩЕНИЙ на конструкторы схемы TL (шаг D порта сообщений).
+  //
+  // Второй шаг, который данные не переливает, а пересоздаёт сторы, и причина та
+  // же, что у v3, — переливать НЕЧЕМ:
+  //  • сменился сам ключ записи (`${peerId}:${seq}` → `${peerId}:${id}`), причём
+  //    номер переехал в КЛИЕНТСКОЕ пространство (`core/history/messageId.ts`);
+  //  • сменилась форма: плоская строка с `type`/`text`/`createdAt`/`senderId`
+  //    стала конструктором `message`/`messageService`, а поля `deleted`,
+  //    `media_id`, снимок `reply_to` и `send_as` исчезли вовсе;
+  //  • у диалогов в `lastMessage` лежит ровно такой же старый объект, а
+  //    `top_message` и оба горизонта чтения — номера прошлого пространства.
+  //
+  // Цена та же: один холодный старт без офлайн-кэша истории и списка. Это кэш,
+  // а не источник истины; карточки пиров/чатов и `state` шагом не затрагиваются.
+  5: (db) => {
+    for (const store of [S_MESSAGES, S_DIALOGS]) {
+      if (db.objectStoreNames.contains(store)) db.deleteObjectStore(store)
+    }
+    db.createObjectStore(S_DIALOGS, { keyPath: 'peerId' })
+    db.createObjectStore(S_MESSAGES, { keyPath: 'pk' }).createIndex('byPeer', 'peerId')
   },
 }
 
@@ -115,7 +184,7 @@ type Op =
   | { kind: 'put'; value: unknown; key?: IDBValidKey } // key — только для out-of-line стора meta
   | { kind: 'delete'; key: IDBValidKey }
   | { kind: 'clear' }
-  | { kind: 'clearByChat'; chatId: number } // курсорное удаление истории чата по индексу byChat
+  | { kind: 'clearByPeer'; peerId: PeerId } // курсорное удаление истории чата по индексу byPeer
 
 interface Batch {
   ops: Op[]
@@ -148,8 +217,8 @@ function applyOp(s: IDBObjectStore, op: Op): void {
     case 'put': if (op.key !== undefined) s.put(op.value, op.key); else s.put(op.value); break
     case 'delete': s.delete(op.key); break
     case 'clear': s.clear(); break
-    case 'clearByChat': {
-      const req = s.index('byChat').openKeyCursor(IDBKeyRange.only(op.chatId))
+    case 'clearByPeer': {
+      const req = s.index('byPeer').openKeyCursor(IDBKeyRange.only(op.peerId))
       req.onsuccess = () => { const c = req.result; if (c) { s.delete(c.primaryKey); c.continue() } }
       break
     }
@@ -239,6 +308,7 @@ export async function persistClearAll(): Promise<void> {
     await Promise.all([
       enqueue(S_DIALOGS, { kind: 'clear' }),
       enqueue(S_USERS, { kind: 'clear' }),
+      enqueue(S_CHATS, { kind: 'clear' }),
       enqueue(S_MESSAGES, { kind: 'clear' }),
       enqueue(S_META, { kind: 'clear' }),
       enqueue(S_STATE, { kind: 'clear' }),
@@ -249,9 +319,13 @@ export async function persistClearAll(): Promise<void> {
 // ── Диалоги + me (пишет владелец факта в воркере — dialogsManager/setMe, Task 5) ──
 
 // Секретные чаты: не персистим расшифрованный текст/шифр-блоб превью (E2E).
+// Признак секретного — НАШ параметр `secret` самого конструктора `dialog`
+// (решение Р9), а не прежняя строка `type === 'secret'`.
 function sanitizeDialog(d: Dialog): Dialog {
-  if (d.type !== 'secret' || !d.lastMessage) return d
-  return { ...d, lastMessage: { ...d.lastMessage, text: '', encBody: undefined } }
+  const lm = d.lastMessage
+  if (!d.secret || !lm) return d
+  if (lm._ !== 'message') return d
+  return { ...d, lastMessage: { ...lm, message: '', entities: undefined, enc_body: undefined } }
 }
 
 export async function saveDialogs(dialogs: Dialog[]): Promise<void> {
@@ -270,18 +344,20 @@ export async function loadDialogs(): Promise<Dialog[]> {
   try { return (await read<Dialog[]>(S_DIALOGS, (s) => s.getAll())) ?? [] } catch { return [] }
 }
 
-export async function saveMe(me: User | null): Promise<void> {
+export async function saveMe(me: PeerProfile | null): Promise<void> {
   if (await locked()) return
   try { await enqueue(S_META, me ? { kind: 'put', value: me, key: 'me' } : { kind: 'delete', key: 'me' }) } catch { /* idb недоступен */ }
 }
 
-export async function loadMe(): Promise<User | null> {
+export async function loadMe(): Promise<PeerProfile | null> {
   if (await locked()) return null
   try {
-    const me = (await read<User | undefined>(S_META, (s) => s.get('me'))) ?? null
-    // Записи, легшие в IDB до Task 9, поля avatarPreview не имеют — нормализуем,
-    // чтобы тип User (string) не врал читателям.
-    return me ? { ...me, avatarPreview: me.avatarPreview ?? '' } : null
+    // Записи прошлой формы (плоская карточка с display_name/avatar_url) после
+    // миграции v3 в этом сторе лежать не могут — ключ `me` живёт в `meta`,
+    // который шагом не пересоздаётся, поэтому старую форму отсекаем по
+    // отсутствию конструктора: без `_` это не `user`, и читателю она врёт.
+    const me = (await read<PeerProfile | undefined>(S_META, (s) => s.get('me'))) ?? null
+    return me?.user?._ === 'user' ? me : null
   } catch { return null }
 }
 
@@ -300,16 +376,6 @@ export async function loadFolders(): Promise<Folder[]> {
   try { return (await read<Folder[] | undefined>(S_META, (s) => s.get('folders'))) ?? [] } catch { return [] }
 }
 
-export async function saveDrafts(drafts: Draft[]): Promise<void> {
-  if (await locked()) return
-  try { await enqueue(S_META, { kind: 'put', value: drafts, key: 'drafts' }) } catch { /* idb недоступен */ }
-}
-
-export async function loadDrafts(): Promise<Draft[]> {
-  if (await locked()) return []
-  try { return (await read<Draft[] | undefined>(S_META, (s) => s.get('drafts'))) ?? [] } catch { return [] }
-}
-
 // ── Юзеры (пишет peersManager воркера) ─────────────────────────────────────────
 
 export async function saveUsers(users: PersistUser[]): Promise<void> {
@@ -322,34 +388,46 @@ export async function loadUsers(): Promise<PersistUser[]> {
   try { return (await read<PersistUser[]>(S_USERS, (s) => s.getAll())) ?? [] } catch { return [] }
 }
 
+// ── Чаты (пишет тот же peersManager воркера) ───────────────────────────────────
+
+export async function saveChats(chats: PersistChat[]): Promise<void> {
+  if (!chats.length || (await locked())) return
+  try { await enqueue(S_CHATS, ...chats.map((c): Op => ({ kind: 'put', value: c }))) } catch { /* idb недоступен */ }
+}
+
+export async function loadChats(): Promise<PersistChat[]> {
+  if (await locked()) return []
+  try { return (await read<PersistChat[]>(S_CHATS, (s) => s.getAll())) ?? [] } catch { return [] }
+}
+
 // ── Сообщения (пишет messagesManager воркера) ──────────────────────────────────
 
-export async function saveMessages(chatId: number, msgs: Message[]): Promise<void> {
+export async function saveMessages(peerId: PeerId, msgs: MyMessage[]): Promise<void> {
   if (await locked()) return
   // Секретные (E2E) не персистим в открытом виде: text/entities расшифрованы в памяти.
-  const safe = msgs.filter((m) => !m.secret && !m.encBody && m.type !== 'encrypted')
+  const safe = msgs.filter((m) => !m.secret && !(m._ === 'message' && m.enc_body))
   if (!safe.length) return
   try {
-    await enqueue(S_MESSAGES, ...safe.map((m): Op => ({ kind: 'put', value: { ...m, pk: `${chatId}:${m.seq}` } })))
+    await enqueue(S_MESSAGES, ...safe.map((m): Op => ({ kind: 'put', value: { ...m, pk: `${peerId}:${m.id}` } })))
   } catch { /* idb недоступен */ }
 }
 
-export async function loadMessages(chatId: number): Promise<Message[]> {
+export async function loadMessages(peerId: PeerId): Promise<MyMessage[]> {
   if (await locked()) return []
   try {
-    const rows = await read<StoredMessage[]>(S_MESSAGES, (s) => s.index('byChat').getAll(IDBKeyRange.only(chatId)))
+    const rows = await read<StoredMessage[]>(S_MESSAGES, (s) => s.index('byPeer').getAll(IDBKeyRange.only(peerId)))
     return (rows ?? [])
-      .map((r) => { const m = { ...r } as Partial<StoredMessage>; delete m.pk; return m as Message })
-      .sort((a, b) => a.seq - b.seq)
+      .map((r) => { const m = { ...r } as Partial<StoredMessage>; delete m.pk; return m as MyMessage })
+      .sort((a, b) => a.id - b.id)
   } catch { return [] }
 }
 
-export async function deletePersistedMessage(chatId: number, seq: number): Promise<void> {
-  try { await enqueue(S_MESSAGES, { kind: 'delete', key: `${chatId}:${seq}` }) } catch { /* idb недоступен */ }
+export async function deletePersistedMessage(peerId: PeerId, msgId: number): Promise<void> {
+  try { await enqueue(S_MESSAGES, { kind: 'delete', key: `${peerId}:${msgId}` }) } catch { /* idb недоступен */ }
 }
 
-export async function clearPersistedChat(chatId: number): Promise<void> {
-  try { await enqueue(S_MESSAGES, { kind: 'clearByChat', chatId }) } catch { /* idb недоступен */ }
+export async function clearPersistedChat(peerId: PeerId): Promise<void> {
+  try { await enqueue(S_MESSAGES, { kind: 'clearByPeer', peerId }) } catch { /* idb недоступен */ }
 }
 
 // ── State: единый объект персистентного состояния ─────────────────────────────

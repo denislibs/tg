@@ -22,8 +22,8 @@ func NewGiveawaysRepo(pool *pgxpool.Pool) *GiveawaysRepo { return &GiveawaysRepo
 func (r *GiveawaysRepo) Create(ctx context.Context, g domain.Giveaway) (domain.Giveaway, error) {
 	err := querier(ctx, r.pool).QueryRow(ctx,
 		`INSERT INTO giveaways (chat_id, creator_id, prize_kind, months, stars, winners_count, until_date, status)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-		g.ChatID, g.CreatorID, g.PrizeKind, g.Months, g.Stars, g.WinnersCount, g.UntilDate, g.Status).Scan(&g.ID)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, created_at`,
+		g.ChatID, g.CreatorID, g.PrizeKind, g.Months, g.Stars, g.WinnersCount, g.UntilDate, g.Status).Scan(&g.ID, &g.CreatedAt)
 	return g, err
 }
 
@@ -31,9 +31,9 @@ func (r *GiveawaysRepo) ByID(ctx context.Context, id int64) (domain.Giveaway, er
 	var g domain.Giveaway
 	var winnersRaw []byte
 	err := querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT id, chat_id, creator_id, prize_kind, months, stars, winners_count, until_date, status, winner_ids
+		`SELECT id, chat_id, creator_id, prize_kind, months, stars, winners_count, until_date, created_at, status, winner_ids
 		   FROM giveaways WHERE id=$1`, id).
-		Scan(&g.ID, &g.ChatID, &g.CreatorID, &g.PrizeKind, &g.Months, &g.Stars, &g.WinnersCount, &g.UntilDate, &g.Status, &winnersRaw)
+		Scan(&g.ID, &g.ChatID, &g.CreatorID, &g.PrizeKind, &g.Months, &g.Stars, &g.WinnersCount, &g.UntilDate, &g.CreatedAt, &g.Status, &winnersRaw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Giveaway{}, domain.ErrNotFound
 	}

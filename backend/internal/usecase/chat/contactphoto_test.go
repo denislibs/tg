@@ -10,19 +10,17 @@ import (
 // fakePhotoAdder captures AddProfilePhoto calls (the accept side effect).
 type fakePhotoAdder struct {
 	calls []struct {
-		userID   int64
-		url      string
-		videoURL string
+		userID  int64
+		mediaID int64
 	}
 }
 
-func (f *fakePhotoAdder) AddProfilePhoto(_ context.Context, userID int64, url, videoURL string) (domain.ProfilePhoto, error) {
+func (f *fakePhotoAdder) AddProfilePhoto(_ context.Context, userID, mediaID int64, _ *int64) (domain.ProfilePhoto, error) {
 	f.calls = append(f.calls, struct {
-		userID   int64
-		url      string
-		videoURL string
-	}{userID, url, videoURL})
-	return domain.ProfilePhoto{ID: int64(len(f.calls)), URL: url}, nil
+		userID  int64
+		mediaID int64
+	}{userID, mediaID})
+	return domain.ProfilePhoto{ID: int64(len(f.calls)), MediaID: mediaID}, nil
 }
 
 func TestSuggestAndAcceptProfilePhoto(t *testing.T) {
@@ -33,7 +31,7 @@ func TestSuggestAndAcceptProfilePhoto(t *testing.T) {
 
 	const suggester, recipient = int64(1), int64(2)
 	s.seedMedia(99, suggester) // the suggested photo belongs to the suggester
-	msg, err := in.SuggestProfilePhoto(ctx, suggester, recipient, 99, "/media/99/content")
+	msg, err := in.SuggestProfilePhoto(ctx, suggester, recipient, 99)
 	if err != nil {
 		t.Fatalf("SuggestProfilePhoto: %v", err)
 	}
@@ -50,7 +48,7 @@ func TestSuggestAndAcceptProfilePhoto(t *testing.T) {
 	if err := in.AcceptProfilePhotoSuggestion(ctx, recipient, msg.ID); err != nil {
 		t.Fatalf("recipient accept: %v", err)
 	}
-	if len(adder.calls) != 1 || adder.calls[0].userID != recipient || adder.calls[0].url != "/media/99/content" {
+	if len(adder.calls) != 1 || adder.calls[0].userID != recipient || adder.calls[0].mediaID != 99 {
 		t.Fatalf("AddProfilePhoto calls = %+v", adder.calls)
 	}
 

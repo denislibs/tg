@@ -13,6 +13,8 @@
 //   кружок      → bubble round has-floating-time is-message-empty just-media (без can-have-tail)
 //   альбом      → bubble is-album is-grouped photo
 //   опрос       → bubble poll-message
+import { getBubbleMedia, getDocumentFromMessage, getExtendedMediaPreview, type MyDocument } from '../../core/media/messageMedia'
+import { getInlineMarkupRows } from '../../core/markup/replyMarkup'
 import type { ConvMsg } from '../../data'
 
 export interface BubbleCtx {
@@ -53,30 +55,38 @@ function statusClass(m: ConvMsg): string | null {
 }
 
 /**
- * Трек ли это (music-плеер, а не строка файла). В tweb класс бабла выбирается по
- * `doc.type`, а его ставит appDocsManager по documentAttributeAudio — поэтому mp3,
- * отправленный «как файл», всё равно приезжает doc.type === 'audio'. У нас такой
- * файл приходит type='document' с аудийным mime, и решает именно mime — ровно как
- * в RealMediaBubble (иначе бабл получал бы document-message без фикс. ширины и
- * заголовок резался бы middle-ellipsis).
+ * Класс бабла одиночного документа — 1:1 tweb bubbles.ts:8632-8642:
+ * `(!['photo','pdf'].includes(doc.type) ? doc.type || 'document' : 'document') +
+ * '-message'`, и всё, кроме `document-message`, дополнительно сжимается по
+ * контенту (`min-content`). Тип берётся у самого документа (его вывел
+ * `saveDocument` из атрибутов), а не угадывается по mime: mp3, отправленный
+ * «как файл», приходит БЕЗ documentAttributeAudio и потому остаётся строкой
+ * файла — как в оригинале.
  */
-export function isAudioTrack(m: ConvMsg): boolean {
-  return m.type === 'audio' || (m.type === 'document' && !!m.mediaMime?.startsWith('audio/'))
+function documentClasses(doc: MyDocument): string[] {
+  const name = (doc.type === 'photo' || doc.type === 'pdf' ? 'document' : doc.type || 'document') + '-message'
+  return name === 'document-message'
+    ? [name, 'is-single-document']
+    : [name, 'min-content', 'is-single-document']
 }
 
 /** Классы по типу медиа (tweb bubbles.ts:7889,8097-8100,8530,8635-8642,8811,8751,8700). */
 function typeClasses(m: ConvMsg): string[] {
-  if (isAudioTrack(m)) return ['audio-message', 'min-content', 'is-single-document']
   switch (m.type) {
     case 'photo': return ['photo']
     case 'video': return ['video']
     case 'roundVideo': return ['round']
     case 'album': return ['is-album', 'is-grouped', m.albumItems?.some((x) => x.type === 'video') ? 'video' : 'photo']
     case 'sticker': return ['sticker']
-    // min-content + is-single-document — из живого DOM: одиночный документ/аудио/
-    // голосовое сжимают бабл по контенту (tweb bubbles.ts:8638-8642).
-    case 'voice': return ['voice-message', 'min-content', 'is-single-document']
-    case 'document': return ['document-message', 'is-single-document']
+    // Голосовое/музыка/файл — одна ветка оригинала: класс диктует doc.type.
+    case 'voice':
+    case 'audio':
+    case 'document': {
+      const doc = getDocumentFromMessage(m)
+      // Аплоад: вложения ещё нет — форму бабла держит тип самого сообщения.
+      if (!doc) return m.type === 'document' ? ['document-message', 'is-single-document'] : [`${m.type}-message`, 'min-content', 'is-single-document']
+      return documentClasses(doc)
+    }
     case 'poll': return ['poll-message']
     case 'checklist': return ['poll-message']
     case 'contact': return ['contact-message']
@@ -88,10 +98,13 @@ function typeClasses(m: ConvMsg): string[] {
 
 /**
  * Есть ли у сообщения медиа-вложение (для решения is-message-empty/just-media).
- * Аплоад считается медиа: у оптимистичного бабла ещё нет mediaId, но есть localUrl.
+ * Аплоад считается медиа: у оптимистичного бабла ещё нет вложения, но есть localUrl.
+ *
+ * Спрашиваем `getBubbleMedia`, а не `mediaId`: картинка карточки ссылки — тоже
+ * файл вложения, но рисует её тело сообщения, а не сам бабл.
  */
 function hasMedia(m: ConvMsg): boolean {
-  return m.mediaId != null || !!m.localUrl || m.type === 'album' || m.type === 'geo' || !!m.paidMedia?.locked
+  return !!getBubbleMedia(m) || !!m.localUrl || m.type === 'album' || m.type === 'geo' || !!getExtendedMediaPreview(m)
 }
 
 export function bubbleClasses(m: ConvMsg, ctx: BubbleCtx): string[] {
@@ -133,7 +146,9 @@ export function bubbleClasses(m: ConvMsg, ctx: BubbleCtx): string[] {
   // Пост канала: рядом с баблом висит круглая кнопка «переслать», под неё
   // резервируется место (tweb bubbles.ts:7673-7681).
   if (ctx.isChannel) cls.push('channel-post', 'with-beside-button')
-  if (m.replyMarkup?.inline) cls.push('with-reply-markup')
+  // tweb вешает класс, только если инлайн-клавиатура реально дала кнопки
+  // (bubbles.ts:7743 — `containerDiv.childElementCount`).
+  if (getInlineMarkupRows(m.replyMarkup)) cls.push('with-reply-markup')
 
   if (ctx.isFirstUnread) cls.push('is-first-unread')
   if (ctx.isHighlighted) cls.push('is-highlighted')

@@ -2,6 +2,21 @@ export class HttpError extends Error {
   constructor(public status: number, message: string) { super(message) }
 }
 
+/**
+ * Тело ответа-ошибки — конструктор `error{code, text}` (разбор:
+ * docs/readiness/tl-rest-analysis.md, Р3). Прежде это был безымянный
+ * `{error: "..."}`.
+ *
+ * Текст берётся ТОЛЬКО у своего конструктора: чужое тело (прокси, шлюз, чужой
+ * сервис) описания нашей ошибки не несёт, и подставлять оттуда произвольную
+ * строку значило бы показать пользователю чужой текст.
+ */
+function errorOf(status: number, body: unknown): HttpError {
+  const e = body as { _?: string; text?: string } | null | undefined
+  const text = e?._ === 'error' && typeof e.text === 'string' ? e.text : `HTTP ${status}`
+  return new HttpError(status, text)
+}
+
 // Structural-контракт канального RPC (реализуется ChannelRpc). Импортируем как тип-форму,
 // а не класс, чтобы не создавать цикл restClient↔channelRpc.
 export interface ChannelRpcLike {
@@ -9,11 +24,23 @@ export interface ChannelRpcLike {
   call(method: string, path: string, body: unknown): Promise<{ status: number; body: unknown }>
 }
 
+// Провод REST: JSON либо TL — по договорённости, заключённой ЗАГОЛОВКОМ.
+//
+// Тот же приём, что у сокета, где формат просится подпротоколом `tl.1`: провод
+// это свойство ЗАПРОСА, а не витрины. Сервер умеет обе формы и собирает их из
+// одной модели (`backend/.../wiretl.go`), поэтому переключение обратимо.
+const WIRE_TL_CONTENT_TYPE = 'application/x-tl'
+
 export class RestClient {
   // `ready` (опц.) — резолвится, когда токен загружен из хранилища. Запросы ждут
   // его, иначе на старте REST-RPC уходит без токена → 401 «missing token» (гонка:
   // TokenStore.load() читает IDB асинхронно, а UI уже шлёт запросы). Мемоизирован
   // в TokenStore, после первой загрузки резолвится мгновенно.
+  // Разбор TL подключается ИЗВНЕ (`useTLWire`), а не импортируется здесь:
+  // `tl_utils` со схемой тянет за собой сотни килобайт, и при выключенном
+  // флаге они не должны попадать в бандл — так же сделано у сокета.
+  private decodeTL?: (raw: Uint8Array) => unknown
+
   constructor(
     private base: string,
     private getToken: () => string | null,
@@ -21,8 +48,16 @@ export class RestClient {
     private channelRpc?: ChannelRpcLike,
   ) {}
 
+  /** Включает провод TL: клиент начинает просить его заголовком `Accept`. */
+  useTLWire(decode: (raw: Uint8Array) => unknown): void {
+    this.decodeTL = decode
+  }
+
   private headers(): Record<string, string> {
     const h: Record<string, string> = { 'Content-Type': 'application/json' }
+    // Тело запроса остаётся JSON и на проводе TL: конструкторов у наших
+    // ЗАПРОСОВ нет — ими стали только витрины (шаги A/B фазы 3).
+    if (this.decodeTL) h.Accept = `${WIRE_TL_CONTENT_TYPE}, application/json`
     const tok = this.getToken()
     if (tok) h.Authorization = `Bearer ${tok}`
     return h
@@ -116,10 +151,7 @@ export class RestClient {
     // При DNP-ON и готовом канале REST идёт через Noise-канал; иначе (логин/пре-канал) — fetch.
     if (this.channelRpc?.isReady()) {
       const { status, body: respBody } = await this.channelRpc.call(method, path, body)
-      if (status < 200 || status >= 300) {
-        const err = respBody as { error?: string } | null
-        throw new HttpError(status, err?.error ?? `HTTP ${status}`)
-      }
+      if (status < 200 || status >= 300) throw errorOf(status, respBody)
       return respBody as R
     }
     if (this.ready) await this.ready() // дождаться загрузки токена (см. конструктор)
@@ -128,9 +160,27 @@ export class RestClient {
       headers: this.headers(),
       body: body === undefined ? undefined : JSON.stringify(body),
     })
-    const text = await res.text()
-    const data = text ? JSON.parse(text) : undefined
-    if (!res.ok) throw new HttpError(res.status, (data && data.error) || `HTTP ${res.status}`)
+    const data = await this.decodeBody(res)
+    if (!res.ok) throw errorOf(res.status, data)
     return data as R
+  }
+
+  /**
+   * Тело ответа в дерево — формой, которую выбрал СЕРВЕР.
+   *
+   * Различается по `Content-Type`, а не по нашей просьбе: витрина без
+   * конструктора уезжает JSON-ом на любом проводе (чужие протоколы, транспорт
+   * медиа, свои подсистемы без предмета в схеме — названные границы шага A/B),
+   * и это не сбой. Ровно так же сокет различает кадр без конструктора.
+   */
+  private async decodeBody(res: Response): Promise<unknown> {
+    const kind = (res.headers.get('Content-Type') ?? '').split(';')[0].trim()
+    if (this.decodeTL && kind === WIRE_TL_CONTENT_TYPE) {
+      const raw = new Uint8Array(await res.arrayBuffer())
+      if (!raw.length) return undefined
+      return this.decodeTL(raw)
+    }
+    const text = await res.text()
+    return text ? JSON.parse(text) : undefined
   }
 }

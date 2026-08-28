@@ -21,7 +21,7 @@ func TestQueue_EnqueueConsumeAck(t *testing.T) {
 	ctx := context.Background()
 
 	q := NewQueue(rdb)
-	job := usecasepush.Job{RecipientID: 7, ChatID: 3, MsgID: 100, Seq: 5, SenderID: 9, Text: "hi"}
+	job := usecasepush.Job{RecipientID: 7, ChatID: 3, Seq: 5, SenderID: 9, Text: "hi"}
 
 	if err := q.Enqueue(ctx, job); err != nil {
 		t.Fatalf("Enqueue: %v", err)

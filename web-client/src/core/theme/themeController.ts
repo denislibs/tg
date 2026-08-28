@@ -23,6 +23,7 @@
 // `if (themeName === 'tinted')`) — tinted берётся статично из
 // `presetToColorMap('tinted')` как есть. `setTheme` синхронный.
 
+import IS_TOUCH_SUPPORTED from '../../environment/touchSupport'
 import type { AppColor, AppColorName, ThemePresetName } from '../../config/themePresets'
 import { appColorMap, DEFAULT_HIGHLIGHTING_COLORS, presetToColorMap } from '../../config/themePresets'
 import {
@@ -31,6 +32,7 @@ import {
   getAverageColor,
   hexToRgb,
   highlightingColor,
+  hslaStringToHex,
   hslaStringToRgba,
   hslaToRgba,
   mixColors,
@@ -52,6 +54,11 @@ const DARK_PRESETS = new Set<ThemePresetName>(['night', 'tinted'])
 const STYLE_EL_ID = 'theme'
 
 let currentPreset: ThemePresetName | null = null
+
+// tweb `themeController.themeColor` (:254, :317) — цвет для `<meta name="theme-color">`
+// (окраска нативного хрома браузера/PWA). Пишется из hsla подсветки в
+// `applyHighlightingColor`, читается дефолтом параметра `setThemeColor`.
+let themeColor: string | undefined
 
 function getOrCreateStyleEl(): HTMLStyleElement {
   const existing = document.getElementById(STYLE_EL_ID)
@@ -222,6 +229,25 @@ function buildThemeCss(preset: ThemePresetName): { css: string; isNight: boolean
 }
 
 /**
+ * Порт tweb `setThemeColor` (themeController.ts:254-265): пишет
+ * `<meta name="theme-color">` — им браузер/PWA красит свой нативный хром
+ * (адресную строку на Android, полосу статуса standalone-окна). Дефолт
+ * аргумента — накопленный `themeColor` (из hsla подсветки), а без него —
+ * `surface-color` темы, с тем же фолбэком `#212121`/`#ffffff`, что у оригинала.
+ */
+export function setThemeColor(color: string | undefined = themeColor): void {
+  if (typeof document === 'undefined') return
+
+  if (!color) {
+    const preset = currentPreset
+    color = (preset && presetToColorMap(preset)['surface-color']) ||
+      (preset && DARK_PRESETS.has(preset) ? '#212121' : '#ffffff')
+  }
+
+  document.head.querySelector('[name="theme-color"]')?.setAttribute('content', color)
+}
+
+/**
  * Строит CSS-переменные темы для встроенного пресета и инжектит их в
  * единственный `<style id="theme">` в `<head>`. Тоглит `.night` на
  * `<html>` и `data-theme` атрибут. Nil-safe для worker/SSR.
@@ -231,12 +257,31 @@ export function setTheme(preset: ThemePresetName): void {
 
   const { css, isNight } = buildThemeCss(preset)
 
-  getOrCreateStyleEl().textContent = css
+  // tweb :323-325 — `<meta name="color-scheme">` под активную тему. Им браузер
+  // красит СВОЁ: скроллбары, дефолтный фон до первой отрисовки, нативные
+  // контролы (`<select>`, чекбоксы), форму каретки. Без него в тёмных темах
+  // остаётся светлый нативный хром поверх тёмного приложения.
+  document.head.querySelector('[name="color-scheme"]')?.setAttribute('content', isNight ? 'dark' : 'light')
+
   document.documentElement.classList.toggle('night', isNight)
   document.documentElement.setAttribute('data-theme', preset)
-  applyHighlightingColor(preset)
-
   currentPreset = preset
+  // tweb :328 — ДО applyHighlightingColor: цвет берётся тот, что накоплен
+  // предыдущей темой (у оригинала ровно такой порядок, :328 против :344).
+  setThemeColor()
+
+  // tweb :339-342 — зеркало активной темы в `.night {}`. Блок нужен подпискам
+  // на КЛАСС (а не на активную тему): узел с `night` (у нас — шапка
+  // сториз-вьюера, `StoryViewer.tsx`, порт tweb viewer.tsx:2678) обязан быть
+  // тёмным и на светлой теме. Когда активная тема уже тёмная — зеркалим ЕЁ,
+  // иначе такой узел получил бы статичную 'night' вместо активной палитры.
+  const mirror = buildColorMapVars(presetToColorMap(isNight ? preset : 'night'), true)
+    .map(([varName, value]) => `--${varName}:${value};`)
+    .join('')
+
+  getOrCreateStyleEl().textContent = `${css}.night{${mirror}}`
+
+  applyHighlightingColor(preset)
 }
 
 // Порт `applyHighlightingColor` (tweb helpers/themeController.ts:293-316) —
@@ -248,6 +293,13 @@ function applyHighlightingColorHsla(hsla: string, element: HTMLElement): void {
   element.style.setProperty('--message-highlighting-color', hsla)
   element.style.setProperty('--message-highlighting-color-rgb', rgba.slice(0, 3).join(','))
   element.style.setProperty('--message-highlighting-alpha', '' + rgba[3] / 255)
+
+  // tweb :316-318 — на НЕ-тач-устройствах цвет нативного хрома тянется за
+  // подсветкой активных обоев; на таче оригинал его не трогает (там его красит
+  // системная тема).
+  if (!IS_TOUCH_SUPPORTED) {
+    themeColor = hslaStringToHex(hsla)
+  }
 }
 
 export function applyHighlightingColor(

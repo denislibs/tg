@@ -19,7 +19,7 @@ func seedUser(t *testing.T, pool *pgxpool.Pool, phone string) int64 {
 	t.Helper()
 	var id int64
 	err := pool.QueryRow(context.Background(),
-		`INSERT INTO users (phone, display_name) VALUES ($1,$1) RETURNING id`, phone).Scan(&id)
+		`INSERT INTO users (phone, first_name, display_name) VALUES ($1,$1,$1) RETURNING id`, phone).Scan(&id)
 	if err != nil {
 		t.Fatalf("seedUser(%s): %v", phone, err)
 	}
@@ -102,7 +102,7 @@ func TestChatsRepo_ListDialogs(t *testing.T) {
 	if len(dialogs) != 1 || dialogs[0].ChatID != chatID {
 		t.Fatalf("unexpected dialogs: %+v", dialogs)
 	}
-	if dialogs[0].HasLast {
+	if dialogs[0].TopMessageID != 0 {
 		t.Fatal("expected no last message in empty chat")
 	}
 	// A's dialog should carry the peer (B) for a private chat.
@@ -112,8 +112,10 @@ func TestChatsRepo_ListDialogs(t *testing.T) {
 	if dialogs[0].Peer.ID != b {
 		t.Fatalf("peer id = %d; want %d", dialogs[0].Peer.ID, b)
 	}
-	if dialogs[0].Peer.DisplayName != "+711" {
-		t.Fatalf("peer display_name = %q; want %q", dialogs[0].Peer.DisplayName, "+711")
+	// Имени на проводе больше нет — есть first_name/last_name конструктора
+	// `user`, из которых имя собирает клиент.
+	if dialogs[0].Peer.FirstName != "+711" {
+		t.Fatalf("peer first_name = %q; want %q", dialogs[0].Peer.FirstName, "+711")
 	}
 	// And symmetrically, B's dialog should carry A as the peer.
 	bDialogs, err := repo.ListDialogs(ctx, b)
@@ -226,7 +228,7 @@ func TestChatsRepo_ListDialogs_GroupTitle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListDialogs: %v", err)
 	}
-	var found *domain.Dialog
+	var found *domain.DialogRecord
 	for i := range dialogs {
 		if dialogs[i].ChatID == groupID {
 			found = &dialogs[i]
@@ -372,9 +374,9 @@ func TestChatsRepo_UnreadMentions(t *testing.T) {
 		t.Fatalf("unread mentions = %d, want 2", d[0].UnreadMentionsCount)
 	}
 
-	seq, msgID, err := repo.NextMention(ctx, chatID, b, 0)
-	if err != nil || seq != seqs[0] || msgID != mids[0] {
-		t.Fatalf("NextMention = seq %d msg %d err %v; want seq %d msg %d", seq, msgID, err, seqs[0], mids[0])
+	seq, err := repo.NextMention(ctx, chatID, b, 0)
+	if err != nil || seq != seqs[0] {
+		t.Fatalf("NextMention = %d err %v; want %d", seq, err, seqs[0])
 	}
 
 	// Read up to the first mention → one left, next is the second.
@@ -386,7 +388,7 @@ func TestChatsRepo_UnreadMentions(t *testing.T) {
 	if d[0].UnreadMentionsCount != 1 {
 		t.Fatalf("unread mentions after partial read = %d, want 1", d[0].UnreadMentionsCount)
 	}
-	if seq, _, _ := repo.NextMention(ctx, chatID, b, seqs[0]); seq != seqs[1] {
+	if seq, _ := repo.NextMention(ctx, chatID, b, seqs[0]); seq != seqs[1] {
 		t.Fatalf("NextMention after read = %d, want %d", seq, seqs[1])
 	}
 
@@ -394,7 +396,7 @@ func TestChatsRepo_UnreadMentions(t *testing.T) {
 	if rem, _ := repo.ClearMentions(ctx, chatID, b, seqs[1]); rem != 0 {
 		t.Fatalf("ClearMentions rest = %d, want 0", rem)
 	}
-	if _, _, err := repo.NextMention(ctx, chatID, b, 0); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := repo.NextMention(ctx, chatID, b, 0); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("NextMention when none: want ErrNotFound, got %v", err)
 	}
 }
@@ -546,6 +548,66 @@ func TestMessagesRepo_Thread(t *testing.T) {
 		if m.ID == normal.ID && m.ThreadRootID != nil {
 			t.Fatalf("normal message via GetHistory ThreadRootID = %v; want nil", m.ThreadRootID)
 		}
+	}
+}
+
+// ThreadReplyCounts — тот же счёт, что у CountThread, но ОДНИМ запросом на
+// пачку корней: страница истории спрашивает счётчик сразу про все свои
+// сообщения, и поштучный CountThread был бы запросом на сообщение.
+func TestMessagesRepo_ThreadReplyCounts(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	msgs := NewMessagesRepo(pool)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+830")
+	b := seedUser(t, pool, "+831")
+	chatID := createPrivate(t, pool, a, b)
+	other := createPrivate(t, pool, a, seedUser(t, pool, "+832"))
+
+	insert := func(chat int64, root *int64) domain.Message {
+		t.Helper()
+		seq, _ := msgs.NextSeq(ctx, chat)
+		m, err := msgs.Insert(ctx, domain.Message{ChatID: chat, Seq: seq, SenderID: a, Type: "text", Text: "c", ThreadRootID: root})
+		if err != nil {
+			t.Fatalf("Insert: %v", err)
+		}
+		return m
+	}
+
+	root1, root2, empty := int64(100), int64(200), int64(300)
+	insert(chatID, &root1)
+	insert(chatID, &root1)
+	insert(chatID, &root2)
+	gone := insert(chatID, &root2)
+	if err := msgs.SoftDelete(ctx, gone.ID); err != nil {
+		t.Fatalf("SoftDelete: %v", err)
+	}
+	// тот же корень в ДРУГОМ чате не должен подмешаться в счёт
+	insert(other, &root1)
+
+	got, err := msgs.ThreadReplyCounts(ctx, chatID, []int64{root1, root2, empty})
+	if err != nil {
+		t.Fatalf("ThreadReplyCounts: %v", err)
+	}
+	if got[root1] != 2 {
+		t.Fatalf("ThreadReplyCounts[root1] = %d, want 2 (счёт утёк из чужого чата?): %v", got[root1], got)
+	}
+	if got[root2] != 1 {
+		t.Fatalf("ThreadReplyCounts[root2] = %d, want 1 (удалённое сообщение сосчитано?): %v", got[root2], got)
+	}
+	if _, has := got[empty]; has {
+		t.Fatalf("корень без ответов попал в карту: %v", got)
+	}
+
+	// Пустой вход — пустая, но не nil карта и НИ ОДНОГО запроса: контекст
+	// отменён, и любой поход в БД вернул бы ошибку.
+	dead, cancel := context.WithCancel(ctx)
+	cancel()
+	none, err := msgs.ThreadReplyCounts(dead, chatID, nil)
+	if err != nil {
+		t.Fatalf("ThreadReplyCounts(nil) с отменённым контекстом = %v — запрос всё же пошёл в БД", err)
+	}
+	if none == nil || len(none) != 0 {
+		t.Fatalf("ThreadReplyCounts(nil) = %v, ждали пустую карту", none)
 	}
 }
 
@@ -722,7 +784,7 @@ func TestMediaAccessRepo_StoryMedia(t *testing.T) {
 
 	// A 'contacts' story: visible to any chat partner, not to strangers.
 	contactsMedia := seedMedia(t, pool, author, "story-contacts")
-	_, err := stories.Create(ctx, domain.Story{
+	_, _, err := stories.Create(ctx, domain.Story{
 		AuthorID: author, MediaID: contactsMedia, Privacy: "contacts",
 		CreatedAt: time.Now(), ExpiresAt: time.Now().Add(24 * time.Hour),
 	}, nil)
@@ -741,7 +803,7 @@ func TestMediaAccessRepo_StoryMedia(t *testing.T) {
 
 	// A 'selected' story: only the allowlisted partner may view; another partner may not.
 	selMedia := seedMedia(t, pool, author, "story-selected")
-	_, err = stories.Create(ctx, domain.Story{
+	_, _, err = stories.Create(ctx, domain.Story{
 		AuthorID: author, MediaID: selMedia, Privacy: "selected",
 		CreatedAt: time.Now(), ExpiresAt: time.Now().Add(24 * time.Hour),
 	}, []int64{selected})
@@ -757,7 +819,7 @@ func TestMediaAccessRepo_StoryMedia(t *testing.T) {
 
 	// An expired story's media is not accessible to viewers (only the owner).
 	expMedia := seedMedia(t, pool, author, "story-expired")
-	_, err = stories.Create(ctx, domain.Story{
+	_, _, err = stories.Create(ctx, domain.Story{
 		AuthorID: author, MediaID: expMedia, Privacy: "contacts",
 		CreatedAt: time.Now().Add(-48 * time.Hour), ExpiresAt: time.Now().Add(-24 * time.Hour),
 	}, nil)

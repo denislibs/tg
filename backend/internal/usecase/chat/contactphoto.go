@@ -2,30 +2,17 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
 	"slices"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
-// suggestPhotoAction is the JSON stored in the text of a "suggested a profile
-// photo" service message (mirrors tweb messageActionSuggestProfilePhoto: the
-// action + suggested photo url travel as data). The client renders the pill,
-// the photo preview (media_id) and the recipient-only "Set Photo" button.
-type suggestPhotoAction struct {
-	Action   string `json:"action"` // always "suggest_photo"
-	ActorID  int64  `json:"actor_id"`
-	Actor    string `json:"actor"`
-	PhotoURL string `json:"photo_url"`
-	Accepted bool   `json:"accepted,omitempty"`
-}
-
 // SuggestProfilePhoto posts a service message into the private chat between
 // fromUserID and toUserID offering a new profile photo. The suggested photo
-// rides on the message's media_id (preview) and photoURL is kept in the action
-// JSON so the recipient can accept it later. Mirrors Telegram
+// rides on the message's media_id (preview) and the same media id is kept in
+// the action JSON so the recipient can accept it later. Mirrors Telegram
 // photos.uploadContactProfilePhoto with suggest=true.
-func (i *Interactor) SuggestProfilePhoto(ctx context.Context, fromUserID, toUserID, mediaID int64, photoURL string) (domain.Message, error) {
+func (i *Interactor) SuggestProfilePhoto(ctx context.Context, fromUserID, toUserID, mediaID int64) (domain.Message, error) {
 	if fromUserID == toUserID {
 		return domain.Message{}, domain.ErrInvalid
 	}
@@ -33,19 +20,14 @@ func (i *Interactor) SuggestProfilePhoto(ctx context.Context, fromUserID, toUser
 	if err != nil {
 		return domain.Message{}, err
 	}
-	actor := i.userCard(ctx, fromUserID)
-	payload, _ := json.Marshal(suggestPhotoAction{
-		Action:   "suggest_photo",
-		ActorID:  fromUserID,
-		Actor:    actor.DisplayName,
-		PhotoURL: photoURL,
-	})
+	// Id предложенной аватарки хранился ДВАЖДЫ — в JSON действия и на media_id
+	// самого сообщения. Остаётся одно место: media_id, из которого фото и
+	// собирается конструктором photo на границе (Message.ToWire).
 	mid := mediaID
 	return i.Send(ctx, SendInput{
 		ChatID:   chatID,
 		SenderID: fromUserID,
-		Type:     "service",
-		Text:     string(payload),
+		Action:   domain.NewMessageActionSuggestProfilePhoto(nil, false),
 		MediaID:  &mid,
 	})
 }
@@ -63,11 +45,11 @@ func (i *Interactor) AcceptProfilePhotoSuggestion(ctx context.Context, userID, m
 	if err != nil {
 		return err
 	}
-	if m.Type != "service" || m.Deleted {
+	if m.Deleted {
 		return domain.ErrNotFound
 	}
-	var act suggestPhotoAction
-	if err := json.Unmarshal([]byte(m.Text), &act); err != nil || act.Action != "suggest_photo" {
+	act, ok := m.Action.(domain.MessageActionSuggestProfilePhoto)
+	if !ok {
 		return domain.ErrNotFound
 	}
 	if act.Accepted {
@@ -77,29 +59,31 @@ func (i *Interactor) AcceptProfilePhotoSuggestion(ctx context.Context, userID, m
 	if m.SenderID == userID {
 		return domain.ErrForbidden
 	}
-	ok, err := i.chats.IsMember(ctx, m.ChatID, userID)
+	member, err := i.chats.IsMember(ctx, m.ChatID, userID)
 	if err != nil {
 		return err
 	}
-	if !ok {
+	if !member {
 		return domain.ErrForbidden
 	}
-	if act.PhotoURL == "" {
+	// Предложенная аватарка — медиа самого сообщения; второго места, где лежал
+	// бы её id, больше нет.
+	if m.MediaID == nil || *m.MediaID <= 0 {
 		return domain.ErrInvalid
 	}
-	if _, err := i.profilePics.AddProfilePhoto(ctx, userID, act.PhotoURL, ""); err != nil {
+	if _, err := i.profilePics.AddProfilePhoto(ctx, userID, *m.MediaID, nil); err != nil {
 		return err
 	}
 
-	// Flag the service message accepted and fan out an edit so the button hides
-	// on every device. The recipient is not the author, so this bypasses the
-	// author-only EditMessage and updates the text directly.
+	// Отмечаем действие принятым и рассылаем правку, чтобы кнопка «Установить
+	// фото» пропала на всех устройствах. Получатель не автор, поэтому
+	// author-only EditMessage обходится.
 	act.Accepted = true
-	updated, _ := json.Marshal(act)
 	var members []int64
 	ptsByUser := map[int64]int64{}
+	var pp *peerPayloads
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		msg, e := i.msgs.UpdateText(ctx, msgID, string(updated), nil)
+		msg, e := i.msgs.UpdateAction(ctx, msgID, act)
 		if e != nil {
 			return e
 		}
@@ -109,12 +93,16 @@ func (i *Interactor) AcceptProfilePhotoSuggestion(ctx context.Context, userID, m
 		}
 		slices.Sort(mem)
 		members = mem
-		p, e := json.Marshal(editUpdatePayload(msg))
+		pp, e = i.newPeerPayloads(ctx, m.ChatID, i.editMessagePayload(ctx, msg))
 		if e != nil {
 			return e
 		}
 		date := nowMillis()
 		for _, uid := range members {
+			p, e := pp.payload(uid)
+			if e != nil {
+				return e
+			}
 			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "edit_message", p)
 			if e != nil {
 				return e
@@ -129,9 +117,11 @@ func (i *Interactor) AcceptProfilePhotoSuggestion(ctx context.Context, userID, m
 	if i.publisher != nil {
 		fresh, e := i.msgs.GetByID(ctx, msgID)
 		if e == nil {
-			base := editUpdatePayload(fresh)
-			for _, uid := range members {
-				_ = i.publisher.PublishToUser(ctx, uid, framePts("edit_message", base, ptsByUser[uid]))
+			fp, e := i.newPeerPayloads(ctx, m.ChatID, i.editMessagePayload(ctx, fresh))
+			if e == nil {
+				for _, uid := range members {
+					_ = i.publisher.PublishToUser(ctx, uid, fp.frame("edit_message", uid, map[string]any{"pts": ptsByUser[uid]}))
+				}
 			}
 		}
 	}

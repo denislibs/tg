@@ -10,25 +10,26 @@
 // следующий (более старый, циклически). Сброс — при смене чата и любом
 // изменении списка пинов (pin/unpin перезаписывает массив в pinsStore).
 import { useEffect, useState, type RefObject } from 'react'
+import throttle from '@helpers/schedulers/throttle'
 import { usePinsStore } from '../../stores/pinsStore'
 import { clampPinIndex, nextPinIndex, pinIndexForVisibleMid } from '../pinnedCycle'
 import { useEvent } from './useEvent'
 import { useManagers } from './useManagers'
-import type { Message } from '../models'
+import type { MyMessage } from '../models'
 
 /** throttle скролл-трекинга — tweb `throttle(setCorrectIndex, 100, false)` */
 const SCROLL_THROTTLE_MS = 100
 
 export interface PinnedBarState {
   /** пины чата, новейший первым */
-  pins: Message[]
+  pins: MyMessage[]
   /** индекс пина, который показывает плашка (к нему прыгнет следующий клик) */
   index: number
   /** клик по плашке: вернуть текущий пин (для прыжка) и перелистнуть дальше */
-  follow: () => Message | undefined
+  follow: () => MyMessage | undefined
 }
 
-const NO_PINS: Message[] = []
+const NO_PINS: MyMessage[] = []
 
 export function usePinnedBar(
   numericChatId: number,
@@ -58,10 +59,7 @@ export function usePinnedBar(
   useEffect(() => {
     const el = scrollRef?.current
     if (!el || pins.length === 0) return
-    let last = 0
-    let timer: ReturnType<typeof setTimeout> | undefined
     const apply = () => {
-      last = Date.now()
       const bottom = el.getBoundingClientRect().bottom
       // getBubbleByPoint('bottom') — последний бабл, чей верх ещё выше нижней кромки.
       const bubbles = el.querySelectorAll<HTMLElement>('.bubble[data-mid]')
@@ -74,14 +72,14 @@ export function usePinnedBar(
       if (mid === undefined) return
       setRawIndex(pinIndexForVisibleMid(pins, mid))
     }
-    const onScroll = () => {
-      const wait = SCROLL_THROTTLE_MS - (Date.now() - last)
-      if (wait <= 0) { apply(); return }
-      if (timer === undefined) timer = setTimeout(() => { timer = undefined; apply() }, wait)
-    }
+    // Общий порт tweb `helpers/schedulers/throttle` с теми же аргументами, что в
+    // оригинале (`throttle(setCorrectIndex, 100, false)`, pinnedMessage.tsx:326):
+    // trailing-only. Здесь была своя реализация троттлинга, и она расходилась с
+    // оригиналом — считала первый скролл в окне «ведущим» и применяла его сразу.
+    const onScroll = throttle(apply, SCROLL_THROTTLE_MS, false)
     apply()
     el.addEventListener('scroll', onScroll, { passive: true })
-    return () => { el.removeEventListener('scroll', onScroll); clearTimeout(timer) }
+    return () => { el.removeEventListener('scroll', onScroll); onScroll.clear() }
   }, [scrollRef, pins])
 
   const index = clampPinIndex(rawIndex, pins.length)

@@ -276,59 +276,6 @@ func TestMessages_MirrorByPost_OtherChannelNotFound(t *testing.T) {
 	}
 }
 
-// PostsByMirrors — обратный резолв: по id сообщений отдаёт id постов для тех,
-// что реально зеркала (перебор по PK, без привязки к текущей группе
-// обсуждения — резолвит и «отвязанное» зеркало старой группы). Обычные
-// сообщения и id, которых нет в наборе, в карту не попадают.
-func TestMessages_PostsByMirrors(t *testing.T) {
-	pool := storepostgres.NewTestDB(t)
-	msgs := NewMessagesRepo(pool)
-	groups := NewGroupRepo(pool)
-	ctx := context.Background()
-
-	u := seedUser(t, pool, "+7907")
-	ch, _ := groups.CreateMultiMember(ctx, "channel", "Chan", "", "", true, u)
-	_ = groups.AddMember(ctx, ch, u, domain.RoleCreator, domain.AllRights)
-	disc, _ := groups.CreateMultiMember(ctx, "group", "Discussion", "", "", false, u)
-	_ = groups.AddMember(ctx, disc, u, domain.RoleCreator, domain.AllRights)
-	_ = groups.SetDiscussion(ctx, ch, disc)
-
-	seq, _ := msgs.NextSeq(ctx, ch)
-	post, _ := msgs.Insert(ctx, domain.Message{ChatID: ch, Seq: seq, SenderID: u, Type: "text", Text: "p1"})
-
-	mseq, _ := msgs.NextSeq(ctx, disc)
-	mirror, err := msgs.Insert(ctx, domain.Message{
-		ChatID: disc, Seq: mseq, SenderID: u, Type: "text", Text: "p1",
-		SendAsChatID: &ch, FwdFromChatID: &ch, FwdFromMsgID: &post.ID, IsDiscussionMirror: true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	// обычный комментарий (не зеркало) в той же группе — не должен попасть в карту
-	cseq, _ := msgs.NextSeq(ctx, disc)
-	root := mirror.ID
-	comment, err := msgs.Insert(ctx, domain.Message{
-		ChatID: disc, Seq: cseq, SenderID: u, Type: "text", Text: "c1", ThreadRootID: &root,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	got, err := msgs.PostsByMirrors(ctx, []int64{mirror.ID, comment.ID, 999999})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 1 {
-		t.Fatalf("PostsByMirrors = %v, want ровно одну запись", got)
-	}
-	if got[mirror.ID] != post.ID {
-		t.Fatalf("PostsByMirrors[зеркало] = %d, want id поста %d", got[mirror.ID], post.ID)
-	}
-	if _, ok := got[comment.ID]; ok {
-		t.Fatal("PostsByMirrors принял обычный комментарий за зеркало")
-	}
-}
-
 // Альбом (общий grouped_id): зеркалится КАЖДЫЙ элемент (иначе альбом в
 // группе обсуждения приедет обрезанным), но тред — один, на зеркале ПЕРВОГО
 // (минимальный id) элемента группы. MirrorByPost/MirrorsByPosts для любого
@@ -348,7 +295,7 @@ func TestMessages_MirrorByPost_Album(t *testing.T) {
 	_ = groups.AddMember(ctx, disc, u, domain.RoleCreator, domain.AllRights)
 	_ = groups.SetDiscussion(ctx, ch, disc)
 
-	grouped := "g1"
+	grouped := int64(111)
 	seq1, _ := msgs.NextSeq(ctx, ch)
 	post1, err := msgs.Insert(ctx, domain.Message{ChatID: ch, Seq: seq1, SenderID: u, Type: "photo", Text: "", GroupedID: &grouped})
 	if err != nil {

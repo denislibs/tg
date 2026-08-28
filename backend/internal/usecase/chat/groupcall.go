@@ -78,7 +78,12 @@ func (i *Interactor) RelayGroupCallSignal(ctx context.Context, fromUserID, chatI
 		data = map[string]any{}
 	}
 	data["from_user_id"] = fromUserID
-	data["chat_id"] = chatID
+	// Ключ пира — глазами ПОЛУЧАТЕЛЯ реле: в приватном звонке у сторон он разный.
+	peer, err := i.ChatIDToPeer(ctx, toUserID, chatID)
+	if err != nil {
+		return err
+	}
+	data["peer_id"] = peer
 	return i.publisher.PublishToUser(ctx, toUserID, frame("group_call_signal", data))
 }
 
@@ -94,10 +99,7 @@ func (i *Interactor) publishGroupCallUpdate(ctx context.Context, chatID, userID 
 	if err != nil {
 		return
 	}
-	f := frame("group_call_update", map[string]any{
-		"chat_id": chatID, "user_id": userID, "action": action, "participants": participants,
+	i.publishPeerFrame(ctx, chatID, members, 0, "group_call_update", map[string]any{
+		"user_id": userID, "action": action, "participants": participants,
 	})
-	for _, uid := range members {
-		_ = i.publisher.PublishToUser(ctx, uid, f)
-	}
 }

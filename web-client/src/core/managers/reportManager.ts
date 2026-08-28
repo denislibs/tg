@@ -7,7 +7,7 @@ import type { RestClient } from '../net/restClient'
 export type ReportReason = 'spam' | 'violence' | 'porn' | 'child_abuse' | 'other'
 
 export interface ReportArgs {
-  chatId: number
+  peerId: number
   msgId?: number
   reason: ReportReason
   comment?: string
@@ -17,7 +17,7 @@ export function newReportManager({ rest }: { rest: Pick<RestClient, 'post'> }) {
   return {
     async report(a: ReportArgs): Promise<void> {
       await rest.post('/report', {
-        chat_id: a.chatId,
+        peer_id: a.peerId,
         msg_id: a.msgId ?? null,
         reason: a.reason,
         comment: a.comment ?? '',

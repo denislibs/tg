@@ -8,7 +8,9 @@
 //     второй писатель факта; либо переводи его на проектор, либо осознанно
 //     добавляй сюда с обоснованием комментарием ПРЯМО У ВЫЗОВА;
 //  2) сброс зеркала (resetMediaUrlMirror) — тоже только проектор, на кадр
-//     rt:logging_out: реакция на объявленное намерение, не своя эвристика.
+//     rt:logging_out: реакция на объявленное намерение, не своя эвристика;
+//  3) (порт ленты на императивный DOM) сам ПОХОД к владельцу за URL картинки —
+//     `managers.media.downloadMediaURL(...)` — тоже под скан. Причина ниже.
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
@@ -34,17 +36,51 @@ const ALLOWED = [
   // стартовый бродкаст пропустила), поэтому применить его обязан получатель
   // ответа (норма «владелец отвечает на объявленный пробел всегда»).
   'core/hooks/useMediaUrl.ts',
+  // ТО ЖЕ САМОЕ для императивной ленты — ванильная точка входа. Отдельная
+  // запись, а не «ещё один потребитель»: это два канала доставки ОДНОГО снимка
+  // (React-хук для узлов React, ванильная точка для узлов ленты), а не N
+  // независимых писателей.
+  'core/media/ensureMediaUrl.ts',
 ]
 
-function offendersOf(call: RegExp): string[] {
+// Кто вправе ходить к владельцу за URL напрямую, минуя ensureMediaUrl.
+//
+// Зачем этот скан отдельно от applyMediaUrl-скана: обход точки входа выглядит
+// НЕ как второй вызов applyMediaUrl, а как его ОТСУТСТВИЕ — враппер зовёт
+// downloadMediaURL, рисует полученный URL у себя и в зеркало не пишет. Первый
+// скан на такое молчит (нарушитель ничего не зовёт), а факт при этом теряется:
+// URL, который у воркера УЖЕ БЫЛ, кадром не объявляется, и остальные
+// потребители того же id не увидят его никогда. Поэтому пин смотрит и на сам
+// поход.
+const ALLOWED_DOWNLOAD = [
+  'core/managers/mediaManager.ts', // владелец: определение
+  'core/media/ensureMediaUrl.ts', // ванильная точка входа (пишет в зеркало)
+  'core/hooks/useMediaUrl.ts', // React-точка входа (пишет в зеркало)
+  // ── Ниже — ДОЛГ, а не норма: каждый берёт URL «для себя» и в зеркало не
+  // пишет, то есть теряет снимок владельца для остальных потребителей того же
+  // id. Новых сюда не добавлять — переводить на ensureMediaUrl; эти переводятся
+  // при следующем содержательном касании файла (все три — React/вьювер, вне
+  // периметра фундамента медиа).
+  'core/hooks/useUserProfileData.ts', // still-фото профиля в шапке-пейджере
+  'core/hooks/useStoryPreviewMedia.ts', // картинка истории
+  'components/mediaViewer/base.ts', // полноразмер во вьювере (thumb он ИЗ зеркала читает — cachedMediaUrl)
+  'components/mediaViewer/appMediaViewer.ts', // «скачать файл»: URL уходит в <a download>, не в <img>
+]
+
+function offendersOf(call: RegExp, allowed: string[] = ALLOWED): string[] {
   return walk(SRC)
     .map((f) => f.slice(SRC.length + 1).replace(/\\/g, '/'))
-    .filter((rel) => !ALLOWED.includes(rel))
+    .filter((rel) => !allowed.includes(rel))
     .filter((rel) => call.test(readFileSync(join(SRC, rel), 'utf8')))
 }
 
+// Комментарии про downloadMediaURL рассыпаны по половине дерева — скан ловит
+// ВЫЗОВ метода менеджера (`…media.downloadMediaURL(`), а не упоминание: в
+// прозе за именем всегда идёт `` ` ``, `:` или пробел, но не `(`.
+const DOWNLOAD_CALL = /\.downloadMediaURL\(/
+
 describe('URL медиа: применение и сброс зеркала — по одному месту', () => {
-  it('applyMediaUrl(...) зовут только зеркало и проектор', () => {
+  it('applyMediaUrl(...) зовут только зеркало, проектор и точки входа', () => {
     expect(offendersOf(/\bapplyMediaUrl\(/)).toEqual([])
   })
 
@@ -56,6 +92,18 @@ describe('URL медиа: применение и сброс зеркала — 
     for (const rel of ALLOWED) {
       const src = readFileSync(join(SRC, rel), 'utf8')
       expect(src, `${rel}: ожидался вызов applyMediaUrl(...)`).toMatch(/\bapplyMediaUrl\(/)
+    }
+  })
+
+  it('к владельцу за URL картинки ходят только точки входа (и известный долг)', () => {
+    expect(offendersOf(DOWNLOAD_CALL, ALLOWED_DOWNLOAD)).toEqual([])
+  })
+
+  it('обе точки входа применяют ответ владельца к зеркалу', () => {
+    for (const rel of ['core/media/ensureMediaUrl.ts', 'core/hooks/useMediaUrl.ts']) {
+      const src = readFileSync(join(SRC, rel), 'utf8')
+      expect(src, `${rel}: ходит к владельцу`).toMatch(DOWNLOAD_CALL)
+      expect(src, `${rel}: применяет ответ к зеркалу`).toMatch(/\bapplyMediaUrl\(/)
     }
   })
 })

@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
 import Menu, { MenuItem } from '../shared/ui/Menu'
-import { useAvatarSrc } from './useAvatarSrc'
+import { useMediaUrl } from '../core/hooks/useMediaUrl'
 import { useChatsStore } from '../stores/chatsStore'
 import { useManagers } from '../core/hooks/useManagers'
 import { gradientFor } from '../core/dialogToChat'
+import { getPeerPhotoId } from '../core/peers/peer'
+import { getUserTitle } from '../core/peers/getPeerTitle'
 import type { PublicAccount } from '../core/auth/accounts'
 import { ANIMATE_AUTH_KEY, PREV_ACCOUNT_KEY, commandThenReload, playChatlistExit, playMainScreenExit } from '../core/accountTransition'
 import { useSettings } from '../settings'
@@ -34,9 +36,9 @@ interface Props {
   onToggleMode?: ToggleMode
 }
 
-// Аватар аккаунта в списке (резолвит avatarUrl через media-токен воркера).
+// Аватар аккаунта в списке (id медиа → objectURL воркерного конвейера).
 function AccountAvatar({ account }: { account: PublicAccount }) {
-  const src = useAvatarSrc(account.avatarUrl)
+  const src = useMediaUrl(account.photoId || null)
   return (
     <Avatar
       className="btn-menu-item-icon is-external btn-menu-item-avatar"
@@ -80,8 +82,10 @@ export default function MainMenu({
     setMoreOpen(true)
   }
   const me = useChatsStore((s) => s.me)
-  const meAvatar = useAvatarSrc(me?.avatarUrl)
-  const meName = me?.displayName?.trim() || [me?.firstName, me?.lastName].filter(Boolean).join(' ').trim() || me?.username || 'Аккаунт'
+  const meAvatar = useMediaUrl(getPeerPhotoId(me?.user.photo) || null)
+  // Имя собирает клиент (`display_name` с провода убран); фолбэки — внутри
+  // getUserTitle, свой здесь только на «карточки ещё нет».
+  const meName = me ? getUserTitle(me.user) : 'Аккаунт'
   // Разделитель групп — обычный <hr>, как в tweb (`buttonMenu.ts:196`
   // `options.separator = document.createElement('hr')`); стили — `_button.scss:633`.
   const divider = <hr />
@@ -92,7 +96,7 @@ export default function MainMenu({
     if (!open) return
     void managers.auth.listAccounts().then(setAccounts)
   }, [open, managers])
-  const others = accounts.filter((a) => a.id !== me?.id)
+  const others = accounts.filter((a) => a.id !== me?.user.id)
   // Переключение аккаунта = смена активного токена в воркере + перезагрузка.
   // Порядок 1:1 с tweb (`sidebarLeft/index.ts:828-837`): сначала список чатов
   // уезжает chatlist-exit, и только потом идёт команда смены аккаунта. Не
@@ -115,7 +119,7 @@ export default function MainMenu({
   // стрелка возврата к прежнему аккаунту.
   const addAccount = async () => {
     onClose()
-    if (me?.id != null) localStorage.setItem(PREV_ACCOUNT_KEY, String(me.id))
+    if (me) localStorage.setItem(PREV_ACCOUNT_KEY, String(me.user.id))
     localStorage.setItem(ANIMATE_AUTH_KEY, '1')
     // Анимация — до команды, как в tweb (`sidebarLeft/index.ts:1643-1652`) и
     // по той же причине, что в switchTo выше: rt:logging_out прилетает и этой
@@ -172,7 +176,7 @@ export default function MainMenu({
         icon={
           <Avatar
             className="btn-menu-item-icon is-external btn-menu-item-avatar active"
-            background={gradientFor(me?.id ?? 0)}
+            background={gradientFor(me?.user.id ?? 0)}
             text={meName.charAt(0).toUpperCase()}
             src={meAvatar}
             size={24}

@@ -16,23 +16,29 @@ import (
 )
 
 // userCols is the canonical user column list / scan order, shared by every
-// query that returns a full domain.User.
-const userCols = `id, phone, username, first_name, last_name, display_name, bio, birthday, avatar_url, avatar_preview, phone_visibility, is_premium, emoji_status`
+// query that returns a full domain.UserRecord.
+const userCols = `id, phone, username, first_name, last_name, bio, birthday, avatar_media_id, avatar_preview, is_premium, is_verified, is_bot, deleted_at IS NOT NULL, emoji_status, auto_delete_period`
 
-// scanUser scans a row selected with userCols into a domain.User. Phone is
+// scanUser scans a row selected with userCols into a domain.UserRecord. Phone is
 // nullable (freed on account deletion), so it is scanned via a pointer and left
 // empty for a soft-deleted "Deleted Account".
-func scanUser(row pgx.Row) (domain.User, error) {
-	var u domain.User
+func scanUser(row pgx.Row) (domain.UserRecord, error) {
+	var u domain.UserRecord
 	var phone *string
 	err := row.Scan(&u.ID, &phone, &u.Username, &u.FirstName, &u.LastName,
-		&u.DisplayName, &u.Bio, &u.Birthday, &u.AvatarURL, &u.AvatarPreview, &u.PhoneVisibility,
-		&u.IsPremium, &u.EmojiStatus)
+		&u.Bio, &u.Birthday, &u.PhotoID, &u.PhotoPreview,
+		&u.IsPremium, &u.IsVerified, &u.IsBot, &u.Deleted, &u.EmojiStatus, &u.AutoDeletePeriod)
 	if phone != nil {
 		u.Phone = *phone
 	}
 	return u, err
 }
+
+// displayNameExpr — «Имя Фамилия» из параметров $2/$3 прямо в SQL. Колонка
+// users.display_name остаётся ПОИСКОВОЙ (ILIKE-разыскание пользователей) и на
+// провод не выходит: имя пира собирает клиент. Поэтому и склейка живёт здесь, а
+// не в домене — доменного помощника BuildDisplayName больше нет.
+const displayNameExpr = `btrim(btrim($2) || ' ' || btrim($3))`
 
 // isUniqueViolation reports whether err is a Postgres unique-constraint error.
 func isUniqueViolation(err error) bool {
@@ -93,44 +99,43 @@ func (r *AuthRepo) DeleteCode(ctx context.Context, phone string) error {
 
 // ByPhone returns the user owning the phone, or domain.ErrNotFound. Soft-deleted
 // accounts hold a NULL phone and never match.
-func (r *AuthRepo) ByPhone(ctx context.Context, phone string) (domain.User, error) {
+func (r *AuthRepo) ByPhone(ctx context.Context, phone string) (domain.UserRecord, error) {
 	u, err := scanUser(r.pool.QueryRow(ctx, `SELECT `+userCols+` FROM users WHERE phone=$1`, phone))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.User{}, domain.ErrNotFound
+		return domain.UserRecord{}, domain.ErrNotFound
 	}
 	return u, err
 }
 
 // CreateWithName inserts a brand-new account for an already verified phone
 // (sign-up step). A concurrent claim of the same number maps to domain.ErrConflict.
-func (r *AuthRepo) CreateWithName(ctx context.Context, phone, first, last string) (domain.User, error) {
+func (r *AuthRepo) CreateWithName(ctx context.Context, phone, first, last string) (domain.UserRecord, error) {
 	u, err := scanUser(r.pool.QueryRow(ctx,
-		`INSERT INTO users (phone, first_name, last_name, display_name) VALUES ($1,$2,$3,$4)
+		`INSERT INTO users (phone, first_name, last_name, display_name)
+		 VALUES ($1,$2,$3,`+displayNameExpr+`)
 		 RETURNING `+userCols,
-		phone, first, last, domain.BuildDisplayName(first, last)))
+		phone, first, last))
 	if isUniqueViolation(err) {
-		return domain.User{}, domain.ErrConflict
+		return domain.UserRecord{}, domain.ErrConflict
 	}
 	return u, err
 }
 
 // GetByID returns the full user record, or domain.ErrNotFound.
-func (r *AuthRepo) GetByID(ctx context.Context, id int64) (domain.User, error) {
+func (r *AuthRepo) GetByID(ctx context.Context, id int64) (domain.UserRecord, error) {
 	u, err := scanUser(r.pool.QueryRow(ctx, `SELECT `+userCols+` FROM users WHERE id=$1`, id))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.User{}, domain.ErrNotFound
+		return domain.UserRecord{}, domain.ErrNotFound
 	}
 	return u, err
 }
 
 // UpdateProfile writes the editable profile fields and returns the fresh user.
-// The caller is responsible for having computed display_name.
-func (r *AuthRepo) UpdateProfile(ctx context.Context, id int64, first, last, bio string, birthday *time.Time, phoneVisibility string) (domain.User, error) {
-	display := domain.BuildDisplayName(first, last)
+func (r *AuthRepo) UpdateProfile(ctx context.Context, id int64, first, last, bio string, birthday *time.Time) (domain.UserRecord, error) {
 	return scanUser(r.pool.QueryRow(ctx,
-		`UPDATE users SET first_name=$2, last_name=$3, display_name=$4, bio=$5, birthday=$6, phone_visibility=$7
+		`UPDATE users SET first_name=$2, last_name=$3, display_name=`+displayNameExpr+`, bio=$4, birthday=$5
 		 WHERE id=$1 RETURNING `+userCols,
-		id, first, last, display, bio, birthday, phoneVisibility))
+		id, first, last, bio, birthday))
 }
 
 // UsernameAvailable reports whether a (normalized, CITEXT) username is free,
@@ -144,11 +149,11 @@ func (r *AuthRepo) UsernameAvailable(ctx context.Context, username string, exclu
 
 // SetUsername sets (or clears, when username is nil) the user's username,
 // returning domain.ErrConflict on a uniqueness collision.
-func (r *AuthRepo) SetUsername(ctx context.Context, id int64, username *string) (domain.User, error) {
+func (r *AuthRepo) SetUsername(ctx context.Context, id int64, username *string) (domain.UserRecord, error) {
 	u, err := scanUser(r.pool.QueryRow(ctx,
 		`UPDATE users SET username=$2 WHERE id=$1 RETURNING `+userCols, id, username))
 	if isUniqueViolation(err) {
-		return domain.User{}, domain.ErrConflict
+		return domain.UserRecord{}, domain.ErrConflict
 	}
 	return u, err
 }
@@ -164,11 +169,11 @@ func (r *AuthRepo) PhoneInUse(ctx context.Context, phone string, excludeID int64
 
 // UpdatePhone changes the user's phone number, mapping a uniqueness collision to
 // domain.ErrConflict (the atomic re-check against a concurrent claim).
-func (r *AuthRepo) UpdatePhone(ctx context.Context, id int64, phone string) (domain.User, error) {
+func (r *AuthRepo) UpdatePhone(ctx context.Context, id int64, phone string) (domain.UserRecord, error) {
 	u, err := scanUser(r.pool.QueryRow(ctx,
 		`UPDATE users SET phone=$2 WHERE id=$1 RETURNING `+userCols, id, phone))
 	if isUniqueViolation(err) {
-		return domain.User{}, domain.ErrConflict
+		return domain.UserRecord{}, domain.ErrConflict
 	}
 	return u, err
 }
@@ -181,7 +186,7 @@ func (r *AuthRepo) SoftDelete(ctx context.Context, id int64) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE users SET phone=NULL, username=NULL,
 		        first_name='Deleted', last_name='Account', display_name='Deleted Account',
-		        bio='', avatar_url='', avatar_preview=NULL, emoji_status='',
+		        bio='', avatar_media_id=NULL, avatar_preview=NULL, emoji_status='',
 		        password_hash=NULL, password_hint='', recovery_email='',
 		        deleted_at=now()
 		 WHERE id=$1`, id)
@@ -189,13 +194,13 @@ func (r *AuthRepo) SoftDelete(ctx context.Context, id int64) error {
 }
 
 // SetEmojiStatus writes the user's emoji status ("" clears it) and returns the user.
-func (r *AuthRepo) SetEmojiStatus(ctx context.Context, id int64, emoji string) (domain.User, error) {
+func (r *AuthRepo) SetEmojiStatus(ctx context.Context, id int64, emoji string) (domain.UserRecord, error) {
 	return scanUser(r.pool.QueryRow(ctx,
 		`UPDATE users SET emoji_status=$2 WHERE id=$1 RETURNING `+userCols, id, emoji))
 }
 
 // SetPremium flips the Telegram Premium flag and returns the fresh user.
-func (r *AuthRepo) SetPremium(ctx context.Context, id int64, premium bool) (domain.User, error) {
+func (r *AuthRepo) SetPremium(ctx context.Context, id int64, premium bool) (domain.UserRecord, error) {
 	return scanUser(r.pool.QueryRow(ctx,
 		`UPDATE users SET is_premium=$2 WHERE id=$1 RETURNING `+userCols, id, premium))
 }
@@ -247,27 +252,24 @@ func (r *AuthRepo) SetPremiumAutoRenew(ctx context.Context, userID int64, autoRe
 // --- Profile-photo gallery (Telegram getUserPhotos) ---
 
 // AddProfilePhoto inserts a gallery photo and promotes it to the user's current
-// avatar (users.avatar_url + users.avatar_preview) in one transaction, so the
-// denormalized avatar and the gallery never diverge. preview (stripped-превью)
-// пишется и на строку галереи — для отката аватарки при удалении текущей.
-func (r *AuthRepo) AddProfilePhoto(ctx context.Context, userID int64, url, videoURL string, preview []byte) (domain.ProfilePhoto, error) {
+// avatar (users.avatar_media_id + users.avatar_preview) in one transaction, so
+// the denormalized avatar and the gallery never diverge. preview
+// (stripped-превью) пишется и на строку галереи — для отката аватарки при
+// удалении текущей.
+func (r *AuthRepo) AddProfilePhoto(ctx context.Context, userID, mediaID int64, videoMediaID *int64, preview []byte) (domain.ProfilePhoto, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return domain.ProfilePhoto{}, err
 	}
 	defer tx.Rollback(ctx)
 
-	var video *string
-	if videoURL != "" {
-		video = &videoURL
-	}
-	p := domain.ProfilePhoto{UserID: userID, URL: url, VideoURL: videoURL}
+	p := domain.ProfilePhoto{UserID: userID, MediaID: mediaID, VideoMediaID: videoMediaID}
 	if err := tx.QueryRow(ctx,
-		`INSERT INTO profile_photos (user_id, url, video_url, preview) VALUES ($1,$2,$3,$4)
-		 RETURNING id, created_at`, userID, url, video, preview).Scan(&p.ID, &p.CreatedAt); err != nil {
+		`INSERT INTO profile_photos (user_id, media_id, video_media_id, preview) VALUES ($1,$2,$3,$4)
+		 RETURNING id, created_at`, userID, mediaID, videoMediaID, preview).Scan(&p.ID, &p.CreatedAt); err != nil {
 		return domain.ProfilePhoto{}, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE users SET avatar_url=$2, avatar_preview=$3 WHERE id=$1`, userID, url, preview); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE users SET avatar_media_id=$2, avatar_preview=$3 WHERE id=$1`, userID, mediaID, preview); err != nil {
 		return domain.ProfilePhoto{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -279,7 +281,7 @@ func (r *AuthRepo) AddProfilePhoto(ctx context.Context, userID int64, url, video
 // ListProfilePhotos returns a user's gallery, newest first.
 func (r *AuthRepo) ListProfilePhotos(ctx context.Context, userID int64) ([]domain.ProfilePhoto, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, user_id, url, video_url, created_at FROM profile_photos
+		`SELECT id, user_id, media_id, video_media_id, created_at FROM profile_photos
 		 WHERE user_id=$1 ORDER BY created_at DESC, id DESC`, userID)
 	if err != nil {
 		return nil, err
@@ -288,12 +290,8 @@ func (r *AuthRepo) ListProfilePhotos(ctx context.Context, userID int64) ([]domai
 	var out []domain.ProfilePhoto
 	for rows.Next() {
 		var p domain.ProfilePhoto
-		var video *string
-		if err := rows.Scan(&p.ID, &p.UserID, &p.URL, &video, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.UserID, &p.MediaID, &p.VideoMediaID, &p.CreatedAt); err != nil {
 			return nil, err
-		}
-		if video != nil {
-			p.VideoURL = *video
 		}
 		out = append(out, p)
 	}
@@ -301,62 +299,60 @@ func (r *AuthRepo) ListProfilePhotos(ctx context.Context, userID int64) ([]domai
 }
 
 // DeleteProfilePhoto removes a photo owned by userID. If the deleted photo was
-// the current avatar, avatar_url is recomputed to the next most-recent photo (or
-// "") — all in one transaction. Returns the resulting avatar_url. Deleting an
-// unknown/other-user photo is a no-op that returns the unchanged avatar_url.
-func (r *AuthRepo) DeleteProfilePhoto(ctx context.Context, userID, photoID int64) (string, error) {
+// the current avatar, it is recomputed to the next most-recent photo (or none) —
+// all in one transaction. Returns the resulting avatar media id (nil — аватарки
+// не осталось). Deleting an unknown/other-user photo is a no-op that returns the
+// unchanged avatar.
+func (r *AuthRepo) DeleteProfilePhoto(ctx context.Context, userID, photoID int64) (*int64, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer tx.Rollback(ctx)
 
-	var deletedURL string
+	var deleted int64
 	err = tx.QueryRow(ctx,
-		`DELETE FROM profile_photos WHERE id=$1 AND user_id=$2 RETURNING url`,
-		photoID, userID).Scan(&deletedURL)
+		`DELETE FROM profile_photos WHERE id=$1 AND user_id=$2 RETURNING media_id`,
+		photoID, userID).Scan(&deleted)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Nothing deleted; report the current avatar unchanged.
-		var cur string
-		if err := tx.QueryRow(ctx, `SELECT avatar_url FROM users WHERE id=$1`, userID).Scan(&cur); err != nil {
-			return "", err
+		var cur *int64
+		if err := tx.QueryRow(ctx, `SELECT avatar_media_id FROM users WHERE id=$1`, userID).Scan(&cur); err != nil {
+			return nil, err
 		}
 		if err := tx.Commit(ctx); err != nil {
-			return "", err
+			return nil, err
 		}
 		return cur, nil
 	}
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	var cur string
-	if err := tx.QueryRow(ctx, `SELECT avatar_url FROM users WHERE id=$1`, userID).Scan(&cur); err != nil {
-		return "", err
+	var cur *int64
+	if err := tx.QueryRow(ctx, `SELECT avatar_media_id FROM users WHERE id=$1`, userID).Scan(&cur); err != nil {
+		return nil, err
 	}
-	newURL := cur
-	if cur == deletedURL {
+	if cur != nil && *cur == deleted {
 		// Fall back to the next most-recent remaining photo (or clear it).
-		// Превью откатывается вместе с url — из preview той же строки галереи.
-		newURL = ""
+		// Превью откатывается вместе с фото — из preview той же строки галереи.
+		var next *int64
 		var newPreview []byte
-		var next string
 		err := tx.QueryRow(ctx,
-			`SELECT url, preview FROM profile_photos WHERE user_id=$1 ORDER BY created_at DESC, id DESC LIMIT 1`,
+			`SELECT media_id, preview FROM profile_photos WHERE user_id=$1 ORDER BY created_at DESC, id DESC LIMIT 1`,
 			userID).Scan(&next, &newPreview)
-		if err == nil {
-			newURL = next
-		} else if !errors.Is(err, pgx.ErrNoRows) {
-			return "", err
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return nil, err
 		}
-		if _, err := tx.Exec(ctx, `UPDATE users SET avatar_url=$2, avatar_preview=$3 WHERE id=$1`, userID, newURL, newPreview); err != nil {
-			return "", err
+		if _, err := tx.Exec(ctx, `UPDATE users SET avatar_media_id=$2, avatar_preview=$3 WHERE id=$1`, userID, next, newPreview); err != nil {
+			return nil, err
 		}
+		cur = next
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return "", err
+		return nil, err
 	}
-	return newURL, nil
+	return cur, nil
 }
 
 // --- DeviceRepo ---
@@ -375,21 +371,23 @@ func (r *AuthRepo) Create(ctx context.Context, userID int64, name, platform, tok
 
 // SessionByTokenHash resolves a token hash to its user and device id, and
 // lazily touches last_active. Returns domain.ErrNotFound if unknown.
-func (r *AuthRepo) SessionByTokenHash(ctx context.Context, tokenHash string) (domain.User, int64, error) {
-	var u domain.User
+func (r *AuthRepo) SessionByTokenHash(ctx context.Context, tokenHash string) (domain.UserRecord, int64, error) {
+	var u domain.UserRecord
 	var phone *string
 	var deviceID int64
 	err := r.pool.QueryRow(ctx,
-		`SELECT u.id, u.phone, u.username, u.first_name, u.last_name, u.display_name,
-		        u.bio, u.birthday, u.avatar_url, u.avatar_preview, u.phone_visibility, u.is_premium, u.emoji_status, d.id
+		`SELECT u.id, u.phone, u.username, u.first_name, u.last_name,
+		        u.bio, u.birthday, u.avatar_media_id, u.avatar_preview, u.is_premium,
+		        u.is_verified, u.is_bot, u.deleted_at IS NOT NULL, u.emoji_status, u.auto_delete_period, d.id
 		 FROM users u JOIN devices d ON d.user_id=u.id WHERE d.token_hash=$1`,
-		tokenHash).Scan(&u.ID, &phone, &u.Username, &u.FirstName, &u.LastName, &u.DisplayName,
-		&u.Bio, &u.Birthday, &u.AvatarURL, &u.AvatarPreview, &u.PhoneVisibility, &u.IsPremium, &u.EmojiStatus, &deviceID)
+		tokenHash).Scan(&u.ID, &phone, &u.Username, &u.FirstName, &u.LastName,
+		&u.Bio, &u.Birthday, &u.PhotoID, &u.PhotoPreview, &u.IsPremium,
+		&u.IsVerified, &u.IsBot, &u.Deleted, &u.EmojiStatus, &u.AutoDeletePeriod, &deviceID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.User{}, 0, domain.ErrNotFound
+		return domain.UserRecord{}, 0, domain.ErrNotFound
 	}
 	if err != nil {
-		return domain.User{}, 0, err
+		return domain.UserRecord{}, 0, err
 	}
 	if phone != nil {
 		u.Phone = *phone

@@ -15,21 +15,13 @@ import StickersHelper from './StickersHelper'
 import { ManagersProvider } from '../core/hooks/useManagers'
 import type { Managers } from '../client/bootstrap'
 import type { Sticker } from '../core/managers/stickersManager'
+import { makeSticker } from '../core/stickers/testSticker'
 
 // Реальный рендер стикера (fetch/декод) — предмет StickerMedia.test.tsx, здесь
 // важен только факт «ячейка есть и предпросмотр её подхватывает».
 vi.mock('./StickerMedia', () => ({ default: () => <div data-testid="sticker-media" /> }))
 
-const stk = (id: number): Sticker => ({
-  id,
-  setId: 1,
-  mediaId: 100 + id,
-  emoji: '🦆',
-  width: 512,
-  height: 512,
-  mime: 'application/x-tgsticker',
-  thumb: '',
-})
+const stk = (id: number): Sticker => makeSticker({ id, setId: 1, emoji: '🦆', mime: 'application/x-tgsticker' })
 
 function makeManagers(result: Sticker[]) {
   const stickers = { searchByEmoji: vi.fn().mockResolvedValue(result) }

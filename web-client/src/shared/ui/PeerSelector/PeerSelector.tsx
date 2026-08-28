@@ -51,7 +51,8 @@ export interface SelectorPeer {
   /** ключ строки; он же `data-peer-id` (tweb) и ключ выбранного */
   id: number
   name: string
-  avatarUrl?: string
+  /** id медиа аватарки (`user.photo.photo_id`); 0/undefined — фото нет */
+  photoId?: number
   /** подпись под именем (tweb `wrapSubtitle`/`getSubtitleForElement`) */
   subtitle?: ReactNode
   /** строка не кликабельна, чекбокс заблокирован (уже участник) */
@@ -113,7 +114,7 @@ function SelectorUserChip({ peer, isLast, onClick }: {
       onAnimationEnd={(e) => { if (e.target === e.currentTarget) setScaleIn(false) }}
     >
       <div className="selector-user-avatar-container">
-        <UserAvatar id={peer.id} name={peer.name} avatarUrl={peer.avatarUrl} size={30} className="selector-user-avatar" />
+        <UserAvatar id={peer.id} name={peer.name} photoId={peer.photoId} size={30} className="selector-user-avatar" />
         <div className="selector-user-avatar-close">
           <TgIcon name="close" />
         </div>
@@ -177,7 +178,7 @@ export function PeerRow({ peer, design = 'round', side = 'right', multi = false,
       <UserAvatar
         id={peer.id}
         name={peer.name}
-        avatarUrl={peer.avatarUrl}
+        photoId={peer.photoId}
         size="md"
         className={classNames('dialog-avatar', 'row-media', 'row-media-abitbigger')}
       />

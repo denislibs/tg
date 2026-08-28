@@ -3,7 +3,6 @@ package http
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -18,41 +17,41 @@ type ProfileHandler struct{ uc *usecaseauth.Interactor }
 
 func NewProfileHandler(uc *usecaseauth.Interactor) *ProfileHandler { return &ProfileHandler{uc: uc} }
 
-// userJSON is the canonical wire shape for a full user (own profile). It is
-// shared by GET /me, the profile-edit endpoints and the sign-in response.
-func userJSON(u domain.User) map[string]any {
-	var username any
-	if u.Username != nil {
-		username = *u.Username
-	}
-	return map[string]any{
-		"id":               u.ID,
-		"phone":            u.Phone,
-		"username":         username, // null when unset
-		"first_name":       u.FirstName,
-		"last_name":        u.LastName,
-		"display_name":     u.DisplayName,
-		"bio":              u.Bio,
-		"birthday":         birthdayJSON(u.Birthday),
-		"avatar_url":       u.AvatarURL,
-		"avatar_preview":   u.AvatarPreview, // []byte → base64-строка в JSON; null у старых аватарок
-		"phone_visibility": u.PhoneVisibility,
-		"premium":          u.IsPremium,
-		"emoji_status":     u.EmojiStatus,
-	}
+// userJSON — собственный профиль на проводе: ТА ЖЕ пара конструкторов, что и у
+// чужого (users.userFull{full_user, users}), а не третья форма. Третья форма и
+// была тем, из-за чего bio с днём рождения жили в «своей» витрине, а
+// verified/premium — в «полной чужой»: границу проводили мы, а не схема.
+//
+// Правила приватности здесь не спрашиваются вовсе — зритель и владелец один и
+// тот же человек, и Check для такой пары всегда пропускает. Форма ответа при
+// этом совпадает с чужим профилем (privacy.Profile) буква в букву: клиенту
+// нечего разбирать двумя путями.
+// selfUser — КРАТКАЯ карточка владельца: тот же конструктор `user`, что едет в
+// любом списке и с каждым сообщением. Свой номер виден всегда, поэтому он тут
+// проставляется прямо, а не спрашивается у правил приватности.
+func selfUser(u domain.UserRecord) domain.UserReal {
+	brief := u.ToUser(domain.UserFlags{Self: true}, nil, true)
+	brief.Phone = u.Phone
+	return brief
 }
 
-// birthdayJSON renders a birthday as {day, month, year?} (year omitted when the
-// no-year sentinel is stored), or null.
-func birthdayJSON(b *time.Time) any {
-	if b == nil {
-		return nil
+func userJSON(u domain.UserRecord) domain.UsersUserFull {
+	full := domain.NewUserFull(u.ID, domain.UserFullFlags{
+		PhoneCallsAvailable: true,
+		VideoCallsAvailable: true,
+	})
+	full.About = u.Bio
+	// ttl_period своей карточки — глобальный период автоудаления
+	// (messages.setDefaultHistoryTTL): им заводятся новые чаты.
+	full.TTLPeriod = u.AutoDeletePeriod
+	if u.Birthday != nil {
+		b := domain.NewBirthday(*u.Birthday)
+		full.Birthday = &b
 	}
-	out := map[string]any{"day": b.Day(), "month": int(b.Month())}
-	if b.Year() != domain.BirthdayNoYear {
-		out["year"] = b.Year()
-	}
-	return out
+	// can_message — НАШ параметр, объявленный клиентским у `users.userFull`
+	// (schema_additional_params.json). Себе написать можно всегда — это
+	// «Избранное».
+	return domain.NewUsersUserFull(full, selfUser(u), true)
 }
 
 type birthdayBody struct {
@@ -106,11 +105,10 @@ func (h *ProfileHandler) Me(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateProfileBody struct {
-	FirstName       *string         `json:"first_name"`
-	LastName        *string         `json:"last_name"`
-	Bio             *string         `json:"bio"`
-	Birthday        json.RawMessage `json:"birthday"`
-	PhoneVisibility *string         `json:"phone_visibility"`
+	FirstName *string         `json:"first_name"`
+	LastName  *string         `json:"last_name"`
+	Bio       *string         `json:"bio"`
+	Birthday  json.RawMessage `json:"birthday"`
 }
 
 // Update applies a partial edit to the current user's profile (PATCH /me): only
@@ -132,11 +130,10 @@ func (h *ProfileHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in := usecaseauth.ProfileInput{
-		FirstName:       cur.FirstName,
-		LastName:        cur.LastName,
-		Bio:             cur.Bio,
-		Birthday:        cur.Birthday,
-		PhoneVisibility: cur.PhoneVisibility,
+		FirstName: cur.FirstName,
+		LastName:  cur.LastName,
+		Bio:       cur.Bio,
+		Birthday:  cur.Birthday,
 	}
 	if body.FirstName != nil {
 		in.FirstName = *body.FirstName
@@ -146,9 +143,6 @@ func (h *ProfileHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Bio != nil {
 		in.Bio = *body.Bio
-	}
-	if body.PhoneVisibility != nil {
-		in.PhoneVisibility = *body.PhoneVisibility
 	}
 	if body.Birthday != nil { // key present (object or explicit null)
 		bday, err := parseBirthday(body.Birthday)
@@ -179,7 +173,7 @@ func (h *ProfileHandler) DeleteAccount(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "delete account failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 type usernameBody struct {
@@ -225,29 +219,27 @@ func (h *ProfileHandler) CheckUsername(w http.ResponseWriter, r *http.Request) {
 	raw := r.URL.Query().Get("u")
 	available, err := h.uc.CheckUsername(r.Context(), raw, u.ID)
 	if errors.Is(err, domain.ErrUsernameFormat) {
-		writeJSON(w, http.StatusOK, map[string]any{"available": false, "reason": "format"})
+		// Негодная форма имени — ОТКАЗ, а не успешный ответ «занято». Так же у
+		// оригинала: `account.checkUsername` отвечает `Bool`, а неверный формат
+		// приезжает ошибкой USERNAME_INVALID. Прежняя пара {available, reason}
+		// была отказом, одетым в успех, и `reason` не читал никто.
+		writeError(w, http.StatusBadRequest, "USERNAME_INVALID")
 		return
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "check failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"available": available})
+	writeJSON(w, http.StatusOK, domain.NewBool(available))
 }
 
 type avatarBody struct {
 	MediaID int64 `json:"media_id"`
 }
 
-// mediaContentURL is the canonical stored path for an uploaded media object. The
-// media GET endpoint enforces access when the bytes are actually served.
-func mediaContentURL(mediaID int64) string {
-	return fmt.Sprintf("/media/%d/content", mediaID)
-}
-
 // SetAvatar points the user's avatar at an uploaded media object (PUT /me/avatar).
-// It also appends the photo to the gallery (the usecase keeps avatar_url and the
-// gallery consistent), so old clients on this route stay in sync with the gallery.
+// It also appends the photo to the gallery (the usecase keeps the denormalized
+// avatar and the gallery consistent), so old clients on this route stay in sync.
 func (h *ProfileHandler) SetAvatar(w http.ResponseWriter, r *http.Request) {
 	u, ok := UserFromContext(r.Context())
 	if !ok {
@@ -259,7 +251,7 @@ func (h *ProfileHandler) SetAvatar(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	user, err := h.uc.SetAvatar(r.Context(), u.ID, mediaContentURL(body.MediaID))
+	user, err := h.uc.SetAvatar(r.Context(), u.ID, body.MediaID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "set avatar failed")
 		return
@@ -395,18 +387,22 @@ func (h *ProfileHandler) CancelPremium(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"subscription": subscriptionJSON(sub)})
 }
 
-// profilePhotoJSON is the wire shape for one gallery photo.
-func profilePhotoJSON(p domain.ProfilePhoto) map[string]any {
-	var video any
-	if p.VideoURL != "" {
-		video = p.VideoURL
-	}
-	return map[string]any{
-		"id":         p.ID,
-		"url":        p.URL,
-		"video_url":  video, // null when absent
-		"created_at": p.CreatedAt.Format(time.RFC3339),
-	}
+// profilePhotoJSON is the wire shape for one gallery photo. Фото адресуется id
+// медиа — тем же числом, которого ждёт клиентский downloadMediaURL; строку
+// «/media/N/content» больше никто не строит и не разбирает обратно.
+// galleryPhoto — фотография галереи конструктором `photo`.
+//
+// Адрес у конструктора ОДИН — id самого файла; наш ключ строки таблицы
+// (`profile_photos.id`) наружу не выходит, как и ключи остальных строк.
+//
+// Ступени превью здесь не собираются: галерея показывает те же файлы, что уже
+// приезжали карточкой пира, и клиент качает их по номеру. Пустой обязательный
+// вектор — это `[]`, а не отсутствие параметра.
+//
+// Видео-аватарка (`VideoMediaID`) у конструктора живёт в `video_sizes` —
+// ступенями, которых мы не собираем; названо задачей.
+func galleryPhoto(p domain.ProfilePhoto) domain.Photo {
+	return *domain.NewPhoto(p.MediaID, []domain.PhotoSize{})
 }
 
 type addPhotoBody struct {
@@ -427,16 +423,16 @@ func (h *ProfileHandler) AddPhoto(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	var videoURL string
+	var videoMediaID *int64
 	if body.VideoMediaID > 0 {
-		videoURL = mediaContentURL(body.VideoMediaID)
+		videoMediaID = &body.VideoMediaID
 	}
-	photo, err := h.uc.AddProfilePhoto(r.Context(), u.ID, mediaContentURL(body.MediaID), videoURL)
+	photo, err := h.uc.AddProfilePhoto(r.Context(), u.ID, body.MediaID, videoMediaID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "add photo failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, profilePhotoJSON(photo))
+	writeJSON(w, http.StatusOK, domain.NewPhotosPhoto(galleryPhoto(photo)))
 }
 
 // ListPhotos returns a user's profile-photo gallery, newest first
@@ -457,11 +453,11 @@ func (h *ProfileHandler) ListPhotos(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "list photos failed")
 		return
 	}
-	out := make([]map[string]any, 0, len(photos))
+	out := make([]domain.Photo, 0, len(photos))
 	for _, p := range photos {
-		out = append(out, profilePhotoJSON(p))
+		out = append(out, galleryPhoto(p))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"photos": out})
+	writeJSON(w, http.StatusOK, domain.NewPhotosPhotos(out))
 }
 
 // DeletePhoto removes a photo from the current user's gallery
@@ -481,5 +477,5 @@ func (h *ProfileHandler) DeletePhoto(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "delete photo failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }

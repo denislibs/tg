@@ -18,16 +18,22 @@ import (
 type fakeGroupRepo struct {
 	mu           sync.Mutex
 	nextID       int64
-	cards        map[int64]domain.ChatCard         // chatID -> card (title/about/etc)
+	cards        map[int64]domain.ChatRecord       // chatID -> card (title/about/etc)
 	members      map[int64]map[int64]domain.Member // chatID -> userID -> member
-	users        map[int64]domain.UserCard
+	users        map[int64]domain.UserReal
 	discussion   map[int64]int64                              // channelID -> discussion groupID
 	bans         map[int64]map[int64]bool                     // chatID -> userID -> banned
 	restrictions map[int64]map[int64]domain.MemberRestriction // chatID -> userID -> restriction
 	pinned       map[int64]map[int64]bool                     // userID -> chatID -> pinned
 	archived     map[int64]map[int64]bool                     // userID -> chatID -> archived
 	forum        map[int64]bool                               // chatID -> темы включены
-	onCreate     func(id int64)                               // optional hook fired after a chat is created
+	mutedUntil   map[int64]map[int64]*time.Time               // chatID -> userID -> срок мьюта (nil — не замьючен)
+	// onCreate — хук «чат создан», зеркалящий строку в общий store. Тип чата
+	// едет ПАРАМЕТРОМ, а не подставляется хуком из головы: доставка сообщения
+	// зависит от вида пира (канал — журнал канала, остальное — веер по
+	// участникам), и хук, объявлявший ЛЮБОЙ созданный чат каналом, не давал
+	// покраснеть ни одному тесту на эту развилку.
+	onCreate func(id int64, typ string)
 	// onSetDiscussion — опциональный хук, зеркалящий привязку группы обсуждения
 	// в общий store (store.discussionChat), которым пользуется fakeMsgs
 	// (MirrorByPost/MirrorsByPosts). В реальной БД оба репозитория читают одну
@@ -41,9 +47,9 @@ type fakeGroupRepo struct {
 
 func newFakeGroupRepo() *fakeGroupRepo {
 	return &fakeGroupRepo{
-		cards:        map[int64]domain.ChatCard{},
+		cards:        map[int64]domain.ChatRecord{},
 		members:      map[int64]map[int64]domain.Member{},
-		users:        map[int64]domain.UserCard{},
+		users:        map[int64]domain.UserReal{},
 		discussion:   map[int64]int64{},
 		bans:         map[int64]map[int64]bool{},
 		restrictions: map[int64]map[int64]domain.MemberRestriction{},
@@ -72,7 +78,7 @@ func (r *fakeGroupRepo) SetType(_ context.Context, chatID int64, isPublic bool, 
 	if !ok {
 		return domain.ErrNotFound
 	}
-	c.IsPublic = isPublic
+	// Публичность выражена НАЛИЧИЕМ username — отдельного поля у неё больше нет.
 	if isPublic {
 		c.Username = username
 	} else {
@@ -259,14 +265,14 @@ func (r *fakeGroupRepo) IsForum(_ context.Context, chatID int64) (bool, error) {
 	return r.forum[chatID], nil
 }
 
-func (r *fakeGroupRepo) DiscussionCandidates(_ context.Context, actorID int64) ([]domain.ChatCard, error) {
+func (r *fakeGroupRepo) DiscussionCandidates(_ context.Context, actorID int64) ([]domain.ChatRecord, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	linked := map[int64]bool{}
 	for _, gid := range r.discussion {
 		linked[gid] = true
 	}
-	var out []domain.ChatCard
+	var out []domain.ChatRecord
 	for id, c := range r.cards {
 		if c.Type != "group" || r.forum[id] || linked[id] {
 			continue
@@ -302,7 +308,7 @@ func (r *fakeGroupRepo) ChatBriefs(_ context.Context, ids []int64) (map[int64]do
 	out := map[int64]domain.ChatBrief{}
 	for _, id := range ids {
 		if c, ok := r.cards[id]; ok {
-			out[id] = domain.ChatBrief{ID: id, Type: c.Type, Title: c.Title, PhotoID: c.PhotoMediaID}
+			out[id] = domain.ChatBrief{ID: id, Type: c.Type, Title: c.Title, PhotoID: c.PhotoID}
 		}
 	}
 	return out, nil
@@ -313,14 +319,17 @@ func (r *fakeGroupRepo) CreateMultiMember(_ context.Context, typ, title, about, 
 	defer r.mu.Unlock()
 	r.nextID++
 	id := r.nextID
-	r.cards[id] = domain.ChatCard{
+	if !isPublic {
+		username = ""
+	}
+	r.cards[id] = domain.ChatRecord{
 		ID: id, Type: typ, Title: title, About: about, Username: username,
-		IsPublic: isPublic, CreatorID: creatorID,
-		Settings: domain.ChatSettings{DefaultPerms: domain.AllMemberPerms, ReactionsMode: "all", HistoryForNew: true},
+		CreatorID: creatorID,
+		Settings:  domain.ChatSettings{DefaultPerms: domain.AllMemberPerms, ReactionsMode: "all", HistoryForNew: true},
 	}
 	r.members[id] = map[int64]domain.Member{}
 	if r.onCreate != nil {
-		r.onCreate(id)
+		r.onCreate(id, typ)
 	}
 	return id, nil
 }
@@ -378,16 +387,33 @@ func (r *fakeGroupRepo) SetRole(_ context.Context, chatID, userID int64, role st
 	return nil
 }
 
-func (r *fakeGroupRepo) SetMuted(_ context.Context, chatID, userID int64, muted bool, _ *time.Time) error {
+func (r *fakeGroupRepo) SetMuted(_ context.Context, chatID, userID int64, until *time.Time) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	m, ok := r.members[chatID][userID]
-	if !ok {
+	if _, ok := r.members[chatID][userID]; !ok {
 		return domain.ErrNotFound
 	}
-	m.Muted = muted
-	r.members[chatID][userID] = m
+	if r.mutedUntil == nil {
+		r.mutedUntil = map[int64]map[int64]*time.Time{}
+	}
+	if r.mutedUntil[chatID] == nil {
+		r.mutedUntil[chatID] = map[int64]*time.Time{}
+	}
+	r.mutedUntil[chatID][userID] = until
 	return nil
+}
+
+func (r *fakeGroupRepo) NotifySettings(_ context.Context, chatID, userID int64) (domain.PeerNotifySettings, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.members[chatID][userID]; !ok {
+		return domain.PeerNotifySettings{}, domain.ErrNotFound
+	}
+	var until time.Time
+	if u := r.mutedUntil[chatID][userID]; u != nil {
+		until = *u
+	}
+	return domain.NewPeerNotifySettings(until, nil, nil), nil
 }
 
 func (r *fakeGroupRepo) SetNotify(_ context.Context, _, _ int64, _ *bool, _ *string) error {
@@ -441,17 +467,27 @@ func (r *fakeGroupRepo) SetArchived(_ context.Context, chatID, userID int64, arc
 	return nil
 }
 
-func (r *fakeGroupRepo) Card(_ context.Context, chatID, viewerID int64) (domain.ChatCard, error) {
+func (r *fakeGroupRepo) Card(_ context.Context, chatID, viewerID int64) (domain.ChatRecord, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	c, ok := r.cards[chatID]
 	if !ok {
-		return domain.ChatCard{}, domain.ErrNotFound
+		return domain.ChatRecord{}, domain.ErrNotFound
 	}
+	c.ViewerID = viewerID
 	if m, ok := r.members[chatID][viewerID]; ok {
 		c.MyRole = m.Role
 		c.MyRights = m.Rights
-		c.Muted = m.Muted
+		// Настройки уведомлений зритель-зависимы: без зрителя (снимок
+		// chat_update) их нет вовсе, ровно как в SQL-витрине.
+		if viewerID != 0 {
+			var until time.Time
+			if u := r.mutedUntil[chatID][viewerID]; u != nil {
+				until = *u
+			}
+			ns := domain.NewPeerNotifySettings(until, nil, nil)
+			c.NotifySettings = &ns
+		}
 	}
 	return c, nil
 }
@@ -477,7 +513,7 @@ func (r *fakeGroupRepo) SetPhoto(_ context.Context, chatID, mediaID int64) error
 	if !ok {
 		return domain.ErrNotFound
 	}
-	c.PhotoMediaID = &mediaID
+	c.PhotoID = &mediaID
 	r.cards[chatID] = c
 	return nil
 }
@@ -521,10 +557,10 @@ func (r *fakeGroupRepo) AdminIDs(_ context.Context, chatID int64) ([]int64, erro
 	return out, nil
 }
 
-func (r *fakeGroupRepo) UsersByIDs(_ context.Context, ids []int64) ([]domain.UserCard, error) {
+func (r *fakeGroupRepo) UsersByIDs(_ context.Context, ids []int64) ([]domain.UserReal, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := make([]domain.UserCard, 0, len(ids))
+	out := make([]domain.UserReal, 0, len(ids))
 	for _, id := range ids {
 		if u, ok := r.users[id]; ok {
 			out = append(out, u)
@@ -752,13 +788,15 @@ func (c groupChats) MemberIDs(_ context.Context, chatID int64) ([]int64, error) 
 	}
 	return ids, nil
 }
-func (c groupChats) ListDialogs(context.Context, int64) ([]domain.Dialog, error) { return nil, nil }
-func (c groupChats) ChatPartners(context.Context, int64) ([]int64, error)        { return nil, nil }
-func (c groupChats) SetAutoDelete(context.Context, int64, int) error             { return nil }
-func (c groupChats) SetChatTheme(context.Context, int64, string, int64) error    { return nil }
-func (c groupChats) UserAutoDelete(context.Context, int64) (int, error)          { return 0, nil }
-func (c groupChats) SetUserAutoDelete(context.Context, int64, int) error         { return nil }
-func (c groupChats) IncUnread(context.Context, int64, int64) (int, error)        { return 0, nil }
+func (c groupChats) ListDialogs(context.Context, int64) ([]domain.DialogRecord, error) {
+	return nil, nil
+}
+func (c groupChats) ChatPartners(context.Context, int64) ([]int64, error)     { return nil, nil }
+func (c groupChats) SetAutoDelete(context.Context, int64, int) error          { return nil }
+func (c groupChats) SetChatTheme(context.Context, int64, string, int64) error { return nil }
+func (c groupChats) UserAutoDelete(context.Context, int64) (int, error)       { return 0, nil }
+func (c groupChats) SetUserAutoDelete(context.Context, int64, int) error      { return nil }
+func (c groupChats) IncUnread(context.Context, int64, int64) (int, error)     { return 0, nil }
 func (c groupChats) IncUnreadBulk(context.Context, int64, []int64) (map[int64]int64, error) {
 	return nil, nil
 }
@@ -777,8 +815,8 @@ func (c groupChats) AddMention(context.Context, int64, int64, int64, int64) erro
 func (c groupChats) ClearMentions(context.Context, int64, int64, int64) (int, error) {
 	return 0, nil
 }
-func (c groupChats) NextMention(context.Context, int64, int64, int64) (int64, int64, error) {
-	return 0, 0, domain.ErrNotFound
+func (c groupChats) NextMention(context.Context, int64, int64, int64) (int64, error) {
+	return 0, domain.ErrNotFound
 }
 func (c groupChats) MaxSeq(context.Context, int64) (int64, error)              { return 0, nil }
 func (c groupChats) ClearedSeq(context.Context, int64, int64) (int64, error)   { return 0, nil }
@@ -863,18 +901,18 @@ func TestGroupLifecycle_ServiceMessagesAndChatRemoved(t *testing.T) {
 	fg := newFakeGroupRepo()
 	s := newStore()
 	// fakeMsgs.NextSeq знает только чаты из store — регистрируем созданные группы.
-	fg.onCreate = func(id int64) {
+	fg.onCreate = func(id int64, typ string) {
 		s.mu.Lock()
-		s.chatType[id] = "group"
+		s.chatType[id] = typ
 		s.mu.Unlock()
 	}
 	in := New(fakeTx{}, groupChats{fg}, fakeMsgs{s}, fakeUpdates{s}, nil, fakeMedia{s}, fg, newFakeInviteRepo(), nil, nil, newFakeJoinRequestRepo())
 	pub := &fakePublisher{}
 	in.SetPublisher(pub)
 	ctx := context.Background()
-	fg.users[7] = domain.UserCard{ID: 7, DisplayName: "Алиса Иванова", FirstName: "Алиса"}
-	fg.users[8] = domain.UserCard{ID: 8, DisplayName: "Боб"}
-	fg.users[9] = domain.UserCard{ID: 9, DisplayName: "Чарли"}
+	fg.users[7] = domain.UserReal{ID: 7, FirstName: "Алиса"}
+	fg.users[8] = domain.UserReal{ID: 8, FirstName: "Боб"}
+	fg.users[9] = domain.UserReal{ID: 9, FirstName: "Чарли"}
 
 	// Дубликаты и сам создатель в member_ids не задваиваются.
 	id, err := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8, 9, 7, 8})
@@ -889,14 +927,24 @@ func TestGroupLifecycle_ServiceMessagesAndChatRemoved(t *testing.T) {
 			t.Fatalf("group_create frame for %d = %d; want 1", uid, pub.countFor(uid))
 		}
 	}
-	if msgs := s.messages[id]; len(msgs) != 1 || msgs[0].Type != "service" ||
-		!strings.Contains(msgs[0].Text, `"action":"group_create"`) ||
-		!strings.Contains(msgs[0].Text, "Алиса Иванова") {
-		t.Fatalf("group_create service msg: %+v", s.messages[id])
+	// Служебное действие — КОНСТРУКТОР, а не JSON внутри текста. Автор в нём не
+	// дублируется: он from_id самого сообщения. Название и список позванных —
+	// параметры, которых в старом действии не было вовсе.
+	msgs := s.messages[id]
+	if len(msgs) != 1 || msgs[0].Text != "" {
+		t.Fatalf("group_create service msg: %+v", msgs)
+	}
+	create, ok := msgs[0].Action.(domain.MessageActionChatCreate)
+	if !ok || create.Title != "Team" {
+		t.Fatalf("group_create action = %#v", msgs[0].Action)
+	}
+	// В users — те, кто РЕАЛЬНО добавлен: без создателя и без повторов.
+	if len(create.Users) != 2 || create.Users[0] != 8 || create.Users[1] != 9 {
+		t.Fatalf("group_create users = %v, ждали [8 9]", create.Users)
 	}
 
 	// Добавление: сервисное сообщение add_user доходит и новому участнику.
-	fg.users[10] = domain.UserCard{ID: 10, DisplayName: "Дарья"}
+	fg.users[10] = domain.UserReal{ID: 10, FirstName: "Дарья"}
 	if err := in.AddMember(ctx, id, 7, 10); err != nil {
 		t.Fatal(err)
 	}
@@ -905,9 +953,12 @@ func TestGroupLifecycle_ServiceMessagesAndChatRemoved(t *testing.T) {
 	if pub.countFor(10) != 2 {
 		t.Fatalf("add_user+chat_update frames for new member = %d; want 2", pub.countFor(10))
 	}
-	if msgs := s.messages[id]; !strings.Contains(msgs[len(msgs)-1].Text, `"action":"add_user"`) ||
-		!strings.Contains(msgs[len(msgs)-1].Text, "Дарья") {
-		t.Fatalf("add_user service msg: %s", msgs[len(msgs)-1].Text)
+	if msgs := s.messages[id]; func() bool {
+		add, ok := msgs[len(msgs)-1].Action.(domain.MessageActionChatAddUser)
+		// users — ВЕКТОР идентификаторов, а не одно число и не имя.
+		return !ok || len(add.Users) != 1 || add.Users[0] != 10
+	}() {
+		t.Fatalf("add_user service msg: %#v", msgs[len(msgs)-1].Action)
 	}
 
 	// Фото группы: владелец медиа с CHANGE_INFO ставит фото + сервисное edit_photo;
@@ -916,13 +967,16 @@ func TestGroupLifecycle_ServiceMessagesAndChatRemoved(t *testing.T) {
 	if err := in.SetChatPhoto(ctx, id, 7, 55); err != nil {
 		t.Fatalf("SetChatPhoto: %v", err)
 	}
-	if card, _ := in.ChatCard(ctx, id, 7); card.PhotoMediaID == nil || *card.PhotoMediaID != 55 {
-		t.Fatalf("photo_media_id = %v; want 55", card.PhotoMediaID)
+	if card, _ := in.ChatCard(ctx, id, 7); card.PhotoID == nil || *card.PhotoID != 55 {
+		t.Fatalf("photo media id = %v; want 55", card.PhotoID)
 	}
-	// edit_photo несёт media_id нового фото (tweb messageActionChatEditPhoto) —
-	// клиент рисует круглую миниатюру под пилюлей.
-	if msgs := s.messages[id]; !strings.Contains(msgs[len(msgs)-1].Text, `"action":"edit_photo"`) {
-		t.Fatalf("edit_photo service msg: %s", msgs[len(msgs)-1].Text)
+	// Новая аватарка едет ВНУТРИ действия конструктором photo (собирается на
+	// границе из media_id сообщения), а не полем media_id рядом с действием.
+	if msgs := s.messages[id]; func() bool {
+		_, ok := msgs[len(msgs)-1].Action.(domain.MessageActionChatEditPhoto)
+		return !ok
+	}() {
+		t.Fatalf("edit_photo service msg: %#v", msgs[len(msgs)-1].Action)
 	} else if last := msgs[len(msgs)-1]; last.MediaID == nil || *last.MediaID != 55 {
 		t.Fatalf("edit_photo media_id = %v; want 55", last.MediaID)
 	}
@@ -963,8 +1017,14 @@ func TestGroupLifecycle_ServiceMessagesAndChatRemoved(t *testing.T) {
 	if err := in.RemoveMember(ctx, id, 7, 8); err != nil {
 		t.Fatal(err)
 	}
-	if msgs := s.messages[id]; !strings.Contains(msgs[len(msgs)-1].Text, `"action":"kick_user"`) {
-		t.Fatalf("kick_user service msg: %s", msgs[len(msgs)-1].Text)
+	// «Выгнали» и «вышел сам» — ОДИН конструктор: различие выводит клиент по
+	// совпадению автора с целью, как appMessagesManager уточняет его до
+	// синтетического messageActionChatLeave.
+	if msgs := s.messages[id]; func() bool {
+		del, ok := msgs[len(msgs)-1].Action.(domain.MessageActionChatDeleteUser)
+		return !ok || del.UserID != 8 || msgs[len(msgs)-1].SenderID == 8
+	}() {
+		t.Fatalf("kick_user service msg: %#v", msgs[len(msgs)-1].Action)
 	}
 	svcCount := len(s.messages[id])
 	if err := in.RemoveMember(ctx, id, 7, 8); !errors.Is(err, domain.ErrNotFound) {
@@ -1039,9 +1099,9 @@ func TestJoinByToken_NoApproval(t *testing.T) {
 func TestJoinByToken_PostsJoinedByLinkService(t *testing.T) {
 	fg := newFakeGroupRepo()
 	s := newStore()
-	fg.onCreate = func(id int64) {
+	fg.onCreate = func(id int64, typ string) {
 		s.mu.Lock()
-		s.chatType[id] = "group"
+		s.chatType[id] = typ
 		s.mu.Unlock()
 	}
 	prev := tokenGen
@@ -1050,8 +1110,8 @@ func TestJoinByToken_PostsJoinedByLinkService(t *testing.T) {
 	fi := newFakeInviteRepo()
 	in := New(fakeTx{}, groupChats{fg}, fakeMsgs{s}, fakeUpdates{s}, nil, fakeMedia{s}, fg, fi, nil, nil, newFakeJoinRequestRepo())
 	ctx := context.Background()
-	fg.users[7] = domain.UserCard{ID: 7, DisplayName: "Алиса"}
-	fg.users[9] = domain.UserCard{ID: 9, DisplayName: "Чарли Ли"}
+	fg.users[7] = domain.UserReal{ID: 7, FirstName: "Алиса"}
+	fg.users[9] = domain.UserReal{ID: 9, FirstName: "Чарли Ли"}
 
 	id, err := in.CreateGroup(ctx, 7, "Team", "", "", false, nil)
 	if err != nil {
@@ -1070,10 +1130,14 @@ func TestJoinByToken_PostsJoinedByLinkService(t *testing.T) {
 		t.Fatalf("service messages after join = %d; want %d", len(msgs), before+1)
 	}
 	last := msgs[len(msgs)-1]
-	if last.Type != "service" ||
-		!strings.Contains(last.Text, `"action":"joined_by_link"`) ||
-		!strings.Contains(last.Text, "Чарли Ли") {
+	joined, ok := last.Action.(domain.MessageActionChatJoinedByLink)
+	if !ok || last.Text != "" {
 		t.Fatalf("joined_by_link service msg: %+v", last)
+	}
+	// inviter_id — СОЗДАТЕЛЬ ССЫЛКИ (7), а не вошедший (9): вошедший и так
+	// известен, он from_id самого сообщения. Долг шага A.
+	if joined.InviterID != 7 {
+		t.Fatalf("inviter_id = %d, ждали создателя ссылки 7, а не вошедшего", joined.InviterID)
 	}
 	if last.SenderID != 9 {
 		t.Fatalf("joined_by_link sender = %d; want 9 (the joiner)", last.SenderID)
@@ -1300,9 +1364,9 @@ func TestApproveJoinRequest(t *testing.T) {
 func TestGroupSettings_Enforcement(t *testing.T) {
 	fg := newFakeGroupRepo()
 	s := newStore()
-	fg.onCreate = func(id int64) {
+	fg.onCreate = func(id int64, typ string) {
 		s.mu.Lock()
-		s.chatType[id] = "group"
+		s.chatType[id] = typ
 		s.mu.Unlock()
 	}
 	fi := newFakeInviteRepo()
@@ -1310,8 +1374,8 @@ func TestGroupSettings_Enforcement(t *testing.T) {
 	pub := &fakePublisher{}
 	in.SetPublisher(pub)
 	ctx := context.Background()
-	fg.users[7] = domain.UserCard{ID: 7, DisplayName: "Алиса"}
-	fg.users[8] = domain.UserCard{ID: 8, DisplayName: "Боб"}
+	fg.users[7] = domain.UserReal{ID: 7, FirstName: "Алиса"}
+	fg.users[8] = domain.UserReal{ID: 8, FirstName: "Боб"}
 
 	id, err := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8})
 	if err != nil {
@@ -1421,16 +1485,16 @@ func TestGroupSettings_Enforcement(t *testing.T) {
 func TestMemberRestrictions(t *testing.T) {
 	fg := newFakeGroupRepo()
 	s := newStore()
-	fg.onCreate = func(id int64) {
+	fg.onCreate = func(id int64, typ string) {
 		s.mu.Lock()
-		s.chatType[id] = "group"
+		s.chatType[id] = typ
 		s.mu.Unlock()
 	}
 	fi := newFakeInviteRepo()
 	in := New(fakeTx{}, groupChats{fg}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, fg, fi, nil, nil, newFakeJoinRequestRepo())
 	ctx := context.Background()
-	fg.users[7] = domain.UserCard{ID: 7, DisplayName: "Алиса"}
-	fg.users[8] = domain.UserCard{ID: 8, DisplayName: "Боб"}
+	fg.users[7] = domain.UserReal{ID: 7, FirstName: "Алиса"}
+	fg.users[8] = domain.UserReal{ID: 8, FirstName: "Боб"}
 
 	id, err := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8})
 	if err != nil {

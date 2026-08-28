@@ -4,11 +4,12 @@ import { useT } from '../i18n'
 import { useMediaThumb } from '../core/hooks/useMediaThumb'
 import { usePinnedStories } from '../core/hooks/usePinnedStories'
 import StoryReadOnlyPreview from './StoryReadOnlyPreview'
-import type { StoryItem } from '../core/managers/storiesManager'
+import type { StoryItem } from '../core/stories/story'
+import { storyMediaId } from '../core/stories/story'
 
 // Плитка закреплённой истории: превью медиа (useMediaThumb).
 function Tile({ story, onClick }: { story: StoryItem; onClick: () => void }) {
-  const url = useMediaThumb(story.mediaId)
+  const url = useMediaThumb(storyMediaId(story))
   return (
     <div
       onClick={onClick}

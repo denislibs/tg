@@ -204,11 +204,15 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
     // Публикуем рендерер активных обоев — лента сдвигает по нему градиент вместе
     // с прокруткой к новому сообщению (tweb bubbles/chatBackground.tsx:531
     // `gradientRendererRef(built.gradientRenderer)` → chat.ts:270 `chat.gradientRenderer`).
-    setActiveGradientRenderer(rendererRef.current)
+    // Второй аргумент — мета для ЗЕРКАЛА градиента (колонка папок): tweb
+    // chatBackground.tsx:528-533 `{isDarkMaskPattern: built.isDarkPattern &&
+    // !built.isTinted}`. У нас маска — ровно ветка `mode.mask` (night); tinted
+    // идёт overlay-путём и градиент показывает как есть.
+    setActiveGradientRenderer(rendererRef.current, { isDarkMaskPattern: mode.mask })
     maybeActivateSlot()
     return () => setActiveGradientRenderer(undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [themeChoice, themeTick, colors.join(), !!overlay])
+  }, [themeChoice, themeTick, colors.join(), !!overlay, mode.mask])
 
   // Отрисовка/перерисовка canvas-паттерна: под размер вьюпорта*dpr, стратегия по теме.
   useEffect(() => {

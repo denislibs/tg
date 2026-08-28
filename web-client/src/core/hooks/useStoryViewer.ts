@@ -10,13 +10,19 @@ import { useStoriesStore } from '../../stores/storiesStore'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useManagers } from './useManagers'
 import rootScope from '@lib/rootScope'
-import type { StoryGroup, StoryItem, MediaArea, StoryFwd } from '../managers/storiesManager'
+import type { StoryGroup } from '../managers/storiesManager'
+import type { MediaArea, StoryItem } from '../stories/story'
+import {
+  isStoryEdited, isStoryPinned, isStoryRead, storyFwdAuthorId, storyFwdStoryId,
+  storyMediaAreas, storyMyReaction, storyReactionsCount,
+} from '../stories/story'
+import type { UserReal } from '../peers/peer'
+import { getUserTitle } from '../peers/getPeerTitle'
 
-interface Viewer {
-  id: number
-  displayName: string
-  avatarUrl: string
-}
+/** Посмотревший историю — КОНСТРУКТОР `user` целиком (имя собирает клиент,
+ *  аватарка это `photo.photo_id`), а не плоская тройка рядом с настоящей
+ *  карточкой. */
+type Viewer = UserReal
 
 interface UseStoryViewerArgs {
   groupIndex: number
@@ -32,7 +38,9 @@ interface UseStoryViewerArgs {
 // пира, иначе первая.
 export function initialStoryIndex(group: StoryGroup | undefined): number {
   if (!group) return 0
-  return Math.max(0, group.stories.findIndex((s) => !s.viewed))
+  // «Непрочитанная» — та, чей номер ВЫШЕ горизонта группы: признака на самой
+  // истории больше нет (см. `isStoryRead`).
+  return Math.max(0, group.stories.findIndex((s) => !isStoryRead(s, group.maxReadId)))
 }
 
 export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: UseStoryViewerArgs): {
@@ -66,12 +74,14 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
   togglePinned: () => void
   // 4d: media areas поверх истории, атрибуция репоста + имя автора оригинала.
   mediaAreas: MediaArea[]
-  fwdFrom: StoryFwd | undefined
+  // Ссылка репоста: автор оригинала — ключ пира (`fwd_from.from`), а не число
+  // рядом с ним. `undefined` — история не репост.
+  fwdFrom: { authorId: PeerId; storyId: number } | undefined
   fwdAuthorName: string | null
 } {
   const managers = useManagers()
   const groups = useStoriesStore((s) => s.groups)
-  const markViewed = useStoriesStore((s) => s.markViewed)
+  const markRead = useStoriesStore((s) => s.markRead)
   const setMyReaction = useStoriesStore((s) => s.setMyReaction)
   const removeStory = useStoriesStore((s) => s.removeStory)
   const setStoryPinned = useStoriesStore((s) => s.setStoryPinned)
@@ -144,32 +154,36 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
     if (group == null || stories.length === 0) onClose()
   }, [group, stories.length, onClose])
 
-  // Mark the shown story viewed (once per story shown) and reflect it in the
-  // store so the unseen ring clears. Skip own stories — the author isn't counted
-  // among their own viewers.
+  // Отметить показанную историю прочитанной (один раз на историю) и подвинуть
+  // ГОРИЗОНТ в сторе, чтобы кольцо непрочитанного погасло. Свои истории
+  // пропускаем — автор среди своих зрителей не числится.
   useEffect(() => {
-    if (!story || isMe || story.viewed) return
-    void managers.stories.view(story.id)
-    markViewed(group!.author.id, story.id)
+    if (!story || isMe || group == null || isStoryRead(story, group.maxReadId)) return
+    void managers.stories.view(group.author.id, story.id)
+    markRead(group.author.id, story.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [story?.id])
 
-  // 4d: резолв имени автора оригинала для плашки репоста (tweb repostInfo).
+  // Резолв имени автора оригинала для плашки репоста (tweb repostInfo).
+  const fwdAuthorId = storyFwdAuthorId(story)
   useEffect(() => {
-    const fwd = story?.fwdFrom
-    if (!fwd) { setFwdAuthorName(null); return }
+    if (fwdAuthorId == null) { setFwdAuthorName(null); return }
     let alive = true
     setFwdAuthorName(null)
-    void managers.peers.getUsers([fwd.authorId]).then((users) => {
-      if (alive) setFwdAuthorName(users[0]?.displayName ?? null)
+    void managers.peers.getUsers([Number(fwdAuthorId)]).then((users) => {
+      if (alive) setFwdAuthorName(users[0] ? getUserTitle(users[0]) : null)
     }).catch(() => {})
     return () => { alive = false }
-  }, [story?.fwdFrom, managers])
+  }, [fwdAuthorId, managers])
 
   const openViewers = () => {
     if (!story) return
     setShowViewers(true)
-    void managers.stories.viewers(story.id).then(setViewers)
+    // Контейнер несёт и сам просмотр (когда, чем отреагировал), и карточки
+    // зрителей. Список рисует пока только карточки — дата и реакция приехали
+    // впервые (до порта их теряла витрина) и ждут своей вёрстки: у оригинала
+    // они в строке зрителя есть.
+    void managers.stories.viewers(group!.author.id, story.id).then((list) => setViewers(list.users))
   }
 
   // Статистика ставит авто-прогресс на паузу через сам showStats (итоговый paused
@@ -186,10 +200,10 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
   // меняет. Оптимистично правим стор, затем шлём на бэк; счётчик догонит story_reaction.
   const toggleReaction = (emoji: string) => {
     if (!story) return
-    const next = story.myReaction === emoji ? null : emoji
+    const next = storyMyReaction(story) === emoji ? null : emoji
     setMyReaction(story.id, next)
-    if (next) void managers.stories.setReaction(story.id, next)
-    else void managers.stories.removeReaction(story.id)
+    if (next) void managers.stories.setReaction(group!.author.id, story.id, next)
+    else void managers.stories.removeReaction(group!.author.id, story.id)
   }
 
   // Ответ на историю = обычный DM автору (явной ссылки «ответ на историю» на бэке
@@ -197,9 +211,9 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
   const sendReply = async (text: string) => {
     const t = text.trim()
     if (!group || !t) return
-    const chatId = await managers.chats.createPrivate(group.author.id)
-    const clientMsgId = `story-${chatId}-${performance.now()}-${Math.random().toString(36).slice(2)}`
-    await managers.realtime.sendMessage({ chatId, text: t, clientMsgId })
+    const peerId = await managers.chats.createPrivate(group.author.id)
+    const clientMsgId = `story-${peerId}-${performance.now()}-${Math.random().toString(36).slice(2)}`
+    await managers.messages.sendText({ peerId, text: t, clientMsgId })
     rootScope.dispatchEvent('ui:toast', 'Сообщение отправлено')
   }
 
@@ -210,7 +224,7 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
   const del = async () => {
     if (!story || !group) return
     try {
-      await managers.stories.del(story.id)
+      await managers.stories.del(group.author.id, story.id)
       removeStory(group.author.id, story.id)
     } catch {
       rootScope.dispatchEvent('ui:toast', 'Не удалось удалить историю')
@@ -221,9 +235,9 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
   // оптимистично правим стор, затем шлём на бэк; при сбое откатываем + тост.
   const togglePinned = () => {
     if (!story) return
-    const next = !story.pinned
+    const next = !isStoryPinned(story)
     setStoryPinned(story.id, next)
-    void managers.stories.pin(story.id, next).catch(() => {
+    void managers.stories.pin(group!.author.id, story.id, next).catch(() => {
       setStoryPinned(story.id, !next)
       rootScope.dispatchEvent('ui:toast', 'Не удалось обновить закрепление')
     })
@@ -246,16 +260,16 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
     openViewers,
     manualPause,
     togglePause,
-    myReaction: story?.myReaction ?? null,
-    reactionsCount: story?.reactionsCount ?? 0,
+    myReaction: storyMyReaction(story),
+    reactionsCount: storyReactionsCount(story),
     toggleReaction,
     sendReply,
     del,
-    pinned: story?.pinned ?? false,
-    edited: story?.edited ?? false,
+    pinned: isStoryPinned(story),
+    edited: isStoryEdited(story),
     togglePinned,
-    mediaAreas: story?.mediaAreas ?? [],
-    fwdFrom: story?.fwdFrom,
+    mediaAreas: storyMediaAreas(story),
+    fwdFrom: fwdAuthorId == null ? undefined : { authorId: fwdAuthorId, storyId: storyFwdStoryId(story) ?? 0 },
     fwdAuthorName,
   }
 }

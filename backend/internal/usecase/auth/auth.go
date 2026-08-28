@@ -35,6 +35,7 @@ type Interactor struct {
 	partners PartnersFunc       // optional: user_update recipient set (shared-chat peers)
 	updates  UpdateLog          // optional: per-user update log for user_update (dense pts)
 	previews AvatarPreviewer    // optional: stripped-превью аватарки при её установке
+	privacy  PrivacyChecker     // optional: видимость фото профиля в кадре user_update
 	pwFails  *failCounter       // счётчик неудачных попыток пароля на password_token
 	recFails *failCounter       // счётчик неудачных кодов восстановления на password_token
 	// resetWait — окно ожидания отложенного сброса аккаунта; 0 = дефолт (неделя).
@@ -52,6 +53,15 @@ type EventPublisher interface {
 // given user — the user_update fan-out set. Wired to the chat usecase's
 // ChatPartners, the same source presence fan-out uses.
 type PartnersFunc func(ctx context.Context, userID int64) ([]int64, error)
+
+// PrivacyChecker отвечает, видит ли viewer аспект key владельца ownerID
+// (usecase/privacy) — тот же шов, что у presence. Здесь нужен ровно для
+// profile_photo: кадр user_update несёт конструктор `user`, а в нём photo, и
+// без проверки фото уехало бы мимо правила приватности. Не подключён — фото в
+// кадре нет вовсе (безопасная деградация: клиент дочитает карточку ручкой).
+type PrivacyChecker interface {
+	Check(ctx context.Context, ownerID, viewerID int64, key domain.PrivacyKey) (bool, error)
+}
 
 // UpdateLog appends one row to a user's per-user update log and returns the new
 // dense pts (same contract as the chat usecase's UpdateRepo.AppendUpdate). A
@@ -164,6 +174,7 @@ func (i *Interactor) SetPublisher(p EventPublisher)              { i.pub = p }
 func (i *Interactor) SetPartners(f PartnersFunc)                 { i.partners = f }
 func (i *Interactor) SetUpdateLog(u UpdateLog)                   { i.updates = u }
 func (i *Interactor) SetAvatarPreviewer(p AvatarPreviewer)       { i.previews = p }
+func (i *Interactor) SetPrivacy(p PrivacyChecker)                { i.privacy = p }
 
 // SetAccountResetWindow задаёт окно ожидания отложенного сброса аккаунта
 // (ACCOUNT_RESET_WAIT). Неположительное значение оставляет дефолт — неделю.
@@ -185,7 +196,7 @@ func (i *Interactor) RequestCode(ctx context.Context, rawPhone string) error {
 
 type SignInResult struct {
 	Token string
-	User  domain.User
+	User  domain.UserRecord
 	// Облачный пароль включён: вместо сессии выдан одноразовый PasswordToken —
 	// клиент завершает вход через CheckPassword (Telegram SESSION_PASSWORD_NEEDED).
 	PasswordNeeded bool
@@ -257,7 +268,7 @@ func (i *Interactor) startPasswordStep(ctx context.Context, userID int64) (SignI
 
 // mintSession выдаёт новую сессию (строка devices + токен) и шлёт login-alert.
 // Общий хвост SignIn и CheckPassword.
-func (i *Interactor) mintSession(ctx context.Context, user domain.User, deviceName, platform string) (SignInResult, error) {
+func (i *Interactor) mintSession(ctx context.Context, user domain.UserRecord, deviceName, platform string) (SignInResult, error) {
 	token, hash, err := domain.GenerateToken()
 	if err != nil {
 		return SignInResult{}, err
@@ -305,7 +316,7 @@ func (i *Interactor) notifyLogin(userID int64, ci ClientInfo) {
 	}()
 }
 
-func (i *Interactor) Authenticate(ctx context.Context, token string) (domain.User, int64, error) {
+func (i *Interactor) Authenticate(ctx context.Context, token string) (domain.UserRecord, int64, error) {
 	hash := domain.HashToken(token)
 	if i.cache != nil {
 		if s, err := i.cache.GetSession(ctx, hash); err == nil && s != nil {
@@ -314,7 +325,7 @@ func (i *Interactor) Authenticate(ctx context.Context, token string) (domain.Use
 	}
 	user, deviceID, err := i.devices.SessionByTokenHash(ctx, hash)
 	if err != nil {
-		return domain.User{}, 0, err
+		return domain.UserRecord{}, 0, err
 	}
 	if i.cache != nil {
 		_ = i.cache.SetSession(ctx, hash, domain.Session{User: user, DeviceID: deviceID}, SessionCacheTTL)
@@ -361,7 +372,7 @@ func (i *Interactor) QRStatus(ctx context.Context, token string) (domain.QRLogin
 // ConfirmQRLogin is called by an already-authenticated user (the scanning
 // device). It mints a fresh session for that user and stores it on the record
 // so the waiting desktop can read it.
-func (i *Interactor) ConfirmQRLogin(ctx context.Context, token string, user domain.User) error {
+func (i *Interactor) ConfirmQRLogin(ctx context.Context, token string, user domain.UserRecord) error {
 	if i.qr == nil {
 		return ErrQRUnavailable
 	}

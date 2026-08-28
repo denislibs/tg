@@ -62,6 +62,22 @@ describe('UserInfoPanel — каркас на классах tweb', () => {
     expect(panel).toMatch(/className="profile-subtitle-text"/)
   })
 
+  // Правая колонка закрывается ТРАНСФОРМОМ и остаётся смонтированной, поэтому
+  // видео-аватарка внутри неё не «уезжает за кадр» для IntersectionObserver'а —
+  // её останавливает явная команда (порт tweb sidebarRight/index.ts:98,132 +
+  // avatarNew.tsx:176-188). Сама механика покрыта поведенчески в
+  // `animationIntersector.test.ts` (`toggleVideosUnder`), здесь пинится ПРОВОДКА:
+  // без этих строк клип крутится в закрытой панели молча — ни сборка, ни
+  // тайпчек этого не видят, а отрендерить панель целиком тест не может
+  // (см. основание файла выше).
+  it('видео-аватарка учтена интерсектором, закрытие колонки её глушит', () => {
+    expect(panel).toMatch(/<AvatarVideo src=\{p\.videoSrc\} poster=\{p\.src\} \/>/)
+    expect(panel).toMatch(/className="avatar-photo avatar-video"/)
+    expect(panel).toMatch(/animationIntersector\.addAnimation\(\{ animation: video, observeElement: video, type: 'video' \}\)/)
+    expect(panel).toMatch(/animationIntersector\.removeAnimationByPlayer\(video\)/)
+    expect(panel).toMatch(/animationIntersector\.toggleVideosUnder\(columnRef\.current, !open\)/)
+  })
+
   it('своего CSS-модуля у панели больше нет', () => {
     expect(panel).not.toMatch(/UserInfoPanel\.module\.scss/)
     expect(panel).not.toMatch(/className=\{s\./)

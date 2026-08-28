@@ -10,16 +10,6 @@
 //   • `ListenerSetter`, `debounce`, `isSwipingBackSafari` — отсутствовали,
 //     портированы 1:1 рядом (`@helpers/listenerSetter`,
 //     `@helpers/schedulers/debounce`, `@helpers/dom/isSwipingBackSafari`)
-//   • `contextMenuController` + флаг `RESET_GLOBAL` (сброс жеста при открытии
-//     контекстного меню) — выброшены: в проекте нет глобального
-//     оверлей-контроллера меню (меню — React-компоненты), подписываться не на
-//     что; при появлении контроллера вернуть подписку из tweb (строки 51-54)
-//   • опция `withDelay` (отложенный старт жеста: long-press на таче через
-//     `attachContextMenuListener`, пауза 300 мс на мыши) — выброшена: тянет
-//     `attachContextMenuListener` → `contextMenuController`, которых нет (см.
-//     выше), а единственный наш потребитель — медиавьювер (tweb
-//     `mediaViewer/base.ts:522`) — её не передаёт; с ней ушли и зависимости
-//     `pause`/`deferredPromise`
 //   • опции `onDrag`/`minZoom`/`maxZoom` — выброшены: мёртвые уже в tweb
 //     (объявлены в типах, но ни разу не читаются ни в этом файле, ни у
 //     потребителей — проверено grep'ом по репозиторию tweb)
@@ -39,8 +29,12 @@
 import cancelEvent from '@helpers/dom/cancelEvent'
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import safeAssign from '@helpers/object/safeAssign'
+import contextMenuController from '@helpers/contextMenuController'
 import { Middleware } from '@helpers/middleware'
 import ListenerSetter, { Listener, ListenerOptions } from '@helpers/listenerSetter'
+import { attachContextMenuListener } from '@helpers/dom/attachContextMenuListener'
+import pause from '@helpers/schedulers/pause'
+import deferredPromise from '@helpers/cancellablePromise'
 import clamp from '@helpers/number/clamp'
 import debounce, { DebounceReturnType } from '@helpers/schedulers/debounce'
 import { logger } from '@lib/logger'
@@ -79,6 +73,12 @@ function getTouchCenter(a: Touch, b: Touch) {
 // (`this.element.ownerDocument`), а не на фиксированном главном `document`:
 // в Document-PiP-окне элемент живёт в другом документе, и листенер главного
 // документа жеста не увидит. Вне PiP равно `document` — поведение то же.
+// tweb swipeHandler.ts:51-54 — открытое контекстное меню глушит любой активный
+// жест (иначе бабл продолжал бы ехать под открытым меню).
+let RESET_GLOBAL = false
+contextMenuController.addEventListener('toggle', (visible) => {
+  RESET_GLOBAL = visible
+})
 
 export type SwipeHandlerOptions = {
   element: HTMLElement,
@@ -93,7 +93,11 @@ export type SwipeHandlerOptions = {
   cancelEvent?: boolean,
   listenerOptions?: ListenerOptions,
   setCursorTo?: HTMLElement,
-  middleware?: Middleware
+  middleware?: Middleware,
+  /** отложенный старт жеста: на таче — long-press через
+   *  `attachContextMenuListener`, на мыши — пауза 300 мс с досрочным выходом по
+   *  первому `mousemove` (tweb :71, :167-175, :348-365) */
+  withDelay?: boolean
 }
 
 const TOUCH_MOVE_OPTIONS: ListenerOptions = { passive: false }
@@ -125,6 +129,7 @@ export default class SwipeHandler {
   private cancelEvent!: boolean
   private listenerOptions!: ListenerOptions
   private setCursorTo!: HTMLElement
+  private withDelay?: boolean
 
   private isMouseDown?: boolean
   private tempId!: number
@@ -186,9 +191,20 @@ export default class SwipeHandler {
         this.listenerSetter.add(this.element)('wheel', this.handleWheel, WHEEL_OPTIONS)
       }
     } else {
-      // ветка `withDelay` (`attachContextMenuListener`) выброшена — см. шапку
-      // @ts-ignore
-      this.listenerSetter.add(this.element)('touchstart', this.handleStart, this.listenerOptions)
+      if(this.withDelay) {
+        attachContextMenuListener({
+          element: this.element,
+          callback: (e) => {
+            cancelEvent(e)
+            void this.handleStart(e as any as EE)
+          },
+          listenerSetter: this.listenerSetter,
+          listenerOptions: this.listenerOptions,
+        })
+      } else {
+        // @ts-ignore
+        this.listenerSetter.add(this.element)('touchstart', this.handleStart, this.listenerOptions)
+      }
 
       if(this.onDoubleClick) {
         this.listenerSetter.add(this.element)('dblclick', (e) => {
@@ -357,7 +373,24 @@ export default class SwipeHandler {
 
     this.isMouseDown = true
 
-    // блок `withDelay` (пауза 300 мс на мыши) выброшен — см. шапку
+    if(this.withDelay && !IS_TOUCH_SUPPORTED) {
+      const options = { ...MOUSE_MOVE_OPTIONS, once: true }
+      const deferred = deferredPromise<void>()
+      const cb = () => deferred.resolve!()
+      const listener = this.listenerSetter.add(this.element.ownerDocument)('mousemove', cb as EventListener, options) as any as Listener
+
+      await Promise.race([
+        pause(300),
+        deferred,
+      ])
+
+      deferred.resolve!()
+      this.listenerSetter.remove(listener)
+
+      if(this.tempId !== tempId) {
+        return
+      }
+    }
 
     this.xDown = e.clientX
     this.yDown = e.clientY
@@ -381,9 +414,7 @@ export default class SwipeHandler {
   }
 
   protected handleMove = (_e: EE) => {
-    // проверка `RESET_GLOBAL` (жест сбрасывается открытым контекстным меню)
-    // выброшена вместе с `contextMenuController` — см. шапку
-    if(this.xDown === undefined || this.yDown === undefined) {
+    if(this.xDown === undefined || this.yDown === undefined || RESET_GLOBAL) {
       this.reset()
       return
     }

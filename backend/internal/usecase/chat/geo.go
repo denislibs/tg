@@ -37,10 +37,7 @@ func (i *Interactor) UpdateLiveLocation(ctx context.Context, chatID, msgID, user
 		if err != nil {
 			return domain.Message{}, err
 		}
-		f := frame("geo_live_update", geoLiveUpdatePayload(msg))
-		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, f)
-		}
+		i.publishPeerFrame(ctx, chatID, members, 0, "geo_live_update", geoLiveUpdatePayload(msg))
 	}
 	return msg, nil
 }

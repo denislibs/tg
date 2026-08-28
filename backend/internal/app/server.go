@@ -76,6 +76,9 @@ func registerServer(p serverParams) {
 	privacyUC := usecaseprivacy.New(pgadapter.NewPrivacyRepo(p.Pool))
 	p.ChatUC.SetPrivacy(privacyUC)
 	p.ContactsUC.SetPrivacy(privacyUC)
+	// Кадр user_update несёт конструктор `user`, а в нём photo: без правила
+	// profile_photo аватарка уехала бы мимо приватности.
+	p.AuthUC.SetPrivacy(privacyUC)
 
 	// Личное фото контактов: тот же postgres-адаптер, что и адресная книга,
 	// реализует CustomPhotoRepo. Владелец видит это фото вместо настоящего
@@ -84,6 +87,12 @@ func registerServer(p serverParams) {
 	// галерею получателя через auth-usecase.
 	contactPhotos := pgadapter.NewContactsRepo(p.Pool)
 	p.ContactsUC.SetCustomPhotos(contactPhotos)
+
+	// Близкие друзья: признак едет ФЛАГОМ карточки контакта
+	// (`user.pFlags.close_friend`), как у оригинала — метода чтения списка в
+	// схеме нет вовсе. Владелец списка — подсистема историй, она же его и
+	// правит, поэтому источник здесь она, а не второй репозиторий.
+	p.ContactsUC.SetCloseFriends(p.StoryUC)
 	p.ChatUC.SetContactPhotos(contactPhotos)
 	p.ChatUC.SetProfilePhotos(p.AuthUC)
 
@@ -135,7 +144,13 @@ func registerServer(p serverParams) {
 
 	// Каталог доступных реакций (available_reactions, заливается cmd/seed-reactions):
 	// без usecase-слоя — чистое чтение справочника, бизнес-логики нет.
-	reactionsH := httptransport.NewReactionsHandler(pgadapter.NewAvailableReactionsRepo(p.Pool))
+	//
+	// Его медиа ПУБЛИЧНО ровно как медиа стикеров: файлы принадлежат сервисному
+	// аккаунту и ни в одном чате не лежат, поэтому без этой проводки каждая
+	// иконка реакции отдавалась 404 всем, кроме владельца.
+	availableReactionsRepo := pgadapter.NewAvailableReactionsRepo(p.Pool)
+	p.ChatUC.SetReactionCatalog(availableReactionsRepo)
+	reactionsH := httptransport.NewReactionsHandler(availableReactionsRepo)
 
 	// Звёзды и подарки: баланс + каталог + выданные подарки, live-баланс
 	// фреймом balance_update, подарок — сообщением типа 'gift'.
@@ -162,6 +177,8 @@ func registerServer(p serverParams) {
 	// Исходящий HTTP бот-движка (webhook-доставка + загрузка медиа по URL)
 	// SSRF-безопасным клиентом — реализация порта вне usecase.
 	p.ChatUC.SetBotHTTP(bothttp.New())
+	// Конвертер границы Bot API (чужой контракт) — из delivery, а не из usecase.
+	p.ChatUC.SetBotAPIView(httptransport.NewBotAPIView())
 
 	// Серверные превью ссылок: og-теги первой http/https-ссылки текстового
 	// сообщения, асинхронно после отправки (кадр web_page_update).
@@ -201,6 +218,9 @@ func registerServer(p serverParams) {
 		p.AuthUC.SetRevocationNotifier(publisher)
 		presenceMgr = usecasepresence.NewManager(rtredis.NewPresenceStore(p.Redis.Client), publisher, p.ChatUC.ChatPartners, 35*time.Second)
 		presenceMgr.SetPrivacy(privacyUC)
+		// user.status полной карточки профиля (GET /users/{id}) — из того же
+		// источника присутствия, что и ручка /presence.
+		privacyUC.SetPresence(presenceMgr)
 		// Диспетчеру запланированных «отправить когда онлайн» нужен запрос presence.
 		p.ChatUC.SetPresence(presenceMgr)
 		hub := ws.NewHub(p.Ctx, p.Redis.Client)
@@ -302,7 +322,7 @@ func registerServer(p serverParams) {
 	// (tweb рисует футер лишь при webPage.cached_page), а проба греет кэш.
 	p.ChatUC.SetIVProber(ivUC)
 
-	storyHandler := httptransport.NewStoryHandler(p.StoryUC)
+	storyHandler := httptransport.NewStoryHandler(p.StoryUC, p.ChatUC)
 	notifyUC := usecasenotify.New(pgadapter.NewNotifyRepo(p.Pool))
 	// Жалобы на чаты/сообщения (tweb reportMessages): складируем без модерации.
 	reportUC := usecasereport.New(pgadapter.NewReportRepo(p.Pool))
@@ -314,6 +334,8 @@ func registerServer(p serverParams) {
 	// pts-курсор для /sync), а при живом Redis — ещё и шлём кадр на устройства
 	// владельца.
 	foldersUC.SetUpdateLog(pgadapter.NewUpdatesRepo(p.Pool))
+	// Слой разрешения peerId ↔ chatID: правила папок едут ключами пиров.
+	foldersUC.SetPeers(p.ChatUC)
 	if realtimePublisher != nil {
 		foldersUC.SetPublisher(realtimePublisher)
 	}

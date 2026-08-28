@@ -15,7 +15,7 @@ func TestFoldersRepo_CRUD(t *testing.T) {
 	owner := seedUser(t, pool, "+7801")
 	other := seedUser(t, pool, "+7802")
 
-	f, err := r.Create(ctx, owner, domain.Folder{Title: "друзья", Groups: true, IncludeChats: []int64{5, 7}})
+	f, err := r.Create(ctx, owner, domain.DialogFilter{Title: "друзья", Groups: true, IncludeChats: []int64{5, 7}})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -23,7 +23,7 @@ func TestFoldersRepo_CRUD(t *testing.T) {
 		t.Fatalf("created = %+v", f)
 	}
 
-	f2, err := r.Create(ctx, owner, domain.Folder{Title: "работа", Broadcasts: true})
+	f2, err := r.Create(ctx, owner, domain.DialogFilter{Title: "работа", Broadcasts: true})
 	if err != nil {
 		t.Fatalf("Create 2: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestFoldersRepo_Invites(t *testing.T) {
 	owner := seedUser(t, pool, "+7901")
 	other := seedUser(t, pool, "+7902")
 
-	f, err := r.Create(ctx, owner, domain.Folder{Title: "команда", Groups: true, IncludeChats: []int64{11, 22}})
+	f, err := r.Create(ctx, owner, domain.DialogFilter{Title: "команда", Groups: true, IncludeChats: []int64{11, 22}})
 	if err != nil {
 		t.Fatalf("Create folder: %v", err)
 	}

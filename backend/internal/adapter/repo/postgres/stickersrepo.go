@@ -23,14 +23,28 @@ func NewStickersRepo(pool *pgxpool.Pool) *StickersRepo { return &StickersRepo{po
 const setCols = `s.id, s.slug, s.title, s.kind, COALESCE(s.created_by, 0),
 	(SELECT count(*) FROM stickers st WHERE st.set_id = s.id), s.rank, COALESCE(s.cover_media_id, 0)`
 
-func scanSet(s scanner) (domain.StickerSet, error) {
-	var set domain.StickerSet
+// setColsInstalled — те же колонки плюс СРОК УСТАНОВКИ: на проводе это
+// `stickerSet.installed_date`, параметр самого набора (Р2 разбора стикеров).
+// Отдельная константа, а не подзапрос в setCols: «установлен ли» — вопрос про
+// пару «пользователь + набор», и выборки без пользователя (тренды, поиск) на
+// него не отвечают вовсе.
+const setColsInstalled = setCols + `, uss.added_at`
+
+func scanSet(s scanner) (domain.StickerSetRecord, error) {
+	var set domain.StickerSetRecord
 	err := s.Scan(&set.ID, &set.Slug, &set.Title, &set.Kind, &set.CreatedBy, &set.StickerCount,
 		&set.Rank, &set.CoverMediaID)
 	return set, err
 }
 
-func (r *StickersRepo) CreateSet(ctx context.Context, set domain.StickerSet) (domain.StickerSet, error) {
+func scanSetInstalled(s scanner) (domain.StickerSetRecord, error) {
+	var set domain.StickerSetRecord
+	err := s.Scan(&set.ID, &set.Slug, &set.Title, &set.Kind, &set.CreatedBy, &set.StickerCount,
+		&set.Rank, &set.CoverMediaID, &set.InstalledAt)
+	return set, err
+}
+
+func (r *StickersRepo) CreateSet(ctx context.Context, set domain.StickerSetRecord) (domain.StickerSetRecord, error) {
 	// NULLIF(.., 0): CreatedBy — zero value доменной структуры для «набора без
 	// владельца» (created_by в схеме NULLABLE), а не ссылка на реального
 	// пользователя с id=0 — такого не существует, INSERT литерального 0 уронил
@@ -39,7 +53,7 @@ func (r *StickersRepo) CreateSet(ctx context.Context, set domain.StickerSet) (do
 		`INSERT INTO sticker_sets (slug, title, kind, created_by) VALUES ($1,$2,$3,NULLIF($4,0)) RETURNING id`,
 		set.Slug, set.Title, set.Kind, set.CreatedBy).Scan(&set.ID)
 	if isUniqueViolation(err) {
-		return domain.StickerSet{}, domain.ErrConflict
+		return domain.StickerSetRecord{}, domain.ErrConflict
 	}
 	return set, err
 }
@@ -80,39 +94,20 @@ func (r *StickersRepo) StickerPositions(ctx context.Context, setID int64) (map[i
 	return out, rows.Err()
 }
 
-func (r *StickersRepo) SetBySlug(ctx context.Context, slug string) (domain.StickerSet, error) {
+func (r *StickersRepo) SetBySlug(ctx context.Context, slug string) (domain.StickerSetRecord, error) {
 	set, err := scanSet(querier(ctx, r.pool).QueryRow(ctx,
 		`SELECT `+setCols+` FROM sticker_sets s WHERE s.slug=$1`, slug))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.StickerSet{}, domain.ErrNotFound
+		return domain.StickerSetRecord{}, domain.ErrNotFound
 	}
 	return set, err
 }
 
-func (r *StickersRepo) SetByID(ctx context.Context, id int64) (domain.StickerSet, error) {
+func (r *StickersRepo) SetByID(ctx context.Context, id int64) (domain.StickerSetRecord, error) {
 	set, err := scanSet(querier(ctx, r.pool).QueryRow(ctx,
 		`SELECT `+setCols+` FROM sticker_sets s WHERE s.id=$1`, id))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.StickerSet{}, domain.ErrNotFound
-	}
-	return set, err
-}
-
-// SetByMediaID — обратный поиск: набор, которому принадлежит файл стикера.
-// Нужен клику по стикеру в чате (tweb wrapSticker → showStickersPopup):
-// сообщение несёт только media_id, а не set_id/slug набора. LIMIT 1
-// осознанный — один и тот же файл может числиться в двух наборах (Telegram
-// переиспользует документы), клику достаточно любого, как и в tweb, где набор
-// берётся из атрибута самого документа.
-func (r *StickersRepo) SetByMediaID(ctx context.Context, mediaID int64) (domain.StickerSet, error) {
-	set, err := scanSet(querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT `+setCols+`
-		   FROM sticker_sets s
-		   JOIN stickers st ON st.set_id = s.id
-		  WHERE st.media_id=$1
-		  LIMIT 1`, mediaID))
-	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.StickerSet{}, domain.ErrNotFound
+		return domain.StickerSetRecord{}, domain.ErrNotFound
 	}
 	return set, err
 }
@@ -121,7 +116,12 @@ func (r *StickersRepo) SetByMediaID(ctx context.Context, mediaID int64) (domain.
 // stripped-превью нужны клиенту ДО загрузки байтов (пропорция бокса, выбор
 // рендерера, нижний слой показа) — см. domain.Sticker.
 const stickerCols = `st.id, st.set_id, st.media_id, st.emoji, st.position,
-	COALESCE(m.width, 0), COALESCE(m.height, 0), COALESCE(m.mime, ''), m.blur_preview, st.path_thumb`
+	COALESCE(m.width, 0), COALESCE(m.height, 0), COALESCE(m.mime, ''), COALESCE(m.size, 0),
+	m.blur_preview, st.path_thumb`
+
+// stickerRowCols — те же колонки СТРОКИ стикера без префикса таблицы: нужны
+// подзапросу stickerByMediaJoin, где таблица ещё не получила псевдоним st.
+const stickerRowCols = `id, set_id, media_id, emoji, position, path_thumb`
 
 // stickerMediaJoin — INNER JOIN безопасен: stickers.media_id NOT NULL и
 // ссылается на media(id), строк не теряем.
@@ -130,7 +130,7 @@ const stickerMediaJoin = ` JOIN media m ON m.id = st.media_id`
 func scanSticker(s scanner) (domain.Sticker, error) {
 	var st domain.Sticker
 	err := s.Scan(&st.ID, &st.SetID, &st.MediaID, &st.Emoji, &st.Position,
-		&st.Width, &st.Height, &st.Mime, &st.Thumb, &st.PathThumb)
+		&st.Width, &st.Height, &st.Mime, &st.Size, &st.Thumb, &st.PathThumb)
 	return st, err
 }
 
@@ -251,14 +251,31 @@ func (r *StickersRepo) BackfillPathThumbs(ctx context.Context, setID int64, thum
 	return err
 }
 
-func (r *StickersRepo) StickerByID(ctx context.Context, id int64) (domain.Sticker, error) {
+// StickerByMediaID — стикер по КЛЮЧУ ФАЙЛА (document.id схемы). Прежде здесь
+// был StickerByID — поиск по суррогатному ключу строки, который наружу больше
+// не выходит (Р2).
+//
+// `ORDER BY st.id LIMIT 1` осознанный, а не защита от неожиданности: один и
+// тот же файл может числиться в двух наборах, уникального индекса по media_id
+// нет. Вызывающему (проверка «существует ли такой стикер» перед fave/use)
+// достаточно любой строки — сам ответ от выбора не зависит.
+func (r *StickersRepo) StickerByMediaID(ctx context.Context, mediaID int64) (domain.Sticker, error) {
 	s, err := scanSticker(querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT `+stickerCols+` FROM stickers st`+stickerMediaJoin+` WHERE st.id=$1`, id))
+		`SELECT `+stickerCols+` FROM stickers st`+stickerMediaJoin+`
+		  WHERE st.media_id=$1 ORDER BY st.id LIMIT 1`, mediaID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Sticker{}, domain.ErrNotFound
 	}
 	return s, err
 }
+
+// stickerByMediaJoin — одна строка набора на файл, для списков, ключованных
+// файлом (недавние, избранное). LATERAL, а не обычный JOIN: обычный размножил
+// бы запись на число наборов, где файл числится, и в панели появился бы дубль —
+// ровно тот дефект, который снял переход на ключ файла.
+const stickerByMediaJoin = ` JOIN LATERAL (
+			SELECT ` + stickerRowCols + ` FROM stickers WHERE media_id = f.media_id ORDER BY id LIMIT 1
+		) st ON TRUE`
 
 func (r *StickersRepo) Install(ctx context.Context, userID, setID int64) error {
 	// Новый набор встаёт в конец списка; повторная установка — no-op.
@@ -275,9 +292,9 @@ func (r *StickersRepo) Uninstall(ctx context.Context, userID, setID int64) error
 	return err
 }
 
-func (r *StickersRepo) InstalledSets(ctx context.Context, userID int64) ([]domain.StickerSet, error) {
+func (r *StickersRepo) InstalledSets(ctx context.Context, userID int64) ([]domain.StickerSetRecord, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT `+setCols+`
+		`SELECT `+setColsInstalled+`
 		   FROM user_sticker_sets uss
 		   JOIN sticker_sets s ON s.id = uss.set_id
 		  WHERE uss.user_id=$1
@@ -286,9 +303,9 @@ func (r *StickersRepo) InstalledSets(ctx context.Context, userID int64) ([]domai
 		return nil, err
 	}
 	defer rows.Close()
-	var out []domain.StickerSet
+	var out []domain.StickerSetRecord
 	for rows.Next() {
-		set, e := scanSet(rows)
+		set, e := scanSetInstalled(rows)
 		if e != nil {
 			return nil, e
 		}
@@ -297,7 +314,7 @@ func (r *StickersRepo) InstalledSets(ctx context.Context, userID int64) ([]domai
 	return out, rows.Err()
 }
 
-func (r *StickersRepo) SearchSets(ctx context.Context, q string, limit int) ([]domain.StickerSet, error) {
+func (r *StickersRepo) SearchSets(ctx context.Context, q string, limit int) ([]domain.StickerSetRecord, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT `+setCols+`
 		   FROM sticker_sets s
@@ -308,7 +325,7 @@ func (r *StickersRepo) SearchSets(ctx context.Context, q string, limit int) ([]d
 		return nil, err
 	}
 	defer rows.Close()
-	var out []domain.StickerSet
+	var out []domain.StickerSetRecord
 	for rows.Next() {
 		set, e := scanSet(rows)
 		if e != nil {
@@ -322,7 +339,7 @@ func (r *StickersRepo) SearchSets(ctx context.Context, q string, limit int) ([]d
 // FeaturedSets — «трендовые» наборы: сначала по rank (1,2,3… — порядок
 // messages.getFeaturedStickers из Telegram), затем наборы без ранга (rank=0)
 // новейшими первыми.
-func (r *StickersRepo) FeaturedSets(ctx context.Context, limit int) ([]domain.StickerSet, error) {
+func (r *StickersRepo) FeaturedSets(ctx context.Context, limit int) ([]domain.StickerSetRecord, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT `+setCols+`
 		   FROM sticker_sets s
@@ -332,7 +349,7 @@ func (r *StickersRepo) FeaturedSets(ctx context.Context, limit int) ([]domain.St
 		return nil, err
 	}
 	defer rows.Close()
-	var out []domain.StickerSet
+	var out []domain.StickerSetRecord
 	for rows.Next() {
 		set, e := scanSet(rows)
 		if e != nil {
@@ -343,19 +360,19 @@ func (r *StickersRepo) FeaturedSets(ctx context.Context, limit int) ([]domain.St
 	return out, rows.Err()
 }
 
-func (r *StickersRepo) TouchRecent(ctx context.Context, userID, stickerID int64, keep int) error {
+func (r *StickersRepo) TouchRecent(ctx context.Context, userID, mediaID int64, keep int) error {
 	q := querier(ctx, r.pool)
 	if _, err := q.Exec(ctx,
-		`INSERT INTO recent_stickers (user_id, sticker_id) VALUES ($1,$2)
-		 ON CONFLICT (user_id, sticker_id) DO UPDATE SET used_at = now()`, userID, stickerID); err != nil {
+		`INSERT INTO recent_stickers (user_id, media_id) VALUES ($1,$2)
+		 ON CONFLICT (user_id, media_id) DO UPDATE SET used_at = now()`, userID, mediaID); err != nil {
 		return err
 	}
 	// Обрезка хвоста: остаются keep самых свежих (tweb RECENT_STICKERS_COUNT).
 	_, err := q.Exec(ctx,
 		`DELETE FROM recent_stickers
-		  WHERE user_id=$1 AND sticker_id NOT IN (
-		        SELECT sticker_id FROM recent_stickers
-		         WHERE user_id=$1 ORDER BY used_at DESC, sticker_id DESC LIMIT $2)`, userID, keep)
+		  WHERE user_id=$1 AND media_id NOT IN (
+		        SELECT media_id FROM recent_stickers
+		         WHERE user_id=$1 ORDER BY used_at DESC, media_id DESC LIMIT $2)`, userID, keep)
 	return err
 }
 
@@ -367,48 +384,56 @@ func (r *StickersRepo) ClearRecent(ctx context.Context, userID int64) error {
 	return err
 }
 
-func (r *StickersRepo) Recent(ctx context.Context, userID int64, limit int) ([]domain.Sticker, error) {
+func (r *StickersRepo) Recent(ctx context.Context, userID int64, limit int) ([]domain.RecentSticker, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT `+stickerCols+`
-		   FROM recent_stickers rs
-		   JOIN stickers st ON st.id = rs.sticker_id`+stickerMediaJoin+`
-		  WHERE rs.user_id=$1
-		  ORDER BY rs.used_at DESC, rs.sticker_id DESC
+		`SELECT `+stickerCols+`, f.used_at
+		   FROM recent_stickers f`+stickerByMediaJoin+stickerMediaJoin+`
+		  WHERE f.user_id=$1
+		  ORDER BY f.used_at DESC, f.media_id DESC
 		  LIMIT $2`, userID, limit)
 	if err != nil {
 		return nil, err
 	}
-	return scanStickers(rows)
+	defer rows.Close()
+	var out []domain.RecentSticker
+	for rows.Next() {
+		var rec domain.RecentSticker
+		if e := rows.Scan(&rec.ID, &rec.SetID, &rec.MediaID, &rec.Emoji, &rec.Position,
+			&rec.Width, &rec.Height, &rec.Mime, &rec.Size, &rec.Thumb, &rec.PathThumb, &rec.UsedAt); e != nil {
+			return nil, e
+		}
+		out = append(out, rec)
+	}
+	return out, rows.Err()
 }
 
-func (r *StickersRepo) Fave(ctx context.Context, userID, stickerID int64, keep int) error {
+func (r *StickersRepo) Fave(ctx context.Context, userID, mediaID int64, keep int) error {
 	q := querier(ctx, r.pool)
 	if _, err := q.Exec(ctx,
-		`INSERT INTO faved_stickers (user_id, sticker_id) VALUES ($1,$2)
-		 ON CONFLICT (user_id, sticker_id) DO UPDATE SET faved_at = now()`, userID, stickerID); err != nil {
+		`INSERT INTO faved_stickers (user_id, media_id) VALUES ($1,$2)
+		 ON CONFLICT (user_id, media_id) DO UPDATE SET faved_at = now()`, userID, mediaID); err != nil {
 		return err
 	}
 	_, err := q.Exec(ctx,
 		`DELETE FROM faved_stickers
-		  WHERE user_id=$1 AND sticker_id NOT IN (
-		        SELECT sticker_id FROM faved_stickers
-		         WHERE user_id=$1 ORDER BY faved_at DESC, sticker_id DESC LIMIT $2)`, userID, keep)
+		  WHERE user_id=$1 AND media_id NOT IN (
+		        SELECT media_id FROM faved_stickers
+		         WHERE user_id=$1 ORDER BY faved_at DESC, media_id DESC LIMIT $2)`, userID, keep)
 	return err
 }
 
-func (r *StickersRepo) Unfave(ctx context.Context, userID, stickerID int64) error {
+func (r *StickersRepo) Unfave(ctx context.Context, userID, mediaID int64) error {
 	_, err := querier(ctx, r.pool).Exec(ctx,
-		`DELETE FROM faved_stickers WHERE user_id=$1 AND sticker_id=$2`, userID, stickerID)
+		`DELETE FROM faved_stickers WHERE user_id=$1 AND media_id=$2`, userID, mediaID)
 	return err
 }
 
 func (r *StickersRepo) Faved(ctx context.Context, userID int64, limit int) ([]domain.Sticker, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT `+stickerCols+`
-		   FROM faved_stickers fs
-		   JOIN stickers st ON st.id = fs.sticker_id`+stickerMediaJoin+`
-		  WHERE fs.user_id=$1
-		  ORDER BY fs.faved_at DESC, fs.sticker_id DESC
+		   FROM faved_stickers f`+stickerByMediaJoin+stickerMediaJoin+`
+		  WHERE f.user_id=$1
+		  ORDER BY f.faved_at DESC, f.media_id DESC
 		  LIMIT $2`, userID, limit)
 	if err != nil {
 		return nil, err
@@ -432,7 +457,10 @@ func (r *StickersRepo) SearchByEmoji(ctx context.Context, userID int64, emoji st
 
 func (r *StickersRepo) SavedGifs(ctx context.Context, userID int64) ([]domain.SavedGif, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT media_id, saved_at FROM saved_gifs WHERE user_id=$1 ORDER BY saved_at DESC, media_id DESC`, userID)
+		`SELECT g.media_id, g.saved_at, COALESCE(m.width,0), COALESCE(m.height,0),
+		        COALESCE(m.mime,''), COALESCE(m.size,0), m.blur_preview, COALESCE(m.animated,FALSE)
+		   FROM saved_gifs g JOIN media m ON m.id = g.media_id
+		  WHERE g.user_id=$1 ORDER BY g.saved_at DESC, g.media_id DESC`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -440,7 +468,8 @@ func (r *StickersRepo) SavedGifs(ctx context.Context, userID int64) ([]domain.Sa
 	var out []domain.SavedGif
 	for rows.Next() {
 		var g domain.SavedGif
-		if e := rows.Scan(&g.MediaID, &g.SavedAt); e != nil {
+		if e := rows.Scan(&g.MediaID, &g.SavedAt, &g.Width, &g.Height,
+			&g.Mime, &g.Size, &g.Blur, &g.Animated); e != nil {
 			return nil, e
 		}
 		out = append(out, g)

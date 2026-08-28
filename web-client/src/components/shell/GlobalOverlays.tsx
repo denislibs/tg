@@ -41,8 +41,8 @@ export default function GlobalOverlays({
   onAddlistJoined: (folderTitle: string) => void
 }) {
   const t = useT()
-  const groupCallChatId = useGroupCallStore((st) => st.chatId)
-  const livestreamChatId = useLivestreamStore((st) => st.watchingChatId)
+  const groupCallChatId = useGroupCallStore((st) => st.peerId)
+  const livestreamChatId = useLivestreamStore((st) => st.watchingPeerId)
   const locked = useLockStore((st) => st.locked)
 
   // Тост — контракт tweb `components/toast.ts`: узел сперва попадает в DOM без

@@ -20,21 +20,40 @@ import (
 // транзакции не открывает и не может: голый pgxpool.Begin завёл бы вторую,
 // никак не связанную с первой (наш TxManager вложенность не поддерживает).
 //
-// payloadLocked — nil, если у сообщения нет платного медиа (обычный случай,
+// outLocked — nil, если у сообщения нет платного медиа (обычный случай,
 // всегда nil для зеркала — оно платное медиа не копирует); иначе
 // получателям (не автору) в pts-лог уходит заблокированный вариант, как в
 // Send.
+//
+// Payload'ы приходят СТРУКТУРАМИ, а не байтами: ключ пира у приватного
+// диалога разный у двух сторон, поэтому маршалить приходится не один раз на
+// сообщение, а один раз на каждый различный ключ (peerPayloads).
 func (i *Interactor) fanOutNewMessage(
 	ctx context.Context, chatID, senderID, msgID, msgSeq int64,
-	payload, payloadLocked []byte, mentioned map[int64]bool,
-) (recipients []int64, ptsByUser, unreadByUser map[int64]int64, err error) {
+	out, outLocked map[string]any, mentioned map[int64]bool,
+) (recipients []int64, ptsByUser map[int64]int64, err error) {
 	members, err := i.chats.MemberIDs(ctx, chatID)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	slices.Sort(members)
+	pp, err := i.newPeerPayloads(ctx, chatID, out)
+	if err != nil {
+		return nil, nil, err
+	}
+	// Автор строки — с ним peerPayloads сравнивает получателя, чтобы поставить
+	// пер-зрительский pFlags.out и, что важнее, разложить журнальные батчи по
+	// паре «пир + свой ли отправитель», а не по одному ключу пира.
+	pp.sender = senderID
+	var ppLocked *peerPayloads
+	if outLocked != nil {
+		ppLocked, err = i.newPeerPayloads(ctx, chatID, outLocked)
+		if err != nil {
+			return nil, nil, err
+		}
+		ppLocked.sender = senderID
+	}
 	ptsByUser = map[int64]int64{}
-	unreadByUser = map[int64]int64{}
 	others := make([]int64, 0, len(members))
 	senderIn := false
 	for _, uid := range members {
@@ -50,68 +69,59 @@ func (i *Interactor) fanOutNewMessage(
 	// (len-гарды сохраняют семантику «пустой список — ни одного вызова
 	// репозитория»; часть тест-стабов не задаёт updates).
 	switch {
-	case payloadLocked != nil:
+	case ppLocked != nil:
 		if senderIn {
-			m1, e := i.updates.AppendUpdateBulk(ctx, []int64{senderID}, 1, date, "new_message", payload)
-			if e != nil {
-				return nil, nil, nil, e
-			}
-			for u, p := range m1 {
-				ptsByUser[u] = p
+			if e := i.appendByPeer(ctx, pp, []int64{senderID}, date, ptsByUser); e != nil {
+				return nil, nil, e
 			}
 		}
 		if len(others) > 0 {
-			m2, e := i.updates.AppendUpdateBulk(ctx, others, 1, date, "new_message", payloadLocked)
-			if e != nil {
-				return nil, nil, nil, e
-			}
-			for u, p := range m2 {
-				ptsByUser[u] = p
+			if e := i.appendByPeer(ctx, ppLocked, others, date, ptsByUser); e != nil {
+				return nil, nil, e
 			}
 		}
 	case len(members) > 0:
-		pm, e := i.updates.AppendUpdateBulk(ctx, members, 1, date, "new_message", payload)
-		if e != nil {
-			return nil, nil, nil, e
-		}
-		for u, p := range pm {
-			ptsByUser[u] = p
+		if e := i.appendByPeer(ctx, pp, members, date, ptsByUser); e != nil {
+			return nil, nil, e
 		}
 	}
 	// Непрочитанные — одним запросом всем получателям (кроме автора).
+	//
+	// Счётчик РАСТЁТ в базе, но в кадр не едет: у конструктора updateNewMessage
+	// такого параметра нет, а поле рядом с ним было последним, что осталось
+	// вне конструктора. Клиент считает +1 сам — ровно как оригинал
+	// (appMessagesManager), а авторитетное значение приезжает со строкой
+	// диалога и с кадром прочтения (updateReadHistoryInbox.still_unread_count).
 	if len(others) > 0 {
-		um, e := i.chats.IncUnreadBulk(ctx, chatID, others)
-		if e != nil {
-			return nil, nil, nil, e
-		}
-		for u, n := range um {
-			unreadByUser[u] = n
+		if _, e := i.chats.IncUnreadBulk(ctx, chatID, others); e != nil {
+			return nil, nil, e
 		}
 		// Упоминания редки — точечно (по остатку text_mention).
 		for _, uid := range others {
 			if mentioned[uid] {
 				if e := i.chats.AddMention(ctx, chatID, msgID, msgSeq, uid); e != nil {
-					return nil, nil, nil, e
+					return nil, nil, e
 				}
 			}
 		}
 	}
-	return members, ptsByUser, unreadByUser, nil
+	return members, ptsByUser, nil
 }
 
 // publishMessageDelivery — пост-коммитная половина доставки, парная
 // fanOutNewMessage: инвалидация кэша диалогов получателей + realtime-кадры
-// (pts всем, unread — получателям кроме автора). Звать СТРОГО ПОСЛЕ того,
+// (у каждого получателя свой pts). Звать СТРОГО ПОСЛЕ того,
 // как закоммитилась транзакция, в которой бежал fanOutNewMessage —
 // опубликовать кадр раньше коммита нельзя (получатель может обогнать коммит
 // и не найти сообщение при последующем чтении, см. Send).
 //
-// extRoot — thread_root_id, каким его должен увидеть клиент (внешний
-// чокпоинт, см. externalThreadRoot); для зеркала — всегда nil (зеркало само
-// корень треда).
+// Корень треда отдельным аргументом больше не едет: он внутри сообщения —
+// reply_to.reply_to_top_id, и кладёт его туда messageUpdatePayload. Прежний
+// ключ на уровне кадра был вторым источником того же факта, и дописывал его
+// каждый вызывающий сам.
 func (i *Interactor) publishMessageDelivery(
-	ctx context.Context, msg domain.Message, extRoot *int64, senderID int64,
-	recipients []int64, ptsByUser, unreadByUser map[int64]int64,
+	ctx context.Context, msg domain.Message, senderID int64,
+	recipients []int64, ptsByUser map[int64]int64,
 ) {
 	if len(recipients) == 0 {
 		return
@@ -124,29 +134,33 @@ func (i *Interactor) publishMessageDelivery(
 	if i.publisher == nil {
 		return
 	}
-	base := messageUpdatePayload(msg)
-	base["thread_root_id"] = extRoot
-	var baseLocked map[string]any
+	base := i.messageUpdatePayload(ctx, msg)
+	pp, err := i.newPeerPayloads(ctx, msg.ChatID, base)
+	if err != nil {
+		return
+	}
+	// Автор строки — с ним peerPayloads сравнивает получателя, чтобы поставить
+	// пер-зрительский pFlags.out.
+	pp.sender = msg.SenderID
+	ppLocked := pp
 	if msg.PaidMediaPrice != nil {
-		baseLocked = messageUpdatePayload(lockedPaidCopy(msg))
-		baseLocked["thread_root_id"] = extRoot
+		baseLocked := i.messageUpdatePayload(ctx, lockedPaidCopy(msg))
+		if ppLocked, err = i.newPeerPayloads(ctx, msg.ChatID, baseLocked); err != nil {
+			return
+		}
+		ppLocked.sender = msg.SenderID
 	}
 	// Realtime-кадры всем получателям — одним pipeline'ом (было бы M
-	// последовательных PUBLISH). У каждого свой кадр (pts у всех; authoritative
-	// unread — только у получателей, не автора).
+	// последовательных PUBLISH). У каждого свой кадр: курсор пер-юзерный.
 	uids := make([]int64, 0, len(recipients))
 	frames := make([][]byte, 0, len(recipients))
 	for _, uid := range recipients {
-		b := base
-		if baseLocked != nil && uid != senderID {
-			b = baseLocked
-		}
-		extra := map[string]any{"pts": ptsByUser[uid]}
+		b := pp
 		if uid != senderID {
-			extra["unread"] = unreadByUser[uid]
+			b = ppLocked
 		}
 		uids = append(uids, uid)
-		frames = append(frames, frameFields("new_message", b, extra))
+		frames = append(frames, b.frame("new_message", uid, map[string]any{"pts": ptsByUser[uid]}))
 	}
 	_ = i.publisher.PublishToUsers(ctx, uids, frames)
 }

@@ -8,10 +8,23 @@ import (
 )
 
 // StatsHandler — статистика каналов/супергрупп (аналог tweb stats.getBroadcastStats).
-type StatsHandler struct{ uc *usecasestats.Interactor }
+// peers — слой разрешения адресов: peerId ↔ chatID (в URL едет знаковый ключ
+// пира) и номер сообщения ↔ messages.id (в URL едет номер в чате).
+type StatsHandler struct {
+	uc    *usecasestats.Interactor
+	peers statsResolver
+}
+
+// statsResolver — оба слоя разрешения, нужные этому хендлеру.
+type statsResolver interface {
+	PeerResolver
+	MessageResolver
+}
 
 // NewStatsHandler создаёт хендлер статистики.
-func NewStatsHandler(uc *usecasestats.Interactor) *StatsHandler { return &StatsHandler{uc: uc} }
+func NewStatsHandler(uc *usecasestats.Interactor, peers statsResolver) *StatsHandler {
+	return &StatsHandler{uc: uc, peers: peers}
+}
 
 const statDayFmt = "2006-01-02"
 
@@ -19,7 +32,7 @@ const statDayFmt = "2006-01-02"
 // канала (иначе 403). Возвращает обзор + временные ряды + топ-посты.
 func (h *StatsHandler) ChannelStats(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.peers)
 	if !ok {
 		return
 	}
@@ -40,7 +53,7 @@ func (h *StatsHandler) ChannelStats(w http.ResponseWriter, r *http.Request) {
 	topPosts := make([]map[string]any, 0, len(st.TopPosts))
 	for _, p := range st.TopPosts {
 		topPosts = append(topPosts, map[string]any{
-			"msg_id": p.MsgID, "seq": p.Seq, "text": p.Text,
+			"id": p.Seq, "text": p.Text,
 			"views": p.Views, "date": p.CreatedAt.Format(statDayFmt),
 		})
 	}
@@ -65,11 +78,11 @@ func (h *StatsHandler) ChannelStats(w http.ResponseWriter, r *http.Request) {
 // создателя/админа (иначе 403); нет поста — 404.
 func (h *StatsHandler) PostStats(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.peers)
 	if !ok {
 		return
 	}
-	msgID, ok := pathInt(w, r, "msgID")
+	msgID, ok := msgSeqID(w, r, h.peers, chatID)
 	if !ok {
 		return
 	}

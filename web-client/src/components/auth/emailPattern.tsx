@@ -1,66 +1,64 @@
-// wrapEmailPattern — маска почты восстановления (`de•••@gmail.com`) как её рисует
-// tweb: порт `components/popups/emailSetup.ts:wrapEmailPattern` + ветки
-// `messageEntitySpoiler` с `noTextFormat` из `lib/richTextProcessor/wrapRichText.ts`.
+// wrapEmailPattern — маска почты восстановления (`d****@e******.com`) ровно как в
+// tweb: порт `components/popups/emailSetup.tsx:wrapEmailPattern`.
 //
-// Каждый ПРОГОН звёздочек превращается в `span.bluff-spoiler`, внутри — по
-// `span.bluff-spoiler-letter` на символ, а сам символ подменяется случайным
-// брайлевым знаком (порт `lib/richTextProcessor/spoiler.ts`). Стили — глобальные
-// (`styles/tweb/_spoiler.scss`), маска (кадр симуляции частиц) — за
-// `lib/spoiler/bluffSpoilerController`.
-import { useMemo, type ReactNode } from 'react'
+// Никакой собственной разметки здесь нет: каждый ПРОГОН звёздочек описывается
+// сущностью-спойлером, а `wrapRichText(..., {noTextFormat: true})` строит по ней
+// `span.bluff-spoiler > span.bluff-spoiler-letter…`, подменяет символы брайлем
+// (`lib/richtext/spoiler.ts`) и подключает элемент к симуляции частиц
+// (`DotRenderer.attachBluffTextSpoilerTarget`). Стили — глобальные
+// (`styles/tweb/_spoiler.scss`), маска — за `lib/spoiler/bluffSpoilerController`.
+import { useEffect, useMemo, useRef } from 'react'
 
-import { bluffSpoilerRef } from '@lib/spoiler/bluffSpoilerController'
+import wrapRichText from '@lib/richtext/wrapRichText'
+import type { MessageEntity } from '@layer'
 
-// tweb lib/richTextProcessor/spoiler.ts — набор брайлевых «букв» по возрастанию
-// плотности точек; символ маски выбирается из него случайно.
-const CHARS =
-  '⠁⠂⠄⠈⠐⠠⡀⢀⠃⠅⠆⠉⠊⠌⠑⠒⠔⠘⠡⠢⠤⠨⠰⡁⡂⡄⡈⡐⡠⢁⢂⢄⢈⢐⢠⣀⠇⠋⠍⠎⠓⠕⠖⠙⠚⠜⠣⠥⠦⠩⠪⠬⠱⠲⠴⠸⡃⡅⡆⡉⡊⡌⡑⡒⡔⡘⡡⡢⡤⡨⡰⢃⢅⢆⢉⢊⢌⢑⢒⢔⢘⢡⢢⢤⢨⢰⣁⣂⣄⣈⣐⣠⠏⠗⠛⠝⠞⠧⠫⠭⠮⠳⠵⠶⠹⠺⠼⡇⡋⡍⡎⡓⡕⡖⡙⡚⡜⡣⡥⡦⡩⡪⡬⡱⡲⡴⡸⢇⢋⢍⢎⢓⢕⢖⢙⢚⢜⢣⢥⢦⢩⢪⢬⢱⢲⢴⢸⣃⣅⣆⣉⣊⣌⣑⣒⣔⣘⣡⣢⣤⣨⣰⠟⠯⠷⠻⠽⠾⡏⡗⡛⡝⡞⡧⡫⡭⡮⡳⡵⡶⡹⡺⡼⢏⢗⢛⢝⢞⢧⢫⢭⢮⢳⢵⢶⢹⢺⢼⣇⣋⣍⣎⣓⣕⣖⣙⣚⣜⣣⣥⣦⣩⣪⣬⣱⣲⣴⣸⠿⡟⡯⡷⡻⡽⡾⢟⢯⢷⢻⢽⢾⣏⣗⣛⣝⣞⣧⣫⣭⣮⣳⣵⣶⣹⣺⣼⡿⢿⣟⣯⣷⣻⣽⣾⣿'
+/**
+ * `d****@e******.com` → фрагмент с блеф-спойлерами. Как в tweb: строка без «*»
+ * (или с пробелом) отдаётся как есть.
+ */
+export function wrapEmailPattern(pattern: string): string | DocumentFragment {
+  if (pattern.includes(' ') || !pattern.includes('*')) return pattern
 
-const randomChar = () => CHARS[((Math.random() * 1000) | 0) % CHARS.length]
+  const entities: MessageEntity[] = []
+  for (let i = 0; i < pattern.length; ) {
+    const idx = pattern.indexOf('*', i)
+    if (idx === -1) break
+    let endIdx = idx + 1
+    while (pattern[endIdx] === '*') endIdx++
 
-// Скрытый символ — только `*`: бэкенд отдаёт маску формата Telegram
-// (`d****@e******.com`, звёздочка на каждый спрятанный символ), как и ждёт tweb.
-const isMask = (ch: string | undefined) => ch === '*'
-const firstMaskIndex = (s: string, from: number) => {
-  for (let i = from; i < s.length; i++) if (isMask(s[i])) return i
-  return -1
+    entities.push({
+      _: 'messageEntitySpoiler',
+      offset: idx,
+      length: endIdx - idx,
+    })
+
+    i = endIdx
+  }
+
+  return wrapRichText(pattern, { entities, noTextFormat: true })
 }
 
 /**
- * `d****@e******.com` → узлы для подстановки в подзаголовок карточки восстановления.
- * Как в tweb: строка без «*» (или с пробелом) отдаётся как есть.
+ * Тонкая React-обёртка: `wrapEmailPattern` отдаёт ГОТОВЫЕ DOM-узлы (иначе к ним
+ * не подключить симуляцию), поэтому компонент только вносит их в свой `<b>`.
+ * Узлы строятся один раз на паттерн — повторный `append` их лишь переносит,
+ * второго подключения к симуляции не происходит.
  */
-export default function useEmailPattern(pattern: string): ReactNode {
-  // Символы маски случайны — пересчитывать их на каждый рендер нельзя, иначе
-  // подпись «дёргается» на любом вводе кода.
-  return useMemo(() => {
-    if (pattern.includes(' ') || firstMaskIndex(pattern, 0) === -1) return pattern
-
-    const out: ReactNode[] = []
-    let i = 0
-    let key = 0
-    for (;;) {
-      const start = firstMaskIndex(pattern, i)
-      if (start === -1) break
-      let end = start + 1
-      while (isMask(pattern[end])) end++
-
-      if (start > i) out.push(pattern.slice(i, start))
-      out.push(
-        // `mask-image` и класс `is-visible` ставит BluffSpoilerController: он
-        // владелец маски (живой кадр симуляции либо статический фолбэк), React
-        // это свойство не трогает
-        <span key={key++} className="bluff-spoiler" ref={bluffSpoilerRef}>
-          {Array.from({ length: end - start }, (_, n) => (
-            <span key={n} className="bluff-spoiler-letter">
-              {randomChar()}
-            </span>
-          ))}
-        </span>,
-      )
-      i = end
-    }
-    if (i < pattern.length) out.push(pattern.slice(i))
-    return out
+export default function EmailPattern({ pattern }: { pattern: string }) {
+  const nodes = useMemo(() => {
+    const wrapped = wrapEmailPattern(pattern)
+    return typeof wrapped === 'string' ? [document.createTextNode(wrapped)] : [...wrapped.childNodes]
   }, [pattern])
+
+  const ref = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    const element = ref.current
+    if (!element) return
+
+    element.append(...nodes)
+    return () => element.replaceChildren()
+  }, [nodes])
+
+  return <b ref={ref} />
 }

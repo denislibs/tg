@@ -21,7 +21,7 @@ function harness(diffs: ChannelDiff[] = []) {
   return { funnel, dispatched, saved, stored, getDifference }
 }
 
-const post = (chatId: number, pts: number) => ({ t: 'new_message', pts, d: { chat_id: chatId, channel_pts: pts, msg_id: pts } })
+const post = (peerId: number, pts: number) => ({ t: 'new_message', pts, d: { peer_id: peerId, channel_pts: pts, msg_id: pts } })
 
 describe('channelFunnel.applyLive', () => {
   it('первый живой кадр сидирует курсор и применяется без реплея', () => {

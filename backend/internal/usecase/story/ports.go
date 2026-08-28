@@ -12,10 +12,22 @@ import (
 // tracking, viewers list, author lookup, deletion, and a single-story
 // visibility check.
 type StoryRepo interface {
-	Create(ctx context.Context, s domain.Story, allowIDs []int64) (int64, error)
+	// Create возвращает внутренний ключ строки И номер внутри автора: первый
+	// нужен связанным таблицам, второй — проводу.
+	Create(ctx context.Context, s domain.Story, allowIDs []int64) (id, seq int64, err error)
+
+	// IDBySeq — внешний адрес (автор + номер) во внутренний ключ строки.
+	// domain.ErrNotFound, если номера у автора нет.
+	IDBySeq(ctx context.Context, authorID, seq int64) (int64, error)
+
+	// SetRead двигает ГОРИЗОНТ прочтения зрителя у автора (только вперёд) и
+	// возвращает горизонт ПОСЛЕ применения. ReadHorizons отдаёт горизонты у
+	// перечисленных авторов; отсутствие автора в карте значит «не читал».
+	SetRead(ctx context.Context, viewerID, authorID, maxID int64) (int64, error)
+	ReadHorizons(ctx context.Context, viewerID int64, authorIDs []int64) (map[int64]int64, error)
 	ActiveFeed(ctx context.Context, viewerID int64, authorIDs []int64) ([]domain.StoryGroup, error)
 	MarkViewed(ctx context.Context, storyID, viewerID int64) error
-	Viewers(ctx context.Context, storyID int64) ([]domain.UserCard, error)
+	Viewers(ctx context.Context, storyID int64) (domain.StoryViewers, error)
 	// Stats — статистика истории (просмотры + динамика по дням из story_views).
 	Stats(ctx context.Context, storyID int64) (domain.StoryStats, error)
 	GetAuthor(ctx context.Context, storyID int64) (int64, error) // domain.ErrNotFound
@@ -38,7 +50,7 @@ type StoryRepo interface {
 	// и синхронизирует story_allow под новую privacy. mediaAreas: nil — не трогать,
 	// иначе полностью заменить набор областей.
 	SetPinned(ctx context.Context, storyID, authorID int64, pinned bool) error
-	Edit(ctx context.Context, storyID, authorID int64, caption, privacy *string, allowIDs []int64, mediaAreas *[]domain.StoryMediaArea) error
+	Edit(ctx context.Context, storyID, authorID int64, caption, privacy *string, allowIDs []int64, mediaAreas *domain.MediaAreas) error
 
 	// Origin возвращает автора/имя автора/media исходной истории — для репоста
 	// (переиспользуем media, fwd_from) и share в чаты (атрибуция). domain.ErrNotFound.
@@ -50,8 +62,12 @@ type StoryRepo interface {
 	// Archive — свои истёкшие истории (expires_at <= now), новые сверху, с
 	// пагинацией по id (offsetID>0 — только id < offsetID). Pinned — закреплённые
 	// истории peer'а (в т.ч. истёкшие), отфильтрованные по видимости для viewer.
-	Archive(ctx context.Context, ownerID, limit, offsetID int64) ([]domain.StoryItem, error)
-	Pinned(ctx context.Context, peerID, viewerID int64) ([]domain.StoryItem, error)
+	Archive(ctx context.Context, ownerID, limit, offsetID int64) ([]domain.StoryRecord, error)
+	Pinned(ctx context.Context, peerID, viewerID int64) ([]domain.StoryRecord, error)
+
+	// ByID — одна история глазами зрителя (для кадра `updateStory`, который
+	// несёт историю целиком). domain.ErrNotFound, если её нет.
+	ByID(ctx context.Context, storyID, viewerID int64) (domain.StoryRecord, error)
 
 	// PurgeRecentViews удаляет просмотры зрителя за окно [since, now] — ретро-эффект
 	// stealth-режима (past): скрыть недавние просмотры при активации.
@@ -77,6 +93,29 @@ type Partners interface {
 // MediaAccessRepo.
 type MediaOwner interface {
 	OwnerID(ctx context.Context, mediaID int64) (int64, error)
+}
+
+// MediaMeta батчем поднимает метаданные файлов — то, из чего собирается СТУПЕНЬ
+// вложения истории (`storyItem.media`).
+//
+// Порт тот же по смыслу и по форме, что у сообщения (`MediaAccessRepo.DimsByIDs`),
+// и удовлетворяется тем же адаптером. До этого шага истории метаданных не
+// знали вовсе: наружу ехал голый `media_id`, а размеры, mime и длительность
+// клиент запрашивал ОТДЕЛЬНО на каждую историю (`useStoryPreviewMedia`).
+type MediaMeta interface {
+	DimsByIDs(ctx context.Context, ids []int64) (map[int64]domain.MediaSource, error)
+}
+
+// MediaAccess — всё, что сервису нужно знать о файлах: кто владелец (проверка
+// прав при публикации) и что это за файл (ступень вложения).
+//
+// ОДИН порт, а не два аргумента и сеттер: и то и другое отвечает один адаптер,
+// и необязательным ни то ни другое не является. Сеттер-«необязательная
+// зависимость» здесь означал бы ровно одно — забытая строка проводки, у которой
+// нет ни компилятора, ни теста; истории уезжали бы без `media` молча.
+type MediaAccess interface {
+	MediaOwner
+	MediaMeta
 }
 
 // TxManager runs fn inside a transaction; the tx is carried in the returned ctx

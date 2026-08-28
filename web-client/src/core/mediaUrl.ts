@@ -139,15 +139,23 @@ export function resolveStreamUrl(id: number): string | Promise<string> {
   return resolveMediaContentUrl(id)
 }
 
+// Не-React подписка на смену токена — по образцу subscribeMediaUrlMirror
+// (core/mediaCache.ts). Нужна императивному <video>/<audio>: стрим при DNP-OFF
+// живёт на токенном URL (resolveStreamUrl), токен протухает за 15 минут, и без
+// пересборки src открытый в ленте бабл получил бы 401 на середине буфера.
+//
+// Запрос токена ЖИВЁТ ЗДЕСЬ, а не только в mediaContentUrl, и это не
+// дублирование: потребитель, который гейтится на hasMediaToken() и при «нет»
+// рисует подложку, mediaContentUrl вообще не зовёт — единственный, кто в этом
+// состоянии идёт к владельцу, сама подписка (см. пин core/mediaUrl.test.ts).
+export function subscribeMediaToken(cb: () => void): () => void {
+  subs.add(cb)
+  if (!hasMediaToken()) void primeMediaToken()
+  return () => { subs.delete(cb) }
+}
+
 // Subscribe a component to token updates so it re-renders with a fresh URL.
 // Returns a version number that changes whenever the worker publishes a new token.
 export function useMediaTokenVersion(): number {
-  return useSyncExternalStore(
-    (cb) => {
-      subs.add(cb)
-      if (!hasMediaToken()) void primeMediaToken()
-      return () => { subs.delete(cb) }
-    },
-    () => version,
-  )
+  return useSyncExternalStore(subscribeMediaToken, () => version)
 }

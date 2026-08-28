@@ -19,14 +19,14 @@ type TxManager interface {
 // dialog list can show them in place of the peer's real avatar (Telegram
 // personal_photo). Implemented by the contacts repo. Optional.
 type ContactPhotoLookup interface {
-	CustomPhotoMap(ctx context.Context, ownerID int64, contactIDs []int64) (map[int64]string, error)
+	CustomPhotoMap(ctx context.Context, ownerID int64, contactIDs []int64) (map[int64]int64, error)
 }
 
 // ProfilePhotoAdder appends a photo to a user's profile gallery and promotes it
 // to the current avatar (implemented by the auth usecase). Used when a user
 // accepts a suggested profile photo. Optional.
 type ProfilePhotoAdder interface {
-	AddProfilePhoto(ctx context.Context, userID int64, url, videoURL string) (domain.ProfilePhoto, error)
+	AddProfilePhoto(ctx context.Context, userID, mediaID int64, videoMediaID *int64) (domain.ProfilePhoto, error)
 }
 
 type ChatRepo interface {
@@ -38,7 +38,7 @@ type ChatRepo interface {
 	MemberIDs(ctx context.Context, chatID int64) ([]int64, error)
 	IsMember(ctx context.Context, chatID, userID int64) (bool, error)
 	ChatType(ctx context.Context, chatID int64) (string, error) // 'private'|'group'|'channel'|'saved'
-	ListDialogs(ctx context.Context, userID int64) ([]domain.Dialog, error)
+	ListDialogs(ctx context.Context, userID int64) ([]domain.DialogRecord, error)
 	ChatPartners(ctx context.Context, userID int64) ([]int64, error)
 	// IncUnread bumps a member's unread counter by one and returns the new value
 	// (so the new_message frame can carry the recipient's authoritative unread).
@@ -62,11 +62,11 @@ type ChatRepo interface {
 	// Непрочитанные упоминания (Telegram unread_mentions_count). AddMention
 	// отмечает сообщение (chat/msg/seq), где упомянут userID, и бампит его
 	// счётчик. ClearMentions снимает упоминания с seq<=uptoSeq (прочитано) и
-	// возвращает оставшееся число. NextMention — seq/msgID ближайшего
+	// возвращает оставшееся число. NextMention — НОМЕР ближайшего
 	// непрочитанного упоминания с seq>afterSeq (domain.ErrNotFound, если нет).
 	AddMention(ctx context.Context, chatID, msgID, seq, userID int64) error
 	ClearMentions(ctx context.Context, chatID, userID, uptoSeq int64) (remaining int, err error)
-	NextMention(ctx context.Context, chatID, userID, afterSeq int64) (seq, msgID int64, err error)
+	NextMention(ctx context.Context, chatID, userID, afterSeq int64) (seq int64, err error)
 	// Непрочитанные реакции (Telegram unread_reactions_count). IncUnreadReactions
 	// бампит счётчик автора сообщения, когда на него реагирует кто-то другой;
 	// ClearUnreadReactions обнуляет счётчик (автор прочитал чат / реакции).
@@ -94,9 +94,13 @@ type GroupRepo interface {
 	RemoveMember(ctx context.Context, chatID, userID int64) error
 	GetMember(ctx context.Context, chatID, userID int64) (domain.Member, error) // domain.ErrNotFound if not a member
 	SetRole(ctx context.Context, chatID, userID int64, role string, rights domain.Rights) error
-	// SetMuted: muted — «навсегда»; until — временный mute (эффективный mute
-	// вычисляется как muted OR muted_until > now()).
-	SetMuted(ctx context.Context, chatID, userID int64, muted bool, until *time.Time) error
+	// SetMuted записывает СРОК мьюта: nil снимает его, domain.MuteUntilForever —
+	// «навсегда». Булева аргумента здесь нет: два способа сказать одно и то же и
+	// были дефектом, из-за которого «заглушить на час» работало как «навсегда».
+	SetMuted(ctx context.Context, chatID, userID int64, until *time.Time) error
+	// NotifySettings — пер-чатное переопределение уведомлений участника целиком
+	// (мьют сроком, превью, звук).
+	NotifySettings(ctx context.Context, chatID, userID int64) (domain.PeerNotifySettings, error)
 	// SetNotify обновляет per-chat уведомления (превью/звук); nil-поля не меняются.
 	SetNotify(ctx context.Context, chatID, userID int64, preview *bool, sound *string) error
 	// SetPinned/SetArchived — пер-юзерные флаги диалога (закрепление/архив);
@@ -106,10 +110,10 @@ type GroupRepo interface {
 	SetArchived(ctx context.Context, chatID, userID int64, archived bool) error
 	// SetForum включает темы у группы (chats.is_forum).
 	SetForum(ctx context.Context, chatID int64, enabled bool) error
-	Card(ctx context.Context, chatID, viewerID int64) (domain.ChatCard, error) // domain.ErrNotFound if no chat
+	Card(ctx context.Context, chatID, viewerID int64) (domain.ChatRecord, error) // domain.ErrNotFound if no chat
 	EditInfo(ctx context.Context, chatID int64, title, about, username string) error
 	SetPhoto(ctx context.Context, chatID, mediaID int64) error
-	UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserCard, error)
+	UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserReal, error)
 	ListMembers(ctx context.Context, chatID int64, offset, limit int) ([]domain.Member, error)
 	// AdminIDs — id владельца и админов чата (role in creator/admin), для адресной
 	// рассылки (напр. новые предложенные посты уходят только тем, кто их решает).
@@ -122,7 +126,7 @@ type GroupRepo interface {
 	// DiscussionCandidates lists groups (type 'group', non-forum, not already a
 	// discussion group of any channel) where actorID is creator/admin — the
 	// pick-list for linking an existing discussion group.
-	DiscussionCandidates(ctx context.Context, actorID int64) ([]domain.ChatCard, error)
+	DiscussionCandidates(ctx context.Context, actorID int64) ([]domain.ChatRecord, error)
 	// SetSignatures toggles channel post signatures (Telegram
 	// channels.toggleSignatures). profiles is forced off when signatures is off.
 	SetSignatures(ctx context.Context, chatID int64, signatures, profiles bool) error
@@ -198,10 +202,32 @@ type MessageRepo interface {
 	FindByClientMsgID(ctx context.Context, chatID, senderID int64, clientMsgID string) (domain.Message, error)
 	GetByID(ctx context.Context, msgID int64) (domain.Message, error)
 	GetByIDs(ctx context.Context, ids []int64) ([]domain.Message, error)
+	// ── Адресация: снаружи сообщение адресуется парой «пир + seq» ────────────
+	// messages.id остаётся ключом строки нашей базы (на него ссылаются
+	// message_reactions/message_mentions/pinned_messages) и наружу не выходит.
+	// Перевод в обе стороны — обычный поиск по UNIQUE (chat_id, seq), а не кэш
+	// и не переходник: seq, в отличие от ключа пира, от зрителя не зависит.
+	//
+	// IDBySeq — внешний адрес во внутренний ключ; domain.ErrNotFound, если
+	// такого номера в чате нет (в т.ч. когда сообщение удалено физически).
+	IDBySeq(ctx context.Context, chatID, seq int64) (int64, error)
+	// IDsBySeqs — батч IDBySeq для набора номеров одного чата: seq -> id.
+	// Отсутствующие в карту не попадают.
+	IDsBySeqs(ctx context.Context, chatID int64, seqs []int64) (map[int64]int64, error)
+	// SeqsByIDs — обратный батч (внутренний ключ → номер в чате) для ссылок,
+	// которые хранятся внутренним id: корень треда, корень форум-топика.
+	// Отсутствующие в карту не попадают.
+	SeqsByIDs(ctx context.Context, ids []int64) (map[int64]int64, error)
+	// GetBySeqs — сообщения чата по их номерам (превью ответов одним запросом).
+	GetBySeqs(ctx context.Context, chatID int64, seqs []int64) ([]domain.Message, error)
 	// ByPollID — сообщения, ссылающиеся на опрос (обычно одно).
 	ByPollID(ctx context.Context, pollID int64) ([]domain.Message, error)
 	// ByChecklistID — сообщения, ссылающиеся на чек-лист (обычно одно).
 	ByChecklistID(ctx context.Context, checklistID int64) ([]domain.Message, error)
+	// ByGiveawayID — сообщения, ссылающиеся на розыгрыш (обычно одно). Нужен
+	// кадру giveaway_update: messageMediaGiveawayResults.launch_msg_id — это
+	// НОМЕР сообщения-запуска, а кадр рассылается сам по себе.
+	ByGiveawayID(ctx context.Context, giveawayID int64) ([]domain.Message, error)
 	// SearchMessages ищет по чату (текст/имя файла) с необязательными фильтрами
 	// (автор/тип медиа/реакция — tweb topbarSearch). Пустой q при заданном фильтре
 	// разрешён.
@@ -225,16 +251,18 @@ type MessageRepo interface {
 	// с этим thread_root_id + само корневое сообщение.
 	// clearedSeq — персональный горизонт «очистки истории»: сообщения с
 	// seq<=clearedSeq скрыты для этого читателя (0 — ничего не очищено).
-	GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int, threadRootID *int64, clearedSeq int64) ([]domain.Message, bool, bool, error)
+	GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int, threadRootID *int64, clearedSeq int64) ([]domain.Message, error)
 	GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRootID *int64, clearedSeq int64, tag string) ([]domain.Message, error)
 	// LastMessageAt is the newest non-deleted message time by senderID in the chat
 	// (slowmode); domain.ErrNotFound when they haven't posted yet.
 	LastMessageAt(ctx context.Context, chatID, senderID int64) (time.Time, error)
 	// SavedDialogs groups the saved-messages chat by forward origin
 	// («Избранное» → таб «Чаты»), newest group first.
-	SavedDialogs(ctx context.Context, chatID, userID int64) ([]domain.SavedDialog, error)
-	UpdateText(ctx context.Context, msgID int64, text string, entities []domain.MessageEntity) (domain.Message, error)
-	UpdateReplyMarkup(ctx context.Context, msgID int64, markup *domain.ReplyMarkup) (domain.Message, error)
+	SavedDialogs(ctx context.Context, chatID, userID int64) ([]domain.SavedDialogRecord, error)
+	UpdateText(ctx context.Context, msgID int64, text string, entities domain.MessageEntities) (domain.Message, error)
+	// UpdateAction заменяет служебное действие сообщения (messages.action).
+	UpdateAction(ctx context.Context, msgID int64, action domain.MessageAction) (domain.Message, error)
+	UpdateReplyMarkup(ctx context.Context, msgID int64, markup domain.ReplyMarkup) (domain.Message, error)
 	// UpdateGeoLive обновляет координаты live-локации (+heading/stopped), бампит edited_at.
 	UpdateGeoLive(ctx context.Context, msgID int64, lat, lng float64, heading *int, stopped bool) (domain.Message, error)
 	SoftDelete(ctx context.Context, msgID int64) error
@@ -245,6 +273,16 @@ type MessageRepo interface {
 	HideForUser(ctx context.Context, userID, msgID int64) error
 	ListThread(ctx context.Context, chatID, threadRootID int64, offset, limit int) ([]domain.Message, error)
 	CountThread(ctx context.Context, chatID, threadRootID int64) (int, error)
+	// ThreadReplyCounts — БАТЧ того же счёта, что и CountThread: rootID ->
+	// число живых сообщений треда. Корни без единого ответа в карту не
+	// попадают («треда нет» и «тред пуст» на проводе неразличимы только для
+	// поста канала, где тред объявлен привязкой обсуждения, — см.
+	// Interactor.CommentCounts).
+	//
+	// Нужен там, где счёт спрашивают СРАЗУ ПРО ПАЧКУ: страница истории и
+	// счётчики постов. Поштучный CountThread в цикле по странице — ровно тот
+	// N+1, из-за которого счётчики и уехали когда-то в отдельную ручку.
+	ThreadReplyCounts(ctx context.Context, chatID int64, rootIDs []int64) (map[int64]int, error)
 	// MirrorByPost возвращает id зеркала поста канала в его группе обсуждения
 	// (0 — зеркала нет). Пользовательская пересылка того же поста зеркалом не
 	// считается: она без флага is_discussion_mirror.
@@ -282,15 +320,7 @@ type MessageRepo interface {
 	// для (возможно, удалённого) первого элемента, на который резолв
 	// продолжит указывать как на корень, — комментирование остальных
 	// элементов альбома снова сломается.
-	AlbumMessages(ctx context.Context, chatID int64, groupedID string) ([]domain.Message, error)
-	// PostsByMirrors — обратный батч-резолв к MirrorsByPosts: по набору id
-	// сообщений (это могут быть id зеркал, обычных сообщений или корней
-	// форум-топиков вперемешку — вызывающий не обязан их различать) отдаёт
-	// id постов, зеркалами которых они являются: mirrorID -> postID. Не-
-	// зеркала в карту не попадают. Единая точка внешнего перевода
-	// thread_root_id (id зеркала -> id поста) для любого набора отдаваемых
-	// наружу сообщений — см. Interactor.ExternalizeThreadRoots.
-	PostsByMirrors(ctx context.Context, ids []int64) (map[int64]int64, error)
+	AlbumMessages(ctx context.Context, chatID int64, groupedID int64) ([]domain.Message, error)
 	// RecentThreadRepliers — авторы последних комментариев по каждому треду
 	// (новейшие первыми, не более limit различных на тред).
 	RecentThreadRepliers(ctx context.Context, chatID int64, rootIDs []int64, limit int) (map[int64][]int64, error)
@@ -300,6 +330,11 @@ type MessageRepo interface {
 	// RegisterChannelViews records userID's view of every channel post in chatID
 	// up to upToSeq (deduped per viewer); a no-op for non-channel chats.
 	RegisterChannelViews(ctx context.Context, chatID, userID, upToSeq int64) error
+	// RegisterPostViews records userID's view of exactly the listed channel posts
+	// (deduped per viewer, a no-op for non-channel chats) and returns the NEW
+	// counter of every post whose counter actually grew — a re-view of a post
+	// returns nothing for it.
+	RegisterPostViews(ctx context.Context, chatID, userID int64, ids []int64) (map[int64]int64, error)
 	// ViewCounts returns current view counts for the given message ids.
 	ViewCounts(ctx context.Context, ids []int64) (map[int64]int64, error)
 	// IncrementForwards bumps a post's forward counter (Telegram message.forwards)
@@ -356,7 +391,7 @@ type UpdateRepo interface {
 	// (one round-trip instead of 2×N). Returns per-user resulting pts.
 	AppendUpdateBulk(ctx context.Context, userIDs []int64, ptsCount int, date int64, typ string, payload json.RawMessage) (map[int64]int64, error)
 	GetUserState(ctx context.Context, userID int64) (domain.UserState, error)
-	UpdatesSince(ctx context.Context, userID, sincePts int64, limit int) ([]domain.Update, error)
+	UpdatesSince(ctx context.Context, userID, sincePts int64, limit int) ([]domain.UpdateRecord, error)
 	// PruneUpdates trims the per-user log to keepPerUser pts of history (bounded
 	// by maxRows per call). Returns rows deleted.
 	PruneUpdates(ctx context.Context, keepPerUser int64, maxRows int) (int64, error)
@@ -370,15 +405,20 @@ type ChannelRepo interface {
 }
 
 type SearchRepo interface {
-	SearchChats(ctx context.Context, q string, limit int) ([]domain.ChatCard, error) // public only
-	SearchUsers(ctx context.Context, q string, limit int) ([]domain.UserCard, error)
+	SearchChats(ctx context.Context, q string, limit int) ([]domain.ChatRecord, error) // public only
+	SearchUsers(ctx context.Context, q string, limit int) ([]domain.UserReal, error)
 	PublicChatByUsername(ctx context.Context, username string) (int64, error) // domain.ErrNotFound
 	// SimilarChannels рекомендует публичные каналы по пересечению аудитории с
 	// каналом chatID: берём его подписчиков, смотрим на какие ещё публичные
 	// каналы они подписаны, ранжируем по размеру пересечения. Исключаются сам
 	// канал и каналы, где зритель viewerID уже состоит. Второе значение — общее
 	// число найденных похожих каналов (для «+N» под Premium), может превышать len.
-	SimilarChannels(ctx context.Context, chatID, viewerID int64, limit int) ([]domain.ChatCard, int, error)
+	//
+	// Строки приходят С ПРОСТАВЛЕННЫМ ViewerID: зритель здесь известен, и то,
+	// что он в этих каналах не состоит, — не умолчание, а следствие самой
+	// выборки. В краткой форме это видно двумя полями сразу (pFlags.left и
+	// channel.date), см. domain.ChatRecord.ChannelDate.
+	SimilarChannels(ctx context.Context, chatID, viewerID int64, limit int) ([]domain.ChatRecord, int, error)
 }
 
 type ReactionRepo interface {
@@ -422,35 +462,24 @@ type SavedTagRepo interface {
 type MediaAccessRepo interface {
 	OwnerID(ctx context.Context, mediaID int64) (int64, error) // domain.ErrNotFound if absent
 	CanAccess(ctx context.Context, userID, mediaID int64) (bool, error)
-	// DimsByIDs batch-loads width/height/mime for media ids (history read model,
-	// so the client can reserve the media box before the bytes load). Missing ids
-	// are simply absent from the map.
-	DimsByIDs(ctx context.Context, ids []int64) (map[int64]MediaDims, error)
-}
-
-// MediaDims is the media metadata the message read model attaches so the client
-// can render a media bubble fully from the message — no per-media meta request.
-type MediaDims struct {
-	Width    int
-	Height   int
-	Mime     string
-	Blur     []byte // blur preview bytes (JSON-encoded as base64, LQIP placeholder)
-	HasThumb bool
-	Duration int
-	Size     int64
-	FileName string
-	// Title/Performer — теги аудиотрека (ID3), пустые если файл без тегов или это
-	// не аудио. Клиент строит из них подпись бабла (tweb audio.ts), а без них
-	// показывает размер файла.
-	Title     string
-	Performer string
+	// DimsByIDs батчем поднимает метаданные файлов по их id (модель истории:
+	// клиент резервирует бокс медиа до загрузки байтов). Отсутствующие id просто
+	// не попадают в карту.
+	//
+	// Отдаёт `domain.MediaSource` — ТУ ЖЕ структуру, из которой собирается
+	// вложение (`BuildMessageMedia`). Прежде рядом жил её близнец `MediaDims`:
+	// те же пятнадцать полей под другим именем, и заполнялись они переписыванием
+	// поле-в-поле. Двух форм одного факта не осталось — вид вложения
+	// (`MediaID`/`Spoiler`/`Kind`) дописывает тот, кто знает МЕСТО файла:
+	// сообщение — из своей строки, история — из mime.
+	DimsByIDs(ctx context.Context, ids []int64) (map[int64]domain.MediaSource, error)
 }
 
 // DialogsCache — опциональный per-user кэш снапшота диалогов (bounded-staleness
 // read-кэш поверх тяжёлого ListDialogs). Мягко деградирует при nil.
 type DialogsCache interface {
-	Get(ctx context.Context, userID int64) ([]domain.Dialog, bool)
-	Set(ctx context.Context, userID int64, dialogs []domain.Dialog)
+	Get(ctx context.Context, userID int64) ([]domain.DialogRecord, bool)
+	Set(ctx context.Context, userID int64, dialogs []domain.DialogRecord)
 	Invalidate(ctx context.Context, userIDs ...int64)
 }
 
@@ -467,6 +496,17 @@ type EventPublisher interface {
 // владельцу. Опционален — без него действует старое правило «только своё media».
 type StickerAccess interface {
 	IsStickerMedia(ctx context.Context, mediaID int64) (bool, error)
+}
+
+// ReactionCatalogAccess отвечает, принадлежит ли media КАТАЛОГУ доступных
+// реакций (available_reactions, Telegram messages.getAvailableReactions).
+//
+// Каталог публичен ровно как наборы стикеров: иконку реакции рисует каждый,
+// кто открыл чат. Файлы при этом принадлежат сервисному аккаунту, поэтому
+// проверка «владелец либо участник чата» их не пропускает и нужно такое же
+// исключение, как у стикеров.
+type ReactionCatalogAccess interface {
+	IsReactionMedia(ctx context.Context, mediaID int64) (bool, error)
 }
 
 // SecretRepo хранит handshake секретных чатов (только публичные ключи + статус).
@@ -498,7 +538,9 @@ type ChannelPublisher interface {
 }
 
 type PushNotifier interface {
-	NotifyNewMessage(ctx context.Context, recipientID, chatID, msgID, seq, senderID int64, text string)
+	// peer — ключ пира ГЛАЗАМИ получателя (у приватного диалога он у сторон
+	// разный); chatID остаётся внутренним и наружу из пуша не выходит.
+	NotifyNewMessage(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID)
 }
 
 // --- DTOs ---
@@ -506,8 +548,19 @@ type PushNotifier interface {
 type SendInput struct {
 	ChatID, SenderID int64
 	Type, Text       string
-	Entities         []domain.MessageEntity
-	ReplyToID        *int64
+	// Action — СЛУЖЕБНОЕ действие (schema messageService.action). Не nil —
+	// сообщение служебное, и Text у него пуст: прежде действие приезжало сюда
+	// JSON-строкой в Text вместе с Type == "service".
+	Action   domain.MessageAction
+	Entities domain.MessageEntities
+	// ReplyToID — НОМЕР отвечаемого сообщения в его чате (schema
+	// messageReplyHeader.reply_to_msg_id), а не глобальный ключ строки.
+	// Осмыслен только вместе с ReplyToPeerID: nil там значит «тот же пир».
+	ReplyToID *int64
+	// ReplyToPeerID — внутренний chatID ЧУЖОГО чата, когда отвечают на
+	// сообщение из другого разговора (schema reply_to_peer_id). Разрешается из
+	// ключа пира на границе (delivery), доступ отправителя проверяет Send.
+	ReplyToPeerID *int64
 	// Ответ с цитатой фрагмента (Telegram reply quote): выделенный кусок текста
 	// оригинала + его offset (UTF-16). Применяется только при ReplyToID != nil.
 	ReplyQuoteText   *string
@@ -515,7 +568,7 @@ type SendInput struct {
 	ClientMsgID      string
 	MediaID          *int64
 	ThreadRootID     *int64
-	GroupedID        string // альбом (Telegram grouped_id); "" — не в группе
+	GroupedID        int64  // альбом (Telegram grouped_id, схемный long); 0 — не в группе
 	PollID           *int64 // опрос (messages.poll_id) — только из SendPoll
 	ChecklistID      *int64 // чек-лист (messages.checklist_id) — только из SendChecklist
 	GiveawayID       *int64 // розыгрыш (messages.giveaway_id) — только из CreateGiveaway
@@ -533,7 +586,7 @@ type SendInput struct {
 	// Подарок (type 'gift'): ссылка на выданный подарок — только из SendGift.
 	GiftID *int64
 	// Клавиатура сообщения (inline/reply) — у ответов бота.
-	ReplyMarkup *domain.ReplyMarkup
+	ReplyMarkup domain.ReplyMarkup
 	// E2E-шифртекст (type 'encrypted'): iv||ciphertext. Text/Entities пустые.
 	EncBody []byte
 	// Self-destruct TTL (сек) для секретного сообщения; nil — без самоуничтожения.
@@ -548,6 +601,9 @@ type SendInput struct {
 	// — обычное медиа. Применяется только к фото/видео с прикреплённым MediaID:
 	// получатели видят медиа заблокированным до разблокировки за звёзды.
 	PaidMediaPrice *int64
+	// MediaSpoiler — скрыть медиа спойлером (Telegram messageMedia.pFlags.spoiler).
+	// Осмыслен только вместе с MediaID: без вложения флаг игнорируется.
+	MediaSpoiler bool
 	// SendAsChatID — отправка от имени канала/группы (Telegram send_as). nil —
 	// обычная отправка от себя. Проверяется правом: юзер — админ/владелец канала,
 	// либо это анонимный постинг от имени самой супергруппы (юзер — её админ).
@@ -575,13 +631,13 @@ type LivestreamRepo interface {
 
 // TopicRepo хранит темы форум-групп.
 type TopicRepo interface {
-	Create(ctx context.Context, t domain.ForumTopic) (domain.ForumTopic, error)
-	ByID(ctx context.Context, id int64) (domain.ForumTopic, error)
+	Create(ctx context.Context, t domain.ForumTopicRecord) (domain.ForumTopicRecord, error)
+	ByID(ctx context.Context, id int64) (domain.ForumTopicRecord, error)
 	SetClosed(ctx context.Context, id int64, closed bool) error
 	EditTopic(ctx context.Context, id int64, title, iconEmoji string, iconColor int) error
 	SetHidden(ctx context.Context, id int64, hidden bool) error
 	SetPinned(ctx context.Context, id int64, pinned bool) error
-	EnsureGeneralTopic(ctx context.Context, chatID, createdBy int64) (domain.ForumTopic, error)
+	EnsureGeneralTopic(ctx context.Context, chatID, createdBy int64) (domain.ForumTopicRecord, error)
 	// ListByChat — темы чата с per-topic состоянием для зрителя userID
 	// (unread/mentions/mute/last_out считаются относительно него).
 	ListByChat(ctx context.Context, chatID, userID int64) ([]domain.TopicRow, error)
@@ -774,8 +830,27 @@ type BotAPIRepo interface {
 	WizardGet(ctx context.Context, userID int64) (domain.BotWizard, error)
 	WizardSet(ctx context.Context, w domain.BotWizard) error
 	WizardClear(ctx context.Context, userID int64) error
-	// UserBrief — username/имя пользователя для поля from в апдейтах.
-	UserBrief(ctx context.Context, id int64) (username, firstName string, err error)
+	// UserBrief — краткая карточка пользователя (конструктор `user`) для поля
+	// from в апдейтах. Перевод в чужую форму Bot API делает BotAPIView.
+	UserBrief(ctx context.Context, id int64) (domain.UserReal, error)
+}
+
+// BotAPIView — конвертер ГРАНИЦЫ Bot API: наша модель → форма чужой
+// документации Telegram Bot API ({id, is_bot, first_name, username},
+// {id, type}). Реализуется delivery, как parseEntities/botAPIEntities и
+// parseReplyMarkup/botAPIReplyMarkup у сущностей и разметки.
+//
+// Порт нужен именно как ПОРТ, а не как функция в usecase: Bot API это фасад
+// над нашей моделью и чужой контракт, а usecase про чужие контракты знать не
+// должен — направление зависимостей идёт внутрь. До шага C конвертер жил в
+// usecase (botapi.go), и заодно хардкодил chat.type = "private" независимо от
+// настоящего вида чата.
+type BotAPIView interface {
+	// User — поле from апдейта.
+	User(u domain.UserReal) map[string]any
+	// Chat — поле chat апдейта: chatType это наш chats.type
+	// ('private' | 'group' | 'channel'), он же вид чата Bot API.
+	Chat(chatID int64, chatType, title string) map[string]any
 }
 
 // Translator переводит текст на целевой язык (source определяется провайдером

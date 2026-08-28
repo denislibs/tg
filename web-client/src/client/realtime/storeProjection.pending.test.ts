@@ -1,15 +1,23 @@
-// Пины жизненного цикла pending-кадров (storeProjection.ts:73-83) — единственного
-// пути появления оптимистичного бабла на экране (воркер бродкастит
-// pendingNew/pendingMedia/pendingFail/pendingRetry/pendingRemove, storeProjection
-// применяет их к messagesStore). Этот путь был совсем не покрыт тестами; страховка
-// нужна ДО переезда домена сообщений на replay операций из воркера. Гейт-паттерн
-// (registerXxxSubscriber один раз в beforeAll + dispatchEventSingle) — как в
-// soundSubscriber.test.ts/notificationSubscriber.test.ts.
+// Пины пути «неотправленное сообщение → экран» ПОСЛЕ переноса жизненного цикла в
+// менеджер воркера. Окно на главном потоке одно — зеркало
+// (`core/history/messagesMirror.ts`), из которого рисует императивная лента;
+// zustand-копия жила ради React-ленты и снесена вместе с ней (этап 7). Пяти кадров rt:pending_* больше нет: бабл появляется,
+// патчится и исчезает теми же MessageOp, что и любое другое изменение окна,
+// поэтому здесь гоняется НАСТОЯЩАЯ механика воркера (newPendingMethods) и её
+// операции переигрываются проектором — раньше эти же гарантии держались на
+// пяти отдельных обработчиках APPLY.
+//
+// Гейт-паттерн (registerStoreProjection один раз в beforeAll +
+// dispatchEventSingle) — как в soundSubscriber.test.ts/notificationSubscriber.test.ts.
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import rootScope from '@lib/rootScope'
-import { RT, type PendingNewEvt, type PendingMediaEvt, type PendingRouteEvt } from '../../core/realtime/events'
-import { useMessagesStore, winKey } from '../../stores/messagesStore'
-import tabId from '../../config/tabId'
+import { RT, type PendingNewEvt } from '../../core/realtime/events'
+import { newPendingMethods } from '../../core/managers/messages/pending'
+import SlicedArray, { SliceEnd } from '../../core/history/slicedArray'
+import { mirrorWindow, resetMessagesMirror, winKey } from '../../core/history/messagesMirror'
+import type { MessageReal, MyMessage } from '../../core/models'
+import { generateMessageId, isLocalMessageId } from '../../core/history/messageId'
+import { getMediaFromMessage } from '../../core/media/messageMedia'
 import type { Managers } from '../bootstrap'
 
 import { registerStoreProjection } from './storeProjection'
@@ -18,126 +26,187 @@ const CHAT = 30
 const THREAD = 40
 const SENDER = 7
 
-function bubbles(key: string) {
-  return useMessagesStore.getState().byKey[key]?.msgs ?? []
+function bubbles(key: string): MyMessage[] {
+  return [...(mirrorWindow(key) ?? [])]
 }
 
-describe('storeProjection — пины жизненного цикла pending-кадров', () => {
-  // Managers обработчикам pending*-кадров не нужны (только chatsReload/refresh
+/** Воркерная сторона: SSOT + срезы окон, как в messagesManager. */
+function worker(keys: string[]) {
+  const slices = new Map<string, SlicedArray<number>>()
+  const msgsByChat = new Map<number, Map<number, MyMessage>>()
+  for (const key of keys) {
+    const sa = new SlicedArray<number>()
+    sa.first.setEnd(SliceEnd.Bottom) // окно держит низ истории — иначе бабл не вставляется
+    slices.set(key, sa)
+  }
+  return newPendingMethods({
+    hkey: (peerId, threadRoot) => (threadRoot ? `${peerId}:${threadRoot}` : String(peerId)),
+    slices,
+    msgsFor: (peerId) => {
+      let c = msgsByChat.get(peerId)
+      if (!c) { c = new Map(); msgsByChat.set(peerId, c) }
+      return c
+    },
+    // `me` владельцу нужен на границе разбора (уточнение служебного действия);
+    // здесь это тот же отправитель, что у всех сообщений стенда.
+    getMeId: () => SENDER,
+    // Обычный чат: пост вещательного канала пинится в pending.test.ts.
+    isBroadcastChat: () => false,
+    // Предмет этого файла — путь «операция → окно», поэтому веер и транспорт
+    // здесь заглушены: операции emit'ятся вручную (см. emit ниже), а отправка/
+    // аплоад покрыты у владельца (managers/messages/pending.test.ts).
+    emit: () => {},
+    send: () => {},
+    upload: () => Promise.resolve(0),
+    cancelUpload: () => {},
+    sendTyping: () => {},
+    uploadProgress: () => {},
+  })
+}
+
+/** Кадр воркера с операциями — ровно то, что рассылает владелец окна. */
+function emit(ops: ReturnType<ReturnType<typeof worker>['beforeMessageSending']>) {
+  rootScope.dispatchEventSingle(RT.messageOp, { ops })
+}
+
+const evt = (over: Partial<PendingNewEvt> = {}): PendingNewEvt => ({
+  peer_id: CHAT, client_msg_id: 'c1', sender_id: SENDER, text: 'hi', ...over,
+})
+
+describe('storeProjection — жизненный цикл неотправленного бабла приезжает операциями', () => {
+  // Managers обработчикам этих кадров не нужны (только chatsReload/refresh
   // в других ветках APPLY) — как в cacheFirst.test.ts.
   beforeAll(() => registerStoreProjection({} as unknown as Managers))
 
   beforeEach(() => {
-    useMessagesStore.setState({ byKey: {} })
+    resetMessagesMirror()
   })
 
-  // Что ломается, если гарантия нарушена: если бы pendingNew перестал писать в
-  // стор (или писал без clientId), оптимистичный бабл своей же отправки не
-  // появился бы на экране до серверного эха — пользователь не увидел бы своё
-  // сообщение сразу после отправки (единственный путь появления бабла — этот кадр).
-  it('pendingNew → бабл появился в окне, clientId === client_msg_id, failed не выставлен', () => {
-    const evt: PendingNewEvt = { chat_id: CHAT, client_msg_id: 'c1', sender_id: SENDER, text: 'hi' }
-    rootScope.dispatchEventSingle(RT.pendingNew, evt)
+  // Что ломается, если гарантия нарушена: если бы insert-операция бабла не
+  // доезжала до окна (или ехала без clientId), оптимистичный бабл своей же
+  // отправки не появился бы на экране до серверного эха — пользователь не видел
+  // бы своё сообщение сразу после отправки.
+  it('бабл появился в окне, random_id === client_msg_id, failed не выставлен', () => {
+    const w = worker([winKey(CHAT)])
+
+    emit(w.beforeMessageSending(evt()))
+
     const msgs = bubbles(winKey(CHAT))
     expect(msgs).toHaveLength(1)
-    expect(msgs[0].clientId).toBe('c1')
+    expect(msgs[0].random_id).toBe('c1')
     expect(msgs[0].failed).toBeUndefined()
   })
 
-  // Что ломается, если гарантия нарушена: если бы pendingNew резолвил окно по
-  // winKey(chat_id) вместо winKey(chat_id, thread_root_id) (напр. при рефакторе
-  // «унифицировали» с applyIncoming, которая пишет в ОБА окна), бабл ответа в
-  // форум-топике/комментариях попал бы в основную ленту чата — либо продублировался
-  // бы там, где его быть не должно.
-  it('pendingNew с thread_root_id → бабл попал в окно треда, а не в основное', () => {
-    const evt: PendingNewEvt = { chat_id: CHAT, thread_root_id: THREAD, client_msg_id: 'c2', sender_id: SENDER, text: 'hi-thread' }
-    rootScope.dispatchEventSingle(RT.pendingNew, evt)
-    const threadMsgs = bubbles(winKey(CHAT, THREAD))
-    expect(threadMsgs).toHaveLength(1)
-    expect(threadMsgs[0].clientId).toBe('c2')
-    // Основное окно вообще не тронуто (pendingNew пишет в ОДНО окно по winKey, в
-    // отличие от applyIncoming, которая заводит запись и в основном, и в треде).
-    expect(useMessagesStore.getState().byKey[winKey(CHAT)]).toBeUndefined()
+  // Что ломается: если бы операция ехала с ключом основного окна вместо ключа
+  // треда, бабл ответа в форум-топике/комментариях попал бы в основную ленту
+  // чата — либо продублировался бы там, где его быть не должно.
+  it('бабл треда попадает в окно треда (и в основное — оба ключа несёт сама операция)', () => {
+    const w = worker([winKey(CHAT), winKey(CHAT, THREAD)])
+
+    emit(w.beforeMessageSending(evt({ client_msg_id: 'c2', thread_root_id: THREAD })))
+
+    expect(bubbles(winKey(CHAT, THREAD)).map((m) => m.random_id)).toEqual(['c2'])
+    expect(bubbles(winKey(CHAT)).map((m) => m.random_id)).toEqual(['c2'])
   })
 
-  // Что ломается, если гарантия нарушена: если бы pendingMedia не находил бабл по
-  // clientId (напр. сломался матч по client_msg_id) или перетирал текст/другие
-  // поля вместо точечного patch mediaId, у бабла после завершения аплоада либо не
-  // проставилось превью (mediaId), либо съехали остальные поля бабла.
-  it('pendingMedia → у бабла проставлен mediaId, остальные поля не тронуты', () => {
-    const newEvt: PendingNewEvt = { chat_id: CHAT, client_msg_id: 'c3', sender_id: SENDER, text: 'photo caption' }
-    rootScope.dispatchEventSingle(RT.pendingNew, newEvt)
-    const mediaEvt: PendingMediaEvt = { chat_id: CHAT, client_msg_id: 'c3', media_id: 555 }
-    rootScope.dispatchEventSingle(RT.pendingMedia, mediaEvt)
+  // Что ломается: если бы patch аплоада не находил бабл по номеру (или подменял
+  // весь объект вместо точечного слияния), у бабла после завершения аплоада
+  // либо остался бы файл под ВРЕМЕННЫМ адресом, либо съехали остальные поля.
+  it('аплоад завершился → настоящий id файла ВНУТРИ вложения, остальные поля не тронуты', () => {
+    const w = worker([winKey(CHAT)])
+    emit(w.beforeMessageSending(evt({
+      client_msg_id: 'c3', text: 'photo caption', type: 'photo',
+      media: { mime: 'image/jpeg', size: 10, width: 4, height: 4 },
+    })))
+
+    emit(w.attachPendingMedia('c3', 555))
+
     const msgs = bubbles(winKey(CHAT))
     expect(msgs).toHaveLength(1)
-    expect(msgs[0].mediaId).toBe(555)
-    expect(msgs[0].text).toBe('photo caption')
-    expect(msgs[0].clientId).toBe('c3')
+    expect(getMediaFromMessage(msgs[0])!.id).toBe(555)
+    expect((msgs[0] as MessageReal).message).toBe('photo caption')
+    expect(msgs[0].random_id).toBe('c3')
   })
 
-  // Что ломается, если гарантия нарушена: если бы pendingFail не проставлял
-  // failed (или, хуже, убирал бабл из окна), пользователь либо не увидел бы
-  // красную отметку ошибки отправки, либо (при удалении) потерял бы черновик —
-  // хотя UX требует оставить бабл для retry/delete (см. комментарий у failOptimistic).
-  it('pendingFail → failed: true, бабл остался в окне (не удалён)', () => {
-    const newEvt: PendingNewEvt = { chat_id: CHAT, client_msg_id: 'c4', sender_id: SENDER, text: 'oops' }
-    rootScope.dispatchEventSingle(RT.pendingNew, newEvt)
-    const failEvt: PendingRouteEvt = { chat_id: CHAT, client_msg_id: 'c4' }
-    rootScope.dispatchEventSingle(RT.pendingFail, failEvt)
-    const msgs = bubbles(winKey(CHAT))
-    expect(msgs).toHaveLength(1)
-    expect(msgs[0].failed).toBe(true)
-  })
+  // Что ломается: если бы ошибка не проставляла failed (или, хуже, убирала бабл
+  // из окна), пользователь либо не увидел бы красной отметки, либо потерял бы
+  // черновик — UX требует оставить бабл для retry/delete.
+  it('ошибка отправки → failed: true, бабл остался в окне; ретрай снимает пометку', () => {
+    const w = worker([winKey(CHAT)])
+    emit(w.beforeMessageSending(evt({ client_msg_id: 'c4', text: 'oops' })))
 
-  // Что ломается, если гарантия нарушена: если бы pendingRetry не снимал failed
-  // (или снимал его у неверного бабла), кнопка «повторить отправку» не убрала бы
-  // красную отметку ошибки — бабл выглядел бы отправленным заново, но с состоянием
-  // ошибки, что путает пользователя.
-  it('pendingRetry после pendingFail → failed снят', () => {
-    const newEvt: PendingNewEvt = { chat_id: CHAT, client_msg_id: 'c5', sender_id: SENDER, text: 'retry me' }
-    rootScope.dispatchEventSingle(RT.pendingNew, newEvt)
-    rootScope.dispatchEventSingle(RT.pendingFail, { chat_id: CHAT, client_msg_id: 'c5' } as PendingRouteEvt)
+    emit(w.failPendingMessage('c4'))
+    expect(bubbles(winKey(CHAT))).toHaveLength(1)
     expect(bubbles(winKey(CHAT))[0].failed).toBe(true)
-    rootScope.dispatchEventSingle(RT.pendingRetry, { chat_id: CHAT, client_msg_id: 'c5' } as PendingRouteEvt)
+
+    emit(w.retryPendingMessage('c4'))
     expect(bubbles(winKey(CHAT))[0].failed).toBeUndefined()
   })
 
-  // Что ломается, если гарантия нарушена: если бы pendingRemove не фильтровал
-  // бабл из окна (напр. сравнивал по неверному id), кнопка «удалить» на упавшем
-  // сообщении оставляла бы призрачный бабл на экране навсегда.
-  it('pendingRemove → бабла нет', () => {
-    const newEvt: PendingNewEvt = { chat_id: CHAT, client_msg_id: 'c6', sender_id: SENDER, text: 'delete me' }
-    rootScope.dispatchEventSingle(RT.pendingNew, newEvt)
+  // Что ломается: если бы remove не находил бабл по id, кнопка «удалить» на
+  // упавшем сообщении (и отмена аплоада) оставляла бы призрачный бабл навсегда.
+  it('отмена → бабла нет', () => {
+    const w = worker([winKey(CHAT)])
+    emit(w.beforeMessageSending(evt({ client_msg_id: 'c6', text: 'delete me' })))
     expect(bubbles(winKey(CHAT))).toHaveLength(1)
-    rootScope.dispatchEventSingle(RT.pendingRemove, { chat_id: CHAT, client_msg_id: 'c6' } as PendingRouteEvt)
+
+    emit(w.cancelPendingMessage('c6'))
+
     expect(bubbles(winKey(CHAT))).toHaveLength(0)
   })
 
-  // Что ломается, если гарантия нарушена: если бы проверка `e.origin_tab !== tabId`
-  // (storeProjection.ts:73-77) была снята или инвертирована, кадр СВОЕЙ вкладки
-  // потерял бы localUrl — мгновенное превью до аплоада (единственная причина
-  // существования этого поля) не показывалось бы вовсе, хотя blob-URL в своей
-  // вкладке валиден.
-  it('localUrl своей вкладки (origin_tab === наш tabId) — сохраняется', () => {
-    const evt: PendingNewEvt = {
-      chat_id: CHAT, client_msg_id: 'c7a', sender_id: SENDER, text: 'photo',
-      origin_tab: tabId, media: { localUrl: 'blob:own-tab' },
-    }
-    rootScope.dispatchEventSingle(RT.pendingNew, evt)
-    expect(bubbles(winKey(CHAT))[0].localUrl).toBe('blob:own-tab')
+  // Что ломается: ack переставляет номер и дату — без применения этой операции
+  // бабл навсегда остался бы «отправляется…» (часы вместо галочки: статус
+  // выводится из ДРОБНОСТИ номера, см. messageToConvMsg).
+  it('ack → у бабла серверный номер, random_id сохранён (ключ строки стабилен)', () => {
+    const w = worker([winKey(CHAT)])
+    emit(w.beforeMessageSending(evt({ client_msg_id: 'c8' })))
+    expect(isLocalMessageId(bubbles(winKey(CHAT))[0].id)).toBe(true)
+
+    emit(w.ackPendingMessage({ client_msg_id: 'c8', id: 50, created_at: '2026-08-16T10:00:00Z' }))
+
+    const msgs = bubbles(winKey(CHAT))
+    expect(msgs).toHaveLength(1)
+    expect(msgs[0].id).toBe(generateMessageId(50))
+    expect(isLocalMessageId(msgs[0].id)).toBe(false)
+    expect(msgs[0].random_id).toBe('c8')
+  })
+})
+
+// localUrl больше НЕ вкладочное обогащение: blob-URL минтит воркер внутри
+// messages.sendFile, поэтому он лежит в SSOT и приезжает обычным полем
+// операции — одинаково во все вкладки. Раньше здесь проверялось обратное
+// (своя вкладка накладывает превью, чужая — нет) и жил модуль localPreview.ts.
+describe('storeProjection — локальное превью приезжает полем операции воркера', () => {
+  beforeAll(() => registerStoreProjection({} as unknown as Managers))
+
+  beforeEach(() => {
+    resetMessagesMirror()
   })
 
-  // Что ломается, если гарантия нарушена: если бы проверку `e.origin_tab !== tabId`
-  // убрали, кадр из ЧУЖОЙ вкладки нёс бы в бабл blob-URL, который в этой вкладке
-  // никогда не резолвится (создан в другом браузерном контексте) — «битый превью
-  // навсегда» (localUrl приоритетнее mediaId в рендере и не очищается позже).
-  it('localUrl чужой вкладки (origin_tab !== наш tabId) — вырезается', () => {
-    const evt: PendingNewEvt = {
-      chat_id: CHAT, client_msg_id: 'c7b', sender_id: SENDER, text: 'photo',
-      origin_tab: tabId + 1, media: { localUrl: 'blob:foreign-tab' },
-    }
-    rootScope.dispatchEventSingle(RT.pendingNew, evt)
-    expect(bubbles(winKey(CHAT))[0].localUrl).toBeUndefined()
+  // Что ломается: не доедь превью до окна — мгновенного показа отправляемого
+  // фото/видео (единственная причина существования поля) не было бы вовсе,
+  // бабл ждал бы конца аплоада и серверной картинки.
+  it('local_url заявки становится localUrl бабла', () => {
+    const w = worker([winKey(CHAT)])
+
+    emit(w.beforeMessageSending(evt({ client_msg_id: 'c7a', type: 'photo', local_url: 'blob:worker-minted' })))
+
+    expect((bubbles(winKey(CHAT))[0] as MessageReal).localUrl).toBe('blob:worker-minted')
+  })
+
+  // Что ломается: пришло настоящее сообщение (серверный номер) — его localUrl
+  // переносится слиянием по random_id (messageOps.insert), иначе картинка
+  // моргнула бы на подложку, пока грузится серверная.
+  it('пришло настоящее сообщение → localUrl перенесён слиянием', () => {
+    const w = worker([winKey(CHAT)])
+    emit(w.beforeMessageSending(evt({ client_msg_id: 'c7c', type: 'photo', local_url: 'blob:worker-minted' })))
+
+    emit(w.ackPendingMessage({ client_msg_id: 'c7c', id: 51, created_at: '2026-08-16T10:00:00Z' }))
+
+    const msgs = bubbles(winKey(CHAT))
+    expect(msgs).toHaveLength(1)
+    expect(msgs[0].id).toBe(generateMessageId(51))
+    expect((msgs[0] as MessageReal).localUrl).toBe('blob:worker-minted')
   })
 })

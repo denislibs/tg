@@ -6,6 +6,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, waitFor } from '@testing-library/react'
 import { useSettingsStore } from '../settings'
+import { onActiveGradientRendererChange } from '../core/chat/activeGradient'
 import s from './ChatBackground.module.scss'
 
 // Реальный ChatBackgroundGradientRenderer лезет в canvas 2D-контекст, которого
@@ -159,6 +160,26 @@ describe('ChatBackground: обои следуют за сменой темы', (
     await waitFor(() => {
       expect(canvas()?.dataset.colors).toBe('#fec496,#dd6cb9,#962fbf,#4f5bd5')
     })
+  })
+
+  // Мета активных обоев для ЗЕРКАЛА градиента (колонка папок): tweb
+  // chatBackground.tsx:528-533 `isDarkPattern && !isTinted`. Ночная тема гасит
+  // яркий градиент МАСКОЙ узора, которую зеркало не повторяет, — без флага
+  // колонка светилась бы ярко-фиолетовым над тёмным чатом.
+  it('night объявляет isDarkMaskPattern, day — нет', async () => {
+    vi.stubGlobal('Image', FakeImage)
+    useSettingsStore.setState({ wallpaper: { kind: 'default' } })
+    setThemeVars('day', ['#dbddbb', '#6ba587', '#d5d88d', '#88b884'])
+
+    const seen: (boolean | undefined)[] = []
+    const off = onActiveGradientRendererChange((r, meta) => seen.push(r ? meta?.isDarkMaskPattern : undefined))
+
+    render(bg())
+    await waitFor(() => expect(seen[seen.length - 1]).toBe(false))
+
+    setThemeVars('night', ['#fec496', '#dd6cb9', '#962fbf', '#4f5bd5'])
+    await waitFor(() => expect(seen[seen.length - 1]).toBe(true))
+    off()
   })
 
   // Регрессия (сообщено с экрана): в тёмной теме фон выходил «недостаточно тёмным» —

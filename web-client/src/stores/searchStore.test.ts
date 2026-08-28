@@ -11,7 +11,7 @@ const CHAT = 42
 describe('searchStore: initSearch / closeSearch', () => {
   beforeEach(() => useSearchStore.setState({ byChat: {} }))
 
-  const seedOf = (chatId: number) => useSearchStore.getState().byChat[chatId]?.seed
+  const seedOf = (peerId: number) => useSearchStore.getState().byChat[peerId]?.seed
 
   it('открывает поиск пустым, когда параметров нет', () => {
     useSearchStore.getState().initSearch(CHAT)

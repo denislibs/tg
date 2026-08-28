@@ -53,18 +53,25 @@ func (h *ChannelHandler) Create(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"chat_id": id})
+	// Ответ действия — СОЗДАННЫЙ объект, тем же конструктором, что у ручки
+	// карточки; адреса в безымянной обёртке больше нет (см. GroupHandler).
+	c, err := h.uc.ChatCard(r.Context(), id, user.ID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, domain.NewMessagesChatFull(c.ToChannelFull(), c.ToChannel()))
 }
 
 func (h *ChannelHandler) Post(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
 	var b struct {
 		Text        string                 `json:"text"`
-		Entities    []domain.MessageEntity `json:"entities"`
+		Entities    domain.MessageEntities `json:"entities"`
 		ClientMsgID string                 `json:"client_msg_id"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&b)
@@ -73,21 +80,21 @@ func (h *ChannelHandler) Post(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"id": msg.ID, "chat_id": msg.ChatID, "seq": msg.Seq, "created_at": msg.CreatedAt,
-	})
+	// Созданный пост — тот же конструктор `message`, что и любое другое
+	// сообщение: своей формы («адрес тройкой полей») у него больше нет.
+	writeMessage(w, r, h.uc, msg)
 }
 
 // Suggest — участник предлагает пост в канал (текст/медиа + опц. время публикации).
 func (h *ChannelHandler) Suggest(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
 	var b struct {
 		Text      string                 `json:"text"`
-		Entities  []domain.MessageEntity `json:"entities"`
+		Entities  domain.MessageEntities `json:"entities"`
 		MediaID   *int64                 `json:"media_id"`
 		PublishAt int64                  `json:"publish_at"` // unix-секунды, 0 — как можно скорее
 	}
@@ -103,7 +110,7 @@ func (h *ChannelHandler) Suggest(w http.ResponseWriter, r *http.Request) {
 // ListSuggested — предложенные посты канала (админу все pending, автору свои).
 func (h *ChannelHandler) ListSuggested(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -160,7 +167,7 @@ func unixToTime(sec int64) *time.Time {
 
 func (h *ChannelHandler) EnableDiscussion(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -169,37 +176,41 @@ func (h *ChannelHandler) EnableDiscussion(w http.ResponseWriter, r *http.Request
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"discussion_chat_id": disc})
+	// Ответ — КОНСТРУКТОР ключа привязанной группы: обёртки вокруг адреса у
+	// оригинала нет (там его читают из `channelFull.linked_chat_id`).
+	writeJSON(w, http.StatusOK, domain.NewPeer(discussionPeer(disc)))
 }
 
 // LinkDiscussion links an existing group as the channel's discussion group
-// (PUT /channels/{chatID}/discussion, body {group_id}).
+// (PUT /channels/{chatID}/discussion, body {group_peer_id}).
 func (h *ChannelHandler) LinkDiscussion(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
 	var b struct {
-		GroupID int64 `json:"group_id"`
+		GroupPeerID domain.PeerID `json:"group_peer_id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || b.GroupID == 0 {
-		writeError(w, http.StatusBadRequest, "group_id required")
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || !b.GroupPeerID.IsAnyChat() {
+		writeError(w, http.StatusBadRequest, "group_peer_id required")
 		return
 	}
-	disc, err := h.uc.LinkDiscussion(r.Context(), chatID, b.GroupID, user.ID)
+	disc, err := h.uc.LinkDiscussion(r.Context(), chatID, b.GroupPeerID.ToChatID(), user.ID)
 	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"discussion_chat_id": disc})
+	// Ответ — КОНСТРУКТОР ключа привязанной группы: обёртки вокруг адреса у
+	// оригинала нет (там его читают из `channelFull.linked_chat_id`).
+	writeJSON(w, http.StatusOK, domain.NewPeer(discussionPeer(disc)))
 }
 
 // UnlinkDiscussion detaches the channel's discussion group
 // (DELETE /channels/{chatID}/discussion).
 func (h *ChannelHandler) UnlinkDiscussion(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -207,14 +218,14 @@ func (h *ChannelHandler) UnlinkDiscussion(w http.ResponseWriter, r *http.Request
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // DiscussionCandidates lists groups the actor may link as a discussion group
 // (GET /channels/{chatID}/discussion_candidates).
 func (h *ChannelHandler) DiscussionCandidates(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	if _, ok := pathInt(w, r, "chatID"); !ok {
+	if _, ok := peerChatID(w, r, h.uc); !ok {
 		return
 	}
 	cands, err := h.uc.DiscussionCandidates(r.Context(), user.ID)
@@ -222,18 +233,16 @@ func (h *ChannelHandler) DiscussionCandidates(w http.ResponseWriter, r *http.Req
 		h.mapErr(w, err)
 		return
 	}
-	out := make([]map[string]any, 0, len(cands))
-	for _, c := range cands {
-		out = append(out, map[string]any{"id": c.ID, "title": c.Title, "username": c.Username, "member_count": c.MemberCount})
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"chats": out})
+	// Кандидаты — КАРТОЧКИ чатов, а не выжимка из четырёх полей: имя,
+	// username и число участников живут в самом конструкторе `channel`.
+	writeJSON(w, http.StatusOK, domain.NewMessagesChats(channelsOf(cands)))
 }
 
 // SetSignatures toggles channel post signatures
 // (PUT /channels/{chatID}/sign_messages, body {signatures, profiles}).
 func (h *ChannelHandler) SetSignatures(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -249,16 +258,16 @@ func (h *ChannelHandler) SetSignatures(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *ChannelHandler) PostComment(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
-	postID, ok := pathInt(w, r, "postId")
+	postID, ok := msgSeqIDParam(w, r, h.uc, chatID, "postSeq")
 	if !ok {
 		return
 	}
@@ -272,20 +281,20 @@ func (h *ChannelHandler) PostComment(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	// thread_root_id наружу — id поста (messageJSONOut, единый чокпоинт,
+	// thread_root_id наружу — НОМЕР поста (messageJSONOut, единый чокпоинт,
 	// см. usecase/chat/discussion_mirror.go): внутри PostComment комментарий
 	// тредится на id зеркала поста в группе обсуждения, но клиент про
 	// зеркало ничего не знает и сверяет thread_root_id с постом, который открыл.
-	writeJSON(w, http.StatusOK, messageJSONOut(r.Context(), h.uc, m))
+	writeMessage(w, r, h.uc, m)
 }
 
 func (h *ChannelHandler) ListComments(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
-	postID, ok := pathInt(w, r, "postId")
+	postID, ok := msgSeqIDParam(w, r, h.uc, chatID, "postSeq")
 	if !ok {
 		return
 	}
@@ -296,12 +305,11 @@ func (h *ChannelHandler) ListComments(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	out := messagesJSON(r.Context(), h.uc, msgs)
-	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "count": count})
+	writeMessagesSlice(w, r, h.uc, count, msgs)
 }
 
 func (h *ChannelHandler) CommentCounts(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -318,31 +326,40 @@ func (h *ChannelHandler) CommentCounts(w http.ResponseWriter, r *http.Request) {
 		}
 		ids = append(ids, id)
 	}
-	counts, recent, err := h.uc.CommentCounts(r.Context(), chatID, ids)
+	// В запросе едут НОМЕРА постов; счётчики внутри живут на ключах строк.
+	postIDs, bySeq, err := msgSeqIDs(r.Context(), h.uc, chatID, ids)
 	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	out := make(map[string]int, len(counts))
-	for id, n := range counts {
-		out[strconv.FormatInt(id, 10)] = n
+	replies, users, err := h.uc.CommentCounts(r.Context(), chatID, postIDs)
+	if err != nil {
+		h.mapErr(w, err)
+		return
 	}
-	// Авторы последних комментариев — под стек аватаров в футере поста.
-	rec := make(map[string][]map[string]any, len(recent))
-	for id, users := range recent {
-		cards := make([]map[string]any, 0, len(users))
-		for _, u := range users {
-			cards = append(cards, map[string]any{
-				"id": u.ID, "display_name": u.DisplayName, "avatar_url": u.AvatarURL,
-			})
+	// Тред каждого поста — конструктором messageReplies внутри `messageViews`;
+	// авторы последних комментариев это ССЫЛКИ, а карточки едут ОДНИМ вектором
+	// users. Вектор ПОЗИЦИОННЫЙ: i-й элемент отвечает i-му номеру из запроса —
+	// прежде ответ был картой, ключом которой служил номер поста строкой.
+	byID := make(map[int64]domain.MessageReplies, len(replies))
+	for id, rep := range replies {
+		byID[id] = rep
+	}
+	out := make([]domain.MessageViews, 0, len(ids))
+	for _, seq := range ids {
+		id, ok := bySeq[seq]
+		if rep, has := byID[id]; ok && has {
+			out = append(out, domain.NewMessageViewsReplies(rep))
+			continue
 		}
-		rec[strconv.FormatInt(id, 10)] = cards
+		out = append(out, domain.NewMessageViewsEmpty())
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"counts": out, "recent_repliers": rec})
+	writeJSON(w, http.StatusOK, domain.NewMessagesMessageViews(out, users))
 }
 
 func (h *ChannelHandler) ViewCounts(w http.ResponseWriter, r *http.Request) {
-	if _, ok := pathInt(w, r, "chatID"); !ok {
+	chatID, ok := peerChatID(w, r, h.uc)
+	if !ok {
 		return
 	}
 	ids := make([]int64, 0)
@@ -358,21 +375,82 @@ func (h *ChannelHandler) ViewCounts(w http.ResponseWriter, r *http.Request) {
 		}
 		ids = append(ids, id)
 	}
-	counts, err := h.uc.ViewCounts(r.Context(), ids)
+	// Как и у комментариев: снаружи посты адресуются НОМЕРАМИ этого канала.
+	// Раньше ключ пира из URL здесь не использовался вовсе, и по ключам строк
+	// счётчики просмотров отдавались для сообщений ЛЮБОГО чата.
+	postIDs, bySeq, err := msgSeqIDs(r.Context(), h.uc, chatID, ids)
 	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	out := make(map[string]int64, len(counts))
-	for id, n := range counts {
-		out[strconv.FormatInt(id, 10)] = n
+	counts, err := h.uc.ViewCounts(r.Context(), postIDs)
+	if err != nil {
+		h.mapErr(w, err)
+		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"counts": out})
+	// Тот же контейнер, что у комментариев: у оригинала просмотры и тред это
+	// параметры ОДНОГО конструктора `messageViews`, потому что оба — счётчики
+	// одного предмета. Вектор позиционный.
+	out := make([]domain.MessageViews, 0, len(ids))
+	for _, seq := range ids {
+		if id, ok := bySeq[seq]; ok {
+			out = append(out, domain.NewMessageViewsCount(counts[id]))
+			continue
+		}
+		out = append(out, domain.NewMessageViewsEmpty())
+	}
+	writeJSON(w, http.StatusOK, domain.NewMessagesMessageViews(out, nil))
+}
+
+// RegisterViews — РЕГИСТРАЦИЯ просмотра постов, показавшихся на экране (а не
+// чтение счётчика, которым занят GET view_counts выше).
+//
+// POST, потому что вызов МЕНЯЕТ состояние: посты уезжают в message_views и
+// счётчик поста растёт — один раз на пару «пост + зритель». У оригинала обе
+// половины делает один метод, различая их флагом
+// (messages.getMessagesViews{increment}); у нас читающая половина уже была
+// ручкой, поэтому пишущая стала соседней, а не флагом на GET.
+//
+// Ответ — тот же контейнер messages.messageViews с ПОЗИЦИОННЫМ вектором, что и
+// у чтения: у оригинала ответ на increment это те же новые значения.
+func (h *ChannelHandler) RegisterViews(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := peerChatID(w, r, h.uc)
+	if !ok {
+		return
+	}
+	var b struct {
+		IDs []int64 `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	// Снаружи посты адресуются НОМЕРАМИ канала — как и везде.
+	postIDs, bySeq, err := msgSeqIDs(r.Context(), h.uc, chatID, b.IDs)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	counts, err := h.uc.RegisterViews(r.Context(), chatID, user.ID, postIDs)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	out := make([]domain.MessageViews, 0, len(b.IDs))
+	for _, seq := range b.IDs {
+		if id, ok := bySeq[seq]; ok {
+			out = append(out, domain.NewMessageViewsCount(counts[id]))
+			continue
+		}
+		out = append(out, domain.NewMessageViewsEmpty())
+	}
+	writeJSON(w, http.StatusOK, domain.NewMessagesMessageViews(out, nil))
 }
 
 func (h *ChannelHandler) Difference(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -408,14 +486,14 @@ func (h *ChannelHandler) Join(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // Similar — похожие каналы (по пересечению аудитории). Формат строки канала
 // совпадает с выдачей поиска; count — общее число похожих (для «+N» под Premium).
 func (h *ChannelHandler) Similar(w http.ResponseWriter, r *http.Request) {
 	viewer, _ := UserFromContext(r.Context())
-	chatID, ok := pathInt(w, r, "chatID")
+	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
@@ -424,46 +502,16 @@ func (h *ChannelHandler) Similar(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	co := make([]map[string]any, 0, len(chats))
-	for _, c := range chats {
-		co = append(co, map[string]any{
-			"id": c.ID, "type": c.Type, "title": c.Title, "username": c.Username, "member_count": c.MemberCount,
-		})
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"chats": co, "count": count})
+	// Отдан КУСОК (лимит 30), поэтому конструктор со счётчиком полного
+	// набора — по нему рисуется «+N» под Premium.
+	writeJSON(w, http.StatusOK, domain.NewMessagesChatsSlice(count, channelsOf(chats)))
 }
 
 func (h *ChannelHandler) Search(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	chats, _ := h.uc.SearchChats(r.Context(), q, 20)
 	users, _ := h.uc.SearchUsers(r.Context(), q, 20)
-	co := make([]map[string]any, 0, len(chats))
-	for _, c := range chats {
-		co = append(co, map[string]any{
-			"id": c.ID, "type": c.Type, "title": c.Title, "username": c.Username, "member_count": c.MemberCount,
-		})
-	}
 	// Аватар в выдаче поиска — по правилу profile_photo владельца.
-	viewer, _ := UserFromContext(r.Context())
-	photoOK := map[int64]bool{}
-	if h.privacy != nil && len(users) > 0 {
-		ids := make([]int64, 0, len(users))
-		for _, u := range users {
-			ids = append(ids, u.ID)
-		}
-		if v, err := h.privacy.VisibleMap(r.Context(), viewer.ID, ids, domain.PrivacyProfilePhoto); err == nil {
-			photoOK = v
-		}
-	}
-	uo := make([]map[string]any, 0, len(users))
-	for _, u := range users {
-		avatar := u.AvatarURL
-		if h.privacy != nil && !photoOK[u.ID] && u.ID != viewer.ID {
-			avatar = ""
-		}
-		uo = append(uo, map[string]any{
-			"id": u.ID, "username": u.Username, "display_name": u.DisplayName, "avatar_url": avatar,
-		})
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"chats": co, "users": uo})
+	gatePhotos(r, h.privacy, users)
+	writeJSON(w, http.StatusOK, domain.NewContactsFound(channelsOf(chats), users))
 }

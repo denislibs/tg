@@ -15,13 +15,13 @@ const deviceKey ctxKey = 1
 
 // Authenticator resolves a bearer token to the authenticated user + device.
 type Authenticator interface {
-	Authenticate(ctx context.Context, token string) (domain.User, int64, error)
+	Authenticate(ctx context.Context, token string) (domain.UserRecord, int64, error)
 }
 
 // WithUser пред-инжектит аутентифицированного (доверенным каналом, in-process)
 // юзера в ctx — так AuthMiddleware пропускает ре-аутентификацию по заголовку.
 // Внешние HTTP-запросы так юзера подсунуть НЕ могут (их ctx строится сервером с нуля).
-func WithUser(ctx context.Context, user domain.User, deviceID int64) context.Context {
+func WithUser(ctx context.Context, user domain.UserRecord, deviceID int64) context.Context {
 	ctx = context.WithValue(ctx, userKey, user)
 	return context.WithValue(ctx, deviceKey, deviceID)
 }
@@ -60,8 +60,8 @@ func bearerToken(r *http.Request) string {
 }
 
 // UserFromContext returns the authenticated user, if any.
-func UserFromContext(ctx context.Context) (domain.User, bool) {
-	u, ok := ctx.Value(userKey).(domain.User)
+func UserFromContext(ctx context.Context) (domain.UserRecord, bool) {
+	u, ok := ctx.Value(userKey).(domain.UserRecord)
 	return u, ok
 }
 

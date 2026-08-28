@@ -36,11 +36,12 @@ import IconButton from '../shared/ui/IconButton'
 import Input from '../shared/ui/Input'
 import TgIcon from './TgIcon'
 import classNames from '../shared/lib/classNames'
-import { useMediaUrl } from '../core/hooks/useMediaUrl'
+import { useMediaThumb } from '../core/hooks/useMediaThumb'
 import { useManagers } from '../core/hooks/useManagers'
 import { useMiddlewareHelper } from '../core/hooks/useMiddlewareHelper'
 import { useT, useLang } from '../i18n'
-import type { CalendarDay } from '../core/managers/messagesManager'
+import { getMediaId } from '../core/messages/messageKind'
+import type { MyMessage } from '../core/models'
 
 // Геометрия — держать синхронно с `styles/tweb/popups/_datePicker.scss`
 // (--date-picker-cell: 2.5rem при html font-size 16px ⇒ 40px).
@@ -241,7 +242,10 @@ export default function DatePickerPopup({
   const onNext = () => currentIdx >= 0 && currentIdx < sections.length - 1 && scrollToSection(sections[currentIdx + 1])
 
   // ── медиа-превью по дням: грузим месяц, как только он попал во вьюпорт ──
-  const [mediaByDay, setMediaByDay] = useState<Map<string, CalendarDay>>(new Map())
+  // В ячейке дня лежит САМО СООБЩЕНИЕ, а не выжимка его медиа — так же, как у
+  // оригинала (`datePicker.tsx:437-444`: `next.set(key, message)`). День берётся
+  // из `message.date`, превью — из `message.media`.
+  const [mediaByDay, setMediaByDay] = useState<Map<string, MyMessage>>(new Map())
   const requested = useRef(new Set<string>())
   useEffect(() => {
     if (chatId == null) return
@@ -249,11 +253,15 @@ export default function DatePickerPopup({
     for (const section of visible) {
       if (requested.current.has(section.key)) continue
       requested.current.add(section.key)
-      void managers.messages.calendarMonth(chatId, Math.floor(section.date.getTime() / 1000)).then((days) => {
-        if (!middleware() || !days.length) return
+      void managers.messages.calendarMonth(chatId, Math.floor(section.date.getTime() / 1000)).then((messages) => {
+        if (!middleware() || !messages.length) return
         setMediaByDay((prev) => {
           const next = new Map(prev)
-          for (const d of days) next.set(dayKey(new Date(d.day * 1000)), d)
+          // Первое сообщение дня выигрывает — тот же порядок, что у оригинала.
+          for (const m of messages) {
+            const key = dayKey(new Date(m.date * 1000))
+            if (!next.has(key)) next.set(key, m)
+          }
           return next
         })
       }).catch(() => {})
@@ -469,15 +477,16 @@ export default function DatePickerPopup({
 // поверх круга, но под номером дня (tweb .date-picker-month-date).
 function DayCell({ cell, media, active, weekend, onClick }: {
   cell: Cell & { kind: 'day' }
-  media?: CalendarDay
+  media?: MyMessage
   active: boolean
   weekend: boolean
   onClick: () => void
 }) {
-  // Миниатюра есть не у всякого медиа — тогда берём оригинал (бэкенд отдаёт
-  // has_thumb вместе с днём). Task 7: URL — воркерным конвейером (useMediaUrl),
-  // синхронно из зеркала при повторном рендере.
-  const thumb = useMediaUrl(media ? media.media_id : null, { thumb: !!media?.has_thumb }) || undefined
+  // Адрес файла берётся ИЗ ВЛОЖЕНИЯ сообщения (`getMediaId`), а наличие
+  // миниатюры — тем же путём, что у всех прочих превью (`useMediaThumb`
+  // спрашивает мету). Прежде оба значения ехали отдельной выжимкой рядом с
+  // самим медиа — вторым снимком того же файла.
+  const thumb = useMediaThumb(media ? getMediaId(media) ?? null : null) || undefined
   return (
     <button
       type="button"

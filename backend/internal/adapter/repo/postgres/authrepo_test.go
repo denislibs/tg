@@ -50,8 +50,8 @@ func TestAuthRepo_UserAndDeviceAndToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateWithName: %v", err)
 	}
-	if u1.DisplayName != "Денис У" {
-		t.Fatalf("display_name = %q, want %q", u1.DisplayName, "Денис У")
+	if u1.FirstName != "Денис" || u1.LastName != "У" {
+		t.Fatalf("имя не сохранено: %+v", u1)
 	}
 	// Номер уникален: повтор — ErrConflict, а найти существующего можно по номеру.
 	if _, err := repo.CreateWithName(ctx, "+702", "Кто-то", ""); !errors.Is(err, domain.ErrConflict) {
@@ -89,21 +89,23 @@ func TestAuthRepo_ProfilePhotoGallery(t *testing.T) {
 	u, _ := repo.CreateWithName(ctx, "+7100", "Галерея", "")
 
 	// Adding photos promotes each to the current avatar and lists newest-first.
-	p1, err := repo.AddProfilePhoto(ctx, u.ID, "/media/1/content", "", []byte{0xff, 0xd8, 1})
+	// Фото адресуется id медиа — content-путь больше нигде не собирается.
+	p1, err := repo.AddProfilePhoto(ctx, u.ID, 1, nil, []byte{0xff, 0xd8, 1})
 	if err != nil || p1.ID == 0 {
 		t.Fatalf("AddProfilePhoto p1: %v", err)
 	}
-	p2, err := repo.AddProfilePhoto(ctx, u.ID, "/media/2/content", "/media/22/content", []byte{0xff, 0xd8, 2})
+	video := int64(22)
+	p2, err := repo.AddProfilePhoto(ctx, u.ID, 2, &video, []byte{0xff, 0xd8, 2})
 	if err != nil {
 		t.Fatalf("AddProfilePhoto p2: %v", err)
 	}
 	got, _ := repo.GetByID(ctx, u.ID)
-	if got.AvatarURL != "/media/2/content" {
-		t.Fatalf("avatar_url after add = %q, want /media/2/content", got.AvatarURL)
+	if got.PhotoID == nil || *got.PhotoID != 2 {
+		t.Fatalf("avatar media id after add = %v, want 2", got.PhotoID)
 	}
 	// stripped-превью текущей аватарки денормализовано в users.avatar_preview.
-	if !bytes.Equal(got.AvatarPreview, []byte{0xff, 0xd8, 2}) {
-		t.Fatalf("avatar_preview after add = %v, want превью p2", got.AvatarPreview)
+	if !bytes.Equal(got.PhotoPreview, []byte{0xff, 0xd8, 2}) {
+		t.Fatalf("avatar_preview after add = %v, want превью p2", got.PhotoPreview)
 	}
 	list, err := repo.ListProfilePhotos(ctx, u.ID)
 	if err != nil || len(list) != 2 {
@@ -112,40 +114,40 @@ func TestAuthRepo_ProfilePhotoGallery(t *testing.T) {
 	if list[0].ID != p2.ID || list[1].ID != p1.ID {
 		t.Fatalf("expected newest-first order, got %d then %d", list[0].ID, list[1].ID)
 	}
-	if list[0].VideoURL != "/media/22/content" {
-		t.Fatalf("video_url = %q, want /media/22/content", list[0].VideoURL)
+	if list[0].VideoMediaID == nil || *list[0].VideoMediaID != 22 {
+		t.Fatalf("video media id = %v, want 22", list[0].VideoMediaID)
 	}
 
 	// Deleting the current avatar (p2) falls back to the next most-recent (p1).
-	newURL, err := repo.DeleteProfilePhoto(ctx, u.ID, p2.ID)
-	if err != nil || newURL != "/media/1/content" {
-		t.Fatalf("DeleteProfilePhoto(current) newURL = %q, %v", newURL, err)
+	newID, err := repo.DeleteProfilePhoto(ctx, u.ID, p2.ID)
+	if err != nil || newID == nil || *newID != 1 {
+		t.Fatalf("DeleteProfilePhoto(current) = %v, %v", newID, err)
 	}
 	got, _ = repo.GetByID(ctx, u.ID)
-	if got.AvatarURL != "/media/1/content" {
-		t.Fatalf("avatar_url after delete = %q, want /media/1/content", got.AvatarURL)
+	if got.PhotoID == nil || *got.PhotoID != 1 {
+		t.Fatalf("avatar after delete = %v, want 1", got.PhotoID)
 	}
-	// Превью откатилось вместе с url — к превью p1.
-	if !bytes.Equal(got.AvatarPreview, []byte{0xff, 0xd8, 1}) {
-		t.Fatalf("avatar_preview after delete = %v, want превью p1", got.AvatarPreview)
+	// Превью откатилось вместе с фото — к превью p1.
+	if !bytes.Equal(got.PhotoPreview, []byte{0xff, 0xd8, 1}) {
+		t.Fatalf("avatar_preview after delete = %v, want превью p1", got.PhotoPreview)
 	}
 
 	// Deleting the last photo clears the avatar.
-	newURL, err = repo.DeleteProfilePhoto(ctx, u.ID, p1.ID)
-	if err != nil || newURL != "" {
-		t.Fatalf("DeleteProfilePhoto(last) newURL = %q, %v", newURL, err)
+	newID, err = repo.DeleteProfilePhoto(ctx, u.ID, p1.ID)
+	if err != nil || newID != nil {
+		t.Fatalf("DeleteProfilePhoto(last) = %v, %v", newID, err)
 	}
 	got, _ = repo.GetByID(ctx, u.ID)
-	if got.AvatarPreview != nil {
-		t.Fatalf("avatar_preview after last delete = %v, want nil", got.AvatarPreview)
+	if got.PhotoPreview != nil || got.PhotoID != nil {
+		t.Fatalf("аватарка не снята: photo=%v preview=%v", got.PhotoID, got.PhotoPreview)
 	}
 
 	// Deleting another user's / unknown photo is a no-op returning the unchanged avatar.
 	other, _ := repo.CreateWithName(ctx, "+7101", "Другой", "")
-	op, _ := repo.AddProfilePhoto(ctx, other.ID, "/media/9/content", "", nil)
-	newURL, err = repo.DeleteProfilePhoto(ctx, u.ID, op.ID)
-	if err != nil || newURL != "" {
-		t.Fatalf("DeleteProfilePhoto(other) newURL = %q, %v (should be no-op)", newURL, err)
+	op, _ := repo.AddProfilePhoto(ctx, other.ID, 9, nil, nil)
+	newID, err = repo.DeleteProfilePhoto(ctx, u.ID, op.ID)
+	if err != nil || newID != nil {
+		t.Fatalf("DeleteProfilePhoto(other) = %v, %v (should be no-op)", newID, err)
 	}
 	otherList, _ := repo.ListProfilePhotos(ctx, other.ID)
 	if len(otherList) != 1 {

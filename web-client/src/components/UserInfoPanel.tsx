@@ -6,7 +6,7 @@ import rootScope from '@lib/rootScope'
 import TgIcon from './TgIcon'
 import ChannelStats from './ChannelStats'
 import Avatar from '../shared/ui/Avatar'
-import { useAvatarSrc } from './useAvatarSrc'
+import { useMediaUrl } from '../core/hooks/useMediaUrl'
 import VerifiedBadge from './VerifiedBadge'
 import PremiumBadge from './PremiumBadge'
 import EmojiStatus from './EmojiStatus'
@@ -25,12 +25,12 @@ import { useChatsStore } from '../stores/chatsStore'
 import { useNavLayer } from '../core/hooks/useNavLayer'
 import { useTransitionSlider } from '../core/hooks/useTransitionSlider'
 import { useLang } from '../i18n'
-import { lastSeenLabel } from '../core/presence'
+import { userStatusLabel } from '../core/presence'
 // Просмотрщик фото профиля — vanilla-вьювер (Task 16, замена MediaLightbox)
 import { openMediaViewer } from './mediaViewer/openMediaViewer'
 import type { ViewerItem } from './mediaViewer/appMediaViewer'
 import { clampIndex, pickZone, stepIndex, indexAfterSwipe } from '../core/photoPager'
-import type { GiftInfo } from '../core/managers/starsManager'
+import type { SavedStarGift } from '../core/managers/starsManager'
 import GiftInfoPopup from './stars/GiftInfoPopup'
 import KeyVerificationPopup from './secret/KeyVerificationPopup'
 import SharedMedia from './userInfo/SharedMedia'
@@ -38,6 +38,38 @@ import RightsEditor from './userInfo/RightsEditor'
 import { membersLabel, chatsLabel, countLabel, sharedMediaChatId, HEADER_H, ADDITIONAL_OFFSET, BODY_PADDING, TAB_GAP } from './userInfo/helpers'
 import installColumnResize from '../core/dom/installColumnResize'
 import { useRightColumnShown } from '../core/hooks/useRightColumnShown'
+import animationIntersector from './animationIntersector'
+import { NULL_PEER_ID, isUser as isUserPeer } from '../core/peers/peerId'
+import { formatBirthday } from '../core/format/birthday'
+
+/**
+ * Видео-аватарка профиля — порт tweb `loadAvatarVideoOverlay` (avatarNew.tsx:150-190)
+ * в части УЧЁТА: зацикленный muted-клип отдаётся общему `animationIntersector`
+ * (`type: 'video'`, наблюдается сам `<video>`), а не крутится сам по себе.
+ * Без учёта его нечем остановить: правая колонка закрывается ТРАНСФОРМОМ,
+ * узел остаётся в DOM, и наблюдатель считает его видимым — клип декодируется
+ * в закрытой панели (см. `animationIntersector.toggleVideosUnder`).
+ * Снятие с учёта на размонтировании — та же `middleware.onDestroy`-ветка
+ * оригинала (:182-188): залоченный элемент сам из реестра не уходит.
+ */
+function AvatarVideo({ src, poster }: { src: string; poster: string }) {
+  const ref = useRef<HTMLVideoElement>(null)
+  useEffect(() => {
+    const video = ref.current
+    if (!video) return
+    animationIntersector.addAnimation({ animation: video, observeElement: video, type: 'video' })
+    return () => {
+      animationIntersector.removeAnimationByPlayer(video)
+      video.pause()
+      video.src = ''
+      video.load()
+    }
+  }, [src])
+
+  // tweb `createLoopingMutedVideo(url, 'avatar-photo avatar-video')` — класс
+  // `avatar-video` адресуемый: по нему оригинал находит клипы аватарок в DOM.
+  return <video ref={ref} className="avatar-photo avatar-video" src={src} poster={poster} autoPlay muted loop playsInline />
+}
 
 export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddMembers, onEditContact, onSendGift }: { open: boolean; chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; canAddMembers?: boolean; onEditContact?: () => void; onSendGift?: () => void }) {
   const t = useT()
@@ -60,6 +92,12 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
     if (!columnEl) return
     return installColumnResize({ columnEl, side: 'right' })
   }, [])
+  // tweb `appSidebarRight.hide()`/`toggleSidebar()` (sidebarRight/index.ts:98,132):
+  // закрытая колонка уезжает ТРАНСФОРМОМ и остаётся смонтированной, поэтому
+  // видео внутри неё останавливает не наблюдатель, а явная команда.
+  useEffect(() => {
+    animationIntersector.toggleVideosUnder(columnRef.current, !open)
+  }, [open])
   const isSaved = chat.type === 'saved'
   // группы — таб «Участники», избранное — «Чаты» (tweb savedDialogs first), остальные — «Медиа»
   const [tab, setTab] = useState(chat.type === 'group' ? 'Members' : isSaved ? 'Chats' : 'Media')
@@ -69,12 +107,20 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   const [editing, setEditing] = useState(false)
   const [addingMembers, setAddingMembers] = useState(false)
   const [showStats, setShowStats] = useState(false)
-  const headerAvatarSrc = useAvatarSrc(chat.avatarUrl)
+  const headerAvatarSrc = useMediaUrl(chat.photoId ?? null)
 
   // Чужой профиль с применённой конфиденциальностью (GET /users/{id}):
   // телефон/bio/день рождения приходят пустыми, если скрыты правилами.
-  const peerId = chat.peerId
-  const profile = useUserProfile(peerId, isSaved)
+  // Ключ пира ЗНАКОВЫЙ и лежит в самом `chat.id` — отдельного поля
+  // «собеседник приватного чата» больше нет: у приватного диалога ключ и есть
+  // id собеседника.
+  const peerId = Number(chat.id)
+  // `/users/{id}` и галерея фото профиля есть ТОЛЬКО у человека. Прежде отбор
+  // делался самим существованием поля (`chat.peerId` заполнялся лишь у
+  // приватного диалога) — теперь ключ есть у любого пира, и вид спрашивают
+  // предикатом: без него панель группы ушла бы за профилем по отрицательному id.
+  const userPeerId = isUserPeer(peerId) ? peerId : null
+  const profile = useUserProfile(userPeerId, isSaved)
 
   // Тумблер Notifications = per-chat mute (tweb PeerProfile: checked = !muted,
   // переключение — togglePeerMute напрямую, без попапа длительности)
@@ -90,7 +136,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
     canInvite,
     canManageDiscussion,
     canViewStats,
-    discussionChatId,
+    discussionPeerId,
     enablingDiscussion,
     inviteLinks,
     joinRequests,
@@ -158,13 +204,11 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   // Онлайн-статус приватного собеседника — из presence-стора (как в топбаре
   // ChatHeader), а не из статичного chat.status: «в сети» / «был(а) …».
   const [lang] = useLang()
-  const peerPresence = useChatsStore((st) => (peerId != null ? st.presence[peerId] : undefined))
+  const peerPresence = useChatsStore((st) => st.presence[peerId])
   const presenceLabel =
     !isSaved && !isGroup && !isChannel
       ? peerPresence
-        ? peerPresence.online
-          ? t('online')
-          : lastSeenLabel(peerPresence.lastSeen, lang)
+        ? userStatusLabel(peerPresence, lang)
         : chat.status
       : null
 
@@ -179,7 +223,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   // просмотрщик): нужен для сегментной полоски-пейджера и перелистывания
   // прямо в шапке. Пусто/ошибка → одиночный текущий аватар.
   const avatarWrapRef = useRef<HTMLDivElement>(null)
-  const photos = useProfilePhotos({ peerId, isSaved, expanded, headerAvatarSrc })
+  const photos = useProfilePhotos({ peerId: userPeerId, isSaved, expanded, headerAvatarSrc })
   const [photoIndex, setPhotoIndex] = useState(0)
   // Смена собеседника — сбрасываем позицию (кэш галереи сбрасывает хук).
   useEffect(() => { setPhotoIndex(0) }, [peerId])
@@ -283,13 +327,15 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
 
   // Подарки в профиле (tweb Gifts tab) — только для пользователя (private).
   const meId = useChatsStore((st) => st.meId)
-  const isUser = !isSaved && !isGroup && !isChannel && peerId != null
+  // «Это человек» — вопрос к ЗНАКУ ключа, а не связка трёх отрицаний по виду
+  // диалога (`peerId != null` там же было мёртвым: ключ есть у любого пира).
+  const isUser = !isSaved && isUserPeer(peerId)
 
   // «Ключ шифрования» (tweb chatEncryptionKey) — только для секретного чата.
   const isSecret = chat.type === 'secret'
   const [keyPopupOpen, setKeyPopupOpen] = useState<boolean | null>(null)
   const { gifts, reload: loadGifts } = useProfileGifts(isUser, peerId)
-  const [selectedGift, setSelectedGift] = useState<GiftInfo | null>(null)
+  const [selectedGift, setSelectedGift] = useState<SavedStarGift | null>(null)
 
   // Ссылка группы в инфо-карточке: публичный username, иначе первая инвайт-ссылка.
   const inviteUrl = chat.username
@@ -308,9 +354,9 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
     void navigator.clipboard.writeText(value)
     rootScope.dispatchEvent('ui:toast', t(toastKey))
   }
-  const infoPhone = profile?.phone
-  const infoUsername = profile?.username ?? chat.username
-  const infoBio = profile?.bio
+  const infoPhone = profile?.user.phone
+  const infoUsername = profile?.user.username ?? chat.username
+  const infoBio = profile?.fullUser.about
 
   // Шапка прозрачная (белые иконки) над развёрнутым фото до заливки скроллом.
   const overPhoto = expanded && !filled && !!headerAvatarSrc
@@ -434,7 +480,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
                         оттуда и круг в collapsed, и object-fit у `.avatar-photo`. */}
                     <div className="avatar avatar-like avatar-full avatar-gradient profile-avatars-avatar-first">
                       {expanded && p.isVideo && p.videoSrc && i === curIndex ? (
-                        <video className="avatar-photo" src={p.videoSrc} poster={p.src} autoPlay muted loop playsInline />
+                        <AvatarVideo src={p.videoSrc} poster={p.src} />
                       ) : (
                         <img className="avatar-photo" src={p.src} alt="" draggable={false} />
                       )}
@@ -468,9 +514,9 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
             <div className="profile-avatars-info">
               <div className="profile-name">
                 <span className="peer-title">{chat.name}</span>
-                {profile?.verified && <VerifiedBadge size={22} />}
-                {profile?.premium && <PremiumBadge size={22} />}
-                {profile?.emojiStatus && <EmojiStatus emoji={profile.emojiStatus} size={22} />}
+                {profile?.user.pFlags?.verified && <VerifiedBadge size={22} />}
+                {profile?.user.pFlags?.premium && <PremiumBadge size={22} />}
+                {profile?.user.emoji_status_emoticon && <EmojiStatus emoji={profile.user.emoji_status_emoticon} size={22} />}
               </div>
               <div className="profile-subtitle">
                 <div className="profile-subtitle-text"><span>{subtitleText}</span></div>
@@ -562,10 +608,10 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
                     onClick={() => copyInfo(infoBio, 'Bio copied to clipboard')}
                   />
                 )}
-                {profile?.birthday && (
+                {profile?.fullUser.birthday && (
                   <Row
                     icon={<TgIcon name="gift" size={24} />}
-                    label={profile.birthday}
+                    label={formatBirthday(profile.fullUser.birthday, lang)}
                     sublabel={t('Birthday')}
                     translate={false}
                   />
@@ -592,7 +638,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
           )}
 
           {/* Закреплённые в профиле истории (tweb profile stories) — только у пользователя */}
-          {isUser && peerId != null && <PinnedStoriesSection peerId={peerId} />}
+          {isUser && <PinnedStoriesSection peerId={peerId} />}
 
           {/* Статистика — только канал (у групп не показываем) */}
           {isRealChat && isChannel && canViewStats && (
@@ -610,7 +656,9 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
           {/* Channel discussions: admin (creator/CHANGE_INFO) toggle / enabled state */}
           {isRealChat && isChannel && canManageDiscussion && (
             <SidebarSection noDelimiter title={t('Discussion')}>
-              {discussionChatId > 0 ? (
+              {/* ЗНАКОВЫЙ ключ: у чата он ОТРИЦАТЕЛЬНЫЙ, и прежнее «> 0»
+                  выключило бы обсуждение ровно наоборот. */}
+              {discussionPeerId !== NULL_PEER_ID ? (
                 <Row
                   icon={<TgIcon name="comments" size={24} />}
                   label="Discussion enabled"
@@ -635,15 +683,15 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
               {joinRequests.map((req) => (
                 <Row
                   key={req.userId}
-                  icon={<Avatar background="var(--primary-color)" text={req.displayName[0]?.toUpperCase()} size="md" />}
-                  label={req.displayName}
+                  icon={<Avatar background="var(--primary-color)" text={req.title[0]?.toUpperCase()} size="md" />}
+                  label={req.title}
                   translate={false}
                   right={
                     <>
                       <button
                         type="button"
                         className="btn-icon rp"
-                        aria-label={`Одобрить заявку: ${req.displayName}`}
+                        aria-label={`Одобрить заявку: ${req.title}`}
                         onClick={() => void approveJoinRequest(req.userId)}
                       >
                         <TgIcon name="check" size={22} />
@@ -651,7 +699,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
                       <button
                         type="button"
                         className="btn-icon rp danger"
-                        aria-label={`Отклонить заявку: ${req.displayName}`}
+                        aria-label={`Отклонить заявку: ${req.title}`}
                         onClick={() => void declineJoinRequest(req.userId)}
                       >
                         <TgIcon name="close" size={22} />
@@ -693,6 +741,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
           {selectedGift && (
             <GiftInfoPopup
               gift={selectedGift}
+              date={selectedGift.date}
               isOwner={peerId === meId}
               onClose={() => setSelectedGift(null)}
               onChanged={loadGifts}

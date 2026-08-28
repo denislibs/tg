@@ -42,7 +42,7 @@ export interface ChatHeaderProps {
   /** ref на контейнер плейтов — его высоту меряет Chat (tweb setFloating) */
   platesRef?: Ref<HTMLDivElement>
   // The only thing the header needs from the parent for search: jump the feed to a
-  // result's seq (the scroll machine lives in useChatScroll). Everything else about
+  // result's seq (the scroll machine lives in `chat/bubbles.ts`). Everything else about
   // search — open state, query, the backend fetch, the result rows — the header owns.
   onJumpToSeq: (seq: number) => void
   onBack?: () => void
@@ -165,7 +165,7 @@ function ChatHeader({
                   меню «⋮») — _chatTopbar.scss .chat-utils > .btn-icon: display none.
                   Сервисному аккаунту «Telegram» звонить нельзя вовсе. Ботам звонить
                   нельзя — у бот-аккаунтов нет звонков (Telegram). */}
-              {chat.type === 'private' && chat.peerId !== SERVICE_USER_ID && !(isBot || chat.isBot) && (
+              {chat.type === 'private' && Number(chat.id) !== SERVICE_USER_ID && !(isBot || chat.isBot) && (
                 <>
                   <IconButton onClick={() => startCall(false)} color="var(--secondary-text-color)" className={s.desktopOnly}>
                     <TgIcon name="phone" />

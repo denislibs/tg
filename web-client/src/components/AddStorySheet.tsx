@@ -6,10 +6,15 @@ import Text from '../shared/ui/Text'
 import { useChatsStore } from '../stores/chatsStore'
 import { useManagers } from '../core/hooks/useManagers'
 import { gradientFor } from '../core/dialogToChat'
+import { getUserTitle } from '../core/peers/getPeerTitle'
+import { cachedUser } from '../core/peerCache'
+import { isUser } from '../core/peers/peerId'
+import type { UserReal } from '../core/peers/peer'
 import classNames from '../shared/lib/classNames'
 import Emoji from './emoji/Emoji'
 import s from './AddStorySheet.module.scss'
-import type { StoryPrivacy, MediaArea } from '../core/managers/storiesManager'
+import type { StoryPrivacy } from '../core/managers/storiesManager'
+import type { MediaArea } from '../core/stories/story'
 
 export type { StoryPrivacy }
 
@@ -54,9 +59,12 @@ export default function AddStorySheet({
   const dialogs = useChatsStore((s) => s.dialogs)
   const managers = useManagers()
   // private peers only — the contact pool for the "Выбранные" audience
+  // Собеседники живут в зеркале пиров (вектор `users` контейнера `/chats`), а не
+  // внутри строки диалога; «приватный» — это ключ пользователя.
   const contacts = dialogs
-    .filter((d) => d.type === 'private' && d.peer)
-    .map((d) => d.peer!)
+    .filter((d) => isUser(d.peerId))
+    .map((d) => cachedUser(d.peerId))
+    .filter((u): u is UserReal => !!u && u._ === 'user')
 
   const [caption, setCaption] = useState('')
   const [privacy, setPrivacy] = useState<StoryPrivacy>('contacts')
@@ -68,7 +76,12 @@ export default function AddStorySheet({
   const [closeCount, setCloseCount] = useState<number | null>(null)
   useEffect(() => {
     let alive = true
-    managers.stories.closeFriends().then((ids) => { if (alive) setCloseCount(ids.length) }).catch(() => {})
+    // Считаем по КАРТОЧКАМ адресной книги: близость — флаг контакта
+    // (`pFlags.close_friend`), отдельного списка на проводе нет.
+    managers.contacts
+      .list()
+      .then((cs) => { if (alive) setCloseCount(cs.filter((c) => c.user.pFlags?.close_friend).length) })
+      .catch(() => {})
     return () => { alive = false }
   }, [managers])
 
@@ -84,8 +97,15 @@ export default function AddStorySheet({
     if (busy) return
     setBusy(true)
     try {
+      // Область — КОНСТРУКТОР схемы: вид её больше не строка `type`, эмодзи —
+      // объединение `Reaction`, а «не тёмная/не отзеркалена» это ОТСУТСТВИЕ
+      // флага, а не `false` под тем же ключом.
       const mediaAreas: MediaArea[] = reactionSticker
-        ? [{ type: 'reaction', coordinates: { x: 50, y: 78, w: 22, h: 12, rotation: 0 }, reaction: reactionSticker, dark: false, flipped: false }]
+        ? [{
+            _: 'mediaAreaSuggestedReaction',
+            coordinates: { _: 'mediaAreaCoordinates', x: 50, y: 78, w: 22, h: 12, rotation: 0 },
+            reaction: { _: 'reactionEmoji', emoticon: reactionSticker },
+          }]
         : []
       await onPublish({
         caption: caption.trim(),
@@ -265,7 +285,7 @@ export default function AddStorySheet({
                     key={c.id}
                     role="checkbox"
                     aria-checked={checked}
-                    aria-label={c.displayName}
+                    aria-label={getUserTitle(c)}
                     tabIndex={0}
                     onClick={() => toggleContact(c.id)}
                     onKeyDown={(e) => {
@@ -278,11 +298,11 @@ export default function AddStorySheet({
                   >
                     <Avatar
                       background={gradientFor(c.id)}
-                      text={c.displayName.charAt(0).toUpperCase()}
+                      text={getUserTitle(c).charAt(0).toUpperCase()}
                       size="sm"
                     />
                     <Text noWrap size={16} color="var(--primary-text-color)" className={s.contactName}>
-                      {c.displayName}
+                      {getUserTitle(c)}
                     </Text>
                     <div className={classNames(s.check, checked ? s.checkOn : '')}>
                       {checked && <TgIcon name="check" size={16} />}

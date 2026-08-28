@@ -23,7 +23,8 @@ import { guessLoadCount } from '../dialogs/loadCount'
 import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '../folderIds'
 import { dialogMatchesFolder } from '../folderFilter'
 import type { Folder } from '../managers/foldersManager'
-import type { Dialog } from '../models'
+import { isDialogArchived, type Dialog } from '../models'
+import { cachedChat } from '../peerCache'
 import type { Chat } from '../../data'
 
 /**
@@ -40,7 +41,7 @@ import type { Chat } from '../../data'
  * стабильность ссылок, ради которой обёртка и кэшируется. Курсору догрузки
  * индексы нужны — он берёт их у зеркала напрямую (`fetchPage`).
  */
-export type DialogListItem = { id: number; value: Chat }
+export type DialogListItem = { id: PeerId; value: Chat }
 
 /** `archiveDialog.tsx:27` — страница архива, которой живёт строка «Архив»
  *  (там же её лимит показа имён, см. `ArchiveRow.LIMIT`). */
@@ -120,13 +121,16 @@ export function useDialogListSource(filterId: number, chats: Chat[]): DialogList
    */
   const matchesThisFolder = useCallback((d: Dialog): boolean => {
     if (!folderKnown) return false
-    if (filterId === ARCHIVE_FOLDER_ID ? !d.archived : !!d.archived) return false
+    if (filterId === ARCHIVE_FOLDER_ID ? !isDialogArchived(d) : isDialogArchived(d)) return false
     if (!folder) return true
-    return dialogMatchesFolder({ ...d, muted: isDialogMuted(d, notifySettings) }, folder, contactIds)
+    // Карточка пира нужна дважды: правилу типов чатов (группа/канал) и правилу
+    // «заглушён» (настройки типа поверх собственного срока диалога).
+    const chat = cachedChat(d.peerId)
+    return dialogMatchesFolder(d, chat, folder, contactIds, isDialogMuted(d, chat, notifySettings))
   }, [folderKnown, folder, filterId, contactIds, notifySettings])
 
   /**
-   * Обёртки строк, живущие между пересчётами, — ключ по `chatId`. Тот же приём
+   * Обёртки строк, живущие между пересчётами, — ключ по `peerId`. Тот же приём
    * и та же мотивация, что у ref-кэша в `useChatList`, только требование
    * жёстче: `useShouldAnimate` сравнивает элементы старого и нового списка ПО
    * ССЫЛКЕ (`prev.indexOf(item)`, порт `verticalVirtualList.tsx:143-172`), и
@@ -144,20 +148,20 @@ export function useDialogListSource(filterId: number, chats: Chat[]): DialogList
    * до перерисовки не дошла бы. Оба требования совместимы, потому что
    * `useChatList` сохраняет ссылку `Chat` у строк, значения которых не менялись.
    */
-  const itemCacheRef = useRef<Map<number, DialogListItem>>(new Map())
+  const itemCacheRef = useRef<Map<PeerId, DialogListItem>>(new Map())
   /** Прошлый результат: ссылка на массив обязана пережить пересчёт, ничего в
    *  списке не изменивший (`useShouldAnimate` пересчитывается по её смене). */
   const prevItemsRef = useRef<readonly DialogListItem[]>([])
 
   const items = useMemo<readonly DialogListItem[]>(() => {
     const cache = itemCacheRef.current
-    const chatById = new Map<number, Chat>()
+    const chatById = new Map<PeerId, Chat>()
     for (const chat of chats) chatById.set(Number(chat.id), chat)
     const next: DialogListItem[] = []
-    const seen = new Set<number>()
+    const seen = new Set<PeerId>()
     for (const d of dialogs) {
       if (!matchesThisFolder(d)) continue
-      const value = chatById.get(d.chatId)
+      const value = chatById.get(d.peerId)
       // Контракт `chats` — ПОЛНАЯ витрина зеркала (`useChatList` маппит каждый
       // диалог), поэтому в норме ветка недостижима. Держим её не как защиту от
       // краша рендера (строка без витринного значения), а как единственную
@@ -165,11 +169,11 @@ export function useDialogListSource(filterId: number, chats: Chat[]): DialogList
       // БОЛЬШЕ списка (`countInMirror` считает по зеркалу, а не по `chats`), и
       // догрузка встанет ровно так же, как вставала на разъехавшемся `muted`.
       if (!value) continue
-      seen.add(d.chatId)
-      const hit = cache.get(d.chatId)
+      seen.add(d.peerId)
+      const hit = cache.get(d.peerId)
       if (hit && hit.value === value) { next.push(hit); continue }
-      const item: DialogListItem = { id: d.chatId, value }
-      cache.set(d.chatId, item)
+      const item: DialogListItem = { id: d.peerId, value }
+      cache.set(d.peerId, item)
       next.push(item)
     }
     for (const id of cache.keys()) if (!seen.has(id)) cache.delete(id)
@@ -253,7 +257,7 @@ export function useDialogListSource(filterId: number, chats: Chat[]): DialogList
   const noArchiveRef = useRef(false)
   const ensureArchiveHydrated = useEvent((forFilterId: number): void => {
     if (forFilterId !== ALL_FOLDER_ID || noArchiveRef.current) return
-    if (useChatsStore.getState().dialogs.some((d) => d.archived)) return
+    if (useChatsStore.getState().dialogs.some(isDialogArchived)) return
     void managers.dialogs.getDialogs({ filterId: ARCHIVE_FOLDER_ID, limit: ARCHIVE_ROW_LIMIT })
       .then((r) => { if (!r.dialogs.length && r.isEnd) noArchiveRef.current = true })
       .catch(() => {})
@@ -283,7 +287,7 @@ export function useDialogListSource(filterId: number, chats: Chat[]): DialogList
       // Порт base.ts:274-277: курсор — МИНИМАЛЬНЫЙ индекс отданной страницы.
       const indexById = useChatsStore.getState().dialogIndexById
       const cursor = result.dialogs.reduce<number>((prev, d) => {
-        const index = indexById[d.chatId]
+        const index = indexById[d.peerId]
         return index !== undefined && index < prev ? index : prev
       }, offsetIndex ?? Infinity)
 
@@ -291,7 +295,7 @@ export function useDialogListSource(filterId: number, chats: Chat[]): DialogList
 
       // Курсор не сдвинулся (пустая страница либо зеркало ещё не знает индексов
       // приехавших диалогов) — следующий запрос ушёл бы с ТЕМ ЖЕ `offsetIndex`
-      // и вернул ту же страницу: у владельца сетевой курсор свой (`chatId`
+      // и вернул ту же страницу: у владельца сетевой курсор свой (`peerId`
       // хвоста кэша, `dialogsManager.ts::fetchPage`), поэтому цикл фетчера
       // крутился бы вечно. `count: 0` — единственный выход из него
       // (sequentialCursorFetcher.ts: `if(count === 0) break`).

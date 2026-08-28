@@ -46,12 +46,12 @@ describe('applyStateMirror', () => {
   })
 
   it('соседние ключи не трогаются', () => {
-    setAppState('drafts', [{ chatId: 1, text: 'мой', replyToId: null, updatedAt: '2026-08-10T00:00:00Z' }])
-    const drafts = useAppStateStore.getState().drafts
+    setAppState('recentSearch', ['1', '2'])
+    const recent = useAppStateStore.getState().recentSearch
 
     applyStateMirror('folders', [folder])
 
-    expect(useAppStateStore.getState().drafts).toBe(drafts)
+    expect(useAppStateStore.getState().recentSearch).toBe(recent)
   })
 })
 

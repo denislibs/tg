@@ -26,7 +26,7 @@ func TestDraftsRepo_CRUD(t *testing.T) {
 	reply := int64(42)
 	d, err := r.Upsert(ctx, user, domain.Draft{
 		ChatID: chat1, Text: "*bold* черновик",
-		Entities:  []domain.MessageEntity{{Type: "bold", Offset: 0, Length: 4}},
+		Entities:  domain.MessageEntities{domain.NewMessageEntityBold(0, 4)},
 		ReplyToID: &reply,
 	})
 	if err != nil || d.Text != "*bold* черновик" || d.ReplyToID == nil || *d.ReplyToID != 42 || len(d.Entities) != 1 {

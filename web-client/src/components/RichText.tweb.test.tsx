@@ -21,10 +21,10 @@ afterEach(cleanup)
 describe('RichText — семантические теги форматирования (tweb wrapRichText)', () => {
   it('bold → <strong>, italic → <em>, underline → <u>, strike → <del>', () => {
     const ents: MessageEntity[] = [
-      { type: 'bold', offset: 0, length: 1 },
-      { type: 'italic', offset: 1, length: 1 },
-      { type: 'underline', offset: 2, length: 1 },
-      { type: 'strikethrough', offset: 3, length: 1 },
+      { _: 'messageEntityBold', offset: 0, length: 1 },
+      { _: 'messageEntityItalic', offset: 1, length: 1 },
+      { _: 'messageEntityUnderline', offset: 2, length: 1 },
+      { _: 'messageEntityStrike', offset: 3, length: 1 },
     ]
     const { container } = render(<RichText text="bius" entities={ents} linkColor="var(--link-color)" />)
 
@@ -36,8 +36,8 @@ describe('RichText — семантические теги форматиров�
 
   it('text_link — a.anchor-url, а вложенный bold остаётся <strong> внутри ссылки', () => {
     const ents: MessageEntity[] = [
-      { type: 'text_link', offset: 0, length: 6, url: 'https://example.com/a' },
-      { type: 'bold', offset: 0, length: 6 },
+      { _: 'messageEntityTextUrl', offset: 0, length: 6, url: 'https://example.com/a' },
+      { _: 'messageEntityBold', offset: 0, length: 6 },
     ]
     const { container } = render(<RichText text="СТАТЬЯ" entities={ents} linkColor="var(--link-color)" />)
 

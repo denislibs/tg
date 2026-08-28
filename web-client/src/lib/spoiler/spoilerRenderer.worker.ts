@@ -10,24 +10,31 @@
 // отступление от tweb: у нас только dedicated Worker (в tweb ветка SharedWorker
 // закрыта флагом IS_SHARED_WORKER_OFFSCREEN_CANVAS_SUPPORTED = false), поэтому
 // вместо набора PortState (по вкладке) и карт симуляций по dpr — одно состояние
-// на воркер: вкладка тут ровно одна и dpr у неё один. Ветка media-* не
-// портирована (потребителей нет): её место — этот switch.
+// на воркер: вкладка тут ровно одна и dpr у неё один.
 //
-// отступление от tweb: конфиг симуляции строится ЗДЕСЬ, а не на странице
-// (в tweb он приходит в `text-init`). Так `dotRendererCore` и шейдеры остаются
-// в чанке воркера и не тянутся в главный чанк вслед за RichText.
+// Симуляций ДВЕ, как в оригинале: текстовая (тайл 240×120, мелкие быстрые
+// частицы — блеф-маска и оверлеи баблов) и медийная (тайл 480×480, дефолтный
+// конфиг — плитка, из которой каждый спойлер медиа вырезает свой кусок).
+//
+// Конфиг симуляции и адреса шейдеров приходят СО СТРАНИЦЫ (`text-init`/
+// `media-init`) — как в tweb. Шейдеры воркер фетчит по этим адресам сам, так что
+// GLSL не дублируется в двух чанках.
 import DotRendererCore, {
-  buildDotRendererConfig,
-  getDefaultParticlesCount,
+  drawClippingCircle,
   type DotRendererConfig,
 } from './dotRendererCore'
 import { drawImageFromSource } from './drawImageFromSource'
-import { defaultEasing, unwrapEasing, type EasingFunction } from './bezierEasing'
+import callbackify from '@helpers/callbackify'
+import { defaultEasing, simpleEasing, unwrapEasing } from '@helpers/easings'
+import type { EasingFunction } from './bezierEasing'
 
 export interface SpoilerRendererSimInit {
   width: number
   height: number
   dpr: number
+  config: DotRendererConfig
+  vertexURL: string
+  fragmentURL: string
 }
 
 /** Прямоугольник слова спойлера: координаты — CSS-пиксели относительно оверлея. */
@@ -54,6 +61,10 @@ export type SpoilerRendererInMessage =
   | ({ type: 'text-init' } & SpoilerRendererSimInit)
   | { type: 'bluff-play' }
   | { type: 'bluff-pause' }
+  | ({ type: 'media-init' } & SpoilerRendererSimInit)
+  | { type: 'media-attach'; id: number; canvas: OffscreenCanvas; x: number; y: number; color?: string }
+  | { type: 'media-play' | 'media-pause' | 'media-detach'; id: number }
+  | { type: 'media-reveal'; id: number; coords: { x: number; y: number }; maxDist: number; duration: number }
   | { type: 'overlay-attach'; id: number; canvas: OffscreenCanvas; dpr: number }
   | SpoilerOverlayUpdate
   | { type: 'overlay-unwrap'; id: number; coords: [number, number]; maxDist: number; duration: number }
@@ -62,9 +73,13 @@ export type SpoilerRendererInMessage =
 
 export type SpoilerRendererOutMessage =
   | { type: 'bluff-mask'; url: string }
+  // tweb: страница ждёт `media-inited`, чтобы показать спойлер только когда
+  // симуляция реально поднялась
+  | { type: 'media-inited' }
   // WebGL2 не поднялся уже в воркере (страница проверяет отдельно, но драйвер
   // может отказать именно здесь) — потребитель обязан уйти на статический фолбэк
   | { type: 'text-init-failed' }
+  | { type: 'media-init-failed' }
   // отступление от tweb (там страница ждёт только `text-inited`): подтверждаем не
   // готовность симуляции, а ФАКТ первой отрисовки слов. Страница показывает
   // настоящий текст (`can-show-spoiler-text`) только после этого — иначе сбой
@@ -76,7 +91,7 @@ export type SpoilerRendererOutMessage =
 // В tsconfig нет lib "webworker" (проект типизируется под DOM), поэтому глобалы
 // воркера описываем узко — ровно тем, чем пользуемся.
 interface WorkerContext {
-  onmessage: ((event: MessageEvent<SpoilerRendererInMessage>) => void) | null
+  onmessage: ((event: MessageEvent<SpoilerRendererInMessage | ImageBitmap>) => void) | null
   postMessage: (message: SpoilerRendererOutMessage) => void
   setTimeout: (handler: () => void, timeout: number) => number
 }
@@ -85,29 +100,29 @@ const ctx = self as unknown as WorkerContext
 const FRAME_INTERVAL = 1000 / 60
 const ENCODE_INTERVAL = 4 * (1000 / 60) // раз в 4 кадра (при 60fps) — чтобы не жечь CPU
 
-// tweb components/dotRenderer.ts getTextSpoilerConfig — текстовый спойлер мельче
-// и шустрее медийного
-const getTextSpoilerConfig = (
-  width: number,
-  height: number,
-  dpr: number,
-): Partial<DotRendererConfig> => ({
-  particlesCount: 4 * getDefaultParticlesCount(width, height),
-  noiseSpeed: 5,
-  maxVelocity: 10,
-  timeScale: 1.2,
-  radius: 1.8 * dpr,
-  forceMult: 0.2,
-  velocityMult: 0.4,
-  dampingMult: 2.2,
-  longevity: 5.0,
-})
-
-interface TextSim {
+interface Sim {
   core: DotRendererCore
   canvas: OffscreenCanvas
+}
+
+interface TextSim extends Sim {
   encoding: boolean
   lastEncodeTime: number
+}
+
+/**
+ * Спойлер одного медиа: страница отдала сюда свою канву и сдвиг, под которым
+ * она сэмплит общий тайл симуляции. Рисование и анимация раскрытия — здесь.
+ */
+interface MediaTarget {
+  canvas: OffscreenCanvas
+  context: OffscreenCanvasRenderingContext2D
+  x: number
+  y: number
+  color?: string
+  playing: boolean
+  revealed: boolean
+  reveal?: { coords: { x: number; y: number }; maxDist: number; duration: number; startTime: number }
 }
 
 interface Unwrap {
@@ -143,9 +158,13 @@ interface OverlayTarget {
 
 let textSim: TextSim | null = null
 let textSimFailed = false
+let mediaSim: Sim | null = null
+let mediaSimFailed = false
+let mediaSimDpr = 1
 let bluffPlaying = false
 let timerId: number | undefined
 const overlayTargets = new Map<number, OverlayTarget>()
+const mediaTargets = new Map<number, MediaTarget>()
 
 const toDataURL = (blob: Blob) =>
   blob.arrayBuffer().then((buffer) => {
@@ -190,6 +209,45 @@ const applyColorOnContext = (
   context.fillStyle = color
   context.fillRect(x, y, width, height)
   context.globalCompositeOperation = 'source-over'
+}
+
+// tweb `drawMediaTarget`: вырезаем из общего тайла симуляции свой кусок; на
+// раскрытии частицы «поддуваются» от точки клика и выедаются растущим кругом.
+const drawMediaTarget = (sim: Sim, target: MediaTarget, dpr: number) => {
+  const { canvas, context, x, y, reveal } = target
+  const { width, height } = canvas
+
+  context.clearRect(0, 0, width, height)
+
+  if (!reveal) {
+    context.drawImage(sim.canvas, x, y, width, height, 0, 0, width, height)
+  } else {
+    const progress = simpleEasing(Math.min((Date.now() - reveal.startTime) / reveal.duration, 1))
+
+    // Zoom (push) the particles
+    const scaledProgress = progress ** 2 * 0.5
+    context.drawImage(
+      sim.canvas,
+      x + reveal.coords.x * scaledProgress,
+      y + reveal.coords.y * scaledProgress,
+      width * (1 - scaledProgress),
+      height * (1 - scaledProgress),
+      0,
+      0,
+      width,
+      height,
+    )
+
+    drawClippingCircle(context, progress, reveal.coords, reveal.maxDist, dpr)
+
+    if (progress >= 1) {
+      target.revealed = true
+    }
+  }
+
+  if (target.color) {
+    applyColorOnContext(context, target.color, 0, 0, width, height)
+  }
 }
 
 const getUnwrapProgress = (unwrap: Unwrap) => {
@@ -280,6 +338,9 @@ const drawOverlayTarget = (target: OverlayTarget) => {
   }
 }
 
+const isMediaTargetActive = (target: MediaTarget) =>
+  !target.revealed && (target.playing || !!target.reveal)
+
 const isOverlayTargetActive = (target: OverlayTarget) =>
   target.playing ||
   target.needsRedraw ||
@@ -290,11 +351,18 @@ const anyOverlayActive = () => {
   return false
 }
 
-const needsFrame = () => bluffPlaying || anyOverlayActive()
+const anyMediaActive = () => {
+  for (const target of mediaTargets.values()) if (isMediaTargetActive(target)) return true
+  return false
+}
+
+const needsTextFrame = () => bluffPlaying || anyOverlayActive()
+
+const needsFrame = () => needsTextFrame() || anyMediaActive()
 
 const frame = () => {
   const sim = textSim
-  if (sim && needsFrame()) {
+  if (sim && needsTextFrame()) {
     sim.core.draw()
 
     const now = Date.now()
@@ -308,6 +376,13 @@ const frame = () => {
     if (isOverlayTargetActive(target)) drawOverlayTarget(target)
   }
 
+  if (mediaSim && anyMediaActive()) {
+    mediaSim.core.draw()
+    for (const target of mediaTargets.values()) {
+      if (isMediaTargetActive(target)) drawMediaTarget(mediaSim, target, mediaSimDpr)
+    }
+  }
+
   // setTimeout, а не requestAnimationFrame: из канваса симуляции ничего не
   // презентится, темп нужен только шагам симуляции (и rAF в воркере без
   // трансфернутого канваса всё равно не тикает)
@@ -317,44 +392,121 @@ const frame = () => {
 const ensureLoop = () => {
   if (timerId !== undefined || !needsFrame()) return
 
-  if (textSim) textSim.core.lastDrawTime = Date.now() // чтобы первый dt не был гигантским
+  // чтобы первый dt не был гигантским
+  const now = Date.now()
+  if (textSim) textSim.core.lastDrawTime = now
+  if (mediaSim) mediaSim.core.lastDrawTime = now
   frame()
+}
+
+/** tweb `createSim`: канвас тайла, ядро на присланных URL шейдеров, конфиг со страницы. */
+const createSim = (init: SpoilerRendererSimInit): Sim => {
+  const canvas = new OffscreenCanvas(init.width * init.dpr, init.height * init.dpr)
+  const core = new DotRendererCore(canvas, { vertex: init.vertexURL, fragment: init.fragmentURL })
+  core.resize(init.width, init.height, init.dpr, init.config)
+  return { core, canvas }
 }
 
 /** Симуляция создаётся один раз на воркер; повторные `text-init` — no-op. */
 const initTextSim = (message: SpoilerRendererSimInit) => {
-  if (textSim) return
-  if (textSimFailed) {
-    ctx.postMessage({ type: 'text-init-failed' })
+  if (textSim || textSimFailed) {
+    if (textSimFailed) ctx.postMessage({ type: 'text-init-failed' })
     return
   }
 
+  let sim: TextSim
   try {
-    const canvas = new OffscreenCanvas(message.width * message.dpr, message.height * message.dpr)
-    const core = new DotRendererCore(
-      canvas,
-      buildDotRendererConfig(
-        message.width,
-        message.height,
-        message.dpr,
-        getTextSpoilerConfig(message.width, message.height, message.dpr),
-      ),
-    )
-    if (!core.init()) throw new Error('init failed')
-    textSim = { core, canvas, encoding: false, lastEncodeTime: 0 }
+    sim = textSim = { ...createSim(message), encoding: false, lastEncodeTime: 0 }
   } catch {
     textSimFailed = true
     ctx.postMessage({ type: 'text-init-failed' })
     return
   }
 
-  ensureLoop()
+  // шейдеры грузятся по сети — готовность приходит асинхронно (tweb: `callbackify`)
+  void callbackify(sim.core.init(), (ok) => {
+    if (!ok) {
+      textSim = null
+      textSimFailed = true
+      ctx.postMessage({ type: 'text-init-failed' })
+      return
+    }
+
+    ensureLoop()
+  })
+}
+
+/**
+ * Медийная симуляция — тоже одна на воркер (tweb: одна на dpr, а dpr у
+ * единственной вкладки один). Конфиг дефолтный: медийный спойлер крупнее и
+ * спокойнее текстового.
+ */
+const initMediaSim = (message: SpoilerRendererSimInit) => {
+  if (mediaSim) {
+    // симуляция уже поднята — новому потребителю всё равно нужен ответ
+    ctx.postMessage({ type: 'media-inited' })
+    return
+  }
+  if (mediaSimFailed) {
+    ctx.postMessage({ type: 'media-init-failed' })
+    return
+  }
+
+  let sim: Sim
+  try {
+    sim = mediaSim = createSim(message)
+    mediaSimDpr = message.dpr
+  } catch {
+    mediaSimFailed = true
+    ctx.postMessage({ type: 'media-init-failed' })
+    return
+  }
+
+  void callbackify(sim.core.init(), (ok) => {
+    if (!ok) {
+      mediaSim = null
+      mediaSimFailed = true
+      ctx.postMessage({ type: 'media-init-failed' })
+      return
+    }
+
+    ctx.postMessage({ type: 'media-inited' })
+    ensureLoop()
+  })
+}
+
+// legacy-режим для браузеров без WebGL2 в OffscreenCanvas: симуляция крутится в
+// главном потоке, воркер только кодирует присланные им кадры блеф-маски
+// (tweb `encodeBitmap`).
+let encodeCanvas: OffscreenCanvas | undefined
+let encodeContext: ImageBitmapRenderingContext | null = null
+const encodeBitmap = (bitmap: ImageBitmap) => {
+  if (
+    !encodeCanvas ||
+    encodeCanvas.width !== bitmap.width ||
+    encodeCanvas.height !== bitmap.height
+  ) {
+    encodeCanvas = new OffscreenCanvas(bitmap.width, bitmap.height)
+    encodeContext = encodeCanvas.getContext('bitmaprenderer')
+  }
+  if (!encodeContext) return
+
+  encodeContext.transferFromImageBitmap(bitmap)
+  encodeCanvas.convertToBlob({ type: 'image/webp', quality: 1 }).then(toDataURL).then(
+    (url) => ctx.postMessage({ type: 'bluff-mask', url }),
+    () => {},
+  )
 }
 
 // Разрушать симуляцию отдельным сообщением не нужно: последний потребитель
 // отпускает мост, тот делает terminate() — поток умирает вместе с GL-контекстом.
 ctx.onmessage = (event) => {
   const message = event.data
+  if (message instanceof ImageBitmap) {
+    encodeBitmap(message)
+    return
+  }
+
   switch (message.type) {
     case 'text-init': {
       initTextSim(message)
@@ -369,6 +521,59 @@ ctx.onmessage = (event) => {
 
     case 'bluff-pause': {
       bluffPlaying = false
+      break
+    }
+
+    case 'media-init': {
+      initMediaSim(message)
+      break
+    }
+
+    case 'media-attach': {
+      const context = message.canvas.getContext('2d')
+      if (!context) break
+
+      mediaTargets.set(message.id, {
+        canvas: message.canvas,
+        context,
+        x: message.x,
+        y: message.y,
+        color: message.color,
+        playing: false,
+        revealed: false,
+      })
+      break
+    }
+
+    case 'media-play': {
+      const target = mediaTargets.get(message.id)
+      if (!target) break
+      target.playing = true
+      ensureLoop()
+      break
+    }
+
+    case 'media-pause': {
+      const target = mediaTargets.get(message.id)
+      if (target) target.playing = false
+      break
+    }
+
+    case 'media-reveal': {
+      const target = mediaTargets.get(message.id)
+      if (!target || target.revealed) break
+      target.reveal = {
+        coords: message.coords,
+        maxDist: message.maxDist,
+        duration: message.duration,
+        startTime: Date.now(),
+      }
+      ensureLoop()
+      break
+    }
+
+    case 'media-detach': {
+      mediaTargets.delete(message.id)
       break
     }
 

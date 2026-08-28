@@ -12,10 +12,11 @@
 // разбора authState), то есть в точке, где Shell со своим `selected`/`threadChat`
 // ещё не существует. На экране входа выбора нет, вариант выходит undefined и
 // обои рисуются дефолтной темой — как в tweb.
+import { useSyncExternalStore } from 'react'
 import { chatThemeVariant, type ChatThemeVariant } from '../../chatThemes'
+import { cachedPeerTheme, chatFullMirrorVersion, subscribeChatFullMirror } from '../chatFullCache'
 import { resolvePreset, PRESET_MODE } from '../../theme'
 import { useSettingsStore } from '../../settings'
-import { useChatsStore } from '../../stores/chatsStore'
 import { useNavigationStore } from '../../stores/navigationStore'
 import { useChatStackStore, selectOpenThreadDesc } from '../../stores/chatStackStore'
 
@@ -26,15 +27,17 @@ export interface ShellTheme {
 export function useShellTheme(): ShellTheme {
   const selectedId = useNavigationStore((s) => s.selectedId)
   const openThread = useChatStackStore(selectOpenThreadDesc)
-  // Тема живёт в диалоге (chatsStore.dialogs) — тот же источник, из которого
-  // useChatList собирает Chat, поэтому отдельный фолбэк по `selected.themeId`
-  // ничего не добавил бы. Черновик (`draft:<peerId>`) и синтетический чат треда
-  // темы не имеют по построению.
+  // Тема живёт в ПОЛНОЙ КАРТОЧКЕ пира (`theme_emoticon`), а не в строке
+  // диалога: в схеме её место `chatFull`/`userFull`, и с провода `/chats` она
+  // ушла вместе с решением Р7. Зеркало карточек — `core/chatFullCache.ts`;
+  // подписка на него нужна, чтобы кадр `chat_theme_update` (и приезд самой
+  // карточки) перекрасил обои. Черновик (`draft:<peerId>`) и синтетический чат
+  // треда темы не имеют по построению.
   const activeChatNumId = openThread
     ? openThread.peerId
     : (selectedId && /^\d+$/.test(selectedId) ? Number(selectedId) : null)
-  const activeDialogThemeId = useChatsStore((st) =>
-    activeChatNumId == null ? undefined : st.dialogs.find((d) => d.chatId === activeChatNumId)?.themeId)
+  useSyncExternalStore(subscribeChatFullMirror, chatFullMirrorVersion)
+  const activeDialogThemeId = activeChatNumId == null ? undefined : cachedPeerTheme(activeChatNumId)
   const shellThemeChoice = useSettingsStore((st) => st.themeChoice)
   const shellThemeMode = PRESET_MODE[resolvePreset(shellThemeChoice)]
   const shellThemeVariant = chatThemeVariant(activeDialogThemeId, shellThemeMode)

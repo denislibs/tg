@@ -24,15 +24,16 @@ import TgIcon from '../TgIcon'
 import { useRipple } from '../../shared/ui/Ripple/useRipple'
 import classNames from '../../shared/lib/classNames'
 import { useT } from '../../i18n'
-import type { Message } from '../../core/models'
+import type { MyMessage } from '../../core/models'
 import { pinBadgeNumber } from '../../core/pinnedCycle'
-import { replyMediaLabel } from '../../core/messageToConvMsg'
+import { messageForReply } from '../../core/messageToConvMsg'
+import { getMediaId } from '../../core/messages/messageKind'
 import { useMediaThumb } from '../../core/hooks/useMediaThumb'
 import PinnedBorder from './PinnedBorder'
 import AnimatedSuper from './AnimatedSuper'
 
 export interface PinnedBarProps {
-  pins: Message[]
+  pins: MyMessage[]
   /** индекс показанного пина (0 = новейший) — из usePinnedBar */
   index: number
   searchOpen: boolean
@@ -59,7 +60,7 @@ function PinnedBar({ pins, index, searchOpen, onFollow, onUnpin, onOpenList }: P
   // А false он у медиа без миниатюры — replyContainer.ts:79-81. Здесь тот же
   // признак — резолвнутый URL миниатюры: '' у голосового/аудио/файла без превью,
   // и тогда нет ни `<img>`, ни класса.
-  const thumb = useMediaThumb(shown?.mediaId ?? null)
+  const thumb = useMediaThumb(shown ? getMediaId(shown) ?? null : null)
 
   if (searchOpen || pins.length === 0) return null
 
@@ -113,7 +114,7 @@ function PinnedBar({ pins, index, searchOpen, onFollow, onUnpin, onOpenList }: P
             <AnimatedSuper index={index}>
               {/* tweb wrapMessageForReply (messageForReply.ts:66) кладёт каждую
                   часть превью в `<span>` — включая лейбл медиа без подписи */}
-              <span>{shown?.text || replyMediaLabel(shown?.type) || t('Message')}</span>
+              <span>{(shown && messageForReply(shown)) || t('Message')}</span>
             </AnimatedSuper>
           </div>
         </div>

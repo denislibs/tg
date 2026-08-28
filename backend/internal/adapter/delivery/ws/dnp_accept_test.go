@@ -18,11 +18,11 @@ import (
 
 type fakeAuth struct{ token string }
 
-func (f fakeAuth) Authenticate(_ context.Context, token string) (domain.User, int64, error) {
+func (f fakeAuth) Authenticate(_ context.Context, token string) (domain.UserRecord, int64, error) {
 	if token != f.token {
-		return domain.User{}, 0, domain.ErrForbidden
+		return domain.UserRecord{}, 0, domain.ErrForbidden
 	}
-	return domain.User{ID: 42}, 7, nil
+	return domain.UserRecord{ID: 42}, 7, nil
 }
 
 // fixedReader и dnpSuite определены в dnp_support_test.go (пакет ws) — не дублировать.

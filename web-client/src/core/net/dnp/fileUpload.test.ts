@@ -10,7 +10,9 @@ function fakeTransport() {
   return {
     isOpen: () => true,
     sendBinary: (d: Uint8Array) => frames.push(d),
-    on: (t: string, cb: (d: unknown) => void) => { if (t === 'file_up_ok') okCbs.push(cb); else if (t === 'file_up_err') errCbs.push(cb) },
+    onFrame: (cb: (t: string, d: unknown) => void) => {
+      okCbs.push((d) => cb('file_up_ok', d)); errCbs.push((d) => cb('file_up_err', d))
+    },
     onClose: (cb: () => void) => closeCbs.push(cb),
     onBinary: () => {}, onOpen: () => {}, onError: () => {}, connect: () => {}, close: () => {}, send: () => {},
     // helpers

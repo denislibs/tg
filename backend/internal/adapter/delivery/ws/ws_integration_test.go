@@ -3,6 +3,8 @@ package ws_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -28,6 +30,9 @@ type wsEnv struct {
 	userA   int64
 	deviceA int64
 	chatID  int64
+	// peerB — адрес приватного диалога ГЛАЗАМИ A: это id собеседника B.
+	peerB   int64
+	userB   int64
 	ctx     context.Context
 	authUC  *usecaseauth.Interactor
 	chatSvc *usecasechat.Interactor
@@ -102,6 +107,7 @@ func newWSEnv(t *testing.T) *wsEnv {
 		url:    "ws" + strings.TrimPrefix(srv.URL, "http"),
 		tokenA: ra.Token, tokenB: rb.Token,
 		userA: ra.User.ID, deviceA: deviceA, chatID: chatID,
+		peerB: rb.User.ID, userB: rb.User.ID,
 		ctx: ctx, authUC: authUC, chatSvc: chatSvc,
 		srv: srv, hub: hub, mr: mr, rdb: rdb,
 	}
@@ -150,7 +156,7 @@ func TestWS_LiveDelivery(t *testing.T) {
 	time.Sleep(150 * time.Millisecond) // let both register + subscribe
 
 	// A sends a message.
-	sendFrame(t, connA, "send_message", map[string]any{"chat_id": env.chatID, "text": "hi", "client_msg_id": "c1"})
+	sendFrame(t, connA, "send_message", map[string]any{"peer_id": env.peerB, "text": "hi", "client_msg_id": "c1"})
 
 	// A receives an ack; B receives a new_message.
 	if got := readUntil(t, connA, "message_ack"); got == nil {
@@ -185,13 +191,31 @@ func TestWS_RevokeClosesSocket(t *testing.T) {
 	defer connA.Close()
 	time.Sleep(150 * time.Millisecond)
 
-	// Revoke A's session → A's socket must close (next read errors).
+	// Revoke A's session → A's socket must close.
 	if _, err := env.authUC.RevokeSession(env.ctx, env.userA, env.deviceA); err != nil {
 		t.Fatalf("revoke: %v", err)
 	}
+
+	// Два требования сразу, и второе легко потерять.
+	//
+	// Первое: читать ДО ошибки, а не ровно один раз. В сокете уже лежит кадр
+	// `hello`, отправленный при подключении, и одиночный ReadMessage упирался
+	// именно в него — тест падал, хотя отзыв работал.
+	//
+	// Второе: РАЗЛИЧАТЬ закрытие и таймаут. Оба дают err != nil, поэтому выход
+	// из цикла по любой ошибке делает тест пустым: при сломанном отзыве он
+	// дождётся дедлайна и позеленеет. Проверено мутацией — так и было.
 	_ = connA.SetReadDeadline(time.Now().Add(2 * time.Second))
-	if _, _, err := connA.ReadMessage(); err == nil {
-		t.Fatal("expected socket to be closed after revoke")
+	for {
+		_, _, err := connA.ReadMessage()
+		if err == nil {
+			continue // это очередной кадр, ждём дальше
+		}
+		var netErr net.Error
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			t.Fatal("сокет не закрылся после отзыва сессии: чтение упёрлось в таймаут")
+		}
+		break // не таймаут — значит сокет закрыт, отзыв сработал
 	}
 }
 

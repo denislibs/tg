@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -24,22 +23,23 @@ const maxBioLen = 70
 // publisher nothing is pushed (still logged); without partners the fan-out is the
 // user's own devices only.
 //
-// The payload carries only always-public fields; the avatar is privacy-gated per
-// viewer (see /users), so we only flag avatar_changed and let clients refetch the
-// card — which enforces PrivacyProfilePhoto — rather than pushing a url that could
-// leak past that setting.
-func (i *Interactor) emitUserUpdate(ctx context.Context, u domain.User, avatarChanged bool) {
+// Кадр несёт КОНСТРУКТОР `user` целиком, а не выборку плоских полей: получатель
+// кладёт его в свой кэш пиров ровно так же, как объект из любого списка. Прежний
+// payload вместо этого сообщал `display_name` (имя собирает клиент — его на
+// проводе больше нет) и флажок `avatar_changed`, по которому карточку надо было
+// перезапрашивать отдельной ручкой.
+//
+// Аватарка при этом гасится ПОКАЖДОМУ получателю: photo живёт внутри `user`, и
+// без проверки правила profile_photo кадр раздал бы фото тем, кому владелец его
+// закрыл. Проверяющий необязателен — без него фото в кадре нет вовсе.
+func (i *Interactor) emitUserUpdate(ctx context.Context, u domain.UserRecord) {
 	if i.pub == nil && i.updates == nil {
 		return
 	}
-	username := ""
-	if u.Username != nil {
-		username = *u.Username
-	}
-	base := map[string]any{
-		"id": u.ID, "username": username, "display_name": u.DisplayName, "avatar_changed": avatarChanged,
-	}
-	payload, err := json.Marshal(base)
+	// Строка журнала одна на всех — в ней фото нет: журнал переигрывается при
+	// /sync, а к тому моменту правило приватности может стать другим.
+	logged := domain.NewUpdateUserSnapshot(u.ToUser(domain.UserFlags{}, nil, false))
+	payload, err := json.Marshal(logged)
 	if err != nil {
 		return
 	}
@@ -55,12 +55,14 @@ func (i *Interactor) emitUserUpdate(ctx context.Context, u domain.User, avatarCh
 	}
 	date := time.Now().UnixMilli()
 	for _, uid := range recipients {
-		d := map[string]any{
-			"id": u.ID, "username": username, "display_name": u.DisplayName, "avatar_changed": avatarChanged,
-		}
+		live := domain.NewUpdateUserSnapshot(u.ToUser(domain.UserFlags{Self: uid == u.ID}, nil, i.photoVisible(ctx, u.ID, uid)))
+		env := map[string]any{"t": "user_update", "d": live}
 		if i.updates != nil {
 			if pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "user_update", payload); e == nil {
-				d["pts"] = pts // live frame advances the client's cursor like the /sync row
+				// Курсор едет в КОНВЕРТЕ: своего параметра pts у этого
+				// конструктора нет (см. domain.UpdateDeclaresPts), а дописать
+				// его в тело значило бы завести поле, которого в схеме нет.
+				env["pts"] = pts
 			} else {
 				i.logf("[user_update] append for %d: %v", uid, e)
 			}
@@ -68,7 +70,7 @@ func (i *Interactor) emitUserUpdate(ctx context.Context, u domain.User, avatarCh
 		if i.pub == nil {
 			continue
 		}
-		b, e := json.Marshal(map[string]any{"t": "user_update", "d": d})
+		b, e := json.Marshal(env)
 		if e != nil {
 			continue
 		}
@@ -76,42 +78,51 @@ func (i *Interactor) emitUserUpdate(ctx context.Context, u domain.User, avatarCh
 	}
 }
 
+// photoVisible — пускает ли правило profile_photo владельца зрителя к аватарке.
+// Себе — всегда; проверяющего нет — не пускаем (фото просто не едет в кадре).
+func (i *Interactor) photoVisible(ctx context.Context, ownerID, viewerID int64) bool {
+	if ownerID == viewerID {
+		return true
+	}
+	if i.privacy == nil {
+		return false
+	}
+	ok, err := i.privacy.Check(ctx, ownerID, viewerID, domain.PrivacyProfilePhoto)
+	return err == nil && ok
+}
+
 // ProfileInput carries the editable profile fields for UpdateProfile.
+//
+// PhoneVisibility здесь больше нет: видимость номера — это ПРАВИЛО
+// ПРИВАТНОСТИ (PrivacyPhoneNumber, ручка /me/privacy/phone_number), а не поле
+// профиля. Два независимых механизма на один вопрос, не синхронизированные
+// между собой, — это и был дефект 2 разбора.
 type ProfileInput struct {
-	FirstName       string
-	LastName        string
-	Bio             string
-	Birthday        *time.Time
-	PhoneVisibility string
+	FirstName string
+	LastName  string
+	Bio       string
+	Birthday  *time.Time
 }
 
 // GetUser returns the full, fresh user record from the store. The user in the
 // request context is a (possibly cached) session copy that can be stale right
 // after an edit, so profile reads/writes go through here.
-func (i *Interactor) GetUser(ctx context.Context, id int64) (domain.User, error) {
+func (i *Interactor) GetUser(ctx context.Context, id int64) (domain.UserRecord, error) {
 	return i.users.GetByID(ctx, id)
 }
 
-// UpdateProfile validates and persists the editable profile fields, recomputing
-// the cached display name.
-func (i *Interactor) UpdateProfile(ctx context.Context, id int64, in ProfileInput) (domain.User, error) {
+// UpdateProfile validates and persists the editable profile fields.
+func (i *Interactor) UpdateProfile(ctx context.Context, id int64, in ProfileInput) (domain.UserRecord, error) {
 	first := strings.TrimSpace(in.FirstName)
 	if first == "" {
-		return domain.User{}, errors.New("first name required")
+		return domain.UserRecord{}, errors.New("first name required")
 	}
 	if utf8.RuneCountInString(in.Bio) > maxBioLen {
-		return domain.User{}, errors.New("bio too long")
+		return domain.UserRecord{}, errors.New("bio too long")
 	}
-	pv := in.PhoneVisibility
-	if pv == "" {
-		pv = domain.PhoneVisibilityContacts
-	}
-	if !domain.ValidPhoneVisibility(pv) {
-		return domain.User{}, errors.New("invalid phone visibility")
-	}
-	u, err := i.users.UpdateProfile(ctx, id, first, strings.TrimSpace(in.LastName), in.Bio, in.Birthday, pv)
+	u, err := i.users.UpdateProfile(ctx, id, first, strings.TrimSpace(in.LastName), in.Bio, in.Birthday)
 	if err == nil {
-		i.emitUserUpdate(ctx, u, false) // display_name may have changed
+		i.emitUserUpdate(ctx, u) // имя/фамилия могли измениться
 	}
 	return u, err
 }
@@ -119,17 +130,17 @@ func (i *Interactor) UpdateProfile(ctx context.Context, id int64, in ProfileInpu
 // SetEmojiStatus validates and persists the user's emoji status. An empty string
 // clears it; otherwise it must be a short unicode emoji (≤ MaxEmojiStatusRunes
 // runes), not free text.
-func (i *Interactor) SetEmojiStatus(ctx context.Context, id int64, emoji string) (domain.User, error) {
+func (i *Interactor) SetEmojiStatus(ctx context.Context, id int64, emoji string) (domain.UserRecord, error) {
 	emoji = strings.TrimSpace(emoji)
 	if utf8.RuneCountInString(emoji) > domain.MaxEmojiStatusRunes {
-		return domain.User{}, errors.New("emoji status too long")
+		return domain.UserRecord{}, errors.New("emoji status too long")
 	}
 	return i.users.SetEmojiStatus(ctx, id, emoji)
 }
 
 // ActivatePremium flips the user's Telegram Premium flag on. This is a clone: the
 // "purchase" is faked, there's no billing — activating simply grants the badge.
-func (i *Interactor) ActivatePremium(ctx context.Context, id int64) (domain.User, error) {
+func (i *Interactor) ActivatePremium(ctx context.Context, id int64) (domain.UserRecord, error) {
 	return i.users.SetPremium(ctx, id, true)
 }
 
@@ -138,10 +149,10 @@ func (i *Interactor) ActivatePremium(ctx context.Context, id int64) (domain.User
 // the paid months add to whatever is left) and flips the Premium badge on. Card
 // details are validated on the client and ignored here — any well-formed card is
 // a "success". It returns the fresh user and the resulting subscription.
-func (i *Interactor) CheckoutPremium(ctx context.Context, id int64, planID string) (domain.User, domain.PremiumSubscription, error) {
+func (i *Interactor) CheckoutPremium(ctx context.Context, id int64, planID string) (domain.UserRecord, domain.PremiumSubscription, error) {
 	plan, ok := domain.PremiumPlanByID(planID)
 	if !ok {
-		return domain.User{}, domain.PremiumSubscription{}, domain.ErrInvalid
+		return domain.UserRecord{}, domain.PremiumSubscription{}, domain.ErrInvalid
 	}
 	now := time.Now().UTC()
 	// Stack onto remaining time when the current subscription is still active.
@@ -158,11 +169,11 @@ func (i *Interactor) CheckoutPremium(ctx context.Context, id int64, planID strin
 		AutoRenew:  true,
 	})
 	if err != nil {
-		return domain.User{}, domain.PremiumSubscription{}, err
+		return domain.UserRecord{}, domain.PremiumSubscription{}, err
 	}
 	user, err := i.users.SetPremium(ctx, id, true)
 	if err != nil {
-		return domain.User{}, domain.PremiumSubscription{}, err
+		return domain.UserRecord{}, domain.PremiumSubscription{}, err
 	}
 	return user, sub, nil
 }
@@ -191,33 +202,33 @@ func (i *Interactor) CheckUsername(ctx context.Context, raw string, forUserID in
 
 // SetUsername sets the username (empty clears it), returning domain.ErrConflict
 // when already taken or a format error for an invalid value.
-func (i *Interactor) SetUsername(ctx context.Context, id int64, raw string) (domain.User, error) {
+func (i *Interactor) SetUsername(ctx context.Context, id int64, raw string) (domain.UserRecord, error) {
 	n := domain.NormalizeUsername(raw)
 	var up *string
 	if n != "" {
 		if err := domain.ValidateUsername(n); err != nil {
-			return domain.User{}, err
+			return domain.UserRecord{}, err
 		}
 		up = &n
 	}
 	u, err := i.users.SetUsername(ctx, id, up)
 	if err == nil {
-		i.emitUserUpdate(ctx, u, false)
+		i.emitUserUpdate(ctx, u)
 	}
 	return u, err
 }
 
-// avatarPreviewFor резолвит stripped-превью аватарки по её content-пути
-// "/media/{id}/content" (канонический формат, который строит delivery и под
-// который уже завязан media-access SQL). nil — превьюер не подключён, путь не
-// медийный или превью сгенерировать не удалось: аватарка ставится без превью
-// (мягкая деградация, как у остальных optional-зависимостей).
-func (i *Interactor) avatarPreviewFor(ctx context.Context, url string) []byte {
-	if i.previews == nil {
-		return nil
-	}
-	var mediaID int64
-	if _, err := fmt.Sscanf(url, "/media/%d/content", &mediaID); err != nil || mediaID <= 0 {
+// avatarPreviewFor резолвит stripped-превью аватарки по id медиа. Прежде
+// сюда приезжала СТРОКА "/media/{id}/content", которую тут же разбирали
+// обратно `Sscanf`-ом ради того же числа: id собирали в delivery, чтобы
+// выпарсить в usecase. Аватарка адресуется id медиа на всём пути, и
+// выпарсивать больше нечего.
+//
+// nil — превьюер не подключён или превью сгенерировать не удалось: аватарка
+// ставится без превью (мягкая деградация, как у остальных
+// optional-зависимостей).
+func (i *Interactor) avatarPreviewFor(ctx context.Context, mediaID int64) []byte {
+	if i.previews == nil || mediaID <= 0 {
 		return nil
 	}
 	p, err := i.previews.StrippedPreview(ctx, mediaID)
@@ -228,28 +239,27 @@ func (i *Interactor) avatarPreviewFor(ctx context.Context, url string) []byte {
 	return p
 }
 
-// SetAvatar stores the avatar URL (a /media/{id}/content path) for the user and
-// appends it to the profile-photo gallery so the two stay consistent (Telegram
-// keeps every avatar as a gallery photo). Returns the fresh user.
-func (i *Interactor) SetAvatar(ctx context.Context, id int64, url string) (domain.User, error) {
-	if _, err := i.users.AddProfilePhoto(ctx, id, url, "", i.avatarPreviewFor(ctx, url)); err != nil {
-		return domain.User{}, err
+// SetAvatar points the user's avatar at an uploaded media object and appends it
+// to the profile-photo gallery so the two stay consistent (Telegram keeps every
+// avatar as a gallery photo). Returns the fresh user.
+func (i *Interactor) SetAvatar(ctx context.Context, id, mediaID int64) (domain.UserRecord, error) {
+	if _, err := i.users.AddProfilePhoto(ctx, id, mediaID, nil, i.avatarPreviewFor(ctx, mediaID)); err != nil {
+		return domain.UserRecord{}, err
 	}
 	u, err := i.users.GetByID(ctx, id)
 	if err == nil {
-		i.emitUserUpdate(ctx, u, true) // avatar changed → peers refetch /users
+		i.emitUserUpdate(ctx, u)
 	}
 	return u, err
 }
 
 // AddProfilePhoto adds a photo to the user's gallery and promotes it to the
-// current avatar. url/videoURL are already-converted /media/{id}/content paths
-// (the delivery layer does the media_id→url conversion, as SetAvatar does).
-func (i *Interactor) AddProfilePhoto(ctx context.Context, userID int64, url, videoURL string) (domain.ProfilePhoto, error) {
-	ph, err := i.users.AddProfilePhoto(ctx, userID, url, videoURL, i.avatarPreviewFor(ctx, url))
+// current avatar. videoMediaID — необязательный видео-вариант аватарки.
+func (i *Interactor) AddProfilePhoto(ctx context.Context, userID, mediaID int64, videoMediaID *int64) (domain.ProfilePhoto, error) {
+	ph, err := i.users.AddProfilePhoto(ctx, userID, mediaID, videoMediaID, i.avatarPreviewFor(ctx, mediaID))
 	if err == nil {
 		if u, gerr := i.users.GetByID(ctx, userID); gerr == nil {
-			i.emitUserUpdate(ctx, u, true)
+			i.emitUserUpdate(ctx, u)
 		}
 	}
 	return ph, err
@@ -261,12 +271,12 @@ func (i *Interactor) ListProfilePhotos(ctx context.Context, userID int64) ([]dom
 }
 
 // DeleteProfilePhoto removes a gallery photo; when it was the current avatar the
-// repo falls avatar_url back to the next most-recent photo (or "").
+// repo falls the avatar back to the next most-recent photo (or none).
 func (i *Interactor) DeleteProfilePhoto(ctx context.Context, userID, photoID int64) error {
 	_, err := i.users.DeleteProfilePhoto(ctx, userID, photoID)
 	if err == nil {
 		if u, gerr := i.users.GetByID(ctx, userID); gerr == nil {
-			i.emitUserUpdate(ctx, u, true) // avatar may have fallen back to another photo
+			i.emitUserUpdate(ctx, u) // avatar may have fallen back to another photo
 		}
 	}
 	return err

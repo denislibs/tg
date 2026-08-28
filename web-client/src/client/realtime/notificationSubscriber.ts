@@ -1,6 +1,7 @@
 // Подписчик браузерных уведомлений на realtime-события. Независим от Store-проектора.
 import rootScope from '@lib/rootScope'
 import { RT } from '../../core/realtime/events'
+import { mapMessage } from '../../core/models'
 import { notifyIncomingMessage } from '../uiNotifications'
 
 export function registerNotificationSubscriber(): void {
@@ -10,6 +11,10 @@ export function registerNotificationSubscriber(): void {
     // Кадр из catch-up (reconnect/backfill) — уже «прошлое»: звук и нотификация не
     // играют. Раньше это держалось только на дедупе funnel'а по pts.
     if (meta?.catchUp) return
-    notifyIncomingMessage(evt)
+    // Кадр несёт сообщение ЦЕЛИКОМ; уведомлению нужен тот же объект, что и ленте,
+    // — второй выжимки из четырёх полей больше нет. `meId` здесь не нужен:
+    // формулировку пилюли уведомление не строит, ему хватает лейбла вида.
+    const m = mapMessage(evt.message)
+    if (m._ !== 'messageEmpty') notifyIncomingMessage(m)
   })
 }

@@ -16,7 +16,10 @@ import AvatarCropper from '../settings/AvatarCropper'
 import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useGroupEdit, PERMS } from '../../core/hooks/useGroupEdit'
-import { useAvatarSrc } from '../useAvatarSrc'
+import { allowedMemberPerms, hasRights } from '../../core/peers/rights'
+import { getLinkedChatPeerId } from '../../core/peers/peer'
+import { isPublic as chatIsPublic } from '../../core/peers/predicates'
+import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import { gradientFor } from '../../core/dialogToChat'
 import type { Chat } from '../../data'
 import { EMOJIS } from './screens/shared'
@@ -50,9 +53,9 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
 
   // Имя/описание: локальный черновик; галочка появляется при изменениях (tweb nextBtn)
   const [draft, setDraft] = useState<{ title: string; about: string } | null>(null)
-  const title = draft?.title ?? g.card?.title ?? chat.name
-  const about = draft?.about ?? g.card?.about ?? ''
-  const dirty = draft != null && (draft.title !== (g.card?.title ?? '') || draft.about !== (g.card?.about ?? ''))
+  const title = draft?.title ?? g.card?.chat.title ?? chat.name
+  const about = draft?.about ?? g.card?.fullChat.about ?? ''
+  const dirty = draft != null && (draft.title !== (g.card?.chat.title ?? '') || draft.about !== (g.card?.fullChat.about ?? ''))
   const [saving, setSaving] = useState(false)
 
   // Форум-топики группы («Обсуждения»): оптимистичный тумблер + refresh стора.
@@ -68,7 +71,7 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
   // Фото: file input → кроппер → savePhoto
   const fileRef = useRef<HTMLInputElement>(null)
   const [cropFile, setCropFile] = useState<File | null>(null)
-  const avatarSrc = useAvatarSrc(chat.avatarUrl)
+  const avatarSrc = useMediaUrl(chat.photoId ?? null)
 
   const save = async () => {
     if (!dirty || !title.trim() || saving) return
@@ -82,14 +85,23 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
   }
 
   const card = g.card
-  const canChangeInfo = card != null && (card.myRole === 'creator' || card.myRole === 'admin')
+  // Право менять инфо — вопрос к конструктору (`hasRights`), а не к строке
+  // `my_role`, которой на проводе больше нет.
+  const canChangeInfo = hasRights(card?.chat, 'change_info')
+  const reactions = card?.fullChat.available_reactions
   const reactionsValue =
-    card?.reactionsMode === 'none' ? t('Disabled')
-    : card?.reactionsMode === 'some' ? `${card.reactionsAllowed.length}/${EMOJIS.length}`
+    reactions?._ === 'chatReactionsNone' ? t('Disabled')
+    : reactions?._ === 'chatReactionsSome' ? `${reactions.reactions.length}/${EMOJIS.length}`
     : t('All')
-  const permsCount = PERMS.filter((p) => ((card?.defaultPermissions ?? 31) & p.bit) !== 0).length
+  // ⚠ `default_banned_rights` это ЗАПРЕТЫ; перевод в наш битмаск «что можно» —
+  // единственный, в `allowedMemberPerms`.
+  const allowedPerms = allowedMemberPerms(card?.chat)
+  const permsCount = PERMS.filter((p) => (allowedPerms & p.bit) !== 0).length
   const activeInvites = g.invites.filter((l) => !l.revoked)
-  const linkedId = card?.discussionChatId ?? 0
+  const linkedId = getLinkedChatPeerId(card?.fullChat)
+  // «История видна новым участникам» и `hidden_prehistory` схемы — ОДНО И ТО ЖЕ
+  // свойство с ПРОТИВОПОЛОЖНЫМ знаком; инверсия читается ровно здесь.
+  const historyForNew = !card?.fullChat.pFlags?.hidden_prehistory
 
   return (
     <SettingsScreen
@@ -157,7 +169,7 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
 
       {canChangeInfo && (
         <Section>
-          <Row icon={<TgIcon name="lock" size={22} />} label={isChannel ? 'Channel Type' : 'Group Type'} value={t(card!.isPublic ? 'Public' : 'Private')} onClick={() => setSub('type')} />
+          <Row icon={<TgIcon name="lock" size={22} />} label={isChannel ? 'Channel Type' : 'Group Type'} value={t(chatIsPublic(card?.chat) ? 'Public' : 'Private')} onClick={() => setSub('type')} />
           <Row icon={<TgIcon name="link" size={22} />} label="Invite Links" value={String(Math.max(activeInvites.length, 1))} onClick={() => setSub('links')} />
           <Row icon={<TgIcon name="reactions" size={22} />} label="Reactions" value={reactionsValue} onClick={() => setSub('reactions')} />
           {isChannel && (
@@ -171,7 +183,7 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
 
       <Section>
         <Row icon={<TgIcon name="admin" size={22} />} label="Administrators" value={String(g.admins.length)} onClick={() => setSub('admins')} />
-        <Row icon={<TgIcon name="newgroup" size={22} />} label={isChannel ? 'Subscribers' : 'Members'} value={String(card?.memberCount ?? g.members.length)} onClick={() => setSub('members')} />
+        <Row icon={<TgIcon name="newgroup" size={22} />} label={isChannel ? 'Subscribers' : 'Members'} value={String(card?.chat.participants_count ?? g.members.length)} onClick={() => setSub('members')} />
         {!isChannel && g.canBan && (
           <Row icon={<TgIcon name="permissions" size={22} />} label="Restricted Users" value={g.restricted.length ? String(g.restricted.length) : t('None')} onClick={() => setSub('restricted')} />
         )}
@@ -181,24 +193,30 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
       </Section>
 
       {/* Sign Messages (только канал, tweb isBroadcast && canPostMessages) */}
-      {isChannel && canChangeInfo && card && (
-        <Section footer={card.signatureProfiles ? 'Add names and photos of admins to the messages they post, linking to their profiles.' : 'Add names of admins to the messages they post'}>
+      {isChannel && canChangeInfo && card && (() => {
+        // Флаг схемы «выключен» — это ОТСУТСТВИЕ ключа в `pFlags`, а не `false`
+        // (правило фазы 0), поэтому здесь он приводится к булеву один раз.
+        const signatures = !!card.chat.pFlags?.signatures
+        const signatureProfiles = !!card.chat.pFlags?.signature_profiles
+        return (
+        <Section footer={signatureProfiles ? 'Add names and photos of admins to the messages they post, linking to their profiles.' : 'Add names of admins to the messages they post'}>
           <Row
             label="Sign Messages"
             toggle
-            checked={card.signatures}
-            onClick={() => void g.saveSignatures(!card.signatures, !card.signatures && card.signatureProfiles)}
+            checked={signatures}
+            onClick={() => void g.saveSignatures(!signatures, !signatures && signatureProfiles)}
           />
-          {card.signatures && (
+          {signatures && (
             <Row
               label="Show Authors' Profiles"
               toggle
-              checked={card.signatureProfiles}
-              onClick={() => void g.saveSignatures(true, !card.signatureProfiles)}
+              checked={signatureProfiles}
+              onClick={() => void g.saveSignatures(true, !signatureProfiles)}
             />
           )}
         </Section>
-      )}
+        )
+      })()}
 
       {/* Обсуждения (форум-топики) — только группа (перенесено из info-панели) */}
       {!isChannel && canChangeInfo && (
@@ -223,8 +241,8 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
           <Row
             label="Chat history for new members"
             checkbox
-            checked={card?.historyForNew ?? true}
-            onClick={() => void g.saveHistory(!(card?.historyForNew ?? true))}
+            checked={historyForNew}
+            onClick={() => void g.saveHistory(!historyForNew)}
           />
         </Section>
       )}

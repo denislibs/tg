@@ -2,7 +2,9 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strconv"
 	"testing"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -15,15 +17,15 @@ func sendAsTestSetup(t *testing.T) (*Interactor, *store, *fakeGroupRepo, int64, 
 	t.Helper()
 	fg := newFakeGroupRepo()
 	s := newStore()
-	fg.onCreate = func(id int64) {
+	fg.onCreate = func(id int64, typ string) {
 		s.mu.Lock()
-		s.chatType[id] = "group"
+		s.chatType[id] = typ
 		s.mu.Unlock()
 	}
 	in := New(fakeTx{}, groupChats{fg}, fakeMsgs{s}, fakeUpdates{s}, nil, fakeMedia{s}, fg, newFakeInviteRepo(), nil, nil, newFakeJoinRequestRepo())
 	ctx := context.Background()
-	fg.users[7] = domain.UserCard{ID: 7, DisplayName: "Алиса", FirstName: "Алиса"}
-	fg.users[8] = domain.UserCard{ID: 8, DisplayName: "Боб", FirstName: "Боб"}
+	fg.users[7] = domain.UserReal{ID: 7, FirstName: "Алиса"}
+	fg.users[8] = domain.UserReal{ID: 8, FirstName: "Боб"}
 
 	gid, err := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8})
 	if err != nil {
@@ -48,22 +50,24 @@ func TestGetSendAs_ChannelAdminSeesChannel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetSendAs: %v", err)
 	}
-	has := func(id int64) *domain.SendAsPeer {
+	// Вид личности читается из ТЕЛА пира (user против channel), а не из
+	// строкового kind: строки kind больше нет.
+	has := func(peer domain.PeerID) *domain.SendAsPeerRecord {
 		for k := range peers {
-			if peers[k].PeerID == id {
+			if domain.GetPeerID(peers[k].Peer) == peer {
 				return &peers[k]
 			}
 		}
 		return nil
 	}
-	if has(7) == nil || has(7).Kind != "user" {
+	if me := has(domain.PeerID(7)); me == nil || me.User == nil || me.Chat != nil {
 		t.Fatalf("personal peer missing: %+v", peers)
 	}
-	ch := has(chID)
-	if ch == nil || ch.Kind != "channel" || ch.Title != "News" {
+	ch := has(domain.ToPeerID(chID, true))
+	if ch == nil || ch.Chat == nil || !ch.Chat.Broadcast() || ch.Chat.Title != "News" {
 		t.Fatalf("channel peer missing/wrong: %+v", peers)
 	}
-	if has(gid) == nil || has(gid).Kind != "group" {
+	if g := has(domain.ToPeerID(gid, true)); g == nil || g.Chat == nil || !g.Chat.Megagroup() {
 		t.Fatalf("anonymous group peer missing: %+v", peers)
 	}
 
@@ -72,7 +76,7 @@ func TestGetSendAs_ChannelAdminSeesChannel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetSendAs(8): %v", err)
 	}
-	if len(peers8) != 1 || peers8[0].PeerID != 8 {
+	if len(peers8) != 1 || domain.GetPeerID(peers8[0].Peer) != domain.PeerID(8) {
 		t.Fatalf("member send-as = %+v, want [personal]", peers8)
 	}
 }
@@ -92,20 +96,19 @@ func TestSend_SendAs_AdminOK_OutsiderForbidden(t *testing.T) {
 	if msg.SendAsChatID == nil || *msg.SendAsChatID != chID {
 		t.Fatalf("send_as_chat_id = %v, want %d", msg.SendAsChatID, chID)
 	}
-	if msg.SendAsTitle != "News" {
-		t.Fatalf("send_as title not hydrated: %q", msg.SendAsTitle)
+	// На проводе отображаемый автор ЗАМЕЩАЕТ from_id: в схеме send-as это и
+	// есть from_id, а не снимок {peer_id,title,photo_id} рядом с настоящим
+	// отправителем. Название и аватарка приезжают карточкой чата.
+	wire, _ := in.messageUpdatePayload(ctx, msg)["message"].(map[string]any)
+	if _, ok := wire["send_as"]; ok {
+		t.Fatalf("снимок send_as всё ещё уезжает: %+v", wire["send_as"])
 	}
-	// Serialization carries send_as while preserving the real sender.
-	p := messageUpdatePayload(msg)
-	sa, ok := p["send_as"].(map[string]any)
+	from, ok := wire["from_id"].(map[string]any)
 	if !ok {
-		t.Fatalf("payload send_as missing: %+v", p)
+		t.Fatalf("from_id отсутствует: %+v", wire)
 	}
-	if sa["chat_id"] != chID || sa["title"] != "News" {
-		t.Fatalf("payload send_as = %+v", sa)
-	}
-	if p["sender_id"] != int64(7) {
-		t.Fatalf("payload sender_id = %v, want 7", p["sender_id"])
+	if from["_"] != domain.PeerChannelTag || from["channel_id"] != json.Number(strconv.FormatInt(chID, 10)) {
+		t.Fatalf("from_id = %+v, ждали ссылку на канал %d", from, chID)
 	}
 
 	// A group member who is not an admin of the channel cannot post as it.

@@ -384,6 +384,13 @@ const fr: Dict = {
   Comments: 'Commentaires',
   Comment: 'Commentaire',
   'Discussion started': 'Discussion démarrée',
+  'No messages here yet...': 'Aucun message pour l’instant…',
+  'Send a message or tap the greeting below.': 'Envoyez un message ou touchez le salut ci-dessous.',
+  'Your cloud storage': 'Votre stockage cloud',
+  'Forward messages here to save them': 'Transférez des messages ici pour les enregistrer',
+  'Send media and files to store them': 'Envoyez des médias et des fichiers pour les stocker',
+  'Access this chat from any device': 'Accédez à ce chat depuis n’importe quel appareil',
+  'Use search to quickly find things': 'Utilisez la recherche pour trouver rapidement',
   // settings screens (#71–#79)
   "Edit Profile": "Modifier le profil",
   "Name": "Nom",
@@ -702,6 +709,14 @@ const fr: Dict = {
     'Voulez-vous vraiment supprimer votre compte ? Cette action est irréversible.',
   'This will delete your account and all your data. Your messages will remain but appear as sent by a «Deleted Account».':
     'Cela supprimera votre compte et toutes vos données. Vos messages resteront mais apparaîtront comme envoyés par un « compte supprimé ».',
+  Album: 'Album',
+  Photo: 'Photo',
+  Video: 'Vidéo',
+  GIF: 'GIF',
+  Sticker: 'Sticker',
+  Giveaway: 'Tirage au sort',
+  'Live location': 'Position en direct',
+  'Unsupported message': 'Message non pris en charge',
 }
 
 export default fr

@@ -14,7 +14,8 @@ import classNames from '../shared/lib/classNames'
 import { useT, useLang } from '../i18n'
 import { useGroupCandidates, type GroupCandidate } from '../core/hooks/useGroupCandidates'
 import { useChatsStore } from '../stores/chatsStore'
-import { lastSeenLabel } from '../core/presence'
+import { userStatusLabel } from '../core/presence'
+import { isUserStatusOnline } from '../core/peers/peer'
 import s from './NewGroupFlow.module.scss'
 
 export interface GroupPhoto {
@@ -61,12 +62,10 @@ export default function NewGroupFlow({ onClose, onCreate }: Props) {
   const back = () => (step === 'members' ? onClose() : setStep('members'))
   const canNext = step === 'members' || name.trim().length > 0
 
-  const statusOf = (id: number) => {
-    const p = presence[id]
-    return p?.online ? t('online') : lastSeenLabel(p?.lastSeen ?? 0, lang)
-  }
+  const statusOf = (id: number) => userStatusLabel(presence[id], lang)
+  const isOnline = (id: number) => isUserStatusOnline(presence[id], Date.now() / 1000)
   const renderAvatar = (c: GroupCandidate, size: 'md' | number) => (
-    <UserAvatar id={c.id} name={c.name} avatarUrl={c.avatarUrl} size={size} />
+    <UserAvatar id={c.id} name={c.name} photoId={c.photoId} size={size} />
   )
 
   return (
@@ -122,7 +121,7 @@ export default function NewGroupFlow({ onClose, onCreate }: Props) {
                   {renderAvatar(c, 'md')}
                   <div className={s.rowBody}>
                     <Text noWrap size={15.5} weight={600} color="var(--primary-text-color)">{c.name}</Text>
-                    <Text noWrap size={13.5} color={presence[c.id]?.online ? 'var(--primary-color)' : 'var(--secondary-text-color)'}>
+                    <Text noWrap size={13.5} color={isOnline(c.id) ? 'var(--primary-color)' : 'var(--secondary-text-color)'}>
                       {statusOf(c.id)}
                     </Text>
                   </div>
@@ -180,7 +179,7 @@ export default function NewGroupFlow({ onClose, onCreate }: Props) {
                         {renderAvatar(c, 'md')}
                         <div className={s.rowBody}>
                           <Text noWrap size={15.5} weight={600} color="var(--primary-text-color)">{c.name}</Text>
-                          <Text noWrap size={13.5} color={presence[id]?.online ? 'var(--primary-color)' : 'var(--secondary-text-color)'}>
+                          <Text noWrap size={13.5} color={isOnline(id) ? 'var(--primary-color)' : 'var(--secondary-text-color)'}>
                             {statusOf(id)}
                           </Text>
                         </div>

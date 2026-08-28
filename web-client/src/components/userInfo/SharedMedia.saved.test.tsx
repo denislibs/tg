@@ -70,6 +70,7 @@ import itemStyles from '../virtual/DeferredSortedVirtualList.module.scss'
 import { ManagersProvider } from '../../core/hooks/useManagers'
 import type { Managers } from '../../client/bootstrap'
 import type { SavedDialog } from '../../core/managers/chatsManager'
+import { useChatsStore } from '../../stores/chatsStore'
 import type { OpenPeer } from '../../data'
 
 const HOST_HEIGHT = 720
@@ -81,12 +82,24 @@ const managers = new Proxy({}, {
   get: () => new Proxy({}, { get: () => async () => undefined }),
 }) as unknown as Managers
 
+// Ключ ЗНАКОВЫЙ: у источника-человека он положительный, у источника-чата
+// отрицательный — это и есть единственный признак вида, второго поля рядом
+// нет. Имя и аватарку строка берёт из КАРТОЧКИ пира (зеркало), превью и
+// время — из самого сообщения: снимков в строке не осталось.
+const lastMessageOf = (i: number): SavedDialog['lastMessage'] => ({
+  _: 'message',
+  pFlags: {},
+  id: i + 1,
+  peerId: i % 2 ? -(i + 1) : i + 1,
+  peer_id: { _: 'peerUser', user_id: i + 1 },
+  fromId: i + 1,
+  date: 1786968000,
+  message: 'msg-' + i,
+})
+
 const dialog = (i: number): SavedDialog => ({
-  kind: i % 2 ? 'chat' : 'user',
-  peerId: i + 1,
-  title: 'saved-' + i,
-  count: 1,
-  last: { type: 'text', text: 'msg-' + i, at: '2026-08-13T10:00:00Z' },
+  peerId: i % 2 ? -(i + 1) : i + 1,
+  lastMessage: lastMessageOf(i),
 })
 
 const savedDialogs = (n: number): SavedDialog[] => Array.from({ length: n }, (_, i) => dialog(i))
@@ -241,20 +254,25 @@ describe('SharedMedia — «Избранное» на виртуальном я�
     expect(screen.getByText('Nothing here yet.')).toBeTruthy()
   })
 
-  it('клик по строке отдаёт панели того же пира (user → id, chat → chatId)', () => {
+  it('клик по строке отдаёт панели того же пира — одним знаковым ключом', () => {
     const onOpenPeer = vi.fn()
     renderSaved({ onOpenPeer })
 
     fireEvent.click(rows()[0]) // kind: 'user'
     fireEvent.click(rows()[1]) // kind: 'chat'
 
-    expect(onOpenPeer).toHaveBeenNthCalledWith(1, { id: 1, displayName: 'saved-0', avatarUrl: undefined })
-    expect(onOpenPeer).toHaveBeenNthCalledWith(2, { id: 0, displayName: 'saved-1', chatId: 2 })
+    // Имя приходит из зеркала пиров; карточек в этом тесте нет, поэтому
+    // фолбэк `getPeerTitle` — тот же, что у любого пробела зеркала.
+    expect(onOpenPeer).toHaveBeenNthCalledWith(1, { id: 1, title: expect.any(String), photoId: undefined })
+    expect(onOpenPeer).toHaveBeenNthCalledWith(2, { id: -2, title: expect.any(String), photoId: undefined })
   })
 
   it('строка «Избранного» (self) не открывает пира', () => {
     const onOpenPeer = vi.fn()
-    const self: SavedDialog = { kind: 'self', peerId: 7, title: 'me', count: 1, last: { type: 'text', text: 'x', at: '2026-08-13T10:00:00Z' } }
+    // «Мои заметки» — строка, чей источник совпадает со ЗРИТЕЛЕМ: вида
+    // строкой на проводе нет, его отвечает сам ключ.
+    useChatsStore.setState({ meId: 7 })
+    const self: SavedDialog = { peerId: 7 }
     renderSaved({ dialogs: [self, dialog(1)], onOpenPeer })
 
     fireEvent.click(host.querySelectorAll<HTMLElement>('.chatlist-chat')[0])

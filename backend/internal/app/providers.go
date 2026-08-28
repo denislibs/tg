@@ -65,11 +65,8 @@ func providePool(lc fx.Lifecycle, cfg *config.Config, ctx context.Context) (*pgx
 	} else if n > 0 {
 		log.Printf("backfilled %d discussion mirrors", n)
 	}
-	if cfg.SeedDemo {
-		if err := postgres.SeedDemo(ctx, pool); err != nil {
-			log.Printf("seed demo failed: %v", err)
-		}
-	}
+	// Дев-сид живёт не здесь: демо-контент создаётся через chat-usecase, а тот
+	// собирается позже (см. registerDemoSeed).
 	lc.Append(fx.Hook{OnStop: func(context.Context) error { pool.Close(); return nil }})
 	return pool, nil
 }

@@ -7,14 +7,16 @@ package privacy
 import (
 	"context"
 	"errors"
+	"time"
+
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
 // Repo — хранилище правил, блокировок и справок о контактах/пользователях.
 type Repo interface {
-	Rules(ctx context.Context, userID int64) ([]domain.PrivacyRule, error) // только сохранённые
-	Upsert(ctx context.Context, userID int64, r domain.PrivacyRule) error
-	Get(ctx context.Context, userID int64, key domain.PrivacyKey) (domain.PrivacyRule, error) // domain.ErrNotFound → дефолт
+	Rules(ctx context.Context, userID int64) ([]domain.PrivacyRuleRecord, error) // только сохранённые
+	Upsert(ctx context.Context, userID int64, r domain.PrivacyRuleRecord) error
+	Get(ctx context.Context, userID int64, key domain.PrivacyKey) (domain.PrivacyRuleRecord, error) // domain.ErrNotFound → дефолт
 
 	Block(ctx context.Context, blockerID, blockedID int64) error
 	Unblock(ctx context.Context, blockerID, blockedID int64) (bool, error)
@@ -26,12 +28,23 @@ type Repo interface {
 	// решает, видит ли viewer его аспект key (правило + контактность + блок).
 	VisibleMap(ctx context.Context, viewerID int64, ownerIDs []int64, key domain.PrivacyKey) (map[int64]bool, error)
 
-	GetUser(ctx context.Context, id int64) (domain.User, error)
-	IsVerified(ctx context.Context, id int64) (bool, error)
-	IsBot(ctx context.Context, id int64) (bool, error)
+	GetUser(ctx context.Context, id int64) (domain.UserRecord, error)
+	// TTLPeriod — период автоудаления переписки ЗРИТЕЛЯ с этим пиром в
+	// секундах (схемное userFull.ttl_period): auto_delete_period приватного
+	// чата, а пока чата нет — глобальный дефолт зрителя, которым такой чат
+	// заведётся. 0 — выключено.
+	TTLPeriod(ctx context.Context, viewerID, targetID int64) (int, error)
+	// ChatTheme — тема оформления переписки ЗРИТЕЛЯ с этим пиром
+	// (userFull.theme_emoticon, решение Р7); "" — тема не задана. Прежде она
+	// ехала полем КАЖДОЙ строки списка диалогов, хотя в схеме её место — полная
+	// карточка.
+	ChatTheme(ctx context.Context, viewerID, targetID int64) (string, error)
 }
 
-type Interactor struct{ repo Repo }
+type Interactor struct {
+	repo     Repo
+	presence PresenceSnapshot // optional: присутствие для user.status
+}
 
 func New(repo Repo) *Interactor { return &Interactor{repo: repo} }
 
@@ -42,16 +55,16 @@ var ErrBadRule = errors.New("invalid privacy rule")
 var ErrSelfBlock = errors.New("cannot block yourself")
 
 // Rules возвращает полный набор правил пользователя (несохранённые — дефолты).
-func (i *Interactor) Rules(ctx context.Context, userID int64) ([]domain.PrivacyRule, error) {
+func (i *Interactor) Rules(ctx context.Context, userID int64) ([]domain.PrivacyRuleRecord, error) {
 	stored, err := i.repo.Rules(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	byKey := make(map[domain.PrivacyKey]domain.PrivacyRule, len(stored))
+	byKey := make(map[domain.PrivacyKey]domain.PrivacyRuleRecord, len(stored))
 	for _, r := range stored {
 		byKey[r.Key] = r
 	}
-	out := make([]domain.PrivacyRule, 0, len(domain.PrivacyKeys))
+	out := make([]domain.PrivacyRuleRecord, 0, len(domain.PrivacyKeys))
 	for _, k := range domain.PrivacyKeys {
 		if r, ok := byKey[k]; ok {
 			out = append(out, r)
@@ -62,16 +75,34 @@ func (i *Interactor) Rules(ctx context.Context, userID int64) ([]domain.PrivacyR
 	return out, nil
 }
 
+// Rule возвращает правило ОДНОГО ключа (несохранённое — дефолт).
+//
+// Спрашивают по одному ключу, как у оригинала (`account.getPrivacy`): ручки
+// «все разом» на проводе больше нет, потому что у ответа `account.privacyRules`
+// нет параметра ключа — его знает спросивший.
+func (i *Interactor) Rule(ctx context.Context, userID int64, key domain.PrivacyKey) (domain.PrivacyRuleRecord, error) {
+	rules, err := i.Rules(ctx, userID)
+	if err != nil {
+		return domain.PrivacyRuleRecord{}, err
+	}
+	for _, r := range rules {
+		if r.Key == key {
+			return r, nil
+		}
+	}
+	return domain.DefaultPrivacyRule(key), nil
+}
+
 // SetRule валидирует и сохраняет правило одного ключа целиком.
-func (i *Interactor) SetRule(ctx context.Context, userID int64, r domain.PrivacyRule) (domain.PrivacyRule, error) {
+func (i *Interactor) SetRule(ctx context.Context, userID int64, r domain.PrivacyRuleRecord) (domain.PrivacyRuleRecord, error) {
 	if !domain.ValidPrivacyKey(r.Key) || !domain.ValidPrivacyValue(r.Key, r.Value) {
-		return domain.PrivacyRule{}, ErrBadRule
+		return domain.PrivacyRuleRecord{}, ErrBadRule
 	}
 	// Сам себе пользователь всегда «виден» — себя в списках не храним.
 	r.AllowUserIDs = dropID(r.AllowUserIDs, userID)
 	r.DenyUserIDs = dropID(r.DenyUserIDs, userID)
 	if err := i.repo.Upsert(ctx, userID, r); err != nil {
-		return domain.PrivacyRule{}, err
+		return domain.PrivacyRuleRecord{}, err
 	}
 	return r, nil
 }
@@ -145,45 +176,83 @@ func (i *Interactor) Blocked(ctx context.Context, userID int64, offset, limit in
 	return i.repo.BlockedList(ctx, userID, offset, limit)
 }
 
-// Profile собирает карточку чужого профиля для viewer: скрытые privacy-поля
-// вычищены, добавлены вычисленные can_message/calls_available (tweb UserFull).
-func (i *Interactor) Profile(ctx context.Context, viewerID, targetID int64) (domain.UserProfile, error) {
+// Profile собирает профиль пира для viewer в форме ОРИГИНАЛА: пара
+// `userFull` + `user` внутри users.userFull. Скрытые правилами приватности
+// поля просто не кладутся — «нельзя показать» это ОТСУТСТВИЕ ключа, а не
+// пустая строка и не отдельный флаг видимости.
+//
+// Здесь исчезает третья форма пользователя. Было три витрины (краткая в
+// батче, полная чужая, своя в /me) с границей не по той линии: bio и день
+// рождения жили в «своей», а verified/premium — в «полной чужой». Стало две,
+// как в схеме: verified/premium/bot/emoji_status — краткая карточка,
+// bio/birthday/blocked/звонки/ttl — полная.
+//
+// Флаги `self`/`contact`/`mutual_contact` кладёт вызывающий: чтобы посчитать
+// их, нужны обе стороны адресной книги, а Profile отвечает за приватность.
+func (i *Interactor) Profile(ctx context.Context, viewerID, targetID int64) (domain.UsersUserFull, error) {
 	u, err := i.repo.GetUser(ctx, targetID)
 	if err != nil {
-		return domain.UserProfile{}, err
+		return domain.UsersUserFull{}, err
 	}
-	p := domain.UserProfile{
-		ID: u.ID, Username: u.Username,
-		FirstName: u.FirstName, LastName: u.LastName, DisplayName: u.DisplayName,
-		Premium: u.IsPremium, EmojiStatus: u.EmojiStatus,
-	}
-	p.Verified, _ = i.repo.IsVerified(ctx, targetID)
-	p.IsBot, _ = i.repo.IsBot(ctx, targetID)
-	p.IsBlocked, _ = i.repo.IsBlocked(ctx, viewerID, targetID)
-
 	check := func(key domain.PrivacyKey) bool {
 		ok, err := i.Check(ctx, targetID, viewerID, key)
 		return err == nil && ok
 	}
-	if check(domain.PrivacyProfilePhoto) {
-		p.AvatarURL = u.AvatarURL
-		p.AvatarPreview = u.AvatarPreview
-	}
+
+	blocked, _ := i.repo.IsBlocked(ctx, viewerID, targetID)
+	calls := check(domain.PrivacyCalls)
+	full := domain.NewUserFull(u.ID, domain.UserFullFlags{
+		Blocked: blocked,
+		// Звонок у нас один — правило PrivacyCalls решает и голосовой, и
+		// видео: отдельного правила под видео нет, поэтому оба флага схемы
+		// выставляются вместе, а не выдумывается разница.
+		PhoneCallsAvailable: calls,
+		VideoCallsAvailable: calls,
+	})
+	full.TTLPeriod, _ = i.repo.TTLPeriod(ctx, viewerID, targetID)
+	full.ThemeEmoticon, _ = i.repo.ChatTheme(ctx, viewerID, targetID)
 	if check(domain.PrivacyAbout) {
-		p.Bio = u.Bio
-	}
-	if check(domain.PrivacyPhoneNumber) {
-		p.Phone = u.Phone
+		full.About = u.Bio
 	}
 	if u.Birthday != nil && check(domain.PrivacyBirthday) {
-		s := u.Birthday.Format("02.01")
-		if u.Birthday.Year() != domain.BirthdayNoYear {
-			s = u.Birthday.Format("02.01.2006")
-		}
-		p.Birthday = &s
+		// Одна форма дня рождения на весь провод — конструктор birthday. Прежде
+		// он ехал объектом в /me и строкой "DD.MM.YYYY" в /users/{id}.
+		b := domain.NewBirthday(*u.Birthday)
+		full.Birthday = &b
 	}
-	p.LastSeenOK = check(domain.PrivacyLastSeen)
-	p.CallsAvailable = check(domain.PrivacyCalls)
-	p.CanMessage = check(domain.PrivacyMessages)
-	return p, nil
+
+	// Краткая форма того же пользователя. Телефон — по правилу приватности, а
+	// не по снятому с пира phone_visibility: механизм на этот вопрос один.
+	brief := u.ToUser(domain.UserFlags{Self: viewerID == targetID}, i.status(ctx, u, check(domain.PrivacyLastSeen)), check(domain.PrivacyProfilePhoto))
+	if check(domain.PrivacyPhoneNumber) {
+		brief.Phone = u.Phone
+	}
+	return domain.NewUsersUserFull(full, brief, check(domain.PrivacyMessages)), nil
+}
+
+// PresenceSnapshot — присутствие пользователя: онлайн ли он и до какого
+// момента (дедлайн TTL ключа присутствия), плюс время последнего захода.
+// Реализуется presence-менеджером; optional — без него статус не производится.
+type PresenceSnapshot interface {
+	Status(ctx context.Context, userID int64) (online bool, expires, lastSeen time.Time)
+}
+
+// SetPresence подключает источник присутствия (usecase/presence).
+func (i *Interactor) SetPresence(p PresenceSnapshot) { i.presence = p }
+
+// status — UserStatus пира глазами зрителя. Правило last_seen не пускает —
+// точного времени НЕТ ВОВСЕ: это userStatusRecently, то есть сама приватность
+// выражена ВЫБОРОМ КОНСТРУКТОРА, а не отдельным флагом last_seen_visible
+// рядом с обнулённым временем.
+func (i *Interactor) status(ctx context.Context, u domain.UserRecord, lastSeenVisible bool) domain.UserStatus {
+	if u.Deleted {
+		return domain.NewUserStatusEmpty()
+	}
+	if !lastSeenVisible {
+		return domain.NewUserStatusRecently(false)
+	}
+	if i.presence == nil {
+		return domain.NewUserStatusEmpty()
+	}
+	return domain.PresenceStatus(i.presence.Status(ctx, u.ID))
 }

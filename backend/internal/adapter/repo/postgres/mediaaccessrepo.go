@@ -19,28 +19,37 @@ var _ usecasechat.MediaAccessRepo = (*MediaAccessRepo)(nil)
 func NewMediaAccessRepo(pool *pgxpool.Pool) *MediaAccessRepo { return &MediaAccessRepo{pool: pool} }
 
 // DimsByIDs batch-loads width/height/mime for the given media ids in one query.
-func (r *MediaAccessRepo) DimsByIDs(ctx context.Context, ids []int64) (map[int64]usecasechat.MediaDims, error) {
-	out := make(map[int64]usecasechat.MediaDims, len(ids))
+func (r *MediaAccessRepo) DimsByIDs(ctx context.Context, ids []int64) (map[int64]domain.MediaSource, error) {
+	out := make(map[int64]domain.MediaSource, len(ids))
 	if len(ids) == 0 {
 		return out, nil
 	}
 	q := querier(ctx, r.pool)
-	// blur_preview is bytea (scanned into []byte; NULL → nil). COALESCE the nullable
-	// text columns so a NULL doesn't fail a scan into a Go string.
-	rows, err := q.Query(ctx, `SELECT id, COALESCE(width,0), COALESCE(height,0), COALESCE(mime,''),
-		blur_preview, COALESCE(thumb_key,''), COALESCE(duration,0), COALESCE(size,0), COALESCE(file_name,''),
-		COALESCE(title,''), COALESCE(performer,'')
-		FROM media WHERE id = ANY($1)`, ids)
+	// blur_preview и waveform — bytea (сканируются в []byte; NULL → nil). COALESCE the
+	// nullable text columns so a NULL doesn't fail a scan into a Go string.
+	//
+	// Контур стикера (path_thumb) живёт не в media, а в строке стикера — это
+	// метаданные набора, а не отдельный файл, — поэтому приезжает LEFT JOIN'ом
+	// тем же батчем: в модели сообщения он всего лишь ещё одна ступень thumbs
+	// (photoPathSize), и без джойна до сообщения не доезжает вовсе.
+	rows, err := q.Query(ctx, `SELECT m.id, COALESCE(m.width,0), COALESCE(m.height,0), COALESCE(m.mime,''),
+		m.blur_preview, COALESCE(m.thumb_key,''), COALESCE(m.duration,0), COALESCE(m.size,0), COALESCE(m.file_name,''),
+		COALESCE(m.title,''), COALESCE(m.performer,''), COALESCE(m.animated,FALSE), m.waveform, s.path_thumb, COALESCE(s.emoji,''), COALESCE(s.set_id,0)
+		FROM media m
+		LEFT JOIN LATERAL (
+			SELECT path_thumb, emoji, set_id FROM stickers WHERE media_id = m.id ORDER BY (path_thumb IS NULL), id LIMIT 1
+		) s ON TRUE
+		WHERE m.id = ANY($1)`, ids)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var id int64
-		var d usecasechat.MediaDims
+		var d domain.MediaSource
 		var thumbKey string
 		if e := rows.Scan(&id, &d.Width, &d.Height, &d.Mime, &d.Blur, &thumbKey, &d.Duration, &d.Size, &d.FileName,
-			&d.Title, &d.Performer); e != nil {
+			&d.Title, &d.Performer, &d.Animated, &d.Waveform, &d.PathThumb, &d.StickerAlt, &d.StickerSetID); e != nil {
 			return nil, e
 		}
 		d.HasThumb = thumbKey != ""
@@ -81,7 +90,7 @@ func (r *MediaAccessRepo) CanAccess(ctx context.Context, userID, mediaID int64) 
 		   UNION ALL
 		   -- avatars are visible to any authenticated user (the media id is some
 		   -- user's current avatar)
-		   SELECT 1 FROM users WHERE avatar_url = '/media/' || $1 || '/content'
+		   SELECT 1 FROM users WHERE avatar_media_id = $1
 		   UNION ALL
 		   -- chat photos are visible to that chat's members
 		   SELECT 1 FROM chats c

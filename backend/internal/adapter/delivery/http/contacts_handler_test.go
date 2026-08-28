@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -30,13 +31,17 @@ func TestContactsEndpoints_HTTP(t *testing.T) {
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("add contact: %d %s", rec.Code, rec.Body.String())
 	}
-	var added map[string]any
-	_ = json.Unmarshal(rec.Body.Bytes(), &added)
-	if added["first_name"] != "Maya" || added["note"] != "friend" || added["share_phone"] != true {
-		t.Fatalf("unexpected added contact: %v", added)
+	// Запись адресной книги: НАША часть плоско, сам пир — конструктором `user`
+	// с именем, под которым его сохранил владелец.
+	added := decodeBook(t, rec)
+	if len(added.Contacts) != 1 || added.Contacts[0].UserID != idB {
+		t.Fatalf("строка книги = %s", rec.Body.String())
 	}
-	if int64(added["user_id"].(float64)) != idB {
-		t.Fatalf("user_id = %v, want %d", added["user_id"], idB)
+	// Карточка приезжает ВЕКТОРОМ, а не внутри строки. Заметка и «делиться
+	// номером» у конструктора места не имеют — они названы задачей.
+	if len(added.Users) != 1 || added.Users[0]["_"] != "user" ||
+		added.Users[0]["first_name"] != "Maya" || added.Users[0]["last_name"] != "K" {
+		t.Fatalf("карточка контакта = %s", rec.Body.String())
 	}
 
 	// A lists — B is present.
@@ -44,12 +49,9 @@ func TestContactsEndpoints_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("list: %d %s", rec.Code, rec.Body.String())
 	}
-	var list struct {
-		Contacts []map[string]any `json:"contacts"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &list)
-	if len(list.Contacts) != 1 || int64(list.Contacts[0]["user_id"].(float64)) != idB {
-		t.Fatalf("list = %v, want one contact for B", list.Contacts)
+	list := decodeBook(t, rec)
+	if len(list.Contacts) != 1 || list.Contacts[0].UserID != idB {
+		t.Fatalf("list = %s, want one contact for B", rec.Body.String())
 	}
 
 	// Re-adding edits in place (upsert), not duplicates.
@@ -60,9 +62,10 @@ func TestContactsEndpoints_HTTP(t *testing.T) {
 		t.Fatalf("re-add: %d %s", rec.Code, rec.Body.String())
 	}
 	rec = reqJSONAuth(t, h, http.MethodGet, "/contacts", nil, tokenA)
-	_ = json.Unmarshal(rec.Body.Bytes(), &list)
-	if len(list.Contacts) != 1 || list.Contacts[0]["first_name"] != "Maya2" {
-		t.Fatalf("after upsert = %v, want one edited contact", list.Contacts)
+	list = decodeBook(t, rec)
+	// Имя карточки — сохранённое ВЛАДЕЛЬЦЕМ, и живёт оно в векторе `users`.
+	if len(list.Contacts) != 1 || len(list.Users) != 1 || list.Users[0]["first_name"] != "Maya2" {
+		t.Fatalf("after upsert = %s, want one edited contact", rec.Body.String())
 	}
 
 	// Missing first name → 400.
@@ -98,4 +101,24 @@ func TestContactsEndpoints_HTTP(t *testing.T) {
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("delete missing: %d, want 404", rec.Code)
 	}
+}
+
+// contactBook — адресная книга контейнером `contacts.contacts`: СТРОКИ это
+// ссылки (`contact{user_id, mutual}`), а карточки едут вектором `users`.
+// Прежде карточка была вклеена в каждую строку рядом со ссылкой.
+type contactBook struct {
+	Contacts []struct {
+		Underscore string `json:"_"`
+		UserID     int64  `json:"user_id"`
+	} `json:"contacts"`
+	Users []map[string]any `json:"users"`
+}
+
+func decodeBook(t *testing.T, rec *httptest.ResponseRecorder) contactBook {
+	t.Helper()
+	var out contactBook
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("разбор книги: %v (%s)", err, rec.Body.String())
+	}
+	return out
 }

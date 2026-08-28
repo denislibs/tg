@@ -224,6 +224,65 @@ describe('ConnectionStatusComponent — вход только через pull (t
   })
 })
 
+describe('ConnectionStatusComponent — «обновляется» из ФАКТА события (tweb :53-64)', () => {
+  it('короткая синхронизация показывается, даже если pull её уже не застаёт', async () => {
+    // Воркер успел начать и закончить догон быстрее, чем вернулся бы RPC:
+    // getStatus() отдаёт syncing: false ВСЁ время. Вывод «обновляется» из pull
+    // такую синхронизацию не показывал вовсе.
+    const h = setup({ state: 'ready', syncing: false })
+    await haveConnected(h)
+
+    await notifySyncStart()
+    h.flushShow()
+    expect(h.text()).toBe('Updating...')
+    expect(h.isLoading()).toBe(true)
+  })
+
+  it('конец синхронизации гасит спиннер, даже если pull ещё отвечает syncing: true', async () => {
+    // Инверсия ответов/протухший снимок: значение из pull не должно перебивать
+    // факт события — иначе спиннер залипает до следующего события.
+    const h = setup({ state: 'ready', syncing: true })
+    await notifySyncStart()
+    h.flushShow()
+    expect(h.text()).toBe('Updating...')
+
+    await notifySyncEnd()
+    h.flushFrame()
+    expect(h.text()).toBe('Search')
+  })
+
+  it('события синхронизации НЕ дёргают pull (значение берётся из факта)', async () => {
+    const h = setup({ state: 'ready', syncing: false })
+    await haveConnected(h)
+    h.getStatus.mockClear()
+
+    await notifySyncStart()
+    await notifySyncEnd()
+    expect(h.getStatus).not.toHaveBeenCalled()
+  })
+
+  it('вкладка, смонтированная в СЕРЕДИНЕ догона, узнаёт про него стартовым pull', async () => {
+    // Наше сохранённое расширение поверх tweb: событие начала догона уехало до
+    // подписки (SuperMessagePort кадры не буферизует), и знать о нём можно
+    // только из ответа владельца.
+    const h = setup({ state: 'ready', syncing: true })
+    await act(async () => { vi.advanceTimersByTime(ConnectionStatusComponent.INITIAL_DELAY) })
+    h.flushShow()
+    expect(h.text()).toBe('Updating...')
+  })
+
+  it('…но после первого же события синхронизации pull её значение больше не трогает', async () => {
+    const h = setup({ state: 'ready', syncing: true })
+    await notifySyncEnd() // догон кончился; снимок воркера ещё протухший
+    h.flushShow()
+    expect(h.text()).toBe('Search')
+
+    await notifyState() // pull вернёт syncing: true — «воскресить» спиннер не должен
+    h.flushFrame()
+    expect(h.text()).toBe('Search')
+  })
+})
+
 describe('ConnectionStatusComponent — липкий hadConnect (tweb :108-110)', () => {
   it('ready → offline даёт «Reconnecting...», а не «Waiting for network...»', async () => {
     const h = setup({ state: 'ready', syncing: false })
@@ -308,9 +367,13 @@ describe('ConnectionStatusComponent — destroy снимает всё, чем в
     h.component.destroy()
 
     await notifyState()
-    await notifySyncStart()
-    await notifySyncEnd()
     expect(h.getStatus).not.toHaveBeenCalled()
+
+    // Пара синхронизации pull не дёргает — её отписку видно по тому, что текст
+    // не меняется (иначе размонтированный автомат продолжал бы писать в поле).
+    await notifySyncStart()
+    h.flushShow()
+    expect(h.text()).toBe('Search')
   })
 
   it('снимает стартовый таймер INITIAL_DELAY', async () => {

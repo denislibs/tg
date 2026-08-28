@@ -147,9 +147,11 @@ src/
 
 ### Отправка и кэш истории
 
-- **Оптимистичная отправка** (`core/hooks/useMessageWindow.ts`) — бабл появляется сразу
-  (`client_msg_id`, временный отрицательный id), затем сверяется с `message_ack`
-  (`reconcileAck` / `failOptimistic`).
+- **Оптимистичная отправка** (`core/managers/messages/pending.ts`, порт формы tweb
+  `appMessagesManager`) — бабл заводит ВОРКЕР в своём SSOT (`client_msg_id`, временный
+  отрицательный id) на `realtime.sendMessage`, а сверяет его с `message_ack` /
+  `message_error` там же (`workerCore.ts::onFrame`). Витрина только переигрывает
+  операции окна (`rt:message_op`).
 - **Кэш истории** (`core/history/slicedArray.ts` + `messagesManager`) — разрежённые `seq`-диапазоны;
   пагинация `loadOlder`/`loadNewer`, прыжок к сообщению `getAround`/`jumpTo`.
 
@@ -172,8 +174,8 @@ src/
 ```
 [View]        Composer.onSubmit(text)
    │ колбэк
-[ViewModel]   useChatSend(): оптимистичный бабл в messagesStore (client_msg_id),
-   │          затем вызывает команду менеджера
+[ViewModel]   useChatSend(): одна команда менеджеру (client_msg_id); оптимистичный
+   │          бабл заводит владелец в воркере, не вкладка
 [RPC]         managersProxy.messages.send(...)  ──SuperMessagePort.invoke──►  (граница Worker)
    │
 [Worker]      messagesManager.send() → connectionManager (outbox) → wsClient
@@ -183,8 +185,8 @@ src/
    │  {t:"message_ack"|"new_message"}  ──SuperMessagePort.emit──►  (граница Worker → UI)
 [Bridge]      client/realtimeBridge.ts: насос smp → eventBus.publish(rt:ack | rt:new_message)
    │
-[Subscriber]  storeProjection: rt:ack → messagesStore.reconcileAck;
-   │          rt:new_message → messagesStore.applyIncoming (dedup по id)
+[Subscriber]  storeProjection: rt:message_op → messagesStore.applyOps (и ack, и эхо
+   │          приезжают операциями воркера; rt:ack остаётся только для звука)
    │          (параллельно soundSubscriber играет «пак», notificationSubscriber — уведомление)
 [Store→View]  Zustand уведомляет селекторы → бабл «дорастает» до отправленного/прочитанного
 ```

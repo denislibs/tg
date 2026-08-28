@@ -15,7 +15,13 @@
 //     сторожевой таймер, поэтому здесь остался просто таймер.
 //
 // `isTransition` берётся из transitionstart/transitionend самого контейнера.
+//
+// Веток жеста ДВЕ (tweb :144-172): колесо и — при IS_TOUCH_SUPPORTED — свайп
+// через SwipeHandler. Обе сводятся в один `onMove(delta, e)`, как в оригинале.
 import { useCallback, useEffect, useRef, useState } from 'react'
+import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
+import SwipeHandler from '@core/dom/swipeHandler'
+import findUpClassName from '@helpers/dom/findUpClassName'
 import WheelClassifier from '../../shared/lib/wheelClassifier'
 
 export const STATE_FOLDED = 1
@@ -110,43 +116,98 @@ export default function useCollapsable(props: CollapsableOptions): Collapsable {
   // рваный кадр поверх CSS-перехода, поэтому ставим состояние сразу.
   const fold = useCallback(() => setProgress(STATE_FOLDED), [setProgress])
 
+  // tweb `onMove` (:76-142) в закороченном виде (см. шапку): общая часть обеих
+  // веток жеста — колеса и свайпа. `e` есть всегда, но гасится только при
+  // реальной смене состояния (tweb :103).
+  const onMove = useCallback((delta: number, e: WheelEvent | { preventDefault(): void; stopPropagation(): void }) => {
+    const o = optsRef.current
+    const scrollTop = o.scrollable()?.scrollTop ?? 0
+    // tweb :78 — кросс-realm-безопасная замена `instanceof WheelEvent`.
+    const isWheel = 'deltaY' in e
+
+    if (scrollTop && progressRef.current !== STATE_FOLDED) {
+      setProgress(STATE_FOLDED)
+      clearDebounce()
+      return
+    }
+
+    // tweb :86-91 — классификатор инерции только у колеса: у свайпа
+    // wheel-события нет, и «инерцию» ему считать нечем.
+    if (isWheel && classifierRef.current.push(e) === 'inertia') return
+
+    const newState = delta < 0 ? STATE_UNFOLDED : STATE_FOLDED
+    if ((scrollTop && progressRef.current !== STATE_UNFOLDED) || isDebounced()) {
+      debounced()
+      return
+    }
+
+    if (progressRef.current === newState) return
+
+    e.preventDefault()
+    e.stopPropagation()
+    setProgress(newState)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setProgress])
+
   // Колесо на .connection-status-bottom (tweb: listenWheelOn, passive: false).
   useEffect(() => {
     const el = optsRef.current.listenWheelOn()
     if (!el) return
 
     const onWheel = (e: WheelEvent) => {
-      const o = optsRef.current
-      if (o.shouldIgnore?.()) return
-
+      if (optsRef.current.shouldIgnore?.()) return
       // tweb: delta = -e.wheelDeltaY (обратный знак к deltaY)
       const delta = -(('wheelDeltaY' in e ? (e as WheelEvent & { wheelDeltaY: number }).wheelDeltaY : -e.deltaY * 3))
-      const scrollTop = o.scrollable()?.scrollTop ?? 0
-
-      if (scrollTop && progressRef.current !== STATE_FOLDED) {
-        setProgress(STATE_FOLDED)
-        clearDebounce()
-        return
-      }
-
-      if (classifierRef.current.push(e) === 'inertia') return
-
-      const newState = delta < 0 ? STATE_UNFOLDED : STATE_FOLDED
-      if ((scrollTop && progressRef.current !== STATE_UNFOLDED) || isDebounced()) {
-        debounced()
-        return
-      }
-
-      if (progressRef.current === newState) return
-
-      e.preventDefault()
-      e.stopPropagation()
-      setProgress(newState)
+      onMove(delta, e)
     }
 
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
   })
+
+  // Сенсорный экран (tweb :155-172): на нём колеса нет вовсе, и без этой ветки
+  // ряд разворачивается кликом, но свернуть его обратно нечем. Тот же `onMove`,
+  // delta = -yDiff. `verifyTouchTarget` отсекает горизонтальную ленту табов
+  // папок — её собственный скролл не должен складывать ряд.
+  //
+  // В отличие от эффекта колеса выше, хендлер НЕ пересоздаётся на каждый рендер
+  // (в tweb он и вовсе создаётся один раз): свайп сам меняет состояние ряда, то
+  // есть вызывает рендер, — снятие листенеров в этот момент рвало бы жест
+  // посередине. Пересоздаём только на смену узла; эффект без deps остаётся
+  // ради ПОЗДНЕГО узла (геттер приходит инлайн-стрелкой и на первом рендере
+  // может отдать null) — ровно та же причина, что у эффекта колеса.
+  const swipeRef = useRef<{ el: HTMLElement; handler: SwipeHandler } | null>(null)
+  useEffect(() => {
+    if (!IS_TOUCH_SUPPORTED) return
+    const el = optsRef.current.listenWheelOn()
+    const live = swipeRef.current
+    if (live && live.el === el) return
+
+    live?.handler.removeListeners()
+    swipeRef.current = null
+    if (!el) return
+
+    swipeRef.current = {
+      el,
+      handler: new SwipeHandler({
+        element: el,
+        onSwipe: (_xDiff, yDiff, e) => {
+          onMove(-yDiff, e as unknown as TouchEvent)
+        },
+        cancelEvent: false,
+        cursor: '',
+        verifyTouchTarget: (e) => !optsRef.current.shouldIgnore?.() &&
+          !findUpClassName(e.target as HTMLElement, 'folders-tabs-scrollable'),
+      }),
+    }
+  })
+
+  // Уборка жеста на размонтировании (эффект выше намеренно переживает рендеры,
+  // поэтому своей уборки у него нет) — tweb onCleanup :169-171.
+  useEffect(() => () => {
+    swipeRef.current?.handler.removeListeners()
+    swipeRef.current = null
+  }, [])
 
   // isTransition — по событиям перехода самого контейнера (tweb 1:1).
   useEffect(() => {

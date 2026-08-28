@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"slices"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -19,7 +20,7 @@ func (i *Interactor) EnableDiscussion(ctx context.Context, channelID, actorID in
 	}
 	var gid int64
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		id, e := i.groups.CreateMultiMember(ctx, "group", "Discussion", "", "", false, actorID)
+		id, e := i.groups.CreateMultiMember(ctx, domain.ChatTypeGroup, "Discussion", "", "", false, actorID)
 		if e != nil {
 			return e
 		}
@@ -51,7 +52,7 @@ func (i *Interactor) LinkDiscussion(ctx context.Context, channelID, groupID, act
 	if err != nil {
 		return 0, err
 	}
-	if card.Type != "group" {
+	if card.Type != domain.ChatTypeGroup {
 		return 0, domain.ErrForbidden
 	}
 	if card.MyRole != domain.RoleCreator && card.MyRole != domain.RoleAdmin {
@@ -84,7 +85,7 @@ func (i *Interactor) UnlinkDiscussion(ctx context.Context, channelID, actorID in
 
 // DiscussionCandidates lists the groups the actor may link as a discussion group
 // (non-forum 'group' chats they own/administer that aren't already linked).
-func (i *Interactor) DiscussionCandidates(ctx context.Context, actorID int64) ([]domain.ChatCard, error) {
+func (i *Interactor) DiscussionCandidates(ctx context.Context, actorID int64) ([]domain.ChatRecord, error) {
 	return i.groups.DiscussionCandidates(ctx, actorID)
 }
 
@@ -176,14 +177,14 @@ func (i *Interactor) lazyMirrorPost(ctx context.Context, channelID, postID int64
 				createErr = e
 			}
 			if md != nil {
-				i.publishMessageDelivery(ctx, md.msg, nil, md.msg.SenderID, md.recipients, md.ptsByUser, md.unreadByUser)
+				i.publishMessageDelivery(ctx, md.msg, md.msg.SenderID, md.recipients, md.ptsByUser)
 			}
 		}
 	} else {
 		md, e := i.mirrorChannelPost(ctx, post)
 		createErr = e
 		if md != nil {
-			i.publishMessageDelivery(ctx, md.msg, nil, md.msg.SenderID, md.recipients, md.ptsByUser, md.unreadByUser)
+			i.publishMessageDelivery(ctx, md.msg, md.msg.SenderID, md.recipients, md.ptsByUser)
 		}
 	}
 	// Гонка: два параллельных первых обращения к одному немигрированному
@@ -232,47 +233,87 @@ func (i *Interactor) ListComments(ctx context.Context, channelID, postID, userID
 	return msgs, cnt, err
 }
 
+// publishPostReplies — счётчик комментариев поста канала изменился: кадр
+// updateChannelMessageReplies в топик канала.
+//
+// Зовут её оба конца жизни комментария — приход (Send) и снятие
+// (DeleteMessage), — и оба отдают ей САМ комментарий: «а был ли это вообще
+// комментарий» решает она, по корню треда, а не место вызова. У оригинала
+// ровно так же: одна updateMessageRepliesIfNeeded с признаком add на оба
+// случая (tweb appMessagesManager.ts:8658-8680).
+//
+// Счётчик едет АБСОЛЮТНЫЙ (пересчитанный), а не «плюс один»: кадр в топик
+// канала доставляется без курсора и без догона разрыва, поэтому дифф,
+// потерянный подписчиком, разошёлся бы с истиной навсегда. У оригинала дифф
+// допустим потому, что клиенту видна вся группа обсуждения целиком.
+//
+// Best-effort и после коммита: счётчик комментариев не имеет права ни уронить
+// отправку, ни уехать раньше, чем сам комментарий доступен на чтение.
+func (i *Interactor) publishPostReplies(ctx context.Context, comment domain.Message) {
+	if i.chPub == nil || i.msgs == nil || comment.ThreadRootID == nil {
+		return
+	}
+	// Корень треда — ЗЕРКАЛО поста в группе обсуждения (см. PostComment).
+	// Тред форум-топика сюда не долетает: у его корня зеркальных полей нет.
+	root, err := i.msgs.GetByID(ctx, *comment.ThreadRootID)
+	if err != nil || !root.IsDiscussionMirror || root.FwdFromChatID == nil || root.FwdFromMsgID == nil {
+		return
+	}
+	channelID, postID := *root.FwdFromChatID, *root.FwdFromMsgID
+	counts, err := i.msgs.ThreadReplyCounts(ctx, comment.ChatID, []int64{root.ID})
+	if err != nil {
+		return
+	}
+	// Пост адресуется НОМЕРОМ в канале — тем же, что и во всех остальных
+	// кадрах; ключ строки наружу не выходит.
+	seqByID, err := i.msgs.SeqsByIDs(ctx, []int64{postID})
+	if err != nil {
+		return
+	}
+	seq, ok := seqByID[postID]
+	if !ok {
+		return // пост удалили — комментировать больше нечего
+	}
+	_ = i.chPub.PublishToChannel(ctx, channelID,
+		frame("replies_update", domain.NewUpdateChannelMessageReplies(channelID, seq, int64(counts[root.ID]))))
+}
+
 // RecentRepliersLimit — сколько аватаров показывает футер «N комментариев»
 // (Telegram рисует стек последних комментаторов).
 const RecentRepliersLimit = 3
 
-// CommentCounts returns a postID -> comment count map for the given posts plus
-// the authors of each thread's latest comments (newest first, up to
-// RecentRepliersLimit distinct). Тред живёт на зеркале поста (см. PostComment),
-// поэтому счёт и авторов читаем по id зеркал — но ключи обоих результатов
-// остаются id ПОСТОВ: внешний HTTP-контракт про пару (канал, пост) не меняется,
-// зеркало — деталь реализации треда. Посты без зеркала просто не набирают
-// комментариев (out[postID] остаётся нулевым значением карты). When discussions
-// aren't enabled it returns empty maps (no error).
-func (i *Interactor) CommentCounts(ctx context.Context, channelID int64, postIDs []int64) (map[int64]int, map[int64][]domain.UserCard, error) {
-	out := map[int64]int{}
-	empty := map[int64][]domain.UserCard{}
+// CommentCounts — тред комментариев каждого поста конструктором
+// messageReplies плюс ОБЩИЙ вектор карточек авторов последних комментариев.
+//
+// Прежде это была одиннадцатая проводная форма сообщения: {counts, recent_repliers},
+// где карточка пользователя ехала ВКЛЕЕННОЙ в каждый пост — тот же дубликат, что
+// чинил контейнер диалогов. В схеме messageReplies.recent_repliers это
+// Vector<Peer>, то есть ССЫЛКИ, а тела пиров едут своим вектором users один раз.
+//
+// Тред живёт на зеркале поста (см. PostComment), поэтому счёт и авторов читаем
+// по id зеркал — но ключи результата остаются НОМЕРАМИ ПОСТОВ: внешний контракт
+// про пару (канал, пост) не меняется, зеркало — деталь реализации треда. Посты
+// без зеркала комментариев не набирают. Обсуждение не включено — пустой
+// результат без ошибки.
+func (i *Interactor) CommentCounts(ctx context.Context, channelID int64, postIDs []int64) (map[int64]domain.MessageReplies, []domain.UserReal, error) {
+	out := map[int64]domain.MessageReplies{}
 	disc, _ := i.groups.GetDiscussion(ctx, channelID)
 	if disc == 0 {
-		return out, empty, nil
+		return out, nil, nil
 	}
 	// один батч-запрос на все посты вместо резолва зеркала по одному
 	mirrors, err := i.msgs.MirrorsByPosts(ctx, channelID, postIDs)
 	if err != nil {
-		return out, empty, err
+		return out, nil, err
 	}
-	// обратная карта — вернуть найденное по root к id поста для ключей результата
-	postByRoot := make(map[int64]int64, len(mirrors))
 	roots := make([]int64, 0, len(mirrors))
-	for postID, root := range mirrors {
-		postByRoot[root] = postID
+	for _, root := range mirrors {
 		roots = append(roots, root)
-	}
-	for postID, root := range mirrors {
-		c, _ := i.msgs.CountThread(ctx, disc, root)
-		out[postID] = c
 	}
 	recent, err := i.msgs.RecentThreadRepliers(ctx, disc, roots, RecentRepliersLimit)
 	if err != nil {
-		return out, empty, err
+		return out, nil, err
 	}
-	// Карточки комментаторов тянем одним запросом: клиенту нужны имя и аватар,
-	// а не голые id (иначе стек аватаров пришлось бы дорезолвливать по одному).
 	seen := map[int64]bool{}
 	ids := make([]int64, 0, len(recent)*RecentRepliersLimit)
 	for _, users := range recent {
@@ -283,28 +324,37 @@ func (i *Interactor) CommentCounts(ctx context.Context, channelID int64, postIDs
 			}
 		}
 	}
+	// Карточки комментаторов — ОДНИМ вектором на весь ответ.
 	cards, err := i.groups.UsersByIDs(ctx, ids)
 	if err != nil {
-		return out, empty, err
+		return out, nil, err
 	}
-	byID := make(map[int64]domain.UserCard, len(cards))
+	byID := make(map[int64]bool, len(cards))
 	for _, c := range cards {
-		byID[c.ID] = c
+		byID[c.ID] = true
 	}
-	res := make(map[int64][]domain.UserCard, len(recent))
-	for root, users := range recent {
-		postID := postByRoot[root]
-		for _, u := range users {
-			// та же деградация, что и у userCard() (group.go): не нашли карточку —
-			// отдаём голый id, а не молча теряем комментатора из стека.
-			c, ok := byID[u]
-			if !ok {
-				c = domain.UserCard{ID: u}
-			}
-			res[postID] = append(res[postID], c)
+	for _, u := range ids {
+		if !byID[u] {
+			// та же деградация, что и у userCard() (group.go): карточки нет —
+			// отдаём голую, а не молча теряем комментатора из стека.
+			cards = append(cards, domain.NewUser(u, domain.UserFlags{}))
 		}
 	}
-	return out, res, nil
+	// Счёт — ОДНИМ запросом на все треды пачки: поштучный CountThread в этом
+	// цикле давал запрос на каждый пост страницы.
+	counts, err := i.msgs.ThreadReplyCounts(ctx, disc, roots)
+	if err != nil {
+		return out, nil, err
+	}
+	for postID, root := range mirrors {
+		c := counts[root]
+		peers := make([]domain.Peer, 0, RecentRepliersLimit)
+		for _, u := range recent[root] {
+			peers = append(peers, domain.NewPeerUser(u))
+		}
+		out[postID] = domain.NewMessageReplies(c, disc, peers)
+	}
+	return out, cards, nil
 }
 
 // ViewCounts returns the current view count for each of the given channel post
@@ -312,4 +362,66 @@ func (i *Interactor) CommentCounts(ctx context.Context, channelID int64, postIDs
 // commentCounts read path — the client fetches these per open to stay fresh.
 func (i *Interactor) ViewCounts(ctx context.Context, postIDs []int64) (map[int64]int64, error) {
 	return i.msgs.ViewCounts(ctx, postIDs)
+}
+
+// RegisterViews — РЕГИСТРАЦИЯ просмотра перечисленных постов зрителем, а не
+// чтение счётчика: считанные посты уезжают в message_views, счётчик поста
+// растёт (один раз на пару «пост + зритель»), а тем, у кого канал открыт,
+// уезжает кадр updateChannelMessageViews.
+//
+// Почему СПИСКОМ, а не горизонтом прочтения (RegisterChannelViews на
+// MarkRead). Лента знает ровно то, какие посты ПОКАЗАЛИСЬ на экране, — их
+// собирает интерсектор; горизонта у канала при этом может не быть вовсе
+// (подписчик пролистал ленту, ничего не «прочитав»). Это же деление делает
+// оригинал: прочтение — messages.readHistory, а регистрация просмотра —
+// messages.getMessagesViews с increment:true по списку видимых номеров
+// (tweb appMessagesManager.ts:9136-9156, сбор списка — bubbles.ts:2129-2147,
+// дебаунс 1 с).
+//
+// Отдаёт СВЕЖИЕ счётчики всех запрошенных постов, а не только выросших:
+// вызывающий получил их за тот же поход, и второй запрос на чтение ему не
+// нужен — ровно как у оригинала, где ответ метода и есть новые значения.
+//
+// Кадр уезжает ТОЛЬКО про выросшие: повторный просмотр того же поста тем же
+// зрителем ничего не меняет, и рассылать про него нечего.
+func (i *Interactor) RegisterViews(ctx context.Context, channelID, viewerID int64, postIDs []int64) (map[int64]int64, error) {
+	grown, err := i.msgs.RegisterPostViews(ctx, channelID, viewerID, postIDs)
+	if err != nil {
+		return nil, err
+	}
+	counts, err := i.msgs.ViewCounts(ctx, postIDs)
+	if err != nil {
+		return nil, err
+	}
+	i.publishViewCounts(ctx, channelID, grown)
+	return counts, nil
+}
+
+// publishViewCounts — кадры о выросших счётчиках в ТОПИК канала (одна
+// публикация на всех подписчиков, как у самого поста), best-effort: просмотры
+// приближённы и не имеют права уронить их регистрацию.
+//
+// Номер поста, а не ключ строки: кадр адресует пост тем же числом, что и все
+// остальные кадры (см. ExternalizeThreadRoots про пространства номеров).
+func (i *Interactor) publishViewCounts(ctx context.Context, channelID int64, grown map[int64]int64) {
+	if i.chPub == nil || len(grown) == 0 {
+		return
+	}
+	ids := make([]int64, 0, len(grown))
+	for id := range grown {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids) // порядок кадров детерминирован, а не по обходу карты
+	seqByID, err := i.msgs.SeqsByIDs(ctx, ids)
+	if err != nil {
+		return
+	}
+	for _, id := range ids {
+		seq, ok := seqByID[id]
+		if !ok {
+			continue // пост удалили между инкрементом и публикацией
+		}
+		_ = i.chPub.PublishToChannel(ctx, channelID,
+			frame("views_update", domain.NewUpdateChannelMessageViews(channelID, seq, grown[id])))
+	}
 }

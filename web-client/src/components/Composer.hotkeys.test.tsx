@@ -1,6 +1,6 @@
 // Горячие клавиши композера: ↑ на пустом инпуте — правка последнего своего
 // сообщения; Ctrl/Cmd+↑ — ответ на предыдущее; ↑ на НЕпустом инпуте не триггерит
-// правку; Ctrl/Cmd+K — ссылка на выделение (prompt → applyMarkup 'text_link').
+// правку; Ctrl/Cmd+K — ссылка на выделение (prompt → applyMarkup 'messageEntityTextUrl').
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import type { VoiceRecorder } from '../core/hooks/useVoiceRecorder'
@@ -9,7 +9,7 @@ import type { VoiceRecorder } from '../core/hooks/useVoiceRecorder'
 // (в happy-dom его нет) — мокаем, как в StickerMedia.test.
 vi.mock('lottie-web', () => ({ default: { loadAnimation: vi.fn() } }))
 
-// applyMarkup замокан — проверяем, что Ctrl+K зовёт его с типом text_link.
+// applyMarkup замокан — проверяем, что Ctrl+K зовёт его с конструктором messageEntityTextUrl.
 vi.mock('../core/richtext/markdown', async (orig) => {
   const actual = await orig<typeof import('../core/richtext/markdown')>()
   return { ...actual, apply: vi.fn() }
@@ -75,14 +75,14 @@ describe('Composer — Ctrl/Cmd+K ссылка', () => {
   beforeEach(() => vi.clearAllMocks())
   afterEach(cleanup)
 
-  it('с выделением: prompt → applyMarkup text_link с URL', () => {
+  it('с выделением: prompt → applyMarkup messageEntityTextUrl с URL', () => {
     // happy-dom не определяет window.prompt — подставляем свой.
     const promptSpy = vi.fn().mockReturnValue('example.com')
     window.prompt = promptSpy
     const { editor } = renderComposer()
     editor.textContent = 'текст ссылки'
     fireEvent.input(editor)
-    // Выделяем содержимое инпута, чтобы Ctrl+K сработал (text_link по выделению).
+    // Выделяем содержимое инпута, чтобы Ctrl+K сработал (messageEntityTextUrl по выделению).
     const range = document.createRange()
     range.selectNodeContents(editor)
     const sel = window.getSelection()!
@@ -91,7 +91,7 @@ describe('Composer — Ctrl/Cmd+K ссылка', () => {
 
     fireEvent.keyDown(editor, { key: 'k', code: 'KeyK', metaKey: true })
     expect(promptSpy).toHaveBeenCalledTimes(1)
-    expect(applyMarkup).toHaveBeenCalledWith(editor, 'text_link', 'https://example.com')
+    expect(applyMarkup).toHaveBeenCalledWith(editor, 'messageEntityTextUrl', 'https://example.com')
   })
 
   it('без выделения: prompt не зовётся', () => {

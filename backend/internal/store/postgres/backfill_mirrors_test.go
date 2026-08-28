@@ -375,14 +375,14 @@ func TestBackfillDiscussionMirrors_Album_CommentOnNonFirstFrame(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE chats SET discussion_chat_id=$2 WHERE id=$1`, ch, disc); err != nil {
 		t.Fatal(err)
 	}
-	// альбом g1: два кадра в канале, frame1 — первый (меньший id).
+	// альбом (grouped_id = схемный long 111): два кадра в канале, frame1 — первый.
 	if err := pool.QueryRow(ctx,
-		`INSERT INTO messages (chat_id, seq, sender_id, type, text, grouped_id) VALUES ($1,1,$2,'photo','','g1') RETURNING id`,
+		`INSERT INTO messages (chat_id, seq, sender_id, type, text, grouped_id) VALUES ($1,1,$2,'photo','',111) RETURNING id`,
 		ch, userID).Scan(&frame1); err != nil {
 		t.Fatal(err)
 	}
 	if err := pool.QueryRow(ctx,
-		`INSERT INTO messages (chat_id, seq, sender_id, type, text, grouped_id) VALUES ($1,2,$2,'photo','','g1') RETURNING id`,
+		`INSERT INTO messages (chat_id, seq, sender_id, type, text, grouped_id) VALUES ($1,2,$2,'photo','',111) RETURNING id`,
 		ch, userID).Scan(&frame2); err != nil {
 		t.Fatal(err)
 	}

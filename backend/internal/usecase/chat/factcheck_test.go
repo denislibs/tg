@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strings"
 	"testing"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -16,13 +15,13 @@ import (
 func newFactCheckInteractor() (*Interactor, *fakeGroupRepo, *store) {
 	s := newStore()
 	fg := newFakeGroupRepo()
-	fg.onCreate = func(id int64) {
+	fg.onCreate = func(id int64, typ string) {
 		s.mu.Lock()
-		s.chatType[id] = "channel"
+		s.chatType[id] = typ
 		s.chatSeq[id] = 0
 		s.mu.Unlock()
 	}
-	in := New(fakeTx{}, groupMembershipChats{fg}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, fg, nil, nil, nil, nil)
+	in := New(fakeTx{}, groupMembershipChats{fg, s}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, fg, nil, nil, nil, nil)
 	return in, fg, s
 }
 
@@ -38,7 +37,9 @@ func TestSetFactCheck_PermissionAndSerialization(t *testing.T) {
 	_ = fg.AddMember(ctx, chatID, subscriber, domain.RoleSubscriber, 0)
 
 	// a channel post to attach the fact check to
-	post, err := fakeMsgs{s}.Insert(ctx, domain.Message{ChatID: chatID, SenderID: creator, Type: "text", Text: "post"})
+	// Номер в чате задан явно и заведомо НЕ равен ключу строки: на равных
+	// числах подмена адреса не видна вовсе.
+	post, err := fakeMsgs{s}.Insert(ctx, domain.Message{ChatID: chatID, Seq: 5, SenderID: creator, Type: "text", Text: "post"})
 	if err != nil {
 		t.Fatalf("insert: %v", err)
 	}
@@ -54,7 +55,7 @@ func TestSetFactCheck_PermissionAndSerialization(t *testing.T) {
 	}
 
 	// creator sets it → stored with sanitized country (upper-cased ISO2)
-	ents := []domain.MessageEntity{{Type: "bold", Offset: 0, Length: 4}}
+	ents := domain.MessageEntities{domain.NewMessageEntityBold(0, 4)}
 	msg, err := in.SetFactCheck(ctx, chatID, post.ID, creator, "fact", ents, "de")
 	if err != nil {
 		t.Fatalf("creator set: %v", err)
@@ -67,10 +68,27 @@ func TestSetFactCheck_PermissionAndSerialization(t *testing.T) {
 	}
 
 	// serialization: frame payload carries the factcheck block
-	p := factCheckUpdatePayload(msg)
+	p := factCheckUpdatePayload(domain.PeerID(7), msg)
+	if p["_"] != domain.UpdateMessageFactCheckTag {
+		t.Fatalf("кадр = %v", p["_"])
+	}
 	fc, ok := p["factcheck"].(map[string]any)
 	if !ok || fc["text"] != "fact" || fc["country"] != "DE" {
 		t.Fatalf("payload factcheck = %v", p["factcheck"])
+	}
+	// Адрес сообщения в кадре ОДИН — номер в чате (внутренний ключ строки
+	// наружу не выходит; здесь они заведомо разные, см. фикстуру), и имя ему
+	// даёт схема: msg_id.
+	if msg.ID == msg.Seq {
+		t.Fatalf("фикстура вырождена: ключ строки %d совпал с номером %d", msg.ID, msg.Seq)
+	}
+	if p["msg_id"] != msg.Seq {
+		t.Fatalf("адрес в кадре = %v, ждали номер %d (ключ строки %d)", p["msg_id"], msg.Seq, msg.ID)
+	}
+	for _, banned := range []string{"id", "seq"} {
+		if _, ok := p[banned]; ok {
+			t.Fatalf("в кадре осталось второе число %q: %v", banned, p)
+		}
 	}
 
 	// creator removes it → factcheck cleared, payload null
@@ -81,8 +99,11 @@ func TestSetFactCheck_PermissionAndSerialization(t *testing.T) {
 	if got.FactCheck != nil {
 		t.Fatalf("factcheck not cleared: %+v", got.FactCheck)
 	}
-	b, _ := json.Marshal(factCheckUpdatePayload(got))
-	if !strings.Contains(string(b), `"factcheck":null`) {
-		t.Fatalf("payload should carry factcheck:null after remove; got %s", b)
+	// «Проверку сняли» — ОТСУТСТВИЕ параметра, а не null под тем же ключом: то
+	// же правило, по которому «черновика нет» стало вторым конструктором.
+	cleared := factCheckUpdatePayload(domain.PeerID(7), got)
+	if _, present := cleared["factcheck"]; present {
+		b, _ := json.Marshal(cleared)
+		t.Fatalf("после снятия параметр обязан отсутствовать, а не быть null; got %s", b)
 	}
 }

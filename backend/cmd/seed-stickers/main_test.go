@@ -64,7 +64,7 @@ func TestLoadRanksNoFile(t *testing.T) {
 // делали. Больше от usecase сиду ничего не нужно, поэтому ни Postgres, ни MinIO
 // в этих тестах нет.
 type fakeSeeder struct {
-	sets map[string]domain.StickerSet
+	sets map[string]domain.StickerSetRecord
 	// positions — занятые позиции набора по его id; наполняется тестом заранее
 	// (существующий набор) и через AddSticker (досидированные позиции).
 	positions map[int64]map[int]struct{}
@@ -85,7 +85,7 @@ type fakeSeeder struct {
 
 func newFakeSeeder() *fakeSeeder {
 	return &fakeSeeder{
-		sets:      map[string]domain.StickerSet{},
+		sets:      map[string]domain.StickerSetRecord{},
 		positions: map[int64]map[int]struct{}{},
 		thumbs:    map[int64]map[int][]byte{},
 		ranks:     map[int64]int{},
@@ -93,16 +93,16 @@ func newFakeSeeder() *fakeSeeder {
 	}
 }
 
-func (f *fakeSeeder) SetBySlug(_ context.Context, slug string) (domain.StickerSet, []domain.Sticker, error) {
+func (f *fakeSeeder) SetBySlug(_ context.Context, slug string) (domain.StickerSetRecord, []domain.Sticker, error) {
 	set, ok := f.sets[slug]
 	if !ok {
-		return domain.StickerSet{}, nil, domain.ErrNotFound
+		return domain.StickerSetRecord{}, nil, domain.ErrNotFound
 	}
 	return set, nil, nil
 }
 
-func (f *fakeSeeder) CreateSet(_ context.Context, ownerID int64, slug, title, kind string) (domain.StickerSet, error) {
-	set := domain.StickerSet{ID: int64(len(f.sets) + 1), Slug: slug, Title: title, Kind: kind, CreatedBy: ownerID}
+func (f *fakeSeeder) CreateSet(_ context.Context, ownerID int64, slug, title, kind string) (domain.StickerSetRecord, error) {
+	set := domain.StickerSetRecord{ID: int64(len(f.sets) + 1), Slug: slug, Title: title, Kind: kind, CreatedBy: ownerID}
 	f.sets[slug] = set
 	f.created = append(f.created, slug)
 	return set, nil
@@ -230,7 +230,7 @@ func TestSeedSetExistingGetsRankAndCover(t *testing.T) {
 	dir := t.TempDir()
 	writeSetDir(t, dir, "utyaduck")
 	seeder := newFakeSeeder()
-	seeder.sets["utyaduck"] = domain.StickerSet{ID: 7, Slug: "utyaduck", Title: "Утята", Kind: "sticker"}
+	seeder.sets["utyaduck"] = domain.StickerSetRecord{ID: 7, Slug: "utyaduck", Title: "Утята", Kind: "sticker"}
 	// Единственный стикер из writeSetDir (позиция 0) уже залит — тест проверяет
 	// именно доставку rank/обложки, а не досидирование стикеров (для него своя
 	// проверка — TestSeedSetFillsMissingPositions).
@@ -263,7 +263,7 @@ func TestSeedSetCompleteSetUntouched(t *testing.T) {
 	dir := t.TempDir()
 	writeSetDir(t, dir, "utyaduck")
 	seeder := newFakeSeeder()
-	seeder.sets["utyaduck"] = domain.StickerSet{ID: 7, Slug: "utyaduck", Rank: 5, CoverMediaID: 42}
+	seeder.sets["utyaduck"] = domain.StickerSetRecord{ID: 7, Slug: "utyaduck", Rank: 5, CoverMediaID: 42}
 	seeder.positions[7] = map[int]struct{}{0: {}}
 	uploads := 0
 
@@ -324,7 +324,7 @@ func TestSeedSetFillsMissingPositions(t *testing.T) {
 	dir := t.TempDir()
 	writeSetDirN(t, dir, "utyaduck", 4)
 	seeder := newFakeSeeder()
-	seeder.sets["utyaduck"] = domain.StickerSet{ID: 7, Slug: "utyaduck", Rank: 3, CoverMediaID: 42}
+	seeder.sets["utyaduck"] = domain.StickerSetRecord{ID: 7, Slug: "utyaduck", Rank: 3, CoverMediaID: 42}
 	seeder.positions[7] = map[int]struct{}{0: {}, 1: {}}
 	uploads := 0
 
@@ -366,7 +366,7 @@ func TestSeedSetFillsMiddleGapIdempotently(t *testing.T) {
 	dir := t.TempDir()
 	writeSetDirN(t, dir, "utyaduck", 10) // meta.json на 10 файлов: 0..9
 	seeder := newFakeSeeder()
-	seeder.sets["utyaduck"] = domain.StickerSet{ID: 7, Slug: "utyaduck", Rank: 3, CoverMediaID: 42}
+	seeder.sets["utyaduck"] = domain.StickerSetRecord{ID: 7, Slug: "utyaduck", Rank: 3, CoverMediaID: 42}
 	// Занято всё, кроме позиции 3 (её стикер как будто удалили из середины).
 	seeder.positions[7] = map[int]struct{}{0: {}, 1: {}, 2: {}, 4: {}, 5: {}, 6: {}, 7: {}, 8: {}, 9: {}}
 	uploads := 0
@@ -425,7 +425,7 @@ func TestSeedSetBackfillsExistingPathThumb(t *testing.T) {
 	outline1 := base64.StdEncoding.EncodeToString([]byte{7, 7})
 	writeSetDirNWithPaths(t, dir, "utyaduck", 2, map[int]string{0: outline0, 1: outline1})
 	seeder := newFakeSeeder()
-	seeder.sets["utyaduck"] = domain.StickerSet{ID: 7, Slug: "utyaduck", Rank: 3, CoverMediaID: 42}
+	seeder.sets["utyaduck"] = domain.StickerSetRecord{ID: 7, Slug: "utyaduck", Rank: 3, CoverMediaID: 42}
 	// Оба стикера уже залиты (как на стенде) — недостающих позиций нет.
 	seeder.positions[7] = map[int]struct{}{0: {}, 1: {}}
 	uploads := 0
@@ -463,7 +463,7 @@ func TestSeedSetNoPathIsNotError(t *testing.T) {
 	dir := t.TempDir()
 	writeSetDirN(t, dir, "utyaduck", 1) // Path не задан
 	seeder := newFakeSeeder()
-	seeder.sets["utyaduck"] = domain.StickerSet{ID: 7, Slug: "utyaduck", Rank: 3, CoverMediaID: 42}
+	seeder.sets["utyaduck"] = domain.StickerSetRecord{ID: 7, Slug: "utyaduck", Rank: 3, CoverMediaID: 42}
 	seeder.positions[7] = map[int]struct{}{0: {}}
 	uploads := 0
 

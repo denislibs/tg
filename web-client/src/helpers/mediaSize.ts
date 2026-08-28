@@ -2,8 +2,10 @@
 // конструктором `width, height = width` и aspect-методами поверх
 // `calcImageInBox`). Адаптации:
 //   • `calcImageInBox` у нас уже портирован в `core/dom/calcImageInBox.ts`
-//     (named export, возвращает plain `{width, height}` вместо tweb
-//     `MediaSize` — числа те же, потребителям вьювера нужны только они);
+//     (named export, возвращает plain `{width, height}`; tweb-версия сама
+//     заворачивает результат в `makeMediaSize`, поэтому это делает `aspect` —
+//     наружу, как в оригинале, уходит `MediaSize`, и результат можно
+//     цепочкой отдать в `aspectCovered`, как в `setAttachmentSize`);
 //   • формат `.oxlintrc.json` (без `;`).
 import { calcImageInBox } from '@core/dom/calcImageInBox'
 
@@ -12,8 +14,9 @@ export class MediaSize {
 
   }
 
-  public aspect(boxSize: MediaSize, fitted: boolean) {
-    return calcImageInBox(this.width, this.height, boxSize.width, boxSize.height, fitted)
+  public aspect(boxSize: MediaSize, fitted: boolean): MediaSize {
+    const { width, height } = calcImageInBox(this.width, this.height, boxSize.width, boxSize.height, fitted)
+    return makeMediaSize(width, height)
   }
 
   public aspectFitted(boxSize: MediaSize) {
