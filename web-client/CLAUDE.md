@@ -51,6 +51,17 @@ npx vite build --outDir ../client-build
   @lib @helpers @components @config @environment @vendor @customEmoji @types @/*`. Раскладка кросс-каттинга:
   `shared/lib` — чистые переиспользуемые утилиты; `lib` — толстые вендор-подсистемы (lottie,
   customEmoji, `twebMessagePort`); `helpers` — легаси-корзина, новое туда не класть.
+- **Два JSX-рантайма.** Слой представления переезжает с React на Solid (проект —
+  `docs/superpowers/specs/2026-08-28-solid-migration-design.md`). Граница держится
+  ИМЕНЕМ ФАЙЛА: `*.solid.tsx` собирает `vite-plugin-solid`, всё прочее — React;
+  маски в `vite.config.ts` и `vitest.config.ts` взаимоисключающие. Solid-файл
+  начинается с прагмы `/** @jsxImportSource solid-js */` — глобальный
+  `"jsx": "react-jsx"` в `tsconfig.json` остаётся до конца переезда. Импортировать
+  React из `*.solid.tsx` нельзя, держит `shared/solid/boundary.test.ts`.
+  Solid вставляется в React только островом — `<SolidIsland>`; вставлять
+  Solid-компонент как обычный React-ребёнок невозможно, у границы всегда
+  настоящий DOM-хост с `dispose`. Мелкие листы островами не оборачивать:
+  острова ставятся на крупных границах (попап, вкладка, экран).
 
 ## Архитектура клиента (инварианты — НЕ нарушать)
 
