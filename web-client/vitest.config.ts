@@ -12,10 +12,6 @@ export default defineConfig({
   // см. src/shared/solid/fileRuntime.ts.
   plugins: [solid({ include: [SOLID_FILE_PATTERN] })],
   resolve: {
-    // Новая строка: без этих условий Node резолвит СЕРВЕРНУЮ сборку solid-js,
-    // где `render` — заглушка `throwInBrowser`, и тесты падают с пустым DOM.
-    conditions: ['development', 'browser'],
-    // Существующий блок `alias` остаётся как есть, целиком, ниже этой строки.
     alias: {
       '@lib': r('src/lib'),
       '@helpers': r('src/helpers'),
