@@ -206,6 +206,51 @@ describe('sequential: ветка ленты (порт tweb bubbles.ts:802-819)',
     expect(bubbles.chatInner.querySelectorAll('.bubble:not(.service)')).toHaveLength(1)
   })
 
+  // ГЛАВНОЕ, что делает ack помимо номера: снимает с бабла «отправляется».
+  // Найдено ЖИВЬЁМ и не ловилось ни одним тестом: соседи по файлу проверяют
+  // ПЕРЕСТАНОВКУ (кто где лежит), а вид бабла не спрашивал никто — и часы
+  // висели на своём сообщении навсегда, до перезагрузки чата.
+  //
+  // Порт tweb bubbles.ts:917-938: там ack тем же ходом снимает `is-outgoing` и
+  // зовёт `setBubbleSendingStatus`. Проверяются ОБЕ дороги ack — короткая
+  // (`sequential`, подмена на месте) и общая (перегруппировка), потому что
+  // снимать статус обязаны обе, а расходятся они именно здесь.
+  it('ack снимает «отправляется» — короткая дорога (sequential)', async () => {
+    const { pending, ops, ack } = owner()
+    bubbles = new ChatBubbles({ peerId: CHAT, messagesStorageKey: KEY, container: document.createElement('div'), bubblesViewport: document.createElement('div') }, managers)
+    await openFeed(bubbles)
+
+    await sendAndRender(pending, 'c1', 'привет')
+    const temp = (ops[0][0] as { msg: MessageReal }).msg
+    // Контроль: до ack бабл ОБЯЗАН быть «отправляется», иначе тест был бы
+    // зелёным и на сломанном коде.
+    expect(bubbles.getBubble(makeFullMid(CHAT, temp.id))!.classList.contains('is-sending')).toBe(true)
+
+    ack('c1', 900, iso(temp.date))
+    await settle()
+
+    expect(bubbles.getBubble(makeFullMid(CHAT, cid(900)))!.classList.contains('is-sending')).toBe(false)
+  })
+
+  it('ack снимает «отправляется» — общая дорога (sendFile, перегруппировка)', async () => {
+    const { pending, ops, ack } = owner()
+    bubbles = new ChatBubbles({ peerId: CHAT, messagesStorageKey: KEY, container: document.createElement('div'), bubblesViewport: document.createElement('div') }, managers)
+    await openFeed(bubbles)
+
+    await pending.sendFile({
+      peerId: CHAT, clientMsgId: 'c2', senderId: ME,
+      file: new Blob(['x'], { type: 'image/png' }), type: 'photo', mime: 'image/png',
+    })
+    await settle()
+    const temp = (ops[0][0] as { msg: MessageReal }).msg
+    expect(bubbles.getBubble(makeFullMid(CHAT, temp.id))!.classList.contains('is-sending')).toBe(true)
+
+    ack('c2', 901, iso(temp.date))
+    await settle()
+
+    expect(bubbles.getBubble(makeFullMid(CHAT, cid(901)))!.classList.contains('is-sending')).toBe(false)
+  })
+
   // Тот же ack, но без признака (путь `sendFile`): лента обязана пойти общим
   // путём — снять бабл и разложить заново.
   it('без признака: тот же ack идёт общим путём (перегруппировка)', async () => {

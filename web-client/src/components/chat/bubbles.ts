@@ -4723,6 +4723,30 @@ export default class ChatBubbles implements BubbleGroupsHost {
       this.bubbles[fullMid] = bubble
       bubble.dataset.mid = '' + message.id
 
+      // Порт tweb bubbles.ts:917-938. Ack — это НЕ ТОЛЬКО новый номер: тем же
+      // ходом оригинал снимает с бабла «отправляется» и выставляет статус
+      // (`is-outgoing` → `setBubbleSendingStatus`). Без этой половины бабл
+      // остаётся с часами НАВСЕГДА: второго события про него не будет, и
+      // «отправляется» держится до перезагрузки чата. Найдено живьём.
+      //
+      // `fastRaf` и перепроверка адреса — тоже оригинал (:917-921): между
+      // событием и кадром бабл могли переселить или заменить, и тогда красить
+      // уже нечего.
+      fastRaf(() => {
+        if (this.getBubble(fullMid) !== bubble) return
+        // Классы пишутся целиком — как в `onMessageEdit`, потому что вопрос
+        // «что за бабл» имеет один ответ (`classesFor`); серию возвращает её
+        // владелец.
+        bubble.className = this.classesFor(message).join(' ')
+        this.bubbleGroups.getItemByBubble(bubble)?.group?.updateClassNames()
+
+        const bubbleContainer = bubble.querySelector<HTMLElement>('.bubble-content')
+        const messageDiv = bubble.querySelector<HTMLElement>('.message')
+        if (bubbleContainer && messageDiv) {
+          this.renderMessageMeta(message, bubble, bubbleContainer, messageDiv)
+        }
+      })
+
       // Порт tweb bubbles.ts:780-789. Бабл, который надо переставить, может быть
       // ещё НЕ РАЗЛОЖЕН по сериям: узел и адрес заводятся синхронно
       // (`safeRenderMessage`), а серия — только в пачке очереди рендера. Поэтому
