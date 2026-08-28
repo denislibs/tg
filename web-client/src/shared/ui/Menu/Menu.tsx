@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom'
 import type { CSSProperties, ReactNode } from 'react'
 import classNames from '../../lib/classNames'
 import { usePortalContainer } from '../../../core/pip'
+import { pushEsc } from '../../../core/hotkeys'
+import { useNavLayer } from '../../../core/hooks/useNavLayer'
 import s from './Menu.module.scss'
 
 /** Угол, из которого «растёт» панель. В tweb это класс на `.btn-menu`
@@ -54,6 +56,27 @@ interface MenuProps {
 // сторону подставит `inset` класса. Порт positionMenu() — отдельная задача.
 export default function Menu({ open, onClose, onExitComplete, corner, style, className, zIndex, children }: MenuProps) {
   const container = usePortalContainer()
+
+  // Открытое меню — ВЕРХНИЙ слой: Esc и Back обязаны закрыть его, а не то, что
+  // под ним. У tweb это один навигационный элемент — `open()` кладёт его в
+  // `appNavigationController` (`overlayClickHandler.ts:74-81`, тип `'menu'` от
+  // `contextMenuController.ts:19`), а `onKeyDown` снимает ИМЕННО ПОСЛЕДНИЙ
+  // (`appNavigationController.ts:216-222`). У нас тот же элемент расщеплён на
+  // два механизма — клавиша (`core/hotkeys`) и Back (`useNavLayer`), потому что
+  // Escape в браузере popstate не порождает; регистрируем оба, как это уже
+  // делают `Popup.tsx` и vanilla-порт `helpers/overlayClickHandler.ts:104-105`.
+  //
+  // Без регистрации Esc проваливался в `escFallback` и закрывал ЧАТ ПОД меню:
+  // меню оставалось висеть вместе со своим бэкдропом на весь экран (z-index
+  // 2000), то есть приложение переставало принимать клики.
+  useNavLayer(open, onClose)
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+  useEffect(() => {
+    if (!open) return
+    return pushEsc(() => closeRef.current())
+  }, [open])
+
   const panelRef = useRef<HTMLDivElement>(null)
   const wasOpen = useRef(open)
   const exitRef = useRef(onExitComplete)
