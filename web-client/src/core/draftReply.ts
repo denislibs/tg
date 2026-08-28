@@ -22,7 +22,23 @@ export interface ReplyAuthors {
 // ReplyState для одного сообщения; date-плашки не реплаются.
 export function convMsgReplyState(m: ConvMsg, msgId: number | undefined, chatName: string, accent: string, authors?: ReplyAuthors): NonNullable<ReplyState> | null {
   if (m.type === 'date') return null
-  const name = m.out ? 'Дн' : m.sender ?? chatName
+  // Имя автора оригинала. У СВОЕГО сообщения это моё имя — из карточки пира,
+  // тем же `getPeerTitle`, которым берутся все остальные имена: второго ответа
+  // на вопрос «как зовут пира» быть не должно.
+  //
+  // Здесь стояла ЛИТЕРАЛЬНАЯ строка `'Дн'` — чужая тестовая заглушка, утёкшая в
+  // продуктовый код. Живьём плашка ответа на своё сообщение так и писала:
+  // «Ответ Дн». Тест при этом был зелёным, потому что фиксировал ровно её.
+  //
+  // Наличие карточки проверяется ЯВНО, а не через `||`: `getPeerTitle` на
+  // отсутствующей карточке отдаёт не пустоту, а «Удалённый аккаунт» (свой
+  // фолбэк, порт `!user` из getPeerTitle.ts:63). Положись мы на `||` — плашка
+  // до приезда карточки писала бы «Ответ Удалённый аккаунт», что хуже литерала.
+  const meId = authors?.meId
+  const mePeer = meId != null ? cachedPeer(meId) : undefined
+  const name = m.out
+    ? (mePeer && meId != null ? getPeerTitle({ peerId: meId, peer: mePeer }) : chatName)
+    : m.sender ?? chatName
   const color = m.out ? accent : m.senderColor ?? peerColor(name)
   const peerId = m.out ? authors?.meId : m.senderId ?? authors?.peerId
   return { msgId, name, text: m.text ?? m.emoji ?? '', color, peerId }
