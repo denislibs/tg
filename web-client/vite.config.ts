@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import { resolve } from 'node:path'
 import react from '@vitejs/plugin-react'
+import solid from 'vite-plugin-solid'
 import { keepBackdropFilterUnprefixed } from './vite/keepBackdropFilterUnprefixed'
 import { computeVersion, writeVersion } from './scripts/write-version.mjs'
 
@@ -19,7 +20,11 @@ export default defineConfig({
     __APP_VERSION_FULL__: JSON.stringify(versionFull),
   },
   plugins: [
-    react(),
+    // Два JSX-рантайма разведены по имени файла. `*.solid.tsx` — Solid,
+    // всё прочее — React. Маски ДОЛЖНЫ быть взаимоисключающими: если файл
+    // попадёт под оба плагина, его JSX преобразуют дважды.
+    solid({ include: ['**/*.solid.tsx', '**/*.solid.test.tsx'] }),
+    react({ exclude: [/\.solid\.tsx?$/] }),
     keepBackdropFilterUnprefixed(),
     { name: 'write-version', buildStart() { writeVersion() } },
   ],

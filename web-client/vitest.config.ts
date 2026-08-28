@@ -1,12 +1,18 @@
 import { defineConfig } from 'vitest/config'
 import { resolve } from 'node:path'
+import solid from 'vite-plugin-solid'
 
 // Алиасы должны совпадать с vite.config.ts, иначе тесты не резолвят @config/@lib/…
 // (из-за отсутствия этого блока падал импорт @config/debug в lottie-модулях).
 const r = (p: string) => resolve(__dirname, p)
 
 export default defineConfig({
+  plugins: [solid({ include: ['**/*.solid.tsx', '**/*.solid.test.tsx'] })],
   resolve: {
+    // Новая строка: без этих условий Node резолвит СЕРВЕРНУЮ сборку solid-js,
+    // где `render` — заглушка `throwInBrowser`, и тесты падают с пустым DOM.
+    conditions: ['development', 'browser'],
+    // Существующий блок `alias` остаётся как есть, целиком, ниже этой строки.
     alias: {
       '@lib': r('src/lib'),
       '@helpers': r('src/helpers'),
