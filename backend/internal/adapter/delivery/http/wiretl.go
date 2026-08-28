@@ -1,6 +1,8 @@
 package http
 
 import (
+	"bufio"
+	"net"
 	"net/http"
 	"strings"
 
@@ -32,6 +34,25 @@ type wireWriter struct {
 // Unwrap — доступ к исходному writer'у для http.ResponseController (Flush,
 // Hijack): обёртка не должна отнимать у стрима медиа его возможности.
 func (w *wireWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+// Hijack — ОТДЕЛЬНО от Unwrap, и это не дублирование.
+//
+// `Unwrap` понимает только `http.ResponseController` (Go 1.20+). Кто спрашивает
+// возможность ПРЯМЫМ приведением `w.(http.Hijacker)` — а так делает
+// gorilla/websocket в `Upgrader.Upgrade` — обёртки не видит и получает отказ.
+// Цена ошибки здесь не косметическая: без Hijack апгрейд `/ws` отвечает
+// 500 «websocket: response does not implement http.Hijacker», то есть
+// реалтайма нет ВООБЩЕ — ни кадров, ни присутствия, ни отметок прочтения.
+//
+// Возвращаем ошибку, а не паникуем, если нижний writer хайджек не умеет
+// (HTTP/2): для вызывающего это штатный отказ апгрейда.
+func (w *wireWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := w.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, http.ErrNotSupported
+	}
+	return h.Hijack()
+}
 
 // WireTL — middleware договорённости о проводе. Клиент просит TL заголовком
 // `Accept: application/x-tl`; всё остальное (включая отсутствие заголовка)
