@@ -16,6 +16,7 @@ import contextMenuController from '@helpers/contextMenuController'
 import { getMediaId } from '@core/messages/messageKind'
 import type { MyDocument } from '@core/media/messageMedia'
 import ChatBubbles, { type ChatContext } from './bubbles'
+import type { ChatAutoDownload } from '@core/hooks/useChatAutoDownload'
 import ChatContextMenu, { type ContextMenuPopups } from './contextMenu'
 import ChatSelection from './selection'
 import { useManagers } from '@core/hooks/useManagers'
@@ -64,7 +65,7 @@ export interface ChatFeedApi {
   setSavedReaction(reaction: string | null): void
 }
 
-export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBottomPx, peerId, threadRootId, isLikeGroup, isBroadcast, isMegagroup, canSend, canSendPlain, onReply, onEdit, onDownload, onSendSticker, menuPopups, mediaViewerActions, onSelection, onOpenDatePicker, onOpenDiscussion }: {
+export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBottomPx, peerId, threadRootId, isLikeGroup, isBroadcast, isMegagroup, autoDownload, canSend, canSendPlain, onReply, onEdit, onDownload, onSendSticker, menuPopups, mediaViewerActions, onSelection, onOpenDatePicker, onOpenDiscussion }: {
   /** Ручки ленты наружу — заполняются на маунте, гасятся на размонтировании. */
   api?: RefObject<ChatFeedApi | null>
   /** Скролл-контейнер ленты (`Scrollable.container`) — тем же способом, что
@@ -90,6 +91,17 @@ export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBot
    *  лица канала (`isOurMessage`, chat.ts:1375). Считает его тот же хост, что и
    *  `isLikeGroup`: вид чата знает React-экран, а не лента. */
   isMegagroup?: boolean
+  /**
+   * Порт tweb `chat.autoDownload` (chat.ts:137) — три порога автозагрузки
+   * `{photo, video, file}` в байтах, 0 = «только по клику». Считает их хост
+   * (`Chat.tsx` через `useChatAutoDownload`, порт `useAutoDownloadSettings`):
+   * в оригинале это тоже роль `Chat`, а не ленты — вид пира и настройки живут
+   * в сторах, про которые лента не знает.
+   *
+   * Не передан — врапперы качают всё (тот же смысл, что `autoDownload:
+   * undefined` у tweb: `noAutoDownload = autoDownloadSize === 0` не взводится).
+   */
+  autoDownload?: ChatAutoDownload
   /** Порт tweb `chat.canSend()` — гейт свайп-ответа на таче. Право знает
    *  хост (`canType`), лента про права не знает. */
   canSend?: boolean
@@ -162,8 +174,8 @@ export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBot
   const bubblesRef = useRef<ChatBubbles | null>(null)
   const paddingRef = useRef({ top: paddingTopPx, bottom: paddingBottomPx })
   paddingRef.current = { top: paddingTopPx, bottom: paddingBottomPx }
-  const gesture = useRef({ canSend, canSendPlain, onReply, onEdit, onDownload, onSendSticker, menuPopups, mediaViewerActions, onSelection, onOpenDatePicker, onOpenDiscussion })
-  gesture.current = { canSend, canSendPlain, onReply, onEdit, onDownload, onSendSticker, menuPopups, mediaViewerActions, onSelection, onOpenDatePicker, onOpenDiscussion }
+  const gesture = useRef({ autoDownload, canSend, canSendPlain, onReply, onEdit, onDownload, onSendSticker, menuPopups, mediaViewerActions, onSelection, onOpenDatePicker, onOpenDiscussion })
+  gesture.current = { autoDownload, canSend, canSendPlain, onReply, onEdit, onDownload, onSendSticker, menuPopups, mediaViewerActions, onSelection, onOpenDatePicker, onOpenDiscussion }
 
   // Одно место, где состояние выделения уходит наверх: и счётчик, и признак
   // режима, и способ его снять (плашка снимает выбор кликом по счётчику —
@@ -315,6 +327,11 @@ export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBot
         // позиции скролла.
         canSend: () => gesture.current.canSend ?? false,
         canSendPlain: () => gesture.current.canSendPlain ?? false,
+        // ЖИВОЕ ЧТЕНИЕ по той же причине, что права выше: у tweb поле
+        // `chat.autoDownload` держит свежим `createEffect` (chat.ts:1053-1057),
+        // то есть смена настройки доезжает до следующего же рендера бабла БЕЗ
+        // пересборки ленты. Захвати мы значение — оно бы застыло до смены пира.
+        autoDownload: () => gesture.current.autoDownload,
         initMessageReply: (mid) => gesture.current.onReply?.(mid),
         sendSticker: (doc) => gesture.current.onSendSticker?.(doc),
         // Через реф — по той же причине, что попапы меню: ни один из колбэков

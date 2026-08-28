@@ -145,6 +145,8 @@ import liteMode from '@helpers/liteMode'
 import deferredPromise, { type CancellablePromise } from '@helpers/cancellablePromise'
 import { animateLadderLists, type LadderStep } from '@core/dom/ladder'
 import { deleteChatPosition, getChatPosition, saveChatPosition, type ChatPosition } from '@core/chat/chatPositions'
+import { getActiveGradientRenderer } from '@core/chat/activeGradient'
+import type { ChatAutoDownload } from '@core/hooks/useChatAutoDownload'
 import { useI18nStore } from '../../i18n'
 
 /** Адрес бабла — порт tweb `FullMid` (`${peerId}_${mid}`, bubbles.ts:440-449).
@@ -313,6 +315,21 @@ export interface ChatContext {
    * открывают пункты, — поэтому собрать меню может только он.
    */
   createContextMenu?(bubbles: ContextMenuBubbles): ChatContextMenu
+  /**
+   * Порт tweb `chat.autoDownload` (chat.ts:137) — пороги автозагрузки медиа
+   * ОТКРЫТОГО чата: `{photo, video, file}` в байтах, 0 = «не качать само,
+   * только по клику». Лента их не считает, а раздаёт врапперам ровно там же,
+   * где оригинал (bubbles.ts:7901 альбом, :7919 фото, :8542/:8561 видео и
+   * кружок, :8597 документ) — считает их роль `Chat` (chat.ts:1055
+   * `useAutoDownloadSettings`), у нас `Chat.tsx`.
+   *
+   * ФУНКЦИЯ, а не значение, по той же причине, что `canSend`: у оригинала это
+   * поле, которое `createEffect` держит свежим на смену настроек, то есть
+   * чтение всегда живое. Не передана — врапперы качают всё (у tweb это
+   * `autoDownload: undefined` → `noAutoDownload = autoDownloadSize === 0`
+   * не взводится).
+   */
+  autoDownload?(): ChatAutoDownload | undefined
   /** Порт tweb `chat.canSend()` (chat.ts, без аргумента — действие
    *  `send_messages`): гейт СВАЙП-ответа (bubbles.ts:1548). Асинхронный, как в
    *  оригинале. Не передан — жест не начинается вовсе. */
@@ -586,6 +603,16 @@ export default class ChatBubbles implements BubbleGroupsHost {
   // ещё не попал в очередь, и ожидание очереди ничего не даст (bubbles.ts:780-783).
   private renderNewPromises: Set<Promise<void>> = new Set()
 
+  /**
+   * «Следующая прокрутка обязана сдвинуть градиент обоев» — порт tweb
+   * bubbles.ts:652. Флаг взводит отправка своего сообщения
+   * (`history_append`, :1859-1864), а тратит его ПЕРВАЯ же прокрутка к баблу
+   * (`scrollToBubble` → `startCallback`, :4710-4714). Разнесено на два места
+   * именно так и в оригинале: градиент едет ровно на длину прокрутки, а не
+   * сам по себе, и знать эту длину может только тот, кто прокручивает.
+   */
+  private updateGradient?: boolean
+
   // tweb bubbles.ts:492-493 — «страница этой стороны уже в полёте». Он же гейт
   // повторного триггера пагинации (`loadMoreHistory`).
   private getHistoryTopPromise?: Promise<unknown>
@@ -830,6 +857,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  Отличается от `isOurMessage` ровно самопересылкой в «Избранное». */
   public isOutMessage(message: MyMessage): boolean {
     return isOutMessage(message, this.ourChat)
+  }
+
+  /** Порт чтения `this.chat.autoDownload` (tweb bubbles.ts:7901 и соседи) —
+   *  живое, на каждый рендер медиа: настройка могла смениться, пока чат открыт. */
+  private get autoDownload(): ChatAutoDownload | undefined {
+    return this.chat.autoDownload?.()
   }
 
   // Порт tweb bubbles.ts:1439-1458 — дерево дословно.
@@ -1194,6 +1227,10 @@ export default class ChatBubbles implements BubbleGroupsHost {
         // (`uploadingFileName?.[idx]`): фотографии уходят по одной, и крестик
         // на ячейке отменяет именно её.
         uploadPromises: albumMessages.map((m) => this.uploadPromiseFor(m)),
+        // tweb :7901 (фото-альбом) / :8542 (видео-альбом) — весь свод целиком:
+        // внутри альбом сам выбирает `photo` для ячейки-фотографии и отдаёт
+        // свод дальше в `wrapVideo` для ячейки-видео.
+        autoDownload: this.autoDownload,
       })
       messageDiv.before(attachmentDiv)
       attachmentDiv.classList.add('no-brb')
@@ -1229,6 +1266,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
         // tweb :8572 — у спойлера автоплей не заводится: иначе видео играло бы
         // под крышкой.
         noAutoplayAttribute: isMediaSpoiler(message),
+        // tweb :8561 — весь свод: враппер берёт `video` для самого документа и
+        // `photo` для его превью-кадра (`wrapVideo` :370/:415).
+        autoDownload: this.autoDownload,
       })
       : wrapPhoto({
         photo: mediaObject,
@@ -1239,6 +1279,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
         hasMessage: true,
         hasMessageBlock,
         uploadPromise,
+        // tweb :7919 — у фото порог отдельным числом (`autoDownloadSize`).
+        autoDownloadSize: this.autoDownload?.photo,
       })
     ).catch(noop)
 
@@ -1415,6 +1457,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
         out: !!message.pFlags?.out,
       },
       sizeType: 'documentName',
+      // tweb :8597 — у документа порог СВОЙ и сравнивается с размером файла
+      // (`wrapDocument`: `autoDownloadSize >= doc.size`), а не только с нулём.
+      autoDownloadSize: this.autoDownload?.file,
     })
 
     // tweb :8616-8618 — подложка перед содержимым.
@@ -4363,6 +4408,21 @@ export default class ChatBubbles implements BubbleGroupsHost {
       fallbackToElementStartWhenCentering,
       startCallback: (dimensions) => {
         this.onScroll(true, dimensions)
+
+        // Порт tweb bubbles.ts:4710-4714 дословно. Роль `this.chat
+        // .gradientRenderer` (геттер к `appChatBackground
+        // .getActiveGradientRenderer()`, chat.ts:270-272) исполняет модуль
+        // `core/chat/activeGradient`: обои у нас живут в порталe
+        // (`components/ChatBackground.tsx`), общего родителя-владельца с лентой
+        // нет — реестр активного рендерера вынесен туда.
+        //
+        // Аргумент `getProgress` ОБЯЗАТЕЛЕН: без него `toNextPosition` уходит в
+        // ветку самоанимации (`gradientRenderer.ts:258-288`) и фон едет сам по
+        // себе, а не вместе с прокруткой.
+        if (this.updateGradient) {
+          getActiveGradientRenderer()?.toNextPosition(dimensions.getProgress)
+          this.updateGradient = undefined
+        }
       },
     })
 
@@ -4601,6 +4661,23 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // догоняет собственный бабл), дождётся пустой очереди и выйдет ни с чем.
     this.listenerSetter.add(rootScope)('history_append', ({ storageKey, message }) => {
       if (storageKey !== this.chat.messagesStorageKey) return
+
+      // СДВИГ ГРАДИЕНТА ОБОЕВ — порт tweb bubbles.ts:1862-1864. Гейт
+      // `liteMode.isAvailable('chat_background')` дословный: при «без анимаций»
+      // фон стоит на месте.
+      //
+      // РАСХОЖДЕНИЕ ПО ИСТОЧНИКУ, названное явно. У tweb `history_append`
+      // объявляет ТОЛЬКО свою отправку: единственный вызыватель по этому пути —
+      // `beforeMessageSending` (appMessagesManager.ts:2792), а чужое входящее
+      // приезжает вторым событием — `history_multiappend` (:1897), которое
+      // флага не ставит. У нас событие одно на оба случая (`insert` зеркала,
+      // `core/history/messagesMirror.ts:273`), поэтому «моё ли это» приходится
+      // спрашивать здесь — `isOurMessage` и есть тот же самый вопрос, на
+      // который у оригинала отвечает выбор события.
+      if (liteMode.isAvailable('chat_background') && this.isOurMessage(message)) {
+        this.updateGradient = true
+      }
+
       void this.renderNewMessage(message)
     })
 
@@ -5214,6 +5291,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // ключом лежит пустой слайс, и листать его тоже не с чего.
     this.savedReactionOffset = 0
     this.getHistoryTopPromise = this.getHistoryBottomPromise = undefined
+    // tweb bubbles.ts:4960 — невостребованный сдвиг градиента принадлежит
+    // ПРОШЛОМУ окну: прокрутка нового окна не должна его тратить.
+    this.updateGradient = undefined
     this.scrolledDown = true
 
     this.dateMessages = {}

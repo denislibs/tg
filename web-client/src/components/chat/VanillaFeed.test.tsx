@@ -24,7 +24,24 @@ import { generateMessageId } from '@core/history/messageId'
 import { makeMessage } from '@core/messages/testMessage'
 import type { HistoryResult } from '@core/managers/messagesManager'
 import type { ContextMenuPopups } from './contextMenu'
+import type { ChatAutoDownload } from '@core/hooks/useChatAutoDownload'
+import { saveDocument, type MessageMedia } from '@core/media/messageMedia'
 import VanillaFeed from './VanillaFeed'
+
+// Байты документа берёт `appDownloadManager` прямым fetch'ем по токен-URL, а за
+// самим токеном ходит к воркеру (`core/mediaUrl.ts:131` → `startClient`) —
+// в тестовой среде `Worker` не существует. Мокается ГРАНИЦА: загрузка, которая
+// НИКОГДА не кончается, — здесь проверяется решение «начать качать», а не сама
+// загрузка. Единственный потребитель этого модуля в файле — документ-бабл ниже.
+vi.mock('@lib/appDownloadManager', () => ({
+  isDownloading: () => false,
+  getDownload: () => undefined,
+  downloadToDisc: () => Object.assign(new Promise(() => {}), {
+    cancel: () => {},
+    notifyAll: () => {},
+    addNotifyListener: () => {},
+  }),
+}))
 
 const CHAT = 50
 
@@ -59,6 +76,7 @@ function mount(
     peerId: PeerId
     threadRootId?: number
     isMegagroup?: boolean
+    autoDownload?: ChatAutoDownload
     menuPopups?: ContextMenuPopups
     onOpenDatePicker?: (initDate: number, onPick: (timestamp: number) => void) => void
   } = { peerId: CHAT },
@@ -193,6 +211,40 @@ describe('VanillaFeed — проводка императивной ленты �
       expect(bubblesIn(container)).toHaveLength(1)
     })
     expect(bubblesIn(container)[0].classList.contains('is-in')).toBe(true)
+  })
+
+  // Шестая строка проводки — `autoDownload: () => gesture.current.autoDownload`
+  // в `ChatContext`. Пороги считает `Chat.tsx` (порт tweb chat.ts:1055), а
+  // раздаёт врапперам лента; без проброса врапперы качают ВСЁ, и настройка
+  // «Автозагрузка медиа» перестаёт что-либо значить. Пин смотрит на ИТОГ у
+  // документа: у него порог сравнивается с размером файла
+  // (`wrappers/document.ts:257`, порт tweb document.ts:419).
+  const fileMsg = (id: number, docId: number) => msg(cid(id), {
+    message: '',
+    media: {
+      _: 'messageMediaDocument',
+      document: saveDocument({ _: 'document', id: docId, mime_type: 'application/pdf', size: 2048, attributes: [] }),
+    } as MessageMedia,
+  })
+
+  it('свод автозагрузки доезжает до ленты: документ ниже порога качается сам', async () => {
+    const { container } = mount([fileMsg(1, 9101)], {
+      peerId: CHAT,
+      autoDownload: { photo: 1_048_576, video: 15_728_640, file: 3_145_728 },
+    })
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('.document')?.classList.contains('downloading')).toBe(true)
+    })
+  })
+
+  it('без свода тот же документ сам не качается', async () => {
+    const { container } = mount([fileMsg(1, 9102)], { peerId: CHAT })
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('.document')).not.toBeNull()
+    })
+    expect(container.querySelector('.document')?.classList.contains('downloading')).toBe(false)
   })
 
   it('размонтирование гасит ленту: узел снят, подписки сняты (`bubbles.destroy()`)', async () => {

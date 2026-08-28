@@ -43,6 +43,7 @@ import { useMessageActions } from '../core/hooks/useMessageActions'
 import { useChannelLive } from '../core/hooks/useChannelLive'
 import Composer from './Composer'
 import VanillaFeed, { type ChatFeedApi } from './chat/VanillaFeed'
+import { useChatAutoDownload } from '@core/hooks/useChatAutoDownload'
 import { messageToViewerItem, type LightboxCtx } from './mediaViewer/collectLightboxItems'
 import { closeMediaViewer } from './mediaViewer/openMediaViewer'
 import { cachedPeer } from '../core/peerCache'
@@ -190,9 +191,14 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // `ChatFeedApi.setSavedReaction`, и она перезапрашивает историю (порт tweb
   // `appImManager.chat.setMessageId({savedReaction})`, topbarSearch.tsx:1057).
   const [savedTagFilter, setSavedTagFilter] = useState<string | null>(null)
-  // ДОЛГ этапа 7: настройки автозагрузки медиа (`useChatAutoDownload`, порт
-  // tweb `chat.autoDownload`) читала React-лента и раздавала их баблам.
-  // Императивная лента их не спрашивает — врапперы качают всегда.
+  // Настройки автозагрузки медиа открытого чата — порт tweb `chat.autoDownload`
+  // (chat.ts:137, считается в `setPeer`: chat.ts:1055 `useAutoDownloadSettings
+  // (this.peer, this.appSettings)` внутри `createEffect`, то есть пересчитывается
+  // и на смену настроек). Считает их РОЛЬ `Chat` — то есть этот экран, а не
+  // лента: лента про сторы не знает. Дальше они едут в ленту (`VanillaFeed`
+  // → `ChatContext.autoDownload`), а та раздаёт их врапперам, как оригинал
+  // раздаёт `this.chat.autoDownload` (bubbles.ts:7901/7919/8542/8561/8597).
+  const autoDownload = useChatAutoDownload(chat.type, isRealChat ? numericChatId : null)
 
   // Сброс фильтра тегов «Избранного» при смене чата. Ленте его снимать не надо:
   // на смене пира она пересоздаётся целиком (`VanillaFeed` держит эффект по
@@ -1253,7 +1259,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
             группа это `channel` с `pFlags.megagroup` (`core/peers/peer.ts:325`).
             Берётся из диалога, а не из карточки пира: карточка приезжает позже,
             и до неё баблы моргнули бы стороной. */}
-        <VanillaFeed api={feedApi} scrollerRef={feedScrollRef} paddingTopPx={padTopPx} paddingBottomPx={padBottomPx} mediaViewerActions={mediaViewerActions} peerId={numericChatId} threadRootId={threadRootId} isLikeGroup={isGroup} isBroadcast={isChannel} isMegagroup={isGroup} canSend={canType} canSendPlain={composerUsable} onReply={onFeedReply} onEdit={startEditFor} onDownload={downloadMedia} onSendSticker={canSendStickers ? onComposerPickSticker : undefined} menuPopups={feedMenuPopups} onSelection={onFeedSelection} onOpenDatePicker={showDatePicker} onOpenDiscussion={openFeedDiscussion} />
+        <VanillaFeed api={feedApi} scrollerRef={feedScrollRef} paddingTopPx={padTopPx} paddingBottomPx={padBottomPx} mediaViewerActions={mediaViewerActions} peerId={numericChatId} threadRootId={threadRootId} isLikeGroup={isGroup} isBroadcast={isChannel} isMegagroup={isGroup} autoDownload={autoDownload} canSend={canType} canSendPlain={composerUsable} onReply={onFeedReply} onEdit={startEditFor} onDownload={downloadMedia} onSendSticker={canSendStickers ? onComposerPickSticker : undefined} menuPopups={feedMenuPopups} onSelection={onFeedSelection} onOpenDatePicker={showDatePicker} onOpenDiscussion={openFeedDiscussion} />
 
         {/* Композер и его замены — tweb .chat-input.chat-input-main (absolute
             bottom 0 внутри #column-center) > .chat-input-container (max-width

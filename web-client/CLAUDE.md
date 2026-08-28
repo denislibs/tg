@@ -400,14 +400,57 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
   отравила бы обычное окно. У tweb этого нет, потому что ключ хранилища истории включает
   `savedReaction` (`getHistoryStorageKey.ts:18-22`), — вот это и есть настоящий остаток.
 
+**Градиент обоев, очередь плеера и автозагрузка закрыты** (пины —
+`chat/bubbles.gradient.test.ts`, `chat/bubbles.audioQueue.test.ts`,
+`chat/bubbles.autoDownload.test.ts`):
+
+- **сдвиг градиента обоев вместе с прокруткой к своему новому сообщению** — поле
+  `ChatBubbles.updateGradient` (порт tweb bubbles.ts:652): взводит `history_append`
+  (:1862-1864, гейт `liteMode.isAvailable('chat_background')`), тратит ПЕРВАЯ же
+  прокрутка в `scrollToBubble`/`startCallback` (:4710-4714 —
+  `toNextPosition(dimensions.getProgress)`), сбрасывает `cleanup` (:4960).
+  Реестр активного рендерера остался в `core/chat/activeGradient.ts` (роль
+  `chat.gradientRenderer`, tweb chat.ts:270-272), но САМ СДВИГ переехал к
+  прокручивающему, как в оригинале, — прежняя `shiftGradientWithScroll`, считавшая
+  прогресс по пройденному пути, снесена: у нашей прокрутки прогресс настоящий
+  (`ScrollStartCallbackDimensions.getProgress`, `helpers/fastSmoothScroll.ts:299`).
+  **Одно расхождение по ИСТОЧНИКУ**: у tweb `history_append` объявляет только СВОЮ
+  отправку (единственный вызыватель — `beforeMessageSending`,
+  appMessagesManager.ts:2792), а чужое входящее приезжает отдельным
+  `history_multiappend` (:1897), который флага не ставит; у нас событие одно на оба
+  случая (`insert` зеркала, `core/history/messagesMirror.ts:273`), поэтому «моё ли»
+  спрашивается в обработчике (`isOurMessage`) — тот же вопрос, на который у
+  оригинала отвечает выбор события;
+- **автозагрузка медиа по настройкам чата** — свод `{photo, video, file}` считает
+  роль `Chat` (`Chat.tsx` через `useChatAutoDownload`, порт
+  `useAutoDownloadSettings`; у tweb — chat.ts:1055 внутри `createEffect`), едет в
+  ленту `VanillaFeed` → `ChatContext.autoDownload` и раздаётся врапперам ровно там
+  же, где у оригинала (bubbles.ts:7901 альбом, :7919 фото, :8542/:8561 видео и
+  кружок, :8597 документ). Функцией, а не значением, — по той же причине, что
+  `canSend`: чтение живое, и смена настройки доезжает до следующего же бабла без
+  пересборки ленты. Гейт числовой и разный по виду медиа: фото и видео сравнивают
+  порог с нулём, документ — с размером файла;
+- **очередь голосовых/кружков** предметом долга не была: она уже закрыта
+  портом `components/audio.ts` (`findMediaTargets` — скан соседей по DOM, tweb
+  audio.ts:458-498; `AudioElement.setTargets` — tweb `setTargetsIfNeeded`,
+  :815-828), `wrappers/video.ts::wrapRound` (тот же скан у кружка, tweb
+  video.ts:370-378) и `core/audio/mediaPlaybackController.ts` (`go`/`next`/`prev` и
+  переход по `ended` — tweb `onEnded` :830-849, `go` :976-987). Новый пин
+  проверяет сборку очереди ИЗ ЖИВОЙ ЛЕНТЫ (узлы `chat/bubbles.ts` попадают в скан
+  с теми же классами и в том же порядке; кружок — в одной очереди с голосовыми,
+  музыка — в своей). **Остаток от оригинала один и назван**: tweb за границей
+  отрисованного окна ДОГРУЖАЕТ очередь с сервера (`SearchListLoader` с
+  `loadCount: 10`/`loadWhenLeft: 5`, appMediaPlaybackController.ts:1061-1074, поиск
+  по `inputMessagesFilterRoundVoice`), а наша очередь — только то, что есть в DOM:
+  доиграв последнее отрисованное голосовое, плеер останавливается вместо перехода
+  к следующему из непрогруженной части истории. Ручки «искать по фильтру
+  голосовых» у нас нет — это её предмет, а не ленты.
+
 Остальное:
 
 | Долг | Где был | Куда портировать |
 |---|---|---|
-| сдвиг градиента обоев вместе с прокруткой к новому сообщению | эффект в `Chat.tsx` + `core/chat/activeGradient.ts` | `chat/bubbles.ts::scrollToBubble` startCallback (tweb :4710-4714) |
-| очередь голосовых/кружков для глобального плеера | `useVoiceQueue` | `chat/bubbles.ts` — владелец аудио-бабла |
 | разблокировка платного медиа | обработчик в `Chat.tsx` | **не обработчиком**: у tweb это ЦЕЛАЯ ветка рендера `messageMediaPaidMedia` (bubbles.ts:8840-9030 — псевдо-фото из превью, ценник `.extended-media-buy`, `DotRenderer`, опрос `extendedMediaMessages`) плюс `PopupPayment` с подтверждением суммы (:3199-3232). У нас заблокированный бабл сегодня пуст (`getBubbleMedia` → `undefined`), попапа платежей нет, а ручка `starsManager.unlockPaidMedia` списывает звёзды молча — разбор в докблоке `chat/bubbles.ts::renderMedia` |
-| автозагрузка медиа по настройкам чата | `useChatAutoDownload` → пропы React-ленты | `chat/bubbles.ts` → `wrappers/video.ts`/`album.ts` (параметр `autoDownload` у них уже есть) |
 | «Переотправить» упавшее сообщение, «Перевести», ⭐-реакция, «Ответить в другом чате», «Сохранить GIF», «Copy Media» | пункты React-меню сообщения | **никуда — предмета нет**, разбор каждого в шапке `chat/contextMenu.ts` («Семь пунктов React-меню»). Четыре из шести пунктами tweb `ChatContextMenu` не являются вовсе (⭐-реакция — клик по платному чипу, «Ответить в другом чате» — меню плашки ответа `chat/input.ts:647-651`, «Copy Media» и повтор упавшей отправки в tweb отсутствуют), у «Перевести» и «Сохранить GIF» дословный порт даёт вечно ложный `verify` — мёртвую кнопку. Седьмой пункт прежней строки, «Кто просмотрел», ПОРТИРОВАН: это `views`-пункт группы (`messages.viewers` → «Seen by N»), тесты — `contextMenu.test.ts` |
 | ручной повтор упавшей отправки: `messages.retryPending` (`core/managers/messages/pending.ts:570`) остался без единого вызывающего | пункт «Переотправить» React-меню | решать не пунктом меню: у tweb ручного повтора нет по построению (сорванную отправку переигрывает транспорт, `message.error` даёт лишь право удалить бабл). Это расхождение нашей модели отправки с оригиналом — ему место в `docs/readiness/port-divergences.md`, а не в порте меню. **`cancelPending` вызывающего обрёл**: его зовёт крестик кольца отдачи на неотправленном бабле (`chat/bubbles.ts::uploadPromiseFor`) |
 | «Похожие каналы» | `messages/SimilarChannels.tsx` + `core/hooks/useSimilarChannels.ts` + `channels.similar` — **снесены** | **никуда, пока нет предмета — и предмета не хватает ДВАЖДЫ.** У tweb это не блок под лентой, а довесок СЛУЖЕБНОГО бабла `messageActionChannelJoined` (bubbles.ts:7028-7118: класс `is-similar-channels`, контейнер `.bubble-similar-channels` после `bubble-content`, раскрытие кликом по пилюле). Сам бабл — клиентский: `insertChannelJoinedService` (appMessagesManager.ts:6888-6980) вставляет его в историю по ДАТЕ ВСТУПЛЕНИЯ (`channel.date`). У нас (1) даты вступления на проводе нет вовсе — `domain.ChatCard` её не несёт, `group_handler.go:581-590` не пишет (в БД она есть: `chat_members.joined_at`); (2) ручка `/channels/{id}/similar` отдаёт ПЛОСКИЕ снимки `{id,type,title,username,member_count}` (`channel_handler.go:427-433`), а не конструкторы `channel`, — снесённый компонент читал `chat._ === 'channel'` и потому всегда показывал 0 подписчиков и пустые аватарки |
