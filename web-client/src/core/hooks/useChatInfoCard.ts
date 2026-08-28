@@ -24,6 +24,7 @@ import type { ChatMember, ChatCard } from '../managers/groupsManager'
 import type { ChannelFull, Chat } from '../peers/peer'
 import { getLinkedChatPeerId, isUserStatusOnline } from '../peers/peer'
 import { cachedChat } from '../peerCache'
+import { isUser } from '../peers/peerId'
 import { saveChatFull } from '../chatFullCache'
 import { isMegagroup } from '../peers/predicates'
 import { hasRights } from '../peers/rights'
@@ -168,8 +169,22 @@ export function useChatInfoCard(args: {
   // разрешения). До приезда карточки чата — оптимистично «можно», чтобы композер
   // не мигал заблокированным (`hasRights` без карточки отвечает «нельзя»,
   // поэтому третье состояние выражено здесь явно).
-  const canSendText = isChannel ? canPostChannel : full === null || hasRights(chat, 'send_messages')
-  const canSendMedia = isChannel ? canPostChannel : full === null || hasRights(chat, 'send_media')
+  //
+  // ЛИЧКА СПРАШИВАЕТСЯ ОТДЕЛЬНО, и это не оптимизация. У оригинала ветвление по
+  // ВИДУ ПИРА: `canSendToPeer` (appMessagesManager.ts:8851-8863) у чата зовёт
+  // `hasRights(chatId, …)`, а у пользователя — `canSendToUser(peerId)`, то есть
+  // СОВСЕМ ДРУГОЙ вопрос (удалён/заблокирован), к правам чата отношения не
+  // имеющий. У личного диалога объекта `Chat` не существует вовсе, поэтому
+  // `hasRights(undefined, …)` отвечает «нельзя» — и композер закрывался плашкой
+  // «Без звука», едва приезжала карточка. Ловилось это только живьём: в
+  // «Избранном» писать было нельзя совсем.
+  //
+  // `canSendToUser` (удалён/заблокирован) не портирован — предмета нет: своего
+  // признака блокировки на клиенте не заведено. Пока его нет, личке отвечаем
+  // «можно», как оригинал отвечает обычному собеседнику.
+  const canSendToUser = isUser(numericChatId)
+  const canSendText = isChannel ? canPostChannel : canSendToUser || full === null || hasRights(chat, 'send_messages')
+  const canSendMedia = isChannel ? canPostChannel : canSendToUser || full === null || hasRights(chat, 'send_media')
 
   // Count members currently online. Re-renders only when the number changes
   // (presence frames for non-members don't touch it).

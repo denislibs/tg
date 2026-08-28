@@ -198,3 +198,57 @@ describe('useChatInfoCard: права обычного участника суп
     expect(result.current.canSendMedia).toBe(true)
   })
 })
+
+// ── Личка и «Избранное»: у пира нет объекта Chat ────────────────────────────
+// Дефект, найденный ЖИВЬЁМ и не пойманный ни одним из 3877 тестов: в личном
+// диалоге и в «Избранном» композер закрывался плашкой «Без звука», едва
+// приезжала карточка.
+//
+// Причина — один вопрос вместо двух. У оригинала `canSendToPeer`
+// (appMessagesManager.ts:8851-8863) ветвится по ВИДУ ПИРА: у чата зовёт
+// `hasRights(chatId, …)`, у пользователя — `canSendToUser(peerId)`, то есть
+// другой вопрос (удалён/заблокирован). У личного диалога объекта `Chat` нет
+// вовсе, поэтому `hasRights(undefined, …)` отвечает «нельзя» — и право
+// держалось лишь на `full === null`, пропадая с приездом карточки.
+//
+// Стенд поэтому отдаёт карточку БЕЗ `Chat` — ровно форма личного диалога — и
+// ждёт `full !== null`. Без этого ожидания тест был бы зелёным и на сломанном
+// коде: до приезда карточки право даёт `full === null`.
+describe('useChatInfoCard: личный диалог и «Избранное»', () => {
+  beforeEach(() => { resetChatCardCache(); resetPeerMirror() })
+
+  const SELF_ID = 777001 as PeerId
+  const PEER_ID = 777002 as PeerId
+
+  /** Карточка личного диалога: полная форма есть, объекта `Chat` нет. */
+  function privateManagers(peerId: PeerId) {
+    return {
+      groups: {
+        card: vi.fn(async (id: PeerId) => (
+          id === peerId ? { peerId, chat: undefined, fullChat: fullChat(peerId) } as unknown as ChatCard : null
+        )),
+        members: async () => [],
+      },
+      peers: { fillMirror: async () => {} },
+    }
+  }
+
+  it.each([
+    ['«Избранное» (свой пир)', SELF_ID],
+    ['личный диалог', PEER_ID],
+  ])('%s: писать можно и ПОСЛЕ приезда карточки', async (_name, id) => {
+    const { result } = renderHook(
+      () => useChatInfoCard({ isRealChat: true, isChannel: false, numericChatId: id }),
+      { wrapper: wrapper(privateManagers(id)) },
+    )
+
+    // Ждём именно КАРТОЧКУ: до неё право держит `full === null`.
+    await waitFor(() => expect(result.current.full).not.toBeNull())
+
+    // Объекта `Chat` у пира-пользователя не существует — спрашивать у него
+    // права чата бессмысленно, и раньше именно этот вопрос закрывал композер.
+    expect(result.current.chat).toBeUndefined()
+    expect(result.current.canSendText).toBe(true)
+    expect(result.current.canSendMedia).toBe(true)
+  })
+})
