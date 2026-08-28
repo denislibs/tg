@@ -1,16 +1,23 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { isSolidFile } from './fileRuntime'
 
 // Граница двух рантаймов держится ИМЕНЕМ ФАЙЛА, а имя ничего не проверяет само
 // по себе. Этот скан — то, что делает соглашение обязательным: без него
 // Solid-файл мог бы импортировать React, собраться и молча получить два
 // рантайма в одном дереве. Тот же приём, что у `core/scrollWriters.test.ts`.
+//
+// Маска — ТОТ ЖЕ `isSolidFile`, что кормит `solid({include})`/`react({exclude})`
+// в конфигах (см. fileRuntime.ts). Раньше здесь был отдельный литерал
+// `p.endsWith('.solid.tsx')`, который не матчил `*.solid.test.tsx` — ровно тот
+// класс файлов, ради которого fileRuntime и появился, — и скан «нет импортов
+// React» проходил мимо них молча.
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name)
     if (statSync(p).isDirectory()) walk(p, out)
-    else if (p.endsWith('.solid.tsx')) out.push(p)
+    else if (isSolidFile(p)) out.push(p)
   }
   return out
 }
