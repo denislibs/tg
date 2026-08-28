@@ -379,6 +379,7 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 	var rights *int
 	var role *string
 	var muteUntil *time.Time
+	var joinedAt *time.Time
 	var notifyPreview *bool
 	var notifySound *string
 	var perms int
@@ -398,7 +399,12 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 		        COALESCE(m.last_read_seq,0), COALESCE(m.unread_count,0),
 		        COALESCE((SELECT MIN(om.last_read_seq) FROM chat_members om WHERE om.chat_id=c.id AND om.user_id<>$2),0),
 		        m.role, m.rights, m.muted_until, m.notify_preview, m.notify_sound,
-		        COALESCE(ct.theme_id,'')
+		        COALESCE(ct.theme_id,''),
+		        -- Дата вступления ЗРИТЕЛЯ — из той же строки членства, что role
+		        -- и rights; NULL, когда зритель не состоит (LEFT JOIN не нашёл
+		        -- строки) или когда зрителя нет вовсе. Наружу уходит
+		        -- обязательным channel.date, см. ChatRecord.ChannelDate.
+		        m.joined_at
 		   FROM chats c
 		   LEFT JOIN media pm ON pm.id = c.photo_media_id
 		   LEFT JOIN chat_theme ct ON ct.chat_id = c.id
@@ -411,7 +417,7 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 		&perms, &c.Settings.SlowmodeSeconds, &c.Settings.ReactionsMode, &allowed,
 		&c.Settings.HistoryForNew, &c.Settings.ChargeStars, &c.Settings.AutoDeletePeriod,
 		&c.PinnedMsgID, &c.ReadInboxMaxID, &c.UnreadCount, &c.ReadOutboxMaxID,
-		&role, &rights, &muteUntil, &notifyPreview, &notifySound, &c.ThemeEmoticon)
+		&role, &rights, &muteUntil, &notifyPreview, &notifySound, &c.ThemeEmoticon, &joinedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.ChatRecord{}, domain.ErrNotFound
 	}
@@ -423,6 +429,9 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 	}
 	if rights != nil {
 		c.MyRights = domain.Rights(*rights)
+	}
+	if joinedAt != nil {
+		c.MyJoinedAt = *joinedAt
 	}
 	// notify_settings зритель-зависимы: без зрителя (снимок chat_update — один
 	// на всех участников) их нет вовсе, и пустой конструктор здесь был бы не

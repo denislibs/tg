@@ -413,6 +413,11 @@ type SearchRepo interface {
 	// каналы они подписаны, ранжируем по размеру пересечения. Исключаются сам
 	// канал и каналы, где зритель viewerID уже состоит. Второе значение — общее
 	// число найденных похожих каналов (для «+N» под Premium), может превышать len.
+	//
+	// Строки приходят С ПРОСТАВЛЕННЫМ ViewerID: зритель здесь известен, и то,
+	// что он в этих каналах не состоит, — не умолчание, а следствие самой
+	// выборки. В краткой форме это видно двумя полями сразу (pFlags.left и
+	// channel.date), см. domain.ChatRecord.ChannelDate.
 	SimilarChannels(ctx context.Context, chatID, viewerID int64, limit int) ([]domain.ChatRecord, int, error)
 }
 

@@ -171,3 +171,143 @@ func TestSimilarChannels(t *testing.T) {
 		}
 	}
 }
+
+// Похожий канал доезжает до клиента ГОТОВЫМ конструктором `channel`, а не
+// плоским снимком: оригинал рисует подписчиков из participants_count и
+// аватарку по id (tweb similarChannels.tsx:110, :206). Здесь же проверяется,
+// что зритель в этих каналах не состоит — и что это ВИДНО в самой карточке:
+// pFlags.left выставлен (по нему клиент решает isInChat,
+// tweb appChatsManager.ts:331-344), а обязательный date несёт дату создания,
+// а не нуль.
+func TestSimilarChannels_AreChannelConstructors(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+7350")
+	viewer := seedUser(t, pool, "+7351")
+	shared := seedUser(t, pool, "+7352")
+
+	g := NewGroupRepo(pool)
+	srcID, err := g.CreateMultiMember(ctx, "channel", "Source", "", "src350", true, owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	simID, err := g.CreateMultiMember(ctx, "channel", "Similar", "", "sim350", true, owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Общий подписчик — то самое пересечение аудитории, по которому канал и
+	// признаётся похожим.
+	_ = g.AddMember(ctx, srcID, shared, "member", 0)
+	_ = g.AddMember(ctx, simID, shared, "member", 0)
+
+	// Дату создания отодвигаем в прошлое: иначе «дата создания» и «сейчас»
+	// неразличимы и проверка не поймала бы подмену.
+	created := time.Now().Add(-96 * time.Hour).Truncate(time.Second)
+	if _, err := pool.Exec(ctx, `UPDATE chats SET created_at=$2 WHERE id=$1`, simID, created); err != nil {
+		t.Fatal(err)
+	}
+
+	got, count, err := NewSearchRepo(pool).SimilarChannels(ctx, srcID, viewer, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || count != 1 || got[0].ID != simID {
+		t.Fatalf("похожие = %+v (count=%d); want ровно канал %d", got, count, simID)
+	}
+
+	ch := got[0].ToChannel()
+	if ch.Underscore != domain.ChannelTag {
+		t.Fatalf("конструктор = %q; want %q", ch.Underscore, domain.ChannelTag)
+	}
+	if !ch.Broadcast() || ch.Megagroup() {
+		t.Errorf("вид = %v; want broadcast", ch.PFlags)
+	}
+	// Ноль подписчиков и пустая аватарка — ровно то, что показывал прежний
+	// плоский снимок.
+	if ch.ParticipantsCount == 0 {
+		t.Error("participants_count = 0: число подписчиков не доехало")
+	}
+	if ch.Title != "Similar" || ch.Username != "sim350" {
+		t.Errorf("карточка = %+v; want title/username похожего канала", ch)
+	}
+	if !ch.Left() {
+		t.Error("зритель в похожем канале не состоит — pFlags.left не выставлен")
+	}
+	if ch.Date != int(created.Unix()) {
+		t.Errorf("date = %d; want %d (дата создания: зритель не участник)", ch.Date, created.Unix())
+	}
+}
+
+// Дата вступления доезжает от строки членства до краткой формы `channel` —
+// обоими путями, которыми карточка канала попадает к клиенту: карточкой чата
+// (GroupRepo.Card) и строкой списка чатов (ChatsRepo.ListDialogs). Дата
+// создания канала отодвинута в прошлое, поэтому подмена одной другой видна.
+func TestJoinDate_ReachesChannelConstructor(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+7360")
+	joiner := seedUser(t, pool, "+7361")
+	stranger := seedUser(t, pool, "+7362")
+
+	g := NewGroupRepo(pool)
+	chatID, err := g.CreateMultiMember(ctx, "channel", "News", "", "news360", true, owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := time.Now().Add(-72 * time.Hour).Truncate(time.Second)
+	joined := time.Now().Add(-2 * time.Hour).Truncate(time.Second)
+	if _, err := pool.Exec(ctx, `UPDATE chats SET created_at=$2 WHERE id=$1`, chatID, created); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.AddMember(ctx, chatID, joiner, "member", 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx,
+		`UPDATE chat_members SET joined_at=$3 WHERE chat_id=$1 AND user_id=$2`, chatID, joiner, joined); err != nil {
+		t.Fatal(err)
+	}
+
+	// Карточка глазами УЧАСТНИКА: date — его вступление.
+	card, err := g.Card(ctx, chatID, joiner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !card.MyJoinedAt.Equal(joined) {
+		t.Fatalf("Card.MyJoinedAt = %s; want %s", card.MyJoinedAt, joined)
+	}
+	if got := card.ToChannel().Date; got != int(joined.Unix()) {
+		t.Errorf("date участника = %d; want %d (вступление, а не создание %d)",
+			got, joined.Unix(), created.Unix())
+	}
+
+	// Карточка глазами ЧУЖОГО: даты вступления нет, едет дата создания.
+	out, err := g.Card(ctx, chatID, stranger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !out.MyJoinedAt.IsZero() {
+		t.Errorf("не участник несёт дату вступления: %s", out.MyJoinedAt)
+	}
+	if got := out.ToChannel().Date; got != int(created.Unix()) {
+		t.Errorf("date не участника = %d; want %d (создание)", got, created.Unix())
+	}
+
+	// Строка списка чатов — тот же ответ, что и карточка.
+	dialogs, err := NewChatsRepo(pool).ListDialogs(ctx, joiner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, d := range dialogs {
+		if d.ChatID != chatID {
+			continue
+		}
+		found = true
+		if got := d.ToChannel().Date; got != int(joined.Unix()) {
+			t.Errorf("date строки диалога = %d; want %d (вступление)", got, joined.Unix())
+		}
+	}
+	if !found {
+		t.Fatalf("канал не попал в список чатов зрителя: %+v", dialogs)
+	}
+}

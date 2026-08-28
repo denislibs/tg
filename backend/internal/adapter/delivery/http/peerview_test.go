@@ -25,6 +25,7 @@ type cardResponse struct {
 		Title             string          `json:"title"`
 		Username          string          `json:"username"`
 		ParticipantsCount int             `json:"participants_count"`
+		Date              int             `json:"date"`
 		PFlags            map[string]bool `json:"pFlags"`
 	} `json:"chats"`
 }
@@ -44,6 +45,10 @@ func decodeCard(t *testing.T, rec *httptest.ResponseRecorder) cardResponse {
 func (c cardResponse) participants() int      { return c.Chats[0].ParticipantsCount }
 func (c cardResponse) title() string          { return c.Chats[0].Title }
 func (c cardResponse) chatFlag(f string) bool { return c.Chats[0].PFlags[f] }
+
+// chatDate — обязательный channel.date краткой формы: дата ВСТУПЛЕНИЯ зрителя
+// (секунды). Не дата создания чата — см. domain.ChatRecord.ChannelDate.
+func (c cardResponse) chatDate() int { return c.Chats[0].Date }
 
 // linkedChatID отдаётся знаковым ключом пира: связанная группа это чат.
 func (c cardResponse) linkedChatID() int64 {

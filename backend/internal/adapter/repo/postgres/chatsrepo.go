@@ -218,7 +218,11 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		        COALESCE(peer.is_bot,false), COALESCE(peer.is_verified,false),
 		        COALESCE(peer.is_premium,false), COALESCE(peer.emoji_status,''),
 		        COALESCE(peer.deleted,false),
-		        c.auto_delete_period
+		        c.auto_delete_period,
+		        -- Дата ВСТУПЛЕНИЯ зрителя — обязательный channel.date краткой
+		        -- формы (DialogRecord.ToChannel). Выборка идёт ОТ его строки
+		        -- членства, так что она здесь есть всегда.
+		        m.joined_at
 		 FROM chat_members m
 		 JOIN chats c ON c.id = m.chat_id
 		 -- stripped-превью фото группы/канала — из media по photo_media_id
@@ -265,7 +269,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 			&topMessageID, &d.TopMessageSeq,
 			&peerID, &peer.firstName, &peer.lastName, &peer.username, &peer.photoID, &peer.photoPreview,
 			&peer.isBot, &peer.isVerified, &peer.isPremium, &peer.emojiStatus, &peer.deleted,
-			&d.TTLPeriod); err != nil {
+			&d.TTLPeriod, &d.JoinedAt); err != nil {
 			return nil, err
 		}
 		if archived {

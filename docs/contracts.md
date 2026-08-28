@@ -241,11 +241,19 @@ Create a group; the caller becomes its `creator` (with all rights) and first mem
   "full_chat": { "_": "channelFull", "id": 1, "about": "", "participants_count": 3,
                  "read_inbox_max_id": 4, "read_outbox_max_id": 0, "unread_count": 0,
                  "chat_photo": null },
-  "chats": [ { "_": "channel", "id": 1, "title": "Team", "date": 0,
+  "chats": [ { "_": "channel", "id": 1, "title": "Team", "date": 1755600000,
                "pFlags": { "megagroup": true, "creator": true },
                "photo": { "_": "chatPhotoEmpty" } } ],
   "users": [] }
 ```
+  - `date` (секунды) — дата ВСТУПЛЕНИЯ ЗРИТЕЛЯ в чат, а НЕ дата создания чата;
+    датой создания она подменяется только тому, кто в чате не состоит
+    (`pFlags.left`). По этой дате клиент вставляет служебное «вы вступили в
+    канал» между сообщениями, а к нему цепляются «Похожие каналы». В кадре
+    `chat_update` (он один на всех участников — зрителя не спрашивали) `date`
+    едет НУЛЁМ, как и соседние горизонты чтения `channelFull`: клиент оригинала
+    отличает ноль штатной веткой и бабл не вставляет. Зритель-зависимые значения
+    берутся этой ручкой и списком чатов, а не кадром;
   - `my_role` больше нет: creator это `pFlags.creator`, admin — НАЛИЧИЕ
     `admin_rights` (решение №3 порта пиров);
   - `is_public` выражено наличием `username`, `default_permissions` —
@@ -423,6 +431,29 @@ Join a public channel by its `@username`; the caller becomes a `subscriber`.
 - 200: `{ "_": "boolTrue" }`
 - 400: `{ "_": "error", "code": 400, "text": "username required" }`
 - 404: `{ "_": "error", "code": 404, "text": "not found" }` (no public chat with that username)
+
+### GET /channels/{chatID}/similar  · auth
+«Похожие каналы» — публичные каналы, ранжированные по пересечению аудитории с
+`chatID`. Каналы, в которых зритель УЖЕ состоит, и непубличные исключены;
+страница отсечена по 30.
+
+Каналы едут ГОТОВЫМИ конструкторами `channel` — тем же способом, что и любой
+другой список чатов (общий `channelsOf`), а не плоским снимком: клиент рисует
+число подписчиков из `participants_count`, а аватарку — по `id`.
+- 200 — конструктор `messages.chatsSlice` (отдан кусок, поэтому `count` — размер
+  ПОЛНОГО набора; по нему рисуется «+N» под Premium):
+```json
+{ "_": "messages.chatsSlice",
+  "count": 12,
+  "chats": [ { "_": "channel", "id": 5, "title": "Go Weekly", "username": "goweekly",
+               "date": 1750000000, "participants_count": 4210,
+               "pFlags": { "broadcast": true, "left": true },
+               "photo": { "_": "chatPhotoEmpty" } } ] }
+```
+  - `pFlags.left` выставлен всегда: зритель по построению выборки ни в одном из
+    этих каналов не состоит;
+  - `date` — дата СОЗДАНИЯ канала, как схема и предписывает для не-участника
+    (см. `GET /chats/{chatID}/card`).
 
 ### Discussions (channel-post comments)
 

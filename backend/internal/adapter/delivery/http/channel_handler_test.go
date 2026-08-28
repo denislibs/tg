@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -887,5 +888,139 @@ func TestChannelAdmin_DiscussionAndSignatures_HTTP(t *testing.T) {
 	card = decodeCard(t, rec)
 	if card.chatFlag("signatures") || card.chatFlag("signature_profiles") {
 		t.Fatalf("card signatures should be off: %+v", card.Chats[0].PFlags)
+	}
+}
+
+// Провод «Похожих каналов» целиком — предмета не хватало ДВАЖДЫ, и обе
+// половины проверяются здесь на самом контракте.
+//
+//	(1) ДАТА ВСТУПЛЕНИЯ. Служебное «вы вступили в канал» у оригинала КЛИЕНТСКОЕ
+//	    и встаёт в историю по channel.date (tweb appMessagesManager.ts:6888-6930);
+//	    «Похожие каналы» — довесок ровно этого бабла и больше ничего
+//	    (tweb bubbles.ts:7028-7118). Пока date нёс дату создания канала, бабл
+//	    уезжал в самое начало истории.
+//	(2) ФОРМА ВЫДАЧИ. Клиент читает `chat._ === 'channel'` и рисует подписчиков
+//	    из participants_count (tweb similarChannels.tsx:110, :206). Плоский
+//	    снимок {id,title,member_count} давал бы ноль подписчиков и пустые
+//	    аватарки.
+func TestChannelSimilarAndJoinDate_HTTP(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	ctx := t.Context()
+	tokenOwner, _ := signUp(t, h, pool, "+79990003001")
+	tokenViewer, viewerID := signUp(t, h, pool, "+79990003002")
+	tokenShared, _ := signUp(t, h, pool, "+79990003003")
+
+	createChannel := func(title, username string) int64 {
+		t.Helper()
+		rec := authedReq(t, h, http.MethodPost, "/channels", tokenOwner, map[string]any{
+			"title": title, "username": username, "is_public": true,
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("создание %s: %d %s", username, rec.Code, rec.Body.String())
+		}
+		return createdPeerID(t, rec)
+	}
+	join := func(token, username string) {
+		t.Helper()
+		rec := authedReq(t, h, http.MethodPost, "/channels/join", token, map[string]any{"username": username})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("вступление в %s: %d %s", username, rec.Code, rec.Body.String())
+		}
+	}
+
+	srcPeer := createChannel("Source", "src3001")
+	simPeer := createChannel("Similar", "sim3001")
+	// Общий подписчик даёт пересечение аудитории, по которому канал и признаётся
+	// похожим; зритель подписан ТОЛЬКО на источник.
+	join(tokenShared, "src3001")
+	join(tokenShared, "sim3001")
+	join(tokenViewer, "src3001")
+
+	// Даты разводим: без этого «создание» и «вступление» неразличимы и подмена
+	// одной другой прошла бы проверку.
+	srcID := domain.PeerID(srcPeer).ToChatID()
+	created := time.Now().Add(-72 * time.Hour).Truncate(time.Second)
+	joined := time.Now().Add(-2 * time.Hour).Truncate(time.Second)
+	if _, err := pool.Exec(ctx, `UPDATE chats SET created_at=$2 WHERE id=$1`, srcID, created); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx,
+		`UPDATE chat_members SET joined_at=$3 WHERE chat_id=$1 AND user_id=$2`, srcID, viewerID, joined); err != nil {
+		t.Fatal(err)
+	}
+
+	// ── (1) карточка канала глазами подписчика ──────────────────────────────
+	rec := authedReq(t, h, http.MethodGet, "/chats/"+itoa(srcPeer)+"/card", tokenViewer, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("карточка: %d %s", rec.Code, rec.Body.String())
+	}
+	card := decodeCard(t, rec)
+	if got := card.chatDate(); got != int(joined.Unix()) {
+		t.Errorf("date подписчика = %d; want %d (вступление, а не создание %d)",
+			got, joined.Unix(), created.Unix())
+	}
+	// isInChat оригинала читается по pFlags.left (tweb appChatsManager.ts:331-344):
+	// у подписчика флага быть не должно, иначе бабл не вставится вовсе.
+	if card.chatFlag("left") {
+		t.Error("подписчик помечен pFlags.left — клиент сочтёт, что он не в канале")
+	}
+
+	// ── (2) выдача похожих каналов ──────────────────────────────────────────
+	rec = authedReq(t, h, http.MethodGet, "/channels/"+itoa(srcPeer)+"/similar", tokenViewer, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("похожие: %d %s", rec.Code, rec.Body.String())
+	}
+	var similar struct {
+		Underscore string `json:"_"`
+		Count      int    `json:"count"`
+		Chats      []struct {
+			Underscore        string          `json:"_"`
+			ID                int64           `json:"id"`
+			Title             string          `json:"title"`
+			Username          string          `json:"username"`
+			ParticipantsCount int             `json:"participants_count"`
+			Date              int             `json:"date"`
+			Photo             map[string]any  `json:"photo"`
+			PFlags            map[string]bool `json:"pFlags"`
+		} `json:"chats"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &similar); err != nil {
+		t.Fatalf("разбор похожих: %v (%s)", err, rec.Body.String())
+	}
+	// Отдан КУСОК (лимит 30) — значит конструктор со счётчиком полного набора:
+	// по нему оригинал рисует «+N» под Premium (tweb similarChannels.tsx:196).
+	if similar.Underscore != "messages.chatsSlice" || similar.Count != 1 {
+		t.Fatalf("контейнер = %q count=%d; want messages.chatsSlice count=1 (%s)",
+			similar.Underscore, similar.Count, rec.Body.String())
+	}
+	if len(similar.Chats) != 1 {
+		t.Fatalf("похожих = %d; want 1 (%s)", len(similar.Chats), rec.Body.String())
+	}
+	got := similar.Chats[0]
+	if got.Underscore != domain.ChannelTag {
+		t.Fatalf("строка выдачи = %q; want конструктор %q — плоский снимок клиент не читает",
+			got.Underscore, domain.ChannelTag)
+	}
+	if got.ID != domain.PeerID(simPeer).ToChatID() || got.Title != "Similar" || got.Username != "sim3001" {
+		t.Errorf("похожий канал = %+v; want карточку sim3001", got)
+	}
+	if !got.PFlags["broadcast"] {
+		t.Errorf("вид = %v; want broadcast", got.PFlags)
+	}
+	// Ровно то, что показывал прежний плоский снимок: ноль подписчиков и
+	// пустая аватарка.
+	if got.ParticipantsCount == 0 {
+		t.Error("participants_count = 0: число подписчиков не доехало")
+	}
+	if got.Photo == nil || got.Photo["_"] == nil {
+		t.Errorf("photo = %v; want конструктор ChatPhoto (пусть и chatPhotoEmpty)", got.Photo)
+	}
+	// Зритель в похожем канале не состоит, и это видно в карточке: date по
+	// схеме — дата создания, а pFlags.left выставлен.
+	if !got.PFlags["left"] {
+		t.Error("зритель не состоит в похожем канале — pFlags.left не выставлен")
+	}
+	if got.Date == 0 {
+		t.Error("date похожего канала едет нулём: обязательное поле не заполнено")
 	}
 }

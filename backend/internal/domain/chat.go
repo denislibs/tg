@@ -125,6 +125,13 @@ type DialogRecord struct {
 	// TTLPeriod — период автоудаления сообщений чата в секундах (0 — выкл);
 	// на проводе ttl_period (решение Р6).
 	TTLPeriod int
+	// JoinedAt — когда ЗРИТЕЛЬ вступил в этот чат (chat_members.joined_at).
+	// Это и есть обязательный channel.date краткой формы — см. ToChannel.
+	//
+	// Подстановка даты создания, как у ChatRecord.ChannelDate, здесь не нужна:
+	// список диалогов строится ОТ членства (ListDialogs идёт по chat_members
+	// зрителя), поэтому в каждой его строке зритель — участник по построению.
+	JoinedAt time.Time
 }
 
 // ToDialog — конструктор `dialog` из строки витрины. Пир и seq последнего
@@ -147,8 +154,11 @@ func (d DialogRecord) ToDialog(peer Peer, topMessage int64) DialogReal {
 // группа и канал различаются флагами, а не строкой (решение №2 разбора пиров).
 // У приватного чата и «Избранного» тела чата нет вовсе — там пир это
 // собеседник, поэтому вызывать имеет смысл только для многочленных чатов.
+//
+// date едет ДАТОЙ ВСТУПЛЕНИЯ зрителя (JoinedAt), а не датой создания чата: см.
+// ChatRecord.ChannelDate — там же и цена ошибки.
 func (d DialogRecord) ToChannel() Channel {
-	out := NewChannel(d.ChatID, d.Title, d.ChatPhoto(), time.Time{}, ChannelFlags{
+	out := NewChannel(d.ChatID, d.Title, d.ChatPhoto(), d.JoinedAt, ChannelFlags{
 		Broadcast: d.Type == ChatTypeChannel,
 		Megagroup: d.Type == ChatTypeGroup,
 		Forum:     d.IsForum,
@@ -267,6 +277,11 @@ type ChatRecord struct {
 	// admin_rights.
 	MyRole   string
 	MyRights Rights
+	// MyJoinedAt — когда ЗРИТЕЛЬ вступил в чат (chat_members.joined_at той же
+	// строки членства, что MyRole/MyRights). Нулевое время — зритель не
+	// состоит либо зрителя не спрашивали (ViewerID == 0). Наружу поле выходит
+	// не само по себе, а обязательным channel.date — см. ChannelDate.
+	MyJoinedAt time.Time
 	// NotifySettings — пер-чатное переопределение уведомлений ЗРИТЕЛЯ целиком
 	// (мьют сроком, превью, звук), а не плоское булево `muted` рядом с
 	// конструктором. nil — зрителя не спрашивали (ViewerID == 0): снимок
@@ -322,11 +337,45 @@ func (c ChatRecord) FullPhoto() *Photo {
 	return NewPhoto(*c.PhotoID, sizes)
 }
 
+// ChannelDate — что уезжает в обязательный `channel.date` (int, СЕКУНДЫ).
+//
+// По схеме это НЕ дата создания чата: date — дата ВСТУПЛЕНИЯ зрителя, и датой
+// создания она подменяется только тому, кто в чате не состоит. Пока сюда ехал
+// CreatedAt, участник получал дату создания канала — то есть поле было
+// заполнено правдоподобно и неверно.
+//
+// Читает его клиент оригинала, когда вставляет служебное «вы вступили в
+// канал»: бабл messageActionChannelJoined КЛИЕНТСКИЙ и встаёт в историю ПО
+// ЭТОЙ ДАТЕ, между сообщением новее и сообщением старее
+// (tweb appMessagesManager.ts:6888-6930, getDetailsForChannelJoinedService).
+// Дата создания, отданная участнику, увела бы бабл в самое начало истории — а
+// это единственное место, к которому у оригинала цепляются «Похожие каналы»
+// (tweb bubbles.ts:7028-7118, класс bubble-similar-channels).
+//
+// Снимок БЕЗ ЗРИТЕЛЯ (ViewerID == 0 — кадр chat_update один на всех
+// участников) отдаёт 0, ровно как соседние горизонты чтения channelFull в том
+// же снимке: «не спрашивали». Чужая дата вступления, разосланная всем, была бы
+// прямой ложью, а дата создания — ложью правдоподобной, которую клиент от
+// ответа не отличит. Ноль он отличает, и это его штатная ветка:
+// `if(!date || …) return` (tweb appMessagesManager.ts:6896).
+func (c ChatRecord) ChannelDate() time.Time {
+	// Порядок проверок значим: «зрителя не спрашивали» гасит поле ПЕРВЫМ, до
+	// любой даты. Иначе случайно заполненная MyJoinedAt утекла бы в кадр,
+	// который уходит всем участникам разом.
+	if c.ViewerID == 0 {
+		return time.Time{}
+	}
+	if c.MyJoinedAt.IsZero() {
+		return c.CreatedAt
+	}
+	return c.MyJoinedAt
+}
+
 // ToChannel — краткий конструктор `channel`: то, что едет со списками. Права
 // зрителя (admin_rights) и ограничения обычного участника
 // (default_banned_rights) — часть краткой формы по схеме.
 func (c ChatRecord) ToChannel() Channel {
-	out := NewChannel(c.ID, c.Title, c.ChatPhoto(), c.CreatedAt, ChannelFlags{
+	out := NewChannel(c.ID, c.Title, c.ChatPhoto(), c.ChannelDate(), ChannelFlags{
 		Creator:           c.ViewerID != 0 && c.MyRole == RoleCreator,
 		Left:              c.ViewerID != 0 && c.MyRole == "",
 		Broadcast:         c.Type == ChatTypeChannel,

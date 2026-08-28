@@ -132,3 +132,42 @@ func TestPresenceStatus(t *testing.T) {
 		t.Errorf("ничего не известно = %q; want userStatusEmpty", got.Tag())
 	}
 }
+
+// channel.date — дата ВСТУПЛЕНИЯ зрителя, а не дата создания чата. Ошибка
+// здесь не видна глазами: поле заполнено, число правдоподобное, форма верная.
+//
+// Цена — вся подсистема «Похожие каналы». По этой дате клиент оригинала
+// вставляет служебное «вы вступили в канал» МЕЖДУ сообщениями
+// (tweb appMessagesManager.ts:6888-6930, getDetailsForChannelJoinedService), а
+// «Похожие каналы» цепляются ровно к этому баблу и больше ни к чему
+// (tweb bubbles.ts:7028-7118, класс bubble-similar-channels). Дата создания,
+// отданная участнику, увела бы бабл в самое начало истории.
+func TestChatRecord_ChannelDateIsJoinDate(t *testing.T) {
+	created := time.Unix(1_600_000_000, 0)
+	joined := time.Unix(1_700_000_000, 0)
+
+	member := ChatRecord{
+		ID: 8, Type: ChatTypeChannel, ViewerID: 7, MyRole: RoleMember,
+		CreatedAt: created, MyJoinedAt: joined,
+	}
+	if got := member.ToChannel().Date; got != int(joined.Unix()) {
+		t.Errorf("участник: date = %d; want %d (вступление, а не создание %d)",
+			got, joined.Unix(), created.Unix())
+	}
+
+	// Не участник: схема предписывает ему дату создания чата.
+	stranger := ChatRecord{ID: 8, Type: ChatTypeChannel, ViewerID: 7, CreatedAt: created}
+	if got := stranger.ToChannel().Date; got != int(created.Unix()) {
+		t.Errorf("не участник: date = %d; want %d (создание)", got, created.Unix())
+	}
+
+	// Снимок БЕЗ зрителя (кадр chat_update один на всех участников): «не
+	// спрашивали» — 0, как и соседние горизонты чтения того же снимка. Чужая
+	// дата вступления, разосланная всем, была бы прямой ложью, а дата создания
+	// — правдоподобной. Ноль клиент отличает штатной веткой
+	// `if(!date || …) return` (tweb appMessagesManager.ts:6896).
+	shared := ChatRecord{ID: 8, Type: ChatTypeChannel, CreatedAt: created, MyJoinedAt: joined}
+	if got := shared.ToChannel().Date; got != 0 {
+		t.Errorf("снимок без зрителя: date = %d; want 0", got)
+	}
+}

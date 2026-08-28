@@ -145,3 +145,16 @@ func TestDialogRecord_ToChannel(t *testing.T) {
 		t.Errorf("фото канала = %v; want chatPhotoEmpty", channel.Photo)
 	}
 }
+
+// date строки списка чатов — дата ВСТУПЛЕНИЯ зрителя. Другой здесь и быть не
+// может: список строится ОТ его членства (ListDialogs идёт по chat_members
+// зрителя), поэтому подстановки даты создания, как у ChatRecord.ChannelDate,
+// тут нет. Раньше на её месте ехал нуль — то есть даты вступления, по которой
+// клиент ставит «вы вступили в канал», на проводе не было вовсе.
+func TestDialogRecord_ToChannelCarriesJoinDate(t *testing.T) {
+	joined := time.Unix(1_700_000_100, 0)
+	ch := DialogRecord{ChatID: 9, Type: ChatTypeChannel, Title: "Канал", JoinedAt: joined}.ToChannel()
+	if ch.Date != int(joined.Unix()) {
+		t.Errorf("date = %d; want %d (дата вступления)", ch.Date, joined.Unix())
+	}
+}

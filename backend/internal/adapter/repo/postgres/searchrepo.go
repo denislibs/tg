@@ -74,7 +74,7 @@ func (r *SearchRepo) SearchUsers(ctx context.Context, q string, limit int) ([]do
 func (r *SearchRepo) SimilarChannels(ctx context.Context, chatID, viewerID int64, limit int) ([]domain.ChatRecord, int, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT c.id, c.type, c.title, COALESCE(c.username,''), c.about, c.member_count,
-		        c.photo_media_id, pm.blur_preview, count(*) OVER() AS total
+		        c.photo_media_id, pm.blur_preview, c.created_at, count(*) OVER() AS total
 		   FROM chat_members m
 		   JOIN chats c ON c.id = m.chat_id
 		   LEFT JOIN media pm ON pm.id = c.photo_media_id
@@ -83,7 +83,7 @@ func (r *SearchRepo) SimilarChannels(ctx context.Context, chatID, viewerID int64
 		    AND c.type = 'channel'
 		    AND c.is_public = true
 		    AND NOT EXISTS (SELECT 1 FROM chat_members me WHERE me.chat_id = c.id AND me.user_id = $2)
-		  GROUP BY c.id, pm.blur_preview
+		  GROUP BY c.id, pm.blur_preview, c.created_at
 		  ORDER BY count(DISTINCT m.user_id) DESC, c.member_count DESC
 		  LIMIT $3`, chatID, viewerID, limit)
 	if err != nil {
@@ -95,9 +95,14 @@ func (r *SearchRepo) SimilarChannels(ctx context.Context, chatID, viewerID int64
 	for rows.Next() {
 		var c domain.ChatRecord
 		var t int
-		if err := rows.Scan(&c.ID, &c.Type, &c.Title, &c.Username, &c.About, &c.MemberCount, &c.PhotoID, &c.PhotoPreview, &t); err != nil {
+		if err := rows.Scan(&c.ID, &c.Type, &c.Title, &c.Username, &c.About, &c.MemberCount, &c.PhotoID, &c.PhotoPreview, &c.CreatedAt, &t); err != nil {
 			return nil, 0, err
 		}
+		// Зритель здесь ЕСТЬ, и он по построению выборки (NOT EXISTS выше) не
+		// состоит ни в одном из этих каналов. Отсюда два следствия краткой
+		// формы: pFlags.left выставлен, а channel.date — дата создания, как
+		// схема и предписывает для не-участника (ChatRecord.ChannelDate).
+		c.ViewerID = viewerID
 		total = t
 		out = append(out, c)
 	}
