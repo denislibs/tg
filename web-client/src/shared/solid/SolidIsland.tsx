@@ -1,0 +1,40 @@
+import { useLayoutEffect, useRef } from 'react'
+import { mountSolid } from './mountSolid.solid'
+
+/**
+ * React-хост Solid-острова. Та же форма, которой у нас уже монтируются
+ * ванильные порты (`components/chat/VanillaFeed.tsx`): узел-хост объявлен
+ * `display: contents`, чтобы не появляться в бокс-дереве и не ломать flex
+ * родителя, а инстанс поднимается layout-эффектом и гасится в его cleanup.
+ *
+ * Пропы едут снимком на монтирование: реактивность внутри острова — забота
+ * самого Solid-компонента, а не React-родителя. Смена `component` пересоздаёт
+ * остров (зависимость эффекта); смена `props` — намеренно нет, иначе остров
+ * пересоздавался бы на каждый рендер родителя из-за нового объекта.
+ */
+export default function SolidIsland<P extends Record<string, unknown>>({
+  component,
+  props,
+}: {
+  // Возвращаемый тип — `unknown`, а не `JSX.Element`: этот файл собирается
+  // React-рантаймом, и имя `JSX` здесь принадлежит React. Тип Solid-узла сюда
+  // не затащить, не смешав два пространства имён.
+  component: (props: P) => unknown
+  props: P
+}) {
+  const hostRef = useRef<HTMLDivElement>(null)
+  const propsRef = useRef(props)
+  propsRef.current = props
+
+  useLayoutEffect(() => {
+    const host = hostRef.current
+    if (!host) return
+    // Единственное приведение во всём мосте, и оно ровно про это расхождение
+    // пространств имён `JSX` (см. тип пропа выше), а не про обход типизации.
+    // Узлы снимает сам dispose (`render` делает `element.textContent = ""`),
+    // поэтому чистить хост здесь отдельно не нужно — это была бы мёртвая строка.
+    return mountSolid(host, component as Parameters<typeof mountSolid<P>>[1], propsRef.current)
+  }, [component])
+
+  return <div ref={hostRef} style={{ display: 'contents' }} />
+}

@@ -1,11 +1,16 @@
 import { defineConfig } from 'vitest/config'
 import { resolve } from 'node:path'
+import solid from 'vite-plugin-solid'
+import { SOLID_FILE_PATTERN } from './src/shared/solid/fileRuntime'
 
 // Алиасы должны совпадать с vite.config.ts, иначе тесты не резолвят @config/@lib/…
 // (из-за отсутствия этого блока падал импорт @config/debug в lottie-модулях).
 const r = (p: string) => resolve(__dirname, p)
 
 export default defineConfig({
+  // Тот же паттерн, что и в vite.config.ts — единственный источник истины,
+  // см. src/shared/solid/fileRuntime.ts.
+  plugins: [solid({ include: [SOLID_FILE_PATTERN] })],
   resolve: {
     alias: {
       '@lib': r('src/lib'),

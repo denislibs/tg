@@ -37,6 +37,7 @@
     "qr-code-styling": "^1.9.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "solid-js": "^1.9.15",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
@@ -55,6 +56,7 @@
     "oxlint-tsgolint": "^7.0.2001",
     "sass": "^1.101.0",
     "vite": "^8.1.5",
+    "vite-plugin-solid": "^2.11.14",
     "vitest": "^4.1.10"
   }
 }
