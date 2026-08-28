@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import { resolve } from 'node:path'
 import react from '@vitejs/plugin-react'
 import solid from 'vite-plugin-solid'
+import { SOLID_FILE_PATTERN } from './src/shared/solid/fileRuntime'
 import { keepBackdropFilterUnprefixed } from './vite/keepBackdropFilterUnprefixed'
 import { computeVersion, writeVersion } from './scripts/write-version.mjs'
 
@@ -20,11 +21,12 @@ export default defineConfig({
     __APP_VERSION_FULL__: JSON.stringify(versionFull),
   },
   plugins: [
-    // Два JSX-рантайма разведены по имени файла. `*.solid.tsx` — Solid,
-    // всё прочее — React. Маски ДОЛЖНЫ быть взаимоисключающими: если файл
-    // попадёт под оба плагина, его JSX преобразуют дважды.
-    solid({ include: ['**/*.solid.tsx', '**/*.solid.test.tsx'] }),
-    react({ exclude: [/\.solid\.tsx?$/] }),
+    // Два JSX-рантайма разведены по имени файла. `*.solid.tsx`/`*.solid.test.tsx`
+    // — Solid, всё прочее — React. Оба плагина берут ОДИН И ТОТ ЖЕ паттерн
+    // (`SOLID_FILE_PATTERN`) — include у solid, exclude у react, — поэтому
+    // маски взаимоисключающие по конструкции, а не по совпадению двух текстов.
+    solid({ include: [SOLID_FILE_PATTERN] }),
+    react({ exclude: [SOLID_FILE_PATTERN] }),
     keepBackdropFilterUnprefixed(),
     { name: 'write-version', buildStart() { writeVersion() } },
   ],
