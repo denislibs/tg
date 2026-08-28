@@ -19,15 +19,15 @@ interface Props {
 }
 
 interface PendingTransition {
-  fromKey: string
-  toKey: string
+  fromId: number
+  toId: number
   toRight: boolean
 }
 
 export default function ChatsContainer({ renderInstance }: Props) {
   const stack = useChatStackStore((s) => s.stack)
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const nodesRef = useRef(new Map<string, HTMLDivElement>())
+  const nodesRef = useRef(new Map<number, HTMLDivElement>())
   const prevStackRef = useRef<ChatInstanceDesc[]>(stack)
   const [renderList, setRenderList] = useState<ChatInstanceDesc[]>(stack)
   // Отложенный переход — стейт, а не реф: эффекту №2 нужны явные зависимости
@@ -44,7 +44,7 @@ export default function ChatsContainer({ renderInstance }: Props) {
   // пытаются обрезать список дважды на устаревшие данные.
   const removalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const activeKey = stack.length ? stack[stack.length - 1].key : null
+  const activeId = stack.length ? stack[stack.length - 1].id : null
 
   // 1) реакция на смену стека: решаем, что рендерить и какой переход играть
   useLayoutEffect(() => {
@@ -55,12 +55,24 @@ export default function ChatsContainer({ renderInstance }: Props) {
     const top = stack[stack.length - 1]
     const prevTop = prev[prev.length - 1]
 
-    if (!top || !prevTop || top.key === prevTop.key) {
+    // Тот же ИНСТАНС наверху — перехода нет, даже если у него сменился пир:
+    // это `chat.setPeer()` внутри одного контейнера, на котором
+    // `chatsSelectTab` выходит первой строкой (appImManager.ts:2238-2240).
+    if (!top || !prevTop || top.id === prevTop.id) {
       setRenderList(stack)
       return
     }
 
-    setPending({ fromKey: prevTop.key, toKey: top.key, toRight: stack.length > prev.length })
+    // Владелец объявил «без анимации» — порт `animate === false`, который
+    // оригинал отдаёт в `chatsSelectTab` и там гасит переход через
+    // `disableTransition` (appImManager.ts:2243-2245). Читаем из того же
+    // снимка, которым приехал `stack`: стор ставит пару одним `set()`.
+    if (!useChatStackStore.getState().animateNext) {
+      setRenderList(stack)
+      return
+    }
+
+    setPending({ fromId: prevTop.id, toId: top.id, toRight: stack.length > prev.length })
     // push: узел нового инстанса нужен в DOM — коммитим список сразу;
     // pop: уходящий верхний доживает до конца перехода, а промежуточные узлы
     // убираем сразу (tweb spliceChats:2705 — «fix middle chat z-index on animation»).
@@ -82,8 +94,8 @@ export default function ChatsContainer({ renderInstance }: Props) {
     const container = containerRef.current
     if (!container) return
 
-    const to = nodesRef.current.get(pending.toKey) ?? null
-    const from = nodesRef.current.get(pending.fromKey) ?? null
+    const to = nodesRef.current.get(pending.toId) ?? null
+    const from = nodesRef.current.get(pending.fromId) ?? null
 
     setPending(null)
     runNavigationTransition({ container, to, from, toRight: pending.toRight })
@@ -115,24 +127,24 @@ export default function ChatsContainer({ renderInstance }: Props) {
   // первый показ и смены без анимации: активность ставим сразу
   // (tweb chatsSelectTab с animate === false)
   useLayoutEffect(() => {
-    if (!activeKey || pending) return
-    const node = nodesRef.current.get(activeKey)
+    if (activeId === null || pending) return
+    const node = nodesRef.current.get(activeId)
     if (node && !node.classList.contains('active')) node.classList.add('active')
-  }, [activeKey, renderList, pending])
+  }, [activeId, renderList, pending])
 
   return (
     <div ref={containerRef} className="chats-container tabs-container" data-animation="navigation">
       {renderList.map((desc) => (
         <div
-          key={desc.key}
+          key={desc.id}
           ref={(el) => {
-            if (el) nodesRef.current.set(desc.key, el)
-            else nodesRef.current.delete(desc.key)
+            if (el) nodesRef.current.set(desc.id, el)
+            else nodesRef.current.delete(desc.id)
           }}
           className="chat tabs-tab"
           data-type={desc.type}
         >
-          <ChatInstanceProvider value={{ desc, isActive: desc.key === activeKey }}>
+          <ChatInstanceProvider value={{ desc, isActive: desc.id === activeId }}>
             {renderInstance(desc)}
           </ChatInstanceProvider>
         </div>

@@ -372,12 +372,22 @@ export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBot
     // отвергается `PEER_CHANGED_ERROR`, и это не сбой.
     void bubbles.setPeer().then((result) => result?.promise).catch(noop)
 
-    // Узел `bubbles.container` отдельно не снимаем: он лежит ВНУТРИ хоста,
-    // который React убирает из документа сам. `remove()` здесь был бы строкой,
-    // удаление которой ничего не меняет, — то есть мёртвым кодом (CLAUDE.md).
-    // А вот класс `is-go-down-visible` лента вешает на ЧУЖОЙ узел (колонку
-    // чата, tweb `updateGoDownVisibility`) — его снимать надо руками, узел
-    // переживает размонтирование ленты.
+    // Узлы, которые лента добавила в хост, она же и снимает. Раньше здесь
+    // стояло обратное («React уберёт хост сам, `remove()` — мёртвый код»), и
+    // это было верно ровно пока ключ React-узла зависел от пира: смена чата
+    // размонтировала хост целиком. С переводом стека на модель tweb (личность
+    // инстанса не выводится из пира, `stores/chatStackStore.ts`) хост ПЕРЕЖИВАЕТ
+    // смену пира — эффект лишь переигрывается по зависимости `peerId`. Без
+    // явного снятия дерево прошлой ленты оставалось в хосте рядом с новым:
+    // на стенде возврат в чат показывал 110 баблов вместо 55, ровно вдвое.
+    //
+    // Оригинал прошлое дерево тоже снимает явно, а не полагается на владельца:
+    // `chat.container.remove()` при сносе инстанса (appImManager.ts:2698-2700)
+    // и `scrollable.replaceChildren(paddingTop, chatInner, paddingBottom)` при
+    // смене пира на том же инстансе (bubbles.ts:5408).
+    //
+    // Класс `is-go-down-visible` — отдельный случай: он висит на ЧУЖОМ узле
+    // (колонка чата, tweb `updateGoDownVisibility`), который ленту переживает.
     return () => {
       if (api) api.current = null
       if (scrollerRef) scrollerRef.current = null
@@ -414,6 +424,8 @@ export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBot
       // её сообщений сразу.
       contextMenuController.close()
       bubbles.destroy()
+      bubbles.container.remove()
+      bubblesViewport.remove()
       chatColumn.classList.remove('is-go-down-visible')
     }
   }, [api, scrollerRef, peerId, threadRootId, isLikeGroup, isBroadcast, isMegagroup, managers])

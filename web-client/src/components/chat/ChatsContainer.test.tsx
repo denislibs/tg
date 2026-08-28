@@ -8,10 +8,10 @@ vi.mock('../../core/dom/navigationTransition', () => ({
 }))
 
 import ChatsContainer from './ChatsContainer'
-import { useChatStackStore, type ChatInstanceDesc } from '../../stores/chatStackStore'
+import { useChatStackStore, descKey, type ChatInstanceDesc } from '../../stores/chatStackStore'
 
 const thread = { rootMsgId: 7, title: 'Comments', kind: 'comments' as const }
-const renderInstance = (d: ChatInstanceDesc) => <div data-testid={`body-${d.key}`}>{d.type}</div>
+const renderInstance = (d: ChatInstanceDesc) => <div data-testid={`body-${descKey(d)}`}>{d.type}</div>
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -122,7 +122,7 @@ describe('ChatsContainer', () => {
     // смены стека — эффект №2 не должен путать такой ре-рендер с новым
     // переходом и не должен снимать уже поставленный таймер удаления узла.
     function Wrapper({ tick }: { tick: number }) {
-      const renderTick = (d: ChatInstanceDesc) => <div data-testid={`body-${d.key}`}>{d.type}-{tick}</div>
+      const renderTick = (d: ChatInstanceDesc) => <div data-testid={`body-${descKey(d)}`}>{d.type}-{tick}</div>
       return <ChatsContainer renderInstance={renderTick} />
     }
 
@@ -209,5 +209,80 @@ describe('ChatsContainer', () => {
       vi.advanceTimersByTime(200) // t=600: таймер второго pop (t=550) уже сработал
     })
     expect(container.querySelectorAll('.chats-container > .chat')).toHaveLength(1)
+  })
+})
+
+// Порт `chatsSelectTab` в части «когда перехода НЕТ». У tweb личность инстанса
+// не зависит от пира: обычное открытие чата из списка идёт `chat.setPeer()` на
+// `chats[0]`, контейнер остаётся тем же, и `chatsSelectTab` выходит первой же
+// строкой — `if(this.prevTab === tab) return` (appImManager.ts:2238-2240).
+//
+// У нас ключом узла был `${peerId}_${threadId}_${type}`, поэтому каждое
+// открытие чата выглядело сменой инстанса: на стенде это давало два узла
+// (`...active to` и `...active from`), класс `animating backwards` на
+// контейнере и подмену узла .chat — то есть анимацию возврата назад на
+// обычном открытии.
+describe('ChatsContainer — переход только между ИНСТАНСАМИ', () => {
+  it('обычная смена чата не играет перехода и не пересоздаёт узел', () => {
+    const { container } = render(<ChatsContainer renderInstance={renderInstance} />)
+
+    act(() => { useChatStackStore.getState().setPeer({ peerId: 1, type: 'chat' }) })
+    const nodeA = container.querySelector('.chats-container > .chat')
+    expect(nodeA).not.toBeNull()
+    runNavigationTransition.mockClear()
+
+    act(() => { useChatStackStore.getState().setPeer({ peerId: 2, type: 'chat' }) })
+
+    expect(runNavigationTransition).not.toHaveBeenCalled()
+    expect(container.querySelectorAll('.chats-container > .chat')).toHaveLength(1)
+    // тот же САМЫЙ узел, а не новый с тем же видом
+    expect(container.querySelector('.chats-container > .chat')).toBe(nodeA)
+    expect(container.querySelector('[data-testid="body-2_0_chat"]')).not.toBeNull()
+  })
+
+  it('контроль: вход в тред — по-прежнему новый инстанс и переход вперёд', () => {
+    const { container } = render(<ChatsContainer renderInstance={renderInstance} />)
+
+    act(() => { useChatStackStore.getState().setPeer({ peerId: 1, type: 'chat' }) })
+    runNavigationTransition.mockClear()
+
+    act(() => {
+      useChatStackStore.getState().setInnerPeer({ peerId: 2, threadId: 7, type: 'discussion', thread })
+    })
+
+    expect(runNavigationTransition).toHaveBeenCalledTimes(1)
+    expect(runNavigationTransition.mock.calls[0][0]).toMatchObject({ toRight: true })
+    expect(container.querySelectorAll('.chats-container > .chat')).toHaveLength(2)
+  })
+
+  it('уход из треда к ДРУГОМУ пиру схлопывает стек без анимации (appImManager.ts:2786-2789)', () => {
+    const { container } = render(<ChatsContainer renderInstance={renderInstance} />)
+
+    act(() => { useChatStackStore.getState().setPeer({ peerId: 1, type: 'chat' }) })
+    act(() => {
+      useChatStackStore.getState().setInnerPeer({ peerId: 2, threadId: 7, type: 'discussion', thread })
+    })
+    runNavigationTransition.mockClear()
+
+    act(() => { useChatStackStore.getState().setPeer({ peerId: 5, type: 'chat' }) })
+
+    expect(runNavigationTransition).not.toHaveBeenCalled()
+    expect(container.querySelectorAll('.chats-container > .chat')).toHaveLength(1)
+    expect(container.querySelector('[data-testid="body-5_0_chat"]')).not.toBeNull()
+  })
+
+  it('уход из треда к пиру ДНА — это возврат, и он анимируется (appImManager.ts:2783-2785)', () => {
+    render(<ChatsContainer renderInstance={renderInstance} />)
+
+    act(() => { useChatStackStore.getState().setPeer({ peerId: 1, type: 'chat' }) })
+    act(() => {
+      useChatStackStore.getState().setInnerPeer({ peerId: 2, threadId: 7, type: 'discussion', thread })
+    })
+    runNavigationTransition.mockClear()
+
+    act(() => { useChatStackStore.getState().setPeer({ peerId: 1, type: 'chat' }) })
+
+    expect(runNavigationTransition).toHaveBeenCalledTimes(1)
+    expect(runNavigationTransition.mock.calls[0][0]).toMatchObject({ toRight: false })
   })
 })

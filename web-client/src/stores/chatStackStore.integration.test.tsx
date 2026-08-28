@@ -13,9 +13,12 @@ describe('навигация колонки чата идёт через сте�
   it('выбор чата из списка кладёт корневой инстанс', () => {
     useNavigationStore.getState().selectChat('42')
 
-    expect(useChatStackStore.getState().stack).toEqual([
-      { key: '42_0_chat', peerId: 42, threadId: undefined, type: 'chat', query: undefined, thread: undefined },
-    ])
+    // `id` — личность инстанса, её выдаёт незануляемый счётчик, поэтому
+    // сверяем содержимое инстанса, а не номер по порядку.
+    const { stack } = useChatStackStore.getState()
+    expect(stack).toHaveLength(1)
+    expect(stack[0]).toMatchObject({ peerId: 42, threadId: undefined, type: 'chat' })
+    expect(typeof stack[0].id).toBe('number')
   })
 
   it('выбор другого чата схлопывает открытый тред', () => {

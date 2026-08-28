@@ -267,6 +267,36 @@ describe('VanillaFeed — проводка императивной ленты �
     await new Promise((resolve) => setTimeout(resolve, 10))
     expect(bubblesIn(detached)).toHaveLength(1)
   })
+
+  // Смена пира БЕЗ размонтирования хоста. Так теперь ходит обычное открытие
+  // чата: личность инстанса в стеке не выводится из пира (порт
+  // `appImManager.chats[]`, см. `stores/chatStackStore.ts`), поэтому React-узел
+  // переживает переключение и переигрывается только эффект — по зависимости
+  // `peerId`. Пока лента полагалась на размонтирование хоста, её дерево
+  // оставалось в нём рядом с новым: на стенде возврат в чат показывал 110
+  // баблов вместо 55, ровно вдвое. Оригинал прошлое дерево снимает явно —
+  // `chat.container.remove()` (appImManager.ts:2698-2700) и
+  // `scrollable.replaceChildren(...)` (bubbles.ts:5408).
+  it('смена пира без размонтирования не оставляет дерево прошлой ленты', async () => {
+    const { container, rerender } = mount([msg(cid(1))])
+    await vi.waitFor(() => {
+      expect(bubblesIn(container)).toHaveLength(1)
+    })
+    const host = container.querySelector('.chat')!.firstElementChild as HTMLElement
+    expect(host.querySelectorAll('.bubbles')).toHaveLength(1)
+
+    const { managers } = managersWith([msg(cid(1))])
+    rerender(
+      <ManagersProvider managers={managers}>
+        <div className="chat">
+          <VanillaFeed paddingTopPx={0} paddingBottomPx={0} peerId={CHAT + 1} />
+        </div>
+      </ManagersProvider>,
+    )
+
+    expect(host.querySelectorAll('.bubbles')).toHaveLength(1)
+    expect(host.querySelectorAll('.bubbles-viewport')).toHaveLength(1)
+  })
 })
 
 // ── Контекстное меню сообщения ──────────────────────────────────────────────

@@ -6,7 +6,7 @@ import { useFeedPageHotkeys } from './useFeedPageHotkeys'
 
 afterEach(cleanup)
 
-const desc = (key: string): ChatInstanceDesc => ({ key, peerId: 1, type: 'chat' })
+const desc = (id: number): ChatInstanceDesc => ({ id, peerId: 1, type: 'chat' })
 
 function Harness({ onPageDown }: { onPageDown: () => void }) {
   useFeedPageHotkeys({ enabled: true, onPageUp: () => {}, onPageDown })
@@ -21,10 +21,10 @@ describe('useFeedPageHotkeys', () => {
     const onPageDown = vi.fn()
     render(
       <>
-        <ChatInstanceProvider value={{ desc: desc('a'), isActive: false }}>
+        <ChatInstanceProvider value={{ desc: desc(1), isActive: false }}>
           <Harness onPageDown={onPageDown} />
         </ChatInstanceProvider>
-        <ChatInstanceProvider value={{ desc: desc('b'), isActive: true }}>
+        <ChatInstanceProvider value={{ desc: desc(2), isActive: true }}>
           <Harness onPageDown={onPageDown} />
         </ChatInstanceProvider>
       </>,

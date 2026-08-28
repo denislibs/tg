@@ -6,7 +6,7 @@ import type { ChatInstanceDesc } from '../../stores/chatStackStore'
 
 afterEach(cleanup)
 
-const desc = (key: string): ChatInstanceDesc => ({ key, peerId: 1, type: 'chat' })
+const desc = (id: number): ChatInstanceDesc => ({ id, peerId: 1, type: 'chat' })
 
 function GlobalEffect({ onFire }: { onFire: () => void }) {
   const isActive = useIsActiveChat()
@@ -21,7 +21,7 @@ function InstanceValue() {
   const instance = useChatInstance()
   return (
     <div>
-      <div data-testid="desc-key">{instance?.desc.key}</div>
+      <div data-testid="desc-key">{instance?.desc.id}</div>
       <div data-testid="is-active">{String(instance?.isActive)}</div>
     </div>
   )
@@ -33,10 +33,10 @@ describe('chatInstanceContext', () => {
 
     render(
       <>
-        <ChatInstanceProvider value={{ desc: desc('a'), isActive: false }}>
+        <ChatInstanceProvider value={{ desc: desc(1), isActive: false }}>
           <GlobalEffect onFire={onFire} />
         </ChatInstanceProvider>
-        <ChatInstanceProvider value={{ desc: desc('b'), isActive: true }}>
+        <ChatInstanceProvider value={{ desc: desc(2), isActive: true }}>
           <GlobalEffect onFire={onFire} />
         </ChatInstanceProvider>
       </>,
@@ -53,12 +53,12 @@ describe('chatInstanceContext', () => {
 
   it('useChatInstance внутри провайдера возвращает переданное значение', () => {
     const { getByTestId } = render(
-      <ChatInstanceProvider value={{ desc: desc('test-key'), isActive: true }}>
+      <ChatInstanceProvider value={{ desc: desc(42), isActive: true }}>
         <InstanceValue />
       </ChatInstanceProvider>,
     )
 
-    expect(getByTestId('desc-key').textContent).toBe('test-key')
+    expect(getByTestId('desc-key').textContent).toBe('42')
     expect(getByTestId('is-active').textContent).toBe('true')
   })
 

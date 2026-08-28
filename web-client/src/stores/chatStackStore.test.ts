@@ -26,7 +26,7 @@ describe('chatStackStore', () => {
 
     const { stack } = useChatStackStore.getState()
     expect(stack).toHaveLength(2)
-    expect(selectActive(useChatStackStore.getState())?.key).toBe(descKey({ peerId: 2, threadId: 7, type: 'discussion' }))
+    expect(descKey(selectActive(useChatStackStore.getState())!)).toBe(descKey({ peerId: 2, threadId: 7, type: 'discussion' }))
   })
 
   it('setInnerPeer на пир, который уже в стеке, срезает всё выше него', () => {

@@ -10,8 +10,18 @@ import type { ThreadInfo } from '../components/Chat'
 export type ChatType = 'chat' | 'discussion' | 'saved' | 'pinned' | 'search'
 
 export interface ChatInstanceDesc {
-  /** `${peerId}_${threadId ?? 0}_${type}` — он же ключ React-узла */
-  key: string
+  /**
+   * Личность ИНСТАНСА, а не пира — и она же ключ React-узла.
+   *
+   * Это несущая деталь порта. У tweb инстанс — объект `Chat`, созданный
+   * `createNewChat()` (appImManager.ts:2658); пир внутри него меняется
+   * (`chat.setPeer`), а сам инстанс остаётся тем же. Пока личность выводилась
+   * из пира (ключ `${peerId}_${threadId}_${type}`), обычное открытие чата из
+   * списка выглядело для контейнера сменой инстанса и играло переход выезда —
+   * которого в оригинале там нет: `chatsSelectTab` выходит первой же строкой
+   * `if(this.prevTab === tab) return` (appImManager.ts:2238-2240).
+   */
+  id: number
   peerId: number
   threadId?: number
   type: ChatType
@@ -31,13 +41,38 @@ export interface OpenChatOptions {
   thread?: ThreadInfo
 }
 
+/**
+ * ЧТО инстанс сейчас показывает — порт `appImManager.isSamePeer`. Ключом
+ * React-узла больше не служит (им стал `id`): сравнение по пиру нужно только
+ * там, где оригинал спрашивает «тот же ли это пир» — в `setPeer` и
+ * `setInnerPeer`.
+ */
 export function descKey(o: { peerId: number; threadId?: number; type: ChatType }): string {
   return `${o.peerId}_${o.threadId ?? 0}_${o.type}`
 }
 
+// Порт `createNewChat` (appImManager.ts:2658) в части выдачи личности: там её
+// даёт сам объект `Chat`, здесь — счётчик. Модульная переменная, а не поле
+// стора: `clear()` не имеет права её сбрасывать, иначе новый инстанс после
+// логаута получил бы id только что размонтированного и React переиспользовал
+// бы его узел.
+let instanceSeq = 0
+
 function makeDesc(o: OpenChatOptions): ChatInstanceDesc {
   return {
-    key: descKey(o),
+    id: ++instanceSeq,
+    peerId: o.peerId,
+    threadId: o.threadId,
+    type: o.type,
+    query: o.query,
+    thread: o.thread,
+  }
+}
+
+/** Порт `chat.setPeer(options)`: у ТОГО ЖЕ инстанса меняется содержимое. */
+function withPeer(desc: ChatInstanceDesc, o: OpenChatOptions): ChatInstanceDesc {
+  return {
+    id: desc.id,
     peerId: o.peerId,
     threadId: o.threadId,
     type: o.type,
@@ -48,9 +83,24 @@ function makeDesc(o: OpenChatOptions): ChatInstanceDesc {
 
 interface ChatStackState {
   stack: ChatInstanceDesc[]
-  /** tweb setPeer: уход к другому пиру схлопывает стек до одного инстанса */
+  /**
+   * Играть ли переход на последнюю смену стека — порт параметра `animate` у
+   * `chatsSelectTab` (appImManager.ts:2237), который оригинал протаскивает
+   * через `spliceChats`.
+   *
+   * Это ОБЪЯВЛЕНИЕ намерения владельцем, а не вывод из формы стека. Вывести
+   * его нельзя: уход к другому пиру из треда и возврат к пиру дна дают ОДНУ И
+   * ТУ ЖЕ форму (стек ужался до одного элемента), а анимация у них разная —
+   * `spliceChats(0, true, true, spliced)` против `spliceChats(0, false,
+   * false, spliced)` (appImManager.ts:2784, 2788).
+   *
+   * Ставится тем же `set()`, что и `stack`, поэтому читатель, реагирующий на
+   * смену `stack`, видит согласованную пару.
+   */
+  animateNext: boolean
+  /** Порт `appImManager.setPeer` (:2755-2805) — открытие чата из списка */
   setPeer: (o: OpenChatOptions) => void
-  /** tweb setInnerPeer: положить сверху; тот же пир в стеке — срезать всё выше */
+  /** Порт `appImManager.setInnerPeer` (:2830-2871) — тред, тема, отложенные */
   setInnerPeer: (o: OpenChatOptions) => void
   popTo: (index: number) => void
   /** tweb spliceChats(chatIndex) при пустом peerId — снять верхний */
@@ -60,16 +110,58 @@ interface ChatStackState {
 
 export const useChatStackStore = create<ChatStackState>((set) => ({
   stack: [],
-  setPeer: (o) => set({ stack: [makeDesc(o)] }),
+  animateNext: false,
+
+  setPeer: (o) =>
+    set((s) => {
+      const stack = s.stack
+      // Пустой стек — оригиналу неизвестное состояние: у него инстанс есть
+      // всегда, первый создаётся в конструкторе (appImManager.ts:314). Мы
+      // пустую колонку не рисуем вовсе, поэтому первый инстанс рождается тут.
+      if (!stack.length) return { stack: [makeDesc(o)], animateNext: false }
+
+      const top = stack[stack.length - 1]
+      const chatIndex = stack.length - 1 // `this.chats.indexOf(this.chat)` (:2759)
+
+      // Уход к ДРУГОМУ пиру, пока открыт тред (:2775-2790): стек схлопывается
+      // до дна. Анимация — только когда дно уже показывает целевой пир, тогда
+      // это честный возврат назад; иначе дну меняют содержимое и переход
+      // гасят.
+      if (chatIndex > 0 && descKey(top) !== descKey(o)) {
+        const base = stack[0]
+        return descKey(base) === descKey(o)
+          ? { stack: [base], animateNext: true } // spliceChats(0, true, true, spliced)
+          : { stack: [withPeer(base, o)], animateNext: false } // setPeer + spliceChats(0, false, false)
+      }
+
+      // Обычный случай (:2804-2805): `chat.setPeer(options)` на ВЕРХНЕМ
+      // инстансе, стек не трогаем. Инстанс тот же — перехода нет.
+      return { stack: [...stack.slice(0, -1), withPeer(top, o)], animateNext: false }
+    }),
+
   setInnerPeer: (o) =>
     set((s) => {
-      const desc = makeDesc(o)
-      const i = s.stack.findIndex((d) => d.key === desc.key)
-      return { stack: i === -1 ? [...s.stack, desc] : s.stack.slice(0, i + 1) }
+      const stack = s.stack
+      // «Тот же пир уже в стеке» → срезать всё выше него и доставить ему
+      // опции (:2852-2855: `spliceChats(existingIndex + 1)` → `setPeer`).
+      const i = stack.findIndex((d) => descKey(d) === descKey(o))
+      if (i !== -1) {
+        const kept = stack.slice(0, i + 1)
+        const top = kept[kept.length - 1]
+        return { stack: [...kept.slice(0, -1), withPeer(top, o)], animateNext: true }
+      }
+      // `if (oldChat.inited) chat = this.createNewChat()` (:2859-2861):
+      // неиспользованный инстанс переиспользуется, а не плодит второй. У нас
+      // «неиспользованный» = пустой стек.
+      if (!stack.length) return { stack: [makeDesc(o)], animateNext: false }
+      return { stack: [...stack, makeDesc(o)], animateNext: true }
     }),
-  popTo: (index) => set((s) => ({ stack: index < 0 ? [] : s.stack.slice(0, index + 1) })),
-  closeTop: () => set((s) => (s.stack.length > 1 ? { stack: s.stack.slice(0, -1) } : s)),
-  clear: () => set({ stack: [] }),
+
+  popTo: (index) =>
+    set((s) => ({ stack: index < 0 ? [] : s.stack.slice(0, index + 1), animateNext: true })),
+  closeTop: () =>
+    set((s) => (s.stack.length > 1 ? { stack: s.stack.slice(0, -1), animateNext: true } : s)),
+  clear: () => set({ stack: [], animateNext: false }),
 }))
 
 /** Активный инстанс — верхний (инвариант стека). */
