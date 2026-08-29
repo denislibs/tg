@@ -1,11 +1,25 @@
 /**
  * Порт tweb `src/components/row.ts` — строка списка настроек, рабочая
  * лошадка вкладок настроек и правой панели. Разметка и порядок узлов
- * дословные; сверено с `tweb/src/scss/partials/_row.scss` (классы `row`,
- * `no-subtitle`, `row-title(-row|-right(-secondary)?)`, `row-subtitle(-row|-right)`,
- * `row-midtitle`, `row-with-(padding|icon|toggle)`, `row-icon`, `row-clickable`,
- * `hover-effect`, `disable-hover`, `row-grid`, `row-right`, `row-media(-size)?`,
- * `row-sortable(-icon)?`, `cant-sort`, `is-disabled`, `checkbox-field-absolute`).
+ * дословные. Классы сверены построчно (в `_row.scss` многие лежат как
+ * SCSS-нестинг `&-x` внутри `.row`/`.row-title`/`.checkbox-field`, а не
+ * литеральной строкой — грепом не находятся, сверка руками):
+ *  • `tweb/src/scss/partials/_row.scss` (= наш уже портированный
+ *    `web-client/src/styles/tweb/_row.scss`) — `row`, `no-subtitle`,
+ *    `row-title(-row|-right(-secondary)?)`, `row-subtitle(-row|-right)`,
+ *    `row-midtitle`, `row-with-(padding|icon)`, `row-icon`, `row-clickable`,
+ *    `row-grid`, `row-right`, `row-media(-small|-medium|-big|-abitbigger|
+ *    -bigger|-40)`, `row-sortable(-icon)?`, `cant-sort`, `is-disabled`,
+ *    `checkbox-field-absolute` (там же, нестинг `.checkbox-field { &-absolute }`
+ *    внутри `.row`);
+ *  • `hover-effect` — `tweb/src/scss/base.scss:1182` (наш порт —
+ *    `web-client/src/styles/tweb/_bridge.scss`), НЕ `_row.scss`;
+ *  • `disable-hover` — `tweb/src/scss/components/_global.scss:199` (наш порт —
+ *    `web-client/src/styles/tweb/_storiesList.scss`), тоже не `_row.scss`;
+ *  • `row-with-toggle` — класс из САМОГО `row.ts` (:142), но стиля под него
+ *    нет НИГДЕ в `tweb/src/scss` (проверено — ни в `_row.scss`, ни где-либо
+ *    ещё). Это не наш недочёт порта, а факт оригинала: ветка формально жива
+ *    (см. ниже), но визуально ничего не делает уже в tweb.
  *
  * ── Опущено (не объявлено в типе, не имитировано заглушкой) ─────────────────
  *  • `navigationTab` — построение и открытие вкладки требует `SidebarSlider`
@@ -29,7 +43,10 @@
  *    `.listenerSetter` и опции `listenerSetter` в конструкторе: проверка
  *    «есть подпись» — по `querySelector('.checkbox-caption')`, чтение
  *    состояния для `withCheckboxSubtitle` — `input.checked`, подписка на
- *    change ставится Row (как и в оригинале), а не конструктором чекбокса;
+ *    change ставится Row (как и в оригинале), а не конструктором чекбокса.
+ *    Обе замены пинуются `row.test.ts` (кейсы «checkbox без подписи получает
+ *    checkbox-field-absolute» и «withCheckboxSubtitle переключает подпись по
+ *    input.checked»), мутация каждой ветки прогнана отдельно (раунд 1 ревью);
  *  • toggle-ветка (`checkbox-field-toggle` → `row-with-toggle`, `titleRight`
  *    = сам чекбокс) перенесена как проверка класса — дословно, но сейчас
  *    недостижима: наш `CheckboxField` не умеет строить toggle-чекбоксы (см.
@@ -369,27 +386,27 @@ export default class Row {
   }
 }
 
-export const CreateRowFromCheckboxField = (checkboxField: CheckboxField) => {
-  return new Row({ checkboxField })
-}
-
 export const RadioFormFromRows = (rows: Row[], onChange: (value: string) => void) => {
   return RadioForm(rows.map((r) => ({ container: r.container, input: r.radioField.input })), onChange)
 }
 
 export const RadioFormFromValues = (values: {
-  langKey?: string,
+  // Имя поля — как в оригинале (tweb row.ts:395 `langPackKey`), а НЕ `langKey`
+  // (RadioField.langKey, tweb radioField.ts:17): вкладки настроек копируются
+  // из tweb почти дословно, и расхождение в имени поля здесь дало бы TS-ошибку
+  // на месте порта, а не рабочий код.
+  langPackKey?: string,
   value: number | string,
   checked?: boolean,
   textElement?: ConstructorParameters<typeof RadioField>[0]['textElement']
 }[], onChange: Parameters<typeof RadioFormFromRows>[1], fireInit?: boolean) => {
   const name = 'name-' + (Math.random() * 0x7FFFFF | 0)
   let checkedRadioField: RadioField | undefined
-  const rows = values.map(({ langKey, value, checked, textElement }) => {
+  const rows = values.map(({ langPackKey, value, checked, textElement }) => {
     const row = new Row({
       radioField: new RadioField({
         textElement,
-        langKey,
+        langKey: langPackKey,
         name,
         value: '' + value,
       }),

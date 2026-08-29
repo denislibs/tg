@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import Row, { RadioFormFromRows } from './row'
 import RadioField from './radioField'
+import CheckboxField from './checkboxField'
 
 describe('Row', () => {
   it('строит заголовок, подзаголовок и правую часть в разметке tweb', () => {
@@ -68,5 +69,84 @@ describe('Row', () => {
     rows[1].radioField.input.checked = true
     rows[1].radioField.input.dispatchEvent(new Event('change'))
     expect(values).toEqual(['b'])
+  })
+
+  // Раунд 1 ревью: обе адаптации ниже — места, где наш CheckboxField (нет
+  // `.span`) заставил разойтись с буквальным текстом tweb (`!field.span` /
+  // `field.checked`) — были без единого теста, значит без пина на регресс.
+
+  it('чекбокс без подписи получает checkbox-field-absolute (tweb :143-148, у нас — querySelector(.checkbox-caption))', () => {
+    const withoutCaption = new CheckboxField()
+    const row = new Row({ checkboxField: withoutCaption })
+    expect(row.container.contains(withoutCaption.label)).toBe(true)
+    expect(withoutCaption.label.classList.contains('checkbox-field-absolute')).toBe(true)
+
+    // С подписью (`.checkbox-caption` есть) коробка НЕ абсолютная — иначе она
+    // легла бы поверх текста (`_row.scss:379-384` рассчитан именно на пустой label).
+    const withCaption = new CheckboxField({ text: 'Подпись' })
+    const row2 = new Row({ checkboxField: withCaption })
+    expect(row2.container.contains(withCaption.label)).toBe(true)
+    expect(withCaption.label.classList.contains('checkbox-field-absolute')).toBe(false)
+  })
+
+  it('withCheckboxSubtitle переключает подпись строки по input.checked чекбокса (tweb :152-161, у нас — input.checked вместо .checked)', () => {
+    const checkboxField = new CheckboxField()
+    const row = new Row({ checkboxField, withCheckboxSubtitle: true })
+
+    // До первого change подпись не выставляется — ни tweb, ни наш порт не
+    // вызывают onChange при построении, только подписываются на будущий 'change'.
+    expect(row.subtitle.textContent).toBe('')
+
+    checkboxField.input.checked = true
+    checkboxField.input.dispatchEvent(new Event('change'))
+    expect(row.subtitle.textContent).toBe('Enabled')
+
+    checkboxField.input.checked = false
+    checkboxField.input.dispatchEvent(new Event('change'))
+    expect(row.subtitle.textContent).toBe('Disabled')
+  })
+
+  it('icon добавляет .row-icon и класс .row-with-icon на container (tweb :201-210)', () => {
+    const row = new Row({ title: 'Заголовок', icon: 'add' })
+    const icon = row.container.querySelector(':scope > .row-icon')
+    expect(icon).not.toBeNull()
+    expect(row.container.classList.contains('row-with-icon')).toBe(true)
+    expect(row.container.classList.contains('row-with-padding')).toBe(true)
+  })
+
+  it('rightContent (buttonRight/rightTextContent) уезжает в .row-right, container получает row-grid (tweb :268-284)', () => {
+    // buttonRight — настоящая кнопка через Button(), а не голый rightContent.
+    const withButton = new Row({ title: 'A', buttonRightLangKey: 'Save' })
+    const btn = withButton.container.querySelector(':scope > .row-right')
+    expect(btn).not.toBeNull()
+    expect(btn!.tagName).toBe('BUTTON')
+    expect(withButton.container.classList.contains('row-grid')).toBe(true)
+    expect(withButton.buttonRight).toBe(btn)
+
+    // rightTextContent — голый span.row-title-right-secondary, без кнопки.
+    const withText = new Row({ title: 'B', rightTextContent: '42' })
+    const span = withText.container.querySelector(':scope > .row-right')
+    expect(span).not.toBeNull()
+    expect(span!.tagName).toBe('SPAN')
+    expect(span!.textContent).toBe('42')
+    expect(span!.classList.contains('row-title-right-secondary')).toBe(true)
+  })
+
+  it('subtitleRight строит .row-subtitle-row с подзаголовком и правой частью рядом (tweb :118-126, симметрично titleRow)', () => {
+    const row = new Row({ subtitle: '2 участника', subtitleRight: 'admin' })
+    const subtitleRow = row.container.querySelector(':scope > .row-subtitle-row')
+    expect(subtitleRow).not.toBeNull()
+    expect(subtitleRow!.querySelector('.row-subtitle:not(.row-subtitle-right)')!.textContent).toBe('2 участника')
+    expect(subtitleRow!.querySelector('.row-subtitle-right')!.textContent).toBe('admin')
+  })
+
+  it('midtitle вставляется классом row-midtitle НЕПОСРЕДСТВЕННО перед subtitle (tweb :332-337)', () => {
+    const row = new Row({ subtitle: 'Подзаголовок' })
+    const midtitle = row.midtitle
+    expect(midtitle.classList.contains('row-midtitle')).toBe(true)
+    // insertBefore(midtitle, subtitle) — midtitle обязан идти ПЕРЕД subtitle,
+    // а не просто где-то в том же родителе (порядок — грид-контракт
+    // `.row-grid.with-midtitle` в _row.scss: title/midtitle/subtitle сверху вниз).
+    expect(midtitle.nextElementSibling).toBe(row.subtitle)
   })
 })

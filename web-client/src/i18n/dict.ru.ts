@@ -1292,6 +1292,11 @@ const ru: Dict = {
   Giveaway: 'Розыгрыш',
   'Live location': 'Трансляция геопозиции',
   'Unsupported message': 'Неподдерживаемое сообщение',
+  // Row.checkboxKeys по умолчанию (tweb lang.ts:250-251) — t() заменяет весь
+  // словарь целиком, английский фолбэком не остаётся: без перевода здесь
+  // подпись под ru показала бы сырой ключ 'Checkbox.Enabled'/'Checkbox.Disabled'.
+  'Checkbox.Enabled': 'Включено',
+  'Checkbox.Disabled': 'Выключено',
 }
 
 export default ru
