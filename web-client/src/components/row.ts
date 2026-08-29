@@ -22,16 +22,21 @@
  *    (см. ниже), но визуально ничего не делает уже в tweb.
  *
  * ── Опущено (не объявлено в типе, не имитировано заглушкой) ─────────────────
- *  • `navigationTab` — построение и открытие вкладки требует `SidebarSlider`
- *    (`@components/slider`) и `SliderSuperTab`, которых до задачи 5 нет;
- *    заводится там же вместе с самим слайдером;
  *  • `contextMenu` — требует `helpers/dom/createContextMenu`, которого в
  *    репозитории нет. У нас есть `contextMenuController` +
  *    `attachContextMenuListener` + `positionMenu`; вкладка «Устройства»
  *    (`ActiveSessions`) пользуется ими напрямую, минуя `Row`, — ровно как
  *    оригинал (`tweb components/sidebarLeft/tabs/activeSessions.tsx:13-16`
  *    строит контекстное меню тем же способом, а не опцией `Row`).
- *  Задача-остаток по обеим — задача 8.
+ *  Задача-остаток — задача 8.
+ *
+ * ── `navigationTab` (tweb :74-79, :216-247) ─────────────────────────────────
+ * Опция появилась здесь позже остального файла: она открывает вкладку на
+ * `SidebarSlider`, а его до задачи 5 волны не существовало. Смысл дословный:
+ * строка — это кнопка «провалиться во вкладку», аргументы её `init` могут
+ * готовиться заранее (`getInitArgs`, обычно статический метод самой вкладки) и
+ * ПЕРЕГОТАВЛИВАЮТСЯ после разрушения вкладки (`destroyAfter`) — иначе повторное
+ * открытие подставит устаревший снимок данных.
  *
  * ── Адаптации под наш стек ───────────────────────────────────────────────────
  *  • `LangPackKey` + `_i18n`/`i18n()` → строка-ключ через
@@ -59,6 +64,9 @@
  *    (`helpers/dom/replaceContent.ts`, порт tweb 1:1), а не инлайнен —
  *    common-хелпер tweb, которым будут пользоваться и другие вкладки.
  */
+import type SidebarSlider from '@components/slider'
+import type SliderSuperTab from '@components/sliderTab'
+import type { SliderSuperTabConstructable, SliderSuperTabEventable, SliderSuperTabEventableConstructable } from '@components/sliderTab'
 import CheckboxField, { CheckboxFieldOptions } from '@components/checkboxField'
 import RadioField from '@components/radioField'
 import ripple from '@components/ripple'
@@ -87,7 +95,10 @@ const setContent = (element: HTMLElement, content: K) => {
 
 export type RowMediaSizeType = 'small' | 'medium' | 'big' | 'abitbigger' | 'bigger' | '40'
 
-export default class Row {
+/** tweb :31-33 — тип инстанса по типу конструктора вкладки */
+type ConstructorP<T> = T extends { new (...args: any[]): infer U } ? U : never
+
+export default class Row<T extends SliderSuperTabEventableConstructable = any> {
   public container: HTMLElement
   // Все поля ниже — опциональные ветки конструктора (титул/чекбокс/радио/медиа
   // не обязаны присутствовать сразу); `!` вместо `?`, чтобы не тащить
@@ -126,6 +137,12 @@ export default class Row {
     titleRight: K,
     titleRightSecondary: K,
     clickable: boolean | ((e: MouseEvent) => void),
+    navigationTab: {
+      constructor: T,
+      slider: SidebarSlider,
+      getInitArgs?: () => Promise<Parameters<ConstructorP<T>['init']>[0]> | Parameters<ConstructorP<T>['init']>[0]
+      args?: any
+    },
     havePadding: boolean,
     noRipple: boolean,
     noWrap: boolean,
@@ -257,6 +274,41 @@ export default class Row {
 
     if(havePadding) {
       this.container.classList.add('row-with-padding')
+    }
+
+    if(options.navigationTab) {
+      const navigationTab = options.navigationTab
+      let getInitArgs = navigationTab.getInitArgs
+      if(!getInitArgs) {
+        // Вкладка может объявить подготовку аргументов статическим методом —
+        // тогда строке не нужно ничего знать про её данные (tweb :219-223).
+        const g = (navigationTab.constructor as unknown as typeof SliderSuperTab).getInitArgs
+        if(g) {
+          getInitArgs = () => g()
+        }
+      }
+
+      let args = navigationTab.args ?? getInitArgs?.()
+
+      options.clickable = async() => {
+        if(args instanceof Promise) {
+          args = await args
+        }
+
+        const tab = navigationTab.slider.createTab(navigationTab.constructor as unknown as SliderSuperTabConstructable)
+        void tab.open(args)
+
+        // Данные, снятые ЗАРАНЕЕ, протухают вместе с закрытой вкладкой:
+        // переготавливаем их после её разрушения, иначе повторное открытие
+        // покажет старый снимок (tweb :240-245).
+        const eventListener = (tab as SliderSuperTabEventable).eventListener
+        const refresh = getInitArgs
+        if(eventListener && refresh) {
+          eventListener.addEventListener('destroyAfter', (promise) => {
+            args = promise.then(() => refresh())
+          })
+        }
+      }
     }
 
     if(options.clickable || options.radioField || options.checkboxField) {

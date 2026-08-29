@@ -10,6 +10,8 @@
 // приходящая въезжает с полной ширины. После reflow инлайн сбрасывается, и
 // вкладки едут в 0 уже по CSS-переходу.
 import { dispatchHeavyAnimationEvent } from './heavyAnimation'
+import liteMode from '@helpers/liteMode'
+import whichChild from '@helpers/dom/whichChild'
 
 /** tweb `components/slider.ts:11` */
 export const NAVIGATION_TRANSITION_TIME = 250
@@ -76,6 +78,18 @@ export function runNavigationTransition(options: NavigationTransitionOptions) {
 
   let onTransitionEndCallback: (() => void) | undefined
   if (to) {
+    // tweb `transition.ts:325-330`: на приходящей вкладке может ещё висеть
+    // таймер уборки от ПРЕДЫДУЩЕГО перехода — тогда она была уходящей и не
+    // успела доехать. Его надо снять: иначе он отберёт у неё `active` уже
+    // после того, как она снова стала активной, и вкладка исчезнет. Ловится
+    // это возвратом назад быстрее, чем за `transitionTime` (открыл вкладку —
+    // сразу «назад»), поэтому таймер и живёт НА УЗЛЕ, а не в замыкании.
+    const pendingTimeout = to.dataset.transitionTimeout
+    if (pendingTimeout) {
+      clearTimeout(+pendingTimeout)
+      delete to.dataset.transitionTimeout
+    }
+
     if (from) onTransitionEndCallback = slideNavigation(to, from, toRight)
     else to.classList.add('active')
 
@@ -87,14 +101,87 @@ export function runNavigationTransition(options: NavigationTransitionOptions) {
   // `transitionTime + 100`). Нам достаточно таймаута: слушатель там нужен ради
   // раннего снятия классов, а не ради корректности.
   const finished = new Promise<void>((resolve) => {
-    setTimeout(() => {
+    const timeout = window.setTimeout(() => {
       onTransitionEndCallback?.()
       to?.classList.remove('to')
-      from?.classList.remove('active', 'from')
+      if (from) {
+        from.classList.remove('active', 'from')
+        delete from.dataset.transitionTimeout
+      }
       container.classList.remove('animating', 'backwards')
       resolve()
     }, transitionTime + 100)
+
+    // tweb `transition.ts:342` — таймер уборки принадлежит УХОДЯЩЕЙ вкладке.
+    if (from) from.dataset.transitionTimeout = '' + timeout
   })
 
   void dispatchHeavyAnimationEvent(finished, transitionTime * 2)
+}
+
+/**
+ * Вкладочник с ПАМЯТЬЮ о текущей вкладке — то, чем в оригинале занимается сам
+ * `TransitionSlider` (`tweb components/transition.ts:238-392`), а не
+ * `slideNavigation`. `runNavigationTransition` выше — это одно переключение с
+ * уже посчитанным направлением; хранение `from`, вычисление `toRight` и
+ * мгновенная (без анимации) ветка живут здесь.
+ *
+ * Заведено под `SidebarSlider` (`components/slider.ts`), который в tweb строит
+ * себе ровно `TransitionSlider({content, type: 'navigation', transitionTime})`
+ * (`slider.ts:41-45`). Второго движка анимации не появилось: анимационная часть
+ * по-прежнему одна — `runNavigationTransition`.
+ *
+ * Портировано из `selectTab` оригинала (:240-380) в объёме типа `navigation`:
+ *  • `content.dataset.animation = type` (:186) — по нему CSS включает
+ *    `transition: transform, filter` детям (`styles/tweb/_slider.scss:226-241`);
+ *  • `id instanceof HTMLElement → whichChild(id)` (:247-249) и
+ *    `prevId = from ? whichChild(from) : -1` (:381) — направление считается
+ *    сравнением ИНДЕКСОВ, поэтому узел сразу переводится в индекс;
+ *  • `if(id === prevId) return` (:251) — повторный выбор той же вкладки не
+ *    перезапускает переход;
+ *  • `toRight = prevId < id` (:307);
+ *  • гашение анимации (:258-260): выключенные анимации (`liteMode`) и ПЕРВОЕ
+ *    переключение (`prevId === -1`) — у `slideNavigation` в оригинале
+ *    `animateFirst: false` (:121), поэтому развилка по `animateFirst` схлопнута
+ *    в константу, а не портирована опцией без второго значения;
+ *  • мгновенная ветка (:270-288) — снять `active/to/from` с уходящей, выдать
+ *    `active` приходящей, снять `animating/backwards` с контейнера.
+ *
+ * `-1` как id (у tweb это `canHideFirst`, `slider.ts:83`) — валидный вход:
+ * `children[-1]` даёт `undefined`, и вкладочник закрывается целиком.
+ *
+ * Не портированы публичные ручки `prevId`/`getFrom`/`setFrom` (:381-383): у нас
+ * нет ни одного потребителя, а внутрь `from` и так виден через замыкание.
+ */
+export function createNavigationTransition(container: HTMLElement, transitionTime = NAVIGATION_TRANSITION_TIME) {
+  container.dataset.animation = 'navigation'
+
+  let from: HTMLElement | undefined
+
+  return function selectTab(id: number | HTMLElement, animate = true): void {
+    if (id instanceof HTMLElement) id = whichChild(id)
+
+    const prevId = from ? whichChild(from) : -1
+    if (id === prevId) return
+
+    const to = container.children[id] as HTMLElement | undefined
+
+    if (!liteMode.isAvailable('animations') || prevId === -1) {
+      animate = false
+    }
+
+    if (!animate) {
+      from?.classList.remove('active', 'to', 'from')
+      if (to) {
+        to.classList.remove('to', 'from')
+        to.classList.add('active')
+      }
+      container.classList.remove('animating', 'backwards')
+      from = to
+      return
+    }
+
+    runNavigationTransition({ container, to, from, toRight: prevId < id, transitionTime })
+    from = to
+  }
 }

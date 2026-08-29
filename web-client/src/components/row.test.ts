@@ -1,10 +1,12 @@
 // Порт-тест `tweb/src/components/row.ts` — разметка строки настроек это
 // контракт со стилями (`tweb/src/scss/partials/_row.scss`), поэтому проверяем
 // именно классы и порядок узлов, а не только текстовое содержимое.
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import Row, { RadioFormFromRows } from './row'
 import RadioField from './radioField'
 import CheckboxField from './checkboxField'
+import SidebarSlider from './slider'
+import { SliderSuperTabEventable } from './sliderTab'
 
 describe('Row', () => {
   it('строит заголовок, подзаголовок и правую часть в разметке tweb', () => {
@@ -148,5 +150,63 @@ describe('Row', () => {
     // а не просто где-то в том же родителе (порядок — грид-контракт
     // `.row-grid.with-midtitle` в _row.scss: title/midtitle/subtitle сверху вниз).
     expect(midtitle.nextElementSibling).toBe(row.subtitle)
+  })
+})
+
+// `navigationTab` (tweb :216-247) заведена вместе с `SidebarSlider` (задача 5
+// волны) — до него типа слайдера не существовало и опция была опущена.
+describe('Row — navigationTab', () => {
+  function createSlider() {
+    const sidebarEl = document.createElement('div')
+    const sliderEl = document.createElement('div')
+    sliderEl.classList.add('sidebar-slider', 'tabs-container')
+    sidebarEl.append(sliderEl)
+    document.body.append(sidebarEl)
+    return new SidebarSlider({ sidebarEl })
+  }
+
+  it('клик по строке открывает вкладку слайдера и отдаёт ей аргументы из getInitArgs', async () => {
+    const slider = createSlider()
+    const inits: unknown[] = []
+    class Tab extends SliderSuperTabEventable {
+      override init(payload: unknown) { inits.push(payload) }
+    }
+
+    const row = new Row({
+      title: 'Devices',
+      navigationTab: { constructor: Tab, slider, getInitArgs: () => ({ authorizations: [] }) },
+    })
+    document.body.append(row.container)
+
+    row.container.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await vi.waitFor(() => expect(inits).toEqual([{ authorizations: [] }]))
+    expect(document.querySelector('.sidebar-slider .tabs-tab')).not.toBeNull()
+  })
+
+  it('после разрушения вкладки аргументы готовятся заново — иначе повторное открытие покажет старый снимок', async () => {
+    const slider = createSlider()
+    const inits: unknown[] = []
+    class Tab extends SliderSuperTabEventable {
+      override init(payload: unknown) { inits.push(payload) }
+    }
+
+    let version = 0
+    const row = new Row({
+      title: 'Devices',
+      navigationTab: { constructor: Tab, slider, getInitArgs: () => ({ version: ++version }) },
+    })
+    document.body.append(row.container)
+
+    row.container.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await vi.waitFor(() => expect(inits).toHaveLength(1))
+    const tab = slider.getHistory()[slider.getHistory().length - 1] as Tab
+
+    // Разрушение вкладки — тот самый момент, после которого снимок протух.
+    tab.eventListener.dispatchEvent('destroyAfter', Promise.resolve())
+    await Promise.resolve()
+
+    row.container.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await vi.waitFor(() => expect(inits).toHaveLength(2))
+    expect(inits).toEqual([{ version: 1 }, { version: 2 }])
   })
 })
