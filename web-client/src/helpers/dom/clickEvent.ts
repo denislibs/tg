@@ -13,7 +13,9 @@
 //   • `options.touchMouseDown = true` — мёртвая запись уже в tweb (читается
 //     только внутри закомментированного touchend-черновика) — не перенесена,
 //     как и сам черновик
-//   • `simulateClickEvent`/`simulateEvent` — потребителей нет, не перенесены
+//   • `simulateClickEvent` (tweb :100-102, поверх `helpers/dom/dispatchEvent.ts`
+//     `simulateEvent`) — теперь есть потребитель: `components/popups/popupElement.ts`
+//     (Enter подтверждает верхний попап кликом по `btnConfirmOnEnter`)
 //   • строгий tsconfig: `add`/`remove` зовутся через узкие касты
 //     (`EventListener`), в tweb там непроверяемые bind-обёртки + `@ts-ignore`
 import type ListenerSetter from '@helpers/listenerSetter'
@@ -69,4 +71,10 @@ export function attachClickEvent(elem: HTMLElement | Window, callback: (e: Mouse
   add(CLICK_EVENT_NAME, callback as EventListener, options)
 
   return () => remove(CLICK_EVENT_NAME, callback as EventListener, options)
+}
+
+/** tweb :100-102 — синтетический клик на CLICK_EVENT_NAME (не буквальный
+ *  'click': на тач-устройствах attachClickEvent слушает 'mousedown'). */
+export function simulateClickEvent(elem: HTMLElement) {
+  elem.dispatchEvent(new Event(CLICK_EVENT_NAME, { bubbles: true, cancelable: true }))
 }
