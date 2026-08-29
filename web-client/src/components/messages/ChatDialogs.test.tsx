@@ -4,33 +4,37 @@
 // Дампы: `docs/tweb/dom/dumps/17-popup-03-delete-message.json`,
 //        `docs/tweb/dom/dumps/17-popup-01-forward-share.json`.
 // К этим классам цепляются партиалы `popups/_peer.scss` и `popups/_forward.scss`.
+//
+// `openDeleteMessageDialog` (раунд правок 3) — vanilla-функция поверх
+// `PopupPeer`, гоняется НАСТОЯЩИМ классом на реальном DOM (happy-dom), тем же
+// приёмом, что `popupPeer.test.ts` — без `render`/React вообще.
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, cleanup, act } from '@testing-library/react'
-import { DeleteMessageDialog, ForwardPicker, ReactedUsersPopup } from './ChatDialogs'
+import { render, cleanup } from '@testing-library/react'
+import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
+import { initHotkeys } from '@core/hotkeys'
+import type { AvatarManagers } from '@components/avatar'
+import { openDeleteMessageDialog, ForwardPicker, ReactedUsersPopup } from './ChatDialogs'
 import { ManagersProvider } from '../../core/hooks/useManagers'
-
-// exit-переход (usePopupTransition, ../settings/kit.tsx) держит узел в DOM ещё
-// 300мс после setOpen(false) — колбэк владельца (onClose/onDeleteFor…) звучит
-// только когда узел реально размонтирован (тот же контракт, что был у
-// снесённого `shared/ui/ConfirmPopup`, задача 3 плана solid-wave-1).
-const flushExit = () => act(() => new Promise((r) => setTimeout(r, 350)))
 
 const noop = () => {}
 
-describe('ChatDialogs — модификаторы попапов', () => {
-  afterEach(cleanup)
+function mkManagers(): AvatarManagers {
+  return { peers: { fillMirror: vi.fn(async() => {}) } }
+}
 
-  it('DeleteMessageDialog — popup-peer popup-delete-chat', () => {
-    render(
-      <DeleteMessageDialog
-        canRevoke
-        chatType="private"
-        peerFirstName="Maya"
-        onDeleteForEveryone={noop}
-        onDeleteForMe={noop}
-        onClose={noop}
-      />,
-    )
+describe('openDeleteMessageDialog — разметка (vanilla PopupPeer)', () => {
+  afterEach(() => document.body.replaceChildren())
+
+  it('popup-peer popup-delete-chat, авто-Cancel, have-checkbox, аватар из peerId', () => {
+    openDeleteMessageDialog({
+      peerId: 1,
+      managers: mkManagers(),
+      canRevoke: true,
+      chatType: 'private',
+      peerFirstName: 'Maya',
+      onDeleteForEveryone: noop,
+      onDeleteForMe: noop,
+    })
     const root = document.querySelector('.popup')!
     expect(root.classList.contains('popup-peer')).toBe(true)
     expect(root.classList.contains('popup-delete-chat')).toBe(true)
@@ -39,7 +43,13 @@ describe('ChatDialogs — модификаторы попапов', () => {
     expect(buttons.map((b) => b.classList.contains('danger'))).toEqual([true, false])
     // revoke в личке — чекбокс, значит контейнер помечен have-checkbox
     expect(document.querySelector('.popup-container')!.classList.contains('have-checkbox')).toBe(true)
+    // аватар (peer.ts:46-54) — теперь строит сам PopupPeer из peerId
+    expect(document.querySelector('.popup-header .avatar')).not.toBeNull()
   })
+})
+
+describe('ChatDialogs — модификаторы попапов (React-компоненты)', () => {
+  afterEach(cleanup)
 
   it('ForwardPicker — popup-forward', () => {
     render(<ForwardPicker dialogs={[]} onPick={noop} onClose={noop} />)
@@ -47,87 +57,107 @@ describe('ChatDialogs — модификаторы попапов', () => {
   })
 })
 
-describe('DeleteMessageDialog — поведение (самостоятельная React-реализация, задача 3)', () => {
-  afterEach(cleanup)
+describe('openDeleteMessageDialog — поведение (раунд правок 3, PopupPeer напрямую)', () => {
+  afterEach(() => document.body.replaceChildren())
 
-  it('чекбокс НЕ отмечен + Delete — onDeleteForMe, не onDeleteForEveryone', async() => {
+  it('чекбокс НЕ отмечен + Delete — onDeleteForMe, не onDeleteForEveryone', () => {
     const onDeleteForEveryone = vi.fn()
     const onDeleteForMe = vi.fn()
-    render(
-      <DeleteMessageDialog
-        canRevoke chatType="private" peerFirstName="Maya"
-        onDeleteForEveryone={onDeleteForEveryone} onDeleteForMe={onDeleteForMe} onClose={noop}
-      />,
-    )
-    document.querySelector<HTMLButtonElement>('.popup-buttons > button.danger')!.click()
-    await flushExit()
+    openDeleteMessageDialog({
+      peerId: 1, managers: mkManagers(), canRevoke: true, chatType: 'private', peerFirstName: 'Maya',
+      onDeleteForEveryone, onDeleteForMe,
+    })
+    document.querySelector<HTMLButtonElement>('.popup-buttons > button.danger')!
+      .dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
 
     expect(onDeleteForMe).toHaveBeenCalledTimes(1)
     expect(onDeleteForEveryone).not.toHaveBeenCalled()
   })
 
-  it('чекбокс отмечен + Delete — onDeleteForEveryone (revoke)', async() => {
+  it('чекбокс отмечен + Delete — onDeleteForEveryone (revoke)', () => {
     const onDeleteForEveryone = vi.fn()
     const onDeleteForMe = vi.fn()
-    render(
-      <DeleteMessageDialog
-        canRevoke chatType="private" peerFirstName="Maya"
-        onDeleteForEveryone={onDeleteForEveryone} onDeleteForMe={onDeleteForMe} onClose={noop}
-      />,
-    )
+    openDeleteMessageDialog({
+      peerId: 1, managers: mkManagers(), canRevoke: true, chatType: 'private', peerFirstName: 'Maya',
+      onDeleteForEveryone, onDeleteForMe,
+    })
     document.querySelector<HTMLElement>('.checkbox-field-input')!.click()
-    document.querySelector<HTMLButtonElement>('.popup-buttons > button.danger')!.click()
-    await flushExit()
+    document.querySelector<HTMLButtonElement>('.popup-buttons > button.danger')!
+      .dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
 
     expect(onDeleteForEveryone).toHaveBeenCalledTimes(1)
     expect(onDeleteForMe).not.toHaveBeenCalled()
   })
 
-  it('канал — чекбокса нет вовсе, Delete сразу onDeleteForEveryone (tweb overrideRevoke)', async() => {
+  it('канал — чекбокса нет вовсе, Delete сразу onDeleteForEveryone (tweb overrideRevoke)', () => {
     const onDeleteForEveryone = vi.fn()
     const onDeleteForMe = vi.fn()
-    render(
-      <DeleteMessageDialog
-        canRevoke chatType="channel"
-        onDeleteForEveryone={onDeleteForEveryone} onDeleteForMe={onDeleteForMe} onClose={noop}
-      />,
-    )
+    openDeleteMessageDialog({
+      peerId: 1, managers: mkManagers(), canRevoke: true, chatType: 'channel',
+      onDeleteForEveryone, onDeleteForMe,
+    })
     expect(document.querySelector('.checkbox-field-input')).toBeNull()
     expect(document.querySelector('.popup-container')!.classList.contains('have-checkbox')).toBe(false)
 
-    document.querySelector<HTMLButtonElement>('.popup-buttons > button.danger')!.click()
-    await flushExit()
+    document.querySelector<HTMLButtonElement>('.popup-buttons > button.danger')!
+      .dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
 
     expect(onDeleteForEveryone).toHaveBeenCalledTimes(1)
     expect(onDeleteForMe).not.toHaveBeenCalled()
   })
 
-  it('Cancel — ни один из delete-колбэков не звучит, звучит только onClose', async() => {
+  it('Cancel — ни один из delete-колбэков не звучит, звучит только onClose', () => {
+    vi.useFakeTimers()
     const onDeleteForEveryone = vi.fn()
     const onDeleteForMe = vi.fn()
     const onClose = vi.fn()
-    render(
-      <DeleteMessageDialog
-        canRevoke chatType="private"
-        onDeleteForEveryone={onDeleteForEveryone} onDeleteForMe={onDeleteForMe} onClose={onClose}
-      />,
-    )
-    document.querySelector<HTMLButtonElement>('.popup-buttons > button.primary')!.click()
-    await flushExit()
+    openDeleteMessageDialog({
+      peerId: 1, managers: mkManagers(), canRevoke: true, chatType: 'private',
+      onDeleteForEveryone, onDeleteForMe, onClose,
+    })
+    const buttons = document.querySelectorAll<HTMLButtonElement>('.popup-buttons > button')
+    buttons[buttons.length - 1].dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
+    vi.advanceTimersByTime(300) // closeAfterTimeout — 250мс таймер base (popupElement.ts)
 
     expect(onClose).toHaveBeenCalledTimes(1)
     expect(onDeleteForEveryone).not.toHaveBeenCalled()
     expect(onDeleteForMe).not.toHaveBeenCalled()
+    vi.useRealTimers()
   })
 
-  it('Esc — тот же исход, что Cancel', async() => {
+  it('Esc — тот же исход, что Cancel', () => {
+    vi.useFakeTimers()
+    const deactivate = initHotkeys({})
     const onClose = vi.fn()
-    render(<DeleteMessageDialog canRevoke onDeleteForEveryone={noop} onDeleteForMe={noop} onClose={onClose} />)
+    openDeleteMessageDialog({
+      peerId: 1, managers: mkManagers(), canRevoke: true,
+      onDeleteForEveryone: noop, onDeleteForMe: noop, onClose,
+    })
 
-    act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
-    await flushExit()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+    vi.advanceTimersByTime(300)
 
     expect(onClose).toHaveBeenCalledTimes(1)
+    deactivate()
+    vi.useRealTimers()
+  })
+
+  it('реальное удаление НЕ зовёт onClose следом — closeAfterTimeout наступает и на нём, отличаем флагом deleted', () => {
+    vi.useFakeTimers()
+    const onDeleteForMe = vi.fn()
+    const onClose = vi.fn()
+    openDeleteMessageDialog({
+      peerId: 1, managers: mkManagers(), canRevoke: true,
+      onDeleteForEveryone: noop, onDeleteForMe, onClose,
+    })
+
+    document.querySelector<HTMLButtonElement>('.popup-buttons > button.danger')!
+      .dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
+    vi.advanceTimersByTime(300) // тот же closeAfterTimeout, что реджектит отмену — здесь удаление уже случилось
+
+    expect(onDeleteForMe).toHaveBeenCalledTimes(1)
+    expect(onClose).not.toHaveBeenCalled()
+    vi.useRealTimers()
   })
 })
 

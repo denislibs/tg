@@ -21,11 +21,16 @@
 //    наш менеджерный API мьюта отличается от tweb (мьютит вызывающий экрана,
 //    `useChatPopups.tsx` → `d.applyMute`), поэтому конструктор принимает
 //    готовый колбэк `onMute` — то же расхождение уже было в React-версии.
+//  • Типографика подписи строки (размер/цвет) — тоже «наша реализация», а не
+//    порт конкретного значения tweb: живёт в `popupMute.module.scss` (класс
+//    `.text` + `.row[aria-checked='true'] .text`), а не инлайн-стилем — файл
+//    больше не носит имя снесённого React-компонента (переименован вместе с
+//    портом, раунд правок 3).
 import Icon, { getIconContent } from '@components/icon'
 import PopupPeer from './popupPeer'
 import type { AvatarManagers } from '@components/avatar'
 import { useI18nStore } from '@/i18n'
-import s from '../MutePopup.module.scss'
+import s from './popupMute.module.scss'
 
 const ONE_HOUR = 3600 // mute.ts:6
 
@@ -68,7 +73,7 @@ export default class PopupMute extends PopupPeer {
 
       const icon = Icon('radiooff')
       const text = document.createElement('span')
-      text.style.fontSize = '1rem' // Text size={16} — снесённая React-версия
+      text.className = s.text
       text.textContent = t(tm.label)
       row.append(icon, text)
 
@@ -78,18 +83,19 @@ export default class PopupMute extends PopupPeer {
       })
 
       list.append(row)
-      return { row, icon, text, value: tm.value }
+      return { row, icon, value: tm.value }
     })
 
     // Перекраска активной строки — единственное, что меняется по клику
     // (mute.ts не рендерит заново, RadioField сам переключает свой чекнутый
-    // узел; здесь тот же эффект даёт полный проход по строкам).
+    // узел; здесь тот же эффект даёт полный проход по строкам). Цвет подписи
+    // читает `aria-checked` сам, CSS-селектором (`popupMute.module.scss`) —
+    // JS переключает только иконку и сам атрибут.
     const paint = () => {
       for(const r of rows) {
         const checked = r.value === selected
         r.row.setAttribute('aria-checked', String(checked))
         r.icon.textContent = getIconContent(checked ? 'radioon' : 'radiooff')
-        r.text.style.color = checked ? 'var(--primary-color)' : 'var(--primary-text-color)'
       }
     }
     paint()

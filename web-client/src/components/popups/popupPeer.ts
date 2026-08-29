@@ -19,8 +19,9 @@
 // каждое — «нет потребителя», а не недосмотр):
 //  • `titleLangArgs`/`descriptionLangArgs` (peer.ts:21, :26) — у нашего `t()`
 //    (`@/i18n`, `dict[s] ?? s`) нет интерполяции аргументов, предмета нет;
-//  • `checkboxes`/`inputField`/`noTitle`/`old`/`threadId` (peer.ts:22-30,
-//    :44-124) — их не просит ни `confirmationPopup`, ни задача 3.
+//  • `inputField`/`noTitle`/`old`/`threadId` (peer.ts:22-30, :44-124) — их
+//    не просит ни `confirmationPopup`, ни задача 3. `checkboxes` из этого же
+//    списка выбыл в раунде правок 3, см. ниже — нашёлся реальный потребитель.
 //
 // РАУНД ПРАВОК 1: `peerId`/аватар (peer.ts:44-55) — ПОРТИРОВАН, отчёт задачи 2
 // назвал это находкой («нет потребителя» — до того, как выяснилось обратное:
@@ -44,15 +45,32 @@
 //    уже существующих React-оверлеев (MediaEditor/SettingsScreen), которых у
 //    оригинала как класса проблем не было.
 //
-// `checkboxes`/`inputField` (peer.ts:22-30, :96-124) остаются НЕ портированы:
-// у пяти вызывающих задачи 3 потребителя нет — `confirmationPopup` (единственный
-// вызываемый напрямую хелпер) их не запрашивает. `ChatDialogs.tsx::DeleteMessageDialog`
-// (реальный чекбокс-сценарий, tweb `PopupDeleteMessages` — `deleteMessages.ts`,
-// САМ по себе НЕ `confirmationPopup`/`SimpleConfirmationPopup`, а отдельный класс
-// со своей бизнес-логикой) в объём этой задачи не входит — см. докблок
-// `DeleteMessageDialog` в `messages/ChatDialogs.tsx`, где он остался локальной
-// React-реализацией и назван как остаток.
+// РАУНД ПРАВОК 3 (ревью после задачи 3): `checkboxes` (peer.ts:22, :96-124) —
+// ПОРТИРОВАН. Ревью указало, что рукописная React-копия `DeleteMessageDialog`
+// (`messages/ChatDialogs.tsx`) — это ВТОРОЙ владелец того же DOM-контракта
+// попапа (`popup`/`popup-peer`/`popup-container`/`popup-header`/…), который
+// уже строит `PopupElement`/`PopupPeer`, а не законный остаток: объём порта
+// чекбоксов сопоставим с тем, что уже написано в этом файле, значит копия
+// писалась ВМЕСТО порта, а не по недостатку скоупа. `DeleteMessageDialog`
+// переведён на `PopupPeer` напрямую (НЕ через `confirmationPopup` — как и
+// оригинал, tweb `PopupDeleteMessages` строит `PopupPeer` сам, минуя
+// `SimpleConfirmationPopup`, см. `deleteMessages.ts:182-193`).
+//
+// Портировано из peer.ts:96-124: класс `have-checkbox` на `this.container`
+// при непустом `checkboxes`; каждый — `new CheckboxField({text, checked})`
+// (`checkboxField.ts`, тот же раунд — добавлены `text`/`checked`, см. его
+// докблок); ВСЕ `button.callback` (не только чекбоксные) оборачиваются, чтобы
+// получить вторым параметром `Set<string>` отмеченных подписей — 1:1 с
+// tweb `PopupPeerButtonCallback = (e, checkboxes?: Set<LangPackKey>) => void`
+// (у нас без `MouseEvent` первым параметром — та же урезка, что была у
+// `PopupButton.callback` изначально, см. докблок `popupPeer.ts` про
+// `titleLangArgs`). `inputField`/`onlyWithCheckbox` (peer.ts:22, :29, :107-124)
+// НЕ портированы — ни один вызывающий (ни `confirmationPopup`, ни
+// `DeleteMessageDialog`) их не просит; `checkboxField.ts` объясняет, почему
+// `withRipple` (peer.ts:98, безусловно для чекбоксов `PopupPeer`) тоже не
+// портирован ЦЕЛИКОМ.
 import PopupElement, { type PopupButton } from './popupElement'
+import CheckboxField from '@components/checkboxField'
 import { avatarNew, type AvatarManagers } from '@components/avatar'
 import { useI18nStore } from '@/i18n'
 
@@ -71,13 +89,33 @@ export type PopupPeerOptions = {
   // peer.ts:70 — опционально и у оригинала: `PopupMute` описания не задаёт
   // вовсе (mute.ts:29-38), у него вместо `<p>` — радио-список в `body`.
   descriptionLangKey?: string
-  buttons: PopupButton[] // peer.ts:41 — `addCancelButton(options.buttons)`
+  buttons: PopupPeerButton[] // peer.ts:41 — `addCancelButton(options.buttons)`
   body?: boolean
   zIndex?: number
+  /** peer.ts:22, :96-124 — раунд правок 3, см. докблок файла. Ровно то, что
+   *  просит единственный вызывающий (`DeleteMessageDialog`): подпись + флаг
+   *  предвзведения — `PopupPeerCheckboxOptions` оригинала несёт больше
+   *  (`withRipple`/`withHover`/`color`/…), но их не портируем целиком
+   *  (`checkboxField.ts`). */
+  checkboxes?: { text: string, checked?: boolean }[]
 } & (
   | { peerId?: undefined, managers?: AvatarManagers }
   | { peerId: PeerId, managers: AvatarManagers }
 )
+
+/**
+ * peer.ts:17 (`PopupPeerButton = Omit<PopupButton,'callback'> &
+ * Partial<{callback: PopupPeerButtonCallback, onlyWithCheckbox}>`), сужено:
+ * без `onlyWithCheckbox` (нет потребителя — ни один чекбокс `DeleteMessageDialog`
+ * не дизейблит кнопку) и без `MouseEvent` первым параметром колбэка (та же
+ * урезка, что у обычного `PopupButton.callback`, см. докблок файла про
+ * `titleLangArgs`). Второй параметр `checked` — ОПЦИОНАЛЕН, как и у оригинала
+ * (`PopupPeerButtonCallback`, peer.ts:12): `button.callback` оборачивается
+ * ТОЛЬКО когда `options.checkboxes` непуст (peer.ts:96), иначе вызывается без
+ * аргументов вовсе, 1:1. */
+export type PopupPeerButton = Omit<PopupButton, 'callback'> & {
+  callback?: (checked?: Set<string>) => void
+}
 
 /**
  * tweb `components/popups/index.ts:484-494`. `langKey: 'Cancel'` заменён на
@@ -129,14 +167,49 @@ export default class PopupPeer extends PopupElement {
       this.header.prepend(node) // peer.ts:54
     }
 
-    this.setButtons(addCancelButton(options.buttons)) // peer.ts:41
+    // peer.ts:96-124 — чекбоксы строятся ДО кнопок: колбэку кнопки в момент
+    // клика нужно ЖИВОЕ состояние (замыкание на `checkboxFields`), не снимок.
+    const checkboxFields: { text: string, field: CheckboxField }[] = []
+    if(options.checkboxes?.length) {
+      this.container.classList.add('have-checkbox') // peer.ts:104
+      for(const o of options.checkboxes) { // peer.ts:106-110
+        checkboxFields.push({ text: o.text, field: new CheckboxField({ text: o.text, checked: o.checked }) })
+      }
+    }
 
+    // peer.ts:111-123 — ВСЕ `button.callback` оборачиваются, чтобы получить
+    // вторым параметром отмеченные подписи, но ТОЛЬКО когда чекбоксы есть
+    // (peer.ts:96 `if(options.checkboxes)`) — без них поведение как раньше:
+    // клик зовёт колбэк без аргументов вовсе.
+    const buttons: PopupPeerButton[] = checkboxFields.length
+      ? options.buttons.map((b) => ({
+        ...b,
+        callback: b.callback
+          ? () => {
+            const checked = new Set(checkboxFields.filter((c) => c.field.input.checked).map((c) => c.text))
+            b.callback!(checked)
+          }
+          : undefined,
+      }))
+      : options.buttons
+
+    this.setButtons(addCancelButton(buttons)) // peer.ts:41
+
+    // peer.ts:63-125 — один `DocumentFragment` на описание + чекбоксы, один
+    // `this.header.after(fragment)` (peer.ts:126): порядок в DOM решает
+    // порядок append НИЖЕ, а не порядок вызовов setButtons/фрагмента выше.
+    const fragment = document.createDocumentFragment()
     if(options.descriptionLangKey) { // peer.ts:65 — `if(options.descriptionLangKey || …)`
       const p = this.description = document.createElement('p') // peer.ts:68
       p.classList.add('popup-description') // peer.ts:69
       p.append(document.createTextNode(t(options.descriptionLangKey))) // peer.ts:70
-
-      this.header.after(p) // peer.ts:126 — `this.header.after(fragment)`
+      fragment.append(p)
+    }
+    for(const { field } of checkboxFields) { // peer.ts:110 — `fragment.append(checkboxField.label)`
+      fragment.append(field.label)
+    }
+    if(fragment.childNodes.length) {
+      this.header.after(fragment) // peer.ts:126
     }
   }
 }

@@ -197,3 +197,90 @@ describe('confirmationPopup — zIndex, раунд правок 2 (задача 
     cancelButton.dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
   })
 })
+
+describe('PopupPeer — checkboxes, раунд правок 3 (peer.ts:22, :96-124)', () => {
+  it('checkboxes непуст — have-checkbox на container, label в шапке между описанием и кнопками', () => {
+    const popup = PopupElement.createPopup(PopupPeer, 'popup-checkbox-test', {
+      titleLangKey: 'Delete message',
+      descriptionLangKey: 'Are you sure?',
+      buttons: [{ text: 'Delete', isDanger: true, callback: () => {} }],
+      checkboxes: [{ text: 'Also delete for Maya' }],
+    })
+    popup.show()
+
+    const container = document.querySelector('.popup-checkbox-test .popup-container')!
+    expect(container.classList.contains('have-checkbox')).toBe(true) // peer.ts:104
+
+    const label = document.querySelector('.popup-checkbox-test .checkbox-field')!
+    expect(label.querySelector('.checkbox-caption')!.textContent).toBe('Also delete for Maya')
+
+    // порядок в шапке: описание, потом чекбокс, потом кнопки (peer.ts:63-126)
+    const kids = Array.from(container.children).map((c) =>
+      c.classList.contains('popup-description') ? 'description'
+        : c.classList.contains('checkbox-field') ? 'checkbox'
+          : c.classList.contains('popup-buttons') ? 'buttons'
+            : c.classList.contains('popup-header') ? 'header'
+              : c.tagName)
+    expect(kids).toEqual(['header', 'description', 'checkbox', 'buttons'])
+    popup.forceHide()
+  })
+
+  it('без чекбокса — не отмечен, колбэк кнопки получает ПУСТОЙ Set', () => {
+    const onDelete = vi.fn()
+    const popup = PopupElement.createPopup(PopupPeer, 'popup-checkbox-unchecked', {
+      titleLangKey: 'Delete message',
+      buttons: [{ text: 'Delete', isDanger: true, callback: onDelete }],
+      checkboxes: [{ text: 'Also delete for Maya' }],
+    })
+    popup.show()
+
+    const button = document.querySelector<HTMLButtonElement>('.popup-checkbox-unchecked .popup-button.danger')!
+    button.dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
+
+    expect(onDelete).toHaveBeenCalledTimes(1)
+    expect(onDelete.mock.calls[0][0]).toEqual(new Set())
+  })
+
+  it('чекбокс отмечен — колбэк кнопки получает Set с его подписью (peer.ts:111-121)', () => {
+    const onDelete = vi.fn()
+    const popup = PopupElement.createPopup(PopupPeer, 'popup-checkbox-checked', {
+      titleLangKey: 'Delete message',
+      buttons: [{ text: 'Delete', isDanger: true, callback: onDelete }],
+      checkboxes: [{ text: 'Also delete for Maya' }],
+    })
+    popup.show()
+
+    document.querySelector<HTMLInputElement>('.popup-checkbox-checked .checkbox-field-input')!.click()
+    document.querySelector<HTMLButtonElement>('.popup-checkbox-checked .popup-button.danger')!.dispatchEvent(
+      new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }),
+    )
+
+    expect(onDelete.mock.calls[0][0]).toEqual(new Set(['Also delete for Maya']))
+  })
+
+  it('checked:true — чекбокс предвзведён (tweb :64-66)', () => {
+    const popup = PopupElement.createPopup(PopupPeer, 'popup-checkbox-preset', {
+      titleLangKey: 'Delete message',
+      buttons: [{ text: 'Delete' }],
+      checkboxes: [{ text: 'Delete for all members', checked: true }],
+    })
+    popup.show()
+
+    expect(document.querySelector<HTMLInputElement>('.popup-checkbox-preset .checkbox-field-input')!.checked).toBe(true)
+  })
+
+  it('без checkboxes вовсе — колбэк зовётся БЕЗ аргументов, не с пустым Set (peer.ts:96 — условная обёртка)', () => {
+    const onDelete = vi.fn()
+    const popup = PopupElement.createPopup(PopupPeer, 'popup-no-checkbox', {
+      titleLangKey: 'Discard voice message?',
+      buttons: [{ text: 'Discard', isDanger: true, callback: onDelete }],
+    })
+    popup.show()
+
+    document.querySelector<HTMLButtonElement>('.popup-no-checkbox .popup-button.danger')!.dispatchEvent(
+      new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }),
+    )
+
+    expect(onDelete).toHaveBeenCalledWith() // ноль аргументов — не (new Set())
+  })
+})

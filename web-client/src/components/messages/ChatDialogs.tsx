@@ -1,21 +1,24 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-// Presentational chat dialogs/popups extracted from Chat: delete
-// confirm, forward target picker, the reacted/seen list. Each is dumb — it
-// self-sources i18n + motion constants and emits its actions via callbacks;
-// the parent owns the state. Discard-voice confirm переехал на портированный
-// `confirmationPopup` (задача 3 плана solid-wave-1) и вызывается напрямую из
-// `Composer.tsx` — самостоятельного React-компонента под него больше нет.
+import { useMemo, useRef, useState } from 'react'
+// Presentational chat dialogs/popups extracted from Chat: forward target
+// picker, the reacted/seen list. Each is dumb — it self-sources i18n +
+// motion constants and emits its actions via callbacks; the parent owns the
+// state. Discard-voice confirm переехал на портированный `confirmationPopup`
+// (задача 3 плана solid-wave-1) и вызывается напрямую из `Composer.tsx`;
+// delete confirm — на прямой `PopupPeer` (раунд правок 3, см. докблок
+// `openDeleteMessageDialog` ниже) — самостоятельных React-компонентов под них
+// больше нет.
 import Text from '../../shared/ui/Text'
 import classNames from '../../shared/lib/classNames'
 import { createPortal } from 'react-dom'
 import TgIcon from '../TgIcon'
 import { useT, useLang } from '../../i18n'
+import { useI18nStore } from '@/i18n'
 import Avatar from '../../shared/ui/Avatar'
 import Popup from '../../shared/ui/Popup'
 import PeerSelector from '../../shared/ui/PeerSelector'
-import Checkbox from '../../shared/ui/Checkbox'
-import { usePopupTransition } from '../settings/kit'
-import { useNavLayer } from '../../core/hooks/useNavLayer'
+import PopupElement from '../popups/popupElement'
+import PopupPeer from '../popups/popupPeer'
+import type { AvatarManagers } from '../avatar'
 import { peerColor } from '../peerColor'
 import UserAvatar from '../UserAvatar'
 import { useMediaUrl } from '../../core/hooks/useMediaUrl'
@@ -33,27 +36,34 @@ import type { Chat, ChatType } from '../../data'
 import type { Dialog } from '../../core/models'
 import s from './ChatDialogs.module.scss'
 
-// Delete confirmation — порт tweb PopupDeleteMessages (popups/deleteMessages.ts:84-160):
-// заголовок «Delete message»/«Delete N messages», описание, в личке — чекбокс
-// «Also delete for <имя>», в группе с revoke — «Delete for all members»; в канале
-// чекбокса НЕТ — удаление всегда для всех (tweb overrideRevoke=true). ОДНА
-// danger-кнопка DELETE (+ авто-Cancel). Выбор чекбокса решает revoke —
-// колбэки onDeleteForEveryone/onDeleteForMe сохранены для внешних потребителей.
-//
-// ОСТАТОК (задача 3 плана solid-wave-1, назван, а не забыт — DoD 13): это
-// сценарий с ЧЕКБОКСОМ, которого нет ни у `confirmationPopup`, ни у
-// портированного `PopupPeer` (см. докблок «раунд правок 2» в
-// `components/popups/popupPeer.ts`) — реальный tweb-эквивалент этого попапа,
-// `PopupDeleteMessages` (`deleteMessages.ts`), САМ по себе не `confirmationPopup`
-// и не просто чекбокс на `PopupPeer`: это отдельный класс с бизнес-логикой
-// (проверка прав админа мегагруппы, вычисление `canRevoke` по правам/типу
-// сообщения, разветвление на 6+ описаний) — порт которой не входит в объём
-// этой задачи («Интерфейсы: потребляет confirmationPopup»). Компонент остаётся
-// САМОСТОЯТЕЛЬНОЙ React-реализацией разметки `shared/ui/ConfirmPopup` (снесённого
-// этой же задачей) — не общим компонентом, а локальной копией ровно того, что
-// нужно этому единственному месту, поэтому снос `ConfirmPopup` его не задевает.
-// Порт чекбоксов в `PopupPeer` (peer.ts:22-30, :96-124) — самостоятельная задача.
-export function DeleteMessageDialog({ canRevoke, count = 1, chatType, peerFirstName, avatar, onDeleteForEveryone, onDeleteForMe, onClose }: {
+/**
+ * Delete confirmation — порт tweb `PopupDeleteMessages` (popups/deleteMessages.ts:
+ * 84-193): заголовок «Delete message»/«Delete N messages», описание, в личке —
+ * чекбокс «Also delete for <имя>», в группе с revoke — «Delete for all members»;
+ * в канале чекбокса НЕТ — удаление всегда для всех (tweb overrideRevoke=true).
+ * ОДНА danger-кнопка DELETE (+ авто-Cancel).
+ *
+ * РАУНД ПРАВОК 3 (ревью после задачи 3): раньше здесь была рукописная React-
+ * копия ванильного попапа (`createPortal` + классы `popup`/`popup-peer`/
+ * `popup-container`/…, свой Esc/Enter/`useNavLayer`/exit-анимация) — ВТОРОЙ
+ * владелец того же DOM-контракта, что уже строит `PopupElement`/`PopupPeer`
+ * (DoD 14: «переехало второй копией, и обе живы» — ровно тот класс провала).
+ * Чекбоксы портированы в `PopupPeer` (peer.ts:22, :96-124, см. докблок
+ * `popupPeer.ts`), и `DeleteMessageDialog` заменён на прямой вызов
+ * `PopupElement.createPopup(PopupPeer, 'popup-delete-chat', …)` — как и
+ * оригинал: `PopupDeleteMessages` строит `PopupPeer` САМ, минуя
+ * `SimpleConfirmationPopup`/`confirmationPopup` (deleteMessages.ts:182-193).
+ *
+ * Бизнес-логика вызывающего (проверка прав админа мегагруппы, вычисление
+ * `canRevoke` по правам/типу сообщения, разветвление на 6+ описаний,
+ * deleteMessages.ts:26-178) в порт НЕ входит — она и не входила у
+ * React-версии: `canRevoke`/`chatType`/`peerFirstName` вызывающий
+ * (`useMessageActions.tsx`) вычисляет и передаёт уже готовыми, как и раньше.
+ */
+export function openDeleteMessageDialog({ peerId, managers, canRevoke, count = 1, chatType, peerFirstName, onDeleteForEveryone, onDeleteForMe, onClose }: {
+  /** чат, откуда удаляют — аватар 32px слева от заголовка (peer.ts:46-54) */
+  peerId: PeerId
+  managers: AvatarManagers
   canRevoke: boolean
   /** число удаляемых сообщений (bulk-выбор) */
   count?: number
@@ -61,93 +71,51 @@ export function DeleteMessageDialog({ canRevoke, count = 1, chatType, peerFirstN
   chatType?: ChatType
   /** first name собеседника личного чата (tweb wrapPeerTitle onlyFirstName) */
   peerFirstName?: string
-  /** аватар 32px слева от заголовка (tweb PopupPeer peerId → avatarNew 32) */
-  avatar?: ReactNode
   onDeleteForEveryone: () => void
   onDeleteForMe: () => void
-  onClose: () => void
-}) {
-  const t = useT()
+  /** любой исход БЕЗ удаления — Cancel/Esc/оверлей/Back (см. `popup.addEventListener('closeAfterTimeout', …)` ниже) */
+  onClose?: () => void
+}): void {
+  const t = useI18nStore.getState().t
   const single = count <= 1
   // Канал: revoke всегда, без чекбокса (tweb: buttons[0].callback = callback(..., true))
   const isChannel = chatType === 'channel'
   const withCheckbox = canRevoke && !isChannel
+  let deleted = false // closeAfterTimeout не должен звать onClose ПОСЛЕ реального удаления
 
-  const [open, setOpen] = useState(true)
-  const { mounted, cls } = usePopupTransition(open)
-  const [checked, setChecked] = useState(false)
-  // Действие кнопки откладывается до конца exit-анимации — тот же приём, что
-  // был у снесённого `shared/ui/ConfirmPopup` (uncontrolled-режим).
-  const pending = useRef<(() => void) | null>(null)
-  const exit = useRef({ onDeleteForEveryone, onDeleteForMe, onClose })
-  exit.current = { onDeleteForEveryone, onDeleteForMe, onClose }
-  useEffect(() => {
-    if (mounted) return
-    const p = pending.current
-    if (p) p(); else exit.current.onClose()
-  }, [mounted])
-
-  const dismiss = () => { pending.current = null; setOpen(false) }
-  const confirmDelete = () => {
-    pending.current = () => {
-      if ((isChannel && canRevoke) || (withCheckbox && checked)) exit.current.onDeleteForEveryone()
-      else exit.current.onDeleteForMe()
-    }
-    setOpen(false)
-  }
-
-  useNavLayer(open, dismiss) // браузерный/аппаратный Back закрывает попап
-
-  // Esc — закрыть; Enter — единственная content-кнопка (tweb btnConfirmOnEnter
-  // при buttons.length===2 с учётом авто-Cancel — здесь их и есть ровно две).
-  useEffect(() => {
-    if (!open) return
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.stopPropagation(); dismiss() }
-      else if (e.key === 'Enter') { e.stopPropagation(); confirmDelete() }
-    }
-    document.addEventListener('keydown', onKeyDown, true)
-    return () => document.removeEventListener('keydown', onKeyDown, true)
+  const popup = PopupElement.createPopup(PopupPeer, 'popup-delete-chat', {
+    // tweb deleteMessages.ts:182: `new PopupPeer('popup-delete-chat', …)`
+    // (дамп `17-popup-03-delete-message.json`: div.popup.popup-peer.popup-delete-chat)
+    peerId,
+    managers,
+    titleLangKey: single ? t('Delete message') : t('Delete %d messages').replace('%d', String(count)),
+    descriptionLangKey: single ? t('Are you sure you want to delete this message?') : t('Are you sure you want to delete these messages?'),
+    checkboxes: withCheckbox ? [{
+      text: chatType === 'private' && peerFirstName
+        ? `${t('Also delete for')} ${peerFirstName}`
+        : t('Delete for all members'),
+    }] : undefined,
+    buttons: [{
+      text: t('Delete'),
+      isDanger: true,
+      callback: (checked) => {
+        deleted = true
+        if ((isChannel && canRevoke) || (withCheckbox && checked?.size)) onDeleteForEveryone()
+        else onDeleteForMe()
+      },
+    }],
   })
 
-  if (!mounted) return null
+  if (onClose) {
+    // тот же приём, что `confirmationPopup` (popupPeer.ts) — `closeAfterTimeout`
+    // наступает и на Cancel, и на Esc/оверлей/Back, и на реальном удалении;
+    // отличаем их флагом `deleted`, а не вторым событием.
+    popup.addEventListener('closeAfterTimeout', () => {
+      if (!deleted) onClose()
+    })
+  }
 
-  return createPortal(
-    // tweb deleteMessages.ts: `new PopupPeer('popup-delete-chat', …)`
-    // (дамп `17-popup-03-delete-message.json`: div.popup.popup-peer.popup-delete-chat)
-    <div className={classNames('popup', 'popup-peer', 'popup-delete-chat', cls)} onClick={dismiss}>
-      <div
-        className={classNames('popup-container', 'z-depth-1', withCheckbox ? 'have-checkbox' : '')}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="popup-header">
-          {avatar}
-          <div className="popup-title">
-            {single ? t('Delete message') : t('Delete %d messages').replace('%d', String(count))}
-          </div>
-        </div>
-        <p className="popup-description">
-          {single ? t('Are you sure you want to delete this message?') : t('Are you sure you want to delete these messages?')}
-        </p>
-        {withCheckbox && (
-          <Checkbox
-            checked={checked}
-            shape="square"
-            className="checkbox-ripple hover-effect rp"
-            caption={chatType === 'private' && peerFirstName
-              ? `${t('Also delete for')} ${peerFirstName}`
-              : t('Delete for all members')}
-            onToggle={() => setChecked((v) => !v)}
-          />
-        )}
-        <div className="popup-buttons">
-          <button type="button" className="popup-button btn danger" onClick={confirmDelete}>{t('Delete')}</button>
-          <button type="button" className="popup-button btn primary" onClick={dismiss}>{t('Cancel')}</button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  )
+  popup.show()
 }
 
 // Подпись строки в пикере: private → presence/бот, группа/канал/избранное — метка.

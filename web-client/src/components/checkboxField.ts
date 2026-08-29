@@ -1,30 +1,44 @@
 /**
- * Порт tweb `src/components/checkboxField.ts` — В ОБЪЁМЕ ЕДИНСТВЕННОГО
- * ВЫЗЫВАЮЩЕГО: `AppSelection.toggleElementCheckbox` строит
- * `new CheckboxField({name, round: true})` (tweb selection.ts:359-362) и дальше
- * трогает у него ровно два поля — `label` (кладёт в бабл) и `input`
- * (`input.checked = …`).
+ * Порт tweb `src/components/checkboxField.ts` — В ОБЪЁМЕ ДВУХ ВЫЗЫВАЮЩИХ:
+ *  • `AppSelection.toggleElementCheckbox` строит `new CheckboxField({name,
+ *    round: true})` (tweb selection.ts:359-362) и дальше трогает у него ровно
+ *    два поля — `label` (кладёт в бабл) и `input` (`input.checked = …`);
+ *  • `PopupPeer` чекбоксы (`popupPeer.ts`, раунд правок 3 — см. докблок файла)
+ *    строит `new CheckboxField({text, checked})` (tweb peer.ts:98-101, внутри
+ *    `if(options.checkboxes)`) и читает `input.checked` в колбэке кнопки.
  *
  * ── Что урезано и почему ────────────────────────────────────────────────────
  * Ветки оригинала, у которых здесь нет вызывающего и нет зависимости в репо:
- *  • `text`/`textArgs` (`_i18n` на `.checkbox-caption`) — чекбокс бабла
- *    подписи не имеет, у нас всегда `checkbox-without-caption`;
+ *  • `textArgs` (`_i18n` вторым параметром) — у нашего `t()` (`@/i18n`,
+ *    `dict[s] ?? s`) нет интерполяции аргументов, предмета нет — `text` уже
+ *    переведённая строка, кладётся `textContent`, а не через `_i18n`;
  *  • `toggle` (переключатель `.checkbox-field-toggle`) — форма для настроек,
- *    не для выделения; её вызывающие приедут вместе с портом строк настроек;
+ *    не для выделения и не для `PopupPeer`; её вызывающие приедут вместе с
+ *    портом строк настроек;
  *  • `stateKey`/`stateValues`/`stateValueReverse` — двусторонняя привязка к
  *    `appStateManager` (tweb `rootScope.managers`/`apiManagerProxy`); у нас
- *    состояние живёт в zustand-сторах, а у выделения его нет вовсе;
- *  • `withRipple` — требует `components/ripple.ts`, которого в репо ещё нет
- *    (портируется вместе с кнопками); `withHover`, `color`, `restriction`,
- *    `asRadio`, `disabled` — их не зовёт ни выделение, ни что-либо ещё;
+ *    состояние живёт в zustand-сторах, а у обоих вызывающих его нет вовсе;
+ *  • `withRipple`/`withHover` — требуют `components/ripple.ts`, которого в
+ *    репозитории ещё нет. Тот же вычет уже сделан в `popupElement.ts::setButtons`
+ *    (кнопки попапа тоже без ripple) — `PopupPeer` чекбоксы наследуют то же
+ *    ограничение, а не решают его по-своему: у tweb `o.withRipple = true`
+ *    ставится БЕЗУСЛОВНО для чекбоксов `PopupPeer` (peer.ts:98), здесь эта
+ *    строка не портирована ЦЕЛИКОМ (ни JS-эффект, ни классы `checkbox-ripple
+ *    hover-effect`, которые вешает сам `ripple()`) — частичного переноса
+ *    (класс есть, эффекта нет) не делаем;
+ *  • `color`, `restriction`, `asRadio`, `disabled`, `listenerSetter` — их не
+ *    зовёт ни выделение, ни `PopupPeer`;
  *  • сеттер `checked` через `simulateEvent` (tweb :171-179) — хелпера
- *    `helpers/dom/dispatchEvent` в репо нет, а выделение пишет прямо в
- *    `input.checked`, как и сам tweb (selection.ts:367, 490).
+ *    `helpers/dom/dispatchEvent` в репо нет, оба вызывающих пишут прямо в
+ *    `input.checked`, как и сам tweb (selection.ts:367, 490; peer.ts читает
+ *    `checkboxField.input.checked` через геттер `.checked`, portable без
+ *    `simulateEvent` — сеттер нужен только для программного включения извне).
  *
- * Разметка ветки `{round: true}` — дословная (tweb :107-152); стили под неё уже
+ * Разметка ветки `{round: true}` — дословная (tweb :107-152); разметка `text`
+ * (`span.checkbox-caption`, tweb :106-113) — тоже дословная; стили под обе уже
  * портированы: `src/styles/tweb/_checkbox.scss` (`.checkbox-field`,
- * `.checkbox-field-round`, `.checkbox-box{-border,-background,-check}`), символ
- * `#check` — `components/SvgDefs.tsx`.
+ * `.checkbox-field-round`, `.checkbox-box{-border,-background,-check}`,
+ * `.checkbox-caption`), символ `#check` — `components/SvgDefs.tsx`.
  */
 
 export type CheckboxFieldOptions = {
@@ -32,6 +46,11 @@ export type CheckboxFieldOptions = {
   name?: string
   /** круглый чекбокс — форма, в которой чекбокс живёт в бабле */
   round?: boolean
+  /** подпись строки (tweb :106-113, `span.checkbox-caption`); без неё —
+   *  `checkbox-without-caption` (tweb :114), как и раньше */
+  text?: string
+  /** взведён при создании (tweb :64-66) */
+  checked?: boolean
 }
 
 export default class CheckboxField {
@@ -52,9 +71,20 @@ export default class CheckboxField {
     if (options.name) {
       input.id = 'input-' + options.name
     }
+    if (options.checked) { // tweb :64-66
+      input.checked = true
+    }
 
-    // tweb :110-114 — подписи нет, значит и каретки под неё не нужно
-    label.classList.add('checkbox-without-caption')
+    // tweb :106-114 — подпись есть → span.checkbox-caption, иначе класс
+    // "без подписи" (каретке под неё не место).
+    let span: HTMLSpanElement | undefined
+    if (options.text) {
+      span = document.createElement('span')
+      span.classList.add('checkbox-caption')
+      span.textContent = options.text
+    } else {
+      label.classList.add('checkbox-without-caption')
+    }
 
     label.append(input)
 
@@ -80,5 +110,9 @@ export default class CheckboxField {
     box.append(border, bg, checkSvg)
 
     label.append(box)
+
+    if (span) { // tweb :151-153 — подпись ПОСЛЕ коробки
+      label.append(span)
+    }
   }
 }
