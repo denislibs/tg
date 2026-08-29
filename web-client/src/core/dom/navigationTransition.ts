@@ -44,6 +44,29 @@ export function slideNavigation(tabContent: HTMLElement, prevTabContent: HTMLEle
   }
 }
 
+/**
+ * Снять с узла таймер уборки от ПРЕДЫДУЩЕГО перехода (tweb
+ * `transition.ts:325-330`). Узел, который был уходящим и не успел доехать,
+ * держит на себе отложенную уборку — она отберёт у него `active` уже после
+ * того, как он снова стал активным, и экран окажется пустым. Ловится это
+ * возвратом назад быстрее, чем за `transitionTime` (открыл вкладку — сразу
+ * «назад»), поэтому таймер и живёт НА УЗЛЕ, а не в замыкании перехода.
+ *
+ * Экспортируется, потому что уборку обязана снимать И мгновенная (без
+ * анимации) ветка перехода — а она есть не только здесь: своя живёт в
+ * `components/settings/kit.tsx`. В tweb этой функции нет: там уборка снимается
+ * настоящим `transitionend` (`transition.ts:200-228`), а таймер — лишь
+ * страховка; у нас слушателя нет (сознательное отступление, см. ниже), и
+ * страховка стала единственным механизмом — значит и снимать её надо руками.
+ */
+export function clearPendingTransitionCleanup(el: HTMLElement) {
+  const pendingTimeout = el.dataset.transitionTimeout
+  if (pendingTimeout) {
+    clearTimeout(+pendingTimeout)
+    delete el.dataset.transitionTimeout
+  }
+}
+
 export interface NavigationTransitionOptions {
   /** контейнер-вкладочник, `[data-animation="navigation"]` */
   container: HTMLElement
@@ -78,17 +101,7 @@ export function runNavigationTransition(options: NavigationTransitionOptions) {
 
   let onTransitionEndCallback: (() => void) | undefined
   if (to) {
-    // tweb `transition.ts:325-330`: на приходящей вкладке может ещё висеть
-    // таймер уборки от ПРЕДЫДУЩЕГО перехода — тогда она была уходящей и не
-    // успела доехать. Его надо снять: иначе он отберёт у неё `active` уже
-    // после того, как она снова стала активной, и вкладка исчезнет. Ловится
-    // это возвратом назад быстрее, чем за `transitionTime` (открыл вкладку —
-    // сразу «назад»), поэтому таймер и живёт НА УЗЛЕ, а не в замыкании.
-    const pendingTimeout = to.dataset.transitionTimeout
-    if (pendingTimeout) {
-      clearTimeout(+pendingTimeout)
-      delete to.dataset.transitionTimeout
-    }
+    clearPendingTransitionCleanup(to)
 
     if (from) onTransitionEndCallback = slideNavigation(to, from, toRight)
     else to.classList.add('active')
@@ -152,6 +165,18 @@ export function runNavigationTransition(options: NavigationTransitionOptions) {
  *
  * Не портированы публичные ручки `prevId`/`getFrom`/`setFrom` (:381-383): у нас
  * нет ни одного потребителя, а внутрь `from` и так виден через замыкание.
+ *
+ * ДОЛГ. Бухгалтерия `from`/`toRight` сейчас в трёх экземплярах: здесь и вручную
+ * в `components/chat/ChatsContainer.tsx` и `components/settings/kit.tsx`. Свести
+ * их СЮДА нельзя без переписывания обоих: этот вкладочник адресует вкладки
+ * ИНДЕКСОМ в `container.children` и сам держит `from`, а у обоих React-хостов
+ * `to`/`from` — ref'ы на узлы, которых в детях может не быть (ChatsContainer
+ * держит уходящий чат в списке лишний кадр и подрезает список по таймеру), и
+ * `toRight` там приходит из доменного состояния (длина стека чатов, «саб
+ * открыт»), а не из сравнения индексов. Общее у всех трёх — САМА анимация
+ * (`runNavigationTransition`) и снятие чужой уборки
+ * (`clearPendingTransitionCleanup`); именно это и сведено. Копии уйдут вместе
+ * с обоими React-экранами (`kit.tsx` — по мере переезда настроек на слайдер).
  */
 export function createNavigationTransition(container: HTMLElement, transitionTime = NAVIGATION_TRANSITION_TIME) {
   container.dataset.animation = 'navigation'
@@ -171,7 +196,17 @@ export function createNavigationTransition(container: HTMLElement, transitionTim
     }
 
     if (!animate) {
-      from?.classList.remove('active', 'to', 'from')
+      // Мгновенная ветка обязана снимать чужую отложенную уборку так же, как
+      // анимированная: приходящая вкладка получает `active` СЕЙЧАС, а таймер
+      // от её собственного недавнего ухода снимет его через `transitionTime`
+      // — и колонка опустеет. Ветка достижима не только «выключенными
+      // анимациями»: сюда же попадает первое переключение (`prevId === -1`) и
+      // явный `animate: false` от владельца.
+      if (to) clearPendingTransitionCleanup(to)
+      if (from) {
+        clearPendingTransitionCleanup(from)
+        from.classList.remove('active', 'to', 'from')
+      }
       if (to) {
         to.classList.remove('to', 'from')
         to.classList.add('active')

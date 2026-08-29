@@ -6,7 +6,7 @@ import classNames from '../../shared/lib/classNames'
 import TgIcon from '../TgIcon'
 import TgSwitch from '../TgSwitch'
 import liteMode from '../../helpers/liteMode'
-import { NAVIGATION_TRANSITION_TIME, runNavigationTransition } from '../../core/dom/navigationTransition'
+import { clearPendingTransitionCleanup, NAVIGATION_TRANSITION_TIME, runNavigationTransition } from '../../core/dom/navigationTransition'
 import { useT } from '../../i18n'
 import s from './kit.module.scss'
 
@@ -102,6 +102,12 @@ export function SettingsScreen({
     window.clearTimeout(unmountTimer.current)
 
     if (!liteMode.isAvailable('animations')) {
+      // Мгновенная ветка обязана снять чужую отложенную уборку так же, как это
+      // делает `runNavigationTransition`: узел, который только что уходил, всё
+      // ещё держит таймер, снимающий с него `active`, — иначе экран опустеет
+      // через `NAVIGATION_TRANSITION_TIME` после мгновенного возврата.
+      if (to) clearPendingTransitionCleanup(to)
+      if (from) clearPendingTransitionCleanup(from)
       to?.classList.add('active')
       from?.classList.remove('active')
       if (!open) setMountedSub(false)

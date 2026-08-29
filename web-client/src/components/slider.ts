@@ -52,14 +52,22 @@
  * Своего `history.back()` в этом файле нет и быть не должно — прямой `back()`
  * мимо очереди дал два боевых дефекта волны 1.
  *
- * ── canAnimate ──────────────────────────────────────────────────────────────
- * tweb передаёт в `onPop` признак `canAnimate` (`!this.manual ? false :
- * undefined`, :291): по реальному Back вкладка закрывается БЕЗ анимации, по
- * нажатию «назад» в шапке — с анимацией. Наш `Layer.onPop` аргументов не имеет
- * и менять его сигнатуру ради одного потребителя незачем: различие даёт сама
- * точка входа — зарегистрированное в `pushLayer` замыкание это всегда реальный
- * Back (`canAnimate = false`), а `onCloseBtnClick` зовёт ту же процедуру
- * напрямую с `undefined`.
+ * ── canAnimate: почему его у нас НЕТ вовсе ──────────────────────────────────
+ * tweb передаёт в `onPop` признак `canAnimate` — `!this.manual ? false :
+ * undefined` (`appNavigationController.ts:291`). Одного этого выражения мало,
+ * чтобы понять, когда бывает `false`: `manual` ставится строкой
+ * `this.manual = !this.isPossibleSwipe` (:209) в обработчике popstate, а
+ * `isPossibleSwipe` взводится ТОЛЬКО на edge-свайпе iOS Safari
+ * (`onTouchStart` :229-236, `isSwipingBackSafari`). То есть в оригинале
+ * обычный браузерный/аппаратный Back даёт `manual === true` и закрывает
+ * вкладку С АНИМАЦИЕЙ, ровно как кнопка «назад» в шапке; `false` — это
+ * исключительно свайп, у которого анимацию ведёт палец пользователя.
+ *
+ * Детектора свайпа (`isSwipingBackSafari`) у нас не портировано, поэтому
+ * ЕДИНСТВЕННОГО источника `false` не существует — параметр был бы всегда
+ * `undefined`, то есть мёртвой веткой. Закрытие идёт с анимацией всегда:
+ * `closeTab(undefined, undefined, true)`. Когда свайп приедет, `false`
+ * возвращается ровно сюда, в замыкание, отданное `pushLayer`.
  *
  * ── Адаптации под наш стек ──────────────────────────────────────────────────
  *  • `TransitionSlider({content, type:'navigation', transitionTime})` (:41-45)
@@ -110,7 +118,7 @@ export type SidebarSliderOptions = {
  */
 type SliderNavigationItem = {
   layer: Layer,
-  onPop: (canAnimate?: boolean) => boolean
+  onPop: () => boolean
 }
 
 /**
@@ -135,7 +143,15 @@ export default class SidebarSlider {
   public sidebarEl!: HTMLElement
   protected tabs!: Map<any, SliderSuperTab> // * key is any, since right sidebar is ugly now
   private canHideFirst = false
-  private navigationItems: SliderNavigationItem[] = []
+  // `protected`, а не `private`: в оригинале `navigationType` — ещё и ручка
+  // СНАРУЖИ слайдера, массовое снятие своих записей без спроса у вкладок
+  // (`sidebarRight/index.ts:95` — `removeByType('right')` в `hide()`, туда же
+  // :128 с запросом `findItemByType('right')`, ответ на который у нас даёт
+  // `hasTabsInNavigation()`; `sidebarLeft/index.ts:1459` — уже ЧУЖОЙ тип
+  // 'global-search', слайдера не касается). Такого потребителя у нас пока нет,
+  // и метод «снять все свои слои» здесь был бы мёртвым кодом; подкласс задачи 8
+  // при появлении прячущейся колонки допишет его сам поверх этого поля.
+  protected navigationItems: SliderNavigationItem[] = []
   protected managers?: Managers
   protected middlewareHelper!: MiddlewareHelper
   public onOpenTab?: () => void | Promise<void>
@@ -167,8 +183,6 @@ export default class SidebarSlider {
     // `removeLayer` внутри `popNavigationItem` (см. докблок файла).
     const item = this.navigationItems[this.navigationItems.length - 1]
     if(item) {
-      // canAnimate = undefined: закрытие «руками», с анимацией (tweb :291 —
-      // `manual === true`). Реальный Back приходит другой дорогой, см. докблок.
       item.onPop()
       this.onTabsCountChange?.()
     } else if(this.historyTabIds.length) {
@@ -194,15 +208,16 @@ export default class SidebarSlider {
    * Порт `pushNavigationItem` (:87-115). `onPop` — тело оригинального
    * `NavigationItem.onPop` (:90-108) плюс снятие записи истории через
    * `removeLayer`; зовётся из двух мест: из замыкания, отданного `pushLayer`
-   * (реальный Back — `canAnimate = false`), и напрямую из `onCloseBtnClick`
-   * (кнопка «назад» в шапке — `canAnimate = undefined`, то есть с анимацией).
+   * (реальный Back), и напрямую из `onCloseBtnClick` (кнопка «назад» в шапке).
+   * Обе ветки закрывают вкладку С АНИМАЦИЕЙ — см. «canAnimate» в докблоке
+   * файла: в оригинале анимацию гасит только edge-свайп iOS, а не Back.
    */
   protected pushNavigationItem(tab: SliderSuperTab | undefined) {
     const item: SliderNavigationItem = {
       // Заполняется сразу после `pushLayer` — замыкание ниже читает `item.layer`
       // только когда слой уже снимают, то есть всегда позже присваивания.
       layer: undefined as unknown as Layer,
-      onPop: (canAnimate) => {
+      onPop: () => {
         if(tab?.isConfirmationNeededOnClose) {
           const result = tab.isConfirmationNeededOnClose()
           if(result) {
@@ -222,15 +237,13 @@ export default class SidebarSlider {
 
         removeLayer(item.layer)
         indexOfAndSplice(this.navigationItems, item)
-        this.closeTab(undefined, canAnimate, true)
+        this.closeTab(undefined, undefined, true)
         this.onTabsCountChange?.()
         return true
       },
     }
 
-    // Реальный Back приходит только сюда — потому `canAnimate = false`
-    // (tweb :291, `!this.manual ? false : undefined`).
-    item.layer = pushLayer(() => item.onPop(false))
+    item.layer = pushLayer(item.onPop)
     this.navigationItems.push(item)
     this.onTabsCountChange?.()
   }
