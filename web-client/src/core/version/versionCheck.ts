@@ -3,15 +3,9 @@
 // расхождении помечаем доступным обновление и прекращаем опрос. Кнопку «Обновить»
 // (location.reload()) рисует App. Cache-bust — на хешах ассетов + app-shell-<build>.
 import { useUpdateStore } from '../../stores/updateStore'
-
-// Подставляются Vite `define` (см. vite.config.ts). typeof-guard — чтобы модуль был
-// импортируем в vitest, где define не применяется (конфиг тестов отдельный).
-declare const __APP_BUILD__: number
-declare const __APP_VERSION_FULL__: string
-
-export const APP_BUILD: number = typeof __APP_BUILD__ !== 'undefined' ? __APP_BUILD__ : 0
-export const APP_VERSION_FULL: string =
-  typeof __APP_VERSION_FULL__ !== 'undefined' ? __APP_VERSION_FULL__ : 'dev'
+// Имя и версия сборки — у оригинала это `config/app.ts`, один источник и для
+// подвала меню, и для того, чем клиент называет себя сети.
+import { APP_VERSION_FULL } from '../../config/app'
 
 export const CHECK_UPDATE_INTERVAL = 1800e3 // 30 мин, как tweb
 

@@ -6,7 +6,7 @@ import classNames from '../../shared/lib/classNames'
 import TgIcon from '../TgIcon'
 import TgSwitch from '../TgSwitch'
 import liteMode from '../../helpers/liteMode'
-import { NAVIGATION_TRANSITION_TIME, runNavigationTransition } from '../../core/dom/navigationTransition'
+import { clearPendingTransitionCleanup, NAVIGATION_TRANSITION_TIME, runNavigationTransition } from '../../core/dom/navigationTransition'
 import { useT } from '../../i18n'
 import s from './kit.module.scss'
 
@@ -102,6 +102,13 @@ export function SettingsScreen({
     window.clearTimeout(unmountTimer.current)
 
     if (!liteMode.isAvailable('animations')) {
+      // Мгновенная ветка обязана снять чужую отложенную уборку так же, как это
+      // делает `runNavigationTransition`: узел, который только что уходил, всё
+      // ещё держит таймер, снимающий с него `active`, — иначе экран опустеет
+      // через `NAVIGATION_TRANSITION_TIME` после мгновенного возврата. Только с
+      // ПРИХОДЯЩЕЙ: `own`/`sub` чередуются, и уходящая здесь — это приходящая
+      // прошлого перехода, таймера на ней не бывает.
+      if (to) clearPendingTransitionCleanup(to)
       to?.classList.add('active')
       from?.classList.remove('active')
       if (!open) setMountedSub(false)
@@ -253,6 +260,14 @@ export function EntryRow({
  * Строка настроек — порт `tweb components/row.ts` на глобальные классы tweb
  * (`styles/tweb/_row.scss`), своего CSS-модуля у неё нет.
  *
+ * ── ОСТАТОК ВОЛНЫ (#112) ─────────────────────────────────────────────────
+ * Это ВТОРОЙ порт того же `tweb components/row.ts`: первый —
+ * `components/row.ts`, класс на императивном DOM. Двойника не сводили и не
+ * будут: React-версия обслуживает React-экраны настроек, которых в tweb нет
+ * вовсе, и умрёт вместе с ними. Пока живы оба, любая правка разметки строки
+ * обязана ехать в ОБА файла — расхождение между ними видно глазом на одном
+ * экране.
+ *
  * Дерево, которое собирает `Row` в tweb (см. дампы
  * `docs/tweb/dom/dumps/15-right-02-edit-channel`, `…-12-edit-group`,
  * `07-right-sidebar`):
@@ -287,10 +302,15 @@ export function EntryRow({
  *   `danger`/`accent` → классы `.danger`/`.primary` из tweb `base.scss:602-617`
  *                (портированы в `styles/tweb/_bridge.scss`).
  *
- * ОТСТУПЛЕНИЕ: `selected` (список-переключатель «Off / 1 day / 1 week …»)
- * в tweb — это `radioField`, а не галочка справа. RadioField мы не портировали,
- * поэтому отметку кладём в тот же `row-title-right`, что и тумблер. Строку
- * заменит порт `radioField.ts` — отдельная задача.
+ * ОТСТУПЛЕНИЕ (#112): `selected` (список-переключатель «Off / 1 day / 1 week
+ * …») в tweb — это `radioField`, а не галочка справа, и отметку мы кладём в
+ * тот же `row-title-right`, что и тумблер. Прежняя мотивировка («RadioField мы
+ * не портировали») НЕВЕРНА: `components/radioField.ts` портирован этой же
+ * волной, шагом 1. Настоящая причина в том, что этот `Row` — React-компонент,
+ * а `RadioField` строит DOM императивно: вставить его сюда можно только
+ * ref-монтированием, то есть переписав React-строку на мост ради экрана,
+ * который сам уезжает на слайдер. Расхождение снимается переездом экрана, а
+ * не правкой этой строки.
  */
 export function Row({
   icon,

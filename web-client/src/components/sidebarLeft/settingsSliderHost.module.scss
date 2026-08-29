@@ -1,0 +1,44 @@
+// Стили ШВА, а не порт: в tweb вкладки настроек лежат в том же
+// `.sidebar-slider`, что и список чатов (`sidebarLeft/index.ts:142` —
+// `sidebarEl: #column-left`), и своего слоя над колонкой им не нужно. У нас
+// корень настроек — React-экран поверх колонки (`SettingsView.module.scss`,
+// `position:absolute; inset:0; z-index:40`), поэтому вкладке слайдера нужен
+// СВОЙ такой же слой, но выше него. Разбор — в шапке `settingsSliderHost.ts`;
+// файл умирает вместе с `SettingsView`.
+
+.host {
+  // Тот же приём, что у всех оверлеев колонки (`ContactsView.module.scss:13`,
+  // `SettingsView.module.scss:7`). Отсчёт идёт от САМОЙ КОЛОНКИ: `#column-left`
+  // несёт класс `chatlist-container` (`Sidebar.tsx:215`), а тот позиционирован
+  // — `.chatlist-container { position: relative }`, `styles/tweb/_chatlist.scss:68-70`.
+  // Поэтому `inset: 0` — это ровно поле колонки, то же самое, что у
+  // перекрываемого React-экрана; своей геометрии не заводим.
+  position: absolute;
+  inset: 0;
+  // Над всеми экранами настроек (`SettingsScreen`: 40 — корень, 50-90 —
+  // под-экраны вплоть до `PrivacyUserPicker`) и под полноэкранными оверлеями
+  // колонки (истории — 3000+). Попапы и контекстные меню здесь не при чём:
+  // `#column-left` — самостоятельный контекст наложения (`z-index: 1` на
+  // флекс-элементе, `_leftSidebar.scss:21`), а они висят в `document.body`,
+  // то есть рисуются над колонкой независимо от этой сотни.
+  z-index: 100;
+  // Пока вкладок нет, слой прозрачен и для кликов: под ним живой React-экран.
+  // Признак «вкладки есть» ставит хост по `onTabsCountChange` — тем же хуком,
+  // которым `settingsSliderPopup.ts:44-47` гасит попап на последней вкладке.
+  pointer-events: none;
+
+  &.withTabs {
+    pointer-events: auto;
+  }
+
+  // Вкладка обязана быть непрозрачной: под ней остаётся живой React-экран
+  // настроек (в tweb под вкладкой — соседняя вкладка того же слайдера, а фон
+  // красит сама колонка). Высоту вкладке при этом даёт не наш слой, а
+  // портированное правило колонки — `#column-left .sidebar-slider { height: 100% }`
+  // (`styles/tweb/_leftSidebar.scss:446`) плюс грид `.tabs-container`.
+  // Заглушка-корень класса `sidebar-slider-item` не несёт и остаётся
+  // прозрачной — сквозь неё и виден React-экран.
+  :global(.sidebar-slider-item) {
+    background: var(--surface-color);
+  }
+}

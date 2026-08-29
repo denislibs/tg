@@ -1,7 +1,5 @@
 package domain
 
-import "time"
-
 // Аккаунт: сессии устройств, контакты, уведомления, фотогалерея.
 //
 // Четыре витрины, у каждой конструктор в схеме уже был, а ехала она безымянной
@@ -24,38 +22,83 @@ const (
 // Сессия устройства. «Текущая» — ФЛАГ, а не булево поле рядом: прежде ехало
 // `current: false`, то есть «выключено» имело значение.
 //
-// Адрес сессии у оригинала — `hash`, у нас числовой id устройства; имя
-// параметра берём схемное.
+// Адрес сессии — `hash`, и у ТЕКУЩЕЙ он равен нулю. Это семантика схемы, а не
+// наша выдумка: `hash` — то, чем сессию ОТЗЫВАЮТ, а текущую авторизацию по
+// hash отозвать нельзя, для неё есть выход из аккаунта. Клиент на этом и
+// стоит: вкладка «Устройства» (tweb `activeSessions.tsx:132,157`) отличает
+// свою строку по `dataset.hash === '0'` и только её не даёт завершить кликом.
 //
-// Что мы не производим и почему — в OmittedWithoutSubject: реквизиты
-// приложения (`api_id`, `app_name`, `app_version`, `system_version`) есть
+// Реквизиты клиента разложены как в `initConnection` MTProto, откуда их и
+// берёт оригинал (tweb `networkerFactory.ts:45-47`): `device_model` — чем
+// пользуются (браузер), `system_version` — на чём (ОС), `app_version` — версия
+// сборки клиента, сообщённая при входе. Разбирает User-Agent СЕРВЕР (так же
+// делает Telegram: клиент шлёт сырую строку UA, а на экране видно «Chrome»),
+// поэтому браузер и ОС лежат в разных колонках, а не склеены в одну строку.
+//
+// `app_name` даёт СЕРВЕР, а не клиент: у оригинала имя приложения приезжает из
+// реестра api_id (клиент его в initConnection не шлёт вовсе), и клиент,
+// называющий себя сам, назвался бы как угодно. Клиент у нас один — отсюда
+// константа.
+//
+// Что мы не производим и почему — в OmittedWithoutSubject: `api_id` есть
 // только у клиентов MTProto, а `region` мы не различаем — город и страна
 // приезжают одной строкой.
 type Authorization struct {
-	Underscore  string          `json:"_"`
-	PFlags      map[string]bool `json:"pFlags,omitempty"`
-	Hash        int64           `json:"hash"`
-	DeviceModel string          `json:"device_model"`
-	Platform    string          `json:"platform"`
-	DateCreated int             `json:"date_created"`
-	DateActive  int             `json:"date_active"`
-	IP          string          `json:"ip"`
-	Country     string          `json:"country"`
+	Underscore    string          `json:"_"`
+	PFlags        map[string]bool `json:"pFlags"`
+	Hash          int64           `json:"hash"`
+	DeviceModel   string          `json:"device_model"`
+	Platform      string          `json:"platform"`
+	SystemVersion string          `json:"system_version"`
+	AppName       string          `json:"app_name"`
+	AppVersion    string          `json:"app_version"`
+	DateCreated   int             `json:"date_created"`
+	DateActive    int             `json:"date_active"`
+	IP            string          `json:"ip"`
+	Country       string          `json:"country"`
 }
 
+// AppName — имя нашего клиента глазами сервера (см. докблок Authorization:
+// у оригинала оно приходит из реестра api_id, а не от самого клиента).
+const AppName = "Telegram Web"
+
 // NewAuthorization — сессия устройства глазами владельца.
-func NewAuthorization(id int64, name, platform, ip, country string, created, active time.Time, current bool) Authorization {
-	out := Authorization{
-		Underscore:  AuthorizationTag,
-		Hash:        id,
-		DeviceModel: name,
-		Platform:    platform,
-		DateCreated: unixSeconds(created),
-		DateActive:  unixSeconds(active),
-		IP:          ip,
-		Country:     country,
+func NewAuthorization(d Device, current bool) Authorization {
+	// Ноль — адрес «этой самой» сессии, см. докблок выше.
+	hash := d.ID
+	if current {
+		hash = 0
 	}
-	setPFlag(&out.PFlags, "current", current)
+	out := Authorization{
+		Underscore:    AuthorizationTag,
+		Hash:          hash,
+		DeviceModel:   d.Name,
+		Platform:      d.Platform,
+		SystemVersion: d.SystemVersion,
+		AppName:       AppName,
+		AppVersion:    d.AppVersion,
+		DateCreated:   unixSeconds(d.CreatedAt),
+		DateActive:    unixSeconds(d.LastActive),
+		IP:            d.IP,
+		Country:       d.Location,
+	}
+	// pFlags у сессии едет ВСЕГДА объектом, даже пустым, — и потому НЕ через
+	// setPFlag (тот зануляет пустую карту под `omitempty`). Так делает
+	// десериализатор оригинала: `result.pFlags ??= {}` у любого конструктора с
+	// `flags:#` (tweb `tl_utils.ts:754`), поэтому в его типе поле обязательное
+	// (`layer.d.ts`, `Authorization.authorization.pFlags`), и клиент читает
+	// `auth.pFlags.current` без страховки. Пропуск ключа ронял дословный порт
+	// вкладки на TypeError, как только текущая сессия оказывалась не первой.
+	//
+	// Точечно, а не по всей модели: у остальных шести десятков конструкторов
+	// «пустых pFlags в JSON нет» — проверяемый инвариант их собственных сверок
+	// (тост бота, готовая расшифровка, непринуждённый диалог), и снятие
+	// `omitempty` разом сломало бы их. Провод TL этой разницы не знает вовсе:
+	// там pFlags восстанавливает читающая сторона по маске.
+	out.PFlags = map[string]bool{}
+	if current {
+		out.PFlags["current"] = true
+	}
 	return out
 }
 

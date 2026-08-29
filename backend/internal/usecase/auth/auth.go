@@ -95,6 +95,9 @@ type ClientInfo struct {
 	OS       string // "macOS", "Windows", "Android", …
 	IP       string
 	Location string // human place, when a GeoIP lookup is available (else empty)
+	// AppVersion — версия сборки клиента, как он сам себя назвал при входе.
+	// Своей у сервера нет: клиент раздаётся отдельно и обновляется отдельно.
+	AppVersion string
 }
 
 type clientInfoKey struct{}
@@ -273,20 +276,33 @@ func (i *Interactor) mintSession(ctx context.Context, user domain.UserRecord, de
 	if err != nil {
 		return SignInResult{}, err
 	}
-	// Session row keeps the sign-in metadata for the Active Sessions screen:
-	// a human name from the parsed User-Agent (fallback: the client-sent one),
-	// plus IP and GeoIP location when available.
+	// Строка сессии несёт реквизиты входа для экрана активных сеансов, и несёт
+	// их РАЗДЕЛЬНО — как параметры `initConnection` у оригинала: браузер
+	// (device_model), ОС (system_version), версия сборки клиента (app_version),
+	// плюс IP и место по GeoIP, когда оно известно. Прежде браузер и ОС
+	// склеивались в одну строку имени, и витрина сессий не могла отдать их
+	// разными параметрами конструктора.
 	ci := clientInfoFromContext(ctx)
 	if ci.Location == "" && i.geo != nil && ci.IP != "" {
 		ci.Location = i.geo.Locate(ci.IP)
 	}
+	// Имя, присланное клиентом, — только запасное: разбирать User-Agent должен
+	// сервер (так же делает Telegram), иначе клиент назовётся как угодно.
 	name := deviceName
-	if ci.Browser != "" && ci.OS != "" {
-		name = ci.Browser + " · " + ci.OS
-	} else if ci.Browser != "" {
+	if ci.Browser != "" {
 		name = ci.Browser
 	}
-	if _, err := i.devices.Create(ctx, user.ID, name, platform, hash, ci.IP, ci.Location); err != nil {
+	device := domain.Device{
+		UserID:        user.ID,
+		Name:          name,
+		Platform:      platform,
+		SystemVersion: ci.OS,
+		AppVersion:    ci.AppVersion,
+		TokenHash:     hash,
+		IP:            ci.IP,
+		Location:      ci.Location,
+	}
+	if _, err := i.devices.Create(ctx, device); err != nil {
 		return SignInResult{}, err
 	}
 	// Владелец вошёл — чужая попытка сброса аккаунта снимается. Общий хвост всех
@@ -323,7 +339,10 @@ func (i *Interactor) Authenticate(ctx context.Context, token string) (domain.Use
 			return s.User, s.DeviceID, nil
 		}
 	}
-	user, deviceID, err := i.devices.SessionByTokenHash(ctx, hash)
+	// Версия сборки берётся из ClientInfo запроса (её кладёт AuthMiddleware) и
+	// освежает строку устройства на промахе кэша — то есть не чаще раза в
+	// SessionCacheTTL на сессию, а не на каждом запросе.
+	user, deviceID, err := i.devices.SessionByTokenHash(ctx, hash, clientInfoFromContext(ctx).AppVersion)
 	if err != nil {
 		return domain.UserRecord{}, 0, err
 	}
@@ -388,7 +407,11 @@ func (i *Interactor) ConfirmQRLogin(ctx context.Context, token string, user doma
 	if err != nil {
 		return err
 	}
-	if _, err := i.devices.Create(ctx, user.ID, "QR login", rec.Platform, sessionHash, "", ""); err != nil {
+	// Вход по QR: реквизитов сканирующего устройства у нас нет вовсе — запрос
+	// пришёл от УЖЕ вошедшего клиента, а не от того, кому выдаётся сессия.
+	if _, err := i.devices.Create(ctx, domain.Device{
+		UserID: user.ID, Name: "QR login", Platform: rec.Platform, TokenHash: sessionHash,
+	}); err != nil {
 		return err
 	}
 	// Единственная выдача сессии мимо mintSession (метаданные берутся из записи

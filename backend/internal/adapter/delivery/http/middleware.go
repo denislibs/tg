@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/messenger-denis/backend/internal/domain"
+	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 )
 
 type ctxKey int
@@ -39,12 +40,19 @@ func AuthMiddleware(a Authenticator) func(http.Handler) http.Handler {
 				writeError(w, http.StatusUnauthorized, "missing token")
 				return
 			}
-			user, deviceID, err := a.Authenticate(r.Context(), token)
+			// Версия сборки клиента едет в ctx ДО разрешения токена: на
+			// промахе кэша сессий usecase освежит ею строку устройства тем же
+			// запросом, что двигает last_active. Иначе экран сессий вечно
+			// показывал бы версию, с которой когда-то вошли, — клиент
+			// обновляется сам, а строка нет.
+			ctx := usecaseauth.WithClientInfo(r.Context(),
+				usecaseauth.ClientInfo{AppVersion: clientAppVersion(r)})
+			user, deviceID, err := a.Authenticate(ctx, token)
 			if err != nil {
 				writeError(w, http.StatusUnauthorized, "invalid token")
 				return
 			}
-			ctx := context.WithValue(r.Context(), userKey, user)
+			ctx = context.WithValue(ctx, userKey, user)
 			ctx = context.WithValue(ctx, deviceKey, deviceID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

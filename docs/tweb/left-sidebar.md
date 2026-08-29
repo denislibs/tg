@@ -719,7 +719,7 @@ Close/RestartTopic `:224` · ChargeFee `:238` · Delete `:248`.
 | `src/components/Sidebar.tsx` (:61) | оркестратор колонки: `#column-left` с tweb-классами (:213-215), композиция хуков `useSidebar*` | `AppSidebarLeft.construct` |
 | `src/components/SidebarScreens.tsx` (:22-24) | экраны колонки — **один enum-стейт** `'settings'\|'contacts'\|'wallet'\|'calls'\|'newGroup'\|'newChannel'\|'newPrivate'\|'newSecret'\|null`, lazy-подгрузка Settings/Wallet/Calls | стек `SliderSuperTab` |
 | `src/components/SettingsView.tsx` (:47) + `SettingsSubScreen.tsx` (:82-95, :134-152) | настройки: корневой список + под-экраны по строковому title (Language/General/Devices/SpeakersCamera/Notifications/ChatFolders/Privacy/DataStorage/Stickers/Hotkeys) | `AppSettingsTab` + дерево части 2 |
-| `src/components/settings/*` | реализации под-экранов (ActiveSessions, TwoStepVerification, PasscodeLock, Passkeys, BlockedUsers, AutoDelete, PowerSaving, QuickReaction, EditProfile, ChatWallpaper…) | `sidebarLeft/tabs/*` |
+| `src/components/settings/*` | реализации ещё не портированных под-экранов (TwoStepVerification, PasscodeLock, Passkeys, BlockedUsers, AutoDelete, PowerSaving, QuickReaction, EditProfile, ChatWallpaper…). «Устройства» здесь БОЛЬШЕ НЕТ — уехали на слайдер, см. §3 | `sidebarLeft/tabs/*` |
 | `src/components/ChatList.tsx` / `ChatListItem.tsx` | список чатов на виртуальном ядре | `AutonomousDialogList` + `DialogElement` |
 | `src/components/virtual/DeferredSortedVirtualList.*` | порт `deferredSortedVirtualList` | 1:1 |
 | `src/core/hooks/useDialogListSource.ts` | источник набора папки/архива (фильтр, размер, курсор) | `AutonomousDialogListBase` |
@@ -739,12 +739,14 @@ DOM-паритет первого таба выдержан сознательн
 
 ## 2. Главные структурные расхождения
 
-1. **Нет стека табов.** У tweb левая колонка — `SidebarSlider` со стеком `SliderSuperTab`
-   (история, `appNavigationController`-навигация, Escape-иерархия, `item-secondary`,
-   `closeEverythingInsideNaturally` с подтверждениями). У нас — плоский enum `SidebarScreen`
-   (взаимоисключающие экраны, въезд справа CSS-кейфреймом на вставке узла, SidebarScreens.tsx:15-21) и
-   отдельный локальный стейт `sub` внутри SettingsView. Нет истории «назад» глубже одного уровня и нет
-   аналога `sliceTabsUntilTab`/`noSame`/`getInitArgs`-префетча.
+1. **Стек табов есть, но пока только для портированных вкладок** (см. §3 ниже — волна 2
+   `solid-migration`: `SidebarSlider`/`SliderSuperTab` портированы, слайдер заведён в колонку
+   хостом `sidebarLeft/settingsSliderHost.ts`). Всё, что ещё НЕ портировано, живёт по-старому:
+   плоский enum `SidebarScreen` (взаимоисключающие экраны, въезд справа CSS-кейфреймом на вставке
+   узла, SidebarScreens.tsx:15-21) и локальный стейт `sub` внутри SettingsView — у этих экранов
+   нет истории «назад» глубже одного уровня. Не портированы `sliceTabsUntilTab`-сценарии,
+   `getInitArgs`-префетч и `closeEverythingInsideNaturally` целиком (сам метод
+   `closeAllTabsNaturally` на слайдере есть, вызывающего нет).
 2. **Настройки — один компонент, а не дерево табов.** tweb: каждый экран — отдельный lazy Solid-модуль
    за скаффолдом (часть 2). У нас: `SettingsView` + `SettingsSubScreen`-роутинг по строковому title;
    часть пунктов tweb отсутствует (Background как таб, 2FA-мастер из 7 шагов сжат в
@@ -784,6 +786,71 @@ DOM-паритет первого таба выдержан сознательн
    комментарием Sidebar.tsx:176-178; «всплытие» has-open-tabs воспроизведено через
    `setOpenTabsLeftSidebar` (Sidebar.tsx:187-189).
 
+## 3. Слайдер вкладок настроек (волна 2 `solid-migration`)
+
+Подсистема вкладок портирована и заведена в колонку. Снято 2026-08-29 (задача 8 волны 2).
+
+### Что портировано
+
+| Наш файл | Источник tweb | Заметка |
+|---|---|---|
+| `components/slider.ts` | `src/components/slider.ts` | `SidebarSlider` целиком: история вкладок, `createTab`/`selectTab`/`closeTab`/`closeAllTabs`/`sliceTabsUntilTab`, `onTabsCountChange`, `canHideFirst` |
+| `components/sliderTab.ts` | `src/components/sliderTab.ts` | `SliderSuperTab` + `SliderSuperTabEventable` (шапка, `Scrollable`, порядок разрушения, `managers`) |
+| `components/solidJsTabs/*` | `src/components/solidJsTabs/*` | `scaffoldSolidJSTab(Eventable)`, `useSuperTab`, `PromiseCollector` |
+| `components/solidJsTabs/tabs.ts` | `src/components/solidJsTabs/tabs.ts` | реестр объявлений вкладок; пока ОДНО — `AppActiveSessionsTab` |
+| `components/sidebarLeft/tabs/activeSessions.solid.tsx` | `src/components/sidebarLeft/tabs/activeSessions.tsx` | первая настоящая вкладка, дословный порт |
+| `components/sidebarLeft/settingsSliderHost.ts` | `sidebarLeft/index.ts:140-148` + `settingsSliderPopup.ts:13-51` | хост: один слайдер на колонку, `openTab`/`destroy` |
+
+Навигация: `pushItem` оригинала разложен на два наших механизма — `navigationStack.pushLayer`
+(Back) и `hotkeys.pushEsc` (Escape), потому что единого `appNavigationController` у нас нет
+(разбор — в шапке `slider.ts`). В tweb обе кнопки обслуживает один контроллер
+(`appNavigationController.ts:216-219`).
+
+### Шов с React (временный)
+
+Корень настроек у нас всё ещё React-экран (`SettingsView.tsx`) поверх колонки, а не вкладка
+слайдера (`AppSettingsTab`). Отсюда три вещи, которых у tweb нет и которые уйдут вместе с
+`SettingsView`:
+
+- хост строит СВОЮ разметку `.sidebar-slider.tabs-container` (приём взят у `settingsSliderPopup.ts`),
+  а не берёт колоночную: та принадлежит React (`Sidebar.tsx:236`) и лежит ПОД экраном настроек;
+- первым ребёнком слайдера лежит пустая заглушка-`.tabs-tab` — сосед, от которого едет
+  `slideNavigation`; в оригинале этим соседом служит сама вкладка настроек;
+- слой хоста позиционируется над React-экраном (`settingsSliderHost.module.scss`, `z-index: 100`),
+  а признак «вкладки открыты» (`onTabsCountChange` → класс `withTabs`) снимает с него перехват
+  кликов, когда вкладок нет.
+
+Владеет слайдером `SettingsView`: заводит на монтировании и уничтожает на размонтировании
+(`host.destroy()` → `closeAllTabs`), чтобы вкладка не пережила свой экран. Пин —
+`components/sidebarLeft/settingsSliderHost.test.ts`.
+
+Входов во вкладку «Устройства» два, оба React-строки шва: корень настроек («Devices»,
+`SettingsView.tsx`) и раздел конфиденциальности («Active Sessions»,
+`settings/PrivacySecuritySettings.tsx`). Оба зовут `openActiveSessionsTab` — порт
+`openActiveSessions` (`sidebarLeft/newAuthorization.tsx:116-121`): список сессий забирает
+открывающий и отдаёт вкладке готовым.
+
+### Что НЕ портировано
+
+- **`AppSettingsTab` и остальные ~60 вкладок** части 2 — пока React-экраны
+  (`SettingsSubScreen.tsx` + `components/settings/*`). Каждая переносится отдельной задачей:
+  объявление в `solidJsTabs/tabs.ts` + модуль в `sidebarLeft/tabs/*.solid.tsx` + снятие
+  React-экрана и его строки-входа.
+- **`SettingsSliderPopup`** (`createTab`-override при свёрнутой колонке, `sidebarLeft/index.ts:1587-1599`):
+  вкладка настроек в попапе. Нет предмета, пока корень настроек — React-экран.
+- **`providedTabs.ts`** — реестр вкладок, открываемых по имени в обход циклов импортов.
+  `AppActiveSessionsTab` не входит в него и в оригинале.
+- **`hasSomethingOpenInside`/`onSomethingOpenInsideChange`** (`index.ts:490-600`): классы
+  `has-open-tabs`/`has-real-tabs` и «всплытие» свёрнутой колонки. У нас признак ведёт React
+  (`Sidebar.tsx:162,189`) по своему состоянию экранов, слайдер в него не пишет — иначе
+  писателей стало бы два.
+- **`removeByType`-ручка** (`sidebarRight/index.ts:95,128`): снять все слои навигации слайдера
+  разом, снаружи и без спроса у вкладок. Потребителя нет: хост закрывает вкладки по одной.
+- **`getInitArgs`-префетч** (`SliderSuperTab.getInitArgs`, объявлен, но никем не заполняется) и
+  свайп-закрытие iOS (`isSwipingBackSafari` → `canAnimate: false`, см. шапку `slider.ts`).
+- **Счётчик устройств** в строке настроек (`settings.tsx:166-176` + перечитывание по событию
+  `destroy` вкладки): в нашей React-строке значения нет, поэтому и подписки нет.
+
 ---
 
 ## Проверка после порта
@@ -791,6 +858,9 @@ DOM-паритет первого таба выдержан сознательн
 Прощёлкать на стенде, прежде чем говорить «готово».
 
 - [ ] Бургер → настройки → вложенные экраны; Back работает на любую глубину.
+- [ ] Настройки → «Устройства» (и «Конфиденциальность» → «Активные сессии»): вкладка въезжает
+      справа, правый клик по чужой сессии → Terminate → строка исчезает, Escape закрывает вкладку,
+      экран настроек под ней остаётся.
 - [ ] Поиск: пустое состояние, результаты по чатам, табы постов/медиа/ссылок/файлов/музыки/голосовых.
 - [ ] Строка чатлиста: превью последнего сообщения, бейджи, онлайн-точка, typing, draft.
 - [ ] Сортировка и закреплённые вверху; папки переключаются без перерисовки всего списка.

@@ -29,6 +29,12 @@ type subscribeBody struct {
 }
 
 func (h *PushHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
+	// #111. Здесь проверяется только `ok`, тогда как ручки сессий отвергают и
+	// НОЛЬ (`session_handler.go::currentDeviceID`): незаполненное устройство
+	// приезжает из пред-инжекта канального RPC и из кэша сессий как `(0, true)`,
+	// а не как отсутствие ключа. Для подписки это значит строку `push_subscriptions`
+	// на несуществующем устройстве — её никто не адресует и никто не снимет.
+	// Задача сводит обе проверки к одной.
 	deviceID, ok := DeviceIDFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "no session")
