@@ -238,6 +238,29 @@ describe('вкладка «Устройства» — порт tweb sidebarLeft/
     expect(terminate).toHaveBeenCalledWith(2)
   })
 
+  it('пункт контекстного меню ПЕРЕВЕДЁН, а не показывает сырой ключ', async() => {
+    // Боевой дефект, найденный живой проверкой стенда: в `ButtonMenuSync`
+    // уезжал ключ `'Terminate'`, а `ButtonMenuItem` кладёт `text` прямо в
+    // `i18nSpan` — переводит ВЫЗЫВАЮЩИЙ. В русском интерфейсе пункт меню
+    // показывал «Terminate», хотя `Terminate: 'Завершить'` в словаре есть и
+    // всё остальное на вкладке переведено (`Button`/`Row`/`SettingSection`
+    // переводят у себя — на этой разнице дефект и вырос).
+    //
+    // Подменяем переводчик ДО открытия: меню строится в `onMount`, то есть
+    // внутри `tab.open()`, а не позже, как попап.
+    const { managers } = makeManagers()
+    const original = useI18nStore.getState().t
+    useI18nStore.setState({ t: (key: string) => (key === 'Terminate' ? 'Завершить' : original(key)) })
+    try {
+      const tab = await openTab([current, other], managers)
+      const menu = rightClick(tab.scrollable.container.querySelector('.row[data-hash="2"]')!)
+
+      expect(menu.querySelector('.btn-menu-item-text')!.textContent).toBe('Завершить')
+    } finally {
+      useI18nStore.setState({ t: original })
+    }
+  })
+
   it('правый клик по строке ТЕКУЩЕЙ сессии не открывает меню — свою сессию не завершить и отсюда', async() => {
     const { terminate, managers } = makeManagers()
     const tab = await openTab([current, other], managers)
@@ -259,8 +282,8 @@ describe('вкладка «Устройства» — порт tweb sidebarLeft/
     const { managers } = makeManagers()
     const tab = await openTab([current, other], managers)
 
-    // Переводчик обязан читаться в ТОЧКЕ ПРИМЕНЕНИЯ (`row.ts:173,247`,
-    // `button.ts:59`), а не сниматься один раз на открытии вкладки: смена
+    // Переводчик обязан читаться в ТОЧКЕ ПРИМЕНЕНИЯ (`row.ts::createTitle`,
+    // `button.ts::Button`), а не сниматься один раз на открытии вкладки: смена
     // языка не перерисовывает уже построенный DOM, но попап строится позже.
     const original = useI18nStore.getState().t
     useI18nStore.setState({ t: (key: string) => (key === 'Terminate' ? 'Завершить' : original(key)) })

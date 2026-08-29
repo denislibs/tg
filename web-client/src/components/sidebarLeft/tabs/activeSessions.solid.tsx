@@ -166,7 +166,14 @@ const ActiveSessions: Component = () => {
     const element = menuElement = ButtonMenuSync({
       buttons: [{
         icon: 'stop',
-        text: 'Terminate',
+        // `t(...)` ОБЯЗАТЕЛЕН: `ButtonMenuItem` кладёт `text` прямо в
+        // `i18nSpan` (`buttonMenu.ts::ButtonMenuItem`), то есть переводит
+        // ВЫЗЫВАЮЩИЙ — в отличие от `Button`/`Row`/`SettingSection`, которые
+        // переводят у себя. Сырой ключ показывал в русском интерфейсе
+        // «Terminate» вместо «Завершить» (найдено живой проверкой стенда). См.
+        // #109: с портом `langPack` обе стороны снова станут `LangPackKey`, и
+        // разница исчезнет.
+        text: useI18nStore.getState().t('Terminate'),
         onClick: onTerminateClick,
       }],
     })

@@ -99,7 +99,9 @@ import { pushEsc } from '@core/hotkeys'
 import { pushLayer, removeLayer, type Layer } from '@core/navigation/navigationStack'
 import { getMiddleware, type MiddlewareHelper } from '@helpers/middleware'
 
-/** tweb :26-37, упрощено: `text` всегда готовая строка (без LangPackKey/i18n —
+/** tweb :26-37, упрощено: `text` — УЖЕ ПЕРЕВЕДЁННАЯ строка (без LangPackKey/i18n —
+ *  вторая после `buttonMenu.ts::ButtonMenuItem` точка волны, где переводит
+ *  ВЫЗЫВАЮЩИЙ, а не компонент; см. там же про #109 и цену раскола —
  *  переводом владеет вызывающий, как и `title` в `PopupOptions` ниже), без
  *  промис-результата колбэка (`toggleDisability` во время ожидания — tweb
  *  :283-295 — не портирован, нет потребителя в волне 1) и без iconLeft/iconRight. */
