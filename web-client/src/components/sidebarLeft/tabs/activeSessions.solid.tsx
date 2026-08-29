@@ -2,7 +2,7 @@
 /**
  * Порт tweb `src/components/sidebarLeft/tabs/activeSessions.tsx` — вкладка
  * «Устройства» (активные сессии). Первая настоящая вкладка на подсистеме
- * слайдера (задачи 4–6): содержимое строит императивный DOM
+ * слайдера (шаги 4–6 плана волны 2): содержимое строит императивный DOM
  * (`Row`/`SettingSection`/`Button`), а Solid здесь — только жизненный цикл
  * (`onMount`/`onCleanup`), ровно как в оригинале (компонент возвращает `null`).
  *
@@ -12,7 +12,7 @@
  *
  * Отступление одно и оно наше, не проводное: `tab.managers!` — поле объявлено
  * опциональным (`sliderTab.ts`), потому что его проставляет слайдер ПОСЛЕ
- * конструктора (`slider.ts:405`, tweb :270). Тот же приём, что у `this.slider!`
+ * конструктора (`slider.ts::createTab`, tweb :270). Тот же приём, что у `this.slider!`
  * в самом `sliderTab.ts`: ненулевое утверждение в точке вызова, а не смена
  * контракта.
  *
@@ -20,10 +20,10 @@
  *  • `getOverlayRoot()` (`helpers/appWindow.ts` — их поддержка Document PiP)
  *    → `document.body`, как уже сделано в `components/chat/contextMenu.ts:909`;
  *  • `langKey`/`LangPackKey` → строка-ключ через `useI18nStore.getState().t`
- *    (тот же приём, что в `row.ts`/`button.ts`/`popupPeer.ts`) — читается В
- *    ТОЧКЕ ПРИМЕНЕНИЯ (`row.ts:173,247`, `button.ts:59`), а не снимается
- *    один раз на открытии вкладки: иначе смена языка при открытой вкладке
- *    оставила бы кнопку попапа на старом языке;
+ *    (#109, тот же приём, что в `row.ts`/`button.ts`/`popupPeer.ts`) —
+ *    читается В ТОЧКЕ ПРИМЕНЕНИЯ (`row.ts::title`, `button.ts::text`), а не
+ *    снимается один раз на открытии вкладки: иначе смена языка при открытой
+ *    вкладке оставила бы кнопку попапа на старом языке;
  *  • `appAccountManager.resetAuthorization(hash)`/`resetAuthorizations()` →
  *    `tab.managers.sessions.terminate(id)`/`terminateOthers()` — наш прямой
  *    аналог; `hash` из `dataset` — строка, менеджер адресует сессию числом.
@@ -183,7 +183,7 @@ const ActiveSessions: Component = () => {
           return
         }
 
-        // tweb :137-138 — `e.preventDefault()` + `e.cancelBubble = true`.
+        // tweb :151-152 — `e.preventDefault()` + `e.cancelBubble = true`.
         // `cancelBubble = true` по спецификации DOM это ровно «взвести флаг
         // остановки всплытия», то есть `stopPropagation()`; берём вторую
         // форму, потому что happy-dom отдаёт `cancelBubble` ТОЛЬКО геттером

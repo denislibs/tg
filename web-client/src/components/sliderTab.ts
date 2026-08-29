@@ -11,13 +11,21 @@
  * базового класса создаёт СОБСТВЕННОЕ свойство на инстансе во время
  * выполнения конструктора базы — оно шадоуит прототипный метод подкласса,
  * если тот определяет `init` именно методом (`class T extends SliderSuperTab
- * { init(...args) {...} }`), а не полем. В tweb вкладки объявляют `init`
- * методом повсеместно (39 мест в `src/components/`, например
- * `sidebarLeft/tabs/changeLoginEmail.tsx:13,46`,
+ * { init(...args) {...} }`), а не полем. В tweb так объявляют `init` ВСЕ
+ * вкладки без исключения: классов, наследующих `SliderSuperTab`/
+ * `SliderSuperTabEventable`, там ровно 10 (`grep -rn "extends SliderSuperTab"
+ * src/`, минус сам базовый `SliderSuperTabEventable` и generic-упоминания в
+ * сигнатурах), и все 10 объявляют `init` методом — 8 именованных
+ * (`sidebarLeft/tabs/changeLoginEmail.tsx:13,46`,
  * `sidebarRight/tabs/statistics.tsx:1062`, `boosts.tsx:396`,
  * `pollResults.tsx:21`, `sharedMediaTab.tsx:64`, `savedMusic.tsx:709`,
- * `forumTab/forumTab.ts:73`) — раунд 0 сломал бы КАЖДУЮ вкладку волны,
- * портированную в этой самой распространённой форме. Тест из брифа задачи
+ * `forumTab/forumTab.ts:73`) и 2 анонимных из фабрики
+ * (`solidJsTabs/scaffoldSolidJSTab.tsx:38`, `:108`). Прежняя редакция этого
+ * абзаца называла «39 мест» — это все `init(` в `src/components/` целиком, из
+ * которых большинство к вкладкам отношения не имеет (`loader.ts`,
+ * `dotRenderer.ts`, `mediaEditor/*`, `emoticonsDropdown/*`); цифра неверна и
+ * отнесена была не к тому. Раунд 0 сломал бы КАЖДУЮ вкладку волны,
+ * портированную в этой самой распространённой форме. Тест из брифа шага
  * (`init = init`, тоже ПОЛЕ) эту дыру не видел — иллюстрация брифа слабее
  * реального контракта оригинала.
  *
@@ -60,11 +68,11 @@
  * есть его прямой структурный аналог — `Managers` (`client/bootstrap.ts`,
  * тот же принцип: один DI-объект с ручками ко всем менеджерам воркера,
  * инжектируется, а не импортируется). Наша вкладка «Устройства»
- * (`sidebarLeft/tabs/activeSessions.solid.tsx`, задача 7) зовёт
+ * (`sidebarLeft/tabs/activeSessions.solid.tsx`, шаг 7 плана волны 2) зовёт
  * `tab.managers.sessions.terminate(id)`/`terminateOthers()`
  * (`core/managers/sessionsManager.ts`) — прямой аналог `resetAuthorization`/
  * `resetAuthorizations`. Долг закрыт с обеих сторон: слайдер проставляет поле
- * в `createTab` (`slider.ts:405`, задача 5), вкладка читает вкладочное
+ * в `createTab` (`slider.ts::createTab`, tweb :270), вкладка читает вкладочное
  * `tab.managers`, а не тянет менеджеры своим путём мимо базового класса.
  *
  * МИНОР-1 — `slider` теперь `slider?: SliderSuperTabSlider` (а не
@@ -78,19 +86,18 @@
  * (там тоже без проверки), поэтому ненулевое утверждение на вызове, а не
  * смена контракта.
  *
- * МИНОР-2 — вторая, независимая от `ButtonIcon`, реализация иконочной кнопки
- * — `components/mediaViewer/base.ts:207-214` (`btnIcon`, её же докблок
+ * МИНОР-2 (#112) — вторая, независимая от `ButtonIcon`, реализация иконочной
+ * кнопки — `components/mediaViewer/base.ts:207-214` (`btnIcon`, её же докблок
  * называет «порт tweb `ButtonIcon()` в объёме вьювера»). Осознанно НЕ сведено
  * в этом коммите: вьювер — отдельная, уже принятая подсистема
  * (`web-client/CLAUDE.md`: «правило изменений ядра — сначала tweb, порт 1:1»),
- * трогать её файл вне периметра задачи 4 — расширение изменяемых путей сверх
- * согласованного списка. Технически своп ОДНОСТРОЧНЫЙ — `btnIcon(icon,
- * {onlyMobile})` → `ButtonIcon(icon, {noRipple: true, onlyMobile})` даёт тот
- * же DOM (класс `btn-icon`, `only-handhelds`, `span.tgico.button-icon`,
- * `.c-ripple` не создаётся ни там, ни там), но остаётся долгом отдельной
- * задачи, а не этой.
+ * трогать её файл вне периметра шага 4 плана волны 2 — расширение изменяемых
+ * путей сверх согласованного списка. Технически своп ОДНОСТРОЧНЫЙ —
+ * `btnIcon(icon, {onlyMobile})` → `ButtonIcon(icon, {noRipple: true,
+ * onlyMobile})` даёт тот же DOM (класс `btn-icon`, `only-handhelds`,
+ * `span.tgico.button-icon`, `.c-ripple` не создаётся ни там, ни там).
  *
- * ── Прямая зависимость довезена вместе с задачей: `components/buttonIcon.ts`
+ * ── Прямая зависимость довезена вместе с самим шагом: `components/buttonIcon.ts`
  * (порт tweb `components/buttonIcon.ts` — в проекте не было эквивалента до
  * MINOR-2 выше; React-кнопки `shared/ui/IconButton` не годятся, это другой
  * рендерер).
@@ -103,8 +110,8 @@
  * влияет ни там, ни здесь.
  *
  * ── `SliderSuperTabSlider` — временный контракт вместо `SidebarSlider`
- * (`@components/slider`, задача 5 этой же волны — на момент этого порта файл
- * не существует). Прецедент — `components/row.ts` (задача 2), который по той
+ * (`@components/slider`, шаг 5 плана этой же волны — на момент этого порта
+ * файл не существует). Прецедент — `components/row.ts` (шаг 2), который по той
  * же причине целиком опустил опцию `navigationTab`; здесь опустить нечего —
  * слайдер это первый параметр конструктора и предмет всего класса. Решение:
  * узкий интерфейс, повторяющий РОВНО те 5 методов, которые вкладка реально
@@ -119,8 +126,9 @@
  *
  * ── Адаптации под наш стек ─────────────────────────────────────────────────
  *  • `LangPackKey` + `i18n(key)` (tweb :115-117) → строка-ключ через
- *    `useI18nStore.getState().t` + `i18nSpan` (тот же приём, что в
- *    `row.ts`/`button.ts`/`settingSection.ts`).
+ *    `useI18nStore.getState().t` + `i18nSpan` (#109 — тот же приём и то же
+ *    расхождение, что в `row.ts`/`button.ts`/`settingSection.ts`: наш словарь
+ *    это ключ→строка, а не `langPack` оригинала).
  */
 import EventListenerBase, { type EventListenerListeners } from '@helpers/eventListenerBase'
 import ListenerSetter from '@helpers/listenerSetter'
@@ -132,7 +140,7 @@ import Scrollable from '@components/scrollable'
 import { useI18nStore } from '../i18n'
 import type { Managers } from '../client/bootstrap'
 
-/** См. докблок файла — временный контракт вместо `SidebarSlider` (задача 5). */
+/** См. докблок файла — временный контракт вместо `SidebarSlider` (шаг 5 плана волны 2). */
 export interface SliderSuperTabSlider {
   getMiddleware(): Middleware
   addTab(tab: SliderSuperTab): void

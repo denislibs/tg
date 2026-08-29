@@ -82,7 +82,7 @@ export function hasSubScreen(title: string) {
   // Speakers and Camera, Notifications and Sounds, Chat Folders — реальные
   // экраны (не из мок-SCREENS). «Устройства» здесь БОЛЬШЕ НЕТ: экран уехал на
   // слайдер вкладок (`sidebarLeft/tabs/activeSessions.solid.tsx`), в колонку
-  // его заводит задача 8.
+  // его завёл шаг 8 плана волны 2.
   return (
     title in SCREENS ||
     title === 'Speakers and Camera' ||

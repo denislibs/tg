@@ -5,7 +5,7 @@
  * настоящий потребитель моста Solid волны 0 (`shared/solid/mountSolid.solid.tsx`).
  *
  * Отличие от оригинала — РОВНО одно: вместо `render(() =>
- * <SolidJSHotReloadGuardProvider>…, div)` (:47-53, :100-106) — наш
+ * <SolidJSHotReloadGuardProvider>…, div)` (:48-56, :118-126) — наш
  * `mountSolid(div, Root, props)`. `SolidJSHotReloadGuardProvider` не
  * портирован намеренно: это обвязка их дев-сборки (Vite HMR guard для
  * Solid-контекстов), у нас свой Vite без их форка. `ErrorBoundary`, который
@@ -15,16 +15,16 @@
  *
  * Всё остальное — дословно:
  *  • `init` НЕ отдаёт управление слайдеру, пока `promiseCollectorHelper
- *    .await()` не разрешился (:58, :113) — иначе вкладка открывается пустой
+ *    .await()` не разрешился (:60, :130) — иначе вкладка открывается пустой
  *    и доливается на глазах уже после анимации;
  *  • `dispose` вызывается в `onCloseAfterTimeout`, ДО `super
- *    .onCloseAfterTimeout()` (:64-67, :119-122) — контент Solid обязан
+ *    .onCloseAfterTimeout()` (:67-71, :133-136) — контент Solid обязан
  *    погаснуть раньше, чем базовый класс снимет узел вкладки и слушателей;
  *  • обе формы — `scaffoldSolidJSTab` (обычная `SliderSuperTab`) и
  *    `scaffoldSolidJSTabEventable` (`SliderSuperTabEventable` — тому же
  *    контенту доступен `tab.eventListener`, нужно вкладке «Устройства»,
- *    задача 7);
- *  • `title` может быть строкой-ключом или функцией от `payload` (:14, :74).
+ *    шаг 7 плана волны 2);
+ *  • `title` может быть строкой-ключом или функцией от `payload` (:14, :81).
  *
  * `Root` — обёртка `PromiseCollector → SuperTabProvider → Component`,
  * вынесенная в отдельный компонент вместо инлайна в JSX `render()`, потому
@@ -34,10 +34,10 @@
  * тот же, что в оригинале.
  *
  * ── Адаптации под наш стек ─────────────────────────────────────────────────
- *  • `LangPackKey` (:14, :74) → строка-ключ, тот же приём, что в
+ *  • `LangPackKey` (:14, :81) → строка-ключ (#109), тот же приём, что в
  *    `sliderTab.ts` (`setTitle(key: string)`);
  *  • `SliderSuperTab`/`SliderSuperTabEventable` — наш `@components/sliderTab`
- *    (задача 4 этой же волны), а не `@components/slider`: у нас класс вкладки
+ *    (шаг 4 плана этой же волны), а не `@components/slider`: у нас класс вкладки
  *    и слайдер-владелец в РАЗНЫХ файлах (см. докблок `slider.ts`).
  */
 import type { Component } from 'solid-js'

@@ -290,7 +290,7 @@ describe('ChatsContainer — переход только между ИНСТАН
     expect(runNavigationTransition.mock.calls[0][0]).toMatchObject({ toRight: false })
   })
 
-  // Боевой дефект (найден ревью задачи 5 волны 2): анимированный переход
+  // Боевой дефект (найден ревью шага 5 плана волны 2): анимированный переход
   // оставляет на УХОДЯЩЕМ узле таймер, снимающий с него `active` через
   // NAVIGATION_TRANSITION_TIME + 100. Если пользователь в этом окне кликает
   // другой чат, стор отдаёт `animateNext: false` (chatStackStore.ts:134),

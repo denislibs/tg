@@ -22,17 +22,17 @@
  *    (см. ниже), но визуально ничего не делает уже в tweb.
  *
  * ── Опущено (не объявлено в типе, не имитировано заглушкой) ─────────────────
- *  • `contextMenu` — требует `helpers/dom/createContextMenu`, которого в
+ *  • `contextMenu` (#110) — требует `helpers/dom/createContextMenu`, которого в
  *    репозитории нет. У нас есть `contextMenuController` +
  *    `attachContextMenuListener` + `positionMenu`; вкладка «Устройства»
- *    (`sidebarLeft/tabs/activeSessions.solid.tsx`, задача 7) пользуется ими
+ *    (`sidebarLeft/tabs/activeSessions.solid.tsx`, шаг 7 плана волны 2) пользуется ими
  *    напрямую, минуя `Row`, — ровно как оригинал
  *    (`tweb components/sidebarLeft/tabs/activeSessions.tsx:13-16` строит
  *    контекстное меню тем же способом, а не опцией `Row`).
  *
  * ── `navigationTab` (tweb :74-79, :216-247) ─────────────────────────────────
  * Опция появилась здесь позже остального файла: она открывает вкладку на
- * `SidebarSlider`, а его до задачи 5 волны не существовало. Смысл дословный:
+ * `SidebarSlider`, а его до шага 5 плана волны не существовало. Смысл дословный:
  * строка — это кнопка «провалиться во вкладку», аргументы её `init` могут
  * готовиться заранее (`getInitArgs`, обычно статический метод самой вкладки) и
  * ПЕРЕГОТАВЛИВАЮТСЯ после разрушения вкладки (`destroyAfter`) — иначе повторное
@@ -40,8 +40,8 @@
  *
  * ── Адаптации под наш стек ───────────────────────────────────────────────────
  *  • `LangPackKey` + `_i18n`/`i18n()` → строка-ключ через
- *    `useI18nStore.getState().t`, узел — `i18nSpan` (`@helpers/dom/i18nSpan`,
- *    тот же приём, что в `button.ts` и `components/chat/contextMenu.ts:193`);
+ *    `useI18nStore.getState().t`, узел — `i18nSpan` (#109; тот же приём, что в
+ *    `button.ts` и `components/chat/contextMenu.ts:193`);
  *    `*LangArgs`-опции не портированы — у нашего `t()` нет интерполяции
  *    (та же причина, что в `checkboxField.ts`/`radioField.ts`);
  *  • наш `CheckboxField` (`checkboxField.ts`) не имеет `.span`, `.checked`,
@@ -52,12 +52,11 @@
  *    Обе замены пинуются `row.test.ts` (кейсы «checkbox без подписи получает
  *    checkbox-field-absolute» и «withCheckboxSubtitle переключает подпись по
  *    input.checked»), мутация каждой ветки прогнана отдельно (раунд 1 ревью);
- *  • toggle-ветка (`checkbox-field-toggle` → `row-with-toggle`, `titleRight`
- *    = сам чекбокс) перенесена как проверка класса — дословно, но сейчас
- *    недостижима: наш `CheckboxField` не умеет строить toggle-чекбоксы (см.
- *    его докблок, «форма для настроек… приедет вместе с портом строк
- *    настроек») — появится вместе с первой вкладкой, которая эту опцию
- *    включит;
+ *  • toggle-ветка (#110: `checkbox-field-toggle` → `row-with-toggle`,
+ *    `titleRight` = сам чекбокс) перенесена как проверка класса — дословно, но
+ *    сейчас недостижима: наш `CheckboxField` не умеет строить toggle-чекбоксы
+ *    (см. его докблок, «форма для настроек… приедет вместе с портом строк
+ *    настроек») — оживёт вместе с портом `toggle` у `CheckboxField`;
  *  • `setDirection` — был неэкспортируемым в `helpers/dom/setInnerHTML.ts`
  *    (не было потребителя); Row стал первым, экспорт добавлен туда же;
  *  • `replaceContent` — вынесен отдельным хелпером

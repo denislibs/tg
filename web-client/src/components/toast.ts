@@ -12,9 +12,17 @@
  *    отдельного хелпера не нужно (тот же приём уже в `stackedAvatars.ts`,
  *    `avatar.ts`, `chat/peerTitle.ts`);
  *  • `LangPackKey`/`i18n(key, args)` → строка + `useI18nStore.getState().t`
- *    (у нашего словаря ключ=строка, без интерполяции аргументов — тот же приём,
- *    что в `button.ts`/`checkboxField.ts`; `langPackArguments` поэтому не
- *    портирован — предмета нет).
+ *    (#109: у нашего словаря ключ=строка, без интерполяции аргументов — тот же
+ *    приём, что в `button.ts`/`checkboxField.ts`; `langPackArguments` поэтому
+ *    не портирован — предмета нет).
+ *
+ * ── ОСТАТОК ВОЛНЫ (#112) ───────────────────────────────────────────────────
+ * СТИЛЕЙ У ЭТОЙ ВСПЛЫВАШКИ НЕТ. `tweb/src/scss/partials/_toast.scss`
+ * (`.toasts-container`, `.toast`, `.toast.is-visible`) в `styles/tweb/` не
+ * перенесён — `grep -rn "toasts-container" src` даёт только этот файл.
+ * Значит DOM ниже строится верный, а видно его не так, как в оригинале:
+ * узел рисуется потоком страницы вместо прибитой снизу карточки. Порт
+ * партиала — та же задача, что снимает остальные остатки волны.
  */
 import OverlayClickHandler from '@helpers/overlayClickHandler'
 import { useI18nStore } from '../i18n'

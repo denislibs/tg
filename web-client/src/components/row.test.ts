@@ -153,7 +153,7 @@ describe('Row', () => {
   })
 })
 
-// `navigationTab` (tweb :216-247) заведена вместе с `SidebarSlider` (задача 5
+// `navigationTab` (tweb :216-247) заведена вместе с `SidebarSlider` (шаг 5 плана волны 2
 // волны) — до него типа слайдера не существовало и опция была опущена.
 describe('Row — navigationTab', () => {
   function createSlider() {
