@@ -1292,14 +1292,17 @@ const ru: Dict = {
   Giveaway: 'Розыгрыш',
   'Live location': 'Трансляция геопозиции',
   'Unsupported message': 'Неподдерживаемое сообщение',
-  // Row.checkboxKeys по умолчанию (tweb lang.ts:250-251) — t() заменяет весь
-  // словарь целиком, английский фолбэком не остаётся: без перевода здесь
-  // подпись под ru показала бы сырой ключ 'Checkbox.Enabled'/'Checkbox.Disabled'.
+  // Row.checkboxKeys по умолчанию (tweb lang.ts:250-251) — loadLang подмешивает
+  // en под активный язык ({ ...en, ...ru }, i18n/index.tsx:56), так что без
+  // перевода тут показалось бы английское 'Enabled'/'Disabled' (значение из
+  // dict.ts), а не сырой ключ. Перевод всё равно нужен — иначе часть
+  // интерфейса на ru осталась бы на английском.
   'Checkbox.Enabled': 'Включено',
   'Checkbox.Disabled': 'Выключено',
-  // SettingSection (tweb lang.ts:1445/1835) — по той же причине, что и
-  // Checkbox.Enabled/Disabled выше: без перевода в ru показался бы сырой
-  // ключ.
+  // SettingSection (tweb lang.ts:1445/1835) — та же механика, что у
+  // Checkbox.Enabled/Disabled выше: без перевода показалось бы английское
+  // 'This device'/'Logs out all devices except for this one.' (dict.ts), не
+  // сырой ключ. Перевод всё равно нужен, чтобы ru был на ru целиком.
   CurrentSession: 'Это устройство',
   ClearOtherSessionsHelp: 'Завершает сеансы на всех устройствах, кроме этого.',
 }
