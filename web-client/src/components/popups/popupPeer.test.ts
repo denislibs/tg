@@ -5,10 +5,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { initHotkeys } from '@core/hotkeys'
 import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
-import { confirmationPopup } from './popupPeer'
+import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
+import type { AvatarManagers } from '@components/avatar'
+import PopupElement from './popupElement'
+import PopupPeer, { confirmationPopup } from './popupPeer'
 
 afterEach(() => {
   document.body.replaceChildren()
+  resetPeerMirror()
   vi.useRealTimers()
 })
 
@@ -93,5 +97,41 @@ describe('confirmationPopup — порт tweb popups/peer.ts + simpleConfirmatio
     expect(document.body.contains(root)).toBe(false)
 
     deactivate()
+  })
+})
+
+describe('PopupPeer — аватар пира (peerId), раунд правок 1', () => {
+  it('destroy() снимает подписку аватара на зеркало пиров: обновление карточки не трогает оторванный узел', () => {
+    const ALICE = 90001
+    const fillMirror = vi.fn(async() => {})
+    const managers: AvatarManagers = { peers: { fillMirror } }
+
+    const popup = PopupElement.createPopup(PopupPeer, 'popup-peer-avatar-test', {
+      peerId: ALICE,
+      titleLangKey: 'Notifications',
+      descriptionLangKey: 'Are you sure?',
+      buttons: [{ text: 'Mute' }],
+      managers
+    })
+    popup.show()
+
+    const avatarNode = document.querySelector('.popup-peer-avatar-test .avatar') as HTMLElement
+    expect(avatarNode).not.toBeNull() // peer.ts:46-54 — узел аватарки в шапке
+    // Карточки в зеркале ещё нет — ни инициалов, ни цвета (avatar.ts renderInner).
+    expect(avatarNode.dataset.color).toBeUndefined()
+    expect(avatarNode.childNodes.length).toBe(0)
+
+    popup.forceHide() // destroy() сразу — включая middlewareHelper.destroy() (popupElement.ts, раунд правок 1)
+
+    applyPeerOps([{ op: 'upsert', peers: [{ _: 'user', id: ALICE, first_name: 'Алиса', pFlags: {} }] }])
+
+    // Ровно тот класс утечки, что уже ловили в ленте («лента умирает на каждой
+    // смене чата, а слушатели переживают её», web-client/CLAUDE.md → «Владение
+    // фактами»): если бы `avatarNew` не отписался от зеркала при закрытии
+    // попапа, этот upsert перерисовал бы ОТОРВАННЫЙ узел — появились бы
+    // инициалы «А» и `data-color`. Узел остаётся ровно таким, каким был до
+    // destroy() — подписка снята через `middleware.onClean` (avatar.ts).
+    expect(avatarNode.dataset.color).toBeUndefined()
+    expect(avatarNode.childNodes.length).toBe(0)
   })
 })

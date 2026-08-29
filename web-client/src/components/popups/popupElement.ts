@@ -34,18 +34,33 @@
 //     заново раскладывает уже открытые попапы по актуальному `appendPopupTo()`
 //     после закрытия одного из них (сценарий fullscreen/Document PiP),
 //     которого у нас нет.
-//   • `middlewareHelper`/`lateMiddlewareHelper` (tweb :109-113, :148-149, :423,
-//     :443) — механизм отмены устаревших асинхронных результатов
-//     (`@helpers/middleware`, у нас уже есть, вендорен 1:1 — см.
-//     `web-client/CLAUDE.md` → «Асинхронщина и актуальность»). НЕ портирован
-//     осознанно, а не по недосмотру: `PopupButton.callback` этой волны
-//     синхронный (`() => void`, без промиса — см. докблок `PopupButton` ниже),
-//     ни один попап волны 1 не переживает async-результат дольше своего
-//     `destroy()`. Это ДОЛГ, а не постоянное решение: правило проекта требует
-//     `@helpers/middleware` для ЛЮБОГО асинхронного результата, переживающего
-//     свой контекст, без исключений — первый попап волны 2+ с реальной
-//     асинхронщиной (подтверждение с сетевым вызовом, загрузка) ОБЯЗАН завести
-//     `middlewareHelper`/`lateMiddlewareHelper` здесь же, а не только у себя.
+//   • `lateMiddlewareHelper` (tweb :113, :149, :443, «Gets destroyed after
+//     timeout») — второй хелпер оригинала, гасится ПОСЛЕ 250мс-таймера
+//     `destroy()` (тем же тиком, что `element.remove()`/`closeAfterTimeout`/
+//     `cleanup()`), а не сразу. Нет потребителя: ни один узел, порождённый
+//     попапом этой волны, не обязан пережить именно ЭТОТ момент — единственный
+//     нашедшийся потребитель асинхронщины (аватар `PopupPeer`, см. ниже)
+//     умирает вместе с обычным `middlewareHelper`, синхронно в `destroy()`.
+//     Портировать второй хелпер без потребителя значило бы тащить мёртвый код;
+//     когда появится узел/эффект, обязанный пережить именно 250мс-таймер
+//     (а не сам факт закрытия) — заводить здесь же, портом tweb :113/:149/:443.
+//
+// Раунд правок 1 (после отчёта задачи 2): `middlewareHelper` (tweb :109, :148,
+// :423) — ПОРТИРОВАН, вопреки первоначальному решению «нет потребителя»
+// (см. предыдущую версию этого докблока в истории коммитов). Решение было
+// опровергнуто фактом, не рассуждением: `ConfirmPopup.tsx`/`MutePopup.tsx`
+// реально показывают аватар пира в подтверждении — значит `PopupPeer.peerId`
+// (tweb `peer.ts:44-55`) НЕ псевдо-опция без потребителя, а видимая
+// пользователю функция. `avatarNew` (`components/avatar.ts`) требует
+// `middleware: Middleware` для отписки узла от зеркала пиров
+// (`options.middleware.onClean(() => live.delete(this))`) — без него аватар
+// в закрытом попапе навсегда остаётся в модульном `Set` живых узлов и
+// перерисовывается на каждое чужое движение зеркала: тот же класс утечки,
+// что уже ловили в ленте («лента умирает на каждой смене чата, а слушатели
+// переживают её», `web-client/CLAUDE.md` → «Владение фактами»). Здесь
+// портирован ТОЛЬКО `middlewareHelper` (без `lateMiddlewareHelper` — см.
+// пункт выше), гасится синхронно в `destroy()`, тем же местом, что
+// `listenerSetter.removeAll()` (tweb :422-423, соседние строки).
 //
 // Esc и Back — НЕ через `appNavigationController` оригинала (единый LIFO-стек
 // tweb :336-354, `pushItem`/`backByItem`/`removeItem`), а через два наших
@@ -69,6 +84,7 @@ import indexOfAndSplice from '@helpers/array/indexOfAndSplice'
 import { pushEsc } from '@core/hotkeys'
 import { pushLayer, removeLayer, type Layer } from '@core/navigation/navigationStack'
 import { mountSolid } from '@shared/solid/mountSolid.solid'
+import { getMiddleware, type MiddlewareHelper } from '@helpers/middleware'
 
 /** tweb :26-37, упрощено: `text` всегда готовая строка (без LangPackKey/i18n —
  *  переводом владеет вызывающий, как и `title` в `PopupOptions` ниже), без
@@ -114,6 +130,10 @@ export default class PopupElement<E extends EventListenerListeners = {}> extends
   protected destroyed = false // tweb :114
   protected shown = false // tweb :115
 
+  // tweb :109 — раунд правок 1: без `lateMiddlewareHelper` (tweb :113), см.
+  // докблок файла. Потребитель — аватар `PopupPeer` (`peer.ts:44-55`).
+  protected middlewareHelper: MiddlewareHelper
+
   // Наш аналог `navigationItem` (tweb :94) — расщеплён на два примитива вместо
   // одного элемента общего Esc/Back-стека, см. докблок файла.
   private unregisterEsc?: () => void
@@ -121,6 +141,8 @@ export default class PopupElement<E extends EventListenerListeners = {}> extends
 
   constructor(className: string, options: PopupOptions = {}) {
     super(false) // tweb :120
+
+    this.middlewareHelper = getMiddleware() // tweb :148
 
     this.element.className = 'popup' + (className ? ' ' + className : '') // tweb :121-122
     this.container.classList.add('popup-container', 'z-depth-1') // tweb :123
@@ -288,6 +310,7 @@ export default class PopupElement<E extends EventListenerListeners = {}> extends
     this.element.classList.add('hiding') // tweb :420
     this.element.classList.remove('active') // tweb :421
     this.listenerSetter.removeAll() // tweb :422
+    this.middlewareHelper.destroy() // tweb :423 — раунд правок 1, см. докблок файла
 
     // Наш аналог tweb :430 (`appNavigationController.removeItem`) — снимаем
     // оба раздельных механизма Esc/Back, см. докблок файла.
