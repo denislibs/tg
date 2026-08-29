@@ -65,7 +65,7 @@ func TestAuthRepo_UserAndDeviceAndToken(t *testing.T) {
 		t.Fatalf("ByPhone unknown = %v, want ErrNotFound", err)
 	}
 
-	_, err = repo.Create(ctx, u1.ID, "web", "browser", "hash-abc", "", "")
+	_, err = repo.Create(ctx, domain.Device{UserID: u1.ID, Name: "web", Platform: "browser", TokenHash: "hash-abc"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -161,8 +161,8 @@ func TestAuthRepo_SessionListDelete(t *testing.T) {
 	ctx := context.Background()
 
 	u, _ := repo.CreateWithName(ctx, "+790", "Сессии", "")
-	d1, _ := repo.Create(ctx, u.ID, "web", "browser", "hash-1", "1.2.3.4", "Almaty, Kazakhstan")
-	_, _ = repo.Create(ctx, u.ID, "phone", "ios", "hash-2", "", "")
+	d1, _ := repo.Create(ctx, domain.Device{UserID: u.ID, Name: "Chrome", Platform: "browser", SystemVersion: "macOS", AppVersion: "0.1.0 (1)", TokenHash: "hash-1", IP: "1.2.3.4", Location: "Almaty, Kazakhstan"})
+	_, _ = repo.Create(ctx, domain.Device{UserID: u.ID, Name: "phone", Platform: "ios", TokenHash: "hash-2"})
 
 	// SessionByTokenHash resolves user + device.
 	gotUser, gotDevice, err := repo.SessionByTokenHash(ctx, "hash-1")

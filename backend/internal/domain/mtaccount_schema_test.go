@@ -17,11 +17,10 @@ func accountCases() []struct {
 		name  string
 		value any
 	}{
-		{"сессия устройства", NewAuthorization(7, "Chrome", "web", "1.2.3.4", "Москва",
-			time.Time{}, time.Unix(1787334148, 0), true)},
-		{"чужая сессия", NewAuthorization(8, "Safari", "ios", "", "", time.Time{}, time.Unix(1, 0), false)},
+		{"сессия устройства", NewAuthorization(currentDevice(), true)},
+		{"чужая сессия", NewAuthorization(otherDevice(), false)},
 		{"список сессий", NewAccountAuthorizations([]Authorization{
-			NewAuthorization(7, "Chrome", "web", "", "", time.Time{}, time.Unix(1, 0), true)})},
+			NewAuthorization(currentDevice(), true)})},
 		{"строка книги", NewContact(9, false)},
 		{"адресная книга", NewContactsContacts(
 			[]Contact{NewContact(9, false)},
@@ -54,18 +53,89 @@ func TestAccount_MatchesSchema(t *testing.T) {
 	}
 }
 
+// currentDevice/otherDevice — две строки устройств, какими их отдаёт хранилище:
+// браузер, ОС и версия сборки лежат РАЗДЕЛЬНО, дата входа есть у обеих.
+func currentDevice() Device {
+	return Device{
+		ID: 7, UserID: 1, Name: "Chrome", Platform: "web",
+		SystemVersion: "macOS", AppVersion: "0.1.0 (1)",
+		CreatedAt: time.Unix(1787330000, 0), LastActive: time.Unix(1787334148, 0),
+		IP: "1.2.3.4", Location: "Москва",
+	}
+}
+
+func otherDevice() Device {
+	return Device{
+		ID: 8, UserID: 1, Name: "Safari", Platform: "ios",
+		SystemVersion: "iOS", AppVersion: "0.1.0 (1)",
+		CreatedAt: time.Unix(1, 0), LastActive: time.Unix(2, 0),
+	}
+}
+
 // «Текущая сессия» — ФЛАГ: его ОТСУТСТВИЕ и есть «не текущая». Прежде ехало
 // булево поле `current: false`, то есть «выключено» имело значение.
+//
+// Но САМ под-объект pFlags едет всегда, даже пустым: так его строит
+// десериализатор оригинала (`result.pFlags ??= {}`, tweb tl_utils.ts:754), и
+// потому клиент читает `auth.pFlags.current` без страховки. Пропуск ключа ронял
+// вкладку «Устройства» на TypeError у первой же чужой сессии.
 func TestAccount_CurrentSessionIsAFlag(t *testing.T) {
-	other, ok := roundTripJSON(t, NewAuthorization(8, "Safari", "ios", "", "", time.Time{}, time.Unix(1, 0), false)).(map[string]any)
+	other, ok := roundTripJSON(t, NewAuthorization(otherDevice(), false)).(map[string]any)
 	if !ok {
 		t.Fatal("сессия не разобралась в объект")
 	}
-	if _, has := other["pFlags"]; has {
-		t.Errorf("не-текущая сессия несёт pFlags: %v", other["pFlags"])
+	flags, has := other["pFlags"].(map[string]any)
+	if !has {
+		t.Fatalf("у не-текущей сессии нет под-объекта pFlags: %v", other)
+	}
+	if len(flags) != 0 {
+		t.Errorf("не-текущая сессия несёт флаги: %v", flags)
 	}
 	if _, has := other["current"]; has {
 		t.Error("булево поле current осталось рядом с конструктором")
+	}
+
+	cur, _ := roundTripJSON(t, NewAuthorization(currentDevice(), true)).(map[string]any)
+	if flags, _ := cur["pFlags"].(map[string]any); flags["current"] != true {
+		t.Errorf("текущая сессия без флага current: %v", cur["pFlags"])
+	}
+}
+
+// Адрес ТЕКУЩЕЙ сессии — ноль. Это семантика схемы: `hash` — то, чем сессию
+// отзывают, а свою авторизацию по hash отозвать нельзя, для неё есть выход из
+// аккаунта. Вкладка «Устройства» на этом и стоит: единственная строка, которую
+// она не даёт завершить кликом, узнаётся по `dataset.hash === '0'`
+// (tweb activeSessions.tsx:132,157). Отдай мы туда настоящий id — пользователь
+// завершил бы собственную сессию.
+func TestAccount_CurrentSessionHashIsZero(t *testing.T) {
+	if cur := NewAuthorization(currentDevice(), true); cur.Hash != 0 {
+		t.Errorf("hash текущей сессии = %d; у текущей авторизации адреса нет", cur.Hash)
+	}
+	if other := NewAuthorization(otherDevice(), false); other.Hash != 8 {
+		t.Errorf("hash чужой сессии = %d; ожидался id устройства 8", other.Hash)
+	}
+}
+
+// Реквизиты клиента: строка списка устройств собирается из них целиком —
+// заголовок это `app_name + app_version`, вторая строка `device_model,
+// system_version`, справа `max(date_active, date_created)`. Пустые они рисовали
+// пользователю строку без названия и 1970 год.
+func TestAccount_ClientIdentityIsProduced(t *testing.T) {
+	a := NewAuthorization(currentDevice(), true)
+	if a.AppName != AppName || a.AppName == "" {
+		t.Errorf("app_name = %q; имя клиенту даёт сервер", a.AppName)
+	}
+	if a.AppVersion != "0.1.0 (1)" {
+		t.Errorf("app_version = %q; ожидалась версия сборки, сообщённая при входе", a.AppVersion)
+	}
+	if a.SystemVersion != "macOS" {
+		t.Errorf("system_version = %q; ожидалась ОС, разобранная из User-Agent", a.SystemVersion)
+	}
+	if a.DeviceModel != "Chrome" {
+		t.Errorf("device_model = %q; ожидался браузер БЕЗ склейки с ОС", a.DeviceModel)
+	}
+	if a.DateCreated != 1787330000 {
+		t.Errorf("date_created = %d; ожидался момент входа, а не ноль (1970 год на экране)", a.DateCreated)
 	}
 }
 

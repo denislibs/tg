@@ -18,9 +18,37 @@ import (
 
 // clientInfoFromRequest extracts the signing-in device's browser/OS (from the
 // User-Agent) and IP (X-Forwarded-For when behind a proxy) for the login alert.
+//
+// Версия сборки клиента приезжает ЗАГОЛОВКОМ: у оригинала клиент называет себя
+// в `initConnection` — преамбуле соединения, а не в теле каждого запроса, и
+// заголовок это её прямой аналог. Так реквизит попадает во ВСЕ пути входа
+// (код, пароль, восстановление, веб-токен, ключ доступа) одним местом, а не
+// шестью полями в шести телах.
+//
+// Не доверяем ему ничего, кроме показа: строка попадает только в витрину
+// сессий владельца. Длину режем — иначе клиент положил бы в колонку роман.
 func clientInfoFromRequest(r *http.Request) usecaseauth.ClientInfo {
 	browser, os := parseUserAgent(r.UserAgent())
-	return usecaseauth.ClientInfo{Browser: browser, OS: os, IP: clientIP(r)}
+	return usecaseauth.ClientInfo{
+		Browser:    browser,
+		OS:         os,
+		IP:         clientIP(r),
+		AppVersion: clientAppVersion(r),
+	}
+}
+
+// appVersionHeader — заголовок, которым клиент называет свою версию сборки.
+const appVersionHeader = "X-App-Version"
+
+// maxAppVersionLen — потолок длины версии сборки; у клиента она вида «0.1.0 (7)».
+const maxAppVersionLen = 32
+
+func clientAppVersion(r *http.Request) string {
+	v := strings.TrimSpace(r.Header.Get(appVersionHeader))
+	if len(v) > maxAppVersionLen {
+		v = v[:maxAppVersionLen]
+	}
+	return v
 }
 
 // clientIP — реальный IP клиента за доверенным обратным прокси (nginx). Клиент

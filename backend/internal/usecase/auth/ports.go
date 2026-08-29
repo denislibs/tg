@@ -69,7 +69,7 @@ type PremiumRepo interface {
 }
 
 type DeviceRepo interface {
-	Create(ctx context.Context, userID int64, name, platform, tokenHash, ip, location string) (domain.Device, error)
+	Create(ctx context.Context, d domain.Device) (domain.Device, error)
 	SessionByTokenHash(ctx context.Context, tokenHash string) (domain.UserRecord, int64, error)
 	ListByUser(ctx context.Context, userID int64) ([]domain.Device, error)
 	Delete(ctx context.Context, userID, deviceID int64) (tokenHash string, found bool, err error)

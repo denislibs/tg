@@ -212,10 +212,15 @@ func newFakeDeviceRepo(users *fakeUserRepo) *fakeDeviceRepo {
 	return &fakeDeviceRepo{byHash: map[string]domain.Device{}, byID: map[int64]domain.Device{}, users: users, nextID: 1}
 }
 
-func (r *fakeDeviceRepo) Create(_ context.Context, userID int64, name, platform, tokenHash, ip, location string) (domain.Device, error) {
-	d := domain.Device{ID: r.nextID, UserID: userID, Name: name, Platform: platform, TokenHash: tokenHash, LastActive: time.Now(), IP: ip, Location: location}
+func (r *fakeDeviceRepo) Create(_ context.Context, in domain.Device) (domain.Device, error) {
+	d := in
+	d.ID = r.nextID
+	// Обе даты ставит хранилище (DEFAULT now()), а не вызывающий: фейк повторяет
+	// это, иначе тесты витрины сессий видели бы нулевые даты там, где их нет.
+	d.CreatedAt = time.Now()
+	d.LastActive = time.Now()
 	r.nextID++
-	r.byHash[tokenHash] = d
+	r.byHash[d.TokenHash] = d
 	r.byID[d.ID] = d
 	return d, nil
 }
