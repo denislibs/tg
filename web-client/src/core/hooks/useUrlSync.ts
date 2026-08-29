@@ -15,7 +15,7 @@ import { useManagers } from './useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useNavigationStore } from '../../stores/navigationStore'
 import { useChatStackStore, selectOpenThreadDesc } from '../../stores/chatStackStore'
-import { setBaseHandler } from '../navigation/navigationStack'
+import { setBaseHandler, pushHashState } from '../navigation/navigationStack'
 import { parseNavHash, requestMessageJump } from '../messageLink'
 import { getPeerPhotoId, peerKey } from '../peers/peer'
 import { cachedChat } from '../peerCache'
@@ -126,6 +126,10 @@ export function useUrlSync(): void {
     const cur = location.hash.replace(/^#/, '')
     if (want === cur) return
     const url = want ? `#${want}` : location.pathname + location.search
-    history.pushState(null, '', url)
+    // Через navigationStack, а не напрямую: пуш чата обязан вставать в ту же
+    // очередь, что pushLayer/removeLayer — иначе он может обогнать (или быть
+    // переписан) ещё не подтверждённым history.back() закрывающегося оверлея
+    // (см. докблок navigationStack.ts, «СЕРИАЛИЗАЦИЯ»).
+    pushHashState(url)
   }, [selectedId, openThread])
 }
