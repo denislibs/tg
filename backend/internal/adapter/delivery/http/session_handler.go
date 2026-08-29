@@ -27,7 +27,9 @@ func NewSessionHandler(svc *usecaseauth.Interactor) *SessionHandler { return &Se
 //     есть в снос ВСЕХ сессий пользователя вместе с той, из которой нажали
 //     кнопку.
 //
-// Поэтому проверка одна на все четыре ручки, а не по вкусу в каждой.
+// Поэтому проверка одна на все четыре ручки, а не по вкусу в каждой. Пятая
+// ручка с тем же входом — `push_handler.go::Subscribe` — сюда пока не сведена
+// (#111).
 func currentDeviceID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	id, ok := DeviceIDFromContext(r.Context())
 	if !ok || id == 0 {
@@ -67,6 +69,8 @@ func (h *SessionHandler) List(w http.ResponseWriter, r *http.Request) {
 // данные для него есть (`devices.created_at` читается), поэтому завести его
 // можно не трогая форму ответа. Пока не заведено — ветка вкладки
 // «Устройства», показывающая эту всплывашку, в проде недостижима.
+// Задачи на это расхождение НЕТ ни одной: вынесено ведущему финальным ревью
+// волны 2, номер проставить сюда, как только он появится.
 func (h *SessionHandler) RevokeOthers(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	// «Все прочие» знает, кто текущий, из КОНТЕКСТА запроса, а не из адреса в

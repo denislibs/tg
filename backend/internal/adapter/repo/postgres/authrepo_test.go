@@ -193,6 +193,58 @@ func TestAuthRepo_SessionListDelete(t *testing.T) {
 	}
 }
 
+// Версия сборки в строке сессии: непустая перезаписывает прежнюю, пустая её НЕ
+// затирает. Вторая половина — предохранитель «клиент не назвался»
+// (`authrepo.go`, `CASE WHEN $2 <> ''`), и до этого теста её не проверял никто:
+// все вызовы `SessionByTokenHash` в тестах передавали пустую версию, поэтому
+// мутация `app_version=$2` проходила полный `go test ./...` зелёной. Отказ, от
+// которого предохранитель защищает, боевой: любой запрос без `X-App-Version`
+// (старая вкладка, curl, прокси, режущий заголовки) затирал бы версию сборки на
+// пустую строку — и экран «Устройства» показывал бы безымянный клиент.
+func TestAuthRepo_SessionAppVersionKeepsPreviousWhenClientSilent(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewAuthRepo(pool)
+	ctx := context.Background()
+
+	u, _ := repo.CreateWithName(ctx, "+791", "Версия", "")
+	d, err := repo.Create(ctx, domain.Device{UserID: u.ID, Name: "Chrome", Platform: "browser", AppVersion: "0.1.0 (1)", TokenHash: "hash-ver"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	appVersionOf := func(deviceID int64) string {
+		t.Helper()
+		devices, err := repo.ListByUser(ctx, u.ID)
+		if err != nil {
+			t.Fatalf("ListByUser: %v", err)
+		}
+		for _, dev := range devices {
+			if dev.ID == deviceID {
+				return dev.AppVersion
+			}
+		}
+		t.Fatalf("устройство %d пропало из списка", deviceID)
+		return ""
+	}
+
+	// Клиент назвался — строка сессии показывает версию, которой пользуются
+	// сейчас, а не ту, с которой когда-то вошли.
+	if _, _, err := repo.SessionByTokenHash(ctx, "hash-ver", "0.2.0 (7)"); err != nil {
+		t.Fatalf("SessionByTokenHash(назвался): %v", err)
+	}
+	if got := appVersionOf(d.ID); got != "0.2.0 (7)" {
+		t.Fatalf("после запроса с версией app_version = %q, want %q", got, "0.2.0 (7)")
+	}
+
+	// Клиент НЕ назвался — прежняя версия обязана уцелеть.
+	if _, _, err := repo.SessionByTokenHash(ctx, "hash-ver", ""); err != nil {
+		t.Fatalf("SessionByTokenHash(молчит): %v", err)
+	}
+	if got := appVersionOf(d.ID); got != "0.2.0 (7)" {
+		t.Fatalf("запрос без версии затёр app_version: %q, want %q", got, "0.2.0 (7)")
+	}
+}
+
 // Одноразовые артефакты шагов входа: живая запись читается, истёкшая — нет,
 // удаление сжигает.
 func TestAuthRepo_LoginSteps(t *testing.T) {
