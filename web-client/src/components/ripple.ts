@@ -170,7 +170,15 @@ function _ripple(
       attachListenerTo.addEventListener('touchend', touchEnd, { once: true })
 
       window.addEventListener('touchmove', (e) => {
-        e.cancelBubble = true
+        // tweb здесь пишет `e.cancelBubble = true; e.stopPropagation();` —
+        // избыточную пару из двух форм одного и того же (по спецификации DOM
+        // сеттер `cancelBubble = true` выполняет ровно `stopPropagation()`,
+        // это старый алиас). В happy-dom `cancelBubble` объявлен ТОЛЬКО
+        // геттером — присваивание бросает `TypeError`, и, в отличие от
+        // `cancelEvent.ts`, здесь нет `try/catch`: исключение обрывало бы
+        // обработчик ДО `touchEnd()`, а рипл на тач-жесте не убирался бы.
+        // Вторая форма (`stopPropagation()`) даёт то же самое поведение в
+        // браузере — просто убираем первую, а не дублируем эквивалент.
         e.stopPropagation()
         touchEnd()
         attachListenerTo.removeEventListener('touchend', touchEnd)
