@@ -1,0 +1,35 @@
+// Стили ШВА, а не порт: в tweb вкладки настроек лежат в том же
+// `.sidebar-slider`, что и список чатов (`sidebarLeft/index.ts:142` —
+// `sidebarEl: #column-left`), и своего слоя над колонкой им не нужно. У нас
+// корень настроек — React-экран поверх колонки (`SettingsView.module.scss`,
+// `position:absolute; inset:0; z-index:40`), поэтому вкладке слайдера нужен
+// СВОЙ такой же слой, но выше него. Разбор — в шапке `settingsSliderHost.ts`;
+// файл умирает вместе с `SettingsView`.
+
+.host {
+  // Тот же приём, что у всех оверлеев колонки (`ContactsView.module.scss:13`,
+  // `SettingsView.module.scss:7`): абсолют по полю `#main-columns` с обрезкой
+  // по `#column-left { overflow: hidden }`. Своей геометрии не заводим —
+  // слой обязан лечь ровно там же, где лежит перекрываемый React-экран.
+  position: absolute;
+  inset: 0;
+  // Над экранами настроек (40 — корень, 50/60/70 — под-экраны `SettingsScreen`)
+  // и под полноэкранными оверлеями колонки (истории — 3000+).
+  z-index: 100;
+  // Пока вкладок нет, слой прозрачен и для кликов: под ним живой React-экран.
+  // Признак «вкладки есть» ставит хост по `onTabsCountChange` — тем же хуком,
+  // которым `settingsSliderPopup.ts:43-46` гасит попап на последней вкладке.
+  pointer-events: none;
+
+  &.withTabs {
+    pointer-events: auto;
+  }
+
+  // Вкладка обязана быть непрозрачной: под ней остаётся живой React-экран
+  // настроек (в tweb под вкладкой — соседняя вкладка того же слайдера, а фон
+  // красит сама колонка). Заглушка-корень класса `sidebar-slider-item` не
+  // несёт и остаётся прозрачной — сквозь неё и виден React-экран.
+  :global(.sidebar-slider-item) {
+    background: var(--surface-color);
+  }
+}

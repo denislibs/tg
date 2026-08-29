@@ -16,6 +16,8 @@ import ConfirmDialog from './ConfirmDialog'
 import { useSettingsStore } from '../../settings'
 import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
+import { openActiveSessionsTab } from '../sidebarLeft/settingsSliderHost'
+import { toastNew } from '../toast'
 import { usePrivacyStore } from '../../stores/privacyStore'
 import type { PrivacyRule as Rule } from '../../core/managers/privacyManager'
 
@@ -135,18 +137,17 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
           label="Passkeys"
           onClick={() => (passkeysCount > 0 ? setSub('Passkeys') : setPasskeyIntro(true))}
         />
-        {/* «Активные сессии» уехали на слайдер вкладок
-            (`sidebarLeft/tabs/activeSessions.solid.tsx`); в колонку вкладку
-            заводит задача 8. До неё клик обязан НИЧЕГО не делать: `setSub`
-            с именем, которого нет в `renderSub`, навсегда взвёл бы `sub` —
-            под-экран не показался бы, а гейт эффекта выше (`if (sub !== null)
-            return`) заморозил бы сабтайтлы On/Off и счётчик ключей, и
-            вернуться в `sub === null` было бы нечем. Тот же приём, что в
-            `SettingsView.tsx:163` (`if (hasSubScreen(...)) setSub(...)`). */}
+        {/* «Активные сессии» — та же портированная вкладка слайдера, что и
+            «Устройства» в корне настроек (`sidebarLeft/tabs/activeSessions.solid.tsx`),
+            и открывается тем же способом. `setSub` здесь не при чём: вкладка
+            не React-подэкран, состояние этого экрана она не трогает. Второй
+            вход в те же сессии есть и в оригинале — `newAuthorization.tsx:116`. */}
         <Row
           icon={<TgIcon name="activesessions" size={24} />}
           label="Active Sessions"
-          onClick={() => {}}
+          onClick={() => {
+            openActiveSessionsTab(managers).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
+          }}
         />
       </Section>
 

@@ -33,6 +33,9 @@ export const en: Dict = {
   AreYouSureSessions: 'Are you sure you want to terminate all other sessions?',
   SessionsListInfo: 'The official Telegram app is available for Android, iPhone, iPad, Windows, macOS and Linux.',
   'RecentSessions.Error.FreshReset': 'For security reasons, you can\'t terminate older sessions from a device that you\'ve just connected. Please use an earlier connection or wait for a few hours.',
+  // Отказ на пути «открыть вкладку»: список сессий не приехал (tweb lang.ts:3694,
+  // всплывашка `newAuthorization.tsx:126`).
+  'Error.AnError': 'An error occurred. Please try again later.',
 }
 
 // The other languages are heavy (~40 kB each) and split into per-language chunks,

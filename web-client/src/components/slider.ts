@@ -13,8 +13,12 @@
  * `removeLayer` + очередь мутаций истории) и `core/hotkeys.pushEsc`.
  *
  * Отображение один-в-один:
- *  • `pushItem(navigationItem)`      → `pushLayer(onPop)`, хэндл кладётся в
- *                                      `this.navigationItems` (:112);
+ *  • `pushItem(navigationItem)`      → `pushLayer(onPop)` + `pushEsc` (у
+ *                                      оригинала обе кнопки, Back и Escape,
+ *                                      обслуживает ОДИН контроллер —
+ *                                      `appNavigationController.ts:216-219`;
+ *                                      у нас механизма два), оба хэндла
+ *                                      кладутся в `this.navigationItems` (:112);
  *  • `findItemByType(type)`          → верхний элемент `this.navigationItems`
  *                                      (:62, :275);
  *  • `back(type)`                    → прямой вызов `item.onPop()` (:64), внутри
@@ -94,6 +98,7 @@ import safeAssign from '@helpers/object/safeAssign'
 import { getMiddleware, type MiddlewareHelper } from '@helpers/middleware'
 import { createNavigationTransition, NAVIGATION_TRANSITION_TIME } from '@core/dom/navigationTransition'
 import { pushLayer, removeLayer, type Layer } from '@core/navigation/navigationStack'
+import { pushEsc } from '@core/hotkeys'
 import type { Managers } from '../client/bootstrap'
 
 export { SliderSuperTab }
@@ -115,9 +120,20 @@ export type SidebarSliderOptions = {
  * Наш аналог `NavigationItem` (`appNavigationController.ts`): слой в общем
  * стеке + процедура его снятия. `onPop` возвращает `false` — вето, ровно как у
  * оригинала (`slider.ts:101`).
+ *
+ * `removeEsc` — вторая половина ОДНОЙ записи оригинала. В tweb Escape и Back
+ * обслуживает один и тот же контроллер: `onKeyDown` (`appNavigationController
+ * .ts:216-219`) на `Escape` берёт ВЕРХНЮЮ запись и закрывает её тем же путём,
+ * что и popstate. У нас механизма два (`core/navigation/navigationStack` для
+ * Back, `core/hotkeys.pushEsc` для Esc), поэтому запись держит по хэндлу от
+ * каждого — так же, как это уже сделано в `components/chat/selection.ts:50-51`
+ * и `components/mediaViewer/openMediaViewer.ts:14-15`. Снимаются оба хэндла
+ * ВСЕГДА вместе (`dropNavigationItem`): осиротевший Esc-обработчик съедал бы
+ * нажатие пользователя в пользу давно закрытой вкладки.
  */
 type SliderNavigationItem = {
   layer: Layer,
+  removeEsc: () => void,
   onPop: () => boolean
 }
 
@@ -214,9 +230,11 @@ export default class SidebarSlider {
    */
   protected pushNavigationItem(tab: SliderSuperTab | undefined) {
     const item: SliderNavigationItem = {
-      // Заполняется сразу после `pushLayer` — замыкание ниже читает `item.layer`
-      // только когда слой уже снимают, то есть всегда позже присваивания.
+      // Оба хэндла заполняются сразу после создания записи — замыкание ниже
+      // читает их только когда запись уже снимают, то есть всегда позже
+      // присваивания.
       layer: undefined as unknown as Layer,
+      removeEsc: undefined as unknown as () => void,
       onPop: () => {
         if(tab?.isConfirmationNeededOnClose) {
           const result = tab.isConfirmationNeededOnClose()
@@ -224,8 +242,7 @@ export default class SidebarSlider {
             Promise.resolve(result).then(() => {
               // tweb :95-98 — сначала снять запись навигации, потом закрыть
               // вкладку как «навигационную» (без повторного снятия слоя).
-              removeLayer(item.layer)
-              indexOfAndSplice(this.navigationItems, item)
+              this.dropNavigationItem(item)
               this.onTabsCountChange?.()
 
               this.closeTab(undefined, undefined, true)
@@ -235,8 +252,7 @@ export default class SidebarSlider {
           }
         }
 
-        removeLayer(item.layer)
-        indexOfAndSplice(this.navigationItems, item)
+        this.dropNavigationItem(item)
         this.closeTab(undefined, undefined, true)
         this.onTabsCountChange?.()
         return true
@@ -244,8 +260,20 @@ export default class SidebarSlider {
     }
 
     item.layer = pushLayer(item.onPop)
+    // Esc — тот же вход в ту же запись, что и Back (см. `SliderNavigationItem`).
+    // Стек Esc'ов LIFO, поэтому попап, открытый ПОВЕРХ вкладки, забирает
+    // нажатие себе и вкладку не закрывает — как и в оригинале, где верхней
+    // записью навигации в этот момент лежит попап.
+    item.removeEsc = pushEsc(() => { item.onPop() })
     this.navigationItems.push(item)
     this.onTabsCountChange?.()
+  }
+
+  /** Снять запись навигации целиком — обе её половины разом. */
+  protected dropNavigationItem(item: SliderNavigationItem) {
+    removeLayer(item.layer)
+    item.removeEsc()
+    indexOfAndSplice(this.navigationItems, item)
   }
 
   public async selectTab(id: number | SliderSuperTab) {
@@ -352,7 +380,10 @@ export default class SidebarSlider {
       // tweb :220 — `removeByType(this.navigationType, true)`: снять РОВНО одну
       // (верхнюю) свою запись навигации.
       const item = this.navigationItems.pop()
-      if(item) removeLayer(item.layer)
+      if(item) {
+        removeLayer(item.layer)
+        item.removeEsc()
+      }
       this.onTabsCountChange?.()
     }
 

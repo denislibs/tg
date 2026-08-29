@@ -1,7 +1,7 @@
 // Порт tweb `components/popups/index.ts` — база `PopupElement`. Объём этой
 // волны (задача 1 плана solid-wave-1): конструктор и дерево (:81-90), setButtons
 // (:247-320), show (:330-389), hide (:391-402), forceHide (:409-411), destroy
-// (:413-449), appendSolid/appendSolidBody (:451-462), createPopup (:478-481).
+// (:413-449), createPopup (:478-481).
 // Конкретные попапы (потомки) — отдельные задачи того же плана.
 //
 // НЕ портировано в этой волне (у каждого пункта — «нет потребителя в волне 1»,
@@ -19,9 +19,15 @@
 //     попапов по конструктору; `appendPopupTo()` здесь тоже упрощён до
 //     `document.body` (без fullscreen/Document PiP резолва).
 //   • `options.scrollable`/`floatingHeader` + `Scrollable` внутри тела
-//     (tweb :49, :52, :105, :212-227, :322-328) — ни один попап волны 1 не
-//     скроллит длинный список; `appendSolid` ниже использует просто `this.body`
-//     вместо `(this.scrollable || this.body)`.
+//     (tweb :49, :52, :105, :212-227, :322-328) — ни один попап не скроллит
+//     длинный список.
+//   • `appendSolid`/`appendSolidBody` (tweb :451-462) — мост Solid внутрь тела
+//     попапа. Были портированы волной 1 и СНЯТЫ волной 2 (задача 8): потребителя
+//     им не дала ни та, ни другая — Solid-содержимое вкладок монтирует
+//     `scaffoldSolidJSTab` через тот же `mountSolid` напрямую
+//     (`components/solidJsTabs/scaffoldSolidJSTab.solid.tsx`), а ни один попап
+//     обеих волн Solid не рисует. Вернутся вместе с первым богатым попапом —
+//     порт занимает шесть строк поверх `mountSolid`.
 //   • `options.confirmShortcutIsSendShortcut` (tweb :47, :98, :153, :382) —
 //     выбор между Ctrl+Enter/обычным Enter для подтверждения по клавише;
 //     условие в `show()` ниже всегда `e.key === 'Enter'`.
@@ -83,7 +89,6 @@ import cancelEvent from '@helpers/dom/cancelEvent'
 import indexOfAndSplice from '@helpers/array/indexOfAndSplice'
 import { pushEsc } from '@core/hotkeys'
 import { pushLayer, removeLayer, type Layer } from '@core/navigation/navigationStack'
-import { mountSolid } from '@shared/solid/mountSolid.solid'
 import { getMiddleware, type MiddlewareHelper } from '@helpers/middleware'
 
 /** tweb :26-37, упрощено: `text` всегда готовая строка (без LangPackKey/i18n —
@@ -353,35 +358,6 @@ export default class PopupElement<E extends EventListenerListeners = {}> extends
     }, 250) // tweb :448 — то же захардкоженное число, что в оригинале; с CSS-переменной
     // (`--popup-transition-time`, `styles/_tokens.scss:58` = .15s/150мс) НЕ связано —
     // у tweb это тоже независимый магический литерал, а не производная от CSS
-  }
-
-  /**
-   * tweb :451-456. Использует мост `mountSolid` (волна 0,
-   * `shared/solid/mountSolid.solid.tsx`) вместо голого `solid-js/web` `render`
-   * — мост уже даёт `ErrorBoundary` (см. его докблок). `(this.scrollable ||
-   * this.body)` оригинала упрощён до `this.body` — scrollable не портирован
-   * в этой волне (см. докблок файла).
-   *
-   * У метода в ЭТОЙ волне НЕТ потребителя (первый — конкретный Solid-попап
-   * волны 2 того же плана): так было и в оригинале — appendSolid жил в базе
-   * раньше первого Solid-попапа. Это часть базы, а не мёртвый код.
-   */
-  protected appendSolid(cb: () => unknown): void {
-    const div = document.createElement('div')
-    this.body?.prepend(div)
-    const dispose = mountSolid(div, cb as Parameters<typeof mountSolid<Record<string, never>>>[1], {})
-    this.addEventListener('closeAfterTimeout', dispose as any) // tweb :455, тот же `as any` — E-параметр класса не даёт TS сузить сигнатуру
-  }
-
-  /** tweb :458-462, тот же мост, что и `appendSolid` выше; потребителя в
-   *  этой волне тоже нет — см. докблок `appendSolid`. */
-  protected appendSolidBody(cb: () => unknown): void {
-    if(!this.body) {
-      return
-    }
-
-    const dispose = mountSolid(this.body, cb as Parameters<typeof mountSolid<Record<string, never>>>[1], {})
-    this.addEventListener('closeAfterTimeout', dispose as any) // tweb :460, см. коммент у appendSolid выше
   }
 
   public static createPopup<T, A extends any[]>(ctor: new (...args: A) => T, ...args: A): T {
