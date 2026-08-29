@@ -29,6 +29,23 @@
 //     (tweb :41, :46, :53, :161-177, :229-237, :424) — их нет и в `PopupOptions`
 //     этой волны: ни один попап волны 1 не показывает кнопку «назад» в шапке,
 //     прибитый футер или подсказку разметки композера.
+//   • вызов `onFullScreenChange()` из `destroy()` (tweb :436, «! calm») —
+//     отдельно от общего пункта про `reAppend()`/`getPopups()` выше: он лишь
+//     заново раскладывает уже открытые попапы по актуальному `appendPopupTo()`
+//     после закрытия одного из них (сценарий fullscreen/Document PiP),
+//     которого у нас нет.
+//   • `middlewareHelper`/`lateMiddlewareHelper` (tweb :109-113, :148-149, :423,
+//     :443) — механизм отмены устаревших асинхронных результатов
+//     (`@helpers/middleware`, у нас уже есть, вендорен 1:1 — см.
+//     `web-client/CLAUDE.md` → «Асинхронщина и актуальность»). НЕ портирован
+//     осознанно, а не по недосмотру: `PopupButton.callback` этой волны
+//     синхронный (`() => void`, без промиса — см. докблок `PopupButton` ниже),
+//     ни один попап волны 1 не переживает async-результат дольше своего
+//     `destroy()`. Это ДОЛГ, а не постоянное решение: правило проекта требует
+//     `@helpers/middleware` для ЛЮБОГО асинхронного результата, переживающего
+//     свой контекст, без исключений — первый попап волны 2+ с реальной
+//     асинхронщиной (подтверждение с сетевым вызовом, загрузка) ОБЯЗАН завести
+//     `middlewareHelper`/`lateMiddlewareHelper` здесь же, а не только у себя.
 //
 // Esc и Back — НЕ через `appNavigationController` оригинала (единый LIFO-стек
 // tweb :336-354, `pushItem`/`backByItem`/`removeItem`), а через два наших
@@ -294,7 +311,9 @@ export default class PopupElement<E extends EventListenerListeners = {}> extends
       if(this.shown) { // tweb :445-447
         animationIntersector.checkAnimations2(false)
       }
-    }, 250) // tweb :448 — то же магическое число, что --popup-transition-time (styles/tweb/popups/_popupVariables.scss)
+    }, 250) // tweb :448 — то же захардкоженное число, что в оригинале; с CSS-переменной
+    // (`--popup-transition-time`, `styles/_tokens.scss:58` = .15s/150мс) НЕ связано —
+    // у tweb это тоже независимый магический литерал, а не производная от CSS
   }
 
   /**
