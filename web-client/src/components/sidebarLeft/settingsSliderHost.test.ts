@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Authorization } from '@layer'
 import type { Managers } from '@/client/bootstrap'
 import { initHotkeys } from '@core/hotkeys'
+import { setBaseHandler } from '@core/navigation/navigationStack'
 import { AppActiveSessionsTab } from '@components/solidJsTabs/tabs'
 import s from './settingsSliderHost.module.scss'
 import {
@@ -145,6 +146,44 @@ describe('settingsSliderHost — заведение слайдера в леву
     expect(middleware()).toBe(false)
     // И сам слой хоста ушёл из колонки: клики снова достаются React-экрану.
     expect(columnEl.children).toHaveLength(0)
+  })
+
+  it('вкладка, уходившая за своим чанком, не переживает свой экран', async() => {
+    // Боевой дефект финального ревью волны 2: `closeAllTabs()` ходит по
+    // `historyTabIds`, а вкладка попадает туда только в `selectTab`, то есть
+    // ПОСЛЕ `await init()`. Между `createTab` и `selectTab` лежат динамический
+    // импорт чанка вкладки и ожидание данных — уйти успевают. Сценарий:
+    // настройки → «Устройства» → Back до того, как доехал чанк.
+    const escFallback = vi.fn()
+    const deactivate = initHotkeys({ escFallback })
+    const { managers } = makeManagers()
+    const host = createHost(managers)
+
+    // Ждать НЕЛЬЗЯ: весь смысл в том, что экран уходит ВНУТРИ этого промиса.
+    const opening = host.openTab(AppActiveSessionsTab, { authorizations: [current, other] })
+    host.destroy()
+
+    const tab = await opening
+    await settle()
+
+    // Solid-остров разобран: `onCleanup` снял меню, положенное в `document.body`.
+    expect(tabMenu()).toBeNull()
+    expect(tab.container.parentElement).toBeNull()
+    expect(columnEl.children).toHaveLength(0)
+
+    // Esc не съеден осиротевшим обработчиком мёртвой вкладки.
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+    await pause(20)
+    expect(escFallback).toHaveBeenCalledTimes(1)
+
+    // И Back тоже: записи истории у ненайденной вкладки быть не должно, иначе
+    // первое нажатие «назад» ПОСЛЕ выхода из настроек уходит в никуда.
+    let backsToApp = 0
+    setBaseHandler(() => { ++backsToApp })
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    expect(backsToApp).toBe(1)
+
+    deactivate()
   })
 
   it('destroy отпускает Esc: следующее нажатие достаётся приложению, а не мёртвой вкладке', async() => {
