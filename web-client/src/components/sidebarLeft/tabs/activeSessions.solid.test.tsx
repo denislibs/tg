@@ -7,10 +7,10 @@
  * (`tab.managers`), то есть граница с воркером.
  *
  * Данные — конструкторы `authorization` ТАКИМИ, какими их шлёт наш бэкенд
- * (`internal/domain/mtaccount.go`): даты в СЕКУНДАХ эпохи, а у сессии без
- * взведённых флагов поля `pFlags` в JSON НЕТ ВОВСЕ (Go `omitempty`). Второе —
- * не придирка: без `?.` во вкладке первая же такая сессия роняет `findAndSplice`
- * на `TypeError`, поэтому «прочая» сессия здесь намеренно собрана без `pFlags`.
+ * (`internal/domain/mtaccount.go`): даты в СЕКУНДАХ эпохи, `pFlags` объектом у
+ * КАЖДОЙ строки (у не-текущей — пустым), а адрес текущей сессии — НОЛЬ: её не
+ * отзывают по hash, из неё выходят. По этому нулю вкладка и узнаёт свою
+ * строку — единственную, которую нельзя завершить.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Authorization } from '@layer'
@@ -41,9 +41,10 @@ const baseAuth = {
   region: '',
 } as Omit<Auth, 'pFlags' | 'hash'>
 
-const current = { ...baseAuth, hash: 1, pFlags: { current: true } } as Auth
-// `pFlags` НЕТ — ровно так приезжает не-текущая сессия с нашего бэкенда.
-const other = { ...baseAuth, hash: 2, app_name: 'Telegram Android', app_version: '11.2' } as Auth
+// Адрес текущей сессии — ноль (см. докблок): отозвать её по hash нельзя.
+const current = { ...baseAuth, hash: 0, pFlags: { current: true } } as Auth
+// Под-объект флагов есть и у не-текущей строки, просто пустой.
+const other = { ...baseAuth, hash: 2, pFlags: {}, app_name: 'Telegram Android', app_version: '11.2' } as Auth
 
 function makeManagers() {
   const terminate = vi.fn<(id: number) => Promise<boolean>>(async() => true)
@@ -112,24 +113,24 @@ describe('вкладка «Устройства» — порт tweb sidebarLeft/
     expect(sections[1].querySelector('.row-title-right')!.textContent).not.toBe('')
   })
 
-  it('текущую сессию находит по флагу, а не по месту в списке, и не спотыкается об отсутствующий pFlags', async() => {
+  it('текущую сессию находит по флагу, а не по месту в списке', async() => {
     const { managers } = makeManagers()
-    // Порядок обратный: `findAndSplice` дойдёт до текущей ЧЕРЕЗ сессию без
-    // `pFlags` — тот самый случай, который наш провод создаёт, а MTProto нет.
+    // Порядок обратный: `findAndSplice` дойдёт до текущей ЧЕРЕЗ чужую строку с
+    // пустым `pFlags`. Именно так её и отдаёт провод — под-объект есть всегда.
     const tab = await openTab([other, current], managers)
 
     const sections = tab.scrollable.container.querySelectorAll('.sidebar-left-section')
-    expect(sections[0].querySelector('.row')!.getAttribute('data-hash')).toBe('1')
+    expect(sections[0].querySelector('.row')!.getAttribute('data-hash')).toBe('0')
     expect(sections[1].querySelectorAll('.row[data-hash]')).toHaveLength(1)
   })
 
-  it('пустые поля провода не рисуют мусорных разделителей, платформа заменяет версию системы', async() => {
+  it('пустые поля не рисуют мусорных разделителей, платформа заменяет версию системы', async() => {
     const { managers } = makeManagers()
-    // Наш бэкенд не заполняет `system_version` (и `app_name`/`app_version`), а
-    // `country` бывает пустой — GeoIP не всегда знает место. Оригинал собирает
-    // обе строки через `filter(Boolean)`, поэтому дыры провода не превращаются
-    // в « - » и в ", " на конце.
-    const bare = { ...baseAuth, hash: 3, system_version: '', country: '' } as Auth
+    // `system_version` пуст у сессий, заведённых не разбором User-Agent (вход
+    // по QR), `country` — когда GeoIP не знает места. Оригинал собирает обе
+    // строки через `filter(Boolean)`, поэтому дыры не превращаются в « - » и
+    // в ", » на конце.
+    const bare = { ...baseAuth, hash: 3, pFlags: {}, system_version: '', country: '' } as Auth
     const tab = await openTab([current, bare], managers)
 
     const row = tab.scrollable.container.querySelector('.row[data-hash="3"]')!
@@ -165,7 +166,7 @@ describe('вкладка «Устройства» — порт tweb sidebarLeft/
     const { managers } = makeManagers()
     const tab = await openTab([current, other], managers)
 
-    const row = tab.scrollable.container.querySelector<HTMLElement>('.row[data-hash="1"]')!
+    const row = tab.scrollable.container.querySelector<HTMLElement>('.row[data-hash="0"]')!
     row.dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
 
     expect(document.querySelector('.popup-peer')).toBeNull()
@@ -173,9 +174,13 @@ describe('вкладка «Устройства» — порт tweb sidebarLeft/
 
   it('на отказ FRESH_RESET_AUTHORISATION_FORBIDDEN показывает всплывашку', async() => {
     const { terminate, managers } = makeManagers()
-    // Через границу воркера ошибка приезжает пересобранным `Error` —
-    // имя отказа лежит в `message` (superMessagePort.ts:228,235-238).
-    terminate.mockRejectedValue(new Error('FRESH_RESET_AUTHORISATION_FORBIDDEN'))
+    // Имя отказа приезжает полем `type` — его довозит через границу воркера
+    // `superMessagePort.ts`, а на HTTP-границе им становится `error.text`
+    // конструктора отказа (`net/restClient.ts`). Ветвление по тексту сообщения
+    // было бы ветвлением по человеческой строке, а не по названной причине.
+    terminate.mockRejectedValue(Object.assign(
+      new Error('FRESH_RESET_AUTHORISATION_FORBIDDEN'),
+      { type: 'FRESH_RESET_AUTHORISATION_FORBIDDEN' }))
     const tab = await openTab([current, other], managers)
 
     confirmTerminate(tab, 2)
@@ -232,7 +237,7 @@ describe('вкладка «Устройства» — порт tweb sidebarLeft/
     const { terminate, managers } = makeManagers()
     const tab = await openTab([current, other], managers)
 
-    const menu = rightClick(tab.scrollable.container.querySelector('.row[data-hash="1"]')!)
+    const menu = rightClick(tab.scrollable.container.querySelector('.row[data-hash="0"]')!)
     expect(menu.classList.contains('active')).toBe(false)
 
     // Второй рубеж: даже если до пункта меню дотянуться руками, закрытое меню

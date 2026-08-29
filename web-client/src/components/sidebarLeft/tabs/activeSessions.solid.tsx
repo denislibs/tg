@@ -10,37 +10,11 @@
  * прочие есть) и секция прочих сессий; клик или контекстное меню по строке
  * прочей сессии — подтверждение и завершение.
  *
- * ── Отступления, продиктованные НАШИМ проводом (не вкусом) ─────────────────
- *
- * 1. `pFlags` читается через `?.` (:32, :60 оригинала — `auth.pFlags.current`).
- *    У MTProto `pFlags` всегда объект (его создаёт десериализатор), а наш
- *    бэкенд — Go со `json:"pFlags,omitempty"` (`internal/domain/mtaccount.go`):
- *    у сессии БЕЗ единого взведённого флага поле в JSON просто отсутствует.
- *    Без `?.` первая же не-текущая сессия роняла бы `findAndSplice` на
- *    `TypeError`. Расхождение записано долгом провода (см. отчёт задачи 7).
- *
- * 2. «Текущую строку не гасим» (:132, :157 — `target.dataset.hash === '0'`).
- *    У MTProto адрес ТЕКУЩЕЙ сессии равен нулю — то есть `'0'` в оригинале
- *    это и есть «строка текущей сессии», а не магическое число. Наш бэкенд
- *    кладёт в `hash` настоящий id устройства, одинаково для всех строк,
- *    поэтому проверка на ноль у нас не защитила бы ничего: пользователь
- *    завершил бы собственную сессию кликом по первой секции. Сравниваем с
- *    `hash` той самой сессии, которую `findAndSplice` признал текущей —
- *    тот же смысл, взятый из данных, а не из константы чужого провода.
- *
- * 3. Отказ сервера (:45-50 — `err.type === 'FRESH_RESET_AUTHORISATION_FORBIDDEN'`).
- *    Через нашу границу воркера объект ошибки не проходит целиком:
- *    `superMessagePort.ts:228,235-238` пересылает ТОЛЬКО `message` и `status`
- *    и пересобирает `new Error(message)` на стороне UI. Поля `type` у ошибки
- *    здесь не бывает НИКОГДА — ветка на `err.type` была бы заведомо мёртвой,
- *    а не портом. Имя отказа приезжает текстом (`error.text` бэкенда →
- *    `HttpError.message`, `core/net/restClient.ts:14-18`), по нему и
- *    сверяемся. Остальные ошибки, как и в оригинале, не показываются.
- *
- * 4. `tab.managers!` — поле объявлено опциональным (`sliderTab.ts`), потому
- *    что его проставляет слайдер ПОСЛЕ конструктора (`slider.ts:405`, tweb
- *    :270). Тот же приём, что у `this.slider!` в самом `sliderTab.ts`:
- *    ненулевое утверждение в точке вызова, а не смена контракта.
+ * Отступление одно и оно наше, не проводное: `tab.managers!` — поле объявлено
+ * опциональным (`sliderTab.ts`), потому что его проставляет слайдер ПОСЛЕ
+ * конструктора (`slider.ts:405`, tweb :270). Тот же приём, что у `this.slider!`
+ * в самом `sliderTab.ts`: ненулевое утверждение в точке вызова, а не смена
+ * контракта.
  *
  * ── Адаптации под наш стек ─────────────────────────────────────────────────
  *  • `getOverlayRoot()` (`helpers/appWindow.ts` — их поддержка Document PiP)
@@ -88,7 +62,7 @@ const ActiveSessions: Component = () => {
         title: [auth.app_name, auth.app_version].join(' '),
         subtitle: [auth.ip, auth.country].filter(Boolean).join(' - '),
         clickable: true,
-        titleRight: auth.pFlags?.current ? undefined : formatDateAccordingToTodayNew(new Date(Math.max(auth.date_active, auth.date_created) * 1000)),
+        titleRight: auth.pFlags.current ? undefined : formatDateAccordingToTodayNew(new Date(Math.max(auth.date_active, auth.date_created) * 1000)),
       })
 
       row.container.dataset.hash = '' + auth.hash
@@ -100,16 +74,11 @@ const ActiveSessions: Component = () => {
 
     const authorizations = tab.payload.authorizations.slice()
 
-    const onError = (err: unknown) => {
-      // См. отступление 3 в докблоке файла: имя отказа приезжает текстом.
-      if((err as { message?: string })?.message === 'FRESH_RESET_AUTHORISATION_FORBIDDEN') {
+    const onError = (err: ApiError) => {
+      if(err.type === 'FRESH_RESET_AUTHORISATION_FORBIDDEN') {
         toastNew({ langPackKey: 'RecentSessions.Error.FreshReset' })
       }
     }
-
-    // Строка текущей сессии — единственная, которую нельзя завершить кликом;
-    // см. отступление 2 в докблоке файла.
-    let currentHash: string | undefined
 
     {
       const section = new SettingSection({
@@ -121,9 +90,8 @@ const ActiveSessions: Component = () => {
       // текущую сессию в списке. Если её нет — падаем внутри `onMount`, а не
       // молча рисуем чужую строку как свою; падение ловит `ErrorBoundary`
       // моста (`mountSolid`), вкладка целиком не умирает.
-      const auth = findAndSplice(authorizations, (auth) => !!auth.pFlags?.current)!
+      const auth = findAndSplice(authorizations, (auth) => auth.pFlags.current)!
       const session = Session(auth)
-      currentHash = session.container.dataset.hash
 
       section.content.append(session.container)
 
@@ -211,7 +179,7 @@ const ActiveSessions: Component = () => {
       element: tab.scrollable.container,
       callback: (e) => {
         target = findUpClassName(e.target as HTMLElement, 'row')
-        if(!target || target.dataset.hash === currentHash) {
+        if(!target || target.dataset.hash === '0') {
           return
         }
 
@@ -235,7 +203,7 @@ const ActiveSessions: Component = () => {
 
     attachClickEvent(tab.scrollable.container, (e) => {
       target = findUpClassName(e.target as HTMLElement, 'row')
-      if(!target || target.dataset.hash === currentHash) {
+      if(!target || target.dataset.hash === '0') {
         return
       }
 
