@@ -1,45 +1,63 @@
 /** @jsxImportSource solid-js */
 /**
- * Тесты порта `scaffoldSolidJSTab.solid.tsx`. Стаб слайдера — тот же приём,
- * что в `sliderTab.test.ts` (`createSliderStub`): корневой `MiddlewareHelper`
- * передаётся явно, но здесь он не проверяется — задача этих тестов другая:
- * жизненный цикл Solid-острова внутри вкладки, а не сам `SliderSuperTab`.
+ * Тесты порта `scaffoldSolidJSTab.solid.tsx`. Стаб слайдера —
+ * `sliderTab.testStub.ts` (общий с `sliderTab.test.ts`).
  *
- * ── Почему тест на размонтирование спрашивает про `onCleanup`, а не про DOM ──
- * `tab['onCloseAfterTimeout']()` в любом случае снимает `tab.container`
- * (и вместе с ним — вставленный в scrollable `div` с Solid-содержимым) через
- * `this.container.remove()` (`sliderTab.ts`, `onCloseAfterTimeout`), НЕЗАВИСИМО
- * от того, был ли вызван `dispose` Solid-острова. Проверка
- * «`.probe` больше нет в DOM» была бы зелёной даже без вызова `this.dispose()`
- * — ровно тот пустой тест волны 0 (см. докблок `SolidIsland.test.tsx`).
- * Поэтому здесь ловушку `onCleanup` — она регистрируется на владельце Solid
- * и срабатывает РОВНО при вызове `dispose()`, а не при удалении узла снаружи.
+ * Обе фабрики, `scaffoldSolidJSTab` и `scaffoldSolidJSTabEventable`, гоняют
+ * ОДИН И ТОТ ЖЕ набор тестов через `describe.each`: до раунда 1 ревью
+ * `scaffoldSolidJSTabEventable` не была покрыта вовсе (тесты писали только
+ * через базовую), и обе её мутации (снятый `dispose`, снятое ожидание
+ * `promiseCollectorHelper.await()`) проходили зелёными — при том что именно
+ * эту фабрику берёт задача 7 (вкладка «Устройства»).
+ *
+ * ── Почему тест на размонтирование не полагается ТОЛЬКО на `onCleanup` ──────
+ * Запрос идёт через `tab.scrollable.container` — это узел ВНУТРИ поддерева
+ * `tab.container`, а не `document`. `tab.container.remove()` (в
+ * `onCloseAfterTimeout`, `sliderTab.ts`) отсоединяет ВСЁ поддерево целиком —
+ * `.probe` внутри него никуда не девается, поддерево просто больше не в
+ * document. Убрать `.probe` ИЗ `tab.scrollable.container` может только
+ * `dispose()` (`render()` Solid чистит хост через `element.textContent = ""`).
+ * Поэтому DOM-проверка ниже уже сама по себе ловит потерю `dispose` (проверено
+ * мутацией — см. коммит); `onCleanup` добавлен как более прямой сигнал именно
+ * ПРО ВЫЗОВ dispose, а не про побочный эффект в DOM. (Раньше здесь было
+ * утверждение, что DOM-проверка была бы зелёной и без dispose, — это неверно
+ * для запроса через `scrollable.container`; верно оно было бы только для
+ * запроса через `document`, как в прецеденте `SolidIsland.test.tsx`.)
  */
 import { describe, expect, it, vi } from 'vitest'
-import { onCleanup } from 'solid-js'
-import { getMiddleware, type MiddlewareHelper } from '@helpers/middleware'
-import type { SliderSuperTabSlider } from '@components/sliderTab'
-import { scaffoldSolidJSTab } from './scaffoldSolidJSTab.solid'
+import { createEffect, createSignal, onCleanup, type Component } from 'solid-js'
+import type SliderSuperTab from '@components/sliderTab'
+import { createSliderStub } from '@components/sliderTab.testStub'
+import { scaffoldSolidJSTab, scaffoldSolidJSTabEventable } from './scaffoldSolidJSTab.solid'
 import { usePromiseCollector } from './promiseCollector.solid'
 import { useSuperTab } from './superTabProvider.solid'
 
-// см. `sliderTab.test.ts` — тот же стаб, буквально скопированная сигнатура.
-function createSliderStub(rootMiddleware: MiddlewareHelper = getMiddleware()) {
-  return {
-    rootMiddleware,
-    getMiddleware: vi.fn(() => rootMiddleware.get()),
-    addTab: vi.fn(),
-    deleteTab: vi.fn(),
-    closeTab: vi.fn(),
-    selectTab: vi.fn(),
-  } satisfies SliderSuperTabSlider & { rootMiddleware: MiddlewareHelper }
+// `scaffoldSolidJSTab` и `scaffoldSolidJSTabEventable` — генерики с РАЗНЫМИ
+// (несовместимыми друг с другом по вызову) сигнатурами; звать значение union-типа
+// этих двух функций напрямую TS не даёт (`TS2349`). Общий срез, который реально
+// нужен ТЕСТАМ ниже — принять `{title, getComponentModule}` и отдать класс,
+// у которого есть `open()`/`scrollable`, — оба варианта ему соответствуют
+// СТРУКТУРНО (`SliderSuperTabEventable extends SliderSuperTab`), поэтому кастуем
+// именно к этому срезу, а не глушим типы шире.
+type MinimalScaffoldArgs = {
+  title: string
+  getComponentModule: () => Promise<{ default: Component }>
 }
+type MinimalTabCtor = new (
+  ...args: ConstructorParameters<typeof SliderSuperTab>
+) => SliderSuperTab & { init(payload: void, overrideTitle?: string): Promise<void> }
+type ScaffoldFactory = (args: MinimalScaffoldArgs) => MinimalTabCtor
 
-describe('scaffoldSolidJSTab', () => {
+const factories: Array<[string, ScaffoldFactory]> = [
+  ['scaffoldSolidJSTab (SliderSuperTab)', scaffoldSolidJSTab as ScaffoldFactory],
+  ['scaffoldSolidJSTabEventable (SliderSuperTabEventable)', scaffoldSolidJSTabEventable as unknown as ScaffoldFactory],
+]
+
+describe.each(factories)('%s', (_label, scaffold) => {
   it('на закрытии вкладки Solid-содержимое размонтируется (dispose реально вызван)', async () => {
     const sliderStub = createSliderStub()
     const cleaned = vi.fn()
-    const Tab = scaffoldSolidJSTab({
+    const Tab = scaffold({
       title: 'Devices',
       getComponentModule: async () => ({
         default: () => {
@@ -61,7 +79,7 @@ describe('scaffoldSolidJSTab', () => {
   it('init не завершается, пока собранный промис не разрешился', async () => {
     const sliderStub = createSliderStub()
     let resolve!: () => void
-    const Tab = scaffoldSolidJSTab({
+    const Tab = scaffold({
       title: 'Devices',
       getComponentModule: async () => ({
         default: () => {
@@ -97,7 +115,7 @@ describe('scaffoldSolidJSTab', () => {
   it('содержимое получает свою вкладку через useSuperTab', async () => {
     const sliderStub = createSliderStub()
     let seen: unknown
-    const Tab = scaffoldSolidJSTab({
+    const Tab = scaffold({
       title: 'Devices',
       getComponentModule: async () => ({
         default: () => {
@@ -110,5 +128,42 @@ describe('scaffoldSolidJSTab', () => {
     await tab.open()
 
     expect(seen).toBe(tab)
+  })
+})
+
+// scaffoldSolidJSTabEventable — это фабрика, которую берёт задача 7 (вкладка
+// «Устройства»): её содержимое обычно держит сигналы/эффекты дольше, чем
+// просто DOM-узел (подписки на статус сессий и т.п.). `onCleanup` в тесте выше
+// уже доказывает, что `dispose()` вызван, но не проверяет НАПРЯМУЮ, что после
+// него реактивность острова действительно остановлена, а не просто «узел
+// убран, эффект спит, пока никто не трогает сигнал».
+describe('scaffoldSolidJSTabEventable — реактивность после закрытия', () => {
+  it('сигнал, обновлённый ПОСЛЕ onCloseAfterTimeout(), не будит эффект', async () => {
+    const sliderStub = createSliderStub()
+    const effect = vi.fn()
+    let setValue!: (value: number) => void
+
+    const Tab = scaffoldSolidJSTabEventable({
+      title: 'Devices',
+      getComponentModule: async () => ({
+        default: () => {
+          const [value, setter] = createSignal(0)
+          setValue = setter
+          createEffect(() => {
+            effect(value())
+          })
+          return <div />
+        },
+      }),
+    })
+    const tab = new Tab(sliderStub, true)
+    await tab.open()
+    expect(effect).toHaveBeenCalledTimes(1)
+
+    ;(tab as any).onCloseAfterTimeout()
+
+    setValue(1)
+
+    expect(effect).toHaveBeenCalledTimes(1)
   })
 })

@@ -1,22 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { getMiddleware, type MiddlewareHelper } from '@helpers/middleware'
-import SliderSuperTab, { SliderSuperTabEventable, type SliderSuperTabSlider } from './sliderTab'
-
-// Корневой MiddlewareHelper передаётся явно и остаётся доступен тесту как
-// `rootMiddleware` — раунд 0 строил его анонимно внутри мока `getMiddleware`
-// и не мог отличить «миддлварь-ребёнок слайдера» от «миддлварь сама по себе»
-// (ВАЖНО-3 ревью: мутация `slider.getMiddleware().create()` → плоский
-// `getMiddleware()` проходила зелёной именно из-за этого).
-function createSliderStub(rootMiddleware: MiddlewareHelper = getMiddleware()) {
-  return {
-    rootMiddleware,
-    getMiddleware: vi.fn(() => rootMiddleware.get()),
-    addTab: vi.fn(),
-    deleteTab: vi.fn(),
-    closeTab: vi.fn(),
-    selectTab: vi.fn(),
-  } satisfies SliderSuperTabSlider & { rootMiddleware: MiddlewareHelper }
-}
+import SliderSuperTab, { SliderSuperTabEventable } from './sliderTab'
+import { createSliderStub } from './sliderTab.testStub'
 
 describe('SliderSuperTab', () => {
   it('строит разметку вкладки и регистрируется у слайдера', () => {

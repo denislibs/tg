@@ -14,6 +14,9 @@
  * (`() => {}`), чтобы поздние вызовы `collect` (уже после того, как вкладка
  * открылась) не росли в массиве, на который больше никто не смотрит —
  * комментарий оригинала `// lose reference to the promises array` (:29).
+ * Запинено `promiseCollector.test.ts`: без реассайна поздний `collect`
+ * заставляет СЛЕДУЮЩИЙ `await()` неожиданно ждать промис, который вызывающий
+ * уже считает забытым.
  */
 import { createContext, useContext, type ParentProps } from 'solid-js'
 

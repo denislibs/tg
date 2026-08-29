@@ -29,7 +29,9 @@ import { createContext, useContext, type ParentComponent } from 'solid-js'
 import type { InstanceOf } from '@types'
 import type SliderSuperTab from '@components/sliderTab'
 
-// eslint-disable-next-line @typescript-eslint/no-empty-interface -- реестр для declaration merging, см. докблок файла
+// Реестр для declaration merging, см. докблок файла. Пустой `interface` — не
+// заглушка: сам факт объявления даёт другим модулям точку расширения ИМЕНИ
+// `ProvidedTabs`, объединение полей будущих задач произойдёт по этому имени.
 export interface ProvidedTabs {}
 
 const SuperTabContext = createContext<[SliderSuperTab, ProvidedTabs]>()
@@ -46,6 +48,14 @@ export const SuperTabProvider: ParentComponent<SuperTabProviderProps> & {
   )
 }
 
+// Наполняется вкладками задач 7+ (тем же способом, что и `allTabs: {}` в
+// оригинале — там же рядом стоит `// will get reassigned in index.ts`,
+// :23). У нас единой точки reassign нет — каждая будущая задача добавляет
+// СВОЮ вкладку своей строкой `SuperTabProvider.allTabs.AppXxxTab = AppXxxTab`
+// РЯДОМ с declaration merging для `ProvidedTabs` в СВОЁМ модуле. Расхождение
+// типа и рантайма здесь возможно (тип говорит «есть», забытое присваивание
+// вернёт `undefined`) — тот же риск несёт и сам оригинал: там `AppNewGroupTab`
+// объявлен в типе `ProvidedTabs`, но отсутствует в объекте `providedTabs`.
 SuperTabProvider.allTabs = {} as ProvidedTabs
 
 export const useSuperTab = <TabClass extends typeof SliderSuperTab>() =>
