@@ -8,7 +8,7 @@
  * В tweb корень настроек — ТАКАЯ ЖЕ вкладка того же слайдера
  * (`AppSettingsTab`, `solidJsTabs/tabs.ts`), поэтому «Устройства» открываются
  * прямо из неё: `tab.slider.createTab(AppActiveSessionsTab)` →
- * `subTab.open({authorizations})` (`sidebarLeft/tabs/settings.tsx:183-186`).
+ * `subTab.open({authorizations})` (`sidebarLeft/tabs/settings.tsx:183`, `:188`).
  * У нас корень настроек — ещё React-экран (`components/SettingsView.tsx`),
  * лежащий поверх колонки отдельным слоем; он и открывает УЖЕ портированные
  * вкладки через этот хост. По мере портирования остальных вкладок настроек шов
@@ -21,11 +21,11 @@
  *    `AppSidebarLeft` берёт готовую (`index.ts:142`, `sidebarEl:
  *    #column-left`); нам туда нельзя — тот `.sidebar-slider` принадлежит React
  *    (`components/Sidebar.tsx:236`) и лежит ПОД экраном настроек. Приём взят у
- *    самого tweb: `sidebarLeft/settingsSliderPopup.ts:33-42` точно так же
+ *    самого tweb: `sidebarLeft/settingsSliderPopup.ts:29-42` точно так же
  *    строит себе пару `element` > `div.sidebar-slider.tabs-container` и отдаёт
  *    её слайдеру как `sidebarEl`.
  *  • ЗАГЛУШКА на месте вкладки-корня — пустой `div.tabs-tab` первым ребёнком.
- *    Слайдер выбирает вкладку №0 в конструкторе (`slider.ts:169`), а переход
+ *    Слайдер выбирает вкладку №0 в конструкторе (`slider.ts:186`, tweb :47), а переход
  *    `navigation` двигает ОБЕ вкладки сразу (`slideNavigation`,
  *    `core/dom/navigationTransition.ts`): без соседа `from` не существует, и
  *    первая же вкладка появлялась бы мгновенно, без въезда справа. Заглушка —
@@ -49,7 +49,7 @@
  *    класса спорил бы с ним. Хук `onTabsCountChange` занят другим — слоем шва;
  *  • не заводит `destroy()` на самом `SidebarSlider`: его нет и в оригинале
  *    (слайдеры tweb живут вечно, `SettingsSliderPopup` тоже лишь закрывает
- *    вкладки — `settingsSliderPopup.ts:24-28`).
+ *    вкладки — `settingsSliderPopup.ts:23-27`).
  *
  * ДОЛГ (задача 5, не закрыт и здесь): способа снять ВСЕ слои навигации
  * слайдера разом у нас нет — в оригинале это делают снаружи по типу записи
@@ -67,7 +67,9 @@ import s from './settingsSliderHost.module.scss'
 export interface SettingsSliderHost {
   /**
    * `createTab` + `open` одним вызовом — та же пара, что в оригинале
-   * (`settings.tsx:183-186`). Промис разрешается, когда содержимое вкладки
+   * (`settings.tsx:183` и `:188`; между ними, на `:184-187`, оригинал вешает
+   * подписку на `destroy` — её предмета у нас нет, см. `openActiveSessionsTab`).
+   * Промис разрешается, когда содержимое вкладки
    * готово (`scaffoldSolidJSTab.init` ждёт `promiseCollector`), то есть когда
    * вкладка действительно поехала, а не когда её попросили поехать.
    */
@@ -123,7 +125,7 @@ export function createSettingsSliderHost(columnEl: HTMLElement, managers: Manage
     destroy() {
       // Закрываем силой, а не `closeAllTabsNaturally`: экран-владелец уже
       // уходит, спрашивать подтверждение не у кого и некогда. Тот же выбор в
-      // оригинале — `settingsSliderPopup.ts:26` (`closeAllTabs` на разрушении
+      // оригинале — `settingsSliderPopup.ts:25` (`closeAllTabs` на разрушении
       // попапа).
       slider.closeAllTabs()
       element.remove()
@@ -156,14 +158,14 @@ export function getSettingsSliderHost(): SettingsSliderHost {
  * `sidebarLeft/newAuthorization.tsx:116-121`): список сессий забирает
  * ОТКРЫВАЮЩИЙ и отдаёт вкладке готовым, чтобы та не въезжала пустой. Тем же
  * порядком идёт и второй вызыватель оригинала — `onDevicesClick`
- * (`sidebarLeft/tabs/settings.tsx:179-187`).
+ * (`sidebarLeft/tabs/settings.tsx:178-189`).
  *
  * Функция живёт здесь, а не у вызывающих, по той же причине, по какой в
  * оригинале она одна на два входа: у нас входов тоже два («Устройства» в корне
  * настроек и «Активные сессии» в разделе конфиденциальности), и оба —
  * React-строки шва.
  *
- * `eventListener('destroy')` вкладки (tweb :184-186 перечитывает счётчик
+ * `eventListener('destroy')` вкладки (tweb `settings.tsx:184-187` перечитывает счётчик
  * устройств в строке настроек) не подписан намеренно: счётчика в нашей строке
  * нет — он приедет вместе с портом самой вкладки настроек.
  */

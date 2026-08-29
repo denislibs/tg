@@ -164,9 +164,10 @@ export default class SidebarSlider {
   // (`sidebarRight/index.ts:95` — `removeByType('right')` в `hide()`, туда же
   // :128 с запросом `findItemByType('right')`, ответ на который у нас даёт
   // `hasTabsInNavigation()`; `sidebarLeft/index.ts:1459` — уже ЧУЖОЙ тип
-  // 'global-search', слайдера не касается). Такого потребителя у нас пока нет,
-  // и метод «снять все свои слои» здесь был бы мёртвым кодом; подкласс задачи 8
-  // при появлении прячущейся колонки допишет его сам поверх этого поля.
+  // 'global-search', слайдера не касается). Такого потребителя у нас пока нет
+  // (хост колонки закрывает вкладки по одной — `settingsSliderHost.ts`), и метод
+  // «снять все свои слои» здесь был бы мёртвым кодом; когда появится прячущаяся
+  // колонка, он допишется поверх этого поля.
   protected navigationItems: SliderNavigationItem[] = []
   protected managers?: Managers
   protected middlewareHelper!: MiddlewareHelper
@@ -378,12 +379,10 @@ export default class SidebarSlider {
   protected onCloseTab(id: number | SliderSuperTab | undefined, _animate?: boolean, isNavigation?: boolean) {
     if(!isNavigation) {
       // tweb :220 — `removeByType(this.navigationType, true)`: снять РОВНО одну
-      // (верхнюю) свою запись навигации.
-      const item = this.navigationItems.pop()
-      if(item) {
-        removeLayer(item.layer)
-        item.removeEsc()
-      }
+      // (верхнюю) свою запись навигации. Снимаем ею же, `dropNavigationItem`:
+      // у записи две половины, и знать об этом должно одно место.
+      const item = this.navigationItems[this.navigationItems.length - 1]
+      if(item) this.dropNavigationItem(item)
       this.onTabsCountChange?.()
     }
 
