@@ -9,6 +9,10 @@ export const en: Dict = {
   'Story.AddToProfile': 'Post to Profile',
   'Story.RemoveFromProfile': 'Remove from Profile',
   'Stories.StealthMode.View': 'Hide My View',
+  // Row.checkboxKeys по умолчанию (tweb lang.ts:250-251) — отображаемый текст
+  // короче ключа, поэтому не совпадает с ним по правилу «ключ = строка».
+  'Checkbox.Enabled': 'Enabled',
+  'Checkbox.Disabled': 'Disabled',
   // Славянская форма 2-4 из 'Notifications.Count' (client/appBadge): в английском
   // отдельной формы нет — страховка на случай, если чанк ru/uk не догрузился.
   '%d notifications (few)': '%d notifications',
