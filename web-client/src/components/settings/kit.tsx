@@ -105,9 +105,10 @@ export function SettingsScreen({
       // Мгновенная ветка обязана снять чужую отложенную уборку так же, как это
       // делает `runNavigationTransition`: узел, который только что уходил, всё
       // ещё держит таймер, снимающий с него `active`, — иначе экран опустеет
-      // через `NAVIGATION_TRANSITION_TIME` после мгновенного возврата.
+      // через `NAVIGATION_TRANSITION_TIME` после мгновенного возврата. Только с
+      // ПРИХОДЯЩЕЙ: `own`/`sub` чередуются, и уходящая здесь — это приходящая
+      // прошлого перехода, таймера на ней не бывает.
       if (to) clearPendingTransitionCleanup(to)
-      if (from) clearPendingTransitionCleanup(from)
       to?.classList.add('active')
       from?.classList.remove('active')
       if (!open) setMountedSub(false)

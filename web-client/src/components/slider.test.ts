@@ -340,24 +340,31 @@ describe('SidebarSlider — isConfirmationNeededOnClose', () => {
 })
 
 describe('SidebarSlider — onOpenTab', () => {
-  it('владелец колонки успевает раскрыться ДО того, как вкладка станет активной', async () => {
-    const order: string[] = []
+  it('вкладка не появляется, пока не доехал хук раскрытия колонки', async () => {
     const slider = new SidebarSlider({ sidebarEl: createSidebarEl() })
     // tweb `slider.ts:127` — `await this.onOpenTab()`: правая колонка этим
-    // хуком выезжает, и вкладка не имеет права появиться раньше неё.
-    slider.onOpenTab = async() => {
-      await Promise.resolve()
-      order.push('onOpenTab')
-    }
+    // хуком ВЫЕЗЖАЕТ, и вкладка не имеет права появиться раньше неё.
+    //
+    // Хук намеренно на таймере, а не на одном микротаске: разрешись он за
+    // микротаск — порядок совпал бы и с `await`, и без него, и мутация
+    // «не ждать хук» прошла бы зелёной (так и было в раунде 1).
+    let opened = false
+    slider.onOpenTab = () => new Promise<void>((resolve) => {
+      setTimeout(() => { opened = true; resolve() }, 50)
+    })
 
     const tab = slider.createTab(SliderSuperTab)
-    await tab.open()
-    order.push('selected')
+    void tab.open()
 
-    expect(order).toEqual(['onOpenTab', 'selected'])
-    // `open()` не ждёт `selectTab` (как и в оригинале), поэтому активной
-    // вкладка становится следующим микротаском — после того, как хук доехал.
-    await vi.waitFor(() => expect(tab.container.classList.contains('active')).toBe(true))
+    // Хук ещё в полёте — вкладка активной быть НЕ ДОЛЖНА.
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(opened).toBe(false)
+    expect(tab.container.classList.contains('active')).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(60)
+    expect(opened).toBe(true)
+    expect(tab.container.classList.contains('active')).toBe(true)
   })
 })
 

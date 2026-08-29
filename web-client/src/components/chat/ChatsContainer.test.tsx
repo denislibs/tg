@@ -2,8 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, render } from '@testing-library/react'
 
 const runNavigationTransition = vi.fn()
-vi.mock('../../core/dom/navigationTransition', () => ({
-  NAVIGATION_TRANSITION_TIME: 250,
+// Заглушается ТОЛЬКО сама анимация. Остальное берётся настоящим
+// (`importOriginal`): `clearPendingTransitionCleanup` — предмет теста
+// «мгновенная смена не отдаёт активный чат чужому таймеру» ниже, и подменять
+// его значило бы проверять заглушку.
+vi.mock('../../core/dom/navigationTransition', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../core/dom/navigationTransition')>()),
   runNavigationTransition: (...args: unknown[]) => runNavigationTransition(...args),
 }))
 
@@ -284,5 +288,38 @@ describe('ChatsContainer — переход только между ИНСТАН
 
     expect(runNavigationTransition).toHaveBeenCalledTimes(1)
     expect(runNavigationTransition.mock.calls[0][0]).toMatchObject({ toRight: false })
+  })
+
+  // Боевой дефект (найден ревью задачи 5 волны 2): анимированный переход
+  // оставляет на УХОДЯЩЕМ узле таймер, снимающий с него `active` через
+  // NAVIGATION_TRANSITION_TIME + 100. Если пользователь в этом окне кликает
+  // другой чат, стор отдаёт `animateNext: false` (chatStackStore.ts:134),
+  // перехода нет, активность возвращается тому же узлу мгновенно — и висящий
+  // таймер её отбирает. Колонка чата пустеет сама собой.
+  it('мгновенная смена не отдаёт активный чат чужому таймеру от прошлого перехода', () => {
+    const { container } = render(<ChatsContainer renderInstance={renderInstance} />)
+
+    act(() => { useChatStackStore.getState().setPeer({ peerId: 1, type: 'chat' }) })
+    act(() => {
+      useChatStackStore.getState().setInnerPeer({ peerId: 2, threadId: 7, type: 'discussion', thread })
+    })
+
+    // `runNavigationTransition` в этом файле заглушён, поэтому таймер, который
+    // он вешает на уходящий узел, ставим сами — ровно так же, как настоящий:
+    // id в `dataset.transitionTimeout`, а сам таймер снимает `active`.
+    const base = container.querySelector<HTMLElement>('[data-testid="body-1_0_chat"]')!.parentElement!
+    expect(base.classList.contains('active')).toBe(true)
+    const timeout = window.setTimeout(() => base.classList.remove('active'), 350)
+    base.dataset.transitionTimeout = '' + timeout
+
+    // Клик по ДРУГОМУ чату, пока открыт тред: стек схлопывается до дна с
+    // подменой пира, переход погашен (animateNext: false).
+    act(() => { useChatStackStore.getState().setPeer({ peerId: 9, type: 'chat' }) })
+    expect(runNavigationTransition).toHaveBeenCalledTimes(1) // только первый, push треда
+
+    act(() => { vi.advanceTimersByTime(500) })
+
+    expect(base.classList.contains('active')).toBe(true)
+    expect(container.querySelectorAll('.chats-container > .chat.active')).toHaveLength(1)
   })
 })
