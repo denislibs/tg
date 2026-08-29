@@ -15,7 +15,9 @@ import type { IconName } from '@core/tgico-icons'
 
 export default function ButtonIcon(
   className?: string,
-  options: Partial<Pick<ButtonOptions, 'noRipple' | 'onlyMobile' | 'asDiv'>> = {},
+  // `ButtonOptions` уже `Partial<{...}>` — `Pick` из него сохраняет
+  // опциональность выбранных полей, второй `Partial` был избыточен.
+  options: Pick<ButtonOptions, 'noRipple' | 'onlyMobile' | 'asDiv'> = {},
 ) {
   const splitted = className?.split(' ')
   return Button('btn-icon' + (splitted && splitted.length > 1 ? ' ' + splitted.slice(1).join(' ') : ''), {

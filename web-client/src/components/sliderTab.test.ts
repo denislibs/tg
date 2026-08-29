@@ -1,15 +1,21 @@
 import { describe, expect, it, vi } from 'vitest'
-import { getMiddleware } from '@helpers/middleware'
+import { getMiddleware, type MiddlewareHelper } from '@helpers/middleware'
 import SliderSuperTab, { SliderSuperTabEventable, type SliderSuperTabSlider } from './sliderTab'
 
-function createSliderStub(): SliderSuperTabSlider {
+// Корневой MiddlewareHelper передаётся явно и остаётся доступен тесту как
+// `rootMiddleware` — раунд 0 строил его анонимно внутри мока `getMiddleware`
+// и не мог отличить «миддлварь-ребёнок слайдера» от «миддлварь сама по себе»
+// (ВАЖНО-3 ревью: мутация `slider.getMiddleware().create()` → плоский
+// `getMiddleware()` проходила зелёной именно из-за этого).
+function createSliderStub(rootMiddleware: MiddlewareHelper = getMiddleware()) {
   return {
-    getMiddleware: vi.fn(() => getMiddleware().get()),
+    rootMiddleware,
+    getMiddleware: vi.fn(() => rootMiddleware.get()),
     addTab: vi.fn(),
     deleteTab: vi.fn(),
     closeTab: vi.fn(),
     selectTab: vi.fn(),
-  }
+  } satisfies SliderSuperTabSlider & { rootMiddleware: MiddlewareHelper }
 }
 
 describe('SliderSuperTab', () => {
@@ -31,6 +37,55 @@ describe('SliderSuperTab', () => {
     expect(sliderStub.addTab).toHaveBeenCalledWith(tab)
   })
 
+  it('closeBtn собран с noRipple: true — без .c-ripple обёртки', () => {
+    const sliderStub = createSliderStub()
+    const tab = new SliderSuperTab(sliderStub, true)
+
+    expect(tab.closeBtn.querySelector('.c-ripple')).toBeNull()
+  })
+
+  it('scrollable.attachBorderListeners навешивает классы бордера скролла на container', () => {
+    const sliderStub = createSliderStub()
+    const tab = new SliderSuperTab(sliderStub, true)
+
+    expect(tab.container.classList.contains('scrollable-y-bordered')).toBe(true)
+    expect(tab.container.classList.contains('scrolled-start')).toBe(true)
+    expect(tab.container.classList.contains('scrolled-end')).toBe(true)
+  })
+
+  it('middlewareHelper вкладки — РЕБЁНОК миддлвари слайдера (slider.getMiddleware().create())', () => {
+    const sliderStub = createSliderStub()
+    const tab = new SliderSuperTab(sliderStub, true)
+    const middleware = tab.middlewareHelper.get()
+
+    expect(middleware()).toBe(true)
+    sliderStub.rootMiddleware.destroy()
+    expect(middleware()).toBe(false)
+  })
+
+  it('порядок разрушения — deleteTab → container.remove → scrollable.destroy → listenerSetter.removeAll → middlewareHelper.destroy', () => {
+    const sliderStub = createSliderStub()
+    const tab = new SliderSuperTab(sliderStub, true)
+    document.body.append(tab.container)
+
+    const order: string[] = []
+    sliderStub.deleteTab.mockImplementation(() => order.push('deleteTab'))
+    vi.spyOn(tab.container, 'remove').mockImplementation(() => order.push('container.remove'))
+    vi.spyOn(tab.scrollable, 'destroy').mockImplementation(() => order.push('scrollable.destroy'))
+    vi.spyOn(tab.listenerSetter, 'removeAll').mockImplementation(() => order.push('listenerSetter.removeAll'))
+    vi.spyOn(tab.middlewareHelper, 'destroy').mockImplementation(() => order.push('middlewareHelper.destroy'))
+
+    ;(tab as any).onCloseAfterTimeout()
+
+    expect(order).toEqual([
+      'deleteTab',
+      'container.remove',
+      'scrollable.destroy',
+      'listenerSetter.removeAll',
+      'middlewareHelper.destroy',
+    ])
+  })
+
   it('на закрытии снимает узел, слушателей и гасит миддлварь', () => {
     const sliderStub = createSliderStub()
     const tab = new SliderSuperTab(sliderStub, true)
@@ -48,7 +103,7 @@ describe('SliderSuperTab', () => {
     expect(middleware()).toBe(false)
   })
 
-  it('init отрабатывает один раз на несколько open', async () => {
+  it('init отрабатывает один раз на несколько open (init объявлен ПОЛЕМ подкласса)', async () => {
     const init = vi.fn()
     class T extends SliderSuperTab {
       init = init
@@ -58,6 +113,72 @@ describe('SliderSuperTab', () => {
     await tab.open()
     await tab.open()
     expect(init).toHaveBeenCalledTimes(1)
+  })
+
+  it('init отрабатывает один раз на несколько open (init объявлен МЕТОДОМ подкласса — форма tweb)', async () => {
+    // Форма, в которой tweb объявляет init почти везде (см. докблок файла —
+    // 39 мест в src/components/). Раунд 0 объявлял базовый `init` полем —
+    // такое поле, инициализируясь в конструкторе базы, шадоуило бы этот
+    // прототипный метод подкласса, и spy ниже НЕ вызвался бы вовсе.
+    const spy = vi.fn()
+    class T extends SliderSuperTab {
+      init(...args: any[]) {
+        spy(...args)
+      }
+    }
+    const sliderStub = createSliderStub()
+    const tab = new T(sliderStub, true)
+    await tab.open('x')
+    await tab.open('y')
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(spy).toHaveBeenCalledWith('x')
+  })
+
+  it('open() ждёт промис из init, прежде чем звать selectTab', async () => {
+    const sliderStub = createSliderStub()
+    const order: string[] = []
+    sliderStub.selectTab.mockImplementation(() => order.push('selectTab'))
+
+    let resolveInit!: () => void
+    class T extends SliderSuperTab {
+      init() {
+        return new Promise<void>((resolve) => {
+          resolveInit = () => {
+            order.push('init-resolved')
+            resolve()
+          }
+        })
+      }
+    }
+    const tab = new T(sliderStub, true)
+
+    const openPromise = tab.open()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(order).toEqual([]) // init ещё не resolved — selectTab не должен звучать раньше времени
+
+    resolveInit()
+    await openPromise
+
+    expect(order).toEqual(['init-resolved', 'selectTab'])
+  })
+
+  it('init, упавший синхронно, гасится try/catch — open() не падает, selectTab всё равно вызывается', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const sliderStub = createSliderStub()
+    class T extends SliderSuperTab {
+      init() {
+        throw new Error('boom')
+      }
+    }
+    const tab = new T(sliderStub, true)
+
+    await expect(tab.open()).resolves.toBeUndefined()
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith('open tab error', expect.any(Error))
+    expect(sliderStub.selectTab).toHaveBeenCalledWith(tab)
+
+    consoleErrorSpy.mockRestore()
   })
 
   it('close() делегирует слайдеру closeTab(this)', () => {
@@ -102,22 +223,36 @@ describe('SliderSuperTab', () => {
     expect(span!.textContent).toBe('Post to Profile')
   })
 
-  it('SliderSuperTabEventable — close/destroy рассылаются подписчикам, а сама вкладка всё равно сносится', async () => {
+  it('SliderSuperTabEventable.onCloseAfterTimeout — destroy → destroyAfter → cleanup → super (container.remove)', () => {
     const sliderStub = createSliderStub()
     const tab = new SliderSuperTabEventable(sliderStub)
     document.body.append(tab.container)
 
-    const onClose = vi.fn()
-    const onDestroy = vi.fn()
-    tab.eventListener.addEventListener('close', onClose)
-    tab.eventListener.addEventListener('destroy', onDestroy)
+    const order: string[] = []
+    const destroyListener = vi.fn(() => { order.push('destroy-listener') })
+    tab.eventListener.addEventListener('destroy', destroyListener)
 
-    ;(tab as any).onClose()
-    expect(onClose).toHaveBeenCalledTimes(1)
+    const destroyAfterListener = vi.fn(() => { order.push('destroyAfter-listener') })
+    tab.eventListener.addEventListener('destroyAfter', destroyAfterListener)
+
+    vi.spyOn(tab.eventListener, 'cleanup').mockImplementation(() => order.push('cleanup'))
+    vi.spyOn(tab.container, 'remove').mockImplementation(() => order.push('container.remove'))
 
     ;(tab as any).onCloseAfterTimeout()
 
-    expect(onDestroy).toHaveBeenCalledTimes(1)
-    expect(tab.container.parentElement).toBeNull()
+    expect(order).toEqual(['destroy-listener', 'destroyAfter-listener', 'cleanup', 'container.remove'])
+    expect(destroyAfterListener).toHaveBeenCalledWith(expect.any(Promise))
+  })
+
+  it('SliderSuperTabEventable.onClose — рассылает close подписчикам', () => {
+    const sliderStub = createSliderStub()
+    const tab = new SliderSuperTabEventable(sliderStub)
+
+    const onClose = vi.fn()
+    tab.eventListener.addEventListener('close', onClose)
+
+    ;(tab as any).onClose()
+
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 })
