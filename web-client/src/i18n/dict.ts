@@ -16,6 +16,10 @@ export const en: Dict = {
   // Славянская форма 2-4 из 'Notifications.Count' (client/appBadge): в английском
   // отдельной формы нет — страховка на случай, если чанк ru/uk не догрузился.
   '%d notifications (few)': '%d notifications',
+  // SettingSection: ключи взяты из tweb lang.ts:1445/1835 (совпадают с
+  // оригиналом дословно), отображаемый текст с ключом не совпадает.
+  CurrentSession: 'This device',
+  ClearOtherSessionsHelp: 'Logs out all devices except for this one.',
 }
 
 // The other languages are heavy (~40 kB each) and split into per-language chunks,

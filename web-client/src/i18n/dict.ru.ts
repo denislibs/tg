@@ -1297,6 +1297,11 @@ const ru: Dict = {
   // подпись под ru показала бы сырой ключ 'Checkbox.Enabled'/'Checkbox.Disabled'.
   'Checkbox.Enabled': 'Включено',
   'Checkbox.Disabled': 'Выключено',
+  // SettingSection (tweb lang.ts:1445/1835) — по той же причине, что и
+  // Checkbox.Enabled/Disabled выше: без перевода в ru показался бы сырой
+  // ключ.
+  CurrentSession: 'Это устройство',
+  ClearOtherSessionsHelp: 'Завершает сеансы на всех устройствах, кроме этого.',
 }
 
 export default ru
