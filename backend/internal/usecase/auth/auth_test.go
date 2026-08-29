@@ -225,7 +225,7 @@ func (r *fakeDeviceRepo) Create(_ context.Context, in domain.Device) (domain.Dev
 	return d, nil
 }
 
-func (r *fakeDeviceRepo) SessionByTokenHash(_ context.Context, tokenHash string) (domain.UserRecord, int64, error) {
+func (r *fakeDeviceRepo) SessionByTokenHash(_ context.Context, tokenHash, _ string) (domain.UserRecord, int64, error) {
 	r.calls++
 	d, ok := r.byHash[tokenHash]
 	if !ok {

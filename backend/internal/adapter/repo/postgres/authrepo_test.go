@@ -69,14 +69,14 @@ func TestAuthRepo_UserAndDeviceAndToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	got, _, err := repo.SessionByTokenHash(ctx, "hash-abc")
+	got, _, err := repo.SessionByTokenHash(ctx, "hash-abc", "")
 	if err != nil {
 		t.Fatalf("SessionByTokenHash: %v", err)
 	}
 	if got.ID != u1.ID {
 		t.Fatalf("resolved wrong user: %d != %d", got.ID, u1.ID)
 	}
-	if _, _, err := repo.SessionByTokenHash(ctx, "missing"); !errors.Is(err, domain.ErrNotFound) {
+	if _, _, err := repo.SessionByTokenHash(ctx, "missing", ""); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("expected domain.ErrNotFound for missing token, got %v", err)
 	}
 }
@@ -165,11 +165,11 @@ func TestAuthRepo_SessionListDelete(t *testing.T) {
 	_, _ = repo.Create(ctx, domain.Device{UserID: u.ID, Name: "phone", Platform: "ios", TokenHash: "hash-2"})
 
 	// SessionByTokenHash resolves user + device.
-	gotUser, gotDevice, err := repo.SessionByTokenHash(ctx, "hash-1")
+	gotUser, gotDevice, err := repo.SessionByTokenHash(ctx, "hash-1", "")
 	if err != nil || gotUser.ID != u.ID || gotDevice != d1.ID {
 		t.Fatalf("SessionByTokenHash = %v, %d, %v", gotUser, gotDevice, err)
 	}
-	if _, _, err := repo.SessionByTokenHash(ctx, "missing"); !errors.Is(err, domain.ErrNotFound) {
+	if _, _, err := repo.SessionByTokenHash(ctx, "missing", ""); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("expected domain.ErrNotFound, got %v", err)
 	}
 
@@ -184,7 +184,7 @@ func TestAuthRepo_SessionListDelete(t *testing.T) {
 	if err != nil || !found || th != "hash-1" {
 		t.Fatalf("Delete = %q, %v, %v", th, found, err)
 	}
-	if _, _, err := repo.SessionByTokenHash(ctx, "hash-1"); !errors.Is(err, domain.ErrNotFound) {
+	if _, _, err := repo.SessionByTokenHash(ctx, "hash-1", ""); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("expected device gone, got %v", err)
 	}
 	// Deleting a non-existent / other-user device reports not found.

@@ -339,7 +339,10 @@ func (i *Interactor) Authenticate(ctx context.Context, token string) (domain.Use
 			return s.User, s.DeviceID, nil
 		}
 	}
-	user, deviceID, err := i.devices.SessionByTokenHash(ctx, hash)
+	// Версия сборки берётся из ClientInfo запроса (её кладёт AuthMiddleware) и
+	// освежает строку устройства на промахе кэша — то есть не чаще раза в
+	// SessionCacheTTL на сессию, а не на каждом запросе.
+	user, deviceID, err := i.devices.SessionByTokenHash(ctx, hash, clientInfoFromContext(ctx).AppVersion)
 	if err != nil {
 		return domain.UserRecord{}, 0, err
 	}

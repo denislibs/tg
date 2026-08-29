@@ -374,7 +374,7 @@ func (r *AuthRepo) Create(ctx context.Context, in domain.Device) (domain.Device,
 
 // SessionByTokenHash resolves a token hash to its user and device id, and
 // lazily touches last_active. Returns domain.ErrNotFound if unknown.
-func (r *AuthRepo) SessionByTokenHash(ctx context.Context, tokenHash string) (domain.UserRecord, int64, error) {
+func (r *AuthRepo) SessionByTokenHash(ctx context.Context, tokenHash, appVersion string) (domain.UserRecord, int64, error) {
 	var u domain.UserRecord
 	var phone *string
 	var deviceID int64
@@ -395,7 +395,16 @@ func (r *AuthRepo) SessionByTokenHash(ctx context.Context, tokenHash string) (do
 	if phone != nil {
 		u.Phone = *phone
 	}
-	_, _ = r.pool.Exec(ctx, `UPDATE devices SET last_active=now() WHERE id=$1`, deviceID)
+	// Версия сборки обновляется ТЕМ ЖЕ запросом, что двигает активность:
+	// у оригинала клиент называет себя в преамбуле КАЖДОГО соединения, поэтому
+	// экран сессий показывает версию, которой пользуются сейчас, а не ту, с
+	// которой когда-то вошли (клиент обновляется сам, и замороженная строка
+	// врала бы до следующего входа). Пустое значение прежнюю не затирает:
+	// «клиент не назвался» — не то же самое, что «клиент безымянный».
+	_, _ = r.pool.Exec(ctx,
+		`UPDATE devices SET last_active=now(),
+		        app_version=CASE WHEN $2 <> '' THEN $2 ELSE app_version END
+		  WHERE id=$1`, deviceID, appVersion)
 	return u, deviceID, nil
 }
 

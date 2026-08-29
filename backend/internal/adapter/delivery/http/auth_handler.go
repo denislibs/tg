@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/messenger-denis/backend/internal/domain"
@@ -40,13 +41,27 @@ func clientInfoFromRequest(r *http.Request) usecaseauth.ClientInfo {
 // appVersionHeader — заголовок, которым клиент называет свою версию сборки.
 const appVersionHeader = "X-App-Version"
 
-// maxAppVersionLen — потолок длины версии сборки; у клиента она вида «0.1.0 (7)».
+// maxAppVersionLen — потолок длины версии сборки В РУНАХ; у клиента она вида
+// «0.1.0 (7)».
 const maxAppVersionLen = 32
 
+// clientAppVersion — версия сборки, которой клиент назвался, приведённая к
+// тому, что БД согласна хранить.
+//
+// Значение заголовка — это БАЙТЫ, а не текст: клиент волен прислать любую
+// последовательность от 0x20 и выше. Поэтому две операции, и обе обязательны.
+//
+//   - Невалидный UTF-8 выбрасывается. В колонку text такая строка не ложится:
+//     Postgres отвергает INSERT, `mintSession` возвращает ошибку — и ВХОД
+//     отвечает 500. То есть заголовок, который «просто показывают», умел
+//     ронять вход.
+//   - Режем по РУНАМ, а не по байтам. Срез посреди многобайтовой руны сам
+//     создаёт невалидный UTF-8 из совершенно валимого заголовка — и прячется:
+//     ровно на границе руны (16 кириллических букв = 32 байта) всё проходит.
 func clientAppVersion(r *http.Request) string {
-	v := strings.TrimSpace(r.Header.Get(appVersionHeader))
-	if len(v) > maxAppVersionLen {
-		v = v[:maxAppVersionLen]
+	v := strings.ToValidUTF8(strings.TrimSpace(r.Header.Get(appVersionHeader)), "")
+	if utf8.RuneCountInString(v) > maxAppVersionLen {
+		v = string([]rune(v)[:maxAppVersionLen])
 	}
 	return v
 }

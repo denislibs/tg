@@ -11,19 +11,36 @@ type SessionHandler struct{ svc *usecaseauth.Interactor }
 
 func NewSessionHandler(svc *usecaseauth.Interactor) *SessionHandler { return &SessionHandler{svc: svc} }
 
+// currentDeviceID — устройство, из которого пришёл запрос. Ручки сессий без
+// него работать не могут, поэтому отсутствие — отказ, а не ноль по умолчанию.
+//
+// Ноль отвергается НАРАВНЕ с отсутствием ключа, и это не педантизм: пара
+// юзер+устройство попадает в контекст не только из заголовка, но и пред-инжектом
+// канального RPC (`rpc.go:22` → `WithUser`) и из кэша сессий
+// (`usecase/auth.Authenticate` → `domain.Session`), поэтому незаполненное
+// устройство приезжает как `(0, true)`, а не как отсутствие.
+//
+// Дальше ноль означает разное и всегда плохое:
+//   - в списке сессий ни одна строка не получит флага `current` — вкладка не
+//     найдёт своей сессии и покажет пустоту вместо списка;
+//   - в «завершить все прочие» он превращается в `DELETE … WHERE id<>0`, то
+//     есть в снос ВСЕХ сессий пользователя вместе с той, из которой нажали
+//     кнопку.
+//
+// Поэтому проверка одна на все четыре ручки, а не по вкусу в каждой.
+func currentDeviceID(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	id, ok := DeviceIDFromContext(r.Context())
+	if !ok || id == 0 {
+		writeError(w, http.StatusUnauthorized, "no session")
+		return 0, false
+	}
+	return id, true
+}
+
 func (h *SessionHandler) List(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	// Id устройства проверяется, а не глотается. Без него НИ ОДНА строка не
-	// получит флага `current`: вкладка «Устройства» не найдёт своей сессии и
-	// умрёт на пустом месте, показав пользователю пустоту вместо списка. Отдать
-	// такой список — значит соврать («текущей сессии нет»), поэтому это отказ.
-	//
-	// Ноль проверяется наравне с отсутствием ключа: канальный RPC пред-инжектит
-	// пару юзер+устройство целиком (`rpc.go:22` → `WithUser`), и незаполненный
-	// id приезжает сюда как ноль при `ok == true`.
-	current, ok := DeviceIDFromContext(r.Context())
-	if !ok || current == 0 {
-		writeError(w, http.StatusUnauthorized, "no session")
+	current, ok := currentDeviceID(w, r)
+	if !ok {
 		return
 	}
 	devices, err := h.svc.ListSessions(r.Context(), user.ID)
@@ -42,15 +59,22 @@ func (h *SessionHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 // RevokeOthers terminates every session except the current one.
+//
+// Отказа `FRESH_RESET_AUTHORISATION_FORBIDDEN` мы здесь не порождаем, и это
+// названный пропуск, а не забывчивость: у оригинала он запрещает свежей сессии
+// отзывать чужие первые сутки после входа (защита от того, кто только что увёл
+// аккаунт), — у нас такого правила НЕТ. Не текста не хватает, а самого правила;
+// данные для него есть (`devices.created_at` читается), поэтому завести его
+// можно не трогая форму ответа. Пока не заведено — ветка вкладки
+// «Устройства», показывающая эту всплывашку, в проде недостижима.
 func (h *SessionHandler) RevokeOthers(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	current, ok := DeviceIDFromContext(r.Context())
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "no session")
-		return
-	}
 	// «Все прочие» знает, кто текущий, из КОНТЕКСТА запроса, а не из адреса в
 	// теле: обнуление hash у текущей строки витрины этот путь не задевает.
+	current, ok := currentDeviceID(w, r)
+	if !ok {
+		return
+	}
 	n, err := h.svc.RevokeOtherSessions(r.Context(), user.ID, current)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not revoke sessions")
@@ -64,15 +88,21 @@ func (h *SessionHandler) RevokeOthers(w http.ResponseWriter, r *http.Request) {
 
 func (h *SessionHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
+	current, ok := currentDeviceID(w, r)
+	if !ok {
+		return
+	}
 	deviceID, ok := pathInt(w, r, "deviceID")
 	if !ok {
 		return
 	}
-	// Ноль сюда приехать не может: это адрес ТЕКУЩЕЙ сессии, а её не отзывают —
-	// из неё выходят (POST /auth/logout). Клиент такой строки и не отдаёт, но
-	// отказ здесь явный: иначе ноль ушёл бы в запрос как обычный id и молча
-	// вернул «сессия не найдена», спрятав ошибку вызывающего.
-	if deviceID == 0 {
+	// Своя сессия по этому пути не отзывается — ни нулём (адрес текущей строки
+	// витрины), ни угаданным настоящим id. У оригинала такой возможности нет по
+	// построению: адреса у текущей авторизации не существует, для неё есть
+	// выход из аккаунта. У нас адрес есть, поэтому отказ явный — иначе выходил
+	// бы «половинный логаут»: сессия умирает на сервере, а вкладка держит
+	// мёртвый токен до ближайшего 401.
+	if deviceID == 0 || deviceID == current {
 		writeError(w, http.StatusBadRequest, "current session is not revocable by hash")
 		return
 	}
@@ -90,9 +120,8 @@ func (h *SessionHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 
 func (h *SessionHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	deviceID, ok := DeviceIDFromContext(r.Context())
+	deviceID, ok := currentDeviceID(w, r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "no session")
 		return
 	}
 	if _, err := h.svc.RevokeSession(r.Context(), user.ID, deviceID); err != nil {
