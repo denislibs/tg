@@ -137,11 +137,16 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
         />
         {/* «Активные сессии» уехали на слайдер вкладок
             (`sidebarLeft/tabs/activeSessions.solid.tsx`); в колонку вкладку
-            заводит задача 8 — до неё строка есть, но никуда не ведёт. */}
+            заводит задача 8. До неё клик обязан НИЧЕГО не делать: `setSub`
+            с именем, которого нет в `renderSub`, навсегда взвёл бы `sub` —
+            под-экран не показался бы, а гейт эффекта выше (`if (sub !== null)
+            return`) заморозил бы сабтайтлы On/Off и счётчик ключей, и
+            вернуться в `sub === null` было бы нечем. Тот же приём, что в
+            `SettingsView.tsx:163` (`if (hasSubScreen(...)) setSub(...)`). */}
         <Row
           icon={<TgIcon name="activesessions" size={24} />}
           label="Active Sessions"
-          onClick={() => setSub('Active Sessions')}
+          onClick={() => {}}
         />
       </Section>
 

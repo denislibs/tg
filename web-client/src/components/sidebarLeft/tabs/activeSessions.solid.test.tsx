@@ -18,6 +18,8 @@ import type { Managers } from '@/client/bootstrap'
 import { createSliderStub } from '@components/sliderTab.testStub'
 import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
 import { hideToast } from '@components/toast'
+import contextMenuController from '@helpers/contextMenuController'
+import { useI18nStore } from '@/i18n'
 import { AppActiveSessionsTab } from '@components/solidJsTabs/tabs'
 
 type Auth = Authorization.authorization
@@ -60,6 +62,12 @@ async function openTab(authorizations: Auth[], managers: Managers) {
   return tab
 }
 
+/** Правый клик по строке сессии — второй вход в то же завершение. */
+function rightClick(row: Element) {
+  row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }))
+  return document.getElementById('active-sessions-contextmenu')!
+}
+
 /** Клик по строке сессии → подтверждение → кнопка «Terminate» в попапе. */
 function confirmTerminate(tab: { scrollable: { container: HTMLElement } }, hash: number) {
   const row = tab.scrollable.container.querySelector<HTMLElement>(`.row[data-hash="${hash}"]`)!
@@ -72,6 +80,10 @@ function confirmTerminate(tab: { scrollable: { container: HTMLElement } }, hash:
 }
 
 afterEach(async() => {
+  // Контекстное меню — общий синглтон-контроллер: незакрытое меню утекает
+  // в следующий тест классом `active`.
+  contextMenuController.close()
+
   // Всплывашка — модульный синглтон: пока её узел висит в своём контейнере,
   // повторный `toast()` не переприкрепит контейнер к body и следующий тест
   // не увидит всплывашку вовсе. Гасим её ПО-НАСТОЯЩЕМУ (снятие узла у
@@ -195,6 +207,62 @@ describe('вкладка «Устройства» — порт tweb sidebarLeft/
 
     expect(tab.scrollable.container.querySelectorAll('.sidebar-left-section')).toHaveLength(1)
     expect(tab.scrollable.container.querySelector('.btn-primary.danger')).toBeNull()
+  })
+
+  it('правый клик по чужой строке открывает меню, а его «Terminate» доводит до подтверждения', async() => {
+    const { terminate, managers } = makeManagers()
+    const tab = await openTab([current, other], managers)
+
+    // Пинит саму проводку `attachContextMenuListener`: без неё меню не
+    // открывается и весь этот вход в завершение сессии недостижим.
+    const menu = rightClick(tab.scrollable.container.querySelector('.row[data-hash="2"]')!)
+    expect(menu.classList.contains('active')).toBe(true)
+
+    menu.querySelector<HTMLElement>('.btn-menu-item')!
+      .dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
+    document.querySelector<HTMLElement>('.popup-peer .popup-button:not(.popup-close)')!
+      .dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
+
+    await vi.waitFor(() =>
+      expect(tab.scrollable.container.querySelector('.row[data-hash="2"]')).toBeNull())
+    expect(terminate).toHaveBeenCalledWith(2)
+  })
+
+  it('правый клик по строке ТЕКУЩЕЙ сессии не открывает меню — свою сессию не завершить и отсюда', async() => {
+    const { terminate, managers } = makeManagers()
+    const tab = await openTab([current, other], managers)
+
+    const menu = rightClick(tab.scrollable.container.querySelector('.row[data-hash="1"]')!)
+    expect(menu.classList.contains('active')).toBe(false)
+
+    // Второй рубеж: даже если до пункта меню дотянуться руками, закрытое меню
+    // его не исполняет (`ButtonMenuItem` требует класс `active`), значит и
+    // подтверждения не будет.
+    menu.querySelector<HTMLElement>('.btn-menu-item')!
+      .dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
+
+    expect(document.querySelector('.popup-peer')).toBeNull()
+    expect(terminate).not.toHaveBeenCalled()
+  })
+
+  it('язык, сменённый при открытой вкладке, доезжает до кнопки подтверждения', async() => {
+    const { managers } = makeManagers()
+    const tab = await openTab([current, other], managers)
+
+    // Переводчик обязан читаться в ТОЧКЕ ПРИМЕНЕНИЯ (`row.ts:173,247`,
+    // `button.ts:59`), а не сниматься один раз на открытии вкладки: смена
+    // языка не перерисовывает уже построенный DOM, но попап строится позже.
+    const original = useI18nStore.getState().t
+    useI18nStore.setState({ t: (key: string) => (key === 'Terminate' ? 'Завершить' : original(key)) })
+    try {
+      tab.scrollable.container.querySelector<HTMLElement>('.row[data-hash="2"]')!
+        .dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
+
+      expect(document.querySelector('.popup-peer .popup-button:not(.popup-close)')!.textContent)
+        .toBe('Завершить')
+    } finally {
+      useI18nStore.setState({ t: original })
+    }
   })
 
   it('на закрытии вкладки контекстное меню уходит из body', async() => {

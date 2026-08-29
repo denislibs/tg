@@ -46,7 +46,10 @@
  *  • `getOverlayRoot()` (`helpers/appWindow.ts` — их поддержка Document PiP)
  *    → `document.body`, как уже сделано в `components/chat/contextMenu.ts:909`;
  *  • `langKey`/`LangPackKey` → строка-ключ через `useI18nStore.getState().t`
- *    (тот же приём, что в `row.ts`/`button.ts`/`popupPeer.ts`);
+ *    (тот же приём, что в `row.ts`/`button.ts`/`popupPeer.ts`) — читается В
+ *    ТОЧКЕ ПРИМЕНЕНИЯ (`row.ts:173,247`, `button.ts:59`), а не снимается
+ *    один раз на открытии вкладки: иначе смена языка при открытой вкладке
+ *    оставила бы кнопку попапа на старом языке;
  *  • `appAccountManager.resetAuthorization(hash)`/`resetAuthorizations()` →
  *    `tab.managers.sessions.terminate(id)`/`terminateOthers()` — наш прямой
  *    аналог; `hash` из `dataset` — строка, менеджер адресует сессию числом.
@@ -74,7 +77,6 @@ import { useI18nStore } from '@/i18n'
 
 const ActiveSessions: Component = () => {
   const [tab] = useSuperTab<typeof AppActiveSessionsTab>()
-  const t = useI18nStore.getState().t
 
   let menuElement: HTMLElement | undefined
 
@@ -130,7 +132,7 @@ const ActiveSessions: Component = () => {
         attachClickEvent(btnTerminate, () => {
           PopupElement.createPopup(PopupPeer, 'revoke-session', {
             buttons: [{
-              text: t('Terminate'),
+              text: useI18nStore.getState().t('Terminate'),
               isDanger: true,
               callback: () => {
                 const toggle = toggleDisability([btnTerminate], true)
@@ -177,7 +179,7 @@ const ActiveSessions: Component = () => {
 
       PopupElement.createPopup(PopupPeer, 'revoke-session', {
         buttons: [{
-          text: t('Terminate'),
+          text: useI18nStore.getState().t('Terminate'),
           isDanger: true,
           callback: () => {
             tab.managers!.sessions.terminate(Number(hash))
@@ -213,8 +215,17 @@ const ActiveSessions: Component = () => {
           return
         }
 
-        if(!('touches' in e)) e.preventDefault()
-        if(!('touches' in e)) e.cancelBubble = true
+        // tweb :137-138 — `e.preventDefault()` + `e.cancelBubble = true`.
+        // `cancelBubble = true` по спецификации DOM это ровно «взвести флаг
+        // остановки всплытия», то есть `stopPropagation()`; берём вторую
+        // форму, потому что happy-dom отдаёт `cancelBubble` ТОЛЬКО геттером
+        // и присваивание в нём бросает — строка стала бы непроверяемой.
+        // Проверка на `touches` — та же cross-realm-безопасная («мышь ли
+        // это»), что у оригинала, без `instanceof MouseEvent`.
+        if(!('touches' in e)) {
+          e.preventDefault()
+          e.stopPropagation()
+        }
 
         positionMenu(e, element)
         contextMenuController.openBtnMenu(element)
