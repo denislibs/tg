@@ -67,6 +67,16 @@ let baseHandler: (() => void) | null = null
 let ignorePop = false
 let installed = false
 
+// Поколение предохранителя `removeLayer` (см. докблок ниже, «предохранитель»).
+// Растёт на КАЖДЫЙ вызов removeLayer, снимающий верхний слой — не на попытку,
+// а именно на факт постановки нового history.back() в полёт. Таймер держит
+// СВОЁ значение в замыкании и сверяет его с текущим при срабатывании: если
+// поколение уже сменилось, эта операция закрытия давно не единственная в
+// полёте, и таймер обязан молчать — иначе он трогает ignorePop/historyBusy
+// совсем ДРУГОЙ, ещё не подтверждённой операции (найдено финальным ревью
+// solid-wave-1: `navigationStack.backTimerGeneration.test.ts`).
+let backGen = 0
+
 function ensureInstalled(): void {
   if (installed || typeof window === 'undefined') return
   installed = true
@@ -158,12 +168,23 @@ export function removeLayer(layer: Layer): void {
       // это и есть сериализация, ради которой заведена очередь.
       historyBusy = true
       ignorePop = true
+      const gen = ++backGen // это поколение принадлежит РОВНО этому back()
       history.back()
       // Предохранитель: если по какой-то причине popstate не пришёл вовсе
       // (например, back() уже упёрся в дно сессии) — не держать очередь
       // забитой навечно. handlePop гасит ignorePop первым, так что при
       // нормальном срабатывании это — no-op (idempotent на historyOpSettled).
+      //
+      // Проверка поколения ОБЯЗАНА идти ПЕРВОЙ, до чтения ignorePop: сам
+      // булев флаг общий на все операции, и к моменту срабатывания этого
+      // таймера (500мс спустя) он вполне может быть взведён уже СЛЕДУЮЩИМ
+      // closeLayer — тогда `!ignorePop` окажется false, и старый таймер,
+      // ничего не заподозрив, погасит ЧУЖой ignorePop и сделает лишний
+      // historyOpSettled() (баг найден финальным ревью solid-wave-1:
+      // навскидку узкое окно в несколько миллисекунд между двумя закрытиями
+      // слоёв подряд, зонд — `navigationStack.backTimerGeneration.test.ts`).
       setTimeout(() => {
+        if (backGen !== gen) return // предохранитель пережил свою операцию — не наше дело
         if (!ignorePop) return
         ignorePop = false
         historyOpSettled()
