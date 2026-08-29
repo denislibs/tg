@@ -55,7 +55,7 @@ import rootScope from '@lib/rootScope'
 import { useSettingsStore } from '../settings'
 import SchedulePopup from './SchedulePopup'
 import { createPortal } from 'react-dom'
-import { DiscardVoiceDialog } from './messages/ChatDialogs.tsx'
+import { confirmationPopup } from './popups/popupPeer'
 import s from './composer/extras.module.scss'
 
 // Пикер эмодзи/стикеров/гифок — тяжёлый (сетки, StickersTab/GifsTab), но нужен
@@ -163,8 +163,6 @@ function Composer({
   if (emojiDd.open && !emojiMounted) setEmojiMounted(true)
   // Live code-point length of the draft, for the over-limit guard/counter.
   const [len, setLen] = useState(0)
-  // While recording, Esc opens a "discard voice message?" confirm (tweb-style).
-  const [cancelRecOpen, setCancelRecOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<HTMLDivElement>(null)
   const fakeRef = useRef<HTMLDivElement>(null)
@@ -251,15 +249,26 @@ function Composer({
     return () => window.clearTimeout(id)
   }, [])
 
-  // While recording, Esc asks to discard (tweb-style confirm), not silently drop.
+  // While recording, Esc asks to discard (tweb-style confirm), not silently
+  // drop. Задача 3 плана solid-wave-1: конфирм больше не React-компонент —
+  // `confirmationPopup` (порт tweb `simpleConfirmation.ts`, см.
+  // `components/popups/popupPeer.ts`) резолвится на подтверждении и реджектится
+  // на отмене (Cancel/оверлей/Esc/Back), поэтому отмена просто гасится `catch`.
   useEffect(() => {
     if (!rec.recording) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); setCancelRecOpen(true) }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        confirmationPopup({
+          titleLangKey: t('Discard voice message?'),
+          descriptionLangKey: t('Are you sure you want to discard this voice message?'),
+          button: { text: t('Discard'), isDanger: true },
+        }).then(() => rec.stop(false), () => {})
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [rec.recording])
+  }, [rec.recording, rec, t])
 
   // input.ts:2718-2724 — ширину кнопки меню бота tweb МЕРЯЕТ и кладёт в
   // `--commands-size` на строке: от неё считается сдвиг инпута (`has-offset`).
@@ -744,13 +753,6 @@ function Composer({
         document.body,
       )}
 
-      {/* Discard-recording confirm (Esc) */}
-      {cancelRecOpen && (
-        <DiscardVoiceDialog
-          onCancel={() => setCancelRecOpen(false)}
-          onDiscard={() => { setCancelRecOpen(false); rec.stop(false) }}
-        />
-      )}
     </>
   )
 }

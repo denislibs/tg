@@ -1,0 +1,36 @@
+// popupMute — радио-список длительностей (tweb PopupMute: RadioForm в body
+// PopupPeer, mute.ts). Радио-строки — «наша реализация» (см. докблок
+// popupMute.ts), поэтому геометрия/типографика здесь СВОЯ, а не порт
+// конкретного tweb-партиала.
+.list {
+  padding: 0.25rem 0;
+}
+
+// строка радио — как чекбокс-строки PopupPeer: min-height 3rem, hover, ripple
+.row {
+  position: relative; // хост ripple
+  display: flex;
+  align-items: center;
+  gap: 1.125rem;
+  min-height: 3rem;
+  padding: 0.25rem 1.125rem;
+  cursor: pointer;
+  overflow: hidden;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--light-secondary-text-color);
+    }
+  }
+}
+
+// подпись строки — цвет переключается СЕЛЕКТОРОМ по aria-checked, который
+// уже ставит popupMute.ts::paint(); отдельной записи в JS не требуется.
+.text {
+  font-size: 1rem;
+  color: var(--primary-text-color);
+}
+
+.row[aria-checked='true'] .text {
+  color: var(--primary-color);
+}

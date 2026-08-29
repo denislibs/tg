@@ -1,6 +1,6 @@
 // Тесты порта tweb `helpers/dom/clickEvent.ts` (см. `clickEvent.ts` рядом).
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { attachClickEvent, hasMouseMovedSinceDown, CLICK_EVENT_NAME } from './clickEvent'
+import { attachClickEvent, hasMouseMovedSinceDown, simulateClickEvent, CLICK_EVENT_NAME } from './clickEvent'
 
 afterEach(() => {
   document.body.replaceChildren()
@@ -46,5 +46,13 @@ describe('clickEvent', () => {
     const el = mount()
     attachClickEvent(el, () => {}, { cancelMouseDown: true })
     expect(el.hasAttribute('cancel-mouse-down')).toBe(true)
+  })
+
+  it('simulateClickEvent зовёт обработчик, навешанный attachClickEvent', () => {
+    const el = mount()
+    const cb = vi.fn()
+    attachClickEvent(el, cb)
+    simulateClickEvent(el)
+    expect(cb).toHaveBeenCalledTimes(1)
   })
 })

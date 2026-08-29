@@ -12,7 +12,7 @@ import EmoticonsTab, { EmoticonsSearch, MenuTab } from './EmoticonsTab'
 import useEmoticonsStickySpy from './useEmoticonsStickySpy'
 import Menu, { MenuItem } from '../../shared/ui/Menu'
 import IconButton from '../../shared/ui/IconButton'
-import ConfirmPopup from '../../shared/ui/ConfirmPopup'
+import { confirmationPopup } from '../popups/popupPeer'
 import { useStickersPanel } from '../../core/hooks/useStickers'
 import type { Sticker } from '../../core/managers/stickersManager'
 import { setThumbMediaId } from '../../core/stickers/setThumb'
@@ -87,7 +87,6 @@ export default function StickersTab({
   const [activeCat, setActiveCat] = useState('recent')
   const [cols, setCols] = useState(5)
   const [ctxMenu, setCtxMenu] = useState<{ st: Sticker; x: number; y: number } | null>(null)
-  const [clearRecentOpen, setClearRecentOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [focused, setFocused] = useState(false)
   const [atTop, setAtTop] = useState(true)
@@ -303,7 +302,17 @@ export default function StickersTab({
                     ButtonIcon('close', {noRipple}) в заголовке Recent,
                     клик → confirmationPopup → clearRecentStickers */}
                 {c.key === 'recent' && (
-                  <IconButton noRipple aria-label={t('Clear Recent Stickers')} onClick={() => setClearRecentOpen(true)}>
+                  <IconButton
+                    noRipple
+                    aria-label={t('Clear Recent Stickers')}
+                    onClick={() => {
+                      void confirmationPopup({
+                        titleLangKey: t('Clear Recent Stickers'),
+                        descriptionLangKey: t('Are you sure you want to clear your recent stickers?'),
+                        button: { text: t('Clear') },
+                      }).then(() => panel.clearRecent(), () => {})
+                    }}
+                  >
                     <TgIcon name="close" size="inherit" className="button-icon" />
                   </IconButton>
                 )}
@@ -318,23 +327,6 @@ export default function StickersTab({
           <span className="emoticons-not-found">{t('No stickers found')}</span>
         )}
       </EmoticonsTab>
-
-      {/* подтверждение очистки недавних (tweb confirmationPopup
-          ClearRecentStickersAlertTitle/Message + кнопка Clear, stickers.ts:204-211) */}
-      {clearRecentOpen && (
-        <ConfirmPopup
-          title={t('Clear Recent Stickers')}
-          description={t('Are you sure you want to clear your recent stickers?')}
-          buttons={[{
-            text: t('Clear'),
-            onClick: () => {
-              panel.clearRecent()
-              setClearRecentOpen(false)
-            },
-          }]}
-          onClose={() => setClearRecentOpen(false)}
-        />
-      )}
 
       {/* ПКМ/long-press по стикеру: избранное (tweb sticker context menu) */}
       {ctxMenu && (

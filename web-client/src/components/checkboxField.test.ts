@@ -1,5 +1,7 @@
 // Разметка порта `components/checkboxField.ts` — сверена с tweb
-// `src/components/checkboxField.ts:107-152` (ветка без `text`/`toggle`).
+// `src/components/checkboxField.ts:107-152` (ветка без `toggle`).
+// `text`/`checked` — раунд правок 3 плана solid-wave-1 (потребитель:
+// `PopupPeer` чекбоксы, `popupPeer.ts`).
 import { describe, expect, it } from 'vitest'
 import CheckboxField from './checkboxField'
 
@@ -45,5 +47,22 @@ describe('CheckboxField', () => {
 
   it('без name id не проставляется', () => {
     expect(new CheckboxField().input.id).toBe('')
+  })
+
+  it('text → span.checkbox-caption ПОСЛЕ .checkbox-box, без checkbox-without-caption (tweb :106-114, :151-153)', () => {
+    const field = new CheckboxField({ text: 'Also delete for Maya' })
+
+    expect(field.label.classList.contains('checkbox-without-caption')).toBe(false)
+    const span = field.label.lastElementChild as HTMLElement
+    expect(span.tagName).toBe('SPAN')
+    expect(span.classList.contains('checkbox-caption')).toBe(true)
+    expect(span.textContent).toBe('Also delete for Maya')
+    // порядок: input, box, span (tweb :123, :150, :153)
+    expect(Array.from(field.label.children).map((c) => c.tagName)).toEqual(['INPUT', 'DIV', 'SPAN'])
+  })
+
+  it('checked:true — input взведён сразу (tweb :64-66)', () => {
+    expect(new CheckboxField({ checked: true }).input.checked).toBe(true)
+    expect(new CheckboxField().input.checked).toBe(false)
   })
 })

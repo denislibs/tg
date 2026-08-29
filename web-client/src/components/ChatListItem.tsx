@@ -18,7 +18,8 @@ import EmojiStatus from './EmojiStatus'
 import type { Chat } from '../data'
 import { useT } from '../i18n'
 import { useTimeFormatter } from '../settings'
-import MutePopup from './MutePopup'
+import PopupElement from './popups/popupElement'
+import PopupMute from './popups/popupMute'
 import s from './ChatListItem.module.scss'
 
 interface Props {
@@ -63,9 +64,12 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
   const fmtTime = useTimeFormatter()
   const { onPointerDown, ripple } = useRipple()
 
-  // Mute/Unmute (tweb dialogsContextMenu): Mute открывает попап длительности,
-  // Unmute снимает сразу. null — попап ни разу не открывали (не монтируем).
-  const [muteOpen, setMuteOpen] = useState<boolean | null>(null)
+  // Mute/Unmute (tweb dialogsContextMenu): Mute открывает попап длительности
+  // (задача 3 плана solid-wave-1: теперь vanilla `PopupMute`, не React-стейт),
+  // Unmute снимает сразу.
+  const openMutePopup = () => {
+    PopupElement.createPopup(PopupMute, Number(chat.id), managers, (seconds) => applyMute(true, seconds))
+  }
   // Task 4 (действия без оптимистики, порт tweb toggleDialogPin/
   // updateNotifySettings): оптимистики нет — локальный апдейт (patchDialog)
   // применяет владелец (dialogsManager) ПОСЛЕ успешного REST-ответа
@@ -123,7 +127,7 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
     {
       icon: <TgIcon name={chat.muted ? 'unmute' : 'mute'} size={20} />,
       label: chat.muted ? 'Unmute' : 'Mute',
-      onClick: () => (chat.muted ? applyMute(false) : setMuteOpen(true)),
+      onClick: () => (chat.muted ? applyMute(false) : openMutePopup()),
     },
     // «Избранное» не архивируется (tweb: verify peerId !== myId)
     ...(chat.type !== 'saved'
@@ -290,15 +294,6 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
         ))}
       </Menu>
 
-      {muteOpen != null && (
-        <MutePopup
-          open={muteOpen}
-          onClose={() => setMuteOpen(false)}
-          onExitComplete={() => setMuteOpen(null)}
-          onMute={(seconds) => applyMute(true, seconds)}
-          avatar={<Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={avatarSrc} preview={chat.avatarPreview} size={32} />}
-        />
-      )}
     </>
   )
 }
