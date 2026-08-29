@@ -46,7 +46,7 @@ export default function ChatMsgActionPopups({ msgActions, numericChatId }: {
   // него), но открывает попап больше не JSX-рендер, а прямой императивный вызов.
   useEffect(() => {
     if (!m.delIds) return
-    openDeleteMessageDialog({
+    const popup = openDeleteMessageDialog({
       peerId: m.delIds.peerId,
       managers,
       canRevoke: m.delIds.canRevoke,
@@ -57,6 +57,12 @@ export default function ChatMsgActionPopups({ msgActions, numericChatId }: {
       onDeleteForMe: () => m.doDelete(false),
       onClose: m.closeDelete,
     })
+    // Владелец сам снимает то, что создал (правило шва, web-client/CLAUDE.md,
+    // тот же приём, что `ConfirmDialog.tsx`): `Chat` размонтируется по `key`
+    // при смене чата (список — не через popupStore/clearPopups, поэтому без
+    // этого cleanup конфирм СТАРОГО чата висел бы поверх НОВОГО и всё ещё
+    // удалял бы из него — найдено финальным ревью solid-wave-1).
+    return () => popup.forceHide()
     // попап открывается один раз на новый m.delIds (свежий объект от
     // openDeleteFor, задача 3), а не на каждый рендер — остальные поля читаются
     // из актуального замыкания эффекта на момент срабатывания.

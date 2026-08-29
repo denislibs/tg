@@ -7,6 +7,7 @@
 //   • self-animating (HeaderMenu/AttachMenu/пикеры): onClose={p.destroy}
 //   • open-controlled (MutePopup/ChatThemesPicker/LocationPicker): open/requestClose/onExitComplete
 //   • instant (ConfirmDialog, слайд-ины AddContact/EditContact и пр.): onClose={p.destroy}
+import { useEffect, useRef } from 'react'
 import { openPopup } from '../../stores/popupStore'
 import { useT } from '../../i18n'
 import { useManagers } from './useManagers'
@@ -114,9 +115,19 @@ export function useChatPopups(d: ChatPopupDeps) {
   // `this.show()` в конце конструктора). Аватар строит сам `PopupPeer` из
   // `peerId` (зеркало пиров), а не React `<Avatar>` — второго источника
   // карточки чата тут больше нет.
+  // Инстанс держим в ref, чтобы снять его на размонтирование хука (см. эффект
+  // ниже) — владелец сам снимает то, что создал (правило шва,
+  // web-client/CLAUDE.md). PopupMute — vanilla-попап вне popupStore, поэтому
+  // `clearPopups()` (Chat.tsx, useEffect(() => () => clearPopups(), [])) его
+  // не видит: без этого ref мьют-попап пережил бы размонтирование Chat при
+  // смене чата (колонка ремаунтится по `key`) — найдено финальным ревью
+  // solid-wave-1, тот же класс дефекта, что у delete-конфирма
+  // (`ChatMsgActionPopups.tsx`).
+  const mutePopupRef = useRef<PopupMute | undefined>(undefined)
   const openMute = () => {
-    PopupElement.createPopup(PopupMute, numericChatId, managers, (seconds) => d.applyMute(true, seconds))
+    mutePopupRef.current = PopupElement.createPopup(PopupMute, numericChatId, managers, (seconds) => d.applyMute(true, seconds))
   }
+  useEffect(() => () => mutePopupRef.current?.forceHide(), [])
 
   const openConfirmDelete = () => openPopup((p) => (
     <ConfirmDialog

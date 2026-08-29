@@ -75,7 +75,7 @@ export function openDeleteMessageDialog({ peerId, managers, canRevoke, count = 1
   onDeleteForMe: () => void
   /** любой исход БЕЗ удаления — Cancel/Esc/оверлей/Back (см. `popup.addEventListener('closeAfterTimeout', …)` ниже) */
   onClose?: () => void
-}): void {
+}): PopupPeer {
   const t = useI18nStore.getState().t
   const single = count <= 1
   // Канал: revoke всегда, без чекбокса (tweb: buttons[0].callback = callback(..., true))
@@ -116,6 +116,11 @@ export function openDeleteMessageDialog({ peerId, managers, canRevoke, count = 1
   }
 
   popup.show()
+  // Инстанс возвращается вызывающему (раунд правок ревью — правило шва,
+  // web-client/CLAUDE.md): владелец, открывший попап в эффекте (сейчас —
+  // `ChatMsgActionPopups`), обязан снять его сам на cleanup, если размонтируется
+  // раньше исхода (`popup.forceHide()`, тот же приём, что `ConfirmDialog.tsx`).
+  return popup
 }
 
 // Подпись строки в пикере: private → presence/бот, группа/канал/избранное — метка.
