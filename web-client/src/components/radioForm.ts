@@ -1,35 +1,36 @@
 /**
- * Порт tweb `src/components/radioForm.ts` — обёртка `<form>` вокруг набора
- * `RadioField`. У tweb строка (`{container, input}`) снятие отметки с прежде
- * выбранного не делает вовсе — полагается на то, что браузер сам разводит
- * radio-инпуты с одинаковым `name` внутри одной формы. Здесь строка иная —
- * `{container, radioField}`: вызывающий отдаёт весь `RadioField`, а не голый
- * `input`, ИМЕННО ЗАТЕМ, чтобы снятие отметки было явным вызовом
- * `setValueSilently(false)`, а не побочным эффектом совпавшего `name` —
- * секции настроек волны 2 пересобирают строки чаще, чем tweb, и терять
- * группировку при переносе `container` между формами тише не хочется.
+ * Порт tweb `src/components/radioForm.ts` — 1:1. Строка — `{container, input}`,
+ * снятие отметки с прежде выбранного этот файл НЕ делает — это побочный
+ * эффект нативной radio-группировки браузера по одинаковому `input.name`
+ * (`radioField.ts`: `input.name = 'input-radio-' + options.name`, общий для
+ * всей группы).
+ *
+ * Раньше здесь была своя реализация — строка `{container, radioField}` и
+ * явный цикл `setValueSilently(false)` по остальным полям. Ревью нашло цену:
+ * оба реальных вызывающих в tweb передают именно голый `input`, причём
+ * `buttonMenu.ts:260-271` строит radio-строки из `CheckboxField`
+ * (`input.type = 'radio'` навешивается прямо там) — у нашего порта
+ * `checkboxField.ts` метода `setValueSilently` нет вовсе. Собственная
+ * сигнатура сломалась бы ещё раз при порте `buttonMenu` radioGroups и
+ * `row.ts:391 RadioFormFromRows`. Решение ведущего: дословный порт выше
+ * иллюстративного кода теста из брифа задачи 1 — расхождение было в брифе,
+ * а не в этом файле.
  */
-import type RadioField from './radioField'
-
 export interface RadioFormRow {
   container: HTMLElement
-  radioField: RadioField
+  input: HTMLInputElement
 }
 
 export default function RadioForm(rows: RadioFormRow[], onChange: (value: string, event: Event) => void) {
   const form = document.createElement('form')
 
   rows.forEach((r) => {
-    const { container, radioField } = r
+    const { container, input } = r
     form.append(container)
-    radioField.input.addEventListener('change', (e) => {
-      if (!radioField.input.checked) return
-
-      rows.forEach((other) => {
-        if (other.radioField !== radioField) other.radioField.setValueSilently(false)
-      })
-
-      onChange(radioField.input.value, e)
+    input.addEventListener('change', (e) => {
+      if (input.checked) {
+        onChange(input.value, e)
+      }
     })
   })
 

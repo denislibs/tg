@@ -18,14 +18,17 @@
  *  • `stateKey`/`stateValues`/`stateValueReverse` — двусторонняя привязка к
  *    `appStateManager` (tweb `rootScope.managers`/`apiManagerProxy`); у нас
  *    состояние живёт в zustand-сторах, а у обоих вызывающих его нет вовсе;
- *  • `withRipple`/`withHover` — требуют `components/ripple.ts`, которого в
- *    репозитории ещё нет. Тот же вычет уже сделан в `popupElement.ts::setButtons`
- *    (кнопки попапа тоже без ripple) — `PopupPeer` чекбоксы наследуют то же
- *    ограничение, а не решают его по-своему: у tweb `o.withRipple = true`
- *    ставится БЕЗУСЛОВНО для чекбоксов `PopupPeer` (peer.ts:98), здесь эта
- *    строка не портирована ЦЕЛИКОМ (ни JS-эффект, ни классы `checkbox-ripple
- *    hover-effect`, которые вешает сам `ripple()`) — частичного переноса
- *    (класс есть, эффекта нет) не делаем;
+ *  • `withRipple`/`withHover` — НЕ портированы, но уже не из-за отсутствия
+ *    `components/ripple.ts` (он появился позже, в задаче про кнопку/радио/
+ *    тост — этот пункт устарел и здесь актуализирован без переноса самой
+ *    ветки). Причина сейчас другая: у tweb `o.withRipple = true` ставится
+ *    БЕЗУСЛОВНО для чекбоксов `PopupPeer` (peer.ts:98), но наш вызывающий
+ *    (`popupPeer.ts:176`) этот флаг не передаёт — заводить ветку без
+ *    единого вызывающего, который её включает, значит писать код, который
+ *    никто не исполнит. Тот же вычет — в `popupElement.ts::setButtons`
+ *    (кнопки попапа тоже без ripple). Включение `withRipple` в `popupPeer.ts`
+ *    — отдельная задача (нужен вызывающий + тест на класс/эффект), не строка
+ *    в этом файле;
  *  • `color`, `restriction`, `asRadio`, `disabled`, `listenerSetter` — их не
  *    зовёт ни выделение, ни `PopupPeer`;
  *  • сеттер `checked` через `simulateEvent` (tweb :171-179) — хелпера

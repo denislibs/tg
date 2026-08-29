@@ -71,10 +71,17 @@ export function toast(content: string | Node, onClose?: () => void, duration = 3
   }
 }
 
-export function toastNew(options: Partial<{
+// `langPackKey` — обязательный (в отличие от tweb `Partial<>`, где он
+// формально опционален, но реально всегда передаётся вызывающим): подстановка
+// пустой строки при пропуске показывала бы пустую всплывашку, которая на
+// `duration` мс всё равно забирает слой навигации (`pushEsc`/`pushLayer` в
+// `OverlayClickHandler.open`) — то есть съедала бы первый Esc/Back
+// пользователя без всякого видимого повода. У tweb пустой строки не
+// подставляется вовсе; здесь то же самое гарантируется типом, а не рантайм-проверкой.
+export function toastNew(options: {
   langPackKey: string
-  onClose: () => void
-  duration: number
-}>) {
-  toast(useI18nStore.getState().t(options.langPackKey ?? ''), options.onClose, options.duration)
+  onClose?: () => void
+  duration?: number
+}) {
+  toast(useI18nStore.getState().t(options.langPackKey), options.onClose, options.duration)
 }
