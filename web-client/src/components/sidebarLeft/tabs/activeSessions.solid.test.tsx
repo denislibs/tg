@@ -176,10 +176,15 @@ describe('вкладка «Устройства» — порт tweb sidebarLeft/
     const { terminate, managers } = makeManagers()
     // Имя отказа приезжает полем `type` — его довозит через границу воркера
     // `superMessagePort.ts`, а на HTTP-границе им становится `error.text`
-    // конструктора отказа (`net/restClient.ts`). Ветвление по тексту сообщения
-    // было бы ветвлением по человеческой строке, а не по названной причине.
+    // конструктора отказа (`net/restClient.ts`).
+    //
+    // `message` здесь НАМЕРЕННО другой: положи в оба поля одну строку — и
+    // сверка по тексту сообщения прошла бы наравне со сверкой по имени
+    // отказа, то есть тест перестал бы отличать одно от другого. Ветвиться
+    // надо по названной причине, а не по человеческой фразе: её меняют, не
+    // задумываясь, при первой же правке текстов.
     terminate.mockRejectedValue(Object.assign(
-      new Error('FRESH_RESET_AUTHORISATION_FORBIDDEN'),
+      new Error('не удалось завершить сессию'),
       { type: 'FRESH_RESET_AUTHORISATION_FORBIDDEN' }))
     const tab = await openTab([current, other], managers)
 

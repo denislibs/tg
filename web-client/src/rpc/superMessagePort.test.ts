@@ -51,8 +51,11 @@ describe('SuperMessagePort', () => {
     const ch = new MessageChannel()
     const a = new SuperMessagePort(ch.port1)
     const b = new SuperMessagePort(ch.port2)
+    // Текст и имя отказа РАЗНЫЕ: совпади они — тест перестал бы отличать
+    // «доехало имя» от «доехал текст», а весь смысл поля `type` именно в том,
+    // что оно не человеческая фраза.
     b.handle('revoke', async () => {
-      throw Object.assign(new Error('FRESH_RESET_AUTHORISATION_FORBIDDEN'), {
+      throw Object.assign(new Error('не удалось завершить сессию'), {
         status: 403,
         type: 'FRESH_RESET_AUTHORISATION_FORBIDDEN',
       })
@@ -62,7 +65,7 @@ describe('SuperMessagePort', () => {
       Error & { status?: number; type?: string }
     expect(err.type).toBe('FRESH_RESET_AUTHORISATION_FORBIDDEN')
     expect(err.status).toBe(403)
-    expect(err.message).toBe('FRESH_RESET_AUTHORISATION_FORBIDDEN')
+    expect(err.message).toBe('не удалось завершить сессию')
   })
 
   // Обычная ошибка имени отказа не несёт — и выдумывать его нельзя: пустой

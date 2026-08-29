@@ -8,16 +8,18 @@ import { computeVersion, writeVersion } from './scripts/write-version.mjs'
 
 const r = (p: string) => resolve(__dirname, p)
 
-// Version-gate: build/versionFull вкомпиливаем в бандл (define → __APP_BUILD__/
-// __APP_VERSION_FULL__), а writeVersion() в buildStart пишет public/version и
-// штампует build в app-shell-кэш sw.js — так документированный `npx vite build`
-// (без npm-скриптов) тоже поднимает свежую версию. Детали — scripts/write-version.mjs.
-const { build, versionFull } = computeVersion()
+// Version-gate: versionFull вкомпиливаем в бандл (define → __APP_VERSION_FULL__),
+// а writeVersion() в buildStart пишет public/version и штампует build в
+// app-shell-кэш sw.js — так документированный `npx vite build` (без
+// npm-скриптов) тоже поднимает свежую версию. Детали — scripts/write-version.mjs.
+//
+// Номер сборки в бандл НЕ подставляется: рантайму он не нужен — он живёт в
+// versionFull («0.1.0 (7)») и в имени кэша app-shell.
+const { versionFull } = computeVersion()
 
 export default defineConfig({
   base: '/',
   define: {
-    __APP_BUILD__: JSON.stringify(build),
     __APP_VERSION_FULL__: JSON.stringify(versionFull),
   },
   plugins: [
