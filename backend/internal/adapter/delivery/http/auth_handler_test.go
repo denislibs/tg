@@ -75,10 +75,31 @@ func decodeSignIn(t *testing.T, rec *httptest.ResponseRecorder) signInWire {
 // незнакомого номера ещё и sign_up. Возвращает bearer-токен и id пользователя.
 func loginViaHTTP(t *testing.T, h http.Handler, phone string) (string, int64) {
 	t.Helper()
-	if rec := postJSON(t, h, "/auth/request_code", map[string]string{"phone": phone}); rec.Code != http.StatusOK {
+	return loginViaHTTPAs(t, h, phone, nil)
+}
+
+// loginViaHTTPAs — тот же вход, но запросы несут заданные заголовки. Ими клиент
+// называет себя (User-Agent → браузер и ОС, X-App-Version → версия сборки), и
+// из них собирается строка устройства на экране активных сеансов.
+//
+// Шаги входа описаны ЗДЕСЬ и только здесь: свой список из тех же четырёх
+// запросов рядом означал бы, что смену шага обновят в одной копии из двух.
+func loginViaHTTPAs(t *testing.T, h http.Handler, phone string, headers map[string]string) (string, int64) {
+	t.Helper()
+	post := func(path string, body any) *httptest.ResponseRecorder {
+		buf, _ := json.Marshal(body)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, path, bytes.NewReader(buf))
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+	if rec := post("/auth/request_code", map[string]string{"phone": phone}); rec.Code != http.StatusOK {
 		t.Fatalf("request_code: %d %s", rec.Code, rec.Body.String())
 	}
-	rec := postJSON(t, h, "/auth/sign_in", map[string]string{
+	rec := post("/auth/sign_in", map[string]string{
 		"phone": phone, "code": "12345", "device": "web", "platform": "browser",
 	})
 	if rec.Code != http.StatusOK {
@@ -89,7 +110,7 @@ func loginViaHTTP(t *testing.T, h http.Handler, phone string) (string, int64) {
 		if step.SignUpToken == "" {
 			t.Fatalf("шаг регистрации без токена: %s", rec.Body.String())
 		}
-		rec = postJSON(t, h, "/auth/sign_up", map[string]string{
+		rec = post("/auth/sign_up", map[string]string{
 			"signup_token": step.SignUpToken, "first_name": "Тест", "device": "web", "platform": "browser",
 		})
 		if rec.Code != http.StatusOK {

@@ -1,7 +1,7 @@
 // navigationTransition — JS-часть navigation-перехода (порт tweb
 // components/transition.ts:23-42 + бухгалтерия классов TransitionSlider).
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { NAVIGATION_TRANSITION_TIME, runNavigationTransition, slideNavigation } from './navigationTransition'
+import { createNavigationTransition, NAVIGATION_TRANSITION_TIME, runNavigationTransition, slideNavigation } from './navigationTransition'
 import { interruptHeavyAnimation, isHeavyAnimationInProgress } from './heavyAnimation'
 
 function makeTabs() {
@@ -99,5 +99,46 @@ describe('runNavigationTransition', () => {
 
     vi.advanceTimersByTime(NAVIGATION_TRANSITION_TIME + 100)
     expect(container.classList.contains('animating')).toBe(false)
+  })
+})
+
+// Отложенная уборка перехода живёт НА УЗЛЕ (`dataset.transitionTimeout`) и
+// обязана сниматься с приходящей вкладки в ОБЕИХ ветках. tweb этой проблемы не
+// знает: там уборку снимает настоящий `transitionend`, а таймер — лишь
+// страховка (`transition.ts:200-228`). У нас слушателя нет (сознательное
+// отступление), поэтому страховка стала единственным механизмом.
+describe('createNavigationTransition — чужая отложенная уборка', () => {
+  it('мгновенная ветка снимает таймер, оставшийся на приходящей вкладке', () => {
+    const { container, left, center } = makeTabs()
+    const selectTab = createNavigationTransition(container)
+
+    selectTab(0) // первое переключение — мгновенное (prevId === -1)
+    expect(left.classList.contains('active')).toBe(true)
+
+    selectTab(1) // анимированный уход `left` — на нём повисает таймер уборки
+    expect(left.dataset.transitionTimeout).toBeDefined()
+
+    // Возврат БЫСТРЕЕ, чем таймер: явный `animate: false` — так владелец
+    // закрывает вкладку без анимации (выключенные анимации, мгновенная подмена).
+    selectTab(0, false)
+    expect(left.classList.contains('active')).toBe(true)
+
+    // Таймер от прошлого перехода не имеет права отобрать `active` у вкладки,
+    // которая уже снова активна: иначе колонка опустеет сама собой.
+    vi.advanceTimersByTime(NAVIGATION_TRANSITION_TIME + 200)
+    expect(left.classList.contains('active')).toBe(true)
+    expect(center.classList.contains('active')).toBe(false)
+  })
+
+  it('анимированная ветка снимает его же', () => {
+    const { container, left } = makeTabs()
+    const selectTab = createNavigationTransition(container)
+
+    selectTab(0)
+    selectTab(1)
+    selectTab(0) // анимированный возврат до истечения таймера
+
+    vi.advanceTimersByTime(NAVIGATION_TRANSITION_TIME + 200)
+    expect(left.classList.contains('active')).toBe(true)
   })
 })

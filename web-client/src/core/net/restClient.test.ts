@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { RestClient, HttpError } from './restClient'
+import { APP_VERSION_FULL } from '../../config/app'
 
 describe('RestClient', () => {
   it('GETs with the bearer token and parses JSON', async () => {
@@ -19,6 +20,37 @@ describe('RestClient', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ _: 'error', code: 401, text: 'invalid code' }), { status: 401 })))
     const rest = new RestClient('/api', () => null)
     await expect(rest.post('/auth/sign_in', {})).rejects.toThrow('invalid code')
+  })
+
+  // Имя отказа (`ApiError.type` у оригинала) — это и есть `error.text`
+  // конструктора: по нему экраны ветвятся, а не по человеческому тексту.
+  it('имя отказа доезжает до вызывающего полем type', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ _: 'error', code: 403, text: 'FRESH_RESET_AUTHORISATION_FORBIDDEN' }), { status: 403 })))
+    const rest = new RestClient('/api', () => null)
+    const err = await rest.del('/sessions/2').catch((e: unknown) => e)
+    expect(err).toMatchObject({ status: 403, type: 'FRESH_RESET_AUTHORISATION_FORBIDDEN' })
+  })
+
+  // У чужого тела имени нашей ошибки нет — и подставлять туда «HTTP 502»
+  // нельзя: вызывающий принял бы это за названную причину.
+  it('у чужого тела отказа имени отказа не появляется', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'gateway is down' }), { status: 502 })))
+    const rest = new RestClient('/api', () => null)
+    const err = await rest.get('/me').catch((e: unknown) => e) as { type?: string }
+    expect(err.type).toBe('')
+  })
+
+  // Версия сборки — то, чем клиент называет себя серверу (аналог `app_version`
+  // преамбулы `initConnection`): из неё собирается заголовок строки в списке
+  // устройств. Без заголовка строка была бы безымянной.
+  it('называет свою версию сборки заголовком X-App-Version', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const rest = new RestClient('/api', () => null)
+    await rest.get('/me')
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect((init.headers as Record<string, string>)['X-App-Version']).toBe(APP_VERSION_FULL)
   })
 
   it('чужое тело отказа НЕ подставляется как текст ошибки', async () => {

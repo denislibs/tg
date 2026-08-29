@@ -33,7 +33,12 @@ export default function cancelEvent(event?: Event) {
       event!.stopPropagation()
       event!.preventDefault()
       event!.returnValue = false
-      event!.cancelBubble = true
+      // tweb здесь пишет ещё `event.cancelBubble = true` — по спецификации
+      // DOM это ровно `stopPropagation()` (старый алиас), которая уже
+      // вызвана строкой выше; строка ничего не добавляла и в оригинале, а
+      // в happy-dom (`cancelBubble` там объявлен только геттером) ещё и
+      // бросала бы `TypeError` — тихо, `catch {}` его глотал, но строка не
+      // делала того, что задумана. Убрана, а не продублирована.
     } catch {}
   }
 

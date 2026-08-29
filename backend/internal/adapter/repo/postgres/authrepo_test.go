@@ -65,18 +65,18 @@ func TestAuthRepo_UserAndDeviceAndToken(t *testing.T) {
 		t.Fatalf("ByPhone unknown = %v, want ErrNotFound", err)
 	}
 
-	_, err = repo.Create(ctx, u1.ID, "web", "browser", "hash-abc", "", "")
+	_, err = repo.Create(ctx, domain.Device{UserID: u1.ID, Name: "web", Platform: "browser", TokenHash: "hash-abc"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	got, _, err := repo.SessionByTokenHash(ctx, "hash-abc")
+	got, _, err := repo.SessionByTokenHash(ctx, "hash-abc", "")
 	if err != nil {
 		t.Fatalf("SessionByTokenHash: %v", err)
 	}
 	if got.ID != u1.ID {
 		t.Fatalf("resolved wrong user: %d != %d", got.ID, u1.ID)
 	}
-	if _, _, err := repo.SessionByTokenHash(ctx, "missing"); !errors.Is(err, domain.ErrNotFound) {
+	if _, _, err := repo.SessionByTokenHash(ctx, "missing", ""); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("expected domain.ErrNotFound for missing token, got %v", err)
 	}
 }
@@ -161,15 +161,15 @@ func TestAuthRepo_SessionListDelete(t *testing.T) {
 	ctx := context.Background()
 
 	u, _ := repo.CreateWithName(ctx, "+790", "Сессии", "")
-	d1, _ := repo.Create(ctx, u.ID, "web", "browser", "hash-1", "1.2.3.4", "Almaty, Kazakhstan")
-	_, _ = repo.Create(ctx, u.ID, "phone", "ios", "hash-2", "", "")
+	d1, _ := repo.Create(ctx, domain.Device{UserID: u.ID, Name: "Chrome", Platform: "browser", SystemVersion: "macOS", AppVersion: "0.1.0 (1)", TokenHash: "hash-1", IP: "1.2.3.4", Location: "Almaty, Kazakhstan"})
+	_, _ = repo.Create(ctx, domain.Device{UserID: u.ID, Name: "phone", Platform: "ios", TokenHash: "hash-2"})
 
 	// SessionByTokenHash resolves user + device.
-	gotUser, gotDevice, err := repo.SessionByTokenHash(ctx, "hash-1")
+	gotUser, gotDevice, err := repo.SessionByTokenHash(ctx, "hash-1", "")
 	if err != nil || gotUser.ID != u.ID || gotDevice != d1.ID {
 		t.Fatalf("SessionByTokenHash = %v, %d, %v", gotUser, gotDevice, err)
 	}
-	if _, _, err := repo.SessionByTokenHash(ctx, "missing"); !errors.Is(err, domain.ErrNotFound) {
+	if _, _, err := repo.SessionByTokenHash(ctx, "missing", ""); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("expected domain.ErrNotFound, got %v", err)
 	}
 
@@ -184,12 +184,64 @@ func TestAuthRepo_SessionListDelete(t *testing.T) {
 	if err != nil || !found || th != "hash-1" {
 		t.Fatalf("Delete = %q, %v, %v", th, found, err)
 	}
-	if _, _, err := repo.SessionByTokenHash(ctx, "hash-1"); !errors.Is(err, domain.ErrNotFound) {
+	if _, _, err := repo.SessionByTokenHash(ctx, "hash-1", ""); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("expected device gone, got %v", err)
 	}
 	// Deleting a non-existent / other-user device reports not found.
 	if _, found, _ := repo.Delete(ctx, u.ID, 99999); found {
 		t.Fatal("expected found=false for unknown device")
+	}
+}
+
+// Версия сборки в строке сессии: непустая перезаписывает прежнюю, пустая её НЕ
+// затирает. Вторая половина — предохранитель «клиент не назвался»
+// (`authrepo.go`, `CASE WHEN $2 <> ''`), и до этого теста её не проверял никто:
+// все вызовы `SessionByTokenHash` в тестах передавали пустую версию, поэтому
+// мутация `app_version=$2` проходила полный `go test ./...` зелёной. Отказ, от
+// которого предохранитель защищает, боевой: любой запрос без `X-App-Version`
+// (старая вкладка, curl, прокси, режущий заголовки) затирал бы версию сборки на
+// пустую строку — и экран «Устройства» показывал бы безымянный клиент.
+func TestAuthRepo_SessionAppVersionKeepsPreviousWhenClientSilent(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewAuthRepo(pool)
+	ctx := context.Background()
+
+	u, _ := repo.CreateWithName(ctx, "+791", "Версия", "")
+	d, err := repo.Create(ctx, domain.Device{UserID: u.ID, Name: "Chrome", Platform: "browser", AppVersion: "0.1.0 (1)", TokenHash: "hash-ver"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	appVersionOf := func(deviceID int64) string {
+		t.Helper()
+		devices, err := repo.ListByUser(ctx, u.ID)
+		if err != nil {
+			t.Fatalf("ListByUser: %v", err)
+		}
+		for _, dev := range devices {
+			if dev.ID == deviceID {
+				return dev.AppVersion
+			}
+		}
+		t.Fatalf("устройство %d пропало из списка", deviceID)
+		return ""
+	}
+
+	// Клиент назвался — строка сессии показывает версию, которой пользуются
+	// сейчас, а не ту, с которой когда-то вошли.
+	if _, _, err := repo.SessionByTokenHash(ctx, "hash-ver", "0.2.0 (7)"); err != nil {
+		t.Fatalf("SessionByTokenHash(назвался): %v", err)
+	}
+	if got := appVersionOf(d.ID); got != "0.2.0 (7)" {
+		t.Fatalf("после запроса с версией app_version = %q, want %q", got, "0.2.0 (7)")
+	}
+
+	// Клиент НЕ назвался — прежняя версия обязана уцелеть.
+	if _, _, err := repo.SessionByTokenHash(ctx, "hash-ver", ""); err != nil {
+		t.Fatalf("SessionByTokenHash(молчит): %v", err)
+	}
+	if got := appVersionOf(d.ID); got != "0.2.0 (7)" {
+		t.Fatalf("запрос без версии затёр app_version: %q, want %q", got, "0.2.0 (7)")
 	}
 }
 

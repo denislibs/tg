@@ -6,7 +6,6 @@ import { useEffect, useState, type ReactNode } from 'react'
 import TgIcon from '../TgIcon'
 import { SettingsScreen, Section, Row } from './kit'
 import BlockedUsers from './BlockedUsers'
-import ActiveSessions from './ActiveSessions'
 import TwoStepVerification from './TwoStepVerification'
 import Passkeys from './Passkeys'
 import PasskeyIntroPopup from './PasskeyIntroPopup'
@@ -17,6 +16,8 @@ import ConfirmDialog from './ConfirmDialog'
 import { useSettingsStore } from '../../settings'
 import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
+import { openActiveSessionsTab } from '../sidebarLeft/settingsSliderHost'
+import { toastNew } from '../toast'
 import { usePrivacyStore } from '../../stores/privacyStore'
 import type { PrivacyRule as Rule } from '../../core/managers/privacyManager'
 
@@ -88,8 +89,6 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
     switch (sub) {
       case 'Blocked Users':
         return <BlockedUsers onBack={back} />
-      case 'Active Sessions':
-        return <ActiveSessions onBack={back} />
       case 'Two-Step Verification':
         return <TwoStepVerification onBack={back} />
       case 'Passkeys':
@@ -138,10 +137,17 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
           label="Passkeys"
           onClick={() => (passkeysCount > 0 ? setSub('Passkeys') : setPasskeyIntro(true))}
         />
+        {/* «Активные сессии» — та же портированная вкладка слайдера, что и
+            «Устройства» в корне настроек (`sidebarLeft/tabs/activeSessions.solid.tsx`),
+            и открывается тем же способом. `setSub` здесь не при чём: вкладка
+            не React-подэкран, состояние этого экрана она не трогает. Второй
+            вход в те же сессии есть и в оригинале — `newAuthorization.tsx:116`. */}
         <Row
           icon={<TgIcon name="activesessions" size={24} />}
           label="Active Sessions"
-          onClick={() => setSub('Active Sessions')}
+          onClick={() => {
+            openActiveSessionsTab(managers).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
+          }}
         />
       </Section>
 

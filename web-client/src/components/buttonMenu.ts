@@ -39,6 +39,7 @@ import setInnerHTML from '@helpers/dom/setInnerHTML'
 import type ListenerSetter from '@helpers/listenerSetter'
 import Icon from '@components/icon'
 import type { IconName } from '@core/tgico-icons'
+import i18nSpan from '@helpers/dom/i18nSpan'
 
 export type ButtonMenuItemOptions = {
   /** имя глифа; хвост после первого слова уезжает в className пункта
@@ -48,6 +49,16 @@ export type ButtonMenuItemOptions = {
   emptyIcon?: boolean,
   danger?: boolean,
   className?: string,
+  /**
+   * УЖЕ ПЕРЕВЕДЁННАЯ строка, а не ключ: `ButtonMenuItem` кладёт её прямо в
+   * `i18nSpan`. Это ОБРАТНО тому, как устроены `Button`/`Row`/`SettingSection`/
+   * `SliderSuperTab.setTitle`/`toastNew`, которые принимают ключ и переводят
+   * сами, — и на этой разнице волна 2 уже посадила боевой дефект (сырой ключ
+   * `'Terminate'` в контекстном меню вкладки «Устройства»). У tweb такого
+   * раскола нет: там и `i18n(text)` здесь, и `i18n(text)` в `button.ts` берут
+   * `LangPackKey`. Раскол снимает #109 (порт `langPack`), до тех пор перевод —
+   * на вызывающем: `text: t('Terminate')`.
+   */
   text?: string,
   regularText?: Parameters<typeof setInnerHTML>[1],
   /** результат не читается (в tweb тип возврата `any`; `void` в TS принимает
@@ -67,15 +78,6 @@ export type ButtonMenuItemOptions = {
 
 export type ButtonMenuItemOptionsVerifiable = ButtonMenuItemOptions & {
   verify?: () => boolean | Promise<boolean>
-}
-
-/** Замена tweb `i18n(key, args)` (`lib/langPack.ts:644`) на время, пока langPack
- *  не портирован: тот же узел `span.i18n` с готовым текстом. */
-function i18nSpan(text: string) {
-  const span = document.createElement('span')
-  span.classList.add('i18n')
-  span.textContent = text
-  return span
 }
 
 export function ButtonMenuItem(options: ButtonMenuItemOptions) {

@@ -15,7 +15,7 @@ export interface Endpoint {
 
 type Task =
   | { kind: 'invoke'; id: number; type: string; payload: unknown }
-  | { kind: 'result'; id: number; result?: unknown; error?: string; errorStatus?: number }
+  | { kind: 'result'; id: number; result?: unknown; error?: string; errorStatus?: number; errorType?: string }
   | { kind: 'event'; event: string; payload: unknown; meta?: EventMeta }
   /** Web Locks (порт tweb superMessagePort.ts:220-236 + :505-515). Отправитель —
    *  вкладка: id взятого navigator.locks-лока сразу после подключения порта, либо
@@ -222,10 +222,24 @@ export class SuperMessagePort {
         const result = await fn(task.payload)
         this.post({ kind: 'result', id: task.id, result })
       } catch (e) {
-        // HTTP-статус (HttpError.status) переживает границу worker→main, чтобы
-        // вызывающий мог различать 404/403/… (иначе instanceof/.status терялись).
-        const status = (e as { status?: number } | null)?.status
-        this.post({ kind: 'result', id: task.id, error: e instanceof Error ? e.message : String(e), errorStatus: typeof status === 'number' ? status : undefined })
+        // Через границу воркера сам объект ошибки не проходит — только
+        // structured-clone примитивов, — поэтому она разбирается на части и
+        // собирается заново на той стороне.
+        //
+        // Статус (HttpError.status) — чтобы вызывающий различал 404/403/…
+        // Имя отказа (HttpError.type) — чтобы он различал ПРИЧИНУ: у оригинала
+        // это `ApiError.type`, и весь код ветвится по нему, а не по тексту
+        // (`err.type === 'FRESH_RESET_AUTHORISATION_FORBIDDEN'`,
+        // tweb activeSessions.tsx:46). Без него дословный порт получал бы
+        // ошибку, у которой поля `type` не бывает никогда.
+        const { status, type } = (e ?? {}) as { status?: number; type?: string }
+        this.post({
+          kind: 'result',
+          id: task.id,
+          error: e instanceof Error ? e.message : String(e),
+          errorStatus: typeof status === 'number' ? status : undefined,
+          errorType: typeof type === 'string' && type ? type : undefined,
+        })
       }
     } else if (task.kind === 'result') {
       const d = this.awaiting.get(task.id)
@@ -233,8 +247,9 @@ export class SuperMessagePort {
       this.awaiting.delete(task.id)
       if (d.timer) clearTimeout(d.timer) // ответ пришёл вовремя — снять дедлайн
       if (task.error) {
-        const err = new Error(task.error) as Error & { status?: number }
+        const err = new Error(task.error) as Error & { status?: number; type?: string }
         if (typeof task.errorStatus === 'number') err.status = task.errorStatus
+        if (typeof task.errorType === 'string') err.type = task.errorType
         d.reject(err)
       } else d.resolve(task.result)
     } else if (task.kind === 'event') {

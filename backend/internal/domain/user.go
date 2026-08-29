@@ -130,12 +130,28 @@ func ValidateUsername(s string) error {
 	return nil
 }
 
+// Device — сессия устройства в хранилище.
+//
+// Реквизиты клиента разложены как в `initConnection` MTProto (см. докблок
+// Authorization в mtaccount.go): Name — чем пользуются (браузер),
+// SystemVersion — на чём (ОС), AppVersion — версия сборки клиента. Прежде
+// браузер и ОС были склеены в одну строку Name («Chrome · macOS»), и витрина
+// сессий не могла отдать их разными параметрами конструктора.
 type Device struct {
-	ID         int64
-	UserID     int64
-	Name       string
-	Platform   string
+	ID       int64
+	UserID   int64
+	Name     string // device_model: браузер, разобранный из User-Agent
+	Platform string // «web», «ios», … — вид клиента, а не версия ОС
+	// SystemVersion — ОС, разобранная из того же User-Agent (system_version).
+	SystemVersion string
+	// AppVersion — версия сборки клиента, сообщённая им при входе
+	// (app_version). Своей у сессии нет: её знает только сам клиент.
+	AppVersion string
 	TokenHash  string
+	// CreatedAt — момент входа (date_created витрины). Колонка devices.created_at
+	// живёт с первой миграции и всегда заполнялась DEFAULT now(), поэтому у уже
+	// существующих строк здесь настоящая дата входа, а не подставленное значение.
+	CreatedAt  time.Time
 	LastActive time.Time
 	IP         string // sign-in IP (best effort)
 	Location   string // human place from GeoIP, when available

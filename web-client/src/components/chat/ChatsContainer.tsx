@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useChatStackStore, type ChatInstanceDesc } from '../../stores/chatStackStore'
 import { ChatInstanceProvider } from '../../core/chat/chatInstanceContext'
-import { NAVIGATION_TRANSITION_TIME, runNavigationTransition } from '../../core/dom/navigationTransition'
+import { clearPendingTransitionCleanup, NAVIGATION_TRANSITION_TIME, runNavigationTransition } from '../../core/dom/navigationTransition'
 
 // Порт `appImManager.chatsSelectTab` (tweb lib/appImManager.ts:2237) поверх уже
 // портированного примитива перехода: контейнер — `.chats-container.tabs-container
@@ -129,7 +129,19 @@ export default function ChatsContainer({ renderInstance }: Props) {
   useLayoutEffect(() => {
     if (activeId === null || pending) return
     const node = nodesRef.current.get(activeId)
-    if (node && !node.classList.contains('active')) node.classList.add('active')
+    if (!node) return
+
+    // Снять чужую отложенную уборку — то же, что делает первой строкой сам
+    // переход. Узел, который только что уходил в АНИМИРОВАННОМ переходе, ещё
+    // держит на себе таймер, снимающий с него `active`; мгновенная смена
+    // (`animateNext: false` — клик по другому чату, пока открыт тред,
+    // chatStackStore.ts:134) возвращает ему активность СЕЙЧАС, а таймер через
+    // NAVIGATION_TRANSITION_TIME её отбирает — и колонка чата пустеет.
+    // ВНЕ проверки на `active` ниже: в этом сценарии класс с узла ещё не снят,
+    // и проверка увела бы мимо.
+    clearPendingTransitionCleanup(node)
+
+    if (!node.classList.contains('active')) node.classList.add('active')
   }, [activeId, renderList, pending])
 
   return (

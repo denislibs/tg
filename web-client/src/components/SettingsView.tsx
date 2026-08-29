@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import Text from '../shared/ui/Text'
 import IconButton from '../shared/ui/IconButton'
@@ -22,6 +22,9 @@ import { useMediaUrl } from '../core/hooks/useMediaUrl'
 import { getPeerPhotoId, getPeerPhotoStrippedThumb } from '../core/peers/peer'
 import { getUserTitle } from '../core/peers/getPeerTitle'
 import { useSettings } from '../settings'
+import { useManagers } from '../core/hooks/useManagers'
+import { createSettingsSliderHost, openActiveSessionsTab } from './sidebarLeft/settingsSliderHost'
+import { toastNew } from './toast'
 import { resolvePreset, PRESET_MODE } from '../theme'
 import s from './SettingsView.module.scss'
 
@@ -60,6 +63,7 @@ export default function SettingsView({
   initialSub?: string
 }) {
   const t = useT()
+  const managers = useManagers()
   const [lang] = useLang()
   const currentLangName = LANGS.find((l) => l.code === lang)?.name ?? 'English'
   const themeChoice = useSettings((s) => s.themeChoice)
@@ -81,8 +85,31 @@ export default function SettingsView({
   const avatarSrc = useMediaUrl(getPeerPhotoId(user?.photo) || null)
   const avatarPreview = getPeerPhotoStrippedThumb(user?.photo) || undefined
 
+  // ШОВ С ПОРТОМ (#112). Этот экран — наш временный корень настроек; в tweb
+  // его роль играет вкладка того же слайдера (`AppSettingsTab`), поэтому там
+  // открывать вкладки просто некому, кроме неё самой. Пока корень React'овый,
+  // слайдером владеет он: заводит на монтировании и УНОСИТ С СОБОЙ на
+  // размонтировании — иначе вкладка пережила бы свой экран (тот же класс
+  // дефекта, что попап, переживший чат, в ревью волны 1). Пин —
+  // `settingsSliderHost.test.ts`.
+  //
+  // Из того же шва — ещё одно живое расхождение (#112): САМ этот экран слоя
+  // навигации не заводит. Он открывается обычным React-состоянием
+  // (`Sidebar.tsx::screen`), тогда как в оригинале вкладка настроек — запись
+  // `appNavigationController` наравне с любой другой. Следствие: Esc и Back
+  // закрывают ОТКРЫТУЮ ПОВЕРХ вкладку (её слой заводит слайдер), но сам экран
+  // настроек не закрывают — только стрелка в шапке. Расхождение уходит вместе
+  // со швом: корень настроек станет вкладкой №0 того же слайдера.
+  const rootRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    // Эффект бежит после монтирования: и узел, и его родитель (#column-left,
+    // `Sidebar.tsx:213`) существуют — ветки «а вдруг нет» здесь не бывает.
+    const host = createSettingsSliderHost(rootRef.current!.parentElement!, managers)
+    return () => host.destroy()
+  }, [managers])
+
   return (
-    <div className={s.screen}>
+    <div className={s.screen} ref={rootRef}>
       {/* Header */}
       <div className={s.header}>
         <IconButton onClick={onBack} color="var(--secondary-text-color)">
@@ -160,6 +187,15 @@ export default function SettingsView({
               className={classNames(s.rowClickable, it.label === active ? s.rowActive : '')}
               onClick={() => {
                 setActive(it.label)
+                // «Устройства» — уже ПОРТИРОВАННАЯ вкладка слайдера, а не
+                // React-подэкран: tweb `sidebarLeft/tabs/settings.tsx:179-187`
+                // (`onDevicesClick` → `createTab(AppActiveSessionsTab)` →
+                // `open({authorizations})`). Отказ показываем всплывашкой —
+                // 1:1 `newAuthorization.tsx:126`.
+                if (it.label === 'Devices') {
+                  openActiveSessionsTab(managers).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
+                  return
+                }
                 if (hasSubScreen(it.label)) setSub(it.label)
               }}
             >

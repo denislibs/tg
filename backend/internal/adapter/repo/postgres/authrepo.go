@@ -358,20 +358,23 @@ func (r *AuthRepo) DeleteProfilePhoto(ctx context.Context, userID, photoID int64
 // --- DeviceRepo ---
 
 // Create inserts a device row holding the token hash + sign-in metadata.
-func (r *AuthRepo) Create(ctx context.Context, userID int64, name, platform, tokenHash, ip, location string) (domain.Device, error) {
+// Принимает саму сущность, а не восемь строк подряд: реквизиты клиента
+// (браузер, ОС, версия сборки) уже разложены по своим полям в usecase.
+func (r *AuthRepo) Create(ctx context.Context, in domain.Device) (domain.Device, error) {
 	var d domain.Device
 	err := r.pool.QueryRow(ctx,
-		`INSERT INTO devices (user_id, name, platform, token_hash, ip, location)
-		 VALUES ($1,$2,$3,$4,$5,$6)
-		 RETURNING id, user_id, name, platform, token_hash, ip, location`,
-		userID, name, platform, tokenHash, ip, location).
-		Scan(&d.ID, &d.UserID, &d.Name, &d.Platform, &d.TokenHash, &d.IP, &d.Location)
+		`INSERT INTO devices (user_id, name, platform, system_version, app_version, token_hash, ip, location)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		 RETURNING id, user_id, name, platform, system_version, app_version, token_hash, created_at, last_active, ip, location`,
+		in.UserID, in.Name, in.Platform, in.SystemVersion, in.AppVersion, in.TokenHash, in.IP, in.Location).
+		Scan(&d.ID, &d.UserID, &d.Name, &d.Platform, &d.SystemVersion, &d.AppVersion, &d.TokenHash,
+			&d.CreatedAt, &d.LastActive, &d.IP, &d.Location)
 	return d, err
 }
 
 // SessionByTokenHash resolves a token hash to its user and device id, and
 // lazily touches last_active. Returns domain.ErrNotFound if unknown.
-func (r *AuthRepo) SessionByTokenHash(ctx context.Context, tokenHash string) (domain.UserRecord, int64, error) {
+func (r *AuthRepo) SessionByTokenHash(ctx context.Context, tokenHash, appVersion string) (domain.UserRecord, int64, error) {
 	var u domain.UserRecord
 	var phone *string
 	var deviceID int64
@@ -392,14 +395,24 @@ func (r *AuthRepo) SessionByTokenHash(ctx context.Context, tokenHash string) (do
 	if phone != nil {
 		u.Phone = *phone
 	}
-	_, _ = r.pool.Exec(ctx, `UPDATE devices SET last_active=now() WHERE id=$1`, deviceID)
+	// Версия сборки обновляется ТЕМ ЖЕ запросом, что двигает активность:
+	// у оригинала клиент называет себя в преамбуле КАЖДОГО соединения, поэтому
+	// экран сессий показывает версию, которой пользуются сейчас, а не ту, с
+	// которой когда-то вошли (клиент обновляется сам, и замороженная строка
+	// врала бы до следующего входа). Пустое значение прежнюю не затирает:
+	// «клиент не назвался» — не то же самое, что «клиент безымянный».
+	_, _ = r.pool.Exec(ctx,
+		`UPDATE devices SET last_active=now(),
+		        app_version=CASE WHEN $2 <> '' THEN $2 ELSE app_version END
+		  WHERE id=$1`, deviceID, appVersion)
 	return u, deviceID, nil
 }
 
 // ListByUser returns a user's devices, most recently active first.
 func (r *AuthRepo) ListByUser(ctx context.Context, userID int64) ([]domain.Device, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, user_id, name, platform, last_active, ip, location FROM devices
+		`SELECT id, user_id, name, platform, system_version, app_version,
+		        created_at, last_active, ip, location FROM devices
 		 WHERE user_id=$1 ORDER BY last_active DESC`, userID)
 	if err != nil {
 		return nil, err
@@ -408,7 +421,8 @@ func (r *AuthRepo) ListByUser(ctx context.Context, userID int64) ([]domain.Devic
 	var out []domain.Device
 	for rows.Next() {
 		var d domain.Device
-		if err := rows.Scan(&d.ID, &d.UserID, &d.Name, &d.Platform, &d.LastActive, &d.IP, &d.Location); err != nil {
+		if err := rows.Scan(&d.ID, &d.UserID, &d.Name, &d.Platform, &d.SystemVersion, &d.AppVersion,
+			&d.CreatedAt, &d.LastActive, &d.IP, &d.Location); err != nil {
 			return nil, err
 		}
 		out = append(out, d)

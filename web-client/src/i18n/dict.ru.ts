@@ -424,11 +424,6 @@ const ru: Dict = {
   Input: 'Ввод',
   'Input Device': 'Устройство ввода',
   'Accept Calls': 'Принимать звонки',
-  'This device': 'Это устройство',
-  'Control the apps and devices that are currently logged into your account.':
-    'Управляйте приложениями и устройствами, в которые выполнен вход.',
-  'Active sessions': 'Активные сеансы',
-  'Terminate All Other Sessions': 'Завершить все другие сеансы',
   Translate: 'Перевести',
   Original: 'Оригинал',
   Translation: 'Перевод',
@@ -877,7 +872,6 @@ const ru: Dict = {
   "Are you sure you want to discard this voice message?": "Вы уверены, что хотите удалить это голосовое сообщение?",
   "Cancel": "Отмена",
   "Discard": "Удалить",
-  "No other active sessions.": "Других активных сеансов нет.",
   "Block User": "Заблокировать пользователя",
   "Blocked users can't send you messages or see your profile.": "Заблокированные пользователи не могут писать вам и видеть ваш профиль.",
   "You haven't blocked anyone.": "Вы никого не заблокировали.",
@@ -1292,6 +1286,34 @@ const ru: Dict = {
   Giveaway: 'Розыгрыш',
   'Live location': 'Трансляция геопозиции',
   'Unsupported message': 'Неподдерживаемое сообщение',
+  // Row.checkboxKeys по умолчанию (tweb lang.ts:250-251) — loadLang подмешивает
+  // en под активный язык ({ ...en, ...ru }, i18n/index.tsx:56), так что без
+  // перевода тут показалось бы английское 'Enabled'/'Disabled' (значение из
+  // dict.ts), а не сырой ключ. Перевод всё равно нужен — иначе часть
+  // интерфейса на ru осталась бы на английском.
+  'Checkbox.Enabled': 'Включено',
+  'Checkbox.Disabled': 'Выключено',
+  // SettingSection (tweb lang.ts:1445/1835) — та же механика, что у
+  // Checkbox.Enabled/Disabled выше: без перевода показалось бы английское
+  // 'This device'/'Logs out all devices except for this one.' (dict.ts), не
+  // сырой ключ. Перевод всё равно нужен, чтобы ru был на ru целиком.
+  CurrentSession: 'Это устройство',
+  ClearOtherSessionsHelp: 'Завершает сеансы на всех устройствах, кроме этого.',
+  // Вкладка «Устройства» (`sidebarLeft/tabs/activeSessions.solid.tsx`),
+  // ключи из tweb lang.ts:1444-1465, :1836, :3892. 'Terminate' переводится
+  // здесь, хотя в en-словаре его нет: там ключ совпадает с английской
+  // строкой, а тут — нет.
+  SessionsTitle: 'Активные сеансы',
+  'Error.AnError': 'Произошла ошибка. Пожалуйста, попробуйте позже.',
+  OtherSessions: 'Активные сеансы',
+  TerminateAllSessions: 'Завершить все другие сеансы',
+  Terminate: 'Завершить',
+  TerminateSessionText: 'Вы действительно хотите завершить этот сеанс?',
+  AreYouSureSessionTitle: 'Завершить сеанс',
+  AreYouSureSessionsTitle: 'Завершить сеансы',
+  AreYouSureSessions: 'Вы действительно хотите завершить все другие сеансы?',
+  SessionsListInfo: 'Официальное приложение Telegram доступно для Android, iPhone, iPad, Windows, macOS и Linux.',
+  'RecentSessions.Error.FreshReset': 'В целях безопасности вы не можете завершать более старые сеансы с устройства, которое подключили только что. Воспользуйтесь более ранним подключением или подождите несколько часов.',
 }
 
 export default ru
