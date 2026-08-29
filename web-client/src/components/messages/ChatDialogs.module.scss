@@ -1,6 +1,8 @@
 // ChatDialogs — презентационные диалоги Chat (форвард-пикер,
-// «просмотрено», пикеры контактов/чатов). Конфирмы (удаление, сброс голосового)
-// живут на shared/ui/ConfirmPopup и своих стилей здесь не имеют.
+// «просмотрено», пикеры контактов/чатов). Delete-конфирм (DeleteMessageDialog)
+// рисует глобальные tweb-классы popup/popup-peer/popup-* (styles/tweb/popups/)
+// и своих стилей здесь не имеет; сброс голосового переехал на портированный
+// `confirmationPopup` (задача 3 плана solid-wave-1).
 .overlayBare {
   position: fixed;
   inset: 0;

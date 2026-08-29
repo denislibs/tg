@@ -30,17 +30,50 @@
 // `middlewareHelper` в базе (`popupElement.ts`, тот же раунд) — `avatarNew`
 // (`components/avatar.ts`) получает его через `this.middlewareHelper.get()`,
 // как в оригинале, и отписывается от зеркала пиров при `destroy()` попапа.
+//
+// РАУНД ПРАВОК 2 (задача 3 — переезд пяти вызывающих): два поля добавлены,
+// оба по факту реального потребителя, а не «на всякий случай»:
+//  • `body`/`descriptionLangKey?` — потребитель `PopupMute`
+//    (`components/popupMute.ts`, mute.ts:29-52): у него ЕСТЬ `peerId`
+//    (аватар), но НЕТ описания — вместо `<p>` в `body` едет радио-список
+//    длительности. `descriptionLangKey` стал опциональным (как и у
+//    оригинала, peer.ts:65), `this.description` — тоже.
+//  • `zIndex` — НАШЕ расширение, не из tweb (см. докблок
+//    `PopupOptions.zIndex`, `popupElement.ts`); потребитель — мост
+//    `components/settings/ConfirmDialog.tsx`, который обязан лечь поверх
+//    уже существующих React-оверлеев (MediaEditor/SettingsScreen), которых у
+//    оригинала как класса проблем не было.
+//
+// `checkboxes`/`inputField` (peer.ts:22-30, :96-124) остаются НЕ портированы:
+// у пяти вызывающих задачи 3 потребителя нет — `confirmationPopup` (единственный
+// вызываемый напрямую хелпер) их не запрашивает. `ChatDialogs.tsx::DeleteMessageDialog`
+// (реальный чекбокс-сценарий, tweb `PopupDeleteMessages` — `deleteMessages.ts`,
+// САМ по себе НЕ `confirmationPopup`/`SimpleConfirmationPopup`, а отдельный класс
+// со своей бизнес-логикой) в объём этой задачи не входит — см. докблок
+// `DeleteMessageDialog` в `messages/ChatDialogs.tsx`, где он остался локальной
+// React-реализацией и назван как остаток.
 import PopupElement, { type PopupButton } from './popupElement'
 import { avatarNew, type AvatarManagers } from '@components/avatar'
 import { useI18nStore } from '@/i18n'
 
-/** peer.ts:16-31, сужено до полей с потребителем в волне 1. `managers`
- *  обязателен вместе с `peerId` — ими пользуется только `avatarNew`
+/** peer.ts:16-31, сужено до полей с потребителем в волне 1 (задача 2) + двух
+ *  добавленных в задаче 3, у которых нашёлся реальный потребитель уже здесь:
+ *   • `body` (peer.ts:37-41 — форвардится в `PopupOptions` через `...options`
+ *     у оригинала; наш порт форвардит явно, как и остальные поля) —
+ *     единственный потребитель `PopupMute` (`components/popupMute.ts`,
+ *     mute.ts:32-38 `body: true`, радио-список длительности заглушения);
+ *   • `zIndex` — НАШЕ расширение, не из tweb, см. докблок
+ *     `PopupOptions.zIndex` (`popupElement.ts`); форвардится тем же путём.
+ *  `managers` обязателен вместе с `peerId` — ими пользуется только `avatarNew`
  *  (peer.ts:46-53); без `peerId` он не нужен и не запрашивается. */
 export type PopupPeerOptions = {
   titleLangKey: string // peer.ts:58-59 — `i18n(titleLangKey)`
-  descriptionLangKey: string // peer.ts:70 — `i18n(descriptionLangKey)`
+  // peer.ts:70 — опционально и у оригинала: `PopupMute` описания не задаёт
+  // вовсе (mute.ts:29-38), у него вместо `<p>` — радио-список в `body`.
+  descriptionLangKey?: string
   buttons: PopupButton[] // peer.ts:41 — `addCancelButton(options.buttons)`
+  body?: boolean
+  zIndex?: number
 } & (
   | { peerId?: undefined, managers?: AvatarManagers }
   | { peerId: PeerId, managers: AvatarManagers }
@@ -65,7 +98,9 @@ export function addCancelButton(buttons: PopupButton[]): PopupButton[] {
 }
 
 export default class PopupPeer extends PopupElement {
-  protected description: HTMLParagraphElement
+  // Опционален — задача 3: `PopupMute` не задаёт `descriptionLangKey` вовсе
+  // (см. докблок `PopupPeerOptions` выше), значит и параграфа у него нет.
+  protected description?: HTMLParagraphElement
 
   constructor(className: string, options: PopupPeerOptions) {
     const t = useI18nStore.getState().t
@@ -75,7 +110,9 @@ export default class PopupPeer extends PopupElement {
       // peer.ts:40, :57-59 — оригинал резервирует `title: true` и заполняет
       // `this.title` сам; наша база принимает готовую строку напрямую и
       // делает то же самое (`setButtons`-докблок `popupElement.ts` :130-134).
-      title: t(options.titleLangKey)
+      title: t(options.titleLangKey),
+      body: options.body, // peer.ts:37-41 `...options` — см. докблок PopupPeerOptions.body
+      zIndex: options.zIndex,
     })
 
     if(options.peerId !== undefined) { // peer.ts:44
@@ -94,11 +131,13 @@ export default class PopupPeer extends PopupElement {
 
     this.setButtons(addCancelButton(options.buttons)) // peer.ts:41
 
-    const p = this.description = document.createElement('p') // peer.ts:68
-    p.classList.add('popup-description') // peer.ts:69
-    p.append(document.createTextNode(t(options.descriptionLangKey))) // peer.ts:70
+    if(options.descriptionLangKey) { // peer.ts:65 — `if(options.descriptionLangKey || …)`
+      const p = this.description = document.createElement('p') // peer.ts:68
+      p.classList.add('popup-description') // peer.ts:69
+      p.append(document.createTextNode(t(options.descriptionLangKey))) // peer.ts:70
 
-    this.header.after(p) // peer.ts:126 — `this.header.after(fragment)`
+      this.header.after(p) // peer.ts:126 — `this.header.after(fragment)`
+    }
   }
 }
 
@@ -116,6 +155,19 @@ export function confirmationPopup(options: {
   titleLangKey: string
   descriptionLangKey: string
   button: PopupButton
+  /** НАШЕ расширение, не из tweb — см. докблок `PopupOptions.zIndex`
+   *  (`popupElement.ts`). Потребитель — мост `ConfirmDialog.tsx` (задача 3). */
+  zIndex?: number
+  /**
+   * НАШЕ расширение, не из tweb — у оригинала вызывающий и попап живут в
+   * одном (классовом) мире и владеют друг другом естественно; у нас
+   * `confirmationPopup` может быть вызван МОСТОМ из React (`ConfirmDialog.tsx`),
+   * который обязан снять СВОЙ попап сам, если его унесло размонтированием
+   * ДО исхода промиса (правило шва, `web-client/CLAUDE.md` — «никакого
+   * "родитель размонтируется и унесёт"»). Промис такой ручки не даёт, поэтому
+   * инстанс отдаётся синхронно, ДО `show()`, тем же вызовом.
+   */
+  getPopup?: (popup: PopupPeer) => void
 }): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     let resolved = false // simpleConfirmation.ts:33
@@ -138,8 +190,10 @@ export function confirmationPopup(options: {
     const popup = PopupElement.createPopup(PopupPeer, 'popup-confirmation', { // simpleConfirmation.ts:50-55
       titleLangKey: options.titleLangKey,
       descriptionLangKey: options.descriptionLangKey,
-      buttons
+      buttons,
+      zIndex: options.zIndex,
     })
+    options.getPopup?.(popup)
 
     // simpleConfirmation.ts:57-62 — реджект на закрытие БЕЗ клика по кнопке
     // подтверждения (Esc/Back/оверлей): `destroy()` уже случился, окно

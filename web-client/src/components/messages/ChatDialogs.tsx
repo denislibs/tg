@@ -1,8 +1,10 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 // Presentational chat dialogs/popups extracted from Chat: delete
-// confirm, forward target picker, the reacted/seen list, add-member picker, and
-// the discard-voice confirm. Each is dumb — it self-sources i18n + motion constants
-// and emits its actions via callbacks; the parent owns the state.
+// confirm, forward target picker, the reacted/seen list. Each is dumb — it
+// self-sources i18n + motion constants and emits its actions via callbacks;
+// the parent owns the state. Discard-voice confirm переехал на портированный
+// `confirmationPopup` (задача 3 плана solid-wave-1) и вызывается напрямую из
+// `Composer.tsx` — самостоятельного React-компонента под него больше нет.
 import Text from '../../shared/ui/Text'
 import classNames from '../../shared/lib/classNames'
 import { createPortal } from 'react-dom'
@@ -11,7 +13,9 @@ import { useT, useLang } from '../../i18n'
 import Avatar from '../../shared/ui/Avatar'
 import Popup from '../../shared/ui/Popup'
 import PeerSelector from '../../shared/ui/PeerSelector'
-import ConfirmPopup from '../../shared/ui/ConfirmPopup'
+import Checkbox from '../../shared/ui/Checkbox'
+import { usePopupTransition } from '../settings/kit'
+import { useNavLayer } from '../../core/hooks/useNavLayer'
 import { peerColor } from '../peerColor'
 import UserAvatar from '../UserAvatar'
 import { useMediaUrl } from '../../core/hooks/useMediaUrl'
@@ -35,6 +39,20 @@ import s from './ChatDialogs.module.scss'
 // чекбокса НЕТ — удаление всегда для всех (tweb overrideRevoke=true). ОДНА
 // danger-кнопка DELETE (+ авто-Cancel). Выбор чекбокса решает revoke —
 // колбэки onDeleteForEveryone/onDeleteForMe сохранены для внешних потребителей.
+//
+// ОСТАТОК (задача 3 плана solid-wave-1, назван, а не забыт — DoD 13): это
+// сценарий с ЧЕКБОКСОМ, которого нет ни у `confirmationPopup`, ни у
+// портированного `PopupPeer` (см. докблок «раунд правок 2» в
+// `components/popups/popupPeer.ts`) — реальный tweb-эквивалент этого попапа,
+// `PopupDeleteMessages` (`deleteMessages.ts`), САМ по себе не `confirmationPopup`
+// и не просто чекбокс на `PopupPeer`: это отдельный класс с бизнес-логикой
+// (проверка прав админа мегагруппы, вычисление `canRevoke` по правам/типу
+// сообщения, разветвление на 6+ описаний) — порт которой не входит в объём
+// этой задачи («Интерфейсы: потребляет confirmationPopup»). Компонент остаётся
+// САМОСТОЯТЕЛЬНОЙ React-реализацией разметки `shared/ui/ConfirmPopup` (снесённого
+// этой же задачей) — не общим компонентом, а локальной копией ровно того, что
+// нужно этому единственному месту, поэтому снос `ConfirmPopup` его не задевает.
+// Порт чекбоксов в `PopupPeer` (peer.ts:22-30, :96-124) — самостоятельная задача.
 export function DeleteMessageDialog({ canRevoke, count = 1, chatType, peerFirstName, avatar, onDeleteForEveryone, onDeleteForMe, onClose }: {
   canRevoke: boolean
   /** число удаляемых сообщений (bulk-выбор) */
@@ -54,29 +72,81 @@ export function DeleteMessageDialog({ canRevoke, count = 1, chatType, peerFirstN
   // Канал: revoke всегда, без чекбокса (tweb: buttons[0].callback = callback(..., true))
   const isChannel = chatType === 'channel'
   const withCheckbox = canRevoke && !isChannel
-  return (
-    <ConfirmPopup
-      // tweb deleteMessages.ts: `new PopupPeer('popup-delete-chat', …)`
-      // (дамп `17-popup-03-delete-message.json`: div.popup.popup-peer.popup-delete-chat)
-      className="popup-delete-chat"
-      avatar={avatar}
-      title={single ? t('Delete message') : t('Delete %d messages').replace('%d', String(count))}
-      description={single ? t('Are you sure you want to delete this message?') : t('Are you sure you want to delete these messages?')}
-      checkboxes={withCheckbox ? [{
-        text: chatType === 'private' && peerFirstName
-          ? `${t('Also delete for')} ${peerFirstName}`
-          : t('Delete for all members'),
-      }] : undefined}
-      buttons={[{
-        text: t('Delete'),
-        danger: true,
-        onClick: (checked) => {
-          if ((isChannel && canRevoke) || (withCheckbox && checked[0])) onDeleteForEveryone()
-          else onDeleteForMe()
-        },
-      }]}
-      onClose={onClose}
-    />
+
+  const [open, setOpen] = useState(true)
+  const { mounted, cls } = usePopupTransition(open)
+  const [checked, setChecked] = useState(false)
+  // Действие кнопки откладывается до конца exit-анимации — тот же приём, что
+  // был у снесённого `shared/ui/ConfirmPopup` (uncontrolled-режим).
+  const pending = useRef<(() => void) | null>(null)
+  const exit = useRef({ onDeleteForEveryone, onDeleteForMe, onClose })
+  exit.current = { onDeleteForEveryone, onDeleteForMe, onClose }
+  useEffect(() => {
+    if (mounted) return
+    const p = pending.current
+    if (p) p(); else exit.current.onClose()
+  }, [mounted])
+
+  const dismiss = () => { pending.current = null; setOpen(false) }
+  const confirmDelete = () => {
+    pending.current = () => {
+      if ((isChannel && canRevoke) || (withCheckbox && checked)) exit.current.onDeleteForEveryone()
+      else exit.current.onDeleteForMe()
+    }
+    setOpen(false)
+  }
+
+  useNavLayer(open, dismiss) // браузерный/аппаратный Back закрывает попап
+
+  // Esc — закрыть; Enter — единственная content-кнопка (tweb btnConfirmOnEnter
+  // при buttons.length===2 с учётом авто-Cancel — здесь их и есть ровно две).
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); dismiss() }
+      else if (e.key === 'Enter') { e.stopPropagation(); confirmDelete() }
+    }
+    document.addEventListener('keydown', onKeyDown, true)
+    return () => document.removeEventListener('keydown', onKeyDown, true)
+  })
+
+  if (!mounted) return null
+
+  return createPortal(
+    // tweb deleteMessages.ts: `new PopupPeer('popup-delete-chat', …)`
+    // (дамп `17-popup-03-delete-message.json`: div.popup.popup-peer.popup-delete-chat)
+    <div className={classNames('popup', 'popup-peer', 'popup-delete-chat', cls)} onClick={dismiss}>
+      <div
+        className={classNames('popup-container', 'z-depth-1', withCheckbox ? 'have-checkbox' : '')}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="popup-header">
+          {avatar}
+          <div className="popup-title">
+            {single ? t('Delete message') : t('Delete %d messages').replace('%d', String(count))}
+          </div>
+        </div>
+        <p className="popup-description">
+          {single ? t('Are you sure you want to delete this message?') : t('Are you sure you want to delete these messages?')}
+        </p>
+        {withCheckbox && (
+          <Checkbox
+            checked={checked}
+            shape="square"
+            className="checkbox-ripple hover-effect rp"
+            caption={chatType === 'private' && peerFirstName
+              ? `${t('Also delete for')} ${peerFirstName}`
+              : t('Delete for all members')}
+            onToggle={() => setChecked((v) => !v)}
+          />
+        )}
+        <div className="popup-buttons">
+          <button type="button" className="popup-button btn danger" onClick={confirmDelete}>{t('Delete')}</button>
+          <button type="button" className="popup-button btn primary" onClick={dismiss}>{t('Cancel')}</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -403,17 +473,5 @@ export function ReactedUsersPopup({ x, y, rows, onClose }: {
       </div>
     </div>,
     document.body,
-  )
-}
-// Конфирм сброса записи голосового — tweb-конфирм (PopupPeer): DISCARD danger + CANCEL.
-export function DiscardVoiceDialog({ onCancel, onDiscard }: { onCancel: () => void; onDiscard: () => void }) {
-  const t = useT()
-  return (
-    <ConfirmPopup
-      title={t('Discard voice message?')}
-      description={t('Are you sure you want to discard this voice message?')}
-      buttons={[{ text: t('Discard'), danger: true, onClick: onDiscard }]}
-      onClose={onCancel}
-    />
   )
 }

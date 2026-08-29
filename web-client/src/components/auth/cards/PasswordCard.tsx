@@ -18,7 +18,7 @@ import TgIcon from '../../TgIcon'
 import classNames from '../../../shared/lib/classNames'
 import { useT } from '../../../i18n'
 import { useManagers } from '../../../core/hooks/useManagers'
-import ConfirmPopup from '../../../shared/ui/ConfirmPopup'
+import { confirmationPopup } from '../../popups/popupPeer'
 import PasswordMonkey from '../../PasswordMonkey'
 import MediaHeader from '../MediaHeader'
 import { PrimaryButton } from '../AuthButton'
@@ -53,10 +53,6 @@ export interface PasswordCardProps {
 // tweb mediaSizes.isMobile ? 100 : 130
 const MONKEY_SIZE = 130
 
-// Шаг диалога сброса аккаунта: 0 — закрыт, 1 и 2 — две подтверждающие плашки
-// tweb подряд, 3 — плашка отказа сервера.
-type ResetStep = 0 | 1 | 2 | 3
-
 export default function PasswordCard({
   token,
   hint,
@@ -74,8 +70,6 @@ export default function PasswordCard({
   // Отказ восстановления по почте — тоже в надпись кнопки, отдельной строки под
   // него в tweb нет (`._forgotLink` несёт только саму ссылку).
   const [forgotError, setForgotError] = useState('')
-  const [resetStep, setResetStep] = useState<ResetStep>(0)
-  const [resetFail, setResetFail] = useState('')
 
   // Надпись кнопки — как в tweb `nextKey`: Next → Please wait… → текст ошибки.
   const nextLabel = busy
@@ -86,15 +80,67 @@ export default function PasswordCard({
         ? t(forgotError)
         : t('Next')
 
+  // Плашка отказа сервера — tweb «Sorry» (третья плашка сброса), звана и от
+  // самого сброса, и от несостоявшегося (см. resetAccount ниже) — общий вызов,
+  // а не дублирование JSX, которое было у трёх снесённых `<ConfirmPopup>`.
+  const sorry = (message: string) => {
+    void confirmationPopup({
+      titleLangKey: t('Sorry'),
+      descriptionLangKey: message,
+      button: { text: t('OK') },
+    }).catch(() => {})
+  }
+
+  // Второе подтверждение принято — сбрасываем. Успех уводит на карточку номера
+  // (это делает хост), отказ показываем плашкой «Sorry».
+  const resetAccount = async () => {
+    setBusy(true)
+    const outcome = await onResetAccount()
+    setBusy(false)
+    if (!outcome) return
+    sorry(
+      outcome === 'recovery_available'
+        ? t('A recovery email is linked to this account — reset it by email instead.')
+        : outcome === 'password_token_expired'
+          ? t('Session expired. Please sign in again.')
+          : t('Something went wrong. Try again.'),
+    )
+  }
+
   const forgot = async () => {
     if (busy) return
     setForgotError('')
     setBusy(true)
     const outcome = await onForgot()
     setBusy(false)
-    // Почты нет — tweb вместо ошибки предлагает сбросить аккаунт.
+    // Почты нет — tweb вместо ошибки предлагает сбросить аккаунт: две
+    // подтверждающие плашки подряд (`confirmationPopup`, порт tweb
+    // `SimpleConfirmationPopup`, см. докблок файла) — вторая только если
+    // подтвердили первую (`await` цепочкой, а не двумя `resetStep`).
     if (outcome === 'password_recovery_na') {
-      setResetStep(1)
+      try {
+        await confirmationPopup({
+          titleLangKey: t('Reset Password'),
+          descriptionLangKey: t(
+            "Since you didn't provide a recovery email when setting up your password, your remaining options are either to remember your password or to reset your account.",
+          ),
+          button: { text: t('Reset Account'), isDanger: true },
+        })
+      } catch { return } // Cancel/оверлей/Esc/Back — тот же исход, что onClose у снесённого попапа
+      try {
+        // `\n\n` в оригинальной строке (styles/tweb) давал абзацный отступ
+        // через `superFormatter`/`<br/>` — у `confirmationPopup` описание
+        // всегда plain-text (см. докблок `popupPeer.ts`), перевод схлопнет
+        // двойной перенос в пробел. Косметическое расхождение на редком
+        // экране (сброс аккаунта без привязанной почты), решили не портировать
+        // rich-описание ради одной строки.
+        await confirmationPopup({
+          titleLangKey: t('Warning'),
+          descriptionLangKey: t("This action can't be undone.\n\nIf you reset your account, all your messages and chats will be deleted."),
+          button: { text: t('Reset Account'), isDanger: true },
+        })
+      } catch { return }
+      void resetAccount()
       return
     }
     if (outcome === 'password_token_expired') {
@@ -102,24 +148,6 @@ export default function PasswordCard({
       return
     }
     if (outcome) setForgotError('Something went wrong. Try again.')
-  }
-
-  // Второе подтверждение принято — сбрасываем. Успех уводит на карточку номера
-  // (это делает хост), отказ показываем третьей плашкой, как tweb «Sorry».
-  const resetAccount = async () => {
-    setResetStep(0)
-    setBusy(true)
-    const outcome = await onResetAccount()
-    setBusy(false)
-    if (!outcome) return
-    setResetFail(
-      outcome === 'recovery_available'
-        ? t('A recovery email is linked to this account — reset it by email instead.')
-        : outcome === 'password_token_expired'
-          ? t('Session expired. Please sign in again.')
-          : t('Something went wrong. Try again.'),
-    )
-    setResetStep(3)
   }
 
   const submitPassword = async () => {
@@ -214,38 +242,6 @@ export default function PasswordCard({
         </PrimaryButton>
       </div>
 
-      {/* Диалоги сброса аккаунта — tweb `SimpleConfirmationPopup.show` подряд;
-          кнопка «Отмена» добавляется попапом сама (tweb addCancelButton). */}
-      {resetStep === 1 && (
-        <ConfirmPopup
-          title={t('Reset Password')}
-          description={superFormatter(
-            t(
-              "Since you didn't provide a recovery email when setting up your password, your remaining options are either to remember your password or to reset your account.",
-            ),
-          )}
-          buttons={[{ text: t('Reset Account'), danger: true, onClick: () => setResetStep(2) }]}
-          onClose={() => setResetStep(0)}
-        />
-      )}
-      {resetStep === 2 && (
-        <ConfirmPopup
-          title={t('Warning')}
-          description={superFormatter(
-            t("This action can't be undone.\n\nIf you reset your account, all your messages and chats will be deleted."),
-          )}
-          buttons={[{ text: t('Reset Account'), danger: true, onClick: () => void resetAccount() }]}
-          onClose={() => setResetStep(0)}
-        />
-      )}
-      {resetStep === 3 && (
-        <ConfirmPopup
-          title={t('Sorry')}
-          description={resetFail}
-          buttons={[{ text: t('OK'), onClick: () => setResetStep(0) }]}
-          onClose={() => setResetStep(0)}
-        />
-      )}
     </div>
   )
 }

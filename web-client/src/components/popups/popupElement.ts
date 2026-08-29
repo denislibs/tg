@@ -104,6 +104,18 @@ export type PopupOptions = {
   withConfirm?: string,
   body?: boolean,
   title?: string,
+  /**
+   * НАШЕ расширение сверх tweb — у оригинала такой опции нет и не нужно:
+   * стек `PopupElement.POPUPS` там ни с чем сторонним не пересекается. У нас
+   * же React ещё не весь переехал (задача 3 плана solid-wave-1), и попап
+   * обязан лечь ПОВЕРХ уже существующих React-оверлеев с собственным
+   * z-index — полноэкранного `MediaEditor` (портал, z-index задаёт сам
+   * компонент) и слайд-стека `SettingsScreen`. Единственный потребитель —
+   * мост `components/settings/ConfirmDialog.tsx` (задача 3): без своей
+   * z-index попап рисовался бы ПОД ними. Временное расширение переходного
+   * периода, снимается вместе с последним React-оверлеем (волна 8 плана).
+   */
+  zIndex?: number,
 }
 
 type PopupListeners = {
@@ -146,6 +158,10 @@ export default class PopupElement<E extends EventListenerListeners = {}> extends
 
     this.element.className = 'popup' + (className ? ' ' + className : '') // tweb :121-122
     this.container.classList.add('popup-container', 'z-depth-1') // tweb :123
+
+    if(options.zIndex != null) { // наше расширение — см. докблок PopupOptions.zIndex выше
+      this.element.style.zIndex = String(options.zIndex)
+    }
 
     this.header.classList.add('popup-header') // tweb :134
 

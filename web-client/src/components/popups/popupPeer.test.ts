@@ -135,3 +135,65 @@ describe('PopupPeer — аватар пира (peerId), раунд правок 
     expect(avatarNode.childNodes.length).toBe(0)
   })
 })
+
+describe('PopupPeer — body/zIndex/описание опционально, раунд правок 2 (задача 3)', () => {
+  it('body:true форвардится в PopupElement — появляется .popup-body, потребитель кладёт в него свой узел', () => {
+    const popup = PopupElement.createPopup(PopupPeer, 'popup-body-test', {
+      titleLangKey: 'Notifications',
+      buttons: [{ text: 'Mute' }],
+      body: true,
+    })
+    popup.show()
+
+    // .popup-body — узел создаёт PopupElement только при options.body (popupElement.ts,
+    // `if(options.body)`); без форвардинга body в super() узла не было бы вовсе.
+    expect(document.querySelector('.popup-body-test .popup-body')).not.toBeNull()
+    popup.forceHide()
+  })
+
+  it('без descriptionLangKey — параграфа .popup-description нет вовсе (PopupMute его не задаёт)', () => {
+    const popup = PopupElement.createPopup(PopupPeer, 'popup-no-description-test', {
+      titleLangKey: 'Notifications',
+      buttons: [{ text: 'Mute' }],
+      // descriptionLangKey не передан — раньше это было бы TS-ошибкой (поле было
+      // обязательным); опционально с раунда правок 2, реальный потребитель — PopupMute.
+    })
+    popup.show()
+
+    expect(document.querySelector('.popup-no-description-test .popup-description')).toBeNull()
+    popup.forceHide()
+  })
+
+  it('zIndex форвардится в PopupElement.style.zIndex — потребитель ConfirmDialog.tsx поверх React-оверлеев', () => {
+    const popup = PopupElement.createPopup(PopupPeer, 'popup-zindex-test', {
+      titleLangKey: 'Notifications',
+      descriptionLangKey: 'Are you sure?',
+      buttons: [{ text: 'OK' }],
+      zIndex: 4300,
+    })
+    popup.show()
+
+    const el = document.querySelector('.popup-zindex-test') as HTMLElement
+    expect(el.style.zIndex).toBe('4300')
+    popup.forceHide()
+  })
+})
+
+describe('confirmationPopup — zIndex, раунд правок 2 (задача 3)', () => {
+  it('zIndex доезжает до PopupElement через confirmationPopup', () => {
+    const promise = confirmationPopup({
+      titleLangKey: 'Discard changes',
+      descriptionLangKey: 'Are you sure?',
+      button: { text: 'Discard' },
+      zIndex: 90,
+    })
+    promise.catch(() => {})
+
+    const el = document.querySelector('.popup-confirmation') as HTMLElement
+    expect(el.style.zIndex).toBe('90')
+
+    const cancelButton = Array.from(el.querySelectorAll<HTMLButtonElement>('.popup-button'))
+      .find((b) => !b.classList.contains('danger'))!
+    cancelButton.dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
+  })
+})

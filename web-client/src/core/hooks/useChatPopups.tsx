@@ -18,12 +18,11 @@ import type { MessageSendingParams } from '../managers/messages/sendingParams'
 import HeaderMenu from '../../components/HeaderMenu'
 import AttachMenu from '../../components/AttachMenu'
 import Menu, { MenuItem } from '../../shared/ui/Menu'
-import Avatar from '../../shared/ui/Avatar'
-import { useMediaUrl } from './useMediaUrl'
 import TgIcon from '../../components/TgIcon'
 import { TopicIcon as _TopicIcon } from '../../components/TopicsPanel'
 import ConfirmDialog from '../../components/settings/ConfirmDialog'
-import MutePopup from '../../components/MutePopup'
+import PopupElement from '../../components/popups/popupElement'
+import PopupMute from '../../components/popups/popupMute'
 import ChatThemesPicker from '../../components/ChatThemesPicker'
 import AddContactView from '../../components/AddContactView'
 import EditContactView from '../../components/EditContactView'
@@ -109,19 +108,15 @@ export function useChatPopups(d: ChatPopupDeps) {
     <ChatThemesPicker open={p.open} onClose={p.requestClose} onExitComplete={p.onExitComplete} chatId={numericChatId} currentThemeId={d.activeThemeId} />
   ))
 
-  // Аватар чата для хедера MutePopup (tweb PopupMute → PopupPeer peerId → avatarNew 32)
-  // id медиа аватарки приезжает ГОТОВЫМ (`photo.photo_id`) — регулярка
-  // `/media/(\d+)/content` по нашей же строке ушла вместе с самой строкой.
-  const chatAvatarSrc = useMediaUrl(chat.photoId ?? null)
-  const openMute = () => openPopup((p) => (
-    <MutePopup
-      open={p.open}
-      onClose={p.requestClose}
-      onExitComplete={p.onExitComplete}
-      onMute={(seconds) => d.applyMute(true, seconds)}
-      avatar={<Avatar background={chat.avatar} text={chat.avatarText} emoji={chat.avatarEmoji} src={chatAvatarSrc} preview={chat.avatarPreview} size={32} />}
-    />
-  ))
+  // PopupMute — теперь vanilla-попап (задача 3 плана solid-wave-1): не идёт
+  // через React-реестр `openPopup`, а создаётся и показывается напрямую, как
+  // и в оригинале (`PopupElement.createPopup(PopupMute, …)`, mute.ts:51 —
+  // `this.show()` в конце конструктора). Аватар строит сам `PopupPeer` из
+  // `peerId` (зеркало пиров), а не React `<Avatar>` — второго источника
+  // карточки чата тут больше нет.
+  const openMute = () => {
+    PopupElement.createPopup(PopupMute, numericChatId, managers, (seconds) => d.applyMute(true, seconds))
+  }
 
   const openConfirmDelete = () => openPopup((p) => (
     <ConfirmDialog
