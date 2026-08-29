@@ -1,5 +1,14 @@
+import { APP_VERSION_FULL } from '../../config/app'
+
 export class HttpError extends Error {
-  constructor(public status: number, message: string) { super(message) }
+  /**
+   * `type` — ИМЯ отказа, по которому его различает вызывающий: у оригинала это
+   * `ApiError.type`, и приезжает оно тем же самым `error.text` конструктора
+   * `error` (в MTProto `error_message`, вида `FLOOD_WAIT_60`). Пусто, когда
+   * тело ответа не наше: чужой шлюз имени нашей ошибки не знает, и выдавать
+   * его строку за имя отказа нельзя — по нему ветвится поведение.
+   */
+  constructor(public status: number, message: string, public type = '') { super(message) }
 }
 
 /**
@@ -13,8 +22,8 @@ export class HttpError extends Error {
  */
 function errorOf(status: number, body: unknown): HttpError {
   const e = body as { _?: string; text?: string } | null | undefined
-  const text = e?._ === 'error' && typeof e.text === 'string' ? e.text : `HTTP ${status}`
-  return new HttpError(status, text)
+  const type = e?._ === 'error' && typeof e.text === 'string' ? e.text : ''
+  return new HttpError(status, type || `HTTP ${status}`, type)
 }
 
 // Structural-контракт канального RPC (реализуется ChannelRpc). Импортируем как тип-форму,
@@ -54,7 +63,12 @@ export class RestClient {
   }
 
   private headers(): Record<string, string> {
-    const h: Record<string, string> = { 'Content-Type': 'application/json' }
+    // `X-App-Version` — чем клиент называет себя серверу. У оригинала это
+    // параметр `app_version` преамбулы `initConnection`, то есть свойство
+    // СОЕДИНЕНИЯ, а не отдельного вызова; заголовок — её прямой аналог. Сервер
+    // читает его на входе и кладёт в строку сессии: заголовок списка устройств
+    // («Telegram Web 0.1.0 (7)») собирается из неё.
+    const h: Record<string, string> = { 'Content-Type': 'application/json', 'X-App-Version': APP_VERSION_FULL }
     // Тело запроса остаётся JSON и на проводе TL: конструкторов у наших
     // ЗАПРОСОВ нет — ими стали только витрины (шаги A/B фазы 3).
     if (this.decodeTL) h.Accept = `${WIRE_TL_CONTENT_TYPE}, application/json`

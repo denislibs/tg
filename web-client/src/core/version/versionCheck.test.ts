@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { checkVersion, APP_VERSION_FULL } from './versionCheck'
+import { checkVersion } from './versionCheck'
+import { APP_VERSION_FULL } from '../../config/app'
 import { useUpdateStore } from '../../stores/updateStore'
 
 function mockFetch(body: string, status = 200) {

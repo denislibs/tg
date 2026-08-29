@@ -41,6 +41,43 @@ describe('SuperMessagePort', () => {
     await expect(a.invoke('boom', {})).rejects.toThrow('nope')
   })
 
+  // Через границу воркера объект ошибки целиком не проходит — она разбирается
+  // на части и собирается заново. Довозить надо не только текст: по ИМЕНИ
+  // отказа (`ApiError.type` у оригинала) ветвится поведение экранов — вкладка
+  // «Устройства» показывает всплывашку только на
+  // `FRESH_RESET_AUTHORISATION_FORBIDDEN`. Без переноса `type` такая ветка
+  // была бы мёртвой: поля у пересобранной ошибки не бывает никогда.
+  it('доносит имя отказа (type) и статус через границу, а не только текст', async () => {
+    const ch = new MessageChannel()
+    const a = new SuperMessagePort(ch.port1)
+    const b = new SuperMessagePort(ch.port2)
+    b.handle('revoke', async () => {
+      throw Object.assign(new Error('FRESH_RESET_AUTHORISATION_FORBIDDEN'), {
+        status: 403,
+        type: 'FRESH_RESET_AUTHORISATION_FORBIDDEN',
+      })
+    })
+
+    const err = await a.invoke('revoke', {}).then(() => null, (e: unknown) => e) as
+      Error & { status?: number; type?: string }
+    expect(err.type).toBe('FRESH_RESET_AUTHORISATION_FORBIDDEN')
+    expect(err.status).toBe(403)
+    expect(err.message).toBe('FRESH_RESET_AUTHORISATION_FORBIDDEN')
+  })
+
+  // Обычная ошибка имени отказа не несёт — и выдумывать его нельзя: пустой
+  // `type` у вызывающего означает «причина неизвестна», а не «эта причина».
+  it('у ошибки без имени отказа поле type не появляется', async () => {
+    const ch = new MessageChannel()
+    const a = new SuperMessagePort(ch.port1)
+    const b = new SuperMessagePort(ch.port2)
+    b.handle('boom', async () => { throw new Error('nope') })
+
+    const err = await a.invoke('boom', {}).then(() => null, (e: unknown) => e) as
+      Error & { type?: string }
+    expect(err.type).toBeUndefined()
+  })
+
   it('delivers events to on() listeners', async () => {
     const ch = new MessageChannel()
     const a = new SuperMessagePort(ch.port1)

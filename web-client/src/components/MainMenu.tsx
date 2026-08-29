@@ -16,7 +16,7 @@ import { enterAppPip, pipSupported } from '../core/pip'
 import rootScope from '@lib/rootScope'
 import type { ToggleMode } from '../App'
 import { useT } from '../i18n'
-import { APP_VERSION_FULL } from '../core/version/versionCheck'
+import { APP_TITLE, APP_VERSION_FULL } from '../config/app'
 
 /** куда ведёт футер подменю (tweb — свой CHANGELOG.md на гитхабе) */
 const CHANGELOG_URL = 'https://github.com/denislibs/messenger/blob/main/CHANGELOG.md'
@@ -253,7 +253,7 @@ export default function MainMenu({
         rel="noopener noreferrer"
         onClick={(e) => { e.stopPropagation(); close() }}
       >
-        <span className="btn-menu-footer-text">{`Telegram Web ${APP_VERSION_FULL}`}</span>
+        <span className="btn-menu-footer-text">{`${APP_TITLE} ${APP_VERSION_FULL}`}</span>
       </a>
     </Menu>
     </>
