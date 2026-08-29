@@ -25,10 +25,10 @@
  *  • `contextMenu` — требует `helpers/dom/createContextMenu`, которого в
  *    репозитории нет. У нас есть `contextMenuController` +
  *    `attachContextMenuListener` + `positionMenu`; вкладка «Устройства»
- *    (`ActiveSessions`) пользуется ими напрямую, минуя `Row`, — ровно как
- *    оригинал (`tweb components/sidebarLeft/tabs/activeSessions.tsx:13-16`
- *    строит контекстное меню тем же способом, а не опцией `Row`).
- *  Задача-остаток — задача 8.
+ *    (`sidebarLeft/tabs/activeSessions.solid.tsx`, задача 7) пользуется ими
+ *    напрямую, минуя `Row`, — ровно как оригинал
+ *    (`tweb components/sidebarLeft/tabs/activeSessions.tsx:13-16` строит
+ *    контекстное меню тем же способом, а не опцией `Row`).
  *
  * ── `navigationTab` (tweb :74-79, :216-247) ─────────────────────────────────
  * Опция появилась здесь позже остального файла: она открывает вкладку на

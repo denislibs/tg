@@ -6,7 +6,6 @@ import { useEffect, useState, type ReactNode } from 'react'
 import TgIcon from '../TgIcon'
 import { SettingsScreen, Section, Row } from './kit'
 import BlockedUsers from './BlockedUsers'
-import ActiveSessions from './ActiveSessions'
 import TwoStepVerification from './TwoStepVerification'
 import Passkeys from './Passkeys'
 import PasskeyIntroPopup from './PasskeyIntroPopup'
@@ -88,8 +87,6 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
     switch (sub) {
       case 'Blocked Users':
         return <BlockedUsers onBack={back} />
-      case 'Active Sessions':
-        return <ActiveSessions onBack={back} />
       case 'Two-Step Verification':
         return <TwoStepVerification onBack={back} />
       case 'Passkeys':
@@ -138,6 +135,9 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
           label="Passkeys"
           onClick={() => (passkeysCount > 0 ? setSub('Passkeys') : setPasskeyIntro(true))}
         />
+        {/* «Активные сессии» уехали на слайдер вкладок
+            (`sidebarLeft/tabs/activeSessions.solid.tsx`); в колонку вкладку
+            заводит задача 8 — до неё строка есть, но никуда не ведёт. */}
         <Row
           icon={<TgIcon name="activesessions" size={24} />}
           label="Active Sessions"

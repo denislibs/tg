@@ -59,14 +59,13 @@
  * `resetAuthorization(hash)`. У нас нет реестра `AppManagers` дословно, но
  * есть его прямой структурный аналог — `Managers` (`client/bootstrap.ts`,
  * тот же принцип: один DI-объект с ручками ко всем менеджерам воркера,
- * инжектируется, а не импортируется). Наша вкладка «Устройства» (задача 7)
- * уже существует React-версией (`components/settings/ActiveSessions.tsx`) и
- * пользуется `managers.sessions.terminate(id)`/`terminateOthers()`
+ * инжектируется, а не импортируется). Наша вкладка «Устройства»
+ * (`sidebarLeft/tabs/activeSessions.solid.tsx`, задача 7) зовёт
+ * `tab.managers.sessions.terminate(id)`/`terminateOthers()`
  * (`core/managers/sessionsManager.ts`) — прямой аналог `resetAuthorization`/
- * `resetAuthorizations`. Поле портировано СЕЙЧАС как `managers?: Managers`;
- * долг на будущее: задача 5 обязана проставлять его в `createTab` (как
- * `slider.ts:270`), задача 7 — читать вкладочное `this.managers.sessions`, а
- * не тянуть менеджеры своим путём мимо базового класса.
+ * `resetAuthorizations`. Долг закрыт с обеих сторон: слайдер проставляет поле
+ * в `createTab` (`slider.ts:405`, задача 5), вкладка читает вкладочное
+ * `tab.managers`, а не тянет менеджеры своим путём мимо базового класса.
  *
  * МИНОР-1 — `slider` теперь `slider?: SliderSuperTabSlider` (а не
  * `slider!:` с скрытым допущением непустоты). В tweb `slider.ts:269`

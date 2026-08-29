@@ -20,6 +20,19 @@ export const en: Dict = {
   // оригиналом дословно), отображаемый текст с ключом не совпадает.
   CurrentSession: 'This device',
   ClearOtherSessionsHelp: 'Logs out all devices except for this one.',
+  // Вкладка «Устройства» (`sidebarLeft/tabs/activeSessions.solid.tsx`): ключи и
+  // тексты взяты из tweb lang.ts:1444-1465, :1836, :3892 дословно. Ключа
+  // 'Terminate' здесь нет намеренно — его текст совпадает с ключом, и правило
+  // «ключ = английская строка» отдаёт его без записи.
+  SessionsTitle: 'Active Sessions',
+  TerminateAllSessions: 'Terminate All Other Sessions',
+  TerminateSessionText: 'Are you sure you want to terminate this session?',
+  OtherSessions: 'Active sessions',
+  AreYouSureSessionTitle: 'Terminate session',
+  AreYouSureSessionsTitle: 'Terminate sessions',
+  AreYouSureSessions: 'Are you sure you want to terminate all other sessions?',
+  SessionsListInfo: 'The official Telegram app is available for Android, iPhone, iPad, Windows, macOS and Linux.',
+  'RecentSessions.Error.FreshReset': 'For security reasons, you can\'t terminate older sessions from a device that you\'ve just connected. Please use an earlier connection or wait for a few hours.',
 }
 
 // The other languages are heavy (~40 kB each) and split into per-language chunks,

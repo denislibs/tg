@@ -1,7 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { useT, useLang, LANGS } from '../i18n'
 import { SettingsScreen, Section, Row } from './settings/kit'
-import ActiveSessions from './settings/ActiveSessions'
 import QuickReaction from './settings/QuickReaction'
 import PowerSaving from './settings/PowerSaving'
 import LanguageSettings from './settings/LanguageSettings'
@@ -80,11 +79,12 @@ const SCREENS: Record<string, SSection[]> = {
 }
 
 export function hasSubScreen(title: string) {
-  // Devices, Speakers and Camera, Notifications and Sounds, Chat Folders —
-  // реальные экраны (не из мок-SCREENS)
+  // Speakers and Camera, Notifications and Sounds, Chat Folders — реальные
+  // экраны (не из мок-SCREENS). «Устройства» здесь БОЛЬШЕ НЕТ: экран уехал на
+  // слайдер вкладок (`sidebarLeft/tabs/activeSessions.solid.tsx`), в колонку
+  // его заводит задача 8.
   return (
     title in SCREENS ||
-    title === 'Devices' ||
     title === 'Speakers and Camera' ||
     title === 'Notifications and Sounds' ||
     title === 'Chat Folders' ||
@@ -134,8 +134,6 @@ export default function SettingsSubScreen({ title, onBack, chats }: { title: str
   if (title === 'Language') return <LanguageSettings onBack={onBack} />
   // General Settings is a fully functional screen (text size, wallpaper, theme, time)
   if (title === 'General Settings') return <GeneralSettings onBack={onBack} />
-  // Devices — реальные сессии с бэка (список/завершение), без мок-прослойки
-  if (title === 'Devices') return <ActiveSessions onBack={onBack} />
   // Speakers and Camera — реальные устройства (enumerateDevices/getUserMedia)
   if (title === 'Speakers and Camera') return <SpeakersCamera onBack={onBack} />
   // Notifications and Sounds — реальные настройки уведомлений (tweb-структура)
