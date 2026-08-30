@@ -306,7 +306,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Show Translate Button': 'ShowTranslateButton',
   'Show a premium badge next to your name.': 'Premium.Feature.Badge.Info',
   'Show a unique animated status next to your name.': 'Premium.Feature.Status.Info',
-  'Something went wrong': 'Login.Passkey.Error',
+  'Something went wrong': 'Error.SomethingWentWrong',
   'Sorry, you can\'t pin any more chats to the top.': 'PinFolderLimitReached',
   Sound: 'Notifications.Sound.Section',
   Spam: 'ReportChatSpam',

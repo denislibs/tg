@@ -41,7 +41,7 @@ export default function FolderInvitePopup({
         setSelected(new Set(p.chats.map((c) => c.id)))
       })
       .catch(() => {
-        if (alive) setError(t('This link is invalid or has expired.'))
+        if (alive) setError(t('Folder.Invite.Invalid'))
       })
       .finally(() => {
         if (alive) setLoading(false)
@@ -70,27 +70,27 @@ export default function FolderInvitePopup({
         setOpen(false)
       })
       .catch(() => {
-        setError(t('Something went wrong'))
+        setError(t('Error.SomethingWentWrong'))
         setBusy(false)
       })
   }
 
   const action =
     !loading && !error && selected.size > 0
-      ? { label: busy ? t('Adding…') : t('Add Folder'), onClick: join }
+      ? { label: busy ? t('Folder.Invite.Adding') : t('SharedFolder.Link.Title'), onClick: join }
       : undefined
 
   return (
     <Popup
       open={open}
-      title={t('Add Folder')}
+      title={t('SharedFolder.Link.Title')}
       onClose={() => setOpen(false)}
       onExitComplete={onClose}
       action={action}
     >
       {loading ? (
         <Text size={15} color="var(--secondary-text-color)" style={{ display: 'block', padding: '16px', textAlign: 'center' }}>
-          {t('Loading…')}
+          {t('Loading')}
         </Text>
       ) : error ? (
         <Text size={15} color="#ff595a" style={{ display: 'block', padding: '16px', textAlign: 'center' }}>
@@ -100,15 +100,15 @@ export default function FolderInvitePopup({
         <>
           <Text size={14.5} color="var(--secondary-text-color)" style={{ display: 'block', padding: '4px 16px 12px' }}>
             {chats.length > 0
-              ? `${t('Do you want to add')} «${title}» ${t('and join its chats?')}`
-              : `${t('Do you want to add the folder')} «${title}»?`}
+              ? `${t('Folder.Invite.Question.Prefix')} «${title}» ${t('Folder.Invite.Question.Suffix')}`
+              : `${t('Folder.Invite.Question.FolderPrefix')} «${title}»?`}
           </Text>
           {chats.map((c) => (
             <Row
               key={c.id}
               icon={<TgIcon name={c.type === 'channel' ? 'channel' : 'group'} size={24} color="var(--primary-color)" />}
               label={c.title}
-              sublabel={c.members > 0 ? `${c.members} ${t('members')}` : undefined}
+              sublabel={c.members > 0 ? `${c.members} ${t('Group.MembersSuffix')}` : undefined}
               translate={false}
               selected={selected.has(c.id)}
               onClick={() => toggle(c.id)}

@@ -142,7 +142,7 @@ const es = {
   'Chat.ContextMenu.Read': 'Leídos',
   FilterChatTypes: 'Tipos de chats',
   'MiniApps.AppsMore': 'Mostrar más',
-  'Login.Passkey.Error': 'Algo salió mal',
+  'Error.SomethingWentWrong': 'Algo salió mal',
   New: 'Nuevos',
   FilterUnreadDescription: 'Chats con mensajes nuevos.',
   FilterPersonalDescription: 'Mensajes de chats privados.',

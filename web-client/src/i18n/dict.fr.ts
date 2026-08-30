@@ -142,7 +142,7 @@ const fr = {
   'Chat.ContextMenu.Read': 'Lues',
   FilterChatTypes: 'Types de discussions',
   'MiniApps.AppsMore': 'Afficher plus',
-  'Login.Passkey.Error': 'Une erreur est survenue',
+  'Error.SomethingWentWrong': 'Une erreur est survenue',
   New: 'Nouveaux',
   FilterUnreadDescription: 'Discussions avec de nouveaux messages.',
   FilterPersonalDescription: 'Messages des discussions privées.',

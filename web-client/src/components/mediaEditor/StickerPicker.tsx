@@ -33,8 +33,8 @@ export default function StickerPicker({ onPick }: { onPick: (st: Sticker) => voi
 
   const sections = useMemo<Section[]>(() => {
     const list: Section[] = []
-    if (panel.recent.length) list.push({ key: 'recent', title: t('Frequently Used'), icon: 'recent', stickers: panel.recent })
-    if (panel.faved.length) list.push({ key: 'faved', title: t('Favorites'), icon: 'favourites', stickers: panel.faved })
+    if (panel.recent.length) list.push({ key: 'recent', title: t('Emoji.Recent'), icon: 'recent', stickers: panel.recent })
+    if (panel.faved.length) list.push({ key: 'faved', title: t('FavoriteStickers'), icon: 'favourites', stickers: panel.faved })
     for (const { set, stickers } of panel.sets) {
       if (stickers.length) list.push({ key: `set-${set.short_name}`, title: set.title, thumb: setThumbMediaId(set, stickers), stickers })
     }
@@ -103,7 +103,7 @@ export default function StickerPicker({ onPick }: { onPick: (st: Sticker) => voi
           </div>
         ))}
         {panel.loaded && sections.length === 0 && (
-          <div className={s.stickerEmpty}>{t('No stickers found')}</div>
+          <div className={s.stickerEmpty}>{t('NoStickersFound')}</div>
         )}
       </div>
     </div>

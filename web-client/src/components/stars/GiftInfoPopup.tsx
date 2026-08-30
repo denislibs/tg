@@ -74,7 +74,7 @@ export default function GiftInfoPopup({
 
   const fromLabel = fromId != null
     ? getPeerTitle({ peerId: fromId, peer: senders.get(fromId) })
-    : t('Anonymous')
+    : t('AuthorHiddenShort')
   const dateLabel = fmtWhen(new Date(date * 1000).toISOString())
 
   return createPortal(
@@ -94,10 +94,10 @@ export default function GiftInfoPopup({
             <span className={s.chosenEmoji}>{gift.gift.emoji}</span>
             <Text size={17} weight={600} color="var(--primary-text-color)">{gift.gift.title}</Text>
             <Text size={14} color="var(--secondary-text-color)">
-              {t('From')}: {fromLabel}{dateLabel ? ` · ${dateLabel}` : ''}
+              {t('StarGiftFromShort')}: {fromLabel}{dateLabel ? ` · ${dateLabel}` : ''}
             </Text>
             {isOwner && hidden && (
-              <Text size={13} color="var(--secondary-text-color)">{t('Hidden from your profile')}</Text>
+              <Text size={13} color="var(--secondary-text-color)">{t('StarGift.HiddenFromProfile')}</Text>
             )}
             {gift.message && (
               <Text size={15} color="var(--primary-text-color)" style={{ marginTop: 4 }}>{gift.message.text}</Text>
@@ -111,10 +111,10 @@ export default function GiftInfoPopup({
           {isOwner && !isGiftConverted(gift) && (
             <div className={s.giftInfoActions}>
               <button type="button" className={s.secondaryBtn} disabled={busy} onClick={() => void toggleHidden()}>
-                {hidden ? t('Show in Profile') : t('Hide from Profile')}
+                {hidden ? t('StarGift.ShowInProfile') : t('StarGift.HideFromProfile')}
               </button>
               <button type="button" className={s.payBtn} disabled={busy} onClick={() => void convert()}>
-                {t('Convert to')} <StarIcon size={16} /> {gift.convert_stars ?? 0}
+                {t('StarGift.ConvertTo')} <StarIcon size={16} /> {gift.convert_stars ?? 0}
               </button>
             </div>
           )}

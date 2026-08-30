@@ -27,11 +27,11 @@ const TOPUP_OPTIONS = [100, 250, 500, 1000, 2500, 5000]
 function txMeta(tx: StarTransaction, t: (s: string) => string): { icon: import('../TgIcon').IconName; label: string } {
   if (tx.gift) {
     return tx.amount < 0
-      ? { icon: 'gift', label: tx.title || t('Gift') }
-      : { icon: 'star_filled', label: t('Gift converted') }
+      ? { icon: 'gift', label: tx.title || t('StarGiftTitle') }
+      : { icon: 'star_filled', label: t('StarGift.Converted') }
   }
-  if (tx.amount > 0) return { icon: 'add', label: t('Top-Up') }
-  return { icon: 'star_filled', label: tx.title || t('Transaction') }
+  if (tx.amount > 0) return { icon: 'add', label: t('Stars.TopUpTitle') }
+  return { icon: 'star_filled', label: tx.title || t('Stars.Transaction') }
 }
 
 export default function WalletView({ onBack }: { onBack: () => void }) {
@@ -66,7 +66,7 @@ export default function WalletView({ onBack }: { onBack: () => void }) {
           <StarIcon size={32} />
           {balance}
         </div>
-        <div className={s.bigBalanceLabel}>{t('Your balance')}</div>
+        <div className={s.bigBalanceLabel}>{t('Stars.Balance')}</div>
       </div>
 
       {/* Покупка звёзд */}
@@ -82,7 +82,7 @@ export default function WalletView({ onBack }: { onBack: () => void }) {
           ))}
         </div>
         <Text size={13} color="var(--secondary-text-color)" style={{ display: 'block', textAlign: 'center', padding: '10px 4px 2px' }}>
-          {t('Demo: top-up adds Stars instantly, no real payment.')}
+          {t('Stars.DemoNotice')}
         </Text>
       </Section>
 

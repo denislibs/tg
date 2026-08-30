@@ -147,7 +147,7 @@ const uk = {
   'Chat.ContextMenu.Read': 'Прочитані',
   FilterChatTypes: 'Типи чатів',
   'MiniApps.AppsMore': 'Показати ще',
-  'Login.Passkey.Error': 'Щось пішло не так',
+  'Error.SomethingWentWrong': 'Щось пішло не так',
   New: 'Нові',
   FilterUnreadDescription: 'Чати з новими повідомленнями.',
   FilterPersonalDescription: 'Повідомлення з особистих чатів.',

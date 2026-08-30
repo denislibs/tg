@@ -1411,7 +1411,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
 
         {img && crop && cropTab && (
           <div className={s.wheel} style={{ height: WHEEL_H }}>
-            <IconButton size="small" color="#fff" title={t('Rotate')} onClick={rotate90}>
+            <IconButton size="small" color="#fff" title={t('MediaEditor.Rotate')} onClick={rotate90}>
               <TgIcon name="rotate" />
             </IconButton>
             <div
@@ -1428,10 +1428,10 @@ export default function MediaEditor({ file, onDone, onCancel }: {
               <div className={s.wheelArrow} />
               <div className={s.wheelValue}>{wheelValue}°</div>
             </div>
-            <IconButton size="small" color="#fff" title={t('Flip')} onClick={flipHorizontal}>
+            <IconButton size="small" color="#fff" title={t('MediaEditor.Flip')} onClick={flipHorizontal}>
               <TgIcon name="flip" />
             </IconButton>
-            <IconButton size="small" color="#fff" title={t('Flip')} onClick={flipVertical}>
+            <IconButton size="small" color="#fff" title={t('MediaEditor.Flip')} onClick={flipVertical}>
               <span style={{ display: 'flex', transform: 'rotate(90deg)' }}><TgIcon name="flip" /></span>
             </IconButton>
           </div>
@@ -1442,7 +1442,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
             <IconButton
               size="small"
               color="#fff"
-              title={playing ? t('Pause') : t('Play')}
+              title={playing ? t('Media.Pause') : t('Media.Play')}
               onClick={togglePlay}
             >
               <TgIcon name={playing ? 'pause' : 'play'} />
@@ -1450,7 +1450,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
             <IconButton
               size="small"
               color="#fff"
-              title={videoMuted ? t('Unmute') : t('Mute')}
+              title={videoMuted ? t('ChatList.Context.Unmute') : t('ChatList.Context.Mute')}
               onClick={() => { setVideoMuted((m) => !m); const v = img as HTMLVideoElement | null; if (v) v.muted = !videoMuted }}
             >
               <TgIcon name={videoMuted ? 'volume_off' : 'volume_up'} />
@@ -1492,7 +1492,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
               <div
                 className={s.tlCover}
                 style={{ left: `${videoThumbPos * 100}%` }}
-                title={t('Cover')}
+                title={t('MediaEditor.Cover')}
                 onPointerDown={(e) => onTlDown(e, 'cover')}
                 onPointerMove={onTlMove}
                 onPointerUp={onTlUp}
@@ -1544,7 +1544,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
 
           {tab === 'crop' && (
             <>
-              <div className={s.label}>{t('Aspect ratio')}</div>
+              <div className={s.label}>{t('MediaEditor.AspectRatio')}</div>
               {ASPECT_PRESETS.map((p) => (
                 <div
                   key={p}
@@ -1564,7 +1564,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
                 {swatches(brushColorValue, setBrushColorValue)}
               </div>
               {sliderRow('Brush size', brushSize, 2, 32, changeBrushSize)}
-              <div className={s.label}>{t('Tool')}</div>
+              <div className={s.label}>{t('MediaEditor.Tool')}</div>
               <div className={s.brushList}>
                 {BRUSHES.map(({ key, label, icon }) => (
                   <div
@@ -1608,7 +1608,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
                 </div>
               </div>
               {sliderRow('Text size', textSize, 16, 64, setTextSize)}
-              <div className={s.label}>{t('Font')}</div>
+              <div className={s.label}>{t('MediaEditor.Font')}</div>
               <div className={s.fontList}>
                 {FONTS.map(({ key, label }) => (
                   <div
@@ -1639,8 +1639,8 @@ export default function MediaEditor({ file, onDone, onCancel }: {
 
       {confirmOpen && (
         <ConfirmDialog
-          title={t('Discard changes')}
-          text={t('Are you sure you want to discard the changes?')}
+          title={t('MediaEditor.DiscardChanges')}
+          text={t('MediaEditor.Discard.Text')}
           action={t('Discard')}
           danger
           zIndex={4300}

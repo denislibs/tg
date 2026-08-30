@@ -57,7 +57,7 @@ function SelectedPreview({ flagKeys, chatIds, chats }: { flagKeys: string[]; cha
         <ChatPreviewRow key={c.id} chat={c} />
       ))}
       {hidden > 0 && (
-        <Row icon={<TgIcon name="down" size={24} color="var(--primary-color)" />} label={`${t('Show more')} (${hidden})`} translate={false} accent onClick={() => setExpanded(true)} />
+        <Row icon={<TgIcon name="down" size={24} color="var(--primary-color)" />} label={`${t('MiniApps.AppsMore')} (${hidden})`} translate={false} accent onClick={() => setExpanded(true)} />
       )}
     </>
   )
@@ -93,7 +93,7 @@ function FolderShareSection({ folderId }: { folderId: number }) {
     managers.folders
       .createInvite(folderId)
       .then((inv) => setInvite(inv))
-      .catch(() => setError(t('This folder has no chats to share.')))
+      .catch(() => setError(t('Folder.Share.Empty')))
       .finally(() => setBusy(false))
   }
 
@@ -123,7 +123,7 @@ function FolderShareSection({ folderId }: { folderId: number }) {
               {invite.url}
             </Text>
             <Text size={13} color={copied ? 'var(--primary-color)' : 'var(--secondary-text-color)'}>
-              {copied ? t('Link copied to clipboard.') : t('Copy Link')}
+              {copied ? t('LinkCopied') : t('CopyLink')}
             </Text>
           </div>
           <Row
@@ -184,11 +184,11 @@ export default function FolderEditor({
   const save = () => {
     const name = title.trim()
     if (!name) {
-      setError(t('Folder name'))
+      setError(t('FilterNameHint'))
       return
     }
     if (!hasIncludes) {
-      setError(t('Please choose at least one chat for this folder.'))
+      setError(t('EditFolder.Toast.ChooseChat'))
       return
     }
     setSaving(true)
@@ -210,7 +210,7 @@ export default function FolderEditor({
         onClose()
       })
       .catch(() => {
-        setError(t('Something went wrong'))
+        setError(t('Error.SomethingWentWrong'))
         setSaving(false)
       })
   }
@@ -228,7 +228,7 @@ export default function FolderEditor({
     >
       <LottieSticker name="Folders_2" size={86} />
       <Text size={14} color="var(--secondary-text-color)" className={s.caption}>
-        {t('Choose chats and types of chats that will appear and never appear in this folder.')}
+        {t('FilterIncludeExcludeInfo')}
       </Text>
 
       <Section>
@@ -240,7 +240,7 @@ export default function FolderEditor({
               setTitle(e.target.value)
               setError('')
             }}
-            placeholder={t('Folder name')}
+            placeholder={t('FilterNameHint')}
             maxLength={24}
           />
         </div>

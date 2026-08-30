@@ -141,7 +141,7 @@ const de = {
   'Chat.ContextMenu.Read': 'Gelesen',
   FilterChatTypes: 'Chat-Typen',
   'MiniApps.AppsMore': 'Mehr anzeigen',
-  'Login.Passkey.Error': 'Etwas ist schiefgelaufen',
+  'Error.SomethingWentWrong': 'Etwas ist schiefgelaufen',
   New: 'Neu',
   FilterUnreadDescription: 'Chats mit neuen Nachrichten.',
   FilterPersonalDescription: 'Nachrichten aus privaten Chats.',

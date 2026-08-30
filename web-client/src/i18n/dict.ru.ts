@@ -370,7 +370,7 @@ const ru = {
   'Chat.ContextMenu.Read': 'Прочитанные',
   FilterChatTypes: 'Типы чатов',
   'MiniApps.AppsMore': 'Показать ещё',
-  'Login.Passkey.Error': 'Что-то пошло не так',
+  'Error.SomethingWentWrong': 'Что-то пошло не так',
   New: 'Новые',
   FilterUnreadDescription: 'Чаты с новыми сообщениями.',
   FilterPersonalDescription: 'Сообщения из личных чатов.',

@@ -77,12 +77,12 @@ export default function ChatFoldersSettings({ onBack, chats = [] }: { onBack: ()
     >
       <LottieSticker name="Folders_1" size={86} />
       <Text size={14} color="var(--secondary-text-color)" className={s.caption}>
-        {t('Create folders for different groups of chats and quickly switch between them.')}
+        {t('ChatList.Filter.Header')}
       </Text>
       <div className={s.createWrap}>
         <button type="button" className={s.createBtn} onClick={() => setEditor('new')}>
           <TgIcon name="add" size={20} />
-          {t('Create Folder')}
+          {t('ChatList.Filter.NewTitle')}
         </button>
       </div>
 

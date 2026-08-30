@@ -84,7 +84,7 @@ export default function SendGiftPopup({
                 <TgIcon name={chosen ? 'back' : 'close'} />
               </IconButton>
               <Text size={18} weight={600} color="var(--primary-text-color)" className={s.headerTitle}>
-                {chosen ? t('Send a Gift') : t('Send a Gift')}
+                {chosen ? t('Chat.Menu.SendGift') : t('Chat.Menu.SendGift')}
               </Text>
               <div className={s.balancePill} onClick={() => setTopupOpen(true)} style={{ cursor: 'pointer' }}>
                 <StarIcon size={18} />
@@ -103,7 +103,7 @@ export default function SendGiftPopup({
                     >
                       {g.pFlags?.limited && (
                         <span className={s.giftLimitedBadge}>
-                          {g.pFlags.sold_out ? t('Sold Out') : t('Limited')}
+                          {g.pFlags.sold_out ? t('StarGiftSoldOutBadge') : t('StarGiftShowLimited')}
                         </span>
                       )}
                       <span className={s.giftEmoji}>{g.emoji}</span>
@@ -119,30 +119,30 @@ export default function SendGiftPopup({
                   <span className={s.chosenEmoji}>{chosen.emoji}</span>
                   <Text size={17} weight={600} color="var(--primary-text-color)">{chosen.title}</Text>
                   <Text size={14} color="var(--secondary-text-color)" style={{ textAlign: 'center' }}>
-                    {t('Gift to')} {toName}
+                    {t('StarGift.GiftTo')} {toName}
                   </Text>
                   <input
                     className={s.giftInput}
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
-                    placeholder={t('Message (optional)')}
+                    placeholder={t('StarGift.MessagePlaceholder')}
                     maxLength={255}
                   />
                   <div className={s.rowToggle} onClick={() => setAnonymous((v) => !v)}>
-                    <span>{t('Hide my name')}</span>
+                    <span>{t('StarGiftHideMyName')}</span>
                     <TgSwitch checked={anonymous} />
                   </div>
                   <button type="button" className={s.payBtn} disabled={busy} onClick={() => void send()}>
                     {enough ? (
                       <>
-                        {t('Send for')} <StarIcon size={16} /> {chosen.stars}
+                        {t('StarGift.SendFor')} <StarIcon size={16} /> {chosen.stars}
                       </>
                     ) : (
-                      t('Top up Stars')
+                      t('Stars.TopUpAction')
                     )}
                   </button>
                   {!enough && (
-                    <div className={s.notEnough}>{t('Not enough Stars — top up to continue.')}</div>
+                    <div className={s.notEnough}>{t('Stars.NotEnough')}</div>
                   )}
                 </div>
               )}
