@@ -98,7 +98,7 @@ export function PermissionsScreen({ g, onBack }: { g: GroupEdit; onBack: () => v
               больше нет. */}
           <div className="input-wrapper">
             <Input
-              label={t('Stars per message')}
+              label={t('GroupPermissions.StarsPerMessage')}
               type="number"
               min={0}
               max={10000}

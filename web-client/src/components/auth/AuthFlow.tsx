@@ -424,7 +424,7 @@ export default function AuthFlow({
         <IconButton
           className={classNames('back', s.closeButton)}
           onClick={() => void backToAccount()}
-          aria-label={t('Back')}
+          aria-label={t('Common.Back')}
         >
           <TgIcon name="back" className="button-icon" />
         </IconButton>
@@ -432,7 +432,7 @@ export default function AuthFlow({
       <IconButton
         className={classNames('darkmode_filled', s.themeButton)}
         onClick={toggleTheme}
-        aria-label={t('Dark Mode')}
+        aria-label={t('DarkMode')}
       >
         <TgIcon name="darkmode_filled" className="button-icon" />
       </IconButton>

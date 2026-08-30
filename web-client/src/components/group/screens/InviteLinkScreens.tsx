@@ -24,24 +24,24 @@ function expiryLabel(t: (k: string) => string, expiresAt?: string): string | und
   if (!expiresAt) return undefined
   const ts = Date.parse(expiresAt)
   if (Number.isNaN(ts)) return undefined
-  if (ts <= Date.now()) return t('Expired')
-  return `${t('Expires')} ${new Date(ts).toLocaleDateString()}`
+  if (ts <= Date.now()) return t('ExportedInvitation.Status.Expired')
+  return `${t('InviteLinks.Expires')} ${new Date(ts).toLocaleDateString()}`
 }
 
 // Подзаголовок строки ссылки (tweb createRow: joins • limit • expiry).
 function linkSubtitle(t: (k: string) => string, l: InviteLink): string {
-  if (l.revoked) return t('revoked')
+  if (l.revoked) return t('ExportedInvitation.Status.Revoked')
   const parts: string[] = []
   if (l.uses > 0) {
-    parts.push(`${l.uses} ${t('joined')}`)
-    if (l.usageLimit != null && l.uses >= l.usageLimit) parts.push(t('Limit reached'))
-    else if (l.usageLimit != null) parts.push(`${l.usageLimit - l.uses} ${t('remaining')}`)
+    parts.push(`${l.uses} ${t('InviteLinks.JoinedSuffix')}`)
+    if (l.usageLimit != null && l.uses >= l.usageLimit) parts.push(t('InviteLinks.LimitReached'))
+    else if (l.usageLimit != null) parts.push(`${l.usageLimit - l.uses} ${t('InviteLinks.RemainingSuffix')}`)
   } else if (l.usageLimit != null) {
-    parts.push(`${t('can join')} ${l.usageLimit}`)
+    parts.push(`${t('InviteLinks.CanJoinSuffix')} ${l.usageLimit}`)
   }
   const exp = expiryLabel(t, l.expiresAt)
   if (exp) parts.push(exp)
-  if (!parts.length && l.requiresApproval) parts.push(t('Request Admin Approval'))
+  if (!parts.length && l.requiresApproval) parts.push(t('ApproveNewMembers'))
   return parts.join(' • ')
 }
 
@@ -94,8 +94,8 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
           </div>
           <div className="sidebar-left-section-content sidebar-left-section-caption">
             {isChannel
-              ? t('Anyone who has Telegram installed will be able to join your channel by following this link.')
-              : t('Anyone who has Telegram installed will be able to join your group by following this link.')}
+              ? t('ChannelLinkInfo')
+              : t('InviteLinks.Description.Group')}
           </div>
         </div>
       </div>
@@ -105,13 +105,13 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
           <>
             <Row
               label={primary.url}
-              sublabel={copied === primary.token ? t('Link copied to clipboard.') : t('Copy Link')}
+              sublabel={copied === primary.token ? t('LinkCopied') : t('CopyLink')}
               translate={false}
               onClick={() => copy(primary.token, primary.url)}
             />
             <Row
               icon={<TgIcon name="admin" size={22} />}
-              label={linkSubtitle(t, primary) || t('View link')}
+              label={linkSubtitle(t, primary) || t('InviteLinks.View')}
               translate={false}
               onClick={() => setDetail(primary)}
             />
@@ -150,7 +150,7 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
               icon={<TgIcon name="link" size={22} color="var(--secondary-text-color)" />}
               label={l.title || l.url.replace(/^https?:\/\//, '')}
               translate={false}
-              sublabel={t('revoked')}
+              sublabel={t('ExportedInvitation.Status.Revoked')}
               onClick={() => setDetail(l)}
             />
           ))}
@@ -159,9 +159,9 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
 
       {revoking && (
         <ConfirmDialog
-          title={t('Revoke Link')}
-          text={t('Are you sure you want to revoke this link? Once the link is revoked, no one will be able to join using it.')}
-          action={t('Revoke')}
+          title={t('RevokeLink')}
+          text={t('RevokeAlert')}
+          action={t('RevokeButton')}
           danger
           zIndex={90}
           onConfirm={() => void g.editInvite(revoking.token, { revoked: true })}
@@ -170,8 +170,8 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
       )}
       {deletingAll && (
         <ConfirmDialog
-          title={t('Delete All Revoked Links')}
-          text={t('Are you sure you want to delete all revoked links?')}
+          title={t('DeleteAllRevokedLinks')}
+          text={t('ManageLinks.DeleteAll.Confirm')}
           action={t('Delete')}
           danger
           zIndex={90}
@@ -246,7 +246,7 @@ function EditInviteLinkScreen({ g, link, onBack }: { g: GroupEdit; link: InviteL
     >
       <Section caption="Link Name" footer="Only admins will see this name.">
         <div className="input-wrapper">
-          <Input label={t('Link Name (Optional)')} value={name} onChange={setName} maxLength={32} />
+          <Input label={t('LinkNameHint')} value={name} onChange={setName} maxLength={32} />
         </div>
       </Section>
 
@@ -330,7 +330,7 @@ function InviteLinkDetailScreen({ g, link, onEdit, onBack }: { g: GroupEdit; lin
       <Section caption="Invite Link">
         <Row
           label={link.url}
-          sublabel={copied ? t('Link copied to clipboard.') : t('Copy Link')}
+          sublabel={copied ? t('LinkCopied') : t('CopyLink')}
           translate={false}
           onClick={copy}
         />
@@ -339,13 +339,13 @@ function InviteLinkDetailScreen({ g, link, onEdit, onBack }: { g: GroupEdit; lin
       {link.usageLimit != null && link.uses === 0 && (
         <Section>
           <Text size={14.5} color="var(--secondary-text-color)" style={{ padding: '8px 16px' }}>
-            {`${link.usageLimit} ${t('people can join via this link.')}`}
+            {`${link.usageLimit} ${t('InviteLinks.UsageHintSuffix')}`}
           </Text>
         </Section>
       )}
 
       {importers.length > 0 && (
-        <Section caption={`${link.uses} ${t('joined')}`}>
+        <Section caption={`${link.uses} ${t('InviteLinks.JoinedSuffix')}`}>
           {importers.map((im) => (
             <Row
               key={im.userId}
@@ -371,9 +371,9 @@ function InviteLinkDetailScreen({ g, link, onEdit, onBack }: { g: GroupEdit; lin
 
       {revoking && (
         <ConfirmDialog
-          title={t('Revoke Link')}
-          text={t('Are you sure you want to revoke this link? Once the link is revoked, no one will be able to join using it.')}
-          action={t('Revoke')}
+          title={t('RevokeLink')}
+          text={t('RevokeAlert')}
+          action={t('RevokeButton')}
           danger
           zIndex={90}
           onConfirm={() => void g.editInvite(link.token, { revoked: true }).then(onBack)}

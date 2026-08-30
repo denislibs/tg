@@ -600,6 +600,7 @@ const lang = {
   'Login.Password.SubtitleFlat': 'Your account is protected with an additional password.',
   'Login.Password.Title': 'Enter Your Password',
   'Login.PhoneInvalid': 'Invalid phone number.',
+  'Login.PhoneLabel': 'Phone Number',
   'Login.PhoneLabelInvalid': 'Phone Number Invalid',
   'Login.QR.Help1': 'Open Telegram on your phone',
   'Login.QR.Help2': 'Go to **Settings** > **Devices** > **Add Device**',

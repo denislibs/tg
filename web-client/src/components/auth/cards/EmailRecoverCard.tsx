@@ -71,12 +71,12 @@ export default function EmailRecoverCard({
     setCode('')
     setError(
       res.error === 'invalid_code'
-        ? t('Invalid code')
+        ? t('PHONE_CODE_INVALID')
         // Сервер не различает истёкший код и исчерпанные 5 попыток — ни то ни
         // другое уже не поправить вводом, обе ветки просят начать заново.
         : res.error === 'recovery_expired'
-          ? t('Code expired. Please request a new one.')
-          : t('Something went wrong. Try again.'),
+          ? t('Login.Code.Expired')
+          : t('Login.Error.Generic'),
     )
   }
 
@@ -85,12 +85,12 @@ export default function EmailRecoverCard({
       <MediaHeader>
         <MediaHeader.Sticker size={STICKER_SIZE} name="Mailbox" />
         <MediaHeader.Title>
-          <span className="i18n">{t('Reset Password')}</span>
+          <span className="i18n">{t('Login.ResetPassword.Title')}</span>
         </MediaHeader.Title>
         {/* без `.secondary` — подзаголовок этой карточки в tweb белый */}
         <MediaHeader.Subtitle>
           <span className="i18n">
-            {t('Enter the code we just sent to your email')}
+            {t('Login.ResetPassword.CodeHint')}
             <br />
             <EmailPattern pattern={emailPattern} />
           </span>

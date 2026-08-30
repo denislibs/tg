@@ -26,7 +26,7 @@ export function ChatTypeScreen({ g, isChannel, onBack }: { g: GroupEdit; isChann
     const res = await g.saveType(isPublic, username.trim())
     setSaving(false)
     if (res === 'ok') onBack()
-    else setError(res === 'taken' ? t('This link is already taken.') : t('Invalid link.'))
+    else setError(res === 'taken' ? t('LinkTaken') : t('LinkInvalid'))
   }
 
   return (
@@ -85,7 +85,7 @@ export function ChatTypeScreen({ g, isChannel, onBack }: { g: GroupEdit; isChann
               (дамп 15-right-17); ошибка красит поле, как в tweb. */}
           <div className="input-wrapper">
             <Input
-              label={t('Link')}
+              label={t('SetUrlPlaceholder')}
               value={username}
               onChange={(v) => { setUsername(v); setError(null) }}
               wrapClassName={error ? 'error' : undefined}

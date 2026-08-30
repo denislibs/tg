@@ -42,8 +42,8 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
         <div className="sidebar-left-section no-delimiter">
           <div className="sidebar-left-section-content sidebar-left-section-caption">
             {linkedId
-              ? t('Users can now discuss your posts in the linked group.')
-              : t('Select a group chat that will host comments from your channel.')}
+              ? t('Discussion.Linked')
+              : t('DiscussionChannelHelp3')}
           </div>
         </div>
       </div>
@@ -57,7 +57,7 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
               <Row
                 icon={<Avatar size="md" background={gradientFor(linked.peerId)} text={initials(linked.title)} />}
                 label={linked.title}
-                sublabel={linked.username ? `@${linked.username}` : `${linked.memberCount} ${t('members')}`}
+                sublabel={linked.username ? `@${linked.username}` : `${linked.memberCount} ${t('Group.MembersSuffix')}`}
                 translate={false}
               />
             </Section>
@@ -74,7 +74,7 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
               key={c.peerId}
               icon={<Avatar size="md" background={gradientFor(c.peerId)} text={initials(c.title)} />}
               label={c.title}
-              sublabel={c.username ? `@${c.username}` : `${c.memberCount} ${t('members')}`}
+              sublabel={c.username ? `@${c.username}` : `${c.memberCount} ${t('Group.MembersSuffix')}`}
               translate={false}
               onClick={() => setConfirming(c)}
             />
@@ -84,9 +84,9 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
 
       {confirming && (
         <ConfirmDialog
-          title={t('Discussion')}
-          text={`${t('Do you want to set')} «${confirming.title}» ${t('as the discussion board for this channel?')}`}
-          action={t('Link Group')}
+          title={t('PeerInfo.Discussion')}
+          text={`${t('Discussion.Link.Question.Prefix')} «${confirming.title}» ${t('Discussion.Link.Question.Suffix')}`}
+          action={t('DiscussionLinkGroup')}
           zIndex={90}
           onConfirm={() => void g.linkDiscussion(confirming.peerId)}
           onClose={() => setConfirming(null)}
@@ -94,9 +94,9 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
       )}
       {unlinking && (
         <ConfirmDialog
-          title={t('Unlink Group')}
-          text={t('Are you sure you want to unlink this group from the channel?')}
-          action={t('Unlink')}
+          title={t('DiscussionUnlinkGroup')}
+          text={t('Discussion.Unlink.Text')}
+          action={t('DiscussionUnlink')}
           danger
           zIndex={90}
           onConfirm={() => void g.unlinkDiscussion()}

@@ -51,7 +51,7 @@ export function RemovedUsersScreen({ g, onBack }: { g: GroupEdit; onBack: () => 
     >
       <PeerSelector
         peers={peers}
-        caption={t('Users removed by group admins cannot rejoin via invite links.')}
+        caption={t('RemovedUsers.Description')}
         empty={{ title: 'No Results', description: 'Try searching.' }}
       />
 
@@ -131,10 +131,10 @@ export function RestrictedUsersScreen({ g, onBack }: { g: GroupEdit; onBack: () 
   const peers = useMemo(() => {
     const deniedLabels = (denied: number): string => {
       const off = PERMS.filter((p) => (denied & p.bit) !== 0).map((p) => t(p.label))
-      return off.length ? off.join(', ') : t('None')
+      return off.length ? off.join(', ') : t('BlockedEmpty')
     }
     return g.restricted.map((r) => memberToPeer(r, {
-      subtitle: `${t('Restricted')}: ${deniedLabels(r.deniedRights)}`,
+      subtitle: `${t('Group.RestrictedBadge')}: ${deniedLabels(r.deniedRights)}`,
       actions: (
         <IconButton size="small" color="var(--primary-color)" onClick={() => void g.unrestrict(r.userId)} title={t('Unban')}>
           <TgIcon name="close" size={20} />
@@ -147,7 +147,7 @@ export function RestrictedUsersScreen({ g, onBack }: { g: GroupEdit; onBack: () 
     <SettingsScreen title="Restricted Users" onBack={onBack} zIndex={70}>
       <PeerSelector
         peers={peers}
-        caption={t('These members have limited rights in this group.')}
+        caption={t('RestrictedUsers.Description')}
         empty={{ title: 'No Results' }}
       />
     </SettingsScreen>

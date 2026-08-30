@@ -119,10 +119,10 @@ export default function SignQRCard({ onSignIn, onComplete }: SignQRCardProps) {
           )}
         </MediaHeader.Sticker>
         <MediaHeader.Title>
-          <span className="i18n">{t('Log in by QR Code')}</span>
+          <span className="i18n">{t('Login.QR.Title')}</span>
         </MediaHeader.Title>
         <MediaHeader.Subtitle secondary>
-          <span className="i18n">{t('Scan with Telegram app on your phone')}</span>
+          <span className="i18n">{t('Login.QR.Subtitle')}</span>
         </MediaHeader.Subtitle>
       </MediaHeader>
 
@@ -142,13 +142,13 @@ export default function SignQRCard({ onSignIn, onComplete }: SignQRCardProps) {
       </ol>
 
       <SecondaryButton arrow onClick={onSignIn}>
-        {t('Log in by phone number')}
+        {t('Login.ByPhone')}
       </SecondaryButton>
       {/* tweb: LanguageChangeButton в такой же GrowHeightReveal стоит между
           «войти по номеру» и passkey — у нас его нет (см. отчёт волны). */}
       <GrowHeightReveal when={isWebAuthnSupported()}>
         <SecondaryButton arrow disabled={passkeyBusy} onClick={() => void passkeyLogin()}>
-          {t('Log in by passkey')}
+          {t('Login.ByPasskey')}
         </SecondaryButton>
       </GrowHeightReveal>
     </div>

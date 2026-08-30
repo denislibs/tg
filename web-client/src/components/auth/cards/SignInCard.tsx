@@ -107,15 +107,15 @@ export default function SignInCard({
           </svg>
         </MediaHeader.Sticker>
         <MediaHeader.Title>
-          <span className="i18n">{t('Sign in to Telegram')}</span>
+          <span className="i18n">{t('Login.Title')}</span>
         </MediaHeader.Title>
         <MediaHeader.Subtitle secondary>
           {/* В tweb строка `Login.StartText` несёт перевод строки, и i18n рисует
               его как `<br>` внутри `span.i18n` — отсюда две строки подзаголовка. */}
           <span className="i18n">
-            {t('Please confirm your country code')}
+            {t('Login.StartText.Line1')}
             <br />
-            {t('and enter your phone number.')}
+            {t('Login.StartText.Line2')}
           </span>
         </MediaHeader.Subtitle>
       </MediaHeader>
@@ -132,7 +132,7 @@ export default function SignInCard({
           value={phone}
           leftPattern={country ? leftPattern(country, phone) : ''}
           error={phoneError}
-          label={phoneError ? t('Phone Number Invalid') : t('Phone Number')}
+          label={phoneError ? t('Login.PhoneLabelInvalid') : t('Login.PhoneLabel')}
           onInput={(raw) => {
             setPhoneError(false)
             onPhoneInput(raw)
@@ -143,7 +143,7 @@ export default function SignInCard({
         {/* tweb `SignInCard.onSubmit`: на отправке содержимое кнопки целиком
             подменяется на `PleaseWait` + `svg.preloader-circular`. */}
         <PrimaryButton loading={busy} disabled={!canSubmit} onClick={() => void sendCode()}>
-          {busy ? t('Please wait...') : t('Next')}
+          {busy ? t('PleaseWait') : t('Login.Next')}
         </PrimaryButton>
         {/* tweb: следом здесь идёт `GrowHeightReveal` с LanguageChangeButton
             («Продолжить на русском»). Не заводим — у нас нет его данных
@@ -151,11 +151,11 @@ export default function SignInCard({
       </div>
 
       <SecondaryButton arrow onClick={onSignQR}>
-        {t('Log in by QR Code')}
+        {t('Login.QR.Title')}
       </SecondaryButton>
       <GrowHeightReveal when={isWebAuthnSupported()}>
         <SecondaryButton arrow disabled={busy} onClick={() => void passkeyLogin()}>
-          {t('Log in with a Passkey')}
+          {t('Login.Passkey.Action')}
         </SecondaryButton>
       </GrowHeightReveal>
     </div>

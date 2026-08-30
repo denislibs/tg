@@ -1485,6 +1485,14 @@ export const LEGACY_KEY_OVERRIDES: LegacyKeyOverride[] = [
     why: 'проверка имени в СВОЁМ профиле: tweb `sidebarLeft/tabs/editProfile.tsx:341` — `EditProfile.Username.Taken`; карта отдала `CreateBot.Username.Taken` (экран создания бота), совпавший по тексту дословно',
   },
   {
+    file: 'src/components/auth/cards/SignInCard.tsx',
+    occurrence: 0,
+    anchor: 'leftPattern(country, phone)',
+    legacy: 'Phone Number',
+    key: 'Login.PhoneLabel',
+    why: 'подпись поля на ЭКРАНЕ ВХОДА — у оригинала это отдельный словарь входа (tweb `langSign.ts:3`, `Login.PhoneLabel`); карта отдала `PrivacyPhone` — заголовок настройки приватности с тем же текстом',
+  },
+  {
     file: 'src/components/settings/PrivacyRule.tsx',
     occurrence: 0,
     anchor: 'usersCountLabel',

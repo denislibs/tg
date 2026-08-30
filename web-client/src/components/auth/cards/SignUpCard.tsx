@@ -68,7 +68,7 @@ export default function SignUpCard({ token, onTokenLost, onComplete }: SignUpCar
   const fullName = `${first} ${last}`.trim()
 
   const tooLong = [...first].length > FIRST_MAX || [...last].length > LAST_MAX
-  const nextLabel = busy ? t('Please wait...') : errorKey ? t(errorKey) : t('Start Messaging')
+  const nextLabel = busy ? t('PleaseWait') : errorKey ? t(errorKey) : t('StartMessaging')
 
   // tweb PopupAvatar: выбранный кадр рисуется в ту самую канву-предпросмотр,
   // что лежит в `.avatar-edit`, а сам файл придерживается до авторизации.
@@ -150,11 +150,11 @@ export default function SignUpCard({ token, onTokenLost, onComplete }: SignUpCar
           </div>
         </MediaHeader.Sticker>
         <MediaHeader.Title>
-          <span className="i18n">{fullName || t('Your Name')}</span>
+          <span className="i18n">{fullName || t('YourName')}</span>
         </MediaHeader.Title>
         {/* без `.secondary` — как у tweb на этой карточке */}
         <MediaHeader.Subtitle>
-          <span className="i18n">{superFormatter(t('Enter your name and\nadd a profile photo'))}</span>
+          <span className="i18n">{superFormatter(t('Login.Register.Subtitle'))}</span>
         </MediaHeader.Subtitle>
       </MediaHeader>
 
@@ -163,7 +163,7 @@ export default function SignUpCard({ token, onTokenLost, onComplete }: SignUpCar
           autoFocus
           value={first}
           maxLength={FIRST_MAX}
-          label={t('First name (required)')}
+          label={t('FirstName')}
           onInput={(v) => {
             setErrorKey('')
             setFirst(v)
@@ -173,7 +173,7 @@ export default function SignUpCard({ token, onTokenLost, onComplete }: SignUpCar
         <InputField
           value={last}
           maxLength={LAST_MAX}
-          label={t('Last name (optional)')}
+          label={t('LastName')}
           onInput={(v) => {
             setErrorKey('')
             setLast(v)

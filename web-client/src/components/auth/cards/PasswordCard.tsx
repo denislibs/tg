@@ -73,19 +73,19 @@ export default function PasswordCard({
 
   // Надпись кнопки — как в tweb `nextKey`: Next → Please wait… → текст ошибки.
   const nextLabel = busy
-    ? t('Please wait...')
+    ? t('PleaseWait')
     : error
-      ? t('Incorrect password')
+      ? t('PASSWORD_HASH_INVALID')
       : forgotError
         ? t(forgotError)
-        : t('Next')
+        : t('Login.Next')
 
   // Плашка отказа сервера — tweb «Sorry» (третья плашка сброса), звана и от
   // самого сброса, и от несостоявшегося (см. resetAccount ниже) — общий вызов,
   // а не дублирование JSX, которое было у трёх снесённых `<ConfirmPopup>`.
   const sorry = (message: string) => {
     void confirmationPopup({
-      titleLangKey: t('Sorry'),
+      titleLangKey: t('Login.ResetAccountFail.Title'),
       descriptionLangKey: message,
       button: { text: t('OK') },
     }).catch(() => {})
@@ -100,10 +100,10 @@ export default function PasswordCard({
     if (!outcome) return
     sorry(
       outcome === 'recovery_available'
-        ? t('A recovery email is linked to this account — reset it by email instead.')
+        ? t('Login.ResetPassword.HasEmail')
         : outcome === 'password_token_expired'
-          ? t('Session expired. Please sign in again.')
-          : t('Something went wrong. Try again.'),
+          ? t('Login.SessionExpired')
+          : t('Login.Error.Generic'),
     )
   }
 
@@ -120,11 +120,11 @@ export default function PasswordCard({
     if (outcome === 'password_recovery_na') {
       try {
         await confirmationPopup({
-          titleLangKey: t('Reset Password'),
+          titleLangKey: t('Login.ResetPassword.Title'),
           descriptionLangKey: t(
             "Since you didn't provide a recovery email when setting up your password, your remaining options are either to remember your password or to reset your account.",
           ),
-          button: { text: t('Reset Account'), isDanger: true },
+          button: { text: t('Login.ResetPassword.ResetAccount'), isDanger: true },
         })
       } catch { return } // Cancel/оверлей/Esc/Back — тот же исход, что onClose у снесённого попапа
       try {
@@ -135,9 +135,9 @@ export default function PasswordCard({
         // экране (сброс аккаунта без привязанной почты), решили не портировать
         // rich-описание ради одной строки.
         await confirmationPopup({
-          titleLangKey: t('Warning'),
-          descriptionLangKey: t("This action can't be undone.\n\nIf you reset your account, all your messages and chats will be deleted."),
-          button: { text: t('Reset Account'), isDanger: true },
+          titleLangKey: t('Login.ResetAccount.Title'),
+          descriptionLangKey: t('Login.ResetAccount.Text'),
+          button: { text: t('Login.ResetPassword.ResetAccount'), isDanger: true },
         })
       } catch { return }
       void resetAccount()
@@ -177,12 +177,12 @@ export default function PasswordCard({
           </div>
         </MediaHeader.Sticker>
         <MediaHeader.Title>
-          <span className="i18n">{t('Enter Your Password')}</span>
+          <span className="i18n">{t('Login.Password.Title')}</span>
         </MediaHeader.Title>
         {/* без `.secondary` — в tweb подзаголовок этой карточки белый */}
         <MediaHeader.Subtitle>
           <span className="i18n">
-            {superFormatter(t('Your account is protected with\nan additional password'))}
+            {superFormatter(t('Login.Password.Subtitle'))}
           </span>
         </MediaHeader.Subtitle>
       </MediaHeader>
@@ -214,12 +214,12 @@ export default function PasswordCard({
           {/* В tweb в label лежит подсказка к паролю с сервера — как есть, без
               класса `i18n` (это не строка словаря); своя строка `Password`
               подставляется только когда подсказки нет. */}
-          <label>{hint ? <span>{hint}</span> : <span className="i18n">{t('Password')}</span>}</label>
+          <label>{hint ? <span>{hint}</span> : <span className="i18n">{t('LoginPassword')}</span>}</label>
           <span
             className="toggle-visible"
             onClick={() => setShowPw((v) => !v)}
             role="button"
-            aria-label={t('Password')}
+            aria-label={t('LoginPassword')}
           >
             <TgIcon name={showPw ? 'eye2' : 'eye1'} size="1.5rem" />
           </span>
@@ -233,7 +233,7 @@ export default function PasswordCard({
               void forgot()
             }}
           >
-            {t('Forgot Password?')}
+            {t('Login.ForgotPassword')}
           </a>
         </span>
 

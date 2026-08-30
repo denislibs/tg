@@ -90,9 +90,9 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
   const canChangeInfo = hasRights(card?.chat, 'change_info')
   const reactions = card?.fullChat.available_reactions
   const reactionsValue =
-    reactions?._ === 'chatReactionsNone' ? t('Disabled')
+    reactions?._ === 'chatReactionsNone' ? t('Checkbox.Disabled')
     : reactions?._ === 'chatReactionsSome' ? `${reactions.reactions.length}/${EMOJIS.length}`
-    : t('All')
+    : t('FilterAllChatsShort')
   // ⚠ `default_banned_rights` это ЗАПРЕТЫ; перевод в наш битмаск «что можно» —
   // единственный, в `allowedMemberPerms`.
   const allowedPerms = allowedMemberPerms(card?.chat)
@@ -158,7 +158,7 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
           <div className="sidebar-left-section-content">
             <div className="input-wrapper">
               <Input label={t(isChannel ? 'Channel name' : 'Group Name')} value={title} onChange={(v) => setDraft({ title: v, about })} />
-              <Input label={t('Description')} value={about} onChange={(v) => setDraft({ title, about: v })} />
+              <Input label={t('DescriptionPlaceholder')} value={about} onChange={(v) => setDraft({ title, about: v })} />
             </div>
           </div>
           <div className="sidebar-left-section-content sidebar-left-section-caption">
@@ -185,10 +185,10 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
         <Row icon={<TgIcon name="admin" size={22} />} label="Administrators" value={String(g.admins.length)} onClick={() => setSub('admins')} />
         <Row icon={<TgIcon name="newgroup" size={22} />} label={isChannel ? 'Subscribers' : 'Members'} value={String(card?.chat.participants_count ?? g.members.length)} onClick={() => setSub('members')} />
         {!isChannel && g.canBan && (
-          <Row icon={<TgIcon name="permissions" size={22} />} label="Restricted Users" value={g.restricted.length ? String(g.restricted.length) : t('None')} onClick={() => setSub('restricted')} />
+          <Row icon={<TgIcon name="permissions" size={22} />} label="Restricted Users" value={g.restricted.length ? String(g.restricted.length) : t('BlockedEmpty')} onClick={() => setSub('restricted')} />
         )}
         {g.canBan && (
-          <Row icon={<TgIcon name="deleteuser" size={22} />} label="Removed Users" value={g.bans.length ? String(g.bans.length) : t('None')} onClick={() => setSub('banned')} />
+          <Row icon={<TgIcon name="deleteuser" size={22} />} label="Removed Users" value={g.bans.length ? String(g.bans.length) : t('BlockedEmpty')} onClick={() => setSub('banned')} />
         )}
       </Section>
 

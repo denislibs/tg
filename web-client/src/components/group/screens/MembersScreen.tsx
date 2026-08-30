@@ -31,7 +31,7 @@ export function MembersScreen({ g, isChannel, onBack }: { g: GroupEdit; isChanne
       <>
         {/* restrict/ban — только в группе; у канала подписчиков лишь удаляют */}
         {!isChannel && m.role !== 'admin' && (
-          <IconButton size="small" color="var(--secondary-text-color)" onClick={() => setRestricting(m)} title={t('Restrict')}>
+          <IconButton size="small" color="var(--secondary-text-color)" onClick={() => setRestricting(m)} title={t('UserRestrictions.Action')}>
             <TgIcon name="permissions" size={20} />
           </IconButton>
         )}
@@ -39,7 +39,7 @@ export function MembersScreen({ g, isChannel, onBack }: { g: GroupEdit; isChanne
           <TgIcon name="close" size={20} />
         </IconButton>
         {!isChannel && (
-          <IconButton size="small" color="#ff595a" onClick={() => void g.ban(m.userId)} title={t('Ban and remove from group')}>
+          <IconButton size="small" color="#ff595a" onClick={() => void g.ban(m.userId)} title={t('UserRestrictionsBlock')}>
             <TgIcon name="deleteuser" size={20} />
           </IconButton>
         )}
