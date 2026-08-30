@@ -48,14 +48,14 @@ export default function SendMenu({ open, onSilent, onSchedule, onWhenOnline, onR
   const hidden = (available: boolean) => open && !available
   return (
     <div className={classNames('btn-menu', 'menu-send', 'top-left', open ? 'active' : '')}>
-      <Item icon="nosound" label={t('Send Without Sound')} onClick={onSilent} />
-      <Item icon="schedule" label={t('Schedule Message')} hide={hidden(!!onSchedule)} onClick={onSchedule} />
+      <Item icon="nosound" label={t('Chat.Send.WithoutSound')} onClick={onSilent} />
+      <Item icon="schedule" label={t('Chat.Send.ScheduledMessage')} hide={hidden(!!onSchedule)} onClick={onSchedule} />
       {/* «Напоминание» вместо «Запланировать» tweb показывает только в «Избранном»
           (sendContextMenu.ts:38: peerId === myId → type 'reminder'); у нас этой
           ветки нет — узел структурный и на показе всегда скрыт. */}
-      <Item icon="schedule" label={t('Set a Reminder')} hide={hidden(false)} />
-      <Item icon="online" label={t('Send When Online')} hide={hidden(!!onWhenOnline)} onClick={onWhenOnline} />
-      <Item icon="crossround" label={t('Remove Effect')} danger hide={hidden(!!onRemoveEffect)} onClick={onRemoveEffect} />
+      <Item icon="schedule" label={t('Chat.Send.SetReminder')} hide={hidden(false)} />
+      <Item icon="online" label={t('Schedule.SendWhenOnline')} hide={hidden(!!onWhenOnline)} onClick={onWhenOnline} />
+      <Item icon="crossround" label={t('Effect.Remove')} danger hide={hidden(!!onRemoveEffect)} onClick={onRemoveEffect} />
       {effects}
     </div>
   )

@@ -48,16 +48,16 @@ export default function SendAsButton({ peers, currentId, onSelect, chatPeerId }:
   //      его отношение к открытому чату, из карточки одного пира не выводится
   //      вовсе.
   const subtitleFor = (peerId: PeerId): string => {
-    if (isUser(peerId)) return t('Personal account')
-    if (peerId === chatPeerId && isMegagroupPeer(peerId)) return t('Anonymously')
-    return t('Your channels')
+    if (isUser(peerId)) return t('Chat.SendAs.PersonalAccount')
+    if (peerId === chatPeerId && isMegagroupPeer(peerId)) return t('Chat.SendAs.Anonymously')
+    return t('Chat.SendAs.YourChannels')
   }
 
   return (
     <>
       <div
         className="new-message-send-as-container"
-        title={t('Send As…')}
+        title={t('Chat.SendAs.Title')}
         onMouseDown={(e) => e.preventDefault()}
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect()
@@ -81,7 +81,7 @@ export default function SendAsButton({ peers, currentId, onSelect, chatPeerId }:
           corner="top-right"
           style={{ left: pos.left, bottom: pos.bottom, minWidth: 220 }}
         >
-          <div className={s.sendAsHeader}>{t('Send As…')}</div>
+          <div className={s.sendAsHeader}>{t('Chat.SendAs.Title')}</div>
           {peers.map((p) => (
             <SendAsRow
               key={p.peerId}

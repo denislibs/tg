@@ -88,12 +88,12 @@ export function openDeleteMessageDialog({ peerId, managers, canRevoke, count = 1
     // (дамп `17-popup-03-delete-message.json`: div.popup.popup-peer.popup-delete-chat)
     peerId,
     managers,
-    titleLangKey: single ? t('Delete message') : t('Delete %d messages').replace('%d', String(count)),
-    descriptionLangKey: single ? t('Are you sure you want to delete this message?') : t('Are you sure you want to delete these messages?'),
+    titleLangKey: single ? t('DeleteSingleMessagesTitle') : t('DeleteMessagesCount').replace('%d', String(count)),
+    descriptionLangKey: single ? t('AreYouSureDeleteSingleMessage') : t('AreYouSureDeleteFewMessages'),
     checkboxes: withCheckbox ? [{
       text: chatType === 'private' && peerFirstName
-        ? `${t('Also delete for')} ${peerFirstName}`
-        : t('Delete for all members'),
+        ? `${t('DeleteAlsoFor')} ${peerFirstName}`
+        : t('DeleteChat.DeleteGroupForAll'),
     }] : undefined,
     buttons: [{
       text: t('Delete'),
@@ -125,15 +125,15 @@ export function openDeleteMessageDialog({ peerId, managers, canRevoke, count = 1
 
 // Подпись строки в пикере: private → presence/бот, группа/канал/избранное — метка.
 function shareSub(chat: Chat, presence: Record<number, UserStatus>, lang: string, t: (s: string) => string): string {
-  if (chat.type === 'saved') return t('forward here to save')
+  if (chat.type === 'saved') return t('ChatYourSelf')
   if (chat.type === 'channel') return t('Channel')
   if (chat.type === 'group') return t('Group')
-  if (chat.isBot) return t('bot')
+  if (chat.isBot) return t('Bot')
   // Присутствие — конструктор `UserStatus`: «онлайн» это `userStatusOnline` с
   // непросроченным `expires` (порт `appUsersManager.isUserOnline`), а момент
   // «был(а) в сети» лежит в самом конструкторе.
   const p = presence[Number(chat.id)]
-  if (isUserStatusOnline(p, Math.floor(Date.now() / 1000))) return t('online')
+  if (isUserStatusOnline(p, Math.floor(Date.now() / 1000))) return t('Online')
   return lastSeenLabel(userStatusWasOnline(p) * 1000, lang)
 }
 
@@ -219,7 +219,7 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
       // tweb pickUser.tsx/forward.tsx: `class="popup-forward"`
       // (дамп `17-popup-01-forward-share.json`: div.popup.popup-forward)
       className="popup-forward"
-      title={t('Share with')}
+      title={t('ShareWith')}
       onClose={() => setOpen(false)}
       onExitComplete={() => { const c = confirmed.current; if (c) onPick(c); else onClose() }}
       action={selected.size ? { label: `${t('Forward')} (${selected.size})`, onClick: confirm } : undefined}
@@ -296,7 +296,7 @@ export function ContactPicker({ dialogs, onPick, onClose }: {
   return (
     <Popup
       open={open}
-      title={t('Contact')}
+      title={t('AttachContact')}
       onClose={() => setOpen(false)}
       onExitComplete={() => { const p = picked.current; if (p) onPick(p.userId, p.name); else onClose() }}
       width={440}
@@ -350,7 +350,7 @@ export function ChatPicker({ dialogs, title, onPick, onClose }: {
       return {
         peerId: d.peerId,
         title: peerTitle(d.peerId) || `Чат ${d.peerId}`,
-        sub: type === 'channel' ? t('Channel') : type === 'group' ? t('Group') : t('Private Chat'),
+        sub: type === 'channel' ? t('Channel') : type === 'group' ? t('Group') : t('PrivateChat'),
       }
     })
     .filter((r) => !query || r.title.toLowerCase().includes(query))
@@ -434,7 +434,7 @@ export function ReactedUsersPopup({ x, y, rows, onClose }: {
               {!!reactedCount && <><TgIcon name="reactions" size={14} /> {reactedCount}{'  '}</>}
               {!!viewedCount && <><TgIcon name="checks" size={14} /> {viewedCount}</>}
             </>
-          ) : t('Nobody viewed')}
+          ) : t('NobodyViewed')}
         </Text>
         {rows.map((r, i) => (
           <div key={i} className={s.viewersRow}>

@@ -33,8 +33,8 @@ describe('SendMediaPopup — спойлер', () => {
     const onSend = vi.fn()
     render(<SendMediaPopup files={[photo('a.jpg')]} initialAsFile={false} onClose={vi.fn()} onSend={onSend} />)
 
-    fireEvent.click(screen.getByPlaceholderText('Add a caption…'))
-    fireEvent.keyDown(screen.getByPlaceholderText('Add a caption…'), { key: 'Enter' })
+    fireEvent.click(screen.getByPlaceholderText('Add a caption...'))
+    fireEvent.keyDown(screen.getByPlaceholderText('Add a caption...'), { key: 'Enter' })
     await flushExit()
 
     expect(onSend).toHaveBeenCalledWith('', false, null, [false])
@@ -51,7 +51,7 @@ describe('SendMediaPopup — спойлер', () => {
     fireEvent.click(toggle)
     expect((document.querySelector('.spoiler-toggle') as HTMLElement).dataset.toggled).toBe('true')
 
-    fireEvent.keyDown(screen.getByPlaceholderText('Add a caption…'), { key: 'Enter' })
+    fireEvent.keyDown(screen.getByPlaceholderText('Add a caption...'), { key: 'Enter' })
     await flushExit()
 
     expect(onSend).toHaveBeenCalledWith('', false, null, [true])
@@ -82,7 +82,7 @@ describe('SendMediaPopup — спойлер', () => {
     fireEvent.click(screen.getByText('Remove all spoilers'))
     expect(document.querySelectorAll('.spoiler-toggle[data-toggled="true"]')).toHaveLength(0)
 
-    fireEvent.keyDown(screen.getByPlaceholderText('Add a caption…'), { key: 'Enter' })
+    fireEvent.keyDown(screen.getByPlaceholderText('Add a caption...'), { key: 'Enter' })
     await flushExit()
     expect(onSend).toHaveBeenCalledWith('', false, null, [false, false])
   })
