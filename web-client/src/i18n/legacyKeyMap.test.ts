@@ -89,6 +89,7 @@ describe('карта миграции ключей', () => {
     'Story.Sound',
     'EditProfile.LastNameLabel',
     'AutoDeleteMessages.Disable',
+    'Statistics.Posts',
   ]
 
   it('достаёт каждый ключ нынешнего словаря', () => {

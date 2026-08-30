@@ -886,6 +886,7 @@ const lang = {
   'Popup.Attach.RemoveSpoilers': 'Remove all spoilers',
   PostStatistics: 'Post Statistics',
   'PostsSearch.TabName': 'Posts',
+  'Statistics.Posts': 'Posts',
   'Premium.Boarding.Avatar.Title': 'Animated Profile Pictures',
   'Premium.Boarding.Double.Title': 'Doubled Limits',
   'Premium.Boarding.NoAds.Title': 'No Ads',

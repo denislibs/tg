@@ -92,7 +92,7 @@ export default function ChannelStats({
                   <OverviewCard value={nf.format(stats.summary.members)} label={isChannel ? t('PeerInfo.Subscribers') : t('PeerMedia.Members')} />
                   <OverviewCard value={nf.format(stats.summary.avgReach)} label={t('ViewsPerPost')} />
                   <OverviewCard value={nf.format(stats.summary.totalViews)} label={t('Statistics.TotalViews')} />
-                  <OverviewCard value={nf.format(stats.summary.postsCount)} label={t('PostsSearch.TabName')} />
+                  <OverviewCard value={nf.format(stats.summary.postsCount)} label={t('Statistics.Posts')} />
                   <OverviewCard value={`${notifPct}%`} label={t('Notifications')} />
                 </div>
               </div>

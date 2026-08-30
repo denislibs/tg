@@ -1561,6 +1561,7 @@ const ru = {
   'Story.Sound': 'Звук',
   'EditProfile.LastNameLabel': 'Фамилия',
   'AutoDeleteMessages.Disable': 'Отключить',
+  'Statistics.Posts': 'Посты',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)
