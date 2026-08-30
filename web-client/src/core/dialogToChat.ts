@@ -17,6 +17,7 @@
 //  • заглушённость считается по СРОКУ (`notify_settings.mute_until`), а не по
 //    булеву полю строки.
 import type { LangPackKey } from '@/lang'
+import { useI18nStore } from '../i18n'
 import type { Chat, ChatType } from '../data'
 import { getMessageText, isDialogArchived, type Dialog, type MyMessage } from './models'
 import { draftDate, draftText, hasDraft as dialogHasDraft } from './dialogs/draft'
@@ -69,7 +70,7 @@ export function fmtWhen(iso?: string): string {
 // строки прямо в коде (задача 1, п. 2), и английский интерфейс показывал русское
 // «Фото». Вместе с ними ушли эмодзи-приставки («📊 Опрос»): у оригинала в этом
 // месте иконок нет, метка серая и текстовая (`wrapMessageForReply`).
-export function mediaLabel(kind?: MessageKind): LangPackKey | '' {
+export function mediaLabelKey(kind?: MessageKind): LangPackKey | '' {
   switch (kind) {
     case 'photo': return 'AttachPhoto'
     case 'video': return 'AttachVideo'
@@ -93,6 +94,16 @@ export function mediaLabel(kind?: MessageKind): LangPackKey | '' {
     // сообщения у нас нет вовсе, а `MessageKind` перечисляет ровно те, что есть.
     default: return 'Message'
   }
+}
+
+/**
+ * ТЕКСТ метки — то, что печатают потребители (превью списка чатов, тем форума, общих
+ * медиа, поиска и тела уведомления). Ключ отдаёт `mediaLabelKey` рядом: перевод живёт
+ * у производителя, потому что ни один из пяти потребителей `t()` не зовёт.
+ */
+export function mediaLabel(kind?: MessageKind): string {
+  const key = mediaLabelKey(kind)
+  return key ? useI18nStore.getState().t(key) : ''
 }
 
 /** Разрешение «ключ пира → карточка». По умолчанию — зеркало главного потока;

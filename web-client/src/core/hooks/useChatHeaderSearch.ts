@@ -9,6 +9,7 @@
 //   onArrowButtonClick                                                 :659
 //   onInputClear                                                       :461
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useI18nStore } from '../../i18n'
 import { useManagers } from './useManagers'
 import { openPopup } from '../../stores/popupStore'
 import DatePickerPopup, { DATE_PICKER_POPUP_KIND } from '../../components/DatePickerPopup'
@@ -235,7 +236,7 @@ export function useChatHeaderSearch(chat: Chat, onJumpToSeq: (seq: number) => vo
     isHashtag, lookingHashtag, shouldShowFromPlaceholder,
     // фильтры
     filteringSender, filterPeerId, filterPeerName: filterPeerId != null
-      ? (filterPeerId === meId ? 'SavedMessages' : getPeerTitle({ peerId: filterPeerId, peer: filterPeer.get(filterPeerId) }))
+      ? (filterPeerId === meId ? useI18nStore.getState().t('SavedMessages') : getPeerTitle({ peerId: filterPeerId, peer: filterPeer.get(filterPeerId) }))
       : undefined,
     // id медиа аватарки вместо строки `/media/N/content`: номер приезжает
     // готовым (`photo.photo_id`), выпарсивать его регуляркой больше не из чего.

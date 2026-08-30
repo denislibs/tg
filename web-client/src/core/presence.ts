@@ -15,7 +15,7 @@ import { userStatusWasOnline } from './peers/peer'
 // language-aware locally (ru/en) — fuller localization can come later.
 export function lastSeenLabel(lastSeenMs: number, lang: string): string {
   const ru = lang === 'ru'
-  if (!lastSeenMs) return ru ? 'был(а) недавно' : 'Lately'
+  if (!lastSeenMs) return ru ? 'был(а) недавно' : 'last seen recently'
   const diffMin = Math.floor((Date.now() - lastSeenMs) / 60000)
   if (diffMin < 1) return ru ? 'был(а) в сети только что' : 'last seen just now'
   if (diffMin < 60) return ru ? `был(а) в сети ${diffMin} мин назад` : `last seen ${diffMin} min ago`
@@ -38,7 +38,7 @@ export function userStatusLabel(status: UserStatus | undefined, lang: string): s
     case 'userStatusOnline':
       return ru ? 'в сети' : 'online'
     case 'userStatusRecently':
-      return ru ? 'был(а) недавно' : 'Lately'
+      return ru ? 'был(а) недавно' : 'last seen recently'
     case 'userStatusLastWeek':
       return ru ? 'был(а) на этой неделе' : 'last seen within a week'
     case 'userStatusLastMonth':

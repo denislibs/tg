@@ -22,6 +22,8 @@
 // поведения `lottie-web` не проверяет ни один тест, поэтому терять здесь нечего.
 import { vi } from 'vitest'
 
+import { installDomKeyLeakPin } from './domKeyLeak'
+
 vi.mock('lottie-web', () => {
   const anim = {
     play: vi.fn(),
@@ -43,3 +45,6 @@ vi.mock('lottie-web', () => {
   }
   return { default: lottie, ...lottie }
 })
+
+// Пин на утечку ключа в DOM — общий для всех компонентных тестов (см. `domKeyLeak.ts`).
+installDomKeyLeakPin()

@@ -108,7 +108,6 @@ export function MemberRestrictScreen({
           <Row
             key={p.bit}
             label={p.label}
-            translate={false}
             toggle
             restriction
             checked={(allowed & p.bit) !== 0}
