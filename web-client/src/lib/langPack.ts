@@ -8,13 +8,34 @@
  * может быть УЗЕЛ (имя пира, ссылка), и он остаётся узлом — `superFormatter`
  * собирает результат списком кусков, а не склейкой строк.
  *
+ * ── Откуда берутся строки (задача 5) ───────────────────────────────────────
+ * Пакет приезжает С СЕРВЕРА, а его кэш, версию и разницу держит ВЛАДЕЛЕЦ —
+ * менеджер воркера `core/managers/langPackManager.ts` (почему там, а не здесь,
+ * разобрано в его докблоке). Здесь осталась вкладочная половина оригинала:
+ * `getCacheLangPack`, `getCacheLangPackAndApply`, `loadLangPack`,
+ * `loadLocalLangPack`, `getLangPackAndApply`, `applyLangPack` и
+ * `checkLangPackForUpdates` (tweb :104-127, :169-247, :771-779).
+ *
+ * ГЛАВНОЕ ПРАВИЛО СЛИЯНИЯ, 1:1 с оригиналом (tweb :237-244): локальный
+ * английский (`src/lang.ts`) ложится ПОД серверный пакет, и только затем
+ * серверные строки — поверх. Убрать нижний слой нельзя: переведён у русского не
+ * весь словарь, а у остальных четырёх — примерно половина, и без английского
+ * снизу непереведённый ключ приехал бы на экран СИМВОЛИЧЕСКИМ ИМЕНЕМ (`format`
+ * ниже на ненайденной строке отдаёт сам ключ). Серверный `base_lang_code` эту
+ * схему не заменяет: подмешивания базы на сервере нет, а у tweb это поле не
+ * читает вообще никто.
+ *
  * ── Что из файла оригинала СЮДА НЕ ПОПАЛО ──────────────────────────────────
- *  • Загрузка с сервера, кэш и версия — `getCacheLangPack`,
- *    `getCacheLangPackAndApply`, `loadLangPack`, `loadLocalLangPack`,
- *    `getLangPackAndApply`, `saveLangPack`, `getStrings`,
- *    `handleUpdateLangPack*`, `checkLangPackForUpdates` (tweb :104-127, :169-253,
- *    :696-781). Это ЗАДАЧА 5 волны; здесь оставлены ровно те две точки, за
- *    которые загрузка возьмётся, — `setLangCode` и `applyLangPack`.
+ *  • `saveLangPack`, `handleUpdateLangPack`, `handleUpdateLangPackTooLong` (tweb
+ *    :249-256, :696-763) — переехали к владельцу пакета, в менеджер воркера:
+ *    они пишут КЭШ и считают ВЕРСИЮ, а ни того, ни другого на вкладке нет.
+ *  • `getStrings` (tweb :205-207, доспрос отдельных ключей) — вызывающего нет
+ *    ни у нас, ни у самого tweb; заводить мёртвый метод незачем.
+ *  • `handleStateCleared` + подписки на `langpack_update`/`langpack_update_too_long`/
+ *    `state_cleared` (tweb :765-769, :783-785): кадров langpack наш сервер не
+ *    шлёт (см. докблок менеджера), а «состояние очищено» у нас событием не
+ *    объявляется. Проверка обновлений заводится не кадром, а стартом —
+ *    `getCacheLangPackAndApply`.
  *  • `polyfillPromise` / `./pluralPolyfill` (tweb :256-264): `Intl.PluralRules`
  *    есть во всех браузерах, которые мы собираем (target ES2020), — предмета нет.
  *  • `countriesList` и раздача имён стран в `strings` (tweb :81, :289-302):
@@ -42,7 +63,11 @@
  *    (`getLastRequestedNormalizedLangCode`), не хватает только реактивности.
  *
  * ── Потребители на сегодня ─────────────────────────────────────────────────
- * Их НЕТ: задача 2 ничего не переключает, старый `t()` живёт до задачи 9.
+ * Загрузка ЕСТЬ, а интерфейс всё ещё берёт строки старым `t()`: его снимает
+ * ЗАДАЧА 9 («useT внутри ходит в I18n.strings»), она же заводит вызов
+ * `getCacheLangPackAndApply` на старте вкладки и связывает выбранный
+ * пользователем язык с `getLangPackAndApply`. Ставить этот вызов сейчас значило
+ * бы тратить запрос на старте ради `I18n.strings`, которые никто не читает.
  * `IntlDateElement` заведён потому, что на него смотрит `helpers/date.ts`
  * (`formatDateAccordingToTodayNew` сейчас строит `i18nSpan` руками) — он станет
  * его вызывающим ЗАДАЧЕЙ 7, когда `i18nSpan` уйдёт. `setTimeFormat` ждёт того же
@@ -61,6 +86,11 @@ import deepEqual from '@helpers/object/deepEqual'
 import safeAssign from '@helpers/object/safeAssign'
 import capitalizeFirstLetter from '@helpers/string/capitalizeFirstLetter'
 import { ANCHOR_ACTION_ATTRIBUTE, matchUrlProtocol, setBlankToAnchor, wrapUrl } from '@lib/richtext/url'
+// Владелец языкового пакета — менеджер воркера; вкладка ходит к нему тем же
+// путём, что и остальной ванильный слой (`core/mediaUrl.ts`, `core/mediaRead.ts`).
+// Импорт статический, а ВЫЗОВ ленивый: модуль тянут словари (`i18n/dict.*.ts`) и
+// тесты ядра, и поднимать из-за них SharedWorker нельзя.
+import { startClient } from '../client/bootstrap'
 
 export type { LangPackKey }
 
@@ -71,8 +101,9 @@ export type FormatterArguments = FormatterArgument[]
 /** Часовой цикл, как его называет `Intl` (tweb `State['settings']['timeFormat']`). */
 export type TimeFormat = 'h12' | 'h23'
 
-/** tweb берёт код первого языка из `App.langPackCode`; у нас конфига langpack ещё
- *  нет (он приедет задачей 5), а «язык по умолчанию» — тот же английский. */
+/** tweb берёт код первого языка из `App.langPackCode`; конфига langpack у нас нет,
+ *  а «язык по умолчанию» — тот же английский, и он же язык локального источника
+ *  (`src/lang.ts`), который ложится под любой серверный пакет. */
 const DEFAULT_LANG_CODE = 'en'
 
 namespace I18n {
@@ -80,8 +111,9 @@ namespace I18n {
 
   // tweb объявляет `pluralRules` пустым и заполняет в `applyLangPack` — у него
   // применение гарантированно проходит на старте (его зовёт загрузчик). У нас
-  // загрузчика ещё нет (задача 5), поэтому правила заведены сразу на языке по
-  // умолчанию: иначе `format()` до первого применения падал бы на `undefined`.
+  // загрузчик есть, но на старте вкладки его пока никто не зовёт (задача 9),
+  // поэтому правила заведены сразу на языке по умолчанию: иначе `format()` до
+  // первого применения падал бы на `undefined`.
   let pluralRules: Intl.PluralRules = new Intl.PluralRules(DEFAULT_LANG_CODE)
 
   let lastRequestedLangCode: string = DEFAULT_LANG_CODE
@@ -99,11 +131,108 @@ namespace I18n {
   export function getLastAppliedLangCode() { return lastAppliedLangCode }
   export function getTimeFormat() { return timeFormat }
 
-  /** tweb :104-108. Там функция приватная — её зовут загрузчики; у нас загрузчик
-   *  приедет задачей 5, а до тех пор это единственный вход, поэтому экспорт. */
+  /** tweb :104-108. Там функция приватная — её зовут загрузчики; здесь они её
+   *  тоже зовут, а экспорт остался ради теста словарей (`i18n/dict.test.ts`):
+   *  он применяет язык из ФАЙЛОВ, минуя сервер и владельца пакета. */
   export function setLangCode(langCode: string) {
     lastRequestedLangCode = langCode
     lastRequestedNormalizedLangCode = langCode.split('-')[0]
+  }
+
+  /** tweb :112 — второго применения на тот же старт не заводим. */
+  let cacheLangPackPromise: Promise<LangPackDifference> | undefined
+
+  /** Менеджер-владелец пакета (кэш, сеть, версия) — см. импорт `startClient`. */
+  const owner = () => startClient().managers.langPack
+
+  /**
+   * tweb :169-190 — ПУТЬ ПЕРВОГО ЗАПУСКА: строки, вшитые в бандл.
+   *
+   * Отличий от оригинала два, и оба про предмет, а не про поведение. Первое:
+   * `langSign.ts` (словарь экрана входа) и `countries.ts` у нас не заведены —
+   * весь английский источник это один `src/lang.ts`. Второе: оригинал собирает
+   * здесь ЦЕЛЫЙ `langPackDifference` (со своими `App.langPackVersion`/
+   * `localVersion`), потому что этот пакет у него может уехать в кэш как есть
+   * (:120-121); у нас локальные строки в кэш не едут никогда — они всегда лишь
+   * НИЖНИЙ СЛОЙ слияния, — поэтому отсюда возвращается ровно то, чем этот слой
+   * и является: список строк.
+   *
+   * Импорт динамический, как у оригинала: словарь на 1288 ключей не должен
+   * попадать в чанк к тому, кто взял отсюда только `formatLocalStrings`.
+   */
+  export function loadLocalLangPack(): Promise<LangPackString[]> {
+    return import('../lang').then((lang) => formatLocalStrings(lang.default))
+  }
+
+  /** tweb :110-115 — пакет из КЭША, без сети. Параметра `dontLoadLocal`
+   *  оригинала нет: локальный источник у нас подмешивается всегда (см.
+   *  `applyServerLangPack`), выбирать между ним и кэшем не нужно. */
+  export function getCacheLangPack(): Promise<LangPackDifference | null> {
+    return owner().cachedPack()
+  }
+
+  /** tweb :192-203 — серверный пакет языка. Сеть, кэш и запись держит владелец;
+   *  `lang_pack` (`web`/`webk`) первым аргументом у нас предмета не имеет —
+   *  разбор в докблоке `core/managers/langPackManager.ts`. */
+  export function loadLangPack(langCode: string): Promise<LangPackDifference | null> {
+    return owner().getPack(langCode)
+  }
+
+  /**
+   * tweb :237-246 — СЛИЯНИЕ И ПРИМЕНЕНИЕ: локальный английский вниз, серверные
+   * строки поверх.
+   *
+   * `null` вместо пакета — это не отказ, а «сервера не было»: применяется один
+   * локальный английский, и приложение поднимается офлайн. Версия у такого
+   * пакета 0 — то же, что «пакета нет» на языке владельца (`checkForUpdates`
+   * ходит за разницей только от кэша, которого в этом случае и не появилось).
+   */
+  export async function applyServerLangPack(
+    serverPack: LangPackDifference | null,
+    langCode: string,
+  ): Promise<LangPackDifference> {
+    const strings = await loadLocalLangPack()
+    if (serverPack) strings.push(...serverPack.strings)
+
+    const langPack: LangPackDifference = {
+      _: 'langPackDifference',
+      lang_code: langCode,
+      from_version: serverPack?.from_version ?? 0,
+      version: serverPack?.version ?? 0,
+      strings,
+    }
+
+    applyLangPack(langPack)
+    return langPack
+  }
+
+  /**
+   * tweb :117-127 — холодный старт: применить то, что уже лежит на диске.
+   *
+   * В сеть этот путь НЕ ХОДИТ (как и у оригинала): язык поднимается мгновенно,
+   * а свежесть догоняет фоновая проверка. Её вызов — наше расхождение по
+   * ИСТОЧНИКУ: у tweb проверку заводит серверный кадр `updateLangPack*`
+   * (:783-784), которого наш сервер не шлёт, поэтому единственный повод
+   * спросить разницу — старт.
+   */
+  export function getCacheLangPackAndApply(): Promise<LangPackDifference> {
+    return cacheLangPackPromise ||= getCacheLangPack()
+      .then((pack) => {
+        if (pack) setLangCode(pack.lang_code)
+        return applyServerLangPack(pack, lastRequestedLangCode)
+      })
+      .then((pack) => {
+        void checkLangPackForUpdates()
+        return pack
+      })
+      .finally(() => { cacheLangPackPromise = undefined })
+  }
+
+  /** tweb :230-247 — язык выбран явно: пакет с сервера (или из кэша владельца,
+   *  если он про этот же язык) и применение. */
+  export function getLangPackAndApply(langCode: string): Promise<LangPackDifference> {
+    setLangCode(langCode)
+    return loadLangPack(langCode).then((pack) => applyServerLangPack(pack, langCode))
   }
 
   // tweb :130-147
@@ -564,6 +693,25 @@ export { i18n_ }
 
 const _i18n = I18n._i18n
 export { _i18n }
+
+/**
+ * tweb :771-779 — фоновая проверка обновлений языка.
+ *
+ * Вся арифметика (спросить разницу от версии кэша, отклонить чужой язык и
+ * откат назад, сходить за всем пакетом на дыре в версиях) живёт у ВЛАДЕЛЬЦА —
+ * `core/managers/langPackManager.ts::checkForUpdates`; здесь остаётся то, чего
+ * владелец сделать не может, — применить обновлённый пакет к `I18n.strings` и
+ * к живым `.i18n`-узлам вкладки.
+ *
+ * `null` от владельца означает «применять нечего» (нет кэша, нет сети, версия
+ * не выросла) — и тогда здесь не происходит НИЧЕГО: узлы не трогаются, уже
+ * применённый язык не перетирается.
+ */
+export async function checkLangPackForUpdates(): Promise<LangPackDifference | undefined> {
+  const pack = await startClient().managers.langPack.checkForUpdates()
+  if (!pack) return
+  return I18n.applyServerLangPack(pack, pack.lang_code)
+}
 
 // tweb :670-682
 export function joinElementsWith<T>(
