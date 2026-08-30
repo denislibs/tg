@@ -79,7 +79,7 @@ export default function ContactsView({
       <div className={s.list}>
         {groups.length === 0 && (
           <Text size={14} color="var(--secondary-text-color)" className={s.emptyHint}>
-            {t('No contacts found.')}
+            {t('Contacts.NotFound')}
           </Text>
         )}
         {groups.map(([letter, list]) => (
@@ -101,7 +101,7 @@ export default function ContactsView({
                     {c.name}
                   </Text>
                   <Text noWrap size={13.5} color={c.online ? 'var(--primary-color)' : 'var(--secondary-text-color)'}>
-                    {c.online ? t('online') : c.status || t('last seen recently')}
+                    {c.online ? t('Online') : c.status || t('Lately')}
                   </Text>
                 </div>
               </div>

@@ -104,7 +104,7 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
     const peerId = Number(chat.id)
     void managers.groups.setPin(peerId, pinned).catch((e: unknown) => {
       if (String(e).includes('pin limit')) {
-        rootScope.dispatchEvent('ui:toast', t("Sorry, you can't pin any more chats to the top."))
+        rootScope.dispatchEvent('ui:toast', t('PinFolderLimitReached'))
       }
     })
   }

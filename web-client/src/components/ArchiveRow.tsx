@@ -66,7 +66,7 @@ function ArchiveRow({ chats, onOpen, ref }: {
       </div>
 
       <div className={classNames('row-row', 'row-title-row')}>
-        <span className={classNames('i18n', s.title)}>{t('Archived Chats')}</span>
+        <span className={classNames('i18n', s.title)}>{t('ArchivedChats')}</span>
       </div>
 
       <div className={classNames('row-row', 'row-subtitle-row')}>

@@ -140,7 +140,7 @@ export default function SettingsView({
             </Text>
             {user?.pFlags?.premium && <PremiumBadge size={20} />}
           </div>
-          <Text size={14} color="var(--secondary-text-color)">{t('online')}</Text>
+          <Text size={14} color="var(--secondary-text-color)">{t('Online')}</Text>
         </div>
 
         {/* Contact card */}
@@ -157,7 +157,7 @@ export default function SettingsView({
             translate={false}
             onClick={user?.phone ? () => {
               void navigator.clipboard?.writeText(formatPhone(user.phone).replace(/\s/g, '')).catch(() => {})
-              rootScope.dispatchEvent('ui:toast', t('Phone copied to clipboard'))
+              rootScope.dispatchEvent('ui:toast', t('PhoneCopied'))
             } : undefined}
           />
           {user?.username && (
@@ -178,7 +178,7 @@ export default function SettingsView({
             <div className={s.rowIcon}>
               <TgIcon name="darkmode" size={24} color="var(--secondary-text-color)" />
             </div>
-            <Text size={16} color="var(--primary-text-color)" className={s.rowBody}>{t('Night Mode')}</Text>
+            <Text size={16} color="var(--primary-text-color)" className={s.rowBody}>{t('General.NightMode')}</Text>
             <TgSwitch checked={isDark} />
           </div>
           {settingsItems.map((it) => (
@@ -215,7 +215,7 @@ export default function SettingsView({
           <Row
             icon={<TgIcon name="star_filled" size={24} color="var(--primary-color)" />}
             label="Telegram Premium"
-            sublabel={user?.pFlags?.premium ? t('Active — manage subscription') : t('Unlock exclusive features')}
+            sublabel={user?.pFlags?.premium ? t('Premium.Row.Active') : t('Premium.Row.Subtitle')}
             onClick={() => (user?.pFlags?.premium ? setPremiumManageOpen(true) : setPremiumOpen(true))}
           />
           <Row

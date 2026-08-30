@@ -26,12 +26,12 @@ export default function ScheduledView({ chatId, onClose, onChanged }: {
     // «Отправить, когда онлайн» (tweb MessageScheduledUntilOnline): вместо даты.
     // `send_at`/`when_online` — НАШИ параметры вне схемы у конструктора `message`.
     if (m._ !== 'message') return ''
-    if (m.when_online) return t('Scheduled until online')
+    if (m.when_online) return t('MessageScheduledUntilOnline')
     const d = new Date((m.send_at ?? 0) * 1000)
     const today = d.toDateString() === new Date().toDateString()
     const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-    if (today) return `${t('Scheduled for today')}, ${hm}`
-    return `${t('Scheduled for')} ${d.toLocaleDateString(lang)}, ${hm}`
+    if (today) return `${t('Chat.Date.ScheduledForToday')}, ${hm}`
+    return `${t('Schedule.ScheduledFor')} ${d.toLocaleDateString(lang)}, ${hm}`
   }
 
   return <>
@@ -47,7 +47,7 @@ export default function ScheduledView({ chatId, onClose, onChanged }: {
       <div className={s.card} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
         <div className={s.header}>
           <Text size={17} weight={600} color="var(--primary-text-color)" style={{ flex: 1 }}>
-            {t('Scheduled Messages')}
+            {t('ScheduledMessages')}
           </Text>
           <IconButton onClick={onClose} color="var(--secondary-text-color)" aria-label={t('Close')}>
             <TgIcon name="close" size={22} />
@@ -56,7 +56,7 @@ export default function ScheduledView({ chatId, onClose, onChanged }: {
         <div className={s.list}>
           {list != null && list.length === 0 && (
             <Text size={14.5} color="var(--secondary-text-color)" style={{ padding: '2rem 1rem', textAlign: 'center', display: 'block' }}>
-              {t('No scheduled messages here yet…')}
+              {t('NoScheduledMessages')}
             </Text>
           )}
           {(list ?? []).map((m) => (
@@ -70,10 +70,10 @@ export default function ScheduledView({ chatId, onClose, onChanged }: {
                 </Text>
               </div>
               <div className={s.actions}>
-                <IconButton size="small" onClick={() => sendNow(m.id)} title={t('Send Now')} aria-label={t('Send Now')}>
+                <IconButton size="small" onClick={() => sendNow(m.id)} title={t('MessageScheduleSend')} aria-label={t('MessageScheduleSend')}>
                   <TgIcon name="send" size={18} color="var(--primary-color)" />
                 </IconButton>
-                <IconButton size="small" onClick={() => setReschedule({ id: m.id, sendAt: m._ === 'message' ? (m.send_at ?? 0) : 0 })} title={t('Reschedule')} aria-label={t('Reschedule')}>
+                <IconButton size="small" onClick={() => setReschedule({ id: m.id, sendAt: m._ === 'message' ? (m.send_at ?? 0) : 0 })} title={t('MessageScheduleEditTime')} aria-label={t('MessageScheduleEditTime')}>
                   <TgIcon name="schedule" size={18} color="var(--primary-color)" />
                 </IconButton>
                 <IconButton size="small" onClick={() => remove(m.id)} title={t('Delete')} aria-label={t('Delete')}>

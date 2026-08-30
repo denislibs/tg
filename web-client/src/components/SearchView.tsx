@@ -150,7 +150,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
     const list = (msgs ?? []).filter((x) => getMediaId(x) != null)
     const tracks: AudioTrack[] = list.map((x) => ({
       mediaId: getMediaId(x) as number,
-      title: getMessageKind(x) === 'audio' ? getDocumentFromMessage(x)?.file_name || t('Audio') : title,
+      title: getMessageKind(x) === 'audio' ? getDocumentFromMessage(x)?.file_name || t('SharedMedia.Audio') : title,
       subtitle: friendlyMsgTime(messageDateISO(x.date), lang),
       peerId: x.peerId,
       msgId: x.id,
@@ -199,7 +199,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
     )
   }
 
-  const emptyState = <Empty text={q ? t('No results') : t('Nothing interesting here yet…')} />
+  const emptyState = <Empty text={q ? t('NoResult') : t('Chat.Search.NothingFound')} />
 
   return (
     <div className={s.root}>
@@ -239,14 +239,14 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
               {tab === 0 && q && (
                 <>
                   {localMatches.length > 0 && (
-                    <SidebarSection title={t('Chats')}>
+                    <SidebarSection title={t('FilterChats')}>
                       {localMatches.map((c) => (
                         <ChatRow key={c.id} chat={c} q={q} onClick={() => openDialog(c.id)} />
                       ))}
                     </SidebarSection>
                   )}
                   {(results.chats.length > 0 || results.users.length > 0) && (
-                    <SidebarSection title={t('Global search')}>
+                    <SidebarSection title={t('GlobalSearch')}>
                       {results.chats.map((c) => (
                         <ResultRow
                           key={`c-${c.id}`}
@@ -272,7 +272,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                     </SidebarSection>
                   )}
                   {msgs != null && msgs.length > 0 && (
-                    <SidebarSection title={t('Messages')}>
+                    <SidebarSection title={t('SearchMessages')}>
                       {msgs.map((m) => <MsgRow key={m.id} m={m} />)}
                     </SidebarSection>
                   )}
@@ -292,7 +292,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                           photoId={getPeerPhotoId(getPeerPhoto(c)) || undefined}
                           t={(getChatTitle(c) || '?').charAt(0).toUpperCase()}
                           title={getChatTitle(c)}
-                          subtitle={`${participantsCount(c)} ${t('subscribers')}`}
+                          subtitle={`${participantsCount(c)} ${t('Channel.SubscribersSuffix')}`}
                           onClick={() => onResultChat(c)}
                         />
                       ))}
@@ -301,7 +301,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                     emptyState
                   )
                 ) : myChannels.length > 0 ? (
-                  <SidebarSection title={t('My Channels')}>
+                  <SidebarSection title={t('Search.MyChannels')}>
                     {myChannels.map((c) => (
                       <ChatRow key={c.id} chat={c} onClick={() => openDialog(c.id)} />
                     ))}
@@ -369,7 +369,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                         </div>
                         <div className={s.body}>
                           <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">
-                            <Highlighted text={doc?.file_name || t('Document')} q={q} />
+                            <Highlighted text={doc?.file_name || t('Chat.Input.Attach.Document')} q={q} />
                           </Text>
                           <Text size={13.5} color="var(--secondary-text-color)">
                             {[fmtSize(doc?.size), friendlyMsgTime(messageDateISO(m.date), lang)].filter(Boolean).join(' · ')}
@@ -391,8 +391,8 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                     {msgs.map((m) => {
                       const doc = getDocumentFromMessage(m)
                       const title = tab === 5
-                        ? doc?.file_name || t('Audio')
-                        : getMessageKind(m) === 'roundVideo' ? t('Video message') : t('Voice message')
+                        ? doc?.file_name || t('SharedMedia.Audio')
+                        : getMessageKind(m) === 'roundVideo' ? t('AttachRound') : t('AttachAudio')
                       return (
                         <div key={m.id} className={s.row} onClick={() => playRow(m, title)}>
                           <div className={s.rowPlay}>
@@ -422,7 +422,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
       {confirmClear && (
         <ConfirmDialog
           title={t('Clear')}
-          text={t('Are you sure you want to clear your search history?')}
+          text={t('Search.Confirm.ClearHistory')}
           action={t('Clear')}
           danger
           onConfirm={clearRecent}
