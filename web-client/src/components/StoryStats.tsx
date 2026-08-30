@@ -19,22 +19,22 @@ export default function StoryStats({ authorId, storyId, onClose }: { authorId: n
     <div style={{ position: 'fixed', inset: 0, zIndex: 3000 }}>
       <div className="tabs-tab sidebar-slider-item scrollable-y-bordered statistics-container active">
         <div className="sidebar-header">
-          <button type="button" className="btn-icon sidebar-close-button" onClick={onClose} aria-label={t('Back')}>
+          <button type="button" className="btn-icon sidebar-close-button" onClick={onClose} aria-label={t('Common.Back')}>
             <TgIcon name="back" />
           </button>
-          <div className="sidebar-header__title">{t('Story statistics')}</div>
+          <div className="sidebar-header__title">{t('StoryStatistics')}</div>
         </div>
 
         <div className="sidebar-content">
         <div className="scrollable scrollable-y">
           {loading && (
             <div style={{ padding: 24, textAlign: 'center' }}>
-              <Text size={15} color="var(--secondary-text-color)">{t('Loading statistics…')}</Text>
+              <Text size={15} color="var(--secondary-text-color)">{t('Statistics.Loading')}</Text>
             </div>
           )}
           {error && !loading && (
             <div style={{ padding: 24, textAlign: 'center' }}>
-              <Text size={15} color="var(--secondary-text-color)">{t('Statistics are not available.')}</Text>
+              <Text size={15} color="var(--secondary-text-color)">{t('Statistics.Unavailable')}</Text>
             </div>
           )}
 
@@ -42,12 +42,12 @@ export default function StoryStats({ authorId, storyId, onClose }: { authorId: n
             <>
               <div className="sidebar-left-section-container">
                 <div className="sidebar-left-section">
-                  <div className="sidebar-left-section-name">{t('Overview')}</div>
+                  <div className="sidebar-left-section-name">{t('StatisticOverview')}</div>
                   {/* Сводка — вендорная сетка `.statistics-overview` */}
                   <div className="statistics-overview">
                     <div className="statistics-overview-item">
                       <div className="statistics-overview-item-value">{nf.format(stats.views)}</div>
-                      <div className="statistics-overview-item-value-description">{t('Views')}</div>
+                      <div className="statistics-overview-item-value-description">{t('StatisticViews')}</div>
                     </div>
                   </div>
                 </div>
@@ -56,7 +56,7 @@ export default function StoryStats({ authorId, storyId, onClose }: { authorId: n
               {stats.viewsByDay.length > 0 && (
                 <div className="sidebar-left-section-container">
                   <div className="sidebar-left-section">
-                    <div className="sidebar-left-section-name">{t('Views by day')}</div>
+                    <div className="sidebar-left-section-name">{t('Statistics.ViewsByDay')}</div>
                     <div className="sidebar-left-section-content">
                     <StatChart points={stats.viewsByDay} variant="line" color="var(--green-color, #4dcd5e)" />
                     </div>

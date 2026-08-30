@@ -41,15 +41,15 @@ export default function StealthModePopup({ onClose }: { onClose: () => void }) {
     setBusy(true)
     try {
       await managers.stories.activateStealth()
-      rootScope.dispatchEvent('ui:toast', t('Stealth Mode On'))
+      rootScope.dispatchEvent('ui:toast', t('Stories.StealthMode.Activated.Title'))
       onClose()
     } catch (e) {
       if (e instanceof HttpError && e.status === 409) {
-        rootScope.dispatchEvent('ui:toast', t('Stealth Mode is on a cooldown'))
+        rootScope.dispatchEvent('ui:toast', t('Stories.StealthMode.Cooldown.Title'))
       } else if (e instanceof HttpError && e.status === 503) {
         setUnavailable(true)
       } else {
-        rootScope.dispatchEvent('ui:toast', t('Something went wrong'))
+        rootScope.dispatchEvent('ui:toast', t('Error.SomethingWentWrong'))
       }
     } finally {
       setBusy(false)
@@ -58,10 +58,10 @@ export default function StealthModePopup({ onClose }: { onClose: () => void }) {
 
   const disabled = busy || unavailable || onCooldown
   const buttonLabel = unavailable
-    ? t('Stealth Mode is unavailable')
+    ? t('Stories.StealthMode.Unavailable')
     : onCooldown
-      ? t('Available in %s').replace('%s', cooldownLabel(cooldownUntil!))
-      : t('ENABLE STEALTH MODE')
+      ? t('Stories.StealthMode.Cooldown').replace('%s', cooldownLabel(cooldownUntil!))
+      : t('Stories.StealthMode.Button')
 
   const row = (icon: 'backward_5' | 'forward_25', title: string, subtitle: string) => (
     <div style={{ display: 'flex', gap: 16, padding: '10px 20px', alignItems: 'flex-start' }}>
@@ -76,14 +76,14 @@ export default function StealthModePopup({ onClose }: { onClose: () => void }) {
   )
 
   return (
-    <Popup open title={t('Stealth Mode')} onClose={onClose} width={360}>
+    <Popup open title={t('Stories.StealthMode.Title')} onClose={onClose} width={360}>
       <div style={{ padding: '0 20px 4px' }}>
         <Text size={14} color="var(--secondary-text-color)">
-          {t('Turn Stealth Mode on to watch without appearing in the list of viewers.')}
+          {t('Stories.StealthMode.Subtitle')}
         </Text>
       </div>
-      {row('backward_5', t('Hide Recent Views'), t('Hide my views from the past %s.').replace('%s', PAST_LABEL))}
-      {row('forward_25', t('Hide Upcoming Views'), t('Hide my views for the next %s.').replace('%s', FUTURE_LABEL))}
+      {row('backward_5', t('Stories.StealthMode.Row1.Title'), t('Stories.StealthMode.Row1.Subtitle').replace('%s', PAST_LABEL))}
+      {row('forward_25', t('Stories.StealthMode.Row2.Title'), t('Stories.StealthMode.Row2.Subtitle').replace('%s', FUTURE_LABEL))}
       <div style={{ padding: '8px 16px 16px' }}>
         <button
           onClick={activate}

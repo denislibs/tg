@@ -94,10 +94,10 @@ export default function EditStorySheet({
         privacy: sendPrivacy ? privacy : undefined,
         allowIds: sendAllow ? [...allow] : undefined,
       })
-      rootScope.dispatchEvent('ui:toast', t('Story edited'))
+      rootScope.dispatchEvent('ui:toast', t('Story.Edited'))
       onClose()
     } catch {
-      rootScope.dispatchEvent('ui:toast', t('Something went wrong'))
+      rootScope.dispatchEvent('ui:toast', t('Error.SomethingWentWrong'))
     } finally {
       setBusy(false)
     }
@@ -106,11 +106,11 @@ export default function EditStorySheet({
   return createPortal(
     <div className={s.sheetFixed}>
       <div className={s.header}>
-        <IconButton onClick={onClose} aria-label={t('Back')} color="var(--secondary-text-color)">
+        <IconButton onClick={onClose} aria-label={t('Common.Back')} color="var(--secondary-text-color)">
           <TgIcon name="back" />
         </IconButton>
         <Text size={19} weight={600} color="var(--primary-text-color)">
-          {t('Edit story')}
+          {t('Story.Edit')}
         </Text>
       </div>
 

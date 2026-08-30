@@ -27,7 +27,7 @@ export default function StoryReadOnlyPreview({ story, onClose }: { story: StoryI
       {(storyCaption(story) || isStoryEdited(story)) && (
         <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: 16, background: 'linear-gradient(to top, rgba(0,0,0,.6), transparent)' }}>
           {storyCaption(story) && <Text color="#fff" size={15}>{storyCaption(story)}</Text>}
-          {isStoryEdited(story) && <Text color="rgba(255,255,255,0.6)" size={12}>{t('edited')}</Text>}
+          {isStoryEdited(story) && <Text color="rgba(255,255,255,0.6)" size={12}>{t('EditedMessage')}</Text>}
         </div>
       )}
     </div>

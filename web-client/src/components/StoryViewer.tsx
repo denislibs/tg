@@ -95,11 +95,11 @@ function dateText(date: number, edited: boolean, t: (s: string) => string): stri
   const ts = date * 1000
   const sec = Math.max(0, Math.round((Date.now() - ts) / 1000))
   let head: string
-  if (sec < 60) head = t('just now')
-  else if (sec < 3600) head = `${Math.floor(sec / 60)} ${t('min ago')}`
-  else if (sec < 86400) head = `${Math.floor(sec / 3600)} ${t('h ago')}`
+  if (sec < 60) head = t('StoryJustNow')
+  else if (sec < 3600) head = `${Math.floor(sec / 60)} ${t('Story.Time.MinutesAgo')}`
+  else if (sec < 86400) head = `${Math.floor(sec / 3600)} ${t('Story.Time.HoursAgo')}`
   else head = new Date(ts).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-  return edited ? head + JOINER + t('edited') : head
+  return edited ? head + JOINER + t('EditedMessage') : head
 }
 
 /**
@@ -318,14 +318,14 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
         <TgIcon name={vm.manualPause ? 'play' : 'pause'} />
       </IconButton>
       {videoDurationMs > 0 && (
-        <IconButton onClick={() => setMuted((m) => !m)} aria-label={t('Sound')}>
+        <IconButton onClick={() => setMuted((m) => !m)} aria-label={t('Notifications.Sound.Section')}>
           <TgIcon name={muted ? 'speakerofffilled' : 'speakerfilled'} />
         </IconButton>
       )}
       <IconButton
         className="btn-menu-toggle night"
         onClick={() => (vm.isMe ? setMenuOpen(true) : setOthersMenuOpen(true))}
-        aria-label={t('More')}
+        aria-label={t('MultiAccount.More')}
       >
         <TgIcon name="more" />
       </IconButton>
@@ -352,7 +352,7 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
         <div className={s.repost}>
           <TgIcon name="storyrepost" size={14} color="#fff" />
           <Text noWrap color="#fff" size={12} weight={600}>
-            {vm.fwdAuthorName ?? t('Repost')}
+            {vm.fwdAuthorName ?? t('Story.Repost')}
           </Text>
         </div>
       )}
@@ -361,7 +361,7 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
       {(storyCaption(vm.story) || vm.edited) && (
         <div className={s.caption}>
           {storyCaption(vm.story) && <Text color="#fff" size={15}>{storyCaption(vm.story)}</Text>}
-          {vm.edited && <Text color="rgba(255,255,255,0.6)" size={12}>{t('edited')}</Text>}
+          {vm.edited && <Text color="rgba(255,255,255,0.6)" size={12}>{t('EditedMessage')}</Text>}
         </div>
       )}
 
@@ -438,14 +438,14 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
           e.stopPropagation()
         }}
       />
-      <IconButton onClick={() => setPickerOpen((v) => !v)} aria-label={t('React')}>
+      <IconButton onClick={() => setPickerOpen((v) => !v)} aria-label={t('Story.React')}>
         <TgIcon name="smile" />
       </IconButton>
       <div
         className={classNames(s.heartBtn, vm.myReaction ? s.heartActive : '')}
         onClick={() => vm.toggleReaction(vm.myReaction ?? DEFAULT_REACTION)}
         role="button"
-        aria-label={t('React')}
+        aria-label={t('Story.React')}
       >
         {vm.myReaction ? (
           <div key={vm.myReaction} className={s.reactPop}>
@@ -533,7 +533,7 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
         {/* tweb ViewStatistics (viewer.tsx:2199-2201) — пункт меню, не кнопка шапки */}
         <MenuItem
           icon={<TgIcon name="statistics" size={20} />}
-          label={t('Story statistics')}
+          label={t('StoryStatistics')}
           onClick={() => { setMenuOpen(false); vm.openStats() }}
         />
         <MenuItem
@@ -553,7 +553,7 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
         />
         <MenuItem
           icon={<TgIcon name="storyrepost" size={20} />}
-          label={t('Repost')}
+          label={t('Story.Repost')}
           onClick={() => { setOthersMenuOpen(false); setRepostOpen(true) }}
         />
         <MenuItem
@@ -576,13 +576,13 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
       {confirmDel && (
         <Popup
           open
-          title={t('Delete story')}
+          title={t('DeleteStoryTitle')}
           onClose={() => setConfirmDel(false)}
           width={360}
           action={{ label: t('Delete'), onClick: () => { setConfirmDel(false); vm.del() } }}
         >
           <div style={{ padding: '0 16px 8px' }}>
-            <Text size={15}>{t('Are you sure you want to delete this story?')}</Text>
+            <Text size={15}>{t('DeleteStorySubtitle')}</Text>
           </div>
         </Popup>
       )}
