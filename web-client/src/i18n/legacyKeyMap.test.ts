@@ -125,18 +125,53 @@ describe('объявленные слияния', () => {
 // Точечные исключения — вторая структура, по которой пойдёт задача 6. Она полезна ровно
 // настолько, насколько верна: файл должен существовать, строка и якорь — в нём быть.
 describe('точечные исключения к карте', () => {
-  it('указывают на существующий файл, где есть и строка, и якорь', () => {
+  // Позиции всех вхождений `t('<legacy>')` в файле записи.
+  const occurrencesOf = (o: (typeof LEGACY_KEY_OVERRIDES)[number]) => {
+    const src = readFileSync(resolve(WEB_CLIENT, o.file), 'utf8')
+    const literal = `t('${o.legacy.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/'/g, "\\'")}')`
+    const at: number[] = []
+    for (let i = src.indexOf(literal); i !== -1; i = src.indexOf(literal, i + 1)) at.push(i)
+    return { src, literal, at }
+  }
+
+  it('указывают на существующий файл, где есть и вызов, и якорь', () => {
     const bad: string[] = []
     for (const o of LEGACY_KEY_OVERRIDES) {
-      const path = resolve(WEB_CLIENT, o.file)
-      if (!existsSync(path)) {
+      if (!existsSync(resolve(WEB_CLIENT, o.file))) {
         bad.push(`${o.file}: файла нет`)
         continue
       }
-      const src = readFileSync(path, 'utf8')
-      const literal = `t('${o.legacy.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/'/g, "\\'")}')`
-      if (!src.includes(literal)) bad.push(`${o.file}: нет вызова ${literal}`)
+      const { src, literal, at } = occurrencesOf(o)
+      if (!at.length) bad.push(`${o.file}: нет вызова ${literal}`)
       if (!src.includes(o.anchor)) bad.push(`${o.file}: нет якоря ${o.anchor}`)
+      if (!at[o.occurrence]) bad.push(`${o.file}: вхождения №${o.occurrence} нет (всего ${at.length})`)
+    }
+    expect(bad).toEqual([])
+  })
+
+  // Без этой проверки якорь ни к чему не привязан: две записи можно поменять якорями местами и
+  // остаться зелёным — то есть «перепутали, какому баннеру какой ключ» проходит незамеченным.
+  // Якорь обязан стоять В ТОМ ЖЕ блоке, что и вызов: после предыдущего вызова той же строки и
+  // не дальше пятнадцати строк над своим. Имя переменной, объявленной в начале файла, якорем
+  // быть не может — блок ей не принадлежит.
+  const NEAR_LINES = 15
+  it('якорь стоит в блоке своего вхождения, и вхождения не делятся', () => {
+    const bad: string[] = []
+    const taken = new Set<string>()
+    for (const o of LEGACY_KEY_OVERRIDES) {
+      const { src, at } = occurrencesOf(o)
+      const here = at[o.occurrence]
+      if (here === undefined) continue // разобрано проверкой выше
+      const after = o.occurrence > 0 ? at[o.occurrence - 1] : -1
+      const linesBetween = (a: number, b: number) => src.slice(a, b).split('\n').length - 1
+      let ok = false
+      for (let i = src.indexOf(o.anchor); i !== -1; i = src.indexOf(o.anchor, i + 1)) {
+        if (i > after && i < here && linesBetween(i, here) <= NEAR_LINES) ok = true
+      }
+      if (!ok) bad.push(`${o.file} ${o.key}: якоря «${o.anchor}» нет в блоке вхождения №${o.occurrence}`)
+      const slot = `${o.file}|${o.legacy}|${o.occurrence}`
+      if (taken.has(slot)) bad.push(`${slot}: на это вхождение уже есть запись`)
+      taken.add(slot)
     }
     expect(bad).toEqual([])
   })
