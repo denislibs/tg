@@ -6,17 +6,16 @@
  *    `rootScope.managers.appStateManager`) — не портированы: тот же вычет уже
  *    сделан в `checkboxField.ts` по той же причине (у нас состояние живёт в
  *    zustand-сторах, глобали tweb нет);
- *  • `LangPackKey`/`_i18n(main, key)` → строка + `useI18nStore.getState().t`,
- *    записанная прямо в `main.textContent` (как и `_i18n` в оригинале — узел
- *    не оборачивается в `span.i18n`, он ПИШЕТ в переданный элемент);
+ *  (`langKey` строит `_i18n(main, key)` — дословно как оригинал (:68). Раньше
+ *  здесь стоял `t(key)` в `main.textContent`: текст, снятый один раз, вместо
+ *  живого узла.)
  *  • `simulateEvent(this.input, 'change')` — хелпера `helpers/dom/dispatchEvent`
  *    в репозитории нет (та же причина, что в `checkboxField.ts`); инлайновая
  *    замена — `new Event('change', {bubbles: true, cancelable: true})`,
  *    поведение то же самое, просто без отдельного файла-обёртки на одну строку.
  */
-import type { LangPackKey } from '@/lang'
 import Icon from '@components/icon'
-import { useI18nStore } from '../i18n'
+import { _i18n, type LangPackKey } from '@lib/langPack'
 
 export default class RadioField {
   public input: HTMLInputElement
@@ -56,7 +55,7 @@ export default class RadioField {
     } else if (options.text) {
       main.textContent = options.text
     } else if (options.langKey) {
-      main.textContent = useI18nStore.getState().t(options.langKey)
+      _i18n(main, options.langKey) // tweb :68
     }
 
     label.append(input, main)

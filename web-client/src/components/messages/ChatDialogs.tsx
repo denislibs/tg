@@ -13,7 +13,6 @@ import classNames from '../../shared/lib/classNames'
 import { createPortal } from 'react-dom'
 import TgIcon from '../TgIcon'
 import { useT, useLang } from '../../i18n'
-import { useI18nStore } from '@/i18n'
 import Avatar from '../../shared/ui/Avatar'
 import Popup from '../../shared/ui/Popup'
 import PeerSelector from '../../shared/ui/PeerSelector'
@@ -77,7 +76,6 @@ export function openDeleteMessageDialog({ peerId, managers, canRevoke, count = 1
   /** любой исход БЕЗ удаления — Cancel/Esc/оверлей/Back (см. `popup.addEventListener('closeAfterTimeout', …)` ниже) */
   onClose?: () => void
 }): PopupPeer {
-  const t = useI18nStore.getState().t
   const single = count <= 1
   // Канал: revoke всегда, без чекбокса (tweb: buttons[0].callback = callback(..., true))
   const isChannel = chatType === 'channel'
@@ -96,11 +94,15 @@ export function openDeleteMessageDialog({ peerId, managers, canRevoke, count = 1
       ? { titleLangKey: 'DeleteSingleMessagesTitle' as const }
       : { titleLangKey: 'DeleteMessagesCount' as const, titleLangArgs: [count] }),
     descriptionLangKey: single ? 'AreYouSureDeleteSingleMessage' : 'AreYouSureDeleteFewMessages',
-    checkboxes: withCheckbox ? [{
-      text: chatType === 'private' && peerFirstName
-        ? `${t('DeleteAlsoFor')} ${peerFirstName}`
-        : t('DeleteChat.DeleteGroupForAll'),
-    }] : undefined,
+    // Подпись чекбокса — КЛЮЧ, имя подставляет строка (`DeleteMessagesOptionAlso` =
+    // «Also delete for %1$s», tweb lang.ts:1607 + deleteMessages.ts:121-124). Раньше
+    // вызывающий склеивал префикс «Also delete for» с именем сам — фраза, которую
+    // нельзя перевести: в языках с другим порядком слов имя стоит не там.
+    checkboxes: withCheckbox ? [
+      chatType === 'private' && peerFirstName
+        ? { text: 'DeleteMessagesOptionAlso' as const, textArgs: [peerFirstName] }
+        : { text: 'DeleteChat.DeleteGroupForAll' as const },
+    ] : undefined,
     buttons: [{
       langKey: 'Delete',
       isDanger: true,

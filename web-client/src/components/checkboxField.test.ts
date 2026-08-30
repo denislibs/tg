@@ -5,6 +5,10 @@
 import { describe, expect, it } from 'vitest'
 import CheckboxField from './checkboxField'
 
+// Подписи строит `i18n()`/`_i18n()` ядра, а строки в него кладёт создание хранилища
+// языка — в продукте это делает холодный старт (`main.tsx` → `client/boot.ts`).
+import '@/i18n'
+
 describe('CheckboxField', () => {
   it('label.checkbox-field.checkbox-without-caption > input + .checkbox-box', () => {
     const field = new CheckboxField()
@@ -50,7 +54,7 @@ describe('CheckboxField', () => {
   })
 
   it('text → span.checkbox-caption ПОСЛЕ .checkbox-box, без checkbox-without-caption (tweb :106-114, :151-153)', () => {
-    const field = new CheckboxField({ text: 'Also delete for Maya' })
+    const field = new CheckboxField({ text: 'DeleteMessagesOptionAlso', textArgs: ['Maya'] })
 
     expect(field.label.classList.contains('checkbox-without-caption')).toBe(false)
     const span = field.label.lastElementChild as HTMLElement

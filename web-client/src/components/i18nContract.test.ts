@@ -18,6 +18,8 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { loadLang, useI18nStore } from '@/i18n'
 import Button from './button'
 import { ButtonMenuItem } from './buttonMenu'
+import CheckboxField from './checkboxField'
+import RadioField from './radioField'
 import PopupElement from './popups/popupElement'
 import PopupPeer from './popups/popupPeer'
 import Row from './row'
@@ -69,6 +71,16 @@ describe('ванильные подписи показывают перевод,
     expect(buttons).toEqual(['Завершить', 'Отмена'])
 
     popup.forceHide()
+  })
+
+  it('подпись чекбокса и радио-строки', () => {
+    // `DeleteMessagesOptionAlso` = «Также удалить у %1$s»: имя подставляет СТРОКА,
+    // а не вызывающий — раньше он склеивал префикс «Также удалить у» с именем сам.
+    const checkbox = new CheckboxField({ text: 'DeleteMessagesOptionAlso', textArgs: ['Майя'] })
+    expect(checkbox.label.querySelector('.checkbox-caption')!.textContent).toBe('Также удалить у Майя')
+
+    const radio = new RadioField({ langKey: 'Checkbox.Enabled', name: 'x' })
+    expect(radio.main.textContent).toBe('Включено')
   })
 
   it('всплывашка', () => {

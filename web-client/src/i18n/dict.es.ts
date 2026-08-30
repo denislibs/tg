@@ -241,7 +241,7 @@ const es = {
   },
   AreYouSureDeleteSingleMessage: '¿Eliminar este mensaje?',
   AreYouSureDeleteFewMessages: '¿Eliminar estos mensajes?',
-  DeleteAlsoFor: 'Eliminar también para',
+  DeleteMessagesOptionAlso: 'Eliminar también para %1$s',
   'DeleteChat.DeleteGroupForAll': 'Eliminar para todos los miembros',
   DeleteMega: 'Eliminar grupo',
   'ChatList.Context.LeaveGroup': 'Salir del grupo',

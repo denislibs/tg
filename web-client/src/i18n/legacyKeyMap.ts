@@ -771,7 +771,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
 
   // ── components/messages ──
   'Add a caption…': 'PreviewSender.CaptionPlaceholder',
-  'Also delete for': 'DeleteAlsoFor',
+  'Also delete for': 'DeleteMessagesOptionAlso',
   'Are you sure you want to delete these messages?': 'AreYouSureDeleteFewMessages',
   'Are you sure you want to delete this message?': 'AreYouSureDeleteSingleMessage',
   Channel: 'Channel',

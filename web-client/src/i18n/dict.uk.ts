@@ -252,7 +252,7 @@ const uk = {
   },
   AreYouSureDeleteSingleMessage: 'Видалити це повідомлення?',
   AreYouSureDeleteFewMessages: 'Видалити ці повідомлення?',
-  DeleteAlsoFor: 'Також видалити у',
+  DeleteMessagesOptionAlso: 'Також видалити у %1$s',
   'DeleteChat.DeleteGroupForAll': 'Видалити для всіх учасників',
   DeleteMega: 'Видалити групу',
   'ChatList.Context.LeaveGroup': 'Покинути групу',

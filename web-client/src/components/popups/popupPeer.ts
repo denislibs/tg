@@ -100,8 +100,9 @@ export type PopupPeerOptions = {
    *  просит единственный вызывающий (`DeleteMessageDialog`): подпись + флаг
    *  предвзведения — `PopupPeerCheckboxOptions` оригинала несёт больше
    *  (`withRipple`/`withHover`/`color`/…), но их не портируем целиком
-   *  (`checkboxField.ts`). */
-  checkboxes?: { text: string, checked?: boolean }[]
+   *  (`checkboxField.ts`). Подпись — КЛЮЧ (задача 7): раньше здесь стояла
+   *  готовая строка, и вызывающий склеивал «Also delete for» с именем руками. */
+  checkboxes?: { text: LangPackKey, textArgs?: FormatterArguments, checked?: boolean }[]
 } & (
   | { peerId?: undefined, managers?: AvatarManagers }
   | { peerId: PeerId, managers: AvatarManagers }
@@ -118,7 +119,7 @@ export type PopupPeerOptions = {
  * ТОЛЬКО когда `options.checkboxes` непуст (peer.ts:96), иначе вызывается без
  * аргументов вовсе, 1:1. */
 export type PopupPeerButton = Omit<PopupButton, 'callback'> & {
-  callback?: (checked?: Set<string>) => void
+  callback?: (checked?: Set<LangPackKey>) => void
 }
 
 /** tweb `components/popups/index.ts:484-494`, дословно: кнопка отмены несёт КЛЮЧ. */
@@ -168,11 +169,14 @@ export default class PopupPeer extends PopupElement {
 
     // peer.ts:96-124 — чекбоксы строятся ДО кнопок: колбэку кнопки в момент
     // клика нужно ЖИВОЕ состояние (замыкание на `checkboxFields`), не снимок.
-    const checkboxFields: { text: string, field: CheckboxField }[] = []
+    const checkboxFields: { text: LangPackKey, field: CheckboxField }[] = []
     if(options.checkboxes?.length) {
       this.container.classList.add('have-checkbox') // peer.ts:104
       for(const o of options.checkboxes) { // peer.ts:106-110
-        checkboxFields.push({ text: o.text, field: new CheckboxField({ text: o.text, checked: o.checked }) })
+        checkboxFields.push({
+          text: o.text,
+          field: new CheckboxField({ text: o.text, textArgs: o.textArgs, checked: o.checked }),
+        })
       }
     }
 

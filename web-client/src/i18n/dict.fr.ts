@@ -242,7 +242,7 @@ const fr = {
   },
   AreYouSureDeleteSingleMessage: 'Supprimer ce message ?',
   AreYouSureDeleteFewMessages: 'Supprimer ces messages ?',
-  DeleteAlsoFor: 'Supprimer aussi pour',
+  DeleteMessagesOptionAlso: 'Supprimer aussi pour %1$s',
   'DeleteChat.DeleteGroupForAll': 'Supprimer pour tous les membres',
   DeleteMega: 'Supprimer le groupe',
   'ChatList.Context.LeaveGroup': 'Quitter le groupe',

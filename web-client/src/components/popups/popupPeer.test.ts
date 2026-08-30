@@ -210,7 +210,7 @@ describe('PopupPeer — checkboxes, раунд правок 3 (peer.ts:22, :96-1
       titleLangKey: 'DeleteSingleMessagesTitle',
       descriptionLangKey: 'AreYouSureDeleteSingleMessage',
       buttons: [{ langKey: 'Delete', isDanger: true, callback: () => {} }],
-      checkboxes: [{ text: 'Also delete for Maya' }],
+      checkboxes: [{ text: 'DeleteMessagesOptionAlso', textArgs: ['Maya'] }],
     })
     popup.show()
 
@@ -236,7 +236,7 @@ describe('PopupPeer — checkboxes, раунд правок 3 (peer.ts:22, :96-1
     const popup = PopupElement.createPopup(PopupPeer, 'popup-checkbox-unchecked', {
       titleLangKey: 'DeleteSingleMessagesTitle',
       buttons: [{ langKey: 'Delete', isDanger: true, callback: onDelete }],
-      checkboxes: [{ text: 'Also delete for Maya' }],
+      checkboxes: [{ text: 'DeleteMessagesOptionAlso', textArgs: ['Maya'] }],
     })
     popup.show()
 
@@ -252,7 +252,7 @@ describe('PopupPeer — checkboxes, раунд правок 3 (peer.ts:22, :96-1
     const popup = PopupElement.createPopup(PopupPeer, 'popup-checkbox-checked', {
       titleLangKey: 'DeleteSingleMessagesTitle',
       buttons: [{ langKey: 'Delete', isDanger: true, callback: onDelete }],
-      checkboxes: [{ text: 'Also delete for Maya' }],
+      checkboxes: [{ text: 'DeleteMessagesOptionAlso', textArgs: ['Maya'] }],
     })
     popup.show()
 
@@ -261,14 +261,14 @@ describe('PopupPeer — checkboxes, раунд правок 3 (peer.ts:22, :96-1
       new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }),
     )
 
-    expect(onDelete.mock.calls[0][0]).toEqual(new Set(['Also delete for Maya']))
+    expect(onDelete.mock.calls[0][0]).toEqual(new Set(['DeleteMessagesOptionAlso']))
   })
 
   it('checked:true — чекбокс предвзведён (tweb :64-66)', () => {
     const popup = PopupElement.createPopup(PopupPeer, 'popup-checkbox-preset', {
       titleLangKey: 'DeleteSingleMessagesTitle',
       buttons: [{ langKey: 'Delete' }],
-      checkboxes: [{ text: 'Delete for all members', checked: true }],
+      checkboxes: [{ text: 'DeleteChat.DeleteGroupForAll', checked: true }],
     })
     popup.show()
 

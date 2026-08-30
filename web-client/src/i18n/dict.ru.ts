@@ -505,7 +505,7 @@ const ru = {
   },
   AreYouSureDeleteSingleMessage: 'Удалить это сообщение?',
   AreYouSureDeleteFewMessages: 'Удалить эти сообщения?',
-  DeleteAlsoFor: 'Также удалить у',
+  DeleteMessagesOptionAlso: 'Также удалить у %1$s',
   'DeleteChat.DeleteGroupForAll': 'Удалить у всех участников',
   DeleteForEveryone: 'Удалить у всех',
   DeleteForMe: 'Удалить у себя',
