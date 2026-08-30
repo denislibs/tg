@@ -29,6 +29,10 @@ type fakeLangPackRepo struct {
 	strings map[string][]fakeLangPackRow
 	// fail — отказ хранилища (лежащая база): подставляется вместо любого чтения.
 	fail error
+	// versionCalls — сколько раз спросили версию языка: витрину дёргает каждый
+	// клиент на старте, и второй поход за тем же числом это лишний запрос к
+	// базе на каждое открытие приложения.
+	versionCalls int
 }
 
 type fakeLangPackRow struct {
@@ -85,6 +89,7 @@ func (f *fakeLangPackRepo) Language(_ context.Context, code string) (domain.Lang
 }
 
 func (f *fakeLangPackRepo) Version(_ context.Context, code string) (int, error) {
+	f.versionCalls++
 	v, ok := f.version[code]
 	if !ok {
 		return 0, domain.ErrNotFound
@@ -126,6 +131,14 @@ func (f *fakeLangPackRepo) Apply(context.Context, domain.LangPackLanguageMeta, i
 // них и живёт ВНЕ группы Bearer.
 func langPackRouter(t *testing.T) http.Handler {
 	t.Helper()
+	h, _ := langPackRouterWithRepo(t)
+	return h
+}
+
+// langPackRouterWithRepo — то же самое, но отдаёт ещё и хранилище: тестам про
+// ЧИСЛО обращений к нему нужен доступ к счётчикам.
+func langPackRouterWithRepo(t *testing.T) (http.Handler, *fakeLangPackRepo) {
+	t.Helper()
 	repo := newFakeLangPackRepo()
 	en := domain.LangPackLanguageMeta{Code: "en", Name: "English", NativeName: "English", PluralCode: "en"}
 	ru := domain.LangPackLanguageMeta{Code: "ru", Name: "Russian", NativeName: "Русский", PluralCode: "ru", BaseCode: "en"}
@@ -146,7 +159,7 @@ func langPackRouter(t *testing.T) http.Handler {
 	)
 
 	h := NewLangPackHandler(usecaselangpack.New(repo))
-	return NewRouter(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, h)
+	return NewRouter(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, h), repo
 }
 
 func strptr(s string) *string { return &s }
@@ -442,6 +455,29 @@ func TestLangPackHandler_StringsKeyLimit(t *testing.T) {
 	}
 	if name := errorName(t, body); name != "LANG_KEYS_TOO_MANY" {
 		t.Errorf("имя отказа %q; want LANG_KEYS_TOO_MANY", name)
+	}
+}
+
+// За версией языка хранилище спрашивают РОВНО ОДИН раз на запрос.
+//
+// Витрина разницы — первое, что дёргает клиент на старте, и лишний поход в базу
+// здесь умножается на число открытий приложения. Проверяется на всех трёх
+// путях: обычная разница, разница от нуля (весь пакет) и версия из будущего —
+// у каждого свой ход по коду, и в каждом легко случайно спросить дважды.
+func TestLangPackHandler_AsksVersionOnce(t *testing.T) {
+	for _, path := range []string{
+		"/langpack/en/difference?from_version=2",
+		"/langpack/en/difference?from_version=0",
+		"/langpack/en/difference?from_version=99",
+		"/langpack/en",
+	} {
+		h, repo := langPackRouterWithRepo(t)
+		if code, body := getLangPack(t, h, path); code != http.StatusOK {
+			t.Fatalf("%s: код %d, тело %s", path, code, body)
+		}
+		if repo.versionCalls != 1 {
+			t.Errorf("%s: версию спросили %d раз(а); достаточно одного", path, repo.versionCalls)
+		}
 	}
 }
 

@@ -43,7 +43,11 @@ func (i *Interactor) Language(ctx context.Context, code string) (domain.LangPack
 // пакета не было вовсе, удалять у себя нечего — «удали ключ, которого ты не
 // видел» не утверждение, а мусор в выдаче.
 func (i *Interactor) LangPack(ctx context.Context, code string) (domain.LangPackDifference, error) {
-	return i.difference(ctx, code, 0, false)
+	version, err := i.repo.Version(ctx, code)
+	if err != nil {
+		return domain.LangPackDifference{}, err
+	}
+	return i.difference(ctx, code, 0, version, false)
 }
 
 // Difference — что изменилось у языка ПОСЛЕ версии клиента
@@ -72,24 +76,22 @@ func (i *Interactor) Difference(ctx context.Context, code string, fromVersion in
 	if fromVersion < 0 {
 		return domain.LangPackDifference{}, fmt.Errorf("%d: %w", fromVersion, ErrVersionInvalid)
 	}
-	if fromVersion == 0 {
-		return i.LangPack(ctx, code)
-	}
+	// За версией ходим ОДИН раз на запрос. Эту ручку каждый клиент дёргает на
+	// старте, и второй поход в базу за тем же числом — это лишний запрос на
+	// каждое открытие приложения.
 	version, err := i.repo.Version(ctx, code)
 	if err != nil {
 		return domain.LangPackDifference{}, err
 	}
-	if fromVersion > version {
-		return i.LangPack(ctx, code)
+	if fromVersion == 0 || fromVersion > version {
+		return i.difference(ctx, code, 0, version, false)
 	}
-	return i.difference(ctx, code, fromVersion, true)
+	return i.difference(ctx, code, fromVersion, version, true)
 }
 
-func (i *Interactor) difference(ctx context.Context, code string, fromVersion int, withDeleted bool) (domain.LangPackDifference, error) {
-	version, err := i.repo.Version(ctx, code)
-	if err != nil {
-		return domain.LangPackDifference{}, err
-	}
+// difference собирает витрину по УЖЕ ИЗВЕСТНОЙ версии языка: спрашивать её
+// здесь повторно значило бы ходить в базу дважды за одним числом.
+func (i *Interactor) difference(ctx context.Context, code string, fromVersion, version int, withDeleted bool) (domain.LangPackDifference, error) {
 	records, err := i.repo.Strings(ctx, code, fromVersion, withDeleted)
 	if err != nil {
 		return domain.LangPackDifference{}, err

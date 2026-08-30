@@ -455,19 +455,46 @@ func seedLangPack(ctx context.Context, uc *usecaselangpack.Interactor) {
 		log.Printf("langpack seed failed: %v", err)
 		return
 	}
+	applyLangPack(ctx, uc, pack)
+}
+
+// applyLangPack заливает языки снимка по одному.
+//
+// Отделено от seedLangPack, потому что решений здесь два и они разные: ЧТО
+// заливать (вшитый снимок, срок на всю операцию) и КАК заливать (что делать с
+// отказом на одном языке из шести). Второе — единственное место, где сид
+// принимает решение за пользователя, и проверять его нужно на пакете с РАЗНЫМИ
+// версиями языков, а у живого снимка они пока одинаковые.
+func applyLangPack(ctx context.Context, uc *usecaselangpack.Interactor, pack langsource.Pack) {
 	// Одна строка в журнал на весь сид, а не по строке на язык: версии тут
 	// интересны только когда они РАЗНЫЕ, и шесть одинаковых «version 1» на
 	// каждом старте — шум, в котором тонет всё остальное.
 	versions := make([]string, 0, len(pack.Languages))
+	var failed []string
 	total := 0
 	for _, lang := range pack.Languages {
 		version, err := uc.Sync(ctx, lang.LangPackLanguageMeta, lang.Strings, lang.Version)
 		if err != nil {
-			log.Printf("langpack seed %s failed: %v", lang.Code, err)
-			return
+			// ПРОДОЛЖАЕМ со следующего языка, а не выходим. Языки друг от
+			// друга не зависят: конфликт версии у русского — это беда
+			// русского, а не французского. Выход по первому отказу оставил бы
+			// на чистой базе четыре языка НЕЗАЛИТЫМИ, и `getLanguages` не
+			// показал бы их вовсе — клиент получил бы 404
+			// LANG_CODE_NOT_SUPPORTED на язык, который лежит в этом же
+			// бинаре. Пропущенный язык остаётся на прежних строках; не
+			// залитый не существует.
+			log.Printf("langpack seed %s FAILED: %v", lang.Code, err)
+			failed = append(failed, lang.Code)
+			continue
 		}
 		versions = append(versions, fmt.Sprintf("%s v%d", lang.Code, version))
 		total += len(lang.Strings)
 	}
 	log.Printf("langpack seeded: %d strings, %s", total, strings.Join(versions, ", "))
+	if len(failed) > 0 {
+		// Отдельной строкой и в конце: перечень незалитых языков — это то,
+		// ради чего в журнал вообще смотрят после деплоя.
+		log.Printf("langpack seed INCOMPLETE: языки %s не залиты, клиент увидит их старые строки или не увидит вовсе",
+			strings.Join(failed, ", "))
+	}
 }

@@ -102,7 +102,7 @@ func TestSnapshotVersionsAreReal(t *testing.T) {
 // алфавиту английского имени — тот же порядок, что на нынешнем экране настроек.
 //
 // Выразить его обязан сервер: клиент рисует список перебором выдачи и не
-// сортирует (tweb `sidebarLeft/tabs/language.tsx:115`). Русский на четвёртом
+// сортирует (tweb `sidebarLeft/tabs/language.tsx:117`). Русский на четвёртом
 // месте — регресс относительно того, что пользователь видит сегодня.
 func TestSnapshotLanguageOrder(t *testing.T) {
 	pack, err := Embedded()
