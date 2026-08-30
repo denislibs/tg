@@ -3,6 +3,7 @@
 // web_app_* события: тема, кнопки, popup, ссылки, sendData→бот, CloudStorage
 // (invoke_custom_method), запрос контакта/доступа, QR-сканер, инвойс, сенсоры,
 // biometry (на вебе недоступна — отвечаем по протоколу).
+import type { LangPackKey } from '@/lang'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import TgIcon from '../TgIcon'
@@ -404,7 +405,7 @@ function WebAppInner() {
 }
 
 // QrScanner — камера + BarcodeDetector. Если API нет — сообщаем и закрываем.
-function QrScanner({ text, onText, onClose, t }: { text?: string; onText: (d: string) => void; onClose: () => void; t: (k: string) => string }) {
+function QrScanner({ text, onText, onClose, t }: { text?: string; onText: (d: string) => void; onClose: () => void; t: (key: LangPackKey) => string }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [err, setErr] = useState<string | null>(null)
 

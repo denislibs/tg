@@ -124,9 +124,9 @@ export default function PinnedMessagesScreen({ chatId, pins, meId, meName, canUn
         )}
         {confirmAll && (
           <ConfirmDialog
-            title={t('Chat.Input.UnpinAll')}
-            text={t('Chat.UnpinAll.Text')}
-            action={t('UnpinMessage')}
+            title="Chat.Input.UnpinAll"
+            text="Chat.UnpinAll.Text"
+            action="UnpinMessage"
             danger
             onConfirm={() => { void unpinAll() }}
             onClose={() => setConfirmAll(false)}

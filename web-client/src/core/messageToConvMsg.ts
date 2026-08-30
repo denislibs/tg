@@ -29,7 +29,7 @@ export function replyMediaLabel(kind?: MessageKind): string {
   switch (kind) {
     case 'photo': return 'Фотография'
     case 'video': return 'Видео'
-    case 'gif': return 'GIF'
+    case 'gif': return 'AttachGif'
     case 'roundVideo': return 'Видеосообщение'
     case 'voice': return 'Голосовое сообщение'
     case 'audio': return 'Аудио'

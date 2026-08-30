@@ -95,7 +95,7 @@ describe('PeerSelector — дерево селектора 1:1 с tweb', () => {
   })
 
   it('непустой список помечает секцию is-visible, пустой — показывает selector-empty-placeholder', () => {
-    const empty = { title: 'No Results', description: 'Try searching.' }
+    const empty = { title: 'SearchEmptyViewTitle', description: 'Search.EmptyQuery' } as const
     const { rerender } = rtlRender(
       <ManagersProvider managers={fakeManagers}><PeerSelector peers={peers} empty={empty} /></ManagersProvider>,
     )

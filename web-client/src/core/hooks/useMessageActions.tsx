@@ -103,7 +103,7 @@ export function useMessageActions({
     setReply(null)
   }
 
-  // "Delete for everyone" is offered when every target is the author's own or the
+  // "DeleteForEveryone" is offered when every target is the author's own or the
   // chat is private (Telegram). Backend re-checks; group admins handled server-side.
   const canRevokeAll = (ids: number[]) =>
     chat.type === 'private' || ids.every((id) => winMsgs.find((m) => m.id === id)?.fromId === meId)

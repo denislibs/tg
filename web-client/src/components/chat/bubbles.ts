@@ -70,6 +70,7 @@
 //    вычислитель модификаторов бабла): в tweb класс ставится прямо по ходу
 //    сборки имени (bubbles.ts:9516/9648), у нас — по тому же признаку
 //    `showName`, который лента считает `needName`.
+import type { LangPackKey } from '@/lang'
 import Scrollable, { type SliceSides } from '@components/scrollable'
 import StickyIntersector from '@components/stickyIntersector'
 import SuperIntersectionObserver from '@helpers/dom/superIntersectionObserver'
@@ -1382,8 +1383,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
     title.classList.add('bubble-call-title')
     // tweb :8662-8665 — четыре ключа: сторона × «видео или нет».
     title.textContent = t(isOut
-      ? (action.pFlags?.video ? 'Outgoing video call' : 'Outgoing call')
-      : (action.pFlags?.video ? 'Incoming video call' : 'Incoming call'))
+      ? (action.pFlags?.video ? 'CallMessageVideoOutgoing' : 'CallMessageOutgoing')
+      : (action.pFlags?.video ? 'CallMessageVideoIncoming' : 'CallMessageIncoming'))
 
     const subtitle = document.createElement('div')
     subtitle.classList.add('bubble-call-subtitle')
@@ -1396,9 +1397,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
     } else {
       subtitle.classList.add('is-reason') // tweb :8687
       subtitle.append(document.createTextNode(t(
-        action.reason?._ === 'phoneCallDiscardReasonBusy' ? 'Busy'
-        : action.reason?._ === 'phoneCallDiscardReasonMissed' ? 'Missed call'
-        : 'Cancelled call',
+        action.reason?._ === 'phoneCallDiscardReasonBusy' ? 'Call.StatusBusy'
+        : action.reason?._ === 'phoneCallDiscardReasonMissed' ? 'ChatList.Service.Call.Missed'
+        : 'CallMessageCancelled',
       )))
     }
 
@@ -5164,17 +5165,17 @@ export default class ChatBubbles implements BubbleGroupsHost {
     }
 
     const elements: HTMLElement[] = [
-      line(t(type === 'saved' ? 'Your cloud storage' : 'No messages here yet...'), `${BASE_CLASS}-title`),
+      line(t(type === 'saved' ? 'ChatYourSelfTitle' : 'NoMessages'), `${BASE_CLASS}-title`),
     ]
 
     if(type === 'saved') {
       // tweb :10510-10515 + :10728-10735 — буллет как ОТДЕЛЬНЫЙ узел перед
       // строкой, а не символ в тексте.
-      const items = [
-        'Forward messages here to save them',
-        'Send media and files to store them',
-        'Access this chat from any device',
-        'Use search to quickly find things',
+      const items: LangPackKey[] = [
+        'ChatYourSelfDescription1',
+        'ChatYourSelfDescription2',
+        'ChatYourSelfDescription3',
+        'ChatYourSelfDescription4',
       ]
       for(const key of items) {
         const span = document.createElement('span')

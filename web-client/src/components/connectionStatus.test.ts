@@ -14,7 +14,7 @@ import { RT, type ConnState } from '../core/realtime/events'
 import InputSearch, { CONNECTION_ANIMATION_DURATION, type InputSearchStatus } from '../shared/ui/InputSearch/InputSearch'
 import ConnectionStatusComponent from './connectionStatus'
 import ruStrings from '../i18n/dict.ru'
-import { toLegacyDict } from '../i18n/legacyDict'
+import lang from '@/lang'
 import { useI18nStore } from '../i18n'
 import type { Managers } from '../client/bootstrap'
 
@@ -82,10 +82,12 @@ async function haveConnected(h: ReturnType<typeof setup>) {
 }
 
 /** Так же, как `loadLang`: подменяет `t` догруженным словарём. */
-// Словарь языка теперь хранится символическими ключами; старый `t()` (он живёт до
-// задачи 9) получает его тем же мостом, что и приложение, — `toLegacyDict`.
-const ru = toLegacyDict(ruStrings)
-const switchToRussian = () => act(() => { useI18nStore.setState({ lang: 'ru', t: (s) => ru[s] ?? s }) })
+// Словарь языка — символические ключи; под ним, как и в приложении, лежит английский
+// источник: непереведённый ключ обязан показать английский текст, а не своё имя.
+const ru = Object.fromEntries(ruStrings.flatMap((s) => (s._ === 'langPackString' ? [[s.key, s.value]] : [])))
+const switchToRussian = () => act(() => {
+  useI18nStore.setState({ lang: 'ru', t: (key) => ru[key] ?? (lang as unknown as Record<string, string>)[key] ?? key })
+})
 
 let englishT: I18nSnapshot
 type I18nSnapshot = { lang: ReturnType<typeof useI18nStore.getState>['lang']; t: ReturnType<typeof useI18nStore.getState>['t'] }
@@ -529,12 +531,12 @@ describe('ConnectionStatusComponent — ключи словаря', () => {
   // Опечатка в ключе не роняет ни сборку, ни тесты веток (t() отдаёт сам ключ,
   // и англичанину всё равно) — молча теряется весь русский перевод индикатора.
   it('все четыре ключа автомата есть в dict.ru', () => {
-    for (const key of ['Search', 'Reconnect in %ds', 'Reconnecting...', 'Waiting for network...', 'Updating...']) {
+    for (const key of ['Search', 'ConnectionStatus.ReconnectInPlain', 'ConnectionStatus.Reconnecting', 'ConnectionStatus.Waiting', 'Updating']) {
       expect(ru[key], key).toBeTruthy()
     }
   })
 
   it('строка отсчёта несёт подстановку %d — иначе секунды некуда вставить', () => {
-    expect(ru['Reconnect in %ds']).toContain('%d')
+    expect(ru['ConnectionStatus.ReconnectInPlain']).toContain('%d')
   })
 })

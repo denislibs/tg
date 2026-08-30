@@ -91,13 +91,14 @@
  * `div.sidebar-left-section-container`. Снимать не нужно — уйдёт вместе с
  * React-экранами, которые его используют, по мере переезда волны на Solid.
  */
+import type { LangPackKey } from '@/lang'
 import i18nSpan from '@helpers/dom/i18nSpan'
 import { useI18nStore } from '../i18n'
 
-type CaptionOption = string | true
+type CaptionOption = LangPackKey | true
 
 export type SettingSectionOptions = {
-  name?: string | HTMLElement
+  name?: LangPackKey | HTMLElement
   caption?: CaptionOption
   captionOld?: CaptionOption
   noDelimiter?: boolean

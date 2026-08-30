@@ -21,11 +21,11 @@ const PREVIEW_LIMIT = 4 // tweb: до 4 строк + «Show N more»
 
 const TYPE_LABELS: Record<string, { icon: string; label: string }> = {
   contacts: { icon: 'newprivate', label: 'Contacts' },
-  nonContacts: { icon: 'noncontacts', label: 'Non-Contacts' },
-  groups: { icon: 'group', label: 'Groups' },
-  broadcasts: { icon: 'channel', label: 'Channels' },
-  excludeMuted: { icon: 'mute', label: 'Muted' },
-  excludeRead: { icon: 'readchats', label: 'Read' },
+  nonContacts: { icon: 'noncontacts', label: 'ChatList.Filter.NonContacts' },
+  groups: { icon: 'InactiveChannel.Group', label: 'ChatList.Filter.Groups' },
+  broadcasts: { icon: 'InactiveChannel.Broadcast', label: 'ChatList.Filter.Channels' },
+  excludeMuted: { icon: 'mute', label: 'ChatList.Filter.MutedChats' },
+  excludeRead: { icon: 'readchats', label: 'Chat.ContextMenu.Read' },
 }
 
 function ChatPreviewRow({ chat }: { chat: Chat }) {
@@ -113,8 +113,8 @@ function FolderShareSection({ folderId }: { folderId: number }) {
 
   return (
     <Section
-      caption="Share Folder"
-      footer="Create an invite link so others can join the group chats in this folder."
+      caption="SharedFolder.Edit.Title"
+      footer="SharedFolder.Link.Caption"
     >
       {invite ? (
         <>
@@ -128,7 +128,7 @@ function FolderShareSection({ folderId }: { folderId: number }) {
           </div>
           <Row
             icon={<TgIcon name="delete" size={22} color="#ff595a" />}
-            label="Revoke Link"
+            label="RevokeLink"
             danger
             onClick={revoke}
           />
@@ -217,7 +217,7 @@ export default function FolderEditor({
 
   return (
     <SettingsScreen
-      title={folder ? 'Edit Folder' : 'New Folder'}
+      title={folder ? 'FilterHeaderEdit' : 'FilterNew'}
       onBack={onClose}
       zIndex={70}
       headerRight={
@@ -252,12 +252,12 @@ export default function FolderEditor({
       </Section>
 
       <Section
-        caption="Included Chats"
-        footer="Choose chats or types of chats that will appear in this folder."
+        caption="FilterInclude"
+        footer="FilterIncludeInfo"
       >
         <Row
           icon={<TgIcon name="add" size={24} color="var(--primary-color)" />}
-          label="Add Chats"
+          label="ChatList.Filter.Include.AddChat"
           accent
           onClick={() => setPicker('include')}
         />
@@ -265,12 +265,12 @@ export default function FolderEditor({
       </Section>
 
       <Section
-        caption="Excluded Chats"
-        footer="Choose chats or types of chats that will not appear in this folder."
+        caption="FilterExclude"
+        footer="FilterExcludeInfo"
       >
         <Row
           icon={<TgIcon name="minus" size={24} color="var(--primary-color)" />}
-          label="Remove Chats"
+          label="FilterRemoveChats"
           accent
           onClick={() => setPicker('exclude')}
         />

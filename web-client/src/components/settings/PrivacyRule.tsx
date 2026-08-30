@@ -3,6 +3,7 @@
 // пикером пользователей). Для «Phone Number» — вторая секция «Кто может найти
 // меня по номеру» (added_by_phone, без Nobody), видимая только при Nobody
 // (точное поведение tweb privacy/phoneNumber).
+import type { LangPackKey } from '@/lang'
 import { useState } from 'react'
 import TgIcon from '../TgIcon'
 import { SettingsScreen, Section, Row } from './kit'
@@ -14,87 +15,87 @@ import type { PrivacyKey, PrivacyRule as Rule, PrivacyValue } from '../../core/m
 
 // Экранные метаданные ключей (tweb privacy/* tabs): заголовок секции-вопроса,
 // подпись и формулировки исключений (Share для видимости, Allow для действий).
-export const RULE_META: Record<string, { key: PrivacyKey; title: string; caption: string; share: boolean }> = {
-  'Phone Number': {
+export const RULE_META: Record<string, { key: PrivacyKey; title: LangPackKey; caption: LangPackKey; share: boolean }> = {
+  'PrivacyPhone': {
     key: 'phone_number',
-    title: 'Who can see my phone number?',
-    caption: 'Users who have your number saved in their contacts will also see it on Telegram.',
+    title: 'PrivacyPhoneTitle',
+    caption: 'PrivacyPhoneInfo',
     share: true,
   },
-  'Last Seen & Online': {
+  'PrivacyLastSeen': {
     key: 'last_seen',
-    title: 'Who can see my Last Seen time?',
-    caption: "You won't see Last Seen and Online statuses for people with whom you don't share yours. Approximate times will be shown instead (recently, within a week, within a month).",
+    title: 'LastSeenTitle',
+    caption: "Privacy.LastSeenCaption",
     share: true,
   },
-  'Profile Photo': {
+  'PrivacyProfilePhoto': {
     key: 'profile_photo',
-    title: 'Who can see my profile photos?',
-    caption: 'You can restrict who can see your profile photos and videos with granular precision.',
+    title: 'PrivacyProfilePhotoTitle',
+    caption: 'Privacy.ProfilePhotoCaption',
     share: true,
   },
-  Bio: {
+  UserBio: {
     key: 'about',
-    title: 'Who can see my bio?',
-    caption: 'You can restrict who can see the bio on your profile with granular precision.',
+    title: 'Privacy.BioRow',
+    caption: 'Privacy.BioCaption',
     share: false,
   },
-  Calls: {
+  'PrivacySettings.VoiceCalls': {
     key: 'calls',
-    title: 'Who can call me?',
-    caption: 'You can restrict who can call you with granular precision.',
+    title: 'WhoCanCallMe',
+    caption: 'PrivacySettingsController.PhoneCallDescription',
     share: false,
   },
-  'Forwarded Messages': {
+  'PrivacySettings.Forwards': {
     key: 'forwards',
-    title: 'Who can add a link to my account when forwarding my messages?',
-    caption: 'When forwarded to other chats, messages you send will not link back to your account.',
+    title: 'PrivacyForwardsTitle',
+    caption: 'PrivacyForwardsInfo',
     share: false,
   },
-  'Groups & Channels': {
+  'PrivacySettings.Groups': {
     key: 'chat_invite',
-    title: 'Who can add me to group chats?',
-    caption: 'You can restrict who can add you to groups and channels with granular precision.',
+    title: 'PrivacyGroupsTitle',
+    caption: 'PrivacySettingsController.GroupDescription',
     share: false,
   },
-  'Voice Messages': {
+  PrivacyVoiceMessages: {
     key: 'voice_messages',
-    title: 'Who can send me voice messages?',
-    caption: 'You can restrict who can send you voice messages with granular precision.',
+    title: 'PrivacyVoiceMessagesTitle',
+    caption: 'Privacy.VoiceCustomHelp',
     share: false,
   },
-  Messages: {
+  SearchMessages: {
     key: 'messages',
-    title: 'Who can send me messages?',
-    caption: 'You can restrict who can send you messages with granular precision.',
+    title: 'PrivacyMessagesTitle',
+    caption: 'Privacy.MessagesCustomHelp',
     share: false,
   },
   Birthday: {
     key: 'birthday',
-    title: 'Who can see my birthday?',
-    caption: 'Choose who can see your birthday on your profile.',
+    title: 'Privacy.BirthdayRow',
+    caption: 'Privacy.BirthdayChoose',
     share: false,
   },
-  'Read Time': {
+  'PrivacyReadTime': {
     key: 'read_time',
-    title: 'Who can see when I read their messages?',
-    caption: "You won't see when people read your messages if you don't share when you read theirs. This setting does not affect group chats.",
+    title: 'PrivacyReadTimeTitle',
+    caption: "Privacy.ReadTimeCaption",
     share: true,
   },
 }
 
-const OPTIONS: { label: string; value: PrivacyValue }[] = [
-  { label: 'Everybody', value: 'everybody' },
-  { label: 'My Contacts', value: 'contacts' },
-  { label: 'Nobody', value: 'nobody' },
+const OPTIONS: { label: LangPackKey; value: PrivacyValue }[] = [
+  { label: 'PrivacySettingsController.Everbody', value: 'everybody' },
+  { label: 'PrivacySettingsController.MyContacts', value: 'contacts' },
+  { label: 'PrivacySettingsController.Nobody', value: 'nobody' },
 ]
 
-function usersCountLabel(n: number, t: (s: string) => string): string {
+function usersCountLabel(n: number, t: (key: LangPackKey) => string): string {
   if (n === 0) return t('PrivacySettingsController.AddUsers')
-  return `${n} ${t(n === 1 ? 'user' : 'users')}`
+  return `${n} ${t(n === 1 ? 'Peer.Type.User' : 'Privacy.UsersSuffix')}`
 }
 
-export default function PrivacyRule({ title, onBack }: { title: string; onBack: () => void }) {
+export default function PrivacyRule({ title, onBack }: { title: LangPackKey; onBack: () => void }) {
   const t = useT()
   const managers = useManagers()
   const meta = RULE_META[title]
@@ -114,8 +115,8 @@ export default function PrivacyRule({ title, onBack }: { title: string; onBack: 
   // tweb: при Everybody прячется «Always allow», при Nobody — «Never allow».
   const showAllow = rule.value !== 'everybody'
   const showDeny = rule.value !== 'nobody'
-  const allowTitle = meta.share ? 'Always Share With' : 'Always Allow'
-  const denyTitle = meta.share ? 'Never Share With' : 'Never Allow'
+  const allowTitle = meta.share ? 'PrivacySettingsController.AlwaysShare' : 'PrivacySettingsController.AlwaysAllow'
+  const denyTitle = meta.share ? 'PrivacySettingsController.NeverShare' : 'PrivacySettingsController.NeverAllow'
 
   return (
     <SettingsScreen
@@ -124,7 +125,7 @@ export default function PrivacyRule({ title, onBack }: { title: string; onBack: 
       sub={picker ? (
         <PrivacyUserPicker
           title={picker === 'allow' ? allowTitle : denyTitle}
-          placeholder="Add Users or Groups..."
+          placeholder="PrivacyModal.Search.Placeholder"
           initial={picker === 'allow' ? rule.allowUserIds : rule.denyUserIds}
           onDone={(ids) => {
             // Пользователь не может быть в обоих списках: выбранный в одном
@@ -151,7 +152,7 @@ export default function PrivacyRule({ title, onBack }: { title: string; onBack: 
       {(showAllow || showDeny) && (
         <Section
           caption="Exceptions"
-          footer="You can add users or entire groups as exceptions that will override the settings above."
+          footer="PrivacySettingsController.PeerInfo"
         >
           {showDeny && (
             <Row
@@ -176,8 +177,8 @@ export default function PrivacyRule({ title, onBack }: { title: string; onBack: 
           «Кто может найти меня по номеру?», без Nobody, видна при Nobody выше. */}
       {meta.key === 'phone_number' && rule.value === 'nobody' && (
         <Section
-          caption="Who can find me by my number?"
-          footer="Users who have your number saved in their contacts will see it on Telegram only if you added them to your contacts."
+          caption="PrivacyPhoneTitle2"
+          footer="PrivacyPhoneInfo3"
         >
           {OPTIONS.filter((o) => o.value !== 'nobody').map((o) => (
             <Row

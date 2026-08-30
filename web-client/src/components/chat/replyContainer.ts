@@ -24,6 +24,7 @@
 //    случае.
 //  • Poll-option reply (:195-204) и story-reply — таких ответов наша модель не
 //    производит.
+import type { LangPackKey } from '@/lang'
 import { getPeerTitle } from '@core/peers/getPeerTitle'
 import { cachedPeer } from '@core/peerCache'
 import { getPeerId } from '@core/peers/peerId'
@@ -80,7 +81,7 @@ export function createReplyContainer({ replyTo, original }: ReplyContainerOption
 function replyTitle(
   replyTo: MessageReplyHeader,
   original: MyMessage | undefined,
-  t: (key: string) => string,
+  t: (key: LangPackKey) => string,
 ): string {
   const fromId = original?.fromId ?? (replyTo.reply_from?.from_id ? getPeerId(replyTo.reply_from.from_id) : undefined)
   if (fromId != null) {
@@ -96,7 +97,7 @@ function replyTitle(
 function replySubtitle(
   replyTo: MessageReplyHeader,
   original: MyMessage | undefined,
-  t: (key: string) => string,
+  t: (key: LangPackKey) => string,
 ): string {
   if (replyTo.quote_text) return replyTo.quote_text
   if (original) return wrapMessageForReply({ message: original })

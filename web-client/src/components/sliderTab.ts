@@ -130,6 +130,7 @@
  *    расхождение, что в `row.ts`/`button.ts`/`settingSection.ts`: наш словарь
  *    это ключ→строка, а не `langPack` оригинала).
  */
+import type { LangPackKey } from '@/lang'
 import EventListenerBase, { type EventListenerListeners } from '@helpers/eventListenerBase'
 import ListenerSetter from '@helpers/listenerSetter'
 import { getMiddleware, type Middleware, type MiddlewareHelper } from '@helpers/middleware'
@@ -258,7 +259,7 @@ export default class SliderSuperTab {
     }
   }
 
-  protected setTitle(key: string) {
+  protected setTitle(key: LangPackKey) {
     this.title.replaceChildren(i18nSpan(useI18nStore.getState().t(key)))
   }
 }

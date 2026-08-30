@@ -1,3 +1,4 @@
+import type { LangPackKey } from '@/lang'
 import { memo, useState, type CSSProperties, type ReactNode, type Ref } from 'react'
 import Avatar from '../shared/ui/Avatar'
 import classNames from '../shared/lib/classNames'
@@ -114,26 +115,26 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
     void managers.groups.setArchive(peerId, archived).catch(() => {})
   }
   const destructive =
-    chat.type === 'channel' ? 'Leave Channel' : chat.type === 'group' ? 'Delete Group' : 'Delete Chat'
-  const menuItems: { icon: ReactNode; label: string; danger?: boolean; onClick?: () => void }[] = [
-    { icon: <TgIcon name="newtab" size={20} />, label: 'Open in new tab' },
-    { icon: <TgIcon name="eye" size={20} />, label: 'Preview' },
-    { icon: <TgIcon name="messageunread" size={20} />, label: 'Mark as unread' },
+    chat.type === 'channel' ? 'ChatList.Context.LeaveChannel' : chat.type === 'group' ? 'DeleteMega' : 'ChatList.Context.DeleteChat'
+  const menuItems: { icon: ReactNode; label: LangPackKey; danger?: boolean; onClick?: () => void }[] = [
+    { icon: <TgIcon name="newtab" size={20} />, label: 'OpenInNewTab' },
+    { icon: <TgIcon name="eye" size={20} />, label: 'ChatList.Context.Preview' },
+    { icon: <TgIcon name="messageunread" size={20} />, label: 'MarkAsUnread' },
     {
       icon: <TgIcon name={chat.pinned ? 'unpin' : 'pin'} size={20} />,
-      label: chat.pinned ? 'Unpin' : 'Pin',
+      label: chat.pinned ? 'ChatList.Context.Unpin' : 'ChatList.Context.Pin',
       onClick: () => applyPin(!chat.pinned),
     },
     {
       icon: <TgIcon name={chat.muted ? 'unmute' : 'mute'} size={20} />,
-      label: chat.muted ? 'Unmute' : 'Mute',
+      label: chat.muted ? 'ChatList.Context.Unmute' : 'ChatList.Context.Mute',
       onClick: () => (chat.muted ? applyMute(false) : openMutePopup()),
     },
     // «Избранное» не архивируется (tweb: verify peerId !== myId)
     ...(chat.type !== 'saved'
       ? [{
           icon: <TgIcon name={chat.archived ? 'unarchive' : 'archive'} size={20} />,
-          label: chat.archived ? 'Unarchive' : 'Archive',
+          label: (chat.archived ? 'Unarchive' : 'Archive') as LangPackKey,
           onClick: () => applyArchive(!chat.archived),
         }]
       : []),
@@ -181,10 +182,10 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
                  последнего сообщения. Заявка получателю — зелёным (акцент tweb). */
               <span className={secretStatus === 'requested' ? s.secretInvite : undefined}>
                 {secretStatus === 'requested'
-                  ? t('Приглашение в секретный чат')
+                  ? t('SecretChat.Invitation')
                   : secretStatus === 'rejected'
-                    ? t('Секретный чат отклонён')
-                    : t('Ожидание, пока собеседник примет секретный чат…')}
+                    ? t('SecretChat.Rejected')
+                    : t('SecretChat.Awaiting')}
               </span>
             ) : typingLabel.active ? (
               <span className="peer-typing-container">

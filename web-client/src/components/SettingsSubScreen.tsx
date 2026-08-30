@@ -1,5 +1,6 @@
+import type { LangPackKey } from '@/lang'
 import { useState, type ReactNode } from 'react'
-import { useT, useLang, LANGS } from '../i18n'
+import { useT } from '../i18n'
 import { SettingsScreen, Section, Row } from './settings/kit'
 import QuickReaction from './settings/QuickReaction'
 import PowerSaving from './settings/PowerSaving'
@@ -15,18 +16,20 @@ import HotkeysSettings from './settings/HotkeysSettings'
 import type { Chat } from '../data'
 
 // Rows that open a dedicated sub-screen instead of being a plain value.
-const NAV = new Set<string>(['Power Saving', 'Quick Reaction'])
-function renderDedicated(label: string, onBack: () => void): ReactNode {
+const NAV = new Set<string>(['LiteMode.Title', 'DoubleTapSetting'])
+function renderDedicated(label: LangPackKey, onBack: () => void): ReactNode {
   switch (label) {
-    case 'Power Saving':
+    case 'LiteMode.Title':
       return <PowerSaving onBack={onBack} />
-    case 'Quick Reaction':
+    case 'DoubleTapSetting':
       return <QuickReaction onBack={onBack} />
   }
   return null
 }
 
 type Ctrl = 'toggle' | 'value' | 'link' | 'button' | 'radio'
+/** Подпись строки: ключ ЛИБО готовый текст (родные имена языков) — тот самый раскол
+ *  контракта `Row`, который снимает задача 7. */
 interface SRow {
   label: string
   type: Ctrl
@@ -35,79 +38,52 @@ interface SRow {
   danger?: boolean
 }
 interface SSection {
-  caption?: string
-  footer?: string
+  caption?: LangPackKey
+  footer?: LangPackKey
   rows: SRow[]
 }
 
 // Structure mirrors tweb's settings tabs (content is mock)
-const SCREENS: Record<string, SSection[]> = {
-  'General Settings': [
+const SCREENS: Partial<Record<LangPackKey, SSection[]>> = {
+  'Telegram.GeneralSettingsViewController': [
     {
       caption: 'Settings',
       rows: [
-        { label: 'Text Size', type: 'value', value: '16' },
-        { label: 'Chat Background', type: 'link' },
-        { label: 'Quick Reaction', type: 'value', value: '👍' },
-        { label: 'Power Saving', type: 'value', value: 'Disabled' },
+        { label: 'General.TextSize', type: 'value', value: '16' },
+        { label: 'ChatBackground.Title', type: 'link' },
+        { label: 'DoubleTapSetting', type: 'value', value: '👍' },
+        { label: 'LiteMode.Title', type: 'value', value: 'Checkbox.Disabled' },
       ],
     },
     {
-      caption: 'Time Format',
+      caption: 'General.TimeFormat',
       rows: [
-        { label: '12-hour', type: 'radio', on: false },
-        { label: '24-hour', type: 'radio', on: true },
-      ],
-    },
-  ],
-  Language: [
-    {
-      caption: 'Translate',
-      rows: [{ label: 'Show Translate Button', type: 'toggle', on: true }],
-    },
-    {
-      rows: [
-        { label: 'English', type: 'radio', on: true },
-        { label: 'Русский', type: 'radio', on: false },
-        { label: 'Українська', type: 'radio', on: false },
-        { label: 'Español', type: 'radio', on: false },
-        { label: 'Deutsch', type: 'radio', on: false },
-        { label: 'Français', type: 'radio', on: false },
+        { label: 'General.TimeFormat.h12', type: 'radio', on: false },
+        { label: 'General.TimeFormat.h23', type: 'radio', on: true },
       ],
     },
   ],
 }
 
-export function hasSubScreen(title: string) {
+export function hasSubScreen(title: LangPackKey) {
   // Speakers and Camera, Notifications and Sounds, Chat Folders — реальные
   // экраны (не из мок-SCREENS). «Устройства» здесь БОЛЬШЕ НЕТ: экран уехал на
   // слайдер вкладок (`sidebarLeft/tabs/activeSessions.solid.tsx`), в колонку
   // его завёл шаг 8 плана волны 2.
   return (
     title in SCREENS ||
-    title === 'Speakers and Camera' ||
-    title === 'Notifications and Sounds' ||
-    title === 'Chat Folders' ||
-    title === 'Privacy and Security' ||
-    title === 'Data and Storage' ||
-    title === 'Stickers and Emoji' ||
-    title === 'Keyboard Shortcuts'
+    title === 'AccountSettings.SpeakersAndCamera' ||
+    title === 'AccountSettings.Notifications' ||
+    title === 'ChatList.Filter.List.Title' ||
+    title === 'PrivacySettings' ||
+    title === 'DataSettings' ||
+    title === 'StickersName' ||
+    title === 'KeyboardShortcuts.Title'
   )
 }
 
-// Strings that are not English UI text and must not be translated.
-const NATIVE_LANGUAGE_NAMES = new Set([
-  'English',
-  'Русский',
-  'Українська',
-  'Español',
-  'Deutsch',
-  'Français',
-])
-
-export default function SettingsSubScreen({ title, onBack, chats }: { title: string; onBack: () => void; chats?: Chat[] }) {
+export default function SettingsSubScreen({ title, onBack, chats }: { title: LangPackKey; onBack: () => void; chats?: Chat[] }) {
   const t = useT()
-  const [lang, setLang] = useLang()
   const sections = SCREENS[title] ?? []
 
   // local interactive state for toggles & radios
@@ -128,26 +104,26 @@ export default function SettingsSubScreen({ title, onBack, chats }: { title: str
     })
     return o
   })
-  const [dedicated, setDedicated] = useState<string | null>(null)
+  const [dedicated, setDedicated] = useState<LangPackKey | null>(null)
 
   // Language has a dedicated tweb-style screen (radio-left list + native names)
-  if (title === 'Language') return <LanguageSettings onBack={onBack} />
+  if (title === 'Telegram.LanguageViewController') return <LanguageSettings onBack={onBack} />
   // General Settings is a fully functional screen (text size, wallpaper, theme, time)
-  if (title === 'General Settings') return <GeneralSettings onBack={onBack} />
+  if (title === 'Telegram.GeneralSettingsViewController') return <GeneralSettings onBack={onBack} />
   // Speakers and Camera — реальные устройства (enumerateDevices/getUserMedia)
-  if (title === 'Speakers and Camera') return <SpeakersCamera onBack={onBack} />
+  if (title === 'AccountSettings.SpeakersAndCamera') return <SpeakersCamera onBack={onBack} />
   // Notifications and Sounds — реальные настройки уведомлений (tweb-структура)
-  if (title === 'Notifications and Sounds') return <NotificationsSettings onBack={onBack} />
+  if (title === 'AccountSettings.Notifications') return <NotificationsSettings onBack={onBack} />
   // Chat Folders — реальные папки чатов (tweb chatFolders)
-  if (title === 'Chat Folders') return <ChatFoldersSettings onBack={onBack} chats={chats} />
+  if (title === 'ChatList.Filter.List.Title') return <ChatFoldersSettings onBack={onBack} chats={chats} />
   // Privacy and Security — реальный раздел конфиденциальности (tweb privacyAndSecurity)
-  if (title === 'Privacy and Security') return <PrivacySecuritySettings onBack={onBack} />
+  if (title === 'PrivacySettings') return <PrivacySecuritySettings onBack={onBack} />
   // Data and Storage — реальные «Данные и память» (tweb dataAndStorage)
-  if (title === 'Data and Storage') return <DataStorageSettings onBack={onBack} />
+  if (title === 'DataSettings') return <DataStorageSettings onBack={onBack} />
   // Stickers and Emoji — реальные стикеры (наборы, зацикливание, поиск)
-  if (title === 'Stickers and Emoji') return <StickersSettings onBack={onBack} />
+  if (title === 'StickersName') return <StickersSettings onBack={onBack} />
   // Keyboard Shortcuts — статичная таблица хоткеев (tweb keyboardShortcuts)
-  if (title === 'Keyboard Shortcuts') return <HotkeysSettings onBack={onBack} />
+  if (title === 'KeyboardShortcuts.Title') return <HotkeysSettings onBack={onBack} />
 
   return (
     // Саб-саб-экран уходит ПРОПОМ `sub`, а не детьми: у SettingsScreen он
@@ -165,33 +141,23 @@ export default function SettingsSubScreen({ title, onBack, chats }: { title: str
         <Section key={si} caption={section.caption} footer={section.footer}>
           {section.rows.map((r) => {
             const key = `${si}:${r.label}`
-            // The Language screen's radios actually switch the app language
-            const langEntry =
-              title === 'Language' && r.type === 'radio'
-                ? LANGS.find((l) => l.name === r.label)
-                : undefined
             const isNav = NAV.has(r.label)
             const onRow = () => {
-              if (isNav) setDedicated(r.label)
+              if (isNav) setDedicated(r.label as LangPackKey)
               else if (r.type === 'toggle') setToggles((prev) => ({ ...prev, [key]: !prev[key] }))
-              else if (langEntry) setLang(langEntry.code)
               else if (r.type === 'radio') setRadios((rd) => ({ ...rd, [si]: r.label }))
             }
-            const selected = langEntry
-              ? langEntry.code === lang
-              : r.type === 'radio' && radios[si] === r.label
-            const isNative = NATIVE_LANGUAGE_NAMES.has(r.label)
+            const selected = r.type === 'radio' && radios[si] === r.label
             return (
               <Row
                 key={r.label}
                 label={r.label}
-                translate={!isNative}
                 onClick={onRow}
                 danger={r.danger}
                 accent={r.type === 'button' && !r.danger}
                 toggle={r.type === 'toggle'}
                 checked={!!toggles[key]}
-                value={r.type === 'value' ? r.value && t(r.value) : undefined}
+                value={r.type === 'value' ? r.value && t(r.value as LangPackKey) : undefined}
                 selected={!!selected}
               />
             )

@@ -124,7 +124,7 @@ export default function RightsEditor({
                 <div className="sidebar-left-section-content">
                   <Row
                     icon={<TgIcon name="deleteuser" size={24} />}
-                    label="Dismiss Admin"
+                    label="Channel.Admin.Dismiss"
                     danger
                     onClick={() => void run(onRemove)}
                   />

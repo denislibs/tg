@@ -1324,6 +1324,17 @@ const ru = {
   AreYouSureSessions: 'Вы действительно хотите завершить все другие сеансы?',
   SessionsListInfo: 'Официальное приложение Telegram доступно для Android, iPhone, iPad, Windows, macOS и Linux.',
   'RecentSessions.Error.FreshReset': 'В целях безопасности вы не можете завершать более старые сеансы с устройства, которое подключили только что. Воспользуйтесь более ранним подключением или подождите несколько часов.',
+  // Строки, которые до задачи 6 были зашиты в код по-русски (задача 1, п. 2).
+  'Message.Preview.Call': 'Звонок',
+  'SecretChat.Invitation': 'Приглашение в секретный чат',
+  'SecretChat.Rejected': 'Секретный чат отклонён',
+  'SecretChat.Awaiting': 'Ожидание, пока собеседник примет секретный чат…',
+  'SecretChat.Accept': 'Принять',
+  'SecretChat.Reject': 'Отклонить',
+  'QrLogin.Confirm.Title': 'Войти на новом устройстве?',
+  'QrLogin.Confirm.Text': 'Подтвердите вход для нового устройства',
+  'QrLogin.Confirm.Action': 'Подтвердить',
+  'EditContact.PhotoHint': 'Вы можете предложить контакту установить новую фотографию профиля — или изменить его фотографию только у себя.',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)

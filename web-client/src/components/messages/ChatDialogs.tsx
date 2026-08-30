@@ -1,3 +1,4 @@
+import type { LangPackKey } from '@/lang'
 import { useMemo, useRef, useState } from 'react'
 // Presentational chat dialogs/popups extracted from Chat: forward target
 // picker, the reacted/seen list. Each is dumb — it self-sources i18n +
@@ -88,8 +89,8 @@ export function openDeleteMessageDialog({ peerId, managers, canRevoke, count = 1
     // (дамп `17-popup-03-delete-message.json`: div.popup.popup-peer.popup-delete-chat)
     peerId,
     managers,
-    titleLangKey: single ? t('DeleteSingleMessagesTitle') : t('DeleteMessagesCount').replace('%d', String(count)),
-    descriptionLangKey: single ? t('AreYouSureDeleteSingleMessage') : t('AreYouSureDeleteFewMessages'),
+    titleLangKey: 'DeleteSingleMessagesTitle',
+    descriptionLangKey: single ? 'AreYouSureDeleteSingleMessage' : 'AreYouSureDeleteFewMessages',
     checkboxes: withCheckbox ? [{
       text: chatType === 'private' && peerFirstName
         ? `${t('DeleteAlsoFor')} ${peerFirstName}`
@@ -124,7 +125,7 @@ export function openDeleteMessageDialog({ peerId, managers, canRevoke, count = 1
 }
 
 // Подпись строки в пикере: private → presence/бот, группа/канал/избранное — метка.
-function shareSub(chat: Chat, presence: Record<number, UserStatus>, lang: string, t: (s: string) => string): string {
+function shareSub(chat: Chat, presence: Record<number, UserStatus>, lang: string, t: (key: LangPackKey) => string): string {
   if (chat.type === 'saved') return t('ChatYourSelf')
   if (chat.type === 'channel') return t('Channel')
   if (chat.type === 'group') return t('Group')

@@ -63,10 +63,10 @@ export default function LanguageSettings({ onBack }: { onBack: () => void }) {
   const keyOf = (it: LangItem) => it.code ?? `x:${it.en}`
 
   return (
-    <SettingsScreen title="Language" onBack={onBack}>
+    <SettingsScreen title="Telegram.LanguageViewController" onBack={onBack}>
       {/* message translation */}
-      <Section caption="Message Translation" footer="Show a Translate button in the message menu to translate messages into your language.">
-        <Row label="Show Translate Button" toggle checked={showTranslateButton} onClick={() => update({ showTranslateButton: !showTranslateButton })} />
+      <Section caption="Translate.SectionTitle" footer="Translate.SectionCaption">
+        <Row label="ShowTranslateButton" toggle checked={showTranslateButton} onClick={() => update({ showTranslateButton: !showTranslateButton })} />
       </Section>
 
       {/* language list */}

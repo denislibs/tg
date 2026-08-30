@@ -30,6 +30,7 @@
 //     (`CONNECTION_ANIMATION_DURATION`), потому что пользуется ею только он.
 //   * `logger`/`DEBUG` — у нас нет вендорного логгера tweb.
 
+import type { LangPackKey } from '@/lang'
 import rootScope from '@lib/rootScope'
 import { getMiddleware } from '@helpers/middleware'
 import { RT } from '../core/realtime/events'
@@ -57,7 +58,7 @@ export default class ConnectionStatusComponent {
   private setStateTimeout = 0
   private rAF = 0
   /** Последнее, что реально показано, — чтобы перерисовать его на смене языка. */
-  private lastText: { key: string; timerSpan?: HTMLElement } | undefined
+  private lastText: { key: LangPackKey; timerSpan?: HTMLElement } | undefined
   private unsubscribeLang: (() => void) | undefined
   // Живые интервалы отсчёта — только ради `destroy()`, см. комментарий там же.
   private timerIntervals = new Set<number>()
@@ -210,7 +211,7 @@ export default class ConnectionStatusComponent {
    * аргументы: на смене языка автомату нужно перерисовать ТО ЖЕ состояние
    * (см. подписку на i18n в `construct`).
    */
-  private setStatusText = (key: string, timerSpan?: HTMLElement) => {
+  private setStatusText = (key: LangPackKey, timerSpan?: HTMLElement) => {
     this.lastText = { key, timerSpan }
     const text = useI18nStore.getState().t(key)
     // Ключ дедупа — пара «ключ i18n + показанный текст», а у tweb это один
@@ -228,7 +229,7 @@ export default class ConnectionStatusComponent {
   }
 
   /** tweb :120-124 — текст ставится не сейчас, а когда дойдёт до показа. */
-  private wrapSetStatusText = (key: string, timerSpan?: HTMLElement) => {
+  private wrapSetStatusText = (key: LangPackKey, timerSpan?: HTMLElement) => {
     return () => this.setStatusText(key, timerSpan)
   }
 
@@ -258,15 +259,15 @@ export default class ConnectionStatusComponent {
           this.timerIntervals.add(interval)
           setTime()
 
-          setText = this.wrapSetStatusText('Reconnect in %ds', timerSpan) // tweb :167
+          setText = this.wrapSetStatusText('ConnectionStatus.ReconnectInPlain', timerSpan) // tweb :167
         } else {
-          setText = this.wrapSetStatusText('Reconnecting...') // tweb :170
+          setText = this.wrapSetStatusText('ConnectionStatus.Reconnecting') // tweb :170
         }
       } else {
-        setText = this.wrapSetStatusText('Waiting for network...') // tweb :173
+        setText = this.wrapSetStatusText('ConnectionStatus.Waiting') // tweb :173
       }
     } else if (this.updating) {
-      setText = this.wrapSetStatusText('Updating...') // tweb :176
+      setText = this.wrapSetStatusText('Updating') // tweb :176
     } else {
       setText = this.wrapSetStatusText('Search') // tweb :178
     }

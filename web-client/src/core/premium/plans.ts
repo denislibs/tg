@@ -10,14 +10,14 @@ export interface PremiumPlan {
   /** total price in USD cents */
   priceCents: number
   /** i18n key for the plan name */
-  labelKey: string
+  labelKey: LangPackKey
 }
 
 // Ordered as shown in the checkout (best value first), like tweb.
 export const PREMIUM_PLANS: PremiumPlan[] = [
-  { id: '12m', months: 12, priceCents: 4499, labelKey: 'Annual' },
-  { id: '6m', months: 6, priceCents: 2499, labelKey: '6 Months' },
-  { id: '1m', months: 1, priceCents: 499, labelKey: 'Monthly' },
+  { id: '12m', months: 12, priceCents: 4499, labelKey: 'PremiumTierAnnual' },
+  { id: '6m', months: 6, priceCents: 2499, labelKey: 'Premium.Tier.SixMonths' },
+  { id: '1m', months: 1, priceCents: 499, labelKey: 'PremiumTierMonthly' },
 ]
 
 export function planById(id: PremiumPlanId): PremiumPlan {
@@ -41,3 +41,4 @@ export function discountPct(p: PremiumPlan): number {
   const ratio = perMonthCents(p) / monthly.priceCents
   return Math.round((1 - ratio) * 100)
 }
+import type { LangPackKey } from '@/lang'

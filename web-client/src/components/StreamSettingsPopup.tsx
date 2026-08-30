@@ -4,6 +4,7 @@
 // строку «Сбросить ключ» и кнопку «Начать»/«Закончить трансляцию». Два режима:
 // active=false → «Транслировать через…» + START STREAMING; active=true →
 // «Настройки трансляции» + END LIVE STREAM.
+import type { LangPackKey } from '@/lang'
 import { useState, type ReactNode } from 'react'
 import Popup from '../shared/ui/Popup'
 import Text from '../shared/ui/Text'
@@ -23,7 +24,7 @@ interface Props {
 // Строка данных (URL/Key): клик копирует значение и показывает тост.
 function DataRow({ icon, label, value, masked, onCopy, right }: {
   icon: IconName
-  label: string
+  label: LangPackKey
   value: string
   masked?: boolean
   onCopy: () => void
@@ -47,7 +48,7 @@ export default function StreamSettingsPopup({ chatId, active, onClose }: Props) 
   const { url, key, busy, revoke, onAction } = useLivestreamSettings(chatId, active, onClose)
   const [keyVisible, setKeyVisible] = useState(false)
 
-  const copy = (value: string, toast: string) => {
+  const copy = (value: string, toast: LangPackKey) => {
     if (!value) return
     void navigator.clipboard?.writeText(value).then(() => rootScope.dispatchEvent('ui:toast', t(toast))).catch(() => {})
   }
@@ -56,7 +57,7 @@ export default function StreamSettingsPopup({ chatId, active, onClose }: Props) 
   const maskedKey = key ? key.slice(0, 20).replace(/./g, '·') : ''
 
   return (
-    <Popup open title={t(active ? 'Stream Settings' : 'Stream With...')} onClose={onClose} width={420}>
+    <Popup open title={t(active ? 'Rtmp.StreamPopup.TitleSettings' : 'Rtmp.StreamPopup.Title')} onClose={onClose} width={420}>
       <div className={s.body}>
         <Text size={14} color="var(--secondary-text-color)" className={s.desc}>
           {t('Rtmp.StreamPopup.Description')}
@@ -65,16 +66,16 @@ export default function StreamSettingsPopup({ chatId, active, onClose }: Props) 
         <div className={s.data}>
           <DataRow
             icon="link"
-            label={t('Rtmp.StreamPopup.ServerURL')}
+            label="Rtmp.StreamPopup.ServerURL"
             value={url}
-            onCopy={() => copy(url, 'URL copied to clipboard')}
+            onCopy={() => copy(url, 'Rtmp.StreamPopup.URLCopied')}
           />
           <DataRow
             icon="lock"
-            label={t('Rtmp.StreamPopup.StreamKey')}
+            label="Rtmp.StreamPopup.StreamKey"
             value={keyVisible ? key : maskedKey}
             masked={!keyVisible}
-            onCopy={() => copy(key, 'Key copied to clipboard')}
+            onCopy={() => copy(key, 'Rtmp.StreamPopup.KeyCopied')}
             right={
               <button
                 className={s.eye}
@@ -103,7 +104,7 @@ export default function StreamSettingsPopup({ chatId, active, onClose }: Props) 
           onClick={onAction}
           type="button"
         >
-          {t(active ? 'END LIVE STREAM' : 'START STREAMING')}
+          {t(active ? 'Rtmp.StreamPopup.EndLiveStream' : 'Rtmp.StreamPopup.StartStreaming')}
         </button>
       </div>
     </Popup>

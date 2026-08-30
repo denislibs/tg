@@ -16,6 +16,7 @@
  * порта). Как и у `buttonIcon.ts`: двойник уйдёт вместе с последним
  * React-экраном, который его рисует, а не отдельным сносом.
  */
+import type { LangPackKey } from '@/lang'
 import Icon from '@components/icon'
 import type { IconName } from '@core/tgico-icons'
 import ripple from '@components/ripple'
@@ -27,7 +28,7 @@ export type ButtonOptions = Partial<{
   onlyMobile: true
   icon: IconName
   rippleSquare: true
-  text: string
+  text: LangPackKey
   disabled: boolean
   asDiv: boolean
   asLink: boolean

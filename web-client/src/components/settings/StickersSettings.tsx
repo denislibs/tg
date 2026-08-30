@@ -55,17 +55,17 @@ export default function StickersSettings({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <SettingsScreen title="Stickers and Emoji" onBack={onBack} zIndex={50}>
+    <SettingsScreen title="StickersName" onBack={onBack} zIndex={50}>
       <Section>
         <Row
-          label="Loop Animated Stickers"
+          label="InstalledStickers.LoopAnimated"
           toggle
           checked={loopStickers}
           onClick={() => update({ loopStickers: !loopStickers })}
         />
       </Section>
 
-      <Section caption="My Sticker Sets">
+      <Section caption="Stickers.MySets">
         {(mySets ?? []).map((set) => (
           <EntryRow
             key={set.id}
@@ -75,10 +75,10 @@ export default function StickersSettings({ onBack }: { onBack: () => void }) {
             onRemove={() => uninstall(set)}
           />
         ))}
-        {mySets != null && mySets.length === 0 && <Row label="No sticker sets installed" />}
+        {mySets != null && mySets.length === 0 && <Row label="Stickers.NoSets" />}
       </Section>
 
-      <Section caption="Add Sticker Sets">
+      <Section caption="Stickers.AddSets">
         <div style={{ padding: '8px 16px' }}>
           <input
             value={q}

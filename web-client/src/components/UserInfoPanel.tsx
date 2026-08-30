@@ -1,3 +1,4 @@
+import type { LangPackKey } from '@/lang'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import IconButton from '../shared/ui/IconButton'
@@ -100,7 +101,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   }, [open])
   const isSaved = chat.type === 'saved'
   // группы — таб «Участники», избранное — «Чаты» (tweb savedDialogs first), остальные — «Медиа»
-  const [tab, setTab] = useState(chat.type === 'group' ? 'Members' : isSaved ? 'Chats' : 'Media')
+  const [tab, setTab] = useState<LangPackKey>(chat.type === 'group' ? 'PeerMedia.Members' : isSaved ? 'FilterChats' : 'SharedMediaTab2')
 
   // «Избранное»: сохранённые диалоги (группировка по источнику пересылки)
   const savedDialogs = useSavedDialogs(isSaved)
@@ -150,7 +151,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
     refreshMembers,
   } = useGroupInfo(chat)
 
-  const title = isSaved ? 'Saved Messages' : isChannel ? 'Channel Info' : isGroup ? 'Group Info' : 'User Info'
+  const title = isSaved ? 'SavedMessages' : isChannel ? 'Profile.Info.Channel' : isGroup ? 'Profile.Info.Group' : 'Profile.Info.User'
 
   // ── аватар (tweb peerProfileAvatars): по дефолту свёрнут в круг (collapsed);
   // клик разворачивает в большое фото на всю ширину (unfold), скролл вниз
@@ -195,9 +196,9 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
 
   // счётчики табов шаред-медиа для подзаголовка залитой шапки (tweb onLengthChange)
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({})
-  const activeCount = tab === 'Members'
+  const activeCount = tab === 'PeerMedia.Members'
     ? realMembers?.length
-    : tab === 'Chats'
+    : tab === 'FilterChats'
       ? savedDialogs?.length
       : tabCounts[tab]
 
@@ -350,7 +351,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
 
   // Клик по инфо-строке копирует значение + глобальный тост (tweb peerProfile:
   // copyTextToClipboard + toast(PhoneCopied/UsernameCopied/BioCopied)).
-  const copyInfo = (value: string, toastKey: string) => {
+  const copyInfo = (value: string, toastKey: LangPackKey) => {
     void navigator.clipboard.writeText(value)
     rootScope.dispatchEvent('ui:toast', t(toastKey))
   }
@@ -405,7 +406,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
             type="button"
             className="btn-icon sidebar-close-button"
             onClick={filled ? scrollBackToProfile : onClose}
-            aria-label={t(filled ? 'Back' : 'Close')}
+            aria-label={t(filled ? 'Common.Back' : 'Close')}
           >
             <div className={classNames('animated-close-icon', filled ? 'state-back' : '')} />
           </button>
@@ -548,7 +549,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
                     label={l.value}
                     sublabel={l.label}
                     translate={false}
-                    onClick={() => copyInfo(l.value, 'Link copied to clipboard.')}
+                    onClick={() => copyInfo(l.value, 'LinkCopied')}
                   />
                 ))}
               </>
@@ -561,7 +562,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
                   label={inviteShort}
                   sublabel={t('SetUrlPlaceholder')}
                   translate={false}
-                  onClick={() => copyInfo(inviteUrl, 'Link copied to clipboard.')}
+                  onClick={() => copyInfo(inviteUrl, 'LinkCopied')}
                   right={
                     <button
                       type="button"
@@ -586,7 +587,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
                     label={infoPhone}
                     sublabel={t('Phone')}
                     translate={false}
-                    onClick={() => copyInfo(infoPhone, 'Phone copied to clipboard')}
+                    onClick={() => copyInfo(infoPhone, 'PhoneCopied')}
                   />
                 )}
                 {infoUsername && (
@@ -595,7 +596,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
                     label={`@${infoUsername}`}
                     sublabel={t('Username')}
                     translate={false}
-                    onClick={() => copyInfo(`@${infoUsername}`, 'Username copied to clipboard')}
+                    onClick={() => copyInfo(`@${infoUsername}`, 'UsernameCopied')}
                   />
                 )}
                 {infoBio && (
@@ -605,7 +606,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
                     sublabel={t('UserBio')}
                     translate={false}
                     multiline
-                    onClick={() => copyInfo(infoBio, 'Bio copied to clipboard')}
+                    onClick={() => copyInfo(infoBio, 'BioCopied')}
                   />
                 )}
                 {profile?.fullUser.birthday && (
@@ -630,7 +631,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
             {isSecret && (
               <Row
                 icon={<TgIcon name="key" size={24} />}
-                label="Encryption Key"
+                label="SecretChat.EncryptionKey"
                 onClick={() => setKeyPopupOpen(true)}
               />
             )}

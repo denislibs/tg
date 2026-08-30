@@ -1,3 +1,4 @@
+import type { LangPackKey } from '@/lang'
 import { useEffect, useRef, useState } from 'react'
 import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
@@ -134,19 +135,19 @@ export default function MainMenu({
 
   // Пункты подменю «Ещё» (tweb createMoreSubmenu). «Версию A» опускаем —
   // у нас одна версия, переключение вело бы на сторонний сайт.
-  const moreItems: { icon: string; label: string; onClick: () => void; show?: boolean }[] = [
-    { icon: 'darkmode', label: 'Dark Mode', onClick: () => { onToggleMode?.(); close() } },
+  const moreItems: { icon: string; label: LangPackKey; onClick: () => void; show?: boolean }[] = [
+    { icon: 'darkmode', label: 'DarkMode', onClick: () => { onToggleMode?.(); close() } },
     {
       icon: 'animations',
-      label: reduceMotion ? 'Enable Animations' : 'Disable Animations',
+      label: reduceMotion ? 'EnableAnimations' : 'DisableAnimations',
       onClick: () => { update({ reduceMotion: !reduceMotion }); close() },
     },
-    { icon: 'help', label: 'Telegram Features', onClick: () => openUrl('https://telegram.org/tour') },
-    { icon: 'bug', label: 'Report Bug', onClick: () => openUrl('https://bugs.telegram.org/?tag_ids=40&sort=time') },
-    { icon: 'add', label: 'Install App', onClick: () => { void usePwaStore.getState().install(); close() }, show: canInstall },
+    { icon: 'help', label: 'TelegramFeatures', onClick: () => openUrl('https://telegram.org/tour') },
+    { icon: 'bug', label: 'ReportBug', onClick: () => openUrl('https://bugs.telegram.org/?tag_ids=40&sort=time') },
+    { icon: 'add', label: 'PWA.Install', onClick: () => { void usePwaStore.getState().install(); close() }, show: canInstall },
     {
       icon: 'pip',
-      label: 'Picture in Picture',
+      label: 'Pip.Title',
       onClick: () => {
         const labels = {
           title: t('Pip.ActiveTitle'),

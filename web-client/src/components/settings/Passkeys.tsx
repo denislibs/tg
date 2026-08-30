@@ -60,12 +60,12 @@ export default function Passkeys({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <SettingsScreen title="Passkeys" onBack={onBack}>
+    <SettingsScreen title="Privacy.Passkeys" onBack={onBack}>
       <Section
-        caption="Passkeys"
-        footer="Passkeys let you sign in without a password, using your fingerprint, face or device PIN."
+        caption="Privacy.Passkeys"
+        footer="Passkeys.Caption"
       >
-        <Row icon={<TgIcon name="add" size={24} />} label="Add a Passkey" accent onClick={() => void add()} />
+        <Row icon={<TgIcon name="add" size={24} />} label="Passkeys.Add" accent onClick={() => void add()} />
       </Section>
       {error && (
         <Text size={13.5} color="#ff595a" style={{ padding: '0 24px' }}>{error}</Text>

@@ -20,6 +20,7 @@
 // ровно как в tweb, где `sendAvatar()` живёт в ветке `auth.authorization`.
 // Ошибку tweb не выносит отдельной строкой: текст уезжает в надпись кнопки
 // (`setSignUpKey(err.type)`) — здесь так же.
+import type { LangPackKey } from '@/lang'
 import { useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import TgIcon from '../../TgIcon'
@@ -56,7 +57,7 @@ export default function SignUpCard({ token, onTokenLost, onComplete }: SignUpCar
   const [first, setFirst] = useState('')
   const [last, setLast] = useState('')
   const [busy, setBusy] = useState(false)
-  const [errorKey, setErrorKey] = useState('')
+  const [errorKey, setErrorKey] = useState<LangPackKey | ''>('')
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -109,7 +110,7 @@ export default function SignUpCard({ token, onTokenLost, onComplete }: SignUpCar
   const submit = async () => {
     if (busy || tooLong) return
     if (!first.trim()) {
-      setErrorKey('Please enter your name')
+      setErrorKey('Login.Register.NameRequired')
       return
     }
     setBusy(true)
@@ -128,12 +129,12 @@ export default function SignUpCard({ token, onTokenLost, onComplete }: SignUpCar
     }
     setErrorKey(
       res.error === 'first_name_required'
-        ? 'Please enter your name'
+        ? 'Login.Register.NameRequired'
         : res.error === 'name_too_long'
-          ? 'Name is too long'
+          ? 'Login.Register.NameTooLong'
           : res.error === 'too_many_requests'
-            ? 'Too many attempts. Please try again later.'
-            : 'Something went wrong. Try again.',
+            ? 'Login.Error.FloodWait'
+            : 'Login.Error.Generic',
     )
   }
 

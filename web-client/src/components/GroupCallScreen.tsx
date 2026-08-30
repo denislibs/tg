@@ -109,7 +109,7 @@ export default function GroupCallScreen({ chatName }: { chatName: string }) {
               <div className={s.rowBody}>
                 <Text noWrap size={15} weight={600} color="#fff">{nameOf(id)}</Text>
                 <Text size={13} color={p?.muted ? '#aaa' : '#5CC85E'}>
-                  {t(p?.muted ? 'muted' : 'listening')}
+                  {t(p?.muted ? 'VoiceChat.Status.Muted' : 'VoiceChat.Status.Listening')}
                 </Text>
               </div>
               <TgIcon name={p?.muted ? 'microphone_crossed_filled' : 'microphone_filled'} size={20} color={p?.muted ? '#aaa' : '#5CC85E'} />

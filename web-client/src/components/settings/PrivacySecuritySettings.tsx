@@ -2,6 +2,7 @@
 // privacyAndSecurity): секция безопасности (чёрный список, автоудаление,
 // код-пароль, облачный пароль, ключи доступа, сеансы) + секция privacy-правил
 // с живыми значениями и счётчиками исключений.
+import type { LangPackKey } from '@/lang'
 import { useEffect, useState, type ReactNode } from 'react'
 import TgIcon from '../TgIcon'
 import { SettingsScreen, Section, Row } from './kit'
@@ -21,15 +22,15 @@ import { toastNew } from '../toast'
 import { usePrivacyStore } from '../../stores/privacyStore'
 import type { PrivacyRule as Rule } from '../../core/managers/privacyManager'
 
-const VALUE_LABEL: Record<string, string> = {
-  everybody: 'Everybody',
-  contacts: 'My Contacts',
-  nobody: 'Nobody',
+const VALUE_LABEL: Record<string, LangPackKey> = {
+  everybody: 'PrivacySettingsController.Everbody',
+  contacts: 'PrivacySettingsController.MyContacts',
+  nobody: 'PrivacySettingsController.Nobody',
 }
 
 // Подпись значения правила: «Мои контакты (+2, -1)» (tweb updatePrivacyRow).
-function ruleSubtitle(rule: Rule, t: (s: string) => string): string {
-  let label = t(VALUE_LABEL[rule.value] ?? rule.value)
+function ruleSubtitle(rule: Rule, t: (key: LangPackKey) => string): string {
+  let label = t(VALUE_LABEL[rule.value] ?? (rule.value as LangPackKey))
   const parts: string[] = []
   if (rule.denyUserIds.length && rule.value !== 'nobody') parts.push(`-${rule.denyUserIds.length}`)
   if (rule.allowUserIds.length && rule.value !== 'everybody') parts.push(`+${rule.allowUserIds.length}`)
@@ -38,18 +39,18 @@ function ruleSubtitle(rule: Rule, t: (s: string) => string): string {
 }
 
 // Порядок секции Privacy (tweb privacyAndSecurity.tsx, без premium/gifts).
-const RULE_ROWS = [
-  'Phone Number',
-  'Last Seen & Online',
-  'Profile Photo',
-  'Bio',
-  'Calls',
-  'Forwarded Messages',
-  'Groups & Channels',
-  'Voice Messages',
-  'Messages',
+const RULE_ROWS: LangPackKey[] = [
+  'PrivacyPhone',
+  'PrivacyLastSeen',
+  'PrivacyProfilePhoto',
+  'UserBio',
+  'PrivacySettings.VoiceCalls',
+  'PrivacySettings.Forwards',
+  'PrivacySettings.Groups',
+  'PrivacyVoiceMessages',
+  'SearchMessages',
   'Birthday',
-  'Read Time',
+  'PrivacyReadTime',
 ]
 
 export default function PrivacySecuritySettings({ onBack }: { onBack: () => void }) {
@@ -85,17 +86,17 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
   const renderSub = (): ReactNode => {
     if (!sub) return null
     const back = () => setSub(null)
-    if (sub in RULE_META) return <PrivacyRule title={sub} onBack={back} />
+    if (sub in RULE_META) return <PrivacyRule title={sub as LangPackKey} onBack={back} />
     switch (sub) {
-      case 'Blocked Users':
+      case 'BlockedUsers':
         return <BlockedUsers onBack={back} />
-      case 'Two-Step Verification':
+      case 'TwoStepVerification':
         return <TwoStepVerification onBack={back} />
-      case 'Passkeys':
+      case 'Privacy.Passkeys':
         return <Passkeys onBack={back} />
-      case 'Auto-Delete Messages':
+      case 'AutoDeleteMessages':
         return <AutoDeleteMessages onBack={back} />
-      case 'Passcode Lock':
+      case 'PasscodeLock.Item.Title':
         return <PasscodeLock onBack={back} />
     }
     return null
@@ -105,37 +106,37 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
   const passcodeEnabled = useSettingsStore((st) => st.passcodeEnabled)
 
   return (
-    <SettingsScreen title="Privacy and Security" onBack={onBack} zIndex={50} sub={renderSub()}>
-      <Section footer="Manage your sessions on all your devices.">
+    <SettingsScreen title="PrivacySettings" onBack={onBack} zIndex={50} sub={renderSub()}>
+      <Section footer="SessionsInfo">
         <Row
           icon={<TgIcon name="deleteuser" size={24} />}
-          label="Blocked Users"
+          label="BlockedUsers"
           value={blockedValue}
-          onClick={() => setSub('Blocked Users')}
+          onClick={() => setSub('BlockedUsers')}
         />
         <Row
           icon={<TgIcon name="auto_delete_circle_clock" size={24} />}
-          label="Auto-Delete Messages"
+          label="AutoDeleteMessages"
           value={autoDelete == null ? undefined : autoDeleteLabel(autoDelete, t)}
-          onClick={() => setSub('Auto-Delete Messages')}
+          onClick={() => setSub('AutoDeleteMessages')}
         />
         <Row
           icon={<TgIcon name="key" size={24} />}
-          label="Passcode Lock"
-          value={t(passcodeEnabled ? 'On' : 'Off')}
-          onClick={() => setSub('Passcode Lock')}
+          label="PasscodeLock.Item.Title"
+          value={t(passcodeEnabled ? 'PrivacyAndSecurity.Item.On' : 'Off')}
+          onClick={() => setSub('PasscodeLock.Item.Title')}
         />
         <Row
           icon={<TgIcon name="lock" size={24} />}
-          label="Two-Step Verification"
-          value={pwEnabled == null ? undefined : t(pwEnabled ? 'On' : 'Off')}
-          onClick={() => setSub('Two-Step Verification')}
+          label="TwoStepVerification"
+          value={pwEnabled == null ? undefined : t(pwEnabled ? 'PrivacyAndSecurity.Item.On' : 'Off')}
+          onClick={() => setSub('TwoStepVerification')}
         />
         {/* Как в tweb: без ключей клик открывает интро-попап, с ключами — список */}
         <Row
           icon={<TgIcon name="faceid" size={24} />}
-          label="Passkeys"
-          onClick={() => (passkeysCount > 0 ? setSub('Passkeys') : setPasskeyIntro(true))}
+          label="Privacy.Passkeys"
+          onClick={() => (passkeysCount > 0 ? setSub('Privacy.Passkeys') : setPasskeyIntro(true))}
         />
         {/* «Активные сессии» — та же портированная вкладка слайдера, что и
             «Устройства» в корне настроек (`sidebarLeft/tabs/activeSessions.solid.tsx`),
@@ -144,14 +145,14 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
             вход в те же сессии есть и в оригинале — `newAuthorization.tsx:116`. */}
         <Row
           icon={<TgIcon name="activesessions" size={24} />}
-          label="Active Sessions"
+          label="SessionsTitle"
           onClick={() => {
             openActiveSessionsTab(managers).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
           }}
         />
       </Section>
 
-      <Section caption="Privacy" footer="Change who can send you messages.">
+      <Section caption="PrivacyTitle" footer="Privacy.MessagesCaption">
         {RULE_ROWS.map((label) => (
           <Row
             key={label}
@@ -163,19 +164,19 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
       </Section>
 
       {/* Облачные черновики (tweb PrivacyDeleteCloudDrafts + confirm-попап) */}
-      <Section caption="Chats">
+      <Section caption="FilterChats">
         <Row
           icon={<TgIcon name="delete" size={24} />}
-          label="Delete All Cloud Drafts"
+          label="PrivacyDeleteCloudDrafts"
           accent
           onClick={() => setClearDrafts(true)}
         />
       </Section>
       {clearDrafts && (
         <ConfirmDialog
-          title={t('AreYouSureClearDraftsTitle')}
-          text={t('AreYouSureClearDrafts')}
-          action={t('Delete')}
+          title="AreYouSureClearDraftsTitle"
+          text="AreYouSureClearDrafts"
+          action="Delete"
           danger
           onConfirm={() => {
             // Черновики — поля диалогов, поэтому после очистки список
@@ -187,19 +188,19 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
       )}
 
       {/* Удаление аккаунта (tweb: красная зона внизу privacyAndSecurity) */}
-      <Section footer="This will delete your account and all your data. Your messages will remain but appear as sent by a «Deleted Account».">
+      <Section footer="DeleteAccount.Caption">
         <Row
           icon={<TgIcon name="delete" size={24} />}
-          label="Delete My Account"
+          label="DeleteAccount.Action"
           danger
           onClick={() => setDeleteAccount(true)}
         />
       </Section>
       {deleteAccount && (
         <ConfirmDialog
-          title={t('DeleteAccount.Title')}
-          text={t('DeleteAccount.Text')}
-          action={t('Delete')}
+          title="DeleteAccount.Title"
+          text="DeleteAccount.Text"
+          action="Delete"
           danger
           onConfirm={() => {
             // сервер отзывает все сессии; после перезагрузки me()→null → экран входа
@@ -216,7 +217,7 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
         onCreated={() => {
           setPasskeyIntro(false)
           setPasskeysCount(1)
-          setSub('Passkeys')
+          setSub('Privacy.Passkeys')
         }}
       />
     </SettingsScreen>

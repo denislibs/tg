@@ -3,6 +3,7 @@
 // (гейт по разрешению браузера + кнопка Enable) → Sound (звук + громкость
 // с тестом на отпускание) → Sound Effects → Private Chats/Groups/Channels
 // (Notifications for… + Message Preview, хранятся на бэке).
+import type { LangPackKey } from '@/lang'
 import { useState } from 'react'
 import Text from '../../shared/ui/Text'
 import Slider from '../../shared/ui/Slider'
@@ -18,12 +19,12 @@ import { SettingsScreen, Section, Row } from './kit'
 import s from './NotificationsSettings.module.scss'
 
 const PERMISSION_FOOTER =
-  'Give Telegram permission to send notifications. You may need to refresh the page to see the changes.'
+  'Notifications.Default'
 
-const TYPE_SECTIONS: { name: string; typeText: string; key: NotifyChatType }[] = [
-  { name: 'Private Chats', typeText: 'Notifications for private chats', key: 'private' },
-  { name: 'Groups', typeText: 'Notifications for groups', key: 'groups' },
-  { name: 'Channels', typeText: 'Notifications for channels', key: 'channels' },
+const TYPE_SECTIONS: { name: LangPackKey; typeText: string; key: NotifyChatType }[] = [
+  { name: 'AutodownloadPrivateChats', typeText: 'NotificationsForPrivateChats', key: 'private' },
+  { name: 'ChatList.Filter.Groups', typeText: 'NotificationsForGroups', key: 'groups' },
+  { name: 'ChatList.Filter.Channels', typeText: 'NotificationsForChannels', key: 'channels' },
 ]
 
 export default function NotificationsSettings({ onBack }: { onBack: () => void }) {
@@ -59,16 +60,16 @@ export default function NotificationsSettings({ onBack }: { onBack: () => void }
   }
 
   return (
-    <SettingsScreen title="Notifications and Sounds" onBack={onBack}>
-      <Section caption="Web Notifications" footer={granted ? undefined : PERMISSION_FOOTER}>
+    <SettingsScreen title="AccountSettings.Notifications" onBack={onBack}>
+      <Section caption="Notifications.Web" footer={granted ? undefined : PERMISSION_FOOTER}>
         <Row
-          label="Show notifications"
+          label="Notifications.Show"
           toggle
           checked={granted && notifyDesktop}
           onClick={() => (granted ? update({ notifyDesktop: !notifyDesktop }) : requestPermission())}
         />
         <Row
-          label="Show offline notifications"
+          label="Notifications.Offline"
           toggle
           checked={granted && notifyPush}
           onClick={() => {
@@ -79,13 +80,13 @@ export default function NotificationsSettings({ onBack }: { onBack: () => void }
           }}
         />
         {!granted && (
-          <Row icon={<TgIcon name="unmute" size={24} />} label="Enable Notifications" accent onClick={requestPermission} />
+          <Row icon={<TgIcon name="unmute" size={24} />} label="Notifications.Enable" accent onClick={requestPermission} />
         )}
       </Section>
 
-      <Section caption="Sound" footer="Drag and release or click to test the volume.">
+      <Section caption="Notifications.Sound.Section" footer="Notifications.Sound.Caption">
         <Row
-          label="Notification Sound"
+          label="Notifications.Sound"
           toggle
           checked={notifySound}
           onClick={() =>
@@ -105,9 +106,9 @@ export default function NotificationsSettings({ onBack }: { onBack: () => void }
         </div>
       </Section>
 
-      <Section caption="Sound Effects">
+      <Section caption="Notifications.Sound.Effects">
         <Row
-          label="Message Sent"
+          label="Notifications.Sound.Sent"
           toggle
           checked={sentMessageSound}
           onClick={() => update({ sentMessageSound: !sentMessageSound })}
@@ -123,7 +124,7 @@ export default function NotificationsSettings({ onBack }: { onBack: () => void }
             onClick={() => updateType(sec.key, { muted: !settings[sec.key].muted })}
           />
           <Row
-            label="Message Preview"
+            label="MessagePreview"
             toggle
             checked={settings[sec.key].preview}
             onClick={() => updateType(sec.key, { preview: !settings[sec.key].preview })}

@@ -12,6 +12,7 @@
  * отзывают по hash, из неё выходят. По этому нулю вкладка и узнаёт свою
  * строку — единственную, которую нельзя завершить.
  */
+import type { LangPackKey } from '@/lang'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Authorization } from '@layer'
 import type { Managers } from '@/client/bootstrap'
@@ -250,7 +251,7 @@ describe('вкладка «Устройства» — порт tweb sidebarLeft/
     // внутри `tab.open()`, а не позже, как попап.
     const { managers } = makeManagers()
     const original = useI18nStore.getState().t
-    useI18nStore.setState({ t: (key: string) => (key === 'Terminate' ? 'Завершить' : original(key)) })
+    useI18nStore.setState({ t: (key: string) => (key === 'Terminate' ? 'Завершить' : original(key as LangPackKey)) })
     try {
       const tab = await openTab([current, other], managers)
       const menu = rightClick(tab.scrollable.container.querySelector('.row[data-hash="2"]')!)
@@ -286,7 +287,7 @@ describe('вкладка «Устройства» — порт tweb sidebarLeft/
     // `button.ts::Button`), а не сниматься один раз на открытии вкладки: смена
     // языка не перерисовывает уже построенный DOM, но попап строится позже.
     const original = useI18nStore.getState().t
-    useI18nStore.setState({ t: (key: string) => (key === 'Terminate' ? 'Завершить' : original(key)) })
+    useI18nStore.setState({ t: (key: string) => (key === 'Terminate' ? 'Завершить' : original(key as LangPackKey)) })
     try {
       tab.scrollable.container.querySelector<HTMLElement>('.row[data-hash="2"]')!
         .dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))

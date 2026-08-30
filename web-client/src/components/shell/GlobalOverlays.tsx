@@ -95,21 +95,21 @@ export default function GlobalOverlays({
           <div onClick={cancelQr} className={classNames(s.qrScrim, qrShown ? s.qrShown : '')} />
           <div
             role="dialog"
-            aria-label={t('Войти на новом устройстве?')}
+            aria-label={t('QrLogin.Confirm.Title')}
             className={classNames(s.qrCard, qrShown ? s.qrShown : '')}
           >
             <Text size={17} weight={600} color="var(--primary-text-color)" style={{ marginBottom: '8px' }}>
-              {t('Войти на новом устройстве?')}
+              {t('QrLogin.Confirm.Title')}
             </Text>
             <Text size={14.5} color="var(--secondary-text-color)" style={{ lineHeight: 1.5 }}>
-              {t('Подтвердите вход для нового устройства')}
+              {t('QrLogin.Confirm.Text')}
             </Text>
             <div className={s.qrActions}>
               <div role="button" tabIndex={0} onClick={cancelQr} className={classNames(s.qrBtn, s.qrCancel)}>
-                {t('Отмена')}
+                {t('Cancel')}
               </div>
               <div role="button" tabIndex={0} onClick={confirmQr} className={classNames(s.qrBtn, s.qrConfirm)}>
-                {t('Подтвердить')}
+                {t('QrLogin.Confirm.Action')}
               </div>
             </div>
           </div>

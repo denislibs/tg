@@ -18,6 +18,7 @@
 //  - поиск сдвигает панель вверх (`.is-searching` + `emoticons-will-move-*`);
 //  - нижние табы: search / emoji / stickers / gifs / delete, `.hide` по правилам
 //    index.ts:459-460. Все вкладки живут в DOM (`.tabs-tab.active` → display:flex).
+import type { LangPackKey } from '@/lang'
 import {
   memo,
   useCallback,
@@ -412,7 +413,7 @@ export default function EmojiDropdown({
 
   const frequent = recent.length ? recent : DEFAULT_FREQUENT
   const cats = useMemo(
-    () => [{ key: 'recent', label: 'Frequently Used', emojis: frequent }, ...CATEGORIES],
+    () => [{ key: 'recent', label: 'Emoji.Recent' as LangPackKey, emojis: frequent }, ...CATEGORIES],
     [frequent],
   )
 

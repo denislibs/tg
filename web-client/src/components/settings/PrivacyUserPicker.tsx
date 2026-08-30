@@ -6,6 +6,7 @@
 // Разметка — `shared/ui/PeerSelector`; вариант privacy в tweb это
 // `design: 'round', checkboxSide: 'right'` (addMembers.tsx:52-56), то есть тот
 // же `selector-round selector-right`, что у списков правой колонки.
+import type { LangPackKey } from '@/lang'
 import { useEffect, useMemo, useState } from 'react'
 import { SettingsScreen } from './kit'
 import PeerSelector from '../../shared/ui/PeerSelector'
@@ -25,8 +26,8 @@ export default function PrivacyUserPicker({
   onPick,
   onBack,
 }: {
-  title: string
-  placeholder?: string
+  title: LangPackKey
+  placeholder?: LangPackKey
   /** multi: чекбоксы + галочка-подтверждение; single: клик выбирает сразу */
   multi?: boolean
   initial?: number[]
@@ -87,7 +88,7 @@ export default function PrivacyUserPicker({
         selected={selected}
         onSelectedChange={setSelected}
         onPick={(p) => onPick?.(p.id)}
-        empty={{ title: 'No Results' }}
+        empty={{ title: 'SearchEmptyViewTitle' }}
       />
 
       {multi && changed && (

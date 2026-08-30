@@ -4,6 +4,7 @@
 // непустые медиа-табы Media/Files/Links/Music/Voice). Данные тянет per-filter
 // из mediaHistory, глобальный плеер — из audioStore, просмотрщик — vanilla-
 // вьювер (mediaViewer/openMediaViewer, Task 16).
+import type { LangPackKey } from '@/lang'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Text from '../../shared/ui/Text'
 import TgIcon from '../TgIcon'
@@ -53,12 +54,19 @@ import { useEvent } from '../../core/hooks/useEvent'
 import giftsGrid from '../stargifts/stargiftsGrid.module.scss'
 import profileList from '../stargifts/profileList.module.scss'
 
-const SHARED_TABS = ['Media', 'Files', 'Links', 'Music', 'Voice'] as const
+const SHARED_TABS = ['SharedMediaTab2', 'SharedFilesTab2', 'SharedLinksTab2', 'SharedMusicTab2', 'SharedVoiceTab2'] as const
 // Порядок узлов ряда — как в tweb (дамп 07-right-sidebar): сначала
 // Chats/Members, затем Gifts и медиа-табы. Скрытые несут `hide`, но остаются.
-const ALL_TABS = ['Chats', 'Members', 'Gifts', ...SHARED_TABS] as const
-const TAB_FILTER: Record<string, 'media' | 'files' | 'links' | 'music' | 'voice'> = {
-  Media: 'media', Files: 'files', Links: 'links', Music: 'music', Voice: 'voice',
+const ALL_TABS = ['FilterChats', 'PeerMedia.Members', 'SharedMedia.Gifts', ...SHARED_TABS] as const
+// Ключ строки ряда — он же идентификатор вкладки: своих английских имён у вкладок
+// больше нет (задача 6), и таблица фильтров ключуется тем же, чем ряд.
+type MediaFilter = 'media' | 'files' | 'links' | 'music' | 'voice'
+const TAB_FILTER: Record<(typeof SHARED_TABS)[number], MediaFilter> = {
+  SharedMediaTab2: 'media',
+  SharedFilesTab2: 'files',
+  SharedLinksTab2: 'links',
+  SharedMusicTab2: 'music',
+  SharedVoiceTab2: 'voice',
 }
 
 /**
@@ -70,7 +78,7 @@ const TAB_FILTER: Record<string, 'media' | 'files' | 'links' | 'music' | 'voice'
  * Подчёркивание активного рисует `i.menu-horizontal-div-item-background`,
  * своей полоски-индикатора у нас больше нет.
  */
-function SharedMediaTab({ name, active, hidden, onClick }: { name: string; active: boolean; hidden: boolean; onClick: () => void }) {
+function SharedMediaTab({ name, active, hidden, onClick }: { name: LangPackKey; active: boolean; hidden: boolean; onClick: () => void }) {
   const t = useT()
   const { onPointerDown, ripple } = useRipple()
   return (
@@ -89,8 +97,8 @@ function SharedMediaTab({ name, active, hidden, onClick }: { name: string; activ
 }
 
 export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs, gifts, onOpenGift, onSendGift, isChannel, canManageAdmins, onOpenPeer, onEditMember, navRef, stickyTop, onCount }: {
-  tab: string
-  onTab: (v: string) => void
+  tab: LangPackKey
+  onTab: (v: LangPackKey) => void
   chatId: number | null
   /** участники для первого таба (только реальные группы/каналы) */
   members?: RealMember[]
@@ -110,7 +118,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
   /** sticky-отступ табов под absolute-шапкой панели */
   stickyTop?: number
   /** счётчик загруженного таба — подзаголовок залитой шапки (tweb onLengthChange) */
-  onCount?: (tab: string, n: number) => void
+  onCount?: (tab: LangPackKey, n: number) => void
 }) {
   const t = useT()
   const [lang] = useLang()
@@ -134,7 +142,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
   const loadingRef = useRef(new Set<string>())
   // поколение кэша: инвалидация (новое сообщение) обесценивает in-flight ответы
   const genRef = useRef(0)
-  const filter = TAB_FILTER[tab]
+  const filter = TAB_FILTER[tab as (typeof SHARED_TABS)[number]] as MediaFilter | undefined
   const PAGE_SIZE = 30
 
   // Total-счётчики всех медиа-фильтров (tweb searchSuper counts): грузим один
@@ -154,7 +162,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
   }, [chatId, managers])
 
   // Счётчик подарков для залитой шапки (у медиа-табов он приходит из mediaHistory).
-  useEffect(() => { if (gifts) onCount?.('Gifts', gifts.length) }, [gifts, onCount])
+  useEffect(() => { if (gifts) onCount?.('SharedMedia.Gifts', gifts.length) }, [gifts, onCount])
 
   // Live: новое сообщение в открытом чате инвалидирует кэш табов — активный
   // таб перезагрузится и свежая отправка (голосовое/фото/…) появится сразу.
@@ -173,7 +181,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
   }, [winLen])
 
   // Догрузка следующей страницы фильтра (append) с offset = уже загружено.
-  const loadPage = (f: (typeof TAB_FILTER)[string] | undefined, forTab: string) => {
+  const loadPage = (f: MediaFilter | undefined, forTab: LangPackKey) => {
     if (chatId == null || !f || loadingRef.current.has(f)) return
     const cur = byFilterRef.current[f]
     if (cur && !cur.hasMore) return
@@ -208,7 +216,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId, filter, byFilter])
 
-  const entry = byFilter[filter]
+  const entry = filter ? byFilter[filter] : undefined
   const msgs = entry?.msgs
   const hasMore = entry?.hasMore ?? false
 
@@ -293,9 +301,9 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
   const mediaTabs = SHARED_TABS.filter((name) => (totals[TAB_FILTER[name]] ?? 0) > 0)
   // Подарки: таб есть у любого пользовательского профиля (tweb показывает
   // витрину и пустой — с приглашением подарить); у групп/каналов gifts == null.
-  const tabOrder = [
-    ...(savedDialogs ? ['Chats'] : members ? ['Members'] : []),
-    ...(gifts ? ['Gifts'] : []),
+  const tabOrder: LangPackKey[] = [
+    ...(savedDialogs ? (['FilterChats'] as const) : members ? (['PeerMedia.Members'] as const) : []),
+    ...(gifts ? (['SharedMedia.Gifts'] as const) : []),
     ...mediaTabs,
   ]
 
@@ -347,7 +355,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
           Список виртуальный (см. `SavedDialogsList`); заглушка пустого набора
           рендерится ВМЕСТО `ul`, а не внутри него — у виртуального `ul` своя
           геометрия под весь набор. */}
-      {tab === 'Chats' && savedDialogs && (
+      {tab === 'FilterChats' && savedDialogs && (
         <div className="search-super-content-container search-super-content-savedDialogs">
           <div className="sidebar-left-section-container">
             <div className="sidebar-left-section no-delimiter">
@@ -359,7 +367,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         </div>
       )}
 
-      {tab === 'Members' && members && (
+      {tab === 'PeerMedia.Members' && members && (
         <div className="search-super-content-container search-super-content-members">
           <div className="sidebar-left-section-container">
             <div className="sidebar-left-section no-delimiter">
@@ -416,7 +424,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
           `gridItem` — плитка, `itemPrice` — цена в звёздах, `itemFrom` —
           мини-аватар дарителя (аноним → `itemFromAnonymous`), `itemLock` —
           метка скрытого, `empty*` — пустое состояние из profileList. */}
-      {tab === 'Gifts' && gifts && (
+      {tab === 'SharedMedia.Gifts' && gifts && (
         gifts.length === 0 ? (
           <div className={profileList.empty}>
             <div className={profileList.emptyTitle}>{t('SharedMedia.Gifts.Empty')}</div>
@@ -458,13 +466,13 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         )
       )}
 
-      {msgs != null && msgs.length === 0 && tab !== 'Gifts' && empty}
+      {msgs != null && msgs.length === 0 && tab !== 'SharedMedia.Gifts' && empty}
 
       {/* Сетка медиа 1:1 с оригиналом (дамп 07-right-sidebar):
           `.search-super-content-media > .grid > .grid-item.search-super-item.media-container`,
           превью — `.grid-item-media`. `video-time` — плашка длительности
           (её же вьювер гасит на полёте мувера, FLOATING_CONTEXTS). */}
-      {tab === 'Media' && msgs != null && msgs.length > 0 && (
+      {tab === 'SharedMediaTab2' && msgs != null && msgs.length > 0 && (
         <div className="search-super-content-container search-super-content-media">
         <div className="grid">
           {msgs.map((m, i) => (
@@ -479,7 +487,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         </div>
       )}
 
-      {tab === 'Files' && msgs != null && msgs.length > 0 && (
+      {tab === 'SharedFilesTab2' && msgs != null && msgs.length > 0 && (
         <div className="search-super-content-container search-super-content-files">
         <div className="sidebar-left-section-container">
           <div className="sidebar-left-section no-delimiter">
@@ -520,7 +528,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         </div>
       )}
 
-      {tab === 'Links' && msgs != null && msgs.length > 0 && (
+      {tab === 'SharedLinksTab2' && msgs != null && msgs.length > 0 && (
         <div className="search-super-content-container search-super-content-links">
         <div className="sidebar-left-section-container">
           <div className="sidebar-left-section no-delimiter">
@@ -544,7 +552,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         </div>
       )}
 
-      {tab === 'Music' && msgs != null && msgs.length > 0 && (
+      {tab === 'SharedMusicTab2' && msgs != null && msgs.length > 0 && (
         <div className="search-super-content-container search-super-content-music">
         <div className="sidebar-left-section-container">
           <div className="sidebar-left-section no-delimiter">
@@ -577,7 +585,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         </div>
       )}
 
-      {tab === 'Voice' && msgs != null && msgs.length > 0 && (
+      {tab === 'SharedVoiceTab2' && msgs != null && msgs.length > 0 && (
         <div className="search-super-content-container search-super-content-voice">
         <div className="sidebar-left-section-container">
           <div className="sidebar-left-section no-delimiter">

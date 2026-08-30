@@ -14,6 +14,7 @@
  *    замена — `new Event('change', {bubbles: true, cancelable: true})`,
  *    поведение то же самое, просто без отдельного файла-обёртки на одну строку.
  */
+import type { LangPackKey } from '@/lang'
 import Icon from '@components/icon'
 import { useI18nStore } from '../i18n'
 
@@ -27,7 +28,7 @@ export default class RadioField {
     text?: string
     textElement?: HTMLElement | DocumentFragment
     /** переводимый ключ — идёт через `t()`, в отличие от `text` (уже готовая строка) */
-    langKey?: string
+    langKey?: LangPackKey
     name: string
     value?: string
     alignRight?: boolean

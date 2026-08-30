@@ -24,6 +24,7 @@
  * узел рисуется потоком страницы вместо прибитой снизу карточки. Порт
  * партиала — та же задача, что снимает остальные остатки волны.
  */
+import type { LangPackKey } from '@/lang'
 import OverlayClickHandler from '@helpers/overlayClickHandler'
 import { useI18nStore } from '../i18n'
 
@@ -87,7 +88,7 @@ export function toast(content: string | Node, onClose?: () => void, duration = 3
 // пользователя без всякого видимого повода. У tweb пустой строки не
 // подставляется вовсе; здесь то же самое гарантируется типом, а не рантайм-проверкой.
 export function toastNew(options: {
-  langPackKey: string
+  langPackKey: LangPackKey
   onClose?: () => void
   duration?: number
 }) {

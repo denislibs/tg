@@ -2,6 +2,7 @@
 // живой уровень микрофона, превью камеры и тумблер приёма звонков. Выбор
 // сохраняется в settings (speakerId/micId/cameraId/acceptCalls) — при
 // реализации звонков CallProvider читает эти deviceId.
+import type { LangPackKey } from '@/lang'
 import { useEffect, useRef, useState } from 'react'
 import Text from '../../shared/ui/Text'
 import { useT } from '../../i18n'
@@ -18,10 +19,10 @@ const DEVICE_KIND: Record<Kind, MediaDeviceKind> = {
   mic: 'audioinput',
   camera: 'videoinput',
 }
-const PICKER_TITLE: Record<Kind, string> = {
-  speaker: 'Speaker',
-  mic: 'Microphone',
-  camera: 'Camera',
+const PICKER_TITLE: Record<Kind, LangPackKey> = {
+  speaker: 'CallSettings.Speakers',
+  mic: 'CallSettings.Microphone',
+  camera: 'CallSettings.CameraSection',
 }
 
 export default function SpeakersCamera({ onBack }: { onBack: () => void }) {
@@ -126,28 +127,28 @@ export default function SpeakersCamera({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <SettingsScreen title="Speakers and Camera" onBack={onBack}>
-      <Section caption="Speaker">
-        <Row label="Playback device" value={deviceName('speaker')} onClick={() => setPicker('speaker')} />
+    <SettingsScreen title="AccountSettings.SpeakersAndCamera" onBack={onBack}>
+      <Section caption="CallSettings.Speakers">
+        <Row label="CallSettings.OutputDevice" value={deviceName('speaker')} onClick={() => setPicker('speaker')} />
       </Section>
 
-      <Section caption="Microphone">
-        <Row label="Recording device" value={deviceName('mic')} onClick={() => setPicker('mic')} />
+      <Section caption="CallSettings.Microphone">
+        <Row label="CallSettings.InputDevice" value={deviceName('mic')} onClick={() => setPicker('mic')} />
         <div className={s.levelTrack}>
           <div ref={levelRef} className={s.levelFill} />
         </div>
       </Section>
 
-      <Section caption="Camera">
-        <Row label="Device" value={deviceName('camera')} onClick={() => setPicker('camera')} />
+      <Section caption="CallSettings.CameraSection">
+        <Row label="CallSettings.Camera" value={deviceName('camera')} onClick={() => setPicker('camera')} />
         <div className={s.preview}>
           <video ref={videoRef} autoPlay muted playsInline className={s.video} />
         </div>
       </Section>
 
-      <Section footer="Turn this off to stop receiving calls and group video calls on this device.">
+      <Section footer="CallSettings.AcceptCalls.Caption">
         <Row
-          label="Accept calls on this device"
+          label="CallSettings.AcceptCalls"
           toggle
           checked={acceptCalls}
           onClick={() => update({ acceptCalls: !acceptCalls })}
@@ -180,6 +181,7 @@ function DevicePicker({
   onSave,
   onClose,
 }: {
+  /** Готовый текст, а не ключ: заголовок уезжает в `Popup`, который переводом не занимается. */
   title: string
   options: { id: string; label: string }[]
   selected: string

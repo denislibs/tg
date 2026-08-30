@@ -6,7 +6,7 @@ describe('toast', () => {
   afterEach(() => vi.useRealTimers())
 
   it('снимает узел по истечении показа', () => {
-    toastNew({ langPackKey: 'Sessions.Error' })
+    toastNew({ langPackKey: 'Error.AnError' })
     expect(document.querySelector('.toast')).not.toBeNull()
     vi.advanceTimersByTime(5000)
     expect(document.querySelector('.toast')).toBeNull()

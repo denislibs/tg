@@ -29,6 +29,7 @@
 //   • onEmptied (:104-106, SearchListLoader «текущий элемент удалён») — у
 //     нашего ListLoader события нет; удаление закрывает вьювер колбэком
 //     closeFromMedia (onDeleteClick ниже).
+import type { LangPackKey } from '@/lang'
 import { createElement } from 'react'
 import cancelEvent from '@helpers/dom/cancelEvent'
 import { attachClickEvent } from '@helpers/dom/clickEvent'
@@ -287,7 +288,7 @@ export default class AppMediaViewer extends AppMediaViewerBase<'caption', 'delet
 
     // i18n вне React — как connectionStatus.ts: строка на момент постройки
     const t = useI18nStore.getState().t
-    const menuItem = (icon: IconName, text: string, onClick: () => void, danger = false) => {
+    const menuItem = (icon: IconName, text: LangPackKey, onClick: () => void, danger = false) => {
       const el = document.createElement('div')
       el.className = 'btn-menu-item rp-overflow' + (danger ? ' danger' : '')
       el.append(Icon(icon, 'btn-menu-item-icon'))
@@ -304,7 +305,7 @@ export default class AppMediaViewer extends AppMediaViewerBase<'caption', 'delet
 
     // порядок и тексты пунктов — tweb index.ts:147-160
     this.btnMenuForward = menuItem('forward', 'Forward', this.onForwardClick)
-    this.btnMenuDownload = menuItem('download', 'Download', this.onDownloadClick)
+    this.btnMenuDownload = menuItem('download', 'MediaViewer.Context.Download', this.onDownloadClick)
     this.btnMenuDelete = menuItem('delete', 'Delete', this.onDeleteClick, true)
     menu.append(this.btnMenuForward, this.btnMenuDownload, this.btnMenuDelete)
 

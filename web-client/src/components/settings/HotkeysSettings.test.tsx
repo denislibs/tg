@@ -18,7 +18,9 @@ describe('HotkeysSettings', () => {
 
   it('показывает новые/ключевые действия', () => {
     render(<HotkeysSettings onBack={() => {}} />)
-    for (const action of ['Link', 'Edit Last Message', 'Next Chat', 'Saved Messages', 'Undo', 'Redo', 'Lock the App']) {
+    // Тексты — из английского источника `src/lang.ts` (задача 6): у ключей
+    // `KeyboardShortcuts.Action.*` регистр свой, «Edit last message», а не «Edit Last Message».
+    for (const action of ['Add Link', 'Edit last message', 'Next chat', 'Saved Messages', 'Undo', 'Redo', 'Lock the App']) {
       expect(screen.getByText(action)).toBeTruthy()
     }
   })

@@ -2,6 +2,7 @@
 // tweb dataAndStorage/storageQuota.tsx: подсчёт объёма с разбивкой по
 // content-type, очистка, синк настроек TTL/лимита в service worker.
 // Ниже — второй жилец модуля (Task 6): зеркало objectURL'ов той же корзины.
+import type { LangPackKey } from '@/lang'
 import type { MediaUrlEvt } from './managers/mediaManager'
 import { isLottieMime } from './stickers/tgs'
 
@@ -115,7 +116,7 @@ export function syncCacheSettingsToSW(cacheTTL: number, cacheSize: number): void
 
 // Порт tweb helpers/formatBytes: decimals='auto' → i-1 знаков (КБ целыми,
 // МБ с одним знаком, ГБ с двумя), фиксированное число знаков — как передано.
-export function formatBytes(bytes: number, t: (s: string) => string, decimals: number | 'auto' = 'auto'): string {
+export function formatBytes(bytes: number, t: (key: LangPackKey) => string, decimals: number | 'auto' = 'auto'): string {
   const units = [t('Unit.Bytes'), t('Unit.Kilobytes'), t('Unit.Megabytes'), t('Unit.Gigabytes')]
   if (bytes === 0) return `0 ${units[0]}`
   const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)))

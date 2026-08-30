@@ -2,6 +2,7 @@
 // Кластер пригласительных ссылок (tweb chatInviteLinks / editChatInviteLink /
 // chatInviteLink): список ссылок, создание/редактирование и детали со списком
 // вступивших.
+import type { LangPackKey } from '@/lang'
 import { useEffect, useState } from 'react'
 import { SettingsScreen, Section, Row } from '../../settings/kit'
 import Text from '../../../shared/ui/Text'
@@ -20,7 +21,7 @@ import UserAvatar from '../../UserAvatar'
 
 // expiryLabel описывает срок действия ссылки: «истекла» для прошедшей даты,
 // «истекает <дата>» для будущей, пусто — бессрочная.
-function expiryLabel(t: (k: string) => string, expiresAt?: string): string | undefined {
+function expiryLabel(t: (key: LangPackKey) => string, expiresAt?: string): string | undefined {
   if (!expiresAt) return undefined
   const ts = Date.parse(expiresAt)
   if (Number.isNaN(ts)) return undefined
@@ -29,7 +30,7 @@ function expiryLabel(t: (k: string) => string, expiresAt?: string): string | und
 }
 
 // Подзаголовок строки ссылки (tweb createRow: joins • limit • expiry).
-function linkSubtitle(t: (k: string) => string, l: InviteLink): string {
+function linkSubtitle(t: (key: LangPackKey) => string, l: InviteLink): string {
   if (l.revoked) return t('ExportedInvitation.Status.Revoked')
   const parts: string[] = []
   if (l.uses > 0) {
@@ -67,7 +68,7 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
 
   return (
     <SettingsScreen
-      title="Invite Links"
+      title="InviteLinks"
       onBack={onBack}
       zIndex={70}
       sub={editing ? (
@@ -100,7 +101,7 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
         </div>
       </div>
 
-      <Section caption="Invite Link">
+      <Section caption="InviteLink">
         {primary ? (
           <>
             <Row
@@ -117,18 +118,18 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
             />
             <Row
               icon={<TgIcon name="delete" size={22} color="#ff595a" />}
-              label="Revoke Link"
+              label="RevokeLink"
               danger
               onClick={() => setRevoking(primary)}
             />
           </>
         ) : (
-          <Row icon={<TgIcon name="plus" size={22} color="var(--primary-color)" />} label="Create a New Link" accent onClick={() => setEditing('new')} />
+          <Row icon={<TgIcon name="plus" size={22} color="var(--primary-color)" />} label="CreateNewLink" accent onClick={() => setEditing('new')} />
         )}
       </Section>
 
-      <Section caption="Additional Links" footer="You can create additional invite links that are limited by time, number of users, or require a paid subscription.">
-        <Row icon={<TgIcon name="plus" size={22} color="var(--primary-color)" />} label="Create a New Link" accent onClick={() => setEditing('new')} />
+      <Section caption="InviteLinks.Additional" footer="InviteLinks.Description.Additional">
+        <Row icon={<TgIcon name="plus" size={22} color="var(--primary-color)" />} label="CreateNewLink" accent onClick={() => setEditing('new')} />
         {additional.map((l) => (
           <Row
             key={l.token}
@@ -142,8 +143,8 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
       </Section>
 
       {revoked.length > 0 && (
-        <Section caption="Revoked Links">
-          <Row icon={<TgIcon name="delete" size={22} color="#ff595a" />} label="Delete All Revoked Links" danger onClick={() => setDeletingAll(true)} />
+        <Section caption="RevokedLinks">
+          <Row icon={<TgIcon name="delete" size={22} color="#ff595a" />} label="DeleteAllRevokedLinks" danger onClick={() => setDeletingAll(true)} />
           {revoked.map((l) => (
             <Row
               key={l.token}
@@ -159,9 +160,9 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
 
       {revoking && (
         <ConfirmDialog
-          title={t('RevokeLink')}
-          text={t('RevokeAlert')}
-          action={t('RevokeButton')}
+          title="RevokeLink"
+          text="RevokeAlert"
+          action="RevokeButton"
           danger
           zIndex={90}
           onConfirm={() => void g.editInvite(revoking.token, { revoked: true })}
@@ -170,9 +171,9 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
       )}
       {deletingAll && (
         <ConfirmDialog
-          title={t('DeleteAllRevokedLinks')}
-          text={t('ManageLinks.DeleteAll.Confirm')}
-          action={t('Delete')}
+          title="DeleteAllRevokedLinks"
+          text="ManageLinks.DeleteAll.Confirm"
+          action="Delete"
           danger
           zIndex={90}
           onConfirm={() => void g.deleteAllRevoked()}
@@ -187,7 +188,7 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
 // Шаги «Limit by Period» (tweb stepValues 1h/1d/1w + ∞). undefined — бессрочно.
 const PERIOD_STEPS: (number | undefined)[] = [3600, 86400, 604800, undefined]
 const periodLabel = (v: number | undefined): string =>
-  v === undefined ? '∞' : v < 86400 ? '1 hour' : v < 604800 ? '1 day' : '1 week'
+  v === undefined ? '∞' : v < 86400 ? '1 hour' : v < 604800 ? 'Duration.Days1' : 'Duration.Weeks1'
 // Шаги «Limit Number of Uses» (tweb 1/10/50/100 + ∞). undefined — без лимита.
 const USES_STEPS: (number | undefined)[] = [1, 10, 50, 100, undefined]
 const usesLabel = (v: number | undefined): string => (v === undefined ? '∞' : String(v))
@@ -235,7 +236,7 @@ function EditInviteLinkScreen({ g, link, onBack }: { g: GroupEdit; link: InviteL
 
   return (
     <SettingsScreen
-      title={link ? 'Edit Link' : 'New Link'}
+      title={link ? 'InviteLinks.Edit' : 'NewLink'}
       onBack={onBack}
       zIndex={80}
       headerRight={
@@ -244,13 +245,13 @@ function EditInviteLinkScreen({ g, link, onBack }: { g: GroupEdit; link: InviteL
         </IconButton>
       }
     >
-      <Section caption="Link Name" footer="Only admins will see this name.">
+      <Section caption="InviteLinks.NameLabel" footer="LinkNameHelp">
         <div className="input-wrapper">
           <Input label={t('LinkNameHint')} value={name} onChange={setName} maxLength={32} />
         </div>
       </Section>
 
-      <Section caption="Limit by Period" footer="You can make the link expire after a certain time.">
+      <Section caption="InviteLinks.LimitPeriod" footer="InviteLinks.TimeLimitHelp">
         {/* Ступенчатый селектор — `range-setting-selector.range-steps-selector`
             с засечками `.range-setting-selector-option` (дамп 15-right-13). */}
         <div className="range-setting-selector range-steps-selector">
@@ -274,11 +275,11 @@ function EditInviteLinkScreen({ g, link, onBack }: { g: GroupEdit; link: InviteL
       </Section>
 
       <Section>
-        <Row label="Request Admin Approval" toggle checked={approval} onClick={() => setApproval((v) => !v)} />
+        <Row label="ApproveNewMembers" toggle checked={approval} onClick={() => setApproval((v) => !v)} />
       </Section>
 
       {!approval && (
-        <Section caption="Limit Number of Uses" footer="You can make the link work only for a certain number of users.">
+        <Section caption="InviteLinks.LimitUses" footer="InviteLinks.UsesLimitHelp">
         {/* Ступенчатый селектор — `range-setting-selector.range-steps-selector`
               с засечками `.range-setting-selector-option` (дамп 15-right-13). */}
           <div className="range-setting-selector range-steps-selector">
@@ -326,8 +327,8 @@ function InviteLinkDetailScreen({ g, link, onEdit, onBack }: { g: GroupEdit; lin
   }
 
   return (
-    <SettingsScreen title={link.title || 'Invite Link'} onBack={onBack} zIndex={80}>
-      <Section caption="Invite Link">
+    <SettingsScreen title={link.title ? undefined : 'InviteLink'} titleText={link.title} onBack={onBack} zIndex={80}>
+      <Section caption="InviteLink">
         <Row
           label={link.url}
           sublabel={copied ? t('LinkCopied') : t('CopyLink')}
@@ -345,7 +346,7 @@ function InviteLinkDetailScreen({ g, link, onEdit, onBack }: { g: GroupEdit; lin
       )}
 
       {importers.length > 0 && (
-        <Section caption={`${link.uses} ${t('InviteLinks.JoinedSuffix')}`}>
+        <Section captionText={`${link.uses} ${t('InviteLinks.JoinedSuffix')}`}>
           {importers.map((im) => (
             <Row
               key={im.userId}
@@ -360,8 +361,8 @@ function InviteLinkDetailScreen({ g, link, onEdit, onBack }: { g: GroupEdit; lin
 
       {!link.revoked ? (
         <Section>
-          <Row icon={<TgIcon name="edit" size={22} />} label="Edit Link" onClick={onEdit} />
-          <Row icon={<TgIcon name="delete" size={22} color="#ff595a" />} label="Revoke Link" danger onClick={() => setRevoking(true)} />
+          <Row icon={<TgIcon name="edit" size={22} />} label="InviteLinks.Edit" onClick={onEdit} />
+          <Row icon={<TgIcon name="delete" size={22} color="#ff595a" />} label="RevokeLink" danger onClick={() => setRevoking(true)} />
         </Section>
       ) : (
         <Section>
@@ -371,9 +372,9 @@ function InviteLinkDetailScreen({ g, link, onEdit, onBack }: { g: GroupEdit; lin
 
       {revoking && (
         <ConfirmDialog
-          title={t('RevokeLink')}
-          text={t('RevokeAlert')}
-          action={t('RevokeButton')}
+          title="RevokeLink"
+          text="RevokeAlert"
+          action="RevokeButton"
           danger
           zIndex={90}
           onConfirm={() => void g.editInvite(link.token, { revoked: true }).then(onBack)}

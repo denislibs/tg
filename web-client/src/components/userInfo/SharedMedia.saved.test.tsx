@@ -22,6 +22,7 @@
 // happy-dom не считает layout: `offsetHeight`/`offsetWidth` (их читает
 // `useElementSize` у хоста) подставляются стабом на прототипе — тот же приём,
 // что в `ChatList.test.tsx` и `Sidebar.archive.test.tsx`.
+import type { LangPackKey } from '@/lang'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -133,14 +134,14 @@ let dialogs: SavedDialog[]
 
 function renderSaved(props: {
   dialogs?: SavedDialog[]
-  tab?: string
+  tab?: LangPackKey
   onOpenPeer?: (peer: OpenPeer) => void
   gifts?: never[]
 }) {
   const ui = (p: typeof props) => (
     <ManagersProvider managers={managers}>
       <SharedMedia
-        tab={p.tab ?? 'Chats'}
+        tab={p.tab ?? 'FilterChats'}
         onTab={() => {}}
         chatId={null}
         savedDialogs={p.dialogs ?? dialogs}
@@ -313,7 +314,7 @@ describe('SharedMedia — «Избранное» на виртуальном я�
     expect(list()).not.toBe(null)
     expect(scrollListenerCount(addSpy)).toBe(1)
 
-    rerender({ gifts: [], tab: 'Gifts' })
+    rerender({ gifts: [], tab: 'SharedMedia.Gifts' })
     // Уходящий кадр `TabSlide` живёт в DOM, пока играет слайд; в happy-dom
     // `transitionend` не приходит, снимает его фолбэк-таймер (200 + 100).
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 350)) })

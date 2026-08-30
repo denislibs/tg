@@ -1,3 +1,4 @@
+import type { LangPackKey } from '@/lang'
 import { cloneElement, createContext, isValidElement, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import SidebarSection from '../../shared/ui/SidebarSection'
 import Checkbox from '../../shared/ui/Checkbox'
@@ -33,13 +34,16 @@ const InSliderContext = createContext(false)
  */
 export function SettingsScreen({
   title,
+  titleText,
   onBack,
   headerRight,
   zIndex = 60,
   sub = null,
   children,
 }: {
-  title: string
+  title?: LangPackKey
+  /** Готовый текст вместо ключа — для заголовков из данных (имя ссылки-приглашения). */
+  titleText?: string
   onBack: () => void
   headerRight?: ReactNode
   zIndex?: number
@@ -141,7 +145,7 @@ export function SettingsScreen({
           <button type="button" className="btn-icon sidebar-close-button" onClick={onBack} aria-label={t('Common.Back')}>
             <TgIcon name="back" />
           </button>
-          <div className="sidebar-header__title">{t(title)}</div>
+          <div className="sidebar-header__title">{title ? t(title) : titleText}</div>
           {headerRight}
         </div>
         <div className="sidebar-content">
@@ -201,11 +205,14 @@ export function usePopupTransition(open: boolean) {
 
 export function Section({
   caption,
+  captionText,
   footer,
   children,
 }: {
-  caption?: string
-  footer?: string
+  caption?: LangPackKey
+  /** Готовый текст вместо ключа — например «12 joined», собранное из числа. */
+  captionText?: string
+  footer?: LangPackKey
   children: ReactNode
 }) {
   const t = useT()
@@ -217,7 +224,7 @@ export function Section({
   // `.sidebar-left-section-container` (`_section.scss`).
   return (
     <SidebarSection
-      title={caption ? t(caption) : undefined}
+      title={caption ? t(caption) : captionText}
       caption={footer ? t(footer) : undefined}
     >
       {children}
@@ -368,7 +375,10 @@ export function Row({
 
   const title = (
     <div className={classNames('row-title', multiline ? 'pre-wrap' : '')}>
-      {translate ? t(label) : label}
+      {/* РАСКОЛ КОНТРАКТА, снимает ЗАДАЧА 7: при `translate` здесь ключ, без него —
+          готовый текст (имя пира, номер телефона), и по типу они не различаются.
+          Приведение честнее молчаливого `string`: ключ обязан быть ключом. */}
+      {translate ? t(label as LangPackKey) : label}
     </div>
   )
 

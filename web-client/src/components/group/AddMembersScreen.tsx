@@ -97,7 +97,7 @@ export default function AddMembersScreen({
   }
 
   return (
-    <SettingsScreen title="Add Members" onBack={onClose} zIndex={70}>
+    <SettingsScreen title="GroupAddMembers" onBack={onClose} zIndex={70}>
       <PeerSelector
         peers={peers}
         mode="multi"
@@ -107,7 +107,7 @@ export default function AddMembersScreen({
         onQueryChange={setQ}
         selected={selected}
         onSelectedChange={setSelected}
-        empty={{ title: 'No Results' }}
+        empty={{ title: 'SearchEmptyViewTitle' }}
       />
 
       {selected.length > 0 && (

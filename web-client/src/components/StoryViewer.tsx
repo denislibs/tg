@@ -1,3 +1,4 @@
+import type { LangPackKey } from '@/lang'
 import { createPortal } from 'react-dom'
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import Text from '../shared/ui/Text'
@@ -91,7 +92,7 @@ function calcTranslateX(diff: number, storyWidth: number): string {
 // короткие формы собираем сами через t().
 // `date` — СЕКУНДЫ эпохи (`storyItem.date`), те же единицы, что у сообщения;
 // ISO-строки на проводе больше нет.
-function dateText(date: number, edited: boolean, t: (s: string) => string): string {
+function dateText(date: number, edited: boolean, t: (key: LangPackKey) => string): string {
   const ts = date * 1000
   const sec = Math.max(0, Math.round((Date.now() - ts) / 1000))
   let head: string
@@ -314,7 +315,7 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
   // Отступление от tweb: privacy-иконки нет (P2 аудита §10.10).
   const headerRight = (
     <>
-      <IconButton onClick={vm.togglePause} aria-label={t(vm.manualPause ? 'Play' : 'Pause')}>
+      <IconButton onClick={vm.togglePause} aria-label={t(vm.manualPause ? 'Media.Play' : 'Media.Pause')}>
         <TgIcon name={vm.manualPause ? 'play' : 'pause'} />
       </IconButton>
       {videoDurationMs > 0 && (

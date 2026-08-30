@@ -3,6 +3,7 @@
 // директория) → «Сообщения» (полнотекст по всем чатам); пустой запрос —
 // «Недавние». Табы Медиа/Ссылки/Файлы/Музыка/Голосовые — глобальный
 // searchGlobal с фильтром типа (tweb inputMessagesFilter*).
+import type { LangPackKey } from '@/lang'
 import { useEffect, useState } from 'react'
 import Text from '../shared/ui/Text'
 import Avatar from '../shared/ui/Avatar'
@@ -36,7 +37,7 @@ import { getPeerPhoto, getPeerPhotoId, peerKey, type Chat as PeerChat, type User
 import { Tabs, TabSlide } from '../shared/ui/Tabs'
 import s from './SearchView.module.scss'
 
-const TABS = ['Chats', 'Channels', 'Media', 'Links', 'Files', 'Music', 'Voice'] as const
+const TABS = ['FilterChats', 'ChatList.Filter.Channels', 'SharedMediaTab2', 'SharedLinksTab2', 'SharedFilesTab2', 'SharedMusicTab2', 'SharedVoiceTab2'] as const
 // порядок вкладок для TabSlide — по нему считается направление слайда
 const TAB_ORDER = TABS.map((_, i) => i)
 const TAB_FILTER: Partial<Record<number, 'media' | 'links' | 'files' | 'music' | 'voice'>> = {
@@ -421,9 +422,9 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
 
       {confirmClear && (
         <ConfirmDialog
-          title={t('Clear')}
-          text={t('Search.Confirm.ClearHistory')}
-          action={t('Clear')}
+          title="Clear"
+          text="Search.Confirm.ClearHistory"
+          action="Clear"
           danger
           onConfirm={clearRecent}
           onClose={() => setConfirmClear(false)}
@@ -442,9 +443,9 @@ function participantsCount(c: PeerChat): number {
 
 /** Подпись строки директории: «@username, N подписчиков/участников». Канал от
  *  супергруппы отличает `isBroadcast`, а не строка вида чата. */
-function chatResultSubtitle(c: PeerChat, t: (s: string) => string): string {
+function chatResultSubtitle(c: PeerChat, t: (key: LangPackKey) => string): string {
   const username = c._ === 'channel' && c.username ? `@${c.username}, ` : ''
-  return `${username}${participantsCount(c)} ${t(isBroadcast(c) ? 'subscribers' : 'members')}`
+  return `${username}${participantsCount(c)} ${t(isBroadcast(c) ? 'Channel.SubscribersSuffix' : 'Group.MembersSuffix')}`
 }
 
 // Ряд своего диалога (недавние / локальные совпадения / мои каналы)

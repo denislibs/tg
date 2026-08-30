@@ -2,6 +2,7 @@
 // предлагает пост в канал — текст + опционально желаемое время публикации. Сверху
 // показаны его прошлые предложки с бейджем статуса (на рассмотрении/одобрено/
 // отклонено) — так автор видит их судьбу (backend listSuggestedPosts → свои).
+import type { LangPackKey } from '@/lang'
 import { useState } from 'react'
 import Popup from '../shared/ui/Popup'
 import Text from '../shared/ui/Text'
@@ -11,10 +12,10 @@ import type { SuggestedPostStatus } from '../core/models'
 import { useT } from '../i18n'
 import s from './SuggestPostPopup.module.scss'
 
-const statusKey: Record<SuggestedPostStatus, string> = {
-  pending: 'On review',
-  approved: 'Approved',
-  rejected: 'Rejected',
+const statusKey: Record<SuggestedPostStatus, LangPackKey> = {
+  pending: 'SuggestedPosts.Status.OnReview',
+  approved: 'SuggestedPosts.Status.Approved',
+  rejected: 'SuggestedPosts.Status.Rejected',
 }
 
 export default function SuggestPostPopup({ chatId, onClose }: {

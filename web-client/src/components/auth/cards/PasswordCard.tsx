@@ -13,6 +13,7 @@
 // «Reset Password / NoEmailText / Reset Account», затем «Warning / This action
 // can't be undone…»), потом `deleteAccount('Forgot password')` и возврат на
 // карточку ввода номера. Отказ сервера — третья плашка «Sorry».
+import type { LangPackKey } from '@/lang'
 import { useState } from 'react'
 import TgIcon from '../../TgIcon'
 import classNames from '../../../shared/lib/classNames'
@@ -69,7 +70,7 @@ export default function PasswordCard({
   const [showPw, setShowPw] = useState(false)
   // Отказ восстановления по почте — тоже в надпись кнопки, отдельной строки под
   // него в tweb нет (`._forgotLink` несёт только саму ссылку).
-  const [forgotError, setForgotError] = useState('')
+  const [forgotError, setForgotError] = useState<LangPackKey | ''>('')
 
   // Надпись кнопки — как в tweb `nextKey`: Next → Please wait… → текст ошибки.
   const nextLabel = busy
@@ -83,9 +84,9 @@ export default function PasswordCard({
   // Плашка отказа сервера — tweb «Sorry» (третья плашка сброса), звана и от
   // самого сброса, и от несостоявшегося (см. resetAccount ниже) — общий вызов,
   // а не дублирование JSX, которое было у трёх снесённых `<ConfirmPopup>`.
-  const sorry = (message: string) => {
+  const sorry = (message: LangPackKey) => {
     void confirmationPopup({
-      titleLangKey: t('Login.ResetAccountFail.Title'),
+      titleLangKey: 'Login.ResetAccountFail.Title',
       descriptionLangKey: message,
       button: { text: t('OK') },
     }).catch(() => {})
@@ -100,10 +101,10 @@ export default function PasswordCard({
     if (!outcome) return
     sorry(
       outcome === 'recovery_available'
-        ? t('Login.ResetPassword.HasEmail')
+        ? 'Login.ResetPassword.HasEmail'
         : outcome === 'password_token_expired'
-          ? t('Login.SessionExpired')
-          : t('Login.Error.Generic'),
+          ? 'Login.SessionExpired'
+          : 'Login.Error.Generic',
     )
   }
 
@@ -120,10 +121,8 @@ export default function PasswordCard({
     if (outcome === 'password_recovery_na') {
       try {
         await confirmationPopup({
-          titleLangKey: t('Login.ResetPassword.Title'),
-          descriptionLangKey: t(
-            "Since you didn't provide a recovery email when setting up your password, your remaining options are either to remember your password or to reset your account.",
-          ),
+          titleLangKey: 'Login.ResetPassword.Title',
+          descriptionLangKey: 'Login.ResetPassword.NoEmailText',
           button: { text: t('Login.ResetPassword.ResetAccount'), isDanger: true },
         })
       } catch { return } // Cancel/оверлей/Esc/Back — тот же исход, что onClose у снесённого попапа
@@ -135,8 +134,8 @@ export default function PasswordCard({
         // экране (сброс аккаунта без привязанной почты), решили не портировать
         // rich-описание ради одной строки.
         await confirmationPopup({
-          titleLangKey: t('Login.ResetAccount.Title'),
-          descriptionLangKey: t('Login.ResetAccount.Text'),
+          titleLangKey: 'Login.ResetAccount.Title',
+          descriptionLangKey: 'Login.ResetAccount.Text',
           button: { text: t('Login.ResetPassword.ResetAccount'), isDanger: true },
         })
       } catch { return }
@@ -144,10 +143,10 @@ export default function PasswordCard({
       return
     }
     if (outcome === 'password_token_expired') {
-      setForgotError('Session expired. Please sign in again.')
+      setForgotError('Login.SessionExpired')
       return
     }
-    if (outcome) setForgotError('Something went wrong. Try again.')
+    if (outcome) setForgotError('Login.Error.Generic')
   }
 
   const submitPassword = async () => {

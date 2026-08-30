@@ -260,8 +260,8 @@ function Composer({
       if (e.key === 'Escape') {
         e.preventDefault()
         confirmationPopup({
-          titleLangKey: t('DiscardVoiceMessageTitle'),
-          descriptionLangKey: t('Composer.DiscardVoice.Text'),
+          titleLangKey: 'DiscardVoiceMessageTitle',
+          descriptionLangKey: 'Composer.DiscardVoice.Text',
           button: { text: t('Discard'), isDanger: true },
         }).then(() => rec.stop(false), () => {})
       }

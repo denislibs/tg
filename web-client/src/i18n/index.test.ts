@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { loadLang, substituteArgs, useI18nStore } from './index'
 
-const t = (key: string) => useI18nStore.getState().t(key)
+const t = (key: string) => (useI18nStore.getState().t as (k: string) => string)(key)
 const tArgs = (key: string, args: (string | number)[]) =>
   (useI18nStore.getState().tArgs as (k: string, a: (string | number)[]) => string)(key, args)
 

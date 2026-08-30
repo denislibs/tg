@@ -11,7 +11,7 @@ export function useSidebarActions(chats: Chat[], onChatCreated?: (peerId: PeerId
   const managers = useManagers()
 
   const createGroup = async (name: string, memberIds: number[], photo: GroupPhoto | null) => {
-    const peerId = await managers.groups.createGroup({ title: name || 'New Group', memberIds })
+    const peerId = await managers.groups.createGroup({ title: name || 'NewGroup', memberIds })
     // Фото — после создания, как tweb (createChat → editPhoto): upload → set.
     if (photo) {
       const bytes = await photo.blob.arrayBuffer()
@@ -22,7 +22,7 @@ export function useSidebarActions(chats: Chat[], onChatCreated?: (peerId: PeerId
   }
 
   const createChannel = async (name: string, description: string) => {
-    const peerId = await managers.channels.createChannel({ title: name || 'New Channel', about: description })
+    const peerId = await managers.channels.createChannel({ title: name || 'NewChannel', about: description })
     onChatCreated?.(peerId)
   }
 

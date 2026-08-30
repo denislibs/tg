@@ -8,6 +8,7 @@
 // Шрифты вкладки «Текст» (порядок/веса — из tweb fontInfoMap). Импортятся здесь,
 // а не в main.tsx: MediaEditor — ленивый чанк, поэтому @font-face + woff2 не
 // висят в критическом пути и грузятся только при открытии редактора.
+import type { LangPackKey } from '@/lang'
 import '@fontsource/suez-one/400.css'
 import '@fontsource/rubik-bubbles/400.css'
 import '@fontsource/chewy/400.css'
@@ -72,13 +73,13 @@ type ColoredBrush = 'pen' | 'arrow' | 'marker' | 'neon'
 const BRUSH_COLORS: Record<ColoredBrush, string> = {
   pen: '#fe4438', arrow: '#ffd60a', marker: '#ff8901', neon: '#62e5e0',
 }
-const BRUSHES: { key: BrushType; label: string; icon: IconName }[] = [
-  { key: 'pen', label: 'Pen', icon: 'edit' },
-  { key: 'arrow', label: 'Arrow', icon: 'arrowhead' },
-  { key: 'marker', label: 'Brush', icon: 'brush' },
-  { key: 'neon', label: 'Neon', icon: 'highlights' },
-  { key: 'blur', label: 'Blur', icon: 'sharpen' },
-  { key: 'eraser', label: 'Eraser', icon: 'delete' },
+const BRUSHES: { key: BrushType; label: LangPackKey; icon: IconName }[] = [
+  { key: 'pen', label: 'MediaEditor.Brushes.Pen', icon: 'edit' },
+  { key: 'arrow', label: 'MediaEditor.Brushes.Arrow', icon: 'arrowhead' },
+  { key: 'marker', label: 'MediaEditor.Brushes.Brush', icon: 'brush' },
+  { key: 'neon', label: 'MediaEditor.Brushes.Neon', icon: 'highlights' },
+  { key: 'blur', label: 'MediaEditor.Brushes.Blur', icon: 'sharpen' },
+  { key: 'eraser', label: 'MediaEditor.Brushes.Eraser', icon: 'delete' },
 ]
 const hasBrushColor = (b: BrushType): b is ColoredBrush => b in BRUSH_COLORS
 // Радиус размытия base для blur-кисти — в пикселях исходника, зависит от размера
@@ -99,8 +100,8 @@ const TABS: { key: Tab; icon: IconName }[] = [
 // Радиус захвата угловой ручки стикера (экранные px).
 const STICKER_HANDLE_HIT = 16
 
-const ASPECT_LABELS: Record<AspectPreset, string> = {
-  free: 'Free', original: 'Original', '1:1': 'Square',
+const ASPECT_LABELS: Record<AspectPreset, LangPackKey | string> = {
+  free: 'MediaEditor.Free', original: 'MediaEditor.Original', '1:1': 'MediaEditor.Square',
   '3:2': '3:2', '2:3': '2:3', '4:3': '4:3', '3:4': '3:4', '5:4': '5:4', '4:5': '4:5',
   '7:5': '7:5', '5:7': '5:7', '16:9': '16:9', '9:16': '9:16',
 }
@@ -1285,7 +1286,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
     </div>
   )
 
-  const sliderRow = (label: string, value: number, min: number, max: number, onChange: (v: number) => void, showSign = false) => (
+  const sliderRow = (label: LangPackKey, value: number, min: number, max: number, onChange: (v: number) => void, showSign = false) => (
     <div className={s.sliderRow}>
       <div className={s.sliderHead}>
         <span>{t(label)}</span>
@@ -1551,7 +1552,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
                   className={classNames(s.presetRow, aspect === p ? s.presetActive : '')}
                   onClick={() => applyAspect(p)}
                 >
-                  {t(ASPECT_LABELS[p])}
+                  {t(ASPECT_LABELS[p] as LangPackKey)}
                 </div>
               ))}
               <div className={s.resetBtn} onClick={resetCrop}>{t('Reset')}</div>
@@ -1563,7 +1564,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
               <div className={hasBrushColor(brush) ? '' : s.swatchesDisabled}>
                 {swatches(brushColorValue, setBrushColorValue)}
               </div>
-              {sliderRow('Brush size', brushSize, 2, 32, changeBrushSize)}
+              {sliderRow('MediaEditor.BrushSize', brushSize, 2, 32, changeBrushSize)}
               <div className={s.label}>{t('MediaEditor.Tool')}</div>
               <div className={s.brushList}>
                 {BRUSHES.map(({ key, label, icon }) => (
@@ -1607,7 +1608,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
                   ))}
                 </div>
               </div>
-              {sliderRow('Text size', textSize, 16, 64, setTextSize)}
+              {sliderRow('MediaEditor.TextSize', textSize, 16, 64, setTextSize)}
               <div className={s.label}>{t('MediaEditor.Font')}</div>
               <div className={s.fontList}>
                 {FONTS.map(({ key, label }) => (
@@ -1639,9 +1640,9 @@ export default function MediaEditor({ file, onDone, onCancel }: {
 
       {confirmOpen && (
         <ConfirmDialog
-          title={t('MediaEditor.DiscardChanges')}
-          text={t('MediaEditor.Discard.Text')}
-          action={t('Discard')}
+          title="MediaEditor.DiscardChanges"
+          text="MediaEditor.Discard.Text"
+          action="Discard"
           danger
           zIndex={4300}
           onConfirm={onCancel}

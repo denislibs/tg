@@ -19,7 +19,7 @@ export default function PremiumManage({ onBack }: { onBack: () => void }) {
   const { sub, loading, cancelling, cancel } = usePremiumSubscription()
 
   return (
-    <SettingsScreen title="Telegram Premium" onBack={onBack} zIndex={70}>
+    <SettingsScreen title="Premium.Boarding.Title" onBack={onBack} zIndex={70}>
       <div style={{ textAlign: 'center', padding: '12px 0 20px' }}>
         <TgIcon name="star_filled" size={64} color="var(--primary-color)" />
         <Text size={20} weight={600} color="var(--primary-text-color)" style={{ marginTop: 8 }}>
@@ -33,27 +33,27 @@ export default function PremiumManage({ onBack }: { onBack: () => void }) {
         </Text>
       ) : sub ? (
         <>
-          <Section caption="Subscription">
+          <Section caption="Stars.Subscription">
             <Row label={t(planById(sub.plan).labelKey)} value={formatUsd(sub.priceCents)} translate={false} />
             <Row
-              label={sub.autoRenew ? 'Renews on' : 'Expires on'}
+              label={sub.autoRenew ? 'Premium.Manage.RenewsOn' : 'Premium.Manage.ExpiresOn'}
               value={formatDate(sub.expiresAt)}
               translate
             />
           </Section>
 
           {sub.autoRenew ? (
-            <Section footer="Your subscription renews automatically. Cancel to stop future charges — Premium stays active until it expires.">
+            <Section footer="Premium.Manage.Hint">
               <Row
                 icon={<TgIcon name="close" size={24} color="#ff595a" />}
-                label={cancelling ? 'Cancelling…' : 'Cancel Subscription'}
+                label={cancelling ? 'Premium.Manage.Cancelling' : 'Stars.Subscription.Cancel'}
                 danger
                 onClick={() => void cancel()}
               />
             </Section>
           ) : (
-            <Section footer="Auto-renew is off. Your Premium subscription will end on the date above.">
-              <Row label="Auto-Renew" value={t('Off')} translate={false} />
+            <Section footer="Premium.Manage.AutoRenewOffHint">
+              <Row label="Premium.Manage.AutoRenew" value={t('Off')} translate={false} />
             </Section>
           )}
         </>

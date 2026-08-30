@@ -2,6 +2,7 @@
 // autoDeleteMessages: UtyanDisappear, «Self-destruct timer», Off/1 день/
 // 1 неделя/1 месяц + «Выбрать другой срок» попапом). Применяется к чатам,
 // созданным после изменения (как в Telegram).
+import type { LangPackKey } from '@/lang'
 import { useEffect, useState } from 'react'
 import LottieSticker from '../LottieSticker'
 import TgIcon from '../TgIcon'
@@ -14,7 +15,7 @@ import { SettingsScreen, Section, Row } from './kit'
 const DAY = 86400
 
 // Подпись периода (и для сабтайтла в разделе конфиденциальности).
-export function autoDeleteLabel(seconds: number, t: (s: string) => string): string {
+export function autoDeleteLabel(seconds: number, t: (key: LangPackKey) => string): string {
   if (seconds <= 0) return t('Off')
   const d = Math.round(seconds / DAY)
   if (d >= 360) return t('Duration.Years1')
@@ -62,20 +63,20 @@ export default function AutoDeleteMessages({ onBack }: { onBack: () => void }) {
   const isCustom = period > 0 && !PRESETS.includes(period)
 
   return (
-    <SettingsScreen title="Auto-Delete Messages" onBack={onBack}>
+    <SettingsScreen title="AutoDeleteMessages" onBack={onBack}>
       <LottieSticker name="UtyanDisappear" size={120} />
       <Section
-        caption="Self-destruct timer"
-        footer="If enabled, all new messages in chats you start will be automatically deleted for everyone at some point after they have been sent. Auto-delete in your previously created chats is enabled separately."
+        caption="AutoDeleteMessages.SectionTitle"
+        footer="AutoDeleteMessages.SectionCaption"
       >
         <Row label="Off" selected={period === 0} onClick={() => save(0)} />
-        <Row label="1 day" selected={period === DAY} onClick={() => save(DAY)} />
-        <Row label="1 week" selected={period === 7 * DAY} onClick={() => save(7 * DAY)} />
-        <Row label="1 month" selected={period === 30 * DAY} onClick={() => save(30 * DAY)} />
+        <Row label="Duration.Days1" selected={period === DAY} onClick={() => save(DAY)} />
+        <Row label="Duration.Weeks1" selected={period === 7 * DAY} onClick={() => save(7 * DAY)} />
+        <Row label="Duration.Months1" selected={period === 30 * DAY} onClick={() => save(30 * DAY)} />
         {isCustom && <Row label={autoDeleteLabel(period, t)} translate={false} selected />}
         <Row
           icon={<TgIcon name="tools" size={24} />}
-          label="Set other time"
+          label="AutoDeleteMessages.SetOtherTime"
           onClick={() => setCustomOpen(true)}
         />
       </Section>

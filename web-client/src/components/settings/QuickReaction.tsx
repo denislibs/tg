@@ -11,7 +11,7 @@ export default function QuickReaction({ onBack }: { onBack: () => void }) {
   const [picked, setPicked] = useState('👍')
 
   return (
-    <SettingsScreen title="Quick Reaction" onBack={onBack}>
+    <SettingsScreen title="DoubleTapSetting" onBack={onBack}>
       <div className={s.hero}>
         <div className={s.heroEmoji}>{picked}</div>
         <Text size={14} color="var(--secondary-text-color)" style={{ marginTop: '8px', paddingLeft: '40px', paddingRight: '40px' }}>

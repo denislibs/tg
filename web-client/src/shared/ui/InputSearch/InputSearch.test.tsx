@@ -243,7 +243,7 @@ describe('InputSearch — декларативный проп placeholder', () =
   })
 
   it('существующее место (MemberPicker из group/screens/shared) по-прежнему показывает плейсхолдер', () => {
-    render(<MemberPicker title="Добавить" members={[]} onBack={() => {}} onPick={() => {}} />)
+    render(<MemberPicker title="GroupAddMembers" members={[]} onBack={() => {}} onPick={() => {}} />)
     const root = document.querySelector<HTMLElement>('.input-search')!
     // язык по умолчанию в тестовой среде — английский, `t('Search')` даёт ключ как есть
     expect(placeholders(root).map((n) => n.textContent)).toEqual(['Search'])

@@ -58,7 +58,7 @@ export default function StoryMediaAreas({
               key={i}
               style={style}
               role="button"
-              aria-label="React"
+              aria-label="Story.React"
               onClick={(e) => { e.stopPropagation(); if (emoticon) onReaction(emoticon) }}
             >
               <div
@@ -85,11 +85,11 @@ export default function StoryMediaAreas({
               key={i}
               style={style}
               role="button"
-              aria-label={title || 'Location'}
+              aria-label={title || 'AttachLocation'}
               onClick={(e) => { e.stopPropagation(); openExternal(mapsUrl(a.geo)) }}
             >
               <div style={{ padding: '4px 10px', borderRadius: 12, background: 'rgba(0,0,0,0.45)', maxWidth: '100%' }}>
-                <Text noWrap color="#fff" size={13} weight={600}>📍 {title || 'Location'}</Text>
+                <Text noWrap color="#fff" size={13} weight={600}>📍 {title || 'AttachLocation'}</Text>
               </div>
             </div>
           )
@@ -100,7 +100,7 @@ export default function StoryMediaAreas({
             key={i}
             style={style}
             role="button"
-            aria-label={a.url || 'Link'}
+            aria-label={a.url || 'SetUrlPlaceholder'}
             onClick={(e) => { e.stopPropagation(); openExternal(a.url) }}
           >
             <div style={{ padding: '4px 10px', borderRadius: 12, background: 'rgba(0,0,0,0.45)', maxWidth: '100%' }}>

@@ -307,8 +307,8 @@ export default function StickersTab({
                     aria-label={t('ClearRecentStickersAlertTitle')}
                     onClick={() => {
                       void confirmationPopup({
-                        titleLangKey: t('ClearRecentStickersAlertTitle'),
-                        descriptionLangKey: t('Stickers.ClearRecent.Text'),
+                        titleLangKey: 'ClearRecentStickersAlertTitle',
+                        descriptionLangKey: 'Stickers.ClearRecent.Text',
                         button: { text: t('Clear') },
                       }).then(() => panel.clearRecent(), () => {})
                     }}
@@ -339,7 +339,7 @@ export default function StickersTab({
         >
           <MenuItem
             icon={<TgIcon name={ctxFaved ? 'crossstar' : 'favourites'} size={20} />}
-            label={t(ctxFaved ? 'Remove from Favorites' : 'Add to Favorites')}
+            label={t(ctxFaved ? 'Stickers.RemoveFromFavorites' : 'AddToFavorites')}
             onClick={() => {
               if (ctxFaved) panel.unfave(ctxMenu.st)
               else panel.fave(ctxMenu.st)

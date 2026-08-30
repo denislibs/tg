@@ -378,7 +378,7 @@ describe('ChatBubbles — лог звонка', () => {
     expect(call.parentElement?.classList.contains('message')).toBe(true)
     expect(bubble.querySelector('.attachment')).toBeNull()
 
-    expect(call.querySelector('.bubble-call-title')!.textContent).toBe('Outgoing video call')
+    expect(call.querySelector('.bubble-call-title')!.textContent).toBe('Outgoing Video Call')
     const subtitle = call.querySelector<HTMLElement>('.bubble-call-subtitle')!
     expect(subtitle.textContent).toContain('1:05')
     // Состоявшийся звонок — ЗЕЛЁНАЯ стрелка (tweb :8691).
@@ -395,10 +395,10 @@ describe('ChatBubbles — лог звонка', () => {
 
     const call = bubbleOf(bubbles, 9).querySelector<HTMLElement>('.bubble-call')!
     expect(call.dataset.type).toBe('voice')
-    expect(call.querySelector('.bubble-call-title')!.textContent).toBe('Incoming call')
+    expect(call.querySelector('.bubble-call-title')!.textContent).toBe('Incoming Call')
     const subtitle = call.querySelector<HTMLElement>('.bubble-call-subtitle')!
     expect(subtitle.classList.contains('is-reason')).toBe(true)
-    expect(subtitle.textContent).toContain('Missed call')
+    expect(subtitle.textContent).toContain('Missed Call')
     expect(subtitle.querySelector('.bubble-call-arrow-red')).not.toBeNull()
   })
 

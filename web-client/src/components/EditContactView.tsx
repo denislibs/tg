@@ -118,7 +118,7 @@ export default function EditContactView({
           </Section>
 
           {/* Секция 2: фото контакта (пояснение — footer секции, как caption в tweb) */}
-          <Section footer="Вы можете предложить контакту установить новую фотографию профиля — или изменить его фотографию только у себя.">
+          <Section footer="EditContact.PhotoHint">
             <Row
               icon={<TgIcon name="cameraadd" size={24} color="var(--primary-color)" />}
               label={hasPersonal ? `Изменить фото для ${displayFirst}` : `Установить фото для ${displayFirst}`}

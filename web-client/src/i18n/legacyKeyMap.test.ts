@@ -3,9 +3,9 @@ import { resolve } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { notificationsCountTitle } from '../client/appBadge'
-import lang from '../lang'
+import lang, { type LangPackKey } from '../lang'
 import { en } from './dict'
+import { loadLang, useI18nStore } from './index'
 import ru from './dict.ru'
 import { LEGACY_ALIASES, LEGACY_KEY_MAP, LEGACY_KEY_OVERRIDES, LEGACY_PLURAL_GROUPS } from './legacyKeyMap'
 
@@ -106,24 +106,28 @@ describe('объявленные слияния', () => {
     expect(bad).toEqual([])
   })
 
-  // Слоты обязаны совпадать с ФАКТИЧЕСКИМ выбором, а не читаться «на глаз»: без этого
-  // переставленные few/many проходят зелёными, а задача 3 соберёт «2 уведомлений».
-  // Сверяем объявление с единственным местом, где выбор сегодня живёт, — `client/appBadge.ts`.
-  it('слоты совпадают с тем, что выбирает нынешний код', () => {
+  // Слоты обязаны совпадать с ФАКТИЧЕСКИМ выбором, а не читаться «на глаз»: переставленные
+  // few/many проходят зелёными и дают «2 уведомлений» / «5 уведомления». Раньше выбор жил в
+  // `client/appBadge.ts` (своя славянская арифметика), и сверялись с ним; теперь форму
+  // выбирает ЯЗЫК (`Intl.PluralRules` внутри `tArgs`), и сверяться надо с ним.
+  //
+  // Проверка замыкает круг: перевод СТАРОЙ строки нужной формы обязан совпасть с тем, что
+  // язык печатает на этом числе. Русский взят потому, что только он различает все три формы.
+  it('слоты совпадают с формой, которую выбирает язык', async () => {
     const forms = LEGACY_PLURAL_GROUPS['Notifications.Count']
-    const chosen = (count: number, l: 'ru' | 'en') => notificationsCountTitle(count, l, (x) => x)
-    const declared = (slot?: string, count?: number) => slot?.replace('%d', String(count))
-    expect([chosen(1, 'ru'), chosen(2, 'ru'), chosen(5, 'ru'), chosen(2, 'en')]).toEqual([
-      declared(forms.one_value, 1),
-      declared(forms.few_value, 2),
-      declared(forms.many_value, 5),
-      declared(forms.other_value, 2),
-    ])
+    useI18nStore.setState({ lang: 'ru' })
+    await loadLang('ru')
+    const { t, tArgs } = useI18nStore.getState()
+    // Слот — СТАРАЯ строка («%d notifications (few)»), а не ключ: `t` понимает обе формы
+    // до задачи 9, но тип у неё уже ключ — отсюда приведение.
+    const legacy = (slot: string | undefined, count: number) => t(slot as LangPackKey).replace('%d', String(count))
+    expect([tArgs('Notifications.Count', [1]), tArgs('Notifications.Count', [2]), tArgs('Notifications.Count', [5])])
+      .toEqual([legacy(forms.one_value, 1), legacy(forms.few_value, 2), legacy(forms.many_value, 5)])
   })
 
   it('у формы числа объявлены все формы, которые различает нынешний выбор', () => {
-    // `client/appBadge.ts` различает one / few / остальное; «остальное» в английском — other,
-    // в русском — many, поэтому обязаны быть заполнены все четыре слота.
+    // Русский различает one / few / many, английский — one / other; чтобы старая форма
+    // ключа переводилась у обоих, заполнены обязаны быть все четыре слота.
     const incomplete = Object.entries(LEGACY_PLURAL_GROUPS)
       .filter(([, f]) => !f.one_value || !f.few_value || !f.many_value || !f.other_value)
       .map(([key]) => key)
@@ -137,12 +141,18 @@ describe('объявленные слияния', () => {
 // пин на живое место: вернуть сюда ключ, который диктует карта (`ChatList.Context.Pin`
 // вместо `Message.Context.Pin`), нельзя молча.
 describe('точечные исключения к карте', () => {
-  // Позиции всех вхождений `t('<key>')` — то есть УЖЕ ПОДСТАВЛЕННОГО ключа исключения.
+  // Позиции всех вхождений КЛЮЧА исключения — в любом виде: `t('Key')`, проп
+  // `title="Key"`, элемент таблицы. Считать только вызовы `t()` нельзя: половина
+  // мест передаёт ключ дальше пропом, а переводит его уже принимающий компонент.
   const occurrencesOf = (o: (typeof LEGACY_KEY_OVERRIDES)[number]) => {
     const src = readFileSync(resolve(WEB_CLIENT, o.file), 'utf8')
-    const literal = `t('${o.key}')`
+    const literal = `'${o.key}'`
     const at: number[] = []
-    for (let i = src.indexOf(literal); i !== -1; i = src.indexOf(literal, i + 1)) at.push(i)
+    for (const quote of ["'", '"']) {
+      const needle = `${quote}${o.key}${quote}`
+      for (let i = src.indexOf(needle); i !== -1; i = src.indexOf(needle, i + 1)) at.push(i)
+    }
+    at.sort((a, b) => a - b)
     return { src, literal, at }
   }
 

@@ -16,6 +16,20 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'New notification': 'Notifications.New',
 
   // ── components ──
+  // Строки, зашитые в код ПО-РУССКИ (задача 1, п. 2): старым ключом у них была сама
+  // русская фраза, а английского источника не было вовсе. Задача 6 завела им ключи и
+  // английский текст; перевод по этим строкам никуда не делся — он тот же самый.
+  'Ожидание, пока собеседник примет секретный чат…': 'SecretChat.Awaiting',
+  'Отклонить': 'SecretChat.Reject',
+  'Отмена': 'Cancel',
+  'Подтвердите вход для нового устройства': 'QrLogin.Confirm.Text',
+  'Подтвердить': 'QrLogin.Confirm.Action',
+  'Вы можете предложить контакту установить новую фотографию профиля — или изменить его фотографию только у себя.': 'EditContact.PhotoHint',
+  'Звонок': 'Message.Preview.Call',
+  'Приглашение в секретный чат': 'SecretChat.Invitation',
+  'Принять': 'SecretChat.Accept',
+  'Секретный чат отклонён': 'SecretChat.Rejected',
+  'Войти на новом устройстве?': 'QrLogin.Confirm.Title',
   '12-hour': 'General.TimeFormat.h12',
   '24-hour': 'General.TimeFormat.h23',
   Accept: 'Call.Accept',
@@ -677,7 +691,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Create a New Link': 'CreateNewLink',
   'Delete All Revoked Links': 'DeleteAllRevokedLinks',
   'Dismiss Admin': 'Channel.Admin.Dismiss',
-  'Do you want to set': 'Discussion.Link.Question.Prefix',
+  'Do you want to set': 'Discussion.Link.Question',
   Duration: 'UserPermissions.Duration',
   'Edit Link': 'InviteLinks.Edit',
   Expired: 'ExportedInvitation.Status.Expired',
@@ -728,7 +742,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'What can members of this group do?': 'ChannelPermissionsHeader',
   'What can this member do?': 'UserRestrictions.CanDoMember',
   'You can select emoji that will allow members of this group to react to messages.': 'Reactions.Some.Info',
-  'as the discussion board for this channel?': 'Discussion.Link.Question.Suffix',
+  'as the discussion board for this channel?': 'Discussion.Link.Question',
   'can join': 'InviteLinks.CanJoinSuffix',
   joined: 'InviteLinks.JoinedSuffix',
   'people can join via this link.': 'InviteLinks.UsageHintSuffix',
@@ -1362,6 +1376,12 @@ export const LEGACY_PLURAL_GROUPS: Record<string, Partial<Record<'one_value' | '
  * проверка ловила СЛУЧАЙНЫЕ слияния, а не покрывала их молча.
  */
 export const LEGACY_ALIASES: Record<string, string[]> = {
+  // СКЛЕЙКА, сведённая задачей 6: предложение собиралось из двух половин с названием
+  // группы посередине; теперь это одна строка с аргументом, и обе половины смотрят в неё.
+  'Discussion.Link.Question': ['Do you want to set', 'as the discussion board for this channel?'],
+  // «Отмена» была зашита в код по-русски (`GlobalOverlays`), а `Cancel` — обычная
+  // английская строка: у обеих один и тот же смысл и теперь один ключ.
+  Cancel: ['Cancel', 'Отмена'],
   'Checkbox.Disabled': ['Checkbox.Disabled', 'Disabled'],
   Bot: ['Bot', 'bot'],
   Loading: ['Loading', 'Loading…'],

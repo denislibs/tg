@@ -21,13 +21,13 @@ export interface PickerFlags {
 // Категории типов (tweb folder-categories): для include и exclude — свои наборы.
 const INCLUDE_TYPES: { key: keyof PickerFlags; icon: string; label: string }[] = [
   { key: 'contacts', icon: 'newprivate', label: 'Contacts' },
-  { key: 'nonContacts', icon: 'noncontacts', label: 'Non-Contacts' },
-  { key: 'groups', icon: 'group', label: 'Groups' },
-  { key: 'broadcasts', icon: 'channel', label: 'Channels' },
+  { key: 'nonContacts', icon: 'noncontacts', label: 'ChatList.Filter.NonContacts' },
+  { key: 'groups', icon: 'InactiveChannel.Group', label: 'ChatList.Filter.Groups' },
+  { key: 'broadcasts', icon: 'InactiveChannel.Broadcast', label: 'ChatList.Filter.Channels' },
 ]
 const EXCLUDE_TYPES: { key: keyof PickerFlags; icon: string; label: string }[] = [
-  { key: 'excludeMuted', icon: 'mute', label: 'Muted' },
-  { key: 'excludeRead', icon: 'readchats', label: 'Read' },
+  { key: 'excludeMuted', icon: 'mute', label: 'ChatList.Filter.MutedChats' },
+  { key: 'excludeRead', icon: 'readchats', label: 'Chat.ContextMenu.Read' },
 ]
 
 function ChatPickRow({ chat, selected, onToggle }: { chat: Chat; selected: boolean; onToggle: () => void }) {
@@ -76,7 +76,7 @@ export default function FolderChatsPicker({
 
   return (
     <SettingsScreen
-      title={mode === 'include' ? 'Included Chats' : 'Excluded Chats'}
+      title={mode === 'include' ? 'FilterInclude' : 'FilterExclude'}
       onBack={onClose}
       zIndex={80}
       headerRight={
@@ -85,7 +85,7 @@ export default function FolderChatsPicker({
         </IconButton>
       }
     >
-      <Section caption="Chat types">
+      <Section caption="FilterChatTypes">
         {types.map((tp) => (
           <Row
             key={tp.key}
@@ -96,7 +96,7 @@ export default function FolderChatsPicker({
           />
         ))}
       </Section>
-      <Section caption="Chats">
+      <Section caption="FilterChats">
         {pickable.map((c) => (
           <ChatPickRow key={c.id} chat={c} selected={ids.has(Number(c.id))} onToggle={() => toggleChat(Number(c.id))} />
         ))}

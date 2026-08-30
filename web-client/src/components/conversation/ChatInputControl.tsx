@@ -152,7 +152,7 @@ function ChatInputControl(p: ChatInputControlProps) {
           {/* tweb обновляет лейбл через replaceChildren — вместе с ним из кнопки
               пропадает и `.c-ripple`; повторяем итоговое дерево. */}
           <PlateButton noRipple hide={!channelMute} onClick={p.onToggleMute}>
-            <span className="i18n">{t(p.muted ? 'Unmute' : 'Mute')}</span>
+            <span className="i18n">{t(p.muted ? 'ChatList.Context.Unmute' : 'ChatList.Context.Mute')}</span>
           </PlateButton>
           <PlateButton hide={!premium}>
             <span className="i18n">
@@ -196,17 +196,17 @@ function ChatInputControl(p: ChatInputControlProps) {
             p.secret.status === 'requested' ? (
               <>
                 <PlateButton filled hide={!secret} disabled={p.secret.busy} onClick={p.secret.onAccept}>
-                  <span className="i18n">{t('Принять')}</span>
+                  <span className="i18n">{t('SecretChat.Accept')}</span>
                 </PlateButton>
                 <PlateButton hide={!secret} disabled={p.secret.busy} onClick={p.secret.onReject}>
-                  <span className="i18n">{t('Отклонить')}</span>
+                  <span className="i18n">{t('SecretChat.Reject')}</span>
                 </PlateButton>
               </>
             ) : (
               <span className="i18n secondary">
                 {p.secret.status === 'rejected'
-                  ? t('Секретный чат отклонён')
-                  : t('Ожидание, пока собеседник примет секретный чат…')}
+                  ? t('SecretChat.Rejected')
+                  : t('SecretChat.Awaiting')}
               </span>
             )
           )}

@@ -2,6 +2,7 @@
 // транзакций. Полноэкранный слайд-скрин поверх списка чатов (как Настройки).
 // Пополнение — dev-операция (реального провайдера нет), баланс живёт в
 // State (`starsBalance`, единый источник, обновляется и WS-фреймом balance_update).
+import type { LangPackKey } from '@/lang'
 import { useEffect, useState } from 'react'
 import { SettingsScreen, Section } from '../settings/kit'
 import Text from '../../shared/ui/Text'
@@ -24,7 +25,7 @@ const TOPUP_OPTIONS = [100, 250, 500, 1000, 2500, 5000]
 // Вид операции ВЫВОДИТСЯ: «это подарок» говорит флаг конструктора, «отправлен
 // или обменян» — знак суммы. Прежде здесь ветвились по строковому `kind` с
 // провода, и одна из его веток (`paid_media`) не производилась сервером вовсе.
-function txMeta(tx: StarTransaction, t: (s: string) => string): { icon: import('../TgIcon').IconName; label: string } {
+function txMeta(tx: StarTransaction, t: (key: LangPackKey) => string): { icon: import('../TgIcon').IconName; label: string } {
   if (tx.gift) {
     return tx.amount < 0
       ? { icon: 'gift', label: tx.title || t('StarGiftTitle') }
@@ -59,7 +60,7 @@ export default function WalletView({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <SettingsScreen title="Wallet" onBack={onBack}>
+    <SettingsScreen title="Stars.Wallet" onBack={onBack}>
       {/* Крупный баланс */}
       <div className={s.bigBalance}>
         <div className={s.bigBalanceRow}>
@@ -70,7 +71,7 @@ export default function WalletView({ onBack }: { onBack: () => void }) {
       </div>
 
       {/* Покупка звёзд */}
-      <Section caption="Buy Stars">
+      <Section caption="BuyStars">
         <div className={w.optionsGrid}>
           {TOPUP_OPTIONS.map((amount) => (
             <div key={amount} className={s.option} onClick={() => void topUp(amount)}>
@@ -88,7 +89,7 @@ export default function WalletView({ onBack }: { onBack: () => void }) {
 
       {/* История транзакций */}
       {txs.length > 0 && (
-        <Section caption="Recent Transactions">
+        <Section caption="Stars.RecentTransactions">
           {txs.map((tx) => {
             const m = txMeta(tx, t)
             const positive = tx.amount > 0

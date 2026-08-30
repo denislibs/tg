@@ -24,14 +24,18 @@
 // через `getPopup`, наше расширение `confirmationPopup` — см. докблок
 // `popupPeer.ts`), а не полагается на то, что React «унесёт» чужой DOM-узел
 // вместе с собой — React о нём не знает, узел висит прямо на `document.body`.
+import type { LangPackKey } from '@/lang'
 import { useEffect, useRef } from 'react'
+import { useI18nStore } from '../../i18n'
 import { confirmationPopup } from '../popups/popupPeer'
 import type PopupPeer from '../popups/popupPeer'
 
-export default function ConfirmDialog({ title, text, action, danger, zIndex, onConfirm, onClose }: {
-  title: string
-  text: string
-  action: string
+export default function ConfirmDialog({ title, text, textArgs, action, danger, zIndex, onConfirm, onClose }: {
+  title: LangPackKey
+  text: LangPackKey
+  /** Аргументы строки описания (`%s`, `%1$s`, форма числа) — подставляет `tArgs`. */
+  textArgs?: (string | number)[]
+  action: LangPackKey
   danger?: boolean
   /** поверх полноэкранных оверлеев (медиа-редактор и т.п.) — форвардится в
    *  `PopupOptions.zIndex` (наше расширение, см. докблок `popupElement.ts`) */
@@ -42,6 +46,7 @@ export default function ConfirmDialog({ title, text, action, danger, zIndex, onC
   // Колбэки читаются в момент исхода промиса, а не на момент монтирования —
   // но сам попап обязан открыться РОВНО один раз за монтирование (владелец
   // монтирует/размонтирует компонент по месту действия, как и раньше).
+  const tArgs = useI18nStore.getState().tArgs
   const cb = useRef({ onConfirm, onClose })
   cb.current = { onConfirm, onClose }
 
@@ -50,7 +55,7 @@ export default function ConfirmDialog({ title, text, action, danger, zIndex, onC
     let popup: PopupPeer | undefined
     confirmationPopup({
       titleLangKey: title,
-      descriptionLangKey: text,
+      ...(textArgs ? { descriptionText: tArgs(text, textArgs) } : { descriptionLangKey: text }),
       button: { text: action, isDanger: danger },
       zIndex,
       getPopup: (p) => { popup = p },

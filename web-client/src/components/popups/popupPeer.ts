@@ -69,6 +69,7 @@
 // `DeleteMessageDialog`) их не просит; `checkboxField.ts` объясняет, почему
 // `withRipple` (peer.ts:98, безусловно для чекбоксов `PopupPeer`) тоже не
 // портирован ЦЕЛИКОМ.
+import type { LangPackKey } from '@/lang'
 import PopupElement, { type PopupButton } from './popupElement'
 import CheckboxField from '@components/checkboxField'
 import { avatarNew, type AvatarManagers } from '@components/avatar'
@@ -85,10 +86,12 @@ import { useI18nStore } from '@/i18n'
  *  `managers` обязателен вместе с `peerId` — ими пользуется только `avatarNew`
  *  (peer.ts:46-53); без `peerId` он не нужен и не запрашивается. */
 export type PopupPeerOptions = {
-  titleLangKey: string // peer.ts:58-59 — `i18n(titleLangKey)`
+  titleLangKey: LangPackKey // peer.ts:58-59 — `i18n(titleLangKey)`
   // peer.ts:70 — опционально и у оригинала: `PopupMute` описания не задаёт
   // вовсе (mute.ts:29-38), у него вместо `<p>` — радио-список в `body`.
-  descriptionLangKey?: string
+  descriptionLangKey?: LangPackKey
+  /** Готовый текст описания — когда в строку подставлен аргумент (число, имя). */
+  descriptionText?: string
   buttons: PopupPeerButton[] // peer.ts:41 — `addCancelButton(options.buttons)`
   body?: boolean
   zIndex?: number
@@ -199,10 +202,10 @@ export default class PopupPeer extends PopupElement {
     // `this.header.after(fragment)` (peer.ts:126): порядок в DOM решает
     // порядок append НИЖЕ, а не порядок вызовов setButtons/фрагмента выше.
     const fragment = document.createDocumentFragment()
-    if(options.descriptionLangKey) { // peer.ts:65 — `if(options.descriptionLangKey || …)`
+    if(options.descriptionLangKey || options.descriptionText) { // peer.ts:65
       const p = this.description = document.createElement('p') // peer.ts:68
       p.classList.add('popup-description') // peer.ts:69
-      p.append(document.createTextNode(t(options.descriptionLangKey))) // peer.ts:70
+      p.append(document.createTextNode(options.descriptionLangKey ? t(options.descriptionLangKey) : options.descriptionText!)) // peer.ts:70
       fragment.append(p)
     }
     for(const { field } of checkboxFields) { // peer.ts:110 — `fragment.append(checkboxField.label)`
@@ -225,8 +228,9 @@ export default class PopupPeer extends PopupElement {
  * (simpleConfirmation.ts:37-42).
  */
 export function confirmationPopup(options: {
-  titleLangKey: string
-  descriptionLangKey: string
+  titleLangKey: LangPackKey
+  descriptionLangKey?: LangPackKey
+  descriptionText?: string
   button: PopupButton
   /** НАШЕ расширение, не из tweb — см. докблок `PopupOptions.zIndex`
    *  (`popupElement.ts`). Потребитель — мост `ConfirmDialog.tsx` (задача 3). */
@@ -263,6 +267,7 @@ export function confirmationPopup(options: {
     const popup = PopupElement.createPopup(PopupPeer, 'popup-confirmation', { // simpleConfirmation.ts:50-55
       titleLangKey: options.titleLangKey,
       descriptionLangKey: options.descriptionLangKey,
+      descriptionText: options.descriptionText,
       buttons,
       zIndex: options.zIndex,
     })

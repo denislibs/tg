@@ -4,6 +4,7 @@
 // форматирование = SHORTCUTS/onEditorKeyDown композера, поиск/избранное/чаты =
 // core/hotkeys, медиа = mediaViewer/base.ts (onKeyDown: стрелки вне зума,
 // Ctrl+±: порт tweb), сториз = useStoryViewer, редактор = MediaEditor.
+import type { LangPackKey } from '@/lang'
 import Text from '../../shared/ui/Text'
 import { SettingsScreen, Section } from './kit'
 import { useT } from '../../i18n'
@@ -51,7 +52,7 @@ function KeyCombo({ keys }: { keys: string[] }) {
 }
 
 // Строка: действие (+ опциональная подсказка мелким шрифтом, как hint tweb) и комбо.
-function ShortcutRow({ action, keys, hint }: { action: string; keys: string[]; hint?: string }) {
+function ShortcutRow({ action, keys, hint }: { action: LangPackKey; keys: string[]; hint?: LangPackKey }) {
   const t = useT()
   return (
     <div className={s.row}>
@@ -71,7 +72,7 @@ function ShortcutRow({ action, keys, hint }: { action: string; keys: string[]; h
 }
 
 // Информационная строка без комбо (блокировка приложения — код-пароль).
-function InfoRow({ action, hint }: { action: string; hint: string }) {
+function InfoRow({ action, hint }: { action: LangPackKey; hint: LangPackKey }) {
   const t = useT()
   return (
     <div className={s.row}>
@@ -89,68 +90,68 @@ function InfoRow({ action, hint }: { action: string; hint: string }) {
 
 export default function HotkeysSettings({ onBack }: { onBack: () => void }) {
   return (
-    <SettingsScreen title="Keyboard Shortcuts" onBack={onBack} zIndex={50}>
+    <SettingsScreen title='KeyboardShortcuts.Title' onBack={onBack} zIndex={50}>
       {/* Форматирование — SHORTCUTS/onEditorKeyDown композера (mod + код клавиши) */}
-      <Section caption="Text Formatting">
-        <ShortcutRow action="Bold" keys={['ctrl', 'B']} />
-        <ShortcutRow action="Italic" keys={['ctrl', 'I']} />
-        <ShortcutRow action="Underline" keys={['ctrl', 'U']} />
-        <ShortcutRow action="Strikethrough" keys={['ctrl', 'S']} />
-        <ShortcutRow action="Monospace" keys={['ctrl', 'M']} />
-        <ShortcutRow action="Spoiler" keys={['ctrl', 'P']} />
-        <ShortcutRow action="Link" keys={['ctrl', 'K']} />
+      <Section caption='KeyboardShortcuts.Section.Formatting'>
+        <ShortcutRow action='KeyboardShortcuts.Action.Bold' keys={['ctrl', 'Unit.Bytes']} />
+        <ShortcutRow action='KeyboardShortcuts.Action.Italic' keys={['ctrl', 'I']} />
+        <ShortcutRow action='KeyboardShortcuts.Action.Underline' keys={['ctrl', 'U']} />
+        <ShortcutRow action='KeyboardShortcuts.Action.Strikethrough' keys={['ctrl', 'S']} />
+        <ShortcutRow action='KeyboardShortcuts.Action.Monospace' keys={['ctrl', 'M']} />
+        <ShortcutRow action='KeyboardShortcuts.Action.Spoiler' keys={['ctrl', 'P']} />
+        <ShortcutRow action='KeyboardShortcuts.Action.Link' keys={['ctrl', 'K']} />
       </Section>
 
       {/* Сообщения — Composer.onEditorKeyDown + mod+PageUp/PageDown ленты */}
-      <Section caption="Messages">
-        <ShortcutRow action="Send Message" keys={['enter']} />
-        <ShortcutRow action="New Line" keys={['shift', 'enter']} />
-        <ShortcutRow action="Go to Beginning of History" keys={['ctrl', 'pageup']} />
-        <ShortcutRow action="Go to End of History" keys={['ctrl', 'pagedown']} />
+      <Section caption='KeyboardShortcuts.Section.Messages'>
+        <ShortcutRow action='SendMessage' keys={['enter']} />
+        <ShortcutRow action='KeyboardShortcuts.Action.NewLine' keys={['shift', 'enter']} />
+        <ShortcutRow action='KeyboardShortcuts.Action.HistoryStart' keys={['ctrl', 'pageup']} />
+        <ShortcutRow action='KeyboardShortcuts.Action.HistoryEnd' keys={['ctrl', 'pagedown']} />
       </Section>
 
       {/* Чат — Composer (↑/mod+↑) + core/hotkeys (Alt+↑/↓) */}
-      <Section caption="Chat">
-        <ShortcutRow action="Edit Last Message" keys={['up']} hint="when the input is empty" />
-        <ShortcutRow action="Reply to Previous Message" keys={['ctrl', 'up']} />
-        <ShortcutRow action="Next Chat" keys={['alt', 'down']} />
-        <ShortcutRow action="Previous Chat" keys={['alt', 'up']} />
+      <Section caption='KeyboardShortcuts.Section.Chat'>
+        <ShortcutRow action='KeyboardShortcuts.Action.EditLast' keys={['up']} hint='KeyboardShortcuts.Hint.WhenInputEmpty' />
+        <ShortcutRow action='KeyboardShortcuts.Action.ReplyToPrevious' keys={['ctrl', 'up']} />
+        <ShortcutRow action='KeyboardShortcuts.Action.NextChat' keys={['alt', 'down']} />
+        <ShortcutRow action='KeyboardShortcuts.Action.PreviousChat' keys={['alt', 'up']} />
       </Section>
 
       {/* Навигация — core/hotkeys.ts */}
-      <Section caption="Navigation">
+      <Section caption='KeyboardShortcuts.Section.Navigation'>
         <ShortcutRow action="Search" keys={['ctrl', 'F']} />
-        <ShortcutRow action="Saved Messages" keys={['ctrl', '0']} />
-        <ShortcutRow action="Close Window or Menu" keys={['esc']} />
+        <ShortcutRow action='SavedMessages' keys={['ctrl', '0']} />
+        <ShortcutRow action='KeyboardShortcuts.Action.ClosePopup' keys={['esc']} />
       </Section>
 
       {/* Просмотр медиа — mediaViewer/base.ts onKeyDown (порт tweb: стрелки
           листают вне зума, зум — Ctrl+= / Ctrl+-; строки и подписи 1:1 с
           tweb keyboardShortcuts.tsx:195-214) */}
-      <Section caption="Media Viewer">
-        <ShortcutRow action="Next Media" keys={['right']} />
-        <ShortcutRow action="Previous Media" keys={['left']} />
-        <ShortcutRow action="Zoom In" keys={['ctrl', 'plus']} />
-        <ShortcutRow action="Zoom Out" keys={['ctrl', 'minus']} />
+      <Section caption='KeyboardShortcuts.Section.MediaViewer'>
+        <ShortcutRow action='KeyboardShortcuts.Action.NextMedia' keys={['right']} />
+        <ShortcutRow action='KeyboardShortcuts.Action.PreviousMedia' keys={['left']} />
+        <ShortcutRow action='MediaZoomIn' keys={['ctrl', 'plus']} />
+        <ShortcutRow action='MediaZoomOut' keys={['ctrl', 'minus']} />
       </Section>
 
       {/* Истории — useStoryViewer.ts */}
-      <Section caption="Stories">
-        <ShortcutRow action="Next Story" keys={['right']} />
-        <ShortcutRow action="Previous Story" keys={['left']} />
-        <ShortcutRow action="Play/Pause" keys={['space']} />
-        <ShortcutRow action="Exit" keys={['down']} />
+      <Section caption='KeyboardShortcuts.Section.Stories'>
+        <ShortcutRow action='KeyboardShortcuts.Action.NextStory' keys={['right']} />
+        <ShortcutRow action='KeyboardShortcuts.Action.PreviousStory' keys={['left']} />
+        <ShortcutRow action='KeyboardShortcuts.Action.PlayPause' keys={['space']} />
+        <ShortcutRow action='KeyboardShortcuts.Action.Exit' keys={['down']} />
       </Section>
 
       {/* Фоторедактор — MediaEditor.tsx */}
-      <Section caption="Photo Editor">
-        <ShortcutRow action="Undo" keys={['ctrl', 'Z']} />
-        <ShortcutRow action="Redo" keys={['ctrl', 'shift', 'Z']} />
+      <Section caption='KeyboardShortcuts.Section.PhotoEditor'>
+        <ShortcutRow action='Undo' keys={['ctrl', 'Z']} />
+        <ShortcutRow action='KeyboardShortcuts.Action.Redo' keys={['ctrl', 'shift', 'Z']} />
       </Section>
 
       {/* Прочее — информационная строка (саму блокировку не реализуем здесь) */}
       <Section caption="Other">
-        <InfoRow action="Lock the App" hint="Passcode is configured in Privacy settings" />
+        <InfoRow action='KeyboardShortcuts.Action.LockApp' hint='KeyboardShortcuts.Hint.PasscodeNotSet' />
       </Section>
     </SettingsScreen>
   )

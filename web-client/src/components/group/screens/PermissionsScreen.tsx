@@ -35,7 +35,7 @@ export function PermissionsScreen({ g, onBack }: { g: GroupEdit; onBack: () => v
   }
 
   return (
-    <SettingsScreen title="Permissions" onBack={onBack} zIndex={70}>
+    <SettingsScreen title="ChannelPermissions" onBack={onBack} zIndex={70}>
       {/* Строки прав — ровно та форма, что в дампе `15-right-13-group-permissions`:
           `label.row.no-subtitle.row-with-toggle.row-clickable.hover-effect.rp`
           с тумблером-ограничением (`checkbox-field-toggle-restriction`: снятый
@@ -43,7 +43,7 @@ export function PermissionsScreen({ g, onBack }: { g: GroupEdit; onBack: () => v
           (`div.checkbox-box`) в этом экране tweb рисует ТОЛЬКО у под-прав
           аккордеона «Send Media» (Send Photos / Videos / …) — такой вложенности
           у нашей маски `PERMS` нет (см. `core/hooks/useGroupEdit.ts`). */}
-      <Section caption="What can members of this group do?">
+      <Section caption="ChannelPermissionsHeader">
         {PERMS.map((p) => (
           <Row
             key={p.bit}
@@ -55,7 +55,7 @@ export function PermissionsScreen({ g, onBack }: { g: GroupEdit; onBack: () => v
           />
         ))}
       </Section>
-      <Section caption="Slow Mode" footer="Choose how often members of the group are able to send messages.">
+      <Section caption="Slowmode" footer="SlowmodeInfo">
         {/* Слоумод 1:1 с дампом 15-right-13: `div.range-setting-selector
             .range-steps-selector > div.progress-line` (наш вендорный `Slider`),
             а засечки-подписи — `.range-setting-selector-option[.active]
@@ -90,7 +90,7 @@ export function PermissionsScreen({ g, onBack }: { g: GroupEdit; onBack: () => v
       </Section>
       {/* Платные сообщения (Telegram paid messages) — только владелец группы. */}
       {g.isCreator && (
-        <Section caption="Paid messages" footer="Charge stars per message from non-admins. 0 disables paid messages.">
+        <Section caption="GroupPermissions.PaidMessages" footer="GroupPermissions.PaidMessages.Hint">
           {/* Плата за сообщение — обычная `.row` с правым слотом
               (`row-right`, tweb row.ts:280-283), в слоте — числовое поле. */}
           {/* Плата — вендорное поле `.input-wrapper > .input-field`

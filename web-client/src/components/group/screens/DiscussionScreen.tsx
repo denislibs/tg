@@ -35,7 +35,7 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
   }, [linkedId])
 
   return (
-    <SettingsScreen title="Discussion" onBack={onBack} zIndex={70}>
+    <SettingsScreen title="PeerInfo.Discussion" onBack={onBack} zIndex={70}>
       {/* Пояснение экрана — вендорная подпись секции
           (`sidebar-left-section-caption`), а не свой текстовый блок. */}
       <div className="sidebar-left-section-container">
@@ -63,12 +63,12 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
             </Section>
           )}
           <Section>
-            <Row icon={<TgIcon name="delete" size={22} color="#ff595a" />} label="Unlink Group" danger onClick={() => setUnlinking(true)} />
+            <Row icon={<TgIcon name="delete" size={22} color="#ff595a" />} label="DiscussionUnlinkGroup" danger onClick={() => setUnlinking(true)} />
           </Section>
         </>
       ) : (
         <Section>
-          <Row icon={<TgIcon name="newgroup" size={22} color="var(--primary-color)" />} label="Create a New Group" accent onClick={() => void g.enableDiscussion()} />
+          <Row icon={<TgIcon name="newgroup" size={22} color="var(--primary-color)" />} label="DiscussionCreateGroup" accent onClick={() => void g.enableDiscussion()} />
           {candidates.map((c) => (
             <Row
               key={c.peerId}
@@ -84,9 +84,10 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
 
       {confirming && (
         <ConfirmDialog
-          title={t('PeerInfo.Discussion')}
-          text={`${t('Discussion.Link.Question.Prefix')} «${confirming.title}» ${t('Discussion.Link.Question.Suffix')}`}
-          action={t('DiscussionLinkGroup')}
+          title="PeerInfo.Discussion"
+          text="Discussion.Link.Question"
+          textArgs={[confirming.title]}
+          action="DiscussionLinkGroup"
           zIndex={90}
           onConfirm={() => void g.linkDiscussion(confirming.peerId)}
           onClose={() => setConfirming(null)}
@@ -94,9 +95,9 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
       )}
       {unlinking && (
         <ConfirmDialog
-          title={t('DiscussionUnlinkGroup')}
-          text={t('Discussion.Unlink.Text')}
-          action={t('DiscussionUnlink')}
+          title="DiscussionUnlinkGroup"
+          text="Discussion.Unlink.Text"
+          action="DiscussionUnlink"
           danger
           zIndex={90}
           onConfirm={() => void g.unlinkDiscussion()}

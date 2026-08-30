@@ -2,6 +2,7 @@
 // канала. mode='admin' — все ожидающие с действиями «Опубликовать» / по времени /
 // «Отклонить»; mode='author' — свои предложки с бейджем статуса (на рассмотрении /
 // одобрено / отклонено). Список живёт в suggestedPostsStore, live — realtimeBridge.
+import type { LangPackKey } from '@/lang'
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import Text from '../shared/ui/Text'
@@ -14,10 +15,10 @@ import type { SuggestedPost, SuggestedPostStatus } from '../core/models'
 import { useLang, useT } from '../i18n'
 import s from './SuggestedPostsView.module.scss'
 
-const statusKey: Record<SuggestedPostStatus, string> = {
-  pending: 'On review',
-  approved: 'Approved',
-  rejected: 'Rejected',
+const statusKey: Record<SuggestedPostStatus, LangPackKey> = {
+  pending: 'SuggestedPosts.Status.OnReview',
+  approved: 'SuggestedPosts.Status.Approved',
+  rejected: 'SuggestedPosts.Status.Rejected',
 }
 
 export default function SuggestedPostsView({ chatId, mode, onClose }: {

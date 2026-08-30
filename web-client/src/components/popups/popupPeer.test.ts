@@ -20,23 +20,23 @@ describe('confirmationPopup — порт tweb popups/peer.ts + simpleConfirmatio
   it('заголовок и описание попадают в разметку', () => {
     // отмену никто не проверяет в этом тесте — гасим необработанный reject
     void confirmationPopup({
-      titleLangKey: 'Delete Chat',
-      descriptionLangKey: 'Are you sure?',
+      titleLangKey: 'ChatList.Context.DeleteChat',
+      descriptionLangKey: 'AreYouSureDeleteSingleMessage',
       button: { text: 'Delete' }
     }).catch(() => {})
 
     const root = document.querySelector('.popup-confirmation') as HTMLElement
     expect(root).not.toBeNull()
     expect(root.querySelector('.popup-title')?.textContent).toBe('Delete Chat')
-    expect(root.querySelector('.popup-description')?.textContent).toBe('Are you sure?')
+    expect(root.querySelector('.popup-description')?.textContent).toBe('Are you sure you want to delete this message?')
   })
 
   it('клик по кнопке подтверждения резолвит промис, попап закрывается после исхода', async() => {
     vi.useFakeTimers()
 
     const promise = confirmationPopup({
-      titleLangKey: 'Delete Chat',
-      descriptionLangKey: 'Are you sure?',
+      titleLangKey: 'ChatList.Context.DeleteChat',
+      descriptionLangKey: 'AreYouSureDeleteSingleMessage',
       button: { text: 'Delete', isDanger: true }
     })
 
@@ -60,8 +60,8 @@ describe('confirmationPopup — порт tweb popups/peer.ts + simpleConfirmatio
     vi.useFakeTimers()
 
     const promise = confirmationPopup({
-      titleLangKey: 'Delete Chat',
-      descriptionLangKey: 'Are you sure?',
+      titleLangKey: 'ChatList.Context.DeleteChat',
+      descriptionLangKey: 'AreYouSureDeleteSingleMessage',
       button: { text: 'Delete', isDanger: true }
     })
 
@@ -81,8 +81,8 @@ describe('confirmationPopup — порт tweb popups/peer.ts + simpleConfirmatio
     const deactivate = initHotkeys({})
 
     const promise = confirmationPopup({
-      titleLangKey: 'Delete Chat',
-      descriptionLangKey: 'Are you sure?',
+      titleLangKey: 'ChatList.Context.DeleteChat',
+      descriptionLangKey: 'AreYouSureDeleteSingleMessage',
       button: { text: 'Delete', isDanger: true }
     })
 
@@ -109,7 +109,7 @@ describe('PopupPeer — аватар пира (peerId), раунд правок 
     const popup = PopupElement.createPopup(PopupPeer, 'popup-peer-avatar-test', {
       peerId: ALICE,
       titleLangKey: 'Notifications',
-      descriptionLangKey: 'Are you sure?',
+      descriptionLangKey: 'AreYouSureDeleteSingleMessage',
       buttons: [{ text: 'Mute' }],
       managers
     })
@@ -167,7 +167,7 @@ describe('PopupPeer — body/zIndex/описание опционально, р�
   it('zIndex форвардится в PopupElement.style.zIndex — потребитель ConfirmDialog.tsx поверх React-оверлеев', () => {
     const popup = PopupElement.createPopup(PopupPeer, 'popup-zindex-test', {
       titleLangKey: 'Notifications',
-      descriptionLangKey: 'Are you sure?',
+      descriptionLangKey: 'AreYouSureDeleteSingleMessage',
       buttons: [{ text: 'OK' }],
       zIndex: 4300,
     })
@@ -182,8 +182,8 @@ describe('PopupPeer — body/zIndex/описание опционально, р�
 describe('confirmationPopup — zIndex, раунд правок 2 (задача 3)', () => {
   it('zIndex доезжает до PopupElement через confirmationPopup', () => {
     const promise = confirmationPopup({
-      titleLangKey: 'Discard changes',
-      descriptionLangKey: 'Are you sure?',
+      titleLangKey: 'MediaEditor.DiscardChanges',
+      descriptionLangKey: 'AreYouSureDeleteSingleMessage',
       button: { text: 'Discard' },
       zIndex: 90,
     })
@@ -201,8 +201,8 @@ describe('confirmationPopup — zIndex, раунд правок 2 (задача 
 describe('PopupPeer — checkboxes, раунд правок 3 (peer.ts:22, :96-124)', () => {
   it('checkboxes непуст — have-checkbox на container, label в шапке между описанием и кнопками', () => {
     const popup = PopupElement.createPopup(PopupPeer, 'popup-checkbox-test', {
-      titleLangKey: 'Delete message',
-      descriptionLangKey: 'Are you sure?',
+      titleLangKey: 'DeleteSingleMessagesTitle',
+      descriptionLangKey: 'AreYouSureDeleteSingleMessage',
       buttons: [{ text: 'Delete', isDanger: true, callback: () => {} }],
       checkboxes: [{ text: 'Also delete for Maya' }],
     })
@@ -228,7 +228,7 @@ describe('PopupPeer — checkboxes, раунд правок 3 (peer.ts:22, :96-1
   it('без чекбокса — не отмечен, колбэк кнопки получает ПУСТОЙ Set', () => {
     const onDelete = vi.fn()
     const popup = PopupElement.createPopup(PopupPeer, 'popup-checkbox-unchecked', {
-      titleLangKey: 'Delete message',
+      titleLangKey: 'DeleteSingleMessagesTitle',
       buttons: [{ text: 'Delete', isDanger: true, callback: onDelete }],
       checkboxes: [{ text: 'Also delete for Maya' }],
     })
@@ -244,7 +244,7 @@ describe('PopupPeer — checkboxes, раунд правок 3 (peer.ts:22, :96-1
   it('чекбокс отмечен — колбэк кнопки получает Set с его подписью (peer.ts:111-121)', () => {
     const onDelete = vi.fn()
     const popup = PopupElement.createPopup(PopupPeer, 'popup-checkbox-checked', {
-      titleLangKey: 'Delete message',
+      titleLangKey: 'DeleteSingleMessagesTitle',
       buttons: [{ text: 'Delete', isDanger: true, callback: onDelete }],
       checkboxes: [{ text: 'Also delete for Maya' }],
     })
@@ -260,7 +260,7 @@ describe('PopupPeer — checkboxes, раунд правок 3 (peer.ts:22, :96-1
 
   it('checked:true — чекбокс предвзведён (tweb :64-66)', () => {
     const popup = PopupElement.createPopup(PopupPeer, 'popup-checkbox-preset', {
-      titleLangKey: 'Delete message',
+      titleLangKey: 'DeleteSingleMessagesTitle',
       buttons: [{ text: 'Delete' }],
       checkboxes: [{ text: 'Delete for all members', checked: true }],
     })
@@ -272,7 +272,7 @@ describe('PopupPeer — checkboxes, раунд правок 3 (peer.ts:22, :96-1
   it('без checkboxes вовсе — колбэк зовётся БЕЗ аргументов, не с пустым Set (peer.ts:96 — условная обёртка)', () => {
     const onDelete = vi.fn()
     const popup = PopupElement.createPopup(PopupPeer, 'popup-no-checkbox', {
-      titleLangKey: 'Discard voice message?',
+      titleLangKey: 'DiscardVoiceMessageTitle',
       buttons: [{ text: 'Discard', isDanger: true, callback: onDelete }],
     })
     popup.show()

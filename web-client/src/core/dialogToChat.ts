@@ -16,6 +16,7 @@
 //    зеркала) — серверного `sender_name` больше нет вовсе;
 //  • заглушённость считается по СРОКУ (`notify_settings.mute_until`), а не по
 //    булеву полю строки.
+import type { LangPackKey } from '@/lang'
 import type { Chat, ChatType } from '../data'
 import { getMessageText, isDialogArchived, type Dialog, type MyMessage } from './models'
 import { draftDate, draftText, hasDraft as dialogHasDraft } from './dialogs/draft'
@@ -64,31 +65,33 @@ export function fmtWhen(iso?: string): string {
 }
 
 // A human label for a media message with no caption (tweb wrapMessageForReply:
-// grey type label, эмодзи-иконки для не-визуальных видов). Никогда не возвращаем
-// пустую строку — иначе не-текстовое сообщение выглядит в списке как пустой чат.
-export function mediaLabel(kind?: MessageKind): string {
+// grey type label). Возвращает КЛЮЧ, а не текст: до задачи 6 здесь лежали русские
+// строки прямо в коде (задача 1, п. 2), и английский интерфейс показывал русское
+// «Фото». Вместе с ними ушли эмодзи-приставки («📊 Опрос»): у оригинала в этом
+// месте иконок нет, метка серая и текстовая (`wrapMessageForReply`).
+export function mediaLabel(kind?: MessageKind): LangPackKey | '' {
   switch (kind) {
-    case 'photo': return 'Фото'
-    case 'video': return 'Видео'
-    case 'gif': return 'GIF'
-    case 'roundVideo': return 'Видеосообщение'
-    case 'voice': return 'Голосовое сообщение'
-    case 'audio': return '🎵 Аудио'
-    case 'document': return 'Файл'
-    case 'sticker': return 'Стикер'
-    case 'call': return 'Звонок'
-    case 'poll': return '📊 Опрос'
-    case 'geo': return '📍 Геолокация'
-    case 'contact': return '👤 Контакт'
-    case 'gift': return '🎁 Подарок'
-    case 'giveaway': return '🎉 Розыгрыш'
+    case 'photo': return 'AttachPhoto'
+    case 'video': return 'AttachVideo'
+    case 'gif': return 'AttachGif'
+    case 'roundVideo': return 'AttachRound'
+    case 'voice': return 'AttachAudio'
+    case 'audio': return 'SharedMedia.Audio'
+    case 'document': return 'Chat.Input.Attach.Document'
+    case 'sticker': return 'AttachSticker'
+    case 'call': return 'Message.Preview.Call'
+    case 'poll': return 'Poll'
+    case 'geo': return 'AttachLocation'
+    case 'contact': return 'AttachContact'
+    case 'gift': return 'StarGiftTitle'
+    case 'giveaway': return 'BoostingGiveaway'
     case 'text':
     case undefined:
       return ''
     // Вид, у которого своей строки нет (чек-лист, шифрованное, пилюля), —
     // не показываем пустоту. Прежние ветки 'game'/'story' сняты: таких видов
     // сообщения у нас нет вовсе, а `MessageKind` перечисляет ровно те, что есть.
-    default: return 'Сообщение'
+    default: return 'Message'
   }
 }
 

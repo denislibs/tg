@@ -29,6 +29,14 @@
  * Запуск (из web-client):
  *   node scripts/codemod-langpack-keys.mjs src/components/chat        # заменить
  *   node scripts/codemod-langpack-keys.mjs --dry src                  # только отчёт
+ *   node scripts/codemod-langpack-keys.mjs --literals src/x.tsx      # + литералы таблиц
+ *
+ * ── Режим `--literals` ────────────────────────────────────────────────────
+ * Строка не всегда приезжает в `t()` литералом: половина интерфейса держит их в
+ * таблицах (`{label: 'Play'}` → `t(it.label)`) и в тернарниках. Этот режим меняет
+ * ЛЮБОЙ строковый литерал файла, который есть в карте, — и потому опасен: под ту же
+ * руку попадает сравнение (`if (x === 'Read')`) и ключ объекта. Применять по одному
+ * файлу и ОБЯЗАТЕЛЬНО читать дифф; иначе замена молча меняет смысл кода.
  */
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
@@ -43,6 +51,37 @@ const lang = (await import(join(WEB_CLIENT, 'src/lang.ts'))).default
  * по нему отсеивается `x.t(...)` (чужой метод) и хвост чужого имени.
  */
 const CALL = /(.?)\bt\(\s*(['"])((?:\\.|(?!\2)[^\\])*)\2\s*\)/g
+
+/** Любой строковый литерал — вход режима `--literals`. */
+const LITERAL = /(['"])((?:\\.|(?!\1)[^\\])*)\1/g
+
+/**
+ * Позиции строковых литералов ВНЕ комментариев и шаблонных строк.
+ *
+ * Без этого прохода апостроф в комментарии («don't») открывает мнимую строку, и весь
+ * кусок файла до следующей кавычки перестаёт разбираться: половина таблиц молча
+ * оставалась английской. Поэтому источник читается посимвольно, а не регуляркой.
+ */
+function stringLiterals(src) {
+  const out = []
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i]
+    if (ch === '/' && src[i + 1] === '/') { i = src.indexOf('\n', i); if (i === -1) break; continue }
+    if (ch === '/' && src[i + 1] === '*') { i = src.indexOf('*/', i); if (i === -1) break; i++; continue }
+    if (ch === '`') { // шаблонная строка: подстановки внутри не разбираем — там не подписи
+      for (i++; i < src.length && src[i] !== '`'; i++) if (src[i] === '\\') i++
+      continue
+    }
+    if (ch !== "'" && ch !== '"') continue
+    const start = i
+    for (i++; i < src.length && src[i] !== ch; i++) {
+      if (src[i] === '\\') i++
+      if (src[i] === '\n') break // незакрытая кавычка (апостроф в JSX-тексте) — не литерал
+    }
+    if (src[i] === ch) out.push({ start, end: i + 1, quote: ch, raw: src.slice(start + 1, i) })
+  }
+  return out
+}
 
 /** Литерал исходника → строка, какой она приедет в `t()`. */
 function unescape(raw) {
@@ -131,7 +170,8 @@ const REAL_T = /\bt\s*=\s*(?:useT\(|useI18nStore\.getState\(|useI18n\b)/
 
 const args = process.argv.slice(2)
 const dry = args.includes('--dry')
-const targets = args.filter((a) => a !== '--dry')
+const literals = args.includes('--literals')
+const targets = args.filter((a) => a !== '--dry' && a !== '--literals')
 if (!targets.length) {
   console.error('нужен путь: node scripts/codemod-langpack-keys.mjs [--dry] <файл|каталог>…')
   process.exit(2)
@@ -144,7 +184,9 @@ let touched = 0
 for (const target of targets) {
   for (const file of sourceFiles(resolve(WEB_CLIENT, target))) {
     const src = readFileSync(file, 'utf8')
-    if (!src.includes('t(')) continue
+    // В режиме литералов файл интересен и без единого `t(`: он мог только ПЕРЕДАВАТЬ
+    // строку пропом (`<Section caption="Language">`), а переводит её кто-то другой.
+    if (!literals && !src.includes('t(')) continue
     if (OWN_T.test(src) && !REAL_T.test(src)) {
       if (CALL.test(src)) console.log(`ПРОПУЩЕН (свой \`t\` в файле) — ${relative(WEB_CLIENT, file)}`)
       CALL.lastIndex = 0
@@ -157,7 +199,46 @@ for (const target of targets) {
     // какому месту нужно точечное исключение, — ДО того, как строка исчезнет из файла.
     const pairs = []
 
-    const out = src.replace(CALL, (match, before, quoteChar, raw, offset) => {
+    // Опасный режим (см. докблок `--literals`): литерал таблицы, который есть в карте.
+    // ТЕСТЫ он не трогает никогда: там английская строка — это ОЖИДАНИЕ («на экране
+    // написано „Delete Chat“»), а не ключ, и подмена ключом ломает саму проверку.
+    const isTest = /\.test\.tsx?$/.test(file)
+    let withLiterals = src
+    for (const { start, end, quote: quoteChar, raw } of literals && !isTest ? stringLiterals(src).reverse() : []) {
+      const match = src.slice(start, end)
+      const offset = start
+      const replacement = (() => {
+      const legacy = unescape(raw)
+      const key = LEGACY_KEY_MAP[legacy]
+      if (!key || legacy in lang) return match
+      if (src.slice(Math.max(0, offset - 2), offset) === 't(') return match // это вызов, его меняет ветка ниже
+
+      // СРАВНЕНИЕ И КЛЮЧ ОБЪЕКТА — не подпись. `chat._ === 'channel'`, `case 'video':`,
+      // `{ user: … }` живут рядом с теми же словами, что и строки интерфейса («user»,
+      // «channel», «video», «stickers»), и подмена ключом ломает разбор, а не текст.
+      const before = src.slice(Math.max(0, offset - 12), offset)
+      if (/(===|!==|==|!=|case)\s*$/.test(before)) return match
+      // Ключ объекта — это литерал В ПОЗИЦИИ КЛЮЧА (после `{`, `,` или с начала строки)
+      // и с двоеточием следом. Одного двоеточия мало: в тернарнике `a ? 'X' : 'Y'` оно
+      // тоже стоит после литерала, и такая проверка молча пропускала половину замен.
+      const afterColon = /^\s*:/.test(src.slice(offset + match.length))
+      if (afterColon && /(^|[{,]|\n)\s*$/.test(before)) return match
+
+      // ОДНО СЛОВО В НИЖНЕМ РЕГИСТРЕ — почти всегда техническое значение, а не подпись:
+      // `type: 'video'`, `kind: 'photo'`, `liteMode.isAvailable('video')`. Подписи в
+      // таблицах пишутся как в интерфейсе — с заглавной или из нескольких слов. Строки
+      // вида `t('online')` этот запрет не касается: их меняет ветка вызова ниже.
+      if (/^[a-z]+$/.test(legacy)) return match
+      hits++
+      pairs.push(`      ${JSON.stringify(legacy)} → ${key} (литерал)`)
+      // Кавычка сохраняется своя: в JSX-атрибуте она двойная, и менять её значит
+      // засорять дифф стилем вместо смысла.
+      return `${quoteChar}${key}${quoteChar}`
+      })()
+      if (replacement !== match) withLiterals = withLiterals.slice(0, start) + replacement + withLiterals.slice(end)
+    }
+
+    const out = withLiterals.replace(CALL, (match, before, quoteChar, raw, offset) => {
       if (before === '.') return match // чужой метод `x.t('…')`, не наш переводчик
 
       const legacy = unescape(raw)

@@ -1,3 +1,4 @@
+import type { LangPackKey } from '@/lang'
 import { useEffect, useRef, useState } from 'react'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
@@ -28,12 +29,12 @@ interface Props {
   onClose: () => void
   onSelect: (id: string) => void
   /** заголовок экрана (по умолчанию «New Message»); секретный чат переиспользует пикер */
-  title?: string
+  title?: LangPackKey
   /** секретный чат: боты недоступны (у ботов нет E2E-секретов), скрываем их */
   excludeBots?: boolean
 }
 
-export default function NewPrivateChat({ chats, onClose, onSelect, title = 'New Message', excludeBots }: Props) {
+export default function NewPrivateChat({ chats, onClose, onSelect, title = 'Compose.NewMessage', excludeBots }: Props) {
   const t = useT()
   const [query, setQuery] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)

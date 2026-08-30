@@ -235,7 +235,7 @@ export function useChatHeaderSearch(chat: Chat, onJumpToSeq: (seq: number) => vo
     isHashtag, lookingHashtag, shouldShowFromPlaceholder,
     // фильтры
     filteringSender, filterPeerId, filterPeerName: filterPeerId != null
-      ? (filterPeerId === meId ? 'Saved Messages' : getPeerTitle({ peerId: filterPeerId, peer: filterPeer.get(filterPeerId) }))
+      ? (filterPeerId === meId ? 'SavedMessages' : getPeerTitle({ peerId: filterPeerId, peer: filterPeer.get(filterPeerId) }))
       : undefined,
     // id медиа аватарки вместо строки `/media/N/content`: номер приезжает
     // готовым (`photo.photo_id`), выпарсивать его регуляркой больше не из чего.

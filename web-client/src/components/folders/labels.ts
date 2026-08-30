@@ -1,5 +1,5 @@
 // Подзаголовок строки папки: «1 канал и 1 группа», «3 чата» — порт tweb
-// chatFolders.tsx (i18n('Chats',[n]) + join) со склонениями по языкам.
+// chatFolders.tsx (i18n('FilterChats',[n]) + join) со склонениями по языкам.
 type Kind = 'chat' | 'group' | 'channel'
 
 // [one, few, many] для славянских; [one, other] для остальных
@@ -8,7 +8,7 @@ const FORMS: Record<string, Record<Kind, string[]>> = {
   uk: { chat: ['чат', 'чати', 'чатів'], group: ['група', 'групи', 'груп'], channel: ['канал', 'канали', 'каналів'] },
   en: { chat: ['chat', 'chats'], group: ['group', 'groups'], channel: ['channel', 'channels'] },
   es: { chat: ['chat', 'chats'], group: ['grupo', 'grupos'], channel: ['canal', 'canales'] },
-  de: { chat: ['Chat', 'Chats'], group: ['Gruppe', 'Gruppen'], channel: ['Kanal', 'Kanäle'] },
+  de: { chat: ['KeyboardShortcuts.Section.Chat', 'FilterChats'], group: ['Gruppe', 'Gruppen'], channel: ['Kanal', 'Kanäle'] },
   fr: { chat: ['chat', 'chats'], group: ['groupe', 'groupes'], channel: ['canal', 'canaux'] },
 }
 const AND: Record<string, string> = { ru: ' и ', uk: ' і ', en: ' and ', es: ' y ', de: ' und ', fr: ' et ' }

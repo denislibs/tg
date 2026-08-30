@@ -4,6 +4,7 @@
 // переписывается ради самой нормы; при следующем содержательном касании файла —
 // приводить затронутую проводку в соответствие (тест либо пометка с причиной у
 // неё), а не расширять непокрытую площадь дальше.
+import type { LangPackKey } from '@/lang'
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { cachedPeerTheme, chatFullMirrorVersion, saveChatFull, subscribeChatFullMirror } from '@core/chatFullCache'
 import { isPeerMuted } from '@core/dialogs/notifySettings'
@@ -545,15 +546,15 @@ export default function Chat({ chat, onBack, thread }: Props) {
       .then(() => managers.dialogs.refresh())
       .catch(() => {})
   }
-  const deleteLabels = (() => {
-    if (isSecret) return { title: 'Leave chat', text: 'This chat will be deleted from your chat list.', action: 'Delete' }
-    if (chat.type === 'private') return { title: 'Delete Chat', text: 'This chat will be deleted from your chat list.', action: 'Delete' }
+  const deleteLabels: { title: LangPackKey; text: LangPackKey; action: LangPackKey } = (() => {
+    if (isSecret) return { title: 'Chat.LeaveChat', text: 'Chat.Delete.Private.Text', action: 'Delete' }
+    if (chat.type === 'private') return { title: 'ChatList.Context.DeleteChat', text: 'Chat.Delete.Private.Text', action: 'Delete' }
     if (isChannel) return owned
-      ? { title: 'Delete Channel', text: 'The channel will be deleted for all subscribers.', action: 'Delete' }
-      : { title: 'Leave Channel', text: 'Are you sure you want to leave this channel?', action: 'Leave' }
+      ? { title: 'PeerInfo.DeleteChannel', text: 'Chat.Delete.Channel.Text', action: 'Delete' }
+      : { title: 'ChatList.Context.LeaveChannel', text: 'Chat.Leave.Channel.Text', action: 'VoiceChat.Leave' }
     return owned
-      ? { title: 'Delete Group', text: 'The group will be deleted for all members.', action: 'Delete' }
-      : { title: 'Leave Group', text: 'Are you sure you want to leave this group?', action: 'Leave' }
+      ? { title: 'DeleteMega', text: 'Chat.Delete.Group.Text', action: 'Delete' }
+      : { title: 'ChatList.Context.LeaveGroup', text: 'Chat.Leave.Group.Text', action: 'VoiceChat.Leave' }
   })()
 
   // No chat-switch reset effect needed: App renders <Chat key={selectedId}>,
@@ -861,7 +862,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
         ? t('Online')
         : lastSeenLabel(userStatusWasOnline(peerPresence) * 1000, lang)
       : null
-  const headerStatus = realSubtitle ?? presenceLabel ?? (chat.status ? t(chat.status) : '')
+  const headerStatus = realSubtitle ?? presenceLabel ?? (chat.status ? t(chat.status as LangPackKey) : '')
   const headerOnline = isUserStatusOnline(peerPresence, nowSeconds()) || chat.status === 'online'
 
   // Бот-собеседник (для кнопки «Начать», reply-клавиатуры и кнопки-меню) — по профилю.

@@ -34,12 +34,12 @@ export function RemovedUsersScreen({ g, onBack }: { g: GroupEdit; onBack: () => 
 
   return (
     <SettingsScreen
-      title="Removed Users"
+      title="RemovedUsers"
       onBack={onBack}
       zIndex={70}
       sub={picking ? (
         <MemberPicker
-          title="Removed Users"
+          title="RemovedUsers"
           members={bannable}
           onBack={() => setPicking(false)}
           onPick={(m) => {
@@ -52,7 +52,7 @@ export function RemovedUsersScreen({ g, onBack }: { g: GroupEdit; onBack: () => 
       <PeerSelector
         peers={peers}
         caption={t('RemovedUsers.Description')}
-        empty={{ title: 'No Results', description: 'Try searching.' }}
+        empty={{ title: 'SearchEmptyViewTitle', description: 'Search.EmptyQuery' }}
       />
 
       {/* Кнопка-действие экрана — вендорная `.btn-circle.btn-corner`
@@ -69,10 +69,10 @@ export function RemovedUsersScreen({ g, onBack }: { g: GroupEdit; onBack: () => 
 
 // Сроки ограничения (tweb userPermissions «Duration»): undefined — бессрочно.
 const RESTRICT_DURATIONS: { label: string; seconds: number | undefined }[] = [
-  { label: 'Forever', seconds: undefined },
+  { label: 'UserPermissions.Duration.Forever', seconds: undefined },
   { label: '1 hour', seconds: 3600 },
-  { label: '1 day', seconds: 86400 },
-  { label: '1 week', seconds: 604800 },
+  { label: 'Duration.Days1', seconds: 86400 },
+  { label: 'Duration.Weeks1', seconds: 604800 },
 ]
 
 // экран гранулярных ограничений участника (tweb userPermissions «What can this
@@ -91,7 +91,7 @@ export function MemberRestrictScreen({
 
   return (
     <SettingsScreen
-      title="Restrict Member"
+      title="UserRestrictions.Title"
       onBack={onBack}
       zIndex={80}
       headerRight={
@@ -103,7 +103,7 @@ export function MemberRestrictScreen({
       <MemberHeaderSection member={member} />
       {/* tweb userPermissions: те же тумблеры-ограничения, что в правах группы
           (дамп `15-right-16-user-admin-rights`) — снятый тумблер красный. */}
-      <Section caption="What can this member do?">
+      <Section caption="UserRestrictions.CanDoMember">
         {PERMS.map((p) => (
           <Row
             key={p.bit}
@@ -116,7 +116,7 @@ export function MemberRestrictScreen({
           />
         ))}
       </Section>
-      <Section caption="Duration">
+      <Section caption="UserPermissions.Duration">
         {RESTRICT_DURATIONS.map((d, i) => (
           <Row key={d.label} label={d.label} selected={i === durIdx} onClick={() => setDurIdx(i)} />
         ))}
@@ -144,11 +144,11 @@ export function RestrictedUsersScreen({ g, onBack }: { g: GroupEdit; onBack: () 
   }, [g, t])
 
   return (
-    <SettingsScreen title="Restricted Users" onBack={onBack} zIndex={70}>
+    <SettingsScreen title="RestrictedUsers" onBack={onBack} zIndex={70}>
       <PeerSelector
         peers={peers}
         caption={t('RestrictedUsers.Description')}
-        empty={{ title: 'No Results' }}
+        empty={{ title: 'SearchEmptyViewTitle' }}
       />
     </SettingsScreen>
   )

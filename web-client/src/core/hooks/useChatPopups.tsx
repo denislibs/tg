@@ -7,6 +7,7 @@
 //   • self-animating (HeaderMenu/AttachMenu/пикеры): onClose={p.destroy}
 //   • open-controlled (MutePopup/ChatThemesPicker/LocationPicker): open/requestClose/onExitComplete
 //   • instant (ConfirmDialog, слайд-ины AddContact/EditContact и пр.): onClose={p.destroy}
+import type { LangPackKey } from '@/lang'
 import { useEffect, useRef } from 'react'
 import { openPopup } from '../../stores/popupStore'
 import { useT } from '../../i18n'
@@ -58,7 +59,7 @@ export interface ChatPopupDeps {
   canCreateGiveaway: boolean
   canUnpinAll: boolean
   pins: MyMessage[]
-  deleteLabels: { title: string; text: string; action: string }
+  deleteLabels: { title: LangPackKey; text: LangPackKey; action: LangPackKey }
   livestreamActive: boolean
   /** инфо-панель живёт локальным стейтом в Chat (toggle + сосуществует с gift) */
   setInfoOpen: (v: boolean | ((o: boolean) => boolean)) => void
@@ -131,9 +132,9 @@ export function useChatPopups(d: ChatPopupDeps) {
 
   const openConfirmDelete = () => openPopup((p) => (
     <ConfirmDialog
-      title={t(d.deleteLabels.title)}
-      text={t(d.deleteLabels.text)}
-      action={t(d.deleteLabels.action)}
+      title={d.deleteLabels.title}
+      text={d.deleteLabels.text}
+      action={d.deleteLabels.action}
       danger
       onConfirm={d.doDeleteChat}
       onClose={p.destroy}
@@ -142,9 +143,9 @@ export function useChatPopups(d: ChatPopupDeps) {
 
   const openConfirmClear = () => openPopup((p) => (
     <ConfirmDialog
-      title={t('Calendar.ClearHistory')}
-      text={t('Chat.ClearHistory.Text')}
-      action={t('Clear')}
+      title="Calendar.ClearHistory"
+      text="Chat.ClearHistory.Text"
+      action="Clear"
       danger
       onConfirm={d.doClearHistory}
       onClose={p.destroy}
@@ -302,13 +303,13 @@ export function useChatPopups(d: ChatPopupDeps) {
         />
         <MenuItem
           icon={<TgIcon name={d.muted ? 'unmute' : 'mute'} size={20} />}
-          label={t(d.muted ? 'Unmute' : 'Mute')}
+          label={t(d.muted ? 'ChatList.Context.Unmute' : 'ChatList.Context.Mute')}
           onClick={() => { p.requestClose(); d.applyMute(!d.muted) }}
         />
         {thread.kind === 'topic' && thread.topicId != null && d.canManageTopic && (
           <MenuItem
             icon={<TgIcon name="lock" size={20} />}
-            label={t(thread.closed ? 'Reopen Topic' : 'Close Topic')}
+            label={t(thread.closed ? 'RestartTopic' : 'CloseTopic')}
             onClick={() => {
               p.requestClose()
               void managers.groups.closeTopic(numericChatId, thread.topicId!, !thread.closed).then(() => d.onCloseThread?.())

@@ -16,9 +16,9 @@ import s from './PasskeyIntroPopup.module.scss'
 
 // Ряды 1:1 из tweb popups/passkey.tsx (Passkey.Row1..Row3).
 const ROWS = [
-  { icon: 'key', title: 'Create a Passkey', subtitle: 'Make a passkey to log in easily and safely.' },
-  { icon: 'faceid', title: 'Log in with Face ID', subtitle: 'Use Face ID, Touch ID, or your passcode to log in.' },
-  { icon: 'lock', title: 'Store Passkey Securely', subtitle: 'Your passkey is safely kept in your iCloud Keychain.' },
+  { icon: 'key', title: 'Passkey.Row1.Title', subtitle: 'Passkey.Row1.Subtitle' },
+  { icon: 'faceid', title: 'Passkey.Row2.Title', subtitle: 'Passkey.Row2.Subtitle' },
+  { icon: 'lock', title: 'Passkey.Row3.Title', subtitle: 'Passkey.Row3.Subtitle' },
 ] as const
 
 export default function PasskeyIntroPopup({

@@ -71,7 +71,7 @@ export default function ChatDrops({
     if (mount === mounted.current) return
 
     const types = dt ? Array.from(dt.types) : []
-    const isFiles = types.includes('Files')
+    const isFiles = types.includes('SharedFilesTab2')
 
     if (mount) {
       if (!isFiles || !enabledRef.current) mount = false // * skip dragging text case
@@ -140,7 +140,7 @@ export default function ChatDrops({
       // отступление от tweb: tweb гасит событие только в самой зоне
       // (`onDocumentPaste` → cancelEvent), а промах мимо зоны оставляет
       // браузеру — и тот уходит на file:// вместо приложения. Гасим здесь.
-      if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) e.preventDefault()
+      if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('SharedFilesTab2')) e.preventDefault()
       toggle(e.dataTransfer, false)
     }
 

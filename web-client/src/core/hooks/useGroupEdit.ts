@@ -17,11 +17,11 @@ import type { PeerProfile } from '../managers/authManager'
 
 // Битовая маска «возможностей участников» (зеркало domain.MemberPerms).
 export const PERMS = [
-  { label: 'Send Messages', bit: 1 },
-  { label: 'Send Media', bit: 2 },
-  { label: 'Add Users', bit: 4 },
-  { label: 'Pin Messages', bit: 8 },
-  { label: 'Change Chat Info', bit: 16 },
+  { label: 'UserRestrictionsSend', bit: 1 },
+  { label: 'UserRestrictionsSendMedia', bit: 2 },
+  { label: 'UserRestrictionsInviteUsers', bit: 4 },
+  { label: 'UserRestrictionsPinMessages', bit: 8 },
+  { label: 'UserRestrictionsChangeInfo', bit: 16 },
 ] as const
 export const ALL_PERMS = 31
 

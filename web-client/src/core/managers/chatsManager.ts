@@ -41,7 +41,7 @@ export function newChatsManager({ rest, peers, messages }: ChatsDeps) {
       return getPeerId(await rest.post<Peer>('/chats', { user_id: userId }))
     },
 
-    // Resolve (creating on first access) the "Saved Messages" self-chat; returns its id.
+    // Resolve (creating on first access) the "SavedMessages" self-chat; returns its id.
     async saved(): Promise<number> {
       return getPeerId(await rest.post<Peer>('/saved', {}))
     },

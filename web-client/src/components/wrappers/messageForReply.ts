@@ -23,6 +23,7 @@
 //  • история (`messageMediaStory`), игра (`messageMediaGame`), кубик
 //    (`messageMediaDice`), счёт (`messageMediaInvoice`) — вложений таких видов
 //    наша модель не производит.
+import type { LangPackKey } from '@/lang'
 import { getMessageText, type MyMessage } from '@core/models'
 import { getDocumentFromMessage, type MessageMedia } from '@core/media/messageMedia'
 import { serviceMsgText } from '@core/serviceMsg'
@@ -109,7 +110,7 @@ function stealsText(media: MessageMedia | undefined): boolean {
 function mediaPart(
   media: MessageMedia | undefined,
   message: MyMessage,
-  t: (key: string) => string,
+  t: (key: LangPackKey) => string,
 ): string | undefined {
   switch (media?._) {
     case undefined: return undefined
@@ -130,7 +131,7 @@ function mediaPart(
 }
 
 /** Лейбл документа — ветвление по `doc.type` (tweb :193-240). */
-function documentPart(message: MyMessage, t: (key: string) => string): string | undefined {
+function documentPart(message: MyMessage, t: (key: LangPackKey) => string): string | undefined {
   const doc = getDocumentFromMessage(message)
   if (!doc) return undefined
 

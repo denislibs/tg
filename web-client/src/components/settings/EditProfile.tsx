@@ -212,7 +212,7 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
 
   return (
     <SettingsScreen
-      title="Edit Profile"
+      title="EditAccount.Title"
       onBack={onBack}
       headerRight={
         <IconButton onClick={onDone} disabled={saving} color="var(--primary-color)">

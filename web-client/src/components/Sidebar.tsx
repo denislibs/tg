@@ -1,3 +1,4 @@
+import type { LangPackKey } from '@/lang'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { isUserCollapsedLeft, setFoldersSidebarShown, setOpenTabsLeftSidebar } from '../core/dom/updateColumnWidths'
 import installColumnResize from '../core/dom/installColumnResize'
@@ -118,7 +119,7 @@ export default function Sidebar({
   const [screen, setScreen] = useState<SidebarScreen>(null)
   const closeScreen = () => setScreen(null)
   // deep-open настроек на подэкран (контекстное меню «Настроить папки»)
-  const [settingsSub, setSettingsSub] = useState<string | null>(null)
+  const [settingsSub, setSettingsSub] = useState<LangPackKey | null>(null)
   const [archiveOpen, setArchiveOpen] = useState(false)
 
   const { query, setQuery, searching, setSearching, inputRef, closeSearch, searchReal, onJoin } = useSidebarSearch(initialQuery)
@@ -127,7 +128,7 @@ export default function Sidebar({
   const { handleSelect, forumChat, panel: forumPanel } = useForumPanel({ chats, onSelect, activeTopicId, onOpenTopic })
 
   const openFolderSettings = () => {
-    setSettingsSub('Chat Folders')
+    setSettingsSub('ChatList.Filter.List.Title')
     setScreen('settings')
   }
   const {

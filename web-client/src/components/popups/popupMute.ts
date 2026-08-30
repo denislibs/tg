@@ -26,6 +26,7 @@
 //    `.text` + `.row[aria-checked='true'] .text`), а не инлайн-стилем — файл
 //    больше не носит имя снесённого React-компонента (переименован вместе с
 //    портом, раунд правок 3).
+import type { LangPackKey } from '@/lang'
 import Icon, { getIconContent } from '@components/icon'
 import PopupPeer from './popupPeer'
 import type { AvatarManagers } from '@components/avatar'
@@ -36,13 +37,13 @@ const ONE_HOUR = 3600 // mute.ts:6
 
 // mute.ts:7-27, дословно (langPackKey → уже переведённый label — наш `t()`
 // не различает эти два понятия, см. докблок `popupPeer.ts`).
-const TIMES: { value: number, label: string }[] = [
-  { value: ONE_HOUR, label: 'For 1 Hour' },
-  { value: ONE_HOUR * 4, label: 'For 4 Hours' },
-  { value: ONE_HOUR * 8, label: 'For 8 Hours' },
-  { value: ONE_HOUR * 24, label: 'For 1 Day' },
-  { value: ONE_HOUR * 24 * 3, label: 'For 3 Days' },
-  { value: -1, label: 'Forever' }, // mute.ts:24-27, отмечен по умолчанию
+const TIMES: { value: number, label: LangPackKey }[] = [
+  { value: ONE_HOUR, label: 'ChatList.Mute.1Hour' },
+  { value: ONE_HOUR * 4, label: 'ChatList.Mute.4Hours' },
+  { value: ONE_HOUR * 8, label: 'ChatList.Mute.8Hours' },
+  { value: ONE_HOUR * 24, label: 'ChatList.Mute.1Day' },
+  { value: ONE_HOUR * 24 * 3, label: 'ChatList.Mute.3Days' },
+  { value: -1, label: 'UserPermissions.Duration.Forever' }, // mute.ts:24-27, отмечен по умолчанию
 ]
 
 export default class PopupMute extends PopupPeer {

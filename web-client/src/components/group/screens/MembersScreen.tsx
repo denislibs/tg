@@ -26,7 +26,7 @@ export function MembersScreen({ g, isChannel, onBack }: { g: GroupEdit; isChanne
   )
 
   const peers = useMemo(() => g.members.map((m) => memberToPeer(m, {
-    subtitle: t(m.role === 'creator' ? 'Owner' : m.role === 'admin' ? 'Admin' : 'Member'),
+    subtitle: t(m.role === 'creator' ? 'ChannelCreator' : m.role === 'admin' ? 'ChatAdmin' : 'Group.MemberBadge'),
     actions: g.canBan && m.role !== 'creator' ? (
       <>
         {/* restrict/ban — только в группе; у канала подписчиков лишь удаляют */}
@@ -49,12 +49,12 @@ export function MembersScreen({ g, isChannel, onBack }: { g: GroupEdit; isChanne
 
   return (
     <SettingsScreen
-      title={isChannel ? 'Subscribers' : 'Members'}
+      title={isChannel ? 'PeerInfo.Subscribers' : 'PeerMedia.Members'}
       onBack={onBack}
       zIndex={70}
       sub={picking ? (
         <MemberPicker
-          title={isChannel ? 'Add Subscribers' : 'Add Members'}
+          title={isChannel ? 'ChannelAddSubscribers' : 'GroupAddMembers'}
           members={addable}
           onBack={() => setPicking(false)}
           onPick={(m) => {
@@ -74,9 +74,9 @@ export function MembersScreen({ g, isChannel, onBack }: { g: GroupEdit; isChanne
       ) : null}
     >
       <Section>
-        <Row icon={<TgIcon name="adduser" size={22} color="var(--primary-color)" />} label={isChannel ? 'Add Subscribers' : 'Add Members'} accent onClick={() => setPicking(true)} />
+        <Row icon={<TgIcon name="adduser" size={22} color="var(--primary-color)" />} label={isChannel ? 'ChannelAddSubscribers' : 'GroupAddMembers'} accent onClick={() => setPicking(true)} />
       </Section>
-      <PeerSelector peers={peers} empty={{ title: 'No Results' }} />
+      <PeerSelector peers={peers} empty={{ title: 'SearchEmptyViewTitle' }} />
     </SettingsScreen>
   )
 }

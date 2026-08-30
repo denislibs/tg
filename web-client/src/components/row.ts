@@ -63,6 +63,7 @@
  *    (`helpers/dom/replaceContent.ts`, порт tweb 1:1), а не инлайнен —
  *    common-хелпер tweb, которым будут пользоваться и другие вкладки.
  */
+import type { LangPackKey } from '@/lang'
 import type SidebarSlider from '@components/slider'
 import type SliderSuperTab from '@components/sliderTab'
 import type { SliderSuperTabConstructable, SliderSuperTabEventable, SliderSuperTabEventableConstructable } from '@components/sliderTab'
@@ -125,14 +126,14 @@ export default class Row<T extends SliderSuperTabEventableConstructable = any> {
     icon: IconName,
     iconClasses: string[],
     subtitle: K,
-    subtitleLangKey: string,
+    subtitleLangKey: LangPackKey,
     subtitleRight: K,
     radioField: Row['radioField'],
     checkboxField: Row['checkboxField'],
     checkboxFieldOptions: CheckboxFieldOptions,
     withCheckboxSubtitle: boolean,
     title: K,
-    titleLangKey: string,
+    titleLangKey: LangPackKey,
     titleRight: K,
     titleRightSecondary: K,
     clickable: boolean | ((e: MouseEvent) => void),
@@ -147,12 +148,12 @@ export default class Row<T extends SliderSuperTabEventableConstructable = any> {
     noWrap: boolean,
     listenerSetter: ListenerSetter,
     buttonRight?: HTMLElement | boolean,
-    buttonRightLangKey: string,
+    buttonRightLangKey: LangPackKey,
     rightContent?: HTMLElement,
     rightTextContent?: string,
     asLink: boolean,
     asLabel: boolean,
-    checkboxKeys: [string, string],
+    checkboxKeys: [LangPackKey, LangPackKey],
   }> = {}) {
     if(options.checkboxFieldOptions) {
       options.checkboxField = new CheckboxField(options.checkboxFieldOptions)
@@ -446,7 +447,7 @@ export const RadioFormFromValues = (values: {
   // (RadioField.langKey, tweb radioField.ts:17): вкладки настроек копируются
   // из tweb почти дословно, и расхождение в имени поля здесь дало бы TS-ошибку
   // на месте порта, а не рабочий код.
-  langPackKey?: string,
+  langPackKey?: LangPackKey,
   value: number | string,
   checked?: boolean,
   textElement?: ConstructorParameters<typeof RadioField>[0]['textElement']

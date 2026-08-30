@@ -128,7 +128,7 @@ function StickerSetRow({
           disabled={busy}
           onClick={(e) => { e.stopPropagation(); onToggle() }}
         >
-          <span className="i18n">{t(installed ? 'Added' : 'Add')}</span>
+          <span className="i18n">{t(installed ? 'Stickers.SearchAdded' : 'Add')}</span>
         </button>
       </div>
       <div className="sticker-set-stickers">

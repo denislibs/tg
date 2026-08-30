@@ -129,11 +129,11 @@ export default function SignQRCard({ onSignIn, onComplete }: SignQRCardProps) {
       <ol className={s.qrDescription}>
         {/* Вторая подсказка несёт разметку словаря: `**…**` → <b>, ' > ' →
             span.tgico.inline-icon (tweb Login.QR.Help2). */}
-        {[
-          'Open Telegram on your phone',
-          'Go to **Settings** > **Devices** > **Add Device**',
-          'Point your phone at this screen to confirm login',
-        ].map((key, i) => (
+        {([
+          'Login.QR.Help1',
+          'Login.QR.Help2',
+          'Login.QR.Help3',
+        ] as const).map((key, i) => (
           <li key={key} className={s.qrDescriptionItem}>
             <span className={s.qrDescriptionMarker}>{i + 1}</span>
             <span className="i18n">{superFormatter(t(key))}</span>
