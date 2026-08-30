@@ -12,28 +12,18 @@
  * давно было событие, — сегодня достаточно часов, на этой неделе хватает дня
  * недели, в прошлом году без года не обойтись.
  *
- * ── Адаптации под наш стек ─────────────────────────────────────────────────
- *  • `new I18n.IntlDateElement({date, options}).element` (:125-128) →
- *    `i18nSpan(...)`: `IntlDateElement` строит `span.i18n` и кладёт готовую
- *    строку в `textContent` (langPack.ts:521-522, :612, :640) — ровно то, что
- *    делает наш `i18nSpan`. Локаль берётся из `useI18nStore` (у оригинала —
- *    из langPack), тем же приёмом, что в `row.ts`/`button.ts`.
- *  • ДЕФЕКТ, ЗАДАЧА 7. Ветка `hour+minute` оригинала (langPack.ts:624-633)
- *    собирает «ЧЧ:ММ» РУКАМИ, минуя `Intl`, — только чтобы уважить
- *    пользовательскую настройку 12/24 часа. Здесь этой ветки нет: все четыре
- *    случая идут через `Intl.DateTimeFormat`, который выбирает часовой цикл по
- *    ЛОКАЛИ. Прежняя редакция этого блока объясняла пропуск тем, что «такой
- *    настройки у нас нет вовсе», — это неверно: настройка есть
- *    (`settings.tsx:15`, `:103`), у неё живой переключатель
- *    (`settings/GeneralSettings.tsx:137-144`) и он уже применяется в
- *    `settings.tsx:271-272`. Значит, метки времени во вкладке «Устройства»
- *    ВЫБОР ПОЛЬЗОВАТЕЛЯ ИГНОРИРУЮТ. Чинится вместе с переводом файла на
- *    `I18n.IntlDateElement` (задача 7 волны i18n): ветка и её арифметика уже
- *    портированы в `lib/langPack.ts` и покрыты тестами, не хватает связи
- *    настройки с `I18n.setTimeFormat`.
+ * Метку строит `new I18n.IntlDateElement({date, options}).element` — дословно как
+ * оригинал (:125-128). До задачи 7 здесь стоял свой `Intl.DateTimeFormat` в
+ * `i18nSpan`, и это был ДЕФЕКТ, а не упрощение: ветка `hour+minute` ядра
+ * (langPack.ts:624-633) собирает «ЧЧ:ММ» РУКАМИ, минуя `Intl`, — только чтобы
+ * уважить пользовательскую настройку 12/24 часа, у `Intl` её взять неоткуда (он
+ * выбирает цикл по ЛОКАЛИ). Настройка у нас есть и переключатель у неё живой
+ * (`settings/GeneralSettings.tsx`), то есть метки времени ВЫБОР ПОЛЬЗОВАТЕЛЯ
+ * ИГНОРИРОВАЛИ. Связь настройки с `I18n.setTimeFormat` заведена в `settings.tsx`,
+ * там же разбор; заглавную букву («пн», «авг.») ставит сам `IntlDateElement`
+ * (`capitalizeFirstLetter`, langPack.ts:637).
  */
-import i18nSpan from '@helpers/dom/i18nSpan'
-import { useI18nStore } from '../i18n'
+import I18n from '@lib/langPack'
 
 export const ONE_DAY = 86400
 
@@ -66,9 +56,5 @@ export function formatDateAccordingToTodayNew(time: Date) {
     options.day = 'numeric'
   }
 
-  // langPack.ts:637 — `capitalizeFirstLetter(dateTimeFormat.format(...))`:
-  // в ряде локалей (ru: «пн», «авг.») Intl отдаёт строчную букву, а метка
-  // стоит первой в своей ячейке.
-  const text = new Intl.DateTimeFormat(useI18nStore.getState().lang, options).format(time)
-  return i18nSpan(text.charAt(0).toUpperCase() + text.slice(1))
+  return new I18n.IntlDateElement({ date: time, options }).element // :125-128
 }
