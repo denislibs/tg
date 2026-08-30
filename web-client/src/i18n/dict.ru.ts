@@ -465,8 +465,7 @@ const ru = {
     many_value: '%1$d подписчиков',
     other_value: '%1$d подписчика',
   },
-  'Search.Empty.QueryPrefix': 'Ничего не найдено по запросу',
-  'Search.Empty.Suffix': '. Попробуйте другой запрос.',
+  'Search.Empty': 'Ничего не найдено по запросу «**%@**». Попробуйте другой запрос.',
   PinnedMessage: 'Закреплённое сообщение',
   PinnedMessages: 'Закреплённые сообщения',
   'Chat.Input.UnpinAll': 'Открепить все',
@@ -797,7 +796,7 @@ const ru = {
   'Search.From': 'От:',
   'Search.Member': 'Поиск участников',
   'Search.Hashtag': 'Поиск по хэштегу',
-  'Search.Empty.FromPrefix': 'Нет сообщений от', // Search.EmptyFrom
+  'Search.EmptyFrom': 'Нет сообщений от **%@**.',
   'Search.HelpHashtag':
     'Введите хэштег, чтобы найти сообщения с ним.',
   NewPoll: 'Новый опрос',

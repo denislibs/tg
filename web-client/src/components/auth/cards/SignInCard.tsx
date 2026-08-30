@@ -1,12 +1,13 @@
 // SignInCard — ввод номера телефона (порт карточки tweb `pages/cards/SignInCard.tsx`).
 // Хост владеет номером и страной (карточка размонтируется на каждый переход,
 // а номер нужен карточке кода) — здесь только ввод, отправка кода и переходы.
-import { Fragment, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { placeCaretAtEnd } from '../../../shared/lib/caret'
 import { useT } from '../../../i18n'
 import { useManagers } from '../../../core/hooks/useManagers'
 import { isWebAuthnSupported, getPasskeyAssertion } from '../../../core/webauthnBrowser'
 import MediaHeader from '../MediaHeader'
+import superFormatter from '../superFormatter'
 import { PrimaryButton, SecondaryButton } from '../AuthButton'
 import CountryInput from '../CountryInput'
 import TelInput from '../TelInput'
@@ -111,13 +112,8 @@ export default function SignInCard({
         </MediaHeader.Title>
         <MediaHeader.Subtitle secondary>
           {/* У оригинала это ОДНА строка с переводом строки внутри (tweb langSign.ts:5),
-              и `i18n()` рисует `\n` как `<br>`. Наш `t()` отдаёт строку, поэтому перенос
-              разворачивает вызывающий; уйдёт вместе с переходом на `i18n()` — ЗАДАЧА 7. */}
-          <span className="i18n">
-            {t('Login.StartText').split('\n').map((line, i) => (
-              <Fragment key={line}>{i > 0 && <br />}{line}</Fragment>
-            ))}
-          </span>
+              и `<br>` из `\n` делает разбор разметки словаря, а не вызывающий. */}
+          <span className="i18n">{superFormatter(t('Login.StartText'))}</span>
         </MediaHeader.Subtitle>
       </MediaHeader>
 

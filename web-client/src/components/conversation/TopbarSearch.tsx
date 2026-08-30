@@ -34,6 +34,7 @@ import { gradientFor } from '../../core/dialogToChat'
 import { messageDateISO, messageForReply } from '../../core/messageToConvMsg'
 import { friendlyMsgTime } from '../../core/format/friendlyTime'
 import { useLang, useT } from '../../i18n'
+import { i18n } from '@lib/langPack'
 import type { Chat } from '../../data'
 
 // tweb topbarSearch.tsx:657 MAX_HEIGHT — и высота списка, и «окно» центрирования
@@ -74,6 +75,46 @@ function Highlighted({ text, query }: { text: string; query: string }) {
 
 // tweb stringMiddleOverflow(str, maxLength) — длинный запрос в тексте «ничего не
 // найдено» сокращается многоточием посередине (helpers/string/stringMiddleOverflow).
+/**
+ * Пустая выдача поиска — ОДНА строка словаря, в которой жирным становится
+ * ПОДСТАВЛЕННЫЙ АРГУМЕНТ (`Search.Empty` = 'There were no results for "**%@**". Try
+ * a new search.', tweb lang.ts:652-653; вызывающий — topbarSearch.tsx:773-784).
+ *
+ * До задачи 7 фраза собиралась в JSX из двух-трёх ПОЛОВИНОК вокруг `<b>` —
+ * `Search.Empty.QueryPrefix` + запрос + `Search.Empty.Suffix`. Половинки нельзя
+ * перевести: в языках с другим порядком слов запрос стоит не там, а точка и кавычки
+ * у каждого языка свои. Строковый `t()` этого не чинит — он не умеет ни разметки, ни
+ * аргументов-узлов, — поэтому фразу собирает `i18n()` ЯДРА, а сюда его узел
+ * вставляется напрямую.
+ *
+ * Узел ставится в `.topbar-search-left-results-empty` без обёртки — ровно то дерево,
+ * что у оригинала: `div.topbar-search-left-results-empty > span.i18n`. React внутрь
+ * этого div ничего не рисует, поэтому конфликта владения узлами нет.
+ *
+ * Экспортируется РАДИ ПИНА (`TopbarSearch.empty.test.tsx`): поднимать весь
+ * `TopbarSearch` с чатом и менеджерами ради одной фразы — дороже, чем сама фраза.
+ */
+export function EmptyResults({ isHashtag, count, filterPeerId, filterPeerName, query }: {
+  isHashtag: boolean
+  count: number | undefined
+  filterPeerId: number | null | undefined
+  filterPeerName: string | undefined
+  query: string
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const node = useMemo(() => {
+    if(isHashtag && count === undefined) return i18n('Search.HelpHashtag')
+    if(filterPeerId != null) return i18n('Search.EmptyFrom', [filterPeerName ?? ''])
+    return i18n('Search.Empty', [middleOverflow(query, 18)])
+  }, [isHashtag, count, filterPeerId, filterPeerName, query])
+
+  useLayoutEffect(() => {
+    ref.current!.replaceChildren(node)
+  }, [node])
+
+  return <div ref={ref} className="topbar-search-left-results-empty" />
+}
+
 function middleOverflow(str: string, maxLength: number): string {
   return str.length > maxLength
     ? str.slice(0, Math.ceil(maxLength / 2)) + '...' + str.slice(-Math.floor(maxLength / 2))
@@ -472,13 +513,13 @@ export default function TopbarSearch({ chat, onJumpToSeq, containerRef }: Topbar
           <div className="topbar-search-left-delimiter" />
           <div className={classNames('topbar-search-left-chatlist', 'chatlist', 'animated-item', listIsEmpty ? 'is-empty' : '')}>
             {listIsEmpty ? (
-              <div className="topbar-search-left-results-empty">
-                {s.isHashtag && s.count === undefined
-                  ? t('Search.HelpHashtag')
-                  : s.filterPeerId != null
-                    ? <>{t('Search.Empty.FromPrefix')} <b>{s.filterPeerName}</b>.</>
-                    : <>{t('Search.Empty.QueryPrefix')} <b>“{middleOverflow(s.value, 18)}”</b>{t('Search.Empty.Suffix')}</>}
-              </div>
+              <EmptyResults
+                isHashtag={s.isHashtag}
+                count={s.count}
+                filterPeerId={s.filterPeerId}
+                filterPeerName={s.filterPeerName}
+                query={s.value}
+              />
             ) : (
               <>
                 {/* tweb attachListNavigation вешает `navigable-list` на первого

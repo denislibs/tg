@@ -46,3 +46,23 @@ describe('AuthFlow: страна по умолчанию', () => {
     expect(tel().textContent).not.toBe('+49')
   })
 })
+
+// ЗАДАЧА 7. `Login.StartText` — ОДИН ключ с переводом строки внутри (tweb
+// langSign.ts:5), и `<br>` из `\n` делает разбор разметки словаря, а не вызывающий:
+// раньше здесь стоял `t(...).split('\n')` в самой карточке.
+describe('подзаголовок экрана входа: перенос строки внутри одного ключа', () => {
+  afterEach(cleanup)
+
+  it('строка словаря разворачивается в две половины через <br>', async () => {
+    renderFlow(() => Promise.resolve(''))
+    const subtitle = await waitFor(() => {
+      const el = [...document.querySelectorAll('#auth-pages .i18n')]
+        .find((node) => node.textContent?.includes('country code'))
+      expect(el).not.toBeUndefined()
+      return el!
+    })
+
+    expect(subtitle.textContent).toBe('Please confirm your country codeand enter your phone number.')
+    expect(subtitle.querySelectorAll('br')).toHaveLength(1)
+  })
+})

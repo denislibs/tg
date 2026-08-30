@@ -555,7 +555,6 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Your channels': 'Chat.SendAs.YourChannels',
 
   // ── components/conversation ──
-  '. Try a new search.': 'Search.Empty.Suffix',
   'Add Fact or Context': 'FactCheckPlaceholder',
   'Add a tag name': 'SavedTag.NamePlaceholder',
   'Are you sure you want to unpin all messages?': 'Chat.UnpinAll.Text',
@@ -577,8 +576,6 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Sending messages is not allowed in this group': 'GlobalSendMessageRestricted',
   Start: 'BotStart',
   Tags: 'SavedTag.Tags',
-  'There were no messages from': 'Search.Empty.FromPrefix',
-  'There were no results for': 'Search.Empty.QueryPrefix',
   'Topic is closed': 'ForumTopic.Closed',
   Unblock: 'Unblock',
   'Unpin All Messages': 'Chat.Input.UnpinAll',
@@ -778,6 +775,13 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Are you sure you want to delete these messages?': 'AreYouSureDeleteFewMessages',
   'Are you sure you want to delete this message?': 'AreYouSureDeleteSingleMessage',
   Channel: 'Channel',
+  // Пустая выдача поиска собиралась из ДВУХ-ТРЁХ половинок вокруг запроса, набранного
+  // жирным; у оригинала это одна строка, где жирным становится сам аргумент
+  // (`Search.Empty` = 'There were no results for "**%@**". Try a new search.').
+  // Обратно половинки не восстанавливаются.
+  'There were no results for': 'Search.Empty',
+  '. Try a new search.': 'Search.Empty',
+  'There were no messages from': 'Search.EmptyFrom',
   'Delete %d messages': 'DeleteMessagesCount',
   'Delete for all members': 'DeleteChat.DeleteGroupForAll',
   'Delete message': 'DeleteSingleMessagesTitle',
@@ -1422,6 +1426,9 @@ export const LEGACY_MERGED_FRAGMENTS: Record<string, LangPackKey> = {
 export const LEGACY_ALIASES: Record<string, string[]> = {
   // СКЛЕЙКИ, сведённые задачей 6: половинки предложения смотрят в одну целую строку.
   'Folder.Invite.Question': ['Do you want to add', 'and join its chats?'],
+  // Пустая выдача поиска: половинки вокруг набранного запроса. У оригинала одна
+  // строка, где жирным становится сам аргумент (`**%@**`), — см. задачу 7.
+  'Search.Empty': ['There were no results for', '. Try a new search.'],
   'Login.StartText': ['Please confirm your country code', 'and enter your phone number.'],
   // СКЛЕЙКА, сведённая задачей 6: предложение собиралось из двух половин с названием
   // группы посередине; теперь это одна строка с аргументом, и обе половины смотрят в неё.
