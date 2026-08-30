@@ -518,11 +518,11 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Nobody viewed': 'NobodyViewed',
   'Outgoing call': 'CallMessageOutgoing',
   'Outgoing video call': 'CallMessageVideoOutgoing',
-  Reacted: 'Chat.Context.ReactedLabel',
+  Reacted: 'Chat.Context.ReactedFast',
   Read: 'Chat.ContextMenu.Read',
   'Retract Vote': 'Chat.Poll.Unvote',
   'Search Selected': 'Chat.Context.SearchSelected',
-  'Seen by': 'Chat.Context.SeenBy',
+  'Seen by': 'MessageSeen',
   Select: 'Message.Context.Select',
   'Send a message or tap the greeting below.': 'NoMessagesGreetingsDescription',
   'Send media and files to store them': 'ChatYourSelfDescription2',
@@ -744,9 +744,9 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'You can select emoji that will allow members of this group to react to messages.': 'Reactions.Some.Info',
   'as the discussion board for this channel?': 'Discussion.Link.Question',
   'can join': 'InviteLinks.CanJoinSuffix',
-  joined: 'InviteLinks.JoinedSuffix',
-  'people can join via this link.': 'InviteLinks.UsageHintSuffix',
-  remaining: 'InviteLinks.RemainingSuffix',
+  joined: 'PeopleJoined',
+  'people can join via this link.': 'PeopleCanJoinViaLinkCount',
+  remaining: 'PeopleJoinedRemaining',
   revoked: 'ExportedInvitation.Status.Revoked',
 
   // ── components/mediaEditor ──
@@ -1381,6 +1381,11 @@ export const LEGACY_PLURAL_GROUPS: Record<string, Partial<Record<'one_value' | '
  * «ни одна старая строка не потерялась» знает этот список и не считает их потерей.
  */
 export const LEGACY_MERGED_FRAGMENTS: Record<string, LangPackKey> = {
+  joined: 'PeopleJoined',
+  remaining: 'PeopleJoinedRemaining',
+  'people can join via this link.': 'PeopleCanJoinViaLinkCount',
+  'Seen by': 'MessageSeen',
+  Reacted: 'Chat.Context.ReactedFast',
   // Семнадцать строк «1 day»…«6 months» были ОТДЕЛЬНЫМИ ключами на каждое число —
   // так обходилось отсутствие форм; теперь это `Days`/`Weeks`/`Months`/`Years` с
   // числом внутри. Обратно строка с конкретным числом не восстанавливается.

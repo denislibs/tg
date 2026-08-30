@@ -196,11 +196,12 @@ const lang = {
   'Chat.Close': 'Close Chat',
   'Chat.CommentsLabel': 'Comments',
   'Chat.Context.LinkCopiedPrivate': 'Link copied. This link will only work for chat members.',
+  'Chat.Context.ReactedFast': {
+    other_value: '%d Reacted',
+  },
   'Chat.Context.ReadLabel': 'Read',
   'Chat.Context.ReadShowWhen': 'show when',
-  'Chat.Context.ReactedLabel': 'Reacted',
   'Chat.Context.SearchSelected': 'Search Selected',
-  'Chat.Context.SeenBy': 'Seen by',
   'Chat.ContextMenu.Read': 'Read',
   'Chat.CopySelectedText': 'Copy Selected Text',
   'Chat.Date.ScheduledForToday': 'Scheduled for today',
@@ -523,13 +524,10 @@ const lang = {
   'InviteLinks.UsesLimitHelp': 'You can make the link work only for a certain number of users.',
   'InviteLinks.Edit': 'Edit Link',
   'InviteLinks.Expires': 'Expires',
-  'InviteLinks.JoinedSuffix': 'joined',
   'InviteLinks.LimitPeriod': 'Limit by Period',
   'InviteLinks.LimitReached': 'limit reached',
   'InviteLinks.LimitUses': 'Limit Number of Uses',
   'InviteLinks.NameLabel': 'Link Name',
-  'InviteLinks.RemainingSuffix': 'remaining',
-  'InviteLinks.UsageHintSuffix': 'people can join via this link.',
   'InviteLinks.View': 'View link',
   JumpToDate: 'Jump to Date',
   'KeyboardShortcuts.Action.Bold': 'Bold',
@@ -692,6 +690,10 @@ const lang = {
   MessageScheduleEditTime: 'Reschedule',
   MessageScheduleSend: 'Send Now',
   MessageScheduledUntilOnline: 'Scheduled until online',
+  MessageSeen: {
+    one_value: 'Seen',
+    other_value: '%1$d Seen',
+  },
   'MiniApps.AppsMore': 'Show more',
   Months: {
     one_value: '%1$d month',
@@ -760,6 +762,17 @@ const lang = {
   Other: 'Other',
   OtherSessions: 'Active sessions',
   PASSWORD_HASH_INVALID: 'Incorrect password',
+  PeopleCanJoinViaLinkCount: {
+    one_value: '%s person can join via this link.',
+    other_value: '%s people can join via this link.',
+  },
+  PeopleJoined: {
+    one_value: '%1$d person joined',
+    other_value: '%1$d people joined',
+  },
+  PeopleJoinedRemaining: {
+    other_value: '%1$d remaining',
+  },
   PHONE_CODE_INVALID: 'Invalid code',
   'PrivacySettingsController.UserCount': {
     one_value: '%d user',

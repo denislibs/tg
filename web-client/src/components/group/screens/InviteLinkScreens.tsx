@@ -14,7 +14,7 @@ import TgIcon from '../../TgIcon'
 import LottieSticker from '../../LottieSticker'
 import ConfirmDialog from '../../settings/ConfirmDialog'
 import classNames from '../../../shared/lib/classNames'
-import { useT } from '../../../i18n'
+import { useT, useTArgs } from '../../../i18n'
 import type { GroupEdit, ImporterRow } from '../../../core/hooks/useGroupEdit'
 import type { InviteLink } from '../../../core/managers/groupsManager'
 import UserAvatar from '../../UserAvatar'
@@ -30,13 +30,13 @@ function expiryLabel(t: (key: LangPackKey) => string, expiresAt?: string): strin
 }
 
 // Подзаголовок строки ссылки (tweb createRow: joins • limit • expiry).
-function linkSubtitle(t: (key: LangPackKey) => string, l: InviteLink): string {
+function linkSubtitle(t: (key: LangPackKey) => string, tArgs: (key: LangPackKey, args: (string | number)[]) => string, l: InviteLink): string {
   if (l.revoked) return t('ExportedInvitation.Status.Revoked')
   const parts: string[] = []
   if (l.uses > 0) {
-    parts.push(`${l.uses} ${t('InviteLinks.JoinedSuffix')}`)
+    parts.push(tArgs('PeopleJoined', [l.uses]))
     if (l.usageLimit != null && l.uses >= l.usageLimit) parts.push(t('InviteLinks.LimitReached'))
-    else if (l.usageLimit != null) parts.push(`${l.usageLimit - l.uses} ${t('InviteLinks.RemainingSuffix')}`)
+    else if (l.usageLimit != null) parts.push(tArgs('PeopleJoinedRemaining', [l.usageLimit - l.uses]))
   } else if (l.usageLimit != null) {
     parts.push(`${t('InviteLinks.CanJoinSuffix')} ${l.usageLimit}`)
   }
@@ -49,6 +49,7 @@ function linkSubtitle(t: (key: LangPackKey) => string, l: InviteLink): string {
 // ── Пригласительные ссылки (tweb chatInviteLinks) ────────────────────────────
 export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isChannel: boolean; onBack: () => void }) {
   const t = useT()
+  const tArgs = useTArgs()
   const [copied, setCopied] = useState<string | null>(null)
   const [editing, setEditing] = useState<InviteLink | 'new' | null>(null)
   const [detail, setDetail] = useState<InviteLink | null>(null)
@@ -112,7 +113,7 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
             />
             <Row
               icon={<TgIcon name="admin" size={22} />}
-              label={linkSubtitle(t, primary) || t('InviteLinks.View')}
+              label={linkSubtitle(t, tArgs, primary) || t('InviteLinks.View')}
               translate={false}
               onClick={() => setDetail(primary)}
             />
@@ -136,7 +137,7 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
             icon={<TgIcon name="link" size={22} color="var(--secondary-text-color)" />}
             label={l.title || l.url.replace(/^https?:\/\//, '')}
             translate={false}
-            sublabel={linkSubtitle(t, l) || undefined}
+            sublabel={linkSubtitle(t, tArgs, l) || undefined}
             onClick={() => setDetail(l)}
           />
         ))}
@@ -309,6 +310,7 @@ function EditInviteLinkScreen({ g, link, onBack }: { g: GroupEdit; link: InviteL
 // ── Детали ссылки (tweb chatInviteLink): ссылка + список вступивших ──────────
 function InviteLinkDetailScreen({ g, link, onEdit, onBack }: { g: GroupEdit; link: InviteLink; onEdit: () => void; onBack: () => void }) {
   const t = useT()
+  const tArgs = useTArgs()
   const [copied, setCopied] = useState(false)
   const [importers, setImporters] = useState<ImporterRow[]>([])
   const [revoking, setRevoking] = useState(false)
@@ -340,13 +342,13 @@ function InviteLinkDetailScreen({ g, link, onEdit, onBack }: { g: GroupEdit; lin
       {link.usageLimit != null && link.uses === 0 && (
         <Section>
           <Text size={14.5} color="var(--secondary-text-color)" style={{ padding: '8px 16px' }}>
-            {`${link.usageLimit} ${t('InviteLinks.UsageHintSuffix')}`}
+            {tArgs('PeopleCanJoinViaLinkCount', [link.usageLimit])}
           </Text>
         </Section>
       )}
 
       {importers.length > 0 && (
-        <Section captionText={`${link.uses} ${t('InviteLinks.JoinedSuffix')}`}>
+        <Section captionText={tArgs('PeopleJoined', [link.uses])}>
           {importers.map((im) => (
             <Row
               key={im.userId}

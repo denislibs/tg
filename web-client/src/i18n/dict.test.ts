@@ -51,7 +51,7 @@ const text = (key: LangPackKey, args: (string | number)[]) => i18n(key, args).te
 // обратно в старую форму ключа не переводится, и это объявлено списком
 // `LEGACY_MERGED_FRAGMENTS`.
 const COMPOSITION = {
-  ru: { keys: 1176, plural: 14, legacy: 1169 },
+  ru: { keys: 1176, plural: 15, legacy: 1168 },
   uk: { keys: 671, plural: 12, legacy: 663 },
   es: { keys: 670, plural: 12, legacy: 662 },
   de: { keys: 670, plural: 12, legacy: 662 },
@@ -65,7 +65,7 @@ const COMPOSITION = {
 // (папки, истории, близкие друзья). Состав словарей не изменился: те же строки под
 // другим именем, поэтому числа выше прежние, а снимок НАБОРА — новый.
 const FINGERPRINT = {
-  ru: '20a2763b',
+  ru: 'b9fa4bd8',
   uk: '5e3dda0b',
   es: '229a16b3',
   de: '229a16b3',

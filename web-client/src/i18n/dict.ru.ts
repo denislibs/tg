@@ -521,7 +521,12 @@ const ru = {
   'Chat.Alert.Forward.ShowCaption': 'Показать подпись',
   'ChatList.Context.Unpin': 'Открепить',
   'Story.Viewers': 'Просмотры',
-  'Chat.Context.SeenBy': 'Просмотрено',
+  MessageSeen: {
+    one_value: 'Просмотрено',
+    few_value: 'Просмотрели %1$d',
+    many_value: 'Просмотрели %1$d',
+    other_value: 'Просмотрели %1$d',
+  },
   'Chat.Selection.Selected': 'Выбрано',
   Message: 'Сообщение',
   AutoDeleteMessagesShort: 'Автоудаление',

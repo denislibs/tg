@@ -887,7 +887,7 @@ export default class ChatContextMenu {
       const { id } = this.message
       if(isViewingReactions) {
         this.canOpenReactedList = true
-        viewsButton.textElement?.replaceChildren(`${t('Chat.Context.ReactedLabel')} ${reactedLength}`)
+        viewsButton.textElement?.replaceChildren(useI18nStore.getState().tArgs('Chat.Context.ReactedFast', [reactedLength ?? 0]))
       } else {
         viewsButton.textElement?.replaceChildren(t('Loading'))
         void this.managers.messages.viewers(this.messagePeerId, id).then((viewers) => {
@@ -901,7 +901,7 @@ export default class ChatContextMenu {
           }
 
           this.canOpenReactedList = true
-          viewsButton.textElement?.replaceChildren(`${t('Chat.Context.SeenBy')} ${viewers.length}`)
+          viewsButton.textElement?.replaceChildren(useI18nStore.getState().tArgs('MessageSeen', [viewers.length]))
         })
       }
     }
