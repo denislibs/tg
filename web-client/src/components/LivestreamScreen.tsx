@@ -24,11 +24,11 @@ export default function LivestreamScreen({ chatName }: { chatName: string }) {
       <div className={s.header}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className={s.titleRow}>
-            <span className={s.live}>{t('LIVE')}</span>
+            <span className={s.live}>{t('Rtmp.MediaViewer.Live')}</span>
             <Text noWrap size={16} weight={600} color="#fff">{chatName}</Text>
           </div>
           <Text size={13} color="#aaa" style={{ display: 'block' }}>
-            {viewers > 0 ? t('{n} watching').replace('{n}', String(viewers)) : t('No viewers')}
+            {viewers > 0 ? t('Livestream.Watching').replace('{n}', String(viewers)) : t('Rtmp.Topbar.NoViewers')}
           </Text>
         </div>
       </div>
@@ -36,12 +36,12 @@ export default function LivestreamScreen({ chatName }: { chatName: string }) {
       <div className={s.stage}>
         <div className={s.placeholder}>
           <TgIcon name="livestream" size={44} color="#fff" />
-          <Text size={16} weight={600} color="#fff">{t('The stream is live')}</Text>
+          <Text size={16} weight={600} color="#fff">{t('Livestream.IsLive')}</Text>
         </div>
       </div>
 
       <div className={s.buttons}>
-        <button className={s.btnLeave} onClick={leaveLivestream} title={t('Leave')}>
+        <button className={s.btnLeave} onClick={leaveLivestream} title={t('VoiceChat.Leave')}>
           <TgIcon name="close" size={24} color="#fff" />
         </button>
       </div>

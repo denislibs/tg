@@ -59,19 +59,19 @@ export default function StreamSettingsPopup({ chatId, active, onClose }: Props) 
     <Popup open title={t(active ? 'Stream Settings' : 'Stream With...')} onClose={onClose} width={420}>
       <div className={s.body}>
         <Text size={14} color="var(--secondary-text-color)" className={s.desc}>
-          {t('To stream video with another app, enter this Server URL and Stream Key in your streaming app. Software encoding recommended (x264 in OBS).')}
+          {t('Rtmp.StreamPopup.Description')}
         </Text>
 
         <div className={s.data}>
           <DataRow
             icon="link"
-            label={t('Server URL')}
+            label={t('Rtmp.StreamPopup.ServerURL')}
             value={url}
             onCopy={() => copy(url, 'URL copied to clipboard')}
           />
           <DataRow
             icon="lock"
-            label={t('Stream Key')}
+            label={t('Rtmp.StreamPopup.StreamKey')}
             value={keyVisible ? key : maskedKey}
             masked={!keyVisible}
             onCopy={() => copy(key, 'Key copied to clipboard')}
@@ -87,13 +87,13 @@ export default function StreamSettingsPopup({ chatId, active, onClose }: Props) 
           />
           <div className={s.revoke} onClick={revoke}>
             <TgIcon name="rotate_left" size={22} color="#e5484d" />
-            <Text size={15} color="#e5484d">{t('Revoke Stream Key')}</Text>
+            <Text size={15} color="#e5484d">{t('Rtmp.StreamPopup.RevokeStreamKey')}</Text>
           </div>
         </div>
 
         {!active && (
           <Text size={13} color="var(--secondary-text-color)" className={s.hint}>
-            {t('Once you start broadcasting in your streaming app, click Start Streaming below.')}
+            {t('Rtmp.StreamPopup.Hint')}
           </Text>
         )}
 

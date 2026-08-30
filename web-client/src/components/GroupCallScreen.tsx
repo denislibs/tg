@@ -64,7 +64,7 @@ export default function GroupCallScreen({ chatName }: { chatName: string }) {
   const localStream = getLocalStream()
   const videoTiles: { stream: MediaStream; label: string; muted?: boolean }[] = []
   if (camOn && localStream && localStream.getVideoTracks().some((tr) => tr.enabled)) {
-    videoTiles.push({ stream: localStream, label: t('You'), muted: true })
+    videoTiles.push({ stream: localStream, label: t('FromYou'), muted: true })
   }
   for (const id of ids) {
     const stream = getRemoteStream(id)
@@ -79,7 +79,7 @@ export default function GroupCallScreen({ chatName }: { chatName: string }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <Text noWrap size={16} weight={600} color="#fff">{chatName}</Text>
           <Text size={13} color="#aaa" style={{ display: 'block' }}>
-            {ids.length + 1} {t('participants')}
+            {ids.length + 1} {t('VoiceChat.Status.ParticipantsSuffix')}
           </Text>
         </div>
       </div>
@@ -95,8 +95,8 @@ export default function GroupCallScreen({ chatName }: { chatName: string }) {
         <div className={s.row}>
           <Avatar background={gradientFor(meId ?? 0)} text="Я" size="md" />
           <div className={s.rowBody}>
-            <Text noWrap size={15} weight={600} color="#fff">{t('You')}</Text>
-            <Text size={13} color="#aaa">{t('This is you')}</Text>
+            <Text noWrap size={15} weight={600} color="#fff">{t('FromYou')}</Text>
+            <Text size={13} color="#aaa">{t('VoiceChat.Status.You')}</Text>
           </div>
           <TgIcon name={micOn ? 'microphone_filled' : 'microphone_crossed_filled'} size={20} color={micOn ? '#5CC85E' : '#aaa'} />
         </div>
@@ -119,13 +119,13 @@ export default function GroupCallScreen({ chatName }: { chatName: string }) {
       </div>
 
       <div className={s.buttons}>
-        <button className={classNames(s.btn, camOn ? s.btnActive : '')} onClick={() => void toggleGroupCam()} title={t('video')}>
+        <button className={classNames(s.btn, camOn ? s.btnActive : '')} onClick={() => void toggleGroupCam()} title={t('Call.VideoToggle')}>
           <TgIcon name={camOn ? 'videocamera_filled' : 'videocamera'} size={24} color="#fff" />
         </button>
         <button className={classNames(s.btnMic, micOn ? s.micOn : s.micOff)} onClick={toggleGroupMic}>
           <TgIcon name={micOn ? 'microphone_filled' : 'microphone_crossed_filled'} size={28} color="#fff" />
         </button>
-        <button className={classNames(s.btn, s.btnLeave)} onClick={leaveGroupCall} title={t('Leave')}>
+        <button className={classNames(s.btn, s.btnLeave)} onClick={leaveGroupCall} title={t('VoiceChat.Leave')}>
           <TgIcon name="close" size={24} color="#fff" />
         </button>
       </div>

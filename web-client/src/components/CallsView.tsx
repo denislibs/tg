@@ -67,7 +67,7 @@ function CallRow({ call, onOpen }: { call: MyMessage; onOpen: (peerId: PeerId) =
             style={{ transform: out ? 'rotate(-45deg)' : 'rotate(135deg)', flexShrink: 0 }}
           />
           <Text noWrap size={13.5} color="var(--secondary-text-color)">
-            {(out ? t('Outgoing') : missed ? t('Missed') : t('Incoming')) + ' · ' + hhmm(date)}
+            {(out ? t('CallMessageOutgoing') : missed ? t('Chat.Service.Call.Missed') : t('CallMessageIncoming')) + ' · ' + hhmm(date)}
           </Text>
         </div>
       </div>
@@ -104,7 +104,7 @@ export default function CallsView({ onBack, onOpenChat }: { onBack: () => void; 
           <TgIcon name="back" />
         </IconButton>
         <Text size={19} weight={600} color="var(--primary-text-color)" className={s.title}>
-          {t('Calls')}
+          {t('PrivacySettings.VoiceCalls')}
         </Text>
       </div>
 
@@ -112,7 +112,7 @@ export default function CallsView({ onBack, onOpenChat }: { onBack: () => void; 
         {calls != null && calls.length === 0 && (
           <div className={s.empty}>
             <TgIcon name="phone" size={48} color="var(--secondary-text-color)" />
-            <Text size={15} color="var(--secondary-text-color)">{t('No recent calls')}</Text>
+            <Text size={15} color="var(--secondary-text-color)">{t('Calls.Empty')}</Text>
           </div>
         )}
         {groups.map((g) => (
