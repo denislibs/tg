@@ -505,6 +505,8 @@ describe('ChatContextMenu — «кто просмотрел» (views без ре
     expect(itemTexts()).toContain('Seen by 2')
   })
 
+  // Текст ключа `Loading` — 'Loading...' (взят у оригинала вместе с ключом, tweb lang.ts):
+  // после кодмода задачи 6 пункт показывает его, а не старую строку 'Loading'.
   it('ответ ещё в полёте — у пункта стоит «Loading» (:1574)', async() => {
     upsertGroup()
     putMirrorPage(KEY, [groupMessage({ pFlags: { out: true } })])
@@ -513,7 +515,7 @@ describe('ChatContextMenu — «кто просмотрел» (views без ре
     managers.messages.viewers.mockReturnValue(new Promise(() => {}))
     await openInGroup(managers)
 
-    expect(itemTexts()).toContain('Loading')
+    expect(itemTexts()).toContain('Loading...')
   })
 
   it('никто не просмотрел — «Nobody viewed», и клик списка не открывает (:1556, :1619-1624)', async() => {

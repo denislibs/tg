@@ -67,7 +67,7 @@ export function createMessageTime(message: MyMessage): HTMLElement {
     if (real?.edit_date) {
       const edited = document.createElement('i')
       edited.classList.add('time-edited')
-      edited.textContent = t('edited')
+      edited.textContent = t('EditedMessage')
       out.push(edited)
     }
 

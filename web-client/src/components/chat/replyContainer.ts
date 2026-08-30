@@ -89,7 +89,7 @@ function replyTitle(
   }
   // Атрибуция может нести имя строкой — так оригинал показывает автора,
   // карточки которого у зрителя нет вовсе (`fwd_from.from_name`).
-  return replyTo.reply_from?.from_name || t('Deleted message')
+  return replyTo.reply_from?.from_name || t('DeletedMessage')
 }
 
 /** Текст подзаголовка — цитата, превью оригинала либо признание недоступности. */
@@ -107,5 +107,5 @@ function replySubtitle(
       message: { _: 'message', id: 0, peerId: 0, date: 0, message: '', media: replyTo.reply_media } as MyMessage,
     })
   }
-  return t('Deleted message')
+  return t('DeletedMessage')
 }

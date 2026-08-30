@@ -680,7 +680,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // `replies.channel_id.toPeerId(true)`), а не из карточки канала. Данные
   // per-post и авторитетнее: карточка приезжает позже поста.
   const openFeedDiscussion = useEvent(({ peerId: groupPeerId, postMid }: { peerId: PeerId; postMid: number }) => {
-    onOpenThread?.({ chatId: groupPeerId, rootMsgId: postMid, title: t('Comments'), subtitle: chat.name })
+    onOpenThread?.({ chatId: groupPeerId, rootMsgId: postMid, title: t('Chat.CommentsLabel'), subtitle: chat.name })
   })
 
   // Прыжок к сообщению — ручка ленты (порт `chat.setMessageId`). Зовут его
@@ -858,7 +858,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const presenceLabel =
     chat.type === 'private' && peerPresence
       ? isUserStatusOnline(peerPresence, nowSeconds())
-        ? t('online')
+        ? t('Online')
         : lastSeenLabel(userStatusWasOnline(peerPresence) * 1000, lang)
       : null
   const headerStatus = realSubtitle ?? presenceLabel ?? (chat.status ? t(chat.status) : '')
@@ -1178,7 +1178,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
           // Текст границы непрочитанных — CSS-контент (tweb
           // `.is-first-unread:before { content: var(--unread-messages-text) }`),
           // поэтому значение подаётся строкой в кавычках.
-          ['--unread-messages-text' as string]: JSON.stringify(t('Unread Messages')),
+          ['--unread-messages-text' as string]: JSON.stringify(t('UnreadMessages')),
         }}
       >
         {/* Плейт «сейчас играет» — tweb .pinned-container.pinned-audio: абсолют
@@ -1418,9 +1418,9 @@ export default function Chat({ chat, onBack, thread }: Props) {
         <div className={s.groupCallBanner} onClick={() => void joinGroupCall(numericChatId)}>
           <TgIcon name="videochat" size={18} color="#fff" />
           <Text size={14} weight={600} color="#fff" style={{ flex: 1 }}>
-            {t('Video Chat')} · {groupCallActive.length} {t('participants')}
+            {t('PeerInfo.Action.VoiceChat')} · {groupCallActive.length} {t('VoiceChat.Status.ParticipantsSuffix')}
           </Text>
-          <Text size={14} weight={700} color="#fff">{t('Join')}</Text>
+          <Text size={14} weight={700} color="#fff">{t('GroupCall.Banner.Join')}</Text>
         </div>
       )}
 
@@ -1429,9 +1429,9 @@ export default function Chat({ chat, onBack, thread }: Props) {
         <div className={s.groupCallBanner} onClick={() => watchLivestream(numericChatId)}>
           <TgIcon name="livestream" size={18} color="#fff" />
           <Text size={14} weight={600} color="#fff" style={{ flex: 1 }}>
-            {t('Live Stream')}
+            {t('Rtmp.Topbar.Title')}
           </Text>
-          <Text size={14} weight={700} color="#fff">{t('Join')}</Text>
+          <Text size={14} weight={700} color="#fff">{t('Rtmp.Topbar.Join')}</Text>
         </div>
       )}
 

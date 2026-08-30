@@ -616,7 +616,7 @@ export default class ChatContextMenu {
     }, {
       icon: 'factcheck',
       // tweb :1026 — текст зависит от наличия проверки у ГЛАВНОГО сообщения
-      text: (this.mainMessage as MessageReal | undefined)?.factcheck ? t('Edit Fact Check') : t('Add Fact Check'),
+      text: (this.mainMessage as MessageReal | undefined)?.factcheck ? t('EditFactCheck') : t('AddFactCheck'),
       onClick: this.onEditFactCheckClick,
       verify: () => !!this.mainMessage && this.canUpdateFactCheck(this.mainMessage),
     }, {
@@ -629,12 +629,12 @@ export default class ChatContextMenu {
         (!this.isAnchorTarget || getMessageText(this.message) !== this.target?.innerText),
     }, {
       icon: 'copy',
-      text: t('Copy Selected Text'),
+      text: t('Chat.CopySelectedText'),
       onClick: this.onCopyClick,
       verify: () => !this.noForwards && !!this.message && !!getMessageText(this.message) && this.isTextSelected,
     }, {
       icon: 'search',
-      text: t('Search Selected'),
+      text: t('Chat.Context.SearchSelected'),
       onClick: () => {
         const selection = window.getSelection()
         this.chat.initSearch({ query: selection?.toString() })
@@ -654,13 +654,13 @@ export default class ChatContextMenu {
       withSelection: true,
     }, {
       icon: 'copy',
-      text: this.isEmailTarget ? t('Copy Email') : t('Copy Link'),
+      text: this.isEmailTarget ? t('Text.Context.Copy.Email') : t('CopyLink'),
       onClick: this.onCopyAnchorLinkClick,
       verify: () => this.isAnchorTarget,
       withSelection: true,
     }, {
       icon: 'copy',
-      text: t('Copy Username'),
+      text: t('Text.Context.Copy.Username'),
       onClick: () => {
         void copyTextToClipboard(this.target?.textContent ?? '')
       },
@@ -668,7 +668,7 @@ export default class ChatContextMenu {
       withSelection: true,
     }, {
       icon: 'copy',
-      text: t('Copy Hashtag'),
+      text: t('Text.Context.Copy.Hashtag'),
       onClick: () => {
         void copyTextToClipboard(this.target?.textContent ?? '')
       },
@@ -676,14 +676,14 @@ export default class ChatContextMenu {
       withSelection: true,
     }, {
       icon: 'link',
-      text: t('Copy Message Link'),
+      text: t('MessageContext.CopyMessageLink1'),
       onClick: this.onCopyLinkClick,
       verify: () => isChannelPeer(this.peerId) &&
         !!this.message &&
         !this.isOutgoing(this.message),
     }, {
       icon: 'pin',
-      text: t('Pin'),
+      text: t('Message.Context.Pin'),
       onClick: this.onPinClick,
       verify: () => !!this.message &&
         !this.isOutgoing(this.message) &&
@@ -692,17 +692,17 @@ export default class ChatContextMenu {
         this.canPinMessage(this.message.peerId),
     }, {
       icon: 'unpin',
-      text: t('Unpin'),
+      text: t('Message.Context.Unpin'),
       onClick: this.onUnpinClick,
       verify: () => !!this.message?.pFlags.pinned && this.canPinMessage(this.message.peerId),
     }, {
       icon: 'download',
-      text: t('Download'),
+      text: t('MediaViewer.Context.Download'),
       onClick: () => ChatContextMenu.onDownloadClick(this.managers, this.message, this.noForwards),
       verify: () => ChatContextMenu.canDownload(this.message, this.target, this.noForwards),
     }, {
       icon: 'checkretract',
-      text: t('Retract Vote'),
+      text: t('Chat.Poll.Unvote'),
       onClick: this.onRetractVote,
       verify: () => {
         const media = this.getPollMedia()
@@ -715,7 +715,7 @@ export default class ChatContextMenu {
       },
     }, {
       icon: 'stop',
-      text: t('Stop Poll'),
+      text: t('Chat.Poll.Stop'),
       onClick: this.onStopPoll,
       verify: () => {
         const media = this.getPollMedia()
@@ -750,14 +750,14 @@ export default class ChatContextMenu {
       withSelection: true,
     }, {
       icon: 'download',
-      text: t('Download'),
+      text: t('MediaViewer.Context.Download'),
       onClick: () => ChatContextMenu.onDownloadClick(this.managers, this.selectedMessages, this.noForwards),
       verify: () => !!this.selectedMessages &&
         ChatContextMenu.canDownload(this.selectedMessages, null, this.noForwards),
       withSelection: true,
     }, {
       icon: 'flag',
-      text: t('Report'),
+      text: t('ReportChat'),
       onClick: () => {
         const selection = this.selection
         const selectedMids = selection?.isSelecting && this.isSelected ?
@@ -777,13 +777,13 @@ export default class ChatContextMenu {
       withSelection: true,
     }, {
       icon: 'select',
-      text: t('Select'),
+      text: t('Message.Context.Select'),
       onClick: this.onSelectClick,
       verify: () => !!this.message && this.message._ !== 'messageService' && !this.isSelected && this.isSelectable,
       withSelection: true,
     }, {
       icon: 'select',
-      text: t('Clear Selection'),
+      text: t('Chat.Menu.ClearSelection'),
       onClick: this.onClearSelectionClick,
       verify: () => this.isSelected,
       withSelection: true,
@@ -887,7 +887,7 @@ export default class ChatContextMenu {
       const { id } = this.message
       if(isViewingReactions) {
         this.canOpenReactedList = true
-        viewsButton.textElement?.replaceChildren(`${t('Reacted')} ${reactedLength}`)
+        viewsButton.textElement?.replaceChildren(`${t('Chat.Context.ReactedLabel')} ${reactedLength}`)
       } else {
         viewsButton.textElement?.replaceChildren(t('Loading'))
         void this.managers.messages.viewers(this.messagePeerId, id).then((viewers) => {
@@ -896,12 +896,12 @@ export default class ChatContextMenu {
           }
 
           if(!viewers.length) {
-            viewsButton.textElement?.replaceChildren(t('Nobody viewed'))
+            viewsButton.textElement?.replaceChildren(t('NobodyViewed'))
             return
           }
 
           this.canOpenReactedList = true
-          viewsButton.textElement?.replaceChildren(`${t('Seen by')} ${viewers.length}`)
+          viewsButton.textElement?.replaceChildren(`${t('Chat.Context.SeenBy')} ${viewers.length}`)
         })
       }
     }
@@ -1293,7 +1293,7 @@ export default class ChatContextMenu {
     const t = useI18nStore.getState().t
     rootScope.dispatchEvent(
       'ui:toast',
-      isPrivate ? t('Link copied. This link will only work for chat members.') : t('Link copied to clipboard'),
+      isPrivate ? t('Chat.Context.LinkCopiedPrivate') : t('LinkCopied'),
     )
     void copyTextToClipboard(url)
   }

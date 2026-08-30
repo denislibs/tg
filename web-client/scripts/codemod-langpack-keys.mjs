@@ -36,6 +36,7 @@ import { join, relative, resolve } from 'node:path'
 const WEB_CLIENT = resolve(import.meta.dirname, '..')
 
 const { LEGACY_KEY_MAP, LEGACY_KEY_OVERRIDES } = await import(join(WEB_CLIENT, 'src/i18n/legacyKeyMap.ts'))
+const lang = (await import(join(WEB_CLIENT, 'src/lang.ts'))).default
 
 /**
  * Вызов `t()` с ЦЕЛИКОМ литеральным аргументом. Первая группа — символ перед `t`:
@@ -90,6 +91,11 @@ function overridePositions(file, src) {
     const literal = `t(${quote(o.legacy)})`
     const at = []
     for (let i = src.indexOf(literal); i !== -1; i = src.indexOf(literal, i + 1)) at.push(i)
+
+    // Строки в файле нет вовсе — исключение УЖЕ ПРИМЕНЕНО прошлым прогоном (кодмод
+    // идёт по подсистемам и запускается многократно). Тогда здесь делать нечего, а
+    // «на месте ли ключ» спрашивает проверка карты, а не скрипт.
+    if (!at.length && src.includes(`t(${quote(o.key)})`)) continue
 
     const here = at[o.occurrence]
     if (here === undefined) {
@@ -157,6 +163,9 @@ for (const target of targets) {
       const legacy = unescape(raw)
       const key = overrides.get(offset + before.length) ?? LEGACY_KEY_MAP[legacy]
       if (!key) {
+        // Символический ключ — это уже переведённый вызов (прогон повторный), а не
+        // строка вне карты: разбирать руками там нечего.
+        if (legacy in lang) return match
         const line = src.slice(0, offset).split('\n').length
         unmapped.set(legacy, [...(unmapped.get(legacy) ?? []), `${relative(WEB_CLIENT, file)}:${line}`])
         return match

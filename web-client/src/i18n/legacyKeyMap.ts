@@ -1381,9 +1381,15 @@ export const LEGACY_ALIASES: Record<string, string[]> = {
 /**
  * Точечные исключения: строка одна, а мест несколько, и ключ у них РАЗНЫЙ. Карта ключуется
  * строкой и места из неё не достаёт, поэтому такие случаи живут отдельной проверяемой
- * структурой, а не прозой в отчёте. Применять будет задача 6 — там видно место вызова.
+ * структурой, а не прозой в отчёте. Применил их кодмод задачи 6
+ * (`scripts/codemod-langpack-keys.mjs`) — там видно место вызова.
  *
- * Место опознаётся ПАРОЙ: `occurrence` — номер вхождения `t('<legacy>')` в файле (с нуля),
+ * ПОСЛЕ применения записи не мертвеют, а становятся ПИНОМ на живое место: проверка требует,
+ * чтобы в файле стоял ключ исключения, а старой строки не осталось. Иначе достаточно
+ * «поправить» вызов обратно на ключ карты (`ChatList.Context.Pin` в меню сообщения), и
+ * никто этого не заметит.
+ *
+ * Место опознаётся ПАРОЙ: `occurrence` — номер вхождения `t('<key>')` в файле (с нуля),
  * `anchor` — кусок кода рядом с ним. Порознь они не держат: по одному якорю две записи можно
  * поменять местами и остаться зелёным (ровно та ошибка, ради которой структура и заведена),
  * а один номер ломается от любой правки выше по файлу. Проверка требует, чтобы ближайшим к
@@ -1392,7 +1398,8 @@ export const LEGACY_ALIASES: Record<string, string[]> = {
 export interface LegacyKeyOverride {
   /** Путь от корня web-client. */
   file: string
-  /** Номер вхождения `t('<legacy>')` в файле, с нуля. */
+  /** Номер вхождения `t('<key>')` в файле, с нуля. До кодмода задачи 6 номер считался по
+   *  старому вызову `t('<legacy>')` — после него старой строки в файле нет вовсе. */
   occurrence: number
   /** Подстрока рядом с этим вхождением — она и связывает номер со смыслом. */
   anchor: string
@@ -1415,10 +1422,26 @@ export const LEGACY_KEY_OVERRIDES: LegacyKeyOverride[] = [
   },
   {
     file: 'src/components/Chat.tsx',
-    occurrence: 1,
+    occurrence: 0,
     anchor: 'livestreamActive',
     legacy: 'Join',
     key: 'Rtmp.Topbar.Join',
     why: 'баннер идущей RTMP-трансляции — tweb `chat/topbarLive/container.tsx:96`',
+  },
+  {
+    file: 'src/components/chat/contextMenu.ts',
+    occurrence: 0,
+    anchor: "icon: 'pin'",
+    legacy: 'Pin',
+    key: 'Message.Context.Pin',
+    why: 'меню СООБЩЕНИЯ, а не чата: tweb `chat/contextMenu.ts:1134` — `Message.Context.Pin`; карта отдаёт доминирующий `ChatList.Context.Pin` (закрепление чата)',
+  },
+  {
+    file: 'src/components/chat/contextMenu.ts',
+    occurrence: 0,
+    anchor: "icon: 'unpin'",
+    legacy: 'Unpin',
+    key: 'Message.Context.Unpin',
+    why: 'то же для открепления — tweb `chat/contextMenu.ts:1146`',
   },
 ]

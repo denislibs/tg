@@ -5186,7 +5186,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
         elements.push(span)
       }
     } else if(type === 'greeting') {
-      elements.push(line(t('Send a message or tap the greeting below.'), `${BASE_CLASS}-subtitle`))
+      elements.push(line(t('NoMessagesGreetingsDescription'), `${BASE_CLASS}-subtitle`))
 
       const stickerDiv = document.createElement('div')
       stickerDiv.classList.add(`${BASE_CLASS}-sticker`)

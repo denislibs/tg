@@ -131,19 +131,26 @@ describe('объявленные слияния', () => {
   })
 })
 
-// Точечные исключения — вторая структура, по которой пойдёт задача 6. Она полезна ровно
-// настолько, насколько верна: файл должен существовать, строка и якорь — в нём быть.
+// Точечные исключения — вторая структура, по которой прошла задача 6. ПОСЛЕ кодмода они
+// проверяются по РЕЗУЛЬТАТУ: в файле стоит именно тот ключ, который назначило исключение,
+// старой строки там больше нет, и ключ стоит у своего якоря. Это уже не «карта верна», а
+// пин на живое место: вернуть сюда ключ, который диктует карта (`ChatList.Context.Pin`
+// вместо `Message.Context.Pin`), нельзя молча.
 describe('точечные исключения к карте', () => {
-  // Позиции всех вхождений `t('<legacy>')` в файле записи.
+  // Позиции всех вхождений `t('<key>')` — то есть УЖЕ ПОДСТАВЛЕННОГО ключа исключения.
   const occurrencesOf = (o: (typeof LEGACY_KEY_OVERRIDES)[number]) => {
     const src = readFileSync(resolve(WEB_CLIENT, o.file), 'utf8')
-    const literal = `t('${o.legacy.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/'/g, "\\'")}')`
+    const literal = `t('${o.key}')`
     const at: number[] = []
     for (let i = src.indexOf(literal); i !== -1; i = src.indexOf(literal, i + 1)) at.push(i)
     return { src, literal, at }
   }
 
-  it('указывают на существующий файл, где есть и вызов, и якорь', () => {
+  /** Литерал старого вызова — того, что кодмод обязан был из файла убрать. */
+  const legacyLiteral = (o: (typeof LEGACY_KEY_OVERRIDES)[number]) =>
+    `t('${o.legacy.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/'/g, "\\'")}')`
+
+  it('стоят в существующем файле, где есть и вызов с их ключом, и якорь', () => {
     const bad: string[] = []
     for (const o of LEGACY_KEY_OVERRIDES) {
       if (!existsSync(resolve(WEB_CLIENT, o.file))) {
@@ -158,9 +165,21 @@ describe('точечные исключения к карте', () => {
     expect(bad).toEqual([])
   })
 
+  // Исключение, которое не применили, ничем не отличается от несуществующего: место
+  // получило бы ключ карты — тот самый, ради отказа от которого запись и заведена.
+  it('применены: старой строки в файле не осталось', () => {
+    const bad: string[] = []
+    for (const o of LEGACY_KEY_OVERRIDES) {
+      if (!existsSync(resolve(WEB_CLIENT, o.file))) continue
+      const { src } = occurrencesOf(o)
+      if (src.includes(legacyLiteral(o))) bad.push(`${o.file}: остался ${legacyLiteral(o)} — исключение не применено`)
+    }
+    expect(bad).toEqual([])
+  })
+
   // Без этой проверки якорь ни к чему не привязан: две записи можно поменять якорями местами и
   // остаться зелёным — то есть «перепутали, какому баннеру какой ключ» проходит незамеченным.
-  // Якорь обязан стоять В ТОМ ЖЕ блоке, что и вызов: после предыдущего вызова той же строки и
+  // Якорь обязан стоять В ТОМ ЖЕ блоке, что и вызов: после предыдущего вхождения того же ключа и
   // не дальше пятнадцати строк над своим. Имя переменной, объявленной в начале файла, якорем
   // быть не может — блок ей не принадлежит.
   const NEAR_LINES = 15
@@ -178,7 +197,7 @@ describe('точечные исключения к карте', () => {
         if (i > after && i < here && linesBetween(i, here) <= NEAR_LINES) ok = true
       }
       if (!ok) bad.push(`${o.file} ${o.key}: якоря «${o.anchor}» нет в блоке вхождения №${o.occurrence}`)
-      const slot = `${o.file}|${o.legacy}|${o.occurrence}`
+      const slot = `${o.file}|${o.key}|${o.occurrence}`
       if (taken.has(slot)) bad.push(`${slot}: на это вхождение уже есть запись`)
       taken.add(slot)
     }
