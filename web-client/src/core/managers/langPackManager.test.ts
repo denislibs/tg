@@ -105,7 +105,7 @@ describe('LangPackManager', () => {
     const store = kv(RU_V3)
     const mgr = newLangPackManager({ rest: restOf(get), kv: store })
 
-    const updated = await mgr.checkForUpdates()
+    const updated = await mgr.checkForUpdates('ru')
 
     expect(get).toHaveBeenCalledWith('/langpack/ru/difference', { from_version: 3 })
     expect(updated?.version).toBe(5)
@@ -129,7 +129,7 @@ describe('LangPackManager', () => {
       const store = kv(RU_V3)
       const mgr = newLangPackManager({ rest: restOf(get), kv: store })
 
-      await expect(mgr.checkForUpdates()).resolves.toBeNull()
+      await expect(mgr.checkForUpdates('ru')).resolves.toBeNull()
       expect(store.store.get('langpack')).toEqual(RU_V3)
     }
   })
@@ -139,7 +139,7 @@ describe('LangPackManager', () => {
     const store = kv(RU_V3)
     const mgr = newLangPackManager({ rest: restOf(get), kv: store })
 
-    await expect(mgr.checkForUpdates()).resolves.toBeNull()
+    await expect(mgr.checkForUpdates('ru')).resolves.toBeNull()
     expect(store.store.get('langpack')).toEqual(RU_V3)
   })
 
@@ -152,7 +152,7 @@ describe('LangPackManager', () => {
     const store = kv(RU_V3)
     const mgr = newLangPackManager({ rest: restOf(get), kv: store })
 
-    await expect(mgr.checkForUpdates()).resolves.toEqual(RU_V7)
+    await expect(mgr.checkForUpdates('ru')).resolves.toEqual(RU_V7)
     expect(get).toHaveBeenCalledWith('/langpack/ru')
     expect(store.store.get('langpack')).toEqual(RU_V7)
   })
@@ -161,8 +161,74 @@ describe('LangPackManager', () => {
     const get = vi.fn(async () => RU_DIFF_3_5)
     const mgr = newLangPackManager({ rest: restOf(get), kv: kv() })
 
-    await expect(mgr.checkForUpdates()).resolves.toBeNull()
+    await expect(mgr.checkForUpdates('ru')).resolves.toBeNull()
     expect(get).not.toHaveBeenCalled()
+  })
+
+  it('кэш не про запрошенный язык — разница не спрашивается вовсе', async() => {
+    // Первая из двух сверок кода языка (tweb :699). В кэше русский, вкладка
+    // спрашивает обновления АНГЛИЙСКОГО: спрашивать разницу не от чего —
+    // смену языка обслуживает `getPack`, а не проверка.
+    const get = vi.fn(async () => RU_DIFF_3_5)
+    const store = kv(RU_V3)
+    const mgr = newLangPackManager({ rest: restOf(get), kv: store })
+
+    await expect(mgr.checkForUpdates('en')).resolves.toBeNull()
+    expect(get).not.toHaveBeenCalled()
+    expect(store.store.get('langpack')).toEqual(RU_V3)
+  })
+
+  it('язык сменили, пока летела разница — русская разница не ложится на английский кэш', async() => {
+    // Вторая сверка (tweb :705-707). Русская разница ушла на старте; пока она
+    // летела, пользователь переключился на английский, и `getPack('en')`
+    // перезаписал кэш целиком. Класть разницу на пакет, прочитанный ДО полёта,
+    // значит вернуть в кэш русский v5 поверх английского v11.
+    let releaseDiff: (d: LangPackDifference) => void = () => {}
+    const diffFlight = new Promise<LangPackDifference>((r) => { releaseDiff = r })
+    const get = vi.fn((path: string) => (
+      path === '/langpack/en' ? Promise.resolve(EN_V11) : diffFlight
+    ))
+    const store = kv(RU_V3)
+    const mgr = newLangPackManager({ rest: restOf(get), kv: store })
+
+    const checking = mgr.checkForUpdates('ru')
+    // Проверка успела прочитать кэш (ru v3) и уйти за разницей.
+    for (let i = 0; i < 5; ++i) await Promise.resolve()
+    expect(get).toHaveBeenCalledWith('/langpack/ru/difference', { from_version: 3 })
+
+    await mgr.getPack('en')
+    expect(store.store.get('langpack')).toEqual(EN_V11)
+
+    releaseDiff(RU_DIFF_3_5)
+    const applied = await checking
+
+    // Кэш остался английским: русский v5 в него не вернулся.
+    expect(store.store.get('langpack')).toEqual(EN_V11)
+    expect(applied).toBeNull()
+  })
+
+  it('три вкладки на старте — один запрос разницы, и обновление получают ВСЕ', async() => {
+    // Пин на «один SharedWorker = одно обращение в сеть» для ВТОРОГО похода
+    // тоже, а не только за пакетом. Заодно снята гонка трёх циклов
+    // read-modify-write по одному ключу кэша — разбор у `once` в менеджере.
+    // Ответ сервера ОДИН на все запросы — иначе снятая дедупликация давала бы
+    // зависший тест вместо внятного падения, и мутация не была бы выразима.
+    let resolve: (d: LangPackDifference) => void = () => {}
+    const flight = new Promise<LangPackDifference>((r) => { resolve = r })
+    const get = vi.fn(() => flight)
+    const store = kv(RU_V3)
+    const mgr = newLangPackManager({ rest: restOf(get), kv: store })
+
+    const all = Promise.all([mgr.checkForUpdates('ru'), mgr.checkForUpdates('ru'), mgr.checkForUpdates('ru')])
+    for (let i = 0; i < 5; ++i) await Promise.resolve()
+    resolve(RU_DIFF_3_5)
+
+    const [first, second, third] = await all
+    expect(get).toHaveBeenCalledTimes(1)
+    expect(first?.version).toBe(5)
+    expect(second).toEqual(first)
+    expect(third).toEqual(first)
+    expect(store.store.get('langpack')).toEqual(first)
   })
 
   it('отказ сети на проверке — остаёмся на том, что в кэше', async() => {
@@ -170,7 +236,7 @@ describe('LangPackManager', () => {
     const store = kv(RU_V3)
     const mgr = newLangPackManager({ rest: restOf(get), kv: store })
 
-    await expect(mgr.checkForUpdates()).resolves.toBeNull()
+    await expect(mgr.checkForUpdates('ru')).resolves.toBeNull()
     expect(store.store.get('langpack')).toEqual(RU_V3)
   })
 

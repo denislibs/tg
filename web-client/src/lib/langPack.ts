@@ -15,6 +15,9 @@
  * `getCacheLangPack`, `getCacheLangPackAndApply`, `loadLangPack`,
  * `loadLocalLangPack`, `getLangPackAndApply`, `applyLangPack` и
  * `checkLangPackForUpdates` (tweb :104-127, :169-247, :771-779).
+ * Владелец за границей контекстов, поэтому КАЖДЫЙ прыжок к нему идёт через
+ * `askOwner`: отказ воркера значит «пакета нет», а не «строк нет» — разбор у
+ * самой функции.
  *
  * ГЛАВНОЕ ПРАВИЛО СЛИЯНИЯ, 1:1 с оригиналом (tweb :237-244): локальный
  * английский (`src/lang.ts`) ложится ПОД серверный пакет, и только затем
@@ -66,8 +69,21 @@
  * Загрузка ЕСТЬ, а интерфейс всё ещё берёт строки старым `t()`: его снимает
  * ЗАДАЧА 9 («useT внутри ходит в I18n.strings»), она же заводит вызов
  * `getCacheLangPackAndApply` на старте вкладки и связывает выбранный
- * пользователем язык с `getLangPackAndApply`. Ставить этот вызов сейчас значило
- * бы тратить запрос на старте ради `I18n.strings`, которые никто не читает.
+ * пользователем язык с `getLangPackAndApply`.
+ *
+ * Почему этот вызов не поставлен здесь и сейчас — НЕ ради экономии запроса
+ * (запрос ровно один — чтение IDB и `/difference`, тот же самый, что приедет
+ * задачей 9): включённый старт завёл бы ВТОРОЙ ИСТОЧНИК «текущего языка».
+ * `getCacheLangPackAndApply` выводит язык из `lang_code` пакета, оказавшегося в
+ * кэше, а React берёт его из `localStorage(tg-lang)` (`useI18nStore`), и в
+ * приватном окне или при чистом IndexedDB эти двое разъезжаются: `I18n`
+ * поднялся бы на `en`, стор — на сохранённом `ru`. Сводит их в один источник
+ * задача 8, включает старт задача 9.
+ * ЦЕНА ЭТОГО РЕШЕНИЯ, названная честно: у всей подсистемы загрузки сегодня нет
+ * НИ ОДНОГО производственного вызывающего, поэтому живой проверки по DoD п.10
+ * для неё не существует — только тесты. Именно это укрытие и спрятало от
+ * первого захода отказ владельца через границу контекстов (`askOwner` ниже):
+ * на стенде он бы вылез первым же запуском без воркера.
  * `IntlDateElement` заведён потому, что на него смотрит `helpers/date.ts`
  * (`formatDateAccordingToTodayNew` сейчас строит `i18nSpan` руками) — он станет
  * его вызывающим ЗАДАЧЕЙ 7, когда `i18nSpan` уйдёт. `setTimeFormat` ждёт того же
@@ -90,9 +106,38 @@ import { ANCHOR_ACTION_ATTRIBUTE, matchUrlProtocol, setBlankToAnchor, wrapUrl } 
 // путём, что и остальной ванильный слой (`core/mediaUrl.ts`, `core/mediaRead.ts`).
 // Импорт статический, а ВЫЗОВ ленивый: модуль тянут словари (`i18n/dict.*.ts`) и
 // тесты ядра, и поднимать из-за них SharedWorker нельзя.
-import { startClient } from '../client/bootstrap'
+import { startClient, type Managers } from '../client/bootstrap'
 
 export type { LangPackKey }
+
+/** Менеджер-владелец пакета (кэш, сеть, версия) — см. импорт `startClient`. */
+const owner = () => startClient().managers.langPack
+
+/**
+ * ЕДИНСТВЕННАЯ форма обращения к владельцу — и она защищённая.
+ *
+ * У tweb запасной путь (`import('../lang')`) лежит в том же контексте, что и
+ * загрузчик, и отказать между ними нечему. У нас между вкладкой и владельцем
+ * ГРАНИЦА КОНТЕКСТОВ, и она — свой класс отказа, которого в оригинале нет:
+ * чанк воркера не отдался после выкладки, `SharedWorker` недоступен (приватное
+ * окно, sandbox-iframe), RPC-метод не зарегистрирован. Любое из этого роняет
+ * `startClient()` или реджектит вызов, и без этой обёртки отказ ВЛАДЕЛЬЦА
+ * съедал бы весь локальный английский тоже: `getCacheLangPackAndApply()`
+ * реджектится целиком, вкладка поднимается БЕЗ СТРОК — на экране символические
+ * ключи, — а `void checkLangPackForUpdates()` вдобавок даёт unhandled rejection.
+ *
+ * Поэтому отказ владельца здесь означает ровно то же, что отказ сети у самого
+ * владельца: «пакета нет». `null` дальше по пути уже разобран —
+ * `applyServerLangPack(null)` применяет локальный английский, и приложение
+ * поднимается.
+ */
+async function askOwner<T>(ask: (o: Managers['langPack']) => Promise<T | null>): Promise<T | null> {
+  try {
+    return await ask(owner())
+  } catch {
+    return null
+  }
+}
 
 /** tweb :72-73 — аргументом подстановки может быть узел, и он останется узлом. */
 export type FormatterArgument = string | number | Node | FormatterArgument[]
@@ -131,9 +176,15 @@ namespace I18n {
   export function getLastAppliedLangCode() { return lastAppliedLangCode }
   export function getTimeFormat() { return timeFormat }
 
-  /** tweb :104-108. Там функция приватная — её зовут загрузчики; здесь они её
-   *  тоже зовут, а экспорт остался ради теста словарей (`i18n/dict.test.ts`):
-   *  он применяет язык из ФАЙЛОВ, минуя сервер и владельца пакета. */
+  /** tweb :104-108. Там функция приватная — её зовут только загрузчики того же
+   *  файла; здесь они её тоже зовут, а ЭКСПОРТ держит будущий вызыватель, а не
+   *  тест: «текущий язык» сегодня выводится из `lang_code` пакета, который
+   *  оказался в кэше, и параллельно живёт в React-сторе `useI18nStore` — свести
+   *  два источника в один (ЗАДАЧА 8, «второй источник текущего языка обязан
+   *  исчезнуть»; включает её ЗАДАЧА 9) без внешнего «поставить код языка»
+   *  нельзя. До тех пор экспортом пользуется ещё и тест словарей
+   *  (`i18n/dict.test.ts`), применяющий язык из ФАЙЛОВ, минуя сервер и
+   *  владельца пакета, — но форму продукта диктует не он. */
   export function setLangCode(langCode: string) {
     lastRequestedLangCode = langCode
     lastRequestedNormalizedLangCode = langCode.split('-')[0]
@@ -141,9 +192,6 @@ namespace I18n {
 
   /** tweb :112 — второго применения на тот же старт не заводим. */
   let cacheLangPackPromise: Promise<LangPackDifference> | undefined
-
-  /** Менеджер-владелец пакета (кэш, сеть, версия) — см. импорт `startClient`. */
-  const owner = () => startClient().managers.langPack
 
   /**
    * tweb :169-190 — ПУТЬ ПЕРВОГО ЗАПУСКА: строки, вшитые в бандл.
@@ -168,14 +216,14 @@ namespace I18n {
    *  оригинала нет: локальный источник у нас подмешивается всегда (см.
    *  `applyServerLangPack`), выбирать между ним и кэшем не нужно. */
   export function getCacheLangPack(): Promise<LangPackDifference | null> {
-    return owner().cachedPack()
+    return askOwner((o) => o.cachedPack())
   }
 
   /** tweb :192-203 — серверный пакет языка. Сеть, кэш и запись держит владелец;
    *  `lang_pack` (`web`/`webk`) первым аргументом у нас предмета не имеет —
    *  разбор в докблоке `core/managers/langPackManager.ts`. */
   export function loadLangPack(langCode: string): Promise<LangPackDifference | null> {
-    return owner().getPack(langCode)
+    return askOwner((o) => o.getPack(langCode))
   }
 
   /**
@@ -704,12 +752,28 @@ export { _i18n }
  * к живым `.i18n`-узлам вкладки.
  *
  * `null` от владельца означает «применять нечего» (нет кэша, нет сети, версия
- * не выросла) — и тогда здесь не происходит НИЧЕГО: узлы не трогаются, уже
- * применённый язык не перетирается.
+ * не выросла, ЯЗЫК УЖЕ НЕ ТОТ) — и тогда здесь не происходит НИЧЕГО: узлы не
+ * трогаются, уже применённый язык не перетирается. Отказ самого владельца
+ * (границы контекстов у tweb нет — см. `askOwner`) даёт тот же `null`: эту
+ * функцию зовут через `void` из `getCacheLangPackAndApply`, и реджект здесь
+ * стал бы unhandled rejection на старте вкладки.
+ *
+ * Запрошенный язык сверяется ДВАЖДЫ — 1:1 с оригиналом (tweb :698-706), и
+ * защищает это один случай: ЯЗЫК ПЕРЕКЛЮЧИЛИ, ПОКА ЛЕТЕЛА РАЗНИЦА. Обе сверки
+ * оригинала стоят там, где у нас лежит защищаемое: обе — у ВЛАДЕЛЬЦА, потому
+ * что у tweb они спасают ЗАПИСЬ В ХРАНИЛИЩЕ (`saveLangPack` ниже по тому же
+ * методу), а хранилище теперь его.
+ *
+ * Сверка ЗДЕСЬ добавляет к ним ровно одно, и не экран: узлы и `I18n.strings`
+ * от чужого языка защищает сам `applyLangPack` (тот же вопрос, порт tweb
+ * :275-277) — он на несовпадении не делает ничего. Но без этой строки наружу
+ * уезжал бы пакет, который НЕ ПРИМЕНЁН, и вызывающий не отличил бы его от
+ * применённого; заодно не строится впустую нижний слой из 1288 строк.
  */
 export async function checkLangPackForUpdates(): Promise<LangPackDifference | undefined> {
-  const pack = await startClient().managers.langPack.checkForUpdates()
-  if (!pack) return
+  const langCode = I18n.getLastRequestedLangCode()
+  const pack = await askOwner((o) => o.checkForUpdates(langCode))
+  if (!pack || pack.lang_code !== I18n.getLastRequestedLangCode()) return
   return I18n.applyServerLangPack(pack, pack.lang_code)
 }
 

@@ -60,7 +60,13 @@ import type { RestClient } from '../net/restClient'
  *    оригинала здесь нет, а `handleUpdateLangPack` вызывается не кадром, а
  *    проверкой обновлений. Предмета для кадра нет: строки на сервере меняются
  *    только пересевом из словарей клиента, то есть на выкладке, и каждый
- *    клиент спрашивает разницу на старте.
+ *    клиент спрашивает разницу на СТАРТЕ.
+ *    ЦЕНА ЭТОГО РАСХОЖДЕНИЯ, названная прямо: вкладка, открытая ДО выкладки и
+ *    не перезагруженная после неё, новых строк не увидит вовсе — кадра,
+ *    который у tweb толкает обновление в живую вкладку, сервер не шлёт, а
+ *    второй проверки в течение сессии здесь нет. Свежесть догоняет только
+ *    следующее открытие приложения. Появится кадр — появится и второй
+ *    вызыватель `checkForUpdates`, менять для этого здесь нечего.
  *  • `getCountriesList` оригинала (`appLangPackManager.ts:25`) не портирован —
  *    списка стран у нас нет (то же отступление уже записано в
  *    `lib/langPack.ts`).
@@ -88,11 +94,31 @@ interface LangPackDeps {
 
 export function newLangPackManager({ rest, kv }: LangPackDeps) {
   /**
-   * Полёты за пакетом по коду языка. У tweb ту же роль играет
-   * `cacheLangPackPromise` (:112, :116) — второй вызов не заводит второго
-   * запроса. У нас это тем более важно: сюда сходятся ВСЕ вкладки.
+   * Полёты по ключу. У tweb ту же роль играет `cacheLangPackPromise` (:112,
+   * :116) — второй вызов не заводит второго запроса. У нас это тем более
+   * важно: сюда сходятся ВСЕ вкладки, и «один SharedWorker = одно обращение в
+   * сеть» обязано быть верным для ОБОИХ походов, а не только за пакетом.
+   *
+   * Для проверки обновлений дедупликация снимает ещё и ГОНКУ: три вкладки на
+   * старте — это три цикла «прочитать кэш → спросить разницу → записать кэш»
+   * по ОДНОМУ ключу. Результат каждого цикла в отдельности идемпотентен, но
+   * исход зависит от порядка: успей запись первого цикла лечь до того, как
+   * второй ПЕРЕЧИТАЕТ кэш (сверка в `checkForUpdates` ниже), — и второй увидит
+   * уже поднятую версию и вернёт своей вкладке null вместо обновления. На
+   * карте в памяти микрозадачи ложатся так, что все трое успевают прочитать
+   * старую версию; на настоящем IndexedDB это не гарантировано ничем. Один
+   * полёт на всех делает исход не зависящим от таймингов.
    */
   const inFlight = new Map<string, Promise<LangPackDifference | null>>()
+
+  function once(key: string, run: () => Promise<LangPackDifference | null>) {
+    let flight = inFlight.get(key)
+    if (!flight) {
+      flight = run().finally(() => { inFlight.delete(key) })
+      inFlight.set(key, flight)
+    }
+    return flight
+  }
 
   /** Пакет из кэша. Отказ IndexedDB — это «кэша нет», а не падение: приложение
    *  обязано подняться и в приватном окне, где хранилище недоступно. */
@@ -115,13 +141,16 @@ export function newLangPackManager({ rest, kv }: LangPackDeps) {
 
   /** Порт `loadLangPack` (:192-203) + `langpack.getLangPack`: весь пакет языка.
    *  Сеть отказала — отдаём null, решение о запасном пути принимает вкладка
-   *  (у неё локальный английский). */
-  async function fetchPack(langCode: string): Promise<LangPackDifference | null> {
-    try {
-      return await save(await rest.get<LangPackDifference>(`/langpack/${encodeURIComponent(langCode)}`))
-    } catch {
-      return null
-    }
+   *  (у неё локальный английский). Полёт один на язык: сюда приходят и `getPack`
+   *  всех вкладок, и добор целого пакета на дыре в версиях. */
+  function fetchPack(langCode: string): Promise<LangPackDifference | null> {
+    return once(`pack:${langCode}`, async () => {
+      try {
+        return await save(await rest.get<LangPackDifference>(`/langpack/${encodeURIComponent(langCode)}`))
+      } catch {
+        return null
+      }
+    })
   }
 
   /**
@@ -141,6 +170,13 @@ export function newLangPackManager({ rest, kv }: LangPackDeps) {
     difference: LangPackDifference,
   ): Promise<LangPackDifference | null> {
     if (difference.lang_code !== stored.lang_code) return null
+    // ЧЕГО ЭТА СТРОКА НЕ ЛЕЧИТ, чтобы следующий читатель не принял за дефект:
+    // клиента «из будущего». Кэш v3, сервер после отката отдаёт v2 — бэкенд
+    // честно шлёт ВЕСЬ пакет (`from_version` больше текущей версии = разницы не
+    // построить), а клиент режет его вот здесь и остаётся на своей v3 навсегда,
+    // до чистки хранилища. Паритет с tweb: у него то же сравнение и на том же
+    // месте (:777), других ветвей нет. Лечение — не здесь, а у того, кто
+    // объявил бы «версия сервера меньше вашей, возьмите пакет целиком».
     if (difference.version <= stored.version) return null
     if (difference.from_version !== stored.version) return fetchPack(stored.lang_code)
 
@@ -183,13 +219,7 @@ export function newLangPackManager({ rest, kv }: LangPackDeps) {
     async getPack(langCode: string): Promise<LangPackDifference | null> {
       const stored = await cached()
       if (stored?.lang_code === langCode) return stored
-
-      let flight = inFlight.get(langCode)
-      if (!flight) {
-        flight = fetchPack(langCode).finally(() => { inFlight.delete(langCode) })
-        inFlight.set(langCode, flight)
-      }
-      return flight
+      return fetchPack(langCode)
     },
 
     /**
@@ -200,24 +230,45 @@ export function newLangPackManager({ rest, kv }: LangPackDeps) {
      * не делает ничего — не перерисовывает узлы и не трогает `I18n.strings`.
      * Пакета в кэше нет — проверять нечего: сравнивать не с чем, а тянуть весь
      * пакет здесь значило бы делать работу `getPack` вторым путём.
+     *
+     * `langCode` — ЗАПРОШЕННЫЙ вкладкой язык, и он здесь не для красоты: у
+     * оригинала `handleUpdateLangPack` сверяется с
+     * `I18n.getLastRequestedLangCode()` ДВАЖДЫ (:698-706) — до чтения кэша и
+     * после него, — и защищает это ровно один случай: ЯЗЫК СМЕНИЛИ, ПОКА
+     * ЛЕТЕЛА РАЗНИЦА. Обе сверки воспроизведены: первая — здесь, вторая — ниже,
+     * перечитыванием кэша перед записью (кэш и есть наш «текущий язык»:
+     * `getPack` другого языка перезаписывает запись целиком). Без второй
+     * русская разница, ушедшая на старте, возвращалась бы после `getPack('en')`
+     * и затирала свежесохранённый английский пакет русским.
      */
-    async checkForUpdates(): Promise<LangPackDifference | null> {
-      const stored = await cached()
-      if (!stored) return null
+    checkForUpdates(langCode: string): Promise<LangPackDifference | null> {
+      return once(`diff:${langCode}`, async () => {
+        const stored = await cached()
+        // Первая сверка (tweb :699): кэш не про запрошенный язык — разницу не
+        // о чем спрашивать. Смену языка обслуживает `getPack`, а не проверка.
+        if (stored?.lang_code !== langCode) return null
 
-      let difference: LangPackDifference
-      try {
-        difference = await rest.get<LangPackDifference>(
-          `/langpack/${encodeURIComponent(stored.lang_code)}/difference`,
-          { from_version: stored.version },
-        )
-      } catch {
-        // Сеть/сервер отказали — остаёмся на том, что есть. Это не ошибка
-        // приложения: язык уже применён, проверка повторится на следующем старте.
-        return null
-      }
+        let difference: LangPackDifference
+        try {
+          difference = await rest.get<LangPackDifference>(
+            `/langpack/${encodeURIComponent(stored.lang_code)}/difference`,
+            { from_version: stored.version },
+          )
+        } catch {
+          // Сеть/сервер отказали — остаёмся на том, что есть. Это не ошибка
+          // приложения: язык уже применён, проверка повторится на следующем старте.
+          return null
+        }
 
-      return applyDifference(stored, difference)
+        // Вторая сверка (tweb :705-707): пока разница летела, кэш мог смениться
+        // — на другой язык (пользователь переключился) или на другую версию.
+        // Класть разницу на ПРОЧИТАННЫЙ ДО ПОЛЁТА пакет значило бы записать его
+        // поверх того, что владелец успел сохранить после.
+        const fresh = await cached()
+        if (fresh?.lang_code !== langCode || fresh.version !== stored.version) return null
+
+        return applyDifference(fresh, difference)
+      })
     },
   }
 }

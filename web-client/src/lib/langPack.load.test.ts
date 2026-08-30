@@ -15,7 +15,18 @@ const owner = vi.hoisted(() => ({
   checkForUpdates: vi.fn<() => Promise<unknown>>(),
 }))
 
-vi.mock('../client/bootstrap', () => ({ startClient: () => ({ managers: { langPack: owner } }) }))
+// Отдельный рубильник на САМ ПРЫЖОК через границу контекстов: чанк воркера не
+// отдался после выкладки, `SharedWorker` недоступен — `startClient()` бросает
+// синхронно, ещё до всякого RPC. Второй вид того же отказа (метод не
+// зарегистрирован, воркер умер) — реджект вызова, он моками ниже.
+const bootstrap = vi.hoisted(() => ({ unavailable: false }))
+
+vi.mock('../client/bootstrap', () => ({
+  startClient: () => {
+    if (bootstrap.unavailable) throw new Error('SharedWorker недоступен')
+    return { managers: { langPack: owner } }
+  },
+}))
 
 import I18n, { i18n, checkLangPackForUpdates } from './langPack'
 
@@ -42,6 +53,7 @@ describe('I18n: загрузка пакета и применение', () => {
     owner.checkForUpdates.mockReset().mockResolvedValue(null)
     document.body.replaceChildren()
     I18n.setLangCode('en')
+    bootstrap.unavailable = false
   })
 
   it('без сети берёт локальный английский и не падает', async() => {
@@ -61,9 +73,11 @@ describe('I18n: загрузка пакета и применение', () => {
     // Английский лежит СНИЗУ: ключ, которого нет в серверном пакете, показывает
     // английский текст, а не символическое имя.
     expect(i18n('Delete').textContent).toBe('Delete')
-    // В сеть холодный старт не ходит — свежесть догоняет фоновая проверка.
+    // В сеть холодный старт не ходит — свежесть догоняет фоновая проверка,
+    // и владельцу передан ИМЕННО поднятый язык: по нему он делает первую из
+    // двух сверок «язык не сменили, пока летела разница».
     expect(owner.getPack).not.toHaveBeenCalled()
-    expect(owner.checkForUpdates).toHaveBeenCalled()
+    expect(owner.checkForUpdates).toHaveBeenCalledWith('ru')
   })
 
   it('живой узел перерисовывается при смене языка', async() => {
@@ -97,6 +111,72 @@ describe('I18n: загрузка пакета и применение', () => {
     expect(el.textContent).toBe('Это устройство (обновлено)')
     // Английский снизу от обновления не пострадал.
     expect(i18n('Delete').textContent).toBe('Delete')
+  })
+
+  it('владелец недоступен целиком (нет воркера) — старт поднимается на английском', async() => {
+    // Класс отказа, которого у tweb нет: у него запасной путь `import('../lang')`
+    // лежит в том же контексте. Чанк воркера не отдался после выкладки —
+    // `startClient()` бросает синхронно, и без защиты старт реджектился бы
+    // целиком: вкладка без строк, на экране символические ключи.
+    bootstrap.unavailable = true
+
+    const pack = await I18n.getCacheLangPackAndApply()
+
+    expect(pack.lang_code).toBe('en')
+    expect(i18n('CurrentSession').textContent).toBe('This device')
+    // И фоновая проверка тем же отказом не роняет старт: её зовут через `void`,
+    // реджект стал бы unhandled rejection.
+    await expect(checkLangPackForUpdates()).resolves.toBeUndefined()
+  })
+
+  it('владелец отказал на кэше (метода нет, воркер умер) — тоже английский, а не пусто', async() => {
+    // Ровно тот отказ, что воспроизводится в жизни: `no manager method:
+    // langPack.cachedPack`. Реджект RPC — не «нет строк», а «нет пакета».
+    owner.cachedPack.mockRejectedValue(new Error('no manager method: langPack.cachedPack'))
+    owner.checkForUpdates.mockRejectedValue(new Error('no manager method: langPack.checkForUpdates'))
+
+    await expect(I18n.getCacheLangPackAndApply()).resolves.toMatchObject({ lang_code: 'en' })
+    expect(i18n('CurrentSession').textContent).toBe('This device')
+    expect(i18n('Delete').textContent).toBe('Delete')
+  })
+
+  it('владелец отказал на смене языка — применяется английский, а не символические ключи', async() => {
+    owner.getPack.mockRejectedValue(new Error('worker gone'))
+
+    await I18n.getLangPackAndApply('ru')
+
+    expect(I18n.getLastRequestedLangCode()).toBe('ru')
+    expect(i18n('CurrentSession').textContent).toBe('This device')
+  })
+
+  it('язык переключили, пока летела проверка — доехавшая разница наружу не уезжает', async() => {
+    owner.cachedPack.mockResolvedValue(RU_V4)
+    await I18n.getCacheLangPackAndApply()
+
+    const el = i18n('CurrentSession')
+    document.body.append(el)
+    expect(el.textContent).toBe('Это устройство')
+
+    // Проверка ушла на русском и ещё летит.
+    let release: (p: LangPackDifference) => void = () => {}
+    owner.checkForUpdates.mockReturnValue(new Promise((r) => { release = r }))
+    const checking = checkLangPackForUpdates()
+
+    // Пользователь переключился на английский: серверного пакета у английского
+    // нет вовсе, его строки и есть локальный источник.
+    await I18n.getLangPackAndApply('en')
+    expect(el.textContent).toBe('This device')
+
+    release(RU_V9)
+    const applied = await checking
+
+    // Экран не откатывается на прежний язык — это держит сверка внутри
+    // `applyLangPack` (порт tweb :275-277), и она обязана продолжать держать.
+    expect(el.textContent).toBe('This device')
+    expect(I18n.strings.get('CurrentSession' as never)).toMatchObject({ value: 'This device' })
+    // А это держит сверка в `checkLangPackForUpdates`: НЕ ПРИМЕНЁННЫЙ пакет не
+    // должен уезжать вызывающему как применённый.
+    expect(applied).toBeUndefined()
   })
 
   it('владелец сказал «применять нечего» — язык остаётся как был', async() => {
