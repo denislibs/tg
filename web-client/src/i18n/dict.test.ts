@@ -56,10 +56,10 @@ const text = (key: LangPackKey, args: (string | number)[]) => i18n(key, args).te
 // `LEGACY_MERGED_FRAGMENTS`.
 const COMPOSITION = {
   ru: { keys: 1277, plural: 20, legacy: 1235 },
-  uk: { keys: 672, plural: 13, legacy: 663 },
-  es: { keys: 671, plural: 13, legacy: 662 },
-  de: { keys: 671, plural: 13, legacy: 662 },
-  fr: { keys: 671, plural: 13, legacy: 662 },
+  uk: { keys: 677, plural: 18, legacy: 663 },
+  es: { keys: 676, plural: 18, legacy: 662 },
+  de: { keys: 676, plural: 18, legacy: 662 },
+  fr: { keys: 676, plural: 18, legacy: 662 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -70,10 +70,10 @@ const COMPOSITION = {
 // другим именем, поэтому числа выше прежние, а снимок НАБОРА — новый.
 const FINGERPRINT = {
   ru: '14b27df0',
-  uk: '78f48723',
-  es: 'e6feae4b',
-  de: 'e6feae4b',
-  fr: 'e6feae4b',
+  uk: '2a6aa034',
+  es: '9062663c',
+  de: '9062663c',
+  fr: '9062663c',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
@@ -175,6 +175,43 @@ describe('формы числа выбирает язык, а не вызыва�
     apply('de')
     expect(before).toBe('5 уведомлений')
     expect(text('Notifications.Count', [5])).toBe('5 Benachrichtigungen')
+  })
+
+  // ПИН НА ВСЕ ФОРМЫ ЧИСЛА, а не на пять из двадцати одной. Ревью сломало русскую
+  // форму `VoiceChat.Status.Members.one_value` — весь набор остался зелёным: точечные
+  // проверки покрывали `Notifications.Count` и ещё четыре ключа, остальные шестнадцать
+  // не смотрел никто.
+  //
+  // Утверждения выбраны так, чтобы НЕ переписывать словарь в ожидания (это была бы
+  // тавтология), но ловить настоящие ошибки перевода:
+  //  • число обязано остаться в КАЖДОЙ форме — «Просмотрено» вместо «21 просмотр»
+  //    теряет его ровно так (славянский `one` покрывает 21, 31, 101);
+  //  • у русского форма единицы обязана отличаться от формы пятёрки — иначе в `one`
+  //    скопировали `many` (ровно мутация ревью);
+  //  • 21 обязана дать ту же форму, что 1 — это и есть правило языка, а не текст.
+  it('у каждого числового ключа русские формы различают 1, 5 и 21', () => {
+    apply('ru')
+    const bad: string[] = []
+    const PLACEHOLDER = /%\d\$[sd]|%[sd]/
+    for (const string of DICTS.ru) {
+      if (string._ !== 'langPackStringPluralized') continue
+      const key = string.key as LangPackKey
+      for (const [slot, value] of Object.entries(string)) {
+        if (!slot.endsWith('_value') || typeof value !== 'string') continue
+        if (!PLACEHOLDER.test(value)) bad.push(`${key}.${slot}: «${value}» — без числа`)
+      }
+      // Ключи, у которых объявлена только общая форма, правилу единицы не подчиняются.
+      if (!string.one_value) continue
+      // Сравниваются ФОРМЫ, а не отрисованный текст: «1 участников» и «5 участников»
+      // различаются числом и на скопированной форме — ровно так мутация и выживала.
+      if (string.one_value === string.many_value) bad.push(`${key}: форма единицы совпала с формой множества («${string.one_value}»)`)
+      if (string.one_value === string.few_value) bad.push(`${key}: форма единицы совпала с формой двойки («${string.one_value}»)`)
+      // 21 обязана дать форму ЕДИНИЦЫ — это правило языка, а не текст словаря.
+      // `**жирный**` ядро рисует узлом, и в тексте звёздочек не остаётся.
+      const expected = string.one_value.replace(PLACEHOLDER, '21').replace(/\*\*/g, '')
+      if (text(key, [21]) !== expected) bad.push(`${key}: 21 не даёт форму единицы («${text(key, [21])}» вместо «${expected}»)`)
+    }
+    expect(bad).toEqual([])
   })
 
   // Каждая форма, объявленная в словаре, обязана ДОЕХАТЬ до текста: недостающая

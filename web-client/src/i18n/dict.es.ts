@@ -756,6 +756,26 @@ const es = {
     one_value: '%d comentario',
     other_value: '%d comentarios',
   },
+  // Формы числа, сведённые задачей 6 из обрывков: до неё интерфейс печатал число и
+  // слово рядом, и слово не склонялось.
+  'Chat.Context.ReactedFast': {
+    other_value: '%d reaccionaron',
+  },
+  PeopleJoined: {
+    one_value: '%1$d persona se unió',
+    other_value: '%1$d personas se unieron',
+  },
+  PeopleJoinedRemaining: {
+    other_value: 'quedan %1$d',
+  },
+  PeopleCanJoinViaLinkCount: {
+    one_value: '%s persona puede unirse con este enlace.',
+    other_value: '%s personas pueden unirse con este enlace.',
+  },
+  MessageSeen: {
+    one_value: '%1$d visto',
+    other_value: '%1$d vistos',
+  },
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(es)

@@ -788,6 +788,35 @@ const uk = {
     many_value: '%d коментарів',
     other_value: '%d коментаря',
   },
+  // Формы числа, сведённые задачей 6 из обрывков: до неё интерфейс печатал число и
+  // слово рядом, и слово не склонялось.
+  'Chat.Context.ReactedFast': {
+    one_value: 'Відреагував %d',
+    few_value: 'Відреагували %d',
+    many_value: 'Відреагували %d',
+    other_value: 'Відреагували %d',
+  },
+  PeopleJoined: {
+    one_value: 'приєднався %1$d',
+    few_value: 'приєдналося %1$d',
+    many_value: 'приєдналося %1$d',
+    other_value: 'приєдналося %1$d',
+  },
+  PeopleJoinedRemaining: {
+    other_value: 'залишилося %1$d',
+  },
+  PeopleCanJoinViaLinkCount: {
+    one_value: 'За посиланням може приєднатися %s особа.',
+    few_value: 'За посиланням можуть приєднатися %s особи.',
+    many_value: 'За посиланням можуть приєднатися %s осіб.',
+    other_value: 'За посиланням можуть приєднатися %s особи.',
+  },
+  MessageSeen: {
+    one_value: '%1$d перегляд',
+    few_value: '%1$d перегляди',
+    many_value: '%1$d переглядів',
+    other_value: '%1$d перегляду',
+  },
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(uk)
