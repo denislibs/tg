@@ -813,22 +813,22 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'The encryption key has not been agreed yet.': 'SecretChat.KeyNotReady',
 
   // ── components/settings ──
-  '1 day': 'Duration.Days1',
-  '1 month': 'Duration.Months1',
-  '1 week': 'Duration.Weeks1',
-  '1 year': 'Duration.Years1',
-  '2 days': 'Duration.Days2',
-  '2 months': 'Duration.Months2',
-  '2 weeks': 'Duration.Weeks2',
-  '3 days': 'Duration.Days3',
-  '3 months': 'Duration.Months3',
-  '3 weeks': 'Duration.Weeks3',
-  '4 days': 'Duration.Days4',
-  '4 months': 'Duration.Months4',
-  '5 days': 'Duration.Days5',
-  '5 months': 'Duration.Months5',
-  '6 days': 'Duration.Days6',
-  '6 months': 'Duration.Months6',
+  '1 day': 'Days',
+  '1 month': 'Months',
+  '1 week': 'Weeks',
+  '1 year': 'Years',
+  '2 days': 'Days',
+  '2 months': 'Months',
+  '2 weeks': 'Weeks',
+  '3 days': 'Days',
+  '3 months': 'Months',
+  '3 weeks': 'Weeks',
+  '4 days': 'Days',
+  '4 months': 'Months',
+  '5 days': 'Days',
+  '5 months': 'Months',
+  '6 days': 'Days',
+  '6 months': 'Months',
   'Accept calls on this device': 'CallSettings.AcceptCalls',
   'Active Sessions': 'SessionsTitle',
   'Add Sticker Sets': 'Stickers.AddSets',
@@ -1381,6 +1381,13 @@ export const LEGACY_PLURAL_GROUPS: Record<string, Partial<Record<'one_value' | '
  * «ни одна старая строка не потерялась» знает этот список и не считает их потерей.
  */
 export const LEGACY_MERGED_FRAGMENTS: Record<string, LangPackKey> = {
+  // Семнадцать строк «1 day»…«6 months» были ОТДЕЛЬНЫМИ ключами на каждое число —
+  // так обходилось отсутствие форм; теперь это `Days`/`Weeks`/`Months`/`Years` с
+  // числом внутри. Обратно строка с конкретным числом не восстанавливается.
+  '1 day': 'Days', '2 days': 'Days', '3 days': 'Days', '4 days': 'Days', '5 days': 'Days', '6 days': 'Days',
+  '1 week': 'Weeks', '2 weeks': 'Weeks', '3 weeks': 'Weeks',
+  '1 month': 'Months', '2 months': 'Months', '3 months': 'Months', '4 months': 'Months', '5 months': 'Months', '6 months': 'Months',
+  '1 year': 'Years',
   // Строки со СВОИМ форматом аргумента (`{n}`) и без форм числа: «Delete %d messages» на
   // одном сообщении писала «Delete 1 messages». Обратно они тоже не переводятся — старая
   // строка была одной формой из нескольких, и какой именно, в ней не сказано.

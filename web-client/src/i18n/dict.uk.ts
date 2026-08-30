@@ -700,22 +700,6 @@ const uk = {
   'Unit.Kilobytes': 'КБ',
   'Unit.Megabytes': 'МБ',
   'Unit.Gigabytes': 'ГБ',
-  'Duration.Days1': '1 день',
-  'Duration.Days2': '2 дні',
-  'Duration.Days3': '3 дні',
-  'Duration.Days4': '4 дні',
-  'Duration.Days5': '5 днів',
-  'Duration.Days6': '6 днів',
-  'Duration.Weeks1': '1 тиждень',
-  'Duration.Weeks2': '2 тижні',
-  'Duration.Weeks3': '3 тижні',
-  'Duration.Months1': '1 місяць',
-  'Duration.Months2': '2 місяці',
-  'Duration.Months3': '3 місяці',
-  'Duration.Months4': '4 місяці',
-  'Duration.Months5': '5 місяців',
-  'Duration.Months6': '6 місяців',
-  'Duration.Years1': '1 рік',
   'Login.Passkey.Failed': 'Не вдалося увійти за ключем доступу',
 
   // ── Гарячі клавіші (налаштування) ──
@@ -778,6 +762,12 @@ const uk = {
   BoostingGiveaway: 'Розіграш',
   AttachLiveLocation: 'Трансляція геопозиції',
   'Message.Unsupported': 'Непідтримуване повідомлення',
+  Years: {
+    one_value: '%1$d рік',
+    few_value: '%1$d роки',
+    many_value: '%1$d років',
+    other_value: '%1$d року',
+  },
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(uk)

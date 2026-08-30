@@ -9,7 +9,7 @@ import { SERVICE_USER_ID } from '../core/dialogToChat'
 import { useSearchStore } from '../stores/searchStore'
 import useMediaQuery from '../shared/lib/useMediaQuery'
 import type { Chat } from '../data'
-import { useT } from '../i18n'
+import { useT, useTArgs } from '../i18n'
 import { useHeaderMenuActions } from '../core/hooks/useHeaderMenuActions'
 import { useReportStore } from '../stores/reportStore'
 
@@ -43,6 +43,7 @@ interface Props {
 
 export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddMember, onSelectMessages, onAddContact, onDeleteChat, onClearHistory, onChangeTheme, onSendGift, onBoost, onCreateGiveaway, onStartStream, onOpenSuggested }: Props) {
   const t = useT()
+  const tArgs = useTArgs()
   const initSearch = useSearchStore((s) => s.initSearch)
   const [autoOpen, setAutoOpen] = useState(false)
   // Меню закрывается с exit-анимацией ui-kit Menu: сначала open=false, владелец
@@ -205,11 +206,11 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
   // Per-chat автоудаление (Telegram messages.setHistoryTTL): применяется к
   // НОВЫМ сообщениям чата; сервер объявляет смену сервисной пилюлей set_ttl.
   const DAY = 86400
-  const autoItems: { label: LangPackKey; period: number }[] = [
-    { label: 'Never', period: 0 },
-    { label: 'Duration.Days1', period: DAY },
-    { label: 'Duration.Weeks1', period: 7 * DAY },
-    { label: 'Duration.Months1', period: 30 * DAY },
+  const autoItems: { unit: LangPackKey | null; count: number; period: number }[] = [
+    { unit: null, count: 0, period: 0 },
+    { unit: 'Days', count: 1, period: DAY },
+    { unit: 'Weeks', count: 1, period: 7 * DAY },
+    { unit: 'Months', count: 1, period: 30 * DAY },
   ]
   const currentPeriod = chat.autoDeletePeriod ?? 0
 
@@ -224,9 +225,9 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
       >
         {autoItems.map((a) => (
           <MenuItem
-            key={a.label}
+            key={a.period}
             icon={a.period === 0 ? <TgIcon name="auto_delete_circle_off" size={20} /> : <TgIcon name="timer" size={20} />}
-            label={t(a.label)}
+            label={a.unit ? tArgs(a.unit, [a.count]) : t('Never')}
             right={currentPeriod === a.period ? <TgIcon name="check" size={20} /> : undefined}
             onClick={() => setChatTtl(a.period)}
           />

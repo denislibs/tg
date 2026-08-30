@@ -672,22 +672,6 @@ const es = {
   'Unit.Kilobytes': 'KB',
   'Unit.Megabytes': 'MB',
   'Unit.Gigabytes': 'GB',
-  'Duration.Days1': '1 día',
-  'Duration.Days2': '2 días',
-  'Duration.Days3': '3 días',
-  'Duration.Days4': '4 días',
-  'Duration.Days5': '5 días',
-  'Duration.Days6': '6 días',
-  'Duration.Weeks1': '1 semana',
-  'Duration.Weeks2': '2 semanas',
-  'Duration.Weeks3': '3 semanas',
-  'Duration.Months1': '1 mes',
-  'Duration.Months2': '2 meses',
-  'Duration.Months3': '3 meses',
-  'Duration.Months4': '4 meses',
-  'Duration.Months5': '5 meses',
-  'Duration.Months6': '6 meses',
-  'Duration.Years1': '1 año',
   'Login.Passkey.Failed': 'No se pudo iniciar sesión con la llave de acceso',
 
   // ── Atajos de teclado (ajustes) ──
@@ -750,6 +734,10 @@ const es = {
   BoostingGiveaway: 'Sorteo',
   AttachLiveLocation: 'Ubicación en tiempo real',
   'Message.Unsupported': 'Mensaje no compatible',
+  Years: {
+    one_value: '%1$d año',
+    other_value: '%1$d años',
+  },
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(es)

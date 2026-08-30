@@ -7,7 +7,7 @@ import lang, { type LangPackKey } from '../lang'
 import { en } from './dict'
 import { loadLang, useI18nStore } from './index'
 import ru from './dict.ru'
-import { LEGACY_ALIASES, LEGACY_KEY_MAP, LEGACY_KEY_OVERRIDES, LEGACY_PLURAL_GROUPS } from './legacyKeyMap'
+import { LEGACY_ALIASES, LEGACY_KEY_MAP, LEGACY_KEY_OVERRIDES, LEGACY_MERGED_FRAGMENTS, LEGACY_PLURAL_GROUPS } from './legacyKeyMap'
 
 // Словарь языка (задача 3) — уже конструкторы схемы с символическими ключами, а не
 // «ключ = английская строка». Проверки ниже спрашивают с него то же самое, но в новых
@@ -46,6 +46,9 @@ describe('карта миграции ключей', () => {
     const collisions: string[] = []
     for (const [legacy, key] of Object.entries(LEGACY_KEY_MAP)) {
       if (key in MERGED) continue // объявленное слияние — проверяется отдельно ниже
+      // Обрывок, сведённый в форму числа: их НЕСКОЛЬКО на ключ по построению («1 day»,
+      // «2 days», …, «days» → `Days`), и это объявлено списком, а не случайность.
+      if (legacy in LEGACY_MERGED_FRAGMENTS) continue
       const prev = seen.get(key)
       if (prev && prev !== legacy) collisions.push(`${key}: ${prev} / ${legacy}`)
       seen.set(key, legacy)

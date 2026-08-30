@@ -18,7 +18,7 @@ const DAY = 86400
 export function autoDeleteLabel(seconds: number, t: (key: LangPackKey) => string, tArgs: (key: LangPackKey, args: (string | number)[]) => string): string {
   if (seconds <= 0) return t('Off')
   const d = Math.round(seconds / DAY)
-  if (d >= 360) return t('Duration.Years1')
+  if (d >= 360) return tArgs('Years', [1])
   if (d >= 28) {
     const m = Math.round(d / 30)
     return tArgs('Months', [m])
@@ -71,9 +71,9 @@ export default function AutoDeleteMessages({ onBack }: { onBack: () => void }) {
         footer="AutoDeleteMessages.SectionCaption"
       >
         <Row label="Off" selected={period === 0} onClick={() => save(0)} />
-        <Row label="Duration.Days1" selected={period === DAY} onClick={() => save(DAY)} />
-        <Row label="Duration.Weeks1" selected={period === 7 * DAY} onClick={() => save(7 * DAY)} />
-        <Row label="Duration.Months1" selected={period === 30 * DAY} onClick={() => save(30 * DAY)} />
+        <Row label={tArgs('Days', [1])} translate={false} selected={period === DAY} onClick={() => save(DAY)} />
+        <Row label={tArgs('Weeks', [1])} translate={false} selected={period === 7 * DAY} onClick={() => save(7 * DAY)} />
+        <Row label={tArgs('Months', [1])} translate={false} selected={period === 30 * DAY} onClick={() => save(30 * DAY)} />
         {isCustom && <Row label={autoDeleteLabel(period, t, tArgs)} translate={false} selected />}
         <Row
           icon={<TgIcon name="tools" size={24} />}

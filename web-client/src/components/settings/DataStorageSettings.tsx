@@ -12,7 +12,7 @@ import type { IconName } from '../TgIcon'
 import { SettingsScreen, Section, Row } from './kit'
 import { useSettingsStore, type AutoDownloadPeerTypes, type Settings } from '../../settings'
 import { collectCachedFilesSizes, clearCachedFiles, syncCacheSettingsToSW, formatBytes, type CachedFilesSizes } from '../../core/mediaCache'
-import { useT } from '../../i18n'
+import { useT, useTArgs } from '../../i18n'
 import ConfirmDialog from './ConfirmDialog'
 import s from './DataStorageSettings.module.scss'
 
@@ -46,13 +46,14 @@ const DAY = 86400
 const WEEK = DAY * 7
 const MONTH = DAY * 30
 // tweb storageQuota cacheTimeOptions: 1–6 дней, 1–3 недели, 1–6 месяцев, год
-const CACHE_TIME_OPTIONS: { value: number; label: LangPackKey }[] = [
-  { value: DAY, label: 'Duration.Days1' }, { value: DAY * 2, label: 'Duration.Days2' }, { value: DAY * 3, label: 'Duration.Days3' },
-  { value: DAY * 4, label: 'Duration.Days4' }, { value: DAY * 5, label: 'Duration.Days5' }, { value: DAY * 6, label: 'Duration.Days6' },
-  { value: WEEK, label: 'Duration.Weeks1' }, { value: WEEK * 2, label: 'Duration.Weeks2' }, { value: WEEK * 3, label: 'Duration.Weeks3' },
-  { value: MONTH, label: 'Duration.Months1' }, { value: MONTH * 2, label: 'Duration.Months2' }, { value: MONTH * 3, label: 'Duration.Months3' },
-  { value: MONTH * 4, label: 'Duration.Months4' }, { value: MONTH * 5, label: 'Duration.Months5' }, { value: MONTH * 6, label: 'Duration.Months6' },
-  { value: DAY * 365, label: 'Duration.Years1' },
+// Разряд и число, а не готовая подпись: форму слова выбирает язык (`tArgs`).
+const CACHE_TIME_OPTIONS: { value: number; unit: LangPackKey; count: number }[] = [
+  { value: DAY, unit: 'Days', count: 1 }, { value: DAY * 2, unit: 'Days', count: 2 }, { value: DAY * 3, unit: 'Days', count: 3 },
+  { value: DAY * 4, unit: 'Days', count: 4 }, { value: DAY * 5, unit: 'Days', count: 5 }, { value: DAY * 6, unit: 'Days', count: 6 },
+  { value: WEEK, unit: 'Weeks', count: 1 }, { value: WEEK * 2, unit: 'Weeks', count: 2 }, { value: WEEK * 3, unit: 'Weeks', count: 3 },
+  { value: MONTH, unit: 'Months', count: 1 }, { value: MONTH * 2, unit: 'Months', count: 2 }, { value: MONTH * 3, unit: 'Months', count: 3 },
+  { value: MONTH * 4, unit: 'Months', count: 4 }, { value: MONTH * 5, unit: 'Months', count: 5 }, { value: MONTH * 6, unit: 'Months', count: 6 },
+  { value: DAY * 365, unit: 'Years', count: 1 },
 ]
 
 const MB = 1024 * 1024
@@ -146,6 +147,7 @@ function AutoDownloadTypeScreen({ type, onBack }: { type: MediaType; onBack: () 
 
 export default function DataStorageSettings({ onBack }: { onBack: () => void }) {
   const t = useT()
+  const tArgs = useTArgs()
   const settings = useSettingsStore()
   const { update } = settings
   const [sub, setSub] = useState<MediaType | null>(null)
@@ -263,7 +265,7 @@ export default function DataStorageSettings({ onBack }: { onBack: () => void }) 
         <div className={s.range}>
           <div className={s.rangeDetails}>
             <Text size={16} color="var(--primary-text-color)">{t('StorageQuota.ClearCacheOlderThan')}</Text>
-            <Text size={15} color="var(--secondary-text-color)">{t(CACHE_TIME_OPTIONS[timeIdx].label)}</Text>
+            <Text size={15} color="var(--secondary-text-color)">{tArgs(CACHE_TIME_OPTIONS[timeIdx].unit, [CACHE_TIME_OPTIONS[timeIdx].count])}</Text>
           </div>
           <Slider
             value={timeIdx} min={0} max={CACHE_TIME_OPTIONS.length - 1} step={1}
