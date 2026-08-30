@@ -31,6 +31,17 @@ function apply(code: Code) {
 
 const text = (key: LangPackKey, args: (string | number)[]) => i18n(key, args).textContent
 
+/** Подстановка числа в строке формы — любая из принятых `superFormatter` записей. */
+const PLACEHOLDER = /%\d\$[sd]|%[sd]/
+
+/**
+ * Русские строки, у которых формы совпадают ПО ЯЗЫКУ: «фото» и «видео» не склоняются
+ * («1 фото», «5 фото»). Без этого списка правило «форма единицы отличается от формы
+ * пятёрки» требовало бы выдумать несуществующее склонение; со списком — проверяется в
+ * обе стороны, чтобы он не стал лазейкой (см. «исключение протухло» ниже).
+ */
+const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSender.SendVideo'])
+
 // Состав словарей ничем, кроме этого пина, не держится: молча уронить строку могут обе
 // самые массовые задачи волны — кодмод задачи 6 и снос `t()` задачей 9. Потеря выглядит
 // не как падение, а как английский текст у русского пользователя, и без пина сборка
@@ -54,12 +65,21 @@ const text = (key: LangPackKey, args: (string | number)[]) => i18n(key, args).te
 // рядом, и слово не склонялось («1 members»). `legacy` при этом УПАЛ на девять: обрывок
 // обратно в старую форму ключа не переводится, и это объявлено списком
 // `LEGACY_MERGED_FRAGMENTS`.
+//
+// Раунд 2: у русского +3 ключа (`NewGroup.DefaultTitle`/`NewChannel.DefaultTitle` —
+// название чата, созданного без имени; `Hours` и `CanJoin` — ключи оригинала взамен
+// осиротевших `Duration.*` и выдуманного суффикса; минус два наших дубля,
+// `InviteLinks.CanJoinSuffix` и `Chat.Context.ReadShowWhen`). У остальных четырёх +8:
+// те же четыре ключа плюс блок `PreviewSender.*`, которого у них не было вовсе —
+// заголовок попапа отправки падал на английский. `legacy` не изменился: «show when»
+// теперь достаёт `PmReadShowWhen` вместо снятого дубля, «can join» ушёл в объявленные
+// слияния (число уехало ВНУТРЬ строки).
 const COMPOSITION = {
-  ru: { keys: 1290, plural: 24, legacy: 1235 },
-  uk: { keys: 678, plural: 18, legacy: 664 },
-  es: { keys: 677, plural: 18, legacy: 663 },
-  de: { keys: 677, plural: 18, legacy: 663 },
-  fr: { keys: 677, plural: 18, legacy: 663 },
+  ru: { keys: 1293, plural: 26, legacy: 1235 },
+  uk: { keys: 686, plural: 24, legacy: 664 },
+  es: { keys: 685, plural: 24, legacy: 663 },
+  de: { keys: 685, plural: 24, legacy: 663 },
+  fr: { keys: 685, plural: 24, legacy: 663 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -69,11 +89,11 @@ const COMPOSITION = {
 // (папки, истории, близкие друзья). Состав словарей не изменился: те же строки под
 // другим именем, поэтому числа выше прежние, а снимок НАБОРА — новый.
 const FINGERPRINT = {
-  ru: 'df334b61',
-  uk: 'dd8b5c1f',
-  es: 'c5fa5a2d',
-  de: 'c5fa5a2d',
-  fr: 'c5fa5a2d',
+  ru: '8d581cc9',
+  uk: '46275aa2',
+  es: '38e3b804',
+  de: '38e3b804',
+  fr: '38e3b804',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
@@ -192,31 +212,51 @@ describe('формы числа выбирает язык, а не вызыва�
   it('у каждого числового ключа русские формы различают 1, 5 и 21', () => {
     apply('ru')
     const bad: string[] = []
-    const PLACEHOLDER = /%\d\$[sd]|%[sd]/
     for (const string of DICTS.ru) {
       if (string._ !== 'langPackStringPluralized') continue
       const key = string.key as LangPackKey
-      // Число обязано быть там, где оно есть У ОРИГИНАЛА: у `PreviewSender.SendPhoto`
-      // форма единицы это «Send Photo» — без числа, и русская «Отправить фото» тоже.
-      const source = lang[key] as Record<string, string | undefined>
-      for (const [slot, value] of Object.entries(string)) {
-        if (!slot.endsWith('_value') || typeof value !== 'string') continue
-        const sourceForm = source?.[slot] ?? source?.other_value
-        if (sourceForm && PLACEHOLDER.test(sourceForm) && !PLACEHOLDER.test(value)) {
-          bad.push(`${key}.${slot}: «${value}» — без числа, а у источника оно есть`)
-        }
-      }
       // Ключи, у которых объявлена только общая форма, правилу единицы не подчиняются.
       if (!string.one_value) continue
       // Сравниваются ФОРМЫ, а не отрисованный текст: «1 участников» и «5 участников»
       // различаются числом и на скопированной форме — ровно так мутация и выживала.
-      if (string.one_value === string.many_value) bad.push(`${key}: форма единицы совпала с формой множества («${string.one_value}»)`)
-      if (string.one_value === string.few_value) bad.push(`${key}: форма единицы совпала с формой двойки («${string.one_value}»)`)
+      const indeclinable = RU_INDECLINABLE.has(key)
+      const same = string.one_value === string.many_value || string.one_value === string.few_value
+      if (same && !indeclinable) bad.push(`${key}: форма единицы совпала с формой множества («${string.one_value}»)`)
+      // Исключение обязано быть живым: как только слово начнёт склоняться, список
+      // протух — иначе в него можно вписать что угодно, и правило выше умрёт молча.
+      if (!same && indeclinable) bad.push(`${key}: в списке несклоняемых, но формы различаются — исключение протухло`)
       // 21 обязана дать форму ЕДИНИЦЫ — это правило языка, а не текст словаря.
       // `**жирный**` ядро рисует узлом, и в тексте звёздочек не остаётся.
-      // Форма единицы без числа (tweb `PreviewSender.*`) на 21 даёт себя же.
       const expected = string.one_value.replace(PLACEHOLDER, '21').replace(/\*\*/g, '')
       if (text(key, [21]) !== expected) bad.push(`${key}: 21 не даёт форму единицы («${text(key, [21])}» вместо «${expected}»)`)
+    }
+    expect(bad).toEqual([])
+  })
+
+  // ЧИСЛО В КАЖДОЙ ФОРМЕ — отдельная проверка, и её правило берётся у ЯЗЫКА, а не у
+  // английского источника. У английского форма единицы это ровно единица, поэтому
+  // «Send Photo» без числа там верно; у русского и украинского та же форма покрывает
+  // 21, 31, 101 — и «Отправить файл» на 21 файле теряет число насовсем. Первая
+  // редакция пина сверялась с источником и потому УЗАКОНИВАЛА этот дефект.
+  it('в языке, где форма единицы покрывает 21, число стоит в каждой форме', () => {
+    const bad: string[] = []
+    for (const code of Object.keys(DICTS) as Code[]) {
+      // Языки различаются не списком, а правилом: форма единицы покрывает больше единицы.
+      const rules = new Intl.PluralRules(code)
+      const oneCoversMore = rules.select(21) === 'one'
+      for (const string of DICTS[code]) {
+        if (string._ !== 'langPackStringPluralized') continue
+        const source = lang[string.key as LangPackKey] as Record<string, string | undefined>
+        // Строка вообще про счёт? Спрашиваем у общей формы источника — она есть всегда.
+        if (!source?.other_value || !PLACEHOLDER.test(source.other_value)) continue
+        for (const [slot, value] of Object.entries(string)) {
+          if (!slot.endsWith('_value') || typeof value !== 'string') continue
+          if (PLACEHOLDER.test(value)) continue
+          // `one` без числа законен только там, где он покрывает ровно единицу.
+          if (slot === 'one_value' && !oneCoversMore) continue
+          bad.push(`${code} ${string.key}.${slot}: «${value}» — без числа`)
+        }
+      }
     }
     expect(bad).toEqual([])
   })

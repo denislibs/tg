@@ -186,6 +186,8 @@ const de = {
   'MultiAccount.More': 'Mehr',
   NewChannel: 'Neuer Kanal',
   NewGroup: 'Neue Gruppe',
+  'NewChannel.DefaultTitle': 'Neuer Kanal',
+  'NewGroup.DefaultTitle': 'Neue Gruppe',
   NewPrivateChat: 'Neue Nachricht',
   'Compose.NewMessage': 'Neue Nachricht',
   'Suggestion.Notifications.Title': 'Verpasse keine Nachricht! 🔔',
@@ -559,6 +561,10 @@ const de = {
   'AutoDeleteMessages.SectionCaption':
     'Wenn aktiviert, werden alle neuen Nachrichten in Chats, die du beginnst, nach der gewählten Zeit automatisch für alle gelöscht. Das automatische Löschen in deinen zuvor erstellten Chats wird separat aktiviert.',
   'AutoDeleteMessages.SetOtherTime': 'Andere Zeit festlegen',
+  Hours: {
+    one_value: '%1$d Stunde',
+    other_value: '%1$d Stunden',
+  },
   Days: {
     one_value: '%1$d Tag',
     other_value: '%1$d Tage',
@@ -767,6 +773,9 @@ const de = {
     one_value: '%1$d Person beigetreten',
     other_value: '%1$d Personen beigetreten',
   },
+  CanJoin: {
+    other_value: '%1$d können beitreten',
+  },
   PeopleJoinedRemaining: {
     other_value: 'noch %1$d',
   },
@@ -777,6 +786,24 @@ const de = {
   MessageSeen: {
     one_value: '%1$d gesehen',
     other_value: '%1$d gesehen',
+  },
+  // Titel des Sende-Popups. Die Einzahlform deckt genau die 1 ab — wie im Original,
+  // deshalb steht dort keine Zahl.
+  'PreviewSender.SendAlbum': {
+    one_value: 'Album senden',
+    other_value: '%d Alben senden',
+  },
+  'PreviewSender.SendFile': {
+    one_value: 'Datei senden',
+    other_value: '%d Dateien senden',
+  },
+  'PreviewSender.SendPhoto': {
+    one_value: 'Foto senden',
+    other_value: '%d Fotos senden',
+  },
+  'PreviewSender.SendVideo': {
+    one_value: 'Video senden',
+    other_value: '%d Videos senden',
   },
 } satisfies LangPackDict
 

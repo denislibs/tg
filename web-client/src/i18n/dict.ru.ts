@@ -447,6 +447,10 @@ const ru = {
   'MultiAccount.More': 'Ещё',
   NewChannel: 'Создать канал',
   NewGroup: 'Создать группу',
+  // Название чата, созданного без имени: уезжает НА СЕРВЕР и его читают все участники,
+  // поэтому это НАЗВАНИЕ, а не подпись пункта меню («Создать группу» строкой выше).
+  'NewChannel.DefaultTitle': 'Новый канал',
+  'NewGroup.DefaultTitle': 'Новая группа',
   NewPrivateChat: 'Новое сообщение',
   'Compose.NewMessage': 'Новое сообщение',
   'Suggestion.Notifications.Title': 'Не пропускайте сообщения! 🔔',
@@ -1052,6 +1056,12 @@ const ru = {
   'AutoDeleteMessages.SectionCaption':
     'Включите, чтобы все новые сообщения в Ваших чатах, созданных после изменения настройки, автоматически удалялись для всех участников спустя выбранное время. Автоудаление в ранее созданных чатах включается отдельно.',
   'AutoDeleteMessages.SetOtherTime': 'Выбрать другой срок',
+  Hours: {
+    one_value: '%1$d час',
+    few_value: '%1$d часа',
+    many_value: '%1$d часов',
+    other_value: '%1$d часа',
+  },
   Days: {
     one_value: '%1$d день',
     few_value: '%1$d дня',
@@ -1430,7 +1440,10 @@ const ru = {
   ChannelPublicInfo: 'Публичные каналы находятся через поиск, вступить может любой.',
   'Chat.Context.LinkCopiedPrivate': 'Ссылка скопирована. Она работает только для участников чата.',
   'Chat.Context.ReadLabel': 'Прочитано',
-  'Chat.Context.ReadShowWhen': 'показать когда',
+  // Ссылка «показать время прочтения» рядом с «Прочитано»: ключ ОРИГИНАЛА
+  // (tweb lang.ts:2772, `contextMenu.ts:1539`), наш дубль `Chat.Context.ReadShowWhen`
+  // снят. Прежний перевод «показать когда» был калькой с «show when».
+  PmReadShowWhen: 'показать время',
   'Chat.Frozen.LearnMore': 'Подробнее…',
   'Chat.Input.FrozenButton1': 'Ваш аккаунт заморожен',
   'Chat.Input.FrozenButton2': 'Нажмите, чтобы узнать подробности',
@@ -1457,7 +1470,6 @@ const ru = {
   'Folder.Invite.Question.Folder': 'Добавить папку «%1$s»?',
   'Folder.Share.Empty': 'В этой папке нет чатов, которыми можно поделиться.',
   'Group.RestrictedBadge': 'ограничен',
-  'InviteLinks.CanJoinSuffix': 'могут вступить',
   'InviteLinks.Description.Additional': 'Вы можете создать дополнительные ссылки-приглашения с ограничением по времени, числу пользователей или платной подпиской.',
   'InviteLinks.Expires': 'Истекает',
   'InviteLinks.LimitReached': 'лимит исчерпан',
@@ -1514,11 +1526,19 @@ const ru = {
     many_value: 'Отреагировали %d',
     other_value: 'Отреагировали %d',
   },
+  // У оригинала «%1$d people joined» — число И существительное. Прежнее «вступило %1$d»
+  // теряло существительное и уносило число в конец.
   PeopleJoined: {
-    one_value: 'вступил %1$d',
-    few_value: 'вступило %1$d',
-    many_value: 'вступило %1$d',
-    other_value: 'вступило %1$d',
+    one_value: '%1$d человек вступил',
+    few_value: '%1$d человека вступили',
+    many_value: '%1$d человек вступили',
+    other_value: '%1$d человека вступили',
+  },
+  CanJoin: {
+    one_value: 'может вступить %1$d человек',
+    few_value: 'могут вступить %1$d человека',
+    many_value: 'могут вступить %1$d человек',
+    other_value: 'могут вступить %1$d человека',
   },
   PeopleJoinedRemaining: {
     other_value: 'осталось %1$d',
@@ -1529,26 +1549,32 @@ const ru = {
     many_value: 'По ссылке могут вступить %s человек.',
     other_value: 'По ссылке могут вступить %s человека.',
   },
+  // Число обязано стоять в КАЖДОЙ форме: русская форма единицы покрывает не только 1,
+  // но и 21, 31, 101, — и «Отправить файл» на 21 файле теряет число насовсем. У
+  // английского источника форма единицы это ровно единица, поэтому там числа нет; копия
+  // английского строения сюда и принесла дефект.
   'PreviewSender.SendAlbum': {
-    one_value: 'Отправить альбом',
+    one_value: 'Отправить %d альбом',
     few_value: 'Отправить %d альбома',
     many_value: 'Отправить %d альбомов',
     other_value: 'Отправить %d альбома',
   },
   'PreviewSender.SendFile': {
-    one_value: 'Отправить файл',
+    one_value: 'Отправить %d файл',
     few_value: 'Отправить %d файла',
     many_value: 'Отправить %d файлов',
     other_value: 'Отправить %d файла',
   },
+  // «Фото» и «видео» — НЕСКЛОНЯЕМЫЕ: формы совпадают по языку, а не по недосмотру
+  // (см. `RU_INDECLINABLE` в `dict.test.ts` — там же и проверка, что исключение живо).
   'PreviewSender.SendPhoto': {
-    one_value: 'Отправить фото',
+    one_value: 'Отправить %d фото',
     few_value: 'Отправить %d фото',
     many_value: 'Отправить %d фото',
     other_value: 'Отправить %d фото',
   },
   'PreviewSender.SendVideo': {
-    one_value: 'Отправить видео',
+    one_value: 'Отправить %d видео',
     few_value: 'Отправить %d видео',
     many_value: 'Отправить %d видео',
     other_value: 'Отправить %d видео',

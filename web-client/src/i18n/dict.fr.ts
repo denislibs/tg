@@ -187,6 +187,8 @@ const fr = {
   'MultiAccount.More': 'Plus',
   NewChannel: 'Nouveau canal',
   NewGroup: 'Nouveau groupe',
+  'NewChannel.DefaultTitle': 'Nouveau canal',
+  'NewGroup.DefaultTitle': 'Nouveau groupe',
   NewPrivateChat: 'Nouveau message',
   'Compose.NewMessage': 'Nouveau message',
   'Suggestion.Notifications.Title': 'Ne manquez aucun message ! 🔔',
@@ -560,6 +562,10 @@ const fr = {
   'AutoDeleteMessages.SectionCaption':
     'Si activé, tous les nouveaux messages dans les discussions que vous commencez seront automatiquement supprimés pour tout le monde après le délai choisi. La suppression automatique dans vos discussions créées auparavant s\'active séparément.',
   'AutoDeleteMessages.SetOtherTime': 'Choisir un autre délai',
+  Hours: {
+    one_value: '%1$d heure',
+    other_value: '%1$d heures',
+  },
   Days: {
     one_value: '%1$d jour',
     other_value: '%1$d jours',
@@ -768,6 +774,9 @@ const fr = {
     one_value: '%1$d personne a rejoint',
     other_value: '%1$d personnes ont rejoint',
   },
+  CanJoin: {
+    other_value: '%1$d peuvent rejoindre',
+  },
   PeopleJoinedRemaining: {
     other_value: '%1$d restants',
   },
@@ -778,6 +787,24 @@ const fr = {
   MessageSeen: {
     one_value: '%1$d vu',
     other_value: '%1$d vus',
+  },
+  // Titre de la fenêtre d'envoi. La forme du singulier couvre 0 et 1 — comme dans
+  // l'original, le nombre n'y est donc pas nécessaire.
+  'PreviewSender.SendAlbum': {
+    one_value: 'Envoyer l\'album',
+    other_value: 'Envoyer %d albums',
+  },
+  'PreviewSender.SendFile': {
+    one_value: 'Envoyer le fichier',
+    other_value: 'Envoyer %d fichiers',
+  },
+  'PreviewSender.SendPhoto': {
+    one_value: 'Envoyer la photo',
+    other_value: 'Envoyer %d photos',
+  },
+  'PreviewSender.SendVideo': {
+    one_value: 'Envoyer la vidéo',
+    other_value: 'Envoyer %d vidéos',
   },
 } satisfies LangPackDict
 

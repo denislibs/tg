@@ -187,6 +187,8 @@ const es = {
   'MultiAccount.More': 'Más',
   NewChannel: 'Nuevo canal',
   NewGroup: 'Nuevo grupo',
+  'NewChannel.DefaultTitle': 'Canal nuevo',
+  'NewGroup.DefaultTitle': 'Grupo nuevo',
   NewPrivateChat: 'Nuevo mensaje',
   'Compose.NewMessage': 'Nuevo mensaje',
   'Suggestion.Notifications.Title': '¡No te pierdas ningún mensaje! 🔔',
@@ -558,6 +560,10 @@ const es = {
   'AutoDeleteMessages.SectionCaption':
     'Si lo activas, todos los mensajes nuevos en los chats que inicies se eliminarán automáticamente para todos pasado el tiempo elegido. La autoeliminación en tus chats creados anteriormente se activa por separado.',
   'AutoDeleteMessages.SetOtherTime': 'Elegir otro plazo',
+  Hours: {
+    one_value: '%1$d hora',
+    other_value: '%1$d horas',
+  },
   Days: {
     one_value: '%1$d día',
     other_value: '%1$d días',
@@ -766,6 +772,9 @@ const es = {
     one_value: '%1$d persona se unió',
     other_value: '%1$d personas se unieron',
   },
+  CanJoin: {
+    other_value: '%1$d pueden unirse',
+  },
   PeopleJoinedRemaining: {
     other_value: 'quedan %1$d',
   },
@@ -776,6 +785,24 @@ const es = {
   MessageSeen: {
     one_value: '%1$d visto',
     other_value: '%1$d vistos',
+  },
+  // Título del popup de envío. La forma de singular cubre exactamente el 1, igual que
+  // en el original, por eso ahí no hace falta el número.
+  'PreviewSender.SendAlbum': {
+    one_value: 'Enviar álbum',
+    other_value: 'Enviar %d álbumes',
+  },
+  'PreviewSender.SendFile': {
+    one_value: 'Enviar archivo',
+    other_value: 'Enviar %d archivos',
+  },
+  'PreviewSender.SendPhoto': {
+    one_value: 'Enviar foto',
+    other_value: 'Enviar %d fotos',
+  },
+  'PreviewSender.SendVideo': {
+    one_value: 'Enviar video',
+    other_value: 'Enviar %d videos',
   },
 } satisfies LangPackDict
 

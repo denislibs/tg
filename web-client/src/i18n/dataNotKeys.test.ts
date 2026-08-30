@@ -49,7 +49,34 @@ const DATA_POSITIONS: { why: string; re: RegExp }[] = [
 
 /** Литерал внутри вызова перевода — единственная законная позиция ключа. */
 const inTranslationCall = (src: string, index: number) =>
-  /\bt\(\s*$|\btArgs\(\s*$/.test(src.slice(Math.max(0, index - 12), index))
+  /\bt\(\s*$|\btArgs\(\s*$|\btitle\(\s*$/.test(src.slice(Math.max(0, index - 16), index))
+
+/**
+ * Ключи, чей ПЕРЕВОД законно уезжает на сервер данными. Список поимённый, потому что
+ * «текст на экране» и «текст в базе» различаются не типом, а ролью: `NewGroup` — это
+ * ПУНКТ МЕНЮ («Создать группу» по-русски), и группа без имени называлась им у всех
+ * участников. У названия по умолчанию свой ключ, и он один на роль.
+ */
+const DATA_SAFE_KEYS = new Set(['NewGroup.DefaultTitle', 'NewChannel.DefaultTitle'])
+
+/**
+ * АРГУМЕНТЫ вызова менеджера — ровно то, что внутри его скобок. Границы считаются по
+ * балансу скобок, а не «строкой» и не «окном из трёх строк»: вызов бывает разбит на
+ * строки (`managers.folders` ⏎ `.create({…})`) — тогда однострочный скан его не видит, —
+ * а окно, наоборот, затягивает соседний тост, который к серверу отношения не имеет.
+ */
+function* managerCalls(src: string): Generator<{ region: string; line: number }> {
+  for (const match of src.matchAll(/\bmanagers\.[A-Za-z.\s\n]*?\(/g)) {
+    const open = match.index + match[0].length - 1
+    let depth = 0
+    let i = open
+    for (; i < src.length; i++) {
+      if (src[i] === '(') depth++
+      else if (src[i] === ')' && --depth === 0) break
+    }
+    yield { region: src.slice(open, i + 1), line: src.slice(0, match.index).split('\n').length }
+  }
+}
 
 describe('данные — не ключи перевода', () => {
   // ── рантайм ──
@@ -110,16 +137,39 @@ describe('данные — не ключи перевода', () => {
       const rel = relative(resolve(process.cwd()), file)
       if (/^src\/(lang\.ts|i18n\/)/.test(rel) || /\.test\.tsx?$/.test(rel)) continue
       const src = readFileSync(file, 'utf8')
-      for (const match of src.matchAll(/^.*\bmanagers\.[A-Za-z.]+\(.*$/gm)) {
-        const call = match[0]
-        for (const literal of call.matchAll(/(['"])([^'"]+)\1/g)) {
+      for (const { region, line } of managerCalls(src)) {
+        for (const literal of region.matchAll(/(['"])([^'"]+)\1/g)) {
           if (!isKey(literal[2])) continue
-          if (inTranslationCall(call, literal.index)) continue
-          const line = src.slice(0, match.index).split('\n').length
+          if (inTranslationCall(region, literal.index)) continue
           bad.push(`${rel}:${line}: «${literal[2]}» уезжает данными`)
         }
       }
     }
+    expect(bad).toEqual([])
+  })
+
+  // Вторая половина той же болезни: ключ ПЕРЕВЕДЁН (`t(key)`), но переведён НЕ ТОТ —
+  // подпись пункта меню вместо названия чата. Тайпчек молчит (тип у обоих `LangPackKey`),
+  // пин выше молчит (ключа в аргументе нет — там текст), а группа без имени называется
+  // у всех участников «Создать группу». Поэтому список ролей поимённый.
+  it('на сервер уезжает перевод только тех ключей, что заведены под данные', () => {
+    const bad: string[] = []
+    let checked = 0
+    for (const file of sourceFiles(SRC)) {
+      const rel = relative(resolve(process.cwd()), file)
+      if (/^src\/(lang\.ts|i18n\/)/.test(rel) || /\.test\.tsx?$/.test(rel)) continue
+      const src = readFileSync(file, 'utf8')
+      for (const { region, line } of managerCalls(src)) {
+        for (const literal of region.matchAll(/(['"])([^'"]+)\1/g)) {
+          if (!inTranslationCall(region, literal.index)) continue
+          checked++
+          if (DATA_SAFE_KEYS.has(literal[2])) continue
+          bad.push(`${rel}:${line}: перевод «${literal[2]}» уезжает на сервер — заведите ключ под роль данных`)
+        }
+      }
+    }
+    // Позиции обязаны находиться: без единого вызова проверка зелена на любом коде.
+    expect(checked).toBeGreaterThan(0)
     expect(bad).toEqual([])
   })
 

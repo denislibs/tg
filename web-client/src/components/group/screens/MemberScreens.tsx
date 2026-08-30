@@ -8,7 +8,8 @@ import { SettingsScreen, Section, Row } from '../../settings/kit'
 import IconButton from '../../../shared/ui/IconButton'
 import PeerSelector from '../../../shared/ui/PeerSelector'
 import TgIcon from '../../TgIcon'
-import { useT } from '../../../i18n'
+import { useT, useTArgs } from '../../../i18n'
+import type { LangPackKey } from '../../../lang'
 import { type GroupEdit, type EditMember, PERMS } from '../../../core/hooks/useGroupEdit'
 import { MemberPicker, memberToPeer } from './shared'
 import { MemberHeaderSection } from './AdminScreens'
@@ -67,12 +68,17 @@ export function RemovedUsersScreen({ g, onBack }: { g: GroupEdit; onBack: () => 
   )
 }
 
-// Сроки ограничения (tweb userPermissions «Duration»): undefined — бессрочно.
-const RESTRICT_DURATIONS: { label: string; seconds: number | undefined }[] = [
-  { label: 'UserPermissions.Duration.Forever', seconds: undefined },
-  { label: '1 hour', seconds: 3600 },
-  { label: 'Duration.Days1', seconds: 86400 },
-  { label: 'Duration.Weeks1', seconds: 604800 },
+// Сроки ограничения. Ключи ОБЯЗАНЫ существовать в `lang.ts`: `Row` переводит подпись по
+// умолчанию, и ключа, которого нет в источнике, `t()` вернёт как есть — пользователь
+// прочитает «Duration.Days1». Ровно это тут и было: волна свела `Duration.Days1/Weeks1` в
+// формы числа `Days`/`Weeks`, а таблица (её поле типизировано `string`) осталась со
+// старыми именами; рядом лежал английский литерал «1 hour». Числовые ключи зовутся с
+// аргументом, поэтому подпись приходит в `Row` готовым текстом (`translate={false}`).
+const RESTRICT_DURATIONS: { key: LangPackKey; count?: number; seconds: number | undefined }[] = [
+  { key: 'UserPermissions.Duration.Forever', seconds: undefined },
+  { key: 'Hours', count: 1, seconds: 3600 },
+  { key: 'Days', count: 1, seconds: 86400 },
+  { key: 'Weeks', count: 1, seconds: 604800 },
 ]
 
 // экран гранулярных ограничений участника (tweb userPermissions «What can this
@@ -85,6 +91,8 @@ export function MemberRestrictScreen({
   onBack: () => void
   onSave: (deniedRights: number, untilSeconds?: number) => void
 }) {
+  const t = useT()
+  const tArgs = useTArgs()
   // allowed = биты, которые участнику РАЗРЕШены (инверсия denied в пределах ALL_PERMS)
   const [allowed, setAllowed] = useState((31 & ~initialDenied) >>> 0)
   const [durIdx, setDurIdx] = useState(0)
@@ -117,7 +125,13 @@ export function MemberRestrictScreen({
       </Section>
       <Section caption="UserPermissions.Duration">
         {RESTRICT_DURATIONS.map((d, i) => (
-          <Row key={d.label} label={d.label} selected={i === durIdx} onClick={() => setDurIdx(i)} />
+          <Row
+            key={d.key}
+            label={d.count == null ? t(d.key) : tArgs(d.key, [d.count])}
+            translate={false}
+            selected={i === durIdx}
+            onClick={() => setDurIdx(i)}
+          />
         ))}
       </Section>
     </SettingsScreen>

@@ -54,7 +54,6 @@ describe('карта миграции ключей', () => {
     'ChannelPublic',
     'ChannelPublicInfo',
     'Chat.Context.ReadLabel',
-    'Chat.Context.ReadShowWhen',
     'InviteLinks.Description.Additional',
     'InviteLinks.TimeLimitHelp',
     'InviteLinks.UsesLimitHelp',
@@ -90,6 +89,13 @@ describe('карта миграции ключей', () => {
     'EditProfile.LastNameLabel',
     'AutoDeleteMessages.Disable',
     'Statistics.Posts',
+    // Раунд 2. Название чата, созданного без имени: до волны оно было английским
+    // литералом прямо в вызове менеджера, старой строки словаря у него не было.
+    'NewChannel.DefaultTitle',
+    'NewGroup.DefaultTitle',
+    // Срок ограничения участника: «1 hour» стоял английским литералом в таблице
+    // `RESTRICT_DURATIONS` и до словаря не доезжал вовсе.
+    'Hours',
   ]
 
   it('достаёт каждый ключ нынешнего словаря', () => {

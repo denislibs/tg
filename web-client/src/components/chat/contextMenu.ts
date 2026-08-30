@@ -863,7 +863,7 @@ export default class ChatContextMenu {
           this.canViewReadTime = false
           const when = document.createElement('span')
           when.classList.add('show-when')
-          when.textContent = useI18nStore.getState().t('Chat.Context.ReadShowWhen')
+          when.textContent = useI18nStore.getState().t('PmReadShowWhen')
           loader.replaceWith(useI18nStore.getState().t('Chat.Context.ReadLabel'), ' ', when)
           return
         }

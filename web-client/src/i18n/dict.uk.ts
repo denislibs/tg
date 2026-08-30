@@ -194,6 +194,8 @@ const uk = {
   'MultiAccount.More': 'Більше',
   NewChannel: 'Створити канал',
   NewGroup: 'Створити групу',
+  'NewChannel.DefaultTitle': 'Новий канал',
+  'NewGroup.DefaultTitle': 'Нова група',
   NewPrivateChat: 'Нове повідомлення',
   'Compose.NewMessage': 'Нове повідомлення',
   'Suggestion.Notifications.Title': 'Не пропускайте повідомлення! 🔔',
@@ -580,6 +582,12 @@ const uk = {
   'AutoDeleteMessages.SectionCaption':
     'Увімкніть, щоб усі нові повідомлення у Ваших чатах, створених після зміни налаштування, автоматично видалялися для всіх учасників через обраний час. Автовидалення в раніше створених чатах вмикається окремо.',
   'AutoDeleteMessages.SetOtherTime': 'Обрати інший строк',
+  Hours: {
+    one_value: '%1$d година',
+    few_value: '%1$d години',
+    many_value: '%1$d годин',
+    other_value: '%1$d години',
+  },
   Days: {
     one_value: '%1$d день',
     few_value: '%1$d дні',
@@ -798,10 +806,16 @@ const uk = {
     other_value: 'Відреагували %d',
   },
   PeopleJoined: {
-    one_value: 'приєднався %1$d',
-    few_value: 'приєдналося %1$d',
-    many_value: 'приєдналося %1$d',
-    other_value: 'приєдналося %1$d',
+    one_value: '%1$d людина приєдналася',
+    few_value: '%1$d людини приєдналися',
+    many_value: '%1$d людей приєдналися',
+    other_value: '%1$d людини приєдналися',
+  },
+  CanJoin: {
+    one_value: 'може приєднатися %1$d людина',
+    few_value: 'можуть приєднатися %1$d людини',
+    many_value: 'можуть приєднатися %1$d людей',
+    other_value: 'можуть приєднатися %1$d людини',
   },
   PeopleJoinedRemaining: {
     other_value: 'залишилося %1$d',
@@ -817,6 +831,32 @@ const uk = {
     few_value: '%1$d перегляди',
     many_value: '%1$d переглядів',
     other_value: '%1$d перегляду',
+  },
+  // Заголовок попапа відправки медіа. Число стоїть у КОЖНІЙ формі: українська форма
+  // одиниці покриває і 21, і 101 («фото» та «відео» при цьому не відмінюються).
+  'PreviewSender.SendAlbum': {
+    one_value: 'Надіслати %d альбом',
+    few_value: 'Надіслати %d альбоми',
+    many_value: 'Надіслати %d альбомів',
+    other_value: 'Надіслати %d альбому',
+  },
+  'PreviewSender.SendFile': {
+    one_value: 'Надіслати %d файл',
+    few_value: 'Надіслати %d файли',
+    many_value: 'Надіслати %d файлів',
+    other_value: 'Надіслати %d файлу',
+  },
+  'PreviewSender.SendPhoto': {
+    one_value: 'Надіслати %d фото',
+    few_value: 'Надіслати %d фото',
+    many_value: 'Надіслати %d фото',
+    other_value: 'Надіслати %d фото',
+  },
+  'PreviewSender.SendVideo': {
+    one_value: 'Надіслати %d відео',
+    few_value: 'Надіслати %d відео',
+    many_value: 'Надіслати %d відео',
+    other_value: 'Надіслати %d відео',
   },
 } satisfies LangPackDict
 

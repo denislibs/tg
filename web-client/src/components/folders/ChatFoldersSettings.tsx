@@ -61,6 +61,11 @@ export default function ChatFoldersSettings({ onBack, chats = [] }: { onBack: ()
   const [editor, setEditor] = useState<Folder | 'new' | null>(null)
 
   const suggested = SUGGESTED.filter((sg) => !folders.some((f) => f.title === t(sg.title)))
+  // Имя папки уезжает НА СЕРВЕР переводом ключа. Роль подписи и роль данных здесь
+  // СОВПАДАЮТ: пользователь видит в списке предложений ровно то имя, которое сохранится
+  // (у оригинала предложения приезжают с сервера уже локализованными). Ключ приходит
+  // ПЕРЕМЕННОЙ из таблицы `SUGGESTED`, поэтому пин `i18n/dataNotKeys.test.ts` это место
+  // не видит — правило держится этим комментарием и типом `LangPackKey` у поля.
   const addSuggested = (sg: (typeof SUGGESTED)[number]) => {
     void managers.folders
       .create({ ...sg.input, title: t(sg.title) })

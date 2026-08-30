@@ -65,6 +65,48 @@ function scan() {
   return { offenders, calls }
 }
 
+// ── ПИН НА ОСИРОТЕВШИЙ КЛЮЧ: «похоже на ключ, но в источнике его нет» ──────────
+//
+// Дыра, общая для всех трёх прежних пинов. `dictCoverage` и `domKeyLeak` берут только
+// ключи, КОТОРЫЕ ЕСТЬ в `lang.ts`, — поэтому имя, переставшее быть ключом, невидимо для
+// обоих: `Row` переводит подпись по умолчанию, `t()` неизвестный ключ возвращает как
+// есть, и пользователь читает в списке сроков «Duration.Days1». Ровно так и было: волна
+// свела `Duration.Days1`/`Weeks1` в формы числа, а две таблицы (поле типизировано
+// `string`) остались со старыми именами и молчали два ревью подряд.
+//
+// Признак «похоже на ключ» — форма имени: сегменты через точку, каждый с заглавной и
+// хотя бы одной строчной буквой (`Chat.Context.Pin`). Формат даты `DD.MM.YYYY` под неё не
+// попадает по построению — строчных букв в нём нет.
+const KEY_SHAPED = /^[A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)+$/
+const hasLowercase = (s: string) => /[a-z]/.test(s)
+
+/** Комментарии — не код: в них ключи цитируются, в том числе исчезнувшие. */
+const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1')
+
+describe('осиротевших ключей в исходниках нет', () => {
+  it('литерал, похожий на ключ, есть в английском источнике', () => {
+    const offenders: string[] = []
+    let seen = 0
+    for (const file of sourceFiles(SRC)) {
+      const rel = relative(resolve(process.cwd()), file)
+      // Тесты фиксируют и НЕСУЩЕСТВУЮЩИЕ ключи (проверка «ядро показало сам ключ»).
+      if (NOT_A_CALLER.test(rel) || /\.test\.tsx?$/.test(rel)) continue
+      const src = stripComments(readFileSync(file, 'utf8'))
+      for (const match of src.matchAll(/(['"])([^'"\\\n]+)\1/g)) {
+        const value = match[2]
+        if (!KEY_SHAPED.test(value) || !hasLowercase(value)) continue
+        seen++
+        if (value in lang) continue
+        const line = src.slice(0, match.index).split('\n').length
+        offenders.push(`${rel}:${line}: «${value}» — по форме ключ, а в lang.ts его нет`)
+      }
+    }
+    // Иначе «сирот нет» означало бы «скан ничего не нашёл».
+    expect(seen).toBeGreaterThan(500)
+    expect(offenders).toEqual([])
+  })
+})
+
 describe('старой формы ключа не осталось', () => {
   it('ни один вызов не передаёт английскую строку вместо ключа', () => {
     expect(scan().offenders).toEqual([])

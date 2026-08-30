@@ -38,7 +38,9 @@ function linkSubtitle(t: (key: LangPackKey) => string, tArgs: (key: LangPackKey,
     if (l.usageLimit != null && l.uses >= l.usageLimit) parts.push(t('InviteLinks.LimitReached'))
     else if (l.usageLimit != null) parts.push(tArgs('PeopleJoinedRemaining', [l.usageLimit - l.uses]))
   } else if (l.usageLimit != null) {
-    parts.push(`${t('InviteLinks.CanJoinSuffix')} ${l.usageLimit}`)
+    // Число ВНУТРИ строки (ключ оригинала `CanJoin`), а не приклеено в коде: склейка
+    // «суффикс + число» печатала суффикс префиксом («могут вступить 5»).
+    parts.push(tArgs('CanJoin', [l.usageLimit]))
   }
   const exp = expiryLabel(t, l.expiresAt)
   if (exp) parts.push(exp)
@@ -188,8 +190,14 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
 
 // Шаги «Limit by Period» (tweb stepValues 1h/1d/1w + ∞). undefined — бессрочно.
 const PERIOD_STEPS: (number | undefined)[] = [3600, 86400, 604800, undefined]
-const periodLabel = (v: number | undefined): string =>
-  v === undefined ? '∞' : v < 86400 ? '1 hour' : v < 604800 ? 'Duration.Days1' : 'Duration.Weeks1'
+// Подпись шага — форма числа, как у оригинала (`wrapFormattedDuration` →
+// `DURATION_LANG_KEYS`, wrapDuration.ts:5-13). Прежние `Duration.Days1`/`Duration.Weeks1`
+// ключами БЫТЬ ПЕРЕСТАЛИ (волна свела их в `Days`/`Weeks`), и подпись доезжала до экрана
+// именем ключа; «1 hour» рядом было английским литералом.
+const periodLabel = (v: number | undefined, tArgs: (key: LangPackKey, args: (string | number)[]) => string): string =>
+  v === undefined ? '∞'
+    : v < 86400 ? tArgs('Hours', [1])
+      : v < 604800 ? tArgs('Days', [1]) : tArgs('Weeks', [1])
 // Шаги «Limit Number of Uses» (tweb 1/10/50/100 + ∞). undefined — без лимита.
 const USES_STEPS: (number | undefined)[] = [1, 10, 50, 100, undefined]
 const usesLabel = (v: number | undefined): string => (v === undefined ? '∞' : String(v))
@@ -204,10 +212,10 @@ const closestStep = (steps: (number | undefined)[], value: number): number => {
   })
   return bestIdx
 }
-
 // ── Создание/редактирование ссылки (tweb editChatInviteLink) ─────────────────
 function EditInviteLinkScreen({ g, link, onBack }: { g: GroupEdit; link: InviteLink | null; onBack: () => void }) {
   const t = useT()
+  const tArgs = useTArgs()
   const [name, setName] = useState(link?.title ?? '')
   const [periodIdx, setPeriodIdx] = useState(() => {
     if (!link?.expiresAt) return PERIOD_STEPS.length - 1
@@ -268,7 +276,7 @@ function EditInviteLinkScreen({ g, link, onBack }: { g: GroupEdit; link: InviteL
                 )}
                 style={{ left: `${(i / (PERIOD_STEPS.length - 1)) * 100}%` }}
               >
-                <div className="range-setting-selector-option-text">{periodLabel(v)}</div>
+                <div className="range-setting-selector-option-text">{periodLabel(v, tArgs)}</div>
               </div>
             ))}
           </Slider>

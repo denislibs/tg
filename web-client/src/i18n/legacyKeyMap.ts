@@ -743,7 +743,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'What can this member do?': 'UserRestrictions.CanDoMember',
   'You can select emoji that will allow members of this group to react to messages.': 'Reactions.Some.Info',
   'as the discussion board for this channel?': 'Discussion.Link.Question',
-  'can join': 'InviteLinks.CanJoinSuffix',
+  'can join': 'CanJoin',
   joined: 'PeopleJoined',
   'people can join via this link.': 'PeopleCanJoinViaLinkCount',
   remaining: 'PeopleJoinedRemaining',
@@ -1383,6 +1383,9 @@ export const LEGACY_PLURAL_GROUPS: Record<string, Partial<Record<'one_value' | '
 export const LEGACY_MERGED_FRAGMENTS: Record<string, LangPackKey> = {
   joined: 'PeopleJoined',
   remaining: 'PeopleJoinedRemaining',
+  // Суффикс «can join» склеивался с числом В КОДЕ, а число теперь внутри строки
+  // (ключ оригинала `CanJoin`); обратно суффикс не восстанавливается.
+  'can join': 'CanJoin',
   'people can join via this link.': 'PeopleCanJoinViaLinkCount',
   'Seen by': 'MessageSeen',
   Reacted: 'Chat.Context.ReactedFast',

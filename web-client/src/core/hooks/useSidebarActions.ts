@@ -1,4 +1,5 @@
 import { useI18nStore } from '../../i18n'
+import type { LangPackKey } from '../../lang'
 import { useSecretChatStore } from '../../stores/secretChatStore'
 import { useManagers } from './useManagers'
 import type { Chat } from '../../data'
@@ -12,11 +13,17 @@ export function useSidebarActions(chats: Chat[], onChatCreated?: (peerId: PeerId
   const managers = useManagers()
   // Название по умолчанию уезжает НА СЕРВЕР данными, а не рисуется: сюда нужен ТЕКСТ
   // на языке пользователя, а не символический ключ (иначе группа так и называется
-  // «NewGroup» у всех, кто её увидит).
-  const t = useI18nStore.getState().t
+  // «NewGroup» у всех, кто её увидит). Ключ — СВОЙ (`*.DefaultTitle`), а не тот, что
+  // подписывает пункт меню: по-русски пункт меню это «Создать группу», и группа без
+  // имени называлась бы так у всех участников.
+  //
+  // Язык читается СНИМКОМ В МОМЕНТ ВЫЗОВА, а не на рендере: подписки тут не нужно
+  // (ничего не рисуется), но и застревать на языке, который стоял при монтировании,
+  // нельзя — пользователь мог сменить язык до нажатия «Создать» (#задача 8).
+  const title = (key: LangPackKey) => useI18nStore.getState().t(key)
 
   const createGroup = async (name: string, memberIds: number[], photo: GroupPhoto | null) => {
-    const peerId = await managers.groups.createGroup({ title: name || t('NewGroup'), memberIds })
+    const peerId = await managers.groups.createGroup({ title: name || title('NewGroup.DefaultTitle'), memberIds })
     // Фото — после создания, как tweb (createChat → editPhoto): upload → set.
     if (photo) {
       const bytes = await photo.blob.arrayBuffer()
@@ -27,7 +34,7 @@ export function useSidebarActions(chats: Chat[], onChatCreated?: (peerId: PeerId
   }
 
   const createChannel = async (name: string, description: string) => {
-    const peerId = await managers.channels.createChannel({ title: name || t('NewChannel'), about: description })
+    const peerId = await managers.channels.createChannel({ title: name || title('NewChannel.DefaultTitle'), about: description })
     onChatCreated?.(peerId)
   }
 
