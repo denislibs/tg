@@ -34,7 +34,7 @@ export default function SchedulePopup({ onPick, onClose, initUnix, onWhenOnline 
       initDate={init.getTime()}
       minDate={now.getTime()}
       onPick={onPick}
-      secondaryAction={onWhenOnline ? { label: t('Send When Online'), onClick: onWhenOnline } : undefined}
+      secondaryAction={onWhenOnline ? { label: t('Schedule.SendWhenOnline'), onClick: onWhenOnline } : undefined}
     />
   )
 }

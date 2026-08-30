@@ -24,7 +24,7 @@ export default function NewChannelFlow({ onClose, onCreate }: Props) {
           <TgIcon name="back" />
         </IconButton>
         <Text size={19} weight={600} color="var(--primary-text-color)">
-          {t('New Channel')}
+          {t('NewChannel')}
         </Text>
       </div>
 
@@ -40,20 +40,20 @@ export default function NewChannelFlow({ onClose, onCreate }: Props) {
           </div>
           <Input
             autoFocus
-            label={t('Channel name')}
+            label={t('EnterChannelName')}
             value={name}
             onChange={setName}
             wrapClassName={`${s.field} ${s.fieldGap}`}
           />
           <Input
-            label={t('Description (optional)')}
+            label={t('DescriptionOptionalPlaceholder')}
             value={desc}
             onChange={setDesc}
             wrapClassName={s.field}
           />
         </div>
         <Text size={14.5} color="var(--secondary-text-color)" className={s.hint}>
-          {t('You can provide an optional description for your channel.')}
+          {t('Channel.DescriptionHolderDescrpiton')}
         </Text>
       </div>
 

@@ -431,7 +431,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
             <div className={classNames('transition-item', headerSlider.itemClass(1))}>
               <div className="sidebar-header__rows">
                 <div className="sidebar-header__title">
-                  <span className="peer-title">{isSaved ? t('Saved Messages') : chat.name}</span>
+                  <span className="peer-title">{isSaved ? t('SavedMessages') : chat.name}</span>
                 </div>
                 <div className="sidebar-header__subtitle">
                   {activeCount != null ? countLabel(tab, activeCount, isChannel) : ''}
@@ -535,7 +535,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
                     MainSection: Info-строка), многострочная через `pre-wrap`. */}
                 <Row
                   icon={<TgIcon name="info" size={24} />}
-                  label={chat.description ?? t('Channel description.')}
+                  label={chat.description ?? t('Profile.ChannelDescription')}
                   sublabel={t('Info')}
                   translate={false}
                   multiline
@@ -559,7 +559,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
                 <Row
                   icon={<TgIcon name="link" size={24} />}
                   label={inviteShort}
-                  sublabel={t('Link')}
+                  sublabel={t('SetUrlPlaceholder')}
                   translate={false}
                   onClick={() => copyInfo(inviteUrl, 'Link copied to clipboard.')}
                   right={
@@ -602,7 +602,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
                   <Row
                     icon={<TgIcon name="info" size={24} />}
                     label={infoBio}
-                    sublabel={t('Bio')}
+                    sublabel={t('UserBio')}
                     translate={false}
                     multiline
                     onClick={() => copyInfo(infoBio, 'Bio copied to clipboard')}
@@ -655,7 +655,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
 
           {/* Channel discussions: admin (creator/CHANGE_INFO) toggle / enabled state */}
           {isRealChat && isChannel && canManageDiscussion && (
-            <SidebarSection noDelimiter title={t('Discussion')}>
+            <SidebarSection noDelimiter title={t('PeerInfo.Discussion')}>
               {/* ЗНАКОВЫЙ ключ: у чата он ОТРИЦАТЕЛЬНЫЙ, и прежнее «> 0»
                   выключило бы обсуждение ровно наоборот. */}
               {discussionPeerId !== NULL_PEER_ID ? (
@@ -679,7 +679,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
 
           {/* Real group/channel: pending join requests (admins with INVITE_USERS / creator) */}
           {isRealChat && canInvite && joinRequests.length > 0 && (
-            <SidebarSection noDelimiter title={t('Subscribe Requests')}>
+            <SidebarSection noDelimiter title={t('SubscribeRequests')}>
               {joinRequests.map((req) => (
                 <Row
                   key={req.userId}

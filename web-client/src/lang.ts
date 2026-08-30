@@ -101,6 +101,7 @@ const lang = {
   BotStart: 'START',
   BuyStars: 'Buy Stars',
   'Calendar.ClearHistory': 'Clear History',
+  'Calendar.Next': 'Next',
   'Calendar.Previous': 'Previous',
   Call: 'Call',
   'Call.Accept': 'Accept',

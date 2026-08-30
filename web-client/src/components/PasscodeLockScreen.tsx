@@ -44,7 +44,7 @@ export default function PasscodeLockScreen() {
       unlock()
     } else {
       failedAttempt(MAX_ATTEMPTS, ATTEMPTS_TIMEOUT_MS)
-      setError(t('Wrong passcode'))
+      setError(t('PasscodeLock.WrongPasscodeShort'))
       setValue('')
     }
     setBusy(false)
@@ -55,7 +55,7 @@ export default function PasscodeLockScreen() {
       <div className={s.card}>
         <PasswordMonkey peeking={show} size={140} />
         <Text size={20} weight={600} color="var(--primary-text-color)" style={{ textAlign: 'center', marginTop: 4 }}>
-          {t('Enter your passcode')}
+          {t('PasscodeLock.EnterYourPasscode')}
         </Text>
         <div className={s.field}>
           <input
@@ -66,7 +66,7 @@ export default function PasscodeLockScreen() {
             disabled={waitLeft > 0}
             onChange={(e) => { setValue(e.target.value); setError('') }}
             onKeyDown={(e) => { if (e.key === 'Enter') void proceed() }}
-            placeholder={t('Passcode')}
+            placeholder={t('PasscodeLock.Title')}
           />
           <IconButton size="small" color="var(--secondary-text-color)" onClick={() => setShow((v) => !v)} aria-label="toggle passcode">
             <TgIcon name={show ? 'eye2' : 'eye1'} size={22} />
@@ -74,28 +74,28 @@ export default function PasscodeLockScreen() {
         </div>
         {waitLeft > 0 ? (
           <Text size={13.5} color="#ff595a" style={{ textAlign: 'center' }}>
-            {t('Too many attempts, please try again later')} ({waitLeft})
+            {t('PasscodeLock.TooManyAttempts')} ({waitLeft})
           </Text>
         ) : (
           error && <Text size={13.5} color="#ff595a" style={{ textAlign: 'center' }}>{error}</Text>
         )}
         <div className={s.btn}>
           <Button fullWidth uppercase disabled={!value || busy || waitLeft > 0} onClick={() => void proceed()}>
-            {t('Proceed')}
+            {t('PasscodeLock.Proceed')}
           </Button>
         </div>
         <Text size={13.5} color="var(--secondary-text-color)" style={{ textAlign: 'center', lineHeight: 1.5 }}>
-          {t('If you forgot your passcode, you need to log out and log in again.')}{' '}
-          <span className={s.logout} onClick={() => setLogoutOpen(true)}>{t('Log Out')}</span>
+          {t('PasscodeLock.ForgotPasscode.Text')}{' '}
+          <span className={s.logout} onClick={() => setLogoutOpen(true)}>{t('EditAccount.Logout')}</span>
         </Text>
       </div>
 
       <Popup
         open={logoutOpen}
-        title={t('Log Out')}
+        title={t('EditAccount.Logout')}
         onClose={() => setLogoutOpen(false)}
         action={{
-          label: t('Log Out'),
+          label: t('EditAccount.Logout'),
           onClick: () => {
             // Четвёртый инициатор перехода — и единственный, кому кадр
             // rt:logging_out не поможет: под локом насос `smp.on`
@@ -109,7 +109,7 @@ export default function PasscodeLockScreen() {
         }}
       >
         <Text size={15} color="var(--primary-text-color)" style={{ lineHeight: 1.5 }}>
-          {t('Are you sure you want to log out? You will need to sign in again.')}
+          {t('PasscodeLock.Logout.Text')}
         </Text>
       </Popup>
     </div>

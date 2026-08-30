@@ -24,7 +24,7 @@ export default function ComposeMenu({ open, anchor, onClose, onNewGroup, onNewPr
     >
       <MenuItem
         icon={<TgIcon name="newchannel" size={20} />}
-        label={t('New Channel')}
+        label={t('NewChannel')}
         onClick={() => {
           onClose()
           onNewChannel?.()
@@ -32,7 +32,7 @@ export default function ComposeMenu({ open, anchor, onClose, onNewGroup, onNewPr
       />
       <MenuItem
         icon={<TgIcon name="newgroup" size={20} />}
-        label={t('New Group')}
+        label={t('NewGroup')}
         onClick={() => {
           onClose()
           onNewGroup?.()
@@ -40,7 +40,7 @@ export default function ComposeMenu({ open, anchor, onClose, onNewGroup, onNewPr
       />
       <MenuItem
         icon={<TgIcon name="newprivate" size={20} />}
-        label={t('New Private Chat')}
+        label={t('NewPrivateChat')}
         onClick={() => {
           onClose()
           onNewPrivate?.()
@@ -48,7 +48,7 @@ export default function ComposeMenu({ open, anchor, onClose, onNewGroup, onNewPr
       />
       <MenuItem
         icon={<TgIcon name="lock" size={20} />}
-        label={t('New Secret Chat')}
+        label={t('SecretChat.New')}
         onClick={() => {
           onClose()
           onNewSecret?.()

@@ -1509,6 +1509,14 @@ export const LEGACY_KEY_OVERRIDES: LegacyKeyOverride[] = [
     why: 'та же кнопка, ярлык для скринридера',
   },
   {
+    file: 'src/components/DatePickerPopup.tsx',
+    occurrence: 0,
+    anchor: 'date-picker-next',
+    legacy: 'Next',
+    key: 'Calendar.Next',
+    why: 'стрелка календаря, а не кнопка входа: карта отдаёт `Login.Next`. Соседняя стрелка уже зовёт `Calendar.Previous` — у оригинала обоих ключей нет, пара наша',
+  },
+  {
     file: 'src/components/CallsView.tsx',
     occurrence: 0,
     anchor: 'rotate(-45deg)',

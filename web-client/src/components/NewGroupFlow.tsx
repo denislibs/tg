@@ -76,7 +76,7 @@ export default function NewGroupFlow({ onClose, onCreate }: Props) {
           <TgIcon name="back" />
         </IconButton>
         <Text size={19} weight={600} color="var(--primary-text-color)">
-          {step === 'members' ? t('Add Members') : t('New Group')}
+          {step === 'members' ? t('GroupAddMembers') : t('NewGroup')}
         </Text>
       </div>
 
@@ -129,7 +129,7 @@ export default function NewGroupFlow({ onClose, onCreate }: Props) {
               ))}
               {filtered.length === 0 && (
                 <div className={s.empty}>
-                  <Text size={15} color="var(--secondary-text-color)">{t('No Results')}</Text>
+                  <Text size={15} color="var(--secondary-text-color)">{t('SearchEmptyViewTitle')}</Text>
                 </div>
               )}
             </div>
@@ -158,7 +158,7 @@ export default function NewGroupFlow({ onClose, onCreate }: Props) {
               </div>
               <Input
                 autoFocus
-                label={t('Group Name')}
+                label={t('CreateGroup.NameHolder')}
                 value={name}
                 onChange={setName}
                 onKeyDown={(e) => e.key === 'Enter' && next()}

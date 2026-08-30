@@ -260,8 +260,8 @@ function Composer({
       if (e.key === 'Escape') {
         e.preventDefault()
         confirmationPopup({
-          titleLangKey: t('Discard voice message?'),
-          descriptionLangKey: t('Are you sure you want to discard this voice message?'),
+          titleLangKey: t('DiscardVoiceMessageTitle'),
+          descriptionLangKey: t('Composer.DiscardVoice.Text'),
           button: { text: t('Discard'), isDanger: true },
         }).then(() => rec.stop(false), () => {})
       }
@@ -438,7 +438,7 @@ function Composer({
     inlineSug, setInlineSug, pickInline,
     mentionSug, setMentionSug, pickMention,
     emojiSug, setEmojiSug, pickEmojiSuggestion,
-    onReplyPrev, onEditLast, submit, applyFmt, urlPromptLabel: t('Enter URL'),
+    onReplyPrev, onEditLast, submit, applyFmt, urlPromptLabel: t('MarkupTooltip.LinkPlaceholder'),
   })
 
   // ── Кнопка отправки: состояние по updateSendBtn() (input.ts:3983-3995) ──
@@ -528,7 +528,7 @@ function Composer({
               onMouseDown={(e) => e.preventDefault()}
               onClick={(e) => canSendMedia
                 ? onOpenAttach(e.currentTarget.getBoundingClientRect())
-                : rootScope.dispatchEvent('ui:toast', t('Media is not allowed in this group'))}
+                : rootScope.dispatchEvent('ui:toast', t('Composer.MediaRestricted'))}
             >
               <TgIcon name="attach" className="button-icon" size="inherit" />
             </IconButton>
@@ -663,7 +663,7 @@ function Composer({
                   onWhenOnline={onSendWhenOnline && canSendWhenOnline ? submitWhenOnline : undefined}
                   onRemoveEffect={selectedEffect ? () => { setSelectedEffect(null); setSendMenuOpen(false) } : undefined}
                   effects={(
-                    <div className={s.effectRow} role="group" aria-label={t('Message effect')}>
+                    <div className={s.effectRow} role="group" aria-label={t('Composer.MessageEffect')}>
                       {EFFECT_CHOICES.map((c) => (
                         <button
                           key={c.kind}

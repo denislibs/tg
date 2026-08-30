@@ -81,9 +81,9 @@ export default function NewPrivateChat({ chats, onClose, onSelect, title = 'New 
           <div className={s.empty}>
             <div className={s.emoji}>🐤</div>
             <Text size={19} weight={600} color="var(--primary-text-color)">
-              {t('No Results')}
+              {t('SearchEmptyViewTitle')}
             </Text>
-            <Text size={15} color="var(--secondary-text-color)">{t('Try searching.')}</Text>
+            <Text size={15} color="var(--secondary-text-color)">{t('Search.EmptyQuery')}</Text>
           </div>
         ) : (
           people.map((c) => (

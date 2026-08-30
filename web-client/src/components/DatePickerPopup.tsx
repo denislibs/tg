@@ -350,11 +350,11 @@ export default function DatePickerPopup({
     if (!withTime) return ''
     const hm = `${hours.padStart(2, '0')}:${minutes.padStart(2, '0')}`
     const now = new Date()
-    if (selected.getTime() === startOfDay(now).getTime()) return `${t('Send today at')} ${hm}`
+    if (selected.getTime() === startOfDay(now).getTime()) return `${t('Schedule.SendTodayAt')} ${hm}`
     const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' }
     if (sendDate.getFullYear() !== now.getFullYear()) opts.year = 'numeric'
     const dateLabel = new Intl.DateTimeFormat(lang, opts).format(sendDate)
-    return `${t('Send on')} ${dateLabel} ${t('at')} ${hm}`
+    return `${t('Schedule.SendOn')} ${dateLabel} ${t('ScheduleController.at')} ${hm}`
   }, [withTime, hours, minutes, selected, sendDate, lang, t])
 
   return (
@@ -367,21 +367,21 @@ export default function DatePickerPopup({
       title={<div className="date-picker-month-title">{monthTitle}</div>}
       headerRight={
         <div className="date-picker-controls">
-          <IconButton className="date-picker-prev primary" onClick={onPrev} disabled={currentIdx <= 0} title={t('Previous')}>
+          <IconButton className="date-picker-prev primary" onClick={onPrev} disabled={currentIdx <= 0} title={t('Calendar.Previous')}>
             <TgIcon name="up" size={24} />
           </IconButton>
           <IconButton
             className="date-picker-next primary"
             onClick={onNext}
             disabled={currentIdx < 0 || currentIdx >= sections.length - 1}
-            title={t('Next')}
+            title={t('Calendar.Next')}
           >
             <TgIcon name="down" size={24} />
           </IconButton>
         </div>
       }
       action={withTime ? undefined : {
-        label: t('Jump to Date'),
+        label: t('JumpToDate'),
         onClick: () => {
           onPick(Math.floor(startOfDay(selected).getTime() / 1000))
           onClose()

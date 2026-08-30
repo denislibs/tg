@@ -49,22 +49,22 @@ export default function ReportPopup() {
         reason,
         comment: comment.trim() || undefined,
       })
-      rootScope.dispatchEvent('ui:toast', t('Report sent'))
+      rootScope.dispatchEvent('ui:toast', t('Report.Sent'))
       clear()
     } catch {
       setBusy(false)
-      rootScope.dispatchEvent('ui:toast', t('Could not send report'))
+      rootScope.dispatchEvent('ui:toast', t('Report.Error'))
     }
   }
 
   return (
     <Popup
       open={open}
-      title={t('Report')}
+      title={t('ReportChat')}
       onClose={clear}
       onExitComplete={reset}
       width={400}
-      action={{ label: busy ? t('Sending…') : t('Report'), onClick: submit }}
+      action={{ label: busy ? t('Report.Sending') : t('ReportChat'), onClick: submit }}
     >
       <div className={s.list}>
         {REPORT_REASONS.map((r) => (
@@ -80,7 +80,7 @@ export default function ReportPopup() {
         ))}
       </div>
       <Input
-        label={t('Additional details (optional)')}
+        label={t('Report.DetailsPlaceholder')}
         value={comment}
         onChange={setComment}
         wrapClassName={s.comment}

@@ -64,10 +64,10 @@ export default function AttachMenu({
       corner="top-right"
       style={{ left: anchor.left, bottom: anchor.bottom }}
     >
-      <AttachMenuItem icon="image" text={t('Photo or Video')} onClick={pick(onPhotoVideo)} />
-      <AttachMenuItem icon="document" text={t('Document')} onClick={pick(onFile)} />
-      {onLocation && <AttachMenuItem icon="location" text={t('Location')} onClick={pick(onLocation)} />}
-      {onContact && <AttachMenuItem icon="newprivate" text={t('Contact')} onClick={pick(onContact)} />}
+      <AttachMenuItem icon="image" text={t('Chat.Input.Attach.PhotoOrVideo')} onClick={pick(onPhotoVideo)} />
+      <AttachMenuItem icon="document" text={t('Chat.Input.Attach.Document')} onClick={pick(onFile)} />
+      {onLocation && <AttachMenuItem icon="location" text={t('AttachLocation')} onClick={pick(onLocation)} />}
+      {onContact && <AttachMenuItem icon="newprivate" text={t('AttachContact')} onClick={pick(onContact)} />}
       {onPoll && <AttachMenuItem icon="poll" text={t('Poll')} onClick={pick(onPoll)} />}
       {onChecklist && <AttachMenuItem icon="check" text={t('Checklist')} onClick={pick(onChecklist)} />}
     </Menu>

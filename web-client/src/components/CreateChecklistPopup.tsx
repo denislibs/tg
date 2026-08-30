@@ -59,25 +59,25 @@ export default function CreateChecklistPopup({ onCreate, onClose }: {
   }
 
   return (
-    <Popup open title={t('New Checklist')} onClose={onClose} width={420} action={{ label: t('Create'), onClick: submit }}>
+    <Popup open title={t('NewChecklist')} onClose={onClose} width={420} action={{ label: t('Create'), onClick: submit }}>
       <div className={s.body}>
-        <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('Title')}</Text>
+        <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('Checklist.Title.Label')}</Text>
         <input
           className={s.title}
           value={title}
           maxLength={255}
-          placeholder={t('Checklist Title')}
+          placeholder={t('Checklist.TitlePlaceholder')}
           onChange={(e) => setTitle(e.target.value)}
         />
 
-        <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('Tasks')}</Text>
+        <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('Checklist.Tasks')}</Text>
         {items.map((it, i) => (
           <div key={i} className={s.itemRow}>
             <input
               className={s.item}
               value={it}
               maxLength={255}
-              placeholder={i === items.length - 1 && !it ? t('Add a Task') : t('Task')}
+              placeholder={i === items.length - 1 && !it ? t('Checklist.AddTask') : t('NewChecklist.TaskPlaceholder')}
               onChange={(e) => setItem(i, e.target.value)}
             />
             {it !== '' && (
@@ -90,11 +90,11 @@ export default function CreateChecklistPopup({ onCreate, onClose }: {
 
         <div className={s.switches}>
           <div className={s.switchRow} onClick={() => setOthersCanMark((v) => !v)}>
-            <Text size={15.5}>{t('Allow Others to Mark as Done')}</Text>
+            <Text size={15.5}>{t('ChecklistAllowOthersDone')}</Text>
             <TgSwitch checked={othersCanMark} />
           </div>
           <div className={s.switchRow} onClick={() => setOthersCanAdd((v) => !v)}>
-            <Text size={15.5}>{t('Allow Others to Add Tasks')}</Text>
+            <Text size={15.5}>{t('ChecklistAllowOthersAdd')}</Text>
             <TgSwitch checked={othersCanAdd} />
           </div>
         </div>
