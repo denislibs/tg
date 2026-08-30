@@ -25,7 +25,7 @@ export const RULE_META: Record<string, { key: PrivacyKey; title: LangPackKey; ca
   'PrivacyLastSeen': {
     key: 'last_seen',
     title: 'LastSeenTitle',
-    caption: "Privacy.LastSeenCaption",
+    caption: 'Privacy.LastSeenCaption',
     share: true,
   },
   'PrivacyProfilePhoto': {
@@ -79,7 +79,7 @@ export const RULE_META: Record<string, { key: PrivacyKey; title: LangPackKey; ca
   'PrivacyReadTime': {
     key: 'read_time',
     title: 'PrivacyReadTimeTitle',
-    caption: "Privacy.ReadTimeCaption",
+    caption: 'Privacy.ReadTimeCaption',
     share: true,
   },
 }
