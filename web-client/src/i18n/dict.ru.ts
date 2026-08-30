@@ -1126,8 +1126,7 @@ const ru = {
   PleaseWait: 'Пожалуйста, подождите...',
   // Экран входа: подзаголовок ввода номера и ошибка номера (tweb Login.StartText,
   // Login.PhoneLabelInvalid)
-  'Login.StartText.Line1': 'Пожалуйста, подтвердите код страны',
-  'Login.StartText.Line2': 'и введите номер телефона.',
+  'Login.StartText': 'Пожалуйста, подтвердите код страны\nи введите номер телефона.',
   'Login.PhoneLabelInvalid': 'Неверный номер телефона',
   // Регистрация (tweb signUp: YourName, Login.Register.Subtitle, FirstName,
   // LastName, StartMessaging)

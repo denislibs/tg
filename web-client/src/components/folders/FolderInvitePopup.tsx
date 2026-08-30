@@ -101,8 +101,8 @@ export default function FolderInvitePopup({
         <>
           <Text size={14.5} color="var(--secondary-text-color)" style={{ display: 'block', padding: '4px 16px 12px' }}>
             {chats.length > 0
-              ? `${t('Folder.Invite.Question.Prefix')} «${title}» ${t('Folder.Invite.Question.Suffix')}`
-              : `${t('Folder.Invite.Question.FolderPrefix')} «${title}»?`}
+              ? tArgs('Folder.Invite.Question', [title])
+              : tArgs('Folder.Invite.Question.Folder', [title])}
           </Text>
           {chats.map((c) => (
             <Row

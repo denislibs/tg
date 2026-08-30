@@ -1,7 +1,7 @@
 // SignInCard — ввод номера телефона (порт карточки tweb `pages/cards/SignInCard.tsx`).
 // Хост владеет номером и страной (карточка размонтируется на каждый переход,
 // а номер нужен карточке кода) — здесь только ввод, отправка кода и переходы.
-import { useRef, useState } from 'react'
+import { Fragment, useRef, useState } from 'react'
 import { placeCaretAtEnd } from '../../../shared/lib/caret'
 import { useT } from '../../../i18n'
 import { useManagers } from '../../../core/hooks/useManagers'
@@ -110,12 +110,13 @@ export default function SignInCard({
           <span className="i18n">{t('Login.Title')}</span>
         </MediaHeader.Title>
         <MediaHeader.Subtitle secondary>
-          {/* В tweb строка `Login.StartText` несёт перевод строки, и i18n рисует
-              его как `<br>` внутри `span.i18n` — отсюда две строки подзаголовка. */}
+          {/* У оригинала это ОДНА строка с переводом строки внутри (tweb langSign.ts:5),
+              и `i18n()` рисует `\n` как `<br>`. Наш `t()` отдаёт строку, поэтому перенос
+              разворачивает вызывающий; уйдёт вместе с переходом на `i18n()` — ЗАДАЧА 7. */}
           <span className="i18n">
-            {t('Login.StartText.Line1')}
-            <br />
-            {t('Login.StartText.Line2')}
+            {t('Login.StartText').split('\n').map((line, i) => (
+              <Fragment key={line}>{i > 0 && <br />}{line}</Fragment>
+            ))}
           </span>
         </MediaHeader.Subtitle>
       </MediaHeader>

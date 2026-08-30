@@ -473,7 +473,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   Password: 'LoginPassword',
   'Phone Number': 'PrivacyPhone',
   'Phone Number Invalid': 'Login.PhoneLabelInvalid',
-  'Please confirm your country code': 'Login.StartText.Line1',
+  'Please confirm your country code': 'Login.StartText',
   'Please enter your name': 'Login.Register.NameRequired',
   'Please wait...': 'PleaseWait',
   'Point your phone at this screen to confirm login': 'Login.QR.Help3',
@@ -492,7 +492,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'We have sent you an SMS\nwith the code.': 'Login.Code.SentSms',
   'Your Name': 'YourName',
   'Your account is protected with\nan additional password': 'Login.Password.Subtitle',
-  'and enter your phone number.': 'Login.StartText.Line2',
+  'and enter your phone number.': 'Login.StartText',
 
   // ── components/chat ──
   'Access this chat from any device': 'ChatYourSelfDescription3',
@@ -624,8 +624,8 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Choose chats or types of chats that will not appear in this folder.': 'FilterExcludeInfo',
   'Create Folder': 'ChatList.Filter.NewTitle',
   'Create folders for different groups of chats and quickly switch between them.': 'ChatList.Filter.Header',
-  'Do you want to add': 'Folder.Invite.Question.Prefix',
-  'Do you want to add the folder': 'Folder.Invite.Question.FolderPrefix',
+  'Do you want to add': 'Folder.Invite.Question',
+  'Do you want to add the folder': 'Folder.Invite.Question.Folder',
   'Edit Folder': 'FilterHeaderEdit',
   'Excluded Chats': 'FilterExclude',
   'Folder name': 'FilterNameHint',
@@ -647,7 +647,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Show more': 'MiniApps.AppsMore',
   'This folder has no chats to share.': 'Folder.Share.Empty',
   'This link is invalid or has expired.': 'Folder.Invite.Invalid',
-  'and join its chats?': 'Folder.Invite.Question.Suffix',
+  'and join its chats?': 'Folder.Invite.Question',
   members: 'Members',
 
   // ── components/group ──
@@ -1405,6 +1405,9 @@ export const LEGACY_MERGED_FRAGMENTS: Record<string, LangPackKey> = {
  * проверка ловила СЛУЧАЙНЫЕ слияния, а не покрывала их молча.
  */
 export const LEGACY_ALIASES: Record<string, string[]> = {
+  // СКЛЕЙКИ, сведённые задачей 6: половинки предложения смотрят в одну целую строку.
+  'Folder.Invite.Question': ['Do you want to add', 'and join its chats?'],
+  'Login.StartText': ['Please confirm your country code', 'and enter your phone number.'],
   // СКЛЕЙКА, сведённая задачей 6: предложение собиралось из двух половин с названием
   // группы посередине; теперь это одна строка с аргументом, и обе половины смотрят в неё.
   'Discussion.Link.Question': ['Do you want to set', 'as the discussion board for this channel?'],
