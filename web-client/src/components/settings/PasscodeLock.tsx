@@ -45,11 +45,11 @@ export default function PasscodeLock({ onBack }: { onBack: () => void }) {
 
   const confirm = async () => {
     if (second !== first) {
-      setError(t("Passcodes don't match, try again"))
+      setError(t('PasscodeLock.PasscodesDontMatch'))
       return
     }
     if (changing && !(await isMyPasscode(current))) {
-      setError(t('Wrong passcode'))
+      setError(t('PasscodeLock.WrongPasscodeShort'))
       setStep('enter')
       return
     }
@@ -85,7 +85,7 @@ export default function PasscodeLock({ onBack }: { onBack: () => void }) {
         {passField(first, setFirst, changing ? 'Enter a new passcode' : 'Enter a passcode', () => first && setStep('reenter'))}
         {error && <Text size={13.5} color="#ff595a" className={s.err}>{error}</Text>}
         <div className={s.btnWrap}>
-          <Button fullWidth disabled={!first || (changing && !current)} onClick={() => setStep('reenter')}>{t('Next')}</Button>
+          <Button fullWidth disabled={!first || (changing && !current)} onClick={() => setStep('reenter')}>{t('Login.Next')}</Button>
         </div>
       </SettingsScreen>
     )
@@ -111,14 +111,14 @@ export default function PasscodeLock({ onBack }: { onBack: () => void }) {
         <>
           <div className={s.hero}>
             <Text size={15} color="var(--secondary-text-color)" style={{ lineHeight: 1.5 }}>
-              {t('When a passcode is set, a lock icon appears above your chat list. Tap it to lock the app.')}
+              {t('PasscodeLock.Description')}
             </Text>
           </div>
           <div className={s.btnWrap}>
-            <Button fullWidth uppercase onClick={startEnable}>{t('Turn Passcode On')}</Button>
+            <Button fullWidth uppercase onClick={startEnable}>{t('PasscodeLock.TurnOn')}</Button>
           </div>
           <Text size={13.5} color="var(--secondary-text-color)" style={{ padding: '0 24px', lineHeight: 1.5 }}>
-            {t("Note: if you forget your passcode, you'll need to log out and log in again.")}
+            {t('PasscodeLock.ForgotNotice')}
           </Text>
         </>
       ) : (
@@ -139,7 +139,7 @@ export default function PasscodeLock({ onBack }: { onBack: () => void }) {
             {AUTO_LOCK_OPTIONS.map((mins) => (
               <Row
                 key={mins}
-                label={mins === 0 ? 'Disabled' : `${mins} ${t('min')}`}
+                label={mins === 0 ? 'Disabled' : `${mins} ${t('Unit.Minutes.Abbr')}`}
                 translate={mins === 0}
                 selected={autoLock === mins}
                 onClick={() => update({ passcodeAutoLockMins: mins })}
@@ -151,21 +151,21 @@ export default function PasscodeLock({ onBack }: { onBack: () => void }) {
 
       <Popup
         open={offOpen}
-        title={t('Turn Passcode Off')}
+        title={t('PasscodeLock.TurnOff.Title')}
         onClose={() => setOffOpen(false)}
         action={{
-          label: t('Turn Off'),
+          label: t('PasscodeLock.TurnOff'),
           onClick: () => {
             setOffOpen(false)
             void disablePasscode().then(() => {
               useLockStore.getState().unlock()
-              setHintText(t('Passcode has been disabled.'))
+              setHintText(t('PasscodeLock.PasscodeHasBeenDisabled'))
             })
           },
         }}
       >
         <Text size={15} color="var(--primary-text-color)" style={{ lineHeight: 1.5 }}>
-          {t('Are you sure you want to turn the passcode off?')}
+          {t('PasscodeLock.TurnOff.Description')}
         </Text>
       </Popup>
     </SettingsScreen>

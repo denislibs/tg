@@ -95,7 +95,7 @@ export default function NotificationsSettings({ onBack }: { onBack: () => void }
         />
         <div className={s.volume}>
           <div className={s.volumeTop}>
-            <Text size={16} color="var(--primary-text-color)">{t('Sound Volume')}</Text>
+            <Text size={16} color="var(--primary-text-color)">{t('Notifications.Sound.Volume')}</Text>
             <Text size={16} color="var(--secondary-text-color)">{Math.floor(notifyVolume * 100)}%</Text>
           </div>
           {/* tweb: отпускание ползунка проигрывает тестовый звук */}

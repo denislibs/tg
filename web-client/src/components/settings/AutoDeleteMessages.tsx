@@ -17,16 +17,16 @@ const DAY = 86400
 export function autoDeleteLabel(seconds: number, t: (s: string) => string): string {
   if (seconds <= 0) return t('Off')
   const d = Math.round(seconds / DAY)
-  if (d >= 360) return t('1 year')
+  if (d >= 360) return t('Duration.Years1')
   if (d >= 28) {
     const m = Math.round(d / 30)
-    return m === 1 ? t('1 month') : `${m} ${t('months')}`
+    return m === 1 ? t('Duration.Months1') : `${m} ${t('Unit.MonthsSuffix')}`
   }
   if (d % 7 === 0) {
     const w = d / 7
-    return w === 1 ? t('1 week') : `${w} ${t('weeks')}`
+    return w === 1 ? t('Duration.Weeks1') : `${w} ${t('Unit.WeeksSuffix')}`
   }
-  return d === 1 ? t('1 day') : `${d} ${t('days')}`
+  return d === 1 ? t('Duration.Days1') : `${d} ${t('Unit.DaysSuffix')}`
 }
 
 // tweb customTimeOptions: 1–6 дней, 1–3 недели, 1–11 месяцев, 1 год.
@@ -80,7 +80,7 @@ export default function AutoDeleteMessages({ onBack }: { onBack: () => void }) {
         />
       </Section>
 
-      <Popup open={customOpen} title={t('Set other time')} onClose={() => setCustomOpen(false)}>
+      <Popup open={customOpen} title={t('AutoDeleteMessages.SetOtherTime')} onClose={() => setCustomOpen(false)}>
         <div style={{ maxHeight: 380, overflowY: 'auto' }}>
           {CUSTOM.map((sec) => (
             <div

@@ -90,7 +90,7 @@ const OPTIONS: { label: string; value: PrivacyValue }[] = [
 ]
 
 function usersCountLabel(n: number, t: (s: string) => string): string {
-  if (n === 0) return t('Add Users')
+  if (n === 0) return t('PrivacySettingsController.AddUsers')
   return `${n} ${t(n === 1 ? 'user' : 'users')}`
 }
 

@@ -71,7 +71,7 @@ export default function StickersSettings({ onBack }: { onBack: () => void }) {
             key={set.id}
             left={<TgIcon name="stickers" size={24} color="var(--secondary-text-color)" />}
             title={set.title}
-            sub={`${set.count} ${t('stickers')}`}
+            sub={`${set.count} ${t('Stickers.CountSuffix')}`}
             onRemove={() => uninstall(set)}
           />
         ))}
@@ -83,7 +83,7 @@ export default function StickersSettings({ onBack }: { onBack: () => void }) {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder={t('Search sticker sets')}
+            placeholder={t('Stickers.SearchSets')}
             style={{
               width: '100%', height: 40, border: 'none', outline: 'none',
               borderRadius: 12, padding: '0 14px', fontSize: 15, boxSizing: 'border-box',
@@ -97,7 +97,7 @@ export default function StickersSettings({ onBack }: { onBack: () => void }) {
             icon={<TgIcon name="stickers" size={24} />}
             label={set.title}
             translate={false}
-            sublabel={`${set.count} ${t('stickers')}`}
+            sublabel={`${set.count} ${t('Stickers.CountSuffix')}`}
             onClick={installedIds.has(set.id) ? undefined : () => install(set)}
             value={installedIds.has(set.id) ? undefined : t('Add')}
             selected={installedIds.has(set.id)}

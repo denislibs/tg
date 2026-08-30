@@ -46,7 +46,7 @@ export default function PasskeyIntroPopup({
       await managers.auth.passkeyRegisterFinish(session, attestation)
       onCreated()
     } catch {
-      setError(t('Could not create a passkey.'))
+      setError(t('Passkey.CreateError'))
     } finally {
       setBusy(false)
     }
@@ -65,10 +65,10 @@ export default function PasskeyIntroPopup({
           <LottieSticker name="Key" size={120} />
         </div>
         <Text size={24} weight={700} color="var(--primary-text-color)" className={s.title}>
-          {t('Protect your account')}
+          {t('Passkey.Title')}
         </Text>
         <Text size={16} color="var(--primary-text-color)" className={s.subtitle}>
-          {t('Log in safely and keep your account secure.')}
+          {t('Passkey.Subtitle')}
         </Text>
 
         {ROWS.map((r) => (
@@ -93,15 +93,15 @@ export default function PasskeyIntroPopup({
           {isWebAuthnSupported() ? (
             <>
               <div className={classNames(s.button, busy ? s.disabled : '')} onClick={() => void create()}>
-                {t('Create Passkey')}
+                {t('Privacy.Passkey.Create')}
               </div>
               <div className={classNames(s.button, s.secondary)} onClick={onClose}>
-                {t('Skip')}
+                {t('YourEmailSkip')}
               </div>
             </>
           ) : (
             <div className={classNames(s.button, s.secondary)} onClick={onClose}>
-              {t('Unsupported')}
+              {t('Passkey.Unsupported')}
             </div>
           )}
         </div>

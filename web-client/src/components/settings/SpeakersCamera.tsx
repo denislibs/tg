@@ -115,8 +115,8 @@ export default function SpeakersCamera({ onBack }: { onBack: () => void }) {
   const selectedId: Record<Kind, string> = { speaker: speakerId, mic: micId, camera: cameraId }
   const deviceName = (kind: Kind) => {
     const id = selectedId[kind]
-    if (!id) return t('Default')
-    return devices.find((d) => d.deviceId === id)?.label || t('Default')
+    if (!id) return t('CallSettings.DeviceDefault')
+    return devices.find((d) => d.deviceId === id)?.label || t('CallSettings.DeviceDefault')
   }
   const save = (kind: Kind, id: string) => {
     if (kind === 'speaker') update({ speakerId: id }) // динамик live: CallScreen следит за speakerId
@@ -158,7 +158,7 @@ export default function SpeakersCamera({ onBack }: { onBack: () => void }) {
         <DevicePicker
           title={t(PICKER_TITLE[picker])}
           options={[
-            { id: '', label: t('Default') },
+            { id: '', label: t('CallSettings.DeviceDefault') },
             ...devices
               .filter((d) => d.kind === DEVICE_KIND[picker] && d.deviceId && d.deviceId !== 'default')
               .map((d) => ({ id: d.deviceId, label: d.label || d.deviceId.slice(0, 12) })),

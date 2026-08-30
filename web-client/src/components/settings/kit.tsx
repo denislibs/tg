@@ -138,7 +138,7 @@ export function SettingsScreen({
           Класс `active` вешает не React, а слайдер — его здесь нет. */}
       <div ref={ownRef} className="tabs-tab sidebar-slider-item scrollable-y-bordered">
         <div className="sidebar-header">
-          <button type="button" className="btn-icon sidebar-close-button" onClick={onBack} aria-label={t('Back')}>
+          <button type="button" className="btn-icon sidebar-close-button" onClick={onBack} aria-label={t('Common.Back')}>
             <TgIcon name="back" />
           </button>
           <div className="sidebar-header__title">{t(title)}</div>

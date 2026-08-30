@@ -101,7 +101,7 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
     return null
   }
 
-  const blockedValue = blockedTotal > 0 ? `${blockedTotal}` : t('None')
+  const blockedValue = blockedTotal > 0 ? `${blockedTotal}` : t('BlockedEmpty')
   const passcodeEnabled = useSettingsStore((st) => st.passcodeEnabled)
 
   return (
@@ -173,8 +173,8 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
       </Section>
       {clearDrafts && (
         <ConfirmDialog
-          title={t('Delete cloud drafts')}
-          text={t('Are you sure you want to delete all cloud drafts?')}
+          title={t('AreYouSureClearDraftsTitle')}
+          text={t('AreYouSureClearDrafts')}
           action={t('Delete')}
           danger
           onConfirm={() => {
@@ -197,8 +197,8 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
       </Section>
       {deleteAccount && (
         <ConfirmDialog
-          title={t('Delete Account')}
-          text={t('Are you sure you want to delete your account? This action cannot be undone.')}
+          title={t('DeleteAccount.Title')}
+          text={t('DeleteAccount.Text')}
           action={t('Delete')}
           danger
           onConfirm={() => {

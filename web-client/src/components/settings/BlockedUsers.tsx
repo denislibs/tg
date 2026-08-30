@@ -86,7 +86,7 @@ export default function BlockedUsers({ onBack }: { onBack: () => void }) {
       )}
       {loaded && list.length === 0 && (
         <Text size={14} color="var(--secondary-text-color)" style={{ paddingLeft: '24px', paddingRight: '24px' }}>
-          {t("You haven't blocked anyone.")}
+          {t('BlockedEmptyDescription')}
         </Text>
       )}
 

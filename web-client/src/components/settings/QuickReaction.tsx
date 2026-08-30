@@ -15,7 +15,7 @@ export default function QuickReaction({ onBack }: { onBack: () => void }) {
       <div className={s.hero}>
         <div className={s.heroEmoji}>{picked}</div>
         <Text size={14} color="var(--secondary-text-color)" style={{ marginTop: '8px', paddingLeft: '40px', paddingRight: '40px' }}>
-          {t('Double-tap a message to send this reaction quickly.')}
+          {t('DoubleTapSettingInfo')}
         </Text>
       </div>
       <Section>

@@ -1476,4 +1476,20 @@ export const LEGACY_KEY_OVERRIDES: LegacyKeyOverride[] = [
     key: 'UnpinMessage',
     why: 'кнопка подтверждения «открепить всё» — действие над сообщениями, не над чатом',
   },
+  {
+    file: 'src/components/settings/EditProfile.tsx',
+    occurrence: 0,
+    anchor: "unameState === 'taken'",
+    legacy: 'This username is already taken.',
+    key: 'EditProfile.Username.Taken',
+    why: 'проверка имени в СВОЁМ профиле: tweb `sidebarLeft/tabs/editProfile.tsx:341` — `EditProfile.Username.Taken`; карта отдала `CreateBot.Username.Taken` (экран создания бота), совпавший по тексту дословно',
+  },
+  {
+    file: 'src/components/settings/PrivacyRule.tsx',
+    occurrence: 0,
+    anchor: 'usersCountLabel',
+    legacy: 'Add Users',
+    key: 'PrivacySettingsController.AddUsers',
+    why: 'исключения приватности, а не права участника: tweb `PrivacySettingsController.AddUsers`; карта отдала `UserRestrictionsInviteUsers` (право «Добавлять участников»)',
+  },
 ]

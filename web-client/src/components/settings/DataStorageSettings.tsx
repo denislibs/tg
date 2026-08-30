@@ -88,10 +88,10 @@ function autoDownloadSubtitle(
   if (sizeMax !== undefined) {
     const size = formatBytes(sizeMax, t)
     return isAll
-      ? t('Up to %1$s in all chats').replace('%1$s', size)
-      : t('Up to %1$s for %2$s').replace('%1$s', size).replace('%2$s', list)
+      ? t('AutoDownloadUpToOnAllChats').replace('%1$s', size)
+      : t('AutoDownloadOnUpToFor').replace('%1$s', size).replace('%2$s', list)
   }
-  return isAll ? t('On in all chats') : t('On for %1$s').replace('%1$s', list)
+  return isAll ? t('AutoDownloadOnAllChats') : t('AutoDownloadOnFor').replace('%1$s', list)
 }
 
 // Под-экран «Автозагрузка фото/видео/файлов»: 4 чекбокса по типам чатов,
@@ -130,9 +130,9 @@ function AutoDownloadTypeScreen({ type, onBack }: { type: MediaType; onBack: () 
         {type === 'file' && (
           <div className={s.range}>
             <div className={s.rangeDetails}>
-              <Text size={16} color="var(--primary-text-color)">{t('Maximum file size')}</Text>
+              <Text size={16} color="var(--primary-text-color)">{t('AutoDownloadMaxFileSize')}</Text>
               <Text size={15} color="var(--secondary-text-color)">
-                {t('up to %1$s').replace('%1$s', formatBytes(sizeOf(sliderVal), t))}
+                {t('AutodownloadSizeLimitUpTo').replace('%1$s', formatBytes(sizeOf(sliderVal), t))}
               </Text>
             </div>
             <Slider value={sliderVal} min={0} max={1} step={0.01} onChange={onSlider} className={s.rangeSlider} />
@@ -247,7 +247,7 @@ export default function DataStorageSettings({ onBack }: { onBack: () => void }) 
       <Section caption="Estimated storage quota" footer="Note that cache required for the app to function properly will not be cleared.">
         <div className={s.quotaRow}>
           <div className={s.quotaBody}>
-            <Text size={16} color="var(--primary-text-color)">{t('Cached files')}</Text>
+            <Text size={16} color="var(--primary-text-color)">{t('StorageQuota.CachedFiles')}</Text>
             <Text size={13.5} color="var(--secondary-text-color)">{fmt(sizes?.total)}</Text>
           </div>
           <div className={s.clearBtn} onClick={() => setConfirm('files')}>
@@ -261,7 +261,7 @@ export default function DataStorageSettings({ onBack }: { onBack: () => void }) 
 
         <div className={s.range}>
           <div className={s.rangeDetails}>
-            <Text size={16} color="var(--primary-text-color)">{t('Clear cache older than')}</Text>
+            <Text size={16} color="var(--primary-text-color)">{t('StorageQuota.ClearCacheOlderThan')}</Text>
             <Text size={15} color="var(--secondary-text-color)">{t(CACHE_TIME_OPTIONS[timeIdx].label)}</Text>
           </div>
           <Slider
@@ -272,9 +272,9 @@ export default function DataStorageSettings({ onBack }: { onBack: () => void }) 
         </div>
         <div className={s.range}>
           <div className={s.rangeDetails}>
-            <Text size={16} color="var(--primary-text-color)">{t('Cache size limit')}</Text>
+            <Text size={16} color="var(--primary-text-color)">{t('StorageQuota.CacheSizeLimit')}</Text>
             <Text size={15} color="var(--secondary-text-color)">
-              {CACHE_SIZE_VALUES[sizeIdx] === 0 ? t('Auto') : formatBytes(CACHE_SIZE_VALUES[sizeIdx], t)}
+              {CACHE_SIZE_VALUES[sizeIdx] === 0 ? t('StorageQuota.CacheSizeLimitAuto') : formatBytes(CACHE_SIZE_VALUES[sizeIdx], t)}
             </Text>
           </div>
           <Slider
@@ -294,8 +294,8 @@ export default function DataStorageSettings({ onBack }: { onBack: () => void }) 
 
       {confirm === 'reset' && (
         <ConfirmDialog
-          title={t('Reset settings')}
-          text={t('Are you sure you want to reset auto-download settings?')}
+          title={t('ResetAutomaticMediaDownloadAlertTitle')}
+          text={t('ResetAutomaticMediaDownloadAlert')}
           action={t('Reset')}
           onConfirm={resetAutoDownload}
           onClose={() => setConfirm(null)}
@@ -303,10 +303,10 @@ export default function DataStorageSettings({ onBack }: { onBack: () => void }) 
       )}
       {confirm === 'files' && (
         <ConfirmDialog
-          title={t('Clear cached files')}
+          title={t('StorageQuota.ClearCachedFiles')}
           text={sizes && sizes.total > 0
-            ? t('Are you sure you want to clear %s of cached data?').replace('%s', formatBytes(sizes.total, t, 1))
-            : t('Are you sure you want to clear the cached data?')}
+            ? t('StorageQuota.ClearConfirmation').replace('%s', formatBytes(sizes.total, t, 1))
+            : t('StorageQuota.ClearConfirmationUnknown')}
           action={t('Clear')}
           onConfirm={clearFiles}
           onClose={() => setConfirm(null)}
@@ -314,8 +314,8 @@ export default function DataStorageSettings({ onBack }: { onBack: () => void }) 
       )}
       {confirm === 'all' && (
         <ConfirmDialog
-          title={t('Clear All')}
-          text={t('Are you sure you want to clear all cached data?')}
+          title={t('StorageQuota.ClearAll')}
+          text={t('StorageQuota.ClearAllConfirmation')}
           action={t('Clear')}
           onConfirm={clearFiles}
           onClose={() => setConfirm(null)}

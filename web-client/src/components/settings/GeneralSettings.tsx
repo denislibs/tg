@@ -72,7 +72,7 @@ export default function GeneralSettings({ onBack }: { onBack: () => void }) {
       <Section caption="Settings">
         <div className={s.textSize}>
           <div className={s.textSizeTop}>
-            <Text size={16} color="var(--primary-text-color)">{t('Message Text Size')}</Text>
+            <Text size={16} color="var(--primary-text-color)">{t('TextSize')}</Text>
             <Text size={16} color="var(--secondary-text-color)">{textSize}</Text>
           </div>
           <Slider value={textSize} min={12} max={24} step={1} onChange={(v) => update({ textSize: v })} className={s.slider} />
@@ -85,7 +85,7 @@ export default function GeneralSettings({ onBack }: { onBack: () => void }) {
         <Row
           icon={<TgIcon name="animations" size={24} />}
           label="Power Saving"
-          value={t('Disabled')}
+          value={t('Checkbox.Disabled')}
           onClick={() => setDedicated('power')}
         />
       </Section>

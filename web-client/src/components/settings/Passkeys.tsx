@@ -37,7 +37,7 @@ export default function Passkeys({ onBack }: { onBack: () => void }) {
     if (busy) return
     setError('')
     if (!isWebAuthnSupported()) {
-      setError(t('Passkeys are not supported in this browser.'))
+      setError(t('Passkeys.Unsupported'))
       return
     }
     setBusy(true)
@@ -47,7 +47,7 @@ export default function Passkeys({ onBack }: { onBack: () => void }) {
       await managers.auth.passkeyRegisterFinish(session, attestation)
       reload()
     } catch {
-      setError(t('Could not create a passkey.'))
+      setError(t('Passkey.CreateError'))
     } finally {
       setBusy(false)
     }
@@ -77,11 +77,11 @@ export default function Passkeys({ onBack }: { onBack: () => void }) {
             <EntryRow
               key={k.id}
               left={<TgIcon name="key" size={24} color="var(--primary-color)" />}
-              title={k.name || t('Passkey')}
+              title={k.name || t('Passkeys.Item')}
               sub={
                 k.lastUsedAt
-                  ? `${t('Last used')}: ${fmtDate(k.lastUsedAt, lang)}`
-                  : `${t('Created')}: ${fmtDate(k.createdAt, lang)}`
+                  ? `${t('Passkeys.LastUsed')}: ${fmtDate(k.lastUsedAt, lang)}`
+                  : `${t('Passkeys.Created')}: ${fmtDate(k.createdAt, lang)}`
               }
               onRemove={() => void remove(k.id)}
             />

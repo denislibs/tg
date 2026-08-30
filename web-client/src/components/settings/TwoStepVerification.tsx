@@ -124,7 +124,7 @@ export default function TwoStepVerification({ onBack }: { onBack: () => void }) 
   if (step === 'unlock')
     return (
       <SettingsScreen title="Two-Step Verification" onBack={onBack}>
-        {monkeyField(pwd, setPwd, state.hint ? `${t('Password')} (${state.hint})` : 'Please enter your current password')}
+        {monkeyField(pwd, setPwd, state.hint ? `${t('LoginPassword')} (${state.hint})` : 'Please enter your current password')}
         {error && <Text size={13.5} color="#ff595a" className={s.err}>{error}</Text>}
         {btn('Next', () => {
           setBusy(true); setError('')
@@ -154,7 +154,7 @@ export default function TwoStepVerification({ onBack }: { onBack: () => void }) 
         {/* tweb TurnPasswordOffQuestion popup */}
         <Popup
           open={confirmOff}
-          title={t('Disable password')}
+          title={t('TurnPasswordOffQuestionTitle')}
           onClose={() => setConfirmOff(false)}
           action={{
             label: t('Disable'),
@@ -168,7 +168,7 @@ export default function TwoStepVerification({ onBack }: { onBack: () => void }) 
           }}
         >
           <Text size={15} color="var(--primary-text-color)" style={{ lineHeight: 1.5 }}>
-            {t('Are you sure you want to disable your password?')}
+            {t('TurnPasswordOffQuestion')}
           </Text>
         </Popup>
       </SettingsScreen>
@@ -187,7 +187,7 @@ export default function TwoStepVerification({ onBack }: { onBack: () => void }) 
       <SettingsScreen title="Re-enter your password" onBack={() => setStep('password')}>
         {monkeyField(confirm, setConfirm, 'Re-enter your password')}
         {confirm && confirm !== pwd && (
-          <Text size={13.5} color="#ff595a" className={s.err}>{t('Passwords don’t match.')}</Text>
+          <Text size={13.5} color="#ff595a" className={s.err}>{t('TwoStepAuth.PasswordsDontMatch')}</Text>
         )}
         {btn('Continue', () => setStep('hint'), !confirm || confirm !== pwd)}
       </SettingsScreen>
@@ -199,9 +199,9 @@ export default function TwoStepVerification({ onBack }: { onBack: () => void }) 
         <div className={s.hero}>
           <Text size={44} style={{ lineHeight: 1 }}>💡</Text>
         </div>
-        <Input autoFocus value={hint} onChange={setHint} label={t('Hint (optional)')} wrapClassName={s.field} />
+        <Input autoFocus value={hint} onChange={setHint} label={t('TwoStepAuth.SetupHintPlaceholder')} wrapClassName={s.field} />
         {hint && hint === pwd && (
-          <Text size={13.5} color="#ff595a" className={s.err}>{t('Hint must be different from your password.')}</Text>
+          <Text size={13.5} color="#ff595a" className={s.err}>{t('PasswordAsHintError')}</Text>
         )}
         {btn('Continue', () => { setError(''); setStep('email') }, hint === pwd && hint !== '')}
       </SettingsScreen>
@@ -213,15 +213,15 @@ export default function TwoStepVerification({ onBack }: { onBack: () => void }) 
         <div className={s.hero}>
           <Text size={44} style={{ lineHeight: 1 }}>💌</Text>
           <Text size={15} color="var(--secondary-text-color)" style={{ lineHeight: 1.5, marginTop: 8 }}>
-            {t('Add a recovery email to restore access if you forget your password.')}
+            {t('TwoStepAuth.EmailHelp')}
           </Text>
         </div>
-        <Input autoFocus type="email" value={email} onChange={setEmail} label={t('Recovery email')} wrapClassName={s.field} />
+        <Input autoFocus type="email" value={email} onChange={setEmail} label={t('RecoveryEmail')} wrapClassName={s.field} />
         {error && <Text size={13.5} color="#ff595a" className={s.err}>{error}</Text>}
         {btn(emailOnly ? 'Save' : 'Continue', () => void submit(email.trim()), emailOnly && !email.trim())}
         {!emailOnly && (
           <div className={s.btnWrap} onClick={() => !busy && void submit('')} style={{ textAlign: 'center', cursor: 'pointer' }}>
-            <Text size={15} weight={600} color="var(--primary-color)">{t('Skip')}</Text>
+            <Text size={15} weight={600} color="var(--primary-color)">{t('YourEmailSkip')}</Text>
           </div>
         )}
       </SettingsScreen>
@@ -233,10 +233,10 @@ export default function TwoStepVerification({ onBack }: { onBack: () => void }) 
       <div className={s.hero}>
         <Text size={44} style={{ lineHeight: 1 }}>🥳</Text>
         <Text size={17} weight={600} color="var(--primary-text-color)" style={{ marginTop: 12 }}>
-          {t('Password Set!')}
+          {t('TwoStepVerificationPasswordSet')}
         </Text>
         <Text size={15} color="var(--secondary-text-color)" style={{ lineHeight: 1.5, marginTop: 8 }}>
-          {t('This password will be required when you log in on a new device in addition to the code you get via SMS.')}
+          {t('TwoStepAuth.PasswordHelp')}
         </Text>
       </div>
       {btn('Return to Settings', () => { setCurrent(''); setStep(state.enabled ? 'unlock' : 'intro'); onBack() })}
