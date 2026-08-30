@@ -768,6 +768,20 @@ const uk = {
     many_value: '%1$d років',
     other_value: '%1$d року',
   },
+  // Ключи, заведённые задачей 6 при разводке мест (меню сообщения, кнопка звонка,
+  // стрелка календаря, подпись поля входа): перевод у этих строк был и раньше — под
+  // другим ключом, — и он не должен пропасть.
+  'Message.Context.Pin': 'Закріпити',
+  'Message.Context.Unpin': 'Відкріпити',
+  UnpinMessage: 'Відкріпити',
+  'Login.PhoneLabel': 'Номер телефону',
+  'KeyboardShortcuts.Section.Messages': 'Повідомлення',
+  'KeyboardShortcuts.Section.Stories': 'Історії',
+  'PrivacySettingsController.AddUsers': 'Додати користувачів',
+  'Call.Mute': 'Вимкнути звук',
+  VoipUnmute: 'Увімкнути звук',
+  'Calendar.Next': 'Наступний',
+  'KeyboardShortcuts.Action.Link': 'Додати посилання',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(uk)

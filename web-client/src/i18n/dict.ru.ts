@@ -1383,6 +1383,21 @@ const ru = {
     many_value: '%1$d лет',
     other_value: '%1$d года',
   },
+  // Ключи, заведённые задачей 6 при разводке мест (меню сообщения, кнопка звонка,
+  // стрелка календаря, подпись поля входа): перевод у этих строк был и раньше — под
+  // другим ключом, — и он не должен пропасть.
+  'Message.Context.Pin': 'Закрепить',
+  'Message.Context.Unpin': 'Открепить',
+  UnpinMessage: 'Открепить',
+  'Login.PhoneLabel': 'Номер телефона',
+  'EditProfile.Username.Taken': 'Это имя пользователя уже занято.',
+  'KeyboardShortcuts.Section.Messages': 'Сообщения',
+  'KeyboardShortcuts.Section.Stories': 'Истории',
+  'PrivacySettingsController.AddUsers': 'Добавить пользователей',
+  'Call.Mute': 'Выключить звук',
+  VoipUnmute: 'Включить звук',
+  'Calendar.Next': 'Следующий',
+  'KeyboardShortcuts.Action.Link': 'Добавить ссылку',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)

@@ -740,6 +740,20 @@ const fr = {
     one_value: '%1$d an',
     other_value: '%1$d ans',
   },
+  // Ключи, заведённые задачей 6 при разводке мест (меню сообщения, кнопка звонка,
+  // стрелка календаря, подпись поля входа): перевод у этих строк был и раньше — под
+  // другим ключом, — и он не должен пропасть.
+  'Message.Context.Pin': 'Épingler',
+  'Message.Context.Unpin': 'Désépingler',
+  UnpinMessage: 'Désépingler',
+  'Login.PhoneLabel': 'Numéro de téléphone',
+  'KeyboardShortcuts.Section.Messages': 'Messages',
+  'KeyboardShortcuts.Section.Stories': 'Stories',
+  'PrivacySettingsController.AddUsers': 'Ajouter des utilisateurs',
+  'Call.Mute': 'Couper le son',
+  VoipUnmute: 'Activer le son',
+  'Calendar.Next': 'Suivant',
+  'KeyboardShortcuts.Action.Link': 'Ajouter un lien',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(fr)

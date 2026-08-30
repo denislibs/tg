@@ -30,8 +30,24 @@ const MERGED: Record<string, string[]> = {
 }
 
 describe('карта миграции ключей', () => {
+  // Ключи, заведённые ЗАДАЧЕЙ 6 и не имеющие старой строки вовсе: экран горячих клавиш
+  // адресовал секции теми же строками, что и другие экраны («Messages», «Stories»), а
+  // формат ссылки брал плейсхолдер поля ссылки-приглашения. Своих старых ключей у них
+  // не было, поэтому карта до них и не достаёт — список короткий и назван поимённо.
+  const NEW_WITHOUT_LEGACY = [
+    'KeyboardShortcuts.Section.Messages',
+    'KeyboardShortcuts.Section.Stories',
+    'KeyboardShortcuts.Action.Link',
+  ]
+
   it('достаёт каждый ключ нынешнего словаря', () => {
-    const reachable = new Set<string>(Object.values(LEGACY_KEY_MAP))
+    const reachable = new Set<string>([
+      ...Object.values(LEGACY_KEY_MAP),
+      // Точечное исключение — это тоже путь к ключу: старая строка у места была, просто
+      // не та, что у карты.
+      ...LEGACY_KEY_OVERRIDES.map((o) => o.key),
+      ...NEW_WITHOUT_LEGACY,
+    ])
     const missing = [...ruByKey.keys()].filter((key) => !reachable.has(key))
     expect(missing).toEqual([])
   })
