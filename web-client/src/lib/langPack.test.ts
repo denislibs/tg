@@ -31,6 +31,7 @@ const testKey = (key: string) => key as LangPackKey
 beforeEach(() => {
   document.body.replaceChildren()
   apply('en')
+  I18n.setTimeFormat('h23')
 })
 
 describe('аргументы подстановки', () => {
@@ -178,6 +179,69 @@ describe('применение языка к живым узлам', () => {
     // ТОТ ЖЕ узел, не пересозданный.
     expect(el.parentElement).toBe(document.body)
     expect(el.textContent).toBe('Это устройство')
+  })
+})
+
+// `IntlDateElement` сегодня без вызывающих: его позовёт `helpers/date.ts` задачей 7.
+// Тесты тут не «на будущее»: в 12-часовой ветке живёт арифметика (`(hours % 12) || 12`,
+// ведущий ноль, выбор am/pm по `hours < 12`), и полночь с полднем — ровно то место,
+// где ошибаются на единицу. Без этих проверок ветка отработала бы в бою впервые.
+describe('IntlDateElement', () => {
+  const HHMM: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' }
+  // 31 августа 2026 — понедельник. Дата локальная, как и `getHours()` внутри.
+  const at = (h: number, m: number) => new Date(2026, 7, 31, h, m)
+  const time = (date: Date) => new I18n.IntlDateElement({ date, options: HHMM }).element.textContent
+  const weekday = (date: Date) => new I18n.IntlDateElement({ date, options: { weekday: 'short' } }).element.textContent
+
+  it('24-часовой формат печатает час как есть, с ведущим нулём', () => {
+    I18n.setTimeFormat('h23')
+
+    expect(time(at(0, 5))).toBe('00:05')
+    expect(time(at(9, 5))).toBe('09:05')
+    expect(time(at(13, 5))).toBe('13:05')
+    expect(time(at(23, 59))).toBe('23:59')
+  })
+
+  it('12-часовой формат печатает полночь и полдень как 12, а не как 0', () => {
+    I18n.setTimeFormat('h12')
+
+    expect(time(at(0, 5))).toBe('12:05 AM')
+    expect(time(at(12, 5))).toBe('12:05 PM')
+    expect(time(at(11, 59))).toBe('11:59 AM')
+    expect(time(at(13, 5))).toBe('01:05 PM')
+    expect(time(at(23, 59))).toBe('11:59 PM')
+  })
+
+  it('смена формата времени перерисовывает живой узел на месте', () => {
+    const el = new I18n.IntlDateElement({ date: at(13, 5), options: HHMM }).element
+    document.body.append(el)
+    expect(el.textContent).toBe('13:05')
+
+    I18n.setTimeFormat('h12')
+
+    expect(el.parentElement).toBe(document.body)
+    expect(el.textContent).toBe('01:05 PM')
+  })
+
+  it('установка того же формата узел не трогает', () => {
+    const el = new I18n.IntlDateElement({ date: at(13, 5), options: HHMM }).element
+    document.body.append(el)
+    const before = el.firstChild
+
+    I18n.setTimeFormat('h23')
+
+    // Тот же САМЫЙ текстовый узел: `textContent` при перерисовке создал бы новый.
+    expect(el.firstChild).toBe(before)
+  })
+
+  it('прочие наборы опций идут через Intl, с заглавной буквы и на языке пакета', () => {
+    expect(weekday(at(12, 0))).toBe('Mon')
+
+    apply('ru')
+
+    // «пн» от Intl — со строчной; метка стоит первой в ячейке, поэтому заглавная.
+    // Заодно: формат не взят из кэша, оставшегося от английского.
+    expect(weekday(at(12, 0))).toBe('Пн')
   })
 })
 

@@ -44,11 +44,6 @@ const lang = {
   'AutoDeleteMessages.SetOtherTime': 'Set other time',
   AutoDeleteMessagesShort: 'Auto-delete',
   AutoDownloadAudioInfo: 'Voice messages are tiny, so they\'re always downloaded automatically.',
-  // Разделители перечисления — их берёт `join()` (`lib/langPack.ts`, порт tweb :687).
-  // Взяты у оригинала дословно (tweb `lang.ts:3394-3395`) вместе с именами: в оригинале
-  // они тоже названы по разделу автозагрузки, откуда пришли первым потребителем.
-  'AutoDownloadSettings.Delimeter': ', ',
-  'AutoDownloadSettings.LastDelimeter': ' and ',
   AutoDownloadFilesTitle: 'Auto-download files and music',
   AutoDownloadLargeFilesInfo: 'Larger files are never downloaded automatically.',
   AutoDownloadMaxFileSize: 'Maximum file size',
@@ -62,6 +57,11 @@ const lang = {
   AutoDownloadPhotosTitle: 'Auto-download photos',
   AutoDownloadPm: 'PM',
   AutoDownloadRoaming: 'When roaming',
+  // Разделители перечисления — их берёт `join()` (`lib/langPack.ts`, порт tweb :687).
+  // Взяты у оригинала дословно (tweb `lang.ts:3394-3395`) вместе с именами: в оригинале
+  // они тоже названы по разделу автозагрузки, откуда пришли первым потребителем.
+  'AutoDownloadSettings.Delimeter': ', ',
+  'AutoDownloadSettings.LastDelimeter': ' and ',
   AutoDownloadUpToOnAllChats: 'Up to %1$s in all chats',
   AutoDownloadVideos: 'Videos',
   AutoDownloadVideosTitle: 'Auto-download videos and GIFs',

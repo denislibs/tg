@@ -34,14 +34,23 @@
  *  • `UNSUPPORTED_LANG_PACK_KEY` (tweb :76): ключей `Message.Unsupported.Mobile`
  *    /`.Desktop` в нашем `lang.ts` нет (есть один `Message.Unsupported`), а
  *    вызывающего у константы нет ни одного.
+ *  • Сигнал `langCodeNormalized`/`setLangCodeNormalized` (tweb :96, :113):
+ *    предмета нет. У оригинала на него завязан ПЕРЕВОД СООБЩЕНИЙ — сравнение
+ *    языка собеседника с языком интерфейса (`usePeerTranslation.ts:64`,
+ *    `stores/peerLanguage.ts:37`, `sidebarLeft/tabs/language.tsx:30`); перевода
+ *    сообщений у нас нет. Само значение отсюда доступно
+ *    (`getLastRequestedNormalizedLangCode`), не хватает только реактивности.
  *
  * ── Потребители на сегодня ─────────────────────────────────────────────────
  * Их НЕТ: задача 2 ничего не переключает, старый `t()` живёт до задачи 9.
  * `IntlDateElement` заведён потому, что на него смотрит `helpers/date.ts`
  * (`formatDateAccordingToTodayNew` сейчас строит `i18nSpan` руками) — он станет
  * его вызывающим ЗАДАЧЕЙ 7, когда `i18nSpan` уйдёт. `setTimeFormat` ждёт того же
- * момента: настройка 12/24 у нас есть (`settings.tsx`, значения `12h`/`24h`), но
- * ниоткуда сюда пока не приходит.
+ * момента: настройка 12/24 у нас есть (`settings.tsx:15,103`, значения
+ * `12h`/`24h`), живой переключатель — `settings/GeneralSettings.tsx:137-144`, но
+ * СЮДА она ниоткуда не приходит. До тех пор арифметику 12-часовой ветки
+ * (`(hours % 12) || 12`, выбор am/pm) держат тесты ядра — на полночь и полдень
+ * в том числе.
  */
 import type { LangPackDifference, LangPackString } from '@layer'
 import type { LangPackKey, LangPackValue } from '@/lang'
@@ -78,6 +87,11 @@ namespace I18n {
   let lastRequestedLangCode: string = DEFAULT_LANG_CODE
   let lastRequestedNormalizedLangCode: string = DEFAULT_LANG_CODE
   let lastAppliedLangCode: string | undefined
+  // ОТСТУПЛЕНИЕ, как и `pluralRules` выше: у tweb поле стартует `undefined` и
+  // заполняется из настроек при старте приложения. У нас настройка сюда пока
+  // ниоткуда не приходит (`settings.tsx` знает её, но связи нет — задача 7), а
+  // `IntlDateElement` читает поле сразу, поэтому умолчание стоит здесь. `h23` —
+  // то же, что выбрано умолчанием в `settings.tsx:103` (`24h`).
   let timeFormat: TimeFormat = 'h23'
 
   export function getLastRequestedLangCode() { return lastRequestedLangCode }
@@ -112,8 +126,12 @@ namespace I18n {
     }
   }
 
-  // tweb :149-166
-  export function setTimeFormat(format: TimeFormat, haveToUpdate = !!timeFormat && timeFormat !== format) {
+  // tweb :149-166. Терм `!!timeFormat` оригинала здесь снят как мёртвый: у tweb
+  // это защита от лишней перерисовки на ПЕРВОЙ установке (поле стартует
+  // `undefined`), а у нас поле инициализировано — терм всегда истинен. Оставленный,
+  // он молча менял бы смысл: первая же установка обходила бы все `.i18n`, чего у
+  // оригинала на первой установке не бывает.
+  export function setTimeFormat(format: TimeFormat, haveToUpdate = timeFormat !== format) {
     timeFormat = format
 
     updateAmPm()
@@ -280,6 +298,12 @@ namespace I18n {
           anchor.href = wrappedUrl.url
           // tweb пишет сюда инлайновый `onclick` (:407); у нас имя обработчика
           // едет атрибутом-данными — как в `richtext/wrapRichText.ts:379`.
+          //
+          // ДОЛГ, ЗАДАЧА 7. Инлайновый `onclick` оригинала работает где угодно, а
+          // наш делегат `data-anchor-action` один и живёт ВНУТРИ ленты
+          // (`components/chat/bubbles.ts:2519`). Пока вызывающих у `i18n()` нет,
+          // это незаметно; как только строка со ссылкой встанет в попап или
+          // сайдбар, клик по ней будет мёртвым — делегат придётся поднять выше.
           if (wrappedUrl.action) anchor.setAttribute(ANCHOR_ACTION_ATTRIBUTE, wrappedUrl.action)
           setBlankToAnchor(anchor)
           a = anchor
@@ -473,6 +497,10 @@ namespace I18n {
     constructor(options: IntlDateElementOptions) {
       super({ ...options, property: options.property ?? 'textContent' })
       setDirection(this.element)
+      // Строки нет у оригинала: там поле ставит только `safeAssign` внутри `update`,
+      // а `update` зовётся не всегда (лишь когда дата передана). Под нашим
+      // `strictPropertyInitialization` это не компилируется, и присваивание вынесено
+      // сюда. Поведение то же: `update` перезапишет поле тем же значением.
       this.options = options.options
 
       if (options?.date) {
@@ -553,7 +581,15 @@ export function joinElementsWith<T>(
 }
 
 // tweb :685-694 — перечисление через локализованные разделители: «а, б и в».
-export function join(elements: (Node | string)[], useLast: boolean, plain: true): string
+//
+// ОТСТУПЛЕНИЕ ОТ ОРИГИНАЛА, ТОЛЬКО В ТИПЕ. У tweb `plain`-перегрузка принимает
+// `(Node | string)[]`, а тело делает `joined.join('')` — узел в этом режиме дал бы
+// `[object Object]`. У самого tweb дефект латентный (единственный `plain`-вызывающий
+// передаёт строки). ПОВЕДЕНИЕ ЗДЕСЬ НЕ ТРОНУТО: сужен вход первой перегрузки, и
+// написать этот вызов стало нельзя. Третья перегрузка (`plain: boolean`, для
+// вызывающего с динамическим флагом) оставлена как у оригинала — сузить её значило
+// бы запретить узлы и в НЕ-plain режиме, ради которого она и существует.
+export function join(elements: string[], useLast: boolean, plain: true): string
 export function join(elements: (Node | string)[], useLast?: boolean, plain?: false): (string | Node)[]
 export function join(elements: (Node | string)[], useLast: boolean, plain: boolean): string | (string | Node)[]
 export function join(elements: (Node | string)[], useLast = true, plain?: boolean): string | (string | Node)[] {
@@ -562,5 +598,8 @@ export function join(elements: (Node | string)[], useLast = true, plain?: boolea
     return plain ? I18n.format(langPackKey, true) : i18n(langPackKey)
   })
 
-  return plain ? joined.join('') : joined
+  // Сужение под первую перегрузку: в `plain`-режиме элементы — строки (`format(…, true)`
+  // отдаёт строку, вход перегрузки — `string[]`). Без него линтер справедливо видит
+  // здесь возможную склейку узла в `[object Object]`.
+  return plain ? (joined as string[]).join('') : joined
 }
