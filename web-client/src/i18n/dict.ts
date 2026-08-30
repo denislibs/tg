@@ -1,5 +1,27 @@
+import type { LangPackString } from '@layer'
+import type { LangPackKey, LangPackValue } from '../lang'
+
 export type Lang = 'en' | 'ru' | 'uk' | 'es' | 'de' | 'fr'
 
+/**
+ * Плоский словарь перевода — та же форма, что у английского источника (`src/lang.ts`):
+ * СИМВОЛИЧЕСКИЙ ключ → текст. Ключ, которого нет в источнике, не соберётся, а форма
+ * значения обязана совпасть с источником: где у английского формы числа, там объект
+ * с формами и у перевода (`{one_value, few_value, many_value, other_value}`).
+ *
+ * `typeof import(...)` — тип-импорт, он стирается: значение `lang` в бандл отсюда не
+ * едет, поэтому английский источник не попадает в главный чанк вместе с этим файлом.
+ */
+type LangSource = typeof import('../lang')['default']
+export type LangPackDict = {
+  [K in LangPackKey]?: LangSource[K] extends string ? string : Exclude<LangPackValue, string>
+}
+
+/**
+ * СТАРАЯ форма словаря: ключ = английская строка. Живёт до задачи 9, пока интерфейс
+ * зовёт `t('English string')`. Данные под неё больше нигде не хранятся — она целиком
+ * ПРОИЗВОДНАЯ от нового словаря, см. `./legacyDict.ts`.
+ */
 export type Dict = Record<string, string>
 
 // English is the source language: keys ARE the English strings, so `t()` falls back
@@ -40,7 +62,10 @@ export const en: Dict = {
 
 // The other languages are heavy (~40 kB each) and split into per-language chunks,
 // loaded on demand — only the active language's dict reaches the browser.
-export const loaders: Record<Exclude<Lang, 'en'>, () => Promise<Dict>> = {
+// Чанк отдаёт готовые конструкторы схемы (`langPackString`/`langPackStringPluralized`) —
+// ровно то, что принимает `I18n.applyLangPack`, и ровно то, что приедет с сервера
+// (`langpack.getDifference`, задача 5).
+export const loaders: Record<Exclude<Lang, 'en'>, () => Promise<LangPackString[]>> = {
   ru: () => import('./dict.ru').then((m) => m.default),
   uk: () => import('./dict.uk').then((m) => m.default),
   es: () => import('./dict.es').then((m) => m.default),

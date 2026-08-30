@@ -342,7 +342,10 @@ function WebAppInner() {
         </div>
 
         <div className={s.body}>
-          {!loaded && <div className={s.loader}>{t('Loading')}…</div>}
+          {/* Многоточие — часть строки словаря (`Loading...` у tweb), а не вёрстки:
+              приписанное здесь, оно давало «Загрузка……» после слияния двух старых
+              ключей `Loading`/`Loading…` в один. */}
+          {!loaded && <div className={s.loader}>{t('Loading…')}</div>}
           <iframe
             ref={frameRef}
             className={s.frame}

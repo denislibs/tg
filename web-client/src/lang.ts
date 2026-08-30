@@ -161,9 +161,15 @@ const lang = {
   ChannelSignProfilesInfo: 'Add names and photos of admins to the messages they post, linking to their profiles.',
   ChannelType: 'Channel Type',
   'Chat.Accessory.Edit': 'Edit message',
+  // Ключ оригинала — форма числа со счётчиком внутри (`Forward %d Messages`), а наша плашка
+  // композера печатает надпись БЕЗ числа: их два готовых варианта, `.One` и `.Many`. Это то же
+  // правило, по которому заведены `*Suffix` (задача 1): взять ключ оригинала значило бы отдать
+  // кодмоду задачи 6 строку, которая нарисует `%d` буквой. Сам `Chat.Accessory.Forward` оставлен
+  // с текстом оригинала — в него плашка уедет задачей 6 вместе с правкой вызывающего.
   'Chat.Accessory.Forward': { one_value: 'Forward Message', other_value: 'Forward %d Messages' },
   'Chat.Accessory.Forward.Hidden': 'Forward Message (sender name hidden)',
   'Chat.Accessory.Forward.Many': 'Forward Messages',
+  'Chat.Accessory.Forward.One': 'Forward Message',
   'Chat.Accessory.Reply': 'Reply to',
   'Chat.Alert.Forward.Action.Another': 'Forward to Another Chat',
   'Chat.Alert.Forward.HideCaption': 'Hide caption',

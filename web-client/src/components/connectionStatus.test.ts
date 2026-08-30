@@ -13,7 +13,8 @@ import { RT, type ConnState } from '../core/realtime/events'
 // глубокий путь, а не индекс: тесту нужна ещё и длительность кросс-фейда
 import InputSearch, { CONNECTION_ANIMATION_DURATION, type InputSearchStatus } from '../shared/ui/InputSearch/InputSearch'
 import ConnectionStatusComponent from './connectionStatus'
-import ru from '../i18n/dict.ru'
+import ruStrings from '../i18n/dict.ru'
+import { toLegacyDict } from '../i18n/legacyDict'
 import { useI18nStore } from '../i18n'
 import type { Managers } from '../client/bootstrap'
 
@@ -81,6 +82,9 @@ async function haveConnected(h: ReturnType<typeof setup>) {
 }
 
 /** Так же, как `loadLang`: подменяет `t` догруженным словарём. */
+// Словарь языка теперь хранится символическими ключами; старый `t()` (он живёт до
+// задачи 9) получает его тем же мостом, что и приложение, — `toLegacyDict`.
+const ru = toLegacyDict(ruStrings)
 const switchToRussian = () => act(() => { useI18nStore.setState({ lang: 'ru', t: (s) => ru[s] ?? s }) })
 
 let englishT: I18nSnapshot

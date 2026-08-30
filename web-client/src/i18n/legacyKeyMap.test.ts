@@ -9,6 +9,12 @@ import { en } from './dict'
 import ru from './dict.ru'
 import { LEGACY_ALIASES, LEGACY_KEY_MAP, LEGACY_KEY_OVERRIDES, LEGACY_PLURAL_GROUPS } from './legacyKeyMap'
 
+// Словарь языка (задача 3) — уже конструкторы схемы с символическими ключами, а не
+// «ключ = английская строка». Проверки ниже спрашивают с него то же самое, но в новых
+// терминах: раньше «карта покрывает ключи словаря», теперь «ключи словаря достижимы
+// по карте» — иначе кодмод задачи 6 подставит в вызов ключ, которого никто не переводит.
+const ruByKey = new Map(ru.map((string) => [string.key, string]))
+
 // Карта — единственное, что связывает старые ключи («ключ = английская строка») с
 // символическими. Если она дырявая или неоднозначная, кодмод задачи 6 молча потеряет строки,
 // поэтому проверяем именно полноту и однозначность, а не «файл импортируется».
@@ -24,8 +30,9 @@ const MERGED: Record<string, string[]> = {
 }
 
 describe('карта миграции ключей', () => {
-  it('покрывает каждый ключ нынешнего словаря', () => {
-    const missing = Object.keys(ru).filter((k) => !(k in LEGACY_KEY_MAP))
+  it('достаёт каждый ключ нынешнего словаря', () => {
+    const reachable = new Set<string>(Object.values(LEGACY_KEY_MAP))
+    const missing = [...ruByKey.keys()].filter((key) => !reachable.has(key))
     expect(missing).toEqual([])
   })
 
@@ -89,9 +96,11 @@ describe('объявленные слияния', () => {
   it('у формы числа каждый слот указывает на существующую строку словаря', () => {
     const bad: string[] = []
     for (const [key, forms] of Object.entries(LEGACY_PLURAL_GROUPS)) {
+      const string = ruByKey.get(key)
       for (const [form, legacy] of Object.entries(forms)) {
-        if (!(legacy in ru)) bad.push(`${key}.${form}: ${legacy} — нет в dict.ru`)
-        else if (LEGACY_KEY_MAP[legacy] !== key) bad.push(`${key}.${form}: ${legacy} смотрит в ${LEGACY_KEY_MAP[legacy]}`)
+        if (LEGACY_KEY_MAP[legacy] !== key) bad.push(`${key}.${form}: ${legacy} смотрит в ${LEGACY_KEY_MAP[legacy]}`)
+        if (string?._ !== 'langPackStringPluralized') bad.push(`${key}: в dict.ru не форма числа`)
+        else if (string[form as 'one_value'] === undefined) bad.push(`${key}.${form}: формы нет в dict.ru`)
       }
     }
     expect(bad).toEqual([])

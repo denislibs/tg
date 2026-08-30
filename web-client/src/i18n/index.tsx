@@ -53,7 +53,14 @@ export const useI18nStore = create<I18nState>((set) => ({
 // Guarded against races: a slow chunk for a language the user already switched away
 // from is discarded.
 export async function loadLang(lang: Lang): Promise<void> {
-  const dict = lang === 'en' ? en : { ...en, ...(await loaders[lang]()) }
+  // Словарь языка приезжает конструкторами схемы; старому `t()` его переводит
+  // `toLegacyDict` — тем же импортом, чтобы карта старых ключей не попадала в
+  // главный чанк (английскому интерфейсу она не нужна вовсе). Мост уйдёт с
+  // задачей 9 вместе с самим `t()`.
+  const dict = lang === 'en'
+    ? en
+    : await Promise.all([import('./legacyDict'), loaders[lang]()])
+      .then(([{ toLegacyDict }, strings]) => ({ ...en, ...toLegacyDict(strings) }))
   if (useI18nStore.getState().lang === lang) {
     useI18nStore.setState({ t: makeT(dict) })
   }

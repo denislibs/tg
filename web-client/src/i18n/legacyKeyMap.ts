@@ -521,7 +521,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   Anonymously: 'Chat.SendAs.Anonymously',
   'Do Not Forward': 'DoNotForward',
   'Edit message': 'Chat.Accessory.Edit',
-  'Forward Message': 'Chat.Accessory.Forward',
+  'Forward Message': 'Chat.Accessory.Forward.One',
   'Forward Message (sender name hidden)': 'Chat.Accessory.Forward.Hidden',
   'Forward Messages': 'Chat.Accessory.Forward.Many',
   'Forward to Another Chat': 'Chat.Alert.Forward.Action.Another',
