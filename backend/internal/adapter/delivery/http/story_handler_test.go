@@ -35,7 +35,7 @@ func newStoryRouter(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	// связка «поставил близким → видно на карточке» была бы непроверяема.
 	contactsUC := usecasecontacts.New(pgadapter.NewContactsRepo(pool))
 	contactsUC.SetCloseFriends(storySvc)
-	return NewRouter(authUC, chatUC, nil, mediaH, nil, nil, storyH, nil, contactsUC, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), pool
+	return NewRouter(authUC, chatUC, nil, mediaH, nil, nil, storyH, nil, contactsUC, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), pool
 }
 
 // ── форма ответа: контейнеры схемы ──────────────────────────────────────────

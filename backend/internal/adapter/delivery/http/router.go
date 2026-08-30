@@ -17,7 +17,7 @@ import (
 	usecasestats "github.com/messenger-denis/backend/internal/usecase/stats"
 )
 
-func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, mediaUC *usecasemedia.Interactor, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor, foldersUC *usecasefolders.Interactor, pubH *PublicHandler, privacyUC *usecaseprivacy.Interactor, passkeyH *PasskeyHandler, stickersH *StickersHandler, ivH *IVHandler, reportUC *usecasereport.Interactor, statsUC *usecasestats.Interactor, reactionsH *ReactionsHandler) http.Handler {
+func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, mediaUC *usecasemedia.Interactor, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor, foldersUC *usecasefolders.Interactor, pubH *PublicHandler, privacyUC *usecaseprivacy.Interactor, passkeyH *PasskeyHandler, stickersH *StickersHandler, ivH *IVHandler, reportUC *usecasereport.Interactor, statsUC *usecasestats.Interactor, reactionsH *ReactionsHandler, langpackH *LangPackHandler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(requestLogger) // вместо middleware.Logger: не пишет токены в логи
 	r.Use(middleware.Recoverer)
@@ -51,6 +51,19 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 	}
 	r.Post("/auth/qr/new", authH.QRNew)
 	r.Get("/auth/qr/{token}", authH.QRStatus)
+
+	// Языковой пакет — ВНЕ группы Bearer: строки нужны экрану входа, то есть до
+	// того, как появился токен. У оригинала методы `langpack.*` вызываются на
+	// незалогиненном соединении по той же причине.
+	if langpackH != nil {
+		r.Route("/langpack", func(lr chi.Router) {
+			lr.Get("/languages", langpackH.Languages)              // langpack.getLanguages
+			lr.Get("/languages/{langCode}", langpackH.Language)    // langpack.getLanguage
+			lr.Get("/{langCode}", langpackH.LangPack)              // langpack.getLangPack
+			lr.Get("/{langCode}/difference", langpackH.Difference) // langpack.getDifference
+			lr.Get("/{langCode}/strings", langpackH.Strings)       // langpack.getStrings
+		})
+	}
 
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})

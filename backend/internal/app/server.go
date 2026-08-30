@@ -2,9 +2,11 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -23,11 +25,13 @@ import (
 	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
 	"github.com/messenger-denis/backend/internal/adapter/translate/libretranslate"
 	"github.com/messenger-denis/backend/internal/config"
+	"github.com/messenger-denis/backend/internal/langsource"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 	usecasecontacts "github.com/messenger-denis/backend/internal/usecase/contacts"
 	usecasefolders "github.com/messenger-denis/backend/internal/usecase/folders"
 	usecaseiv "github.com/messenger-denis/backend/internal/usecase/iv"
+	usecaselangpack "github.com/messenger-denis/backend/internal/usecase/langpack"
 	usecasemedia "github.com/messenger-denis/backend/internal/usecase/media"
 	usecasenotify "github.com/messenger-denis/backend/internal/usecase/notify"
 	usecasepasskeys "github.com/messenger-denis/backend/internal/usecase/passkeys"
@@ -353,7 +357,21 @@ func registerServer(p serverParams) {
 		log.Printf("passkeys enabled (rp id %q)", p.Cfg.WebAuthnRPID)
 	}
 
-	router := httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, mediaUC, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH, privacyUC, passkeyH, stickersH, ivHandler, reportUC, statsUC, reactionsH)
+	// Языковой пакет: строки интерфейса, версии и разница по версии.
+	//
+	// Строки заливаются ПРИ СТАРТЕ из снимка словарей клиента, вшитого в бинарь
+	// (`internal/langsource`; разбор — в шапке миграции 0128). Сид идемпотентен:
+	// версия языка растёт только когда строка действительно изменилась, поэтому
+	// перезапуск сервера не рассылает клиентам весь пакет заново.
+	//
+	// Отказ сида не валит приложение: без свежих строк клиент показывает свой
+	// вшитый английский источник, и это хуже, чем с ними, но лучше, чем сервис,
+	// который не поднялся.
+	langpackUC := usecaselangpack.New(pgadapter.NewLangPackRepo(p.Pool))
+	seedLangPack(p.Ctx, langpackUC)
+	langpackH := httptransport.NewLangPackHandler(langpackUC)
+
+	router := httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, mediaUC, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH, privacyUC, passkeyH, stickersH, ivHandler, reportUC, statsUC, reactionsH, langpackH)
 	// Позднее связывание: RouterRPC реплеит DNP rpc_req через тот же роутер.
 	// Разрывает цикл wsHandler↔router (роутеру нужен wsHandler, диспетчеру — роутер).
 	// wsHandler остаётся nil-типизированным http.Handler, если Redis не поднят —
@@ -404,4 +422,35 @@ func redisQRStore(r RedisResult) usecaseauth.QRStore {
 // redisGroupCalls — стор участников групповых звонков.
 func redisGroupCalls(r RedisResult) usecasechat.GroupCallStore {
 	return newGroupCallStore(r.Client)
+}
+
+// seedLangPack заливает строки языков из вшитого снимка словарей клиента.
+//
+// Единственный источник переводов — файлы веб-клиента; снимок снят с них
+// генератором `cmd/langpackgen`, а что он с ними не разошёлся, проверяет
+// сторожевой тест `internal/langsource`. Разбор решения — в шапке миграции 0128.
+//
+// Английский заливается ПЕРВЫМ (он первый в снимке): остальные языки ссылаются
+// на него как на базу внешним ключом.
+func seedLangPack(ctx context.Context, uc *usecaselangpack.Interactor) {
+	pack, err := langsource.Embedded()
+	if err != nil {
+		log.Printf("langpack seed failed: %v", err)
+		return
+	}
+	// Одна строка в журнал на весь сид, а не по строке на язык: версии тут
+	// интересны только когда они РАЗНЫЕ, и шесть одинаковых «version 1» на
+	// каждом старте — шум, в котором тонет всё остальное.
+	versions := make([]string, 0, len(pack.Languages))
+	total := 0
+	for _, lang := range pack.Languages {
+		version, err := uc.Sync(ctx, lang.LangPackLanguageMeta, lang.Strings)
+		if err != nil {
+			log.Printf("langpack seed %s failed: %v", lang.Code, err)
+			return
+		}
+		versions = append(versions, fmt.Sprintf("%s v%d", lang.Code, version))
+		total += len(lang.Strings)
+	}
+	log.Printf("langpack seeded: %d strings, %s", total, strings.Join(versions, ", "))
 }

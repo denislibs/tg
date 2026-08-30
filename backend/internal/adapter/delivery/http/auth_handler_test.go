@@ -231,7 +231,7 @@ func newResetRouter(t *testing.T, window time.Duration) http.Handler {
 }
 
 func routerFor(auth *usecaseauth.Interactor, pool *pgxpool.Pool) http.Handler {
-	return NewRouter(auth, newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	return NewRouter(auth, newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 }
 
 func postJSON(t *testing.T, h http.Handler, path string, body any) *httptest.ResponseRecorder {
@@ -307,7 +307,7 @@ func TestQRLoginFlow_HTTP(t *testing.T) {
 	pool := postgres.NewTestDB(t)
 	uc := newAuthUC(pool)
 	uc.SetQRStore(newMemQRStore())
-	h := NewRouter(uc, newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewRouter(uc, newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	// Sign in a user → Bearer token.
 	signinToken, signinUserID := loginViaHTTP(t, h, "+79992223344")

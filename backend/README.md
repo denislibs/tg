@@ -126,6 +126,9 @@ Postgres (назначает монотонный `seq`) → `message_ack` от�
 | `POST /auth/qr/new` | начать QR-логин |
 | `GET /auth/qr/{token}` | опрос статуса QR |
 | `GET /media/{mediaID}/content` | скачать медиа (авторизация через `?token=`) |
+| `GET /langpack/languages` · `GET /langpack/languages/{code}` | языки пакета (`langpack.getLanguages` / `getLanguage`) |
+| `GET /langpack/{code}` · `GET /langpack/{code}/difference?from_version=` | весь пакет строк / разница с версии клиента |
+| `GET /langpack/{code}/strings?key=…&key=…` | доспрос отдельных ключей (`langpack.getStrings`) |
 | `GET /health` · `GET /openapi.yaml` · `GET /swagger` | health + документация |
 
 **Защищённые** (основные группы):
@@ -218,6 +221,19 @@ tools/.venv/bin/python tools/fetch_stickers.py --reactions --skip-sets   # ас�
 cd backend && DATABASE_URL=... MINIO_ENDPOINT=... go run ./cmd/seed-reactions
 cd backend && DATABASE_URL=... MINIO_ENDPOINT=... go run ./cmd/seed-stickers
 ```
+
+Строки языкового пакета, наоборот, заливаются САМИ при каждом старте — из снимка
+словарей веб-клиента, вшитого в бинарь (`internal/langsource`). Сид идемпотентен:
+версия языка растёт только когда строка действительно изменилась. Единственный
+источник переводов — файлы клиента (`web-client/src/lang.ts`,
+`web-client/src/i18n/dict.*.ts`); после их правки снимок пересобирается:
+
+```bash
+cd backend && go run ./cmd/langpackgen
+```
+
+Забыть эту команду не страшно: расхождение снимка со словарями красит тест
+`internal/langsource`.
 
 ## Тесты
 
