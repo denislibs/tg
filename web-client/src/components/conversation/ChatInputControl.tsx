@@ -139,7 +139,7 @@ function ChatInputControl(p: ChatInputControlProps) {
 
         <div className="chat-input-plate-center">
           <PlateButton hide={botStartHidden} onClick={p.onBotStart}>
-            <span className="i18n">{t('Start')}</span>
+            <span className="i18n">{t('BotStart')}</span>
           </PlateButton>
           {/* Unblock: фичи разблокировки у нас нет, кнопка структурная — но её
               `hide` считается по тому же условию, что в tweb. */}
@@ -147,7 +147,7 @@ function ChatInputControl(p: ChatInputControlProps) {
             <span className="i18n">{t('Unblock')}</span>
           </PlateButton>
           <PlateButton filled hide={!join}>
-            <span className="i18n">{t('Join')}</span>
+            <span className="i18n">{t('ChannelJoin')}</span>
           </PlateButton>
           {/* tweb обновляет лейбл через replaceChildren — вместе с ним из кнопки
               пропадает и `.c-ripple`; повторяем итоговое дерево. */}
@@ -158,38 +158,38 @@ function ChatInputControl(p: ChatInputControlProps) {
             <span className="i18n">
               <span className="peer-title" data-peer-id={p.peerId} />
               <br />
-              <a>{t('Learn more...')}</a>
+              <a>{t('Chat.Frozen.LearnMore')}</a>
             </span>
           </PlateButton>
           <PlateButton hide={!frozen}>
             <span className="chat-input-frozen-text">
-              <span className="i18n danger">{t('Your Account is Frozen')}</span>
-              <span className="i18n secondary chat-input-frozen-text-subtitle">{t('Click to view details')}</span>
+              <span className="i18n danger">{t('Chat.Input.FrozenButton1')}</span>
+              <span className="i18n secondary chat-input-frozen-text-subtitle">{t('Chat.Input.FrozenButton2')}</span>
             </span>
           </PlateButton>
           <PlateButton noRipple hide={!pinned}>
-            <span className="i18n">{t('Unpin All Messages')}</span>
+            <span className="i18n">{t('Chat.Input.UnpinAll')}</span>
           </PlateButton>
           <PlateButton hide={!openChat}>
-            <span className="i18n">{t('Open Chat')}</span>
+            <span className="i18n">{t('OpenChat')}</span>
           </PlateButton>
 
           {/* ── отступление от tweb: состояний ниже в input.ts нет ── */}
           {p.groupRestricted && (
             <PlateButton hide={!groupRestricted}>
               <TgIcon name="permissions" className="button-icon" size="inherit" />
-              <span className="i18n">{t('Sending messages is not allowed in this group')}</span>
+              <span className="i18n">{t('GlobalSendMessageRestricted')}</span>
             </PlateButton>
           )}
           {p.threadClosed && (
             <PlateButton hide={!threadClosed}>
               <TgIcon name="lock" className="button-icon" size="inherit" />
-              <span className="i18n">{t('Topic is closed')}</span>
+              <span className="i18n">{t('ForumTopic.Closed')}</span>
             </PlateButton>
           )}
           {p.onSuggestPost && (
             <PlateButton hide={!channelMute} onClick={p.onSuggestPost}>
-              <span className="i18n">{t('Suggest a Post')}</span>
+              <span className="i18n">{t('SuggestedPosts.SuggestAPost')}</span>
             </PlateButton>
           )}
           {p.secret && (

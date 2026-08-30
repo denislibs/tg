@@ -49,7 +49,7 @@ function SelectionBar({ count, onClear, onForward, onDelete, canForward = true }
             onClick={onClear}
           >
             {ripple}
-            <div className="selection-container-count">{t('Selected')}: {count}</div>
+            <div className="selection-container-count">{t('Chat.Selection.Selected')}: {count}</div>
           </button>
         </div>
         <div className="chat-input-plate-side">

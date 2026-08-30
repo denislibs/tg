@@ -238,13 +238,13 @@ export default function TopbarSearch({ chat, onJumpToSeq, containerRef }: Topbar
   const filterPeerAvatar = useMediaUrl(s.filterPeerPhotoId ?? null)
 
   const hashWidth = useMemo(() => getTextWidth('#'), [])
-  const fromText = `${t('From:')} `
+  const fromText = `${t('Search.From')} `
   const fromWidth = useMemo(() => getTextWidth(fromText), [fromText])
 
   // tweb :552 — плейсхолдер поля
   const placeholder = s.filteringSender && s.filterPeerId == null
-    ? t('Search Members')
-    : s.isHashtag ? t('Search Hashtag') : t('Search')
+    ? t('Search.Member')
+    : s.isHashtag ? t('Search.Hashtag') : t('Search')
 
   // tweb :693 — стрелки прячутся без выдачи и пока выбираем отправителя
   const arrowsHidden = !s.count || (s.filteringSender && s.filterPeerId == null)
@@ -474,10 +474,10 @@ export default function TopbarSearch({ chat, onJumpToSeq, containerRef }: Topbar
             {listIsEmpty ? (
               <div className="topbar-search-left-results-empty">
                 {s.isHashtag && s.count === undefined
-                  ? t('Enter a hashtag to find messages containing it.')
+                  ? t('Search.HelpHashtag')
                   : s.filterPeerId != null
-                    ? <>{t('There were no messages from')} <b>{s.filterPeerName}</b>.</>
-                    : <>{t('There were no results for')} <b>“{middleOverflow(s.value, 18)}”</b>{t('. Try a new search.')}</>}
+                    ? <>{t('Search.Empty.FromPrefix')} <b>{s.filterPeerName}</b>.</>
+                    : <>{t('Search.Empty.QueryPrefix')} <b>“{middleOverflow(s.value, 18)}”</b>{t('Search.Empty.Suffix')}</>}
               </div>
             ) : (
               <>
@@ -489,7 +489,7 @@ export default function TopbarSearch({ chat, onJumpToSeq, containerRef }: Topbar
                       <SenderRow
                         key={peerId}
                         peerId={peerId}
-                        name={peerId === s.meId ? t('Saved Messages') : getPeerTitle({ peerId, peer: s.senderPeers.get(peerId) })}
+                        name={peerId === s.meId ? t('SavedMessages') : getPeerTitle({ peerId, peer: s.senderPeers.get(peerId) })}
                         username={senderUsername(s.senderPeers.get(peerId))}
                         photoId={getPeerPhotoId(getPeerPhoto(s.senderPeers.get(peerId)))}
                         navigated={i === navIdx}

@@ -1243,6 +1243,7 @@ const lang = {
   'Unit.MonthsSuffix': 'months',
   'Unit.Seconds.Short': 's',
   'Unit.WeeksSuffix': 'weeks',
+  UnpinMessage: 'Unpin',
   UnreadMessages: 'Unread Messages',
   Updating: 'Updating...',
   UserBio: 'Bio',

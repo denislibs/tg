@@ -79,7 +79,7 @@ function PinnedBar({ pins, index, searchOpen, onFollow, onUnpin, onOpenList }: P
         className="btn-menu-toggle pinned-message-menu"
         onClick={onOpenList}
         color="var(--secondary-text-color)"
-        aria-label={t('Pinned Messages')}
+        aria-label={t('PinnedMessages')}
       >
         <TgIcon name="pin" size={24} className="button-icon" />
       </IconButton>
@@ -104,7 +104,7 @@ function PinnedBar({ pins, index, searchOpen, onFollow, onUnpin, onOpenList }: P
             {thumb ? <img src={thumb} alt="" /> : null}
           </AnimatedSuper>
           <div className="pinned-container-title pinned-message-title">
-            <span className="i18n">{t('Pinned Message')}</span>
+            <span className="i18n">{t('PinnedMessage')}</span>
             {' '}
             {/* tweb AnimatedCounter: «#N» проявляется на непервом пине,
                 на новейшем (is-last) он схлопнут в scale(.68)/opacity 0 */}
@@ -125,7 +125,7 @@ function PinnedBar({ pins, index, searchOpen, onFollow, onUnpin, onOpenList }: P
           className="pinned-message-unpin"
           onClick={(e) => { e.stopPropagation(); if (shown?.id != null) onUnpin(shown.id) }}
           color="var(--secondary-text-color)"
-          aria-label={t('Unpin')}
+          aria-label={t('UnpinMessage')}
         >
           <TgIcon name="close" size={24} className="button-icon" />
         </IconButton>

@@ -87,7 +87,7 @@ export default function PinnedMessagesScreen({ chatId, pins, meId, meName, canUn
           {pins.map((m) => {
             const mine = meId != null && m.fromId === meId
             const peer = peers.get(m.fromId ?? 0)
-            const name = mine ? (meName || t('You')) : getUserTitle(peer)
+            const name = mine ? (meName || t('FromYou')) : getUserTitle(peer)
             return (
               <div key={m.id} className={s.row} onClick={() => onJump(m.id)}>
                 <UserAvatar id={m.fromId ?? 0} name={name} photoId={getPeerPhotoId(peer?.photo)} size="sm" />
@@ -106,8 +106,8 @@ export default function PinnedMessagesScreen({ chatId, pins, meId, meName, canUn
                   size="small"
                   onClick={(e) => { e.stopPropagation(); unpin(m.id) }}
                   color="var(--secondary-text-color)"
-                  title={t('Unpin')}
-                  aria-label={t('Unpin')}
+                  title={t('UnpinMessage')}
+                  aria-label={t('UnpinMessage')}
                 >
                   <TgIcon name="unpin" size={20} />
                 </IconButton>
@@ -118,15 +118,15 @@ export default function PinnedMessagesScreen({ chatId, pins, meId, meName, canUn
         {canUnpinAll && (
           <div className={s.footer}>
             <button type="button" className={s.unpinAll} onClick={() => setConfirmAll(true)}>
-              {t('Unpin All Messages')}
+              {t('Chat.Input.UnpinAll')}
             </button>
           </div>
         )}
         {confirmAll && (
           <ConfirmDialog
-            title={t('Unpin All Messages')}
-            text={t('Are you sure you want to unpin all messages?')}
-            action={t('Unpin')}
+            title={t('Chat.Input.UnpinAll')}
+            text={t('Chat.UnpinAll.Text')}
+            action={t('UnpinMessage')}
             danger
             onConfirm={() => { void unpinAll() }}
             onClose={() => setConfirmAll(false)}

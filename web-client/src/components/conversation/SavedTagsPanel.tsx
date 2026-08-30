@@ -57,7 +57,7 @@ function SavedTagsPanel({ activeTag, onFilter, onCountChange }: {
   if (tags.length === 0) return null
 
   return (
-    <div className={s.panel} role="toolbar" aria-label={t('Tags')}>
+    <div className={s.panel} role="toolbar" aria-label={t('SavedTag.Tags')}>
       <div className={s.scroll}>
         {tags.map((tag) => {
           const active = activeTag === tag.reaction
@@ -70,7 +70,7 @@ function SavedTagsPanel({ activeTag, onFilter, onCountChange }: {
                   className={s.input}
                   value={draft}
                   maxLength={12}
-                  placeholder={t('Add a tag name')}
+                  placeholder={t('SavedTag.NamePlaceholder')}
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') commitRename()
@@ -86,7 +86,7 @@ function SavedTagsPanel({ activeTag, onFilter, onCountChange }: {
               key={tag.reaction}
               className={active ? `${s.chip} ${s.chipActive}` : s.chip}
               onClick={() => onFilter(active ? null : tag.reaction)}
-              title={t('Filter by tag')}
+              title={t('SavedTagFilterByTag')}
             >
               <span className={s.emoji}><Emoji e={tag.reaction} size={20} /></span>
               {tag.title && <span className={s.title}>{tag.title}</span>}
@@ -94,7 +94,7 @@ function SavedTagsPanel({ activeTag, onFilter, onCountChange }: {
               <button
                 type="button"
                 className={s.edit}
-                title={t('Rename tag')}
+                title={t('SavedTag.Rename')}
                 onClick={(e) => { e.stopPropagation(); startRename(tag) }}
               >
                 <TgIcon name="edit" size={14} />

@@ -181,16 +181,16 @@ export default function ChatDrops({
         <ChatDragAndDrop
           key="document"
           icon="dragfiles"
-          header={t('Drop files here to send them')}
-          subtitle={t('without compression')}
+          header={t('Chat.DropTitle')}
+          subtitle={t('Chat.DropAsFilesDesc')}
           onDrop={handleDrop(true)}
         />
       ) : (
         <ChatDragAndDrop
           key="media"
           icon="dragmedia"
-          header={t('Drop files here to send them')}
-          subtitle={t('in a quick way')}
+          header={t('Chat.DropTitle')}
+          subtitle={t('Chat.DropQuickDesc')}
           onDrop={handleDrop(false)}
         />
       )))}
