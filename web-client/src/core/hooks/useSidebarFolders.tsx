@@ -72,7 +72,7 @@ export function useSidebarFolders({ chats, onOpenFolderSettings }: {
   const openDeleteFolder = (f: Folder) => openPopup((p) => (
     <Popup
       open={p.open}
-      title={t('Remove Folder')}
+      title={t('ChatList.Filter.Confirm.Remove.Header')}
       onClose={p.requestClose}
       onExitComplete={p.onExitComplete}
       width={360}
@@ -80,7 +80,7 @@ export function useSidebarFolders({ chats, onOpenFolderSettings }: {
     >
       <div style={{ padding: '0 16px 8px' }}>
         <Text size={15}>
-          {t('Are you sure you want to remove this folder? Your chats will not be deleted.')}
+          {t('ChatList.Filter.Confirm.Remove.Text')}
         </Text>
       </div>
     </Popup>
@@ -93,14 +93,14 @@ export function useSidebarFolders({ chats, onOpenFolderSettings }: {
       {id === ALL_FOLDER_ID ? (
         <MenuItem
           icon={<TgIcon name="edit" size={20} />}
-          label={t('Edit folders')}
+          label={t('FilterEditAll')}
           onClick={() => { p.requestClose(); onOpenFolderSettings() }}
         />
       ) : (
         <>
           <MenuItem
             icon={<TgIcon name="edit" size={20} />}
-            label={t('Edit folder')}
+            label={t('FilterEdit')}
             onClick={() => { p.requestClose(); const f = folders.find((x) => x.id === id); if (f) setEditingFolder(f) }}
           />
           <MenuItem

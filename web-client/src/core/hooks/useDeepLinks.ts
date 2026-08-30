@@ -89,7 +89,7 @@ export function useDeepLinks(showToast: (text: string) => void): DeepLinks {
     // `.catch` (Minor #3 финального ревью): refresh() пробрасывает HttpError, а
     // вызов идёт `void`-ом — на 401/5xx это был бы unhandled rejection.
     void managers.dialogs.refresh().then(() => loadFolders(managers, { overwrite: true })).catch(() => {})
-    showToast(`${t('Folder added')}: ${folderTitle}`)
+    showToast(`${t('Folder.Added')}: ${folderTitle}`)
   }
 
   // ?domain=<username> с публичной страницы /@username: префилл поиска.

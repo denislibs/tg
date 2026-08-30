@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import { commentsLabel } from './commentsLabel'
 
-// English fallback t(): key IS the string.
-const t = (s: string) => (s === 'Comments' ? 'Comments' : s === 'Comment' ? 'Comment' : s)
-// Russian t(): only the two keys we need here.
-const tRu = (s: string) => (s === 'Comments' ? 'Комментарии' : s === 'Comment' ? 'Комментарий' : s)
+// Английский `t()`: символический ключ → английский текст.
+const t = (s: string) => (s === 'Chat.CommentsLabel' ? 'Comments' : s === 'Comment' ? 'Comment' : s)
+// Русский `t()`: те же два ключа, что нужны здесь.
+const tRu = (s: string) => (s === 'Chat.CommentsLabel' ? 'Комментарии' : s === 'Comment' ? 'Комментарий' : s)
 
 describe('commentsLabel plural forms', () => {
   it('ru: Slavic 1 / 2-4 / 5+ forms', () => {

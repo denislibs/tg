@@ -449,7 +449,7 @@ export default class VideoPlayer extends ControlsHover {
       el.append(iconEl)
       const textEl = document.createElement('span')
       textEl.classList.add('btn-menu-item-text')
-      textEl.textContent = rate === 1 ? t('Normal') : `${rate}x`
+      textEl.textContent = rate === 1 ? t('PlaybackRateNormal') : `${rate}x`
       el.append(textEl)
       attachClickEvent(el, () => {
         closeMenu()

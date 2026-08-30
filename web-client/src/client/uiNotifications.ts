@@ -52,7 +52,7 @@ export function notifyIncomingMessage(evt: IncomingMsg): void {
   // диалога на проводе больше нет (шаг C диалогов: тело чата едет вектором
   // `chats` контейнера и живёт в зеркале пиров).
   const chatTitle = peerTitle(evt.peerId) || 'Telegram'
-  const body = typeSettings.preview ? getMessageText(evt) || t(mediaLabel(getMessageKind(evt)) || 'New notification') : t('New notification')
+  const body = typeSettings.preview ? getMessageText(evt) || t(mediaLabel(getMessageKind(evt)) || 'New notification') : t('Notifications.New')
   void show(chatTitle, body, evt)
 }
 

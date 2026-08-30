@@ -4,7 +4,7 @@ import type { Lang } from '../../i18n'
 // the Slavic 1 / 2-4 / 5+ plural forms; other locales fall back to the English
 // singular/plural via t(). count 0 → the bare "Comments" heading.
 export function commentsLabel(count: number, lang: Lang, t: (s: string) => string): string {
-  if (count === 0) return t('Comments')
+  if (count === 0) return t('Chat.CommentsLabel')
   if (lang === 'ru' || lang === 'uk') {
     const m10 = count % 10
     const m100 = count % 100
@@ -14,5 +14,5 @@ export function commentsLabel(count: number, lang: Lang, t: (s: string) => strin
     else word = lang === 'ru' ? 'комментариев' : 'коментарів'
     return `${count} ${word}`
   }
-  return `${count} ${count === 1 ? t('Comment') : t('Comments')}`
+  return `${count} ${count === 1 ? t('Comment') : t('Chat.CommentsLabel')}`
 }

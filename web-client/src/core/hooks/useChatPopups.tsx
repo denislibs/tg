@@ -142,8 +142,8 @@ export function useChatPopups(d: ChatPopupDeps) {
 
   const openConfirmClear = () => openPopup((p) => (
     <ConfirmDialog
-      title={t('Clear History')}
-      text={t('Are you sure you want to clear history?')}
+      title={t('Calendar.ClearHistory')}
+      text={t('Chat.ClearHistory.Text')}
       action={t('Clear')}
       danger
       onConfirm={d.doClearHistory}
@@ -297,7 +297,7 @@ export function useChatPopups(d: ChatPopupDeps) {
       >
         <MenuItem
           icon={<TgIcon name="checkround" size={20} />}
-          label={t('Select Messages')}
+          label={t('Chat.Menu.SelectMessages')}
           onClick={() => { p.requestClose(); d.startSelectMode() }}
         />
         <MenuItem

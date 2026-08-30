@@ -158,7 +158,7 @@ export function useMessageActions({
   // когда автор это я (tweb: `peerId === rootScope.myId`, :4500); скрытая
   // атрибуция пересылки (`from_name` без `from_id`) — вместо имени (:4473-4476).
   const fwdSenderLabel = (m: MyMessage): string => {
-    if (m.fromId != null && m.fromId === meId) return t('You')
+    if (m.fromId != null && m.fromId === meId) return t('FromYou')
     const hidden = m._ === 'message' ? m.fwd_from?.from_name : undefined
     if (hidden && m.fromId == null) return hidden
     const title = m.fromId != null ? getPeerTitle({ peerId: m.fromId, peer: cachedPeer(m.fromId) }) : ''
@@ -177,7 +177,7 @@ export function useMessageActions({
       text = body ? `${senders[0]}: ${body}` : senders[0]
     } else {
       const names = senders.length <= 2 ? senders.join(', ') : `${senders.slice(0, 2).join(', ')} …`
-      text = `${t('Forwarded from')}: ${names}`
+      text = `${t('Chat.ForwardedFrom')}: ${names}`
     }
     // tweb messagesWithCaptionsLength (:4477-4486) — вложение + подпись.
     const hasCaption = picked.some((m) => getMediaId(m) != null && !!getMessageText(m))
