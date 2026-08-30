@@ -44,6 +44,11 @@ const lang = {
   'AutoDeleteMessages.SetOtherTime': 'Set other time',
   AutoDeleteMessagesShort: 'Auto-delete',
   AutoDownloadAudioInfo: 'Voice messages are tiny, so they\'re always downloaded automatically.',
+  // Разделители перечисления — их берёт `join()` (`lib/langPack.ts`, порт tweb :687).
+  // Взяты у оригинала дословно (tweb `lang.ts:3394-3395`) вместе с именами: в оригинале
+  // они тоже названы по разделу автозагрузки, откуда пришли первым потребителем.
+  'AutoDownloadSettings.Delimeter': ', ',
+  'AutoDownloadSettings.LastDelimeter': ' and ',
   AutoDownloadFilesTitle: 'Auto-download files and music',
   AutoDownloadLargeFilesInfo: 'Larger files are never downloaded automatically.',
   AutoDownloadMaxFileSize: 'Maximum file size',
