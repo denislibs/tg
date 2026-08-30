@@ -11,10 +11,11 @@
  *    `Element.replaceChildren` принимает и строку, и `Node` тем же вызовом,
  *    отдельного хелпера не нужно (тот же приём уже в `stackedAvatars.ts`,
  *    `avatar.ts`, `chat/peerTitle.ts`);
- *  • `LangPackKey`/`i18n(key, args)` → строка + `useI18nStore.getState().t`
- *    (#109: у нашего словаря ключ=строка, без интерполяции аргументов — тот же
- *    приём, что в `button.ts`/`checkboxField.ts`; `langPackArguments` поэтому
- *    не портирован — предмета нет).
+ *
+ * Текст всплывашки строит `i18n(key, args)` ядра — дословно как оригинал
+ * (`toastNew`, :64). До задачи 7 здесь стоял `t(key)` (готовая строка), и вместе
+ * с ним не был портирован `langPackArguments`: строковому `t()` аргументы-узлы
+ * недоступны. Теперь аргументы есть и называются как в оригинале.
  *
  * ── ОСТАТОК ВОЛНЫ (#112) ───────────────────────────────────────────────────
  * СТИЛЕЙ У ЭТОЙ ВСПЛЫВАШКИ НЕТ. `tweb/src/scss/partials/_toast.scss`
@@ -24,9 +25,8 @@
  * узел рисуется потоком страницы вместо прибитой снизу карточки. Порт
  * партиала — та же задача, что снимает остальные остатки волны.
  */
-import type { LangPackKey } from '@/lang'
 import OverlayClickHandler from '@helpers/overlayClickHandler'
-import { useI18nStore } from '../i18n'
+import { i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
 
 const toastsContainer = document.createElement('div')
 toastsContainer.classList.add('toasts-container')
@@ -89,8 +89,9 @@ export function toast(content: string | Node, onClose?: () => void, duration = 3
 // подставляется вовсе; здесь то же самое гарантируется типом, а не рантайм-проверкой.
 export function toastNew(options: {
   langPackKey: LangPackKey
+  langPackArguments?: FormatterArguments
   onClose?: () => void
   duration?: number
 }) {
-  toast(useI18nStore.getState().t(options.langPackKey), options.onClose, options.duration)
+  toast(i18n(options.langPackKey, options.langPackArguments), options.onClose, options.duration)
 }

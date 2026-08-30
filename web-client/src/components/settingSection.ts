@@ -76,10 +76,12 @@
  *    `_profile.scss`). Перенос самого стиля — #112.
  *
  * ── Прочие адаптации под наш стек ────────────────────────────────────────
- *  • `LangPackKey` + `i18n_`/`true` → строка-ключ через
- *    `useI18nStore.getState().t`, узел — `i18nSpan` (#109, тот же приём, что в
- *    `row.ts`/`button.ts`); `nameArgs`/`captionArgs` не портированы — у
- *    нашего `t()` нет интерполяции (та же причина, что и там же);
+ *  • заголовок и подпись строит `i18n_({element, key, args})` ядра — дословно
+ *    как оригинал (:63, :81). До задачи 7 здесь стоял `i18nSpan(t(key))`, и
+ *    отличий было два: узел добавлялся ВНУТРЬ заголовка вместо того, чтобы им
+ *    БЫТЬ (у оригинала класс `i18n` лежит на самом `.sidebar-left-section-name`),
+ *    а `nameArgs`/`captionArgs` не были портированы вовсе — строковому `t()`
+ *    аргументы-узлы недоступны. Теперь и то, и другое как в оригинале;
  *  • `generateDelimiter()` (`@components/generateDelimiter` в tweb) —
  *    тривиальный `div.gradient-delimiter` без внешних зависимостей,
  *    инлайнен сюда же вместо отдельного файла — единственный потребитель.
@@ -91,15 +93,15 @@
  * `div.sidebar-left-section-container`. Снимать не нужно — уйдёт вместе с
  * React-экранами, которые его используют, по мере переезда волны на Solid.
  */
-import type { LangPackKey } from '@/lang'
-import i18nSpan from '@helpers/dom/i18nSpan'
-import { useI18nStore } from '../i18n'
+import { i18n_, type FormatterArguments, type LangPackKey } from '@lib/langPack'
 
 type CaptionOption = LangPackKey | true
 
 export type SettingSectionOptions = {
   name?: LangPackKey | HTMLElement
+  nameArgs?: FormatterArguments
   caption?: CaptionOption
+  captionArgs?: FormatterArguments
   captionOld?: CaptionOption
   noDelimiter?: boolean
   fakeGradientDelimiter?: boolean
@@ -147,7 +149,7 @@ export default class SettingSection {
       const title = (this.title = document.createElement('div'))
       title.classList.add('sidebar-left-h2', className + '-name')
       if (typeof options.name === 'string') {
-        title.append(i18nSpan(useI18nStore.getState().t(options.name)))
+        i18n_({ element: title, key: options.name, args: options.nameArgs })
       } else {
         title.append(options.name)
       }
@@ -166,7 +168,7 @@ export default class SettingSection {
       }
 
       if (caption !== true) {
-        el.append(i18nSpan(useI18nStore.getState().t(caption)))
+        i18n_({ element: el, key: caption, args: options.captionArgs })
       }
     }
   }
