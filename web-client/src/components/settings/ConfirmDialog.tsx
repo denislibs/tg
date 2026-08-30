@@ -26,7 +26,6 @@
 // вместе с собой — React о нём не знает, узел висит прямо на `document.body`.
 import type { LangPackKey } from '@/lang'
 import { useEffect, useRef } from 'react'
-import { useI18nStore } from '../../i18n'
 import { confirmationPopup } from '../popups/popupPeer'
 import type PopupPeer from '../popups/popupPeer'
 
@@ -46,7 +45,6 @@ export default function ConfirmDialog({ title, text, textArgs, action, danger, z
   // Колбэки читаются в момент исхода промиса, а не на момент монтирования —
   // но сам попап обязан открыться РОВНО один раз за монтирование (владелец
   // монтирует/размонтирует компонент по месту действия, как и раньше).
-  const { t, tArgs } = useI18nStore.getState()
   const cb = useRef({ onConfirm, onClose })
   cb.current = { onConfirm, onClose }
 
@@ -55,11 +53,13 @@ export default function ConfirmDialog({ title, text, textArgs, action, danger, z
     let popup: PopupPeer | undefined
     confirmationPopup({
       titleLangKey: title,
-      ...(textArgs ? { descriptionText: tArgs(text, textArgs) } : { descriptionLangKey: text }),
-      // `PopupButton.text` печатается ГОТОВОЙ строкой (`popupElement.ts:253`), поэтому
-      // ключ переводится здесь. Раньше это делал вызывающий (`action={t('Delete')}`), и
-      // кодмод, сняв обёртку, оставил на кнопках подтверждения латинские имена ключей.
-      button: { text: t(action), isDanger: danger },
+      descriptionLangKey: text,
+      descriptionLangArgs: textArgs,
+      // Ключ, а не строка: с задачи 7 роль поля выражена ТИПОМ (`PopupButton.langKey`
+      // против `PopupButton.text`, который принимает только УЗЕЛ), и «забыть перевод»
+      // здесь больше нельзя — а раньше именно так на кнопках подтверждения десяти
+      // экранов оказались латинские имена ключей.
+      button: { langKey: action, isDanger: danger },
       zIndex,
       getPopup: (p) => { popup = p },
     }).then(

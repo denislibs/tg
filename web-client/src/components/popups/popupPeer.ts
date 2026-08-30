@@ -17,8 +17,6 @@
 // `titleLangKey`, `descriptionLangKey`, `buttons`, и — с раунда правок 1,
 // см. ниже — `peerId`/аватар. Не портировано (см. комментарии по месту,
 // каждое — «нет потребителя», а не недосмотр):
-//  • `titleLangArgs`/`descriptionLangArgs` (peer.ts:21, :26) — у нашего `t()`
-//    (`@/i18n`, `dict[s] ?? s`) нет интерполяции аргументов, предмета нет;
 //  • `inputField`/`noTitle`/`old`/`threadId` (peer.ts:22-30, :44-124) — их
 //    не просит ни `confirmationPopup`, ни задача 3. `checkboxes` из этого же
 //    списка выбыл в раунде правок 3, см. ниже — нашёлся реальный потребитель.
@@ -69,11 +67,10 @@
 // `DeleteMessageDialog`) их не просит; `checkboxField.ts` объясняет, почему
 // `withRipple` (peer.ts:98, безусловно для чекбоксов `PopupPeer`) тоже не
 // портирован ЦЕЛИКОМ.
-import type { LangPackKey } from '@/lang'
 import PopupElement, { type PopupButton } from './popupElement'
 import CheckboxField from '@components/checkboxField'
 import { avatarNew, type AvatarManagers } from '@components/avatar'
-import { useI18nStore } from '@/i18n'
+import { i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
 
 /** peer.ts:16-31, сужено до полей с потребителем в волне 1 (задача 2) + двух
  *  добавленных в задаче 3, у которых нашёлся реальный потребитель уже здесь:
@@ -86,14 +83,16 @@ import { useI18nStore } from '@/i18n'
  *  `managers` обязателен вместе с `peerId` — ими пользуется только `avatarNew`
  *  (peer.ts:46-53); без `peerId` он не нужен и не запрашивается. */
 export type PopupPeerOptions = {
-  titleLangKey?: LangPackKey // peer.ts:58-59 — `i18n(titleLangKey)`
-  /** Готовый заголовок — когда в строку подставлено число («Удалить 5 сообщений»). */
-  titleText?: string
+  titleLangKey: LangPackKey // peer.ts:58-59 — `i18n(titleLangKey, titleLangArgs)`
+  /** peer.ts:21 — аргументы заголовка. До задачи 7 их не было, и вызывающий отдавал
+   *  сюда ГОТОВУЮ строку («Удалить 5 сообщений») отдельным пропом `titleText`: у
+   *  строкового `t()` подстановки не было. Теперь число подставляет попап. */
+  titleLangArgs?: FormatterArguments
   // peer.ts:70 — опционально и у оригинала: `PopupMute` описания не задаёт
   // вовсе (mute.ts:29-38), у него вместо `<p>` — радио-список в `body`.
   descriptionLangKey?: LangPackKey
-  /** Готовый текст описания — когда в строку подставлен аргумент (число, имя). */
-  descriptionText?: string
+  /** peer.ts:26 — то же, что `titleLangArgs`, для описания. */
+  descriptionLangArgs?: FormatterArguments
   buttons: PopupPeerButton[] // peer.ts:41 — `addCancelButton(options.buttons)`
   body?: boolean
   zIndex?: number
@@ -122,17 +121,12 @@ export type PopupPeerButton = Omit<PopupButton, 'callback'> & {
   callback?: (checked?: Set<string>) => void
 }
 
-/**
- * tweb `components/popups/index.ts:484-494`. `langKey: 'Cancel'` заменён на
- * уже переведённый `text` — наш `PopupButton` (см. докблок `popupElement.ts`)
- * несёт готовую строку, а не `LangPackKey`; переводом владеет эта функция, а
- * не база.
- */
+/** tweb `components/popups/index.ts:484-494`, дословно: кнопка отмены несёт КЛЮЧ. */
 export function addCancelButton(buttons: PopupButton[]): PopupButton[] {
   const button = buttons.find((b) => b.isCancel)
   if(!button) {
     buttons.push({
-      text: useI18nStore.getState().t('Cancel'),
+      langKey: 'Cancel',
       isCancel: true
     })
   }
@@ -146,17 +140,17 @@ export default class PopupPeer extends PopupElement {
   protected description?: HTMLParagraphElement
 
   constructor(className: string, options: PopupPeerOptions) {
-    const t = useI18nStore.getState().t
-
     super('popup-peer' + (className ? ' ' + className : ''), { // peer.ts:37
       overlayClosable: true, // peer.ts:38
-      // peer.ts:40, :57-59 — оригинал резервирует `title: true` и заполняет
-      // `this.title` сам; наша база принимает готовую строку напрямую и
-      // делает то же самое (`setButtons`-докблок `popupElement.ts` :130-134).
-      title: options.titleLangKey ? t(options.titleLangKey) : options.titleText!,
+      title: true, // peer.ts:40 — узел заголовка резервируется, наполняет его потомок
       body: options.body, // peer.ts:37-41 `...options` — см. докблок PopupPeerOptions.body
       zIndex: options.zIndex,
     })
+
+    // peer.ts:58-59. Аргументы подставляет ЗАГОЛОВОК, а не вызывающий: до задачи 7
+    // «Удалить N сообщений» приезжало сюда готовой строкой (`titleText`), потому что
+    // строковый `t()` подстановки не умел.
+    this.title.append(i18n(options.titleLangKey, options.titleLangArgs))
 
     if(options.peerId !== undefined) { // peer.ts:44
       // peer.ts:45, :50-52 — `isSavedDialog`/`threadId`/`meAsNotes` не
@@ -204,10 +198,10 @@ export default class PopupPeer extends PopupElement {
     // `this.header.after(fragment)` (peer.ts:126): порядок в DOM решает
     // порядок append НИЖЕ, а не порядок вызовов setButtons/фрагмента выше.
     const fragment = document.createDocumentFragment()
-    if(options.descriptionLangKey || options.descriptionText) { // peer.ts:65
+    if(options.descriptionLangKey) { // peer.ts:65
       const p = this.description = document.createElement('p') // peer.ts:68
       p.classList.add('popup-description') // peer.ts:69
-      p.append(document.createTextNode(options.descriptionLangKey ? t(options.descriptionLangKey) : options.descriptionText!)) // peer.ts:70
+      p.append(i18n(options.descriptionLangKey, options.descriptionLangArgs)) // peer.ts:70
       fragment.append(p)
     }
     for(const { field } of checkboxFields) { // peer.ts:110 — `fragment.append(checkboxField.label)`
@@ -231,8 +225,9 @@ export default class PopupPeer extends PopupElement {
  */
 export function confirmationPopup(options: {
   titleLangKey: LangPackKey
+  titleLangArgs?: FormatterArguments
   descriptionLangKey?: LangPackKey
-  descriptionText?: string
+  descriptionLangArgs?: FormatterArguments
   button: PopupButton
   /** НАШЕ расширение, не из tweb — см. докблок `PopupOptions.zIndex`
    *  (`popupElement.ts`). Потребитель — мост `ConfirmDialog.tsx` (задача 3). */
@@ -268,8 +263,9 @@ export function confirmationPopup(options: {
 
     const popup = PopupElement.createPopup(PopupPeer, 'popup-confirmation', { // simpleConfirmation.ts:50-55
       titleLangKey: options.titleLangKey,
+      titleLangArgs: options.titleLangArgs,
       descriptionLangKey: options.descriptionLangKey,
-      descriptionText: options.descriptionText,
+      descriptionLangArgs: options.descriptionLangArgs,
       buttons,
       zIndex: options.zIndex,
     })

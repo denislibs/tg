@@ -12,7 +12,6 @@
  * отзывают по hash, из неё выходят. По этому нулю вкладка и узнаёт свою
  * строку — единственную, которую нельзя завершить.
  */
-import type { LangPackKey } from '@/lang'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Authorization } from '@layer'
 import type { Managers } from '@/client/bootstrap'
@@ -20,7 +19,7 @@ import { createSliderStub } from '@components/sliderTab.testStub'
 import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
 import { hideToast } from '@components/toast'
 import contextMenuController from '@helpers/contextMenuController'
-import { useI18nStore } from '@/i18n'
+import { loadLang, useI18nStore } from '@/i18n'
 import { AppActiveSessionsTab } from '@components/solidJsTabs/tabs'
 
 type Auth = Authorization.authorization
@@ -95,6 +94,13 @@ afterEach(async() => {
     await new Promise((r) => setTimeout(r, 250))
   }
   document.body.replaceChildren()
+
+  // Язык — тоже общее состояние (`I18n.strings` + хранилище): тесты перевода ниже
+  // переключают его по-настоящему, и следующий тест иначе читал бы русские подписи.
+  if(useI18nStore.getState().lang !== 'en') {
+    useI18nStore.setState({ lang: 'en' })
+    await loadLang('en')
+  }
 })
 
 describe('вкладка «Устройства» — порт tweb sidebarLeft/tabs/activeSessions.tsx', () => {
@@ -240,26 +246,24 @@ describe('вкладка «Устройства» — порт tweb sidebarLeft/
   })
 
   it('пункт контекстного меню ПЕРЕВЕДЁН, а не показывает сырой ключ', async() => {
-    // Боевой дефект, найденный живой проверкой стенда: в `ButtonMenuSync`
-    // уезжал ключ `'Terminate'`, а `ButtonMenuItem` кладёт `text` прямо в
-    // `i18nSpan` — переводит ВЫЗЫВАЮЩИЙ. В русском интерфейсе пункт меню
-    // показывал «Terminate», хотя `Terminate: 'Завершить'` в словаре есть и
-    // всё остальное на вкладке переведено (`Button`/`Row`/`SettingSection`
-    // переводят у себя — на этой разнице дефект и вырос).
+    // Боевой дефект, найденный живой проверкой стенда: в `ButtonMenuSync` уезжал
+    // ключ `'Terminate'`, а `ButtonMenuItem` ждал ГОТОВУЮ строку — переводил
+    // вызывающий. В русском интерфейсе пункт меню показывал «Terminate», хотя
+    // `Terminate: 'Завершить'` в словаре есть и всё остальное на вкладке
+    // переведено (`Button`/`Row`/`SettingSection` переводили у себя — на этой
+    // разнице дефект и вырос). Задача 7 свела обе стороны на `LangPackKey`.
     //
-    // Подменяем переводчик ДО открытия: меню строится в `onMount`, то есть
-    // внутри `tab.open()`, а не позже, как попап.
+    // Язык переключается ПО-НАСТОЯЩЕМУ (настоящий `dict.ru`), а не подменой
+    // переводчика: подпись строит `i18n()` ядра, и подмена `t()` в хранилище на
+    // неё уже не влияет — проверка на подмене зеленела бы, ничего не проверяя.
     const { managers } = makeManagers()
-    const original = useI18nStore.getState().t
-    useI18nStore.setState({ t: (key: string) => (key === 'Terminate' ? 'Завершить' : original(key as LangPackKey)) })
-    try {
-      const tab = await openTab([current, other], managers)
-      const menu = rightClick(tab.scrollable.container.querySelector('.row[data-hash="2"]')!)
+    useI18nStore.setState({ lang: 'ru' })
+    await loadLang('ru')
 
-      expect(menu.querySelector('.btn-menu-item-text')!.textContent).toBe('Завершить')
-    } finally {
-      useI18nStore.setState({ t: original })
-    }
+    const tab = await openTab([current, other], managers)
+    const menu = rightClick(tab.scrollable.container.querySelector('.row[data-hash="2"]')!)
+
+    expect(menu.querySelector('.btn-menu-item-text')!.textContent).toBe('Завершить')
   })
 
   it('правый клик по строке ТЕКУЩЕЙ сессии не открывает меню — свою сессию не завершить и отсюда', async() => {
@@ -283,20 +287,18 @@ describe('вкладка «Устройства» — порт tweb sidebarLeft/
     const { managers } = makeManagers()
     const tab = await openTab([current, other], managers)
 
-    // Переводчик обязан читаться в ТОЧКЕ ПРИМЕНЕНИЯ (`row.ts::createTitle`,
-    // `button.ts::Button`), а не сниматься один раз на открытии вкладки: смена
-    // языка не перерисовывает уже построенный DOM, но попап строится позже.
-    const original = useI18nStore.getState().t
-    useI18nStore.setState({ t: (key: string) => (key === 'Terminate' ? 'Завершить' : original(key as LangPackKey)) })
-    try {
-      tab.scrollable.container.querySelector<HTMLElement>('.row[data-hash="2"]')!
-        .dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
+    // Язык обязан читаться в ТОЧКЕ ПРИМЕНЕНИЯ, а не сниматься один раз на открытии
+    // вкладки: попап строится позже. (Перерисовку УЖЕ построенных узлов проверяет
+    // `i18nContract.test.ts` — она возможна только для узлов, вставленных В ДОКУМЕНТ:
+    // `applyLangPack` обходит `document.querySelectorAll('.i18n')`, а дерево вкладки
+    // в этом тесте живёт отдельно от `document`.)
+    useI18nStore.setState({ lang: 'ru' })
+    await loadLang('ru')
 
-      expect(document.querySelector('.popup-peer .popup-button:not(.popup-close)')!.textContent)
-        .toBe('Завершить')
-    } finally {
-      useI18nStore.setState({ t: original })
-    }
+    tab.scrollable.container.querySelector<HTMLElement>('.row[data-hash="2"]')!
+      .dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
+    expect(document.querySelector('.popup-peer .popup-button:not(.popup-close)')!.textContent)
+      .toBe('Завершить')
   })
 
   it('на закрытии вкладки контекстное меню уходит из body', async() => {

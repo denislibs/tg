@@ -309,7 +309,7 @@ export default function StickersTab({
                       void confirmationPopup({
                         titleLangKey: 'ClearRecentStickersAlertTitle',
                         descriptionLangKey: 'Stickers.ClearRecent.Text',
-                        button: { text: t('Clear') },
+                        button: { langKey: 'Clear' },
                       }).then(() => panel.clearRecent(), () => {})
                     }}
                   >

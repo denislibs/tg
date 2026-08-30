@@ -55,7 +55,7 @@ export default class PopupMute extends PopupPeer {
       managers,
       titleLangKey: 'Notifications', // mute.ts:33
       buttons: [{ // mute.ts:34-37
-        text: t('ChatList.Context.Mute'),
+        langKey: 'ChatList.Context.Mute',
         callback: () => onMute(selected === -1 ? null : selected),
       }],
       body: true, // mute.ts:38

@@ -98,15 +98,30 @@ import indexOfAndSplice from '@helpers/array/indexOfAndSplice'
 import { pushEsc } from '@core/hotkeys'
 import { pushLayer, removeLayer, type Layer } from '@core/navigation/navigationStack'
 import { getMiddleware, type MiddlewareHelper } from '@helpers/middleware'
+import { i18n, _i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
 
-/** tweb :26-37, упрощено: `text` — УЖЕ ПЕРЕВЕДЁННАЯ строка (без LangPackKey/i18n —
- *  вторая после `buttonMenu.ts::ButtonMenuItem` точка волны, где переводит
- *  ВЫЗЫВАЮЩИЙ, а не компонент; см. там же про #109 и цену раскола —
- *  переводом владеет вызывающий, как и `title` в `PopupOptions` ниже), без
- *  промис-результата колбэка (`toggleDisability` во время ожидания — tweb
- *  :283-295 — не портирован, нет потребителя в волне 1) и без iconLeft/iconRight. */
+/**
+ * tweb :26-37. РОЛЬ ПОЛЯ ВЫРАЖЕНА ТИПОМ, и это главное здесь: `langKey` — КЛЮЧ
+ * (`LangPackKey`, переводит попап), `text` — ГОТОВОЕ СОДЕРЖИМОЕ и притом УЗЕЛ
+ * (`HTMLElement`/`DocumentFragment`/`Text`), а не строка.
+ *
+ * До задачи 7 здесь стояло `text: string` — «уже переведённая строка», — и по
+ * сигнатуре это было неотличимо от ключа: `Button`/`Row`/`SettingSection`/
+ * `toastNew` при том же виде поля брали КЛЮЧ. Раскол стоил двух боевых дефектов
+ * подряд: волна 2 показала сырой «Terminate» в контекстном меню, задача 6 —
+ * сырые имена ключей на кнопке подтверждения ВО ВСЕХ попапах сразу (кодмод снял
+ * `t()` там, где перевод был обязателен). Строка в это поле теперь просто не
+ * кладётся — `append` принимает узлы, а `LangPackKey` живёт в своём поле.
+ *
+ * Не портированы (нет потребителя): промис-результат колбэка (`toggleDisability`
+ * во время ожидания, tweb :283-295), `iconLeft`/`iconRight`, `noRipple`,
+ * `element`.
+ */
 export type PopupButton = {
-  text: string,
+  /** ГОТОВОЕ содержимое кнопки — узел. Ключ кладётся в `langKey`, не сюда. */
+  text?: HTMLElement | DocumentFragment | Text,
+  langKey?: LangPackKey,
+  langArgs?: FormatterArguments,
   callback?: () => void,
   isDanger?: boolean,
   isCancel?: boolean,
@@ -116,9 +131,12 @@ export type PopupButton = {
 export type PopupOptions = {
   closable?: boolean,
   overlayClosable?: boolean,
-  withConfirm?: string,
+  withConfirm?: LangPackKey,
   body?: boolean,
-  title?: string,
+  /** tweb :51 — та же развилка, что у `PopupButton`: строка это КЛЮЧ (переводит
+   *  попап), узел — готовое содержимое, `true` — «заголовок будет, наполнит
+   *  потомок сам» (так делает `PopupPeer`, peer.ts:40). */
+  title?: boolean | LangPackKey | HTMLElement | DocumentFragment,
   /**
    * НАШЕ расширение сверх tweb — у оригинала такой опции нет и не нужно:
    * стек `PopupElement.POPUPS` там ни с чем сторонним не пересекается. У нас
@@ -180,9 +198,14 @@ export default class PopupElement<E extends EventListenerListeners = {}> extends
 
     this.header.classList.add('popup-header') // tweb :134
 
-    if(options.title) { // tweb :136-145, упрощено: title уже переведённая строка
+    if(options.title) { // tweb :136-145
       this.title.classList.add('popup-title')
-      this.title.textContent = options.title
+      if(typeof(options.title) === 'string') {
+        _i18n(this.title, options.title)
+      } else if(typeof(options.title) !== 'boolean') {
+        this.title.append(options.title)
+      }
+
       this.header.append(this.title)
     }
 
@@ -207,10 +230,10 @@ export default class PopupElement<E extends EventListenerListeners = {}> extends
       }, { listenerSetter: this.listenerSetter })
     }
 
-    if(options.withConfirm) { // tweb :195-203, упрощено: withConfirm всегда готовая строка
+    if(options.withConfirm) { // tweb :195-203
       this.btnConfirm = document.createElement('button')
       this.btnConfirm.classList.add('btn-primary', 'btn-color-primary')
-      this.btnConfirm.append(document.createTextNode(options.withConfirm))
+      this.btnConfirm.append(i18n(options.withConfirm))
       this.header.append(this.btnConfirm)
     }
 
@@ -250,7 +273,12 @@ export default class PopupElement<E extends EventListenerListeners = {}> extends
       // `ripple(button)` (tweb :265-267) не портирован — ванильного
       // `components/ripple.ts` в этом репозитории ещё нет (тот же вычет уже
       // записан в `components/buttonMenu.ts` и `components/chat/replies.ts`).
-      button.append(document.createTextNode(b.text)) // tweb :269-270, text всегда string
+      // tweb :269-273 — готовый узел ИЛИ ключ; строке сюда дороги нет (см. `PopupButton`).
+      if(b.text) {
+        button.append(b.text)
+      } else if(b.langKey) {
+        button.append(i18n(b.langKey, b.langArgs))
+      }
 
       attachClickEvent(button, () => { // tweb :282-302, упрощено: callback синхронный (см. PopupButton)
         b.callback?.()

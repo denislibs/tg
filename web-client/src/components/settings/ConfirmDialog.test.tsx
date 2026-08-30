@@ -10,6 +10,12 @@ import { cleanup, render, waitFor } from '@testing-library/react'
 import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
 import ConfirmDialog from './ConfirmDialog'
 
+// Ядро локализации наполняется побочным эффектом создания хранилища языка
+// (`i18n/index.tsx`); в продукте этот импорт лежит на пути холодного старта
+// (`main.tsx` → `client/boot.ts`). Здесь строятся узлы `i18n()` — без него ядро
+// пусто и печатает имя ключа.
+import '@/i18n'
+
 afterEach(() => {
   cleanup()
   // confirmationPopup вешает узел прямо на document.body (popupElement.ts

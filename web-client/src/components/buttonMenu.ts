@@ -18,9 +18,6 @@
 //   • `iconDoc` (`wrapAttachBotIcon`) — иконок attach-ботов в проекте нет;
 //   • `avatarInfo` + `dispose` (`AvatarNew`, solid `createRoot`) — solid-js в
 //     проекте нет;
-//   • `textArgs` и тип `LangPackKey`: langPack не портирован. `text` — обычная
-//     строка, узел собирается как у tweb `i18n()` — `span.i18n` с текстом
-//     (та же подмена уже сделана в `components/chat/serviceMessage.ts`);
 //   • `new` (бейдж `span.btn-menu-item-badge`, tweb :147-152) — ветка мёртвая
 //     уже в tweb: `new: true` не ставит ни один потребитель меню (проверено
 //     grep'ом по репозиторию tweb), плюс тянет langPack-ключ 'New';
@@ -39,7 +36,7 @@ import setInnerHTML from '@helpers/dom/setInnerHTML'
 import type ListenerSetter from '@helpers/listenerSetter'
 import Icon from '@components/icon'
 import type { IconName } from '@core/tgico-icons'
-import i18nSpan from '@helpers/dom/i18nSpan'
+import { i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
 
 export type ButtonMenuItemOptions = {
   /** имя глифа; хвост после первого слова уезжает в className пункта
@@ -50,16 +47,19 @@ export type ButtonMenuItemOptions = {
   danger?: boolean,
   className?: string,
   /**
-   * УЖЕ ПЕРЕВЕДЁННАЯ строка, а не ключ: `ButtonMenuItem` кладёт её прямо в
-   * `i18nSpan`. Это ОБРАТНО тому, как устроены `Button`/`Row`/`SettingSection`/
-   * `SliderSuperTab.setTitle`/`toastNew`, которые принимают ключ и переводят
-   * сами, — и на этой разнице волна 2 уже посадила боевой дефект (сырой ключ
-   * `'Terminate'` в контекстном меню вкладки «Устройства»). У tweb такого
-   * раскола нет: там и `i18n(text)` здесь, и `i18n(text)` в `button.ts` берут
-   * `LangPackKey`. Раскол снимает #109 (порт `langPack`), до тех пор перевод —
-   * на вызывающем: `text: t('Terminate')`.
+   * КЛЮЧ, а не готовая строка (tweb :38) — переводит сам пункт меню.
+   *
+   * До задачи 7 здесь стояла «уже переведённая строка», ОБРАТНО тому, как
+   * устроены `Button`/`Row`/`SettingSection`/`SliderSuperTab.setTitle`/
+   * `toastNew`. По сигнатуре (`text?: string` против `text: LangPackKey`) одно
+   * от другого не отличалось, и волна 2 на этом посадила боевой дефект: сырой
+   * `'Terminate'` в контекстном меню вкладки «Устройства». Роль поля теперь
+   * выражена ТИПОМ: ключ — сюда, готовое содержимое — в `regularText`.
    */
-  text?: string,
+  text?: LangPackKey,
+  textArgs?: FormatterArguments,
+  /** ГОТОВОЕ содержимое (узел или строка) — то, что переводом не является
+   *  вовсе: имя пира, эмодзи-набор, отформатированное число (tweb :40). */
   regularText?: Parameters<typeof setInnerHTML>[1],
   /** результат не читается (в tweb тип возврата `any`; `void` в TS принимает
    *  любой возврат, включая `Promise` асинхронных обработчиков) */
@@ -111,9 +111,8 @@ export function ButtonMenuItem(options: ButtonMenuItemOptions) {
 
   let textElement = options.textElement
   if(!textElement) {
-    // tweb: `text ? i18n(text, textArgs) : document.createElement('span')`;
-    // `i18n()` возвращает `span.i18n` с готовым текстом — его и собираем.
-    textElement = options.textElement = text ? i18nSpan(text) : document.createElement('span')
+    // tweb :106
+    textElement = options.textElement = text ? i18n(text, options.textArgs) : document.createElement('span')
     if(options.regularText) {
       setInnerHTML(textElement, options.regularText)
       textElement.dir = ''

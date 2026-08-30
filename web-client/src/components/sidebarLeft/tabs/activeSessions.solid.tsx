@@ -47,7 +47,6 @@ import positionMenu from '@helpers/positionMenu'
 import contextMenuController from '@helpers/contextMenuController'
 import { useSuperTab } from '@components/solidJsTabs/superTabProvider.solid'
 import type { AppActiveSessionsTab } from '@components/solidJsTabs/tabs'
-import { useI18nStore } from '@/i18n'
 
 const ActiveSessions: Component = () => {
   const [tab] = useSuperTab<typeof AppActiveSessionsTab>()
@@ -100,7 +99,7 @@ const ActiveSessions: Component = () => {
         attachClickEvent(btnTerminate, () => {
           PopupElement.createPopup(PopupPeer, 'revoke-session', {
             buttons: [{
-              text: useI18nStore.getState().t('Terminate'),
+              langKey: 'Terminate',
               isDanger: true,
               callback: () => {
                 const toggle = toggleDisability([btnTerminate], true)
@@ -147,7 +146,7 @@ const ActiveSessions: Component = () => {
 
       PopupElement.createPopup(PopupPeer, 'revoke-session', {
         buttons: [{
-          text: useI18nStore.getState().t('Terminate'),
+          langKey: 'Terminate',
           isDanger: true,
           callback: () => {
             tab.managers!.sessions.terminate(Number(hash))
@@ -166,14 +165,13 @@ const ActiveSessions: Component = () => {
     const element = menuElement = ButtonMenuSync({
       buttons: [{
         icon: 'stop',
-        // `t(...)` ОБЯЗАТЕЛЕН: `ButtonMenuItem` кладёт `text` прямо в
-        // `i18nSpan` (`buttonMenu.ts::ButtonMenuItem`), то есть переводит
-        // ВЫЗЫВАЮЩИЙ — в отличие от `Button`/`Row`/`SettingSection`, которые
-        // переводят у себя. Сырой ключ показывал в русском интерфейсе
-        // «Terminate» вместо «Завершить» (найдено живой проверкой стенда). См.
-        // #109: с портом `langPack` обе стороны снова станут `LangPackKey`, и
-        // разница исчезнет.
-        text: useI18nStore.getState().t('Terminate'),
+        // Ключ, а не готовая строка: с задачи 7 `ButtonMenuItem.text` это
+        // `LangPackKey`, как и у `Button`/`Row`/`SettingSection` (и как у tweb).
+        // Раньше здесь стоял `t('Terminate')` — потому что пункт меню переводил
+        // ВЫЗЫВАЮЩИЙ, а кнопки и строки переводили себя сами, и по сигнатуре одно
+        // от другого не отличалось; на этой разнице волна 2 показала в русском
+        // интерфейсе «Terminate» вместо «Завершить».
+        text: 'Terminate',
         onClick: onTerminateClick,
       }],
     })

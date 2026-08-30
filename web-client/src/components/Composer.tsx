@@ -262,7 +262,7 @@ function Composer({
         confirmationPopup({
           titleLangKey: 'DiscardVoiceMessageTitle',
           descriptionLangKey: 'Composer.DiscardVoice.Text',
-          button: { text: t('Discard'), isDanger: true },
+          button: { langKey: 'Discard', isDanger: true },
         }).then(() => rec.stop(false), () => {})
       }
     }

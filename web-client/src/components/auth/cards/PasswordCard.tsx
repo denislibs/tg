@@ -88,7 +88,7 @@ export default function PasswordCard({
     void confirmationPopup({
       titleLangKey: 'Login.ResetAccountFail.Title',
       descriptionLangKey: message,
-      button: { text: t('OK') },
+      button: { langKey: 'OK' },
     }).catch(() => {})
   }
 
@@ -123,7 +123,7 @@ export default function PasswordCard({
         await confirmationPopup({
           titleLangKey: 'Login.ResetPassword.Title',
           descriptionLangKey: 'Login.ResetPassword.NoEmailText',
-          button: { text: t('Login.ResetPassword.ResetAccount'), isDanger: true },
+          button: { langKey: 'Login.ResetPassword.ResetAccount', isDanger: true },
         })
       } catch { return } // Cancel/оверлей/Esc/Back — тот же исход, что onClose у снесённого попапа
       try {
@@ -136,7 +136,7 @@ export default function PasswordCard({
         await confirmationPopup({
           titleLangKey: 'Login.ResetAccount.Title',
           descriptionLangKey: 'Login.ResetAccount.Text',
-          button: { text: t('Login.ResetPassword.ResetAccount'), isDanger: true },
+          button: { langKey: 'Login.ResetPassword.ResetAccount', isDanger: true },
         })
       } catch { return }
       void resetAccount()

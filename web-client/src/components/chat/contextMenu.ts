@@ -146,8 +146,10 @@
  *    (`isLocalMessageId`), `message.error` — флаг `failed`;
  *  • `PeerId.isUser()` → `isUser(peerId)` (`core/peers/peerId.ts`), права —
  *    `hasRightsPeer` (`core/peerCache.ts`), как и в `peerTitle.ts`;
- *  • `LangPackKey` + `i18n()` → строка через `useI18nStore.getState().t`:
- *    langPack не портирован (та же подмена в `components/buttonMenu.ts`);
+ *  • подписи пунктов — `LangPackKey`, как в оригинале: переводит сам
+ *    `ButtonMenuItem`. До задачи 7 здесь стоял `t(key)` (пункт меню ждал
+ *    ГОТОВУЮ строку) — раскол контракта, из-за которого волна 2 показала в
+ *    контекстном меню сырой ключ;
  *  • `getAppWindow()`/`getOverlayRoot()` (окно Document PiP) → `window`/
  *    `document.body`;
  *  • поле `isLegacy` (`messagePeerId !== chat.peerId`, verify Reply/Pin/
@@ -588,8 +590,6 @@ export default class ChatContextMenu {
 
   /** Порт `setButtons` (:715-1315) — состав и ПОРЯДОК оригинала. */
   private setButtons() {
-    const t = useI18nStore.getState().t
-
     this.buttons = [{
       // tweb :875-887 — пункт `views` личного чата: дата прочтения исходящего.
       // `onClick` оригинала открывает `PopupToggleReadDate`, когда время
@@ -602,7 +602,7 @@ export default class ChatContextMenu {
       },
     }, {
       icon: 'reply',
-      text: t('Reply'),
+      text: 'Reply',
       onClick: this.onReplyClick,
       verify: async() => !!this.message &&
         !this.isOutgoing(this.message) &&
@@ -610,18 +610,18 @@ export default class ChatContextMenu {
         (this.canForward(this.message) || !!await this.chat.canSend()),
     }, {
       icon: 'edit',
-      text: t('Edit'),
+      text: 'Edit',
       onClick: this.onEditClick,
       verify: () => this.canEditMessage(this.message, 'text') && this.chat.hasMessageInput(),
     }, {
       icon: 'factcheck',
       // tweb :1026 — текст зависит от наличия проверки у ГЛАВНОГО сообщения
-      text: (this.mainMessage as MessageReal | undefined)?.factcheck ? t('EditFactCheck') : t('AddFactCheck'),
+      text: (this.mainMessage as MessageReal | undefined)?.factcheck ? 'EditFactCheck' : 'AddFactCheck',
       onClick: this.onEditFactCheckClick,
       verify: () => !!this.mainMessage && this.canUpdateFactCheck(this.mainMessage),
     }, {
       icon: 'copy',
-      text: t('Copy'),
+      text: 'Copy',
       onClick: this.onCopyClick,
       verify: () => !this.noForwards &&
         !!this.message && !!getMessageText(this.message) &&
@@ -629,12 +629,12 @@ export default class ChatContextMenu {
         (!this.isAnchorTarget || getMessageText(this.message) !== this.target?.innerText),
     }, {
       icon: 'copy',
-      text: t('Chat.CopySelectedText'),
+      text: 'Chat.CopySelectedText',
       onClick: this.onCopyClick,
       verify: () => !this.noForwards && !!this.message && !!getMessageText(this.message) && this.isTextSelected,
     }, {
       icon: 'search',
-      text: t('Chat.Context.SearchSelected'),
+      text: 'Chat.Context.SearchSelected',
       onClick: () => {
         const selection = window.getSelection()
         this.chat.initSearch({ query: selection?.toString() })
@@ -642,7 +642,7 @@ export default class ChatContextMenu {
       verify: () => !!this.message && !!getMessageText(this.message) && this.isTextSelected,
     }, {
       icon: 'copy',
-      text: t('Copy'),
+      text: 'Copy',
       onClick: this.onCopyClick,
       verify: () => {
         if(!this.isSelected || this.noForwards) {
@@ -654,13 +654,13 @@ export default class ChatContextMenu {
       withSelection: true,
     }, {
       icon: 'copy',
-      text: this.isEmailTarget ? t('Text.Context.Copy.Email') : t('CopyLink'),
+      text: this.isEmailTarget ? 'Text.Context.Copy.Email' : 'CopyLink',
       onClick: this.onCopyAnchorLinkClick,
       verify: () => this.isAnchorTarget,
       withSelection: true,
     }, {
       icon: 'copy',
-      text: t('Text.Context.Copy.Username'),
+      text: 'Text.Context.Copy.Username',
       onClick: () => {
         void copyTextToClipboard(this.target?.textContent ?? '')
       },
@@ -668,7 +668,7 @@ export default class ChatContextMenu {
       withSelection: true,
     }, {
       icon: 'copy',
-      text: t('Text.Context.Copy.Hashtag'),
+      text: 'Text.Context.Copy.Hashtag',
       onClick: () => {
         void copyTextToClipboard(this.target?.textContent ?? '')
       },
@@ -676,14 +676,14 @@ export default class ChatContextMenu {
       withSelection: true,
     }, {
       icon: 'link',
-      text: t('MessageContext.CopyMessageLink1'),
+      text: 'MessageContext.CopyMessageLink1',
       onClick: this.onCopyLinkClick,
       verify: () => isChannelPeer(this.peerId) &&
         !!this.message &&
         !this.isOutgoing(this.message),
     }, {
       icon: 'pin',
-      text: t('Message.Context.Pin'),
+      text: 'Message.Context.Pin',
       onClick: this.onPinClick,
       verify: () => !!this.message &&
         !this.isOutgoing(this.message) &&
@@ -692,17 +692,17 @@ export default class ChatContextMenu {
         this.canPinMessage(this.message.peerId),
     }, {
       icon: 'unpin',
-      text: t('Message.Context.Unpin'),
+      text: 'Message.Context.Unpin',
       onClick: this.onUnpinClick,
       verify: () => !!this.message?.pFlags.pinned && this.canPinMessage(this.message.peerId),
     }, {
       icon: 'download',
-      text: t('MediaViewer.Context.Download'),
+      text: 'MediaViewer.Context.Download',
       onClick: () => ChatContextMenu.onDownloadClick(this.managers, this.message, this.noForwards),
       verify: () => ChatContextMenu.canDownload(this.message, this.target, this.noForwards),
     }, {
       icon: 'checkretract',
-      text: t('Chat.Poll.Unvote'),
+      text: 'Chat.Poll.Unvote',
       onClick: this.onRetractVote,
       verify: () => {
         const media = this.getPollMedia()
@@ -715,7 +715,7 @@ export default class ChatContextMenu {
       },
     }, {
       icon: 'stop',
-      text: t('Chat.Poll.Stop'),
+      text: 'Chat.Poll.Stop',
       onClick: this.onStopPoll,
       verify: () => {
         const media = this.getPollMedia()
@@ -726,12 +726,12 @@ export default class ChatContextMenu {
       },
     }, {
       icon: 'statistics',
-      text: t('Statistics'),
+      text: 'Statistics',
       onClick: this.onStatisticsClick,
       verify: this.canViewMessageStatistics,
     }, {
       icon: 'forward',
-      text: t('Forward'),
+      text: 'Forward',
       // let forward the message if it's outgoing but not ours (like a changelog)
       onClick: this.onForwardClick,
       verify: () => !this.noForwards &&
@@ -740,7 +740,7 @@ export default class ChatContextMenu {
         this.message._ !== 'messageService',
     }, {
       icon: 'forward',
-      text: t('Forward'),
+      text: 'Forward',
       onClick: this.onForwardClick,
       // tweb :1202 сверяется с кнопкой плашки (`selectionForwardBtn` +
       // её `disabled`); плашка у нас — порт-интерфейс без узлов, а факта
@@ -750,14 +750,14 @@ export default class ChatContextMenu {
       withSelection: true,
     }, {
       icon: 'download',
-      text: t('MediaViewer.Context.Download'),
+      text: 'MediaViewer.Context.Download',
       onClick: () => ChatContextMenu.onDownloadClick(this.managers, this.selectedMessages, this.noForwards),
       verify: () => !!this.selectedMessages &&
         ChatContextMenu.canDownload(this.selectedMessages, null, this.noForwards),
       withSelection: true,
     }, {
       icon: 'flag',
-      text: t('ReportChat'),
+      text: 'ReportChat',
       onClick: () => {
         const selection = this.selection
         const selectedMids = selection?.isSelecting && this.isSelected ?
@@ -777,13 +777,13 @@ export default class ChatContextMenu {
       withSelection: true,
     }, {
       icon: 'select',
-      text: t('Message.Context.Select'),
+      text: 'Message.Context.Select',
       onClick: this.onSelectClick,
       verify: () => !!this.message && this.message._ !== 'messageService' && !this.isSelected && this.isSelectable,
       withSelection: true,
     }, {
       icon: 'select',
-      text: t('Chat.Menu.ClearSelection'),
+      text: 'Chat.Menu.ClearSelection',
       onClick: this.onClearSelectionClick,
       verify: () => this.isSelected,
       withSelection: true,
@@ -801,13 +801,13 @@ export default class ChatContextMenu {
     }, {
       icon: 'delete',
       className: 'danger',
-      text: t('Delete'),
+      text: 'Delete',
       onClick: this.onDeleteClick,
       verify: () => this.canDeleteMessage(this.message),
     }, {
       icon: 'delete',
       className: 'danger',
-      text: t('Delete'),
+      text: 'Delete',
       onClick: this.onDeleteClick,
       // tweb :1287 сверяется с `selectionDeleteBtn.disabled` — см. Forward выше
       verify: () => this.isSelected && !!this.selection?.length(),

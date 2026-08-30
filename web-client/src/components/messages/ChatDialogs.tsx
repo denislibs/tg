@@ -94,7 +94,7 @@ export function openDeleteMessageDialog({ peerId, managers, canRevoke, count = 1
     // сообщении писал «Delete 1 messages»).
     ...(single
       ? { titleLangKey: 'DeleteSingleMessagesTitle' as const }
-      : { titleText: useI18nStore.getState().tArgs('DeleteMessagesCount', [count]) }),
+      : { titleLangKey: 'DeleteMessagesCount' as const, titleLangArgs: [count] }),
     descriptionLangKey: single ? 'AreYouSureDeleteSingleMessage' : 'AreYouSureDeleteFewMessages',
     checkboxes: withCheckbox ? [{
       text: chatType === 'private' && peerFirstName
@@ -102,7 +102,7 @@ export function openDeleteMessageDialog({ peerId, managers, canRevoke, count = 1
         : t('DeleteChat.DeleteGroupForAll'),
     }] : undefined,
     buttons: [{
-      text: t('Delete'),
+      langKey: 'Delete',
       isDanger: true,
       callback: (checked) => {
         deleted = true
