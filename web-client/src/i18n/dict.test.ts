@@ -31,6 +31,62 @@ function apply(code: Code) {
 
 const text = (key: LangPackKey, args: (string | number)[]) => i18n(key, args).textContent
 
+// Состав словарей ничем, кроме этого пина, не держится: молча уронить строку могут обе
+// самые массовые задачи волны — кодмод задачи 6 и снос `t()` задачей 9. Потеря выглядит
+// не как падение, а как английский текст у русского пользователя, и без пина сборка
+// про неё молчит. Числа — не данные и не тавтология: они считаются из словаря, а не из
+// него же берутся, и обновлять их можно только осознанно.
+//
+// `fingerprint` нужен сверх чисел: переименование ключа их не меняет, а перевод при этом
+// теряется точно так же. Изменили словарь намеренно — обновите снимок ЗДЕСЬ и объясните
+// в теле коммита, что именно ушло и пришло.
+const COMPOSITION = {
+  ru: { keys: 1170, plural: 1, legacy: 1186 },
+  uk: { keys: 675, plural: 1, legacy: 689 },
+  es: { keys: 674, plural: 1, legacy: 688 },
+  de: { keys: 674, plural: 1, legacy: 688 },
+  fr: { keys: 674, plural: 1, legacy: 688 },
+}
+
+// es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
+// снимок считается по ключам, а не по текстам.
+const FINGERPRINT = {
+  ru: 'ea1a755f',
+  uk: 'd156f216',
+  es: '5c4b3ffe',
+  de: '5c4b3ffe',
+  fr: '5c4b3ffe',
+}
+
+/** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
+function fingerprint(keys: string[]) {
+  let h = 0x811c9dc5
+  for (const ch of [...keys].sort().join('\n')) {
+    h ^= ch.codePointAt(0)!
+    h = Math.imul(h, 0x01000193) >>> 0
+  }
+  return h.toString(16).padStart(8, '0')
+}
+
+describe('состав словарей под пином', () => {
+  it('число строк по языкам не менялось', () => {
+    const got = Object.fromEntries(Object.entries(DICTS).map(([code, strings]) => [code, {
+      keys: strings.length,
+      plural: strings.filter((string) => string._ === 'langPackStringPluralized').length,
+      // Сколько старых строк ещё получают перевод — это и видит пользователь до задачи 9.
+      legacy: Object.keys(toLegacyDict(strings)).length,
+    }]))
+    expect(got).toEqual(COMPOSITION)
+  })
+
+  it('набор ключей по языкам не менялся', () => {
+    const got = Object.fromEntries(
+      Object.entries(DICTS).map(([code, strings]) => [code, fingerprint(strings.map((s) => s.key))]),
+    )
+    expect(got).toEqual(FINGERPRINT)
+  })
+})
+
 describe('формы числа выбирает язык, а не вызывающий', () => {
   // Числа выбраны по границам русского правила: 1 — one, 2 — few, 5 — many, 21 — снова
   // one. Именно 21 ловит «взяли форму по последней цифре наоборот» и «few вместо many».
@@ -52,6 +108,16 @@ describe('формы числа выбирает язык, а не вызыва�
       '5 сповіщень',
       '21 сповіщення',
     ])
+  })
+
+  // Слот `other` у славянских языков достаётся ТОЛЬКО дробным, и там родительный
+  // единственного, а не форма `many`. Проверка держит это утверждение данными: без неё
+  // комментарий у словаря обещал бы больше, чем в нём лежит.
+  it('дробное число берёт other, и это не форма many', () => {
+    apply('ru')
+    expect(text('Notifications.Count', [1.5])).toBe('1.5 уведомления')
+    apply('uk')
+    expect(text('Notifications.Count', [1.5])).toBe('1.5 сповіщення')
   })
 
   // У немецкого, испанского и французского форм всего две — и это не «недоперевод»,
@@ -103,11 +169,12 @@ describe('формы числа выбирает язык, а не вызыва�
 // «перевода нет» были неразличимы. Теперь ключ символический — и совпадение перевода
 // с английским источником означает, что переводить забыли.
 //
-// Проверка идёт по КИРИЛЛИЧЕСКИМ языкам: у них латинская строка почти наверняка
-// недосмотр. Для de/es/fr она смысла не имеет — там десятки строк совпадают с
-// английским законно («Album», «Navigation», «Discussion», «Spoiler»), и список
-// исключений на 35 записей был бы затычкой, а не проверкой (числа — в отчёте задачи).
-const SAME_AS_ENGLISH: Record<'ru' | 'uk', Partial<Record<LangPackKey, string>>> = {
+// Совпадение НЕ ВСЕГДА недосмотр: у латиницы десятки слов законно пишутся так же
+// («Album», «Navigation», «Discussion», «Spoiler», единицы «KB/MB/GB»). Поэтому список
+// поимённый, а не «этот язык не проверяем»: снимок закрыт проверкой «исключения не
+// протухли» — вписанный сюда переведённый ключ её краснит, и список не превращается
+// в затычку. Новая непереведённая строка в любом из пяти языков теперь красит сборку.
+const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
   ru: {
     'Premium.Boarding.Title': 'название продукта — «Telegram Premium» не переводится',
     TelegramStars: 'название валюты — «Telegram Stars» не переводится',
@@ -120,10 +187,95 @@ const SAME_AS_ENGLISH: Record<'ru' | 'uk', Partial<Record<LangPackKey, string>>>
     PaymentShippingEmailPlaceholder: '«Email» — запозичення, в українському Telegram так само',
     AttachGif: 'GIF — абревіатура формату, не перекладається',
   },
+  es: {
+    'Premium.Boarding.Title': 'nombre del producto — «Telegram Premium» не переводится',
+    AutoDownloadVideos: '«videos» — допустимое испанское написание (лат.-амер. норма)',
+    FilterPersonal: '«personal» — испанское слово, пишется так же',
+    ReportChatSpam: '«spam» — заимствование, в испанском Telegram так же',
+    FilterChats: '«chats» — заимствование с испанским множественным',
+    'SharedMedia.Audio': '«audio» — латинское слово, совпадает',
+    'Unit.Minutes.Abbr': '«min» — международное сокращение минуты',
+    'StorageQuota.CacheSizeLimitAuto': '«auto» — сокращение от «automático»',
+    'Unit.Bytes': 'B — единица информации, не переводится',
+    'Unit.Kilobytes': 'KB — единица информации, не переводится',
+    'Unit.Megabytes': 'MB — единица информации, не переводится',
+    'Unit.Gigabytes': 'GB — единица информации, не переводится',
+    'KeyboardShortcuts.Action.Spoiler': '«spoiler» — заимствование',
+    'KeyboardShortcuts.Section.Chat': '«chat» — заимствование',
+    AttachGif: 'GIF — аббревиатура формата',
+    AttachSticker: '«sticker» — заимствование, в испанском Telegram так же',
+  },
+  de: {
+    'Theme.System': '«System» — немецкое слово, пишется так же',
+    Stories: '«Stories» — заимствование, в немецком Telegram так же',
+    Online: '«online» — заимствование',
+    'Premium.Boarding.Title': 'название продукта — «Telegram Premium» не переводится',
+    AutodownloadPrivateChats: '«Private Chats» — немецкое «privat» плюс заимствованное «Chats»',
+    AutoDownloadVideos: '«Videos» — немецкое множественное от «Video»',
+    'Stars.Wallet': '«Wallet» — заимствование, немецкого эквивалента в Telegram нет',
+    ReportChatSpam: '«Spam» — заимствование',
+    Info: '«Info» — немецкое сокращение от «Information»',
+    SetUrlPlaceholder: '«Link» — немецкое слово',
+    UserBio: '«Bio» — сокращение, совпадает',
+    SharedLinksTab2: '«Links» — немецкое множественное от «Link»',
+    FilterChats: '«Chats» — заимствование',
+    'NewPoll.Option': '«Option» — немецкое слово',
+    'Chat.Poll.Type.Quiz': '«Quiz» — немецкое слово',
+    'SharedMedia.Audio': '«Audio» — совпадает',
+    'EditProfile.FirstNameLabel': '«Name» — немецкое слово',
+    'EditProfile.BioLabel': '«Bio (optional)» — оба слова немецкие',
+    'Settings.Limits': '«Limits» — заимствование, немецкое множественное',
+    'Privacy.Passkeys': '«Passkeys» — термин без немецкого эквивалента',
+    'Passkeys.Item': '«Passkey» — тот же термин в единственном',
+    'StorageQuota.CacheSizeLimitAuto': '«Auto» — сокращение от «automatisch»',
+    'Unit.Bytes': 'B — единица информации, не переводится',
+    'Unit.Kilobytes': 'KB — единица информации, не переводится',
+    'Unit.Megabytes': 'MB — единица информации, не переводится',
+    'Unit.Gigabytes': 'GB — единица информации, не переводится',
+    'KeyboardShortcuts.Action.Monospace': '«Monospace» — типографский термин',
+    'KeyboardShortcuts.Action.Spoiler': '«Spoiler» — немецкое слово',
+    'KeyboardShortcuts.Section.Chat': '«Chat» — заимствование',
+    'KeyboardShortcuts.Section.Navigation': '«Navigation» — немецкое слово',
+    AttachAlbum: '«Album» — немецкое слово',
+    AttachVideo: '«Video» — немецкое слово',
+    AttachGif: 'GIF — аббревиатура формата',
+    AttachSticker: '«Sticker» — немецкое слово',
+  },
+  fr: {
+    Stories: '«Stories» — заимствование, во французском Telegram так же',
+    'Premium.Boarding.Title': 'название продукта — «Telegram Premium» не переводится',
+    Notifications: '«notifications» — французское слово',
+    AutoDownloadPhotos: '«photos» — французское слово',
+    'CallSettings.Microphone': '«microphone» — французское слово',
+    Contacts: '«contacts» — французское слово',
+    Message: '«message» — французское слово',
+    ReportChatSpam: '«spam» — заимствование',
+    ReportChatViolence: '«violence» — французское слово',
+    UserBio: '«bio» — сокращение от «biographie»',
+    'PeerInfo.Discussion': '«discussion» — французское слово',
+    DescriptionPlaceholder: '«description» — французское слово',
+    SearchMessages: '«messages» — французское слово',
+    'VoiceChat.Status.ParticipantsSuffix': '«participants» — французское слово',
+    'NewPoll.Option': '«option» — французское слово',
+    'Chat.Poll.Type.Quiz': '«quiz» — заимствование',
+    AttachContact: '«contact» — французское слово',
+    'SharedMedia.Audio': '«audio» — французское слово',
+    Animations: '«animations» — французское слово',
+    Exceptions: '«exceptions» — французское слово',
+    'Unit.Minutes.Abbr': '«min» — сокращение от «minute»',
+    'StorageQuota.CacheSizeLimitAuto': '«auto» — сокращение от «automatique»',
+    'KeyboardShortcuts.Action.Monospace': '«monospace» — типографский термин',
+    'KeyboardShortcuts.Action.Spoiler': '«spoiler» — заимствование',
+    'KeyboardShortcuts.Section.Navigation': '«navigation» — французское слово',
+    AttachAlbum: '«album» — французское слово',
+    AttachPhoto: '«photo» — французское слово',
+    AttachGif: 'GIF — аббревиатура формата',
+    AttachSticker: '«sticker» — заимствование',
+  },
 }
 
 describe('непереведённый ключ виден как отсутствие перевода', () => {
-  for (const code of ['ru', 'uk'] as const) {
+  for (const code of Object.keys(DICTS) as Code[]) {
     it(`в ${code}-словаре нет ключей со значением, равным английскому источнику`, () => {
       const allowed = SAME_AS_ENGLISH[code]
       const suspicious = DICTS[code]
@@ -138,7 +290,7 @@ describe('непереведённый ключ виден как отсутст
   it('исключения не протухли: каждое всё ещё совпадает с источником', () => {
     // Иначе список живёт своей жизнью и прикрывает ключи, которых давно нет.
     const stale: string[] = []
-    for (const code of ['ru', 'uk'] as const) {
+    for (const code of Object.keys(DICTS) as Code[]) {
       const byKey = new Map(DICTS[code].map((string) => [string.key, string]))
       for (const key of Object.keys(SAME_AS_ENGLISH[code])) {
         const string = byKey.get(key)

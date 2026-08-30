@@ -71,12 +71,14 @@ const uk = {
   'Notifications.New': 'Нове сповіщення',
   // Заголовок вкладки при нових сповіщеннях (tweb 'Notifications.Count').
   // Слоти названі за CLDR: few — 2-4, many — 5-20 тощо; форму за числом обирає ядро
-  // (`Intl.PluralRules` у `I18n.format`), а не той, хто викликає.
+  // (`Intl.PluralRules` у `I18n.format`), а не той, хто викликає. `other` дістається
+  // лише дробовим («1,5 сповіщення») — там родовий однини, той самий текст, що й у
+  // `few`, а не форма `many`.
   'Notifications.Count': {
     one_value: '%d сповіщення',
     few_value: '%d сповіщення',
     many_value: '%d сповіщень',
-    other_value: '%d сповіщень',
+    other_value: '%d сповіщення',
   },
   'ChatList.Mute.1Hour': 'На 1 годину',
   'ChatList.Mute.4Hours': 'На 4 години',

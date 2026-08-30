@@ -161,11 +161,20 @@ const lang = {
   ChannelSignProfilesInfo: 'Add names and photos of admins to the messages they post, linking to their profiles.',
   ChannelType: 'Channel Type',
   'Chat.Accessory.Edit': 'Edit message',
-  // Ключ оригинала — форма числа со счётчиком внутри (`Forward %d Messages`), а наша плашка
-  // композера печатает надпись БЕЗ числа: их два готовых варианта, `.One` и `.Many`. Это то же
-  // правило, по которому заведены `*Suffix` (задача 1): взять ключ оригинала значило бы отдать
-  // кодмоду задачи 6 строку, которая нарисует `%d` буквой. Сам `Chat.Accessory.Forward` оставлен
-  // с текстом оригинала — в него плашка уедет задачей 6 вместе с правкой вызывающего.
+  // ЗАДАЧА 6, плашка пересылки в композере. У оригинала обе надписи — ФОРМЫ ЧИСЛА со
+  // счётчиком внутри (`Chat.Accessory.Forward`, `Chat.Accessory.Hidden`), а наша плашка
+  // печатает надпись БЕЗ числа и держит два готовых варианта. Ключ оригинала за нашей
+  // строкой не закреплён по тому же правилу, что и `*Suffix` (задача 1): кодмод подставил
+  // бы в место без числа строку с `%d`, и `%d` нарисовался бы буквой.
+  //
+  // Пока задача 6 не правит вызывающего (`components/composer`), расхождение такое:
+  //  • `Chat.Accessory.Forward` — КЛЮЧ-СИРОТА: текст оригинала есть, вызывающих и
+  //    переводов ноль. Сиротой он перестанет быть, когда плашка начнёт звать его с числом;
+  //  • `Chat.Accessory.Forward.Hidden` — наша ПЛОСКАЯ строка там, где у оригинала
+  //    плюральный `Chat.Accessory.Hidden` (`{one_value: 'Forward Message (sender\'s name
+  //    hidden)', other_value: 'Forward %d Messages (senders\' names hidden)'}`, tweb
+  //    lang.ts:3436). Имя ключа наше, поэтому сверка с оригиналом её и не ловит;
+  //  • `Chat.Accessory.Forward.One` / `.Many` — наши варианты без числа, они и уедут.
   'Chat.Accessory.Forward': { one_value: 'Forward Message', other_value: 'Forward %d Messages' },
   'Chat.Accessory.Forward.Hidden': 'Forward Message (sender name hidden)',
   'Chat.Accessory.Forward.Many': 'Forward Messages',
