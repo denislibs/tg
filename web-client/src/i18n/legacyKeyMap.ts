@@ -3,7 +3,10 @@ import type { LangPackKey } from '../lang'
 /**
  * Старый ключ («ключ = английская строка») → символический ключ `lang.ts`.
  * По этой карте задача 6 пройдёт кодмодом по вызовам `t()`; сама карта ничего не подключает.
- * Сгруппировано по месту в коде — чтобы дифф читался подсистемами, а не одним полотном.
+ * Сгруппировано по папке, где строка встречается — вызовом `t('…')` либо литералом, который
+ * приезжает в `t()` переменной (`<Section caption="Chat">`), — чтобы дифф читался
+ * подсистемами, а не одним полотном. Файлы, которые вообще ничего не переводят, местом не
+ * считаются: иначе в секцию попадала бы чужая таблица (`components/folders/labels.ts`).
  */
 export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   // ── App.tsx ──
@@ -15,15 +18,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   '%d notifications (few)': 'Notifications.Count',
   'New notification': 'Notifications.New',
 
-  // ── client/realtime ──
-  channel: 'InactiveChannel.Broadcast',
-  s: 'Unit.Seconds.Short',
-  user: 'Peer.Type.User',
-
   // ── components ──
-  '1 day': 'Duration.Days1',
-  '1 month': 'Duration.Months1',
-  '1 week': 'Duration.Weeks1',
   '12-hour': 'General.TimeFormat.h12',
   '24-hour': 'General.TimeFormat.h23',
   Accept: 'Call.Accept',
@@ -54,8 +49,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Auto-delete': 'AutoDeleteMessagesShort',
   'Auto-renew is off. Your Premium subscription will end on the date above.': 'Premium.Manage.AutoRenewOffHint',
   'Available in %s': 'Stories.StealthMode.Cooldown',
-  B: 'Unit.Bytes',
-  Back: 'StarsRating.Back',
+  Back: 'Common.Back',
   'Back to Tab': 'Pip.BackToTab',
   Bio: 'UserBio',
   'Bio copied to clipboard': 'BioCopied',
@@ -86,8 +80,6 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Checklist Title': 'Checklist.TitlePlaceholder',
   'Child Abuse': 'ReportChatChild',
   Clear: 'Clear',
-  'Clear History': 'Calendar.ClearHistory',
-  ClearOtherSessionsHelp: 'ClearOtherSessionsHelp',
   Close: 'Close',
   'Close Friends': 'CloseFriends.Title',
   'Close Topic': 'CloseTopic',
@@ -102,9 +94,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   Create: 'Create',
   'Create Giveaway': 'Giveaway.Create',
   'Creating…': 'Common.Creating',
-  CurrentSession: 'CurrentSession',
   'Custom Emoji': 'Premium.Feature.Emoji.Title',
-  'Dark Mode': 'DarkMode',
   'Data and Storage': 'DataSettings',
   'Date when giveaway ends': 'BoostsViaGifts.End',
   Decline: 'Call.Decline',
@@ -115,10 +105,8 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Delete Group': 'DeleteMega',
   'Delete story': 'DeleteStoryTitle',
   'Description (optional)': 'DescriptionOptionalPlaceholder',
-  Devices: 'Devices',
   'Disable Animations': 'DisableAnimations',
   'Disable Sharing': 'DisableSharing',
-  Disabled: 'Checkbox.Disabled',
   Discard: 'Discard',
   'Discard voice message?': 'DiscardVoiceMessageTitle',
   Discussion: 'PeerInfo.Discussion',
@@ -134,7 +122,6 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Edit story': 'Story.Edit',
   'Emoji Status': 'Premium.Feature.Status.Title',
   'Enable Animations': 'EnableAnimations',
-  'Encryption Key': 'SecretChat.EncryptionKey',
   'Encryption key': 'Call.EncryptionKey',
   'End call': 'CallSettings.EndCall',
   'Enter URL': 'MarkupTooltip.LinkPlaceholder',
@@ -167,7 +154,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Incoming video call': 'CallMessageVideoIncoming',
   Info: 'Info',
   'Install App': 'PWA.Install',
-  Join: 'Rtmp.Topbar.Join',
+  Join: 'ChannelJoin',
   'Jump to Date': 'JumpToDate',
   'Key copied to clipboard': 'Rtmp.StreamPopup.KeyCopied',
   'Keyboard Shortcuts': 'KeyboardShortcuts.Title',
@@ -181,7 +168,6 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Leave empty to publish anytime.': 'SuggestedPosts.PublishingTime.Hint',
   Level: 'BoostsLevel2',
   Link: 'SetUrlPlaceholder',
-  'Link copied to clipboard.': 'LinkCopied',
   Links: 'SharedLinksTab2',
   'Live Stream': 'Rtmp.Topbar.Title',
   Loading: 'Loading',
@@ -250,7 +236,6 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   Outgoing: 'StarsTransactionsOutgoing',
   Overview: 'StatisticOverview',
   Passcode: 'PasscodeLock.Title',
-  Pause: 'Media.Pause',
   Pay: 'Checkout.PasswordEntry.Pay',
   Payment: 'Payment.Title',
   'Payment failed. Please try again.': 'Payment.Failed',
@@ -260,7 +245,6 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Picture in Picture': 'Pip.Title',
   'Picture-in-Picture is not supported in this browser.': 'Pip.Unsupported',
   Pin: 'ChatList.Context.Pin',
-  Play: 'Media.Play',
   Poll: 'Poll',
   'Poll options': 'PollOptions',
   Pornography: 'ReportChatPornography',
@@ -314,11 +298,9 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Scheduled for today': 'Chat.Date.ScheduledForToday',
   'Scheduled until online': 'MessageScheduledUntilOnline',
   Search: 'Search',
-  'Select Messages': 'Chat.Menu.SelectMessages',
   'Select the correct answer in the list of options.': 'NewPoll.QuizHint',
   'Send Now': 'MessageScheduleSend',
   'Send When Online': 'Schedule.SendWhenOnline',
-  'Send a Gift': 'Chat.Menu.SendGift',
   'Send on': 'Schedule.SendOn',
   'Send today at': 'Schedule.SendTodayAt',
   'Sending…': 'Report.Sending',
@@ -437,15 +419,12 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Your subscription renews automatically. Cancel to stop future charges — Premium stays active until it expires.': 'Premium.Manage.Hint',
   'Your suggestions': 'SuggestedPosts.YourSuggestions',
   at: 'ScheduleController.at',
-  bot: 'Bot',
-  d: 'Unit.Days.Short',
+  channel: 'InactiveChannel.Broadcast',
   edited: 'EditedMessage',
   'h ago': 'Story.Time.HoursAgo',
   'just now': 'StoryJustNow',
   'last seen recently': 'Lately',
   listening: 'VoiceChat.Status.Listening',
-  members: 'Group.MembersSuffix',
-  min: 'Unit.Minutes.Abbr',
   'min ago': 'Story.Time.MinutesAgo',
   mo: 'Unit.Months.Abbr',
   muted: 'VoiceChat.Status.Muted',
@@ -454,13 +433,13 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'per month': 'Stars.Subscriptions.PerMonth',
   subscribers: 'Channel.SubscribersSuffix',
   topics: 'ForumTopic.CountSuffix',
+  user: 'Peer.Type.User',
   video: 'Call.VideoToggle',
   '{n} watching': 'Livestream.Watching',
 
   // ── components/auth ──
   Country: 'Country',
-  GB: 'Unit.Gigabytes',
-  PM: 'AutoDownloadPm',
+  'Dark Mode': 'DarkMode',
 
   // ── components/auth/cards ──
   'A recovery email is linked to this account — reset it by email instead.': 'Login.ResetPassword.HasEmail',
@@ -468,6 +447,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Code expired. Please request a new one.': 'Login.Code.Expired',
   'Enter Your Password': 'Login.Password.Title',
   'Enter the code we just sent to your email': 'Login.ResetPassword.CodeHint',
+  'Enter your name and\nadd a profile photo': 'Login.Register.Subtitle',
   'First name (required)': 'FirstName',
   'Forgot Password?': 'Login.ForgotPassword',
   'Go to **Settings** > **Devices** > **Add Device**': 'Login.QR.Help2',
@@ -497,9 +477,12 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Something went wrong. Try again.': 'Login.Error.Generic',
   Sorry: 'Login.ResetAccountFail.Title',
   'Start Messaging': 'StartMessaging',
+  'This action can\'t be undone.\n\nIf you reset your account, all your messages and chats will be deleted.': 'Login.ResetAccount.Text',
   'Too many attempts. Please try again later.': 'Login.Error.FloodWait',
   Warning: 'Login.ResetAccount.Title',
+  'We have sent you an SMS\nwith the code.': 'Login.Code.SentSms',
   'Your Name': 'YourName',
+  'Your account is protected with\nan additional password': 'Login.Password.Subtitle',
   'and enter your phone number.': 'Login.StartText.Line2',
 
   // ── components/chat ──
@@ -538,7 +521,6 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Use search to quickly find things': 'ChatYourSelfDescription4',
   'Your cloud storage': 'ChatYourSelfTitle',
   'show when': 'PmReadShowWhen',
-  stickers: 'Stickers.CountSuffix',
 
   // ── components/composer ──
   Anonymously: 'Chat.SendAs.Anonymously',
@@ -584,7 +566,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Search Members': 'Search.Member',
   Selected: 'Chat.Selection.Selected',
   'Sending messages is not allowed in this group': 'GlobalSendMessageRestricted',
-  Start: 'Start',
+  Start: 'BotStart',
   Tags: 'SavedTag.Tags',
   'There were no messages from': 'Search.Empty.FromPrefix',
   'There were no results for': 'Search.Empty.QueryPrefix',
@@ -596,27 +578,19 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'without compression': 'Chat.DropAsFilesDesc',
 
   // ── components/emoji ──
-  Activity: 'Emoji.Activity',
   'Add to Favorites': 'AddToFavorites',
-  'Animals & Nature': 'Emoji.AnimalsAndNature',
   'Are you sure you want to clear your recent stickers?': 'Stickers.ClearRecent.Text',
   'Clear Recent Stickers': 'ClearRecentStickersAlertTitle',
   'Delete GIF': 'Gif.Delete',
   Favorites: 'FavoriteStickers',
-  Flags: 'Emoji.Flags',
-  'Food & Drink': 'Emoji.FoodAndDrink',
   'Frequently Used': 'Emoji.Recent',
   'No GIFs found': 'NoGIFsFound',
   'No emoji found.': 'NoEmojiFound',
   'No stickers found': 'NoStickersFound',
-  Objects: 'Emoji.Objects',
   'Remove from Favorites': 'Stickers.RemoveFromFavorites',
   'Search Emoji': 'SearchEmoji',
   'Search GIFs': 'SearchGIFs',
   'Search Stickers': 'StickersTab.SearchPlaceholder',
-  'Smileys & People': 'Emoji.SmilesAndPeople',
-  Symbols: 'Emoji.Symbols',
-  'Travel & Places': 'Emoji.TravelAndPlaces',
   Trending: 'Gif.Trending',
 
   // ── components/folders ──
@@ -625,8 +599,6 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Add Folder': 'SharedFolder.Link.Title',
   'Adding…': 'Folder.Invite.Adding',
   'All Chats': 'FilterAllChats',
-  Chat: 'KeyboardShortcuts.Section.Chat',
-  'Chat types': 'FilterChatTypes',
   'Chats with new messages.': 'FilterUnreadDescription',
   'Choose chats and types of chats that will appear and never appear in this folder.': 'FilterIncludeExcludeInfo',
   'Choose chats or types of chats that will appear in this folder.': 'FilterIncludeInfo',
@@ -644,6 +616,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Folders view': 'FiltersView',
   Groups: 'ChatList.Filter.Groups',
   'Included Chats': 'FilterInclude',
+  'Link copied to clipboard.': 'LinkCopied',
   'Messages from private chats.': 'FilterPersonalDescription',
   Muted: 'ChatList.Filter.MutedChats',
   'New Folder': 'FilterNew',
@@ -652,11 +625,11 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Please choose at least one chat for this folder.': 'EditFolder.Toast.ChooseChat',
   'Recommended Folders': 'FilterRecommended',
   'Remove Chats': 'FilterRemoveChats',
-  'Revoke Link': 'RevokeLink',
   'Show more': 'MiniApps.AppsMore',
   'This folder has no chats to share.': 'Folder.Share.Empty',
   'This link is invalid or has expired.': 'Folder.Invite.Invalid',
   'and join its chats?': 'Folder.Invite.Question.Suffix',
+  members: 'Group.MembersSuffix',
 
   // ── components/group ──
   'Add names and photos of admins to the messages they post, linking to their profiles.': 'ChannelSignProfilesInfo',
@@ -666,6 +639,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Chat history for new members': 'ChatHistory',
   'Delete and Leave Group': 'DeleteAndExitButton',
   Description: 'DescriptionPlaceholder',
+  Disabled: 'Checkbox.Disabled',
   'Group Type': 'GroupType',
   'Group members can discuss different topics in separate threads.': 'ForumTopic.EnableHint',
   'Invite Links': 'InviteLinks',
@@ -685,14 +659,11 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Add Subscribers': 'ChannelAddSubscribers',
   'Additional Links': 'InviteLinks.Additional',
   Admin: 'ChatAdmin',
-  'Admin Rights': 'EditAdmin',
-  'All reactions': 'AllReactions',
   'Anyone who has Telegram installed will be able to join your channel by following this link.': 'ChannelLinkInfo',
   'Anyone who has Telegram installed will be able to join your group by following this link.': 'InviteLinks.Description.Group',
   'Are you sure you want to delete all revoked links?': 'ManageLinks.DeleteAll.Confirm',
   'Are you sure you want to revoke this link? Once the link is revoked, no one will be able to join using it.': 'RevokeAlert',
   'Are you sure you want to unlink this group from the channel?': 'Discussion.Unlink.Text',
-  'Available reactions': 'AvailableReactions',
   'Ban and remove from group': 'UserRestrictionsBlock',
   'Charge stars per message from non-admins. 0 disables paid messages.': 'GroupPermissions.PaidMessages.Hint',
   'Choose how often members of the group are able to send messages.': 'SlowmodeInfo',
@@ -715,12 +686,8 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Link Name': 'InviteLinks.NameLabel',
   'Link Name (Optional)': 'LinkNameHint',
   Member: 'Group.MemberBadge',
-  'Members of this group can use any emoji as reactions to messages.': 'Reactions.All.Info',
-  'Members of this group cannot react to messages.': 'Reactions.None.Info',
   'New Link': 'NewLink',
-  'No reactions': 'NoReactions',
   'Only admins will see this name.': 'LinkNameHelp',
-  'Only allow these reactions': 'OnlyAllowThisReactions',
   Owner: 'ChannelCreator',
   'Paid messages': 'GroupPermissions.PaidMessages',
   'People can join your group by following this link. You can revoke the link any time.': 'MegaPrivateLinkHelp',
@@ -734,10 +701,10 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Restrict Member': 'UserRestrictions.Title',
   Restricted: 'Group.RestrictedBadge',
   Revoke: 'RevokeButton',
+  'Revoke Link': 'RevokeLink',
   'Revoked Links': 'RevokedLinks',
   'Select a group chat that will host comments from your channel.': 'DiscussionChannelHelp3',
   'Slow Mode': 'Slowmode',
-  'Some reactions': 'SomeReactions',
   'Stars per message': 'GroupPermissions.StarsPerMessage',
   'These members have limited rights in this group.': 'RestrictedUsers.Description',
   'This link is already taken.': 'LinkTaken',
@@ -748,9 +715,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Users removed by group admins cannot rejoin via invite links.': 'RemovedUsers.Description',
   'View link': 'InviteLinks.View',
   'What can members of this group do?': 'ChannelPermissionsHeader',
-  'What can this admin do?': 'EditAdminWhatCanDo',
   'What can this member do?': 'UserRestrictions.CanDoMember',
-  'You can select emoji that will allow members of this group to react to messages.': 'Reactions.Some.Info',
   'as the discussion board for this channel?': 'Discussion.Link.Question.Suffix',
   'can join': 'InviteLinks.CanJoinSuffix',
   joined: 'InviteLinks.JoinedSuffix',
@@ -761,23 +726,20 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   // ── components/mediaEditor ──
   'Are you sure you want to discard the changes?': 'MediaEditor.Discard.Text',
   'Aspect ratio': 'MediaEditor.AspectRatio',
-  Brightness: 'MediaEditor.Adjustments.Brightness',
   'Brush size': 'MediaEditor.BrushSize',
-  Contrast: 'MediaEditor.Adjustments.Contrast',
   Cover: 'MediaEditor.Cover',
   'Discard changes': 'MediaEditor.DiscardChanges',
-  Enhance: 'MediaEditor.Adjustments.Enhance',
   Flip: 'MediaEditor.Flip',
   Font: 'MediaEditor.Font',
   Free: 'MediaEditor.Free',
   Original: 'MediaEditor.Original',
+  Pause: 'Media.Pause',
+  Play: 'Media.Play',
   Reset: 'Reset',
   Rotate: 'MediaEditor.Rotate',
-  Saturation: 'MediaEditor.Adjustments.Saturation',
   Square: 'MediaEditor.Square',
   'Text size': 'MediaEditor.TextSize',
   Tool: 'MediaEditor.Tool',
-  Warmth: 'MediaEditor.Adjustments.Warmth',
 
   // ── components/messages ──
   'Add a caption…': 'PreviewSender.CaptionPlaceholder',
@@ -800,6 +762,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Send as file': 'SendAsFile',
   'Send as media': 'Popup.Attach.AsMedia',
   'Share with': 'ShareWith',
+  bot: 'Bot',
   'forward here to save': 'ChatYourSelf',
 
   // ── components/popups ──
@@ -811,12 +774,17 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
 
   // ── components/rightSidebar ──
   Added: 'Stickers.SearchAdded',
+  stickers: 'Stickers.CountSuffix',
 
   // ── components/secret ──
   'Compare these emoji with the ones your contact sees on their device. If they match, the chat is end-to-end encrypted.': 'SecretChat.KeyVerification.Hint',
+  'Encryption Key': 'SecretChat.EncryptionKey',
   'The encryption key has not been agreed yet.': 'SecretChat.KeyNotReady',
 
   // ── components/settings ──
+  '1 day': 'Duration.Days1',
+  '1 month': 'Duration.Months1',
+  '1 week': 'Duration.Weeks1',
   '1 year': 'Duration.Years1',
   '2 days': 'Duration.Days2',
   '2 months': 'Duration.Months2',
@@ -840,8 +808,6 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Add birthday': 'EditProfile.AddBirthdayRow',
   'Always Allow': 'PrivacySettingsController.AlwaysAllow',
   'Always Share With': 'PrivacySettingsController.AlwaysShare',
-  'Animated emoji': 'LiteMode.Key.emoji.Title',
-  Animations: 'Animations',
   'Any details such as age, occupation or city. Example: 23 y.o. designer from San Francisco.': 'Bio.Description',
   'Are you sure you want to clear %s of cached data?': 'StorageQuota.ClearConfirmation',
   'Are you sure you want to clear all cached data?': 'StorageQuota.ClearAllConfirmation',
@@ -860,14 +826,11 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Auto-lock': 'PasscodeLock.AutoLock',
   'Automatic media download': 'AutomaticMediaDownload',
   'Automatically lock the app if you are away for some time.': 'PasscodeLock.AutoLock.Caption',
-  'Autoplay GIFs': 'LiteMode.Key.gif.Title',
-  'Autoplay videos': 'LiteMode.Key.video.Title',
   'Bio (optional)': 'EditProfile.BioLabel',
   'Block User': 'BlockUser',
   'Block user...': 'BlockModal.Search.Placeholder',
   'Blocked Users': 'BlockedUsers',
   'Blocked users can\'t send you messages or add you to groups. They will not see your profile photos, online and last seen status.': 'BlockedUsersInfo',
-  'Blurred Image': 'ChatBackground.Blurred',
   Bold: 'KeyboardShortcuts.Action.Bold',
   'Cache size limit': 'StorageQuota.CacheSizeLimit',
   'Cached files': 'StorageQuota.CachedFiles',
@@ -876,9 +839,9 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Change Password': 'TwoStepAuth.ChangePassword',
   'Change Recovery Email': 'TwoStepAuth.ChangeEmail',
   'Change who can send you messages.': 'Privacy.MessagesCaption',
-  'Chat background animation': 'LiteMode.Key.background_animation.Title',
+  Chat: 'KeyboardShortcuts.Section.Chat',
   'Checking…': 'EditProfile.Username.Checking',
-  'Choose who can see your birthday on your profile.': 'Privacy.BirthdayCaption',
+  'Choose who can see your birthday on your profile.': 'Privacy.BirthdayChoose',
   'Clear All': 'StorageQuota.ClearAll',
   'Clear cache older than': 'StorageQuota.ClearCacheOlderThan',
   'Clear cached files': 'StorageQuota.ClearCachedFiles',
@@ -898,7 +861,6 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Delete cloud drafts': 'AreYouSureClearDraftsTitle',
   Device: 'CallSettings.Camera',
   Disable: 'Disable',
-  'Disable animations and effects to reduce power usage.': 'LiteMode.Caption',
   'Disable password': 'TurnPasswordOffQuestionTitle',
   'Double-tap a message to send this reaction quickly.': 'DoubleTapSettingInfo',
   'Drag and release or click to test the volume.': 'Notifications.Sound.Caption',
@@ -923,7 +885,6 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'If enabled, all new messages in chats you start will be automatically deleted for everyone at some point after they have been sent. Auto-delete in your previously created chats is enabled separately.': 'AutoDeleteMessages.SectionCaption',
   Images: 'StorageQuota.Images',
   'In settings you can choose who will see your birthday.': 'Birthday.PrivacyHint',
-  'Interface animations': 'LiteMode.Key.animations.Title',
   'Invalid password': 'TwoStepAuth.InvalidPassword',
   Italic: 'KeyboardShortcuts.Action.Italic',
   'Last Seen & Online': 'PrivacyLastSeen',
@@ -934,7 +895,6 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Log in safely and keep your account secure.': 'Passkey.Subtitle',
   'Log in with Face ID': 'Passkey.Row2.Title',
   'Loop Animated Stickers': 'InstalledStickers.LoopAnimated',
-  'Loop animated stickers': 'InstalledStickers.LoopAnimated',
   'Make a passkey to log in easily and safely.': 'Passkey.Row1.Subtitle',
   'Manage your sessions on all your devices.': 'SessionsInfo',
   'Maximum file size': 'AutoDownloadMaxFileSize',
@@ -942,7 +902,6 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Message Preview': 'MessagePreview',
   'Message Sent': 'Notifications.Sound.Sent',
   'Message Text Size': 'TextSize',
-  'Message Translation': 'Translate.SectionTitle',
   Microphone: 'CallSettings.Microphone',
   'Minimum 5 characters.': 'EditProfile.Username.TooShort',
   Monospace: 'KeyboardShortcuts.Action.Monospace',
@@ -968,6 +927,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   On: 'PrivacyAndSecurity.Item.On',
   'On for %1$s': 'AutoDownloadOnFor',
   'On in all chats': 'AutoDownloadOnAllChats',
+  PM: 'AutoDownloadPm',
   'Passcode Lock': 'PasscodeLock.Item.Title',
   'Passcode has been disabled.': 'PasscodeLock.PasscodeHasBeenDisabled',
   'Passcode has been set.': 'PasscodeLock.PasscodeHasBeenSet',
@@ -994,7 +954,6 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Protect your account': 'Passkey.Title',
   'Re-enter your passcode': 'PasscodeLock.ReEnterPasscode',
   'Re-enter your password': 'PleaseReEnterPassword',
-  'Reaction effects': 'LiteMode.Key.effects_reactions.Title',
   'Read Time': 'PrivacyReadTime',
   'Recording device': 'CallSettings.InputDevice',
   'Recovery Email': 'RecoveryEmailTitle',
@@ -1003,16 +962,13 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Reply to Previous Message': 'KeyboardShortcuts.Action.ReplyToPrevious',
   'Reset Auto-Download Settings': 'ResetAutomaticMediaDownload',
   'Reset settings': 'ResetAutomaticMediaDownloadAlertTitle',
-  'Reset to Default': 'ChatBackground.Reset',
   'Return to Settings': 'TwoStepVerificationPasswordReturnSettings',
   'Search sticker sets': 'Stickers.SearchSets',
   'Self-destruct timer': 'AutoDeleteMessages.SectionTitle',
   'Send Message': 'SendMessage',
-  'Send Messages': 'UserRestrictionsSend',
   'Set Passcode': 'PasscodeLock.SetPasscode',
   'Set Password': 'TwoStepVerificationSetPassword',
   'Set Recovery Email': 'TwoStepAuth.SetupEmail',
-  'Set a Color': 'SetColor',
   'Set a Password': 'TwoStepAuth.SetPassword',
   'Set other time': 'AutoDeleteMessages.SetOtherTime',
   'Show notifications': 'Notifications.Show',
@@ -1022,7 +978,6 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Sound Volume': 'Notifications.Sound.Volume',
   Speaker: 'CallSettings.Speakers',
   Spoiler: 'KeyboardShortcuts.Action.Spoiler',
-  'Spoiler effects': 'LiteMode.Key.chat_spoilers.Title',
   'Stickers and emojis': 'StorageQuota.StickersEmoji',
   'Store Passkey Securely': 'Passkey.Row3.Title',
   Strikethrough: 'KeyboardShortcuts.Action.Strikethrough',
@@ -1045,7 +1000,6 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   Unsupported: 'Passkey.Unsupported',
   'Up to %1$s for %2$s': 'AutoDownloadOnUpToFor',
   'Up to %1$s in all chats': 'AutoDownloadUpToOnAllChats',
-  'Upload Image': 'ChatBackground.Upload',
   'Use Face ID, Touch ID, or your passcode to log in.': 'Passkey.Row2.Subtitle',
   'Username (optional)': 'EditProfile.Username.Label',
   'Username must be 5–32 chars: letters, digits, underscore.': 'EditProfile.Username.Rules',
@@ -1088,6 +1042,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Zoom Out': 'MediaZoomOut',
   days: 'Unit.DaysSuffix',
   done: 'Common.DoneSuffix',
+  min: 'Unit.Minutes.Abbr',
   months: 'Unit.MonthsSuffix',
   'up to %1$s': 'AutodownloadSizeLimitUpTo',
   users: 'Privacy.UsersSuffix',
@@ -1095,6 +1050,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'when the input is empty': 'KeyboardShortcuts.Hint.WhenInputEmpty',
 
   // ── components/sidebarLeft ──
+  Devices: 'Devices',
   'Enable notifications to stay updated.': 'Suggestion.Notifications.Subtitle',
   'Never miss a message! 🔔': 'Suggestion.Notifications.Title',
   'You can turn notifications back on in the settings.': 'Suggestion.Notifications.Dismissed',
@@ -1103,14 +1059,13 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   AreYouSureSessionTitle: 'AreYouSureSessionTitle',
   AreYouSureSessions: 'AreYouSureSessions',
   AreYouSureSessionsTitle: 'AreYouSureSessionsTitle',
+  ClearOtherSessionsHelp: 'ClearOtherSessionsHelp',
+  CurrentSession: 'CurrentSession',
   OtherSessions: 'OtherSessions',
   'RecentSessions.Error.FreshReset': 'RecentSessions.Error.FreshReset',
   SessionsListInfo: 'SessionsListInfo',
   TerminateAllSessions: 'TerminateAllSessions',
   TerminateSessionText: 'TerminateSessionText',
-
-  // ── components/solidJsTabs ──
-  SessionsTitle: 'SessionsTitle',
 
   // ── components/stars ──
   Anonymous: 'AuthorHiddenShort',
@@ -1128,6 +1083,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Message (optional)': 'StarGift.MessagePlaceholder',
   'Not enough Stars — top up to continue.': 'Stars.NotEnough',
   'Recent Transactions': 'Stars.RecentTransactions',
+  'Send a Gift': 'Chat.Menu.SendGift',
   'Send for': 'StarGift.SendFor',
   'Show in Profile': 'StarGift.ShowInProfile',
   'Sold Out': 'StarGiftSoldOutBadge',
@@ -1137,10 +1093,12 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Your balance': 'Stars.Balance',
 
   // ── components/userInfo ──
+  'Admin Rights': 'EditAdmin',
   Gifts: 'SharedMedia.Gifts',
   'My Notes': 'MyNotes',
   'No gifts yet': 'SharedMedia.Gifts.Empty',
   'Nothing here yet.': 'SharedMedia.Empty',
+  'What can this admin do?': 'EditAdminWhatCanDo',
 
   // ── components/webapp ──
   'Allow this bot to message you?': 'WebApp.WriteAccess.Question',
@@ -1162,6 +1120,8 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   Video: 'AttachVideo',
 
   // ── core ──
+  B: 'Unit.Bytes',
+  GB: 'Unit.Gigabytes',
   KB: 'Unit.Kilobytes',
   MB: 'Unit.Megabytes',
 
@@ -1174,51 +1134,61 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   // ── core/hooks ──
   'Are you sure you want to clear history?': 'Chat.ClearHistory.Text',
   'Are you sure you want to remove this folder? Your chats will not be deleted.': 'ChatList.Filter.Confirm.Remove.Text',
-  'Change Chat Info': 'UserRestrictionsChangeInfo',
+  'Clear History': 'Calendar.ClearHistory',
   'Close friends list updated': 'CloseFriends.Updated',
   'Delete for everyone': 'DeleteForEveryone',
   'Edit folder': 'FilterEdit',
   'Edit folders': 'FilterEditAll',
   'Folder added': 'Folder.Added',
   'Forwarded from': 'Chat.ForwardedFrom',
-  'Pin Messages': 'UserRestrictionsPinMessages',
   'Remove Folder': 'ChatList.Filter.Confirm.Remove.Header',
-  'Send Media': 'UserRestrictionsSendMedia',
+  'Select Messages': 'Chat.Menu.SelectMessages',
 
-  // ── core/managers ──
-  m: 'Unit.Minutes.Short',
-
-  // ── core/media ──
-  h: 'Unit.Hours.Short',
-
-  // ── core/premium ──
-  '6 Months': 'Premium.Tier.SixMonths',
-  Annual: 'PremiumTierAnnual',
-  Monthly: 'PremiumTierMonthly',
+  // ── core/richtext ──
+  s: 'Unit.Seconds.Short',
 
   // ── lib/mediaPlayer ──
   Normal: 'PlaybackRateNormal',
 
-  // ── не используется в коде (мёртвые записи словаря) ──
+  // ── lib/richtext ──
+  m: 'Unit.Minutes.Short',
+
+  // ── не используется в коде (мёртвые записи словаря) — задача #114 ──
+  '6 Months': 'Premium.Tier.SixMonths',
   'Accept Calls': 'CallSettings.AcceptCallsShort',
+  Activity: 'Emoji.Activity',
   'Add a group chat for comments': 'DiscussionInfo',
   'All chats': 'FilterAllChats',
+  'All reactions': 'AllReactions',
   'Always allow': 'PrivacySettingsController.AlwaysAllow',
+  'Animals & Nature': 'Emoji.AnimalsAndNature',
+  'Animated emoji': 'LiteMode.Key.emoji.Title',
+  Animations: 'Animations',
+  Annual: 'PremiumTierAnnual',
   'Anonymous Poll': 'Chat.Poll.Type.Anonymous',
   'Anonymous Quiz': 'Chat.Poll.Type.AnonymousQuiz',
   'Approve new members': 'ChannelSettingsJoinRequest',
+  'Autoplay GIFs': 'LiteMode.Key.gif.Title',
+  'Autoplay videos': 'LiteMode.Key.video.Title',
+  'Available reactions': 'AvailableReactions',
   'Big Emoji': 'Settings.BigEmoji',
   'Blocked users can\'t send you messages or see your profile.': 'BlockedUsersInfoShort',
+  'Blurred Image': 'ChatBackground.Blurred',
   Bot: 'Bot',
+  Brightness: 'MediaEditor.Adjustments.Brightness',
   'Cancel Recording': 'Composer.CancelRecording',
+  'Change Chat Info': 'UserRestrictionsChangeInfo',
   'Change Login Email': 'LoginEmail.Change',
   'Change Number': 'PhoneNumber.Change',
+  'Chat background animation': 'LiteMode.Key.background_animation.Title',
+  'Chat types': 'FilterChatTypes',
   'Choose how many Stars you want to send to support this message.': 'StarsReaction.Caption',
   'Choose who can add a link to your account when forwarding your messages.': 'Privacy.ForwardsChoose',
   'Choose who can add you to groups and channels.': 'Privacy.GroupsChoose',
   'Choose who can call you.': 'Privacy.CallsChoose',
   'Choose who can see your profile photo.': 'Privacy.ProfilePhotoChoose',
   'Close Chat': 'Chat.Close',
+  Contrast: 'MediaEditor.Adjustments.Contrast',
   'Copy Media': 'MediaViewer.Context.CopyMedia',
   'Could not copy the image': 'MediaViewer.CopyError',
   'Create Topic': 'ForumTopic.Context.New',
@@ -1227,14 +1197,17 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Delete Fact Check': 'FactCheck.Delete',
   'Delete for me': 'DeleteForMe',
   'Direct Messages': 'ChannelDirectMessages.Settings.Title',
+  'Disable animations and effects to reduce power usage.': 'LiteMode.Caption',
   'Discussion started': 'DiscussionStarted',
   'Do Not Translate': 'DoNotTranslate',
   Draw: 'MediaEditor.Draw',
   'Dynamic Pack Order': 'DynamicPackOrder',
   Email: 'PaymentShippingEmailPlaceholder',
   Ended: 'Livestream.Ended',
-  'Enter your name and\nadd a profile photo': 'Login.Register.Subtitle',
+  Enhance: 'MediaEditor.Adjustments.Enhance',
   'Final Results': 'Chat.Poll.Type.Closed',
+  Flags: 'Emoji.Flags',
+  'Food & Drink': 'Emoji.FoodAndDrink',
   Formatting: 'Composer.Formatting',
   'Forward to…': 'ShareModal.Search.ForwardPlaceholder',
   'From language': 'Translate.FromLanguage',
@@ -1250,18 +1223,27 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   Input: 'Call.Input',
   'Input Device': 'CallSettings.InputDevice',
   'Instant View': 'WebPage.InstantView',
+  'Interface animations': 'LiteMode.Key.animations.Title',
   'Invalid phone number.': 'Login.PhoneInvalid',
   'Larger files are never downloaded automatically.': 'AutoDownloadLargeFilesInfo',
   Limits: 'Settings.Limits',
   'Login Email': 'LoginEmail',
+  'Loop animated stickers': 'InstalledStickers.LoopAnimated',
   'Max video size': 'AutoDownloadMaxVideoSize',
+  'Members of this group can use any emoji as reactions to messages.': 'Reactions.All.Info',
+  'Members of this group cannot react to messages.': 'Reactions.None.Info',
+  'Message Translation': 'Translate.SectionTitle',
+  Monthly: 'PremiumTierMonthly',
   'More Channels': 'MoreSimilar',
   'Mute Chat': 'Chat.MuteChat',
   'Never allow': 'PrivacySettingsController.NeverAllow',
   'New task': 'Checklist.NewTask',
+  'No reactions': 'NoReactions',
   'No votes': 'Chat.Poll.TotalVotesResultEmpty',
   'No votes yet': 'Chat.Poll.TotalVotesEmpty',
   'Not enough Stars to unlock': 'PaidMedia.NotEnoughStars',
+  Objects: 'Emoji.Objects',
+  'Only allow these reactions': 'OnlyAllowThisReactions',
   Output: 'Call.Output',
   'Output Device': 'Rtmp.OutputPopup.Title',
   Paid: 'PrivacySettingsController.Paid',
@@ -1269,12 +1251,14 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   Participants: 'GroupCall.Participants',
   Participate: 'Giveaway.Participate',
   'Passkey sign-in failed': 'Login.Passkey.Failed',
+  'Pin Messages': 'UserRestrictionsPinMessages',
   'Please confirm your country code and enter your new phone number.': 'PhoneNumber.ChangeHint',
   'Please confirm your password.': 'TwoStepAuth.ConfirmPassword',
   'Private chats': 'AutodownloadPrivateChats',
   Quiz: 'Chat.Poll.Type.Quiz',
   'Re-enter Password': 'TwoStepAuth.ReEnterPassword',
   'React with Stars': 'StarsReaction.Title',
+  'Reaction effects': 'LiteMode.Key.effects_reactions.Title',
   'Recent Actions': 'RecentActions',
   'Recently Used': 'MediaEditor.RecentlyUsed',
   Recording: 'Livestream.Recording',
@@ -1282,25 +1266,34 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Remove from group': 'KickFromGroup',
   'Reply in Another Chat': 'ReplyToAnotherChat',
   Resend: 'Resend',
+  'Reset to Default': 'ChatBackground.Reset',
+  Saturation: 'MediaEditor.Adjustments.Saturation',
   'Save GIF': 'Gif.Save',
   Saved: 'Saved',
   'Saved GIFs': 'SavedGifsLimitTitle',
   'Search comments': 'Search.Comments',
   Security: 'Settings.Security',
+  'Send Media': 'UserRestrictionsSendMedia',
+  'Send Messages': 'UserRestrictionsSend',
+  SessionsTitle: 'SessionsTitle',
   'Set Photo': 'UserInfo.SetPhotoTitle',
+  'Set a Color': 'SetColor',
   'Set a price in Stars — recipients unlock the media by paying you.': 'PaidMedia.PriceHint',
   'Set an additional password that will be required when you log in on a new device.': 'TwoStepAuth.SetPasswordCaption',
   'Show More': 'Separator.ShowMore',
   'Show my name': 'StarGift.ShowMyName',
   'Show pinned message': 'PinnedMessage.Show',
   'Similar Channels': 'SimilarChannels',
+  'Smileys & People': 'Emoji.SmilesAndPeople',
+  'Some reactions': 'SomeReactions',
+  'Spoiler effects': 'LiteMode.Key.chat_spoilers.Title',
   'Star Reaction': 'StarsReactionTitle',
   'Start Live Stream': 'Livestream.Start',
   'Suggest Emoji': 'GeneralSettings.EmojiPrediction',
   'Suggest Stickers by Emoji': 'Stickers.SuggestStickers',
+  Symbols: 'Emoji.Symbols',
   'These users will always see this, regardless of the setting above.': 'Privacy.AlwaysShareCaption',
   'These users will never see this, regardless of the setting above.': 'Privacy.NeverShareCaption',
-  'This action can\'t be undone.\n\nIf you reset your account, all your messages and chats will be deleted.': 'Login.ResetAccount.Text',
   'This email is used to log in if you lose access to your number.': 'LoginEmail.Caption',
   'This fact check was added by an admin.': 'FactCheck.AdminNote',
   'This number is already connected to a Telegram account.': 'PhoneNumber.AlreadyTaken',
@@ -1312,14 +1305,16 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Translate Entire Chats': 'ShowTranslateChatButton',
   Translation: 'Translation',
   'Translation failed': 'Translate.Failed',
+  'Travel & Places': 'Emoji.TravelAndPlaces',
   'Unlock for': 'PaidMedia.UnlockFor',
   'Unlocking…': 'PaidMedia.Unlocking',
+  'Upload Image': 'ChatBackground.Upload',
   'Users who add your number will see it only if it is allowed here.': 'PrivacyPhoneInfo2',
   'View Gift': 'StarGift.View',
   Viewers: 'Story.Viewers',
   Vote: 'Chat.Poll.SubmitVote',
+  Warmth: 'MediaEditor.Adjustments.Warmth',
   'Watch real-time chat translations with a Telegram Premium subscription.': 'Premium.Feature.Translate.Caption',
-  'We have sent you an SMS\nwith the code.': 'Login.Code.SentSms',
   'When connected to Wi-Fi': 'AutoDownloadWifi',
   'When roaming': 'AutoDownloadRoaming',
   'When using mobile data': 'AutoDownloadMobile',
@@ -1331,11 +1326,13 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'You can create additional invite links and revoke them at any time.': 'InviteLinks.Caption',
   'You can create an optional hint for your password.': 'TwoStepAuth.HintCaption',
   'You can provide an optional description for your': 'Channel.DescriptionPrefix',
+  'You can select emoji that will allow members of this group to react to messages.': 'Reactions.Some.Info',
   'You won the giveaway!': 'Giveaway.YouWon',
   'You won’t see Last Seen times for people you don’t share yours with.': 'Privacy.LastSeenShortCaption',
-  'Your account is protected with\nan additional password': 'Login.Password.Subtitle',
   'Your account is protected with an additional password.': 'Login.Password.SubtitleFlat',
   answered: 'Chat.Quiz.AnsweredSuffix',
+  d: 'Unit.Days.Short',
+  h: 'Unit.Hours.Short',
   of: 'Common.Of',
   owner: 'Chat.OwnerBadge',
   'typing…': 'Peer.Activity.User.TypingText',
@@ -1343,13 +1340,22 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
 }
 
 /**
- * Формы числа: сейчас форму выбирает вызывающий (`client/appBadge.ts`), поэтому форм столько же,
- * сколько старых ключей. Все они схлопываются в ОДИН символический ключ — его значение в
- * `lang.ts` уже объект с формами. Список нужен задаче 3 (`langPackStringPluralized`) и
- * освобождает эти ключи от проверки «две строки не смотрят в один ключ».
+ * Формы числа: сейчас форму выбирает вызывающий (`client/appBadge.ts:31-38`), поэтому старых
+ * ключей столько же, сколько форм. Все они схлопываются в ОДИН символический ключ — его
+ * значение в `lang.ts` уже объект с формами.
+ *
+ * Значение здесь — СТАРАЯ строка на каждую форму CLDR, а не список: по списку не видно, где
+ * какая форма, и задача 3 (`langPackStringPluralized`) собрала бы русские переводы наугад —
+ * «2 уведомлений», «5 уведомления». Заодно этот список освобождает такие ключи от проверки
+ * «две строки не смотрят в один ключ».
  */
-export const LEGACY_PLURAL_GROUPS: Record<string, string[]> = {
-  'Notifications.Count': ['%d notification', '%d notifications', '%d notifications (few)'],
+export const LEGACY_PLURAL_GROUPS: Record<string, Partial<Record<'one_value' | 'few_value' | 'many_value' | 'other_value', string>>> = {
+  'Notifications.Count': {
+    one_value: '%d notification',
+    few_value: '%d notifications (few)',
+    many_value: '%d notifications',
+    other_value: '%d notifications',
+  },
 }
 
 /**
@@ -1373,3 +1379,41 @@ export const LEGACY_ALIASES: Record<string, string[]> = {
   'CreateGroup.NameHolder': ['Group Name', 'Group name'],
   SessionsTitle: ['Active Sessions', 'SessionsTitle'],
 }
+
+/**
+ * Точечные исключения: строка одна, а мест несколько, и ключ у них РАЗНЫЙ. Карта ключуется
+ * строкой и места из неё не достаёт, поэтому такие случаи живут отдельной проверяемой
+ * структурой, а не прозой в отчёте. Применять будет задача 6 — там видно место вызова.
+ *
+ * `anchor` — кусок окружающего кода, по которому место опознаётся: одного имени файла мало,
+ * в `Chat.tsx` строка `'Join'` встречается дважды и означает разное.
+ */
+export interface LegacyKeyOverride {
+  /** Путь от корня web-client. */
+  file: string
+  /** Подстрока рядом с вызовом — опознаёт нужное вхождение внутри файла. */
+  anchor: string
+  /** Старый ключ, который тут надо заменить не так, как велит карта. */
+  legacy: string
+  /** Символический ключ именно для этого места. */
+  key: LangPackKey
+  /** Почему место особое. */
+  why: string
+}
+
+export const LEGACY_KEY_OVERRIDES: LegacyKeyOverride[] = [
+  {
+    file: 'src/components/Chat.tsx',
+    anchor: 'livestreamActive',
+    legacy: 'Join',
+    key: 'Rtmp.Topbar.Join',
+    why: 'баннер идущей RTMP-трансляции — tweb `chat/topbarLive/container.tsx:96`',
+  },
+  {
+    file: 'src/components/Chat.tsx',
+    anchor: 'groupCallActive',
+    legacy: 'Join',
+    key: 'GroupCall.Banner.Join',
+    why: 'баннер идущего видеочата; у tweb в `topbarCall.tsx` надписи «Join» нет вовсе — ключ наш',
+  },
+]

@@ -3,15 +3,15 @@ import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 import lang from '../lang'
+import { TWEB_ROOT, hasTweb } from '../../scripts/crosscheck/twebRoot'
 
 // Ключ, взятый у оригинала, обязан значить то же самое. Единственная машинная проверка этого —
 // английский текст: расхождение означает, что ключ взяли по похожести имени, а не по смыслу.
-// Чекаут tweb — рабочий инструмент, а не зависимость сборки, поэтому путь через `TWEB_ROOT` и
-// мягкий пропуск с явным сообщением — та же договорённость, что в `scripts/crosscheck/twebRoot.ts`.
-const TWEB_ROOT = process.env.TWEB_ROOT ?? '/Users/denisurevic/Documents/tweb'
-const hasTweb = existsSync(`${TWEB_ROOT}/src/lang.ts`)
+// Чекаут tweb — рабочий инструмент, а не зависимость сборки: путь и мягкий пропуск берём из
+// общей договорённости, второй раз абсолютный путь не зашиваем.
+const hasLang = hasTweb && existsSync(`${TWEB_ROOT}/src/lang.ts`)
 
-if (!hasTweb) {
+if (!hasLang) {
   console.warn(`[i18n] нет чекаута tweb (${TWEB_ROOT}) — сверка ключей с оригиналом НЕ выполнялась`)
 }
 
@@ -33,7 +33,7 @@ function readTwebLang(file: string): Record<string, LangValue> {
 let cached: Record<string, LangValue> | undefined
 const twebLang = () => (cached ??= { ...readTwebLang('lang.ts'), ...readTwebLang('langSign.ts') })
 
-describe.skipIf(!hasTweb)('ключи, взятые у оригинала', () => {
+describe.skipIf(!hasLang)('ключи, взятые у оригинала', () => {
   it('разбор оригинала вообще что-то дал', () => {
     // Без этого «расхождений нет» означало бы «сравнивать было не с чем».
     expect(Object.keys(twebLang()).length).toBeGreaterThan(4000)

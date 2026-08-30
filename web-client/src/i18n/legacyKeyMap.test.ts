@@ -1,15 +1,27 @@
+import { existsSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 import { describe, expect, it } from 'vitest'
 
+import { notificationsCountTitle } from '../client/appBadge'
 import lang from '../lang'
 import { en } from './dict'
 import ru from './dict.ru'
-import { LEGACY_ALIASES, LEGACY_KEY_MAP, LEGACY_PLURAL_GROUPS } from './legacyKeyMap'
+import { LEGACY_ALIASES, LEGACY_KEY_MAP, LEGACY_KEY_OVERRIDES, LEGACY_PLURAL_GROUPS } from './legacyKeyMap'
 
 // Карта — единственное, что связывает старые ключи («ключ = английская строка») с
 // символическими. Если она дырявая или неоднозначная, кодмод задачи 6 молча потеряет строки,
 // поэтому проверяем именно полноту и однозначность, а не «файл импортируется».
 
-const MERGED = { ...LEGACY_PLURAL_GROUPS, ...LEGACY_ALIASES }
+// Пути исключений даны от корня web-client — vitest запускается оттуда же.
+const WEB_CLIENT = process.cwd()
+
+// Формы числа объявлены как «форма → старая строка»; для проверок слияния нужен список строк.
+const pluralLegacyKeys = (key: string) => [...new Set(Object.values(LEGACY_PLURAL_GROUPS[key]))]
+const MERGED: Record<string, string[]> = {
+  ...Object.fromEntries(Object.keys(LEGACY_PLURAL_GROUPS).map((key) => [key, pluralLegacyKeys(key)])),
+  ...LEGACY_ALIASES,
+}
 
 describe('карта миграции ключей', () => {
   it('покрывает каждый ключ нынешнего словаря', () => {
@@ -70,5 +82,72 @@ describe('объявленные слияния', () => {
   it('у формы числа значение в lang.ts — объект с формами, а не строка', () => {
     const flat = Object.keys(LEGACY_PLURAL_GROUPS).filter((key) => typeof lang[key as keyof typeof lang] === 'string')
     expect(flat).toEqual([])
+  })
+
+  // Без этого форма числа снова стала бы списком без меток: задача 3 собирает русские
+  // переводы по слотам, и перепутанные формы дают «2 уведомлений» / «5 уведомления».
+  it('у формы числа каждый слот указывает на существующую строку словаря', () => {
+    const bad: string[] = []
+    for (const [key, forms] of Object.entries(LEGACY_PLURAL_GROUPS)) {
+      for (const [form, legacy] of Object.entries(forms)) {
+        if (!(legacy in ru)) bad.push(`${key}.${form}: ${legacy} — нет в dict.ru`)
+        else if (LEGACY_KEY_MAP[legacy] !== key) bad.push(`${key}.${form}: ${legacy} смотрит в ${LEGACY_KEY_MAP[legacy]}`)
+      }
+    }
+    expect(bad).toEqual([])
+  })
+
+  // Слоты обязаны совпадать с ФАКТИЧЕСКИМ выбором, а не читаться «на глаз»: без этого
+  // переставленные few/many проходят зелёными, а задача 3 соберёт «2 уведомлений».
+  // Сверяем объявление с единственным местом, где выбор сегодня живёт, — `client/appBadge.ts`.
+  it('слоты совпадают с тем, что выбирает нынешний код', () => {
+    const forms = LEGACY_PLURAL_GROUPS['Notifications.Count']
+    const chosen = (count: number, l: 'ru' | 'en') => notificationsCountTitle(count, l, (x) => x)
+    const declared = (slot?: string, count?: number) => slot?.replace('%d', String(count))
+    expect([chosen(1, 'ru'), chosen(2, 'ru'), chosen(5, 'ru'), chosen(2, 'en')]).toEqual([
+      declared(forms.one_value, 1),
+      declared(forms.few_value, 2),
+      declared(forms.many_value, 5),
+      declared(forms.other_value, 2),
+    ])
+  })
+
+  it('у формы числа объявлены все формы, которые различает нынешний выбор', () => {
+    // `client/appBadge.ts` различает one / few / остальное; «остальное» в английском — other,
+    // в русском — many, поэтому обязаны быть заполнены все четыре слота.
+    const incomplete = Object.entries(LEGACY_PLURAL_GROUPS)
+      .filter(([, f]) => !f.one_value || !f.few_value || !f.many_value || !f.other_value)
+      .map(([key]) => key)
+    expect(incomplete).toEqual([])
+  })
+})
+
+// Точечные исключения — вторая структура, по которой пойдёт задача 6. Она полезна ровно
+// настолько, насколько верна: файл должен существовать, строка и якорь — в нём быть.
+describe('точечные исключения к карте', () => {
+  it('указывают на существующий файл, где есть и строка, и якорь', () => {
+    const bad: string[] = []
+    for (const o of LEGACY_KEY_OVERRIDES) {
+      const path = resolve(WEB_CLIENT, o.file)
+      if (!existsSync(path)) {
+        bad.push(`${o.file}: файла нет`)
+        continue
+      }
+      const src = readFileSync(path, 'utf8')
+      const literal = `t('${o.legacy.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/'/g, "\\'")}')`
+      if (!src.includes(literal)) bad.push(`${o.file}: нет вызова ${literal}`)
+      if (!src.includes(o.anchor)) bad.push(`${o.file}: нет якоря ${o.anchor}`)
+    }
+    expect(bad).toEqual([])
+  })
+
+  it('ссылаются на известный старый ключ и существующий символический', () => {
+    const bad: string[] = []
+    for (const o of LEGACY_KEY_OVERRIDES) {
+      if (!(o.legacy in LEGACY_KEY_MAP)) bad.push(`${o.legacy}: нет в карте`)
+      if (!(o.key in lang)) bad.push(`${o.key}: нет в lang.ts`)
+      if (LEGACY_KEY_MAP[o.legacy] === o.key) bad.push(`${o.legacy} -> ${o.key}: совпадает с картой, исключение лишнее`)
+    }
+    expect(bad).toEqual([])
   })
 })
