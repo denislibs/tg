@@ -1422,7 +1422,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
           <Text size={14} weight={600} color="#fff" style={{ flex: 1 }}>
             {t('PeerInfo.Action.VoiceChat')} · {tArgs('VoiceChat.Status.Members', [groupCallActive.length])}
           </Text>
-          <Text size={14} weight={700} color="#fff">{t('GroupCall.Banner.Join')}</Text>
+          <Text size={14} weight={700} color="#fff">{t('PinnedJoinCall')}</Text>
         </div>
       )}
 

@@ -8,7 +8,7 @@ const FORMS: Record<string, Record<Kind, string[]>> = {
   uk: { chat: ['чат', 'чати', 'чатів'], group: ['група', 'групи', 'груп'], channel: ['канал', 'канали', 'каналів'] },
   en: { chat: ['chat', 'chats'], group: ['group', 'groups'], channel: ['channel', 'channels'] },
   es: { chat: ['chat', 'chats'], group: ['grupo', 'grupos'], channel: ['canal', 'canales'] },
-  de: { chat: ['KeyboardShortcuts.Section.Chat', 'FilterChats'], group: ['Gruppe', 'Gruppen'], channel: ['Kanal', 'Kanäle'] },
+  de: { chat: ['Chat', 'Chats'], group: ['Gruppe', 'Gruppen'], channel: ['Kanal', 'Kanäle'] },
   fr: { chat: ['chat', 'chats'], group: ['groupe', 'groupes'], channel: ['canal', 'canaux'] },
 }
 const AND: Record<string, string> = { ru: ' и ', uk: ' і ', en: ' and ', es: ' y ', de: ' und ', fr: ' et ' }

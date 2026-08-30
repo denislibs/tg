@@ -29,6 +29,15 @@ describe('ConfirmDialog — мост к confirmationPopup', () => {
     expect(root.style.zIndex).toBe('4300') // popupElement.ts PopupOptions.zIndex (наше расширение)
   })
 
+  // Кнопка подтверждения печатается ГОТОВОЙ строкой (`popupElement.ts:253`), поэтому
+  // `action` обязан переводиться в самом `ConfirmDialog`. Ключ взят такой, чей текст с
+  // именем НЕ совпадает: на `action="Delete"` ошибка неотличима от правды.
+  it('кнопка действия переведена, а не показывает имя ключа', () => {
+    render(<ConfirmDialog title="ChatList.Context.DeleteChat" text="Chat.Delete.Private.Text" action="UnpinMessage" onConfirm={() => {}} onClose={() => {}} />)
+    const button = document.querySelector('.popup-confirmation .popup-button') as HTMLElement
+    expect(button?.textContent).toBe('Unpin')
+  })
+
   it('клик по кнопке действия резолвит confirmationPopup — onConfirm, потом onClose', async() => {
     const onConfirm = vi.fn()
     const onClose = vi.fn()

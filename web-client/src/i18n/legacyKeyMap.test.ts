@@ -35,12 +35,45 @@ describe('карта миграции ключей', () => {
   // формат ссылки брал плейсхолдер поля ссылки-приглашения. Своих старых ключей у них
   // не было, поэтому карта до них и не достаёт — список короткий и назван поимённо.
   const NEW_WITHOUT_LEGACY = [
+    // Экран горячих клавиш адресовал секции теми же строками, что и другие экраны
+    // («Messages», «Stories»), а формат ссылки брал плейсхолдер поля ссылки-приглашения.
     'KeyboardShortcuts.Section.Messages',
     'KeyboardShortcuts.Section.Stories',
     'KeyboardShortcuts.Action.Link',
     // «N комментариев» собиралось В КОДЕ (своя славянская арифметика с русскими словами),
-    // строки в словаре под это не было вовсе — теперь есть, с формами числа.
+    // строки в словаре под это не было вовсе.
     'Chat.Title.Comments',
+    // Ключи, заведённые задачей 6 при разводке мест и при закрытии дыр в переводе: старой
+    // строки у них не было ни одной — карте до них не дотянуться по построению.
+    'AddOneMemberAlertTitle',
+    'AutoDownloadSettings.LastDelimeter',
+    'Channel.UsernameAboutChannel',
+    'ChannelPrivate',
+    'ChannelPrivateInfo',
+    'ChannelPrivateLinkHelp',
+    'ChannelPublic',
+    'ChannelPublicInfo',
+    'Chat.Context.ReadLabel',
+    'Chat.Context.ReadShowWhen',
+    'InviteLinks.Description.Additional',
+    'InviteLinks.TimeLimitHelp',
+    'InviteLinks.UsesLimitHelp',
+    'MediaEditor.Adjustments.Fade',
+    'MediaEditor.Adjustments.Grain',
+    'MediaEditor.Adjustments.Highlights',
+    'MediaEditor.Adjustments.Shadows',
+    'MediaEditor.Adjustments.Sharpen',
+    'MediaEditor.Adjustments.Vignette',
+    'MediaEditor.Brushes.Arrow',
+    'MediaEditor.Brushes.Blur',
+    'MediaEditor.Brushes.Brush',
+    'MediaEditor.Brushes.Eraser',
+    'MediaEditor.Brushes.Neon',
+    'MediaEditor.Brushes.Pen',
+    'PrivacyVoiceMessages',
+    'SharedFolder.Edit.Title',
+    'SharedFolder.Link.Caption',
+    'Translate.SectionCaption',
   ]
 
   it('достаёт каждый ключ нынешнего словаря', () => {

@@ -36,7 +36,7 @@ export default function BirthdayModal({
   const t = useT()
   const { mounted, cls } = usePopupTransition(open)
   const [lang] = useLang()
-  const [dayLabel, monthLabel, yearLabel] = DOB_LABELS[lang] ?? ['ThemeLight', 'Month', 'Year']
+  const [dayLabel, monthLabel, yearLabel] = DOB_LABELS[lang] ?? ['Day', 'Month', 'Year']
   const [day, setDay] = useState(initial ? String(initial.day) : '')
   const [month, setMonth] = useState(initial ? String(initial.month) : '')
   const [year, setYear] = useState(initial?.year ? String(initial.year) : '')

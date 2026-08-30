@@ -1481,8 +1481,8 @@ export const LEGACY_KEY_OVERRIDES: LegacyKeyOverride[] = [
     occurrence: 0,
     anchor: 'groupCallActive',
     legacy: 'Join',
-    key: 'GroupCall.Banner.Join',
-    why: 'баннер идущего видеочата; у tweb в `topbarCall.tsx` надписи «Join» нет вовсе — ключ наш',
+    key: 'PinnedJoinCall',
+    why: 'баннер идущего видеочата: у оригинала кнопка входа в звонок это `PinnedJoinCall` (tweb lang.ts:2114, `chat/pinnedMessage.tsx:619`), а карта отдаёт `ChannelJoin` — кнопку вступления в канал',
   },
   {
     file: 'src/components/Chat.tsx',

@@ -93,7 +93,7 @@ export default function HotkeysSettings({ onBack }: { onBack: () => void }) {
     <SettingsScreen title='KeyboardShortcuts.Title' onBack={onBack} zIndex={50}>
       {/* Форматирование — SHORTCUTS/onEditorKeyDown композера (mod + код клавиши) */}
       <Section caption='KeyboardShortcuts.Section.Formatting'>
-        <ShortcutRow action='KeyboardShortcuts.Action.Bold' keys={['ctrl', 'Unit.Bytes']} />
+        <ShortcutRow action='KeyboardShortcuts.Action.Bold' keys={['ctrl', 'B']} />
         <ShortcutRow action='KeyboardShortcuts.Action.Italic' keys={['ctrl', 'I']} />
         <ShortcutRow action='KeyboardShortcuts.Action.Underline' keys={['ctrl', 'U']} />
         <ShortcutRow action='KeyboardShortcuts.Action.Strikethrough' keys={['ctrl', 'S']} />

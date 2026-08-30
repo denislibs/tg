@@ -1,3 +1,4 @@
+import { useI18nStore } from '../../i18n'
 import { useSecretChatStore } from '../../stores/secretChatStore'
 import { useManagers } from './useManagers'
 import type { Chat } from '../../data'
@@ -9,9 +10,13 @@ import type { GroupPhoto } from '../../components/NewGroupFlow'
 // onChatCreated (навигация живёт в родителе/navigationStore, не тут).
 export function useSidebarActions(chats: Chat[], onChatCreated?: (peerId: PeerId) => void) {
   const managers = useManagers()
+  // Название по умолчанию уезжает НА СЕРВЕР данными, а не рисуется: сюда нужен ТЕКСТ
+  // на языке пользователя, а не символический ключ (иначе группа так и называется
+  // «NewGroup» у всех, кто её увидит).
+  const t = useI18nStore.getState().t
 
   const createGroup = async (name: string, memberIds: number[], photo: GroupPhoto | null) => {
-    const peerId = await managers.groups.createGroup({ title: name || 'NewGroup', memberIds })
+    const peerId = await managers.groups.createGroup({ title: name || t('NewGroup'), memberIds })
     // Фото — после создания, как tweb (createChat → editPhoto): upload → set.
     if (photo) {
       const bytes = await photo.blob.arrayBuffer()
@@ -22,7 +27,7 @@ export function useSidebarActions(chats: Chat[], onChatCreated?: (peerId: PeerId
   }
 
   const createChannel = async (name: string, description: string) => {
-    const peerId = await managers.channels.createChannel({ title: name || 'NewChannel', about: description })
+    const peerId = await managers.channels.createChannel({ title: name || t('NewChannel'), about: description })
     onChatCreated?.(peerId)
   }
 

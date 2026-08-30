@@ -32,9 +32,9 @@ describe('символический ключ', () => {
   it('непереведённый ключ падает на английский, а не на имя ключа', async () => {
     useI18nStore.setState({ lang: 'ru' })
     await loadLang('ru')
-    // `AutoDownloadPm` в русском словаре есть, `Call.CameraOff` — нет.
+    // `AutoDownloadPm` в русском словаре есть, `Chat.CopySelectedText` — нет.
     expect(t('AutoDownloadPm')).toBe('Личные чаты')
-    expect(t('Call.CameraOff')).toBe('Turn off camera')
+    expect(t('Chat.CopySelectedText')).toBe('Copy Selected Text')
   })
 
   it('незнакомого ключа не выдумывает', () => {

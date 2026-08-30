@@ -1,6 +1,8 @@
 // Редактор папки — порт tweb editFolder.tsx: анимация Folders_2 (86×86),
 // caption, имя папки, «Включённые чаты» (Добавить чаты + типы), «Исключённые
 // чаты» (Убрать чаты + Без звука/Прочитанные), галка-подтверждение в хедере.
+import type { LangPackKey } from '@/lang'
+import type { IconName } from '../../core/tgico-icons'
 import { useEffect, useState } from 'react'
 import IconButton from '../../shared/ui/IconButton'
 import Avatar from '../../shared/ui/Avatar'
@@ -19,11 +21,11 @@ import s from './FolderEditor.module.scss'
 
 const PREVIEW_LIMIT = 4 // tweb: до 4 строк + «Show N more»
 
-const TYPE_LABELS: Record<string, { icon: string; label: string }> = {
+const TYPE_LABELS: Record<string, { icon: IconName; label: LangPackKey }> = {
   contacts: { icon: 'newprivate', label: 'Contacts' },
   nonContacts: { icon: 'noncontacts', label: 'ChatList.Filter.NonContacts' },
-  groups: { icon: 'InactiveChannel.Group', label: 'ChatList.Filter.Groups' },
-  broadcasts: { icon: 'InactiveChannel.Broadcast', label: 'ChatList.Filter.Channels' },
+  groups: { icon: 'group', label: 'ChatList.Filter.Groups' },
+  broadcasts: { icon: 'channel', label: 'ChatList.Filter.Channels' },
   excludeMuted: { icon: 'mute', label: 'ChatList.Filter.MutedChats' },
   excludeRead: { icon: 'readchats', label: 'Chat.ContextMenu.Read' },
 }

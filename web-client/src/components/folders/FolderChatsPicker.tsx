@@ -1,6 +1,8 @@
 // Выбор чатов/типов чатов для папки — порт tweb includedChats.tsx:
 // сверху секция «Типы чатов» (категории с чекбоксами), ниже — все чаты
 // с чекбоксами; подтверждение — галка в хедере.
+import type { LangPackKey } from '@/lang'
+import type { IconName } from '../../core/tgico-icons'
 import { useState } from 'react'
 import IconButton from '../../shared/ui/IconButton'
 import Avatar from '../../shared/ui/Avatar'
@@ -19,13 +21,13 @@ export interface PickerFlags {
 }
 
 // Категории типов (tweb folder-categories): для include и exclude — свои наборы.
-const INCLUDE_TYPES: { key: keyof PickerFlags; icon: string; label: string }[] = [
+const INCLUDE_TYPES: { key: keyof PickerFlags; icon: IconName; label: LangPackKey }[] = [
   { key: 'contacts', icon: 'newprivate', label: 'Contacts' },
   { key: 'nonContacts', icon: 'noncontacts', label: 'ChatList.Filter.NonContacts' },
-  { key: 'groups', icon: 'InactiveChannel.Group', label: 'ChatList.Filter.Groups' },
-  { key: 'broadcasts', icon: 'InactiveChannel.Broadcast', label: 'ChatList.Filter.Channels' },
+  { key: 'groups', icon: 'group', label: 'ChatList.Filter.Groups' },
+  { key: 'broadcasts', icon: 'channel', label: 'ChatList.Filter.Channels' },
 ]
-const EXCLUDE_TYPES: { key: keyof PickerFlags; icon: string; label: string }[] = [
+const EXCLUDE_TYPES: { key: keyof PickerFlags; icon: IconName; label: LangPackKey }[] = [
   { key: 'excludeMuted', icon: 'mute', label: 'ChatList.Filter.MutedChats' },
   { key: 'excludeRead', icon: 'readchats', label: 'Chat.ContextMenu.Read' },
 ]
