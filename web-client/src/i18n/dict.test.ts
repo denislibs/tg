@@ -55,11 +55,11 @@ const text = (key: LangPackKey, args: (string | number)[]) => i18n(key, args).te
 // обратно в старую форму ключа не переводится, и это объявлено списком
 // `LEGACY_MERGED_FRAGMENTS`.
 const COMPOSITION = {
-  ru: { keys: 1277, plural: 20, legacy: 1235 },
-  uk: { keys: 677, plural: 18, legacy: 663 },
-  es: { keys: 676, plural: 18, legacy: 662 },
-  de: { keys: 676, plural: 18, legacy: 662 },
-  fr: { keys: 676, plural: 18, legacy: 662 },
+  ru: { keys: 1289, plural: 24, legacy: 1235 },
+  uk: { keys: 678, plural: 18, legacy: 664 },
+  es: { keys: 677, plural: 18, legacy: 663 },
+  de: { keys: 677, plural: 18, legacy: 663 },
+  fr: { keys: 677, plural: 18, legacy: 663 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -69,11 +69,11 @@ const COMPOSITION = {
 // (папки, истории, близкие друзья). Состав словарей не изменился: те же строки под
 // другим именем, поэтому числа выше прежние, а снимок НАБОРА — новый.
 const FINGERPRINT = {
-  ru: '14b27df0',
-  uk: '2a6aa034',
-  es: '9062663c',
-  de: '9062663c',
-  fr: '9062663c',
+  ru: '27875b55',
+  uk: 'dd8b5c1f',
+  es: 'c5fa5a2d',
+  de: 'c5fa5a2d',
+  fr: 'c5fa5a2d',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
@@ -196,9 +196,15 @@ describe('формы числа выбирает язык, а не вызыва�
     for (const string of DICTS.ru) {
       if (string._ !== 'langPackStringPluralized') continue
       const key = string.key as LangPackKey
+      // Число обязано быть там, где оно есть У ОРИГИНАЛА: у `PreviewSender.SendPhoto`
+      // форма единицы это «Send Photo» — без числа, и русская «Отправить фото» тоже.
+      const source = lang[key] as Record<string, string | undefined>
       for (const [slot, value] of Object.entries(string)) {
         if (!slot.endsWith('_value') || typeof value !== 'string') continue
-        if (!PLACEHOLDER.test(value)) bad.push(`${key}.${slot}: «${value}» — без числа`)
+        const sourceForm = source?.[slot] ?? source?.other_value
+        if (sourceForm && PLACEHOLDER.test(sourceForm) && !PLACEHOLDER.test(value)) {
+          bad.push(`${key}.${slot}: «${value}» — без числа, а у источника оно есть`)
+        }
       }
       // Ключи, у которых объявлена только общая форма, правилу единицы не подчиняются.
       if (!string.one_value) continue
@@ -208,6 +214,7 @@ describe('формы числа выбирает язык, а не вызыва�
       if (string.one_value === string.few_value) bad.push(`${key}: форма единицы совпала с формой двойки («${string.one_value}»)`)
       // 21 обязана дать форму ЕДИНИЦЫ — это правило языка, а не текст словаря.
       // `**жирный**` ядро рисует узлом, и в тексте звёздочек не остаётся.
+      // Форма единицы без числа (tweb `PreviewSender.*`) на 21 даёт себя же.
       const expected = string.one_value.replace(PLACEHOLDER, '21').replace(/\*\*/g, '')
       if (text(key, [21]) !== expected) bad.push(`${key}: 21 не даёт форму единицы («${text(key, [21])}» вместо «${expected}»)`)
     }

@@ -914,7 +914,7 @@ const ru = {
   // ── Авторизация: страна (country-picker) ──
   Country: 'Страна',
   // ── Поиск по чату: стрелка prev (счётчик «N of M» использует ключ of выше) ──
-  'Calendar.Previous': 'Предыдущее',
+  'Calendar.Previous': 'Предыдущий месяц',
   'TwoStepAuth.ReEnterPassword': 'Повторите пароль',
   'TwoStepAuth.ConfirmPassword': 'Подтвердите пароль.',
   PleaseReEnterPassword: 'Введите пароль ещё раз',
@@ -1399,9 +1399,9 @@ const ru = {
   'KeyboardShortcuts.Section.Messages': 'Сообщения',
   'KeyboardShortcuts.Section.Stories': 'Истории',
   'PrivacySettingsController.AddUsers': 'Добавить пользователей',
-  'Call.Mute': 'Выключить звук',
-  VoipUnmute: 'Включить звук',
-  'Calendar.Next': 'Следующий',
+  'Call.Mute': 'Выключить микрофон',
+  VoipUnmute: 'Включить микрофон',
+  'Calendar.Next': 'Следующий месяц',
   'KeyboardShortcuts.Action.Link': 'Добавить ссылку',
   'Chat.Title.Comments': {
     one_value: '%d комментарий',
@@ -1529,6 +1529,38 @@ const ru = {
     many_value: 'По ссылке могут вступить %s человек.',
     other_value: 'По ссылке могут вступить %s человека.',
   },
+  'PreviewSender.SendAlbum': {
+    one_value: 'Отправить альбом',
+    few_value: 'Отправить %d альбома',
+    many_value: 'Отправить %d альбомов',
+    other_value: 'Отправить %d альбома',
+  },
+  'PreviewSender.SendFile': {
+    one_value: 'Отправить файл',
+    few_value: 'Отправить %d файла',
+    many_value: 'Отправить %d файлов',
+    other_value: 'Отправить %d файла',
+  },
+  'PreviewSender.SendPhoto': {
+    one_value: 'Отправить фото',
+    few_value: 'Отправить %d фото',
+    many_value: 'Отправить %d фото',
+    other_value: 'Отправить %d фото',
+  },
+  'PreviewSender.SendVideo': {
+    one_value: 'Отправить видео',
+    few_value: 'Отправить %d видео',
+    many_value: 'Отправить %d видео',
+    other_value: 'Отправить %d видео',
+  },
+  'MediaEditor.Mute': 'Выключить звук видео',
+  'MediaEditor.Unmute': 'Включить звук видео',
+  'ForumTopic.NoIcon': 'Без значка',
+  'Common.More': 'Ещё',
+  'Common.Next': 'Далее',
+  'Story.Sound': 'Звук',
+  'EditProfile.LastNameLabel': 'Фамилия',
+  'AutoDeleteMessages.Disable': 'Отключить',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)

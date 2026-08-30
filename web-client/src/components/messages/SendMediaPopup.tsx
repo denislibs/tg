@@ -2,6 +2,7 @@
 // Compose-before-send dialog (port of tweb popups/newMedia.ts) на общем Popup:
 // превью выбранных файлов, подпись, «как медиа / как файл» в меню «⋮», отправка.
 // The parent owns the actual upload/send (onSend).
+import type { LangPackKey } from '@/lang'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import Text from '../../shared/ui/Text'
 import IconButton from '../../shared/ui/IconButton'
@@ -15,7 +16,7 @@ import StarIcon from '../stars/StarIcon'
 import { getMiddleware } from '@helpers/middleware'
 import wrapMediaSpoiler from '@components/wrappers/mediaSpoiler'
 import { THUMB_TYPE_STRIPPED, type MyPhoto } from '@core/media/messageMedia'
-import { useT } from '../../i18n'
+import { useT, useTArgs } from '../../i18n'
 import s from './SendMediaPopup.module.scss'
 
 // «Медиа» для меню «как медиа / как файл» и заголовка — аудио тоже медиа,
@@ -120,14 +121,13 @@ function SpoilerCover({ url, kind }: { url: string; kind: 'image' | 'video' }) {
 }
 
 // Russian count word for the title.
-function titleWord(n: number, kind: 'photo' | 'video' | 'media' | 'file'): string {
-  if (kind === 'photo') return 'фото'
-  if (kind === 'video') return 'видео'
-  if (kind === 'media') return 'медиа'
-  const m10 = n % 10, m100 = n % 100
-  if (m10 === 1 && m100 !== 11) return 'файл'
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return 'файла'
-  return 'файлов'
+/** Ключ заголовка по виду набора — формы числа оригинала (tweb lang.ts:254, :3821-3836).
+ *  Раньше здесь стояла своя славянская арифметика с русскими словами в коде. */
+function titleKey(kind: 'photo' | 'video' | 'media' | 'file'): LangPackKey {
+  if (kind === 'photo') return 'PreviewSender.SendPhoto'
+  if (kind === 'video') return 'PreviewSender.SendVideo'
+  if (kind === 'media') return 'PreviewSender.SendAlbum'
+  return 'PreviewSender.SendFile'
 }
 
 export default function SendMediaPopup({
@@ -140,6 +140,7 @@ export default function SendMediaPopup({
   onSend: (caption: string, asFile: boolean, paidPrice?: number | null, spoilers?: boolean[]) => void
 }) {
   const t = useT()
+  const tArgs = useTArgs()
   const [caption, setCaption] = useState('')
   const [asFile, setAsFile] = useState(initialAsFile)
   // Платное медиа (Telegram paid media): цена в звёздах. null — обычное медиа.
@@ -183,7 +184,7 @@ export default function SendMediaPopup({
   const kind: 'photo' | 'video' | 'media' | 'file' = asFile || !anyMedia
     ? 'file'
     : allImages ? 'photo' : allVideos ? 'video' : 'media'
-  const title = `${t('Send')} ${files.length} ${titleWord(files.length, kind)}`
+  const title = tArgs(titleKey(kind), [files.length])
 
   // Спойлер применим только к фото/видео «как медиа» — tweb берёт
   // `partition().media`, куда аудио не попадает (popups/newMedia.ts:759-767).

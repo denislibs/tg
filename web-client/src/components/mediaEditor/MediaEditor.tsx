@@ -1451,7 +1451,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
             <IconButton
               size="small"
               color="#fff"
-              title={videoMuted ? t('ChatList.Context.Unmute') : t('ChatList.Context.Mute')}
+              title={videoMuted ? t('MediaEditor.Unmute') : t('MediaEditor.Mute')}
               onClick={() => { setVideoMuted((m) => !m); const v = img as HTMLVideoElement | null; if (v) v.muted = !videoMuted }}
             >
               <TgIcon name={videoMuted ? 'volume_off' : 'volume_up'} />

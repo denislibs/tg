@@ -780,7 +780,8 @@ const uk = {
   'PrivacySettingsController.AddUsers': 'Додати користувачів',
   'Call.Mute': 'Вимкнути звук',
   VoipUnmute: 'Увімкнути звук',
-  'Calendar.Next': 'Наступний',
+  'Calendar.Next': 'Наступний місяць',
+  'Calendar.Previous': 'Попередній місяць',
   'KeyboardShortcuts.Action.Link': 'Додати посилання',
   'Chat.Title.Comments': {
     one_value: '%d коментар',

@@ -752,7 +752,8 @@ const fr = {
   'PrivacySettingsController.AddUsers': 'Ajouter des utilisateurs',
   'Call.Mute': 'Couper le son',
   VoipUnmute: 'Activer le son',
-  'Calendar.Next': 'Suivant',
+  'Calendar.Next': 'Mois suivant',
+  'Calendar.Previous': 'Mois précédent',
   'KeyboardShortcuts.Action.Link': 'Ajouter un lien',
   'Chat.Title.Comments': {
     one_value: '%d commentaire',

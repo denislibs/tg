@@ -751,7 +751,8 @@ const de = {
   'PrivacySettingsController.AddUsers': 'Nutzer hinzufügen',
   'Call.Mute': 'Stumm schalten',
   VoipUnmute: 'Ton einschalten',
-  'Calendar.Next': 'Weiter',
+  'Calendar.Next': 'Nächster Monat',
+  'Calendar.Previous': 'Vorheriger Monat',
   'KeyboardShortcuts.Action.Link': 'Link hinzufügen',
   'Chat.Title.Comments': {
     one_value: '%d Kommentar',

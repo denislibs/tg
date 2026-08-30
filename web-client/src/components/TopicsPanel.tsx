@@ -551,7 +551,7 @@ function TopicFormPopup({ initial, onSubmit, onClose }: {
             type="button"
             className={classNames(s.emojiCell, !emoji ? s.emojiCellActive : '')}
             onClick={() => setEmoji('')}
-            title={t('Close')}
+            title={t('ForumTopic.NoIcon')}
           >
             <TgIcon name="colorize" size={20} />
           </button>

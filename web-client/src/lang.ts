@@ -40,6 +40,7 @@ const lang = {
   AttachVideo: 'Video',
   AuthorHiddenShort: 'Anonymous',
   AutoDeleteMessages: 'Auto-delete messages',
+  'AutoDeleteMessages.Disable': 'Disable',
   'AutoDeleteMessages.SectionCaption': 'If enabled, all new messages in chats you start will be automatically deleted for everyone at some point after they have been sent. This will not affect your existing chats.',
   'AutoDeleteMessages.SectionTitle': 'Self-destruct timer',
   'AutoDeleteMessages.SetOtherTime': 'Set other time',
@@ -316,6 +317,8 @@ const lang = {
   'Common.Creating': 'Creating…',
   'Common.DoneSuffix': 'done',
   'Common.Menu': 'Menu',
+  'Common.More': 'More',
+  'Common.Next': 'Next',
   'Common.Of': 'of',
   'Common.Tag': 'Tag',
   'Compose.NewMessage': 'New Message',
@@ -376,7 +379,10 @@ const lang = {
   DisableSharing: 'Disable Sharing',
   Discard: 'Discard',
   DiscardVoiceMessageTitle: 'Discard Voice Message',
-  'Discussion.Link.Question': 'Do you want to set %1$s as the discussion board for this channel?',
+  // Ключ СВОЙ, хотя у оригинала есть `Discussion.Set.Modal.Text.PublicChannelPublicGroup`:
+  // там ДВА аргумента в формате `%@` (имя группы и имя канала), которого не заполняет ни
+  // наш `tArgs`, ни `superFormatter` самого tweb, а у нашего экрана аргумент один.
+  'Discussion.Link.Question': 'Do you want to set «%1$s» as the discussion board for this channel?',
   'Discussion.Linked': 'Users can now discuss your posts in the linked group.',
   'Discussion.Unlink.Text': 'Are you sure you want to unlink this group from the channel?',
   DiscussionChannelHelp3: 'Select a group chat that will host comments from your channel.',
@@ -403,6 +409,7 @@ const lang = {
   'EditProfile.AddBirthdayRow': 'Add Birthday',
   'EditProfile.BioLabel': 'Bio (optional)',
   'EditProfile.FirstNameLabel': 'Name',
+  'EditProfile.LastNameLabel': 'Last name',
   'EditProfile.Username.Available': 'Username is available',
   'EditProfile.Username.Caption': 'You can choose a public username so people can find you and contact you without knowing your phone number.',
   'EditProfile.Username.Checking': 'Checking…',
@@ -465,6 +472,8 @@ const lang = {
   'Folder.Invite.Adding': 'Adding…',
   'Folder.Invite.Invalid': 'This link is invalid or has expired.',
   'Folder.Invite.Question.Folder': 'Do you want to add the folder «%1$s»?',
+  // Ключ СВОЙ, хотя у оригинала есть `SharedFolder.Link.Description`: у него нет
+  // аргумента вовсе («…a new chat folder…»), а наш экран называет папку по имени.
   'Folder.Invite.Question': 'Do you want to add «%1$s» and join its chats?',
   'Folder.Share.Empty': 'This folder has no chats to share.',
   'ForumTopic.Closed': 'Topic is closed',
@@ -474,6 +483,7 @@ const lang = {
   'ForumTopic.EnableHint': 'Group members can discuss different topics in separate threads.',
   'ForumTopic.Hidden': 'Hidden Topics',
   'ForumTopic.Name.Placeholder': 'Topic Name',
+  'ForumTopic.NoIcon': 'No icon',
   'ForumTopic.Title.Edit': 'Edit Topic',
   'ForumTopic.Unhide': 'Unhide',
   Forward: 'Forward',
@@ -653,6 +663,8 @@ const lang = {
   'MediaEditor.Brushes.Neon': 'Neon',
   'MediaEditor.Brushes.Pen': 'Pen',
   'MediaEditor.BrushSize': 'Brush size',
+  'MediaEditor.Mute': 'Mute video',
+  'MediaEditor.Unmute': 'Unmute video',
   'MediaEditor.Cover': 'Cover',
   'MediaEditor.Crop': 'Crop',
   'MediaEditor.Discard.Text': 'Are you sure you want to discard the changes?',
@@ -920,6 +932,22 @@ const lang = {
   PremiumPreviewLastSeenDescription: 'View the last seen and read times of others even if you hide yours.',
   PremiumTierAnnual: 'Annual',
   PremiumTierMonthly: 'Monthly',
+  'PreviewSender.SendAlbum': {
+    one_value: 'Send Album',
+    other_value: 'Send %d Albums',
+  },
+  'PreviewSender.SendFile': {
+    one_value: 'Send File',
+    other_value: 'Send %d Files',
+  },
+  'PreviewSender.SendPhoto': {
+    one_value: 'Send Photo',
+    other_value: 'Send %d Photos',
+  },
+  'PreviewSender.SendVideo': {
+    one_value: 'Send Video',
+    other_value: 'Send %d Videos',
+  },
   'PreviewSender.CaptionPlaceholder': 'Add a caption...',
   'Privacy.AlwaysShareCaption': 'These users will always see this, regardless of the setting above.',
   'Privacy.BioCaption': 'You can restrict who can see the bio on your profile with granular precision.',
@@ -1215,6 +1243,7 @@ const lang = {
   'Story.React': 'React',
   'Story.RemoveFromProfile': 'Remove from Profile',
   'Story.Repost': 'Repost',
+  'Story.Sound': 'Sound',
   'Story.Time.HoursAgo': 'h ago',
   'Story.Time.MinutesAgo': 'min ago',
   'Story.Viewers': 'Viewers',

@@ -86,7 +86,7 @@ export default function PasscodeLock({ onBack }: { onBack: () => void }) {
         {passField(first, setFirst, changing ? 'PasscodeLock.EnterANewPasscode' : 'PasscodeLock.EnterAPasscode', () => first && setStep('reenter'))}
         {error && <Text size={13.5} color="#ff595a" className={s.err}>{error}</Text>}
         <div className={s.btnWrap}>
-          <Button fullWidth disabled={!first || (changing && !current)} onClick={() => setStep('reenter')}>{t('Login.Next')}</Button>
+          <Button fullWidth disabled={!first || (changing && !current)} onClick={() => setStep('reenter')}>{t('Common.Next')}</Button>
         </div>
       </SettingsScreen>
     )

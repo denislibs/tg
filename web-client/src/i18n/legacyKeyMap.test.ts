@@ -74,6 +74,21 @@ describe('карта миграции ключей', () => {
     'SharedFolder.Edit.Title',
     'SharedFolder.Link.Caption',
     'Translate.SectionCaption',
+    // Ключи, заведённые по итогам ревью взамен ключей ЧУЖИХ мест (кнопка звука
+    // редактора медиа, сброс значка темы, «Далее» пасскода, «Ещё» историй, фамилия в
+    // редакторе профиля, отключение автоудаления) и формы числа заголовка отправки.
+    'PreviewSender.SendAlbum',
+    'PreviewSender.SendFile',
+    'PreviewSender.SendPhoto',
+    'PreviewSender.SendVideo',
+    'MediaEditor.Mute',
+    'MediaEditor.Unmute',
+    'ForumTopic.NoIcon',
+    'Common.More',
+    'Common.Next',
+    'Story.Sound',
+    'EditProfile.LastNameLabel',
+    'AutoDeleteMessages.Disable',
   ]
 
   it('достаёт каждый ключ нынешнего словаря', () => {

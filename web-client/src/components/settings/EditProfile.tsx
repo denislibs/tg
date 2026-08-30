@@ -253,7 +253,7 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
       {/* name / last / bio + birthday */}
       <div className={`${s.card} ${s.form}`}>
         <Input label={t('EditProfile.FirstNameLabel')} value={first} onChange={setFirst} />
-        <Input label={t('Login.Register.LastName.Placeholder')} value={last} onChange={setLast} />
+        <Input label={t('EditProfile.LastNameLabel')} value={last} onChange={setLast} />
         <Input label={t('EditProfile.BioLabel')} value={bio} onChange={(v) => setBio(v.slice(0, BIO_MAX))} />
         <div className={s.bday} onClick={() => setBdayOpen(true)}>
           <TgIcon name="gift" size={24} color="var(--secondary-text-color)" />

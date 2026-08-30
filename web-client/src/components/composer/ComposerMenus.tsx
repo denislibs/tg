@@ -91,7 +91,7 @@ export default function ComposerMenus({
             <MenuItem
               key={o.label}
               icon={<TgIcon name="timer" size={20} />}
-              label={o.secs == null ? t('Off') : o.label}
+              label={o.secs == null ? t('AutoDeleteMessages.Disable') : o.label}
               right={ttlSeconds === o.secs ? <TgIcon name="check" size={18} color="var(--primary-color)" /> : undefined}
               onClick={() => onPickTtl(o.secs)}
             />

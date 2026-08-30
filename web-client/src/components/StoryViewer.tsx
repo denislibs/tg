@@ -319,14 +319,14 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
         <TgIcon name={vm.manualPause ? 'play' : 'pause'} />
       </IconButton>
       {videoDurationMs > 0 && (
-        <IconButton onClick={() => setMuted((m) => !m)} aria-label={t('Notifications.Sound.Section')}>
+        <IconButton onClick={() => setMuted((m) => !m)} aria-label={t('Story.Sound')}>
           <TgIcon name={muted ? 'speakerofffilled' : 'speakerfilled'} />
         </IconButton>
       )}
       <IconButton
         className="btn-menu-toggle night"
         onClick={() => (vm.isMe ? setMenuOpen(true) : setOthersMenuOpen(true))}
-        aria-label={t('MultiAccount.More')}
+        aria-label={t('Common.More')}
       >
         <TgIcon name="more" />
       </IconButton>
