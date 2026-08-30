@@ -9,6 +9,18 @@ import (
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
+// Отказы подсистемы. Названы поимённо, потому что клиент ветвится по ИМЕНИ
+// отказа (`HttpError.type`), а «неверный аргумент» — не имя: по нему нельзя
+// отличить «спросил слишком много ключей» от «прислал версию из мусора».
+// Оба заворачивают domain.ErrInvalid, чтобы общий разбор ошибок (400 против
+// 500) продолжал работать, не зная про подсистему ничего.
+var (
+	// ErrTooManyKeys — за раз спрошено больше MaxStringKeys ключей.
+	ErrTooManyKeys = fmt.Errorf("langpack: спрошено слишком много ключей: %w", domain.ErrInvalid)
+	// ErrVersionInvalid — версия клиента не может существовать (отрицательная).
+	ErrVersionInvalid = fmt.Errorf("langpack: версия клиента невозможна: %w", domain.ErrInvalid)
+)
+
 // Interactor — языковой пакет: выдача и версии.
 type Interactor struct{ repo Repo }
 
@@ -41,14 +53,33 @@ func (i *Interactor) LangPack(ctx context.Context, code string) (domain.LangPack
 // узнать, что их больше нет, — иначе снятая строка останется у него на экране
 // навсегда.
 //
-// fromVersion, равная нулю или больше текущей, — не ошибка: ноль означает «у
-// меня ничего нет» и даёт весь пакет, версия из будущего (клиент из другого
-// деплоя) даёт пустую разницу и текущий номер, по которому клиент откатится сам.
+// Ноль означает «у меня ничего нет» и даёт весь пакет.
+//
+// Версия БОЛЬШЕ текущей означает, что клиент пришёл с более нового деплоя, и
+// сам собой этот случай не рассасывается: клиент применит разницу, только если
+// её `version` больше сохранённой у него (tweb `langPack.ts:770-773`), а
+// применяя — потребует точного совпадения своей версии с `from_version`
+// (`:710-713`), иначе уйдёт в «слишком длинно» и повторит тот же запрос. То
+// есть «откатится сам» он НЕ может — такого механизма у оригинала нет.
+//
+// Поэтому здесь отдаётся весь пакет: это самое полное, что у сервера есть, и
+// честная граница (`from_version: 0`) вместо разницы, у которой `version`
+// меньше `from_version`. Клиента с версией из будущего это всё равно не
+// вылечит — вылечило бы только то, чтобы наша версия не отставала, а этого мы
+// добиваемся иначе: версия приезжает из снимка вместе с бинарём и не
+// уменьшается при сбросе базы (докблок `langsource.Language.Version`).
 func (i *Interactor) Difference(ctx context.Context, code string, fromVersion int) (domain.LangPackDifference, error) {
 	if fromVersion < 0 {
-		return domain.LangPackDifference{}, fmt.Errorf("langpack: версия %d: %w", fromVersion, domain.ErrInvalid)
+		return domain.LangPackDifference{}, fmt.Errorf("%d: %w", fromVersion, ErrVersionInvalid)
 	}
 	if fromVersion == 0 {
+		return i.LangPack(ctx, code)
+	}
+	version, err := i.repo.Version(ctx, code)
+	if err != nil {
+		return domain.LangPackDifference{}, err
+	}
+	if fromVersion > version {
 		return i.LangPack(ctx, code)
 	}
 	return i.difference(ctx, code, fromVersion, true)
@@ -86,7 +117,7 @@ const MaxStringKeys = 100
 // молчание он прочитал бы как «строка ещё едет».
 func (i *Interactor) Strings(ctx context.Context, code string, keys []string) ([]domain.LangPackString, error) {
 	if len(keys) > MaxStringKeys {
-		return nil, fmt.Errorf("langpack: запрошено %d ключей при пределе %d: %w", len(keys), MaxStringKeys, domain.ErrInvalid)
+		return nil, fmt.Errorf("%d при пределе %d: %w", len(keys), MaxStringKeys, ErrTooManyKeys)
 	}
 	// Существование языка спрашиваем отдельно: без этого чужой код языка отдал
 	// бы вектор из одних снятых ключей, то есть «этих строк нет» вместо «такого
@@ -123,16 +154,31 @@ func (i *Interactor) Strings(ctx context.Context, code string, keys []string) ([
 
 // Sync приводит язык к состоянию источника и возвращает его версию.
 //
-// Здесь живёт всё, что делает версию версией:
+// Версию НАЗНАЧАЕТ ИСТОЧНИК (sourceVersion — из снимка словарей), а не сид, и
+// это главное здесь. Считай её сид «предыдущая плюс один», она обнулялась бы
+// вместе с базой: `Down` роняет обе таблицы, и после «откатили-накатили» сид
+// начинал бы с единицы. Клиент, дошедший до пятой версии, не принял бы после
+// этого ни одной строки НИКОГДА — он применяет разницу только когда её версия
+// больше сохранённой (tweb `langPack.ts:770-773`). Версия из снимка едет
+// вместе с бинарём и сброс базы переживает.
 //
-//   - строка, чей текст не изменился, НЕ трогается — иначе каждый перезапуск
-//     сервера растил бы версию и слал всем клиентам весь пакет заново;
-//   - изменившаяся или новая получает новую версию языка;
+// Остальное сид решает сам:
+//
+//   - строка, чей текст не изменился, НЕ трогается;
+//   - изменившаяся или новая получает версию источника;
 //   - исчезнувшая из источника помечается СНЯТОЙ, а не удаляется строкой из
 //     таблицы: удалённую строку разница не покажет никак, и у клиента она
 //     останется навсегда;
-//   - версия растёт РОВНО НА ОДИН и ровно тогда, когда что-то изменилось.
-func (i *Interactor) Sync(ctx context.Context, meta domain.LangPackLanguageMeta, want []domain.LangPackStringRecord) (int, error) {
+//   - если менять нечего, версия языка всё равно доводится до версии
+//     источника — иначе пустая база после сброса осталась бы на нуле.
+//
+// Назад версия не двигается ни при каких условиях (см. ниже про откат бинаря).
+func (i *Interactor) Sync(ctx context.Context, meta domain.LangPackLanguageMeta, want []domain.LangPackStringRecord, sourceVersion int) (int, error) {
+	if sourceVersion < 1 {
+		// Ноль означает «пакета нет»: клиент с нулём спрашивает весь пакет
+		// заново, и отдать ему ноль в ответе значило бы зациклить его.
+		return 0, fmt.Errorf("langpack: %s: версия источника %d: %w", meta.Code, sourceVersion, ErrVersionInvalid)
+	}
 	current, err := i.repo.Version(ctx, meta.Code)
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
 		return 0, err
@@ -177,9 +223,24 @@ func (i *Interactor) Sync(ctx context.Context, meta domain.LangPackLanguageMeta,
 	// одинаковый результат на одинаковых данных.
 	sort.Slice(changed, func(a, b int) bool { return changed[a].Key < changed[b].Key })
 
-	version := current
-	if len(changed) > 0 {
-		version++
+	version := sourceVersion
+	switch {
+	case version < current:
+		// Откатили бинарь: снимок старее того, что уже в базе. Двигать версию
+		// назад нельзя (клиент замёрзнет), поэтому оставляем сохранённую — но
+		// тогда изменившиеся строки уехали бы под уже известной клиенту
+		// версией, то есть незаметно для него. Молчать об этом нельзя.
+		if len(changed) > 0 {
+			return 0, fmt.Errorf("langpack: %s: снимок версии %d старее базы (%d), а строки разошлись: %w",
+				meta.Code, sourceVersion, current, domain.ErrConflict)
+		}
+		version = current
+	case version == current && len(changed) > 0:
+		// Строки разошлись, а версия источника не выросла — снимок не
+		// перегенерирован (`go run ./cmd/langpackgen`). Записать их под текущей
+		// версией значит отдать их клиенту НИКОГДА.
+		return 0, fmt.Errorf("langpack: %s: строки разошлись, а версия источника осталась %d — снимок не перегенерирован: %w",
+			meta.Code, sourceVersion, domain.ErrConflict)
 	}
 	if err := i.repo.Apply(ctx, meta, version, changed); err != nil {
 		return 0, err

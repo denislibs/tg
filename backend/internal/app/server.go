@@ -424,15 +424,32 @@ func redisGroupCalls(r RedisResult) usecasechat.GroupCallStore {
 	return newGroupCallStore(r.Client)
 }
 
+// langPackSeedTimeout — сколько сид имеет права держать старт.
+//
+// Дедлайн, а не «сколько получится»: сид идёт в фазе invoke, ДО того как
+// сервер начнёт слушать порт. Обещание «отказ сида не валит приложение»
+// держится для ошибки, но не для зависшего Postgres — без дедлайна лежащая база
+// означала бы, что не отвечает и `/health`, то есть сервис не поднялся вовсе.
+// Заливка пяти тысяч строк укладывается в доли секунды (один оператор на язык),
+// так что полминуты здесь — это «база не отвечает», а не «много данных».
+const langPackSeedTimeout = 30 * time.Second
+
 // seedLangPack заливает строки языков из вшитого снимка словарей клиента.
 //
 // Единственный источник переводов — файлы веб-клиента; снимок снят с них
 // генератором `cmd/langpackgen`, а что он с ними не разошёлся, проверяет
 // сторожевой тест `internal/langsource`. Разбор решения — в шапке миграции 0128.
 //
+// Версию языка тоже назначает снимок, а не сид: она обязана пережить сброс базы,
+// иначе клиент, ушедший вперёд, не примет от сервера ни одной строки больше
+// никогда (докблок `langsource.Language.Version`).
+//
 // Английский заливается ПЕРВЫМ (он первый в снимке): остальные языки ссылаются
 // на него как на базу внешним ключом.
 func seedLangPack(ctx context.Context, uc *usecaselangpack.Interactor) {
+	ctx, cancel := context.WithTimeout(ctx, langPackSeedTimeout)
+	defer cancel()
+
 	pack, err := langsource.Embedded()
 	if err != nil {
 		log.Printf("langpack seed failed: %v", err)
@@ -444,7 +461,7 @@ func seedLangPack(ctx context.Context, uc *usecaselangpack.Interactor) {
 	versions := make([]string, 0, len(pack.Languages))
 	total := 0
 	for _, lang := range pack.Languages {
-		version, err := uc.Sync(ctx, lang.LangPackLanguageMeta, lang.Strings)
+		version, err := uc.Sync(ctx, lang.LangPackLanguageMeta, lang.Strings, lang.Version)
 		if err != nil {
 			log.Printf("langpack seed %s failed: %v", lang.Code, err)
 			return

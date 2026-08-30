@@ -31,6 +31,9 @@ import (
 // Схема теста — по соседям (deviceidentity_migration_test.go): откат на версию
 // назад, накат, запись ОБЫЧНЫМ путём (сид usecase) и чтение обычным
 // репозиторием.
+//
+// Заодно проверяется 0129 (колонка позиции языка): она едет тем же откатом и
+// накатом, и её Down обязан быть исполним ровно по той же причине.
 const langPackMigrationPrevVersion = 127
 
 func TestMigration0128_LangPackTablesHoldTheirInvariants(t *testing.T) {
@@ -58,11 +61,21 @@ func TestMigration0128_LangPackTablesHoldTheirInvariants(t *testing.T) {
 		t.Fatalf("накат 0128: %v", err)
 	}
 	uc := usecaselangpack.New(NewLangPackRepo(pool))
-	if _, err := uc.Sync(ctx, enMeta, []domain.LangPackStringRecord{plain("Add", "Add")}); err != nil {
+	if _, err := uc.Sync(ctx, enMeta, []domain.LangPackStringRecord{plain("Add", "Add")}, 1); err != nil {
 		t.Fatalf("сид базы: %v", err)
 	}
-	if _, err := uc.Sync(ctx, ruMeta, []domain.LangPackStringRecord{notificationsRU()}); err != nil {
+	if _, err := uc.Sync(ctx, ruMeta, []domain.LangPackStringRecord{notificationsRU()}, 1); err != nil {
 		t.Fatalf("сид ru: %v", err)
+	}
+
+	// 0129: позиция доехала до колонки и задаёт порядок выдачи.
+	var position int
+	if err := pool.QueryRow(ctx,
+		`SELECT position FROM langpack_languages WHERE lang_code = 'ru'`).Scan(&position); err != nil {
+		t.Fatalf("чтение позиции: %v", err)
+	}
+	if position != ruMeta.Position {
+		t.Errorf("позиция русского = %d; want %d", position, ruMeta.Position)
 	}
 	pack, err := uc.LangPack(ctx, "ru")
 	if err != nil {
@@ -125,7 +138,34 @@ func TestMigration0128_LangPackTablesHoldTheirInvariants(t *testing.T) {
 		t.Errorf("после удаления языка осталось %d его строк", orphans)
 	}
 
-	// ── 7. Круг вниз-вверх ──────────────────────────────────────────────────
+	// ── 7. Откат ОДНОЙ 0129 ─────────────────────────────────────────────────
+	// Отдельно от круга ниже: там откат идёт до 127, и 0128 уносит таблицу
+	// целиком — колонка позиции пропала бы вместе с ней, даже если бы её Down
+	// не делал ничего. Проверять Down миграции нужно на ЕЁ шаге.
+	if err := storepostgres.MigrateDownTo(url, langPackMigrationPrevVersion+1); err != nil {
+		t.Fatalf("откат 0129: %v", err)
+	}
+	hasPosition := func() bool {
+		t.Helper()
+		var exists bool
+		if err := pool.QueryRow(ctx,
+			`SELECT EXISTS(SELECT 1 FROM information_schema.columns
+			   WHERE table_name='langpack_languages' AND column_name='position')`).Scan(&exists); err != nil {
+			t.Fatalf("проверка колонки: %v", err)
+		}
+		return exists
+	}
+	if hasPosition() {
+		t.Error("после отката 0129 колонка position осталась")
+	}
+	if err := storepostgres.Migrate(url); err != nil {
+		t.Fatalf("повторный накат 0129: %v", err)
+	}
+	if !hasPosition() {
+		t.Error("после наката 0129 колонки position нет")
+	}
+
+	// ── 8. Круг вниз-вверх ──────────────────────────────────────────────────
 	// Down здесь честно ТЕРЯЕТ строки: таблицы удаляются целиком. Это не потеря
 	// данных — переводы живут в файлах клиента и приезжают обратно сидом при
 	// старте (шапка миграции). Проверяем ровно это: после круга схема рабочая, а
@@ -139,11 +179,15 @@ func TestMigration0128_LangPackTablesHoldTheirInvariants(t *testing.T) {
 	if _, err := uc.Language(ctx, "en"); err == nil {
 		t.Error("после круга язык нашёлся; таблицы обязаны быть пустыми")
 	}
-	version, err := uc.Sync(ctx, enMeta, []domain.LangPackStringRecord{plain("Add", "Add")})
+	// Версия ПЕРЕЖИВАЕТ круг: её назначает снимок, а не база. Иначе клиент,
+	// ушедший вперёд, после отката-наката не принял бы ни одной строки —
+	// он применяет разницу, только когда её версия больше сохранённой
+	// (tweb `langPack.ts:770-773`).
+	version, err := uc.Sync(ctx, enMeta, []domain.LangPackStringRecord{plain("Add", "Add")}, 7)
 	if err != nil {
 		t.Fatalf("сид после круга: %v", err)
 	}
-	if version != 1 {
-		t.Errorf("версия после круга = %d; на пустой схеме сид начинает с 1", version)
+	if version != 7 {
+		t.Errorf("версия после круга = %d; want 7 — её везёт снимок, а не база", version)
 	}
 }

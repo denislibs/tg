@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -26,6 +27,8 @@ type fakeLangPackRepo struct {
 	langs   map[string]domain.LangPackLanguageMeta
 	version map[string]int
 	strings map[string][]fakeLangPackRow
+	// fail — отказ хранилища (лежащая база): подставляется вместо любого чтения.
+	fail error
 }
 
 type fakeLangPackRow struct {
@@ -48,7 +51,11 @@ func (f *fakeLangPackRepo) put(meta domain.LangPackLanguageMeta, version int, ro
 }
 
 func (f *fakeLangPackRepo) Languages(context.Context) ([]domain.LangPackLanguage, error) {
+	if f.fail != nil {
+		return nil, f.fail
+	}
 	out := []domain.LangPackLanguage{}
+	// Порядок выдачи — как у хранилища: по позиции из источника.
 	for _, code := range []string{"en", "ru"} {
 		meta, ok := f.langs[code]
 		if !ok {
@@ -243,8 +250,11 @@ func TestLangPackHandler_DifferenceRequiresVersion(t *testing.T) {
 			t.Errorf("%s: код %d, тело %s", path, code, body)
 			continue
 		}
-		if name := errorName(t, body); name != errFromVersionInvalid {
-			t.Errorf("%s: имя отказа %q; want %q", path, name, errFromVersionInvalid)
+		// Литерал, а не константа: сравнение константы с той же константой
+		// проходит и после переименования, то есть не проверяет ничего.
+		// Имя — КОНТРАКТ с клиентом, он ветвится по нему.
+		if name := errorName(t, body); name != "FROM_VERSION_INVALID" {
+			t.Errorf("%s: имя отказа %q; want FROM_VERSION_INVALID", path, name)
 		}
 	}
 }
@@ -399,8 +409,8 @@ func TestLangPackHandler_UnknownLanguage(t *testing.T) {
 			t.Errorf("%s: код %d, тело %s", path, code, body)
 			continue
 		}
-		if name := errorName(t, body); name != errLangCodeNotSupported {
-			t.Errorf("%s: имя отказа %q; want %q", path, name, errLangCodeNotSupported)
+		if name := errorName(t, body); name != "LANG_CODE_NOT_SUPPORTED" {
+			t.Errorf("%s: имя отказа %q; want LANG_CODE_NOT_SUPPORTED", path, name)
 		}
 	}
 }
@@ -430,8 +440,44 @@ func TestLangPackHandler_StringsKeyLimit(t *testing.T) {
 	if code != http.StatusBadRequest {
 		t.Fatalf("код %d, тело %s", code, body)
 	}
-	if name := errorName(t, body); name != errLangKeysTooMany {
-		t.Errorf("имя отказа %q; want %q", name, errLangKeysTooMany)
+	if name := errorName(t, body); name != "LANG_KEYS_TOO_MANY" {
+		t.Errorf("имя отказа %q; want LANG_KEYS_TOO_MANY", name)
+	}
+}
+
+// Отказ ХРАНИЛИЩА тоже приезжает именем, а не прозой.
+//
+// «Языкового пакета нет» клиент обязан отличать от «языка нет»: первое — повод
+// повторить позже на своих строках, второе — повод не спрашивать этот язык
+// больше. По свободному тексту он их не отличит.
+func TestLangPackHandler_StorageFailureHasName(t *testing.T) {
+	repo := newFakeLangPackRepo()
+	repo.fail = errors.New("база не отвечает")
+	h := NewRouter(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		NewLangPackHandler(usecaselangpack.New(repo)))
+
+	code, body := getLangPack(t, h, "/langpack/languages")
+	if code != http.StatusInternalServerError {
+		t.Fatalf("код %d, тело %s", code, body)
+	}
+	if name := errorName(t, body); name != "LANGPACK_UNAVAILABLE" {
+		t.Errorf("имя отказа %q; want LANGPACK_UNAVAILABLE", name)
+	}
+}
+
+// Все имена отказов подсистемы — на одном экране и закреплены литералами.
+// Переименование константы обязано краснеть здесь: имя это контракт, менять его
+// можно только вместе с клиентом.
+func TestLangPackHandler_ErrorNames(t *testing.T) {
+	for got, want := range map[string]string{
+		errLangCodeNotSupported: "LANG_CODE_NOT_SUPPORTED",
+		errFromVersionInvalid:   "FROM_VERSION_INVALID",
+		errLangKeysTooMany:      "LANG_KEYS_TOO_MANY",
+		errLangPackUnavailable:  "LANGPACK_UNAVAILABLE",
+	} {
+		if got != want {
+			t.Errorf("имя отказа = %q; want %q", got, want)
+		}
 	}
 }
 

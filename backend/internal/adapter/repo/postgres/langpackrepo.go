@@ -126,7 +126,7 @@ func (r *LangPackRepo) Version(ctx context.Context, code string) (int, error) {
 // COALESCE(base_lang_code, lang_code), а не по самому языку — иначе у русского
 // «переведено 1170 из 1170», то есть «переведено всё».
 const langPackLanguageQuery = `
-	SELECT l.name, l.native_name, l.lang_code, l.base_lang_code, l.plural_code, l.rtl,
+	SELECT l.name, l.native_name, l.lang_code, l.base_lang_code, l.plural_code, l.rtl, l.position,
 	       (SELECT count(*) FROM langpack_strings b
 	         WHERE b.lang_code = COALESCE(l.base_lang_code, l.lang_code) AND NOT b.deleted),
 	       (SELECT count(*) FROM langpack_strings s
@@ -140,7 +140,7 @@ func scanLangPackLanguage(s scanner) (domain.LangPackLanguage, error) {
 		stringsCount, translatedCount int
 	)
 	if err := s.Scan(&meta.Name, &meta.NativeName, &meta.Code, &base, &meta.PluralCode, &meta.RTL,
-		&stringsCount, &translatedCount); err != nil {
+		&meta.Position, &stringsCount, &translatedCount); err != nil {
 		return domain.LangPackLanguage{}, err
 	}
 	if base != nil {
@@ -149,14 +149,19 @@ func scanLangPackLanguage(s scanner) (domain.LangPackLanguage, error) {
 	return domain.NewLangPackLanguage(meta, stringsCount, translatedCount), nil
 }
 
-// Languages — все языки пакета.
+// Languages — все языки пакета В ПОРЯДКЕ ВЫДАЧИ.
 //
-// Порядок — база первой, дальше по английскому имени: тот же порядок, в котором
-// оригинал показывает список («предложенные», затем алфавит), и единственный,
-// который не зависит от того, в каком порядке языки залил сид.
+// Порядок здесь не косметика: клиент рисует список тем же перебором, каким его
+// получил, и не сортирует (tweb `sidebarLeft/tabs/language.tsx:115`). Значит,
+// «предложенные первыми» может выразить только сервер — колонкой position,
+// которую сид берёт из порядка языков в источнике (миграция 0129).
+//
+// `l.name` вторым ключом — не запасной порядок, а определённость: у языков с
+// одинаковой позицией (например, у ещё не засеянных, с DEFAULT 0) выдача не
+// должна зависеть от физического порядка строк в таблице.
 func (r *LangPackRepo) Languages(ctx context.Context) ([]domain.LangPackLanguage, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		langPackLanguageQuery+` ORDER BY (l.base_lang_code IS NOT NULL), l.name`)
+		langPackLanguageQuery+` ORDER BY l.position, l.name`)
 	if err != nil {
 		return nil, err
 	}
@@ -204,16 +209,17 @@ func (r *LangPackRepo) Apply(ctx context.Context, meta domain.LangPackLanguageMe
 		base = &b
 	}
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO langpack_languages (lang_code, name, native_name, base_lang_code, plural_code, rtl, version)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7)
+		`INSERT INTO langpack_languages (lang_code, name, native_name, base_lang_code, plural_code, rtl, position, version)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 		 ON CONFLICT (lang_code) DO UPDATE SET
 		   name           = EXCLUDED.name,
 		   native_name    = EXCLUDED.native_name,
 		   base_lang_code = EXCLUDED.base_lang_code,
 		   plural_code    = EXCLUDED.plural_code,
 		   rtl            = EXCLUDED.rtl,
+		   position       = EXCLUDED.position,
 		   version        = EXCLUDED.version`,
-		meta.Code, meta.Name, meta.NativeName, base, meta.PluralCode, meta.RTL, version); err != nil {
+		meta.Code, meta.Name, meta.NativeName, base, meta.PluralCode, meta.RTL, meta.Position, version); err != nil {
 		return err
 	}
 

@@ -24,12 +24,23 @@ func NewLangPackHandler(uc *usecaselangpack.Interactor) *LangPackHandler {
 
 // Имена отказов. Приезжают клиенту телом конструктора `error` и становятся
 // `HttpError.type` — тем, по чему ветвится вызывающий (у оригинала это
-// `ApiError.type`). Первые два — имена самого Telegram.
+// `ApiError.type`).
+//
+// `LANG_CODE_NOT_SUPPORTED` — имя самого Telegram (его отдаёт
+// `langpack.getLanguage` на неизвестный код). Остальные три наши: у оригинала
+// нет ни предела доспроса, ни отдельного имени под непрочитанную версию.
+// Именами (а не прозой) они сделаны все, включая отказ сервера: «языкового
+// пакета нет» клиент обязан отличать от «языка нет», а по свободному тексту не
+// отличит.
+//
+// Соответствие имени тексту закреплено тестами буквально — литералом в
+// утверждении, а не сравнением константы с самой собой: переименование
+// константы обязано краснеть, потому что имя это КОНТРАКТ с клиентом.
 const (
 	errLangCodeNotSupported = "LANG_CODE_NOT_SUPPORTED"
-	errLangPackInvalid      = "LANG_PACK_INVALID"
 	errFromVersionInvalid   = "FROM_VERSION_INVALID"
 	errLangKeysTooMany      = "LANG_KEYS_TOO_MANY"
+	errLangPackUnavailable  = "LANGPACK_UNAVAILABLE"
 )
 
 // maxLangCodeLen — предел длины кода языка. Не про безопасность, а про смысл:
@@ -107,13 +118,14 @@ func (h *LangPackHandler) Difference(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, errLangCodeNotSupported)
 		return
 	}
+	// Витрина отвечает за ПРОВОД: пустой параметр и «abc» это не число, и
+	// прочитать их некому, кроме неё. Осмысленность самого числа —
+	// правило usecase (отрицательной версии не бывает), и отказ оттуда
+	// приезжает под тем же именем: клиенту всё равно, на каком слое его
+	// версию не приняли.
 	raw := r.URL.Query().Get("from_version")
-	if raw == "" {
-		writeError(w, http.StatusBadRequest, errFromVersionInvalid)
-		return
-	}
 	from, err := strconv.Atoi(raw)
-	if err != nil || from < 0 {
+	if raw == "" || err != nil {
 		writeError(w, http.StatusBadRequest, errFromVersionInvalid)
 		return
 	}
@@ -137,12 +149,10 @@ func (h *LangPackHandler) Strings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, errLangCodeNotSupported)
 		return
 	}
-	keys := r.URL.Query()["key"]
-	if len(keys) > usecaselangpack.MaxStringKeys {
-		writeError(w, http.StatusBadRequest, errLangKeysTooMany)
-		return
-	}
-	strings, err := h.uc.Strings(r.Context(), code, keys)
+	// Предел объявлен ОДИН раз — в usecase, и оттуда же приезжает отказ.
+	// Проверять его ещё и здесь значило бы завести второе правило с тем же
+	// смыслом: разъехавшись, они дали бы разные имена одному отказу.
+	strings, err := h.uc.Strings(r.Context(), code, r.URL.Query()["key"])
 	if err != nil {
 		writeLangPackError(w, err)
 		return
@@ -152,13 +162,22 @@ func (h *LangPackHandler) Strings(w http.ResponseWriter, r *http.Request) {
 
 // writeLangPackError — отказ ИМЕНЕМ, а не текстом: клиент ветвится по
 // `HttpError.type`, и «неизвестный язык» он обязан отличать от «сервер лёг».
+//
+// Отказы разбираются ПОИМЁННО, а не по общему `domain.ErrInvalid`: у
+// подсистемы два нарушаемых аргумента, и клиенту они говорят разное — «спроси
+// меньше ключей» против «пришли настоящую версию». Общего имени
+// «неверный аргумент» здесь нет вовсе: оно не сказало бы клиенту ничего, чего
+// он не знает из кода 400, а стоять недостижимой строкой в списке имён —
+// хуже, чем не стоять.
 func writeLangPackError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusNotFound, errLangCodeNotSupported)
-	case errors.Is(err, domain.ErrInvalid):
-		writeError(w, http.StatusBadRequest, errLangPackInvalid)
+	case errors.Is(err, usecaselangpack.ErrTooManyKeys):
+		writeError(w, http.StatusBadRequest, errLangKeysTooMany)
+	case errors.Is(err, usecaselangpack.ErrVersionInvalid):
+		writeError(w, http.StatusBadRequest, errFromVersionInvalid)
 	default:
-		writeError(w, http.StatusInternalServerError, "langpack unavailable")
+		writeError(w, http.StatusInternalServerError, errLangPackUnavailable)
 	}
 }

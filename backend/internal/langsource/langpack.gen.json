@@ -5,6 +5,8 @@
       "name": "English",
       "native_name": "English",
       "plural_code": "en",
+      "position": 1,
+      "version": 1,
       "strings": [
         {
           "key": "AccountSettings.Notifications",
@@ -5036,6 +5038,8 @@
       "native_name": "Русский",
       "base_lang_code": "en",
       "plural_code": "ru",
+      "position": 2,
+      "version": 1,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -9730,6 +9734,8 @@
       "native_name": "Français",
       "base_lang_code": "en",
       "plural_code": "fr",
+      "position": 3,
+      "version": 1,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -12439,6 +12445,8 @@
       "native_name": "Deutsch",
       "base_lang_code": "en",
       "plural_code": "de",
+      "position": 4,
+      "version": 1,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -15147,6 +15155,8 @@
       "native_name": "Español",
       "base_lang_code": "en",
       "plural_code": "es",
+      "position": 5,
+      "version": 1,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -17856,6 +17866,8 @@
       "native_name": "Українська",
       "base_lang_code": "en",
       "plural_code": "uk",
+      "position": 6,
+      "version": 1,
       "strings": [
         {
           "key": "WebPage.InstantView",
