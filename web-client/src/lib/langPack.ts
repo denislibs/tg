@@ -168,10 +168,10 @@ namespace I18n {
   let lastRequestedNormalizedLangCode: string = DEFAULT_LANG_CODE
   let lastAppliedLangCode: string | undefined
   // ОТСТУПЛЕНИЕ, как и `pluralRules` выше: у tweb поле стартует `undefined` и
-  // заполняется из настроек при старте приложения. У нас настройка сюда пока
-  // ниоткуда не приходит (`settings.tsx` знает её, но связи нет — задача 7), а
-  // `IntlDateElement` читает поле сразу, поэтому умолчание стоит здесь. `h23` —
-  // то же, что выбрано умолчанием в `settings.tsx:103` (`24h`).
+  // заполняется из настроек при старте приложения. У нас настройку приносит
+  // подписка на хранилище настроек (`settings.tsx`, задача 7), но `IntlDateElement`
+  // читает поле и до неё — поэтому умолчание стоит здесь. `h23` — то же, что
+  // выбрано умолчанием в `settings.tsx` (`24h`).
   let timeFormat: TimeFormat = 'h23'
 
   export function getLastRequestedLangCode() { return lastRequestedLangCode }
