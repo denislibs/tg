@@ -15,7 +15,7 @@ import AutoDeleteMessages, { autoDeleteLabel } from './AutoDeleteMessages'
 import PasscodeLock from './PasscodeLock'
 import ConfirmDialog from './ConfirmDialog'
 import { useSettingsStore } from '../../settings'
-import { useT } from '../../i18n'
+import { useT, useTArgs } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { openActiveSessionsTab } from '../sidebarLeft/settingsSliderHost'
 import { toastNew } from '../toast'
@@ -55,6 +55,7 @@ const RULE_ROWS: LangPackKey[] = [
 
 export default function PrivacySecuritySettings({ onBack }: { onBack: () => void }) {
   const t = useT()
+  const tArgs = useTArgs()
   const managers = useManagers()
   const rules = usePrivacyStore((s) => s.rules)
   const blockedTotal = usePrivacyStore((s) => s.blockedTotal)
@@ -117,7 +118,7 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
         <Row
           icon={<TgIcon name="auto_delete_circle_clock" size={24} />}
           label="AutoDeleteMessages"
-          value={autoDelete == null ? undefined : autoDeleteLabel(autoDelete, t)}
+          value={autoDelete == null ? undefined : autoDeleteLabel(autoDelete, t, tArgs)}
           onClick={() => setSub('AutoDeleteMessages')}
         />
         <Row

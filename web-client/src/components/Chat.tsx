@@ -18,7 +18,7 @@ import { useSettingsStore } from '../settings'
 import { CallProvider } from './call/CallProvider'
 import NowPlayingBar from './NowPlayingBar'
 import type { Chat } from '../data'
-import { useT, useLang } from '../i18n'
+import { useT, useLang, useTArgs } from '../i18n'
 import { useTypingLabel } from '../core/hooks/useTypingLabel'
 import { lastSeenLabel } from '../core/presence'
 import { useManagers } from '../core/hooks/useManagers'
@@ -148,6 +148,7 @@ interface Props {
 
 export default function Chat({ chat, onBack, thread }: Props) {
   const t = useT()
+  const tArgs = useTArgs()
   // Навигация — из navigationStore/useNavigationActions напрямую (инвариант: View
   // читает из стора, а не через проброс из Shell). Имена локальные совпадают с
   // прежними пропсами, чтобы не менять места использования ниже.
@@ -1419,7 +1420,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
         <div className={s.groupCallBanner} onClick={() => void joinGroupCall(numericChatId)}>
           <TgIcon name="videochat" size={18} color="#fff" />
           <Text size={14} weight={600} color="#fff" style={{ flex: 1 }}>
-            {t('PeerInfo.Action.VoiceChat')} · {groupCallActive.length} {t('VoiceChat.Status.ParticipantsSuffix')}
+            {t('PeerInfo.Action.VoiceChat')} · {tArgs('VoiceChat.Status.Members', [groupCallActive.length])}
           </Text>
           <Text size={14} weight={700} color="#fff">{t('GroupCall.Banner.Join')}</Text>
         </div>

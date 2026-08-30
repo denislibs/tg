@@ -8,7 +8,7 @@ import { useState } from 'react'
 import TgIcon from '../TgIcon'
 import { SettingsScreen, Section, Row } from './kit'
 import PrivacyUserPicker from './PrivacyUserPicker'
-import { useT } from '../../i18n'
+import { useT, useTArgs } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { usePrivacyStore, loadPrivacy } from '../../stores/privacyStore'
 import type { PrivacyKey, PrivacyRule as Rule, PrivacyValue } from '../../core/managers/privacyManager'
@@ -90,13 +90,14 @@ const OPTIONS: { label: LangPackKey; value: PrivacyValue }[] = [
   { label: 'PrivacySettingsController.Nobody', value: 'nobody' },
 ]
 
-function usersCountLabel(n: number, t: (key: LangPackKey) => string): string {
+function usersCountLabel(n: number, t: (key: LangPackKey) => string, tArgs: (key: LangPackKey, args: (string | number)[]) => string): string {
   if (n === 0) return t('PrivacySettingsController.AddUsers')
-  return `${n} ${t(n === 1 ? 'Peer.Type.User' : 'Privacy.UsersSuffix')}`
+  return tArgs('PrivacySettingsController.UserCount', [n])
 }
 
 export default function PrivacyRule({ title, onBack }: { title: LangPackKey; onBack: () => void }) {
   const t = useT()
+  const tArgs = useTArgs()
   const managers = useManagers()
   const meta = RULE_META[title]
   const rule = usePrivacyStore((s) => s.rules[meta.key])
@@ -158,7 +159,7 @@ export default function PrivacyRule({ title, onBack }: { title: LangPackKey; onB
             <Row
               icon={<TgIcon name="deleteuser" size={24} />}
               label={denyTitle}
-              value={usersCountLabel(rule.denyUserIds.length, t)}
+              value={usersCountLabel(rule.denyUserIds.length, t, tArgs)}
               onClick={() => setPicker('deny')}
             />
           )}
@@ -166,7 +167,7 @@ export default function PrivacyRule({ title, onBack }: { title: LangPackKey; onB
             <Row
               icon={<TgIcon name="adduser" size={24} />}
               label={allowTitle}
-              value={usersCountLabel(rule.allowUserIds.length, t)}
+              value={usersCountLabel(rule.allowUserIds.length, t, tArgs)}
               onClick={() => setPicker('allow')}
             />
           )}

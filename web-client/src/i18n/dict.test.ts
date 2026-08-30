@@ -15,7 +15,7 @@ import es from './dict.es'
 import de from './dict.de'
 import fr from './dict.fr'
 import { toLegacyDict } from './legacyDict'
-import { LEGACY_KEY_MAP } from './legacyKeyMap'
+import { LEGACY_KEY_MAP, LEGACY_MERGED_FRAGMENTS } from './legacyKeyMap'
 
 const DICTS = { ru, uk, es, de, fr }
 type Code = keyof typeof DICTS
@@ -44,13 +44,18 @@ const text = (key: LangPackKey, args: (string | number)[]) => i18n(key, args).te
 // (секретный чат, подтверждение входа по QR, подсказка о фото контакта). Текст у них
 // тот же, что показывался раньше, — изменилось только то, что теперь он ключ и перевод,
 // а не литерал в JSX (плюс «Звонок» — метка превью из `core/dialogToChat.ts`).
-// `legacy` вырос на одиннадцать: десять новых строк плюс «Отмена», ставшая синонимом `Cancel`.
+//
+// `plural` вырос с одного до девяти-десяти: девять ключей-ОБРЫВКОВ («members»,
+// «subscribers», «days», …) сведены в формы числа — интерфейс печатал число и слово
+// рядом, и слово не склонялось («1 members»). `legacy` при этом УПАЛ на девять: обрывок
+// обратно в старую форму ключа не переводится, и это объявлено списком
+// `LEGACY_MERGED_FRAGMENTS`.
 const COMPOSITION = {
-  ru: { keys: 1180, plural: 1, legacy: 1197 },
-  uk: { keys: 675, plural: 1, legacy: 689 },
-  es: { keys: 674, plural: 1, legacy: 688 },
-  de: { keys: 674, plural: 1, legacy: 688 },
-  fr: { keys: 674, plural: 1, legacy: 688 },
+  ru: { keys: 1180, plural: 10, legacy: 1188 },
+  uk: { keys: 675, plural: 9, legacy: 681 },
+  es: { keys: 674, plural: 9, legacy: 680 },
+  de: { keys: 674, plural: 9, legacy: 680 },
+  fr: { keys: 674, plural: 9, legacy: 680 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -60,11 +65,11 @@ const COMPOSITION = {
 // (папки, истории, близкие друзья). Состав словарей не изменился: те же строки под
 // другим именем, поэтому числа выше прежние, а снимок НАБОРА — новый.
 const FINGERPRINT = {
-  ru: '4afd5730',
-  uk: '9fedaf5c',
-  es: '003c0024',
-  de: '003c0024',
-  fr: '003c0024',
+  ru: 'e1f93498',
+  uk: '6a79a966',
+  es: '1c5823ce',
+  de: '1c5823ce',
+  fr: '1c5823ce',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
@@ -106,6 +111,20 @@ describe('формы числа выбирает язык, а не вызыва�
       '2 уведомления',
       '5 уведомлений',
       '21 уведомление',
+    ])
+  })
+
+  // Ключи-ОБРЫВКИ, сведённые задачей 6: интерфейс печатал «5» и «участников» рядом, и
+  // слово не склонялось — «1 участников». Проверка держит именно это: единица обязана
+  // дать единственное число, а не общую форму.
+  it('сведённые обрывки склоняются: участники, подписчики, стикеры, дни', () => {
+    apply('ru')
+    expect([
+      text('Members', [1]), text('Members', [2]), text('Members', [5]),
+      text('Subscribers', [1]), text('Stickers', [1]), text('Days', [1]), text('Days', [3]),
+    ]).toEqual([
+      '1 участник', '2 участника', '5 участников',
+      '1 подписчик', '1 стикер', '1 день', '3 дня',
     ])
   })
 
@@ -264,7 +283,6 @@ const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
     'PeerInfo.Discussion': '«discussion» — французское слово',
     DescriptionPlaceholder: '«description» — французское слово',
     SearchMessages: '«messages» — французское слово',
-    'VoiceChat.Status.ParticipantsSuffix': '«participants» — французское слово',
     'NewPoll.Option': '«option» — французское слово',
     'Chat.Poll.Type.Quiz': '«quiz» — заимствование',
     AttachContact: '«contact» — французское слово',
@@ -344,6 +362,8 @@ describe('старый t() продолжает переводить', () => {
       const known = new Set(strings.map((string) => string.key))
       const legacy = toLegacyDict(strings)
       for (const [old, key] of Object.entries(LEGACY_KEY_MAP)) {
+        // Обрывок, сведённый в форму числа, обратно не переводится — и это объявлено.
+        if (old in LEGACY_MERGED_FRAGMENTS) continue
         if (known.has(key) && legacy[old] === undefined) lost.push(`${code}: ${old} (${key})`)
       }
     }

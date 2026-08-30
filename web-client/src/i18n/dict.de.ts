@@ -195,7 +195,10 @@ const de = {
     'Du kannst Benachrichtigungen in den Einstellungen wieder aktivieren.',
   'Sidebar.Resize.ShiftTip':
     'Halte Shift gedrückt, um beide Spalten gleichzeitig zu skalieren',
-  'Channel.SubscribersSuffix': 'Abonnenten',
+  Subscribers: {
+    one_value: '%1$d Abonnent',
+    other_value: '%1$d Abonnenten',
+  },
   'Search.Empty.QueryPrefix': 'Keine Ergebnisse für',
   'Search.Empty.Suffix': '. Versuche eine neue Suche.',
   PinnedMessage: 'Angepinnte Nachricht',
@@ -305,7 +308,10 @@ const de = {
   'Rtmp.Topbar.NoViewers': 'Keine Zuschauer',
   'Livestream.Watching': '{n} sehen zu',
   'Livestream.IsLive': 'Der Stream läuft',
-  'VoiceChat.Status.ParticipantsSuffix': 'Teilnehmer',
+  'VoiceChat.Status.Members': {
+    one_value: '%d Teilnehmer',
+    other_value: '%d Teilnehmer',
+  },
   'VoiceChat.Status.You': 'Das bist du',
   'VoiceChat.Status.Listening': 'hört zu',
   'VoiceChat.Status.Muted': 'Mikrofon aus',
@@ -313,7 +319,10 @@ const de = {
   'Call.VideoToggle': 'Video',
   FromYou: 'Du',
   Topics: 'Themen',
-  'ForumTopic.CountSuffix': 'Themen',
+  TopicsCount: {
+    one_value: '%d Thema',
+    other_value: '%d Themen',
+  },
   NewTopic: 'Neues Thema',
   'ForumTopic.Context.New': 'Thema erstellen',
   'ForumTopic.Name.Placeholder': 'Themenname',
@@ -367,7 +376,10 @@ const de = {
   SimilarChannels: 'Ähnliche Kanäle',
   MoreSimilar: 'Weitere Kanäle',
   NoResult: 'Keine Ergebnisse',
-  'Group.MembersSuffix': 'Mitglieder',
+  Members: {
+    one_value: '%1$d Mitglied',
+    other_value: '%1$d Mitglieder',
+  },
   'Search.Confirm.ClearHistory': 'Suchverlauf wirklich löschen?',
   AttachAudio: 'Sprachnachricht',
   AttachRound: 'Videonachricht',
@@ -506,7 +518,10 @@ const de = {
   'PrivacySettingsController.NeverShare': 'Nie teilen mit',
   'PrivacyModal.Search.Placeholder': 'Nutzer oder Gruppen hinzufügen...',
   'Peer.Type.User': 'Nutzer',
-  'Privacy.UsersSuffix': 'Nutzer',
+  'PrivacySettingsController.UserCount': {
+    one_value: '%d Nutzer',
+    other_value: '%d Nutzer',
+  },
   'BlockModal.Search.Placeholder': 'Nutzer blockieren...',
   BlockedUsersInfo: 'Blockierte Nutzer können dir keine Nachrichten senden und dich nicht zu Gruppen hinzufügen. Sie sehen weder deine Profilbilder noch deinen Online- und „Zuletzt online“-Status.',
   UnblockUser: 'Blockierung aufheben',
@@ -539,9 +554,18 @@ const de = {
   'AutoDeleteMessages.SectionCaption':
     'Wenn aktiviert, werden alle neuen Nachrichten in Chats, die du beginnst, nach der gewählten Zeit automatisch für alle gelöscht. Das automatische Löschen in deinen zuvor erstellten Chats wird separat aktiviert.',
   'AutoDeleteMessages.SetOtherTime': 'Andere Zeit festlegen',
-  'Unit.DaysSuffix': 'Tage',
-  'Unit.WeeksSuffix': 'Wochen',
-  'Unit.MonthsSuffix': 'Monate',
+  Days: {
+    one_value: '%1$d Tag',
+    other_value: '%1$d Tage',
+  },
+  Weeks: {
+    one_value: '%1$d Woche',
+    other_value: '%1$d Wochen',
+  },
+  Months: {
+    one_value: '%1$d Monat',
+    other_value: '%1$d Monate',
+  },
   // Passcode Lock
   'PasscodeLock.Title': 'Code',
   'PasscodeLock.Description':

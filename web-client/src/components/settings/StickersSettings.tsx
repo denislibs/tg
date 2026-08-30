@@ -7,11 +7,12 @@ import { SettingsScreen, Section, Row, EntryRow } from './kit'
 import TgIcon from '../TgIcon'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useSettingsStore } from '../../settings'
-import { useT } from '../../i18n'
+import { useT, useTArgs } from '../../i18n'
 import type { StickerSet } from '../../core/managers/stickersManager'
 
 export default function StickersSettings({ onBack }: { onBack: () => void }) {
   const t = useT()
+  const tArgs = useTArgs()
   const managers = useManagers()
   const loopStickers = useSettingsStore((s) => s.loopStickers)
   const update = useSettingsStore((s) => s.update)
@@ -71,7 +72,7 @@ export default function StickersSettings({ onBack }: { onBack: () => void }) {
             key={set.id}
             left={<TgIcon name="stickers" size={24} color="var(--secondary-text-color)" />}
             title={set.title}
-            sub={`${set.count} ${t('Stickers.CountSuffix')}`}
+            sub={tArgs('Stickers', [set.count])}
             onRemove={() => uninstall(set)}
           />
         ))}
@@ -97,7 +98,7 @@ export default function StickersSettings({ onBack }: { onBack: () => void }) {
             icon={<TgIcon name="stickers" size={24} />}
             label={set.title}
             translate={false}
-            sublabel={`${set.count} ${t('Stickers.CountSuffix')}`}
+            sublabel={tArgs('Stickers', [set.count])}
             onClick={installedIds.has(set.id) ? undefined : () => install(set)}
             value={installedIds.has(set.id) ? undefined : t('Add')}
             selected={installedIds.has(set.id)}

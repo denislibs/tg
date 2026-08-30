@@ -438,10 +438,10 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   mo: 'Unit.Months.Abbr',
   muted: 'VoiceChat.Status.Muted',
   online: 'Online',
-  participants: 'VoiceChat.Status.ParticipantsSuffix',
+  participants: 'VoiceChat.Status.Members',
   'per month': 'Stars.Subscriptions.PerMonth',
-  subscribers: 'Channel.SubscribersSuffix',
-  topics: 'ForumTopic.CountSuffix',
+  subscribers: 'Subscribers',
+  topics: 'TopicsCount',
   user: 'Peer.Type.User',
   video: 'Call.VideoToggle',
   '{n} watching': 'Livestream.Watching',
@@ -648,7 +648,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'This folder has no chats to share.': 'Folder.Share.Empty',
   'This link is invalid or has expired.': 'Folder.Invite.Invalid',
   'and join its chats?': 'Folder.Invite.Question.Suffix',
-  members: 'Group.MembersSuffix',
+  members: 'Members',
 
   // ── components/group ──
   'Add names and photos of admins to the messages they post, linking to their profiles.': 'ChannelSignProfilesInfo',
@@ -805,7 +805,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
 
   // ── components/rightSidebar ──
   Added: 'Stickers.SearchAdded',
-  stickers: 'Stickers.CountSuffix',
+  stickers: 'Stickers',
 
   // ── components/secret ──
   'Compare these emoji with the ones your contact sees on their device. If they match, the chat is end-to-end encrypted.': 'SecretChat.KeyVerification.Hint',
@@ -1089,13 +1089,13 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'Your passkey is safely kept in your iCloud Keychain.': 'Passkey.Row3.Subtitle',
   'Zoom In': 'MediaZoomIn',
   'Zoom Out': 'MediaZoomOut',
-  days: 'Unit.DaysSuffix',
+  days: 'Days',
   done: 'Common.DoneSuffix',
   min: 'Unit.Minutes.Abbr',
-  months: 'Unit.MonthsSuffix',
+  months: 'Months',
   'up to %1$s': 'AutodownloadSizeLimitUpTo',
-  users: 'Privacy.UsersSuffix',
-  weeks: 'Unit.WeeksSuffix',
+  users: 'PrivacySettingsController.UserCount',
+  weeks: 'Weeks',
   'when the input is empty': 'KeyboardShortcuts.Hint.WhenInputEmpty',
 
   // ── components/sidebarLeft ──
@@ -1368,6 +1368,29 @@ export const LEGACY_PLURAL_GROUPS: Record<string, Partial<Record<'one_value' | '
     many_value: '%d notifications',
     other_value: '%d notifications',
   },
+}
+
+/**
+ * ОБРЫВКИ, СВЕДЁННЫЕ В ФОРМЫ ЧИСЛА (задача 6). Старая строка была ЧАСТЬЮ фразы, а не
+ * фразой: интерфейс печатал «5» и «members» рядом, а форму слова выбирал (точнее, не
+ * выбирал) вызывающий — отсюда «1 members». Теперь это одна строка с числом внутри
+ * (`Members` = `%1$d member(s)`), форму берёт язык.
+ *
+ * Обратно, в старую форму ключа, такая строка НЕ переводится: «members» само по себе в
+ * новом словаре не существует. Поэтому мост `toLegacyDict` их не отдаёт, а проверка
+ * «ни одна старая строка не потерялась» знает этот список и не считает их потерей.
+ */
+export const LEGACY_MERGED_FRAGMENTS: Record<string, LangPackKey> = {
+  members: 'Members',
+  subscribers: 'Subscribers',
+  participants: 'VoiceChat.Status.Members',
+  stickers: 'Stickers',
+  topics: 'TopicsCount',
+  users: 'PrivacySettingsController.UserCount',
+  user: 'PrivacySettingsController.UserCount',
+  days: 'Days',
+  weeks: 'Weeks',
+  months: 'Months',
 }
 
 /**

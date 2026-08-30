@@ -30,7 +30,7 @@ import MediaGridThumb from './MediaGridThumb'
 import { friendlyMsgTime } from '../core/format/friendlyTime'
 import { gradientFor, mediaLabel } from '../core/dialogToChat'
 import { EXT_COLORS, extOf, firstUrl, fmtDur, fmtSize, hostOf } from '../core/format/sharedMediaFmt'
-import { useLang, useT } from '../i18n'
+import { useLang, useT, useTArgs } from '../i18n'
 import { getChatTitle, isBroadcast } from '../core/peers/predicates'
 import { getUserTitle } from '../core/peers/getPeerTitle'
 import { getPeerPhoto, getPeerPhotoId, peerKey, type Chat as PeerChat, type UserReal } from '../core/peers/peer'
@@ -82,6 +82,7 @@ function Highlighted({ text, q }: { text: string; q: string }) {
 
 export default function SearchView({ query, chats, onSelect, searchReal, onJoin, onOpenPeer }: Props) {
   const t = useT()
+  const tArgs = useTArgs()
   const [lang] = useLang()
   const [tab, setTab] = useState(0)
   const [results, setResults] = useState<ContactsFound>(EMPTY_RESULT)
@@ -255,7 +256,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                           photoId={getPeerPhotoId(getPeerPhoto(c)) || undefined}
                           t={(getChatTitle(c) || '?').charAt(0).toUpperCase()}
                           title={getChatTitle(c)}
-                          subtitle={chatResultSubtitle(c, t)}
+                          subtitle={chatResultSubtitle(c, tArgs)}
                           onClick={() => onResultChat(c)}
                         />
                       ))}
@@ -293,7 +294,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                           photoId={getPeerPhotoId(getPeerPhoto(c)) || undefined}
                           t={(getChatTitle(c) || '?').charAt(0).toUpperCase()}
                           title={getChatTitle(c)}
-                          subtitle={`${participantsCount(c)} ${t('Channel.SubscribersSuffix')}`}
+                          subtitle={tArgs('Subscribers', [participantsCount(c)])}
                           onClick={() => onResultChat(c)}
                         />
                       ))}
@@ -443,9 +444,9 @@ function participantsCount(c: PeerChat): number {
 
 /** Подпись строки директории: «@username, N подписчиков/участников». Канал от
  *  супергруппы отличает `isBroadcast`, а не строка вида чата. */
-function chatResultSubtitle(c: PeerChat, t: (key: LangPackKey) => string): string {
+function chatResultSubtitle(c: PeerChat, tArgs: (key: LangPackKey, args: (string | number)[]) => string): string {
   const username = c._ === 'channel' && c.username ? `@${c.username}, ` : ''
-  return `${username}${participantsCount(c)} ${t(isBroadcast(c) ? 'Channel.SubscribersSuffix' : 'Group.MembersSuffix')}`
+  return `${username}${tArgs(isBroadcast(c) ? 'Subscribers' : 'Members', [participantsCount(c)])}`
 }
 
 // Ряд своего диалога (недавние / локальные совпадения / мои каналы)

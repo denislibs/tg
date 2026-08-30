@@ -455,7 +455,12 @@ const ru = {
     'Вы можете снова включить уведомления в настройках.',
   'Sidebar.Resize.ShiftTip':
     'Удерживайте Shift, чтобы менять ширину обеих колонок сразу',
-  'Channel.SubscribersSuffix': 'подписчиков',
+  Subscribers: {
+    one_value: '%1$d подписчик',
+    few_value: '%1$d подписчика',
+    many_value: '%1$d подписчиков',
+    other_value: '%1$d подписчика',
+  },
   'Search.Empty.QueryPrefix': 'Ничего не найдено по запросу',
   'Search.Empty.Suffix': '. Попробуйте другой запрос.',
   PinnedMessage: 'Закреплённое сообщение',
@@ -665,7 +670,12 @@ const ru = {
   'Rtmp.Topbar.NoViewers': 'Нет зрителей',
   'Livestream.Watching': '{n} смотрят',
   'Livestream.IsLive': 'Трансляция идёт',
-  'VoiceChat.Status.ParticipantsSuffix': 'участников',
+  'VoiceChat.Status.Members': {
+    one_value: '%d участник',
+    few_value: '%d участника',
+    many_value: '%d участников',
+    other_value: '%d участника',
+  },
   'VoiceChat.Status.You': 'Это вы',
   'VoiceChat.Status.Listening': 'слушает',
   'VoiceChat.Status.Muted': 'микрофон выключен',
@@ -673,7 +683,12 @@ const ru = {
   'Call.VideoToggle': 'видео',
   FromYou: 'Вы',
   Topics: 'Темы',
-  'ForumTopic.CountSuffix': 'тем',
+  TopicsCount: {
+    one_value: '%d тема',
+    few_value: '%d темы',
+    many_value: '%d тем',
+    other_value: '%d темы',
+  },
   // ── Статистика канала (tweb sidebarRight/tabs/statistics) ──
   Statistics: 'Статистика',
   'Statistics.Loading': 'Загрузка статистики…',
@@ -826,7 +841,12 @@ const ru = {
   SimilarChannels: 'Похожие каналы',
   MoreSimilar: 'Ещё каналы',
   NoResult: 'Нет результатов',
-  'Group.MembersSuffix': 'участников',
+  Members: {
+    one_value: '%1$d участник',
+    few_value: '%1$d участника',
+    many_value: '%1$d участников',
+    other_value: '%1$d участника',
+  },
   'Search.Confirm.ClearHistory': 'Вы уверены, что хотите очистить историю поиска?',
   'Chat.Search.NothingFound': 'Здесь пока ничего нет…',
   SearchEmptyViewTitle: 'Ничего не найдено',
@@ -989,7 +1009,12 @@ const ru = {
   'PrivacySettingsController.NeverShare': 'Никогда не показывать',
   'PrivacyModal.Search.Placeholder': 'Добавить пользователей или группы...',
   'Peer.Type.User': 'пользователь',
-  'Privacy.UsersSuffix': 'пользователей',
+  'PrivacySettingsController.UserCount': {
+    one_value: '%d пользователь',
+    few_value: '%d пользователя',
+    many_value: '%d пользователей',
+    other_value: '%d пользователя',
+  },
   'BlockModal.Search.Placeholder': 'Заблокировать пользователя...',
   BlockedUsersInfo: 'Заблокированные пользователи не могут писать Вам и приглашать Вас в группы. Они также не видят Вашу фотографию и время последнего захода.',
   UnblockUser: 'Разблокировать',
@@ -1020,9 +1045,24 @@ const ru = {
   'AutoDeleteMessages.SectionCaption':
     'Включите, чтобы все новые сообщения в Ваших чатах, созданных после изменения настройки, автоматически удалялись для всех участников спустя выбранное время. Автоудаление в ранее созданных чатах включается отдельно.',
   'AutoDeleteMessages.SetOtherTime': 'Выбрать другой срок',
-  'Unit.DaysSuffix': 'дней',
-  'Unit.WeeksSuffix': 'нед.',
-  'Unit.MonthsSuffix': 'месяцев',
+  Days: {
+    one_value: '%1$d день',
+    few_value: '%1$d дня',
+    many_value: '%1$d дней',
+    other_value: '%1$d дня',
+  },
+  Weeks: {
+    one_value: '%1$d неделя',
+    few_value: '%1$d недели',
+    many_value: '%1$d недель',
+    other_value: '%1$d недели',
+  },
+  Months: {
+    one_value: '%1$d месяц',
+    few_value: '%1$d месяца',
+    many_value: '%1$d месяцев',
+    other_value: '%1$d месяца',
+  },
   // Passcode Lock
   'PasscodeLock.Title': 'Код-пароль',
   'PasscodeLock.Description':
@@ -1202,7 +1242,12 @@ const ru = {
   'Stickers.MySets': 'Мои наборы стикеров',
   'Stickers.AddSets': 'Добавить наборы',
   'Stickers.SearchSets': 'Поиск наборов стикеров',
-  'Stickers.CountSuffix': 'стикеров',
+  Stickers: {
+    one_value: '%1$d стикер',
+    few_value: '%1$d стикера',
+    many_value: '%1$d стикеров',
+    other_value: '%1$d стикера',
+  },
   'Stickers.NoSets': 'Нет установленных наборов',
   // экраны поиска правой колонки (rightSidebar/StickersSearchTab)
   'StickersTab.SearchPlaceholder': 'Поиск стикеров',

@@ -8,26 +8,26 @@ import LottieSticker from '../LottieSticker'
 import TgIcon from '../TgIcon'
 import Popup from '../../shared/ui/Popup'
 import Text from '../../shared/ui/Text'
-import { useT } from '../../i18n'
+import { useT, useTArgs } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { SettingsScreen, Section, Row } from './kit'
 
 const DAY = 86400
 
 // Подпись периода (и для сабтайтла в разделе конфиденциальности).
-export function autoDeleteLabel(seconds: number, t: (key: LangPackKey) => string): string {
+export function autoDeleteLabel(seconds: number, t: (key: LangPackKey) => string, tArgs: (key: LangPackKey, args: (string | number)[]) => string): string {
   if (seconds <= 0) return t('Off')
   const d = Math.round(seconds / DAY)
   if (d >= 360) return t('Duration.Years1')
   if (d >= 28) {
     const m = Math.round(d / 30)
-    return m === 1 ? t('Duration.Months1') : `${m} ${t('Unit.MonthsSuffix')}`
+    return tArgs('Months', [m])
   }
   if (d % 7 === 0) {
     const w = d / 7
-    return w === 1 ? t('Duration.Weeks1') : `${w} ${t('Unit.WeeksSuffix')}`
+    return tArgs('Weeks', [w])
   }
-  return d === 1 ? t('Duration.Days1') : `${d} ${t('Unit.DaysSuffix')}`
+  return tArgs('Days', [d])
 }
 
 // tweb customTimeOptions: 1–6 дней, 1–3 недели, 1–11 месяцев, 1 год.
@@ -42,6 +42,7 @@ const PRESETS = [0, DAY, 7 * DAY, 30 * DAY]
 
 export default function AutoDeleteMessages({ onBack }: { onBack: () => void }) {
   const t = useT()
+  const tArgs = useTArgs()
   const managers = useManagers()
   const [period, setPeriod] = useState(0)
   const [customOpen, setCustomOpen] = useState(false)
@@ -73,7 +74,7 @@ export default function AutoDeleteMessages({ onBack }: { onBack: () => void }) {
         <Row label="Duration.Days1" selected={period === DAY} onClick={() => save(DAY)} />
         <Row label="Duration.Weeks1" selected={period === 7 * DAY} onClick={() => save(7 * DAY)} />
         <Row label="Duration.Months1" selected={period === 30 * DAY} onClick={() => save(30 * DAY)} />
-        {isCustom && <Row label={autoDeleteLabel(period, t)} translate={false} selected />}
+        {isCustom && <Row label={autoDeleteLabel(period, t, tArgs)} translate={false} selected />}
         <Row
           icon={<TgIcon name="tools" size={24} />}
           label="AutoDeleteMessages.SetOtherTime"
@@ -90,7 +91,7 @@ export default function AutoDeleteMessages({ onBack }: { onBack: () => void }) {
               style={{ padding: '12px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12 }}
             >
               <Text size={15.5} color="var(--primary-text-color)" style={{ flex: 1 }}>
-                {autoDeleteLabel(sec, t)}
+                {autoDeleteLabel(sec, t, tArgs)}
               </Text>
               {period === sec && <TgIcon name="check" size={20} color="var(--primary-color)" />}
             </div>

@@ -5,7 +5,7 @@ import { SettingsScreen, Section, Row } from '../../settings/kit'
 import Avatar from '../../../shared/ui/Avatar'
 import TgIcon from '../../TgIcon'
 import ConfirmDialog from '../../settings/ConfirmDialog'
-import { useT } from '../../../i18n'
+import { useT, useTArgs } from '../../../i18n'
 import type { GroupEdit, DiscussionGroup } from '../../../core/hooks/useGroupEdit'
 import type { DiscussionCandidate } from '../../../core/managers/channelsManager'
 import { gradientFor } from '../../../core/dialogToChat'
@@ -14,6 +14,7 @@ import { getLinkedChatPeerId } from '../../../core/peers/peer'
 
 export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
   const t = useT()
+  const tArgs = useTArgs()
   // Ключ обсуждения: `linked_chat_id` конструктора — СЫРОЙ положительный id,
   // знаковый вид делает одна функция (`getLinkedChatPeerId`).
   const linkedId = getLinkedChatPeerId(g.card?.fullChat)
@@ -57,7 +58,7 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
               <Row
                 icon={<Avatar size="md" background={gradientFor(linked.peerId)} text={initials(linked.title)} />}
                 label={linked.title}
-                sublabel={linked.username ? `@${linked.username}` : `${linked.memberCount} ${t('Group.MembersSuffix')}`}
+                sublabel={linked.username ? `@${linked.username}` : tArgs('Members', [linked.memberCount])}
                 translate={false}
               />
             </Section>
@@ -74,7 +75,7 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
               key={c.peerId}
               icon={<Avatar size="md" background={gradientFor(c.peerId)} text={initials(c.title)} />}
               label={c.title}
-              sublabel={c.username ? `@${c.username}` : `${c.memberCount} ${t('Group.MembersSuffix')}`}
+              sublabel={c.username ? `@${c.username}` : tArgs('Members', [c.memberCount])}
               translate={false}
               onClick={() => setConfirming(c)}
             />

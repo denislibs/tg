@@ -7,7 +7,7 @@ import Popup from '../../shared/ui/Popup'
 import Text from '../../shared/ui/Text'
 import TgIcon from '../TgIcon'
 import { Row } from '../settings/kit'
-import { useT } from '../../i18n'
+import { useT, useTArgs } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import type { FolderInvitePreviewChat } from '../../core/managers/foldersManager'
 
@@ -21,6 +21,7 @@ export default function FolderInvitePopup({
   onJoined: (folderTitle: string) => void
 }) {
   const t = useT()
+  const tArgs = useTArgs()
   const managers = useManagers()
   const [open, setOpen] = useState(true)
   const [title, setTitle] = useState('')
@@ -108,7 +109,7 @@ export default function FolderInvitePopup({
               key={c.id}
               icon={<TgIcon name={c.type === 'channel' ? 'channel' : 'group'} size={24} color="var(--primary-color)" />}
               label={c.title}
-              sublabel={c.members > 0 ? `${c.members} ${t('Group.MembersSuffix')}` : undefined}
+              sublabel={c.members > 0 ? tArgs('Members', [c.members]) : undefined}
               translate={false}
               selected={selected.has(c.id)}
               onClick={() => toggle(c.id)}

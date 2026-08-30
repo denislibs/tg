@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { openPopup } from '../../stores/popupStore'
 import useMediaQuery from '../../shared/lib/useMediaQuery'
-import { useT } from '../../i18n'
+import { useT, useTArgs } from '../../i18n'
 import { useStickersSearch } from '../../core/hooks/useStickersSearch'
 import type { Sticker, StickerSet } from '../../core/managers/stickersManager'
 import { createLazyLoadQueue, type LazyLoadQueue } from '../../core/lazyLoadQueue'
@@ -82,6 +82,7 @@ function StickerSetRow({
   onOpen: () => void
 }) {
   const t = useT()
+  const tArgs = useTArgs()
 
   // Живой геттер видимости ЭТОЙ строки — для приоритезации внутри очереди
   // загрузки ФАЙЛОВ превью (core/lazyLoadQueue.ts): проп `visible` меняется
@@ -117,7 +118,7 @@ function StickerSetRow({
         <div className="sticker-set-details">
           <div className="sticker-set-name" dir="auto">{set.title}</div>
           <div className="sticker-set-count">
-            <span className="i18n">{set.count} {t('Stickers.CountSuffix')}</span>
+            <span className="i18n">{tArgs('Stickers', [set.count])}</span>
           </div>
         </div>
         {/* tweb: установленный — «Added» + класс gray; disabled на время запроса;

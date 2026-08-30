@@ -14,7 +14,7 @@ import { usePeers } from '../core/hooks/usePeers'
 import { getPeerTitle } from '../core/peers/getPeerTitle'
 import { getLocalStream, getRemoteStream, leaveGroupCall, toggleGroupCam, toggleGroupMic } from '../core/calls/groupCallEngine'
 import { gradientFor } from '../core/dialogToChat'
-import { useT } from '../i18n'
+import { useT, useTArgs } from '../i18n'
 import s from './GroupCallScreen.module.scss'
 
 function RemoteAudio({ userId, version }: { userId: number; version: number }) {
@@ -47,6 +47,7 @@ function VideoTile({ stream, label, muted }: { stream: MediaStream; label: strin
 
 export default function GroupCallScreen({ chatName }: { chatName: string }) {
   const t = useT()
+  const tArgs = useTArgs()
   const peerId = useGroupCallStore((st) => st.peerId)
   const participants = useGroupCallStore((st) => st.participants)
   const micOn = useGroupCallStore((st) => st.micOn)
@@ -79,7 +80,7 @@ export default function GroupCallScreen({ chatName }: { chatName: string }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <Text noWrap size={16} weight={600} color="#fff">{chatName}</Text>
           <Text size={13} color="#aaa" style={{ display: 'block' }}>
-            {ids.length + 1} {t('VoiceChat.Status.ParticipantsSuffix')}
+            {tArgs('VoiceChat.Status.Members', [ids.length + 1])}
           </Text>
         </div>
       </div>

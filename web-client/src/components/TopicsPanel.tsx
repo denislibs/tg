@@ -30,7 +30,7 @@ import { messageDateISO } from '../core/messageToConvMsg'
 import { getPeerTitle } from '../core/peers/getPeerTitle'
 import { cachedPeer } from '../core/peerCache'
 import { useChatsStore } from '../stores/chatsStore'
-import { useT } from '../i18n'
+import { useT, useTArgs } from '../i18n'
 import classNames from '../shared/lib/classNames'
 import s from './TopicsPanel.module.scss'
 import { hasRights } from '../core/peers/rights'
@@ -178,6 +178,7 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
   onViewAsMessages: () => void
 }) {
   const t = useT()
+  const tArgs = useTArgs()
   const managers = useManagers()
   const middlewareHelper = useMiddlewareHelper()
   const chatIdRef = useRef(chatId)
@@ -307,7 +308,7 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
           <div className={s.headerBody}>
             <Text noWrap size={16.5} weight={600} color="var(--primary-text-color)">{chatName}</Text>
             <Text size={13} color="var(--secondary-text-color)">
-              {topics ? `${topics.length} ${t('ForumTopic.CountSuffix')}` : t('Topics')}
+              {topics ? tArgs('TopicsCount', [topics.length]) : t('Topics')}
             </Text>
           </div>
         ) : (
