@@ -233,7 +233,10 @@ const es = {
   DisableSharing: 'Desactivar compartir',
   'ChatList.Context.DeleteChat': 'Eliminar chat',
   DeleteSingleMessagesTitle: 'Eliminar mensaje',
-  DeleteMessagesCount: 'Eliminar %d mensajes',
+  DeleteMessagesCount: {
+    one_value: 'Eliminar %d mensaje',
+    other_value: 'Eliminar %d mensajes',
+  },
   AreYouSureDeleteSingleMessage: '¿Eliminar este mensaje?',
   AreYouSureDeleteFewMessages: '¿Eliminar estos mensajes?',
   DeleteAlsoFor: 'Eliminar también para',
@@ -305,7 +308,9 @@ const es = {
   'Rtmp.StreamPopup.URLCopied': 'URL copiada',
   'Rtmp.StreamPopup.KeyCopied': 'Clave copiada',
   'Rtmp.Topbar.NoViewers': 'Sin espectadores',
-  'Livestream.Watching': '{n} viendo',
+  'Rtmp.Watching': {
+    other_value: '%s viendo',
+  },
   'Livestream.IsLive': 'La transmisión está en directo',
   'VoiceChat.Status.Members': {
     one_value: '%d participante',

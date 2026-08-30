@@ -494,7 +494,12 @@ const ru = {
   EditedMessage: 'изменено',
   'Chat.Accessory.Edit': 'Редактировать',
   DeleteSingleMessagesTitle: 'Удалить сообщение',
-  DeleteMessagesCount: 'Удалить %d сообщений',
+  DeleteMessagesCount: {
+    one_value: 'Удалить %d сообщение',
+    few_value: 'Удалить %d сообщения',
+    many_value: 'Удалить %d сообщений',
+    other_value: 'Удалить %d сообщения',
+  },
   AreYouSureDeleteSingleMessage: 'Удалить это сообщение?',
   AreYouSureDeleteFewMessages: 'Удалить эти сообщения?',
   DeleteAlsoFor: 'Также удалить у',
@@ -549,8 +554,6 @@ const ru = {
   BoostsLevel2: 'Уровень',
   'Boost.Boosted': 'Вы забустили канал',
   'Boost.AlreadyBoosting': 'Вы бустите этот канал.',
-  'Boost.NeedMore':
-    'Каналу нужно ещё {n} буст(ов) до следующего уровня.',
   'Boost.Subtitle':
     'Забустите канал, чтобы открыть новые возможности.',
   'Boost.Error.NoSlot':
@@ -668,7 +671,6 @@ const ru = {
   'Rtmp.StreamPopup.URLCopied': 'URL скопирован',
   'Rtmp.StreamPopup.KeyCopied': 'Ключ скопирован',
   'Rtmp.Topbar.NoViewers': 'Нет зрителей',
-  'Livestream.Watching': '{n} смотрят',
   'Livestream.IsLive': 'Трансляция идёт',
   'VoiceChat.Status.Members': {
     one_value: '%d участник',
@@ -1380,6 +1382,18 @@ const ru = {
   'QrLogin.Confirm.Text': 'Подтвердите вход для нового устройства',
   'QrLogin.Confirm.Action': 'Подтвердить',
   'EditContact.PhotoHint': 'Вы можете предложить контакту установить новую фотографию профиля — или изменить его фотографию только у себя.',
+  MoreBoosts: {
+    one_value: 'Ещё **%d** буст до следующего уровня.',
+    few_value: 'Ещё **%d** буста до следующего уровня.',
+    many_value: 'Ещё **%d** бустов до следующего уровня.',
+    other_value: 'Ещё **%d** буста до следующего уровня.',
+  },
+  'Rtmp.Watching': {
+    one_value: '%s смотрит',
+    few_value: '%s смотрят',
+    many_value: '%s смотрят',
+    other_value: '%s смотрят',
+  },
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)

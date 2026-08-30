@@ -51,11 +51,11 @@ const text = (key: LangPackKey, args: (string | number)[]) => i18n(key, args).te
 // обратно в старую форму ключа не переводится, и это объявлено списком
 // `LEGACY_MERGED_FRAGMENTS`.
 const COMPOSITION = {
-  ru: { keys: 1180, plural: 10, legacy: 1188 },
-  uk: { keys: 675, plural: 9, legacy: 681 },
-  es: { keys: 674, plural: 9, legacy: 680 },
-  de: { keys: 674, plural: 9, legacy: 680 },
-  fr: { keys: 674, plural: 9, legacy: 680 },
+  ru: { keys: 1180, plural: 13, legacy: 1185 },
+  uk: { keys: 675, plural: 11, legacy: 679 },
+  es: { keys: 674, plural: 11, legacy: 678 },
+  de: { keys: 674, plural: 11, legacy: 678 },
+  fr: { keys: 674, plural: 11, legacy: 678 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -65,11 +65,11 @@ const COMPOSITION = {
 // (папки, истории, близкие друзья). Состав словарей не изменился: те же строки под
 // другим именем, поэтому числа выше прежние, а снимок НАБОРА — новый.
 const FINGERPRINT = {
-  ru: 'e1f93498',
-  uk: '6a79a966',
-  es: '1c5823ce',
-  de: '1c5823ce',
-  fr: '1c5823ce',
+  ru: 'af8b7eea',
+  uk: '9a62d26d',
+  es: 'a3d9b6f5',
+  de: 'a3d9b6f5',
+  fr: 'a3d9b6f5',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

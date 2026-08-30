@@ -8,11 +8,12 @@ import TgIcon from './TgIcon'
 import { useLivestreamStore } from '../stores/livestreamStore'
 import { useGroupCallStore } from '../stores/groupCallStore'
 import { leaveLivestream } from '../core/calls/livestreamEngine'
-import { useT } from '../i18n'
+import { useT, useTArgs } from '../i18n'
 import s from './LivestreamScreen.module.scss'
 
 export default function LivestreamScreen({ chatName }: { chatName: string }) {
   const t = useT()
+  const tArgs = useTArgs()
   const chatId = useLivestreamStore((st) => st.watchingPeerId)
   // зрители = участники группового звонка чата (зритель регистрируется как участник)
   const viewers = useGroupCallStore((st) => (chatId != null ? st.activeByChat[chatId]?.length ?? 0 : 0))
@@ -28,7 +29,7 @@ export default function LivestreamScreen({ chatName }: { chatName: string }) {
             <Text noWrap size={16} weight={600} color="#fff">{chatName}</Text>
           </div>
           <Text size={13} color="#aaa" style={{ display: 'block' }}>
-            {viewers > 0 ? t('Livestream.Watching').replace('{n}', String(viewers)) : t('Rtmp.Topbar.NoViewers')}
+            {viewers > 0 ? tArgs('Rtmp.Watching', [viewers]) : t('Rtmp.Topbar.NoViewers')}
           </Text>
         </div>
       </div>

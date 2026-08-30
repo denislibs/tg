@@ -242,7 +242,12 @@ const uk = {
   DisableSharing: 'Вимкнути доступ',
   'ChatList.Context.DeleteChat': 'Видалити чат',
   DeleteSingleMessagesTitle: 'Видалити повідомлення',
-  DeleteMessagesCount: 'Видалити %d повідомлень',
+  DeleteMessagesCount: {
+    one_value: 'Видалити %d повідомлення',
+    few_value: 'Видалити %d повідомлення',
+    many_value: 'Видалити %d повідомлень',
+    other_value: 'Видалити %d повідомлення',
+  },
   AreYouSureDeleteSingleMessage: 'Видалити це повідомлення?',
   AreYouSureDeleteFewMessages: 'Видалити ці повідомлення?',
   DeleteAlsoFor: 'Також видалити у',
@@ -314,7 +319,12 @@ const uk = {
   'Rtmp.StreamPopup.URLCopied': 'URL скопійовано',
   'Rtmp.StreamPopup.KeyCopied': 'Ключ скопійовано',
   'Rtmp.Topbar.NoViewers': 'Немає глядачів',
-  'Livestream.Watching': '{n} дивляться',
+  'Rtmp.Watching': {
+    one_value: '%s дивиться',
+    few_value: '%s дивляться',
+    many_value: '%s дивляться',
+    other_value: '%s дивляться',
+  },
   'Livestream.IsLive': 'Трансляція триває',
   'VoiceChat.Status.Members': {
     one_value: '%d учасник',

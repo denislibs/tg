@@ -89,7 +89,12 @@ export function openDeleteMessageDialog({ peerId, managers, canRevoke, count = 1
     // (дамп `17-popup-03-delete-message.json`: div.popup.popup-peer.popup-delete-chat)
     peerId,
     managers,
-    titleLangKey: 'DeleteSingleMessagesTitle',
+    // Заголовок: одно сообщение — своя строка, несколько — ФОРМА ЧИСЛА с числом внутри
+    // (раньше вызывающий сам подставлял число в «Delete %d messages» — и на одном
+    // сообщении писал «Delete 1 messages»).
+    ...(single
+      ? { titleLangKey: 'DeleteSingleMessagesTitle' as const }
+      : { titleText: useI18nStore.getState().tArgs('DeleteMessagesCount', [count]) }),
     descriptionLangKey: single ? 'AreYouSureDeleteSingleMessage' : 'AreYouSureDeleteFewMessages',
     checkboxes: withCheckbox ? [{
       text: chatType === 'private' && peerFirstName

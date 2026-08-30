@@ -86,7 +86,9 @@ import { useI18nStore } from '@/i18n'
  *  `managers` обязателен вместе с `peerId` — ими пользуется только `avatarNew`
  *  (peer.ts:46-53); без `peerId` он не нужен и не запрашивается. */
 export type PopupPeerOptions = {
-  titleLangKey: LangPackKey // peer.ts:58-59 — `i18n(titleLangKey)`
+  titleLangKey?: LangPackKey // peer.ts:58-59 — `i18n(titleLangKey)`
+  /** Готовый заголовок — когда в строку подставлено число («Удалить 5 сообщений»). */
+  titleText?: string
   // peer.ts:70 — опционально и у оригинала: `PopupMute` описания не задаёт
   // вовсе (mute.ts:29-38), у него вместо `<p>` — радио-список в `body`.
   descriptionLangKey?: LangPackKey
@@ -151,7 +153,7 @@ export default class PopupPeer extends PopupElement {
       // peer.ts:40, :57-59 — оригинал резервирует `title: true` и заполняет
       // `this.title` сам; наша база принимает готовую строку напрямую и
       // делает то же самое (`setButtons`-докблок `popupElement.ts` :130-134).
-      title: t(options.titleLangKey),
+      title: options.titleLangKey ? t(options.titleLangKey) : options.titleText!,
       body: options.body, // peer.ts:37-41 `...options` — см. докблок PopupPeerOptions.body
       zIndex: options.zIndex,
     })

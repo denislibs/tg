@@ -364,7 +364,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   'The channel will be deleted for all subscribers.': 'Chat.Delete.Channel.Text',
   'The group will be deleted for all members.': 'Chat.Delete.Group.Text',
   'The stream is live': 'Livestream.IsLive',
-  'This channel needs {n} more boost(s) to reach the next level.': 'Boost.NeedMore',
+  'This channel needs {n} more boost(s) to reach the next level.': 'MoreBoosts',
   'This chat will be deleted from your chat list.': 'Chat.Delete.Private.Text',
   'This is a demo checkout. No real payment is processed.': 'Payment.DemoNotice',
   'This is you': 'VoiceChat.Status.You',
@@ -444,7 +444,7 @@ export const LEGACY_KEY_MAP: Record<string, LangPackKey> = {
   topics: 'TopicsCount',
   user: 'Peer.Type.User',
   video: 'Call.VideoToggle',
-  '{n} watching': 'Livestream.Watching',
+  '{n} watching': 'Rtmp.Watching',
 
   // ── components/auth ──
   Country: 'Country',
@@ -1381,6 +1381,12 @@ export const LEGACY_PLURAL_GROUPS: Record<string, Partial<Record<'one_value' | '
  * «ни одна старая строка не потерялась» знает этот список и не считает их потерей.
  */
 export const LEGACY_MERGED_FRAGMENTS: Record<string, LangPackKey> = {
+  // Строки со СВОИМ форматом аргумента (`{n}`) и без форм числа: «Delete %d messages» на
+  // одном сообщении писала «Delete 1 messages». Обратно они тоже не переводятся — старая
+  // строка была одной формой из нескольких, и какой именно, в ней не сказано.
+  'Delete %d messages': 'DeleteMessagesCount',
+  '{n} watching': 'Rtmp.Watching',
+  'This channel needs {n} more boost(s) to reach the next level.': 'MoreBoosts',
   members: 'Members',
   subscribers: 'Subscribers',
   participants: 'VoiceChat.Status.Members',

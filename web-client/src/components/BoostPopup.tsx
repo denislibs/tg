@@ -7,11 +7,12 @@ import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import { useChannelBoosts } from '../core/hooks/useChannelBoosts'
 import { boostedByMe, boostProgress } from '../core/boosts/boostsStatus'
-import { useT } from '../i18n'
+import { useT, useTArgs } from '../i18n'
 import s from './BoostPopup.module.scss'
 
 export default function BoostPopup({ chatId, onClose }: { chatId: number; onClose: () => void }) {
   const t = useT()
+  const tArgs = useTArgs()
   const { boosts: channelBoosts, boost } = useChannelBoosts(chatId)
   const status = channelBoosts?.status
   const [busy, setBusy] = useState(false)
@@ -34,7 +35,7 @@ export default function BoostPopup({ chatId, onClose }: { chatId: number; onClos
   const description = mine
     ? t('Boost.AlreadyBoosting')
     : need > 0
-      ? t('Boost.NeedMore').replace('{n}', String(need))
+      ? tArgs('MoreBoosts', [need])
       : t('Boost.Subtitle')
 
   return (
