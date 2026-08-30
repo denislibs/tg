@@ -23,13 +23,13 @@ export default function PremiumManage({ onBack }: { onBack: () => void }) {
       <div style={{ textAlign: 'center', padding: '12px 0 20px' }}>
         <TgIcon name="star_filled" size={64} color="var(--primary-color)" />
         <Text size={20} weight={600} color="var(--primary-text-color)" style={{ marginTop: 8 }}>
-          {t('You have Telegram Premium')}
+          {t('Premium.Manage.Active')}
         </Text>
       </div>
 
       {loading ? (
         <Text size={15} color="var(--secondary-text-color)" style={{ textAlign: 'center', padding: 20 }}>
-          {t('Loading…')}
+          {t('Loading')}
         </Text>
       ) : sub ? (
         <>
@@ -59,7 +59,7 @@ export default function PremiumManage({ onBack }: { onBack: () => void }) {
         </>
       ) : (
         <Text size={15} color="var(--secondary-text-color)" style={{ textAlign: 'center', padding: 20 }}>
-          {t('No active subscription.')}
+          {t('Premium.Manage.NoSubscription')}
         </Text>
       )}
     </SettingsScreen>

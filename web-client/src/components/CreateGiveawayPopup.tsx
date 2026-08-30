@@ -48,45 +48,45 @@ export default function CreateGiveawayPopup({ onCreate, onClose }: {
   }
 
   return (
-    <Popup open title={t('New Giveaway')} onClose={onClose} width={420} action={{ label: t('Start Giveaway'), onClick: submit }}>
+    <Popup open title={t('Giveaway.New')} onClose={onClose} width={420} action={{ label: t('BoostingStartGiveawayConfirmTitle'), onClick: submit }}>
       <div className={s.body}>
-        <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('Prize')}</Text>
+        <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('Giveaway.Prize')}</Text>
         <div className={s.types}>
           <div className={classNames(s.type, kind === 'premium' ? s.typeOn : '')} onClick={() => setKind('premium')}>
-            {t('Telegram Premium')}
+            {t('Premium.Boarding.Title')}
           </div>
           <div className={classNames(s.type, kind === 'stars' ? s.typeOn : '')} onClick={() => setKind('stars')}>
-            {t('Telegram Stars')}
+            {t('TelegramStars')}
           </div>
         </div>
 
         {kind === 'premium' ? (
           <>
-            <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('Duration of premium subscriptions')}</Text>
+            <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('BoostsViaGifts.Duration')}</Text>
             <div className={s.types}>
               {MONTHS.map((mo) => (
                 <div key={mo} className={classNames(s.type, months === mo ? s.typeOn : '')} onClick={() => setMonths(mo)}>
-                  {mo} {t('mo')}
+                  {mo} {t('Unit.Months.Abbr')}
                 </div>
               ))}
             </div>
           </>
         ) : (
           <>
-            <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('Stars per winner')}</Text>
+            <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('Giveaway.StarsPerWinner')}</Text>
             <input className={s.input} type="number" min={1} value={stars}
               onChange={(e) => setStars(Math.max(1, Number(e.target.value) || 0))} />
           </>
         )}
 
-        <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('Quantity of prizes')}</Text>
+        <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('BoostsViaGifts.Quantity')}</Text>
         <input className={s.input} type="number" min={1} max={100} value={winners}
           onChange={(e) => setWinners(Math.min(100, Math.max(1, Number(e.target.value) || 0)))} />
 
-        <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('Date when giveaway ends')}</Text>
+        <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('BoostsViaGifts.End')}</Text>
         <input className={s.input} type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} />
         <Text size={13} color="var(--secondary-text-color)" style={{ padding: '2px 4px' }}>
-          {t('Giveaway can last up to 7 days.')}
+          {t('Giveaway.DurationHint')}
         </Text>
       </div>
     </Popup>

@@ -61,7 +61,7 @@ export default function ChannelStats({
   return (
     <div className="tabs-tab sidebar-slider-item scrollable-y-bordered statistics-container active">
       <div className="sidebar-header">
-        <button type="button" className="btn-icon sidebar-close-button" onClick={onBack} aria-label={t('Back')}>
+        <button type="button" className="btn-icon sidebar-close-button" onClick={onBack} aria-label={t('Common.Back')}>
           <TgIcon name="back" />
         </button>
         <div className="sidebar-header__title">{t('Statistics')}</div>
@@ -71,12 +71,12 @@ export default function ChannelStats({
       <div className="scrollable scrollable-y">
         {loading && (
           <div style={{ padding: 24, textAlign: 'center' }}>
-            <Text size={15} color="var(--secondary-text-color)">{t('Loading statistics…')}</Text>
+            <Text size={15} color="var(--secondary-text-color)">{t('Statistics.Loading')}</Text>
           </div>
         )}
         {error && !loading && (
           <div style={{ padding: 24, textAlign: 'center' }}>
-            <Text size={15} color="var(--secondary-text-color)">{t('Statistics are not available.')}</Text>
+            <Text size={15} color="var(--secondary-text-color)">{t('Statistics.Unavailable')}</Text>
           </div>
         )}
 
@@ -85,33 +85,33 @@ export default function ChannelStats({
             {/* Overview — карточки-числа */}
             <div className="sidebar-left-section-container">
               <div className="sidebar-left-section">
-                <div className="sidebar-left-section-name">{t('Overview')}</div>
+                <div className="sidebar-left-section-name">{t('StatisticOverview')}</div>
                 {/* Сводка — вендорная сетка `.statistics-overview`
                     (`_rightSidebar.scss`), карточки в ней — `-item`. */}
                 <div className="statistics-overview">
-                  <OverviewCard value={nf.format(stats.summary.members)} label={isChannel ? t('Subscribers') : t('Members')} />
-                  <OverviewCard value={nf.format(stats.summary.avgReach)} label={t('Views per post')} />
-                  <OverviewCard value={nf.format(stats.summary.totalViews)} label={t('Total views')} />
-                  <OverviewCard value={nf.format(stats.summary.postsCount)} label={t('Posts')} />
+                  <OverviewCard value={nf.format(stats.summary.members)} label={isChannel ? t('PeerInfo.Subscribers') : t('PeerMedia.Members')} />
+                  <OverviewCard value={nf.format(stats.summary.avgReach)} label={t('ViewsPerPost')} />
+                  <OverviewCard value={nf.format(stats.summary.totalViews)} label={t('Statistics.TotalViews')} />
+                  <OverviewCard value={nf.format(stats.summary.postsCount)} label={t('PostsSearch.TabName')} />
                   <OverviewCard value={`${notifPct}%`} label={t('Notifications')} />
                 </div>
               </div>
             </div>
 
             {stats.membersGrowth.length > 0 && (
-              <ChartSection title={isChannel ? t('Subscriber growth') : t('Member growth')}>
+              <ChartSection title={isChannel ? t('Statistics.SubscriberGrowth') : t('Statistics.MemberGrowth')}>
                 <StatChart points={stats.membersGrowth} variant="line" />
               </ChartSection>
             )}
 
             {stats.viewsByDay.length > 0 && (
-              <ChartSection title={t('Views by day')}>
+              <ChartSection title={t('Statistics.ViewsByDay')}>
                 <StatChart points={stats.viewsByDay} variant="line" color="var(--green-color, #4dcd5e)" />
               </ChartSection>
             )}
 
             {stats.postsByDay.length > 0 && (
-              <ChartSection title={t('Posts by day')}>
+              <ChartSection title={t('Statistics.PostsByDay')}>
                 <StatChart points={stats.postsByDay} variant="bar" />
               </ChartSection>
             )}
@@ -119,7 +119,7 @@ export default function ChannelStats({
             {stats.topPosts.length > 0 && (
               <div className="sidebar-left-section-container">
                 <div className="sidebar-left-section">
-                  <div className="sidebar-left-section-name">{t('Top posts')}</div>
+                  <div className="sidebar-left-section-name">{t('Statistics.TopPosts')}</div>
                   <div className="sidebar-left-section-content">
                   {stats.topPosts.map((p) => (
                     <div
@@ -128,7 +128,7 @@ export default function ChannelStats({
                     >
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <Text noWrap size={15} color="var(--primary-text-color)">
-                          {p.text.trim() || t('Media post')}
+                          {p.text.trim() || t('Statistics.MediaPost')}
                         </Text>
                         <Text noWrap size={13} color="var(--secondary-text-color)">
                           {new Date(p.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}

@@ -43,22 +43,22 @@ export default function PostStats({
   return (
     <div className="tabs-tab sidebar-slider-item scrollable-y-bordered statistics-container active">
       <div className="sidebar-header">
-        <button type="button" className="btn-icon sidebar-close-button" onClick={onBack} aria-label={t('Back')}>
+        <button type="button" className="btn-icon sidebar-close-button" onClick={onBack} aria-label={t('Common.Back')}>
           <TgIcon name="back" />
         </button>
-        <div className="sidebar-header__title">{t('Post statistics')}</div>
+        <div className="sidebar-header__title">{t('PostStatistics')}</div>
       </div>
 
       <div className="sidebar-content">
       <div className="scrollable scrollable-y">
         {loading && (
           <div style={{ padding: 24, textAlign: 'center' }}>
-            <Text size={15} color="var(--secondary-text-color)">{t('Loading statistics…')}</Text>
+            <Text size={15} color="var(--secondary-text-color)">{t('Statistics.Loading')}</Text>
           </div>
         )}
         {error && !loading && (
           <div style={{ padding: 24, textAlign: 'center' }}>
-            <Text size={15} color="var(--secondary-text-color)">{t('Statistics are not available.')}</Text>
+            <Text size={15} color="var(--secondary-text-color)">{t('Statistics.Unavailable')}</Text>
           </div>
         )}
 
@@ -66,10 +66,10 @@ export default function PostStats({
           <>
             <div className="sidebar-left-section-container">
               <div className="sidebar-left-section">
-                <div className="sidebar-left-section-name">{t('Overview')}</div>
+                <div className="sidebar-left-section-name">{t('StatisticOverview')}</div>
                 <div className="statistics-overview">
-                  <OverviewCard value={nf.format(stats.views)} label={t('Views')} />
-                  <OverviewCard value={nf.format(stats.forwards)} label={t('Forwards')} />
+                  <OverviewCard value={nf.format(stats.views)} label={t('StatisticViews')} />
+                  <OverviewCard value={nf.format(stats.forwards)} label={t('Statistics.Forwards')} />
                   <OverviewCard value={nf.format(stats.reactionsTotal)} label={t('Reactions')} />
                 </div>
               </div>
@@ -100,7 +100,7 @@ export default function PostStats({
             {stats.viewsByDay.length > 0 && (
               <div className="sidebar-left-section-container">
                 <div className="sidebar-left-section">
-                  <div className="sidebar-left-section-name">{t('Views by day')}</div>
+                  <div className="sidebar-left-section-name">{t('Statistics.ViewsByDay')}</div>
                   <div className="sidebar-left-section-content">
                   <StatChart points={stats.viewsByDay} variant="line" color="var(--green-color, #4dcd5e)" />
                   </div>

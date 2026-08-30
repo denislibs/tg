@@ -141,7 +141,7 @@ function PlanRow({ plan, active, onSelect }: { plan: PremiumPlan; active: boolea
         <div className="row-subtitle">
           <span>
             <span className="popup-gift-premium-discount">{`-${discount}%`}</span>
-            <span className="i18n">{`${formatUsd(perMonthCents(plan))} ${t('per month')}`}</span>
+            <span className="i18n">{`${formatUsd(perMonthCents(plan))} ${t('Stars.Subscriptions.PerMonth')}`}</span>
           </span>
         </div>
       )}
@@ -257,7 +257,7 @@ export default function PremiumModal({ open, onClose, onExitComplete }: { open: 
               <IconButton className="popup-close" onClick={onClose} color="var(--secondary-text-color)">
                 <TgIcon name="close" size={22} />
               </IconButton>
-              <div className={classNames('popup-title', 'i18n')}>{t('Telegram Premium')}</div>
+              <div className={classNames('popup-title', 'i18n')}>{t('Premium.Boarding.Title')}</div>
             </div>
 
             <div className="popup-body">
@@ -265,10 +265,10 @@ export default function PremiumModal({ open, onClose, onExitComplete }: { open: 
 
               <div className="popup-premium-heading-text-container">
                 <div className="popup-premium-heading-text-title">
-                  <span className="i18n">{t('Telegram Premium')}</span>
+                  <span className="i18n">{t('Premium.Boarding.Title')}</span>
                 </div>
                 <div className="popup-premium-heading-text-description">
-                  <span className="i18n">{t('More freedom and dozens of exclusive features with a Telegram Premium subscription.')}</span>
+                  <span className="i18n">{t('Premium.Feature.Intro')}</span>
                 </div>
               </div>
 
@@ -299,7 +299,7 @@ export default function PremiumModal({ open, onClose, onExitComplete }: { open: 
             onClick={() => setCheckoutOpen(true)}
           >
             {ctaRipple}
-            <span className="i18n">{`${t('Subscribe for')} ${formatUsd(perMonthCents(selected))} ${t('per month')}`}</span>
+            <span className="i18n">{`${t('Premium.SubscribeFor')} ${formatUsd(perMonthCents(selected))} ${t('Stars.Subscriptions.PerMonth')}`}</span>
           </button>
         </div>
       </div>

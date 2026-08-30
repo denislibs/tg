@@ -44,11 +44,11 @@ export default function SuggestPostPopup({ chatId, onClose }: {
   const mine = posts ?? []
 
   return (
-    <Popup open title={t('Suggest a Post')} onClose={onClose} width={420} action={{ label: t('Suggest'), onClick: submit }}>
+    <Popup open title={t('SuggestedPosts.SuggestAPost')} onClose={onClose} width={420} action={{ label: t('SuggestedPosts.Submit'), onClick: submit }}>
       <div className={s.body}>
         {mine.length > 0 && (
           <>
-            <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('Your suggestions')}</Text>
+            <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('SuggestedPosts.YourSuggestions')}</Text>
             <div className={s.mine}>
               {mine.map((p) => (
                 <div key={p.id} className={s.mineRow}>
@@ -64,19 +64,19 @@ export default function SuggestPostPopup({ chatId, onClose }: {
           </>
         )}
 
-        <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('Your post')}</Text>
+        <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('SuggestedPosts.YourPost')}</Text>
         <textarea
           className={s.textarea}
           rows={4}
-          placeholder={t('Type your post…')}
+          placeholder={t('SuggestedPosts.PostPlaceholder')}
           value={text}
           onChange={(e) => setText(e.target.value)}
         />
 
-        <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('Publishing time')}</Text>
+        <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('SuggestedPosts.PublishingTime.Label')}</Text>
         <input className={s.input} type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
         <Text size={13} color="var(--secondary-text-color)" style={{ padding: '2px 4px' }}>
-          {t('Leave empty to publish anytime.')}
+          {t('SuggestedPosts.PublishingTime.Hint')}
         </Text>
       </div>
     </Popup>

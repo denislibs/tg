@@ -44,7 +44,7 @@ export default function SuggestedPostsView({ chatId, mode, onClose }: {
       <div className={s.card} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
         <div className={s.header}>
           <Text size={17} weight={600} color="var(--primary-text-color)" style={{ flex: 1 }}>
-            {t('Suggested Posts')}
+            {t('SuggestedPosts.Title')}
           </Text>
           <IconButton onClick={onClose} color="var(--secondary-text-color)" aria-label={t('Close')}>
             <TgIcon name="close" size={22} />
@@ -53,7 +53,7 @@ export default function SuggestedPostsView({ chatId, mode, onClose }: {
         <div className={s.list}>
           {posts != null && list.length === 0 && (
             <Text size={14.5} color="var(--secondary-text-color)" style={{ padding: '2rem 1rem', textAlign: 'center', display: 'block' }}>
-              {t('No suggested posts here yet…')}
+              {t('SuggestedPosts.Empty')}
             </Text>
           )}
           {list.map((p) => (
@@ -80,13 +80,13 @@ export default function SuggestedPostsView({ chatId, mode, onClose }: {
               </div>
               {mode === 'admin' && p.status === 'pending' && (
                 <div className={s.actions}>
-                  <IconButton size="small" onClick={() => { void approve(p.id) }} title={t('Publish')} aria-label={t('Publish')}>
+                  <IconButton size="small" onClick={() => { void approve(p.id) }} title={t('SuggestedPosts.Publish')} aria-label={t('SuggestedPosts.Publish')}>
                     <TgIcon name="check" size={18} color="var(--primary-color)" />
                   </IconButton>
-                  <IconButton size="small" onClick={() => setScheduleFor(p.id)} title={t('Schedule')} aria-label={t('Schedule')}>
+                  <IconButton size="small" onClick={() => setScheduleFor(p.id)} title={t('SuggestedPosts.Schedule')} aria-label={t('SuggestedPosts.Schedule')}>
                     <TgIcon name="schedule" size={18} color="var(--primary-color)" />
                   </IconButton>
-                  <IconButton size="small" onClick={() => { void reject(p.id) }} title={t('Reject')} aria-label={t('Reject')}>
+                  <IconButton size="small" onClick={() => { void reject(p.id) }} title={t('SuggestedPosts.Reject')} aria-label={t('SuggestedPosts.Reject')}>
                     <TgIcon name="close" size={18} color="#ff595a" />
                   </IconButton>
                 </div>
