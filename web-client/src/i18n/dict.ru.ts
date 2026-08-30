@@ -1403,6 +1403,12 @@ const ru = {
   VoipUnmute: 'Включить звук',
   'Calendar.Next': 'Следующий',
   'KeyboardShortcuts.Action.Link': 'Добавить ссылку',
+  'Chat.Title.Comments': {
+    one_value: '%d комментарий',
+    few_value: '%d комментария',
+    many_value: '%d комментариев',
+    other_value: '%d комментария',
+  },
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)

@@ -782,6 +782,12 @@ const uk = {
   VoipUnmute: 'Увімкнути звук',
   'Calendar.Next': 'Наступний',
   'KeyboardShortcuts.Action.Link': 'Додати посилання',
+  'Chat.Title.Comments': {
+    one_value: '%d коментар',
+    few_value: '%d коментарі',
+    many_value: '%d коментарів',
+    other_value: '%d коментаря',
+  },
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(uk)

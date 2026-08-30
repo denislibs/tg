@@ -194,6 +194,10 @@ const lang = {
   'Chat.Alert.Forward.ShowSenderName': 'Show sender name',
   'Chat.ClearHistory.Text': 'Are you sure you want to clear history?',
   'Chat.Close': 'Close Chat',
+  'Chat.Title.Comments': {
+    one_value: '%d Comment',
+    other_value: '%d Comments',
+  },
   'Chat.CommentsLabel': 'Comments',
   'Chat.Context.LinkCopiedPrivate': 'Link copied. This link will only work for chat members.',
   'Chat.Context.ReactedFast': {

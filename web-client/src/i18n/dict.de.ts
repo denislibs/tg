@@ -753,6 +753,10 @@ const de = {
   VoipUnmute: 'Ton einschalten',
   'Calendar.Next': 'Weiter',
   'KeyboardShortcuts.Action.Link': 'Link hinzufügen',
+  'Chat.Title.Comments': {
+    one_value: '%d Kommentar',
+    other_value: '%d Kommentare',
+  },
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(de)

@@ -119,8 +119,8 @@ export function createRepliesElement(options: RepliesElementOptions): HTMLElemen
   textSpan.classList.add('replies-footer-text')
   const i18n = document.createElement('span')
   i18n.classList.add('i18n')
-  const { t, lang } = useI18nStore.getState()
-  i18n.textContent = commentsLabel(replies.replies, lang, t)
+  const { t, tArgs } = useI18nStore.getState()
+  i18n.textContent = commentsLabel(replies.replies, t, tArgs)
   textSpan.append(i18n)
 
   // tweb :123-128 — стрелка и ripple-контейнер ПОСЛЕДНИМИ.
@@ -152,8 +152,8 @@ export function setRepliesElementCount(element: HTMLElement, count: number): voi
   }
   const i18n = element.querySelector<HTMLElement>('.replies-footer-text .i18n')
   if (!i18n) return
-  const { t, lang } = useI18nStore.getState()
-  i18n.textContent = commentsLabel(count, lang, t)
+  const { t, tArgs } = useI18nStore.getState()
+  i18n.textContent = commentsLabel(count, t, tArgs)
 }
 
 /**

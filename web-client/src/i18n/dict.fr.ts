@@ -754,6 +754,10 @@ const fr = {
   VoipUnmute: 'Activer le son',
   'Calendar.Next': 'Suivant',
   'KeyboardShortcuts.Action.Link': 'Ajouter un lien',
+  'Chat.Title.Comments': {
+    one_value: '%d commentaire',
+    other_value: '%d commentaires',
+  },
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(fr)

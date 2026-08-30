@@ -38,6 +38,9 @@ describe('карта миграции ключей', () => {
     'KeyboardShortcuts.Section.Messages',
     'KeyboardShortcuts.Section.Stories',
     'KeyboardShortcuts.Action.Link',
+    // «N комментариев» собиралось В КОДЕ (своя славянская арифметика с русскими словами),
+    // строки в словаре под это не было вовсе — теперь есть, с формами числа.
+    'Chat.Title.Comments',
   ]
 
   it('достаёт каждый ключ нынешнего словаря', () => {

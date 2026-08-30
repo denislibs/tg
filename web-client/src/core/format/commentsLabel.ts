@@ -1,19 +1,17 @@
 import type { LangPackKey } from '@/lang'
-import type { Lang } from '../../i18n'
 
-// Localized "N comments" label (tweb Chat.Title.Comments). Russian/Ukrainian use
-// the Slavic 1 / 2-4 / 5+ plural forms; other locales fall back to the English
-// singular/plural via t(). count 0 → the bare "Chat.CommentsLabel" heading.
-export function commentsLabel(count: number, lang: Lang, t: (key: LangPackKey) => string): string {
-  if (count === 0) return t('Chat.CommentsLabel')
-  if (lang === 'ru' || lang === 'uk') {
-    const m10 = count % 10
-    const m100 = count % 100
-    let word: string
-    if (m10 === 1 && m100 !== 11) word = lang === 'ru' ? 'комментарий' : 'коментар'
-    else if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) word = lang === 'ru' ? 'комментария' : 'коментарі'
-    else word = lang === 'ru' ? 'комментариев' : 'коментарів'
-    return `${count} ${word}`
-  }
-  return `${count} ${count === 1 ? t('Comment') : t('Chat.CommentsLabel')}`
+/**
+ * «N комментариев» под постом канала — порт tweb `Chat.Title.Comments`.
+ *
+ * До задачи 6 здесь жила СВОЯ славянская арифметика с русскими словами прямо в коде
+ * («комментарий»/«комментария»/«комментариев») — потому что словарь не умел форм числа.
+ * Теперь умеет: форму выбирает язык (`Intl.PluralRules` внутри `tArgs`), а ноль
+ * по-прежнему даёт голый заголовок «Комментарии», как у оригинала.
+ */
+export function commentsLabel(
+  count: number,
+  t: (key: LangPackKey) => string,
+  tArgs: (key: LangPackKey, args: (string | number)[]) => string,
+): string {
+  return count === 0 ? t('Chat.CommentsLabel') : tArgs('Chat.Title.Comments', [count])
 }

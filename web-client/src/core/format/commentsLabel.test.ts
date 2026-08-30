@@ -1,27 +1,40 @@
-import { describe, it, expect } from 'vitest'
+// «N комментариев» проверяется через НАСТОЯЩЕЕ хранилище языка: форму числа теперь
+// выбирает язык (`Intl.PluralRules` внутри `tArgs`), а не арифметика в этом файле —
+// подставной `t` зеленел бы на любой ошибке выбора, потому что выбирать было бы нечему.
+import { describe, it, expect, beforeEach } from 'vitest'
+
+import { loadLang, useI18nStore } from '../../i18n'
 import { commentsLabel } from './commentsLabel'
 
-// Английский `t()`: символический ключ → английский текст.
-const t = (s: string) => (s === 'Chat.CommentsLabel' ? 'Comments' : s === 'Comment' ? 'Comment' : s)
-// Русский `t()`: те же два ключа, что нужны здесь.
-const tRu = (s: string) => (s === 'Chat.CommentsLabel' ? 'Комментарии' : s === 'Comment' ? 'Комментарий' : s)
+const label = (count: number) => {
+  const { t, tArgs } = useI18nStore.getState()
+  return commentsLabel(count, t, tArgs)
+}
 
-describe('commentsLabel plural forms', () => {
-  it('ru: Slavic 1 / 2-4 / 5+ forms', () => {
-    expect(commentsLabel(0, 'ru', tRu)).toBe('Комментарии')
-    expect(commentsLabel(1, 'ru', tRu)).toBe('1 комментарий')
-    expect(commentsLabel(2, 'ru', tRu)).toBe('2 комментария')
-    expect(commentsLabel(4, 'ru', tRu)).toBe('4 комментария')
-    expect(commentsLabel(5, 'ru', tRu)).toBe('5 комментариев')
-    expect(commentsLabel(11, 'ru', tRu)).toBe('11 комментариев') // 11 is an exception (not "1")
-    expect(commentsLabel(15, 'ru', tRu)).toBe('15 комментариев')
-    expect(commentsLabel(21, 'ru', tRu)).toBe('21 комментарий')
-    expect(commentsLabel(22, 'ru', tRu)).toBe('22 комментария')
-    expect(commentsLabel(112, 'ru', tRu)).toBe('112 комментариев') // 12 exception
+beforeEach(async () => {
+  useI18nStore.setState({ lang: 'en' })
+  await loadLang('en')
+})
+
+describe('commentsLabel', () => {
+  it('ru: славянские формы 1 / 2-4 / 5+ и исключения 11/12', async () => {
+    useI18nStore.setState({ lang: 'ru' })
+    await loadLang('ru')
+    expect([0, 1, 2, 4, 5, 11, 15, 21, 22, 112].map(label)).toEqual([
+      'Комментарии',
+      '1 комментарий',
+      '2 комментария',
+      '4 комментария',
+      '5 комментариев',
+      '11 комментариев', // 11 — исключение, не «один»
+      '15 комментариев',
+      '21 комментарий',
+      '22 комментария',
+      '112 комментариев', // 12 — тоже исключение
+    ])
   })
-  it('en: singular/plural via t()', () => {
-    expect(commentsLabel(0, 'en', t)).toBe('Comments')
-    expect(commentsLabel(1, 'en', t)).toBe('1 Comment')
-    expect(commentsLabel(5, 'en', t)).toBe('5 Comments')
+
+  it('en: единственное и множественное', () => {
+    expect([0, 1, 5].map(label)).toEqual(['Comments', '1 Comment', '5 Comments'])
   })
 })
