@@ -2,6 +2,8 @@ import { create } from 'zustand'
 
 import type { LangPackString } from '@layer'
 
+import I18n from '@lib/langPack'
+
 import lang, { type LangPackKey, type LangPackValue } from '../lang'
 import { en, loaders, type Dict, type Lang } from './dict'
 
@@ -65,13 +67,14 @@ export type TArgs = (string | number)[]
  * порт tweb :358-458): только `%1$s`-по-номеру и `%s`/`%d`-по-порядку, без разметки
  * (`**жирный**`, ссылки, иконки) и без узлов.
  *
- * ПОЧЕМУ КОПИЯ, А НЕ ВЫЗОВ ЯДРА. Ядро отдаёт строки из `I18n.strings`, а их туда
- * сегодня никто не кладёт: применение языкового пакета на старте вкладки заводит
- * ЗАДАЧА 9 (разбор — в докблоке `lib/langPack.ts`). Позвать `I18n.format` отсюда
- * значит получить на экране символический ключ. Импортировать `lib/langPack.ts`
- * ради одного `superFormatter` тоже нельзя: он статически тянет `client/bootstrap`
- * (владелец пакета живёт в воркере), а этот модуль импортируют триста файлов
- * интерфейса — кольцо импортов на ровном месте.
+ * ПОЧЕМУ КОПИЯ, А НЕ ВЫЗОВ ЯДРА. Не из-за импорта — с задачи 7 ядро импортируется
+ * прямо здесь (`applyToCore` ниже), кольца это не дало: граф `lib/langPack.ts` —
+ * двенадцать модулей, и `@/i18n` в него не входит. Причина в ТИПЕ РЕЗУЛЬТАТА:
+ * `I18n.format` собирает СПИСОК КУСКОВ (узлы разметки, `<b>`, `<br>`, иконки), а
+ * `t()` обязан вернуть строку, потому что его результат уезжает в JSX, в
+ * `placeholder` и в `textContent`. Строковый режим ядра (`format(key, true)`)
+ * склеивает узлы в текст и тем теряет разметку — то есть даёт ДРУГОЕ поведение, а
+ * не то же самое.
  *
  * Поэтому здесь ровно то, что нужно нынешним вызывающим, и уедет это целиком
  * ЗАДАЧЕЙ 9 вместе с самим `t()`: `useT` станет обёрткой над `I18n`.
@@ -143,17 +146,57 @@ function makeState(lang: Lang, strings: Strings, legacy: Dict) {
   return { t: t as I18nState['t'], tArgs: t as I18nState['tArgs'] }
 }
 
+/**
+ * ЯДРО (`lib/langPack.ts`) БЕРЁТ СТРОКИ ОТСЮДА ЖЕ, И ЭТО ЕДИНСТВЕННОЕ МЕСТО, ГДЕ ОНО
+ * ИХ БЕРЁТ.
+ *
+ * Задача 2 завела `I18n` целиком, но НАПОЛНЯТЬ его было некому: в продукте не было ни
+ * одного вызова `applyLangPack`, поэтому `I18n.strings` пуст, а `format()` на пустой
+ * карте отдаёт САМ КЛЮЧ. Пока ванильный слой звал `t()`, это никого не касалось; с
+ * задачи 7 его подписи строит `i18n()` ядра — и без этой связки кнопка показала бы
+ * пользователю «ChatList.Context.Mute».
+ *
+ * Направление связи выбрано так, чтобы ВТОРОГО ИСТОЧНИКА ТЕКУЩЕГО ЯЗЫКА НЕ ПОЯВИЛОСЬ
+ * (ровно та опасность, из-за которой задача 2 не стала заводить старт загрузчика, см.
+ * её докблок): язык по-прежнему один — выбор пользователя в `localStorage(tg-lang)`,
+ * и он ТОЛКАЕТСЯ в ядро. Обратный путь (`getCacheLangPackAndApply`, где язык выводится
+ * из `lang_code` пакета, оказавшегося в кэше) по-прежнему не заведён — он за задачей 9,
+ * которая свяжет два конца с другой стороны: `t()` начнёт читать `I18n.strings`, и
+ * этот мост исчезнет вместе с ним.
+ *
+ * Строки те же самые и берутся из ОДНОЙ переменной — иначе `t(key)` и `i18n(key)`
+ * разошлись бы на одном экране. `formatLocalStrings` переводит плоскую карту в
+ * конструкторы схемы (это же делает загрузчик для локального английского).
+ */
+function applyToCore(langCode: Lang, strings: Strings) {
+  I18n.setLangCode(langCode)
+  I18n.applyLangPack({
+    _: 'langPackDifference',
+    lang_code: langCode,
+    from_version: 0,
+    version: 0,
+    // Приведение: в `Strings` значения объявлены необязательными (тип плоского
+    // словаря), но собирается карта только из ПРИСУТСТВУЮЩИХ ключей — `undefined`
+    // в ней не бывает.
+    strings: I18n.formatLocalStrings(strings as Record<string, LangPackValue>),
+  })
+}
+
 // Global language lives in a store (not a React context). `t` starts on the inline
 // English source; `loadLang` pulls the active language's chunk and swaps it in.
-export const useI18nStore = create<I18nState>((set) => ({
-  lang: getInitial(),
-  ...makeState(getInitial(), EN, en),
-  setLang: (l) => {
-    localStorage.setItem('tg-lang', l)
-    set({ lang: l })
-    void loadLang(l)
-  },
-}))
+export const useI18nStore = create<I18nState>((set) => {
+  const initial = getInitial()
+  applyToCore(initial, EN)
+  return {
+    lang: initial,
+    ...makeState(initial, EN, en),
+    setLang: (l) => {
+      localStorage.setItem('tg-lang', l)
+      set({ lang: l })
+      void loadLang(l)
+    },
+  }
+})
 
 // Load a language's dict chunk and swap `t`. English is inline (no chunk fetched).
 // Guarded against races: a slow chunk for a language the user already switched away
@@ -163,13 +206,19 @@ export async function loadLang(lang: Lang): Promise<void> {
   // `toLegacyDict` — тем же импортом, чтобы карта старых ключей не попадала в
   // главный чанк (английскому интерфейсу она не нужна вовсе). Мост уйдёт с
   // задачей 9 вместе с самим `t()`.
-  const state = lang === 'en'
-    ? makeState(lang, EN, en)
+  const { strings, legacy } = lang === 'en'
+    ? { strings: EN, legacy: en }
     : await Promise.all([import('./legacyDict'), loaders[lang]()])
-      .then(([{ toLegacyDict }, strings]) => makeState(lang, { ...EN, ...toStrings(strings) }, { ...en, ...toLegacyDict(strings) }))
-  if (useI18nStore.getState().lang === lang) {
-    useI18nStore.setState(state)
-  }
+      .then(([{ toLegacyDict }, dict]) => ({
+        strings: { ...EN, ...toStrings(dict) } as Strings,
+        legacy: { ...en, ...toLegacyDict(dict) },
+      }))
+  // Гонка снимается ДО применения, а не после: язык, от которого пользователь уже
+  // ушёл, не должен попасть ни в `t()`, ни в ядро — иначе экран собрался бы из двух
+  // языков сразу.
+  if (useI18nStore.getState().lang !== lang) return
+  applyToCore(lang, strings)
+  useI18nStore.setState(makeState(lang, strings, legacy))
 }
 
 export const useI18n = () => useI18nStore()

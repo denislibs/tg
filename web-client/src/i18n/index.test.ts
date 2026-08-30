@@ -5,6 +5,8 @@
 // только на них.
 import { beforeEach, describe, expect, it } from 'vitest'
 
+import I18n, { i18n } from '@lib/langPack'
+
 import { loadLang, substituteArgs, useI18nStore } from './index'
 
 const t = (key: string) => (useI18nStore.getState().t as (k: string) => string)(key)
@@ -101,5 +103,56 @@ describe('подстановка аргументов', () => {
 
   it('лишний плейсхолдер остаётся текстом, а не «undefined»', () => {
     expect(substituteArgs('Up to %1$s for %2$s', ['100 MB'])).toBe('Up to 100 MB for %2$s')
+  })
+})
+
+// ── ЯДРО ПОЛУЧАЕТ ТЕ ЖЕ СТРОКИ (задача 7) ─────────────────────────────────────────
+//
+// До задачи 7 `I18n.strings` был пуст в продукте: `applyLangPack` не звал никто, и
+// `i18n(key)` печатал бы САМ КЛЮЧ. Ванильный слой теперь строит подписи именно им,
+// поэтому связка «выбор языка → ядро» — это работающая кнопка, а не проводка.
+//
+// Проверяется ВЫДАЧА `i18n()`, а не наличие записи в карте: карту можно наполнить и
+// не тем языком, и не теми формами.
+describe('ядро берёт строки из того же источника, что и t()', () => {
+  it('английский: узел ядра несёт текст источника, а не имя ключа', () => {
+    expect(i18n('ArchivedChats').textContent).toBe('Archived Chats')
+    expect(i18n('Story.AddToProfile').textContent).toBe('Post to Profile')
+  })
+
+  it('после смены языка узел ядра говорит по-русски', async () => {
+    useI18nStore.setState({ lang: 'ru' })
+    await loadLang('ru')
+    expect(i18n('ArchivedChats').textContent).toBe('Архив')
+    // Непереведённый ключ падает на английский нижний слой — то же правило, что у `t()`.
+    expect(i18n('Chat.CopySelectedText').textContent).toBe('Copy Selected Text')
+  })
+
+  it('форма числа у ядра выбирается тем же языком', async () => {
+    useI18nStore.setState({ lang: 'ru' })
+    await loadLang('ru')
+    expect(i18n('Notifications.Count', [2]).textContent).toBe('2 уведомления')
+    expect(i18n('Notifications.Count', [5]).textContent).toBe('5 уведомлений')
+  })
+
+  it('ядро и t() отвечают ОДНО И ТО ЖЕ на одном и том же ключе', async () => {
+    useI18nStore.setState({ lang: 'ru' })
+    await loadLang('ru')
+    // Ключи взяты разной судьбы: переведённый, непереведённый и свой-английский.
+    for (const key of ['ArchivedChats', 'Chat.CopySelectedText', 'Story.AddToProfile']) {
+      expect(i18n(key as never).textContent).toBe(t(key))
+    }
+  })
+
+  // Язык, от которого пользователь уже ушёл, не должен доехать ни до `t()`, ни до ядра:
+  // чанк словаря приезжает асинхронно, и за это время можно успеть переключиться назад.
+  it('догрузившийся чужой язык не применяется — ни в t(), ни в ядре', async () => {
+    const slow = loadLang('ru') // чанк ru ещё летит…
+    useI18nStore.setState({ lang: 'en' }) // …а пользователь уже вернулся на английский
+    await slow
+
+    expect(I18n.getLastRequestedLangCode()).toBe('en')
+    expect(i18n('ArchivedChats').textContent).toBe('Archived Chats')
+    expect(t('ArchivedChats')).toBe('Archived Chats')
   })
 })
