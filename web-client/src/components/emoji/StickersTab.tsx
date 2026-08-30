@@ -93,8 +93,8 @@ export default function StickersTab({
 
   const allSections = useMemo<Section[]>(() => {
     const list: Section[] = []
-    if (panel.recent.length) list.push({ key: 'recent', title: t('Frequently Used'), icon: 'recent', stickers: panel.recent })
-    if (panel.faved.length) list.push({ key: 'faved', title: t('Favorites'), icon: 'favourites', stickers: panel.faved })
+    if (panel.recent.length) list.push({ key: 'recent', title: t('Emoji.Recent'), icon: 'recent', stickers: panel.recent })
+    if (panel.faved.length) list.push({ key: 'faved', title: t('FavoriteStickers'), icon: 'favourites', stickers: panel.faved })
     for (const { set, stickers } of panel.sets) {
       if (stickers.length) list.push({ key: `set-${set.short_name}`, title: set.title, thumb: setThumbMediaId(set, stickers), stickers })
     }
@@ -273,7 +273,7 @@ export default function StickersTab({
             onChange={setQuery}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            placeholder={t('Search Stickers')}
+            placeholder={t('StickersTab.SearchPlaceholder')}
             focused={searching}
           />
         }
@@ -285,7 +285,7 @@ export default function StickersTab({
                   <div className="emoji-category">{grid(results)}</div>
                 </div>
               )
-              : <span className="emoticons-not-found animated-item">{t('No stickers found')}</span>
+              : <span className="emoticons-not-found animated-item">{t('NoStickersFound')}</span>
             : undefined
         }
       >
@@ -304,11 +304,11 @@ export default function StickersTab({
                 {c.key === 'recent' && (
                   <IconButton
                     noRipple
-                    aria-label={t('Clear Recent Stickers')}
+                    aria-label={t('ClearRecentStickersAlertTitle')}
                     onClick={() => {
                       void confirmationPopup({
-                        titleLangKey: t('Clear Recent Stickers'),
-                        descriptionLangKey: t('Are you sure you want to clear your recent stickers?'),
+                        titleLangKey: t('ClearRecentStickersAlertTitle'),
+                        descriptionLangKey: t('Stickers.ClearRecent.Text'),
                         button: { text: t('Clear') },
                       }).then(() => panel.clearRecent(), () => {})
                     }}
@@ -324,7 +324,7 @@ export default function StickersTab({
           )
         })}
         {panel.loaded && sections.length === 0 && (
-          <span className="emoticons-not-found">{t('No stickers found')}</span>
+          <span className="emoticons-not-found">{t('NoStickersFound')}</span>
         )}
       </EmoticonsTab>
 

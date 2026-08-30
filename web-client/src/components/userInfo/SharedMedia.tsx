@@ -245,7 +245,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
     const list = (msgs ?? []).filter((x) => getMediaId(x) != null)
     const tracks: AudioTrack[] = list.map((x) => ({
       mediaId: getMediaId(x) as number,
-      title: getMessageKind(x) === 'audio' ? getDocumentFromMessage(x)?.file_name || t('Audio') : title,
+      title: getMessageKind(x) === 'audio' ? getDocumentFromMessage(x)?.file_name || t('SharedMedia.Audio') : title,
       subtitle: when(x),
       chatId,
       msgId: x.id,
@@ -283,7 +283,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
   }
   const empty = (
     <Text size={14} color="var(--secondary-text-color)" style={{ padding: '16px 24px', display: 'block', textAlign: 'center' }}>
-      {t('Nothing here yet.')}
+      {t('SharedMedia.Empty')}
     </Text>
   )
 
@@ -419,10 +419,10 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
       {tab === 'Gifts' && gifts && (
         gifts.length === 0 ? (
           <div className={profileList.empty}>
-            <div className={profileList.emptyTitle}>{t('No gifts yet')}</div>
+            <div className={profileList.emptyTitle}>{t('SharedMedia.Gifts.Empty')}</div>
             {onSendGift && (
               <button type="button" className="btn-primary btn-color-primary btn-control" onClick={onSendGift}>
-                {t('Send a Gift')}
+                {t('Chat.Menu.SendGift')}
               </button>
             )}
           </div>
@@ -436,7 +436,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
               return (
                 <div key={g.saved_id ?? g.date} className={giftsGrid.gridItem} onClick={() => onOpenGift?.(g)}>
                   {isGiftHidden(g) && <TgIcon name="hide" size={16} className={giftsGrid.itemLock} />}
-                  {g.gift.pFlags?.limited && <span className={giftsGrid.badgeResale}>{t('Limited')}</span>}
+                  {g.gift.pFlags?.limited && <span className={giftsGrid.badgeResale}>{t('StarGiftShowLimited')}</span>}
                   <span className={giftsGrid.itemSticker}>{g.gift.emoji}</span>
                   <span className={giftsGrid.itemPrice}>
                     <StarIcon size={12} />
@@ -505,7 +505,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
                   <div className="document-ico">
                     <span className="document-ico-text">{ext.slice(0, 4) || 'file'}</span>
                   </div>
-                  <div className="document-name">{doc?.file_name || t('Document')}</div>
+                  <div className="document-name">{doc?.file_name || t('Chat.Input.Attach.Document')}</div>
                   <div className="document-size">
                     <span>{[fmtSize(doc?.size), when(m)].filter(Boolean).join(' · ')}</span>
                   </div>
@@ -557,12 +557,12 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         {msgs.map((m) => (
           <div key={m.id} className="document-container">
             <div className="document-wrapper">
-              <div className="audio" onClick={() => playRow(m, getDocumentFromMessage(m)?.file_name || t('Audio'))}>
+              <div className="audio" onClick={() => playRow(m, getDocumentFromMessage(m)?.file_name || t('SharedMedia.Audio'))}>
                 <div className={classNames('audio-toggle audio-ico', audioPlaying && getMediaId(m) === curMediaId ? 'playing' : '')}>
                   <PlayPauseGlyph playing={audioPlaying && getMediaId(m) === curMediaId} size={22} />
                 </div>
                 <div className="audio-details">
-                  <div className="audio-title">{getDocumentFromMessage(m)?.file_name || t('Audio')}</div>
+                  <div className="audio-title">{getDocumentFromMessage(m)?.file_name || t('SharedMedia.Audio')}</div>
                   <div className="audio-subtitle">
                     <div className="audio-time">{[fmtDur(getDocumentFromMessage(m)?.duration), when(m)].filter(Boolean).join(' · ')}</div>
                   </div>
@@ -585,12 +585,12 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         {msgs.map((m) => (
           <div key={m.id} className="document-container">
             <div className="document-wrapper">
-              <div className="audio" onClick={() => playRow(m, getMessageKind(m) === 'roundVideo' ? t('Video message') : t('Voice message'))}>
+              <div className="audio" onClick={() => playRow(m, getMessageKind(m) === 'roundVideo' ? t('AttachRound') : t('AttachAudio'))}>
                 <div className={classNames('audio-toggle audio-ico', audioPlaying && getMediaId(m) === curMediaId ? 'playing' : '')}>
                   <PlayPauseGlyph playing={audioPlaying && getMediaId(m) === curMediaId} size={22} />
                 </div>
                 <div className="audio-details">
-                  <div className="audio-title">{getMessageKind(m) === 'roundVideo' ? t('Video message') : t('Voice message')}</div>
+                  <div className="audio-title">{getMessageKind(m) === 'roundVideo' ? t('AttachRound') : t('AttachAudio')}</div>
                   <div className="audio-subtitle">
                     <div className="audio-time">{[fmtDur(getDocumentFromMessage(m)?.duration), when(m)].filter(Boolean).join(' · ')}</div>
                   </div>
@@ -746,7 +746,7 @@ function SavedDialogRow({ dialog, onOpenPeer, itemRef }: {
   const peer = cachedPeer(dialog.peerId)
   // Имя и аватарку даёт КАРТОЧКА пира (она приезжает векторами того же
   // контейнера), а не снимок, подклеенный сервером в строку.
-  const title = isSelf ? t('My Notes') : getPeerTitle({ peerId: dialog.peerId, peer })
+  const title = isSelf ? t('MyNotes') : getPeerTitle({ peerId: dialog.peerId, peer })
   const photoId = getPeerPhotoId(isUser(dialog.peerId) && peer?._ === 'user' ? peer.photo : getChatPhoto(peer as PeerChat | undefined)) || undefined
   const lm = dialog.lastMessage
 

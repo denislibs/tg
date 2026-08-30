@@ -117,7 +117,7 @@ function StickerSetRow({
         <div className="sticker-set-details">
           <div className="sticker-set-name" dir="auto">{set.title}</div>
           <div className="sticker-set-count">
-            <span className="i18n">{set.count} {t('stickers')}</span>
+            <span className="i18n">{set.count} {t('Stickers.CountSuffix')}</span>
           </div>
         </div>
         {/* tweb: установленный — «Added» + класс gray; disabled на время запроса;
@@ -266,7 +266,7 @@ export default function StickersSearchTab({
     <RightSearchTab
       id="stickers-container"
       containerClassName="chatlist-container"
-      placeholder={t('Search Stickers')}
+      placeholder={t('StickersTab.SearchPlaceholder')}
       value={query}
       onChange={setQuery}
       onClose={onClose}

@@ -20,7 +20,7 @@ export default function KeyVerificationPopup({
   return (
     <Popup
       open={open}
-      title={t('Encryption Key')}
+      title={t('SecretChat.EncryptionKey')}
       onClose={onClose}
       onExitComplete={onExitComplete}
       width={420}
@@ -49,7 +49,7 @@ export default function KeyVerificationPopup({
             color="var(--secondary-text-color)"
             style={{ display: 'block', textAlign: 'center', padding: '0 8px' }}
           >
-            {t('Compare these emoji with the ones your contact sees on their device. If they match, the chat is end-to-end encrypted.')}
+            {t('SecretChat.KeyVerification.Hint')}
           </Text>
         </>
       ) : (
@@ -58,7 +58,7 @@ export default function KeyVerificationPopup({
           color="var(--secondary-text-color)"
           style={{ display: 'block', textAlign: 'center', padding: '24px 8px' }}
         >
-          {t('The encryption key has not been agreed yet.')}
+          {t('SecretChat.KeyNotReady')}
         </Text>
       )}
     </Popup>

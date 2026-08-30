@@ -590,7 +590,7 @@ export default function EmojiDropdown({
                 onChange={setQuery}
                 onFocus={() => setFocused(true)}
                 onBlur={() => setFocused(false)}
-                placeholder={t('Search Emoji')}
+                placeholder={t('SearchEmoji')}
                 focused={searching}
                 hasGroup={!!group}
                 onGroupClear={() => setGroup(null)}
@@ -629,7 +629,7 @@ export default function EmojiDropdown({
                       </div>
                     </div>
                   )
-                  : <span className="emoticons-not-found animated-item">{t('No emoji found.')}</span>
+                  : <span className="emoticons-not-found animated-item">{t('NoEmojiFound')}</span>
                 : undefined
             }
           >

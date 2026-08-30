@@ -52,10 +52,10 @@ export default function RightsEditor({
   return (
     <div className="tabs-tab sidebar-slider-item scrollable-y-bordered edit-peer-container user-permissions-container active">
       <div className="sidebar-header">
-        <button type="button" className="btn-icon sidebar-close-button" onClick={onBack} aria-label={t('Back')}>
+        <button type="button" className="btn-icon sidebar-close-button" onClick={onBack} aria-label={t('Common.Back')}>
           <TgIcon name="back" />
         </button>
-        <div className="sidebar-header__title">{t('Admin Rights')}</div>
+        <div className="sidebar-header__title">{t('EditAdmin')}</div>
         {/* «Применить» — та же кнопка-галка, что в оригинале: появляется зумом
             (`appear-zoom`), пока экран сохраняется — заблокирована. */}
         <button
@@ -102,7 +102,7 @@ export default function RightsEditor({
           <div className="sidebar-left-section-container">
             <div className="sidebar-left-section">
               {/* Заголовок группы прав — `sidebar-left-h2` из оригинала */}
-              <div className="sidebar-left-h2 sidebar-left-section-name">{t('What can this admin do?')}</div>
+              <div className="sidebar-left-h2 sidebar-left-section-name">{t('EditAdminWhatCanDo')}</div>
               <div className="sidebar-left-section-content">
                 {RIGHTS.map((r) => (
                   <Row

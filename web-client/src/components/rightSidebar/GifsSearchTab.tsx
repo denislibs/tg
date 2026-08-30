@@ -40,7 +40,7 @@ export default function GifsSearchTab({
   return (
     <RightSearchTab
       id="search-gifs-container"
-      placeholder={t('Search GIFs')}
+      placeholder={t('SearchGIFs')}
       value={query}
       onChange={setQuery}
       onClose={onClose}

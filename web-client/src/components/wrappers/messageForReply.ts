@@ -77,7 +77,7 @@ export default function wrapMessageForReply(options: WrapMessageForReplyOptions)
   const isFullGrouped = !!message.grouped_id && !!groupedMessages?.length
   if (isFullGrouped) {
     text = groupedMessages.map((m) => getMessageText(m)).find(Boolean) ?? ''
-    if (!withoutMediaType) parts.push(t('Album'))
+    if (!withoutMediaType) parts.push(t('AttachAlbum'))
   }
 
   // Лейбл вложения — если группа не показана целиком и лейбл не запрещён, либо
@@ -113,19 +113,19 @@ function mediaPart(
 ): string | undefined {
   switch (media?._) {
     case undefined: return undefined
-    case 'messageMediaPhoto': return t('Photo')
-    case 'messageMediaGeo': return t('Location')
-    case 'messageMediaGeoLive': return t('Live location')
+    case 'messageMediaPhoto': return t('AttachPhoto')
+    case 'messageMediaGeo': return t('AttachLocation')
+    case 'messageMediaGeoLive': return t('AttachLiveLocation')
     // Место у оригинала отдаёт СВОЁ название текстом плюс лейбл локации.
-    case 'messageMediaVenue': return `${t('Location')}, ${media.title}`
-    case 'messageMediaContact': return t('Contact')
+    case 'messageMediaVenue': return `${t('AttachLocation')}, ${media.title}`
+    case 'messageMediaContact': return t('AttachContact')
     case 'messageMediaPoll': return `📊 ${media.poll.question.text}`
     case 'messageMediaToDo': return `${t('Checklist')} ${media.todo.title.text}`
     case 'messageMediaGiveaway':
-    case 'messageMediaGiveawayResults': return t('Giveaway')
+    case 'messageMediaGiveawayResults': return t('BoostingGiveaway')
     case 'messageMediaWebPage': return undefined
     case 'messageMediaDocument': return documentPart(message, t)
-    default: return t('Unsupported message')
+    default: return t('Message.Unsupported')
   }
 }
 
@@ -135,13 +135,13 @@ function documentPart(message: MyMessage, t: (key: string) => string): string | 
   if (!doc) return undefined
 
   switch (doc.type) {
-    case 'video': return t('Video')
-    case 'gif': return t('GIF')
-    case 'round': return t('Video message')
-    case 'voice': return t('Voice message')
+    case 'video': return t('AttachVideo')
+    case 'gif': return t('AttachGif')
+    case 'round': return t('AttachRound')
+    case 'voice': return t('AttachAudio')
     // Стикер: эмодзи и лейбл склеиваются В ОДНУ часть (оригинал сливает их
     // `parts.splice(i, 2)`), иначе между ними встала бы запятая.
-    case 'sticker': return `${doc.stickerEmojiRaw ? doc.stickerEmojiRaw + ' ' : ''}${t('Sticker')}`
+    case 'sticker': return `${doc.stickerEmojiRaw ? doc.stickerEmojiRaw + ' ' : ''}${t('AttachSticker')}`
     case 'audio': {
       const attribute = doc.attributes.find((a) => a._ === 'documentAttributeAudio' && (a.title || a.performer))
       const title = attribute?._ === 'documentAttributeAudio'

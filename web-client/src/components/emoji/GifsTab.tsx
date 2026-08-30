@@ -187,7 +187,7 @@ export default function GifsTab({
             onChange={setQuery}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            placeholder={t('Search GIFs')}
+            placeholder={t('SearchGIFs')}
             focused={focused || !!query.trim()}
           />
         }
@@ -200,7 +200,7 @@ export default function GifsTab({
                   <div ref={sentinelRef} style={{ height: 1 }} />
                 </div>
               )
-              : <span className="emoticons-not-found animated-item">{t('No GIFs found')}</span>
+              : <span className="emoticons-not-found animated-item">{t('NoGIFsFound')}</span>
             : undefined
         }
       >
@@ -215,11 +215,11 @@ export default function GifsTab({
             отдельной категорией с заголовком, чтобы отделить от сохранённых */}
         {panel.featured.length > 0 && (
           <div className="emoji-category">
-            <div className="category-title">{t('Trending')}</div>
+            <div className="category-title">{t('Gif.Trending')}</div>
             <Masonry items={panel.featured} visible={visible} onPick={onPick} onMenu={openCtxMenu} register={register} />
           </div>
         )}
-        {empty && <span className="emoticons-not-found">{t('No GIFs found')}</span>}
+        {empty && <span className="emoticons-not-found">{t('NoGIFsFound')}</span>}
       </EmoticonsTab>
 
       {/* ПКМ по сохранённому GIF (tweb gif context menu) */}
@@ -233,7 +233,7 @@ export default function GifsTab({
         >
           <MenuItem
             icon={<TgIcon name="crossgif" size={20} />}
-            label={t('Delete GIF')}
+            label={t('Gif.Delete')}
             onClick={() => {
               if (ctxMenu.g.mediaId != null) panel.removeSaved(ctxMenu.g.mediaId)
               setCtxMenu(null)

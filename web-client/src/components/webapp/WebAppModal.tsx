@@ -219,7 +219,7 @@ function WebAppInner() {
         case 'web_app_data_send':
           // Доставляем данные боту-владельцу (web_app_data) + тост, затем закрываем.
           if (botId) void managers.bots.sendWebAppData(botId, String(d.data ?? ''), botName).catch(() => {})
-          rootScope.dispatchEvent('ui:toast', `${botName}: ${t('Data sent')}`)
+          rootScope.dispatchEvent('ui:toast', `${botName}: ${t('WebApp.DataSent')}`)
           closeWebApp()
           break
         case 'web_app_open_popup':
@@ -243,10 +243,10 @@ function WebAppInner() {
           break
         }
         case 'web_app_request_phone':
-          post('phone_requested', { status: window.confirm(t('Share your phone number with this bot?')) ? 'sent' : 'cancelled' })
+          post('phone_requested', { status: window.confirm(t('WebApp.PhoneRequest')) ? 'sent' : 'cancelled' })
           break
         case 'web_app_request_write_access':
-          post('write_access_requested', { status: window.confirm(t('Allow this bot to message you?')) ? 'allowed' : 'cancelled' })
+          post('write_access_requested', { status: window.confirm(t('WebApp.WriteAccess.Question')) ? 'allowed' : 'cancelled' })
           break
         case 'web_app_open_scan_qr_popup':
           setQr({ text: d.text as string | undefined })
@@ -266,7 +266,7 @@ function WebAppInner() {
           break
         case 'web_app_open_invoice': {
           const slug = String(d.slug ?? '')
-          const paid = window.confirm(t('Pay this invoice?'))
+          const paid = window.confirm(t('WebApp.PayConfirm'))
           post('invoice_closed', { slug, status: paid ? 'paid' : 'cancelled' })
           break
         }
@@ -311,7 +311,7 @@ function WebAppInner() {
   }, [loaded])
 
   const requestClose = () => {
-    if (confirmClose.current && !window.confirm(t('Close this Mini App?'))) return
+    if (confirmClose.current && !window.confirm(t('WebApp.CloseConfirm'))) return
     closeWebApp()
   }
   const onPopupPick = (id?: string) => { setPopup(null); post('popup_closed', { button_id: id }) }
@@ -345,7 +345,7 @@ function WebAppInner() {
           {/* Многоточие — часть строки словаря (`Loading...` у tweb), а не вёрстки:
               приписанное здесь, оно давало «Загрузка……» после слияния двух старых
               ключей `Loading`/`Loading…` в один. */}
-          {!loaded && <div className={s.loader}>{t('Loading…')}</div>}
+          {!loaded && <div className={s.loader}>{t('Loading')}</div>}
           <iframe
             ref={frameRef}
             className={s.frame}
@@ -411,7 +411,7 @@ function QrScanner({ text, onText, onClose, t }: { text?: string; onText: (d: st
   useEffect(() => {
     const Ctor = (window as unknown as { BarcodeDetector?: BarcodeDetectorCtor }).BarcodeDetector
     if (!Ctor || !navigator.mediaDevices?.getUserMedia) {
-      setErr(t('QR scanning is not supported in this browser'))
+      setErr(t('WebApp.QrUnsupported'))
       return
     }
     let stream: MediaStream | null = null
@@ -433,7 +433,7 @@ function QrScanner({ text, onText, onClose, t }: { text?: string; onText: (d: st
       stream = st
       if (videoRef.current) { videoRef.current.srcObject = st; void videoRef.current.play() }
       void tick()
-    }).catch(() => setErr(t('Camera access denied')))
+    }).catch(() => setErr(t('WebApp.CameraDenied')))
     return () => {
       cancelled = true
       cancelAnimationFrame(raf)
