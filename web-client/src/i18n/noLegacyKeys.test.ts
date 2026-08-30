@@ -80,8 +80,33 @@ function scan() {
 const KEY_SHAPED = /^[A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)+$/
 const hasLowercase = (s: string) => /[a-z]/.test(s)
 
-/** Комментарии — не код: в них ключи цитируются, в том числе исчезнувшие. */
-const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1')
+/**
+ * Комментарии — не код: в них ключи цитируются, в том числе исчезнувшие.
+ *
+ * Вырезанное заменяется ПРОБЕЛАМИ, а не схлопывается: и длина, и переводы строки
+ * сохраняются, поэтому номер строки, посчитанный по обрезанному тексту, совпадает с
+ * номером в файле. Прежняя редакция сводила блочный комментарий к ОДНОМУ пробелу — и
+ * сообщение указывало на строку тем выше, чем длиннее докблок над находкой. В этом
+ * репозитории докблоки на 30-80 строк — обычное дело, то есть промах был не на
+ * единицу, а на десятки строк (дефект самого пина, сданный задачей 6 задаче 7).
+ */
+const blank = (text: string) => text.replace(/[^\n]/g, ' ')
+const stripComments = (src: string) => src
+  .replace(/\/\*[\s\S]*?\*\//g, blank)
+  .replace(/(^|[^:])\/\/[^\n]*/g, (_, before: string) => before + blank(_.slice(before.length)))
+
+/** Находки одного файла. Вынесено, чтобы проверить САМИ НОМЕРА СТРОК (тест ниже). */
+export function keyShapedLiterals(source: string, rel: string) {
+  const src = stripComments(source)
+  const found: { value: string; line: number; message: string }[] = []
+  for (const match of src.matchAll(/(['"])([^'"\\\n]+)\1/g)) {
+    const value = match[2]
+    if (!KEY_SHAPED.test(value) || !hasLowercase(value)) continue
+    const line = src.slice(0, match.index).split('\n').length
+    found.push({ value, line, message: `${rel}:${line}: «${value}» — по форме ключ, а в lang.ts его нет` })
+  }
+  return found
+}
 
 describe('осиротевших ключей в исходниках нет', () => {
   it('литерал, похожий на ключ, есть в английском источнике', () => {
@@ -91,19 +116,34 @@ describe('осиротевших ключей в исходниках нет', (
       const rel = relative(resolve(process.cwd()), file)
       // Тесты фиксируют и НЕСУЩЕСТВУЮЩИЕ ключи (проверка «ядро показало сам ключ»).
       if (NOT_A_CALLER.test(rel) || /\.test\.tsx?$/.test(rel)) continue
-      const src = stripComments(readFileSync(file, 'utf8'))
-      for (const match of src.matchAll(/(['"])([^'"\\\n]+)\1/g)) {
-        const value = match[2]
-        if (!KEY_SHAPED.test(value) || !hasLowercase(value)) continue
+      for (const found of keyShapedLiterals(readFileSync(file, 'utf8'), rel)) {
         seen++
-        if (value in lang) continue
-        const line = src.slice(0, match.index).split('\n').length
-        offenders.push(`${rel}:${line}: «${value}» — по форме ключ, а в lang.ts его нет`)
+        if (found.value in lang) continue
+        offenders.push(found.message)
       }
     }
     // Иначе «сирот нет» означало бы «скан ничего не нашёл».
     expect(seen).toBeGreaterThan(500)
     expect(offenders).toEqual([])
+  })
+
+  // Сообщение пина обязано вести к настоящей строке файла — иначе читатель правит не
+  // тот код. Проверяется на синтетическом исходнике: на настоящих файлах «правильно»
+  // и «схлопнуто» неотличимы, пока в них не окажется докблока перед находкой.
+  it('номер строки указывает на строку ФАЙЛА, а не обрезанного текста', () => {
+    const source = [
+      '/**',
+      ' * Докблок в пять строк; цитата `Gone.Away` внутри — не находка.',
+      ' *',
+      ' * Ещё строка.',
+      ' */',
+      '// однострочный комментарий с `Also.Gone`',
+      "const a = 'Nope.NoSuchKey'",
+    ].join('\n')
+
+    expect(keyShapedLiterals(source, 'x.ts')).toEqual([
+      { value: 'Nope.NoSuchKey', line: 7, message: 'x.ts:7: «Nope.NoSuchKey» — по форме ключ, а в lang.ts его нет' },
+    ])
   })
 })
 

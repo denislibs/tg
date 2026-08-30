@@ -20,10 +20,10 @@ export function useSidebarActions(chats: Chat[], onChatCreated?: (peerId: PeerId
   // Язык читается СНИМКОМ В МОМЕНТ ВЫЗОВА, а не на рендере: подписки тут не нужно
   // (ничего не рисуется), но и застревать на языке, который стоял при монтировании,
   // нельзя — пользователь мог сменить язык до нажатия «Создать» (#задача 8).
-  const title = (key: LangPackKey) => useI18nStore.getState().t(key)
+  const t = (key: LangPackKey) => useI18nStore.getState().t(key)
 
   const createGroup = async (name: string, memberIds: number[], photo: GroupPhoto | null) => {
-    const peerId = await managers.groups.createGroup({ title: name || title('NewGroup.DefaultTitle'), memberIds })
+    const peerId = await managers.groups.createGroup({ title: name || t('NewGroup.DefaultTitle'), memberIds })
     // Фото — после создания, как tweb (createChat → editPhoto): upload → set.
     if (photo) {
       const bytes = await photo.blob.arrayBuffer()
@@ -34,7 +34,7 @@ export function useSidebarActions(chats: Chat[], onChatCreated?: (peerId: PeerId
   }
 
   const createChannel = async (name: string, description: string) => {
-    const peerId = await managers.channels.createChannel({ title: name || title('NewChannel.DefaultTitle'), about: description })
+    const peerId = await managers.channels.createChannel({ title: name || t('NewChannel.DefaultTitle'), about: description })
     onChatCreated?.(peerId)
   }
 
