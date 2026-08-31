@@ -126,6 +126,34 @@ describe('владелец текущего языка', () => {
     expect(second.getLastRequestedNormalizedLangCode()).toBe('pt')
   })
 
+  // ПРАВИЛА ЧИСЛА ГОТОВЫ ДО ПЕРВОГО ПРИМЕНЕНИЯ, и на ВЫБРАННОМ языке.
+  //
+  // Отступление от оригинала (у tweb поле пустое до `applyLangPack`) объяснено у
+  // самой строки — «один такой ранний вызов напечатал бы „5 сообщения“», — но
+  // финальное ревью показало, что мутация
+  // `new Intl.PluralRules(lastRequestedNormalizedLangCode)` → `(DEFAULT_LANG_CODE)`
+  // проходит зелёной: окно между импортом модуля и первым применением не
+  // проверял никто. Окно настоящее: `format()` зовут ванильные подписи в момент
+  // создания узла, а применение приезжает асинхронно (кэш владельца — RPC).
+  it('формы числа готовы ДО применения пакета — по выбранному языку, а не по умолчанию', async() => {
+    localStorage.setItem('tg-lang', 'ru')
+    const I18n = await boot()
+
+    // Строка в карте есть, а `applyLangPack` ещё не звали — это и есть окно.
+    I18n.strings.set('Notifications.Count' as never, {
+      _: 'langPackStringPluralized',
+      key: 'Notifications.Count',
+      one_value: '%d уведомление',
+      few_value: '%d уведомления',
+      many_value: '%d уведомлений',
+      other_value: '%d уведомления',
+    } as never)
+
+    // У русского 5 — форма `many`; у английского то же число даёт `other`,
+    // и на умолчании здесь напечаталось бы «5 уведомления».
+    expect(I18n.format('Notifications.Count' as never, true, [5])).toBe('5 уведомлений')
+  })
+
   it('мусор в хранилище не роняет старт и не становится языком', async() => {
     // `new Intl.PluralRules('ru_RU')` бросает RangeError (подчёркивание —
     // POSIX-форма, тегом языка она не является) — и бросил бы на импорте

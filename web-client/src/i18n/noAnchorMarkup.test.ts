@@ -58,8 +58,15 @@ function* allStrings(): Generator<{ where: string; key: string; text: string }> 
     for (const string of strings) {
       if (string._ === 'langPackString') yield { where: `dict.${code}`, key: string.key, text: string.value }
       else if (string._ === 'langPackStringPluralized') {
-        for (const form of [string.one_value, string.few_value, string.many_value, string.other_value]) {
-          if (form) yield { where: `dict.${code}`, key: string.key, text: form }
+        // Формы перебираются ПО СЛОТАМ, а не по списку из четырёх имён. Список
+        // был слепым по построению: у схемы есть ещё `zero_value` и `two_value`
+        // (`layer.d.ts`), предмета для них сегодня нет ни в одном словаре — и
+        // ровно поэтому первая такая строка проехала бы мимо проверки молча.
+        // У `lang.ts` (выше) перебор и так по слотам, то есть половины одного
+        // скана расходились.
+        for (const [slot, form] of Object.entries(string)) {
+          if (!slot.endsWith('_value') || typeof form !== 'string') continue
+          yield { where: `dict.${code}`, key: string.key, text: form }
         }
       }
     }
