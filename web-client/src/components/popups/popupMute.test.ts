@@ -3,6 +3,11 @@
 // НАСТОЯЩИЙ класс на реальном DOM (happy-dom), без моков — кроме менеджера
 // аватарки (`AvatarManagers`, тот же приём, что в `popupPeer.test.ts`).
 import { afterEach, describe, expect, it, vi } from 'vitest'
+// Подписи строк — живые узлы ядра (`_i18n`, задача 8), а строки в ядро кладёт
+// создание хранилища языка. В продукте это делает холодный старт
+// (`client/boot.ts`), в прогоне — только явный импорт; без него на экран поехали
+// бы имена ключей, и это красил бы пин `test/domKeyLeak`.
+import '@/i18n'
 import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
 import type { AvatarManagers } from '@components/avatar'
 import PopupMute from './popupMute'

@@ -59,7 +59,7 @@ import Icon from '@components/icon'
 import { replaceButtonIcon } from '@components/mediaViewer/base'
 import { formatVideoTime, rateToString, VIDEO_RATES } from '@components/messages/videoPlayback'
 import { useSettingsStore } from '../../settings'
-import { useI18nStore } from '../../i18n'
+import { _i18n } from '@lib/langPack'
 
 // tweb playbackRateButton geometricFontMap: подпись скорости — по глифу на
 // символ моноширинной «геометрической» гарнитуры (как в React-плеере).
@@ -440,8 +440,6 @@ export default class VideoPlayer extends ControlsHover {
     const menu = document.createElement('div')
     menu.classList.add('btn-menu', 'top-left')
 
-    // i18n вне React — как connectionStatus.ts/appMediaViewer.ts
-    const t = useI18nStore.getState().t
     const items = VIDEO_RATES.map((rate) => {
       const el = document.createElement('div')
       el.className = 'btn-menu-item rp-overflow'
@@ -449,7 +447,12 @@ export default class VideoPlayer extends ControlsHover {
       el.append(iconEl)
       const textEl = document.createElement('span')
       textEl.classList.add('btn-menu-item-text')
-      textEl.textContent = rate === 1 ? t('PlaybackRateNormal') : `${rate}x`
+      // «Normal» — ПОДПИСЬ (живой узел), «2x» — ДАННЫЕ (число со суффиксом), и
+      // это ровно то же разделение, что у оригинала: `text: 'PlaybackRateNormal'`
+      // против `regularText: rate + 'x'` (`lib/mediaPlayer/playbackRateButton.tsx:70-71`).
+      // Плеер живёт открытым, поэтому подпись обязана быть живой (задача 8).
+      if (rate === 1) _i18n(textEl, 'PlaybackRateNormal')
+      else textEl.textContent = `${rate}x`
       el.append(textEl)
       attachClickEvent(el, () => {
         closeMenu()

@@ -6,6 +6,7 @@
 // Среда — как base.open.test.ts: happy-dom + fake timers, RPC managers замокан.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AppMediaViewer, { type AppMediaViewerOptions, type ViewerItem } from './appMediaViewer'
+import { loadLang, useI18nStore } from '@/i18n'
 
 const { downloadMediaURL, meta } = vi.hoisted(() => ({
   downloadMediaURL: vi.fn<(id: number) => Promise<string>>(),
@@ -344,6 +345,26 @@ describe('мобильное ⋮-меню (порт base :970-973 + минима
     expect(menu.isConnected).toBe(true)
     await vi.advanceTimersByTimeAsync(300)
     expect(menu.isConnected).toBe(false)
+  })
+
+  // Задача 8: вьювер живёт открытым, и смена языка при нём переводит пункты
+  // меню НА МЕСТЕ — они построены `_i18n`, как `ButtonMenu` оригинала.
+  // Меню при этом обязано быть СМОНТИРОВАНО: `applyLangPack` обходит
+  // `document.querySelectorAll('.i18n')`, и до узла в памяти обход не доходит —
+  // ограничение оригинала, оно же у нас (пин — `lib/langPack.live.test.ts`).
+  it('смена языка при открытом меню переводит его пункты', async () => {
+    const v = makeViewer({ onForward: vi.fn() })
+    await openMenu(v.menu.toggle)
+    const text = v.menu.forward.querySelector('.btn-menu-item-text')!
+    expect(text.textContent).toBe('Forward')
+
+    useI18nStore.getState().setLang('ru')
+    await loadLang('ru')
+
+    expect(text.textContent).toBe('Переслать')
+
+    useI18nStore.getState().setLang('en')
+    await loadLang('en')
   })
 
   it('пункт меню зовёт действие и закрывает меню', async () => {

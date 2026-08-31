@@ -9,6 +9,7 @@ import VolumeSelector from '@components/volumeSelector'
 import ListenerSetter from '@helpers/listenerSetter'
 import { glyph } from '@core/tgico-icons'
 import { useSettingsStore } from '../../settings'
+import { loadLang, useI18nStore } from '../../i18n'
 
 type MediaStub = HTMLVideoElement & {
   __paused?: boolean
@@ -133,6 +134,32 @@ describe('VideoPlayer: меню скоростей — персист в setting
     expect(video.playbackRate).toBe(2)
     expect(useSettingsStore.getState().videoRate).toBe(2)
     player.cleanup()
+  })
+
+  // Задача 8: плеер живёт открытым, и смена языка при нём обязана перевести
+  // подпись НА МЕСТЕ. Проверяется разделение ролей оригинала
+  // (`playbackRateButton.tsx:70-71`): «Normal» — подпись (живой узел), «2x» —
+  // данные (число со суффиксом), и переводу они подлежат по-разному.
+  it('смена языка при открытом плеере переводит «Normal», не трогая «2x»', async() => {
+    const video = makeVideo(90)
+    const player = makePlayer(video)
+
+    // Подписи, а не пункты целиком: у пункта в тексте ещё и глиф галочки.
+    const labels = [...document.querySelectorAll('.playback-rate-button-menu .btn-menu-item-text')]
+    const normal = labels.find((el) => el.textContent === 'Normal')!
+    const x2 = labels.find((el) => el.textContent === '2x')!
+    expect(normal).toBeDefined()
+    expect(x2).toBeDefined()
+
+    useI18nStore.getState().setLang('ru')
+    await loadLang('ru')
+
+    expect(normal.textContent).toBe('Обычная')
+    expect(x2.textContent).toBe('2x')
+
+    player.cleanup()
+    useI18nStore.getState().setLang('en')
+    await loadLang('en')
   })
 })
 

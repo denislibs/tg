@@ -39,7 +39,7 @@ import { doubleRaf } from '@helpers/schedulers'
 import type { IconName } from '@core/tgico-icons'
 import type { MessageEntity } from '@core/models'
 import { startClient } from '@/client/bootstrap'
-import { useI18nStore } from '../../i18n'
+import { _i18n } from '@lib/langPack'
 import RichText from '../RichText'
 import Icon from '@components/icon'
 import AppMediaViewerBase, { btnIcon, type ViewerAuthor, type ViewerMedia } from './base'
@@ -286,15 +286,16 @@ export default class AppMediaViewer extends AppMediaViewerBase<'caption', 'delet
     const menu = this.btnMenu = document.createElement('div')
     menu.classList.add('btn-menu', 'bottom-left')
 
-    // i18n вне React — как connectionStatus.ts: строка на момент постройки
-    const t = useI18nStore.getState().t
     const menuItem = (icon: IconName, text: LangPackKey, onClick: () => void, danger = false) => {
       const el = document.createElement('div')
       el.className = 'btn-menu-item rp-overflow' + (danger ? ' danger' : '')
       el.append(Icon(icon, 'btn-menu-item-icon'))
       const textEl = document.createElement('span')
       textEl.classList.add('btn-menu-item-text')
-      textEl.textContent = t(text)
+      // ЖИВОЙ узел, а не строка на момент постройки (задача 8): вьювер живёт
+      // открытым, а `_i18n` кладёт узел под перерисовку `applyLangPack` — ровно
+      // то, что делает `ButtonMenu` оригинала (`text: LangPackKey`).
+      _i18n(textEl, text)
       el.append(textEl)
       attachClickEvent(el, () => {
         closeMenu()

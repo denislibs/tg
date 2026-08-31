@@ -30,13 +30,14 @@ import type { LangPackKey } from '@/lang'
 import Icon, { getIconContent } from '@components/icon'
 import PopupPeer from './popupPeer'
 import type { AvatarManagers } from '@components/avatar'
-import { useI18nStore } from '@/i18n'
+import { _i18n } from '@lib/langPack'
 import s from './popupMute.module.scss'
 
 const ONE_HOUR = 3600 // mute.ts:6
 
-// mute.ts:7-27, дословно (langPackKey → уже переведённый label — наш `t()`
-// не различает эти два понятия, см. докблок `popupPeer.ts`).
+// mute.ts:7-27, дословно. `label` — КЛЮЧ, а не готовая строка (перевод делает
+// сам `_i18n` ниже, узлом): разница между этими двумя ролями выражена типом с
+// задачи 7, см. докблок `popupPeer.ts`.
 const TIMES: { value: number, label: LangPackKey }[] = [
   { value: ONE_HOUR, label: 'ChatList.Mute.1Hour' },
   { value: ONE_HOUR * 4, label: 'ChatList.Mute.4Hours' },
@@ -48,8 +49,6 @@ const TIMES: { value: number, label: LangPackKey }[] = [
 
 export default class PopupMute extends PopupPeer {
   constructor(peerId: PeerId, managers: AvatarManagers, onMute: (seconds: number | null) => void) {
-    const t = useI18nStore.getState().t
-
     super('popup-mute', { // mute.ts:30
       peerId, // mute.ts:32
       managers,
@@ -75,7 +74,11 @@ export default class PopupMute extends PopupPeer {
       const icon = Icon('radiooff')
       const text = document.createElement('span')
       text.className = s.text
-      text.textContent = t(tm.label)
+      // ЖИВОЙ узел, а не строка на момент постройки (задача 8): попап живёт
+      // открытым, и смена языка при нём обязана его перерисовать. У оригинала
+      // то же самое приходит само — там строки рисует `RadioField` по
+      // `langPackKey` (`radioField.ts:68`).
+      _i18n(text, tm.label)
       row.append(icon, text)
 
       row.addEventListener('click', () => {

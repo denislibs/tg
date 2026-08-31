@@ -36,7 +36,8 @@ const REACTIONS_HEIGHT = 61
 export function useChatHeaderSearch(chat: Chat, onJumpToSeq: (seq: number) => void) {
   const managers = useManagers()
   // Читается на РЕНДЕРЕ, поэтому подписка обязательна: снимок `getState().t` не
-  // перерисовал бы плашку «Избранное» при смене языка (задача 8).
+  // перерисовал бы плашку «Избранное» при смене языка, а язык меняется на лету
+  // (задача 8).
   const t = useT()
   const meId = useChatsStore((s) => s.meId)
   const numericChatId = Number(chat.id)

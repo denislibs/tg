@@ -19,7 +19,8 @@ export function useSidebarActions(chats: Chat[], onChatCreated?: (peerId: PeerId
   //
   // Язык читается СНИМКОМ В МОМЕНТ ВЫЗОВА, а не на рендере: подписки тут не нужно
   // (ничего не рисуется), но и застревать на языке, который стоял при монтировании,
-  // нельзя — пользователь мог сменить язык до нажатия «Создать» (#задача 8).
+  // нельзя — язык меняется на лету (задача 8), и пользователь мог сменить его до
+  // нажатия «Создать».
   const t = (key: LangPackKey) => useI18nStore.getState().t(key)
 
   const createGroup = async (name: string, memberIds: number[], photo: GroupPhoto | null) => {
