@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 1,
+      "version": 2,
       "strings": [
         {
           "key": "AccountSettings.Notifications",
@@ -27,6 +27,10 @@
         {
           "key": "AddFactCheck",
           "value": "Add Fact Check"
+        },
+        {
+          "key": "AddOneMemberAlertTitle",
+          "value": "Add member"
         },
         {
           "key": "AddToFavorites",
@@ -139,6 +143,10 @@
         {
           "key": "AutoDeleteMessages",
           "value": "Auto-delete messages"
+        },
+        {
+          "key": "AutoDeleteMessages.Disable",
+          "value": "Disable"
         },
         {
           "key": "AutoDeleteMessages.SectionCaption",
@@ -313,10 +321,6 @@
           "value": "Could not boost. You need Telegram Premium and a free boost slot."
         },
         {
-          "key": "Boost.NeedMore",
-          "value": "This channel needs {n} more boost(s) to reach the next level."
-        },
-        {
           "key": "Boost.Subtitle",
           "value": "Help boost this channel to unlock new features."
         },
@@ -377,6 +381,10 @@
           "value": "Clear History"
         },
         {
+          "key": "Calendar.Next",
+          "value": "Next"
+        },
+        {
           "key": "Calendar.Previous",
           "value": "Previous"
         },
@@ -415,6 +423,10 @@
         {
           "key": "Call.MicrophoneOff",
           "value": "Microphone is off"
+        },
+        {
+          "key": "Call.Mute",
+          "value": "Mute"
         },
         {
           "key": "Call.Output",
@@ -529,6 +541,12 @@
           "value": "No recent calls"
         },
         {
+          "key": "CanJoin",
+          "forms": {
+            "other_value": "%1$d can join"
+          }
+        },
+        {
           "key": "Cancel",
           "value": "Cancel"
         },
@@ -549,8 +567,8 @@
           "value": "You can provide an optional description for your"
         },
         {
-          "key": "Channel.SubscribersSuffix",
-          "value": "subscribers"
+          "key": "Channel.UsernameAboutChannel",
+          "value": "People can share this link with others and can find your channel using Telegram search."
         },
         {
           "key": "Channel.UsernameAboutGroup",
@@ -587,6 +605,26 @@
         {
           "key": "ChannelPermissionsHeader",
           "value": "What can members of this group do?"
+        },
+        {
+          "key": "ChannelPrivate",
+          "value": "Private Channel"
+        },
+        {
+          "key": "ChannelPrivateInfo",
+          "value": "Private channels can only be joined via an invite link."
+        },
+        {
+          "key": "ChannelPrivateLinkHelp",
+          "value": "People can join your channel by following this link. You can revoke the link any time."
+        },
+        {
+          "key": "ChannelPublic",
+          "value": "Public Channel"
+        },
+        {
+          "key": "ChannelPublicInfo",
+          "value": "Public channels can be found in search, anyone can join them."
         },
         {
           "key": "ChannelSettingsJoinRequest",
@@ -676,16 +714,18 @@
           "value": "Link copied. This link will only work for chat members."
         },
         {
-          "key": "Chat.Context.ReactedLabel",
-          "value": "Reacted"
+          "key": "Chat.Context.ReactedFast",
+          "forms": {
+            "other_value": "%d Reacted"
+          }
+        },
+        {
+          "key": "Chat.Context.ReadLabel",
+          "value": "Read"
         },
         {
           "key": "Chat.Context.SearchSelected",
           "value": "Search Selected"
-        },
-        {
-          "key": "Chat.Context.SeenBy",
-          "value": "Seen by"
         },
         {
           "key": "Chat.ContextMenu.Read",
@@ -870,6 +910,13 @@
         {
           "key": "Chat.Service.Call.Missed",
           "value": "Missed"
+        },
+        {
+          "key": "Chat.Title.Comments",
+          "forms": {
+            "one_value": "%d Comment",
+            "other_value": "%d Comments"
+          }
         },
         {
           "key": "Chat.UnpinAll.Text",
@@ -1128,6 +1175,14 @@
           "value": "Menu"
         },
         {
+          "key": "Common.More",
+          "value": "More"
+        },
+        {
+          "key": "Common.Next",
+          "value": "Next"
+        },
+        {
           "key": "Common.Of",
           "value": "of"
         },
@@ -1236,6 +1291,13 @@
           "value": "Data and Storage"
         },
         {
+          "key": "Days",
+          "forms": {
+            "one_value": "%1$d day",
+            "other_value": "%1$d days"
+          }
+        },
+        {
           "key": "Delete",
           "value": "Delete"
         },
@@ -1260,10 +1322,6 @@
           "value": "Delete All Revoked Links"
         },
         {
-          "key": "DeleteAlsoFor",
-          "value": "Also delete for"
-        },
-        {
           "key": "DeleteAndExitButton",
           "value": "Delete and Leave Group"
         },
@@ -1285,7 +1343,14 @@
         },
         {
           "key": "DeleteMessagesCount",
-          "value": "Delete %d messages"
+          "forms": {
+            "one_value": "Delete %d message",
+            "other_value": "Delete %d messages"
+          }
+        },
+        {
+          "key": "DeleteMessagesOptionAlso",
+          "value": "Also delete for %1$s"
         },
         {
           "key": "DeleteSingleMessagesTitle",
@@ -1340,12 +1405,8 @@
           "value": "Discard Voice Message"
         },
         {
-          "key": "Discussion.Link.Question.Prefix",
-          "value": "Do you want to set"
-        },
-        {
-          "key": "Discussion.Link.Question.Suffix",
-          "value": "as the discussion board for this channel?"
+          "key": "Discussion.Link.Question",
+          "value": "Do you want to set «%1$s» as the discussion board for this channel?"
         },
         {
           "key": "Discussion.Linked",
@@ -1404,70 +1465,6 @@
           "value": "Draft"
         },
         {
-          "key": "Duration.Days1",
-          "value": "1 day"
-        },
-        {
-          "key": "Duration.Days2",
-          "value": "2 days"
-        },
-        {
-          "key": "Duration.Days3",
-          "value": "3 days"
-        },
-        {
-          "key": "Duration.Days4",
-          "value": "4 days"
-        },
-        {
-          "key": "Duration.Days5",
-          "value": "5 days"
-        },
-        {
-          "key": "Duration.Days6",
-          "value": "6 days"
-        },
-        {
-          "key": "Duration.Months1",
-          "value": "1 month"
-        },
-        {
-          "key": "Duration.Months2",
-          "value": "2 months"
-        },
-        {
-          "key": "Duration.Months3",
-          "value": "3 months"
-        },
-        {
-          "key": "Duration.Months4",
-          "value": "4 months"
-        },
-        {
-          "key": "Duration.Months5",
-          "value": "5 months"
-        },
-        {
-          "key": "Duration.Months6",
-          "value": "6 months"
-        },
-        {
-          "key": "Duration.Weeks1",
-          "value": "1 week"
-        },
-        {
-          "key": "Duration.Weeks2",
-          "value": "2 weeks"
-        },
-        {
-          "key": "Duration.Weeks3",
-          "value": "3 weeks"
-        },
-        {
-          "key": "Duration.Years1",
-          "value": "1 year"
-        },
-        {
           "key": "DynamicPackOrder",
           "value": "Dynamic Pack Order"
         },
@@ -1492,6 +1489,10 @@
           "value": "What can this admin do?"
         },
         {
+          "key": "EditContact.PhotoHint",
+          "value": "You can suggest a new profile photo to your contact — or change their photo just for yourself."
+        },
+        {
           "key": "EditFactCheck",
           "value": "Edit Fact Check"
         },
@@ -1512,6 +1513,10 @@
           "value": "Name"
         },
         {
+          "key": "EditProfile.LastNameLabel",
+          "value": "Last name"
+        },
+        {
           "key": "EditProfile.Username.Available",
           "value": "Username is available"
         },
@@ -1530,6 +1535,10 @@
         {
           "key": "EditProfile.Username.Rules",
           "value": "Username must be 5–32 chars: letters, digits, underscore."
+        },
+        {
+          "key": "EditProfile.Username.Taken",
+          "value": "Username is already taken"
         },
         {
           "key": "EditProfile.Username.TooShort",
@@ -1602,6 +1611,10 @@
         {
           "key": "Error.AnError",
           "value": "An error occurred. Please try again later."
+        },
+        {
+          "key": "Error.SomethingWentWrong",
+          "value": "Something went wrong"
         },
         {
           "key": "Exceptions",
@@ -1748,16 +1761,12 @@
           "value": "This link is invalid or has expired."
         },
         {
-          "key": "Folder.Invite.Question.FolderPrefix",
-          "value": "Do you want to add the folder"
+          "key": "Folder.Invite.Question",
+          "value": "Do you want to add «%1$s» and join its chats?"
         },
         {
-          "key": "Folder.Invite.Question.Prefix",
-          "value": "Do you want to add"
-        },
-        {
-          "key": "Folder.Invite.Question.Suffix",
-          "value": "and join its chats?"
+          "key": "Folder.Invite.Question.Folder",
+          "value": "Do you want to add the folder «%1$s»?"
         },
         {
           "key": "Folder.Share.Empty",
@@ -1776,10 +1785,6 @@
           "value": "View as Messages"
         },
         {
-          "key": "ForumTopic.CountSuffix",
-          "value": "topics"
-        },
-        {
           "key": "ForumTopic.Created",
           "value": "Topic created"
         },
@@ -1794,6 +1799,10 @@
         {
           "key": "ForumTopic.Name.Placeholder",
           "value": "Topic Name"
+        },
+        {
+          "key": "ForumTopic.NoIcon",
+          "value": "No icon"
         },
         {
           "key": "ForumTopic.Title.Edit",
@@ -1908,20 +1917,12 @@
           "value": "Member"
         },
         {
-          "key": "Group.MembersSuffix",
-          "value": "members"
-        },
-        {
           "key": "Group.RestrictedBadge",
           "value": "Restricted"
         },
         {
           "key": "GroupAddMembers",
           "value": "Add Members"
-        },
-        {
-          "key": "GroupCall.Banner.Join",
-          "value": "Join"
         },
         {
           "key": "GroupCall.Participants",
@@ -1950,6 +1951,13 @@
         {
           "key": "Hide",
           "value": "Hide"
+        },
+        {
+          "key": "Hours",
+          "forms": {
+            "one_value": "%1$d hour",
+            "other_value": "%1$d hours"
+          }
         },
         {
           "key": "InactiveChannel.Broadcast",
@@ -1984,12 +1992,12 @@
           "value": "Additional Links"
         },
         {
-          "key": "InviteLinks.CanJoinSuffix",
-          "value": "can join"
-        },
-        {
           "key": "InviteLinks.Caption",
           "value": "You can create additional invite links and revoke them at any time."
+        },
+        {
+          "key": "InviteLinks.Description.Additional",
+          "value": "You can create additional invite links that are limited by time, number of users, or require a paid subscription."
         },
         {
           "key": "InviteLinks.Description.Group",
@@ -2002,10 +2010,6 @@
         {
           "key": "InviteLinks.Expires",
           "value": "Expires"
-        },
-        {
-          "key": "InviteLinks.JoinedSuffix",
-          "value": "joined"
         },
         {
           "key": "InviteLinks.LimitPeriod",
@@ -2024,12 +2028,12 @@
           "value": "Link Name"
         },
         {
-          "key": "InviteLinks.RemainingSuffix",
-          "value": "remaining"
+          "key": "InviteLinks.TimeLimitHelp",
+          "value": "You can make the link expire after a certain time."
         },
         {
-          "key": "InviteLinks.UsageHintSuffix",
-          "value": "people can join via this link."
+          "key": "InviteLinks.UsesLimitHelp",
+          "value": "You can make the link work only for a certain number of users."
         },
         {
           "key": "InviteLinks.View",
@@ -2066,6 +2070,10 @@
         {
           "key": "KeyboardShortcuts.Action.Italic",
           "value": "Italic"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.Link",
+          "value": "Add Link"
         },
         {
           "key": "KeyboardShortcuts.Action.LockApp",
@@ -2148,6 +2156,10 @@
           "value": "Media Viewer"
         },
         {
+          "key": "KeyboardShortcuts.Section.Messages",
+          "value": "Messages"
+        },
+        {
           "key": "KeyboardShortcuts.Section.Navigation",
           "value": "Navigation"
         },
@@ -2156,12 +2168,20 @@
           "value": "Photo Editor"
         },
         {
+          "key": "KeyboardShortcuts.Section.Stories",
+          "value": "Stories"
+        },
+        {
           "key": "KeyboardShortcuts.Title",
           "value": "Keyboard Shortcuts"
         },
         {
           "key": "KickFromGroup",
           "value": "Remove from group"
+        },
+        {
+          "key": "LanguageName",
+          "value": "English"
         },
         {
           "key": "LastName",
@@ -2248,10 +2268,6 @@
           "value": "Start Live Stream"
         },
         {
-          "key": "Livestream.Watching",
-          "value": "{n} watching"
-        },
-        {
           "key": "Loading",
           "value": "Loading..."
         },
@@ -2292,10 +2308,6 @@
           "value": "Log in with a Passkey"
         },
         {
-          "key": "Login.Passkey.Error",
-          "value": "Something went wrong"
-        },
-        {
           "key": "Login.Passkey.Failed",
           "value": "Passkey sign-in failed"
         },
@@ -2314,6 +2326,10 @@
         {
           "key": "Login.PhoneInvalid",
           "value": "Invalid phone number."
+        },
+        {
+          "key": "Login.PhoneLabel",
+          "value": "Phone Number"
         },
         {
           "key": "Login.PhoneLabelInvalid",
@@ -2392,12 +2408,8 @@
           "value": "Session expired. Please sign in again."
         },
         {
-          "key": "Login.StartText.Line1",
-          "value": "Please confirm your country code"
-        },
-        {
-          "key": "Login.StartText.Line2",
-          "value": "and enter your phone number."
+          "key": "Login.StartText",
+          "value": "Please confirm your country code\nand enter your phone number."
         },
         {
           "key": "Login.Title",
@@ -2452,8 +2464,32 @@
           "value": "Enhance"
         },
         {
+          "key": "MediaEditor.Adjustments.Fade",
+          "value": "Fade"
+        },
+        {
+          "key": "MediaEditor.Adjustments.Grain",
+          "value": "Grain"
+        },
+        {
+          "key": "MediaEditor.Adjustments.Highlights",
+          "value": "Highlights"
+        },
+        {
           "key": "MediaEditor.Adjustments.Saturation",
           "value": "Saturation"
+        },
+        {
+          "key": "MediaEditor.Adjustments.Shadows",
+          "value": "Shadows"
+        },
+        {
+          "key": "MediaEditor.Adjustments.Sharpen",
+          "value": "Sharpen"
+        },
+        {
+          "key": "MediaEditor.Adjustments.Vignette",
+          "value": "Vignette"
         },
         {
           "key": "MediaEditor.Adjustments.Warmth",
@@ -2466,6 +2502,30 @@
         {
           "key": "MediaEditor.BrushSize",
           "value": "Brush size"
+        },
+        {
+          "key": "MediaEditor.Brushes.Arrow",
+          "value": "Arrow"
+        },
+        {
+          "key": "MediaEditor.Brushes.Blur",
+          "value": "Blur"
+        },
+        {
+          "key": "MediaEditor.Brushes.Brush",
+          "value": "Marker"
+        },
+        {
+          "key": "MediaEditor.Brushes.Eraser",
+          "value": "Eraser"
+        },
+        {
+          "key": "MediaEditor.Brushes.Neon",
+          "value": "Neon"
+        },
+        {
+          "key": "MediaEditor.Brushes.Pen",
+          "value": "Pen"
         },
         {
           "key": "MediaEditor.Cover",
@@ -2500,6 +2560,10 @@
           "value": "Free"
         },
         {
+          "key": "MediaEditor.Mute",
+          "value": "Mute video"
+        },
+        {
           "key": "MediaEditor.Original",
           "value": "Original"
         },
@@ -2522,6 +2586,10 @@
         {
           "key": "MediaEditor.Tool",
           "value": "Tool"
+        },
+        {
+          "key": "MediaEditor.Unmute",
+          "value": "Unmute video"
         },
         {
           "key": "MediaViewer.Context.CopyMedia",
@@ -2568,12 +2636,31 @@
           "value": "Public groups can be found in search, chat history is available to everyone and anyone can join."
         },
         {
+          "key": "Members",
+          "forms": {
+            "one_value": "%1$d member",
+            "other_value": "%1$d members"
+          }
+        },
+        {
           "key": "Message",
           "value": "Message"
         },
         {
+          "key": "Message.Context.Pin",
+          "value": "Pin"
+        },
+        {
           "key": "Message.Context.Select",
           "value": "Select"
+        },
+        {
+          "key": "Message.Context.Unpin",
+          "value": "Unpin"
+        },
+        {
+          "key": "Message.Preview.Call",
+          "value": "Call"
         },
         {
           "key": "Message.Unsupported",
@@ -2600,8 +2687,29 @@
           "value": "Scheduled until online"
         },
         {
+          "key": "MessageSeen",
+          "forms": {
+            "one_value": "Seen",
+            "other_value": "%1$d Seen"
+          }
+        },
+        {
           "key": "MiniApps.AppsMore",
           "value": "Show more"
+        },
+        {
+          "key": "Months",
+          "forms": {
+            "one_value": "%1$d month",
+            "other_value": "%1$d months"
+          }
+        },
+        {
+          "key": "MoreBoosts",
+          "forms": {
+            "one_value": "**%d** more boost",
+            "other_value": "**%d** more boosts"
+          }
         },
         {
           "key": "MoreSimilar",
@@ -2644,6 +2752,10 @@
           "value": "New Channel"
         },
         {
+          "key": "NewChannel.DefaultTitle",
+          "value": "New Channel"
+        },
+        {
           "key": "NewChecklist",
           "value": "New Checklist"
         },
@@ -2653,6 +2765,10 @@
         },
         {
           "key": "NewGroup",
+          "value": "New Group"
+        },
+        {
+          "key": "NewGroup.DefaultTitle",
           "value": "New Group"
         },
         {
@@ -3107,6 +3223,26 @@
           "value": "Members"
         },
         {
+          "key": "PeopleCanJoinViaLinkCount",
+          "forms": {
+            "one_value": "%s person can join via this link.",
+            "other_value": "%s people can join via this link."
+          }
+        },
+        {
+          "key": "PeopleJoined",
+          "forms": {
+            "one_value": "%1$d person joined",
+            "other_value": "%1$d people joined"
+          }
+        },
+        {
+          "key": "PeopleJoinedRemaining",
+          "forms": {
+            "other_value": "%1$d remaining"
+          }
+        },
+        {
           "key": "Phone",
           "value": "Phone"
         },
@@ -3129,6 +3265,10 @@
         {
           "key": "PinFolderLimitReached",
           "value": "Sorry, you can't pin any more chats to the top."
+        },
+        {
+          "key": "PinnedJoinCall",
+          "value": "Join Call"
         },
         {
           "key": "PinnedMessage",
@@ -3383,6 +3523,14 @@
           "value": "6 Months"
         },
         {
+          "key": "PremiumPreviewLastSeen",
+          "value": "Last Seen Times"
+        },
+        {
+          "key": "PremiumPreviewLastSeenDescription",
+          "value": "View the last seen and read times of others even if you hide yours."
+        },
+        {
           "key": "PremiumTierAnnual",
           "value": "Annual"
         },
@@ -3393,6 +3541,34 @@
         {
           "key": "PreviewSender.CaptionPlaceholder",
           "value": "Add a caption..."
+        },
+        {
+          "key": "PreviewSender.SendAlbum",
+          "forms": {
+            "one_value": "Send Album",
+            "other_value": "Send %d Albums"
+          }
+        },
+        {
+          "key": "PreviewSender.SendFile",
+          "forms": {
+            "one_value": "Send File",
+            "other_value": "Send %d Files"
+          }
+        },
+        {
+          "key": "PreviewSender.SendPhoto",
+          "forms": {
+            "one_value": "Send Photo",
+            "other_value": "Send %d Photos"
+          }
+        },
+        {
+          "key": "PreviewSender.SendVideo",
+          "forms": {
+            "one_value": "Send Video",
+            "other_value": "Send %d Videos"
+          }
         },
         {
           "key": "Privacy.AlwaysShareCaption",
@@ -3465,10 +3641,6 @@
         {
           "key": "Privacy.ReadTimeCaption",
           "value": "You won't see when people read your messages if you don't share when you read theirs. This setting does not affect group chats."
-        },
-        {
-          "key": "Privacy.UsersSuffix",
-          "value": "users"
         },
         {
           "key": "Privacy.VoiceCustomHelp",
@@ -3567,6 +3739,10 @@
           "value": "Calls"
         },
         {
+          "key": "PrivacySettingsController.AddUsers",
+          "value": "Add Users"
+        },
+        {
           "key": "PrivacySettingsController.AlwaysAllow",
           "value": "Always Allow"
         },
@@ -3611,8 +3787,19 @@
           "value": "You can restrict who can call you with granular precision."
         },
         {
+          "key": "PrivacySettingsController.UserCount",
+          "forms": {
+            "one_value": "%d user",
+            "other_value": "%d users"
+          }
+        },
+        {
           "key": "PrivacyTitle",
           "value": "Privacy"
+        },
+        {
+          "key": "PrivacyVoiceMessages",
+          "value": "Voice Messages"
         },
         {
           "key": "PrivacyVoiceMessagesTitle",
@@ -3653,6 +3840,18 @@
         {
           "key": "QRCode.Title",
           "value": "QR Code"
+        },
+        {
+          "key": "QrLogin.Confirm.Action",
+          "value": "Confirm"
+        },
+        {
+          "key": "QrLogin.Confirm.Text",
+          "value": "Confirm the login on the new device"
+        },
+        {
+          "key": "QrLogin.Confirm.Title",
+          "value": "Log in on a new device?"
         },
         {
           "key": "Reactions",
@@ -3863,6 +4062,12 @@
           "value": "Live Stream"
         },
         {
+          "key": "Rtmp.Watching",
+          "forms": {
+            "other_value": "%s watching"
+          }
+        },
+        {
           "key": "Save",
           "value": "Save"
         },
@@ -3931,16 +4136,12 @@
           "value": "Are you sure you want to clear your search history?"
         },
         {
-          "key": "Search.Empty.FromPrefix",
-          "value": "There were no messages from"
+          "key": "Search.Empty",
+          "value": "There were no results for \"**%@**\". Try a new search."
         },
         {
-          "key": "Search.Empty.QueryPrefix",
-          "value": "There were no results for"
-        },
-        {
-          "key": "Search.Empty.Suffix",
-          "value": ". Try a new search."
+          "key": "Search.EmptyFrom",
+          "value": "There were no messages from **%@**."
         },
         {
           "key": "Search.EmptyQuery",
@@ -3983,8 +4184,20 @@
           "value": "Messages"
         },
         {
+          "key": "SecretChat.Accept",
+          "value": "Accept"
+        },
+        {
+          "key": "SecretChat.Awaiting",
+          "value": "Waiting for the other party to accept the secret chat…"
+        },
+        {
           "key": "SecretChat.EncryptionKey",
           "value": "Encryption Key"
+        },
+        {
+          "key": "SecretChat.Invitation",
+          "value": "Secret chat invitation"
         },
         {
           "key": "SecretChat.KeyNotReady",
@@ -3997,6 +4210,14 @@
         {
           "key": "SecretChat.New",
           "value": "New Secret Chat"
+        },
+        {
+          "key": "SecretChat.Reject",
+          "value": "Decline"
+        },
+        {
+          "key": "SecretChat.Rejected",
+          "value": "Secret chat rejected"
         },
         {
           "key": "Send",
@@ -4065,6 +4286,14 @@
         {
           "key": "SharedFilesTab2",
           "value": "Files"
+        },
+        {
+          "key": "SharedFolder.Edit.Title",
+          "value": "Share Folder"
+        },
+        {
+          "key": "SharedFolder.Link.Caption",
+          "value": "Create an invite link so others can join the group chats in this folder."
         },
         {
           "key": "SharedFolder.Link.Title",
@@ -4303,6 +4532,10 @@
           "value": "Member growth"
         },
         {
+          "key": "Statistics.Posts",
+          "value": "Posts"
+        },
+        {
           "key": "Statistics.PostsByDay",
           "value": "Posts by day"
         },
@@ -4327,16 +4560,19 @@
           "value": "Views by day"
         },
         {
+          "key": "Stickers",
+          "forms": {
+            "one_value": "%1$d sticker",
+            "other_value": "%1$d stickers"
+          }
+        },
+        {
           "key": "Stickers.AddSets",
           "value": "Add Sticker Sets"
         },
         {
           "key": "Stickers.ClearRecent.Text",
           "value": "Are you sure you want to clear your recent stickers?"
-        },
-        {
-          "key": "Stickers.CountSuffix",
-          "value": "stickers"
         },
         {
           "key": "Stickers.MySets",
@@ -4503,6 +4739,10 @@
           "value": "Repost"
         },
         {
+          "key": "Story.Sound",
+          "value": "Sound"
+        },
+        {
           "key": "Story.Time.HoursAgo",
           "value": "h ago"
         },
@@ -4525,6 +4765,13 @@
         {
           "key": "SubscribeRequests",
           "value": "Join Requests"
+        },
+        {
+          "key": "Subscribers",
+          "forms": {
+            "one_value": "%1$d subscriber",
+            "other_value": "%1$d subscribers"
+          }
         },
         {
           "key": "SuggestedPosts.Empty",
@@ -4667,6 +4914,13 @@
           "value": "Topics"
         },
         {
+          "key": "TopicsCount",
+          "forms": {
+            "one_value": "%d topic",
+            "other_value": "%d topics"
+          }
+        },
+        {
           "key": "TranscribeHide",
           "value": "Hide Transcription"
         },
@@ -4689,6 +4943,10 @@
         {
           "key": "Translate.FromLanguage",
           "value": "From language"
+        },
+        {
+          "key": "Translate.SectionCaption",
+          "value": "Show a Translate button in the message menu to translate messages into your language."
         },
         {
           "key": "Translate.SectionTitle",
@@ -4843,10 +5101,6 @@
           "value": "d"
         },
         {
-          "key": "Unit.DaysSuffix",
-          "value": "days"
-        },
-        {
           "key": "Unit.Gigabytes",
           "value": "GB"
         },
@@ -4875,16 +5129,12 @@
           "value": "mo"
         },
         {
-          "key": "Unit.MonthsSuffix",
-          "value": "months"
-        },
-        {
           "key": "Unit.Seconds.Short",
           "value": "s"
         },
         {
-          "key": "Unit.WeeksSuffix",
-          "value": "weeks"
+          "key": "UnpinMessage",
+          "value": "Unpin"
         },
         {
           "key": "UnreadMessages",
@@ -4975,16 +5225,23 @@
           "value": "listening"
         },
         {
+          "key": "VoiceChat.Status.Members",
+          "forms": {
+            "one_value": "%d participant",
+            "other_value": "%d participants"
+          }
+        },
+        {
           "key": "VoiceChat.Status.Muted",
           "value": "muted"
         },
         {
-          "key": "VoiceChat.Status.ParticipantsSuffix",
-          "value": "participants"
-        },
-        {
           "key": "VoiceChat.Status.You",
           "value": "This is you"
+        },
+        {
+          "key": "VoipUnmute",
+          "value": "Unmute"
         },
         {
           "key": "WebApp.CameraDenied",
@@ -5019,8 +5276,22 @@
           "value": "INSTANT VIEW"
         },
         {
+          "key": "Weeks",
+          "forms": {
+            "one_value": "%1$d week",
+            "other_value": "%1$d weeks"
+          }
+        },
+        {
           "key": "WhoCanCallMe",
           "value": "Who can call me?"
+        },
+        {
+          "key": "Years",
+          "forms": {
+            "one_value": "%1$d year",
+            "other_value": "%1$d years"
+          }
         },
         {
           "key": "YourEmailSkip",
@@ -5039,7 +5310,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 1,
+      "version": 2,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -6303,7 +6574,7 @@
           "value": "Показать ещё"
         },
         {
-          "key": "Login.Passkey.Error",
+          "key": "Error.SomethingWentWrong",
           "value": "Что-то пошло не так"
         },
         {
@@ -6603,6 +6874,14 @@
           "value": "Создать группу"
         },
         {
+          "key": "NewChannel.DefaultTitle",
+          "value": "Новый канал"
+        },
+        {
+          "key": "NewGroup.DefaultTitle",
+          "value": "Новая группа"
+        },
+        {
           "key": "NewPrivateChat",
           "value": "Новое сообщение"
         },
@@ -6627,16 +6906,17 @@
           "value": "Удерживайте Shift, чтобы менять ширину обеих колонок сразу"
         },
         {
-          "key": "Channel.SubscribersSuffix",
-          "value": "подписчиков"
+          "key": "Subscribers",
+          "forms": {
+            "one_value": "%1$d подписчик",
+            "few_value": "%1$d подписчика",
+            "many_value": "%1$d подписчиков",
+            "other_value": "%1$d подписчика"
+          }
         },
         {
-          "key": "Search.Empty.QueryPrefix",
-          "value": "Ничего не найдено по запросу"
-        },
-        {
-          "key": "Search.Empty.Suffix",
-          "value": ". Попробуйте другой запрос."
+          "key": "Search.Empty",
+          "value": "Ничего не найдено по запросу «**%@**». Попробуйте другой запрос."
         },
         {
           "key": "PinnedMessage",
@@ -6752,7 +7032,12 @@
         },
         {
           "key": "DeleteMessagesCount",
-          "value": "Удалить %d сообщений"
+          "forms": {
+            "one_value": "Удалить %d сообщение",
+            "few_value": "Удалить %d сообщения",
+            "many_value": "Удалить %d сообщений",
+            "other_value": "Удалить %d сообщения"
+          }
         },
         {
           "key": "AreYouSureDeleteSingleMessage",
@@ -6763,8 +7048,8 @@
           "value": "Удалить эти сообщения?"
         },
         {
-          "key": "DeleteAlsoFor",
-          "value": "Также удалить у"
+          "key": "DeleteMessagesOptionAlso",
+          "value": "Также удалить у %1$s"
         },
         {
           "key": "DeleteChat.DeleteGroupForAll",
@@ -6831,8 +7116,13 @@
           "value": "Просмотры"
         },
         {
-          "key": "Chat.Context.SeenBy",
-          "value": "Просмотрено"
+          "key": "MessageSeen",
+          "forms": {
+            "one_value": "%1$d просмотр",
+            "few_value": "%1$d просмотра",
+            "many_value": "%1$d просмотров",
+            "other_value": "%1$d просмотра"
+          }
         },
         {
           "key": "Chat.Selection.Selected",
@@ -6957,10 +7247,6 @@
         {
           "key": "Boost.AlreadyBoosting",
           "value": "Вы бустите этот канал."
-        },
-        {
-          "key": "Boost.NeedMore",
-          "value": "Каналу нужно ещё {n} буст(ов) до следующего уровня."
         },
         {
           "key": "Boost.Subtitle",
@@ -7407,16 +7693,17 @@
           "value": "Нет зрителей"
         },
         {
-          "key": "Livestream.Watching",
-          "value": "{n} смотрят"
-        },
-        {
           "key": "Livestream.IsLive",
           "value": "Трансляция идёт"
         },
         {
-          "key": "VoiceChat.Status.ParticipantsSuffix",
-          "value": "участников"
+          "key": "VoiceChat.Status.Members",
+          "forms": {
+            "one_value": "%d участник",
+            "few_value": "%d участника",
+            "many_value": "%d участников",
+            "other_value": "%d участника"
+          }
         },
         {
           "key": "VoiceChat.Status.You",
@@ -7447,8 +7734,13 @@
           "value": "Темы"
         },
         {
-          "key": "ForumTopic.CountSuffix",
-          "value": "тем"
+          "key": "TopicsCount",
+          "forms": {
+            "one_value": "%d тема",
+            "few_value": "%d темы",
+            "many_value": "%d тем",
+            "other_value": "%d темы"
+          }
         },
         {
           "key": "Statistics",
@@ -7799,8 +8091,8 @@
           "value": "Поиск по хэштегу"
         },
         {
-          "key": "Search.Empty.FromPrefix",
-          "value": "Нет сообщений от"
+          "key": "Search.EmptyFrom",
+          "value": "Нет сообщений от **%@**."
         },
         {
           "key": "Search.HelpHashtag",
@@ -8011,8 +8303,13 @@
           "value": "Нет результатов"
         },
         {
-          "key": "Group.MembersSuffix",
-          "value": "участников"
+          "key": "Members",
+          "forms": {
+            "one_value": "%1$d участник",
+            "few_value": "%1$d участника",
+            "many_value": "%1$d участников",
+            "other_value": "%1$d участника"
+          }
         },
         {
           "key": "Search.Confirm.ClearHistory",
@@ -8220,7 +8517,7 @@
         },
         {
           "key": "Calendar.Previous",
-          "value": "Предыдущее"
+          "value": "Предыдущий месяц"
         },
         {
           "key": "TwoStepAuth.ReEnterPassword",
@@ -8623,8 +8920,13 @@
           "value": "пользователь"
         },
         {
-          "key": "Privacy.UsersSuffix",
-          "value": "пользователей"
+          "key": "PrivacySettingsController.UserCount",
+          "forms": {
+            "one_value": "%d пользователь",
+            "few_value": "%d пользователя",
+            "many_value": "%d пользователей",
+            "other_value": "%d пользователя"
+          }
         },
         {
           "key": "BlockModal.Search.Placeholder",
@@ -8735,16 +9037,40 @@
           "value": "Выбрать другой срок"
         },
         {
-          "key": "Unit.DaysSuffix",
-          "value": "дней"
+          "key": "Hours",
+          "forms": {
+            "one_value": "%1$d час",
+            "few_value": "%1$d часа",
+            "many_value": "%1$d часов",
+            "other_value": "%1$d часа"
+          }
         },
         {
-          "key": "Unit.WeeksSuffix",
-          "value": "нед."
+          "key": "Days",
+          "forms": {
+            "one_value": "%1$d день",
+            "few_value": "%1$d дня",
+            "many_value": "%1$d дней",
+            "other_value": "%1$d дня"
+          }
         },
         {
-          "key": "Unit.MonthsSuffix",
-          "value": "месяцев"
+          "key": "Weeks",
+          "forms": {
+            "one_value": "%1$d неделя",
+            "few_value": "%1$d недели",
+            "many_value": "%1$d недель",
+            "other_value": "%1$d недели"
+          }
+        },
+        {
+          "key": "Months",
+          "forms": {
+            "one_value": "%1$d месяц",
+            "few_value": "%1$d месяца",
+            "many_value": "%1$d месяцев",
+            "other_value": "%1$d месяца"
+          }
         },
         {
           "key": "PasscodeLock.Title",
@@ -8931,12 +9257,8 @@
           "value": "Пожалуйста, подождите..."
         },
         {
-          "key": "Login.StartText.Line1",
-          "value": "Пожалуйста, подтвердите код страны"
-        },
-        {
-          "key": "Login.StartText.Line2",
-          "value": "и введите номер телефона."
+          "key": "Login.StartText",
+          "value": "Пожалуйста, подтвердите код страны\nи введите номер телефона."
         },
         {
           "key": "Login.PhoneLabelInvalid",
@@ -9183,70 +9505,6 @@
           "value": "ГБ"
         },
         {
-          "key": "Duration.Days1",
-          "value": "1 день"
-        },
-        {
-          "key": "Duration.Days2",
-          "value": "2 дня"
-        },
-        {
-          "key": "Duration.Days3",
-          "value": "3 дня"
-        },
-        {
-          "key": "Duration.Days4",
-          "value": "4 дня"
-        },
-        {
-          "key": "Duration.Days5",
-          "value": "5 дней"
-        },
-        {
-          "key": "Duration.Days6",
-          "value": "6 дней"
-        },
-        {
-          "key": "Duration.Weeks1",
-          "value": "1 неделя"
-        },
-        {
-          "key": "Duration.Weeks2",
-          "value": "2 недели"
-        },
-        {
-          "key": "Duration.Weeks3",
-          "value": "3 недели"
-        },
-        {
-          "key": "Duration.Months1",
-          "value": "1 месяц"
-        },
-        {
-          "key": "Duration.Months2",
-          "value": "2 месяца"
-        },
-        {
-          "key": "Duration.Months3",
-          "value": "3 месяца"
-        },
-        {
-          "key": "Duration.Months4",
-          "value": "4 месяца"
-        },
-        {
-          "key": "Duration.Months5",
-          "value": "5 месяцев"
-        },
-        {
-          "key": "Duration.Months6",
-          "value": "6 месяцев"
-        },
-        {
-          "key": "Duration.Years1",
-          "value": "1 год"
-        },
-        {
           "key": "Login.Passkey.Failed",
           "value": "Не удалось войти по ключу доступа"
         },
@@ -9327,8 +9585,13 @@
           "value": "Поиск наборов стикеров"
         },
         {
-          "key": "Stickers.CountSuffix",
-          "value": "стикеров"
+          "key": "Stickers",
+          "forms": {
+            "one_value": "%1$d стикер",
+            "few_value": "%1$d стикера",
+            "many_value": "%1$d стикеров",
+            "other_value": "%1$d стикера"
+          }
         },
         {
           "key": "Stickers.NoSets",
@@ -9725,6 +9988,628 @@
         {
           "key": "RecentSessions.Error.FreshReset",
           "value": "В целях безопасности вы не можете завершать более старые сеансы с устройства, которое подключили только что. Воспользуйтесь более ранним подключением или подождите несколько часов."
+        },
+        {
+          "key": "Message.Preview.Call",
+          "value": "Звонок"
+        },
+        {
+          "key": "SecretChat.Invitation",
+          "value": "Приглашение в секретный чат"
+        },
+        {
+          "key": "SecretChat.Rejected",
+          "value": "Секретный чат отклонён"
+        },
+        {
+          "key": "SecretChat.Awaiting",
+          "value": "Ожидание, пока собеседник примет секретный чат…"
+        },
+        {
+          "key": "SecretChat.Accept",
+          "value": "Принять"
+        },
+        {
+          "key": "SecretChat.Reject",
+          "value": "Отклонить"
+        },
+        {
+          "key": "QrLogin.Confirm.Title",
+          "value": "Войти на новом устройстве?"
+        },
+        {
+          "key": "QrLogin.Confirm.Text",
+          "value": "Подтвердите вход для нового устройства"
+        },
+        {
+          "key": "QrLogin.Confirm.Action",
+          "value": "Подтвердить"
+        },
+        {
+          "key": "EditContact.PhotoHint",
+          "value": "Вы можете предложить контакту установить новую фотографию профиля — или изменить его фотографию только у себя."
+        },
+        {
+          "key": "MoreBoosts",
+          "forms": {
+            "one_value": "Ещё **%d** буст до следующего уровня.",
+            "few_value": "Ещё **%d** буста до следующего уровня.",
+            "many_value": "Ещё **%d** бустов до следующего уровня.",
+            "other_value": "Ещё **%d** буста до следующего уровня."
+          }
+        },
+        {
+          "key": "Rtmp.Watching",
+          "forms": {
+            "one_value": "%s смотрит",
+            "few_value": "%s смотрят",
+            "many_value": "%s смотрят",
+            "other_value": "%s смотрят"
+          }
+        },
+        {
+          "key": "Years",
+          "forms": {
+            "one_value": "%1$d год",
+            "few_value": "%1$d года",
+            "many_value": "%1$d лет",
+            "other_value": "%1$d года"
+          }
+        },
+        {
+          "key": "Message.Context.Pin",
+          "value": "Закрепить"
+        },
+        {
+          "key": "Message.Context.Unpin",
+          "value": "Открепить"
+        },
+        {
+          "key": "UnpinMessage",
+          "value": "Открепить"
+        },
+        {
+          "key": "Login.PhoneLabel",
+          "value": "Номер телефона"
+        },
+        {
+          "key": "EditProfile.Username.Taken",
+          "value": "Это имя пользователя уже занято."
+        },
+        {
+          "key": "KeyboardShortcuts.Section.Messages",
+          "value": "Сообщения"
+        },
+        {
+          "key": "KeyboardShortcuts.Section.Stories",
+          "value": "Истории"
+        },
+        {
+          "key": "PrivacySettingsController.AddUsers",
+          "value": "Добавить пользователей"
+        },
+        {
+          "key": "Call.Mute",
+          "value": "Выключить микрофон"
+        },
+        {
+          "key": "VoipUnmute",
+          "value": "Включить микрофон"
+        },
+        {
+          "key": "Calendar.Next",
+          "value": "Следующий месяц"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.Link",
+          "value": "Добавить ссылку"
+        },
+        {
+          "key": "Chat.Title.Comments",
+          "forms": {
+            "one_value": "%d комментарий",
+            "few_value": "%d комментария",
+            "many_value": "%d комментариев",
+            "other_value": "%d комментария"
+          }
+        },
+        {
+          "key": "AddOneMemberAlertTitle",
+          "value": "Добавить участника"
+        },
+        {
+          "key": "AutoDownloadSettings.LastDelimeter",
+          "value": " и "
+        },
+        {
+          "key": "Call.Accept",
+          "value": "Принять"
+        },
+        {
+          "key": "Call.CameraOff",
+          "value": "Выключить камеру"
+        },
+        {
+          "key": "Call.CameraOn",
+          "value": "Включить камеру"
+        },
+        {
+          "key": "Call.Decline",
+          "value": "Отклонить"
+        },
+        {
+          "key": "Call.ShareScreen",
+          "value": "Показать экран"
+        },
+        {
+          "key": "Call.StopScreenSharing",
+          "value": "Остановить показ экрана"
+        },
+        {
+          "key": "CallSettings.EndCall",
+          "value": "Завершить звонок"
+        },
+        {
+          "key": "Channel.UsernameAboutChannel",
+          "value": "Люди смогут делиться этой ссылкой и находить ваш канал через поиск Telegram."
+        },
+        {
+          "key": "ChannelLinkInfo",
+          "value": "Любой пользователь Telegram сможет вступить в ваш канал по этой ссылке."
+        },
+        {
+          "key": "ChannelPrivate",
+          "value": "Частный канал"
+        },
+        {
+          "key": "ChannelPrivateInfo",
+          "value": "В частный канал можно вступить только по ссылке-приглашению."
+        },
+        {
+          "key": "ChannelPrivateLinkHelp",
+          "value": "Люди смогут вступить в ваш канал по этой ссылке. Вы можете отозвать её в любой момент."
+        },
+        {
+          "key": "ChannelPublic",
+          "value": "Публичный канал"
+        },
+        {
+          "key": "ChannelPublicInfo",
+          "value": "Публичные каналы находятся через поиск, вступить может любой."
+        },
+        {
+          "key": "Chat.Context.LinkCopiedPrivate",
+          "value": "Ссылка скопирована. Она работает только для участников чата."
+        },
+        {
+          "key": "Chat.Context.ReadLabel",
+          "value": "Прочитано"
+        },
+        {
+          "key": "PmReadShowWhen",
+          "value": "показать время"
+        },
+        {
+          "key": "Chat.Frozen.LearnMore",
+          "value": "Подробнее…"
+        },
+        {
+          "key": "Chat.Input.FrozenButton1",
+          "value": "Ваш аккаунт заморожен"
+        },
+        {
+          "key": "Chat.Input.FrozenButton2",
+          "value": "Нажмите, чтобы узнать подробности"
+        },
+        {
+          "key": "Chat.Menu.ClearSelection",
+          "value": "Снять выделение"
+        },
+        {
+          "key": "Chat.Send.SetReminder",
+          "value": "Напомнить"
+        },
+        {
+          "key": "Close",
+          "value": "Закрыть"
+        },
+        {
+          "key": "Common.Menu",
+          "value": "Меню"
+        },
+        {
+          "key": "Composer.MessageEffect",
+          "value": "Эффект сообщения"
+        },
+        {
+          "key": "DeletedMessage",
+          "value": "Удалённое сообщение"
+        },
+        {
+          "key": "Discussion.Link.Question",
+          "value": "Сделать «%1$s» группой для обсуждения этого канала?"
+        },
+        {
+          "key": "Discussion.Linked",
+          "value": "Теперь читатели могут обсуждать ваши посты в связанной группе."
+        },
+        {
+          "key": "Discussion.Unlink.Text",
+          "value": "Отвязать эту группу от канала?"
+        },
+        {
+          "key": "DiscussionChannelHelp3",
+          "value": "Выберите группу, в которой будут комментарии к постам канала."
+        },
+        {
+          "key": "DiscussionLinkGroup",
+          "value": "Привязать группу"
+        },
+        {
+          "key": "DiscussionUnlink",
+          "value": "Отвязать"
+        },
+        {
+          "key": "EditProfile.VideoError",
+          "value": "Не удалось обработать это видео."
+        },
+        {
+          "key": "Effect.Remove",
+          "value": "Убрать эффект"
+        },
+        {
+          "key": "EmojiStatus.Set",
+          "value": "Установить эмодзи-статус"
+        },
+        {
+          "key": "ExportedInvitation.Status.Expired",
+          "value": "истекла"
+        },
+        {
+          "key": "ExportedInvitation.Status.Revoked",
+          "value": "отозвана"
+        },
+        {
+          "key": "Folder.Invite.Adding",
+          "value": "Добавляем…"
+        },
+        {
+          "key": "Folder.Invite.Invalid",
+          "value": "Ссылка недействительна или устарела."
+        },
+        {
+          "key": "Folder.Invite.Question",
+          "value": "Добавить «%1$s» и вступить в её чаты?"
+        },
+        {
+          "key": "Folder.Invite.Question.Folder",
+          "value": "Добавить папку «%1$s»?"
+        },
+        {
+          "key": "Folder.Share.Empty",
+          "value": "В этой папке нет чатов, которыми можно поделиться."
+        },
+        {
+          "key": "Group.RestrictedBadge",
+          "value": "ограничен"
+        },
+        {
+          "key": "InviteLinks.Description.Additional",
+          "value": "Вы можете создать дополнительные ссылки-приглашения с ограничением по времени, числу пользователей или платной подпиской."
+        },
+        {
+          "key": "InviteLinks.Expires",
+          "value": "Истекает"
+        },
+        {
+          "key": "InviteLinks.LimitReached",
+          "value": "лимит исчерпан"
+        },
+        {
+          "key": "InviteLinks.TimeLimitHelp",
+          "value": "Ссылка перестанет работать через заданное время."
+        },
+        {
+          "key": "InviteLinks.UsesLimitHelp",
+          "value": "Ссылка будет работать только для заданного числа пользователей."
+        },
+        {
+          "key": "InviteLinks.View",
+          "value": "Открыть ссылку"
+        },
+        {
+          "key": "LinkNameHint",
+          "value": "Название ссылки (необязательно)"
+        },
+        {
+          "key": "ManageLinks.DeleteAll.Confirm",
+          "value": "Удалить все отозванные ссылки?"
+        },
+        {
+          "key": "MediaEditor.Adjustments.Fade",
+          "value": "Затухание"
+        },
+        {
+          "key": "MediaEditor.Adjustments.Grain",
+          "value": "Зерно"
+        },
+        {
+          "key": "MediaEditor.Adjustments.Highlights",
+          "value": "Света"
+        },
+        {
+          "key": "MediaEditor.Adjustments.Shadows",
+          "value": "Тени"
+        },
+        {
+          "key": "MediaEditor.Adjustments.Sharpen",
+          "value": "Резкость"
+        },
+        {
+          "key": "MediaEditor.Adjustments.Vignette",
+          "value": "Виньетка"
+        },
+        {
+          "key": "MediaEditor.Brushes.Arrow",
+          "value": "Стрелка"
+        },
+        {
+          "key": "MediaEditor.Brushes.Blur",
+          "value": "Размытие"
+        },
+        {
+          "key": "MediaEditor.Brushes.Brush",
+          "value": "Маркер"
+        },
+        {
+          "key": "MediaEditor.Brushes.Eraser",
+          "value": "Ластик"
+        },
+        {
+          "key": "MediaEditor.Brushes.Neon",
+          "value": "Неон"
+        },
+        {
+          "key": "MediaEditor.Brushes.Pen",
+          "value": "Перо"
+        },
+        {
+          "key": "MediaEditor.Cover",
+          "value": "Обложка"
+        },
+        {
+          "key": "MediaEditor.Font",
+          "value": "Шрифт"
+        },
+        {
+          "key": "MediaEditor.Tool",
+          "value": "Инструмент"
+        },
+        {
+          "key": "OpenChat",
+          "value": "Открыть чат"
+        },
+        {
+          "key": "PrivacyVoiceMessages",
+          "value": "Голосовые сообщения"
+        },
+        {
+          "key": "Remove",
+          "value": "Убрать"
+        },
+        {
+          "key": "RestrictedUsers.Description",
+          "value": "У этих участников ограничены права в группе."
+        },
+        {
+          "key": "RevokeAlert",
+          "value": "Отозвать эту ссылку? После отзыва по ней нельзя будет вступить."
+        },
+        {
+          "key": "RevokeButton",
+          "value": "Отозвать"
+        },
+        {
+          "key": "Rtmp.MediaViewer.Live",
+          "value": "ЭФИР"
+        },
+        {
+          "key": "Rtmp.Topbar.Join",
+          "value": "Присоединиться"
+        },
+        {
+          "key": "Share",
+          "value": "Поделиться"
+        },
+        {
+          "key": "SharedFolder.Edit.Title",
+          "value": "Поделиться папкой"
+        },
+        {
+          "key": "SharedFolder.Link.Caption",
+          "value": "Создайте ссылку-приглашение, чтобы другие могли вступить в групповые чаты этой папки."
+        },
+        {
+          "key": "SharedFolder.Link.Title",
+          "value": "Добавить папку"
+        },
+        {
+          "key": "Story.Repost",
+          "value": "Репост"
+        },
+        {
+          "key": "Story.Time.HoursAgo",
+          "value": "ч назад"
+        },
+        {
+          "key": "Story.Time.MinutesAgo",
+          "value": "мин назад"
+        },
+        {
+          "key": "StoryJustNow",
+          "value": "только что"
+        },
+        {
+          "key": "Translate.SectionCaption",
+          "value": "Показывать кнопку перевода в меню сообщения."
+        },
+        {
+          "key": "Unblock",
+          "value": "Разблокировать"
+        },
+        {
+          "key": "UserRestrictions.Action",
+          "value": "Ограничить"
+        },
+        {
+          "key": "WebApp.CameraDenied",
+          "value": "Доступ к камере запрещён"
+        },
+        {
+          "key": "WebApp.CloseConfirm",
+          "value": "Закрыть мини-приложение?"
+        },
+        {
+          "key": "WebApp.DataSent",
+          "value": "Данные отправлены"
+        },
+        {
+          "key": "WebApp.PayConfirm",
+          "value": "Оплатить этот счёт?"
+        },
+        {
+          "key": "WebApp.PhoneRequest",
+          "value": "Поделиться номером телефона с этим ботом?"
+        },
+        {
+          "key": "WebApp.QrUnsupported",
+          "value": "Сканирование QR не поддерживается в этом браузере"
+        },
+        {
+          "key": "WebApp.WriteAccess.Question",
+          "value": "Разрешить боту писать вам?"
+        },
+        {
+          "key": "PinnedJoinCall",
+          "value": "Присоединиться"
+        },
+        {
+          "key": "Chat.Context.ReactedFast",
+          "forms": {
+            "one_value": "Отреагировал %d",
+            "few_value": "Отреагировали %d",
+            "many_value": "Отреагировали %d",
+            "other_value": "Отреагировали %d"
+          }
+        },
+        {
+          "key": "PeopleJoined",
+          "forms": {
+            "one_value": "%1$d человек вступил",
+            "few_value": "%1$d человека вступили",
+            "many_value": "%1$d человек вступили",
+            "other_value": "%1$d человека вступили"
+          }
+        },
+        {
+          "key": "CanJoin",
+          "forms": {
+            "one_value": "может вступить %1$d человек",
+            "few_value": "могут вступить %1$d человека",
+            "many_value": "могут вступить %1$d человек",
+            "other_value": "могут вступить %1$d человека"
+          }
+        },
+        {
+          "key": "PeopleJoinedRemaining",
+          "forms": {
+            "other_value": "осталось %1$d"
+          }
+        },
+        {
+          "key": "PeopleCanJoinViaLinkCount",
+          "forms": {
+            "one_value": "По ссылке может вступить %s человек.",
+            "few_value": "По ссылке могут вступить %s человека.",
+            "many_value": "По ссылке могут вступить %s человек.",
+            "other_value": "По ссылке могут вступить %s человека."
+          }
+        },
+        {
+          "key": "PreviewSender.SendAlbum",
+          "forms": {
+            "one_value": "Отправить %d альбом",
+            "few_value": "Отправить %d альбома",
+            "many_value": "Отправить %d альбомов",
+            "other_value": "Отправить %d альбома"
+          }
+        },
+        {
+          "key": "PreviewSender.SendFile",
+          "forms": {
+            "one_value": "Отправить %d файл",
+            "few_value": "Отправить %d файла",
+            "many_value": "Отправить %d файлов",
+            "other_value": "Отправить %d файла"
+          }
+        },
+        {
+          "key": "PreviewSender.SendPhoto",
+          "forms": {
+            "one_value": "Отправить %d фото",
+            "few_value": "Отправить %d фото",
+            "many_value": "Отправить %d фото",
+            "other_value": "Отправить %d фото"
+          }
+        },
+        {
+          "key": "PreviewSender.SendVideo",
+          "forms": {
+            "one_value": "Отправить %d видео",
+            "few_value": "Отправить %d видео",
+            "many_value": "Отправить %d видео",
+            "other_value": "Отправить %d видео"
+          }
+        },
+        {
+          "key": "MediaEditor.Mute",
+          "value": "Выключить звук видео"
+        },
+        {
+          "key": "MediaEditor.Unmute",
+          "value": "Включить звук видео"
+        },
+        {
+          "key": "ForumTopic.NoIcon",
+          "value": "Без значка"
+        },
+        {
+          "key": "Common.More",
+          "value": "Ещё"
+        },
+        {
+          "key": "Common.Next",
+          "value": "Далее"
+        },
+        {
+          "key": "Story.Sound",
+          "value": "Звук"
+        },
+        {
+          "key": "EditProfile.LastNameLabel",
+          "value": "Фамилия"
+        },
+        {
+          "key": "AutoDeleteMessages.Disable",
+          "value": "Отключить"
+        },
+        {
+          "key": "Statistics.Posts",
+          "value": "Посты"
+        },
+        {
+          "key": "LanguageName",
+          "value": "Русский"
         }
       ]
     },
@@ -9735,7 +10620,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 1,
+      "version": 2,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -10250,7 +11135,7 @@
           "value": "Afficher plus"
         },
         {
-          "key": "Login.Passkey.Error",
+          "key": "Error.SomethingWentWrong",
           "value": "Une erreur est survenue"
         },
         {
@@ -10426,6 +11311,14 @@
           "value": "Nouveau groupe"
         },
         {
+          "key": "NewChannel.DefaultTitle",
+          "value": "Nouveau canal"
+        },
+        {
+          "key": "NewGroup.DefaultTitle",
+          "value": "Nouveau groupe"
+        },
+        {
           "key": "NewPrivateChat",
           "value": "Nouveau message"
         },
@@ -10450,16 +11343,19 @@
           "value": "Maintenez Shift pour redimensionner les deux colonnes à la fois"
         },
         {
-          "key": "Channel.SubscribersSuffix",
-          "value": "abonnés"
+          "key": "Subscribers",
+          "forms": {
+            "one_value": "%1$d abonné",
+            "other_value": "%1$d abonnés"
+          }
         },
         {
-          "key": "Search.Empty.QueryPrefix",
-          "value": "Aucun résultat pour"
+          "key": "Search.Empty",
+          "value": "Aucun résultat pour « **%@** ». Essayez une autre recherche."
         },
         {
-          "key": "Search.Empty.Suffix",
-          "value": ". Essayez une autre recherche."
+          "key": "Search.EmptyFrom",
+          "value": "Aucun message de **%@**."
         },
         {
           "key": "PinnedMessage",
@@ -10591,7 +11487,10 @@
         },
         {
           "key": "DeleteMessagesCount",
-          "value": "Supprimer %d messages"
+          "forms": {
+            "one_value": "Supprimer %d message",
+            "other_value": "Supprimer %d messages"
+          }
         },
         {
           "key": "AreYouSureDeleteSingleMessage",
@@ -10602,8 +11501,8 @@
           "value": "Supprimer ces messages ?"
         },
         {
-          "key": "DeleteAlsoFor",
-          "value": "Supprimer aussi pour"
+          "key": "DeleteMessagesOptionAlso",
+          "value": "Supprimer aussi pour %1$s"
         },
         {
           "key": "DeleteChat.DeleteGroupForAll",
@@ -10870,16 +11769,21 @@
           "value": "Aucun spectateur"
         },
         {
-          "key": "Livestream.Watching",
-          "value": "{n} spectateurs"
+          "key": "Rtmp.Watching",
+          "forms": {
+            "other_value": "%s spectateurs"
+          }
         },
         {
           "key": "Livestream.IsLive",
           "value": "La diffusion est en direct"
         },
         {
-          "key": "VoiceChat.Status.ParticipantsSuffix",
-          "value": "participants"
+          "key": "VoiceChat.Status.Members",
+          "forms": {
+            "one_value": "%d participant",
+            "other_value": "%d participants"
+          }
         },
         {
           "key": "VoiceChat.Status.You",
@@ -10910,8 +11814,11 @@
           "value": "Sujets"
         },
         {
-          "key": "ForumTopic.CountSuffix",
-          "value": "sujets"
+          "key": "TopicsCount",
+          "forms": {
+            "one_value": "%d sujet",
+            "other_value": "%d sujets"
+          }
         },
         {
           "key": "NewTopic",
@@ -11126,8 +12033,11 @@
           "value": "Aucun résultat"
         },
         {
-          "key": "Group.MembersSuffix",
-          "value": "membres"
+          "key": "Members",
+          "forms": {
+            "one_value": "%1$d membre",
+            "other_value": "%1$d membres"
+          }
         },
         {
           "key": "Search.Confirm.ClearHistory",
@@ -11674,8 +12584,11 @@
           "value": "utilisateur"
         },
         {
-          "key": "Privacy.UsersSuffix",
-          "value": "utilisateurs"
+          "key": "PrivacySettingsController.UserCount",
+          "forms": {
+            "one_value": "%d utilisateur",
+            "other_value": "%d utilisateurs"
+          }
         },
         {
           "key": "BlockModal.Search.Placeholder",
@@ -11794,16 +12707,32 @@
           "value": "Choisir un autre délai"
         },
         {
-          "key": "Unit.DaysSuffix",
-          "value": "jours"
+          "key": "Hours",
+          "forms": {
+            "one_value": "%1$d heure",
+            "other_value": "%1$d heures"
+          }
         },
         {
-          "key": "Unit.WeeksSuffix",
-          "value": "semaines"
+          "key": "Days",
+          "forms": {
+            "one_value": "%1$d jour",
+            "other_value": "%1$d jours"
+          }
         },
         {
-          "key": "Unit.MonthsSuffix",
-          "value": "mois"
+          "key": "Weeks",
+          "forms": {
+            "one_value": "%1$d semaine",
+            "other_value": "%1$d semaines"
+          }
+        },
+        {
+          "key": "Months",
+          "forms": {
+            "one_value": "%1$d mois",
+            "other_value": "%1$d mois"
+          }
         },
         {
           "key": "PasscodeLock.Title",
@@ -12150,70 +13079,6 @@
           "value": "Go"
         },
         {
-          "key": "Duration.Days1",
-          "value": "1 jour"
-        },
-        {
-          "key": "Duration.Days2",
-          "value": "2 jours"
-        },
-        {
-          "key": "Duration.Days3",
-          "value": "3 jours"
-        },
-        {
-          "key": "Duration.Days4",
-          "value": "4 jours"
-        },
-        {
-          "key": "Duration.Days5",
-          "value": "5 jours"
-        },
-        {
-          "key": "Duration.Days6",
-          "value": "6 jours"
-        },
-        {
-          "key": "Duration.Weeks1",
-          "value": "1 semaine"
-        },
-        {
-          "key": "Duration.Weeks2",
-          "value": "2 semaines"
-        },
-        {
-          "key": "Duration.Weeks3",
-          "value": "3 semaines"
-        },
-        {
-          "key": "Duration.Months1",
-          "value": "1 mois"
-        },
-        {
-          "key": "Duration.Months2",
-          "value": "2 mois"
-        },
-        {
-          "key": "Duration.Months3",
-          "value": "3 mois"
-        },
-        {
-          "key": "Duration.Months4",
-          "value": "4 mois"
-        },
-        {
-          "key": "Duration.Months5",
-          "value": "5 mois"
-        },
-        {
-          "key": "Duration.Months6",
-          "value": "6 mois"
-        },
-        {
-          "key": "Duration.Years1",
-          "value": "1 an"
-        },
-        {
           "key": "Login.Passkey.Failed",
           "value": "Échec de la connexion par clé d'accès"
         },
@@ -12436,6 +13301,139 @@
         {
           "key": "Message.Unsupported",
           "value": "Message non pris en charge"
+        },
+        {
+          "key": "Years",
+          "forms": {
+            "one_value": "%1$d an",
+            "other_value": "%1$d ans"
+          }
+        },
+        {
+          "key": "Message.Context.Pin",
+          "value": "Épingler"
+        },
+        {
+          "key": "Message.Context.Unpin",
+          "value": "Désépingler"
+        },
+        {
+          "key": "UnpinMessage",
+          "value": "Désépingler"
+        },
+        {
+          "key": "Login.PhoneLabel",
+          "value": "Numéro de téléphone"
+        },
+        {
+          "key": "KeyboardShortcuts.Section.Messages",
+          "value": "Messages"
+        },
+        {
+          "key": "KeyboardShortcuts.Section.Stories",
+          "value": "Stories"
+        },
+        {
+          "key": "PrivacySettingsController.AddUsers",
+          "value": "Ajouter des utilisateurs"
+        },
+        {
+          "key": "Call.Mute",
+          "value": "Couper le son"
+        },
+        {
+          "key": "VoipUnmute",
+          "value": "Activer le son"
+        },
+        {
+          "key": "Calendar.Next",
+          "value": "Mois suivant"
+        },
+        {
+          "key": "Calendar.Previous",
+          "value": "Mois précédent"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.Link",
+          "value": "Ajouter un lien"
+        },
+        {
+          "key": "Chat.Title.Comments",
+          "forms": {
+            "one_value": "%d commentaire",
+            "other_value": "%d commentaires"
+          }
+        },
+        {
+          "key": "Chat.Context.ReactedFast",
+          "forms": {
+            "other_value": "%d ont réagi"
+          }
+        },
+        {
+          "key": "PeopleJoined",
+          "forms": {
+            "one_value": "%1$d personne a rejoint",
+            "other_value": "%1$d personnes ont rejoint"
+          }
+        },
+        {
+          "key": "CanJoin",
+          "forms": {
+            "other_value": "%1$d peuvent rejoindre"
+          }
+        },
+        {
+          "key": "PeopleJoinedRemaining",
+          "forms": {
+            "other_value": "%1$d restants"
+          }
+        },
+        {
+          "key": "PeopleCanJoinViaLinkCount",
+          "forms": {
+            "one_value": "%s personne peut rejoindre via ce lien.",
+            "other_value": "%s personnes peuvent rejoindre via ce lien."
+          }
+        },
+        {
+          "key": "MessageSeen",
+          "forms": {
+            "one_value": "%1$d vu",
+            "other_value": "%1$d vus"
+          }
+        },
+        {
+          "key": "PreviewSender.SendAlbum",
+          "forms": {
+            "one_value": "Envoyer l'album",
+            "other_value": "Envoyer %d albums"
+          }
+        },
+        {
+          "key": "PreviewSender.SendFile",
+          "forms": {
+            "one_value": "Envoyer le fichier",
+            "other_value": "Envoyer %d fichiers"
+          }
+        },
+        {
+          "key": "PreviewSender.SendPhoto",
+          "forms": {
+            "one_value": "Envoyer la photo",
+            "other_value": "Envoyer %d photos"
+          }
+        },
+        {
+          "key": "PreviewSender.SendVideo",
+          "forms": {
+            "one_value": "Envoyer la vidéo",
+            "other_value": "Envoyer %d vidéos"
+          }
+        },
+        {
+          "key": "LanguageName",
+          "value": "Français"
         }
       ]
     },
@@ -12446,7 +13444,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 1,
+      "version": 2,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -12960,7 +13958,7 @@
           "value": "Mehr anzeigen"
         },
         {
-          "key": "Login.Passkey.Error",
+          "key": "Error.SomethingWentWrong",
           "value": "Etwas ist schiefgelaufen"
         },
         {
@@ -13136,6 +14134,14 @@
           "value": "Neue Gruppe"
         },
         {
+          "key": "NewChannel.DefaultTitle",
+          "value": "Neuer Kanal"
+        },
+        {
+          "key": "NewGroup.DefaultTitle",
+          "value": "Neue Gruppe"
+        },
+        {
           "key": "NewPrivateChat",
           "value": "Neue Nachricht"
         },
@@ -13160,16 +14166,19 @@
           "value": "Halte Shift gedrückt, um beide Spalten gleichzeitig zu skalieren"
         },
         {
-          "key": "Channel.SubscribersSuffix",
-          "value": "Abonnenten"
+          "key": "Subscribers",
+          "forms": {
+            "one_value": "%1$d Abonnent",
+            "other_value": "%1$d Abonnenten"
+          }
         },
         {
-          "key": "Search.Empty.QueryPrefix",
-          "value": "Keine Ergebnisse für"
+          "key": "Search.Empty",
+          "value": "Keine Ergebnisse für „**%@**“. Versuche eine neue Suche."
         },
         {
-          "key": "Search.Empty.Suffix",
-          "value": ". Versuche eine neue Suche."
+          "key": "Search.EmptyFrom",
+          "value": "Keine Nachrichten von **%@**."
         },
         {
           "key": "PinnedMessage",
@@ -13301,7 +14310,10 @@
         },
         {
           "key": "DeleteMessagesCount",
-          "value": "%d Nachrichten löschen"
+          "forms": {
+            "one_value": "%d Nachricht löschen",
+            "other_value": "%d Nachrichten löschen"
+          }
         },
         {
           "key": "AreYouSureDeleteSingleMessage",
@@ -13312,8 +14324,8 @@
           "value": "Diese Nachrichten wirklich löschen?"
         },
         {
-          "key": "DeleteAlsoFor",
-          "value": "Auch löschen für"
+          "key": "DeleteMessagesOptionAlso",
+          "value": "Auch für %1$s löschen"
         },
         {
           "key": "DeleteChat.DeleteGroupForAll",
@@ -13580,16 +14592,21 @@
           "value": "Keine Zuschauer"
         },
         {
-          "key": "Livestream.Watching",
-          "value": "{n} sehen zu"
+          "key": "Rtmp.Watching",
+          "forms": {
+            "other_value": "%s sehen zu"
+          }
         },
         {
           "key": "Livestream.IsLive",
           "value": "Der Stream läuft"
         },
         {
-          "key": "VoiceChat.Status.ParticipantsSuffix",
-          "value": "Teilnehmer"
+          "key": "VoiceChat.Status.Members",
+          "forms": {
+            "one_value": "%d Teilnehmer",
+            "other_value": "%d Teilnehmer"
+          }
         },
         {
           "key": "VoiceChat.Status.You",
@@ -13620,8 +14637,11 @@
           "value": "Themen"
         },
         {
-          "key": "ForumTopic.CountSuffix",
-          "value": "Themen"
+          "key": "TopicsCount",
+          "forms": {
+            "one_value": "%d Thema",
+            "other_value": "%d Themen"
+          }
         },
         {
           "key": "NewTopic",
@@ -13836,8 +14856,11 @@
           "value": "Keine Ergebnisse"
         },
         {
-          "key": "Group.MembersSuffix",
-          "value": "Mitglieder"
+          "key": "Members",
+          "forms": {
+            "one_value": "%1$d Mitglied",
+            "other_value": "%1$d Mitglieder"
+          }
         },
         {
           "key": "Search.Confirm.ClearHistory",
@@ -14384,8 +15407,11 @@
           "value": "Nutzer"
         },
         {
-          "key": "Privacy.UsersSuffix",
-          "value": "Nutzer"
+          "key": "PrivacySettingsController.UserCount",
+          "forms": {
+            "one_value": "%d Nutzer",
+            "other_value": "%d Nutzer"
+          }
         },
         {
           "key": "BlockModal.Search.Placeholder",
@@ -14504,16 +15530,32 @@
           "value": "Andere Zeit festlegen"
         },
         {
-          "key": "Unit.DaysSuffix",
-          "value": "Tage"
+          "key": "Hours",
+          "forms": {
+            "one_value": "%1$d Stunde",
+            "other_value": "%1$d Stunden"
+          }
         },
         {
-          "key": "Unit.WeeksSuffix",
-          "value": "Wochen"
+          "key": "Days",
+          "forms": {
+            "one_value": "%1$d Tag",
+            "other_value": "%1$d Tage"
+          }
         },
         {
-          "key": "Unit.MonthsSuffix",
-          "value": "Monate"
+          "key": "Weeks",
+          "forms": {
+            "one_value": "%1$d Woche",
+            "other_value": "%1$d Wochen"
+          }
+        },
+        {
+          "key": "Months",
+          "forms": {
+            "one_value": "%1$d Monat",
+            "other_value": "%1$d Monate"
+          }
         },
         {
           "key": "PasscodeLock.Title",
@@ -14860,70 +15902,6 @@
           "value": "GB"
         },
         {
-          "key": "Duration.Days1",
-          "value": "1 Tag"
-        },
-        {
-          "key": "Duration.Days2",
-          "value": "2 Tage"
-        },
-        {
-          "key": "Duration.Days3",
-          "value": "3 Tage"
-        },
-        {
-          "key": "Duration.Days4",
-          "value": "4 Tage"
-        },
-        {
-          "key": "Duration.Days5",
-          "value": "5 Tage"
-        },
-        {
-          "key": "Duration.Days6",
-          "value": "6 Tage"
-        },
-        {
-          "key": "Duration.Weeks1",
-          "value": "1 Woche"
-        },
-        {
-          "key": "Duration.Weeks2",
-          "value": "2 Wochen"
-        },
-        {
-          "key": "Duration.Weeks3",
-          "value": "3 Wochen"
-        },
-        {
-          "key": "Duration.Months1",
-          "value": "1 Monat"
-        },
-        {
-          "key": "Duration.Months2",
-          "value": "2 Monate"
-        },
-        {
-          "key": "Duration.Months3",
-          "value": "3 Monate"
-        },
-        {
-          "key": "Duration.Months4",
-          "value": "4 Monate"
-        },
-        {
-          "key": "Duration.Months5",
-          "value": "5 Monate"
-        },
-        {
-          "key": "Duration.Months6",
-          "value": "6 Monate"
-        },
-        {
-          "key": "Duration.Years1",
-          "value": "1 Jahr"
-        },
-        {
           "key": "Login.Passkey.Failed",
           "value": "Anmeldung mit Passkey fehlgeschlagen"
         },
@@ -15146,6 +16124,139 @@
         {
           "key": "Message.Unsupported",
           "value": "Nicht unterstützte Nachricht"
+        },
+        {
+          "key": "Years",
+          "forms": {
+            "one_value": "%1$d Jahr",
+            "other_value": "%1$d Jahre"
+          }
+        },
+        {
+          "key": "Message.Context.Pin",
+          "value": "Anpinnen"
+        },
+        {
+          "key": "Message.Context.Unpin",
+          "value": "Lösen"
+        },
+        {
+          "key": "UnpinMessage",
+          "value": "Lösen"
+        },
+        {
+          "key": "Login.PhoneLabel",
+          "value": "Telefonnummer"
+        },
+        {
+          "key": "KeyboardShortcuts.Section.Messages",
+          "value": "Nachrichten"
+        },
+        {
+          "key": "KeyboardShortcuts.Section.Stories",
+          "value": "Stories"
+        },
+        {
+          "key": "PrivacySettingsController.AddUsers",
+          "value": "Nutzer hinzufügen"
+        },
+        {
+          "key": "Call.Mute",
+          "value": "Stumm schalten"
+        },
+        {
+          "key": "VoipUnmute",
+          "value": "Ton einschalten"
+        },
+        {
+          "key": "Calendar.Next",
+          "value": "Nächster Monat"
+        },
+        {
+          "key": "Calendar.Previous",
+          "value": "Vorheriger Monat"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.Link",
+          "value": "Link hinzufügen"
+        },
+        {
+          "key": "Chat.Title.Comments",
+          "forms": {
+            "one_value": "%d Kommentar",
+            "other_value": "%d Kommentare"
+          }
+        },
+        {
+          "key": "Chat.Context.ReactedFast",
+          "forms": {
+            "other_value": "%d reagiert"
+          }
+        },
+        {
+          "key": "PeopleJoined",
+          "forms": {
+            "one_value": "%1$d Person beigetreten",
+            "other_value": "%1$d Personen beigetreten"
+          }
+        },
+        {
+          "key": "CanJoin",
+          "forms": {
+            "other_value": "%1$d können beitreten"
+          }
+        },
+        {
+          "key": "PeopleJoinedRemaining",
+          "forms": {
+            "other_value": "noch %1$d"
+          }
+        },
+        {
+          "key": "PeopleCanJoinViaLinkCount",
+          "forms": {
+            "one_value": "%s Person kann über diesen Link beitreten.",
+            "other_value": "%s Personen können über diesen Link beitreten."
+          }
+        },
+        {
+          "key": "MessageSeen",
+          "forms": {
+            "one_value": "%1$d gesehen",
+            "other_value": "%1$d gesehen"
+          }
+        },
+        {
+          "key": "PreviewSender.SendAlbum",
+          "forms": {
+            "one_value": "Album senden",
+            "other_value": "%d Alben senden"
+          }
+        },
+        {
+          "key": "PreviewSender.SendFile",
+          "forms": {
+            "one_value": "Datei senden",
+            "other_value": "%d Dateien senden"
+          }
+        },
+        {
+          "key": "PreviewSender.SendPhoto",
+          "forms": {
+            "one_value": "Foto senden",
+            "other_value": "%d Fotos senden"
+          }
+        },
+        {
+          "key": "PreviewSender.SendVideo",
+          "forms": {
+            "one_value": "Video senden",
+            "other_value": "%d Videos senden"
+          }
+        },
+        {
+          "key": "LanguageName",
+          "value": "Deutsch"
         }
       ]
     },
@@ -15156,7 +16267,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 1,
+      "version": 2,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -15671,7 +16782,7 @@
           "value": "Mostrar más"
         },
         {
-          "key": "Login.Passkey.Error",
+          "key": "Error.SomethingWentWrong",
           "value": "Algo salió mal"
         },
         {
@@ -15847,6 +16958,14 @@
           "value": "Nuevo grupo"
         },
         {
+          "key": "NewChannel.DefaultTitle",
+          "value": "Canal nuevo"
+        },
+        {
+          "key": "NewGroup.DefaultTitle",
+          "value": "Grupo nuevo"
+        },
+        {
           "key": "NewPrivateChat",
           "value": "Nuevo mensaje"
         },
@@ -15871,16 +16990,19 @@
           "value": "Mantén Shift para redimensionar ambas columnas a la vez"
         },
         {
-          "key": "Channel.SubscribersSuffix",
-          "value": "suscriptores"
+          "key": "Subscribers",
+          "forms": {
+            "one_value": "%1$d suscriptor",
+            "other_value": "%1$d suscriptores"
+          }
         },
         {
-          "key": "Search.Empty.QueryPrefix",
-          "value": "No hubo resultados para"
+          "key": "Search.Empty",
+          "value": "No hubo resultados para «**%@**». Prueba otra búsqueda."
         },
         {
-          "key": "Search.Empty.Suffix",
-          "value": ". Prueba otra búsqueda."
+          "key": "Search.EmptyFrom",
+          "value": "No hay mensajes de **%@**."
         },
         {
           "key": "PinnedMessage",
@@ -16012,7 +17134,10 @@
         },
         {
           "key": "DeleteMessagesCount",
-          "value": "Eliminar %d mensajes"
+          "forms": {
+            "one_value": "Eliminar %d mensaje",
+            "other_value": "Eliminar %d mensajes"
+          }
         },
         {
           "key": "AreYouSureDeleteSingleMessage",
@@ -16023,8 +17148,8 @@
           "value": "¿Eliminar estos mensajes?"
         },
         {
-          "key": "DeleteAlsoFor",
-          "value": "Eliminar también para"
+          "key": "DeleteMessagesOptionAlso",
+          "value": "Eliminar también para %1$s"
         },
         {
           "key": "DeleteChat.DeleteGroupForAll",
@@ -16291,16 +17416,21 @@
           "value": "Sin espectadores"
         },
         {
-          "key": "Livestream.Watching",
-          "value": "{n} viendo"
+          "key": "Rtmp.Watching",
+          "forms": {
+            "other_value": "%s viendo"
+          }
         },
         {
           "key": "Livestream.IsLive",
           "value": "La transmisión está en directo"
         },
         {
-          "key": "VoiceChat.Status.ParticipantsSuffix",
-          "value": "participantes"
+          "key": "VoiceChat.Status.Members",
+          "forms": {
+            "one_value": "%d participante",
+            "other_value": "%d participantes"
+          }
         },
         {
           "key": "VoiceChat.Status.You",
@@ -16331,8 +17461,11 @@
           "value": "Temas"
         },
         {
-          "key": "ForumTopic.CountSuffix",
-          "value": "temas"
+          "key": "TopicsCount",
+          "forms": {
+            "one_value": "%d tema",
+            "other_value": "%d temas"
+          }
         },
         {
           "key": "NewTopic",
@@ -16547,8 +17680,11 @@
           "value": "Sin resultados"
         },
         {
-          "key": "Group.MembersSuffix",
-          "value": "miembros"
+          "key": "Members",
+          "forms": {
+            "one_value": "%1$d miembro",
+            "other_value": "%1$d miembros"
+          }
         },
         {
           "key": "Search.Confirm.ClearHistory",
@@ -17095,8 +18231,11 @@
           "value": "usuario"
         },
         {
-          "key": "Privacy.UsersSuffix",
-          "value": "usuarios"
+          "key": "PrivacySettingsController.UserCount",
+          "forms": {
+            "one_value": "%d usuario",
+            "other_value": "%d usuarios"
+          }
         },
         {
           "key": "BlockModal.Search.Placeholder",
@@ -17215,16 +18354,32 @@
           "value": "Elegir otro plazo"
         },
         {
-          "key": "Unit.DaysSuffix",
-          "value": "días"
+          "key": "Hours",
+          "forms": {
+            "one_value": "%1$d hora",
+            "other_value": "%1$d horas"
+          }
         },
         {
-          "key": "Unit.WeeksSuffix",
-          "value": "semanas"
+          "key": "Days",
+          "forms": {
+            "one_value": "%1$d día",
+            "other_value": "%1$d días"
+          }
         },
         {
-          "key": "Unit.MonthsSuffix",
-          "value": "meses"
+          "key": "Weeks",
+          "forms": {
+            "one_value": "%1$d semana",
+            "other_value": "%1$d semanas"
+          }
+        },
+        {
+          "key": "Months",
+          "forms": {
+            "one_value": "%1$d mes",
+            "other_value": "%1$d meses"
+          }
         },
         {
           "key": "PasscodeLock.Title",
@@ -17571,70 +18726,6 @@
           "value": "GB"
         },
         {
-          "key": "Duration.Days1",
-          "value": "1 día"
-        },
-        {
-          "key": "Duration.Days2",
-          "value": "2 días"
-        },
-        {
-          "key": "Duration.Days3",
-          "value": "3 días"
-        },
-        {
-          "key": "Duration.Days4",
-          "value": "4 días"
-        },
-        {
-          "key": "Duration.Days5",
-          "value": "5 días"
-        },
-        {
-          "key": "Duration.Days6",
-          "value": "6 días"
-        },
-        {
-          "key": "Duration.Weeks1",
-          "value": "1 semana"
-        },
-        {
-          "key": "Duration.Weeks2",
-          "value": "2 semanas"
-        },
-        {
-          "key": "Duration.Weeks3",
-          "value": "3 semanas"
-        },
-        {
-          "key": "Duration.Months1",
-          "value": "1 mes"
-        },
-        {
-          "key": "Duration.Months2",
-          "value": "2 meses"
-        },
-        {
-          "key": "Duration.Months3",
-          "value": "3 meses"
-        },
-        {
-          "key": "Duration.Months4",
-          "value": "4 meses"
-        },
-        {
-          "key": "Duration.Months5",
-          "value": "5 meses"
-        },
-        {
-          "key": "Duration.Months6",
-          "value": "6 meses"
-        },
-        {
-          "key": "Duration.Years1",
-          "value": "1 año"
-        },
-        {
           "key": "Login.Passkey.Failed",
           "value": "No se pudo iniciar sesión con la llave de acceso"
         },
@@ -17857,6 +18948,139 @@
         {
           "key": "Message.Unsupported",
           "value": "Mensaje no compatible"
+        },
+        {
+          "key": "Years",
+          "forms": {
+            "one_value": "%1$d año",
+            "other_value": "%1$d años"
+          }
+        },
+        {
+          "key": "Message.Context.Pin",
+          "value": "Fijar"
+        },
+        {
+          "key": "Message.Context.Unpin",
+          "value": "Desanclar"
+        },
+        {
+          "key": "UnpinMessage",
+          "value": "Desanclar"
+        },
+        {
+          "key": "Login.PhoneLabel",
+          "value": "Número de teléfono"
+        },
+        {
+          "key": "KeyboardShortcuts.Section.Messages",
+          "value": "Mensajes"
+        },
+        {
+          "key": "KeyboardShortcuts.Section.Stories",
+          "value": "Historias"
+        },
+        {
+          "key": "PrivacySettingsController.AddUsers",
+          "value": "Añadir usuarios"
+        },
+        {
+          "key": "Call.Mute",
+          "value": "Silenciar"
+        },
+        {
+          "key": "VoipUnmute",
+          "value": "Activar sonido"
+        },
+        {
+          "key": "Calendar.Next",
+          "value": "Mes siguiente"
+        },
+        {
+          "key": "Calendar.Previous",
+          "value": "Mes anterior"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.Link",
+          "value": "Añadir enlace"
+        },
+        {
+          "key": "Chat.Title.Comments",
+          "forms": {
+            "one_value": "%d comentario",
+            "other_value": "%d comentarios"
+          }
+        },
+        {
+          "key": "Chat.Context.ReactedFast",
+          "forms": {
+            "other_value": "%d reaccionaron"
+          }
+        },
+        {
+          "key": "PeopleJoined",
+          "forms": {
+            "one_value": "%1$d persona se unió",
+            "other_value": "%1$d personas se unieron"
+          }
+        },
+        {
+          "key": "CanJoin",
+          "forms": {
+            "other_value": "%1$d pueden unirse"
+          }
+        },
+        {
+          "key": "PeopleJoinedRemaining",
+          "forms": {
+            "other_value": "quedan %1$d"
+          }
+        },
+        {
+          "key": "PeopleCanJoinViaLinkCount",
+          "forms": {
+            "one_value": "%s persona puede unirse con este enlace.",
+            "other_value": "%s personas pueden unirse con este enlace."
+          }
+        },
+        {
+          "key": "MessageSeen",
+          "forms": {
+            "one_value": "%1$d visto",
+            "other_value": "%1$d vistos"
+          }
+        },
+        {
+          "key": "PreviewSender.SendAlbum",
+          "forms": {
+            "one_value": "Enviar álbum",
+            "other_value": "Enviar %d álbumes"
+          }
+        },
+        {
+          "key": "PreviewSender.SendFile",
+          "forms": {
+            "one_value": "Enviar archivo",
+            "other_value": "Enviar %d archivos"
+          }
+        },
+        {
+          "key": "PreviewSender.SendPhoto",
+          "forms": {
+            "one_value": "Enviar foto",
+            "other_value": "Enviar %d fotos"
+          }
+        },
+        {
+          "key": "PreviewSender.SendVideo",
+          "forms": {
+            "one_value": "Enviar video",
+            "other_value": "Enviar %d videos"
+          }
+        },
+        {
+          "key": "LanguageName",
+          "value": "Español"
         }
       ]
     },
@@ -17867,7 +19091,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 1,
+      "version": 2,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -18383,7 +19607,7 @@
           "value": "Показати ще"
         },
         {
-          "key": "Login.Passkey.Error",
+          "key": "Error.SomethingWentWrong",
           "value": "Щось пішло не так"
         },
         {
@@ -18563,6 +19787,14 @@
           "value": "Створити групу"
         },
         {
+          "key": "NewChannel.DefaultTitle",
+          "value": "Новий канал"
+        },
+        {
+          "key": "NewGroup.DefaultTitle",
+          "value": "Нова група"
+        },
+        {
           "key": "NewPrivateChat",
           "value": "Нове повідомлення"
         },
@@ -18587,16 +19819,21 @@
           "value": "Утримуйте Shift, щоб змінювати ширину обох колонок одразу"
         },
         {
-          "key": "Channel.SubscribersSuffix",
-          "value": "підписників"
+          "key": "Subscribers",
+          "forms": {
+            "one_value": "%1$d підписник",
+            "few_value": "%1$d підписники",
+            "many_value": "%1$d підписників",
+            "other_value": "%1$d підписника"
+          }
         },
         {
-          "key": "Search.Empty.QueryPrefix",
-          "value": "Нічого не знайдено за запитом"
+          "key": "Search.Empty",
+          "value": "Нічого не знайдено за запитом «**%@**». Спробуйте інший запит."
         },
         {
-          "key": "Search.Empty.Suffix",
-          "value": ". Спробуйте інший запит."
+          "key": "Search.EmptyFrom",
+          "value": "Немає повідомлень від **%@**."
         },
         {
           "key": "PinnedMessage",
@@ -18728,7 +19965,12 @@
         },
         {
           "key": "DeleteMessagesCount",
-          "value": "Видалити %d повідомлень"
+          "forms": {
+            "one_value": "Видалити %d повідомлення",
+            "few_value": "Видалити %d повідомлення",
+            "many_value": "Видалити %d повідомлень",
+            "other_value": "Видалити %d повідомлення"
+          }
         },
         {
           "key": "AreYouSureDeleteSingleMessage",
@@ -18739,8 +19981,8 @@
           "value": "Видалити ці повідомлення?"
         },
         {
-          "key": "DeleteAlsoFor",
-          "value": "Також видалити у"
+          "key": "DeleteMessagesOptionAlso",
+          "value": "Також видалити у %1$s"
         },
         {
           "key": "DeleteChat.DeleteGroupForAll",
@@ -19007,16 +20249,26 @@
           "value": "Немає глядачів"
         },
         {
-          "key": "Livestream.Watching",
-          "value": "{n} дивляться"
+          "key": "Rtmp.Watching",
+          "forms": {
+            "one_value": "%s дивиться",
+            "few_value": "%s дивляться",
+            "many_value": "%s дивляться",
+            "other_value": "%s дивляться"
+          }
         },
         {
           "key": "Livestream.IsLive",
           "value": "Трансляція триває"
         },
         {
-          "key": "VoiceChat.Status.ParticipantsSuffix",
-          "value": "учасників"
+          "key": "VoiceChat.Status.Members",
+          "forms": {
+            "one_value": "%d учасник",
+            "few_value": "%d учасники",
+            "many_value": "%d учасників",
+            "other_value": "%d учасника"
+          }
         },
         {
           "key": "VoiceChat.Status.You",
@@ -19047,8 +20299,13 @@
           "value": "Теми"
         },
         {
-          "key": "ForumTopic.CountSuffix",
-          "value": "тем"
+          "key": "TopicsCount",
+          "forms": {
+            "one_value": "%d тема",
+            "few_value": "%d теми",
+            "many_value": "%d тем",
+            "other_value": "%d теми"
+          }
         },
         {
           "key": "NewTopic",
@@ -19263,8 +20520,13 @@
           "value": "Немає результатів"
         },
         {
-          "key": "Group.MembersSuffix",
-          "value": "учасників"
+          "key": "Members",
+          "forms": {
+            "one_value": "%1$d учасник",
+            "few_value": "%1$d учасники",
+            "many_value": "%1$d учасників",
+            "other_value": "%1$d учасника"
+          }
         },
         {
           "key": "Search.Confirm.ClearHistory",
@@ -19811,8 +21073,13 @@
           "value": "користувач"
         },
         {
-          "key": "Privacy.UsersSuffix",
-          "value": "користувачів"
+          "key": "PrivacySettingsController.UserCount",
+          "forms": {
+            "one_value": "%d користувач",
+            "few_value": "%d користувачі",
+            "many_value": "%d користувачів",
+            "other_value": "%d користувача"
+          }
         },
         {
           "key": "BlockModal.Search.Placeholder",
@@ -19931,16 +21198,40 @@
           "value": "Обрати інший строк"
         },
         {
-          "key": "Unit.DaysSuffix",
-          "value": "днів"
+          "key": "Hours",
+          "forms": {
+            "one_value": "%1$d година",
+            "few_value": "%1$d години",
+            "many_value": "%1$d годин",
+            "other_value": "%1$d години"
+          }
         },
         {
-          "key": "Unit.WeeksSuffix",
-          "value": "тиж."
+          "key": "Days",
+          "forms": {
+            "one_value": "%1$d день",
+            "few_value": "%1$d дні",
+            "many_value": "%1$d днів",
+            "other_value": "%1$d дня"
+          }
         },
         {
-          "key": "Unit.MonthsSuffix",
-          "value": "місяців"
+          "key": "Weeks",
+          "forms": {
+            "one_value": "%1$d тиждень",
+            "few_value": "%1$d тижні",
+            "many_value": "%1$d тижнів",
+            "other_value": "%1$d тижня"
+          }
+        },
+        {
+          "key": "Months",
+          "forms": {
+            "one_value": "%1$d місяць",
+            "few_value": "%1$d місяці",
+            "many_value": "%1$d місяців",
+            "other_value": "%1$d місяця"
+          }
         },
         {
           "key": "PasscodeLock.Title",
@@ -20287,70 +21578,6 @@
           "value": "ГБ"
         },
         {
-          "key": "Duration.Days1",
-          "value": "1 день"
-        },
-        {
-          "key": "Duration.Days2",
-          "value": "2 дні"
-        },
-        {
-          "key": "Duration.Days3",
-          "value": "3 дні"
-        },
-        {
-          "key": "Duration.Days4",
-          "value": "4 дні"
-        },
-        {
-          "key": "Duration.Days5",
-          "value": "5 днів"
-        },
-        {
-          "key": "Duration.Days6",
-          "value": "6 днів"
-        },
-        {
-          "key": "Duration.Weeks1",
-          "value": "1 тиждень"
-        },
-        {
-          "key": "Duration.Weeks2",
-          "value": "2 тижні"
-        },
-        {
-          "key": "Duration.Weeks3",
-          "value": "3 тижні"
-        },
-        {
-          "key": "Duration.Months1",
-          "value": "1 місяць"
-        },
-        {
-          "key": "Duration.Months2",
-          "value": "2 місяці"
-        },
-        {
-          "key": "Duration.Months3",
-          "value": "3 місяці"
-        },
-        {
-          "key": "Duration.Months4",
-          "value": "4 місяці"
-        },
-        {
-          "key": "Duration.Months5",
-          "value": "5 місяців"
-        },
-        {
-          "key": "Duration.Months6",
-          "value": "6 місяців"
-        },
-        {
-          "key": "Duration.Years1",
-          "value": "1 рік"
-        },
-        {
           "key": "Login.Passkey.Failed",
           "value": "Не вдалося увійти за ключем доступу"
         },
@@ -20573,6 +21800,163 @@
         {
           "key": "Message.Unsupported",
           "value": "Непідтримуване повідомлення"
+        },
+        {
+          "key": "Years",
+          "forms": {
+            "one_value": "%1$d рік",
+            "few_value": "%1$d роки",
+            "many_value": "%1$d років",
+            "other_value": "%1$d року"
+          }
+        },
+        {
+          "key": "Message.Context.Pin",
+          "value": "Закріпити"
+        },
+        {
+          "key": "Message.Context.Unpin",
+          "value": "Відкріпити"
+        },
+        {
+          "key": "UnpinMessage",
+          "value": "Відкріпити"
+        },
+        {
+          "key": "Login.PhoneLabel",
+          "value": "Номер телефону"
+        },
+        {
+          "key": "KeyboardShortcuts.Section.Messages",
+          "value": "Повідомлення"
+        },
+        {
+          "key": "KeyboardShortcuts.Section.Stories",
+          "value": "Історії"
+        },
+        {
+          "key": "PrivacySettingsController.AddUsers",
+          "value": "Додати користувачів"
+        },
+        {
+          "key": "Call.Mute",
+          "value": "Вимкнути звук"
+        },
+        {
+          "key": "VoipUnmute",
+          "value": "Увімкнути звук"
+        },
+        {
+          "key": "Calendar.Next",
+          "value": "Наступний місяць"
+        },
+        {
+          "key": "Calendar.Previous",
+          "value": "Попередній місяць"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.Link",
+          "value": "Додати посилання"
+        },
+        {
+          "key": "Chat.Title.Comments",
+          "forms": {
+            "one_value": "%d коментар",
+            "few_value": "%d коментарі",
+            "many_value": "%d коментарів",
+            "other_value": "%d коментаря"
+          }
+        },
+        {
+          "key": "Chat.Context.ReactedFast",
+          "forms": {
+            "one_value": "Відреагував %d",
+            "few_value": "Відреагували %d",
+            "many_value": "Відреагували %d",
+            "other_value": "Відреагували %d"
+          }
+        },
+        {
+          "key": "PeopleJoined",
+          "forms": {
+            "one_value": "%1$d людина приєдналася",
+            "few_value": "%1$d людини приєдналися",
+            "many_value": "%1$d людей приєдналися",
+            "other_value": "%1$d людини приєдналися"
+          }
+        },
+        {
+          "key": "CanJoin",
+          "forms": {
+            "one_value": "може приєднатися %1$d людина",
+            "few_value": "можуть приєднатися %1$d людини",
+            "many_value": "можуть приєднатися %1$d людей",
+            "other_value": "можуть приєднатися %1$d людини"
+          }
+        },
+        {
+          "key": "PeopleJoinedRemaining",
+          "forms": {
+            "other_value": "залишилося %1$d"
+          }
+        },
+        {
+          "key": "PeopleCanJoinViaLinkCount",
+          "forms": {
+            "one_value": "За посиланням може приєднатися %s особа.",
+            "few_value": "За посиланням можуть приєднатися %s особи.",
+            "many_value": "За посиланням можуть приєднатися %s осіб.",
+            "other_value": "За посиланням можуть приєднатися %s особи."
+          }
+        },
+        {
+          "key": "MessageSeen",
+          "forms": {
+            "one_value": "%1$d перегляд",
+            "few_value": "%1$d перегляди",
+            "many_value": "%1$d переглядів",
+            "other_value": "%1$d перегляду"
+          }
+        },
+        {
+          "key": "PreviewSender.SendAlbum",
+          "forms": {
+            "one_value": "Надіслати %d альбом",
+            "few_value": "Надіслати %d альбоми",
+            "many_value": "Надіслати %d альбомів",
+            "other_value": "Надіслати %d альбому"
+          }
+        },
+        {
+          "key": "PreviewSender.SendFile",
+          "forms": {
+            "one_value": "Надіслати %d файл",
+            "few_value": "Надіслати %d файли",
+            "many_value": "Надіслати %d файлів",
+            "other_value": "Надіслати %d файлу"
+          }
+        },
+        {
+          "key": "PreviewSender.SendPhoto",
+          "forms": {
+            "one_value": "Надіслати %d фото",
+            "few_value": "Надіслати %d фото",
+            "many_value": "Надіслати %d фото",
+            "other_value": "Надіслати %d фото"
+          }
+        },
+        {
+          "key": "PreviewSender.SendVideo",
+          "forms": {
+            "one_value": "Надіслати %d відео",
+            "few_value": "Надіслати %d відео",
+            "many_value": "Надіслати %d відео",
+            "other_value": "Надіслати %d відео"
+          }
+        },
+        {
+          "key": "LanguageName",
+          "value": "Українська"
         }
       ]
     }
