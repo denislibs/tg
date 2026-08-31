@@ -124,8 +124,7 @@
  * зависимости останется как в оригинале (`slider.ts` → `sliderTab.ts`, а не
  * наоборот).
  *
- * Заголовок вкладки строит `i18n(key)` ядра — дословно как оригинал (:115-117);
- * до задачи 7 здесь стоял `i18nSpan(t(key))`.
+ * Заголовок вкладки строит `i18n(key)` ядра — дословно как оригинал (:115-117).
  */
 import EventListenerBase, { type EventListenerListeners } from '@helpers/eventListenerBase'
 import ListenerSetter from '@helpers/listenerSetter'

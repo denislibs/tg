@@ -17,8 +17,9 @@
 // (`BubblesNavigation`) не передаёт ни один производственный вызывающий, только тесты
 // ленты. Это проверяется тут же: если исполнитель появится раньше строки, разбор
 // делегата придётся начать всё равно.
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { dirname, join, relative, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
@@ -31,6 +32,22 @@ import fr from './dict.fr'
 
 /** Та же форма, что читает `superFormatter`: `[…](…)`. */
 const ANCHOR = /\[.+?\]\(.*?\)/
+
+/** Корень исходников — от МЕСТА ЭТОГО ФАЙЛА: `process.cwd()` зависит от того, откуда
+ *  запустили прогон, и молча уводит скан в пустоту при запуске из корня монорепо. */
+const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+
+const stripComments = (src: string) => src
+  .replace(/\/\*[\s\S]*?\*\//g, ' ')
+  .replace(/(^|[^:])\/\/[^\n]*/gm, '$1')
+
+function* sourceFiles(dir: string): Generator<string> {
+  for (const entry of readdirSync(dir).sort()) {
+    const path = join(dir, entry)
+    if (statSync(path).isDirectory()) yield* sourceFiles(path)
+    else if (/\.tsx?$/.test(path)) yield path
+  }
+}
 
 function* allStrings(): Generator<{ where: string; key: string; text: string }> {
   for (const [key, value] of Object.entries(lang as Record<string, LangPackValue>)) {
@@ -62,10 +79,33 @@ describe('в словаре нет ссылочной разметки, пока
     expect(offenders).toEqual([])
   })
 
-  it('исполнителя внутренней ссылки в продукте тоже нет', async () => {
-    // Читаем ИСХОДНИК: `openInternalLink` — необязательное поле, и «не передан»
-    // рантаймом не выражается — узнать это можно только по вызывающим.
-    const bubbles = readFileSync(resolve(process.cwd(), 'src/components/chat/VanillaFeed.tsx'), 'utf8')
-    expect(bubbles).not.toContain('openInternalLink')
+  // Вторая половина того же вопроса: даже появись строка со ссылкой, кликом по ней
+  // некому распорядиться. `openInternalLink` (`BubblesNavigation`) — необязательное
+  // поле, и «его никто не передаёт» рантаймом не выражается: узнать это можно только
+  // по исходникам.
+  //
+  // Скан идёт по ВСЕМУ `src`, а не по одному хосту ленты: делегат `data-anchor-action`
+  // живёт внутри ленты, и вся суть разбора в том, ГДЕ появится исполнитель — попап,
+  // сайдбар, второй хост. Проверка «прочитать `VanillaFeed.tsx`» это ровно и
+  // пропускала. Путь считается от каталога этого файла, а не от `process.cwd()`:
+  // рабочий каталог прогона — свойство запуска, а не кода.
+  it('исполнителя внутренней ссылки в продукте нет НИГДЕ, а не только в хосте ленты', () => {
+    const providers: string[] = []
+    let seen = 0
+    for (const file of sourceFiles(SRC)) {
+      const rel = relative(SRC, file)
+      // Объявление самой точки расширения и тесты ленты — не производственные
+      // вызывающие: первое вводит поле, вторые передают его моком.
+      if (rel === 'components/chat/bubbles.ts' || /\.test\.tsx?$/.test(rel)) continue
+      // Комментарии — не код: имя точки расширения в них РАЗБИРАЕТСЯ (в этом файле,
+      // в `lib/langPack.ts`, в `lib/richtext/url.ts`), и считать разбор исполнителем
+      // значило бы краснеть на собственной документации.
+      const src = stripComments(readFileSync(file, 'utf8'))
+      seen++
+      if (src.includes('openInternalLink')) providers.push(rel)
+    }
+    // Иначе «исполнителя нет» означало бы «файлов не нашлось».
+    expect(seen).toBeGreaterThan(500)
+    expect(providers).toEqual([])
   })
 })

@@ -193,6 +193,7 @@ import {
 import { isAnyChat, isUser, NULL_PEER_ID, SERVICE_PEER_ID } from '@core/peers/peerId'
 import type { ReadDateResult } from '@core/managers/chatsManager'
 import { useI18nStore } from '../../i18n'
+import { _i18n, i18n } from '@lib/langPack'
 import type ChatSelection from './selection'
 
 /**
@@ -861,10 +862,9 @@ export default class ChatContextMenu {
 
         if('restricted' in result) {
           this.canViewReadTime = false
-          const when = document.createElement('span')
+          const when = i18n('PmReadShowWhen') // tweb :1539
           when.classList.add('show-when')
-          when.textContent = useI18nStore.getState().t('PmReadShowWhen')
-          loader.replaceWith(useI18nStore.getState().t('Chat.Context.ReadLabel'), ' ', when)
+          loader.replaceWith(i18n('Chat.Context.ReadLabel'), ' ', when) // tweb :1541
           return
         }
 
@@ -882,26 +882,31 @@ export default class ChatContextMenu {
 
       viewsButton.element?.prepend(Icon(isViewingReactions ? 'reactions' : 'checks', 'btn-menu-item-icon'))
 
-      const t = useI18nStore.getState().t
+      // `_i18n` ПЕРЕПИСЫВАЕТ тот же самый узел подписи, а не подменяет его детей —
+      // 1:1 с оригиналом, который держит здесь один
+      // `I18n.IntlElement({element: viewsButton.textElement})` и обновляет его
+      // (tweb :1554-1562). `!` без ветвления: узел подписи ставит сам `ButtonMenuItem`
+      // при постройке пункта, и оригинал разыменовывает его так же.
+      const textElement = viewsButton.textElement!
       const middleware = this.middleware.get()
       const { id } = this.message
       if(isViewingReactions) {
         this.canOpenReactedList = true
-        viewsButton.textElement?.replaceChildren(useI18nStore.getState().tArgs('Chat.Context.ReactedFast', [reactedLength ?? 0]))
+        _i18n(textElement, 'Chat.Context.ReactedFast', [reactedLength ?? 0]) // tweb :1566
       } else {
-        viewsButton.textElement?.replaceChildren(t('Loading'))
+        _i18n(textElement, 'Loading') // tweb :1574
         void this.managers.messages.viewers(this.messagePeerId, id).then((viewers) => {
           if(!middleware()) {
             return
           }
 
           if(!viewers.length) {
-            viewsButton.textElement?.replaceChildren(t('NobodyViewed'))
+            _i18n(textElement, 'NobodyViewed') // tweb :1556
             return
           }
 
           this.canOpenReactedList = true
-          viewsButton.textElement?.replaceChildren(useI18nStore.getState().tArgs('MessageSeen', [viewers.length]))
+          _i18n(textElement, 'MessageSeen', [viewers.length]) // tweb :1623
         })
       }
     }

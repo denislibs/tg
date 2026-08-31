@@ -202,7 +202,7 @@ const fr = {
     one_value: '%1$d abonné',
     other_value: '%1$d abonnés',
   },
-  'Search.Empty': 'Aucun résultat pour «**%@**». Essayez une autre recherche.',
+  'Search.Empty': 'Aucun résultat pour « **%@** ». Essayez une autre recherche.',
   'Search.EmptyFrom': 'Aucun message de **%@**.',
   PinnedMessage: 'Message épinglé',
   'ChatList.Context.Mute': 'Muet',

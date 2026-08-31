@@ -105,6 +105,15 @@ export function EmptyResults({ isHashtag, count, filterPeerId, filterPeerName, q
   const node = useMemo(() => {
     if(isHashtag && count === undefined) return i18n('Search.HelpHashtag')
     if(filterPeerId != null) return i18n('Search.EmptyFrom', [filterPeerName ?? ''])
+    // РАСХОЖДЕНИЕ С ОРИГИНАЛОМ — ЗАДАЧА #115. Хэштег с НУЛЁМ результатов падает
+    // сюда, в общую строку «ничего не найдено по запросу», а у tweb на этот случай
+    // своя: `Search.EmptyHashtag` = 'There were no results for "%@". Try another
+    // hashtag.' (lang.ts:654, вызывающий topbarSearch.tsx:777). Пользователю
+    // предлагается «другой запрос» вместо «другого хэштега» — текст осмысленный, но
+    // не тот. Заводить ключ отдельно от разбора ветки хэштегов бессмысленно: у нас
+    // `isHashtag` вообще не доходит до этой строки без `count === undefined`, то
+    // есть предмет — вся ветка, а не одна строка словаря. Расхождение существовало
+    // до задачи 7 и ею не создано.
     return i18n('Search.Empty', [middleOverflow(query, 18)])
   }, [isHashtag, count, filterPeerId, filterPeerName, query])
 
