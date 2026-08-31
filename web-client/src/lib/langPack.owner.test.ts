@@ -11,9 +11,14 @@
 // импортированном его не проверить.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { LangPackDifference } from '@layer'
+
 const owner = vi.hoisted(() => ({
-  cachedPack: vi.fn(async () => null),
-  getPack: vi.fn(async () => null),
+  cachedPack: vi.fn<() => Promise<LangPackDifference | null>>(async () => null),
+  // Пакет по коду языка. Тип шире `null` намеренно: выбор языка записывается
+  // ТОЛЬКО состоявшийся (пакет доехал), поэтому проверки про хранилище обязаны
+  // подавать настоящий пакет, а не отказ сети.
+  getPack: vi.fn<(langCode: string) => Promise<LangPackDifference | null>>(async () => null),
   checkForUpdates: vi.fn(async () => null),
   // Список языков сервера — им проверяется предложение по браузеру (см. третий
   // блок). Пустым его оставлять нельзя: «предложение не взялось» тогда значило бы
@@ -25,6 +30,15 @@ const owner = vi.hoisted(() => ({
 }))
 
 vi.mock('../client/bootstrap', () => ({ startClient: () => ({ managers: { langPack: owner } }) }))
+
+/** Серверный пакет языка — минимальный, но НАСТОЯЩИЙ (версия ≥ 1, как у сервера). */
+const serverPack = (langCode: string): LangPackDifference => ({
+  _: 'langPackDifference',
+  lang_code: langCode,
+  from_version: 0,
+  version: 1,
+  strings: [{ _: 'langPackString', key: 'ArchivedChats', value: `Archived Chats (${langCode})` }],
+})
 
 /** Свежий импорт ядра — то же, что новый запуск вкладки. */
 async function boot() {
@@ -79,7 +93,10 @@ describe('владелец текущего языка', () => {
     const first = await boot()
     expect(first.hasStoredLangCode()).toBe(false)
 
-    first.setLangCode('en')
+    // Выбор делается ПРОДУКТОВЫМ путём: `setLangCode` хранилища не касается —
+    // он меняет запрошенный язык, а не выбранный (блокер финального ревью).
+    owner.getPack.mockResolvedValueOnce(serverPack('en'))
+    await first.getLangPackAndApply('en')
     const second = await boot()
 
     expect(second.hasStoredLangCode()).toBe(true)
@@ -88,7 +105,8 @@ describe('владелец текущего языка', () => {
 
   it('сохранённый выбор поднимается следующим запуском', async() => {
     const first = await boot()
-    first.setLangCode('ru')
+    owner.getPack.mockResolvedValueOnce(serverPack('ru'))
+    await first.getLangPackAndApply('ru')
     expect(localStorage.getItem('tg-lang')).toBe('ru')
 
     const second = await boot()
@@ -99,7 +117,8 @@ describe('владелец текущего языка', () => {
 
   it('код с регионом сохраняется целиком, а нормализованный — без него', async() => {
     const first = await boot()
-    first.setLangCode('pt-br')
+    owner.getPack.mockResolvedValueOnce(serverPack('pt-br'))
+    await first.getLangPackAndApply('pt-br')
 
     const second = await boot()
 
@@ -125,7 +144,8 @@ describe('владелец текущего языка', () => {
     const I18n = await boot()
     expect(I18n.getLastRequestedLangCode()).toBe('en')
     // И запись выбора в таком окне тоже не роняет: язык живёт до конца сессии.
-    expect(() => I18n.setLangCode('ru')).not.toThrow()
+    owner.getPack.mockResolvedValueOnce(serverPack('ru'))
+    await expect(I18n.getLangPackAndApply('ru')).resolves.toBeDefined()
     expect(I18n.getLastRequestedLangCode()).toBe('ru')
 
     getItem.mockRestore()
@@ -239,6 +259,42 @@ describe('предложение языка по браузеру (#117)', () =>
     expect(useI18nStore.getState().lang).toBe('ru')
   })
 
+  // БЛОКЕР финального ревью, и воспроизводится он ровно тем сценарием, каким
+  // случился бы у пользователя: русский браузер, ПЕРВЫЙ заход в момент, когда
+  // сети нет. Приложение обязано подняться на английском — и это НЕ выбор.
+  //
+  // Пин идёт по ПРОДУКТОВОМУ ПУТИ СТАРТА (`getCacheLangPackAndApply` +
+  // `catchUpLangPack`), а не через ручной вызов писателя: прежний пин
+  // («предложение слабее выбора») ходил по пути ВЫБОРА и потому дефекта не
+  // видел вовсе — старт записывал `en` в `tg-lang` и глушил предложение
+  // НАВСЕГДА, со второго запуска и до чистки хранилища.
+  it('первый старт БЕЗ СЕТИ выбора не делает — предложение доживает до второго запуска', async() => {
+    vi.spyOn(navigator, 'language', 'get').mockReturnValue('ru-RU')
+
+    // ── Первый запуск: ни кэша, ни сети ──────────────────────────────────────
+    vi.resetModules()
+    const first = await import('./langPack')
+    owner.cachedPack.mockResolvedValueOnce(null)
+    owner.getPack.mockResolvedValueOnce(null)
+    owner.getLanguages.mockImplementationOnce(async () => { throw new Error('offline') })
+
+    const applied = await first.default.getCacheLangPackAndApply()
+    await first.catchUpLangPack(applied)
+    await first.suggestBrowserLangCode()
+
+    expect(first.default.getLastRequestedLangCode()).toBe('en')
+    expect(localStorage.getItem('tg-lang')).toBe(null)
+
+    // ── Второй запуск, сеть уже есть ─────────────────────────────────────────
+    vi.resetModules()
+    const second = await import('./langPack')
+
+    expect(second.default.hasStoredLangCode()).toBe(false)
+    await second.suggestBrowserLangCode()
+
+    expect(second.default.getLastRequestedLangCode()).toBe('ru')
+  })
+
   it('язык браузера, которого нет У СЕРВЕРА, не берётся', async() => {
     // Итальянского нет в выдаче `getLanguages` — взяв его, экран выбора языка
     // остался бы без отмеченной строки, а строки на экране всё равно были бы
@@ -279,7 +335,8 @@ describe('предложение языка по браузеру (#117)', () =>
     }))
 
     const flying = langPack.suggestBrowserLangCode()
-    langPack.default.setLangCode('de') // пользователь выбрал сам
+    owner.getPack.mockResolvedValueOnce(serverPack('de'))
+    await langPack.default.getLangPackAndApply('de') // пользователь выбрал сам
     release()
     await flying
 
