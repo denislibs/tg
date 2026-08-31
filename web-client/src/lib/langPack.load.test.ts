@@ -64,6 +64,8 @@ describe('I18n: загрузка пакета и применение', () => {
   })
 
   it('холодный старт применяет пакет из кэша, а не английский', async() => {
+    // Язык ВЫБРАН (владелец — ядро, задача 8), и кэш про него же.
+    I18n.setLangCode('ru')
     owner.cachedPack.mockResolvedValue(RU_V4)
 
     await I18n.getCacheLangPackAndApply()
@@ -78,6 +80,24 @@ describe('I18n: загрузка пакета и применение', () => {
     // двух сверок «язык не сменили, пока летела разница».
     expect(owner.getPack).not.toHaveBeenCalled()
     expect(owner.checkForUpdates).toHaveBeenCalledWith('ru')
+  })
+
+  // ЗАДАЧА 8, «второй источник текущего языка обязан исчезнуть». Раньше холодный
+  // старт ВЫВОДИЛ язык из того пакета, что оказался в кэше (`setLangCode(pack.lang_code)`),
+  // и кэш чужого языка молча переопределял выбор пользователя. Воспроизводится
+  // это ровно тем, чем и в жизни: выбран русский, а кэша про него нет —
+  // приватное окно, чистый IndexedDB, кэш от прежнего языка.
+  it('кэш ЧУЖОГО языка не переопределяет выбор — ядро идёт за пакетом выбранного', async() => {
+    I18n.setLangCode('ru')
+    owner.cachedPack.mockResolvedValue(pack('en', 3, [str('CurrentSession', 'This device (server)')]))
+    owner.getPack.mockImplementation(async (langCode: string) => (langCode === 'ru' ? RU_V4 : null))
+
+    const applied = await I18n.getCacheLangPackAndApply()
+
+    expect(applied.lang_code).toBe('ru')
+    expect(I18n.getLastRequestedLangCode()).toBe('ru')
+    expect(i18n('CurrentSession').textContent).toBe('Это устройство')
+    expect(owner.getPack).toHaveBeenCalledWith('ru')
   })
 
   it('живой узел перерисовывается при смене языка', async() => {
@@ -98,6 +118,7 @@ describe('I18n: загрузка пакета и применение', () => {
   })
 
   it('фоновая проверка обновлений докатывает новую версию до живого узла', async() => {
+    I18n.setLangCode('ru') // выбран русский, кэш про него же
     owner.cachedPack.mockResolvedValue(RU_V4)
     await I18n.getCacheLangPackAndApply()
 
@@ -150,6 +171,7 @@ describe('I18n: загрузка пакета и применение', () => {
   })
 
   it('язык переключили, пока летела проверка — доехавшая разница наружу не уезжает', async() => {
+    I18n.setLangCode('ru') // выбран русский, кэш про него же
     owner.cachedPack.mockResolvedValue(RU_V4)
     await I18n.getCacheLangPackAndApply()
 
@@ -180,6 +202,7 @@ describe('I18n: загрузка пакета и применение', () => {
   })
 
   it('владелец сказал «применять нечего» — язык остаётся как был', async() => {
+    I18n.setLangCode('ru') // выбран русский, кэш про него же
     owner.cachedPack.mockResolvedValue(RU_V4)
     await I18n.getCacheLangPackAndApply()
 

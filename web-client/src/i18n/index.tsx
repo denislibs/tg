@@ -19,15 +19,23 @@ export const LANGS: { code: Lang; name: string }[] = [
   { code: 'fr', name: 'Français' },
 ]
 
-function isLang(l: string): l is Lang {
-  return l === 'en' || l in loaders
-}
+/*
+ * `isLang` («знаем ли мы такой язык») отсюда ушла вместе с угадыванием языка по
+ * браузеру: список языков теперь отдаёт СЕРВЕР (`langpack.getLanguages`), а
+ * наличие чанка словаря проверяется там, где чанк и грузится (`loadLang`).
+ */
 
-export function getInitial(): Lang {
-  const saved = localStorage.getItem('tg-lang')
-  if (saved && isLang(saved)) return saved
-  const nav = typeof navigator !== 'undefined' ? navigator.language?.slice(0, 2) : 'en'
-  return nav && isLang(nav) ? nav : 'en'
+/**
+ * Текущий язык — У ЯДРА, и здесь он только читается (задача 8).
+ *
+ * Раньше отсюда его и выводили: `localStorage('tg-lang')`, а не найдя — язык
+ * браузера. Владелец переехал в `lib/langPack.ts` целиком (разбор — в его
+ * шапке), поэтому вопрос «какой язык» задаётся ровно ему, а этот стор его
+ * ЗЕРКАЛИТ. Функция осталась, потому что осталась её роль: старт приложения
+ * (`client/boot.ts`) дожидается словаря выбранного языка до первого рендера.
+ */
+export function getInitial(): string {
+  return I18n.getLastRequestedLangCode()
 }
 
 /** Строки одного языка: символический ключ → текст (или формы числа). */
@@ -124,7 +132,11 @@ function makeT(strings: Strings, legacy: Dict, rules: Intl.PluralRules) {
 }
 
 interface I18nState {
-  lang: Lang
+  /** ЗЕРКАЛО кода языка у ядра (`I18n.getLastRequestedLangCode`), не свой факт.
+   *  Тип — строка, а не union наших чанков: код приезжает с сервера
+   *  (`langpack.getLanguages`), и словаря у него может не быть вовсе — тогда под
+   *  ним остаётся английский, ровно как у непереведённого ключа. */
+  lang: string
   /**
    * ТОЛЬКО СИМВОЛИЧЕСКИЙ КЛЮЧ. Тип сужен последним коммитом задачи 6 — когда на старой
    * форме ключа («ключ = английская строка») не осталось ни одного вызывающего;
@@ -137,10 +149,10 @@ interface I18nState {
   t: (key: LangPackKey) => string
   /** Ключ с аргументами: число (форма выбирается языком) и подстановки `%s`/`%1$s`. */
   tArgs: (key: LangPackKey, args: TArgs) => string
-  setLang: (l: Lang) => void
+  setLang: (l: string) => void
 }
 
-function makeState(lang: Lang, strings: Strings, legacy: Dict) {
+function makeState(lang: string, strings: Strings, legacy: Dict) {
   const rules = new Intl.PluralRules(lang)
   const t = makeT(strings, legacy, rules)
   return { t: t as I18nState['t'], tArgs: t as I18nState['tArgs'] }
@@ -156,23 +168,21 @@ function makeState(lang: Lang, strings: Strings, legacy: Dict) {
  * задачи 7 его подписи строит `i18n()` ядра — и без этой связки кнопка показала бы
  * пользователю «ChatList.Context.Mute».
  *
- * Направление связи выбрано так, чтобы ВТОРОГО ИСТОЧНИКА ТЕКУЩЕГО ЯЗЫКА НЕ ПОЯВИЛОСЬ
- * (ровно та опасность, из-за которой задача 2 не стала заводить старт загрузчика, см.
- * её докблок): язык по-прежнему один — выбор пользователя в `localStorage(tg-lang)`,
- * и он ТОЛКАЕТСЯ в ядро. Обратный путь (`getCacheLangPackAndApply`, где язык выводится
- * из `lang_code` пакета, оказавшегося в кэше) по-прежнему не заведён — он за задачей 9,
- * которая свяжет два конца с другой стороны: `t()` начнёт читать `I18n.strings`, и
- * этот мост исчезнет вместе с ним.
+ * ЯЗЫК ЗДЕСЬ НЕ ОБЪЯВЛЯЕТСЯ. Пакет штампуется кодом, который назвало САМО ЯДРО
+ * (`getLastRequestedLangCode`), а не тем, что думает про язык этот файл: у
+ * `applyLangPack` есть сверка «пакет не про текущий язык — не применять» (порт
+ * tweb :275-277), и передай сюда свой код — сверка сравнивала бы ядро с чужим
+ * мнением вместо защиты от опоздавшего пакета. Кто и когда меняет сам код —
+ * `loadLang` ниже, единственным вызовом `setLangCode`.
  *
  * Строки те же самые и берутся из ОДНОЙ переменной — иначе `t(key)` и `i18n(key)`
  * разошлись бы на одном экране. `formatLocalStrings` переводит плоскую карту в
  * конструкторы схемы (это же делает загрузчик для локального английского).
  */
-function applyToCore(langCode: Lang, strings: Strings) {
-  I18n.setLangCode(langCode)
+function applyToCore(strings: Strings) {
   I18n.applyLangPack({
     _: 'langPackDifference',
-    lang_code: langCode,
+    lang_code: I18n.getLastRequestedLangCode(),
     from_version: 0,
     version: 0,
     // Приведение: в `Strings` значения объявлены необязательными (тип плоского
@@ -186,12 +196,14 @@ function applyToCore(langCode: Lang, strings: Strings) {
 // English source; `loadLang` pulls the active language's chunk and swaps it in.
 export const useI18nStore = create<I18nState>((set) => {
   const initial = getInitial()
-  applyToCore(initial, EN)
+  applyToCore(EN)
   return {
     lang: initial,
     ...makeState(initial, EN, en),
+    // Выбор языка: код объявляется ЯДРУ (оно же его и сохранит) внутри
+    // `loadLang`, здесь остаётся перерисовать интерфейс — `set` до загрузки
+    // чанка, чтобы подписанные на язык компоненты не ждали сети.
     setLang: (l) => {
-      localStorage.setItem('tg-lang', l)
       set({ lang: l })
       void loadLang(l)
     },
@@ -201,23 +213,33 @@ export const useI18nStore = create<I18nState>((set) => {
 // Load a language's dict chunk and swap `t`. English is inline (no chunk fetched).
 // Guarded against races: a slow chunk for a language the user already switched away
 // from is discarded.
-export async function loadLang(lang: Lang): Promise<void> {
+export async function loadLang(lang: string): Promise<void> {
+  // ЯЗЫК ОБЪЯВЛЯЕТСЯ ЯДРУ ЗДЕСЬ И СРАЗУ, до всякого await: ядро — владелец кода
+  // языка (`lib/langPack.ts`), и оно же сохранит выбор между запусками. Отложить
+  // объявление до применения строк нельзя — узлы `.i18n`, построенные, пока
+  // летит чанк, спрашивают язык у ядра.
+  I18n.setLangCode(lang)
   // Словарь языка приезжает конструкторами схемы; старую форму ключа переводит
   // `toLegacyDict` — тем же импортом, чтобы карта старых ключей не попадала в
   // главный чанк (английскому интерфейсу она не нужна вовсе). Мост уйдёт с
   // задачей 9 вместе с самим `t()`.
-  const { strings, legacy } = lang === 'en'
+  //
+  // Языка без чанка (код с сервера, словаря которого у нас нет) это касается
+  // наравне с английским: под ним остаётся английский нижний слой — то же самое,
+  // что происходит с непереведённым ключом.
+  const loader = loaders[lang as Exclude<Lang, 'en'>]
+  const { strings, legacy } = !loader
     ? { strings: EN, legacy: en }
-    : await Promise.all([import('./legacyDict'), loaders[lang]()])
+    : await Promise.all([import('./legacyDict'), loader()])
       .then(([{ toLegacyDict }, dict]) => ({
         strings: { ...EN, ...toStrings(dict) } as Strings,
         legacy: { ...en, ...toLegacyDict(dict) },
       }))
   // Гонка снимается ДО применения, а не после: язык, от которого пользователь уже
   // ушёл, не должен попасть ни в `t()`, ни в ядро — иначе экран собрался бы из двух
-  // языков сразу.
-  if (useI18nStore.getState().lang !== lang) return
-  applyToCore(lang, strings)
+  // языков сразу. Спрашивается ВЛАДЕЛЕЦ, а не стор: стор его зеркалит.
+  if (I18n.getLastRequestedLangCode() !== lang) return
+  applyToCore(strings)
   useI18nStore.setState(makeState(lang, strings, legacy))
 }
 
