@@ -179,24 +179,14 @@ const lang = {
   ChannelSignProfilesInfo: 'Add names and photos of admins to the messages they post, linking to their profiles.',
   ChannelType: 'Channel Type',
   'Chat.Accessory.Edit': 'Edit message',
-  // ЗАДАЧА 6, плашка пересылки в композере. У оригинала обе надписи — ФОРМЫ ЧИСЛА со
-  // счётчиком внутри (`Chat.Accessory.Forward`, `Chat.Accessory.Hidden`), а наша плашка
-  // печатает надпись БЕЗ числа и держит два готовых варианта. Ключ оригинала за нашей
-  // строкой не закреплён по тому же правилу, что и `*Suffix` (задача 1): кодмод подставил
-  // бы в место без числа строку с `%d`, и `%d` нарисовался бы буквой.
-  //
-  // Пока задача 6 не правит вызывающего (`components/composer`), расхождение такое:
-  //  • `Chat.Accessory.Forward` — КЛЮЧ-СИРОТА: текст оригинала есть, вызывающих и
-  //    переводов ноль. Сиротой он перестанет быть, когда плашка начнёт звать его с числом;
-  //  • `Chat.Accessory.Forward.Hidden` — наша ПЛОСКАЯ строка там, где у оригинала
-  //    плюральный `Chat.Accessory.Hidden` (`{one_value: 'Forward Message (sender\'s name
-  //    hidden)', other_value: 'Forward %d Messages (senders\' names hidden)'}`, tweb
-  //    lang.ts:3436). Имя ключа наше, поэтому сверка с оригиналом её и не ловит;
-  //  • `Chat.Accessory.Forward.One` / `.Many` — наши варианты без числа, они и уедут.
+  // Плашка пересылки в композере. Обе надписи — ФОРМЫ ЧИСЛА со счётчиком внутри,
+  // 1:1 с оригиналом (tweb lang.ts:3430 и :3436), и зовут их с числом там же, где
+  // оригинал: `components/composer/ReplyWrapper.tsx` — порт `input.ts:736, 4517`.
   'Chat.Accessory.Forward': { one_value: 'Forward Message', other_value: 'Forward %d Messages' },
-  'Chat.Accessory.Forward.Hidden': 'Forward Message (sender name hidden)',
-  'Chat.Accessory.Forward.Many': 'Forward Messages',
-  'Chat.Accessory.Forward.One': 'Forward Message',
+  'Chat.Accessory.Hidden': {
+    one_value: 'Forward Message (sender\'s name hidden)',
+    other_value: 'Forward %d Messages (senders\' names hidden)',
+  },
   'Chat.Accessory.Reply': 'Reply to',
   'Chat.Alert.Forward.Action.Another': 'Forward to Another Chat',
   'Chat.Alert.Forward.HideCaption': 'Hide caption',

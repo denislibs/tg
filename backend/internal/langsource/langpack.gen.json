@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 2,
+      "version": 3,
       "strings": [
         {
           "key": "AccountSettings.Notifications",
@@ -662,16 +662,11 @@
           }
         },
         {
-          "key": "Chat.Accessory.Forward.Hidden",
-          "value": "Forward Message (sender name hidden)"
-        },
-        {
-          "key": "Chat.Accessory.Forward.Many",
-          "value": "Forward Messages"
-        },
-        {
-          "key": "Chat.Accessory.Forward.One",
-          "value": "Forward Message"
+          "key": "Chat.Accessory.Hidden",
+          "forms": {
+            "one_value": "Forward Message (sender's name hidden)",
+            "other_value": "Forward %d Messages (senders' names hidden)"
+          }
         },
         {
           "key": "Chat.Accessory.Reply",
@@ -5310,7 +5305,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 2,
+      "version": 3,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -7072,16 +7067,22 @@
           "value": "Переслать в…"
         },
         {
-          "key": "Chat.Accessory.Forward.One",
-          "value": "Переслать сообщение"
+          "key": "Chat.Accessory.Forward",
+          "forms": {
+            "one_value": "Переслать %d сообщение",
+            "few_value": "Переслать %d сообщения",
+            "many_value": "Переслать %d сообщений",
+            "other_value": "Переслать %d сообщения"
+          }
         },
         {
-          "key": "Chat.Accessory.Forward.Hidden",
-          "value": "Переслать сообщение (без имени)"
-        },
-        {
-          "key": "Chat.Accessory.Forward.Many",
-          "value": "Переслать сообщения"
+          "key": "Chat.Accessory.Hidden",
+          "forms": {
+            "one_value": "Переслать %d сообщение (без имени отправителя)",
+            "few_value": "Переслать %d сообщения (без имён отправителей)",
+            "many_value": "Переслать %d сообщений (без имён отправителей)",
+            "other_value": "Переслать %d сообщения (без имён отправителей)"
+          }
         },
         {
           "key": "Chat.Alert.Forward.Action.Another",
