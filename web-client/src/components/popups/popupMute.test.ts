@@ -4,10 +4,8 @@
 // аватарки (`AvatarManagers`, тот же приём, что в `popupPeer.test.ts`).
 import { afterEach, describe, expect, it, vi } from 'vitest'
 // Подписи строк — живые узлы ядра (`_i18n`, задача 8), а строки в ядро кладёт
-// создание хранилища языка. В продукте это делает холодный старт
-// (`client/boot.ts`), в прогоне — только явный импорт; без него на экран поехали
-// бы имена ключей, и это красил бы пин `test/domKeyLeak`.
-import '@/i18n'
+// холодный старт (`client/boot.ts`); в прогоне — общий сетап (`src/test/setup.ts`).
+// На пустом ядре на экран поехали бы имена ключей — это красит пин `test/domKeyLeak`.
 import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
 import type { AvatarManagers } from '@components/avatar'
 import PopupMute from './popupMute'

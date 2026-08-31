@@ -18,12 +18,9 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// Ядро локализации наполняется побочным эффектом создания хранилища языка
-// (`i18n/index.tsx::applyToCore`); в продукте этот импорт лежит на пути холодного
-// старта (`main.tsx` → `client/boot.ts`, где `loadLang()` ещё и дожидается до
-// первого рендера). Здесь строятся узлы `i18n()`, поэтому импорт нужен явно —
-// без него ядро пусто и печатает имя ключа.
-import '@/i18n'
+// Здесь строятся узлы `i18n()`. Строки в ядро кладёт холодный старт (`main.tsx` →
+// `client/boot.ts` дожидается пакета до первого рендера), а в прогоне — общий сетап
+// (`src/test/setup.ts`); на пустом ядре узел напечатал бы имя ключа.
 import type { Authorization } from '@layer'
 import type { Managers } from '@/client/bootstrap'
 import { initHotkeys } from '@core/hotkeys'

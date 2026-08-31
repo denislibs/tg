@@ -5,9 +5,8 @@
 import { describe, expect, it } from 'vitest'
 import CheckboxField from './checkboxField'
 
-// Подписи строит `i18n()`/`_i18n()` ядра, а строки в него кладёт создание хранилища
-// языка — в продукте это делает холодный старт (`main.tsx` → `client/boot.ts`).
-import '@/i18n'
+// Подписи строит `i18n()`/`_i18n()` ядра, а строки в него кладёт холодный старт
+// (`main.tsx` → `client/boot.ts`); в прогоне — общий сетап (`src/test/setup.ts`).
 
 describe('CheckboxField', () => {
   it('label.checkbox-field.checkbox-without-caption > input + .checkbox-box', () => {

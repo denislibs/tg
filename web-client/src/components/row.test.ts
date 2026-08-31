@@ -8,9 +8,8 @@ import CheckboxField from './checkboxField'
 import SidebarSlider from './slider'
 import { SliderSuperTabEventable } from './sliderTab'
 
-// Подписи строит `i18n()`/`_i18n()` ядра, а строки в него кладёт создание хранилища
-// языка — в продукте это делает холодный старт (`main.tsx` → `client/boot.ts`).
-import '@/i18n'
+// Подписи строит `i18n()`/`_i18n()` ядра, а строки в него кладёт холодный старт
+// (`main.tsx` → `client/boot.ts`); в прогоне — общий сетап (`src/test/setup.ts`).
 
 describe('Row', () => {
   it('строит заголовок, подзаголовок и правую часть в разметке tweb', () => {

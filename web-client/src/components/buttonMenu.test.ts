@@ -3,9 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import ButtonMenu, { ButtonMenuItem, ButtonMenuSync, type ButtonMenuItemOptions } from './buttonMenu'
 
 // Подписи пунктов — КЛЮЧИ (`LangPackKey`), а не готовые строки: с задачи 7 роль поля
-// выражена типом, и выдуманное 'x' сюда не положить. Строки в ядро кладёт создание
-// хранилища языка — в продукте это делает холодный старт, здесь нужен явный импорт.
-import '@/i18n'
+// выражена типом, и выдуманное 'x' сюда не положить. Строки в ядро кладёт холодный
+// старт (`client/boot.ts`), а в прогоне — общий сетап (`src/test/setup.ts`).
 import contextMenuController from '@helpers/contextMenuController'
 import ListenerSetter from '@helpers/listenerSetter'
 

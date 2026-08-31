@@ -16,9 +16,8 @@ import type { AvatarManagers } from '@components/avatar'
 import { openDeleteMessageDialog, ForwardPicker, ReactedUsersPopup } from './ChatDialogs'
 import { ManagersProvider } from '../../core/hooks/useManagers'
 
-// Заголовок попапа строит `i18n()` ядра, а строки в него кладёт создание хранилища
-// языка (в продукте — холодный старт `main.tsx` → `client/boot.ts`).
-import '@/i18n'
+// Заголовок попапа строит `i18n()` ядра, а строки в него кладёт холодный старт
+// (`main.tsx` → `client/boot.ts`); в прогоне — общий сетап (`src/test/setup.ts`).
 
 const noop = () => {}
 
