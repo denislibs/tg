@@ -588,6 +588,11 @@ const lang = {
   'KeyboardShortcuts.Section.Stories': 'Stories',
   'KeyboardShortcuts.Title': 'Keyboard Shortcuts',
   KickFromGroup: 'Remove from group',
+  // Имя ЭТОГО языка на нём самом: единственный ключ, чей перевод — не перевод
+  // текста, а самоназвание. Им подписана строка «Язык» в настройках, как у tweb
+  // (`sidebarLeft/tabs/settings.tsx:254` — `i18n('LanguageName')`); списка
+  // языков для этого не нужно.
+  LanguageName: 'English',
   LastName: 'Last name (optional)',
   LastSeenTitle: 'Who can see my Last Seen time?',
   Lately: 'last seen recently',

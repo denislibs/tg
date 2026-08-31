@@ -804,6 +804,9 @@ const es = {
     one_value: 'Enviar video',
     other_value: 'Enviar %d videos',
   },
+  // Самоназвание языка — им подписана строка «Язык» в настройках (tweb
+  // `settings.tsx:254`, `i18n('LanguageName')`).
+  LanguageName: 'Español',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(es)

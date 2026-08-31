@@ -805,6 +805,9 @@ const de = {
     one_value: 'Video senden',
     other_value: '%d Videos senden',
   },
+  // Самоназвание языка — им подписана строка «Язык» в настройках (tweb
+  // `settings.tsx:254`, `i18n('LanguageName')`).
+  LanguageName: 'Deutsch',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(de)

@@ -15,7 +15,7 @@ import TgSwitch from './TgSwitch'
 import Avatar from '../shared/ui/Avatar'
 import { Section, Row } from './settings/kit'
 import classNames from '../shared/lib/classNames'
-import { useT, useLang, LANGS } from '../i18n'
+import { useT } from '../i18n'
 import { useChatsStore } from '../stores/chatsStore'
 import { gradientFor } from '../core/dialogToChat'
 import rootScope from '@lib/rootScope'
@@ -37,7 +37,10 @@ function formatPhone(phone?: string): string {
   return m ? `+7 ${m[1]} ${m[2]} ${m[3]} ${m[4]}` : phone
 }
 
-const settingsItems: { icon: ReactNode; label: LangPackKey; value?: LangPackKey }[] = [
+// Экспорт — ради пина на подпись строки «Язык» (`SettingsView.langRow.test.tsx`):
+// сам корень настроек тянет за собой слайдер вкладок, карточку и попапы, и
+// рендерить всё это ради одной подписи незачем.
+export const settingsItems: { icon: ReactNode; label: LangPackKey; value?: LangPackKey }[] = [
   { icon: <TgIcon name="unmute" size={24} />, label: 'AccountSettings.Notifications' },
   { icon: <TgIcon name="data" size={24} />, label: 'DataSettings' },
   { icon: <TgIcon name="lock" size={24} />, label: 'PrivacySettings' },
@@ -46,7 +49,11 @@ const settingsItems: { icon: ReactNode; label: LangPackKey; value?: LangPackKey 
   { icon: <TgIcon name="smile" size={24} />, label: 'StickersName' },
   { icon: <TgIcon name="videocamera" size={24} />, label: 'AccountSettings.SpeakersAndCamera' },
   { icon: <TgIcon name="devices" size={24} />, label: 'Devices' },
-  { icon: <TgIcon name="language" size={24} />, label: 'Telegram.LanguageViewController', value: 'Telegram.LanguageViewController' },
+  // Подпись строки — имя ТЕКУЩЕГО языка на нём самом, обычным ключом:
+  // `LanguageName` переводится каждым словарём в своё самоназвание (tweb
+  // `sidebarLeft/tabs/settings.tsx:254`). Списка языков для этого не нужно, и
+  // особой ветки на рендере — тоже.
+  { icon: <TgIcon name="language" size={24} />, label: 'Telegram.LanguageViewController', value: 'LanguageName' },
   { icon: <TgIcon name="keyboard" size={24} />, label: 'KeyboardShortcuts.Title' },
 ]
 
@@ -65,8 +72,6 @@ export default function SettingsView({
 }) {
   const t = useT()
   const managers = useManagers()
-  const [lang] = useLang()
-  const currentLangName = LANGS.find((l) => l.code === lang)?.name ?? 'English'
   const themeChoice = useSettings((s) => s.themeChoice)
   const isDark = PRESET_MODE[resolvePreset(themeChoice)] === 'dark'
   const [active, setActive] = useState(initialSub ?? 'AccountSettings.Notifications')
@@ -203,9 +208,7 @@ export default function SettingsView({
               <div className={s.rowIcon}>{it.icon}</div>
               <Text size={16} color="var(--primary-text-color)" className={s.rowBody}>{t(it.label)}</Text>
               {it.value && (
-                <Text size={15} color="var(--secondary-text-color)">
-                  {it.label === 'Telegram.LanguageViewController' ? currentLangName : t(it.value)}
-                </Text>
+                <Text size={15} color="var(--secondary-text-color)">{t(it.value)}</Text>
               )}
             </div>
           ))}

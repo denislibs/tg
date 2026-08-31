@@ -1587,6 +1587,9 @@ const ru = {
   'EditProfile.LastNameLabel': 'Фамилия',
   'AutoDeleteMessages.Disable': 'Отключить',
   'Statistics.Posts': 'Посты',
+  // Самоназвание языка — им подписана строка «Язык» в настройках (tweb
+  // `settings.tsx:254`, `i18n('LanguageName')`).
+  LanguageName: 'Русский',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)

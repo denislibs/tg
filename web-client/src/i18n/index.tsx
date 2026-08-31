@@ -9,15 +9,13 @@ import { en, loaders, type Dict, type Lang } from './dict'
 
 export type { Lang }
 
-// Language picker list (code + native name)
-export const LANGS: { code: Lang; name: string }[] = [
-  { code: 'en', name: 'English' },
-  { code: 'ru', name: 'Русский' },
-  { code: 'uk', name: 'Українська' },
-  { code: 'es', name: 'Español' },
-  { code: 'de', name: 'Deutsch' },
-  { code: 'fr', name: 'Français' },
-]
+/*
+ * Списка языков здесь больше нет (`LANGS`): языки перечисляет СЕРВЕР
+ * (`langpack.getLanguages`), а имя ТЕКУЩЕГО языка — обычный ключ словаря
+ * `LanguageName`, каждый переводит его в своё самоназвание (tweb
+ * `sidebarLeft/tabs/settings.tsx:254`). Местная таблица имён была вторым
+ * ответом на оба вопроса сразу.
+ */
 
 /*
  * `isLang` («знаем ли мы такой язык») отсюда ушла вместе с угадыванием языка по

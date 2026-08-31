@@ -858,6 +858,9 @@ const uk = {
     many_value: 'Надіслати %d відео',
     other_value: 'Надіслати %d відео',
   },
+  // Самоназвание языка — им подписана строка «Язык» в настройках (tweb
+  // `settings.tsx:254`, `i18n('LanguageName')`).
+  LanguageName: 'Українська',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(uk)
