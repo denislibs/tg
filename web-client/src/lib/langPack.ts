@@ -352,6 +352,10 @@ namespace I18n {
    * локальный английский, и приложение поднимается офлайн. Версия у такого
    * пакета 0 — то же, что «пакета нет» на языке владельца (`checkForUpdates`
    * ходит за разницей только от кэша, которого в этом случае и не появилось).
+   *
+   * Вызывающий с `null` РОВНО ОДИН — холодный старт: только там «пакета нет»
+   * значит «поднимаемся на локальном английском». На пути ВЫБОРА то же самое
+   * означало бы стереть уже показанный язык (см. `loadLangPackAndApply`).
    */
   export async function applyServerLangPack(
     serverPack: LangPackDifference | null,
@@ -409,22 +413,53 @@ namespace I18n {
       .finally(() => { cacheLangPackPromise = undefined })
   }
 
-  /** Пакет с сервера (или из кэша владельца, если он про этот же язык) и
-   *  применение — БЕЗ объявления выбора. Это путь СТАРТА: язык уже свой,
-   *  объявлять нечего, а запись в `tg-lang` здесь означала бы, что умолчание
-   *  первого запуска стало выбором (см. `setLangCode`). */
-  export function loadLangPackAndApply(langCode: string): Promise<LangPackDifference> {
-    return loadLangPack(langCode).then((pack) => applyServerLangPack(pack, langCode))
+  /**
+   * Пакет с сервера (или из кэша владельца, если он про этот же язык) и
+   * применение — БЕЗ объявления выбора. Это путь СТАРТА: язык уже свой,
+   * объявлять нечего, а запись в `tg-lang` здесь означала бы, что умолчание
+   * первого запуска стало выбором (см. `setLangCode`).
+   *
+   * ПАКЕТ НЕ ДОЕХАЛ — НЕ ПРИМЕНЯЕМ НИЧЕГО (`undefined`), и это паритет, а не
+   * осторожность. У оригинала `loadLangPack` в этом случае РЕДЖЕКТИТСЯ, весь
+   * `getLangPackAndApply` вместе с ним, и на экране остаются ПРЕЖНИЕ строки
+   * (`sidebarLeft/tabs/language.tsx:133` зовёт без `catch`). У нас же отказ
+   * сети приезжает от владельца значением `null`, и до финального ревью он
+   * утекал в `applyServerLangPack(null)` — то есть тап по «Українська» без сети
+   * превращал РУССКИЙ интерфейс в АНГЛИЙСКИЙ, а перезагрузка (выбор к тому
+   * моменту уже записан) давала тот же английский снова.
+   *
+   * Отличие от оригинала только в том, ЧЕМ сказано «не применили»: `undefined`
+   * вместо реджекта. Реджект здесь нельзя — оба продуктовых вызывающих зовут
+   * через `void` (`i18n/index.tsx::setLang`, `client/boot.ts`), и он стал бы
+   * unhandled rejection; у самого tweb на этом месте латентно то же самое.
+   * `undefined` как «применять нечего» здесь уже принят —
+   * `checkLangPackForUpdates` отвечает так же.
+   *
+   * Локальный английский под пакетом при этом никуда не делся: его кладёт
+   * ХОЛОДНЫЙ СТАРТ (`getCacheLangPackAndApply` → `applyServerLangPack(null)`),
+   * и офлайн-запуск по-прежнему поднимается со строками, а не с ключами.
+   */
+  export function loadLangPackAndApply(langCode: string): Promise<LangPackDifference | undefined> {
+    return loadLangPack(langCode).then((pack) => (pack ? applyServerLangPack(pack, langCode) : undefined))
   }
 
-  /** tweb :233-251 — язык ВЫБРАЛИ явно (экран языка, предложение браузера,
-   *  соседняя вкладка). Единственная строка, которая пишет выбор: у оригинала
-   *  на этом же месте стоит `saveLangPack`, и другого хранилища выбора у него
-   *  нет. */
-  export function getLangPackAndApply(langCode: string): Promise<LangPackDifference> {
+  /**
+   * tweb :233-251 — язык ВЫБРАЛИ явно (экран языка, предложение браузера,
+   * соседняя вкладка).
+   *
+   * ЗАПРОШЕННЫЙ язык двигается сразу, до загрузки, — 1:1 с оригиналом
+   * (`setLangCode` стоит там первой строкой). А ВЫБОР записывается только
+   * СОСТОЯВШИЙСЯ: у tweb хранилище выбора — сам кэш пакета, и пишет его
+   * `saveLangPack`, то есть строка, до которой отказ загрузки не доходит.
+   * Записать выбор наперёд значило бы, что неудавшийся офлайн-тап по чужому
+   * языку переживает перезагрузку и уводит с него уже применённый язык.
+   */
+  export function getLangPackAndApply(langCode: string): Promise<LangPackDifference | undefined> {
     setLangCode(langCode)
-    storeLangCode(langCode)
-    return loadLangPackAndApply(langCode)
+    return loadLangPackAndApply(langCode).then((applied) => {
+      if (applied) storeLangCode(langCode)
+      return applied
+    })
   }
 
   // tweb :130-147

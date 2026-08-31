@@ -44,6 +44,12 @@ const pack = (langCode: string, version: number, strings: LangPackString[], from
 // Русский версии 4 переводит ДВА ключа из тысячи с лишним английских: этого
 // достаточно, чтобы отличить «серверный пакет лёг поверх» от «серверный пакет
 // заменил собой всё» — второй случай оставил бы `Archive` без перевода вовсе.
+// Английский У СЕРВЕРА ЕСТЬ (`langsource`), и его пакет — это ровно те строки,
+// что лежат в нашем `src/lang.ts`; своих переводов сверху у него нет. Пустой
+// список строк здесь — не заглушка, а честная модель: слияние кладёт под него
+// локальный английский.
+const EN_V1 = pack('en', 1, [])
+
 const RU_V4 = pack('ru', 4, [str('CurrentSession', 'Это устройство'), str('Archive', 'Архив')])
 const RU_V9 = pack('ru', 9, [str('CurrentSession', 'Это устройство (обновлено)'), str('Archive', 'Архив')], 4)
 
@@ -146,7 +152,7 @@ describe('I18n: загрузка пакета и применение', () => {
   it('живой узел перерисовывается при смене языка', async() => {
     // Сервер отвечает ПО КОДУ ЯЗЫКА: у английского серверного пакета нет вовсе
     // (его строки и есть локальный источник), у русского — версия 4.
-    owner.getPack.mockImplementation(async (langCode: string) => (langCode === 'ru' ? RU_V4 : null))
+    owner.getPack.mockImplementation(async (langCode: string) => (langCode === 'ru' ? RU_V4 : EN_V1))
 
     await I18n.getLangPackAndApply('en')
     const el = i18n('CurrentSession')
@@ -205,13 +211,35 @@ describe('I18n: загрузка пакета и применение', () => {
     expect(i18n('ArchivedChats').textContent).toBe('Archived Chats')
   })
 
-  it('владелец отказал на смене языка — применяется английский, а не символические ключи', async() => {
+  // РАСХОЖДЕНИЕ, УЗАКОНЕННОЕ ПРЕЖНИМ ПИНОМ, И ЕГО ОТМЕНА (финальное ревью).
+  // Здесь стояло «владелец отказал на смене языка — применяется английский»: не
+  // доехавший пакет утекал в `applyServerLangPack(null)`, то есть тап по
+  // «Українська» без сети превращал РУССКИЙ интерфейс в английский, а
+  // перезагрузка давала его же (выбор был записан наперёд). У оригинала
+  // `getLangPackAndApply` в этом случае реджектится, и строки остаются
+  // ПРЕЖНИМИ (`sidebarLeft/tabs/language.tsx:133` зовёт без `catch`).
+  it('пакет не доехал — на экране остаются ПРЕЖНИЕ строки, а выбор не записан', async() => {
+    localStorage.removeItem('tg-lang')
+    I18n.setLangCode('ru') // выбран русский, кэш про него же
+    owner.cachedPack.mockResolvedValue(RU_V4)
+    await I18n.getCacheLangPackAndApply()
+
+    const el = i18n('CurrentSession')
+    document.body.append(el)
+    expect(el.textContent).toBe('Это устройство')
+
+    // Пользователь тапнул чужой язык, а сети нет.
     owner.getPack.mockRejectedValue(new Error('worker gone'))
+    const applied = await I18n.getLangPackAndApply('uk')
 
-    await I18n.getLangPackAndApply('ru')
-
-    expect(I18n.getLastRequestedLangCode()).toBe('ru')
-    expect(i18n('CurrentSession').textContent).toBe('This device')
+    // ГЛАВНОЕ — экран: русский остаётся русским.
+    expect(el.textContent).toBe('Это устройство')
+    expect(applied).toBeUndefined()
+    // Запрошенный язык сдвинулся (у оригинала `setLangCode` тоже стоит до
+    // загрузки), а ВЫБОР — нет: переживать перезагрузку несостоявшемуся
+    // переключению нечем.
+    expect(I18n.getLastRequestedLangCode()).toBe('uk')
+    expect(localStorage.getItem('tg-lang')).toBeNull()
   })
 
   it('язык переключили, пока летела проверка — доехавшая разница наружу не уезжает', async() => {
@@ -228,8 +256,9 @@ describe('I18n: загрузка пакета и применение', () => {
     owner.checkForUpdates.mockReturnValue(new Promise((r) => { release = r }))
     const checking = checkLangPackForUpdates()
 
-    // Пользователь переключился на английский: серверного пакета у английского
-    // нет вовсе, его строки и есть локальный источник.
+    // Пользователь переключился на английский: его серверный пакет своих
+    // переводов не несёт — строки английского и есть локальный источник.
+    owner.getPack.mockResolvedValue(EN_V1)
     await I18n.getLangPackAndApply('en')
     expect(el.textContent).toBe('This device')
 
@@ -279,7 +308,7 @@ describe('applyLangPack объявляет смену языка соседни�
     // событие уходит на СМЕНУ применённого (`lastAppliedLangCode`), и соседний
     // тест этого же файла, оставивший применённым русский, сделал бы
     // переключение на русский ниже не сменой вовсе.
-    owner.getPack.mockResolvedValue(null)
+    owner.getPack.mockResolvedValue(EN_V1)
     await I18n.getLangPackAndApply('en')
     rootScope.cleanup()
   })

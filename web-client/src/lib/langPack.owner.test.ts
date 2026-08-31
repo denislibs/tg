@@ -156,6 +156,9 @@ describe('владелец текущего языка', () => {
 describe('React-стор ЗЕРКАЛИТ владельца, а не заводит свой язык', () => {
   beforeEach(() => {
     localStorage.clear()
+    // Пакет владельца — общий мок на файл, и «пакет не доехал» это ОТДЕЛЬНОЕ
+    // утверждение соседнего теста: без сброса оно зеленело бы на чужом моке.
+    owner.getPack.mockReset().mockResolvedValue(null)
   })
 
   it('поднимается на языке ядра, а не на своём чтении хранилища', async() => {
@@ -169,19 +172,21 @@ describe('React-стор ЗЕРКАЛИТ владельца, а не завод
 
   it('выбор языка в интерфейсе доезжает до владельца и до хранилища', async() => {
     const { I18n, useI18nStore } = await bootStore()
+    owner.getPack.mockResolvedValue(serverPack('de'))
 
     useI18nStore.getState().setLang('de')
 
     // Владелец узнаёт СРАЗУ (порт tweb `getLangPackAndApply`: `setLangCode`
     // стоит до загрузки), а зеркало — вместе со строками, поэтому его тут ещё
-    // не сдвинуло: пакет летит.
+    // не сдвинуло: пакет летит. Хранилище — вместе с зеркалом: выбор
+    // записывается только СОСТОЯВШИЙСЯ.
     expect(I18n.getLastRequestedLangCode()).toBe('de')
-    expect(localStorage.getItem('tg-lang')).toBe('de')
     expect(useI18nStore.getState().lang).toBe('en')
 
     await I18n.getLangPackAndApply('de')
 
     expect(useI18nStore.getState().lang).toBe('de')
+    expect(localStorage.getItem('tg-lang')).toBe('de')
   })
 
   // MINOR ревью задачи 8: зеркало и строки — один факт с двух сторон. Раньше
@@ -192,7 +197,7 @@ describe('React-стор ЗЕРКАЛИТ владельца, а не завод
   it('пакет ещё летит — кружок не переехал вперёд строк', async() => {
     const { I18n, useI18nStore } = await bootStore()
     let release: () => void = () => {}
-    owner.getPack.mockImplementationOnce(() => new Promise((resolve) => { release = () => resolve(null) }))
+    owner.getPack.mockImplementationOnce(() => new Promise((resolve) => { release = () => resolve(serverPack('ru')) }))
 
     const flying = I18n.getLangPackAndApply('ru')
 
@@ -207,17 +212,23 @@ describe('React-стор ЗЕРКАЛИТ владельца, а не завод
     expect(useI18nStore.getState().lang).toBe('ru')
   })
 
-  // Пакета у сервера нет (или сети нет вовсе) — это НЕ повод остаться без строк:
-  // под пакетом всегда лежит локальный английский, и вкладка поднимается.
-  it('язык, пакета для которого нет, остаётся языком, а строки — английскими', async() => {
+  // Пакет не доехал (сети нет, языка у сервера нет) — экран не меняется ВООБЩЕ:
+  // ни строки, ни кружок выбранного языка, ни хранилище. Это паритет с
+  // оригиналом, у которого `getLangPackAndApply` в этом случае реджектится, а
+  // вызывающий (`sidebarLeft/tabs/language.tsx:133`) реджект не ловит — см.
+  // разбор у `loadLangPackAndApply`. Запрошенный язык при этом сдвигается: у
+  // tweb `setLangCode` тоже стоит ДО загрузки.
+  it('пакет не доехал — зеркало, строки и выбор остаются прежними', async() => {
     const { I18n, useI18nStore } = await bootStore()
 
-    await I18n.getLangPackAndApply('it')
+    const applied = await I18n.getLangPackAndApply('it')
 
+    expect(applied).toBeUndefined()
     expect(owner.getPack).toHaveBeenCalledWith('it')
     expect(I18n.getLastRequestedLangCode()).toBe('it')
-    expect(useI18nStore.getState().lang).toBe('it')
+    expect(useI18nStore.getState().lang).toBe('en')
     expect(useI18nStore.getState().t('ArchivedChats')).toBe('Archived Chats')
+    expect(localStorage.getItem('tg-lang')).toBeNull()
   })
 })
 
@@ -233,8 +244,10 @@ describe('предложение языка по браузеру (#117)', () =>
   beforeEach(() => {
     localStorage.clear()
     // Счётчик вызовов — часть утверждений ниже («список не спрашивали вовсе»),
-    // поэтому чистится: мок владельца общий на весь файл.
+    // поэтому чистится: мок владельца общий на весь файл. Пакет — тоже: соседний
+    // блок оставляет за собой `mockResolvedValue`.
     owner.getLanguages.mockClear()
+    owner.getPack.mockReset().mockResolvedValue(null)
   })
 
   afterEach(() => {
@@ -252,6 +265,9 @@ describe('предложение языка по браузеру (#117)', () =>
 
   it('без выбора берётся язык браузера — и он же объявлен владельцу', async() => {
     vi.spyOn(navigator, 'language', 'get').mockReturnValue('ru-RU')
+    // Пакет предложенного языка ДОЕХАЛ: предложение — это тот же путь выбора,
+    // и не доехавший пакет на нём теперь не применяется вовсе.
+    owner.getPack.mockResolvedValue(serverPack('ru'))
 
     const { I18n, useI18nStore } = await suggest()
 

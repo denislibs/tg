@@ -53,9 +53,14 @@ function renderScreen(getLanguages: () => Promise<LangPackLanguage[]>) {
 }
 
 describe('экран выбора языка', () => {
-  afterEach(() => {
+  afterEach(async() => {
     cleanup()
-    useI18nStore.getState().setLang('en')
+    // Английский возвращается ТЕМ ЖЕ входом, каким прогон вообще подаёт язык
+    // (`test/lang.ts`), а не продуктовым `setLang`: продуктовый путь ходит к
+    // серверу, и пакет, который не доехал, теперь НЕ применяется вовсе
+    // (`lib/langPack.ts::loadLangPackAndApply`) — соседний тест получал бы
+    // строки предыдущего.
+    await applyLang('en')
   })
 
   it('рисует языки сервера в порядке сервера', async() => {
