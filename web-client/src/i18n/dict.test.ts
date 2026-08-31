@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest'
 
 import lang, { type LangPackKey } from '@/lang'
 import I18n, { i18n } from '@lib/langPack'
+import { applyLang } from '@/test/lang'
 
 import ru from './dict.ru'
 import uk from './dict.uk'
@@ -20,14 +21,13 @@ import fr from './dict.fr'
 const DICTS = { ru, uk, es, de, fr }
 type Code = keyof typeof DICTS
 
-/** Применение языка — единственный вход, каким строки попадают в ядро. Английский
- *  источник кладётся под низ, как это делает загрузчик: перевода может не быть. */
-function apply(code: Code) {
-  const strings = I18n.formatLocalStrings(lang)
-  strings.push(...DICTS[code])
-  I18n.setLangCode(code)
-  I18n.applyLangPack({ _: 'langPackDifference', lang_code: code, from_version: 0, version: 1, strings })
-}
+/**
+ * Применение языка — тем же кодом продукта, что и в бою (`@/test/lang::applyLang`
+ * → `I18n.applyServerLangPack`). Слияние «английский вниз, перевод поверх» здесь
+ * НЕ ПОВТОРЯЕТСЯ: повторённое, оно превращало бы проверки «непереведённый ключ
+ * показывает английский» в проверки оснастки — разбор у самой `applyLang`.
+ */
+const apply = applyLang
 
 const text = (key: LangPackKey, args: (string | number)[]) => i18n(key, args).textContent
 
@@ -145,8 +145,8 @@ describe('состав словарей под пином', () => {
 describe('формы числа выбирает язык, а не вызывающий', () => {
   // Числа выбраны по границам русского правила: 1 — one, 2 — few, 5 — many, 21 — снова
   // one. Именно 21 ловит «взяли форму по последней цифре наоборот» и «few вместо many».
-  it('русский склоняет 1/2/5/21', () => {
-    apply('ru')
+  it('русский склоняет 1/2/5/21', async () => {
+    await apply('ru')
     expect([1, 2, 5, 21].map((n) => text('Notifications.Count', [n]))).toEqual([
       '1 уведомление',
       '2 уведомления',
@@ -158,8 +158,8 @@ describe('формы числа выбирает язык, а не вызыва�
   // Ключи-ОБРЫВКИ, сведённые задачей 6: интерфейс печатал «5» и «участников» рядом, и
   // слово не склонялось — «1 участников». Проверка держит именно это: единица обязана
   // дать единственное число, а не общую форму.
-  it('сведённые обрывки склоняются: участники, подписчики, стикеры, дни', () => {
-    apply('ru')
+  it('сведённые обрывки склоняются: участники, подписчики, стикеры, дни', async () => {
+    await apply('ru')
     expect([
       text('Members', [1]), text('Members', [2]), text('Members', [5]),
       text('Subscribers', [1]), text('Stickers', [1]), text('Days', [1]), text('Days', [3]),
@@ -169,8 +169,8 @@ describe('формы числа выбирает язык, а не вызыва�
     ])
   })
 
-  it('украинский склоняет 1/2/5/21', () => {
-    apply('uk')
+  it('украинский склоняет 1/2/5/21', async () => {
+    await apply('uk')
     expect([1, 2, 5, 21].map((n) => text('Notifications.Count', [n]))).toEqual([
       '1 сповіщення',
       '2 сповіщення',
@@ -182,19 +182,19 @@ describe('формы числа выбирает язык, а не вызыва�
   // Слот `other` у славянских языков достаётся ТОЛЬКО дробным, и там родительный
   // единственного, а не форма `many`. Проверка держит это утверждение данными: без неё
   // комментарий у словаря обещал бы больше, чем в нём лежит.
-  it('дробное число берёт other, и это не форма many', () => {
-    apply('ru')
+  it('дробное число берёт other, и это не форма many', async () => {
+    await apply('ru')
     expect(text('Notifications.Count', [1.5])).toBe('1.5 уведомления')
-    apply('uk')
+    await apply('uk')
     expect(text('Notifications.Count', [1.5])).toBe('1.5 сповіщення')
   })
 
   // У немецкого, испанского и французского форм всего две — и это не «недоперевод»,
   // а правило языка: пятёрка обязана дать ту же форму, что и двойка.
-  it('у языков с двумя формами 2 и 5 дают одно и то же', () => {
+  it('у языков с двумя формами 2 и 5 дают одно и то же', async () => {
     const got: Record<string, string[]> = {}
     for (const code of ['de', 'es', 'fr'] as const) {
-      apply(code)
+      await apply(code)
       got[code] = [1, 2, 5].map((n) => text('Notifications.Count', [n])!)
     }
     expect(got).toEqual({
@@ -206,10 +206,10 @@ describe('формы числа выбирает язык, а не вызыва�
 
   // Форму даёт КОД ЯЗЫКА пакета: те же данные под другим кодом склоняются иначе.
   // Без этого «правильный русский» мог бы оказаться правилом прошлого языка.
-  it('смена языка меняет правило, а не только слова', () => {
-    apply('ru')
+  it('смена языка меняет правило, а не только слова', async () => {
+    await apply('ru')
     const before = text('Notifications.Count', [5])
-    apply('de')
+    await apply('de')
     expect(before).toBe('5 уведомлений')
     expect(text('Notifications.Count', [5])).toBe('5 Benachrichtigungen')
   })
@@ -226,8 +226,8 @@ describe('формы числа выбирает язык, а не вызыва�
   //  • у русского форма единицы обязана отличаться от формы пятёрки — иначе в `one`
   //    скопировали `many` (ровно мутация ревью);
   //  • 21 обязана дать ту же форму, что 1 — это и есть правило языка, а не текст.
-  it('у каждого числового ключа русские формы различают 1, 5 и 21', () => {
-    apply('ru')
+  it('у каждого числового ключа русские формы различают 1, 5 и 21', async () => {
+    await apply('ru')
     const bad: string[] = []
     for (const string of DICTS.ru) {
       if (string._ !== 'langPackStringPluralized') continue
@@ -280,10 +280,10 @@ describe('формы числа выбирает язык, а не вызыва�
 
   // Каждая форма, объявленная в словаре, обязана ДОЕХАТЬ до текста: недостающая
   // выдаёт себя тем, что ядро показывает сам ключ или чужой язык.
-  it('в каждом словаре все формы всех числовых строк дают перевод', () => {
+  it('в каждом словаре все формы всех числовых строк дают перевод', async () => {
     const bad: string[] = []
     for (const code of Object.keys(DICTS) as Code[]) {
-      apply(code)
+      await apply(code)
       for (const string of DICTS[code]) {
         if (string._ !== 'langPackStringPluralized') continue
         const key = string.key as LangPackKey
@@ -296,6 +296,71 @@ describe('формы числа выбирает язык, а не вызыва�
     }
     expect(bad).toEqual([])
   })
+})
+
+// ── НЕПЕРЕВЕДЁННЫЙ КЛЮЧ ЧИТАЕТСЯ ПО-АНГЛИЙСКИ, А НЕ СВОИМ ИМЕНЕМ ────────────────
+//
+// Это главное правило слияния (`I18n.applyServerLangPack`, порт tweb :237-244), и
+// до ревью задачи 9 оно НЕ БЫЛО ЗАПИНЕНО на продуктовом пути: единственная
+// целившаяся туда проверка стояла на ключе `Delete`, чьё английское значение
+// буквально равно его имени, — «упало на английский» и «вернуло имя ключа» там
+// неотличимы. Мутация «снять английский нижний слой» оставляла всю сюиту зелёной.
+//
+// Отказ, который здесь стережётся, видит пользователь: у украинского, немецкого,
+// испанского и французского переведена примерно ПОЛОВИНА словаря, и без нижнего
+// слоя вторая половина поехала бы на экран символическими именами
+// («PeerInfo.Discussion» вместо «Discussion»).
+//
+// Проверяются ВСЕ непереведённые ключи каждого языка разом, а не образец, и
+// только те, чей английский текст с именем НЕ совпадает: на остальных
+// утверждение невыразимо (таких ключей в `lang.ts` шестьдесят один).
+describe('нижний английский слой держит непереведённые ключи', () => {
+  /** Ключи, у которых «английский текст» отличим от «имени ключа». */
+  const EXPRESSIVE = (Object.keys(lang) as LangPackKey[])
+    .filter((key) => typeof lang[key] === 'string' && lang[key] !== key)
+
+  /**
+   * Эталон считается ИЗ ФАЙЛА `lang.ts`, МИМО применения языка, — и это условие
+   * зрячести, а не удобство. Первая редакция брала эталоном выдачу `i18n()` на
+   * применённом английском, и проверка ослепла ровно на той мутации, ради которой
+   * писалась: снятый нижний слой ломает обе стороны одинаково (и «эталон», и
+   * измеряемое становятся именем ключа), сравнение сходится, тест зелёный.
+   *
+   * Сырое значение эталоном тоже не годится: разметку и плейсхолдеры разбирает
+   * `superFormatter` («Do you want to set «%1$s» …» без аргументов даёт «Do you
+   * want to set «» …»). Поэтому эталон — то же значение, прогнанное через ТОТ ЖЕ
+   * разбор, но взятое из файла, а не из карты строк.
+   */
+  const flatten = (pieces: ReturnType<typeof I18n.superFormatter>) => pieces
+    .map((piece) => (piece instanceof HTMLBRElement ? '\n' : piece instanceof Node ? piece.textContent : String(piece)))
+    .join('')
+  const english = new Map(EXPRESSIVE.map((key) => [key, flatten(I18n.superFormatter(lang[key] as string))]))
+
+  it('сам набор проверяемых ключей не выродился', () => {
+    // Иначе «нарушителей нет» означало бы «проверять было нечего».
+    expect(EXPRESSIVE.length).toBeGreaterThan(700)
+  })
+
+  for (const code of Object.keys(DICTS) as Code[]) {
+    it(`${code}: ключ без перевода показывает английский текст`, async () => {
+      await apply(code)
+      const translated = new Set(DICTS[code].map((string) => string.key))
+      const bad: string[] = []
+      for (const key of EXPRESSIVE) {
+        if (translated.has(key)) continue
+        // Спрашивается СТРОКОВЫЙ режим (`format(key, true)`) — тот самый, которым
+        // читает `t()`. Не `i18n(key).textContent`: у узла `<br>` даёт пустоту, а
+        // строковый режим — перевод строки, и сверка ломалась бы на пяти
+        // многострочных ключах экрана входа, ничего про слой не говоря.
+        const got = I18n.format(key, true)
+        if (got !== english.get(key)) bad.push(`${code} ${key}: «${got}» вместо «${english.get(key)}»`)
+      }
+      // Список режется: без нижнего слоя сюда попали бы сотни ключей, и
+      // сообщение об ошибке стало бы нечитаемым.
+      expect(bad.slice(0, 5)).toEqual([])
+      expect(bad.length).toBe(0)
+    })
+  }
 })
 
 // Задача #102: пока английский был сам себе ключом, «строка осталась английской» и
@@ -447,21 +512,21 @@ describe('непереведённый ключ виден как отсутст
 // префиксом («Auch löschen für %1$s»), и поймало её ревью, а не проверка. Теперь —
 // проверка.
 describe('порядок слов и кавычки живут в строке языка', () => {
-  it('немецкий ставит глагол в конец: аргумент ВНУТРИ фразы, а не после неё', () => {
-    apply('de')
+  it('немецкий ставит глагол в конец: аргумент ВНУТРИ фразы, а не после неё', async () => {
+    await apply('de')
     expect(text('DeleteMessagesOptionAlso', ['Maya'])).toBe('Auch für Maya löschen')
   })
 
-  it('у каждого языка свои кавычки вокруг запроса', () => {
-    apply('de')
+  it('у каждого языка свои кавычки вокруг запроса', async () => {
+    await apply('de')
     expect(text('Search.Empty', ['кабачок'])).toBe('Keine Ergebnisse für „кабачок“. Versuche eine neue Suche.')
 
-    apply('fr')
+    await apply('fr')
     // Французская типографика требует УЗКИХ НЕРАЗРЫВНЫХ пробелов внутри гильеметов
     // (U+202F) — обычный пробел здесь такая же ошибка, как его отсутствие.
     expect(text('Search.Empty', ['кабачок'])).toBe('Aucun résultat pour « кабачок ». Essayez une autre recherche.')
 
-    apply('ru')
+    await apply('ru')
     expect(text('Search.Empty', ['кабачок'])).toBe('Ничего не найдено по запросу «кабачок». Попробуйте другой запрос.')
   })
 })

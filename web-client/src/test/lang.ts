@@ -34,19 +34,35 @@ const DICTS: Record<string, () => Promise<{ default: LangPackString[] }>> = {
 }
 
 /**
- * Применить язык так, как это делает бой. Порядок слоёв тот же, что в
- * `I18n.applyServerLangPack` (порт tweb :237-244): английский вниз, перевод
- * поверх — непереведённый ключ обязан падать на английский, а не на своё имя.
+ * Применить язык ТЕМ ЖЕ КОДОМ, каким это делает бой.
+ *
+ * Слияние «локальный английский ПОД серверным пакетом» здесь НЕ ПОВТОРЯЕТСЯ, и
+ * это главное свойство файла. Первая редакция его повторяла
+ * (`formatLocalStrings(lang)` + push словаря + `applyLangPack`), и цена
+ * обнаружилась сразу: почти каждая проверка «непереведённый ключ падает на
+ * английский» проверяла тогда ЭТУ ОСНАСТКУ, а не продукт — мутация «снять
+ * английский нижний слой в `applyServerLangPack`» оставляла всю сюиту зелёной.
+ * Отказ при этом настоящий и видимый пользователю: на украинском, немецком,
+ * испанском и французском переведена примерно половина словаря, и без нижнего
+ * слоя вторая половина поехала бы на экран символическими именами.
+ *
+ * Поэтому единственное, что делает эта функция, — ПОДАЁТ ПАКЕТ: собирает его из
+ * файла-исходника и отдаёт `applyServerLangPack`. Слои складывает продукт.
  *
  * `setLangCode` до применения — тоже как в бою (`getLangPackAndApply`): иначе
  * сверка `applyLangPack` («пакет не про текущий язык») отбросила бы пакет молча.
+ * Языка без файла перевода это касается наравне с английским: пакета нет
+ * (`null`), и под ним остаётся один локальный английский — ровно то же, что в
+ * бою делает отказ сети.
  */
 export async function applyLang(code: string): Promise<void> {
-  const strings = I18n.formatLocalStrings(lang)
   const load = DICTS[code]
-  if (load) strings.push(...(await load()).default)
+  const strings = load ? (await load()).default : undefined
   I18n.setLangCode(code)
-  I18n.applyLangPack({ _: 'langPackDifference', lang_code: code, from_version: 0, version: 1, strings })
+  await I18n.applyServerLangPack(
+    strings ? { _: 'langPackDifference', lang_code: code, from_version: 0, version: 1, strings } : null,
+    code,
+  )
 }
 
 /**

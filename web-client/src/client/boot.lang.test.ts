@@ -53,10 +53,17 @@ vi.mock('../core/state/loadState', async () => {
 })
 
 import I18n, { i18n } from '@lib/langPack'
+import rootScope from '@lib/rootScope'
 import { bootstrap } from './boot'
 
 beforeEach(() => {
   I18n.strings.clear()
+  I18n.setLangCode('en')
+  // `bootstrap()` вешает подписку на смену языка, и в прогоне он зовётся в
+  // каждом тесте — накопленные подписки снимаются целиком (`cleanup` вендорной
+  // шины), иначе «второй поход в сеть» ловился бы их числом, а не сверкой в
+  // самом обработчике.
+  rootScope.cleanup()
   vi.clearAllMocks()
 })
 
@@ -80,5 +87,43 @@ describe('boot: язык поднят до первого кадра', () => {
     await bootstrap()
 
     expect(i18n('ArchivedChats').textContent).toBe('Archived Chats')
+  })
+})
+
+// ── ПРИЁМНИК КРОСС-ТАБОВОЙ СМЕНЫ ЯЗЫКА (порт tweb index.ts:519-521) ─────────────
+//
+// Цепочка из ТРЁХ звеньев: отправка (`langPack.ts::applyLangPack` →
+// `dispatchEvent('language_change')`), перенос (`realtimeBridge::WORKER_EVENTS`) и
+// приём — вот он. Живая проверка задачи 9 нашла обрыв в среднем звене, и первый
+// заход запинил только его: удаление отправки ИЛИ этой подписки оставляло всю
+// сюиту зелёной (4223 из 4223), то есть обрыв возвращался бы молча. Отправку
+// пинит `lib/langPack.load.test.ts`, приём — здесь.
+describe('boot: смена языка в соседней вкладке применяется', () => {
+  it('событие шины ведёт к загрузке пакета объявленного языка', async () => {
+    await bootstrap()
+    langPack.getPack.mockClear()
+
+    // `dispatchEventSingle`, а не `dispatchEvent`: так это событие и приходит от
+    // соседа — насос вкладки ре-эмитит принятое СТРОГО локально, иначе оно ушло
+    // бы обратно в воркер и закольцевалось.
+    rootScope.dispatchEventSingle('language_change', 'ru')
+    await Promise.resolve()
+
+    expect(langPack.getPack).toHaveBeenCalledWith('ru')
+    expect(I18n.getLastRequestedLangCode()).toBe('ru')
+  })
+
+  it('СВОЁ событие второго похода в сеть не делает', async () => {
+    // Шина шлёт порождённое этой вкладкой и локальным подписчикам тоже, а язык к
+    // этому моменту уже применён. Без сверки каждая смена языка стоила бы двух
+    // запросов пакета, а у tweb на этом месте прямо стоит оговорка «will occur
+    // extra time in the original tab though» — сверка её и снимает.
+    await bootstrap()
+    langPack.getPack.mockClear()
+
+    rootScope.dispatchEventSingle('language_change', I18n.getLastRequestedLangCode())
+    await Promise.resolve()
+
+    expect(langPack.getPack).not.toHaveBeenCalled()
   })
 })

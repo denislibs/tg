@@ -79,7 +79,6 @@ export const useI18nStore = create<I18nState>(() => ({
 // непрочитанных, у нас — весь React разом.
 rootScope.addEventListener('language_apply', () => { useI18nStore.setState(snapshot()) })
 
-export const useI18n = () => useI18nStore()
 export const useT = () => useI18nStore((s) => s.t)
 export const useTArgs = () => useI18nStore((s) => s.tArgs)
 export function useLang() {
