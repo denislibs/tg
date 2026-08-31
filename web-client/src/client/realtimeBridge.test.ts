@@ -88,6 +88,22 @@ describe('realtimeBridge.startRealtime — насос smp → rootScope', () => 
   // вкладка порождает событие через rootScope.dispatchEvent) замечает пропажу:
   // без setPort порт остаётся null и локальное событие никуда, кроме локальных
   // слушателей, не уходит.
+  // Событие СМЕНЫ ЯЗЫКА идёт по этому же насосу, но оно не `RT.*`: порождает его
+  // вкладка (`lib/langPack.ts::applyLangPack`), а воркер лишь ретранслирует соседям.
+  // Пин заведён живой проверкой задачи 9: имя отсутствовало в `WORKER_EVENTS`, и
+  // соседняя вкладка языка не меняла — при том, что ОТПРАВКА работала (исходящий
+  // путь имён не перечисляет), то есть дефект был виден только на двух вкладках.
+  it('смена языка в соседней вкладке доезжает до rootScope этой', async () => {
+    const { deliver, rootScope, startRealtime } = await setup()
+    startRealtime()
+    const received: unknown[] = []
+    rootScope.addEventListener('language_change', (code) => received.push(code))
+
+    deliver({ kind: 'event', event: 'language_change', payload: 'ru' })
+
+    expect(received).toEqual(['ru'])
+  })
+
   it('rootScope.setPort(smp) реально вызывается — событие этой вкладки (dispatchEvent) уходит в порт', async () => {
     const { rootScope, RT, startRealtime, startClient } = await setup()
     startRealtime()

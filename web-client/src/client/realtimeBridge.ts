@@ -16,7 +16,17 @@ let started = false
 
 // Полный каталог событий, которые может прислать воркер. Насос перекачивает каждое
 // в rootScope; новое событие достаточно добавить в RT — оно будет транслироваться.
-const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress', 'state:mirror']
+//
+// СПИСОК ЯВНЫЙ, И ЭТО ЛОВУШКА, на которую задача 9 уже наступила. Исходящий путь
+// (`rootScope.dispatchEvent` → порт → воркер → соседние вкладки) работает для
+// ЛЮБОГО имени события; входящий — только для перечисленных здесь. Событие, которое
+// шлют, но не принимают, выглядит как работающее у отправителя и молчащее у всех
+// остальных, и живая проверка нашла ровно это: `language_change` (смена языка в
+// соседней вкладке) уходила в воркер, доезжала до соседей и там пропадала.
+//
+// `language_change` — не `RT.*`: его порождает не воркер, а ВКЛАДКА
+// (`lib/langPack.ts::applyLangPack`, порт tweb :325), воркер только ретранслирует.
+const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress', 'state:mirror', 'language_change']
 
 // Subscribe to worker realtime events exactly once per page.
 export function startRealtime(): void {
