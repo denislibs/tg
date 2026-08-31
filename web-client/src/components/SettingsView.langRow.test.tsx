@@ -13,15 +13,44 @@
  * нет, а шумного окружения много.
  */
 import { describe, expect, it, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, cleanup, act } from '@testing-library/react'
 
-import { loadLang, useI18nStore, useT } from '@/i18n'
-import { settingsItems } from './SettingsView'
+import type { ReactNode } from 'react'
 
-function LanguageRow() {
-  const t = useT()
-  const item = settingsItems.find((i) => i.label === 'Telegram.LanguageViewController')!
-  return <div>{item.value ? t(item.value) : null}</div>
+import type { Managers } from '@/client/bootstrap'
+import { ManagersProvider } from '@core/hooks/useManagers'
+import { loadLang, useI18nStore } from '@/i18n'
+import SettingsView from './SettingsView'
+
+// Менеджеры — ШОВ (граница с воркером), всё остальное настоящее: рисуется САМ
+// экран настроек, а не его пересказ. Пересказ здесь уже был и оказался
+// тавтологией: собственный компонент повторял рендер строки и зеленел, даже
+// когда в настоящем экране стояло жёсткое «English».
+const managers = {
+  peers: { fillMirror: async () => {} },
+  media: { downloadMediaURL: async () => undefined },
+  sessions: { getAll: async () => [] },
+} as unknown as Managers
+
+const wrapper = ({ children }: { children: ReactNode }) => (
+  <ManagersProvider managers={managers}>{children}</ManagersProvider>
+)
+
+/**
+ * Подпись строки «Язык» — значение справа.
+ *
+ * Ищется СТРУКТУРОЙ, а не текстом: текстом искать нечего, у строки на русском
+ * меняется и титул («Язык»), и значение — а проверяется именно их пара. Строка
+ * со значением в этой секции ровно одна (у остальных пунктов `value` нет), и это
+ * утверждается тут же — иначе локатор молча начал бы читать чужую строку.
+ */
+function languageRowValue() {
+  const withValue = Array.from(document.querySelectorAll('[class*="rowClickable"]'))
+    // Иконка + титул + ЗНАЧЕНИЕ. Третий узел бывает и у «Ночного режима», но там
+    // это `<label>` тумблера, а не подпись.
+    .filter((row) => row.children.length === 3 && row.lastElementChild!.tagName === 'DIV')
+  expect(withValue).toHaveLength(1)
+  return withValue[0].lastElementChild!.textContent
 }
 
 describe('строка «Язык» в настройках', () => {
@@ -32,18 +61,20 @@ describe('строка «Язык» в настройках', () => {
 
   it('на английском подписана «English»', async() => {
     await loadLang('en')
-    render(<LanguageRow />)
+    render(<SettingsView onBack={() => {}} onToggleMode={() => {}} />, { wrapper })
 
-    expect(screen.getByText('English')).toBeTruthy()
+    expect(languageRowValue()).toBe('English')
   })
 
   it('после смены языка подписана его самоназванием', async() => {
-    render(<LanguageRow />)
+    render(<SettingsView onBack={() => {}} onToggleMode={() => {}} />, { wrapper })
+    expect(languageRowValue()).toBe('English')
 
-    useI18nStore.getState().setLang('ru')
-    await loadLang('ru')
+    await act(async () => {
+      useI18nStore.getState().setLang('ru')
+      await loadLang('ru')
+    })
 
-    expect(screen.getByText('Русский')).toBeTruthy()
-    expect(screen.queryByText('English')).toBeNull()
+    expect(languageRowValue()).toBe('Русский')
   })
 })

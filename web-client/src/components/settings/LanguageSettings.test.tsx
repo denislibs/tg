@@ -84,11 +84,12 @@ describe('экран выбора языка', () => {
 
     fireEvent.click(screen.getByText('Russian'))
 
+    // Владелец узнаёт сразу; зеркало (и кружок на экране) — вместе со строками,
+    // когда чанк словаря доехал. Порядок именно такой: отмеченным показывается
+    // язык, который УЖЕ на экране.
     expect(I18n.getLastRequestedLangCode()).toBe('ru')
-    expect(useI18nStore.getState().lang).toBe('ru')
-    // Чанк словаря `setLang` запускает через `void` — дожидаемся, иначе он
-    // догрузится уже после сноса тестового окружения.
     await loadLang('ru')
+    expect(useI18nStore.getState().lang).toBe('ru')
   })
 
   it('кружок горит у выбранного языка, а не у первой строки', async() => {

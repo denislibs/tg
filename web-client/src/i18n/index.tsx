@@ -17,11 +17,39 @@ export type { Lang }
  * ответом на оба вопроса сразу.
  */
 
-/*
- * `isLang` («знаем ли мы такой язык») отсюда ушла вместе с угадыванием языка по
- * браузеру: список языков теперь отдаёт СЕРВЕР (`langpack.getLanguages`), а
- * наличие чанка словаря проверяется там, где чанк и грузится (`loadLang`).
+/**
+ * Язык, КОТОРЫЙ МЫ УМЕЕМ ПОКАЗАТЬ. Тот же набор, что перечисляет сервер, и это
+ * не совпадение: список языков сервера СГЕНЕРИРОВАН из этих самых файлов —
+ * `backend/internal/langsource/langsource.go::languageOrder` читает
+ * `web-client/src/lang.ts` и `src/i18n/dict.*.ts`. Поэтому «есть чанк» и «есть
+ * у сервера» — одно и то же утверждение, и спрашивать сервер (асинхронно, до
+ * первого рендера) не нужно.
  */
+function isLang(code: string): code is Lang {
+  return code === 'en' || code in loaders
+}
+
+/**
+ * ПРЕДЛОЖЕНИЕ языка по браузеру — половина механизма tweb, ЗАДАЧА #117.
+ *
+ * У оригинала язык браузера не умолчание, а предложение: `networkerFactory.ts:48`
+ * шлёт его как `system_lang_code`, сервер отвечает `config.suggested_lang_code`,
+ * и `components/languageChangeButton.tsx` рисует на экране входа кнопку
+ * «Continue in Russian» — интерфейс английский, но переход в один клик.
+ *
+ * Кнопку мы не портировали, поэтому предложение применяется МОЛЧА. Убрать его,
+ * не портировав кнопку, нельзя: русский браузер получил бы английский интерфейс
+ * и английский же экран настроек как единственный путь к русскому — это регресс
+ * продукта, а не паритет. Снимается ВМЕСТЕ с портом кнопки (#117), тогда же
+ * приедет и `langpack.getStrings` для её подписи.
+ *
+ * Предложение слабее ВЫБОРА: если язык выбирали, оно не спрашивается вовсе.
+ */
+function suggestLangCode(): string | undefined {
+  if (I18n.hasStoredLangCode()) return
+  const nav = typeof navigator !== 'undefined' ? navigator.language?.split('-')[0] : undefined
+  return nav && isLang(nav) ? nav : undefined
+}
 
 /**
  * Текущий язык — У ЯДРА, и здесь он только читается (задача 8).
@@ -192,19 +220,24 @@ function applyToCore(strings: Strings) {
 
 // Global language lives in a store (not a React context). `t` starts on the inline
 // English source; `loadLang` pulls the active language's chunk and swaps it in.
-export const useI18nStore = create<I18nState>((set) => {
+export const useI18nStore = create<I18nState>(() => {
+  // Предложение браузера объявляется ВЛАДЕЛЬЦУ, а не кладётся мимо него: иначе
+  // стор поднялся бы на предложенном языке, а ядро — на своём, то есть ровно
+  // тем расхождением, которое задача 8 и убирала.
+  const suggested = suggestLangCode()
+  if (suggested) I18n.setLangCode(suggested)
+
   const initial = getInitial()
   applyToCore(EN)
   return {
     lang: initial,
     ...makeState(initial, EN, en),
     // Выбор языка: код объявляется ЯДРУ (оно же его и сохранит) внутри
-    // `loadLang`, здесь остаётся перерисовать интерфейс — `set` до загрузки
-    // чанка, чтобы подписанные на язык компоненты не ждали сети.
-    setLang: (l) => {
-      set({ lang: l })
-      void loadLang(l)
-    },
+    // `loadLang`, а зеркало сдвигает сам `loadLang` — ОДНИМ `setState` вместе
+    // со строками. Сдвинуть его здесь, до загрузки чанка, значило бы показать
+    // выбранным язык, которого на экране ещё нет (а если чанк не доехал —
+    // которого не будет вовсе).
+    setLang: (l) => { void loadLang(l) },
   }
 })
 
@@ -238,7 +271,12 @@ export async function loadLang(lang: string): Promise<void> {
   // языков сразу. Спрашивается ВЛАДЕЛЕЦ, а не стор: стор его зеркалит.
   if (I18n.getLastRequestedLangCode() !== lang) return
   applyToCore(strings)
-  useI18nStore.setState(makeState(lang, strings, legacy))
+  // Зеркало сдвигается ОДНИМ `setState` со строками, и это не украшение:
+  // `lang` и `t` — один факт, увиденный с двух сторон. Разведи их по двум
+  // вызовам (как было: `set({lang})` в `setLang`, строки здесь), и между ними
+  // живёт кадр, где на экране выбранным отмечен один язык, а подписи на другом
+  // — а если чанк не доехал вовсе, этот кадр становится вечным.
+  useI18nStore.setState({ lang, ...makeState(lang, strings, legacy) })
 }
 
 export const useI18n = () => useI18nStore()
