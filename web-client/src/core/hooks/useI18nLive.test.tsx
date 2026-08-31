@@ -22,7 +22,7 @@ import { act, renderHook, cleanup } from '@testing-library/react'
 
 import type { Managers } from '@/client/bootstrap'
 import { ManagersProvider } from '@core/hooks/useManagers'
-import { loadLang, useI18nStore } from '@/i18n'
+import { applyLang } from '@/test/lang'
 import { useChatsStore } from '@/stores/chatsStore'
 import { useSidebarActions } from './useSidebarActions'
 import { useChatHeaderSearch } from './useChatHeaderSearch'
@@ -45,12 +45,14 @@ const wrapper = ({ children }: { children: ReactNode }) => (
   <ManagersProvider managers={managers}>{children}</ManagersProvider>
 )
 
-/** Смена языка так, как её делает экран выбора языка. */
+/**
+ * Смена языка. Продуктовый путь (`setLang` → `I18n.getLangPackAndApply`) сюда не
+ * годится: он спрашивает пакет у ВОРКЕРА, которого в прогоне нет, и вернул бы
+ * английский. Применяется тот же самый вход, что и в бою (`applyLangPack` со
+ * слиянием), только пакет собран из файлов — см. `@/test/lang`.
+ */
 async function switchTo(lang: string) {
-  await act(async () => {
-    useI18nStore.getState().setLang(lang)
-    await loadLang(lang)
-  })
+  await act(async () => { await applyLang(lang) })
 }
 
 beforeEach(async () => {

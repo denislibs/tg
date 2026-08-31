@@ -50,13 +50,6 @@
  *    списка стран у нас нет вовсе — предмета нет.
  *  • RTL (`isRTL`/`setRTL`/`getIsRTL`, tweb :89, :95, :100): RTL-локалей в нашем
  *    списке языков нет (то же отступление уже записано в `components/icon.ts`).
- *  • События шины `language_change` / `language_apply` (tweb :307, :318): в нашем
- *    каталоге `rootScope` таких событий нет, и предмета у них не осталось.
- *    Живую смену языка (задача 8) они не обслуживают ни там, ни здесь: ванильные
- *    узлы перерисовывает сам `applyLangPack` через `weakMap`, а React-сторона
- *    перерисовывается своим стором, который меняется тем же вызовом. У
- *    оригинала на эти события подписаны вещи, которых у нас нет вовсе
- *    (пересчёт реакций, индексы диалогов по имени — см. следующий пункт).
  *  • Пересчёт реакций/индексов при смене языка (tweb :310-314): у нас нет ни
  *    `appReactionsManager.resetAvailableReactions`, ни индексов диалогов по имени.
  *  • Карта `langPack` «тип служебного действия → ключ» (tweb :21-67): её предмет
@@ -90,8 +83,9 @@
  *    с фреймворком, — не владелец;
  *  • у tweb владелец на этом же месте (`I18n`), и вкладка настроек языка ходит
  *    именно к нему (`sidebarLeft/tabs/language.tsx` → `I18n.getLangPackAndApply`).
- * Стор с этой задачи ЗЕРКАЛИТ ядро: его `lang` берётся отсюда и меняется только
- * тем же путём (`i18n/index.tsx::loadLang` → `setLangCode`).
+ * Стор с этой задачи ЗЕРКАЛИТ ядро: его `lang` берётся отсюда, а меняет его
+ * только `setLangCode` (задача 9: единственные вызывающие — `getLangPackAndApply`
+ * и предложение по браузеру ниже).
  *
  * ПОЧЕМУ ХРАНИЛИЩЕ ОТДЕЛЬНОЕ, а не кэш пакета, как у оригинала: кэш лежит у
  * владельца пакета в ВОРКЕРЕ и читается асинхронно, а первый рендер интерфейса
@@ -107,38 +101,37 @@
  * как `system_lang_code`, сервер отвечает `config.suggested_lang_code`, и
  * `components/languageChangeButton.tsx` рисует на экране входа кнопку «Continue
  * in Russian». Кнопки у нас нет — её порт это ЗАДАЧА #117, — поэтому
- * предложение применяется молча и там, где известен список доступных языков:
- * `i18n/index.tsx::suggestLangCode`. Снять его нужно ВМЕСТЕ с приездом кнопки,
- * не раньше: без обоих половин русский браузер получил бы английский интерфейс
- * и английский же экран настроек как единственный путь к русскому.
+ * предложение применяется молча: `suggestBrowserLangCode` в конце этого файла
+ * (задача 9 перенесла его сюда из `i18n/index.tsx` и переспросила «умеем ли
+ * показать» у СЕРВЕРА, а не у списка чанков). Снять его нужно ВМЕСТЕ с приездом
+ * кнопки, не раньше: без обеих половин русский браузер получил бы английский
+ * интерфейс и английский же экран настроек как единственный путь к русскому.
  *
- * ── Потребители на сегодня ─────────────────────────────────────────────────
- * `i18n()` и `IntlElement` — ЖИВЫЕ с задачи 7: на них построен весь ванильный
- * слой подписей (`button.ts`, `row.ts`, `buttonMenu.ts`, `settingSection.ts`,
- * `sliderTab.ts`, `toast.ts`, попапы), а `IntlDateElement` — метки времени
- * (`helpers/date.ts`). Строки в `I18n.strings` кладёт `i18n/index.tsx`
- * (`applyToCore`) — чанками словарей, потому что `t()` до задачи 9 живёт на
- * них; ту же самую карту строк читает и `t()`, и оба ответа на один ключ
- * обязаны совпадать (пин — `i18n/index.test.ts`).
+ * ── ЕДИНСТВЕННЫЙ ИСТОЧНИК СТРОК (задача 9) ─────────────────────────────────
+ * `I18n.strings` — вся локализация приложения, второго словаря в проекте нет.
+ * Наполняет карту ТОЛЬКО `applyLangPack`, и зовут его ровно два пути:
+ * `getCacheLangPackAndApply` (холодный старт, его дёргает `client/boot.ts` до
+ * первого кадра) и `getLangPackAndApply` (язык выбрали явно). Оба кладут
+ * локальный английский ПОД серверный пакет — см. `applyServerLangPack`.
  *
- * ЗАГРУЗКА С СЕРВЕРА (`getCacheLangPackAndApply`/`checkLangPackForUpdates`) —
- * по-прежнему БЕЗ ПРОИЗВОДСТВЕННОГО ВЫЗЫВАЮЩЕГО: её включает ЗАДАЧА 9 («useT
- * внутри ходит в I18n.strings»), она же снимает `t()` и мост `applyToCore`
- * вместе с ним. Препятствие, из-за которого старт не включён раньше, задачей 8
- * снято (второго источника языка больше нет); осталась одна причина — строки
- * `t()` сегодня приезжают чанками, и включённый серверный старт применил бы
- * поверх них пакет, которого `t()` не видит.
- * ЦЕНА ЭТОГО, названная честно: у подсистемы ЗАГРУЗКИ (кэш, сеть, версия) до сих
- * пор нет ни одного производственного вызывающего, поэтому живой проверки по
- * DoD п.10 для неё не существует — только тесты. Именно это укрытие и спрятало
- * от первого захода отказ владельца через границу контекстов (`askOwner` ниже):
- * на стенде он бы вылез первым же запуском без воркера.
+ * Читают карту тоже одним способом: `format()`. На нём стоит и ванильный слой
+ * (`i18n()`/`IntlElement` — подписи `button.ts`, `row.ts`, `buttonMenu.ts`,
+ * `settingSection.ts`, `sliderTab.ts`, `toast.ts`, попапов; `IntlDateElement` —
+ * метки времени `helpers/date.ts`), и React: его `t()` (`i18n/index.tsx`) —
+ * тонкая обёртка над `format(key, true, args)`.
+ *
+ * До задачи 9 источников было ДВА: карту наполнял `i18n/index.tsx` чанками
+ * словарей (`dict.*.ts`), а рядом жил старый словарь «ключ = английская строка»,
+ * считавшийся из тех же чанков мостом `legacyDict`. Сервер при этом не спрашивал
+ * никто: `getCacheLangPackAndApply` не звал ни один продуктовый файл. Снято
+ * целиком — и мост, и чанки, и мост в ядро (`applyToCore`).
  */
 import type { LangPackDifference, LangPackString } from '@layer'
 import type { LangPackKey, LangPackValue } from '@/lang'
 import Icon from '@components/icon'
 import type { IconName } from '@core/tgico-icons'
 import { setDirection } from '@helpers/dom/setInnerHTML'
+import rootScope from '@lib/rootScope'
 import deepEqual from '@helpers/object/deepEqual'
 import safeAssign from '@helpers/object/safeAssign'
 import capitalizeFirstLetter from '@helpers/string/capitalizeFirstLetter'
@@ -499,6 +492,11 @@ namespace I18n {
       lastAppliedLangCode = currentLangCode
       cachedDateTimeFormats.clear()
       updateAmPm()
+      // tweb :325 — ЯЗЫК СМЕНИЛСЯ (а не «пакет переприменился»), поэтому событие
+      // широковещательное: соседние вкладки узнают о выборе только отсюда.
+      // Условие то же, что у оригинала, — внутри ветки «применённый язык другой»:
+      // фоновое обновление строк того же языка соседей не касается.
+      rootScope.dispatchEvent('language_change', currentLangCode)
     }
 
     const elements = Array.from(document.querySelectorAll('.i18n')) as HTMLElement[]
@@ -509,6 +507,12 @@ namespace I18n {
         instance.update()
       }
     })
+
+    // tweb :337 — «строки сменились». МЕСТНОЕ (`dispatchEventSingle`, мимо порта):
+    // соседняя вкладка своих строк этим вызовом не меняла. Живые узлы `.i18n`
+    // обойдены строкой выше, а React о смене узнаёт только отсюда — его зеркало
+    // (`i18n/index.tsx`) на это событие и подписано.
+    rootScope.dispatchEventSingle('language_apply')
   }
 
   // tweb :322-329
@@ -904,6 +908,48 @@ export async function checkLangPackForUpdates(): Promise<LangPackDifference | un
   const pack = await askOwner((o) => o.checkForUpdates(langCode))
   if (!pack || pack.lang_code !== I18n.getLastRequestedLangCode()) return
   return I18n.applyServerLangPack(pack, pack.lang_code)
+}
+
+/**
+ * ПРЕДЛОЖЕНИЕ ЯЗЫКА ПО БРАУЗЕРУ — половина механизма tweb, ЗАДАЧА #117.
+ *
+ * У оригинала язык браузера не умолчание, а предложение: `networkerFactory.ts:48`
+ * шлёт его как `system_lang_code`, сервер отвечает `config.suggested_lang_code`, и
+ * `components/languageChangeButton.tsx` рисует на экране входа кнопку «Continue in
+ * Russian» — интерфейс английский, но переход в один клик. Кнопку мы не
+ * портировали, поэтому предложение применяется МОЛЧА; снимется вместе с её портом.
+ *
+ * ── Что здесь изменила задача 9 ────────────────────────────────────────────
+ * Раньше предложение проверялось по СПИСКУ ЧАНКОВ словарей (`i18n/dict.ts`), и
+ * это работало ровно потому, что чанк и был источником строк. Теперь строки у
+ * сервера, и единственный честный вопрос «умеем ли мы показать этот язык» —
+ * ЕСТЬ ЛИ ОН У СЕРВЕРА (`langpack.getLanguages`, тот же список, что рисует экран
+ * выбора языка). Иначе русский браузер получил бы `lang_code: 'it'`, пустой ответ
+ * сервера и английский текст под итальянской галочкой на экране языка.
+ *
+ * ВЫЗОВ НЕ БЛОКИРУЕТ СТАРТ, и это не оптимизация. Список приезжает по сети; на
+ * пути холодного старта отказ сети означал бы ожидание таймаута перед первым
+ * кадром. Поэтому старт идёт на своём языке, а предложение (первый запуск, сети
+ * нет) просто не случается — интерфейс остаётся английским, ровно как у tweb до
+ * ответа конфига. Догнавшее предложение видно без перезагрузки: узлы `.i18n`
+ * перерисовывает `applyLangPack`, React — его зеркало.
+ *
+ * Предложение СЛАБЕЕ ВЫБОРА дважды: если язык выбирали когда-либо (`hasStoredLangCode`)
+ * — не спрашиваем вовсе; если выбрали ПОКА ЛЕТЕЛ СПИСОК — не применяем (сверка
+ * `before`). Вторая сверка не теоретическая: `hasStoredLangCode` отвечает по
+ * снимку хранилища, снятому на импорте модуля, и после выбора в этой же сессии
+ * он остаётся прежним.
+ */
+export async function suggestBrowserLangCode(): Promise<void> {
+  if (I18n.hasStoredLangCode()) return
+  const before = I18n.getLastRequestedLangCode()
+  const suggested = typeof navigator !== 'undefined' ? navigator.language?.split('-')[0] : undefined
+  if (!suggested || suggested === before) return
+
+  const languages = await askOwner((o) => o.getLanguages())
+  if (!languages?.some((language) => language.lang_code === suggested)) return
+  if (I18n.getLastRequestedLangCode() !== before) return
+  await I18n.getLangPackAndApply(suggested)
 }
 
 // tweb :670-682

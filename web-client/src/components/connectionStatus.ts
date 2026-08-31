@@ -32,6 +32,7 @@
 
 import type { LangPackKey } from '@/lang'
 import rootScope from '@lib/rootScope'
+import I18n from '@lib/langPack'
 import { getMiddleware } from '@helpers/middleware'
 import { RT } from '../core/realtime/events'
 import { useI18nStore } from '../i18n'
@@ -192,18 +193,26 @@ export default class ConnectionStatusComponent {
   /**
    * Узел плейсхолдера. У tweb его строит `i18n(langPackKey, args)` внутри
    * `setPlaceholder` (`inputSearch.ts:192`), и живой `<span>` с секундами едет
-   * туда обычным аргументом-узлом. Здесь текст собирается строкой, поэтому
-   * подстановка в разрыв `%d` сделана руками — см. разбор в `setStatusText`.
+   * туда ОБЫЧНЫМ АРГУМЕНТОМ-УЗЛОМ (`connectionStatus.ts:165`) — здесь теперь так же.
+   *
+   * Раньше здесь стояла своя подстановка: строка резалась по `%d`, и в разрыв
+   * вставлялся `<span>`. Держалось это на том, что прежний `t()` оставлял `%d` в
+   * тексте — своя подстановка стора пропускала плейсхолдер, для которого не дали
+   * аргумента. Задача 9 сняла второй источник строк, `t()` стал обёрткой над
+   * `I18n.format`, и «лишний» плейсхолдер тот съедает (порт tweb `superFormatter`) —
+   * резать стало нечего, и секунды уезжали в хвост: «Reconnect in s5».
+   *
+   * Позиция аргумента теперь задаётся СТРОКОЙ ЯЗЫКА, а не формой этого метода:
+   * язык, у которого секунды стоят перед словом, получит их там, где написано в
+   * его переводе.
    */
-  private wrapText(text: string, timerSpan?: HTMLElement): Node {
+  private wrapText(key: LangPackKey, timerSpan?: HTMLElement): Node {
     const fragment = document.createDocumentFragment()
-    if (!timerSpan) {
-      fragment.append(text)
-      return fragment
-    }
-
-    const [before, after = ''] = text.split('%d')
-    fragment.append(before, timerSpan, after)
+    // Куски приходят типом `string | number | Node` — число там возможно только
+    // от числового аргумента, а единственный аргумент здесь узел; приводим явно,
+    // а не приведением типа.
+    const pieces = I18n.format(key, false, timerSpan && [timerSpan])
+    fragment.append(...pieces.map((piece) => typeof piece === 'number' ? String(piece) : piece))
     return fragment
   }
 
@@ -230,7 +239,7 @@ export default class ConnectionStatusComponent {
     // Семантика дедупа при этом та же: одинаковое показанное содержимое
     // по-прежнему не перезапускает кросс-фейд (в ветке отсчёта строка не
     // меняется — секунды живут в отдельном `<span>` и идут мимо setPlaceholder).
-    this.inputSearch.setPlaceholder(`${key}\n${text}`, this.wrapText(text, timerSpan))
+    this.inputSearch.setPlaceholder(`${key}\n${text}`, this.wrapText(key, timerSpan))
   }
 
   /** tweb :120-124 — текст ставится не сейчас, а когда дойдёт до показа. */

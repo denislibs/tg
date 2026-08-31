@@ -15,6 +15,13 @@ const owner = vi.hoisted(() => ({
   cachedPack: vi.fn(async () => null),
   getPack: vi.fn(async () => null),
   checkForUpdates: vi.fn(async () => null),
+  // Список языков сервера — им проверяется предложение по браузеру (см. третий
+  // блок). Пустым его оставлять нельзя: «предложение не взялось» тогда значило бы
+  // «сервер молчит», а не «языка у сервера нет».
+  getLanguages: vi.fn(async () => [
+    { _: 'langPackLanguage', name: 'English', native_name: 'English', lang_code: 'en' },
+    { _: 'langPackLanguage', name: 'Russian', native_name: 'Русский', lang_code: 'ru' },
+  ]),
 }))
 
 vi.mock('../client/bootstrap', () => ({ startClient: () => ({ managers: { langPack: owner } }) }))
@@ -30,6 +37,18 @@ async function bootStore() {
   vi.resetModules()
   const I18n = (await import('./langPack')).default
   const { useI18nStore } = await import('@/i18n')
+  // Свежий модульный граф — своё ядро, и оно ПУСТО (общий сетап наполнял
+  // предыдущее). Наполняем локальным английским напрямую, минуя `setLangCode`:
+  // предмет этого файла — владелец кода языка, и лишняя запись в хранилище
+  // исказила бы его.
+  const lang = (await import('@/lang')).default
+  I18n.applyLangPack({
+    _: 'langPackDifference',
+    lang_code: I18n.getLastRequestedLangCode(),
+    from_version: 0,
+    version: 0,
+    strings: I18n.formatLocalStrings(lang),
+  })
   return { I18n, useI18nStore }
 }
 
@@ -45,8 +64,9 @@ describe('владелец текущего языка', () => {
   })
 
   it('ЯДРО языка браузера не угадывает — умолчание владельца это App.langPackCode', async() => {
-    // Предложение браузера — не дело владельца: он хранит ВЫБОР. Предлагает
-    // `i18n/index.tsx::suggestLangCode` (см. отдельный блок ниже, #117).
+    // Предложение браузера — не дело ИМПОРТА: он поднимает ВЫБОР. Предлагает
+    // отдельный вызов `suggestBrowserLangCode` (см. блок ниже, #117), и он
+    // асинхронный — спрашивает список языков у сервера.
     vi.spyOn(navigator, 'language', 'get').mockReturnValue('ru-RU')
 
     const I18n = await boot()
@@ -134,39 +154,49 @@ describe('React-стор ЗЕРКАЛИТ владельца, а не завод
 
     // Владелец узнаёт СРАЗУ (порт tweb `getLangPackAndApply`: `setLangCode`
     // стоит до загрузки), а зеркало — вместе со строками, поэтому его тут ещё
-    // не сдвинуло: чанк словаря летит.
+    // не сдвинуло: пакет летит.
     expect(I18n.getLastRequestedLangCode()).toBe('de')
     expect(localStorage.getItem('tg-lang')).toBe('de')
     expect(useI18nStore.getState().lang).toBe('en')
 
-    await (await import('@/i18n')).loadLang('de')
+    await I18n.getLangPackAndApply('de')
 
     expect(useI18nStore.getState().lang).toBe('de')
   })
 
   // MINOR ревью задачи 8: зеркало и строки — один факт с двух сторон. Раньше
-  // `lang` двигал `setLang` до загрузки чанка, и на отказе загрузки кружок
-  // выбранного языка переезжал, а интерфейс оставался на прежнем — навсегда.
-  it('чанк словаря не доехал — зеркало не сдвинулось вместе с кружком', async() => {
-    const { useI18nStore } = await bootStore()
+  // `lang` двигал `setLang` до загрузки, и на отказе загрузки кружок выбранного
+  // языка переезжал, а интерфейс оставался на прежнем — навсегда. Задача 9
+  // сделала это структурным: `lang` в сторе кладёт ТОЛЬКО обработчик
+  // `language_apply`, то есть ровно то же событие, что меняет строки.
+  it('пакет ещё летит — кружок не переехал вперёд строк', async() => {
+    const { I18n, useI18nStore } = await bootStore()
+    let release: () => void = () => {}
+    owner.getPack.mockImplementationOnce(() => new Promise((resolve) => { release = () => resolve(null) }))
 
-    // Язык, чей чанк не существует в природе: тот же исход, что у отказа сети.
-    useI18nStore.getState().setLang('ru')
-    vi.spyOn(useI18nStore, 'setState').mockImplementation(() => {}) // применение «не доехало»
+    const flying = I18n.getLangPackAndApply('ru')
 
-    await (await import('@/i18n')).loadLang('ru')
-
+    // Владелец языка уже сдвинут (порт tweb: `setLangCode` стоит до загрузки), а
+    // зеркало — нет: строки на экране всё ещё английские.
+    expect(I18n.getLastRequestedLangCode()).toBe('ru')
     expect(useI18nStore.getState().lang).toBe('en')
     expect(useI18nStore.getState().t('ArchivedChats')).toBe('Archived Chats')
-    vi.restoreAllMocks()
+
+    release()
+    await flying
+    expect(useI18nStore.getState().lang).toBe('ru')
   })
 
-  it('язык без словаря-чанка (код с сервера) остаётся языком, а строки — английскими', async() => {
+  // Пакета у сервера нет (или сети нет вовсе) — это НЕ повод остаться без строк:
+  // под пакетом всегда лежит локальный английский, и вкладка поднимается.
+  it('язык, пакета для которого нет, остаётся языком, а строки — английскими', async() => {
     const { I18n, useI18nStore } = await bootStore()
 
-    await (await import('@/i18n')).loadLang('it')
+    await I18n.getLangPackAndApply('it')
 
+    expect(owner.getPack).toHaveBeenCalledWith('it')
     expect(I18n.getLastRequestedLangCode()).toBe('it')
+    expect(useI18nStore.getState().lang).toBe('it')
     expect(useI18nStore.getState().t('ArchivedChats')).toBe('Archived Chats')
   })
 })
@@ -175,32 +205,49 @@ describe('React-стор ЗЕРКАЛИТ владельца, а не завод
 // а ПРЕДЛОЖЕНИЕ (`system_lang_code` → `config.suggested_lang_code` → кнопка
 // «Continue in Russian» на экране входа). Кнопки у нас нет, поэтому предложение
 // применяется молча — и обязано быть СЛАБЕЕ выбора.
+//
+// Задача 9 сменила ИСТОЧНИК ответа «умеем ли мы показать этот язык»: раньше им
+// был список чанков словарей в бандле, теперь — список языков СЕРВЕРА, потому
+// что строки приезжают оттуда же.
 describe('предложение языка по браузеру (#117)', () => {
   beforeEach(() => {
     localStorage.clear()
+    // Счётчик вызовов — часть утверждений ниже («список не спрашивали вовсе»),
+    // поэтому чистится: мок владельца общий на весь файл.
+    owner.getLanguages.mockClear()
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
   })
 
+  /** Свежий импорт ядра вместе со стором + само предложение. */
+  async function suggest() {
+    vi.resetModules()
+    const langPack = await import('./langPack')
+    const { useI18nStore } = await import('@/i18n')
+    await langPack.suggestBrowserLangCode()
+    return { I18n: langPack.default, useI18nStore }
+  }
+
   it('без выбора берётся язык браузера — и он же объявлен владельцу', async() => {
     vi.spyOn(navigator, 'language', 'get').mockReturnValue('ru-RU')
 
-    const { I18n, useI18nStore } = await bootStore()
+    const { I18n, useI18nStore } = await suggest()
 
     expect(I18n.getLastRequestedLangCode()).toBe('ru')
     expect(useI18nStore.getState().lang).toBe('ru')
   })
 
-  it('язык браузера, которого нет ни у нас, ни у сервера, не берётся', async() => {
-    // Итальянского нет ни в наших чанках, ни в выдаче `getLanguages` (список
-    // сервера сгенерирован из тех же файлов) — взяв его, экран выбора языка
-    // остался бы без отмеченной строки.
+  it('язык браузера, которого нет У СЕРВЕРА, не берётся', async() => {
+    // Итальянского нет в выдаче `getLanguages` — взяв его, экран выбора языка
+    // остался бы без отмеченной строки, а строки на экране всё равно были бы
+    // английскими: пакета для него у сервера нет.
     vi.spyOn(navigator, 'language', 'get').mockReturnValue('it-IT')
 
-    const { I18n, useI18nStore } = await bootStore()
+    const { I18n, useI18nStore } = await suggest()
 
+    expect(owner.getLanguages).toHaveBeenCalled()
     expect(I18n.getLastRequestedLangCode()).toBe('en')
     expect(useI18nStore.getState().lang).toBe('en')
   })
@@ -209,9 +256,33 @@ describe('предложение языка по браузеру (#117)', () =>
     localStorage.setItem('tg-lang', 'en')
     vi.spyOn(navigator, 'language', 'get').mockReturnValue('ru-RU')
 
-    const { I18n, useI18nStore } = await bootStore()
+    const { I18n, useI18nStore } = await suggest()
 
+    // Спрашивать список незачем: выбор уже есть, и он сильнее.
+    expect(owner.getLanguages).not.toHaveBeenCalled()
     expect(I18n.getLastRequestedLangCode()).toBe('en')
     expect(useI18nStore.getState().lang).toBe('en')
+  })
+
+  // Выбор, сделанный ПОКА ЛЕТЕЛ СПИСОК, тоже сильнее: `hasStoredLangCode`
+  // отвечает по снимку хранилища, снятому на импорте, и о выборе этой же сессии
+  // не знает — без сверки предложение перебило бы его.
+  it('язык, выбранный пока летел список, предложением не перебивается', async() => {
+    vi.spyOn(navigator, 'language', 'get').mockReturnValue('ru-RU')
+    vi.resetModules()
+    const langPack = await import('./langPack')
+    let release: () => void = () => {}
+    owner.getLanguages.mockImplementationOnce(() => new Promise((resolve) => {
+      release = () => resolve([
+        { _: 'langPackLanguage', name: 'Russian', native_name: 'Русский', lang_code: 'ru' },
+      ])
+    }))
+
+    const flying = langPack.suggestBrowserLangCode()
+    langPack.default.setLangCode('de') // пользователь выбрал сам
+    release()
+    await flying
+
+    expect(langPack.default.getLastRequestedLangCode()).toBe('de')
   })
 })

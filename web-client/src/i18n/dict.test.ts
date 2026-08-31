@@ -1,9 +1,11 @@
-// Словари языков проверяются ПОВЕДЕНИЕМ: что показал `i18n()` на конкретном числе и
-// что отдал старый `t()`. Сверять поля объекта строки бессмысленно — такая проверка
-// зеленеет и на перепутанных местами формах числа (это уже случалось в волне дважды).
+// Словари языков проверяются ПОВЕДЕНИЕМ: что показал `i18n()` на конкретном числе.
+// Сверять поля объекта строки бессмысленно — такая проверка зеленеет и на
+// перепутанных местами формах числа (это уже случалось в волне дважды).
 //
 // Строки берутся из НАСТОЯЩИХ `dict.*.ts` и прогоняются через настоящее применение
-// языка — тем же путём, каким они поедут в бою (задача 5).
+// языка. Эти файлы больше не чанки приложения (задача 9), а ИСХОДНИК, из которого
+// сервер набивает свою таблицу (`backend/internal/langsource`), — то есть проверяется
+// ровно то, что в бою приедет по сети.
 import { describe, expect, it } from 'vitest'
 
 import lang, { type LangPackKey } from '@/lang'
@@ -14,8 +16,6 @@ import uk from './dict.uk'
 import es from './dict.es'
 import de from './dict.de'
 import fr from './dict.fr'
-import { toLegacyDict } from './legacyDict'
-import { LEGACY_KEY_MAP, LEGACY_MERGED_FRAGMENTS } from './legacyKeyMap'
 
 const DICTS = { ru, uk, es, de, fr }
 type Code = keyof typeof DICTS
@@ -62,9 +62,7 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 //
 // `plural` вырос с одного до девяти-десяти: девять ключей-ОБРЫВКОВ («members»,
 // «subscribers», «days», …) сведены в формы числа — интерфейс печатал число и слово
-// рядом, и слово не склонялось («1 members»). `legacy` при этом УПАЛ на девять: обрывок
-// обратно в старую форму ключа не переводится, и это объявлено списком
-// `LEGACY_MERGED_FRAGMENTS`.
+// рядом, и слово не склонялось («1 members»).
 //
 // Раунд 2: у русского +3 ключа (`NewGroup.DefaultTitle`/`NewChannel.DefaultTitle` —
 // название чата, созданного без имени; `Hours` и `CanJoin` — ключи оригинала взамен
@@ -82,16 +80,20 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Задача 8: каждому словарю добавлен РОВНО ОДИН ключ — `LanguageName`,
 // самоназвание языка («Русский», «Українська», …). Им подписана строка «Язык» в
 // настройках, как у tweb (`settings.tsx:254`); до этого имена языков лежали
-// таблицей на экране (`i18n/index.tsx::LANGS`), а не в словаре. `legacy` при
-// этом НЕ вырос, и это не описка: старой строки («ключ = английская строка») у
-// ключа нет ни одной — имена языков в словаре не жили, — поэтому карта миграции
-// до него не достаёт (то же исключение объявлено в `legacyKeyMap.test.ts`).
+// таблицей на экране (`i18n/index.tsx::LANGS`), а не в словаре.
+//
+// Задача 9 убрала из снимка третье число — `legacy`, сколько СТАРЫХ строк
+// («ключ = английская строка») ещё получают перевод. Убрала не потому, что оно
+// неудобно, а потому, что его предмет снесён вместе с мостом `legacyDict`:
+// старых строк не осталось ни одной, и число это теперь тождественный ноль во
+// всех пяти языках. Состав самих словарей задача 9 не трогала — `keys` и
+// `plural` те же, что были у задачи 8, и это главное, что пин здесь стережёт.
 const COMPOSITION = {
-  ru: { keys: 1293, plural: 26, legacy: 1235 },
-  uk: { keys: 687, plural: 24, legacy: 665 },
-  es: { keys: 686, plural: 24, legacy: 664 },
-  de: { keys: 686, plural: 24, legacy: 664 },
-  fr: { keys: 686, plural: 24, legacy: 664 },
+  ru: { keys: 1293, plural: 26 },
+  uk: { keys: 687, plural: 24 },
+  es: { keys: 686, plural: 24 },
+  de: { keys: 686, plural: 24 },
+  fr: { keys: 686, plural: 24 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -128,8 +130,6 @@ describe('состав словарей под пином', () => {
     const got = Object.fromEntries(Object.entries(DICTS).map(([code, strings]) => [code, {
       keys: strings.length,
       plural: strings.filter((string) => string._ === 'langPackStringPluralized').length,
-      // Сколько старых строк ещё получают перевод — это и видит пользователь до задачи 9.
-      legacy: Object.keys(toLegacyDict(strings)).length,
     }]))
     expect(got).toEqual(COMPOSITION)
   })
@@ -435,47 +435,6 @@ describe('непереведённый ключ виден как отсутст
       }
     }
     expect(stale).toEqual([])
-  })
-})
-
-// Старый `t('English string')` живёт до задачи 9, и данных под него больше нет —
-// он считается из нового словаря. Проверяем именно то, что видит вызывающий.
-describe('старый t() продолжает переводить', () => {
-  const legacyRu = toLegacyDict(ru)
-
-  it('обычная строка переводится по-старому ключу', () => {
-    expect(legacyRu['Archived Chats']).toBe('Архив')
-  })
-
-  // Три старых ключа форм числа смотрят в одну строку с формами; каждый обязан
-  // достать СВОЮ форму. Позиционное чтение слотов даёт «2 уведомлений».
-  it('старый ключ формы числа достаёт именно свою форму', () => {
-    expect([
-      legacyRu['%d notification'],
-      legacyRu['%d notifications (few)'],
-      legacyRu['%d notifications'],
-    ]).toEqual(['%d уведомление', '%d уведомления', '%d уведомлений'])
-  })
-
-  // Слитые строки: перевод теперь один на двоих, но исчезнуть не должна ни одна.
-  it('обе строки объявленного слияния остаются переводимыми', () => {
-    expect([legacyRu['Loading'], legacyRu['Loading…']]).toEqual(['Загрузка…', 'Загрузка…'])
-    expect([legacyRu['Block User'], legacyRu['Block user']])
-      .toEqual(['Заблокировать пользователя', 'Заблокировать пользователя'])
-  })
-
-  it('ни одна старая строка переводимого ключа не потерялась', () => {
-    const lost: string[] = []
-    for (const [code, strings] of Object.entries(DICTS)) {
-      const known = new Set(strings.map((string) => string.key))
-      const legacy = toLegacyDict(strings)
-      for (const [old, key] of Object.entries(LEGACY_KEY_MAP)) {
-        // Обрывок, сведённый в форму числа, обратно не переводится — и это объявлено.
-        if (old in LEGACY_MERGED_FRAGMENTS) continue
-        if (known.has(key) && legacy[old] === undefined) lost.push(`${code}: ${old} (${key})`)
-      }
-    }
-    expect(lost).toEqual([])
   })
 })
 

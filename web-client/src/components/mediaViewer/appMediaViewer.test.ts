@@ -6,7 +6,8 @@
 // Среда — как base.open.test.ts: happy-dom + fake timers, RPC managers замокан.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AppMediaViewer, { type AppMediaViewerOptions, type ViewerItem } from './appMediaViewer'
-import { loadLang, useI18nStore } from '@/i18n'
+import { useI18nStore } from '@/i18n'
+import { applyLang } from '@/test/lang'
 
 const { downloadMediaURL, meta } = vi.hoisted(() => ({
   downloadMediaURL: vi.fn<(id: number) => Promise<string>>(),
@@ -359,12 +360,12 @@ describe('мобильное ⋮-меню (порт base :970-973 + минима
     expect(text.textContent).toBe('Forward')
 
     useI18nStore.getState().setLang('ru')
-    await loadLang('ru')
+    await applyLang('ru')
 
     expect(text.textContent).toBe('Переслать')
 
     useI18nStore.getState().setLang('en')
-    await loadLang('en')
+    await applyLang('en')
   })
 
   it('пункт меню зовёт действие и закрывает меню', async () => {

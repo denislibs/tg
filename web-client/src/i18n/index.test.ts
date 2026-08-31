@@ -1,21 +1,26 @@
-// Хранилище языка проверяется ПОВЕДЕНИЕМ `t()`: что увидит вызывающий на
-// символическом ключе, на старой английской строке и на форме числа. Строки берутся
-// настоящие — английский источник `src/lang.ts` и настоящий `dict.ru.ts`, а не фикстура:
-// разъехавшуюся проводку (`toStrings`, нижний слой английского, выбор формы) видно
-// только на них.
+// `t()` React-стора проверяется ПОВЕДЕНИЕМ: что увидит вызывающий на символическом
+// ключе, на форме числа и на подстановке. Строки берутся настоящие — английский
+// источник `src/lang.ts` и настоящий `dict.ru.ts`, а не фикстура: разъехавшуюся
+// проводку (слияние с английским низом, выбор формы) видно только на них.
+//
+// ── Что задача 9 отсюда УБРАЛА ────────────────────────────────────────────────
+// Блок «старая форма ключа» (`t('Archived Chats')`) — вместе с самой формой: моста
+// `legacyDict` больше нет, и такой ключ теперь неотличим от незнакомого. И блок
+// `substituteArgs` — вместе с самой функцией: своей подстановки у стора не осталось,
+// `t()` зовёт `I18n.format`, а его номера аргументов пинит `lib/langPack.test.ts`.
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import I18n, { i18n } from '@lib/langPack'
+import { applyLang } from '@/test/lang'
 
-import { loadLang, substituteArgs, useI18nStore } from './index'
+import { useI18nStore } from './index'
 
 const t = (key: string) => (useI18nStore.getState().t as (k: string) => string)(key)
 const tArgs = (key: string, args: (string | number)[]) =>
   (useI18nStore.getState().tArgs as (k: string, a: (string | number)[]) => string)(key, args)
 
 beforeEach(async () => {
-  useI18nStore.setState({ lang: 'en' })
-  await loadLang('en')
+  await applyLang('en')
 })
 
 describe('символический ключ', () => {
@@ -26,14 +31,12 @@ describe('символический ключ', () => {
   })
 
   it('после загрузки языка отдаёт перевод', async () => {
-    useI18nStore.setState({ lang: 'ru' })
-    await loadLang('ru')
+    await applyLang('ru')
     expect(t('ArchivedChats')).toBe('Архив')
   })
 
   it('непереведённый ключ падает на английский, а не на имя ключа', async () => {
-    useI18nStore.setState({ lang: 'ru' })
-    await loadLang('ru')
+    await applyLang('ru')
     // `AutoDownloadPm` в русском словаре есть, `Chat.CopySelectedText` — нет.
     expect(t('AutoDownloadPm')).toBe('Личные чаты')
     expect(t('Chat.CopySelectedText')).toBe('Copy Selected Text')
@@ -42,28 +45,20 @@ describe('символический ключ', () => {
   it('незнакомого ключа не выдумывает', () => {
     expect(t('Nope.NoSuchKey')).toBe('Nope.NoSuchKey')
   })
-})
 
-// Кодмод задачи 6 идёт по подсистемам, и между её коммитами часть интерфейса ещё зовёт
-// `t('Archived Chats')`. Сломать её нельзя — обе формы обязаны переводить одинаково.
-describe('старая форма ключа (до задачи 9)', () => {
-  it('переводится наравне с символической', async () => {
-    useI18nStore.setState({ lang: 'ru' })
-    await loadLang('ru')
-    expect(t('Archived Chats')).toBe('Архив')
+  // Старая форма ключа («ключ = английская строка») снята задачей 9 ЦЕЛИКОМ, и это
+  // проверяемое утверждение, а не запись в отчёте: строка, которая раньше
+  // переводилась мостом, теперь возвращается сама собой — как любой незнакомый ключ.
+  it('старая форма ключа больше не переводится — её нет ни в данных, ни в коде', async () => {
+    await applyLang('ru')
+    expect(t('Archived Chats')).toBe('Archived Chats')
     expect(t('ArchivedChats')).toBe('Архив')
-  })
-
-  it('английское исключение остаётся исключением', () => {
-    // 'Story.AddToProfile' — старый ключ, чей текст с ним не совпадает.
-    expect(t('Story.AddToProfile')).toBe('Post to Profile')
   })
 })
 
 describe('форма числа выбирается языком', () => {
   it('русский склоняет 1/2/5', async () => {
-    useI18nStore.setState({ lang: 'ru' })
-    await loadLang('ru')
+    await applyLang('ru')
     expect(tArgs('Notifications.Count', [1])).toBe('1 уведомление')
     expect(tArgs('Notifications.Count', [2])).toBe('2 уведомления')
     expect(tArgs('Notifications.Count', [5])).toBe('5 уведомлений')
@@ -83,79 +78,76 @@ describe('подстановка аргументов', () => {
   })
 
   it('русский переставляет их вместе со строкой', async () => {
-    useI18nStore.setState({ lang: 'ru' })
-    await loadLang('ru')
+    await applyLang('ru')
     expect(tArgs('AutoDownloadOnUpToFor', ['100 МБ', 'Фото'])).toBe('До 100 МБ для: Фото')
   })
 
   it('безномерные подставляются по порядку', () => {
     expect(tArgs('Stories.StealthMode.Cooldown', ['5:00'])).toBe('Available in 5:00')
   })
-
-  // На наших строках ошибка «номер аргумента прочитан как порядок» НЕ ВЫРАЗИМА: в
-  // словаре нет ни одной строки, где `%2$s` стоит раньше `%1$s`, и оба поведения дают
-  // одинаковый результат. Поэтому номера проверяются на строке, где порядок обратный, —
-  // такие у оригинала есть (tweb `Chat.Forwarded` = 'From %2$s to %1$s'), и наш словарь
-  // до них дорастёт.
-  it('номер аргумента сильнее его порядка', () => {
-    expect(substituteArgs('From %2$s to %1$s', ['Saved Messages', 'Alice'])).toBe('From Alice to Saved Messages')
-  })
-
-  it('лишний плейсхолдер остаётся текстом, а не «undefined»', () => {
-    expect(substituteArgs('Up to %1$s for %2$s', ['100 MB'])).toBe('Up to 100 MB for %2$s')
-  })
 })
 
-// ── ЯДРО ПОЛУЧАЕТ ТЕ ЖЕ СТРОКИ (задача 7) ─────────────────────────────────────────
+// ── ЯДРО И `t()` — ОДИН ИСТОЧНИК (задача 9) ──────────────────────────────────────
 //
-// До задачи 7 `I18n.strings` был пуст в продукте: `applyLangPack` не звал никто, и
-// `i18n(key)` печатал бы САМ КЛЮЧ. Ванильный слой теперь строит подписи именно им,
-// поэтому связка «выбор языка → ядро» — это работающая кнопка, а не проводка.
-//
-// Проверяется ВЫДАЧА `i18n()`, а не наличие записи в карте: карту можно наполнить и
-// не тем языком, и не теми формами.
-describe('ядро берёт строки из того же источника, что и t()', () => {
+// До задачи 9 источников было два: `I18n.strings` и своя плоская карта стора, а
+// совпадение их ответов держалось проводкой (`applyToCore`) и вот этой проверкой.
+// Теперь `t()` — обёртка над `I18n.format`, то есть расхождение стало НЕВЫРАЗИМЫМ;
+// проверка осталась, потому что осталось утверждение, ради которого она писалась:
+// пользователь читает одно и то же, из какого бы слоя ни пришла подпись.
+describe('ядро и t() отвечают из одной карты', () => {
   it('английский: узел ядра несёт текст источника, а не имя ключа', () => {
     expect(i18n('ArchivedChats').textContent).toBe('Archived Chats')
     expect(i18n('Story.AddToProfile').textContent).toBe('Post to Profile')
   })
 
   it('после смены языка узел ядра говорит по-русски', async () => {
-    useI18nStore.setState({ lang: 'ru' })
-    await loadLang('ru')
+    await applyLang('ru')
     expect(i18n('ArchivedChats').textContent).toBe('Архив')
     // Непереведённый ключ падает на английский нижний слой — то же правило, что у `t()`.
     expect(i18n('Chat.CopySelectedText').textContent).toBe('Copy Selected Text')
   })
 
   it('форма числа у ядра выбирается тем же языком', async () => {
-    useI18nStore.setState({ lang: 'ru' })
-    await loadLang('ru')
+    await applyLang('ru')
     expect(i18n('Notifications.Count', [2]).textContent).toBe('2 уведомления')
     expect(i18n('Notifications.Count', [5]).textContent).toBe('5 уведомлений')
   })
 
   it('ядро и t() отвечают ОДНО И ТО ЖЕ на одном и том же ключе', async () => {
-    useI18nStore.setState({ lang: 'ru' })
-    await loadLang('ru')
+    await applyLang('ru')
     // Ключи взяты разной судьбы: переведённый, непереведённый и свой-английский.
     for (const key of ['ArchivedChats', 'Chat.CopySelectedText', 'Story.AddToProfile']) {
       expect(i18n(key as never).textContent).toBe(t(key))
     }
   })
 
-  // Язык, от которого пользователь уже ушёл, не должен доехать ни до `t()`, ни до ядра:
-  // чанк словаря приезжает асинхронно, и за это время можно успеть переключиться назад.
-  it('догрузившийся чужой язык не применяется — ни в t(), ни в ядре', async () => {
-    const slow = loadLang('ru') // чанк ru ещё летит…
-    // …а пользователь уже вернулся на английский. Возврат идёт ПРОДУКТОВЫМ путём
-    // (`setLang`), а не подменой поля стора: язык объявляется ЯДРУ, и гонку
-    // снимает сверка с ним — стор его лишь зеркалит (задача 8).
-    useI18nStore.getState().setLang('en')
-    await slow
+  // Разметка словаря разбирается ОДИНАКОВО обоими. Раньше `t()` имел свою урезанную
+  // подстановку без разметки и отдавал звёздочки текстом — то есть на строке с
+  // `**жирным**` два слоя интерфейса показывали разное.
+  it('микроразметка словаря не доезжает до пользователя звёздочками', async () => {
+    await applyLang('ru')
+    const rendered = tArgs('Search.Empty', ['кабачок'])
+    expect(rendered).not.toContain('**')
+    expect(rendered).toBe(i18n('Search.Empty', ['кабачок']).textContent)
+  })
+})
 
-    expect(I18n.getLastRequestedLangCode()).toBe('en')
-    expect(i18n('ArchivedChats').textContent).toBe('Archived Chats')
-    expect(t('ArchivedChats')).toBe('Archived Chats')
+// Язык, от которого пользователь уже ушёл, не должен доехать ни до `t()`, ни до ядра.
+describe('опоздавший пакет чужого языка', () => {
+  it('не применяется — сверку делает само применение', async () => {
+    await applyLang('ru')
+    // Пакет собран для немецкого, а текущий язык — русский: `applyLangPack`
+    // обязан не сделать НИЧЕГО (порт tweb :275-277).
+    I18n.applyLangPack({
+      _: 'langPackDifference',
+      lang_code: 'de',
+      from_version: 0,
+      version: 1,
+      strings: [{ _: 'langPackString', key: 'ArchivedChats', value: 'Archiv' }],
+    })
+
+    expect(I18n.getLastRequestedLangCode()).toBe('ru')
+    expect(t('ArchivedChats')).toBe('Архив')
+    expect(useI18nStore.getState().lang).toBe('ru')
   })
 })

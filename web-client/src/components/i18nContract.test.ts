@@ -15,7 +15,8 @@
 // `key` текстом в узел вместо `i18n(key)`) — краснеет каждый блок ниже.
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 
-import { loadLang, useI18nStore } from '@/i18n'
+import { useI18nStore } from '@/i18n'
+import { applyLang } from '@/test/lang'
 import Button from './button'
 import { ButtonMenuItem } from './buttonMenu'
 import CheckboxField from './checkboxField'
@@ -28,7 +29,7 @@ import { toastNew, hideToast } from './toast'
 
 beforeAll(async () => {
   useI18nStore.setState({ lang: 'ru' })
-  await loadLang('ru')
+  await applyLang('ru')
 })
 
 describe('ванильные подписи показывают перевод, а не ключ', () => {
@@ -125,7 +126,7 @@ describe('уже построенная подпись переживает см
   afterEach(async () => {
     document.body.replaceChildren()
     useI18nStore.setState({ lang: 'ru' })
-    await loadLang('ru')
+    await applyLang('ru')
   })
 
   it('узел в документе перерисовывается применением языка', async () => {
@@ -134,7 +135,7 @@ describe('уже построенная подпись переживает см
     expect(button.textContent).toBe('Отмена')
 
     useI18nStore.setState({ lang: 'en' })
-    await loadLang('en')
+    await applyLang('en')
     expect(button.textContent).toBe('Cancel')
   })
 })

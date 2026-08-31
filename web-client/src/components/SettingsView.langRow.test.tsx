@@ -19,7 +19,8 @@ import type { ReactNode } from 'react'
 
 import type { Managers } from '@/client/bootstrap'
 import { ManagersProvider } from '@core/hooks/useManagers'
-import { loadLang, useI18nStore } from '@/i18n'
+import { useI18nStore } from '@/i18n'
+import { applyLang } from '@/test/lang'
 import SettingsView from './SettingsView'
 
 // Менеджеры — ШОВ (граница с воркером), всё остальное настоящее: рисуется САМ
@@ -56,11 +57,11 @@ function languageRowValue() {
 describe('строка «Язык» в настройках', () => {
   afterEach(async () => {
     cleanup()
-    await loadLang('en')
+    await applyLang('en')
   })
 
   it('на английском подписана «English»', async() => {
-    await loadLang('en')
+    await applyLang('en')
     render(<SettingsView onBack={() => {}} onToggleMode={() => {}} />, { wrapper })
 
     expect(languageRowValue()).toBe('English')
@@ -72,7 +73,7 @@ describe('строка «Язык» в настройках', () => {
 
     await act(async () => {
       useI18nStore.getState().setLang('ru')
-      await loadLang('ru')
+      await applyLang('ru')
     })
 
     expect(languageRowValue()).toBe('Русский')

@@ -5,7 +5,8 @@
 import { startClient, type Managers } from './bootstrap'
 import { installBridgeHandoff } from './dnpBridgeHandoff'
 import { initPwaInstall } from '../core/pwa'
-import { getInitial, loadLang } from '../i18n'
+import I18n, { suggestBrowserLangCode } from '@lib/langPack'
+import rootScope from '@lib/rootScope'
 import { setBootData } from './bootData'
 import { loadStateOnce, resetStateCache, stateWasResetToDefaults } from '../core/state/loadState'
 import { initialState, STATE_VERSION } from '../core/state/state'
@@ -136,7 +137,17 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   const dialogsOp: Promise<DialogOp | null> = fillDialogsMirror(managers, locked)
   const [state] = await Promise.all([
     locked ? Promise.resolve(initialState()) : loadStateOnce(),
-    loadLang(getInitial()),
+    // Язык — С СЕРВЕРА (задача 9), путём холодного старта оригинала (tweb
+    // index.ts:487): взять пакет из кэша владельца, применить, а свежесть
+    // догнать фоном (`checkLangPackForUpdates` внутри). Кэша нет или он от
+    // другого языка — идём за пакетом в сеть; сети/воркера нет — под пакетом
+    // всегда лежит локальный английский (`applyServerLangPack`), поэтому
+    // ЭТОТ await не может оставить вкладку без строк.
+    //
+    // Ждём его здесь, до первого кадра, ровно по той же причине, по какой ждём
+    // State: ванильные подписи строятся `i18n()` в момент создания узла, и на
+    // пустом ядре пользователь прочитал бы имя ключа.
+    I18n.getCacheLangPackAndApply(),
   ])
   // Гидрация — SILENT: прочитанное с диска не должно поехать обратно на диск.
   setAppStateSilent(state)
@@ -165,6 +176,21 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   // рендер не должен упираться в сеть.
   const dialogsReady = applyDialogsMirror(op, managers, locked)
   setBootData({ me, dialogsReady, hasToken: !!token, locked })
+
+  // Смена языка в СОСЕДНЕЙ вкладке (порт tweb index.ts:519-521). Выбор делают в
+  // одной вкладке, а `localStorage` соседи перечитывают только на перезагрузке —
+  // без этой подписки открытая рядом вкладка осталась бы на прежнем языке до F5.
+  // Своё же событие сюда тоже приходит (шина шлёт и локально), поэтому сверка:
+  // язык уже применён, второй заход — лишний поход в сеть.
+  rootScope.addEventListener('language_change', (langCode) => {
+    if (langCode !== I18n.getLastRequestedLangCode()) void I18n.getLangPackAndApply(langCode)
+  })
+
+  // Предложение языка по браузеру — ПОСЛЕ первого кадра и НЕ в `await`: оно
+  // ходит в сеть за списком языков сервера, и отказ сети не должен задерживать
+  // старт (разбор — `lib/langPack.ts::suggestBrowserLangCode`). Догнав, оно
+  // видно без перезагрузки: узлы `.i18n` перерисовывает `applyLangPack`.
+  void suggestBrowserLangCode()
 
   return { managers }
 }

@@ -216,6 +216,26 @@ export type BroadcastEvents = {
   // ── UI-команды (бывший core/hooks/uiEvents.ts, удалён) ──
   'ui:toast': [string]
   'ui:savedTagsChanged': [void]
+
+  // ── язык (порт tweb rootScope.ts:130-131 + langPack.ts:325, :337) ──────────
+  //
+  // Событий ДВА, и они про разное — путать их нельзя.
+  //
+  // `language_apply` — «строки в `I18n.strings` только что сменились», и оно
+  // МЕСТНОЕ: у оригинала его шлют `dispatchEventSingle` (langPack.ts:337), то
+  // есть мимо порта. Так и надо: применение уже случилось у КАЖДОЙ вкладки
+  // своим вызовом `applyLangPack`, и разослать его соседям значило бы сказать
+  // им «строки сменились», не сменив ни одной. Подписчик у нас один — зеркало
+  // React (`i18n/index.tsx`): узлы `.i18n` ванильного слоя перерисовывает сам
+  // `applyLangPack`, а React о смене иначе не узнает.
+  //
+  // `language_change` — «пользователь ВЫБРАЛ другой язык», и оно ШИРОКОВЕЩАТЕЛЬНОЕ
+  // (tweb :325, обычный `dispatchEvent`): выбор сделан в одной вкладке, а
+  // применить его обязаны все. Подписчик — `client/boot.ts`, он зовёт
+  // `I18n.getLangPackAndApply(langCode)`, как index.ts оригинала (:519-521).
+  // Payload — код языка.
+  'language_apply': [void]
+  'language_change': [string]
 }
 
 export type BroadcastEventsListeners = {

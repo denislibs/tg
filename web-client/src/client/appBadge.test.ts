@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { countUnmutedUnreadPeers, notificationsCountTitle } from './appBadge'
 import { makeDialog } from '../core/dialogs/testDialog'
-import { loadLang, useI18nStore } from '../i18n'
+import { useI18nStore } from '../i18n'
+import { applyLang } from '@/test/lang'
 
 // Строка списка в форме конструктора: «замьючен» это СРОК, «в архиве» — номер
 // папки. Обе величины теперь ВЫЧИСЛЯЮТСЯ, а не читаются полем.
@@ -41,7 +42,7 @@ describe('notificationsCountTitle', () => {
 
   beforeEach(async () => {
     useI18nStore.setState({ lang: 'en' })
-    await loadLang('en')
+    await applyLang('en')
   })
 
   it('en: одна/много (tweb Notifications.Count one_value/other_value)', () => {
@@ -52,7 +53,7 @@ describe('notificationsCountTitle', () => {
 
   it('ru: славянские формы 1 / 2-4 / 5+', async () => {
     useI18nStore.setState({ lang: 'ru' })
-    await loadLang('ru')
+    await applyLang('ru')
     expect(title(1)).toBe('1 уведомление')
     expect(title(2)).toBe('2 уведомления')
     expect(title(5)).toBe('5 уведомлений')
@@ -82,6 +83,10 @@ describe('мигание заголовка и фавиконки', () => {
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx)
     vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/png;base64,BADGE')
 
+    // `resetModules` поднял НОВЫЙ модульный граф — в нём своё ядро локализации, и
+    // оно пусто: заголовок «1 notification» строит `tArgs`, а на пустом ядре тот
+    // отдал бы имя ключа.
+    await import('@/test/lang')
     const { initAppBadge, incNotificationsCount } = await import('./appBadge')
     const icon = () => document.head.querySelector<HTMLLinkElement>('link[rel="icon"]')!
 

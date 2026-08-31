@@ -19,7 +19,8 @@ import { createSliderStub } from '@components/sliderTab.testStub'
 import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
 import { hideToast } from '@components/toast'
 import contextMenuController from '@helpers/contextMenuController'
-import { loadLang, useI18nStore } from '@/i18n'
+import { useI18nStore } from '@/i18n'
+import { applyLang } from '@/test/lang'
 import { AppActiveSessionsTab } from '@components/solidJsTabs/tabs'
 
 type Auth = Authorization.authorization
@@ -99,7 +100,7 @@ afterEach(async() => {
   // переключают его по-настоящему, и следующий тест иначе читал бы русские подписи.
   if(useI18nStore.getState().lang !== 'en') {
     useI18nStore.setState({ lang: 'en' })
-    await loadLang('en')
+    await applyLang('en')
   }
 })
 
@@ -258,7 +259,7 @@ describe('вкладка «Устройства» — порт tweb sidebarLeft/
     // неё уже не влияет — проверка на подмене зеленела бы, ничего не проверяя.
     const { managers } = makeManagers()
     useI18nStore.setState({ lang: 'ru' })
-    await loadLang('ru')
+    await applyLang('ru')
 
     const tab = await openTab([current, other], managers)
     const menu = rightClick(tab.scrollable.container.querySelector('.row[data-hash="2"]')!)
@@ -293,7 +294,7 @@ describe('вкладка «Устройства» — порт tweb sidebarLeft/
     // `applyLangPack` обходит `document.querySelectorAll('.i18n')`, а дерево вкладки
     // в этом тесте живёт отдельно от `document`.)
     useI18nStore.setState({ lang: 'ru' })
-    await loadLang('ru')
+    await applyLang('ru')
 
     tab.scrollable.container.querySelector<HTMLElement>('.row[data-hash="2"]')!
       .dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))

@@ -17,7 +17,8 @@ import I18n from '@lib/langPack'
 import { ManagersProvider } from '@core/hooks/useManagers'
 import type { Managers } from '@/client/bootstrap'
 
-import { loadLang, useI18nStore } from '@/i18n'
+import { useI18nStore } from '@/i18n'
+import { applyLang } from '@/test/lang'
 import LanguageSettings from './LanguageSettings'
 
 const lang = (code: string, name: string, native: string) => ({
@@ -88,13 +89,13 @@ describe('экран выбора языка', () => {
     // когда чанк словаря доехал. Порядок именно такой: отмеченным показывается
     // язык, который УЖЕ на экране.
     expect(I18n.getLastRequestedLangCode()).toBe('ru')
-    await loadLang('ru')
+    await applyLang('ru')
     expect(useI18nStore.getState().lang).toBe('ru')
   })
 
   it('кружок горит у выбранного языка, а не у первой строки', async() => {
     useI18nStore.getState().setLang('uk')
-    await loadLang('uk')
+    await applyLang('uk')
     renderScreen(async () => SERVER_LANGS)
     await waitFor(() => expect(screen.getByText('Ukrainian')).toBeTruthy())
 

@@ -9,8 +9,10 @@
 // смонтированное в body; вкладка, снятая со страницы), смену языка пропускает и
 // останется на прежнем до своей следующей постройки.
 //
-// Путь смены — ПРОДУКТОВЫЙ (`useI18nStore.setLang`), а не прямой вызов ядра:
-// проверяется то, что делает пользователь на экране выбора языка.
+// Путь смены — ТОТ ЖЕ, что в бою: `I18n.applyLangPack` со слиянием «английский
+// вниз, перевод поверх». Отличается только источник пакета — файлы вместо сети
+// (разбор в `@/test/lang`): продуктовый `setLang` пошёл бы за пакетом к воркеру,
+// которого в прогоне нет.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import Row from '@components/row'
@@ -18,12 +20,18 @@ import SettingSection from '@components/settingSection'
 import PopupMute from '@components/popups/popupMute'
 import type { AvatarManagers } from '@components/avatar'
 import { i18n } from '@lib/langPack'
-import { loadLang, useI18nStore } from '@/i18n'
+// Импорт ради подписки зеркала React на `language_apply`: попап `PopupMute`
+// читает `t` из стора, и без модуля стора смена языка до него не доедет.
+import '@/i18n'
+import { applyLang } from '@/test/lang'
 
-/** Смена языка так, как её делает экран выбора языка. */
+/**
+ * Смена языка. Пакет собран из файлов (`@/test/lang`), а применяется тем же
+ * единственным входом, что и в бою: `I18n.applyLangPack`. Продуктовый `setLang`
+ * тут не годится — он идёт за пакетом к воркеру, которого в прогоне нет.
+ */
 async function switchTo(lang: string) {
-  useI18nStore.getState().setLang(lang)
-  await loadLang(lang)
+  await applyLang(lang)
 }
 
 beforeEach(async () => {

@@ -3,7 +3,8 @@
 // подставной `t` зеленел бы на любой ошибке выбора, потому что выбирать было бы нечему.
 import { describe, it, expect, beforeEach } from 'vitest'
 
-import { loadLang, useI18nStore } from '../../i18n'
+import { useI18nStore } from '../../i18n'
+import { applyLang } from '@/test/lang'
 import { commentsLabel } from './commentsLabel'
 
 const label = (count: number) => {
@@ -13,13 +14,13 @@ const label = (count: number) => {
 
 beforeEach(async () => {
   useI18nStore.setState({ lang: 'en' })
-  await loadLang('en')
+  await applyLang('en')
 })
 
 describe('commentsLabel', () => {
   it('ru: славянские формы 1 / 2-4 / 5+ и исключения 11/12', async () => {
     useI18nStore.setState({ lang: 'ru' })
-    await loadLang('ru')
+    await applyLang('ru')
     expect([0, 1, 2, 4, 5, 11, 15, 21, 22, 112].map(label)).toEqual([
       'Комментарии',
       '1 комментарий',

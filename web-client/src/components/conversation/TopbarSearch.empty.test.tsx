@@ -13,14 +13,15 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { cleanup, render } from '@testing-library/react'
 
-import { loadLang, useI18nStore } from '@/i18n'
+import { useI18nStore } from '@/i18n'
+import { applyLang } from '@/test/lang'
 import { EmptyResults } from './TopbarSearch'
 
 afterEach(cleanup)
 
 beforeAll(async () => {
   useI18nStore.setState({ lang: 'en' })
-  await loadLang('en')
+  await applyLang('en')
 })
 
 const empty = () => document.querySelector('.topbar-search-left-results-empty')!
@@ -49,7 +50,7 @@ describe('пустая выдача поиска — одна строка сл�
 
   it('русский: порядок слов и кавычки — из СТРОКИ, а не из вёрстки', async () => {
     useI18nStore.setState({ lang: 'ru' })
-    await loadLang('ru')
+    await applyLang('ru')
     try {
       render(<EmptyResults isHashtag={false} count={0} filterPeerId={null} filterPeerName={undefined} query="кабачок" />)
       expect(empty().textContent).toBe('Ничего не найдено по запросу «кабачок». Попробуйте другой запрос.')
@@ -59,7 +60,7 @@ describe('пустая выдача поиска — одна строка сл�
       expect(empty().textContent).toBe('Нет сообщений от Алиса.')
     } finally {
       useI18nStore.setState({ lang: 'en' })
-      await loadLang('en')
+      await applyLang('en')
     }
   })
 
@@ -69,12 +70,12 @@ describe('пустая выдача поиска — одна строка сл�
     expect(empty().textContent).toBe('There were no results for "кабачок". Try a new search.')
 
     useI18nStore.setState({ lang: 'ru' })
-    await loadLang('ru')
+    await applyLang('ru')
     try {
       expect(empty().textContent).toBe('Ничего не найдено по запросу «кабачок». Попробуйте другой запрос.')
     } finally {
       useI18nStore.setState({ lang: 'en' })
-      await loadLang('en')
+      await applyLang('en')
     }
   })
 })
