@@ -339,6 +339,51 @@ describe('предложение языка по браузеру (#117)', () =>
     expect(second.default.getLastRequestedLangCode()).toBe('ru')
   })
 
+  // ТОТ ЖЕ БЛОКЕР, НО ОНЛАЙН — и до этого пина он не был закреплён ничем.
+  // Соседний пин выше подаёт `getPack → null`, то есть ОТКАЗ загрузки, а его
+  // перехватывает БОЛЕЕ ПОЗДНИЙ фикс — «выбор пишется только на ДОЕХАВШЕМ
+  // пакете» (`getLangPackAndApply`). Поэтому мутация `catchUpLangPack` →
+  // `getLangPackAndApply` (возврат дефекта «старт объявляет выбор») проходила
+  // мимо него зелёной: без пакета записывать было нечего.
+  //
+  // Дефект живёт ровно в ОНЛАЙНОВОМ первом запуске: пакет доезжает, и старт
+  // записывает умолчание `en` как ВЫБОР пользователя. Со второго запуска
+  // `hasStoredLangCode` отвечает «выбирали», и предложение по языку браузера
+  // («Continue in Russian») глохнет навсегда — до чистки хранилища.
+  it('первый старт С СЕТЬЮ выбора не делает — доехавший пакет умолчания не выбор', async() => {
+    vi.spyOn(navigator, 'language', 'get').mockReturnValue('ru-RU')
+
+    // ── Первый запуск: кэша нет, сеть ЕСТЬ и пакет ДОЕЗЖАЕТ ──────────────────
+    vi.resetModules()
+    const first = await import('./langPack')
+    owner.cachedPack.mockResolvedValueOnce(null)
+    owner.getPack.mockResolvedValueOnce(serverPack('en'))
+
+    const applied = await first.default.getCacheLangPackAndApply()
+    await first.catchUpLangPack(applied)
+
+    // Пакет действительно спрашивали и он действительно доехал — иначе
+    // утверждение о хранилище зеленело бы по той же причине, что у соседа выше.
+    expect(owner.getPack).toHaveBeenCalledWith('en')
+    expect(first.default.getLastRequestedLangCode()).toBe('en')
+    expect(localStorage.getItem('tg-lang')).toBe(null)
+
+    // ── Второй запуск: предложение по браузеру дожило ────────────────────────
+    // Предложение внутри ПЕРВОГО запуска здесь не зовём намеренно: снимок
+    // `storedLangCode` снят на импорте модуля, и в той же сессии предложение
+    // сработало бы даже с дефектом — цена записи видна только со следующего
+    // запуска.
+    vi.resetModules()
+    const second = await import('./langPack')
+    owner.getPack.mockResolvedValueOnce(serverPack('ru'))
+
+    expect(second.default.hasStoredLangCode()).toBe(false)
+    await second.suggestBrowserLangCode()
+
+    expect(second.default.getLastRequestedLangCode()).toBe('ru')
+    expect(localStorage.getItem('tg-lang')).toBe('ru')
+  })
+
   it('язык браузера, которого нет У СЕРВЕРА, не берётся', async() => {
     // Итальянского нет в выдаче `getLanguages` — взяв его, экран выбора языка
     // остался бы без отмеченной строки, а строки на экране всё равно были бы

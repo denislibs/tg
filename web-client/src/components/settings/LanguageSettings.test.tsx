@@ -28,7 +28,7 @@ const lang = (code: string, name: string, native: string) => ({
   native_name: native,
   lang_code: code,
   plural_code: code,
-  strings_count: 1288,
+  strings_count: 1302,
   translated_count: 640,
   translations_url: '',
 }) as LangPackLanguage

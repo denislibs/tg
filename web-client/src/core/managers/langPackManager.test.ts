@@ -268,8 +268,8 @@ describe('LangPackManager.getLanguages', () => {
     native_name: native,
     lang_code: code,
     plural_code: code,
-    strings_count: 1288,
-    translated_count: 1288,
+    strings_count: 1302,
+    translated_count: 1302,
     // Этого параметра сервер не отдаёт вовсе (площадки переводов у нас нет) —
     // фикстура повторяет провод, поэтому значение пустое.
     translations_url: '',
