@@ -33,6 +33,12 @@ type fakeLangPackRepo struct {
 	// клиент на старте, и второй поход за тем же числом это лишний запрос к
 	// базе на каждое открытие приложения.
 	versionCalls int
+	// reads — сколько раз хранилище спросили ВООБЩЕ, любым чтением по коду
+	// языка. Нужен ровно одному утверждению: код, кодом языка не являющийся,
+	// отсеивается НА КРАЮ. Ответ «такого языка нет» хранилище дало бы и само,
+	// поэтому по коду и имени отказа отличить «отсеяли» от «сходили и не нашли»
+	// нельзя — отличает только этот счётчик.
+	reads int
 }
 
 type fakeLangPackRow struct {
@@ -81,6 +87,7 @@ func (f *fakeLangPackRepo) live(code string) int {
 }
 
 func (f *fakeLangPackRepo) Language(_ context.Context, code string) (domain.LangPackLanguage, error) {
+	f.reads++
 	meta, ok := f.langs[code]
 	if !ok {
 		return domain.LangPackLanguage{}, domain.ErrNotFound
@@ -89,6 +96,7 @@ func (f *fakeLangPackRepo) Language(_ context.Context, code string) (domain.Lang
 }
 
 func (f *fakeLangPackRepo) Version(_ context.Context, code string) (int, error) {
+	f.reads++
 	f.versionCalls++
 	v, ok := f.version[code]
 	if !ok {
@@ -98,6 +106,7 @@ func (f *fakeLangPackRepo) Version(_ context.Context, code string) (int, error) 
 }
 
 func (f *fakeLangPackRepo) Strings(_ context.Context, code string, since int, withDeleted bool) ([]domain.LangPackStringRecord, error) {
+	f.reads++
 	var out []domain.LangPackStringRecord
 	for _, row := range f.strings[code] {
 		if row.version <= since || (row.rec.Deleted && !withDeleted) {
@@ -109,6 +118,7 @@ func (f *fakeLangPackRepo) Strings(_ context.Context, code string, since int, wi
 }
 
 func (f *fakeLangPackRepo) StringsByKeys(_ context.Context, code string, keys []string) ([]domain.LangPackStringRecord, error) {
+	f.reads++
 	want := map[string]bool{}
 	for _, k := range keys {
 		want[k] = true
@@ -244,6 +254,53 @@ func TestLangPackHandler_Difference(t *testing.T) {
 	}
 	if got["Obsolete"] != domain.LangPackStringDeletedTag {
 		t.Errorf("снятый ключ приехал как %q; want langPackStringDeleted", got["Obsolete"])
+	}
+}
+
+// КЛИЕНТ ИЗ БУДУЩЕГО: версия больше нашей — отдаём ВЕСЬ пакет, а не пустую
+// разницу.
+//
+// Ветка была снабжена абзацем обоснования и не закреплена ничем: мутация
+// `fromVersion == 0 || fromVersion > version` → `fromVersion == 0` проходила
+// зелёной. А цена у неё продуктовая: клиент, у которого версия из более нового
+// деплоя (сервер откатили), получил бы `from_version` больше `version` и не
+// применил бы разницу НИКОГДА — сам собой этот случай не рассасывается,
+// механизма отката версии у оригинала нет.
+//
+// Проверяются обе половины ответа: граница честная (`from_version: 0`) и строки
+// НЕ ПУСТЫЕ. По одной границе мутация выжила бы, по одному числу строк — тоже.
+func TestLangPackHandler_DifferenceFromFutureGivesWholePack(t *testing.T) {
+	h := langPackRouter(t)
+
+	code, body := getLangPack(t, h, "/langpack/en/difference?from_version=99")
+	if code != http.StatusOK {
+		t.Fatalf("код %d, тело %s", code, body)
+	}
+	var diff struct {
+		FromVersion int `json:"from_version"`
+		Version     int `json:"version"`
+		Strings     []struct {
+			Underscore string `json:"_"`
+			Key        string `json:"key"`
+		} `json:"strings"`
+	}
+	if err := json.Unmarshal(body, &diff); err != nil {
+		t.Fatalf("тело не разбирается: %v (%s)", err, body)
+	}
+	if diff.FromVersion != 0 || diff.Version != 3 {
+		t.Errorf("границы = (%d, %d); want (0, 3) — весь пакет, а не разница от версии из будущего", diff.FromVersion, diff.Version)
+	}
+	got := map[string]string{}
+	for _, s := range diff.Strings {
+		got[s.Key] = s.Underscore
+	}
+	if len(got) != 2 || got["Add"] == "" || got["Cancel"] == "" {
+		t.Fatalf("строки = %v; ожидался весь живой пакет (Add версии 1 и Cancel версии 3)", got)
+	}
+	// Снятых ключей нет — как и в `getLangPack`: клиенту, чей пакет мы отдаём
+	// целиком, удалять у себя нечего.
+	if _, deleted := got["Obsolete"]; deleted {
+		t.Error("в полном пакете приехал снятый ключ Obsolete")
 	}
 }
 
@@ -424,6 +481,44 @@ func TestLangPackHandler_UnknownLanguage(t *testing.T) {
 		}
 		if name := errorName(t, body); name != "LANG_CODE_NOT_SUPPORTED" {
 			t.Errorf("%s: имя отказа %q; want LANG_CODE_NOT_SUPPORTED", path, name)
+		}
+	}
+}
+
+// НЕ КОД ЯЗЫКА отсеивается НА КРАЮ — до всякого чтения хранилища.
+//
+// Проверяется именно это, а не код ответа: «такого языка нет» хранилище сказало
+// бы и само, поэтому 404 с тем же именем отказа приходит в обоих случаях, и
+// мутация «снять предел длины и белый список символов» проходила зелёной.
+// Дыры в безопасности за ней нет (запрос параметризован), но `GET
+// /langpack/<10 кБ мусора>` доезжал бы до базы вместо отказа на краю — на
+// каждый такой запрос.
+//
+// Обе половины проверки живые: длина (десять килобайт) и набор символов
+// (пробел, подчёркивание, заглавные — POSIX-форма `ru_RU`, которую присылают
+// вместо тега языка).
+func TestLangPackHandler_JunkLangCodeStopsAtEdge(t *testing.T) {
+	junk := strings.Repeat("x", 10*1024)
+
+	for _, code := range []string{junk, "ru_RU", "ru%20ru", "RU"} {
+		for _, path := range []string{
+			"/langpack/" + code,
+			"/langpack/" + code + "/difference?from_version=1",
+			"/langpack/" + code + "/strings?key=Add",
+			"/langpack/languages/" + code,
+		} {
+			h, repo := langPackRouterWithRepo(t)
+			status, body := getLangPack(t, h, path)
+			if status != http.StatusNotFound {
+				t.Errorf("%.40s: код %d, тело %s", path, status, body)
+				continue
+			}
+			if name := errorName(t, body); name != "LANG_CODE_NOT_SUPPORTED" {
+				t.Errorf("%.40s: имя отказа %q; want LANG_CODE_NOT_SUPPORTED", path, name)
+			}
+			if repo.reads != 0 {
+				t.Errorf("%.40s: хранилище спросили %d раз(а) — мусор обязан отсеиваться на краю", path, repo.reads)
+			}
 		}
 	}
 }
