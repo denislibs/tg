@@ -75,6 +75,11 @@ export function hasSubScreen(title: LangPackKey) {
   // его завёл шаг 8 плана волны 2.
   return (
     title in SCREENS ||
+    // Язык. Клаузы не было, и экран был НЕДОСТИЖИМ: ветка рендера ниже
+    // существует, но `SettingsView` не открывает подэкран, для которого эта
+    // функция говорит «нет». Найдено живой проверкой (DoD п.10), тестами — ни
+    // одним: они рендерили `LanguageSettings` напрямую. Держит `settingsSubScreen.reachable.test.ts`.
+    title === 'Telegram.LanguageViewController' ||
     title === 'AccountSettings.SpeakersAndCamera' ||
     title === 'AccountSettings.Notifications' ||
     title === 'ChatList.Filter.List.Title' ||
