@@ -5,7 +5,7 @@
 import { startClient, type Managers } from './bootstrap'
 import { installBridgeHandoff } from './dnpBridgeHandoff'
 import { initPwaInstall } from '../core/pwa'
-import I18n, { suggestBrowserLangCode } from '@lib/langPack'
+import I18n, { catchUpLangPack, suggestBrowserLangCode } from '@lib/langPack'
 import rootScope from '@lib/rootScope'
 import { setBootData } from './bootData'
 import { loadStateOnce, resetStateCache, stateWasResetToDefaults } from '../core/state/loadState'
@@ -135,18 +135,19 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   // нового. Параллельность при этом сохранена: RPC летит одновременно с чтением
   // State и словаря (оба ниже, в Promise.all).
   const dialogsOp: Promise<DialogOp | null> = fillDialogsMirror(managers, locked)
-  const [state] = await Promise.all([
+  const [state, langPack] = await Promise.all([
     locked ? Promise.resolve(initialState()) : loadStateOnce(),
     // Язык — С СЕРВЕРА (задача 9), путём холодного старта оригинала (tweb
-    // index.ts:487): взять пакет из кэша владельца, применить, а свежесть
-    // догнать фоном (`checkLangPackForUpdates` внутри). Кэша нет или он от
-    // другого языка — идём за пакетом в сеть; сети/воркера нет — под пакетом
-    // всегда лежит локальный английский (`applyServerLangPack`), поэтому
-    // ЭТОТ await не может оставить вкладку без строк.
+    // index.ts:487): взять пакет из КЭША владельца и применить. Кэша нет или он
+    // от другого языка — под пакетом всегда лежит локальный английский
+    // (`applyServerLangPack`), поэтому ЭТОТ await не может оставить вкладку ни
+    // без строк, ни без кадра: в сеть он не ходит НИ ОДНОЙ веткой.
     //
     // Ждём его здесь, до первого кадра, ровно по той же причине, по какой ждём
     // State: ванильные подписи строятся `i18n()` в момент создания узла, и на
-    // пустом ядре пользователь прочитал бы имя ключа.
+    // пустом ядре пользователь прочитал бы имя ключа. Сеть догоняет отдельно —
+    // её НЕ ждём здесь (`catchUpLangPack` ниже), то же правило, что строкой
+    // выше для диалогов.
     I18n.getCacheLangPackAndApply(),
   ])
   // Гидрация — SILENT: прочитанное с диска не должно поехать обратно на диск.
@@ -185,6 +186,16 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   rootScope.addEventListener('language_change', (langCode) => {
     if (langCode !== I18n.getLastRequestedLangCode()) void I18n.getLangPackAndApply(langCode)
   })
+
+  // Свежий пакет с СЕРВЕРА — ПОСЛЕ первого кадра и НЕ в `await` (порт tweb
+  // index.ts:512-517, где сетевой добор стоит ровно там же — после
+  // `getCacheLangPackAndApply`). Разбор веток — `lib/langPack.ts::catchUpLangPack`.
+  //
+  // Ждать его здесь было бы нельзя даже «одним запросом»: `RestClient` не знает
+  // ни таймаута, ни `AbortSignal` (`core/net/restClient.ts`), и на ВИСЯЩЕЙ сети
+  // (не отказе) вкладка осталась бы без единого кадра до таймаута браузера.
+  // Строки к этому моменту уже применены, ждать нечего.
+  void catchUpLangPack(langPack)
 
   // Предложение языка по браузеру — ПОСЛЕ первого кадра и НЕ в `await`: оно
   // ходит в сеть за списком языков сервера, и отказ сети не должен задерживать

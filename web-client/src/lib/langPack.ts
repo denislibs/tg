@@ -14,7 +14,7 @@
  * разобрано в его докблоке). Здесь осталась вкладочная половина оригинала:
  * `getCacheLangPack`, `getCacheLangPackAndApply`, `loadLangPack`,
  * `loadLocalLangPack`, `getLangPackAndApply`, `applyLangPack` и
- * `checkLangPackForUpdates` (tweb :104-127, :169-247, :771-779).
+ * `checkLangPackForUpdates` (tweb :102-126, :169-247, :771-779).
  * Владелец за границей контекстов, поэтому КАЖДЫЙ прыжок к нему идёт через
  * `askOwner`: отказ воркера значит «пакета нет», а не «строк нет» — разбор у
  * самой функции.
@@ -43,7 +43,7 @@
  *    `state_cleared` (tweb :765-769, :783-785): кадров langpack наш сервер не
  *    шлёт (см. докблок менеджера), а «состояние очищено» у нас событием не
  *    объявляется. Проверка обновлений заводится не кадром, а стартом —
- *    `getCacheLangPackAndApply`.
+ *    `catchUpLangPack` (зовут после первого кадра, `client/boot.ts`).
  *  • `polyfillPromise` / `./pluralPolyfill` (tweb :256-264): `Intl.PluralRules`
  *    есть во всех браузерах, которые мы собираем (target ES2020), — предмета нет.
  *  • `countriesList` и раздача имён стран в `strings` (tweb :81, :289-302):
@@ -357,7 +357,20 @@ namespace I18n {
   }
 
   /**
-   * tweb :117-127 — холодный старт: применить то, что уже лежит на диске.
+   * tweb :115-126 — холодный старт: применить то, что уже лежит НА ДИСКЕ.
+   *
+   * В СЕТЬ ЭТА ФУНКЦИЯ НЕ ХОДИТ НИ ОДНОЙ ВЕТКОЙ, и это главное её свойство:
+   * её ждёт `client/boot.ts` до первого кадра. У оригинала так же — у него
+   * здесь только кэш (`commonStateStorage`) либо вшитый `lang.ts`, а сетевой
+   * добор стоит ПОСЛЕ `await` (`index.ts:512-517`), см. `catchUpLangPack`.
+   *
+   * Ревью финального раунда воспроизвело цену обратного: на промахе кэша
+   * (первый заход, приватное окно, очистка данных) эта функция уходила за
+   * пакетом в сеть, а `RestClient.request` не знает ни таймаута, ни
+   * `AbortSignal`. При ВИСЯЩЕЙ сети (не отказе) промис не разрешался вовсе —
+   * пользователь ждал первого кадра до таймаута браузера. Строки при этом были
+   * ни при чём: под пакетом всегда лежит локальный английский, так что ждать
+   * было НЕЧЕГО.
    *
    * РАСХОЖДЕНИЕ С ОРИГИНАЛОМ, И ОНО ЖЕ — ПРЕДМЕТ ЗАДАЧИ 8. У tweb эта функция
    * ВЫВОДИТ язык: `setLangCode(langPack.lang_code)` — какой пакет оказался в
@@ -367,24 +380,15 @@ namespace I18n {
    * языке, а интерфейс считал бы выбранным другой.
    *
    * Поэтому кэш здесь — ОТВЕТ НА ВОПРОС, а не источник вопроса: пакет
-   * применяется, только если он про выбранный язык. Не про него (пусто, чужой
-   * язык) — идём за пакетом выбранного, тем же путём, что и явная смена языка.
-   * В сеть это ходит, а холодный старт с ПОДХОДЯЩИМ кэшем — нет (как у
-   * оригинала): язык поднимается мгновенно, свежесть догоняет фоновая проверка.
-   * Её вызов — наше расхождение по ИСТОЧНИКУ: у tweb проверку заводит серверный
-   * кадр `updateLangPack*` (:783-784), которого наш сервер не шлёт, поэтому
-   * единственный повод спросить разницу — старт. Второй ветке проверка не
-   * нужна: она только что взяла у владельца весь пакет целиком.
+   * применяется, только если он про ВЫБРАННЫЙ язык. Не про него (пусто, чужой
+   * язык) — поднимаемся на локальном английском, ровно как оригинал на первом
+   * запуске, а серверный пакет догоняет после первого кадра.
    */
   export function getCacheLangPackAndApply(): Promise<LangPackDifference> {
     return cacheLangPackPromise ||= getCacheLangPack()
       .then((pack) => {
         const langCode = lastRequestedLangCode
-        if (pack?.lang_code !== langCode) return getLangPackAndApply(langCode)
-        return applyServerLangPack(pack, langCode).then((applied) => {
-          void checkLangPackForUpdates()
-          return applied
-        })
+        return applyServerLangPack(pack?.lang_code === langCode ? pack : null, langCode)
       })
       .finally(() => { cacheLangPackPromise = undefined })
   }
@@ -908,6 +912,31 @@ export async function checkLangPackForUpdates(): Promise<LangPackDifference | un
   const pack = await askOwner((o) => o.checkForUpdates(langCode))
   if (!pack || pack.lang_code !== I18n.getLastRequestedLangCode()) return
   return I18n.applyServerLangPack(pack, pack.lang_code)
+}
+
+/**
+ * ДОГОН ПАКЕТА ПОСЛЕ ПЕРВОГО КАДРА — порт tweb `index.ts:512-517`.
+ *
+ * Разделение обязанностей здесь ровно оригинальное: диск поднимает язык ДО
+ * кадра (`getCacheLangPackAndApply`), сеть догоняет ПОСЛЕ и первый кадр не
+ * держит — вызывающий (`client/boot.ts`) зовёт это через `void`.
+ *
+ * Ветки две, как и у оригинала, и различает их то же самое: есть ли под нами
+ * СЕРВЕРНЫЙ пакет. Версия 0 значит «нет» — кэш был пуст или от другого языка
+ * (`applyServerLangPack`), и спрашивать разницу не от чего: владелец на
+ * отсутствующий кэш честно отвечает «применять нечего»
+ * (`core/managers/langPackManager.ts::checkForUpdates`, первая сверка). Тогда
+ * идём за ВСЕМ пакетом. Есть — спрашиваем только разницу.
+ *
+ * Наше расхождение с оригиналом здесь по ИСТОЧНИКУ, а не по действию: у tweb
+ * проверку обновлений заводит ещё и серверный кадр `updateLangPack*`
+ * (:777-779), которого наш сервер не шлёт, поэтому единственный повод спросить
+ * разницу — старт.
+ */
+export function catchUpLangPack(applied: LangPackDifference): Promise<unknown> {
+  return applied.version === 0
+    ? I18n.getLangPackAndApply(applied.lang_code)
+    : checkLangPackForUpdates()
 }
 
 /**

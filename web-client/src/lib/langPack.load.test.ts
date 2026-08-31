@@ -29,7 +29,7 @@ vi.mock('../client/bootstrap', () => ({
 }))
 
 import rootScope from './rootScope'
-import I18n, { i18n, checkLangPackForUpdates } from './langPack'
+import I18n, { i18n, catchUpLangPack, checkLangPackForUpdates } from './langPack'
 
 const str = (key: string, value: string): LangPackString => ({ _: 'langPackString', key, value })
 
@@ -69,7 +69,7 @@ describe('I18n: загрузка пакета и применение', () => {
     I18n.setLangCode('ru')
     owner.cachedPack.mockResolvedValue(RU_V4)
 
-    await I18n.getCacheLangPackAndApply()
+    const applied = await I18n.getCacheLangPackAndApply()
 
     expect(I18n.getLastRequestedLangCode()).toBe('ru')
     expect(i18n('CurrentSession').textContent).toBe('Это устройство')
@@ -83,11 +83,17 @@ describe('I18n: загрузка пакета и применение', () => {
     // мутация «снять английский нижний слой» на них зеленеет. У `ArchivedChats`
     // текст («Archived Chats») с именем не совпадает — на нём она краснеет.
     expect(i18n('ArchivedChats').textContent).toBe('Archived Chats')
-    // В сеть холодный старт не ходит — свежесть догоняет фоновая проверка,
-    // и владельцу передан ИМЕННО поднятый язык: по нему он делает первую из
-    // двух сверок «язык не сменили, пока летела разница».
+    // В сеть холодный старт не ходит вовсе — ни за пакетом, ни за разницей.
     expect(owner.getPack).not.toHaveBeenCalled()
+    expect(owner.checkForUpdates).not.toHaveBeenCalled()
+
+    // Свежесть догоняет ПОСЛЕ кадра, и владельцу передан ИМЕННО поднятый язык:
+    // по нему он делает первую из двух сверок «язык не сменили, пока летела
+    // разница». Пакет из кэша есть — значит спрашивается РАЗНИЦА, а не весь
+    // пакет заново.
+    await catchUpLangPack(applied)
     expect(owner.checkForUpdates).toHaveBeenCalledWith('ru')
+    expect(owner.getPack).not.toHaveBeenCalled()
   })
 
   // ЗАДАЧА 8, «второй источник текущего языка обязан исчезнуть». Раньше холодный
@@ -95,7 +101,7 @@ describe('I18n: загрузка пакета и применение', () => {
   // и кэш чужого языка молча переопределял выбор пользователя. Воспроизводится
   // это ровно тем, чем и в жизни: выбран русский, а кэша про него нет —
   // приватное окно, чистый IndexedDB, кэш от прежнего языка.
-  it('кэш ЧУЖОГО языка не переопределяет выбор — ядро идёт за пакетом выбранного', async() => {
+  it('кэш ЧУЖОГО языка не переопределяет выбор — язык остаётся выбранным, строки английские', async() => {
     I18n.setLangCode('ru')
     owner.cachedPack.mockResolvedValue(pack('en', 3, [str('CurrentSession', 'This device (server)')]))
     owner.getPack.mockImplementation(async (langCode: string) => (langCode === 'ru' ? RU_V4 : null))
@@ -104,8 +110,37 @@ describe('I18n: загрузка пакета и применение', () => {
 
     expect(applied.lang_code).toBe('ru')
     expect(I18n.getLastRequestedLangCode()).toBe('ru')
-    expect(i18n('CurrentSession').textContent).toBe('Это устройство')
+    // Чужой кэш не применён: строки английские, а не «This device (server)».
+    expect(i18n('CurrentSession').textContent).toBe('This device')
+    // И русский пакет ЗА НИМИ старт не ждёт — за ним идёт догон после кадра.
+    expect(owner.getPack).not.toHaveBeenCalled()
+
+    await catchUpLangPack(applied)
+
     expect(owner.getPack).toHaveBeenCalledWith('ru')
+    expect(i18n('CurrentSession').textContent).toBe('Это устройство')
+  })
+
+  // БЛОКЕР финального ревью: холодный старт держал ПЕРВЫЙ КАДР сетевым запросом.
+  // На промахе кэша он уходил в `getPack` → `rest.get('/langpack/…')`, а у
+  // `RestClient.request` нет ни таймаута, ни `AbortSignal`: при ВИСЯЩЕЙ сети
+  // (не отказе — отказ как раз быстрый) промис старта не разрешался ВОВСЕ.
+  // Живая проверка волны этого не увидела, потому что бэкенд там был остановлен.
+  //
+  // Поэтому проверяется не «сеть не позвали», а сильнее: сеть ВИСИТ, и старт
+  // всё равно доходит до конца. У оригинала это свойство структурное —
+  // `getCacheLangPackAndApply` не ходит в сеть ни одной веткой (tweb :115-126),
+  // а добор стоит после `await` (`index.ts:512-517`).
+  it('ВИСЯЩАЯ сеть не задерживает холодный старт — он до неё не доходит', async() => {
+    I18n.setLangCode('ru')
+    owner.cachedPack.mockResolvedValue(null) // промах кэша: первый заход
+    owner.getPack.mockReturnValue(new Promise(() => {})) // сеть висит, не отказывает
+
+    const applied = await I18n.getCacheLangPackAndApply()
+
+    expect(applied.lang_code).toBe('ru')
+    expect(i18n('ArchivedChats').textContent).toBe('Archived Chats')
+    expect(owner.getPack).not.toHaveBeenCalled()
   })
 
   it('живой узел перерисовывается при смене языка', async() => {
