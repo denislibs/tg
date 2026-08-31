@@ -8,7 +8,7 @@
 // краснеет, а на снимке из одинаковых единиц прошла бы молча.
 import { describe, it, expect, vi } from 'vitest'
 
-import type { LangPackDifference, LangPackString } from '@layer'
+import type { LangPackDifference, LangPackLanguage, LangPackString } from '@layer'
 import { newLangPackManager, type LangPackKV } from './langPackManager'
 import type { RestClient } from '../net/restClient'
 
@@ -253,5 +253,56 @@ describe('LangPackManager', () => {
 
     await expect(both).resolves.toEqual([RU_V3, RU_V3])
     expect(get).toHaveBeenCalledTimes(1)
+  })
+})
+
+// Список языков: порядок задаёт СЕРВЕР (колонка `position`, миграция 0129), а
+// клиент рисует выдачу перебором — как tweb (`language.tsx:117`). Фикстура
+// нарочно НЕ отсортирована ни по коду, ни по имени: сортировка на клиенте,
+// заведённая по недосмотру, на таких данных краснеет.
+describe('LangPackManager.getLanguages', () => {
+  const lang = (code: string, name: string, native: string): LangPackLanguage => ({
+    _: 'langPackLanguage',
+    pFlags: { official: true },
+    name,
+    native_name: native,
+    lang_code: code,
+    plural_code: code,
+    strings_count: 1288,
+    translated_count: 1288,
+    // Этого параметра сервер не отдаёт вовсе (площадки переводов у нас нет) —
+    // фикстура повторяет провод, поэтому значение пустое.
+    translations_url: '',
+  })
+
+  const LANGS = [lang('en', 'English', 'English'), lang('ru', 'Russian', 'Русский'), lang('fr', 'French', 'Français')]
+
+  it('отдаёт языки в порядке сервера, ничего не переставляя', async() => {
+    const get = vi.fn(async () => LANGS)
+    const mgr = newLangPackManager({ rest: restOf(get), kv: kv() })
+
+    await expect(mgr.getLanguages()).resolves.toEqual(LANGS)
+    expect(get).toHaveBeenCalledWith('/langpack/languages')
+  })
+
+  it('второй экран берёт список из памяти, а не из сети', async() => {
+    const get = vi.fn(async () => LANGS)
+    const mgr = newLangPackManager({ rest: restOf(get), kv: kv() })
+
+    await mgr.getLanguages()
+    await expect(mgr.getLanguages()).resolves.toEqual(LANGS)
+
+    expect(get).toHaveBeenCalledTimes(1)
+  })
+
+  it('отказ сети не запоминается — следующее открытие спрашивает заново', async() => {
+    const get = vi.fn()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce(LANGS)
+    const mgr = newLangPackManager({ rest: restOf(get), kv: kv() })
+
+    await expect(mgr.getLanguages()).rejects.toThrow('offline')
+    await expect(mgr.getLanguages()).resolves.toEqual(LANGS)
+    expect(get).toHaveBeenCalledTimes(2)
   })
 })

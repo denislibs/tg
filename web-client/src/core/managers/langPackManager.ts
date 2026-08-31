@@ -1,4 +1,4 @@
-import type { LangPackDifference, LangPackString } from '@layer'
+import type { LangPackDifference, LangPackLanguage, LangPackString } from '@layer'
 import type { RestClient } from '../net/restClient'
 
 /**
@@ -70,11 +70,11 @@ import type { RestClient } from '../net/restClient'
  *  • `getCountriesList` оригинала (`appLangPackManager.ts:25`) не портирован —
  *    списка стран у нас нет (то же отступление уже записано в
  *    `lib/langPack.ts`).
- *  • `langpack.getStrings` (доспрос отдельных ключей) и `langpack.getLanguages`
- *    (список языков) на бэкенде есть, а вызывающего у них здесь нет ни одного:
- *    доспрос у самого tweb мёртв (`I18n.getStrings` не зовёт никто), а список
- *    языков рисует ЭКРАН — задача 8 (живая смена языка), см. отчёт задачи 5.
- *    Метод без вызывающего — мёртвый код, и заводить его заранее нельзя.
+ *  • `langpack.getStrings` (доспрос отдельных ключей) на бэкенде есть, а
+ *    вызывающего у него нет ни одного — он мёртв и у самого tweb
+ *    (`I18n.getStrings` не зовёт никто). Метод без вызывающего — мёртвый код.
+ *    `langpack.getLanguages` вызывающего обрёл задачей 8: список языков рисует
+ *    экран выбора языка (`components/settings/LanguageSettings.tsx`).
  */
 
 /** Ключ кэша. Один на приложение, как `langPack` у tweb (:114): пакет хранится
@@ -203,7 +203,37 @@ export function newLangPackManager({ rest, kv }: LangPackDeps) {
     return save({ ...stored, strings, from_version: difference.from_version, version: difference.version })
   }
 
+  /**
+   * Список языков — ответ сервера, запомненный на сессию.
+   *
+   * У tweb ту же роль играет `invokeApiCacheable('langpack.getLanguages')`
+   * (`sidebarLeft/tabs/language.tsx:105`): повторное открытие вкладки отдаётся
+   * из памяти, поэтому список не мигает и не перезапрашивается. Здесь память
+   * ОДНА НА ВСЕ ВКЛАДКИ — тот же выигрыш, что у пакета.
+   *
+   * Запоминается только УСПЕХ: отказ сети, запомненный пустым списком, значил
+   * бы «языков нет» и оставил бы пользователя без выбора до перезагрузки.
+   * Список не кэшируется на диск (в отличие от пакета): он нужен ровно на
+   * экране выбора языка, то есть заведомо в сети, а строки интерфейса он не
+   * несёт — офлайн-старту от него ничего не нужно.
+   */
+  let languages: Promise<LangPackLanguage[]> | undefined
+
   return {
+    /**
+     * Порт `langpack.getLanguages` — языки, которые есть у сервера, В ЕГО
+     * ПОРЯДКЕ. Порядок здесь не трогают и не сортируют: его задаёт сервер
+     * (колонка `position`, миграция 0129), потому что клиент его не задаёт —
+     * список рисуется перебором выдачи (tweb `language.tsx:117`).
+     */
+    getLanguages(): Promise<LangPackLanguage[]> {
+      return languages ||= rest.get<LangPackLanguage[]>('/langpack/languages')
+        .catch((err) => {
+          languages = undefined
+          throw err
+        })
+    },
+
     /**
      * Порт `getCacheLangPack(true)` (:110-115): пакет из кэша, БЕЗ СЕТИ.
      * Путь холодного старта — вкладка поднимает язык с диска и применяет его
