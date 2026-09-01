@@ -12,19 +12,18 @@
  *    `IntlDateElement.update` (порт, tweb его не ловит) его не перехватывает —
  *    то есть битая строка с провода роняет РЕНДЕР ЭКРАНА. Раньше проверку
  *    держал каждый экран сам и по-разному (`Number.isNaN` в `PremiumManage`,
- *    `try/catch` в `Passkeys`, ничего в остальных); теперь она одна и здесь.
- *    Невалидная дата рисует `fallback` — обычно сырое значение с провода,
- *    ровно как делали снесённые проверки, — а не пустоту и не исключение.
+ *    `try/catch` в `Passkeys`, ничего в остальных). Сам предикат живёт у
+ *    хелперов (`@helpers/date::isValidTimestamp`) — там же, где подписи, —
+ *    потому что вход у него не только React: ванильные места строят подпись
+ *    сами (`chat/contextMenu.ts`) и зовут тот же предикат. Невалидная дата
+ *    рисует `fallback` — обычно сырое значение с провода, ровно как делали
+ *    снесённые проверки, — а не пустоту и не исключение.
  */
 import { useMemo, type ReactNode } from 'react'
 
-import { formatDate, formatFullSentTime, formatTime } from '@helpers/date'
+import { formatDate, formatFullSentTime, formatTime, isValidTimestamp } from '@helpers/date'
 
 import DomNode from './DomNode'
-
-/** Секунды эпохи, из которых можно построить дату. `Date.parse` битой строки
- *  даёт `NaN`, а `Math.floor(NaN / 1000)` — тоже `NaN`, поэтому проверка одна. */
-const isValid = (timestamp: number) => Number.isFinite(timestamp)
 
 /**
  * «Сегодня в 14:30» / «5 сент. в 14:30» — узел `formatFullSentTime`
@@ -42,7 +41,7 @@ export function SentTime({ timestamp, capitalize, noToday, className, fallback =
   fallback?: ReactNode
 }) {
   const node = useMemo(
-    () => (isValid(timestamp) ? formatFullSentTime(timestamp, capitalize, noToday) : null),
+    () => (isValidTimestamp(timestamp) ? formatFullSentTime(timestamp, capitalize, noToday) : null),
     [timestamp, capitalize, noToday],
   )
   return node ? <DomNode node={node} className={className} /> : <>{fallback}</>
@@ -59,7 +58,7 @@ export function Time({ timestamp, className, fallback = null }: {
   fallback?: ReactNode
 }) {
   const node = useMemo(
-    () => (isValid(timestamp) ? formatTime(new Date(timestamp * 1000)) : null),
+    () => (isValidTimestamp(timestamp) ? formatTime(new Date(timestamp * 1000)) : null),
     [timestamp],
   )
   return node ? <DomNode node={node} className={className} /> : <>{fallback}</>
@@ -83,7 +82,7 @@ export function DayDate({ date, withTime, shortMonth, overrideIntlOptions, class
   fallback?: ReactNode
 }) {
   const node = useMemo(
-    () => (isValid(date) ? formatDate(new Date(date * 1000), { withTime, shortMonth, overrideIntlOptions }) : null),
+    () => (isValidTimestamp(date) ? formatDate(new Date(date * 1000), { withTime, shortMonth, overrideIntlOptions }) : null),
     [date, withTime, shortMonth, overrideIntlOptions],
   )
   return node ? <DomNode node={node} className={className} /> : <>{fallback}</>

@@ -30,6 +30,23 @@ import I18n, { i18n } from '@lib/langPack'
 
 export const ONE_DAY = 86400
 
+/**
+ * Секунды эпохи, из которых МОЖНО построить дату.
+ *
+ * Проверка живёт здесь, а не у вызывающих, потому что вход у неё один на всех:
+ * `Intl.DateTimeFormat.format(new Date(NaN))` бросает
+ * `RangeError: Invalid time value`, а `IntlDateElement.update` его не ловит (не
+ * ловит и оригинал — у него на этот вход данные не приходят: в MTProto `date`
+ * это `int`, а у нас половина дат приезжает СТРОКАМИ, и `Date.parse` битой
+ * строки даёт `NaN`). Без проверки такая строка роняет рендер экрана, а внутри
+ * `.then()` — ещё и unhandled rejection с вечным шиммером на месте подписи.
+ *
+ * Функция намеренно тривиальна: ценность в том, что вход ОДИН, а не в том, что
+ * она делает. Зовут её обёртки React (`shared/ui/dateNodes`) и ванильные места,
+ * которые строят подпись сами (`chat/contextMenu.ts`).
+ */
+export const isValidTimestamp = (timestamp: number) => Number.isFinite(timestamp)
+
 // tweb :58-67 — https://stackoverflow.com/a/6117889
 export const getWeekNumber = (date: Date) => {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))

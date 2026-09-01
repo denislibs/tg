@@ -325,6 +325,38 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
     expect(first.querySelectorAll('.i18n').length).toBeGreaterThan(2)
   })
 
+  // `readAt` приезжает СТРОКОЙ с нашего провода (`ReadDateResult`,
+  // `chatsManager.ts:62`), тогда как у оригинала это `int` из MTProto. Битая
+  // строка даёт `NaN`, а `formatFullSentTime(NaN)` бросает `RangeError` из
+  // `Intl` — здесь, внутри `.then()` без `catch`, это давало бы unhandled
+  // rejection и ВЕЧНЫЙ ШИММЕР на месте подписи. Снесённый отсюда
+  // `friendlyMsgTime` такую защиту имел (`friendlyTime.ts:6`), и порт её снял.
+  it('битый read-date не роняет обработчик — пункт убирается, шиммера не остаётся', async() => {
+    putMirrorPage(KEY, [message(1, { pFlags: { out: true } })])
+    const { bubble, content } = makeBubble(1, { out: true })
+    container.append(bubble)
+
+    const rejections: unknown[] = []
+    const onRejection = (e: PromiseRejectionEvent) => { rejections.push(e.reason) }
+    window.addEventListener('unhandledrejection', onRejection)
+
+    const managers = makeManagers()
+    managers.chats.getReadDate.mockResolvedValue({ readAt: 'не дата' })
+    const menu = new ChatContextMenu(makeChat(), {}, managers, makePopups())
+    menu.attachTo(container)
+
+    rightClick(content)
+    await flush()
+    window.removeEventListener('unhandledrejection', onRejection)
+
+    expect(rejections).toEqual([])
+    // Исход тот же, что «read-date недоступен» (:1532-1535): ни пункта, ни его
+    // разделителя, ни повисшего шиммера.
+    expect(menuElement()!.querySelector('.btn-menu-item-loader')).toBeNull()
+    expect(menuElement()!.querySelector('hr')).toBeNull()
+    expect(itemTexts()[0]).toBe('Reply')
+  })
+
   it('read-date скрыт приватностью — «Read show when» (:1537-1540)', async() => {
     putMirrorPage(KEY, [message(1, { pFlags: { out: true } })])
     const { bubble, content } = makeBubble(1, { out: true })

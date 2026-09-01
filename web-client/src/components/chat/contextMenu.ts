@@ -166,7 +166,7 @@ import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import filterAsync from '@helpers/array/filterAsync'
 import { copyTextToClipboard } from '@helpers/clipboard'
 import contextMenuController from '@helpers/contextMenuController'
-import { formatFullSentTime, getFullDate } from '@helpers/date'
+import { formatFullSentTime, getFullDate, isValidTimestamp } from '@helpers/date'
 import { attachContextMenuListener } from '@helpers/dom/attachContextMenuListener'
 import cancelEvent from '@helpers/dom/cancelEvent'
 import { attachClickEvent } from '@helpers/dom/clickEvent'
@@ -868,13 +868,32 @@ export default class ChatContextMenu {
           return
         }
 
+        // ВРЕМЯ ПРИЕЗЖАЕТ СТРОКОЙ — и это наше отличие от оригинала, а не его
+        // случай: в MTProto `outboxReadDate.date` это `int`, у нас
+        // `ReadDateResult.readAt` — ISO-строка (`chatsManager.ts:62`).
+        // `Date.parse` битой строки даёт `NaN`, а `formatFullSentTime(NaN)`
+        // бросает `RangeError` из `Intl` — здесь, внутри `.then()` без `catch`,
+        // это дало бы unhandled rejection и ВЕЧНЫЙ ШИММЕР на месте подписи.
+        // Предикат тот же, что у React-обёрток дат (`@helpers/date`), — вход у
+        // проверки один на ваниль и на React.
+        const readAt = Math.floor(Date.parse(result.readAt) / 1000)
+        if(!isValidTimestamp(readAt)) {
+          // Дата непригодна — исход тот же, что «read-date недоступен» выше
+          // (tweb :1532-1535): пункт и его разделитель убираются. Показывать
+          // пустую подпись нельзя — снесённый отсюда `friendlyMsgTime` возвращал
+          // на этот вход пустую строку, и пункт оставался с голым шиммером.
+          delimiter?.remove()
+          viewsButton.element?.remove()
+          return
+        }
+
         this.canViewReadTime = true
         // tweb :1526 — `formatFullSentTime(outboxReadDate.date, true, false)`.
         // Прежде здесь стоял `friendlyMsgTime`, у которого выбор языка — это
         // тернарник `ru ? … : …`: немецкий, испанский, французский и украинский
         // читали «прочитано» по-английски. Хелпер оригинала подписи не выбирает
         // — он строит их узлами ядра, и язык у них один на всё приложение.
-        loader.replaceWith(formatFullSentTime(Math.floor(Date.parse(result.readAt) / 1000), true, false))
+        loader.replaceWith(formatFullSentTime(readAt, true, false))
       })
     } else if(viewsButton && this.message) {
       // tweb :1543-1644 — групповая ветка. Портирован её каркас: иконка
