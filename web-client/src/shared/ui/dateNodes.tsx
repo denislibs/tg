@@ -1,8 +1,9 @@
 /**
- * ДАТЫ В REACT-ДЕРЕВЕ — три подписи ядра, каждая живым узлом.
+ * ДАТЫ В REACT-ДЕРЕВЕ — подписи ядра, каждая живым узлом.
  *
- * Все три — тонкие обёртки над хелперами `@helpers/date` (порт tweb
- * `src/helpers/date.ts`) и `DomNode`. Добавляют они ровно две вещи:
+ * Все — тонкие обёртки над хелперами `@helpers/date` (порт tweb
+ * `src/helpers/date.ts`), `core/format/dayLabel` и `DomNode`. Добавляют они
+ * ровно две вещи:
  *
  *  • `useMemo` — узел живой, он переписывает себя сам на смену языка
  *    (`applyLangPack` обходит `.i18n`) и настройки 12/24 часа
@@ -21,6 +22,7 @@
  */
 import { useMemo, type ReactNode } from 'react'
 
+import { dayLabel } from '@core/format/dayLabel'
 import { formatDate, formatFullSentTime, formatTime, isValidTimestamp } from '@helpers/date'
 
 import DomNode from './DomNode'
@@ -91,3 +93,21 @@ export function DayDate({ date, withTime, shortMonth, overrideIntlOptions, class
 /** Год нужен всегда — см. `overrideIntlOptions`. Константа модульная, чтобы не
  *  пересобирать узел литералом на каждом рендере. */
 export const ALWAYS_YEAR: Intl.DateTimeFormatOptions = { year: 'numeric' }
+
+/**
+ * «Сегодня» или дата — метка дня (`core/format/dayLabel`, порт веток tweb
+ * `bubbles.ts::createDateBubble`, :4783-4798). Ею подписаны секции дня в
+ * журнале звонков; в ленте тот же узел ставит ванильный дата-разделитель.
+ *
+ * Проверки на валидность здесь нет и не нужно: аргумент — ответ `startOfDayMs`,
+ * а тот на битом входе отдаёт `0` (эпоху), то есть дату, из которой подпись
+ * строится.
+ */
+export function DayLabel({ dayStartMs, className }: {
+  /** МИЛЛИСЕКУНДЫ начала суток (`startOfDayMs`). */
+  dayStartMs: number
+  className?: string
+}) {
+  const node = useMemo(() => dayLabel(dayStartMs), [dayStartMs])
+  return <DomNode node={node} className={className} />
+}

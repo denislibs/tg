@@ -2299,21 +2299,19 @@ export default class ChatBubbles implements BubbleGroupsHost {
     return date.getTime()
   }
 
-  /** Дата-разделитель дня. Сам узел строит модуль сервисных сообщений
+  /** Дата-разделитель дня. Разметку строит модуль сервисных сообщений
    *  (`serviceMessage.ts::createDateBubble`, порт tweb bubbles.ts:4778-4813) —
    *  здесь остаётся ровно то, чем владеет лента: подпись дня и ключ секции.
    *
-   *  Подпись в tweb считает `formatDate`/`i18n` внутри самого `createDateBubble`;
-   *  у нас её отдаёт вызывающий (`core/format/dayLabel`), а язык берётся из
-   *  стора i18n на момент постройки узла — как в других ванильных портах
-   *  (`connectionStatus.ts`, `mediaViewer/appMediaViewer.ts`).
+   *  Подпись — ЖИВОЙ УЗЕЛ ядра (`core/format/dayLabel`, порт веток :4783-4798), а
+   *  не строка: язык у неё ведёт `applyLangPack`, и спрашивать стор i18n на
+   *  момент постройки, как делалось раньше, больше не нужно — смена языка
+   *  доезжала бы только до заново построенных разделителей.
    *  `data-date` — ключ дня в форме `day-<timestamp>`: по нему секция дня
    *  адресуется в реестре `dateMessages` и в наблюдателе липких дат
    *  (`constructPeerHelpers`). */
   private createDateBubble(dateTimestamp: number): HTMLElement {
-    const bubble = createServiceDateBubble(
-      dayLabel(new Date(dateTimestamp).toISOString(), useI18nStore.getState().lang),
-    )
+    const bubble = createServiceDateBubble(dayLabel(dateTimestamp))
     bubble.dataset.date = `day-${dateTimestamp}`
     return bubble
   }

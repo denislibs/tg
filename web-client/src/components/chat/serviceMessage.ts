@@ -179,15 +179,23 @@ export function createServiceBubble({ message, pinnedPreview, peerId, mid, times
  * .service-msg > span.i18n`, БЕЗ `.bubble-content-wrapper` (живой DOM —
  * `03-bubbles-123.json`).
  *
- * Готовую подпись дня («Сегодня», «19 июля») считает вызывающий
- * (`core/format/dayLabel`) — в tweb на этом месте `i18n(...)`/`formatDate(...)`,
- * то есть тоже узел `span.i18n` с готовым текстом.
+ * Аргумент — ГОТОВЫЙ УЗЕЛ подписи, как и у оригинала: там `dateElement` строит
+ * `i18n(...)`/`formatDate(...)` в самом `createDateBubble` (:4789-4798), а
+ * дальше он попадает в `.service-msg` без обёрток. Считает его у нас вызывающий
+ * (`core/format/dayLabel::dayLabel`), потому что разметка и лента у нас
+ * разнесены по модулям, — но это тот же узел ядра.
+ *
+ * Прежде сюда приезжала СТРОКА, а `span.i18n` вокруг неё этот модуль создавал
+ * сам. Класс при этом был поддельным: `applyLangPack` находит такой узел
+ * обходом `.i18n`, но `weakMap.get` даёт `undefined`, и узел молча
+ * пропускается (`lib/langPack.ts:568-572`) — разметка выглядела живой, а
+ * подпись застывала в языке момента постройки.
  *
  * Секцию `.bubbles-date-group`, второй («фейковый», `.is-fake`) экземпляр этого
  * же бабла и его позицию делает владелец контейнеров дня
  * (tweb `getDateContainerByTimestamp`, bubbles.ts:4822-4841) — не этот модуль.
  */
-export function createDateBubble(label: string): HTMLDivElement {
+export function createDateBubble(dateElement: HTMLElement): HTMLDivElement {
   const bubble = document.createElement('div')
   bubble.className = 'bubble service is-date'
 
@@ -196,10 +204,6 @@ export function createDateBubble(label: string): HTMLDivElement {
 
   const serviceMsg = document.createElement('div')
   serviceMsg.classList.add('service-msg')
-
-  const dateElement = document.createElement('span')
-  dateElement.classList.add('i18n')
-  dateElement.textContent = label
 
   serviceMsg.append(dateElement)
   bubbleContent.append(serviceMsg)
