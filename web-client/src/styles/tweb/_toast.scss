@@ -1,0 +1,53 @@
+// Всплывашка `toast` — выдержка из tweb `src/scss/base.scss:740-780`
+// (целиком base.scss не портируем: это глобальный ресет, конфликтующий с нашим
+// styles/index.scss — тот же приём и та же причина, что у `_whole.scss`).
+// Скопировано дословно; классы ставит `components/toast.ts` (`toasts-container`,
+// `toast`, `is-visible`), портированный волной 2 БЕЗ стилей — задача #112, п. 6.
+//
+// Хвост оригинала (`hr`, :782-788) сюда НЕ взят: это глобальный сброс
+// горизонтальной линейки из того же base.scss, к всплывашке отношения не
+// имеющий, и наш `styles/index.scss` про `hr` распоряжается сам.
+@use "../foundation" as *;
+
+.toasts-container {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.toast {
+  padding: .5rem 1rem;
+  background-color: rgba(0, 0, 0, .66);
+  color: #fff;
+  font-size: 1rem;
+  border-radius: $border-radius-medium;
+  max-width: min(30rem, calc(100vw - 2rem));
+  opacity: 0;
+  backdrop-filter: var(--blur-off, blur(25px));
+  pointer-events: all;
+  word-break: break-word;
+
+  &.is-visible {
+    opacity: 1;
+  }
+
+  @include animation-level(2) {
+    transition: opacity var(--transition-standard-in);
+  }
+
+  b {
+    color: inherit;
+  }
+
+  a {
+    color: #60a5e9 !important;
+    cursor: pointer;
+  }
+}

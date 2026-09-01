@@ -21,7 +21,7 @@ import type { Managers } from '@/client/bootstrap'
 import { ManagersProvider } from '@core/hooks/useManagers'
 import { useI18nStore } from '@/i18n'
 import { applyLang } from '@/test/lang'
-import SettingsView from './SettingsView'
+import SettingsView, { settingsItems } from './SettingsView'
 
 // Менеджеры — ШОВ (граница с воркером), всё остальное настоящее: рисуется САМ
 // экран настроек, а не его пересказ. Пересказ здесь уже был и оказался
@@ -30,7 +30,7 @@ import SettingsView from './SettingsView'
 const managers = {
   peers: { fillMirror: async () => {} },
   media: { downloadMediaURL: async () => undefined },
-  sessions: { getAll: async () => [] },
+  sessions: { list: async () => [] },
 } as unknown as Managers
 
 const wrapper = ({ children }: { children: ReactNode }) => (
@@ -46,12 +46,22 @@ const wrapper = ({ children }: { children: ReactNode }) => (
  * утверждается тут же — иначе локатор молча начал бы читать чужую строку.
  */
 function languageRowValue() {
-  const withValue = Array.from(document.querySelectorAll('[class*="rowClickable"]'))
-    // Иконка + титул + ЗНАЧЕНИЕ. Третий узел бывает и у «Ночного режима», но там
-    // это `<label>` тумблера, а не подпись.
-    .filter((row) => row.children.length === 3 && row.lastElementChild!.tagName === 'DIV')
-  expect(withValue).toHaveLength(1)
-  return withValue[0].lastElementChild!.textContent
+  // Адресуется ПОЗИЦИЕЙ в списке, а не формой узла. Прежний локатор брал
+  // единственную строку из трёх детей с `<div>` последним — и это перестало
+  // быть приметой языка, как только строка «Devices» получила счётчик сессий
+  // (задача #112, пункт 5): у неё стало столько же детей той же формы.
+  // Собственная проверка локатора («ровно одна такая строка») это и поймала —
+  // молча читать чужую строку он не начал.
+  //
+  // Позиция берётся из ЭКСПОРТИРОВАННОЙ таблицы, а не из константы в тесте:
+  // перестановка пунктов в продукте не должна требовать правки пина. Первой
+  // строкой секции идёт «Ночной режим», отсюда сдвиг на единицу.
+  const index = settingsItems.findIndex((it) => it.value)
+  expect(settingsItems.filter((it) => it.value)).toHaveLength(1)
+
+  const rows = Array.from(document.querySelectorAll('[class*="rowClickable"]'))
+  const row = rows[index + 1]
+  return row.lastElementChild!.textContent
 }
 
 describe('строка «Язык» в настройках', () => {

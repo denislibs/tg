@@ -70,6 +70,7 @@ import SidebarSlider from '@components/slider'
 import type SliderSuperTab from '@components/sliderTab'
 import type { SliderSuperTabConstructable } from '@components/sliderTab'
 import { AppActiveSessionsTab } from '@components/solidJsTabs/tabs'
+import type { Authorization } from '@layer'
 import type { Managers } from '@/client/bootstrap'
 import s from './settingsSliderHost.module.scss'
 
@@ -185,11 +186,26 @@ export function getSettingsSliderHost(): SettingsSliderHost {
  * вкладку пустой. Когда корень настроек станет вкладкой, эта функция
  * растворится в её `onDevicesClick`, как в оригинале.
  *
- * `eventListener('destroy')` вкладки (tweb `settings.tsx:184-187` перечитывает счётчик
- * устройств в строке настроек) не подписан намеренно: счётчика в нашей строке
- * нет — он приедет вместе с портом самой вкладки настроек (#112).
+ * `authorizations` МОЖНО ОТДАТЬ ГОТОВЫМИ, и это тоже порт: у оригинала список
+ * лежит у корня настроек (`settings.tsx:149`, наполняет `updateActiveSessions`),
+ * а `onDevicesClick` перезапрашивает его ТОЛЬКО если списка ещё нет (:179-181).
+ * Без этого счётчик устройств в строке и открытие вкладки давали бы ДВА запроса
+ * подряд на одну и ту же ручку.
+ *
+ * `onDestroy` — порт подписки `subTab.eventListener('destroy')` (:184-187): у
+ * оригинала она сбрасывает список и перечитывает счётчик, потому что во вкладке
+ * сессию могли завершить. До появления счётчика (#112, пункт 5) подписывать её
+ * было не на что; теперь есть.
  */
-export async function openActiveSessionsTab(managers: Managers): Promise<void> {
+export async function openActiveSessionsTab(
+  managers: Managers,
+  options: {
+    /** уже полученный список — если есть, ручка не дёргается второй раз */
+    authorizations?: Authorization.authorization[]
+    /** вкладка закрыта: список протух, счётчик перечитать (tweb :185-186) */
+    onDestroy?: () => void
+  } = {},
+): Promise<void> {
   // Хост берётся ДО запроса, а не после: в оригинале на его месте модульный
   // синглтон `appSidebarLeft` (`newAuthorization.tsx:118`), который никогда не
   // умирает, — снимок ссылки и есть ближайший аналог. Практическая разница
@@ -199,6 +215,9 @@ export async function openActiveSessionsTab(managers: Managers): Promise<void> {
   // не сломалось. Со снимком запрос доезжает до мёртвого хоста и тихо гаснет о
   // предохранитель `slider.selectTab`.
   const host = getSettingsSliderHost()
-  const authorizations = await managers.sessions.list()
-  await host.openTab(AppActiveSessionsTab, { authorizations })
+  const authorizations = options.authorizations ?? await managers.sessions.list()
+  const tab = await host.openTab(AppActiveSessionsTab, { authorizations })
+  if(options.onDestroy) {
+    tab.eventListener.addEventListener('destroy', options.onDestroy, { once: true })
+  }
 }
