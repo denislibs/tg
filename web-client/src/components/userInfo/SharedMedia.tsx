@@ -7,6 +7,7 @@
 import type { LangPackKey } from '@/lang'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Text from '../../shared/ui/Text'
+import { SentTime } from '../../shared/ui/dateNodes'
 import DomNode from '../../shared/ui/DomNode'
 import { formatDateAccordingToTodayNew } from '@helpers/date'
 import TgIcon from '../TgIcon'
@@ -25,7 +26,6 @@ import { winKey } from '../../core/history/messagesMirror'
 import { useAudioStore, type AudioTrack } from '../../stores/audioStore'
 import { markMediaPlayed } from '../../core/mediaRead'
 import { getDocumentFromMessage, getMediaFromMessage, hasServerThumb } from '../../core/media/messageMedia'
-import { friendlyMsgTime } from '../../core/format/friendlyTime'
 import { EXT_COLORS, extOf, firstUrl, fmtDur, fmtSize, hostOf } from '../../core/format/sharedMediaFmt'
 import MediaGridThumb from '../MediaGridThumb'
 import { previewOf } from '../../core/dialogToChat'
@@ -37,7 +37,6 @@ import { getPeerPhotoId } from '../../core/peers/peer'
 import { getChatPhoto } from '../../core/peers/predicates'
 import { getMessageText, type MyMessage } from '../../core/models'
 import { getMediaId, getMessageKind } from '../../core/messages/messageKind'
-import { messageDateISO } from '../../core/messageToConvMsg'
 import type { OpenPeer } from '../../data'
 import { cachedPeer } from '../../core/peerCache'
 import type { Chat as PeerChat, User } from '../../core/peers/peer'
@@ -242,8 +241,6 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
     return () => io.disconnect()
   }, [filter, tab, hasMore, msgs?.length])
 
-  const when = (m: MyMessage) => friendlyMsgTime(messageDateISO(m.date), lang)
-
   // Клик по строке: текущий трек — play/pause, иначе очередь из всего таба
   // с этой позиции; чужое непрослушанное голосовое гасит media_unread.
   const playRow = (m: MyMessage, title: string) => {
@@ -256,7 +253,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
     const tracks: AudioTrack[] = list.map((x) => ({
       mediaId: getMediaId(x) as number,
       title: getMessageKind(x) === 'audio' ? getDocumentFromMessage(x)?.file_name || t('SharedMedia.Audio') : title,
-      subtitle: when(x),
+      date: x.date,
       chatId,
       msgId: x.id,
     }))
@@ -517,7 +514,13 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
                   </div>
                   <div className="document-name">{doc?.file_name || t('Chat.Input.Attach.Document')}</div>
                   <div className="document-size">
-                    <span>{[fmtSize(doc?.size), when(m)].filter(Boolean).join(' · ')}</span>
+                    {/* tweb `wrappers/document.ts:219-268` — размер и время части
+                        описания, склеенные ` · ` (`joinElementsWith`); время
+                        строит `formatFullSentTime` (:226). */}
+                    <span>
+                      {fmtSize(doc?.size) ? `${fmtSize(doc?.size)} · ` : ''}
+                      <SentTime timestamp={m.date} />
+                    </span>
                   </div>
                 </div>
               </div>
@@ -574,7 +577,10 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
                 <div className="audio-details">
                   <div className="audio-title">{getDocumentFromMessage(m)?.file_name || t('SharedMedia.Audio')}</div>
                   <div className="audio-subtitle">
-                    <div className="audio-time">{[fmtDur(getDocumentFromMessage(m)?.duration), when(m)].filter(Boolean).join(' · ')}</div>
+                    <div className="audio-time">
+                      {fmtDur(getDocumentFromMessage(m)?.duration) ? `${fmtDur(getDocumentFromMessage(m)?.duration)} · ` : ''}
+                      <SentTime timestamp={m.date} />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -602,7 +608,10 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
                 <div className="audio-details">
                   <div className="audio-title">{getMessageKind(m) === 'roundVideo' ? t('AttachRound') : t('AttachAudio')}</div>
                   <div className="audio-subtitle">
-                    <div className="audio-time">{[fmtDur(getDocumentFromMessage(m)?.duration), when(m)].filter(Boolean).join(' · ')}</div>
+                    <div className="audio-time">
+                      {fmtDur(getDocumentFromMessage(m)?.duration) ? `${fmtDur(getDocumentFromMessage(m)?.duration)} · ` : ''}
+                      <SentTime timestamp={m.date} />
+                    </div>
                   </div>
                 </div>
               </div>

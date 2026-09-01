@@ -96,7 +96,8 @@ export default function wrapDocument(options: WrapDocumentOptions): HTMLElement 
     audioElement.track = options.track ?? {
       mediaId: doc.id,
       title: audioAttribute?.title ?? doc.file_name ?? '',
-      subtitle: audioAttribute?.performer ?? '',
+      performer: audioAttribute?.performer,
+      date: message.date,
       peerId: message.peerId,
       msgId: message.mid,
       type,

@@ -268,7 +268,8 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
           // конвейера, видео — токенный URL (useProfilePhotos)
           url: p.isVideo ? p.videoSrc : p.src,
         },
-        author: { peerId: peerId ?? 0, name: chat.name, date: '' },
+        // Даты у фото профиля нет — вьювер подпись просто не рисует.
+        author: { peerId: peerId ?? 0, name: chat.name },
       }))
       void openMediaViewer({ items, index, target: el })
     })

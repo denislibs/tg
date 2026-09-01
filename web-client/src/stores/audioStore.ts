@@ -5,7 +5,22 @@ import { mediaPlayback } from '../core/audio/mediaPlaybackController'
 export interface AudioTrack {
   mediaId: number
   title: string
-  subtitle: string
+  /** ИСПОЛНИТЕЛЬ (`documentAttributeAudio.performer`) — подзаголовок МУЗЫКИ,
+   *  tweb `chat/audio.tsx:216`. */
+  performer?: string
+  /** ДАТА СООБЩЕНИЯ, секунды эпохи — подзаголовок ГОЛОСОВОГО и КРУЖКА
+   *  (tweb `chat/audio.tsx:214`: `subtitleVal = formatFullSentTime(message.date)`).
+   *
+   *  Прежде оба случая занимало одно поле `subtitle: string`, и дату в него
+   *  клали ГОТОВОЙ СТРОКОЙ — та застывала в языке момента сборки очереди.
+   *  Теперь едет само значение, а подпись строит плашка плеера узлом.
+   *
+   *  Выбор ветки у tweb делает ПЛЕЕР, спрашивая `doc.type` (`audio.tsx:210`), и
+   *  он же берёт при пустом исполнителе `i18n('AudioUnknownArtist')` (:217), а
+   *  заголовком голосового ставит имя автора вместо имени файла (:213). У нас
+   *  ветку выбирает наличие поля, а тех двух исходов нет вовсе — расхождение
+   *  названо ЗАДАЧЕЙ #127. */
+  date?: number
   peerId?: number
   msgId?: number
   /** Вид медиа (tweb doc.type): голосовое, кружок или музыка. Голос и кружок —

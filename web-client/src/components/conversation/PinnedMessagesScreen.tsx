@@ -7,13 +7,14 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Text from '../../shared/ui/Text'
+import { Time } from '../../shared/ui/dateNodes'
 import TgIcon from '../TgIcon'
 import IconButton from '../../shared/ui/IconButton'
 import UserAvatar from '../UserAvatar'
 import ConfirmDialog from '../settings/ConfirmDialog'
 import { useManagers } from '../../core/hooks/useManagers'
 import { getMessageText, type MyMessage } from '../../core/models'
-import { messageDateISO, messageForReply } from '../../core/messageToConvMsg'
+import { messageForReply } from '../../core/messageToConvMsg'
 import { getPeerPhotoId, type UserReal } from '../../core/peers/peer'
 import { getUserTitle } from '../../core/peers/getPeerTitle'
 import { useT } from '../../i18n'
@@ -25,12 +26,6 @@ function plural(n: number, one: string, few: string, many: string): string {
   if (m10 === 1 && m100 !== 11) return one
   if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few
   return many
-}
-
-const hhmm = (iso: string) => {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
 export default function PinnedMessagesScreen({ chatId, pins, meId, meName, canUnpinAll, onJump, onClose }: {
@@ -96,7 +91,9 @@ export default function PinnedMessagesScreen({ chatId, pins, meId, meName, canUn
                     <Text noWrap size={14} weight={600} color="var(--primary-text-color)" style={{ flex: 1 }}>
                       {name}
                     </Text>
-                    <Text size={12} color="var(--secondary-text-color)">{hhmm(messageDateISO(m.date))}</Text>
+                    {/* Узлом `formatTime` (`@helpers/date`, порт tweb `helpers/date.ts:200-205`):
+                        своя сборка `padStart`-ом настройку 12/24 часа не читала. */}
+                    <Text size={12} color="var(--secondary-text-color)"><Time timestamp={m.date} /></Text>
                   </div>
                   <Text noWrap size={13.5} color={getMessageText(m) ? 'var(--secondary-text-color)' : 'var(--primary-color)'}>
                     {messageForReply(m) || t('Message')}

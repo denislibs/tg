@@ -6,13 +6,12 @@ import type { LangPackKey } from '@/lang'
 import { useEffect, useState } from 'react'
 import { SettingsScreen, Section } from '../settings/kit'
 import Text from '../../shared/ui/Text'
+import { SentTime } from '../../shared/ui/dateNodes'
 import TgIcon from '../TgIcon'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useNavLayer } from '../../core/hooks/useNavLayer'
 import { useStarsBalance, setStarsBalance } from '../../stores/starsStore'
-import { useT, useLang } from '../../i18n'
-import { friendlyMsgTime } from '../../core/format/friendlyTime'
-import { messageDateISO } from '../../core/messageToConvMsg'
+import { useT } from '../../i18n'
 import type { StarTransaction } from '../../core/managers/starsManager'
 import StarIcon from './StarIcon'
 import s from './stars.module.scss'
@@ -37,7 +36,6 @@ function txMeta(tx: StarTransaction, t: (key: LangPackKey) => string): { icon: i
 
 export default function WalletView({ onBack }: { onBack: () => void }) {
   const t = useT()
-  const [lang] = useLang()
   const managers = useManagers()
   useNavLayer(true, onBack) // Back закрывает «Кошелёк»
   const balance = useStarsBalance()
@@ -100,7 +98,8 @@ export default function WalletView({ onBack }: { onBack: () => void }) {
                 </div>
                 <div className={w.txBody}>
                   <Text noWrap size={15.5} color="var(--primary-text-color)">{m.label}</Text>
-                  <Text noWrap size={13} color="var(--secondary-text-color)">{friendlyMsgTime(messageDateISO(tx.date), lang)}</Text>
+                  {/* tweb `popups/stars.tsx:409` — `formatFullSentTime(transaction.date)`. */}
+                  <Text noWrap size={13} color="var(--secondary-text-color)"><SentTime timestamp={tx.date} /></Text>
                 </div>
                 <div className={w.txAmount} style={{ color: positive ? 'var(--green-color)' : 'var(--primary-text-color)' }}>
                   {positive ? '+' : '−'}{Math.abs(tx.amount)}

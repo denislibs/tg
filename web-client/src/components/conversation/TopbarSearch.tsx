@@ -31,10 +31,10 @@ import { getPeerPhoto, getPeerPhotoId, type Chat as PeerChat, type User } from '
 import { getPeerTitle } from '../../core/peers/getPeerTitle'
 import { useChatHeaderSearch } from '../../core/hooks/useChatHeaderSearch'
 import { gradientFor } from '../../core/dialogToChat'
-import { messageDateISO, messageForReply } from '../../core/messageToConvMsg'
-import { friendlyMsgTime } from '../../core/format/friendlyTime'
-import { useLang, useT } from '../../i18n'
+import { messageForReply } from '../../core/messageToConvMsg'
+import { useT } from '../../i18n'
 import { i18n } from '@lib/langPack'
+import { RowDate } from '@shared/ui/dateNodes'
 import type { Chat } from '../../data'
 
 // tweb topbarSearch.tsx:657 MAX_HEIGHT — и высота списка, и «окно» центрирования
@@ -138,13 +138,14 @@ function middleOverflow(str: string, maxLength: number): string {
 // `a.row…chatlist-chat.chatlist-chat-abitbigger` с `.c-ripple` первым ребёнком.
 // `active` — строка, к которой прыгнули (topbarSearch.tsx:870); `menu-open` —
 // подсветка навигации по списку (attachListNavigation activeClassName).
-function MessageRow({ chatId, senderId, name, photoId, preview, time, query, active, navigated, onPick }: {
+function MessageRow({ chatId, senderId, name, photoId, preview, date, query, active, navigated, onPick }: {
   chatId: string
   senderId: number
   name: string
   photoId?: number
   preview: string
-  time: string
+  /** СЕКУНДЫ эпохи (`message.date`) — подпись строит `RowDate`. */
+  date: number
   query: string
   active: boolean
   navigated: boolean
@@ -183,7 +184,10 @@ function MessageRow({ chatId, senderId, name, photoId, preview, time, query, act
           <span className="peer-title">{name}</span>
         </div>
         <div className="row-title row-title-right row-title-right-secondary dialog-title-details">
-          <span className="message-time">{time}</span>
+          {/* Та же подпись, что у строки диалога: у tweb ряд результата и ЕСТЬ
+              строка диалога (`chat/topbarSearch.tsx:75` →
+              `addDialogAndSetLastMessage` → `appDialogsManager.ts:2242`). */}
+          <RowDate timestamp={date} className="message-time" />
         </div>
       </div>
       <Avatar
@@ -248,7 +252,6 @@ export interface TopbarSearchProps {
 
 export default function TopbarSearch({ chat, onJumpToSeq, containerRef }: TopbarSearchProps) {
   const t = useT()
-  const [lang] = useLang()
   const s = useChatHeaderSearch(chat, onJumpToSeq)
 
   const inputRef = useRef<HTMLInputElement>(null)
@@ -557,7 +560,7 @@ export default function TopbarSearch({ chat, onJumpToSeq, containerRef }: Topbar
                         name={getPeerTitle({ peerId: m.fromId ?? 0, peer: s.resultPeers.get(m.fromId ?? 0) }) || s.chatName}
                         photoId={getPeerPhotoId(getPeerPhoto(s.resultPeers.get(m.fromId ?? 0)))}
                         preview={messageForReply(m)}
-                        time={friendlyMsgTime(messageDateISO(m.date), lang)}
+                        date={m.date}
                         query={s.value}
                         active={i === s.targetIdx}
                         navigated={i === navIdx}

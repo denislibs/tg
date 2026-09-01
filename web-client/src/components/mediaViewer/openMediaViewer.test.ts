@@ -30,7 +30,7 @@ const item = (mid: number): ViewerItem => ({
   mid,
   seq: mid,
   media: { mediaId: mid, width: 800, height: 600, kind: 'photo', blurPreview: 'AAAA' },
-  author: { peerId: mid, name: 'Алиса', date: 'вчера' },
+  author: { peerId: mid, name: 'Алиса', date: 1755255240 },
 })
 
 const wholeCount = () => document.querySelectorAll('.media-viewer-whole').length

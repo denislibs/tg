@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import Text from '../shared/ui/Text'
+import { SentTime } from '../shared/ui/dateNodes'
 import Menu, { MenuItem } from '../shared/ui/Menu'
 import TgIcon, { type IconName } from './TgIcon'
 import PlayPauseGlyph from './PlayPauseGlyph'
@@ -160,7 +161,13 @@ function NowPlayingBar() {
               </Text>
               <Text noWrap size={13} color="var(--secondary-text-color)" style={{ lineHeight: 1.25 }}>
                 {fmt(currentTime)}
-                {track?.subtitle ? ` • ${track.subtitle}` : ''}
+                {/* Подзаголовок — исполнитель у музыки, дата отправки у голосового
+                    и кружка (tweb `chat/audio.tsx:210-218`). Дата строится УЗЛОМ
+                    здесь, а не приезжает готовой строкой в очереди: строка
+                    застывала в языке момента сборки очереди. */}
+                {track?.performer ? ` • ${track.performer}` : ''}
+                {!track?.performer && track?.date ? ' • ' : ''}
+                {!track?.performer && track?.date ? <SentTime timestamp={track.date} /> : null}
               </Text>
             </div>
 

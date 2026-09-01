@@ -23,7 +23,7 @@
 import { useMemo, type ReactNode } from 'react'
 
 import { dayLabel } from '@core/format/dayLabel'
-import { formatDate, formatFullSentTime, formatTime, isValidTimestamp } from '@helpers/date'
+import { formatDate, formatDateAccordingToTodayNew, formatFullSentTime, formatTime, isValidTimestamp } from '@helpers/date'
 
 import DomNode from './DomNode'
 
@@ -110,4 +110,28 @@ export function DayLabel({ dayStartMs, className }: {
 }) {
   const node = useMemo(() => dayLabel(dayStartMs), [dayStartMs])
   return <DomNode node={node} className={className} />
+}
+
+/**
+ * Подпись времени в СТРОКЕ СПИСКА — узел `formatDateAccordingToTodayNew`
+ * (порт tweb `helpers/date.ts:107-129`): сегодня → «14:30», эта неделя → день
+ * недели, тот же год → «5 сент.», другой год → с годом.
+ *
+ * Это ровно та подпись, что стоит у оригинала в `dom.lastTimeSpan`
+ * (`appDialogsManager.ts:2242`), а строки результатов поиска — и общего
+ * (`appSearchSuper.ts:853` → `setLastMessageN`), и поиска по чату
+ * (`chat/topbarSearch.tsx:75` → `addDialogAndSetLastMessage`) — у tweb ЭТО И
+ * ЕСТЬ строки диалога. Поэтому у них та же подпись, а не «Сегодня в 14:30».
+ */
+export function RowDate({ timestamp, className, fallback = null }: {
+  /** СЕКУНДЫ эпохи. */
+  timestamp: number
+  className?: string
+  fallback?: ReactNode
+}) {
+  const node = useMemo(
+    () => (isValidTimestamp(timestamp) ? formatDateAccordingToTodayNew(new Date(timestamp * 1000)) : null),
+    [timestamp],
+  )
+  return node ? <DomNode node={node} className={className} /> : <>{fallback}</>
 }

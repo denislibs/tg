@@ -18,7 +18,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import '../../test/lang'
 
-import { ALWAYS_YEAR, DayDate, SentTime, Time } from './dateNodes'
+import { ALWAYS_YEAR, DayDate, RowDate, SentTime, Time } from './dateNodes'
 
 /** 14 июня 2026, 10:00 UTC. */
 const TS = Math.floor(Date.parse('2026-06-14T10:00:00Z') / 1000)
@@ -39,6 +39,7 @@ describe('невалидная дата', () => {
     ['SentTime', (fallback?: string) => <SentTime timestamp={BROKEN} fallback={fallback} />],
     ['Time', (fallback?: string) => <Time timestamp={BROKEN} fallback={fallback} />],
     ['DayDate', (fallback?: string) => <DayDate date={BROKEN} fallback={fallback} />],
+    ['RowDate', (fallback?: string) => <RowDate timestamp={BROKEN} fallback={fallback} />],
   ] as const
 
   for (const [name, build] of cases) {
@@ -79,5 +80,48 @@ describe('год в `DayDate`', () => {
 
     const { container } = render(<DayDate date={TS} shortMonth overrideIntlOptions={ALWAYS_YEAR} />)
     expect(container.textContent).toBe('Jun 14, 2026')
+  })
+})
+
+// ── ПИН ЗАДАЧИ #123: подпись СТРОКИ СПИСКА ───────────────────────────────────
+//
+// `RowDate` — порт `formatDateAccordingToTodayNew` (tweb `helpers/date.ts:107-129`),
+// у которого ЧЕТЫРЕ ветки, и выбирает их не «сколько прошло», а комбинация:
+// тот же день / другой год / та же неделя / тот же год. Прежняя подпись строк
+// поиска (`friendlyMsgTime`) отвечала на другой вопрос — «Сегодня в 08:17»,
+// «12.06 в 08:17», — то есть у нас строки поиска и строки списка чатов
+// говорили по-разному, хотя у оригинала это ОДНА И ТА ЖЕ строка диалога
+// (`appSearchSuper.ts:853` → `setLastMessageN` → `appDialogsManager.ts:2242`).
+//
+// Ветки проверяются все четыре: подмена набора опций в одной из них — молчаливая
+// правка, которую не видит ни тайпчек, ни сборка.
+describe('`RowDate` — четыре ветки строки списка', () => {
+  /** Четверг, 27 августа 2026, 18:00. */
+  const NOW = '2026-08-27T18:00:00'
+
+  const label = (iso: string) => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(NOW))
+    const { container } = render(<RowDate timestamp={Math.floor(new Date(iso).getTime() / 1000)} />)
+    return container.textContent
+  }
+
+  it('тот же день — часы и минуты', () => {
+    expect(label('2026-08-27T09:05:00')).toBe('09:05')
+  })
+
+  it('текущая неделя — короткий день недели', () => {
+    // Понедельник той же недели: `getWeekNumber` совпадает, разница < 7 суток.
+    expect(label('2026-08-24T09:05:00')).toBe('Mon')
+  })
+
+  it('тот же год, но не эта неделя — короткий месяц и число', () => {
+    expect(label('2026-06-14T09:05:00')).toBe('Jun 14')
+  })
+
+  it('другой год — год, число и ДВУЗНАЧНЫЙ месяц', () => {
+    // Именно `month: '2-digit'` (:106), а не короткое имя: у оригинала прошлый
+    // год пишется числами целиком.
+    expect(label('2025-06-14T09:05:00')).toBe('06/14/2025')
   })
 })

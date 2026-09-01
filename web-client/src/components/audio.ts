@@ -111,6 +111,9 @@ export interface AudioElementMessage {
   out?: boolean
   /** не прослушано (tweb `message.pFlags.media_unread`) */
   mediaUnread?: boolean
+  /** дата отправки, СЕКУНДЫ (tweb `message.date`) — подзаголовок голосового и
+   *  кружка в плашке плеера (`chat/audio.tsx:214`) */
+  date?: number
 }
 
 /**

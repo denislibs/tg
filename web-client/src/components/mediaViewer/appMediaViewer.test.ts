@@ -61,7 +61,7 @@ const item = (mid: number, over: Partial<ViewerItem> = {}): ViewerItem => ({
   element: null, // сосед вне вьюпорта (tweb processItem: element null)
   mid,
   media: { mediaId: mid, width: 800, height: 600, kind: 'photo', blurPreview: 'AAAA' },
-  author: { peerId: mid, name: 'Алиса', date: 'вчера' },
+  author: { peerId: mid, name: 'Алиса', date: 1755255240 },
   ...over,
 })
 

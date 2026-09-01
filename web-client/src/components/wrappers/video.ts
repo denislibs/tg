@@ -207,6 +207,9 @@ export interface WrapVideoMessage {
   out?: boolean
   /** сообщение ещё не отправлено (tweb `message.pFlags.is_outgoing`; у нас id < 0) */
   isOutgoing?: boolean
+  /** дата отправки, СЕКУНДЫ (tweb `message.date`) — подзаголовок кружка в
+   *  плашке плеера (`chat/audio.tsx:214`) */
+  date?: number
 }
 
 export interface WrapVideoOptions {
@@ -792,7 +795,7 @@ function wrapRound({
     const track = roundElement.track = {
       mediaId: doc.id,
       title: '',
-      subtitle: '',
+      date: message?.date,
       peerId: message?.peerId,
       msgId: message?.mid,
       type: 'round' as const,

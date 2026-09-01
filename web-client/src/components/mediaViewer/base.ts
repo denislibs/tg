@@ -51,6 +51,7 @@
 import { createElement, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
+import { formatFullSentTime } from '@helpers/date'
 import EventListenerBase from '@helpers/eventListenerBase'
 import { getMiddleware, type MiddlewareHelper } from '@helpers/middleware'
 import deferredPromise from '@helpers/cancellablePromise'
@@ -155,7 +156,10 @@ export type ViewerMedia = {
 export type ViewerAuthor = {
   peerId: string | number
   name: string
-  date: string
+  /** СЕКУНДЫ эпохи (`message.date`); отсутствует у не-сообщений (фото профиля).
+   *  Подпись строит вьювер узлом `formatFullSentTime` (tweb :2043) — готовую
+   *  строку сюда больше не кладут: она застывала в языке момента сборки. */
+  date?: number
   /** stripped `avatar_preview` пира (Task 9) — слой под полной аватаркой */
   avatarPreview?: string
 }
@@ -1381,7 +1385,11 @@ export default class AppMediaViewerBase<
       }))
     })
     this.author.nameEl.textContent = author.name
-    this.author.date.textContent = author.date
+    // tweb :2043 — `replaceContent(this.author.date, formatFullSentTime(timestamp))`.
+    // Узел, а не строка: язык и настройку 12/24 часа ведёт ядро.
+    this.author.date.replaceChildren(
+      ...(author.date === undefined ? [] : [formatFullSentTime(author.date)]),
+    )
   }
 
   // Слот caption (vanilla-путь): вставить готовый DOM-узел в scrollable

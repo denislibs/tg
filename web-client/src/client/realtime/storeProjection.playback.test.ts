@@ -23,7 +23,7 @@ describe('storeProjection — rt:logging_out сносит коллекцию м�
   beforeAll(() => registerStoreProjection({} as unknown as Managers))
 
   it('кадр ухода сессии → элемент сообщения снят с учёта', () => {
-    const track = { mediaId: 777, title: 't', subtitle: 's', type: 'voice' as const }
+    const track = { mediaId: 777, title: 't', date: 1755255240, type: 'voice' as const }
     // autoload: false — сеть в этом тесте не нужна, проверяется учёт элемента
     mediaPlayback.addMedia({ track, autoload: false })
     expect(mediaPlayback.getMedia(777)).toBeDefined()

@@ -222,6 +222,7 @@ export default function wrapAlbum({
       message: {
         mid: message.id,
         peerId: message.peerId,
+        date: message.date,
         mediaUnread: message.pFlags.media_unread,
         // tweb `pFlags.is_outgoing` — у нас оптимистичный id до ack (core/messageToConvMsg.ts:98)
         isOutgoing: isLocalMessageId(message.id),

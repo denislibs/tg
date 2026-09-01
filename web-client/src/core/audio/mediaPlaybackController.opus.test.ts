@@ -47,7 +47,7 @@ afterEach(() => {
   oggBytesToWavUrl.mockReset()
 })
 
-const track = (mediaId: number) => ({ mediaId, title: 't', subtitle: 's', type: 'voice' as const })
+const track = (mediaId: number) => ({ mediaId, title: 't', date: 1755255240, type: 'voice' as const })
 const settle = () => new Promise((r) => setTimeout(r, 0))
 
 describe('платформа не играет ogg — src берётся из конвертера', () => {
