@@ -200,6 +200,7 @@ const ru = {
   Phone: 'Телефон',
   Username: 'Имя пользователя',
   'General.NightMode': 'Ночной режим',
+  'AccountSettings.Language': 'Язык',
   'AccountSettings.Notifications': 'Уведомления и звуки',
   DataSettings: 'Данные и память',
   PrivacySettings: 'Конфиденциальность',

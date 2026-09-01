@@ -77,7 +77,9 @@ import type { RestClient } from '../net/restClient'
  *    Не портирована сама кнопка экрана входа — ЗАДАЧА #117; заводить метод
  *    раньше её значило бы завести код без вызывающего.
  *    `langpack.getLanguages` вызывающего обрёл задачей 8: список языков рисует
- *    экран выбора языка (`components/settings/LanguageSettings.tsx`).
+ *    вкладка «Язык» (`components/sidebarLeft/tabs/language.solid.tsx`, порт
+ *    tweb `sidebarLeft/tabs/language.tsx`). До неё тот же список рисовал
+ *    React-экран `settings/LanguageSettings.tsx`, снесённый вместе с портом.
  */
 
 /** Ключ кэша. Один на приложение, как `langPack` у tweb (:110): пакет хранится

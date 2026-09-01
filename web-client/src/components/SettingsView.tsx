@@ -27,7 +27,8 @@ import { getPeerPhotoId, getPeerPhotoStrippedThumb } from '../core/peers/peer'
 import { getUserTitle } from '../core/peers/getPeerTitle'
 import { useSettings } from '../settings'
 import { useManagers } from '../core/hooks/useManagers'
-import { createSettingsSliderHost, openActiveSessionsTab } from './sidebarLeft/settingsSliderHost'
+import { createSettingsSliderHost, getSettingsSliderHost, openActiveSessionsTab } from './sidebarLeft/settingsSliderHost'
+import { AppLanguageTab } from './solidJsTabs/tabs'
 import { toastNew } from './toast'
 import { resolvePreset, PRESET_MODE } from '../theme'
 import s from './SettingsView.module.scss'
@@ -56,7 +57,13 @@ export const settingsItems: { icon: ReactNode; label: LangPackKey; value?: LangP
   // `LanguageName` переводится каждым словарём в своё самоназвание (tweb
   // `sidebarLeft/tabs/settings.tsx:254`). Списка языков для этого не нужно, и
   // особой ветки на рендере — тоже.
-  { icon: <TgIcon name="language" size={24} />, label: 'Telegram.LanguageViewController', value: 'LanguageName' },
+  //
+  // Ключ ЗАГОЛОВКА строки — `AccountSettings.Language` (:255), а не
+  // `Telegram.LanguageViewController`: последний у оригинала подписывает саму
+  // ВКЛАДКУ (`solidJsTabs/tabs.ts:157`), и теперь ею же подписана наша
+  // (`AppLanguageTab`). По-английски обе строки читаются одинаково — тем
+  // легче было спутать, и тем незаметнее разъехались бы переводы.
+  { icon: <TgIcon name="language" size={24} />, label: 'AccountSettings.Language', value: 'LanguageName' },
   { icon: <TgIcon name="keyboard" size={24} />, label: 'KeyboardShortcuts.Title' },
 ]
 
@@ -268,6 +275,16 @@ export default function SettingsView({
                       },
                     })
                   })().catch(() => toastNew({ langPackKey: 'Error.AnError' }))
+                  return
+                }
+                // «Язык» — тоже портированная вкладка слайдера. У оригинала это
+                // одна строка (`settings.tsx:252` —
+                // `tab.slider.createTab(AppLanguageTab).open()`), и здесь она
+                // ровно такая же: ни списка языков, ни данных вперёд вкладке не
+                // передаётся — она берёт их сама в свой `promiseCollector`.
+                if (it.label === 'AccountSettings.Language') {
+                  void getSettingsSliderHost().openTab(AppLanguageTab)
+                    .catch(() => toastNew({ langPackKey: 'Error.AnError' }))
                   return
                 }
                 if (hasSubScreen(it.label)) setSub(it.label)

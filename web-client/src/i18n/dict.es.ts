@@ -38,6 +38,7 @@ const es = {
   UsernameCopied: 'Nombre de usuario copiado al portapapeles',
   BioCopied: 'Biografía copiada al portapapeles',
   'General.NightMode': 'Modo nocturno',
+  'AccountSettings.Language': 'Idioma',
   'AccountSettings.Notifications': 'Notificaciones y sonidos',
   DataSettings: 'Datos y almacenamiento',
   PrivacySettings: 'Privacidad y seguridad',

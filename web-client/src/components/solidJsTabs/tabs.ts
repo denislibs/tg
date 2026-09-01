@@ -5,23 +5,20 @@
  * подтягивается динамическим `import()` — только когда вкладку открыли.
  *
  * В оригинале файл держит 75 объявлений разом (`grep -c "^export const App"`);
- * у нас пока ровно одно — «Устройства» (первая настоящая Solid-вкладка).
- * Остальные добавляются по мере портирования своих модулей (#112): перенести
- * сюда объявление вкладки, чей модуль ещё не портирован, значило бы завести
- * `import()` в несуществующий файл.
+ * у нас их два — «Устройства» и «Язык». Остальные добавляются по мере
+ * портирования своих модулей (#112): перенести сюда объявление вкладки, чей
+ * модуль ещё не портирован, значило бы завести `import()` в несуществующий
+ * файл.
  *
  * Реестра `providedTabs` (второй элемент кортежа `useSuperTab()`) здесь нет
- * НАМЕРЕННО: в оригинале `AppActiveSessionsTab` в него тоже не входит
+ * НАМЕРЕННО: в оригинале ни «Устройства», ни «Язык» в него не входят
  * (`solidJsTabs/providedTabs.ts` — там шесть других вкладок), а реестр нужен
  * только тем вкладкам, которых открывают ПО ИМЕНИ из чужого модуля, объезжая
- * циклический импорт. У «Устройств» такого вызывающего нет ни там, ни здесь —
- * запись в `ProvidedTabs` была бы объявлением без потребителя.
- *
- * Форма вкладки — `scaffoldSolidJSTabEventable`, как в оригинале (:331-335): у
- * «Устройств» открывающая сторона слушает `destroy` вкладки.
+ * циклический импорт. Ни у одной из наших двух такого вызывающего нет ни там,
+ * ни здесь — запись в `ProvidedTabs` была бы объявлением без потребителя.
  */
 import type { Authorization } from '@layer'
-import { scaffoldSolidJSTabEventable } from './scaffoldSolidJSTab.solid'
+import { scaffoldSolidJSTab, scaffoldSolidJSTabEventable } from './scaffoldSolidJSTab.solid'
 
 // tweb :327-329 — вкладка получает УЖЕ загруженный список сессий, а не ходит
 // за ним сама: запрос делает открывающая сторона (у нас — `settingsSliderHost
@@ -34,4 +31,14 @@ export const AppActiveSessionsTab =
   scaffoldSolidJSTabEventable<AppActiveSessionsTabPayload>({
     title: 'SessionsTitle',
     getComponentModule: () => import('../sidebarLeft/tabs/activeSessions.solid'),
+  })
+
+// tweb :155-159. Форма ОБЫЧНАЯ (`scaffoldSolidJSTab`), а не eventable, — как в
+// оригинале: у «Языка» нет открывающей стороны, которой было бы что слушать,
+// и полезной нагрузки тоже нет (список языков вкладка берёт сама, в свой
+// `promiseCollector`).
+export const AppLanguageTab =
+  scaffoldSolidJSTab({
+    title: 'Telegram.LanguageViewController',
+    getComponentModule: () => import('../sidebarLeft/tabs/language.solid'),
   })
