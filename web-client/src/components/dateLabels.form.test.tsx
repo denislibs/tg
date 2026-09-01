@@ -146,6 +146,26 @@ describe('ScheduledView — подпись «Отправится …»', () => 
     expect(container.textContent).toBe('Scheduled until online')
   })
 
+  // Живой узел обновляет СЕБЯ САМ — пересобирать его нельзя (докблок `DomNode`).
+  // Список отдаёт НОВЫЙ объект сообщения на каждое обновление, поэтому мемо по
+  // объекту пересобирало бы узел там, где подпись не менялась; зависимости — два
+  // числа. Тот же дефект чинился в `TopicsPanel`/`SharedMedia`.
+  it('новый объект сообщения с той же датой узел НЕ пересобирает', () => {
+    const sendAt = Math.floor(Date.parse('2026-09-05T10:00:00Z') / 1000)
+    const { container, rerender } = render(<ScheduledLabel message={message({ send_at: sendAt })} />)
+
+    const node = container.querySelector('.i18n')
+    expect(node).not.toBeNull()
+
+    // Другой объект, те же данные — ровно то, что приезжает из списка.
+    rerender(<ScheduledLabel message={message({ send_at: sendAt })} />)
+    expect(container.querySelector('.i18n')).toBe(node)
+
+    // А вот смена САМОЙ даты узел обязана пересобрать.
+    rerender(<ScheduledLabel message={message({ send_at: sendAt + 86400 })} />)
+    expect(container.querySelector('.i18n')).not.toBe(node)
+  })
+
   it('времени в подписи нет — у `formatDate(date, {today})` оригинала его нет', () => {
     const sendAt = Math.floor(Date.parse('2026-09-05T10:34:00Z') / 1000)
     const { container } = render(<ScheduledLabel message={message({ send_at: sendAt })} />)

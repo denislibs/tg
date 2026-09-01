@@ -11,26 +11,35 @@ import RichText from './RichText'
 import SchedulePopup from './SchedulePopup'
 import { useScheduledMessages } from '../core/hooks/useScheduledMessages'
 import { getMessageText, type MyMessage } from '../core/models'
-import { formatDate } from '@helpers/date'
+import { formatDate, isValidTimestamp } from '@helpers/date'
 import { i18n } from '@lib/langPack'
 import { useT } from '../i18n'
 import s from './ScheduledView.module.scss'
 
 /**
- * Подпись «Отправится …» — ДОСЛОВНЫЙ порт `createDateBubble`
- * (tweb `chat/bubbles.ts:4780-4798`), три его ветки в том же порядке:
+ * Подпись «Отправится …» — порт `createDateBubble`
+ * (tweb `chat/bubbles.ts:4780-4798`). Те же три исхода и те же ключи:
  *
- *   сегодня            → `i18n('Chat.Date.ScheduledForToday')`
  *   «когда онлайн»     → `i18n('MessageScheduledUntilOnline')`
+ *   сегодня            → `i18n('Chat.Date.ScheduledForToday')`
  *   любая другая дата  → `i18n('Chat.Date.ScheduledFor', [formatDate(date, {today})])`
+ *
+ * ПОРЯДОК ветвей другой, и это вынужденно: у оригинала «когда онлайн» — это
+ * магический таймстамп (`SEND_WHEN_ONLINE_TIMESTAMP`), поэтому проверка на
+ * «сегодня» стоит у него первой и такой таймстамп до неё просто не долетает. У
+ * нас это ОТДЕЛЬНЫЙ флаг (`when_online`) рядом с обычным `send_at`, и спросить
+ * про него надо ДО «сегодня» — иначе сообщение, у которого `send_at` случайно
+ * попал на сегодняшний день, подписалось бы датой вместо «когда онлайн».
+ * Исходы от перестановки не меняются, меняется только форма вопроса.
  *
  * Ключевое здесь — что дата едет АРГУМЕНТОМ ключа, а не приклеивается к
  * переведённому куску фразы. До этого мы складывали подпись сами — переведённый
- * обрезок «Отправится», пробел, дата, — и этот обрезок жил отдельным ключом. Половину фразы нельзя перевести: в языках с другим
- * порядком слов дата стоит не там, а падеж у неё свой. Ключ оригинала несёт
- * `%@` внутри, и подстановку делает `superFormatter` ядра — поэтому наш
- * обрезок-префикс снесён из английского источника и всех пяти словарей, а на
- * его месте ключ оригинала `Chat.Date.ScheduledFor` = 'Scheduled for %@'.
+ * обрезок «Отправится», пробел, дата, — и этот обрезок жил отдельным ключом.
+ * Половину фразы нельзя перевести: в языках с другим порядком слов дата стоит
+ * не там, а падеж у неё свой. Ключ оригинала несёт `%@` внутри, и подстановку
+ * делает `superFormatter` ядра — поэтому наш обрезок-префикс снесён из
+ * английского источника и всех пяти словарей, а на его месте ключ оригинала
+ * `Chat.Date.ScheduledFor` = 'Scheduled for %@'.
  *
  * Время в подписи не показывается — его нет и у оригинала: `formatDate(date,
  * {today})` даёт только день и месяц. Расхождение, которое из этого следует,
@@ -44,14 +53,21 @@ import s from './ScheduledView.module.scss'
  * и менеджерами ради трёх веток подписи дороже самой подписи.
  */
 export function ScheduledLabel({ message }: { message: MyMessage }) {
-  const node = useMemo(() => {
-    // `send_at`/`when_online` — НАШИ параметры вне схемы у конструктора `message`.
-    if (message._ !== 'message') return null
-    if (message.when_online) return i18n('MessageScheduledUntilOnline')
+  // Зависимости мемо — ДАННЫЕ, а не объект сообщения: список отдаёт новый объект
+  // на каждое обновление, и мемо по нему пересобирало бы живой узел там, где
+  // подпись не менялась (то же, что чинилось в `TopicsPanel`/`SharedMedia`).
+  // `send_at`/`when_online` — НАШИ параметры вне схемы у конструктора `message`.
+  const real = message._ === 'message' ? message : undefined
+  const isMessage = !!real
+  const sendAt = real?.send_at ?? 0
+  const whenOnline = !!real?.when_online
 
-    const sendAt = message.send_at ?? 0
+  const node = useMemo(() => {
+    if (!isMessage) return null
+    if (whenOnline) return i18n('MessageScheduledUntilOnline')
+
     const date = new Date(sendAt * 1000)
-    if (Number.isNaN(date.getTime())) return null
+    if (!isValidTimestamp(sendAt)) return null
 
     // Оригинал сравнивает НАЧАЛА СУТОК (`today.setHours(0,0,0,0)`), потому что
     // ему приходит дата-разделитель; у нас в руках полное время отправки,
@@ -64,7 +80,7 @@ export function ScheduledLabel({ message }: { message: MyMessage }) {
     if (day.getTime() === today.getTime()) return i18n('Chat.Date.ScheduledForToday')
 
     return i18n('Chat.Date.ScheduledFor', [formatDate(date, { today })])
-  }, [message])
+  }, [isMessage, whenOnline, sendAt])
 
   return node ? <DomNode node={node} /> : null
 }
