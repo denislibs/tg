@@ -21,14 +21,30 @@ import type { MyMessage } from '@core/models'
 import Icon from '@components/icon'
 import type { IconName } from '@core/tgico-icons'
 import { fmtViews } from '@core/format/fmtViews'
-import { getFullDate } from '@helpers/date'
+import { formatTime, getFullDate, isValidTimestamp } from '@helpers/date'
 import { useI18nStore } from '../../i18n'
 
-/** «HH:MM» — тот же формат, что у витрины списка (`messageToConvMsg.hhmm`). */
-function hhmm(date: number): string {
-  const d = new Date(date * 1000)
-  if (Number.isNaN(d.getTime())) return ''
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+/**
+ * «ЧЧ:ММ» — порт `makeTime` (tweb `chat/utils.ts:39-41`), которым `setTime`
+ * строит время и в `span.time`, и в его дубле (`messageRender.ts:255`, `:386`).
+ *
+ * Возвращает УЗЕЛ, а не строку, и это здесь главное: `formatTime` отдаёт
+ * `IntlDateElement`, который кладёт себя в `I18n.weakMap`, а дальше его ведёт
+ * ядро — ветка `hour+minute` собирает часы и минуты РУКАМИ, мимо `Intl`
+ * (`lib/langPack.ts:624-633`), потому что 12/24 часа берётся из настройки
+ * пользователя, а `Intl` выбирает цикл по локали и спросить его неоткуда.
+ * Прежняя сборка через `padStart` настройку не читала вовсе: `I18n.setTimeFormat`
+ * переписывает `.i18n`-узлы, а строка в `textContent` остаётся на 24 часах
+ * навсегда — это и была задача #124.
+ *
+ * Ветка `includeDate` оригинала (`utils.ts:40` → `formatFullSentTimeRaw(…,
+ * {combined: true})`) здесь не воспроизводится: она включается условием
+ * `message.peerId === rootScope.myId && !options.isOut` (`messageRender.ts:221`),
+ * то есть только во ВХОДЯЩЕМ бабле «Избранного», а `createMessageTime` про
+ * направление бабла не знает. Расхождение названо ЗАДАЧЕЙ #125.
+ */
+function makeTime(date: number): HTMLElement | null {
+  return isValidTimestamp(date) ? formatTime(new Date(date * 1000)) : null
 }
 
 /**
@@ -81,10 +97,13 @@ export function createMessageTime(message: MyMessage): HTMLElement {
       out.push(edited)
     }
 
-    const time = document.createElement('span')
-    time.classList.add('time-inner-text')
-    time.textContent = hhmm(message.date)
-    out.push(time)
+    // Время — последним (:340-342). Узел СВОЙ на каждый вызов `parts()`: у
+    // оригинала `makeTime` тоже зовётся дважды (:255 и :386), потому что один и
+    // тот же узел не может лежать в двух местах DOM, а клонировать `.i18n`
+    // нельзя — клон в `weakMap` не записан (:375-382 исключает такие узлы из
+    // клонирования поимённо).
+    const time = makeTime(message.date)
+    if (time) out.push(time)
 
     return out
   }
@@ -98,8 +117,9 @@ export function createMessageTime(message: MyMessage): HTMLElement {
   inner.title = fullDate(message.date)
   // Дубль строится ЗАНОВО, а не клонированием: у оригинала часть узлов
   // клонировать нельзя (i18n, реакции, эффект), и он выбирает поэлементно
-  // (:375-382). Наши части все простые, поэтому второй вызов сборки — тот же
-  // ответ без разбора исключений.
+  // (:375-382), а время пересобирает отдельной строкой (:383-386) именно
+  // потому, что оно `.i18n`. У нас `.i18n` среди частей ровно одна — время, —
+  // и второй вызов `parts()` даёт ей новый узел сам, без разбора исключений.
   inner.append(...parts())
 
   timeSpan.append(inner)

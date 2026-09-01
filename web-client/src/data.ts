@@ -37,7 +37,6 @@ export interface ConvMsg {
   text?: string // also used as media caption
   entities?: MessageEntity[] // rich-text formatting spans over `text`
   emoji?: string
-  time?: string
   createdAt?: string // абсолютное время создания (ISO) — для live-локации/отсчётов
   /** дата сообщения, СЕКУНДЫ эпохи (`message.date`) — ею считается «трансляция
    *  закончилась» (`date + period <= now`, порт tweb `isLiveExpired`) и дата

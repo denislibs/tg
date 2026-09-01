@@ -4,9 +4,11 @@
 // `div.time-inner`. Это не избыточность: первый занимает место в потоке текста
 // (иначе последняя строка подписи налезала бы на время), второй позиционируется
 // абсолютно и виден.
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { makeMessage } from '@core/messages/testMessage'
 import type { MyMessage } from '@core/models'
+import I18n from '@lib/langPack'
+import '../../test/lang'
 import { createMessageTime } from './messageTime'
 import { createReactionsElement } from './reactions'
 
@@ -78,5 +80,50 @@ describe('createMessageTime', () => {
     expect(views.textContent).toBe('9.2K')
     // Время последнее — :340-342.
     expect(el.firstElementChild).toBe(views)
+  })
+
+  // ── ПИН ЗАДАЧИ #124 ───────────────────────────────────────────────────────
+  //
+  // Время бабла собиралось `padStart`-ом и попадало в `textContent` СТРОКОЙ.
+  // Строка не переживает ничего: настройку 12/24 часа ведёт `I18n.setTimeFormat`
+  // (`lib/langPack.ts:490-506`), а он обходит `.i18n` и зовёт `update()` у
+  // ИНСТАНСОВ из `weakMap` — строка в текстовом узле для него не существует.
+  // Пользователь, включивший 12-часовой формат, видел «18:05» до перезагрузки, а
+  // после неё — снова «18:05».
+  //
+  // Проверяется не «текст правильный» (это оставалось верным и с дефектом), а
+  // то, ЧЕМ время является: узлом ядра, который ядро может переписать.
+  afterEach(() => {
+    I18n.setTimeFormat('h23')
+    document.body.replaceChildren()
+  })
+
+  it('время — ИНСТАНС ядра в weakMap, а не текст: обе копии', () => {
+    const el = createMessageTime(at('2026-08-15T12:34:00'))
+
+    // Обе копии (`span.time` и дубль `div.time-inner`) несут СВОЙ узел: один
+    // узел не может лежать в двух местах DOM, а клонировать `.i18n` нельзя —
+    // клон в `weakMap` не записан (tweb `messageRender.ts:375-382` исключает
+    // такие узлы из клонирования поимённо).
+    const nodes = Array.from(el.querySelectorAll<HTMLElement>('.i18n'))
+    expect(nodes).toHaveLength(2)
+    expect(nodes[0]).not.toBe(nodes[1])
+    for (const node of nodes) expect(I18n.weakMap.get(node)).toBeDefined()
+    expect(nodes.map((n) => n.textContent)).toEqual(['12:34', '12:34'])
+  })
+
+  it('12-часовой формат переписывает ТЕ ЖЕ узлы, без пересборки бабла', () => {
+    const el = createMessageTime(at('2026-08-15T12:34:00'))
+    // В документе, а не на весу: ядро находит узлы обходом
+    // `document.querySelectorAll('.i18n')` — как и в бою.
+    document.body.append(el)
+    const [inFlow, inInner] = Array.from(el.querySelectorAll<HTMLElement>('.i18n'))
+
+    I18n.setTimeFormat('h12')
+
+    // Узлы те же самые — бабл никто не пересобирал, ядро дошло до них само.
+    expect(Array.from(el.querySelectorAll('.i18n'))).toEqual([inFlow, inInner])
+    expect(inFlow.textContent).toBe('12:34 PM')
+    expect(inInner.textContent).toBe('12:34 PM')
   })
 })
