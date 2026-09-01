@@ -1,4 +1,5 @@
 import Text from '../shared/ui/Text'
+import { SentTime } from '../shared/ui/dateNodes'
 import TgIcon from './TgIcon'
 import { useT } from '../i18n'
 import { useChannelStats } from '../core/hooks/useChannelStats'
@@ -131,7 +132,9 @@ export default function ChannelStats({
                           {p.text.trim() || t('Statistics.MediaPost')}
                         </Text>
                         <Text noWrap size={13} color="var(--secondary-text-color)">
-                          {new Date(p.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+                          {/* tweb `statistics.tsx:704` — `row.subtitle.append(formatFullSentTime(message.date))`.
+                              Прежний `toLocaleDateString(undefined, …)` брал локаль браузера. */}
+                          <SentTime timestamp={Math.floor(Date.parse(p.date) / 1000)} />
                         </Text>
                       </div>
                       <Text size={14} color="var(--secondary-text-color)" style={{ flexShrink: 0 }}>

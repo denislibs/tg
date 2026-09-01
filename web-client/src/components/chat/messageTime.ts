@@ -21,6 +21,7 @@ import type { MyMessage } from '@core/models'
 import Icon from '@components/icon'
 import type { IconName } from '@core/tgico-icons'
 import { fmtViews } from '@core/format/fmtViews'
+import { getFullDate } from '@helpers/date'
 import { useI18nStore } from '../../i18n'
 
 /** «HH:MM» — тот же формат, что у витрины списка (`messageToConvMsg.hhmm`). */
@@ -30,10 +31,19 @@ function hhmm(date: number): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-/** Полная дата — `title` у `time-inner` (tweb `inner.title = title`). */
+/**
+ * Полная дата — `title` у `time-inner` (tweb `messageRender.ts:257`:
+ * `getFullDate(new Date(message.date * 1000))`).
+ *
+ * Месяц здесь АНГЛИЙСКИЙ во всех языках, и это не недосмотр: `getFullDate`
+ * оригинала берёт `months` из `helpers/date/common.ts` — константы, а не
+ * `monthsLocalized`. Подсказка техническая. Прежний `toLocaleString()` без
+ * аргументов брал локаль БРАУЗЕРА, то есть не совпадал ни с оригиналом, ни с
+ * языком приложения.
+ */
 function fullDate(date: number): string {
   const d = new Date(date * 1000)
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString()
+  return Number.isNaN(d.getTime()) ? '' : getFullDate(d)
 }
 
 /**

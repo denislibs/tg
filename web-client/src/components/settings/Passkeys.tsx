@@ -3,25 +3,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import TgIcon from '../TgIcon'
 import Text from '../../shared/ui/Text'
-import { useT, useLang } from '../../i18n'
+import { DayDate } from '../../shared/ui/dateNodes'
+import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { isWebAuthnSupported, createPasskey } from '../../core/webauthnBrowser'
 import type { PasskeyInfo } from '../../core/managers/authManager'
 import { SettingsScreen, Section, Row, EntryRow } from './kit'
 
-function fmtDate(iso: string, lang: string): string {
-  try {
-    return new Date(iso).toLocaleDateString(lang === 'ru' ? 'ru-RU' : undefined, {
-      day: 'numeric', month: 'short', year: 'numeric',
-    })
-  } catch {
-    return iso
-  }
-}
-
 export default function Passkeys({ onBack }: { onBack: () => void }) {
   const t = useT()
-  const [lang] = useLang()
   const managers = useManagers()
   const [keys, setKeys] = useState<PasskeyInfo[]>([])
   const [error, setError] = useState('')
@@ -73,15 +63,21 @@ export default function Passkeys({ onBack }: { onBack: () => void }) {
 
       {keys.length > 0 && (
         <Section>
+          {/* Дата — живой узел `formatDate` ядра. Прежде здесь язык УГАДЫВАЛСЯ
+              (`lang === 'ru' ? 'ru-RU' : undefined`): под `undefined` пряталась
+              локаль БРАУЗЕРА, а четыре остальных языка приложения не
+              учитывались вовсе. */}
           {keys.map((k) => (
             <EntryRow
               key={k.id}
               left={<TgIcon name="key" size={24} color="var(--primary-color)" />}
               title={k.name || t('Passkeys.Item')}
               sub={
-                k.lastUsedAt
-                  ? `${t('Passkeys.LastUsed')}: ${fmtDate(k.lastUsedAt, lang)}`
-                  : `${t('Passkeys.Created')}: ${fmtDate(k.createdAt, lang)}`
+                <>
+                  {k.lastUsedAt ? t('Passkeys.LastUsed') : t('Passkeys.Created')}
+                  {': '}
+                  <DayDate date={Math.floor(Date.parse(k.lastUsedAt || k.createdAt) / 1000)} shortMonth />
+                </>
               }
               onRemove={() => void remove(k.id)}
             />

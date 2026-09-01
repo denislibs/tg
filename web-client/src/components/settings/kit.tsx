@@ -241,7 +241,9 @@ export function EntryRow({
 }: {
   left: ReactNode
   title: string
-  sub?: string
+  /** Подпись — `ReactNode` по той же причине, что у `Row.sublabel`: сюда едут
+   *  живые узлы дат (`shared/ui/dateNodes`). */
+  sub?: ReactNode
   onRemove?: () => void
 }) {
   // Та же `.row`, что и всюду: медиа-слот слева (`row-media` — аватар/иконка,
@@ -338,8 +340,12 @@ export function Row({
 }: {
   icon?: ReactNode
   label: string
-  sublabel?: string
-  value?: string
+  /** Подпись под заголовком. `ReactNode`, а не строка: сюда едут и живые узлы
+   *  дат (`shared/ui/dateNodes`) — их нельзя выразить строкой, иначе подпись
+   *  застывает в языке момента рендера (задача #121). */
+  sublabel?: ReactNode
+  /** Правое значение строки — по той же причине `ReactNode`. */
+  value?: ReactNode
   onClick?: () => void
   danger?: boolean
   accent?: boolean

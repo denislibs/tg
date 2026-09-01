@@ -1,16 +1,10 @@
 import Text from '../shared/ui/Text'
+import { DayDate } from '../shared/ui/dateNodes'
 import TgIcon from './TgIcon'
 import { SettingsScreen, Section, Row } from './settings/kit'
 import { useT } from '../i18n'
 import { usePremiumSubscription } from '../core/hooks/usePremiumSubscription'
 import { planById, formatUsd } from '../core/premium/plans'
-
-function formatDate(iso: string): string {
-  const d = new Date(iso)
-  return Number.isNaN(d.getTime())
-    ? iso
-    : d.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })
-}
 
 // Manage-subscription screen (tweb settings sub-screen): shows the active plan,
 // its expiry and auto-renew state, and lets the user cancel auto-renew.
@@ -37,7 +31,10 @@ export default function PremiumManage({ onBack }: { onBack: () => void }) {
             <Row label={t(planById(sub.plan).labelKey)} value={formatUsd(sub.priceCents)} translate={false} />
             <Row
               label={sub.autoRenew ? 'Premium.Manage.RenewsOn' : 'Premium.Manage.ExpiresOn'}
-              value={formatDate(sub.expiresAt)}
+              // Дата окончания — узел `formatDate` ядра (порт tweb
+              // `helpers/date.ts:75-105`, ср. `popups/frozen.tsx:30`). Прежний
+              // `toLocaleDateString(undefined, …)` брал локаль БРАУЗЕРА.
+              value={<DayDate date={Math.floor(Date.parse(sub.expiresAt) / 1000)} />}
               translate
             />
           </Section>

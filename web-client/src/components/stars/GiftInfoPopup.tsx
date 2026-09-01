@@ -5,11 +5,11 @@ import { createPortal } from 'react-dom'
 import classNames from '../../shared/lib/classNames'
 import IconButton from '../../shared/ui/IconButton'
 import Text from '../../shared/ui/Text'
+import { SentTime } from '../../shared/ui/dateNodes'
 import TgIcon from '../TgIcon'
 import { useManagers } from '../../core/hooks/useManagers'
 import { setStarsBalance } from '../../stores/starsStore'
 import { usePortalContainer } from '../../core/pip'
-import { fmtWhen } from '../../core/dialogToChat'
 import { useT } from '../../i18n'
 import { isGiftConverted, isGiftHidden, type AnyStarGift } from '../../core/managers/starsManager'
 import { usePeers } from '../../core/hooks/usePeers'
@@ -75,7 +75,6 @@ export default function GiftInfoPopup({
   const fromLabel = fromId != null
     ? getPeerTitle({ peerId: fromId, peer: senders.get(fromId) })
     : t('AuthorHiddenShort')
-  const dateLabel = fmtWhen(new Date(date * 1000).toISOString())
 
   return createPortal(
     <div className={classNames('popup', cls, s.overlay)} onClick={onClose}>
@@ -94,7 +93,8 @@ export default function GiftInfoPopup({
             <span className={s.chosenEmoji}>{gift.gift.emoji}</span>
             <Text size={17} weight={600} color="var(--primary-text-color)">{gift.gift.title}</Text>
             <Text size={14} color="var(--secondary-text-color)">
-              {t('StarGiftFromShort')}: {fromLabel}{dateLabel ? ` · ${dateLabel}` : ''}
+              {/* «Сегодня в 14:30» — узел оригинала (`popups/starGiftInfo.tsx:768`). */}
+              {t('StarGiftFromShort')}: {fromLabel}{' · '}<SentTime timestamp={date} />
             </Text>
             {isOwner && hidden && (
               <Text size={13} color="var(--secondary-text-color)">{t('StarGift.HiddenFromProfile')}</Text>

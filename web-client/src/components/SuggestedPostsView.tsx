@@ -6,13 +6,14 @@ import type { LangPackKey } from '@/lang'
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import Text from '../shared/ui/Text'
+import { SentTime } from '../shared/ui/dateNodes'
 import TgIcon from './TgIcon'
 import IconButton from '../shared/ui/IconButton'
 import RichText from './RichText'
 import SchedulePopup from './SchedulePopup'
 import { useSuggestedPosts } from '../core/hooks/useSuggestedPosts'
 import type { SuggestedPost, SuggestedPostStatus } from '../core/models'
-import { useLang, useT } from '../i18n'
+import { useT } from '../i18n'
 import s from './SuggestedPostsView.module.scss'
 
 const statusKey: Record<SuggestedPostStatus, LangPackKey> = {
@@ -27,18 +28,11 @@ export default function SuggestedPostsView({ chatId, mode, onClose }: {
   onClose: () => void
 }) {
   const t = useT()
-  const [lang] = useLang()
   const { posts, approve, reject } = useSuggestedPosts(chatId)
   // Кому назначаем время публикации при одобрении (id поста) — открывает пикер.
   const [scheduleFor, setScheduleFor] = useState<number | null>(null)
 
   const list: SuggestedPost[] = (posts ?? []).filter((p) => (mode === 'admin' ? p.status === 'pending' : true))
-
-  const fmtWhen = (ms: number) => {
-    const d = new Date(ms)
-    const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-    return `${d.toLocaleDateString(lang)}, ${hm}`
-  }
 
   return createPortal(
     <div className={s.overlay} onClick={onClose}>
@@ -71,7 +65,11 @@ export default function SuggestedPostsView({ chatId, mode, onClose }: {
                   )}
                   {p.publishAt != null && (
                     <Text size={12} color="var(--secondary-text-color)">
-                      <TgIcon name="schedule" size={12} /> {fmtWhen(p.publishAt)}
+                      {/* «Сегодня в 14:30» узлом — как у оригинала в поле времени
+                          публикации предложки (`chat/suggestPostPopup/publishTimeField.tsx:51`,
+                          `formatFullSentTime`). Прежняя склейка `toLocaleDateString(lang)`
+                          с руками собранным «ЧЧ:ММ» не уважала настройку 12/24 часа. */}
+                      <TgIcon name="schedule" size={12} /> <SentTime timestamp={Math.floor(p.publishAt / 1000)} />
                     </Text>
                   )}
                 </div>

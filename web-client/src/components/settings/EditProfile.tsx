@@ -8,7 +8,7 @@ import Avatar from '../../shared/ui/Avatar'
 import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import BirthdayModal from './BirthdayModal'
 import AvatarCropper from './AvatarCropper'
-import { useT, useLang } from '../../i18n'
+import { useT } from '../../i18n'
 import { SettingsScreen } from './kit'
 import s from './EditProfile.module.scss'
 import { useManagers } from '../../core/hooks/useManagers'
@@ -27,7 +27,6 @@ type UnameState = 'idle' | 'checking' | 'available' | 'taken' | 'invalid' | 'too
 export default function EditProfile({ onBack }: { onBack: () => void }) {
   const managers = useManagers()
   const t = useT()
-  const [lang] = useLang()
   const me = useChatsStore((s) => s.me)
   const setMe = useChatsStore((s) => s.setMe)
 
@@ -258,7 +257,7 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
         <div className={s.bday} onClick={() => setBdayOpen(true)}>
           <TgIcon name="gift" size={24} color="var(--secondary-text-color)" />
           <Text size={16} color={birthday ? 'var(--primary-text-color)' : 'var(--primary-color)'}>
-            {birthday ? formatBirthday(birthday, lang) : t('EditProfile.AddBirthdayRow')}
+            {birthday ? formatBirthday(birthday) : t('EditProfile.AddBirthdayRow')}
           </Text>
         </div>
       </div>

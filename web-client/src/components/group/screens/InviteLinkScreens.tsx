@@ -18,15 +18,31 @@ import { useT, useTArgs } from '../../../i18n'
 import type { GroupEdit, ImporterRow } from '../../../core/hooks/useGroupEdit'
 import type { InviteLink } from '../../../core/managers/groupsManager'
 import UserAvatar from '../../UserAvatar'
+import { SentTime } from '../../../shared/ui/dateNodes'
+import I18n from '@lib/langPack'
 
-// expiryLabel описывает срок действия ссылки: «истекла» для прошедшей даты,
-// «истекает <дата>» для будущей, пусто — бессрочная.
+/**
+ * expiryLabel описывает срок действия ссылки: «истекла» для прошедшей даты,
+ * «истекает <дата>» для будущей, пусто — бессрочная.
+ *
+ * Дата берётся у ЯДРА (`I18n.getDateTimeFormat` — тот же кэш форматтеров, что у
+ * `IntlDateElement`); прежде здесь стоял `toLocaleDateString()` вовсе без
+ * аргументов, то есть локаль БРАУЗЕРА.
+ *
+ * РАСХОЖДЕНИЕ С ОРИГИНАЛОМ, и оно не в формате, а в самой подписи: tweb на этом
+ * месте показывает не дату, а ОБРАТНЫЙ ОТСЧЁТ — `InviteLink.Sticker.TimeLeft`
+ * с длительностью (`chatInviteLinks.tsx:459`) и кольцом прогресса рядом. Порт
+ * этого — отдельная работа (там своя механика цвета и `strokeDasharray`), а не
+ * правка одной строки. Строкой, а не узлом, дата остаётся вынужденно: результат
+ * склеивается в подзаголовок через ' • ' и в этом же виде едет в `Row label`,
+ * который у нас `string` (раскол контракта — задача #112).
+ */
 function expiryLabel(t: (key: LangPackKey) => string, expiresAt?: string): string | undefined {
   if (!expiresAt) return undefined
   const ts = Date.parse(expiresAt)
   if (Number.isNaN(ts)) return undefined
   if (ts <= Date.now()) return t('ExportedInvitation.Status.Expired')
-  return `${t('InviteLinks.Expires')} ${new Date(ts).toLocaleDateString()}`
+  return `${t('InviteLinks.Expires')} ${I18n.getDateTimeFormat({ day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(ts))}`
 }
 
 // Подзаголовок строки ссылки (tweb createRow: joins • limit • expiry).
@@ -357,12 +373,16 @@ function InviteLinkDetailScreen({ g, link, onEdit, onBack }: { g: GroupEdit; lin
 
       {importers.length > 0 && (
         <Section captionText={tArgs('PeopleJoined', [link.uses])}>
+          {/* Дата вступления — узел `formatFullSentTime` оригинала
+              (`chatInviteLink.tsx:235`: `getSubtitleForElement: (peerId) =>
+              formatFullSentTime(importersMap.get(peerId)?.date)`). Прежний
+              `toLocaleDateString()` был вовсе без аргументов — локаль БРАУЗЕРА. */}
           {importers.map((im) => (
             <Row
               key={im.userId}
               icon={<UserAvatar id={im.userId} name={im.name} photoId={im.photoId} />}
               label={im.name}
-              sublabel={new Date(im.joinedAt).toLocaleDateString()}
+              sublabel={<SentTime timestamp={Math.floor(Date.parse(im.joinedAt) / 1000)} />}
               translate={false}
             />
           ))}

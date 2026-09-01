@@ -3,14 +3,36 @@
 // «Отправить сейчас» / «Удалить» (tweb MessageScheduleSend / delete).
 import { createPortal } from 'react-dom'
 import Text from '../shared/ui/Text'
+import { SentTime, Time } from '../shared/ui/dateNodes'
 import TgIcon from './TgIcon'
 import IconButton from '../shared/ui/IconButton'
 import RichText from './RichText'
 import SchedulePopup from './SchedulePopup'
 import { useScheduledMessages } from '../core/hooks/useScheduledMessages'
 import { getMessageText, type MyMessage } from '../core/models'
-import { useLang, useT } from '../i18n'
+import { useT } from '../i18n'
 import s from './ScheduledView.module.scss'
+
+/**
+ * Подпись «Отправится …» — три ветки оригинала (`bubbles.ts::createDateBubble`,
+ * :4786-4798): «когда онлайн», «сегодня» и обычная дата.
+ *
+ * Дата и время — УЗЕЛ `formatFullSentTime` («Сегодня в 14:30» / «5 сент. в
+ * 14:30»), а не склейка `toLocaleDateString(lang)` с руками собранным «ЧЧ:ММ»:
+ * прежняя склейка не уважала ни настройку 12/24 часа, ни язык пакета (`lang`
+ * стора мог разойтись с языком ядра, если пакет не доехал).
+ */
+function ScheduledLabel({ message }: { message: MyMessage }) {
+  const t = useT()
+  // `send_at`/`when_online` — НАШИ параметры вне схемы у конструктора `message`.
+  if (message._ !== 'message') return null
+  if (message.when_online) return <>{t('MessageScheduledUntilOnline')}</>
+  const sendAt = message.send_at ?? 0
+  const isToday = new Date(sendAt * 1000).toDateString() === new Date().toDateString()
+  return isToday
+    ? <>{t('Chat.Date.ScheduledForToday')}, <Time timestamp={sendAt} /></>
+    : <>{t('Schedule.ScheduledFor')} <SentTime timestamp={sendAt} /></>
+}
 
 export default function ScheduledView({ chatId, onClose, onChanged }: {
   chatId: number
@@ -19,20 +41,7 @@ export default function ScheduledView({ chatId, onClose, onChanged }: {
   onChanged: (count: number) => void
 }) {
   const t = useT()
-  const [lang] = useLang()
   const { list, reschedule, setReschedule, doReschedule, sendNow, remove } = useScheduledMessages(chatId, onChanged)
-
-  const fmtWhen = (m: MyMessage) => {
-    // «Отправить, когда онлайн» (tweb MessageScheduledUntilOnline): вместо даты.
-    // `send_at`/`when_online` — НАШИ параметры вне схемы у конструктора `message`.
-    if (m._ !== 'message') return ''
-    if (m.when_online) return t('MessageScheduledUntilOnline')
-    const d = new Date((m.send_at ?? 0) * 1000)
-    const today = d.toDateString() === new Date().toDateString()
-    const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-    if (today) return `${t('Chat.Date.ScheduledForToday')}, ${hm}`
-    return `${t('Schedule.ScheduledFor')} ${d.toLocaleDateString(lang)}, ${hm}`
-  }
 
   return <>
     {reschedule && (
@@ -63,7 +72,7 @@ export default function ScheduledView({ chatId, onClose, onChanged }: {
             <div key={m.id} className={s.row}>
               <div className={s.bubble}>
                 <Text size={12.5} color="var(--primary-color)" weight={600}>
-                  {fmtWhen(m)}
+                  <ScheduledLabel message={m} />
                 </Text>
                 <Text size={15} color="var(--primary-text-color)" style={{ wordBreak: 'break-word' }}>
                   <RichText text={getMessageText(m)} entities={m._ === 'message' ? m.entities : undefined} linkColor="var(--link-color)" />

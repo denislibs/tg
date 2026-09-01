@@ -166,6 +166,7 @@ import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import filterAsync from '@helpers/array/filterAsync'
 import { copyTextToClipboard } from '@helpers/clipboard'
 import contextMenuController from '@helpers/contextMenuController'
+import { getFullDate } from '@helpers/date'
 import { attachContextMenuListener } from '@helpers/dom/attachContextMenuListener'
 import cancelEvent from '@helpers/dom/cancelEvent'
 import { attachClickEvent } from '@helpers/dom/clickEvent'
@@ -1235,7 +1236,16 @@ export default class ChatContextMenu {
       // tweb :1846 `getPeerTitle({peerId, plainText: true})` — у нас тот же
       // синхронный вопрос к зеркалу карточек (`core/peerCache.ts`).
       const title = message.fromId === undefined ? '' : peerTitle(message.fromId)
-      const date = new Date(message.date * 1000).toLocaleString()
+      // tweb :1834-1839 — своя, НЕ локальная форма: день с ведущим нулём,
+      // месяц числом, без секунд, время через пробел. `toLocaleString()` без
+      // аргументов, стоявший здесь, брал локаль браузера и давал совсем другую
+      // строку в копируемом тексте.
+      const date = getFullDate(new Date(message.date * 1000), {
+        noSeconds: true,
+        monthAsNumber: true,
+        timeJoiner: ' ',
+        leadingZero: true,
+      })
       return `${title}, [${date}]\n${getMessageText(message)}`
     }).join('\n\n')
   }

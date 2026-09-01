@@ -612,7 +612,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
                 {profile?.fullUser.birthday && (
                   <Row
                     icon={<TgIcon name="gift" size={24} />}
-                    label={formatBirthday(profile.fullUser.birthday, lang)}
+                    label={formatBirthday(profile.fullUser.birthday)}
                     sublabel={t('Birthday')}
                     translate={false}
                   />

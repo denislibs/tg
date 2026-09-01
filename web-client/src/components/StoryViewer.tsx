@@ -1,7 +1,8 @@
-import type { LangPackKey } from '@/lang'
 import { createPortal } from 'react-dom'
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import Text from '../shared/ui/Text'
+import DomNode from '../shared/ui/DomNode'
+import { formatFullSentTime } from '@helpers/date'
 import IconButton from '../shared/ui/IconButton'
 import Menu, { MenuItem } from '../shared/ui/Menu'
 import Popup from '../shared/ui/Popup'
@@ -86,21 +87,30 @@ function calcTranslateX(diff: number, storyWidth: number): string {
   return `${offset}px`
 }
 
-// Текст даты в шапке (tweb getDateText, viewer.tsx:1957-2009: StoryJustNow /
+// Дата в шапке (tweb getDateText, viewer.tsx:1957-2009: StoryJustNow /
 // MinutesShortAgo / HoursShortAgo / полная дата + пометка edited).
-// Отступление от tweb: у нас нет lang-пака Telegram с плюрализацией, поэтому
-// короткие формы собираем сами через t().
-// `date` — СЕКУНДЫ эпохи (`storyItem.date`), те же единицы, что у сообщения;
-// ISO-строки на проводе больше нет.
-function dateText(date: number, edited: boolean, t: (key: LangPackKey) => string): string {
-  const ts = date * 1000
-  const sec = Math.max(0, Math.round((Date.now() - ts) / 1000))
-  let head: string
-  if (sec < 60) head = t('StoryJustNow')
-  else if (sec < 3600) head = `${Math.floor(sec / 60)} ${t('Story.Time.MinutesAgo')}`
-  else if (sec < 86400) head = `${Math.floor(sec / 3600)} ${t('Story.Time.HoursAgo')}`
-  else head = new Date(ts).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-  return edited ? head + JOINER + t('EditedMessage') : head
+//
+// Отступление от tweb в коротких формах: у оригинала это ключи с формами числа
+// (`i18n('MinutesShortAgo', [n])`), у нас число приклеено к строке через `t()`.
+//
+// СТАРШЕ СУТОК — узел `formatFullSentTime` оригинала (:1985). Прежде здесь
+// стоял `toLocaleString([], …)`, а пустой список локалей это локаль БРАУЗЕРА:
+// при английском интерфейсе история недельной давности подписывалась
+// по-русски. Узел мемоизирован по таймстампу — на смену языка он переписывает
+// себя сам, пересобирать его React не должен.
+// `date` — СЕКУНДЫ эпохи (`storyItem.date`), те же единицы, что у сообщения.
+function StoryDate({ date, edited }: { date: number; edited: boolean }) {
+  const t = useT()
+  const full = useMemo(() => formatFullSentTime(date), [date])
+  const sec = Math.max(0, Math.round((Date.now() - date * 1000) / 1000))
+  const head = sec < 60
+    ? t('StoryJustNow')
+    : sec < 3600
+      ? `${Math.floor(sec / 60)} ${t('Story.Time.MinutesAgo')}`
+      : sec < 86400
+        ? `${Math.floor(sec / 3600)} ${t('Story.Time.HoursAgo')}`
+        : <DomNode node={full} />
+  return <>{head}{edited ? <>{JOINER}{t('EditedMessage')}</> : null}</>
 }
 
 /**
@@ -675,7 +685,6 @@ function StoryPeer(props: StoryPeerProps) {
     paused, muted, progressRef, headerRight, overlay, footer,
     onSelect, onNext, onPrev, onBuffering, onDuration, onContentReady,
   } = props
-  const t = useT()
   const story = group.stories[storyIndex]
   // Вложение приезжает СТУПЕНЬЮ вместе с историей: ни номера файла рядом, ни
   // отдельного запроса меты на каждую историю больше нет.
@@ -805,7 +814,7 @@ function StoryPeer(props: StoryPeerProps) {
                   <span className={s.ViewerStoryHeaderSecondary}>{`${JOINER}${storyIndex + 1}/${group.stories.length}`}</span>
                 </div>
                 <div className={classNames(s.ViewerStoryHeaderSecondary, s.ViewerStoryHeaderTime)}>
-                  {dateText(storyDate(story), isStoryEdited(story), t)}
+                  <StoryDate date={storyDate(story)} edited={isStoryEdited(story)} />
                 </div>
               </div>
             </div>
