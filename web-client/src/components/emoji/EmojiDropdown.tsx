@@ -166,7 +166,7 @@ const EmojiCategory = memo(function EmojiCategory({
       {/* локальная категория (tweb createLocalCategory, tab.ts:345-347):
           заголовок `i18n(title)` = span.i18n + класс disable-hover */}
       <div className="category-title disable-hover">
-        <span className="i18n">{title}</span>
+        <span>{title}</span>
       </div>
       <div className="category-items super-emojis" style={{ minHeight: rows * CELL }}>
         {visible && emojis.map((e, i) => <EmojiCell key={`${e}-${i}`} e={e} onPick={onPick} />)}

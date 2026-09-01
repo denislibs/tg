@@ -91,7 +91,7 @@ function SharedMediaTab({ name, active, hidden, onClick }: { name: LangPackKey; 
       {ripple}
       <i className="menu-horizontal-div-item-background" />
       <span className="menu-horizontal-div-item-span">
-        <span className="i18n">{t(name)}</span>
+        <span>{t(name)}</span>
       </span>
     </div>
   )

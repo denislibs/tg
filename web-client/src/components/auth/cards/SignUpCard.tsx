@@ -151,11 +151,11 @@ export default function SignUpCard({ token, onTokenLost, onComplete }: SignUpCar
           </div>
         </MediaHeader.Sticker>
         <MediaHeader.Title>
-          <span className="i18n">{fullName || t('YourName')}</span>
+          <span>{fullName || t('YourName')}</span>
         </MediaHeader.Title>
         {/* без `.secondary` — как у tweb на этой карточке */}
         <MediaHeader.Subtitle>
-          <span className="i18n">{superFormatter(t('Login.Register.Subtitle'))}</span>
+          <span>{superFormatter(t('Login.Register.Subtitle'))}</span>
         </MediaHeader.Subtitle>
       </MediaHeader>
 

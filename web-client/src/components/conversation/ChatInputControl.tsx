@@ -139,23 +139,23 @@ function ChatInputControl(p: ChatInputControlProps) {
 
         <div className="chat-input-plate-center">
           <PlateButton hide={botStartHidden} onClick={p.onBotStart}>
-            <span className="i18n">{t('BotStart')}</span>
+            <span>{t('BotStart')}</span>
           </PlateButton>
           {/* Unblock: фичи разблокировки у нас нет, кнопка структурная — но её
               `hide` считается по тому же условию, что в tweb. */}
           <PlateButton hide={!unblock}>
-            <span className="i18n">{t('Unblock')}</span>
+            <span>{t('Unblock')}</span>
           </PlateButton>
           <PlateButton filled hide={!join}>
-            <span className="i18n">{t('ChannelJoin')}</span>
+            <span>{t('ChannelJoin')}</span>
           </PlateButton>
           {/* tweb обновляет лейбл через replaceChildren — вместе с ним из кнопки
               пропадает и `.c-ripple`; повторяем итоговое дерево. */}
           <PlateButton noRipple hide={!channelMute} onClick={p.onToggleMute}>
-            <span className="i18n">{t(p.muted ? 'ChatList.Context.Unmute' : 'ChatList.Context.Mute')}</span>
+            <span>{t(p.muted ? 'ChatList.Context.Unmute' : 'ChatList.Context.Mute')}</span>
           </PlateButton>
           <PlateButton hide={!premium}>
-            <span className="i18n">
+            <span>
               <span className="peer-title" data-peer-id={p.peerId} />
               <br />
               <a>{t('Chat.Frozen.LearnMore')}</a>
@@ -163,47 +163,47 @@ function ChatInputControl(p: ChatInputControlProps) {
           </PlateButton>
           <PlateButton hide={!frozen}>
             <span className="chat-input-frozen-text">
-              <span className="i18n danger">{t('Chat.Input.FrozenButton1')}</span>
-              <span className="i18n secondary chat-input-frozen-text-subtitle">{t('Chat.Input.FrozenButton2')}</span>
+              <span className="danger">{t('Chat.Input.FrozenButton1')}</span>
+              <span className="secondary chat-input-frozen-text-subtitle">{t('Chat.Input.FrozenButton2')}</span>
             </span>
           </PlateButton>
           <PlateButton noRipple hide={!pinned}>
-            <span className="i18n">{t('Chat.Input.UnpinAll')}</span>
+            <span>{t('Chat.Input.UnpinAll')}</span>
           </PlateButton>
           <PlateButton hide={!openChat}>
-            <span className="i18n">{t('OpenChat')}</span>
+            <span>{t('OpenChat')}</span>
           </PlateButton>
 
           {/* ── отступление от tweb: состояний ниже в input.ts нет ── */}
           {p.groupRestricted && (
             <PlateButton hide={!groupRestricted}>
               <TgIcon name="permissions" className="button-icon" size="inherit" />
-              <span className="i18n">{t('GlobalSendMessageRestricted')}</span>
+              <span>{t('GlobalSendMessageRestricted')}</span>
             </PlateButton>
           )}
           {p.threadClosed && (
             <PlateButton hide={!threadClosed}>
               <TgIcon name="lock" className="button-icon" size="inherit" />
-              <span className="i18n">{t('ForumTopic.Closed')}</span>
+              <span>{t('ForumTopic.Closed')}</span>
             </PlateButton>
           )}
           {p.onSuggestPost && (
             <PlateButton hide={!channelMute} onClick={p.onSuggestPost}>
-              <span className="i18n">{t('SuggestedPosts.SuggestAPost')}</span>
+              <span>{t('SuggestedPosts.SuggestAPost')}</span>
             </PlateButton>
           )}
           {p.secret && (
             p.secret.status === 'requested' ? (
               <>
                 <PlateButton filled hide={!secret} disabled={p.secret.busy} onClick={p.secret.onAccept}>
-                  <span className="i18n">{t('SecretChat.Accept')}</span>
+                  <span>{t('SecretChat.Accept')}</span>
                 </PlateButton>
                 <PlateButton hide={!secret} disabled={p.secret.busy} onClick={p.secret.onReject}>
-                  <span className="i18n">{t('SecretChat.Reject')}</span>
+                  <span>{t('SecretChat.Reject')}</span>
                 </PlateButton>
               </>
             ) : (
-              <span className="i18n secondary">
+              <span className="secondary">
                 {p.secret.status === 'rejected'
                   ? t('SecretChat.Rejected')
                   : t('SecretChat.Awaiting')}

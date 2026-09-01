@@ -142,7 +142,7 @@ function PlanRow({ plan, active, onSelect }: { plan: PremiumPlan; active: boolea
         <div className="row-subtitle">
           <span>
             <span className="popup-gift-premium-discount">{`-${discount}%`}</span>
-            <span className="i18n">{`${formatUsd(perMonthCents(plan))} ${t('Stars.Subscriptions.PerMonth')}`}</span>
+            <span>{`${formatUsd(perMonthCents(plan))} ${t('Stars.Subscriptions.PerMonth')}`}</span>
           </span>
         </div>
       )}
@@ -155,7 +155,7 @@ function PlanRow({ plan, active, onSelect }: { plan: PremiumPlan; active: boolea
         onToggle={() => onSelect(plan.id)}
       />
       <div className="row-title">
-        <span className="i18n">{t(plan.labelKey)}</span>
+        <span>{t(plan.labelKey)}</span>
       </div>
       <span className="row-title-right-secondary row-right">{formatUsd(plan.priceCents)}</span>
     </label>
@@ -176,12 +176,12 @@ function FeatureRow({ feature }: { feature: Feature }) {
     <div className="row row-clickable hover-effect rp row-with-padding" onPointerDown={onPointerDown}>
       {ripple}
       <div className="row-subtitle">
-        <span className="i18n">{t(feature.subtitle)}</span>
+        <span>{t(feature.subtitle)}</span>
       </div>
       <div className="row-title">
-        <span className="i18n">{t(feature.title)}</span>
+        <span>{t(feature.title)}</span>
         {feature.new && (
-          <span className="i18n row-title-badge" style={{ backgroundColor: feature.color }}>
+          <span className="row-title-badge" style={{ backgroundColor: feature.color }}>
             {t('New')}
           </span>
         )}
@@ -258,7 +258,7 @@ export default function PremiumModal({ open, onClose, onExitComplete }: { open: 
               <IconButton className="popup-close" onClick={onClose} color="var(--secondary-text-color)">
                 <TgIcon name="close" size={22} />
               </IconButton>
-              <div className={classNames('popup-title', 'i18n')}>{t('Premium.Boarding.Title')}</div>
+              <div className={classNames('popup-title')}>{t('Premium.Boarding.Title')}</div>
             </div>
 
             <div className="popup-body">
@@ -266,10 +266,10 @@ export default function PremiumModal({ open, onClose, onExitComplete }: { open: 
 
               <div className="popup-premium-heading-text-container">
                 <div className="popup-premium-heading-text-title">
-                  <span className="i18n">{t('Premium.Boarding.Title')}</span>
+                  <span>{t('Premium.Boarding.Title')}</span>
                 </div>
                 <div className="popup-premium-heading-text-description">
-                  <span className="i18n">{t('Premium.Feature.Intro')}</span>
+                  <span>{t('Premium.Feature.Intro')}</span>
                 </div>
               </div>
 
@@ -300,7 +300,7 @@ export default function PremiumModal({ open, onClose, onExitComplete }: { open: 
             onClick={() => setCheckoutOpen(true)}
           >
             {ctaRipple}
-            <span className="i18n">{`${t('Premium.SubscribeFor')} ${formatUsd(perMonthCents(selected))} ${t('Stars.Subscriptions.PerMonth')}`}</span>
+            <span>{`${t('Premium.SubscribeFor')} ${formatUsd(perMonthCents(selected))} ${t('Stars.Subscriptions.PerMonth')}`}</span>
           </button>
         </div>
       </div>

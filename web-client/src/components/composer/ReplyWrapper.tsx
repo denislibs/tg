@@ -132,7 +132,7 @@ export default function ReplyWrapper({
           >
             {ripple}
             <div className="reply-content">
-              <div className="reply-title"><span className="i18n">{shown.title}</span></div>
+              <div className="reply-title"><span>{shown.title}</span></div>
               <div className="reply-subtitle"><span>{shown.subtitle}</span></div>
             </div>
           </div>

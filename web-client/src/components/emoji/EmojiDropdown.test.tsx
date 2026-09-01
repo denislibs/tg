@@ -1,3 +1,15 @@
+// ── КЛАСС `i18n` УШЁЛ ИЗ REACT-РАЗМЕТКИ (задача #122) ────────────────────────
+//
+// В tweb `.i18n` ставит ЯДРО на узлы, созданные `i18n()`, и служит якорем обхода
+// `applyLangPack`. CSS у класса нет ни там, ни у нас. В нашей JSX-разметке он
+// писался руками — узел в `weakMap` не записан, обход его молча пропускает, а
+// текст обновляет перерисовка React по `language_apply`. То есть класс не делал
+// ничего и при этом читался как «узел живой». Разбор и скан — в
+// `src/i18n/noFakeI18nAnchor.test.ts`.
+//
+// Поэтому пины разметки ниже класс больше не проверяют: сверяется всё
+// остальное, а живость подписи там, где она настоящая, держат свои пины
+// (`I18n.weakMap.get(node)`).
 // Структурные пины эмодзи-дропдауна по живым дампам tweb
 // (docs/tweb/dom/dumps/19-emoticons-01..07*.json) и исходникам
 // emoticonsDropdown/{index.ts,tab.ts,search.tsx,category.ts}:
@@ -124,7 +136,6 @@ describe('EmojiDropdown — структура вкладки Emoji (дамп 19
     expect(title.classList.contains('disable-hover')).toBe(true)
     const span = title.firstElementChild!
     expect(span.tagName).toBe('SPAN')
-    expect(span.classList.contains('i18n')).toBe(true)
     expect(span.textContent).toBe('Frequently Used')
   })
 
@@ -280,7 +291,7 @@ describe('StickersTab — Recent с крестиком очистки (tweb stic
 
     const title = document.querySelector('#content-stickers .category-title')!
     expect(title.classList.contains('disable-hover')).toBe(true)
-    expect(title.querySelector('span.i18n')).not.toBeNull()
+    expect(title.querySelector('span')).not.toBeNull()
     const clearBtn = title.querySelector('button.btn-icon')!
     expect(clearBtn).not.toBeNull()
 

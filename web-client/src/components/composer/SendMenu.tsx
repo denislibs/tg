@@ -25,7 +25,7 @@ function Item({ icon, label, hide, danger, onClick }: {
       onClick={onClick}
     >
       <TgIcon name={icon} className="btn-menu-item-icon" size="inherit" />
-      <span className="btn-menu-item-text i18n">{label}</span>
+      <span className="btn-menu-item-text">{label}</span>
     </div>
   )
 }

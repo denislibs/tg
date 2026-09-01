@@ -85,11 +85,11 @@ export default function EmailRecoverCard({
       <MediaHeader>
         <MediaHeader.Sticker size={STICKER_SIZE} name="Mailbox" />
         <MediaHeader.Title>
-          <span className="i18n">{t('Login.ResetPassword.Title')}</span>
+          <span>{t('Login.ResetPassword.Title')}</span>
         </MediaHeader.Title>
         {/* без `.secondary` — подзаголовок этой карточки в tweb белый */}
         <MediaHeader.Subtitle>
-          <span className="i18n">
+          <span>
             {t('Login.ResetPassword.CodeHint')}
             <br />
             <EmailPattern pattern={emailPattern} />

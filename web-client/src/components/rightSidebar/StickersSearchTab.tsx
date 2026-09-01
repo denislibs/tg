@@ -118,7 +118,7 @@ function StickerSetRow({
         <div className="sticker-set-details">
           <div className="sticker-set-name" dir="auto">{set.title}</div>
           <div className="sticker-set-count">
-            <span className="i18n">{tArgs('Stickers', [set.count])}</span>
+            <span>{tArgs('Stickers', [set.count])}</span>
           </div>
         </div>
         {/* tweb: установленный — «Added» + класс gray; disabled на время запроса;
@@ -129,7 +129,7 @@ function StickerSetRow({
           disabled={busy}
           onClick={(e) => { e.stopPropagation(); onToggle() }}
         >
-          <span className="i18n">{t(installed ? 'Stickers.SearchAdded' : 'Add')}</span>
+          <span>{t(installed ? 'Stickers.SearchAdded' : 'Add')}</span>
         </button>
       </div>
       <div className="sticker-set-stickers">

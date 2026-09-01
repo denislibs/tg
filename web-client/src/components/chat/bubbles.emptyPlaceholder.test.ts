@@ -9,8 +9,11 @@
 //   (3) остальное (группа) → `noMessages` (:10856);
 //   (4) непустой чат карточки не получает — единственный гейт `!getRenderedLength()`;
 //   (5) карточка живёт в `.bubbles`, а не в окне, и не пересчитывается второй раз;
-//   (6) тап по стикеру ОТПРАВЛЯЕТ его (:10586-10589).
+//   (6) тап по стикеру ОТПРАВЛЯЕТ его (:10586-10589);
+//   (7) строки карточки — УЗЛЫ ЯДРА, а не текст (задача #122).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import I18n from '@lib/langPack'
+import { applyLang } from '@/test/lang'
 import rootScope from '@lib/rootScope'
 import { resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
@@ -150,5 +153,38 @@ describe('ChatBubbles — плейсхолдер пустого чата', () =>
 
     placeholder(bubbles)!.querySelector<HTMLElement>('.empty-bubble-placeholder-sticker')!.click()
     expect(sendSticker).toHaveBeenCalledWith(GREETING)
+  })
+
+  // ── ПИН ЗАДАЧИ #122 ────────────────────────────────────────────────────────
+  //
+  // Строки карточки собирались своим `span` с классом `i18n` и текстом внутри.
+  // Класс был подделкой: узла в `weakMap` нет, `applyLangPack` обходит `.i18n`
+  // и такой узел молча пропускает (`lib/langPack.ts:568-572`). Для ванильного
+  // узла это не шум, а ЗАСТЫВШИЙ ТЕКСТ — своей перерисовки, в отличие от React,
+  // у него не бывает, а карточка живёт ровно столько, сколько чат пуст.
+  //
+  // Проверяется не текст (он был верным и с дефектом), а то, ЧЕМ строка
+  // является: узлом ядра, который ядро может переписать.
+  it('строки карточки — узлы ядра и следуют за языком', async () => {
+    bubbles = new ChatBubbles(chatContext(ME, { canSend: () => true }), managersWith([]))
+    await (await bubbles.setPeer())?.promise
+    await settle()
+
+    const node = placeholder(bubbles)!
+    const title = node.querySelector<HTMLElement>('.empty-bubble-placeholder-title')!
+    expect(I18n.weakMap.get(title)).toBeDefined()
+    // Буллеты — тоже: там узел ядра приклеен ПОСЛЕ значка «•».
+    const items = node.querySelectorAll<HTMLElement>('.empty-bubble-placeholder-list-item')
+    for (const item of items) expect(I18n.weakMap.get(item.lastElementChild as HTMLElement)).toBeDefined()
+
+    expect(title.textContent).toBe('Your cloud storage')
+
+    // Карточка в документе — ядро находит узлы обходом, как в бою.
+    document.body.append(bubbles.container)
+    await applyLang('ru')
+    expect(title.textContent).toBe('Ваше облачное хранилище')
+
+    await applyLang('en')
+    bubbles.container.remove()
   })
 })

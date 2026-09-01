@@ -105,7 +105,7 @@ export default function AuthCodeCard({
         </MediaHeader.Title>
         <MediaHeader.Subtitle secondary>
           {/* перевод строки в словаре — <br> (tweb Login.Code.SentSms) */}
-          <span className="i18n">{superFormatter(t('Login.Code.SentSms'))}</span>
+          <span>{superFormatter(t('Login.Code.SentSms'))}</span>
         </MediaHeader.Subtitle>
       </MediaHeader>
 

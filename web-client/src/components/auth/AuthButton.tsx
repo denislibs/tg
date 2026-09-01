@@ -55,7 +55,7 @@ export function PrimaryButton({
       {...rest}
     >
       {ripple}
-      <span className="i18n">{children}</span>
+      <span>{children}</span>
       {loading && <PreloaderCircular />}
     </button>
   )
@@ -86,7 +86,7 @@ export function SecondaryButton({
       {...rest}
     >
       {ripple}
-      <span className="i18n">
+      <span>
         {children}
         {arrow && <TgIcon name="next" className="inline-icon" size={16} />}
       </span>

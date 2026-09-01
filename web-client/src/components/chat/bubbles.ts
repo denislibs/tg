@@ -148,6 +148,7 @@ import { animateLadderLists, type LadderStep } from '@core/dom/ladder'
 import { deleteChatPosition, getChatPosition, saveChatPosition, type ChatPosition } from '@core/chat/chatPositions'
 import { getActiveGradientRenderer } from '@core/chat/activeGradient'
 import type { ChatAutoDownload } from '@core/hooks/useChatAutoDownload'
+import { i18n } from '@lib/langPack'
 import { useI18nStore } from '../../i18n'
 
 /** Адрес бабла — порт tweb `FullMid` (`${peerId}_${mid}`, bubbles.ts:440-449).
@@ -5139,7 +5140,6 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * радиус 1.5rem; `_chatBubble.scss:2672-2690`).
    */
   private async renderEmptyPlaceholder(type: EmptyPlaceholderType, middleware: Middleware): Promise<void> {
-    const t = useI18nStore.getState().t
     const BASE_CLASS = 'empty-bubble-placeholder'
 
     const bubble = document.createElement('div')
@@ -5157,15 +5157,20 @@ export default class ChatBubbles implements BubbleGroupsHost {
     contentWrapper.append(bubbleContainer)
     bubble.append(contentWrapper)
 
-    const line = (text: string, cls: string) => {
-      const span = document.createElement('span')
-      span.classList.add('i18n', 'center', cls)
-      span.textContent = text
+    // Строка — УЗЕЛ ЯДРА (`i18n(key)`), а не свой `span` с классом `i18n` и
+    // текстом внутри. Класс на самодельном узле — подделка: `applyLangPack`
+    // находит его обходом `.i18n`, но `weakMap.get` даёт `undefined`, и узел
+    // молча пропускается (`lib/langPack.ts:568-572`). Здесь это был не просто
+    // шум, а застывший текст: карточка живёт, пока чат пуст, и смены языка не
+    // переживала. Оригинал на этом месте тоже строит `i18n(...)` (:10473-10515).
+    const line = (key: LangPackKey, cls: string) => {
+      const span = i18n(key)
+      span.classList.add('center', cls)
       return span
     }
 
     const elements: HTMLElement[] = [
-      line(t(type === 'saved' ? 'ChatYourSelfTitle' : 'NoMessages'), `${BASE_CLASS}-title`),
+      line(type === 'saved' ? 'ChatYourSelfTitle' : 'NoMessages', `${BASE_CLASS}-title`),
     ]
 
     if(type === 'saved') {
@@ -5183,11 +5188,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
         const bullet = document.createElement('span')
         bullet.classList.add(`${BASE_CLASS}-list-bullet`)
         bullet.textContent = '•'
-        span.append(bullet, t(key))
+        span.append(bullet, i18n(key))
         elements.push(span)
       }
     } else if(type === 'greeting') {
-      elements.push(line(t('NoMessagesGreetingsDescription'), `${BASE_CLASS}-subtitle`))
+      elements.push(line('NoMessagesGreetingsDescription', `${BASE_CLASS}-subtitle`))
 
       const stickerDiv = document.createElement('div')
       stickerDiv.classList.add(`${BASE_CLASS}-sticker`)

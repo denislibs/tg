@@ -104,7 +104,7 @@ function PinnedBar({ pins, index, searchOpen, onFollow, onUnpin, onOpenList }: P
             {thumb ? <img src={thumb} alt="" /> : null}
           </AnimatedSuper>
           <div className="pinned-container-title pinned-message-title">
-            <span className="i18n">{t('PinnedMessage')}</span>
+            <span>{t('PinnedMessage')}</span>
             {' '}
             {/* tweb AnimatedCounter: «#N» проявляется на непервом пине,
                 на новейшем (is-last) он схлопнут в scale(.68)/opacity 0 */}

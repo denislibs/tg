@@ -1,3 +1,15 @@
+// ── КЛАСС `i18n` УШЁЛ ИЗ REACT-РАЗМЕТКИ (задача #122) ────────────────────────
+//
+// В tweb `.i18n` ставит ЯДРО на узлы, созданные `i18n()`, и служит якорем обхода
+// `applyLangPack`. CSS у класса нет ни там, ни у нас. В нашей JSX-разметке он
+// писался руками — узел в `weakMap` не записан, обход его молча пропускает, а
+// текст обновляет перерисовка React по `language_apply`. То есть класс не делал
+// ничего и при этом читался как «узел живой». Разбор и скан — в
+// `src/i18n/noFakeI18nAnchor.test.ts`.
+//
+// Поэтому пины разметки ниже класс больше не проверяют: сверяется всё
+// остальное, а живость подписи там, где она настоящая, держат свои пины
+// (`I18n.weakMap.get(node)`).
 // Страна по умолчанию на экране входа — порт tweb `SignInCard.tryAgain`:
 // `help.getNearestDc` подставляет страну, но только пока поля не трогали.
 // У нас её отдаёт `GET /auth/nearest_country` (менеджер `auth.nearestCountry`).
@@ -56,7 +68,7 @@ describe('подзаголовок экрана входа: перенос ст�
   it('строка словаря разворачивается в две половины через <br>', async () => {
     renderFlow(() => Promise.resolve(''))
     const subtitle = await waitFor(() => {
-      const el = [...document.querySelectorAll('#auth-pages .i18n')]
+      const el = [...document.querySelectorAll('#auth-pages span')]
         .find((node) => node.textContent?.includes('country code'))
       expect(el).not.toBeUndefined()
       return el!

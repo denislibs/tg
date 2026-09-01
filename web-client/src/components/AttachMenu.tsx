@@ -21,7 +21,7 @@ function AttachMenuItem({ icon, text, onClick }: { icon: IconName; text: ReactNo
       {/* Размер глифа задаёт сам пункт через --icon-size (_button.scss:257),
           поэтому передаём переменную, а не число. */}
       <TgIcon name={icon} className="btn-menu-item-icon" size="var(--icon-size)" />
-      <span className="btn-menu-item-text i18n">{text}</span>
+      <span className="btn-menu-item-text">{text}</span>
     </div>
   )
 }

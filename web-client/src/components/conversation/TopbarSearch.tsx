@@ -405,7 +405,7 @@ export default function TopbarSearch({ chat, onJumpToSeq, containerRef }: Topbar
               }
             }}
           />
-          <span className="i18n input-search-placeholder will-animate">{placeholder}</span>
+          <span className="input-search-placeholder will-animate">{placeholder}</span>
           <TgIcon
             name="search"
             size="var(--icon-size)"

@@ -108,12 +108,12 @@ export default function SignInCard({
           </svg>
         </MediaHeader.Sticker>
         <MediaHeader.Title>
-          <span className="i18n">{t('Login.Title')}</span>
+          <span>{t('Login.Title')}</span>
         </MediaHeader.Title>
         <MediaHeader.Subtitle secondary>
           {/* У оригинала это ОДНА строка с переводом строки внутри (tweb langSign.ts:5),
               и `<br>` из `\n` делает разбор разметки словаря, а не вызывающий. */}
-          <span className="i18n">{superFormatter(t('Login.StartText'))}</span>
+          <span>{superFormatter(t('Login.StartText'))}</span>
         </MediaHeader.Subtitle>
       </MediaHeader>
 

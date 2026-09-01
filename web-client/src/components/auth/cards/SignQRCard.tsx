@@ -119,10 +119,10 @@ export default function SignQRCard({ onSignIn, onComplete }: SignQRCardProps) {
           )}
         </MediaHeader.Sticker>
         <MediaHeader.Title>
-          <span className="i18n">{t('Login.QR.Title')}</span>
+          <span>{t('Login.QR.Title')}</span>
         </MediaHeader.Title>
         <MediaHeader.Subtitle secondary>
-          <span className="i18n">{t('Login.QR.Subtitle')}</span>
+          <span>{t('Login.QR.Subtitle')}</span>
         </MediaHeader.Subtitle>
       </MediaHeader>
 
@@ -136,7 +136,7 @@ export default function SignQRCard({ onSignIn, onComplete }: SignQRCardProps) {
         ] as const).map((key, i) => (
           <li key={key} className={s.qrDescriptionItem}>
             <span className={s.qrDescriptionMarker}>{i + 1}</span>
-            <span className="i18n">{superFormatter(t(key))}</span>
+            <span>{superFormatter(t(key))}</span>
           </li>
         ))}
       </ol>

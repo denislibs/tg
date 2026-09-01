@@ -145,7 +145,7 @@ export default function TelInput({
       />
       <div className="input-field-border" />
       <label style={{ visibility: 'visible' }}>
-        <span className="i18n">{label}</span>
+        <span>{label}</span>
       </label>
     </div>
   )

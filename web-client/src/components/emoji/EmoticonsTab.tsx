@@ -110,7 +110,7 @@ export function EmoticonsSearch({
           )}
         >
           {/* tweb search.tsx:99 снимает с него `will-animate` */}
-          <span className="i18n input-search-placeholder" onClick={() => inputRef.current?.focus()}>
+          <span className="input-search-placeholder" onClick={() => inputRef.current?.focus()}>
             {placeholder}
           </span>
           {/* контейнер чипов есть и у вкладок без групп (tweb рендерит его

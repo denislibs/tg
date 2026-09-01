@@ -176,11 +176,11 @@ export default function PasswordCard({
           </div>
         </MediaHeader.Sticker>
         <MediaHeader.Title>
-          <span className="i18n">{t('Login.Password.Title')}</span>
+          <span>{t('Login.Password.Title')}</span>
         </MediaHeader.Title>
         {/* без `.secondary` — в tweb подзаголовок этой карточки белый */}
         <MediaHeader.Subtitle>
-          <span className="i18n">
+          <span>
             {superFormatter(t('Login.Password.Subtitle'))}
           </span>
         </MediaHeader.Subtitle>
@@ -213,7 +213,7 @@ export default function PasswordCard({
           {/* В tweb в label лежит подсказка к паролю с сервера — как есть, без
               класса `i18n` (это не строка словаря); своя строка `Password`
               подставляется только когда подсказки нет. */}
-          <label>{hint ? <span>{hint}</span> : <span className="i18n">{t('LoginPassword')}</span>}</label>
+          <label>{hint ? <span>{hint}</span> : <span>{t('LoginPassword')}</span>}</label>
           <span
             className="toggle-visible"
             onClick={() => setShowPw((v) => !v)}
@@ -224,7 +224,7 @@ export default function PasswordCard({
           </span>
         </div>
 
-        <span className={classNames('i18n', s.forgotLink)}>
+        <span className={classNames(s.forgotLink)}>
           <a
             href="#"
             onClick={(e) => {

@@ -52,7 +52,7 @@ export default function MessageInput({
         onPaste={onPaste}
         onDrop={onDrop}
       />
-      <span className={classNames('input-field-placeholder', 'i18n', emptyCls)}>{placeholder}</span>
+      <span className={classNames('input-field-placeholder', emptyCls)}>{placeholder}</span>
       {/* Фейк-инпут заполняется ТОЛЬКО через ref (useInputHeight), никогда через
           children: иначе React перерисовывал бы кастом-эмодзи и спойлеры дважды. */}
       <div

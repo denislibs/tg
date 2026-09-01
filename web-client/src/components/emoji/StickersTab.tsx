@@ -297,7 +297,7 @@ export default function StickersTab({
                   disable-hover (tweb createLocalCategory, tab.ts:345-347);
                   секции-наборы — голый текст без disable-hover (createCategory) */}
               <div className={c.icon ? 'category-title disable-hover' : 'category-title'}>
-                {c.icon ? <span className="i18n">{c.title}</span> : c.title}
+                {c.icon ? <span>{c.title}</span> : c.title}
                 {/* крестик «очистить недавние» — tweb stickers.ts:201-213:
                     ButtonIcon('close', {noRipple}) в заголовке Recent,
                     клик → confirmationPopup → clearRecentStickers */}

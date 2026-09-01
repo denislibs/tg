@@ -1,3 +1,15 @@
+// ── КЛАСС `i18n` УШЁЛ ИЗ REACT-РАЗМЕТКИ (задача #122) ────────────────────────
+//
+// В tweb `.i18n` ставит ЯДРО на узлы, созданные `i18n()`, и служит якорем обхода
+// `applyLangPack`. CSS у класса нет ни там, ни у нас. В нашей JSX-разметке он
+// писался руками — узел в `weakMap` не записан, обход его молча пропускает, а
+// текст обновляет перерисовка React по `language_apply`. То есть класс не делал
+// ничего и при этом читался как «узел живой». Разбор и скан — в
+// `src/i18n/noFakeI18nAnchor.test.ts`.
+//
+// Поэтому пины разметки ниже класс больше не проверяют: сверяется всё
+// остальное, а живость подписи там, где она настоящая, держат свои пины
+// (`I18n.weakMap.get(node)`).
 // Пин DOM-структуры тела попапа Premium по живому дампу tweb
 // (`docs/tweb/dom/dumps/14-left-24-premium-popup.json`):
 //   div.popup.popup-premium.active > div.popup-container.z-depth-1 >
@@ -54,7 +66,7 @@ describe('PremiumModal — тело попапа 1:1 с tweb', () => {
     expect(document.querySelector('.popup-container > .tabs-container.premium-tabs.fixed-size')).not.toBeNull()
   })
 
-  it('хедер: popup-header-background + btn-icon.popup-close > span.tgico + popup-title.i18n', async () => {
+  it('хедер: popup-header-background + btn-icon.popup-close > span.tgico + popup-title', async () => {
     await mount()
     const header = document.querySelector('.popup-header')!
     expect(header.querySelector(':scope > .popup-header-background')).not.toBeNull()
@@ -64,7 +76,6 @@ describe('PremiumModal — тело попапа 1:1 с tweb', () => {
     expect(close.querySelector(':scope > .tgico')).not.toBeNull()
 
     const title = header.querySelector(':scope > .popup-title')!
-    expect(title.classList.contains('i18n')).toBe(true)
     expect(title.textContent).toBe('Telegram Premium')
   })
 
@@ -96,11 +107,9 @@ describe('PremiumModal — тело попапа 1:1 с tweb', () => {
     const discounted = rows[0]!
     const subtitle = discounted.querySelector(':scope > .row-subtitle')!
     expect(subtitle.querySelector('.popup-gift-premium-discount')!.textContent).toMatch(/^-\d+%$/)
-    expect(subtitle.querySelector('.i18n')!.textContent).toContain('per month')
+    expect(subtitle.textContent).toContain('per month')
 
-    // цена целиком — row-title-right-secondary.row-right, БЕЗ i18n (Row.ts rightTextContent)
     const price = discounted.querySelector(':scope > .row-title-right-secondary.row-right')!
-    expect(price.classList.contains('i18n')).toBe(false)
     expect(price.textContent).toMatch(/^\$/)
   })
 
@@ -124,17 +133,17 @@ describe('PremiumModal — тело попапа 1:1 с tweb', () => {
       expect(row.classList.contains(cls)).toBe(true)
     }
     expect(row.querySelector(':scope > .c-ripple')).not.toBeNull()
-    expect(row.querySelector(':scope > .row-subtitle > .i18n')).not.toBeNull()
+    expect(row.querySelector(':scope > .row-subtitle')!.textContent).not.toBe('')
 
     const media = row.querySelector(':scope > .row-media.row-media-small.premium-promo-tab-icon')!
     expect(media.querySelector(':scope > .tgico')).not.toBeNull()
     expect((media as HTMLElement).style.backgroundColor).not.toBe('')
   })
 
-  it('бейдж "New" — span.i18n.row-title-badge внутри row-title той же фичи', async () => {
+  it('бейдж "New" — span.row-title-badge внутри row-title той же фичи', async () => {
     await mount()
     const badge = document.querySelector('.popup-premium-features-container .row-title-badge')!
-    expect(badge.classList.contains('i18n')).toBe(true)
+    expect(badge.tagName).toBe('SPAN')
     expect(badge.parentElement!.classList.contains('row-title')).toBe(true)
     expect(badge.textContent).toBe('New')
   })
@@ -146,7 +155,7 @@ describe('PremiumModal — тело попапа 1:1 с tweb', () => {
       expect(cta.classList.contains(cls)).toBe(true)
     }
     expect(cta.querySelector(':scope > .c-ripple')).not.toBeNull()
-    expect(cta.querySelector(':scope > .i18n')!.textContent).toContain('Subscribe for')
+    expect(cta.textContent).toContain('Subscribe for')
   })
 
   it('клик по CTA открывает чекаут (PremiumCheckout) для выбранного тарифа', async () => {
