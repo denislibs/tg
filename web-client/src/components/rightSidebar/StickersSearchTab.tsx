@@ -203,7 +203,6 @@ export default function StickersSearchTab({
   onPickSticker?: (st: Sticker) => void
   onClose: () => void
 }) {
-  const t = useT()
   const narrow = useMediaQuery('(max-width:900px)')
   const [query, setQuery] = useState('')
   const { sets, covers, installedIds, busyIds, toggle, loading } = useStickersSearch(query)
@@ -267,7 +266,7 @@ export default function StickersSearchTab({
     <RightSearchTab
       id="stickers-container"
       containerClassName="chatlist-container"
-      placeholder={t('StickersTab.SearchPlaceholder')}
+      placeholder="StickersTab.SearchPlaceholder"
       value={query}
       onChange={setQuery}
       onClose={onClose}

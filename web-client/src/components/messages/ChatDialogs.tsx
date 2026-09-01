@@ -244,7 +244,7 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
         side="right"
         multiselectHidden
         noFilter
-        placeholder={t('Search')}
+        placeholder="Search"
         onQueryChange={setQ}
         selected={[...selected]}
         onSelectedChange={(ids) => setSelected(new Set(ids))}

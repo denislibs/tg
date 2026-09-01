@@ -32,10 +32,8 @@
 
 import type { LangPackKey } from '@/lang'
 import rootScope from '@lib/rootScope'
-import I18n from '@lib/langPack'
 import { getMiddleware } from '@helpers/middleware'
 import { RT } from '../core/realtime/events'
-import { useI18nStore } from '../i18n'
 import type { Managers } from '../client/bootstrap'
 import type { InputSearchStatus } from '../shared/ui/InputSearch'
 
@@ -58,9 +56,6 @@ export default class ConnectionStatusComponent {
   private setFirstConnectionTimeout = 0
   private setStateTimeout = 0
   private rAF = 0
-  /** Последнее, что реально показано, — чтобы перерисовать его на смене языка. */
-  private lastText: { key: LangPackKey; timerSpan?: HTMLElement } | undefined
-  private unsubscribeLang: (() => void) | undefined
   // Живые интервалы отсчёта — только ради `destroy()`, см. комментарий там же.
   private timerIntervals = new Set<number>()
   private middlewareHelper = getMiddleware()
@@ -88,27 +83,6 @@ export default class ConnectionStatusComponent {
     rootScope.addEventListener(RT.stateSynchronizing, this.onSyncStart)
     rootScope.addEventListener(RT.stateSynchronized, this.onSyncEnd)
 
-    // Смена языка. НЕ порт, а узкое отступление, и это надо читать именно так: у
-    // tweb перерисовка живых узлов — обязанность самой подсистемы i18n
-    // (`langPack.ts:328-335` обходит все `.i18n` и зовёт `instance.update()`),
-    // автомат про язык не знает вовсе. Общий механизм есть и у нас — тот же
-    // самый (`I18n.IntlElement` + обход `.i18n` в `applyLangPack`), им построен
-    // весь ванильный слой подписей; не пользуется им ЭТОТ файл, и причина
-    // разобрана ниже, у `setStatusText`: плейсхолдер — не узел, а атрибут
-    // `<input placeholder>`. Переезд на `IntlElement` с `property: 'placeholder'`
-    // снимет и эту подписку — ЗАДАЧА #118.
-    // Сигнал — смена самой `t`, а не `lang`: код языка ядро меняет сразу
-    // (`setLangCode`), а `t` — только когда приедет и применится пакет
-    // (`language_apply`), и реагировать надо на второе. Применяется сразу, мимо
-    // rAF/CHANGE_STATE_DELAY: состояние соединения не менялось, показывать
-    // нечего нового — перерисовывается тот же текст. `timerSpan` передаётся
-    // ТОТ ЖЕ: узел просто переезжает в новый плейсхолдер и продолжает тикать от
-    // своего интервала.
-    this.unsubscribeLang = useI18nStore.subscribe((state, prev) => {
-      if (state.t === prev.t || !this.lastText) return
-      this.setStatusText(this.lastText.key, this.lastText.timerSpan)
-    })
-
     // tweb :66-69 — стартовый pull. Вкладка, смонтировавшаяся после единственного
     // перехода в 'reconnecting' (backoff до 30 с), не увидит ни одного
     // уведомления; без этого таймера она осталась бы с «Поиск» навсегда.
@@ -129,7 +103,6 @@ export default class ConnectionStatusComponent {
     rootScope.removeEventListener(RT.state, this.setConnectionStatus)
     rootScope.removeEventListener(RT.stateSynchronizing, this.onSyncStart)
     rootScope.removeEventListener(RT.stateSynchronized, this.onSyncEnd)
-    this.unsubscribeLang?.()
     if (this.setFirstConnectionTimeout) clearTimeout(this.setFirstConnectionTimeout)
     if (this.setStateTimeout) clearTimeout(this.setStateTimeout)
     if (this.rAF) window.cancelAnimationFrame(this.rAF)
@@ -194,55 +167,28 @@ export default class ConnectionStatusComponent {
   }
 
   /**
-   * Узел плейсхолдера. У tweb его строит `i18n(langPackKey, args)` внутри
-   * `setPlaceholder` (`inputSearch.ts:192`), и живой `<span>` с секундами едет
-   * туда ОБЫЧНЫМ АРГУМЕНТОМ-УЗЛОМ (`connectionStatus.ts:165`) — здесь теперь так же.
+   * Единственная точка, где текст попадает в поле, — и теперь она РОВНО
+   * оригинала (tweb `connectionStatus.ts:164-167`): ключ и его аргументы
+   * уезжают в `setPlaceholder`, а узел строит `i18n(key, args)` внутри поля
+   * (`inputSearch.ts:190`).
    *
-   * Раньше здесь стояла своя подстановка: строка резалась по `%d`, и в разрыв
-   * вставлялся `<span>`. Держалось это на том, что прежний `t()` оставлял `%d` в
-   * тексте — своя подстановка стора пропускала плейсхолдер, для которого не дали
-   * аргумента. Задача 9 сняла второй источник строк, `t()` стал обёрткой над
-   * `I18n.format`, и «лишний» плейсхолдер тот съедает (порт tweb `superFormatter`) —
-   * резать стало нечего, и секунды уезжали в хвост: «Reconnect in s5».
+   * Что отсюда УШЛО вместе с задачей #118:
    *
-   * Позиция аргумента теперь задаётся СТРОКОЙ ЯЗЫКА, а не формой этого метода:
-   * язык, у которого секунды стоят перед словом, получит их там, где написано в
-   * его переводе.
-   */
-  private wrapText(key: LangPackKey, timerSpan?: HTMLElement): Node {
-    const fragment = document.createDocumentFragment()
-    // Куски приходят типом `string | number | Node` — число там возможно только
-    // от числового аргумента, а единственный аргумент здесь узел; приводим явно,
-    // а не приведением типа.
-    const pieces = I18n.format(key, false, timerSpan && [timerSpan])
-    fragment.append(...pieces.map((piece) => typeof piece === 'number' ? String(piece) : piece))
-    return fragment
-  }
-
-  /**
-   * Единственная точка, где текст реально попадает в поле. Запоминает свои
-   * аргументы: на смене языка автомату нужно перерисовать ТО ЖЕ состояние
-   * (см. подписку на i18n в `construct`).
+   *  • своя подписка на смену языка. Она была нужна, пока текст собирался
+   *    здесь строкой: узел, построенный руками, ядро не переписывает —
+   *    `applyLangPack` обходит `.i18n` и зовёт `update()` у ИНСТАНСОВ из
+   *    `weakMap` (`lib/langPack.ts:568-572`), а самодельный `span.i18n` в
+   *    `weakMap` не записан. Теперь узел строит ядро, и перерисовывает его тоже
+   *    ядро — как все прочие `.i18n` приложения;
+   *  • дедуп по паре «ключ + показанный текст» вместо одного ключа
+   *    (`inputSearch.ts:176-177`). Пара была вынужденной по той же причине:
+   *    при дедупе по ключу смена языка не доезжала бы до плейсхолдера вовсе;
+   *  • своя сборка фрагмента (`wrapText`), резавшая строку ради вставки
+   *    `<span>` с секундами. Секунды едут обычным аргументом подстановки, а
+   *    место им в фразе назначает СТРОКА ЯЗЫКА.
    */
   private setStatusText = (key: LangPackKey, timerSpan?: HTMLElement) => {
-    this.lastText = { key, timerSpan }
-    const text = useI18nStore.getState().t(key)
-    // Ключ дедупа — пара «ключ i18n + показанный текст», а у tweb это один
-    // `LangPackKey` (`inputSearch.ts:176`). Расхождение вынужденное, но причина
-    // НЕ в отсутствии механизма: живые узлы у нас есть (`I18n.IntlElement`,
-    // `applyLangPack` обходит `.i18n` и зовёт `instance.update()`), ими построен
-    // весь ванильный слой подписей. Не пользуется ими ЭТОТ файл: плейсхолдер —
-    // не узел, а атрибут `<input placeholder>`, и в разрыв `%d` строки вставлен
-    // живой `<span>` с секундами (`wrapText` выше), которого у оригинала нет.
-    // Пока текст собирается здесь строкой, дедуп по одному ключу означал бы, что
-    // после смены языка плейсхолдер остаётся на старом до следующей смены
-    // состояния соединения — в штатной работе до перезагрузки. Переезд на
-    // `IntlElement` с `property: 'placeholder'` (ядро это умеет) — отдельная
-    // работа, ЗАДАЧА #118: она снимает и `wrapText`, и подписку на язык ниже.
-    // Семантика дедупа при этом та же: одинаковое показанное содержимое
-    // по-прежнему не перезапускает кросс-фейд (в ветке отсчёта строка не
-    // меняется — секунды живут в отдельном `<span>` и идут мимо setPlaceholder).
-    this.inputSearch.setPlaceholder(`${key}\n${text}`, this.wrapText(key, timerSpan))
+    this.inputSearch.setPlaceholder(key, timerSpan && [timerSpan])
   }
 
   /** tweb :120-124 — текст ставится не сейчас, а когда дойдёт до показа. */

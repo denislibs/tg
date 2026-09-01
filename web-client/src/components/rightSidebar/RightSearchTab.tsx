@@ -17,6 +17,7 @@
 // Позиция панели — модуль (см. RightSearchTab.module.scss); портал в
 // #main-columns, как #column-right (UserInfoPanel).
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
+import type { LangPackKey } from '@/lang'
 import { createPortal } from 'react-dom'
 import classNames from '../../shared/lib/classNames'
 import useMediaQuery from '../../shared/lib/useMediaQuery'
@@ -65,7 +66,8 @@ export default function RightSearchTab({
   id: string
   /** доп. классы контейнера (стикеры: chatlist-container, tweb stickers.tsx:149) */
   containerClassName?: string
-  placeholder: string
+  /** СИМВОЛИЧЕСКИЙ КЛЮЧ — переводит его `InputSearch` (`i18n(key)`). */
+  placeholder: LangPackKey
   value: string
   onChange: (v: string) => void
   onClose: () => void

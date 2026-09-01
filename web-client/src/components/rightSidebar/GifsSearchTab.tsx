@@ -10,7 +10,6 @@
 import { useRef, useState } from 'react'
 import { openPopup } from '../../stores/popupStore'
 import useMediaQuery from '../../shared/lib/useMediaQuery'
-import { useT } from '../../i18n'
 import { useGifsSearch } from '../../core/hooks/useGifsSearch'
 import type { GifItem } from '../../core/gifs'
 import GifsMasonry, { useGifsMasonryVisibility } from '../GifsMasonry'
@@ -24,7 +23,6 @@ export default function GifsSearchTab({
   onPick?: (g: GifItem) => void
   onClose: () => void
 }) {
-  const t = useT()
   const narrow = useMediaQuery('(max-width:900px)')
   const [query, setQuery] = useState('')
   const { items, loadMore } = useGifsSearch(query)
@@ -40,7 +38,7 @@ export default function GifsSearchTab({
   return (
     <RightSearchTab
       id="search-gifs-container"
-      placeholder={t('SearchGIFs')}
+      placeholder="SearchGIFs"
       value={query}
       onChange={setQuery}
       onClose={onClose}

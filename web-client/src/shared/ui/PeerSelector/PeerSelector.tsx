@@ -72,7 +72,8 @@ interface PeerSelectorProps {
   design?: 'round' | 'square'
   /** `checkboxSide` (tweb): сторона чекбокса и, следом, весь модификатор колонки */
   side?: 'right' | 'left'
-  placeholder?: string
+  /** СИМВОЛИЧЕСКИЙ КЛЮЧ — переводит его сам `InputSearch` (`i18n(key)`). */
+  placeholder?: LangPackKey
   /** запрос наружу — для тех, кто досыпает в `peers` результаты сетевого поиска */
   onQueryChange?: (q: string) => void
   /** `peers` уже отфильтрован родителем — встроенный фильтр по имени выключен */
@@ -278,7 +279,7 @@ export default function PeerSelector({
                       <InputSearch
                         value={query}
                         onChange={(v) => { setQuery(v); onQueryChange?.(v) }}
-                        placeholder={placeholder ?? t('Search')}
+                        placeholder={placeholder ?? 'Search'}
                         className="selector-search-input-container"
                         inputClassName="selector-search-input"
                         noBorder
