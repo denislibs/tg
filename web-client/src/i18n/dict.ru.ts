@@ -794,6 +794,13 @@ const ru = {
   'Schedule.SendTodayAt': 'Отправить сегодня в',
   'Schedule.SendOn': 'Отправить',
   'ScheduleController.at': 'в',
+  // ── Относительные даты (`helpers/date.ts::formatFullSentTimeRaw`) ──
+  // Две пары намеренно: «Сегодня» с заглавной начинает подпись
+  // (`capitalize`), «сегодня» строчное стоит внутри фразы о статусе пира.
+  'Date.Today': 'Сегодня',
+  Yesterday: 'вчера',
+  'Peer.Status.Today': 'сегодня',
+  'Peer.Status.Yesterday': 'вчера',
   // ── Ответ в другом чате / отправка когда онлайн / перепланирование ──
   ReplyToAnotherChat: 'Ответить в другом чате',
   'Schedule.SendWhenOnline': 'Отправить, когда онлайн',

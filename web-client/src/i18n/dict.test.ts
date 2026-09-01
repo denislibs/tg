@@ -95,8 +95,15 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // старых строк не осталось ни одной, и число это теперь тождественный ноль во
 // всех пяти языках. Состав самих словарей задача 9 не трогала — `keys` и
 // `plural` те же, что были у задачи 8, и это главное, что пин здесь стережёт.
+//
+// Задача #121 («даты следуют за языком»): русскому добавлены ЧЕТЫРЕ ключа
+// относительных дат оригинала — `Date.Today`/`Yesterday` (с заглавной, начинают
+// подпись) и `Peer.Status.Today`/`Peer.Status.Yesterday` (строчные, внутри
+// фразы). Их зовёт `helpers/date.ts::formatFullSentTimeRaw`, порт tweb
+// `date.ts:135-176`. Остальных четырёх словарей это не коснулось — они покрыты
+// наполовину by design.
 const COMPOSITION = {
-  ru: { keys: 1292, plural: 28 },
+  ru: { keys: 1296, plural: 28 },
   uk: { keys: 687, plural: 24 },
   es: { keys: 686, plural: 24 },
   de: { keys: 686, plural: 24 },
@@ -114,8 +121,9 @@ const COMPOSITION = {
 // `DeleteMessagesOptionAlso` («Also delete for %1$s», tweb lang.ts:1607). Число
 // строк не изменилось — сменилось имя и появился аргумент внутри.
 // Сдвиг набора задачей 8 — тот же один ключ `LanguageName` во всех пяти.
+// Сдвиг набора задачей #121 — четыре ключа относительных дат у русского.
 const FINGERPRINT = {
-  ru: 'a0f44ad7',
+  ru: '2ca232c5',
   uk: '43276d3c',
   es: 'ce3e077a',
   de: 'ce3e077a',

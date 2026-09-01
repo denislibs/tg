@@ -345,6 +345,7 @@ const lang = {
   CurrentSession: 'This device',
   DarkMode: 'Dark Mode',
   DataSettings: 'Data and Storage',
+  'Date.Today': 'Today',
   Days: {
     one_value: '%1$d day',
     other_value: '%1$d days',
@@ -851,6 +852,8 @@ const lang = {
   PaymentCardNumber: 'Card Number',
   PaymentShippingEmailPlaceholder: 'Email',
   'Peer.Activity.User.TypingText': 'typing',
+  'Peer.Status.Today': 'today',
+  'Peer.Status.Yesterday': 'yesterday',
   'Peer.Type.User': 'user',
   'PeerInfo.Action.VoiceChat': 'Video Chat',
   'PeerInfo.DeleteChannel': 'Delete Channel',
@@ -1408,6 +1411,7 @@ const lang = {
     one_value: '%1$d year',
     other_value: '%1$d years',
   },
+  Yesterday: 'yesterday',
   YourEmailSkip: 'Skip',
   YourName: 'Your Name',
 }

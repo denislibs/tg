@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 3,
+      "version": 4,
       "strings": [
         {
           "key": "AccountSettings.Notifications",
@@ -1284,6 +1284,10 @@
         {
           "key": "DataSettings",
           "value": "Data and Storage"
+        },
+        {
+          "key": "Date.Today",
+          "value": "Today"
         },
         {
           "key": "Days",
@@ -3188,6 +3192,14 @@
         {
           "key": "Peer.Activity.User.TypingText",
           "value": "typing"
+        },
+        {
+          "key": "Peer.Status.Today",
+          "value": "today"
+        },
+        {
+          "key": "Peer.Status.Yesterday",
+          "value": "yesterday"
         },
         {
           "key": "Peer.Type.User",
@@ -5289,6 +5301,10 @@
           }
         },
         {
+          "key": "Yesterday",
+          "value": "yesterday"
+        },
+        {
           "key": "YourEmailSkip",
           "value": "Skip"
         },
@@ -5305,7 +5321,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 3,
+      "version": 4,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -8050,6 +8066,22 @@
         {
           "key": "ScheduleController.at",
           "value": "в"
+        },
+        {
+          "key": "Date.Today",
+          "value": "Сегодня"
+        },
+        {
+          "key": "Yesterday",
+          "value": "вчера"
+        },
+        {
+          "key": "Peer.Status.Today",
+          "value": "сегодня"
+        },
+        {
+          "key": "Peer.Status.Yesterday",
+          "value": "вчера"
         },
         {
           "key": "ReplyToAnotherChat",
