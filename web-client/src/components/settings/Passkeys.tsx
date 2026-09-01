@@ -3,25 +3,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import TgIcon from '../TgIcon'
 import Text from '../../shared/ui/Text'
-import { useT, useLang } from '../../i18n'
+import { ALWAYS_YEAR, DayDate } from '../../shared/ui/dateNodes'
+import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { isWebAuthnSupported, createPasskey } from '../../core/webauthnBrowser'
 import type { PasskeyInfo } from '../../core/managers/authManager'
 import { SettingsScreen, Section, Row, EntryRow } from './kit'
 
-function fmtDate(iso: string, lang: string): string {
-  try {
-    return new Date(iso).toLocaleDateString(lang === 'ru' ? 'ru-RU' : undefined, {
-      day: 'numeric', month: 'short', year: 'numeric',
-    })
-  } catch {
-    return iso
-  }
-}
-
 export default function Passkeys({ onBack }: { onBack: () => void }) {
   const t = useT()
-  const [lang] = useLang()
   const managers = useManagers()
   const [keys, setKeys] = useState<PasskeyInfo[]>([])
   const [error, setError] = useState('')
@@ -37,7 +27,7 @@ export default function Passkeys({ onBack }: { onBack: () => void }) {
     if (busy) return
     setError('')
     if (!isWebAuthnSupported()) {
-      setError(t('Passkeys are not supported in this browser.'))
+      setError(t('Passkeys.Unsupported'))
       return
     }
     setBusy(true)
@@ -47,7 +37,7 @@ export default function Passkeys({ onBack }: { onBack: () => void }) {
       await managers.auth.passkeyRegisterFinish(session, attestation)
       reload()
     } catch {
-      setError(t('Could not create a passkey.'))
+      setError(t('Passkey.CreateError'))
     } finally {
       setBusy(false)
     }
@@ -60,12 +50,12 @@ export default function Passkeys({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <SettingsScreen title="Passkeys" onBack={onBack}>
+    <SettingsScreen title="Privacy.Passkeys" onBack={onBack}>
       <Section
-        caption="Passkeys"
-        footer="Passkeys let you sign in without a password, using your fingerprint, face or device PIN."
+        caption="Privacy.Passkeys"
+        footer="Passkeys.Caption"
       >
-        <Row icon={<TgIcon name="add" size={24} />} label="Add a Passkey" accent onClick={() => void add()} />
+        <Row icon={<TgIcon name="add" size={24} />} label="Passkeys.Add" accent onClick={() => void add()} />
       </Section>
       {error && (
         <Text size={13.5} color="#ff595a" style={{ padding: '0 24px' }}>{error}</Text>
@@ -73,15 +63,33 @@ export default function Passkeys({ onBack }: { onBack: () => void }) {
 
       {keys.length > 0 && (
         <Section>
+          {/* Дата — живой узел `formatDate` ядра. Прежде здесь язык УГАДЫВАЛСЯ
+              (`lang === 'ru' ? 'ru-RU' : undefined`): под `undefined` пряталась
+              локаль БРАУЗЕРА, а четыре остальных языка приложения не
+              учитывались вовсе.
+              `ALWAYS_YEAR` — потому что `formatDate` оригинала опускает год у
+              дат текущего года, а «ключ создан 3 декабря» без года не отвечает
+              на вопрос, ради которого строку читают; форма та же, что была до
+              задачи #121 (день + месяц сокращённо + год).
+              `fallback` возвращает поведение снесённого `try/catch`: битая
+              строка с провода показывает сырое значение, а не роняет экран
+              `RangeError`-ом из `Intl`. */}
           {keys.map((k) => (
             <EntryRow
               key={k.id}
               left={<TgIcon name="key" size={24} color="var(--primary-color)" />}
-              title={k.name || t('Passkey')}
+              title={k.name || t('Passkeys.Item')}
               sub={
-                k.lastUsedAt
-                  ? `${t('Last used')}: ${fmtDate(k.lastUsedAt, lang)}`
-                  : `${t('Created')}: ${fmtDate(k.createdAt, lang)}`
+                <>
+                  {k.lastUsedAt ? t('Passkeys.LastUsed') : t('Passkeys.Created')}
+                  {': '}
+                  <DayDate
+                    date={Math.floor(Date.parse(k.lastUsedAt || k.createdAt) / 1000)}
+                    shortMonth
+                    overrideIntlOptions={ALWAYS_YEAR}
+                    fallback={k.lastUsedAt || k.createdAt}
+                  />
+                </>
               }
               onRemove={() => void remove(k.id)}
             />

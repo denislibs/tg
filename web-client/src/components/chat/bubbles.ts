@@ -70,6 +70,7 @@
 //    вычислитель модификаторов бабла): в tweb класс ставится прямо по ходу
 //    сборки имени (bubbles.ts:9516/9648), у нас — по тому же признаку
 //    `showName`, который лента считает `needName`.
+import type { LangPackKey } from '@/lang'
 import Scrollable, { type SliceSides } from '@components/scrollable'
 import StickyIntersector from '@components/stickyIntersector'
 import SuperIntersectionObserver from '@helpers/dom/superIntersectionObserver'
@@ -147,6 +148,7 @@ import { animateLadderLists, type LadderStep } from '@core/dom/ladder'
 import { deleteChatPosition, getChatPosition, saveChatPosition, type ChatPosition } from '@core/chat/chatPositions'
 import { getActiveGradientRenderer } from '@core/chat/activeGradient'
 import type { ChatAutoDownload } from '@core/hooks/useChatAutoDownload'
+import { i18n } from '@lib/langPack'
 import { useI18nStore } from '../../i18n'
 
 /** Адрес бабла — порт tweb `FullMid` (`${peerId}_${mid}`, bubbles.ts:440-449).
@@ -1254,6 +1256,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
         message: {
           mid: message.id,
           peerId: this.peerId,
+          date: message.date,
           mediaUnread: !!message.pFlags?.media_unread,
           // Свой кружок «просмотренным» не отмечается — гейт оригинала
           // (`message.fromId !== rootScope.myId`, appMediaPlaybackController.ts:452).
@@ -1382,8 +1385,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
     title.classList.add('bubble-call-title')
     // tweb :8662-8665 — четыре ключа: сторона × «видео или нет».
     title.textContent = t(isOut
-      ? (action.pFlags?.video ? 'Outgoing video call' : 'Outgoing call')
-      : (action.pFlags?.video ? 'Incoming video call' : 'Incoming call'))
+      ? (action.pFlags?.video ? 'CallMessageVideoOutgoing' : 'CallMessageOutgoing')
+      : (action.pFlags?.video ? 'CallMessageVideoIncoming' : 'CallMessageIncoming'))
 
     const subtitle = document.createElement('div')
     subtitle.classList.add('bubble-call-subtitle')
@@ -1396,9 +1399,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
     } else {
       subtitle.classList.add('is-reason') // tweb :8687
       subtitle.append(document.createTextNode(t(
-        action.reason?._ === 'phoneCallDiscardReasonBusy' ? 'Busy'
-        : action.reason?._ === 'phoneCallDiscardReasonMissed' ? 'Missed call'
-        : 'Cancelled call',
+        action.reason?._ === 'phoneCallDiscardReasonBusy' ? 'Call.StatusBusy'
+        : action.reason?._ === 'phoneCallDiscardReasonMissed' ? 'ChatList.Service.Call.Missed'
+        : 'CallMessageCancelled',
       )))
     }
 
@@ -1453,6 +1456,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
       message: {
         mid: message.id,
         peerId: this.peerId,
+        date: message.date,
         mediaUnread: !!message.pFlags?.media_unread,
         out: !!message.pFlags?.out,
       },
@@ -2298,21 +2302,19 @@ export default class ChatBubbles implements BubbleGroupsHost {
     return date.getTime()
   }
 
-  /** Дата-разделитель дня. Сам узел строит модуль сервисных сообщений
+  /** Дата-разделитель дня. Разметку строит модуль сервисных сообщений
    *  (`serviceMessage.ts::createDateBubble`, порт tweb bubbles.ts:4778-4813) —
    *  здесь остаётся ровно то, чем владеет лента: подпись дня и ключ секции.
    *
-   *  Подпись в tweb считает `formatDate`/`i18n` внутри самого `createDateBubble`;
-   *  у нас её отдаёт вызывающий (`core/format/dayLabel`), а язык берётся из
-   *  стора i18n на момент постройки узла — как в других ванильных портах
-   *  (`connectionStatus.ts`, `mediaViewer/appMediaViewer.ts`).
+   *  Подпись — ЖИВОЙ УЗЕЛ ядра (`core/format/dayLabel`, порт веток :4783-4798), а
+   *  не строка: язык у неё ведёт `applyLangPack`, и спрашивать стор i18n на
+   *  момент постройки, как делалось раньше, больше не нужно — смена языка
+   *  доезжала бы только до заново построенных разделителей.
    *  `data-date` — ключ дня в форме `day-<timestamp>`: по нему секция дня
    *  адресуется в реестре `dateMessages` и в наблюдателе липких дат
    *  (`constructPeerHelpers`). */
   private createDateBubble(dateTimestamp: number): HTMLElement {
-    const bubble = createServiceDateBubble(
-      dayLabel(new Date(dateTimestamp).toISOString(), useI18nStore.getState().lang),
-    )
+    const bubble = createServiceDateBubble(dayLabel(dateTimestamp))
     bubble.dataset.date = `day-${dateTimestamp}`
     return bubble
   }
@@ -5138,7 +5140,6 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * радиус 1.5rem; `_chatBubble.scss:2672-2690`).
    */
   private async renderEmptyPlaceholder(type: EmptyPlaceholderType, middleware: Middleware): Promise<void> {
-    const t = useI18nStore.getState().t
     const BASE_CLASS = 'empty-bubble-placeholder'
 
     const bubble = document.createElement('div')
@@ -5156,25 +5157,30 @@ export default class ChatBubbles implements BubbleGroupsHost {
     contentWrapper.append(bubbleContainer)
     bubble.append(contentWrapper)
 
-    const line = (text: string, cls: string) => {
-      const span = document.createElement('span')
-      span.classList.add('i18n', 'center', cls)
-      span.textContent = text
+    // Строка — УЗЕЛ ЯДРА (`i18n(key)`), а не свой `span` с классом `i18n` и
+    // текстом внутри. Класс на самодельном узле — подделка: `applyLangPack`
+    // находит его обходом `.i18n`, но `weakMap.get` даёт `undefined`, и узел
+    // молча пропускается (`lib/langPack.ts:568-572`). Здесь это был не просто
+    // шум, а застывший текст: карточка живёт, пока чат пуст, и смены языка не
+    // переживала. Оригинал на этом месте тоже строит `i18n(...)` (:10473-10515).
+    const line = (key: LangPackKey, cls: string) => {
+      const span = i18n(key)
+      span.classList.add('center', cls)
       return span
     }
 
     const elements: HTMLElement[] = [
-      line(t(type === 'saved' ? 'Your cloud storage' : 'No messages here yet...'), `${BASE_CLASS}-title`),
+      line(type === 'saved' ? 'ChatYourSelfTitle' : 'NoMessages', `${BASE_CLASS}-title`),
     ]
 
     if(type === 'saved') {
       // tweb :10510-10515 + :10728-10735 — буллет как ОТДЕЛЬНЫЙ узел перед
       // строкой, а не символ в тексте.
-      const items = [
-        'Forward messages here to save them',
-        'Send media and files to store them',
-        'Access this chat from any device',
-        'Use search to quickly find things',
+      const items: LangPackKey[] = [
+        'ChatYourSelfDescription1',
+        'ChatYourSelfDescription2',
+        'ChatYourSelfDescription3',
+        'ChatYourSelfDescription4',
       ]
       for(const key of items) {
         const span = document.createElement('span')
@@ -5182,11 +5188,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
         const bullet = document.createElement('span')
         bullet.classList.add(`${BASE_CLASS}-list-bullet`)
         bullet.textContent = '•'
-        span.append(bullet, t(key))
+        span.append(bullet, i18n(key))
         elements.push(span)
       }
     } else if(type === 'greeting') {
-      elements.push(line(t('Send a message or tap the greeting below.'), `${BASE_CLASS}-subtitle`))
+      elements.push(line('NoMessagesGreetingsDescription', `${BASE_CLASS}-subtitle`))
 
       const stickerDiv = document.createElement('div')
       stickerDiv.classList.add(`${BASE_CLASS}-sticker`)

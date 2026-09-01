@@ -24,14 +24,17 @@
 // через `getPopup`, наше расширение `confirmationPopup` — см. докблок
 // `popupPeer.ts`), а не полагается на то, что React «унесёт» чужой DOM-узел
 // вместе с собой — React о нём не знает, узел висит прямо на `document.body`.
+import type { LangPackKey } from '@/lang'
 import { useEffect, useRef } from 'react'
 import { confirmationPopup } from '../popups/popupPeer'
 import type PopupPeer from '../popups/popupPeer'
 
-export default function ConfirmDialog({ title, text, action, danger, zIndex, onConfirm, onClose }: {
-  title: string
-  text: string
-  action: string
+export default function ConfirmDialog({ title, text, textArgs, action, danger, zIndex, onConfirm, onClose }: {
+  title: LangPackKey
+  text: LangPackKey
+  /** Аргументы строки описания (`%s`, `%1$s`, форма числа) — подставляет `tArgs`. */
+  textArgs?: (string | number)[]
+  action: LangPackKey
   danger?: boolean
   /** поверх полноэкранных оверлеев (медиа-редактор и т.п.) — форвардится в
    *  `PopupOptions.zIndex` (наше расширение, см. докблок `popupElement.ts`) */
@@ -51,7 +54,12 @@ export default function ConfirmDialog({ title, text, action, danger, zIndex, onC
     confirmationPopup({
       titleLangKey: title,
       descriptionLangKey: text,
-      button: { text: action, isDanger: danger },
+      descriptionLangArgs: textArgs,
+      // Ключ, а не строка: с задачи 7 роль поля выражена ТИПОМ (`PopupButton.langKey`
+      // против `PopupButton.text`, который принимает только УЗЕЛ), и «забыть перевод»
+      // здесь больше нельзя — а раньше именно так на кнопках подтверждения десяти
+      // экранов оказались латинские имена ключей.
+      button: { langKey: action, isDanger: danger },
       zIndex,
       getPopup: (p) => { popup = p },
     }).then(

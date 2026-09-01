@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { openPopup } from '../../stores/popupStore'
 import useMediaQuery from '../../shared/lib/useMediaQuery'
-import { useT } from '../../i18n'
+import { useT, useTArgs } from '../../i18n'
 import { useStickersSearch } from '../../core/hooks/useStickersSearch'
 import type { Sticker, StickerSet } from '../../core/managers/stickersManager'
 import { createLazyLoadQueue, type LazyLoadQueue } from '../../core/lazyLoadQueue'
@@ -82,6 +82,7 @@ function StickerSetRow({
   onOpen: () => void
 }) {
   const t = useT()
+  const tArgs = useTArgs()
 
   // Живой геттер видимости ЭТОЙ строки — для приоритезации внутри очереди
   // загрузки ФАЙЛОВ превью (core/lazyLoadQueue.ts): проп `visible` меняется
@@ -117,7 +118,7 @@ function StickerSetRow({
         <div className="sticker-set-details">
           <div className="sticker-set-name" dir="auto">{set.title}</div>
           <div className="sticker-set-count">
-            <span className="i18n">{set.count} {t('stickers')}</span>
+            <span>{tArgs('Stickers', [set.count])}</span>
           </div>
         </div>
         {/* tweb: установленный — «Added» + класс gray; disabled на время запроса;
@@ -128,7 +129,7 @@ function StickerSetRow({
           disabled={busy}
           onClick={(e) => { e.stopPropagation(); onToggle() }}
         >
-          <span className="i18n">{t(installed ? 'Added' : 'Add')}</span>
+          <span>{t(installed ? 'Stickers.SearchAdded' : 'Add')}</span>
         </button>
       </div>
       <div className="sticker-set-stickers">
@@ -202,7 +203,6 @@ export default function StickersSearchTab({
   onPickSticker?: (st: Sticker) => void
   onClose: () => void
 }) {
-  const t = useT()
   const narrow = useMediaQuery('(max-width:900px)')
   const [query, setQuery] = useState('')
   const { sets, covers, installedIds, busyIds, toggle, loading } = useStickersSearch(query)
@@ -266,7 +266,7 @@ export default function StickersSearchTab({
     <RightSearchTab
       id="stickers-container"
       containerClassName="chatlist-container"
-      placeholder={t('Search Stickers')}
+      placeholder="StickersTab.SearchPlaceholder"
       value={query}
       onChange={setQuery}
       onClose={onClose}

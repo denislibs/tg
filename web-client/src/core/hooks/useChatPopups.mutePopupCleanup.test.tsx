@@ -29,7 +29,7 @@ function mkManagers() {
   return { peers: { fillMirror: vi.fn(async() => {}) } }
 }
 
-const chat: Chat = { id: '1', name: 'Test', avatar: '', date: '', preview: '', type: 'private' }
+const chat: Chat = { id: '1', name: 'Test', avatar: '', preview: '', type: 'private' }
 
 function mkDeps(overrides: Partial<ChatPopupDeps> = {}): ChatPopupDeps {
   return {

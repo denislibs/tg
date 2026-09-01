@@ -85,7 +85,7 @@ export default function InputField({
       />
       <div className="input-field-border" />
       <label style={{ visibility: 'visible' }}>
-        <span className="i18n">{label}</span>
+        <span>{label}</span>
         {/* tweb дописывает остаток текстовым узлом прямо в label, за span.i18n */}
         {diff <= showLengthOn ? ` (${diff})` : ''}
       </label>

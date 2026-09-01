@@ -19,7 +19,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import IconButton from '../../shared/ui/IconButton'
 import TgIcon, { type IconName } from '../TgIcon'
 import { useRipple } from '../../shared/ui/Ripple/useRipple'
-import { useT } from '../../i18n'
+import { useT, useTArgs } from '../../i18n'
 import type { EditState, ForwardBar, ReplyState } from '../Composer'
 
 // --transition-standard-out (base.scss:43) — столько же длится height-переход плашки.
@@ -60,18 +60,22 @@ export default function ReplyWrapper({
   reply, editing, forward, onCancelReply, onCancelEdit, onCancelForward, onOpenForwardMenu, bodyRef,
 }: Props) {
   const t = useT()
+  const tArgs = useTArgs()
   const { onPointerDown, ripple } = useRipple()
 
   // Порядок веток — как в tweb: правка перебивает форвард, форвард перебивает ответ.
   let content: Content | null = null
   if (editing) {
-    content = { icon: 'edit', title: t('Edit message'), subtitle: editing.text, onCancel: onCancelEdit }
+    content = { icon: 'edit', title: t('Chat.Accessory.Edit'), subtitle: editing.text, onCancel: onCancelEdit }
   } else if (forward) {
     content = {
       icon: 'forward',
-      title: forward.count === 1
-        ? (forward.dropAuthor ? t('Forward Message (sender name hidden)') : t('Forward Message'))
-        : `${t('Forward Messages')} (${forward.count})`,
+      // input.ts:4517 — `i18n(showSender ? 'Chat.Accessory.Forward' : 'Chat.Accessory.Hidden',
+      // [length])`: обе надписи ФОРМЫ ЧИСЛА со счётчиком внутри строки, а не
+      // «надпись плюс (N)» рядом. По-русски это разница между «Переслать
+      // сообщения (3)» и «Переслать 3 сообщения», а на снятом имени отправителя
+      // — ещё и признак «без имени», который до этого жил только при count === 1.
+      title: tArgs(forward.dropAuthor ? 'Chat.Accessory.Hidden' : 'Chat.Accessory.Forward', [forward.count]),
       subtitle: forward.text,
       onCancel: onCancelForward,
       onClick: onOpenForwardMenu,
@@ -81,7 +85,7 @@ export default function ReplyWrapper({
       icon: 'reply',
       // input.ts:4630 — `i18n('ReplyTo', [title])`, где title — узел
       // `span.peer-title` с именем автора (wrapPeerTitle).
-      title: <>{t('Reply to')} <span className="peer-title" data-peer-id={reply.peerId}>{reply.snapshotName ?? reply.name}</span></>,
+      title: <>{t('Chat.Accessory.Reply')} <span className="peer-title" data-peer-id={reply.peerId}>{reply.snapshotName ?? reply.name}</span></>,
       subtitle: reply.quote ? (
         <>
           <TgIcon name="quote_outline" size={13} style={{ verticalAlign: '-1px', marginRight: 3, opacity: 0.7 }} />
@@ -128,7 +132,7 @@ export default function ReplyWrapper({
           >
             {ripple}
             <div className="reply-content">
-              <div className="reply-title"><span className="i18n">{shown.title}</span></div>
+              <div className="reply-title"><span>{shown.title}</span></div>
               <div className="reply-subtitle"><span>{shown.subtitle}</span></div>
             </div>
           </div>

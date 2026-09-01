@@ -1,5 +1,5 @@
 // Подзаголовок строки папки: «1 канал и 1 группа», «3 чата» — порт tweb
-// chatFolders.tsx (i18n('Chats',[n]) + join) со склонениями по языкам.
+// chatFolders.tsx (i18n('FilterChats',[n]) + join) со склонениями по языкам.
 type Kind = 'chat' | 'group' | 'channel'
 
 // [one, few, many] для славянских; [one, other] для остальных

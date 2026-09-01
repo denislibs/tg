@@ -41,6 +41,7 @@ import { newDraftsManager } from './managers/draftsManager'
 import { newPersistManager } from './managers/persistManager'
 import { newChatThemesManager } from './managers/chatThemesManager'
 import { newSessionsManager } from './managers/sessionsManager'
+import { newLangPackManager } from './managers/langPackManager'
 import { newCallsManager } from './managers/callsManager'
 import { newLivestreamManager } from './managers/livestreamManager'
 import { newConnectionManager } from './realtime/connectionManager'
@@ -357,6 +358,10 @@ export function createWorkerCore() {
   const reactions = newReactionsManager({ rest })
   const iv = newIVManager({ rest })
   const health = newHealthManager(rest)
+  // Языковой пакет: владелец кэша, версии и разницы — воркер (обоснование места
+  // и выбора хранилища — в докблоке менеджера). Хранилище — тот же KV IndexedDB,
+  // что у токена и курсора; аккаунтный persist не годится, пакет нужен до входа.
+  const langPack = newLangPackManager({ rest, kv: { get: idbGet, set: idbSet } })
   // Единый writer офлайн-стора: диалоги/me/папки/черновики теперь пишет воркер (не
   // каждая вкладка со своего main-соединения). Без rest — чистый IndexedDB.
   // broadcast объявлен ниже — стрелка дергает его лениво (к моменту первой записи
@@ -787,7 +792,7 @@ export function createWorkerCore() {
     health, auth, profile, premium, chats, messages, realtime, media, push, notify,
     folders, groups, channels, peers, dialogs, presence, stories, contacts, privacy, drafts,
     chatThemes, sessions, calls, livestream, stars, boosts, report, stats, bots,
-    stickers, reactions, iv, secret, persist,
+    stickers, reactions, iv, secret, persist, langPack,
   }
 
   function bind(ep: Endpoint) {

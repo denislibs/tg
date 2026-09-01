@@ -51,7 +51,7 @@ export default function EmojiStatusPicker({ open, onClose }: { open: boolean; on
       <div onClick={(e) => e.stopPropagation()} className={classNames('popup-container', s.dialog)}>
         <div className={s.head}>
           <Text size={17} weight={600} color="var(--primary-text-color)" style={{ flex: 1 }}>
-            {t('Set Emoji Status')}
+            {t('EmojiStatus.Set')}
           </Text>
           {current && (
             <span onClick={() => void set('')} className={s.remove}>

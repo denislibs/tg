@@ -8,7 +8,7 @@ import Avatar from '../../shared/ui/Avatar'
 import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import BirthdayModal from './BirthdayModal'
 import AvatarCropper from './AvatarCropper'
-import { useT, useLang } from '../../i18n'
+import { useT } from '../../i18n'
 import { SettingsScreen } from './kit'
 import s from './EditProfile.module.scss'
 import { useManagers } from '../../core/hooks/useManagers'
@@ -27,7 +27,6 @@ type UnameState = 'idle' | 'checking' | 'available' | 'taken' | 'invalid' | 'too
 export default function EditProfile({ onBack }: { onBack: () => void }) {
   const managers = useManagers()
   const t = useT()
-  const [lang] = useLang()
   const me = useChatsStore((s) => s.me)
   const setMe = useChatsStore((s) => s.setMe)
 
@@ -75,15 +74,15 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
 
   const usernameMsg =
     unameState === 'checking'
-      ? t('Checking…')
+      ? t('EditProfile.Username.Checking')
       : unameState === 'available'
-        ? t('This username is available.')
+        ? t('EditProfile.Username.Available')
         : unameState === 'taken'
-          ? t('This username is already taken.')
+          ? t('EditProfile.Username.Taken')
           : unameState === 'tooShort'
-            ? t('Minimum 5 characters.')
+            ? t('EditProfile.Username.TooShort')
             : unameState === 'invalid'
-              ? t('Username must be 5–32 chars: letters, digits, underscore.')
+              ? t('EditProfile.Username.Rules')
               : ''
   const usernameColor =
     unameState === 'available' ? '#4dcd5e' : unameState === 'taken' || unameState === 'invalid' ? '#ff595a' : 'var(--secondary-text-color)'
@@ -167,7 +166,7 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
       const cur = useChatsStore.getState().me
       if (cur) setMe({ ...cur, user: { ...cur.user, photo: { _: 'userProfilePhoto', photo_id: photo.mediaId } } })
     } catch {
-      setAvatarError(t('Could not process this video.'))
+      setAvatarError(t('EditProfile.VideoError'))
     } finally {
       URL.revokeObjectURL(objectUrl)
       setUploading(false)
@@ -212,7 +211,7 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
 
   return (
     <SettingsScreen
-      title="Edit Profile"
+      title="EditAccount.Title"
       onBack={onBack}
       headerRight={
         <IconButton onClick={onDone} disabled={saving} color="var(--primary-color)">
@@ -252,18 +251,18 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
 
       {/* name / last / bio + birthday */}
       <div className={`${s.card} ${s.form}`}>
-        <Input label={t('Name')} value={first} onChange={setFirst} />
-        <Input label={t('Last name')} value={last} onChange={setLast} />
-        <Input label={t('Bio (optional)')} value={bio} onChange={(v) => setBio(v.slice(0, BIO_MAX))} />
+        <Input label={t('EditProfile.FirstNameLabel')} value={first} onChange={setFirst} />
+        <Input label={t('EditProfile.LastNameLabel')} value={last} onChange={setLast} />
+        <Input label={t('EditProfile.BioLabel')} value={bio} onChange={(v) => setBio(v.slice(0, BIO_MAX))} />
         <div className={s.bday} onClick={() => setBdayOpen(true)}>
           <TgIcon name="gift" size={24} color="var(--secondary-text-color)" />
           <Text size={16} color={birthday ? 'var(--primary-text-color)' : 'var(--primary-color)'}>
-            {birthday ? formatBirthday(birthday, lang) : t('Add birthday')}
+            {birthday ? formatBirthday(birthday) : t('EditProfile.AddBirthdayRow')}
           </Text>
         </div>
       </div>
       <Text size={14} color="var(--secondary-text-color)" style={{ paddingLeft: '24px', paddingRight: '24px', paddingTop: '8px', lineHeight: 1.45 }}>
-        {t('Any details such as age, occupation or city. Example: 23 y.o. designer from San Francisco.')}
+        {t('Bio.Description')}
       </Text>
 
       {/* username */}
@@ -272,7 +271,7 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
       </Text>
       <div className={s.card}>
         <Input
-          label={t('Username (optional)')}
+          label={t('EditProfile.Username.Label')}
           value={username}
           onChange={(v) => setUsername(v.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
         />
@@ -283,7 +282,7 @@ export default function EditProfile({ onBack }: { onBack: () => void }) {
         </Text>
       )}
       <Text size={14} color="var(--secondary-text-color)" style={{ paddingLeft: '24px', paddingRight: '24px', paddingTop: '8px', lineHeight: 1.45 }}>
-        {t('You can choose a public username so people can find you and contact you without knowing your phone number.')}
+        {t('EditProfile.Username.Caption')}
       </Text>
 
       <BirthdayModal

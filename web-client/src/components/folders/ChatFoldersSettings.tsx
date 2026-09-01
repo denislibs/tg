@@ -2,6 +2,7 @@
 // (86×86), caption, кнопка «Новая папка», секция «Папки» (строки со счётчиками
 // «1 канал и 1 группа»), «Рекомендованные папки» (с кнопкой Добавить),
 // «Расположение папок» (radio → settings.tabsInSidebar, tweb Folders view).
+import type { LangPackKey } from '@/lang'
 import { useState } from 'react'
 import Text from '../../shared/ui/Text'
 import TgIcon from '../TgIcon'
@@ -20,18 +21,18 @@ import s from './ChatFoldersSettings.module.scss'
 
 // Рекомендованные папки (tweb getSuggestedDialogsFilters; у нас — статичные
 // пресеты, скрываются если папка с таким названием уже есть).
-const SUGGESTED: { title: string; desc: string; input: Omit<FolderInput, 'title'> }[] = [
+const SUGGESTED: { title: LangPackKey; desc: LangPackKey; input: Omit<FolderInput, 'title'> }[] = [
   {
     title: 'New',
-    desc: 'Chats with new messages.',
+    desc: 'FilterUnreadDescription',
     input: {
       contacts: true, nonContacts: true, groups: true, broadcasts: true,
       excludeMuted: false, excludeRead: true, includeChats: [], excludeChats: [],
     },
   },
   {
-    title: 'Personal',
-    desc: 'Messages from private chats.',
+    title: 'FilterPersonal',
+    desc: 'FilterPersonalDescription',
     input: {
       contacts: true, nonContacts: true, groups: false, broadcasts: false,
       excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [],
@@ -39,7 +40,7 @@ const SUGGESTED: { title: string; desc: string; input: Omit<FolderInput, 'title'
   },
 ]
 
-function RadioRow({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
+function RadioRow({ label, selected, onClick }: { label: LangPackKey; selected: boolean; onClick: () => void }) {
   const t = useT()
   return (
     <div className={s.radioRow} onClick={onClick}>
@@ -60,6 +61,11 @@ export default function ChatFoldersSettings({ onBack, chats = [] }: { onBack: ()
   const [editor, setEditor] = useState<Folder | 'new' | null>(null)
 
   const suggested = SUGGESTED.filter((sg) => !folders.some((f) => f.title === t(sg.title)))
+  // Имя папки уезжает НА СЕРВЕР переводом ключа. Роль подписи и роль данных здесь
+  // СОВПАДАЮТ: пользователь видит в списке предложений ровно то имя, которое сохранится
+  // (у оригинала предложения приезжают с сервера уже локализованными). Ключ приходит
+  // ПЕРЕМЕННОЙ из таблицы `SUGGESTED`, поэтому пин `i18n/dataNotKeys.test.ts` это место
+  // не видит — правило держится этим комментарием и типом `LangPackKey` у поля.
   const addSuggested = (sg: (typeof SUGGESTED)[number]) => {
     void managers.folders
       .create({ ...sg.input, title: t(sg.title) })
@@ -69,7 +75,7 @@ export default function ChatFoldersSettings({ onBack, chats = [] }: { onBack: ()
 
   return (
     <SettingsScreen
-      title="Chat Folders"
+      title="ChatList.Filter.List.Title"
       onBack={onBack}
       sub={editor ? (
         <FolderEditor folder={editor === 'new' ? null : editor} chats={chats} onClose={() => setEditor(null)} />
@@ -77,17 +83,17 @@ export default function ChatFoldersSettings({ onBack, chats = [] }: { onBack: ()
     >
       <LottieSticker name="Folders_1" size={86} />
       <Text size={14} color="var(--secondary-text-color)" className={s.caption}>
-        {t('Create folders for different groups of chats and quickly switch between them.')}
+        {t('ChatList.Filter.Header')}
       </Text>
       <div className={s.createWrap}>
         <button type="button" className={s.createBtn} onClick={() => setEditor('new')}>
           <TgIcon name="add" size={20} />
-          {t('Create Folder')}
+          {t('ChatList.Filter.NewTitle')}
         </button>
       </div>
 
       {folders.length > 0 && (
-        <Section caption="Folders">
+        <Section caption="Filters">
           {folders.map((f) => (
             <Row
               key={f.id}
@@ -101,7 +107,7 @@ export default function ChatFoldersSettings({ onBack, chats = [] }: { onBack: ()
       )}
 
       {suggested.length > 0 && (
-        <Section caption="Recommended Folders">
+        <Section caption="FilterRecommended">
           {suggested.map((sg) => (
             <div key={sg.title} className={s.suggestedRow}>
               <div className={s.suggestedBody}>
@@ -116,9 +122,9 @@ export default function ChatFoldersSettings({ onBack, chats = [] }: { onBack: ()
         </Section>
       )}
 
-      <Section caption="Folders view">
-        <RadioRow label="Folders on the Left" selected={tabsInSidebar} onClick={() => update({ tabsInSidebar: true })} />
-        <RadioRow label="Folders above chats" selected={!tabsInSidebar} onClick={() => update({ tabsInSidebar: false })} />
+      <Section caption="FiltersView">
+        <RadioRow label="FiltersOnLeft" selected={tabsInSidebar} onClick={() => update({ tabsInSidebar: true })} />
+        <RadioRow label="FiltersOnTop" selected={!tabsInSidebar} onClick={() => update({ tabsInSidebar: false })} />
       </Section>
 
     </SettingsScreen>

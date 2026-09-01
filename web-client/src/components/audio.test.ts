@@ -174,7 +174,7 @@ function roundNode(mediaId: number, mid: number, peerId: number) {
   node.dataset.mid = '' + mid
   node.dataset.peerId = '' + peerId
   ;(node as unknown as { track: unknown }).track = {
-    mediaId, title: '', subtitle: '', peerId, msgId: mid, type: 'round',
+    mediaId, title: '', date: 1755255240, peerId, msgId: mid, type: 'round',
   }
   return node
 }
@@ -447,7 +447,7 @@ describe('AudioElement — воспроизведение', () => {
     expect((element.querySelector('.audio-waveform-fake') as HTMLElement).style.width).toBe('50%')
 
     // плеер уехал на чужой трек
-    mediaPlayback.playQueue([{ mediaId: 999, title: 't', subtitle: 's', type: 'voice' }], 0)
+    mediaPlayback.playQueue([{ mediaId: 999, title: 't', date: 1755255240, type: 'voice' }], 0)
     await settle()
 
     expect(element.querySelectorAll('.audio-waveform-background .audio-waveform-bar').length).toBe(47)
@@ -471,7 +471,7 @@ describe('AudioElement — воспроизведение', () => {
     await settle()
     expect(element.querySelector('.audio-subtitle > .progress-line')).not.toBeNull()
 
-    mediaPlayback.playQueue([{ mediaId: 999, title: 't', subtitle: 's', type: 'audio' }], 0)
+    mediaPlayback.playQueue([{ mediaId: 999, title: 't', date: 1755255240, type: 'audio' }], 0)
     await settle()
 
     const subtitle = element.querySelector('.audio-subtitle') as HTMLElement
@@ -493,7 +493,7 @@ describe('AudioElement — воспроизведение', () => {
     helper.destroy()
 
     // тот же трек заиграл откуда-то ещё (плашка плеера, соседний бабл)
-    mediaPlayback.playQueue([{ mediaId: 109, title: 't', subtitle: 's', type: 'voice' }], 0)
+    mediaPlayback.playQueue([{ mediaId: 109, title: 't', date: 1755255240, type: 'voice' }], 0)
     await settle()
 
     expect(toggle.classList.contains('playing')).toBe(false)

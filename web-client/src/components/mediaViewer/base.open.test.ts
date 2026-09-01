@@ -13,6 +13,7 @@ import AppMediaViewerBase, {
 } from './base'
 import ListLoader from './listLoader'
 import { applyMediaUrl, resetMediaUrlMirror } from '@core/mediaCache'
+import '../../test/lang'
 
 const { downloadMediaURL } = vi.hoisted(() => ({ downloadMediaURL: vi.fn<(id: number) => Promise<string>>() }))
 
@@ -33,6 +34,11 @@ vi.mock('@helpers/blur', () => ({
 }))
 
 type Target = { element: HTMLElement }
+
+/** 15 августа 2026, 12:34 — дата автора во всех тестах файла. Подпись под неё
+ *  строит сам вьювер (`formatFullSentTime`), поэтому нужен ФИКСИРОВАННЫЙ год:
+ *  иначе «August 15» превратилось бы в «August 15, 2026» при смене года. */
+const SENT_AT = Math.floor(new Date('2026-08-15T12:34:00').getTime() / 1000)
 
 // Публикатор protected-полей (штатный способ — сабкласс, как в base.test.ts).
 class TestViewer extends AppMediaViewerBase<never, 'forward' | 'delete', Target> {
@@ -295,19 +301,21 @@ describe('_openMedia: nav-путь (fromRight ≠ 0, tweb :2431-2436)', () => {
 describe('setAuthorInfo: React-остров аватарки (tweb :2017-2064)', () => {
   it('монтирует Avatar в .media-viewer-userpic, имя/дата — текстом', () => {
     const v = makeViewer()
-    v.setAuthorInfo({ peerId: 1, name: 'Алиса', date: 'вчера в 12:00', avatarPreview: 'AAAA' })
+    // Дата — СЕКУНДЫ эпохи: подпись строит сам вьювер узлом `formatFullSentTime`
+    // (tweb :2043), готовой строки на входе больше нет.
+    v.setAuthorInfo({ peerId: 1, name: 'Алиса', date: SENT_AT, avatarPreview: 'AAAA' })
     const userpics = v.whole.querySelectorAll('.media-viewer-userpic')
     expect(userpics.length).toBe(1)
     // без полной фотографии (src — Task 14) остров рисует инициал на peerColor
     expect(userpics[0].textContent).toBe('А')
     expect(v.authorMap.nameEl.textContent).toBe('Алиса')
-    expect(v.authorMap.date.textContent).toBe('вчера в 12:00')
+    expect(v.authorMap.date.textContent).toBe('Aug 15 at 12:34')
   })
 
   it('повторный вызов не плодит второй root/хост — ре-рендер того же острова', () => {
     const v = makeViewer()
-    v.setAuthorInfo({ peerId: 1, name: 'Алиса', date: 'вчера' })
-    v.setAuthorInfo({ peerId: 2, name: 'Боб', date: 'сегодня' })
+    v.setAuthorInfo({ peerId: 1, name: 'Алиса', date: SENT_AT })
+    v.setAuthorInfo({ peerId: 2, name: 'Боб', date: SENT_AT })
     expect(v.whole.querySelectorAll('.media-viewer-userpic').length).toBe(1)
     expect(v.authorMap.container.querySelectorAll(':scope > div').length).toBe(2) // хост + author-right
     expect(v.authorMap.nameEl.textContent).toBe('Боб')
@@ -343,7 +351,7 @@ describe('close(): полный порт (tweb :975-1024)', () => {
     v.onClose = onClose
     const p = v.callOpenMedia({
       media: photo({ blurPreview: 'AAAA' }),
-      author: { peerId: 1, name: 'Алиса', date: 'вчера' },
+      author: { peerId: 1, name: 'Алиса', date: SENT_AT },
       fromRight: 0,
     })
     await settleOpen(p)

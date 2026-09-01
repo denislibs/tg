@@ -1,5 +1,8 @@
-import { memo, useState, type CSSProperties, type ReactNode, type Ref } from 'react'
+import type { LangPackKey } from '@/lang'
+import { memo, useMemo, useState, type CSSProperties, type ReactNode, type Ref } from 'react'
 import Avatar from '../shared/ui/Avatar'
+import DomNode from '../shared/ui/DomNode'
+import { formatDateAccordingToTodayNew } from '@helpers/date'
 import classNames from '../shared/lib/classNames'
 import Menu, { MenuItem, cornerFrom, type MenuCorner } from '../shared/ui/Menu'
 import { useRipple } from '../shared/ui/Ripple/useRipple'
@@ -17,7 +20,6 @@ import PremiumBadge from './PremiumBadge'
 import EmojiStatus from './EmojiStatus'
 import type { Chat } from '../data'
 import { useT } from '../i18n'
-import { useTimeFormatter } from '../settings'
 import PopupElement from './popups/popupElement'
 import PopupMute from './popups/popupMute'
 import s from './ChatListItem.module.scss'
@@ -61,7 +63,17 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
     chat.type === 'secret' ? st.byChat[Number(chat.id)]?.status : undefined,
   )
   const presence = useChatsStore((s) => s.presence[Number(chat.id)])
-  const fmtTime = useTimeFormatter()
+  // Подпись даты — ЖИВОЙ узел ядра, а не строка (порт tweb
+  // `appDialogsManager.ts:2242`). `useMemo` по таймстампу: пока дата та же, узел
+  // тот же — смену языка и настройки 12/24 часа он отрабатывает сам, React в
+  // это не лезет. До задачи #121 здесь стоял `<span className="i18n">` со
+  // строкой внутри: класс был, а узла в `I18n.weakMap` не было, и `applyLangPack`
+  // молча пропускал такую строку — разметка выглядела локализованной, поведения
+  // за ней не стояло.
+  const dateNode = useMemo(
+    () => (chat.date === undefined ? null : formatDateAccordingToTodayNew(new Date(chat.date * 1000))),
+    [chat.date],
+  )
   const { onPointerDown, ripple } = useRipple()
 
   // Mute/Unmute (tweb dialogsContextMenu): Mute открывает попап длительности
@@ -104,7 +116,7 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
     const peerId = Number(chat.id)
     void managers.groups.setPin(peerId, pinned).catch((e: unknown) => {
       if (String(e).includes('pin limit')) {
-        rootScope.dispatchEvent('ui:toast', t("Sorry, you can't pin any more chats to the top."))
+        rootScope.dispatchEvent('ui:toast', t('PinFolderLimitReached'))
       }
     })
   }
@@ -114,26 +126,26 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
     void managers.groups.setArchive(peerId, archived).catch(() => {})
   }
   const destructive =
-    chat.type === 'channel' ? 'Leave Channel' : chat.type === 'group' ? 'Delete Group' : 'Delete Chat'
-  const menuItems: { icon: ReactNode; label: string; danger?: boolean; onClick?: () => void }[] = [
-    { icon: <TgIcon name="newtab" size={20} />, label: 'Open in new tab' },
-    { icon: <TgIcon name="eye" size={20} />, label: 'Preview' },
-    { icon: <TgIcon name="messageunread" size={20} />, label: 'Mark as unread' },
+    chat.type === 'channel' ? 'ChatList.Context.LeaveChannel' : chat.type === 'group' ? 'DeleteMega' : 'ChatList.Context.DeleteChat'
+  const menuItems: { icon: ReactNode; label: LangPackKey; danger?: boolean; onClick?: () => void }[] = [
+    { icon: <TgIcon name="newtab" size={20} />, label: 'OpenInNewTab' },
+    { icon: <TgIcon name="eye" size={20} />, label: 'ChatList.Context.Preview' },
+    { icon: <TgIcon name="messageunread" size={20} />, label: 'MarkAsUnread' },
     {
       icon: <TgIcon name={chat.pinned ? 'unpin' : 'pin'} size={20} />,
-      label: chat.pinned ? 'Unpin' : 'Pin',
+      label: chat.pinned ? 'ChatList.Context.Unpin' : 'ChatList.Context.Pin',
       onClick: () => applyPin(!chat.pinned),
     },
     {
       icon: <TgIcon name={chat.muted ? 'unmute' : 'mute'} size={20} />,
-      label: chat.muted ? 'Unmute' : 'Mute',
+      label: chat.muted ? 'ChatList.Context.Unmute' : 'ChatList.Context.Mute',
       onClick: () => (chat.muted ? applyMute(false) : openMutePopup()),
     },
     // «Избранное» не архивируется (tweb: verify peerId !== myId)
     ...(chat.type !== 'saved'
       ? [{
           icon: <TgIcon name={chat.archived ? 'unarchive' : 'archive'} size={20} />,
-          label: chat.archived ? 'Unarchive' : 'Archive',
+          label: (chat.archived ? 'Unarchive' : 'Archive') as LangPackKey,
           onClick: () => applyArchive(!chat.archived),
         }]
       : []),
@@ -181,10 +193,10 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
                  последнего сообщения. Заявка получателю — зелёным (акцент tweb). */
               <span className={secretStatus === 'requested' ? s.secretInvite : undefined}>
                 {secretStatus === 'requested'
-                  ? t('Приглашение в секретный чат')
+                  ? t('SecretChat.Invitation')
                   : secretStatus === 'rejected'
-                    ? t('Секретный чат отклонён')
-                    : t('Ожидание, пока собеседник примет секретный чат…')}
+                    ? t('SecretChat.Rejected')
+                    : t('SecretChat.Awaiting')}
               </span>
             ) : typingLabel.active ? (
               <span className="peer-typing-container">
@@ -251,9 +263,7 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
                 <TgIcon name={chat.read ? 'checks' : 'check'} size={20} />
               </span>
             )}
-            <span className="message-time">
-              <span className="i18n">{fmtTime(chat.date)}</span>
-            </span>
+            {dateNode ? <DomNode node={dateNode} className="message-time" /> : <span className="message-time" />}
           </div>
         </div>
 

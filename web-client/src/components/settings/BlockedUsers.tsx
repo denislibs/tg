@@ -55,20 +55,20 @@ export default function BlockedUsers({ onBack }: { onBack: () => void }) {
 
   return (
     <SettingsScreen
-      title="Blocked Users"
+      title="BlockedUsers"
       onBack={onBack}
       sub={picking ? (
         <PrivacyUserPicker
-          title="Blocked Users"
-          placeholder="Block user..."
+          title="BlockedUsers"
+          placeholder="BlockModal.Search.Placeholder"
           multi={false}
           onPick={(id) => void block(id)}
           onBack={() => setPicking(false)}
         />
       ) : null}
     >
-      <Section footer="Blocked users can't send you messages or add you to groups. They will not see your profile photos, online and last seen status.">
-        <Row icon={<TgIcon name="restrict" size={24} />} label="Block User" accent onClick={() => setPicking(true)} />
+      <Section footer="BlockedUsersInfo">
+        <Row icon={<TgIcon name="restrict" size={24} />} label="BlockUser" accent onClick={() => setPicking(true)} />
       </Section>
 
       {list.length > 0 && (
@@ -86,7 +86,7 @@ export default function BlockedUsers({ onBack }: { onBack: () => void }) {
       )}
       {loaded && list.length === 0 && (
         <Text size={14} color="var(--secondary-text-color)" style={{ paddingLeft: '24px', paddingRight: '24px' }}>
-          {t("You haven't blocked anyone.")}
+          {t('BlockedEmptyDescription')}
         </Text>
       )}
 

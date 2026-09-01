@@ -46,11 +46,11 @@ export default function StoriesArchiveSheet({ onClose }: { onClose: () => void }
   return (
     <div className={s.sheet}>
       <div className={s.header}>
-        <IconButton onClick={onClose} aria-label={t('Back')} color="var(--secondary-text-color)">
+        <IconButton onClick={onClose} aria-label={t('Common.Back')} color="var(--secondary-text-color)">
           <TgIcon name="back" />
         </IconButton>
         <Text size={19} weight={600} color="var(--primary-text-color)">
-          {t('Stories Archive')}
+          {t('MyStories.Archive.Title')}
         </Text>
       </div>
 
@@ -58,7 +58,7 @@ export default function StoriesArchiveSheet({ onClose }: { onClose: () => void }
         {items == null ? (
           <Text size={15} color="var(--secondary-text-color)" style={{ padding: 16 }}>{t('Loading')}</Text>
         ) : items.length === 0 ? (
-          <Text size={15} color="var(--secondary-text-color)" style={{ padding: 16 }}>{t('No archived stories')}</Text>
+          <Text size={15} color="var(--secondary-text-color)" style={{ padding: 16 }}>{t('MyStories.Archive.Empty')}</Text>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
             {items.map((it) => (

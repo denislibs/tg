@@ -90,9 +90,9 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
   const canChangeInfo = hasRights(card?.chat, 'change_info')
   const reactions = card?.fullChat.available_reactions
   const reactionsValue =
-    reactions?._ === 'chatReactionsNone' ? t('Disabled')
+    reactions?._ === 'chatReactionsNone' ? t('Checkbox.Disabled')
     : reactions?._ === 'chatReactionsSome' ? `${reactions.reactions.length}/${EMOJIS.length}`
-    : t('All')
+    : t('FilterAllChatsShort')
   // ⚠ `default_banned_rights` это ЗАПРЕТЫ; перевод в наш битмаск «что можно» —
   // единственный, в `allowedMemberPerms`.
   const allowedPerms = allowedMemberPerms(card?.chat)
@@ -157,38 +157,38 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
         <div className="sidebar-left-section no-delimiter">
           <div className="sidebar-left-section-content">
             <div className="input-wrapper">
-              <Input label={t(isChannel ? 'Channel name' : 'Group Name')} value={title} onChange={(v) => setDraft({ title: v, about })} />
-              <Input label={t('Description')} value={about} onChange={(v) => setDraft({ title, about: v })} />
+              <Input label={t(isChannel ? 'EnterChannelName' : 'CreateGroup.NameHolder')} value={title} onChange={(v) => setDraft({ title: v, about })} />
+              <Input label={t('DescriptionPlaceholder')} value={about} onChange={(v) => setDraft({ title, about: v })} />
             </div>
           </div>
           <div className="sidebar-left-section-content sidebar-left-section-caption">
-            {t(isChannel ? 'You can provide an optional description for your channel.' : 'You can provide an optional description for your group.')}
+            {t(isChannel ? 'Channel.DescriptionHolderDescrpiton' : 'PeerInfo.SetAboutDescription')}
           </div>
         </div>
       </div>
 
       {canChangeInfo && (
         <Section>
-          <Row icon={<TgIcon name="lock" size={22} />} label={isChannel ? 'Channel Type' : 'Group Type'} value={t(chatIsPublic(card?.chat) ? 'Public' : 'Private')} onClick={() => setSub('type')} />
-          <Row icon={<TgIcon name="link" size={22} />} label="Invite Links" value={String(Math.max(activeInvites.length, 1))} onClick={() => setSub('links')} />
+          <Row icon={<TgIcon name="lock" size={22} />} label={isChannel ? 'ChannelType' : 'GroupType'} value={t(chatIsPublic(card?.chat) ? 'TypePublic' : 'TypePrivate')} onClick={() => setSub('type')} />
+          <Row icon={<TgIcon name="link" size={22} />} label="InviteLinks" value={String(Math.max(activeInvites.length, 1))} onClick={() => setSub('links')} />
           <Row icon={<TgIcon name="reactions" size={22} />} label="Reactions" value={reactionsValue} onClick={() => setSub('reactions')} />
           {isChannel && (
-            <Row icon={<TgIcon name="comments" size={22} />} label="Discussion" value={linkedId ? undefined : t('Add')} onClick={() => setSub('discussion')} />
+            <Row icon={<TgIcon name="comments" size={22} />} label="PeerInfo.Discussion" value={linkedId ? undefined : t('Add')} onClick={() => setSub('discussion')} />
           )}
           {!isChannel && g.canBan && (
-            <Row icon={<TgIcon name="permissions" size={22} />} label="Permissions" value={`${permsCount}/${PERMS.length}`} onClick={() => setSub('permissions')} />
+            <Row icon={<TgIcon name="permissions" size={22} />} label="ChannelPermissions" value={`${permsCount}/${PERMS.length}`} onClick={() => setSub('permissions')} />
           )}
         </Section>
       )}
 
       <Section>
         <Row icon={<TgIcon name="admin" size={22} />} label="Administrators" value={String(g.admins.length)} onClick={() => setSub('admins')} />
-        <Row icon={<TgIcon name="newgroup" size={22} />} label={isChannel ? 'Subscribers' : 'Members'} value={String(card?.chat.participants_count ?? g.members.length)} onClick={() => setSub('members')} />
+        <Row icon={<TgIcon name="newgroup" size={22} />} label={isChannel ? 'PeerInfo.Subscribers' : 'PeerMedia.Members'} value={String(card?.chat.participants_count ?? g.members.length)} onClick={() => setSub('members')} />
         {!isChannel && g.canBan && (
-          <Row icon={<TgIcon name="permissions" size={22} />} label="Restricted Users" value={g.restricted.length ? String(g.restricted.length) : t('None')} onClick={() => setSub('restricted')} />
+          <Row icon={<TgIcon name="permissions" size={22} />} label="RestrictedUsers" value={g.restricted.length ? String(g.restricted.length) : t('BlockedEmpty')} onClick={() => setSub('restricted')} />
         )}
         {g.canBan && (
-          <Row icon={<TgIcon name="deleteuser" size={22} />} label="Removed Users" value={g.bans.length ? String(g.bans.length) : t('None')} onClick={() => setSub('banned')} />
+          <Row icon={<TgIcon name="deleteuser" size={22} />} label="RemovedUsers" value={g.bans.length ? String(g.bans.length) : t('BlockedEmpty')} onClick={() => setSub('banned')} />
         )}
       </Section>
 
@@ -199,16 +199,16 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
         const signatures = !!card.chat.pFlags?.signatures
         const signatureProfiles = !!card.chat.pFlags?.signature_profiles
         return (
-        <Section footer={signatureProfiles ? 'Add names and photos of admins to the messages they post, linking to their profiles.' : 'Add names of admins to the messages they post'}>
+        <Section footer={signatureProfiles ? 'ChannelSignProfilesInfo' : 'ChannelSignMessagesInfo'}>
           <Row
-            label="Sign Messages"
+            label="ChannelSignMessages"
             toggle
             checked={signatures}
             onClick={() => void g.saveSignatures(!signatures, !signatures && signatureProfiles)}
           />
           {signatures && (
             <Row
-              label="Show Authors' Profiles"
+              label="ChannelSignMessagesWithProfile"
               toggle
               checked={signatureProfiles}
               onClick={() => void g.saveSignatures(true, !signatureProfiles)}
@@ -220,7 +220,7 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
 
       {/* Обсуждения (форум-топики) — только группа (перенесено из info-панели) */}
       {!isChannel && canChangeInfo && (
-        <Section footer="Group members can discuss different topics in separate threads.">
+        <Section footer="ForumTopic.EnableHint">
           <Row
             icon={<TgIcon name="comments" size={22} />}
             label="Обсуждения"
@@ -237,9 +237,9 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
           `label.rp.row.no-subtitle.row-with-padding` > `div.row-title` +
           `label.checkbox-field.checkbox-without-caption`). */}
       {!isChannel && canChangeInfo && (
-        <Section footer="New members will see earlier messages when this is on.">
+        <Section footer="ChatHistoryHint">
           <Row
-            label="Chat history for new members"
+            label="ChatHistory"
             checkbox
             checked={historyForNew}
             onClick={() => void g.saveHistory(!historyForNew)}
@@ -250,7 +250,7 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
       <Section>
         <Row
           icon={<TgIcon name="delete" size={22} color="#ff595a" />}
-          label={isChannel ? 'Delete Channel' : g.isCreator ? 'Delete and Leave Group' : 'Leave Group'}
+          label={isChannel ? 'PeerInfo.DeleteChannel' : g.isCreator ? 'DeleteAndExitButton' : 'ChatList.Context.LeaveGroup'}
           danger
           onClick={() => {
             void g.deleteOrLeave().then(onClose)

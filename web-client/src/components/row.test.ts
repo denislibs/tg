@@ -8,6 +8,9 @@ import CheckboxField from './checkboxField'
 import SidebarSlider from './slider'
 import { SliderSuperTabEventable } from './sliderTab'
 
+// Подписи строит `i18n()`/`_i18n()` ядра, а строки в него кладёт холодный старт
+// (`main.tsx` → `client/boot.ts`); в прогоне — общий сетап (`src/test/setup.ts`).
+
 describe('Row', () => {
   it('строит заголовок, подзаголовок и правую часть в разметке tweb', () => {
     const row = new Row({
@@ -85,7 +88,7 @@ describe('Row', () => {
 
     // С подписью (`.checkbox-caption` есть) коробка НЕ абсолютная — иначе она
     // легла бы поверх текста (`_row.scss:379-384` рассчитан именно на пустой label).
-    const withCaption = new CheckboxField({ text: 'Подпись' })
+    const withCaption = new CheckboxField({ text: 'Checkbox.Enabled' })
     const row2 = new Row({ checkboxField: withCaption })
     expect(row2.container.contains(withCaption.label)).toBe(true)
     expect(withCaption.label.classList.contains('checkbox-field-absolute')).toBe(false)

@@ -126,7 +126,6 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
           // `avatarUrl` был строкой `/media/N/content`, собранной из этого же
           // числа.
           photoId: draftPeer.photoId,
-          date: '',
           preview: '',
           type: 'private',
           username: draftPeer.username ?? undefined,
@@ -155,7 +154,6 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
       name: desc.thread?.title ?? '',
       avatar: gradientFor(desc.peerId),
       avatarText: '#',
-      date: '',
       preview: '',
       type: 'group',
     }

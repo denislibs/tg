@@ -77,7 +77,7 @@ export default function InstantView({
           {domain}
         </Text>
         <a className={s.openLink} href={url} target="_blank" rel="noopener noreferrer">
-          {t('Open in browser')}
+          {t('InstantView.OpenInBrowser')}
         </a>
       </div>
       <div className={s.scroll}>

@@ -142,7 +142,7 @@ export default function FoldersSidebar({
       <div className={s.scroll}>
         <Item
           icon={<TgIcon name="round_chats_filled" size={30} />}
-          name={t('All Chats')}
+          name={t('FilterAllChats')}
           badge={counts[ALL_FOLDER_ID]}
           selected={selectedId === ALL_FOLDER_ID}
           onClick={() => onSelect(ALL_FOLDER_ID)}

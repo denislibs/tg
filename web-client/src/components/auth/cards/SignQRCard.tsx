@@ -119,36 +119,36 @@ export default function SignQRCard({ onSignIn, onComplete }: SignQRCardProps) {
           )}
         </MediaHeader.Sticker>
         <MediaHeader.Title>
-          <span className="i18n">{t('Log in by QR Code')}</span>
+          <span>{t('Login.QR.Title')}</span>
         </MediaHeader.Title>
         <MediaHeader.Subtitle secondary>
-          <span className="i18n">{t('Scan with Telegram app on your phone')}</span>
+          <span>{t('Login.QR.Subtitle')}</span>
         </MediaHeader.Subtitle>
       </MediaHeader>
 
       <ol className={s.qrDescription}>
         {/* Вторая подсказка несёт разметку словаря: `**…**` → <b>, ' > ' →
             span.tgico.inline-icon (tweb Login.QR.Help2). */}
-        {[
-          'Open Telegram on your phone',
-          'Go to **Settings** > **Devices** > **Add Device**',
-          'Point your phone at this screen to confirm login',
-        ].map((key, i) => (
+        {([
+          'Login.QR.Help1',
+          'Login.QR.Help2',
+          'Login.QR.Help3',
+        ] as const).map((key, i) => (
           <li key={key} className={s.qrDescriptionItem}>
             <span className={s.qrDescriptionMarker}>{i + 1}</span>
-            <span className="i18n">{superFormatter(t(key))}</span>
+            <span>{superFormatter(t(key))}</span>
           </li>
         ))}
       </ol>
 
       <SecondaryButton arrow onClick={onSignIn}>
-        {t('Log in by phone number')}
+        {t('Login.ByPhone')}
       </SecondaryButton>
       {/* tweb: LanguageChangeButton в такой же GrowHeightReveal стоит между
           «войти по номеру» и passkey — у нас его нет (см. отчёт волны). */}
       <GrowHeightReveal when={isWebAuthnSupported()}>
         <SecondaryButton arrow disabled={passkeyBusy} onClick={() => void passkeyLogin()}>
-          {t('Log in by passkey')}
+          {t('Login.ByPasskey')}
         </SecondaryButton>
       </GrowHeightReveal>
     </div>

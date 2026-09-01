@@ -19,7 +19,7 @@ export function AdminsScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }
   const candidates = useMemo(() => g.members.filter((m) => m.role === 'member'), [g.members])
   const peers = useMemo(
     () => g.admins.map((m) => memberToPeer(m, {
-      subtitle: t(m.role === 'creator' ? 'Owner' : 'Admin'),
+      subtitle: t(m.role === 'creator' ? 'ChannelCreator' : 'ChatAdmin'),
       disabled: !g.canManageAdmins || m.role === 'creator',
     })),
     [g.admins, g.canManageAdmins, t],
@@ -32,7 +32,7 @@ export function AdminsScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }
       zIndex={70}
       sub={picking ? (
         <MemberPicker
-          title="Add Admin"
+          title="ChannelAddAdmin"
           members={candidates}
           onBack={() => setPicking(false)}
           onPick={(m) => {
@@ -53,7 +53,7 @@ export function AdminsScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }
     >
       {g.canManageAdmins && (
         <Section>
-          <Row icon={<TgIcon name="adduser" size={22} color="var(--primary-color)" />} label="Add Admin" accent onClick={() => setPicking(true)} />
+          <Row icon={<TgIcon name="adduser" size={22} color="var(--primary-color)" />} label="ChannelAddAdmin" accent onClick={() => setPicking(true)} />
         </Section>
       )}
       <PeerSelector
@@ -62,7 +62,7 @@ export function AdminsScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }
           const m = g.admins.find((x) => x.userId === p.id)
           if (m) setEditing(m)
         }}
-        empty={{ title: 'No Results' }}
+        empty={{ title: 'SearchEmptyViewTitle' }}
       />
     </SettingsScreen>
   )
@@ -81,7 +81,7 @@ function AdminRightsScreen({
 
   return (
     <SettingsScreen
-      title="Admin Rights"
+      title="EditAdmin"
       onBack={onBack}
       zIndex={80}
       headerRight={
@@ -91,7 +91,7 @@ function AdminRightsScreen({
       }
     >
       <MemberHeaderSection member={member} />
-      <Section caption="What can this admin do?">
+      <Section caption="EditAdminWhatCanDo">
         {RIGHTS.map((r) => (
           <Row
             key={r.bit}
@@ -106,7 +106,7 @@ function AdminRightsScreen({
       </Section>
       {onDismiss && (
         <Section>
-          <Row icon={<TgIcon name="deleteuser" size={22} color="#ff595a" />} label="Dismiss Admin" danger onClick={onDismiss} />
+          <Row icon={<TgIcon name="deleteuser" size={22} color="#ff595a" />} label="Channel.Admin.Dismiss" danger onClick={onDismiss} />
         </Section>
       )}
     </SettingsScreen>

@@ -37,6 +37,7 @@
 // Sticky-заголовок (`.popup-header`) в tweb невидим, пока не проскроллили > 100px —
 // онScroll-тумблер классов `not-top`/`is-visible`/`not-bottom` порт `onTabScroll`
 // (promoSlideTab.ts:369-375) 1:1.
+import type { LangPackKey } from '@/lang'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import IconButton from '../shared/ui/IconButton'
@@ -53,8 +54,8 @@ import s from './PremiumModal.module.scss'
 
 interface Feature {
   icon: IconName
-  title: string
-  subtitle: string
+  title: LangPackKey
+  subtitle: LangPackKey
   color: string
   /** tweb `PremiumPromoFeature.new` (featuresConfig.ts) — бейдж `row-title-badge` */
   new?: boolean
@@ -68,21 +69,21 @@ interface Feature {
 // с сервера), поэтому это краткий пересказ реальной функции (скрыть Last Seen
 // от всех, продолжая видеть чужой), а не выдуманная фича.
 const FEATURES: Feature[] = [
-  { icon: 'stories', title: 'Stories', subtitle: 'Posting without limits, priority order, stealth mode, saved view history and more.', color: '#ef6922' },
-  { icon: 'premium_limits', title: 'Doubled Limits', subtitle: 'Up to 1000 channels, 20 folders, 10 pinned chats and 20 public links.', color: '#e95a2c' },
-  { icon: 'premium_filesize', title: 'Larger Uploads', subtitle: 'Upload files of up to 4 GB each.', color: '#e74e33' },
-  { icon: 'premium_speed', title: 'Faster Downloads', subtitle: 'Download media and files at the maximum speed.', color: '#db374b' },
-  { icon: 'premium_transcription', title: 'Voice-to-Text', subtitle: 'Convert voice messages into text.', color: '#cb3e6d' },
-  { icon: 'premium_translate', title: 'Real-Time Translation', subtitle: 'Translate entire chats into your language.', color: '#bc4395' },
-  { icon: 'premium_noads', title: 'No Ads', subtitle: 'Get rid of ads in public channels.', color: '#ab4ac4' },
-  { icon: 'premium_reactions', title: 'Unique Reactions', subtitle: 'React with a vastly expanded set of emoji.', color: '#9b4fed' },
-  { icon: 'premium_stickers', title: 'Premium Stickers', subtitle: 'Unlock exclusive animated stickers.', color: '#8958ff' },
-  { icon: 'premium_emoji', title: 'Custom Emoji', subtitle: 'Use unique animated emoji anywhere in chats.', color: '#676bff' },
-  { icon: 'premium_lastseen', title: 'Last Seen Times', subtitle: 'Hide your Last Seen time from everyone, while still seeing when others were last online.', color: '#5b79ff', new: true },
-  { icon: 'premium_avatars', title: 'Animated Profile Pictures', subtitle: 'Upload a looping video as your profile picture.', color: '#4492ff' },
-  { icon: 'premium_status', title: 'Emoji Status', subtitle: 'Show a unique animated status next to your name.', color: '#41a6a5' },
-  { icon: 'premium_badge', title: 'Premium Badge', subtitle: 'Show a premium badge next to your name.', color: '#3eb26d' },
-  { icon: 'premium_management', title: 'Chat Management', subtitle: 'Change default chat folder, archive and mute new chats.', color: '#3dbd4a' },
+  { icon: 'stories', title: 'Stories', subtitle: 'Premium.Feature.Stories.Info', color: '#ef6922' },
+  { icon: 'premium_limits', title: 'Premium.Boarding.Double.Title', subtitle: 'Premium.Feature.Double.Info', color: '#e95a2c' },
+  { icon: 'premium_filesize', title: 'Premium.Feature.FileSize.Title', subtitle: 'Premium.Feature.FileSize.Info', color: '#e74e33' },
+  { icon: 'premium_speed', title: 'Premium.Feature.Download.Title', subtitle: 'Premium.Feature.Download.Info', color: '#db374b' },
+  { icon: 'premium_transcription', title: 'Premium.Feature.Voice.Title', subtitle: 'Premium.Feature.Voice.Info', color: '#cb3e6d' },
+  { icon: 'premium_translate', title: 'Premium.Boarding.Translate.Title', subtitle: 'Premium.Feature.Translate.Info', color: '#bc4395' },
+  { icon: 'premium_noads', title: 'Premium.Boarding.NoAds.Title', subtitle: 'Premium.Feature.NoAds.Info', color: '#ab4ac4' },
+  { icon: 'premium_reactions', title: 'Premium.Feature.Reactions.Title', subtitle: 'Premium.Feature.Reactions.Info', color: '#9b4fed' },
+  { icon: 'premium_stickers', title: 'Premium.Boarding.Stickers.Title', subtitle: 'Premium.Feature.Stickers.Info', color: '#8958ff' },
+  { icon: 'premium_emoji', title: 'Premium.Feature.Emoji.Title', subtitle: 'Premium.Feature.Emoji.Info', color: '#676bff' },
+  { icon: 'premium_lastseen', title: 'PremiumPreviewLastSeen', subtitle: 'PremiumPreviewLastSeenDescription', color: '#5b79ff', new: true },
+  { icon: 'premium_avatars', title: 'Premium.Boarding.Avatar.Title', subtitle: 'Premium.Feature.Avatar.Info', color: '#4492ff' },
+  { icon: 'premium_status', title: 'Premium.Feature.Status.Title', subtitle: 'Premium.Feature.Status.Info', color: '#41a6a5' },
+  { icon: 'premium_badge', title: 'Premium.Feature.Badge.Title', subtitle: 'Premium.Feature.Badge.Info', color: '#3eb26d' },
+  { icon: 'premium_management', title: 'Premium.Feature.Chats.Title', subtitle: 'Premium.Feature.Chats.Info', color: '#3dbd4a' },
 ]
 
 // Telegram-style gradient premium star — заменяет живой `img.popup-premium-header-image`
@@ -141,7 +142,7 @@ function PlanRow({ plan, active, onSelect }: { plan: PremiumPlan; active: boolea
         <div className="row-subtitle">
           <span>
             <span className="popup-gift-premium-discount">{`-${discount}%`}</span>
-            <span className="i18n">{`${formatUsd(perMonthCents(plan))} ${t('per month')}`}</span>
+            <span>{`${formatUsd(perMonthCents(plan))} ${t('Stars.Subscriptions.PerMonth')}`}</span>
           </span>
         </div>
       )}
@@ -154,7 +155,7 @@ function PlanRow({ plan, active, onSelect }: { plan: PremiumPlan; active: boolea
         onToggle={() => onSelect(plan.id)}
       />
       <div className="row-title">
-        <span className="i18n">{t(plan.labelKey)}</span>
+        <span>{t(plan.labelKey)}</span>
       </div>
       <span className="row-title-right-secondary row-right">{formatUsd(plan.priceCents)}</span>
     </label>
@@ -175,12 +176,12 @@ function FeatureRow({ feature }: { feature: Feature }) {
     <div className="row row-clickable hover-effect rp row-with-padding" onPointerDown={onPointerDown}>
       {ripple}
       <div className="row-subtitle">
-        <span className="i18n">{t(feature.subtitle)}</span>
+        <span>{t(feature.subtitle)}</span>
       </div>
       <div className="row-title">
-        <span className="i18n">{t(feature.title)}</span>
+        <span>{t(feature.title)}</span>
         {feature.new && (
-          <span className="i18n row-title-badge" style={{ backgroundColor: feature.color }}>
+          <span className="row-title-badge" style={{ backgroundColor: feature.color }}>
             {t('New')}
           </span>
         )}
@@ -257,7 +258,7 @@ export default function PremiumModal({ open, onClose, onExitComplete }: { open: 
               <IconButton className="popup-close" onClick={onClose} color="var(--secondary-text-color)">
                 <TgIcon name="close" size={22} />
               </IconButton>
-              <div className={classNames('popup-title', 'i18n')}>{t('Telegram Premium')}</div>
+              <div className={classNames('popup-title')}>{t('Premium.Boarding.Title')}</div>
             </div>
 
             <div className="popup-body">
@@ -265,10 +266,10 @@ export default function PremiumModal({ open, onClose, onExitComplete }: { open: 
 
               <div className="popup-premium-heading-text-container">
                 <div className="popup-premium-heading-text-title">
-                  <span className="i18n">{t('Telegram Premium')}</span>
+                  <span>{t('Premium.Boarding.Title')}</span>
                 </div>
                 <div className="popup-premium-heading-text-description">
-                  <span className="i18n">{t('More freedom and dozens of exclusive features with a Telegram Premium subscription.')}</span>
+                  <span>{t('Premium.Feature.Intro')}</span>
                 </div>
               </div>
 
@@ -299,7 +300,7 @@ export default function PremiumModal({ open, onClose, onExitComplete }: { open: 
             onClick={() => setCheckoutOpen(true)}
           >
             {ctaRipple}
-            <span className="i18n">{`${t('Subscribe for')} ${formatUsd(perMonthCents(selected))} ${t('per month')}`}</span>
+            <span>{`${t('Premium.SubscribeFor')} ${formatUsd(perMonthCents(selected))} ${t('Stars.Subscriptions.PerMonth')}`}</span>
           </button>
         </div>
       </div>

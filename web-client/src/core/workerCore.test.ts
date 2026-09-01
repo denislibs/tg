@@ -147,6 +147,24 @@ describe('createWorkerCore().bind — проводка портов (замен�
       tab.invoke('manager', { name: 'persist', method: 'stateKey', args: ['recentSearch', ['x']] }),
     ).resolves.toBeUndefined()
   })
+
+  // Языковой пакет (задача 5 волны i18n): менеджер собирается и попадает в
+  // реестр. Без этой пары строк в workerCore.ts вкладка остаётся без строк
+  // ВООБЩЕ — `I18n.getCacheLangPackAndApply()` зовёт `managers.langPack`, и
+  // отсутствующее имя даёт «no manager method» на самом старте. Свои тесты
+  // менеджера (`managers/langPackManager.test.ts`) этого не ловят: они зовут
+  // фабрику напрямую. `cachedPack` взят по той же причине, что `persist.stateKey`
+  // выше, — читает пустой полифилленный IndexedDB, без REST и сети.
+  it('менеджер языкового пакета собран и зарегистрирован — invoke с вкладки доезжает до него', async () => {
+    const core = createWorkerCore()
+    const [epWorker, epTab] = pair()
+    core.bind(epWorker)
+    const tab = new SuperMessagePort(epTab)
+
+    await expect(
+      tab.invoke('manager', { name: 'langPack', method: 'cachedPack', args: [] }),
+    ).resolves.toBeNull()
+  })
 })
 
 // C-1 (ревью worker-importable): start() — единственная строка, которая реально

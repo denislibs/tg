@@ -3,8 +3,10 @@
 // директория) → «Сообщения» (полнотекст по всем чатам); пустой запрос —
 // «Недавние». Табы Медиа/Ссылки/Файлы/Музыка/Голосовые — глобальный
 // searchGlobal с фильтром типа (tweb inputMessagesFilter*).
+import type { LangPackKey } from '@/lang'
 import { useEffect, useState } from 'react'
 import Text from '../shared/ui/Text'
+import { RowDate, SentTime } from '../shared/ui/dateNodes'
 import Avatar from '../shared/ui/Avatar'
 import SidebarSection from '../shared/ui/SidebarSection'
 import { useMediaUrl } from '../core/hooks/useMediaUrl'
@@ -17,7 +19,6 @@ import type { Chat, OpenPeer } from '../data'
 import type { ContactsFound } from '../core/managers/channelsManager'
 import { getMessageText, type MyMessage } from '../core/models'
 import { getMediaId, getMessageKind } from '../core/messages/messageKind'
-import { messageDateISO } from '../core/messageToConvMsg'
 import { useGlobalSearch, type SearchFilter } from '../core/hooks/useGlobalSearch'
 import { useSearchStore } from '../stores/searchStore'
 import { useAppStateKey, useAppStateStore, setAppState } from '../stores/appState'
@@ -26,17 +27,16 @@ import { useAudioStore, type AudioTrack } from '../stores/audioStore'
 import { markMediaPlayed } from '../core/mediaRead'
 import { getDocumentFromMessage, getMediaFromMessage, hasServerThumb } from '../core/media/messageMedia'
 import MediaGridThumb from './MediaGridThumb'
-import { friendlyMsgTime } from '../core/format/friendlyTime'
 import { gradientFor, mediaLabel } from '../core/dialogToChat'
 import { EXT_COLORS, extOf, firstUrl, fmtDur, fmtSize, hostOf } from '../core/format/sharedMediaFmt'
-import { useLang, useT } from '../i18n'
+import { useT, useTArgs } from '../i18n'
 import { getChatTitle, isBroadcast } from '../core/peers/predicates'
 import { getUserTitle } from '../core/peers/getPeerTitle'
 import { getPeerPhoto, getPeerPhotoId, peerKey, type Chat as PeerChat, type UserReal } from '../core/peers/peer'
 import { Tabs, TabSlide } from '../shared/ui/Tabs'
 import s from './SearchView.module.scss'
 
-const TABS = ['Chats', 'Channels', 'Media', 'Links', 'Files', 'Music', 'Voice'] as const
+const TABS = ['FilterChats', 'ChatList.Filter.Channels', 'SharedMediaTab2', 'SharedLinksTab2', 'SharedFilesTab2', 'SharedMusicTab2', 'SharedVoiceTab2'] as const
 // порядок вкладок для TabSlide — по нему считается направление слайда
 const TAB_ORDER = TABS.map((_, i) => i)
 const TAB_FILTER: Partial<Record<number, 'media' | 'links' | 'files' | 'music' | 'voice'>> = {
@@ -81,7 +81,7 @@ function Highlighted({ text, q }: { text: string; q: string }) {
 
 export default function SearchView({ query, chats, onSelect, searchReal, onJoin, onOpenPeer }: Props) {
   const t = useT()
-  const [lang] = useLang()
+  const tArgs = useTArgs()
   const [tab, setTab] = useState(0)
   const [results, setResults] = useState<ContactsFound>(EMPTY_RESULT)
   const recentIds = useAppStateKey('recentSearch')
@@ -150,8 +150,8 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
     const list = (msgs ?? []).filter((x) => getMediaId(x) != null)
     const tracks: AudioTrack[] = list.map((x) => ({
       mediaId: getMediaId(x) as number,
-      title: getMessageKind(x) === 'audio' ? getDocumentFromMessage(x)?.file_name || t('Audio') : title,
-      subtitle: friendlyMsgTime(messageDateISO(x.date), lang),
+      title: getMessageKind(x) === 'audio' ? getDocumentFromMessage(x)?.file_name || t('SharedMedia.Audio') : title,
+      date: x.date,
       peerId: x.peerId,
       msgId: x.id,
     }))
@@ -189,7 +189,10 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
             <Text noWrap size={16} weight={600} color="var(--primary-text-color)" className={s.titleFlex}>
               {chat?.name ?? `#${m.peerId}`}
             </Text>
-            <Text size={13} color="var(--secondary-text-color)">{friendlyMsgTime(messageDateISO(m.date), lang)}</Text>
+            {/* Та же подпись, что у строки диалога: у tweb результаты поиска и
+                ЕСТЬ строки диалога (`appSearchSuper.ts:853` → `setLastMessageN`
+                → `dom.lastTimeSpan`, `appDialogsManager.ts:2242`). */}
+            <Text size={13} color="var(--secondary-text-color)"><RowDate timestamp={m.date} /></Text>
           </div>
           <Text noWrap size={15} color="var(--secondary-text-color)">
             <Highlighted text={snippet} q={q} />
@@ -199,7 +202,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
     )
   }
 
-  const emptyState = <Empty text={q ? t('No results') : t('Nothing interesting here yet…')} />
+  const emptyState = <Empty text={q ? t('NoResult') : t('Chat.Search.NothingFound')} />
 
   return (
     <div className={s.root}>
@@ -239,14 +242,14 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
               {tab === 0 && q && (
                 <>
                   {localMatches.length > 0 && (
-                    <SidebarSection title={t('Chats')}>
+                    <SidebarSection title={t('FilterChats')}>
                       {localMatches.map((c) => (
                         <ChatRow key={c.id} chat={c} q={q} onClick={() => openDialog(c.id)} />
                       ))}
                     </SidebarSection>
                   )}
                   {(results.chats.length > 0 || results.users.length > 0) && (
-                    <SidebarSection title={t('Global search')}>
+                    <SidebarSection title={t('GlobalSearch')}>
                       {results.chats.map((c) => (
                         <ResultRow
                           key={`c-${c.id}`}
@@ -254,7 +257,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                           photoId={getPeerPhotoId(getPeerPhoto(c)) || undefined}
                           t={(getChatTitle(c) || '?').charAt(0).toUpperCase()}
                           title={getChatTitle(c)}
-                          subtitle={chatResultSubtitle(c, t)}
+                          subtitle={chatResultSubtitle(c, tArgs)}
                           onClick={() => onResultChat(c)}
                         />
                       ))}
@@ -272,7 +275,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                     </SidebarSection>
                   )}
                   {msgs != null && msgs.length > 0 && (
-                    <SidebarSection title={t('Messages')}>
+                    <SidebarSection title={t('SearchMessages')}>
                       {msgs.map((m) => <MsgRow key={m.id} m={m} />)}
                     </SidebarSection>
                   )}
@@ -292,7 +295,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                           photoId={getPeerPhotoId(getPeerPhoto(c)) || undefined}
                           t={(getChatTitle(c) || '?').charAt(0).toUpperCase()}
                           title={getChatTitle(c)}
-                          subtitle={`${participantsCount(c)} ${t('subscribers')}`}
+                          subtitle={tArgs('Subscribers', [participantsCount(c)])}
                           onClick={() => onResultChat(c)}
                         />
                       ))}
@@ -301,7 +304,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                     emptyState
                   )
                 ) : myChannels.length > 0 ? (
-                  <SidebarSection title={t('My Channels')}>
+                  <SidebarSection title={t('Search.MyChannels')}>
                     {myChannels.map((c) => (
                       <ChatRow key={c.id} chat={c} onClick={() => openDialog(c.id)} />
                     ))}
@@ -369,10 +372,14 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                         </div>
                         <div className={s.body}>
                           <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">
-                            <Highlighted text={doc?.file_name || t('Document')} q={q} />
+                            <Highlighted text={doc?.file_name || t('Chat.Input.Attach.Document')} q={q} />
                           </Text>
+                          {/* tweb `wrappers/document.ts:219-268`: размер и время —
+                              ЧАСТИ описания, склеенные ` · ` (`joinElementsWith`),
+                              а время — узел `formatFullSentTime` (:226). */}
                           <Text size={13.5} color="var(--secondary-text-color)">
-                            {[fmtSize(doc?.size), friendlyMsgTime(messageDateISO(m.date), lang)].filter(Boolean).join(' · ')}
+                            {fmtSize(doc?.size) ? `${fmtSize(doc?.size)} · ` : ''}
+                            <SentTime timestamp={m.date} />
                           </Text>
                         </div>
                       </div>
@@ -391,8 +398,8 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                     {msgs.map((m) => {
                       const doc = getDocumentFromMessage(m)
                       const title = tab === 5
-                        ? doc?.file_name || t('Audio')
-                        : getMessageKind(m) === 'roundVideo' ? t('Video message') : t('Voice message')
+                        ? doc?.file_name || t('SharedMedia.Audio')
+                        : getMessageKind(m) === 'roundVideo' ? t('AttachRound') : t('AttachAudio')
                       return (
                         <div key={m.id} className={s.row} onClick={() => playRow(m, title)}>
                           <div className={s.rowPlay}>
@@ -403,7 +410,8 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                               <Highlighted text={title} q={q} />
                             </Text>
                             <Text size={13.5} color="var(--secondary-text-color)">
-                              {[fmtDur(doc?.duration), friendlyMsgTime(messageDateISO(m.date), lang)].filter(Boolean).join(' · ')}
+                              {fmtDur(doc?.duration) ? `${fmtDur(doc?.duration)} · ` : ''}
+                              <SentTime timestamp={m.date} />
                             </Text>
                           </div>
                         </div>
@@ -421,9 +429,9 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
 
       {confirmClear && (
         <ConfirmDialog
-          title={t('Clear')}
-          text={t('Are you sure you want to clear your search history?')}
-          action={t('Clear')}
+          title="Clear"
+          text="Search.Confirm.ClearHistory"
+          action="Clear"
           danger
           onConfirm={clearRecent}
           onClose={() => setConfirmClear(false)}
@@ -442,9 +450,9 @@ function participantsCount(c: PeerChat): number {
 
 /** Подпись строки директории: «@username, N подписчиков/участников». Канал от
  *  супергруппы отличает `isBroadcast`, а не строка вида чата. */
-function chatResultSubtitle(c: PeerChat, t: (s: string) => string): string {
+function chatResultSubtitle(c: PeerChat, tArgs: (key: LangPackKey, args: (string | number)[]) => string): string {
   const username = c._ === 'channel' && c.username ? `@${c.username}, ` : ''
-  return `${username}${participantsCount(c)} ${t(isBroadcast(c) ? 'subscribers' : 'members')}`
+  return `${username}${tArgs(isBroadcast(c) ? 'Subscribers' : 'Members', [participantsCount(c)])}`
 }
 
 // Ряд своего диалога (недавние / локальные совпадения / мои каналы)

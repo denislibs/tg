@@ -1,3 +1,4 @@
+import type { LangPackKey } from '@/lang'
 import { lazy, Suspense } from 'react'
 import ContactsView from './ContactsView'
 import NewGroupFlow, { type GroupPhoto } from './NewGroupFlow'
@@ -29,7 +30,7 @@ interface SidebarScreensProps {
   close: () => void
   chats: Chat[]
   /** deep-open настроек на подэкран (контекстное меню «Настроить папки») */
-  settingsSub: string | null
+  settingsSub: LangPackKey | null
   onSettingsBack: () => void
   onToggleMode: (coords?: { x: number; y: number }) => void
   onSelect: (id: string) => void
@@ -85,7 +86,7 @@ export default function SidebarScreens({
         <NewPrivateChat chats={chats} onClose={close} onSelect={onSelect} />
       )}
       {screen === 'newSecret' && (
-        <NewPrivateChat chats={chats} title="New Secret Chat" excludeBots onClose={close} onSelect={(id) => onStartSecret(id)} />
+        <NewPrivateChat chats={chats} title="SecretChat.New" excludeBots onClose={close} onSelect={(id) => onStartSecret(id)} />
       )}
     </>
   )

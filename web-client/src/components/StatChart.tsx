@@ -1,4 +1,5 @@
 import { useMemo, useId } from 'react'
+import I18n from '@lib/langPack'
 import type { StatPoint } from '../core/managers/statsManager'
 
 // Лёгкий self-contained график на inline SVG (без внешних либ), в духе tweb
@@ -35,10 +36,20 @@ function smoothPath(pts: { x: number; y: number }[]): string {
   return d
 }
 
+/**
+ * Подпись оси — порт `statistics.tsx:277-296`: у оригинала это ОДИН
+ * переиспользуемый `IntlDateElement`, которому дают новую дату (`update`) и
+ * читают `textContent`. Узлом подпись быть не может (она едет в текст SVG), но
+ * язык и заглавная буква приходят оттуда же, откуда у всех остальных дат.
+ * Прежний `toLocaleDateString(undefined, …)` брал локаль БРАУЗЕРА.
+ */
+const axisDate = new I18n.IntlDateElement({ options: { day: 'numeric', month: 'short' } })
+
 function fmtDate(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+  axisDate.update({ date: d, options: { day: 'numeric', month: 'short' } })
+  return axisDate.element.textContent ?? iso
 }
 
 export default function StatChart({

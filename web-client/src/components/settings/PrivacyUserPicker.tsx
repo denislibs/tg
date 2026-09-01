@@ -6,11 +6,11 @@
 // Разметка — `shared/ui/PeerSelector`; вариант privacy в tweb это
 // `design: 'round', checkboxSide: 'right'` (addMembers.tsx:52-56), то есть тот
 // же `selector-round selector-right`, что у списков правой колонки.
+import type { LangPackKey } from '@/lang'
 import { useEffect, useMemo, useState } from 'react'
 import { SettingsScreen } from './kit'
 import PeerSelector from '../../shared/ui/PeerSelector'
 import TgIcon from '../TgIcon'
-import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useGroupCandidates } from '../../core/hooks/useGroupCandidates'
 import { getPeerPhotoId, peerKey } from '../../core/peers/peer'
@@ -25,8 +25,8 @@ export default function PrivacyUserPicker({
   onPick,
   onBack,
 }: {
-  title: string
-  placeholder?: string
+  title: LangPackKey
+  placeholder?: LangPackKey
   /** multi: чекбоксы + галочка-подтверждение; single: клик выбирает сразу */
   multi?: boolean
   initial?: number[]
@@ -34,7 +34,6 @@ export default function PrivacyUserPicker({
   onPick?: (id: number) => void
   onBack: () => void
 }) {
-  const t = useT()
   const managers = useManagers()
   const candidates = useGroupCandidates()
   const [q, setQ] = useState('')
@@ -82,12 +81,12 @@ export default function PrivacyUserPicker({
         peers={peers}
         mode={multi ? 'multi' : 'single'}
         noFilter
-        placeholder={t(placeholder)}
+        placeholder={placeholder}
         onQueryChange={setQ}
         selected={selected}
         onSelectedChange={setSelected}
         onPick={(p) => onPick?.(p.id)}
-        empty={{ title: 'No Results' }}
+        empty={{ title: 'SearchEmptyViewTitle' }}
       />
 
       {multi && changed && (

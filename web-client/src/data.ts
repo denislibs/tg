@@ -37,7 +37,6 @@ export interface ConvMsg {
   text?: string // also used as media caption
   entities?: MessageEntity[] // rich-text formatting spans over `text`
   emoji?: string
-  time?: string
   createdAt?: string // абсолютное время создания (ISO) — для live-локации/отсчётов
   /** дата сообщения, СЕКУНДЫ эпохи (`message.date`) — ею считается «трансляция
    *  закончилась» (`date + period <= now`, порт tweb `isLiveExpired`) и дата
@@ -147,7 +146,14 @@ export interface Chat {
   /** stripped-превью аватарки/фото чата (base64 JPEG, `photo.stripped_thumb`) */
   avatarPreview?: string
   isBot?: boolean // peer — бот: скрыть звонок, не давать секрет/группу/контакт
-  date: string
+  /** дата последнего сообщения (или черновика) — СЕКУНДЫ эпохи, как на проводе.
+   *  Именно ТАЙМСТАМП, а не готовая подпись: подпись строит место рендера
+   *  (`ChatListItem` → `formatDateAccordingToTodayNew`, порт tweb
+   *  `appDialogsManager.ts:2242`), потому что живой узел `IntlDateElement`
+   *  переписывает себя на смену языка сам. Строка, отформатированная здесь,
+   *  застывала бы в языке момента проекции. `undefined` — ни сообщения, ни
+   *  черновика: у оригинала это `lastTimeSpan.replaceChildren()` (:2064). */
+  date?: number
   preview: string
   verified?: boolean
   premium?: boolean // Telegram Premium subscriber → gold star badge next to the name

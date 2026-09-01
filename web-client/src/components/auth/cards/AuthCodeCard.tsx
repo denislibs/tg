@@ -72,7 +72,7 @@ export default function AuthCodeCard({
       }
       onComplete()
     } catch {
-      setError(t('Invalid code'))
+      setError(t('PHONE_CODE_INVALID'))
       setCodeValue('')
     } finally {
       setBusy(false)
@@ -105,7 +105,7 @@ export default function AuthCodeCard({
         </MediaHeader.Title>
         <MediaHeader.Subtitle secondary>
           {/* перевод строки в словаре — <br> (tweb Login.Code.SentSms) */}
-          <span className="i18n">{superFormatter(t('We have sent you an SMS\nwith the code.'))}</span>
+          <span>{superFormatter(t('Login.Code.SentSms'))}</span>
         </MediaHeader.Subtitle>
       </MediaHeader>
 

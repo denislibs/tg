@@ -1,3 +1,4 @@
+import type { LangPackKey } from '@/lang'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import Text from '../shared/ui/Text'
@@ -14,7 +15,7 @@ import TgSwitch from './TgSwitch'
 import Avatar from '../shared/ui/Avatar'
 import { Section, Row } from './settings/kit'
 import classNames from '../shared/lib/classNames'
-import { useT, useLang, LANGS } from '../i18n'
+import { useT } from '../i18n'
 import { useChatsStore } from '../stores/chatsStore'
 import { gradientFor } from '../core/dialogToChat'
 import rootScope from '@lib/rootScope'
@@ -36,17 +37,24 @@ function formatPhone(phone?: string): string {
   return m ? `+7 ${m[1]} ${m[2]} ${m[3]} ${m[4]}` : phone
 }
 
-const settingsItems: { icon: ReactNode; label: string; value?: string }[] = [
-  { icon: <TgIcon name="unmute" size={24} />, label: 'Notifications and Sounds' },
-  { icon: <TgIcon name="data" size={24} />, label: 'Data and Storage' },
-  { icon: <TgIcon name="lock" size={24} />, label: 'Privacy and Security' },
-  { icon: <TgIcon name="settings" size={24} />, label: 'General Settings' },
-  { icon: <TgIcon name="folder" size={24} />, label: 'Chat Folders' },
-  { icon: <TgIcon name="smile" size={24} />, label: 'Stickers and Emoji' },
-  { icon: <TgIcon name="videocamera" size={24} />, label: 'Speakers and Camera' },
+// Экспорт — ради пина на подпись строки «Язык» (`SettingsView.langRow.test.tsx`):
+// сам корень настроек тянет за собой слайдер вкладок, карточку и попапы, и
+// рендерить всё это ради одной подписи незачем.
+export const settingsItems: { icon: ReactNode; label: LangPackKey; value?: LangPackKey }[] = [
+  { icon: <TgIcon name="unmute" size={24} />, label: 'AccountSettings.Notifications' },
+  { icon: <TgIcon name="data" size={24} />, label: 'DataSettings' },
+  { icon: <TgIcon name="lock" size={24} />, label: 'PrivacySettings' },
+  { icon: <TgIcon name="settings" size={24} />, label: 'Telegram.GeneralSettingsViewController' },
+  { icon: <TgIcon name="folder" size={24} />, label: 'ChatList.Filter.List.Title' },
+  { icon: <TgIcon name="smile" size={24} />, label: 'StickersName' },
+  { icon: <TgIcon name="videocamera" size={24} />, label: 'AccountSettings.SpeakersAndCamera' },
   { icon: <TgIcon name="devices" size={24} />, label: 'Devices' },
-  { icon: <TgIcon name="language" size={24} />, label: 'Language', value: 'English' },
-  { icon: <TgIcon name="keyboard" size={24} />, label: 'Keyboard Shortcuts' },
+  // Подпись строки — имя ТЕКУЩЕГО языка на нём самом, обычным ключом:
+  // `LanguageName` переводится каждым словарём в своё самоназвание (tweb
+  // `sidebarLeft/tabs/settings.tsx:254`). Списка языков для этого не нужно, и
+  // особой ветки на рендере — тоже.
+  { icon: <TgIcon name="language" size={24} />, label: 'Telegram.LanguageViewController', value: 'LanguageName' },
+  { icon: <TgIcon name="keyboard" size={24} />, label: 'KeyboardShortcuts.Title' },
 ]
 
 export default function SettingsView({
@@ -60,16 +68,14 @@ export default function SettingsView({
   /** список чатов — нужен экранам папок (счётчики, выбор чатов) */
   chats?: import('../data').Chat[]
   /** сразу открыть под-экран (deep-open из контекстного меню папок) */
-  initialSub?: string
+  initialSub?: LangPackKey
 }) {
   const t = useT()
   const managers = useManagers()
-  const [lang] = useLang()
-  const currentLangName = LANGS.find((l) => l.code === lang)?.name ?? 'English'
   const themeChoice = useSettings((s) => s.themeChoice)
   const isDark = PRESET_MODE[resolvePreset(themeChoice)] === 'dark'
-  const [active, setActive] = useState(initialSub ?? 'Notifications and Sounds')
-  const [sub, setSub] = useState<string | null>(initialSub ?? null)
+  const [active, setActive] = useState(initialSub ?? 'AccountSettings.Notifications')
+  const [sub, setSub] = useState<LangPackKey | null>(initialSub ?? null)
   const [editProfile, setEditProfile] = useState(false)
   const [premiumOpen, setPremiumOpen] = useState(false)
   const [premiumManageOpen, setPremiumManageOpen] = useState(false)
@@ -140,7 +146,7 @@ export default function SettingsView({
             </Text>
             {user?.pFlags?.premium && <PremiumBadge size={20} />}
           </div>
-          <Text size={14} color="var(--secondary-text-color)">{t('online')}</Text>
+          <Text size={14} color="var(--secondary-text-color)">{t('Online')}</Text>
         </div>
 
         {/* Contact card */}
@@ -157,7 +163,7 @@ export default function SettingsView({
             translate={false}
             onClick={user?.phone ? () => {
               void navigator.clipboard?.writeText(formatPhone(user.phone).replace(/\s/g, '')).catch(() => {})
-              rootScope.dispatchEvent('ui:toast', t('Phone copied to clipboard'))
+              rootScope.dispatchEvent('ui:toast', t('PhoneCopied'))
             } : undefined}
           />
           {user?.username && (
@@ -178,7 +184,7 @@ export default function SettingsView({
             <div className={s.rowIcon}>
               <TgIcon name="darkmode" size={24} color="var(--secondary-text-color)" />
             </div>
-            <Text size={16} color="var(--primary-text-color)" className={s.rowBody}>{t('Night Mode')}</Text>
+            <Text size={16} color="var(--primary-text-color)" className={s.rowBody}>{t('General.NightMode')}</Text>
             <TgSwitch checked={isDark} />
           </div>
           {settingsItems.map((it) => (
@@ -202,9 +208,7 @@ export default function SettingsView({
               <div className={s.rowIcon}>{it.icon}</div>
               <Text size={16} color="var(--primary-text-color)" className={s.rowBody}>{t(it.label)}</Text>
               {it.value && (
-                <Text size={15} color="var(--secondary-text-color)">
-                  {it.label === 'Language' ? currentLangName : t(it.value)}
-                </Text>
+                <Text size={15} color="var(--secondary-text-color)">{t(it.value)}</Text>
               )}
             </div>
           ))}
@@ -214,8 +218,8 @@ export default function SettingsView({
         <Section>
           <Row
             icon={<TgIcon name="star_filled" size={24} color="var(--primary-color)" />}
-            label="Telegram Premium"
-            sublabel={user?.pFlags?.premium ? t('Active — manage subscription') : t('Unlock exclusive features')}
+            label="Premium.Boarding.Title"
+            sublabel={user?.pFlags?.premium ? t('Premium.Row.Active') : t('Premium.Row.Subtitle')}
             onClick={() => (user?.pFlags?.premium ? setPremiumManageOpen(true) : setPremiumOpen(true))}
           />
           <Row
@@ -224,12 +228,12 @@ export default function SettingsView({
                 ? <span style={{ fontSize: 22, lineHeight: 1 }}>{user.emoji_status_emoticon}</span>
                 : <TgIcon name="smile" size={24} color="var(--secondary-text-color)" />
             }
-            label="Set Emoji Status"
+            label="EmojiStatus.Set"
             onClick={() => setEmojiStatusOpen(true)}
           />
           <Row
             icon={<TgIcon name="gift" size={24} color="var(--secondary-text-color)" />}
-            label="Send a Gift"
+            label="Chat.Menu.SendGift"
             onClick={() => {}}
           />
         </Section>

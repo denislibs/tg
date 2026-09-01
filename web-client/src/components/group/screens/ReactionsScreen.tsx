@@ -25,19 +25,19 @@ export function ReactionsScreen({ g, onBack }: { g: GroupEdit; onBack: () => voi
     void g.saveReactions(m, m === 'some' ? list : [])
   }
   const caption =
-    mode === 'all' ? 'Members of this group can use any emoji as reactions to messages.'
-    : mode === 'some' ? 'You can select emoji that will allow members of this group to react to messages.'
-    : 'Members of this group cannot react to messages.'
+    mode === 'all' ? 'Reactions.All.Info'
+    : mode === 'some' ? 'Reactions.Some.Info'
+    : 'Reactions.None.Info'
 
   return (
     <SettingsScreen title="Reactions" onBack={onBack} zIndex={70}>
-      <Section caption="Available reactions" footer={caption}>
-        <Row label="All reactions" selected={mode === 'all'} onClick={() => apply('all', allowed)} />
-        <Row label="Some reactions" selected={mode === 'some'} onClick={() => apply('some', allowed.length ? allowed : ['👍', '👎'])} />
-        <Row label="No reactions" selected={mode === 'none'} onClick={() => apply('none', allowed)} />
+      <Section caption="AvailableReactions" footer={caption}>
+        <Row label="AllReactions" selected={mode === 'all'} onClick={() => apply('all', allowed)} />
+        <Row label="SomeReactions" selected={mode === 'some'} onClick={() => apply('some', allowed.length ? allowed : ['👍', '👎'])} />
+        <Row label="NoReactions" selected={mode === 'none'} onClick={() => apply('none', allowed)} />
       </Section>
       {mode === 'some' && (
-        <Section caption="Only allow these reactions">
+        <Section caption="OnlyAllowThisReactions">
           {EMOJIS.map((e) => {
             const on = allowed.includes(e)
             return (

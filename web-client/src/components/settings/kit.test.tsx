@@ -12,7 +12,7 @@ const noop = () => {}
 function Screen({ open }: { open: boolean }) {
   return (
     <SettingsScreen
-      title="Privacy and Security"
+      title="PrivacySettings"
       onBack={noop}
       sub={open ? <div data-testid="sub">саб</div> : null}
     >

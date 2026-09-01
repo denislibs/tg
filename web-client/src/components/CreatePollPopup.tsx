@@ -79,18 +79,18 @@ export default function CreatePollPopup({ onCreate, onClose }: {
   }
 
   return (
-    <Popup open title={t('New Poll')} onClose={onClose} width={420} action={{ label: t('Create'), onClick: submit }}>
+    <Popup open title={t('NewPoll')} onClose={onClose} width={420} action={{ label: t('Create'), onClick: submit }}>
       <div className={s.body}>
-        <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('Ask a Question')}</Text>
+        <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('AskAQuestion')}</Text>
         <input
           className={s.question}
           value={question}
           maxLength={255}
-          placeholder={t('Ask a Question')}
+          placeholder={t('AskAQuestion')}
           onChange={(e) => setQuestion(e.target.value)}
         />
 
-        <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('Poll options')}</Text>
+        <Text size={13.5} weight={600} color="var(--primary-color)" className={s.label}>{t('PollOptions')}</Text>
         {options.map((opt, i) => (
           <div key={i} className={s.optionRow}>
             {quiz && (
@@ -103,7 +103,7 @@ export default function CreatePollPopup({ onCreate, onClose }: {
               className={s.option}
               value={opt}
               maxLength={100}
-              placeholder={i === options.length - 1 && !opt ? t('Add an Option') : t('Option')}
+              placeholder={i === options.length - 1 && !opt ? t('NewPoll.OptionsAddOption') : t('NewPoll.Option')}
               onChange={(e) => setOption(i, e.target.value)}
             />
             {opt !== '' && (
@@ -116,23 +116,23 @@ export default function CreatePollPopup({ onCreate, onClose }: {
 
         <div className={s.switches}>
           <div className={s.switchRow} onClick={() => setAnonymous((v) => !v)}>
-            <Text size={15.5}>{t('Anonymous Voting')}</Text>
+            <Text size={15.5}>{t('NewPoll.Anonymous')}</Text>
             <TgSwitch checked={anonymous} />
           </div>
           <div
             className={classNames(s.switchRow, quiz ? s.disabled : '')}
             onClick={() => !quiz && setMultiple((v) => !v)}
           >
-            <Text size={15.5}>{t('Multiple Answers')}</Text>
+            <Text size={15.5}>{t('NewPoll.MultipleChoice')}</Text>
             <TgSwitch checked={multiple && !quiz} />
           </div>
           <div className={s.switchRow} onClick={() => setQuiz((v) => !v)}>
-            <Text size={15.5}>{t('Quiz Mode')}</Text>
+            <Text size={15.5}>{t('NewPoll.Quiz')}</Text>
             <TgSwitch checked={quiz} />
           </div>
           {quiz && (
             <Text size={13} color="var(--secondary-text-color)" style={{ padding: '2px 4px' }}>
-              {t('Select the correct answer in the list of options.')}
+              {t('NewPoll.QuizHint')}
             </Text>
           )}
         </div>

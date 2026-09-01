@@ -1,6 +1,7 @@
 // PasscodeLock — настройки код-пароля (tweb passcodeLock/mainTab):
 // UtyanPasscode; не включён — описание + «Включить код-пароль» (два шага
 // ввода); включён — «Отключить», «Изменить код-пароль», автоблокировка.
+import type { LangPackKey } from '@/lang'
 import { useState } from 'react'
 import LottieSticker from '../LottieSticker'
 import TgIcon from '../TgIcon'
@@ -45,21 +46,21 @@ export default function PasscodeLock({ onBack }: { onBack: () => void }) {
 
   const confirm = async () => {
     if (second !== first) {
-      setError(t("Passcodes don't match, try again"))
+      setError(t('PasscodeLock.PasscodesDontMatch'))
       return
     }
     if (changing && !(await isMyPasscode(current))) {
-      setError(t('Wrong passcode'))
+      setError(t('PasscodeLock.WrongPasscodeShort'))
       setStep('enter')
       return
     }
     await enablePasscode(first, managers.persist)
-    setHintText(t(changing ? 'Your passcode has been changed.' : 'Passcode has been set.'))
+    setHintText(t(changing ? 'PasscodeLock.PasscodeHasBeenChanged' : 'PasscodeLock.PasscodeHasBeenSet'))
     reset()
     setStep('main')
   }
 
-  const passField = (value: string, onChange: (v: string) => void, label: string, onEnter: () => void) => (
+  const passField = (value: string, onChange: (v: string) => void, label: LangPackKey, onEnter: () => void) => (
     <div className={s.field} style={{ position: 'relative' }}>
       <Input
         autoFocus
@@ -79,46 +80,46 @@ export default function PasscodeLock({ onBack }: { onBack: () => void }) {
 
   if (step === 'enter')
     return (
-      <SettingsScreen title="Passcode" onBack={() => setStep('main')}>
+      <SettingsScreen title="PasscodeLock.Title" onBack={() => setStep('main')}>
         <LottieSticker name="UtyanPasscode" size={120} />
-        {changing && passField(current, setCurrent, 'Enter your passcode', () => {})}
-        {passField(first, setFirst, changing ? 'Enter a new passcode' : 'Enter a passcode', () => first && setStep('reenter'))}
+        {changing && passField(current, setCurrent, 'PasscodeLock.EnterYourPasscode', () => {})}
+        {passField(first, setFirst, changing ? 'PasscodeLock.EnterANewPasscode' : 'PasscodeLock.EnterAPasscode', () => first && setStep('reenter'))}
         {error && <Text size={13.5} color="#ff595a" className={s.err}>{error}</Text>}
         <div className={s.btnWrap}>
-          <Button fullWidth disabled={!first || (changing && !current)} onClick={() => setStep('reenter')}>{t('Next')}</Button>
+          <Button fullWidth disabled={!first || (changing && !current)} onClick={() => setStep('reenter')}>{t('Common.Next')}</Button>
         </div>
       </SettingsScreen>
     )
 
   if (step === 'reenter')
     return (
-      <SettingsScreen title="Passcode" onBack={() => setStep('enter')}>
+      <SettingsScreen title="PasscodeLock.Title" onBack={() => setStep('enter')}>
         <LottieSticker name="UtyanPasscode" size={120} />
-        {passField(second, setSecond, 'Re-enter your passcode', () => void confirm())}
+        {passField(second, setSecond, 'PasscodeLock.ReEnterPasscode', () => void confirm())}
         {error && <Text size={13.5} color="#ff595a" className={s.err}>{error}</Text>}
         <div className={s.btnWrap}>
           <Button fullWidth disabled={!second} onClick={() => void confirm()}>
-            {t(changing ? 'Change Passcode' : 'Set Passcode')}
+            {t(changing ? 'PasscodeLock.ChangePasscode' : 'PasscodeLock.SetPasscode')}
           </Button>
         </div>
       </SettingsScreen>
     )
 
   return (
-    <SettingsScreen title="Passcode" onBack={onBack}>
+    <SettingsScreen title="PasscodeLock.Title" onBack={onBack}>
       <LottieSticker name="UtyanPasscode" size={120} />
       {!enabled ? (
         <>
           <div className={s.hero}>
             <Text size={15} color="var(--secondary-text-color)" style={{ lineHeight: 1.5 }}>
-              {t('When a passcode is set, a lock icon appears above your chat list. Tap it to lock the app.')}
+              {t('PasscodeLock.Description')}
             </Text>
           </div>
           <div className={s.btnWrap}>
-            <Button fullWidth uppercase onClick={startEnable}>{t('Turn Passcode On')}</Button>
+            <Button fullWidth uppercase onClick={startEnable}>{t('PasscodeLock.TurnOn')}</Button>
           </div>
           <Text size={13.5} color="var(--secondary-text-color)" style={{ padding: '0 24px', lineHeight: 1.5 }}>
-            {t("Note: if you forget your passcode, you'll need to log out and log in again.")}
+            {t('PasscodeLock.ForgotNotice')}
           </Text>
         </>
       ) : (
@@ -127,19 +128,19 @@ export default function PasscodeLock({ onBack }: { onBack: () => void }) {
             <Text size={14} color="var(--primary-color)" style={{ textAlign: 'center', paddingBottom: 8 }}>{hintText}</Text>
           )}
           <Section
-            footer="Note: if you forget your passcode, you'll need to log out and log in again."
+            footer="PasscodeLock.ForgotNotice"
           >
-            <Row icon={<TgIcon name="lockoff" size={24} />} label="Turn Passcode Off" danger onClick={() => setOffOpen(true)} />
-            <Row icon={<TgIcon name="key" size={24} />} label="Change Passcode" onClick={startChange} />
+            <Row icon={<TgIcon name="lockoff" size={24} />} label="PasscodeLock.TurnOff.Title" danger onClick={() => setOffOpen(true)} />
+            <Row icon={<TgIcon name="key" size={24} />} label="PasscodeLock.ChangePasscode" onClick={startChange} />
           </Section>
           <Section
-            caption="Auto-lock"
-            footer="Automatically lock the app if you are away for some time."
+            caption="PasscodeLock.AutoLock"
+            footer="PasscodeLock.AutoLock.Caption"
           >
             {AUTO_LOCK_OPTIONS.map((mins) => (
               <Row
                 key={mins}
-                label={mins === 0 ? 'Disabled' : `${mins} ${t('min')}`}
+                label={mins === 0 ? 'Checkbox.Disabled' : `${mins} ${t('Unit.Minutes.Abbr')}`}
                 translate={mins === 0}
                 selected={autoLock === mins}
                 onClick={() => update({ passcodeAutoLockMins: mins })}
@@ -151,21 +152,21 @@ export default function PasscodeLock({ onBack }: { onBack: () => void }) {
 
       <Popup
         open={offOpen}
-        title={t('Turn Passcode Off')}
+        title={t('PasscodeLock.TurnOff.Title')}
         onClose={() => setOffOpen(false)}
         action={{
-          label: t('Turn Off'),
+          label: t('PasscodeLock.TurnOff'),
           onClick: () => {
             setOffOpen(false)
             void disablePasscode().then(() => {
               useLockStore.getState().unlock()
-              setHintText(t('Passcode has been disabled.'))
+              setHintText(t('PasscodeLock.PasscodeHasBeenDisabled'))
             })
           },
         }}
       >
         <Text size={15} color="var(--primary-text-color)" style={{ lineHeight: 1.5 }}>
-          {t('Are you sure you want to turn the passcode off?')}
+          {t('PasscodeLock.TurnOff.Description')}
         </Text>
       </Popup>
     </SettingsScreen>

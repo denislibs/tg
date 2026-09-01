@@ -7,11 +7,12 @@ import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import { useChannelBoosts } from '../core/hooks/useChannelBoosts'
 import { boostedByMe, boostProgress } from '../core/boosts/boostsStatus'
-import { useT } from '../i18n'
+import { useT, useTArgs } from '../i18n'
 import s from './BoostPopup.module.scss'
 
 export default function BoostPopup({ chatId, onClose }: { chatId: number; onClose: () => void }) {
   const t = useT()
+  const tArgs = useTArgs()
   const { boosts: channelBoosts, boost } = useChannelBoosts(chatId)
   const status = channelBoosts?.status
   const [busy, setBusy] = useState(false)
@@ -27,18 +28,18 @@ export default function BoostPopup({ chatId, onClose }: { chatId: number; onClos
     setBusy(true)
     setErr('')
     void boost()
-      .catch(() => setErr(t('Could not boost. You need Telegram Premium and a free boost slot.')))
+      .catch(() => setErr(t('Boost.Error.NoSlot')))
       .finally(() => setBusy(false))
   }
 
   const description = mine
-    ? t('You are boosting this channel.')
+    ? t('Boost.AlreadyBoosting')
     : need > 0
-      ? t('This channel needs {n} more boost(s) to reach the next level.').replace('{n}', String(need))
-      : t('Help boost this channel to unlock new features.')
+      ? tArgs('MoreBoosts', [need])
+      : t('Boost.Subtitle')
 
   return (
-    <Popup open title={t('Boost Channel')} onClose={onClose} width={360}>
+    <Popup open title={t('BoostChannel')} onClose={onClose} width={360}>
       <div className={s.body}>
         <div className={s.bar}>
           <div className={s.hint} style={{ left: `${Math.min(Math.max(progress * 100, 10), 90)}%` }}>
@@ -49,8 +50,8 @@ export default function BoostPopup({ chatId, onClose }: { chatId: number; onClos
             <div className={s.fill} style={{ width: `${progress * 100}%` }} />
           </div>
           <div className={s.levels}>
-            <span>{t('Level')} {level}</span>
-            <span>{t('Level')} {level + 1}</span>
+            <span>{t('BoostsLevel2')} {level}</span>
+            <span>{t('BoostsLevel2')} {level + 1}</span>
           </div>
         </div>
 
@@ -59,11 +60,11 @@ export default function BoostPopup({ chatId, onClose }: { chatId: number; onClos
         {err && <Text size={13} color="#e5484d" className={s.desc}>{err}</Text>}
 
         {mine ? (
-          <div className={s.boosted}>✓ {t('You boosted this channel')}</div>
+          <div className={s.boosted}>✓ {t('Boost.Boosted')}</div>
         ) : (
           <button className={s.btn} disabled={busy} onClick={doBoost}>
             <TgIcon name="boost" size={18} color="#fff" />
-            {t('Boost Channel')}
+            {t('BoostChannel')}
           </button>
         )}
       </div>

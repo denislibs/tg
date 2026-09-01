@@ -4,8 +4,12 @@
 // непустые медиа-табы Media/Files/Links/Music/Voice). Данные тянет per-filter
 // из mediaHistory, глобальный плеер — из audioStore, просмотрщик — vanilla-
 // вьювер (mediaViewer/openMediaViewer, Task 16).
+import type { LangPackKey } from '@/lang'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Text from '../../shared/ui/Text'
+import { SentTime } from '../../shared/ui/dateNodes'
+import DomNode from '../../shared/ui/DomNode'
+import { formatDateAccordingToTodayNew } from '@helpers/date'
 import TgIcon from '../TgIcon'
 import Avatar from '../../shared/ui/Avatar'
 import UserAvatar from '../UserAvatar'
@@ -22,10 +26,9 @@ import { winKey } from '../../core/history/messagesMirror'
 import { useAudioStore, type AudioTrack } from '../../stores/audioStore'
 import { markMediaPlayed } from '../../core/mediaRead'
 import { getDocumentFromMessage, getMediaFromMessage, hasServerThumb } from '../../core/media/messageMedia'
-import { friendlyMsgTime } from '../../core/format/friendlyTime'
 import { EXT_COLORS, extOf, firstUrl, fmtDur, fmtSize, hostOf } from '../../core/format/sharedMediaFmt'
 import MediaGridThumb from '../MediaGridThumb'
-import { fmtWhen, previewOf } from '../../core/dialogToChat'
+import { previewOf } from '../../core/dialogToChat'
 import { roleLabel, type RealMember } from '../../core/hooks/useGroupInfo'
 import type { SavedDialog } from '../../core/managers/chatsManager'
 import { isGiftHidden, type SavedStarGift } from '../../core/managers/starsManager'
@@ -34,14 +37,13 @@ import { getPeerPhotoId } from '../../core/peers/peer'
 import { getChatPhoto } from '../../core/peers/predicates'
 import { getMessageText, type MyMessage } from '../../core/models'
 import { getMediaId, getMessageKind } from '../../core/messages/messageKind'
-import { messageDateISO } from '../../core/messageToConvMsg'
 import type { OpenPeer } from '../../data'
 import { cachedPeer } from '../../core/peerCache'
 import type { Chat as PeerChat, User } from '../../core/peers/peer'
 import { isUserStatusOnline } from '../../core/peers/peer'
 import { getPeerTitle, getUserTitle } from '../../core/peers/getPeerTitle'
 import { usePeers } from '../../core/hooks/usePeers'
-import { userStatusLabel } from '../../core/presence'
+import { PeerStatus } from '../../shared/ui/peerStatus'
 import { messageToViewerItem } from '../mediaViewer/collectLightboxItems'
 import { openMediaViewer } from '../mediaViewer/openMediaViewer'
 import DeferredSortedVirtualList, {
@@ -53,12 +55,19 @@ import { useEvent } from '../../core/hooks/useEvent'
 import giftsGrid from '../stargifts/stargiftsGrid.module.scss'
 import profileList from '../stargifts/profileList.module.scss'
 
-const SHARED_TABS = ['Media', 'Files', 'Links', 'Music', 'Voice'] as const
+const SHARED_TABS = ['SharedMediaTab2', 'SharedFilesTab2', 'SharedLinksTab2', 'SharedMusicTab2', 'SharedVoiceTab2'] as const
 // Порядок узлов ряда — как в tweb (дамп 07-right-sidebar): сначала
 // Chats/Members, затем Gifts и медиа-табы. Скрытые несут `hide`, но остаются.
-const ALL_TABS = ['Chats', 'Members', 'Gifts', ...SHARED_TABS] as const
-const TAB_FILTER: Record<string, 'media' | 'files' | 'links' | 'music' | 'voice'> = {
-  Media: 'media', Files: 'files', Links: 'links', Music: 'music', Voice: 'voice',
+const ALL_TABS = ['FilterChats', 'PeerMedia.Members', 'SharedMedia.Gifts', ...SHARED_TABS] as const
+// Ключ строки ряда — он же идентификатор вкладки: своих английских имён у вкладок
+// больше нет (задача 6), и таблица фильтров ключуется тем же, чем ряд.
+type MediaFilter = 'media' | 'files' | 'links' | 'music' | 'voice'
+const TAB_FILTER: Record<(typeof SHARED_TABS)[number], MediaFilter> = {
+  SharedMediaTab2: 'media',
+  SharedFilesTab2: 'files',
+  SharedLinksTab2: 'links',
+  SharedMusicTab2: 'music',
+  SharedVoiceTab2: 'voice',
 }
 
 /**
@@ -70,7 +79,7 @@ const TAB_FILTER: Record<string, 'media' | 'files' | 'links' | 'music' | 'voice'
  * Подчёркивание активного рисует `i.menu-horizontal-div-item-background`,
  * своей полоски-индикатора у нас больше нет.
  */
-function SharedMediaTab({ name, active, hidden, onClick }: { name: string; active: boolean; hidden: boolean; onClick: () => void }) {
+function SharedMediaTab({ name, active, hidden, onClick }: { name: LangPackKey; active: boolean; hidden: boolean; onClick: () => void }) {
   const t = useT()
   const { onPointerDown, ripple } = useRipple()
   return (
@@ -82,15 +91,15 @@ function SharedMediaTab({ name, active, hidden, onClick }: { name: string; activ
       {ripple}
       <i className="menu-horizontal-div-item-background" />
       <span className="menu-horizontal-div-item-span">
-        <span className="i18n">{t(name)}</span>
+        <span>{t(name)}</span>
       </span>
     </div>
   )
 }
 
 export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs, gifts, onOpenGift, onSendGift, isChannel, canManageAdmins, onOpenPeer, onEditMember, navRef, stickyTop, onCount }: {
-  tab: string
-  onTab: (v: string) => void
+  tab: LangPackKey
+  onTab: (v: LangPackKey) => void
   chatId: number | null
   /** участники для первого таба (только реальные группы/каналы) */
   members?: RealMember[]
@@ -110,7 +119,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
   /** sticky-отступ табов под absolute-шапкой панели */
   stickyTop?: number
   /** счётчик загруженного таба — подзаголовок залитой шапки (tweb onLengthChange) */
-  onCount?: (tab: string, n: number) => void
+  onCount?: (tab: LangPackKey, n: number) => void
 }) {
   const t = useT()
   const [lang] = useLang()
@@ -134,7 +143,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
   const loadingRef = useRef(new Set<string>())
   // поколение кэша: инвалидация (новое сообщение) обесценивает in-flight ответы
   const genRef = useRef(0)
-  const filter = TAB_FILTER[tab]
+  const filter = TAB_FILTER[tab as (typeof SHARED_TABS)[number]] as MediaFilter | undefined
   const PAGE_SIZE = 30
 
   // Total-счётчики всех медиа-фильтров (tweb searchSuper counts): грузим один
@@ -154,7 +163,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
   }, [chatId, managers])
 
   // Счётчик подарков для залитой шапки (у медиа-табов он приходит из mediaHistory).
-  useEffect(() => { if (gifts) onCount?.('Gifts', gifts.length) }, [gifts, onCount])
+  useEffect(() => { if (gifts) onCount?.('SharedMedia.Gifts', gifts.length) }, [gifts, onCount])
 
   // Live: новое сообщение в открытом чате инвалидирует кэш табов — активный
   // таб перезагрузится и свежая отправка (голосовое/фото/…) появится сразу.
@@ -173,7 +182,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
   }, [winLen])
 
   // Догрузка следующей страницы фильтра (append) с offset = уже загружено.
-  const loadPage = (f: (typeof TAB_FILTER)[string] | undefined, forTab: string) => {
+  const loadPage = (f: MediaFilter | undefined, forTab: LangPackKey) => {
     if (chatId == null || !f || loadingRef.current.has(f)) return
     const cur = byFilterRef.current[f]
     if (cur && !cur.hasMore) return
@@ -208,7 +217,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId, filter, byFilter])
 
-  const entry = byFilter[filter]
+  const entry = filter ? byFilter[filter] : undefined
   const msgs = entry?.msgs
   const hasMore = entry?.hasMore ?? false
 
@@ -232,8 +241,6 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
     return () => io.disconnect()
   }, [filter, tab, hasMore, msgs?.length])
 
-  const when = (m: MyMessage) => friendlyMsgTime(messageDateISO(m.date), lang)
-
   // Клик по строке: текущий трек — play/pause, иначе очередь из всего таба
   // с этой позиции; чужое непрослушанное голосовое гасит media_unread.
   const playRow = (m: MyMessage, title: string) => {
@@ -245,8 +252,8 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
     const list = (msgs ?? []).filter((x) => getMediaId(x) != null)
     const tracks: AudioTrack[] = list.map((x) => ({
       mediaId: getMediaId(x) as number,
-      title: getMessageKind(x) === 'audio' ? getDocumentFromMessage(x)?.file_name || t('Audio') : title,
-      subtitle: when(x),
+      title: getMessageKind(x) === 'audio' ? getDocumentFromMessage(x)?.file_name || t('SharedMedia.Audio') : title,
+      date: x.date,
       chatId,
       msgId: x.id,
     }))
@@ -283,7 +290,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
   }
   const empty = (
     <Text size={14} color="var(--secondary-text-color)" style={{ padding: '16px 24px', display: 'block', textAlign: 'center' }}>
-      {t('Nothing here yet.')}
+      {t('SharedMedia.Empty')}
     </Text>
   )
 
@@ -293,9 +300,9 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
   const mediaTabs = SHARED_TABS.filter((name) => (totals[TAB_FILTER[name]] ?? 0) > 0)
   // Подарки: таб есть у любого пользовательского профиля (tweb показывает
   // витрину и пустой — с приглашением подарить); у групп/каналов gifts == null.
-  const tabOrder = [
-    ...(savedDialogs ? ['Chats'] : members ? ['Members'] : []),
-    ...(gifts ? ['Gifts'] : []),
+  const tabOrder: LangPackKey[] = [
+    ...(savedDialogs ? (['FilterChats'] as const) : members ? (['PeerMedia.Members'] as const) : []),
+    ...(gifts ? (['SharedMedia.Gifts'] as const) : []),
     ...mediaTabs,
   ]
 
@@ -347,7 +354,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
           Список виртуальный (см. `SavedDialogsList`); заглушка пустого набора
           рендерится ВМЕСТО `ul`, а не внутри него — у виртуального `ul` своя
           геометрия под весь набор. */}
-      {tab === 'Chats' && savedDialogs && (
+      {tab === 'FilterChats' && savedDialogs && (
         <div className="search-super-content-container search-super-content-savedDialogs">
           <div className="sidebar-left-section-container">
             <div className="sidebar-left-section no-delimiter">
@@ -359,7 +366,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         </div>
       )}
 
-      {tab === 'Members' && members && (
+      {tab === 'PeerMedia.Members' && members && (
         <div className="search-super-content-container search-super-content-members">
           <div className="sidebar-left-section-container">
             <div className="sidebar-left-section no-delimiter">
@@ -387,7 +394,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
                         </div>
                       </div>
                       <div className="row-row row-subtitle-row dialog-subtitle">
-                        <div className="row-subtitle">{userStatusLabel(mem.status, lang)}</div>
+                        <div className="row-subtitle"><PeerStatus status={mem.status} /></div>
                       </div>
                       <UserAvatar
                         id={mem.userId}
@@ -416,13 +423,13 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
           `gridItem` — плитка, `itemPrice` — цена в звёздах, `itemFrom` —
           мини-аватар дарителя (аноним → `itemFromAnonymous`), `itemLock` —
           метка скрытого, `empty*` — пустое состояние из profileList. */}
-      {tab === 'Gifts' && gifts && (
+      {tab === 'SharedMedia.Gifts' && gifts && (
         gifts.length === 0 ? (
           <div className={profileList.empty}>
-            <div className={profileList.emptyTitle}>{t('No gifts yet')}</div>
+            <div className={profileList.emptyTitle}>{t('SharedMedia.Gifts.Empty')}</div>
             {onSendGift && (
               <button type="button" className="btn-primary btn-color-primary btn-control" onClick={onSendGift}>
-                {t('Send a Gift')}
+                {t('Chat.Menu.SendGift')}
               </button>
             )}
           </div>
@@ -436,7 +443,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
               return (
                 <div key={g.saved_id ?? g.date} className={giftsGrid.gridItem} onClick={() => onOpenGift?.(g)}>
                   {isGiftHidden(g) && <TgIcon name="hide" size={16} className={giftsGrid.itemLock} />}
-                  {g.gift.pFlags?.limited && <span className={giftsGrid.badgeResale}>{t('Limited')}</span>}
+                  {g.gift.pFlags?.limited && <span className={giftsGrid.badgeResale}>{t('StarGiftShowLimited')}</span>}
                   <span className={giftsGrid.itemSticker}>{g.gift.emoji}</span>
                   <span className={giftsGrid.itemPrice}>
                     <StarIcon size={12} />
@@ -458,13 +465,13 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         )
       )}
 
-      {msgs != null && msgs.length === 0 && tab !== 'Gifts' && empty}
+      {msgs != null && msgs.length === 0 && tab !== 'SharedMedia.Gifts' && empty}
 
       {/* Сетка медиа 1:1 с оригиналом (дамп 07-right-sidebar):
           `.search-super-content-media > .grid > .grid-item.search-super-item.media-container`,
           превью — `.grid-item-media`. `video-time` — плашка длительности
           (её же вьювер гасит на полёте мувера, FLOATING_CONTEXTS). */}
-      {tab === 'Media' && msgs != null && msgs.length > 0 && (
+      {tab === 'SharedMediaTab2' && msgs != null && msgs.length > 0 && (
         <div className="search-super-content-container search-super-content-media">
         <div className="grid">
           {msgs.map((m, i) => (
@@ -479,7 +486,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         </div>
       )}
 
-      {tab === 'Files' && msgs != null && msgs.length > 0 && (
+      {tab === 'SharedFilesTab2' && msgs != null && msgs.length > 0 && (
         <div className="search-super-content-container search-super-content-files">
         <div className="sidebar-left-section-container">
           <div className="sidebar-left-section no-delimiter">
@@ -505,9 +512,15 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
                   <div className="document-ico">
                     <span className="document-ico-text">{ext.slice(0, 4) || 'file'}</span>
                   </div>
-                  <div className="document-name">{doc?.file_name || t('Document')}</div>
+                  <div className="document-name">{doc?.file_name || t('Chat.Input.Attach.Document')}</div>
                   <div className="document-size">
-                    <span>{[fmtSize(doc?.size), when(m)].filter(Boolean).join(' · ')}</span>
+                    {/* tweb `wrappers/document.ts:219-268` — размер и время части
+                        описания, склеенные ` · ` (`joinElementsWith`); время
+                        строит `formatFullSentTime` (:226). */}
+                    <span>
+                      {fmtSize(doc?.size) ? `${fmtSize(doc?.size)} · ` : ''}
+                      <SentTime timestamp={m.date} />
+                    </span>
                   </div>
                 </div>
               </div>
@@ -520,7 +533,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         </div>
       )}
 
-      {tab === 'Links' && msgs != null && msgs.length > 0 && (
+      {tab === 'SharedLinksTab2' && msgs != null && msgs.length > 0 && (
         <div className="search-super-content-container search-super-content-links">
         <div className="sidebar-left-section-container">
           <div className="sidebar-left-section no-delimiter">
@@ -544,7 +557,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         </div>
       )}
 
-      {tab === 'Music' && msgs != null && msgs.length > 0 && (
+      {tab === 'SharedMusicTab2' && msgs != null && msgs.length > 0 && (
         <div className="search-super-content-container search-super-content-music">
         <div className="sidebar-left-section-container">
           <div className="sidebar-left-section no-delimiter">
@@ -557,14 +570,17 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         {msgs.map((m) => (
           <div key={m.id} className="document-container">
             <div className="document-wrapper">
-              <div className="audio" onClick={() => playRow(m, getDocumentFromMessage(m)?.file_name || t('Audio'))}>
+              <div className="audio" onClick={() => playRow(m, getDocumentFromMessage(m)?.file_name || t('SharedMedia.Audio'))}>
                 <div className={classNames('audio-toggle audio-ico', audioPlaying && getMediaId(m) === curMediaId ? 'playing' : '')}>
                   <PlayPauseGlyph playing={audioPlaying && getMediaId(m) === curMediaId} size={22} />
                 </div>
                 <div className="audio-details">
-                  <div className="audio-title">{getDocumentFromMessage(m)?.file_name || t('Audio')}</div>
+                  <div className="audio-title">{getDocumentFromMessage(m)?.file_name || t('SharedMedia.Audio')}</div>
                   <div className="audio-subtitle">
-                    <div className="audio-time">{[fmtDur(getDocumentFromMessage(m)?.duration), when(m)].filter(Boolean).join(' · ')}</div>
+                    <div className="audio-time">
+                      {fmtDur(getDocumentFromMessage(m)?.duration) ? `${fmtDur(getDocumentFromMessage(m)?.duration)} · ` : ''}
+                      <SentTime timestamp={m.date} />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -577,7 +593,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         </div>
       )}
 
-      {tab === 'Voice' && msgs != null && msgs.length > 0 && (
+      {tab === 'SharedVoiceTab2' && msgs != null && msgs.length > 0 && (
         <div className="search-super-content-container search-super-content-voice">
         <div className="sidebar-left-section-container">
           <div className="sidebar-left-section no-delimiter">
@@ -585,14 +601,17 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
         {msgs.map((m) => (
           <div key={m.id} className="document-container">
             <div className="document-wrapper">
-              <div className="audio" onClick={() => playRow(m, getMessageKind(m) === 'roundVideo' ? t('Video message') : t('Voice message'))}>
+              <div className="audio" onClick={() => playRow(m, getMessageKind(m) === 'roundVideo' ? t('AttachRound') : t('AttachAudio'))}>
                 <div className={classNames('audio-toggle audio-ico', audioPlaying && getMediaId(m) === curMediaId ? 'playing' : '')}>
                   <PlayPauseGlyph playing={audioPlaying && getMediaId(m) === curMediaId} size={22} />
                 </div>
                 <div className="audio-details">
-                  <div className="audio-title">{getMessageKind(m) === 'roundVideo' ? t('Video message') : t('Voice message')}</div>
+                  <div className="audio-title">{getMessageKind(m) === 'roundVideo' ? t('AttachRound') : t('AttachAudio')}</div>
                   <div className="audio-subtitle">
-                    <div className="audio-time">{[fmtDur(getDocumentFromMessage(m)?.duration), when(m)].filter(Boolean).join(' · ')}</div>
+                    <div className="audio-time">
+                      {fmtDur(getDocumentFromMessage(m)?.duration) ? `${fmtDur(getDocumentFromMessage(m)?.duration)} · ` : ''}
+                      <SentTime timestamp={m.date} />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -746,9 +765,18 @@ function SavedDialogRow({ dialog, onOpenPeer, itemRef }: {
   const peer = cachedPeer(dialog.peerId)
   // Имя и аватарку даёт КАРТОЧКА пира (она приезжает векторами того же
   // контейнера), а не снимок, подклеенный сервером в строку.
-  const title = isSelf ? t('My Notes') : getPeerTitle({ peerId: dialog.peerId, peer })
+  const title = isSelf ? t('MyNotes') : getPeerTitle({ peerId: dialog.peerId, peer })
   const photoId = getPeerPhotoId(isUser(dialog.peerId) && peer?._ === 'user' ? peer.photo : getChatPhoto(peer as PeerChat | undefined)) || undefined
   const lm = dialog.lastMessage
+  // Дата — живой узел ядра (порт tweb `appDialogsManager.ts:2242`), как в
+  // списке чатов: строка застыла бы в языке момента рендера.
+  // Зависимость — ТАЙМСТАМП, а не сам `lm`: мемо по идентичности объекта
+  // пересобирало бы живой узел там, где дата не менялась.
+  const lastAt = lm?.date
+  const dateNode = useMemo(
+    () => (lastAt === undefined ? null : formatDateAccordingToTodayNew(new Date(lastAt * 1000))),
+    [lastAt],
+  )
 
   return (
     // Строка «Избранного» — тот же `chatlist-chat`, что у списка чатов и у
@@ -771,7 +799,7 @@ function SavedDialogRow({ dialog, onOpenPeer, itemRef }: {
       <div className="row-row row-title-row dialog-title">
         <div className="row-title">{title}</div>
         <div className="row-title row-title-right row-title-right-secondary">
-          {fmtWhen(lm ? messageDateISO(lm.date) : undefined)}
+          {dateNode ? <DomNode node={dateNode} className="message-time" /> : null}
         </div>
       </div>
       <div className="row-row row-subtitle-row dialog-subtitle">

@@ -20,8 +20,8 @@ import UserAvatar from '../UserAvatar'
 import TgIcon from '../TgIcon'
 import { Row } from '../settings/kit'
 import { RIGHTS, type RealMember } from '../../core/hooks/useGroupInfo'
-import { useT, useLang } from '../../i18n'
-import { userStatusLabel } from '../../core/presence'
+import {useT} from '../../i18n'
+import { PeerStatus } from '../../shared/ui/peerStatus'
 import { isUserStatusOnline } from '../../core/peers/peer'
 
 export default function RightsEditor({
@@ -36,7 +36,6 @@ export default function RightsEditor({
   onRemove: () => void | Promise<void>
 }) {
   const t = useT()
-  const [lang] = useLang()
   const isAdmin = member.role === 'creator' || member.role === 'admin'
   const initial = isAdmin ? RIGHTS.reduce((acc, r) => acc | r.bit, 0) : 0
   const [bits, setBits] = useState(initial)
@@ -52,10 +51,10 @@ export default function RightsEditor({
   return (
     <div className="tabs-tab sidebar-slider-item scrollable-y-bordered edit-peer-container user-permissions-container active">
       <div className="sidebar-header">
-        <button type="button" className="btn-icon sidebar-close-button" onClick={onBack} aria-label={t('Back')}>
+        <button type="button" className="btn-icon sidebar-close-button" onClick={onBack} aria-label={t('Common.Back')}>
           <TgIcon name="back" />
         </button>
-        <div className="sidebar-header__title">{t('Admin Rights')}</div>
+        <div className="sidebar-header__title">{t('EditAdmin')}</div>
         {/* «Применить» — та же кнопка-галка, что в оригинале: появляется зумом
             (`appear-zoom`), пока экран сохраняется — заблокирована. */}
         <button
@@ -78,7 +77,7 @@ export default function RightsEditor({
                   <ul className="chatlist chatlist-new">
                     <a className="row no-wrap row-with-padding row-clickable hover-effect chatlist-chat chatlist-chat-abitbigger" data-peer-id={member.userId}>
                       <div className="row-row row-subtitle-row dialog-subtitle">
-                        <div className="row-subtitle no-wrap">{userStatusLabel(member.status, lang)}</div>
+                        <div className="row-subtitle no-wrap"><PeerStatus status={member.status} /></div>
                       </div>
                       <div className="row-row row-title-row dialog-title">
                         <div className="row-title no-wrap user-title">
@@ -102,7 +101,7 @@ export default function RightsEditor({
           <div className="sidebar-left-section-container">
             <div className="sidebar-left-section">
               {/* Заголовок группы прав — `sidebar-left-h2` из оригинала */}
-              <div className="sidebar-left-h2 sidebar-left-section-name">{t('What can this admin do?')}</div>
+              <div className="sidebar-left-h2 sidebar-left-section-name">{t('EditAdminWhatCanDo')}</div>
               <div className="sidebar-left-section-content">
                 {RIGHTS.map((r) => (
                   <Row
@@ -124,7 +123,7 @@ export default function RightsEditor({
                 <div className="sidebar-left-section-content">
                   <Row
                     icon={<TgIcon name="deleteuser" size={24} />}
-                    label="Dismiss Admin"
+                    label="Channel.Admin.Dismiss"
                     danger
                     onClick={() => void run(onRemove)}
                   />

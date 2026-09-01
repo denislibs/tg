@@ -109,7 +109,7 @@ export default function installColumnResize(opts: InstallColumnResizeOptions): (
     document.body.style.setProperty('cursor', 'col-resize', 'important')
     if (!useSettingsStore.getState().seenSidebarResizeTip) {
       useSettingsStore.getState().update({ seenSidebarResizeTip: true })
-      rootScope.dispatchEvent('ui:toast', useI18nStore.getState().t('Hold Shift to resize both columns at once'))
+      rootScope.dispatchEvent('ui:toast', useI18nStore.getState().t('Sidebar.Resize.ShiftTip'))
     }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)

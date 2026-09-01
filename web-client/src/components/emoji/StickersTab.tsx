@@ -93,8 +93,8 @@ export default function StickersTab({
 
   const allSections = useMemo<Section[]>(() => {
     const list: Section[] = []
-    if (panel.recent.length) list.push({ key: 'recent', title: t('Frequently Used'), icon: 'recent', stickers: panel.recent })
-    if (panel.faved.length) list.push({ key: 'faved', title: t('Favorites'), icon: 'favourites', stickers: panel.faved })
+    if (panel.recent.length) list.push({ key: 'recent', title: t('Emoji.Recent'), icon: 'recent', stickers: panel.recent })
+    if (panel.faved.length) list.push({ key: 'faved', title: t('FavoriteStickers'), icon: 'favourites', stickers: panel.faved })
     for (const { set, stickers } of panel.sets) {
       if (stickers.length) list.push({ key: `set-${set.short_name}`, title: set.title, thumb: setThumbMediaId(set, stickers), stickers })
     }
@@ -273,7 +273,7 @@ export default function StickersTab({
             onChange={setQuery}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            placeholder={t('Search Stickers')}
+            placeholder={t('StickersTab.SearchPlaceholder')}
             focused={searching}
           />
         }
@@ -285,7 +285,7 @@ export default function StickersTab({
                   <div className="emoji-category">{grid(results)}</div>
                 </div>
               )
-              : <span className="emoticons-not-found animated-item">{t('No stickers found')}</span>
+              : <span className="emoticons-not-found animated-item">{t('NoStickersFound')}</span>
             : undefined
         }
       >
@@ -297,19 +297,19 @@ export default function StickersTab({
                   disable-hover (tweb createLocalCategory, tab.ts:345-347);
                   секции-наборы — голый текст без disable-hover (createCategory) */}
               <div className={c.icon ? 'category-title disable-hover' : 'category-title'}>
-                {c.icon ? <span className="i18n">{c.title}</span> : c.title}
+                {c.icon ? <span>{c.title}</span> : c.title}
                 {/* крестик «очистить недавние» — tweb stickers.ts:201-213:
                     ButtonIcon('close', {noRipple}) в заголовке Recent,
                     клик → confirmationPopup → clearRecentStickers */}
                 {c.key === 'recent' && (
                   <IconButton
                     noRipple
-                    aria-label={t('Clear Recent Stickers')}
+                    aria-label={t('ClearRecentStickersAlertTitle')}
                     onClick={() => {
                       void confirmationPopup({
-                        titleLangKey: t('Clear Recent Stickers'),
-                        descriptionLangKey: t('Are you sure you want to clear your recent stickers?'),
-                        button: { text: t('Clear') },
+                        titleLangKey: 'ClearRecentStickersAlertTitle',
+                        descriptionLangKey: 'Stickers.ClearRecent.Text',
+                        button: { langKey: 'Clear' },
                       }).then(() => panel.clearRecent(), () => {})
                     }}
                   >
@@ -324,7 +324,7 @@ export default function StickersTab({
           )
         })}
         {panel.loaded && sections.length === 0 && (
-          <span className="emoticons-not-found">{t('No stickers found')}</span>
+          <span className="emoticons-not-found">{t('NoStickersFound')}</span>
         )}
       </EmoticonsTab>
 
@@ -339,7 +339,7 @@ export default function StickersTab({
         >
           <MenuItem
             icon={<TgIcon name={ctxFaved ? 'crossstar' : 'favourites'} size={20} />}
-            label={t(ctxFaved ? 'Remove from Favorites' : 'Add to Favorites')}
+            label={t(ctxFaved ? 'Stickers.RemoveFromFavorites' : 'AddToFavorites')}
             onClick={() => {
               if (ctxFaved) panel.unfave(ctxMenu.st)
               else panel.fave(ctxMenu.st)

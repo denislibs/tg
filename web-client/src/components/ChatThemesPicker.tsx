@@ -41,14 +41,14 @@ export default function ChatThemesPicker({
   }
 
   return (
-    <Popup open={open} title={t('Chat Theme')} onClose={onClose} onExitComplete={onExitComplete} width={480}>
+    <Popup open={open} title={t('ChatTheme.Title')} onClose={onClose} onExitComplete={onExitComplete} width={480}>
       <div className={s.strip}>
         {/* «Без темы» — сброс к дефолтному оформлению */}
         <button type="button" className={s.swatch} data-selected={selected === '' || undefined} onClick={() => apply('')}>
           <div className={s.preview} data-none>
             <TgIcon name="close" size={22} color="var(--secondary-text-color)" />
           </div>
-          <span className={s.label}>{t('No Theme')}</span>
+          <span className={s.label}>{t('ChatTheme.None')}</span>
         </button>
 
         {CHAT_THEMES.map((theme) => (

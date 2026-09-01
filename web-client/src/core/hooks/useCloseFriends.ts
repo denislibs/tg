@@ -47,10 +47,10 @@ export function useCloseFriends(onClose: () => void): {
     setBusy(true)
     try {
       await managers.stories.setCloseFriends([...selected])
-      rootScope.dispatchEvent('ui:toast', t('Close friends list updated'))
+      rootScope.dispatchEvent('ui:toast', t('CloseFriends.Updated'))
       onClose()
     } catch {
-      rootScope.dispatchEvent('ui:toast', t('Something went wrong'))
+      rootScope.dispatchEvent('ui:toast', t('Error.SomethingWentWrong'))
     } finally {
       setBusy(false)
     }

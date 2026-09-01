@@ -17,6 +17,10 @@
  * своими микрозадачами. `settle()` ниже ждёт всю цепочку целиком.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+// Здесь строятся узлы `i18n()`. Строки в ядро кладёт холодный старт (`main.tsx` →
+// `client/boot.ts` дожидается пакета до первого рендера), а в прогоне — общий сетап
+// (`src/test/setup.ts`); на пустом ядре узел напечатал бы имя ключа.
 import type { Authorization } from '@layer'
 import type { Managers } from '@/client/bootstrap'
 import { initHotkeys } from '@core/hotkeys'

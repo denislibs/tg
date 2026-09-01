@@ -4,6 +4,7 @@
 // переписывается ради самой нормы; при следующем содержательном касании файла —
 // приводить затронутую проводку в соответствие (тест либо пометка с причиной у
 // неё), а не расширять непокрытую площадь дальше.
+import type { LangPackKey } from '@/lang'
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { cachedPeerTheme, chatFullMirrorVersion, saveChatFull, subscribeChatFullMirror } from '@core/chatFullCache'
 import { isPeerMuted } from '@core/dialogs/notifySettings'
@@ -17,9 +18,9 @@ import { useSettingsStore } from '../settings'
 import { CallProvider } from './call/CallProvider'
 import NowPlayingBar from './NowPlayingBar'
 import type { Chat } from '../data'
-import { useT, useLang } from '../i18n'
+import { useT, useLang, useTArgs } from '../i18n'
 import { useTypingLabel } from '../core/hooks/useTypingLabel'
-import { lastSeenLabel } from '../core/presence'
+import { PeerStatus } from '../shared/ui/peerStatus'
 import { useManagers } from '../core/hooks/useManagers'
 import { useNavigationActions } from '../core/hooks/useNavigationActions'
 import { useChatStackStore } from '../stores/chatStackStore'
@@ -147,6 +148,7 @@ interface Props {
 
 export default function Chat({ chat, onBack, thread }: Props) {
   const t = useT()
+  const tArgs = useTArgs()
   // Навигация — из navigationStore/useNavigationActions напрямую (инвариант: View
   // читает из стора, а не через проброс из Shell). Имена локальные совпадают с
   // прежними пропсами, чтобы не менять места использования ниже.
@@ -545,15 +547,15 @@ export default function Chat({ chat, onBack, thread }: Props) {
       .then(() => managers.dialogs.refresh())
       .catch(() => {})
   }
-  const deleteLabels = (() => {
-    if (isSecret) return { title: 'Leave chat', text: 'This chat will be deleted from your chat list.', action: 'Delete' }
-    if (chat.type === 'private') return { title: 'Delete Chat', text: 'This chat will be deleted from your chat list.', action: 'Delete' }
+  const deleteLabels: { title: LangPackKey; text: LangPackKey; action: LangPackKey } = (() => {
+    if (isSecret) return { title: 'Chat.LeaveChat', text: 'Chat.Delete.Private.Text', action: 'Delete' }
+    if (chat.type === 'private') return { title: 'ChatList.Context.DeleteChat', text: 'Chat.Delete.Private.Text', action: 'Delete' }
     if (isChannel) return owned
-      ? { title: 'Delete Channel', text: 'The channel will be deleted for all subscribers.', action: 'Delete' }
-      : { title: 'Leave Channel', text: 'Are you sure you want to leave this channel?', action: 'Leave' }
+      ? { title: 'PeerInfo.DeleteChannel', text: 'Chat.Delete.Channel.Text', action: 'Delete' }
+      : { title: 'ChatList.Context.LeaveChannel', text: 'Chat.Leave.Channel.Text', action: 'VoiceChat.Leave' }
     return owned
-      ? { title: 'Delete Group', text: 'The group will be deleted for all members.', action: 'Delete' }
-      : { title: 'Leave Group', text: 'Are you sure you want to leave this group?', action: 'Leave' }
+      ? { title: 'DeleteMega', text: 'Chat.Delete.Group.Text', action: 'Delete' }
+      : { title: 'ChatList.Context.LeaveGroup', text: 'Chat.Leave.Group.Text', action: 'VoiceChat.Leave' }
   })()
 
   // No chat-switch reset effect needed: App renders <Chat key={selectedId}>,
@@ -680,7 +682,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // `replies.channel_id.toPeerId(true)`), а не из карточки канала. Данные
   // per-post и авторитетнее: карточка приезжает позже поста.
   const openFeedDiscussion = useEvent(({ peerId: groupPeerId, postMid }: { peerId: PeerId; postMid: number }) => {
-    onOpenThread?.({ chatId: groupPeerId, rootMsgId: postMid, title: t('Comments'), subtitle: chat.name })
+    onOpenThread?.({ chatId: groupPeerId, rootMsgId: postMid, title: t('Chat.CommentsLabel'), subtitle: chat.name })
   })
 
   // Прыжок к сообщению — ручка ленты (порт `chat.setMessageId`). Зовут его
@@ -855,13 +857,17 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const headerTypingActive = typingLabel.active
   const headerTypingText = typingLabel.label
   const headerTypingKind = typingLabel.kind
+  // Подпись присутствия — ЖИВОЙ узел ядра (`shared/ui/peerStatus`, порт tweb
+  // `wrappers/getUserStatusString.ts`). Ветку «онлайн» решает он же по
+  // конструктору статуса, как оригинал (:80-82), — прежняя проверка
+  // `isUserStatusOnline(..., nowSeconds())` была ВТОРЫМ читателем срока
+  // годности: истёкший онлайн гасит владелец (`degradeExpiredPresence`), и
+  // читать `expires` в двух местах значит расходиться с ним на длину задержки.
+  // Точку-индикатор рядом (`peerOnline`/`headerOnline`) она по-прежнему ведёт —
+  // это другой вопрос и другой потребитель.
   const presenceLabel =
-    chat.type === 'private' && peerPresence
-      ? isUserStatusOnline(peerPresence, nowSeconds())
-        ? t('online')
-        : lastSeenLabel(userStatusWasOnline(peerPresence) * 1000, lang)
-      : null
-  const headerStatus = realSubtitle ?? presenceLabel ?? (chat.status ? t(chat.status) : '')
+    chat.type === 'private' && peerPresence ? <PeerStatus status={peerPresence} /> : null
+  const headerStatus = realSubtitle ?? presenceLabel ?? (chat.status ? t(chat.status as LangPackKey) : '')
   const headerOnline = isUserStatusOnline(peerPresence, nowSeconds()) || chat.status === 'online'
 
   // Бот-собеседник (для кнопки «Начать», reply-клавиатуры и кнопки-меню) — по профилю.
@@ -1178,7 +1184,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
           // Текст границы непрочитанных — CSS-контент (tweb
           // `.is-first-unread:before { content: var(--unread-messages-text) }`),
           // поэтому значение подаётся строкой в кавычках.
-          ['--unread-messages-text' as string]: JSON.stringify(t('Unread Messages')),
+          ['--unread-messages-text' as string]: JSON.stringify(t('UnreadMessages')),
         }}
       >
         {/* Плейт «сейчас играет» — tweb .pinned-container.pinned-audio: абсолют
@@ -1418,9 +1424,9 @@ export default function Chat({ chat, onBack, thread }: Props) {
         <div className={s.groupCallBanner} onClick={() => void joinGroupCall(numericChatId)}>
           <TgIcon name="videochat" size={18} color="#fff" />
           <Text size={14} weight={600} color="#fff" style={{ flex: 1 }}>
-            {t('Video Chat')} · {groupCallActive.length} {t('participants')}
+            {t('PeerInfo.Action.VoiceChat')} · {tArgs('VoiceChat.Status.Members', [groupCallActive.length])}
           </Text>
-          <Text size={14} weight={700} color="#fff">{t('Join')}</Text>
+          <Text size={14} weight={700} color="#fff">{t('PinnedJoinCall')}</Text>
         </div>
       )}
 
@@ -1429,9 +1435,9 @@ export default function Chat({ chat, onBack, thread }: Props) {
         <div className={s.groupCallBanner} onClick={() => watchLivestream(numericChatId)}>
           <TgIcon name="livestream" size={18} color="#fff" />
           <Text size={14} weight={600} color="#fff" style={{ flex: 1 }}>
-            {t('Live Stream')}
+            {t('Rtmp.Topbar.Title')}
           </Text>
-          <Text size={14} weight={700} color="#fff">{t('Join')}</Text>
+          <Text size={14} weight={700} color="#fff">{t('Rtmp.Topbar.Join')}</Text>
         </div>
       )}
 

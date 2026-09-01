@@ -5,7 +5,7 @@ import { SettingsScreen, Section, Row } from '../../settings/kit'
 import Avatar from '../../../shared/ui/Avatar'
 import TgIcon from '../../TgIcon'
 import ConfirmDialog from '../../settings/ConfirmDialog'
-import { useT } from '../../../i18n'
+import { useT, useTArgs } from '../../../i18n'
 import type { GroupEdit, DiscussionGroup } from '../../../core/hooks/useGroupEdit'
 import type { DiscussionCandidate } from '../../../core/managers/channelsManager'
 import { gradientFor } from '../../../core/dialogToChat'
@@ -14,6 +14,7 @@ import { getLinkedChatPeerId } from '../../../core/peers/peer'
 
 export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => void }) {
   const t = useT()
+  const tArgs = useTArgs()
   // Ключ обсуждения: `linked_chat_id` конструктора — СЫРОЙ положительный id,
   // знаковый вид делает одна функция (`getLinkedChatPeerId`).
   const linkedId = getLinkedChatPeerId(g.card?.fullChat)
@@ -35,15 +36,15 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
   }, [linkedId])
 
   return (
-    <SettingsScreen title="Discussion" onBack={onBack} zIndex={70}>
+    <SettingsScreen title="PeerInfo.Discussion" onBack={onBack} zIndex={70}>
       {/* Пояснение экрана — вендорная подпись секции
           (`sidebar-left-section-caption`), а не свой текстовый блок. */}
       <div className="sidebar-left-section-container">
         <div className="sidebar-left-section no-delimiter">
           <div className="sidebar-left-section-content sidebar-left-section-caption">
             {linkedId
-              ? t('Users can now discuss your posts in the linked group.')
-              : t('Select a group chat that will host comments from your channel.')}
+              ? t('Discussion.Linked')
+              : t('DiscussionChannelHelp3')}
           </div>
         </div>
       </div>
@@ -57,24 +58,24 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
               <Row
                 icon={<Avatar size="md" background={gradientFor(linked.peerId)} text={initials(linked.title)} />}
                 label={linked.title}
-                sublabel={linked.username ? `@${linked.username}` : `${linked.memberCount} ${t('members')}`}
+                sublabel={linked.username ? `@${linked.username}` : tArgs('Members', [linked.memberCount])}
                 translate={false}
               />
             </Section>
           )}
           <Section>
-            <Row icon={<TgIcon name="delete" size={22} color="#ff595a" />} label="Unlink Group" danger onClick={() => setUnlinking(true)} />
+            <Row icon={<TgIcon name="delete" size={22} color="#ff595a" />} label="DiscussionUnlinkGroup" danger onClick={() => setUnlinking(true)} />
           </Section>
         </>
       ) : (
         <Section>
-          <Row icon={<TgIcon name="newgroup" size={22} color="var(--primary-color)" />} label="Create a New Group" accent onClick={() => void g.enableDiscussion()} />
+          <Row icon={<TgIcon name="newgroup" size={22} color="var(--primary-color)" />} label="DiscussionCreateGroup" accent onClick={() => void g.enableDiscussion()} />
           {candidates.map((c) => (
             <Row
               key={c.peerId}
               icon={<Avatar size="md" background={gradientFor(c.peerId)} text={initials(c.title)} />}
               label={c.title}
-              sublabel={c.username ? `@${c.username}` : `${c.memberCount} ${t('members')}`}
+              sublabel={c.username ? `@${c.username}` : tArgs('Members', [c.memberCount])}
               translate={false}
               onClick={() => setConfirming(c)}
             />
@@ -84,9 +85,10 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
 
       {confirming && (
         <ConfirmDialog
-          title={t('Discussion')}
-          text={`${t('Do you want to set')} «${confirming.title}» ${t('as the discussion board for this channel?')}`}
-          action={t('Link Group')}
+          title="PeerInfo.Discussion"
+          text="Discussion.Link.Question"
+          textArgs={[confirming.title]}
+          action="DiscussionLinkGroup"
           zIndex={90}
           onConfirm={() => void g.linkDiscussion(confirming.peerId)}
           onClose={() => setConfirming(null)}
@@ -94,9 +96,9 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
       )}
       {unlinking && (
         <ConfirmDialog
-          title={t('Unlink Group')}
-          text={t('Are you sure you want to unlink this group from the channel?')}
-          action={t('Unlink')}
+          title="DiscussionUnlinkGroup"
+          text="Discussion.Unlink.Text"
+          action="DiscussionUnlink"
           danger
           zIndex={90}
           onConfirm={() => void g.unlinkDiscussion()}

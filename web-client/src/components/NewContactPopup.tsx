@@ -70,7 +70,7 @@ export default function NewContactPopup({
       width={480}
       headerRight={
         <button type="button" className={s.addBtn} disabled={!canSave} onClick={submit}>
-          {saving ? t('Creating…') : t('Create')}
+          {saving ? t('Common.Creating') : t('Create')}
         </button>
       }
     >

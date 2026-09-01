@@ -52,7 +52,7 @@ const pagesOfLinks = () => pageRequests.filter((r) => r.filter === 'links')
 function mount() {
   return render(
     <ManagersProvider managers={managers}>
-      <SharedMedia tab="Links" onTab={() => {}} chatId={CHAT} />
+      <SharedMedia tab="SharedLinksTab2" onTab={() => {}} chatId={CHAT} />
     </ManagersProvider>,
   )
 }

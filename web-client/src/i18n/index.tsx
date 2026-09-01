@@ -1,66 +1,86 @@
 import { create } from 'zustand'
-import { en, loaders, type Dict, type Lang } from './dict'
 
-export type { Lang }
+import I18n, { type LangPackKey } from '@lib/langPack'
+import rootScope from '@lib/rootScope'
 
-// Language picker list (code + native name)
-export const LANGS: { code: Lang; name: string }[] = [
-  { code: 'en', name: 'English' },
-  { code: 'ru', name: 'Русский' },
-  { code: 'uk', name: 'Українська' },
-  { code: 'es', name: 'Español' },
-  { code: 'de', name: 'Deutsch' },
-  { code: 'fr', name: 'Français' },
-]
+/**
+ * ЗЕРКАЛО ЛОКАЛИЗАЦИИ ДЛЯ REACT — и больше здесь ничего нет.
+ *
+ * ── Что было до задачи 9 ───────────────────────────────────────────────────
+ * Этот файл был ВТОРЫМ источником строк: он держал свою плоскую карту (`Strings`),
+ * свою подстановку аргументов (урезанная копия `superFormatter`), свой выбор формы
+ * числа и словарь старой формы («ключ = английская строка», мост `legacyDict`), а
+ * ядро наполнял в довесок (`applyToCore`). Строки при этом приезжали ЧАНКАМИ
+ * (`dict.ru.ts` и четыре соседа), то есть из бандла, — сервер не спрашивал никто,
+ * хотя вся загрузка (кэш, версия, разница) была написана задачами 4-5.
+ *
+ * ── Что здесь теперь ───────────────────────────────────────────────────────
+ * Источник строк один — `I18n.strings` (`lib/langPack.ts`), и `t()` только читает
+ * его через `format(key, true, args)`. Из этого следует всё остальное:
+ *  • одна карта — значит `t(key)` и `i18n(key)` не могут разойтись НИКОГДА, а не
+ *    «сверены пином»;
+ *  • одна подстановка — значит `**жирный**`, `[текст](url)` и иконки разбираются
+ *    в `t()` так же, как в узлах ядра (прежняя копия оставляла звёздочки текстом);
+ *  • одна форма числа — по `Intl.PluralRules` языка ПАКЕТА, а не языка стора.
+ *
+ * ЯЗЫК ЭТОТ ФАЙЛ НЕ ВЕДЁТ (задача 8): владелец — ядро. `setLang` объявляет выбор
+ * ему (`getLangPackAndApply`), а `lang` в сторе — снимок ответа ядра.
+ *
+ * ── Почему стор вообще остался ─────────────────────────────────────────────
+ * React перерисовывается ПОДПИСКОЙ, а не обходом DOM: живые узлы `.i18n` ядро
+ * обновляет само (`applyLangPack` → `weakMap`), но JSX так не достать. Поэтому на
+ * `language_apply` (то самое событие, которым оригинал объявляет «строки
+ * сменились», tweb `langPack.ts:337`) стор кладёт НОВЫЙ `t` — новая ссылка и есть
+ * сигнал перерисовки для `useT()`. Тем же сигналом пользуется ванильный
+ * `connectionStatus.ts` (сравнивает `state.t === prev.t`).
+ */
 
-function isLang(l: string): l is Lang {
-  return l === 'en' || l in loaders
-}
-
-export function getInitial(): Lang {
-  const saved = localStorage.getItem('tg-lang')
-  if (saved && isLang(saved)) return saved
-  const nav = typeof navigator !== 'undefined' ? navigator.language?.slice(0, 2) : 'en'
-  return nav && isLang(nav) ? nav : 'en'
-}
-
-// `t` looks up the translation for the current language; English is the key itself,
-// so it falls back to the original string when no entry exists. A fresh `t` is
-// produced whenever the active dict changes so consumers selecting `t` re-render.
-function makeT(dict: Dict): (s: string) => string {
-  return (s) => dict[s] ?? s
-}
+/** Аргумент подстановки для React: числа и строки. Узлы умеет ядро (`i18n()`), не `t()`. */
+export type TArgs = (string | number)[]
 
 interface I18nState {
-  lang: Lang
-  t: (s: string) => string
-  setLang: (l: Lang) => void
+  /** ЗЕРКАЛО кода языка у ядра (`I18n.getLastRequestedLangCode`), не свой факт.
+   *  Тип — строка, а не union наших словарей: код приезжает с сервера
+   *  (`langpack.getLanguages`), и пакета у него может не быть вовсе — тогда под
+   *  ним остаётся английский, ровно как у непереведённого ключа. */
+  lang: string
+  /** ТОЛЬКО СИМВОЛИЧЕСКИЙ КЛЮЧ. Старой формы («ключ = английская строка») не
+   *  существует больше ни в типе, ни в рантайме: ключа нет в `I18n.strings` —
+   *  `format` отдаёт сам ключ. Держит это ещё и скан исходников
+   *  (`noLegacyKeys.test.ts`), потому что мимо типа строку можно протащить
+   *  приведением. */
+  t: (key: LangPackKey) => string
+  /** Ключ с аргументами: число (форма выбирается языком) и подстановки `%s`/`%1$s`. */
+  tArgs: (key: LangPackKey, args: TArgs) => string
+  setLang: (l: string) => void
 }
 
-// Global language lives in a store (not a React context). `t` starts on the inline
-// English fallback; `loadLang` pulls the active language's chunk and swaps it in.
-export const useI18nStore = create<I18nState>((set) => ({
-  lang: getInitial(),
-  t: makeT(en),
-  setLang: (l) => {
-    localStorage.setItem('tg-lang', l)
-    set({ lang: l })
-    void loadLang(l)
-  },
+/**
+ * Снимок ядра для стора. `t` пересоздаётся КАЖДЫЙ раз намеренно: ссылка на функцию
+ * — единственный сигнал «строки сменились», который видит `useT()`. Само чтение
+ * позднее: замыкание ничего не копирует, а спрашивает `I18n.strings` в момент вызова.
+ */
+function snapshot(): Pick<I18nState, 'lang' | 't' | 'tArgs'> {
+  const t = (key: LangPackKey, args?: TArgs) => I18n.format(key, true, args)
+  return { lang: I18n.getLastRequestedLangCode(), t, tArgs: t as I18nState['tArgs'] }
+}
+
+export const useI18nStore = create<I18nState>(() => ({
+  ...snapshot(),
+  // Выбор языка объявляется ВЛАДЕЛЬЦУ, а зеркало сдвинет `language_apply` —
+  // тогда же, когда сменятся строки. Сдвинуть `lang` здесь, до загрузки пакета,
+  // значило бы показать выбранным язык, которого на экране ещё нет (а если
+  // пакет не доехал — которого не будет вовсе).
+  setLang: (l) => { void I18n.getLangPackAndApply(l) },
 }))
 
-// Load a language's dict chunk and swap `t`. English is inline (no chunk fetched).
-// Guarded against races: a slow chunk for a language the user already switched away
-// from is discarded.
-export async function loadLang(lang: Lang): Promise<void> {
-  const dict = lang === 'en' ? en : { ...en, ...(await loaders[lang]()) }
-  if (useI18nStore.getState().lang === lang) {
-    useI18nStore.setState({ t: makeT(dict) })
-  }
-}
+// Порт tweb `index.ts:490` (`rootScope.addEventListener('language_apply', …)`):
+// у оригинала на этом событии перерисовываются локализованные даты и счётчик
+// непрочитанных, у нас — весь React разом.
+rootScope.addEventListener('language_apply', () => { useI18nStore.setState(snapshot()) })
 
-export const useI18n = () => useI18nStore()
 export const useT = () => useI18nStore((s) => s.t)
+export const useTArgs = () => useI18nStore((s) => s.tArgs)
 export function useLang() {
   const lang = useI18nStore((s) => s.lang)
   const setLang = useI18nStore((s) => s.setLang)

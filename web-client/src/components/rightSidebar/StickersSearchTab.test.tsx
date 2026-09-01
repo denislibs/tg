@@ -1,3 +1,15 @@
+// ── КЛАСС `i18n` УШЁЛ ИЗ REACT-РАЗМЕТКИ (задача #122) ────────────────────────
+//
+// В tweb `.i18n` ставит ЯДРО на узлы, созданные `i18n()`, и служит якорем обхода
+// `applyLangPack`. CSS у класса нет ни там, ни у нас. В нашей JSX-разметке он
+// писался руками — узел в `weakMap` не записан, обход его молча пропускает, а
+// текст обновляет перерисовка React по `language_apply`. То есть класс не делал
+// ничего и при этом читался как «узел живой». Разбор и скан — в
+// `src/i18n/noFakeI18nAnchor.test.ts`.
+//
+// Поэтому пины разметки ниже класс больше не проверяют: сверяется всё
+// остальное, а живость подписи там, где она настоящая, держат свои пины
+// (`I18n.weakMap.get(node)`).
 // Пин DOM-структуры экрана «Поиск стикеров» правой колонки по живому дампу tweb
 // (`docs/tweb/dom/dumps/19-emoticons-06-sticker-search-right.json`):
 //   div#stickers-container.tabs-tab.sidebar-slider-item….chatlist-container.active
@@ -111,7 +123,7 @@ describe('StickersSearchTab — разметка tweb', () => {
     expect(row.getAttribute('data-sticker-set')).toBe('1')
     const details = row.querySelector('.sticker-set-header > .sticker-set-details')!
     expect(details.querySelector('.sticker-set-name')!.textContent).toBe('Duck')
-    expect(details.querySelector('.sticker-set-count > span.i18n')!.textContent).toBe('40 stickers')
+    expect(details.querySelector('.sticker-set-count > span')!.textContent).toBe('40 stickers')
     // tweb stickers.tsx:58 — min(5, count) превью, даже если в наборе больше
     await waitFor(() => {
       const cells = row.querySelectorAll('.sticker-set-stickers > .sticker-set-sticker.media-sticker-wrapper')

@@ -20,7 +20,7 @@ func TestGiftCatalog_StarGiftConstructor_HTTP(t *testing.T) {
 	pool := postgres.NewTestDB(t)
 	uc := newChatUC(pool)
 	uc.SetStars(pgadapter.NewStarsRepo(pool))
-	h := NewRouter(newAuthUC(pool), uc, nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewRouter(newAuthUC(pool), uc, nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	token, _ := signUp(t, h, pool, "+79990000501")
 

@@ -19,7 +19,7 @@ function NotificationsSuggestion({ collapsed }: PendingSuggestionProps) {
   // tweb: setAppSettings('notifications', 'suggested', true) + тост.
   const onDismissed = () => {
     update({ notifySuggested: true })
-    rootScope.dispatchEvent('ui:toast', t('You can turn notifications back on in the settings.'))
+    rootScope.dispatchEvent('ui:toast', t('Suggestion.Notifications.Dismissed'))
   }
 
   // tweb: granted → запомнить и пересобрать push-подписку
@@ -47,8 +47,8 @@ function NotificationsSuggestion({ collapsed }: PendingSuggestionProps) {
       // (font-size 16px, тот же, что у текста). Никакой анимированной иконки нет,
       // поэтому колокольчик остаётся; подстановки аргументов у нашего t() нет —
       // эмодзи уже вшит в ключ словаря.
-      title={t('Never miss a message! 🔔')}
-      subtitle={t('Enable notifications to stay updated.')}
+      title={t('Suggestion.Notifications.Title')}
+      subtitle={t('Suggestion.Notifications.Subtitle')}
       collapsed={collapsed}
       onClick={onClick}
       onClose={onDismissed}

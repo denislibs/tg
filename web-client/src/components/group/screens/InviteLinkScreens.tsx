@@ -2,6 +2,7 @@
 // Кластер пригласительных ссылок (tweb chatInviteLinks / editChatInviteLink /
 // chatInviteLink): список ссылок, создание/редактирование и детали со списком
 // вступивших.
+import type { LangPackKey } from '@/lang'
 import { useEffect, useState } from 'react'
 import { SettingsScreen, Section, Row } from '../../settings/kit'
 import Text from '../../../shared/ui/Text'
@@ -13,41 +14,60 @@ import TgIcon from '../../TgIcon'
 import LottieSticker from '../../LottieSticker'
 import ConfirmDialog from '../../settings/ConfirmDialog'
 import classNames from '../../../shared/lib/classNames'
-import { useT } from '../../../i18n'
+import { useT, useTArgs } from '../../../i18n'
 import type { GroupEdit, ImporterRow } from '../../../core/hooks/useGroupEdit'
 import type { InviteLink } from '../../../core/managers/groupsManager'
 import UserAvatar from '../../UserAvatar'
+import { SentTime } from '../../../shared/ui/dateNodes'
+import I18n from '@lib/langPack'
 
-// expiryLabel описывает срок действия ссылки: «истекла» для прошедшей даты,
-// «истекает <дата>» для будущей, пусто — бессрочная.
-function expiryLabel(t: (k: string) => string, expiresAt?: string): string | undefined {
+/**
+ * expiryLabel описывает срок действия ссылки: «истекла» для прошедшей даты,
+ * «истекает <дата>» для будущей, пусто — бессрочная.
+ *
+ * Дата берётся у ЯДРА (`I18n.getDateTimeFormat` — тот же кэш форматтеров, что у
+ * `IntlDateElement`); прежде здесь стоял `toLocaleDateString()` вовсе без
+ * аргументов, то есть локаль БРАУЗЕРА.
+ *
+ * РАСХОЖДЕНИЕ С ОРИГИНАЛОМ, и оно не в формате, а в самой подписи: tweb на этом
+ * месте показывает не дату, а ОБРАТНЫЙ ОТСЧЁТ — `InviteLink.Sticker.TimeLeft`
+ * с длительностью (`chatInviteLinks.tsx:459`) и кольцом прогресса рядом. Порт
+ * этого — отдельная работа (там своя механика цвета и `strokeDasharray`), а не
+ * правка одной строки. Строкой, а не узлом, дата остаётся вынужденно: результат
+ * склеивается в подзаголовок через ' • ' и в этом же виде едет в `Row label`,
+ * который у нас `string` (раскол контракта — задача #112).
+ */
+function expiryLabel(t: (key: LangPackKey) => string, expiresAt?: string): string | undefined {
   if (!expiresAt) return undefined
   const ts = Date.parse(expiresAt)
   if (Number.isNaN(ts)) return undefined
-  if (ts <= Date.now()) return t('Expired')
-  return `${t('Expires')} ${new Date(ts).toLocaleDateString()}`
+  if (ts <= Date.now()) return t('ExportedInvitation.Status.Expired')
+  return `${t('InviteLinks.Expires')} ${I18n.getDateTimeFormat({ day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(ts))}`
 }
 
 // Подзаголовок строки ссылки (tweb createRow: joins • limit • expiry).
-function linkSubtitle(t: (k: string) => string, l: InviteLink): string {
-  if (l.revoked) return t('revoked')
+function linkSubtitle(t: (key: LangPackKey) => string, tArgs: (key: LangPackKey, args: (string | number)[]) => string, l: InviteLink): string {
+  if (l.revoked) return t('ExportedInvitation.Status.Revoked')
   const parts: string[] = []
   if (l.uses > 0) {
-    parts.push(`${l.uses} ${t('joined')}`)
-    if (l.usageLimit != null && l.uses >= l.usageLimit) parts.push(t('Limit reached'))
-    else if (l.usageLimit != null) parts.push(`${l.usageLimit - l.uses} ${t('remaining')}`)
+    parts.push(tArgs('PeopleJoined', [l.uses]))
+    if (l.usageLimit != null && l.uses >= l.usageLimit) parts.push(t('InviteLinks.LimitReached'))
+    else if (l.usageLimit != null) parts.push(tArgs('PeopleJoinedRemaining', [l.usageLimit - l.uses]))
   } else if (l.usageLimit != null) {
-    parts.push(`${t('can join')} ${l.usageLimit}`)
+    // Число ВНУТРИ строки (ключ оригинала `CanJoin`), а не приклеено в коде: склейка
+    // «суффикс + число» печатала суффикс префиксом («могут вступить 5»).
+    parts.push(tArgs('CanJoin', [l.usageLimit]))
   }
   const exp = expiryLabel(t, l.expiresAt)
   if (exp) parts.push(exp)
-  if (!parts.length && l.requiresApproval) parts.push(t('Request Admin Approval'))
+  if (!parts.length && l.requiresApproval) parts.push(t('ApproveNewMembers'))
   return parts.join(' • ')
 }
 
 // ── Пригласительные ссылки (tweb chatInviteLinks) ────────────────────────────
 export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isChannel: boolean; onBack: () => void }) {
   const t = useT()
+  const tArgs = useTArgs()
   const [copied, setCopied] = useState<string | null>(null)
   const [editing, setEditing] = useState<InviteLink | 'new' | null>(null)
   const [detail, setDetail] = useState<InviteLink | null>(null)
@@ -67,7 +87,7 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
 
   return (
     <SettingsScreen
-      title="Invite Links"
+      title="InviteLinks"
       onBack={onBack}
       zIndex={70}
       sub={editing ? (
@@ -94,63 +114,63 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
           </div>
           <div className="sidebar-left-section-content sidebar-left-section-caption">
             {isChannel
-              ? t('Anyone who has Telegram installed will be able to join your channel by following this link.')
-              : t('Anyone who has Telegram installed will be able to join your group by following this link.')}
+              ? t('ChannelLinkInfo')
+              : t('InviteLinks.Description.Group')}
           </div>
         </div>
       </div>
 
-      <Section caption="Invite Link">
+      <Section caption="InviteLink">
         {primary ? (
           <>
             <Row
               label={primary.url}
-              sublabel={copied === primary.token ? t('Link copied to clipboard.') : t('Copy Link')}
+              sublabel={copied === primary.token ? t('LinkCopied') : t('CopyLink')}
               translate={false}
               onClick={() => copy(primary.token, primary.url)}
             />
             <Row
               icon={<TgIcon name="admin" size={22} />}
-              label={linkSubtitle(t, primary) || t('View link')}
+              label={linkSubtitle(t, tArgs, primary) || t('InviteLinks.View')}
               translate={false}
               onClick={() => setDetail(primary)}
             />
             <Row
               icon={<TgIcon name="delete" size={22} color="#ff595a" />}
-              label="Revoke Link"
+              label="RevokeLink"
               danger
               onClick={() => setRevoking(primary)}
             />
           </>
         ) : (
-          <Row icon={<TgIcon name="plus" size={22} color="var(--primary-color)" />} label="Create a New Link" accent onClick={() => setEditing('new')} />
+          <Row icon={<TgIcon name="plus" size={22} color="var(--primary-color)" />} label="CreateNewLink" accent onClick={() => setEditing('new')} />
         )}
       </Section>
 
-      <Section caption="Additional Links" footer="You can create additional invite links that are limited by time, number of users, or require a paid subscription.">
-        <Row icon={<TgIcon name="plus" size={22} color="var(--primary-color)" />} label="Create a New Link" accent onClick={() => setEditing('new')} />
+      <Section caption="InviteLinks.Additional" footer="InviteLinks.Description.Additional">
+        <Row icon={<TgIcon name="plus" size={22} color="var(--primary-color)" />} label="CreateNewLink" accent onClick={() => setEditing('new')} />
         {additional.map((l) => (
           <Row
             key={l.token}
             icon={<TgIcon name="link" size={22} color="var(--secondary-text-color)" />}
             label={l.title || l.url.replace(/^https?:\/\//, '')}
             translate={false}
-            sublabel={linkSubtitle(t, l) || undefined}
+            sublabel={linkSubtitle(t, tArgs, l) || undefined}
             onClick={() => setDetail(l)}
           />
         ))}
       </Section>
 
       {revoked.length > 0 && (
-        <Section caption="Revoked Links">
-          <Row icon={<TgIcon name="delete" size={22} color="#ff595a" />} label="Delete All Revoked Links" danger onClick={() => setDeletingAll(true)} />
+        <Section caption="RevokedLinks">
+          <Row icon={<TgIcon name="delete" size={22} color="#ff595a" />} label="DeleteAllRevokedLinks" danger onClick={() => setDeletingAll(true)} />
           {revoked.map((l) => (
             <Row
               key={l.token}
               icon={<TgIcon name="link" size={22} color="var(--secondary-text-color)" />}
               label={l.title || l.url.replace(/^https?:\/\//, '')}
               translate={false}
-              sublabel={t('revoked')}
+              sublabel={t('ExportedInvitation.Status.Revoked')}
               onClick={() => setDetail(l)}
             />
           ))}
@@ -159,9 +179,9 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
 
       {revoking && (
         <ConfirmDialog
-          title={t('Revoke Link')}
-          text={t('Are you sure you want to revoke this link? Once the link is revoked, no one will be able to join using it.')}
-          action={t('Revoke')}
+          title="RevokeLink"
+          text="RevokeAlert"
+          action="RevokeButton"
           danger
           zIndex={90}
           onConfirm={() => void g.editInvite(revoking.token, { revoked: true })}
@@ -170,9 +190,9 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
       )}
       {deletingAll && (
         <ConfirmDialog
-          title={t('Delete All Revoked Links')}
-          text={t('Are you sure you want to delete all revoked links?')}
-          action={t('Delete')}
+          title="DeleteAllRevokedLinks"
+          text="ManageLinks.DeleteAll.Confirm"
+          action="Delete"
           danger
           zIndex={90}
           onConfirm={() => void g.deleteAllRevoked()}
@@ -186,8 +206,14 @@ export function InviteLinksScreen({ g, isChannel, onBack }: { g: GroupEdit; isCh
 
 // Шаги «Limit by Period» (tweb stepValues 1h/1d/1w + ∞). undefined — бессрочно.
 const PERIOD_STEPS: (number | undefined)[] = [3600, 86400, 604800, undefined]
-const periodLabel = (v: number | undefined): string =>
-  v === undefined ? '∞' : v < 86400 ? '1 hour' : v < 604800 ? '1 day' : '1 week'
+// Подпись шага — форма числа, как у оригинала (`wrapFormattedDuration` →
+// `DURATION_LANG_KEYS`, wrapDuration.ts:5-13). Прежние `Duration.Days1`/`Duration.Weeks1`
+// ключами БЫТЬ ПЕРЕСТАЛИ (волна свела их в `Days`/`Weeks`), и подпись доезжала до экрана
+// именем ключа; «1 hour» рядом было английским литералом.
+const periodLabel = (v: number | undefined, tArgs: (key: LangPackKey, args: (string | number)[]) => string): string =>
+  v === undefined ? '∞'
+    : v < 86400 ? tArgs('Hours', [1])
+      : v < 604800 ? tArgs('Days', [1]) : tArgs('Weeks', [1])
 // Шаги «Limit Number of Uses» (tweb 1/10/50/100 + ∞). undefined — без лимита.
 const USES_STEPS: (number | undefined)[] = [1, 10, 50, 100, undefined]
 const usesLabel = (v: number | undefined): string => (v === undefined ? '∞' : String(v))
@@ -202,10 +228,10 @@ const closestStep = (steps: (number | undefined)[], value: number): number => {
   })
   return bestIdx
 }
-
 // ── Создание/редактирование ссылки (tweb editChatInviteLink) ─────────────────
 function EditInviteLinkScreen({ g, link, onBack }: { g: GroupEdit; link: InviteLink | null; onBack: () => void }) {
   const t = useT()
+  const tArgs = useTArgs()
   const [name, setName] = useState(link?.title ?? '')
   const [periodIdx, setPeriodIdx] = useState(() => {
     if (!link?.expiresAt) return PERIOD_STEPS.length - 1
@@ -235,7 +261,7 @@ function EditInviteLinkScreen({ g, link, onBack }: { g: GroupEdit; link: InviteL
 
   return (
     <SettingsScreen
-      title={link ? 'Edit Link' : 'New Link'}
+      title={link ? 'InviteLinks.Edit' : 'NewLink'}
       onBack={onBack}
       zIndex={80}
       headerRight={
@@ -244,13 +270,13 @@ function EditInviteLinkScreen({ g, link, onBack }: { g: GroupEdit; link: InviteL
         </IconButton>
       }
     >
-      <Section caption="Link Name" footer="Only admins will see this name.">
+      <Section caption="InviteLinks.NameLabel" footer="LinkNameHelp">
         <div className="input-wrapper">
-          <Input label={t('Link Name (Optional)')} value={name} onChange={setName} maxLength={32} />
+          <Input label={t('LinkNameHint')} value={name} onChange={setName} maxLength={32} />
         </div>
       </Section>
 
-      <Section caption="Limit by Period" footer="You can make the link expire after a certain time.">
+      <Section caption="InviteLinks.LimitPeriod" footer="InviteLinks.TimeLimitHelp">
         {/* Ступенчатый селектор — `range-setting-selector.range-steps-selector`
             с засечками `.range-setting-selector-option` (дамп 15-right-13). */}
         <div className="range-setting-selector range-steps-selector">
@@ -266,7 +292,7 @@ function EditInviteLinkScreen({ g, link, onBack }: { g: GroupEdit; link: InviteL
                 )}
                 style={{ left: `${(i / (PERIOD_STEPS.length - 1)) * 100}%` }}
               >
-                <div className="range-setting-selector-option-text">{periodLabel(v)}</div>
+                <div className="range-setting-selector-option-text">{periodLabel(v, tArgs)}</div>
               </div>
             ))}
           </Slider>
@@ -274,11 +300,11 @@ function EditInviteLinkScreen({ g, link, onBack }: { g: GroupEdit; link: InviteL
       </Section>
 
       <Section>
-        <Row label="Request Admin Approval" toggle checked={approval} onClick={() => setApproval((v) => !v)} />
+        <Row label="ApproveNewMembers" toggle checked={approval} onClick={() => setApproval((v) => !v)} />
       </Section>
 
       {!approval && (
-        <Section caption="Limit Number of Uses" footer="You can make the link work only for a certain number of users.">
+        <Section caption="InviteLinks.LimitUses" footer="InviteLinks.UsesLimitHelp">
         {/* Ступенчатый селектор — `range-setting-selector.range-steps-selector`
               с засечками `.range-setting-selector-option` (дамп 15-right-13). */}
           <div className="range-setting-selector range-steps-selector">
@@ -308,6 +334,7 @@ function EditInviteLinkScreen({ g, link, onBack }: { g: GroupEdit; link: InviteL
 // ── Детали ссылки (tweb chatInviteLink): ссылка + список вступивших ──────────
 function InviteLinkDetailScreen({ g, link, onEdit, onBack }: { g: GroupEdit; link: InviteLink; onEdit: () => void; onBack: () => void }) {
   const t = useT()
+  const tArgs = useTArgs()
   const [copied, setCopied] = useState(false)
   const [importers, setImporters] = useState<ImporterRow[]>([])
   const [revoking, setRevoking] = useState(false)
@@ -326,11 +353,11 @@ function InviteLinkDetailScreen({ g, link, onEdit, onBack }: { g: GroupEdit; lin
   }
 
   return (
-    <SettingsScreen title={link.title || 'Invite Link'} onBack={onBack} zIndex={80}>
-      <Section caption="Invite Link">
+    <SettingsScreen title={link.title ? undefined : 'InviteLink'} titleText={link.title} onBack={onBack} zIndex={80}>
+      <Section caption="InviteLink">
         <Row
           label={link.url}
-          sublabel={copied ? t('Link copied to clipboard.') : t('Copy Link')}
+          sublabel={copied ? t('LinkCopied') : t('CopyLink')}
           translate={false}
           onClick={copy}
         />
@@ -339,19 +366,23 @@ function InviteLinkDetailScreen({ g, link, onEdit, onBack }: { g: GroupEdit; lin
       {link.usageLimit != null && link.uses === 0 && (
         <Section>
           <Text size={14.5} color="var(--secondary-text-color)" style={{ padding: '8px 16px' }}>
-            {`${link.usageLimit} ${t('people can join via this link.')}`}
+            {tArgs('PeopleCanJoinViaLinkCount', [link.usageLimit])}
           </Text>
         </Section>
       )}
 
       {importers.length > 0 && (
-        <Section caption={`${link.uses} ${t('joined')}`}>
+        <Section captionText={tArgs('PeopleJoined', [link.uses])}>
+          {/* Дата вступления — узел `formatFullSentTime` оригинала
+              (`chatInviteLink.tsx:235`: `getSubtitleForElement: (peerId) =>
+              formatFullSentTime(importersMap.get(peerId)?.date)`). Прежний
+              `toLocaleDateString()` был вовсе без аргументов — локаль БРАУЗЕРА. */}
           {importers.map((im) => (
             <Row
               key={im.userId}
               icon={<UserAvatar id={im.userId} name={im.name} photoId={im.photoId} />}
               label={im.name}
-              sublabel={new Date(im.joinedAt).toLocaleDateString()}
+              sublabel={<SentTime timestamp={Math.floor(Date.parse(im.joinedAt) / 1000)} fallback={im.joinedAt} />}
               translate={false}
             />
           ))}
@@ -360,8 +391,8 @@ function InviteLinkDetailScreen({ g, link, onEdit, onBack }: { g: GroupEdit; lin
 
       {!link.revoked ? (
         <Section>
-          <Row icon={<TgIcon name="edit" size={22} />} label="Edit Link" onClick={onEdit} />
-          <Row icon={<TgIcon name="delete" size={22} color="#ff595a" />} label="Revoke Link" danger onClick={() => setRevoking(true)} />
+          <Row icon={<TgIcon name="edit" size={22} />} label="InviteLinks.Edit" onClick={onEdit} />
+          <Row icon={<TgIcon name="delete" size={22} color="#ff595a" />} label="RevokeLink" danger onClick={() => setRevoking(true)} />
         </Section>
       ) : (
         <Section>
@@ -371,9 +402,9 @@ function InviteLinkDetailScreen({ g, link, onEdit, onBack }: { g: GroupEdit; lin
 
       {revoking && (
         <ConfirmDialog
-          title={t('Revoke Link')}
-          text={t('Are you sure you want to revoke this link? Once the link is revoked, no one will be able to join using it.')}
-          action={t('Revoke')}
+          title="RevokeLink"
+          text="RevokeAlert"
+          action="RevokeButton"
           danger
           zIndex={90}
           onConfirm={() => void g.editInvite(link.token, { revoked: true }).then(onBack)}

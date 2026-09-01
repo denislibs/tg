@@ -92,9 +92,9 @@ beforeAll(async () => {
   useSettingsStore = (await import('../../settings')).useSettingsStore
 })
 
-const voice = (mediaId: number) => ({ mediaId, title: 't', subtitle: 's', type: 'voice' as const })
-const round = (mediaId: number) => ({ mediaId, title: 't', subtitle: 's', type: 'round' as const })
-const music = (mediaId: number) => ({ mediaId, title: 't', subtitle: 's', type: 'audio' as const })
+const voice = (mediaId: number) => ({ mediaId, title: 't', date: 1755255240, type: 'voice' as const })
+const round = (mediaId: number) => ({ mediaId, title: 't', date: 1755255240, type: 'round' as const })
+const music = (mediaId: number) => ({ mediaId, title: 't', date: 1755255240, type: 'audio' as const })
 
 /** Дать движку дожевать асинхронный load() (резолв URL + play). */
 const settle = () => new Promise((r) => setTimeout(r, 0))

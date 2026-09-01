@@ -7,11 +7,12 @@ import { SettingsScreen, Section, Row, EntryRow } from './kit'
 import TgIcon from '../TgIcon'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useSettingsStore } from '../../settings'
-import { useT } from '../../i18n'
+import { useT, useTArgs } from '../../i18n'
 import type { StickerSet } from '../../core/managers/stickersManager'
 
 export default function StickersSettings({ onBack }: { onBack: () => void }) {
   const t = useT()
+  const tArgs = useTArgs()
   const managers = useManagers()
   const loopStickers = useSettingsStore((s) => s.loopStickers)
   const update = useSettingsStore((s) => s.update)
@@ -55,35 +56,35 @@ export default function StickersSettings({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <SettingsScreen title="Stickers and Emoji" onBack={onBack} zIndex={50}>
+    <SettingsScreen title="StickersName" onBack={onBack} zIndex={50}>
       <Section>
         <Row
-          label="Loop Animated Stickers"
+          label="InstalledStickers.LoopAnimated"
           toggle
           checked={loopStickers}
           onClick={() => update({ loopStickers: !loopStickers })}
         />
       </Section>
 
-      <Section caption="My Sticker Sets">
+      <Section caption="Stickers.MySets">
         {(mySets ?? []).map((set) => (
           <EntryRow
             key={set.id}
             left={<TgIcon name="stickers" size={24} color="var(--secondary-text-color)" />}
             title={set.title}
-            sub={`${set.count} ${t('stickers')}`}
+            sub={tArgs('Stickers', [set.count])}
             onRemove={() => uninstall(set)}
           />
         ))}
-        {mySets != null && mySets.length === 0 && <Row label="No sticker sets installed" />}
+        {mySets != null && mySets.length === 0 && <Row label="Stickers.NoSets" />}
       </Section>
 
-      <Section caption="Add Sticker Sets">
+      <Section caption="Stickers.AddSets">
         <div style={{ padding: '8px 16px' }}>
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder={t('Search sticker sets')}
+            placeholder={t('Stickers.SearchSets')}
             style={{
               width: '100%', height: 40, border: 'none', outline: 'none',
               borderRadius: 12, padding: '0 14px', fontSize: 15, boxSizing: 'border-box',
@@ -97,7 +98,7 @@ export default function StickersSettings({ onBack }: { onBack: () => void }) {
             icon={<TgIcon name="stickers" size={24} />}
             label={set.title}
             translate={false}
-            sublabel={`${set.count} ${t('stickers')}`}
+            sublabel={tArgs('Stickers', [set.count])}
             onClick={installedIds.has(set.id) ? undefined : () => install(set)}
             value={installedIds.has(set.id) ? undefined : t('Add')}
             selected={installedIds.has(set.id)}

@@ -60,7 +60,7 @@ export default function PremiumCheckout({
       onSuccess?.()
       onClose()
     } catch {
-      setError(t('Payment failed. Please try again.'))
+      setError(t('Payment.Failed'))
     } finally {
       setPaying(false)
     }
@@ -80,7 +80,7 @@ export default function PremiumCheckout({
             <TgIcon name="close" />
           </div>
           <Text size={19} weight={600} color="var(--primary-text-color)" className={s.title}>
-            {t('Payment')}
+            {t('Payment.Title')}
           </Text>
         </div>
 
@@ -91,10 +91,10 @@ export default function PremiumCheckout({
             </div>
             <div className={s.summaryBody}>
               <Text size={16} weight={500} color="var(--primary-text-color)">
-                {t('Telegram Premium')} — {t(plan.labelKey)}
+                {t('Premium.Boarding.Title')} — {t(plan.labelKey)}
               </Text>
               <Text size={14} color="var(--secondary-text-color)">
-                {formatUsd(perMonthCents(plan))} {t('per month')}
+                {formatUsd(perMonthCents(plan))} {t('Stars.Subscriptions.PerMonth')}
               </Text>
             </div>
             <Text size={16} weight={600} color="var(--primary-text-color)">
@@ -103,7 +103,7 @@ export default function PremiumCheckout({
           </div>
 
           <div className={s.field}>
-            <label className={s.label}>{t('Card Number')}</label>
+            <label className={s.label}>{t('PaymentCardNumber')}</label>
             <input
               className={classNames(s.input, number && !isValidCardNumber(number) ? s.inputError : '')}
               inputMode="numeric"
@@ -116,7 +116,7 @@ export default function PremiumCheckout({
 
           <div className={s.row}>
             <div className={s.field}>
-              <label className={s.label}>{t('Expiry')}</label>
+              <label className={s.label}>{t('Payment.Expiry')}</label>
               <input
                 className={classNames(s.input, expiry && !isValidExpiry(expiry) ? s.inputError : '')}
                 inputMode="numeric"
@@ -156,10 +156,10 @@ export default function PremiumCheckout({
             disabled={!valid || paying}
             onClick={() => void pay()}
           >
-            {paying ? t('Processing…') : `${t('Pay')} ${formatUsd(plan.priceCents)}`}
+            {paying ? t('Payment.Processing') : `${t('Checkout.PasswordEntry.Pay')} ${formatUsd(plan.priceCents)}`}
           </button>
           <Text size={12.5} color="var(--secondary-text-color)" className={s.disclaimer}>
-            {t('This is a demo checkout. No real payment is processed.')}
+            {t('Payment.DemoNotice')}
           </Text>
         </div>
       </div>

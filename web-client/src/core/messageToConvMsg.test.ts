@@ -81,9 +81,11 @@ describe('messageToConvMsg', () => {
     expect(messageToConvMsg({ ...voice, media: undefined }, 7).media).toBeUndefined()
   })
 
-  it('formats time as local HH:MM, not the raw value', () => {
+  // Поля `time` («ЧЧ:ММ» строкой) у витрины больше нет: время бабла строит узлом
+  // `messageTime.ts::makeTime` (порт tweb `chat/utils.ts:39-41`), и читателей у
+  // проекции не осталось — снесено вместе с задачей #124.
+  it('дата едет ISO-строкой, а не сырым значением', () => {
     const c = messageToConvMsg(base, 7)
-    expect(c.time).toMatch(/^\d{2}:\d{2}$/)
     expect(c.createdAt).toBe(new Date(base.date * 1000).toISOString())
   })
 

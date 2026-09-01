@@ -6,15 +6,6 @@ import { isLocalMessageId } from './history/messageId'
 import { getPeerId } from './peers/peerId'
 import { AUTHOR_HIDDEN_TITLE } from './peers/getPeerTitle'
 
-// Format a unix timestamp (seconds) as local 24h "HH:MM".
-// The renderer's formatTime renders this as-is in 24h mode and converts to AM/PM
-// in 12h mode, so the bubble shows a real clock time, not the raw value.
-function hhmm(date: number): string {
-  const d = new Date(date * 1000)
-  if (Number.isNaN(d.getTime())) return ''
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
-
 /** Дата сообщения в ISO — вью-модель (`ConvMsg.createdAt`) считает отсчёты по
  *  абсолютному времени. На проводе и в модели это `date:int` (секунды), перевод
  *  живёт здесь, на границе витрины. */
@@ -124,7 +115,6 @@ export function messageToConvMsg(
     text: convType === 'service' ? serviceMsgText(m as Extract<MyMessage, { _: 'messageService' }>, opts?.pinnedTarget ? messageForReply(opts.pinnedTarget) : undefined) : getMessageText(m),
     photoSuggestion,
     entities: real?.entities,
-    time: hhmm(m.date),
     createdAt: messageDateISO(m.date),
     date: m.date,
     editDate: real?.edit_date,

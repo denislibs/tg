@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRef } from 'react'
 import { act, cleanup, render } from '@testing-library/react'
+import I18n from '@lib/langPack'
 import InputSearch, { CONNECTION_ANIMATION_DURATION, type InputSearchStatus } from './InputSearch'
 import { MemberPicker } from '../../../components/group/screens/shared'
 import { useSettingsStore } from '../../../settings'
@@ -109,7 +110,7 @@ describe('InputSearch.toggleLoading — спиннер вместо лупы (tw
     // пока идёт коннект, и спиннер дёргался бы на каждом
     const { statusRef, root } = renderInput()
     act(() => statusRef.current!.toggleLoading(true))
-    act(() => statusRef.current!.setPlaceholder('Подключение…'))
+    act(() => statusRef.current!.setPlaceholder('Updating'))
     const preloader = root.querySelector<HTMLElement>('.preloader-container')!
     const placeholder = root.querySelector<HTMLElement>('.input-search-placeholder')!
     expect(root.lastElementChild).toBe(placeholder)
@@ -181,28 +182,35 @@ describe('InputSearch.toggleLoading — спиннер вместо лупы (tw
 describe('InputSearch.setPlaceholder — кросс-фейд (tweb :175-198)', () => {
   it('во время перехода в DOM ровно два узла: старый с is-hiding и новый', () => {
     const { statusRef, root } = renderInput()
-    act(() => statusRef.current!.setPlaceholder('Поиск'))
-    act(() => statusRef.current!.setPlaceholder('Подключение…'))
+    act(() => statusRef.current!.setPlaceholder('Search'))
+    act(() => statusRef.current!.setPlaceholder('Updating'))
 
     const nodes = placeholders(root)
     expect(nodes).toHaveLength(2)
-    expect(nodes[0].textContent).toBe('Поиск')
+    expect(nodes[0].textContent).toBe('Search')
     expect(nodes[0].classList.contains('is-hiding')).toBe(true)
-    expect(nodes[1].textContent).toBe('Подключение…')
+    expect(nodes[1].textContent).toBe('Updating...')
     expect(nodes[1].classList.contains('is-hiding')).toBe(false)
     expect(nodes[1].className.split(' ').sort()).toEqual(['i18n', 'input-search-placeholder', 'will-animate'])
+    // Класс `.i18n` НАСТОЯЩИЙ: узел построен `i18n(key)` и записан в `weakMap`,
+    // поэтому его найдёт и перепишет `applyLangPack`. Прежде этот `span` с тем
+    // же классом создавался здесь руками, а текст в него клал вызывающий —
+    // обход находил узел, `weakMap.get` давал `undefined`, и узел молча
+    // пропускался. Именно из-за этого автомат состояния соединения держал СВОЮ
+    // подписку на язык (задача #118).
+    expect(I18n.weakMap.get(nodes[1])).toBeDefined()
   })
 
   it('после окончания анимации остаётся один узел — новый', () => {
     const { statusRef, root } = renderInput()
-    act(() => statusRef.current!.setPlaceholder('Поиск'))
-    act(() => statusRef.current!.setPlaceholder('Подключение…'))
+    act(() => statusRef.current!.setPlaceholder('Search'))
+    act(() => statusRef.current!.setPlaceholder('Updating'))
 
     act(() => { vi.advanceTimersByTime(CONNECTION_ANIMATION_DURATION) })
 
     const nodes = placeholders(root)
     expect(nodes).toHaveLength(1)
-    expect(nodes[0].textContent).toBe('Подключение…')
+    expect(nodes[0].textContent).toBe('Updating...')
   })
 
   it('повторный вызов с тем же ключом — no-op: узел не пересоздаётся (tweb :176)', () => {
@@ -211,39 +219,41 @@ describe('InputSearch.setPlaceholder — кросс-фейд (tweb :175-198)', (
     // сам, а setPlaceholder зовёт с одним и тем же ключом каждый тик
     const timer = document.createElement('span')
     timer.textContent = '12'
-    act(() => statusRef.current!.setPlaceholder('ConnectionStatus.ReconnectInPlain', timer))
+    act(() => statusRef.current!.setPlaceholder('ConnectionStatus.ReconnectInPlain', [timer]))
     const node = placeholders(root)[0]
 
     timer.textContent = '11'
-    act(() => statusRef.current!.setPlaceholder('ConnectionStatus.ReconnectInPlain', document.createElement('span')))
+    act(() => statusRef.current!.setPlaceholder('ConnectionStatus.ReconnectInPlain', [document.createElement('span')]))
 
     expect(placeholders(root)).toHaveLength(1)
     expect(placeholders(root)[0]).toBe(node)
     expect(node.contains(timer)).toBe(true)
-    expect(node.textContent).toBe('11')
+    // Узел несёт ВСЮ фразу ключа с подставленным аргументом — секунды живут
+    // внутри неё отдельным `<span>`, который автомат мутирует сам.
+    expect(node.textContent).toContain('11')
   })
 })
 
 describe('InputSearch — декларативный проп placeholder', () => {
   it('проп рендерит тот же узел плейсхолдера', () => {
-    const { root } = renderInput({ placeholder: 'Поиск' })
+    const { root } = renderInput({ placeholder: 'Search' })
     const nodes = placeholders(root)
     expect(nodes).toHaveLength(1)
-    expect(nodes[0].textContent).toBe('Поиск')
+    expect(nodes[0].textContent).toBe('Search')
     expect(nodes[0].classList.contains('will-animate')).toBe(true)
   })
 
   it('смена пропа даёт тот же кросс-фейд', () => {
-    const { statusRef, root, view } = renderInput({ placeholder: 'Поиск' })
-    view.rerender(<InputSearch value="" onChange={() => {}} statusRef={statusRef} placeholder="Обновление…" />)
+    const { statusRef, root, view } = renderInput({ placeholder: 'Search' })
+    view.rerender(<InputSearch value="" onChange={() => {}} statusRef={statusRef} placeholder="Updating" />)
 
     expect(placeholders(root)).toHaveLength(2)
     act(() => { vi.advanceTimersByTime(CONNECTION_ANIMATION_DURATION) })
-    expect(placeholders(root).map((n) => n.textContent)).toEqual(['Обновление…'])
+    expect(placeholders(root).map((n) => n.textContent)).toEqual(['Updating...'])
   })
 
   it('существующее место (MemberPicker из group/screens/shared) по-прежнему показывает плейсхолдер', () => {
-    render(<MemberPicker title="Добавить" members={[]} onBack={() => {}} onPick={() => {}} />)
+    render(<MemberPicker title="GroupAddMembers" members={[]} onBack={() => {}} onPick={() => {}} />)
     const root = document.querySelector<HTMLElement>('.input-search')!
     // язык по умолчанию в тестовой среде — английский, `t('Search')` даёт ключ как есть
     expect(placeholders(root).map((n) => n.textContent)).toEqual(['Search'])

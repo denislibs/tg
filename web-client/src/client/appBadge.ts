@@ -8,10 +8,11 @@
 // Отдельно — PWA-бейдж на иконке приложения: navigator.setAppBadge получает
 // `folder.unreadUnmutedPeerIds.size` (tweb :194-199) — число ЧАТОВ с непрочитанным
 // (не сумму сообщений), по папке «Все» (архив в неё не входит).
+import type { LangPackKey } from '@/lang'
 import { useChatsStore } from '../stores/chatsStore'
 import { isDialogArchived, type Dialog } from '../core/models'
 import { isPeerMuted } from '../core/dialogs/notifySettings'
-import { useI18nStore, type Lang } from '../i18n'
+import { useI18nStore } from '../i18n'
 import { IS_MOBILE } from '../environment/userAgent'
 import idleController from '../helpers/idleController'
 
@@ -19,26 +20,16 @@ import idleController from '../helpers/idleController'
 const FONT_FAMILY =
   'Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif'
 
-// ── i18n: tweb lang.ts:317 'Notifications.Count' {one_value/other_value} ─────
-// У нас словарь плоский (ключ = английская строка), поэтому третья славянская
-// форма (2-4) живёт отдельным ключом; правило выбора формы — в коде, как в
-// core/format/commentsLabel.ts.
-const ONE = '%d notification'
-const FEW = '%d notifications (few)' // только ru/uk
-const OTHER = '%d notifications'
-
-/** «N notifications» для заголовка вкладки (tweb I18n.format('Notifications.Count')). */
-export function notificationsCountTitle(count: number, lang: Lang, t: (s: string) => string): string {
-  let key = OTHER
-  if (lang === 'ru' || lang === 'uk') {
-    const m10 = count % 10
-    const m100 = count % 100
-    if (m10 === 1 && m100 !== 11) key = ONE
-    else if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) key = FEW
-  } else if (count === 1) {
-    key = ONE
-  }
-  return t(key).replace('%d', String(count))
+/**
+ * «N notifications» для заголовка вкладки (tweb `I18n.format('Notifications.Count')`).
+ *
+ * ФОРМУ ЧИСЛА ВЫБИРАЕТ ЯЗЫК, а не этот файл. До задачи 6 здесь стояла своя славянская
+ * арифметика (`m10`/`m100`) и три ОТДЕЛЬНЫХ ключа под её ветки; теперь ключ один, у него
+ * формы (`langPackStringPluralized`), и выбирает их `Intl.PluralRules` внутри `tArgs`.
+ * Отсюда и параметр: не `t`, а `tArgs` — только он умеет аргумент и форму.
+ */
+export function notificationsCountTitle(count: number, tArgs: (key: LangPackKey, args: (string | number)[]) => string): string {
+  return tArgs('Notifications.Count', [count])
 }
 
 /**
@@ -128,8 +119,7 @@ function onTitleInterval(): void {
   if (!notificationsCount || wasChanged) return
 
   titleChanged = true
-  const { t, lang } = useI18nStore.getState()
-  document.title = notificationsCountTitle(notificationsCount, lang, t)
+  document.title = notificationsCountTitle(notificationsCount, useI18nStore.getState().tArgs)
   const href = drawFavicon(notificationsCount)
   if (href) setFavicon(href)
 }

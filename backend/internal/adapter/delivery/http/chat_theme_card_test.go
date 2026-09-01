@@ -20,7 +20,7 @@ func newThemeRouter(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	pool := postgres.NewTestDB(t)
 	privacyUC := usecaseprivacy.New(pgadapter.NewPrivacyRepo(pool))
 	return NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, nil,
-		NewICEHandler("", "test"), nil, nil, nil, privacyUC, nil, nil, nil, nil, nil, nil), pool
+		NewICEHandler("", "test"), nil, nil, nil, privacyUC, nil, nil, nil, nil, nil, nil, nil), pool
 }
 
 func TestChatTheme_LivesInFullCard_HTTP(t *testing.T) {

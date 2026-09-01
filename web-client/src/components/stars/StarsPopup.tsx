@@ -45,7 +45,7 @@ export default function StarsPopup({ open, onClose }: { open: boolean; onClose: 
             <TgIcon name="close" />
           </IconButton>
           <Text size={18} weight={600} color="var(--primary-text-color)" className={s.headerTitle}>
-            {t('Telegram Stars')}
+            {t('TelegramStars')}
           </Text>
         </div>
 
@@ -55,7 +55,7 @@ export default function StarsPopup({ open, onClose }: { open: boolean; onClose: 
               <StarIcon size={32} />
               {balance}
             </div>
-            <div className={s.bigBalanceLabel}>{t('Your balance')}</div>
+            <div className={s.bigBalanceLabel}>{t('Stars.Balance')}</div>
           </div>
 
           <div className={s.optionsGrid}>
@@ -70,7 +70,7 @@ export default function StarsPopup({ open, onClose }: { open: boolean; onClose: 
           </div>
 
           <Text size={13} color="var(--secondary-text-color)" style={{ display: 'block', textAlign: 'center', marginTop: 16 }}>
-            {t('Demo: top-up adds Stars instantly, no real payment.')}
+            {t('Stars.DemoNotice')}
           </Text>
         </div>
       </div>

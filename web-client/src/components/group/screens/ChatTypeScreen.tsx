@@ -26,12 +26,12 @@ export function ChatTypeScreen({ g, isChannel, onBack }: { g: GroupEdit; isChann
     const res = await g.saveType(isPublic, username.trim())
     setSaving(false)
     if (res === 'ok') onBack()
-    else setError(res === 'taken' ? t('This link is already taken.') : t('Invalid link.'))
+    else setError(res === 'taken' ? t('LinkTaken') : t('LinkInvalid'))
   }
 
   return (
     <SettingsScreen
-      title={isChannel ? 'Channel Type' : 'Group Type'}
+      title={isChannel ? 'ChannelType' : 'GroupType'}
       onBack={onBack}
       zIndex={70}
       headerRight={
@@ -46,18 +46,18 @@ export function ChatTypeScreen({ g, isChannel, onBack }: { g: GroupEdit; isChann
           `label.row.row-with-padding.row-clickable.hover-effect.rp` с
           `.row-subtitle` и `label.radio-field.disable-hover > input[type=radio]
           + div.radio-field-main` (стили — `_checkbox.scss` / `_row.scss`). */}
-      <Section caption={isChannel ? 'Channel Type' : 'Group Type'}>
+      <Section caption={isChannel ? 'ChannelType' : 'GroupType'}>
         <form>
           {[false, true].map((pub) => (
             <label key={String(pub)} className="row row-with-padding row-clickable hover-effect rp">
               <div className="row-subtitle">
                 {pub
                   ? t(isChannel
-                    ? 'Public channels can be found in search and anyone can join.'
-                    : 'Public groups can be found in search, chat history is available to everyone and anyone can join.')
+                    ? 'ChannelPublicInfo'
+                    : 'MegaPublicInfo')
                   : t(isChannel
-                    ? 'Private channels can only be joined via an invite link.'
-                    : 'Private groups can only be joined if you were invited or have an invite link.')}
+                    ? 'ChannelPrivateInfo'
+                    : 'MegaPrivateInfo')}
               </div>
               <label className="radio-field disable-hover">
                 <input
@@ -68,8 +68,8 @@ export function ChatTypeScreen({ g, isChannel, onBack }: { g: GroupEdit; isChann
                 />
                 <div className="radio-field-main">
                   {t(pub
-                    ? (isChannel ? 'Public Channel' : 'Public Group')
-                    : (isChannel ? 'Private Channel' : 'Private Group'))}
+                    ? (isChannel ? 'ChannelPublic' : 'MegaPublic')
+                    : (isChannel ? 'ChannelPrivate' : 'MegaPrivate'))}
                 </div>
               </label>
             </label>
@@ -79,13 +79,13 @@ export function ChatTypeScreen({ g, isChannel, onBack }: { g: GroupEdit; isChann
 
       {isPublic ? (
         <Section footer={isChannel
-          ? 'People can share this link with others and find your channel using Telegram search.'
-          : 'People can share this link with others and find your group using Telegram search.'}>
+          ? 'Channel.UsernameAboutChannel'
+          : 'Channel.UsernameAboutGroup'}>
           {/* Поле ссылки — вендорный `.input-wrapper > .input-field`
               (дамп 15-right-17); ошибка красит поле, как в tweb. */}
           <div className="input-wrapper">
             <Input
-              label={t('Link')}
+              label={t('SetUrlPlaceholder')}
               value={username}
               onChange={(v) => { setUsername(v); setError(null) }}
               wrapClassName={error ? 'error' : undefined}
@@ -98,13 +98,13 @@ export function ChatTypeScreen({ g, isChannel, onBack }: { g: GroupEdit; isChann
       ) : (
         primary && (
           <Section footer={isChannel
-            ? 'People can join your channel by following this link. You can revoke the link any time.'
-            : 'People can join your group by following this link. You can revoke the link any time.'}>
+            ? 'ChannelPrivateLinkHelp'
+            : 'MegaPrivateLinkHelp'}>
             {/* Ссылка-приглашение — обычная кликабельная `.row` (дамп 15-right-17) */}
             <Row label={primary.url} translate={false} onClick={() => void navigator.clipboard.writeText(primary.url)} />
             <Row
               icon={<TgIcon name="delete" size={22} color="#ff595a" />}
-              label="Revoke Link"
+              label="RevokeLink"
               danger
               onClick={() => {
                 void g.editInvite(primary.token, { revoked: true }).then(() => g.createInvite())

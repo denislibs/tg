@@ -1,3 +1,4 @@
+import type { LangPackKey } from '@/lang'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import TgIcon from './TgIcon'
@@ -8,11 +9,11 @@ import { SERVICE_USER_ID } from '../core/dialogToChat'
 import { useSearchStore } from '../stores/searchStore'
 import useMediaQuery from '../shared/lib/useMediaQuery'
 import type { Chat } from '../data'
-import { useT } from '../i18n'
+import { useT, useTArgs } from '../i18n'
 import { useHeaderMenuActions } from '../core/hooks/useHeaderMenuActions'
 import { useReportStore } from '../stores/reportStore'
 
-type Item = { icon: ReactNode; label: string; danger?: boolean; submenu?: boolean; onClick?: () => void }
+type Item = { icon: ReactNode; label: LangPackKey; danger?: boolean; submenu?: boolean; onClick?: () => void }
 
 interface Props {
   chat: Chat
@@ -42,6 +43,7 @@ interface Props {
 
 export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddMember, onSelectMessages, onAddContact, onDeleteChat, onClearHistory, onChangeTheme, onSendGift, onBoost, onCreateGiveaway, onStartStream, onOpenSuggested }: Props) {
   const t = useT()
+  const tArgs = useTArgs()
   const initSearch = useSearchStore((s) => s.initSearch)
   const [autoOpen, setAutoOpen] = useState(false)
   // Меню закрывается с exit-анимацией ui-kit Menu: сначала open=false, владелец
@@ -54,8 +56,8 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
     ? () => { onToggleMute(); close() }
     : undefined
   const muteItem: Item = muted
-    ? { icon: <TgIcon name="unmute" size={20} />, label: 'Unmute', onClick: handleMute }
-    : { icon: <TgIcon name="mute" size={20} />, label: 'Mute', onClick: handleMute }
+    ? { icon: <TgIcon name="unmute" size={20} />, label: 'ChatList.Context.Unmute', onClick: handleMute }
+    : { icon: <TgIcon name="mute" size={20} />, label: 'ChatList.Context.Mute', onClick: handleMute }
 
   // На мобилке лупа скрыта из шапки — поиск живёт пунктом меню
   // (tweb topbar.ts: menuButton 'Search', verify: mediaSizes.isMobile).
@@ -79,23 +81,23 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
   // корзину delete, как остальные деструктивные действия.
   // «Изменить тему оформления» (Telegram messages.setChatTheme) — пикер тем чата.
   const themeItem: Item | null = onChangeTheme
-    ? { icon: <TgIcon name="darkmode" size={20} />, label: 'Change Theme', onClick: () => { onChangeTheme(); close() } }
+    ? { icon: <TgIcon name="darkmode" size={20} />, label: 'Chat.Menu.ChangeTheme', onClick: () => { onChangeTheme(); close() } }
     : null
 
   const clearItem: Item | null = onClearHistory
-    ? { icon: <TgIcon name="delete" size={20} />, label: 'Clear History', danger: true, onClick: () => { onClearHistory(); close() } }
+    ? { icon: <TgIcon name="delete" size={20} />, label: 'Calendar.ClearHistory', danger: true, onClick: () => { onClearHistory(); close() } }
     : null
 
   // «Предложенные посты» (Telegram suggested posts) — админ канала.
   const suggestedItem: Item | null = onOpenSuggested
-    ? { icon: <TgIcon name="add_chat" size={20} />, label: 'Suggested Posts', onClick: () => { onOpenSuggested(); close() } }
+    ? { icon: <TgIcon name="add_chat" size={20} />, label: 'SuggestedPosts.Title', onClick: () => { onOpenSuggested(); close() } }
     : null
 
   // «Пожаловаться» на чат целиком (tweb reportPeer): открывает глобальный
   // ReportPopup через reportStore без id сообщения.
   const reportItem: Item = {
     icon: <TgIcon name="hand" size={20} />,
-    label: 'Report',
+    label: 'ReportChat',
     danger: true,
     onClick: () => {
       if (Number.isFinite(numericChatId)) useReportStore.getState().open({ peerId: numericChatId })
@@ -109,37 +111,37 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
     // добавить в контакты — этих пунктов в меню нет (как в Telegram).
     const isService = peerId === SERVICE_USER_ID
     items = [
-      { icon: <TgIcon name="timer" size={20} />, label: 'Auto-delete', submenu: true },
+      { icon: <TgIcon name="timer" size={20} />, label: 'AutoDeleteMessagesShort', submenu: true },
       ...searchItems,
       muteItem,
       ...(!isService
-        ? [
+        ? ([
             { icon: <TgIcon name="phone" size={20} />, label: 'Call', onClick: () => { startCallForChat(chat, false); close() } },
-            { icon: <TgIcon name="videocamera" size={20} />, label: 'Video Call', onClick: () => { startCallForChat(chat, true); close() } },
-          ]
+            { icon: <TgIcon name="videocamera" size={20} />, label: 'VideoCall', onClick: () => { startCallForChat(chat, true); close() } },
+          ] satisfies Item[])
         : []),
-      { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
+      { icon: <TgIcon name="checkround" size={20} />, label: 'Chat.Menu.SelectMessages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
       ...(!isService
-        ? [
-            { icon: <TgIcon name="adduser" size={20} />, label: 'Add to contacts', onClick: onAddContact ? () => { onAddContact(); close() } : undefined },
-            { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift', onClick: onSendGift ? () => { onSendGift(); close() } : undefined },
+        ? ([
+            { icon: <TgIcon name="adduser" size={20} />, label: 'AddContact', onClick: onAddContact ? () => { onAddContact(); close() } : undefined },
+            { icon: <TgIcon name="gift" size={20} />, label: 'Chat.Menu.SendGift', onClick: onSendGift ? () => { onSendGift(); close() } : undefined },
             blocked
-              ? { icon: <TgIcon name="lockoff" size={20} />, label: 'Unblock user', onClick: toggleBlock }
-              : { icon: <TgIcon name="lock" size={20} />, label: 'Block user', onClick: toggleBlock },
-            { icon: <TgIcon name="deleteuser" size={20} />, label: 'Disable Sharing' },
-          ]
+              ? { icon: <TgIcon name="lockoff" size={20} />, label: 'UnblockUser', onClick: toggleBlock }
+              : { icon: <TgIcon name="lock" size={20} />, label: 'BlockUser', onClick: toggleBlock },
+            { icon: <TgIcon name="deleteuser" size={20} />, label: 'DisableSharing' },
+          ] satisfies Item[])
         : []),
       ...(themeItem ? [themeItem] : []),
       ...(clearItem ? [clearItem] : []),
       ...(!isService ? [reportItem] : []),
-      { icon: <TgIcon name="delete" size={20} />, label: 'Delete Chat', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
+      { icon: <TgIcon name="delete" size={20} />, label: 'ChatList.Context.DeleteChat', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
     ]
   } else if (chat.type === 'saved') {
     // «Избранное» (Saved Messages, self-peer): нет уведомлений/звонков/жалоб/
     // удаления — только поиск (на узком экране) и выбор сообщений.
     items = [
       ...searchItems,
-      { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
+      { icon: <TgIcon name="checkround" size={20} />, label: 'Chat.Menu.SelectMessages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
     ]
   } else if (chat.type === 'secret') {
     // Секретный чат (E2E): минимальное меню. Нет поиска (сервер не ищет по
@@ -147,68 +149,68 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
     // очистка истории объединены в одно действие «Покинуть диалог» (удаляет
     // секретный чат у себя целиком).
     items = [
-      { icon: <TgIcon name="timer" size={20} />, label: 'Auto-delete', submenu: true },
+      { icon: <TgIcon name="timer" size={20} />, label: 'AutoDeleteMessagesShort', submenu: true },
       muteItem,
-      { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
-      { icon: <TgIcon name="delete" size={20} />, label: 'Leave chat', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
+      { icon: <TgIcon name="checkround" size={20} />, label: 'Chat.Menu.SelectMessages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
+      { icon: <TgIcon name="delete" size={20} />, label: 'Chat.LeaveChat', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
     ]
   } else if (chat.type === 'group') {
     items = [
       // Видеочат (tweb PeerInfo.Action.VoiceChat, иконка videochat)
       {
         icon: <TgIcon name="videochat" size={20} />,
-        label: 'Video Chat',
+        label: 'PeerInfo.Action.VoiceChat',
         onClick: () => { void joinGroupCall(Number(chat.id)); close() },
       },
-      { icon: <TgIcon name="timer" size={20} />, label: 'Auto-delete', submenu: true },
+      { icon: <TgIcon name="timer" size={20} />, label: 'AutoDeleteMessagesShort', submenu: true },
       ...searchItems,
       muteItem,
       ...(onAddMember
-        ? [{ icon: <TgIcon name="adduser" size={20} />, label: 'Add member', onClick: () => { onAddMember(); close() } }]
+        ? ([{ icon: <TgIcon name="adduser" size={20} />, label: 'AddOneMemberAlertTitle', onClick: () => { onAddMember(); close() } }] satisfies Item[])
         : []),
-      { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
-      { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
+      { icon: <TgIcon name="checkround" size={20} />, label: 'Chat.Menu.SelectMessages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
+      { icon: <TgIcon name="gift" size={20} />, label: 'Chat.Menu.SendGift' },
       ...(themeItem ? [themeItem] : []),
       ...(clearItem ? [clearItem] : []),
       reportItem,
-      { icon: <TgIcon name="delete" size={20} />, label: owned ? 'Delete Group' : 'Leave Group', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
+      { icon: <TgIcon name="delete" size={20} />, label: owned ? 'DeleteMega' : 'ChatList.Context.LeaveGroup', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
     ]
   } else if (owned) {
     // owned channel
     items = [
-      { icon: <TgIcon name="timer" size={20} />, label: 'Auto-delete', submenu: true },
+      { icon: <TgIcon name="timer" size={20} />, label: 'AutoDeleteMessagesShort', submenu: true },
       ...searchItems,
       muteItem,
-      { icon: <TgIcon name="livestream" size={20} />, label: 'Live Stream', onClick: onStartStream ? () => { onStartStream(); close() } : undefined },
-      { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
-      { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
-      { icon: <TgIcon name="boost" size={20} />, label: 'Boost Channel', onClick: onBoost ? () => { onBoost(); close() } : undefined },
-      { icon: <TgIcon name="gift_premium" size={20} />, label: 'Create Giveaway', onClick: onCreateGiveaway ? () => { onCreateGiveaway(); close() } : undefined },
+      { icon: <TgIcon name="livestream" size={20} />, label: 'Rtmp.Topbar.Title', onClick: onStartStream ? () => { onStartStream(); close() } : undefined },
+      { icon: <TgIcon name="checkround" size={20} />, label: 'Chat.Menu.SelectMessages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
+      { icon: <TgIcon name="gift" size={20} />, label: 'Chat.Menu.SendGift' },
+      { icon: <TgIcon name="boost" size={20} />, label: 'BoostChannel', onClick: onBoost ? () => { onBoost(); close() } : undefined },
+      { icon: <TgIcon name="gift_premium" size={20} />, label: 'Giveaway.Create', onClick: onCreateGiveaway ? () => { onCreateGiveaway(); close() } : undefined },
       ...(suggestedItem ? [suggestedItem] : []),
-      { icon: <TgIcon name="delete" size={20} />, label: 'Delete Channel', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
+      { icon: <TgIcon name="delete" size={20} />, label: 'PeerInfo.DeleteChannel', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
     ]
   } else {
     // channel you don't own
     items = [
       ...searchItems,
       muteItem,
-      { icon: <TgIcon name="message" size={20} />, label: 'View discussion' },
-      { icon: <TgIcon name="checkround" size={20} />, label: 'Select Messages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
-      { icon: <TgIcon name="gift" size={20} />, label: 'Send a Gift' },
-      { icon: <TgIcon name="boost" size={20} />, label: 'Boost Channel', onClick: onBoost ? () => { onBoost(); close() } : undefined },
+      { icon: <TgIcon name="message" size={20} />, label: 'ViewDiscussion' },
+      { icon: <TgIcon name="checkround" size={20} />, label: 'Chat.Menu.SelectMessages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
+      { icon: <TgIcon name="gift" size={20} />, label: 'Chat.Menu.SendGift' },
+      { icon: <TgIcon name="boost" size={20} />, label: 'BoostChannel', onClick: onBoost ? () => { onBoost(); close() } : undefined },
       reportItem,
-      { icon: <TgIcon name="delete" size={20} />, label: 'Leave Channel', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
+      { icon: <TgIcon name="delete" size={20} />, label: 'ChatList.Context.LeaveChannel', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
     ]
   }
 
   // Per-chat автоудаление (Telegram messages.setHistoryTTL): применяется к
   // НОВЫМ сообщениям чата; сервер объявляет смену сервисной пилюлей set_ttl.
   const DAY = 86400
-  const autoItems: { label: string; period: number }[] = [
-    { label: 'Never', period: 0 },
-    { label: '1 day', period: DAY },
-    { label: '1 week', period: 7 * DAY },
-    { label: '1 month', period: 30 * DAY },
+  const autoItems: { unit: LangPackKey | null; count: number; period: number }[] = [
+    { unit: null, count: 0, period: 0 },
+    { unit: 'Days', count: 1, period: DAY },
+    { unit: 'Weeks', count: 1, period: 7 * DAY },
+    { unit: 'Months', count: 1, period: 30 * DAY },
   ]
   const currentPeriod = chat.autoDeletePeriod ?? 0
 
@@ -223,9 +225,9 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
       >
         {autoItems.map((a) => (
           <MenuItem
-            key={a.label}
+            key={a.period}
             icon={a.period === 0 ? <TgIcon name="auto_delete_circle_off" size={20} /> : <TgIcon name="timer" size={20} />}
-            label={t(a.label)}
+            label={a.unit ? tArgs(a.unit, [a.count]) : t('Never')}
             right={currentPeriod === a.period ? <TgIcon name="check" size={20} /> : undefined}
             onClick={() => setChatTtl(a.period)}
           />

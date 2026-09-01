@@ -2,6 +2,7 @@
 // секция «Автозагрузка медиа» (общий чекбокс, ряды Фото/Видео/Файлы с
 // под-экранами, сброс с confirm) + секция «Расчётный объём хранения»
 // (подсчёт кэша по типам, очистка, слайдеры TTL/лимита).
+import type { LangPackKey } from '@/lang'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Text from '../../shared/ui/Text'
 import Checkbox from '../../shared/ui/Checkbox'
@@ -11,7 +12,7 @@ import type { IconName } from '../TgIcon'
 import { SettingsScreen, Section, Row } from './kit'
 import { useSettingsStore, type AutoDownloadPeerTypes, type Settings } from '../../settings'
 import { collectCachedFilesSizes, clearCachedFiles, syncCacheSettingsToSW, formatBytes, type CachedFilesSizes } from '../../core/mediaCache'
-import { useT } from '../../i18n'
+import { useT, useTArgs } from '../../i18n'
 import ConfirmDialog from './ConfirmDialog'
 import s from './DataStorageSettings.module.scss'
 
@@ -25,12 +26,12 @@ const SETTING_KEY: Record<MediaType, 'autoDownloadPhoto' | 'autoDownloadVideo' |
 
 const PEER_KEYS = ['contacts', 'private', 'groups', 'channels'] as const
 // Короткие подписи для перечисления в сабтайтле (tweb AutoDownloadContacts/Pm/…)
-const PEER_SHORT: Record<(typeof PEER_KEYS)[number], string> = {
-  contacts: 'Contacts', private: 'PM', groups: 'Groups', channels: 'Channels',
+const PEER_SHORT: Record<(typeof PEER_KEYS)[number], LangPackKey> = {
+  contacts: 'Contacts', private: 'AutoDownloadPm', groups: 'ChatList.Filter.Groups', channels: 'ChatList.Filter.Channels',
 }
 // Подписи чекбокс-рядов под-экрана (tweb AutodownloadContacts/PrivateChats/…)
 const PEER_ROW: Record<(typeof PEER_KEYS)[number], string> = {
-  contacts: 'Contacts', private: 'Private Chats', groups: 'Group Chats', channels: 'Channels',
+  contacts: 'Contacts', private: 'AutodownloadPrivateChats', groups: 'AutodownloadGroupChats', channels: 'ChatList.Filter.Channels',
 }
 
 const AD_DEFAULTS: AutoDownloadPeerTypes = { contacts: true, private: true, groups: true, channels: true }
@@ -45,13 +46,14 @@ const DAY = 86400
 const WEEK = DAY * 7
 const MONTH = DAY * 30
 // tweb storageQuota cacheTimeOptions: 1–6 дней, 1–3 недели, 1–6 месяцев, год
-const CACHE_TIME_OPTIONS: { value: number; label: string }[] = [
-  { value: DAY, label: '1 day' }, { value: DAY * 2, label: '2 days' }, { value: DAY * 3, label: '3 days' },
-  { value: DAY * 4, label: '4 days' }, { value: DAY * 5, label: '5 days' }, { value: DAY * 6, label: '6 days' },
-  { value: WEEK, label: '1 week' }, { value: WEEK * 2, label: '2 weeks' }, { value: WEEK * 3, label: '3 weeks' },
-  { value: MONTH, label: '1 month' }, { value: MONTH * 2, label: '2 months' }, { value: MONTH * 3, label: '3 months' },
-  { value: MONTH * 4, label: '4 months' }, { value: MONTH * 5, label: '5 months' }, { value: MONTH * 6, label: '6 months' },
-  { value: DAY * 365, label: '1 year' },
+// Разряд и число, а не готовая подпись: форму слова выбирает язык (`tArgs`).
+const CACHE_TIME_OPTIONS: { value: number; unit: LangPackKey; count: number }[] = [
+  { value: DAY, unit: 'Days', count: 1 }, { value: DAY * 2, unit: 'Days', count: 2 }, { value: DAY * 3, unit: 'Days', count: 3 },
+  { value: DAY * 4, unit: 'Days', count: 4 }, { value: DAY * 5, unit: 'Days', count: 5 }, { value: DAY * 6, unit: 'Days', count: 6 },
+  { value: WEEK, unit: 'Weeks', count: 1 }, { value: WEEK * 2, unit: 'Weeks', count: 2 }, { value: WEEK * 3, unit: 'Weeks', count: 3 },
+  { value: MONTH, unit: 'Months', count: 1 }, { value: MONTH * 2, unit: 'Months', count: 2 }, { value: MONTH * 3, unit: 'Months', count: 3 },
+  { value: MONTH * 4, unit: 'Months', count: 4 }, { value: MONTH * 5, unit: 'Months', count: 5 }, { value: MONTH * 6, unit: 'Months', count: 6 },
+  { value: DAY * 365, unit: 'Years', count: 1 },
 ]
 
 const MB = 1024 * 1024
@@ -78,7 +80,7 @@ function nearestIdx(value: number, values: number[]): number {
 function autoDownloadSubtitle(
   types: AutoDownloadPeerTypes,
   enabled: boolean,
-  t: (k: string) => string,
+  t: (key: LangPackKey) => string,
   sizeMax?: number,
 ): string {
   const enabledKeys = PEER_KEYS.filter((k) => types[k])
@@ -88,10 +90,10 @@ function autoDownloadSubtitle(
   if (sizeMax !== undefined) {
     const size = formatBytes(sizeMax, t)
     return isAll
-      ? t('Up to %1$s in all chats').replace('%1$s', size)
-      : t('Up to %1$s for %2$s').replace('%1$s', size).replace('%2$s', list)
+      ? t('AutoDownloadUpToOnAllChats').replace('%1$s', size)
+      : t('AutoDownloadOnUpToFor').replace('%1$s', size).replace('%2$s', list)
   }
-  return isAll ? t('On in all chats') : t('On for %1$s').replace('%1$s', list)
+  return isAll ? t('AutoDownloadOnAllChats') : t('AutoDownloadOnFor').replace('%1$s', list)
 }
 
 // Под-экран «Автозагрузка фото/видео/файлов»: 4 чекбокса по типам чатов,
@@ -103,8 +105,8 @@ function AutoDownloadTypeScreen({ type, onBack }: { type: MediaType; onBack: () 
   const fileSizeMax = useSettingsStore((st) => st.autoDownloadFileSizeMax)
   const update = useSettingsStore((st) => st.update)
 
-  const title = type === 'photo' ? 'Auto-download photos'
-    : type === 'video' ? 'Auto-download videos and GIFs' : 'Auto-download files and music'
+  const title = type === 'photo' ? 'AutoDownloadPhotosTitle'
+    : type === 'video' ? 'AutoDownloadVideosTitle' : 'AutoDownloadFilesTitle'
 
   // value⁴-шкала: слайдер держит [0..1], размер = v⁴·range+min (tweb)
   const [sliderVal, setSliderVal] = useState(() => Math.sqrt(Math.sqrt((fileSizeMax - FILE_MIN) / FILE_RANGE)))
@@ -130,9 +132,9 @@ function AutoDownloadTypeScreen({ type, onBack }: { type: MediaType; onBack: () 
         {type === 'file' && (
           <div className={s.range}>
             <div className={s.rangeDetails}>
-              <Text size={16} color="var(--primary-text-color)">{t('Maximum file size')}</Text>
+              <Text size={16} color="var(--primary-text-color)">{t('AutoDownloadMaxFileSize')}</Text>
               <Text size={15} color="var(--secondary-text-color)">
-                {t('up to %1$s').replace('%1$s', formatBytes(sizeOf(sliderVal), t))}
+                {t('AutodownloadSizeLimitUpTo').replace('%1$s', formatBytes(sizeOf(sliderVal), t))}
               </Text>
             </div>
             <Slider value={sliderVal} min={0} max={1} step={0.01} onChange={onSlider} className={s.rangeSlider} />
@@ -145,6 +147,7 @@ function AutoDownloadTypeScreen({ type, onBack }: { type: MediaType; onBack: () 
 
 export default function DataStorageSettings({ onBack }: { onBack: () => void }) {
   const t = useT()
+  const tArgs = useTArgs()
   const settings = useSettingsStore()
   const { update } = settings
   const [sub, setSub] = useState<MediaType | null>(null)
@@ -194,7 +197,7 @@ export default function DataStorageSettings({ onBack }: { onBack: () => void }) 
 
   const disabled = !settings.autoDownloadEnabled
 
-  const quotaIconRow = (icon: IconName, label: string, value: number | undefined) => (
+  const quotaIconRow = (icon: IconName, label: LangPackKey, value: number | undefined) => (
     <div className={s.quotaRow}>
       <div className={s.quotaIcon}><TgIcon name={icon} size={24} /></div>
       <div className={s.quotaBody}>
@@ -206,30 +209,30 @@ export default function DataStorageSettings({ onBack }: { onBack: () => void }) 
 
   return (
     <SettingsScreen
-      title="Data and Storage"
+      title="DataSettings"
       onBack={onBack}
       zIndex={50}
       sub={sub ? <AutoDownloadTypeScreen type={sub} onBack={() => setSub(null)} /> : null}
     >
-      <Section caption="Automatic media download" footer="Voice messages are tiny, so they're always downloaded automatically.">
+      <Section caption="AutomaticMediaDownload" footer="AutoDownloadAudioInfo">
         <Row
           icon={<Checkbox checked={settings.autoDownloadEnabled} shape="square" size={20} />}
-          label="Auto-Download Media"
+          label="AutoDownloadMedia"
           onClick={() => update({ autoDownloadEnabled: !settings.autoDownloadEnabled })}
         />
         <div className={disabled ? s.disabled : undefined}>
           <Row
-            label="Photos"
+            label="AutoDownloadPhotos"
             sublabel={autoDownloadSubtitle(settings.autoDownloadPhoto, settings.autoDownloadEnabled, t)}
             onClick={() => setSub('photo')}
           />
           <Row
-            label="Videos"
+            label="AutoDownloadVideos"
             sublabel={autoDownloadSubtitle(settings.autoDownloadVideo, settings.autoDownloadEnabled, t)}
             onClick={() => setSub('video')}
           />
           <Row
-            label="Files"
+            label="SharedFilesTab2"
             sublabel={autoDownloadSubtitle(settings.autoDownloadFile, settings.autoDownloadEnabled, t, settings.autoDownloadFileSizeMax)}
             onClick={() => setSub('file')}
           />
@@ -237,32 +240,32 @@ export default function DataStorageSettings({ onBack }: { onBack: () => void }) 
         <div className={changed ? undefined : s.disabled}>
           <Row
             icon={<TgIcon name="delete" size={24} />}
-            label="Reset Auto-Download Settings"
+            label="ResetAutomaticMediaDownload"
             accent
             onClick={() => setConfirm('reset')}
           />
         </div>
       </Section>
 
-      <Section caption="Estimated storage quota" footer="Note that cache required for the app to function properly will not be cleared.">
+      <Section caption="StorageQuota.Title" footer="StorageQuota.Caption">
         <div className={s.quotaRow}>
           <div className={s.quotaBody}>
-            <Text size={16} color="var(--primary-text-color)">{t('Cached files')}</Text>
+            <Text size={16} color="var(--primary-text-color)">{t('StorageQuota.CachedFiles')}</Text>
             <Text size={13.5} color="var(--secondary-text-color)">{fmt(sizes?.total)}</Text>
           </div>
           <div className={s.clearBtn} onClick={() => setConfirm('files')}>
             <Text size={15} weight={600} color="var(--primary-color)">{t('Clear')}</Text>
           </div>
         </div>
-        {quotaIconRow('image', 'Images', sizes?.images)}
-        {quotaIconRow('play', 'Video files', sizes?.videos)}
-        {quotaIconRow('stickers_face', 'Stickers and emojis', sizes?.stickers)}
+        {quotaIconRow('image', 'StorageQuota.Images', sizes?.images)}
+        {quotaIconRow('play', 'StorageQuota.VideoFiles', sizes?.videos)}
+        {quotaIconRow('stickers_face', 'StorageQuota.StickersEmoji', sizes?.stickers)}
         {quotaIconRow('limit_file', 'Other', sizes?.other)}
 
         <div className={s.range}>
           <div className={s.rangeDetails}>
-            <Text size={16} color="var(--primary-text-color)">{t('Clear cache older than')}</Text>
-            <Text size={15} color="var(--secondary-text-color)">{t(CACHE_TIME_OPTIONS[timeIdx].label)}</Text>
+            <Text size={16} color="var(--primary-text-color)">{t('StorageQuota.ClearCacheOlderThan')}</Text>
+            <Text size={15} color="var(--secondary-text-color)">{tArgs(CACHE_TIME_OPTIONS[timeIdx].unit, [CACHE_TIME_OPTIONS[timeIdx].count])}</Text>
           </div>
           <Slider
             value={timeIdx} min={0} max={CACHE_TIME_OPTIONS.length - 1} step={1}
@@ -272,9 +275,9 @@ export default function DataStorageSettings({ onBack }: { onBack: () => void }) 
         </div>
         <div className={s.range}>
           <div className={s.rangeDetails}>
-            <Text size={16} color="var(--primary-text-color)">{t('Cache size limit')}</Text>
+            <Text size={16} color="var(--primary-text-color)">{t('StorageQuota.CacheSizeLimit')}</Text>
             <Text size={15} color="var(--secondary-text-color)">
-              {CACHE_SIZE_VALUES[sizeIdx] === 0 ? t('Auto') : formatBytes(CACHE_SIZE_VALUES[sizeIdx], t)}
+              {CACHE_SIZE_VALUES[sizeIdx] === 0 ? t('StorageQuota.CacheSizeLimitAuto') : formatBytes(CACHE_SIZE_VALUES[sizeIdx], t)}
             </Text>
           </div>
           <Slider
@@ -286,7 +289,7 @@ export default function DataStorageSettings({ onBack }: { onBack: () => void }) 
 
         <Row
           icon={<TgIcon name="delete" size={24} />}
-          label="Clear All"
+          label="StorageQuota.ClearAll"
           accent
           onClick={() => setConfirm('all')}
         />
@@ -294,29 +297,28 @@ export default function DataStorageSettings({ onBack }: { onBack: () => void }) 
 
       {confirm === 'reset' && (
         <ConfirmDialog
-          title={t('Reset settings')}
-          text={t('Are you sure you want to reset auto-download settings?')}
-          action={t('Reset')}
+          title="ResetAutomaticMediaDownloadAlertTitle"
+          text="ResetAutomaticMediaDownloadAlert"
+          action="Reset"
           onConfirm={resetAutoDownload}
           onClose={() => setConfirm(null)}
         />
       )}
       {confirm === 'files' && (
         <ConfirmDialog
-          title={t('Clear cached files')}
-          text={sizes && sizes.total > 0
-            ? t('Are you sure you want to clear %s of cached data?').replace('%s', formatBytes(sizes.total, t, 1))
-            : t('Are you sure you want to clear the cached data?')}
-          action={t('Clear')}
+          title="StorageQuota.ClearCachedFiles"
+          text={sizes && sizes.total > 0 ? 'StorageQuota.ClearConfirmation' : 'StorageQuota.ClearConfirmationUnknown'}
+          textArgs={sizes && sizes.total > 0 ? [formatBytes(sizes.total, t, 1)] : undefined}
+          action="Clear"
           onConfirm={clearFiles}
           onClose={() => setConfirm(null)}
         />
       )}
       {confirm === 'all' && (
         <ConfirmDialog
-          title={t('Clear All')}
-          text={t('Are you sure you want to clear all cached data?')}
-          action={t('Clear')}
+          title="StorageQuota.ClearAll"
+          text="StorageQuota.ClearAllConfirmation"
+          action="Clear"
           onConfirm={clearFiles}
           onClose={() => setConfirm(null)}
         />

@@ -1,3 +1,4 @@
+import type { LangPackKey } from '@/lang'
 import { useEffect, useRef, useState } from 'react'
 import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
@@ -134,26 +135,26 @@ export default function MainMenu({
 
   // Пункты подменю «Ещё» (tweb createMoreSubmenu). «Версию A» опускаем —
   // у нас одна версия, переключение вело бы на сторонний сайт.
-  const moreItems: { icon: string; label: string; onClick: () => void; show?: boolean }[] = [
-    { icon: 'darkmode', label: 'Dark Mode', onClick: () => { onToggleMode?.(); close() } },
+  const moreItems: { icon: string; label: LangPackKey; onClick: () => void; show?: boolean }[] = [
+    { icon: 'darkmode', label: 'DarkMode', onClick: () => { onToggleMode?.(); close() } },
     {
       icon: 'animations',
-      label: reduceMotion ? 'Enable Animations' : 'Disable Animations',
+      label: reduceMotion ? 'EnableAnimations' : 'DisableAnimations',
       onClick: () => { update({ reduceMotion: !reduceMotion }); close() },
     },
-    { icon: 'help', label: 'Telegram Features', onClick: () => openUrl('https://telegram.org/tour') },
-    { icon: 'bug', label: 'Report Bug', onClick: () => openUrl('https://bugs.telegram.org/?tag_ids=40&sort=time') },
-    { icon: 'add', label: 'Install App', onClick: () => { void usePwaStore.getState().install(); close() }, show: canInstall },
+    { icon: 'help', label: 'TelegramFeatures', onClick: () => openUrl('https://telegram.org/tour') },
+    { icon: 'bug', label: 'ReportBug', onClick: () => openUrl('https://bugs.telegram.org/?tag_ids=40&sort=time') },
+    { icon: 'add', label: 'PWA.Install', onClick: () => { void usePwaStore.getState().install(); close() }, show: canInstall },
     {
       icon: 'pip',
-      label: 'Picture in Picture',
+      label: 'Pip.Title',
       onClick: () => {
         const labels = {
-          title: t('Telegram is open in Picture-in-Picture mode'),
-          hint: t('To return to the tab, click the button here or the icon in the floating window.'),
-          back: t('Back to Tab'),
+          title: t('Pip.ActiveTitle'),
+          hint: t('Pip.ActiveHint'),
+          back: t('Pip.BackToTab'),
         }
-        void enterAppPip(labels).then((ok) => { if (!ok) rootScope.dispatchEvent('ui:toast', t('Picture-in-Picture is not supported in this browser.')) })
+        void enterAppPip(labels).then((ok) => { if (!ok) rootScope.dispatchEvent('ui:toast', t('Pip.Unsupported')) })
         close()
       },
       show: pipSupported(),
@@ -195,19 +196,19 @@ export default function MainMenu({
         />
       ))}
       {accounts.length < 4 && (
-        <MenuItem icon={<TgIcon name="add" size={20} />} label={t('Add Account')} onClick={() => void addAccount()} />
+        <MenuItem icon={<TgIcon name="add" size={20} />} label={t('MultiAccount.AddAccount')} onClick={() => void addAccount()} />
       )}
       {divider}
-      <MenuItem icon={<TgIcon name="savedmessages" size={20} />} label={t('Saved Messages')} onClick={onOpenSaved ?? onClose} />
-      <MenuItem icon={<TgIcon name="radiooff" size={20} />} label={t('My Stories')} onClick={onOpenMyStories ?? onClose} />
+      <MenuItem icon={<TgIcon name="savedmessages" size={20} />} label={t('SavedMessages')} onClick={onOpenSaved ?? onClose} />
+      <MenuItem icon={<TgIcon name="radiooff" size={20} />} label={t('MyStories.Title')} onClick={onOpenMyStories ?? onClose} />
       <MenuItem icon={<TgIcon name="user" size={20} />} label={t('Contacts')} onClick={onOpenContacts ?? onClose} />
-      <MenuItem icon={<TgIcon name="phone" size={20} />} label={t('Calls')} onClick={onOpenCalls ?? onClose} />
-      <MenuItem icon={<TgIcon name="newprivate" size={20} />} label={t('Close Friends')} onClick={onOpenCloseFriends ?? onClose} />
+      <MenuItem icon={<TgIcon name="phone" size={20} />} label={t('PrivacySettings.VoiceCalls')} onClick={onOpenCalls ?? onClose} />
+      <MenuItem icon={<TgIcon name="newprivate" size={20} />} label={t('CloseFriends.Title')} onClick={onOpenCloseFriends ?? onClose} />
       {divider}
-      <MenuItem icon={<TgIcon name="card_outline" size={20} />} label={t('Wallet')} onClick={onOpenWallet ?? onClose} />
+      <MenuItem icon={<TgIcon name="card_outline" size={20} />} label={t('Stars.Wallet')} onClick={onOpenWallet ?? onClose} />
       <MenuItem
         icon={<TgIcon name="star_filled" size={20} color="var(--primary-color)" />}
-        label={t('Telegram Premium')}
+        label={t('Premium.Boarding.Title')}
         onClick={onOpenPremium ?? onClose}
       />
       {divider}
@@ -215,7 +216,7 @@ export default function MainMenu({
       <div ref={moreItemRef}>
         <MenuItem
           icon={<TgIcon name="more" size={20} />}
-          label={t('More')}
+          label={t('MultiAccount.More')}
           submenu
           onMouseEnter={openMore}
           onClick={openMore}
@@ -224,7 +225,7 @@ export default function MainMenu({
       {onLogout && (
         <>
           {divider}
-          <MenuItem icon={<TgIcon name="logout" size={20} />} label={t('Log Out')} danger onClick={onLogout} />
+          <MenuItem icon={<TgIcon name="logout" size={20} />} label={t('EditAccount.Logout')} danger onClick={onLogout} />
         </>
       )}
     </Menu>

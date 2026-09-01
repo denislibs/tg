@@ -8,6 +8,7 @@
 // Шрифты вкладки «Текст» (порядок/веса — из tweb fontInfoMap). Импортятся здесь,
 // а не в main.tsx: MediaEditor — ленивый чанк, поэтому @font-face + woff2 не
 // висят в критическом пути и грузятся только при открытии редактора.
+import type { LangPackKey } from '@/lang'
 import '@fontsource/suez-one/400.css'
 import '@fontsource/rubik-bubbles/400.css'
 import '@fontsource/chewy/400.css'
@@ -72,13 +73,13 @@ type ColoredBrush = 'pen' | 'arrow' | 'marker' | 'neon'
 const BRUSH_COLORS: Record<ColoredBrush, string> = {
   pen: '#fe4438', arrow: '#ffd60a', marker: '#ff8901', neon: '#62e5e0',
 }
-const BRUSHES: { key: BrushType; label: string; icon: IconName }[] = [
-  { key: 'pen', label: 'Pen', icon: 'edit' },
-  { key: 'arrow', label: 'Arrow', icon: 'arrowhead' },
-  { key: 'marker', label: 'Brush', icon: 'brush' },
-  { key: 'neon', label: 'Neon', icon: 'highlights' },
-  { key: 'blur', label: 'Blur', icon: 'sharpen' },
-  { key: 'eraser', label: 'Eraser', icon: 'delete' },
+const BRUSHES: { key: BrushType; label: LangPackKey; icon: IconName }[] = [
+  { key: 'pen', label: 'MediaEditor.Brushes.Pen', icon: 'edit' },
+  { key: 'arrow', label: 'MediaEditor.Brushes.Arrow', icon: 'arrowhead' },
+  { key: 'marker', label: 'MediaEditor.Brushes.Brush', icon: 'brush' },
+  { key: 'neon', label: 'MediaEditor.Brushes.Neon', icon: 'highlights' },
+  { key: 'blur', label: 'MediaEditor.Brushes.Blur', icon: 'sharpen' },
+  { key: 'eraser', label: 'MediaEditor.Brushes.Eraser', icon: 'delete' },
 ]
 const hasBrushColor = (b: BrushType): b is ColoredBrush => b in BRUSH_COLORS
 // Радиус размытия base для blur-кисти — в пикселях исходника, зависит от размера
@@ -99,8 +100,8 @@ const TABS: { key: Tab; icon: IconName }[] = [
 // Радиус захвата угловой ручки стикера (экранные px).
 const STICKER_HANDLE_HIT = 16
 
-const ASPECT_LABELS: Record<AspectPreset, string> = {
-  free: 'Free', original: 'Original', '1:1': 'Square',
+const ASPECT_LABELS: Record<AspectPreset, LangPackKey | string> = {
+  free: 'MediaEditor.Free', original: 'MediaEditor.Original', '1:1': 'MediaEditor.Square',
   '3:2': '3:2', '2:3': '2:3', '4:3': '4:3', '3:4': '3:4', '5:4': '5:4', '4:5': '4:5',
   '7:5': '7:5', '5:7': '5:7', '16:9': '16:9', '9:16': '9:16',
 }
@@ -1285,7 +1286,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
     </div>
   )
 
-  const sliderRow = (label: string, value: number, min: number, max: number, onChange: (v: number) => void, showSign = false) => (
+  const sliderRow = (label: LangPackKey, value: number, min: number, max: number, onChange: (v: number) => void, showSign = false) => (
     <div className={s.sliderRow}>
       <div className={s.sliderHead}>
         <span>{t(label)}</span>
@@ -1411,7 +1412,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
 
         {img && crop && cropTab && (
           <div className={s.wheel} style={{ height: WHEEL_H }}>
-            <IconButton size="small" color="#fff" title={t('Rotate')} onClick={rotate90}>
+            <IconButton size="small" color="#fff" title={t('MediaEditor.Rotate')} onClick={rotate90}>
               <TgIcon name="rotate" />
             </IconButton>
             <div
@@ -1428,10 +1429,10 @@ export default function MediaEditor({ file, onDone, onCancel }: {
               <div className={s.wheelArrow} />
               <div className={s.wheelValue}>{wheelValue}°</div>
             </div>
-            <IconButton size="small" color="#fff" title={t('Flip')} onClick={flipHorizontal}>
+            <IconButton size="small" color="#fff" title={t('MediaEditor.Flip')} onClick={flipHorizontal}>
               <TgIcon name="flip" />
             </IconButton>
-            <IconButton size="small" color="#fff" title={t('Flip')} onClick={flipVertical}>
+            <IconButton size="small" color="#fff" title={t('MediaEditor.Flip')} onClick={flipVertical}>
               <span style={{ display: 'flex', transform: 'rotate(90deg)' }}><TgIcon name="flip" /></span>
             </IconButton>
           </div>
@@ -1442,7 +1443,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
             <IconButton
               size="small"
               color="#fff"
-              title={playing ? t('Pause') : t('Play')}
+              title={playing ? t('Media.Pause') : t('Media.Play')}
               onClick={togglePlay}
             >
               <TgIcon name={playing ? 'pause' : 'play'} />
@@ -1450,7 +1451,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
             <IconButton
               size="small"
               color="#fff"
-              title={videoMuted ? t('Unmute') : t('Mute')}
+              title={videoMuted ? t('MediaEditor.Unmute') : t('MediaEditor.Mute')}
               onClick={() => { setVideoMuted((m) => !m); const v = img as HTMLVideoElement | null; if (v) v.muted = !videoMuted }}
             >
               <TgIcon name={videoMuted ? 'volume_off' : 'volume_up'} />
@@ -1492,7 +1493,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
               <div
                 className={s.tlCover}
                 style={{ left: `${videoThumbPos * 100}%` }}
-                title={t('Cover')}
+                title={t('MediaEditor.Cover')}
                 onPointerDown={(e) => onTlDown(e, 'cover')}
                 onPointerMove={onTlMove}
                 onPointerUp={onTlUp}
@@ -1544,14 +1545,14 @@ export default function MediaEditor({ file, onDone, onCancel }: {
 
           {tab === 'crop' && (
             <>
-              <div className={s.label}>{t('Aspect ratio')}</div>
+              <div className={s.label}>{t('MediaEditor.AspectRatio')}</div>
               {ASPECT_PRESETS.map((p) => (
                 <div
                   key={p}
                   className={classNames(s.presetRow, aspect === p ? s.presetActive : '')}
                   onClick={() => applyAspect(p)}
                 >
-                  {t(ASPECT_LABELS[p])}
+                  {t(ASPECT_LABELS[p] as LangPackKey)}
                 </div>
               ))}
               <div className={s.resetBtn} onClick={resetCrop}>{t('Reset')}</div>
@@ -1563,8 +1564,8 @@ export default function MediaEditor({ file, onDone, onCancel }: {
               <div className={hasBrushColor(brush) ? '' : s.swatchesDisabled}>
                 {swatches(brushColorValue, setBrushColorValue)}
               </div>
-              {sliderRow('Brush size', brushSize, 2, 32, changeBrushSize)}
-              <div className={s.label}>{t('Tool')}</div>
+              {sliderRow('MediaEditor.BrushSize', brushSize, 2, 32, changeBrushSize)}
+              <div className={s.label}>{t('MediaEditor.Tool')}</div>
               <div className={s.brushList}>
                 {BRUSHES.map(({ key, label, icon }) => (
                   <div
@@ -1607,8 +1608,8 @@ export default function MediaEditor({ file, onDone, onCancel }: {
                   ))}
                 </div>
               </div>
-              {sliderRow('Text size', textSize, 16, 64, setTextSize)}
-              <div className={s.label}>{t('Font')}</div>
+              {sliderRow('MediaEditor.TextSize', textSize, 16, 64, setTextSize)}
+              <div className={s.label}>{t('MediaEditor.Font')}</div>
               <div className={s.fontList}>
                 {FONTS.map(({ key, label }) => (
                   <div
@@ -1639,9 +1640,9 @@ export default function MediaEditor({ file, onDone, onCancel }: {
 
       {confirmOpen && (
         <ConfirmDialog
-          title={t('Discard changes')}
-          text={t('Are you sure you want to discard the changes?')}
-          action={t('Discard')}
+          title="MediaEditor.DiscardChanges"
+          text="MediaEditor.Discard.Text"
+          action="Discard"
           danger
           zIndex={4300}
           onConfirm={onCancel}

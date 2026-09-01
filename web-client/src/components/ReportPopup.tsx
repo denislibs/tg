@@ -3,6 +3,7 @@
 // необязательный комментарий + отправка. Цель (чат или сообщение) берётся из
 // reportStore, поэтому попап смонтирован один раз глобально (App) и открывается
 // из контекстного меню сообщения и из ⋮-меню чата без проброса пропсов.
+import type { LangPackKey } from '@/lang'
 import { useState } from 'react'
 import Popup from '../shared/ui/Popup'
 import Text from '../shared/ui/Text'
@@ -17,11 +18,11 @@ import s from './ReportPopup.module.scss'
 
 // Причины из белого списка бэкенда (domain.ReportReason). Порядок — как в tweb
 // reportMessages (спам, насилие, порнография, детская безопасность, другое).
-export const REPORT_REASONS: { value: ReportReason; label: string }[] = [
-  { value: 'spam', label: 'Spam' },
-  { value: 'violence', label: 'Violence' },
-  { value: 'porn', label: 'Pornography' },
-  { value: 'child_abuse', label: 'Child Abuse' },
+export const REPORT_REASONS: { value: ReportReason; label: LangPackKey }[] = [
+  { value: 'spam', label: 'ReportChatSpam' },
+  { value: 'violence', label: 'ReportChatViolence' },
+  { value: 'porn', label: 'ReportChatPornography' },
+  { value: 'child_abuse', label: 'ReportChatChild' },
   { value: 'other', label: 'Other' },
 ]
 
@@ -49,22 +50,22 @@ export default function ReportPopup() {
         reason,
         comment: comment.trim() || undefined,
       })
-      rootScope.dispatchEvent('ui:toast', t('Report sent'))
+      rootScope.dispatchEvent('ui:toast', t('Report.Sent'))
       clear()
     } catch {
       setBusy(false)
-      rootScope.dispatchEvent('ui:toast', t('Could not send report'))
+      rootScope.dispatchEvent('ui:toast', t('Report.Error'))
     }
   }
 
   return (
     <Popup
       open={open}
-      title={t('Report')}
+      title={t('ReportChat')}
       onClose={clear}
       onExitComplete={reset}
       width={400}
-      action={{ label: busy ? t('Sending…') : t('Report'), onClick: submit }}
+      action={{ label: busy ? t('Report.Sending') : t('ReportChat'), onClick: submit }}
     >
       <div className={s.list}>
         {REPORT_REASONS.map((r) => (
@@ -80,7 +81,7 @@ export default function ReportPopup() {
         ))}
       </div>
       <Input
-        label={t('Additional details (optional)')}
+        label={t('Report.DetailsPlaceholder')}
         value={comment}
         onChange={setComment}
         wrapClassName={s.comment}

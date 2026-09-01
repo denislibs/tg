@@ -30,10 +30,10 @@
 //     (`CONNECTION_ANIMATION_DURATION`), потому что пользуется ею только он.
 //   * `logger`/`DEBUG` — у нас нет вендорного логгера tweb.
 
+import type { LangPackKey } from '@/lang'
 import rootScope from '@lib/rootScope'
 import { getMiddleware } from '@helpers/middleware'
 import { RT } from '../core/realtime/events'
-import { useI18nStore } from '../i18n'
 import type { Managers } from '../client/bootstrap'
 import type { InputSearchStatus } from '../shared/ui/InputSearch'
 
@@ -56,9 +56,6 @@ export default class ConnectionStatusComponent {
   private setFirstConnectionTimeout = 0
   private setStateTimeout = 0
   private rAF = 0
-  /** Последнее, что реально показано, — чтобы перерисовать его на смене языка. */
-  private lastText: { key: string; timerSpan?: HTMLElement } | undefined
-  private unsubscribeLang: (() => void) | undefined
   // Живые интервалы отсчёта — только ради `destroy()`, см. комментарий там же.
   private timerIntervals = new Set<number>()
   private middlewareHelper = getMiddleware()
@@ -86,24 +83,6 @@ export default class ConnectionStatusComponent {
     rootScope.addEventListener(RT.stateSynchronizing, this.onSyncStart)
     rootScope.addEventListener(RT.stateSynchronized, this.onSyncEnd)
 
-    // Смена языка. НЕ порт, а узкое отступление, и это надо читать именно так: у
-    // tweb перерисовка живых узлов — обязанность самой подсистемы i18n
-    // (`langPack.ts:328-335` обходит все `.i18n` и зовёт `instance.update()`),
-    // автомат про язык не знает вовсе. Общий механизм у нас отсутствует (наш
-    // i18n отдаёт строку, а не живой элемент), а заводить его — работа заметно
-    // шире этой задачи; пока свой узел обновляет автомат.
-    // Сигнал — смена самой `t`, а не `lang`: `setLang` меняет код языка сразу, а
-    // `t` подменяется позже, когда догрузится чанк словаря (`i18n/index.tsx`
-    // loadLang), и реагировать надо на второе. Применяется сразу, мимо
-    // rAF/CHANGE_STATE_DELAY: состояние соединения не менялось, показывать
-    // нечего нового — перерисовывается тот же текст. `timerSpan` передаётся
-    // ТОТ ЖЕ: узел просто переезжает в новый плейсхолдер и продолжает тикать от
-    // своего интервала.
-    this.unsubscribeLang = useI18nStore.subscribe((state, prev) => {
-      if (state.t === prev.t || !this.lastText) return
-      this.setStatusText(this.lastText.key, this.lastText.timerSpan)
-    })
-
     // tweb :66-69 — стартовый pull. Вкладка, смонтировавшаяся после единственного
     // перехода в 'reconnecting' (backoff до 30 с), не увидит ни одного
     // уведомления; без этого таймера она осталась бы с «Поиск» навсегда.
@@ -124,7 +103,6 @@ export default class ConnectionStatusComponent {
     rootScope.removeEventListener(RT.state, this.setConnectionStatus)
     rootScope.removeEventListener(RT.stateSynchronizing, this.onSyncStart)
     rootScope.removeEventListener(RT.stateSynchronized, this.onSyncEnd)
-    this.unsubscribeLang?.()
     if (this.setFirstConnectionTimeout) clearTimeout(this.setFirstConnectionTimeout)
     if (this.setStateTimeout) clearTimeout(this.setStateTimeout)
     if (this.rAF) window.cancelAnimationFrame(this.rAF)
@@ -189,46 +167,32 @@ export default class ConnectionStatusComponent {
   }
 
   /**
-   * Узел плейсхолдера. У tweb его строит `i18n(langPackKey, args)` внутри
-   * `setPlaceholder` (`inputSearch.ts:192`); наш i18n отдаёт строку, поэтому
-   * подстановка живого `<span>` с секундами в разрыв `%d` — здесь.
+   * Единственная точка, где текст попадает в поле, — и теперь она РОВНО
+   * оригинала (tweb `connectionStatus.ts:164-167`): ключ и его аргументы
+   * уезжают в `setPlaceholder`, а узел строит `i18n(key, args)` внутри поля
+   * (`inputSearch.ts:190`).
+   *
+   * Что отсюда УШЛО вместе с задачей #118:
+   *
+   *  • своя подписка на смену языка. Она была нужна, пока текст собирался
+   *    здесь строкой: узел, построенный руками, ядро не переписывает —
+   *    `applyLangPack` обходит `.i18n` и зовёт `update()` у ИНСТАНСОВ из
+   *    `weakMap` (`lib/langPack.ts:568-572`), а самодельный `span.i18n` в
+   *    `weakMap` не записан. Теперь узел строит ядро, и перерисовывает его тоже
+   *    ядро — как все прочие `.i18n` приложения;
+   *  • дедуп по паре «ключ + показанный текст» вместо одного ключа
+   *    (`inputSearch.ts:176-177`). Пара была вынужденной по той же причине:
+   *    при дедупе по ключу смена языка не доезжала бы до плейсхолдера вовсе;
+   *  • своя сборка фрагмента (`wrapText`), резавшая строку ради вставки
+   *    `<span>` с секундами. Секунды едут обычным аргументом подстановки, а
+   *    место им в фразе назначает СТРОКА ЯЗЫКА.
    */
-  private wrapText(text: string, timerSpan?: HTMLElement): Node {
-    const fragment = document.createDocumentFragment()
-    if (!timerSpan) {
-      fragment.append(text)
-      return fragment
-    }
-
-    const [before, after = ''] = text.split('%d')
-    fragment.append(before, timerSpan, after)
-    return fragment
-  }
-
-  /**
-   * Единственная точка, где текст реально попадает в поле. Запоминает свои
-   * аргументы: на смене языка автомату нужно перерисовать ТО ЖЕ состояние
-   * (см. подписку на i18n в `construct`).
-   */
-  private setStatusText = (key: string, timerSpan?: HTMLElement) => {
-    this.lastText = { key, timerSpan }
-    const text = useI18nStore.getState().t(key)
-    // Ключ дедупа — пара «ключ i18n + показанный текст», а у tweb это один
-    // `LangPackKey` (`inputSearch.ts:176`). Расхождение вынужденное, и его
-    // причина — разные подсистемы i18n, а не вкус: у tweb `i18n()` возвращает
-    // живой `I18n.IntlElement`, и на смене языка `langPack.ts:328-335` сам
-    // обходит все узлы `.i18n` и зовёт `instance.update()`. Наш узел класс
-    // `i18n` носит, но обновлять его некому, поэтому дедуп по одному ключу
-    // означал бы, что после смены языка плейсхолдер остаётся на старом до
-    // следующей смены состояния соединения — в штатной работе до перезагрузки.
-    // Семантика дедупа при этом та же: одинаковое показанное содержимое
-    // по-прежнему не перезапускает кросс-фейд (в ветке отсчёта строка не
-    // меняется — секунды живут в отдельном `<span>` и идут мимо setPlaceholder).
-    this.inputSearch.setPlaceholder(`${key}\n${text}`, this.wrapText(text, timerSpan))
+  private setStatusText = (key: LangPackKey, timerSpan?: HTMLElement) => {
+    this.inputSearch.setPlaceholder(key, timerSpan && [timerSpan])
   }
 
   /** tweb :120-124 — текст ставится не сейчас, а когда дойдёт до показа. */
-  private wrapSetStatusText = (key: string, timerSpan?: HTMLElement) => {
+  private wrapSetStatusText = (key: LangPackKey, timerSpan?: HTMLElement) => {
     return () => this.setStatusText(key, timerSpan)
   }
 
@@ -258,15 +222,15 @@ export default class ConnectionStatusComponent {
           this.timerIntervals.add(interval)
           setTime()
 
-          setText = this.wrapSetStatusText('Reconnect in %ds', timerSpan) // tweb :167
+          setText = this.wrapSetStatusText('ConnectionStatus.ReconnectInPlain', timerSpan) // tweb :167
         } else {
-          setText = this.wrapSetStatusText('Reconnecting...') // tweb :170
+          setText = this.wrapSetStatusText('ConnectionStatus.Reconnecting') // tweb :170
         }
       } else {
-        setText = this.wrapSetStatusText('Waiting for network...') // tweb :173
+        setText = this.wrapSetStatusText('ConnectionStatus.Waiting') // tweb :173
       }
     } else if (this.updating) {
-      setText = this.wrapSetStatusText('Updating...') // tweb :176
+      setText = this.wrapSetStatusText('Updating') // tweb :176
     } else {
       setText = this.wrapSetStatusText('Search') // tweb :178
     }

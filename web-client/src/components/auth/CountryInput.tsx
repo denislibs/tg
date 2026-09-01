@@ -59,9 +59,12 @@ export default function CountryInput({
     const name = value?.name ?? ''
     if (el.textContent === name) return
     if (name) {
-      // tweb `this.value = i18n(default_name)` — имя приходит элементом `span.i18n`.
+      // tweb `this.value = i18n(default_name)`: у него `default_name` страны — это
+      // ЛАНГ-КЛЮЧ, поэтому и узел выходит настоящим `span.i18n` из ядра. У нас имя
+      // страны приходит данными (`Country.name`), ключа под ним нет, и класс
+      // `i18n` здесь был бы поддельным якорем — узла в `weakMap` нет, обход
+      // `applyLangPack` его молча пропустит. Поэтому просто текст.
       const span = document.createElement('span')
-      span.className = 'i18n'
       span.textContent = name
       el.replaceChildren(span)
     } else {
@@ -104,7 +107,6 @@ export default function CountryInput({
     const el = inputRef.current
     if (el) {
       const span = document.createElement('span')
-      span.className = 'i18n'
       span.textContent = c.name
       el.replaceChildren(span)
     }
@@ -162,7 +164,7 @@ export default function CountryInput({
       />
       <div className="input-field-border" />
       <label style={{ visibility: 'visible' }}>
-        <span className="i18n">{t('Country')}</span>
+        <span>{t('Country')}</span>
       </label>
       <span
         className="arrow arrow-down"
@@ -198,7 +200,7 @@ export default function CountryInput({
                 <span>
                   <span className="emoji emoji-native">{countryFlag(c.iso2)}</span>
                 </span>
-                <span className="i18n">{c.name}</span>
+                <span>{c.name}</span>
                 <span className="phone-code">{c.code}</span>
               </li>
             ))}

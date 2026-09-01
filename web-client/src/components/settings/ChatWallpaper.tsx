@@ -49,7 +49,7 @@ export default function ChatWallpaper({ onBack }: { onBack: () => void }) {
       : update({ wallpaperBlur: !wallpaperBlur })
 
   return (
-    <SettingsScreen title="Chat Background" onBack={onBack}>
+    <SettingsScreen title="ChatBackground.Title" onBack={onBack}>
       <input ref={fileRef} type="file" accept="image/*" hidden onChange={onUpload} />
       <input
         ref={colorRef}
@@ -61,17 +61,17 @@ export default function ChatWallpaper({ onBack }: { onBack: () => void }) {
       <Section>
         <Row
           icon={<TgIcon name="cameraadd" size={24} />}
-          label="Upload Image"
+          label="ChatBackground.Upload"
           onClick={() => fileRef.current?.click()}
         />
-        <Row icon={<TgIcon name="colorize" size={24} />} label="Set a Color" onClick={() => colorRef.current?.click()} />
+        <Row icon={<TgIcon name="colorize" size={24} />} label="SetColor" onClick={() => colorRef.current?.click()} />
         <Row
           icon={<TgIcon name="rotate" size={24} />}
-          label="Reset to Default"
+          label="ChatBackground.Reset"
           onClick={() => update({ wallpaper: { kind: 'default' }, wallpaperBlur: false, customWallpaperMediaId: undefined, customWallpaperBlur: false })}
         />
         <Row
-          label="Blurred Image"
+          label="ChatBackground.Blurred"
           toggle
           checked={blurOn}
           onClick={toggleBlur}

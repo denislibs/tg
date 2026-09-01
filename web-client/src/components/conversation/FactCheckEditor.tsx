@@ -26,7 +26,7 @@ export default function FactCheckEditor({ initial, onClose, onSubmit }: Props) {
   return (
     <Popup
       open
-      title={t('Fact Check')}
+      title={t('FactCheck')}
       onClose={onClose}
       onExitComplete={onClose}
       action={trimmed ? { label: t('Save'), onClick: () => onSubmit(text.slice(0, MAX), country.trim().toUpperCase()) } : undefined}
@@ -36,7 +36,7 @@ export default function FactCheckEditor({ initial, onClose, onSubmit }: Props) {
         value={text}
         maxLength={MAX}
         onChange={(e) => setText(e.target.value)}
-        placeholder={t('Add Fact or Context')}
+        placeholder={t('FactCheckPlaceholder')}
         rows={4}
         style={{
           width: '100%', resize: 'vertical', minHeight: 88,
@@ -49,7 +49,7 @@ export default function FactCheckEditor({ initial, onClose, onSubmit }: Props) {
       <Input
         value={country}
         onChange={(v) => setCountry(v.slice(0, 2))}
-        label={t('Country code (optional)')}
+        label={t('FactCheck.CountryPlaceholder')}
       />
     </Popup>
   )

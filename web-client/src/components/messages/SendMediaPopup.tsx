@@ -2,6 +2,7 @@
 // Compose-before-send dialog (port of tweb popups/newMedia.ts) на общем Popup:
 // превью выбранных файлов, подпись, «как медиа / как файл» в меню «⋮», отправка.
 // The parent owns the actual upload/send (onSend).
+import type { LangPackKey } from '@/lang'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import Text from '../../shared/ui/Text'
 import IconButton from '../../shared/ui/IconButton'
@@ -15,7 +16,7 @@ import StarIcon from '../stars/StarIcon'
 import { getMiddleware } from '@helpers/middleware'
 import wrapMediaSpoiler from '@components/wrappers/mediaSpoiler'
 import { THUMB_TYPE_STRIPPED, type MyPhoto } from '@core/media/messageMedia'
-import { useT } from '../../i18n'
+import { useT, useTArgs } from '../../i18n'
 import s from './SendMediaPopup.module.scss'
 
 // «Медиа» для меню «как медиа / как файл» и заголовка — аудио тоже медиа,
@@ -120,14 +121,13 @@ function SpoilerCover({ url, kind }: { url: string; kind: 'image' | 'video' }) {
 }
 
 // Russian count word for the title.
-function titleWord(n: number, kind: 'photo' | 'video' | 'media' | 'file'): string {
-  if (kind === 'photo') return 'фото'
-  if (kind === 'video') return 'видео'
-  if (kind === 'media') return 'медиа'
-  const m10 = n % 10, m100 = n % 100
-  if (m10 === 1 && m100 !== 11) return 'файл'
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return 'файла'
-  return 'файлов'
+/** Ключ заголовка по виду набора — формы числа оригинала (tweb lang.ts:254, :3821-3836).
+ *  Раньше здесь стояла своя славянская арифметика с русскими словами в коде. */
+function titleKey(kind: 'photo' | 'video' | 'media' | 'file'): LangPackKey {
+  if (kind === 'photo') return 'PreviewSender.SendPhoto'
+  if (kind === 'video') return 'PreviewSender.SendVideo'
+  if (kind === 'media') return 'PreviewSender.SendAlbum'
+  return 'PreviewSender.SendFile'
 }
 
 export default function SendMediaPopup({
@@ -140,6 +140,7 @@ export default function SendMediaPopup({
   onSend: (caption: string, asFile: boolean, paidPrice?: number | null, spoilers?: boolean[]) => void
 }) {
   const t = useT()
+  const tArgs = useTArgs()
   const [caption, setCaption] = useState('')
   const [asFile, setAsFile] = useState(initialAsFile)
   // Платное медиа (Telegram paid media): цена в звёздах. null — обычное медиа.
@@ -183,7 +184,7 @@ export default function SendMediaPopup({
   const kind: 'photo' | 'video' | 'media' | 'file' = asFile || !anyMedia
     ? 'file'
     : allImages ? 'photo' : allVideos ? 'video' : 'media'
-  const title = `${t('Send')} ${files.length} ${titleWord(files.length, kind)}`
+  const title = tArgs(titleKey(kind), [files.length])
 
   // Спойлер применим только к фото/видео «как медиа» — tweb берёт
   // `partition().media`, куда аудио не попадает (popups/newMedia.ts:759-767).
@@ -266,20 +267,20 @@ export default function SendMediaPopup({
             >
               <MenuItem
                 icon={<TgIcon name="image" size={20} />}
-                label={t('Send as media')}
+                label={t('Popup.Attach.AsMedia')}
                 right={!asFile ? <TgIcon name="check" size={18} color="var(--primary-color)" /> : undefined}
                 onClick={() => { setAsFile(false); setMenuOpen(false) }}
               />
               <MenuItem
                 icon={<TgIcon name="document" size={20} />}
-                label={t('Send as file')}
+                label={t('SendAsFile')}
                 right={asFile ? <TgIcon name="check" size={18} color="var(--primary-color)" /> : undefined}
                 onClick={() => { setAsFile(true); setPaidPrice(null); setMenuOpen(false) }}
               />
               {canPaid && (
                 <MenuItem
                   icon={<StarIcon size={20} />}
-                  label={t('Make paid')}
+                  label={t('PaidMedia.MakePaid')}
                   right={paidPrice != null ? <TgIcon name="check" size={18} color="var(--primary-color)" /> : undefined}
                   onClick={() => { setPaidPrice((p) => (p == null ? 10 : null)); setMenuOpen(false) }}
                 />
@@ -289,28 +290,28 @@ export default function SendMediaPopup({
               {canToggleSpoilers(true, true) && (
                 <MenuItem
                   icon={<TgIcon name="mediaspoiler" size={20} />}
-                  label={t('Hide with spoiler')}
+                  label={t('EnablePhotoSpoiler')}
                   onClick={() => changeSpoilers(true)}
                 />
               )}
               {canToggleSpoilers(true, false) && (
                 <MenuItem
                   icon={<TgIcon name="mediaspoiler" size={20} />}
-                  label={t('Hide all with spoilers')}
+                  label={t('Popup.Attach.EnableSpoilers')}
                   onClick={() => changeSpoilers(true)}
                 />
               )}
               {canToggleSpoilers(false, true) && (
                 <MenuItem
                   icon={<TgIcon name="mediaspoileroff" size={20} />}
-                  label={t('Remove spoiler')}
+                  label={t('DisablePhotoSpoiler')}
                   onClick={() => changeSpoilers(false)}
                 />
               )}
               {canToggleSpoilers(false, false) && (
                 <MenuItem
                   icon={<TgIcon name="mediaspoileroff" size={20} />}
-                  label={t('Remove all spoilers')}
+                  label={t('Popup.Attach.RemoveSpoilers')}
                   onClick={() => changeSpoilers(false)}
                 />
               )}
@@ -329,9 +330,9 @@ export default function SendMediaPopup({
                 className={s.paidInput}
                 value={paidPrice}
                 onChange={(e) => setPaidPrice(Math.max(1, Math.floor(Number(e.target.value)) || 1))}
-                aria-label={t('Price in Stars')}
+                aria-label={t('StarGiftSellTitleStars')}
               />
-              <Text size={13} color="var(--secondary-text-color)">{t('Price in Stars')}</Text>
+              <Text size={13} color="var(--secondary-text-color)">{t('StarGiftSellTitleStars')}</Text>
             </div>
           )}
           <div className={s.footer}>
@@ -341,7 +342,7 @@ export default function SendMediaPopup({
               value={caption}
               onChange={(e) => setCaption(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-              placeholder={t('Add a caption…')}
+              placeholder={t('PreviewSender.CaptionPlaceholder')}
             />
             <div className={s.send} onClick={send}>
               <TgIcon name="send" />
@@ -361,7 +362,7 @@ export default function SendMediaPopup({
               color="#fff"
               className={`${s.spoilerBtn} spoiler-toggle`}
               data-toggled={spoilers.has(i) ? 'true' : undefined}
-              aria-label={spoilers.has(i) ? t('Remove spoiler') : t('Hide with spoiler')}
+              aria-label={spoilers.has(i) ? t('DisablePhotoSpoiler') : t('EnablePhotoSpoiler')}
               onClick={() => toggleSpoiler(i)}
             >
               <TgIcon name={spoilers.has(i) ? 'mediaspoileroff' : 'mediaspoiler'} size={20} />

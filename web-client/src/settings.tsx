@@ -1,5 +1,5 @@
-import { useCallback } from 'react'
 import { create } from 'zustand'
+import I18n from '@lib/langPack'
 import type { ThemeChoice } from './theme'
 import type { Wallpaper } from './wallpapers'
 
@@ -227,6 +227,27 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 }))
 
+/**
+ * НАСТРОЙКА «12/24 ЧАСА» → ЯДРО ЛОКАЛИЗАЦИИ.
+ *
+ * Все метки времени рисует `I18n.IntlDateElement` (`helpers/date.ts`), и часовой
+ * цикл он берёт у себя — `I18n.getTimeFormat()`, потому что у `Intl` этой
+ * настройки взять неоткуда: он выбирает цикл по ЛОКАЛИ. Настройка у нас есть, у
+ * неё есть живой переключатель (`settings/GeneralSettings.tsx`), — но до задачи 7
+ * она СЮДА НЕ ПРИХОДИЛА, и метки времени выбор пользователя игнорировали (дефект
+ * был помечен в докблоке `helpers/date.ts`).
+ *
+ * Подписка, а не разовая установка: `setTimeFormat` не только запоминает цикл, но
+ * и ПЕРЕРИСОВЫВАЕТ уже показанные даты (`I18n.setTimeFormat`, порт tweb :149-166) —
+ * иначе переключатель менял бы только те метки, что нарисуются после него. Одна
+ * подписка покрывает оба пути смены: `update()` и кросс-табовый `storage` ниже.
+ */
+const hourCycle = (format: TimeFormat) => format === '12h' ? 'h12' : 'h23'
+I18n.setTimeFormat(hourCycle(useSettingsStore.getState().timeFormat))
+useSettingsStore.subscribe((state, prev) => {
+  if(state.timeFormat !== prev.timeFormat) I18n.setTimeFormat(hourCycle(state.timeFormat))
+})
+
 // Кросс-таб-синхронизация настроек: localStorage.setItem в одной вкладке рождает
 // `storage`-событие во ВСЕХ остальных вкладках — подхватываем и обновляем стор
 // напрямую (setState, без обратной записи в localStorage → без петли). Так смена
@@ -252,22 +273,4 @@ export function useSettings(): SettingsState
 export function useSettings<T>(selector: (s: SettingsState) => T): T
 export function useSettings<T>(selector?: (s: SettingsState) => T): SettingsState | T {
   return selector ? useSettingsStore(selector) : useSettingsStore()
-}
-
-// Convert a stored 24h "HH:MM" string to the user's preferred format.
-export function formatTime(hhmm: string, fmt: TimeFormat): string {
-  if (fmt === '24h') return hhmm
-  const parts = hhmm.match(/^(\d{1,2}):(\d{2})/)
-  if (!parts) return hhmm
-  let h = parseInt(parts[1], 10)
-  const min = parts[2]
-  const ampm = h >= 12 ? 'PM' : 'AM'
-  h = h % 12
-  if (h === 0) h = 12
-  return `${h}:${min} ${ampm}`
-}
-
-export function useTimeFormatter(): (hhmm: string | undefined) => string | undefined {
-  const timeFormat = useSettingsStore((s) => s.timeFormat)
-  return useCallback((hhmm: string | undefined) => (hhmm == null ? hhmm : formatTime(hhmm, timeFormat)), [timeFormat])
 }

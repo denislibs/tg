@@ -75,6 +75,12 @@ var OmittedWithoutSubject = map[string][]string{
 	// (докблок Authorization в mtaccount.go).
 	"authorization": {"api_id", "region"},
 
+	// Адрес ПЛАТФОРМЫ ПЕРЕВОДА: у оригинала это ссылка на translations.telegram.org,
+	// куда уходят по кнопке «перевести приложение». Своей платформы у нас нет
+	// вовсе — переводы лежат файлами в репозитории и правятся коммитом,
+	// поэтому отсутствует предмет, а не значение.
+	"langPackLanguage": {"translations_url"},
+
 	// ── Наборы стикеров ─────────────────────────────────────────────────────
 	// Токен доступа транспорта MTProto: набор адресуется числовым id.
 	"stickerSet":        {"access_hash", "hash"},

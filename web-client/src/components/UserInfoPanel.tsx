@@ -1,3 +1,4 @@
+import type { LangPackKey } from '@/lang'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import IconButton from '../shared/ui/IconButton'
@@ -17,15 +18,15 @@ import SidebarSection from '../shared/ui/SidebarSection'
 import PinnedStoriesSection from './PinnedStoriesSection'
 import classNames from '../shared/lib/classNames'
 import type { Chat, OpenPeer } from '../data'
-import { useT } from '../i18n'
+import {useT} from '../i18n'
 import { useGroupInfo } from '../core/hooks/useGroupInfo'
 import { useSavedDialogs, useUserProfile, useProfileGifts, useProfilePhotos, type HeaderPhoto } from '../core/hooks/useUserProfileData'
 import { useMuteToggle } from '../core/hooks/useMuteToggle'
 import { useChatsStore } from '../stores/chatsStore'
 import { useNavLayer } from '../core/hooks/useNavLayer'
 import { useTransitionSlider } from '../core/hooks/useTransitionSlider'
-import { useLang } from '../i18n'
-import { userStatusLabel } from '../core/presence'
+import {} from '../i18n'
+import { PeerStatus } from '../shared/ui/peerStatus'
 // Просмотрщик фото профиля — vanilla-вьювер (Task 16, замена MediaLightbox)
 import { openMediaViewer } from './mediaViewer/openMediaViewer'
 import type { ViewerItem } from './mediaViewer/appMediaViewer'
@@ -100,7 +101,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   }, [open])
   const isSaved = chat.type === 'saved'
   // группы — таб «Участники», избранное — «Чаты» (tweb savedDialogs first), остальные — «Медиа»
-  const [tab, setTab] = useState(chat.type === 'group' ? 'Members' : isSaved ? 'Chats' : 'Media')
+  const [tab, setTab] = useState<LangPackKey>(chat.type === 'group' ? 'PeerMedia.Members' : isSaved ? 'FilterChats' : 'SharedMediaTab2')
 
   // «Избранное»: сохранённые диалоги (группировка по источнику пересылки)
   const savedDialogs = useSavedDialogs(isSaved)
@@ -150,7 +151,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
     refreshMembers,
   } = useGroupInfo(chat)
 
-  const title = isSaved ? 'Saved Messages' : isChannel ? 'Channel Info' : isGroup ? 'Group Info' : 'User Info'
+  const title = isSaved ? 'SavedMessages' : isChannel ? 'Profile.Info.Channel' : isGroup ? 'Profile.Info.Group' : 'Profile.Info.User'
 
   // ── аватар (tweb peerProfileAvatars): по дефолту свёрнут в круг (collapsed);
   // клик разворачивает в большое фото на всю ширину (unfold), скролл вниз
@@ -195,20 +196,19 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
 
   // счётчики табов шаред-медиа для подзаголовка залитой шапки (tweb onLengthChange)
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({})
-  const activeCount = tab === 'Members'
+  const activeCount = tab === 'PeerMedia.Members'
     ? realMembers?.length
-    : tab === 'Chats'
+    : tab === 'FilterChats'
       ? savedDialogs?.length
       : tabCounts[tab]
 
   // Онлайн-статус приватного собеседника — из presence-стора (как в топбаре
   // ChatHeader), а не из статичного chat.status: «в сети» / «был(а) …».
-  const [lang] = useLang()
   const peerPresence = useChatsStore((st) => st.presence[peerId])
   const presenceLabel =
     !isSaved && !isGroup && !isChannel
       ? peerPresence
-        ? userStatusLabel(peerPresence, lang)
+        ? <PeerStatus status={peerPresence} />
         : chat.status
       : null
 
@@ -267,7 +267,8 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
           // конвейера, видео — токенный URL (useProfilePhotos)
           url: p.isVideo ? p.videoSrc : p.src,
         },
-        author: { peerId: peerId ?? 0, name: chat.name, date: '' },
+        // Даты у фото профиля нет — вьювер подпись просто не рисует.
+        author: { peerId: peerId ?? 0, name: chat.name },
       }))
       void openMediaViewer({ items, index, target: el })
     })
@@ -350,7 +351,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
 
   // Клик по инфо-строке копирует значение + глобальный тост (tweb peerProfile:
   // copyTextToClipboard + toast(PhoneCopied/UsernameCopied/BioCopied)).
-  const copyInfo = (value: string, toastKey: string) => {
+  const copyInfo = (value: string, toastKey: LangPackKey) => {
     void navigator.clipboard.writeText(value)
     rootScope.dispatchEvent('ui:toast', t(toastKey))
   }
@@ -405,7 +406,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
             type="button"
             className="btn-icon sidebar-close-button"
             onClick={filled ? scrollBackToProfile : onClose}
-            aria-label={t(filled ? 'Back' : 'Close')}
+            aria-label={t(filled ? 'Common.Back' : 'Close')}
           >
             <div className={classNames('animated-close-icon', filled ? 'state-back' : '')} />
           </button>
@@ -431,7 +432,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
             <div className={classNames('transition-item', headerSlider.itemClass(1))}>
               <div className="sidebar-header__rows">
                 <div className="sidebar-header__title">
-                  <span className="peer-title">{isSaved ? t('Saved Messages') : chat.name}</span>
+                  <span className="peer-title">{isSaved ? t('SavedMessages') : chat.name}</span>
                 </div>
                 <div className="sidebar-header__subtitle">
                   {activeCount != null ? countLabel(tab, activeCount, isChannel) : ''}
@@ -535,7 +536,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
                     MainSection: Info-строка), многострочная через `pre-wrap`. */}
                 <Row
                   icon={<TgIcon name="info" size={24} />}
-                  label={chat.description ?? t('Channel description.')}
+                  label={chat.description ?? t('Profile.ChannelDescription')}
                   sublabel={t('Info')}
                   translate={false}
                   multiline
@@ -548,7 +549,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
                     label={l.value}
                     sublabel={l.label}
                     translate={false}
-                    onClick={() => copyInfo(l.value, 'Link copied to clipboard.')}
+                    onClick={() => copyInfo(l.value, 'LinkCopied')}
                   />
                 ))}
               </>
@@ -559,9 +560,9 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
                 <Row
                   icon={<TgIcon name="link" size={24} />}
                   label={inviteShort}
-                  sublabel={t('Link')}
+                  sublabel={t('SetUrlPlaceholder')}
                   translate={false}
-                  onClick={() => copyInfo(inviteUrl, 'Link copied to clipboard.')}
+                  onClick={() => copyInfo(inviteUrl, 'LinkCopied')}
                   right={
                     <button
                       type="button"
@@ -586,7 +587,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
                     label={infoPhone}
                     sublabel={t('Phone')}
                     translate={false}
-                    onClick={() => copyInfo(infoPhone, 'Phone copied to clipboard')}
+                    onClick={() => copyInfo(infoPhone, 'PhoneCopied')}
                   />
                 )}
                 {infoUsername && (
@@ -595,23 +596,23 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
                     label={`@${infoUsername}`}
                     sublabel={t('Username')}
                     translate={false}
-                    onClick={() => copyInfo(`@${infoUsername}`, 'Username copied to clipboard')}
+                    onClick={() => copyInfo(`@${infoUsername}`, 'UsernameCopied')}
                   />
                 )}
                 {infoBio && (
                   <Row
                     icon={<TgIcon name="info" size={24} />}
                     label={infoBio}
-                    sublabel={t('Bio')}
+                    sublabel={t('UserBio')}
                     translate={false}
                     multiline
-                    onClick={() => copyInfo(infoBio, 'Bio copied to clipboard')}
+                    onClick={() => copyInfo(infoBio, 'BioCopied')}
                   />
                 )}
                 {profile?.fullUser.birthday && (
                   <Row
                     icon={<TgIcon name="gift" size={24} />}
-                    label={formatBirthday(profile.fullUser.birthday, lang)}
+                    label={formatBirthday(profile.fullUser.birthday)}
                     sublabel={t('Birthday')}
                     translate={false}
                   />
@@ -630,7 +631,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
             {isSecret && (
               <Row
                 icon={<TgIcon name="key" size={24} />}
-                label="Encryption Key"
+                label="SecretChat.EncryptionKey"
                 onClick={() => setKeyPopupOpen(true)}
               />
             )}
@@ -655,7 +656,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
 
           {/* Channel discussions: admin (creator/CHANGE_INFO) toggle / enabled state */}
           {isRealChat && isChannel && canManageDiscussion && (
-            <SidebarSection noDelimiter title={t('Discussion')}>
+            <SidebarSection noDelimiter title={t('PeerInfo.Discussion')}>
               {/* ЗНАКОВЫЙ ключ: у чата он ОТРИЦАТЕЛЬНЫЙ, и прежнее «> 0»
                   выключило бы обсуждение ровно наоборот. */}
               {discussionPeerId !== NULL_PEER_ID ? (
@@ -679,7 +680,7 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
 
           {/* Real group/channel: pending join requests (admins with INVITE_USERS / creator) */}
           {isRealChat && canInvite && joinRequests.length > 0 && (
-            <SidebarSection noDelimiter title={t('Subscribe Requests')}>
+            <SidebarSection noDelimiter title={t('SubscribeRequests')}>
               {joinRequests.map((req) => (
                 <Row
                   key={req.userId}

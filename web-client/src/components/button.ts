@@ -1,15 +1,12 @@
 /**
  * Порт tweb `src/components/button.ts` — фабрика `<button>`/`<a>`/`<div>` с
- * риплом и опциональной иконкой. Структура и классы дословные; правки только
- * под наш стек:
- *  • `LangPackKey`/`i18n(text, textArgs)` → строка + `useI18nStore.getState().t`
- *    (#109: у нашего словаря ключ=строка, без интерполяции аргументов — тот же
- *    приём, что уже в `checkboxField.ts`; `textArgs` поэтому не портирован —
- *    предмета нет). Узел текста — `span.i18n`, как у tweb `i18n()`
- *    (`@helpers/dom/i18nSpan`, тот же хелпер, что и в `buttonMenu.ts`), а не
- *    голый текстовый узел;
+ * риплом и опциональной иконкой. Структура и классы дословные; правка одна:
  *  • `ripple` — `@components/ripple` (порт того же tweb-файла, довезён вместе
  *    с кнопкой как прямая зависимость).
+ *
+ * Подпись строит `i18n(text, textArgs)` ядра — дословно как оригинал (:42). Узел
+ * ядра ЖИВОЙ (записан в `weakMap`, перерисовывается сменой языка), а аргументом
+ * подстановки может быть УЗЕЛ; готовую строку сюда класть незачем и нечем.
  *
  * ── ОСТАТОК ВОЛНЫ (#112) ───────────────────────────────────────────────────
  * Живой React-двойник — `shared/ui/Button` (4 потребителя против 3 у этого
@@ -19,15 +16,15 @@
 import Icon from '@components/icon'
 import type { IconName } from '@core/tgico-icons'
 import ripple from '@components/ripple'
-import i18nSpan from '@helpers/dom/i18nSpan'
-import { useI18nStore } from '../i18n'
+import { i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
 
 export type ButtonOptions = Partial<{
   noRipple: true
   onlyMobile: true
   icon: IconName
   rippleSquare: true
-  text: string
+  text: LangPackKey
+  textArgs: FormatterArguments
   disabled: boolean
   asDiv: boolean
   asLink: boolean
@@ -61,7 +58,7 @@ export default function Button<T extends ButtonOptions>(
   }
 
   if (options.text) {
-    button.append(i18nSpan(useI18nStore.getState().t(options.text)))
+    button.append(i18n(options.text, options.textArgs))
   }
 
   return button as any

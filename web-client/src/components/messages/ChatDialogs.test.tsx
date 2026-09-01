@@ -16,6 +16,9 @@ import type { AvatarManagers } from '@components/avatar'
 import { openDeleteMessageDialog, ForwardPicker, ReactedUsersPopup } from './ChatDialogs'
 import { ManagersProvider } from '../../core/hooks/useManagers'
 
+// Заголовок попапа строит `i18n()` ядра, а строки в него кладёт холодный старт
+// (`main.tsx` → `client/boot.ts`); в прогоне — общий сетап (`src/test/setup.ts`).
+
 const noop = () => {}
 
 function mkManagers(): AvatarManagers {
@@ -43,8 +46,29 @@ describe('openDeleteMessageDialog — разметка (vanilla PopupPeer)', () 
     expect(buttons.map((b) => b.classList.contains('danger'))).toEqual([true, false])
     // revoke в личке — чекбокс, значит контейнер помечен have-checkbox
     expect(document.querySelector('.popup-container')!.classList.contains('have-checkbox')).toBe(true)
+    // Имя в подписи подставляет СТРОКА (`DeleteMessagesOptionAlso` = «Also delete for
+    // %1$s»), а не вызывающий склейкой префикса с именем.
+    expect(document.querySelector('.checkbox-caption')!.textContent).toBe('Also delete for Maya')
     // аватар (peer.ts:46-54) — теперь строит сам PopupPeer из peerId
     expect(document.querySelector('.popup-header .avatar')).not.toBeNull()
+  })
+
+  // Число в заголовке подставляет САМ ПОПАП (`titleLangArgs`), а не вызывающий: до
+  // задачи 7 сюда ехала готовая строка (`titleText: tArgs(...)`), потому что у
+  // строкового `t()` подстановки не было. Форму выбирает язык — на единице должно
+  // быть «Delete Message», а не «Delete 1 messages».
+  it('заголовок склоняется по числу сообщений, а не склеивается вызывающим', () => {
+    const open = (count: number) => {
+      document.body.replaceChildren()
+      openDeleteMessageDialog({
+        peerId: 1, managers: mkManagers(), canRevoke: false, chatType: 'private', count,
+        onDeleteForEveryone: noop, onDeleteForMe: noop,
+      })
+      return document.querySelector('.popup-title')!.textContent
+    }
+
+    expect(open(1)).toBe('Delete message')
+    expect(open(2)).toBe('Delete 2 messages')
   })
 })
 

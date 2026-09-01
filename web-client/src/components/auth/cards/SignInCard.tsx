@@ -7,6 +7,7 @@ import { useT } from '../../../i18n'
 import { useManagers } from '../../../core/hooks/useManagers'
 import { isWebAuthnSupported, getPasskeyAssertion } from '../../../core/webauthnBrowser'
 import MediaHeader from '../MediaHeader'
+import superFormatter from '../superFormatter'
 import { PrimaryButton, SecondaryButton } from '../AuthButton'
 import CountryInput from '../CountryInput'
 import TelInput from '../TelInput'
@@ -107,16 +108,12 @@ export default function SignInCard({
           </svg>
         </MediaHeader.Sticker>
         <MediaHeader.Title>
-          <span className="i18n">{t('Sign in to Telegram')}</span>
+          <span>{t('Login.Title')}</span>
         </MediaHeader.Title>
         <MediaHeader.Subtitle secondary>
-          {/* В tweb строка `Login.StartText` несёт перевод строки, и i18n рисует
-              его как `<br>` внутри `span.i18n` — отсюда две строки подзаголовка. */}
-          <span className="i18n">
-            {t('Please confirm your country code')}
-            <br />
-            {t('and enter your phone number.')}
-          </span>
+          {/* У оригинала это ОДНА строка с переводом строки внутри (tweb langSign.ts:5),
+              и `<br>` из `\n` делает разбор разметки словаря, а не вызывающий. */}
+          <span>{superFormatter(t('Login.StartText'))}</span>
         </MediaHeader.Subtitle>
       </MediaHeader>
 
@@ -132,7 +129,7 @@ export default function SignInCard({
           value={phone}
           leftPattern={country ? leftPattern(country, phone) : ''}
           error={phoneError}
-          label={phoneError ? t('Phone Number Invalid') : t('Phone Number')}
+          label={phoneError ? t('Login.PhoneLabelInvalid') : t('Login.PhoneLabel')}
           onInput={(raw) => {
             setPhoneError(false)
             onPhoneInput(raw)
@@ -143,7 +140,7 @@ export default function SignInCard({
         {/* tweb `SignInCard.onSubmit`: на отправке содержимое кнопки целиком
             подменяется на `PleaseWait` + `svg.preloader-circular`. */}
         <PrimaryButton loading={busy} disabled={!canSubmit} onClick={() => void sendCode()}>
-          {busy ? t('Please wait...') : t('Next')}
+          {busy ? t('PleaseWait') : t('Login.Next')}
         </PrimaryButton>
         {/* tweb: следом здесь идёт `GrowHeightReveal` с LanguageChangeButton
             («Продолжить на русском»). Не заводим — у нас нет его данных
@@ -151,11 +148,11 @@ export default function SignInCard({
       </div>
 
       <SecondaryButton arrow onClick={onSignQR}>
-        {t('Log in by QR Code')}
+        {t('Login.QR.Title')}
       </SecondaryButton>
       <GrowHeightReveal when={isWebAuthnSupported()}>
         <SecondaryButton arrow disabled={busy} onClick={() => void passkeyLogin()}>
-          {t('Log in with a Passkey')}
+          {t('Login.Passkey.Action')}
         </SecondaryButton>
       </GrowHeightReveal>
     </div>

@@ -31,7 +31,9 @@ export interface ChatHeaderProps {
   typingActive: boolean
   typingText: string
   typingKind: TypingKind
-  status: string
+  /** Подпись под именем: у ЛИЧНОГО чата это живой узел присутствия
+   *  (`shared/ui/peerStatus`), у остальных — обычная строка. */
+  status: ReactNode
   online: boolean
   isBot?: boolean // бот-собеседник: скрыть кнопки звонка (у ботов нет звонков)
   /** стек плавающих плашек под топбаром (tweb .topbar-floating-plates) */

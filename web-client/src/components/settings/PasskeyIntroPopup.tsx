@@ -16,9 +16,9 @@ import s from './PasskeyIntroPopup.module.scss'
 
 // Ряды 1:1 из tweb popups/passkey.tsx (Passkey.Row1..Row3).
 const ROWS = [
-  { icon: 'key', title: 'Create a Passkey', subtitle: 'Make a passkey to log in easily and safely.' },
-  { icon: 'faceid', title: 'Log in with Face ID', subtitle: 'Use Face ID, Touch ID, or your passcode to log in.' },
-  { icon: 'lock', title: 'Store Passkey Securely', subtitle: 'Your passkey is safely kept in your iCloud Keychain.' },
+  { icon: 'key', title: 'Passkey.Row1.Title', subtitle: 'Passkey.Row1.Subtitle' },
+  { icon: 'faceid', title: 'Passkey.Row2.Title', subtitle: 'Passkey.Row2.Subtitle' },
+  { icon: 'lock', title: 'Passkey.Row3.Title', subtitle: 'Passkey.Row3.Subtitle' },
 ] as const
 
 export default function PasskeyIntroPopup({
@@ -46,7 +46,7 @@ export default function PasskeyIntroPopup({
       await managers.auth.passkeyRegisterFinish(session, attestation)
       onCreated()
     } catch {
-      setError(t('Could not create a passkey.'))
+      setError(t('Passkey.CreateError'))
     } finally {
       setBusy(false)
     }
@@ -65,10 +65,10 @@ export default function PasskeyIntroPopup({
           <LottieSticker name="Key" size={120} />
         </div>
         <Text size={24} weight={700} color="var(--primary-text-color)" className={s.title}>
-          {t('Protect your account')}
+          {t('Passkey.Title')}
         </Text>
         <Text size={16} color="var(--primary-text-color)" className={s.subtitle}>
-          {t('Log in safely and keep your account secure.')}
+          {t('Passkey.Subtitle')}
         </Text>
 
         {ROWS.map((r) => (
@@ -93,15 +93,15 @@ export default function PasskeyIntroPopup({
           {isWebAuthnSupported() ? (
             <>
               <div className={classNames(s.button, busy ? s.disabled : '')} onClick={() => void create()}>
-                {t('Create Passkey')}
+                {t('Privacy.Passkey.Create')}
               </div>
               <div className={classNames(s.button, s.secondary)} onClick={onClose}>
-                {t('Skip')}
+                {t('YourEmailSkip')}
               </div>
             </>
           ) : (
             <div className={classNames(s.button, s.secondary)} onClick={onClose}>
-              {t('Unsupported')}
+              {t('Passkey.Unsupported')}
             </div>
           )}
         </div>

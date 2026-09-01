@@ -1,3 +1,4 @@
+import type { LangPackKey } from '@/lang'
 import { cloneElement, createContext, isValidElement, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import SidebarSection from '../../shared/ui/SidebarSection'
 import Checkbox from '../../shared/ui/Checkbox'
@@ -33,13 +34,16 @@ const InSliderContext = createContext(false)
  */
 export function SettingsScreen({
   title,
+  titleText,
   onBack,
   headerRight,
   zIndex = 60,
   sub = null,
   children,
 }: {
-  title: string
+  title?: LangPackKey
+  /** Готовый текст вместо ключа — для заголовков из данных (имя ссылки-приглашения). */
+  titleText?: string
   onBack: () => void
   headerRight?: ReactNode
   zIndex?: number
@@ -138,10 +142,10 @@ export function SettingsScreen({
           Класс `active` вешает не React, а слайдер — его здесь нет. */}
       <div ref={ownRef} className="tabs-tab sidebar-slider-item scrollable-y-bordered">
         <div className="sidebar-header">
-          <button type="button" className="btn-icon sidebar-close-button" onClick={onBack} aria-label={t('Back')}>
+          <button type="button" className="btn-icon sidebar-close-button" onClick={onBack} aria-label={t('Common.Back')}>
             <TgIcon name="back" />
           </button>
-          <div className="sidebar-header__title">{t(title)}</div>
+          <div className="sidebar-header__title">{title ? t(title) : titleText}</div>
           {headerRight}
         </div>
         <div className="sidebar-content">
@@ -201,11 +205,14 @@ export function usePopupTransition(open: boolean) {
 
 export function Section({
   caption,
+  captionText,
   footer,
   children,
 }: {
-  caption?: string
-  footer?: string
+  caption?: LangPackKey
+  /** Готовый текст вместо ключа — например «12 joined», собранное из числа. */
+  captionText?: string
+  footer?: LangPackKey
   children: ReactNode
 }) {
   const t = useT()
@@ -217,7 +224,7 @@ export function Section({
   // `.sidebar-left-section-container` (`_section.scss`).
   return (
     <SidebarSection
-      title={caption ? t(caption) : undefined}
+      title={caption ? t(caption) : captionText}
       caption={footer ? t(footer) : undefined}
     >
       {children}
@@ -234,7 +241,9 @@ export function EntryRow({
 }: {
   left: ReactNode
   title: string
-  sub?: string
+  /** Подпись — `ReactNode` по той же причине, что у `Row.sublabel`: сюда едут
+   *  живые узлы дат (`shared/ui/dateNodes`). */
+  sub?: ReactNode
   onRemove?: () => void
 }) {
   // Та же `.row`, что и всюду: медиа-слот слева (`row-media` — аватар/иконка,
@@ -331,8 +340,12 @@ export function Row({
 }: {
   icon?: ReactNode
   label: string
-  sublabel?: string
-  value?: string
+  /** Подпись под заголовком. `ReactNode`, а не строка: сюда едут и живые узлы
+   *  дат (`shared/ui/dateNodes`) — их нельзя выразить строкой, иначе подпись
+   *  застывает в языке момента рендера (задача #121). */
+  sublabel?: ReactNode
+  /** Правое значение строки — по той же причине `ReactNode`. */
+  value?: ReactNode
   onClick?: () => void
   danger?: boolean
   accent?: boolean
@@ -368,7 +381,16 @@ export function Row({
 
   const title = (
     <div className={classNames('row-title', multiline ? 'pre-wrap' : '')}>
-      {translate ? t(label) : label}
+      {/* РАСКОЛ КОНТРАКТА, ОСТАВШИЙСЯ У REACT-СТОРОНЫ — ЗАДАЧА #112: при `translate`
+          здесь ключ, без него — готовый текст (имя пира, номер телефона), и по типу
+          они не различаются (`label: string`). Приведение честнее молчаливого
+          `string`, но самого раскола не снимает: `<Row label={key}>` без `translate`
+          напечатает пользователю латинское имя ключа, и тайпчек смолчит. Задача 7
+          сняла этот раскол в ВАНИЛЬНОМ слое (там роль поля выражена ТИПОМ — ключ и
+          готовое содержимое лежат в разных полях с непересекающимися типами); здесь
+          он снимается вместе с React-двойником `Row`, и это #112 — остатки волны 2,
+          где React-двойники уже перечислены. */}
+      {translate ? t(label as LangPackKey) : label}
     </div>
   )
 

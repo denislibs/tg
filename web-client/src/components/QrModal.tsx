@@ -129,7 +129,7 @@ export default function QrModal({ open, onClose, url, label, avatar }: QrModalPr
     if (blob && navigator.clipboard && 'write' in navigator.clipboard && typeof ClipboardItem !== 'undefined') {
       navigator.clipboard
         .write([new ClipboardItem({ 'image/png': blob })])
-        .then(() => showToast(t('QR Code copied to clipboard')))
+        .then(() => showToast(t('QRCode.Copied')))
         .catch(() => copyLink())
     } else {
       copyLink()
@@ -138,7 +138,7 @@ export default function QrModal({ open, onClose, url, label, avatar }: QrModalPr
   const copyLink = () => {
     navigator.clipboard
       .writeText(url)
-      .then(() => showToast(t('Profile link copied to clipboard')))
+      .then(() => showToast(t('QRCode.CopiedLink')))
       .catch(() => undefined)
   }
 
@@ -186,7 +186,7 @@ export default function QrModal({ open, onClose, url, label, avatar }: QrModalPr
             <TgIcon name="close" size={22} />
           </IconButton>
           <Text size={17} weight={600} className={s.title} color="var(--qr-panel-text)">
-            {t('QR Code')}
+            {t('QRCode.Title')}
           </Text>
           <IconButton size="small" onClick={() => setNight((v) => !v)} color="var(--qr-panel-secondary)">
             <TgIcon name={night ? 'darkmode_filled' : 'darkmode'} size={22} />
@@ -227,7 +227,7 @@ export default function QrModal({ open, onClose, url, label, avatar }: QrModalPr
         <div className={s.footer}>
           <button type="button" className={s.copyBtn} onClick={copy}>
             <TgIcon name="copy" size={20} />
-            {t('Copy QR Code')}
+            {t('QRCode.Copy')}
           </button>
         </div>
 

@@ -40,6 +40,7 @@
  *    (шаг 4 плана этой же волны), а не `@components/slider`: у нас класс вкладки
  *    и слайдер-владелец в РАЗНЫХ файлах (см. докблок `slider.ts`).
  */
+import type { LangPackKey } from '@/lang'
 import type { Component } from 'solid-js'
 import { mountSolid } from '@shared/solid/mountSolid.solid'
 import type { InstanceOf } from '@types'
@@ -60,7 +61,7 @@ function Root(props: { self: SliderSuperTab; onCollect: (promise: Promise<any>) 
 }
 
 type ScaffoldSolidJSTabArgs<Payload> = {
-  title: string | ((payload: Payload) => string)
+  title: LangPackKey | ((payload: Payload) => LangPackKey)
   getComponentModule: () => Promise<{ default: Component }>
   onOpenAfterTimeout?: (this: InstanceOf<ScaffoledClass<Payload>>) => void
   onClose?: (this: InstanceOf<ScaffoledClass<Payload>>) => void
@@ -71,7 +72,7 @@ type ScaffoledClass<Payload = void> = new (
   ...args: ConstructorParameters<typeof SliderSuperTab>
 ) => SliderSuperTab & {
   payload: Payload
-  init(payload: Payload, overrideTitle?: string): Promise<void>
+  init(payload: Payload, overrideTitle?: LangPackKey): Promise<void>
 }
 
 export function scaffoldSolidJSTab<Payload = void>({
@@ -86,7 +87,7 @@ export function scaffoldSolidJSTab<Payload = void>({
 
     private dispose?: () => void
 
-    public async init(payload: Payload, overrideTitle?: string) {
+    public async init(payload: Payload, overrideTitle?: LangPackKey) {
       this.setTitle(overrideTitle || (typeof title === 'function' ? title(payload) : title))
       this.payload = payload
 
@@ -120,7 +121,7 @@ export function scaffoldSolidJSTab<Payload = void>({
 }
 
 type ScaffoldSolidJSTabEventableArgs<Payload> = {
-  title: string | ((payload: Payload) => string)
+  title: LangPackKey | ((payload: Payload) => LangPackKey)
   getComponentModule: () => Promise<{ default: Component }>
   onOpenAfterTimeout?: (this: InstanceOf<ScaffoledEventableClass<Payload>>) => void
 }
@@ -129,7 +130,7 @@ type ScaffoledEventableClass<Payload = void, Events extends EventListenerListene
   ...args: ConstructorParameters<typeof SliderSuperTab>
 ) => SliderSuperTabEventable<Events> & {
   payload: Payload
-  init(payload: Payload, overrideTitle?: string): Promise<void>
+  init(payload: Payload, overrideTitle?: LangPackKey): Promise<void>
 }
 
 /**
@@ -149,7 +150,7 @@ export function scaffoldSolidJSTabEventable<Payload = void, Events extends Event
 
     private dispose?: () => void
 
-    public async init(payload: Payload, overrideTitle?: string) {
+    public async init(payload: Payload, overrideTitle?: LangPackKey) {
       this.setTitle(overrideTitle || (typeof title === 'function' ? title(payload) : title))
       this.payload = payload
 

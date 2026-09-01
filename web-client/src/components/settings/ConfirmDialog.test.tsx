@@ -10,6 +10,9 @@ import { cleanup, render, waitFor } from '@testing-library/react'
 import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
 import ConfirmDialog from './ConfirmDialog'
 
+// Здесь строятся узлы `i18n()`; строки в ядро кладёт холодный старт (`main.tsx` →
+// `client/boot.ts`), а в прогоне — общий сетап (`src/test/setup.ts`).
+
 afterEach(() => {
   cleanup()
   // confirmationPopup вешает узел прямо на document.body (popupElement.ts
@@ -20,19 +23,28 @@ afterEach(() => {
 describe('ConfirmDialog — мост к confirmationPopup', () => {
   it('монтирование открывает vanilla-попап с title/text/zIndex', () => {
     render(
-      <ConfirmDialog title="Delete Chat" text="Are you sure?" action="Delete" zIndex={4300} onConfirm={() => {}} onClose={() => {}} />,
+      <ConfirmDialog title="ChatList.Context.DeleteChat" text="Chat.Delete.Private.Text" action="Delete" zIndex={4300} onConfirm={() => {}} onClose={() => {}} />,
     )
     const root = document.querySelector('.popup-confirmation') as HTMLElement
     expect(root).not.toBeNull()
     expect(root.querySelector('.popup-title')?.textContent).toBe('Delete Chat')
-    expect(root.querySelector('.popup-description')?.textContent).toBe('Are you sure?')
+    expect(root.querySelector('.popup-description')?.textContent).toBe('This chat will be deleted from your chat list.')
     expect(root.style.zIndex).toBe('4300') // popupElement.ts PopupOptions.zIndex (наше расширение)
+  })
+
+  // Кнопка подтверждения печатается ГОТОВОЙ строкой (`popupElement.ts:253`), поэтому
+  // `action` обязан переводиться в самом `ConfirmDialog`. Ключ взят такой, чей текст с
+  // именем НЕ совпадает: на `action="Delete"` ошибка неотличима от правды.
+  it('кнопка действия переведена, а не показывает имя ключа', () => {
+    render(<ConfirmDialog title="ChatList.Context.DeleteChat" text="Chat.Delete.Private.Text" action="UnpinMessage" onConfirm={() => {}} onClose={() => {}} />)
+    const button = document.querySelector('.popup-confirmation .popup-button') as HTMLElement
+    expect(button?.textContent).toBe('Unpin')
   })
 
   it('клик по кнопке действия резолвит confirmationPopup — onConfirm, потом onClose', async() => {
     const onConfirm = vi.fn()
     const onClose = vi.fn()
-    render(<ConfirmDialog title="Delete Chat" text="Are you sure?" action="Delete" danger onConfirm={onConfirm} onClose={onClose} />)
+    render(<ConfirmDialog title="ChatList.Context.DeleteChat" text="Chat.Delete.Private.Text" action="Delete" danger onConfirm={onConfirm} onClose={onClose} />)
 
     const button = document.querySelector<HTMLButtonElement>('.popup-confirmation .popup-button.danger')!
     button.dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
@@ -44,7 +56,7 @@ describe('ConfirmDialog — мост к confirmationPopup', () => {
   it('Cancel реджектит confirmationPopup — onConfirm НЕ звучит, но onClose звучит', async() => {
     const onConfirm = vi.fn()
     const onClose = vi.fn()
-    render(<ConfirmDialog title="Delete Chat" text="Are you sure?" action="Delete" onConfirm={onConfirm} onClose={onClose} />)
+    render(<ConfirmDialog title="ChatList.Context.DeleteChat" text="Chat.Delete.Private.Text" action="Delete" onConfirm={onConfirm} onClose={onClose} />)
 
     // без danger обе кнопки несут класс primary (setButtons, popupElement.ts) —
     // Cancel всегда ПОСЛЕДНИЙ в DOM (addCancelButton дописывает его последним).
@@ -60,7 +72,7 @@ describe('ConfirmDialog — мост к confirmationPopup', () => {
     const onConfirm = vi.fn()
     const onClose = vi.fn()
     const { unmount } = render(
-      <ConfirmDialog title="Delete Chat" text="Are you sure?" action="Delete" onConfirm={onConfirm} onClose={onClose} />,
+      <ConfirmDialog title="ChatList.Context.DeleteChat" text="Chat.Delete.Private.Text" action="Delete" onConfirm={onConfirm} onClose={onClose} />,
     )
     const root = document.querySelector('.popup-confirmation') as HTMLElement
     expect(root).not.toBeNull()

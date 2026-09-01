@@ -146,8 +146,10 @@
  *    (`isLocalMessageId`), `message.error` — флаг `failed`;
  *  • `PeerId.isUser()` → `isUser(peerId)` (`core/peers/peerId.ts`), права —
  *    `hasRightsPeer` (`core/peerCache.ts`), как и в `peerTitle.ts`;
- *  • `LangPackKey` + `i18n()` → строка через `useI18nStore.getState().t`:
- *    langPack не портирован (та же подмена в `components/buttonMenu.ts`);
+ *  • подписи пунктов — `LangPackKey`, как в оригинале: переводит сам
+ *    `ButtonMenuItem`. До задачи 7 здесь стоял `t(key)` (пункт меню ждал
+ *    ГОТОВУЮ строку) — раскол контракта, из-за которого волна 2 показала в
+ *    контекстном меню сырой ключ;
  *  • `getAppWindow()`/`getOverlayRoot()` (окно Document PiP) → `window`/
  *    `document.body`;
  *  • поле `isLegacy` (`messagePeerId !== chat.peerId`, verify Reply/Pin/
@@ -164,6 +166,7 @@ import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import filterAsync from '@helpers/array/filterAsync'
 import { copyTextToClipboard } from '@helpers/clipboard'
 import contextMenuController from '@helpers/contextMenuController'
+import { formatFullSentTime, getFullDate, isValidTimestamp } from '@helpers/date'
 import { attachContextMenuListener } from '@helpers/dom/attachContextMenuListener'
 import cancelEvent from '@helpers/dom/cancelEvent'
 import { attachClickEvent } from '@helpers/dom/clickEvent'
@@ -174,7 +177,6 @@ import { getMiddleware } from '@helpers/middleware'
 import noop from '@helpers/noop'
 import positionMenu from '@helpers/positionMenu'
 import rootScope from '@lib/rootScope'
-import { friendlyMsgTime } from '@core/format/friendlyTime'
 import { isLocalMessageId, getServerMessageId } from '@core/history/messageId'
 import { mirrorWindow } from '@core/history/messagesMirror'
 import { getMediaFromMessage, type MyDocument } from '@core/media/messageMedia'
@@ -191,6 +193,7 @@ import {
 import { isAnyChat, isUser, NULL_PEER_ID, SERVICE_PEER_ID } from '@core/peers/peerId'
 import type { ReadDateResult } from '@core/managers/chatsManager'
 import { useI18nStore } from '../../i18n'
+import { _i18n, i18n } from '@lib/langPack'
 import type ChatSelection from './selection'
 
 /**
@@ -588,8 +591,6 @@ export default class ChatContextMenu {
 
   /** Порт `setButtons` (:715-1315) — состав и ПОРЯДОК оригинала. */
   private setButtons() {
-    const t = useI18nStore.getState().t
-
     this.buttons = [{
       // tweb :875-887 — пункт `views` личного чата: дата прочтения исходящего.
       // `onClick` оригинала открывает `PopupToggleReadDate`, когда время
@@ -602,7 +603,7 @@ export default class ChatContextMenu {
       },
     }, {
       icon: 'reply',
-      text: t('Reply'),
+      text: 'Reply',
       onClick: this.onReplyClick,
       verify: async() => !!this.message &&
         !this.isOutgoing(this.message) &&
@@ -610,18 +611,18 @@ export default class ChatContextMenu {
         (this.canForward(this.message) || !!await this.chat.canSend()),
     }, {
       icon: 'edit',
-      text: t('Edit'),
+      text: 'Edit',
       onClick: this.onEditClick,
       verify: () => this.canEditMessage(this.message, 'text') && this.chat.hasMessageInput(),
     }, {
       icon: 'factcheck',
       // tweb :1026 — текст зависит от наличия проверки у ГЛАВНОГО сообщения
-      text: (this.mainMessage as MessageReal | undefined)?.factcheck ? t('Edit Fact Check') : t('Add Fact Check'),
+      text: (this.mainMessage as MessageReal | undefined)?.factcheck ? 'EditFactCheck' : 'AddFactCheck',
       onClick: this.onEditFactCheckClick,
       verify: () => !!this.mainMessage && this.canUpdateFactCheck(this.mainMessage),
     }, {
       icon: 'copy',
-      text: t('Copy'),
+      text: 'Copy',
       onClick: this.onCopyClick,
       verify: () => !this.noForwards &&
         !!this.message && !!getMessageText(this.message) &&
@@ -629,12 +630,12 @@ export default class ChatContextMenu {
         (!this.isAnchorTarget || getMessageText(this.message) !== this.target?.innerText),
     }, {
       icon: 'copy',
-      text: t('Copy Selected Text'),
+      text: 'Chat.CopySelectedText',
       onClick: this.onCopyClick,
       verify: () => !this.noForwards && !!this.message && !!getMessageText(this.message) && this.isTextSelected,
     }, {
       icon: 'search',
-      text: t('Search Selected'),
+      text: 'Chat.Context.SearchSelected',
       onClick: () => {
         const selection = window.getSelection()
         this.chat.initSearch({ query: selection?.toString() })
@@ -642,7 +643,7 @@ export default class ChatContextMenu {
       verify: () => !!this.message && !!getMessageText(this.message) && this.isTextSelected,
     }, {
       icon: 'copy',
-      text: t('Copy'),
+      text: 'Copy',
       onClick: this.onCopyClick,
       verify: () => {
         if(!this.isSelected || this.noForwards) {
@@ -654,13 +655,13 @@ export default class ChatContextMenu {
       withSelection: true,
     }, {
       icon: 'copy',
-      text: this.isEmailTarget ? t('Copy Email') : t('Copy Link'),
+      text: this.isEmailTarget ? 'Text.Context.Copy.Email' : 'CopyLink',
       onClick: this.onCopyAnchorLinkClick,
       verify: () => this.isAnchorTarget,
       withSelection: true,
     }, {
       icon: 'copy',
-      text: t('Copy Username'),
+      text: 'Text.Context.Copy.Username',
       onClick: () => {
         void copyTextToClipboard(this.target?.textContent ?? '')
       },
@@ -668,7 +669,7 @@ export default class ChatContextMenu {
       withSelection: true,
     }, {
       icon: 'copy',
-      text: t('Copy Hashtag'),
+      text: 'Text.Context.Copy.Hashtag',
       onClick: () => {
         void copyTextToClipboard(this.target?.textContent ?? '')
       },
@@ -676,14 +677,14 @@ export default class ChatContextMenu {
       withSelection: true,
     }, {
       icon: 'link',
-      text: t('Copy Message Link'),
+      text: 'MessageContext.CopyMessageLink1',
       onClick: this.onCopyLinkClick,
       verify: () => isChannelPeer(this.peerId) &&
         !!this.message &&
         !this.isOutgoing(this.message),
     }, {
       icon: 'pin',
-      text: t('Pin'),
+      text: 'Message.Context.Pin',
       onClick: this.onPinClick,
       verify: () => !!this.message &&
         !this.isOutgoing(this.message) &&
@@ -692,17 +693,17 @@ export default class ChatContextMenu {
         this.canPinMessage(this.message.peerId),
     }, {
       icon: 'unpin',
-      text: t('Unpin'),
+      text: 'Message.Context.Unpin',
       onClick: this.onUnpinClick,
       verify: () => !!this.message?.pFlags.pinned && this.canPinMessage(this.message.peerId),
     }, {
       icon: 'download',
-      text: t('Download'),
+      text: 'MediaViewer.Context.Download',
       onClick: () => ChatContextMenu.onDownloadClick(this.managers, this.message, this.noForwards),
       verify: () => ChatContextMenu.canDownload(this.message, this.target, this.noForwards),
     }, {
       icon: 'checkretract',
-      text: t('Retract Vote'),
+      text: 'Chat.Poll.Unvote',
       onClick: this.onRetractVote,
       verify: () => {
         const media = this.getPollMedia()
@@ -715,7 +716,7 @@ export default class ChatContextMenu {
       },
     }, {
       icon: 'stop',
-      text: t('Stop Poll'),
+      text: 'Chat.Poll.Stop',
       onClick: this.onStopPoll,
       verify: () => {
         const media = this.getPollMedia()
@@ -726,12 +727,12 @@ export default class ChatContextMenu {
       },
     }, {
       icon: 'statistics',
-      text: t('Statistics'),
+      text: 'Statistics',
       onClick: this.onStatisticsClick,
       verify: this.canViewMessageStatistics,
     }, {
       icon: 'forward',
-      text: t('Forward'),
+      text: 'Forward',
       // let forward the message if it's outgoing but not ours (like a changelog)
       onClick: this.onForwardClick,
       verify: () => !this.noForwards &&
@@ -740,7 +741,7 @@ export default class ChatContextMenu {
         this.message._ !== 'messageService',
     }, {
       icon: 'forward',
-      text: t('Forward'),
+      text: 'Forward',
       onClick: this.onForwardClick,
       // tweb :1202 сверяется с кнопкой плашки (`selectionForwardBtn` +
       // её `disabled`); плашка у нас — порт-интерфейс без узлов, а факта
@@ -750,14 +751,14 @@ export default class ChatContextMenu {
       withSelection: true,
     }, {
       icon: 'download',
-      text: t('Download'),
+      text: 'MediaViewer.Context.Download',
       onClick: () => ChatContextMenu.onDownloadClick(this.managers, this.selectedMessages, this.noForwards),
       verify: () => !!this.selectedMessages &&
         ChatContextMenu.canDownload(this.selectedMessages, null, this.noForwards),
       withSelection: true,
     }, {
       icon: 'flag',
-      text: t('Report'),
+      text: 'ReportChat',
       onClick: () => {
         const selection = this.selection
         const selectedMids = selection?.isSelecting && this.isSelected ?
@@ -777,13 +778,13 @@ export default class ChatContextMenu {
       withSelection: true,
     }, {
       icon: 'select',
-      text: t('Select'),
+      text: 'Message.Context.Select',
       onClick: this.onSelectClick,
       verify: () => !!this.message && this.message._ !== 'messageService' && !this.isSelected && this.isSelectable,
       withSelection: true,
     }, {
       icon: 'select',
-      text: t('Clear Selection'),
+      text: 'Chat.Menu.ClearSelection',
       onClick: this.onClearSelectionClick,
       verify: () => this.isSelected,
       withSelection: true,
@@ -801,13 +802,13 @@ export default class ChatContextMenu {
     }, {
       icon: 'delete',
       className: 'danger',
-      text: t('Delete'),
+      text: 'Delete',
       onClick: this.onDeleteClick,
       verify: () => this.canDeleteMessage(this.message),
     }, {
       icon: 'delete',
       className: 'danger',
-      text: t('Delete'),
+      text: 'Delete',
       onClick: this.onDeleteClick,
       // tweb :1287 сверяется с `selectionDeleteBtn.disabled` — см. Forward выше
       verify: () => this.isSelected && !!this.selection?.length(),
@@ -861,15 +862,38 @@ export default class ChatContextMenu {
 
         if('restricted' in result) {
           this.canViewReadTime = false
-          const when = document.createElement('span')
+          const when = i18n('PmReadShowWhen') // tweb :1539
           when.classList.add('show-when')
-          when.textContent = useI18nStore.getState().t('show when')
-          loader.replaceWith(useI18nStore.getState().t('Read'), ' ', when)
+          loader.replaceWith(i18n('Chat.Context.ReadLabel'), ' ', when) // tweb :1541
+          return
+        }
+
+        // ВРЕМЯ ПРИЕЗЖАЕТ СТРОКОЙ — и это наше отличие от оригинала, а не его
+        // случай: в MTProto `outboxReadDate.date` это `int`, у нас
+        // `ReadDateResult.readAt` — ISO-строка (`chatsManager.ts:62`).
+        // `Date.parse` битой строки даёт `NaN`, а `formatFullSentTime(NaN)`
+        // бросает `RangeError` из `Intl` — здесь, внутри `.then()` без `catch`,
+        // это дало бы unhandled rejection и ВЕЧНЫЙ ШИММЕР на месте подписи.
+        // Предикат тот же, что у React-обёрток дат (`@helpers/date`), — вход у
+        // проверки один на ваниль и на React.
+        const readAt = Math.floor(Date.parse(result.readAt) / 1000)
+        if(!isValidTimestamp(readAt)) {
+          // Дата непригодна — исход тот же, что «read-date недоступен» выше
+          // (tweb :1532-1535): пункт и его разделитель убираются. Показывать
+          // пустую подпись нельзя — снесённый отсюда `friendlyMsgTime` возвращал
+          // на этот вход пустую строку, и пункт оставался с голым шиммером.
+          delimiter?.remove()
+          viewsButton.element?.remove()
           return
         }
 
         this.canViewReadTime = true
-        loader.replaceWith(friendlyMsgTime(result.readAt, useI18nStore.getState().lang))
+        // tweb :1526 — `formatFullSentTime(outboxReadDate.date, true, false)`.
+        // Прежде здесь стоял `friendlyMsgTime`, у которого выбор языка — это
+        // тернарник `ru ? … : …`: немецкий, испанский, французский и украинский
+        // читали «прочитано» по-английски. Хелпер оригинала подписи не выбирает
+        // — он строит их узлами ядра, и язык у них один на всё приложение.
+        loader.replaceWith(formatFullSentTime(readAt, true, false))
       })
     } else if(viewsButton && this.message) {
       // tweb :1543-1644 — групповая ветка. Портирован её каркас: иконка
@@ -882,26 +906,31 @@ export default class ChatContextMenu {
 
       viewsButton.element?.prepend(Icon(isViewingReactions ? 'reactions' : 'checks', 'btn-menu-item-icon'))
 
-      const t = useI18nStore.getState().t
+      // `_i18n` ПЕРЕПИСЫВАЕТ тот же самый узел подписи, а не подменяет его детей —
+      // 1:1 с оригиналом, который держит здесь один
+      // `I18n.IntlElement({element: viewsButton.textElement})` и обновляет его
+      // (tweb :1554-1562). `!` без ветвления: узел подписи ставит сам `ButtonMenuItem`
+      // при постройке пункта, и оригинал разыменовывает его так же.
+      const textElement = viewsButton.textElement!
       const middleware = this.middleware.get()
       const { id } = this.message
       if(isViewingReactions) {
         this.canOpenReactedList = true
-        viewsButton.textElement?.replaceChildren(`${t('Reacted')} ${reactedLength}`)
+        _i18n(textElement, 'Chat.Context.ReactedFast', [reactedLength ?? 0]) // tweb :1566
       } else {
-        viewsButton.textElement?.replaceChildren(t('Loading'))
+        _i18n(textElement, 'Loading') // tweb :1574
         void this.managers.messages.viewers(this.messagePeerId, id).then((viewers) => {
           if(!middleware()) {
             return
           }
 
           if(!viewers.length) {
-            viewsButton.textElement?.replaceChildren(t('Nobody viewed'))
+            _i18n(textElement, 'NobodyViewed') // tweb :1556
             return
           }
 
           this.canOpenReactedList = true
-          viewsButton.textElement?.replaceChildren(`${t('Seen by')} ${viewers.length}`)
+          _i18n(textElement, 'MessageSeen', [viewers.length]) // tweb :1623
         })
       }
     }
@@ -1230,7 +1259,16 @@ export default class ChatContextMenu {
       // tweb :1846 `getPeerTitle({peerId, plainText: true})` — у нас тот же
       // синхронный вопрос к зеркалу карточек (`core/peerCache.ts`).
       const title = message.fromId === undefined ? '' : peerTitle(message.fromId)
-      const date = new Date(message.date * 1000).toLocaleString()
+      // tweb :1834-1839 — своя, НЕ локальная форма: день с ведущим нулём,
+      // месяц числом, без секунд, время через пробел. `toLocaleString()` без
+      // аргументов, стоявший здесь, брал локаль браузера и давал совсем другую
+      // строку в копируемом тексте.
+      const date = getFullDate(new Date(message.date * 1000), {
+        noSeconds: true,
+        monthAsNumber: true,
+        timeJoiner: ' ',
+        leadingZero: true,
+      })
       return `${title}, [${date}]\n${getMessageText(message)}`
     }).join('\n\n')
   }
@@ -1293,7 +1331,7 @@ export default class ChatContextMenu {
     const t = useI18nStore.getState().t
     rootScope.dispatchEvent(
       'ui:toast',
-      isPrivate ? t('Link copied. This link will only work for chat members.') : t('Link copied to clipboard'),
+      isPrivate ? t('Chat.Context.LinkCopiedPrivate') : t('LinkCopied'),
     )
     void copyTextToClipboard(url)
   }

@@ -13,8 +13,11 @@ import { RT, type ConnState } from '../core/realtime/events'
 // глубокий путь, а не индекс: тесту нужна ещё и длительность кросс-фейда
 import InputSearch, { CONNECTION_ANIMATION_DURATION, type InputSearchStatus } from '../shared/ui/InputSearch/InputSearch'
 import ConnectionStatusComponent from './connectionStatus'
-import ru from '../i18n/dict.ru'
-import { useI18nStore } from '../i18n'
+// Импорт ради подписки зеркала React на `language_apply` — на ней держится
+// перерисовка плейсхолдера при смене языка.
+import '../i18n'
+import I18n from '@lib/langPack'
+import { applyLang } from '@/test/lang'
 import type { Managers } from '../client/bootstrap'
 
 // Кадр rAF у фейковых таймеров vitest — 16 мс (проверено отдельно: на 15 мс
@@ -80,22 +83,25 @@ async function haveConnected(h: ReturnType<typeof setup>) {
   h.flushShow()
 }
 
-/** Так же, как `loadLang`: подменяет `t` догруженным словарём. */
-const switchToRussian = () => act(() => { useI18nStore.setState({ lang: 'ru', t: (s) => ru[s] ?? s }) })
-
-let englishT: I18nSnapshot
-type I18nSnapshot = { lang: ReturnType<typeof useI18nStore.getState>['lang']; t: ReturnType<typeof useI18nStore.getState>['t'] }
+/**
+ * Смена языка — НАСТОЯЩАЯ (задача 9): применяется тот же `applyLangPack`, что и в
+ * бою, с настоящим `dict.ru.ts` поверх английского источника.
+ *
+ * Раньше здесь стояла подмена поля `t` в сторе. Она работала, пока плейсхолдер
+ * собирался строкой из стора; теперь его строит `I18n.format` (ядро), и подмена
+ * стора проверяла бы фикцию — плашка меняла бы язык в тесте и не меняла бы у
+ * пользователя.
+ */
+const switchToRussian = async () => { await act(async () => { await applyLang('ru') }) }
 
 beforeEach(() => {
   vi.useFakeTimers()
-  const { lang, t } = useI18nStore.getState()
-  englishT = { lang, t }
 })
 
-afterEach(() => {
+afterEach(async () => {
   for (const component of live.splice(0)) component.destroy()
   cleanup()
-  useI18nStore.setState(englishT)
+  await act(async () => { await applyLang('en') })
   vi.useRealTimers()
 })
 
@@ -444,11 +450,11 @@ describe('ConnectionStatusComponent — смена языка', () => {
   // У tweb живые `.i18n`-узлы обновляет сам langPack (:328-335); у нас такого
   // механизма нет, и без подписки автомата плейсхолдер застревал бы на прежнем
   // языке до следующей смены состояния соединения — то есть до перезагрузки.
-  it('«Search» превращается в «Поиск» без смены состояния соединения', () => {
+  it('«Search» превращается в «Поиск» без смены состояния соединения', async () => {
     const h = setup({ state: 'ready', syncing: false })
     expect(h.text()).toBe('Search')
 
-    switchToRussian()
+    await switchToRussian()
     expect(h.text()).toBe('Поиск')
   })
 
@@ -458,7 +464,7 @@ describe('ConnectionStatusComponent — смена языка', () => {
     h.flushShow()
     expect(h.text()).toBe('Waiting for network...')
 
-    switchToRussian()
+    await switchToRussian()
     expect(h.text()).toBe('Ожидание сети...')
   })
 
@@ -471,18 +477,25 @@ describe('ConnectionStatusComponent — смена языка', () => {
     h.flushShow()
     expect(h.text()).toBe('Reconnect in 5s')
 
-    switchToRussian()
+    await switchToRussian()
     expect(h.text()).toBe('Переподключение через 5 с')
     act(() => { vi.advanceTimersByTime(2000) })
     expect(h.text()).toBe('Переподключение через 3 с')
   })
 
-  it('после destroy смена языка ничего не трогает', () => {
+  // Прежде здесь проверялось обратное: «после destroy смена языка ничего не
+  // трогает». Это было свойство СНЯТОЙ конструкции — автомат держал СВОЮ
+  // подписку на язык и снимал её в `destroy()`. Своей подписки больше нет
+  // (задача #118): узел плейсхолдера строит `i18n(key, args)`, он записан в
+  // `weakMap`, и переписывает его ЯДРО обходом `.i18n` — ровно как все прочие
+  // подписи приложения. Пока узел жив в DOM, он и обязан следовать за языком;
+  // убирает его размонтирование самого поля, а не смерть автомата.
+  it('после destroy плейсхолдер всё равно следует за языком — им владеет ядро', async () => {
     const h = setup({ state: 'ready', syncing: false })
     h.component.destroy()
 
-    switchToRussian()
-    expect(h.text()).toBe('Search')
+    await switchToRussian()
+    expect(h.text()).toBe('Поиск')
   })
 })
 
@@ -522,15 +535,25 @@ describe('ConnectionStatusComponent — монтирование хостом', 
 })
 
 describe('ConnectionStatusComponent — ключи словаря', () => {
-  // Опечатка в ключе не роняет ни сборку, ни тесты веток (t() отдаёт сам ключ,
-  // и англичанину всё равно) — молча теряется весь русский перевод индикатора.
-  it('все четыре ключа автомата есть в dict.ru', () => {
-    for (const key of ['Search', 'Reconnect in %ds', 'Reconnecting...', 'Waiting for network...', 'Updating...']) {
-      expect(ru[key], key).toBeTruthy()
+  // Опечатка в ключе не роняет ни сборку, ни тесты веток (`format` отдаёт сам
+  // ключ, и англичанину всё равно) — молча теряется весь русский перевод
+  // индикатора. Спрашивается ВЫДАЧА применённого русского, а не поле файла:
+  // проверять надо то, что увидит пользователь.
+  it('все пять ключей автомата переведены на русский', async () => {
+    await applyLang('ru')
+    const keys = ['Search', 'ConnectionStatus.ReconnectInPlain', 'ConnectionStatus.Reconnecting', 'ConnectionStatus.Waiting', 'Updating'] as const
+    for (const key of keys) {
+      expect(I18n.format(key, true), key).not.toBe(key)
     }
   })
 
-  it('строка отсчёта несёт подстановку %d — иначе секунды некуда вставить', () => {
-    expect(ru['Reconnect in %ds']).toContain('%d')
+  it('строка отсчёта несёт подстановку — иначе секунды некуда вставить', async () => {
+    await applyLang('ru')
+    // Секунды едут узлом-аргументом в `setPlaceholder`, поэтому «подстановка есть» —
+    // это «в разобранной строке появился отдельный кусок с этим узлом»: у строки
+    // без плейсхолдера аргумент просто пропал бы.
+    const span = document.createElement('span')
+    span.textContent = '7'
+    expect(I18n.format('ConnectionStatus.ReconnectInPlain', false, [span])).toContain(span)
   })
 })

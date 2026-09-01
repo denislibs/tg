@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState } from 'react'
+import type { LangPackKey } from '@/lang'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 // Presentational chat dialogs/popups extracted from Chat: forward target
 // picker, the reacted/seen list. Each is dumb — it self-sources i18n +
 // motion constants and emits its actions via callbacks; the parent owns the
@@ -12,7 +13,6 @@ import classNames from '../../shared/lib/classNames'
 import { createPortal } from 'react-dom'
 import TgIcon from '../TgIcon'
 import { useT, useLang } from '../../i18n'
-import { useI18nStore } from '@/i18n'
 import Avatar from '../../shared/ui/Avatar'
 import Popup from '../../shared/ui/Popup'
 import PeerSelector from '../../shared/ui/PeerSelector'
@@ -24,8 +24,8 @@ import UserAvatar from '../UserAvatar'
 import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import { dialogChatType, dialogToChat } from '../../core/dialogToChat'
 import { chatMatchesFolder } from '../../core/folderFilter'
-import { lastSeenLabel } from '../../core/presence'
-import { isUserStatusOnline, userStatusWasOnline, type UserStatus } from '../../core/peers/peer'
+import { PeerStatus } from '../../shared/ui/peerStatus'
+import type { UserStatus } from '../../core/peers/peer'
 import { useChatsStore } from '../../stores/chatsStore'
 import { cachedChat, peerTitle } from '../../core/peerCache'
 import { isUser } from '../../core/peers/peerId'
@@ -76,7 +76,6 @@ export function openDeleteMessageDialog({ peerId, managers, canRevoke, count = 1
   /** любой исход БЕЗ удаления — Cancel/Esc/оверлей/Back (см. `popup.addEventListener('closeAfterTimeout', …)` ниже) */
   onClose?: () => void
 }): PopupPeer {
-  const t = useI18nStore.getState().t
   const single = count <= 1
   // Канал: revoke всегда, без чекбокса (tweb: buttons[0].callback = callback(..., true))
   const isChannel = chatType === 'channel'
@@ -88,15 +87,24 @@ export function openDeleteMessageDialog({ peerId, managers, canRevoke, count = 1
     // (дамп `17-popup-03-delete-message.json`: div.popup.popup-peer.popup-delete-chat)
     peerId,
     managers,
-    titleLangKey: single ? t('Delete message') : t('Delete %d messages').replace('%d', String(count)),
-    descriptionLangKey: single ? t('Are you sure you want to delete this message?') : t('Are you sure you want to delete these messages?'),
-    checkboxes: withCheckbox ? [{
-      text: chatType === 'private' && peerFirstName
-        ? `${t('Also delete for')} ${peerFirstName}`
-        : t('Delete for all members'),
-    }] : undefined,
+    // Заголовок: одно сообщение — своя строка, несколько — ФОРМА ЧИСЛА с числом внутри
+    // (раньше вызывающий сам подставлял число в «Delete %d messages» — и на одном
+    // сообщении писал «Delete 1 messages»).
+    ...(single
+      ? { titleLangKey: 'DeleteSingleMessagesTitle' as const }
+      : { titleLangKey: 'DeleteMessagesCount' as const, titleLangArgs: [count] }),
+    descriptionLangKey: single ? 'AreYouSureDeleteSingleMessage' : 'AreYouSureDeleteFewMessages',
+    // Подпись чекбокса — КЛЮЧ, имя подставляет строка (`DeleteMessagesOptionAlso` =
+    // «Also delete for %1$s», tweb lang.ts:1607 + deleteMessages.ts:121-124). Раньше
+    // вызывающий склеивал префикс «Also delete for» с именем сам — фраза, которую
+    // нельзя перевести: в языках с другим порядком слов имя стоит не там.
+    checkboxes: withCheckbox ? [
+      chatType === 'private' && peerFirstName
+        ? { text: 'DeleteMessagesOptionAlso' as const, textArgs: [peerFirstName] }
+        : { text: 'DeleteChat.DeleteGroupForAll' as const },
+    ] : undefined,
     buttons: [{
-      text: t('Delete'),
+      langKey: 'Delete',
       isDanger: true,
       callback: (checked) => {
         deleted = true
@@ -124,17 +132,19 @@ export function openDeleteMessageDialog({ peerId, managers, canRevoke, count = 1
 }
 
 // Подпись строки в пикере: private → presence/бот, группа/канал/избранное — метка.
-function shareSub(chat: Chat, presence: Record<number, UserStatus>, lang: string, t: (s: string) => string): string {
-  if (chat.type === 'saved') return t('forward here to save')
+//
+// Присутствие приезжает УЗЛОМ (`PeerStatus`, порт tweb
+// `wrappers/getUserStatusString.ts`), остальные ветки — строкой: ветку решает
+// вид чата, а не тип значения, и `ReactNode` вмещает обе. Прежняя проверка
+// `isUserStatusOnline(..., Date.now())` снята — она была вторым читателем срока
+// годности статуса, а гасит истёкший онлайн владелец (`degradeExpiredPresence`);
+// «онлайн» теперь решает конструктор, как у оригинала (:80-82).
+function shareSub(chat: Chat, presence: Record<number, UserStatus>, t: (key: LangPackKey) => string): ReactNode {
+  if (chat.type === 'saved') return t('ChatYourSelf')
   if (chat.type === 'channel') return t('Channel')
   if (chat.type === 'group') return t('Group')
-  if (chat.isBot) return t('bot')
-  // Присутствие — конструктор `UserStatus`: «онлайн» это `userStatusOnline` с
-  // непросроченным `expires` (порт `appUsersManager.isUserOnline`), а момент
-  // «был(а) в сети» лежит в самом конструкторе.
-  const p = presence[Number(chat.id)]
-  if (isUserStatusOnline(p, Math.floor(Date.now() / 1000))) return t('online')
-  return lastSeenLabel(userStatusWasOnline(p) * 1000, lang)
+  if (chat.isBot) return t('Bot')
+  return <PeerStatus status={presence[Number(chat.id)]} />
 }
 
 // Недавний контакт в горизонтальном ряду: круглый аватар + имя, галочка при выборе.
@@ -205,7 +215,7 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
       id: Number(c.id),
       name: c.name,
       photoId: c.photoId,
-      subtitle: shareSub(c, presence, lang, t),
+      subtitle: shareSub(c, presence, t),
     })),
     [list, presence, lang, t],
   )
@@ -219,7 +229,7 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
       // tweb pickUser.tsx/forward.tsx: `class="popup-forward"`
       // (дамп `17-popup-01-forward-share.json`: div.popup.popup-forward)
       className="popup-forward"
-      title={t('Share with')}
+      title={t('ShareWith')}
       onClose={() => setOpen(false)}
       onExitComplete={() => { const c = confirmed.current; if (c) onPick(c); else onClose() }}
       action={selected.size ? { label: `${t('Forward')} (${selected.size})`, onClick: confirm } : undefined}
@@ -236,7 +246,7 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
         side="right"
         multiselectHidden
         noFilter
-        placeholder={t('Search')}
+        placeholder="Search"
         onQueryChange={setQ}
         selected={[...selected]}
         onSelectedChange={(ids) => setSelected(new Set(ids))}
@@ -296,7 +306,7 @@ export function ContactPicker({ dialogs, onPick, onClose }: {
   return (
     <Popup
       open={open}
-      title={t('Contact')}
+      title={t('AttachContact')}
       onClose={() => setOpen(false)}
       onExitComplete={() => { const p = picked.current; if (p) onPick(p.userId, p.name); else onClose() }}
       width={440}
@@ -350,7 +360,7 @@ export function ChatPicker({ dialogs, title, onPick, onClose }: {
       return {
         peerId: d.peerId,
         title: peerTitle(d.peerId) || `Чат ${d.peerId}`,
-        sub: type === 'channel' ? t('Channel') : type === 'group' ? t('Group') : t('Private Chat'),
+        sub: type === 'channel' ? t('Channel') : type === 'group' ? t('Group') : t('PrivateChat'),
       }
     })
     .filter((r) => !query || r.title.toLowerCase().includes(query))
@@ -434,7 +444,7 @@ export function ReactedUsersPopup({ x, y, rows, onClose }: {
               {!!reactedCount && <><TgIcon name="reactions" size={14} /> {reactedCount}{'  '}</>}
               {!!viewedCount && <><TgIcon name="checks" size={14} /> {viewedCount}</>}
             </>
-          ) : t('Nobody viewed')}
+          ) : t('NobodyViewed')}
         </Text>
         {rows.map((r, i) => (
           <div key={i} className={s.viewersRow}>

@@ -5,6 +5,7 @@
 // поставить реакцию; mediaAreaUrl → открыть ссылку (через safeUrl-allow-list).
 // Клик по области не должен мешать tap-навигации вне её границ — поэтому слой
 // pointer-events:none, а сами области — auto.
+import { useT } from '../i18n'
 import Emoji from './emoji/Emoji'
 import Text from '../shared/ui/Text'
 import { safeUrl } from '../core/safeUrl'
@@ -31,6 +32,7 @@ export default function StoryMediaAreas({
   reactionsCount: number
   onReaction: (emoji: string) => void
 }) {
+  const t = useT()
   return (
     <div style={{ position: 'absolute', inset: 0, zIndex: 3, pointerEvents: 'none' }}>
       {areas.map((a, i) => {
@@ -58,7 +60,7 @@ export default function StoryMediaAreas({
               key={i}
               style={style}
               role="button"
-              aria-label="React"
+              aria-label="Story.React"
               onClick={(e) => { e.stopPropagation(); if (emoticon) onReaction(emoticon) }}
             >
               <div
@@ -85,11 +87,11 @@ export default function StoryMediaAreas({
               key={i}
               style={style}
               role="button"
-              aria-label={title || 'Location'}
+              aria-label={title || t('AttachLocation')}
               onClick={(e) => { e.stopPropagation(); openExternal(mapsUrl(a.geo)) }}
             >
               <div style={{ padding: '4px 10px', borderRadius: 12, background: 'rgba(0,0,0,0.45)', maxWidth: '100%' }}>
-                <Text noWrap color="#fff" size={13} weight={600}>📍 {title || 'Location'}</Text>
+                <Text noWrap color="#fff" size={13} weight={600}>📍 {title || t('AttachLocation')}</Text>
               </div>
             </div>
           )
@@ -100,7 +102,7 @@ export default function StoryMediaAreas({
             key={i}
             style={style}
             role="button"
-            aria-label={a.url || 'Link'}
+            aria-label={a.url || t('SetUrlPlaceholder')}
             onClick={(e) => { e.stopPropagation(); openExternal(a.url) }}
           >
             <div style={{ padding: '4px 10px', borderRadius: 12, background: 'rgba(0,0,0,0.45)', maxWidth: '100%' }}>

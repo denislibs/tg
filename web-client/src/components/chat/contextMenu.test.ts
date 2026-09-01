@@ -296,6 +296,67 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
     expect(itemTexts()[0]).toBe('Reply')
   })
 
+  // Порт :1526 — `formatFullSentTime(outboxReadDate.date, true, false)`. До
+  // задачи #121 подпись строил `friendlyMsgTime`, у которого выбор языка —
+  // тернарник `ru ? … : …`: немецкий, испанский, французский и украинский
+  // читали «прочитано» по-английски. Пин держит именно ХЕЛПЕР: у него «сегодня»
+  // это ключ `Date.Today`, а не дата, и время отделено ключом-предлогом.
+  it('read-date получен — подпись строит `formatFullSentTime` (:1526)', async() => {
+    putMirrorPage(KEY, [message(1, { pFlags: { out: true } })])
+    const { bubble, content } = makeBubble(1, { out: true })
+    container.append(bubble)
+
+    const readAt = new Date()
+    readAt.setHours(9, 41, 0, 0)
+
+    const managers = makeManagers()
+    managers.chats.getReadDate.mockResolvedValue({ readAt: readAt.toISOString() })
+    const menu = new ChatContextMenu(makeChat(), {}, managers, makePopups())
+    menu.attachTo(container)
+
+    rightClick(content)
+    await flush()
+
+    const first = menuElement()!.querySelector<HTMLElement>('.btn-menu-item-text')!
+    expect(first.textContent).toBe('Today at 09:41')
+    // Части — ЖИВЫЕ узлы ядра: «Сегодня» и предлог переводятся, дата и время
+    // переписывают себя на смену языка. Склейка строкой дала бы тот же текст,
+    // поэтому проверяется и структура.
+    expect(first.querySelectorAll('.i18n').length).toBeGreaterThan(2)
+  })
+
+  // `readAt` приезжает СТРОКОЙ с нашего провода (`ReadDateResult`,
+  // `chatsManager.ts:62`), тогда как у оригинала это `int` из MTProto. Битая
+  // строка даёт `NaN`, а `formatFullSentTime(NaN)` бросает `RangeError` из
+  // `Intl` — здесь, внутри `.then()` без `catch`, это давало бы unhandled
+  // rejection и ВЕЧНЫЙ ШИММЕР на месте подписи. Снесённый отсюда
+  // `friendlyMsgTime` такую защиту имел (`friendlyTime.ts:6`), и порт её снял.
+  it('битый read-date не роняет обработчик — пункт убирается, шиммера не остаётся', async() => {
+    putMirrorPage(KEY, [message(1, { pFlags: { out: true } })])
+    const { bubble, content } = makeBubble(1, { out: true })
+    container.append(bubble)
+
+    const rejections: unknown[] = []
+    const onRejection = (e: PromiseRejectionEvent) => { rejections.push(e.reason) }
+    window.addEventListener('unhandledrejection', onRejection)
+
+    const managers = makeManagers()
+    managers.chats.getReadDate.mockResolvedValue({ readAt: 'не дата' })
+    const menu = new ChatContextMenu(makeChat(), {}, managers, makePopups())
+    menu.attachTo(container)
+
+    rightClick(content)
+    await flush()
+    window.removeEventListener('unhandledrejection', onRejection)
+
+    expect(rejections).toEqual([])
+    // Исход тот же, что «read-date недоступен» (:1532-1535): ни пункта, ни его
+    // разделителя, ни повисшего шиммера.
+    expect(menuElement()!.querySelector('.btn-menu-item-loader')).toBeNull()
+    expect(menuElement()!.querySelector('hr')).toBeNull()
+    expect(itemTexts()[0]).toBe('Reply')
+  })
+
   it('read-date скрыт приватностью — «Read show when» (:1537-1540)', async() => {
     putMirrorPage(KEY, [message(1, { pFlags: { out: true } })])
     const { bubble, content } = makeBubble(1, { out: true })
@@ -444,9 +505,10 @@ describe('ChatContextMenu — действия пунктов', () => {
     rightClick(content)
     await flush()
 
-    expect(itemTexts()).toContain('Reacted 2')
+    // Текст пункта — ключ оригинала с формой числа (`Chat.Context.ReactedFast` = «%d Reacted»).
+    expect(itemTexts()).toContain('2 Reacted')
     const item = Array.from(menuElement()!.querySelectorAll<HTMLElement>('.btn-menu-item'))
-      .find((el) => el.querySelector('.btn-menu-item-text')?.textContent === 'Reacted 2')!
+      .find((el) => el.querySelector('.btn-menu-item-text')?.textContent === '2 Reacted')!
     const click = new MouseEvent('click', { bubbles: true, cancelable: true, clientX: 42, clientY: 84 })
     item.dispatchEvent(click)
 
@@ -489,7 +551,7 @@ describe('ChatContextMenu — «кто просмотрел» (views без ре
     // пункт `views` — единственный без своего `text` в `setButtons`: его подпись
     // ставит `init`, а иконка приезжает `prepend`-ом (`checks`/`reactions`)
     return Array.from(menuElement()?.querySelectorAll<HTMLElement>('.btn-menu-item') ?? [])
-      .find((el) => /Seen by|Nobody viewed|Loading/.test(el.querySelector('.btn-menu-item-text')?.textContent ?? ''))
+      .find((el) => /Seen|Nobody viewed|Loading/.test(el.querySelector('.btn-menu-item-text')?.textContent ?? ''))
   }
 
   it('своё сообщение в группе без реакций: пункт спрашивает `messages.viewers` и пишет «Seen by N»', async() => {
@@ -502,9 +564,12 @@ describe('ChatContextMenu — «кто просмотрел» (views без ре
     await flush()
 
     expect(managers.messages.viewers).toHaveBeenCalledWith(GROUP, 1)
-    expect(itemTexts()).toContain('Seen by 2')
+    // `MessageSeen` у оригинала: одна — «Seen», больше — «%1$d Seen».
+    expect(itemTexts()).toContain('2 Seen')
   })
 
+  // Текст ключа `Loading` — 'Loading...' (взят у оригинала вместе с ключом, tweb lang.ts):
+  // после кодмода задачи 6 пункт показывает его, а не старую строку 'Loading'.
   it('ответ ещё в полёте — у пункта стоит «Loading» (:1574)', async() => {
     upsertGroup()
     putMirrorPage(KEY, [groupMessage({ pFlags: { out: true } })])
@@ -513,7 +578,7 @@ describe('ChatContextMenu — «кто просмотрел» (views без ре
     managers.messages.viewers.mockReturnValue(new Promise(() => {}))
     await openInGroup(managers)
 
-    expect(itemTexts()).toContain('Loading')
+    expect(itemTexts()).toContain('Loading...')
   })
 
   it('никто не просмотрел — «Nobody viewed», и клик списка не открывает (:1556, :1619-1624)', async() => {
@@ -595,7 +660,7 @@ describe('ChatContextMenu — пункт `views` в вещательном ка�
     // Меню ОТКРЫТО — иначе «пункта нет» ничего не значило бы.
     expect(itemTexts()).toContain('Reply')
     const views = Array.from(menuElement()?.querySelectorAll<HTMLElement>('.btn-menu-item') ?? [])
-      .find((el) => /Seen by|Nobody viewed|Loading|Reacted/.test(el.querySelector('.btn-menu-item-text')?.textContent ?? ''))
+      .find((el) => /Seen|Nobody viewed|Loading|Reacted/.test(el.querySelector('.btn-menu-item-text')?.textContent ?? ''))
     expect(views).toBeUndefined()
     expect(managers.messages.viewers).not.toHaveBeenCalled()
   })

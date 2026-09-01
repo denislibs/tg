@@ -26,7 +26,7 @@ const noop = () => {}
 describe('RightSearchTab и сдвиг контента', () => {
   it('пока открыт (смонтирован), на body висит класс сужения чата', () => {
     render(
-      <RightSearchTab id="stickers-container" placeholder="Search Stickers" value="" onChange={noop} onClose={noop}>
+      <RightSearchTab id="stickers-container" placeholder="StickersTab.SearchPlaceholder" value="" onChange={noop} onClose={noop}>
         {null}
       </RightSearchTab>,
     )
@@ -35,7 +35,7 @@ describe('RightSearchTab и сдвиг контента', () => {
 
   it('снимает класс при размонтировании (закрытии) единственной открытой панели', () => {
     const { unmount } = render(
-      <RightSearchTab id="stickers-container" placeholder="Search Stickers" value="" onChange={noop} onClose={noop}>
+      <RightSearchTab id="stickers-container" placeholder="StickersTab.SearchPlaceholder" value="" onChange={noop} onClose={noop}>
         {null}
       </RightSearchTab>,
     )
@@ -47,12 +47,12 @@ describe('RightSearchTab и сдвиг контента', () => {
     // вторая смонтированная панель имитирует одновременно открытую
     // UserInfoPanel — обе завязаны на общий счётчик useRightColumnShown.
     const first = render(
-      <RightSearchTab id="stickers-container" placeholder="Search Stickers" value="" onChange={noop} onClose={noop}>
+      <RightSearchTab id="stickers-container" placeholder="StickersTab.SearchPlaceholder" value="" onChange={noop} onClose={noop}>
         {null}
       </RightSearchTab>,
     )
     const second = render(
-      <RightSearchTab id="search-gifs-container" placeholder="Search GIFs" value="" onChange={noop} onClose={noop}>
+      <RightSearchTab id="search-gifs-container" placeholder="SearchGIFs" value="" onChange={noop} onClose={noop}>
         {null}
       </RightSearchTab>,
     )

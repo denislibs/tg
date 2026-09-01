@@ -32,7 +32,7 @@ export default function FolderTabs({
           badge={counts?.[ALL_FOLDER_ID]}
           onContextMenu={(e) => onTabContextMenu?.(ALL_FOLDER_ID, e)}
         >
-          {t('All')}
+          {t('FilterAllChatsShort')}
         </Tabs.Tab>
         {folders.map((f) => (
           <Tabs.Tab

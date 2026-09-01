@@ -1,6 +1,8 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { countUnmutedUnreadPeers, notificationsCountTitle } from './appBadge'
 import { makeDialog } from '../core/dialogs/testDialog'
+import { useI18nStore } from '../i18n'
+import { applyLang } from '@/test/lang'
 
 // Строка списка в форме конструктора: «замьючен» это СРОК, «в архиве» — номер
 // папки. Обе величины теперь ВЫЧИСЛЯЮТСЯ, а не читаются полем.
@@ -33,28 +35,31 @@ describe('countUnmutedUnreadPeers', () => {
 })
 
 describe('notificationsCountTitle', () => {
-  // Английский t(): ключ И есть строка.
-  const t = (s: string) => s
-  const tRu = (s: string) =>
-    ({
-      '%d notification': '%d уведомление',
-      '%d notifications (few)': '%d уведомления',
-      '%d notifications': '%d уведомлений',
-    })[s] ?? s
+  // Форму выбирает ЯЗЫК: проверяем через настоящее хранилище (`tArgs` = `Intl.PluralRules`
+  // + строки словаря), а не через подставной `t` — иначе проверка зеленела бы на любой
+  // арифметике внутри самой функции, которой там больше нет.
+  const title = (count: number) => notificationsCountTitle(count, useI18nStore.getState().tArgs)
 
-  it('en: одна/много (tweb Notifications.Count one_value/other_value)', () => {
-    expect(notificationsCountTitle(1, 'en', t)).toBe('1 notification')
-    expect(notificationsCountTitle(2, 'en', t)).toBe('2 notifications')
-    expect(notificationsCountTitle(42, 'en', t)).toBe('42 notifications')
+  beforeEach(async () => {
+    useI18nStore.setState({ lang: 'en' })
+    await applyLang('en')
   })
 
-  it('ru: славянские формы 1 / 2-4 / 5+', () => {
-    expect(notificationsCountTitle(1, 'ru', tRu)).toBe('1 уведомление')
-    expect(notificationsCountTitle(2, 'ru', tRu)).toBe('2 уведомления')
-    expect(notificationsCountTitle(5, 'ru', tRu)).toBe('5 уведомлений')
-    expect(notificationsCountTitle(11, 'ru', tRu)).toBe('11 уведомлений')
-    expect(notificationsCountTitle(21, 'ru', tRu)).toBe('21 уведомление')
-    expect(notificationsCountTitle(112, 'ru', tRu)).toBe('112 уведомлений')
+  it('en: одна/много (tweb Notifications.Count one_value/other_value)', () => {
+    expect(title(1)).toBe('1 notification')
+    expect(title(2)).toBe('2 notifications')
+    expect(title(42)).toBe('42 notifications')
+  })
+
+  it('ru: славянские формы 1 / 2-4 / 5+', async () => {
+    useI18nStore.setState({ lang: 'ru' })
+    await applyLang('ru')
+    expect(title(1)).toBe('1 уведомление')
+    expect(title(2)).toBe('2 уведомления')
+    expect(title(5)).toBe('5 уведомлений')
+    expect(title(11)).toBe('11 уведомлений')
+    expect(title(21)).toBe('21 уведомление')
+    expect(title(112)).toBe('112 уведомлений')
   })
 })
 
@@ -78,6 +83,10 @@ describe('мигание заголовка и фавиконки', () => {
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx)
     vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/png;base64,BADGE')
 
+    // `resetModules` поднял НОВЫЙ модульный граф — в нём своё ядро локализации, и
+    // оно пусто: заголовок «1 notification» строит `tArgs`, а на пустом ядре тот
+    // отдал бы имя ключа.
+    await import('@/test/lang')
     const { initAppBadge, incNotificationsCount } = await import('./appBadge')
     const icon = () => document.head.querySelector<HTMLLinkElement>('link[rel="icon"]')!
 

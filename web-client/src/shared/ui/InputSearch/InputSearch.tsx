@@ -1,4 +1,6 @@
 import { forwardRef, useCallback, useImperativeHandle, useLayoutEffect, useRef, type ReactNode, type Ref } from 'react'
+import type { LangPackKey } from '@/lang'
+import { i18n, type FormatterArguments } from '@lib/langPack'
 import classNames from '../../lib/classNames'
 import { setTransition } from '../../../core/dom/setTransition'
 import TgIcon from '../../../components/TgIcon'
@@ -20,13 +22,18 @@ export interface InputSearchStatus {
   toggleLoading(loading: boolean): void
   /**
    * tweb :175-198 — кросс-фейд плейсхолдера.
-   * `key` — ключ дедупликации (у tweb это `LangPackKey`): повторный вызов с тем
-   * же ключом ничего не делает, иначе анимация перезапускалась бы на каждом тике
-   * обратного отсчёта. `content` — готовый узел (у tweb его строит `i18n(key, args)`,
-   * и внутрь попадает живой `<span>` с секундами, который автомат мутирует сам,
-   * НЕ трогая setPlaceholder). Без `content` содержимым становится сам `key`.
+   *
+   * Аргументы — РОВНО оригинала: символический ключ и его аргументы подстановки.
+   * Узел строит `i18n(key, args)` (tweb :190), поэтому дедуп идёт по одному
+   * ключу (:176-177): повторный вызов с тем же ключом не делает ничего, иначе
+   * кросс-фейд перезапускался бы на каждом тике обратного отсчёта.
+   *
+   * Живой `<span>` с секундами едет сюда ОБЫЧНЫМ АРГУМЕНТОМ-УЗЛОМ
+   * (`connectionStatus.ts:165` у оригинала): позицию секунд в фразе задаёт
+   * строка языка, а не форма этого метода, и мутирует этот `<span>` автомат
+   * состояния сам, мимо `setPlaceholder`.
    */
-  setPlaceholder(key: string, content?: Node): void
+  setPlaceholder(key: LangPackKey, args?: FormatterArguments): void
 }
 
 interface InputSearchProps {
@@ -34,7 +41,9 @@ interface InputSearchProps {
   onChange: (v: string) => void
   onFocus?: () => void
   onBlur?: () => void
-  placeholder?: string
+  /** СИМВОЛИЧЕСКИЙ КЛЮЧ, а не готовая строка: перевод делает сам компонент
+   *  (`i18n(key)`), как и у оригинала (`inputSearch.ts:190`). */
+  placeholder?: LangPackKey
   /** accent border/icon (parent's persistent "searching" state) */
   focused?: boolean
   onClear?: () => void
@@ -165,7 +174,7 @@ const InputSearch = forwardRef<HTMLInputElement, InputSearchProps>(function Inpu
   })
 
   // tweb :175-198
-  const setPlaceholder = useCallback((key: string, content?: Node) => {
+  const setPlaceholder = useCallback((key: LangPackKey, args?: FormatterArguments) => {
     if (placeholderKeyRef.current === key) return
     placeholderKeyRef.current = key
 
@@ -180,11 +189,17 @@ const InputSearch = forwardRef<HTMLInputElement, InputSearchProps>(function Inpu
       })
     }
 
-    // tweb строит узел через `i18n(key, args)` — у нас i18n даёт строку, поэтому
-    // либо готовый узел от вызывающего, либо текст ключа.
-    const node = document.createElement('span')
-    node.classList.add('i18n', 'input-search-placeholder', 'will-animate')
-    node.append(content ?? key)
+    // tweb :190-195 — узел строит `i18n(key, args)`, класс `.i18n` ставит ЯДРО.
+    //
+    // Прежде здесь создавался свой `span` с классом `i18n` РУКАМИ, а текст в
+    // него клал вызывающий. Класс при этом был поддельным: `applyLangPack`
+    // находит узел обходом `.i18n`, но `weakMap.get` даёт `undefined`, и узел
+    // молча пропускается (`lib/langPack.ts:568-572`). Из-за этого автомат
+    // состояния соединения держал СВОЮ подписку на язык и дедуплицировал по
+    // паре «ключ + показанный текст» вместо одного ключа — обе конструкции
+    // сняты вместе с этой строкой (задача #118).
+    const node = i18n(key, args)
+    node.classList.add('input-search-placeholder', 'will-animate')
     placeholderRef.current = node
     rootRef.current?.append(node)
   }, [])

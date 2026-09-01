@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom'
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import Text from '../shared/ui/Text'
+import { SentTime } from '../shared/ui/dateNodes'
 import IconButton from '../shared/ui/IconButton'
 import Menu, { MenuItem } from '../shared/ui/Menu'
 import Popup from '../shared/ui/Popup'
@@ -85,21 +86,29 @@ function calcTranslateX(diff: number, storyWidth: number): string {
   return `${offset}px`
 }
 
-// Текст даты в шапке (tweb getDateText, viewer.tsx:1957-2009: StoryJustNow /
+// Дата в шапке (tweb getDateText, viewer.tsx:1957-2009: StoryJustNow /
 // MinutesShortAgo / HoursShortAgo / полная дата + пометка edited).
-// Отступление от tweb: у нас нет lang-пака Telegram с плюрализацией, поэтому
-// короткие формы собираем сами через t().
-// `date` — СЕКУНДЫ эпохи (`storyItem.date`), те же единицы, что у сообщения;
-// ISO-строки на проводе больше нет.
-function dateText(date: number, edited: boolean, t: (s: string) => string): string {
-  const ts = date * 1000
-  const sec = Math.max(0, Math.round((Date.now() - ts) / 1000))
-  let head: string
-  if (sec < 60) head = t('just now')
-  else if (sec < 3600) head = `${Math.floor(sec / 60)} ${t('min ago')}`
-  else if (sec < 86400) head = `${Math.floor(sec / 3600)} ${t('h ago')}`
-  else head = new Date(ts).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-  return edited ? head + JOINER + t('edited') : head
+//
+// Отступление от tweb в коротких формах: у оригинала это ключи с формами числа
+// (`i18n('MinutesShortAgo', [n])`), у нас число приклеено к строке через `t()`.
+//
+// СТАРШЕ СУТОК — узел `formatFullSentTime` оригинала (:1985). Прежде здесь
+// стоял `toLocaleString([], …)`, а пустой список локалей это локаль БРАУЗЕРА:
+// при английском интерфейсе история недельной давности подписывалась
+// по-русски. Узел мемоизирован по таймстампу — на смену языка он переписывает
+// себя сам, пересобирать его React не должен.
+// `date` — СЕКУНДЫ эпохи (`storyItem.date`), те же единицы, что у сообщения.
+function StoryDate({ date, edited }: { date: number; edited: boolean }) {
+  const t = useT()
+  const sec = Math.max(0, Math.round((Date.now() - date * 1000) / 1000))
+  const head = sec < 60
+    ? t('StoryJustNow')
+    : sec < 3600
+      ? `${Math.floor(sec / 60)} ${t('Story.Time.MinutesAgo')}`
+      : sec < 86400
+        ? `${Math.floor(sec / 3600)} ${t('Story.Time.HoursAgo')}`
+        : <SentTime timestamp={date} />
+  return <>{head}{edited ? <>{JOINER}{t('EditedMessage')}</> : null}</>
 }
 
 /**
@@ -314,18 +323,18 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
   // Отступление от tweb: privacy-иконки нет (P2 аудита §10.10).
   const headerRight = (
     <>
-      <IconButton onClick={vm.togglePause} aria-label={t(vm.manualPause ? 'Play' : 'Pause')}>
+      <IconButton onClick={vm.togglePause} aria-label={t(vm.manualPause ? 'Media.Play' : 'Media.Pause')}>
         <TgIcon name={vm.manualPause ? 'play' : 'pause'} />
       </IconButton>
       {videoDurationMs > 0 && (
-        <IconButton onClick={() => setMuted((m) => !m)} aria-label={t('Sound')}>
+        <IconButton onClick={() => setMuted((m) => !m)} aria-label={t('Story.Sound')}>
           <TgIcon name={muted ? 'speakerofffilled' : 'speakerfilled'} />
         </IconButton>
       )}
       <IconButton
         className="btn-menu-toggle night"
         onClick={() => (vm.isMe ? setMenuOpen(true) : setOthersMenuOpen(true))}
-        aria-label={t('More')}
+        aria-label={t('Common.More')}
       >
         <TgIcon name="more" />
       </IconButton>
@@ -352,7 +361,7 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
         <div className={s.repost}>
           <TgIcon name="storyrepost" size={14} color="#fff" />
           <Text noWrap color="#fff" size={12} weight={600}>
-            {vm.fwdAuthorName ?? t('Repost')}
+            {vm.fwdAuthorName ?? t('Story.Repost')}
           </Text>
         </div>
       )}
@@ -361,7 +370,7 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
       {(storyCaption(vm.story) || vm.edited) && (
         <div className={s.caption}>
           {storyCaption(vm.story) && <Text color="#fff" size={15}>{storyCaption(vm.story)}</Text>}
-          {vm.edited && <Text color="rgba(255,255,255,0.6)" size={12}>{t('edited')}</Text>}
+          {vm.edited && <Text color="rgba(255,255,255,0.6)" size={12}>{t('EditedMessage')}</Text>}
         </div>
       )}
 
@@ -438,14 +447,14 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
           e.stopPropagation()
         }}
       />
-      <IconButton onClick={() => setPickerOpen((v) => !v)} aria-label={t('React')}>
+      <IconButton onClick={() => setPickerOpen((v) => !v)} aria-label={t('Story.React')}>
         <TgIcon name="smile" />
       </IconButton>
       <div
         className={classNames(s.heartBtn, vm.myReaction ? s.heartActive : '')}
         onClick={() => vm.toggleReaction(vm.myReaction ?? DEFAULT_REACTION)}
         role="button"
-        aria-label={t('React')}
+        aria-label={t('Story.React')}
       >
         {vm.myReaction ? (
           <div key={vm.myReaction} className={s.reactPop}>
@@ -533,7 +542,7 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
         {/* tweb ViewStatistics (viewer.tsx:2199-2201) — пункт меню, не кнопка шапки */}
         <MenuItem
           icon={<TgIcon name="statistics" size={20} />}
-          label={t('Story statistics')}
+          label={t('StoryStatistics')}
           onClick={() => { setMenuOpen(false); vm.openStats() }}
         />
         <MenuItem
@@ -553,7 +562,7 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
         />
         <MenuItem
           icon={<TgIcon name="storyrepost" size={20} />}
-          label={t('Repost')}
+          label={t('Story.Repost')}
           onClick={() => { setOthersMenuOpen(false); setRepostOpen(true) }}
         />
         <MenuItem
@@ -576,13 +585,13 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
       {confirmDel && (
         <Popup
           open
-          title={t('Delete story')}
+          title={t('DeleteStoryTitle')}
           onClose={() => setConfirmDel(false)}
           width={360}
           action={{ label: t('Delete'), onClick: () => { setConfirmDel(false); vm.del() } }}
         >
           <div style={{ padding: '0 16px 8px' }}>
-            <Text size={15}>{t('Are you sure you want to delete this story?')}</Text>
+            <Text size={15}>{t('DeleteStorySubtitle')}</Text>
           </div>
         </Popup>
       )}
@@ -674,7 +683,6 @@ function StoryPeer(props: StoryPeerProps) {
     paused, muted, progressRef, headerRight, overlay, footer,
     onSelect, onNext, onPrev, onBuffering, onDuration, onContentReady,
   } = props
-  const t = useT()
   const story = group.stories[storyIndex]
   // Вложение приезжает СТУПЕНЬЮ вместе с историей: ни номера файла рядом, ни
   // отдельного запроса меты на каждую историю больше нет.
@@ -804,7 +812,7 @@ function StoryPeer(props: StoryPeerProps) {
                   <span className={s.ViewerStoryHeaderSecondary}>{`${JOINER}${storyIndex + 1}/${group.stories.length}`}</span>
                 </div>
                 <div className={classNames(s.ViewerStoryHeaderSecondary, s.ViewerStoryHeaderTime)}>
-                  {dateText(storyDate(story), isStoryEdited(story), t)}
+                  <StoryDate date={storyDate(story)} edited={isStoryEdited(story)} />
                 </div>
               </div>
             </div>

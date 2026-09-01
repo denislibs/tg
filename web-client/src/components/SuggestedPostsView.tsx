@@ -2,22 +2,24 @@
 // канала. mode='admin' — все ожидающие с действиями «Опубликовать» / по времени /
 // «Отклонить»; mode='author' — свои предложки с бейджем статуса (на рассмотрении /
 // одобрено / отклонено). Список живёт в suggestedPostsStore, live — realtimeBridge.
+import type { LangPackKey } from '@/lang'
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import Text from '../shared/ui/Text'
+import { SentTime } from '../shared/ui/dateNodes'
 import TgIcon from './TgIcon'
 import IconButton from '../shared/ui/IconButton'
 import RichText from './RichText'
 import SchedulePopup from './SchedulePopup'
 import { useSuggestedPosts } from '../core/hooks/useSuggestedPosts'
 import type { SuggestedPost, SuggestedPostStatus } from '../core/models'
-import { useLang, useT } from '../i18n'
+import { useT } from '../i18n'
 import s from './SuggestedPostsView.module.scss'
 
-const statusKey: Record<SuggestedPostStatus, string> = {
-  pending: 'On review',
-  approved: 'Approved',
-  rejected: 'Rejected',
+const statusKey: Record<SuggestedPostStatus, LangPackKey> = {
+  pending: 'SuggestedPosts.Status.OnReview',
+  approved: 'SuggestedPosts.Status.Approved',
+  rejected: 'SuggestedPosts.Status.Rejected',
 }
 
 export default function SuggestedPostsView({ chatId, mode, onClose }: {
@@ -26,25 +28,18 @@ export default function SuggestedPostsView({ chatId, mode, onClose }: {
   onClose: () => void
 }) {
   const t = useT()
-  const [lang] = useLang()
   const { posts, approve, reject } = useSuggestedPosts(chatId)
   // Кому назначаем время публикации при одобрении (id поста) — открывает пикер.
   const [scheduleFor, setScheduleFor] = useState<number | null>(null)
 
   const list: SuggestedPost[] = (posts ?? []).filter((p) => (mode === 'admin' ? p.status === 'pending' : true))
 
-  const fmtWhen = (ms: number) => {
-    const d = new Date(ms)
-    const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-    return `${d.toLocaleDateString(lang)}, ${hm}`
-  }
-
   return createPortal(
     <div className={s.overlay} onClick={onClose}>
       <div className={s.card} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
         <div className={s.header}>
           <Text size={17} weight={600} color="var(--primary-text-color)" style={{ flex: 1 }}>
-            {t('Suggested Posts')}
+            {t('SuggestedPosts.Title')}
           </Text>
           <IconButton onClick={onClose} color="var(--secondary-text-color)" aria-label={t('Close')}>
             <TgIcon name="close" size={22} />
@@ -53,7 +48,7 @@ export default function SuggestedPostsView({ chatId, mode, onClose }: {
         <div className={s.list}>
           {posts != null && list.length === 0 && (
             <Text size={14.5} color="var(--secondary-text-color)" style={{ padding: '2rem 1rem', textAlign: 'center', display: 'block' }}>
-              {t('No suggested posts here yet…')}
+              {t('SuggestedPosts.Empty')}
             </Text>
           )}
           {list.map((p) => (
@@ -70,7 +65,11 @@ export default function SuggestedPostsView({ chatId, mode, onClose }: {
                   )}
                   {p.publishAt != null && (
                     <Text size={12} color="var(--secondary-text-color)">
-                      <TgIcon name="schedule" size={12} /> {fmtWhen(p.publishAt)}
+                      {/* «Сегодня в 14:30» узлом — как у оригинала в поле времени
+                          публикации предложки (`chat/suggestPostPopup/publishTimeField.tsx:51`,
+                          `formatFullSentTime`). Прежняя склейка `toLocaleDateString(lang)`
+                          с руками собранным «ЧЧ:ММ» не уважала настройку 12/24 часа. */}
+                      <TgIcon name="schedule" size={12} /> <SentTime timestamp={Math.floor(p.publishAt / 1000)} />
                     </Text>
                   )}
                 </div>
@@ -80,13 +79,13 @@ export default function SuggestedPostsView({ chatId, mode, onClose }: {
               </div>
               {mode === 'admin' && p.status === 'pending' && (
                 <div className={s.actions}>
-                  <IconButton size="small" onClick={() => { void approve(p.id) }} title={t('Publish')} aria-label={t('Publish')}>
+                  <IconButton size="small" onClick={() => { void approve(p.id) }} title={t('SuggestedPosts.Publish')} aria-label={t('SuggestedPosts.Publish')}>
                     <TgIcon name="check" size={18} color="var(--primary-color)" />
                   </IconButton>
-                  <IconButton size="small" onClick={() => setScheduleFor(p.id)} title={t('Schedule')} aria-label={t('Schedule')}>
+                  <IconButton size="small" onClick={() => setScheduleFor(p.id)} title={t('SuggestedPosts.Schedule')} aria-label={t('SuggestedPosts.Schedule')}>
                     <TgIcon name="schedule" size={18} color="var(--primary-color)" />
                   </IconButton>
-                  <IconButton size="small" onClick={() => { void reject(p.id) }} title={t('Reject')} aria-label={t('Reject')}>
+                  <IconButton size="small" onClick={() => { void reject(p.id) }} title={t('SuggestedPosts.Reject')} aria-label={t('SuggestedPosts.Reject')}>
                     <TgIcon name="close" size={18} color="#ff595a" />
                   </IconButton>
                 </div>

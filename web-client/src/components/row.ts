@@ -39,11 +39,9 @@
  * открытие подставит устаревший снимок данных.
  *
  * ── Адаптации под наш стек ───────────────────────────────────────────────────
- *  • `LangPackKey` + `_i18n`/`i18n()` → строка-ключ через
- *    `useI18nStore.getState().t`, узел — `i18nSpan` (#109; тот же приём, что в
- *    `button.ts` и `components/chat/contextMenu.ts:193`);
- *    `*LangArgs`-опции не портированы — у нашего `t()` нет интерполяции
- *    (та же причина, что в `checkboxField.ts`/`radioField.ts`);
+ *  • подписи строит `i18n(key, args)` ядра — дословно как оригинал (:111, :156,
+ *    :183), вместе с `*LangArgs`-опциями и их именами: число и имя подставляет
+ *    строка словаря, а не вызывающий;
  *  • наш `CheckboxField` (`checkboxField.ts`) не имеет `.span`, `.checked`,
  *    `.listenerSetter` и опции `listenerSetter` в конструкторе: проверка
  *    «есть подпись» — по `querySelector('.checkbox-caption')`, чтение
@@ -73,12 +71,11 @@ import RadioForm from '@components/radioForm'
 import Button from '@components/button'
 import Icon from '@components/icon'
 import type { IconName } from '@core/tgico-icons'
-import i18nSpan from '@helpers/dom/i18nSpan'
+import { i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
 import setInnerHTML, { setDirection } from '@helpers/dom/setInnerHTML'
 import replaceContent from '@helpers/dom/replaceContent'
 import { attachClickEvent } from '@helpers/dom/clickEvent'
 import type ListenerSetter from '@helpers/listenerSetter'
-import { useI18nStore } from '../i18n'
 
 type K = string | HTMLElement | DocumentFragment | true
 
@@ -125,14 +122,16 @@ export default class Row<T extends SliderSuperTabEventableConstructable = any> {
     icon: IconName,
     iconClasses: string[],
     subtitle: K,
-    subtitleLangKey: string,
+    subtitleLangKey: LangPackKey,
+    subtitleLangArgs: FormatterArguments,
     subtitleRight: K,
     radioField: Row['radioField'],
     checkboxField: Row['checkboxField'],
     checkboxFieldOptions: CheckboxFieldOptions,
     withCheckboxSubtitle: boolean,
     title: K,
-    titleLangKey: string,
+    titleLangKey: LangPackKey,
+    titleLangArgs: FormatterArguments,
     titleRight: K,
     titleRightSecondary: K,
     clickable: boolean | ((e: MouseEvent) => void),
@@ -147,12 +146,12 @@ export default class Row<T extends SliderSuperTabEventableConstructable = any> {
     noWrap: boolean,
     listenerSetter: ListenerSetter,
     buttonRight?: HTMLElement | boolean,
-    buttonRightLangKey: string,
+    buttonRightLangKey: LangPackKey,
     rightContent?: HTMLElement,
     rightTextContent?: string,
     asLink: boolean,
     asLabel: boolean,
-    checkboxKeys: [string, string],
+    checkboxKeys: [LangPackKey, LangPackKey],
   }> = {}) {
     if(options.checkboxFieldOptions) {
       options.checkboxField = new CheckboxField(options.checkboxFieldOptions)
@@ -169,7 +168,7 @@ export default class Row<T extends SliderSuperTabEventableConstructable = any> {
     if(options.subtitle || options.subtitleLangKey) {
       const subtitle = this.subtitle
       if(options.subtitleLangKey) {
-        subtitle.append(i18nSpan(useI18nStore.getState().t(options.subtitleLangKey)))
+        subtitle.append(i18n(options.subtitleLangKey, options.subtitleLangArgs))
       } else {
         // Внешний `if` уже требует subtitle||subtitleLangKey, а этот `else` —
         // ветка «subtitleLangKey не задан», так что subtitle точно есть.
@@ -215,7 +214,7 @@ export default class Row<T extends SliderSuperTabEventableConstructable = any> {
         if(options.withCheckboxSubtitle && !isToggle) {
           const [enabledKey, disabledKey] = options.checkboxKeys ?? ['Checkbox.Enabled', 'Checkbox.Disabled']
           const onChange = () => {
-            replaceContent(this.subtitle, useI18nStore.getState().t(this.checkboxField.input.checked ? enabledKey : disabledKey))
+            replaceContent(this.subtitle, i18n(this.checkboxField.input.checked ? enabledKey : disabledKey))
           }
 
           if(options.listenerSetter) options.listenerSetter.add(this.checkboxField.input)('change', onChange)
@@ -243,7 +242,7 @@ export default class Row<T extends SliderSuperTabEventableConstructable = any> {
       if(options.title) {
         setContent(this.title, options.title)
       } else if(options.titleLangKey) {
-        this.title.append(i18nSpan(useI18nStore.getState().t(options.titleLangKey)))
+        this.title.append(i18n(options.titleLangKey, options.titleLangArgs))
       }
 
       c.append(this.title)
@@ -446,7 +445,7 @@ export const RadioFormFromValues = (values: {
   // (RadioField.langKey, tweb radioField.ts:17): вкладки настроек копируются
   // из tweb почти дословно, и расхождение в имени поля здесь дало бы TS-ошибку
   // на месте порта, а не рабочий код.
-  langPackKey?: string,
+  langPackKey?: LangPackKey,
   value: number | string,
   checked?: boolean,
   textElement?: ConstructorParameters<typeof RadioField>[0]['textElement']

@@ -9,9 +9,11 @@
  *
  * ── Что урезано и почему ────────────────────────────────────────────────────
  * Ветки оригинала, у которых здесь нет вызывающего и нет зависимости в репо:
- *  • `textArgs` (`_i18n` вторым параметром) — у нашего `t()` (`@/i18n`,
- *    `dict[s] ?? s`) нет интерполяции аргументов, предмета нет — `text` уже
- *    переведённая строка, кладётся `textContent`, а не через `_i18n` (#109);
+ *  (`text`/`textArgs` портированы дословно с задачи 7: подпись — КЛЮЧ, узел
+ *  строит `_i18n(span, key, args)`, как в оригинале (:114). Раньше здесь стояла
+ *  «уже переведённая строка» в `textContent`, и по сигнатуре `text?: string`
+ *  это было неотличимо от ключа — та же половина раскола контракта, что у
+ *  `ButtonMenuItem`/`PopupButton`.)
  *  • `toggle` (переключатель `.checkbox-field-toggle`) — форма для настроек,
  *    не для выделения и не для `PopupPeer`; её вызывающие приедут вместе с
  *    портом строк настроек. Это же расхождение держит недостижимой
@@ -53,14 +55,18 @@
  * `.checkbox-caption`), символ `#check` — `components/SvgDefs.tsx`.
  */
 
+import { _i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
+
 export type CheckboxFieldOptions = {
   /** идёт в `id` инпута как `input-<name>` (tweb :59-61) */
   name?: string
   /** круглый чекбокс — форма, в которой чекбокс живёт в бабле */
   round?: boolean
-  /** подпись строки (tweb :106-113, `span.checkbox-caption`); без неё —
+  /** подпись строки — КЛЮЧ (tweb :12, :106-113, `span.checkbox-caption`); без неё —
    *  `checkbox-without-caption` (tweb :114), как и раньше */
-  text?: string
+  text?: LangPackKey
+  /** аргументы подписи (tweb :114 — второй параметр `_i18n`) */
+  textArgs?: FormatterArguments
   /** взведён при создании (tweb :64-66) */
   checked?: boolean
 }
@@ -93,7 +99,7 @@ export default class CheckboxField {
     if (options.text) {
       span = document.createElement('span')
       span.classList.add('checkbox-caption')
-      span.textContent = options.text
+      _i18n(span, options.text, options.textArgs) // tweb :114
     } else {
       label.classList.add('checkbox-without-caption')
     }

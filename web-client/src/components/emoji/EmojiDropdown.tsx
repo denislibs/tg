@@ -18,6 +18,7 @@
 //  - поиск сдвигает панель вверх (`.is-searching` + `emoticons-will-move-*`);
 //  - нижние табы: search / emoji / stickers / gifs / delete, `.hide` по правилам
 //    index.ts:459-460. Все вкладки живут в DOM (`.tabs-tab.active` → display:flex).
+import type { LangPackKey } from '@/lang'
 import {
   memo,
   useCallback,
@@ -165,7 +166,7 @@ const EmojiCategory = memo(function EmojiCategory({
       {/* локальная категория (tweb createLocalCategory, tab.ts:345-347):
           заголовок `i18n(title)` = span.i18n + класс disable-hover */}
       <div className="category-title disable-hover">
-        <span className="i18n">{title}</span>
+        <span>{title}</span>
       </div>
       <div className="category-items super-emojis" style={{ minHeight: rows * CELL }}>
         {visible && emojis.map((e, i) => <EmojiCell key={`${e}-${i}`} e={e} onPick={onPick} />)}
@@ -412,7 +413,7 @@ export default function EmojiDropdown({
 
   const frequent = recent.length ? recent : DEFAULT_FREQUENT
   const cats = useMemo(
-    () => [{ key: 'recent', label: 'Frequently Used', emojis: frequent }, ...CATEGORIES],
+    () => [{ key: 'recent', label: 'Emoji.Recent' as LangPackKey, emojis: frequent }, ...CATEGORIES],
     [frequent],
   )
 
@@ -590,7 +591,7 @@ export default function EmojiDropdown({
                 onChange={setQuery}
                 onFocus={() => setFocused(true)}
                 onBlur={() => setFocused(false)}
-                placeholder={t('Search Emoji')}
+                placeholder={t('SearchEmoji')}
                 focused={searching}
                 hasGroup={!!group}
                 onGroupClear={() => setGroup(null)}
@@ -629,7 +630,7 @@ export default function EmojiDropdown({
                       </div>
                     </div>
                   )
-                  : <span className="emoticons-not-found animated-item">{t('No emoji found.')}</span>
+                  : <span className="emoticons-not-found animated-item">{t('NoEmojiFound')}</span>
                 : undefined
             }
           >

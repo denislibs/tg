@@ -65,14 +65,14 @@ export default function CallScreen() {
   }, [])
 
   const endLabel: Record<string, string> = {
-    hangup: t('Call ended'), declined: t('Declined'), busy: t('Busy'),
-    missed: t('No answer'), failed: t('Failed'),
-    privacy: t("This user doesn't accept calls"),
+    hangup: t('Call.StatusEnded'), declined: t('Call.StatusDeclined'), busy: t('Call.StatusBusy'),
+    missed: t('Call.StatusNoAnswer'), failed: t('StarsFailed'),
+    privacy: t('Call.PrivacyError'),
   }
   const status =
-    call.phase === 'incoming' ? (call.video ? t('Incoming video call') : t('Incoming call'))
-    : call.phase === 'outgoing' ? t('Ringing…')
-    : call.phase === 'connecting' ? t('Connecting…')
+    call.phase === 'incoming' ? (call.video ? t('CallMessageVideoIncoming') : t('CallMessageIncoming'))
+    : call.phase === 'outgoing' ? t('Call.StatusRinging')
+    : call.phase === 'connecting' ? t('Call.StatusConnecting')
     : call.phase === 'ended' ? endLabel[call.endReason ?? 'hangup']
     : fmt(secs)
 
@@ -106,7 +106,7 @@ export default function CallScreen() {
           <div
             role="button"
             tabIndex={0}
-            aria-label={t('Encryption key')}
+            aria-label={t('Call.EncryptionKey')}
             onClick={() => setSasOpen((v) => !v)}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSasOpen((v) => !v) } }}
             style={{
@@ -123,7 +123,7 @@ export default function CallScreen() {
           {sasOpen && (
             <div style={{ maxWidth: 260, padding: '10px 12px', borderRadius: 12, background: 'rgba(0,0,0,0.42)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' }}>
               <Text size={13.5} color="#fff">
-                {t('If the emoji match on both devices, this call is end-to-end verified.')}
+                {t('Call.EncryptionKeyHint')}
               </Text>
             </div>
           )}
@@ -146,7 +146,7 @@ export default function CallScreen() {
 
       {active && call.remoteMuted && (
         <div className={s.remoteMuted}>
-          <Text size={13.5} color="#fff">{t('Microphone is off')}</Text>
+          <Text size={13.5} color="#fff">{t('Call.MicrophoneOff')}</Text>
         </div>
       )}
 
@@ -155,7 +155,7 @@ export default function CallScreen() {
           <Avatar background={call.peer.avatar} text={call.peer.avatarText ?? call.peer.name.charAt(0)} src={avatarSrc} size={136} />
           <Text size={28} weight={600}>{call.peer.name}</Text>
           <Text size={16} style={{ opacity: 0.85 }}>
-            {call.video && active ? `${t('Video Call')} · ${status}` : status}
+            {call.video && active ? `${t('VideoCall')} · ${status}` : status}
           </Text>
         </div>
       )}
@@ -167,13 +167,13 @@ export default function CallScreen() {
             <IconButton
               onClick={() => accept()}
               color="#fff"
-              title={t('Accept')}
-              aria-label={t('Accept')}
+              title={t('Call.Accept')}
+              aria-label={t('Call.Accept')}
               style={{ width: 64, height: 64, background: '#4dcd5e', '--ib-hover': '#3fbd50' } as CSSProperties}
             >
               <TgIcon name="phone_filled" size={30} color="#fff" />
             </IconButton>
-            <IconButton onClick={decline} color="#fff" title={t('Decline')} aria-label={t('Decline')} style={endStyle}>
+            <IconButton onClick={decline} color="#fff" title={t('Call.Decline')} aria-label={t('Call.Decline')} style={endStyle}>
               <TgIcon name="endcall_filled" size={30} color="#fff" />
             </IconButton>
           </>
@@ -182,8 +182,8 @@ export default function CallScreen() {
             <IconButton
               onClick={toggleMute}
               color="#fff"
-              title={call.muted ? t('Unmute') : t('Mute')}
-              aria-label={call.muted ? t('Unmute') : t('Mute')}
+              title={call.muted ? t('VoipUnmute') : t('Call.Mute')}
+              aria-label={call.muted ? t('VoipUnmute') : t('Call.Mute')}
               style={ctrlStyle}
             >
               {call.muted ? (
@@ -195,8 +195,8 @@ export default function CallScreen() {
             <IconButton
               onClick={() => void toggleCamera()}
               color="#fff"
-              title={call.camOn ? t('Turn off camera') : t('Turn on camera')}
-              aria-label={call.camOn ? t('Turn off camera') : t('Turn on camera')}
+              title={call.camOn ? t('Call.CameraOff') : t('Call.CameraOn')}
+              aria-label={call.camOn ? t('Call.CameraOff') : t('Call.CameraOn')}
               style={ctrlStyle}
             >
               {call.camOn ? (
@@ -208,13 +208,13 @@ export default function CallScreen() {
             <IconButton
               onClick={() => void toggleScreenShare()}
               color="#fff"
-              title={call.screenOn ? t('Stop screen sharing') : t('Share screen')}
-              aria-label={call.screenOn ? t('Stop screen sharing') : t('Share screen')}
+              title={call.screenOn ? t('Call.StopScreenSharing') : t('Call.ShareScreen')}
+              aria-label={call.screenOn ? t('Call.StopScreenSharing') : t('Call.ShareScreen')}
               style={call.screenOn ? { ...ctrlStyle, background: 'rgba(255,255,255,0.45)' } : ctrlStyle}
             >
               <TgIcon name="sharescreen_filled" size={26} color="#fff" />
             </IconButton>
-            <IconButton onClick={hangup} color="#fff" title={t('End call')} aria-label={t('End call')} style={endStyle}>
+            <IconButton onClick={hangup} color="#fff" title={t('CallSettings.EndCall')} aria-label={t('CallSettings.EndCall')} style={endStyle}>
               <TgIcon name="endcall_filled" size={30} color="#fff" />
             </IconButton>
           </>

@@ -5,12 +5,10 @@
 // секретные (E2E) медиа того же вида. Элементы-миниатюры соседей отдаёт
 // вызывающий через findElement (tweb собирает их из отрендеренных баблов,
 // bubbles.ts:3744-3800) — у не отрендеренных element остаётся null.
-import { friendlyMsgTime } from '@core/format/friendlyTime'
 import { getMediaDimensions, getMediaFromMessage, getStrippedThumb } from '@core/media/messageMedia'
 import { getSecretMediaUrl, peekSecretMediaUrl } from '@core/secret/mediaCache'
 import { getMessageText, type MyMessage } from '@core/models'
 import { getMediaId } from '@core/messages/messageKind'
-import { messageDateISO } from '@core/messageToConvMsg'
 import type { Chat, User } from '@core/peers/peer'
 import { getPeerPhoto, getPeerPhotoStrippedThumb } from '@core/peers/peer'
 import { getPeerTitle } from '@core/peers/getPeerTitle'
@@ -80,7 +78,7 @@ export function messageToViewerItem(m: MyMessage, ctx: LightboxCtx, element: HTM
     author: {
       peerId: (m.fromId ?? 0),
       name: senderName(m, ctx),
-      date: friendlyMsgTime(messageDateISO(m.date), ctx.lang),
+      date: m.date,
       avatarPreview: (m.fromId ?? 0) === ctx.meId
         ? undefined
         : getPeerPhotoStrippedThumb(getPeerPhoto(senderPeer(m, ctx))) || undefined,
@@ -130,7 +128,7 @@ export function collectLightboxItems({ msgs, mediaId, ctx, findElement }: {
       element: null,
       mid: 0,
       media: { mediaId, width: 0, height: 0, kind: 'photo' },
-      author: { peerId: -1, name: ctx.chatName || '', date: '' },
+      author: { peerId: -1, name: ctx.chatName || '' },
     }
   return { items: [item], index: 0 }
 }

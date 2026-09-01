@@ -16,7 +16,7 @@ const DOB_LABELS: Record<string, [string, string, string]> = {
   ru: ['День', 'Месяц', 'Год'],
   uk: ['День', 'Місяць', 'Рік'],
   es: ['Día', 'Mes', 'Año'],
-  de: ['Tag', 'Monat', 'Jahr'],
+  de: ['Common.Tag', 'Monat', 'Jahr'],
   fr: ['Jour', 'Mois', 'Année'],
 }
 
@@ -75,7 +75,7 @@ export default function BirthdayModal({
         </div>
 
         <Text size={14} color="var(--secondary-text-color)" style={{ textAlign: 'center', marginTop: '14px', lineHeight: 1.45 }}>
-          {t('In settings you can choose who will see your birthday.')}
+          {t('Birthday.PrivacyHint')}
         </Text>
 
         <Button fullWidth uppercase disabled={!valid} onClick={() => onSave({ _: 'birthday', day: d, month: m, year: y })} className={s.save}>

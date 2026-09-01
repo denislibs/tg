@@ -2,6 +2,7 @@
 // Общие для экранов редактирования группы/канала примитивы: список эмодзи-реакций,
 // инициал для аватара-плейсхолдера и универсальный пикер участника
 // (добавить админа/участника/в чёрный список — tweb).
+import type { LangPackKey } from '@/lang'
 import { useMemo, type ReactNode } from 'react'
 import { SettingsScreen } from '../../settings/kit'
 import PeerSelector, { type SelectorPeer } from '../../../shared/ui/PeerSelector'
@@ -26,7 +27,7 @@ export function memberToPeer(m: { userId: number; name: string; photoId?: number
 export function MemberPicker({
   title, members, onBack, onPick,
 }: {
-  title: string
+  title: LangPackKey
   members: EditMember[]
   onBack: () => void
   onPick: (m: EditMember) => void
@@ -40,7 +41,7 @@ export function MemberPicker({
           const m = members.find((x) => x.userId === p.id)
           if (m) onPick(m)
         }}
-        empty={{ title: 'No Results' }}
+        empty={{ title: 'SearchEmptyViewTitle' }}
       />
     </SettingsScreen>
   )

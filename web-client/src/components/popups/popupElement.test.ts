@@ -82,16 +82,18 @@ describe('PopupElement — база (порт tweb popups/index.ts)', () => {
   it('setButtons: порядок массива, isDanger → класс danger, клик зовёт callback и закрывает попап', () => {
     const onDelete = vi.fn()
     const popup = new TestPopup('popup-buttons-test', {}, [
-      { text: 'Отмена', isCancel: true },
-      { text: 'Удалить', isDanger: true, callback: onDelete },
+      // `langKey` — КЛЮЧ (переводит попап), `text` — готовый УЗЕЛ. Раскол «строка это
+      // ключ или уже перевод?» снят задачей 7 именно типом: строку сюда не положить.
+      { langKey: 'Cancel', isCancel: true },
+      { langKey: 'Delete', isDanger: true, callback: onDelete },
     ])
     popup.show()
 
     const root = document.querySelector('.popup-buttons-test') as HTMLElement
     const buttons = root.querySelectorAll<HTMLButtonElement>('.popup-button')
     expect(buttons).toHaveLength(2)
-    expect(buttons[0].textContent).toBe('Отмена')
-    expect(buttons[1].textContent).toBe('Удалить')
+    expect(buttons[0].textContent).toBe('Cancel')
+    expect(buttons[1].textContent).toBe('Delete')
     expect(buttons[0].classList.contains('primary')).toBe(true)
     expect(buttons[1].classList.contains('danger')).toBe(true)
 

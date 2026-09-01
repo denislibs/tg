@@ -17,7 +17,7 @@ import (
 func newStatsRouter(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	pool := postgres.NewTestDB(t)
 	statsUC := usecasestats.New(pgadapter.NewStatsRepo(pool))
-	return NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, statsUC, nil), pool
+	return NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, statsUC, nil, nil), pool
 }
 
 func TestPostStats_HTTP(t *testing.T) {

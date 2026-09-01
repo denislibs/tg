@@ -124,20 +124,15 @@
  * зависимости останется как в оригинале (`slider.ts` → `sliderTab.ts`, а не
  * наоборот).
  *
- * ── Адаптации под наш стек ─────────────────────────────────────────────────
- *  • `LangPackKey` + `i18n(key)` (tweb :115-117) → строка-ключ через
- *    `useI18nStore.getState().t` + `i18nSpan` (#109 — тот же приём и то же
- *    расхождение, что в `row.ts`/`button.ts`/`settingSection.ts`: наш словарь
- *    это ключ→строка, а не `langPack` оригинала).
+ * Заголовок вкладки строит `i18n(key)` ядра — дословно как оригинал (:115-117).
  */
 import EventListenerBase, { type EventListenerListeners } from '@helpers/eventListenerBase'
 import ListenerSetter from '@helpers/listenerSetter'
 import { getMiddleware, type Middleware, type MiddlewareHelper } from '@helpers/middleware'
 import noop from '@helpers/noop'
-import i18nSpan from '@helpers/dom/i18nSpan'
 import ButtonIcon from '@components/buttonIcon'
 import Scrollable from '@components/scrollable'
-import { useI18nStore } from '../i18n'
+import { i18n, type LangPackKey } from '@lib/langPack'
 import type { Managers } from '../client/bootstrap'
 
 /** См. докблок файла — временный контракт вместо `SidebarSlider` (шаг 5 плана волны 2). */
@@ -258,8 +253,8 @@ export default class SliderSuperTab {
     }
   }
 
-  protected setTitle(key: string) {
-    this.title.replaceChildren(i18nSpan(useI18nStore.getState().t(key)))
+  protected setTitle(key: LangPackKey) {
+    this.title.replaceChildren(i18n(key))
   }
 }
 

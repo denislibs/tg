@@ -36,6 +36,7 @@
 // `components/emptyPlaceholder.tsx`: `is-visible` на контейнере секции списка
 // ставится РОВНО когда список непустой, иначе показывается
 // `.selector-empty-placeholder` соседом внутри `.selector-height-container`.
+import type { LangPackKey } from '@/lang'
 import { useMemo, useRef, useState, type ReactNode } from 'react'
 import classNames from '../../lib/classNames'
 import { useRipple } from '../Ripple/useRipple'
@@ -71,7 +72,8 @@ interface PeerSelectorProps {
   design?: 'round' | 'square'
   /** `checkboxSide` (tweb): сторона чекбокса и, следом, весь модификатор колонки */
   side?: 'right' | 'left'
-  placeholder?: string
+  /** СИМВОЛИЧЕСКИЙ КЛЮЧ — переводит его сам `InputSearch` (`i18n(key)`). */
+  placeholder?: LangPackKey
   /** запрос наружу — для тех, кто досыпает в `peers` результаты сетевого поиска */
   onQueryChange?: (q: string) => void
   /** `peers` уже отфильтрован родителем — встроенный фильтр по имени выключен */
@@ -84,7 +86,7 @@ interface PeerSelectorProps {
   /** подпись между поиском и списком (tweb — отдельный SettingSection с caption) */
   caption?: ReactNode
   /** пустое состояние (tweb `emptyPlaceholder`, стикер UtyanSearch 140×140) */
-  empty?: { title: string; description?: string }
+  empty?: { title: LangPackKey; description?: LangPackKey }
   /** узлы между поиском и списком ВНУТРИ скроллера селектора: у попапа
    *  «Поделиться» это ряд «недавних» (`search-group search-group-contacts`) и
    *  табы папок — в дампе `17-popup-01-forward-share` они лежат именно там,
@@ -277,7 +279,7 @@ export default function PeerSelector({
                       <InputSearch
                         value={query}
                         onChange={(v) => { setQuery(v); onQueryChange?.(v) }}
-                        placeholder={placeholder ?? t('Search')}
+                        placeholder={placeholder ?? 'Search'}
                         className="selector-search-input-container"
                         inputClassName="selector-search-input"
                         noBorder

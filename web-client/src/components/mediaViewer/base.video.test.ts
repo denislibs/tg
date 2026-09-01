@@ -8,6 +8,10 @@
 // readyState/networkState/buffered стабятся на прототипе, события видео
 // диспатчатся руками.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+// Плеер строит подпись скорости живым узлом ядра (`_i18n`, задача 8), а строки в
+// ядро кладёт холодный старт (`client/boot.ts`); в прогоне — общий сетап
+// (`src/test/setup.ts`). На пустом ядре узел напечатал бы имя ключа и красил бы
+// пин `test/domKeyLeak`.
 import AppMediaViewerBase, { type ViewerMedia, type ViewerNavigationItem } from './base'
 import type VideoPlayer from '@lib/mediaPlayer'
 import ListLoader from './listLoader'

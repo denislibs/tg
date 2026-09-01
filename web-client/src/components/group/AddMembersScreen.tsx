@@ -15,7 +15,7 @@ import { useT, useLang } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useGroupCandidates } from '../../core/hooks/useGroupCandidates'
 import { useChatsStore } from '../../stores/chatsStore'
-import { userStatusLabel } from '../../core/presence'
+import { PeerStatus } from '../../shared/ui/peerStatus'
 import { getPeerPhotoId, peerKey } from '../../core/peers/peer'
 import { getUserTitle } from '../../core/peers/getPeerTitle'
 
@@ -76,7 +76,7 @@ export default function AddMembersScreen({
         id: c.id,
         name: c.name,
         photoId: c.photoId,
-        subtitle: userStatusLabel(p, lang),
+        subtitle: <PeerStatus status={p} />,
         // уже участник: галочка стоит, снять нельзя, чипа не даёт
         disabled: existing.has(c.id),
         checked: existing.has(c.id),
@@ -97,7 +97,7 @@ export default function AddMembersScreen({
   }
 
   return (
-    <SettingsScreen title="Add Members" onBack={onClose} zIndex={70}>
+    <SettingsScreen title="GroupAddMembers" onBack={onClose} zIndex={70}>
       <PeerSelector
         peers={peers}
         mode="multi"
@@ -107,7 +107,7 @@ export default function AddMembersScreen({
         onQueryChange={setQ}
         selected={selected}
         onSelectedChange={setSelected}
-        empty={{ title: 'No Results' }}
+        empty={{ title: 'SearchEmptyViewTitle' }}
       />
 
       {selected.length > 0 && (

@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
+
+// Здесь строятся узлы `i18n()`. Строки в ядро кладёт холодный старт (`main.tsx` →
+// `client/boot.ts` дожидается пакета до первого рендера), а в прогоне — общий сетап
+// (`src/test/setup.ts`); на пустом ядре узел напечатал бы имя ключа.
 import SliderSuperTab, { SliderSuperTabEventable } from './sliderTab'
 import { createSliderStub } from './sliderTab.testStub'
 

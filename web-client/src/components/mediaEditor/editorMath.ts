@@ -2,6 +2,8 @@
 // crop-рамки, повороты/отражения координат, undo-стек. Вынесена отдельно,
 // чтобы тестировать в vitest без канваса.
 
+import type { LangPackKey } from '@/lang'
+
 export interface Point {
   x: number
   y: number
@@ -44,22 +46,22 @@ export const ENHANCE_DEFAULTS: EnhanceValues = {
 export interface AdjustmentConfig {
   key: keyof EnhanceValues
   uniform: string
-  label: string
+  label: LangPackKey
   to100: boolean
 }
 
 export const ADJUSTMENTS: AdjustmentConfig[] = [
-  { key: 'enhance', uniform: 'uEnhance', label: 'Enhance', to100: true },
-  { key: 'brightness', uniform: 'uBrightness', label: 'Brightness', to100: false },
-  { key: 'contrast', uniform: 'uContrast', label: 'Contrast', to100: false },
-  { key: 'saturation', uniform: 'uSaturation', label: 'Saturation', to100: false },
-  { key: 'warmth', uniform: 'uWarmth', label: 'Warmth', to100: false },
-  { key: 'fade', uniform: 'uFade', label: 'Fade', to100: true },
-  { key: 'highlights', uniform: 'uHighlights', label: 'Highlights', to100: false },
-  { key: 'shadows', uniform: 'uShadows', label: 'Shadows', to100: false },
-  { key: 'vignette', uniform: 'uVignette', label: 'Vignette', to100: true },
-  { key: 'grain', uniform: 'uGrain', label: 'Grain', to100: true },
-  { key: 'sharpen', uniform: 'uSharpen', label: 'Sharpen', to100: true },
+  { key: 'enhance', uniform: 'uEnhance', label: 'MediaEditor.Adjustments.Enhance', to100: true },
+  { key: 'brightness', uniform: 'uBrightness', label: 'MediaEditor.Adjustments.Brightness', to100: false },
+  { key: 'contrast', uniform: 'uContrast', label: 'MediaEditor.Adjustments.Contrast', to100: false },
+  { key: 'saturation', uniform: 'uSaturation', label: 'MediaEditor.Adjustments.Saturation', to100: false },
+  { key: 'warmth', uniform: 'uWarmth', label: 'MediaEditor.Adjustments.Warmth', to100: false },
+  { key: 'fade', uniform: 'uFade', label: 'MediaEditor.Adjustments.Fade', to100: true },
+  { key: 'highlights', uniform: 'uHighlights', label: 'MediaEditor.Adjustments.Highlights', to100: false },
+  { key: 'shadows', uniform: 'uShadows', label: 'MediaEditor.Adjustments.Shadows', to100: false },
+  { key: 'vignette', uniform: 'uVignette', label: 'MediaEditor.Adjustments.Vignette', to100: true },
+  { key: 'grain', uniform: 'uGrain', label: 'MediaEditor.Adjustments.Grain', to100: true },
+  { key: 'sharpen', uniform: 'uSharpen', label: 'MediaEditor.Adjustments.Sharpen', to100: true },
 ]
 
 /** Диапазон слайдера коррекции: to100 → [0,100], иначе [−50,50]. */

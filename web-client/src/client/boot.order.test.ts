@@ -39,7 +39,11 @@ vi.mock('./bootstrap', () => ({
 vi.mock('./dnpBridgeHandoff', () => ({ installBridgeHandoff: vi.fn() }))
 vi.mock('../core/pwa', () => ({ initPwaInstall: vi.fn() }))
 vi.mock('../core/preventDeadlock', () => ({ preventCrossTabDynamicImportDeadlock: vi.fn(async () => {}) }))
-vi.mock('../i18n', () => ({ getInitial: () => 'ru', loadLang: vi.fn(async () => {}) }))
+// Язык здесь не мокается вовсе: у фейкового `startClient` менеджера `langPack`
+// нет, значит каждый прыжок к владельцу отказывает — и ядро поднимается на
+// локальном английском (`askOwner` → `applyServerLangPack(null)`). Ровно то, что
+// нужно шву: настоящий `await` в том же `Promise.all`, никакой сети. Сам старт
+// языка пинит `boot.lang.test.ts`.
 vi.mock('../core/state/migrateRecentSearch', () => ({ migrateRecentSearchFromLocalStorage: vi.fn() }))
 vi.mock('../core/store/idbKv', () => ({ idbGet: vi.fn(async () => 'TOKEN-НОВОГО-АККАУНТА') }))
 vi.mock('../core/store/persist', () => ({

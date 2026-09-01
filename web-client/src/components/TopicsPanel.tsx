@@ -10,6 +10,8 @@
 // `itemSize: 64, noAvatar: true` (`forumTab/groupForumTab.ts:27-32`).
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type Ref } from 'react'
 import Text from '../shared/ui/Text'
+import DomNode from '../shared/ui/DomNode'
+import { formatDateAccordingToTodayNew } from '@helpers/date'
 import TgIcon from './TgIcon'
 import Badge from '../shared/ui/Badge'
 import IconButton from '../shared/ui/IconButton'
@@ -25,12 +27,11 @@ import { useEvent } from '../core/hooks/useEvent'
 // Тип строки данных темы. Локальный алиас — потому что `TopicRow` в этом файле
 // занят мемоизированным КОМПОНЕНТОМ строки (см. ниже).
 import type { TopicRow as Topic } from '../core/managers/groupsManager'
-import { fmtWhen, previewOf } from '../core/dialogToChat'
-import { messageDateISO } from '../core/messageToConvMsg'
+import { previewOf } from '../core/dialogToChat'
 import { getPeerTitle } from '../core/peers/getPeerTitle'
 import { cachedPeer } from '../core/peerCache'
 import { useChatsStore } from '../stores/chatsStore'
-import { useT } from '../i18n'
+import { useT, useTArgs } from '../i18n'
 import classNames from '../shared/lib/classNames'
 import s from './TopicsPanel.module.scss'
 import { hasRights } from '../core/peers/rights'
@@ -122,6 +123,16 @@ export const TopicRow = memo(function TopicRow({ topic, active, dimmed, onOpen, 
   const titleColor = active ? '#fff' : 'var(--primary-text-color)'
   const subColor = active ? 'rgba(255,255,255,0.9)' : 'var(--secondary-text-color)'
   const metaColor = active ? 'rgba(255,255,255,0.85)' : 'var(--secondary-text-color)'
+  // Дата последнего сообщения темы — тем же живым узлом, что в списке чатов
+  // (у tweb ряд темы строит тот же `appDialogsManager`, :2242).
+  // Зависимость — ТАЙМСТАМП, а не сам `lm`: строка темы получает новый объект
+  // сообщения на каждое обновление темы, и мемо по объекту пересобирало бы
+  // живой узел там, где дата не менялась.
+  const lastAt = lm?.date
+  const dateNode = useMemo(
+    () => (lastAt === undefined ? null : formatDateAccordingToTodayNew(new Date(lastAt * 1000))),
+    [lastAt],
+  )
   return (
     <div
       ref={ref}
@@ -148,7 +159,7 @@ export const TopicRow = memo(function TopicRow({ topic, active, dimmed, onOpen, 
           <TgIcon name="checks" size={18} color={active ? '#fff' : 'var(--primary-color)'} style={{ flexShrink: 0 }} />
         ) : null}
         <Text size={12} color={metaColor} style={{ flexShrink: 0 }}>
-          {fmtWhen(lm ? messageDateISO(lm.date) : undefined)}
+          {dateNode ? <DomNode node={dateNode} /> : null}
         </Text>
       </div>
       <div className={s.subtitleRow}>
@@ -178,6 +189,7 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
   onViewAsMessages: () => void
 }) {
   const t = useT()
+  const tArgs = useTArgs()
   const managers = useManagers()
   const middlewareHelper = useMiddlewareHelper()
   const chatIdRef = useRef(chatId)
@@ -307,7 +319,7 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
           <div className={s.headerBody}>
             <Text noWrap size={16.5} weight={600} color="var(--primary-text-color)">{chatName}</Text>
             <Text size={13} color="var(--secondary-text-color)">
-              {topics ? `${topics.length} ${t('topics')}` : t('Topics')}
+              {topics ? tArgs('TopicsCount', [topics.length]) : t('Topics')}
             </Text>
           </div>
         ) : (
@@ -332,7 +344,7 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
             setMenuAnchor({ top: r.bottom + 4, right: window.innerWidth - r.right })
           }}
           color="var(--secondary-text-color)"
-          aria-label={t('Menu')}
+          aria-label={t('Common.Menu')}
         >
           <TgIcon name="more" size={24} />
         </IconButton>
@@ -347,13 +359,13 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
         {canManage && (
           <MenuItem
             icon={<TgIcon name="add" size={20} />}
-            label={t('New Topic')}
+            label={t('NewTopic')}
             onClick={() => { setMenuAnchor(null); setCreateOpen(true) }}
           />
         )}
         <MenuItem
           icon={<TgIcon name="message" size={20} />}
-          label={t('View as Messages')}
+          label={t('ForumTopic.Context.ShowAsMessages')}
           onClick={() => { setMenuAnchor(null); onViewAsMessages() }}
         />
       </Menu>
@@ -369,14 +381,14 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
           <MenuItem
             key="edit"
             icon={<TgIcon name="edit" size={20} />}
-            label={t('Edit Topic')}
+            label={t('ForumTopic.Title.Edit')}
             onClick={() => { const tp = rowMenu.topic; setRowMenu(null); setEditing(tp) }}
           />,
           ...(!rowMenu.topic.isGeneral ? [
             <MenuItem
               key="pin"
               icon={<TgIcon name={rowMenu.topic.pinned ? 'unpin' : 'pin'} size={20} />}
-              label={rowMenu.topic.pinned ? t('Unpin') : t('Pin')}
+              label={rowMenu.topic.pinned ? t('ChatList.Context.Unpin') : t('ChatList.Context.Pin')}
               onClick={() => { const tp = rowMenu.topic; setRowMenu(null); void managers.groups.setTopicPinned(chatId, tp.id, !tp.pinned).then(reload) }}
             />,
           ] : []),
@@ -384,20 +396,20 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
           <MenuItem
             key="mute"
             icon={<TgIcon name={rowMenu.topic.muted ? 'unmute' : 'mute'} size={20} />}
-            label={rowMenu.topic.muted ? t('Unmute') : t('Mute')}
+            label={rowMenu.topic.muted ? t('ChatList.Context.Unmute') : t('ChatList.Context.Mute')}
             onClick={() => { const tp = rowMenu.topic; setRowMenu(null); void managers.groups.setTopicMuted(chatId, tp.rootMsgId, !tp.muted).then(reload) }}
           />,
           <MenuItem
             key="hide"
             icon={<TgIcon name={rowMenu.topic.hidden ? 'eye' : 'hide'} size={20} />}
-            label={rowMenu.topic.hidden ? t('Unhide') : t('Hide')}
+            label={rowMenu.topic.hidden ? t('ForumTopic.Unhide') : t('Hide')}
             onClick={() => { const tp = rowMenu.topic; setRowMenu(null); void managers.groups.setTopicHidden(chatId, tp.id, !tp.hidden).then(reload) }}
           />,
           ...(!rowMenu.topic.isGeneral ? [
             <MenuItem
               key="close"
               icon={<TgIcon name={rowMenu.topic.closed ? 'message' : 'lock'} size={20} />}
-              label={rowMenu.topic.closed ? t('Reopen Topic') : t('Close Topic')}
+              label={rowMenu.topic.closed ? t('RestartTopic') : t('CloseTopic')}
               onClick={() => { const tp = rowMenu.topic; setRowMenu(null); void managers.groups.closeTopic(chatId, tp.id, !tp.closed).then(reload) }}
             />,
           ] : []),
@@ -407,7 +419,7 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
       <div className={s.list}>
         {topics != null && all.length === 0 && (
           <Text size={14.5} color="var(--secondary-text-color)" style={{ padding: '3rem 1rem', textAlign: 'center', display: 'block' }}>
-            {t('No topics')}
+            {t('NoTopics')}
           </Text>
         )}
         {/* Виртуализируется ТОЛЬКО список видимых тем; секция скрытых ниже
@@ -462,7 +474,7 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
             <div className={s.hiddenHeader} onClick={() => setShowHidden((v) => !v)}>
               <TgIcon name={showHidden ? 'down' : 'next'} size={16} color="var(--secondary-text-color)" />
               <Text size={13} weight={600} color="var(--secondary-text-color)">
-                {t('Hidden Topics')} ({hidden.length})
+                {t('ForumTopic.Hidden')} ({hidden.length})
               </Text>
             </div>
             {showHidden && hidden.map((topic) => (
@@ -519,7 +531,7 @@ function TopicFormPopup({ initial, onSubmit, onClose }: {
   return (
     <Popup
       open
-      title={initial ? t('Edit Topic') : t('New Topic')}
+      title={initial ? t('ForumTopic.Title.Edit') : t('NewTopic')}
       onClose={onClose}
       width={360}
       action={{ label: initial ? t('Save') : t('Create'), onClick: () => title.trim() && onSubmit(title.trim(), color, emoji) }}
@@ -539,7 +551,7 @@ function TopicFormPopup({ initial, onSubmit, onClose }: {
           className={s.titleInput}
           value={title}
           maxLength={70}
-          placeholder={t('Topic Name')}
+          placeholder={t('ForumTopic.Name.Placeholder')}
           onChange={(e) => setTitle(e.target.value)}
           autoFocus
         />
@@ -550,7 +562,7 @@ function TopicFormPopup({ initial, onSubmit, onClose }: {
             type="button"
             className={classNames(s.emojiCell, !emoji ? s.emojiCellActive : '')}
             onClick={() => setEmoji('')}
-            title={t('Close')}
+            title={t('ForumTopic.NoIcon')}
           >
             <TgIcon name="colorize" size={20} />
           </button>

@@ -16,16 +16,12 @@ import { useNavLayer } from '../core/hooks/useNavLayer'
 import { gradientFor } from '../core/dialogToChat'
 import { messageDateISO } from '../core/messageToConvMsg'
 import { cachedUser } from '../core/peerCache'
-import { dayLabel, startOfDayMs } from '../core/format/dayLabel'
+import { startOfDayMs } from '../core/format/dayLabel'
+import { DayLabel, Time } from '../shared/ui/dateNodes'
 import { startOutgoing } from '../core/calls/callEngine'
 import type { MyMessage } from '../core/models'
-import { useT, useLang } from '../i18n'
+import { useT } from '../i18n'
 import s from './CallsView.module.scss'
-
-const hhmm = (iso: string): string => {
-  const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? '' : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
 
 function CallRow({ call, onOpen }: { call: MyMessage; onOpen: (peerId: PeerId) => void }) {
   const t = useT()
@@ -40,7 +36,6 @@ function CallRow({ call, onOpen }: { call: MyMessage; onOpen: (peerId: PeerId) =
   // внутри текста: «состоялся» от «отменён» отличает НАЛИЧИЕ длительности.
   const action = call._ === 'messageService' && call.action._ === 'messageActionPhoneCall' ? call.action : undefined
   const out = !!call.pFlags.out
-  const date = messageDateISO(call.date)
   // Пропущенный входящий (не мы инициировали, не состоялся) — красным.
   const missed = !out && !action?.duration
   const startCall = (video: boolean) => (e: React.MouseEvent) => {
@@ -66,8 +61,13 @@ function CallRow({ call, onOpen }: { call: MyMessage; onOpen: (peerId: PeerId) =
             color={out ? '#4dcd5e' : '#ff595a'}
             style={{ transform: out ? 'rotate(-45deg)' : 'rotate(135deg)', flexShrink: 0 }}
           />
+          {/* Время — узлом `formatTime` (`@helpers/date`, порт tweb
+              `helpers/date.ts:200-205`), а не своей сборкой `padStart`-ом: та не
+              читала настройку 12/24 часа и не переживала смену языка. Поэтому и
+              склейки одной строкой больше нет — подпись собирается из частей. */}
           <Text noWrap size={13.5} color="var(--secondary-text-color)">
-            {(out ? t('Outgoing') : missed ? t('Missed') : t('Incoming')) + ' · ' + hhmm(date)}
+            {(out ? t('CallMessageOutgoing') : missed ? t('Chat.Service.Call.Missed') : t('CallMessageIncoming')) + ' · '}
+            <Time timestamp={call.date} />
           </Text>
         </div>
       </div>
@@ -80,22 +80,25 @@ function CallRow({ call, onOpen }: { call: MyMessage; onOpen: (peerId: PeerId) =
 
 export default function CallsView({ onBack, onOpenChat }: { onBack: () => void; onOpenChat: (peerId: PeerId) => void }) {
   const t = useT()
-  const [lang] = useLang()
   useNavLayer(true, onBack) // Back закрывает экран «Звонки»
   const calls = useCallsLog()
 
-  // Группировка по дням (Сегодня/Вчера/дата) — записи с бэка уже отсортированы
-  // от новых к старым, поэтому дни идут по порядку.
+  // Группировка по дням («Сегодня» либо дата — две ветки оригинала, см.
+  // `core/format/dayLabel`): записи с бэка уже отсортированы от новых к старым,
+  // поэтому дни идут по порядку.
+  // В группе лежит только КЛЮЧ дня: подпись к нему — живой узел, и собирать её
+  // здесь значило бы пересобирать узлы на каждое обновление журнала. Языка в
+  // зависимостях нет намеренно — узел переписывает себя сам (`applyLangPack`).
   const groups = useMemo(() => {
-    const out: { key: number; label: string; items: MyMessage[] }[] = []
+    const out: { key: number; items: MyMessage[] }[] = []
     for (const c of calls ?? []) {
       const key = startOfDayMs(messageDateISO(c.date))
       const last = out[out.length - 1]
       if (last && last.key === key) last.items.push(c)
-      else out.push({ key, label: dayLabel(messageDateISO(c.date), lang), items: [c] })
+      else out.push({ key, items: [c] })
     }
     return out
-  }, [calls, lang])
+  }, [calls])
 
   return (
     <div className={s.screen}>
@@ -104,7 +107,7 @@ export default function CallsView({ onBack, onOpenChat }: { onBack: () => void; 
           <TgIcon name="back" />
         </IconButton>
         <Text size={19} weight={600} color="var(--primary-text-color)" className={s.title}>
-          {t('Calls')}
+          {t('PrivacySettings.VoiceCalls')}
         </Text>
       </div>
 
@@ -112,13 +115,13 @@ export default function CallsView({ onBack, onOpenChat }: { onBack: () => void; 
         {calls != null && calls.length === 0 && (
           <div className={s.empty}>
             <TgIcon name="phone" size={48} color="var(--secondary-text-color)" />
-            <Text size={15} color="var(--secondary-text-color)">{t('No recent calls')}</Text>
+            <Text size={15} color="var(--secondary-text-color)">{t('Calls.Empty')}</Text>
           </div>
         )}
         {groups.map((g) => (
           <div key={g.key}>
             <Text size={13} weight={600} color="var(--secondary-text-color)" className={s.dayLabel}>
-              {g.label}
+              <DayLabel dayStartMs={g.key} />
             </Text>
             {g.items.map((c) => (
               <CallRow key={c.id} call={c} onOpen={onOpenChat} />

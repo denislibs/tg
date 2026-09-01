@@ -26,35 +26,35 @@
 //    `.text` + `.row[aria-checked='true'] .text`), а не инлайн-стилем — файл
 //    больше не носит имя снесённого React-компонента (переименован вместе с
 //    портом, раунд правок 3).
+import type { LangPackKey } from '@/lang'
 import Icon, { getIconContent } from '@components/icon'
 import PopupPeer from './popupPeer'
 import type { AvatarManagers } from '@components/avatar'
-import { useI18nStore } from '@/i18n'
+import { _i18n } from '@lib/langPack'
 import s from './popupMute.module.scss'
 
 const ONE_HOUR = 3600 // mute.ts:6
 
-// mute.ts:7-27, дословно (langPackKey → уже переведённый label — наш `t()`
-// не различает эти два понятия, см. докблок `popupPeer.ts`).
-const TIMES: { value: number, label: string }[] = [
-  { value: ONE_HOUR, label: 'For 1 Hour' },
-  { value: ONE_HOUR * 4, label: 'For 4 Hours' },
-  { value: ONE_HOUR * 8, label: 'For 8 Hours' },
-  { value: ONE_HOUR * 24, label: 'For 1 Day' },
-  { value: ONE_HOUR * 24 * 3, label: 'For 3 Days' },
-  { value: -1, label: 'Forever' }, // mute.ts:24-27, отмечен по умолчанию
+// mute.ts:7-27, дословно. `label` — КЛЮЧ, а не готовая строка (перевод делает
+// сам `_i18n` ниже, узлом): разница между этими двумя ролями выражена типом с
+// задачи 7, см. докблок `popupPeer.ts`.
+const TIMES: { value: number, label: LangPackKey }[] = [
+  { value: ONE_HOUR, label: 'ChatList.Mute.1Hour' },
+  { value: ONE_HOUR * 4, label: 'ChatList.Mute.4Hours' },
+  { value: ONE_HOUR * 8, label: 'ChatList.Mute.8Hours' },
+  { value: ONE_HOUR * 24, label: 'ChatList.Mute.1Day' },
+  { value: ONE_HOUR * 24 * 3, label: 'ChatList.Mute.3Days' },
+  { value: -1, label: 'UserPermissions.Duration.Forever' }, // mute.ts:24-27, отмечен по умолчанию
 ]
 
 export default class PopupMute extends PopupPeer {
   constructor(peerId: PeerId, managers: AvatarManagers, onMute: (seconds: number | null) => void) {
-    const t = useI18nStore.getState().t
-
     super('popup-mute', { // mute.ts:30
       peerId, // mute.ts:32
       managers,
       titleLangKey: 'Notifications', // mute.ts:33
       buttons: [{ // mute.ts:34-37
-        text: t('Mute'),
+        langKey: 'ChatList.Context.Mute',
         callback: () => onMute(selected === -1 ? null : selected),
       }],
       body: true, // mute.ts:38
@@ -74,7 +74,11 @@ export default class PopupMute extends PopupPeer {
       const icon = Icon('radiooff')
       const text = document.createElement('span')
       text.className = s.text
-      text.textContent = t(tm.label)
+      // ЖИВОЙ узел, а не строка на момент постройки (задача 8): попап живёт
+      // открытым, и смена языка при нём обязана его перерисовать. У оригинала
+      // то же самое приходит само — там строки рисует `RadioField` по
+      // `langPackKey` (`radioField.ts:68`).
+      _i18n(text, tm.label)
       row.append(icon, text)
 
       row.addEventListener('click', () => {

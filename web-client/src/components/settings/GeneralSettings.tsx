@@ -1,3 +1,4 @@
+import type { LangPackKey } from '@/lang'
 import { useState, type CSSProperties } from 'react'
 import Text from '../../shared/ui/Text'
 import Slider from '../../shared/ui/Slider'
@@ -18,12 +19,12 @@ const THEME_CARDS: { preset: ThemePreset; emoji: string; colors: [string, string
   { preset: 'tinted', emoji: '💎', colors: ['#fec496', '#dd6cb9', '#962fbf', '#4f5bd5'], accent: '#3685fa' },
 ]
 
-const THEME_RADIOS: { choice: ThemeChoice; label: string }[] = [
-  { choice: 'system', label: 'System' },
-  { choice: 'day', label: 'Day' },
-  { choice: 'night', label: 'Night' },
-  { choice: 'light', label: 'Light' },
-  { choice: 'tinted', label: 'Tinted' },
+const THEME_RADIOS: { choice: ThemeChoice; label: LangPackKey }[] = [
+  { choice: 'system', label: 'Theme.System' },
+  { choice: 'day', label: 'ThemeLight' },
+  { choice: 'night', label: 'ThemeNight' },
+  { choice: 'light', label: 'Theme.Light' },
+  { choice: 'tinted', label: 'Theme.Tinted' },
 ]
 
 function RadioRow({
@@ -32,7 +33,7 @@ function RadioRow({
   selected,
   onClick,
 }: {
-  label: string
+  label: LangPackKey
   sublabel?: string
   selected: boolean
   onClick: () => void
@@ -60,7 +61,7 @@ export default function GeneralSettings({ onBack }: { onBack: () => void }) {
 
   return (
     <SettingsScreen
-      title="General Settings"
+      title="Telegram.GeneralSettingsViewController"
       onBack={onBack}
       sub={
         dedicated === 'wallpaper' ? <ChatWallpaper onBack={() => setDedicated(null)} /> :
@@ -72,26 +73,26 @@ export default function GeneralSettings({ onBack }: { onBack: () => void }) {
       <Section caption="Settings">
         <div className={s.textSize}>
           <div className={s.textSizeTop}>
-            <Text size={16} color="var(--primary-text-color)">{t('Message Text Size')}</Text>
+            <Text size={16} color="var(--primary-text-color)">{t('TextSize')}</Text>
             <Text size={16} color="var(--secondary-text-color)">{textSize}</Text>
           </div>
           <Slider value={textSize} min={12} max={24} step={1} onChange={(v) => update({ textSize: v })} className={s.slider} />
         </div>
         <Row
           icon={<TgIcon name="image" size={24} />}
-          label="Chat Background"
+          label="ChatBackground.Title"
           onClick={() => setDedicated('wallpaper')}
         />
         <Row
           icon={<TgIcon name="animations" size={24} />}
-          label="Power Saving"
-          value={t('Disabled')}
+          label="LiteMode.Title"
+          value={t('Checkbox.Disabled')}
           onClick={() => setDedicated('power')}
         />
       </Section>
 
       {/* Color theme */}
-      <Section caption="Color Theme">
+      <Section caption="ColorTheme">
         <div className={s.themeGrid}>
           {THEME_CARDS.map((c) => {
             const selected = themeChoice === c.preset
@@ -130,15 +131,15 @@ export default function GeneralSettings({ onBack }: { onBack: () => void }) {
       </Section>
 
       {/* Time format */}
-      <Section caption="Time Format">
+      <Section caption="General.TimeFormat">
         <RadioRow
-          label="12-hour"
+          label="General.TimeFormat.h12"
           sublabel="10:00 PM"
           selected={timeFormat === '12h'}
           onClick={() => update({ timeFormat: '12h' })}
         />
         <RadioRow
-          label="24-hour"
+          label="General.TimeFormat.h23"
           sublabel="22:00"
           selected={timeFormat === '24h'}
           onClick={() => update({ timeFormat: '24h' })}

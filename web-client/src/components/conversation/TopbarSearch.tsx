@@ -31,9 +31,10 @@ import { getPeerPhoto, getPeerPhotoId, type Chat as PeerChat, type User } from '
 import { getPeerTitle } from '../../core/peers/getPeerTitle'
 import { useChatHeaderSearch } from '../../core/hooks/useChatHeaderSearch'
 import { gradientFor } from '../../core/dialogToChat'
-import { messageDateISO, messageForReply } from '../../core/messageToConvMsg'
-import { friendlyMsgTime } from '../../core/format/friendlyTime'
-import { useLang, useT } from '../../i18n'
+import { messageForReply } from '../../core/messageToConvMsg'
+import { useT } from '../../i18n'
+import { i18n } from '@lib/langPack'
+import { RowDate } from '@shared/ui/dateNodes'
 import type { Chat } from '../../data'
 
 // tweb topbarSearch.tsx:657 MAX_HEIGHT — и высота списка, и «окно» центрирования
@@ -74,6 +75,58 @@ function Highlighted({ text, query }: { text: string; query: string }) {
 
 // tweb stringMiddleOverflow(str, maxLength) — длинный запрос в тексте «ничего не
 // найдено» сокращается многоточием посередине (helpers/string/stringMiddleOverflow).
+/**
+ * Пустая выдача поиска — ОДНА строка словаря, в которой жирным становится
+ * ПОДСТАВЛЕННЫЙ АРГУМЕНТ (`Search.Empty` = 'There were no results for "**%@**". Try
+ * a new search.', tweb lang.ts:652-653; вызывающий — topbarSearch.tsx:773-784).
+ *
+ * До задачи 7 фраза собиралась в JSX из двух-трёх ПОЛОВИНОК вокруг `<b>` —
+ * `Search.Empty.QueryPrefix` + запрос + `Search.Empty.Suffix`. Половинки нельзя
+ * перевести: в языках с другим порядком слов запрос стоит не там, а точка и кавычки
+ * у каждого языка свои. Строковый `t()` этого не чинит — он не умеет ни разметки, ни
+ * аргументов-узлов, — поэтому фразу собирает `i18n()` ЯДРА, а сюда его узел
+ * вставляется напрямую.
+ *
+ * Узел ставится в `.topbar-search-left-results-empty` без обёртки — ровно то дерево,
+ * что у оригинала: `div.topbar-search-left-results-empty > span.i18n`. React внутрь
+ * этого div ничего не рисует, поэтому конфликта владения узлами нет.
+ *
+ * Экспортируется РАДИ ПИНА (`TopbarSearch.empty.test.tsx`): поднимать весь
+ * `TopbarSearch` с чатом и менеджерами ради одной фразы — дороже, чем сама фраза.
+ */
+export function EmptyResults({ isHashtag, count, filterPeerId, filterPeerName, query }: {
+  isHashtag: boolean
+  count: number | undefined
+  filterPeerId: number | null | undefined
+  filterPeerName: string | undefined
+  query: string
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const node = useMemo(() => {
+    if(isHashtag && count === undefined) return i18n('Search.HelpHashtag')
+    if(filterPeerId != null) return i18n('Search.EmptyFrom', [filterPeerName ?? ''])
+    // РАСХОЖДЕНИЕ С ОРИГИНАЛОМ — ЗАДАЧА #116. Хэштег с НУЛЁМ результатов падает
+    // сюда, в общую строку «ничего не найдено по запросу», а у tweb на этот случай
+    // своя: `Search.EmptyHashtag` = 'There were no results for "%@". Try another
+    // hashtag.' (lang.ts:654, вызывающий topbarSearch.tsx:777). Пользователю
+    // предлагается «другой запрос» вместо «другого хэштега» — текст осмысленный, но
+    // не тот.
+    //
+    // Предмет задачи — ВСЯ ВЕТКА ХЭШТЕГОВ В ПОИСКЕ, а не одна строка словаря: у
+    // оригинала это ОТДЕЛЬНЫЙ РЕЖИМ ВЫДАЧИ, и заводить под него ключ, не разобрав
+    // режим, значит подменить работу текстом. Видно это и по нашему коду: `isHashtag`
+    // до этой строки без `count === undefined` вообще не доходит. Расхождение
+    // существовало до задачи 7 и ею не создано.
+    return i18n('Search.Empty', [middleOverflow(query, 18)])
+  }, [isHashtag, count, filterPeerId, filterPeerName, query])
+
+  useLayoutEffect(() => {
+    ref.current!.replaceChildren(node)
+  }, [node])
+
+  return <div ref={ref} className="topbar-search-left-results-empty" />
+}
+
 function middleOverflow(str: string, maxLength: number): string {
   return str.length > maxLength
     ? str.slice(0, Math.ceil(maxLength / 2)) + '...' + str.slice(-Math.floor(maxLength / 2))
@@ -85,13 +138,14 @@ function middleOverflow(str: string, maxLength: number): string {
 // `a.row…chatlist-chat.chatlist-chat-abitbigger` с `.c-ripple` первым ребёнком.
 // `active` — строка, к которой прыгнули (topbarSearch.tsx:870); `menu-open` —
 // подсветка навигации по списку (attachListNavigation activeClassName).
-function MessageRow({ chatId, senderId, name, photoId, preview, time, query, active, navigated, onPick }: {
+function MessageRow({ chatId, senderId, name, photoId, preview, date, query, active, navigated, onPick }: {
   chatId: string
   senderId: number
   name: string
   photoId?: number
   preview: string
-  time: string
+  /** СЕКУНДЫ эпохи (`message.date`) — подпись строит `RowDate`. */
+  date: number
   query: string
   active: boolean
   navigated: boolean
@@ -130,7 +184,10 @@ function MessageRow({ chatId, senderId, name, photoId, preview, time, query, act
           <span className="peer-title">{name}</span>
         </div>
         <div className="row-title row-title-right row-title-right-secondary dialog-title-details">
-          <span className="message-time">{time}</span>
+          {/* Та же подпись, что у строки диалога: у tweb ряд результата и ЕСТЬ
+              строка диалога (`chat/topbarSearch.tsx:75` →
+              `addDialogAndSetLastMessage` → `appDialogsManager.ts:2242`). */}
+          <RowDate timestamp={date} className="message-time" />
         </div>
       </div>
       <Avatar
@@ -195,7 +252,6 @@ export interface TopbarSearchProps {
 
 export default function TopbarSearch({ chat, onJumpToSeq, containerRef }: TopbarSearchProps) {
   const t = useT()
-  const [lang] = useLang()
   const s = useChatHeaderSearch(chat, onJumpToSeq)
 
   const inputRef = useRef<HTMLInputElement>(null)
@@ -238,13 +294,13 @@ export default function TopbarSearch({ chat, onJumpToSeq, containerRef }: Topbar
   const filterPeerAvatar = useMediaUrl(s.filterPeerPhotoId ?? null)
 
   const hashWidth = useMemo(() => getTextWidth('#'), [])
-  const fromText = `${t('From:')} `
+  const fromText = `${t('Search.From')} `
   const fromWidth = useMemo(() => getTextWidth(fromText), [fromText])
 
   // tweb :552 — плейсхолдер поля
   const placeholder = s.filteringSender && s.filterPeerId == null
-    ? t('Search Members')
-    : s.isHashtag ? t('Search Hashtag') : t('Search')
+    ? t('Search.Member')
+    : s.isHashtag ? t('Search.Hashtag') : t('Search')
 
   // tweb :693 — стрелки прячутся без выдачи и пока выбираем отправителя
   const arrowsHidden = !s.count || (s.filteringSender && s.filterPeerId == null)
@@ -349,7 +405,7 @@ export default function TopbarSearch({ chat, onJumpToSeq, containerRef }: Topbar
               }
             }}
           />
-          <span className="i18n input-search-placeholder will-animate">{placeholder}</span>
+          <span className="input-search-placeholder will-animate">{placeholder}</span>
           <TgIcon
             name="search"
             size="var(--icon-size)"
@@ -472,13 +528,13 @@ export default function TopbarSearch({ chat, onJumpToSeq, containerRef }: Topbar
           <div className="topbar-search-left-delimiter" />
           <div className={classNames('topbar-search-left-chatlist', 'chatlist', 'animated-item', listIsEmpty ? 'is-empty' : '')}>
             {listIsEmpty ? (
-              <div className="topbar-search-left-results-empty">
-                {s.isHashtag && s.count === undefined
-                  ? t('Enter a hashtag to find messages containing it.')
-                  : s.filterPeerId != null
-                    ? <>{t('There were no messages from')} <b>{s.filterPeerName}</b>.</>
-                    : <>{t('There were no results for')} <b>“{middleOverflow(s.value, 18)}”</b>{t('. Try a new search.')}</>}
-              </div>
+              <EmptyResults
+                isHashtag={s.isHashtag}
+                count={s.count}
+                filterPeerId={s.filterPeerId}
+                filterPeerName={s.filterPeerName}
+                query={s.value}
+              />
             ) : (
               <>
                 {/* tweb attachListNavigation вешает `navigable-list` на первого
@@ -489,7 +545,7 @@ export default function TopbarSearch({ chat, onJumpToSeq, containerRef }: Topbar
                       <SenderRow
                         key={peerId}
                         peerId={peerId}
-                        name={peerId === s.meId ? t('Saved Messages') : getPeerTitle({ peerId, peer: s.senderPeers.get(peerId) })}
+                        name={peerId === s.meId ? t('SavedMessages') : getPeerTitle({ peerId, peer: s.senderPeers.get(peerId) })}
                         username={senderUsername(s.senderPeers.get(peerId))}
                         photoId={getPeerPhotoId(getPeerPhoto(s.senderPeers.get(peerId)))}
                         navigated={i === navIdx}
@@ -504,7 +560,7 @@ export default function TopbarSearch({ chat, onJumpToSeq, containerRef }: Topbar
                         name={getPeerTitle({ peerId: m.fromId ?? 0, peer: s.resultPeers.get(m.fromId ?? 0) }) || s.chatName}
                         photoId={getPeerPhotoId(getPeerPhoto(s.resultPeers.get(m.fromId ?? 0)))}
                         preview={messageForReply(m)}
-                        time={friendlyMsgTime(messageDateISO(m.date), lang)}
+                        date={m.date}
                         query={s.value}
                         active={i === s.targetIdx}
                         navigated={i === navIdx}

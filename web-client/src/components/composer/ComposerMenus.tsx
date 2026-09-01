@@ -50,36 +50,36 @@ export default function ComposerMenus({
       >
         <MenuItem
           icon={check(!!forward && !forward.dropAuthor)}
-          label={t('Show sender name')}
+          label={t('Chat.Alert.Forward.ShowSenderName')}
           onClick={() => { onForwardOption({ dropAuthor: false }); onCloseForwardMenu() }}
         />
         <MenuItem
           icon={check(!!forward && forward.dropAuthor)}
-          label={t('Hide sender name')}
+          label={t('Chat.Alert.Forward.HideSenderName')}
           onClick={() => { onForwardOption({ dropAuthor: true }); onCloseForwardMenu() }}
         />
         {forward?.hasCaption && (
           <>
             <MenuItem
               icon={check(!forward.dropCaption)}
-              label={t('Show caption')}
+              label={t('Chat.Alert.Forward.ShowCaption')}
               onClick={() => { onForwardOption({ dropCaption: false }); onCloseForwardMenu() }}
             />
             <MenuItem
               icon={check(forward.dropCaption)}
-              label={t('Hide caption')}
+              label={t('Chat.Alert.Forward.HideCaption')}
               onClick={() => { onForwardOption({ dropCaption: true }); onCloseForwardMenu() }}
             />
           </>
         )}
         <MenuItem
           icon={<TgIcon name="replace" size={20} />}
-          label={t('Forward to Another Chat')}
+          label={t('Chat.Alert.Forward.Action.Another')}
           onClick={() => { onCloseForwardMenu(); onForwardAnother() }}
         />
         <MenuItem
           icon={<TgIcon name="delete" size={20} />}
-          label={t('Do Not Forward')}
+          label={t('DoNotForward')}
           danger
           onClick={() => { onCloseForwardMenu(); onCancelForward() }}
         />
@@ -91,7 +91,7 @@ export default function ComposerMenus({
             <MenuItem
               key={o.label}
               icon={<TgIcon name="timer" size={20} />}
-              label={o.secs == null ? t('Off') : o.label}
+              label={o.secs == null ? t('AutoDeleteMessages.Disable') : o.label}
               right={ttlSeconds === o.secs ? <TgIcon name="check" size={18} color="var(--primary-color)" /> : undefined}
               onClick={() => onPickTtl(o.secs)}
             />
@@ -103,12 +103,12 @@ export default function ComposerMenus({
         <Menu open onClose={onCloseRecord} corner="top-left" style={recordAnchor}>
           <MenuItem
             icon={<TgIcon name="microphone" size={20} />}
-            label={t('Record voice message')}
+            label={t('Composer.RecordVoice')}
             onClick={() => onPickRecordingMode('voice')}
           />
           <MenuItem
             icon={<TgIcon name="recordround" size={20} />}
-            label={t('Record video message')}
+            label={t('Composer.RecordRound')}
             onClick={() => onPickRecordingMode('round')}
           />
         </Menu>

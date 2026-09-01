@@ -1,6 +1,10 @@
 // Тесты порта tweb `components/buttonMenu.ts` (см. шапку файла рядом).
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ButtonMenu, { ButtonMenuItem, ButtonMenuSync, type ButtonMenuItemOptions } from './buttonMenu'
+
+// Подписи пунктов — КЛЮЧИ (`LangPackKey`), а не готовые строки: с задачи 7 роль поля
+// выражена типом, и выдуманное 'x' сюда не положить. Строки в ядро кладёт холодный
+// старт (`client/boot.ts`), а в прогоне — общий сетап (`src/test/setup.ts`).
 import contextMenuController from '@helpers/contextMenuController'
 import ListenerSetter from '@helpers/listenerSetter'
 
@@ -18,7 +22,7 @@ function mountActiveMenu(el: HTMLElement) {
 
 describe('ButtonMenuItem: разметка', () => {
   it('пункт — div.btn-menu-item.rp-overflow с иконкой-глифом и span.i18n.btn-menu-item-text', () => {
-    const [item] = ButtonMenuItem({ icon: 'delete', text: 'Удалить', onClick: () => {} })
+    const [item] = ButtonMenuItem({ icon: 'delete', text: 'Delete', onClick: () => {} })
 
     expect(item.tagName).toBe('DIV')
     expect(item.classList.contains('btn-menu-item')).toBe(true)
@@ -31,11 +35,11 @@ describe('ButtonMenuItem: разметка', () => {
     const text = item.children[1] as HTMLElement
     expect(text.classList.contains('i18n')).toBe(true)
     expect(text.classList.contains('btn-menu-item-text')).toBe(true)
-    expect(text.textContent).toBe('Удалить')
+    expect(text.textContent).toBe('Delete')
   })
 
   it('хвост опции icon после первого слова уезжает в className пункта', () => {
-    const [item] = ButtonMenuItem({ icon: 'delete danger-cls', text: 'x', onClick: () => {} })
+    const [item] = ButtonMenuItem({ icon: 'delete danger-cls', text: 'Copy', onClick: () => {} })
 
     expect(item.classList.contains('danger-cls')).toBe(true)
     // сам глиф берётся из первого слова
@@ -43,34 +47,34 @@ describe('ButtonMenuItem: разметка', () => {
   })
 
   it('danger / className / secondary → is-secondary + is-multiline', () => {
-    const [danger] = ButtonMenuItem({ text: 'x', danger: true, className: 'my', onClick: () => {} })
+    const [danger] = ButtonMenuItem({ text: 'Copy', danger: true, className: 'my', onClick: () => {} })
     expect(danger.classList.contains('danger')).toBe(true)
     expect(danger.classList.contains('my')).toBe(true)
 
-    const [secondary] = ButtonMenuItem({ text: 'x', secondary: true, onClick: () => {} })
+    const [secondary] = ButtonMenuItem({ text: 'Copy', secondary: true, onClick: () => {} })
     expect(secondary.classList.contains('is-secondary')).toBe(true)
     expect(secondary.classList.contains('is-multiline')).toBe(true)
   })
 
   it('emptyIcon даёт пустой span.btn-menu-item-icon, iconElement — переданный узел', () => {
-    const [empty] = ButtonMenuItem({ text: 'x', emptyIcon: true, onClick: () => {} })
+    const [empty] = ButtonMenuItem({ text: 'Copy', emptyIcon: true, onClick: () => {} })
     const placeholder = empty.children[0] as HTMLElement
     expect(placeholder.tagName).toBe('SPAN')
     expect(placeholder.classList.contains('btn-menu-item-icon')).toBe(true)
     expect(placeholder.classList.contains('tgico')).toBe(false)
 
     const custom = document.createElement('i')
-    const [withCustom] = ButtonMenuItem({ text: 'x', iconElement: custom, onClick: () => {} })
+    const [withCustom] = ButtonMenuItem({ text: 'Copy', iconElement: custom, onClick: () => {} })
     expect(withCustom.children[0]).toBe(custom)
     expect(custom.classList.contains('btn-menu-item-icon')).toBe(true)
   })
 
   it('separator кладёт <hr> ПЕРЕД пунктом, separatorDown — ПОСЛЕ', () => {
-    const up = ButtonMenuItem({ text: 'x', separator: true, onClick: () => {} })
+    const up = ButtonMenuItem({ text: 'Copy', separator: true, onClick: () => {} })
     expect(up[0].tagName).toBe('HR')
     expect(up[1].classList.contains('btn-menu-item')).toBe(true)
 
-    const down = ButtonMenuItem({ text: 'x', separatorDown: true, onClick: () => {} })
+    const down = ButtonMenuItem({ text: 'Copy', separatorDown: true, onClick: () => {} })
     expect(down[0].classList.contains('btn-menu-item')).toBe(true)
     expect(down[1].tagName).toBe('HR')
   })
@@ -94,7 +98,7 @@ describe('ButtonMenuItem: клик', () => {
   it('клик зовёт onClick и закрывает меню через contextMenuController', () => {
     const onClick = vi.fn()
     const close = vi.spyOn(contextMenuController, 'close')
-    const el = ButtonMenuSync({ buttons: [{ text: 'x', onClick }] })
+    const el = ButtonMenuSync({ buttons: [{ text: 'Copy', onClick }] })
     mountActiveMenu(el)
 
     ;(el.firstElementChild as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }))
@@ -106,7 +110,7 @@ describe('ButtonMenuItem: клик', () => {
   it('keepOpen: onClick зовётся, меню НЕ закрывается', () => {
     const onClick = vi.fn()
     const close = vi.spyOn(contextMenuController, 'close')
-    const el = ButtonMenuSync({ buttons: [{ text: 'x', onClick, keepOpen: true }] })
+    const el = ButtonMenuSync({ buttons: [{ text: 'Copy', onClick, keepOpen: true }] })
     mountActiveMenu(el)
 
     ;(el.firstElementChild as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }))
@@ -117,7 +121,7 @@ describe('ButtonMenuItem: клик', () => {
 
   it('checkForClose() === false отменяет закрытие', () => {
     const close = vi.spyOn(contextMenuController, 'close')
-    const el = ButtonMenuSync({ buttons: [{ text: 'x', onClick: () => {}, checkForClose: () => false }] })
+    const el = ButtonMenuSync({ buttons: [{ text: 'Copy', onClick: () => {}, checkForClose: () => false }] })
     mountActiveMenu(el)
 
     ;(el.firstElementChild as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }))
@@ -127,7 +131,7 @@ describe('ButtonMenuItem: клик', () => {
 
   it('клик по пункту НЕактивного меню игнорируется', () => {
     const onClick = vi.fn()
-    const el = ButtonMenuSync({ buttons: [{ text: 'x', onClick }] })
+    const el = ButtonMenuSync({ buttons: [{ text: 'Copy', onClick }] })
     document.body.append(el) // без класса active
 
     ;(el.firstElementChild as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }))
@@ -140,8 +144,8 @@ describe('ButtonMenuSync / ButtonMenu', () => {
   it('контейнер — div.btn-menu, пункты и разделители лежат плоско', () => {
     const el = ButtonMenuSync({
       buttons: [
-        { text: 'a', onClick: () => {} },
-        { text: 'b', onClick: () => {}, separator: true },
+        { text: 'Copy', onClick: () => {} },
+        { text: 'Forward', onClick: () => {}, separator: true },
       ],
     })
 
@@ -152,7 +156,7 @@ describe('ButtonMenuSync / ButtonMenu', () => {
   it('listenerSetter прокидывается в options каждого пункта и снимает клики', () => {
     const listenerSetter = new ListenerSetter()
     const onClick = vi.fn()
-    const buttons: ButtonMenuItemOptions[] = [{ text: 'x', onClick }]
+    const buttons: ButtonMenuItemOptions[] = [{ text: 'Copy', onClick }]
     const el = ButtonMenuSync({ buttons, listenerSetter })
     mountActiveMenu(el)
 
@@ -170,7 +174,7 @@ describe('ButtonMenuSync / ButtonMenu', () => {
       resolve()
     }, 0))
 
-    const el = await ButtonMenu({ buttons: [{ text: 'x', onClick: () => {}, loadPromise }] })
+    const el = await ButtonMenu({ buttons: [{ text: 'Copy', onClick: () => {}, loadPromise }] })
 
     expect(resolved).toBe(true)
     expect(el.classList.contains('btn-menu')).toBe(true)

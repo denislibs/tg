@@ -17,6 +17,8 @@
 // «битый JSON»: разбирать больше нечего, разобранное объединение приезжает
 // типом. Их место занял кейс `default` (конструктор, ветки для которого нет).
 import { describe, expect, it } from 'vitest'
+import I18n from '@lib/langPack'
+import { dayLabel } from '@core/format/dayLabel'
 import { createDateBubble, createServiceBubble, wrapMessageActionText } from './serviceMessage'
 import { getMiddleware } from '@helpers/middleware'
 import { applyPeerOps } from '@core/peerCache'
@@ -115,7 +117,9 @@ describe('createServiceBubble — каркас экшен-бабла 1:1 с tweb
 })
 
 describe('createDateBubble — дата-разделитель 1:1 с tweb', () => {
-  const bubble = createDateBubble('19 июля')
+  // Подпись приезжает сюда ГОТОВЫМ УЗЛОМ ядра, как у оригинала (:4789-4798), —
+  // здесь берётся тот же `dayLabel`, что зовёт лента.
+  const bubble = createDateBubble(dayLabel(new Date('2026-07-19T00:00:00').getTime()))
 
   it('.bubble.service.is-date, обёртки .bubble-content-wrapper НЕТ', () => {
     expect(bubble.className).toBe('bubble service is-date')
@@ -131,11 +135,15 @@ describe('createDateBubble — дата-разделитель 1:1 с tweb', () 
     expect(content.children).toHaveLength(1)
     expect(serviceMsg.className).toBe('service-msg')
 
-    const i18n = serviceMsg.firstElementChild!
+    const label = serviceMsg.firstElementChild!
     expect(serviceMsg.children).toHaveLength(1)
-    expect(i18n.tagName).toBe('SPAN')
-    expect(i18n.className).toBe('i18n')
-    expect(i18n.textContent).toBe('19 июля')
+    expect(label.tagName).toBe('SPAN')
+    expect(label.className).toBe('i18n')
+    // Класс НАСТОЯЩИЙ: узел записан в `weakMap`, и `applyLangPack` его найдёт и
+    // перепишет. Прежде этот `span.i18n` создавал сам `createDateBubble` вокруг
+    // строки — класс был, записи в `weakMap` не было, обход молча пропускал узел.
+    expect(I18n.weakMap.get(label as HTMLElement)).toBeDefined()
+    expect(label.textContent).toBe('July 19')
   })
 
   it('у экшен-бабла обёртка ЕСТЬ — это и есть разница двух сервисных баблов', () => {
@@ -258,7 +266,7 @@ describe('клики — только data-разметка, ни одного i
   })
 
   it('ни у одного узла бабла и разделителя нет атрибута on*', () => {
-    for (const root of [createServiceBubble(opts()), createDateBubble('19 июля')]) {
+    for (const root of [createServiceBubble(opts()), createDateBubble(dayLabel(0))]) {
       for (const el of allElements(root)) {
         const inline = el.getAttributeNames().filter((name) => name.toLowerCase().startsWith('on'))
         expect(inline).toEqual([])
@@ -298,9 +306,10 @@ describe('безопасность — пользовательский текс
     }
   })
 
-  it('подпись дня с тегами остаётся текстом', () => {
-    const bubble = createDateBubble('<b>19 июля</b>')
-    expect(bubble.textContent).toBe('<b>19 июля</b>')
-    expect(bubble.querySelector('b')).toBeNull()
-  })
+  // Прежний пин здесь проверял, что подпись дня с тегами остаётся текстом:
+  // `createDateBubble` принимал СТРОКУ и клал её в `textContent`. Строкового
+  // входа у него больше нет вовсе — аргумент это `HTMLElement`, который строит
+  // ядро (`i18n`/`formatDate`), поэтому проверять стало нечего: поверхности, на
+  // которой жил вопрос, не существует. Что подпись именно узел ядра, держит пин
+  // в describe выше (`I18n.weakMap.get(label)`).
 })

@@ -2,14 +2,14 @@ import { useState } from 'react'
 import { SettingsScreen, Section, Row } from './kit'
 
 const ITEMS = [
-  'Autoplay GIFs',
-  'Autoplay videos',
-  'Loop animated stickers',
-  'Animated emoji',
-  'Interface animations',
-  'Reaction effects',
-  'Spoiler effects',
-  'Chat background animation',
+  'LiteMode.Key.gif.Title',
+  'LiteMode.Key.video.Title',
+  'InstalledStickers.LoopAnimated',
+  'LiteMode.Key.emoji.Title',
+  'LiteMode.Key.animations.Title',
+  'LiteMode.Key.effects_reactions.Title',
+  'LiteMode.Key.chat_spoilers.Title',
+  'LiteMode.Key.background_animation.Title',
 ]
 
 export default function PowerSaving({ onBack }: { onBack: () => void }) {
@@ -20,10 +20,10 @@ export default function PowerSaving({ onBack }: { onBack: () => void }) {
   )
 
   return (
-    <SettingsScreen title="Power Saving" onBack={onBack}>
-      <Section footer="Disable animations and effects to reduce power usage.">
+    <SettingsScreen title="LiteMode.Title" onBack={onBack}>
+      <Section footer="LiteMode.Caption">
         <Row
-          label="Enable Animations"
+          label="EnableAnimations"
           toggle
           checked={master}
           onClick={() => setMaster((m) => !m)}

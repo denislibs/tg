@@ -2,16 +2,16 @@
 // транзакций. Полноэкранный слайд-скрин поверх списка чатов (как Настройки).
 // Пополнение — dev-операция (реального провайдера нет), баланс живёт в
 // State (`starsBalance`, единый источник, обновляется и WS-фреймом balance_update).
+import type { LangPackKey } from '@/lang'
 import { useEffect, useState } from 'react'
 import { SettingsScreen, Section } from '../settings/kit'
 import Text from '../../shared/ui/Text'
+import { SentTime } from '../../shared/ui/dateNodes'
 import TgIcon from '../TgIcon'
 import { useManagers } from '../../core/hooks/useManagers'
 import { useNavLayer } from '../../core/hooks/useNavLayer'
 import { useStarsBalance, setStarsBalance } from '../../stores/starsStore'
-import { useT, useLang } from '../../i18n'
-import { friendlyMsgTime } from '../../core/format/friendlyTime'
-import { messageDateISO } from '../../core/messageToConvMsg'
+import { useT } from '../../i18n'
 import type { StarTransaction } from '../../core/managers/starsManager'
 import StarIcon from './StarIcon'
 import s from './stars.module.scss'
@@ -24,19 +24,18 @@ const TOPUP_OPTIONS = [100, 250, 500, 1000, 2500, 5000]
 // Вид операции ВЫВОДИТСЯ: «это подарок» говорит флаг конструктора, «отправлен
 // или обменян» — знак суммы. Прежде здесь ветвились по строковому `kind` с
 // провода, и одна из его веток (`paid_media`) не производилась сервером вовсе.
-function txMeta(tx: StarTransaction, t: (s: string) => string): { icon: import('../TgIcon').IconName; label: string } {
+function txMeta(tx: StarTransaction, t: (key: LangPackKey) => string): { icon: import('../TgIcon').IconName; label: string } {
   if (tx.gift) {
     return tx.amount < 0
-      ? { icon: 'gift', label: tx.title || t('Gift') }
-      : { icon: 'star_filled', label: t('Gift converted') }
+      ? { icon: 'gift', label: tx.title || t('StarGiftTitle') }
+      : { icon: 'star_filled', label: t('StarGift.Converted') }
   }
-  if (tx.amount > 0) return { icon: 'add', label: t('Top-Up') }
-  return { icon: 'star_filled', label: tx.title || t('Transaction') }
+  if (tx.amount > 0) return { icon: 'add', label: t('Stars.TopUpTitle') }
+  return { icon: 'star_filled', label: tx.title || t('Stars.Transaction') }
 }
 
 export default function WalletView({ onBack }: { onBack: () => void }) {
   const t = useT()
-  const [lang] = useLang()
   const managers = useManagers()
   useNavLayer(true, onBack) // Back закрывает «Кошелёк»
   const balance = useStarsBalance()
@@ -59,18 +58,18 @@ export default function WalletView({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <SettingsScreen title="Wallet" onBack={onBack}>
+    <SettingsScreen title="Stars.Wallet" onBack={onBack}>
       {/* Крупный баланс */}
       <div className={s.bigBalance}>
         <div className={s.bigBalanceRow}>
           <StarIcon size={32} />
           {balance}
         </div>
-        <div className={s.bigBalanceLabel}>{t('Your balance')}</div>
+        <div className={s.bigBalanceLabel}>{t('Stars.Balance')}</div>
       </div>
 
       {/* Покупка звёзд */}
-      <Section caption="Buy Stars">
+      <Section caption="BuyStars">
         <div className={w.optionsGrid}>
           {TOPUP_OPTIONS.map((amount) => (
             <div key={amount} className={s.option} onClick={() => void topUp(amount)}>
@@ -82,13 +81,13 @@ export default function WalletView({ onBack }: { onBack: () => void }) {
           ))}
         </div>
         <Text size={13} color="var(--secondary-text-color)" style={{ display: 'block', textAlign: 'center', padding: '10px 4px 2px' }}>
-          {t('Demo: top-up adds Stars instantly, no real payment.')}
+          {t('Stars.DemoNotice')}
         </Text>
       </Section>
 
       {/* История транзакций */}
       {txs.length > 0 && (
-        <Section caption="Recent Transactions">
+        <Section caption="Stars.RecentTransactions">
           {txs.map((tx) => {
             const m = txMeta(tx, t)
             const positive = tx.amount > 0
@@ -99,7 +98,8 @@ export default function WalletView({ onBack }: { onBack: () => void }) {
                 </div>
                 <div className={w.txBody}>
                   <Text noWrap size={15.5} color="var(--primary-text-color)">{m.label}</Text>
-                  <Text noWrap size={13} color="var(--secondary-text-color)">{friendlyMsgTime(messageDateISO(tx.date), lang)}</Text>
+                  {/* tweb `popups/stars.tsx:409` — `formatFullSentTime(transaction.date)`. */}
+                  <Text noWrap size={13} color="var(--secondary-text-color)"><SentTime timestamp={tx.date} /></Text>
                 </div>
                 <div className={w.txAmount} style={{ color: positive ? 'var(--green-color)' : 'var(--primary-text-color)' }}>
                   {positive ? '+' : '−'}{Math.abs(tx.amount)}
