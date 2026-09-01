@@ -38,12 +38,23 @@ const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '..')
  */
 const ALLOWED: Record<string, string> = {}
 
-/** Комментарии снимаются: в докблоках этих файлов прежние вызовы НАЗВАНЫ —
- *  разбор дефекта стоит прямо у исправленной строки, и скан не должен видеть
- *  в нём нарушение. URL (`https://`) при этом не режется. */
+/**
+ * Комментарии снимаются: в докблоках этих файлов прежние вызовы НАЗВАНЫ —
+ * разбор дефекта стоит прямо у исправленной строки, и скан не должен видеть в
+ * нём нарушение. URL (`https://`) при этом не режется.
+ *
+ * Вырезанное заменяется ПРОБЕЛАМИ, а не схлопывается: и длина, и переводы
+ * строки сохраняются, поэтому номер строки, посчитанный по обрезанному тексту,
+ * совпадает с номером в файле. Первая редакция сводила блочный комментарий к
+ * одному пробелу, и сообщение указывало на строку тем выше, чем длиннее
+ * докблок над находкой, — в этом репозитории докблоки на 30-80 строк обычное
+ * дело, то есть промах был на десятки строк. Приём взят у соседнего пина той
+ * же волны (`i18n/noLegacyKeys.test.ts`), где этот дефект уже разбирали.
+ */
+const blank = (text: string) => text.replace(/[^\n]/g, ' ')
 const stripComments = (src: string) => src
-  .replace(/\/\*[\s\S]*?\*\//g, ' ')
-  .replace(/(^|[^:])\/\/[^\n]*/gm, '$1')
+  .replace(/\/\*[\s\S]*?\*\//g, blank)
+  .replace(/(^|[^:])\/\/[^\n]*/g, (match: string, before: string) => before + blank(match.slice(before.length)))
 
 /** Вызов метода даты: `.toLocaleString(`, `.toLocaleDateString(`, `.toLocaleTimeString(`. */
 const CALL = /\.toLocale(?:Date|Time)?String\s*\(/g
@@ -56,6 +67,17 @@ function* sourceFiles(dir: string): Generator<string> {
   }
 }
 
+/** Находки одного файла. Вынесено, чтобы проверить САМИ НОМЕРА СТРОК (тест ниже). */
+export function localeCalls(source: string, rel: string) {
+  const lines = stripComments(source).split('\n')
+  const hits: string[] = []
+  for (let i = 0; i < lines.length; i++) {
+    CALL.lastIndex = 0
+    if (CALL.test(lines[i])) hits.push(`${rel}:${i + 1}: ${lines[i].trim()}`)
+  }
+  return hits
+}
+
 function scan() {
   const hits: string[] = []
   let files = 0
@@ -65,12 +87,7 @@ function scan() {
     if (/\.test\.tsx?$/.test(rel)) continue
     if (rel in ALLOWED) continue
     files++
-    const src = stripComments(readFileSync(file, 'utf8'))
-    const lines = src.split('\n')
-    for (let i = 0; i < lines.length; i++) {
-      CALL.lastIndex = 0
-      if (CALL.test(lines[i])) hits.push(`${rel}:${i + 1}: ${lines[i].trim()}`)
-    }
+    hits.push(...localeCalls(readFileSync(file, 'utf8'), rel))
   }
   return { hits, files }
 }
@@ -83,5 +100,26 @@ describe('даты берут язык у ядра, а не у браузера'
 
   it('ни один продуктовый модуль не зовёт toLocale*String', () => {
     expect(scan().hits).toEqual([])
+  })
+
+  // Сообщение пина обязано вести к настоящей строке файла — иначе читатель
+  // правит не тот код. Проверяется на синтетическом исходнике: на настоящих
+  // файлах «правильно» и «схлопнуто» неотличимы, пока над находкой не окажется
+  // докблока. Первая редакция этого пина схлопывала блочный комментарий в один
+  // пробел и адресовала на 44 строки выше настоящей.
+  it('номер строки указывает на строку ФАЙЛА, а не обрезанного текста', () => {
+    const source = [
+      '/**',
+      ' * Докблок в пять строк; цитата `toLocaleDateString()` внутри — не находка.',
+      ' *',
+      ' * Ещё строка.',
+      ' */',
+      '// однострочный комментарий с d.toLocaleString()',
+      'const a = new Date().toLocaleDateString()',
+    ].join('\n')
+
+    expect(localeCalls(source, 'x.ts')).toEqual([
+      'x.ts:7: const a = new Date().toLocaleDateString()',
+    ])
   })
 })

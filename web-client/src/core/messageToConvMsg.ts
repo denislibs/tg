@@ -6,9 +6,20 @@ import { isLocalMessageId } from './history/messageId'
 import { getPeerId } from './peers/peerId'
 import { AUTHOR_HIDDEN_TITLE } from './peers/getPeerTitle'
 
-// Format a unix timestamp (seconds) as local 24h "HH:MM".
-// The renderer's formatTime renders this as-is in 24h mode and converts to AM/PM
-// in 12h mode, so the bubble shows a real clock time, not the raw value.
+// Unix-таймстамп (секунды) в местное «ЧЧ:ММ», 24 часа.
+//
+// РАСХОЖДЕНИЕ С ОРИГИНАЛОМ, и оно предсуществующее: у tweb время бабла строит
+// `formatTime` (`helpers/date.ts:200-205`) через `IntlDateElement`, а тот
+// собирает часы РУКАМИ — только так уважается пользовательская настройка 12/24
+// часа (`I18n.setTimeFormat`). Здесь же `padStart`, то есть настройка до бабла
+// не доходит: в 12-часовом режиме он всё равно покажет «18:05».
+//
+// Прежний текст этого комментария обещал обратное — «renderer's formatTime
+// converts to AM/PM in 12h mode». Обещание относилось к `settings.tsx::formatTime`,
+// который задача #121 снесла (у него не осталось вызывающих, а 12/24 уважает
+// сам `IntlDateElement`); поэтому комментарий стал ложью, а не просто устарел.
+// Само расхождение снимается переводом времени бабла на узел — это работа по
+// `components/chat/messageTime.ts`, не по этой границе витрины.
 function hhmm(date: number): string {
   const d = new Date(date * 1000)
   if (Number.isNaN(d.getTime())) return ''

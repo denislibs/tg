@@ -125,9 +125,13 @@ export const TopicRow = memo(function TopicRow({ topic, active, dimmed, onOpen, 
   const metaColor = active ? 'rgba(255,255,255,0.85)' : 'var(--secondary-text-color)'
   // Дата последнего сообщения темы — тем же живым узлом, что в списке чатов
   // (у tweb ряд темы строит тот же `appDialogsManager`, :2242).
+  // Зависимость — ТАЙМСТАМП, а не сам `lm`: строка темы получает новый объект
+  // сообщения на каждое обновление темы, и мемо по объекту пересобирало бы
+  // живой узел там, где дата не менялась.
+  const lastAt = lm?.date
   const dateNode = useMemo(
-    () => (lm ? formatDateAccordingToTodayNew(new Date(lm.date * 1000)) : null),
-    [lm],
+    () => (lastAt === undefined ? null : formatDateAccordingToTodayNew(new Date(lastAt * 1000))),
+    [lastAt],
   )
   return (
     <div

@@ -761,9 +761,12 @@ function SavedDialogRow({ dialog, onOpenPeer, itemRef }: {
   const lm = dialog.lastMessage
   // Дата — живой узел ядра (порт tweb `appDialogsManager.ts:2242`), как в
   // списке чатов: строка застыла бы в языке момента рендера.
+  // Зависимость — ТАЙМСТАМП, а не сам `lm`: мемо по идентичности объекта
+  // пересобирало бы живой узел там, где дата не менялась.
+  const lastAt = lm?.date
   const dateNode = useMemo(
-    () => (lm ? formatDateAccordingToTodayNew(new Date(lm.date * 1000)) : null),
-    [lm],
+    () => (lastAt === undefined ? null : formatDateAccordingToTodayNew(new Date(lastAt * 1000))),
+    [lastAt],
   )
 
   return (

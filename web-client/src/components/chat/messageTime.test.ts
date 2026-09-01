@@ -31,9 +31,14 @@ describe('createMessageTime', () => {
     expect(inner.textContent).toContain('12:34')
   })
 
-  it('полная дата — подсказкой у .time-inner', () => {
+  // Проверяется ФОРМА, а не «строка непустая»: подсказку строит `getFullDate`
+  // с набором опций ПО УМОЛЧАНИЮ (tweb `messageRender.ts:257` —
+  // `getFullDate(new Date(message.date * 1000))`), и любой лишний аргумент
+  // (`shortYear`, `monthAsNumber`, `noSeconds`) молча даёт другую подсказку.
+  // Месяц здесь английский во всех языках — так у оригинала, см. `messageTime.ts`.
+  it('полная дата — подсказкой у .time-inner, в форме `getFullDate` по умолчанию', () => {
     const inner = createMessageTime(at('2026-08-15T12:34:00')).querySelector<HTMLElement>('.time-inner')!
-    expect(inner.title).not.toBe('')
+    expect(inner.title).toBe('15 August 2026, 12:34:00')
   })
 
   it('правленое сообщение несёт метку edited в ОБЕИХ копиях', () => {
