@@ -382,7 +382,7 @@ function InviteLinkDetailScreen({ g, link, onEdit, onBack }: { g: GroupEdit; lin
               key={im.userId}
               icon={<UserAvatar id={im.userId} name={im.name} photoId={im.photoId} />}
               label={im.name}
-              sublabel={<SentTime timestamp={Math.floor(Date.parse(im.joinedAt) / 1000)} />}
+              sublabel={<SentTime timestamp={Math.floor(Date.parse(im.joinedAt) / 1000)} fallback={im.joinedAt} />}
               translate={false}
             />
           ))}

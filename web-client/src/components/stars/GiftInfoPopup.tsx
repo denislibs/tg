@@ -93,8 +93,13 @@ export default function GiftInfoPopup({
             <span className={s.chosenEmoji}>{gift.gift.emoji}</span>
             <Text size={17} weight={600} color="var(--primary-text-color)">{gift.gift.title}</Text>
             <Text size={14} color="var(--secondary-text-color)">
-              {/* «Сегодня в 14:30» — узел оригинала (`popups/starGiftInfo.tsx:768`). */}
-              {t('StarGiftFromShort')}: {fromLabel}{' · '}<SentTime timestamp={date} />
+              {/* «Сегодня в 14:30» — узел оригинала (`popups/starGiftInfo.tsx:768`).
+                  Разделитель — ТОЛЬКО при непустой дате: `date === 0` означает
+                  «даты нет», и безусловный ` · ` печатал бы «· 1 янв. 1970».
+                  Условие было и до задачи #121 (`dateLabel ? … : ''`) — оно
+                  потерялось при переводе подписи на узел и возвращено. */}
+              {t('StarGiftFromShort')}: {fromLabel}
+              {date ? <>{' · '}<SentTime timestamp={date} /></> : null}
             </Text>
             {isOwner && hidden && (
               <Text size={13} color="var(--secondary-text-color)">{t('StarGift.HiddenFromProfile')}</Text>

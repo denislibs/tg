@@ -134,7 +134,7 @@ export default function ChannelStats({
                         <Text noWrap size={13} color="var(--secondary-text-color)">
                           {/* tweb `statistics.tsx:704` — `row.subtitle.append(formatFullSentTime(message.date))`.
                               Прежний `toLocaleDateString(undefined, …)` брал локаль браузера. */}
-                          <SentTime timestamp={Math.floor(Date.parse(p.date) / 1000)} />
+                          <SentTime timestamp={Math.floor(Date.parse(p.date) / 1000)} fallback={p.date} />
                         </Text>
                       </div>
                       <Text size={14} color="var(--secondary-text-color)" style={{ flexShrink: 0 }}>

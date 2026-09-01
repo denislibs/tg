@@ -1,5 +1,5 @@
 import Text from '../shared/ui/Text'
-import { DayDate } from '../shared/ui/dateNodes'
+import { ALWAYS_YEAR, DayDate } from '../shared/ui/dateNodes'
 import TgIcon from './TgIcon'
 import { SettingsScreen, Section, Row } from './settings/kit'
 import { useT } from '../i18n'
@@ -34,7 +34,23 @@ export default function PremiumManage({ onBack }: { onBack: () => void }) {
               // Дата окончания — узел `formatDate` ядра (порт tweb
               // `helpers/date.ts:75-105`, ср. `popups/frozen.tsx:30`). Прежний
               // `toLocaleDateString(undefined, …)` брал локаль БРАУЗЕРА.
-              value={<DayDate date={Math.floor(Date.parse(sub.expiresAt) / 1000)} />}
+              //
+              // `ALWAYS_YEAR` — не украшение: `formatDate` оригинала опускает
+              // год у дат ТЕКУЩЕГО года, а «подписка действует до 3 декабря»
+              // без года не отвечает на вопрос, ради которого строку читают.
+              // Форма при этом ровно та же, что была до задачи #121:
+              // день + месяц словом + год.
+              //
+              // `fallback` возвращает поведение снесённой проверки
+              // `Number.isNaN(d.getTime())`: битая строка с провода показывает
+              // сырое значение, а не роняет экран `RangeError`-ом из `Intl`.
+              value={(
+                <DayDate
+                  date={Math.floor(Date.parse(sub.expiresAt) / 1000)}
+                  overrideIntlOptions={ALWAYS_YEAR}
+                  fallback={sub.expiresAt}
+                />
+              )}
               translate
             />
           </Section>

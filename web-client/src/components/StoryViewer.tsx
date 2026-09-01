@@ -1,8 +1,7 @@
 import { createPortal } from 'react-dom'
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import Text from '../shared/ui/Text'
-import DomNode from '../shared/ui/DomNode'
-import { formatFullSentTime } from '@helpers/date'
+import { SentTime } from '../shared/ui/dateNodes'
 import IconButton from '../shared/ui/IconButton'
 import Menu, { MenuItem } from '../shared/ui/Menu'
 import Popup from '../shared/ui/Popup'
@@ -101,7 +100,6 @@ function calcTranslateX(diff: number, storyWidth: number): string {
 // `date` — СЕКУНДЫ эпохи (`storyItem.date`), те же единицы, что у сообщения.
 function StoryDate({ date, edited }: { date: number; edited: boolean }) {
   const t = useT()
-  const full = useMemo(() => formatFullSentTime(date), [date])
   const sec = Math.max(0, Math.round((Date.now() - date * 1000) / 1000))
   const head = sec < 60
     ? t('StoryJustNow')
@@ -109,7 +107,7 @@ function StoryDate({ date, edited }: { date: number; edited: boolean }) {
       ? `${Math.floor(sec / 60)} ${t('Story.Time.MinutesAgo')}`
       : sec < 86400
         ? `${Math.floor(sec / 3600)} ${t('Story.Time.HoursAgo')}`
-        : <DomNode node={full} />
+        : <SentTime timestamp={date} />
   return <>{head}{edited ? <>{JOINER}{t('EditedMessage')}</> : null}</>
 }
 
