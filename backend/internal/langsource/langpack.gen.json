@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 6,
+      "version": 7,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -915,13 +915,6 @@
           "value": "Missed"
         },
         {
-          "key": "Chat.Title.Comments",
-          "forms": {
-            "one_value": "%d Comment",
-            "other_value": "%d Comments"
-          }
-        },
-        {
           "key": "Chat.UnpinAll.Text",
           "value": "Are you sure you want to unpin all messages?"
         },
@@ -1160,6 +1153,13 @@
         {
           "key": "Comment",
           "value": "Comment"
+        },
+        {
+          "key": "Comments",
+          "forms": {
+            "one_value": "%1$d Comment",
+            "other_value": "%1$d Comments"
+          }
         },
         {
           "key": "Common.Back",
@@ -2208,6 +2208,10 @@
         {
           "key": "Lately",
           "value": "last seen recently"
+        },
+        {
+          "key": "LeaveAComment",
+          "value": "Leave a comment"
         },
         {
           "key": "LinkCopied",
@@ -5359,7 +5363,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 6,
+      "version": 7,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -10218,13 +10222,17 @@
           "value": "Добавить ссылку"
         },
         {
-          "key": "Chat.Title.Comments",
+          "key": "Comments",
           "forms": {
-            "one_value": "%d комментарий",
-            "few_value": "%d комментария",
-            "many_value": "%d комментариев",
-            "other_value": "%d комментария"
+            "one_value": "%1$d комментарий",
+            "few_value": "%1$d комментария",
+            "many_value": "%1$d комментариев",
+            "other_value": "%1$d комментария"
           }
+        },
+        {
+          "key": "LeaveAComment",
+          "value": "Оставьте комментарий"
         },
         {
           "key": "AddOneMemberAlertTitle",
@@ -10733,7 +10741,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 3,
+      "version": 4,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -13471,10 +13479,10 @@
           "value": "Ajouter un lien"
         },
         {
-          "key": "Chat.Title.Comments",
+          "key": "Comments",
           "forms": {
-            "one_value": "%d commentaire",
-            "other_value": "%d commentaires"
+            "one_value": "%1$d commentaire",
+            "other_value": "%1$d commentaires"
           }
         },
         {
@@ -13557,7 +13565,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 3,
+      "version": 4,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -16294,10 +16302,10 @@
           "value": "Link hinzufügen"
         },
         {
-          "key": "Chat.Title.Comments",
+          "key": "Comments",
           "forms": {
-            "one_value": "%d Kommentar",
-            "other_value": "%d Kommentare"
+            "one_value": "%1$d Kommentar",
+            "other_value": "%1$d Kommentare"
           }
         },
         {
@@ -16380,7 +16388,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 3,
+      "version": 4,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -19118,10 +19126,10 @@
           "value": "Añadir enlace"
         },
         {
-          "key": "Chat.Title.Comments",
+          "key": "Comments",
           "forms": {
-            "one_value": "%d comentario",
-            "other_value": "%d comentarios"
+            "one_value": "%1$d comentario",
+            "other_value": "%1$d comentarios"
           }
         },
         {
@@ -19204,7 +19212,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 3,
+      "version": 4,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -21972,12 +21980,12 @@
           "value": "Додати посилання"
         },
         {
-          "key": "Chat.Title.Comments",
+          "key": "Comments",
           "forms": {
-            "one_value": "%d коментар",
-            "few_value": "%d коментарі",
-            "many_value": "%d коментарів",
-            "other_value": "%d коментаря"
+            "one_value": "%1$d коментар",
+            "few_value": "%1$d коментарі",
+            "many_value": "%1$d коментарів",
+            "other_value": "%1$d коментаря"
           }
         },
         {

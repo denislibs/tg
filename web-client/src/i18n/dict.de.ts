@@ -760,9 +760,11 @@ const de = {
   'Calendar.Next': 'Nächster Monat',
   'Calendar.Previous': 'Vorheriger Monat',
   'KeyboardShortcuts.Action.Link': 'Link hinzufügen',
-  'Chat.Title.Comments': {
-    one_value: '%d Kommentar',
-    other_value: '%d Kommentare',
+  // Ключ ОРИГИНАЛА (`Comments`, tweb lang.ts:1357) вместо нашего
+  // `Chat.Title.Comments`: аргумент позиционный, как в исходной строке.
+  Comments: {
+    one_value: '%1$d Kommentar',
+    other_value: '%1$d Kommentare',
   },
   // Формы числа, сведённые задачей 6 из обрывков: до неё интерфейс печатал число и
   // слово рядом, и слово не склонялось.

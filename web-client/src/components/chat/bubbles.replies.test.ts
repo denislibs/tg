@@ -19,6 +19,8 @@ import { resetPeerMirror } from '@core/peerCache'
 import { makeMessage } from '@core/messages/testMessage'
 import type { MessageReplies, MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
+import I18n from '@lib/langPack'
+import { applyLang } from '@/test/lang'
 import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
 import { renderReplies } from './replies'
 
@@ -110,6 +112,46 @@ describe('ChatBubbles — тред под сообщением', () => {
       // tweb replies.ts:123-128 — стрелка и ripple-контейнер ПОСЛЕДНИМИ.
       expect(footer.querySelector('.replies-footer-icon-next')).not.toBeNull()
       expect(footer.lastElementChild!.classList.contains('rp')).toBe(true)
+    })
+
+    // ── ПИН ЗАДАЧИ #128 ────────────────────────────────────────────────────
+    //
+    // Текст футера собирался СТРОКОЙ (`commentsLabel`) в свой `span` с классом
+    // `i18n`. Класс был подделкой — узла в `weakMap` нет, `applyLangPack`
+    // обходит `.i18n` и такой узел пропускает (`lib/langPack.ts:568-572`), — а
+    // своей перерисовки у ванильного узла не бывает: счётчик застывал в языке
+    // момента постройки бабла.
+    it('текст футера — узел ядра и следует за языком', async () => {
+      bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managersWith([post(1, commentThread(8))]))
+      await openFeed(bubbles)
+      await settle()
+
+      const node = bubbleOf(bubbles, 1).querySelector<HTMLElement>('.replies-footer-text .i18n')!
+      expect(I18n.weakMap.get(node)).toBeDefined()
+      expect(node.textContent).toBe('8 Comments')
+
+      // Ядро находит узлы обходом документа — как в бою.
+      document.body.append(bubbles.container)
+      await applyLang('ru')
+      // ТОТ ЖЕ узел: футер никто не пересобирал, внутри него живут аватарки
+      // комментаторов, которые пересборка перезагрузила бы.
+      expect(bubbleOf(bubbles, 1).querySelector('.replies-footer-text .i18n')).toBe(node)
+      expect(node.textContent).toBe('8 комментариев')
+
+      await applyLang('en')
+      bubbles.container.remove()
+    })
+
+    // Ноль комментариев — ВТОРОЙ ключ оригинала (`LeaveAComment`, replies.ts:97).
+    // Прежде его у нас не было вовсе, и на нуле писалось «Комментарии» — то самое
+    // расхождение, что было записано в docs/tweb/comments.md:339.
+    it('на нуле комментариев — «оставьте комментарий», а не счётчик', async () => {
+      bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managersWith([post(1, commentThread(0))]))
+      await openFeed(bubbles)
+      await settle()
+
+      const node = bubbleOf(bubbles, 1).querySelector<HTMLElement>('.replies-footer-text .i18n')!
+      expect(node.textContent).toBe('Leave a comment')
     })
 
     it('счётчика у времени при этом НЕТ — это другая ветка', async () => {

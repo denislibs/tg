@@ -791,11 +791,13 @@ const uk = {
   'Calendar.Next': 'Наступний місяць',
   'Calendar.Previous': 'Попередній місяць',
   'KeyboardShortcuts.Action.Link': 'Додати посилання',
-  'Chat.Title.Comments': {
-    one_value: '%d коментар',
-    few_value: '%d коментарі',
-    many_value: '%d коментарів',
-    other_value: '%d коментаря',
+  // Ключ ОРИГИНАЛА (`Comments`, tweb lang.ts:1357) вместо нашего
+  // `Chat.Title.Comments`: аргумент позиционный, как в исходной строке.
+  Comments: {
+    one_value: '%1$d коментар',
+    few_value: '%1$d коментарі',
+    many_value: '%1$d коментарів',
+    other_value: '%1$d коментаря',
   },
   // Формы числа, сведённые задачей 6 из обрывков: до неё интерфейс печатал число и
   // слово рядом, и слово не склонялось.

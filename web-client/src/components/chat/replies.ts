@@ -51,8 +51,7 @@ import type { Middleware } from '@helpers/middleware'
 import { getPeerId, type Peer } from '@core/peers/peerId'
 import type { MessageReplies } from '@core/models'
 import { fmtViews } from '@core/format/fmtViews'
-import { commentsLabel } from '@core/format/commentsLabel'
-import { useI18nStore } from '../../i18n'
+import I18n from '@lib/langPack'
 
 /** tweb replies.ts:15. */
 const TAG_NAME = 'replies-element'
@@ -70,6 +69,20 @@ export interface RepliesElementOptions {
   type: 'footer' | 'beside'
   middleware: Middleware
   managers: AvatarManagers
+}
+
+/**
+ * Ключ и аргументы текста футера — порт tweb `replies.ts:94-98`. Вынесено, чтобы
+ * постройка и обновление на месте (`compareAndUpdate`) не разошлись по правилу.
+ */
+function repliesTextOptions(count: number) {
+  return count
+    ? { key: 'Comments' as const, args: [count] }
+    : { key: 'LeaveAComment' as const }
+}
+
+function repliesTextElement(count: number) {
+  return new I18n.IntlElement(repliesTextOptions(count))
 }
 
 /**
@@ -111,17 +124,25 @@ export function createRepliesElement(options: RepliesElementOptions): HTMLElemen
     element.append(Icon('comments', 'replies-footer-icon', 'replies-footer-icon-comments'))
   }
 
-  // Текст. Оригинал раздаёт ключи `Comments` (`%1$d Comment/Comments`) и
-  // `LeaveAComment` (:96-100); второго у нас не заведено, и на нуле пишется
-  // «Комментарии» — общий с React-лентой `commentsLabel`. Расхождение уже
-  // записано в docs/tweb/comments.md:339.
+  // Текст — ЖИВОЙ УЗЕЛ ядра (`I18n.IntlElement`), ровно как у оригинала
+  // (`replies.ts:89-100`): `Comments` со счётчиком либо `LeaveAComment` на нуле.
+  //
+  // Прежде здесь был свой `span` с классом `i18n` и готовой строкой внутри.
+  // Класс был подделкой — узла в `weakMap` нет, `applyLangPack` его молча
+  // пропускает (`lib/langPack.ts:568-572`), — а своей перерисовки у ванильного
+  // узла, в отличие от React, не бывает: подпись застывала в языке момента
+  // постройки бабла и до перезагрузки чата не менялась.
+  //
+  // Вместе со строкой ушло и расхождение по КЛЮЧАМ: свои
+  // `Chat.Title.Comments`/`Chat.CommentsLabel` заменены ключами оригинала, и на
+  // нуле теперь «Оставьте комментарий», а не «Комментарии» — то самое
+  // расхождение, что было записано в docs/tweb/comments.md:339.
+  //
+  // Ветки `ViewInChat` (:99) у нас нет предмета: `replies` в опциях обязателен,
+  // футер строится только за прошедшим гейт тредом.
   const textSpan = document.createElement('span')
   textSpan.classList.add('replies-footer-text')
-  const i18n = document.createElement('span')
-  i18n.classList.add('i18n')
-  const { t, tArgs } = useI18nStore.getState()
-  i18n.textContent = commentsLabel(replies.replies, t, tArgs)
-  textSpan.append(i18n)
+  textSpan.append(repliesTextElement(replies.replies).element)
 
   // tweb :123-128 — стрелка и ripple-контейнер ПОСЛЕДНИМИ.
   const rippleContainer = document.createElement('div')
@@ -150,10 +171,12 @@ export function setRepliesElementCount(element: HTMLElement, count: number): voi
     beside.textContent = count ? fmtViews(count) : ''
     return
   }
-  const i18n = element.querySelector<HTMLElement>('.replies-footer-text .i18n')
-  if (!i18n) return
-  const { t, tArgs } = useI18nStore.getState()
-  i18n.textContent = commentsLabel(count, t, tArgs)
+  const node = element.querySelector<HTMLElement>('.replies-footer-text .i18n')
+  const instance = node && I18n.weakMap.get(node)
+  if (!(instance instanceof I18n.IntlElement)) return
+  // tweb :94-98 — `compareAndUpdate`, а не пересборка: тот же ключ с теми же
+  // аргументами узел не трогает вовсе, а смена числа переписывает его на месте.
+  instance.compareAndUpdate(repliesTextOptions(count))
 }
 
 /**
