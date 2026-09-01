@@ -7,6 +7,8 @@
 import type { LangPackKey } from '@/lang'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Text from '../../shared/ui/Text'
+import DomNode from '../../shared/ui/DomNode'
+import { formatDateAccordingToTodayNew } from '@helpers/date'
 import TgIcon from '../TgIcon'
 import Avatar from '../../shared/ui/Avatar'
 import UserAvatar from '../UserAvatar'
@@ -26,7 +28,7 @@ import { getDocumentFromMessage, getMediaFromMessage, hasServerThumb } from '../
 import { friendlyMsgTime } from '../../core/format/friendlyTime'
 import { EXT_COLORS, extOf, firstUrl, fmtDur, fmtSize, hostOf } from '../../core/format/sharedMediaFmt'
 import MediaGridThumb from '../MediaGridThumb'
-import { fmtWhen, previewOf } from '../../core/dialogToChat'
+import { previewOf } from '../../core/dialogToChat'
 import { roleLabel, type RealMember } from '../../core/hooks/useGroupInfo'
 import type { SavedDialog } from '../../core/managers/chatsManager'
 import { isGiftHidden, type SavedStarGift } from '../../core/managers/starsManager'
@@ -757,6 +759,12 @@ function SavedDialogRow({ dialog, onOpenPeer, itemRef }: {
   const title = isSelf ? t('MyNotes') : getPeerTitle({ peerId: dialog.peerId, peer })
   const photoId = getPeerPhotoId(isUser(dialog.peerId) && peer?._ === 'user' ? peer.photo : getChatPhoto(peer as PeerChat | undefined)) || undefined
   const lm = dialog.lastMessage
+  // Дата — живой узел ядра (порт tweb `appDialogsManager.ts:2242`), как в
+  // списке чатов: строка застыла бы в языке момента рендера.
+  const dateNode = useMemo(
+    () => (lm ? formatDateAccordingToTodayNew(new Date(lm.date * 1000)) : null),
+    [lm],
+  )
 
   return (
     // Строка «Избранного» — тот же `chatlist-chat`, что у списка чатов и у
@@ -779,7 +787,7 @@ function SavedDialogRow({ dialog, onOpenPeer, itemRef }: {
       <div className="row-row row-title-row dialog-title">
         <div className="row-title">{title}</div>
         <div className="row-title row-title-right row-title-right-secondary">
-          {fmtWhen(lm ? messageDateISO(lm.date) : undefined)}
+          {dateNode ? <DomNode node={dateNode} className="message-time" /> : null}
         </div>
       </div>
       <div className="row-row row-subtitle-row dialog-subtitle">

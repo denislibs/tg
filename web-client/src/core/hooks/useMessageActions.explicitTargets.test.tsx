@@ -42,7 +42,7 @@ function mockManagers() {
   }
 }
 
-const chat: Chat = { id: String(CHAT), name: 'Test', avatar: '', date: '', preview: '', type: 'private' }
+const chat: Chat = { id: String(CHAT), name: 'Test', avatar: '', preview: '', type: 'private' }
 
 const rawMsg = (): MyMessage => makeMessage({ id: MID, peerId: CHAT, fromId: 2, text: 'hi' })
 

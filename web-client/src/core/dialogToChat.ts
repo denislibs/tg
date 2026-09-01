@@ -22,7 +22,6 @@ import type { Chat, ChatType } from '../data'
 import { getMessageText, isDialogArchived, type Dialog, type MyMessage } from './models'
 import { draftDate, draftText, hasDraft as dialogHasDraft } from './dialogs/draft'
 import { getMediaId, getMessageKind, type MessageKind } from './messages/messageKind'
-import { messageDateISO } from './messageToConvMsg'
 import { serviceMsgText } from './serviceMsg'
 import { getPeerPhotoId, getPeerPhotoStrippedThumb, type Chat as PeerChat, type User } from './peers/peer'
 import { SAVED_MESSAGES_TITLE, getPeerTitle } from './peers/getPeerTitle'
@@ -53,17 +52,6 @@ export function gradientFor(id: number): string {
 export const SERVICE_USER_ID = 777000
 // Telegram-сервис: фирменный голубой градиент плашки (tweb telegram blue).
 const SERVICE_GRADIENT = 'linear-gradient(#72D5FD,#2A9EF1)'
-
-export function fmtWhen(iso?: string): string {
-  if (!iso) return ''
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
-  const now = new Date()
-  const sameDay = d.toDateString() === now.toDateString()
-  return sameDay
-    ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : d.toLocaleDateString([], { day: '2-digit', month: 'short' })
-}
 
 // A human label for a media message with no caption (tweb wrapMessageForReply:
 // grey type label). Возвращает КЛЮЧ, а не текст: до задачи 6 здесь лежали русские
@@ -220,11 +208,13 @@ export function dialogToChat(
     premium: user?.pFlags?.premium || undefined,
     emojiStatus: user?.emoji_status_emoticon || undefined,
     // Секунды эпохи у обоих (`date:int` схемы): черновик приезжает
-    // конструктором draftMessage со своим `date`, и переводить из ISO больше
-    // нечего — сравниваем числа, форматируем один раз.
+    // конструктором draftMessage со своим `date`, и сравниваем мы числа. Здесь
+    // ВЫБОР ЧИСЛА и только он — ровно как у оригинала
+    // (`appDialogsManager.ts:2240`: `Math.max(draftMessage.date, lastMessage.date)`);
+    // подпись из него строит место рендера, см. `Chat.date` в `data.ts`.
     date: hasDraft && (!lm || draftDate(d.draft) > lm.date)
-      ? fmtWhen(messageDateISO(draftDate(d.draft)))
-      : fmtWhen(lm ? messageDateISO(lm.date) : undefined),
+      ? draftDate(d.draft)
+      : lm?.date,
     preview,
     draftPreview: hasDraft ? draftText(d.draft) : undefined,
     type,

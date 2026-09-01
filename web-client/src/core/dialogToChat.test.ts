@@ -59,8 +59,9 @@ describe('dialogToChat', () => {
       lastMessage: makeLastMessage({ peerId: 1, id: 4, fromId: 2, text: 'yo', createdAt: '2026-06-24T10:00:00Z' }),
     }), null, NONE)
     expect(c.preview).toBe('yo')
-    expect(c.date).not.toBe('2026-06-24T10:00:00Z')
-    expect(c.date.length).toBeGreaterThan(0)
+    // Дата — ТАЙМСТАМП сообщения, а не подпись: подпись строит место рендера
+    // живым узлом (задача #121), иначе она застывает в языке момента проекции.
+    expect(c.date).toBe(Math.floor(Date.parse('2026-06-24T10:00:00Z') / 1000))
     expect(c.unread).toBe(3)
   })
 

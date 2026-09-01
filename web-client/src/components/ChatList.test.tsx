@@ -317,7 +317,7 @@ describe('ChatList — ul виртуального списка', () => {
 })
 
 describe('ChatList — архив внутри списка', () => {
-  const archived: Chat[] = [{ id: '900', name: 'Архивный', avatar: '', date: '', preview: '', type: 'private', unread: 3 }]
+  const archived: Chat[] = [{ id: '900', name: 'Архивный', avatar: '', preview: '', type: 'private', unread: 3 }]
 
   it('архив — ПЕРВЫЙ элемент ul (top 0), первый чат уезжает на 72', async () => {
     seedDialogs(3)
@@ -452,7 +452,7 @@ describe('ChatList — мемоизация строки переезд пере
     const { managers } = fakeManagers(page({ count: 0 }))
 
     const { rerender } = await renderList(managers, {
-      archived: [{ id: '900', name: 'Архивный', avatar: '', date: '', preview: '', type: 'private' }],
+      archived: [{ id: '900', name: 'Архивный', avatar: '', preview: '', type: 'private' }],
     })
     // Ждём, пока доиграет волна reveal: при пустом наборе `revealIdx` встаёт на
     // 0, закреплённый архив на кадр становится скелетоном и раскрывается
@@ -476,7 +476,7 @@ describe('ChatList — свёрнутая колонка', () => {
 
     await renderList(managers, {
       collapsed: true,
-      archived: [{ id: '900', name: 'Архивный', avatar: '', date: '', preview: '', type: 'private' }],
+      archived: [{ id: '900', name: 'Архивный', avatar: '', preview: '', type: 'private' }],
       onOpenArchive: () => {},
     })
 

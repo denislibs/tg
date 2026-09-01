@@ -35,7 +35,7 @@ const ME = 5
 const ORIG = 77 // id сообщения, на которое отвечаем
 
 function chat(over: Partial<Chat> = {}): Chat {
-  return { id: String(CHAT_ID), name: 'Чат', avatar: '', date: '', preview: '', ...over } as Chat
+  return { id: String(CHAT_ID), name: 'Чат', avatar: '', preview: '', ...over } as Chat
 }
 
 function makeManagers() {

@@ -17,9 +17,11 @@
 //     рендер панели, ни правка одной темы не перерисовывают остальные строки.
 //
 // Рендерится НАСТОЯЩАЯ панель с настоящим ядром: подменены только RPC-менеджеры
-// (источник тем) — счётчик рендеров строк снимается с реального `fmtWhen`,
-// который строка зовёт ровно один раз за рендер и ровно со своим `lastAt`
-// (приём `Sidebar.archive.test.tsx` с `useTypingLabel`).
+// (источник тем) — счётчик рендеров строк снимается с реального `previewOf`,
+// который строка зовёт ровно один раз за рендер и ровно со своим последним
+// сообщением (приём `Sidebar.archive.test.tsx` с `useTypingLabel`). Метка даты
+// на эту роль не годится: её узел мемоизируется по таймстампу и на повторном
+// рендере той же темы не строится вовсе (задача #121).
 //
 // happy-dom не считает layout: `offsetHeight`/`offsetWidth` (их читает
 // `useElementSize` у контейнера прокрутки) подставляются стабом на прототипе.
@@ -28,8 +30,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { join } from 'node:path'
 import * as sass from 'sass'
 
-// `rowRenders` — `lastAt` каждого рендера НАСТОЯЩЕЙ строки темы (у каждой темы
-// он свой). `listProps` — пропсы, приехавшие в ядро списка: так проверяются
+// `rowRenders` — дата последнего сообщения на каждый рендер НАСТОЯЩЕЙ строки
+// темы (у каждой темы она своя). `listProps` — пропсы, приехавшие в ядро списка: так проверяются
 // `noAvatar`/`itemSize` (скелетонов у непагинируемого списка не бывает вовсе,
 // поэтому через DOM их не увидеть) и стабильность ссылки `renderItem`.
 const { rowRenders, listProps } = vi.hoisted(() => ({
@@ -41,9 +43,9 @@ vi.mock('../core/dialogToChat', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../core/dialogToChat')>()
   return {
     ...mod,
-    fmtWhen: (iso?: string) => {
-      rowRenders.push(iso ?? '')
-      return mod.fmtWhen(iso)
+    previewOf: (lm?: Parameters<typeof mod.previewOf>[0]) => {
+      rowRenders.push(lm ? new Date(lm.date * 1000).toISOString() : '')
+      return mod.previewOf(lm)
     },
   }
 })

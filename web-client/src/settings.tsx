@@ -1,4 +1,3 @@
-import { useCallback } from 'react'
 import { create } from 'zustand'
 import I18n from '@lib/langPack'
 import type { ThemeChoice } from './theme'
@@ -274,22 +273,4 @@ export function useSettings(): SettingsState
 export function useSettings<T>(selector: (s: SettingsState) => T): T
 export function useSettings<T>(selector?: (s: SettingsState) => T): SettingsState | T {
   return selector ? useSettingsStore(selector) : useSettingsStore()
-}
-
-// Convert a stored 24h "HH:MM" string to the user's preferred format.
-export function formatTime(hhmm: string, fmt: TimeFormat): string {
-  if (fmt === '24h') return hhmm
-  const parts = hhmm.match(/^(\d{1,2}):(\d{2})/)
-  if (!parts) return hhmm
-  let h = parseInt(parts[1], 10)
-  const min = parts[2]
-  const ampm = h >= 12 ? 'PM' : 'AM'
-  h = h % 12
-  if (h === 0) h = 12
-  return `${h}:${min} ${ampm}`
-}
-
-export function useTimeFormatter(): (hhmm: string | undefined) => string | undefined {
-  const timeFormat = useSettingsStore((s) => s.timeFormat)
-  return useCallback((hhmm: string | undefined) => (hhmm == null ? hhmm : formatTime(hhmm, timeFormat)), [timeFormat])
 }

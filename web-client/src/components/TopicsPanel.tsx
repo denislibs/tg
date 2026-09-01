@@ -10,6 +10,8 @@
 // `itemSize: 64, noAvatar: true` (`forumTab/groupForumTab.ts:27-32`).
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type Ref } from 'react'
 import Text from '../shared/ui/Text'
+import DomNode from '../shared/ui/DomNode'
+import { formatDateAccordingToTodayNew } from '@helpers/date'
 import TgIcon from './TgIcon'
 import Badge from '../shared/ui/Badge'
 import IconButton from '../shared/ui/IconButton'
@@ -25,8 +27,7 @@ import { useEvent } from '../core/hooks/useEvent'
 // Тип строки данных темы. Локальный алиас — потому что `TopicRow` в этом файле
 // занят мемоизированным КОМПОНЕНТОМ строки (см. ниже).
 import type { TopicRow as Topic } from '../core/managers/groupsManager'
-import { fmtWhen, previewOf } from '../core/dialogToChat'
-import { messageDateISO } from '../core/messageToConvMsg'
+import { previewOf } from '../core/dialogToChat'
 import { getPeerTitle } from '../core/peers/getPeerTitle'
 import { cachedPeer } from '../core/peerCache'
 import { useChatsStore } from '../stores/chatsStore'
@@ -122,6 +123,12 @@ export const TopicRow = memo(function TopicRow({ topic, active, dimmed, onOpen, 
   const titleColor = active ? '#fff' : 'var(--primary-text-color)'
   const subColor = active ? 'rgba(255,255,255,0.9)' : 'var(--secondary-text-color)'
   const metaColor = active ? 'rgba(255,255,255,0.85)' : 'var(--secondary-text-color)'
+  // Дата последнего сообщения темы — тем же живым узлом, что в списке чатов
+  // (у tweb ряд темы строит тот же `appDialogsManager`, :2242).
+  const dateNode = useMemo(
+    () => (lm ? formatDateAccordingToTodayNew(new Date(lm.date * 1000)) : null),
+    [lm],
+  )
   return (
     <div
       ref={ref}
@@ -148,7 +155,7 @@ export const TopicRow = memo(function TopicRow({ topic, active, dimmed, onOpen, 
           <TgIcon name="checks" size={18} color={active ? '#fff' : 'var(--primary-color)'} style={{ flexShrink: 0 }} />
         ) : null}
         <Text size={12} color={metaColor} style={{ flexShrink: 0 }}>
-          {fmtWhen(lm ? messageDateISO(lm.date) : undefined)}
+          {dateNode ? <DomNode node={dateNode} /> : null}
         </Text>
       </div>
       <div className={s.subtitleRow}>

@@ -16,7 +16,7 @@ const folder = (over: Partial<Folder>): Folder => ({
 })
 
 const chat = (over: Partial<Chat>): Chat => ({
-  id: '5', name: 'c', avatar: '', date: '', preview: '', type: 'group',
+  id: '5', name: 'c', avatar: '', preview: '', type: 'group',
   ...over,
 })
 
