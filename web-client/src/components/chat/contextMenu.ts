@@ -166,7 +166,7 @@ import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import filterAsync from '@helpers/array/filterAsync'
 import { copyTextToClipboard } from '@helpers/clipboard'
 import contextMenuController from '@helpers/contextMenuController'
-import { getFullDate } from '@helpers/date'
+import { formatFullSentTime, getFullDate } from '@helpers/date'
 import { attachContextMenuListener } from '@helpers/dom/attachContextMenuListener'
 import cancelEvent from '@helpers/dom/cancelEvent'
 import { attachClickEvent } from '@helpers/dom/clickEvent'
@@ -177,7 +177,6 @@ import { getMiddleware } from '@helpers/middleware'
 import noop from '@helpers/noop'
 import positionMenu from '@helpers/positionMenu'
 import rootScope from '@lib/rootScope'
-import { friendlyMsgTime } from '@core/format/friendlyTime'
 import { isLocalMessageId, getServerMessageId } from '@core/history/messageId'
 import { mirrorWindow } from '@core/history/messagesMirror'
 import { getMediaFromMessage, type MyDocument } from '@core/media/messageMedia'
@@ -870,7 +869,12 @@ export default class ChatContextMenu {
         }
 
         this.canViewReadTime = true
-        loader.replaceWith(friendlyMsgTime(result.readAt, useI18nStore.getState().lang))
+        // tweb :1526 — `formatFullSentTime(outboxReadDate.date, true, false)`.
+        // Прежде здесь стоял `friendlyMsgTime`, у которого выбор языка — это
+        // тернарник `ru ? … : …`: немецкий, испанский, французский и украинский
+        // читали «прочитано» по-английски. Хелпер оригинала подписи не выбирает
+        // — он строит их узлами ядра, и язык у них один на всё приложение.
+        loader.replaceWith(formatFullSentTime(Math.floor(Date.parse(result.readAt) / 1000), true, false))
       })
     } else if(viewsButton && this.message) {
       // tweb :1543-1644 — групповая ветка. Портирован её каркас: иконка

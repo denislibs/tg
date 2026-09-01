@@ -296,6 +296,35 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
     expect(itemTexts()[0]).toBe('Reply')
   })
 
+  // Порт :1526 — `formatFullSentTime(outboxReadDate.date, true, false)`. До
+  // задачи #121 подпись строил `friendlyMsgTime`, у которого выбор языка —
+  // тернарник `ru ? … : …`: немецкий, испанский, французский и украинский
+  // читали «прочитано» по-английски. Пин держит именно ХЕЛПЕР: у него «сегодня»
+  // это ключ `Date.Today`, а не дата, и время отделено ключом-предлогом.
+  it('read-date получен — подпись строит `formatFullSentTime` (:1526)', async() => {
+    putMirrorPage(KEY, [message(1, { pFlags: { out: true } })])
+    const { bubble, content } = makeBubble(1, { out: true })
+    container.append(bubble)
+
+    const readAt = new Date()
+    readAt.setHours(9, 41, 0, 0)
+
+    const managers = makeManagers()
+    managers.chats.getReadDate.mockResolvedValue({ readAt: readAt.toISOString() })
+    const menu = new ChatContextMenu(makeChat(), {}, managers, makePopups())
+    menu.attachTo(container)
+
+    rightClick(content)
+    await flush()
+
+    const first = menuElement()!.querySelector<HTMLElement>('.btn-menu-item-text')!
+    expect(first.textContent).toBe('Today at 09:41')
+    // Части — ЖИВЫЕ узлы ядра: «Сегодня» и предлог переводятся, дата и время
+    // переписывают себя на смену языка. Склейка строкой дала бы тот же текст,
+    // поэтому проверяется и структура.
+    expect(first.querySelectorAll('.i18n').length).toBeGreaterThan(2)
+  })
+
   it('read-date скрыт приватностью — «Read show when» (:1537-1540)', async() => {
     putMirrorPage(KEY, [message(1, { pFlags: { out: true } })])
     const { bubble, content } = makeBubble(1, { out: true })
