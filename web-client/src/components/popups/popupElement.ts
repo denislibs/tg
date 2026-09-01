@@ -187,8 +187,6 @@ export default class PopupElement<E extends EventListenerListeners = {}> extends
   constructor(className: string, options: PopupOptions = {}) {
     super(false) // tweb :120
 
-    this.middlewareHelper = getMiddleware() // tweb :148
-
     this.element.className = 'popup' + (className ? ' ' + className : '') // tweb :121-122
     this.container.classList.add('popup-container', 'z-depth-1') // tweb :123
 
@@ -208,6 +206,12 @@ export default class PopupElement<E extends EventListenerListeners = {}> extends
 
       this.header.append(this.title)
     }
+
+    // ПОСЛЕ блока `options.title` — как у оригинала (:148, сразу за :136-145).
+    // Порядок здесь ни на что не влияет (хелпер ни от чего в конструкторе не
+    // зависит), но комментарий обещал точное место, и место должно быть тем же:
+    // иначе ссылка на строку оригинала перестаёт быть проверяемой.
+    this.middlewareHelper = getMiddleware() // tweb :148
 
     if(options.closable) { // tweb :155-178, без ветки onBackClick — не в PopupOptions волны 1
       this.btnClose = document.createElement('button')

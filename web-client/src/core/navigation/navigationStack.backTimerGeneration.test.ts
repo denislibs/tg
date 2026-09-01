@@ -82,7 +82,7 @@ describe('navigationStack — предохранитель removeLayer обяз�
     vi.useRealTimers()
   })
 
-  it('два закрытия слоёв внахлёст (второе — за 1мс до 500мс-предохранителя первого): чужой ignorePop не гасится, popstate второй операции не улетает в baseHandler, отложенный pushHashState не откатывается', () => {
+  it('два закрытия слоёв внахлёст (второе — за 1мс до 500мс-предохранителя первого): чужая очередь не распускается, popstate второй операции не улетает в baseHandler, отложенный pushHashState не откатывается', () => {
     vi.useFakeTimers()
     let baseHandlerCalls = 0
     setBaseHandler(() => { baseHandlerCalls++ })
@@ -123,6 +123,51 @@ describe('navigationStack — предохранитель removeLayer обяз�
     // ДЕФЕКТ B: pushHashState('#chat2'), отправленный, пока back()#2 летел,
     // обязан пережить его подтверждение, а не быть откаченным задним числом.
     expect(location.hash).toBe('#chat2')
+
+    asyncHistory.restore()
+  })
+
+  // ── ПИН ЗАДАЧИ #105 (пункт 1) ─────────────────────────────────────────────
+  //
+  // Предохранитель гасил ОБЩИЙ флаг `ignorePop`, а тот отвечал сразу на два
+  // вопроса: «съесть ли следующий popstate» и «свободна ли очередь». Отсюда
+  // дефект: если наш СОБСТВЕННЫЙ `back()` подтверждался дольше 500мс — а он
+  // асинхронный и на слабой машине с забитым главным потоком это обычное дело,
+  // — предохранитель гасил флаг, и пришедший ПОЗЖЕ popstate этой же операции
+  // попадал в ветку «настоящий Back пользователя»: снимался лишний слой либо
+  // Back уходил в базовый слой и закрывал чат.
+  //
+  // Разведено на токен (`pendingBacks`) и очередь (`historyBusy`):
+  // предохранитель распускает только очередь, токен снимает только свой
+  // popstate. Проверяется ИМЕННО этот исход, а не то, что таймер существует.
+  it('МЕДЛЕННЫЙ back() (подтверждение позже предохранителя): поздний popstate всё равно съеден — лишний слой не снимается и чат не закрывается', () => {
+    vi.useFakeTimers()
+    let baseHandlerCalls = 0
+    setBaseHandler(() => { baseHandlerCalls++ })
+    // Одно закрытие, подтверждение на t=800 — ЗА предохранителем (500).
+    const asyncHistory = installAsyncBrowserHistory(() => 800)
+
+    pushHashState('#chat1')
+
+    let popped = 0
+    const under = pushLayer(() => { popped++ })  // слой ПОД закрываемым
+    const top = pushLayer(() => { popped++ })
+    removeLayer(top)
+
+    // t=500: предохранитель срабатывает — очередь распускается, это его работа.
+    vi.advanceTimersByTime(500)
+    // t=800: приходит НАСТОЯЩИЙ popstate от нашего же back().
+    vi.advanceTimersByTime(300)
+
+    // Он обязан быть съеден: слой под закрытым не трогали, до базового слоя
+    // (навигация чата) дело не дошло.
+    expect(popped).toBe(0)
+    expect(baseHandlerCalls).toBe(0)
+
+    // А стек цел: настоящий Back после этого снимает ИМЕННО нижний слой.
+    window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }))
+    expect(popped).toBe(1)
+    removeLayer(under)
 
     asyncHistory.restore()
   })

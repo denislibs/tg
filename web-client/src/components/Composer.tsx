@@ -254,6 +254,11 @@ function Composer({
   // `confirmationPopup` (порт tweb `simpleConfirmation.ts`, см.
   // `components/popups/popupPeer.ts`) резолвится на подтверждении и реджектится
   // на отмене (Cancel/оверлей/Esc/Back), поэтому отмена просто гасится `catch`.
+  // Актуальный рекордер для слушателя ниже: он вешается один раз на запись, а
+  // объект `rec` пересобирается каждым рендером.
+  const recRef = useRef(rec)
+  recRef.current = rec
+
   useEffect(() => {
     if (!rec.recording) return
     const onKey = (e: KeyboardEvent) => {
@@ -263,12 +268,18 @@ function Composer({
           titleLangKey: 'DiscardVoiceMessageTitle',
           descriptionLangKey: 'Composer.DiscardVoice.Text',
           button: { langKey: 'Discard', isDanger: true },
-        }).then(() => rec.stop(false), () => {})
+        }).then(() => recRef.current.stop(false), () => {})
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [rec.recording, rec, t])
+    // Зависимость ОДНА — сам факт записи. `rec` — новый объект на каждый рендер
+    // (хук собирает его заново), и в зависимостях он перевешивал слушатель по
+    // десятку раз за секунду записи; `t` эффекту не нужен вовсе с тех пор, как
+    // попап принимает ключи, а не строки (задача #113). Актуальный `rec.stop`
+    // читается из рефа в момент нажатия, а не захватывается на подписку.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rec.recording])
 
   // input.ts:2718-2724 — ширину кнопки меню бота tweb МЕРЯЕТ и кладёт в
   // `--commands-size` на строке: от неё считается сдвиг инпута (`has-offset`).

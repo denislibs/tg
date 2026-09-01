@@ -128,7 +128,7 @@ export function addCancelButton(buttons: PopupButton[]): PopupButton[] {
   if(!button) {
     buttons.push({
       langKey: 'Cancel',
-      isCancel: true
+      isCancel: true,
     })
   }
 
@@ -138,6 +138,17 @@ export function addCancelButton(buttons: PopupButton[]): PopupButton[] {
 export default class PopupPeer extends PopupElement {
   // Опционален — задача 3: `PopupMute` не задаёт `descriptionLangKey` вовсе
   // (см. докблок `PopupPeerOptions` выше), значит и параграфа у него нет.
+  //
+  // Поле сегодня ТОЛЬКО ПИШЕТСЯ, и это не недосмотр. У оригинала оно
+  // `protected` ровно затем, чтобы его читали ПОДКЛАССЫ: `joinChatInvite.ts`
+  // подменяет им текст приглашения и убирает параграф, когда описания нет
+  // (:176-186), `limit.ts:106` и `boost.ts:108-152` вставляют перед ним свои
+  // узлы. По единому критерию мёртвого кода этого порта (выписан в докблоке
+  // `components/slider.ts`) потребитель ищется НА ДОРОЖНОЙ КАРТЕ, а не в
+  // текущем срезе: вход по ссылке-приглашению — обычная функциональность
+  // Telegram, ссылки у нас уже есть (`group/screens/InviteLinkScreens.tsx`),
+  // то есть подкласс придёт. Поэтому поле остаётся — снос заставил бы дописать
+  // его обратно на следующем же шаге.
   protected description?: HTMLParagraphElement
 
   constructor(className: string, options: PopupPeerOptions) {
@@ -153,7 +164,11 @@ export default class PopupPeer extends PopupElement {
     // строковый `t()` подстановки не умел.
     this.title.append(i18n(options.titleLangKey, options.titleLangArgs))
 
-    if(options.peerId !== undefined) { // peer.ts:44
+    // Проверка на ИСТИННОСТЬ, как у оригинала (`peer.ts:44`: `if(options.peerId)`),
+    // а не `!== undefined`. Разница видима: `peerId: 0` — это «пира нет» (наш
+    // тип `PeerId` числовой, и ноль в нём означает отсутствие ссылки), и при
+    // `!== undefined` попап рисовал бы аватарку несуществующего пира.
+    if(options.peerId) { // peer.ts:44
       // peer.ts:45, :50-52 — `isSavedDialog`/`threadId`/`meAsNotes` не
       // портированы: `threadId` не входит в `PopupPeerOptions` этой волны
       // (нет потребителя — см. докблок файла), поэтому ветка «это диалог
@@ -162,7 +177,7 @@ export default class PopupPeer extends PopupElement {
         middleware: this.middlewareHelper.get(),
         size: 32,
         peerId: options.peerId,
-        managers: options.managers
+        managers: options.managers,
       })
       this.header.prepend(node) // peer.ts:54
     }
