@@ -11,10 +11,10 @@ import Checkbox from '../shared/ui/Checkbox'
 import TgIcon from './TgIcon'
 import AvatarCropper from './settings/AvatarCropper'
 import classNames from '../shared/lib/classNames'
-import { useT, useLang } from '../i18n'
+import {useT} from '../i18n'
 import { useGroupCandidates, type GroupCandidate } from '../core/hooks/useGroupCandidates'
 import { useChatsStore } from '../stores/chatsStore'
-import { userStatusLabel } from '../core/presence'
+import { PeerStatus } from '../shared/ui/peerStatus'
 import { isUserStatusOnline } from '../core/peers/peer'
 import s from './NewGroupFlow.module.scss'
 
@@ -31,7 +31,6 @@ interface Props {
 
 export default function NewGroupFlow({ onClose, onCreate }: Props) {
   const t = useT()
-  const [lang] = useLang()
   const candidates = useGroupCandidates()
   const presence = useChatsStore((st) => st.presence)
   // tweb: сначала участники (skippable), потом имя
@@ -62,7 +61,7 @@ export default function NewGroupFlow({ onClose, onCreate }: Props) {
   const back = () => (step === 'members' ? onClose() : setStep('members'))
   const canNext = step === 'members' || name.trim().length > 0
 
-  const statusOf = (id: number) => userStatusLabel(presence[id], lang)
+  const statusOf = (id: number) => <PeerStatus status={presence[id]} />
   const isOnline = (id: number) => isUserStatusOnline(presence[id], Date.now() / 1000)
   const renderAvatar = (c: GroupCandidate, size: 'md' | number) => (
     <UserAvatar id={c.id} name={c.name} photoId={c.photoId} size={size} />

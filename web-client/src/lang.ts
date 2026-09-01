@@ -9,6 +9,7 @@
 // для сервера: `backend/internal/langsource` снимает с него таблицу английского вместе
 // с `src/i18n/dict.*.ts`.
 const lang = {
+  'ALongTimeAgo': 'last seen a long time ago',
   'AccountSettings.Notifications': 'Notifications and Sounds',
   'AccountSettings.SpeakersAndCamera': 'Speakers and Camera',
   Add: 'Add',
@@ -589,6 +590,10 @@ const lang = {
   // языков для этого не нужно.
   LanguageName: 'English',
   LastName: 'Last name (optional)',
+  'LastSeen.HoursAgo': {
+    one_value: 'last seen %d hour ago',
+    other_value: 'last seen %d hours ago',
+  },
   LastSeenTitle: 'Who can see my Last Seen time?',
   Lately: 'last seen recently',
   LinkCopied: 'Link copied to clipboard',
@@ -853,8 +858,14 @@ const lang = {
   PaymentCardNumber: 'Card Number',
   PaymentShippingEmailPlaceholder: 'Email',
   'Peer.Activity.User.TypingText': 'typing',
+  'Peer.Status.LastSeenAt': 'last seen %@ at %@',
   'Peer.Status.Today': 'today',
   'Peer.Status.Yesterday': 'yesterday',
+  'Peer.Status.justNow': 'last seen just now',
+  'Peer.Status.minAgo': {
+    one_value: 'last seen %d minute ago',
+    other_value: 'last seen %d minutes ago',
+  },
   'Peer.Type.User': 'user',
   'PeerInfo.Action.VoiceChat': 'Video Chat',
   'PeerInfo.DeleteChannel': 'Delete Channel',
@@ -1290,6 +1301,7 @@ const lang = {
   'Suggestion.Notifications.Dismissed': 'You can turn notifications back on in the settings.',
   'Suggestion.Notifications.Subtitle': 'Enable notifications to stay updated.',
   'Suggestion.Notifications.Title': 'Never miss a message! 🔔',
+  'SupportStatus': 'support',
   'Telegram.GeneralSettingsViewController': 'General Settings',
   'Telegram.LanguageViewController': 'Language',
   TelegramFeatures: 'Telegram Features',
@@ -1407,6 +1419,8 @@ const lang = {
     other_value: '%1$d weeks',
   },
   WhoCanCallMe: 'Who can call me?',
+  'WithinAMonth': 'last seen within a month',
+  'WithinAWeek': 'last seen within a week',
   Years: {
     one_value: '%1$d year',
     other_value: '%1$d years',

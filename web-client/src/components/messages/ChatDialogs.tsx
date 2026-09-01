@@ -1,5 +1,5 @@
 import type { LangPackKey } from '@/lang'
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 // Presentational chat dialogs/popups extracted from Chat: forward target
 // picker, the reacted/seen list. Each is dumb — it self-sources i18n +
 // motion constants and emits its actions via callbacks; the parent owns the
@@ -24,8 +24,8 @@ import UserAvatar from '../UserAvatar'
 import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import { dialogChatType, dialogToChat } from '../../core/dialogToChat'
 import { chatMatchesFolder } from '../../core/folderFilter'
-import { lastSeenLabel } from '../../core/presence'
-import { isUserStatusOnline, userStatusWasOnline, type UserStatus } from '../../core/peers/peer'
+import { PeerStatus } from '../../shared/ui/peerStatus'
+import type { UserStatus } from '../../core/peers/peer'
 import { useChatsStore } from '../../stores/chatsStore'
 import { cachedChat, peerTitle } from '../../core/peerCache'
 import { isUser } from '../../core/peers/peerId'
@@ -132,17 +132,19 @@ export function openDeleteMessageDialog({ peerId, managers, canRevoke, count = 1
 }
 
 // Подпись строки в пикере: private → presence/бот, группа/канал/избранное — метка.
-function shareSub(chat: Chat, presence: Record<number, UserStatus>, lang: string, t: (key: LangPackKey) => string): string {
+//
+// Присутствие приезжает УЗЛОМ (`PeerStatus`, порт tweb
+// `wrappers/getUserStatusString.ts`), остальные ветки — строкой: ветку решает
+// вид чата, а не тип значения, и `ReactNode` вмещает обе. Прежняя проверка
+// `isUserStatusOnline(..., Date.now())` снята — она была вторым читателем срока
+// годности статуса, а гасит истёкший онлайн владелец (`degradeExpiredPresence`);
+// «онлайн» теперь решает конструктор, как у оригинала (:80-82).
+function shareSub(chat: Chat, presence: Record<number, UserStatus>, t: (key: LangPackKey) => string): ReactNode {
   if (chat.type === 'saved') return t('ChatYourSelf')
   if (chat.type === 'channel') return t('Channel')
   if (chat.type === 'group') return t('Group')
   if (chat.isBot) return t('Bot')
-  // Присутствие — конструктор `UserStatus`: «онлайн» это `userStatusOnline` с
-  // непросроченным `expires` (порт `appUsersManager.isUserOnline`), а момент
-  // «был(а) в сети» лежит в самом конструкторе.
-  const p = presence[Number(chat.id)]
-  if (isUserStatusOnline(p, Math.floor(Date.now() / 1000))) return t('Online')
-  return lastSeenLabel(userStatusWasOnline(p) * 1000, lang)
+  return <PeerStatus status={presence[Number(chat.id)]} />
 }
 
 // Недавний контакт в горизонтальном ряду: круглый аватар + имя, галочка при выборе.
@@ -213,7 +215,7 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
       id: Number(c.id),
       name: c.name,
       photoId: c.photoId,
-      subtitle: shareSub(c, presence, lang, t),
+      subtitle: shareSub(c, presence, t),
     })),
     [list, presence, lang, t],
   )

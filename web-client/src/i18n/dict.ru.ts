@@ -801,6 +801,29 @@ const ru = {
   Yesterday: 'вчера',
   'Peer.Status.Today': 'сегодня',
   'Peer.Status.Yesterday': 'вчера',
+  // ── Подпись присутствия (`core/presence.ts`, порт tweb
+  //    `wrappers/getUserStatusString.ts`). Тексты — те же, что стояли в коде
+  //    тернарником `lang === 'ru'` до порта; у «минут» и «часов» появились
+  //    настоящие формы числа, которых у склейки быть не могло.
+  // `Online` и `Lately` уже лежат выше (:196, :625) — здесь только недостающие.
+  WithinAWeek: 'был(а) на этой неделе',
+  WithinAMonth: 'был(а) в этом месяце',
+  ALongTimeAgo: 'был(а) давно',
+  SupportStatus: 'поддержка',
+  'Peer.Status.justNow': 'был(а) в сети только что',
+  'Peer.Status.minAgo': {
+    one_value: 'был(а) в сети %d минуту назад',
+    few_value: 'был(а) в сети %d минуты назад',
+    many_value: 'был(а) в сети %d минут назад',
+    other_value: 'был(а) в сети %d минуты назад',
+  },
+  'LastSeen.HoursAgo': {
+    one_value: 'был(а) в сети %d час назад',
+    few_value: 'был(а) в сети %d часа назад',
+    many_value: 'был(а) в сети %d часов назад',
+    other_value: 'был(а) в сети %d часа назад',
+  },
+  'Peer.Status.LastSeenAt': 'был(а) в сети %@ в %@',
   // ── Ответ в другом чате / отправка когда онлайн / перепланирование ──
   ReplyToAnotherChat: 'Ответить в другом чате',
   'Schedule.SendWhenOnline': 'Отправить, когда онлайн',

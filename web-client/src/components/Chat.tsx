@@ -20,7 +20,7 @@ import NowPlayingBar from './NowPlayingBar'
 import type { Chat } from '../data'
 import { useT, useLang, useTArgs } from '../i18n'
 import { useTypingLabel } from '../core/hooks/useTypingLabel'
-import { lastSeenLabel } from '../core/presence'
+import { PeerStatus } from '../shared/ui/peerStatus'
 import { useManagers } from '../core/hooks/useManagers'
 import { useNavigationActions } from '../core/hooks/useNavigationActions'
 import { useChatStackStore } from '../stores/chatStackStore'
@@ -857,12 +857,16 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const headerTypingActive = typingLabel.active
   const headerTypingText = typingLabel.label
   const headerTypingKind = typingLabel.kind
+  // Подпись присутствия — ЖИВОЙ узел ядра (`shared/ui/peerStatus`, порт tweb
+  // `wrappers/getUserStatusString.ts`). Ветку «онлайн» решает он же по
+  // конструктору статуса, как оригинал (:80-82), — прежняя проверка
+  // `isUserStatusOnline(..., nowSeconds())` была ВТОРЫМ читателем срока
+  // годности: истёкший онлайн гасит владелец (`degradeExpiredPresence`), и
+  // читать `expires` в двух местах значит расходиться с ним на длину задержки.
+  // Точку-индикатор рядом (`peerOnline`/`headerOnline`) она по-прежнему ведёт —
+  // это другой вопрос и другой потребитель.
   const presenceLabel =
-    chat.type === 'private' && peerPresence
-      ? isUserStatusOnline(peerPresence, nowSeconds())
-        ? t('Online')
-        : lastSeenLabel(userStatusWasOnline(peerPresence) * 1000, lang)
-      : null
+    chat.type === 'private' && peerPresence ? <PeerStatus status={peerPresence} /> : null
   const headerStatus = realSubtitle ?? presenceLabel ?? (chat.status ? t(chat.status as LangPackKey) : '')
   const headerOnline = isUserStatusOnline(peerPresence, nowSeconds()) || chat.status === 'online'
 

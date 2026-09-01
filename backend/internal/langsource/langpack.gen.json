@@ -6,8 +6,12 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 5,
+      "version": 6,
       "strings": [
+        {
+          "key": "ALongTimeAgo",
+          "value": "last seen a long time ago"
+        },
         {
           "key": "AccountSettings.Notifications",
           "value": "Notifications and Sounds"
@@ -2191,6 +2195,13 @@
           "value": "Last name (optional)"
         },
         {
+          "key": "LastSeen.HoursAgo",
+          "forms": {
+            "one_value": "last seen %d hour ago",
+            "other_value": "last seen %d hours ago"
+          }
+        },
+        {
           "key": "LastSeenTitle",
           "value": "Who can see my Last Seen time?"
         },
@@ -3198,12 +3209,27 @@
           "value": "typing"
         },
         {
+          "key": "Peer.Status.LastSeenAt",
+          "value": "last seen %@ at %@"
+        },
+        {
           "key": "Peer.Status.Today",
           "value": "today"
         },
         {
           "key": "Peer.Status.Yesterday",
           "value": "yesterday"
+        },
+        {
+          "key": "Peer.Status.justNow",
+          "value": "last seen just now"
+        },
+        {
+          "key": "Peer.Status.minAgo",
+          "forms": {
+            "one_value": "last seen %d minute ago",
+            "other_value": "last seen %d minutes ago"
+          }
         },
         {
           "key": "Peer.Type.User",
@@ -4853,6 +4879,10 @@
           "value": "Never miss a message! 🔔"
         },
         {
+          "key": "SupportStatus",
+          "value": "support"
+        },
+        {
           "key": "Telegram.GeneralSettingsViewController",
           "value": "General Settings"
         },
@@ -5294,6 +5324,14 @@
           "value": "Who can call me?"
         },
         {
+          "key": "WithinAMonth",
+          "value": "last seen within a month"
+        },
+        {
+          "key": "WithinAWeek",
+          "value": "last seen within a week"
+        },
+        {
           "key": "Years",
           "forms": {
             "one_value": "%1$d year",
@@ -5321,7 +5359,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 5,
+      "version": 6,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -8082,6 +8120,48 @@
         {
           "key": "Peer.Status.Yesterday",
           "value": "вчера"
+        },
+        {
+          "key": "WithinAWeek",
+          "value": "был(а) на этой неделе"
+        },
+        {
+          "key": "WithinAMonth",
+          "value": "был(а) в этом месяце"
+        },
+        {
+          "key": "ALongTimeAgo",
+          "value": "был(а) давно"
+        },
+        {
+          "key": "SupportStatus",
+          "value": "поддержка"
+        },
+        {
+          "key": "Peer.Status.justNow",
+          "value": "был(а) в сети только что"
+        },
+        {
+          "key": "Peer.Status.minAgo",
+          "forms": {
+            "one_value": "был(а) в сети %d минуту назад",
+            "few_value": "был(а) в сети %d минуты назад",
+            "many_value": "был(а) в сети %d минут назад",
+            "other_value": "был(а) в сети %d минуты назад"
+          }
+        },
+        {
+          "key": "LastSeen.HoursAgo",
+          "forms": {
+            "one_value": "был(а) в сети %d час назад",
+            "few_value": "был(а) в сети %d часа назад",
+            "many_value": "был(а) в сети %d часов назад",
+            "other_value": "был(а) в сети %d часа назад"
+          }
+        },
+        {
+          "key": "Peer.Status.LastSeenAt",
+          "value": "был(а) в сети %@ в %@"
         },
         {
           "key": "ReplyToAnotherChat",

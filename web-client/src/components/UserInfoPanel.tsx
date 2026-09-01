@@ -18,15 +18,15 @@ import SidebarSection from '../shared/ui/SidebarSection'
 import PinnedStoriesSection from './PinnedStoriesSection'
 import classNames from '../shared/lib/classNames'
 import type { Chat, OpenPeer } from '../data'
-import { useT } from '../i18n'
+import {useT} from '../i18n'
 import { useGroupInfo } from '../core/hooks/useGroupInfo'
 import { useSavedDialogs, useUserProfile, useProfileGifts, useProfilePhotos, type HeaderPhoto } from '../core/hooks/useUserProfileData'
 import { useMuteToggle } from '../core/hooks/useMuteToggle'
 import { useChatsStore } from '../stores/chatsStore'
 import { useNavLayer } from '../core/hooks/useNavLayer'
 import { useTransitionSlider } from '../core/hooks/useTransitionSlider'
-import { useLang } from '../i18n'
-import { userStatusLabel } from '../core/presence'
+import {} from '../i18n'
+import { PeerStatus } from '../shared/ui/peerStatus'
 // Просмотрщик фото профиля — vanilla-вьювер (Task 16, замена MediaLightbox)
 import { openMediaViewer } from './mediaViewer/openMediaViewer'
 import type { ViewerItem } from './mediaViewer/appMediaViewer'
@@ -204,12 +204,11 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
 
   // Онлайн-статус приватного собеседника — из presence-стора (как в топбаре
   // ChatHeader), а не из статичного chat.status: «в сети» / «был(а) …».
-  const [lang] = useLang()
   const peerPresence = useChatsStore((st) => st.presence[peerId])
   const presenceLabel =
     !isSaved && !isGroup && !isChannel
       ? peerPresence
-        ? userStatusLabel(peerPresence, lang)
+        ? <PeerStatus status={peerPresence} />
         : chat.status
       : null
 

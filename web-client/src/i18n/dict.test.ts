@@ -102,8 +102,20 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // фразы). Их зовёт `helpers/date.ts::formatFullSentTimeRaw`, порт tweb
 // `date.ts:135-176`. Остальных четырёх словарей это не коснулось — они покрыты
 // наполовину by design.
+//
+// Задача #126 («подпись присутствия»): русскому добавлены ВОСЕМЬ ключей
+// оригинала (`wrappers/getUserStatusString.ts`) — `WithinAWeek`,
+// `WithinAMonth`, `ALongTimeAgo`, `SupportStatus`,
+// `Peer.Status.justNow`, `Peer.Status.LastSeenAt` и ДВЕ числовые формы
+// (`Peer.Status.minAgo`, `LastSeen.HoursAgo`), отчего `plural` вырос с 28 до 30.
+// Тексты не новые: они дословно те, что стояли в `core/presence.ts` тернарником
+// `lang === 'ru'`, — переехали из кода в словарь. Формы числа у «минут» и
+// «часов» появились ВПЕРВЫЕ: склейка `${diffMin} мин назад` их выразить не
+// могла. Остальных четырёх словарей это не коснулось: под ними остаётся
+// английский нижний слой — ровно то, что они показывали и до порта, только
+// теперь это видно как непереведённый ключ, а не спрятано в ветке `else`.
 const COMPOSITION = {
-  ru: { keys: 1296, plural: 28 },
+  ru: { keys: 1304, plural: 30 },
   uk: { keys: 687, plural: 24 },
   es: { keys: 686, plural: 24 },
   de: { keys: 686, plural: 24 },
@@ -127,8 +139,10 @@ const COMPOSITION = {
 // ('Scheduled for %@', tweb lang.ts:3467) — дата едет АРГУМЕНТОМ внутрь строки,
 // а не приклеивается к переведённой половине фразы. Число ключей от этого не
 // изменилось ни у кого, сменилось имя.
+// Сдвиг набора задачей #126 — восемь ключей подписи присутствия у русского
+// (`Online` и `Lately` в словаре уже были, :196 и :625).
 const FINGERPRINT = {
-  ru: '0fa9e2da',
+  ru: '4fb91588',
   uk: 'fef213ef',
   es: 'd2dfdd71',
   de: 'd2dfdd71',

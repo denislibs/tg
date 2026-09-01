@@ -7,6 +7,13 @@
 // он не видит по построению. Этот файл закрывает конкретно `presence.ts` — рендерит обе
 // ветки на настоящем экране, где подпись и живёт.
 //
+// ЗАДАЧА #126 сменила механизм, и проверка сменилась вместе с ним. Подпись больше
+// не строка, собранная тернарником `lang === 'ru'`, а УЗЕЛ ядра (`i18n(key)`),
+// записанный в `I18n.weakMap`. Поэтому язык здесь переключается тем же входом, что
+// в бою (`applyLang` → `I18n.applyServerLangPack`), а не полем `lang` в сторе:
+// поле было зеркалом и на текст узла не влияет вовсе. И проверяется сверх текста
+// то, чего у строки быть не могло, — что ядро переписывает ТОТ ЖЕ узел.
+//
 // Экран взят самый дешёвый из тех, что печатают `userStatusLabel`: «Добавить
 // участников» (`AddMembersScreen` → `PeerSelector` → `.row-subtitle`). Кандидаты
 // приезжают из адресной книги (`managers.contacts.list`), поэтому ни диалогов, ни
@@ -14,6 +21,8 @@
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import I18n from '@lib/langPack'
+import { applyLang } from '../test/lang'
 import AddMembersScreen from '../components/group/AddMembersScreen'
 import { ManagersProvider } from './hooks/useManagers'
 import { useChatsStore } from '../stores/chatsStore'
@@ -73,19 +82,29 @@ describe('подпись присутствия на экране «Добави
     expect(screen.getByText('Recently')).toBeTruthy()
   })
 
-  // Язык подписи берётся из настроек, а не зашит: на русском те же две ветки дают
-  // русский текст. Это и отличает «перевод на месте» от «ключа, доехавшего до DOM».
-  it('на русском те же ветки печатают русский текст', async () => {
-    useChatsStore.setState({ presence })
-    const { useI18nStore } = await import('../i18n')
-    const prev = useI18nStore.getState().lang
-    act(() => { useI18nStore.setState({ lang: 'ru' }) })
-    try {
-      await renderScreen()
-      const subtitles = [...document.querySelectorAll('.row-subtitle')].map((n) => n.textContent)
-      expect(subtitles).toEqual(['был(а) недавно', 'был(а) недавно'])
-    } finally {
-      act(() => { useI18nStore.setState({ lang: prev }) })
-    }
+  // Подпись — ИНСТАНС ядра, а не текст. Это и есть то, чего не могла дать прежняя
+  // сборка строкой: узел, которого нет в `weakMap`, `applyLangPack` обходит молча.
+  it('подпись — узел ядра, записанный в weakMap', async () => {
+    await renderScreen()
+    const nodes = [...document.querySelectorAll<HTMLElement>('.row-subtitle .i18n')]
+    expect(nodes).toHaveLength(2)
+    for (const node of nodes) expect(I18n.weakMap.get(node)).toBeDefined()
+  })
+
+  // Язык подписи ведёт ЯДРО: смена пакета переписывает ТОТ ЖЕ узел, без пересборки
+  // экрана. Прежняя редакция этого теста двигала поле `lang` в сторе — оно зеркало
+  // ответа ядра и на текст не влияет; проверка держалась на том, что подпись
+  // пересобиралась строкой при перерисовке.
+  it('смена языка переписывает те же узлы — их ведёт ядро', async () => {
+    await renderScreen()
+    const nodes = [...document.querySelectorAll<HTMLElement>('.row-subtitle .i18n')]
+    expect(nodes.map((n) => n.textContent)).toEqual(['last seen recently', 'last seen recently'])
+
+    await act(async () => { await applyLang('ru') })
+
+    expect([...document.querySelectorAll('.row-subtitle .i18n')]).toEqual(nodes)
+    expect(nodes.map((n) => n.textContent)).toEqual(['был(а) недавно', 'был(а) недавно'])
+
+    await act(async () => { await applyLang('en') })
   })
 })

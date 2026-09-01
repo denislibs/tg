@@ -43,7 +43,7 @@ import type { Chat as PeerChat, User } from '../../core/peers/peer'
 import { isUserStatusOnline } from '../../core/peers/peer'
 import { getPeerTitle, getUserTitle } from '../../core/peers/getPeerTitle'
 import { usePeers } from '../../core/hooks/usePeers'
-import { userStatusLabel } from '../../core/presence'
+import { PeerStatus } from '../../shared/ui/peerStatus'
 import { messageToViewerItem } from '../mediaViewer/collectLightboxItems'
 import { openMediaViewer } from '../mediaViewer/openMediaViewer'
 import DeferredSortedVirtualList, {
@@ -394,7 +394,7 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
                         </div>
                       </div>
                       <div className="row-row row-subtitle-row dialog-subtitle">
-                        <div className="row-subtitle">{userStatusLabel(mem.status, lang)}</div>
+                        <div className="row-subtitle"><PeerStatus status={mem.status} /></div>
                       </div>
                       <UserAvatar
                         id={mem.userId}
