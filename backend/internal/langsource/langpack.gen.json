@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 4,
+      "version": 5,
       "strings": [
         {
           "key": "AccountSettings.Notifications",
@@ -729,6 +729,10 @@
         {
           "key": "Chat.CopySelectedText",
           "value": "Copy Selected Text"
+        },
+        {
+          "key": "Chat.Date.ScheduledFor",
+          "value": "Scheduled for %@"
         },
         {
           "key": "Chat.Date.ScheduledForToday",
@@ -4107,10 +4111,6 @@
           "value": "Filter by Tag"
         },
         {
-          "key": "Schedule.ScheduledFor",
-          "value": "Scheduled for"
-        },
-        {
           "key": "Schedule.SendOn",
           "value": "Send on"
         },
@@ -5321,7 +5321,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 4,
+      "version": 5,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -8048,8 +8048,8 @@
           "value": "Здесь пока нет запланированных сообщений…"
         },
         {
-          "key": "Schedule.ScheduledFor",
-          "value": "Отправится"
+          "key": "Chat.Date.ScheduledFor",
+          "value": "Отправится %@"
         },
         {
           "key": "Chat.Date.ScheduledForToday",
@@ -10653,7 +10653,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 2,
+      "version": 3,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -11894,8 +11894,8 @@
           "value": "Aucun message programmé pour l’instant…"
         },
         {
-          "key": "Schedule.ScheduledFor",
-          "value": "Envoi le"
+          "key": "Chat.Date.ScheduledFor",
+          "value": "Envoi le %@"
         },
         {
           "key": "Chat.Date.ScheduledForToday",
@@ -13477,7 +13477,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 2,
+      "version": 3,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -14717,8 +14717,8 @@
           "value": "Noch keine geplanten Nachrichten…"
         },
         {
-          "key": "Schedule.ScheduledFor",
-          "value": "Wird gesendet am"
+          "key": "Chat.Date.ScheduledFor",
+          "value": "Wird gesendet am %@"
         },
         {
           "key": "Chat.Date.ScheduledForToday",
@@ -16300,7 +16300,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 2,
+      "version": 3,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -17541,8 +17541,8 @@
           "value": "Aún no hay mensajes programados…"
         },
         {
-          "key": "Schedule.ScheduledFor",
-          "value": "Se enviará el"
+          "key": "Chat.Date.ScheduledFor",
+          "value": "Se enviará el %@"
         },
         {
           "key": "Chat.Date.ScheduledForToday",
@@ -19124,7 +19124,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 2,
+      "version": 3,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -20381,8 +20381,8 @@
           "value": "Тут поки немає запланованих повідомлень…"
         },
         {
-          "key": "Schedule.ScheduledFor",
-          "value": "Надішлеться"
+          "key": "Chat.Date.ScheduledFor",
+          "value": "Надішлеться %@"
         },
         {
           "key": "Chat.Date.ScheduledForToday",

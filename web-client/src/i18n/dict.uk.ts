@@ -357,7 +357,7 @@ const uk = {
   ScheduledMessages: 'Заплановані повідомлення',
   MessageScheduleSend: 'Надіслати зараз',
   NoScheduledMessages: 'Тут поки немає запланованих повідомлень…',
-  'Schedule.ScheduledFor': 'Надішлеться',
+  'Chat.Date.ScheduledFor': 'Надішлеться %@',
   'Chat.Date.ScheduledForToday': 'Надішлеться сьогодні',
   'Schedule.SendTodayAt': 'Надіслати сьогодні о',
   'Schedule.SendOn': 'Надіслати',

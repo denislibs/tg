@@ -1,37 +1,72 @@
 // «Запланированные сообщения» (tweb ChatType.Scheduled): оверлей со списком
 // своих запланированных в чате; сервисная подпись «Отправится …», действия
 // «Отправить сейчас» / «Удалить» (tweb MessageScheduleSend / delete).
+import { useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import Text from '../shared/ui/Text'
-import { SentTime, Time } from '../shared/ui/dateNodes'
+import DomNode from '../shared/ui/DomNode'
 import TgIcon from './TgIcon'
 import IconButton from '../shared/ui/IconButton'
 import RichText from './RichText'
 import SchedulePopup from './SchedulePopup'
 import { useScheduledMessages } from '../core/hooks/useScheduledMessages'
 import { getMessageText, type MyMessage } from '../core/models'
+import { formatDate } from '@helpers/date'
+import { i18n } from '@lib/langPack'
 import { useT } from '../i18n'
 import s from './ScheduledView.module.scss'
 
 /**
- * Подпись «Отправится …» — три ветки оригинала (`bubbles.ts::createDateBubble`,
- * :4786-4798): «когда онлайн», «сегодня» и обычная дата.
+ * Подпись «Отправится …» — ДОСЛОВНЫЙ порт `createDateBubble`
+ * (tweb `chat/bubbles.ts:4780-4798`), три его ветки в том же порядке:
  *
- * Дата и время — УЗЕЛ `formatFullSentTime` («Сегодня в 14:30» / «5 сент. в
- * 14:30»), а не склейка `toLocaleDateString(lang)` с руками собранным «ЧЧ:ММ»:
- * прежняя склейка не уважала ни настройку 12/24 часа, ни язык пакета (`lang`
- * стора мог разойтись с языком ядра, если пакет не доехал).
+ *   сегодня            → `i18n('Chat.Date.ScheduledForToday')`
+ *   «когда онлайн»     → `i18n('MessageScheduledUntilOnline')`
+ *   любая другая дата  → `i18n('Chat.Date.ScheduledFor', [formatDate(date, {today})])`
+ *
+ * Ключевое здесь — что дата едет АРГУМЕНТОМ ключа, а не приклеивается к
+ * переведённому куску фразы. До этого мы складывали подпись сами — переведённый
+ * обрезок «Отправится», пробел, дата, — и этот обрезок жил отдельным ключом. Половину фразы нельзя перевести: в языках с другим
+ * порядком слов дата стоит не там, а падеж у неё свой. Ключ оригинала несёт
+ * `%@` внутри, и подстановку делает `superFormatter` ядра — поэтому наш
+ * обрезок-префикс снесён из английского источника и всех пяти словарей, а на
+ * его месте ключ оригинала `Chat.Date.ScheduledFor` = 'Scheduled for %@'.
+ *
+ * Время в подписи не показывается — его нет и у оригинала: `formatDate(date,
+ * {today})` даёт только день и месяц. Расхождение, которое из этого следует,
+ * названо в отчёте задачи #121: у tweb точную минуту несёт САМ БАБЛ
+ * (`messageRender.setTime`), а у нашего оверлея строка бабла времени не имеет
+ * вовсе — это предмет отдельной работы по экрану, а не повод держать здесь
+ * свою композицию.
+ *
+ * Экспортируется РАДИ ПИНА (`components/dateLabels.form.test.tsx`), тем же
+ * приёмом, что `TopbarSearch::EmptyResults`: поднимать весь оверлей со списком
+ * и менеджерами ради трёх веток подписи дороже самой подписи.
  */
-function ScheduledLabel({ message }: { message: MyMessage }) {
-  const t = useT()
-  // `send_at`/`when_online` — НАШИ параметры вне схемы у конструктора `message`.
-  if (message._ !== 'message') return null
-  if (message.when_online) return <>{t('MessageScheduledUntilOnline')}</>
-  const sendAt = message.send_at ?? 0
-  const isToday = new Date(sendAt * 1000).toDateString() === new Date().toDateString()
-  return isToday
-    ? <>{t('Chat.Date.ScheduledForToday')}, <Time timestamp={sendAt} /></>
-    : <>{t('Schedule.ScheduledFor')} <SentTime timestamp={sendAt} /></>
+export function ScheduledLabel({ message }: { message: MyMessage }) {
+  const node = useMemo(() => {
+    // `send_at`/`when_online` — НАШИ параметры вне схемы у конструктора `message`.
+    if (message._ !== 'message') return null
+    if (message.when_online) return i18n('MessageScheduledUntilOnline')
+
+    const sendAt = message.send_at ?? 0
+    const date = new Date(sendAt * 1000)
+    if (Number.isNaN(date.getTime())) return null
+
+    // Оригинал сравнивает НАЧАЛА СУТОК (`today.setHours(0,0,0,0)`), потому что
+    // ему приходит дата-разделитель; у нас в руках полное время отправки,
+    // поэтому к началу суток приводятся обе стороны.
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const day = new Date(date)
+    day.setHours(0, 0, 0, 0)
+
+    if (day.getTime() === today.getTime()) return i18n('Chat.Date.ScheduledForToday')
+
+    return i18n('Chat.Date.ScheduledFor', [formatDate(date, { today })])
+  }, [message])
+
+  return node ? <DomNode node={node} /> : null
 }
 
 export default function ScheduledView({ chatId, onClose, onChanged }: {

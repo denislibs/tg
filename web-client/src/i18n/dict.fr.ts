@@ -341,7 +341,7 @@ const fr = {
   ScheduledMessages: 'Messages programmés',
   MessageScheduleSend: 'Envoyer maintenant',
   NoScheduledMessages: 'Aucun message programmé pour l’instant…',
-  'Schedule.ScheduledFor': 'Envoi le',
+  'Chat.Date.ScheduledFor': 'Envoi le %@',
   'Chat.Date.ScheduledForToday': 'Envoi aujourd’hui',
   'Schedule.SendTodayAt': 'Envoyer aujourd’hui à',
   'Schedule.SendOn': 'Envoyer le',

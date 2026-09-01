@@ -789,7 +789,7 @@ const ru = {
   'SuggestedPosts.PublishingTime.Label': 'Время публикации',
   'SuggestedPosts.PublishingTime.Hint': 'Оставьте пустым — опубликуем в любое время.',
   NoScheduledMessages: 'Здесь пока нет запланированных сообщений…',
-  'Schedule.ScheduledFor': 'Отправится',
+  'Chat.Date.ScheduledFor': 'Отправится %@',
   'Chat.Date.ScheduledForToday': 'Отправится сегодня',
   'Schedule.SendTodayAt': 'Отправить сегодня в',
   'Schedule.SendOn': 'Отправить',
