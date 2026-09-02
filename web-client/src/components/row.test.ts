@@ -165,7 +165,7 @@ describe('Row — navigationTab', () => {
     sliderEl.classList.add('sidebar-slider', 'tabs-container')
     sidebarEl.append(sliderEl)
     document.body.append(sidebarEl)
-    return new SidebarSlider({ sidebarEl })
+    return new SidebarSlider({ sidebarEl, navigationType: 'left' })
   }
 
   it('клик по строке открывает вкладку слайдера и отдаёт ей аргументы из getInitArgs', async () => {

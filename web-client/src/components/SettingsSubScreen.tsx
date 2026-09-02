@@ -4,7 +4,6 @@ import { useT } from '../i18n'
 import { SettingsScreen, Section, Row } from './settings/kit'
 import QuickReaction from './settings/QuickReaction'
 import PowerSaving from './settings/PowerSaving'
-import LanguageSettings from './settings/LanguageSettings'
 import GeneralSettings from './settings/GeneralSettings'
 import SpeakersCamera from './settings/SpeakersCamera'
 import NotificationsSettings from './settings/NotificationsSettings'
@@ -72,14 +71,11 @@ export function hasSubScreen(title: LangPackKey) {
   // Speakers and Camera, Notifications and Sounds, Chat Folders — реальные
   // экраны (не из мок-SCREENS). «Устройства» здесь БОЛЬШЕ НЕТ: экран уехал на
   // слайдер вкладок (`sidebarLeft/tabs/activeSessions.solid.tsx`), в колонку
-  // его завёл шаг 8 плана волны 2.
+  // его завёл шаг 8 плана волны 2. «Языка» — тоже: он стал вкладкой
+  // `AppLanguageTab` (`sidebarLeft/tabs/language.solid.tsx`), и React-экран
+  // `settings/LanguageSettings.tsx` снесён вместе со своими стилями и тестом.
   return (
     title in SCREENS ||
-    // Язык. Клаузы не было, и экран был НЕДОСТИЖИМ: ветка рендера ниже
-    // существует, но `SettingsView` не открывает подэкран, для которого эта
-    // функция говорит «нет». Найдено живой проверкой (DoD п.10), тестами — ни
-    // одним: они рендерили `LanguageSettings` напрямую. Держит `settingsSubScreen.reachable.test.ts`.
-    title === 'Telegram.LanguageViewController' ||
     title === 'AccountSettings.SpeakersAndCamera' ||
     title === 'AccountSettings.Notifications' ||
     title === 'ChatList.Filter.List.Title' ||
@@ -114,8 +110,6 @@ export default function SettingsSubScreen({ title, onBack, chats }: { title: Lan
   })
   const [dedicated, setDedicated] = useState<LangPackKey | null>(null)
 
-  // Language has a dedicated tweb-style screen (radio-left list + native names)
-  if (title === 'Telegram.LanguageViewController') return <LanguageSettings onBack={onBack} />
   // General Settings is a fully functional screen (text size, wallpaper, theme, time)
   if (title === 'Telegram.GeneralSettingsViewController') return <GeneralSettings onBack={onBack} />
   // Speakers and Camera — реальные устройства (enumerateDevices/getUserMedia)

@@ -10,6 +10,7 @@
 // с `src/i18n/dict.*.ts`.
 const lang = {
   'ALongTimeAgo': 'last seen a long time ago',
+  'AccountSettings.Language': 'Language',
   'AccountSettings.Notifications': 'Notifications and Sounds',
   'AccountSettings.SpeakersAndCamera': 'Speakers and Camera',
   Add: 'Add',

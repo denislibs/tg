@@ -56,4 +56,51 @@ describe('SolidIsland', () => {
     expect(container.querySelector('.hello')).toBeNull()
     expect(disposed).toBe(true)
   })
+
+  // ── ПИН КОНТРАКТА (задача #104, пункт 1) ───────────────────────────────────
+  //
+  // `component` лежит в зависимостях эффекта, поэтому новая ссылка = новый
+  // остров. Инлайн-стрелка от React-родителя даёт новую ссылку на каждый
+  // рендер — попап ремоунтился бы сам собой. Контракт «ссылка стабильна»
+  // словами в докблоке не держится, поэтому он здесь: тот же компонент остров
+  // НЕ пересоздаёт, другой — пересоздаёт.
+  it('тот же component между рендерами остров НЕ пересоздаёт', () => {
+    let mounts = 0
+    let disposes = 0
+    const Counted = (p: { name: string }) => {
+      mounts++
+      onCleanup(() => { disposes++ })
+      return Hello(p)
+    }
+
+    const view = render(<SolidIsland component={Counted} props={{ name: 'a' }} />)
+    expect(mounts).toBe(1)
+
+    // Новый объект пропов на том же компоненте — рендер родителя, не более.
+    view.rerender(<SolidIsland component={Counted} props={{ name: 'b' }} />)
+
+    expect(mounts).toBe(1)
+    expect(disposes).toBe(0)
+  })
+
+  it('другой component остров пересоздаёт — старый гасится, новый монтируется', () => {
+    let disposedFirst = false
+    const First = (p: { name: string }) => {
+      onCleanup(() => { disposedFirst = true })
+      return Hello(p)
+    }
+    const Second = (p: { name: string }) => {
+      const el = Hello(p)
+      el.className = 'second'
+      return el
+    }
+
+    const view = render(<SolidIsland component={First} props={{ name: 'a' }} />)
+    expect(view.container.querySelector('.hello')).not.toBeNull()
+
+    view.rerender(<SolidIsland component={Second} props={{ name: 'a' }} />)
+
+    expect(disposedFirst).toBe(true)
+    expect(view.container.querySelector('.second')).not.toBeNull()
+  })
 })

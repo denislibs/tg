@@ -44,7 +44,7 @@ import type { GifItem } from '../../core/gifs'
 import { CATEGORIES, DEFAULT_FREQUENT, QUICK_CHIPS, searchEmojisByWord } from './emojiData'
 import { useT } from '../../i18n'
 import classNames from '../../shared/lib/classNames'
-import { pushEsc } from '../../core/hotkeys'
+import { useNavLayer } from '../../core/hooks/useNavLayer'
 import { openGifsSearchTab } from '../rightSidebar/GifsSearchTab'
 import { openStickersSearchTab } from '../rightSidebar/StickersSearchTab'
 
@@ -391,12 +391,12 @@ export default function EmojiDropdown({
   }, [open])
   useEffect(() => () => window.clearTimeout(hideTimer.current), [])
 
-  // Esc — через глобальный Esc-стек (core/hotkeys): дропдаун закрывается
-  // верхним, событие не доходит до фолбэка «закрыть чат».
-  useEffect(() => {
-    if (!open) return
-    return pushEsc(onClose)
-  }, [open, onClose])
+  // Запись навигации типа `esg` — как в оригинале (`emoticonsDropdown` там
+  // тоже участник общей очереди): Esc и Back закрывают дропдаун, а не чат под
+  // ним. Раньше здесь стоял отдельный Esc-стек (`core/hotkeys.pushEsc`) —
+  // второй список открытых оверлеев рядом со стеком Back; контроллер
+  // навигации портирован (#108), список один.
+  useNavLayer(open, onClose, 'esg')
 
   // Recent: LIFO, лимит 32 (tweb modifyRecentEmoji), сид POPULAR_EMOJI.
   const pickEmoji = useCallback(

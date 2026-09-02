@@ -6,11 +6,15 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 7,
+      "version": 8,
       "strings": [
         {
           "key": "ALongTimeAgo",
           "value": "last seen a long time ago"
+        },
+        {
+          "key": "AccountSettings.Language",
+          "value": "Language"
         },
         {
           "key": "AccountSettings.Notifications",
@@ -5363,7 +5367,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 7,
+      "version": 8,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -6036,6 +6040,10 @@
         {
           "key": "General.NightMode",
           "value": "Ночной режим"
+        },
+        {
+          "key": "AccountSettings.Language",
+          "value": "Язык"
         },
         {
           "key": "AccountSettings.Notifications",
@@ -10741,7 +10749,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 4,
+      "version": 5,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -10878,6 +10886,10 @@
         {
           "key": "General.NightMode",
           "value": "Mode nuit"
+        },
+        {
+          "key": "AccountSettings.Language",
+          "value": "Langue"
         },
         {
           "key": "AccountSettings.Notifications",
@@ -13565,7 +13577,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 4,
+      "version": 5,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -13702,6 +13714,10 @@
         {
           "key": "General.NightMode",
           "value": "Nachtmodus"
+        },
+        {
+          "key": "AccountSettings.Language",
+          "value": "Sprache"
         },
         {
           "key": "AccountSettings.Notifications",
@@ -16388,7 +16404,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 4,
+      "version": 5,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -16525,6 +16541,10 @@
         {
           "key": "General.NightMode",
           "value": "Modo nocturno"
+        },
+        {
+          "key": "AccountSettings.Language",
+          "value": "Idioma"
         },
         {
           "key": "AccountSettings.Notifications",
@@ -19212,7 +19232,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 4,
+      "version": 5,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -19349,6 +19369,10 @@
         {
           "key": "General.NightMode",
           "value": "Нічний режим"
+        },
+        {
+          "key": "AccountSettings.Language",
+          "value": "Мова"
         },
         {
           "key": "AccountSettings.Notifications",

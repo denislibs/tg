@@ -76,15 +76,18 @@
 // пункт выше), гасится синхронно в `destroy()`, тем же местом, что
 // `listenerSetter.removeAll()` (tweb :422-423, соседние строки).
 //
-// Esc и Back — НЕ через `appNavigationController` оригинала (единый LIFO-стек
-// tweb :336-354, `pushItem`/`backByItem`/`removeItem`), а через два наших
-// раздельных механизма: `core/hotkeys.pushEsc` (клавиша) и
-// `core/navigation/navigationStack.pushLayer`/`removeLayer` (аппаратный/
-// браузерный Back). Тот же приём уже применён в
-// `shared/ui/Popup/Popup.tsx:96-101` и `helpers/overlayClickHandler.ts:104-105`
-// — третий способ не изобретаем. Поскольку `isConfirmationNeededOnClose` не
-// портирован, оба обработчика ниже сводятся к `this.hide()`, а `hide()` — сразу
-// к `this.destroy()` (в оригинале это же в итоге делает `backByItem`).
+// Esc и Back — через `appNavigationController` (#108), как в оригинале:
+// ОДНА запись `{type: 'popup'}` отвечает на обе кнопки (tweb :336-354,
+// `pushItem`/`backByItem`/`removeItem`). Раньше здесь стояли два раздельных
+// механизма (`hotkeys.pushEsc` + `navigationStack.pushLayer`), и попап обязан
+// был снимать обе половины руками; контроллер портирован — половина одна.
+//
+// `hide()` теперь тоже дословный: он не зовёт `destroy()` напрямую, а просит
+// контроллер закрыть СВОЮ запись (`backByItem`). Разница не косметическая —
+// так закрытие крестиком проходит ровно тот же путь, что Esc и Back, включая
+// съедание своей записи истории; прямой `destroy()` оставлял бы её ничейной.
+// Ветка `if(!this.navigationItem) this.destroy()` оригинала (:395-398) —
+// попап, который ещё не показан или уже разрушен.
 import Icon from '@components/icon'
 import animationIntersector from '@components/animationIntersector'
 import overlayCounter from '@helpers/overlayCounter'
@@ -95,8 +98,7 @@ import findUpClassName from '@helpers/dom/findUpClassName'
 import blurActiveElement from '@helpers/dom/blurActiveElement'
 import cancelEvent from '@helpers/dom/cancelEvent'
 import indexOfAndSplice from '@helpers/array/indexOfAndSplice'
-import { pushEsc } from '@core/hotkeys'
-import { pushLayer, removeLayer, type Layer } from '@core/navigation/navigationStack'
+import appNavigationController, { type NavigationItem } from '@core/navigation/appNavigationController'
 import { getMiddleware, type MiddlewareHelper } from '@helpers/middleware'
 import { i18n, _i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
 
@@ -181,13 +183,10 @@ export default class PopupElement<E extends EventListenerListeners = {}> extends
 
   // Наш аналог `navigationItem` (tweb :94) — расщеплён на два примитива вместо
   // одного элемента общего Esc/Back-стека, см. докблок файла.
-  private unregisterEsc?: () => void
-  private navigationLayer?: Layer
+  private navigationItem?: NavigationItem
 
   constructor(className: string, options: PopupOptions = {}) {
     super(false) // tweb :120
-
-    this.middlewareHelper = getMiddleware() // tweb :148
 
     this.element.className = 'popup' + (className ? ' ' + className : '') // tweb :121-122
     this.container.classList.add('popup-container', 'z-depth-1') // tweb :123
@@ -208,6 +207,12 @@ export default class PopupElement<E extends EventListenerListeners = {}> extends
 
       this.header.append(this.title)
     }
+
+    // ПОСЛЕ блока `options.title` — как у оригинала (:148, сразу за :136-145).
+    // Порядок здесь ни на что не влияет (хелпер ни от чего в конструкторе не
+    // зависит), но комментарий обещал точное место, и место должно быть тем же:
+    // иначе ссылка на строку оригинала перестаёт быть проверяемой.
+    this.middlewareHelper = getMiddleware() // tweb :148
 
     if(options.closable) { // tweb :155-178, без ветки onBackClick — не в PopupOptions волны 1
       this.btnClose = document.createElement('button')
@@ -310,8 +315,15 @@ export default class PopupElement<E extends EventListenerListeners = {}> extends
 
     this.shown = true // tweb :335
 
-    this.unregisterEsc = pushEsc(() => this.hide())
-    this.navigationLayer = pushLayer(() => { this.hide() })
+    // tweb :336-354. `isConfirmationNeededOnClose` у нас не портирован (см.
+    // докблок файла), поэтому ветка подтверждения в `onPop` отсутствует и
+    // остаётся её хвост — `return this.destroy()`.
+    this.navigationItem = {
+      type: 'popup',
+      onPop: () => this.destroy(),
+    }
+
+    appNavigationController.pushItem(this.navigationItem)
 
     blurActiveElement() // tweb :356
     document.body.append(this.element) // tweb :357, appendPopupTo() упрощено до document.body
@@ -349,10 +361,12 @@ export default class PopupElement<E extends EventListenerListeners = {}> extends
       return
     }
 
-    // tweb :396-401 упрощено: без navigationItem/backByItem — isConfirmationNeededOnClose
-    // не портирован, поэтому у нас `backByItem(item).onPop` всегда сводится к
-    // прямому `this.destroy()`.
-    this.destroy()
+    if(!this.navigationItem) { // tweb :395-398 — попап ещё не показан
+      this.destroy()
+      return
+    }
+
+    appNavigationController.backByItem(this.navigationItem)
   }
 
   public forceHide(): void {
@@ -371,14 +385,12 @@ export default class PopupElement<E extends EventListenerListeners = {}> extends
     this.listenerSetter.removeAll() // tweb :422
     this.middlewareHelper.destroy() // tweb :423 — раунд правок 1, см. докблок файла
 
-    // Наш аналог tweb :430 (`appNavigationController.removeItem`) — снимаем
-    // оба раздельных механизма Esc/Back, см. докблок файла.
-    this.unregisterEsc?.()
-    this.unregisterEsc = undefined
-    if(this.navigationLayer) {
-      removeLayer(this.navigationLayer) // после Back слой уже снят — no-op (тот же паттерн, что overlayClickHandler.ts:70)
+    // tweb :430-431. Запись уже могла быть снята тем, кто нас закрыл (Back,
+    // Esc, `backByItem` из `hide()`) — `removeItem` в этом случае no-op.
+    if(this.navigationItem) {
+      appNavigationController.removeItem(this.navigationItem)
     }
-    this.navigationLayer = undefined
+    this.navigationItem = undefined
 
     if(this.shown) { // tweb :426-428, withoutOverlay не портирован — условие безусловно
       overlayCounter.isOverlayActive = false

@@ -46,11 +46,10 @@
  *
  * ── Адаптации (рантайм тот же) ──────────────────────────────────────────────
  *  • `PeerId`/`.toPeerId()` у нас нет — peerId это `number`;
- *  • `appNavigationController.pushItem({type: 'multiselect-…'})` (:456-465)
- *    заменён на наш эквивалент: `navigationStack.pushLayer` (Back) +
- *    `hotkeys.pushEsc` (Esc). В tweb оба факта даёт один контроллер, у нас
- *    они разведены по двум владельцам — поведение то же: Back/Esc =
- *    `cancelSelection`;
+ *  • `appNavigationController.pushItem({type: 'multiselect-…'})` (:456-465) —
+ *    теперь ДОСЛОВНО (#108), вместе с фабрикацией уникального типа на
+ *    экземпляр (`:99`). Раньше на месте одной записи стояли два механизма
+ *    (`navigationStack.pushLayer` + `hotkeys.pushEsc`);
  *  • `getStorageKey` (:405-407, `${peerId}_${scheduled|history}`) не
  *    портирован: у нас ключ окна зеркала имеет другую форму
  *    (`core/history/messagesMirror.ts`, `winKey`) и не адресует scheduled.
@@ -63,8 +62,8 @@
  */
 import CheckboxField from '@components/checkboxField'
 import { setTransition } from '@core/dom/setTransition'
-import { pushEsc } from '@core/hotkeys'
-import { pushLayer, removeLayer, type Layer } from '@core/navigation/navigationStack'
+import appNavigationController, { type NavigationItem, type NavigationItemType } from '@core/navigation/appNavigationController'
+import { randomLong } from '@helpers/random'
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import { IS_MOBILE_SAFARI } from '@environment/userAgent'
 import blurActiveElement from '@helpers/dom/blurActiveElement'
@@ -175,9 +174,19 @@ export class AppSelection extends EventListenerBase<{
   protected toggleByMid?: (peerId: number, mid: number) => void
   protected toggleByElement?: (bubble: HTMLElement) => void
 
-  // Наш эквивалент `navigationType` + `appNavigationController` (tweb :96, :456-465)
-  private navigationLayer?: Layer
-  private removeEsc?: () => void
+  /**
+   * tweb :69, :99 — тип записи навигации, УНИКАЛЬНЫЙ НА ЭКЗЕМПЛЯР:
+   * `'multiselect-' + randomLong()`. Экземпляров выделения в приложении
+   * несколько (лента, поиск), и общий тип `'multiselect'` дал бы им общую
+   * запись — `removeByType` одного снял бы чужую.
+   *
+   * Приведение к `NavigationItemType` — то же самое, что `as any` в оригинале
+   * (:99): фабрикуемое имя в словарь типов по построению не входит, словарь
+   * перечисляет ФИКСИРОВАННЫЕ типы. Контроллер сравнивает типы строкой и на
+   * это не смотрит.
+   */
+  protected navigationType = ('multiselect-' + randomLong()) as NavigationItemType
+  private navigationItem?: NavigationItem
 
   protected getElementFromTarget: AppSelectionOptions['getElementFromTarget']
   protected verifyTarget?: AppSelectionOptions['verifyTarget']
@@ -502,23 +511,22 @@ export class AppSelection extends EventListenerBase<{
 
   // tweb :456-465 — Back/Esc выходят из режима выделения
   private pushNavigationItem() {
-    if (this.navigationLayer) return
-    this.navigationLayer = pushLayer(() => {
-      this.navigationLayer = undefined
-      this.cancelSelection()
+    if (this.navigationItem) return
+    this.navigationItem = appNavigationController.pushItem({
+      type: this.navigationType,
+      onPop: () => {
+        this.navigationItem = undefined
+        this.cancelSelection()
+      },
     })
-    this.removeEsc = pushEsc(() => this.cancelSelection())
   }
 
   private removeNavigationItem() {
-    if (this.navigationLayer) {
-      const layer = this.navigationLayer
-      this.navigationLayer = undefined
-      removeLayer(layer)
-    }
-
-    this.removeEsc?.()
-    this.removeEsc = undefined
+    // tweb :111-113 — снятие ПО ТИПУ, а не по ссылке: свои записи выделения
+    // уникальны по построению, и это тот же вызов, каким оригинал чистит их
+    // при отвязке от элемента.
+    this.navigationItem = undefined
+    appNavigationController.removeByType(this.navigationType)
   }
 
   /** tweb :475-482 */

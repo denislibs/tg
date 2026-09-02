@@ -3,9 +3,14 @@
 // слайдер трогает историю браузера, а `history.back()` асинхронна, тогда как
 // `history.pushState` синхронен. В волне 1 это дало два боевых дефекта (один
 // Escape закрывал и попап, и чат под ним, после чего чат переставал
-// открываться), поэтому у нас на историю ровно один вход — очередь мутаций в
-// `core/navigation/navigationStack.ts`, а слайдер обязан ходить через
-// `pushLayer`/`removeLayer`.
+// открываться), поэтому на историю ровно один вход — очередь мутаций внутри
+// `core/navigation/appNavigationController.ts`, а слайдер обязан ходить через
+// `pushItem`/`removeByType`/`back(type)`.
+//
+// «Слой чата под вкладкой» здесь — обычная запись навигации типа `chat`, как в
+// оригинале: у tweb чат тоже живёт в общей очереди (`appImManager` пушит
+// запись при переходе вглубь). Проверка «Back не провалился мимо вкладки» —
+// это `onPop` той записи, а не отдельный базовый обработчик.
 //
 // ПОЧЕМУ ЗДЕСЬ ЭМУЛИРУЕТСЯ ИСТОРИЯ. happy-dom считает `history.back()`
 // ПОЛНОСТЬЮ СИНХРОННО (BrowserFrameNavigator: цель перехода вычисляется и
@@ -13,11 +18,12 @@
 // `history.back()`, поэтому НИКОГДА не отличит корректный `removeLayer` от
 // прямого `history.back()` — и был бы зелёным при сломанном поведении. Приём
 // (и сама функция) взяты из волны 1 —
-// `core/navigation/navigationStack.overlaySwap.test.ts`.
+// `core/navigation/navigationStack.overlaySwap.test.ts` (снесён вместе со
+// стеком слоёв задачей #108; сам приём остался здесь).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SidebarSlider from './slider'
 import SliderSuperTab from './sliderTab'
-import { pushLayer, setBaseHandler } from '@core/navigation/navigationStack'
+import appNavigationController from '@core/navigation/appNavigationController'
 import { NAVIGATION_TRANSITION_TIME } from '@core/dom/navigationTransition'
 
 /**
@@ -85,8 +91,12 @@ const settle = () => vi.advanceTimersByTime(NAVIGATION_TRANSITION_TIME * 3 + 600
 /** Задержка эмулятора: столько живёт «в полёте» уже вызванный back(). */
 const BACK_DELAY = 20
 
-let baseHandlerCalls = 0
 let asyncHistory: ReturnType<typeof installAsyncBrowserHistory>
+
+/** Запись «чат под вкладкой» — то, куда Back обязан провалиться ПОСЛЕДНИМ. */
+function pushChatItem(onPop: () => void) {
+  appNavigationController.pushItem({ type: 'chat', onPop })
+}
 
 /** Реальный Back, доехавший до приложения (popstate уже доставлен). */
 function pop() {
@@ -96,20 +106,16 @@ function pop() {
 
 beforeEach(() => {
   vi.useFakeTimers()
-  baseHandlerCalls = 0
-  setBaseHandler(() => { ++baseHandlerCalls })
   asyncHistory = installAsyncBrowserHistory(BACK_DELAY)
 })
 
 afterEach(() => {
-  // Стек слоёв — модульный синглтон; недоснятые слои и невыполненный `back()`
-  // достались бы следующему тесту. Сначала даём отложенным back'ам сработать,
-  // потом сливаем остаток слоёв реальным Back'ом.
+  // Контроллер навигации — модульный синглтон: недоснятые записи и
+  // невыполненный `back()` достались бы следующему тесту. Сначала даём
+  // отложенным мутациям сработать, потом чистим очередь целиком.
   vi.advanceTimersByTime(2000)
-  for (let i = 0; i < 20 && !baseHandlerCalls; ++i) {
-    pop()
-    vi.advanceTimersByTime(600)
-  }
+  appNavigationController.spliceItems(0, Infinity)
+  vi.advanceTimersByTime(2000)
 
   asyncHistory.restore()
   vi.useRealTimers()
@@ -119,18 +125,17 @@ afterEach(() => {
 describe('SidebarSlider — закрытие вкладки и слой под ней', () => {
   it('снимает СВОЙ слой, не трогая слой под ним (чат остаётся открытым)', async () => {
     const underPop = vi.fn() // слой чата под вкладкой
-    pushLayer(underPop)
+    pushChatItem(underPop)
 
-    const slider = new SidebarSlider({ sidebarEl: createSidebarEl() })
+    const slider = new SidebarSlider({ sidebarEl: createSidebarEl(), navigationType: 'left' })
     const tab = slider.createTab(SliderSuperTab)
     await tab.open()
 
     slider.onCloseBtnClick()
     settle() // отложенный back() слайдера подтверждается
 
-    // Ни чат, ни базовый слой (навигация по хэшу) не тронуты.
+    // Чат не тронут.
     expect(underPop).not.toHaveBeenCalled()
-    expect(baseHandlerCalls).toBe(0)
 
     // …и чат по-прежнему ВЕРХНИЙ слой: следующий Back достаётся именно ему.
     pop()
@@ -138,7 +143,7 @@ describe('SidebarSlider — закрытие вкладки и слой под �
   })
 
   it('вкладка закрывается ОДИН раз: своей записи истории она больше не откусит', async () => {
-    const slider = new SidebarSlider({ sidebarEl: createSidebarEl() })
+    const slider = new SidebarSlider({ sidebarEl: createSidebarEl(), navigationType: 'left' })
     const tab = slider.createTab(SliderSuperTab)
     await tab.open()
 
@@ -163,7 +168,7 @@ describe('SidebarSlider — реальный Back закрывает вклад�
   it('браузерный Back играет переход, а не подменяет вкладку мгновенно', async () => {
     const sidebarEl = createSidebarEl()
     const sliderEl = sidebarEl.querySelector('.sidebar-slider')!
-    const slider = new SidebarSlider({ sidebarEl })
+    const slider = new SidebarSlider({ sidebarEl, navigationType: 'left' })
     const first = slider.createTab(SliderSuperTab)
     await first.open()
     const second = slider.createTab(SliderSuperTab)
@@ -185,7 +190,7 @@ describe('SidebarSlider — гонка истории (эмулятор обяз
   // push/back не существует в принципе — все тесты выше остались бы зелёными,
   // даже если бы эмуляцию упростили обратно. Этот тест ловит именно упрощение.
   it('popstate от нашего back() приходит ОТДЕЛЬНОЙ задачей, а не внутри вызова', async () => {
-    const slider = new SidebarSlider({ sidebarEl: createSidebarEl() })
+    const slider = new SidebarSlider({ sidebarEl: createSidebarEl(), navigationType: 'left' })
     const tab = slider.createTab(SliderSuperTab)
     await tab.open()
 
@@ -204,9 +209,9 @@ describe('SidebarSlider — гонка истории (эмулятор обяз
 
   it('следующая вкладка, открытая ДО подтверждения back предыдущей, не сдвигает стек: Back закрывает только её', async () => {
     const underPop = vi.fn() // слой чата
-    pushLayer(underPop)
+    pushChatItem(underPop)
 
-    const slider = new SidebarSlider({ sidebarEl: createSidebarEl() })
+    const slider = new SidebarSlider({ sidebarEl: createSidebarEl(), navigationType: 'left' })
     const first = slider.createTab(SliderSuperTab)
     await first.open()
 
@@ -221,7 +226,6 @@ describe('SidebarSlider — гонка истории (эмулятор обяз
     settle()
     expect(second.container.parentElement).toBeNull()
     expect(underPop).not.toHaveBeenCalled()
-    expect(baseHandlerCalls).toBe(0)
 
     pop() // теперь очередь чата
     expect(underPop).toHaveBeenCalledTimes(1)
@@ -231,9 +235,9 @@ describe('SidebarSlider — гонка истории (эмулятор обяз
 describe('SidebarSlider — программное закрытие (tab.close)', () => {
   it('снимает слой вкладки: забытый слой съел бы следующий Back вместо чата', async () => {
     const underPop = vi.fn()
-    pushLayer(underPop)
+    pushChatItem(underPop)
 
-    const slider = new SidebarSlider({ sidebarEl: createSidebarEl() })
+    const slider = new SidebarSlider({ sidebarEl: createSidebarEl(), navigationType: 'left' })
     const tab = slider.createTab(SliderSuperTab)
     await tab.open()
 
@@ -246,13 +250,12 @@ describe('SidebarSlider — программное закрытие (tab.close)'
     // Следующий Back обязан достаться чату, а не съеденному слою вкладки.
     pop()
     expect(underPop).toHaveBeenCalledTimes(1)
-    expect(baseHandlerCalls).toBe(0)
   })
 })
 
 describe('SidebarSlider — вложенные вкладки', () => {
   it('Back закрывает верхнюю вкладку, оставляя нижнюю', async () => {
-    const slider = new SidebarSlider({ sidebarEl: createSidebarEl() })
+    const slider = new SidebarSlider({ sidebarEl: createSidebarEl(), navigationType: 'left' })
     const first = slider.createTab(SliderSuperTab)
     await first.open()
     const second = slider.createTab(SliderSuperTab)
@@ -266,30 +269,34 @@ describe('SidebarSlider — вложенные вкладки', () => {
     expect(first.container.classList.contains('active')).toBe(true)
   })
 
-  it('каждой вкладке — свой слой: два Back закрывают их по одной', async () => {
-    const slider = new SidebarSlider({ sidebarEl: createSidebarEl() })
+  it('каждой вкладке — своя запись: два Back закрывают их по одной', async () => {
+    const underPop = vi.fn()
+    pushChatItem(underPop)
+
+    const slider = new SidebarSlider({ sidebarEl: createSidebarEl(), navigationType: 'left' })
     const first = slider.createTab(SliderSuperTab)
     await first.open()
     const second = slider.createTab(SliderSuperTab)
     await second.open()
+    settle() // записи истории обеих вкладок доехали (очередь мутаций — на таймере)
 
     pop() // реальный Back
     settle()
     expect(second.container.parentElement).toBeNull()
     expect(first.container.parentElement).not.toBeNull()
-    expect(baseHandlerCalls).toBe(0)
+    expect(underPop).not.toHaveBeenCalled()
 
     pop()
     settle()
     expect(first.container.parentElement).toBeNull()
-    // Оба Back'а ушли во вкладки — до навигации чата ни один не дошёл.
-    expect(baseHandlerCalls).toBe(0)
+    // Оба Back'а ушли во вкладки — до чата ни один не дошёл.
+    expect(underPop).not.toHaveBeenCalled()
   })
 })
 
 describe('SidebarSlider — isConfirmationNeededOnClose', () => {
   it('не закрывает вкладку, пока подтверждение не разрешилось', async () => {
-    const slider = new SidebarSlider({ sidebarEl: createSidebarEl() })
+    const slider = new SidebarSlider({ sidebarEl: createSidebarEl(), navigationType: 'left' })
     const tab = slider.createTab(SliderSuperTab)
     await tab.open()
 
@@ -309,11 +316,13 @@ describe('SidebarSlider — isConfirmationNeededOnClose', () => {
 
   it('отказ от закрытия оставляет вкладке ЕЁ слой: следующий Back снова достаётся вкладке, а не чату под ней', async () => {
     const underPop = vi.fn()
-    pushLayer(underPop)
+    pushChatItem(underPop)
 
-    const slider = new SidebarSlider({ sidebarEl: createSidebarEl() })
+    const slider = new SidebarSlider({ sidebarEl: createSidebarEl(), navigationType: 'left' })
     const tab = slider.createTab(SliderSuperTab)
     await tab.open()
+
+    settle() // запись истории вкладки доехала
 
     let reject!: () => void
     let asked = 0
@@ -341,7 +350,7 @@ describe('SidebarSlider — isConfirmationNeededOnClose', () => {
 
 describe('SidebarSlider — onOpenTab', () => {
   it('вкладка не появляется, пока не доехал хук раскрытия колонки', async () => {
-    const slider = new SidebarSlider({ sidebarEl: createSidebarEl() })
+    const slider = new SidebarSlider({ sidebarEl: createSidebarEl(), navigationType: 'left' })
     // tweb `slider.ts:127` — `await this.onOpenTab()`: правая колонка этим
     // хуком ВЫЕЗЖАЕТ, и вкладка не имеет права появиться раньше неё.
     //
@@ -371,14 +380,14 @@ describe('SidebarSlider — onOpenTab', () => {
 describe('SidebarSlider — createTab', () => {
   it('проставляет вкладке managers (иначе она полезет к воркеру своим путём)', () => {
     const managers = { sessions: {} } as never
-    const slider = new SidebarSlider({ sidebarEl: createSidebarEl(), managers })
+    const slider = new SidebarSlider({ sidebarEl: createSidebarEl(), managers, navigationType: 'left' })
     const tab = slider.createTab(SliderSuperTab)
     expect(tab.managers).toBe(managers)
   })
 
   it('doNotAppend отдаёт вкладку без слайдера — она не попадает в разметку колонки', () => {
     const sidebarEl = createSidebarEl()
-    const slider = new SidebarSlider({ sidebarEl })
+    const slider = new SidebarSlider({ sidebarEl, navigationType: 'left' })
     const tab = slider.createTab(SliderSuperTab, true, true)
     expect(tab.slider).toBeUndefined()
     expect(sidebarEl.querySelector('.sidebar-slider')!.children).toHaveLength(0)

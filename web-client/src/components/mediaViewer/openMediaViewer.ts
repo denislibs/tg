@@ -9,13 +9,16 @@
 // Esc/Back: tweb вешает navigationItem 'media' в _openMedia (base.ts:2432-2447,
 // appNavigationController: Esc и браузерный Back снимают item → close). Сам
 // item живёт там же, где у оригинала, — в `mediaViewer/base.ts` (он один знает
-// про полёт мувера и картинку-в-картинке); отсюда едет только МЕХАНИКА стека,
-// которой у tweb служит глобальный appNavigationController, а у нас — два
-// существующих механизма приложения: LIFO Esc-стек (core/hotkeys.pushEsc) и
-// слой Back-навигации (core/navigation/navigationStack.pushLayer). Программное
-// закрытие «съедает» свою запись истории (removeLayer).
-import { pushEsc } from '@core/hotkeys'
-import { pushLayer, removeLayer, type Layer } from '@core/navigation/navigationStack'
+// про полёт мувера и картинку-в-картинке); отсюда едет только ПОСТАНОВКА его в
+// очередь навигации.
+//
+// ОСТАТОК #108: у оригинала `base.ts` зовёт `appNavigationController` НАПРЯМУЮ,
+// а у нас механика приезжает инъекцией (`viewer.navigation`) — так было
+// заведено, когда контроллера не существовало вовсе. Контроллер портирован, и
+// вызов ниже уже его; сам шов (инъекция вместо прямого импорта) снимается
+// вместе со следующим касанием `base.ts` — там же ждёт своей очереди ветка
+// `canAnimate` (:2438-2440), которой этот параметр наконец есть чем питать.
+import appNavigationController, { type NavigationItem } from '@core/navigation/appNavigationController'
 import AppMediaViewer, { type AppMediaViewerOptions, type ViewerItem } from './appMediaViewer'
 
 let current: AppMediaViewer | null = null
@@ -53,22 +56,21 @@ export function openMediaViewer(args: OpenMediaViewerArgs): Promise<void> | unde
 
   const viewer = current = new AppMediaViewer(opts)
 
-  // Механика стека для navigationItem вьювера (tweb
-  // appNavigationController.pushItem/removeItem). Обе точки входа зовут ОДИН
-  // `onPop` вьювера — он же владелец вето (полёт мувера) и паузы на время
-  // картинки-в-картинке, поэтому здесь ни того, ни другого знать не нужно.
-  let unregisterEsc: (() => void) | undefined
-  let layer: Layer | undefined
+  // Постановка записи вьювера в общую очередь навигации (tweb
+  // appNavigationController.pushItem/removeItem, тип 'media' — base.ts:2433).
+  // Вето (полёт мувера) и пауза на время картинки-в-картинке живут в самом
+  // вьювере: сюда доезжает готовый `onPop`.
+  let navigationItem: NavigationItem | undefined
   viewer.navigation = {
     pushItem: (item) => {
-      unregisterEsc = pushEsc(() => { item.onPop() })
-      layer = pushLayer(() => item.onPop())
+      navigationItem = appNavigationController.pushItem({
+        type: 'media',
+        onPop: () => item.onPop(),
+      })
     },
     removeItem: () => {
-      unregisterEsc?.()
-      unregisterEsc = undefined
-      if (layer) removeLayer(layer) // после Back слой уже снят — no-op
-      layer = undefined
+      if (navigationItem) appNavigationController.removeItem(navigationItem)
+      navigationItem = undefined
     },
   }
 

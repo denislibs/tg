@@ -38,6 +38,7 @@ const uk = {
   UsernameCopied: 'Ім\'я користувача скопійовано',
   BioCopied: 'Про себе скопійовано',
   'General.NightMode': 'Нічний режим',
+  'AccountSettings.Language': 'Мова',
   'AccountSettings.Notifications': 'Сповіщення та звуки',
   DataSettings: 'Дані та пам\'ять',
   PrivacySettings: 'Конфіденційність',

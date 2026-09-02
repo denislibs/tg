@@ -24,7 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Authorization } from '@layer'
 import type { Managers } from '@/client/bootstrap'
 import { initHotkeys } from '@core/hotkeys'
-import { setBaseHandler } from '@core/navigation/navigationStack'
+import appNavigationController from '@core/navigation/appNavigationController'
 import { AppActiveSessionsTab } from '@components/solidJsTabs/tabs'
 import s from './settingsSliderHost.module.scss'
 import {
@@ -183,7 +183,8 @@ describe('settingsSliderHost — заведение слайдера в леву
     // И Back тоже: записи истории у ненайденной вкладки быть не должно, иначе
     // первое нажатие «назад» ПОСЛЕ выхода из настроек уходит в никуда.
     let backsToApp = 0
-    setBaseHandler(() => { ++backsToApp })
+    appNavigationController.pushItem({ type: 'chat', onPop: () => { ++backsToApp } })
+    await pause(20) // запись истории доезжает очередью мутаций
     window.dispatchEvent(new PopStateEvent('popstate'))
     expect(backsToApp).toBe(1)
 

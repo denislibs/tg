@@ -11,14 +11,12 @@
 //     PiP, а про то, в каком документе живёт открытый узел, и его читает
 //     `contextMenuController` (mousemove-слежка).
 //   • `appNavigationController.pushItem({type, onPop}) / removeByType(type)` —
-//     у нас этой глобали нет; её работу (Esc и браузерный Back снимают верхний
-//     слой) делают ДВА существующих механизма приложения: LIFO Esc-стек
-//     `core/hotkeys.pushEsc` и слой Back-навигации
-//     `core/navigation/navigationStack.pushLayer/removeLayer`. Ровно так уже
-//     подключён медиавьювер (`components/mediaViewer/openMediaViewer.ts:57-72`).
-//     Параметр конструктора остался `navigationType?: string` — как в tweb, он
-//     значит «этот оверлей участвует в навигации»; строка-тип у нас нужна
-//     только как признак и для читаемости вызова `super('menu', true)`.
+//     теперь ДОСЛОВНО (#108). Раньше на месте одной записи стояли два
+//     механизма (`hotkeys.pushEsc` для клавиши + `navigationStack.pushLayer`
+//     для Back), а `navigationType` был просто признаком «участвует в
+//     навигации» — типом различать было нечего. Контроллер портирован, и тип
+//     снова работает по назначению: `removeByType` снимает ИМЕННО свои записи,
+//     не трогая чужие, что и нужно оверлею, который закрывают снаружи.
 //   • строгий tsconfig: `element`/`overlay` честно `| undefined`.
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import { IS_MOBILE_SAFARI } from '@environment/userAgent'
@@ -26,8 +24,7 @@ import cancelEvent from '@helpers/dom/cancelEvent'
 import { CLICK_EVENT_NAME, hasMouseMovedSinceDown } from '@helpers/dom/clickEvent'
 import findUpAsChild from '@helpers/dom/findUpAsChild'
 import EventListenerBase from '@helpers/eventListenerBase'
-import { pushEsc } from '@core/hotkeys'
-import { pushLayer, removeLayer, type Layer } from '@core/navigation/navigationStack'
+import appNavigationController, { type NavigationItemType } from '@core/navigation/appNavigationController'
 
 export default class OverlayClickHandler extends EventListenerBase<{
   toggle: (open: boolean) => void
@@ -40,12 +37,8 @@ export default class OverlayClickHandler extends EventListenerBase<{
   protected realmDocument: Document = document
   protected realmWindow: Window & typeof globalThis = window
 
-  /** снятие Esc-обработчика и слоя Back — наш эквивалент `removeByType` */
-  private unregisterEsc?: () => void
-  private navigationLayer?: Layer
-
   constructor(
-    protected navigationType?: string,
+    protected navigationType?: NavigationItemType,
     protected withOverlay?: boolean,
   ) {
     super(false)
@@ -87,10 +80,7 @@ export default class OverlayClickHandler extends EventListenerBase<{
     this.realmDocument.removeEventListener(CLICK_EVENT_NAME, this.onClick as EventListener, this.listenerOptions)
 
     if(!IS_MOBILE_SAFARI && this.navigationType) {
-      this.unregisterEsc?.()
-      this.unregisterEsc = undefined
-      if(this.navigationLayer) removeLayer(this.navigationLayer) // после Back слой уже снят — no-op
-      this.navigationLayer = undefined
+      appNavigationController.removeByType(this.navigationType)
     }
   }
 
@@ -101,8 +91,12 @@ export default class OverlayClickHandler extends EventListenerBase<{
     const win = this.realmWindow = (doc.defaultView as Window & typeof globalThis) || window
 
     if(!IS_MOBILE_SAFARI && this.navigationType) {
-      this.unregisterEsc = pushEsc(() => { this.close() })
-      this.navigationLayer = pushLayer(() => { this.close() })
+      appNavigationController.pushItem({
+        type: this.navigationType,
+        onPop: () => {
+          this.close()
+        },
+      })
     }
 
     this.element = element

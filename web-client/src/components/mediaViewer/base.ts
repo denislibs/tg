@@ -170,16 +170,20 @@ export type ViewerAuthor = {
  * сниматься (tweb base.ts:2434-2436 — пока летит мувер), и стек обязан вернуть
  * его на место (tweb appNavigationController.ts:290-296).
  *
- * Не портированы поля `type`/`onEscape`/`noHistory`/`noBlurOnPop`: у нашего
- * стека (`core/navigation/navigationStack.ts` + `core/hotkeys.ts`) нет ни типов
- * слоёв, ни отдельного Esc-протокола, ни blur-на-pop.
+ * Полей `type`/`onEscape`/`noHistory`/`noBlurOnPop` здесь нет: тип записи
+ * (`media`) ставит контроллер вьювера (`openMediaViewer.ts`), а остальные три
+ * оригиналу в медиавьювере не нужны — он их не задаёт. ОСТАТОК #108: у tweb
+ * `base.ts` зовёт `appNavigationController` напрямую, у нас механика приезжает
+ * инъекцией (`navigation`) — шов остался с тех пор, когда контроллера не было
+ * вовсе; снимается вместе со следующим касанием этого файла, там же ждёт
+ * ветка `canAnimate` (:2438-2440).
  */
 export type ViewerNavigationItem = { onPop: () => boolean | void }
 
 /**
  * Механика стека, которую вьюверу отдаёт контроллер (`openMediaViewer.ts`) —
- * в tweb это глобальный `appNavigationController` (pushItem/removeItem), у нас
- * пара «Esc-стек + слой Back». Инъекция, а не импорт: у вьювера уже есть
+ * в tweb это глобальный `appNavigationController` (pushItem/removeItem), и с
+ * задачи #108 за инъекцией стоит он же. Инъекция, а не импорт: у вьювера уже есть
  * контроллер-владелец, и второй источник Esc/Back означал бы два слоя на один
  * вьювер.
  */

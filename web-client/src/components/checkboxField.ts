@@ -14,10 +14,14 @@
  *  «уже переведённая строка» в `textContent`, и по сигнатуре `text?: string`
  *  это было неотличимо от ключа — та же половина раскола контракта, что у
  *  `ButtonMenuItem`/`PopupButton`.)
- *  • `toggle` (переключатель `.checkbox-field-toggle`) — форма для настроек,
- *    не для выделения и не для `PopupPeer`; её вызывающие приедут вместе с
- *    портом строк настроек. Это же расхождение держит недостижимой
- *    toggle-ветку `row.ts` — обе снимает #110;
+ *  • (`toggle` СНЯТ с этого списка — портирован вместе с первой Solid-вкладкой
+ *    настроек, у которой он появился вызывающим: `checkboxFieldTsx.solid.ts`
+ *    → `sidebarLeft/tabs/language.solid.tsx`. Разметка дословная, tweb
+ *    :117-129. Подветка `restriction` внутри неё (`:120-122`) не перенесена
+ *    вместе с самим `restriction` — см. ниже. Toggle-ветка `row.ts`
+ *    (`checkboxFieldOptions.toggle`) от этого достижимой НЕ становится: её
+ *    держит не `CheckboxField`, а отсутствие вызывающего у самого `row.ts`, —
+ *    остаток #110);
  *  • `stateKey`/`stateValues`/`stateValueReverse` — двусторонняя привязка к
  *    `appStateManager` (tweb `rootScope.managers`/`apiManagerProxy`); у нас
  *    состояние живёт в zustand-сторах, а у обоих вызывающих его нет вовсе;
@@ -69,6 +73,8 @@ export type CheckboxFieldOptions = {
   textArgs?: FormatterArguments
   /** взведён при создании (tweb :64-66) */
   checked?: boolean
+  /** переключатель вместо коробки с галочкой (tweb :17, :117-129) */
+  toggle?: boolean
 }
 
 export default class CheckboxField {
@@ -106,31 +112,60 @@ export default class CheckboxField {
 
     label.append(input)
 
-    // tweb :127-148 — коробка чекбокса: рамка, заливка (она же анимация
-    // «круг растёт») и галочка из общего спрайта
-    const box = document.createElement('div')
-    box.classList.add('checkbox-box')
+    if (options.toggle) {
+      // tweb :117-129 — переключатель: дорожка + бегунок, коробки нет вовсе.
+      // Подветка `restriction` (:120-122) не перенесена вместе с самой опцией
+      // `restriction` — у неё по-прежнему нет ни одного вызывающего.
+      label.classList.add('checkbox-field-toggle')
 
-    const checkSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-    checkSvg.classList.add('checkbox-box-check')
-    checkSvg.setAttributeNS(null, 'viewBox', '0 0 24 24')
-    const use = document.createElementNS('http://www.w3.org/2000/svg', 'use')
-    use.setAttributeNS(null, 'href', '#check')
-    use.setAttributeNS(null, 'x', '-1')
-    checkSvg.append(use)
+      const toggle = document.createElement('div')
+      toggle.classList.add('checkbox-toggle')
+      const circle = document.createElement('div')
+      circle.classList.add('checkbox-toggle-circle')
+      toggle.append(circle)
+      label.append(toggle)
+    } else {
+      // tweb :127-148 — коробка чекбокса: рамка, заливка (она же анимация
+      // «круг растёт») и галочка из общего спрайта
+      const box = document.createElement('div')
+      box.classList.add('checkbox-box')
 
-    const bg = document.createElement('div')
-    bg.classList.add('checkbox-box-background')
+      const checkSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+      checkSvg.classList.add('checkbox-box-check')
+      checkSvg.setAttributeNS(null, 'viewBox', '0 0 24 24')
+      const use = document.createElementNS('http://www.w3.org/2000/svg', 'use')
+      use.setAttributeNS(null, 'href', '#check')
+      use.setAttributeNS(null, 'x', '-1')
+      checkSvg.append(use)
 
-    const border = document.createElement('div')
-    border.classList.add('checkbox-box-border')
+      const bg = document.createElement('div')
+      bg.classList.add('checkbox-box-background')
 
-    box.append(border, bg, checkSvg)
+      const border = document.createElement('div')
+      border.classList.add('checkbox-box-border')
 
-    label.append(box)
+      box.append(border, bg, checkSvg)
+
+      label.append(box)
+    }
 
     if (span) { // tweb :151-153 — подпись ПОСЛЕ коробки
       label.append(span)
     }
+  }
+
+  /**
+   * tweb :180-182 — записать состояние, НЕ порождая `change`. Появился вместе
+   * с `checkboxFieldTsx.solid.ts`: тот синхронизирует чекбокс с сигналом Solid
+   * и обязан отличать «мне сказали снаружи» от «пользователь щёлкнул», иначе
+   * запись в поле снова вызвала бы обработчик и закольцевалась.
+   *
+   * Пары `get/set checked` оригинала (:161-178) здесь нет: сеттер строится на
+   * `simulateEvent` (`helpers/dom/dispatchEvent`), которого в репо нет, а
+   * геттер без сеттера — второе имя для `input.checked`, которое вызывающие
+   * читают напрямую (и в tweb тоже: selection.ts:367).
+   */
+  public setValueSilently(checked: boolean) {
+    this.input.checked = checked
   }
 }

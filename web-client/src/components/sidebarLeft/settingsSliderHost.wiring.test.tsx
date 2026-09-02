@@ -1,9 +1,10 @@
 /**
- * Пины ПРОВОДКИ шва: три строки React, которыми портированная вкладка
- * подключена к ещё не портированным экранам настроек —
+ * Пины ПРОВОДКИ шва: строки React, которыми портированные вкладки подключены к
+ * ещё не портированному корню настроек —
  *  1. `SettingsView` заводит слайдер и уносит его с собой (эффект + cleanup);
- *  2. строка «Devices» в корне настроек открывает вкладку;
- *  3. строка «Active Sessions» в разделе конфиденциальности — та же вкладка.
+ *  2. строка «Devices» в корне настроек открывает вкладку «Устройства»;
+ *  3. строка «Active Sessions» в разделе конфиденциальности — ту же вкладку;
+ *  4. строка «Language» в корне настроек открывает вкладку «Язык».
  *
  * Почему отдельным файлом и почему вообще: раунд 1 ревью снял ВСЕ ТРИ строки
  * разом (пустой cleanup + вырезанная ветка `Devices` + `void
@@ -180,5 +181,29 @@ describe('шов React → слайдер: проводка вкладки «У�
     expect(openedTab()).not.toBeNull()
 
     host.destroy()
+  })
+})
+
+describe('шов React → слайдер: проводка вкладки «Язык»', () => {
+  it('строка «Language» в корне настроек открывает вкладку со списком языков', async() => {
+    const { managers } = makeManagers()
+    const getLanguages = vi.fn(async() => [
+      { _: 'langPackLanguage', name: 'English', native_name: 'English', lang_code: 'en', pFlags: {} },
+      { _: 'langPackLanguage', name: 'Russian', native_name: 'Русский', lang_code: 'ru', pFlags: {} },
+    ])
+    ;(managers as unknown as { langPack: unknown }).langPack = { getLanguages }
+
+    const { getByText } = mountSettings(managers)
+    expect(openedTab()).toBeNull()
+
+    await act(async() => { fireEvent.click(getByText('Language')) })
+    // Ждём НАПОЛНЕНИЯ, а не появления узла: вкладка не должна въезжать пустой,
+    // и именно это отличает её от «узел создан».
+    await flush(() => !!openedTab()?.querySelector('input[type="radio"]'))
+
+    const tab = openedTab()
+    expect(tab).not.toBeNull()
+    expect(getLanguages).toHaveBeenCalledTimes(1)
+    expect(tab!.querySelectorAll('input[type="radio"]')).toHaveLength(2)
   })
 })

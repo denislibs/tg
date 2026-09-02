@@ -50,11 +50,12 @@
  *    Обе замены пинуются `row.test.ts` (кейсы «checkbox без подписи получает
  *    checkbox-field-absolute» и «withCheckboxSubtitle переключает подпись по
  *    input.checked»), мутация каждой ветки прогнана отдельно (раунд 1 ревью);
- *  • toggle-ветка (#110: `checkbox-field-toggle` → `row-with-toggle`,
- *    `titleRight` = сам чекбокс) перенесена как проверка класса — дословно, но
- *    сейчас недостижима: наш `CheckboxField` не умеет строить toggle-чекбоксы
- *    (см. его докблок, «форма для настроек… приедет вместе с портом строк
- *    настроек») — оживёт вместе с портом `toggle` у `CheckboxField`;
+ *  • toggle-ветка (`checkbox-field-toggle` → `row-with-toggle`, `titleRight` =
+ *    сам чекбокс) ДОСТИЖИМА с волны вкладок настроек: `toggle` у
+ *    `CheckboxField` портирован (его докблок), и `checkboxFieldOptions:
+ *    {toggle: true}` теперь доводит сюда настоящий toggle-чекбокс. Пин —
+ *    `row.test.ts` («checkboxFieldOptions.toggle доводит строку до
+ *    row-with-toggle»). Из #110 в этой строке не остаётся ничего;
  *  • `setDirection` — был неэкспортируемым в `helpers/dom/setInnerHTML.ts`
  *    (не было потребителя); Row стал первым, экспорт добавлен туда же;
  *  • `replaceContent` — вынесен отдельным хелпером

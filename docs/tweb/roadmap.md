@@ -55,12 +55,23 @@
 верхний. Плюс `overlayCounter` — счётчик (не флаг) открытых оверлеев, из которого следуют
 пауза анимаций и ночная тема попапа над тёмным оверлеем.
 
-У нас два независимых стека: `core/navigation/navigationStack.ts` (только `popstate`) и
-`escStack` в `core/hotkeys.ts` (только Esc). Регистрируются порознь и не всеми:
-`Popup` — в обоих, `ConfirmPopup` — в nav плюс собственный capture-keydown мимо escStack,
-`Menu` / `ConfirmDialog` / `usePopupTransition`-экраны — ни в одном.
+**СДЕЛАНО (задача #108).** Двух стеков больше нет: `appNavigationController`
+портирован целиком (`core/navigation/appNavigationController.ts`, обе ветки —
+Navigation API и легаси, `isSwipingBackSafari`, типы записей, `onEscape`,
+`registerEscapeHandler`), а `navigationStack.ts` и Esc-стек в `hotkeys.ts`
+снесены. На него переведены слайдер вкладок, попапы (`popupElement`), меню
+(`overlayClickHandler`, React-`Menu`), выделение, медиавьювер, эмодзи-дропдаун
+и React-хук `useNavLayer`. В `hotkeys.ts` остался только фолбэк «Esc закрывает
+чат» — наше поведение, живущее до тех пор, пока чат не станет записью навигации
+(см. остаток ниже).
 
-**Что портируем.** Единый стек с типами вместо двух; `overlayCounter` с событием `change`;
+ОСТАТОК: навигация ЧАТА. У оригинала смена чата не создаёт записи истории — хэш
+переписывается на месте (`overrideHash` → `replaceState`), а Back закрывает чат
+записью типа `im`. У нас каждый открытый чат — своя запись (Phase A роутинга,
+`core/hooks/useUrlSync.ts`), то есть Back ходит ПО ЧАТАМ. Расхождение старше
+контроллера и меняет видимое поведение кнопки «Назад» — отдельной задачей.
+
+**Что портируем дальше.** `overlayCounter` с событием `change`;
 пауза анимаций и `night`-класс от него; отказ от ручных `z-index` в пользу порядка в DOM
 (в tweb у попапов, меню и вьювера один `z-index: 4`).
 

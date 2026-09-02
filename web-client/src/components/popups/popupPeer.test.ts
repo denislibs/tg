@@ -25,7 +25,7 @@ describe('confirmationPopup — порт tweb popups/peer.ts + simpleConfirmatio
     void confirmationPopup({
       titleLangKey: 'ChatList.Context.DeleteChat',
       descriptionLangKey: 'AreYouSureDeleteSingleMessage',
-      button: { langKey: 'Delete' }
+      button: { langKey: 'Delete' },
     }).catch(() => {})
 
     const root = document.querySelector('.popup-confirmation') as HTMLElement
@@ -40,7 +40,7 @@ describe('confirmationPopup — порт tweb popups/peer.ts + simpleConfirmatio
     const promise = confirmationPopup({
       titleLangKey: 'ChatList.Context.DeleteChat',
       descriptionLangKey: 'AreYouSureDeleteSingleMessage',
-      button: { langKey: 'Delete', isDanger: true }
+      button: { langKey: 'Delete', isDanger: true },
     })
 
     const root = document.querySelector('.popup-confirmation') as HTMLElement
@@ -65,7 +65,7 @@ describe('confirmationPopup — порт tweb popups/peer.ts + simpleConfirmatio
     const promise = confirmationPopup({
       titleLangKey: 'ChatList.Context.DeleteChat',
       descriptionLangKey: 'AreYouSureDeleteSingleMessage',
-      button: { langKey: 'Delete', isDanger: true }
+      button: { langKey: 'Delete', isDanger: true },
     })
 
     const root = document.querySelector('.popup-confirmation') as HTMLElement
@@ -86,7 +86,7 @@ describe('confirmationPopup — порт tweb popups/peer.ts + simpleConfirmatio
     const promise = confirmationPopup({
       titleLangKey: 'ChatList.Context.DeleteChat',
       descriptionLangKey: 'AreYouSureDeleteSingleMessage',
-      button: { langKey: 'Delete', isDanger: true }
+      button: { langKey: 'Delete', isDanger: true },
     })
 
     const root = document.querySelector('.popup-confirmation') as HTMLElement
@@ -114,7 +114,7 @@ describe('PopupPeer — аватар пира (peerId), раунд правок 
       titleLangKey: 'Notifications',
       descriptionLangKey: 'AreYouSureDeleteSingleMessage',
       buttons: [{ langKey: 'ChatList.Context.Mute' }],
-      managers
+      managers,
     })
     popup.show()
 

@@ -22,39 +22,64 @@ function walk(dir: string, out: string[] = []): string[] {
   return out
 }
 
+// ── Конфигурация двух рантаймов ──────────────────────────────────────────────
+//
+// Проверяется ПОВЕДЕНИЕ плагина, а не текст конфига. Прежняя редакция сверяла
+// исходник регэкспами (`/include:\s*\[SOLID_FILE_PATTERN\]/`) и краснела бы на
+// законной правке — `[SOLID_FILE_PATTERN, ...extra]`, переименование импорта,
+// перенос вызова в переменную, — при полностью исправной сборке. Обратное тоже
+// верно: текст мог совпасть, а плагин получить другой паттерн (найдено ревью
+// волны 0, пункт 3 задачи #104).
+//
+// Теперь конфиг ИМПОРТИРУЕТСЯ, из его `plugins` достаётся сам плагин Solid, и у
+// него спрашивается ровно то, ради чего он там стоит: берёт ли он `*.solid.tsx`
+// и оставляет ли `*.tsx` соседу. Это и есть граница рантаймов.
+//
+// У React-плагина так же спросить нельзя: его `transform` собирается в
+// `configResolved`/`options` и без полного контекста Vite не вызывается
+// (проверено). Поэтому его `exclude` остаётся под сканом исходника — но скан
+// ищет ИДЕНТИФИКАТОР внутри вызова, а не точный литерал массива.
 describe('конфигурация двух рантаймов', () => {
-  // Строка `solid({...})` в ПРОДУКТОВОМ vite.config.ts иначе не покрыта ничем:
-  // её удаление ломает сборку, но не красит ни одного теста (vitest читает
-  // vitest.config.ts). По норме проекта такая строка обязана иметь тест либо
-  // пометку. Даём тест — тем же сканом исходника, что `core/scrollWriters.test.ts`.
-  const configs = ['vite.config.ts', 'vitest.config.ts']
+  const load = async (name: string) => {
+    const mod = await import(/* @vite-ignore */ resolve(__dirname, '../../..', name))
+    return mod.default as { plugins?: unknown[] }
+  }
 
-  it.each(configs)('%s подключает vite-plugin-solid', (name) => {
-    const src = readFileSync(resolve(__dirname, '../../..', name), 'utf8')
-    expect(src).toContain("from 'vite-plugin-solid'")
-    expect(src).toMatch(/solid\(\{\s*include:/)
+  /** Плагин Solid из массива `plugins` конфига (он там один и с этим именем). */
+  const solidPluginOf = (config: { plugins?: unknown[] }) =>
+    (config.plugins ?? [])
+      .flat()
+      .find((p): p is { name: string; transform: (code: string, id: string) => unknown } =>
+        !!p && typeof p === 'object' && (p as { name?: string }).name === 'solid')
+
+  const JSX_SOURCE = 'export const A = () => <div>x</div>\n'
+
+  it.each(['vite.config.ts', 'vitest.config.ts'])('%s подключает плагин Solid', async (name) => {
+    expect(solidPluginOf(await load(name))).toBeDefined()
   })
 
-  // Маска Solid-файлов больше не литерал в каждом конфиге (задача 3 вынесла
-  // её в `SOLID_FILE_PATTERN` — см. fileRuntime.ts): оба конфига импортируют
-  // ОДИН И ТОТ ЖЕ объект и подставляют его в `include`. Сам regexp уже
-  // проверен в fileRuntime.test.ts (какие имена он матчит) — дублировать это
-  // здесь незачем. Этот тест проверяет другое: что include реально питается
-  // от общего источника, а не от параллельного литерала, который мог бы
-  // рассинхронизироваться с react({exclude}) — то, из-за чего было падение
-  // в задаче 1 (`*.solid.test.tsx` попадал под оба плагина).
-  it.each(configs)(
-    '%s передаёт в solid({include}) общий SOLID_FILE_PATTERN из fileRuntime',
-    (name) => {
-      const src = readFileSync(resolve(__dirname, '../../..', name), 'utf8')
-      expect(src).toContain("from './src/shared/solid/fileRuntime'")
-      expect(src).toMatch(/include:\s*\[SOLID_FILE_PATTERN\]/)
+  it.each(['vite.config.ts', 'vitest.config.ts'])(
+    '%s: плагин Solid берёт *.solid.tsx и НЕ берёт обычный *.tsx',
+    async (name) => {
+      const plugin = solidPluginOf(await load(name))!
+      // `transform` вызывается с контекстом плагина Rollup; из него нужен
+      // только `error` — на валидном исходнике он не зовётся.
+      const run = (id: string) => plugin.transform.call({ error: () => {} }, JSX_SOURCE, id)
+
+      expect(await run('/x/a.solid.tsx'), 'Solid-файл обязан пройти через плагин Solid').toBeTruthy()
+      expect(await run('/x/a.tsx'), 'React-файл плагин Solid трогать не должен').toBeFalsy()
     },
   )
 
   it('vite.config.ts исключает Solid-файлы из React-плагина ТЕМ ЖЕ паттерном — иначе JSX преобразуется дважды', () => {
     const src = readFileSync(resolve(__dirname, '../../../vite.config.ts'), 'utf8')
-    expect(src).toMatch(/react\(\{\s*exclude:\s*\[SOLID_FILE_PATTERN\]/)
+    // Ищем идентификатор ВНУТРИ вызова `react(...)`, а не точный вид массива:
+    // `[SOLID_FILE_PATTERN, ...ещё]` — законная правка, и краснеть на ней пин
+    // не должен. Что паттерн ОДИН на оба плагина, держит импорт из fileRuntime.
+    expect(src).toContain("from './src/shared/solid/fileRuntime'")
+    const call = /react\(\{([\s\S]*?)\}\)/.exec(src)
+    expect(call, 'вызов react({...}) в конфиге не найден').not.toBeNull()
+    expect(call![1]).toMatch(/exclude:[\s\S]*SOLID_FILE_PATTERN/)
   })
 })
 

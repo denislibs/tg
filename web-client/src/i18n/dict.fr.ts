@@ -38,6 +38,7 @@ const fr = {
   UsernameCopied: 'Nom d\'utilisateur copié',
   BioCopied: 'Bio copiée',
   'General.NightMode': 'Mode nuit',
+  'AccountSettings.Language': 'Langue',
   'AccountSettings.Notifications': 'Notifications et sons',
   DataSettings: 'Données et stockage',
   PrivacySettings: 'Confidentialité et sécurité',

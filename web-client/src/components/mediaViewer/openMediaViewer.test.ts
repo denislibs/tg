@@ -1,10 +1,10 @@
 // Тесты единого контроллера вьювера (Task 16): один живой инстанс (аналог
 // tweb window.appMediaViewer), Esc через LIFO-стек хоткеев, Back через слой
-// navigationStack, повторное открытие после закрытия. Среда — как
+// контроллер навигации, повторное открытие после закрытия. Среда — как
 // appMediaViewer.test.ts: happy-dom + fake timers, RPC managers замокан.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { initHotkeys } from '@core/hotkeys'
-import { setBaseHandler } from '@core/navigation/navigationStack'
+import appNavigationController from '@core/navigation/appNavigationController'
 import type { ViewerItem } from './appMediaViewer'
 import { closeMediaViewer, isMediaViewerOpen, openMediaViewer } from './openMediaViewer'
 
@@ -99,7 +99,7 @@ describe('Esc/Back закрывают вьювер с анимацией (про
     offHotkeys()
   })
 
-  it('Back (popstate снимает слой navigationStack) зовёт close', async () => {
+  it('Back (popstate снимает запись навигации) зовёт close', async () => {
     await settle(openMediaViewer({ items: [item(1)], index: 0 }))
     expect(wholeCount()).toBe(1)
 
@@ -141,11 +141,11 @@ describe('навигация вьювера идёт через его navigatio
     expect(onClosed).toHaveBeenCalledTimes(1)
   })
 
-  it('программное закрытие снимает слой: следующий Back уходит навигации чата', async () => {
-    // Мёртвый слой в стеке проглатывал бы чужой Back — выход из чата переставал
-    // работать после каждого закрытия вьювера крестиком.
+  it('программное закрытие снимает запись: следующий Back уходит чату', async () => {
+    // Мёртвая запись в очереди проглатывала бы чужой Back — выход из чата
+    // переставал работать после каждого закрытия вьювера крестиком.
     const base = vi.fn()
-    setBaseHandler(base)
+    appNavigationController.pushItem({ type: 'chat', onPop: base })
     await settle(openMediaViewer({ items: [item(1)], index: 0 }))
 
     closeMediaViewer()
