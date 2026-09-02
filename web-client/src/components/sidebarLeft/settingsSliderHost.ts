@@ -119,7 +119,9 @@ export function createSettingsSliderHost(columnEl: HTMLElement, managers: Manage
   element.append(sliderEl)
   columnEl.append(element)
 
-  const slider = new SidebarSlider({ sidebarEl: element, managers })
+  // `navigationType` — как у левой колонки оригинала (`sidebarLeft/index.ts`):
+  // именно этим слайдер отбирает СВОИ записи из общей очереди навигации.
+  const slider = new SidebarSlider({ sidebarEl: element, navigationType: 'left', managers })
 
   slider.onTabsCountChange = () => {
     element.classList.toggle(s.withTabs, slider.hasTabsInNavigation())

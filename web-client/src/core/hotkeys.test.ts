@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { pushEsc, initHotkeys } from './hotkeys'
+import { initHotkeys } from './hotkeys'
+import appNavigationController from './navigation/appNavigationController'
 
 const tick = () => new Promise((r) => setTimeout(r, 1))
 
@@ -13,56 +14,39 @@ let deactivate: (() => void) | null = null
 afterEach(() => {
   deactivate?.()
   deactivate = null
+  // Контроллер — модульный синглтон: недоснятые записи достались бы соседу.
+  appNavigationController.spliceItems(0, Infinity)
   document.body.replaceChildren()
 })
 
-describe('pushEsc (LIFO-стек)', () => {
-  it('Esc вызывает верхний обработчик, нижние не трогает', () => {
-    deactivate = initHotkeys({})
-    const a = vi.fn()
-    const b = vi.fn()
-    const offA = pushEsc(a)
-    const offB = pushEsc(b)
-    press('Escape')
-    expect(b).toHaveBeenCalledTimes(1)
-    expect(a).not.toHaveBeenCalled()
-    offB()
-    press('Escape')
-    expect(a).toHaveBeenCalledTimes(1)
-    offA()
-  })
-
-  it('unregister из середины стека не ломает порядок', () => {
-    deactivate = initHotkeys({})
-    const a = vi.fn()
-    const b = vi.fn()
-    const c = vi.fn()
-    const offA = pushEsc(a)
-    const offB = pushEsc(b)
-    const offC = pushEsc(c)
-    offB() // закрыли средний оверлей
-    press('Escape')
-    expect(c).toHaveBeenCalledTimes(1)
-    offC()
-    press('Escape')
-    expect(a).toHaveBeenCalledTimes(1)
-    expect(b).not.toHaveBeenCalled()
-    offA()
-    offA() // повторный unregister — no-op
-  })
-
-  it('при непустом стеке событие гасится (preventDefault) и фолбэк не зовётся', async () => {
+/**
+ * Esc-СТЕКА ЗДЕСЬ БОЛЬШЕ НЕТ (#108): вопрос «что закрыть первым» перешёл к
+ * `core/navigation/appNavigationController`, и его `onKeyDown` висит на window
+ * В ФАЗЕ ЗАХВАТА — то есть отрабатывает ДО этого файла и гасит событие
+ * (`cancelEvent`). Здесь остаётся только фолбэк «закрыть чат», и весь его
+ * контракт — в том, КОГДА он НЕ должен сработать.
+ *
+ * Тесты гоняют настоящий контроллер (синглтон), а не имитацию порядка: именно
+ * их сцепка и есть предмет.
+ */
+describe('Esc: фолбэк и контроллер навигации', () => {
+  it('открытая запись навигации забирает Esc — фолбэк не зовётся', async () => {
     const escFallback = vi.fn()
     deactivate = initHotkeys({ escFallback })
-    const off = pushEsc(() => {})
+    const onPop = vi.fn()
+    const item = appNavigationController.pushItem({ type: 'popup', onPop })
+
     const e = press('Escape')
-    expect(e.defaultPrevented).toBe(true)
+
+    expect(onPop).toHaveBeenCalledTimes(1)
+    expect(e.defaultPrevented).toBe(true) // контроллер погасил событие в захвате
     await tick()
     expect(escFallback).not.toHaveBeenCalled()
-    off()
+
+    appNavigationController.removeItem(item)
   })
 
-  it('при пустом стеке зовётся escFallback (отложенно)', async () => {
+  it('записей нет — зовётся escFallback (отложенно)', async () => {
     const escFallback = vi.fn()
     deactivate = initHotkeys({ escFallback })
     press('Escape')
@@ -109,13 +93,13 @@ describe('гейт текстовых полей', () => {
 
   it('Esc срабатывает и из инпута', () => {
     deactivate = initHotkeys({})
-    const h = vi.fn()
-    const off = pushEsc(h)
+    const onPop = vi.fn()
+    const item = appNavigationController.pushItem({ type: 'popup', onPop })
     const input = document.createElement('input')
     document.body.appendChild(input)
     press('Escape', {}, input)
-    expect(h).toHaveBeenCalledTimes(1)
-    off()
+    expect(onPop).toHaveBeenCalledTimes(1)
+    appNavigationController.removeItem(item)
   })
 
   it('Ctrl+F без mod или с Alt — не срабатывает', () => {

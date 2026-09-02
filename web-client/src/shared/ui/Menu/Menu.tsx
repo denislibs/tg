@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom'
 import type { CSSProperties, ReactNode } from 'react'
 import classNames from '../../lib/classNames'
 import { usePortalContainer } from '../../../core/pip'
-import { pushEsc } from '../../../core/hotkeys'
 import { useNavLayer } from '../../../core/hooks/useNavLayer'
 import s from './Menu.module.scss'
 
@@ -57,25 +56,18 @@ interface MenuProps {
 export default function Menu({ open, onClose, onExitComplete, corner, style, className, zIndex, children }: MenuProps) {
   const container = usePortalContainer()
 
-  // Открытое меню — ВЕРХНИЙ слой: Esc и Back обязаны закрыть его, а не то, что
-  // под ним. У tweb это один навигационный элемент — `open()` кладёт его в
-  // `appNavigationController` (`overlayClickHandler.ts:74-81`, тип `'menu'` от
-  // `contextMenuController.ts:19`), а `onKeyDown` снимает ИМЕННО ПОСЛЕДНИЙ
-  // (`appNavigationController.ts:216-222`). У нас тот же элемент расщеплён на
-  // два механизма — клавиша (`core/hotkeys`) и Back (`useNavLayer`), потому что
-  // Escape в браузере popstate не порождает; регистрируем оба, как это уже
-  // делают `Popup.tsx` и vanilla-порт `helpers/overlayClickHandler.ts:104-105`.
+  // Открытое меню — ВЕРХНЯЯ запись навигации: Esc и Back обязаны закрыть его, а
+  // не то, что под ним. Тип `'menu'` — как в оригинале
+  // (`overlayClickHandler.ts:74-81` + `contextMenuController.ts:19`), и это
+  // ОДНА запись на обе кнопки: `onKeyDown` контроллера снимает ту же верхнюю,
+  // что и popstate (`appNavigationController.ts:217-224`). Раньше здесь стояла
+  // вторая регистрация через `core/hotkeys.pushEsc` — контроллера не было, и
+  // клавиша с Back'ом жили в разных стеках (#108).
   //
-  // Без регистрации Esc проваливался в `escFallback` и закрывал ЧАТ ПОД меню:
-  // меню оставалось висеть вместе со своим бэкдропом на весь экран (z-index
-  // 2000), то есть приложение переставало принимать клики.
-  useNavLayer(open, onClose)
-  const closeRef = useRef(onClose)
-  closeRef.current = onClose
-  useEffect(() => {
-    if (!open) return
-    return pushEsc(() => closeRef.current())
-  }, [open])
+  // Без записи Esc проваливался мимо меню и закрывал ЧАТ ПОД ним: меню
+  // оставалось висеть вместе со своим бэкдропом на весь экран (z-index 2000),
+  // то есть приложение переставало принимать клики.
+  useNavLayer(open, onClose, 'menu')
 
   const panelRef = useRef<HTMLDivElement>(null)
   const wasOpen = useRef(open)

@@ -123,8 +123,8 @@ export default function SettingsView({
   // слайдера (`AppSettingsTab`), и слой ей заводит слайдер, как любой другой
   // вкладке. Уйдёт вместе со швом, когда корень настроек станет вкладкой №0
   // (ЗАДАЧА #112, пункт 2).
-  useNavLayer(true, onBack)
-  useNavLayer(sub !== null, () => setSub(null))
+  useNavLayer(true, onBack, 'left')
+  useNavLayer(sub !== null, () => setSub(null), 'left')
 
   // Счётчик устройств в строке «Devices» — порт `authCount`
   // (tweb `sidebarLeft/tabs/settings.tsx:151`, :172-176, показ — :248).

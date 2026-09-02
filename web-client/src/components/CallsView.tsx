@@ -80,7 +80,7 @@ function CallRow({ call, onOpen }: { call: MyMessage; onOpen: (peerId: PeerId) =
 
 export default function CallsView({ onBack, onOpenChat }: { onBack: () => void; onOpenChat: (peerId: PeerId) => void }) {
   const t = useT()
-  useNavLayer(true, onBack) // Back закрывает экран «Звонки»
+  useNavLayer(true, onBack, 'left') // Back закрывает экран «Звонки»
   const calls = useCallsLog()
 
   // Группировка по дням («Сегодня» либо дата — две ветки оригинала, см.

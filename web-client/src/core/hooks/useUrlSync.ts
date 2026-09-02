@@ -15,7 +15,7 @@ import { useManagers } from './useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useNavigationStore } from '../../stores/navigationStore'
 import { useChatStackStore, selectOpenThreadDesc } from '../../stores/chatStackStore'
-import { setBaseHandler, pushHashState } from '../navigation/navigationStack'
+import appNavigationController from '../navigation/appNavigationController'
 import { parseNavHash, requestMessageJump } from '../messageLink'
 import { getPeerPhotoId, peerKey } from '../peers/peer'
 import { cachedChat } from '../peerCache'
@@ -105,8 +105,11 @@ export function useUrlSync(): void {
   const suppressRef = useRef(false)
   const readyRef = useRef(false)
 
-  // хэш → стор: первичное применение + Back, когда стек оверлеев пуст (базовый
-  // слой navigationStack — единственного владельца popstate).
+  // хэш → стор: первичное применение + смена хэша, дошедшая до контроллера
+  // навигации (он единственный владелец popstate). `onHashChange` — ручка
+  // самого оригинала (`appNavigationController.ts:41`, `appImManager.ts:317`
+  // ставит туда свой обработчик): контроллер зовёт её, когда пришедший
+  // popstate поменял ХЭШ, а не снял запись навигации.
   useEffect(() => {
     const apply = () => {
       suppressRef.current = true
@@ -116,7 +119,7 @@ export function useUrlSync(): void {
       })
     }
     apply()
-    setBaseHandler(apply)
+    appNavigationController.onHashChange = apply
   }, [managers])
 
   // стор → хэш: push нового адреса при навигации пользователя.
@@ -126,10 +129,19 @@ export function useUrlSync(): void {
     const cur = location.hash.replace(/^#/, '')
     if (want === cur) return
     const url = want ? `#${want}` : location.pathname + location.search
-    // Через navigationStack, а не напрямую: пуш чата обязан вставать в ту же
-    // очередь, что pushLayer/removeLayer — иначе он может обогнать (или быть
-    // переписан) ещё не подтверждённым history.back() закрывающегося оверлея
-    // (см. докблок navigationStack.ts, «СЕРИАЛИЗАЦИЯ»).
-    pushHashState(url)
+    // ОСТАТОК #108, названный: у оригинала смена чата НЕ создаёт записи
+    // истории — хэш там переписывается на месте (`appNavigationController
+    // .overrideHash` → `replaceState`, `appImManager.ts:2578-2586`), а Back
+    // закрывает чат отдельной записью типа `im`, которую пушит переход вглубь
+    // на мобильной раскладке (`selectTab`, :2628-2638). У нас каждый открытый
+    // чат — своя запись истории (Phase A роутинга), то есть Back ходит ПО
+    // ЧАТАМ. Это расхождение старше контроллера и меняет видимое поведение
+    // кнопки «Назад», поэтому переносится отдельной задачей, а не походя.
+    //
+    // Пока оно живо, запись обязана идти через ту же очередь мутаций, что
+    // записи навигации: иначе `pushState` чата обгонит (или будет переписан)
+    // ещё не подтверждённый `history.back()` закрывающегося оверлея — тот
+    // самый дефект волны 1.
+    appNavigationController.pushHashState(url)
   }, [selectedId, openThread])
 }

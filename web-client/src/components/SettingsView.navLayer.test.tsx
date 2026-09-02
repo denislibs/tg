@@ -6,7 +6,7 @@
  * пользователь: Esc проваливался в `escFallback` (`core/hooks/useAppHotkeys.ts:63`)
  * и закрывал ЧАТ ПОД настройками — сами настройки при этом оставались открыты.
  *
- * Проверяется через сам стек (`core/navigation/navigationStack`), а не через
+ * Проверяется через сам контроллер (`core/navigation/appNavigationController`), а не через
  * DOM: слой — это запись в стеке, и «кто снимется по Back» решает он. Тот же
  * приём, что у пинов навигации волны 1.
  *
@@ -21,7 +21,7 @@ import type { ReactNode } from 'react'
 
 import type { Managers } from '@/client/bootstrap'
 import { ManagersProvider } from '@core/hooks/useManagers'
-import { setBaseHandler } from '@core/navigation/navigationStack'
+import appNavigationController from '@core/navigation/appNavigationController'
 import SettingsView from './SettingsView'
 
 const makeManagers = (sessions: unknown[] = []) => ({
@@ -45,14 +45,18 @@ const pressBack = () => act(() => {
   window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }))
 })
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  // Контроллер — модульный синглтон: недоснятые записи достались бы соседу.
+  appNavigationController.spliceItems(0, Infinity)
+})
 
 describe('SettingsView — слой навигации', () => {
   it('Back закрывает настройки, а не проваливается в базовый слой (чат)', () => {
-    // Базовый слой = навигация чата. Если настройки слоя не завели, popstate
-    // дойдёт ИМЕННО СЮДА — ровно тот отказ, что пин стережёт.
+    // Запись «чат под экраном» — то, куда Back провалится, если настройки
+    // своей записи не завели. Ровно тот отказ, что пин стережёт.
     const base = vi.fn()
-    setBaseHandler(base)
+    appNavigationController.pushItem({ type: 'chat', onPop: base })
     const onBack = vi.fn()
 
     render(<SettingsView onBack={onBack} onToggleMode={() => {}} />, { wrapper })
@@ -65,7 +69,7 @@ describe('SettingsView — слой навигации', () => {
 
   it('при открытом под-экране первый Back снимает ЕГО, а настройки остаются', () => {
     const base = vi.fn()
-    setBaseHandler(base)
+    appNavigationController.pushItem({ type: 'chat', onPop: base })
     const onBack = vi.fn()
 
     render(<SettingsView onBack={onBack} onToggleMode={() => {}} />, { wrapper })

@@ -74,7 +74,7 @@ function AvatarVideo({ src, poster }: { src: string; poster: string }) {
 
 export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddMembers, onEditContact, onSendGift }: { open: boolean; chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; canAddMembers?: boolean; onEditContact?: () => void; onSendGift?: () => void }) {
   const t = useT()
-  useNavLayer(open, onClose) // Back закрывает панель профиля (tweb right column)
+  useNavLayer(open, onClose, 'right') // Back закрывает панель профиля (tweb right column)
   // tweb body.is-right-column-shown: пока правая колонка открыта и не «плавает»
   // над чатом, #column-center сдвигает свою translateX-центровку (_chat.scss:439).
   // Счётчик (useRightColumnShown), а не булев toggle: экран поиска правой

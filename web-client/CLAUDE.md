@@ -578,8 +578,8 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
 зум/пан/поворот, свайпы, прелоадер), `appMediaViewer.ts` (message-вариант,
 порт tweb `mediaViewer/index.ts`: топбар-кнопки, ⋮-меню, листание через
 `listLoader`), `openMediaViewer.ts` (контроллер: один живой инстанс — аналог
-tweb-глобали `window.appMediaViewer`; Esc — `core/hotkeys.pushEsc`, Back —
-`navigationStack.pushLayer`). Видеоплеер — vanilla `lib/mediaPlayer` (порт tweb
+tweb-глобали `window.appMediaViewer`; Esc и Back — ОДНА запись типа `media` в
+`core/navigation/appNavigationController`). Видеоплеер — vanilla `lib/mediaPlayer` (порт tweb
 `lib/mediaPlayer`), прелоадер — vanilla `components/preloader.ts` (порт tweb
 `components/preloader.ts`). React живёт в ядре только ОСТРОВАМИ через
 `createRoot`: аватарка автора (`.media-viewer-userpic`) и caption

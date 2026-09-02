@@ -22,7 +22,7 @@ export default function ContactsView({
   onOpenChat?: (chatId: number) => void
 }) {
   const t = useT()
-  useNavLayer(true, onBack) // Back закрывает экран «Контакты»
+  useNavLayer(true, onBack, 'left') // Back закрывает экран «Контакты»
   const [query, setQuery] = useState('')
   const [newOpen, setNewOpen] = useState(false)
 

@@ -37,7 +37,7 @@ function txMeta(tx: StarTransaction, t: (key: LangPackKey) => string): { icon: i
 export default function WalletView({ onBack }: { onBack: () => void }) {
   const t = useT()
   const managers = useManagers()
-  useNavLayer(true, onBack) // Back закрывает «Кошелёк»
+  useNavLayer(true, onBack, 'left') // Back закрывает «Кошелёк»
   const balance = useStarsBalance()
   const [busy, setBusy] = useState(false)
   const [txs, setTxs] = useState<StarTransaction[]>([])

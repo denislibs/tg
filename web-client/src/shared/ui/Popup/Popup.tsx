@@ -18,7 +18,6 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { ReactNode, RefObject } from 'react'
 import classNames from '../../lib/classNames'
-import { pushEsc } from '../../../core/hotkeys'
 import IconButton from '../IconButton'
 import { useRipple } from '../Ripple/useRipple'
 import TgIcon from '../../../components/TgIcon'
@@ -84,20 +83,13 @@ export default function Popup({
   open, title, className, onClose, onExitComplete, headerRight, footer, action, body = true, bodyClassName, bodyRef, width = 420, children,
 }: PopupProps) {
   const container = usePortalContainer()
-  useNavLayer(open, onClose) // браузерный/аппаратный Back закрывает попап
-
-  // Esc закрывает верхний попап. У tweb это делает appNavigationController
-  // (Escape и Back ведут в один и тот же LIFO-стек слоёв); у нас Back ведёт
-  // `useNavLayer` (popstate), а клавиша — свой стек `core/hotkeys`, потому что
-  // Escape в браузере popstate не порождает. Без этой регистрации попапы на
-  // базовом `Popup` (календарь, «Поделиться», выбор контакта) не закрывались
-  // клавишей вовсе — закрыть можно было только крестиком или кликом по скриму.
-  const closeRef = useRef(onClose)
-  closeRef.current = onClose
-  useEffect(() => {
-    if (!open) return
-    return pushEsc(() => closeRef.current())
-  }, [open])
+  // ОДНА запись навигации на обе кнопки: и браузерный/аппаратный Back, и Escape
+  // закрывают верхний попап. Раньше здесь стояла ВТОРАЯ регистрация — свой
+  // Esc-обработчик через `core/hotkeys.pushEsc`, потому что контроллера
+  // навигации у нас не было и Back с клавишей жили в разных стеках. Контроллер
+  // портирован (#108), и `onKeyDown` снимает ту же самую верхнюю запись
+  // (`appNavigationController.ts:217-224`), что и popstate.
+  useNavLayer(open, onClose, 'popup')
 
   const rootRef = useRef<HTMLDivElement>(null)
   const wasOpen = useRef(open)
