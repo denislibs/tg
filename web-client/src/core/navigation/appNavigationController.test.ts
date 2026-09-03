@@ -10,6 +10,8 @@
  * `hotkeys.pushEsc`, — и они расходились.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 import singleton, { AppNavigationController, type NavigationItem } from './appNavigationController'
 
 let ctrl: AppNavigationController
@@ -353,5 +355,98 @@ describe('appNavigationController — хэш', () => {
     expect(onPop).not.toHaveBeenCalled()
 
     location.hash = ''
+  })
+})
+
+describe('адрес целиком', () => {
+  afterEach(() => {
+    location.hash = ''
+  })
+
+  // Ревью задачи 4 (НАХОДКА 1): голый публичный `replaceState(url)` пишет
+  // адрес, но не трогает `currentHash`/`overriddenHash` — контроллер и
+  // адресная строка расходятся. Сценарий ровно тот, что поймало ревью:
+  // открыт чат (`overrideHash` выставил хэш `#peer1`, как `syncChatHash` в
+  // `chatHistory.ts`), поверх него диплинк-оверлей (qr/addlist), закрытие
+  // оверлея чистит адрес ЦЕЛИКОМ (`overrideAddress`, у диплинка параметр в
+  // ПУТИ, не в хэше). Следующий `syncChatHash()` (уже после закрытия
+  // оверлея) снова просит ТОТ ЖЕ хэш активного чата — и обязан его
+  // ЗАПИСАТЬ, а не словить ранний выход `overrideHash` по «хэш не
+  // изменился» (`this.currentHash === hash`). Второе `expect` здесь и есть
+  // пин: без синхронизации `currentHash` внутри `overrideAddress` первый
+  // `overrideHash('#peer1')` после зачистки был бы молча проигнорирован —
+  // хэш активного чата не возвращался бы в адрес, пока пользователь не
+  // переключит чат.
+  it('overrideAddress не запирает currentHash: следующий overrideHash с тем же значением хэша всё равно пишется', async() => {
+    ctrl.overrideHash('#peer1')
+    await flush()
+    expect(location.hash).toBe('#peer1')
+
+    ctrl.overrideAddress(new URL('/', location.origin))
+    await flush()
+    expect(location.hash).toBe('') // адрес зачищен целиком, хэш ушёл вместе с путём
+
+    ctrl.overrideHash('#peer1') // syncChatHash() после закрытия оверлея — то же значение, что было ДО зачистки
+    await flush()
+    expect(location.hash).toBe('#peer1') // а не ранний выход overrideHash по «не изменилось»
+  })
+})
+
+// ── Скан: единственный писатель history.* — контроллер ─────────────────────
+//
+// Задача 4: у истории браузера обязан остаться РОВНО один писатель — этот
+// контроллер (порт `appNavigationController` tweb). Скан ловит писателя ДВУХ
+// видов сразу — по образцу `stores/noManualOrder.test.ts`:
+//   1) вызов `history.pushState`/`history.replaceState` СНАРУЖИ этого файла —
+//      прямая мутация мимо очереди мутаций контроллера (мимо
+//      `modifyHistoryFromEvent`), которую он не увидит и не сериализует;
+//   2) ВТОРОЙ вызов `history.pushState(`/`history.replaceState(` ВНУТРИ
+//      самого файла — у каждого метода (`pushState()`/`replaceState()`)
+//      ровно один канонический вызов, пишущий `this.id`. Второй вызов —
+//      это ситуация ОСТАТКА #108 (`pushHashState`, снят этой задачей): он
+//      писал `history.pushState(null, ...)` мимо `this.id`, из-за чего
+//      `id === this.id` в `_onPopState` не опознавал его собственные записи.
+//
+// Тестовые файлы (`*.test.ts(x)`) исключены из скана осознанно: в них
+// `history.*` — не продакшн-писатель, а эмуляция самого браузера (диспатч
+// `popstate`, спай на реальный `replaceState`, см. `components/slider.test.ts`
+// и сам этот файл выше) — вот ЧТО тестируется, а не то, что писателей стало
+// больше.
+describe('appNavigationController — единственный писатель history.*', () => {
+  const SRC_ROOT = join(__dirname, '../..')
+  const CONTROLLER_REL = 'core/navigation/appNavigationController.ts'
+  const CALL = /\bhistory\.(?:push|replace)State\s*\(/
+
+  function walk(dir: string, acc: string[] = []): string[] {
+    for (const name of readdirSync(dir)) {
+      const p = join(dir, name)
+      if (statSync(p).isDirectory()) walk(p, acc)
+      else if (/\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name)) acc.push(p)
+    }
+    return acc
+  }
+
+  // Комментарии выкидываем: `history.pushState`/`history.replaceState`
+  // упоминаются ПРОЗОЙ в докблоках (объясняют, как было раньше, или
+  // ссылаются на контроллер как на единственного писателя, см.
+  // `core/navigation/chatHistory.ts`, `core/hooks/useUrlSync.ts`) — без этого
+  // инвариант ловил бы собственную документацию, а не код.
+  const stripComments = (src: string): string =>
+    src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '')
+
+  it('снаружи контроллера — ни одного вызова history.pushState/replaceState', () => {
+    const offenders = walk(SRC_ROOT)
+      .map((f) => f.slice(SRC_ROOT.length + 1).replace(/\\/g, '/'))
+      .filter((rel) => rel !== CONTROLLER_REL)
+      .filter((rel) => CALL.test(stripComments(readFileSync(join(SRC_ROOT, rel), 'utf8'))))
+
+    expect(offenders).toEqual([])
+  })
+
+  it('внутри контроллера у каждого из history.pushState/replaceState ровно один вызов', () => {
+    const body = stripComments(readFileSync(join(SRC_ROOT, CONTROLLER_REL), 'utf8'))
+
+    expect(body.match(/\bhistory\.pushState\s*\(/g) ?? []).toHaveLength(1)
+    expect(body.match(/\bhistory\.replaceState\s*\(/g) ?? []).toHaveLength(1)
   })
 })

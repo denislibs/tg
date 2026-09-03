@@ -447,6 +447,61 @@ noHistory?: boolean                   // не двигать history брауз�
 - При движении «вперёд» (CHATLIST→CHAT) пушится NavigationItem `type:'im'`
   (`:2662-2669`), чей `onPop` делает `setPeer({})` — системный Back с открытого чата возвращает
   к списку. `overrideHash(peerId)` — URL отражает открытый чат (`:2597`).
+- Запись `im` — это только КОРЕНЬ (переход список↔чат). Уход глубже уже открытого чата
+  (тред/форум-топик/комментарии) заводит СВОЮ запись `type:'chat'` — `chatsSelectTab`
+  (`appImManager.ts:2237-2272`): на каждой смене активного `Chat`-таба, если новый индекс
+  глубже прежнего (`idx > prevIdx`), пушится (через `context`/`findItem`/`spliceItems`,
+  не голый `pushItem` — вставка не обязана оказаться на вершине) запись с тем же `onPop`,
+  что у `im`, — `setPeer({}, canAnimate)` (`:2257-2270`). Снятие идёт другим путём:
+  `spliceChats` (`:2672-2692`) на каждый срезанный уровень зовёт `removeByType('chat', true)`
+  (`:2691`) — по разу на элемент среза, кроме самого верхнего (тот снимается через
+  `back()`/Esc самим контроллером). Итоговый стек записей на открытом чате с тредом
+  комментариев поверх: `im` (корень) → `chat` (первый вложенный уровень) → `chat`
+  (второй, если есть) → …
+
+**У нас:** `core/navigation/chatHistory.ts` — наш аналог этого куска `appImManager` (тред/
+комментарии у нас не отдельный «таб», а верхний инстанс `chatStackStore`, но записи
+контроллера — те же `im`/`chat`, что и у оригинала).
+
+- Хэш пишется НА МЕСТЕ. `syncChatHash()` (`web-client/src/core/navigation/chatHistory.ts:52-54`)
+  считает `hashForChat()` (`:24-44`, порт `appImManager.ts:2578-2597` + правило `@username` из
+  прежнего `useUrlSync.hashForState`) и отдаёт
+  `appNavigationController.overrideHash(hash)` (`web-client/src/core/navigation/appNavigationController.ts:319-331`,
+  порт `:274-288`/`:411-423`) — та же `replaceState`, без новой записи истории на смену чата.
+  Прежний `pushHashState` (своя запись на каждый чат И на каждый тред) удалён целиком.
+- Запись `im` заводится РОВНО одна на переход список↔чат — `pushImRecordIfNeeded()`
+  (`chatHistory.ts:136-148`), порт условия `appImManager.ts:2628-2629`:
+  `{type: 'im', onPop: () => closeChatLevel()}`, только если стек чатов не пуст и
+  `findItemByType('im')` ещё не находит запись.
+- Запись `chat` на уровень глубины у нас тоже есть — `syncChatRecords()`
+  (`chatHistory.ts:184-237`) держит число записей `chat` синхронным с глубиной стека
+  (`Math.max(0, depth - 1)`): рост глубины пушит запись через `spliceItems` по `context`
+  инстанса (`:188-202`, тот же приём `found ? found.index : getNextIndex()`, что у
+  оригинала), срез — цикл `removeByType('chat', true)` (`:203-207`). Плюс симметричное
+  снятие `im` при опустошении стека МИМО контроллера (`:234-236`, разбор — в докблоке
+  функции): предмета у оригинала нет, потому что там нечем очистить стек чатов в обход
+  `selectTab`, а у нас такой путь есть (логаут, пустой хэш на `useUrlSync`).
+- `closeChatLevel()`/`backChatLevel()` (`chatHistory.ts:85-100`, `:116-119`) — единая точка
+  «закрыть уровень», порт `setPeer({})` (`appImManager.ts:2768-2770`, `:2825-2828`) и стрелки
+  «назад» в шапке (`tweb/src/components/chat/chat.ts:1628-1632`,
+  `back(isFirstChat ? 'im' : 'chat')`). Их зовут крестик треда в шапке
+  (`web-client/src/components/Chat.tsx:165`) и Esc; прямых `chatStackStore.closeTop()`/
+  `navigationStore.selectChat(null)` из UI в обход записи больше нет — иначе запись
+  контроллера пережила бы закрытый на экране уровень.
+- Esc идёт через ту же запись, свой путь снят: `core/hotkeys.ts` и
+  `core/hooks/useAppHotkeys.ts` Esc не заводят вовсе (докблоки в шапках обоих файлов) —
+  пока чат открыт, на стеке контроллера всегда лежит `im`/`chat`, и Esc закрывает её
+  тем же `back(item.type)` (`appNavigationController.ts:294-301`, порт `:217-224`).
+  Прежний параллельный `escFallback` (второй, независимый ответ на тот же вопрос «что
+  закрыть первым», расходившийся со стеком слоёв) удалён вместе с тестами.
+- Единственный писатель истории — контроллер: прямых `history.pushState`/
+  `history.replaceState` вне `appNavigationController.ts` в клиенте не осталось (пин —
+  скан в `appNavigationController.test.ts`). Диплинки вне хэша (`/join/:token`,
+  `/qr/:token`, `/addlist/:slug`, `useDeepLinks.ts`) идут через названное отступление
+  `overrideAddress(url)` (`appNavigationController.ts:365-370`) — расширение того же
+  единственного писателя (тот же `replaceState`, та же очередь мутаций), а не третий
+  механизм; разбор, зачем он понадобился (диплинк живёт в ПУТИ/query, а не в хэше), — в
+  докблоке метода.
 
 ## 5.3 Deep links: `internalLinkProcessor` (`src/lib/internalLinkProcessor.ts`)
 
@@ -680,7 +735,7 @@ JS — единственный владелец ширин; SCSS только �
 | Владение данными | воркер владеет всем, вкладка — только mirrors | воркер владеет сетью+окном сообщений; часть данных живёт прямо в Zustand-сторах вкладки |
 | Мульти-аккаунт | 4 аккаунта в одном воркере, `accountNumber` в каждом RPC | один аккаунт |
 | Персист | IndexedDB на аккаунт + `tweb-common`, версия/миграции state | значительно меньше: локальные кэши + настройки (`settings.migration.test.ts` — свои миграции настроек), без полного офлайн-стейта |
-| Навигация | стек `appNavigationController` + history/Navigation API + deep links | `stores/navigationStore.ts` + `chatStackStore` (стек чатов), esc/back-иерархия упрощена; internal-link процессора нет |
+| Навигация | стек `appNavigationController` + history/Navigation API + deep links | порт `appNavigationController.ts` — единственный писатель истории (§5.1/§5.2); `core/navigation/chatHistory.ts` — записи `im`/`chat` + хэш на месте (порт `appImManager.selectTab`/`chatsSelectTab`, §5.2 «У нас»); `navigationStore.ts` + `chatStackStore` — выбор чата и стек тредов/комментариев поверх него; internal-link процессора нет |
 | Апдейты | pts/seq/difference (`apiUpdatesManager`) | последовательности `seq` per-chat от нашего бэкенда, `message_ack`; gap-логика на бэке |
 | liteMode/idle/heavy | полный набор | точечно (lazyLoadQueue, `core/hotkeys.ts`); heavy-animation-шины нет |
 

@@ -2,8 +2,6 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { initHotkeys } from './hotkeys'
 import appNavigationController from './navigation/appNavigationController'
 
-const tick = () => new Promise((r) => setTimeout(r, 1))
-
 function press(key: string, opts: KeyboardEventInit = {}, target: EventTarget = window) {
   const e = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...opts })
   target.dispatchEvent(e)
@@ -20,19 +18,22 @@ afterEach(() => {
 })
 
 /**
- * Esc-СТЕКА ЗДЕСЬ БОЛЬШЕ НЕТ (#108): вопрос «что закрыть первым» перешёл к
- * `core/navigation/appNavigationController`, и его `onKeyDown` висит на window
- * В ФАЗЕ ЗАХВАТА — то есть отрабатывает ДО этого файла и гасит событие
- * (`cancelEvent`). Здесь остаётся только фолбэк «закрыть чат», и весь его
- * контракт — в том, КОГДА он НЕ должен сработать.
+ * Esc-СТЕКА ЗДЕСЬ БОЛЬШЕ НЕТ (#108), а с задачей chat-navigation-im-3 не стало
+ * и `escFallback` — второго, параллельного пути «Esc закрывает чат». В
+ * оригинале (tweb `appNavigationController.ts:217-224`) у Esc вообще нет
+ * отдельной ветки для чата: он берёт ВЕРХНЮЮ запись стека и делает
+ * `back(item.type)`. Задачи 1-2 завели записи `im`/`chat` так, что они лежат
+ * на стеке контроллера ВСЕГДА, пока чат открыт (`core/navigation/chatHistory.ts`),
+ * поэтому у `hotkeys.ts` предмета для собственной ветки Esc не осталось —
+ * контроллер сам гасит событие в фазе ЗАХВАТА (`cancelEvent`,
+ * `appNavigationController.ts:294-301`) ДО того, как оно доходит сюда.
  *
  * Тесты гоняют настоящий контроллер (синглтон), а не имитацию порядка: именно
  * их сцепка и есть предмет.
  */
-describe('Esc: фолбэк и контроллер навигации', () => {
-  it('открытая запись навигации забирает Esc — фолбэк не зовётся', async () => {
-    const escFallback = vi.fn()
-    deactivate = initHotkeys({ escFallback })
+describe('Esc: только контроллер навигации, своей ветки в hotkeys.ts нет', () => {
+  it('открытая запись навигации (например, попап) забирает Esc', () => {
+    deactivate = initHotkeys({})
     const onPop = vi.fn()
     const item = appNavigationController.pushItem({ type: 'popup', onPop })
 
@@ -40,30 +41,34 @@ describe('Esc: фолбэк и контроллер навигации', () => {
 
     expect(onPop).toHaveBeenCalledTimes(1)
     expect(e.defaultPrevented).toBe(true) // контроллер погасил событие в захвате
-    await tick()
-    expect(escFallback).not.toHaveBeenCalled()
 
     appNavigationController.removeItem(item)
   })
 
-  it('записей нет — зовётся escFallback (отложенно)', async () => {
-    const escFallback = vi.fn()
-    deactivate = initHotkeys({ escFallback })
+  it('запись `im` (открытый чат) закрывается тем же Esc, что и любая другая запись', () => {
+    deactivate = initHotkeys({})
+    const onPop = vi.fn()
+    const item = appNavigationController.pushItem({ type: 'im', onPop })
+
     press('Escape')
-    expect(escFallback).not.toHaveBeenCalled() // ещё не тик
-    await tick()
-    expect(escFallback).toHaveBeenCalledTimes(1)
+
+    expect(onPop).toHaveBeenCalledTimes(1)
+
+    appNavigationController.removeItem(item)
   })
 
-  it('фолбэк отступает, если событие забрал более поздний window-слушатель', async () => {
-    const escFallback = vi.fn()
-    deactivate = initHotkeys({ escFallback })
-    const legacy = (e: KeyboardEvent) => { if (e.key === 'Escape') e.preventDefault() }
-    window.addEventListener('keydown', legacy)
-    press('Escape')
-    await tick()
-    expect(escFallback).not.toHaveBeenCalled()
-    window.removeEventListener('keydown', legacy)
+  it('пустой стек записей — Esc ничего не делает: hotkeys.ts не заводит свой таймер/фолбэк', () => {
+    vi.useFakeTimers()
+    try {
+      deactivate = initHotkeys({})
+      press('Escape')
+      // Раньше ветка Esc в hotkeys.ts безусловно ставила setTimeout под
+      // отложенный escFallback — даже без переданного колбэка. Теперь у Esc
+      // здесь нет вообще никакой ветки: таймеров быть не должно.
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
