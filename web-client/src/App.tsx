@@ -25,6 +25,7 @@ import { gradientFor } from './core/dialogToChat'
 import { usePipStore } from './core/pip'
 import { useAppBootstrap } from './core/hooks/useAppBootstrap'
 import { useUrlSync } from './core/hooks/useUrlSync'
+import { startChatHistory } from './core/navigation/chatHistory'
 import { useShellEnterAnimation } from './core/hooks/useShellEnterAnimation'
 import { useAutoLock } from './core/hooks/useAutoLock'
 import { useGlobalToast } from './core/hooks/useGlobalToast'
@@ -68,6 +69,10 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   // то есть пока чат/тред/черновик НЕ выбран (см. useLeftColumnShown).
   useLeftColumnShown(selectedId !== null)
   useUrlSync()
+  // стор → хэш: подписка живёт рядом с useUrlSync (хэш → стор) — вместе они
+  // и есть та самая двунаправленная синхронизация, разнесённая по направлениям
+  // на разные модули (см. докблок `core/navigation/chatHistory.ts`).
+  useEffect(() => startChatHistory(), [])
   const deep = useDeepLinks(showToast)
   const chatList = useChatList()
 
