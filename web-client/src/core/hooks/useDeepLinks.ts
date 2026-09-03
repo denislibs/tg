@@ -9,6 +9,7 @@ import { loadFolders } from '../../stores/foldersStore'
 import { useNavigationStore } from '../../stores/navigationStore'
 import { useT } from '../../i18n'
 import appNavigationController from '../navigation/appNavigationController'
+import { syncChatHash } from '../navigation/chatHistory'
 
 // Зачистка адреса после обработки диплинка — ЕДИНСТВЕННЫЙ писатель истории
 // браузера обязан быть appNavigationController (задача 4, ОСТАТОК #108); свой
@@ -28,7 +29,23 @@ import appNavigationController from '../navigation/appNavigationController'
 // диплинк-оверлей (qr/addlist) рендерится ПОВЕРХ уже открытого чата, и
 // зачистка его адреса не должна ни рассинхронить хэш чата с внутренним
 // состоянием контроллера, ни обогнать соседнюю мутацию истории.
-const clearDeepLinkAddress = () => appNavigationController.overrideAddress(new URL('/', location.origin))
+//
+// НАХОДКА РЕВЬЮ (Minor, финальное ревью п.6): `overrideAddress` сбрасывает
+// АДРЕС ЦЕЛИКОМ, включая хэш открытого чата (`new URL('/', …)` хэша не
+// несёт) — `currentHash`/`overriddenHash` контроллер синхронизирует сам
+// (см. докблок метода), но САМ ХЭШ АКТИВНОГО ЧАТА в адресную строку без
+// внешнего толчка не возвращается: единственный, кто умеет его посчитать
+// заново, — `syncChatHash()` (`core/navigation/chatHistory.ts`), а её здесь
+// никто не звал. Симптом — ровно тот, что описан абзацем выше: диплинк-
+// оверлей поверх открытого чата, после закрытия оверлея хэш `#peerId`
+// пропадал из адреса до следующей мутации стека (открытия другого чата),
+// хотя чат оставался открытым. Досылаем синхронизацию сразу здесь же — тем
+// же единственным писателем (`appNavigationController.overrideHash` внутри
+// `syncChatHash`), а не отдельным путём записи.
+const clearDeepLinkAddress = () => {
+  appNavigationController.overrideAddress(new URL('/', location.origin))
+  syncChatHash()
+}
 
 // /join обрабатываем не более одного раза за сессию приложения.
 let joinDeepLinkHandled = false
