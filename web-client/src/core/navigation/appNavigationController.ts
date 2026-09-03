@@ -478,23 +478,6 @@ export class AppNavigationController {
     }
   }
 
-  /**
-   * ОСТАТОК #108, а не метод оригинала. У tweb смена чата не создаёт записи
-   * истории вовсе — хэш переписывается на месте (`overrideHash` →
-   * `replaceState`), а Back закрывает чат отдельной записью типа `im`. У нас
-   * каждый открытый чат — своя запись (Phase A роутинга, `useUrlSync`), и
-   * пока это так, её `pushState` обязан идти через ТУ ЖЕ очередь мутаций, что
-   * записи навигации: иначе он обгонит ещё не подтверждённый `history.back()`
-   * закрывающегося оверлея (воспроизведённый дефект волны 1).
-   *
-   * Метод уйдёт вместе с переводом навигации чата на `overrideHash`.
-   */
-  public pushHashState(url: string) {
-    this.modifyHistoryFromEvent(() => {
-      history.pushState(null, '', url)
-    })
-  }
-
   public replaceState(url?: URL) {
     if(!url) {
       url = new URL(location.href)
