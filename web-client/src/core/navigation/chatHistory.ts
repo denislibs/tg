@@ -19,7 +19,7 @@ import { useChatStackStore, selectActive } from '../../stores/chatStackStore'
 import { useNavigationStore } from '../../stores/navigationStore'
 import { cachedChat } from '../peerCache'
 import appNavigationController from './appNavigationController'
-import mediaSizes from '@core/dom/mediaSizes'
+import mediaSizes, { ScreenSize } from '@core/dom/mediaSizes'
 import { usePipStore } from '../pip'
 
 /**
@@ -28,8 +28,8 @@ import { usePipStore } from '../pip'
  *
  * НАХОДКА РЕВЬЮ (Critical, п.1): раньше хэш читался ИСКЛЮЧИТЕЛЬНО из стека
  * (`chatStackStore`), а на узком экране закрытие чата стрелкой «назад»
- * сохраняло смонтированный инстанс (стек НЕ трогается — см. ветку
- * `mediaSizes.isFloatingLeftSidebar` в `closeChatLevel` ниже), поэтому хэш
+ * сохраняло смонтированный инстанс (стек НЕ трогается — см. ветки
+ * `isFloatingLeftSidebar` и `ScreenSize.mobile` в `closeChatLevel` ниже), поэтому хэш
  * оставался прежним (`#42`) при видимом списке чатов. Порт: у tweb хэш
  * завязан на выбранный ТАБ, а не на массив `chats[]` — `selectTab`
  * (appImManager.ts:2591-2597) зовёт `overrideHash(id > CHATLIST ?
@@ -84,8 +84,10 @@ let closingViaRecord = false
 
 /**
  * Закрыть текущий уровень чата — порт `setPeer({})` (appImManager.ts:2761-2774,
- * :2825-2828), включая ветку узкого/плавающего сайдбара (:2771-2773,
- * `mediaSizes.isFloatingLeftSidebar`) — она ПОРТИРОВАНА СЮДА (находка ревью,
+ * :2822-2828), включая ОБЕ ветки оригинала, сохраняющие смонтированный
+ * инстанс: плавающий сайдбар (:2771-2773, `mediaSizes.isFloatingLeftSidebar`)
+ * и мобильный экран (:2822 — при пустом `peerId` `chat.setPeer({})` на
+ * `ScreenSize.mobile` не зовётся вовсе). Они ПОРТИРОВАНЫ СЮДА (находка ревью,
  * Critical п.1), а не снаружи (`App.tsx`): у оригинала это ветка внутри
  * `setPeer`, то есть срабатывает уже ПОСЛЕ того, как контроллер снял запись
  * (`im`/`chat`) — ровно как остальные ветки этой функции. Прежняя реализация
@@ -148,25 +150,107 @@ export function closeChatLevel(options: { isDeleting?: boolean } = {}): void {
     // `hashForChat()` при этом сама уходит в '' (проверка `selectedId` в её
     // докблоке) — хэш активного чата закрывается вместе с записью.
     //
+    // РАСХОЖДЕНИЕ С ОРИГИНАЛОМ, НАЗВАННОЕ: у tweb здесь ТУМБЛЕР —
+    // `selectTab(+!this.tabId)`, то есть при УЖЕ активном табе списка он бы
+    // чат ВЕРНУЛ. Вторая половина тумблера (список → чат) портирована не
+    // сюда, а в `toggleChatIfMedium` (chat.ts:1619-1626) — откуда её зовёт и
+    // оригинал: в `Chat.pop()` ДО `appNavigationController.back(...)`. Сюда
+    // управление приходит ТОЛЬКО как `onPop` живой записи `im`/`chat` (либо
+    // прямым `isDeleting` выше), а запись живёт ровно пока показан чат —
+    // значит таб здесь гарантированно «чат», и обе половины тумблера дали бы
+    // один и тот же результат. Разведены они по двум функциям потому, что у
+    // нас нет объекта `Chat` с методом `pop()`: «жать назад» и «закрыть
+    // уровень» — две разные функции этого модуля (`backChatLevel` и эта).
+    //
     // `usePipStore().active` — сигнал, которого у tweb НЕТ: у нас есть
     // отдельный режим «всё приложение в Document PiP» (см. `core/pip.ts`),
     // тоже принудительно однаколоночный, но PiP-окно узкое НЕЗАВИСИМО от
     // ширины ОСНОВНОГО окна, к которому привязан `mediaSizes` (слушает
     // `window.resize` того окна, где он создан, — см. докблок `core/dom/
     // mediaSizes.ts`). Без этого добавления закрытие чата в узком PiP-окне
-    // на широком основном экране ошибочно ушло бы в ветку ниже (полная
-    // очистка стека) вместо сохранения инстанса — названное расширение
-    // порта, не третий сигнал «своей» природы: то же самое `narrow`, что уже
+    // на широком основном экране ошибочно ушло бы в ветку полной очистки
+    // (ниже) вместо сохранения инстанса — названное расширение порта, не
+    // третий сигнал «своей» природы: то же самое `narrow`, что уже
     // складывает `App.tsx` (`useMediaQuery('(max-width:900px)') || pipActive`).
     if (mediaSizes.isFloatingLeftSidebar || usePipStore.getState().active) {
       useNavigationStore.getState().setSelectedId(null)
       return
     }
-    // appImManager.ts:2825-2828 — иначе чат очищается целиком, таб уходит на список.
+    // appImManager.ts:2822 — `if(peerId || mediaSizes.activeScreen !== ScreenSize.mobile)`:
+    // при ПУСТОМ peerId на мобиле `chat.setPeer({})` не зовётся ВОВСЕ, то есть
+    // инстанс сохраняет свой пир — то же сохранение, что даёт ветка плавающего
+    // сайдбара выше, но ДРУГИМ кодом оригинала; дальше на мобиле идёт только
+    // `selectTab(CHATLIST)` (:2826).
+    //
+    // НАХОДКА РЕВЬЮ (Important): без этой ветки телефон (ширина ≤600 →
+    // `ScreenSize.mobile`, где `isFloatingLeftSidebar` ЛОЖНА — она требует
+    // `activeScreen === medium`) проваливался в полную очистку ниже, и
+    // смонтированный инстанс размонтировался. Такого нет ни у оригинала, ни
+    // у нашего прежнего кода (`App.tsx::backToList` сохранял инстанс на всех
+    // ширинах ≤900) — регресс, внесённый переносом ветки узкого экрана внутрь
+    // этой функции по одному лишь `isFloatingLeftSidebar`.
+    if (mediaSizes.activeScreen === ScreenSize.mobile) {
+      useNavigationStore.getState().setSelectedId(null)
+      return
+    }
+    // appImManager.ts:2822-2823 + :2825-2828 — не-мобильный экран: инстансу
+    // чистят пир (`chat.setPeer({})`), и таб уходит на список. `selectChat(null)`
+    // делает разом ровно эти две вещи (`chatStackStore.clear()` + `selectedId = null`).
     useNavigationStore.getState().selectChat(null)
   } finally {
     closingViaRecord = false
   }
+}
+
+/**
+ * Порт `Chat.toggleChatIfMedium` (tweb chat.ts:1619-1626) — ПЕРВОЕ, что делает
+ * `Chat.pop()` (:1628-1632, стрелка «назад» в шапке): на экране `medium` при
+ * показанном списке чатов «назад» не закрывает НИЧЕГО, а возвращает чат —
+ * `appImManager.setPeer({peerId: this.peerId})`, который на том же экране
+ * уходит в ветку «тот же пир» (appImManager.ts:2799-2802: `isSamePeer &&
+ * activeScreen <= medium && LEFT_COLUMN_ACTIVE` → `selectTab(APP_TABS.CHAT)`).
+ * То есть стрелка на этой ширине — ТУМБЛЕР список↔чат, а не «выход».
+ *
+ * НАХОДКА РЕВЬЮ (Critical): без этого порта второе нажатие «назад» уводило из
+ * приложения. В полосе 601-925 стрелка после закрытия чата ОСТАЁТСЯ на экране
+ * (колонка чата не скрыта, а сдвинута — `styles/tweb/_chat.scss:464-470`,
+ * `respond-to(floating-left-sidebar)`), и второе нажатие звало
+ * `back('im')` — а записи `im` уже нет, она снята первым нажатием, — после
+ * чего `appNavigationController.back` падал в голый `history.back()` и
+ * выбрасывал за пределы SPA.
+ *
+ * Соответствия ролей:
+ *  • `mediaSizes.activeScreen === ScreenSize.medium` — дословно из оригинала
+ *    (именно `activeScreen`, не `isFloatingLeftSidebar`; для medium они
+ *    совпадают: `medium` = 601..925 = `isLessThanFloatingLeftSidebar`).
+ *    `usePipStore().active` подмешан по той же причине, что и в
+ *    `closeChatLevel` (см. её комментарий) — узкое PiP-окно;
+ *  • `document.body.classList.contains(LEFT_COLUMN_ACTIVE)` — у нас
+ *    `navigationStore.selectedId === null`: класс на body И ЕСТЬ производная
+ *    от него (`App.tsx`: `useLeftColumnShown(selectedId !== null)`), и читать
+ *    первоисточник надёжнее, чем ждать, пока React прогонит layout-эффект;
+ *  • `this.peerId` (пир возвращаемого инстанса) — корень стека: тумблер
+ *    достижим только при закрытом чате, а закрытие с глубины >1 срезает
+ *    уровень и таб не трогает, значит в стеке здесь ровно один инстанс.
+ *    Строку-id `navigationStore` собираем обратно из него: `draft:<peerId>`,
+ *    если пережил `draftPeer` того же пира (у tweb пространства имён
+ *    `draft:` нет вовсе — там id таба это сам peerId), иначе просто число;
+ *  • пуш `im` после смены таба — порт `selectTab` (appImManager.ts:2628-2638):
+ *    переход CHATLIST → CHAT заводит запись. Без него следующий Back снова
+ *    не нашёл бы, что снимать. Порядок тот же, что у оригинала: сперва таб,
+ *    потом запись.
+ */
+function toggleChatIfMedium(): boolean {
+  const isMedium = mediaSizes.activeScreen === ScreenSize.medium || usePipStore.getState().active
+  const nav = useNavigationStore.getState()
+  if (!isMedium || nav.selectedId !== null) return false
+
+  const root = useChatStackStore.getState().stack[0]
+  if (!root) return false
+
+  nav.setSelectedId(nav.draftPeer?.id === root.peerId ? `draft:${root.peerId}` : String(root.peerId))
+  pushImRecordIfNeeded()
+  return true
 }
 
 /**
@@ -186,6 +270,11 @@ export function closeChatLevel(options: { isDeleting?: boolean } = {}): void {
  * Исключение — `closeChatLevel({isDeleting: true})`, см. её докблок.
  */
 export function backChatLevel(): void {
+  // chat.ts:1629 — `if(this.toggleChatIfMedium()) return;` ПЕРЕД разбором
+  // глубины: на medium с показанным списком «назад» возвращает чат, а не
+  // снимает запись (см. докблок `toggleChatIfMedium`).
+  if (toggleChatIfMedium()) return
+
   const depth = useChatStackStore.getState().stack.length
   appNavigationController.back(depth > 1 ? 'chat' : 'im')
 }

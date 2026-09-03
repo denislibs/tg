@@ -10,14 +10,24 @@ import { useChatStackStore } from '../../stores/chatStackStore'
 import { useNavigationStore } from '../../stores/navigationStore'
 import appNavigationController from './appNavigationController'
 import mediaSizes from '@core/dom/mediaSizes'
+import { usePipStore } from '../pip'
 
 /** Тот же приём, что `core/dom/mediaSizes.test.ts` (`refresh`): mediaSizes
  *  пересчитывается по window-`resize` через rAF, тестам нужен синхронный
- *  снимок — зовём приватный пересчёт напрямую. */
-const setNarrowScreen = (narrow: boolean) => {
-  Object.defineProperty(window, 'innerWidth', { value: narrow ? 700 : 1280, configurable: true })
+ *  снимок — зовём приватный пересчёт напрямую.
+ *
+ *  Ширина здесь — не «узко/широко», а КОНКРЕТНЫЙ экран оригинала: ≤600 —
+ *  `ScreenSize.mobile`, 601..925 — `medium` (`isFloatingLeftSidebar`), выше —
+ *  `large` (`core/dom/mediaSizes.ts`, пороги 1:1 из tweb). Ветки закрытия чата
+ *  у этих трёх экранов РАЗНЫЕ (см. `closeChatLevel`), поэтому пины ставятся по
+ *  ширине, а не по булеву «узкий». */
+const setScreenWidth = (width: number) => {
+  Object.defineProperty(window, 'innerWidth', { value: width, configurable: true })
   ;(mediaSizes as unknown as { handleResize: () => void }).handleResize()
 }
+
+/** Полоса плавающего сайдбара (700) против десктопа (1280). */
+const setNarrowScreen = (narrow: boolean) => setScreenWidth(narrow ? 700 : 1280)
 
 /** Открыть тред/комментарии поверх текущего верха стека — сокращение для
  *  повторяющегося набора опций в тестах ниже (`peerId`/`threadId` разные,
@@ -485,6 +495,146 @@ describe('chatHistory — записи im/chat', () => {
       await flush()
       expect(location.hash).toBe('#42')
     } finally {
+      stop()
+    }
+  })
+
+  // НАХОДКА РЕВЬЮ (Important): ветка «узкий экран сохраняет инстанс» была
+  // заведена по ОДНОМУ `mediaSizes.isFloatingLeftSidebar`, а он истинен лишь
+  // при `activeScreen === medium` (601..925 — см. `core/dom/mediaSizes.ts`).
+  // На НАСТОЯЩЕМ телефоне (≤600 → `ScreenSize.mobile`) он ЛОЖЕН, поэтому
+  // закрытие уходило в полную очистку (`selectChat(null)`) и размонтировало
+  // инстанс — регресс и против оригинала, и против нашего прежнего кода
+  // (`App.tsx::backToList` сохранял инстанс на всех ширинах ≤900).
+  //
+  // У оригинала мобильную ветку держит ДРУГОЙ код, который мы не портировали:
+  // `if(peerId || mediaSizes.activeScreen !== ScreenSize.mobile)`
+  // (appImManager.ts:2822) — при ПУСТОМ peerId на мобиле `chat.setPeer({})`
+  // не зовётся вовсе, дальше идёт только `selectTab(CHATLIST)` (:2826).
+  //
+  // Мутация: `if (mediaSizes.activeScreen === ScreenSize.mobile)` →
+  // `if (false && mediaSizes.activeScreen === ScreenSize.mobile)` — краснеют
+  // обе ширины этого теста, а пин 700px («узкий экран: backChatLevel…» выше)
+  // остаётся зелёным: там работает ветка `isFloatingLeftSidebar`.
+  it.each([375, 600])('телефон (%iпх) закрывает чат как medium: инстанс переживает, запись снята', async (width) => {
+    setScreenWidth(width)
+    const stop = startChatHistory()
+    try {
+      useNavigationStore.getState().selectChat('42')
+      await flush()
+      expect(appNavigationController.findItemByType('im')).toBeDefined()
+
+      backChatLevel()
+
+      expect(appNavigationController.findItemByType('im')).toBeUndefined()
+      expect(useNavigationStore.getState().selectedId).toBeNull()
+      // Главное: инстанс НЕ размонтирован — стек цел, повторное открытие того
+      // же чата не ремонтит компонент.
+      expect(useChatStackStore.getState().stack).toHaveLength(1)
+      expect(useChatStackStore.getState().stack[0]?.peerId).toBe(42)
+      await flush()
+      expect(location.hash).toBe('')
+    } finally {
+      stop()
+    }
+  })
+
+  // Обратная сторона того же пина: на десктопе оригинал `chat.setPeer({})`
+  // ЗОВЁТ (условие :2822 истинно по `activeScreen !== mobile`), то есть инстанс
+  // очищается — сохранять его тут нечего. Без этого теста мутация
+  // `useNavigationStore.getState().selectChat(null)` → `…setSelectedId(null)`
+  // в последней ветке `closeChatLevel` осталась бы незамеченной: все прочие
+  // пины закрытия стоят на узких ширинах.
+  it('десктоп (1280пх) закрывает чат полностью: стек очищается', async () => {
+    setScreenWidth(1280)
+    const stop = startChatHistory()
+    try {
+      useNavigationStore.getState().selectChat('42')
+      await flush()
+
+      backChatLevel()
+
+      expect(useChatStackStore.getState().stack).toHaveLength(0)
+      expect(useNavigationStore.getState().selectedId).toBeNull()
+      expect(appNavigationController.findItemByType('im')).toBeUndefined()
+    } finally {
+      stop()
+    }
+  })
+
+  // НАХОДКА РЕВЬЮ (Critical): второе «назад» подряд уводило ИЗ ПРИЛОЖЕНИЯ.
+  // В полосе 601-925 стрелка после закрытия чата с экрана НЕ уходит (колонка
+  // чата не скрыта, а сдвинута — `styles/tweb/_chat.scss:464-470`,
+  // `respond-to(floating-left-sidebar)`; `.sidebar-left-overlay` там
+  // `pointer-events: none`), и второе нажатие звало `back('im')`, когда записи
+  // `im` уже нет — `appNavigationController.back` падал в голый
+  // `history.back()` (:442) и уносил за пределы SPA.
+  //
+  // У оригинала этого не бывает: `Chat.pop()` (chat.ts:1628-1632) СНАЧАЛА
+  // зовёт `toggleChatIfMedium()` (:1619-1626), и на medium при показанном
+  // списке тот возвращает чат обратно (`setPeer({peerId})` → ветка «тот же
+  // пир», appImManager.ts:2799-2802 → `selectTab(CHAT)`).
+  //
+  // Мутации: (1) убрать `if (toggleChatIfMedium()) return` из `backChatLevel`
+  // — краснеет на лишнем `history.back()`; (2) убрать `pushImRecordIfNeeded()`
+  // из `toggleChatIfMedium` — краснеет на отсутствии записи `im` (тогда уже
+  // ТРЕТЬЕ нажатие ушло бы в голый `history.back()`).
+  it('полоса 601-925: второе «назад» — тумблер оригинала, лишнего history.back() нет', async () => {
+    setScreenWidth(700)
+    const stop = startChatHistory()
+    try {
+      useNavigationStore.getState().selectChat('42')
+      await flush()
+      const backsBefore = backSpy.mock.calls.length
+
+      backChatLevel() // первое «назад» — чат закрыт, показан список
+      await flush()
+      expect(useNavigationStore.getState().selectedId).toBeNull()
+      expect(appNavigationController.findItemByType('im')).toBeUndefined()
+      // Снятие записи — честный `history.back()` контроллера, он законен.
+      const backsAfterFirst = backSpy.mock.calls.length
+      expect(backsAfterFirst).toBeGreaterThan(backsBefore)
+
+      backChatLevel() // второе «назад» по той же (никуда не девшейся) стрелке
+      await flush()
+
+      // Ни одного ЛИШНЕГО `history.back()` при пустом стеке записей — это и
+      // есть «не уводит из SPA».
+      expect(backSpy.mock.calls.length).toBe(backsAfterFirst)
+      // …и это именно тумблер: чат вернулся, инстанс тот же, запись `im`
+      // заведена заново (порт `selectTab`, appImManager.ts:2628-2638).
+      expect(useNavigationStore.getState().selectedId).toBe('42')
+      expect(useChatStackStore.getState().stack).toHaveLength(1)
+      expect(appNavigationController.findItemByType('im')).toBeDefined()
+      expect(location.hash).toBe('#42')
+    } finally {
+      stop()
+    }
+  })
+
+  // Ветка `usePipStore().active` в `closeChatLevel` — названное расширение
+  // порта (у tweb режима «всё приложение в Document PiP» нет): PiP-окно узкое
+  // НЕЗАВИСИМО от ширины основного окна, к которому привязан `mediaSizes`.
+  // Пина у неё не было вовсе — мутация `|| usePipStore.getState().active` →
+  // `|| false` не красила ни одного теста. Здесь основной экран ЗАВЕДОМО
+  // широкий (1280 → `ScreenSize.large`), поэтому без этой ветки закрытие
+  // ушло бы в полную очистку стека.
+  it('PiP: узкое PiP-окно на широком основном экране сохраняет инстанс', async () => {
+    setScreenWidth(1280)
+    usePipStore.setState({ active: true })
+    const stop = startChatHistory()
+    try {
+      useNavigationStore.getState().selectChat('42')
+      await flush()
+
+      backChatLevel()
+
+      expect(useNavigationStore.getState().selectedId).toBeNull()
+      expect(useChatStackStore.getState().stack).toHaveLength(1)
+      expect(useChatStackStore.getState().stack[0]?.peerId).toBe(42)
+      expect(appNavigationController.findItemByType('im')).toBeUndefined()
+    } finally {
+      usePipStore.setState({ active: false, win: null })
       stop()
     }
   })
