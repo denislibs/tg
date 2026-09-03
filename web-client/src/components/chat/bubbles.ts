@@ -867,6 +867,37 @@ export default class ChatBubbles implements BubbleGroupsHost {
     return this.chat.autoDownload?.()
   }
 
+  /**
+   * Порт `forEach` из tweb `ChatBubbles.finishPeerChange` (bubbles.ts:5787-5792,
+   * зовётся `Chat.finishPeerChange` → `this.bubbles.finishPeerChange()`, chat.ts:1203):
+   * `[this.chatInner, this.remover].forEach(el => { el.classList.toggle('is-chat',
+   * isLikeGroup); ...; el.classList.toggle('is-broadcast', isBroadcast) })`.
+   *
+   * Без `is-chat` не срабатывает правило `styles/tweb/_chat.scss:1311-1316`
+   * (`margin-inline-start: 2.875rem` на `.bubble-content-wrapper`) — аватарная
+   * колонка (`.bubbles-group-avatar-container`, `position: absolute`, вне
+   * потока) ложится поверх бабла, а с ней и реакции.
+   *
+   * ОБА узла — как в оригинале, одним forEach: `remover` создаётся только
+   * здесь и никогда не пересоздаётся, поэтому забыть его — рассинхронить
+   * анимацию удаления бабла (`.bubbles-remover`) с самой лентой.
+   *
+   * `isLikeGroup`/`isBroadcast` читаются с `this.chat` — как в оригинале
+   * `Chat.isLikeGroup`/`Chat.isBroadcast` (chat.ts:145, appPeersManager).
+   * Оба поля на `ChatContext` неизменны на весь срок жизни инстанса ленты
+   * (хост, `VanillaFeed.tsx`, пересоздаёт `ChatBubbles` целиком при их смене).
+   *
+   * ВЫЧЕТЫ (два соседних тумблера того же forEach — предмета нет):
+   *  - `no-messages` — нужен асинхронный `Chat.hasMessages()` (chat.ts),
+   *    которого у ленты нет;
+   *  - `with-message-avatars` — гейтит `isVerificationBot(peerId)`, а ботов-
+   *    верификаторов в нашей модели не существует вовсе.
+   */
+  private applyChatTypeClasses(element: HTMLElement) {
+    element.classList.toggle('is-chat', !!this.chat.isLikeGroup)
+    element.classList.toggle('is-broadcast', !!this.chat.isBroadcast)
+  }
+
   // Порт tweb bubbles.ts:1439-1458 — дерево дословно.
   private constructBubbles() {
     const container = this.container = document.createElement('div')
@@ -874,11 +905,13 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     const chatInner = this.chatInner = document.createElement('div')
     chatInner.classList.add('bubbles-inner')
+    this.applyChatTypeClasses(chatInner)
 
     const removerContainer = document.createElement('div')
     removerContainer.classList.add('bubbles-remover-container')
     const remover = this.remover = document.createElement('div')
     remover.classList.add('bubbles-remover', 'bubbles-inner')
+    this.applyChatTypeClasses(remover)
     removerContainer.append(remover)
 
     const floatingSeparatorsContainer = this.floatingSeparatorsContainer = document.createElement('div')
@@ -3462,6 +3495,13 @@ export default class ChatBubbles implements BubbleGroupsHost {
     } else {
       chatInner.classList.add('bubbles-inner')
     }
+    // `!samePeer` — самый частый путь (первый `setPeer` после монтирования,
+    // `reload()`) — обнуляет `className` до голого `bubbles-inner`, унося с
+    // собой `is-chat`/`is-broadcast`, поставленные в `constructBubbles`; при
+    // `samePeer` они уже скопированы вместе с остальным `className`, и вызов
+    // ниже идемпотентен (`toggle` с явным булем). См. докблок
+    // `applyChatTypeClasses`.
+    this.applyChatTypeClasses(chatInner)
 
     // tweb :5254-5270.
     const canScroll = samePeer && sameSearch
