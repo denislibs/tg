@@ -9,22 +9,24 @@ import { isPeerMuted } from '../dialogs/notifySettings'
 import { useNavigationStore } from '../../stores/navigationStore'
 import { initHotkeys } from '../hotkeys'
 import { parsePeerId } from '../peers/peerId'
-import appNavigationController from '../navigation/appNavigationController'
+import { backChatLevel } from '../navigation/chatHistory'
 
 export function useAppHotkeys(): void {
   const managers = useManagers()
   // Esc, запасной путь (`hotkeys.ts` зовёт `escFallback`, только если ничего
   // не забрало событие раньше — оверлеи со своей записью навигации гасят его
   // в фазе захвата). Пока чат открыт, `chatHistory.ts` держит на стеке
-  // контроллера ОДНУ запись `im`, и её же `onKeyDown` в норме перехватывает
-  // Esc первым (`appNavigationController.ts:294-301`) — эта ветка остаётся
+  // контроллера запись `im` (корень) и по одной `chat` на каждый уровень
+  // глубже (тред/комментарии) — их же `onKeyDown` в норме перехватывает Esc
+  // первым (`appNavigationController.ts:294-301`), эта ветка остаётся
   // подстраховкой на случай, если запись почему-то ещё не успела встать.
-  // Ветвление «тред закрывается первым, потом чат» больше не здесь — оно
-  // ОДНО, внутри `closeChatLevel` (`core/navigation/chatHistory.ts`), как и
-  // положено единственной записи на всю глубину чата (порт appImManager.ts:2628-2638).
+  // Какую из двух типов закрывать — решает `backChatLevel` (порт
+  // `chat.ts:1628-1632`: `back(isFirstChat ? 'im' : 'chat')`), а ветвление
+  // «тред первым, потом чат» — внутри общего `closeChatLevel`
+  // (`core/navigation/chatHistory.ts`).
   const escCloseChat = useCallback(() => {
     if (!useNavigationStore.getState().selectedId) return
-    appNavigationController.back('im')
+    backChatLevel()
   }, [])
 
   // Task 4 (действия без оптимистики): локальный апдейт применяет владелец

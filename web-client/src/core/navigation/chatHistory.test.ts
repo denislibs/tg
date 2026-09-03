@@ -5,10 +5,21 @@
 // (`selectChat('draft:<id>')`, потом отдельно `setDraftPeer`), и подписка
 // обязана дожидаться ОБОИХ.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { hashForChat, startChatHistory, syncChatHash } from './chatHistory'
+import { backChatLevel, hashForChat, startChatHistory, syncChatHash } from './chatHistory'
 import { useChatStackStore } from '../../stores/chatStackStore'
 import { useNavigationStore } from '../../stores/navigationStore'
 import appNavigationController from './appNavigationController'
+
+/** Открыть тред/комментарии поверх текущего верха стека — сокращение для
+ *  повторяющегося набора опций в тестах ниже (`peerId`/`threadId` разные,
+ *  форма одна и та же: tweb setInnerPeer({peerId, threadId})). */
+const openThread = (peerId: number, threadId: number) =>
+  useChatStackStore.getState().setInnerPeer({
+    peerId,
+    type: 'discussion',
+    threadId,
+    thread: { rootMsgId: threadId, title: '', kind: 'comments' },
+  })
 
 /** Очередь мутаций истории контроллера идёт через `setTimeout(…, 0)`
  *  (`appNavigationController.modifyHistoryFromEvent`) — даём ей пройти
@@ -30,10 +41,11 @@ afterEach(() => {
   useChatStackStore.getState().clear()
   // `appNavigationController` — синглтон, живой на весь файл: любой тест,
   // гоняющий `startChatHistory()` при непустом стеке (включая тесты хэша
-  // выше — 'черновик' открывает draft-чат), заводит запись `im`. Без уборки
-  // здесь она пережила бы свой тест и ломала бы первый же `toBeUndefined()`
-  // в следующем.
+  // выше — 'черновик' открывает draft-чат), заводит запись `im` (и, если
+  // открывал тред, — `chat`). Без уборки здесь они пережили бы свой тест и
+  // ломали бы первый же `toBeUndefined()` в следующем.
   appNavigationController.removeByType('im')
+  appNavigationController.removeByType('chat')
 })
 
 describe('chatHistory', () => {
@@ -95,21 +107,32 @@ describe('chatHistory', () => {
 })
 
 /**
- * Запись `im` — порт appImManager.ts:2628-2638 (пуш, условие `prevTabId
- * !== undefined && id > prevTabId` внутри `id < APP_TABS.PROFILE ||
- * !findItemByType('im')`) и `setPeer({})` — всех её веток, что у нас есть
- * предмет (:2761-2774 глубина>1 → spliceChats(chatIndex); :2825-2828 иначе —
- * чат очищается, таб уходит на список). Back/Esc закрывают чат ОДНОЙ этой
- * записью — уход вглубь (setInnerPeer, appImManager.ts:2831-2872) `selectTab`
- * сам не зовёт, второй записи не добавляет.
+ * Записи `im`/`chat` — порт appImManager.ts:2628-2638 (пуш `im`, условие
+ * `prevTabId !== undefined && id > prevTabId` внутри `id < APP_TABS.PROFILE
+ * || !findItemByType('im')`), `chatsSelectTab` (:2255-2270, пуш `chat` на
+ * КАЖДЫЙ уход глубже), `spliceChats` (:2689-2692, `removeByType('chat',
+ * true)` на каждый срезанный уровень) и `setPeer({})` — всех её веток, что у
+ * нас есть предмет (:2761-2774 глубина>1 → spliceChats(chatIndex); :2825-2828
+ * иначе — чат очищается, таб уходит на список).
+ *
+ * ИСПРАВЛЕНИЕ ПОСЛЕ РЕВЬЮ: черновая версия этой задачи считала, что тип
+ * `chat` в оригинале не производит никто («холостой» цикл `removeByType`) —
+ * это было неверно: `chatsSelectTab` (appImManager.ts:2257-2270) заводит
+ * ИМЕННО такую запись при уходе глубже (условие `idx > prevIdx` по DOM-
+ * позиции контейнера, а контейнеры `createNewChat()` всегда `append`-ит).
+ * Значит записей на самом деле ДВЕ: `im` — одна на факт «чат вообще открыт»
+ * (список↔чат), `chat` — по одной на КАЖДЫЙ добавленный уровень глубины
+ * (чат→тред→глубже). Back с глубины >1 снимает верхнюю `chat` (уровень
+ * закрывается, чат остаётся); Back с глубины 1 снимает `im` (чат закрывается
+ * целиком) — тот же общий `closeChatLevel`, что сам решает по глубине стека.
  *
  * `appNavigationController` — синглтон, живой на весь файл (не новый
  * инстанс, как в `appNavigationController.test.ts`, — `chatHistory.ts`
- * работает именно с синглтоном), поэтому убираем за собой запись 'im' и
+ * работает именно с синглтоном), поэтому убираем за собой обе записи и
  * мокаем `history.back`/`pushState`, чтобы не гонять реальную навигацию
  * jsdom между тестами — тот же приём, что `appNavigationController.test.ts:74-86`.
  */
-describe('chatHistory — запись im', () => {
+describe('chatHistory — записи im/chat', () => {
   let backSpy: ReturnType<typeof vi.spyOn>
   let pushStateSpy: ReturnType<typeof vi.spyOn>
 
@@ -120,6 +143,7 @@ describe('chatHistory — запись im', () => {
 
   afterEach(async () => {
     appNavigationController.removeByType('im')
+    appNavigationController.removeByType('chat')
     await flush()
     backSpy.mockRestore()
     pushStateSpy.mockRestore()
@@ -136,23 +160,20 @@ describe('chatHistory — запись im', () => {
     }
   })
 
-  // Мутационный пин: сними в реализации гард `!findItemByType('im')` — уход
-  // вглубь начнёт пушить вторую запись, и этот тест обязан покраснеть.
-  it('уход вглубь второй записи НЕ добавляет', () => {
+  // Перевёрнутый пин (см. докблок выше): уход вглубь ДОБАВЛЯЕТ запись `chat`
+  // — свою на каждый уровень, — а не вторую `im`. `im` остаётся одна.
+  it('уход вглубь заводит запись chat, im остаётся одна', () => {
     const stop = startChatHistory()
     const pushSpy = vi.spyOn(appNavigationController, 'pushItem')
     try {
       useNavigationStore.getState().selectChat('42')
-      expect(pushSpy).toHaveBeenCalledTimes(1)
+      expect(pushSpy).toHaveBeenCalledTimes(1) // im
+      expect(appNavigationController.findItemByType('chat')).toBeUndefined()
 
-      useChatStackStore.getState().setInnerPeer({
-        peerId: 77,
-        type: 'discussion',
-        threadId: 5,
-        thread: { rootMsgId: 5, title: '', kind: 'comments' },
-      })
-      // tweb appImManager.ts:2628 — id > prevTabId ложно при уходе вглубь
-      expect(pushSpy).toHaveBeenCalledTimes(1)
+      openThread(77, 5)
+
+      expect(pushSpy).toHaveBeenCalledTimes(1) // im по-прежнему одна
+      expect(appNavigationController.findItemByType('chat')).toBeDefined() // а запись уровня — новая
     } finally {
       pushSpy.mockRestore()
       stop()
@@ -163,15 +184,10 @@ describe('chatHistory — запись im', () => {
     const stop = startChatHistory()
     try {
       useNavigationStore.getState().selectChat('42')
-      useChatStackStore.getState().setInnerPeer({
-        peerId: 77,
-        type: 'discussion',
-        threadId: 5,
-        thread: { rootMsgId: 5, title: '', kind: 'comments' },
-      })
+      openThread(77, 5)
       expect(useChatStackStore.getState().stack).toHaveLength(2)
 
-      appNavigationController.back('im')
+      backChatLevel()
 
       expect(useChatStackStore.getState().stack).toHaveLength(1)
       expect(useChatStackStore.getState().stack[0]?.peerId).toBe(42)
@@ -187,10 +203,95 @@ describe('chatHistory — запись im', () => {
       useNavigationStore.getState().selectChat('42')
       expect(useChatStackStore.getState().stack).toHaveLength(1)
 
-      appNavigationController.back('im')
+      backChatLevel()
 
       expect(useChatStackStore.getState().stack).toHaveLength(0)
       expect(useNavigationStore.getState().selectedId).toBeNull()
+    } finally {
+      stop()
+    }
+  })
+
+  // Сценарий из ревью: прежняя (одна запись на всю глубину) модель ломала
+  // ИМЕННО эту последовательность — первый Back съедал единственную запись
+  // целиком, второй Back уже ничего не закрывал. С im+chat раздельно первый
+  // Back снимает chat (возврат в канал, чат открыт), второй — im (чат закрыт).
+  it('два Back подряд: сначала закрывают тред, потом чат целиком', () => {
+    const stop = startChatHistory()
+    try {
+      useNavigationStore.getState().selectChat('42')
+      openThread(77, 5)
+      expect(useChatStackStore.getState().stack).toHaveLength(2)
+
+      backChatLevel() // первый Back — вернулись в канал, чат остаётся открытым
+      expect(useChatStackStore.getState().stack).toHaveLength(1)
+      expect(useChatStackStore.getState().stack[0]?.peerId).toBe(42)
+      expect(useNavigationStore.getState().selectedId).toBe('42')
+
+      backChatLevel() // второй Back — закрывает чат целиком
+      expect(useChatStackStore.getState().stack).toHaveLength(0)
+      expect(useNavigationStore.getState().selectedId).toBeNull()
+    } finally {
+      stop()
+    }
+  })
+
+  // Глубина 3 (тред внутри треда) — единственный случай, где видна разница
+  // между «контроллер уже снял ровно одну свою запись» (closeChatLevel сам
+  // и есть тот onPop) и «снять ещё одну по счётчику дельты»: у глубины ≤ 2
+  // разницы нет вовсе (см. докблок `syncChatRecords`/`closingViaRecord` в
+  // chatHistory.ts) — оба Back'а глубины 2 находят компенсированный нуль.
+  // Мутационный пин на снятие записей — здесь, а не на «двух Back подряд»
+  // выше (см. сомнения в отчёте задачи).
+  it('глубина 3: Back возвращает на глубину 2, а не сразу в список — запись chat второго уровня переживает', () => {
+    const stop = startChatHistory()
+    try {
+      useNavigationStore.getState().selectChat('42')
+      openThread(77, 5)
+      openThread(88, 6)
+      expect(useChatStackStore.getState().stack).toHaveLength(3)
+
+      backChatLevel()
+
+      expect(useChatStackStore.getState().stack).toHaveLength(2)
+      expect(useChatStackStore.getState().stack[1]?.peerId).toBe(77)
+      // Запись уровня 77 обязана пережить снятие записи уровня 88 — иначе
+      // следующий Back не найдёт, чем закрыть ЭТОТ уровень, и провалится в
+      // голый history.back() (appNavigationController.back: без найденной
+      // записи типа — падает в history.back() безусловно).
+      expect(appNavigationController.findItemByType('chat')).toBeDefined()
+
+      backChatLevel()
+      expect(useChatStackStore.getState().stack).toHaveLength(1)
+      expect(useChatStackStore.getState().stack[0]?.peerId).toBe(42)
+    } finally {
+      stop()
+    }
+  })
+
+  // ЭТО и есть настоящий мутационный пин на `removeByType('chat', true)` в
+  // `syncChatRecords`: единственный путь у нас, где схлопывание НЕСКОЛЬКИХ
+  // уровней разом идёт МИМО контроллера (не через Back/`closeChatLevel`, а
+  // прямой мутацией `chatStackStore.setPeer` — «collapse to base» её ветки,
+  // клик по ДРУГОМУ чату из списка, пока открыт вложенный тред). Ни
+  // «Back из треда», ни «два Back подряд», ни «глубина 3» этот код не
+  // задевают — там срез всегда на ОДИН уровень, и УЖЕ снят самим контроллером
+  // (`backByItem` делает `spliceItems` ДО `onPop`), так что `removeByType`
+  // там неизменно застаёт пустоту — см. сомнения в отчёте задачи.
+  it('смена чата на ДРУГОЙ пир из глубины 3 срезает все уровни и их записи chat', () => {
+    const stop = startChatHistory()
+    try {
+      useNavigationStore.getState().selectChat('42')
+      openThread(77, 5)
+      openThread(88, 6)
+      expect(useChatStackStore.getState().stack).toHaveLength(3)
+      expect(appNavigationController.findItemByType('chat')).toBeDefined()
+
+      useNavigationStore.getState().selectChat('99') // клик по ДРУГОМУ чату в списке, не Back
+
+      expect(useChatStackStore.getState().stack).toHaveLength(1)
+      expect(useChatStackStore.getState().stack[0]?.peerId).toBe(99)
+      expect(appNavigationController.findItemByType('chat')).toBeUndefined()
     } finally {
       stop()
     }
