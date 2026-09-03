@@ -53,6 +53,62 @@ export function syncChatHash(): void {
 }
 
 /**
+ * Закрыть текущий уровень чата — порт `setPeer({})` (appImManager.ts:2761-2774,
+ * :2825-2828), тех её веток, у которых есть предмет в нашей модели: тумблер
+ * таба на узком экране (:2771-2773, `mediaSizes.isFloatingLeftSidebar`) сюда
+ * не входит — это уже закрыто другим механизмом (`App.tsx` backToList/
+ * `useLeftColumnShown`), а не портом `setPeer`.
+ *
+ * Единственный ЗАКОННЫЙ вызывающий — `onPop` записи `im` (см.
+ * `pushImRecordIfNeeded` ниже): запись из `appNavigationController` к этому
+ * моменту УЖЕ снята (`backByItem`/`handleItem` сперва `spliceItems`, потом
+ * зовут `onPop`), поэтому модель и стек записей остаются согласованы. Прямой
+ * вызов из UI в обход контроллера (как раньше `closeTop()`/`selectChat(null)`
+ * звались напрямую) оставил бы запись `im` висеть без соответствующего
+ * уровня — история разъехалась бы с состоянием; такие места переведены на
+ * `appNavigationController.back('im')` (Chat.tsx, useAppHotkeys.ts).
+ */
+export function closeChatLevel(): void {
+  const stack = useChatStackStore.getState()
+  // appImManager.ts:2768-2770 — chatIndex > 0 → spliceChats(chatIndex): срезать
+  // верхний инстанс (тред/комментарии), чат остаётся открытым.
+  if (stack.stack.length > 1) {
+    stack.closeTop()
+    return
+  }
+  // appImManager.ts:2825-2828 — иначе чат очищается целиком, таб уходит на список.
+  useNavigationStore.getState().selectChat(null)
+}
+
+/**
+ * Завести запись `im`, когда чат открывается при закрытом стеке (переход
+ * «список → чат») — порт appImManager.ts:2628-2638: `prevTabId !== undefined
+ * && id > prevTabId` внутри `id < APP_TABS.PROFILE || !findItemByType('im')`.
+ *
+ * У нас нет отдельного «таба» PROFILE — уровень ОДИН (чат открыт или нет), то
+ * есть первая половина условия оригинала (`id < APP_TABS.PROFILE`) для нас
+ * всегда истинна, а вторая половина (`!findItemByType('im')`) остаётся
+ * ЕДИНСТВЕННЫМ гардом. Проверяется на КАЖДУЮ мутацию стека чатов (а не только
+ * на переходе из пустого явной проверкой «было пусто, стало нет») — поэтому
+ * важно, что уход вглубь (`setInnerPeer`, appImManager.ts:2831-2872) `selectTab`
+ * САМ не зовёт: без этого гарда каждая мутация стека при уже открытом чате
+ * пыталась бы завести вторую запись.
+ */
+function pushImRecordIfNeeded(): void {
+  const stack = useChatStackStore.getState().stack
+  if (!stack.length) return
+  if (appNavigationController.findItemByType('im')) return
+
+  appNavigationController.pushItem({
+    type: 'im',
+    // appImManager.ts:2633-2636 — onPop: (canAnimate) => this.setPeer({}, canAnimate).
+    // Параметр canAnimate closeChatLevel не нужен: у нас переход анимирует CSS
+    // по смене состояния сторов, а не JS-таймер поверх `canAnimate`.
+    onPop: () => closeChatLevel(),
+  })
+}
+
+/**
  * Подписка «факты хэша → хэш». Хэш собирается из ДВУХ сторов
  * (`hashForChat` выше), и меняться каждый из них может НЕЗАВИСИМО — подписки
  * на один `chatStackStore` для этого недостаточно.
@@ -74,16 +130,29 @@ export function syncChatHash(): void {
  * подписка — на `navigationStore` целиком (в нём кроме `selectedId`/`draftPeer`
  * фактов для хэша нет, сужать срез незачем).
  *
- * Первый снимок НЕ синхронизируется здесь нарочно: на монтировании хэш из
- * адресной строки ещё не применён к сторам (`useUrlSync` делает это
+ * Первый снимок хэша НЕ синхронизируется здесь нарочно: на монтировании хэш
+ * из адресной строки ещё не применён к сторам (`useUrlSync` делает это
  * асинхронно — резолвит @username, дожидается диалогов). Досрочный вызов
  * увидел бы пустое состояние и стёр бы входящий хэш до того, как он
  * применится. Как только применение допишет стор, подписка отработает сама.
  *
+ * Запись `im` — наоборот, синхронизируется СРАЗУ (`pushImRecordIfNeeded()`
+ * ниже вызовом, а не только подпиской): `useUrlSync`-эффект регистрируется
+ * РАНЬШЕ этого (`App.tsx`: `useUrlSync()` перед `useEffect(startChatHistory)`)
+ * и на самом первом маунте применяет хэш синхронно (`selectChat` внутри
+ * `applyHash` без `await` для числового peerId) — стек чатов может стать
+ * непустым ДО того, как эта подписка вообще встанет. Без начального вызова
+ * первая открытая по хэшу вкладка осталась бы без записи `im` до следующей
+ * мутации стека (открытия треда, смены чата).
+ *
  * Возвращает отписку — вызывающий обязан снять её при размонтировании.
  */
 export function startChatHistory(): () => void {
-  const unsubStack = useChatStackStore.subscribe(syncChatHash)
+  const unsubStack = useChatStackStore.subscribe(() => {
+    syncChatHash()
+    pushImRecordIfNeeded()
+  })
   const unsubNav = useNavigationStore.subscribe(syncChatHash)
+  pushImRecordIfNeeded()
   return () => { unsubStack(); unsubNav() }
 }

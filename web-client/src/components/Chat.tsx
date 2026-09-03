@@ -24,6 +24,7 @@ import { PeerStatus } from '../shared/ui/peerStatus'
 import { useManagers } from '../core/hooks/useManagers'
 import { useNavigationActions } from '../core/hooks/useNavigationActions'
 import { useChatStackStore } from '../stores/chatStackStore'
+import appNavigationController from '../core/navigation/appNavigationController'
 import { useMirrorWindow } from '../core/hooks/useMirrorWindow'
 import { replaceMirrorWindow, winKey } from '../core/history/messagesMirror'
 import { useEvent } from '../core/hooks/useEvent'
@@ -153,7 +154,13 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // читает из стора, а не через проброс из Shell). Имена локальные совпадают с
   // прежними пропсами, чтобы не менять места использования ниже.
   const { openPeer: onOpenPeer, onChatCreated } = useNavigationActions()
-  const onCloseThread = useCallback(() => { useChatStackStore.getState().closeTop() }, [])
+  // Кнопка «назад» в шапке треда закрывает уровень ЗАПИСЬЮ, а не стором
+  // напрямую — как и стрелка «назад» в шапке чата у оригинала
+  // (tweb src/components/chat/chat.ts:1628-1632, `appNavigationController.back(...)`).
+  // Прямой `closeTop()` (как было раньше) оставлял бы запись `im`
+  // (`core/navigation/chatHistory.ts`) висеть на стеке контроллера при уже
+  // закрытом на экране треде — история расходилась бы с состоянием.
+  const onCloseThread = useCallback(() => { appNavigationController.back('im') }, [])
   // Ветка комментариев под постом канала (tweb setPeer({peerId, threadId})) —
   // кладём поверх стека (tweb setInnerPeer).
   const onOpenThread = useCallback((args: { chatId: number; rootMsgId: number; title: string; subtitle?: string }) => {
