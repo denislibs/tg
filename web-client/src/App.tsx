@@ -25,7 +25,7 @@ import { gradientFor } from './core/dialogToChat'
 import { usePipStore } from './core/pip'
 import { useAppBootstrap } from './core/hooks/useAppBootstrap'
 import { useUrlSync } from './core/hooks/useUrlSync'
-import { startChatHistory } from './core/navigation/chatHistory'
+import { startChatHistory, backChatLevel } from './core/navigation/chatHistory'
 import { useShellEnterAnimation } from './core/hooks/useShellEnterAnimation'
 import { useAutoLock } from './core/hooks/useAutoLock'
 import { useGlobalToast } from './core/hooks/useGlobalToast'
@@ -80,11 +80,19 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   // узкое — форсируем мобильный layout (useMediaQuery слушает основное окно).
   const pipActive = usePipStore((st) => st.active)
   const narrow = useMediaQuery('(max-width:900px)') || pipActive
-  // Намеренно `setSelectedId`, а не `selectChat`: на хендхелдах «назад» лишь
-  // переключает CSS-вкладку (useLeftColumnShown), инстанс в chatStackStore
-  // остаётся смонтированным — открыть тот же чат снова можно без ремаунта
-  // (сохранение состояния при возврате — цель этого этапа, см. план).
-  const backToList = narrow ? () => nav.setSelectedId(null) : undefined
+  // Стрелка «назад» в шапке (узкий экран) закрывает уровень ЗАПИСЬЮ — как и
+  // крестик в шапке треда, и Esc (`core/navigation/chatHistory.ts::
+  // backChatLevel`). НАХОДКА РЕВЬЮ (Critical): раньше здесь стоял прямой
+  // `nav.setSelectedId(null)` в обход контроллера — сохранение смонтированного
+  // инстанса на хендхелдах (открыть тот же чат снова без ремаунта) казалось
+  // причиной так делать, но у оригинала эта же ветка (`mediaSizes.
+  // isFloatingLeftSidebar`, appImManager.ts:2771-2773) живёт ВНУТРИ `setPeer`,
+  // то есть срабатывает уже ПОСЛЕ снятия записи контроллером — и портирована
+  // именно туда, в `closeChatLevel`, а не сюда. Прямой вызов оставлял запись
+  // `im` висеть на стеке контроллера при видимом списке чатов: хэш (тогда
+  // читавшийся только из стека) не чистился, F5 открывал чат вместо списка,
+  // Back/Esc били мимо.
+  const backToList = narrow ? () => backChatLevel() : undefined
 
   // Переключение список ↔ чат на узком экране — 1:1 tweb `appImManager.selectTab`
   // (appImManager.ts:2588-2645). Само движение колонок там делает ОДИН класс на

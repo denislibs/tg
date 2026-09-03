@@ -5,10 +5,19 @@
 // (`selectChat('draft:<id>')`, потом отдельно `setDraftPeer`), и подписка
 // обязана дожидаться ОБОИХ.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { backChatLevel, hashForChat, startChatHistory, syncChatHash } from './chatHistory'
+import { backChatLevel, closeChatLevel, hashForChat, startChatHistory, syncChatHash } from './chatHistory'
 import { useChatStackStore } from '../../stores/chatStackStore'
 import { useNavigationStore } from '../../stores/navigationStore'
 import appNavigationController from './appNavigationController'
+import mediaSizes from '@core/dom/mediaSizes'
+
+/** Тот же приём, что `core/dom/mediaSizes.test.ts` (`refresh`): mediaSizes
+ *  пересчитывается по window-`resize` через rAF, тестам нужен синхронный
+ *  снимок — зовём приватный пересчёт напрямую. */
+const setNarrowScreen = (narrow: boolean) => {
+  Object.defineProperty(window, 'innerWidth', { value: narrow ? 700 : 1280, configurable: true })
+  ;(mediaSizes as unknown as { handleResize: () => void }).handleResize()
+}
 
 /** Открыть тред/комментарии поверх текущего верха стека — сокращение для
  *  повторяющегося набора опций в тестах ниже (`peerId`/`threadId` разные,
@@ -35,6 +44,14 @@ const flush = async (times = 4) => {
 beforeEach(() => {
   useChatStackStore.getState().clear()
   useNavigationStore.setState({ selectedId: null, draftPeer: null })
+  // Изоляция между тестами: `location.hash` не откатывается сам между
+  // тестами jsdom/happy-dom (в отличие от сторов выше), а с проверкой
+  // `selectedId` в `hashForChat()` (находка ревью п.1) хэш теперь пишется
+  // почти в каждом тесте с `startChatHistory()`, даже если тест его не
+  // проверяет — без сброса здесь последний хэш ОДНОГО теста протекал бы
+  // первым `expect(location.hash)` следующего. Тот же приём, что
+  // `appNavigationController.test.ts` (`адрес целиком`, свой afterEach).
+  location.hash = ''
 })
 
 afterEach(() => {
@@ -51,6 +68,10 @@ afterEach(() => {
 describe('chatHistory', () => {
   it('смена чата НЕ создаёт записи истории', async () => {
     const push = vi.spyOn(history, 'pushState')
+    // `selectedId` — та же роль, что у `id > APP_TABS.CHATLIST` в оригинале
+    // (`hashForChat`, находка ревью п.1): хэш пишется, только когда таб
+    // «чат» показан, а не только по факту непустого стека.
+    useNavigationStore.setState({ selectedId: '42' })
     useChatStackStore.getState().setPeer({ peerId: 42, type: 'chat' })
     syncChatHash()
     await flush()
@@ -61,6 +82,7 @@ describe('chatHistory', () => {
   })
 
   it('уход вглубь не меняет хэш: он адресует пир верхнего инстанса, а не ветку', async () => {
+    useNavigationStore.setState({ selectedId: '42' })
     useChatStackStore.getState().setPeer({ peerId: 42, type: 'chat' })
     useChatStackStore.getState().setInnerPeer({
       peerId: 77, type: 'discussion', threadId: 5,
@@ -137,7 +159,21 @@ describe('chatHistory — записи im/chat', () => {
   let pushStateSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
-    backSpy = vi.spyOn(history, 'back').mockImplementation(() => {})
+    // `history.back()` в happy-dom не рождает `popstate` вовсе — контроллер
+    // ждёт его, чтобы подтвердить СВОЙ программный Back (`legacySettleForBack`
+    // + счётчик `pendingBacks`, см. докблок `appNavigationController.
+    // onPopState`). Без симуляции очередь мутаций истории
+    // (`modifyHistoryFromEvent`) виснет до 500-мс предохранителя, и ЛЮБАЯ
+    // мутация, поставленная в очередь ПОСЛЕ программного Back (здесь —
+    // `overrideHash` из `syncChatHash`), не успевает примениться за отведённые
+    // `flush()` тики. Раньше это было незаметно: тесты этого describe не
+    // проверяли `location.hash` после `backChatLevel()`/`removeByType`.
+    // Синхронный `dispatchEvent` внутри мока — тот же приём, что ручной
+    // `settleOwnBack()` в `appNavigationController.test.ts`, только не разово
+    // по вызывающим, а на каждый вызов сразу.
+    backSpy = vi.spyOn(history, 'back').mockImplementation(() => {
+      window.dispatchEvent(new PopStateEvent('popstate', { state: null }))
+    })
     pushStateSpy = vi.spyOn(history, 'pushState').mockImplementation(() => {})
   })
 
@@ -147,6 +183,7 @@ describe('chatHistory — записи im/chat', () => {
     await flush()
     backSpy.mockRestore()
     pushStateSpy.mockRestore()
+    setNarrowScreen(false) // не протекать шириной в соседние тесты (mediaSizes — синглтон)
   })
 
   it('открытие чата из списка кладёт РОВНО одну запись im', () => {
@@ -346,6 +383,137 @@ describe('chatHistory — записи im/chat', () => {
       expect(pushSpy).toHaveBeenCalledTimes(1)
     } finally {
       pushSpy.mockRestore()
+      stop()
+    }
+  })
+
+  // НАХОДКА РЕВЬЮ (Critical, п.1): на узком экране `App.tsx::backToList` звал
+  // `nav.setSelectedId(null)` НАПРЯМУЮ, в обход контроллера — стек чата не
+  // трогался (сохранение смонтированного инстанса), но и запись `im` не
+  // снималась, а `hashForChat()` тогда читал ТОЛЬКО стек, поэтому хэш
+  // оставался `#42` при видимом списке. Порт: ветка узкого экрана переехала
+  // ВНУТРЬ `closeChatLevel` (как `mediaSizes.isFloatingLeftSidebar` внутри
+  // `setPeer` у оригинала), а `backToList` теперь зовёт `backChatLevel()` —
+  // ту же запись, что и крестик треда/Esc. Мутация: верни в `App.tsx`
+  // `backToList = narrow ? () => nav.setSelectedId(null) : undefined` —
+  // краснеет именно этот тест (im не снимается, хэш не чистится), а не
+  // тесты выше (они `backToList` не вызывают вовсе).
+  it('узкий экран: backChatLevel на глубине 1 снимает im, чистит хэш, СОХРАНЯЕТ инстанс в стеке', async () => {
+    setNarrowScreen(true)
+    const stop = startChatHistory()
+    try {
+      useNavigationStore.getState().selectChat('42')
+      await flush()
+      expect(location.hash).toBe('#42')
+      expect(appNavigationController.findItemByType('im')).toBeDefined()
+
+      backChatLevel() // порт стрелки «назад» в шапке узкого экрана
+
+      // Запись обязана уйти — иначе следующий Back/Esc бьёт мимо, а F5
+      // открывает чат вместо списка (это и произошло бы у прежней реализации).
+      expect(appNavigationController.findItemByType('im')).toBeUndefined()
+      expect(useNavigationStore.getState().selectedId).toBeNull()
+      await flush()
+      expect(location.hash).toBe('')
+
+      // Инстанс — единственное, что ДОЛЖНО пережить закрытие на узком экране
+      // (иначе повторное открытие того же чата ремонтит компонент и теряет
+      // скролл/черновик — ровно то, ради чего вводился `setSelectedId`).
+      expect(useChatStackStore.getState().stack).toHaveLength(1)
+      expect(useChatStackStore.getState().stack[0]?.peerId).toBe(42)
+
+      // Открыть ТОТ ЖЕ чат снова — свежая запись `im`, стек не ремонтится
+      // (тот же instance id, что и до закрытия).
+      const instanceId = useChatStackStore.getState().stack[0]?.id
+      useNavigationStore.getState().selectChat('42')
+      expect(appNavigationController.findItemByType('im')).toBeDefined()
+      expect(useChatStackStore.getState().stack[0]?.id).toBe(instanceId)
+    } finally {
+      stop()
+    }
+  })
+
+  // НАХОДКА РЕВЬЮ (Important, п.2): пин типа снятой записи, а не только формы
+  // стека — `backChatLevel` на глубине >1 обязана снять ИМЕННО `chat`, а не
+  // `im`. Мутация `appNavigationController.back(depth > 1 ? 'chat' : 'im')` →
+  // `appNavigationController.back('im')` (всегда 'im') оставляла все прежние
+  // тесты зелёными: стек по форме схлопывался ровно так же (chatStackStore
+  // сам решает, что срезать, независимо от того, КАКУЮ запись контроллера
+  // при этом попросили снять), но `im` уходила с глубины >1, осиротив `chat`.
+  it('пин типа записи: Back с глубины 2 снимает именно chat, im переживает и не меняет ссылку', () => {
+    const stop = startChatHistory()
+    try {
+      useNavigationStore.getState().selectChat('42')
+      openThread(77, 5)
+      const imBefore = appNavigationController.findItemByType('im')?.item
+      expect(imBefore).toBeDefined()
+      expect(appNavigationController.findItemByType('chat')).toBeDefined()
+
+      backChatLevel()
+
+      // im — ТА ЖЕ запись (по ссылке), что и до Back: она не снималась и не
+      // перезаводилась. chat — снята.
+      expect(appNavigationController.findItemByType('im')?.item).toBe(imBefore)
+      expect(appNavigationController.findItemByType('chat')).toBeUndefined()
+    } finally {
+      stop()
+    }
+  })
+
+  // НАХОДКА РЕВЬЮ (Important, п.3): `syncChatHash()` — первая строка колбэка
+  // подписки на `chatStackStore` в `startChatHistory` — не была покрыта: все
+  // тесты хэша выше зовут `syncChatHash()` РУКАМИ, а подписка на
+  // `navigationStore` (`unsubNav`) прикрывает пути через `selectChat`
+  // (комментарии в шапке). Путь ТОЛЬКО через стек — `Chat.tsx::onOpenThread`
+  // (`setInnerPeer`, комментарии под постом канала) — трогает исключительно
+  // `chatStackStore`, `navigationStore.selectedId` при этом НЕ меняется.
+  // Мутация «убрать `syncChatHash()` из колбэка `unsubStack`» красит именно
+  // этот тест (адрес остался бы `#42`), а не тесты выше, где хэш посчитан
+  // ручным вызовом.
+  it('пин подписки: setInnerPeer/closeTop без ручного syncChatHash тоже двигают хэш', async () => {
+    const stop = startChatHistory()
+    try {
+      useNavigationStore.getState().selectChat('42')
+      await flush()
+      expect(location.hash).toBe('#42')
+
+      openThread(77, 5) // только chatStackStore — selectedId не трогает
+      await flush()
+      expect(location.hash).toBe('#77')
+
+      backChatLevel() // closeTop() — тоже только chatStackStore
+      await flush()
+      expect(location.hash).toBe('#42')
+    } finally {
+      stop()
+    }
+  })
+
+  // НАХОДКА РЕВЬЮ (Important, п.4): порт `dialog_drop` → `appImManager.
+  // setPeer({isDeleting: true})` (tweb chat.ts:658-668) — событие «диалог
+  // выпал из списка» (вышли/удалили) обязано закрыть чат ЦЕЛИКОМ, даже если
+  // открыт вложенный тред, а не только срезать верхний уровень (обычная
+  // ветка `stack.length > 1` эту разницу как раз стирает — без `isDeleting`
+  // глубина 2 срезала бы только тред, оставляя чат, из которого вышли,
+  // открытым).
+  it('closeChatLevel({isDeleting: true}) закрывает чат целиком с любой глубины (порт dialog_drop)', async () => {
+    const stop = startChatHistory()
+    try {
+      useNavigationStore.getState().selectChat('42')
+      openThread(77, 5)
+      expect(useChatStackStore.getState().stack).toHaveLength(2)
+      expect(appNavigationController.findItemByType('im')).toBeDefined()
+      expect(appNavigationController.findItemByType('chat')).toBeDefined()
+
+      closeChatLevel({ isDeleting: true })
+
+      expect(useChatStackStore.getState().stack).toHaveLength(0)
+      expect(useNavigationStore.getState().selectedId).toBeNull()
+      expect(appNavigationController.findItemByType('im')).toBeUndefined()
+      expect(appNavigationController.findItemByType('chat')).toBeUndefined()
+      await flush()
+      expect(location.hash).toBe('')
+    } finally {
       stop()
     }
   })

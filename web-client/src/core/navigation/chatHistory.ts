@@ -19,9 +19,28 @@ import { useChatStackStore, selectActive } from '../../stores/chatStackStore'
 import { useNavigationStore } from '../../stores/navigationStore'
 import { cachedChat } from '../peerCache'
 import appNavigationController from './appNavigationController'
+import mediaSizes from '@core/dom/mediaSizes'
+import { usePipStore } from '../pip'
 
-/** Хэш открытого состояния БЕЗ ведущего `#`. '' — список чатов (стек пуст). */
+/**
+ * Хэш открытого состояния БЕЗ ведущего `#`. '' — список чатов (стек пуст ИЛИ
+ * не показан — см. проверку `selectedId` ниже).
+ *
+ * НАХОДКА РЕВЬЮ (Critical, п.1): раньше хэш читался ИСКЛЮЧИТЕЛЬНО из стека
+ * (`chatStackStore`), а на узком экране закрытие чата стрелкой «назад»
+ * сохраняло смонтированный инстанс (стек НЕ трогается — см. ветку
+ * `mediaSizes.isFloatingLeftSidebar` в `closeChatLevel` ниже), поэтому хэш
+ * оставался прежним (`#42`) при видимом списке чатов. Порт: у tweb хэш
+ * завязан на выбранный ТАБ, а не на массив `chats[]` — `selectTab`
+ * (appImManager.ts:2591-2597) зовёт `overrideHash(id > CHATLIST ?
+ * this.chat?.peerId : undefined)`, то есть при уходе на CHATLIST хэш ВСЕГДА
+ * `undefined`, даже если верхний инстанс `this.chat` жив и не тронут. Роль
+ * `id > CHATLIST` у нас играет `navigationStore.selectedId !== null`.
+ */
 export function hashForChat(): string {
+  const nav = useNavigationStore.getState()
+  if (!nav.selectedId) return ''
+
   const active = selectActive(useChatStackStore.getState())
   if (!active) return ''
 
@@ -31,8 +50,7 @@ export function hashForChat(): string {
   // после reload по нему нечего открывать, это не диалог. Пишем `@username`,
   // если он есть у собеседника, иначе не пишем вовсе — правило дословно из
   // прежнего `useUrlSync.hashForState`.
-  const nav = useNavigationStore.getState()
-  if (nav.selectedId?.startsWith('draft:')) {
+  if (nav.selectedId.startsWith('draft:')) {
     return nav.draftPeer?.username ? `@${nav.draftPeer.username}` : ''
   }
 
@@ -66,23 +84,52 @@ let closingViaRecord = false
 
 /**
  * Закрыть текущий уровень чата — порт `setPeer({})` (appImManager.ts:2761-2774,
- * :2825-2828), тех её веток, у которых есть предмет в нашей модели: тумблер
- * таба на узком экране (:2771-2773, `mediaSizes.isFloatingLeftSidebar`) сюда
- * не входит — это уже закрыто другим механизмом (`App.tsx` backToList/
- * `useLeftColumnShown`), а не портом `setPeer`.
+ * :2825-2828), включая ветку узкого/плавающего сайдбара (:2771-2773,
+ * `mediaSizes.isFloatingLeftSidebar`) — она ПОРТИРОВАНА СЮДА (находка ревью,
+ * Critical п.1), а не снаружи (`App.tsx`): у оригинала это ветка внутри
+ * `setPeer`, то есть срабатывает уже ПОСЛЕ того, как контроллер снял запись
+ * (`im`/`chat`) — ровно как остальные ветки этой функции. Прежняя реализация
+ * звала `nav.setSelectedId(null)` напрямую из `App.tsx::backToList`, минуя
+ * контроллер целиком: запись `im` не снималась, хэш (читавшийся только из
+ * стека) не менялся — Back/Esc после такого закрытия били мимо, а F5
+ * открывал чат вместо списка.
  *
  * Общий `onPop` ОБЕИХ записей контроллера — `im` (`pushImRecordIfNeeded`) И
  * `chat` (`syncChatRecords`), как и в оригинале: `chat.ts:1628-1632` зовёт
  * `back(isFirstChat ? 'im' : 'chat')`, но обе ведут к одному и тому же
- * `setPeer({}, canAnimate)`. Единственный ЗАКОННЫЙ вызывающий — эти `onPop`:
- * к моменту вызова СНЯТАЯ контроллером запись уже вышла из
- * `navigations[]`, поэтому модель и стек записей остаются согласованы. Прямой
- * вызов из UI в обход контроллера (как раньше `closeTop()`/`selectChat(null)`
- * звались напрямую) оставил бы запись висеть без соответствующего уровня —
- * история разъехалась бы с состоянием; такие места переведены на
- * `backChatLevel()` (см. ниже; вызывающие — Chat.tsx, useAppHotkeys.ts).
+ * `setPeer({}, canAnimate)`. К моменту вызова СНЯТАЯ контроллером запись уже
+ * вышла из `navigations[]`, поэтому модель и стек записей остаются
+ * согласованы. Прямой вызов из UI в обход контроллера (как раньше
+ * `closeTop()`/`selectChat(null)` звались напрямую) оставил бы запись висеть
+ * без соответствующего уровня — история разъехалась бы с состоянием; такие
+ * места переведены на `backChatLevel()` (см. ниже; вызывающие — Chat.tsx
+ * (крестик в шапке треда), `useAppHotkeys.ts` (Esc), `App.tsx` (стрелка
+ * «назад» узкого экрана)).
+ *
+ * ВТОРОЙ законный прямой вызывающий — `options.isDeleting` (см. параметр):
+ * порт `chat.ts:658-668`/`input.ts:1496`, где `appImManager.setPeer(
+ * {isDeleting: true})` зовётся НАПРЯМУЮ, тоже в обход Back/записи — событие
+ * «диалог выпал из списка» (вышли/удалили) может прийти, пока запись ещё
+ * жива на любой глубине, и закрыть чат обязано само это событие, а не
+ * дожидаться, пока пользователь нажмёт Back. Эта ветка НЕ ставит
+ * `closingViaRecord`: в отличие от `onPop`, здесь контроллер заранее НИЧЕГО
+ * не снимал (нет предшествующего `backByItem`/`spliceItems`) — снятие `im`/
+ * `chat` обязана сделать сама подписка на пустой стек, симметрично прямому
+ * `chatStackStore.clear()` (см. «находку ревью Important» в `syncChatRecords`
+ * ниже — тот же класс мутации «мимо записи», а не «через запись»).
  */
-export function closeChatLevel(): void {
+export function closeChatLevel(options: { isDeleting?: boolean } = {}): void {
+  // appImManager.ts:2761-2764 — isDeleting проверяется ПЕРВЫМ и безусловно
+  // (до chatIndex>0 и до isFloatingLeftSidebar): чат, из которого вышли/
+  // который удалили, не имеет смысла ни держать смонтированным на узком
+  // экране, ни оставлять открытым уровнем ниже — стек обязан схлопнуться
+  // целиком, а не только верхний уровень. Вне `closingViaRecord`-блока —
+  // см. докблок функции.
+  if (options.isDeleting) {
+    useNavigationStore.getState().selectChat(null)
+    return
+  }
+
   const stack = useChatStackStore.getState()
   closingViaRecord = true
   try {
@@ -90,6 +137,29 @@ export function closeChatLevel(): void {
     // верхний инстанс (тред/комментарии), чат остаётся открытым.
     if (stack.stack.length > 1) {
       stack.closeTop()
+      return
+    }
+    // appImManager.ts:2771-2773 — mediaSizes.isFloatingLeftSidebar: узкий
+    // экран лишь переключает таб на список (`selectTab`), верхний инстанс
+    // (`this.chats`) не трогается — он остаётся смонтированным, повторное
+    // открытие того же чата не ремонтит его. Роль `this.tabId` у нас играет
+    // `navigationStore.selectedId`, роль `this.chats[]` — `chatStackStore`:
+    // ветка снимает выбор БЕЗ очистки стека (`setSelectedId`, не `selectChat`).
+    // `hashForChat()` при этом сама уходит в '' (проверка `selectedId` в её
+    // докблоке) — хэш активного чата закрывается вместе с записью.
+    //
+    // `usePipStore().active` — сигнал, которого у tweb НЕТ: у нас есть
+    // отдельный режим «всё приложение в Document PiP» (см. `core/pip.ts`),
+    // тоже принудительно однаколоночный, но PiP-окно узкое НЕЗАВИСИМО от
+    // ширины ОСНОВНОГО окна, к которому привязан `mediaSizes` (слушает
+    // `window.resize` того окна, где он создан, — см. докблок `core/dom/
+    // mediaSizes.ts`). Без этого добавления закрытие чата в узком PiP-окне
+    // на широком основном экране ошибочно ушло бы в ветку ниже (полная
+    // очистка стека) вместо сохранения инстанса — названное расширение
+    // порта, не третий сигнал «своей» природы: то же самое `narrow`, что уже
+    // складывает `App.tsx` (`useMediaQuery('(max-width:900px)') || pipActive`).
+    if (mediaSizes.isFloatingLeftSidebar || usePipStore.getState().active) {
+      useNavigationStore.getState().setSelectedId(null)
       return
     }
     // appImManager.ts:2825-2828 — иначе чат очищается целиком, таб уходит на список.
@@ -109,9 +179,11 @@ export function closeChatLevel(): void {
  * сам разберётся, какой из двух случаев).
  *
  * ЕДИНСТВЕННАЯ точка, которой обязаны звать UI-действия «закрыть чат/
- * уровень» (крестик в шапке треда, Esc) — сами `chatStackStore.closeTop()`/
- * `navigationStore.selectChat(null)` они звать не должны: иначе запись
- * контроллера переживёт закрытый на экране уровень.
+ * уровень» (крестик в шапке треда, Esc, стрелка «назад» в шапке узкого
+ * экрана — `App.tsx::backToList`) — сами `chatStackStore.closeTop()`/
+ * `navigationStore.selectChat(null)`/`setSelectedId(null)` они звать не
+ * должны: иначе запись контроллера переживёт закрытый на экране уровень.
+ * Исключение — `closeChatLevel({isDeleting: true})`, см. её докблок.
  */
 export function backChatLevel(): void {
   const depth = useChatStackStore.getState().stack.length
@@ -171,11 +243,21 @@ let chatRecordCount = 0
  * решает, пушить новые или снимать лишние.
  *
  * Пуш вставляется, как в оригинале, через `context`/`findItem`/`spliceItems`
- * (appImManager.ts:2258-2267): `context` — id инстанса конкретного уровня
- * стека (`ChatInstanceDesc.id`), `found` — уже заведённая для НЕГО запись. В
- * нашей модели `id` инстанса не переиспользуется (растущий счётчик в
- * `chatStackStore`), поэтому `found` практически всегда `undefined` — ветка
- * оставлена ради структурного паритета с оригиналом, а не потому что живая.
+ * (appImManager.ts:2258-2267): по форме вызова читается, будто `found` ищет
+ * УЖЕ заведённую запись для конкретного уровня и переиспользует её место.
+ *
+ * ПОПРАВКА (находка ревью, Minor п.5б): это неверно и про наш код, и про
+ * оригинал — `found` мёртв ПО ПОСТРОЕНИЮ, а не «практически всегда» из-за
+ * наших неповторяемых id. У tweb сам пушимый item (appImManager.ts:2262-2267)
+ * поле `context` НЕ ЗАДАЁТ ВООБЩЕ (`{type: 'chat', onPop: …}`), поэтому
+ * `findItem((item) => item.context === chat)` там не находит НИЧЕГО никогда —
+ * это дословно перенесённая структура вызова оригинала, а не работающая
+ * дедупликация; у нас `context: instanceId` хотя бы записывается (в
+ * отличие от оригинала), но найти его тоже неоткуда: `id` растёт монотонно
+ * (`instanceSeq` в `chatStackStore`) и не повторяется, а других пушеров
+ * `type: 'chat'` с тем же `context` нет. Ветка оставлена ради структурного
+ * паритета с оригиналом (та же форма вызова `findItem`/`spliceItems`), не
+ * потому что она живая хоть в одном из двух кодов.
  *
  * Снятие лишних ПРОПУСКАЕТСЯ, когда мутацию вызвал сам `closeChatLevel`
  * (флаг `closingViaRecord`, см. его докблок) — контроллер уже снял РОВНО одну
@@ -201,6 +283,20 @@ function syncChatRecords(): void {
       )
     }
   } else if (wanted < chatRecordCount && !closingViaRecord) {
+    // РАСХОЖДЕНИЕ С ОРИГИНАЛОМ, НАЗВАННОЕ (находка ревью, Minor п.5а): здесь
+    // снимается ТОЧНАЯ дельта (`chatRecordCount - wanted`), а у оригинала
+    // цикл идёт `spliced.length - 1` раз (appImManager.ts:2690-2692). Это не
+    // опечатка оригинала, а калибровка под ЕГО путь вызова: `spliceChats`
+    // там — общий метод и для закрытия ЧЕРЕЗ запись (Back/`removeByType`
+    // сняли ОДНУ запись раньше срока, значит спличить нужно на одну меньше),
+    // и для схлопывания МИМО записи (наш эквивалент — `chatStackStore.setPeer`
+    // «collapse to base», клик по другому чату из списка). У нас эти два пути
+    // РАЗВЕДЕНЫ гардом `!closingViaRecord` — сюда мутация «уже сняла одну
+    // запись сама» вообще не попадает (см. докблок `closingViaRecord`), и на
+    // единственном оставшемся пути (мимо записи) точная дельта — это ВСЕ
+    // лишние записи, ни одна заранее не снята. Наше поведение здесь
+    // корректнее оригинала «в лоб», но это расхождение, а не совпадение,
+    // и его стоит держать в уме при следующем касании этой функции.
     for (let i = wanted; i < chatRecordCount; i++) {
       appNavigationController.removeByType('chat', true)
     }
