@@ -561,6 +561,14 @@ div.reply.quote-like.quote-like-hoverable.quote-like-border[.quote-like-icon.rep
 floating-time/`.message` портирована — у бабла с `has-floating-time` (медиа без подписи)
 время (`is-floating`) вставляется прямо в `bubble-content` (сосед `.message`, не потомок),
 а контейнер реакций — в `bubble-content-wrapper`; иначе оба уходят в `.message`, как раньше.
+**Комбинация floating-time + реакции:** перенос времени ВНУТРЬ `reactionsElement`
+(`appendBubbleTime`, 9855) в оригинале стоит ТОЛЬКО в ветке `else` (не floating/service,
+9852–9856) — у floating-бабла С реакциями время НЕ переезжает в контейнер реакций и
+остаётся на `.bubble-content`, где его уже разместил шаг `is-floating` выше. Если время
+переложить в `reactionsElement` безусловно (до развилки), оно физически окажется в
+`bubble-content-wrapper` — другом узле дерева, где абсолютное позиционирование
+`is-floating` резолвится не относительно медиа; пилюля уедет с угла. Пин —
+`bubbles.floatingTime.test.ts` («время у стикера С реакциями остаётся на .bubble-content»).
 `service`-ветка и `is-multiple-documents` не портированы: служебные баблы (`renderServiceMessage`)
 собираются отдельным путём и `renderMessageMeta` не проходят, а альбом документов у нас
 не поддержан вовсе (см. §8.2.5 — впрочем, актуальная карта файлов лежит в

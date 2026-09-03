@@ -1912,16 +1912,22 @@ export default class ChatBubbles implements BubbleGroupsHost {
       },
     )
     if (reactionsElement) {
-      reactionsElement.append(timeSpan)
-      // tweb :9849-9851 (`appendReactionsElementToBubble`): у медиа без
-      // подписи узел реакций — ребёнок `.bubble-content-wrapper`, а НЕ
-      // `.message` (в оригинале `.message` в этой ветке вовсе снесён из DOM).
-      // ВРЕМЯ при этом переезжает ВНУТРЬ `reactionsElement` в обеих ветках
-      // (см. правку выше) — своей позиции на `.bubble-content` рядом с
-      // реакциями оно больше не занимает.
+      // tweb :9849-9851 (`appendReactionsElementToBubble`): у floating-time
+      // узел реакций — ребёнок `.bubble-content-wrapper`, а НЕ `.message`
+      // (в оригинале `.message` в этой ветке вовсе снесён из DOM). Перенос
+      // ВРЕМЕНИ внутрь `reactionsElement` (`appendBubbleTime`, :9855) в
+      // оригинале стоит ТОЛЬКО в ветке `else` (:9852-9856) — у floating/
+      // service-ветки время туда не переезжает, а остаётся на
+      // `.bubble-content` (там его уже разместил код выше классом
+      // `is-floating`). Раньше здесь стоял безусловный
+      // `reactionsElement.append(timeSpan)` до этой развилки — время у
+      // floating-бабла С реакциями уезжало в `.bubble-content-wrapper`,
+      // другой узел дерева, где `position: absolute` резолвится не
+      // относительно медиа (см. docs/tweb/bubbles.md §4.21).
       if (isFloatingTime) {
         (contentWrapper ?? bubbleContainer).append(reactionsElement)
       } else {
+        reactionsElement.append(timeSpan)
         messageDiv.append(reactionsElement)
       }
     }

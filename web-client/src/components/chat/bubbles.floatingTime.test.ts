@@ -134,10 +134,14 @@ describe('ChatBubbles — время и реакции у медиа без по
     expect(bubble.querySelector('.message .reactions')).toBeNull()
   })
 
-  // Время в этой же ветке уезжает ВНУТРЬ контейнера реакций — как и у обычного
-  // бабла (tweb :9855, тот же `appendBubbleTime`), просто сам контейнер стоит в
-  // другом месте DOM. Время не должно «зависнуть» отдельно на `.bubble-content`.
-  it('время у стикера с реакциями лежит ВНУТРИ контейнера реакций, а не отдельно на .bubble-content', async () => {
+  // tweb :9852-9856: `appendBubbleTime`, который переносит `timeSpan` ВНУТРЬ
+  // `reactionsElement`, стоит ТОЛЬКО в ветке `else` (не floating/service) —
+  // у floating-бабла время в реакции не переезжает, а остаётся на
+  // `.bubble-content`, где его уже разместил `is-floating`-шаг (пин выше).
+  // Иначе абсолютное позиционирование `is-floating` резолвится относительно
+  // `.bubble-content-wrapper` (родителя reactions-element), а не медиа —
+  // ровно тот дефект, который чинила эта задача.
+  it('время у стикера С реакциями остаётся на .bubble-content, а не переезжает в контейнер реакций', async () => {
     bubbles = new ChatBubbles(chatContext(), managersWith([withSticker(1, { reactions })]))
     await openFeed(bubbles)
     await settle()
@@ -147,8 +151,9 @@ describe('ChatBubbles — время и реакции у медиа без по
     const reactionsEl = bubble.querySelector<HTMLElement>('.reactions')!
     const time = bubble.querySelector<HTMLElement>('.time')!
 
-    expect(time.parentElement).toBe(reactionsEl)
-    expect(bubbleContent.querySelector(':scope > .time')).toBeNull()
+    expect(time.parentElement).toBe(bubbleContent)
+    expect(time.classList.contains('is-floating')).toBe(true)
+    expect(reactionsEl.querySelector(':scope > .time')).toBeNull()
   })
 
   // ПИН 3 (неизменность). Обычный текстовый бабл `has-floating-time` не несёт
