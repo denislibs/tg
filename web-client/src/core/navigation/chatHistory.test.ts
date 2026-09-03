@@ -1,8 +1,11 @@
 // Пины трёх расхождений с оригиналом из докблока `chatHistory.ts`: смена чата
 // не создаёт запись истории, хэш адресует пир ВЕРХНЕГО инстанса (без ветки
-// треда), пустой стек — пустой хэш.
+// треда), пустой стек — пустой хэш. Плюс пин на находку ревью задачи 1
+// (Critical): черновик с известным username пишется в ДВА приёма
+// (`selectChat('draft:<id>')`, потом отдельно `setDraftPeer`), и подписка
+// обязана дожидаться ОБОИХ.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { hashForChat, syncChatHash } from './chatHistory'
+import { hashForChat, startChatHistory, syncChatHash } from './chatHistory'
 import { useChatStackStore } from '../../stores/chatStackStore'
 import { useNavigationStore } from '../../stores/navigationStore'
 
@@ -60,5 +63,22 @@ describe('chatHistory', () => {
 
   it('hashForChat: пустой стек даёт пустую строку без вызова контроллера', () => {
     expect(hashForChat()).toBe('')
+  })
+
+  it('черновик: @username из setDraftPeer тоже двигает хэш, а не только selectChat', async () => {
+    const stop = startChatHistory()
+    try {
+      // Тот самый двухприёмный порядок из useNavigationActions.openPeer/
+      // useUrlSync (резолв #@username): сначала selectChat кладёт peerId в
+      // стек и обнуляет draftPeer, ЗАТЕМ отдельным вызовом приезжает сам peer.
+      useNavigationStore.getState().selectChat('draft:777')
+      await flush()
+      useNavigationStore.getState().setDraftPeer({ id: 777, title: 'X', username: 'xuser' })
+      await flush()
+
+      expect(location.hash).toBe('#@xuser')
+    } finally {
+      stop()
+    }
   })
 })
