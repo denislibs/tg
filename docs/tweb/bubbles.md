@@ -252,6 +252,16 @@ section.bubbles-date-group                        ← одна на календ
   и плавает над медиа.
 - `next-is-message` вешается на name/reply, если следующий сиблинг — `.message` (9571–9575).
 
+**У нас (web-client):** узел хвоста раньше не был портирован вовсе — ни спрайта, ни вставки
+(`can-have-tail`/CSS уже стояли на месте, вставлять было нечего). Теперь оба на месте:
+`web-client/index.html:43` несёт `<symbol id="message-tail-filled" viewBox="0 0 11 20">`
+(порт tweb `index.html:64-68`, только этот один symbol — остальным нет вызывающего кода);
+`generateTail(asSpan?)` — дословный порт `utils.ts:43-63` в
+`web-client/src/components/chat/tail.ts:16-35`; `bubbles.ts::renderMessage` (`bubbles.ts:1775-1788`)
+аппендит его последним ребёнком `.bubble-content` при `can-have-tail || round`, порт условия
+tweb `bubbles.ts:9707-9712` — оба флага читаются с уже выставленных классов `bubble`
+(`bubbleClasses`), не считаются заново. Пины — `bubbles.tail.test.ts`.
+
 ## 3.2 time / time-inner (messageRender.ts:209–393)
 
 `MessageRender.setTime()` возвращает `span.time`, куда по порядку кладутся «части», и
@@ -640,6 +650,20 @@ DOM — в доке про комментарии.
   (bubbleGroups.ts:138, 163, 291). Аватар `position: sticky` — «едет» вдоль группы (§7.2).
   peerId для форвардов в Replies-чате — `fwdFromId` (83–117).
 - Создаётся один раз на ГРУППУ (по firstItem) в `groupBubbles` (bubbles.ts:6002–6016).
+
+**У нас (web-client):** аватарная колонка сама (`bubbles-group-avatar-container`,
+`position: absolute; inset: 0`) уже стояла на месте, но отступ под неё не срабатывал —
+класс `is-chat` на `.bubbles-inner`/`.bubbles-remover` не ставился вовсе, поэтому правило
+`styles/tweb/_chat.scss:1311-1316` (`margin-inline-start: 2.875rem` на `.bubble-content-wrapper`)
+молчало, и абсолютно спозиционированная колонка ложилась поверх бабла (а с ней и реакции).
+Порт — `applyChatTypeClasses` (`web-client/src/components/chat/bubbles.ts:897-900`, докблок
+:871-896), дословный `forEach` из tweb `ChatBubbles.finishPeerChange` (`bubbles.ts:5787-5792`):
+ставит `is-chat`/`is-broadcast` с `this.chat.isLikeGroup`/`isBroadcast`. Вызывается ДВАЖДЫ —
+`constructBubbles()` (`bubbles.ts:909, 915`, для транзитных `chatInner`/`remover`) и ещё раз
+в `setPeer()` (`bubbles.ts:3576`), потому что `chatInner` там пересоздаётся заново и без
+второго вызова терял классы. Вычеты: `no-messages` (нужен асинхронный `Chat.hasMessages()`,
+которого у ленты нет) и `with-message-avatars` (гейтит ботов-верификаторов — в нашей модели
+не существует). Пины — `bubbles.avatarOffset.test.ts`.
 
 ## 5.5 Date-группы и монтирование
 
