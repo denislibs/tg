@@ -162,6 +162,8 @@ let chatRecordCount = 0
  * `chatsSelectTab` (appImManager.ts:2255-2270, пуш `type: 'chat'` при
  * `idx > prevIdx` — у нас это ЛЮБОЙ уход глубже) и `spliceChats`
  * (:2689-2692, `removeByType('chat', true)` на каждый срезанный уровень).
+ * Плюс симметричное снятие `im` при опустошении стека — см. отдельный блок
+ * внизу функции и его докблок.
  *
  * У КАЖДОГО уровня стека, кроме корня (index 0), — своя запись `chat`:
  * нужных записей `Math.max(0, depth - 1)`. Разница со СЧЁТЧИКОМ (см. выше)
@@ -204,6 +206,33 @@ function syncChatRecords(): void {
   }
 
   chatRecordCount = wanted
+
+  // НАХОДКА РЕВЬЮ (Important): у `pushImRecordIfNeeded` есть пуш, но не было
+  // симметричного снятия — единственным местом, где `im` покидала
+  // `navigations[]`, был `back('im')`/`backByItem` (т.е. закрытие ЧЕРЕЗ
+  // запись). Опустошение стека МИМО контроллера — `chatStackStore.clear()`
+  // напрямую, не через `closeChatLevel` — оставляло запись висеть до
+  // перезагрузки вкладки. Воспроизводимый путь: `useAuthGate.ts` на локальном
+  // логауте (`onLoggingOut` без `migrateTo`) зовёт
+  // `resetAccountStateInMemory()` → `useChatStackStore.getState().clear()`
+  // напрямую, а `startChatHistory`/синглтон контроллера при этом не
+  // размонтируются (в `App.tsx` пустые deps) — запись `im` переживает логаут,
+  // и первый чат нового логина СВОЮ запись уже не получает (`findItemByType('im')`
+  // находит чужую) — Back/Esc бьют не по тому, а несбалансированный `pushState`
+  // никогда не гасится. `useUrlSync.ts` (`selectChat(null)` на пустом хэше)
+  // — тот же `chatStackStore.clear()` изнутри `navigationStore.selectChat`,
+  // чинится этим же кодом, отдельного пути нет.
+  //
+  // Гард `!closingViaRecord` здесь ТОТ ЖЕ, что и у `chat` выше и по той же
+  // причине: если стек опустел потому, что `closeChatLevel` САМ вызвал
+  // `selectChat(null)` (глубина была 1, Back/Esc закрыли `im`), запись УЖЕ
+  // снята контроллером до этого вызова (`backByItem`: `spliceItems` до
+  // `onPop`) — повторное снятие не нужно (`removeByType('im', true)` и без
+  // гарда было бы безопасным no-op, но гард делает симметрию с `chat`
+  // явной, а не полагается на no-op-безопасность как на документацию).
+  if (!stack.length && !closingViaRecord) {
+    appNavigationController.removeByType('im', true)
+  }
 }
 
 /**

@@ -297,6 +297,44 @@ describe('chatHistory — записи im/chat', () => {
     }
   })
 
+  // НАХОДКА РЕВЬЮ (Important): у pushImRecordIfNeeded был пуш, но не было
+  // симметричного снятия im при опустошении стека МИМО контроллера —
+  // единственным путём снятия оставался back('im') (закрытие ЧЕРЕЗ запись).
+  // Воспроизводимый триггер продакшна: useAuthGate.ts (локальный логаут,
+  // onLoggingOut без migrateTo) → resetAccountStateInMemory() →
+  // useChatStackStore.getState().clear() НАПРЯМУЮ, без appNavigationController
+  // вообще; startChatHistory при этом не размонтируется (App.tsx, пустые
+  // deps), синглтон контроллера тоже живёт — запись переживала логаут.
+  it('опустошение стека мимо контроллера снимает im; следующий чат получает свежую запись', () => {
+    const stop = startChatHistory()
+    try {
+      useNavigationStore.getState().selectChat('42')
+      const firstIm = appNavigationController.findItemByType('im')?.item
+      expect(firstIm).toBeDefined()
+
+      // Опустошение МИМО контроллера — ровно то, что делает
+      // resetAccountStateInMemory() (useAuthGate.ts): голый clear(), без
+      // backChatLevel()/back('im').
+      useChatStackStore.getState().clear()
+
+      expect(appNavigationController.findItemByType('im')).toBeUndefined()
+
+      // Следующий открытый чат (после повторного входа в ТОЙ ЖЕ вкладке)
+      // обязан получить СВОЮ, отдельную запись — а не молчаливо остаться без
+      // неё из-за гарда `!findItemByType('im')` в `pushImRecordIfNeeded`,
+      // который принял бы чужую утёкшую запись за свою. Именно это и есть
+      // настоящий вред — сам факт "запись снята" ловит первый expect выше,
+      // а вот ЭТОТ ловит то, что снятие остаётся ТОЛЬКО декларацией без
+      // последствий, если новая запись не заводится.
+      useNavigationStore.getState().selectChat('99')
+      const secondIm = appNavigationController.findItemByType('im')?.item
+      expect(secondIm).toBeDefined()
+      expect(secondIm).not.toBe(firstIm)
+    } finally {
+      stop()
+    }
+  })
+
   it('смена чата на другой из списка новой записи не добавляет', () => {
     const stop = startChatHistory()
     const pushSpy = vi.spyOn(appNavigationController, 'pushItem')
