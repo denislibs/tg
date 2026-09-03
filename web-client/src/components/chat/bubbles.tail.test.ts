@@ -17,6 +17,7 @@ import { resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
 import { saveDocument, type DocumentAttribute, type MessageMedia } from '@core/media/messageMedia'
 import { makeMessage } from '@core/messages/testMessage'
+import rootScope from '@lib/rootScope'
 import type { MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
 import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
@@ -36,6 +37,7 @@ async function settle() {
 }
 
 const CHAT = 90
+const ME = 1
 
 const chatContext = (): ChatContext => ({
   peerId: CHAT,
@@ -57,8 +59,13 @@ const managersWith = (messages: MyMessage[]): BubblesManagers => ({
   realtime: { markRead: vi.fn(async () => ({ ok: true })) },
 })
 
+// Сторону бабла (`is-in`/`is-out`) решает не поле `out` — `isOutMessage`
+// сравнивает `fromId` с `rootScope.myId` (`core/models.ts:458-500`). Поле
+// `out: true` само по себе баблу сторону не задаёт, поэтому `fromId` здесь —
+// это `ME`, а `rootScope.myId` выставляется в `beforeEach` ниже так же, как
+// в соседних `bubbles.*.test.ts` (например, `bubbles.actions.test.ts:146`).
 const textOut = (id: number): MyMessage =>
-  makeMessage({ peerId: CHAT, fromId: 2, id, text: 'привет', out: true, createdAt: '2026-08-15T12:00:00Z' })
+  makeMessage({ peerId: CHAT, fromId: ME, id, text: 'привет', out: true, createdAt: '2026-08-15T12:00:00Z' })
 
 /** Кружок — видео-документ с `round_message`; тип бабла выводит `saveDocument`
  *  из атрибута, как у оригинала (bubbles.media.test.ts). */
@@ -75,7 +82,15 @@ const roundVideo = (id: number): MyMessage =>
 
 let bubbles: ChatBubbles | undefined
 afterEach(() => { bubbles?.destroy(); bubbles = undefined })
-beforeEach(() => { resetMessagesMirror(); resetPeerMirror() })
+beforeEach(() => {
+  resetMessagesMirror()
+  resetPeerMirror()
+  // Без этого `isOutMessage` (`core/models.ts:497-500`) сравнивает `fromId`
+  // с дефолтным `rootScope.myId === 0` (`lib/rootScope.ts:294`) — сообщение
+  // от `ME` тогда ложно оказывается входящим, и пин на `is-out` ничего не
+  // проверяет.
+  rootScope.myId = ME
+})
 
 const bubbleOf = (b: ChatBubbles, mid: number) =>
   b.chatInner.querySelector<HTMLElement>(`.bubble[data-mid="${mid}"]`)!
@@ -97,6 +112,9 @@ describe('ChatBubbles — узел хвоста', () => {
     await settle()
 
     const bubble = bubbleOf(bubbles, 1)
+    // Пин обязан быть про ИСХОДЯЩУЮ сторону — без явной проверки `is-out`
+    // тест прошёл бы и с ложно-входящим баблом (см. `beforeEach` выше).
+    expect(bubble.classList.contains('is-out')).toBe(true)
     expect(bubble.classList.contains('can-have-tail')).toBe(true)
 
     const bubbleContent = bubble.querySelector<HTMLElement>('.bubble-content')!
