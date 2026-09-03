@@ -11,6 +11,7 @@
 //           circle.preloader-path
 import { useEffect, useRef } from 'react'
 import { useManagers } from '../../../core/hooks/useManagers'
+import appNavigationController from '../../../core/navigation/appNavigationController'
 import Preloader from '../Preloader'
 import s from '../AuthFlow.module.scss'
 
@@ -40,8 +41,13 @@ export default function SignImportCard({
     startedRef.current = true
     void managers.auth.signImport(webAuthToken, 'web', 'browser').then((res) => {
       // tweb чистит хеш до навигации: перезагрузка не должна снова тащить
-      // сгоревший токен в этот же экран.
-      if (location.hash) history.replaceState(null, '', location.pathname + location.search)
+      // сгоревший токен в этот же экран. Единственный писатель истории —
+      // контроллер (задача 4, ОСТАТОК #108): порт tweb/src/index.ts:579
+      // (`appNavigationController.overrideHash(...)` для того же хэша
+      // `#?tgWebAuthToken=…`), а не свой `history.replaceState(null, …)` мимо
+      // него (запись с `null` вместо `this.id` не опознаётся проверкой
+      // `id === this.id` в `_onPopState`).
+      if (location.hash) appNavigationController.overrideHash('')
       if ('user' in res && res.user) {
         onComplete()
       } else if (res.passwordNeeded) {

@@ -3,7 +3,6 @@
 // реальном DOM (happy-dom), без моков DOM — как остальные ванильные порты
 // (`clickEvent.test.ts`, `openMediaViewer.test.ts`).
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { initHotkeys } from '@core/hotkeys'
 import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
 import PopupElement, { type PopupButton, type PopupOptions } from './popupElement'
 
@@ -44,24 +43,20 @@ describe('PopupElement — база (порт tweb popups/index.ts)', () => {
     expect(document.body.contains(root)).toBe(false)
   })
 
-  it('Esc закрывает попап и НЕ доходит до фолбэка «закрыть чат» (урок дефекта a8ad0788)', () => {
-    vi.useFakeTimers()
-    const escFallback = vi.fn()
-    const deactivate = initHotkeys({ escFallback })
-
+  it('Esc закрывает попап — запись `popup` контроллера гасит событие в фазе захвата (урок дефекта a8ad0788)', () => {
     const popup = new PopupElement('popup-esc-test')
     popup.show()
     expect(document.querySelector('.popup-esc-test')).not.toBeNull()
 
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
-    // фолбэк планируется таймером ТОЛЬКО когда Esc-стек пуст (core/hotkeys.ts) —
-    // ждём его окно, чтобы поймать регрессию, а не молчаливо разминуться с ней
-    vi.advanceTimersByTime(10)
+    const e = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    window.dispatchEvent(e)
 
-    expect(escFallback).not.toHaveBeenCalled()
+    // `cancelEvent` в `appNavigationController.onKeyDown` (фаза захвата) —
+    // единственный наблюдаемый признак того, что попап забрал Esc первым
+    // (никакого отдельного «фолбэка» с задачи chat-navigation-im-3 больше нет,
+    // см. `core/hotkeys.ts`).
+    expect(e.defaultPrevented).toBe(true)
     expect(document.querySelector('.popup-esc-test')!.classList.contains('hiding')).toBe(true)
-
-    deactivate()
   })
 
   it('клик по оверлею закрывает, клик по телу — нет', () => {
@@ -102,20 +97,14 @@ describe('PopupElement — база (порт tweb popups/index.ts)', () => {
     expect(root.classList.contains('hiding')).toBe(true)
   })
 
-  it('destroy() снимает слушатели: после него Esc ничего не зовёт (стек пуст — срабатывает фолбэк)', () => {
-    vi.useFakeTimers()
-    const escFallback = vi.fn()
-    const deactivate = initHotkeys({ escFallback })
-
+  it('destroy() снимает слушатели: после него Esc никем не перехватывается', () => {
     const popup = new PopupElement('popup-destroy-test')
     popup.show()
     popup.forceHide() // → destroy() сразу (без ожидания анимации)
 
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
-    vi.advanceTimersByTime(10)
-    // стек пуст: раз попап снял свой Esc-обработчик, Escape уходит в фолбэк
-    expect(escFallback).toHaveBeenCalledTimes(1)
-
-    deactivate()
+    const e = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    window.dispatchEvent(e)
+    // попап снял свою запись `popup` контроллера — стек пуст, гасить событие некому
+    expect(e.defaultPrevented).toBe(false)
   })
 })

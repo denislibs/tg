@@ -1,29 +1,22 @@
-// Глобальные хоткеи (tweb): Ctrl/Cmd+K — фокус в поиск; Esc при пустом стеке
-// оверлеев — закрыть чат/тред; Ctrl/Cmd+Shift+M — mute текущего; Ctrl/Cmd+0 —
-// «Избранное»; Alt+↑/↓ — циклическая навигация по диалогам. Все колбэки читают
+// Глобальные хоткеи (tweb): Ctrl/Cmd+K — фокус в поиск; Ctrl/Cmd+Shift+M —
+// mute текущего; Ctrl/Cmd+0 — «Избранное»; Alt+↑/↓ — циклическая навигация по
+// диалогам. Esc здесь больше не заводится — пока чат открыт, `chatHistory.ts`
+// держит на стеке контроллера запись `im`/`chat` ВСЕГДА (задачи 1-2), и её
+// `onPop` — та же `closeChatLevel`, которую раньше звал отсюда фолбэк
+// `escFallback`; отдельный путь снят вместе с ним (chat-navigation-im-3), как
+// у оригинала (`appNavigationController.ts:217-224`: Esc — это `back(item.type)`
+// по верхней записи стека, без ветки специально под чат). Все колбэки читают
 // сторы через getState() → стабильны, поэтому ref-зеркала стейта больше не нужны.
 import { useCallback, useEffect } from 'react'
 import { useManagers } from './useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
 import { isPeerMuted } from '../dialogs/notifySettings'
 import { useNavigationStore } from '../../stores/navigationStore'
-import { useChatStackStore, selectOpenThreadDesc } from '../../stores/chatStackStore'
 import { initHotkeys } from '../hotkeys'
 import { parsePeerId } from '../peers/peerId'
 
 export function useAppHotkeys(): void {
   const managers = useManagers()
-  // Esc: тред закрывается первым (комментарии → назад к каналу), затем чат.
-  // Полное закрытие идёт через selectChat(null) (а не голый setSelectedId) —
-  // она же чистит chatStackStore: без этого колонка на десктопе осталась бы
-  // показывать прежний чат (useLeftColumnShown прячет #column-center только
-  // на хендхелдах, см. её докблок).
-  const escCloseChat = useCallback(() => {
-    const stack = useChatStackStore.getState()
-    if (selectOpenThreadDesc(stack)) { stack.closeTop(); return }
-    const nav = useNavigationStore.getState()
-    if (nav.selectedId) nav.selectChat(null)
-  }, [])
 
   // Task 4 (действия без оптимистики): локальный апдейт применяет владелец
   // (dialogsManager.applyNotifySettings) ПОСЛЕ успешного REST-ответа (groupsManager.ts) —
@@ -60,12 +53,11 @@ export function useAppHotkeys(): void {
     () =>
       initHotkeys({
         focusSearch: () => window.dispatchEvent(new Event('tg-focus-search')),
-        escFallback: escCloseChat,
         muteChat: muteCurrentChat,
         openSaved,
         nextChat: () => cycleChat(1),
         prevChat: () => cycleChat(-1),
       }),
-    [escCloseChat, muteCurrentChat, openSaved, cycleChat],
+    [muteCurrentChat, openSaved, cycleChat],
   )
 }

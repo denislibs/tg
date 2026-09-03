@@ -8,6 +8,44 @@ import { useManagers } from './useManagers'
 import { loadFolders } from '../../stores/foldersStore'
 import { useNavigationStore } from '../../stores/navigationStore'
 import { useT } from '../../i18n'
+import appNavigationController from '../navigation/appNavigationController'
+import { syncChatHash } from '../navigation/chatHistory'
+
+// Зачистка адреса после обработки диплинка — ЕДИНСТВЕННЫЙ писатель истории
+// браузера обязан быть appNavigationController (задача 4, ОСТАТОК #108); свой
+// `window.history.replaceState` мимо него не опознаётся проверкой
+// `id === this.id` в `_onPopState` (писал `{}` вместо `this.id`). Полный
+// сброс адреса (а не только хэша) — потому что все четыре случая ниже несут
+// токен/параметр в ПУТИ или в query (`/join/:token`, `/qr/:token`,
+// `/addlist/:slug`, `?domain=&start=`), а не в хэше, как у tweb (там
+// `index.ts:579` чистит только хэш через `overrideHash`, потому что и токен
+// живёт в хэше — `#?tgWebAuthToken=…`). У нас предмет тот же (не тащить
+// сгоревший диплинк дальше между релоадами), метод контроллера — другой:
+// `overrideHash` хэш не трогающую часть адреса не чистит.
+//
+// `overrideAddress`, а НЕ голый публичный `replaceState(url)` — тот не
+// синхронизирует `currentHash`/`overriddenHash` и не идёт через очередь
+// мутаций (`modifyHistoryFromEvent`), см. докблок метода в контроллере:
+// диплинк-оверлей (qr/addlist) рендерится ПОВЕРХ уже открытого чата, и
+// зачистка его адреса не должна ни рассинхронить хэш чата с внутренним
+// состоянием контроллера, ни обогнать соседнюю мутацию истории.
+//
+// НАХОДКА РЕВЬЮ (Minor, финальное ревью п.6): `overrideAddress` сбрасывает
+// АДРЕС ЦЕЛИКОМ, включая хэш открытого чата (`new URL('/', …)` хэша не
+// несёт) — `currentHash`/`overriddenHash` контроллер синхронизирует сам
+// (см. докблок метода), но САМ ХЭШ АКТИВНОГО ЧАТА в адресную строку без
+// внешнего толчка не возвращается: единственный, кто умеет его посчитать
+// заново, — `syncChatHash()` (`core/navigation/chatHistory.ts`), а её здесь
+// никто не звал. Симптом — ровно тот, что описан абзацем выше: диплинк-
+// оверлей поверх открытого чата, после закрытия оверлея хэш `#peerId`
+// пропадал из адреса до следующей мутации стека (открытия другого чата),
+// хотя чат оставался открытым. Досылаем синхронизацию сразу здесь же — тем
+// же единственным писателем (`appNavigationController.overrideHash` внутри
+// `syncChatHash`), а не отдельным путём записи.
+const clearDeepLinkAddress = () => {
+  appNavigationController.overrideAddress(new URL('/', location.origin))
+  syncChatHash()
+}
 
 // /join обрабатываем не более одного раза за сессию приложения.
 let joinDeepLinkHandled = false
@@ -46,7 +84,7 @@ export function useDeepLinks(showToast: (text: string) => void): DeepLinks {
         }
       })
       .catch(() => showToast('Не удалось перейти по ссылке'))
-      .finally(() => window.history.replaceState({}, '', '/'))
+      .finally(clearDeepLinkAddress)
   }, [managers, showToast])
 
   // /qr/:token — показать оверлей подтверждения.
@@ -70,17 +108,17 @@ export function useDeepLinks(showToast: (text: string) => void): DeepLinks {
       showToast('Не удалось подтвердить')
     }
     setQrConfirmToken(null)
-    window.history.replaceState({}, '', '/')
+    clearDeepLinkAddress()
   }
 
   const cancelQr = () => {
     setQrConfirmToken(null)
-    window.history.replaceState({}, '', '/')
+    clearDeepLinkAddress()
   }
 
   const closeAddlist = () => {
     setAddlistSlug(null)
-    window.history.replaceState({}, '', '/')
+    clearDeepLinkAddress()
   }
 
   const onAddlistJoined = (folderTitle: string) => {
@@ -98,7 +136,7 @@ export function useDeepLinks(showToast: (text: string) => void): DeepLinks {
     const sp = new URLSearchParams(location.search)
     const domain = sp.get('domain') ?? undefined
     const start = sp.get('start')
-    if (domain) window.history.replaceState({}, '', '/')
+    if (domain) clearDeepLinkAddress()
     return { domain, start }
   })
   useEffect(() => {

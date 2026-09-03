@@ -24,6 +24,7 @@ import { PeerStatus } from '../shared/ui/peerStatus'
 import { useManagers } from '../core/hooks/useManagers'
 import { useNavigationActions } from '../core/hooks/useNavigationActions'
 import { useChatStackStore } from '../stores/chatStackStore'
+import { backChatLevel, closeChatLevel } from '../core/navigation/chatHistory'
 import { useMirrorWindow } from '../core/hooks/useMirrorWindow'
 import { replaceMirrorWindow, winKey } from '../core/history/messagesMirror'
 import { useEvent } from '../core/hooks/useEvent'
@@ -153,7 +154,15 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // читает из стора, а не через проброс из Shell). Имена локальные совпадают с
   // прежними пропсами, чтобы не менять места использования ниже.
   const { openPeer: onOpenPeer, onChatCreated } = useNavigationActions()
-  const onCloseThread = useCallback(() => { useChatStackStore.getState().closeTop() }, [])
+  // Кнопка «назад» в шапке треда закрывает уровень ЗАПИСЬЮ, а не стором
+  // напрямую — как и стрелка «назад» в шапке чата у оригинала (tweb
+  // src/components/chat/chat.ts:1628-1632, `appNavigationController.back(
+  // isFirstChat ? 'im' : 'chat')`; `backChatLevel` сама решает, какой из двух
+  // типов сейчас на вершине). Прямой `closeTop()` (как было раньше) оставлял
+  // бы запись `chat`/`im` (`core/navigation/chatHistory.ts`) висеть на стеке
+  // контроллера при уже закрытом на экране треде — история расходилась бы с
+  // состоянием.
+  const onCloseThread = useCallback(() => { backChatLevel() }, [])
   // Ветка комментариев под постом канала (tweb setPeer({peerId, threadId})) —
   // кладём поверх стека (tweb setInnerPeer).
   const onOpenThread = useCallback((args: { chatId: number; rootMsgId: number; title: string; subtitle?: string }) => {
@@ -524,7 +533,15 @@ export default function Chat({ chat, onBack, thread }: Props) {
       ? managers.groups.deleteGroup(numericChatId)
       : managers.groups.removeMember(numericChatId, meId).then(() => managers.dialogs.applyRemoved(numericChatId))
     void op.catch(() => {})
-    onBack?.()
+    // НАХОДКА РЕВЬЮ (Important, финальное ревью п.4): было `onBack?.()` — на
+    // десктопе `onBack` не задан (`App.tsx`: пропа нет вовсе вне узкого
+    // экрана), чат из которого вышли/который удалили оставался открытым, а
+    // лента продолжала биться о 403. Порт `dialog_drop` → `appImManager.
+    // setPeer({isDeleting: true})` (tweb chat.ts:658-668) — закрыть чат
+    // обязано само действие удаления, а не колбэк, которого на десктопе нет.
+    // `closeChatLevel({isDeleting: true})` — та же запись/контроллер, что и
+    // обычное закрытие (см. её докблок), а не второй механизм в обход него.
+    closeChatLevel({ isDeleting: true })
   }
   // «Очистить историю» у себя: сервер поднимает персональный горизонт, затем
   // выкидываем окно из зеркала, перезагружаем ленту и список диалогов

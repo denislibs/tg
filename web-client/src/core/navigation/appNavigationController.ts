@@ -330,6 +330,45 @@ export class AppNavigationController {
     })
   }
 
+  /**
+   * ОТСТУПЛЕНИЕ ОТ ОРИГИНАЛА, НАЗВАННОЕ (по образцу докблока файла выше). У
+   * tweb такого метода нет: там диплинки живут в ХЭШЕ, и зачистка идёт через
+   * `overrideHash` (`tweb/src/index.ts:579`). У нас часть диплинков
+   * (`/join/:token`, `/qr/:token`, `/addlist/:slug`, `?domain=&start=`,
+   * `core/hooks/useDeepLinks.ts`) несёт параметр в ПУТИ или в query, а не в
+   * хэше — `overrideHash` их не увидит, он трогает только `location.hash`.
+   *
+   * Метод — честное расширение того же единственного писателя (не третий
+   * механизм: он зовёт тот же приватный `replaceState`, ту же очередь), а не
+   * голый `history.replaceState`/публичный `replaceState(url)` в обход неё.
+   * Два свойства, которых у голого вызова нет:
+   *  1) синхронизирует `currentHash`/`overriddenHash` с ХЭШЕМ переданного
+   *     адреса — без этого адресная строка и внутреннее состояние
+   *     контроллера расходятся: диплинк-оверлей поверх открытого чата чистит
+   *     хэш `#peerId` из адреса, контроллер продолжает думать, что
+   *     `currentHash === '#peerId'`, и следующий `syncChatHash()` зовёт
+   *     `overrideHash('#peerId')` с ТЕМ ЖЕ значением — срабатывает ранний
+   *     выход `this.currentHash === hash`, хэш активного чата в адрес не
+   *     возвращается. Пин на это — `appNavigationController.test.ts`
+   *     (describe «адрес целиком»).
+   *  2) идёт через `modifyHistoryFromEvent`, ту же очередь мутаций, что и
+   *     остальные записи истории — вызовы `confirmQr`/`cancelQr`/
+   *     `closeAddlist` происходят по клику в произвольный момент, когда в
+   *     стеке контроллера уже могут жить другие оверлеи (см. докблок файла
+   *     про гонку `back()`/`push()`).
+   *
+   * В отличие от `overrideHash` — БЕЗ раннего выхода по совпадению хэша:
+   * здесь меняется путь/query, а не только хэш, и у наших диплинков хэш пуст
+   * ДО и ПОСЛЕ (не индикатор «адрес не изменился»); ранний выход по хэшу тут
+   * съедал бы КАЖДУЮ зачистку.
+   */
+  public overrideAddress(url: URL) {
+    this.overriddenHash = this.currentHash = url.hash
+    this.modifyHistoryFromEvent(() => {
+      this.replaceState(url)
+    })
+  }
+
   // ── Записи ────────────────────────────────────────────────────────────────
 
   private handleItem(item: NavigationItem, wasIndex = this.navigations.indexOf(item)) {
@@ -476,23 +515,6 @@ export class AppNavigationController {
     } else {
       history.pushState(this.id, '')
     }
-  }
-
-  /**
-   * ОСТАТОК #108, а не метод оригинала. У tweb смена чата не создаёт записи
-   * истории вовсе — хэш переписывается на месте (`overrideHash` →
-   * `replaceState`), а Back закрывает чат отдельной записью типа `im`. У нас
-   * каждый открытый чат — своя запись (Phase A роутинга, `useUrlSync`), и
-   * пока это так, её `pushState` обязан идти через ТУ ЖЕ очередь мутаций, что
-   * записи навигации: иначе он обгонит ещё не подтверждённый `history.back()`
-   * закрывающегося оверлея (воспроизведённый дефект волны 1).
-   *
-   * Метод уйдёт вместе с переводом навигации чата на `overrideHash`.
-   */
-  public pushHashState(url: string) {
-    this.modifyHistoryFromEvent(() => {
-      history.pushState(null, '', url)
-    })
   }
 
   public replaceState(url?: URL) {

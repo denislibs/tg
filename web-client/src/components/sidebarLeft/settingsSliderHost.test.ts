@@ -23,7 +23,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // (`src/test/setup.ts`); на пустом ядре узел напечатал бы имя ключа.
 import type { Authorization } from '@layer'
 import type { Managers } from '@/client/bootstrap'
-import { initHotkeys } from '@core/hotkeys'
 import appNavigationController from '@core/navigation/appNavigationController'
 import { AppActiveSessionsTab } from '@components/solidJsTabs/tabs'
 import s from './settingsSliderHost.module.scss'
@@ -158,8 +157,6 @@ describe('settingsSliderHost — заведение слайдера в леву
     // ПОСЛЕ `await init()`. Между `createTab` и `selectTab` лежат динамический
     // импорт чанка вкладки и ожидание данных — уйти успевают. Сценарий:
     // настройки → «Устройства» → Back до того, как доехал чанк.
-    const escFallback = vi.fn()
-    const deactivate = initHotkeys({ escFallback })
     const { managers } = makeManagers()
     const host = createHost(managers)
 
@@ -175,10 +172,13 @@ describe('settingsSliderHost — заведение слайдера в леву
     expect(tab.container.parentElement).toBeNull()
     expect(columnEl.children).toHaveLength(0)
 
-    // Esc не съеден осиротевшим обработчиком мёртвой вкладки.
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
-    await pause(20)
-    expect(escFallback).toHaveBeenCalledTimes(1)
+    // Esc не съеден осиротевшим обработчиком мёртвой вкладки: запись контроллера
+    // снята вместе с ней, событию некому гасить `defaultPrevented`
+    // (задача chat-navigation-im-3 сняла прежний прокси-сигнал через `escFallback`
+    // хоткеев — наблюдаем напрямую факт `cancelEvent` контроллера).
+    const e = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    window.dispatchEvent(e)
+    expect(e.defaultPrevented).toBe(false)
 
     // И Back тоже: записи истории у ненайденной вкладки быть не должно, иначе
     // первое нажатие «назад» ПОСЛЕ выхода из настроек уходит в никуда.
@@ -187,13 +187,9 @@ describe('settingsSliderHost — заведение слайдера в леву
     await pause(20) // запись истории доезжает очередью мутаций
     window.dispatchEvent(new PopStateEvent('popstate'))
     expect(backsToApp).toBe(1)
-
-    deactivate()
   })
 
   it('destroy отпускает Esc: следующее нажатие достаётся приложению, а не мёртвой вкладке', async() => {
-    const escFallback = vi.fn()
-    const deactivate = initHotkeys({ escFallback })
     const { managers } = makeManagers()
     const host = createHost(managers)
 
@@ -202,39 +198,34 @@ describe('settingsSliderHost — заведение слайдера в леву
     host.destroy()
     await settle()
 
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
-    // Фолбэк планируется таймером — только если Esc-стек пуст (`core/hotkeys.ts`).
-    await pause(20)
-    expect(escFallback).toHaveBeenCalledTimes(1)
-
-    deactivate()
+    const e = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    window.dispatchEvent(e)
+    // Запись `esg` мёртвой вкладки снята — гасить событие в фазе захвата некому.
+    expect(e.defaultPrevented).toBe(false)
   })
 
-  it('Escape закрывает вкладку и НЕ проваливается в фолбэк «закрыть чат»', async() => {
-    const escFallback = vi.fn()
-    const deactivate = initHotkeys({ escFallback })
+  it('Escape закрывает вкладку и НЕ проваливается дальше по стеку', async() => {
     const { managers } = makeManagers()
     const host = createHost(managers)
 
     const tab = await host.openTab(AppActiveSessionsTab, { authorizations: [current, other] })
 
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+    const first = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    window.dispatchEvent(first)
     await settle()
 
-    expect(escFallback).not.toHaveBeenCalled()
+    expect(first.defaultPrevented).toBe(true)
     expect(tab.container.parentElement).toBeNull()
     // Экран настроек ПОД вкладкой остаётся: хост жив, снят только его слой-признак.
     expect(columnEl.firstElementChild!.classList.contains(s.withTabs)).toBe(false)
     expect(columnEl.children).toHaveLength(1)
 
-    // Закрытая вкладка обязана ОТПУСТИТЬ клавишу: следующее нажатие идёт
-    // приложению. Осиротевший Esc-обработчик закрытой вкладки съедал бы
-    // нажатия молча и навсегда.
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
-    await pause(20)
-    expect(escFallback).toHaveBeenCalledTimes(1)
-
-    deactivate()
+    // Закрытая вкладка обязана ОТПУСТИТЬ клавишу: следующее нажатие в контроллере
+    // уже не находит её запись, событие не гасится. Осиротевший Esc-обработчик
+    // закрытой вкладки съедал бы нажатия молча и навсегда.
+    const second = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    window.dispatchEvent(second)
+    expect(second.defaultPrevented).toBe(false)
   })
 
   it('слайдер один на колонку: второй хост уносит вкладки первого', async() => {

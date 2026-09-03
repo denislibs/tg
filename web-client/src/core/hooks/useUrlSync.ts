@@ -1,45 +1,26 @@
-// Синхронизация URL-хэша с открытым чатом (Phase A роутинга, в духе tweb Web K:
-// #@username / #<peerId> / #<peerId>_<threadRoot>). Двунаправленно:
-//   стор → хэш: смена selectedId/openThread пишет history.pushState (Back браузера
-//               возвращает к предыдущему чату/списку);
-//   хэш → стор: на загрузке и popstate читает хэш и открывает чат.
-// Защита от петли: suppressRef на время применения хэша, readyRef чтобы первый
-// проход «стор→хэш» не затёр входящий хэш до его применения.
+// Синхронизация URL-хэша с открытым чатом: направление «хэш → стор» (Phase A
+// роутинга, в духе tweb Web K: #@username / #<peerId>). На загрузке и popstate
+// читает хэш и открывает чат (без восстановления ветки треда — для неё нужны
+// метаданные топика).
 //
-// Phase A охватывает слой ЧАТА (шаринг ссылки, восстановление после reload, Back
-// между чатами). Оверлеи (попапы/панели/поиск) через Back — это Phase B
-// (navigationController). Тред восстанавливается до уровня чата (без самой ветки —
-// для неё нужны метаданные топика).
-import { useEffect, useRef } from 'react'
+// Направление «стор → хэш» отсюда уехало в `core/navigation/chatHistory.ts`
+// (`startChatHistory`): та сторона пишет хэш НА МЕСТЕ через
+// `appNavigationController.overrideHash`, а не собственным `history.pushState`
+// — смена чата не создаёт запись истории, как в оригинале (снятие ОСТАТКА
+// #108, см. докблок `chatHistory.ts`).
+//
+// Phase A охватывает слой ЧАТА (шаринг ссылки, восстановление после reload).
+// Оверлеи (попапы/панели/поиск) через Back — это Phase B (navigationController).
+import { useEffect } from 'react'
 import { useManagers } from './useManagers'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useNavigationStore } from '../../stores/navigationStore'
-import { useChatStackStore, selectOpenThreadDesc } from '../../stores/chatStackStore'
 import appNavigationController from '../navigation/appNavigationController'
 import { parseNavHash, requestMessageJump } from '../messageLink'
 import { getPeerPhotoId, peerKey } from '../peers/peer'
 import { cachedChat } from '../peerCache'
 import { getUserTitle } from '../peers/getPeerTitle'
 import type { Managers } from '../../client/bootstrap'
-
-// Хэш для текущего состояния навигации (без ведущего #). '' — список чатов.
-function hashForState(): string {
-  const nav = useNavigationStore.getState()
-  const openThread = selectOpenThreadDesc(useChatStackStore.getState())
-  if (openThread) return `${openThread.peerId}_${openThread.thread.rootMsgId}`
-  const id = nav.selectedId
-  if (!id) return ''
-  if (id.startsWith('draft:')) {
-    // Черновик без диалога: делимся по @username, если он есть; иначе не пишем.
-    return nav.draftPeer?.username ? `@${nav.draftPeer.username}` : ''
-  }
-  // Публичный чат/канал/группа с username → #@username (шарибельно, как tweb);
-  // иначе числовой id (private-чаты username в диалоге не несут).
-  // Публичное имя живёт в КАРТОЧКЕ чата (`channel.username`), а не в строке
-  // диалога: тело чата едет вектором `chats` контейнера `/chats`.
-  const chat = cachedChat(Number(id))
-  return chat && chat._ === 'channel' && chat.username ? `@${chat.username}` : id
-}
 
 // Применить хэш к навигации. Публичный @username, которого нет в диалогах,
 // резолвим директорией (channels.search): чат → вступить+открыть, юзер → черновик.
@@ -100,48 +81,14 @@ export async function applyHash(rawHash: string, managers: Managers): Promise<vo
 
 export function useUrlSync(): void {
   const managers = useManagers()
-  const selectedId = useNavigationStore((s) => s.selectedId)
-  const openThread = useChatStackStore(selectOpenThreadDesc)
-  const suppressRef = useRef(false)
-  const readyRef = useRef(false)
-
   // хэш → стор: первичное применение + смена хэша, дошедшая до контроллера
   // навигации (он единственный владелец popstate). `onHashChange` — ручка
   // самого оригинала (`appNavigationController.ts:41`, `appImManager.ts:317`
   // ставит туда свой обработчик): контроллер зовёт её, когда пришедший
   // popstate поменял ХЭШ, а не снял запись навигации.
   useEffect(() => {
-    const apply = () => {
-      suppressRef.current = true
-      void applyHash(location.hash, managers).finally(() => {
-        suppressRef.current = false
-        readyRef.current = true
-      })
-    }
+    const apply = () => { void applyHash(location.hash, managers) }
     apply()
     appNavigationController.onHashChange = apply
   }, [managers])
-
-  // стор → хэш: push нового адреса при навигации пользователя.
-  useEffect(() => {
-    if (!readyRef.current || suppressRef.current) return
-    const want = hashForState()
-    const cur = location.hash.replace(/^#/, '')
-    if (want === cur) return
-    const url = want ? `#${want}` : location.pathname + location.search
-    // ОСТАТОК #108, названный: у оригинала смена чата НЕ создаёт записи
-    // истории — хэш там переписывается на месте (`appNavigationController
-    // .overrideHash` → `replaceState`, `appImManager.ts:2578-2586`), а Back
-    // закрывает чат отдельной записью типа `im`, которую пушит переход вглубь
-    // на мобильной раскладке (`selectTab`, :2628-2638). У нас каждый открытый
-    // чат — своя запись истории (Phase A роутинга), то есть Back ходит ПО
-    // ЧАТАМ. Это расхождение старше контроллера и меняет видимое поведение
-    // кнопки «Назад», поэтому переносится отдельной задачей, а не походя.
-    //
-    // Пока оно живо, запись обязана идти через ту же очередь мутаций, что
-    // записи навигации: иначе `pushState` чата обгонит (или будет переписан)
-    // ещё не подтверждённый `history.back()` закрывающегося оверлея — тот
-    // самый дефект волны 1.
-    appNavigationController.pushHashState(url)
-  }, [selectedId, openThread])
 }
