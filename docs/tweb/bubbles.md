@@ -557,6 +557,16 @@ div.reply.quote-like.quote-like-hoverable.quote-like-border[.quote-like-icon.rep
   При этом `timeSpan` переезжает ВНУТРЬ reactions-element (`appendBubbleTime`, 9855).
 - `USER_REACTIONS_INLINE = false` (bubbles.ts:260) — inline-режим в личках выключен, всегда block.
 
+**У нас (web-client, `components/chat/bubbles.ts::renderMessageMeta`):** развилка
+floating-time/`.message` портирована — у бабла с `has-floating-time` (медиа без подписи)
+время (`is-floating`) вставляется прямо в `bubble-content` (сосед `.message`, не потомок),
+а контейнер реакций — в `bubble-content-wrapper`; иначе оба уходят в `.message`, как раньше.
+`service`-ветка и `is-multiple-documents` не портированы: служебные баблы (`renderServiceMessage`)
+собираются отдельным путём и `renderMessageMeta` не проходят, а альбом документов у нас
+не поддержан вовсе (см. §8.2.5 — впрочем, актуальная карта файлов лежит в
+`web-client/CLAUDE.md` «Лента чата — императивная»: `MessageRow.tsx`/`ChatFeed.tsx` из §8
+ниже сняты вместе с React-лентой, §8 не актуализирован).
+
 ## 4.22 Inline reply-markup (клавиатура под баблом)
 
 `createInlineReplyMarkup({rows, chat, message})` (bubbleParts/inlineReplyMarkup.ts) →
