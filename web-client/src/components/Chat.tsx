@@ -24,7 +24,7 @@ import { PeerStatus } from '../shared/ui/peerStatus'
 import { useManagers } from '../core/hooks/useManagers'
 import { useNavigationActions } from '../core/hooks/useNavigationActions'
 import { useChatStackStore } from '../stores/chatStackStore'
-import { backChatLevel } from '../core/navigation/chatHistory'
+import { backChatLevel, closeChatLevel } from '../core/navigation/chatHistory'
 import { useMirrorWindow } from '../core/hooks/useMirrorWindow'
 import { replaceMirrorWindow, winKey } from '../core/history/messagesMirror'
 import { useEvent } from '../core/hooks/useEvent'
@@ -533,7 +533,15 @@ export default function Chat({ chat, onBack, thread }: Props) {
       ? managers.groups.deleteGroup(numericChatId)
       : managers.groups.removeMember(numericChatId, meId).then(() => managers.dialogs.applyRemoved(numericChatId))
     void op.catch(() => {})
-    onBack?.()
+    // НАХОДКА РЕВЬЮ (Important, финальное ревью п.4): было `onBack?.()` — на
+    // десктопе `onBack` не задан (`App.tsx`: пропа нет вовсе вне узкого
+    // экрана), чат из которого вышли/который удалили оставался открытым, а
+    // лента продолжала биться о 403. Порт `dialog_drop` → `appImManager.
+    // setPeer({isDeleting: true})` (tweb chat.ts:658-668) — закрыть чат
+    // обязано само действие удаления, а не колбэк, которого на десктопе нет.
+    // `closeChatLevel({isDeleting: true})` — та же запись/контроллер, что и
+    // обычное закрытие (см. её докблок), а не второй механизм в обход него.
+    closeChatLevel({ isDeleting: true })
   }
   // «Очистить историю» у себя: сервер поднимает персональный горизонт, затем
   // выкидываем окно из зеркала, перезагружаем ленту и список диалогов
