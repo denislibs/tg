@@ -358,6 +358,40 @@ describe('appNavigationController — хэш', () => {
   })
 })
 
+describe('адрес целиком', () => {
+  afterEach(() => {
+    location.hash = ''
+  })
+
+  // Ревью задачи 4 (НАХОДКА 1): голый публичный `replaceState(url)` пишет
+  // адрес, но не трогает `currentHash`/`overriddenHash` — контроллер и
+  // адресная строка расходятся. Сценарий ровно тот, что поймало ревью:
+  // открыт чат (`overrideHash` выставил хэш `#peer1`, как `syncChatHash` в
+  // `chatHistory.ts`), поверх него диплинк-оверлей (qr/addlist), закрытие
+  // оверлея чистит адрес ЦЕЛИКОМ (`overrideAddress`, у диплинка параметр в
+  // ПУТИ, не в хэше). Следующий `syncChatHash()` (уже после закрытия
+  // оверлея) снова просит ТОТ ЖЕ хэш активного чата — и обязан его
+  // ЗАПИСАТЬ, а не словить ранний выход `overrideHash` по «хэш не
+  // изменился» (`this.currentHash === hash`). Второе `expect` здесь и есть
+  // пин: без синхронизации `currentHash` внутри `overrideAddress` первый
+  // `overrideHash('#peer1')` после зачистки был бы молча проигнорирован —
+  // хэш активного чата не возвращался бы в адрес, пока пользователь не
+  // переключит чат.
+  it('overrideAddress не запирает currentHash: следующий overrideHash с тем же значением хэша всё равно пишется', async() => {
+    ctrl.overrideHash('#peer1')
+    await flush()
+    expect(location.hash).toBe('#peer1')
+
+    ctrl.overrideAddress(new URL('/', location.origin))
+    await flush()
+    expect(location.hash).toBe('') // адрес зачищен целиком, хэш ушёл вместе с путём
+
+    ctrl.overrideHash('#peer1') // syncChatHash() после закрытия оверлея — то же значение, что было ДО зачистки
+    await flush()
+    expect(location.hash).toBe('#peer1') // а не ранний выход overrideHash по «не изменилось»
+  })
+})
+
 // ── Скан: единственный писатель history.* — контроллер ─────────────────────
 //
 // Задача 4: у истории браузера обязан остаться РОВНО один писатель — этот

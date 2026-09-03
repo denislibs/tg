@@ -21,7 +21,14 @@ import appNavigationController from '../navigation/appNavigationController'
 // живёт в хэше — `#?tgWebAuthToken=…`). У нас предмет тот же (не тащить
 // сгоревший диплинк дальше между релоадами), метод контроллера — другой:
 // `overrideHash` хэш не трогающую часть адреса не чистит.
-const clearDeepLinkAddress = () => appNavigationController.replaceState(new URL('/', location.origin))
+//
+// `overrideAddress`, а НЕ голый публичный `replaceState(url)` — тот не
+// синхронизирует `currentHash`/`overriddenHash` и не идёт через очередь
+// мутаций (`modifyHistoryFromEvent`), см. докблок метода в контроллере:
+// диплинк-оверлей (qr/addlist) рендерится ПОВЕРХ уже открытого чата, и
+// зачистка его адреса не должна ни рассинхронить хэш чата с внутренним
+// состоянием контроллера, ни обогнать соседнюю мутацию истории.
+const clearDeepLinkAddress = () => appNavigationController.overrideAddress(new URL('/', location.origin))
 
 // /join обрабатываем не более одного раза за сессию приложения.
 let joinDeepLinkHandled = false
