@@ -44,14 +44,17 @@
 |---|---|---|
 | Запись на смену чата | нет: `overrideHash` → `replaceState` (`appNavigationController.ts:274-288`, `:411-423`) | `pushHashState` на каждый чат И на каждый тред (`useUrlSync.ts:145`) |
 | Запись `im` | пушится при росте таба `CHATLIST→CHAT` (`appImManager.ts:2628-2638`), `onPop` = `setPeer({}, canAnimate)` | производителя нет вовсе (тип объявлен, `appNavigationController.ts:82`) |
-| Уход вглубь (тред) | новых записей НЕ добавляет: `setInnerPeer` (`appImManager.ts:2831-2872`) зовёт `setPeer`, тот `selectTab(CHAT)` при уже `CHAT` → условие `id > prevTabId` ложно | тред пишет свою запись и свой хэш `peerId_rootMsgId` (`useUrlSync.ts:29,146`) |
+| Уход вглубь (тред) | добавляет запись `'chat'` — `chatsSelectTab` (`appImManager.ts:2257-2270`), вставка `spliceItems(found ? found.index : getNextIndex(), 0, …)` по `context` инстанса; `onPop` тот же `setPeer({})`. Записи `im` при этом второй не появляется (`setInnerPeer` не растит таб) | тред пишет свою запись и свой хэш `peerId_rootMsgId` (`useUrlSync.ts:29,146`) |
 | Хэш на глубине | от глубины НЕ зависит: пишется `this.chat?.peerId` верхнего инстанса (`appImManager.ts:2597`) | `peerId_rootMsgId` |
 | `setPeer({})` | одна точка ветвления: глубина > 1 → `spliceChats(chatIndex)` (`appImManager.ts:2768-2770`); иначе чат очищается и таб уходит на список (`:2804`, `:2825-2828`) | размазано: `chatStackStore.closeTop()` (`:162-163`), `navigationStore.selectChat(null)` → `clear()` (`:33`), ветвление в хоткеях (`useAppHotkeys.ts:21-26`) |
 | Esc при открытом чате | `back(item.type)` по верхней записи `im` (`appNavigationController.ts:217-224`), запись истории съедается | `escFallback` мимо истории (`hotkeys.ts:49-63`), после чего `useUrlSync` дописывает ЕЩЁ одну запись |
 | Второй Back после возврата из треда | записей нет → `pushState()` и выход (`appNavigationController.ts:198-202`); с сайта не уходит, чат не закрывается | — |
 
-Отдельно: цикл `removeByType('chat')` (`appImManager.ts:2689-2692`) в оригинале
-холостой — записей типа `'chat'` не производит никто. Не воспроизводить.
+Поправка к первой редакции плана: здесь утверждалось, что записей типа `'chat'` в
+оригинале не производит никто, а цикл `removeByType('chat', true)`
+(`appImManager.ts:2689-2692`) холостой. Это неверно — производителей два
+(`appImManager.ts:2264` и `sidebarLeft/tabs/createNewGroupTab.ts:7`), и цикл снимает
+записи срезанных уровней. Утверждение снято, модель выше исправлена по исходникам.
 
 ---
 
