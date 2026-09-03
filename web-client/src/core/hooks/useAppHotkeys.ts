@@ -1,6 +1,11 @@
-// Глобальные хоткеи (tweb): Ctrl/Cmd+K — фокус в поиск; Esc при пустом стеке
-// оверлеев — закрыть чат/тред; Ctrl/Cmd+Shift+M — mute текущего; Ctrl/Cmd+0 —
-// «Избранное»; Alt+↑/↓ — циклическая навигация по диалогам. Все колбэки читают
+// Глобальные хоткеи (tweb): Ctrl/Cmd+K — фокус в поиск; Ctrl/Cmd+Shift+M —
+// mute текущего; Ctrl/Cmd+0 — «Избранное»; Alt+↑/↓ — циклическая навигация по
+// диалогам. Esc здесь больше не заводится — пока чат открыт, `chatHistory.ts`
+// держит на стеке контроллера запись `im`/`chat` ВСЕГДА (задачи 1-2), и её
+// `onPop` — та же `closeChatLevel`, которую раньше звал отсюда фолбэк
+// `escFallback`; отдельный путь снят вместе с ним (chat-navigation-im-3), как
+// у оригинала (`appNavigationController.ts:217-224`: Esc — это `back(item.type)`
+// по верхней записи стека, без ветки специально под чат). Все колбэки читают
 // сторы через getState() → стабильны, поэтому ref-зеркала стейта больше не нужны.
 import { useCallback, useEffect } from 'react'
 import { useManagers } from './useManagers'
@@ -9,25 +14,9 @@ import { isPeerMuted } from '../dialogs/notifySettings'
 import { useNavigationStore } from '../../stores/navigationStore'
 import { initHotkeys } from '../hotkeys'
 import { parsePeerId } from '../peers/peerId'
-import { backChatLevel } from '../navigation/chatHistory'
 
 export function useAppHotkeys(): void {
   const managers = useManagers()
-  // Esc, запасной путь (`hotkeys.ts` зовёт `escFallback`, только если ничего
-  // не забрало событие раньше — оверлеи со своей записью навигации гасят его
-  // в фазе захвата). Пока чат открыт, `chatHistory.ts` держит на стеке
-  // контроллера запись `im` (корень) и по одной `chat` на каждый уровень
-  // глубже (тред/комментарии) — их же `onKeyDown` в норме перехватывает Esc
-  // первым (`appNavigationController.ts:294-301`), эта ветка остаётся
-  // подстраховкой на случай, если запись почему-то ещё не успела встать.
-  // Какую из двух типов закрывать — решает `backChatLevel` (порт
-  // `chat.ts:1628-1632`: `back(isFirstChat ? 'im' : 'chat')`), а ветвление
-  // «тред первым, потом чат» — внутри общего `closeChatLevel`
-  // (`core/navigation/chatHistory.ts`).
-  const escCloseChat = useCallback(() => {
-    if (!useNavigationStore.getState().selectedId) return
-    backChatLevel()
-  }, [])
 
   // Task 4 (действия без оптимистики): локальный апдейт применяет владелец
   // (dialogsManager.applyNotifySettings) ПОСЛЕ успешного REST-ответа (groupsManager.ts) —
@@ -64,12 +53,11 @@ export function useAppHotkeys(): void {
     () =>
       initHotkeys({
         focusSearch: () => window.dispatchEvent(new Event('tg-focus-search')),
-        escFallback: escCloseChat,
         muteChat: muteCurrentChat,
         openSaved,
         nextChat: () => cycleChat(1),
         prevChat: () => cycleChat(-1),
       }),
-    [escCloseChat, muteCurrentChat, openSaved, cycleChat],
+    [muteCurrentChat, openSaved, cycleChat],
   )
 }
