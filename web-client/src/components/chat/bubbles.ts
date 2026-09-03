@@ -140,6 +140,7 @@ import type { MessageActionPhoneCall } from '@core/messages/messageAction'
 import Icon from '@components/icon'
 import { formatVideoTime } from '@components/messages/videoPlayback'
 import PeerTitle, { type PeerTitleManagers } from './peerTitle'
+import { generateTail } from './tail'
 import { avatarNew } from '@components/avatar'
 import ProgressivePreloader from '@components/preloader'
 import liteMode from '@helpers/liteMode'
@@ -1769,6 +1770,21 @@ export default class ChatBubbles implements BubbleGroupsHost {
       if (nameDiv.nextElementSibling === messageDiv) {
         nameDiv.classList.add('next-is-message')
       }
+    }
+
+    // Хвост бабла — порт tweb :9707-9712. `canHaveTail` уже посчитан в
+    // `bubbleClasses` (класс `can-have-tail` стоит на `bubble` с самой сборки
+    // каркаса); `round` кладёт та же `bubbleClasses` по `m.type ===
+    // 'roundVideo'` (:78) — оба READ-ONLY здесь, вычислять их заново значило
+    // бы завести ВТОРОЙ источник правды. Узел — ПОСЛЕДНИЙ ребёнок
+    // `.bubble-content` (:9711 `bubbleContainer.append(generateTail())`): CSS
+    // (`_chatBubble.scss:2089-2103`) сам решает, виден ли он, по классам
+    // `.can-have-tail`/`.is-group-last`/`.is-forced-rounded` — узел безопасно
+    // держать в DOM и тогда, когда сейчас скрыт.
+    const canHaveTail = bubble.classList.contains('can-have-tail')
+    const isRound = bubble.classList.contains('round')
+    if (canHaveTail || isRound) {
+      bubbleContainer.append(generateTail())
     }
 
     return bubble
