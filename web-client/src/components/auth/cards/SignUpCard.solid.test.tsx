@@ -35,6 +35,13 @@ afterEach(() => {
   dispose = undefined
   host = undefined
   wrapEmojiTextMock.mockClear()
+  // Ревью задачи 6, «заодно»: раньше эти два вызова стояли в КОНЦЕ тела теста
+  // на ресайз/конвертацию (ниже) — при падении ассерта ДО них спай на
+  // `document.createElement` и стаб `createImageBitmap` протекали на остаток
+  // файла. Здесь они безусловны и безопасны как no-op, если тест ничего не
+  // мокал/стабил.
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 function mount(auth: Partial<Managers['auth']> = {}, media: Partial<Managers['media']> = {}, profile: Partial<Managers['profile']> = {}) {
@@ -172,9 +179,9 @@ describe('SignUpCard.solid: сабмит', () => {
     expect(managers.media.upload).toHaveBeenCalledWith(
       expect.objectContaining({ mime: 'image/jpeg', width: 2560, height: 1280 }),
     )
-
-    vi.restoreAllMocks()
-    vi.unstubAllGlobals()
+    // Спай/стаб снимаются в общем afterEach (см. его комментарий) — не здесь,
+    // чтобы падение ассерта строкой выше не оставляло их протекать на
+    // остаток файла.
   })
 
   it('заливка аватара упала — это НЕ повод не пустить в мессенджер (toIm всё равно зовётся), отказ не тонет молча', async () => {
