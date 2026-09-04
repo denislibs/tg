@@ -52,6 +52,24 @@
  * `activeDispose` у оригинала. Останется риск только при ВТОРОМ, независимом
  * вызывающем (аналоге `bootstrapIm`, которого в Solid-слое пока нет) — тогда
  * этот девиэйшн придётся снимать вместе с ним, а не раньше.
+ *
+ * У `activeDispose` оригинала есть и ВТОРАЯ роль, которую этот разбор раньше
+ * не называл: `activeDispose` инициализируется из `import.meta.hot?.data` и
+ * пишется туда же на каждый монтаж (`(import.meta.hot.data as any).
+ * activeDispose = activeDispose`, `import.meta.hot.accept()` в конце файла) —
+ * так значение переживает HMR hot-replace самого модуля `mountAuthFlow.tsx`:
+ * без этого правка исходника в dev привела бы к ДВУМ живым `#auth-flow-root`
+ * одновременно (старый модуль не знает о новом, `activeDispose`-переменная
+ * нового модуля стартует с `null`). У нас этот сценарий физически недостижим
+ * не только потому, что HMR-ветку не портировали (см. тот же довод в шапке
+ * `authFlow.solid.tsx`, «HMR-ветка оригинала не портирована»), а потому что
+ * `npm run dev` в этом проекте — `vite build --watch`, НЕ `vite dev`
+ * (`package.json`): клиентский HMR-рантайм Vite не подключается вообще ни в
+ * одном режиме сборки, `import.meta.hot` всегда `undefined`. Правка этого
+ * файла на watch-сборке всегда даёт ПОЛНУЮ перезагрузку страницы, а не
+ * hot-replace, — риск двойного `#auth-flow-root` из-за отсутствия HMR-ветки
+ * актуален только если `npm run dev` когда-нибудь переведут на настоящий
+ * `vite dev`; до этого момента снимать нечего.
  */
 import { doubleRaf } from '../../core/accountTransition'
 import { mountSolid } from '../../shared/solid/mountSolid.solid'
