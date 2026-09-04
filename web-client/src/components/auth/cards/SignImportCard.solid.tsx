@@ -20,6 +20,17 @@
 // `#?tgWebAuthToken=…`), а не свой `history.replaceState(null, …)` мимо него:
 // запись с `null` вместо `this.id` не опознаётся проверкой `id === this.id`
 // в его же `_onPopState`. Сохранено дословно из React-версии.
+//
+// ── НАХОДКА 1 (ревью задачи 5): сетевой отказ — не вечный прелоадер ─────────
+// `authManager.signImport` перебрасывает НЕ-`HttpError` наружу как есть
+// (`core/managers/authManager.ts::signImport`: `if (!(e instanceof
+// HttpError)) throw e`) — обрыв сети или отказ worker-RPC не укладывается в
+// дискриминированный `SignImportResult`. Прежняя редакция висела на голом
+// `.then()`: такой отказ давал необработанное отклонение промиса, карточка
+// оставалась с прелоадером навсегда, а хеш — невычищенным (перезагрузка
+// тащит тот же мёртвый экран обратно). У tweb ЛЮБАЯ ошибка (не только
+// дискриминированные ветки) уходит на дефолтный экран (`SignImportCard.
+// tsx:53-66`, ветка `default:`) — здесь `catch` делает то же самое явно.
 import { onMount, type JSX } from 'solid-js'
 import appNavigationController from '@core/navigation/appNavigationController'
 import AuthCard from '../AuthCard.solid'
@@ -32,9 +43,9 @@ export default function SignImportCard(props: { spec: Spec }): JSX.Element {
   const { managers, navigate, toIm } = useAuthFlow()
 
   onMount(() => {
-    void managers.auth
-      .signImport(props.spec.payload.webAuthToken, 'web', 'browser')
-      .then((res) => {
+    void (async () => {
+      try {
+        const res = await managers.auth.signImport(props.spec.payload.webAuthToken, 'web', 'browser')
         if (location.hash) appNavigationController.overrideHash('')
         if ('user' in res && res.user) {
           void toIm()
@@ -43,7 +54,13 @@ export default function SignImportCard(props: { spec: Spec }): JSX.Element {
         } else {
           navigate({ name: 'signIn' })
         }
-      })
+      } catch {
+        // Сеть/воркер — тот же дефолтный экран, что и любой дискриминированный
+        // отказ (см. докблок «НАХОДКА 1»); зачистка хеша та же самая.
+        if (location.hash) appNavigationController.overrideHash('')
+        navigate({ name: 'signIn' })
+      }
+    })()
   })
 
   return (

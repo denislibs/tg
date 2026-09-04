@@ -117,3 +117,26 @@ describe('SignImportCard.solid: зачистка адреса — appNavigationC
     expect(overrideHash).not.toHaveBeenCalled()
   })
 })
+
+describe('SignImportCard.solid: сетевой отказ — НЕ вечный прелоадер (находка 1 ревью задачи 5)', () => {
+  // authManager.signImport перебрасывает НЕ-HttpError наружу (обрыв сети,
+  // отказ worker-RPC) — `.then()` без `.catch()` оставлял бы такой отказ
+  // необработанным отклонением, а карточку — навечно с прелоадером и
+  // невычищенным хешем (перезагрузка тащит тот же мёртвый экран назад).
+  // Оригинал (tweb SignImportCard.tsx:53-66, ветка `default:`) на ЛЮБОЙ
+  // ошибке уходит на дефолтный экран входа.
+  it('signImport() отклонился — карточка уходит на signIn, а не остаётся с прелоадером навечно', async () => {
+    const signImport = vi.fn().mockRejectedValue(new Error('network down'))
+    const { navigate } = mount(signImport)
+
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith({ name: 'signIn' }))
+  })
+
+  it('отклонение ПРИ непустом хеше — адрес всё равно вычищен (не только путь успеха)', async () => {
+    location.hash = '#?tgWebAuthToken=wt-1'
+    const signImport = vi.fn().mockRejectedValue(new Error('network down'))
+    mount(signImport)
+
+    await vi.waitFor(() => expect(overrideHash).toHaveBeenCalledWith(''))
+  })
+})
