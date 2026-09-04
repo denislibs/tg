@@ -29,6 +29,8 @@
     "@noble/ciphers": "^2.2.0",
     "@noble/curves": "^2.2.0",
     "@noble/hashes": "^2.2.0",
+    "@solid-primitives/refs": "^1.1.4",
+    "@solid-primitives/transition-group": "^1.1.2",
     "big-integer": "^1.6.52",
     "leaflet": "^1.9.4",
     "lottie-web": "^5.13.0",
