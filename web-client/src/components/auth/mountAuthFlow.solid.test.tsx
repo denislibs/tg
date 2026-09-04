@@ -15,12 +15,25 @@
  * и тесты самих карточек. Мок заодно ловит пятый факт бонусом: пропы
  * (managers/onComplete) долетают до хоста, не теряясь по дороге.
  *
+ * ── Повторное ревью, ОБЯЗАТЕЛЬНО 2: снятие Solid-корня было не запинено ────
+ * Первая редакция мокала хост ГОЛЫМ DOM-узлом без `onCleanup` — снимать
+ * внутри Solid-дерева было нечего, поэтому мутация «вырезать ТОЛЬКО
+ * `dispose()`, оставить `root.remove()`» оставалась зелёной: `root.remove()`
+ * убирает узел из `document` сам по себе, а утечка РЕАКТИВНОГО ГРАФА (то, что
+ * этот файл заявляет своим предметом в первом абзаце) снаружи никак не видна
+ * без явного наблюдателя. Мок теперь регистрирует `onCleanup` — точно как
+ * это делают настоящие карточки (`SignQRCard.solid.tsx` и другие снимают
+ * таймеры тем же примитивом); `cleanupCalled.count` — единственный способ
+ * снаружи отличить «Solid реально снял корень» от «DOM-узел вынули из
+ * документа, а реактивный граф хоста жив вечно».
+ *
  * `vi.resetModules()` + динамические импорты — тот же приём, что у
  * `AuthCardsHost.solid.test.tsx`: `authFlow.solid` держит МОДУЛЬНЫЙ сигнал
  * `currentCard`, и тест на стартовый шаг должен видеть тот же экземпляр
  * модуля, что использует `mountAuthFlow` изнутри.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { onCleanup } from 'solid-js'
 import type { Managers } from '@/client/bootstrap'
 
 let mountAuthFlow: typeof import('./mountAuthFlow.solid').mountAuthFlow
@@ -28,12 +41,17 @@ let currentCard: typeof import('./authFlow.solid').currentCard
 
 // `vi.mock` хоистится над импортами — переменная, которую читает и пишет
 // фабрика, обязана родиться ДО хойста, иначе `ReferenceError` (тот же приём,
-// что у `emailPattern.solid.test.tsx::spies`).
+// что у `emailPattern.solid.test.tsx::spies`). `onCleanup` — обычный импорт
+// `solid-js`, а не часть мокаемого модуля, поэтому хойстинг его не касается:
+// фабрика `vi.mock` физически выполняется позже, при динамическом импорте в
+// `beforeEach`, когда все обычные импорты файла уже вычислены.
 const receivedProps = vi.hoisted(() => [] as unknown[])
+const cleanupCalled = vi.hoisted(() => ({ count: 0 }))
 
 vi.mock('./AuthCardsHost.solid', () => ({
   default: (props: unknown) => {
     receivedProps.push(props)
+    onCleanup(() => { cleanupCalled.count++ })
     const marker = document.createElement('div')
     marker.setAttribute('data-testid', 'mock-auth-cards-host')
     return marker
@@ -43,6 +61,7 @@ vi.mock('./AuthCardsHost.solid', () => ({
 beforeEach(async () => {
   vi.resetModules()
   receivedProps.length = 0
+  cleanupCalled.count = 0
   ;({ mountAuthFlow } = await import('./mountAuthFlow.solid'))
   ;({ currentCard } = await import('./authFlow.solid'))
 })
@@ -92,9 +111,10 @@ describe('mountAuthFlow: has-auth-pages', () => {
 })
 
 describe('mountAuthFlow: dispose', () => {
-  it('снимает и узел, и класс — иначе экран входа переживает собственный уход', async () => {
+  it('снимает узел, класс И реактивный граф хоста (onCleanup) — иначе экран входа переживает собственный уход', async () => {
     const dispose = mountAuthFlow(mock())
     expect(document.getElementById('auth-flow-root')).not.toBeNull()
+    expect(cleanupCalled.count, 'onCleanup не должен звать себя ДО dispose()').toBe(0)
 
     dispose()
 
@@ -102,6 +122,11 @@ describe('mountAuthFlow: dispose', () => {
     // — до doubleRaf); класс — после двойного rAF, тем же приёмом, что и
     // прежний React `AuthFlow.tsx`, поэтому ждём его отдельно.
     expect(document.getElementById('auth-flow-root')).toBeNull()
+    // Реактивный граф хоста реально снят Solid'ом — не только DOM-узел вынут
+    // из документа. Мутация «убрать только dispose(), оставить root.remove()»
+    // (находка 2 повторного ревью) убирает узел из DOM ровно так же, но
+    // `onCleanup` мока НЕ позовётся — этот ассерт обязан покраснеть на ней.
+    expect(cleanupCalled.count, 'onCleanup хоста не был вызван — Solid-корень не снят').toBe(1)
     await vi.waitFor(() => {
       expect(document.body.classList.contains('has-auth-pages')).toBe(false)
     })
