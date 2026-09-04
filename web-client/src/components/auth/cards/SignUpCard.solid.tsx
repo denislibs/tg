@@ -34,7 +34,7 @@
 // vanilla DOM, framework-agnostic попап). Наша React-версия его тоже не
 // портирует 1:1, а использует СВОЙ упрощённый `AvatarCropper` (React-хуки,
 // drag-to-pan + zoom) — компонент из другого рантайма, подключить его отсюда
-// нельзя (граница `*.solid.tsx` не пускает React), а порт urlaub-кроппера на
+// нельзя (граница `*.solid.tsx` не пускает React), а порт кроппера на
 // Solid — самостоятельная задача, которой нет ни в брифе, ни в списке файлов
 // задачи 5. Здесь выбранный файл грузится КАК ЕСТЬ (без клиентского
 // кропа/масштабирования — `UploadArgs.width/height` опциональны, схема это
@@ -42,10 +42,35 @@
 // live-превью (best-effort через `Image.onload`, декодирование не гарантировано
 // во всех окружениях и не участвует в данных отправки — если предпросмотр не
 // нарисовался, аватар всё равно загрузится).
-import { createSignal, type JSX } from 'solid-js'
+//
+// ДОЛГ (ревью задачи 5, подтверждён — переносится в задачу 6): заливка идёт
+// БЕЗ кропа И БЕЗ ресайза — функциональный регресс против нашей же React-
+// версии, где `AvatarCropper` считал ширину/высоту и вёз их в `media.
+// upload`; здесь `width`/`height` не едут вовсе (см. `sendAvatar` ниже).
+//
+// ── НАХОДКА 2 (ревью задачи 5): сетевой отказ на сабмите — не запертая кнопка ──
+// `signUp` перебрасывает НЕ-`HttpError` наружу как есть (тот же приём, что у
+// `signImport`/`confirmPasswordRecovery` — см. докблоки соседних карточек
+// этой же задачи). Прежняя редакция звала её БЕЗ try/catch при уже взведённом
+// `busy(true)`: сетевой отказ давал необработанное отклонение промиса, кнопка
+// оставалась `disabled` навсегда с надписью «Please wait…». Образец
+// правильной обработки — уже принятый в этом каталоге `PasswordCard.solid.
+// tsx::submitPassword` (задача 4).
+//
+// ── «Заодно» (ревью задачи 5) ────────────────────────────────────────────────
+// Автофокус имени заменён на `blurActiveElement()` — tweb `SignUpCard.tsx:151`
+// снимает фокус (карточка приходит СРАЗУ после ввода кода, где было
+// сфокусировано поле кода), а не автофокусит имя; прежняя редакция ставила
+// `autoFocus` на первое поле, отступление от источника поведения. Заголовок-
+// предпросмотр теперь разбирается через `wrapEmojiText` (tweb `SignUpCard.
+// tsx:77-80`), а не кладётся голой строкой — кастомные эмодзи в имени
+// отрисуются.
+import { createSignal, onMount, type JSX } from 'solid-js'
 import Button from '@components/buttonTsx.solid'
 import { IconTsx } from '@components/iconTsx.solid'
 import { i18n, type LangPackKey } from '@lib/langPack'
+import blurActiveElement from '@helpers/dom/blurActiveElement'
+import wrapEmojiText from '@lib/richtext/wrapEmojiText'
 import AuthCard from '../AuthCard.solid'
 import MediaHeader from '../MediaHeader.solid'
 import InputField from '../InputField.solid'
@@ -75,8 +100,17 @@ export default function SignUpCard(props: { spec: Spec }): JSX.Element {
   // Выбранный аватар ждёт сессии — грузить некуда, пока её нет (см. докблок).
   let pickedFile: File | undefined
 
-  // tweb: тайтл карточки — живой предпросмотр ФИО, пусто → «Your Name».
+  // tweb: снимает фокус на монтировании (карточка приходит сразу после
+  // ввода кода, где было сфокусировано поле кода) — не автофокусит имя.
+  onMount(() => blurActiveElement())
+
+  // tweb: тайтл карточки — живой предпросмотр ФИО через wrapEmojiText
+  // (кастомные эмодзи в имени отрисуются), пусто → «Your Name».
   const fullName = () => `${first()} ${last()}`.trim()
+  const titleContent = () => {
+    const name = fullName()
+    return name ? wrapEmojiText(name) : i18n('YourName')
+  }
   const tooLong = () => [...first()].length > FIRST_MAX || [...last()].length > LAST_MAX
   const nextLabel = () => {
     if (busy()) return i18n('PleaseWait')
@@ -125,27 +159,32 @@ export default function SignUpCard(props: { spec: Spec }): JSX.Element {
     }
     setBusy(true)
     setErrorKey('')
-    const res = await managers.auth.signUp(token(), first().trim(), last().trim(), 'web', 'browser')
-    if ('user' in res) {
-      await sendAvatar()
-      void toIm()
-      return
+    try {
+      const res = await managers.auth.signUp(token(), first().trim(), last().trim(), 'web', 'browser')
+      if ('user' in res) {
+        await sendAvatar()
+        void toIm()
+        return
+      }
+      // Токена больше нет — единственный путь дальше это заново подтвердить номер.
+      if (res.error === 'signup_token_expired' || res.error === 'phone_number_occupied') {
+        navigate({ name: 'signIn' })
+        return
+      }
+      setErrorKey(
+        res.error === 'first_name_required'
+          ? 'Login.Register.NameRequired'
+          : res.error === 'name_too_long'
+            ? 'Login.Register.NameTooLong'
+            : res.error === 'too_many_requests'
+              ? 'Login.Error.FloodWait'
+              : 'Login.Error.Generic',
+      )
+    } catch {
+      setErrorKey('Login.Error.Generic')
+    } finally {
+      setBusy(false)
     }
-    setBusy(false)
-    // Токена больше нет — единственный путь дальше это заново подтвердить номер.
-    if (res.error === 'signup_token_expired' || res.error === 'phone_number_occupied') {
-      navigate({ name: 'signIn' })
-      return
-    }
-    setErrorKey(
-      res.error === 'first_name_required'
-        ? 'Login.Register.NameRequired'
-        : res.error === 'name_too_long'
-          ? 'Login.Register.NameTooLong'
-          : res.error === 'too_many_requests'
-            ? 'Login.Error.FloodWait'
-            : 'Login.Error.Generic',
-    )
   }
 
   return (
@@ -162,14 +201,13 @@ export default function SignUpCard(props: { spec: Spec }): JSX.Element {
               <IconTsx icon="cameraadd" class="avatar-edit-icon" style={{ 'font-size': '3rem' }} />
             </div>
           </MediaHeader.Sticker>
-          <MediaHeader.Title>{fullName() || i18n('YourName')}</MediaHeader.Title>
+          <MediaHeader.Title>{titleContent()}</MediaHeader.Title>
           {/* без .secondary — как у tweb на этой карточке */}
           <MediaHeader.Subtitle>{i18n('Login.Register.Subtitle')}</MediaHeader.Subtitle>
         </MediaHeader>
       }
     >
       <InputField
-        autoFocus
         value={first()}
         maxLength={FIRST_MAX}
         label={i18n('FirstName')}

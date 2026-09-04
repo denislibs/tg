@@ -14,6 +14,18 @@ import type { Managers } from '@/client/bootstrap'
 import { AuthFlowContext, type AuthFlowContextValue } from '../authFlow.solid'
 import SignUpCard from './SignUpCard.solid'
 
+// Мокаем реальным DocumentFragment'ом (не заглушкой) — так DOM-пин ниже
+// («заголовок собирается через wrapEmojiText») проверяет и ВЫЗОВ, и то, что
+// его РЕЗУЛЬТАТ реально попадает в `.title`, а не отбрасывается.
+const wrapEmojiTextMock = vi.hoisted(() =>
+  vi.fn((text: string) => {
+    const frag = document.createDocumentFragment()
+    frag.append(document.createTextNode(text))
+    return frag
+  }),
+)
+vi.mock('@lib/richtext/wrapEmojiText', () => ({ default: wrapEmojiTextMock }))
+
 let dispose: (() => void) | undefined
 let host: HTMLDivElement | undefined
 
@@ -22,6 +34,7 @@ afterEach(() => {
   host?.remove()
   dispose = undefined
   host = undefined
+  wrapEmojiTextMock.mockClear()
 })
 
 function mount(auth: Partial<Managers['auth']> = {}, media: Partial<Managers['media']> = {}, profile: Partial<Managers['profile']> = {}) {
@@ -153,5 +166,65 @@ describe('SignUpCard.solid: сабмит', () => {
     expect(submitBtn().disabled).toBe(true)
     submitBtn().click()
     expect(managers.auth.signUp).not.toHaveBeenCalled()
+  })
+})
+
+describe('SignUpCard.solid: сетевой отказ на сабмите — не запертая карточка (ревью 5, находка 2)', () => {
+  // signUp() перебрасывает НЕ-HttpError наружу (обрыв сети/отказ worker-RPC)
+  // так же, как signImport/confirmPasswordRecovery — прежний код звал её БЕЗ
+  // try/catch при уже взведённом busy(true): отказ давал необработанное
+  // отклонение, кнопка оставалась disabled навсегда с «Please wait…».
+  // Оригинал ловит (tweb SignUpCard.tsx:127-135); образец в этом каталоге —
+  // PasswordCard.solid.tsx::submitPassword.
+  it('signUp() отклонился — busy снимается, ошибка в надписи кнопки, кнопка снова доступна', async () => {
+    const signUp = vi.fn().mockRejectedValue(new Error('network down'))
+    const { firstInput, setField, submitBtn } = mount({ signUp })
+    setField(firstInput(), 'Ada')
+    submitBtn().click()
+
+    await vi.waitFor(() => expect(submitBtn().textContent).toContain('Something went wrong'))
+    expect(submitBtn().disabled).toBe(false)
+  })
+})
+
+describe('SignUpCard.solid: blurActiveElement вместо autoFocus (ревью 5, «заодно»)', () => {
+  // tweb SignUpCard.tsx:151 — onMount зовёт blurActiveElement() (снимает
+  // фокус с чего бы он ни был — карточка приходит СРАЗУ после ввода кода,
+  // где было сфокусировано поле кода), а не автофокусит имя. Прежняя
+  // редакция ставила `autoFocus` на первое поле — отступление от источника
+  // поведения.
+  it('на монтировании снимает фокус (blurActiveElement), а не автофокусит поле имени', () => {
+    const decoy = document.createElement('input')
+    document.body.append(decoy)
+    decoy.focus()
+    expect(document.activeElement).toBe(decoy)
+
+    mount()
+
+    expect(document.activeElement).not.toBe(decoy)
+    expect(document.activeElement === document.body || document.activeElement === null).toBe(true)
+    decoy.remove()
+  })
+})
+
+describe('SignUpCard.solid: живой предпросмотр ФИО разбирает эмодзи (ревью 5, «заодно»)', () => {
+  // tweb SignUpCard.tsx:77-80 — предпросмотр строится через wrapEmojiText, не
+  // голой строкой: кастомные эмодзи в имени должны отрисоваться. Прежняя
+  // редакция клала `fullName()` в тайтл текстом напрямую — модуль
+  // `wrapEmojiText` вообще не звался.
+  it('заголовок собирается через wrapEmojiText(fullName), а не присваиванием голой строки', async () => {
+    const { firstInput, lastInput, setField } = mount()
+    setField(firstInput(), 'Ada')
+    setField(lastInput(), 'Lovelace')
+
+    expect(wrapEmojiTextMock).toHaveBeenCalledWith('Ada Lovelace')
+    // Возврат мока — реальный DocumentFragment с текстовым узлом; попадает в
+    // DOM, как и настоящий wrapRichText().
+    expect(host!.querySelector('[class*="title"]')!.textContent).toBe('Ada Lovelace')
+  })
+
+  it('пустое имя НЕ зовёт wrapEmojiText — фолбэк «Your Name» идёт мимо него', () => {
+    mount()
+    expect(wrapEmojiTextMock).not.toHaveBeenCalled()
   })
 })
