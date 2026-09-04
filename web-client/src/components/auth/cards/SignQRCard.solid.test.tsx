@@ -173,3 +173,30 @@ describe('SignQRCard.solid: таймеры снимаются вместе с к
     expect(toIm).not.toHaveBeenCalled()
   })
 })
+
+describe('SignQRCard.solid: стрелка на вторичных кнопках приходит из словаря (ревью 5, находка 4)', () => {
+  // Прежний докблок утверждал «в tweb стрелки на этих кнопках нет» — неверно:
+  // tweb langSign.ts:56 (`Login.QR.Cancel`) и :35 (`Login.Passkey`) несут её
+  // ПРЯМО В СТРОКЕ ('...number >' / '...passkey >'), а `superFormatter`
+  // (lib/langPack.ts:600-606) разбирает висящий ` >` в `span.tgico.inline-
+  // icon`. Наши прежние ключи (`Login.ByPhone`/`Login.Passkey.Action`) этой
+  // стрелки не несли — обычная кнопка без иконки, регресс и против
+  // оригинала, и против нашей React-версии (`SecondaryButton arrow`).
+  it('«Log in by phone number» несёт span.tgico.inline-icon — из ключа Login.QR.Cancel', () => {
+    const { cancelBtn } = mount()
+    expect(cancelBtn().querySelector('.tgico.inline-icon')).not.toBeNull()
+  })
+
+  it('кнопка passkey несёт ту же стрелку — из ключа Login.Passkey', async () => {
+    const webauthn = await import('@core/webauthnBrowser')
+    const isWebAuthnSupported = vi.mocked(webauthn.isWebAuthnSupported)
+    isWebAuthnSupported.mockReturnValue(true)
+
+    mount()
+    const buttons = [...host!.querySelectorAll('button')]
+    const passkeyBtn = buttons[buttons.length - 1]
+    expect(passkeyBtn.querySelector('.tgico.inline-icon')).not.toBeNull()
+
+    isWebAuthnSupported.mockReturnValue(false)
+  })
+})

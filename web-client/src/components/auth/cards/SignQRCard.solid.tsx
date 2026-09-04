@@ -21,6 +21,16 @@
 // «сколько ждать» в ответе — поэтому, как и в React-версии, здесь ДВА
 // независимых интервала: ротация токена (`ROTATE_MS`, если экран открыт
 // долго и токен истёк на сервере) и опрос подтверждения (`POLL_MS`).
+//
+// ── Что НЕ портировано из tweb (нет предмета на REST-бэкенде) ───────────────
+// Ветка `SESSION_PASSWORD_NEEDED → navigate({name:'password'})`
+// (`SignQRCard.tsx:168-171`, MTProto бросает эту ошибку из
+// `auth.exportLoginToken`, если у аккаунта, с которого сканируют,
+// включён облачный пароль) — не портирована: у нашего `qrStatus` РОВНО
+// три исхода (`pending`/`expired`/`confirmed`, все — обычные значения, не
+// исключения), у него нет третьего/четвёртого конструктора под 2FA. Как
+// именно REST-бэкенд обошёлся бы с паролем на QR-входе — вопрос протокола
+// `POST/GET /auth/qr/*`, не этой карточки.
 import { createSignal, onCleanup, onMount, Show, type JSX } from 'solid-js'
 import Button from '@components/buttonTsx.solid'
 import { i18n } from '@lib/langPack'
@@ -151,21 +161,33 @@ export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
         ))}
       </ol>
 
-      {/* tweb SignQRCard.tsx:233-240 — bare Button с `text`, БЕЗ arrow (наша
-          React AuthButton добавляла стрелку от себя, не из tweb; ключа
-          `Login.QR.Cancel` в словаре нет — используем уже принятый в
-          React-версии `Login.ByPhone`). */}
+      {/* tweb SignQRCard.tsx:233-240 — bare Button с `text`. НАХОДКА 4 ревью
+          задачи 5: прежняя редакция подставляла свои ключи `Login.ByPhone`/
+          `Login.Passkey.Action` — БЕЗ стрелки. У tweb она ЕСТЬ и приходит
+          ИЗ САМИХ КЛЮЧЕЙ (langSign.ts: `Login.QR.Cancel` = 'Log in by phone
+          number >', :56; `Login.Passkey` = 'Log in by passkey >', :35) —
+          висящий ` >` разбирает `superFormatter` (`lib/langPack.ts:600-606`,
+          `IconMap['>'] = 'next'`) в `span.tgico.inline-icon`. Заведены НОВЫЕ
+          ключи 1:1 с tweb (см. `lang.ts`), старые `Login.ByPhone`/
+          `Login.Passkey.Action` не тронуты — ими всё ещё пользуется
+          React-версия этой карточки. */}
       <Button
         class="btn-primary btn-secondary btn-primary-transparent primary"
         onClick={() => navigate({ name: 'signIn' })}
-        text="Login.ByPhone"
+        text="Login.QR.Cancel"
       />
+      {/* tweb :241 — `getCurrentAccount() === 1 && <LanguageChangeButton />`
+          здесь НЕ портирован: это МУЛЬТИАККАУНТ-специфичная кнопка (нет
+          предложенного сервером языка, `lib/accounts/*` у нас нет вовсе — тот
+          же вычет, что уже сделан у `SignInCard.solid.tsx` для соседней
+          карточки). Дальше — `<PasskeyLoginButton />` tweb (:242), у нас
+          begin/finish поверх REST, см. докблок файла «Наши расширения». */}
       <Show when={isWebAuthnSupported()}>
         <Button
           class="btn-primary btn-secondary btn-primary-transparent primary"
           disabled={passkeyBusy()}
           onClick={() => void passkeyLogin()}
-          text="Login.Passkey.Action"
+          text="Login.Passkey"
         />
       </Show>
     </AuthCard>
