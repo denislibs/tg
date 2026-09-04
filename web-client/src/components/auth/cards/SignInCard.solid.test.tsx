@@ -19,6 +19,14 @@
  * модульно — `isWebAuthnSupported` в happy-dom без `PublicKeyCredential`
  * всегда вернул бы `false` и скрыл кнопку, а `getPasskeyAssertion` реально
  * ходит в `navigator.credentials.get`.
+ *
+ * Шестой (задача 6, снос React `AuthFlow.tsx`) переносит СМЫСЛОМ второй пин
+ * React `AuthFlow.test.tsx` (`describe('подзаголовок экрана входа: перенос
+ * строки внутри одного ключа')`): `Login.StartText` — ОДИН ключ словаря с
+ * `\n` внутри, `<br>` строит ЯДРО i18n (`I18n.superFormatter`), а не
+ * вызывающая карточка. У Solid-версии тот же `i18n()` из `@lib/langPack`
+ * (см. комментарий у вызова в `SignInCard.solid.tsx`), поэтому предмет пина
+ * не изменился — изменилась только точка входа (карточка, а не хост).
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'solid-js/web'
@@ -148,5 +156,18 @@ describe('SignInCard.solid: вход по ключу доступа', () => {
     expect(passkeyLoginBegin).toHaveBeenCalled()
     expect(passkeyLoginFinish).toHaveBeenCalledWith('s1', { assertion: true }, 'web', 'browser')
     await vi.waitFor(() => expect(toIm).toHaveBeenCalled())
+  })
+})
+
+describe('SignInCard.solid: подзаголовок — перенос строки внутри одного ключа словаря', () => {
+  it('Login.StartText разворачивается в две половины через <br>, не двумя ключами', () => {
+    mount()
+
+    const subtitle = [...host!.querySelectorAll('span')]
+      .find((node) => node.textContent?.includes('country code'))
+    expect(subtitle, 'узел с текстом Login.StartText не найден').not.toBeUndefined()
+
+    expect(subtitle!.textContent).toBe('Please confirm your country codeand enter your phone number.')
+    expect(subtitle!.querySelectorAll('br')).toHaveLength(1)
   })
 })

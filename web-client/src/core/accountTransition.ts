@@ -66,22 +66,9 @@ export async function playChatlistExit(el: HTMLElement | null): Promise<void> {
   await pause(200)
 }
 
-// tweb AuthCardsHost hostEnter: экран входа въезжает справа при добавлении
-// аккаунта (translateX(100px)+fade → 0, 0.4s).
-export function playAuthHostEnter(el: HTMLElement | null): void {
-  el?.animate(
-    [{ opacity: 0, transform: 'translateX(100px)' }, { opacity: 1, transform: 'none' }],
-    { duration: 400, easing: 'ease', fill: 'backwards' },
-  )
-}
-
-// tweb AuthCardsHost hostExit: перед возвратом к прежнему аккаунту
-// (scale 1→1.025 + fade out, 0.2s).
-export async function playAuthHostExit(el: HTMLElement | null): Promise<void> {
-  if (!el) return
-  el.animate(
-    [{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(1.025)' }],
-    { duration: 200, easing: 'ease', fill: 'forwards' },
-  )
-  await pause(200)
-}
+// playAuthHostEnter/playAuthHostExit (WAAPI-хелперы hostEnter/hostExit auth-
+// хоста) снесены вместе с React `AuthFlow.tsx` (задача 6 волны 3) — Solid
+// `AuthCardsHost.solid.tsx` играет тот же вход/выход КЛАССАМИ
+// (`.hostEnter/.hostEntering`/`.hostExit/.hostExiting`, `AuthFlow.module.scss`)
+// напрямую в себе (`runEnterSequence`/`back()`), а не через эту пару функций
+// — так у неё не осталось ни одного вызывающего.

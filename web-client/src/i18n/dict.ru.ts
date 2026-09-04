@@ -1167,7 +1167,9 @@ const ru = {
   'Login.Passkey.Action': 'Войти по ключу доступа',
   'Login.Passkey': 'Войти по ключу доступа >',
   // Экран входа (tweb langSign.ts). `**…**` — жирный, ' > ' — стрелка-иконка,
-  // '\n' — перенос строки; разбор — components/auth/superFormatter.tsx.
+  // '\n' — перенос строки; разбор — ЯДРО i18n (`I18n.superFormatter`,
+  // lib/langPack.ts), а не локальный хелпер (задача 6 волны 3 снесла React
+  // components/auth/superFormatter.tsx вместе с React-версией экрана входа).
   'Login.QR.Title': 'Вход по QR-коду',
   'Login.QR.Subtitle': 'Отсканируйте в приложении Telegram на телефоне',
   'Login.QR.Help1': 'Откройте Telegram на телефоне',
