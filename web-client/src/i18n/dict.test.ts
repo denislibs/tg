@@ -119,7 +119,7 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `Chat.Title.Comments` переименован в `Comments` во всех пяти — отсюда `keys`
 // у русского 1305 при том же `plural`.
 const COMPOSITION = {
-  ru: { keys: 1306, plural: 30 },
+  ru: { keys: 1309, plural: 30 },
   uk: { keys: 688, plural: 24 },
   es: { keys: 687, plural: 24 },
   de: { keys: 687, plural: 24 },
@@ -157,8 +157,16 @@ const COMPOSITION = {
 // которым у оригинала подписана сама ВКЛАДКА, — по-английски обе читаются
 // одинаково («Language»), поэтому подмена и держалась незамеченной. Теперь у
 // каждой из двух ролей свой ключ, как в оригинале, и оба живые.
+// Ревью задачи 5 волны 3 (auth-карточки на Solid): русскому добавлены ТРИ
+// ключа 1:1 с tweb langSign.ts, у которых раньше был только наш собственный
+// перифраз без стрелки/аргумента — `Login.Passkey` ('Log in by passkey >'),
+// `Login.QR.Cancel` ('Log in by phone number >') и
+// `Login.ResetPassword.Subtitle` ('...to your email **%s**.', маска почты
+// аргументом). Старые ключи (`Login.Passkey.Action`, `Login.ByPhone`,
+// `Login.ResetPassword.CodeHint`) не удалены — ими пользуется React-версия
+// тех же карточек — отсюда `keys` у русского 1309 при том же `plural`.
 const FINGERPRINT = {
-  ru: '938be96d',
+  ru: '32521a31',
   uk: '9ed7e733',
   es: 'e67c157d',
   de: 'e67c157d',
