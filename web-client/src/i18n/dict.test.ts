@@ -118,12 +118,24 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Задача #128 («футер комментариев»): русскому добавлен `LeaveAComment`, а
 // `Chat.Title.Comments` переименован в `Comments` во всех пяти — отсюда `keys`
 // у русского 1305 при том же `plural`.
+//
+// Ревью задачи 6 волны 3 (снос React-версии экрана входа): семь ключей,
+// которых больше не зовёт НИ ОДИН потребитель (звавшая их React-версия
+// снесена целиком, Solid-карточки используют СВОИ ключи), удалены из
+// `lang.ts` и всех пяти словарей — `Login.ByPasskey`, `Login.ByPhone`,
+// `Login.Passkey.Failed`, `Login.Password.SubtitleFlat`, `Login.PhoneInvalid`,
+// `Login.Register.LastName.Placeholder`, `Login.ResetPassword.CodeHint`.
+// Присутствовали не во всех пяти одинаково: у русского все семь (1309 → 1302,
+// −7); у остальных четырёх — по четыре (`Login.ByPasskey` и
+// `Login.ResetPassword.CodeHint` не имели перевода в uk/es/de/fr, отдавались
+// нижним английским слоем и в их `DICTS` не попадали): 688 → 684 (uk), 687 →
+// 683 (es/de/fr). `plural` не менялся — среди семи не было числовых строк.
 const COMPOSITION = {
-  ru: { keys: 1309, plural: 30 },
-  uk: { keys: 688, plural: 24 },
-  es: { keys: 687, plural: 24 },
-  de: { keys: 687, plural: 24 },
-  fr: { keys: 687, plural: 24 },
+  ru: { keys: 1302, plural: 30 },
+  uk: { keys: 684, plural: 24 },
+  es: { keys: 683, plural: 24 },
+  de: { keys: 683, plural: 24 },
+  fr: { keys: 683, plural: 24 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -163,14 +175,19 @@ const COMPOSITION = {
 // `Login.QR.Cancel` ('Log in by phone number >') и
 // `Login.ResetPassword.Subtitle` ('...to your email **%s**.', маска почты
 // аргументом). Старые ключи (`Login.Passkey.Action`, `Login.ByPhone`,
-// `Login.ResetPassword.CodeHint`) не удалены — ими пользуется React-версия
-// тех же карточек — отсюда `keys` у русского 1309 при том же `plural`.
+// `Login.ResetPassword.CodeHint`) тогда не удалялись — ими ещё пользовалась
+// React-версия тех же карточек.
+// Ревью задачи 6 волны 3: семь мёртвых ключей (см. докблок у `COMPOSITION`
+// выше — тот же список) убраны из НАБОРА, отсюда новый снимок у всех пяти;
+// `Login.Passkey.Action` при этом ЖИВ (его теперь зовёт Solid
+// `SignInCard.solid.tsx`, кнопка входа по ключу доступа) — в списке снесённых
+// его нет.
 const FINGERPRINT = {
-  ru: '32521a31',
-  uk: '9ed7e733',
-  es: 'e67c157d',
-  de: 'e67c157d',
-  fr: 'e67c157d',
+  ru: '1041e135',
+  uk: 'c2475b60',
+  es: '32bfb526',
+  de: '32bfb526',
+  fr: '32bfb526',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

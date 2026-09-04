@@ -922,7 +922,6 @@ const ru = {
   // settings screens (#71–#79)
   'EditAccount.Title': 'Изменить профиль',
   'EditProfile.FirstNameLabel': 'Имя',
-  'Login.Register.LastName.Placeholder': 'Фамилия',
   'EditProfile.BioLabel': 'О себе (необязательно)',
   'EditProfile.AddBirthdayRow': 'Добавить день рождения',
   'Bio.Description': 'Любые подробности, например: возраст, род занятий или город. Пример: дизайнер 23 лет из Сан-Франциско.',
@@ -1075,7 +1074,6 @@ const ru = {
   'Call.PrivacyError': 'Пользователь не принимает звонки',
   // Two-Step Verification
   'Login.Password.Title': 'Введите пароль',
-  'Login.Password.SubtitleFlat': 'Ваш аккаунт защищён дополнительным паролем.',
   'TwoStepAuth.InvalidPassword': 'Неверный пароль',
   LoginPassword: 'Пароль',
   'TwoStepAuth.SetPasswordHelp': 'Вы можете установить пароль, который будет использоваться для входа с новых устройств в дополнение к проверочному коду из SMS.',
@@ -1177,9 +1175,7 @@ const ru = {
     'Перейдите в **Настройки** > **Устройства** > **Подключить устройство**',
   'Login.QR.Help3':
     'Наведите телефон на этот экран, чтобы подтвердить вход',
-  'Login.ByPhone': 'Войти по номеру телефона',
   'Login.QR.Cancel': 'Войти по номеру телефона >',
-  'Login.ByPasskey': 'Войти по ключу доступа',
   'Login.Code.SentSms': 'Мы отправили Вам SMS\nс кодом.',
   PHONE_CODE_INVALID: 'Неверный код',
   'Login.Password.Subtitle':
@@ -1203,7 +1199,6 @@ const ru = {
   // Восстановление доступа по почте (tweb Login.ResetPassword.*)
   'Login.ForgotPassword': 'Забыли пароль?',
   'Login.ResetPassword.Title': 'Сброс пароля',
-  'Login.ResetPassword.CodeHint': 'Введите код, отправленный на почту',
   'Login.ResetPassword.Subtitle':
     'Введите код, который мы только что отправили\nна вашу почту **%s**.',
   'Login.Code.Expired': 'Код истёк. Запросите новый.',
@@ -1265,7 +1260,6 @@ const ru = {
   'Unit.Kilobytes': 'КБ',
   'Unit.Megabytes': 'МБ',
   'Unit.Gigabytes': 'ГБ',
-  'Login.Passkey.Failed': 'Не удалось войти по ключу доступа',
   // Попап «Защита Вашего аккаунта» (tweb Passkey.*)
   'Passkey.Title': 'Защита Вашего аккаунта',
   'Passkey.Subtitle': 'Безопасный вход и защита данных',
@@ -1377,7 +1371,6 @@ const ru = {
     'Подтвердите код страны и введите новый номер телефона.',
   'PhoneNumber.AlreadyTaken':
     'Этот номер уже привязан к аккаунту Telegram.',
-  'Login.PhoneInvalid': 'Неверный номер телефона.',
   'DeleteAccount.Action': 'Удалить мой аккаунт',
   'DeleteAccount.Title': 'Удаление аккаунта',
   'DeleteAccount.Text':

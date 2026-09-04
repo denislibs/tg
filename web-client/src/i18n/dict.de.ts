@@ -410,7 +410,6 @@ const de = {
   // settings screens (#71–#79)
   'EditAccount.Title': 'Profil bearbeiten',
   'EditProfile.FirstNameLabel': 'Name',
-  'Login.Register.LastName.Placeholder': 'Nachname',
   'EditProfile.BioLabel': 'Bio (optional)',
   'EditProfile.AddBirthdayRow': 'Geburtstag hinzufügen',
   'Bio.Description': 'Beliebige Angaben wie Alter, Beruf oder Stadt. Beispiel: 23-jähriger Designer aus San Francisco.',
@@ -538,7 +537,6 @@ const de = {
   Birthday: 'Geburtstag',
   // Two-Step Verification
   'Login.Password.Title': 'Gib dein Passwort ein',
-  'Login.Password.SubtitleFlat': 'Dein Konto ist mit einem zusätzlichen Passwort geschützt.',
   'TwoStepAuth.InvalidPassword': 'Falsches Passwort',
   LoginPassword: 'Passwort',
   'TwoStepAuth.SetPasswordHelp': 'Du kannst ein Passwort festlegen, das zusätzlich zum Code aus der SMS benötigt wird, wenn du dich auf einem neuen Gerät anmeldest.',
@@ -680,7 +678,6 @@ const de = {
   'Unit.Kilobytes': 'KB',
   'Unit.Megabytes': 'MB',
   'Unit.Gigabytes': 'GB',
-  'Login.Passkey.Failed': 'Anmeldung mit Passkey fehlgeschlagen',
 
   // ── Tastenkürzel (Einstellungen) ──
   'Composer.Formatting': 'Formatierung',
@@ -727,7 +724,6 @@ const de = {
     'Bestätige die Ländervorwahl und gib deine neue Telefonnummer ein.',
   'PhoneNumber.AlreadyTaken':
     'Diese Nummer ist bereits mit einem Telegram-Konto verknüpft.',
-  'Login.PhoneInvalid': 'Ungültige Telefonnummer.',
   'DeleteAccount.Action': 'Mein Konto löschen',
   'DeleteAccount.Title': 'Konto löschen',
   'DeleteAccount.Text':

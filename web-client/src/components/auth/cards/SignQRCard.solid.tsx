@@ -168,9 +168,11 @@ export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
           number >', :56; `Login.Passkey` = 'Log in by passkey >', :35) —
           висящий ` >` разбирает `superFormatter` (`lib/langPack.ts:600-606`,
           `IconMap['>'] = 'next'`) в `span.tgico.inline-icon`. Заведены НОВЫЕ
-          ключи 1:1 с tweb (см. `lang.ts`), старые `Login.ByPhone`/
-          `Login.Passkey.Action` не тронуты — ими всё ещё пользуется
-          React-версия этой карточки. */}
+          ключи 1:1 с tweb (см. `lang.ts`). Старый `Login.ByPhone` (без
+          стрелки) снесён задачей 6 волны 3 — единственным потребителем была
+          React-версия этой карточки, которой больше нет. `Login.Passkey.
+          Action` жив — им пользуется `SignInCard.solid.tsx` (кнопка входа
+          по ключу доступа на карточке номера, другой предмет). */}
       <Button
         class="btn-primary btn-secondary btn-primary-transparent primary"
         onClick={() => navigate({ name: 'signIn' })}

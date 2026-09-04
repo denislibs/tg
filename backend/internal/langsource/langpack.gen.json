@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 8,
+      "version": 9,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -2294,14 +2294,6 @@
           "value": "Loading..."
         },
         {
-          "key": "Login.ByPasskey",
-          "value": "Log in by passkey"
-        },
-        {
-          "key": "Login.ByPhone",
-          "value": "Log in by phone number"
-        },
-        {
           "key": "Login.Code.Expired",
           "value": "Code expired. Please request a new one."
         },
@@ -2326,28 +2318,20 @@
           "value": "Next"
         },
         {
-          "key": "Login.Passkey.Action",
-          "value": "Log in with a Passkey"
+          "key": "Login.Passkey",
+          "value": "Log in by passkey \u003e"
         },
         {
-          "key": "Login.Passkey.Failed",
-          "value": "Passkey sign-in failed"
+          "key": "Login.Passkey.Action",
+          "value": "Log in with a Passkey"
         },
         {
           "key": "Login.Password.Subtitle",
           "value": "Your account is protected with\nan additional password"
         },
         {
-          "key": "Login.Password.SubtitleFlat",
-          "value": "Your account is protected with an additional password."
-        },
-        {
           "key": "Login.Password.Title",
           "value": "Enter Your Password"
-        },
-        {
-          "key": "Login.PhoneInvalid",
-          "value": "Invalid phone number."
         },
         {
           "key": "Login.PhoneLabel",
@@ -2356,6 +2340,10 @@
         {
           "key": "Login.PhoneLabelInvalid",
           "value": "Phone Number Invalid"
+        },
+        {
+          "key": "Login.QR.Cancel",
+          "value": "Log in by phone number \u003e"
         },
         {
           "key": "Login.QR.Help1",
@@ -2376,10 +2364,6 @@
         {
           "key": "Login.QR.Title",
           "value": "Log in by QR Code"
-        },
-        {
-          "key": "Login.Register.LastName.Placeholder",
-          "value": "Last Name"
         },
         {
           "key": "Login.Register.NameRequired",
@@ -2406,10 +2390,6 @@
           "value": "Sorry"
         },
         {
-          "key": "Login.ResetPassword.CodeHint",
-          "value": "Enter the code we just sent to your email"
-        },
-        {
           "key": "Login.ResetPassword.HasEmail",
           "value": "A recovery email is linked to this account — reset it by email instead."
         },
@@ -2420,6 +2400,10 @@
         {
           "key": "Login.ResetPassword.ResetAccount",
           "value": "Reset Account"
+        },
+        {
+          "key": "Login.ResetPassword.Subtitle",
+          "value": "Enter the code we just sent\nto your email **%s**."
         },
         {
           "key": "Login.ResetPassword.Title",
@@ -5367,7 +5351,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 8,
+      "version": 9,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -8517,10 +8501,6 @@
           "value": "Имя"
         },
         {
-          "key": "Login.Register.LastName.Placeholder",
-          "value": "Фамилия"
-        },
-        {
           "key": "EditProfile.BioLabel",
           "value": "О себе (необязательно)"
         },
@@ -9074,10 +9054,6 @@
           "value": "Введите пароль"
         },
         {
-          "key": "Login.Password.SubtitleFlat",
-          "value": "Ваш аккаунт защищён дополнительным паролем."
-        },
-        {
           "key": "TwoStepAuth.InvalidPassword",
           "value": "Неверный пароль"
         },
@@ -9334,6 +9310,10 @@
           "value": "Войти по ключу доступа"
         },
         {
+          "key": "Login.Passkey",
+          "value": "Войти по ключу доступа \u003e"
+        },
+        {
           "key": "Login.QR.Title",
           "value": "Вход по QR-коду"
         },
@@ -9354,12 +9334,8 @@
           "value": "Наведите телефон на этот экран, чтобы подтвердить вход"
         },
         {
-          "key": "Login.ByPhone",
-          "value": "Войти по номеру телефона"
-        },
-        {
-          "key": "Login.ByPasskey",
-          "value": "Войти по ключу доступа"
+          "key": "Login.QR.Cancel",
+          "value": "Войти по номеру телефона \u003e"
         },
         {
           "key": "Login.Code.SentSms",
@@ -9430,8 +9406,8 @@
           "value": "Сброс пароля"
         },
         {
-          "key": "Login.ResetPassword.CodeHint",
-          "value": "Введите код, отправленный на почту"
+          "key": "Login.ResetPassword.Subtitle",
+          "value": "Введите код, который мы только что отправили\nна вашу почту **%s**."
         },
         {
           "key": "Login.Code.Expired",
@@ -9628,10 +9604,6 @@
         {
           "key": "Unit.Gigabytes",
           "value": "ГБ"
-        },
-        {
-          "key": "Login.Passkey.Failed",
-          "value": "Не удалось войти по ключу доступа"
         },
         {
           "key": "Passkey.Title",
@@ -10009,10 +9981,6 @@
         {
           "key": "PhoneNumber.AlreadyTaken",
           "value": "Этот номер уже привязан к аккаунту Telegram."
-        },
-        {
-          "key": "Login.PhoneInvalid",
-          "value": "Неверный номер телефона."
         },
         {
           "key": "DeleteAccount.Action",
@@ -10749,7 +10717,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 5,
+      "version": 6,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -12257,10 +12225,6 @@
           "value": "Nom"
         },
         {
-          "key": "Login.Register.LastName.Placeholder",
-          "value": "Nom de famille"
-        },
-        {
           "key": "EditProfile.BioLabel",
           "value": "Bio (facultatif)"
         },
@@ -12752,10 +12716,6 @@
           "value": "Saisissez votre mot de passe"
         },
         {
-          "key": "Login.Password.SubtitleFlat",
-          "value": "Votre compte est protégé par un mot de passe supplémentaire."
-        },
-        {
           "key": "TwoStepAuth.InvalidPassword",
           "value": "Mot de passe incorrect"
         },
@@ -13212,10 +13172,6 @@
           "value": "Go"
         },
         {
-          "key": "Login.Passkey.Failed",
-          "value": "Échec de la connexion par clé d'accès"
-        },
-        {
           "key": "Composer.Formatting",
           "value": "Mise en forme"
         },
@@ -13382,10 +13338,6 @@
         {
           "key": "PhoneNumber.AlreadyTaken",
           "value": "Ce numéro est déjà associé à un compte Telegram."
-        },
-        {
-          "key": "Login.PhoneInvalid",
-          "value": "Numéro de téléphone invalide."
         },
         {
           "key": "DeleteAccount.Action",
@@ -13577,7 +13529,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 5,
+      "version": 6,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -15084,10 +15036,6 @@
           "value": "Name"
         },
         {
-          "key": "Login.Register.LastName.Placeholder",
-          "value": "Nachname"
-        },
-        {
           "key": "EditProfile.BioLabel",
           "value": "Bio (optional)"
         },
@@ -15579,10 +15527,6 @@
           "value": "Gib dein Passwort ein"
         },
         {
-          "key": "Login.Password.SubtitleFlat",
-          "value": "Dein Konto ist mit einem zusätzlichen Passwort geschützt."
-        },
-        {
           "key": "TwoStepAuth.InvalidPassword",
           "value": "Falsches Passwort"
         },
@@ -16039,10 +15983,6 @@
           "value": "GB"
         },
         {
-          "key": "Login.Passkey.Failed",
-          "value": "Anmeldung mit Passkey fehlgeschlagen"
-        },
-        {
           "key": "Composer.Formatting",
           "value": "Formatierung"
         },
@@ -16209,10 +16149,6 @@
         {
           "key": "PhoneNumber.AlreadyTaken",
           "value": "Diese Nummer ist bereits mit einem Telegram-Konto verknüpft."
-        },
-        {
-          "key": "Login.PhoneInvalid",
-          "value": "Ungültige Telefonnummer."
         },
         {
           "key": "DeleteAccount.Action",
@@ -16404,7 +16340,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 5,
+      "version": 6,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -17912,10 +17848,6 @@
           "value": "Nombre"
         },
         {
-          "key": "Login.Register.LastName.Placeholder",
-          "value": "Apellido"
-        },
-        {
           "key": "EditProfile.BioLabel",
           "value": "Información (opcional)"
         },
@@ -18407,10 +18339,6 @@
           "value": "Introduce tu contraseña"
         },
         {
-          "key": "Login.Password.SubtitleFlat",
-          "value": "Tu cuenta está protegida con una contraseña adicional."
-        },
-        {
           "key": "TwoStepAuth.InvalidPassword",
           "value": "Contraseña incorrecta"
         },
@@ -18867,10 +18795,6 @@
           "value": "GB"
         },
         {
-          "key": "Login.Passkey.Failed",
-          "value": "No se pudo iniciar sesión con la llave de acceso"
-        },
-        {
           "key": "Composer.Formatting",
           "value": "Formato"
         },
@@ -19037,10 +18961,6 @@
         {
           "key": "PhoneNumber.AlreadyTaken",
           "value": "Este número ya está vinculado a una cuenta de Telegram."
-        },
-        {
-          "key": "Login.PhoneInvalid",
-          "value": "Número de teléfono no válido."
         },
         {
           "key": "DeleteAccount.Action",
@@ -19232,7 +19152,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 5,
+      "version": 6,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -20758,10 +20678,6 @@
           "value": "Ім'я"
         },
         {
-          "key": "Login.Register.LastName.Placeholder",
-          "value": "Прізвище"
-        },
-        {
           "key": "EditProfile.BioLabel",
           "value": "Про себе (необов'язково)"
         },
@@ -21255,10 +21171,6 @@
           "value": "Введіть пароль"
         },
         {
-          "key": "Login.Password.SubtitleFlat",
-          "value": "Ваш акаунт захищено додатковим паролем."
-        },
-        {
           "key": "TwoStepAuth.InvalidPassword",
           "value": "Невірний пароль"
         },
@@ -21723,10 +21635,6 @@
           "value": "ГБ"
         },
         {
-          "key": "Login.Passkey.Failed",
-          "value": "Не вдалося увійти за ключем доступу"
-        },
-        {
           "key": "Composer.Formatting",
           "value": "Форматування"
         },
@@ -21893,10 +21801,6 @@
         {
           "key": "PhoneNumber.AlreadyTaken",
           "value": "Цей номер уже прив’язаний до акаунту Telegram."
-        },
-        {
-          "key": "Login.PhoneInvalid",
-          "value": "Неправильний номер телефону."
         },
         {
           "key": "DeleteAccount.Action",
