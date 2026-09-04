@@ -13,12 +13,23 @@
  *
  * Четвёртый — поведенческий пин по сути карточки: ввод номера → отправка кода
  * → переход на карточку authCode с телефоном в payload.
+ *
+ * Пятый (ревью задачи 4, находка 3) — вход по ключу доступа: begin →
+ * `getPasskeyAssertion` → finish → `toIm()`. `@core/webauthnBrowser` замокан
+ * модульно — `isWebAuthnSupported` в happy-dom без `PublicKeyCredential`
+ * всегда вернул бы `false` и скрыл кнопку, а `getPasskeyAssertion` реально
+ * ходит в `navigator.credentials.get`.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'solid-js/web'
 import type { Managers } from '@/client/bootstrap'
 import { AuthFlowContext, type AuthFlowContextValue } from '../authFlow.solid'
 import SignInCard from './SignInCard.solid'
+
+vi.mock('@core/webauthnBrowser', () => ({
+  isWebAuthnSupported: vi.fn(() => true),
+  getPasskeyAssertion: vi.fn().mockResolvedValue({ assertion: true }),
+}))
 
 let dispose: (() => void) | undefined
 let host: HTMLDivElement | undefined
@@ -30,14 +41,22 @@ afterEach(() => {
   host = undefined
 })
 
-function mount(overrides: { nearestCountry?: () => Promise<string> } = {}) {
+function mount(
+  overrides: {
+    nearestCountry?: () => Promise<string>
+    requestCode?: ReturnType<typeof vi.fn>
+    passkeyLoginBegin?: ReturnType<typeof vi.fn>
+    passkeyLoginFinish?: ReturnType<typeof vi.fn>
+  } = {},
+) {
   const navigate = vi.fn()
+  const toIm = vi.fn().mockResolvedValue(undefined)
   const managers = {
     auth: {
       nearestCountry: overrides.nearestCountry ?? vi.fn().mockResolvedValue(''),
-      requestCode: vi.fn().mockResolvedValue(undefined),
-      passkeyLoginBegin: vi.fn(),
-      passkeyLoginFinish: vi.fn(),
+      requestCode: overrides.requestCode ?? vi.fn().mockResolvedValue(undefined),
+      passkeyLoginBegin: overrides.passkeyLoginBegin ?? vi.fn(),
+      passkeyLoginFinish: overrides.passkeyLoginFinish ?? vi.fn(),
     },
   } as unknown as Managers
 
@@ -46,7 +65,7 @@ function mount(overrides: { nearestCountry?: () => Promise<string> } = {}) {
     current: () => null,
     navigate,
     back: async () => {},
-    toIm: async () => {},
+    toIm,
   }
 
   host = document.createElement('div')
@@ -61,7 +80,7 @@ function mount(overrides: { nearestCountry?: () => Promise<string> } = {}) {
   )
 
   const tel = () => host!.querySelectorAll('[contenteditable]')[1] as HTMLElement // [0] — CountryInput
-  return { tel, navigate, managers }
+  return { tel, navigate, toIm, managers }
 }
 
 describe('SignInCard.solid: страна по умолчанию', () => {
@@ -110,5 +129,24 @@ describe('SignInCard.solid: ввод номера → отправка кода 
     const tel = () => host!.querySelectorAll('[contenteditable]')[1] as HTMLElement
     await vi.waitFor(() => expect(tel().className).toMatch(/error/))
     expect(navigate).not.toHaveBeenCalled()
+  })
+})
+
+describe('SignInCard.solid: вход по ключу доступа', () => {
+  it('begin → getPasskeyAssertion → finish → toIm()', async () => {
+    const passkeyLoginBegin = vi.fn().mockResolvedValue({ session: 's1', options: { publicKey: {} } })
+    const passkeyLoginFinish = vi.fn().mockResolvedValue(undefined)
+    const { toIm } = mount({ passkeyLoginBegin, passkeyLoginFinish })
+
+    const buttons = [...host!.querySelectorAll('button')]
+    const passkeyBtn = buttons.find((b) => b.textContent?.includes('Passkey'))
+    expect(passkeyBtn, 'кнопка passkey должна быть видна при isWebAuthnSupported() === true').not.toBeUndefined()
+
+    passkeyBtn!.click()
+    await vi.waitFor(() => expect(passkeyLoginFinish).toHaveBeenCalled())
+
+    expect(passkeyLoginBegin).toHaveBeenCalled()
+    expect(passkeyLoginFinish).toHaveBeenCalledWith('s1', { assertion: true }, 'web', 'browser')
+    await vi.waitFor(() => expect(toIm).toHaveBeenCalled())
   })
 })

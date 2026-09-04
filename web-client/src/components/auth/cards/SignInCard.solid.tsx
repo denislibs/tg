@@ -18,6 +18,17 @@
 // `LanguageChangeButton` (:267) — нет предложенного сервером языка на REST.
 // `lottieLoader.loadLottieWorkers()` в `onInput` (:75) — прогрев воркера
 // lottie нашему упрощённому SVG-логотипу не нужен.
+// Ветка `auth.sentCodeSuccess` (:127-135, «сервер сразу авторизовал по
+// отправке кода» — редкий MTProto-случай) — у REST `requestCode` не умеет
+// вернуть сессию, только `void`/ошибку; после успеха всегда идёт переход на
+// authCode, немедленного `toIm()` здесь быть не может.
+// Различение `PHONE_NUMBER_INVALID` и прочих ошибок (:144-155: у tweb первое
+// подменяет `telInputField.label`/красит поле и оставляет `Login.Next` на
+// кнопке, второе — печатает `err.type` в саму кнопку) — не портировано: наш
+// `requestCode` бросает `HttpError` без типизированного кода ошибки на этом
+// пути (бэкенд валидирует только «телефон пуст», `backend/internal/usecase/
+// auth/auth.go::RequestCode`, без отдельного «телефон некорректен»), различать
+// нечем — ЛЮБАЯ ошибка красит поле как неверный номер (`setPhoneError(true)`).
 //
 // ── Наши расширения (есть предмет, оригинал так не умеет) ───────────────────
 // Вход по ключу доступа (`passkeyLogin` ниже) — у tweb это ОТДЕЛЬНЫЙ
@@ -33,6 +44,7 @@ import Button from '@components/buttonTsx.solid'
 import { i18n } from '@lib/langPack'
 import { isWebAuthnSupported, getPasskeyAssertion } from '@core/webauthnBrowser'
 import { placeCaretAtEnd } from '@shared/lib/caret'
+import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import AuthCard from '../AuthCard.solid'
 import MediaHeader from '../MediaHeader.solid'
 import CountryInput from '../CountryInput.solid'
@@ -198,7 +210,13 @@ export default function SignInCard(_props: { spec: Spec }): JSX.Element {
         <CountryInput value={country() ?? null} onChange={onCountryChange} />
 
         <TelInput
-          autoFocus
+          // tweb SignInCard.tsx:223-225: фокус на телефон ставится ТОЛЬКО не
+          // на тач-устройстве (`focusWhenConnected` под `if(!IS_TOUCH_SUPPORTED)`)
+          // — на мобильном автофокус сразу выбросил бы клавиатуру поверх
+          // выбора страны/QR/passkey. AuthCodeCard/PasswordCard фокусят
+          // безусловно — tweb делает так же ТАМ (`focusWhenConnected` без
+          // гейта в обеих карточках), это не то же упущение.
+          autoFocus={!IS_TOUCH_SUPPORTED}
           ref={(el) => (telEl = el)}
           value={phone()}
           leftPattern={country() ? leftPattern(country()!, phone()) : ''}
