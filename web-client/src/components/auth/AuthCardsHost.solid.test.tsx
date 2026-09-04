@@ -86,18 +86,18 @@ function mount(props: { managers?: Managers; onComplete?: () => void } = {}) {
   return host
 }
 
-/** Ждёт, пока в `.cardsContainer` появится текстовый маркер заглушки карточки. */
-async function waitForCard(root: HTMLElement, testId: string) {
-  await vi.waitFor(() => {
-    expect(root.querySelector(`[data-testid="${testId}"]`)).not.toBeNull()
-  })
-}
-
 // signIn — задача 4, настоящая карточка без `[data-testid]` заглушки. Маркер
 // — её собственная разметка: `.input-select` (глобальный класс CountryInput,
 // есть только на signIn среди наших карточек).
 async function waitForSignIn(root: HTMLElement) {
   await vi.waitFor(() => expect(root.querySelector('.input-select')).not.toBeNull())
+}
+
+// signUp — задача 5, тоже настоящая карточка без `[data-testid]`. Маркер —
+// класс модификатора страницы (`s.pageSignUp`), как у `pagePassword` в тесте
+// «предыдущая карточка остаётся в DOM» ниже.
+async function waitForSignUp(root: HTMLElement) {
+  await vi.waitFor(() => expect(root.querySelector('[class*="pageSignUp"]')).not.toBeNull())
 }
 
 function cardNodes(root: HTMLElement): Element[] {
@@ -112,9 +112,9 @@ describe('AuthCardsHost.solid — переход между карточками
     await waitForSignIn(root)
     expect(cardNodes(root)).toHaveLength(1)
 
-    navigateAuth({ name: 'signQR' })
+    navigateAuth({ name: 'signUp', payload: { token: 'su-tok' } })
 
-    // Ждём, пока лениво резолвится signQR и `<Transition>` реально ЗАПУСТИТ
+    // Ждём, пока лениво резолвится signUp и `<Transition>` реально ЗАПУСТИТ
     // exit прежней карточки (класс `cardExitActive` на узле). До этого момента
     // `stableCard` ещё отдаёт старую карточку без изменений — тот же факт,
     // что доказывает второй тест этого файла (см. ниже), здесь важен как ШАГ,
@@ -128,17 +128,15 @@ describe('AuthCardsHost.solid — переход между карточками
     // сам), в контейнере — ровно одна карточка: старая, с классами выхода.
     expect(cardNodes(root)).toHaveLength(1)
     expect(root.querySelector('.input-select')).not.toBeNull()
-    expect(root.querySelector('[data-testid="stub-card-signQR"]')).toBeNull()
+    expect(root.querySelector('[class*="pageSignUp"]')).toBeNull()
 
     // Доигрываем exit вручную — на реальном экране это делает браузер.
     // Узел, на который вендор вешает exit-классы, — это ВЕРХНИЙ элемент
-    // карточки (корень `<AuthCard>`, прямой ребёнок `.cardsContainer`), а не
-    // сам `[data-testid]`, который лежит внутри `.input-wrapper` двумя
-    // уровнями глубже.
+    // карточки (корень `<AuthCard>`, прямой ребёнок `.cardsContainer`).
     const exiting = cardNodes(root)[0]
     exiting.dispatchEvent(new Event('transitionend', { bubbles: false }))
 
-    await waitForCard(root, 'stub-card-signQR')
+    await waitForSignUp(root)
     expect(cardNodes(root)).toHaveLength(1)
     expect(root.querySelector('.input-select')).toBeNull()
   })

@@ -94,16 +94,11 @@
  *    `AuthCardsHost` — применение темы при старте живёт в `src/index.ts`,
  *    здесь только обработчик клика.
  *
- * ── ВРЕМЕННЫЕ карточки (снимается задачей 5) ────────────────────────────────
- * Задача 4 перевела signIn/authCode/password на настоящий `lazy(() =>
- * import('./cards/...'))`. Четыре карточки без предмета в этой задаче
- * (signUp/emailRecover/signQR/signImport) остаются на `stubCard` — `lazy()`
- * поверх `Promise.resolve()`: лень должна быть НАСТОЯЩЕЙ (Solid откладывает
- * первый рендер `lazy`-компонента на микротаск независимо от источника
- * промиса), иначе пин «предыдущая карточка держится в DOM, пока грузится
- * следующая» проверял бы то, чего на самом деле не происходит. По готовности
- * задачи 5 — заменить оставшиеся константы, `stubCard` и этот комментарий
- * снимаются целиком.
+ * ── Все семь карточек — настоящие, все `lazy(() => import('./cards/...'))` ──
+ * Задача 4 перевела signIn/authCode/password; задача 5 — оставшиеся четыре
+ * (signUp/emailRecover/signQR/signImport). Заглушек (`stubCard`) в файле
+ * больше нет — лень остаётся НАСТОЯЩЕЙ за счёт самого динамического
+ * `import()`, а не искусственной обёртки поверх `Promise.resolve()`.
  */
 import {
   Match,
@@ -113,7 +108,6 @@ import {
   createMemo,
   lazy,
   onMount,
-  type Component,
   type JSX,
 } from 'solid-js'
 import Scrollable from '@components/scrollable2.solid'
@@ -142,33 +136,21 @@ import {
   matchCard,
   navigateAuth,
   type AuthFlowContextValue,
-  type CardName,
-  type CardSpec,
 } from './authFlow.solid'
-import AuthCard from './AuthCard.solid'
 import styles from './AuthFlow.module.scss'
 
 /* ------------------------------------------------------------------ */
-/* Ленивые слоты карточек — временные заглушки, см. докблок выше       */
+/* Ленивые слоты карточек — задача 4 (signIn/authCode/password) + задача 5   */
+/* (signUp/emailRecover/signQR/signImport) — семь из семи настоящие.        */
 /* ------------------------------------------------------------------ */
 
-function stubCard<K extends CardName>(name: K): Component<{ spec: Extract<CardSpec, { name: K }> }> {
-  return () => (
-    <AuthCard>
-      <div data-testid={`stub-card-${name}`}>{name}</div>
-    </AuthCard>
-  )
-}
-
-// Задача 4 (волна 3, этап 1): signIn/authCode/password — настоящие карточки.
-// Заглушки для signUp/emailRecover/signQR/signImport остаются до задачи 5.
 const SignInCard = lazy(() => import('./cards/SignInCard.solid'))
 const AuthCodeCard = lazy(() => import('./cards/AuthCodeCard.solid'))
 const PasswordCard = lazy(() => import('./cards/PasswordCard.solid'))
-const SignUpCard = lazy(async () => ({ default: stubCard('signUp') }))
-const EmailRecoverCard = lazy(async () => ({ default: stubCard('emailRecover') }))
-const SignQRCard = lazy(async () => ({ default: stubCard('signQR') }))
-const SignImportCard = lazy(async () => ({ default: stubCard('signImport') }))
+const SignUpCard = lazy(() => import('./cards/SignUpCard.solid'))
+const EmailRecoverCard = lazy(() => import('./cards/EmailRecoverCard.solid'))
+const SignQRCard = lazy(() => import('./cards/SignQRCard.solid'))
+const SignImportCard = lazy(() => import('./cards/SignImportCard.solid'))
 
 /* ------------------------------------------------------------------ */
 /* Host                                                               */

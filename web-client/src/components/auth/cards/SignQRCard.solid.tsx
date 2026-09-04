@@ -52,8 +52,6 @@ export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
 
   onMount(() => {
     let alive = true
-    let rotate: ReturnType<typeof setInterval> | undefined
-    let poll: ReturnType<typeof setInterval> | undefined
 
     const regen = async () => {
       try {
@@ -85,13 +83,15 @@ export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
     }
     const cleanup = () => {
       alive = false
-      if (rotate) clearInterval(rotate)
-      if (poll) clearInterval(poll)
+      clearInterval(rotate)
+      clearInterval(poll)
     }
 
     void regen()
-    rotate = setInterval(() => void regen(), ROTATE_MS)
-    poll = setInterval(() => void tick(), POLL_MS)
+    // `cleanup` (объявлен выше) читает `rotate`/`poll` по замыканию, а вызван
+    // будет не раньше первого сработавшего таймера — TDZ здесь не грозит.
+    const rotate = setInterval(() => void regen(), ROTATE_MS)
+    const poll = setInterval(() => void tick(), POLL_MS)
 
     onCleanup(cleanup)
   })
