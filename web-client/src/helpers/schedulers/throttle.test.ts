@@ -162,6 +162,7 @@ const ALLOWED: Record<string, number> = {
   // (`components/scrollable.ts:53`, `components/scrollable2.tsx:11`) — наши два
   // вхождения повторяют оригинал файл-в-файл.
   'components/scrollable.ts': 1,
+  'components/scrollable2.solid.tsx': 1,
   'components/virtual/VerticalVirtualList.tsx': 1,
 }
 
