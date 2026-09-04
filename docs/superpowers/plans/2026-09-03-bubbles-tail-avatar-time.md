@@ -32,11 +32,22 @@
 | Хвостов нет ни у одного бабла | не портированы ни спрайт, ни вставка узла | `web-client/index.html` — ноль `<symbol>`; в `web-client/src` ноль вставок `bubble-tail` |
 | Аватар автора лежит поверх бабла | `.bubbles-inner` не получает класс `is-chat`, поэтому не срабатывает `margin-inline-start: 2.875rem` | `bubbles.ts:874-881` против tweb `bubbles.ts:5787-5792`; правило — `styles/tweb/_chat.scss:1311-1316` |
 | Реакции налезают на аватар | следствие предыдущего: вся зона `.bubble-content-wrapper` не сдвинута | — |
-| Время стикера/файла у правого края | ветка `has-floating-time`/`service` не портирована: время и реакции всегда уходят в `.message` | `bubbles.ts:1813-1827` против tweb `bubbles.ts:9849-9851` |
+| Время стикера у правого края | ветка `has-floating-time`/`service` не портирована: время и реакции всегда уходят в `.message` | `bubbles.ts:1813-1827` против tweb `bubbles.ts:9849-9851` |
 
 Проверено на стенде: у стикера класс `has-floating-time` стоит, но `.time` лежит в
 `.message.spoilers-container` со `position: static`, и его правый край совпадает с
 правым краем колонки.
+
+**У файлов (`document`/`voice`/`audio`) корень ДРУГОЙ, и Task 3 его не касается.**
+Эти три типа лежат в `MEDIA_IN_MESSAGE_DIV`
+(`web-client/src/components/messages/bubbleClasses.ts:41-43`) — класс
+`has-floating-time` им не ставится вовсе, развилка Task 3 их не затрагивает. В
+оригинале время документа кладётся ВНУТРЬ строки файла — tweb `bubbles.ts:8624-8631`
+(`appendBubbleTime(bubble, lastContainer, () => lastContainer.append(timeSpan,
+clearfix()))`, где `lastContainer` — `.document-message`/`.document, .audio`) — это у
+нас не портировано. На стенде случай не наблюдался НИ ДО, НИ ПОСЛЕ Task 3: баблов-
+документов там нет вовсе (в живых классах только `photo`, `is-album`, `sticker`,
+`poll-message`). Долг записан в `docs/readiness/vanilla-feed-cutover.md`.
 
 Отдельно, НЕ входит сюда: `messageActionStarGift` у нас маршрутизируется в
 `kind: 'gift'` (`core/messages/messageKind.ts:99-101`) и потому рисуется обычным
@@ -157,4 +168,5 @@
 
 Стенд по `STAND.md`; **бэкенд пересобрать вместе с фронтом**. Групповой чат: хвосты у
 последних баблов серий, аватар слева и не поверх текста, реакции под текстом в границах
-бабла, время стикера и файла — на бабле.
+бабла, время стикера — на бабле. Время документа/голосового/аудио НЕ проверяется этим
+пунктом — Task 3 их не касается (см. диагностику выше), баблов-документов на стенде нет.

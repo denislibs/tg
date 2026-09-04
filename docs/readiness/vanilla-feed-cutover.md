@@ -311,6 +311,19 @@ is-group-last` с одним лишь временем внутри).
 (`messageActionDiscussionStarted`, порт tweb `generateThreadServiceStartMessage`) —
 она вставляется в `winV`, то есть **в зеркало не попадает вообще**.
 
+**Долг (новый):** время документа/голосового/аудио не лежит внутри строки файла.
+`document`/`voice`/`audio` — в `MEDIA_IN_MESSAGE_DIV`
+(`web-client/src/components/messages/bubbleClasses.ts:41-43`), класс
+`has-floating-time` им не ставится, и развилка `has-floating-time`/`service`
+(закрытая для стикеров и фото без подписи — см. §3.1/задачу 3 плана
+`docs/superpowers/plans/2026-09-03-bubbles-tail-avatar-time.md`) их не касается
+вовсе. В оригинале время документа кладётся ВНУТРЬ строки файла — tweb
+`bubbles.ts:8624-8631` (`appendBubbleTime(bubble, lastContainer, () =>
+lastContainer.append(timeSpan, clearfix()))`, где `lastContainer` —
+`.document-message`/`.document, .audio`) — у нас не портировано. Живьём не
+наблюдалось ни до, ни после: на стенде баблов-документов не было вовсе (в живых
+классах только `photo`, `is-album`, `sticker`, `poll-message`).
+
 ## 3.4 Шапка пересылки
 
 Не портирована, и это записано прямо в коде: `chat/bubbles.ts:1012-1019` — «НЕ

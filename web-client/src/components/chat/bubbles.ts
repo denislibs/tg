@@ -879,9 +879,15 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * колонка (`.bubbles-group-avatar-container`, `position: absolute`, вне
    * потока) ложится поверх бабла, а с ней и реакции.
    *
-   * ОБА узла — как в оригинале, одним forEach: `remover` создаётся только
-   * здесь и никогда не пересоздаётся, поэтому забыть его — рассинхронить
-   * анимацию удаления бабла (`.bubbles-remover`) с самой лентой.
+   * Единственный вызов — в конце `setPeer()`, на ОБОИХ узлах, одним местом,
+   * как в оригинале: `chatInner` там пересоздаётся заново на КАЖДЫЙ `setPeer`
+   * (нужно проставить класс снова), `remover` создаётся один раз в
+   * `constructBubbles()` и никогда не пересоздаётся — но класс на нём тоже
+   * ставится тут же, а не при создании: в `constructBubbles()` `this.chat`
+   * применять рано (лента только строится), а забыть `remover` при повторном
+   * `setPeer` значило бы рассинхронить анимацию удаления бабла
+   * (`.bubbles-remover`) с самой лентой. Вызов на `remover` идемпотентен —
+   * `isLikeGroup`/`isBroadcast` неизменны на весь срок жизни инстанса (см. ниже).
    *
    * `isLikeGroup`/`isBroadcast` читаются с `this.chat` — как в оригинале
    * `Chat.isLikeGroup`/`Chat.isBroadcast` (chat.ts:145, appPeersManager).
@@ -906,13 +912,17 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     const chatInner = this.chatInner = document.createElement('div')
     chatInner.classList.add('bubbles-inner')
-    this.applyChatTypeClasses(chatInner)
+    // `is-chat`/`is-broadcast` тут НЕ ставятся: этот `chatInner` — временный,
+    // первый же `setPeer()` (host `VanillaFeed.tsx` зовёт его сразу после
+    // конструктора) пересоздаёт `this.chatInner` целиком и переносит классы
+    // туда (см. докблок `applyChatTypeClasses`). `remover`, наоборот, живёт
+    // весь срок инстанса — но классы на него ставит тот же вызов в `setPeer`,
+    // а не этот конструктор.
 
     const removerContainer = document.createElement('div')
     removerContainer.classList.add('bubbles-remover-container')
     const remover = this.remover = document.createElement('div')
     remover.classList.add('bubbles-remover', 'bubbles-inner')
-    this.applyChatTypeClasses(remover)
     removerContainer.append(remover)
 
     const floatingSeparatorsContainer = this.floatingSeparatorsContainer = document.createElement('div')
@@ -3568,12 +3578,14 @@ export default class ChatBubbles implements BubbleGroupsHost {
       chatInner.classList.add('bubbles-inner')
     }
     // `!samePeer` — самый частый путь (первый `setPeer` после монтирования,
-    // `reload()`) — обнуляет `className` до голого `bubbles-inner`, унося с
-    // собой `is-chat`/`is-broadcast`, поставленные в `constructBubbles`; при
-    // `samePeer` они уже скопированы вместе с остальным `className`, и вызов
-    // ниже идемпотентен (`toggle` с явным булем). См. докблок
-    // `applyChatTypeClasses`.
+    // `reload()`) — даёт голый `bubbles-inner` без `is-chat`/`is-broadcast`
+    // (в `constructBubbles` они больше не ставятся, см. докблок
+    // `applyChatTypeClasses`); при `samePeer` они уже скопированы вместе с
+    // остальным `className` — их поставил этот же вызов на ПРОШЛОМ `setPeer`,
+    // и вызов ниже идемпотентен (`toggle` с явным булем). `remover` тем же
+    // вызовом — как в оригинальном forEach по обоим узлам.
     this.applyChatTypeClasses(chatInner)
+    this.applyChatTypeClasses(this.remover)
 
     // tweb :5254-5270.
     const canScroll = samePeer && sameSearch

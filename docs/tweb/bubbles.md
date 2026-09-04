@@ -657,13 +657,20 @@ DOM — в доке про комментарии.
 `styles/tweb/_chat.scss:1311-1316` (`margin-inline-start: 2.875rem` на `.bubble-content-wrapper`)
 молчало, и абсолютно спозиционированная колонка ложилась поверх бабла (а с ней и реакции).
 Порт — `applyChatTypeClasses` (`web-client/src/components/chat/bubbles.ts:897-900`, докблок
-:871-896), дословный `forEach` из tweb `ChatBubbles.finishPeerChange` (`bubbles.ts:5787-5792`):
-ставит `is-chat`/`is-broadcast` с `this.chat.isLikeGroup`/`isBroadcast`. Вызывается ДВАЖДЫ —
-`constructBubbles()` (`bubbles.ts:909, 915`, для транзитных `chatInner`/`remover`) и ещё раз
-в `setPeer()` (`bubbles.ts:3576`), потому что `chatInner` там пересоздаётся заново и без
-второго вызова терял классы. Вычеты: `no-messages` (нужен асинхронный `Chat.hasMessages()`,
-которого у ленты нет) и `with-message-avatars` (гейтит ботов-верификаторов — в нашей модели
-не существует). Пины — `bubbles.avatarOffset.test.ts`.
+:871-899), дословный `forEach` из tweb `ChatBubbles.finishPeerChange` (`bubbles.ts:5787-5792`):
+ставит `is-chat`/`is-broadcast` с `this.chat.isLikeGroup`/`isBroadcast`. Вызывается ОДИН раз —
+в конце `setPeer()` (`bubbles.ts:3587-3588`), на ОБОИХ узлах, одним местом, как в оригинальном
+`finishPeerChange`. `chatInner` там пересоздаётся заново на каждый `setPeer`, поэтому класс
+нужно ставить снова; `remover` создаётся один раз в `constructBubbles()` и никогда не
+пересоздаётся, но классы на него ставятся тоже в `setPeer`, а не при создании (там `this.chat`
+применять рано) — вызов идемпотентен, потому что `isLikeGroup`/`isBroadcast` неизменны на весь
+срок жизни инстанса. `constructBubbles()` классы не ставит вовсе: `chatInner`, который она
+создаёт, — временный, его тут же на первом `setPeer` (хост `VanillaFeed.tsx` зовёт его сразу
+после конструктора) заменяет новый узел; вызов `applyChatTypeClasses` на этом временном узле
+был мёртвым кодом (удалён) — подтверждено мутацией: вырезание красило 0 из 492 тестов. Вычеты:
+`no-messages` (нужен асинхронный `Chat.hasMessages()`, которого у ленты нет) и
+`with-message-avatars` (гейтит ботов-верификаторов — в нашей модели не существует).
+Пины — `bubbles.avatarOffset.test.ts`.
 
 ## 5.5 Date-группы и монтирование
 
