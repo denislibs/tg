@@ -17,29 +17,32 @@
 // первой карточки (клавиатура сама всплывает от смены типа инпута), здесь
 // пользователь уже коснулся экрана, отправляя номер, — форма ожидаема.
 //
-// ── Обезьянка (`TrackingMonkey`) — ЗАГЛУШКА, долг назван записью ────────────
-// tweb monkeys/tracking.ts — lottie-анимация (idle+tracking канвы, кадр по
-// проценту набранного). У нас БЫЛ React-порт (`components/TrackingMonkey.tsx`),
-// но задача 6 волны 3 снесла его вместе со всем React-экраном входа (у него не
-// осталось ни одного живого потребителя — единственным была React-версия этой
-// самой карточки): держать мёртвый React-файл дальше значило бы нарушить DoD
-// п.14 («React убыл, а не удвоился»), а Solid-версии обезьянки как не было, так
-// и нет — задача 4 переносила карточки и ПОЛЯ ВВОДА (см. task-4-brief.md), сама
-// анимация была отдельным портом вне того среза уже тогда. Итог: фича tweb-
-// паритета ПОТЕРЯНА насовсем, а не временно закрыта заглушкой — названо явно
-// записью `web-client/backlogs/frontend/tracking-monkey-solid-port.md`
-// (Solid-порт `monkeys/tracking.ts` с нуля — прежний React-порт для референса
-// смотреть в истории git, не в дереве; «ЗАДАЧА #128» здесь раньше указывала
-// не туда — тот номер уже занят футером комментариев, `i18n/dict.test.ts:118`).
-// Ниже — статический `div.media-sticker-wrapper` того же контура, что у
-// оригинала (`stickerHost`), без канв: вёрстка/размер шапки совпадают,
-// анимации нет.
+// ── Обезьянка (`TrackingMonkey`) — Solid-порт, долг закрыт ──────────────────
+// tweb `monkeys/tracking.ts` — lottie-анимация (idle+tracking канвы, кадр по
+// проценту набранного, закрывает глаза на blur/открывает на focus). У нас БЫЛ
+// React-порт (`components/TrackingMonkey.tsx`), но задача 6 волны 3 снесла его
+// вместе со всем React-экраном входа (не осталось ни одного живого
+// потребителя), а Solid-версии тогда ещё не было — задача 4 переносила
+// карточки и поля ввода отдельно от самой анимации. Фича была названа явным
+// долгом (запись в бэклоге, закрыта и удалена вместе с портом ниже) и
+// портирована с нуля из tweb, а не из снесённого React-кода
+// (правило программы — `docs/superpowers/specs/2026-08-28-solid-migration-
+// design.md § 6a`). Устройство и отступление движка (`lottie-web` напрямую
+// вместо tlottie — у нас нет `assets/tgs/` на статике) разобраны в докблоке
+// `../TrackingMonkey.solid.tsx`.
+//
+// Проводка: `focused` — сигнал, который поднимает `CodeInput.onFocusChange`
+// (tweb вешает `focus`/`blur` листенеры прямо на `inputField.input` — здесь
+// то же самое одним уровнем выше, через проп); `value` — тот же сигнал, что
+// уже держит значение поля кода, TrackingMonkey сама пересчитывает кадр на
+// каждое изменение (аналог tweb DOM-события `input`).
 import { createSignal, onMount, type JSX } from 'solid-js'
 import { IconTsx } from '@components/iconTsx.solid'
 import I18n, { i18n, type LangPackKey } from '@lib/langPack'
 import AuthCard from '../AuthCard.solid'
 import MediaHeader from '../MediaHeader.solid'
 import CodeInput from '../CodeInput.solid'
+import TrackingMonkey from '../TrackingMonkey.solid'
 import { useAuthFlow, type CardSpec } from '../authFlow.solid'
 import styles from '../AuthFlow.module.scss'
 
@@ -62,6 +65,7 @@ export default function AuthCodeCard(props: { spec: Spec }): JSX.Element {
   const [error, setError] = createSignal<LangPackKey | ''>('')
   const [busy, setBusy] = createSignal(false)
   const [value, setValue] = createSignal('')
+  const [focused, setFocused] = createSignal(false)
 
   let codeInputEl: HTMLInputElement | undefined
   onMount(() => codeInputEl?.focus())
@@ -114,8 +118,8 @@ export default function AuthCodeCard(props: { spec: Spec }): JSX.Element {
         <MediaHeader>
           <MediaHeader.Sticker size={STICKER_SIZE}>
             {/* tweb: `._sticker > stickerHost > .media-sticker-wrapper` — см.
-                докблок файла про заглушку обезьянки. */}
-            <div class="media-sticker-wrapper" />
+                докблок файла и `../TrackingMonkey.solid.tsx` про устройство. */}
+            <TrackingMonkey size={STICKER_SIZE} length={CODE_LEN} value={value} focused={focused} />
           </MediaHeader.Sticker>
           <MediaHeader.Title>
             <div class={styles.phoneWrapper}>
@@ -145,6 +149,7 @@ export default function AuthCodeCard(props: { spec: Spec }): JSX.Element {
           setValue(v)
         }}
         onComplete={(v) => void submitCode(v)}
+        onFocusChange={setFocused}
         error={!!error()}
         disabled={busy()}
       />

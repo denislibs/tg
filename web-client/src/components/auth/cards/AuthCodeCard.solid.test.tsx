@@ -11,6 +11,8 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'solid-js/web'
+import lottie from 'lottie-web'
+import type { AnimationItem } from 'lottie-web'
 import type { Managers } from '@/client/bootstrap'
 import { AuthFlowContext, type AuthFlowContextValue } from '../authFlow.solid'
 import AuthCodeCard from './AuthCodeCard.solid'
@@ -119,5 +121,46 @@ describe('AuthCodeCard.solid: исходы ввода кода', () => {
 
     expect(navigate).toHaveBeenCalledWith({ name: 'signIn' })
     expect(signIn).not.toHaveBeenCalled()
+  })
+})
+
+describe('AuthCodeCard.solid: проводка фокуса поля до обезьянки (TrackingMonkey)', () => {
+  // Замыкает цепочку, которую TrackingMonkey.solid.test.tsx и
+  // CodeInput.solid.test.tsx пинят каждый только НА СВОЕЙ половине: тут — что
+  // САМА КАРТОЧКА реально соединяет их (`onFocusChange={setFocused}` →
+  // `<TrackingMonkey focused={focused}>`), а не просто держит оба куска кода
+  // рядом нетронутыми проводами. `codeInputEl?.focus()` из `onMount` карточки
+  // уже держит поле в фокусе к моменту первого рендер-прохода — TrackingMonkey
+  // видит `true` СВОИМ первым чтением сигнала и не проигрывает его (см.
+  // `defer:true` в её докблоке), поэтому пин дёргает blur→focus: настоящую
+  // ПЕРЕМЕНУ состояния после маунта, а не совпадение стартового значения.
+  it('фокус/блюр настоящего DOM-инпута доходит до playAnimation и переключает канвы обезьянки', async () => {
+    const signIn = vi.fn()
+    const { input } = mount(signIn)
+
+    const idleAnim = { play: vi.fn(), pause: vi.fn(), stop: vi.fn(), destroy: vi.fn(), setSpeed: vi.fn(), setDirection: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() }
+    const trackingAnim = { play: vi.fn(), pause: vi.fn(), stop: vi.fn(), destroy: vi.fn(), setSpeed: vi.fn(), setDirection: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() }
+    const hosts = host!.querySelectorAll<HTMLDivElement>('.media-sticker-wrapper > div')
+    const idleHostEl = hosts[0]
+    const trackingHostEl = hosts[1]
+    // Другие `it` в этом файле тоже монтируют карточку (а значит и обезьянку) и
+    // копят вызовы на ОБЩЕМ моке `lottie-web` из `setup.ts` — счётчик чистим
+    // перед тем, как считать СВОИ два вызова (idle+tracking).
+    vi.mocked(lottie.loadAnimation).mockClear()
+    vi.mocked(lottie.loadAnimation).mockImplementation(
+      (opts) => (opts.container === idleHostEl ? idleAnim : trackingAnim) as unknown as AnimationItem,
+    )
+    await vi.waitFor(() => expect(lottie.loadAnimation).toHaveBeenCalledTimes(2))
+
+    input().blur()
+    await vi.waitFor(() => expect(trackingAnim.play).toHaveBeenCalled())
+
+    trackingAnim.play.mockClear()
+    input().focus()
+    await vi.waitFor(() => expect(trackingHostEl.style.display).toBe(''))
+    expect(idleHostEl.style.display).toBe('none')
+    expect(idleAnim.stop).toHaveBeenCalled()
+
+    vi.mocked(lottie.loadAnimation).mockReset()
   })
 })
