@@ -59,6 +59,40 @@ function mount(signIn: ReturnType<typeof vi.fn>) {
   return { navigate, toIm, typeCode, input }
 }
 
+function makeFakeAnim() {
+  return {
+    play: vi.fn(),
+    pause: vi.fn(),
+    stop: vi.fn(),
+    destroy: vi.fn(),
+    setSpeed: vi.fn(),
+    setDirection: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }
+}
+
+/**
+ * Подменяет `lottie.loadAnimation`, чтобы различать idle/tracking-инстансы
+ * обезьянки по узлу-контейнеру (см. `TrackingMonkey.solid.test.tsx` — тот же
+ * приём). Другие `it` в этом файле тоже монтируют карточку (а значит и
+ * обезьянку) и копят вызовы на ОБЩЕМ моке `lottie-web` из `setup.ts` —
+ * счётчик чистим перед тем, как считать СВОИ два вызова (idle+tracking).
+ */
+async function spyOnMonkey() {
+  const idleAnim = makeFakeAnim()
+  const trackingAnim = makeFakeAnim()
+  const hosts = host!.querySelectorAll<HTMLDivElement>('.media-sticker-wrapper > div')
+  const idleHostEl = hosts[0]
+  const trackingHostEl = hosts[1]
+  vi.mocked(lottie.loadAnimation).mockClear()
+  vi.mocked(lottie.loadAnimation).mockImplementation(
+    (opts) => (opts.container === idleHostEl ? idleAnim : trackingAnim) as unknown as AnimationItem,
+  )
+  await vi.waitFor(() => expect(lottie.loadAnimation).toHaveBeenCalledTimes(2))
+  return { idleAnim, trackingAnim, idleHostEl, trackingHostEl }
+}
+
 describe('AuthCodeCard.solid: исходы ввода кода', () => {
   it('успешный вход — signIn(fullPhone, code) и toIm()', async () => {
     const signIn = vi.fn().mockResolvedValue({ user: {} })
@@ -137,20 +171,7 @@ describe('AuthCodeCard.solid: проводка фокуса поля до обе
   it('фокус/блюр настоящего DOM-инпута доходит до playAnimation и переключает канвы обезьянки', async () => {
     const signIn = vi.fn()
     const { input } = mount(signIn)
-
-    const idleAnim = { play: vi.fn(), pause: vi.fn(), stop: vi.fn(), destroy: vi.fn(), setSpeed: vi.fn(), setDirection: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() }
-    const trackingAnim = { play: vi.fn(), pause: vi.fn(), stop: vi.fn(), destroy: vi.fn(), setSpeed: vi.fn(), setDirection: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() }
-    const hosts = host!.querySelectorAll<HTMLDivElement>('.media-sticker-wrapper > div')
-    const idleHostEl = hosts[0]
-    const trackingHostEl = hosts[1]
-    // Другие `it` в этом файле тоже монтируют карточку (а значит и обезьянку) и
-    // копят вызовы на ОБЩЕМ моке `lottie-web` из `setup.ts` — счётчик чистим
-    // перед тем, как считать СВОИ два вызова (idle+tracking).
-    vi.mocked(lottie.loadAnimation).mockClear()
-    vi.mocked(lottie.loadAnimation).mockImplementation(
-      (opts) => (opts.container === idleHostEl ? idleAnim : trackingAnim) as unknown as AnimationItem,
-    )
-    await vi.waitFor(() => expect(lottie.loadAnimation).toHaveBeenCalledTimes(2))
+    const { idleAnim, trackingAnim, idleHostEl, trackingHostEl } = await spyOnMonkey()
 
     input().blur()
     await vi.waitFor(() => expect(trackingAnim.play).toHaveBeenCalled())
@@ -160,6 +181,35 @@ describe('AuthCodeCard.solid: проводка фокуса поля до обе
     await vi.waitFor(() => expect(trackingHostEl.style.display).toBe(''))
     expect(idleHostEl.style.display).toBe('none')
     expect(idleAnim.stop).toHaveBeenCalled()
+
+    vi.mocked(lottie.loadAnimation).mockReset()
+  })
+
+  // Важная находка ревью: программный сброс значения поля (неверный код) НЕ
+  // должен двигать обезьянку — в tweb `codeInputField.value = ''`
+  // (AuthCodeCard.tsx:126/147) присваивает `.value` напрямую и НЕ порождает
+  // DOM-событие `input`, поэтому `monkeys/tracking.ts`'s листенер `input`
+  // (:35-40) на этот сброс не реагирует вовсе. У нас источник кадра —
+  // `TrackingMonkey`'s проп `typedValue` (см. её докблок): его двигает
+  // ТОЛЬКО настоящий `onChange` от `CodeInput` (зовётся исключительно из
+  // `handleInput`, который сам навешен на реальное DOM-событие `input`), а
+  // `AuthCodeCard.solid.tsx`'s `catch` в `submitCode` пишет ТОЛЬКО в `value`
+  // (управляет полем/дисаблом), `typedValue` не трогает.
+  it('программный сброс значения (неверный код) НЕ доводит до playAnimation — движение только от настоящего ввода', async () => {
+    const signIn = vi.fn().mockRejectedValue(new Error('PHONE_CODE_INVALID'))
+    const { typeCode } = mount(signIn)
+    const { trackingAnim } = await spyOnMonkey()
+
+    typeCode('00000')
+    // Набор кода целиком двигает кадр строго вперёд (needFrame растёт
+    // 0→…→121) — direction всегда 1, ни разу -1.
+    await vi.waitFor(() => expect(trackingAnim.setDirection).toHaveBeenCalledWith(1))
+
+    await vi.waitFor(() => expect(host!.textContent).toContain('Invalid code'))
+    // Если бы сброс на пустую строку дошёл до playAnimation, needFrame(121)
+    // упал бы к frame(44) — родился бы вызов setDirection(-1), которого в
+    // tweb быть не может (сброс `.value` без события).
+    expect(trackingAnim.setDirection).not.toHaveBeenCalledWith(-1)
 
     vi.mocked(lottie.loadAnimation).mockReset()
   })

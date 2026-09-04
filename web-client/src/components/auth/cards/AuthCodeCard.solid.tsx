@@ -33,9 +33,19 @@
 //
 // Проводка: `focused` — сигнал, который поднимает `CodeInput.onFocusChange`
 // (tweb вешает `focus`/`blur` листенеры прямо на `inputField.input` — здесь
-// то же самое одним уровнем выше, через проп); `value` — тот же сигнал, что
-// уже держит значение поля кода, TrackingMonkey сама пересчитывает кадр на
-// каждое изменение (аналог tweb DOM-события `input`).
+// то же самое одним уровнем выше, через проп).
+//
+// `value` vs `typedValue` — НЕ дубли (находка ревью, до правки была одна
+// ошибка на оба потребителя). `value` — контролируемое значение ПОЛЯ,
+// «catch» в `submitCode` тоже пишет в него программно (`setValue('')` на
+// неверном коде) — прямой аналог tweb `codeInputField.value = ''`
+// (AuthCodeCard.tsx:126/147), которое НЕ рождает DOM-событие `input`.
+// `typedValue` — отдельный сигнал, который трогает ТОЛЬКО `onChange` (зовётся
+// исключительно из настоящего `input`-события в `CodeInput.solid.tsx`), и
+// именно его читает `TrackingMonkey` для пересчёта кадра — программный сброс
+// поля до неё не доходит, ровно как `.value = ''` не долетает до листенера
+// `input` в оригинале. Пин на регресс — `AuthCodeCard.solid.test.tsx` →
+// «программный сброс значения... НЕ доводит до playAnimation».
 import { createSignal, onMount, type JSX } from 'solid-js'
 import { IconTsx } from '@components/iconTsx.solid'
 import I18n, { i18n, type LangPackKey } from '@lib/langPack'
@@ -65,6 +75,10 @@ export default function AuthCodeCard(props: { spec: Spec }): JSX.Element {
   const [error, setError] = createSignal<LangPackKey | ''>('')
   const [busy, setBusy] = createSignal(false)
   const [value, setValue] = createSignal('')
+  // Только для `TrackingMonkey` — см. докблок файла «`value` vs `typedValue`».
+  // Пишет ТОЛЬКО `onChange` (настоящий ввод); программный сброс поля на
+  // неверном коде (`setValue('')` в `catch` ниже) сюда не попадает.
+  const [typedValue, setTypedValue] = createSignal('')
   const [focused, setFocused] = createSignal(false)
 
   let codeInputEl: HTMLInputElement | undefined
@@ -119,7 +133,13 @@ export default function AuthCodeCard(props: { spec: Spec }): JSX.Element {
           <MediaHeader.Sticker size={STICKER_SIZE}>
             {/* tweb: `._sticker > stickerHost > .media-sticker-wrapper` — см.
                 докблок файла и `../TrackingMonkey.solid.tsx` про устройство. */}
-            <TrackingMonkey size={STICKER_SIZE} length={CODE_LEN} value={value} focused={focused} />
+            <TrackingMonkey
+              size={STICKER_SIZE}
+              length={CODE_LEN}
+              value={value}
+              typedValue={typedValue}
+              focused={focused}
+            />
           </MediaHeader.Sticker>
           <MediaHeader.Title>
             <div class={styles.phoneWrapper}>
@@ -147,6 +167,7 @@ export default function AuthCodeCard(props: { spec: Spec }): JSX.Element {
         onChange={(v) => {
           setError('')
           setValue(v)
+          setTypedValue(v)
         }}
         onComplete={(v) => void submitCode(v)}
         onFocusChange={setFocused}

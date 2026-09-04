@@ -124,7 +124,14 @@ function getEnterFrameCallback(anim: FakeAnim): (e: { currentTime: number }) => 
 
 function mount(length = 5) {
   unmount()
+  // Два РАЗНЫХ сигнала — намеренно НЕ один: `value` («контролируемое значение
+  // поля», может смениться и программно) и `typedValue` («значение в момент
+  // настоящего пользовательского ввода», единственный источник движения
+  // кадра). См. докблок пропов `TrackingMonkeyProps` — там разбор находки
+  // ревью (склейка этих двух сигналов в один давала обезьяне двигаться от
+  // программного сброса поля, чего в tweb быть не может).
   const [value, setValue] = createSignal('')
+  const [typedValue, setTypedValue] = createSignal('')
   const [focused, setFocused] = createSignal(false)
   host = document.createElement('div')
   document.body.append(host)
@@ -132,7 +139,12 @@ function mount(length = 5) {
   const idleAnim = makeFakeAnim()
   const trackingAnim = makeFakeAnim()
 
-  dispose = render(() => <TrackingMonkey size={130} length={length} value={value} focused={focused} />, host)
+  dispose = render(
+    () => (
+      <TrackingMonkey size={130} length={length} value={value} typedValue={typedValue} focused={focused} />
+    ),
+    host,
+  )
 
   // Два host-div'а (idle/tracking) — тот же порядок, что в JSX компонента.
   const hosts = host.querySelectorAll<HTMLDivElement>('.media-sticker-wrapper > div')
@@ -143,7 +155,7 @@ function mount(length = 5) {
     (opts) => (opts.container === idleHostEl ? idleAnim : trackingAnim) as unknown as AnimationItem,
   )
 
-  return { setValue, setFocused, idleHostEl, trackingHostEl, idleAnim, trackingAnim }
+  return { setValue, setTypedValue, setFocused, idleHostEl, trackingHostEl, idleAnim, trackingAnim }
 }
 
 async function mountAndLoad(length = 5) {
@@ -191,10 +203,10 @@ describe('TrackingMonkey.solid: проводка focus/blur/input', () => {
     expect(trackingAnim.setSpeed).toHaveBeenCalledWith(7)
   })
 
-  it('набор цифры доводит до пересчёта кадра через fastRaf', async () => {
-    const { setValue, trackingAnim } = await mountAndLoad(5)
+  it('набор цифры (typedValue) доводит до пересчёта кадра через fastRaf', async () => {
+    const { setTypedValue, trackingAnim } = await mountAndLoad(5)
 
-    setValue('1')
+    setTypedValue('1')
     // fastRaf планирует внутри requestAnimationFrame (см. AuthCodeCard.solid.test.tsx —
     // тот же приём ожидания rAF в happy-dom через vi.waitFor).
     await vi.waitFor(() => expect(trackingAnim.play).toHaveBeenCalled())
@@ -203,10 +215,25 @@ describe('TrackingMonkey.solid: проводка focus/blur/input', () => {
 
     trackingAnim.play.mockClear()
     trackingAnim.setDirection.mockClear()
-    setValue('12')
+    setTypedValue('12')
     await vi.waitFor(() => expect(trackingAnim.play).toHaveBeenCalled())
     // frac=(1+2)/5=0.6 → rawLength=27 → кадр 110 > needFrame(77) — всё ещё вперёд
     expect(trackingAnim.setDirection).toHaveBeenLastCalledWith(1)
+  })
+
+  // Находка ревью: `value` — контролируемое значение поля, меняется и
+  // программным сбросом (карточка кода чистит его на неверном коде) — сам по
+  // себе двигать обезьянку НЕ должен, ровно как присваивание `.value` в tweb
+  // не рождает DOM-событие `input`. Двигает только `typedValue`.
+  it('одно только изменение `value` (без `typedValue`) НЕ доводит до playAnimation', async () => {
+    const { setValue, trackingAnim } = await mountAndLoad(5)
+
+    setValue('12345')
+    // Даём шанс любому отложенному эффекту/fastRaf сработать, если бы он был.
+    await new Promise((r) => setTimeout(r, 50))
+
+    expect(trackingAnim.play).not.toHaveBeenCalled()
+    expect(trackingAnim.setDirection).not.toHaveBeenCalled()
   })
 })
 
@@ -234,9 +261,9 @@ describe('TrackingMonkey.solid: переключение канв idle↔trackin
   })
 
   it('возврат к idle на enterFrame НЕ срабатывает, если needFrame ещё не 0 (кадр 0 достигнут, но цель другая)', async () => {
-    const { setValue, trackingAnim, idleHostEl } = await mountAndLoad()
+    const { setTypedValue, trackingAnim, idleHostEl } = await mountAndLoad()
 
-    setValue('1')
+    setTypedValue('1')
     await vi.waitFor(() => expect(trackingAnim.play).toHaveBeenCalled())
 
     const enterFrame = getEnterFrameCallback(trackingAnim)
