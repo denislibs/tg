@@ -57,13 +57,19 @@
 //    2-5 на него опираются), тело пустое — наполнит задача 2 (`ListLoader.go`).
 //  • Ветка топика (:396-400) — единственная ветка `setPeer`, которую эта
 //    задача рисует: у темы форума нет истории фото, поэтому карусели и
-//    `ListLoader` нет, только один аватар. Оригинал рисует его через
-//    `processItem` (:807-861, `avatarNew({size:120,...}).render({peerId,
-//    threadId})`) — у нашего порта `avatarNew` (`components/avatar.ts`) темы
-//    форума не знает вовсе (это уже объявленный вычет в самом avatar.ts:
-//    «топики форума... — ни того, ни другого в модели нет»), поэтому здесь
-//    вместо иконки темы встаёт обычный аватар пира. Полный `processItem`
-//    (лента, `IntersectionObserver`, полоски) — задача 2.
+//    `ListLoader` нет, только один аватар. СЕГОДНЯ НЕДОСТИЖИМА: ни один
+//    вызывающий threadId в `setPeer` не передаёт (`UserInfoPanel.tsx` его не
+//    знает вовсе, а класс пока никем не монтируется) — портирована на
+//    будущее. Оригинал рисует аватар через `processItem` (:807-861,
+//    `avatarNew({size:120,...}).render({peerId, threadId})`) — `threadId`
+//    уходит в render и превращает узел в иконку темы форума; у нашего порта
+//    `avatarNew` (`components/avatar.ts`) threadId не принимает вовсе и тем
+//    форума не знает (уже объявленный вычет в самом avatar.ts: «топики
+//    форума... — ни того, ни другого в модели нет»), поэтому у вызова ниже
+//    вместо иконки темы встаёт обычный аватар пира — разбор и критерий
+//    закрытия у самой строки вызова и в `web-client/backlogs/frontend/
+//    profile-topic-avatar.md`. Полный `processItem` (лента,
+//    `IntersectionObserver`, полоски) — задача 2.
 import { avatarNew, type AvatarManagers } from '@components/avatar'
 import Icon from '@components/icon'
 import ListenerSetter from '@helpers/listenerSetter'
@@ -174,6 +180,28 @@ export default class PeerProfileAvatars {
     // is-topic, а вместо карусели — один статичный аватар без ListLoader.
     this.container.classList.add('is-topic')
 
+    // ВЕТКА СЕГОДНЯ НЕДОСТИЖИМА, портирована на будущее: единственный
+    // конструктор `UserInfoPanel` (`components/Chat.tsx:1427`) вызывает панель
+    // БЕЗ threadId вовсе (грепом по `UserInfoPanel.tsx` — ни одного упоминания
+    // threadId), а сам класс пока никем не монтируется (задача 5). Как только
+    // появится вызывающий с threadId — читай это ПЕРЕД тем, как трогать код
+    // ниже.
+    //
+    // ЭТО НЕ ИКОНКА ТЕМЫ, А ОБЫЧНЫЙ АВАТАР ПИРА — предмет подменён сознательно,
+    // не «упрощённая, но корректная» реализация. В оригинале это
+    // `avatarNew({size:120, wrapOptions:{customEmojiSize,...}}).render({peerId,
+    // threadId})` (tweb :836-841 внутри `processItem`, :807-861) — `threadId`
+    // уходит В render, и именно он превращает узел в иконку темы форума
+    // (`wrapTopicIcon`). Наш `avatarNew` (`components/avatar.ts`) threadId не
+    // принимает вовсе и тем форума не знает — это унаследованный, уже
+    // объявленный пробел модели (`components/avatar.ts:42`: «топики форума...
+    // — ни того, ни другого в модели нет»), а не новая недоделка этой задачи.
+    // Поэтому ниже — обычный `avatarNew({peerId, size:120})` БЕЗ threadId:
+    // если бы ветка сегодня выполнялась, пользователь увидел бы в шапке темы
+    // круглый аватар ЧАТА, а не квадратную иконку темы с её эмодзи/цветом.
+    // Долг и критерий готовности — `web-client/backlogs/frontend/
+    // profile-topic-avatar.md`; заводить его вместе с проводкой threadId в
+    // `UserInfoPanel` (когда она появится), не раньше.
     const avatar = avatarNew({
       peerId,
       size: 120,

@@ -16,11 +16,30 @@
 //       cleanup ничего не меняет) и подписка топик-аватара на зеркало пиров
 //       гасится вместе с `middlewareHelper` (:957-973).
 // Плюс ветка топика `setPeer` (:396-400), которую эта задача рисует целиком
-// (см. докблок `peerProfileAvatars.ts`).
+// (см. докблок `peerProfileAvatars.ts`) — БЕЗ иконки темы форума (её у нашего
+// `avatarNew` нет вовсе, долг `backlogs/frontend/profile-topic-avatar.md`).
+// `avatarNew` не мокается целиком (нужен настоящий узел — data-peer-id,
+// классы), а оборачивается шпионом: реальная реализация зовётся как есть,
+// но аргументы вызова записываются — тест ниже проверяет, что `threadId` в
+// них НЕ уходит (иначе будущая правка «прокину threadId» пройдёт молча, раз
+// у `AvatarOptions` этого поля сегодня нет и добавить его — вопрос одной
+// строки типа).
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import type { AvatarManagers } from '@components/avatar'
 import PeerProfileAvatars from './peerProfileAvatars'
+
+type AvatarModule = typeof import('@components/avatar')
+
+const avatarNewSpy = vi.hoisted(() => vi.fn())
+vi.mock('@components/avatar', async (importOriginal) => {
+  const actual = await importOriginal<AvatarModule>()
+  const avatarNew: AvatarModule['avatarNew'] = (options) => {
+    avatarNewSpy(options)
+    return actual.avatarNew(options)
+  }
+  return { ...actual, avatarNew }
+})
 
 const ALICE = 501
 const GHOST = 502
@@ -168,7 +187,7 @@ describe('PeerProfileAvatars — header-filled (tweb :949-955)', () => {
 })
 
 describe('PeerProfileAvatars.setPeer() — ветка топика (tweb :396-400)', () => {
-  it('топик: is-topic на container и ровно один аватар в -avatars', async () => {
+  it('топик: is-topic на container и ровно один узел — АВАТАР ПИРА (не иконка темы, долг задокументирован)', async () => {
     const { instance } = make()
     const avatarsEl = instance.container.querySelector('.profile-avatars-avatars')!
 
@@ -176,7 +195,22 @@ describe('PeerProfileAvatars.setPeer() — ветка топика (tweb :396-40
 
     expect(instance.container.classList.contains('is-topic')).toBe(true)
     expect(avatarsEl.children.length).toBe(1)
-    expect(avatarsEl.children[0].classList.contains('profile-avatars-avatar')).toBe(true)
+
+    const node = avatarsEl.children[0] as HTMLElement
+    expect(node.classList.contains('profile-avatars-avatar')).toBe(true)
+    // Содержимое — НАСТОЯЩИЙ узел avatarNew для peerId (data-peer-id + его
+    // собственные классы), а не какая-то заглушка/иконка темы.
+    expect(node.dataset.peerId).toBe(String(ALICE))
+    expect(node.classList.contains('avatar-like')).toBe(true)
+
+    // Пин расхождения с оригиналом: threadId в avatarNew НЕ уходит — у нашего
+    // порта нет ветки render({peerId, threadId}) (tweb :836-841), которая
+    // рисует иконку темы. Если это когда-нибудь изменят не выполнив долг
+    // (`backlogs/frontend/profile-topic-avatar.md`) — тест покраснеет здесь.
+    expect(avatarNewSpy).toHaveBeenCalledTimes(1)
+    const callOptions = avatarNewSpy.mock.calls[0][0]
+    expect(callOptions).toMatchObject({ peerId: ALICE, size: 120, managers })
+    expect('threadId' in callOptions).toBe(false)
   })
 
   it('не топик: is-topic не ставится, -avatars остаётся пустым (лента — задача 2)', async () => {
