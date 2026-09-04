@@ -14,7 +14,7 @@ import PopupHost from './components/PopupHost'
 import ChatBackground from './components/ChatBackground'
 import SvgDefs from './components/SvgDefs'
 import GlobalOverlays from './components/shell/GlobalOverlays'
-import AuthFlow from './components/auth/AuthFlow'
+import { mountAuthFlow } from './components/auth/mountAuthFlow.solid'
 import classNames from './shared/lib/classNames'
 import { installColumnWidthsUpdater } from './core/dom/updateColumnWidths'
 import { doubleRaf } from './core/accountTransition'
@@ -52,7 +52,11 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   useLayoutEffect(() => { installColumnWidthsUpdater() }, [])
   // has-auth-pages снимается кадром позже (doubleRaf, bootstrapIm.ts:60-61) —
   // иначе transition .main-column включится сразу и колонка «въедет» из
-  // офскрина в первом кадре; на логин-старте AuthFlow уже снял класс сам.
+  // офскрина в первом кадре; на логин-старте dispose() из mountAuthFlow
+  // (components/auth/mountAuthFlow.solid.tsx, зовётся из эффекта монтирования
+  // ниже в ThemedApp) уже снял класс сам — снятие здесь идемпотентно
+  // дублирует его на случай прямого старта в Shell (`authed` был true с
+  // самого начала, mountAuthFlow вообще не вызывался).
   useLayoutEffect(() => {
     void doubleRaf().then(() => document.body.classList.remove('has-auth-pages'))
   }, [])
@@ -223,8 +227,29 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 
 function ThemedApp() {
   const { authed, login, logout } = useAuthGate()
+  const managers = useManagers()
   const toggleMode = useThemeToggle()
   const { shellThemeVariant } = useShellTheme()
+
+  // Точка монтирования экрана входа — Solid, порт tweb `mountAuthFlow`
+  // (устройство — components/auth/mountAuthFlow.solid.tsx). DOM auth-хоста
+  // висит прямо на body, не в этом React-дереве (см. докблок моста), поэтому
+  // здесь только вызов/снятие, а не JSX-ветка: React не должен решать, ЧТО
+  // рисовать на экране входа, только КОГДА он существует.
+  //
+  // `login` (onComplete) — новая функция на каждый рендер `useAuthGate`
+  // (не мемоизирована), но остров ловит её ОДНАЖДЫ, на монтирование: она не
+  // из зависимостей эффекта намеренно, ровно как `props` у `SolidIsland` —
+  // повторный маунт при каждом ре-рендере ThemedApp разрушил бы состояние
+  // экрана входа. Это безопасно: `login()` лишь чистит localStorage и зовёт
+  // `setAuthed(true)`, а сам `setAuthed` — стабильный сеттер `useState`,
+  // поэтому любой снимок `login` ведёт себя одинаково независимо от рендера,
+  // на котором он был захвачен.
+  useLayoutEffect(() => {
+    if (authed) return
+    return mountAuthFlow({ managers, onComplete: login })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed, managers])
 
   // Тема управляется атрибутом data-theme на <html> (useThemeToggle) — MUI
   // ThemeProvider не нужен.
@@ -242,11 +267,7 @@ function ThemedApp() {
           (осознанное отклонение от tweb-скоупа для цветов — см. useShellTheme);
           цвета темы чата при этом остаются локально в колонке (Chat). */}
       <ChatBackground themeColors={shellThemeVariant?.gradient} />
-      {authed ? (
-        <Shell onToggleMode={toggleMode} onLogout={logout} />
-      ) : (
-        <AuthFlow onComplete={login} onToggleMode={toggleMode} />
-      )}
+      {authed && <Shell onToggleMode={toggleMode} onLogout={logout} />}
     </>
   )
 }

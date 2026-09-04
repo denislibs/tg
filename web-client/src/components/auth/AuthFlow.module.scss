@@ -6,7 +6,8 @@
  *
  * Имя файла — `AuthFlow.module.scss`, а не `authFlow.module.scss` как в tweb:
  * ФС macOS регистро-НЕзависима, два имени сосуществовать не могут, а компоненты
- * (`AuthFlow.tsx`, `cards/*`) уже импортируют PascalCase — как и вся папка
+ * (`AuthCardsHost.solid.tsx`, `cards/*.solid.tsx` — React `AuthFlow.tsx` снесён
+ * задачей 6 волны 3) уже импортируют PascalCase — как и вся папка
  * `components/*`. На хеши классов имя файла не влияет, сверка идёт в режиме
  * `structure`.
  *

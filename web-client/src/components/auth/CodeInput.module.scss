@@ -5,6 +5,18 @@
  * кликается только инпут, ячейки не перехватывают.
  *
  * Отступление одного вида — (б), помечено в месте применения.
+ *
+ * Задача 4 (волна 3): у `.digit` появился РЕАЛЬНЫЙ потребитель `<Transition>`
+ * (`CodeInput.solid.tsx`) — блок `:global { .s-enter-active/.s-exit-active/
+ * .s-enter/.s-exit-to }` ниже раньше был НЕ портирован именно по этой причине
+ * (см. старую версию этого докблока в истории git); теперь он на месте, взят
+ * из tweb `codeInputField.module.scss` дословно.
+ *
+ * Задача 6 (волна 3): React-версия (`CodeInput.tsx`) снесена вместе со всем
+ * React-экраном входа — её собственная анимация на `@keyframes digit-enter/
+ * digit-exit` (`.enter`/`.exit`) была мёртвым кодом без единого потребителя
+ * и убрана отсюда же. `Solid CodeInput.solid.tsx` — единственный потребитель
+ * этого файла теперь.
  */
 
 .wrap {
@@ -77,36 +89,26 @@
     justify-content: center;
   }
 
-}
+  // Классы `<Transition>` без `name` — дефолтный префикс вендора `s` (см.
+  // `@vendor/solid-transition-group/common.ts::createClassnames`). Потребитель
+  // — `CodeInput.solid.tsx` (`<Transition><Show>…</Show></Transition>` без
+  // кастомных имён классов, как и у tweb-оригинала).
+  :global {
+    .s-enter-active,
+    .s-exit-active {
+      transition-property: opacity, transform;
+      transition-duration: 0.2s;
+      transition-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
 
-// не портировано: блок `.digit :global { .s-enter-active / .s-exit-active /
-// .s-enter / .s-exit-to }` — это классы solid-js `<Transition>`
-// (`@vendor/solid-transition-group`); подсистемы у нас нет, ни один узел их не
-// рендерит → правило было бы мёртвым. Ниже — та же анимация на @keyframes для
-// React (их применяет `CodeInput.tsx`): значения, кривая
-// cubic-bezier(.175,.885,.32,1.275) и длительность .2s взяты 1:1 из оригинала,
-// вход — только translateY(20px)→0 (без fade), выход — scale(.5)+fade.
-.enter {
-  animation: digit-enter 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
+    .s-enter {
+      transform: translateY(20px);
+    }
 
-.exit {
-  animation: digit-exit 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
-}
-
-@keyframes digit-enter {
-  from {
-    transform: translateY(20px);
-  }
-  to {
-    transform: translateY(0);
-  }
-}
-
-@keyframes digit-exit {
-  to {
-    opacity: 0;
-    transform: scale(0.5);
+    .s-exit-to {
+      opacity: 0;
+      transform: scale(0.5);
+    }
   }
 }
 

@@ -80,7 +80,8 @@ src/
     ├── messages/             # MessageRow, MessageBubbles, RealMediaBubble, VoiceMessage,
     │                         #   ChatFeed (дни-разделители, группировка), MediaLightbox
     ├── conversation/         # ChatHeader, MessageContextMenu, TypingIndicator, …
-    ├── auth/AuthFlow.tsx     # вход по коду / QR
+    ├── auth/                 # вход по коду / QR — Solid (mountAuthFlow.solid.tsx точка входа,
+    │                         #   AuthCardsHost.solid.tsx хост карточек), не React
     ├── StoryViewer.tsx EmojiPicker.tsx CallScreen.tsx SearchView.tsx SettingsView.tsx
     └── NewGroupFlow / NewChannelFlow / NewPrivateChat / ContactsView / AddContactView …
 ```

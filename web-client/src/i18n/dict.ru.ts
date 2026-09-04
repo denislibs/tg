@@ -922,7 +922,6 @@ const ru = {
   // settings screens (#71–#79)
   'EditAccount.Title': 'Изменить профиль',
   'EditProfile.FirstNameLabel': 'Имя',
-  'Login.Register.LastName.Placeholder': 'Фамилия',
   'EditProfile.BioLabel': 'О себе (необязательно)',
   'EditProfile.AddBirthdayRow': 'Добавить день рождения',
   'Bio.Description': 'Любые подробности, например: возраст, род занятий или город. Пример: дизайнер 23 лет из Сан-Франциско.',
@@ -1075,7 +1074,6 @@ const ru = {
   'Call.PrivacyError': 'Пользователь не принимает звонки',
   // Two-Step Verification
   'Login.Password.Title': 'Введите пароль',
-  'Login.Password.SubtitleFlat': 'Ваш аккаунт защищён дополнительным паролем.',
   'TwoStepAuth.InvalidPassword': 'Неверный пароль',
   LoginPassword: 'Пароль',
   'TwoStepAuth.SetPasswordHelp': 'Вы можете установить пароль, который будет использоваться для входа с новых устройств в дополнение к проверочному коду из SMS.',
@@ -1165,8 +1163,11 @@ const ru = {
   'Passkeys.LastUsed': 'Использован',
   'Passkeys.Created': 'Создан',
   'Login.Passkey.Action': 'Войти по ключу доступа',
+  'Login.Passkey': 'Войти по ключу доступа >',
   // Экран входа (tweb langSign.ts). `**…**` — жирный, ' > ' — стрелка-иконка,
-  // '\n' — перенос строки; разбор — components/auth/superFormatter.tsx.
+  // '\n' — перенос строки; разбор — ЯДРО i18n (`I18n.superFormatter`,
+  // lib/langPack.ts), а не локальный хелпер (задача 6 волны 3 снесла React
+  // components/auth/superFormatter.tsx вместе с React-версией экрана входа).
   'Login.QR.Title': 'Вход по QR-коду',
   'Login.QR.Subtitle': 'Отсканируйте в приложении Telegram на телефоне',
   'Login.QR.Help1': 'Откройте Telegram на телефоне',
@@ -1174,8 +1175,7 @@ const ru = {
     'Перейдите в **Настройки** > **Устройства** > **Подключить устройство**',
   'Login.QR.Help3':
     'Наведите телефон на этот экран, чтобы подтвердить вход',
-  'Login.ByPhone': 'Войти по номеру телефона',
-  'Login.ByPasskey': 'Войти по ключу доступа',
+  'Login.QR.Cancel': 'Войти по номеру телефона >',
   'Login.Code.SentSms': 'Мы отправили Вам SMS\nс кодом.',
   PHONE_CODE_INVALID: 'Неверный код',
   'Login.Password.Subtitle':
@@ -1199,7 +1199,8 @@ const ru = {
   // Восстановление доступа по почте (tweb Login.ResetPassword.*)
   'Login.ForgotPassword': 'Забыли пароль?',
   'Login.ResetPassword.Title': 'Сброс пароля',
-  'Login.ResetPassword.CodeHint': 'Введите код, отправленный на почту',
+  'Login.ResetPassword.Subtitle':
+    'Введите код, который мы только что отправили\nна вашу почту **%s**.',
   'Login.Code.Expired': 'Код истёк. Запросите новый.',
   'Login.SessionExpired': 'Сессия истекла. Войдите заново.',
   // Сброс аккаунта, когда почта восстановления не привязана
@@ -1259,7 +1260,6 @@ const ru = {
   'Unit.Kilobytes': 'КБ',
   'Unit.Megabytes': 'МБ',
   'Unit.Gigabytes': 'ГБ',
-  'Login.Passkey.Failed': 'Не удалось войти по ключу доступа',
   // Попап «Защита Вашего аккаунта» (tweb Passkey.*)
   'Passkey.Title': 'Защита Вашего аккаунта',
   'Passkey.Subtitle': 'Безопасный вход и защита данных',
@@ -1371,7 +1371,6 @@ const ru = {
     'Подтвердите код страны и введите новый номер телефона.',
   'PhoneNumber.AlreadyTaken':
     'Этот номер уже привязан к аккаунту Telegram.',
-  'Login.PhoneInvalid': 'Неверный номер телефона.',
   'DeleteAccount.Action': 'Удалить мой аккаунт',
   'DeleteAccount.Title': 'Удаление аккаунта',
   'DeleteAccount.Text':

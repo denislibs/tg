@@ -411,7 +411,6 @@ const fr = {
   // settings screens (#71–#79)
   'EditAccount.Title': 'Modifier le profil',
   'EditProfile.FirstNameLabel': 'Nom',
-  'Login.Register.LastName.Placeholder': 'Nom de famille',
   'EditProfile.BioLabel': 'Bio (facultatif)',
   'EditProfile.AddBirthdayRow': 'Ajouter l\'anniversaire',
   'Bio.Description': 'Tous les détails, comme l\'âge, la profession ou la ville. Exemple : designer de 23 ans de San Francisco.',
@@ -539,7 +538,6 @@ const fr = {
   Birthday: 'Anniversaire',
   // Two-Step Verification
   'Login.Password.Title': 'Saisissez votre mot de passe',
-  'Login.Password.SubtitleFlat': 'Votre compte est protégé par un mot de passe supplémentaire.',
   'TwoStepAuth.InvalidPassword': 'Mot de passe incorrect',
   LoginPassword: 'Mot de passe',
   'TwoStepAuth.SetPasswordHelp': 'Vous pouvez définir un mot de passe qui sera demandé lors de la connexion sur un nouvel appareil, en plus du code reçu par SMS.',
@@ -681,7 +679,6 @@ const fr = {
   'Unit.Kilobytes': 'Ko',
   'Unit.Megabytes': 'Mo',
   'Unit.Gigabytes': 'Go',
-  'Login.Passkey.Failed': 'Échec de la connexion par clé d\'accès',
 
   // ── Raccourcis clavier (réglages) ──
   'Composer.Formatting': 'Mise en forme',
@@ -728,7 +725,6 @@ const fr = {
     'Confirmez l’indicatif du pays et saisissez votre nouveau numéro de téléphone.',
   'PhoneNumber.AlreadyTaken':
     'Ce numéro est déjà associé à un compte Telegram.',
-  'Login.PhoneInvalid': 'Numéro de téléphone invalide.',
   'DeleteAccount.Action': 'Supprimer mon compte',
   'DeleteAccount.Title': 'Suppression du compte',
   'DeleteAccount.Text':

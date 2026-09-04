@@ -429,7 +429,6 @@ const uk = {
   // settings screens (#71–#79)
   'EditAccount.Title': 'Редагувати профіль',
   'EditProfile.FirstNameLabel': 'Ім\'я',
-  'Login.Register.LastName.Placeholder': 'Прізвище',
   'EditProfile.BioLabel': 'Про себе (необов\'язково)',
   'EditProfile.AddBirthdayRow': 'Додати день народження',
   'Bio.Description': 'Будь-які деталі, наприклад: вік, рід занять або місто. Приклад: дизайнер 23 років із Сан-Франциско.',
@@ -559,7 +558,6 @@ const uk = {
   Birthday: 'День народження',
   // Two-Step Verification
   'Login.Password.Title': 'Введіть пароль',
-  'Login.Password.SubtitleFlat': 'Ваш акаунт захищено додатковим паролем.',
   'TwoStepAuth.InvalidPassword': 'Невірний пароль',
   LoginPassword: 'Пароль',
   'TwoStepAuth.SetPasswordHelp': 'Ви можете встановити пароль, який використовуватиметься для входу з нових пристроїв на додаток до перевірочного коду з SMS.',
@@ -709,7 +707,6 @@ const uk = {
   'Unit.Kilobytes': 'КБ',
   'Unit.Megabytes': 'МБ',
   'Unit.Gigabytes': 'ГБ',
-  'Login.Passkey.Failed': 'Не вдалося увійти за ключем доступу',
 
   // ── Гарячі клавіші (налаштування) ──
   'Composer.Formatting': 'Форматування',
@@ -756,7 +753,6 @@ const uk = {
     'Підтвердьте код країни та введіть новий номер телефону.',
   'PhoneNumber.AlreadyTaken':
     'Цей номер уже прив’язаний до акаунту Telegram.',
-  'Login.PhoneInvalid': 'Неправильний номер телефону.',
   'DeleteAccount.Action': 'Видалити мій акаунт',
   'DeleteAccount.Title': 'Видалення акаунту',
   'DeleteAccount.Text':
