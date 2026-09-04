@@ -1,8 +1,8 @@
-// Каркас `PeerProfileAvatars` (`components/peerProfileAvatars.ts`, порт tweb
-// `components/peerProfileAvatars.ts`) — задача 1 из шести
+// `PeerProfileAvatars` (`components/peerProfileAvatars.ts`, порт tweb
+// `components/peerProfileAvatars.ts`) — задачи 1-2 из шести
 // (`docs/superpowers/plans/2026-09-05-profile-avatars-class.md`).
 //
-// Пины этого файла — только каркас, норма проводки из брифа задачи 1:
+// Пины ЗАДАЧИ 1 (каркас), норма проводки из её брифа:
 //   (1) DOM конструктора — контейнер и порядок детей 1:1 с оригиналом (tweb
 //       :81-109);
 //   (2) `addTab()` добавляет `.profile-avatars-tab` в `-tabs` (:795-805);
@@ -15,19 +15,40 @@
 //   (6) `cleanup()` — слушатели `listenerSetter` реально сняты (событие после
 //       cleanup ничего не меняет) и подписка топик-аватара на зеркало пиров
 //       гасится вместе с `middlewareHelper` (:957-973).
-// Плюс ветка топика `setPeer` (:396-400), которую эта задача рисует целиком
+// Плюс ветка топика `setPeer` (:396-400), которую задача 1 рисует целиком
 // (см. докблок `peerProfileAvatars.ts`) — БЕЗ иконки темы форума (её у нашего
 // `avatarNew` нет вовсе, долг `backlogs/frontend/profile-topic-avatar.md`).
+//
+// Пины ЗАДАЧИ 2 (данные и лента) — норма проводки из её брифа:
+//   (7) N фото → N узлов `.profile-avatars-avatar` и N полосок;
+//   (8) `goWithoutTransition` двигает `transform` и переносит `.active` на
+//       аватаре И на полоске; закольцовывание — оба направления;
+//   (9) смена пира сбрасывает ленту (узлов прежнего пира не остаётся);
+//  (10) ответ на ПРОТУХШИЙ peerId игнорируется (гонка «переключили пира, пока
+//       грузилось»);
+//  (11) ленивая догрузка — элементы дальше `LOAD_NEAREST` не грузятся до
+//       появления в `IntersectionObserver`;
+//  (12) пустая галерея — `SHOW_NO_AVATAR`;
+//  (13) `cleanup()` снимает `IntersectionObserver` и регистрацию видео в
+//       `animationIntersector`.
+//
 // `avatarNew` не мокается целиком (нужен настоящий узел — data-peer-id,
 // классы), а оборачивается шпионом: реальная реализация зовётся как есть,
 // но аргументы вызова записываются — тест ниже проверяет, что `threadId` в
 // них НЕ уходит (иначе будущая правка «прокину threadId» пройдёт молча, раз
 // у `AvatarOptions` этого поля сегодня нет и добавить его — вопрос одной
 // строки типа).
+//
+// `IntersectionObserver` в happy-dom нет (тот же приём, что и в
+// `animationIntersector.test.ts`/`stickyIntersector.test.ts`) — подменяем
+// заглушкой ДО импорта класса: конструктор создаёт наблюдатель сразу, поэтому
+// импорт класса переезжает в динамический `await import`, исполняющийся ПОСЛЕ
+// `vi.stubGlobal` (обычный статический import был бы поднят раньше стаба).
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
-import type { AvatarManagers } from '@components/avatar'
-import PeerProfileAvatars from './peerProfileAvatars'
+import animationIntersector from '@components/animationIntersector'
+import type { ProfilePhoto } from '@core/managers/profileManager'
+import type { PeerProfileAvatarsManagers } from './peerProfileAvatars'
 
 type AvatarModule = typeof import('@components/avatar')
 
@@ -41,21 +62,106 @@ vi.mock('@components/avatar', async (importOriginal) => {
   return { ...actual, avatarNew }
 })
 
+// happy-dom шлёт `<video>` событие `canplay` СИНХРОННО внутри сеттера `src`
+// (тот же факт документирует шапка `wrappers/video.test.ts`). `renderImageFromUrl`
+// для видео сначала выставляет `src`, а слушатель `onMediaLoad` вешает
+// ПОСЛЕ — событие успевает уйти ДО подписки, и промис виснет навсегда. В
+// реальном браузере `canplay` асинхронный, гонки там нет — это баг тестового
+// окружения, не прод-кода (изолированный репро с `onMediaLoad` — в отчёте
+// задачи). Подменяем ветку video: назначаем `src` и резолвим сразу, как это
+// и происходило бы в браузере к моменту, когда за URL реально сходили бы за
+// байтами. Ветку img НЕ трогаем — она идёт через реальную реализацию (уже
+// покрыта топик-тестами задачи 1, там `avatarNew`/`putAvatar` грузят картинку
+// тем же путём и проходят).
+vi.mock('@helpers/dom/renderImageFromUrl', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@helpers/dom/renderImageFromUrl')>()
+  return {
+    ...actual,
+    renderImageFromUrlPromise: (elem: HTMLElement, url: string, useCache?: boolean) => {
+      if (elem instanceof HTMLVideoElement) {
+        elem.src = url
+        return Promise.resolve()
+      }
+      return actual.renderImageFromUrlPromise(elem, url, useCache)
+    },
+  }
+})
+
+// `processItem` ходит за URL исторических фото/видео через ЕДИНСТВЕННЫЕ
+// ванильные точки входа (`ensureMediaUrl`/`resolveStreamUrl`, см. докблок
+// `PeerProfileAvatarsManagers`), а НЕ через `managers` — обе реально бьют в
+// воркер (`startClient()`), которого в юнит-тесте нет; мокаем ровно так же,
+// как это уже делает `avatar.test.ts` для `putAvatar`.
+const ensureMediaUrlMock = vi.hoisted(() => vi.fn(async (id: number) => `blob:media-${id}`))
+const resolveStreamUrlMock = vi.hoisted(() => vi.fn((id: number) => `blob:video-${id}`))
+vi.mock('@core/media/ensureMediaUrl', () => ({ ensureMediaUrl: ensureMediaUrlMock }))
+vi.mock('@core/mediaUrl', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@core/mediaUrl')>()),
+  resolveStreamUrl: resolveStreamUrlMock,
+}))
+
+type IOEntry = { target: Element; isIntersecting: boolean }
+let ioInstances: IntersectionObserverStub[] = []
+class IntersectionObserverStub {
+  cb: (entries: IOEntry[]) => void
+  observed = new Set<Element>()
+  constructor(cb: (entries: IOEntry[]) => void) {
+    this.cb = cb
+    ioInstances.push(this)
+  }
+  observe(el: Element) { this.observed.add(el) }
+  unobserve(el: Element) { this.observed.delete(el) }
+  disconnect() { this.observed.clear() }
+}
+vi.stubGlobal('IntersectionObserver', IntersectionObserverStub)
+
+// Имитация срабатывания IntersectionObserver для конкретного узла — находит
+// наблюдатель(и), у которых он числится, и дёргает колбэк с isIntersecting: true.
+function intersect(target: Element) {
+  for (const inst of ioInstances) {
+    if (inst.observed.has(target)) inst.cb([{ target, isIntersecting: true }])
+  }
+}
+
+const { default: PeerProfileAvatars } = await import('./peerProfileAvatars')
+
 const ALICE = 501
 const GHOST = 502
 
-const managers: AvatarManagers = { peers: { fillMirror: vi.fn(async () => {}) } }
+function photo(id: number, videoMediaId?: number): ProfilePhoto {
+  return { id, mediaId: id, videoMediaId, createdAt: '' }
+}
 
-function make() {
+function photos(n: number): ProfilePhoto[] {
+  return Array.from({ length: n }, (_, i) => photo(i + 1))
+}
+
+// `AvatarManagers` (`peers.fillMirror`) достаточно для задачи 1 (топик/DOM);
+// задача 2 расширяет срез `profile.listPhotos` — фейк по умолчанию пустой
+// (ничего не грузит), тесты данных задачи 2 переопределяют его через
+// `makeManagers`. URL картинки/видео в этот срез не входит — `processItem`
+// ходит за ними напрямую через `ensureMediaUrl`/`resolveStreamUrl` (моки —
+// выше), см. докблок `PeerProfileAvatarsManagers`.
+function makeManagers(byUserId: Record<number, ProfilePhoto[]> = {}): PeerProfileAvatarsManagers {
+  return {
+    peers: { fillMirror: vi.fn(async () => {}) },
+    profile: { listPhotos: vi.fn(async (userId: number) => byUserId[userId] ?? []) },
+  }
+}
+
+const managers = makeManagers()
+
+function make(mgrs: PeerProfileAvatarsManagers = managers) {
   const setCollapsedOn = document.createElement('div')
   const scrollableEl = document.createElement('div')
-  const instance = new PeerProfileAvatars({ managers, setCollapsedOn, scrollableEl })
+  const instance = new PeerProfileAvatars({ managers: mgrs, setCollapsedOn, scrollableEl })
   return { instance, setCollapsedOn, scrollableEl }
 }
 
 beforeEach(() => {
   resetPeerMirror()
   vi.clearAllMocks()
+  ioInstances = []
 })
 
 describe('PeerProfileAvatars — DOM конструктора', () => {
@@ -213,14 +319,17 @@ describe('PeerProfileAvatars.setPeer() — ветка топика (tweb :396-40
     expect('threadId' in callOptions).toBe(false)
   })
 
-  it('не топик: is-topic не ставится, -avatars остаётся пустым (лента — задача 2)', async () => {
+  it('не топик: is-topic не ставится; пустая галерея — один узел-заглушка (SHOW_NO_AVATAR, задача 2)', async () => {
     const { instance } = make()
     const avatarsEl = instance.container.querySelector('.profile-avatars-avatars')!
 
     await instance.setPeer(ALICE)
 
     expect(instance.container.classList.contains('is-topic')).toBe(false)
-    expect(avatarsEl.children.length).toBe(0)
+    // Раньше здесь проверялась пустая лента («лента — задача 2»): задача 2
+    // реализована, и SHOW_NO_AVATAR (детальный тест — ниже) рисует ОДИН
+    // узел-заглушку даже без единой фотографии — как в оригинале.
+    expect(avatarsEl.children.length).toBe(1)
   })
 })
 
@@ -264,9 +373,197 @@ describe('PeerProfileAvatars.cleanup() (tweb :957-973)', () => {
   })
 })
 
-describe('PeerProfileAvatars.goWithoutTransition()', () => {
-  it('объявлен по контракту интерфейса — не бросает (наполнит задача 2)', () => {
-    const { instance } = make()
-    expect(() => instance.goWithoutTransition(1)).not.toThrow()
+describe('PeerProfileAvatars.setPeer() — лента данных (задача 2, tweb :376-521, :807-912)', () => {
+  it('N фото → N узлов .profile-avatars-avatar и N полосок; первый узел и первая полоска — active', async () => {
+    const mgrs = makeManagers({ [ALICE]: photos(3) })
+    const { instance } = make(mgrs)
+    const avatarsEl = instance.container.querySelector('.profile-avatars-avatars')!
+    const tabsEl = instance.container.querySelector('.profile-avatars-tabs')!
+
+    await instance.setPeer(ALICE)
+
+    expect(avatarsEl.children.length).toBe(3)
+    expect(tabsEl.children.length).toBe(3)
+    expect(avatarsEl.children[0].classList.contains('active')).toBe(true)
+    expect(tabsEl.children[0].classList.contains('active')).toBe(true)
+  })
+
+  it('goWithoutTransition(distance) двигает transform, переносит .active на аватаре И на полоске; закольцовывание на обоих краях', async () => {
+    const mgrs = makeManagers({ [ALICE]: photos(3) })
+    const { instance } = make(mgrs)
+    const avatarsEl = instance.container.querySelector<HTMLElement>('.profile-avatars-avatars')!
+    const tabsEl = instance.container.querySelector('.profile-avatars-tabs')!
+    await instance.setPeer(ALICE)
+
+    instance.goWithoutTransition(1)
+    expect(avatarsEl.style.transform).toBe('translate(-100%, 0)')
+    expect(avatarsEl.children[1].classList.contains('active')).toBe(true)
+    expect(tabsEl.children[1].classList.contains('active')).toBe(true)
+    expect(avatarsEl.children[0].classList.contains('active')).toBe(false)
+    expect(tabsEl.children[0].classList.contains('active')).toBe(false)
+
+    instance.goWithoutTransition(1)
+    expect(avatarsEl.style.transform).toBe('translate(-200%, 0)')
+    expect(avatarsEl.children[2].classList.contains('active')).toBe(true)
+    expect(tabsEl.children[2].classList.contains('active')).toBe(true)
+
+    // Закольцовывание ВПЕРЁД с последнего индекса (count-1=2): distance
+    // -(count-1) переносит на индекс 0 (та же формула, что применит клик по
+    // правой зоне в задаче 3, tweb :227-228).
+    instance.goWithoutTransition(-2)
+    expect(avatarsEl.style.transform).toBe('translate(-0%, 0)')
+    expect(avatarsEl.children[0].classList.contains('active')).toBe(true)
+    expect(tabsEl.children[0].classList.contains('active')).toBe(true)
+
+    // Закольцовывание НАЗАД с индекса 0: distance +(count-1) переносит на
+    // последний индекс (формула клика по левой зоне, tweb :227).
+    instance.goWithoutTransition(2)
+    expect(avatarsEl.style.transform).toBe('translate(-200%, 0)')
+    expect(avatarsEl.children[2].classList.contains('active')).toBe(true)
+    expect(tabsEl.children[2].classList.contains('active')).toBe(true)
+  })
+
+  it('смена пира сбрасывает ленту — узлов прежнего пира не остаётся', async () => {
+    const mgrs = makeManagers({ [ALICE]: photos(2), [GHOST]: photos(1) })
+    const { instance } = make(mgrs)
+    const avatarsEl = instance.container.querySelector('.profile-avatars-avatars')!
+    const tabsEl = instance.container.querySelector('.profile-avatars-tabs')!
+
+    await instance.setPeer(ALICE)
+    expect(avatarsEl.children.length).toBe(2)
+
+    await instance.setPeer(GHOST)
+    expect(avatarsEl.children.length).toBe(1)
+    expect(tabsEl.children.length).toBe(1)
+  })
+
+  it('ответ на ПРОТУХШИЙ peerId игнорируется — гонка «переключили пира, пока грузилось»', async () => {
+    let resolveAlice!: (v: ProfilePhoto[]) => void
+    const alicePromise = new Promise<ProfilePhoto[]>((resolve) => { resolveAlice = resolve })
+    const mgrs = makeManagers({ [GHOST]: photos(2) })
+    mgrs.profile.listPhotos = vi.fn((userId: number) => (userId === ALICE ? alicePromise : Promise.resolve(photos(2))))
+    const { instance } = make(mgrs)
+    const avatarsEl = instance.container.querySelector<HTMLElement>('.profile-avatars-avatars')!
+
+    const alicePending = instance.setPeer(ALICE) // не ждём — переключаемся раньше ответа
+    await instance.setPeer(GHOST)
+    expect(avatarsEl.children.length).toBe(2) // GHOST успел отрисоваться (2 фото)
+
+    resolveAlice(photos(5)) // ALICE отвечает ПОСЛЕ переключения, с БОЛЬШИМ числом фото
+    await alicePending
+
+    // ALICE не долетел до DOM — ни узлов, ни (что важнее числа узлов, которое
+    // случайно не изменилось бы и без гейта, будь у ALICE тоже 2 фото) не
+    // подменённого `this.listLoader`: без гейта строка `this.listLoader =
+    // new ListLoader(...)` для ALICE выполнилась бы ДО внутренней проверки в
+    // processItem и подменила бы собой loader ленты GHOST — goWithoutTransition
+    // после этого либо сломался бы (индекс/count от чужой, 5-элементной
+    // галереи), либо молча тронул чужие данные.
+    expect(avatarsEl.children.length).toBe(2)
+    instance.goWithoutTransition(1)
+    expect(avatarsEl.style.transform).toBe('translate(-100%, 0)')
+    expect(avatarsEl.children[1].classList.contains('active')).toBe(true)
+  })
+
+  it('ленивая догрузка — элементы дальше LOAD_NEAREST не грузятся до появления в IntersectionObserver', async () => {
+    const mgrs = makeManagers({ [ALICE]: photos(8) })
+    const { instance } = make(mgrs)
+    const avatarsEl = instance.container.querySelector('.profile-avatars-avatars')!
+
+    await instance.setPeer(ALICE)
+    const nodes = Array.from(avatarsEl.children) as HTMLElement[]
+    expect(nodes.length).toBe(8)
+
+    // Первые LOAD_NEAREST=3 узла уже наполнены (класс hide снят).
+    for (let i = 0; i < 3; i++) expect(nodes[i].classList.contains('hide')).toBe(false)
+    // Остальные ждут наблюдателя — им нечем ответить на media.downloadMediaURL,
+    // если бы они начали грузиться, поэтому факт "hide" — прямое доказательство.
+    for (let i = 3; i < 8; i++) expect(nodes[i].classList.contains('hide')).toBe(true)
+
+    intersect(nodes[3]) // имитация появления 4-го узла во вьюпорте
+    await vi.waitFor(() => expect(nodes[3].classList.contains('hide')).toBe(false))
+
+    // Последний узел (idx 7) вне окна LOAD_NEAREST вокруг idx 3 — не догрузился.
+    expect(nodes[7].classList.contains('hide')).toBe(true)
+  })
+
+  it('пустая галерея — SHOW_NO_AVATAR: один узел-заглушка через avatarNew (мирроr пира)', async () => {
+    const mgrs = makeManagers({ [ALICE]: [] })
+    const { instance } = make(mgrs)
+    const avatarsEl = instance.container.querySelector('.profile-avatars-avatars')!
+    const tabsEl = instance.container.querySelector('.profile-avatars-tabs')!
+
+    await instance.setPeer(ALICE)
+
+    expect(avatarsEl.children.length).toBe(1)
+    expect(tabsEl.children.length).toBe(1)
+    const node = avatarsEl.children[0] as HTMLElement
+    expect(node.classList.contains('profile-avatars-avatar')).toBe(true)
+    // Содержимое — настоящий узел avatarNew (мирроr пира), а не img/video.
+    const avatarNode = node.querySelector('.avatar-like') as HTMLElement
+    expect(avatarNode).toBeTruthy()
+    expect(avatarNode.dataset.peerId).toBe(String(ALICE))
+  })
+
+  it('видео-аватар (videoMediaId) — <video class="avatar-photo avatar-video">, комментарий у ветки объясняет недостижимость на проводе', async () => {
+    // Порождаем фикстуру НАПРЯМУЮ (мимо реального provider'а): на настоящем
+    // проводе mapProfilePhoto сегодня жёстко кладёт videoMediaId: undefined
+    // (profileManager.ts:143) — ветка ниже проверяет, что КОД processItem
+    // корректно её обработает, когда провод почитают, а не то, что провод уже
+    // чинит видео сегодня.
+    const mgrs = makeManagers({ [ALICE]: [photo(1), photo(2, 999)] })
+    const { instance } = make(mgrs)
+    const avatarsEl = instance.container.querySelector('.profile-avatars-avatars')!
+
+    await instance.setPeer(ALICE)
+
+    const video = avatarsEl.children[1].querySelector('video.avatar-video') as HTMLVideoElement
+    expect(video).toBeTruthy()
+    expect(video.loop).toBe(true)
+    expect(video.muted).toBe(true)
+    expect(resolveStreamUrlMock).toHaveBeenCalledWith(999)
+  })
+
+  it('setCollapsed(true) возвращает ленту на первый кадр (tweb :931-933)', async () => {
+    const mgrs = makeManagers({ [ALICE]: photos(3) })
+    const { instance } = make(mgrs)
+    const avatarsEl = instance.container.querySelector<HTMLElement>('.profile-avatars-avatars')!
+    await instance.setPeer(ALICE)
+
+    instance.goWithoutTransition(2) // ушли на последний индекс (2)
+    expect(avatarsEl.children[2].classList.contains('active')).toBe(true)
+
+    ;(instance as any).setCollapsed(true) // сворачивание — лента обязана вернуться на индекс 0
+    expect(avatarsEl.children[0].classList.contains('active')).toBe(true)
+    expect(avatarsEl.style.transform).toBe('translate(-0%, 0)')
+
+    // Повторное сворачивание (уже свёрнуто) — новых прыжков нет, полоска
+    // остаётся на месте (tweb-условие `!this.isCollapsed()`).
+    instance.goWithoutTransition(1)
+    ;(instance as any).setCollapsed(true)
+    expect(avatarsEl.children[1].classList.contains('active')).toBe(true) // НЕ откатилось на 0
+  })
+})
+
+describe('PeerProfileAvatars.cleanup() — лента данных (задача 2, tweb :957-973)', () => {
+  it('снимает регистрацию видео в animationIntersector и отключает IntersectionObserver', async () => {
+    // 5 фото > LOAD_NEAREST(3) — idx 3/4 остаются ленивыми и ПОПАДАЮТ под
+    // наблюдение (иначе `observed` пуст ещё ДО cleanup, и снятие наблюдения
+    // нечем было бы проверить: ассерт про disconnect() красил бы что угодно).
+    const mgrs = makeManagers({ [ALICE]: [photo(1), photo(2, 999), photo(3), photo(4), photo(5)] })
+    const { instance } = make(mgrs)
+    const avatarsEl = instance.container.querySelector('.profile-avatars-avatars')!
+
+    await instance.setPeer(ALICE)
+    const video = avatarsEl.children[1].querySelector('video.avatar-video') as HTMLVideoElement
+    expect(video).toBeTruthy()
+    expect(ioInstances.some((io) => io.observed.size > 0)).toBe(true) // idx 3/4 реально под наблюдением
+
+    const removeSpy = vi.spyOn(animationIntersector, 'removeAnimationByPlayer')
+    instance.cleanup()
+
+    expect(removeSpy).toHaveBeenCalledWith(video)
+    // IntersectionObserver отключён — ни один инстанс не наблюдает узлов.
+    expect(ioInstances.some((io) => io.observed.size > 0)).toBe(false)
   })
 })
