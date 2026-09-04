@@ -14,8 +14,28 @@
 // Ни одна из трёх карточек задачи 4 не инстанцирует этот компонент напрямую
 // (в tweb SignInCard/AuthCodeCard/PasswordCard тоже не берут голый
 // `InputField` — им пользуются подклассы `CountryInputField`/`TelInputField`,
-// а `PasswordCard` строит своё поле руками). Это базовый примитив про запас
-// для будущих карточек (SignUp/EmailRecover, задача 5) — как и у React-версии.
+// а `PasswordCard` строит своё поле руками). ЗАГОТОВКА С НАЗВАННЫМ БУДУЩИМ
+// ПОТРЕБИТЕЛЕМ, не спекулятивный код: React `SignUpCard.tsx:32,163,174`
+// инстанцирует `InputField` дважды (имя/фамилия, `maxLength` 70/64) — этот же
+// узел понадобится `SignUpCard.solid.tsx` в задаче 5. До тех пор компонент
+// не смонтирован НИГДЕ — как и у React-версии до её собственного первого
+// потребителя.
+//
+// ── Вычеты против 843-строчного `inputField.ts` (сверх урезки, которую уже
+// объявила шапка React-версии) ────────────────────────────────────────────
+// Не портированы (нет потребителя ни у SignUpCard, ни в этой задаче):
+// rich-text вставка (`insertRichTextAsHTML`, кастомные эмодзи, `paste`-хендлер
+// ядра — SignUp просит только plain-text имя); `validate`/`isValid`/
+// `isValidToChange`/`required` (React SignUpCard проверяет пустоту САМ, без
+// встроенной валидации поля); `setState`/`InputState`/`setError` (у SignUp
+// нет серверной ошибки уровня ПОЛЯ — только `NameRequired`/`NameTooLong`
+// текстом); `placeholder`/`placeholderAsElement`; `autocomplete`;
+// `withLinebreaks`/`plainText`-режим на `<input>`; `originalValue`/
+// `isChanged`/`setOriginalValue`/`setDraftValue` (черновики — не наш REST-
+// поток регистрации); `select()`/`setHidden`/`toggleForceFocus`;
+// `canHaveFormatting`/`canWrapCustomEmojis` (форматирование — предмет чата,
+// не имени при регистрации). Появится реальный потребитель — портировать
+// точечно под него, не заранее.
 //
 // Как и у CountryInput/TelInput: содержимое contenteditable мутирует браузер,
 // поэтому Solid не держит текст value как детей — он отражается императивно

@@ -23,6 +23,12 @@
 // здесь — ПОЛНОСТЬЮ управляемый проп (`value`/`onChange`), а не опциональный
 // `valueSignal` — carrier-сигнал оригинала бридж-класса тоже был нужен только
 // императивному вызывающему.
+//
+// `onFocusChange` (React-версия его несла — для `TrackingMonkey`, которая
+// вешает focus/blur на инпут) СНЯТ ревью: у `AuthCodeCard.solid.tsx` сегодня
+// обезьянка-заглушка (`div.media-sticker-wrapper` без канв, см. её докблок),
+// потребителя пропа нет. Появится настоящий Solid-порт `TrackingMonkey` —
+// добавить проп обратно вместе с ним, а не заранее.
 import { createSignal, Index, Show, type JSX } from 'solid-js'
 import classNames from '@helpers/string/classNames'
 import { subscribeOn } from '@helpers/solid/subscribeOn'
@@ -37,7 +43,6 @@ export type CodeInputSolidProps = {
   error?: boolean
   /** идёт отправка — ячейки гаснут, инпут не кликается (tweb `.disabled`) */
   disabled?: boolean
-  onFocusChange?: (focused: boolean) => void
   /** доп. класс на `.wrap` — карточка кода вешает `.codeInputField` (margin-top) */
   class?: string
   ref?: (el: HTMLInputElement) => void
@@ -201,12 +206,10 @@ export default function CodeInput(props: CodeInputSolidProps): JSX.Element {
         onFocus={() => {
           inputRef.setSelectionRange(props.value.length, props.value.length)
           isFocused = true
-          props.onFocusChange?.(true)
           onSelectionChange()
         }}
         onBlur={() => {
           isFocused = false
-          props.onFocusChange?.(false)
           onSelectionChange()
         }}
         onKeyDown={(e) => {
