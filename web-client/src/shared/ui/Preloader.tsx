@@ -17,10 +17,17 @@
 // той же разметки под auth-карточки; эта копия не про экран входа, а про
 // оставшиеся React-экраны — переносить её в Solid НЕ входит в периметр
 // задачи 6.
+//
+// `PreloaderCircular` (голый вариант «внутрь кнопки») НЕ экспортируется —
+// у React-стороны нет ни одного потребителя такого вида (единственным был
+// снесённый `AuthButton.tsx`); внутри файла она нужна только как деталь
+// реализации `<Preloader>`. У Solid-версии (`Preloader.solid.tsx`) свой
+// экспорт этой же формы ЖИВОЙ — им пользуются три auth-карточки
+// (`SignInCard`/`PasswordCard`/`SignUpCard.solid.tsx`).
 import type { HTMLAttributes } from 'react'
 
-/** Голый `svg.preloader-circular` — то, что tweb вставляет в кнопку соседом к `span.i18n`. */
-export function PreloaderCircular() {
+/** Голый `svg.preloader-circular` — то, что tweb вставляет в кнопку соседом к `span.i18n`. Деталь реализации `<Preloader>`, наружу не экспортируется — см. докблок файла. */
+function PreloaderCircular() {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" className="preloader-circular" viewBox="25 25 50 50">
       <circle className="preloader-path" cx="50" cy="50" r="20" fill="none" strokeMiterlimit="10" />

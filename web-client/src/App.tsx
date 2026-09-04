@@ -52,7 +52,11 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   useLayoutEffect(() => { installColumnWidthsUpdater() }, [])
   // has-auth-pages снимается кадром позже (doubleRaf, bootstrapIm.ts:60-61) —
   // иначе transition .main-column включится сразу и колонка «въедет» из
-  // офскрина в первом кадре; на логин-старте AuthFlow уже снял класс сам.
+  // офскрина в первом кадре; на логин-старте dispose() из mountAuthFlow
+  // (components/auth/mountAuthFlow.solid.tsx, зовётся из эффекта монтирования
+  // ниже в ThemedApp) уже снял класс сам — снятие здесь идемпотентно
+  // дублирует его на случай прямого старта в Shell (`authed` был true с
+  // самого начала, mountAuthFlow вообще не вызывался).
   useLayoutEffect(() => {
     void doubleRaf().then(() => document.body.classList.remove('has-auth-pages'))
   }, [])

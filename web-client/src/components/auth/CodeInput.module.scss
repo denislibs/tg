@@ -10,8 +10,13 @@
  * (`CodeInput.solid.tsx`) — блок `:global { .s-enter-active/.s-exit-active/
  * .s-enter/.s-exit-to }` ниже раньше был НЕ портирован именно по этой причине
  * (см. старую версию этого докблока в истории git); теперь он на месте, взят
- * из tweb `codeInputField.module.scss` дословно. React-версия (`CodeInput.tsx`)
- * своей анимации на `@keyframes` не лишилась — оба потребителя делят файл.
+ * из tweb `codeInputField.module.scss` дословно.
+ *
+ * Задача 6 (волна 3): React-версия (`CodeInput.tsx`) снесена вместе со всем
+ * React-экраном входа — её собственная анимация на `@keyframes digit-enter/
+ * digit-exit` (`.enter`/`.exit`) была мёртвым кодом без единого потребителя
+ * и убрана отсюда же. `Solid CodeInput.solid.tsx` — единственный потребитель
+ * этого файла теперь.
  */
 
 .wrap {
@@ -104,34 +109,6 @@
       opacity: 0;
       transform: scale(0.5);
     }
-  }
-}
-
-// Та же анимация на @keyframes — для React-версии (`CodeInput.tsx`, применяет
-// их сама, без `<Transition>`): значения, кривая cubic-bezier(.175,.885,.32,1.275)
-// и длительность .2s взяты 1:1 из оригинала, вход — только translateY(20px)→0
-// (без fade), выход — scale(.5)+fade.
-.enter {
-  animation: digit-enter 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-
-.exit {
-  animation: digit-exit 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
-}
-
-@keyframes digit-enter {
-  from {
-    transform: translateY(20px);
-  }
-  to {
-    transform: translateY(0);
-  }
-}
-
-@keyframes digit-exit {
-  to {
-    opacity: 0;
-    transform: scale(0.5);
   }
 }
 

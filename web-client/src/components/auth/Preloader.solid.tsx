@@ -8,6 +8,10 @@
 // `putPreloader(elem, true)` дополнительно заворачивает svg в `div.preloader`
 // — это `<Preloader>`; голый svg (вариант «внутрь кнопки») — `<PreloaderCircular>`.
 // Стили обеих форм — глобальные (`styles/tweb/_preloader.scss`, `_button.scss`).
+//
+// `PreloaderCircular` — реальный общий экспорт (задача 6 волны 3, ревью):
+// три карточки, у которых кнопка сабмита несёт спиннер, зовут ЕЁ, а не держат
+// свою копию разметки — `SignInCard`/`PasswordCard`/`SignUpCard.solid.tsx`.
 import type { JSX } from 'solid-js'
 
 /** Голый `svg.preloader-circular` — то, что tweb вставляет в кнопку соседом к `span.i18n`. */

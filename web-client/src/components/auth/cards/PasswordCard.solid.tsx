@@ -48,6 +48,7 @@ import classNames from '@helpers/string/classNames'
 import { confirmationPopup } from '../../popups/popupPeer'
 import AuthCard from '../AuthCard.solid'
 import MediaHeader from '../MediaHeader.solid'
+import { PreloaderCircular } from '../Preloader.solid'
 import { useAuthFlow, type CardSpec } from '../authFlow.solid'
 import styles from '../AuthFlow.module.scss'
 
@@ -264,11 +265,7 @@ export default function PasswordCard(props: { spec: Spec }): JSX.Element {
 
       <Button class="btn-primary btn-color-primary" disabled={busy()} onClick={() => void submitPassword()}>
         {nextLabel()}
-        {busy() && (
-          <svg xmlns="http://www.w3.org/2000/svg" class="preloader-circular" viewBox="25 25 50 50">
-            <circle class="preloader-path" cx="50" cy="50" r="20" fill="none" stroke-miterlimit="10" />
-          </svg>
-        )}
+        {busy() && <PreloaderCircular />}
       </Button>
     </AuthCard>
   )

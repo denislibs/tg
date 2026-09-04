@@ -39,6 +39,19 @@
  * без перезагрузки) оставил бы `.main-column` без transition-гейта до
  * следующей полной перезагрузки страницы. Снятие на dispose — тем же
  * двойным-rAF приёмом, каким это делал прежний React `AuthFlow.tsx`.
+ *
+ * ── Расхождение с оригиналом: нет модульного `activeDispose`/`disposeActiveAuthFlow` ──
+ * У tweb `mountAuthFlow` держит модульную переменную `activeDispose` и в
+ * начале функции сам гасит предыдущий монтаж, если он ещё жив («Auth flow
+ * can only mount once at a time»), плюс экспортирует `disposeActiveAuthFlow()`
+ * для внешнего вызывающего (`bootstrapIm`, когда IM-страница берёт управление).
+ * Здесь этого нет: единственный вызывающий — `App.tsx::ThemedApp`, и его
+ * `useLayoutEffect` САМ гарантирует связку 1:1 «маунт ↔ dispose» — React
+ * зовёт cleanup ПРЕЖДЕ следующего эффекта той же зависимости, поэтому второй
+ * одновременный монтаж физически недостижим тем же путём, каким его ловит
+ * `activeDispose` у оригинала. Останется риск только при ВТОРОМ, независимом
+ * вызывающем (аналоге `bootstrapIm`, которого в Solid-слое пока нет) — тогда
+ * этот девиэйшн придётся снимать вместе с ним, а не раньше.
  */
 import { doubleRaf } from '../../core/accountTransition'
 import { mountSolid } from '../../shared/solid/mountSolid.solid'

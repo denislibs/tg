@@ -49,6 +49,7 @@ import AuthCard from '../AuthCard.solid'
 import MediaHeader from '../MediaHeader.solid'
 import CountryInput from '../CountryInput.solid'
 import TelInput from '../TelInput.solid'
+import { PreloaderCircular } from '../Preloader.solid'
 import { useAuthFlow, type CardSpec } from '../authFlow.solid'
 import { COUNTRIES, countryByPhone, leftPattern, phoneMask, type Country } from '../countries'
 import styles from '../AuthFlow.module.scss'
@@ -62,9 +63,11 @@ const DEFAULT_COUNTRY = COUNTRIES.find((c) => c.iso2 === 'RU')!
 
 // Порт tweb `helpers/formatPhoneNumber.ts::applyPattern` (ветка national=false)
 // в объёме нашего `Country` (один патерн, не список — см. докблок
-// `countries.ts::phoneMask`). Дубль того же кода, что уже есть в React
-// `AuthFlow.tsx` — намеренно НЕ импортируется оттуда: тот файл снесёт задача 6,
-// а Solid-карточке нельзя зависеть от React-хоста (граница рантаймов).
+// `countries.ts::phoneMask`). Был дублем того же кода из React `AuthFlow.tsx`
+// (снесён задачей 6 волны 3 вместе со всем React-экраном входа) — дубль был
+// намеренным уже тогда: Solid-карточке нельзя зависеть от React-хоста
+// (граница рантаймов), поэтому общий код не выносился в шаред-модуль, а
+// портировался в обе стороны отдельно.
 function applyPattern(c: Country, digits: string): string {
   const pattern = phoneMask(c) || c.code.slice(1)
   let str = digits
@@ -230,11 +233,7 @@ export default function SignInCard(_props: { spec: Spec }): JSX.Element {
             подменяется на PleaseWait + svg.preloader-circular. */}
         <Button class="btn-primary btn-color-primary" disabled={!canSubmit()} onClick={() => void sendCode()}>
           {busy() ? i18n('PleaseWait') : i18n('Login.Next')}
-          {busy() && (
-            <svg xmlns="http://www.w3.org/2000/svg" class="preloader-circular" viewBox="25 25 50 50">
-              <circle class="preloader-path" cx="50" cy="50" r="20" fill="none" stroke-miterlimit="10" />
-            </svg>
-          )}
+          {busy() && <PreloaderCircular />}
         </Button>
       </div>
 
