@@ -115,6 +115,31 @@ describe('SignInCard.solid: страна по умолчанию', () => {
   })
 })
 
+describe('SignInCard.solid: полное удаление номера (регресс волны 3, этап 1)', () => {
+  it('backspace до конца не оставляет поле без «+» и без лишних узлов внутри contenteditable', async () => {
+    const { tel } = mount({ nearestCountry: () => Promise.resolve('') })
+    await new Promise((r) => setTimeout(r, 0))
+    const el = tel()
+    expect(el.textContent).toBe('+7')
+
+    // Первый backspace: "+7" -> "+".
+    el.textContent = '+'
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+    expect(el.textContent).toBe('+')
+
+    // Второй backspace, удаляющий ПОСЛЕДНИЙ символ: браузер (Chrome/Safari)
+    // оставляет узел с одиноким `<br>`, а не по-настоящему пустым —
+    // `el.textContent` при этом уже `''`, ровно как после реальной клавиши.
+    el.replaceChildren(document.createElement('br'))
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+
+    expect(el.textContent).toBe('+')
+    expect(el.childNodes).toHaveLength(1)
+    expect(el.firstChild!.nodeType).toBe(Node.TEXT_NODE)
+    expect(el.querySelector('br')).toBeNull()
+  })
+})
+
 describe('SignInCard.solid: ввод номера → отправка кода и переход', () => {
   it('отправляет fullPhone и переходит на authCode с введённым номером', async () => {
     const { navigate, managers } = mount()
