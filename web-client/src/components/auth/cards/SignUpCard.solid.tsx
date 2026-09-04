@@ -29,24 +29,43 @@
 // Отказ заливки — НЕ повод не пустить в мессенджер (tweb: `.finally(() =>
 // toIm())`) — здесь тот же `try {…} catch {}` вокруг `sendAvatar()`.
 //
-// ── Интерактивный кроппер — ВНЕ периметра задачи 5 (сознательное сужение) ───
+// ── Интерактивный кроппер — ВНЕ периметра (сознательное сужение, задача #127) ─
 // У tweb выбор аватара — целый `PopupAvatar` (кадрирование/зум/поворот,
 // vanilla DOM, framework-agnostic попап). Наша React-версия его тоже не
 // портирует 1:1, а использует СВОЙ упрощённый `AvatarCropper` (React-хуки,
-// drag-to-pan + zoom) — компонент из другого рантайма, подключить его отсюда
-// нельзя (граница `*.solid.tsx` не пускает React), а порт кроппера на
-// Solid — самостоятельная задача, которой нет ни в брифе, ни в списке файлов
-// задачи 5. Здесь выбранный файл грузится КАК ЕСТЬ (без клиентского
-// кропа/масштабирования — `UploadArgs.width/height` опциональны, схема это
-// разрешает), а `<canvas id="canvas-avatar">` рисует ЛУЧШЕЕ ИЗ ВОЗМОЖНОГО
+// drag-to-pan + zoom, `components/settings/AvatarCropper.tsx`) — компонент из
+// другого рантайма, подключить его отсюда нельзя (граница `*.solid.tsx` не
+// пускает React), а порт кроппера на Solid — самостоятельная задача (ЗАДАЧА
+// #127), которой нет ни в брифе, ни в списке файлов задачи 5/6. Снести сам
+// React-компонент при этом НЕЛЬЗЯ: он живой и нужен другим React-экранам
+// (`EditProfile`/`NewGroupFlow`/`EditContactView`/`GroupEditFlow`, ещё не
+// портированным на Solid), а обратного моста «React внутри Solid» в проекте
+// нет (мост только в одну сторону — `<SolidIsland>`, см. `web-client/CLAUDE.md`);
+// заводить его ради одной карточки было бы архитектурной отсебятиной сверх
+// периметра. До ЗАДАЧИ #127 выбранный файл здесь не кадрируется и не
+// уменьшается интерактивно — центр/масштаб задаёт исходное фото целиком, а не
+// пользователь; `<canvas id="canvas-avatar">` рисует ЛУЧШЕЕ ИЗ ВОЗМОЖНОГО
 // live-превью (best-effort через `Image.onload`, декодирование не гарантировано
 // во всех окружениях и не участвует в данных отправки — если предпросмотр не
 // нарисовался, аватар всё равно загрузится).
 //
-// ДОЛГ (ревью задачи 5, подтверждён — переносится в задачу 6): заливка идёт
-// БЕЗ кропа И БЕЗ ресайза — функциональный регресс против нашей же React-
-// версии, где `AvatarCropper` считал ширину/высоту и вёз их в `media.
-// upload`; здесь `width`/`height` не едут вовсе (см. `sendAvatar` ниже).
+// ── Ресайз/JPEG/width-height — ЗАКРЫТО этой задачей (задача 6) ──────────────
+// ДОЛГ ревью задачи 5 (заливка без ресайза, без конвертации в JPEG, без
+// width/height) закрыт БЕЗ порта интерактивного кроппера — тем достаточен, что
+// сам ресайз/конвертация/width-height не требуют кадрирования пользователем.
+// `sendAvatar` прогоняет выбранный файл через `scaleImageForSend`
+// (`core/media/scaleImageForSend.ts`, framework-agnostic порт tweb
+// `newMedia.ts::scaleImageForTelegram`+`scaleMediaElement`, уже покрытый
+// своими тестами и уже используемый composer'ом — `core/hooks/useChatSend.ts`):
+// сторона > 2560px ужимается в бокс, HEIC/webp и прочие несовместимые с
+// сервером форматы конвертируются в `image/jpeg`, тяжёлый lossless
+// (png/bmp > 2 МБ) пережимается — и `width`/`height` итогового файла едут в
+// `media.upload`. Раньше HEIC с айфона (частый источник аватара при
+// регистрации с мобильного) уезжал КАК ЕСТЬ — браузер получателя такой файл
+// вообще не показывает; теперь на выходе всегда jpeg, как и у снесённой
+// React-версии. Прежний регресс (сравнение с React `AvatarCropper`, который
+// СЧИТАЛ width/height САМ) закрыт для ЭТОЙ части; интерактивный кроп/зум/пан
+// остаётся ЗАДАЧЕЙ #127.
 //
 // ── НАХОДКА 2 (ревью задачи 5): сетевой отказ на сабмите — не запертая кнопка ──
 // `signUp` перебрасывает НЕ-`HttpError` наружу как есть (тот же приём, что у
@@ -71,9 +90,11 @@ import { IconTsx } from '@components/iconTsx.solid'
 import { i18n, type LangPackKey } from '@lib/langPack'
 import blurActiveElement from '@helpers/dom/blurActiveElement'
 import wrapEmojiText from '@lib/richtext/wrapEmojiText'
+import { scaleImageForSend } from '@core/media/scaleImageForSend'
 import AuthCard from '../AuthCard.solid'
 import MediaHeader from '../MediaHeader.solid'
 import InputField from '../InputField.solid'
+import { PreloaderCircular } from '../Preloader.solid'
 import { useAuthFlow, type CardSpec } from '../authFlow.solid'
 import styles from '../AuthFlow.module.scss'
 
@@ -138,16 +159,26 @@ export default function SignUpCard(props: { spec: Spec }): JSX.Element {
   }
 
   // Ручки — те же, что у экрана «Изменить профиль»: фото попадает в галерею
-  // и становится аватаром. Отказ НЕ блокирует вход (tweb: `.finally`).
+  // и становится аватаром. Отказ НЕ блокирует вход (tweb: `.finally`), но
+  // не тонет молча — см. докблок файла, «Ресайз/JPEG/width-height».
   const sendAvatar = async () => {
     const file = pickedFile
     if (!file) return
     try {
-      const bytes = await file.arrayBuffer()
-      const mediaId = await managers.media.upload({ bytes, mime: file.type || 'image/jpeg', size: bytes.byteLength })
+      const prepared = await scaleImageForSend(file)
+      const bytes = await prepared.file.arrayBuffer()
+      const mediaId = await managers.media.upload({
+        bytes,
+        mime: prepared.file.type || 'image/jpeg',
+        size: bytes.byteLength,
+        width: prepared.width,
+        height: prepared.height,
+      })
       await managers.profile.addPhoto(mediaId)
-    } catch {
-      // аватар — не повод не пустить в мессенджер
+    } catch (err) {
+      // аватар — не повод не пустить в мессенджер (tweb: `.finally(() => toIm())`),
+      // но глотать отказ БЕЗ следа нельзя — иначе никогда не узнаем, что аплоад не удался.
+      console.error('SignUpCard: не удалось загрузить аватар', err)
     }
   }
 
@@ -233,11 +264,7 @@ export default function SignUpCard(props: { spec: Spec }): JSX.Element {
         onClick={() => void submit()}
       >
         {nextLabel()}
-        {busy() && (
-          <svg xmlns="http://www.w3.org/2000/svg" class="preloader-circular" viewBox="25 25 50 50">
-            <circle class="preloader-path" cx="50" cy="50" r="20" fill="none" stroke-miterlimit="10" />
-          </svg>
-        )}
+        {busy() && <PreloaderCircular />}
       </Button>
 
       {/* Выбор файла — скрытый инпут ВНЕ .avatar-edit, чтобы клик по иконке не

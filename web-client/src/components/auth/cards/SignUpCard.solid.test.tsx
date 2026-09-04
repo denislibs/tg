@@ -127,8 +127,59 @@ describe('SignUpCard.solid: сабмит', () => {
     await vi.waitFor(() => expect(toIm).toHaveBeenCalled())
   })
 
-  it('заливка аватара упала — это НЕ повод не пустить в мессенджер (toIm всё равно зовётся)', async () => {
+  // Ревью задачи 6, находка 2: заливка шла БЕЗ ресайза/конвертации/width-height
+  // — регресс против снесённой React-версии (`AvatarCropper` их считал). Закрыто
+  // прогоном через `scaleImageForSend` (см. докблок карточки, «Ресайз/JPEG/
+  // width-height»); пин — что её РЕЗУЛЬТАТ (не исходный файл) долетает до
+  // `media.upload`. `createImageBitmap`/`canvas` мокаются ПОСЛЕ `mount()` — до
+  // этой точки их использует сама карточка (реальный `<canvas id="canvas-
+  // avatar">` в дереве, см. `onFileChosen`), подмена раньше сломала бы монтаж.
+  it('файл, требующий ресайза/конвертации, уезжает в media.upload УЖЕ jpeg с width/height', async () => {
+    const { managers, firstInput, setField, submitBtn, fileInput } = mount()
+    setField(firstInput(), 'Ada')
+
+    vi.stubGlobal(
+      'createImageBitmap',
+      vi.fn(async (_file: Blob, opts?: { resizeWidth?: number; resizeHeight?: number }) => {
+        if (opts?.resizeWidth != null) return { width: opts.resizeWidth, height: opts.resizeHeight, close: () => {} }
+        // «Натуральный» размер выбранного файла — сторона > 2560, требует ресайза.
+        return { width: 4000, height: 2000, close: () => {} }
+      }),
+    )
+    const realCreateElement = document.createElement.bind(document)
+    vi.spyOn(document, 'createElement').mockImplementation(((tag: string) => {
+      if (tag === 'canvas') {
+        return {
+          width: 0,
+          height: 0,
+          getContext: () => ({ fillStyle: '', fillRect: vi.fn(), drawImage: vi.fn() }),
+          toBlob: (cb: (b: Blob | null) => void, type?: string) => cb(new File(['out'], 'out', { type })),
+        } as unknown as HTMLCanvasElement
+      }
+      return realCreateElement(tag)
+    }) as typeof document.createElement)
+
+    // PNG (совместимый формат) выбран НАРОЧНО — сторона > 2560 сама по себе
+    // требует ресайза (needsResize), поэтому конвертация в jpeg не спутывается
+    // с веткой needsConvert; несовместимый формат покрыт scaleImageForSend.test.ts.
+    const file = new File([new Uint8Array([1, 2, 3])], 'big.png', { type: 'image/png' })
+    Object.defineProperty(fileInput(), 'files', { value: [file], configurable: true })
+    fileInput().dispatchEvent(new Event('change', { bubbles: true }))
+
+    submitBtn().click()
+
+    await vi.waitFor(() => expect(managers.media.upload).toHaveBeenCalled())
+    expect(managers.media.upload).toHaveBeenCalledWith(
+      expect.objectContaining({ mime: 'image/jpeg', width: 2560, height: 1280 }),
+    )
+
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('заливка аватара упала — это НЕ повод не пустить в мессенджер (toIm всё равно зовётся), отказ не тонет молча', async () => {
     const upload = vi.fn().mockRejectedValue(new Error('upload failed'))
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { toIm, firstInput, setField, submitBtn, fileInput } = mount({}, { upload })
     setField(firstInput(), 'Ada')
 
@@ -138,6 +189,9 @@ describe('SignUpCard.solid: сабмит', () => {
 
     submitBtn().click()
     await vi.waitFor(() => expect(toIm).toHaveBeenCalled())
+    // console.error — не проглоченный отказ (см. докблок карточки, «не тонет молча»).
+    expect(errorSpy).toHaveBeenCalledWith('SignUpCard: не удалось загрузить аватар', expect.any(Error))
+    errorSpy.mockRestore()
   })
 
   it('signup_token_expired / phone_number_occupied — назад на signIn (токена больше нет)', async () => {
