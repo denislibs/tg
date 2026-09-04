@@ -141,3 +141,33 @@ describe('EmailRecoverCard.solid: Cancel — возврат на password С П�
     })
   })
 })
+
+describe('EmailRecoverCard.solid: сетевой отказ на сабмите — не запертая карточка (ревью 5, находка 2)', () => {
+  // confirmPasswordRecovery перебрасывает НЕ-HttpError наружу (обрыв сети,
+  // отказ worker-RPC) так же, как signImport/signUp — прежний код звал его
+  // БЕЗ try/catch при уже взведённом busy(true): отказ давал необработанное
+  // отклонение, поле кода оставалось disabled навсегда, выхода из карточки
+  // не было. Оригинал ловит (tweb SignUpCard.tsx:127-135 — тот же приём для
+  // соседней карточки, PasswordCard.solid.tsx::submitPassword — образец
+  // внутри этого же каталога).
+  it('confirmPasswordRecovery() отклонился — busy снимается, ошибка текстом, поле снова доступно', async () => {
+    const confirmPasswordRecovery = vi.fn().mockRejectedValue(new Error('network down'))
+    const { typeCode, input } = mount(confirmPasswordRecovery)
+
+    typeCode('123456')
+
+    await vi.waitFor(() => expect(host!.textContent).toContain('Something went wrong'))
+    expect(input().disabled).toBe(false)
+  })
+})
+
+describe('EmailRecoverCard.solid: автофокус поля кода (ревью 5, находка 3)', () => {
+  // Оригинал: focusWhenConnected(codeInputField.input) в onMount (tweb
+  // EmailRecoverCard.tsx:62-64). Сосед по каталогу делает то же самое
+  // безусловно (AuthCodeCard.solid.tsx:59) — здесь фокуса не было вовсе,
+  // пользователь был обязан ткнуть в поле мышью.
+  it('поле кода получает фокус на монтировании', () => {
+    const { input } = mount(vi.fn())
+    expect(document.activeElement).toBe(input())
+  })
+})

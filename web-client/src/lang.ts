@@ -649,6 +649,7 @@ const lang = {
   'Login.ResetPassword.HasEmail': 'A recovery email is linked to this account — reset it by email instead.',
   'Login.ResetPassword.NoEmailText': 'Since you didn\'t provide a recovery email when setting up your password, your remaining options are either to remember your password or to reset your account.',
   'Login.ResetPassword.ResetAccount': 'Reset Account',
+  'Login.ResetPassword.Subtitle': 'Enter the code we just sent\nto your email **%s**.',
   'Login.ResetPassword.Title': 'Reset Password',
   'Login.SessionExpired': 'Session expired. Please sign in again.',
   'Login.StartText': 'Please confirm your country code\nand enter your phone number.',
