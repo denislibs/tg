@@ -18,10 +18,21 @@
 //
 // ── Наше расширение против tweb (есть предмет — REST-таксономия ошибок) ─────
 // `resend_too_soon` — сервер держит паузу повторной отправки кода
-// восстановления; своего таймера клиент не заводит (см. тип `ForgotOutcome`
-// у прежней React-версии), а маску почты держим ЛОКАЛЬНО (`lastEmailPattern`,
-// closure-переменная карточки — сама карточка живёт весь срок диалога
-// «забыли пароль», размонтируется только сменой шага).
+// восстановления; своего таймера клиент не заводит (см. тип `ForgotOutcome` у
+// прежней React-версии). Маска почты — В МОДУЛЬНОМ КЭШЕ (`recoveryPatternByToken`
+// ниже), КЛЮЧ — `token`, а НЕ closure-переменная карточки.
+//
+// РЕВЬЮ ЗАДАЧИ 4 (находка 1): прежняя редакция держала маску closure-
+// переменной компонента и была НЕДОСТИЖИМА — карточка размонтируется на
+// КАЖДЫЙ `navigate` (хост, `mode="outin"`), значит между «forgot» #1
+// (успех → emailRecover) и «forgot» #2 (после Cancel на emailRecover,
+// `resend_too_soon`) `PasswordCard` успевает размонтироваться и
+// перемонтироваться заново — переменная стартует пустой КАЖДЫЙ раз, условие
+// `resend_too_soon && lastEmailPattern` не выполнялось НИКОГДА. Модульный
+// кэш (тот же приём, что `currentCard` в `authFlow.solid.tsx` — сигнал
+// пережил бы владельца-компонент точно так же) переживает перемонтирование;
+// ключ — `token`, потому что РАЗНЫЕ попытки входа (разные `password_token`)
+// не должны делить одну маску.
 import { createSignal, onMount, Show, type JSX } from 'solid-js'
 import Button from '@components/buttonTsx.solid'
 import { IconTsx } from '@components/iconTsx.solid'
@@ -38,22 +49,27 @@ type Spec = Extract<CardSpec, { name: 'password' }>
 // tweb: `mediaSizes.isMobile ? 100 : 130` — тот же выбор, что и у AuthCodeCard.
 const MONKEY_SIZE = 130
 
+const recoveryPatternByToken = new Map<string, string>()
+
 export default function PasswordCard(props: { spec: Spec }): JSX.Element {
   const { managers, navigate, toIm } = useAuthFlow()
   const token = () => props.spec.payload.token
   const hint = () => props.spec.payload.hint
 
   const [error, setError] = createSignal(false)
+  // tweb PasswordCard.tsx:145-148 (пустая отправка): `passwordInput.classList.
+  // add('error'); return` — ТОЛЬКО класс на поле, `nextKey`/надпись кнопки не
+  // трогается (сервер вообще не спрашивали, отвечать ему нечем). `error`
+  // выше — именно ОТКАЗ СЕРВЕРА (`PASSWORD_HASH_INVALID`) и двигает надпись
+  // кнопки; смешивать их в одном сигнале красило бы «Incorrect password» на
+  // пустой отправке, которую сервер не видел.
+  const [emptyFlash, setEmptyFlash] = createSignal(false)
   const [busy, setBusy] = createSignal(false)
   const [password, setPassword] = createSignal('')
   const [showPw, setShowPw] = createSignal(false)
   // Отказ восстановления по почте — тоже в надпись кнопки, отдельной строки
   // под него в tweb нет (`._forgotLink` несёт только саму ссылку).
   const [forgotError, setForgotError] = createSignal<LangPackKey | ''>('')
-
-  // Маска почты из последнего успешного `requestPasswordRecovery` — см.
-  // докблок файла про `resend_too_soon`.
-  let lastEmailPattern = ''
 
   let passwordEl: HTMLInputElement | undefined
   onMount(() => passwordEl?.focus())
@@ -104,14 +120,16 @@ export default function PasswordCard(props: { spec: Spec }): JSX.Element {
     setBusy(false)
 
     if ('emailPattern' in res) {
-      lastEmailPattern = res.emailPattern
+      recoveryPatternByToken.set(token(), res.emailPattern)
       navigate({ name: 'emailRecover', payload: { token: token(), emailPattern: res.emailPattern } })
       return
     }
     // Пауза повторной отправки — код из прошлой отправки ещё жив, маска у нас
-    // уже есть: возвращаем на ту же карточку, вводить его.
-    if (res.error === 'resend_too_soon' && lastEmailPattern) {
-      navigate({ name: 'emailRecover', payload: { token: token(), emailPattern: lastEmailPattern } })
+    // уже есть (модульный кэш — см. докблок файла): возвращаем на ту же
+    // карточку, вводить его.
+    const cachedPattern = recoveryPatternByToken.get(token())
+    if (res.error === 'resend_too_soon' && cachedPattern) {
+      navigate({ name: 'emailRecover', payload: { token: token(), emailPattern: cachedPattern } })
       return
     }
     // Почты нет — вместо ошибки предлагаем сбросить аккаунт: две
@@ -148,7 +166,7 @@ export default function PasswordCard(props: { spec: Spec }): JSX.Element {
   const submitPassword = async () => {
     if (busy()) return
     if (!password()) {
-      setError(true)
+      setEmptyFlash(true)
       return
     }
     setBusy(true)
@@ -185,7 +203,11 @@ export default function PasswordCard(props: { spec: Spec }): JSX.Element {
         <input class="stealthy" type="password" tabIndex={-1} aria-hidden />
         <input
           ref={passwordEl}
-          class={classNames('input-field-input', password() ? '' : 'is-empty', error() ? 'error' : '')}
+          class={classNames(
+            'input-field-input',
+            password() ? '' : 'is-empty',
+            error() || emptyFlash() ? 'error' : '',
+          )}
           type={showPw() ? 'text' : 'password'}
           name="notsearch_password"
           autocomplete="off"
@@ -194,6 +216,7 @@ export default function PasswordCard(props: { spec: Spec }): JSX.Element {
           value={password()}
           onInput={(e) => {
             setError(false)
+            setEmptyFlash(false)
             setForgotError('')
             setPassword(e.currentTarget.value)
           }}
