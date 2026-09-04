@@ -140,6 +140,7 @@ import type { MessageActionPhoneCall } from '@core/messages/messageAction'
 import Icon from '@components/icon'
 import { formatVideoTime } from '@components/messages/videoPlayback'
 import PeerTitle, { type PeerTitleManagers } from './peerTitle'
+import { generateTail } from './tail'
 import { avatarNew } from '@components/avatar'
 import ProgressivePreloader from '@components/preloader'
 import liteMode from '@helpers/liteMode'
@@ -867,6 +868,43 @@ export default class ChatBubbles implements BubbleGroupsHost {
     return this.chat.autoDownload?.()
   }
 
+  /**
+   * Порт `forEach` из tweb `ChatBubbles.finishPeerChange` (bubbles.ts:5787-5792,
+   * зовётся `Chat.finishPeerChange` → `this.bubbles.finishPeerChange()`, chat.ts:1203):
+   * `[this.chatInner, this.remover].forEach(el => { el.classList.toggle('is-chat',
+   * isLikeGroup); ...; el.classList.toggle('is-broadcast', isBroadcast) })`.
+   *
+   * Без `is-chat` не срабатывает правило `styles/tweb/_chat.scss:1311-1316`
+   * (`margin-inline-start: 2.875rem` на `.bubble-content-wrapper`) — аватарная
+   * колонка (`.bubbles-group-avatar-container`, `position: absolute`, вне
+   * потока) ложится поверх бабла, а с ней и реакции.
+   *
+   * Единственный вызов — в конце `setPeer()`, на ОБОИХ узлах, одним местом,
+   * как в оригинале: `chatInner` там пересоздаётся заново на КАЖДЫЙ `setPeer`
+   * (нужно проставить класс снова), `remover` создаётся один раз в
+   * `constructBubbles()` и никогда не пересоздаётся — но класс на нём тоже
+   * ставится тут же, а не при создании: в `constructBubbles()` `this.chat`
+   * применять рано (лента только строится), а забыть `remover` при повторном
+   * `setPeer` значило бы рассинхронить анимацию удаления бабла
+   * (`.bubbles-remover`) с самой лентой. Вызов на `remover` идемпотентен —
+   * `isLikeGroup`/`isBroadcast` неизменны на весь срок жизни инстанса (см. ниже).
+   *
+   * `isLikeGroup`/`isBroadcast` читаются с `this.chat` — как в оригинале
+   * `Chat.isLikeGroup`/`Chat.isBroadcast` (chat.ts:145, appPeersManager).
+   * Оба поля на `ChatContext` неизменны на весь срок жизни инстанса ленты
+   * (хост, `VanillaFeed.tsx`, пересоздаёт `ChatBubbles` целиком при их смене).
+   *
+   * ВЫЧЕТЫ (два соседних тумблера того же forEach — предмета нет):
+   *  - `no-messages` — нужен асинхронный `Chat.hasMessages()` (chat.ts),
+   *    которого у ленты нет;
+   *  - `with-message-avatars` — гейтит `isVerificationBot(peerId)`, а ботов-
+   *    верификаторов в нашей модели не существует вовсе.
+   */
+  private applyChatTypeClasses(element: HTMLElement) {
+    element.classList.toggle('is-chat', !!this.chat.isLikeGroup)
+    element.classList.toggle('is-broadcast', !!this.chat.isBroadcast)
+  }
+
   // Порт tweb bubbles.ts:1439-1458 — дерево дословно.
   private constructBubbles() {
     const container = this.container = document.createElement('div')
@@ -874,6 +912,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     const chatInner = this.chatInner = document.createElement('div')
     chatInner.classList.add('bubbles-inner')
+    // `is-chat`/`is-broadcast` тут НЕ ставятся: этот `chatInner` — временный,
+    // первый же `setPeer()` (host `VanillaFeed.tsx` зовёт его сразу после
+    // конструктора) пересоздаёт `this.chatInner` целиком и переносит классы
+    // туда (см. докблок `applyChatTypeClasses`). `remover`, наоборот, живёт
+    // весь срок инстанса — но классы на него ставит тот же вызов в `setPeer`,
+    // а не этот конструктор.
 
     const removerContainer = document.createElement('div')
     removerContainer.classList.add('bubbles-remover-container')
@@ -1738,6 +1782,21 @@ export default class ChatBubbles implements BubbleGroupsHost {
       }
     }
 
+    // Хвост бабла — порт tweb :9707-9712. `canHaveTail` уже посчитан в
+    // `bubbleClasses` (класс `can-have-tail` стоит на `bubble` с самой сборки
+    // каркаса); `round` кладёт та же `bubbleClasses` по `m.type ===
+    // 'roundVideo'` (:78) — оба READ-ONLY здесь, вычислять их заново значило
+    // бы завести ВТОРОЙ источник правды. Узел — ПОСЛЕДНИЙ ребёнок
+    // `.bubble-content` (:9711 `bubbleContainer.append(generateTail())`): CSS
+    // (`_chatBubble.scss:2089-2103`) сам решает, виден ли он, по классам
+    // `.can-have-tail`/`.is-group-last`/`.is-forced-rounded` — узел безопасно
+    // держать в DOM и тогда, когда сейчас скрыт.
+    const canHaveTail = bubble.classList.contains('can-have-tail')
+    const isRound = bubble.classList.contains('round')
+    if (canHaveTail || isRound) {
+      bubbleContainer.append(generateTail())
+    }
+
     return bubble
   }
 
@@ -1750,11 +1809,15 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * тем же проходом. Почему мы не пересоздаём — см. докблок `onMessageEdit`.
    *
    * Порядок внутри — оригинала, и он не косметический:
-   *  • время в КОНЕЦ тела (:7630-7631 `messageDiv.append(timeSpan, clearfix())`);
+   *  • время в КОНЕЦ тела (:7630-7631 `messageDiv.append(timeSpan, clearfix())`)
+   *    — ИЛИ, у медиа без подписи, прямо на `.bubble-content` с классом
+   *    `is-floating` (:9257-9276, `isFloatingTime`/`appendBubbleTime(bubble,
+   *    bubbleContainer, …)`) — читай докблок про `isFloatingTime` ниже;
    *  • тред (:9682-9701) — ДО реакций, как в оригинале (:9703);
    *  • реакции последними, потому что время ПЕРЕЕЗЖАЕТ внутрь их контейнера
    *    (:9855 `reactionsElement.append(timeSpan)`), чтобы чипы и время встали
-   *    одной строкой-обёрткой.
+   *    одной строкой-обёрткой; сам контейнер реакций у медиа без подписи —
+   *    ребёнок `.bubble-content-wrapper`, а не `.message` (:9849-9851).
    */
   private renderMessageMeta(
     message: MyMessage,
@@ -1763,17 +1826,30 @@ export default class ChatBubbles implements BubbleGroupsHost {
     messageDiv: HTMLElement,
     setUnreadObserver?: (element: HTMLElement) => void,
   ): void {
+    // `.bubble-content-wrapper` — родитель `bubbleContainer` (`.bubble-content`,
+    // tweb :6497-6500). У медиа без подписи реакции встают СЮДА (:9850), а не в
+    // `messageDiv` — как и в оригинале, читаем узел через `querySelector`, а не
+    // тащим третьим параметром: владелец разметки уже отдал этот адрес методу
+    // `appendReactionsElementToBubble`.
+    const contentWrapper = bubble.querySelector<HTMLElement>(':scope > .bubble-content-wrapper')
+
     // Метод ИДЕМПОТЕНТЕН, как и `renderMessageReplies` ниже, и по той же
     // причине: вызывателей два, и правка застаёт прошлый хвост на месте.
     // Снимает его ВЛАДЕЛЕЦ — иначе «что здесь лежит» пришлось бы знать ещё и
-    // вызывателю. Время у сообщения с реакциями лежит внутри `.reactions`
-    // (:9855) и уходит вместе с контейнером, поэтому обход — по прямым детям.
-    // Прошлое поколение контейнера забирается ДО сноса: только в нём живёт
-    // предыдущая версия агрегата, по которой считается `changedResults`
-    // (порт appMessagesManager.ts:10651-10677 — у tweb обе версии на руках у
-    // владельца сообщения, у нас `message_edit` несёт только новую).
+    // вызывателю. Прошлое поколение узлов ищем по ВСЕМ трём возможным адресам
+    // (`messageDiv` — обычный бабл, `bubbleContainer` — floating без реакций,
+    // `contentWrapper` — floating с реакциями): какой из них сейчас занят,
+    // решают классы бабла, а они могли смениться (правка добавила/убрала
+    // медиа). Прошлое поколение контейнера реакций забирается ДО сноса: только
+    // в нём живёт предыдущая версия агрегата, по которой считается
+    // `changedResults` (порт appMessagesManager.ts:10651-10677 — у tweb обе
+    // версии на руках у владельца сообщения, у нас `message_edit` несёт только
+    // новую).
     const previousReactions = messageDiv.querySelector<HTMLElement>(':scope > .reactions')
-    messageDiv.querySelectorAll(':scope > .time, :scope > .reactions').forEach((node) => node.remove())
+      ?? contentWrapper?.querySelector<HTMLElement>(':scope > .reactions')
+    for (const owner of [messageDiv, bubbleContainer, contentWrapper]) {
+      owner?.querySelectorAll(':scope > .time, :scope > .reactions').forEach((node) => node.remove())
+    }
 
     // Точка вставки у оригинала меняется (подпись документа, floating), но
     // базовая именно эта; остальные приедут вместе со своими подсистемами.
@@ -1798,7 +1874,30 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // веток такую точку вставки объявляет ровно одна.
     const callSubtitle = messageDiv.querySelector<HTMLElement>('.bubble-call-subtitle')
     callSubtitle?.querySelector(':scope > .time')?.remove()
-    ;(callSubtitle ?? messageDiv).append(timeSpan)
+
+    // МЕДИА БЕЗ ПОДПИСИ — tweb :9257-9276. `has-floating-time` уже стоит на
+    // бабле (bubbleClasses.ts:129, тем же условием `isMessageEmpty`, каким
+    // оригинал считает `isFloatingTime`): `.message` у такого бабла ПУСТОЕ тело
+    // без текста, и класть время внутрь него нельзя — часть текстовых стилей
+    // `.message` (`float:right` вместо `position:absolute`) растянула бы время
+    // на всю ширину колонки, а не прижала к углу медиа. Оригинал в этой ветке
+    // вовсе СНОСИТ `messageDiv` из DOM (:9261 `messageDiv.remove()`) и кладёт
+    // время ПРЯМО на `.bubble-content` — соседом `.message`, а не потомком; мы
+    // `messageDiv` не удаляем (он остаётся пустым узлом тела — другая, отдельно
+    // прожитая часть порта), но адрес вставки времени — тот же сосед.
+    // `is-floating` — CSS-класс времени (`_chatBubble.scss:1818-1848`,
+    // `position: absolute; bottom: .1875rem; right: .1875rem`), без него узел
+    // остаётся в потоке `.message` со `position: static`.
+    const isFloatingTime = bubble.classList.contains('has-floating-time')
+    if (isFloatingTime) timeSpan.classList.add('is-floating')
+
+    if (callSubtitle) {
+      callSubtitle.append(timeSpan)
+    } else if (isFloatingTime) {
+      bubbleContainer.append(timeSpan)
+    } else {
+      messageDiv.append(timeSpan)
+    }
 
     // tweb :7638-7640. У ПОСТА КАНАЛА читающий узел — время, а не бабл: пост
     // бывает выше вьюпорта, и «увиден» он, только когда пользователь домотал до
@@ -1823,8 +1922,24 @@ export default class ChatBubbles implements BubbleGroupsHost {
       },
     )
     if (reactionsElement) {
-      reactionsElement.append(timeSpan)
-      messageDiv.append(reactionsElement)
+      // tweb :9849-9851 (`appendReactionsElementToBubble`): у floating-time
+      // узел реакций — ребёнок `.bubble-content-wrapper`, а НЕ `.message`
+      // (в оригинале `.message` в этой ветке вовсе снесён из DOM). Перенос
+      // ВРЕМЕНИ внутрь `reactionsElement` (`appendBubbleTime`, :9855) в
+      // оригинале стоит ТОЛЬКО в ветке `else` (:9852-9856) — у floating/
+      // service-ветки время туда не переезжает, а остаётся на
+      // `.bubble-content` (там его уже разместил код выше классом
+      // `is-floating`). Раньше здесь стоял безусловный
+      // `reactionsElement.append(timeSpan)` до этой развилки — время у
+      // floating-бабла С реакциями уезжало в `.bubble-content-wrapper`,
+      // другой узел дерева, где `position: absolute` резолвится не
+      // относительно медиа (см. docs/tweb/bubbles.md §4.21).
+      if (isFloatingTime) {
+        (contentWrapper ?? bubbleContainer).append(reactionsElement)
+      } else {
+        reactionsElement.append(timeSpan)
+        messageDiv.append(reactionsElement)
+      }
     }
   }
 
@@ -3462,6 +3577,15 @@ export default class ChatBubbles implements BubbleGroupsHost {
     } else {
       chatInner.classList.add('bubbles-inner')
     }
+    // `!samePeer` — самый частый путь (первый `setPeer` после монтирования,
+    // `reload()`) — даёт голый `bubbles-inner` без `is-chat`/`is-broadcast`
+    // (в `constructBubbles` они больше не ставятся, см. докблок
+    // `applyChatTypeClasses`); при `samePeer` они уже скопированы вместе с
+    // остальным `className` — их поставил этот же вызов на ПРОШЛОМ `setPeer`,
+    // и вызов ниже идемпотентен (`toggle` с явным булем). `remover` тем же
+    // вызовом — как в оригинальном forEach по обоим узлам.
+    this.applyChatTypeClasses(chatInner)
+    this.applyChatTypeClasses(this.remover)
 
     // tweb :5254-5270.
     const canScroll = samePeer && sameSearch
@@ -4972,8 +5096,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     // Снять наблюдение со СТАРОГО времени, запомнив рубеж. `unreaded` не
     // содержит узла, который наблюдатель уже отпустил (`onUnreadedInViewport`),
-    // — значит и перевешивать нечего.
-    const oldTime = messageDiv.querySelector<HTMLElement>('.time')
+    // — значит и перевешивать нечего. Ищем по ВСЕМУ баблу, а не только внутри
+    // `messageDiv`: у медиа без подписи (`has-floating-time`) время лежит
+    // соседом `.message`, на `.bubble-content` (`renderMessageMeta`), и поиск
+    // строго внутри `.message` его бы не нашёл.
+    const oldTime = bubble.querySelector<HTMLElement>('.time')
     const observedMid = oldTime ? this.unreaded.get(oldTime) : undefined
     if (oldTime && observedMid !== undefined) {
       this.observer?.unobserve(oldTime, this.unreadedObserverCallback)

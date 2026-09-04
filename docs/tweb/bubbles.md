@@ -252,6 +252,16 @@ section.bubbles-date-group                        ← одна на календ
   и плавает над медиа.
 - `next-is-message` вешается на name/reply, если следующий сиблинг — `.message` (9571–9575).
 
+**У нас (web-client):** узел хвоста раньше не был портирован вовсе — ни спрайта, ни вставки
+(`can-have-tail`/CSS уже стояли на месте, вставлять было нечего). Теперь оба на месте:
+`web-client/index.html:43` несёт `<symbol id="message-tail-filled" viewBox="0 0 11 20">`
+(порт tweb `index.html:64-68`, только этот один symbol — остальным нет вызывающего кода);
+`generateTail(asSpan?)` — дословный порт `utils.ts:43-63` в
+`web-client/src/components/chat/tail.ts:16-35`; `bubbles.ts::renderMessage` (`bubbles.ts:1775-1788`)
+аппендит его последним ребёнком `.bubble-content` при `can-have-tail || round`, порт условия
+tweb `bubbles.ts:9707-9712` — оба флага читаются с уже выставленных классов `bubble`
+(`bubbleClasses`), не считаются заново. Пины — `bubbles.tail.test.ts`.
+
 ## 3.2 time / time-inner (messageRender.ts:209–393)
 
 `MessageRender.setTime()` возвращает `span.time`, куда по порядку кладутся «части», и
@@ -557,6 +567,24 @@ div.reply.quote-like.quote-like-hoverable.quote-like-border[.quote-like-icon.rep
   При этом `timeSpan` переезжает ВНУТРЬ reactions-element (`appendBubbleTime`, 9855).
 - `USER_REACTIONS_INLINE = false` (bubbles.ts:260) — inline-режим в личках выключен, всегда block.
 
+**У нас (web-client, `components/chat/bubbles.ts::renderMessageMeta`):** развилка
+floating-time/`.message` портирована — у бабла с `has-floating-time` (медиа без подписи)
+время (`is-floating`) вставляется прямо в `bubble-content` (сосед `.message`, не потомок),
+а контейнер реакций — в `bubble-content-wrapper`; иначе оба уходят в `.message`, как раньше.
+**Комбинация floating-time + реакции:** перенос времени ВНУТРЬ `reactionsElement`
+(`appendBubbleTime`, 9855) в оригинале стоит ТОЛЬКО в ветке `else` (не floating/service,
+9852–9856) — у floating-бабла С реакциями время НЕ переезжает в контейнер реакций и
+остаётся на `.bubble-content`, где его уже разместил шаг `is-floating` выше. Если время
+переложить в `reactionsElement` безусловно (до развилки), оно физически окажется в
+`bubble-content-wrapper` — другом узле дерева, где абсолютное позиционирование
+`is-floating` резолвится не относительно медиа; пилюля уедет с угла. Пин —
+`bubbles.floatingTime.test.ts` («время у стикера С реакциями остаётся на .bubble-content»).
+`service`-ветка и `is-multiple-documents` не портированы: служебные баблы (`renderServiceMessage`)
+собираются отдельным путём и `renderMessageMeta` не проходят, а альбом документов у нас
+не поддержан вовсе (см. §8.2.5 — впрочем, актуальная карта файлов лежит в
+`web-client/CLAUDE.md` «Лента чата — императивная»: `MessageRow.tsx`/`ChatFeed.tsx` из §8
+ниже сняты вместе с React-лентой, §8 не актуализирован).
+
 ## 4.22 Inline reply-markup (клавиатура под баблом)
 
 `createInlineReplyMarkup({rows, chat, message})` (bubbleParts/inlineReplyMarkup.ts) →
@@ -622,6 +650,27 @@ DOM — в доке про комментарии.
   (bubbleGroups.ts:138, 163, 291). Аватар `position: sticky` — «едет» вдоль группы (§7.2).
   peerId для форвардов в Replies-чате — `fwdFromId` (83–117).
 - Создаётся один раз на ГРУППУ (по firstItem) в `groupBubbles` (bubbles.ts:6002–6016).
+
+**У нас (web-client):** аватарная колонка сама (`bubbles-group-avatar-container`,
+`position: absolute; inset: 0`) уже стояла на месте, но отступ под неё не срабатывал —
+класс `is-chat` на `.bubbles-inner`/`.bubbles-remover` не ставился вовсе, поэтому правило
+`styles/tweb/_chat.scss:1311-1316` (`margin-inline-start: 2.875rem` на `.bubble-content-wrapper`)
+молчало, и абсолютно спозиционированная колонка ложилась поверх бабла (а с ней и реакции).
+Порт — `applyChatTypeClasses` (`web-client/src/components/chat/bubbles.ts:897-900`, докблок
+:871-899), дословный `forEach` из tweb `ChatBubbles.finishPeerChange` (`bubbles.ts:5787-5792`):
+ставит `is-chat`/`is-broadcast` с `this.chat.isLikeGroup`/`isBroadcast`. Вызывается ОДИН раз —
+в конце `setPeer()` (`bubbles.ts:3587-3588`), на ОБОИХ узлах, одним местом, как в оригинальном
+`finishPeerChange`. `chatInner` там пересоздаётся заново на каждый `setPeer`, поэтому класс
+нужно ставить снова; `remover` создаётся один раз в `constructBubbles()` и никогда не
+пересоздаётся, но классы на него ставятся тоже в `setPeer`, а не при создании (там `this.chat`
+применять рано) — вызов идемпотентен, потому что `isLikeGroup`/`isBroadcast` неизменны на весь
+срок жизни инстанса. `constructBubbles()` классы не ставит вовсе: `chatInner`, который она
+создаёт, — временный, его тут же на первом `setPeer` (хост `VanillaFeed.tsx` зовёт его сразу
+после конструктора) заменяет новый узел; вызов `applyChatTypeClasses` на этом временном узле
+был мёртвым кодом (удалён) — подтверждено мутацией: вырезание красило 0 из 492 тестов. Вычеты:
+`no-messages` (нужен асинхронный `Chat.hasMessages()`, которого у ленты нет) и
+`with-message-avatars` (гейтит ботов-верификаторов — в нашей модели не существует).
+Пины — `bubbles.avatarOffset.test.ts`.
 
 ## 5.5 Date-группы и монтирование
 
