@@ -94,14 +94,16 @@
  *    `AuthCardsHost` — применение темы при старте живёт в `src/index.ts`,
  *    здесь только обработчик клика.
  *
- * ── ВРЕМЕННЫЕ карточки (снимается задачами 4-5) ─────────────────────────────
- * Семи настоящих Solid-карточек ещё нет. Вместо `lazy(() => import('./cards/
- * SignInCard.solid'))` — `lazy()` поверх `Promise.resolve()`: лень должна быть
- * НАСТОЯЩЕЙ (Solid откладывает первый рендер `lazy`-компонента на микротаск
- * независимо от источника промиса), иначе пин «предыдущая карточка держится в
- * DOM, пока грузится следующая» проверял бы то, чего на самом деле не
- * происходит. По готовности задач 4/5 — заменить каждую константу на настоящий
- * `lazy(() => import(...))`, эта функция и комментарий снимаются целиком.
+ * ── ВРЕМЕННЫЕ карточки (снимается задачей 5) ────────────────────────────────
+ * Задача 4 перевела signIn/authCode/password на настоящий `lazy(() =>
+ * import('./cards/...'))`. Четыре карточки без предмета в этой задаче
+ * (signUp/emailRecover/signQR/signImport) остаются на `stubCard` — `lazy()`
+ * поверх `Promise.resolve()`: лень должна быть НАСТОЯЩЕЙ (Solid откладывает
+ * первый рендер `lazy`-компонента на микротаск независимо от источника
+ * промиса), иначе пин «предыдущая карточка держится в DOM, пока грузится
+ * следующая» проверял бы то, чего на самом деле не происходит. По готовности
+ * задачи 5 — заменить оставшиеся константы, `stubCard` и этот комментарий
+ * снимаются целиком.
  */
 import {
   Match,
@@ -158,9 +160,11 @@ function stubCard<K extends CardName>(name: K): Component<{ spec: Extract<CardSp
   )
 }
 
-const SignInCard = lazy(async () => ({ default: stubCard('signIn') }))
-const AuthCodeCard = lazy(async () => ({ default: stubCard('authCode') }))
-const PasswordCard = lazy(async () => ({ default: stubCard('password') }))
+// Задача 4 (волна 3, этап 1): signIn/authCode/password — настоящие карточки.
+// Заглушки для signUp/emailRecover/signQR/signImport остаются до задачи 5.
+const SignInCard = lazy(() => import('./cards/SignInCard.solid'))
+const AuthCodeCard = lazy(() => import('./cards/AuthCodeCard.solid'))
+const PasswordCard = lazy(() => import('./cards/PasswordCard.solid'))
 const SignUpCard = lazy(async () => ({ default: stubCard('signUp') }))
 const EmailRecoverCard = lazy(async () => ({ default: stubCard('emailRecover') }))
 const SignQRCard = lazy(async () => ({ default: stubCard('signQR') }))

@@ -36,12 +36,31 @@ let AuthCardsHost: typeof import('./AuthCardsHost.solid').default
 let dispose: (() => void) | undefined
 let host: HTMLDivElement | undefined
 
+// Задача 4: signIn/authCode/password теперь настоящие карточки — `auth`
+// нужны методы, которые они реально зовут (SignInCard дёргает
+// `nearestCountry` уже на `onMount`, до любого клика).
 const mockManagers = () =>
-  ({ auth: { switchAccount: vi.fn().mockResolvedValue(true) } }) as unknown as Managers
+  ({
+    auth: {
+      switchAccount: vi.fn().mockResolvedValue(true),
+      nearestCountry: vi.fn().mockResolvedValue(''),
+      requestCode: vi.fn(),
+      passkeyLoginBegin: vi.fn(),
+      passkeyLoginFinish: vi.fn(),
+    },
+  }) as unknown as Managers
 
 beforeEach(async () => {
   vi.resetModules()
   localStorage.clear()
+  // `vi.resetModules()` даёт КАЖДОМУ импорту ниже свежий экземпляр модульного
+  // графа, включая `@lib/langPack` — глобальный сетап (`src/test/setup.ts`)
+  // наполнил английским СТАРЫЙ экземпляр до сброса, свежий пуст. Раньше это
+  // было не видно: хост сам не переводит текст (только иконки), а карточки
+  // задачи 4 (SignInCard и т.д.) — первые в этом файле, кто реально зовёт
+  // `i18n()`. Тот же приём, что у `src/test/setup.ts::beforeAll` — импорт
+  // ради побочного эффекта, — но для СВЕЖЕГО графа этого прогона.
+  await import('../../test/lang')
   ;({ render } = await import('solid-js/web'))
   ;({ navigateAuth } = await import('./authFlow.solid'))
   ;({ default: AuthCardsHost } = await import('./AuthCardsHost.solid'))
@@ -74,6 +93,13 @@ async function waitForCard(root: HTMLElement, testId: string) {
   })
 }
 
+// signIn — задача 4, настоящая карточка без `[data-testid]` заглушки. Маркер
+// — её собственная разметка: `.input-select` (глобальный класс CountryInput,
+// есть только на signIn среди наших карточек).
+async function waitForSignIn(root: HTMLElement) {
+  await vi.waitFor(() => expect(root.querySelector('.input-select')).not.toBeNull())
+}
+
 function cardNodes(root: HTMLElement): Element[] {
   const container = root.querySelector('[class*="cardsContainer"]')!
   return Array.from(container.children)
@@ -83,7 +109,7 @@ describe('AuthCardsHost.solid — переход между карточками
   it('пин: в контейнере никогда не бывает двух карточек — уходящая доигрывает exit до входа новой', async () => {
     navigateAuth({ name: 'signIn' })
     const root = mount()
-    await waitForCard(root, 'stub-card-signIn')
+    await waitForSignIn(root)
     expect(cardNodes(root)).toHaveLength(1)
 
     navigateAuth({ name: 'signQR' })
@@ -101,7 +127,7 @@ describe('AuthCardsHost.solid — переход между карточками
     // Пока играет exit прежней карточки (happy-dom не рождает transitionend
     // сам), в контейнере — ровно одна карточка: старая, с классами выхода.
     expect(cardNodes(root)).toHaveLength(1)
-    expect(root.querySelector('[data-testid="stub-card-signIn"]')).not.toBeNull()
+    expect(root.querySelector('.input-select')).not.toBeNull()
     expect(root.querySelector('[data-testid="stub-card-signQR"]')).toBeNull()
 
     // Доигрываем exit вручную — на реальном экране это делает браузер.
@@ -114,21 +140,21 @@ describe('AuthCardsHost.solid — переход между карточками
 
     await waitForCard(root, 'stub-card-signQR')
     expect(cardNodes(root)).toHaveLength(1)
-    expect(root.querySelector('[data-testid="stub-card-signIn"]')).toBeNull()
+    expect(root.querySelector('.input-select')).toBeNull()
   })
 
   it('пин: предыдущая карточка остаётся в DOM на время загрузки ленивого чанка следующей', async () => {
     navigateAuth({ name: 'signIn' })
     const root = mount()
-    await waitForCard(root, 'stub-card-signIn')
+    await waitForSignIn(root)
 
     navigateAuth({ name: 'password', payload: { token: 't', hint: 'h' } })
 
     // СИНХРОННО сразу после навигации: новый ленивый чанк ещё не резолвился
     // (резолв — микротаска), поэтому `stableCard` обязана отдать ПРЕДЫДУЩУЮ
     // карточку, а не пустоту. Без `await` — это и есть проверка «не мигнуло».
-    expect(root.querySelector('[data-testid="stub-card-signIn"]')).not.toBeNull()
-    expect(root.querySelector('[data-testid="stub-card-password"]')).toBeNull()
+    expect(root.querySelector('.input-select')).not.toBeNull()
+    expect(root.querySelector('[class*="pagePassword"]')).toBeNull()
   })
 })
 
@@ -136,7 +162,7 @@ describe('AuthCardsHost.solid — кнопка «назад» и переклю�
   it('кнопка «назад» скрыта без PREV_ACCOUNT_KEY в localStorage', async () => {
     navigateAuth({ name: 'signIn' })
     const root = mount()
-    await waitForCard(root, 'stub-card-signIn')
+    await waitForSignIn(root)
 
     expect(root.querySelector('[class*="closeButton"]')).toBeNull()
     expect(root.querySelector('[class*="themeButton"]')).not.toBeNull()
@@ -147,7 +173,7 @@ describe('AuthCardsHost.solid — кнопка «назад» и переклю�
     navigateAuth({ name: 'signIn' })
     const managers = mockManagers()
     const root = mount({ managers })
-    await waitForCard(root, 'stub-card-signIn')
+    await waitForSignIn(root)
 
     const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {})
 
@@ -176,7 +202,7 @@ describe('AuthCardsHost.solid — кнопка «назад» и переклю�
 
     navigateAuth({ name: 'signIn' })
     const root = mount()
-    await waitForCard(root, 'stub-card-signIn')
+    await waitForSignIn(root)
 
     const themeBtn = root.querySelector<HTMLElement>('[class*="themeButton"]')!
     expect(themeBtn).not.toBeNull()
