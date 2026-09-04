@@ -26,9 +26,11 @@
 //
 // `onFocusChange` (React-версия его несла — для `TrackingMonkey`, которая
 // вешает focus/blur на инпут) СНЯТ ревью: у `AuthCodeCard.solid.tsx` сегодня
-// обезьянка-заглушка (`div.media-sticker-wrapper` без канв, см. её докблок),
-// потребителя пропа нет. Появится настоящий Solid-порт `TrackingMonkey` —
-// добавить проп обратно вместе с ним, а не заранее.
+// обезьянка-заглушка (`div.media-sticker-wrapper` без канв, см. её докблок и
+// ЗАДАЧУ #128 — прежний React-порт `TrackingMonkey.tsx` снесён задачей 6
+// волны 3 как мёртвый код, Solid-версии никогда не было), потребителя пропа
+// нет. Появится Solid-порт `TrackingMonkey` (задача #128) — добавить проп
+// обратно вместе с ним, а не заранее.
 import { createSignal, Index, Show, type JSX } from 'solid-js'
 import classNames from '@helpers/string/classNames'
 import { subscribeOn } from '@helpers/solid/subscribeOn'
