@@ -87,13 +87,27 @@ describe('AuthCodeCard.solid: исходы ввода кода', () => {
     await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith({ name: 'signUp', payload: { token: 'su1' } }))
   })
 
-  it('неверный код — ошибка показана, поле сброшено', async () => {
+  it('неверный код — ошибка показана, поле сброшено, ФОКУС ВОЗВРАЩЁН на поле', async () => {
     const signIn = vi.fn().mockRejectedValue(new Error('PHONE_CODE_INVALID'))
     const { typeCode, input } = mount(signIn)
+    // Счётчик, а не `document.activeElement`: happy-dom не блюрит элемент при
+    // простановке `disabled` (в реальном браузере — блюрит, поэтому у tweb
+    // возврат фокуса вообще нужен), так что `activeElement` остался бы
+    // «сфокусирован» и без фикса — пин был бы зелёным всегда. Спай на
+    // `.focus()` проверяет, что код РЕАЛЬНО зовёт возврат фокуса — независимо
+    // от того, симулирует ли окружение сам блюр.
+    const focusSpy = vi.spyOn(HTMLInputElement.prototype, 'focus')
+    const callsBeforeError = focusSpy.mock.calls.length
 
     typeCode('00000')
     await vi.waitFor(() => expect(host!.textContent).toContain('Invalid code'))
     expect(input().value).toBe('')
+    // tweb AuthCodeCard.tsx:144-149: `codeInputField.disabled = false` (снять,
+    // прежде фокусить — выключенный инпут фокус не берёт) →
+    // `fastRaf(() => codeInputField.input.focus())`. Без этого юзер заперт:
+    // набрать код заново без мыши нельзя (инпут выключен на время busy()).
+    await vi.waitFor(() => expect(focusSpy.mock.calls.length).toBeGreaterThan(callsBeforeError))
+    focusSpy.mockRestore()
   })
 
   it('карандаш у номера — назад на signIn без запроса к серверу', () => {

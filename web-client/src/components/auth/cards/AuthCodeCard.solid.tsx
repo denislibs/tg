@@ -10,6 +10,13 @@
 // делает НЕ угловая кнопка, а карандаш рядом с номером в шапке карточки
 // (`.phoneEdit` → navigate('signIn')) — портирован 1:1.
 //
+// Фокус на поле ставится БЕЗУСЛОВНО (`onMount`) — это НЕ то же упущение, что
+// было у `SignInCard.solid.tsx` (там `IS_TOUCH_SUPPORTED`-гейт добавлен
+// ревью): у tweb `AuthCodeCard.tsx:305-309` `focusWhenConnected(codeInputField.
+// input)` тоже БЕЗ гейта — тач-проверку tweb ставит только на телефонном поле
+// первой карточки (клавиатура сама всплывает от смены типа инпута), здесь
+// пользователь уже коснулся экрана, отправляя номер, — форма ожидаема.
+//
 // ── Обезьянка (`TrackingMonkey`) — ЗАГЛУШКА, не входит в периметр задачи 4 ──
 // tweb monkeys/tracking.ts — lottie-анимация (idle+tracking канвы, кадр по
 // проценту набранного). У нас есть готовый React-порт (`components/
@@ -63,6 +70,7 @@ export default function AuthCodeCard(props: { spec: Spec }): JSX.Element {
     if (busy()) return
     setError('')
     setBusy(true)
+    let refocus = false
     try {
       const res = await managers.auth.signIn(fullPhone(), code, 'web', 'browser')
       if (res.passwordNeeded) {
@@ -77,8 +85,16 @@ export default function AuthCodeCard(props: { spec: Spec }): JSX.Element {
     } catch {
       setError('PHONE_CODE_INVALID')
       setValue('')
+      refocus = true
     } finally {
       setBusy(false)
+      // tweb AuthCodeCard.tsx:144-149: `disabled = false` СНАЧАЛА (выключенный
+      // инпут фокус не берёт), фокус — `fastRaf`, то есть кадром позже, когда
+      // `disabled` уже реально снят в DOM. `setBusy(false)` выше пишет сигнал
+      // синхронно, но реальный commit в DOM у Solid идёт отдельным проходом —
+      // `requestAnimationFrame` даёт этому проходу случиться первым. Только
+      // на ветке ошибки — успешный путь уводит с карточки, фокусить нечего.
+      if (refocus) requestAnimationFrame(() => codeInputEl?.focus())
     }
   }
 
