@@ -1165,6 +1165,7 @@ const ru = {
   'Passkeys.LastUsed': 'Использован',
   'Passkeys.Created': 'Создан',
   'Login.Passkey.Action': 'Войти по ключу доступа',
+  'Login.Passkey': 'Войти по ключу доступа >',
   // Экран входа (tweb langSign.ts). `**…**` — жирный, ' > ' — стрелка-иконка,
   // '\n' — перенос строки; разбор — components/auth/superFormatter.tsx.
   'Login.QR.Title': 'Вход по QR-коду',
@@ -1175,6 +1176,7 @@ const ru = {
   'Login.QR.Help3':
     'Наведите телефон на этот экран, чтобы подтвердить вход',
   'Login.ByPhone': 'Войти по номеру телефона',
+  'Login.QR.Cancel': 'Войти по номеру телефона >',
   'Login.ByPasskey': 'Войти по ключу доступа',
   'Login.Code.SentSms': 'Мы отправили Вам SMS\nс кодом.',
   PHONE_CODE_INVALID: 'Неверный код',
@@ -1200,6 +1202,8 @@ const ru = {
   'Login.ForgotPassword': 'Забыли пароль?',
   'Login.ResetPassword.Title': 'Сброс пароля',
   'Login.ResetPassword.CodeHint': 'Введите код, отправленный на почту',
+  'Login.ResetPassword.Subtitle':
+    'Введите код, который мы только что отправили\nна вашу почту **%s**.',
   'Login.Code.Expired': 'Код истёк. Запросите новый.',
   'Login.SessionExpired': 'Сессия истекла. Войдите заново.',
   // Сброс аккаунта, когда почта восстановления не привязана
