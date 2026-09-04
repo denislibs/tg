@@ -34,7 +34,11 @@ afterEach(() => {
   confirmationPopupMock.mockReset()
 })
 
-function mount(auth: Partial<Managers['auth']> = {}, navigate = vi.fn()) {
+function mount(
+  auth: Partial<Managers['auth']> = {},
+  navigate = vi.fn(),
+  payload: { token: string; hint: string; emailPattern?: string } = { token: 'tok1', hint: 'my hint' },
+) {
   const toIm = vi.fn().mockResolvedValue(undefined)
   const managers = {
     auth: {
@@ -58,7 +62,7 @@ function mount(auth: Partial<Managers['auth']> = {}, navigate = vi.fn()) {
   dispose = render(
     (() => (
       <AuthFlowContext.Provider value={ctx}>
-        <PasswordCard spec={{ name: 'password', payload: { token: 'tok1', hint: 'my hint' } }} />
+        <PasswordCard spec={{ name: 'password', payload }} />
       </AuthFlowContext.Provider>
     )) as () => never,
     host,
@@ -111,7 +115,7 @@ describe('PasswordCard.solid: ввод пароля', () => {
 })
 
 describe('PasswordCard.solid: «забыли пароль»', () => {
-  it('успешный запрос кода восстановления — переход на emailRecover с маской почты', async () => {
+  it('успешный запрос кода восстановления — переход на emailRecover с маской почты И hint (Cancel понесёт его обратно)', async () => {
     const { navigate, forgotLink } = mount({
       requestPasswordRecovery: vi.fn().mockResolvedValue({ emailPattern: 'a***@b.com' }),
     })
@@ -120,40 +124,66 @@ describe('PasswordCard.solid: «забыли пароль»', () => {
     await vi.waitFor(() =>
       expect(navigate).toHaveBeenCalledWith({
         name: 'emailRecover',
-        payload: { token: 'tok1', emailPattern: 'a***@b.com' },
+        payload: { token: 'tok1', emailPattern: 'a***@b.com', hint: 'my hint' },
       }),
     )
   })
 
-  it('resend_too_soon ПОСЛЕ remount с тем же токеном — возвращает emailRecover с прежней маской, а не общую ошибку (находка 1 ревью)', async () => {
-    // Карточка размонтируется на каждый navigate (AuthCardsHost.solid.tsx,
-    // mode="outin") — переиграть это в тесте нельзя иначе, кроме как реально
-    // dispose()/mount() между двумя попытками, тем же `token` (одна и та же
-    // сессия сброса пароля).
-    const requestPasswordRecovery = vi
-      .fn()
-      .mockResolvedValueOnce({ emailPattern: 'a***@b.com' })
-      .mockResolvedValueOnce({ error: 'resend_too_soon' })
-    const auth = { requestPasswordRecovery }
+  it('resend_too_soon БЕЗ маски в payload (первый визит, forgot ещё не удавался) — общая ошибка в надпись кнопки', async () => {
+    const { submitBtn, forgotLink } = mount({
+      requestPasswordRecovery: vi.fn().mockResolvedValue({ error: 'resend_too_soon' }),
+    })
 
-    const first = mount(auth)
-    first.forgotLink().click()
+    forgotLink().click()
+    await vi.waitFor(() => expect(submitBtn().textContent).toContain('Something went wrong'))
+  })
+
+  it('resend_too_soon ПОСЛЕ возврата с emailRecover (маска пришла ПАЙЛОАДОМ, не модульным кэшем) — снова emailRecover, а не общая ошибка (находка 1 ревью, задача 5)', async () => {
+    // Реальный путь: PasswordCard #1 (payload без emailPattern, пришёл с
+    // authCode) → forgot() успешен → navigate(emailRecover, {..emailPattern}) →
+    // EmailRecoverCard → Cancel → navigate(password, {..emailPattern}) —
+    // ВОТ ЭТОТ возврат и подаёт маску следующему монтированию PasswordCard.
+    // Карточка размонтируется на КАЖДЫЙ navigate (хост, mode="outin"), поэтому
+    // единственный переносчик между двумя визитами — пропс, не переменная
+    // модуля: если бы порча вернула чтение к module-level Map, этот тест не
+    // отличил бы её от правильной реализации, ПОКА mount() не получает маску
+    // ИСКЛЮЧИТЕЛЬНО через payload — что здесь и происходит.
+    const requestPasswordRecovery = vi.fn().mockResolvedValue({ error: 'resend_too_soon' })
+    const { navigate, forgotLink } = mount(
+      { requestPasswordRecovery },
+      vi.fn(),
+      { token: 'tok1', hint: 'my hint', emailPattern: 'a***@b.com' }, // ← вернулись Cancel'ом
+    )
+
+    forgotLink().click()
     await vi.waitFor(() =>
-      expect(first.navigate).toHaveBeenCalledWith({
+      expect(navigate).toHaveBeenCalledWith({
         name: 'emailRecover',
-        payload: { token: 'tok1', emailPattern: 'a***@b.com' },
+        payload: { token: 'tok1', emailPattern: 'a***@b.com', hint: 'my hint' },
       }),
     )
+  })
+
+  it('модульного кэша больше нет: РАЗНЫЕ монтирования с РАЗНЫМИ token в payload не делят маску', async () => {
+    const requestPasswordRecovery = vi.fn().mockResolvedValue({ error: 'resend_too_soon' })
+
+    // Первое монтирование "видело" маску для tok1 (как будто уже вернулось
+    // Cancel'ом), второе — СВЕЖИЙ token без своей маски. Если бы где-то в
+    // модуле пережил кэш `token → pattern`, он на это не влияет ПО КЛЮЧУ — но
+    // сам факт существования такого кэша противоречит требованию задачи 5
+    // («модульный Map удалить целиком»); этот тест — по наблюдаемому
+        // поведению: у tok2 своей маски в payload нет → общая ошибка, а не
+    // emailRecover с чужой маской.
+    const first = mount({ requestPasswordRecovery }, vi.fn(), { token: 'tok1', hint: 'h1', emailPattern: 'a***@b.com' })
     first.dispose()
 
-    const second = mount(auth)
-    second.forgotLink().click()
-    await vi.waitFor(() =>
-      expect(second.navigate).toHaveBeenCalledWith({
-        name: 'emailRecover',
-        payload: { token: 'tok1', emailPattern: 'a***@b.com' },
-      }),
+    const { submitBtn: submitBtn2, forgotLink: forgotLink2 } = mount(
+      { requestPasswordRecovery },
+      vi.fn(),
+      { token: 'tok2', hint: 'h2' },
     )
+    forgotLink2().click()
+    await vi.waitFor(() => expect(submitBtn2().textContent).toContain('Something went wrong'))
   })
 })
 

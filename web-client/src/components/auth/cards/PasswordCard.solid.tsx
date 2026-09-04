@@ -19,8 +19,9 @@
 // ── Наше расширение против tweb (есть предмет — REST-таксономия ошибок) ─────
 // `resend_too_soon` — сервер держит паузу повторной отправки кода
 // восстановления; своего таймера клиент не заводит (см. тип `ForgotOutcome` у
-// прежней React-версии). Маска почты — В МОДУЛЬНОМ КЭШЕ (`recoveryPatternByToken`
-// ниже), КЛЮЧ — `token`, а НЕ closure-переменная карточки.
+// прежней React-версии). Маска почты едет НА ПЕРЕХОДАХ — `authFlow.solid.tsx`
+// `CardPayloadMap.password.emailPattern` / `CardPayloadMap.emailRecover.hint`
+// — а не в closure/модульном кэше карточки.
 //
 // РЕВЬЮ ЗАДАЧИ 4 (находка 1): прежняя редакция держала маску closure-
 // переменной компонента и была НЕДОСТИЖИМА — карточка размонтируется на
@@ -28,11 +29,17 @@
 // (успех → emailRecover) и «forgot» #2 (после Cancel на emailRecover,
 // `resend_too_soon`) `PasswordCard` успевает размонтироваться и
 // перемонтироваться заново — переменная стартует пустой КАЖДЫЙ раз, условие
-// `resend_too_soon && lastEmailPattern` не выполнялось НИКОГДА. Модульный
-// кэш (тот же приём, что `currentCard` в `authFlow.solid.tsx` — сигнал
-// пережил бы владельца-компонент точно так же) переживает перемонтирование;
-// ключ — `token`, потому что РАЗНЫЕ попытки входа (разные `password_token`)
-// не должны делить одну маску.
+// `resend_too_soon && lastEmailPattern` не выполнялось НИКОГДА. ПРАВКА
+// ЗАДАЧИ 4 заменила её МОДУЛЬНЫМ `Map` (`recoveryPatternByToken`, ключ —
+// `token`) — тот пережил бы перемонтирование, но ревью ЗАДАЧИ 5 признало и
+// этот слой неверным: кэш не чистится нигде и живёт до перезагрузки страницы
+// целиком, а не до конца попытки входа (в React-версии это состояние умирало
+// вместе с хостом). ШТАТНЫЙ путь — `CardPayloadMap`: `forgot()` кладёт маску в
+// переход на `emailRecover` (вместе с `hint`, которого там иначе бы не было —
+// см. докблок `authFlow.solid.tsx::CardPayloadMap.emailRecover`), а Cancel на
+// `emailRecover` везёт её ОБРАТНО сюда тем же способом. Модульного кэша
+// (и вообще какого-либо состояния, пережившего `dispose()` карточки) в этом
+// файле больше нет.
 import { createSignal, onMount, Show, type JSX } from 'solid-js'
 import Button from '@components/buttonTsx.solid'
 import { IconTsx } from '@components/iconTsx.solid'
@@ -49,12 +56,13 @@ type Spec = Extract<CardSpec, { name: 'password' }>
 // tweb: `mediaSizes.isMobile ? 100 : 130` — тот же выбор, что и у AuthCodeCard.
 const MONKEY_SIZE = 130
 
-const recoveryPatternByToken = new Map<string, string>()
-
 export default function PasswordCard(props: { spec: Spec }): JSX.Element {
   const { managers, navigate, toIm } = useAuthFlow()
   const token = () => props.spec.payload.token
   const hint = () => props.spec.payload.hint
+  // Маска, привезённая НАЗАД из emailRecover (Cancel) — см. докблок файла.
+  // Отсутствует при первом приходе с authCode.
+  const cachedPattern = () => props.spec.payload.emailPattern
 
   const [error, setError] = createSignal(false)
   // tweb PasswordCard.tsx:145-148 (пустая отправка): `passwordInput.classList.
@@ -120,16 +128,15 @@ export default function PasswordCard(props: { spec: Spec }): JSX.Element {
     setBusy(false)
 
     if ('emailPattern' in res) {
-      recoveryPatternByToken.set(token(), res.emailPattern)
-      navigate({ name: 'emailRecover', payload: { token: token(), emailPattern: res.emailPattern } })
+      navigate({ name: 'emailRecover', payload: { token: token(), emailPattern: res.emailPattern, hint: hint() } })
       return
     }
     // Пауза повторной отправки — код из прошлой отправки ещё жив, маска у нас
-    // уже есть (модульный кэш — см. докблок файла): возвращаем на ту же
-    // карточку, вводить его.
-    const cachedPattern = recoveryPatternByToken.get(token())
-    if (res.error === 'resend_too_soon' && cachedPattern) {
-      navigate({ name: 'emailRecover', payload: { token: token(), emailPattern: cachedPattern } })
+    // уже есть (пришла ПАЙЛОАДОМ при возврате Cancel'ом с emailRecover — см.
+    // докблок файла): возвращаем на ту же карточку, вводить его.
+    const pattern = cachedPattern()
+    if (res.error === 'resend_too_soon' && pattern) {
+      navigate({ name: 'emailRecover', payload: { token: token(), emailPattern: pattern, hint: hint() } })
       return
     }
     // Почты нет — вместо ошибки предлагаем сбросить аккаунт: две
