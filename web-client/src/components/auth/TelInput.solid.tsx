@@ -15,7 +15,7 @@
 // поэтому значение атрибута считает карточка (см. `countries.ts::leftPattern`).
 import { createEffect, on, onMount, type JSX } from 'solid-js'
 import classNames from '@helpers/string/classNames'
-import { placeCaretAtEnd } from '@shared/lib/caret'
+import { placeCaretAtEnd, syncContentEditableValue } from '@shared/lib/caret'
 import { IS_ANDROID, IS_APPLE } from '@environment/userAgent'
 
 export type TelInputSolidProps = {
@@ -99,13 +99,20 @@ export default function TelInput(props: TelInputSolidProps): JSX.Element {
   // (el ещё `undefined`) и первое значение осталось бы неотражённым до первой
   // же смены `props.value`. `createEffect` идёт отдельным проходом ПОСЛЕ
   // коммита — el уже назначен.
+  //
+  // `syncContentEditableValue`, а не голое `el.textContent = value` за guard'ом
+  // строкового равенства — см. её докблок в `shared/lib/caret.ts`: после
+  // удаления браузером ПОСЛЕДНЕГО символа узел остаётся с одиноким `<br>`,
+  // строковое сравнение с этим не считается (`textContent` всё равно `''`), и
+  // guard навсегда оставлял бы поле с лишней строкой внутри — ровно вторая
+  // строка, на которую выросло поле телефона (дефект «поле выросло вдвое»
+  // при пустом значении).
   createEffect(
     on(
       () => props.value,
       (value) => {
-        if (!el || el.textContent === value) return
-        el.textContent = value
-        if (document.activeElement === el) placeCaretAtEnd(el)
+        if (!el) return
+        syncContentEditableValue(el, value)
       },
     ),
   )
@@ -125,7 +132,23 @@ export default function TelInput(props: TelInputSolidProps): JSX.Element {
             pasted = undefined
             placeCaretAtEnd(el)
           }
-          props.onInput(el.textContent ?? '')
+          const raw = el.textContent ?? ''
+          // Самоисцеление ДО вызова владельца: браузер мог оставить лишний
+          // узел (одинокий `<br>` — Chrome/Safari-квирк на удалении
+          // последнего символа контенте­дитабла), из-за чего `el.textContent`
+          // уже совпадает с `raw`, но СТРУКТУРА узла — нет.
+          syncContentEditableValue(el, raw)
+          props.onInput(raw)
+          // Досинхронизация ПОСЛЕ владельца, а не только эффектом по
+          // `props.value` (ниже): `onInput` у владельца зовёт `setPhone`
+          // СИНХРОННО, и `props.value` тут же читает уже НОВОЕ значение —
+          // но если оно совпало со СТАРЫМ (оба конца схлопываются в тот же
+          // «+», см. `SignInCard.solid.tsx::onPhoneInput`), Solid-сигнал не
+          // меняется, нижестоящий `createEffect(on(() => props.value, …))`
+          // не перезапускается, и поле осталось бы показывать `raw` (уже
+          // очищенный самоисцелением, но НЕ переписанный обратно в «+»)
+          // вместо авторитетного значения владельца.
+          syncContentEditableValue(el, props.value)
         }}
       />
       <div class="input-field-border" />

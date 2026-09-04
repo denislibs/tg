@@ -42,7 +42,7 @@
 // в эффекте (аналог React `useLayoutEffect` + `setValueSilently`).
 import { createEffect, on, onMount, type JSX } from 'solid-js'
 import classNames from '@helpers/string/classNames'
-import { placeCaretAtEnd } from '@shared/lib/caret'
+import { placeCaretAtEnd, syncContentEditableValue } from '@shared/lib/caret'
 
 export type InputFieldSolidProps = {
   value: string
@@ -63,13 +63,19 @@ export default function InputField(props: InputFieldSolidProps): JSX.Element {
   // комментарий в `TelInput.solid.tsx`: вызов стоит выше JSX по тексту
   // функции, `ref={el}` назначается позже, `createRenderEffect` увидел бы
   // `el === undefined` на первом прогоне.
+  //
+  // `syncContentEditableValue`, а не голое `el.textContent = value` за
+  // guard'ом строкового равенства — см. её докблок в `shared/lib/caret.ts`:
+  // строковое сравнение не отличает ЧИСТЫЙ пустой узел от узла с одиноким
+  // `<br>`, который браузер оставляет после удаления последнего символа
+  // (найдено и исправлено в `TelInput.solid.tsx` — тот же паттерн здесь до
+  // первого потребителя, но landmine тот же).
   createEffect(
     on(
       () => props.value,
       (value) => {
-        if (!el || el.textContent === value) return
-        el.textContent = value
-        if (document.activeElement === el) placeCaretAtEnd(el)
+        if (!el) return
+        syncContentEditableValue(el, value)
       },
     ),
   )
@@ -104,7 +110,18 @@ export default function InputField(props: InputFieldSolidProps): JSX.Element {
         class={classNames('input-field-input', props.value ? '' : 'is-empty', error() ? 'error' : '')}
         contentEditable
         data-no-linebreaks="1"
-        onInput={() => props.onInput(el.textContent ?? '')}
+        onInput={() => {
+          const raw = el.textContent ?? ''
+          // Самоисцеление ДО и ПОСЛЕ вызова владельца — см. подробный
+          // докблок в `TelInput.solid.tsx`: без ДО остаётся мусорный узел
+          // (`<br>` после удаления последнего символа), без ПОСЛЕ поле не
+          // подхватывает авторитетное значение владельца, если оно совпало
+          // со старым (Solid-сигнал тогда не меняется, и нижестоящий
+          // `createEffect(on(() => props.value, …))` не перезапускается).
+          syncContentEditableValue(el, raw)
+          props.onInput(raw)
+          syncContentEditableValue(el, props.value)
+        }}
       />
       <div class="input-field-border" />
       <label style={{ visibility: 'visible' }}>
