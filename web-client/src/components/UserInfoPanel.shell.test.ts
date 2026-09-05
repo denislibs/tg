@@ -245,14 +245,21 @@ describe('UserInfoPanel — шов монтирования PeerProfileAvatars (
   })
 })
 
-// Пин на шов задачи 2 (`docs/superpowers/plans/2026-09-05-profile-card-solid.md`):
-// та же норма проводки, тот же приём (баланс скобок ВНУТРИ тела эффекта, не
-// «строка где-то в файле»), что и у шва `PeerProfileAvatars` выше и у
+// Пин на шов задачи 2 (`docs/superpowers/plans/2026-09-05-profile-card-solid.md`),
+// переписан под контракт задачи 5.5 (мост `mountSolid` вернул `{ dispose,
+// update }` вместо голого `dispose`, докблок `mountSolid.solid.tsx`): та же
+// норма проводки, тот же приём (баланс скобок ВНУТРИ тела эффекта, не «строка
+// где-то в файле»), что и у шва `PeerProfileAvatars` выше и у
 // `App.authMount.test.ts`.
 describe('UserInfoPanel — шов монтирования PeerProfile (Solid, mountSolid)', () => {
-  it('mountSolid(host, PeerProfile, props) вызывается ВНУТРИ ТЕЛА эффекта, keyed на peerId', () => {
-    const body = extractLayoutEffectBodyContaining(panel, 'mountSolid(')
-    expect(body).toMatch(/return mountSolid\(\s*host,\s*PeerProfile,\s*\{/)
+  it('mountSolid<PeerProfileProps>(host, PeerProfile, props) вызывается ВНУТРИ ТЕЛА структурного эффекта, keyed на peerId', () => {
+    const body = extractLayoutEffectBodyContaining(panel, 'mountSolid<PeerProfileProps>(')
+    expect(body).toMatch(/const \{ dispose, update \} = mountSolid<PeerProfileProps>\(\s*host,\s*PeerProfile,\s*\{/)
+    // Уборка обязана и снять ref на `update` (иначе эффект апдейта после
+    // размонтирования этого корня писал бы в мёртвый Solid-инстанс), и
+    // позвать dispose — тем же порядком, что и у остальных швов моста.
+    expect(body).toMatch(/profileUpdateRef\.current = null/)
+    expect(body).toMatch(/dispose\(\)/)
     // Эффект обязан быть keyed на peerId — иначе Solid-корень не пересоздаётся
     // при смене пира (докблок `peerProfile.solid.tsx` § «Пересоздание на
     // каждый peerId»), и context.peer/fullPeer застревают на первом пире.
@@ -261,6 +268,26 @@ describe('UserInfoPanel — шов монтирования PeerProfile (Solid, 
     const depsMatch = afterBody.match(/^\s*,\s*\[([^\]]*)\]/)
     expect(depsMatch, 'массив зависимостей useLayoutEffect не найден сразу после тела').not.toBeNull()
     expect(depsMatch![1]).toMatch(/\bpeerId\b/)
+    // Задача 5.5: структурный эффект пересоздаёт корень ТОЛЬКО на peerId/
+    // searchSuperContainer/avatarsInfoEl — гейты/данные Task 5 (canViewStats,
+    // joinRequests, …) уехали в отдельный эффект апдейта (см. describe ниже),
+    // сюда они не должны вернуться ни в тело (кроме `...buildProfilePatch()`,
+    // общего строителя, а не отдельных полей), ни в deps.
+    expect(body).toMatch(/\.\.\.buildProfilePatch\(\)/)
+    expect(body).not.toMatch(/showStatistics:/)
+    expect(depsMatch![1]).not.toMatch(/\bjoinRequests\b/)
+  })
+
+  it('эффект апдейта пишет живой патч в тот же корень через profileUpdateRef, не пересоздавая его', () => {
+    const body = extractLayoutEffectBodyContaining(panel, 'profileUpdateRef.current?.(buildProfilePatch())')
+    expect(body).not.toMatch(/mountSolid/) // апдейт НЕ зовёт mountSolid — иначе это снова пересоздание корня
+    const afterBody = panel.slice(panel.indexOf(body) + body.length)
+    const depsMatch = afterBody.match(/^\s*,\s*\[([\s\S]*?)\]/)
+    expect(depsMatch, 'массив зависимостей эффекта апдейта не найден сразу после тела').not.toBeNull()
+    // Гейты/данные Task 5 — здесь, а не в deps структурного эффекта выше.
+    expect(depsMatch![1]).toMatch(/\bcanViewStats\b/)
+    expect(depsMatch![1]).toMatch(/\bjoinRequests\b/)
+    expect(depsMatch![1]).not.toMatch(/\bpeerId\b/)
   })
 
   it('searchSuperContainer — стабильный узел (useState, создан один раз), а не пересоздаётся на рендер', () => {

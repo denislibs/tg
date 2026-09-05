@@ -43,7 +43,7 @@ import { useManagers } from '../core/hooks/useManagers'
 // Каркас карточки (Task 2, план `docs/superpowers/plans/
 // 2026-09-05-profile-card-solid.md`): `.profile-content` теперь рисует Solid,
 // смонтированный мостом `mountSolid` — см. докблок у `profileContentHostRef`.
-import PeerProfile from './peerProfile.solid'
+import PeerProfile, { type PeerProfileProps } from './peerProfile.solid'
 import { mountSolid } from '../shared/solid/mountSolid.solid'
 
 export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddMembers, onEditContact, onSendGift }: { open: boolean; chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; canAddMembers?: boolean; onEditContact?: () => void; onSendGift?: () => void }) {
@@ -368,50 +368,97 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   // `setAvatarsInfoEl` его выставит, — единственный лишний цикл за всё время
   // жизни панели (сам узел `instance.info` после этого не меняется, инстанс
   // класса переживает смену пира — докблок `setPeer`).
+  // Задача 5.5 плана «карточка профиля на Solid»: находка ревью задачи 5 —
+  // `mountSolid` не умел живых пропов, поэтому единственным способом доставить
+  // изменившееся значение уже смонтированному дереву было пересоздать корень
+  // целиком (внести поле в deps ЭТОГО эффекта). За одно открытие панели корень
+  // пересоздавался минимум 4 раза (маунт → готовность аватарок → ответ
+  // карточки чата → ответ списка заявок), плюс по разу на каждый клик
+  // одобрить/отклонить заявку и дважды на «включить обсуждение» — с побочным
+  // перезапуском минутного таймера статуса (`peerProfile.solid.tsx`,
+  // `UserStatusLine`) и потерей фокуса на узлах строк. Мост (докблок
+  // `mountSolid.solid.tsx`) теперь возвращает `update(patch)` поверх одного
+  // стора — гейты/данные/колбэки Task 5 (плюс `onOpenQrCode`) едут туда, а
+  // структурными зависимостями, которые ДЕЙСТВИТЕЛЬНО обязаны пересоздавать
+  // корень, остаются только `peerId`/`searchSuperContainer`/
+  // `avatarsInfoEl` — величины, под которые построены `usePeer`/`useFullPeer`
+  // внутри `PeerProfile` (Solid не умеет переподписать уже созданный
+  // `createMemo` на другой `peerId` без пересоздания, докблок
+  // `peerProfile.solid.tsx` § «Пересоздание на каждый peerId»).
+  //
+  // `buildProfilePatch` — общий строитель патча для ОБОИХ эффектов ниже
+  // (структурного маунта и апдейта): не второй способ считать те же поля, а
+  // общая функция, вызванная дважды (на маунте — внутри самого `mountSolid`,
+  // на каждое изменение — через `update`).
+  const buildProfilePatch = () => ({
+    // Task 4: мост QR-попапа для Solid-строк `Username`/`Link`
+    // (`peerProfile.solid.tsx`, докблок поля контекста `onOpenQrCode`).
+    onOpenQrCode: openQrCode,
+    // Task 5 (наши секции без аналога в оригинале, `peerProfile.solid.tsx`
+    // «Задача 5»): гейты — те же предикаты, что были у снесённой React-
+    // разметки ниже по файлу (см. `git blame`/докблоки Solid-функций), сюда
+    // приходят уже свёрнутыми (`isRealChat`/`isChannel` сложены в один
+    // булев на месте вызова — второго вычисления в Solid не заводим).
+    showStatistics: isRealChat && isChannel && canViewStats,
+    onOpenStatistics: () => setShowStats(true),
+    showDiscussion: isRealChat && isChannel && canManageDiscussion,
+    discussionPeerId,
+    enablingDiscussion,
+    onEnableDiscussion: () => void enableDiscussion(),
+    showJoinRequests: isRealChat && canInvite,
+    joinRequests,
+    onApproveJoinRequest: (userId: number) => void approveJoinRequest(userId),
+    onDeclineJoinRequest: (userId: number) => void declineJoinRequest(userId),
+    isSecret,
+    onOpenEncryptionKey: () => setKeyPopupOpen(true),
+  })
+  // `update` живого корня — записан структурным эффектом ниже, прочитан
+  // эффектом апдейта. `null` между dispose старого корня и маунтом нового
+  // (тот же кадр, layout-эффекты синхронны) — апдейт в этом окне невозможен
+  // физически, эффект апдейта в нём и не запускается (React зовёт cleanup
+  // прежде следующего прогона той же зависимости).
+  const profileUpdateRef = useRef<((patch: Partial<PeerProfileProps>) => void) | null>(null)
+
   useLayoutEffect(() => {
     const host = profileContentHostRef.current
     if (!host) return
-    return mountSolid(host, PeerProfile, {
+    // Дженерик — ЯВНО `PeerProfileProps`, не по умолчанию (inference из
+    // литерала пропов ниже даёт УЖЕ конкретные типы полей — например,
+    // `onEnableDiscussion: () => undefined` вместо объявленного в
+    // `PeerProfileProps` `() => void` — и `profileUpdateRef` выше перестаёт
+    // собираться): `update` обязан остаться типизирован ИМЕННО контрактом
+    // `PeerProfileProps`, который читает `PeerProfile`.
+    const { dispose, update } = mountSolid<PeerProfileProps>(host, PeerProfile, {
       peerId,
       isDialog: true, // панель — всегда диалог зрителя (tweb: оба известных вызывающих передают true)
       scrollable: bodyRef.current!,
       setCollapsedOn: setCollapsedOnRef.current!,
       searchSuperContainer,
       avatarsInfo: avatarsInfoEl ?? undefined,
-      // Task 4: мост QR-попапа для Solid-строк `Username`/`Link`
-      // (`peerProfile.solid.tsx`, докблок поля контекста `onOpenQrCode`).
-      onOpenQrCode: openQrCode,
-      // Task 5 (наши секции без аналога в оригинале, `peerProfile.solid.tsx`
-      // «Задача 5»): гейты — те же предикаты, что были у снесённой React-
-      // разметки ниже по файлу (см. `git blame`/докблоки Solid-функций), сюда
-      // приходят уже свёрнутыми (`isRealChat`/`isChannel` сложены в один
-      // булев на месте вызова — второго вычисления в Solid не заводим).
-      showStatistics: isRealChat && isChannel && canViewStats,
-      onOpenStatistics: () => setShowStats(true),
-      showDiscussion: isRealChat && isChannel && canManageDiscussion,
-      discussionPeerId,
-      enablingDiscussion,
-      onEnableDiscussion: () => void enableDiscussion(),
-      showJoinRequests: isRealChat && canInvite,
-      joinRequests,
-      onApproveJoinRequest: (userId) => void approveJoinRequest(userId),
-      onDeclineJoinRequest: (userId) => void declineJoinRequest(userId),
-      isSecret,
-      onOpenEncryptionKey: () => setKeyPopupOpen(true),
+      ...buildProfilePatch(),
     })
-    // Гейты/данные Task 5 — НЕ производные от `peerId`/`searchSuperContainer`/
-    // `avatarsInfoEl` (предыдущих deps): `useGroupInfo` грузит их асинхронно
-    // ПОСЛЕ первого монтажа (см. докблок функций в `peerProfile.solid.tsx`,
-    // «показывается ровно при своём условии») — без них в зависимостях Solid-
-    // корень навсегда видел бы значения самого первого прогона (`false`/`[]`,
-    // до ответа сети), и ни одна из четырёх секций не показалась бы никогда.
-    // `mountSolid` не умеет живых пропов (докблок моста, «render» вызывается
-    // один раз на весь срок жизни корня) — единственный способ доставить
-    // изменившееся значение уже смонтированному дереву — пересоздать корень,
-    // тем же приёмом, что уже даёт `avatarsInfoEl` выше.
+    profileUpdateRef.current = update
+    return () => {
+      profileUpdateRef.current = null
+      dispose()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [peerId, searchSuperContainer, avatarsInfoEl])
+
+  // Гейты/данные Task 5 — НЕ производные от `peerId`/`searchSuperContainer`/
+  // `avatarsInfoEl` (deps эффекта выше): `useGroupInfo` грузит их асинхронно
+  // ПОСЛЕ первого монтажа (см. докблок функций в `peerProfile.solid.tsx`,
+  // «показывается ровно при своём условии») — без доставки сюда Solid-корень
+  // навсегда видел бы значения самого первого прогона (`false`/`[]`, до
+  // ответа сети), и ни одна из четырёх секций не показалась бы никогда.
+  // Раньше это тоже был структурный deps эффекта выше (пересоздание корня) —
+  // теперь `update(patch)` того же живого корня: ни один узел строки не
+  // уничтожается и не создаётся заново (фокус не слетает), минутный таймер
+  // статуса (`peerProfile.solid.tsx`, `UserStatusLine`) не перезапускается.
+  useLayoutEffect(() => {
+    profileUpdateRef.current?.(buildProfilePatch())
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    peerId, searchSuperContainer, avatarsInfoEl,
     isRealChat, isChannel, canViewStats, canManageDiscussion, discussionPeerId, enablingDiscussion,
     canInvite, joinRequests, isSecret,
   ])

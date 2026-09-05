@@ -419,7 +419,9 @@ const PeerProfile = (props: PeerProfileProps) => {
     </PeerProfileContext.Provider>
   )
   if (props.avatarsInfo) {
-    onCleanup(mountSolid(props.avatarsInfo, NameAndSubtitle, {}))
+    // `update` тут не нужен — `NameAndSubtitle` пропов не принимает вовсе,
+    // читает контекст напрямую (см. докблок выше, «Задача 3»).
+    onCleanup(mountSolid(props.avatarsInfo, NameAndSubtitle, {}).dispose)
   }
 
   return (
@@ -936,14 +938,20 @@ function Bio() {
  * ── Паритет: обычный участник приватной группы БЕЗ прав на инвайт-ссылки ────
  * Проверено по хвосту задачи 5: такой участник не видит ни строку `Link`
  * (username нет — не эта ветка), ни фолбэк `UserInfoPanel.tsx` (прав нет —
- * `inviteLinks` пуст). У ОРИГИНАЛА — то же самое: `exported_invite`
- * (`:999`) — поле СХЕМЫ (`layer.d.ts:813,866`, `ChatFull.channelFull.
- * exported_invite?: ExportedChatInvite`), которое сервер кладёт в ответ
- * `channels.getFullChannel`/`messages.getFullChat` ТОЛЬКО зрителю с правом на
- * приглашения (создателю или админу с `invite_users`) — участник без этого
- * права получает `chatFull` вовсе БЕЗ поля, и `toFill()` возвращает
- * `undefined` той же веткой, что и у нас. Это ПАРИТЕТ, а не расхождение —
- * ни портировать, ни заводить долг не нужно.
+ * `inviteLinks` пуст). НАБЛЮДАЕМЫЙ ИСХОД для зрителя тот же, что у оригинала
+ * (ссылки не видно), но МЕХАНИЗМ гейта другой, а не «то же самое», — поле
+ * `exported_invite` (tweb `:999`, `layer.d.ts:813,866`, `ChatFull.
+ * channelFull.exported_invite?: ExportedChatInvite`) в НАШЕЙ модели не
+ * существует вовсе (`backend/internal/domain/mtchat.go:853-891`,
+ * `chat.go:406-424`) — сравнивать «кладёт/не кладёт сервер это поле» здесь не
+ * с чем. У оригинала гейт — ОТСУТСТВИЕ поля В ТОМ ЖЕ ответе `chatFull`
+ * (сервер молча не кладёт `exported_invite`, если у зрителя нет права); у нас
+ * ссылка — вообще ДРУГОЙ поход, отдельный эндпоинт `GET /chats/{id}/
+ * invite_links` (`usecase/chat/group.go:20-31,360-364`), сам гейтованный
+ * правом `invite_users` (без права — пустой список, тот же `inviteLinks`,
+ * что читает `UserInfoPanel.tsx`). Совпадает только исход для пользователя
+ * («ссылки не видно») — не структура ответа. Ни портировать, ни заводить
+ * долг за это расхождение МЕХАНИЗМА не нужно (исход и так 1:1).
  */
 function Link() {
   const context = usePeerProfileContext()

@@ -1,10 +1,47 @@
 /** @jsxImportSource solid-js */
 import { ErrorBoundary } from 'solid-js'
+import { createStore } from 'solid-js/store'
 import { render } from 'solid-js/web'
 import type { JSX } from 'solid-js'
 
 /**
- * Монтирует Solid-компонент в ГОТОВЫЙ DOM-узел и возвращает `dispose`.
+ * Монтирует Solid-компонент в ГОТОВЫЙ DOM-узел и возвращает `{ dispose,
+ * update }`.
+ *
+ * ── Живые пропы (задача 5.5 плана «карточка профиля на Solid») ──────────────
+ * `render()` зовётся здесь РОВНО один раз — вставить готовый JSX-снимок в
+ * `host` можно только один раз, это ограничение самого Solid, не нашего
+ * моста. Раньше это означало, что мост в принципе не может доставить новое
+ * значение уже смонтированному дереву: единственным способом обновить данные
+ * было пересоздать корень целиком (`dispose()` старого + новый вызов
+ * `mountSolid`), внеся изменившееся поле в зависимости внешнего эффекта. Это
+ * дважды давало Critical на находке «забыли поле в deps» (профиль, задачи 4 и
+ * 5 плана) — риск растёт с каждым новым полем, а не убывает.
+ *
+ * Инструмент устранён здесь: `props` кладутся в ОДИН `createStore`,
+ * созданный при первом монтировании, и `Component` получает не сам объект
+ * `props`, а прокси стора (`{...store}` в JSX — компилятор `babel-plugin-
+ * jsx-dom-expressions` при единственном спреде передаёт прокси НАПРЯМУЮ в
+ * `createComponent`, не разворачивая его в статический объект, — то же
+ * свойство, на которое опирается `<Component {...props} />` любого другого
+ * Solid-компонента этого стека). Гранулярная реактивность Solid означает, что
+ * компонент, прочитавший `props.foo` внутри `createMemo`/JSX, перерисовывает
+ * РОВНО то место, которое зависит от `foo`, — не всё дерево. `update(patch)`
+ * пишет `patch` в стор — вызов `setStore(patch)` делает МЕЛКИЙ (shallow) мёрж
+ * полей верхнего уровня (контракт `createStore`'а: `setStore(partial)`
+ * сравним с `SetStoreFunction`, перегрузка `(setter: StoreSetter<T, []>)`), а
+ * не полную замену объекта, — значит поля, отсутствующие в `patch`, остаются
+ * прежними.
+ *
+ * Вызывающий сам решает, что уходит в `update`, а что требует пересоздания
+ * корня (передать новое значение в САМ `mountSolid` при следующем вызове):
+ * структурные зависимости (например, смена `peerId`, под который построены
+ * `usePeer`/`useFullPeer` — Solid не умеет «переподписать» уже созданный
+ * `createMemo` на другой ключ без пересоздания) остаются деп-массивом
+ * внешнего эффекта, как и раньше; всё остальное — гейты/данные/колбэки,
+ * которые могут прийти позже первого рендера или перезагрузиться, — едет
+ * через `update` без потери состояния дерева (открытые попапы, таймеры
+ * (`setInterval`) компонентов, фокус DOM-узлов).
  *
  * `ErrorBoundary` вшит в мост намеренно, а не оставлен на совесть вызывающего.
  * Причина: у tweb Solid форкнут (ветка `no-errors`), и в их сборке
@@ -34,8 +71,17 @@ export function mountSolid<P extends Record<string, unknown>>(
   host: HTMLElement,
   Component: (props: P) => JSX.Element,
   props: P,
-): () => void {
-  return render(
+): { dispose: () => void; update: (patch: Partial<P>) => void } {
+  const [store, setStore] = createStore<P>(props)
+  // Перегрузка `SetStoreFunction<T>` для мелкого мёржа — `(setter: StoreSetter<T,
+  // []>): void`, где `StoreSetter<T,[]> = T | CustomPartial<T> | (...)`, а
+  // `CustomPartial<T>` для НЕ-массива — обычный `Partial<T>` (ровно наш
+  // контракт `update`). TS не умеет свести условный тип `CustomPartial<T>` для
+  // ДЖЕНЕРИКА `T` (наш `P` конкретным типом станет только у вызывающего) —
+  // поведение проверено рантаймом (тесты моста, «update(patch) мёржит только
+  // переданные поля»), поэтому один явный каст здесь, а не `any` на каждый вызов.
+  const setPartial = setStore as unknown as (patch: Partial<P>) => void
+  const dispose = render(
     () => (
       <ErrorBoundary
         fallback={(err) => {
@@ -43,9 +89,13 @@ export function mountSolid<P extends Record<string, unknown>>(
           return null
         }}
       >
-        <Component {...props} />
+        <Component {...store} />
       </ErrorBoundary>
     ),
     host,
   )
+  return {
+    dispose,
+    update: (patch) => setPartial(patch),
+  }
 }
