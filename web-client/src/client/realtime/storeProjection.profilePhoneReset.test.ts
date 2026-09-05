@@ -1,10 +1,11 @@
 // Телефон чужого пира (privacy.profile()) и смена активной сессии: сброс ЗЕРКАЛА (вкладка).
 //
 // core/profilePhoneCache.ts — модульное зеркало Task 2 профиля на Solid:
-// useUserProfile (React) читает cachedProfilePhone СИНХРОННО на рендере, не
-// перепроверяя, что снимок относится к текущей сессии. Значит переход обязан
-// доехать и сюда — ровно как у соседних зеркал (peerCache/mediaUrl/mediaToken/
-// mediaPlaybackController), см. storeProjection.peers.test.ts /
+// peerProfile.solid.tsx::Phone (Task 4; до задачи 6 — React-хук useUserProfile,
+// снесён вместе с потребителем) читает cachedProfilePhone СИНХРОННО на
+// createMemo, не перепроверяя, что снимок относится к текущей сессии. Значит
+// переход обязан доехать и сюда — ровно как у соседних зеркал (peerCache/
+// mediaUrl/mediaToken/mediaPlaybackController), см. storeProjection.peers.test.ts /
 // storeProjection.mediaTokenReset.test.ts.
 //
 // Что ломается без строки resetProfilePhoneMirror() в APPLY[RT.loggingOut]:

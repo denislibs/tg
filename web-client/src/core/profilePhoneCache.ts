@@ -33,9 +33,10 @@
 // ЖЕ ответ `privacy.profile()`, из которого она уже берёт `fullUser` (Task
 // 1.5 свела оба фреймворка на неё). Телефон приезжает В ТОЙ ЖЕ паре — второго
 // похода в сеть заводить не нужно, только вторую запись из уже полученного
-// ответа. `core/hooks/useUserProfileData.ts::useUserProfile` (React) читает
-// это зеркало, а не зовёт `managers.privacy.profile()` сам — так закрыт
-// «пятый писатель» (docs брифа задачи 2).
+// ответа. Читает это зеркало `peerProfile.solid.tsx::Phone` (Task 4) — сам
+// `managers.privacy.profile()` не зовёт; React-хук `useUserProfileData.ts::
+// useUserProfile`, который так делал раньше («пятый писатель», docs брифа
+// задачи 2), снят задачей 6 — потребителя не осталось.
 import { isFetchTicketCurrent } from './chatFullCache'
 
 const mirror = new Map<PeerId, string>()
