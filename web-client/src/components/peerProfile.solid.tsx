@@ -177,7 +177,7 @@ import { subscribeExternal } from '../helpers/solid/subscribeExternal'
 import { getPeerTitle } from '../core/peers/getPeerTitle'
 import { wrapEmojiText, wrapRichText } from '../lib/richtext'
 import { isUser, HIDDEN_PEER_ID } from '../core/peers/peerId'
-import { isBroadcast } from '../core/peers/predicates'
+import { isBroadcast, isPublic } from '../core/peers/predicates'
 import { userStatusLabel } from '../core/presence'
 import { membersLabel } from './userInfo/helpers'
 import { IconTsx } from './iconTsx.solid'
@@ -848,8 +848,22 @@ function Bio() {
  * `core/hooks/useGroupInfo.ts`), заводить его в реактивный слой пира —
  * вне объёма этой задачи («новых зеркал не заводить», бриф). Приватная
  * группа/канал БЕЗ публичного username по-прежнему получает свою
- * инвайт-ссылку строкой из React (`UserInfoPanel.tsx`, отмечено там же) —
- * не регресс, временное разделение владения на переходный период.
+ * инвайт-ссылку строкой из React (`UserInfoPanel.tsx`, отмечено там же).
+ *
+ * ── Разведение владения строкой — ОДНИМ предикатом, не двумя гейтами ────────
+ * Раньше здесь стояло «не регресс, временное разделение владения на
+ * переходный период» — формулировка была НЕВЕРНОЙ: React-фолбэк проверял
+ * `!chat.username`, поле вью-модели (`data.ts:179`), которое НЕ пишет НИКТО
+ * (`core/dialogToChat.ts`, синтетический тред-`Chat` `App.tsx:169-175`) —
+ * гейт был истинен всегда, и разведения по факту не было: при уже созданной
+ * инвайт-ссылке (`useGroupInfo.ts:142-151`) React рисовал свою строку
+ * ОДНОВРЕМЕННО с этой (находка ревью Critical, финальный раунд Task 4).
+ * Теперь оба места читают ОДИН предикат над ОДНИМ зеркалом пиров —
+ * `isPublic` (порт `appChatsManager.isPublic`, `core/peers/predicates.ts:79`)
+ * над `context.peer`/`usePeer` здесь и `isPublicPeer`/`cachedChat` в
+ * `UserInfoPanel.tsx` — тот же `core/peerCache.ts`. Взаимоисключение теперь
+ * СТРУКТУРНОЕ (true/false одного и того же вызова), а не «два признака,
+ * которые должны совпадать по построению».
  * `isTopic`-ветка (`:979-989`, ссылка на конкретное сообщение форума) не
  * портирована — `isTopic` у нас недостижим (докблок контекста, Task 2).
  * `getUsernamesAlso` — та же причина, что у `Username` выше.
@@ -860,7 +874,7 @@ function Link() {
   const username = createMemo(() => {
     if (isUser(context.peerId)) return undefined
     const peer = context.peer as Channel | undefined
-    return peer?.username || undefined
+    return isPublic(peer) ? peer!.username : undefined
   })
 
   const onClick = () => {

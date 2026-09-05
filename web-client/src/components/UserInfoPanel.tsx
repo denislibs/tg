@@ -31,6 +31,8 @@ import installColumnResize from '../core/dom/installColumnResize'
 import { useRightColumnShown } from '../core/hooks/useRightColumnShown'
 import animationIntersector from './animationIntersector'
 import { NULL_PEER_ID, isUser as isUserPeer } from '../core/peers/peerId'
+import { usePeers } from '../core/hooks/usePeers'
+import { isPublicPeer } from '../core/peerCache'
 // Шапка-аватары (tweb peerProfileAvatars) — задача 5: класс на классах tweb,
 // вмонтированный через useImperativeIsland (мост не пишем руками), плюс
 // реальный useCollapsable(). Мост фактов взят из докблока класса целиком.
@@ -416,9 +418,27 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   // `PeerProfile.Link`, Task 4 плана «карточка профиля на Solid») — оттуда
   // ушла ветка «есть username», здесь остаётся ТОЛЬКО ветка «username нет,
   // есть инвайт-ссылка»: у Solid-версии предмета `exported_invite` нет
-  // (докблок `Link` в том файле) — временное разделение владения строкой на
-  // переходный период, не второй рендер того же самого.
-  const fallbackInviteUrl = !chat.username && inviteLinks[0]
+  // (докблок `Link` в том файле).
+  //
+  // НАХОДКА РЕВЬЮ (Critical, финальный раунд Task 4): гейт раньше читал
+  // `chat.username` — поле вью-модели (`data.ts:179`), которое НИКТО не
+  // пишет (`core/dialogToChat.ts` его не выставляет ни для одного вида чата,
+  // синтетический тред-`Chat` `App.tsx:169-175` тоже) — было мертво, и гейт
+  // был истинен ВСЕГДА. У публичного канала/группы с уже созданной лениво
+  // инвайт-ссылкой (`useGroupInfo.ts:142-151`, право `invite_links`) поэтому
+  // рисовались ОБЕ строки разом: эта (инвайт) и Solid-`Link` (публичный
+  // username), с разными URL и двумя QR-кнопками. Это НЕ было «явно
+  // разведённым владением на переходный период» — раздел был мнимым, поле
+  // с самого начала не имело писателя.
+  //
+  // Фикс — свести к ОДНОМУ источнику истины: тому же предикату и тому же
+  // зеркалу пиров, что читает Solid (`isPublicPeer`, `core/peerCache.ts`, порт
+  // `appChatsManager.isPublic`). `usePeers` ниже — не второй запрос карточки,
+  // а объявление того же пробела зеркала (докблок `usePeers.ts`) плюс подписка
+  // на его движение: без неё гейт не увидел бы, что username появился, пока
+  // панель уже открыта.
+  usePeers([peerId])
+  const fallbackInviteUrl = !isPublicPeer(peerId) && inviteLinks[0]
     ? `${location.origin}/join/${inviteLinks[0].token}`
     : null
   const fallbackInviteShort = fallbackInviteUrl?.replace(/^https?:\/\//, '') ?? ''
