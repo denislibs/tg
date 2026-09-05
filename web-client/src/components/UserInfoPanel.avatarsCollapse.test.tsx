@@ -33,7 +33,7 @@
 // коммита.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, cleanup, act } from '@testing-library/react'
-import { useLayoutEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import { useImperativeIsland } from '../core/hooks/useImperativeIsland'
 import useCollapsable from '../core/hooks/useCollapsable'
@@ -60,6 +60,9 @@ const { default: PeerProfileAvatars } = await import('./peerProfileAvatars')
 
 const PEER_WITH_PHOTO = 901
 const PEER_NO_PHOTO = 902
+// Второй пир С фото — для теста «смена пира С фото → С фото» (нужен ДРУГОЙ
+// peerId, иначе deps `[peerId]` эффектов не изменятся и смена не произойдёт).
+const PEER_WITH_PHOTO_2 = 903
 
 function makeManagers(): PeerProfileAvatarsManagers {
   return {
@@ -70,14 +73,24 @@ function makeManagers(): PeerProfileAvatarsManagers {
 
 /**
  * Харнесс — ТА ЖЕ форма вызовов, что `UserInfoPanel.tsx` (собрана вручную из
- * тех же четырёх кусков: реальный `useCollapsable()`, `useImperativeIsland` с
- * `host`+`strays`, эффект `folded → setCollapsed` с гейтом `hasPhoto`, и —
- * после находки ревью Critical — ВТОРОЙ писатель классов на ТОМ ЖЕ узле,
- * `headerFilled` (панельная половина `header-filled`, tweb sharedMedia.tsx),
- * применяемый ТЕМ ЖЕ `classList.toggle`, а не пересчётом `className` в JSX).
+ * тех же шести кусков: реальный `useCollapsable()`, `useImperativeIsland` с
+ * `host`+`strays`, `setPeer` в СВОЁМ эффекте по deps `[peerId]`, сброс
+ * свёрнутости на смену `[peerId]`, эффект `folded → setCollapsed` с гейтом
+ * `hasPhoto`, и — после находки ревью Critical — ВТОРОЙ писатель классов на
+ * ТОМ ЖЕ узле, `headerFilled` (панельная половина `header-filled`, tweb
+ * sharedMedia.tsx), применяемый ТЕМ ЖЕ `classList.toggle`, а не пересчётом
+ * `className` в JSX).
  * Если когда-нибудь эта форма разъедется с панелью — обязанность
  * синхронизировать их у ревью задачи 5 и любых будущих правок обоих файлов;
  * шов в самой панели пинует `UserInfoPanel.shell.test.ts` балансом скобок.
+ *
+ * НАХОДКА ФИНАЛЬНОГО РЕВЬЮ ВЕТКИ (Important, п.1): раньше `setPeer` звался
+ * ВНУТРИ создания острова (deps `[]`) — путь смены пира харнессу был
+ * недостижим, потому что смена пропа `peerId` у уже смонтированного
+ * `Harness` ничего не перегружала. Приведено к форме панели: `setPeer` —
+ * в своём эффекте по deps `[peerId]` (как в `UserInfoPanel.tsx`), и туда же
+ * добавлен сброс свёрнутости, который панель раньше не делала вовсе (сам
+ * баг) — см. коммент у соответствующего эффекта ниже.
  */
 function Harness({ peerId, managers, headerFilled = false }: { peerId: number; managers: PeerProfileAvatarsManagers; headerFilled?: boolean }) {
   const avatarsRef = useRef<InstanceType<typeof PeerProfileAvatars> | null>(null)
@@ -100,13 +113,18 @@ function Harness({ peerId, managers, headerFilled = false }: { peerId: number; m
     })
     avatarsRef.current = instance
     container.appendChild(instance.container)
-    void instance.setPeer(peerId)
     return () => {
       instance.cleanup()
       avatarsRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [], { host: avatarsHostRef, strays: '.profile-avatars-container' })
+
+  // ФОРМА ПАНЕЛИ (`UserInfoPanel.tsx`): смена пира — тот же инстанс класса
+  // просто перегружает ленту (докблок `setPeer` в `peerProfileAvatars.ts`).
+  useEffect(() => {
+    void avatarsRef.current?.setPeer(peerId)
+  }, [peerId])
 
   useLayoutEffect(() => {
     const instance = avatarsRef.current
@@ -118,6 +136,30 @@ function Harness({ peerId, managers, headerFilled = false }: { peerId: number; m
     instance.setCollapsed(folded)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [folded])
+
+  // ФОРМА ПАНЕЛИ: находка финального ревью ветки (Important, п.1) — tweb
+  // создаёт под КАЖДОГО пира новый инстанс `PeerProfileAvatars`, и последняя
+  // строка его конструктора — `this.setCollapsed(true)` (tweb :309): новый
+  // пир ВСЕГДА открывается свёрнутым, гейт «нет фото» пересчитывается заново
+  // на свежем инстансе. У нас инстанс переживает смену пира, поэтому
+  // свёрнутость сама себя не восстанавливает — без этого эффекта развёрнутая
+  // шапка пира С фото пережила бы переключение на пира БЕЗ фото (клик её при
+  // этом не сворачивает — гейт `!this.currentHasPhoto` в клик-хендлере класса
+  // гасит клик целиком). `fold()` возвращает `useCollapsable()` к исходному
+  // `folded=true`; `instance.setCollapsed(true)` применяет ЭТО же немедленно
+  // — если `folded` уже был `true`, `fold()` не меняет состояние и эффект
+  // `[folded]` выше не переиграется сам по себе, поэтому DOM обновляем здесь
+  // напрямую, а не полагаемся на реакцию на смену `folded`. Порядок
+  // деклараций (после эффекта `[folded]`) не влияет на поведение — как и в
+  // `UserInfoPanel.tsx`, эффекты реагируют на СВОИ deps независимо от
+  // порядка объявления.
+  useLayoutEffect(() => {
+    const instance = avatarsRef.current
+    if (!instance) return
+    fold()
+    instance.setCollapsed(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [peerId])
 
   // Задача 5, находка ревью (Critical): ВТОРОЙ писатель классов на ЭТОМ ЖЕ
   // узле — панельная половина `header-filled` — идёт ТЕМ ЖЕ механизмом,
@@ -162,6 +204,7 @@ beforeEach(() => {
   applyPeerOps([
     { op: 'upsert', peers: [{ _: 'user', id: PEER_WITH_PHOTO, first_name: 'Alice', pFlags: {}, photo: { _: 'userProfilePhoto', photo_id: 42 } }] },
     { op: 'upsert', peers: [{ _: 'user', id: PEER_NO_PHOTO, first_name: 'Ghost', pFlags: {} }] },
+    { op: 'upsert', peers: [{ _: 'user', id: PEER_WITH_PHOTO_2, first_name: 'Bob', pFlags: {}, photo: { _: 'userProfilePhoto', photo_id: 43 } }] },
   ])
 })
 afterEach(() => {
@@ -251,6 +294,60 @@ describe('UserInfoPanel — проводка PeerProfileAvatars ↔ useCollapsab
     expect(setCollapsedOn.classList.contains('header-filled')).toBe(true) // панельная половина применилась
     // is-collapsed выставлен КЛАССОМ, не панелью, — панельный ре-рендер не
     // имеет права его тронуть (единственный писатель — classList.toggle).
+    expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(true)
+  })
+
+  // НАХОДКА ФИНАЛЬНОГО РЕВЬЮ ВЕТКИ (Important, п.1): смена пира обязана
+  // вернуть шапку в свёрнутое состояние — так же, как в tweb новый пир
+  // получает НОВЫЙ инстанс класса, чей конструктор оканчивается
+  // `this.setCollapsed(true)` (tweb :309). До фикса `UserInfoPanel.tsx`
+  // (и харнесса) переключение пира просто перегружало ленту, не трогая
+  // `useCollapsable()` — развёрнутая шапка пережила бы смену пира. RED-
+  // транскрипт ДО фикса — в теле коммита.
+  it('смена пира (С фото → С фото): развёрнутая шапка возвращается в свёрнутое состояние', async () => {
+    const managers = makeManagers()
+    const { getByTestId, rerender } = render(<Harness peerId={PEER_WITH_PHOTO} managers={managers} />)
+    const setCollapsedOn = getByTestId('setCollapsedOn')
+    const scrollable = getByTestId('scrollable')
+
+    scrollable.scrollTop = 0
+    act(() => wheelUp(setCollapsedOn)) // разворачиваем пира С фото
+    expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(false)
+
+    act(() => {
+      rerender(<Harness peerId={PEER_WITH_PHOTO_2} managers={managers} />)
+    })
+
+    // tweb: КАЖДЫЙ новый пир открывается свёрнутым, вне зависимости от того,
+    // была ли развёрнута шапка прежнего.
+    expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(true)
+  })
+
+  // НАХОДКА ФИНАЛЬНОГО РЕВЬЮ ВЕТКИ (Important, п.1), воспроизведение из
+  // брифа буквально: развернули пира С фото → переключили на пира БЕЗ фото →
+  // ожидаем `is-collapsed` вернувшимся И гейт «нет фото» перепроверенным
+  // (колесом развернуть НЕЛЬЗЯ). До фикса шапка осталась бы развёрнутой с
+  // кружком-инициалами, а клик/колесо её не сворачивали (гейт `!hasPhoto` в
+  // клик-хендлере класса гасит клик целиком, эффект `[folded]` не переигрывался
+  // сам по себе, потому что `folded` не менялся).
+  it('смена пира (С фото → БЕЗ фото): is-collapsed возвращается и гейт «нет фото» не даёт развернуть колесом', async () => {
+    const managers = makeManagers()
+    const { getByTestId, rerender } = render(<Harness peerId={PEER_WITH_PHOTO} managers={managers} />)
+    const setCollapsedOn = getByTestId('setCollapsedOn')
+    const scrollable = getByTestId('scrollable')
+
+    scrollable.scrollTop = 0
+    act(() => wheelUp(setCollapsedOn)) // разворачиваем пира С фото
+    expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(false)
+
+    act(() => {
+      rerender(<Harness peerId={PEER_NO_PHOTO} managers={managers} />)
+    })
+
+    expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(true)
+
+    scrollable.scrollTop = 0
+    act(() => wheelUp(setCollapsedOn)) // попытка развернуть колесом пира БЕЗ фото
     expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(true)
   })
 

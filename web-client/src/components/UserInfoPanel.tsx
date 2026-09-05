@@ -295,6 +295,43 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [folded])
 
+  // НАХОДКА ФИНАЛЬНОГО РЕВЬЮ ВЕТКИ (Important, п.1): tweb создаёт под КАЖДОГО
+  // пира НОВЫЙ инстанс `PeerProfileAvatars`, и последняя строка его
+  // конструктора — `this.setCollapsed(true)` (tweb :309) — новый пир ВСЕГДА
+  // открывается свёрнутым, а гейт «нет фото» (createEffect :341-344, эффект
+  // ВЫШЕ) пересчитывается заново на свежем инстансе. У нас инстанс переживает
+  // смену пира (докблок `setPeer` в `peerProfileAvatars.ts`) — свёрнутость
+  // сама себя не восстанавливала: `useCollapsable()` хранит `folded` по СВОЕЙ
+  // шкале (эффект выше реагирует только на её смену), а `setPeer` меняет
+  // `currentHasPhoto`, но это никто не перечитывал для уже развёрнутой шапки.
+  // Дыра была такой: развернули пира С фото → переключили на пира БЕЗ фото →
+  // шапка осталась развёрнутой (360×360 с кружком-инициалами), а клик её не
+  // сворачивал (`if (!this.currentHasPhoto) return` в клик-хендлере класса
+  // гасит клик целиком) — для пира С фото тоже расхождение, tweb всегда
+  // открывает свёрнутым. Фикс — свернуть явно здесь, на смене peerId, а не
+  // полагаться на эффект `[folded]` выше: `fold()` возвращает
+  // `useCollapsable()` к исходному `folded=true` (симметрично новому
+  // инстансу tweb), `instance.setCollapsed(true)` — тот же вызов, каким
+  // оканчивается конструктор оригинала, применённый немедленно (если
+  // `folded` уже был `true`, `fold()` не меняет состояние и не переиграет
+  // эффект `[folded]` сам по себе — DOM обновляем здесь напрямую). Порядок
+  // деклараций (после эффекта `[folded]`, а не до) не влияет на поведение —
+  // эффекты реагируют на СВОИ deps независимо от порядка объявления, — важен
+  // только для пина `UserInfoPanel.shell.test.ts` («первый useLayoutEffect в
+  // файле» — эффект `[folded]`). `useLayoutEffect`, а не `useEffect`, — та же
+  // причина, что у эффекта выше: без layout-фазы между setPeer/paint и
+  // приведением DOM в порядок был бы кадр с чужим (прежним) состоянием
+  // `is-collapsed`. Гейт «нет фото» (эффект выше) продолжает решать за
+  // ПОСЛЕДУЮЩИЕ попытки развернуть колесом — здесь он не нужен:
+  // `setCollapsed(true)` не читает `hasPhoto`.
+  useLayoutEffect(() => {
+    const instance = avatarsRef.current
+    if (!instance) return
+    fold()
+    instance.setCollapsed(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [peerId])
+
   // Панельная половина `header-filled` (tweb sharedMedia.tsx:513/:547 — ставит
   // доезд до табов, снимает клик «назад», см. onBodyScroll/scrollBackToProfile
   // выше) — ТЕМ ЖЕ механизмом, что и класс: `classList.toggle`, а не пересчёт
