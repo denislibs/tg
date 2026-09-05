@@ -46,6 +46,8 @@
 // создании), и работал он через раз — только если модуль стора случайно оказывался в
 // графе теста. Тесты, что строят узлы `i18n()`, ставили этот импорт поштучно; теперь
 // наполнение объявлено один раз здесь, и поштучные импорты сняты.
+import { readdirSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { beforeAll, vi } from 'vitest'
 
 import { installDomKeyLeakPin } from './domKeyLeak'
@@ -82,15 +84,37 @@ installDomKeyLeakPin()
 // `NetworkError`. `lottie-web` здесь всё равно замокан (см. выше), содержимое
 // JSON тестам не важно — подставляем пустышку только для этого пути, всё
 // остальное идёт настоящим fetch.
+//
+// Заглушка СВЕРЯЕТСЯ С ДИСКОМ (round 1 ревью этапа 0): раньше она отвечала
+// 200 на ЛЮБОЕ имя под `/assets/tgs/`, и опечатка в имени ассета в одном из
+// четырёх мостовых потребителей `components/lottie.ts::loadTgsAsset` молча
+// резолвилась бы успехом в их собственных компонентных тестах — регрессию
+// ловил только общесьютовый скан `tgsAssets.test.ts`, а при изолированном
+// прогоне файла она проходила бы незамеченной. Список читается с диска один
+// раз при старте сетапа (`public/assets/tgs/`, та же директория, что
+// заполнил Этап 0 `git mv`), несуществующее имя получает честный 404 —
+// `res.json()` на нём падает, как и должно быть у настоящей опечатки
+// (пин — `setup.test.ts`).
+const TGS_DIR = resolve(__dirname, '../../public/assets/tgs')
+const existingTgsNames = new Set(
+  readdirSync(TGS_DIR)
+    .filter((f) => f.endsWith('.json'))
+    .map((f) => f.slice(0, -'.json'.length)),
+)
+
 const realFetch = globalThis.fetch?.bind(globalThis)
 if (realFetch) {
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' || input instanceof URL ? new URL(input, location.href) : new URL(input.url, location.href)
     if (url.origin === location.origin && url.pathname.startsWith('/assets/tgs/')) {
-      return Promise.resolve(new Response(JSON.stringify({ v: '5.5.2', layers: [] }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }))
+      const name = url.pathname.slice('/assets/tgs/'.length).replace(/\.json$/, '')
+      if (existingTgsNames.has(name)) {
+        return Promise.resolve(new Response(JSON.stringify({ v: '5.5.2', layers: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }))
+      }
+      return Promise.resolve(new Response(null, { status: 404 }))
     }
     return realFetch(input, init)
   }) as typeof fetch

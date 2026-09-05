@@ -15,13 +15,22 @@
 // engine.md) перенёс сами json'ки на статику `public/assets/tgs/`, откуда
 // этот URL и резолвится.
 //
-// Расхождение с оригиналом (объявлено): у tweb `lottieLoader` — ОБЯЗАТЕЛЬНЫЙ
-// проп, вызывающий берёт его из `useHotReloadGuard()` (DI-реестр менеджеров с
-// hot-reload, `@lib/solidjs/hotReloadGuard`) — этого механизма в проекте нет,
-// `lottieLoader` у нас всегда импортируется готовым синглтоном (см.
-// `StickerMedia.tsx`, `wrappers/sticker.ts`). Поэтому проп сделан
-// НЕОБЯЗАТЕЛЬНЫМ и по умолчанию берёт тот же синглтон — вызывающему не нужно
-// ничего прокидывать, а тесты по-прежнему могут подменить его инъекцией.
+// Расхождение с оригиналом (объявлено, проверено по исходникам tweb): проп
+// `lottieLoader` у оригинала формально обязателен, но мажоритарный приём —
+// импорт готового синглтона прямо на месте вызова: семь из восьми прямых
+// потребителей `LottieAnimation` делают `import lottieLoader from
+// '@lib/lottie/lottieLoader'` и передают его явным пропом (`mediaHeader.
+// tsx:70`, `chat/bubbles/suggestBirthday.tsx:23`, `chat/bubbles/premiumGift.
+// tsx:39`, `popups/birthday.tsx:225`, `popups/sendGift.tsx:135`, `popups/
+// emailSetup.tsx:107,219`, `stories/profileList.tsx:674`) — ровно как у нас в
+// `StickerMedia.tsx`/`wrappers/sticker.ts`. Через `useHotReloadGuard()`
+// (DI-реестр менеджеров с hot-reload, `@lib/solidjs/hotReloadGuard`) его берёт
+// только один частный враппер, `settingsTabLottieAnimation.tsx:15`, и то
+// попутно — там же достаётся `usePromiseCollector`, а не потому, что прямой
+// импорт синглтона недоступен. У нас `useHotReloadGuard()` нет вовсе, поэтому
+// проп сделан НЕОБЯЗАТЕЛЬНЫМ и по умолчанию берёт тот же синглтон, что и
+// мажоритарный приём оригинала — вызывающему не нужно ничего прокидывать, а
+// тесты по-прежнему могут подменить его инъекцией.
 //
 // Потребителей на этот компонент пока НЕТ (Этап 0 — только фундамент):
 // `PasswordMonkey.tsx`/`LottieSticker.tsx`/`TrackingMonkey.solid.tsx`/
