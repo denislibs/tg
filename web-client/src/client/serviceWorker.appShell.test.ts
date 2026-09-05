@@ -149,4 +149,29 @@ describe('sw.js — app-shell кэш ассетов', () => {
     expect(second.status).toBe(200)
     expect(net).toHaveBeenCalledTimes(1) // второй раз в сеть не ходили
   })
+
+  /* Этап 0 плана «один движок lottie»
+   * (docs/superpowers/plans/2026-09-05-lottie-single-engine.md) перенёс 11
+   * встроенных json-ассетов из бандла в `public/assets/tgs/*.json` — план
+   * требует ПРОВЕРИТЬ ФАКТОМ, что они кешируются, а не предполагать это по
+   * общему правилу `IMMUTABLE_RE`. Тест ниже гоняет НАСТОЯЩИЙ json одного из
+   * перенесённых файлов (читается с диска, не выдуман) через НАСТОЯЩИЙ
+   * обработчик `fetch` этого же sw.js — тем же приёмом, что соседние тесты
+   * файла. */
+  it('json-ассет из public/assets/tgs (Этап 0 «один движок lottie») кешируется по факту: второй запрос без сети', async () => {
+    const realJson = readFileSync(resolve(__dirname, '../../public/assets/tgs/Mailbox.json'), 'utf8')
+    const cache = new FakeCache()
+    const net = vi.fn(async () => new Response(realJson, { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    const handlers = loadServiceWorker(cache, net)
+    const req = makeRequest('https://localhost/assets/tgs/Mailbox.json')
+
+    const first = await dispatchFetch(handlers, req)!
+    expect(await first.text()).toBe(realJson)
+    expect(cache.puts).toEqual(['https://localhost/assets/tgs/Mailbox.json'])
+    expect(net).toHaveBeenCalledTimes(1)
+
+    const second = await dispatchFetch(handlers, req)!
+    expect(await second.text()).toBe(realJson) // тот же настоящий контент — не пересказ
+    expect(net).toHaveBeenCalledTimes(1) // второй раз обработчик в сеть НЕ ходил — отдал из cache.match
+  })
 })

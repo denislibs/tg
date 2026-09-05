@@ -9,12 +9,15 @@
 // ── Движок анимации — осознанное отступление от tweb ─────────────────────
 // tweb грузит обе анимации через `lottieLoader.loadAnimationAsAsset(...)`
 // (tlottie, SIMD-декод в воркере), ассет — по URL `assets/tgs/<name>.json`.
-// У нас `web-client/public/assets/` не содержит каталога `tgs/` — обе исходные
-// json-ки (`TwoFactorSetupMonkeyIdle.json`/`TwoFactorSetupMonkeyTracking.json`)
-// лежат БАНДЛОМ в `src/assets/tgs/`. Поэтому привязка — `lottie-web` через
-// `components/lottie.ts::loadLottie()` + динамический `import()` json, тем же
-// приёмом, что у `PasswordMonkey.tsx` (React, вторая обезьянка) и
-// `MediaHeader.solid.tsx::StickerLottie` (тот же приём уже на Solid). Само
+// У нас обе исходные json-ки (`TwoFactorSetupMonkeyIdle.json`/
+// `TwoFactorSetupMonkeyTracking.json`) с Этапа 0 плана «один движок lottie»
+// (docs/superpowers/plans/2026-09-05-lottie-single-engine.md) лежат на той же
+// статике `public/assets/tgs/`, что и у оригинала, но эта обезьянка ещё не
+// переведена на tlottie/`LottieAnimation` — привязка по-прежнему `lottie-web`
+// через `components/lottie.ts::loadLottie()` + `loadTgsAsset()` (fetch с той
+// же статики вместо бандл-`import()`), тем же приёмом, что у `PasswordMonkey.
+// tsx` (React, вторая обезьянка) и `MediaHeader.solid.tsx::StickerLottie`
+// (тот же приём уже на Solid). Перевод на tlottie — Этапы 1-3 плана. Само
 // ПОВЕДЕНИЕ (арифметика кадра, направление, скорость, переключение канв) —
 // 1:1 с оригиналом; отступление только в том, кто крутит кадры.
 //
@@ -32,11 +35,11 @@
 import { createEffect, on, onCleanup, onMount, type JSX } from 'solid-js'
 import type { AnimationItem } from 'lottie-web'
 import { fastRaf } from '@helpers/schedulers'
-import { loadLottie } from '../lottie'
+import { loadLottie, loadTgsAsset } from '../lottie'
 
 const ASSETS = {
-  idle: () => import('../../assets/tgs/TwoFactorSetupMonkeyIdle.json'),
-  tracking: () => import('../../assets/tgs/TwoFactorSetupMonkeyTracking.json'),
+  idle: () => loadTgsAsset('TwoFactorSetupMonkeyIdle'),
+  tracking: () => loadTgsAsset('TwoFactorSetupMonkeyTracking'),
 }
 
 /** tweb `monkeys/tracking.ts` максимум диапазона слежения (класс-поле `max`). */

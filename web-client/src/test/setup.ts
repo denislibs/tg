@@ -75,6 +75,27 @@ vi.mock('lottie-web', () => {
 // Пин на утечку ключа в DOM — общий для всех компонентных тестов (см. `domKeyLeak.ts`).
 installDomKeyLeakPin()
 
+// Ассеты `public/assets/tgs/*.json` (обезьянки/уточки, Этап 0 плана «один
+// движок lottie») грузятся теперь настоящим `fetch`, а не бандл-`import()`
+// (`components/lottie.ts::loadTgsAsset`) — под happy-dom нет раздачи `public/`,
+// и любой тест, домонтировавший такой узел, ронял прогон необработанным
+// `NetworkError`. `lottie-web` здесь всё равно замокан (см. выше), содержимое
+// JSON тестам не важно — подставляем пустышку только для этого пути, всё
+// остальное идёт настоящим fetch.
+const realFetch = globalThis.fetch?.bind(globalThis)
+if (realFetch) {
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' || input instanceof URL ? new URL(input, location.href) : new URL(input.url, location.href)
+    if (url.origin === location.origin && url.pathname.startsWith('/assets/tgs/')) {
+      return Promise.resolve(new Response(JSON.stringify({ v: '5.5.2', layers: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+    }
+    return realFetch(input, init)
+  }) as typeof fetch
+}
+
 // Английские строки в ядро — ОДИН РАЗ НА ФАЙЛ ПРОГОНА (разбор — в шапке файла).
 // Язык, отличный от английского, тест применяет сам: `applyLang` из `./lang`.
 beforeAll(async () => {

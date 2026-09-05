@@ -16,12 +16,15 @@
 import { onCleanup, onMount, type JSX } from 'solid-js'
 import type { AnimationItem } from 'lottie-web'
 import classNames from '@helpers/string/classNames'
-import { loadLottie } from '../lottie'
+import { loadLottie, loadTgsAsset } from '../lottie'
 import styles from './mediaHeader.module.scss'
 
-/** Встроенные лотти-ассеты слота (tweb `LottieAssetName`) — грузятся лениво. */
+/** Встроенные лотти-ассеты слота (tweb `LottieAssetName`) — грузятся лениво,
+ *  с той же статики `public/assets/tgs/`, что и tlottie-точка входа
+ *  `LottieAnimation` (Этап 0 плана «один движок lottie»); движок здесь пока
+ *  lottie-web, перевод — Этапы 1-3. */
 const ASSETS = {
-  Mailbox: () => import('../../assets/tgs/Mailbox.json'),
+  Mailbox: () => loadTgsAsset('Mailbox'),
 }
 
 export type StickerAssetName = keyof typeof ASSETS

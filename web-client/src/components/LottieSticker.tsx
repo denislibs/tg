@@ -1,18 +1,21 @@
 // LottieSticker — анимированные иллюстрации-уточки из tweb (public/assets/tgs/*.json,
 // те же данные, что играет rlottie в оригинале; здесь — lottie-web/canvas).
-// Ассеты подтягиваются лениво, чтобы не раздувать основной бандл.
+// Ассеты подтягиваются лениво, чтобы не раздувать основной бандл: раньше —
+// бандл-чанком (`import('../assets/tgs/*.json')`), теперь — с той же статики,
+// что и tlottie-точка входа `LottieAnimation` (Этап 0 плана «один движок
+// lottie»); движок здесь не менялся, это Этапы 1-3.
 import { useEffect, useRef } from 'react'
 import { type AnimationItem } from 'lottie-web'
-import { loadLottie } from './lottie'
+import { loadLottie, loadTgsAsset } from './lottie'
 
 const ASSETS: Record<string, () => Promise<{ default: unknown }>> = {
-  UtyanLinks: () => import('../assets/tgs/UtyanLinks.json'),
-  UtyanSearch: () => import('../assets/tgs/UtyanSearch.json'),
-  Folders_1: () => import('../assets/tgs/Folders_1.json'),
-  Folders_2: () => import('../assets/tgs/Folders_2.json'),
-  UtyanPasscode: () => import('../assets/tgs/UtyanPasscode.json'),
-  UtyanDisappear: () => import('../assets/tgs/UtyanDisappear.json'),
-  Key: () => import('../assets/tgs/key.json'),
+  UtyanLinks: () => loadTgsAsset('UtyanLinks'),
+  UtyanSearch: () => loadTgsAsset('UtyanSearch'),
+  Folders_1: () => loadTgsAsset('Folders_1'),
+  Folders_2: () => loadTgsAsset('Folders_2'),
+  UtyanPasscode: () => loadTgsAsset('UtyanPasscode'),
+  UtyanDisappear: () => loadTgsAsset('UtyanDisappear'),
+  Key: () => loadTgsAsset('key'),
 }
 
 export type LottieAssetName = keyof typeof ASSETS

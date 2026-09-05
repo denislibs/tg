@@ -9,3 +9,23 @@ export function loadLottie(): Promise<Lottie> {
   if (!promise) promise = import('lottie-web').then((m) => m.default)
   return promise
 }
+
+// Мост Этапа 0 программы «один движок lottie»
+// (docs/superpowers/plans/2026-09-05-lottie-single-engine.md). 11 встроенных
+// json-ассетов (обезьянки/уточки/шапка письма) переехали из бандла
+// (`src/assets/tgs/*.json`) на статику `public/assets/tgs/*.json` — git mv,
+// история не теряется. Четыре потребителя ниже (PasswordMonkey.tsx,
+// LottieSticker.tsx, TrackingMonkey.solid.tsx, MediaHeader.solid.tsx) ещё
+// играют их через lottie-web (`loadLottie()`), это Этапы 1-3 плана
+// («каждая — по одной, потом снос пакета»); здесь меняется ТОЛЬКО источник
+// данных — раньше `import('../assets/tgs/X.json')` клал json в JS-чанк,
+// теперь тот же json тянется по URL со статики (тот же путь, что строит
+// `lottieLoader.makeAssetUrl` для tlottie — `lib/lottie/lottieLoader.ts:140`,
+// вендорено из tweb `lottieLoader.ts:154-156`). Функция уйдёт вместе с
+// `components/lottie.ts` целиком на Этапе 4 («снос пакета»), когда последний
+// из четырёх потребителей переедет на `LottieAnimation`/tlottie.
+export function loadTgsAsset(name: string): Promise<{ default: unknown }> {
+  return fetch(`/assets/tgs/${name}.json`)
+    .then((res) => res.json())
+    .then((data) => ({ default: data }))
+}
