@@ -6,7 +6,9 @@
 // неё), а не расширять непокрытую площадь дальше.
 import type { LangPackKey } from '@/lang'
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { cachedPeerTheme, chatFullMirrorVersion, saveChatFull, subscribeChatFullMirror } from '@core/chatFullCache'
+import { cachedPeerTheme, chatFullMirrorVersion, subscribeChatFullMirror } from '@core/chatFullCache'
+import { cachedUser } from '@core/peerCache'
+import { ensureFullPeer } from '@stores/fullPeers.solid'
 import { isPeerMuted } from '@core/dialogs/notifySettings'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
@@ -887,26 +889,31 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const headerStatus = realSubtitle ?? presenceLabel ?? (chat.status ? t(chat.status as LangPackKey) : '')
   const headerOnline = isUserStatusOnline(peerPresence, nowSeconds()) || chat.status === 'online'
 
-  // Бот-собеседник (для кнопки «Начать», reply-клавиатуры и кнопки-меню) — по профилю.
-  const [isBotChat, setIsBotChat] = useState(false)
+  // Бот-собеседник (для кнопки «Начать», reply-клавиатуры и кнопки-меню).
+  // `pFlags.bot` — из зеркала пиров, не отдельным походом в `/users/{id}`:
+  // `usePeers` внутри `useChatInfoCard` (выше) уже объявляет пробел ровно за
+  // этим же `numericChatId` ради прав, второй запрос за тем же пользователем
+  // только ради флага бота был чистым дублированием (Task 1.5, сведение
+  // писателей `stores/fullPeers.solid.ts`).
+  const privatePeer = chat.type === 'private' && isRealChat ? cachedUser(numericChatId) : undefined
+  const isBotChat = privatePeer?._ === 'user' && !!privatePeer.pFlags?.bot
   const [botMenu, setBotMenu] = useState<{ text: string; url: string } | null>(null)
   useEffect(() => {
-    if (chat.type !== 'private' || !isRealChat) { setIsBotChat(false); setBotMenu(null); return }
-    let alive = true
-    const peerId = numericChatId
+    if (!isBotChat) { setBotMenu(null); return }
     setBotMenu(null)
-    void managers.privacy.profile(peerId).then((p) => {
-      if (!alive) return
-      // Полная карточка собеседника — в общее зеркало: тема оформления
-      // приватного чата живёт в `userFull.theme_emoticon` (решение Р7), и это
-      // единственный загрузчик этой карточки для ОТКРЫТОГО чата.
-      saveChatFull(peerId, p.fullUser)
-      setIsBotChat(!!p.user.pFlags?.bot)
-      if (p.user.pFlags?.bot) {
-        void managers.bots.menuButton(peerId).then((mb) => { if (alive && mb.text && mb.url) setBotMenu(mb) }).catch(() => {})
-      }
-    }).catch(() => {})
+    let alive = true
+    void managers.bots.menuButton(numericChatId).then((mb) => { if (alive && mb.text && mb.url) setBotMenu(mb) }).catch(() => {})
     return () => { alive = false }
+  }, [isBotChat, numericChatId, managers])
+
+  // Полная карточка собеседника — в общее зеркало: тема оформления приватного
+  // чата живёт в `userFull.theme_emoticon` (решение Р7). `ensureFullPeer` —
+  // та же TTL-политика, что и у Solid-профиля того же пира (`stores/fullPeers.
+  // solid.ts`, Task 1.5): второй самостоятельный поход `privacy.profile()`
+  // здесь больше не открываем, только гарантируем, что карточка не протухла.
+  useEffect(() => {
+    if (chat.type !== 'private' || !isRealChat) return
+    ensureFullPeer(managers, numericChatId)
   }, [chat.type, isRealChat, numericChatId, managers])
   // reply-клавиатура над композером — ряды последней подходящей разметки окна
   // (порт mergeReplyKeyboard + checkAvailability, core/markup/replyMarkup.ts).

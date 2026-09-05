@@ -176,7 +176,4 @@ export interface Chat {
   owned?: boolean
   status?: string // header subtitle: "last seen recently" / "12 345 members" / "4 566 subscribers"
   online?: boolean // private chats: show the green online dot
-  username?: string
-  description?: string
-  links?: { label: string; value: string }[]
 }

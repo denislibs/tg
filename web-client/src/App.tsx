@@ -145,7 +145,6 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
           photoId: draftPeer.photoId,
           preview: '',
           type: 'private',
-          username: draftPeer.username ?? undefined,
         }
       : null
 

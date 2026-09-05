@@ -97,7 +97,10 @@ export function scaffoldSolidJSTab<Payload = void>({
 
       const promiseCollectorHelper = PromiseCollector.createHelper()
 
-      this.dispose = mountSolid(div, Root, { self: this, onCollect: promiseCollectorHelper.onCollect, Content })
+      // `update` здесь не нужен — контент вкладки монтируется один раз на
+      // весь срок её жизни (`init` зовётся один раз), живых пропов у вкладки
+      // как предмета нет.
+      this.dispose = mountSolid(div, Root, { self: this, onCollect: promiseCollectorHelper.onCollect, Content }).dispose
 
       this.scrollable.append(div)
 
@@ -160,7 +163,10 @@ export function scaffoldSolidJSTabEventable<Payload = void, Events extends Event
 
       const promiseCollectorHelper = PromiseCollector.createHelper()
 
-      this.dispose = mountSolid(div, Root, { self: this, onCollect: promiseCollectorHelper.onCollect, Content })
+      // `update` здесь не нужен — контент вкладки монтируется один раз на
+      // весь срок её жизни (`init` зовётся один раз), живых пропов у вкладки
+      // как предмета нет.
+      this.dispose = mountSolid(div, Root, { self: this, onCollect: promiseCollectorHelper.onCollect, Content }).dispose
 
       this.scrollable.append(div)
 

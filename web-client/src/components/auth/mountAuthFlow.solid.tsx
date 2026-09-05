@@ -101,7 +101,10 @@ export function mountAuthFlow(props: AuthCardsHostProps): () => void {
   document.body.appendChild(root)
   document.body.classList.add('has-auth-pages')
 
-  const dispose = mountSolid(root, AuthCardsHost, props)
+  // `update` здесь не нужен — единственный вызывающий (`App.tsx`) передаёт
+  // `props` один раз на весь срок жизни экрана входа, живых пропов у auth-
+  // хоста нет как предмета.
+  const { dispose } = mountSolid(root, AuthCardsHost, props)
 
   return () => {
     dispose()

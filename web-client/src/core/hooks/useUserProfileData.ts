@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useManagers } from './useManagers'
 import type { SavedDialog } from '../managers/chatsManager'
-import type { PeerProfile } from '../managers/authManager'
 import type { SavedStarGift } from '../managers/starsManager'
 
 // Read-хуки данных панели профиля (UserInfoPanel). Все — эфемерные серверные
@@ -19,23 +18,17 @@ export function useSavedDialogs(isSaved: boolean): SavedDialog[] | null {
   return savedDialogs
 }
 
-// Чужой профиль с применённой конфиденциальностью (GET /users/{id}):
-// телефон/bio/день рождения приходят пустыми, если скрыты правилами.
-export function useUserProfile(peerId: PeerId | null | undefined, isSaved: boolean): PeerProfile | null {
-  const managers = useManagers()
-  const [profile, setProfile] = useState<PeerProfile | null>(null)
-  useEffect(() => {
-    if (isSaved || peerId == null) return
-    let alive = true
-    void managers.privacy.profile(peerId).then((p) => {
-      if (alive) setProfile(p)
-    }).catch(() => {})
-    return () => {
-      alive = false
-    }
-  }, [isSaved, peerId, managers])
-  return profile
-}
+// `useUserProfile`/`PeerProfileView` (чужой профиль пользователя: телефон/
+// username/bio/день рождения) сняты задачей 6 плана «карточка профиля на
+// Solid» (`docs/superpowers/plans/2026-09-05-profile-card-solid.md`) —
+// потребителя не осталось: `UserInfoPanel.tsx` больше не рисует эти поля
+// сам (Task 4 перенесла их в `peerProfile.solid.tsx::MainSection`, которая
+// читает те же зеркала (`usePeer`/`useFullPeer`/`cachedProfilePhone`)
+// НАПРЯМУЮ, а не через этот React-хук). Пин единственности сетевого пути
+// («пятый писатель», находка ревью 1.5) снят вместе с хуком —
+// `stores/fullPeers.solid.ts::requestFullPeer` остаётся единственным
+// вызывающим `managers.privacy.profile()` для чужого пира и без этого теста
+// (сам факт — в докблоке `requestFullPeer`).
 
 // Подарки в профиле (tweb Gifts tab) — только для пользователя (private).
 // reload переиспользуется как onChanged попапа подарка.
@@ -55,4 +48,3 @@ export function useProfileGifts(isUser: boolean, peerId: number | null | undefin
   }, [isUser, peerId])
   return { gifts, reload }
 }
-
