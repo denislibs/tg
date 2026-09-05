@@ -29,8 +29,9 @@ import { useChatsStore } from '../stores/chatsStore'
 import type { Managers } from '../client/bootstrap'
 import type { UserStatus } from './peers/peer'
 
-// Уточка пустого состояния — рантайм lottie-web, который в happy-dom валится на своём
-// модульном инициализаторе (тот же приём, что в `PeerSelector.test.tsx`).
+// Уточка пустого состояния — рантайм tlottie (`LottieSticker.tsx`, Этап 2 плана
+// «один движок lottie»): реальный плеер тянет WASM-воркер и canvas, которых под
+// happy-dom нет (тот же приём, что в `PeerSelector.test.tsx`).
 vi.mock('../components/LottieSticker', () => ({ default: () => null }))
 
 const user = (id: number, name: string) => ({ _: 'user' as const, id, first_name: name })
