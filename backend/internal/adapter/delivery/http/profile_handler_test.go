@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -145,6 +146,78 @@ func decodeMe(t *testing.T, rec *httptest.ResponseRecorder) meResponse {
 		t.Fatalf("разбор /me: %v (%s)", err, rec.Body.String())
 	}
 	return out
+}
+
+// photoWire — форма одной фотографии галереи на проводе (конструктор `photo`).
+type photoWire struct {
+	Underscore string `json:"_"`
+	ID         int64  `json:"id"`
+}
+type photosPhotoWire struct {
+	Photo photoWire `json:"photo"`
+}
+type photosListWire struct {
+	Photos []photoWire `json:"photos"`
+}
+
+// Проверяет закрытие backlog profile-photo-delete-id-mismatch: удаление
+// адресуется РОВНО тем id, который клиент реально получает из
+// GET /users/{id}/photos (media id, не строковый id галереи) — и фото
+// действительно пропадает из списка, а не остаётся молчаливым no-op.
+func TestDeletePhoto_HTTP(t *testing.T) {
+	pool := postgres.NewTestDB(t)
+	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	token, userID := signInToken(t, h, "+79990000030")
+
+	// Две фотографии в галерее; вторая (502) становится текущей аватаркой.
+	rec := reqJSONAuth(t, h, http.MethodPost, "/me/photos", map[string]any{"media_id": 501}, token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /me/photos (501): %d %s", rec.Code, rec.Body.String())
+	}
+	rec = reqJSONAuth(t, h, http.MethodPost, "/me/photos", map[string]any{"media_id": 502}, token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /me/photos (502): %d %s", rec.Code, rec.Body.String())
+	}
+
+	// Ровно тот id, что реально приезжает списком.
+	rec = reqJSONAuth(t, h, http.MethodGet, fmt.Sprintf("/users/%d/photos", userID), nil, token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /users/%d/photos: %d %s", userID, rec.Code, rec.Body.String())
+	}
+	var list photosListWire
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || len(list.Photos) != 2 {
+		t.Fatalf("разбор списка: %v (%s)", err, rec.Body.String())
+	}
+	deletedID := list.Photos[0].ID // newest-first → 502
+	if deletedID != 502 {
+		t.Fatalf("ожидался id 502 первым, получено %d", deletedID)
+	}
+
+	// Удаление этим id — 200 boolTrue, и фото реально пропадает из галереи.
+	rec = reqJSONAuth(t, h, http.MethodDelete, fmt.Sprintf("/me/photos/%d", deletedID), nil, token)
+	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(`"boolTrue"`)) {
+		t.Fatalf("DELETE /me/photos/%d: %d %s", deletedID, rec.Code, rec.Body.String())
+	}
+	rec = reqJSONAuth(t, h, http.MethodGet, fmt.Sprintf("/users/%d/photos", userID), nil, token)
+	var listAfter photosListWire
+	if err := json.Unmarshal(rec.Body.Bytes(), &listAfter); err != nil {
+		t.Fatalf("разбор списка после удаления: %v (%s)", err, rec.Body.String())
+	}
+	for _, p := range listAfter.Photos {
+		if p.ID == deletedID {
+			t.Fatalf("фото %d осталось в галерее после удаления: %s", deletedID, rec.Body.String())
+		}
+	}
+	if len(listAfter.Photos) != 1 {
+		t.Fatalf("галерея после удаления = %v, want ровно 1 фото", listAfter.Photos)
+	}
+
+	// Несуществующий/чужой media id — НЕ boolTrue, а 404: промах адресации
+	// обязан быть виден, а не молча возвращать «успех».
+	rec = reqJSONAuth(t, h, http.MethodDelete, "/me/photos/999999", nil, token)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("DELETE /me/photos/999999: ожидался 404, получено %d %s", rec.Code, rec.Body.String())
+	}
 }
 
 // httpFakePreviewer — AvatarPreviewer для HTTP-теста: фиксированное stripped-превью.

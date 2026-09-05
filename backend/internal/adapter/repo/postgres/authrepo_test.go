@@ -88,20 +88,22 @@ func TestAuthRepo_ProfilePhotoGallery(t *testing.T) {
 
 	u, _ := repo.CreateWithName(ctx, "+7100", "Галерея", "")
 
-	// Adding photos promotes each to the current avatar and lists newest-first.
-	// Фото адресуется id медиа — content-путь больше нигде не собирается.
-	p1, err := repo.AddProfilePhoto(ctx, u.ID, 1, nil, []byte{0xff, 0xd8, 1})
+	// media id намеренно НЕ совпадает с id строки (501/502, а не 1/2) — иначе
+	// баг «удаление по id строки вместо media_id» совпал бы случайно и тест
+	// не покраснел бы до правки. Фото адресуется id медиа — content-путь
+	// больше нигде не собирается.
+	p1, err := repo.AddProfilePhoto(ctx, u.ID, 501, nil, []byte{0xff, 0xd8, 1})
 	if err != nil || p1.ID == 0 {
 		t.Fatalf("AddProfilePhoto p1: %v", err)
 	}
 	video := int64(22)
-	p2, err := repo.AddProfilePhoto(ctx, u.ID, 2, &video, []byte{0xff, 0xd8, 2})
+	p2, err := repo.AddProfilePhoto(ctx, u.ID, 502, &video, []byte{0xff, 0xd8, 2})
 	if err != nil {
 		t.Fatalf("AddProfilePhoto p2: %v", err)
 	}
 	got, _ := repo.GetByID(ctx, u.ID)
-	if got.PhotoID == nil || *got.PhotoID != 2 {
-		t.Fatalf("avatar media id after add = %v, want 2", got.PhotoID)
+	if got.PhotoID == nil || *got.PhotoID != 502 {
+		t.Fatalf("avatar media id after add = %v, want 502", got.PhotoID)
 	}
 	// stripped-превью текущей аватарки денормализовано в users.avatar_preview.
 	if !bytes.Equal(got.PhotoPreview, []byte{0xff, 0xd8, 2}) {
@@ -118,22 +120,29 @@ func TestAuthRepo_ProfilePhotoGallery(t *testing.T) {
 		t.Fatalf("video media id = %v, want 22", list[0].VideoMediaID)
 	}
 
-	// Deleting the current avatar (p2) falls back to the next most-recent (p1).
-	newID, err := repo.DeleteProfilePhoto(ctx, u.ID, p2.ID)
-	if err != nil || newID == nil || *newID != 1 {
+	// Удаление адресуется id МЕДИА (p2.MediaID == 502) — тем же числом, что
+	// клиент реально получает из GET /users/{id}/photos (galleryPhoto отдаёт
+	// media_id, не profile_photos.id). Удаление текущей аватарки (p2)
+	// пересчитывает её на следующую по свежести (p1).
+	newID, err := repo.DeleteProfilePhoto(ctx, u.ID, p2.MediaID)
+	if err != nil || newID == nil || *newID != 501 {
 		t.Fatalf("DeleteProfilePhoto(current) = %v, %v", newID, err)
 	}
 	got, _ = repo.GetByID(ctx, u.ID)
-	if got.PhotoID == nil || *got.PhotoID != 1 {
-		t.Fatalf("avatar after delete = %v, want 1", got.PhotoID)
+	if got.PhotoID == nil || *got.PhotoID != 501 {
+		t.Fatalf("avatar after delete = %v, want 501", got.PhotoID)
 	}
 	// Превью откатилось вместе с фото — к превью p1.
 	if !bytes.Equal(got.PhotoPreview, []byte{0xff, 0xd8, 1}) {
 		t.Fatalf("avatar_preview after delete = %v, want превью p1", got.PhotoPreview)
 	}
+	// Строка p2 действительно удалена из галереи (не просто аватарка сброшена).
+	if list, _ := repo.ListProfilePhotos(ctx, u.ID); len(list) != 1 || list[0].MediaID != 501 {
+		t.Fatalf("gallery after delete = %v, want ровно p1", list)
+	}
 
 	// Deleting the last photo clears the avatar.
-	newID, err = repo.DeleteProfilePhoto(ctx, u.ID, p1.ID)
+	newID, err = repo.DeleteProfilePhoto(ctx, u.ID, p1.MediaID)
 	if err != nil || newID != nil {
 		t.Fatalf("DeleteProfilePhoto(last) = %v, %v", newID, err)
 	}
@@ -142,12 +151,16 @@ func TestAuthRepo_ProfilePhotoGallery(t *testing.T) {
 		t.Fatalf("аватарка не снята: photo=%v preview=%v", got.PhotoID, got.PhotoPreview)
 	}
 
-	// Deleting another user's / unknown photo is a no-op returning the unchanged avatar.
+	// Удаление чужого/несуществующего media id — НЕ no-op: раньше молча
+	// возвращалось «аватарка не изменилась», теперь честная ошибка, иначе клиент
+	// не отличит промах адресации от успеха (см. backlog).
 	other, _ := repo.CreateWithName(ctx, "+7101", "Другой", "")
 	op, _ := repo.AddProfilePhoto(ctx, other.ID, 9, nil, nil)
-	newID, err = repo.DeleteProfilePhoto(ctx, u.ID, op.ID)
-	if err != nil || newID != nil {
-		t.Fatalf("DeleteProfilePhoto(other) = %v, %v (should be no-op)", newID, err)
+	if _, err := repo.DeleteProfilePhoto(ctx, u.ID, op.MediaID); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("DeleteProfilePhoto(чужое медиа) = %v, want domain.ErrNotFound", err)
+	}
+	if _, err := repo.DeleteProfilePhoto(ctx, u.ID, 999999); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("DeleteProfilePhoto(несуществующее медиа) = %v, want domain.ErrNotFound", err)
 	}
 	otherList, _ := repo.ListProfilePhotos(ctx, other.ID)
 	if len(otherList) != 1 {

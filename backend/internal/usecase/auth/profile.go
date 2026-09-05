@@ -270,10 +270,12 @@ func (i *Interactor) ListProfilePhotos(ctx context.Context, userID int64) ([]dom
 	return i.users.ListProfilePhotos(ctx, userID)
 }
 
-// DeleteProfilePhoto removes a gallery photo; when it was the current avatar the
-// repo falls the avatar back to the next most-recent photo (or none).
-func (i *Interactor) DeleteProfilePhoto(ctx context.Context, userID, photoID int64) error {
-	_, err := i.users.DeleteProfilePhoto(ctx, userID, photoID)
+// DeleteProfilePhoto removes a gallery photo addressed by media id; when it was
+// the current avatar the repo falls the avatar back to the next most-recent
+// photo (or none). domain.ErrNotFound, если чужого/несуществующего media id не
+// нашлось — вызывающий (ручка) обязан ответить честно, не boolTrue.
+func (i *Interactor) DeleteProfilePhoto(ctx context.Context, userID, mediaID int64) error {
+	_, err := i.users.DeleteProfilePhoto(ctx, userID, mediaID)
 	if err == nil {
 		if u, gerr := i.users.GetByID(ctx, userID); gerr == nil {
 			i.emitUserUpdate(ctx, u) // avatar may have fallen back to another photo
