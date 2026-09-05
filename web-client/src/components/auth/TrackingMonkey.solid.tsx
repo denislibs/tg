@@ -149,13 +149,16 @@ export default function TrackingMonkey(props: TrackingMonkeyProps): JSX.Element 
     // — `this.container`), tlottie сама кладёт canvas каждой анимации внутрь
     // него.
     //
-    // Деградация без WASM SIMD (решение плана «один движок lottie», раздел
-    // «Решение по деградации без WASM SIMD»): `loadAnimationAsAsset` бросает
-    // `NO_WASM` (`lib/lottie/lottieLoader.ts:216`), канва в DOM не появляется
+    // Деградация без WASM SIMD (backlogs/frontend/lottie-no-wasm-fallback.md,
+    // часть 2 — закрыта): `loadAnimationAsAsset` бросает `NO_WASM`
+    // (`lib/lottie/lottieLoader.ts:216`), канва в DOM не появляется
     // (`lib/lottie/lottiePlayer.ts:1207` — аппендится только на первом кадре) —
-    // idle-обезьянка просто не показывается, как в оригинале. Долг на случай,
-    // если такой хвост браузеров окажется важен:
-    // `web-client/backlogs/frontend/lottie-no-wasm-fallback.md`.
+    // но сама `loadAnimationAsAsset` вставляет в `container` статичный PNG
+    // первого кадра ДО реджекта (`lib/lottie/lottieAssetFallback.ts`).
+    // Этот idle-лоадер регистрируется ПЕРВЫМ (порядок вызовов ниже), поэтому
+    // его PNG (обезьянка в покое) и побеждает — фолбэк идемпотентен на
+    // контейнер, второй вызов (tracking, ниже) видит уже вставленный `<img>`
+    // и не дублирует его.
     const idleLoad = lottieLoader
       .loadAnimationAsAsset(
         { container, loop: true, autoplay: true, width: props.size, height: props.size },
@@ -174,7 +177,8 @@ export default function TrackingMonkey(props: TrackingMonkeyProps): JSX.Element 
         return lottieLoader.waitForFirstFrame(animation)
       })
 
-    // Та же деградация NO_WASM, что у idle-загрузки выше.
+    // Та же деградация NO_WASM, что у idle-загрузки выше — здесь фолбэк уже
+    // не вставляется повторно (idle выше застолбил `container`).
     const trackingLoad = lottieLoader
       .loadAnimationAsAsset(
         { container, loop: false, autoplay: false, width: props.size, height: props.size },

@@ -30,13 +30,13 @@ export default function PasswordMonkey({ peeking, size = 130 }: { peeking: boole
     const container = wrapRef.current
     if (!container) return
 
-    // Деградация без WASM SIMD (решение плана «один движок lottie»,
-    // docs/superpowers/plans/2026-09-05-lottie-single-engine.md, раздел
-    // «Решение по деградации без WASM SIMD»): `loadAnimationAsAsset` бросает
-    // `NO_WASM` (`lib/lottie/lottieLoader.ts:216`), канва в DOM не появляется
-    // (`lib/lottie/lottiePlayer.ts:1207`) — обезьянка просто не показывается,
-    // как в оригинале. Долг на случай, если такой хвост браузеров окажется
-    // важен: `web-client/backlogs/frontend/lottie-no-wasm-fallback.md`.
+    // Деградация без WASM SIMD (backlogs/frontend/lottie-no-wasm-fallback.md,
+    // часть 2 — закрыта): `loadAnimationAsAsset` бросает `NO_WASM`
+    // (`lib/lottie/lottieLoader.ts:216`), канва в DOM не появляется
+    // (`lib/lottie/lottiePlayer.ts:1207`) — но сама `loadAnimationAsAsset`
+    // вставляет в `container` статичный PNG первого кадра ДО реджекта
+    // (`lib/lottie/lottieAssetFallback.ts`), поэтому обезьянка не пропадает
+    // совсем, а перестаёт подглядывать (кадр статичный).
     const load = lottieLoader
       .loadAnimationAsAsset(
         { container, loop: false, autoplay: false, width: size, height: size, noCache: true },

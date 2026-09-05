@@ -49,11 +49,13 @@ MediaHeader.Sticker = function MediaHeaderSticker(props: {
           size={size()}
           name={props.name}
           restartOnClick
-          // Деградация без WASM SIMD (план «один движок lottie», раздел
-          // «Решение по деградации без WASM SIMD»): реджект (NO_WASM/сеть)
-          // гасим ЗДЕСЬ, в одном месте на компонент — приём
-          // `StickerMedia.tsx:282`. Долг:
-          // `web-client/backlogs/frontend/lottie-no-wasm-fallback.md`.
+          // Деградация без WASM SIMD (backlogs/frontend/
+          // lottie-no-wasm-fallback.md, часть 2 — закрыта): реджект (NO_WASM/
+          // сеть) гасим ЗДЕСЬ, в одном месте на компонент — приём
+          // `StickerMedia.tsx:282`. `LottieAnimation` зовёт
+          // `loadAnimationAsAsset`, которая на NO_WASM сама подставляет
+          // статичный PNG первого кадра в контейнер ДО реджекта
+          // (`lib/lottie/lottieAssetFallback.ts`) — иконка шапки не пропадает.
           onPromise={(promise) => void promise.catch(() => {})}
         />
       ) : (
