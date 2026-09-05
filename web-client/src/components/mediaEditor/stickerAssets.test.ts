@@ -176,6 +176,25 @@ describe('StickerAssets: destroy() и деградация без WASM', () => {
     expect(assets.get(1)).toBeNull()
     expect(document.body.contains(container)).toBe(false)
   })
+
+  // ПИН (backlogs/frontend/lottie-no-wasm-fallback.md, «медиаредактор — потеря
+  // тяжелее»): слой без источника не должен теряться молча — вызывающий
+  // (MediaEditor.tsx) обязан узнать об этом через hasFailed()/onFail(), а не
+  // тихо получить null навсегда неотличимый от «ещё грузится».
+  it('без WASM SIMD (NO_WASM): hasFailed() становится true, onFail зовётся с mediaId', async () => {
+    loadStickerContent.mockResolvedValue({ kind: 'lottie', data: {} })
+    loadAnimationWorker.mockRejectedValueOnce(Object.assign(new Error('NO_WASM'), { type: 'NO_WASM' }))
+    const onFail = vi.fn()
+    const assets = new StickerAssets(vi.fn(), onFail)
+
+    expect(assets.hasFailed(1)).toBe(false) // ещё не отклонилось — не путать с провалом
+    assets.ensure(1)
+    await flush()
+
+    expect(assets.hasFailed(1)).toBe(true)
+    expect(onFail).toHaveBeenCalledTimes(1)
+    expect(onFail).toHaveBeenCalledWith(1)
+  })
 })
 
 describe('StickerAssets: картинки — ветка без lottie не затронута портом', () => {

@@ -5,6 +5,7 @@ import noop from '@helpers/noop';
 import {logger, LogTypes} from '@lib/logger';
 import LottiePlayer, {LottieOptions} from '@lib/lottie/lottiePlayer';
 import IS_WEB_ASSEMBLY_SIMD_SUPPORTED from '@environment/webAssemblySimdSupport';
+import {renderStaticAssetFallback} from '@lib/lottie/lottieAssetFallback';
 import makeError from '@helpers/makeError';
 import toArray from '@helpers/array/toArray';
 import lottieMessagePort from '@lib/lottie/lottieMessagePort';
@@ -142,6 +143,16 @@ export class LottieLoader {
 
   public loadAnimationAsAsset(params: Omit<LottieOptions, 'animationData' | 'name'>, name: LottieAssetName) {
     // (params as LottieOptions).name = name;
+    if(!IS_WEB_ASSEMBLY_SIMD_SUPPORTED) {
+      // Часть 2 задачи «фолбэк без WASM SIMD»
+      // (backlogs/frontend/lottie-no-wasm-fallback.md,
+      // lib/lottie/lottieAssetFallback.ts) — единственная точка входа встроенных
+      // ассетов (обезьянки/уточки/папки/ключ/конверт), поэтому единственная
+      // точка деградации: статичный первый кадр вместо пустого канваса.
+      // Промис всё равно РЕДЖЕКТИТСЯ NO_WASM ниже — вызывающие не меняются.
+      renderStaticAssetFallback(params.container, name);
+    }
+
     return this.loadAnimationFromURL(params, this.makeAssetUrl(name));
   }
 

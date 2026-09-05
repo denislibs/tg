@@ -194,22 +194,29 @@ describe('assets/tgs — реальные колл-сайты использую
 })
 
 describe('assets/tgs — состав статики не разъехался с Этапом 0', () => {
-  it('в public/assets/tgs/ лежат все 11 файлов, перенесённых Этапом 0', () => {
+  // Часть 2 задачи «фолбэк без WASM SIMD» (backlogs/frontend/
+  // lottie-no-wasm-fallback.md) добавила рядом с каждым json PNG первого кадра
+  // (`scripts/generate-tgs-thumbnails.mjs`, манифест и пин на протухание —
+  // `tgsThumbnails.manifest.json`/`tgsThumbnails.freshness.test.ts`) — список
+  // здесь расширен теми же 11 именами с расширением `.png`, а не сужен назад
+  // до одних json.
+  it('в public/assets/tgs/ лежат все 11 json (Этап 0) и все 11 png (часть 2 фолбэка)', () => {
     const files = readdirSync(TGS_DIR).sort()
+    const names = [
+      'Folders_1',
+      'Folders_2',
+      'Mailbox',
+      'TwoFactorSetupMonkeyIdle',
+      'TwoFactorSetupMonkeyPeek',
+      'TwoFactorSetupMonkeyTracking',
+      'UtyanDisappear',
+      'UtyanLinks',
+      'UtyanPasscode',
+      'UtyanSearch',
+      'key',
+    ]
     expect(files).toEqual(
-      [
-        'Folders_1.json',
-        'Folders_2.json',
-        'Mailbox.json',
-        'TwoFactorSetupMonkeyIdle.json',
-        'TwoFactorSetupMonkeyPeek.json',
-        'TwoFactorSetupMonkeyTracking.json',
-        'UtyanDisappear.json',
-        'UtyanLinks.json',
-        'UtyanPasscode.json',
-        'UtyanSearch.json',
-        'key.json',
-      ].sort(),
+      [...names.map((n) => `${n}.json`), ...names.map((n) => `${n}.png`)].sort(),
     )
   })
 })

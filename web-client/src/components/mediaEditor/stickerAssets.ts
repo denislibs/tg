@@ -22,6 +22,13 @@
 // нарисовать в СВОЙ canvas и забрать canvas[0] как источник» — портирован из
 // `lottieStickerFrameByFrameRenderer.ts:19-37,78-80` (тот же приём и в нашем
 // `wrappers/sticker.ts:241-260`, уже на tlottie).
+//
+// Решение по «фолбэк без WASM SIMD» (backlogs/frontend/
+// lottie-no-wasm-fallback.md, открытый вопрос закрыт): добавление lottie-
+// стикера без декодера гасится на входе в `StickerPicker.tsx` (недоступная
+// ячейка), а `hasFailed`/`onFail` здесь — защита на случай, если слой всё же
+// окажется в сцене без источника: вызывающий обязан предупредить пользователя,
+// а не полагаться на то, что `resolveSticker` тихо вернёт null.
 import lottieLoader from '@lib/lottie/lottieLoader'
 import type LottiePlayer from '@lib/lottie/lottiePlayer'
 import { loadStickerContent } from '../StickerMedia'
@@ -40,14 +47,29 @@ const LOTTIE_EXPORT_FPS = 60
 
 export class StickerAssets {
   private readonly onFrame: () => void
+  private readonly onFail?: (mediaId: number) => void
   private readonly sources = new Map<number, CanvasImageSource>()
   private readonly anims = new Map<number, LottiePlayer>()
   private readonly containers = new Map<number, HTMLDivElement>()
   private readonly pending = new Set<number>()
+  // mediaId'ы lottie-стикеров, которые НИКОГДА не получат источник (NO_WASM) —
+  // отдельно от `pending`: тому, кто рисует сцену/панель добавления, нужно
+  // различать «ещё грузится» и «не отрисуется никогда» (backlogs/frontend/
+  // lottie-no-wasm-fallback.md, «медиаредактор — потеря тяжелее»).
+  private readonly failed = new Set<number>()
   private dead = false
 
-  constructor(onFrame: () => void) {
+  /** @param onFail зовётся, когда lottie-слой НАВСЕГДА остаётся без источника
+   *  (сегодня единственная причина — NO_WASM); вызывающий обязан не пропускать
+   *  это молча — см. `hasFailed`. */
+  constructor(onFrame: () => void, onFail?: (mediaId: number) => void) {
     this.onFrame = onFrame
+    this.onFail = onFail
+  }
+
+  /** Лёг ли этот стикер НАВСЕГДА без источника (а не просто ещё грузится). */
+  hasFailed(mediaId: number): boolean {
+    return this.failed.has(mediaId)
   }
 
   /** Начать загрузку кадра стикера (идемпотентно). */
@@ -123,17 +145,19 @@ export class StickerAssets {
             },
             () => {
               // Без WASM SIMD `loadAnimationWorker` отклоняется с NO_WASM ДО
-              // первого кадра (`lottieLoader.ts:215-216`) — в отличие от
-              // lottie-web (чистый JS-рендер, работал в любом браузере),
-              // стикер в редакторе не появится СОВСЕМ: ни в живом превью, ни
-              // в экспорте (`sceneRender.ts:493` молча пропускает слой без
-              // источника). Долг тот же корень, что у остальных потребителей
-              // tlottie (`backlogs/frontend/lottie-no-wasm-fallback.md`), но
-              // ТЯЖЕЛЕЕ: там пропадает превью, здесь — слой в ЭКСПОРТЕ,
-              // молча, без ошибки и предупреждения (пользователь не узнает,
-              // что сохранённый результат отличается от того, что видел).
-              // Открытый вопрос по этому месту не решён — см. бэклог, раздел
-              // «Отдельно и жирно: медиаредактор — потеря тяжелее».
+              // первого кадра (`lottieLoader.ts:215-216`) — стикер не
+              // появится СОВСЕМ: ни в живом превью, ни в экспорте
+              // (`sceneRender.ts` рисует слой, только когда resolveSticker
+              // вернул источник). В штатном потоке сюда не попасть —
+              // `StickerPicker.tsx` гасит клик по lottie-ячейке ещё ДО того,
+              // как слой попадёт в сцену (см. докблок там же). Этот путь —
+              // защита на случай, если слой всё же окажется в сцене без
+              // источника (гонка, обход пикера): `hasFailed`/`onFail`
+              // сигнализируют вызывающему, чтобы он показал предупреждение
+              // вместо молчаливой потери — backlogs/frontend/
+              // lottie-no-wasm-fallback.md, «медиаредактор — потеря тяжелее».
+              this.failed.add(mediaId)
+              this.onFail?.(mediaId)
               container.remove()
             },
           )
@@ -176,5 +200,6 @@ export class StickerAssets {
     this.containers.clear()
     this.sources.clear()
     this.pending.clear()
+    this.failed.clear()
   }
 }
