@@ -102,9 +102,22 @@ const LottieAnimation: Component<{
 
   onCleanup(() => {
     cleanup = true
-    void animationPromise?.then((animation) => {
-      animation.remove()
-    })
+    // Расхождение с оригиналом (`tweb lottieAnimation.tsx:66-70` — тот же
+    // `.then()` без второго аргумента): у нас `loadAnimationAsAsset` умеет
+    // РЕДЖЕКТИТЬ (`NO_WASM`, деградация без WASM SIMD — план «один движок
+    // lottie», раздел «Решение по деградации без WASM SIMD»), а у tweb
+    // такого пути нет вовсе. Без второго аргумента `.then()` при отклонённом
+    // `animationPromise` рождает СВОЙ, ничьей стороной не пойманный,
+    // отклонённый промис — консьюмерский `onPromise`-катч (см. вызывающих)
+    // ловит ИСХОДНЫЙ `animationPromise`, а не этот производный. Пустой
+    // обработчик здесь — тот же смысл, что у `onPromise`-катчей вызывающих
+    // (`StickerMedia.tsx:282`), но за само размонтирование отвечает компонент.
+    void animationPromise?.then(
+      (animation) => {
+        animation.remove()
+      },
+      () => {},
+    )
   })
 
   return div

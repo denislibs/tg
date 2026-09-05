@@ -1,24 +1,23 @@
-// LottieSticker — анимированные иллюстрации-уточки из tweb (public/assets/tgs/*.json,
-// те же данные, что играет rlottie в оригинале; здесь — lottie-web/canvas).
-// Ассеты подтягиваются лениво, чтобы не раздувать основной бандл: раньше —
-// бандл-чанком (`import('../assets/tgs/*.json')`), теперь — с той же статики,
-// что и tlottie-точка входа `LottieAnimation` (Этап 0 плана «один движок
-// lottie»); движок здесь не менялся, это Этапы 1-3.
+// LottieSticker — иллюстрации-уточки (пустые состояния, папки, ключ,
+// пасскод) в React-дереве. Порт tweb-обёрток над `components/lottieAnimation.
+// tsx` (`emptySearchPlaceholder/index.tsx:24-30`, `settingsTabLottieAnimation.
+// tsx:19-25`, `emptyPlaceholder.tsx` — все три зовут `LottieAnimation` с
+// `restartOnClick`): единственный движок — `lib/lottie/lottieLoader`
+// (tlottie, WASM-воркер), портированный из tweb `lottieLoader.ts` (Этап 0
+// плана «один движок lottie», docs/superpowers/plans/2026-09-05-lottie-
+// single-engine.md). Ассет — json со статики `public/assets/tgs/<name>.json`
+// (`lottieLoader.makeAssetUrl`), имя — из вендорного `LottieAssetName`.
+//
+// Solid-компонент `components/lottieAnimation.solid.tsx` — та же точка входа
+// для Solid-дерева (её использует `MediaHeader.solid.tsx::Sticker`); здесь та
+// же логика вызвана НАПРЯМУЮ (приём — как у `PasswordMonkey.tsx`, Этап 1), а
+// не через Solid-остров: все потребители этого файла — мелкие иконки внутри
+// React-экранов настроек, а `web-client/CLAUDE.md` держит `<SolidIsland>`
+// только для крупных границ (попап/вкладка/экран) — сама уточка ею не
+// является.
 import { useEffect, useRef } from 'react'
-import { type AnimationItem } from 'lottie-web'
-import { loadLottie, loadTgsAsset } from './lottie'
-
-const ASSETS: Record<string, () => Promise<{ default: unknown }>> = {
-  UtyanLinks: () => loadTgsAsset('UtyanLinks'),
-  UtyanSearch: () => loadTgsAsset('UtyanSearch'),
-  Folders_1: () => loadTgsAsset('Folders_1'),
-  Folders_2: () => loadTgsAsset('Folders_2'),
-  UtyanPasscode: () => loadTgsAsset('UtyanPasscode'),
-  UtyanDisappear: () => loadTgsAsset('UtyanDisappear'),
-  Key: () => loadTgsAsset('key'),
-}
-
-export type LottieAssetName = keyof typeof ASSETS
+import lottieLoader, { type LottieAssetName } from '@lib/lottie/lottieLoader'
+import type LottiePlayer from '@lib/lottie/lottiePlayer'
 
 export default function LottieSticker({
   name,
@@ -30,33 +29,49 @@ export default function LottieSticker({
   loop?: boolean
 }) {
   const ref = useRef<HTMLDivElement>(null)
-  const animRef = useRef<AnimationItem | null>(null)
+  const animRef = useRef<LottiePlayer | null>(null)
 
   useEffect(() => {
     let alive = true
-    void Promise.all([loadLottie(), ASSETS[name]()]).then(([lottie, mod]) => {
-      if (!alive || !ref.current) return
-      animRef.current = lottie.loadAnimation({
-        container: ref.current,
-        renderer: 'canvas',
-        loop,
-        autoplay: true,
-        animationData: mod.default,
+    const container = ref.current
+    if (!container) return
+
+    // group:'none' — тот же выбор, что у оригинала (`lottieAnimation.tsx:47`):
+    // без него autoplay ждёт первую отмашку `animationIntersector`
+    // (карусель/скрытые табы), а эти уточки монтируются сразу видимыми.
+    //
+    // Деградация без WASM SIMD (решение плана «один движок lottie», раздел
+    // «Решение по деградации без WASM SIMD»): `loadAnimationAsAsset` бросает
+    // `NO_WASM` (`lib/lottie/lottieLoader.ts:216`), канва в DOM не появляется
+    // — уточка просто не показывается. Долг:
+    // `web-client/backlogs/frontend/lottie-no-wasm-fallback.md`.
+    const load = lottieLoader
+      .loadAnimationAsAsset({ container, loop, autoplay: true, width: size, height: size, group: 'none' }, name)
+      .then((animation) => {
+        if (!alive) {
+          animation.remove()
+          return
+        }
+        animRef.current = animation
       })
-    })
+
+    // Реджект (NO_WASM/сеть) гасим ЗДЕСЬ, в одном месте — приём
+    // `StickerMedia.tsx:282`, а не россыпью `.catch(() => {})`.
+    void load.catch(() => {})
+
     return () => {
       alive = false
-      animRef.current?.destroy()
+      animRef.current?.remove()
       animRef.current = null
     }
-  }, [name, loop])
+  }, [name, size, loop])
 
-  // клик — проиграть ещё раз (как у tweb-плейсхолдеров)
+  // клик — проиграть ещё раз (tweb `restartOnClick`, `lottieAnimation.tsx:29-33`)
   return (
     <div
       ref={ref}
       style={{ width: size, height: size, margin: '0 auto', cursor: 'pointer' }}
-      onClick={() => animRef.current?.goToAndPlay(0)}
+      onClick={() => animRef.current?.playOrRestart()}
     />
   )
 }

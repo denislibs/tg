@@ -62,7 +62,11 @@ export default function PasskeyIntroPopup({
         </div>
 
         <div className={s.sticker}>
-          <LottieSticker name="Key" size={120} />
+          {/* 'key' — реальное имя вендорного `LottieAssetName` (tweb
+              `popups/passkey.tsx:39` — `sticker: {name: 'key', ...}`); Этап 0
+              локальной карты `ASSETS` уже нет, имя больше не проходит через
+              капитализированный алиас `Key`. */}
+          <LottieSticker name="key" size={120} />
         </div>
         <Text size={24} weight={700} color="var(--primary-text-color)" className={s.title}>
           {t('Passkey.Title')}

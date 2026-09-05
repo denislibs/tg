@@ -10,25 +10,22 @@ export function loadLottie(): Promise<Lottie> {
   return promise
 }
 
-// Мост Этапа 0 программы «один движок lottie»
-// (docs/superpowers/plans/2026-09-05-lottie-single-engine.md). 11 встроенных
-// json-ассетов (обезьянки/уточки/шапка письма) переехали из бандла
-// (`src/assets/tgs/*.json`) на статику `public/assets/tgs/*.json` — git mv,
-// история не теряется. Оставшиеся потребители ниже (`LottieSticker.tsx`,
-// `mediaEditor/stickerAssets.ts`, `MediaHeader.solid.tsx`) ещё играют их
-// через lottie-web (`loadLottie()`), это Этапы 2-3 плана («каждая — по одной,
-// потом снос пакета»; Этап 1 уже перевёл обеих обезьянок,
-// `PasswordMonkey.tsx`/`TrackingMonkey.solid.tsx`, на tlottie
-// `lottieLoader.loadAnimationAsAsset` напрямую — здесь они больше не
-// числятся). Здесь меняется ТОЛЬКО источник данных — раньше
-// `import('../assets/tgs/X.json')` клал json в JS-чанк, теперь тот же json
-// тянется по URL со статики (тот же путь, что строит
-// `lottieLoader.makeAssetUrl` для tlottie — `lib/lottie/lottieLoader.ts:140`,
-// вендорено из tweb `lottieLoader.ts:154-156`). Функция уйдёт вместе с
-// `components/lottie.ts` целиком на Этапе 4 («снос пакета»), когда последний
-// из оставшихся потребителей переедет на `LottieAnimation`/tlottie.
-export function loadTgsAsset(name: string): Promise<{ default: unknown }> {
-  return fetch(`/assets/tgs/${name}.json`)
-    .then((res) => res.json())
-    .then((data) => ({ default: data }))
-}
+// `loadTgsAsset` (мост Этапа 0 для 11 встроенных json-ассетов, git mv из
+// бандла на `public/assets/tgs/*.json`) снят Этапом 2 плана «один движок
+// lottie» (docs/superpowers/plans/2026-09-05-lottie-single-engine.md): его
+// последние вызывающие — `LottieSticker.tsx` и `MediaHeader.solid.tsx` —
+// переехали на портированный `LottieAnimation`/tlottie
+// (`lib/lottie/lottieLoader.ts::loadAnimationAsAsset`, тот же URL строит
+// `makeAssetUrl`, `lib/lottie/lottieLoader.ts:140`). Расхождение с планом
+// (раздел «Этап 4»), объявленное здесь, а не молча: план числил
+// `mediaEditor/stickerAssets.ts` третьим потребителем МОСТА, но на деле этот
+// файл никогда не звал `loadTgsAsset` — он играет ПРОИЗВОЛЬНЫЕ пользовательские
+// стикеры через `loadLottie()` (см. ниже), а не 11 встроенных именованных
+// ассетов. У моста `loadTgsAsset` не осталось ни одного вызывающего уже
+// сейчас, поэтому он удалён здесь, а не оставлен до Этапа 4 («снос пакета») —
+// мёртвый код правило проекта требует убирать сразу (`CLAUDE.md`), а не
+// держать до соседнего пункта плана.
+//
+// `loadLottie()` выше остаётся: его единственный потребитель —
+// `mediaEditor/stickerAssets.ts` (превью реальных стикеров в канве
+// редактора, Этап 3 плана) — на tlottie ещё не переехал.

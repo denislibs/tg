@@ -117,6 +117,22 @@ describe('LottieAnimation — единственная точка входа д�
     expect(player.remove).toHaveBeenCalledTimes(1)
   })
 
+  it('реджект загрузки (NO_WASM) + размонтирование — onCleanup не рожает свой необработанный промис (Этап 2)', async () => {
+    const { loader, loadAnimationAsAsset } = fakeLoader(fakePlayer())
+    loadAnimationAsAsset.mockRejectedValue(new Error('NO_WASM'))
+
+    mount(() => <LottieAnimation lottieLoader={loader} name="UtyanPasscode" />)
+
+    await Promise.resolve()
+    await Promise.resolve()
+
+    dispose?.()
+    dispose = undefined
+    await Promise.resolve()
+    // без второго аргумента у `onCleanup`'s `.then()` (см. комментарий у
+    // строки в компоненте) этот прогон дал бы Unhandled Rejection.
+  })
+
   it('без lottieLoader-пропа использует синглтон @lib/lottie/lottieLoader (расхождение с tweb объявлено в докблоке)', () => {
     const spy = vi.spyOn(defaultLottieLoader, 'loadAnimationAsAsset').mockReturnValue(
       new Promise(() => {}), // не резолвим — в тесте важен только факт вызова на синглтоне

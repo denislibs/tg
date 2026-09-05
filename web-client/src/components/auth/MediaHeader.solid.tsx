@@ -9,66 +9,18 @@
 // — встроенный lottie-ассет (`LottieAnimation`). Ни одна из трёх карточек
 // задачи 4 (SignIn/AuthCode/Password) им не пользовалась. Задача 5 завела
 // настоящего потребителя (`cards/EmailRecoverCard.solid.tsx` — Mailbox), и
-// ветка `name` дописана здесь тем же приёмом, что у React `MediaHeader.tsx`
-// (`ASSETS`-карта + ленивый `loadLottie()` + lottie-web `loadAnimation` в
-// канву), только на Solid-примитивах жизненного цикла (`onMount`/`onCleanup`
-// вместо `useEffect`).
-import { onCleanup, onMount, type JSX } from 'solid-js'
-import type { AnimationItem } from 'lottie-web'
+// ветка `name` была дописана локальной `ASSETS`-картой + lottie-web.
+//
+// Этап 2 плана «один движок lottie» (docs/superpowers/plans/2026-09-05-
+// lottie-single-engine.md) снял и то, и другое: `name` едет ПРЯМО в
+// портированный `LottieAnimation` (`components/lottieAnimation.solid.tsx`,
+// tlottie), Solid-компонент вызывает Solid-компонент без моста — тот же приём,
+// что у оригинала (`tweb mediaHeader.tsx:66-76`, включая `restartOnClick`).
+import { type JSX } from 'solid-js'
 import classNames from '@helpers/string/classNames'
-import { loadLottie, loadTgsAsset } from '../lottie'
+import LottieAnimation from '../lottieAnimation.solid'
+import type { LottieAssetName } from '@lib/lottie/lottieLoader'
 import styles from './mediaHeader.module.scss'
-
-/** Встроенные лотти-ассеты слота (tweb `LottieAssetName`) — грузятся лениво,
- *  с той же статики `public/assets/tgs/`, что и tlottie-точка входа
- *  `LottieAnimation` (Этап 0 плана «один движок lottie»); движок здесь пока
- *  lottie-web, перевод — Этапы 1-3. */
-const ASSETS = {
-  Mailbox: () => loadTgsAsset('Mailbox'),
-}
-
-export type StickerAssetName = keyof typeof ASSETS
-
-/**
- * Порт tweb `<LottieAnimation>` в объёме, который нужен слоту шапки:
- * `div._lottie[style="--size: Npx"] > canvas.lottie`. Класс канвы даёт сам
- * lottie-web через `rendererSettings.className`, как в оригинале.
- */
-function StickerLottie(props: { name: StickerAssetName; size: number }): JSX.Element {
-  let hostEl: HTMLDivElement | undefined
-  let anim: AnimationItem | undefined
-  let alive = true
-
-  onMount(() => {
-    void Promise.all([loadLottie(), ASSETS[props.name]()]).then(([lottie, mod]) => {
-      if (!alive || !hostEl) return
-      anim = lottie.loadAnimation({
-        container: hostEl,
-        renderer: 'canvas',
-        loop: false,
-        autoplay: true,
-        animationData: mod.default as unknown,
-        rendererSettings: { className: 'lottie', dpr: window.devicePixelRatio || 1 },
-      })
-    })
-  })
-
-  onCleanup(() => {
-    alive = false
-    anim?.destroy()
-    anim = undefined
-  })
-
-  // tweb `restartOnClick` — клик проигрывает анимацию заново.
-  return (
-    <div
-      ref={hostEl}
-      class={styles.lottie}
-      style={{ '--size': `${props.size}px` }}
-      onClick={() => anim?.goToAndPlay(0)}
-    />
-  )
-}
 
 function MediaHeader(props: { class?: string; children?: JSX.Element }): JSX.Element {
   return <div class={classNames(styles.container, props.class)}>{props.children}</div>
@@ -76,20 +28,37 @@ function MediaHeader(props: { class?: string; children?: JSX.Element }): JSX.Ele
 
 /**
  * Слот под иконку/канву/обезьянку/лотти. `size` уезжает в `--sticker-size`
- * (tweb 1:1). `name` — встроенный лотти-ассет (см. `StickerLottie` выше),
- * `children` — произвольное содержимое (svg-логотип, обезьянка, аватар
- * регистрации, QR); как `name`/`element` у tweb `MediaHeader.Sticker`.
+ * (tweb 1:1). `name` — встроенный лотти-ассет, рисуется `LottieAnimation`
+ * (`class={styles.lottie}` даёт ему `width/height: var(--size)` — те же
+ * правила, что у tweb `mediaHeader.module.scss`), `children` — произвольное
+ * содержимое (svg-логотип, обезьянка, аватар регистрации, QR); как
+ * `name`/`element` у tweb `MediaHeader.Sticker`.
  */
 MediaHeader.Sticker = function MediaHeaderSticker(props: {
   size?: number
-  name?: StickerAssetName
+  name?: LottieAssetName
   class?: string
   children?: JSX.Element
 }): JSX.Element {
   const size = () => props.size ?? 130
   return (
     <div class={classNames(styles.sticker, props.class)} style={{ '--sticker-size': `${size()}px` }}>
-      {props.name ? <StickerLottie name={props.name} size={size()} /> : props.children}
+      {props.name ? (
+        <LottieAnimation
+          class={styles.lottie}
+          size={size()}
+          name={props.name}
+          restartOnClick
+          // Деградация без WASM SIMD (план «один движок lottie», раздел
+          // «Решение по деградации без WASM SIMD»): реджект (NO_WASM/сеть)
+          // гасим ЗДЕСЬ, в одном месте на компонент — приём
+          // `StickerMedia.tsx:282`. Долг:
+          // `web-client/backlogs/frontend/lottie-no-wasm-fallback.md`.
+          onPromise={(promise) => void promise.catch(() => {})}
+        />
+      ) : (
+        props.children
+      )}
     </div>
   )
 }
