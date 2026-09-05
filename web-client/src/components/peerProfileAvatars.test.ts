@@ -705,6 +705,12 @@ async function makeLoaded(n = 3) {
   const avatarsEl = instance.container.querySelector<HTMLElement>('.profile-avatars-avatars')!
   const tabsEl = instance.container.querySelector('.profile-avatars-tabs')!
 
+  // РАУНД ПРАВОК 1: клик-гейт `currentHasPhoto` (см. peerProfileAvatars.ts)
+  // читает зеркало пиров (getPeerPhoto/getPeerPhotoId), а не галерею — без
+  // photo в зеркале ЛЮБОЙ клик по ALICE был бы гасим (см. тест на группу/
+  // канал ниже, где photo в зеркале НЕТ намеренно).
+  applyPeerOps([{ op: 'upsert', peers: [{ _: 'user', id: ALICE, first_name: 'Alice', pFlags: {}, photo: { _: 'userProfilePhoto', photo_id: 900 } }] }])
+
   await instance.setPeer(ALICE)
   await vi.waitFor(() => {
     expect(avatarsEl.children.length).toBe(n)
@@ -765,6 +771,53 @@ describe('PeerProfileAvatars — клик по зонам (tweb :142-233)', () =
     expect(scrollToSpy).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' })
     expect(avatarsEl.children[0].classList.contains('active')).toBe(true) // не листнуло
   })
+
+  // РАУНД ПРАВОК 1 (Important, живой баг из ревью задачи 3): гейт клика
+  // читал `listLoader.current === undefined` как замену tweb `hasNoPhoto` —
+  // но для НЕ-пользователя `setPeer` (:479-481) `items` всегда `[]` (ручки
+  // истории фото нет вовсе), значит `listLoader.current` там ВСЕГДА
+  // `undefined` — ДАЖЕ когда у чата/канала РЕАЛЬНО есть аватар. Прежний гейт
+  // гасил клик для любого такого пира целиком: свёрнутая шапка не
+  // разворачивалась, развёрнутая не открывала вьювер. Правильный источник —
+  // `currentHasPhoto` (зеркало пиров, `getPeerPhoto`/`getPeerPhotoId`, тот же
+  // путь, что `avatarNew`), проверяем именно на канале БЕЗ исторической
+  // галереи, но С реальным фото в зеркале.
+  it('канал СО своим фото (currentHasPhoto из зеркала, не из галереи истории) — клик разворачивает и открывает вьювер', async () => {
+    const CHANNEL = -777 // peerKey(chat/channel) = -Math.abs(id) — зеркало под id:777
+    applyPeerOps([{
+      op: 'upsert',
+      peers: [{ _: 'channel', id: 777, title: 'Канал', date: 0, photo: { _: 'chatPhoto', photo_id: 4242 } }],
+    }])
+
+    const mgrs = makeManagers()
+    const { instance, setCollapsedOn } = make(mgrs)
+    const avatarsEl = instance.container.querySelector<HTMLElement>('.profile-avatars-avatars')!
+
+    await instance.setPeer(CHANNEL)
+    expect(mgrs.profile.listPhotos).not.toHaveBeenCalled() // не-юзер — истории нет вовсе (tweb :443-499)
+    expect(avatarsEl.children.length).toBe(1) // аватар РЕАЛЬНО отрисован — зеркалом пира (isFirst-ветка processItem)
+
+    mockRect(instance.container, { left: 0, width: 300, right: 300 })
+
+    // Свёрнуто: клик обязан РАЗВЕРНУТЬ (листать и так некуда — один элемент).
+    ;(instance as any).setCollapsed(true)
+    expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(true)
+
+    clickAt(instance.container, 150)
+    expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(false)
+
+    // Развёрнуто: клик обязан открыть вьювер — ЕДИНСТВЕННЫМ элементом из
+    // ТЕКУЩЕГО фото пира (для канала `ProfilePhoto` не существует вовсе —
+    // buildViewerItemFromCurrentPhoto строит его из getPeerPhotoId зеркала).
+    const openSpy = vi.spyOn(viewerModule, 'openMediaViewer').mockImplementation(() => undefined)
+    clickAt(instance.container, 150)
+
+    expect(openSpy).toHaveBeenCalledTimes(1)
+    const args = openSpy.mock.calls[0][0]
+    expect(args.index).toBe(0)
+    expect(args.items).toHaveLength(1)
+    expect(args.items[0].media.mediaId).toBe(4242)
+  })
 })
 
 describe('PeerProfileAvatars — свайп через SwipeHandler (tweb :243-298)', () => {
@@ -817,6 +870,57 @@ describe('PeerProfileAvatars — свайп через SwipeHandler (tweb :243-2
 
     // verifyTouchTarget вернул false — onFirstSwipe не звался, is-swiping не взводится.
     expect(instance.container.classList.contains('is-swiping')).toBe(false)
+  })
+
+  // Важно (ревью задачи 3): те же самые гейты, что покрыты для клика
+  // (checkScrollTop/isCollapsed), для СВАЙПА покрыты не были — обе мутации
+  // по отдельности оставляли прежний набор зелёным.
+  it('checkScrollTop гейт свайпа: ненулевой скролл блокирует старт (verifyTouchTarget, tweb :259-262)', async () => {
+    const { instance, avatarsEl, scrollableEl } = await makeLoaded(3)
+    mockRect(avatarsEl, { left: 0, width: 300 })
+    scrollableEl.scrollTop = 50
+
+    avatarsEl.dispatchEvent(pointerEvent('mousedown', { clientX: 150, clientY: 100, button: 0 }))
+    await Promise.resolve()
+    document.dispatchEvent(pointerEvent('mousemove', { clientX: 100, clientY: 100 }))
+
+    // verifyTouchTarget вернул false (checkScrollTop) — onFirstSwipe не звался.
+    expect(instance.container.classList.contains('is-swiping')).toBe(false)
+  })
+
+  it('isCollapsed гейт свайпа: свёрнутая шапка блокирует старт (verifyTouchTarget, tweb :263)', async () => {
+    const { instance, avatarsEl } = await makeLoaded(3)
+    mockRect(avatarsEl, { left: 0, width: 300 })
+    ;(instance as any).setCollapsed(true)
+
+    avatarsEl.dispatchEvent(pointerEvent('mousedown', { clientX: 150, clientY: 100, button: 0 }))
+    await Promise.resolve()
+    document.dispatchEvent(pointerEvent('mousemove', { clientX: 100, clientY: 100 }))
+
+    // verifyTouchTarget вернул false (isCollapsed) — onFirstSwipe не звался.
+    expect(instance.container.classList.contains('is-swiping')).toBe(false)
+  })
+
+  // Важно (ревью задачи 3): снос строки `this.swipeHandler.removeListeners()`
+  // из `cleanup()` НЕ красил ни один из прежних 33 тестов — `SwipeHandler`
+  // держит СОБСТВЕННЫЙ `ListenerSetter` (core/dom/swipeHandler.ts:167),
+  // никак не связанный с `this.listenerSetter` класса, поэтому
+  // `this.listenerSetter.removeAll()` его не снимает. Без явного вызова
+  // mousedown-слушатель на `this.avatars` пережил бы `cleanup()` навсегда —
+  // проверяем это ФАКТИЧЕСКИМ жестом ПОСЛЕ cleanup(), а не фактом вызова.
+  it('cleanup() снимает СОБСТВЕННЫЕ слушатели SwipeHandler — свайп после cleanup ничего не делает', async () => {
+    const { instance, avatarsEl } = await makeLoaded(3)
+    mockRect(avatarsEl, { left: 0, width: 300 })
+
+    instance.cleanup()
+
+    avatarsEl.dispatchEvent(pointerEvent('mousedown', { clientX: 150, clientY: 100, button: 0 }))
+    await Promise.resolve()
+    document.dispatchEvent(pointerEvent('mousemove', { clientX: 100, clientY: 100 })) // было бы больше порога — сдвинуло бы индекс
+    document.dispatchEvent(pointerEvent('mouseup', { clientX: 100, clientY: 100 }))
+
+    expect(instance.container.classList.contains('is-swiping')).toBe(false) // onFirstSwipe не звался вовсе
+    expect(avatarsEl.children[1].classList.contains('active')).toBe(false) // индекс не сдвинулся — жест не долетел
   })
 })
 

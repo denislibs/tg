@@ -94,12 +94,21 @@
 //      это уже мёртвая в самом tweb защита от несуществующей реентерабельности
 //      (наш `openMediaViewer.ts` и так не даёт открыть второй вьювер —
 //      модульный синглтон `if (current) return`, `openMediaViewer.ts:40`);
-//    — `hasNoPhoto` (:170-172) — эквивалент есть, но не отдельным полем:
-//      у нас нет факта «есть ли у пира вообще фото» отдельно от списка
-//      (`getPeerPhoto` не портирован), а `listLoader.current === undefined`
-//      бывает РОВНО в тех же случаях, что дало бы `hasNoPhoto=true` у нас
-//      (SHOW_NO_AVATAR с пустой галереей, группа/канал без `listPhotos`) —
-//      см. гейт в начале клик-хендлера;
+//    — `hasNoPhoto` (:170-172, `= !photo` из `getPeerPhoto` пира, :380) —
+//      портирован полем `currentHasPhoto` (см. докблок поля): читает ЛОКАЛЬНОЕ
+//      зеркало пиров (`getPeerPhoto`/`getPeerPhotoId`, тот же путь, каким
+//      `avatarNew`/`putAvatar` решает «фото или кружок с инициалами»,
+//      `components/avatar.ts:220-221`), а НЕ `listLoader.current === undefined`
+//      — РАУНД ПРАВОК 1 нашёл эту более раннюю версию неверной: для
+//      группы/канала (`setPeer` без threadId, не-пользователь) исторической
+//      галереи нет вовсе (`items = []` всегда, ручки нет, tweb :443-499), то
+//      есть `listLoader.current` там ВСЕГДА `undefined` — ДАЖЕ когда у чата
+//      реально ЕСТЬ аватар (isFirst-ветка `processItem` рисует его зеркалом);
+//      прежний гейт гасил клик для любого такого чата целиком (не
+//      разворачивал свёрнутую шапку, не открывал вьювер). Открытие вьювера
+//      для пира без галереи (но с фото) — тоже РАУНД ПРАВОК 1, единственный
+//      элемент собирается из ТЕКУЩЕГО фото пира (`openViewer`/
+//      `buildViewerItemFromCurrentPhoto`), а не из `ProfilePhoto` галереи;
 //    — «трети» экрана НЕ требуют отдельных JS-обработчиков на
 //      `.profile-avatars-arrow`/`-arrow-next`: стрелки СТРОГО декоративны и
 //      позиционированы CSS по краям контейнера (`_profile.scss:330-372`,
@@ -127,7 +136,8 @@ import cancelEvent from '@helpers/dom/cancelEvent'
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import { getMiddleware, type Middleware, type MiddlewareHelper } from '@helpers/middleware'
 import { isUser, toUserId } from '@core/peers/peerId'
-import { peerTitle } from '@core/peerCache'
+import { getPeerPhoto, getPeerPhotoId } from '@core/peers/peer'
+import { cachedPeer, peerTitle } from '@core/peerCache'
 import { ensureMediaUrl } from '@core/media/ensureMediaUrl'
 import { resolveStreamUrl } from '@core/mediaUrl'
 import type { ProfilePhoto } from '@core/managers/profileManager'
@@ -204,6 +214,20 @@ export default class PeerProfileAvatars {
   // синхронная первая строка setPeer, до единого await.
   private currentPeerId?: PeerId
 
+  // tweb :384 (`this.hasNoPhoto = !photo`, photo — из `getPeerPhoto` пира,
+  // :380). РАУНД ПРАВОК 1: раньше здесь читали `listLoader.current !==
+  // undefined` — казалось эквивалентом (см. был докблок класса), но это
+  // НЕВЕРНО для группы/канала: `setPeer` без threadId для НЕ-пользователя
+  // всегда даёт `items = []` (нет ручки истории фото, tweb :443-499), значит
+  // `listLoader.current` там ВСЕГДА `undefined` — даже когда у чата ЕСТЬ
+  // аватар (isFirst-ветка `processItem` рисует его зеркалом). Это гасило клик
+  // для ЛЮБОГО чата с фото. Настоящий tweb-эквивалент — «есть ли у пира
+  // текущее фото», а не «непуста ли историческая галерея»: `getPeerPhoto`/
+  // `getPeerPhotoId` читают ЛОКАЛЬНОЕ зеркало пиров (тот же путь, каким
+  // `avatarNew`/`putAvatar` решает, рисовать фото или кружок с инициалами,
+  // `components/avatar.ts:220-221`) — синхронно, без сети.
+  private currentHasPhoto = false
+
   // tweb :55 (this.swipeHandler) — свайп ленты, порт `core/dom/swipeHandler.ts`
   // (см. конструктор). `!`: создаётся синхронно в конструкторе, до первого
   // чтения; снимается в cleanup() (tweb :969).
@@ -276,8 +300,8 @@ export default class PeerProfileAvatars {
     // ─── Клик — зоны/закольцовывание/просмотрщик (tweb :127-233) ───────────
     // Расхождения от буквального текста оригинала объявлены докблоком класса
     // выше (`uploadInProgress`/`fakeAvatar`/`profile-subtitle-rating`/
-    // `emoji-status`/`freeze` не портированы, `hasNoPhoto` заменён на
-    // `listLoader.current === undefined`, `openAvatarViewer` → `openViewer()`).
+    // `emoji-status`/`freeze` не портированы, `hasNoPhoto` → `currentHasPhoto`
+    // — см. докблок поля, РАУНД ПРАВОК 1; `openAvatarViewer` → `openViewer()`).
     const SWITCH_ZONE = 1 / 3
     let cancel = false
     attachClickEvent(this.container, (e) => {
@@ -288,8 +312,7 @@ export default class PeerProfileAvatars {
 
       if (!this.checkScrollTop()) return
 
-      const loader = this.listLoader
-      if (!loader?.current) return // «нет фото вообще» — см. докблок класса (hasNoPhoto)
+      if (!this.currentHasPhoto) return // tweb :170-172 (hasNoPhoto) — см. докблок поля `currentHasPhoto`
 
       if (this.isCollapsed()) {
         // tweb :174-182 (`this.unfold(_e)`) — внешнего источника разворачивания
@@ -298,6 +321,13 @@ export default class PeerProfileAvatars {
         this.setCollapsed(false)
         return
       }
+
+      // `listLoader` заведён ЛЮБЫМ завершённым `setPeer` без threadId (даже
+      // для группы/канала с пустой галереей — `current` там `undefined`,
+      // но сам loader есть); topic-ветка (сегодня недостижима) его не
+      // трогает вовсе — страховка на случай, если клик прилетел раньше.
+      const loader = this.listLoader
+      if (!loader) return
 
       const rect = this.container.getBoundingClientRect()
       const x = e.pageX
@@ -314,6 +344,15 @@ export default class PeerProfileAvatars {
         // до первого пользовательского взаимодействия); фолбэк на сумму длин
         // окон нужен только на случай гонки, тем же значением, каким `count`
         // станет сам, как только `load()` дотечёт.
+        //
+        // СОЗНАТЕЛЬНО НЕПОКРЫТО (норма `web-client/CLAUDE.md`): чтобы
+        // наблюдать `loader.count === undefined` в тесте, пришлось бы кликать
+        // МЕЖДУ `setPeer()`/резолвом первого элемента и завершением
+        // `load(true)` — то есть гонять реальный `vi.waitFor` наоборот
+        // (ловить окно ДО заполнения), что делает тест хрупким к таймингам
+        // раннера, а не к строке кода. Подмена на заведомо неверное число
+        // (999999) ничего не красит именно поэтому — оба выражения дают один
+        // результат ПОСЛЕ `load()`, различие видно только в этом узком окне.
         const count = loader.count ?? loader.previous.length + loader.next.length + 1
         let distance: number
         if (loader.index === 0 && !toRight) distance = count - 1
@@ -451,6 +490,9 @@ export default class PeerProfileAvatars {
     // оригинале, поэтому гонки со сменой пира нет — клик/свайп всегда читают
     // peerId ленты, которая реально сейчас в DOM.
     this.currentPeerId = peerId
+    // tweb :380-384 (hasNoPhoto = !photo) — см. докблок поля `currentHasPhoto`
+    // выше: РАУНД ПРАВОК 1, синхронное чтение зеркала, до единого await.
+    this.currentHasPhoto = getPeerPhotoId(getPeerPhoto(cachedPeer(peerId))) !== 0
     this.middlewareHelper.clean()
 
     if (!threadId) {
@@ -599,40 +641,82 @@ export default class PeerProfileAvatars {
     const peerId = this.currentPeerId
     if (peerId === undefined) return
 
-    const all = [...loader.previous, loader.current!, ...loader.next]
-    const items: ViewerItem[] = all.map((photo, idx) => {
-      const el = this.avatars.children[idx] as HTMLElement | undefined
-      const rect = el?.getBoundingClientRect()
-      const isVideo = !!photo.videoMediaId
-
-      return {
-        element: el ?? null,
-        mid: 0, // не сообщение — forward/delete/jump не пробрасываются (как и в снесённой UserInfoPanel.tsx::openAvatarViewer)
-        media: {
-          mediaId: photo.mediaId,
-          width: rect?.width ?? 0,
-          height: rect?.height ?? 0, // avatarWrap уже в DOM для ЛЮБОГО элемента ленты (processItem всегда создаёт узел синхронно) — 0 недостижим, кроме гонки layout
-          kind: isVideo ? 'video' : 'photo',
-          gif: isVideo || undefined, // видео-аватар — автоплей-цикл без плеера, как обычный GIF-документ вьювера
-          // Ленивый резолв (`ViewerMedia.url` — `() => Promise<string>`): те же
-          // единственные ванильные точки входа за байты, что и у `processItem`
-          // (докблок `PeerProfileAvatarsManagers`), не `managers.media.*` напрямую.
-          url: isVideo
-            ? () => Promise.resolve(resolveStreamUrl(photo.videoMediaId!))
-            : () => ensureMediaUrl(photo.mediaId),
-        },
-        // Даты у фото профиля нет (ViewerAuthor.date опционален) — подпись
-        // вьювер просто не рисует, как и у снесённой самоделки.
-        author: { peerId, name: peerTitle(peerId) },
-      }
-    })
+    // РАУНД ПРАВОК 1: группа/канал (и вообще любой пир без исторической
+    // галереи — `loader.current === undefined`, но `currentHasPhoto` уже
+    // проверен true клик-хендлером выше) не имеют ни одного `ProfilePhoto` —
+    // единственный элемент собирается из ТЕКУЩЕГО фото пира напрямую
+    // (`buildViewerItemFromCurrentPhoto`), а не из галереи, которой для этого
+    // пира попросту нет (tweb :443-499, долг
+    // `backlogs/frontend/profile-chat-photo-history.md`).
+    const items: ViewerItem[] = loader.current
+      ? [...loader.previous, loader.current, ...loader.next].map((photo, idx) => this.buildViewerItem(photo, idx, peerId))
+      : [this.buildViewerItemFromCurrentPhoto(peerId)]
+    const index = loader.current ? loader.previous.length : 0 // tweb :211 — this.listLoader.previous.length, он же loader.index
 
     void openMediaViewer({
       items,
-      index: loader.previous.length, // tweb :211 — this.listLoader.previous.length, он же loader.index
-      target: this.avatars.children[loader.previous.length] as HTMLElement,
+      index,
+      target: this.avatars.children[index] as HTMLElement,
       reverse: false,
     })
+  }
+
+  /** Элемент вьювера из КОНКРЕТНОЙ фотографии галереи. */
+  private buildViewerItem(photo: ProfilePhoto, idx: number, peerId: PeerId): ViewerItem {
+    const el = this.avatars.children[idx] as HTMLElement | undefined
+    const rect = el?.getBoundingClientRect()
+    const isVideo = !!photo.videoMediaId
+
+    return {
+      element: el ?? null,
+      mid: 0, // не сообщение — forward/delete/jump не пробрасываются (как и в снесённой UserInfoPanel.tsx::openAvatarViewer)
+      media: {
+        mediaId: photo.mediaId,
+        width: rect?.width ?? 0,
+        height: rect?.height ?? 0, // avatarWrap уже в DOM для ЛЮБОГО элемента ленты (processItem всегда создаёт узел синхронно) — 0 недостижим, кроме гонки layout
+        kind: isVideo ? 'video' : 'photo',
+        gif: isVideo || undefined, // видео-аватар — автоплей-цикл без плеера, как обычный GIF-документ вьювера
+        // Ленивый резолв (`ViewerMedia.url` — `() => Promise<string>`): те же
+        // единственные ванильные точки входа за байты, что и у `processItem`
+        // (докблок `PeerProfileAvatarsManagers`), не `managers.media.*` напрямую.
+        url: isVideo
+          ? () => Promise.resolve(resolveStreamUrl(photo.videoMediaId!))
+          : () => ensureMediaUrl(photo.mediaId),
+      },
+      // Даты у фото профиля нет (ViewerAuthor.date опционален) — подпись
+      // вьювер просто не рисует, как и у снесённой самоделки.
+      author: { peerId, name: peerTitle(peerId) },
+    }
+  }
+
+  /**
+   * РАУНД ПРАВОК 1 (баг с мёртвым кликом группы/канала). Пир без
+   * исторической галереи (не-пользователь, `setPeer :479-481`, ручки нет
+   * вовсе) — единственный элемент строится из ТЕКУЩЕГО фото пира
+   * (`getPeerPhoto`/`getPeerPhotoId`, тот же путь, что `avatarNew`/`putAvatar`
+   * используют для решения «рисовать фото или кружок с инициалами»,
+   * `components/avatar.ts:220-221`), а НЕ из `ProfilePhoto` — такого объекта
+   * для этого пира просто не существует. Видео здесь недостижимо: без
+   * галереи взять `videoMediaId` неоткуда (то же основание, что у ветки
+   * `processItem` ниже).
+   */
+  private buildViewerItemFromCurrentPhoto(peerId: PeerId): ViewerItem {
+    const mediaId = getPeerPhotoId(getPeerPhoto(cachedPeer(peerId)))
+    const el = this.avatars.children[0] as HTMLElement | undefined
+    const rect = el?.getBoundingClientRect()
+
+    return {
+      element: el ?? null,
+      mid: 0,
+      media: {
+        mediaId,
+        width: rect?.width ?? 0,
+        height: rect?.height ?? 0,
+        kind: 'photo',
+        url: () => ensureMediaUrl(mediaId),
+      },
+      author: { peerId, name: peerTitle(peerId) },
+    }
   }
 
   /**
