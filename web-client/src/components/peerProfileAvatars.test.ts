@@ -382,10 +382,44 @@ describe('PeerProfileAvatars.setPeer() — лента данных (задача
 
     await instance.setPeer(ALICE)
 
-    expect(avatarsEl.children.length).toBe(3)
-    expect(tabsEl.children.length).toBe(3)
+    // Элемент #0 готов синхронно (setPeer await-ит его напрямую); элементы
+    // #1/#2 приходят из `void listLoader.load(true)` (round 1 ревью: setPeer
+    // не блокирует байты фото, только их метаданные) — ждём фактической
+    // готовности DOM, а не порядка микрозадач (тот же приём, что у теста
+    // ленивой догрузки ниже).
+    await vi.waitFor(() => {
+      expect(avatarsEl.children.length).toBe(3)
+      expect(tabsEl.children.length).toBe(3)
+    })
     expect(avatarsEl.children[0].classList.contains('active')).toBe(true)
     expect(tabsEl.children[0].classList.contains('active')).toBe(true)
+  })
+
+  it('setPeer() резолвится, НЕ дожидаясь байтов фото #1 (round 1 ревью: void listLoader.load(true))', async () => {
+    // Гейт вручную — ТОЛЬКО на первый вызов ensureMediaUrl (элемент #1,
+    // mediaId=2; элемент #0 идёт через avatarNew, не ensureMediaUrl вовсе,
+    // элемент #2 использует дефолтную реализацию мока).
+    let resolveByte1!: (url: string) => void
+    const byte1Promise = new Promise<string>((resolve) => { resolveByte1 = resolve })
+    ensureMediaUrlMock.mockImplementationOnce(() => byte1Promise)
+
+    const mgrs = makeManagers({ [ALICE]: photos(3) })
+    const { instance } = make(mgrs)
+    const avatarsEl = instance.container.querySelector('.profile-avatars-avatars')!
+
+    await instance.setPeer(ALICE)
+
+    // Узел #1 УЖЕ в DOM: `processItem` (:405-409) добавляет `avatarWrap` в
+    // `.profile-avatars-avatars` СИНХРОННО, до await за URL — сам факт узла
+    // в счётчике ленты доказательством не был бы. Доказательство — что
+    // `await instance.setPeer(ALICE)` уже вернул управление тесту, а
+    // `ensureMediaUrl(2)` всё ещё висит на `byte1Promise` (мы её не
+    // резолвили): с `await listLoader.load(true)` (как было до раунда 1)
+    // строка ниже была бы недостижима — сам `setPeer()` завис бы здесь.
+    expect(avatarsEl.children[1].classList.contains('hide')).toBe(true)
+
+    resolveByte1('blob:media-2')
+    await vi.waitFor(() => expect(avatarsEl.children[1].classList.contains('hide')).toBe(false))
   })
 
   it('goWithoutTransition(distance) двигает transform, переносит .active на аватаре И на полоске; закольцовывание на обоих краях', async () => {
@@ -394,6 +428,12 @@ describe('PeerProfileAvatars.setPeer() — лента данных (задача
     const avatarsEl = instance.container.querySelector<HTMLElement>('.profile-avatars-avatars')!
     const tabsEl = instance.container.querySelector('.profile-avatars-tabs')!
     await instance.setPeer(ALICE)
+    // `void listLoader.load(true)` — ждём, пока байты #1/#2 реально доедут
+    // (round 1 ревью), иначе `goWithoutTransition` уйдёт в пустой `next`.
+    await vi.waitFor(() => {
+      expect(avatarsEl.children.length).toBe(3)
+      expect(tabsEl.children.length).toBe(3)
+    })
 
     instance.goWithoutTransition(1)
     expect(avatarsEl.style.transform).toBe('translate(-100%, 0)')
@@ -430,11 +470,36 @@ describe('PeerProfileAvatars.setPeer() — лента данных (задача
     const tabsEl = instance.container.querySelector('.profile-avatars-tabs')!
 
     await instance.setPeer(ALICE)
-    expect(avatarsEl.children.length).toBe(2)
+    // `void listLoader.load(true)` — элемент #1 ALICE ещё грузит байты.
+    await vi.waitFor(() => expect(avatarsEl.children.length).toBe(2))
 
     await instance.setPeer(GHOST)
     expect(avatarsEl.children.length).toBe(1)
     expect(tabsEl.children.length).toBe(1)
+  })
+
+  it('группа/канал — listPhotos не зовётся вовсе, в ленте одно текущее фото без карусели (tweb :443-499, долг backlogs/frontend/profile-chat-photo-history.md)', async () => {
+    const CHANNEL = -601
+    // Фото под ALICE есть — если бы isUser-гейт исчез, `toUserId(CHANNEL)`
+    // (простое `+peerId`, БЕЗ учёта знака) ушёл бы за ЭТИМ же списком и тест
+    // красил бы 3 узла вместо 1, а `listPhotos` был бы вызван.
+    const mgrs = makeManagers({ [ALICE]: photos(3) })
+    const { instance } = make(mgrs)
+    const avatarsEl = instance.container.querySelector('.profile-avatars-avatars')!
+    const tabsEl = instance.container.querySelector('.profile-avatars-tabs')!
+
+    await instance.setPeer(CHANNEL)
+
+    expect(mgrs.profile.listPhotos).not.toHaveBeenCalled()
+    expect(avatarsEl.children.length).toBe(1)
+    expect(tabsEl.children.length).toBe(1)
+    expect(instance.container.classList.contains('is-single')).toBe(true) // карусели нет — одна вкладка
+
+    // Содержимое — мирроr пира через avatarNew (та же isFirst-ветка, что и
+    // SHOW_NO_AVATAR), а не img/video: истории фото у ручки нет вовсе.
+    const avatarNode = avatarsEl.children[0].querySelector('.avatar-like') as HTMLElement
+    expect(avatarNode).toBeTruthy()
+    expect(avatarNode.dataset.peerId).toBe(String(CHANNEL))
   })
 
   it('ответ на ПРОТУХШИЙ peerId игнорируется — гонка «переключили пира, пока грузилось»', async () => {
@@ -444,10 +509,19 @@ describe('PeerProfileAvatars.setPeer() — лента данных (задача
     mgrs.profile.listPhotos = vi.fn((userId: number) => (userId === ALICE ? alicePromise : Promise.resolve(photos(2))))
     const { instance } = make(mgrs)
     const avatarsEl = instance.container.querySelector<HTMLElement>('.profile-avatars-avatars')!
+    const tabsEl = instance.container.querySelector('.profile-avatars-tabs')!
 
     const alicePending = instance.setPeer(ALICE) // не ждём — переключаемся раньше ответа
     await instance.setPeer(GHOST)
-    expect(avatarsEl.children.length).toBe(2) // GHOST успел отрисоваться (2 фото)
+    // `void listLoader.load(true)` — элемент #1 GHOST ещё грузит байты. Ждём
+    // ОБА счётчика (не только avatarsEl): узел ленты появляется синхронно при
+    // append, а вот вкладка (`addTab()`) и попадание элемента в `listLoader.next`
+    // происходят только ПОСЛЕ полной загрузки — без вкладки в счётчике
+    // `goWithoutTransition` ниже мог бы уйти в ещё пустой `next`.
+    await vi.waitFor(() => {
+      expect(avatarsEl.children.length).toBe(2)
+      expect(tabsEl.children.length).toBe(2)
+    }) // GHOST успел отрисоваться (2 фото)
 
     resolveAlice(photos(5)) // ALICE отвечает ПОСЛЕ переключения, с БОЛЬШИМ числом фото
     await alicePending
@@ -474,10 +548,15 @@ describe('PeerProfileAvatars.setPeer() — лента данных (задача
     const nodes = Array.from(avatarsEl.children) as HTMLElement[]
     expect(nodes.length).toBe(8)
 
-    // Первые LOAD_NEAREST=3 узла уже наполнены (класс hide снят).
-    for (let i = 0; i < 3; i++) expect(nodes[i].classList.contains('hide')).toBe(false)
-    // Остальные ждут наблюдателя — им нечем ответить на media.downloadMediaURL,
-    // если бы они начали грузиться, поэтому факт "hide" — прямое доказательство.
+    // Первые LOAD_NEAREST=3 узла грузятся сразу (eager), но байты #1/#2 идут
+    // через `void listLoader.load(true)` (round 1 ревью) — ждём фактического
+    // снятия `hide`, а не порядка микрозадач.
+    await vi.waitFor(() => {
+      for (let i = 0; i < 3; i++) expect(nodes[i].classList.contains('hide')).toBe(false)
+    })
+    // Остальные ждут наблюдателя — им нечем ответить на ensureMediaUrl/
+    // resolveStreamUrl, если бы они начали грузиться, поэтому факт "hide" —
+    // прямое доказательство (и не изменится дальнейшим ожиданием выше).
     for (let i = 3; i < 8; i++) expect(nodes[i].classList.contains('hide')).toBe(true)
 
     intersect(nodes[3]) // имитация появления 4-го узла во вьюпорте
@@ -517,8 +596,13 @@ describe('PeerProfileAvatars.setPeer() — лента данных (задача
 
     await instance.setPeer(ALICE)
 
-    const video = avatarsEl.children[1].querySelector('video.avatar-video') as HTMLVideoElement
-    expect(video).toBeTruthy()
+    // Элемент #1 (видео) приходит из `void listLoader.load(true)` — ждём,
+    // пока `resolveStreamUrl`/`renderImageFromUrlPromise` реально отработают.
+    const video = await vi.waitFor(() => {
+      const el = avatarsEl.children[1].querySelector('video.avatar-video') as HTMLVideoElement | null
+      expect(el).toBeTruthy()
+      return el!
+    })
     expect(video.loop).toBe(true)
     expect(video.muted).toBe(true)
     expect(resolveStreamUrlMock).toHaveBeenCalledWith(999)
@@ -528,7 +612,13 @@ describe('PeerProfileAvatars.setPeer() — лента данных (задача
     const mgrs = makeManagers({ [ALICE]: photos(3) })
     const { instance } = make(mgrs)
     const avatarsEl = instance.container.querySelector<HTMLElement>('.profile-avatars-avatars')!
+    const tabsEl = instance.container.querySelector('.profile-avatars-tabs')!
     await instance.setPeer(ALICE)
+    // `void listLoader.load(true)` — ждём, пока байты #1/#2 реально доедут.
+    await vi.waitFor(() => {
+      expect(avatarsEl.children.length).toBe(3)
+      expect(tabsEl.children.length).toBe(3)
+    })
 
     instance.goWithoutTransition(2) // ушли на последний индекс (2)
     expect(avatarsEl.children[2].classList.contains('active')).toBe(true)
@@ -555,9 +645,15 @@ describe('PeerProfileAvatars.cleanup() — лента данных (задача
     const avatarsEl = instance.container.querySelector('.profile-avatars-avatars')!
 
     await instance.setPeer(ALICE)
-    const video = avatarsEl.children[1].querySelector('video.avatar-video') as HTMLVideoElement
-    expect(video).toBeTruthy()
-    expect(ioInstances.some((io) => io.observed.size > 0)).toBe(true) // idx 3/4 реально под наблюдением
+    // Видео (#1) и регистрация ленивых #3/#4 в наблюдателе приходят из
+    // `void listLoader.load(true)` — ждём фактического состояния, а не
+    // порядка микрозадач.
+    const video = await vi.waitFor(() => {
+      const el = avatarsEl.children[1].querySelector('video.avatar-video') as HTMLVideoElement | null
+      expect(el).toBeTruthy()
+      expect(ioInstances.some((io) => io.observed.size > 0)).toBe(true) // idx 3/4 реально под наблюдением
+      return el!
+    })
 
     const removeSpy = vi.spyOn(animationIntersector, 'removeAnimationByPlayer')
     instance.cleanup()

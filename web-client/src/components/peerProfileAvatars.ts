@@ -304,13 +304,16 @@ export default class PeerProfileAvatars {
       if (!middleware()) return
 
       // tweb НЕ ждёт `listLoader.load(true)` (:530, комментарий
-      // «listLoader.loaded») — там настоящая пагинация бьёт сеть, и незачем
-      // блокировать открытие профиля. У нас loadMore синхронно оборачивает
-      // УЖЕ полученный список (сеть случилась выше, в listPhotos), поэтому
-      // await здесь не блокирует ничем, кроме отрисовки первых LOAD_NEAREST
-      // фото — и делает `setPeer()` предсказуемо готовым к моменту, когда её
-      // ждут (задача 5, тесты), как уже ждут `readyThumbPromise` у `avatarNew`.
-      await listLoader.load(true)
+      // «listLoader.loaded») — панель профиля обязана открыться сразу, лента
+      // дозаполняется по мере прихода ответов. Список метаданных (`items`)
+      // уже получен ВЫШЕ одним запросом, но БАЙТЫ ещё нет: `load(true)` внутри
+      // себя await-ит `processItem` для элементов 1 и 2 (LOAD_NEAREST=3, 0-й
+      // уже отрисован строкой выше) — `ensureMediaUrl`/`renderImageFromUrlPromise`
+      // по сети. `await` здесь заставил бы `setPeer()` (а значит и открытие
+      // панели, задача 5) ждать загрузки ещё двух фотографий — расхождение с
+      // оригиналом, которое нигде не объявлено. `void` — как и ниже в самом
+      // `ListLoader.go()` (`void this.load(!this.reverse)`).
+      void listLoader.load(true)
       return
     }
 
@@ -490,6 +493,15 @@ export default class PeerProfileAvatars {
       this.loadCallbacks.set(avatarWrap, loadCallback)
     }
 
+    // Найдено раундом правок 1 (после перевода `listLoader.load(true)` на
+    // `void`, см. setPeer): `await loadCallback()` выше может протухнуть
+    // (гейты `middleware()` ВНУТРИ loadCallback выходят только из САМОГО
+    // loadCallback, а не из processItem) — без повторной проверки здесь
+    // протухший вызов ВСЁ РАВНО добавил бы вкладку в `this.tabs` уже ПОСЛЕ
+    // того, как новый setPeer его очистил (`this.tabs.replaceChildren()`),
+    // подмешивая счётчик вкладок прежнего пира в ленту текущего.
+    if (!middleware()) return photo
+
     this.addTab()
     if (this.tabs.childElementCount === 1) avatarWrap.classList.add('active')
 
@@ -607,6 +619,11 @@ export default class PeerProfileAvatars {
     })
     this.listenerSetter.removeAll()
     this.intersectionObserver.disconnect()
+    // Наблюдатель уже отключён (строка выше) — колбэки выстрелить не могут,
+    // но Map держала бы ссылки на отсоединённые узлы `.profile-avatars-avatar`
+    // до следующего setPeer(); симметрично тому, что setPeer() делает при
+    // смене пира (`this.loadCallbacks.clear()`).
+    this.loadCallbacks.clear()
     this.middlewareHelper.destroy()
   }
 }
