@@ -11,11 +11,23 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'solid-js/web'
-import lottie from 'lottie-web'
-import type { AnimationItem } from 'lottie-web'
+import type { LottieAssetName } from '@lib/lottie/lottieLoader'
 import type { Managers } from '@/client/bootstrap'
 import { AuthFlowContext, type AuthFlowContextValue } from '../authFlow.solid'
 import AuthCodeCard from './AuthCodeCard.solid'
+
+// Обезьянка (`TrackingMonkey`) грузит обе свои анимации через tlottie
+// (`@lib/lottie/lottieLoader.loadAnimationAsAsset`) — мокаем модуль целиком,
+// тем же приёмом, что `TrackingMonkey.solid.test.tsx`. По умолчанию промис
+// не резолвится: тестам этого файла, которые не смотрят на обезьянку (исходы
+// ввода кода), не нужен доигранный плеер — им важно лишь не упасть на монтаже.
+const { loadAnimationAsAsset, waitForFirstFrame } = vi.hoisted(() => ({
+  loadAnimationAsAsset: vi.fn((_params: unknown, _name: LottieAssetName) => new Promise<unknown>(() => {})),
+  waitForFirstFrame: vi.fn((player: unknown) => Promise.resolve(player)),
+}))
+vi.mock('@lib/lottie/lottieLoader', () => ({
+  default: { loadAnimationAsAsset, waitForFirstFrame },
+}))
 
 let dispose: (() => void) | undefined
 let host: HTMLDivElement | undefined
@@ -60,37 +72,43 @@ function mount(signIn: ReturnType<typeof vi.fn>) {
 }
 
 function makeFakeAnim() {
-  return {
+  const anim = {
+    canvas: [document.createElement('canvas')] as HTMLCanvasElement[],
+    direction: 1,
     play: vi.fn(),
     pause: vi.fn(),
     stop: vi.fn(),
-    destroy: vi.fn(),
+    remove: vi.fn(),
     setSpeed: vi.fn(),
-    setDirection: vi.fn(),
+    setDirection: vi.fn((d: number) => {
+      anim.direction = d
+    }),
     addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
   }
+  return anim
 }
 
 /**
- * Подменяет `lottie.loadAnimation`, чтобы различать idle/tracking-инстансы
- * обезьянки по узлу-контейнеру (см. `TrackingMonkey.solid.test.tsx` — тот же
- * приём). Другие `it` в этом файле тоже монтируют карточку (а значит и
- * обезьянку) и копят вызовы на ОБЩЕМ моке `lottie-web` из `setup.ts` —
+ * Подменяет `lottieLoader.loadAnimationAsAsset`, чтобы различать idle/
+ * tracking-инстансы обезьянки по ИМЕНИ ассета (второй аргумент — обе анимации
+ * теперь делят один контейнер, см. `TrackingMonkey.solid.test.tsx` — тот же
+ * приём). ВАЖНО: вызывать ДО `mount()` — в отличие от старого `lottie-web`
+ * (там за асинхронность отвечал сам динамический `import()` json'ки, а
+ * `lottie.loadAnimation` звался синхронно уже ПОСЛЕ его резолва), tlottie-
+ * загрузчик зовётся `onMount` синхронно, без отложенного гейта — переставить
+ * мок ПОСЛЕ монтажа уже поздно, обезьянка успевает загрузиться на дефолтном
+ * (никогда не резолвящемся) моке хука файла. Другие `it` в этом файле тоже
+ * монтируют карточку (а значит и обезьянку) на ОБЩЕМ моке `lottieLoader` —
  * счётчик чистим перед тем, как считать СВОИ два вызова (idle+tracking).
  */
-async function spyOnMonkey() {
+function prepareMonkeyMocks() {
   const idleAnim = makeFakeAnim()
   const trackingAnim = makeFakeAnim()
-  const hosts = host!.querySelectorAll<HTMLDivElement>('.media-sticker-wrapper > div')
-  const idleHostEl = hosts[0]
-  const trackingHostEl = hosts[1]
-  vi.mocked(lottie.loadAnimation).mockClear()
-  vi.mocked(lottie.loadAnimation).mockImplementation(
-    (opts) => (opts.container === idleHostEl ? idleAnim : trackingAnim) as unknown as AnimationItem,
+  loadAnimationAsAsset.mockClear()
+  loadAnimationAsAsset.mockImplementation((_params: unknown, name: LottieAssetName) =>
+    Promise.resolve(name === 'TwoFactorSetupMonkeyIdle' ? idleAnim : trackingAnim),
   )
-  await vi.waitFor(() => expect(lottie.loadAnimation).toHaveBeenCalledTimes(2))
-  return { idleAnim, trackingAnim, idleHostEl, trackingHostEl }
+  return { idleAnim, trackingAnim }
 }
 
 describe('AuthCodeCard.solid: исходы ввода кода', () => {
@@ -169,20 +187,21 @@ describe('AuthCodeCard.solid: проводка фокуса поля до обе
   // `defer:true` в её докблоке), поэтому пин дёргает blur→focus: настоящую
   // ПЕРЕМЕНУ состояния после маунта, а не совпадение стартового значения.
   it('фокус/блюр настоящего DOM-инпута доходит до playAnimation и переключает канвы обезьянки', async () => {
+    const { idleAnim, trackingAnim } = prepareMonkeyMocks()
     const signIn = vi.fn()
     const { input } = mount(signIn)
-    const { idleAnim, trackingAnim, idleHostEl, trackingHostEl } = await spyOnMonkey()
+    await vi.waitFor(() => expect(loadAnimationAsAsset).toHaveBeenCalledTimes(2))
 
     input().blur()
     await vi.waitFor(() => expect(trackingAnim.play).toHaveBeenCalled())
 
     trackingAnim.play.mockClear()
     input().focus()
-    await vi.waitFor(() => expect(trackingHostEl.style.display).toBe(''))
-    expect(idleHostEl.style.display).toBe('none')
+    await vi.waitFor(() => expect(trackingAnim.canvas[0].style.display).toBe(''))
+    expect(idleAnim.canvas[0].style.display).toBe('none')
     expect(idleAnim.stop).toHaveBeenCalled()
 
-    vi.mocked(lottie.loadAnimation).mockReset()
+    loadAnimationAsAsset.mockReset()
   })
 
   // Важная находка ревью: программный сброс значения поля (неверный код) НЕ
@@ -196,9 +215,10 @@ describe('AuthCodeCard.solid: проводка фокуса поля до обе
   // `AuthCodeCard.solid.tsx`'s `catch` в `submitCode` пишет ТОЛЬКО в `value`
   // (управляет полем/дисаблом), `typedValue` не трогает.
   it('программный сброс значения (неверный код) НЕ доводит до playAnimation — движение только от настоящего ввода', async () => {
+    const { trackingAnim } = prepareMonkeyMocks()
     const signIn = vi.fn().mockRejectedValue(new Error('PHONE_CODE_INVALID'))
     const { typeCode } = mount(signIn)
-    const { trackingAnim } = await spyOnMonkey()
+    await vi.waitFor(() => expect(loadAnimationAsAsset).toHaveBeenCalledTimes(2))
 
     typeCode('00000')
     // Набор кода целиком двигает кадр строго вперёд (needFrame растёт
@@ -211,6 +231,6 @@ describe('AuthCodeCard.solid: проводка фокуса поля до обе
     // tweb быть не может (сброс `.value` без события).
     expect(trackingAnim.setDirection).not.toHaveBeenCalledWith(-1)
 
-    vi.mocked(lottie.loadAnimation).mockReset()
+    loadAnimationAsAsset.mockReset()
   })
 })

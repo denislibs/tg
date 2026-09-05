@@ -33,8 +33,11 @@
 // тесты по-прежнему могут подменить его инъекцией.
 //
 // Потребителей на этот компонент пока НЕТ (Этап 0 — только фундамент):
-// `PasswordMonkey.tsx`/`LottieSticker.tsx`/`TrackingMonkey.solid.tsx`/
-// `MediaHeader.solid.tsx` переезжают на него по одному в Этапах 1-3.
+// `LottieSticker.tsx`/`MediaHeader.solid.tsx` переезжают на него по одному в
+// Этапах 2-3. Обе обезьянки (`PasswordMonkey.tsx`/`TrackingMonkey.solid.tsx`)
+// на него НЕ переезжают — оригиналы (`monkeys/{password,tracking}.ts`) ходят
+// в `lottieLoader.loadAnimationAsAsset` напрямую, минуя `lottieAnimation.tsx`,
+// порт (Этап 1) повторяет это же устройство.
 import { type Component, createRenderEffect, mergeProps, onCleanup } from 'solid-js'
 
 import defaultLottieLoader, { type LottieAssetName, type LottieLoader } from '@lib/lottie/lottieLoader'

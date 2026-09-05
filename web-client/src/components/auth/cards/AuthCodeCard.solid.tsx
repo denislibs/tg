@@ -27,9 +27,9 @@
 // долгом (запись в бэклоге, закрыта и удалена вместе с портом ниже) и
 // портирована с нуля из tweb, а не из снесённого React-кода
 // (правило программы — `docs/superpowers/specs/2026-08-28-solid-migration-
-// design.md § 6a`). Устройство и отступление движка (`lottie-web` напрямую
-// вместо tlottie — у нас нет `assets/tgs/` на статике) разобраны в докблоке
-// `../TrackingMonkey.solid.tsx`.
+// design.md § 6a`). Движок — tlottie, как в оригинале (`lottieLoader.
+// loadAnimationAsAsset`, Этап 1 плана «один движок lottie»); устройство
+// разобрано в докблоке `../TrackingMonkey.solid.tsx`.
 //
 // Проводка: `focused` — сигнал, который поднимает `CodeInput.onFocusChange`
 // (tweb вешает `focus`/`blur` листенеры прямо на `inputField.input` — здесь
