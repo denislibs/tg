@@ -17,20 +17,76 @@
 // tweb-имён панель теряет портированную геометрию и анимации
 // (`styles/tweb/_profile.scss`, `_sidebar.scss`, `_scrollable.scss`,
 // `_transition.scss`) молча — ни сборка, ни тайпчек этого не видят.
+//
+// ЗАДАЧА 5 (docs/superpowers/plans/2026-09-05-profile-avatars-class.md):
+// панель больше не рисует карусель инлайн — узел класса `PeerProfileAvatars`
+// встаёт вместо неё через `useImperativeIsland`. Пины на `is-collapsed`/
+// `need-white`/структуру карусели (`.profile-avatars-avatars`, стрелки,
+// градиенты, …) СНЯТЫ — этих строк в файле больше нет, они переехали в
+// `peerProfileAvatars.ts` и держатся ПОВЕДЕНЧЕСКИМИ тестами
+// `peerProfileAvatars.test.ts` (DOM конструктора, is-collapsed/need-white на
+// `setCollapsedOn`, header-filled по порогам). `header-filled` остаётся
+// React-состоянием панели (вторая, не сводимая с классом половина, см. бриф
+// задачи 5 п.3) — её пин жив. Peer-title/subtitle в `.profile-avatars-info`
+// остаются React-контентом (портал в `instance.info`, см. коммент в файле) —
+// их пины тоже живы.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const panel = readFileSync(join(__dirname, 'UserInfoPanel.tsx'), 'utf8')
 
+/** Блок `{...}`, начинающийся на `src[braceStart]` (обязана быть `{`) — балансом скобок.
+ *  Тот же приём, что в `src/App.authMount.test.ts` — не regex до `}` где попало. */
+function extractBraceBalanced(src: string, braceStart: number): string {
+  if (src[braceStart] !== '{') {
+    throw new Error(`ожидалась '{' на позиции ${braceStart}, найдено: ${JSON.stringify(src[braceStart])}`)
+  }
+  let depth = 0
+  for (let i = braceStart; i < src.length; i++) {
+    if (src[i] === '{') depth++
+    else if (src[i] === '}') {
+      depth--
+      if (depth === 0) return src.slice(braceStart, i + 1)
+    }
+  }
+  throw new Error('не сбалансированы скобки')
+}
+
+/** Тело первого вызова `useImperativeIsland(` — от `(container) => {` до ЕГО
+ *  закрывающей скобки (баланс, не индекс до произвольной точки дальше по файлу). */
+function extractImperativeIslandBody(src: string): string {
+  const marker = 'useImperativeIsland('
+  const start = src.indexOf(marker)
+  if (start === -1) throw new Error('useImperativeIsland(...) не найден')
+  const braceStart = src.indexOf('{', start)
+  if (braceStart === -1) throw new Error('открывающая { тела setup не найдена')
+  return extractBraceBalanced(src, braceStart)
+}
+
+/** Тело единственного `useLayoutEffect(() => {...}, [folded])` — эффект
+ *  «folded → setCollapsed» с гейтом `shouldForceFold` (tweb createEffect
+ *  `:340-348`). Балансом скобок, тем же приёмом. */
+function extractFoldedLayoutEffectBody(src: string): string {
+  const marker = 'useLayoutEffect('
+  const start = src.indexOf(marker)
+  if (start === -1) throw new Error('useLayoutEffect(...) не найден')
+  const braceStart = src.indexOf('{', start)
+  if (braceStart === -1) throw new Error('открывающая { тела эффекта не найдена')
+  return extractBraceBalanced(src, braceStart)
+}
+
 describe('UserInfoPanel — каркас на классах tweb', () => {
   it('вкладка слайдера: sidebar-slider > tabs-tab.profile-container с состояниями на НЕЙ', () => {
     expect(panel).toMatch(/<div className="sidebar-content sidebar-slider tabs-container">/)
     expect(panel).toMatch(/'tabs-tab sidebar-slider-item scrollable-y-bordered shared-media-container profile-container active'/)
-    // состояния шапки-аватаров — классы вкладки (tweb `_profile.scss`)
-    expect(panel).toMatch(/'is-collapsed'/)
+    // header-filled — единственная классовая половина, оставшаяся React-состоянием
+    // панели (задача 5, п.3 брифа); is-collapsed/need-white теперь ИСКЛЮЧИТЕЛЬНО
+    // у класса (peerProfileAvatars.test.ts), в этом файле их вычислять НЕЛЬЗЯ —
+    // иначе непричастный пересчёт classNames() стирал бы их с реального DOM.
     expect(panel).toMatch(/'header-filled'/)
-    expect(panel).toMatch(/'need-white'/)
+    expect(panel).not.toMatch(/'is-collapsed'/)
+    expect(panel).not.toMatch(/'need-white'/)
   })
 
   it('шапка: sidebar-close-button с animated-close-icon + transition.slide-fade', () => {
@@ -49,37 +105,81 @@ describe('UserInfoPanel — каркас на классах tweb', () => {
     expect(panel).toMatch(/<div className="profile-content-delimiter" \/>/)
   })
 
-  it('шапка-аватары: контейнер, дорожка, градиенты, стрелки, info — имена tweb', () => {
-    expect(panel).toMatch(/'profile-avatars-container', canPage \? '' : 'is-single'/)
-    expect(panel).toMatch(/className="profile-avatars-avatars"/)
-    expect(panel).toMatch(/'profile-avatars-avatar media-container'/)
-    expect(panel).toMatch(/className="avatar avatar-like avatar-full avatar-gradient profile-avatars-avatar-first"/)
-    expect(panel).toMatch(/className="avatar-photo"/)
-    expect(panel).toMatch(/className="profile-avatars-gradient profile-avatars-gradient-top"/)
-    expect(panel).toMatch(/className="profile-avatars-arrow profile-avatars-arrow-next"/)
-    expect(panel).toMatch(/className="profile-avatars-info"/)
+  // Структура самой карусели (.profile-avatars-avatars, стрелки, градиенты,
+  // avatar-full/avatar-gradient, …) больше НЕ в этом файле — она в DOM-пинах
+  // «PeerProfileAvatars — DOM конструктора» / «tweb :81-109» в
+  // `peerProfileAvatars.test.ts`. Здесь остаётся только контент, которым
+  // по-прежнему владеет React: peer-title/бейджи/подзаголовок, портальные в
+  // `instance.info` (см. коммент у `avatarsInfoEl` в файле).
+  it('шапка-аватары: узел-хозяин острова + React-контент info (peer-title/subtitle) портальный', () => {
+    expect(panel).toMatch(/<div ref=\{avatarsHostRef\} \/>/)
+    expect(panel).toMatch(/avatarsInfoEl && createPortal\(/)
     expect(panel).toMatch(/<span className="peer-title">/)
     expect(panel).toMatch(/className="profile-subtitle-text"/)
+    expect(panel).not.toMatch(/className="profile-avatars-avatars"/)
+    expect(panel).not.toMatch(/'profile-avatars-avatar media-container'/)
   })
 
-  // Правая колонка закрывается ТРАНСФОРМОМ и остаётся смонтированной, поэтому
-  // видео-аватарка внутри неё не «уезжает за кадр» для IntersectionObserver'а —
-  // её останавливает явная команда (порт tweb sidebarRight/index.ts:98,132 +
-  // avatarNew.tsx:176-188). Сама механика покрыта поведенчески в
-  // `animationIntersector.test.ts` (`toggleVideosUnder`), здесь пинится ПРОВОДКА:
-  // без этих строк клип крутится в закрытой панели молча — ни сборка, ни
-  // тайпчек этого не видят, а отрендерить панель целиком тест не может
-  // (см. основание файла выше).
-  it('видео-аватарка учтена интерсектором, закрытие колонки её глушит', () => {
-    expect(panel).toMatch(/<AvatarVideo src=\{p\.videoSrc\} poster=\{p\.src\} \/>/)
-    expect(panel).toMatch(/className="avatar-photo avatar-video"/)
-    expect(panel).toMatch(/animationIntersector\.addAnimation\(\{ animation: video, observeElement: video, type: 'video' \}\)/)
-    expect(panel).toMatch(/animationIntersector\.removeAnimationByPlayer\(video\)/)
+  // Видео-аватарка (AvatarVideo, animationIntersector.addAnimation/
+  // removeAnimationByPlayer на конкретном <video>) снесена вместе с
+  // карусельной самоделкой — тот же учёт теперь ВНУТРИ класса
+  // (`peerProfileAvatars.ts`, покрыт `peerProfileAvatars.test.ts`, describe
+  // «rAF-прогресс полоски видео-аватара»). `toggleVideosUnder` на ВСЮ колонку
+  // — это ОТДЕЛЬНЫЙ, не карусельный механизм (порт tweb sidebarRight/index.ts:
+  // 98,132): он гасит ЛЮБЫЕ видео под закрытой колонкой, включая будущие
+  // (не только аватар), поэтому остаётся в панели и пинуется отдельно.
+  it('AvatarVideo снесена; toggleVideosUnder на закрытие колонки остался (не карусельный механизм)', () => {
+    expect(panel).not.toMatch(/AvatarVideo/)
+    expect(panel).not.toMatch(/animationIntersector\.addAnimation/)
     expect(panel).toMatch(/animationIntersector\.toggleVideosUnder\(columnRef\.current, !open\)/)
   })
 
   it('своего CSS-модуля у панели больше нет', () => {
     expect(panel).not.toMatch(/UserInfoPanel\.module\.scss/)
     expect(panel).not.toMatch(/className=\{s\./)
+  })
+})
+
+// Пин на шов (задача 5, норма проводки, «Пин на шов» — обязан краснеть, если
+// вызов класса вынести из эффекта или потерять уборку): образец —
+// `src/App.authMount.test.ts`, привязка БАЛАНСОМ СКОБОК внутри тела эффекта,
+// а не по факту наличия строки где-то в файле (та же история ложных
+// срабатываний/пропусков, что там описана).
+describe('UserInfoPanel — шов монтирования PeerProfileAvatars (useImperativeIsland)', () => {
+  it('класс создаётся и добавляется в DOM ВНУТРИ тела setup, а не рядом с вызовом', () => {
+    const body = extractImperativeIslandBody(panel)
+    expect(body, 'new PeerProfileAvatars(...) не найден внутри тела setup useImperativeIsland').toMatch(/new PeerProfileAvatars\(/)
+    expect(body, 'container.appendChild(instance.container) не найден внутри тела setup').toMatch(/container\.appendChild\(instance\.container\)/)
+  })
+
+  it('teardown ВНУТРИ того же тела зовёт instance.cleanup() и обнуляет ref (уборка)', () => {
+    const body = extractImperativeIslandBody(panel)
+    expect(body, 'instance.cleanup() не найден внутри тела setup').toMatch(/instance\.cleanup\(\)/)
+    expect(body, 'avatarsRef.current = null не найден внутри тела setup (ref не обнуляется)').toMatch(/avatarsRef\.current = null/)
+  })
+
+  it('useImperativeIsland смонтирован с host+strays под ЖИВОЙ (не одноразовый) хост-узел панели', () => {
+    // `mode: 'own'` создавал бы ЛИШНИЙ уровень DOM внутри host — панель
+    // держит host сама (`avatarsHostRef`, живёт весь срок жизни панели),
+    // поэтому выбран `host`-режим (дефолт, mode не передан) + `strays` —
+    // decided-and-declared выбор, см. коммент у вызова в файле.
+    expect(panel).toMatch(/\{ host: avatarsHostRef, strays: '\.profile-avatars-container' \}/)
+  })
+
+  // tweb createEffect `:340-348`, портирован ЦЕЛИКОМ (не только setCollapsed):
+  // гейт «нет фото → держать свёрнутым» (`shouldForceFold`, `userInfo/helpers.ts`,
+  // логика проверена отдельно в `helpers.test.ts`) обязан реально ГЕЙТИТЬ —
+  // звать `fold()` ДО `setCollapsed(folded)`, а не просто существовать где-то
+  // в файле рядом с эффектом.
+  it('эффект folded→setCollapsed зовёт shouldForceFold и fold() ВНУТРИ своего тела, до setCollapsed', () => {
+    const body = extractFoldedLayoutEffectBody(panel)
+    expect(body, 'shouldForceFold(...) не найден внутри тела useLayoutEffect').toMatch(/shouldForceFold\(instance\.hasPhoto, folded\)/)
+    expect(body, 'instance.setCollapsed(folded) не найден внутри тела useLayoutEffect').toMatch(/instance\.setCollapsed\(folded\)/)
+    const gateIdx = body.indexOf('shouldForceFold(')
+    const foldIdx = body.indexOf('fold()')
+    const setCollapsedIdx = body.indexOf('instance.setCollapsed(folded)')
+    expect(gateIdx).toBeGreaterThan(-1)
+    expect(foldIdx).toBeGreaterThan(gateIdx) // fold() — ветка ПОСЛЕ гейта
+    expect(setCollapsedIdx).toBeGreaterThan(foldIdx) // setCollapsed — уже после обеих веток гейта
   })
 })

@@ -49,3 +49,18 @@ export function sharedMediaChatId(id: string): number | null {
   const n = Number(id)
   return Number.isFinite(n) && String(n) === id ? n : null
 }
+
+/**
+ * Гейт «нет фото → держать свёрнутым» шапки-аватаров (tweb
+ * `peerProfileAvatars.ts:341-344`, createEffect `if(this.hasNoPhoto &&
+ * !folded()) fold()`). Вынесена ЧИСТОЙ функцией — эффект в `UserInfoPanel.tsx`
+ * (`folded → avatars.setCollapsed(folded)`) сам не протестировать напрямую
+ * (панель нерендерибельна в vitest, `UserInfoPanel.shell.test.ts` — пин
+ * текстом), а логику гейта — можно и нужно (норма проводки задачи 5:
+ * «Гейт обязателен к покрытию тестом»). `hasPhoto` — публичный геттер класса
+ * `PeerProfileAvatars` (зеркало `currentHasPhoto`), `folded` — из
+ * `useCollapsable()`.
+ */
+export function shouldForceFold(hasPhoto: boolean, folded: boolean): boolean {
+  return !hasPhoto && !folded
+}

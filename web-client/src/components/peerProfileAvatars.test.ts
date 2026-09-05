@@ -37,12 +37,18 @@
 // `UserInfoPanel.tsx` эта задача не трогает, только сторона класса):
 //  (14) клик при `is-collapsed` С переданным `unfold` зовёт ИМЕННО его и НЕ
 //       трогает `is-collapsed` сам (владелец состояния — снаружи);
-//  (15) БЕЗ переданного `unfold` — прежнее поведение (класс разворачивает
-//       себя сам); эта ветка ВРЕМЕННАЯ, уходит целиком в задаче 5;
-//  (16) `setCollapsed(true/false)` — публичный, снаружи по-прежнему двигает
+//  (15) `setCollapsed(true/false)` — публичный, снаружи по-прежнему двигает
 //       классы и зовёт `onNeedWhiteChanged` (задача 1 не сломана);
-//  (17) клик при `is-collapsed` (что с `unfold`, что без) НЕ листает (гейт
-//       задачи 3 не сломан).
+//  (16) клик при `is-collapsed` С `unfold` НЕ листает (гейт задачи 3 не сломан).
+//
+// ЗАДАЧА 5 (`docs/superpowers/plans/2026-09-05-profile-avatars-class.md`):
+// `unfold` стал ОБЯЗАТЕЛЬНЫМ параметром конструктора (единственный вызывающий,
+// `UserInfoPanel.tsx`, всегда передаёт реальный из `useCollapsable()`) —
+// временная ветка «клик БЕЗ unfold разворачивает себя сам» (была тестом 15
+// прежней нумерации) снесена вместе со своим тестом, она своё отработала.
+// Плюс публичный геттер `hasPhoto` (зеркало `currentHasPhoto`) — под внешний
+// гейт «нет фото → держать свёрнутым» (`UserInfoPanel.tsx`, аналог tweb
+// createEffect `:341-344`), тест — ниже, у гейта клика по фото.
 //
 // `avatarNew` не мокается целиком (нужен настоящий узел — data-peer-id,
 // классы), а оборачивается шпионом: реальная реализация зовётся как есть,
@@ -164,11 +170,12 @@ function makeManagers(byUserId: Record<number, ProfilePhoto[]> = {}): PeerProfil
 
 const managers = makeManagers()
 
-// `unfold` — задача 4: опциональный контракт под внешний `useCollapsable`
-// (см. докблок класса). По умолчанию не передаём — большинство тестов бьёт
-// по ВРЕМЕННОЙ ветке (класс разворачивает себя сам, до задачи 5); тесты,
-// которым нужен внешний владелец сворачивания, передают `unfold` явно.
-function make(mgrs: PeerProfileAvatarsManagers = managers, unfold?: () => void) {
+// `unfold` — контракт под внешний `useCollapsable` (задача 4), ОБЯЗАТЕЛЬНЫЙ
+// параметр конструктора начиная с задачи 5 (докблок класса, поле `unfold`).
+// Тесты, которым безразлично, что именно делает `unfold` (не бьют по ветке
+// `is-collapsed` клика), получают шпион-заглушку по умолчанию; тесты гейта
+// разворачивания передают свой явно.
+function make(mgrs: PeerProfileAvatarsManagers = managers, unfold: (e?: { preventDefault: () => void; stopPropagation: () => void }) => void = vi.fn()) {
   const setCollapsedOn = document.createElement('div')
   const scrollableEl = document.createElement('div')
   const instance = new PeerProfileAvatars({ managers: mgrs, setCollapsedOn, scrollableEl, unfold })
@@ -766,25 +773,12 @@ describe('PeerProfileAvatars — клик по зонам (tweb :142-233)', () =
     expect(args.target).toBe(avatarsEl.children[1])
   })
 
-  // ЗАДАЧА 4: БЕЗ переданного `unfold` — временное поведение (класс живёт без
-  // внешнего владельца сворачивания, см. докблок клика в конструкторе) — клик
-  // разворачивает СЕБЯ САМ тем же `setCollapsed`, как и до задачи 4. Норма
-  // проводки задачи 4, тест 2/4 («без unfold — прежнее поведение»).
-  it('клик при is-collapsed БЕЗ unfold только разворачивает (снимает is-collapsed) сам и НЕ листает (tweb :174-182)', async () => {
-    const { instance, avatarsEl, setCollapsedOn } = await makeLoaded(3)
-    instance.setCollapsed(true)
-    expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(true)
-
-    clickAt(instance.container, 30) // была бы левая треть (листание), но шапка свёрнута
-
-    expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(false) // клик развернул сам
-    expect(avatarsEl.children[0].classList.contains('active')).toBe(true) // индекс НЕ ушёл со старта — листания не было
-  })
-
-  // ЗАДАЧА 4, тест 1/4 («клик зовёт переданный unfold и НЕ трогает
-  // is-collapsed сам»): с переданным `unfold` клик обязан звать ИМЕННО его, а
-  // `is-collapsed` остаётся нетронутым классом — приводит его в соответствие
-  // владелец состояния СНАРУЖИ (эффект хука, задача 5), а не сам click-хендлер.
+  // Норма проводки задачи 4 (единственная ветка с задачи 5 — временная «без
+  // unfold» снесена вместе со своим тестом, см. докблок файла выше): с
+  // переданным `unfold` клик обязан звать ИМЕННО его, а `is-collapsed`
+  // остаётся нетронутым классом — приводит его в соответствие владелец
+  // состояния СНАРУЖИ (эффект хука, задача 5, `UserInfoPanel.tsx`), а не сам
+  // click-хендлер.
   it('клик при is-collapsed С unfold зовёт переданный unfold и НЕ трогает is-collapsed сам (владелец состояния снаружи, задача 4)', async () => {
     const unfold = vi.fn()
     const { instance, avatarsEl, setCollapsedOn } = await makeLoaded(3, unfold)
@@ -819,7 +813,14 @@ describe('PeerProfileAvatars — клик по зонам (tweb :142-233)', () =
   // `currentHasPhoto` (зеркало пиров, `getPeerPhoto`/`getPeerPhotoId`, тот же
   // путь, что `avatarNew`), проверяем именно на канале БЕЗ исторической
   // галереи, но С реальным фото в зеркале.
-  it('канал СО своим фото (currentHasPhoto из зеркала, не из галереи истории) — клик разворачивает и открывает вьювер', async () => {
+  //
+  // ЗАДАЧА 5: `unfold` обязателен — здесь он ИМИТИРУЕТ внешнего владельца
+  // (`UserInfoPanel.tsx`, эффект `folded → setCollapsed`), снимая
+  // `is-collapsed` сам, как это сделал бы реальный эффект хука; предмет теста
+  // — что клик ЗОВЁТ `unfold` (а не листает, currentHasPhoto-гейт), а не то,
+  // что класс сам управляет is-collapsed (это уже покрыто общим тестом клика
+  // «С unfold» выше).
+  it('канал СО своим фото (currentHasPhoto из зеркала, не из галереи истории) — клик зовёт unfold и открывает вьювер текущим фото', async () => {
     const CHANNEL = -777 // peerKey(chat/channel) = -Math.abs(id) — зеркало под id:777
     applyPeerOps([{
       op: 'upsert',
@@ -827,7 +828,8 @@ describe('PeerProfileAvatars — клик по зонам (tweb :142-233)', () =
     }])
 
     const mgrs = makeManagers()
-    const { instance, setCollapsedOn } = make(mgrs)
+    const unfold = vi.fn(() => setCollapsedOn.classList.remove('is-collapsed'))
+    const { instance, setCollapsedOn } = make(mgrs, unfold)
     const avatarsEl = instance.container.querySelector<HTMLElement>('.profile-avatars-avatars')!
 
     await instance.setPeer(CHANNEL)
@@ -836,12 +838,13 @@ describe('PeerProfileAvatars — клик по зонам (tweb :142-233)', () =
 
     mockRect(instance.container, { left: 0, width: 300, right: 300 })
 
-    // Свёрнуто: клик обязан РАЗВЕРНУТЬ (листать и так некуда — один элемент).
+    // Свёрнуто: клик обязан звать unfold (листать и так некуда — один элемент).
     instance.setCollapsed(true)
     expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(true)
 
     clickAt(instance.container, 150)
-    expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(false)
+    expect(unfold).toHaveBeenCalledTimes(1)
+    expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(false) // симулированный внешний владелец снял его
 
     // Развёрнуто: клик обязан открыть вьювер — ЕДИНСТВЕННЫМ элементом из
     // ТЕКУЩЕГО фото пира (для канала `ProfilePhoto` не существует вовсе —
