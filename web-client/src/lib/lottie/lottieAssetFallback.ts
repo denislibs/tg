@@ -41,6 +41,15 @@ export function makeAssetPngUrl(name: LottieAssetName): string {
 export function renderStaticAssetFallback(container: HTMLElement | HTMLElement[], name: LottieAssetName): void {
   const containers = Array.isArray(container) ? container : [container]
   for (const el of containers) {
+    // Гвард смотрит на КЛАСС, а не на `name`: если бы у уже вставленного
+    // фолбэка `name` сменился на живом (неразмонтированном) экземпляре, в
+    // контейнере остался бы PNG старого имени. Сознательно — все 9 JSX-мест,
+    // где `<LottieSticker name="...">` получает имя (`grep -rn 'LottieSticker
+    // name=' src` минус тесты), передают его строковым литералом, плюс прямые
+    // вызовы `loadAnimationAsAsset` в `PasswordMonkey.tsx`/
+    // `TrackingMonkey.solid.tsx` — `name` не меняется на протяжении жизни
+    // контейнера, сценарий недостижим. Пин текущего поведения —
+    // `lottieAssetFallback.test.ts` («смена имени на живом контейнере»).
     if (!el || el.querySelector(`.${FALLBACK_CLASS}`)) continue
     const img = document.createElement('img')
     img.className = FALLBACK_CLASS

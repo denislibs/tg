@@ -57,4 +57,19 @@ describe('renderStaticAssetFallback', () => {
     expect(a.querySelector('img')).not.toBeNull()
     expect(b.querySelector('img')).not.toBeNull()
   })
+
+  it('ПИН ограничения: смена имени на живом контейнере PNG не обновляет — гвард смотрит на класс, не на name', () => {
+    // Сознательное поведение (см. комментарий у гварда в renderStaticAssetFallback):
+    // все 9 колл-сайтов передают `name` литералом, он не меняется на протяжении
+    // жизни контейнера, поэтому этот сценарий сегодня недостижим в реальном
+    // вызывающем коде — пин фиксирует его как известное и принятое ограничение,
+    // а не забытый баг.
+    const container = document.createElement('div')
+    renderStaticAssetFallback(container, 'Mailbox')
+    renderStaticAssetFallback(container, 'LoveLetter')
+
+    const imgs = container.querySelectorAll('img')
+    expect(imgs).toHaveLength(1)
+    expect(imgs[0].getAttribute('src')).toBe('assets/tgs/Mailbox.png')
+  })
 })
