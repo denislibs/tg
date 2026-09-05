@@ -41,10 +41,13 @@ type UserRepo interface {
 	AddProfilePhoto(ctx context.Context, userID, mediaID int64, videoMediaID *int64, preview []byte) (domain.ProfilePhoto, error)
 	// ListProfilePhotos returns the user's gallery, newest first.
 	ListProfilePhotos(ctx context.Context, userID int64) ([]domain.ProfilePhoto, error)
-	// DeleteProfilePhoto removes a photo owned by userID; if it was the current
-	// avatar, it falls back to the next most-recent photo (or none). Возвращает
-	// id медиа новой аватарки (nil — аватарки не осталось).
-	DeleteProfilePhoto(ctx context.Context, userID, photoID int64) (newPhotoID *int64, err error)
+	// DeleteProfilePhoto removes a photo owned by userID, addressed by MEDIA id
+	// (то же число, что уходит наружу списком — profile_photos.id снаружи не
+	// виден). Если это была текущая аватарка, она пересчитывается на
+	// следующее по свежести фото (или снимается). Возвращает id медиа новой
+	// аватарки (nil — аватарки не осталось). domain.ErrNotFound, если
+	// чужого/несуществующего media id не нашлось.
+	DeleteProfilePhoto(ctx context.Context, userID, mediaID int64) (newAvatarMediaID *int64, err error)
 }
 
 // AvatarPreviewer возвращает stripped-превью загруженного медиа (крошечный JPEG

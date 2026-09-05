@@ -298,42 +298,36 @@ func (r *AuthRepo) ListProfilePhotos(ctx context.Context, userID int64) ([]domai
 	return out, rows.Err()
 }
 
-// DeleteProfilePhoto removes a photo owned by userID. If the deleted photo was
-// the current avatar, it is recomputed to the next most-recent photo (or none) —
-// all in one transaction. Returns the resulting avatar media id (nil — аватарки
-// не осталось). Deleting an unknown/other-user photo is a no-op that returns the
-// unchanged avatar.
-func (r *AuthRepo) DeleteProfilePhoto(ctx context.Context, userID, photoID int64) (*int64, error) {
+// DeleteProfilePhoto removes a photo owned by userID, addressed by MEDIA id —
+// то же число, что уходит наружу списком (galleryPhoto отдаёт media_id, а не
+// id строки; profile_photos.id наружу никогда не выходит, см. backlog
+// profile-photo-delete-id-mismatch). Если удалённое фото было текущей
+// аватаркой, она пересчитывается на следующее по свежести фото (или
+// снимается) — всё в одной транзакции. Возвращает id медиа новой аватарки
+// (nil — аватарки не осталось). Промах адресации (чужое/несуществующее медиа)
+// отвечает domain.ErrNotFound — молчаливого no-op здесь больше нет, иначе
+// вызывающий не отличит промах от честного удаления.
+func (r *AuthRepo) DeleteProfilePhoto(ctx context.Context, userID, mediaID int64) (*int64, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
 
-	var deleted int64
-	err = tx.QueryRow(ctx,
-		`DELETE FROM profile_photos WHERE id=$1 AND user_id=$2 RETURNING media_id`,
-		photoID, userID).Scan(&deleted)
-	if errors.Is(err, pgx.ErrNoRows) {
-		// Nothing deleted; report the current avatar unchanged.
-		var cur *int64
-		if err := tx.QueryRow(ctx, `SELECT avatar_media_id FROM users WHERE id=$1`, userID).Scan(&cur); err != nil {
-			return nil, err
-		}
-		if err := tx.Commit(ctx); err != nil {
-			return nil, err
-		}
-		return cur, nil
-	}
+	tag, err := tx.Exec(ctx,
+		`DELETE FROM profile_photos WHERE media_id=$1 AND user_id=$2`, mediaID, userID)
 	if err != nil {
 		return nil, err
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, domain.ErrNotFound
 	}
 
 	var cur *int64
 	if err := tx.QueryRow(ctx, `SELECT avatar_media_id FROM users WHERE id=$1`, userID).Scan(&cur); err != nil {
 		return nil, err
 	}
-	if cur != nil && *cur == deleted {
+	if cur != nil && *cur == mediaID {
 		// Fall back to the next most-recent remaining photo (or clear it).
 		// Превью откатывается вместе с фото — из preview той же строки галереи.
 		var next *int64

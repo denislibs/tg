@@ -109,7 +109,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/me/premium/subscription", ph.PremiumSubscription)
 		pr.Post("/me/premium/cancel", ph.CancelPremium)
 		pr.Post("/me/photos", ph.AddPhoto)
-		pr.Delete("/me/photos/{photoID}", ph.DeletePhoto)
+		pr.Delete("/me/photos/{mediaID}", ph.DeletePhoto)
 		pr.Get("/users/{userID}/photos", ph.ListPhotos)
 		pr.Delete("/me", ph.DeleteAccount)
 

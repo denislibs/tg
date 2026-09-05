@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"testing"
 	"time"
@@ -171,7 +172,10 @@ func (r *fakeUserRepo) ListProfilePhotos(_ context.Context, userID int64) ([]dom
 	return out, nil
 }
 
-func (r *fakeUserRepo) DeleteProfilePhoto(_ context.Context, userID, photoID int64) (*int64, error) {
+// DeleteProfilePhoto ищет по MEDIA id (не по строковому ID галереи) — тот же
+// адрес, что уходит наружу списком; несуществующее/чужое медиа — ErrNotFound,
+// а не молчаливый no-op (см. backlog profile-photo-delete-id-mismatch).
+func (r *fakeUserRepo) DeleteProfilePhoto(_ context.Context, userID, mediaID int64) (*int64, error) {
 	phone, u, ok := r.find(userID)
 	if !ok {
 		return nil, domain.ErrNotFound
@@ -180,15 +184,18 @@ func (r *fakeUserRepo) DeleteProfilePhoto(_ context.Context, userID, photoID int
 	var deleted *domain.ProfilePhoto
 	kept := list[:0:0]
 	for _, p := range list {
-		if p.ID == photoID {
+		if p.MediaID == mediaID {
 			pp := p
 			deleted = &pp
 			continue
 		}
 		kept = append(kept, p)
 	}
+	if deleted == nil {
+		return nil, domain.ErrNotFound
+	}
 	r.photos[userID] = kept
-	if deleted != nil && u.PhotoID != nil && *u.PhotoID == deleted.MediaID {
+	if u.PhotoID != nil && *u.PhotoID == deleted.MediaID {
 		u.PhotoID = nil
 		if len(kept) > 0 {
 			id := kept[len(kept)-1].MediaID
@@ -743,6 +750,39 @@ func TestDeleteAccount(t *testing.T) {
 	sessions, _ := i.ListSessions(ctx, res.User.ID)
 	if len(sessions) != 0 {
 		t.Fatalf("expected 0 sessions after delete, got %d", len(sessions))
+	}
+}
+
+// Удаление фото профиля адресуется id МЕДИА — тем же числом, что клиент
+// получает из ListProfilePhotos (galleryPhoto отдаёт media_id, не строковый
+// id галереи, backlog profile-photo-delete-id-mismatch). Промах адресации
+// обязан отвечать domain.ErrNotFound, а не молчаливым no-op.
+func TestDeleteProfilePhoto(t *testing.T) {
+	ctx := context.Background()
+	i, _, _, _ := newInteractor()
+	res := registerUser(t, i, "+79990000070", "Фото", "", "web", "browser")
+
+	p1, err := i.AddProfilePhoto(ctx, res.User.ID, 501, nil)
+	if err != nil {
+		t.Fatalf("AddProfilePhoto p1: %v", err)
+	}
+	if _, err := i.AddProfilePhoto(ctx, res.User.ID, 502, nil); err != nil {
+		t.Fatalf("AddProfilePhoto p2: %v", err)
+	}
+
+	// Удаление реальным media id (тем же, что уходит наружу списком) убирает
+	// фото из галереи.
+	if err := i.DeleteProfilePhoto(ctx, res.User.ID, 502); err != nil {
+		t.Fatalf("DeleteProfilePhoto(502): %v", err)
+	}
+	list, err := i.ListProfilePhotos(ctx, res.User.ID)
+	if err != nil || len(list) != 1 || list[0].MediaID != p1.MediaID {
+		t.Fatalf("gallery after delete = %v, %v; want ровно p1", list, err)
+	}
+
+	// Несуществующий/чужой media id — НЕ успех.
+	if err := i.DeleteProfilePhoto(ctx, res.User.ID, 999999); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("DeleteProfilePhoto(несуществующее) = %v, want domain.ErrNotFound", err)
 	}
 }
 

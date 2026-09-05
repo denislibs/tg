@@ -112,8 +112,12 @@ export function newProfileManager({ rest, onMeChanged, getMe }: ProfileDeps) {
       return (res.photos ?? []).map(mapProfilePhoto)
     },
 
-    async deletePhoto(photoId: number): Promise<void> {
-      await rest.del(`/me/photos/${photoId}`)
+    // Ручка адресует по id МЕДИА — ровно тому числу, что лежит в
+    // ProfilePhoto.id/mediaId (см. mapProfilePhoto ниже: id === mediaId).
+    // Строкового id галереи наружу не отдаётся, передавать его неоткуда
+    // (backlog profile-photo-delete-id-mismatch, закрыт).
+    async deletePhoto(mediaId: number): Promise<void> {
+      await rest.del(`/me/photos/${mediaId}`)
     },
   }
 }

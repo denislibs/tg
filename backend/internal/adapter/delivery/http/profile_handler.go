@@ -460,20 +460,27 @@ func (h *ProfileHandler) ListPhotos(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewPhotosPhotos(out))
 }
 
-// DeletePhoto removes a photo from the current user's gallery
-// (DELETE /me/photos/{photoID}).
+// DeletePhoto removes a photo from the current user's gallery, addressed by
+// MEDIA id — тем же числом, что клиент получил из GET /users/{id}/photos
+// (galleryPhoto отдаёт media_id, не id строки галереи; см. backlog
+// profile-photo-delete-id-mismatch) (DELETE /me/photos/{mediaID}).
 func (h *ProfileHandler) DeletePhoto(w http.ResponseWriter, r *http.Request) {
 	u, ok := UserFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "no user")
 		return
 	}
-	photoID, err := strconv.ParseInt(chi.URLParam(r, "photoID"), 10, 64)
-	if err != nil || photoID <= 0 {
-		writeError(w, http.StatusBadRequest, "invalid photo id")
+	mediaID, err := strconv.ParseInt(chi.URLParam(r, "mediaID"), 10, 64)
+	if err != nil || mediaID <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid media id")
 		return
 	}
-	if err := h.uc.DeleteProfilePhoto(r.Context(), u.ID, photoID); err != nil {
+	err = h.uc.DeleteProfilePhoto(r.Context(), u.ID, mediaID)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "photo not found")
+		return
+	}
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "delete photo failed")
 		return
 	}

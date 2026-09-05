@@ -154,3 +154,16 @@ describe('ProfileManager.addPhoto', () => {
     return mapPeerProfile(RAW)
   }
 })
+
+describe('ProfileManager.deletePhoto', () => {
+  // backlog profile-photo-delete-id-mismatch: ручка адресует по id МЕДИА, а не
+  // по строковому id галереи — deletePhoto обязан слать в урле ровно то число,
+  // что ему передали (то же, что ProfilePhoto.id/mediaId из listPhotos).
+  it('шлёт DELETE /me/photos/{mediaId}', async () => {
+    const del = vi.fn(async () => undefined)
+    const mgr = newProfileManager({ rest: { del } as unknown as RestClient })
+
+    await mgr.deletePhoto(502)
+    expect(del).toHaveBeenCalledWith('/me/photos/502')
+  })
+})
