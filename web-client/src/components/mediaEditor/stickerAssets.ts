@@ -1,22 +1,48 @@
 // Загрузчик кадров стикеров для медиа-редактора. По mediaId (loadStickerContent
 // из StickerMedia) готовит CanvasImageSource для composeScene:
 //  • image (webp/png) — декодируется в <img>;
-//  • lottie — крутится в offscreen-canvas через lottie-web (renderer canvas, как
-//    LottieSticker), и этот canvas отдаётся как источник ТЕКУЩЕГО кадра. На
-//    каждом кадре дёргаем onFrame → редактор перерисовывает превью (анимация
-//    видна вживую; JPEG-экспорт берёт кадр, что нарисован на момент экспорта —
-//    полноценное видео будет в C6).
-import { type AnimationItem } from 'lottie-web'
-import { loadLottie } from '../lottie'
+//  • lottie — свой скрытый плеер tlottie рисует в СОБСТВЕННЫЙ canvas[0], он и
+//    отдаётся как источник ТЕКУЩЕГО кадра (движок не умеет рисовать в чужой
+//    2D-контекст — см. комментарий у ensure() ниже). На каждом кадре дёргаем
+//    onFrame → редактор перерисовывает превью (анимация видна вживую;
+//    JPEG-экспорт берёт кадр, что нарисован на момент экспорта — полноценное
+//    видео будет в C6).
+//
+// Расхождение с оригиналом (Этап 3 плана «один движок lottie»,
+// docs/superpowers/plans/2026-09-05-lottie-single-engine.md): в tweb живой показ
+// стикера в редакторе — это ДОМ-оверлей (`canvas/stickerLayerContent.tsx` зовёт
+// общий `wrapSticker`, как в ленте сообщений), а сведение в один флэт-кадр —
+// ОТДЕЛЬНЫЙ проход только для финального рендера видео/gif
+// (`finalRender/lottieStickerFrameByFrameRenderer.ts` + интерфейс
+// `StickerFrameByFrameRenderer`, `finalRender/types.ts`). У нас ОДИН
+// канвас-компоузер обслуживает и живой превью, и покадровый экспорт — это НАШЕ
+// архитектурное решение (сам этот файл, до всякого lottie-web), а не портируемое
+// из tweb, и разделение на два прохода — отдельная задача шире периметра Этапа 3.
+// Меняем поэтому только движок (lottie-web → tlottie): приём «дать плееру
+// нарисовать в СВОЙ canvas и забрать canvas[0] как источник» — портирован из
+// `lottieStickerFrameByFrameRenderer.ts:19-37,78-80` (тот же приём и в нашем
+// `wrappers/sticker.ts:241-260`, уже на tlottie).
+import lottieLoader from '@lib/lottie/lottieLoader'
+import type LottiePlayer from '@lib/lottie/lottiePlayer'
 import { loadStickerContent } from '../StickerMedia'
 
-// Сторона offscreen-канваса lottie (кадр вписывается preserveAspectRatio).
+// Сторона офскрин-канваса lottie (кадр вписывается по аспекту — так рисует
+// сам плеер в свой canvas, никакого preserveAspectRatio задавать не нужно).
 const LOTTIE_SIZE = 256
+
+// tweb `finalRender/constants.ts:2` — `FRAMES_PER_SECOND = 60`, тот же приём
+// для детерминированного покадрового прохода при экспорте (см.
+// `finalRender/renderToActualVideo.ts:291`: `currentTime * FRAMES_PER_SECOND | 0`).
+// У tlottie `LottiePlayer` реальный fps стикера (`fps`/`frameCount`) — приватные
+// поля вендоренного острова (`lottiePlayer.ts:92,1160-1162`); оригиналу они для
+// этой цели тоже не нужны — он идёт тем же хардкодом.
+const LOTTIE_EXPORT_FPS = 60
 
 export class StickerAssets {
   private readonly onFrame: () => void
   private readonly sources = new Map<number, CanvasImageSource>()
-  private readonly anims = new Map<number, AnimationItem>()
+  private readonly anims = new Map<number, LottiePlayer>()
+  private readonly containers = new Map<number, HTMLDivElement>()
   private readonly pending = new Set<number>()
   private dead = false
 
@@ -44,34 +70,75 @@ export class StickerAssets {
         }
         // video-стикер (webm) в редакторе как оверлей пока не поддержан.
         if (c.kind !== 'lottie') return
-        const animationData = c.data
-        // lottie → offscreen-canvas, обновляется на каждом кадре
-        const canvas = document.createElement('canvas')
-        canvas.width = LOTTIE_SIZE
-        canvas.height = LOTTIE_SIZE
-        const ctx = canvas.getContext('2d')
-        if (!ctx) return
-        // lottie-web грузится лениво (общий чанк); к моменту готовности проверяем, что
-        // инстанс ещё жив и не создан параллельным ensure().
-        void loadLottie().then((lottie) => {
-          if (this.dead || this.anims.has(mediaId)) return
-          const anim = lottie.loadAnimation<'canvas'>({
-            // container обязателен по типам; при заданном rendererSettings.context
-            // lottie рисует в наш offscreen-контекст, а фиктивный container не трогает.
-            container: document.createElement('div'),
-            renderer: 'canvas',
+
+        // Скрытый (off-DOM) контейнер под ОДИН плеер — как у оригинала
+        // (`lottieStickerFrameByFrameRenderer.ts:19-26`): `loadAnimationWorker`
+        // требует контейнер, класть в него канвасы больше некуда. tlottie НЕ
+        // поддерживает рисование в чужой 2D-контекст (`rendererSettings.context`
+        // — API lottie-web, которого здесь нет): `LottieOptions.canvas` — это
+        // готовый `HTMLCanvasElement`, которым НЕСКОЛЬКО плееров делятся по
+        // очереди (`lottieIcon.ts:66-76`), а не произвольный чужой context.
+        const container = document.createElement('div')
+        container.style.position = 'absolute'
+        container.style.opacity = '0'
+        container.style.pointerEvents = 'none'
+        container.style.width = LOTTIE_SIZE + 'px'
+        container.style.height = LOTTIE_SIZE + 'px'
+        document.body.append(container)
+
+        // Воркер парсит JSON из Blob (readBlobAsText в tlottie.worker.ts), а
+        // loadStickerContent уже отдаёт разобранный объект — сериализуем
+        // обратно, как `wrappers/sticker.ts:241-242`.
+        const blob = new Blob([JSON.stringify(c.data)], { type: 'application/json' })
+        lottieLoader
+          .loadAnimationWorker({
+            container,
+            animationData: blob,
             loop: true,
             autoplay: true,
-            animationData,
-            rendererSettings: { context: ctx, clearCanvas: true, preserveAspectRatio: 'xMidYMid meet' },
+            width: LOTTIE_SIZE,
+            height: LOTTIE_SIZE,
+            name: 'mediaEditorSticker' + mediaId,
+            // Мимо animationIntersector — как `StickerLayerContent.solid.tsx`
+            // (`group: 'none'`): канвас офскрин весь свой век, видимость
+            // страницы плееру не указ, лишний auto-pause не нужен.
+            group: 'none',
+            // Синхронное чтение canvas[0] на 'enterFrame' — как у оригинала
+            // (`lottieStickerFrameByFrameRenderer.ts:35-36`, комментарий там же
+            // прямо про это: "getRenderedFrame() reads canvas[0] synchronously").
+            noOffscreen: true,
           })
-          anim.addEventListener('enterFrame', this.onFrame)
-          this.anims.set(mediaId, anim)
-          this.sources.set(mediaId, canvas)
-          this.onFrame()
-        })
+          .then(
+            (anim) => {
+              if (this.dead || this.anims.has(mediaId)) {
+                anim.remove()
+                container.remove()
+                return
+              }
+              anim.addEventListener('enterFrame', this.onFrame)
+              this.anims.set(mediaId, anim)
+              this.containers.set(mediaId, container)
+              this.sources.set(mediaId, anim.canvas[0])
+              this.onFrame()
+            },
+            () => {
+              // Без WASM SIMD `loadAnimationWorker` отклоняется с NO_WASM ДО
+              // первого кадра (`lottieLoader.ts:215-216`) — в отличие от
+              // lottie-web (чистый JS-рендер, работал в любом браузере),
+              // стикер в редакторе не появится СОВСЕМ: ни в живом превью, ни
+              // в экспорте (`sceneRender.ts:493` молча пропускает слой без
+              // источника). Это реальная деградация относительно сегодняшнего
+              // поведения на хвосте браузеров без SIMD (Safari < 16.4) —
+              // решение объявлено в плане (раздел «Решение по деградации без
+              // WASM SIMD»), фолбэк сюда не добавлен: это тот же долг, что и
+              // у остальных потребителей tlottie, а не отдельный случай.
+              container.remove()
+            },
+          )
       },
-      () => { this.pending.delete(mediaId) },
+      () => {
+        this.pending.delete(mediaId)
+      },
     )
   }
 
@@ -82,22 +149,29 @@ export class StickerAssets {
 
   /**
    * Детерминированно перемотать все lottie-анимации на время timeSec (для
-   * покадрового энкода видео): кадр = (timeSec * frameRate) mod totalFrames,
-   * goToAndStop рисует его в offscreen-canvas синхронно. Статичные — no-op.
+   * покадрового энкода видео): кадр = (timeSec * LOTTIE_EXPORT_FPS) mod
+   * totalFrames, requestFrame ставит плеер на паузу и рисует нужный кадр в
+   * canvas[0] синхронно — тот же смысл, что у `goToAndStop` lottie-web
+   * (остановить автоплей и прыгнуть на кадр), которого у tlottie нет; здесь
+   * это `pause()` + `requestFrame(frame)` (`lottiePlayer.ts:707-732,955-981`).
+   * Статичные — no-op.
    */
   seek(timeSec: number): void {
     for (const anim of this.anims.values()) {
-      const total = anim.totalFrames
+      const total = anim.maxFrame + 1
       if (!total) continue
-      const fr = anim.frameRate || 60
-      anim.goToAndStop(((timeSec * fr) % total + total) % total, true)
+      anim.pause()
+      const frame = Math.floor((((timeSec * LOTTIE_EXPORT_FPS) % total) + total) % total)
+      anim.requestFrame(frame)
     }
   }
 
   destroy(): void {
     this.dead = true
-    for (const a of this.anims.values()) a.destroy()
+    for (const a of this.anims.values()) a.remove()
+    for (const c of this.containers.values()) c.remove()
     this.anims.clear()
+    this.containers.clear()
     this.sources.clear()
     this.pending.clear()
   }
