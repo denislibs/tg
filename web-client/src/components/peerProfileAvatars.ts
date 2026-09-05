@@ -586,6 +586,13 @@ export default class PeerProfileAvatars {
     this.middlewareHelper.clean()
 
     if (!threadId) {
+      // НАХОДКА ФИНАЛЬНОГО РЕВЬЮ ВЕТКИ (Important, п.3) — см. докблок
+      // `releaseVideoAvatars()`: ДО того, как `replaceChildren()` ниже
+      // выбросит узлы прежнего пира из DOM, снимаем видео-аватарки с учёта
+      // в `animationIntersector` — иначе залоченный (панель была закрыта)
+      // элемент утёк бы: `cleanup()` (единственное прежнее место вызова)
+      // у нас не зовётся никогда, инстанс переживает смену пира.
+      this.releaseVideoAvatars()
       this.avatars.replaceChildren()
       this.tabs.replaceChildren()
       this.container.classList.remove('is-single')
@@ -662,6 +669,25 @@ export default class PeerProfileAvatars {
       // оригиналом, которое нигде не объявлено. `void` — как и ниже в самом
       // `ListLoader.go()` (`void this.load(!this.reverse)`).
       void listLoader.load(true)
+
+      // tweb :534-537 (хвост `setPeer`, `if(photo?.pFlags?.has_video)
+      // this.startVideoProgressLoop()`) — НАХОДКА ФИНАЛЬНОГО РЕВЬЮ ВЕТКИ
+      // (Important, п.2), второй пропущенный вызывающий. `current` — тот же
+      // «текущий» элемент оригинала (`photo` там), `videoMediaId` — наш
+      // эквивалент `pFlags.has_video` (докблок `processItem`, ветка видео).
+      //
+      // СОЗНАТЕЛЬНО НЕПОКРЫТО функционально (но покрыто ФАКТОМ вызова,
+      // `peerProfileAvatars.test.ts`, describe «rAF-прогресс…»): элемент #0
+      // («текущий») у нашего порта ВСЕГДА рисуется через `avatarNew`
+      // (isFirst-ветка `processItem`), у него никогда не бывает
+      // `<video class="avatar-video">` — тот же структурный пробел, что
+      // объясняет докблок `updateActiveTabProgress` про фолбэк tweb для
+      // i===0. Поэтому здесь цикл СТАРТУЕТ (кадр планируется), но гасится на
+      // первом же тике (`updateActiveTabProgress` не находит играющее видео
+      // на активном индексе 0) — ровно как в оригинале, у которого та же
+      // структурная дыра (см. тот же докблок).
+      if (current?.videoMediaId) this.startVideoProgressLoop()
+
       return
     }
 
@@ -977,9 +1003,24 @@ export default class PeerProfileAvatars {
   }
 
   /**
-   * tweb :500-520. Видео-прогресс rAF («будим самоприостановленный цикл»,
-   * :519-520) — задача 3, здесь не трогаем: `startVideoProgressLoop` не
-   * существует.
+   * tweb :500-520, включая хвост :517-520 (`if(!this.videoProgressRAF)
+   * this.startVideoProgressLoop()`) — НАХОДКА ФИНАЛЬНОГО РЕВЬЮ ВЕТКИ
+   * (Important, п.2): раньше здесь стоял комментарий «startVideoProgressLoop
+   * не существует» — метод завела задача 3 (`:1076` ниже), но к этому месту
+   * так и не вернулась, из-за чего у него был ОДИН вызывающий (capture-
+   * слушатель 'play' в конструкторе) против ТРЁХ в оригинале. Листание
+   * (клик/свайп/goWithoutTransition → `ListLoader.go` → `onJump`) НЕ рождает
+   * событие 'play' на видео, в которое прыгнули, — оно уже играет (автоплей),
+   * просто цикл прогресса мог быть самоприостановлен (предыдущий активный
+   * элемент — не видео, или видео тоже было на паузе) и без явного будильника
+   * здесь остался бы замороженным до следующего случайного 'play'.
+   *
+   * ВЕТКА С ДВУМЯ РЕАЛЬНЫМИ ВИДЕО В ЛЕНТЕ ОДНОВРЕМЕННО — единственная, где
+   * это наблюдаемо (`peerProfileAvatars.test.ts`, describe «rAF-прогресс
+   * полоски видео-аватара»); сегодня видео-аватар в принципе недостижим на
+   * проводе (см. докблок класса, «videoMediaId»), поэтому живьём эта строка
+   * не сработает ни разу — портирована на будущее, тем же основанием, что и
+   * сама ветка `photo.videoMediaId` в `processItem`.
    */
   private onJump(_item: ProfilePhoto | undefined, _older: boolean): void {
     const listLoader = this.listLoader
@@ -997,6 +1038,9 @@ export default class PeerProfileAvatars {
     }
 
     this.loadNearestToTarget(this.avatars.children[id])
+
+    // tweb :517-520 — см. докблок метода выше.
+    if (!this.videoProgressRAF) this.startVideoProgressLoop()
   }
 
   /**
@@ -1144,6 +1188,34 @@ export default class PeerProfileAvatars {
   }
 
   /**
+   * tweb :963-969 — снятие учёта видео-аватарок в `animationIntersector` +
+   * освобождение декодера (`pause`/`src=''`/`load()`). Оригинал зовёт это
+   * ТОЛЬКО из `cleanup()`, потому что там под КАЖДОГО пира — НОВЫЙ инстанс
+   * класса (докблок `setPeer` выше): смена пира === `cleanup()` прежнего
+   * инстанса целиком. У нас инстанс переживает смену пира, а
+   * `this.avatars.replaceChildren()` (см. `setPeer`) выбрасывает
+   * `<video class="avatar-video">` прежнего пира из DOM БЕЗ снятия учёта —
+   * залоченный элемент (`toggleVideosUnder`, пока правая панель была
+   * закрыта) не снимается с учёта сам по себе при уходе из DOM
+   * (`checkAnimation` игнорирует `locked` ДО проверки `isInDOM`,
+   * `animationIntersector.ts:347-353`), декодер продолжал бы жить и после
+   * того, как узел исчез из дерева.
+   *
+   * НАХОДКА ФИНАЛЬНОГО РЕВЬЮ ВЕТКИ (Important, п.3): раньше это стояло
+   * ТОЛЬКО в `cleanup()`, которую у нас никто не зовёт при смене пира
+   * (панель не размонтирует инстанс) — вынесено в общий метод, зовётся и
+   * отсюда, и из `setPeer` (перед `replaceChildren()`, пока узлы ещё в DOM).
+   */
+  private releaseVideoAvatars(): void {
+    this.container.querySelectorAll<HTMLVideoElement>('video.avatar-video').forEach((video) => {
+      animationIntersector.removeAnimationByPlayer(video)
+      video.pause()
+      video.src = ''
+      video.load()
+    })
+  }
+
+  /**
    * tweb :957-973. rAF видео-прогресса и `swipeHandler` — задача 3, снимаются
    * здесь же (`cancelAnimationFrame`/`swipeHandler.removeListeners()`).
    */
@@ -1153,17 +1225,7 @@ export default class PeerProfileAvatars {
     // же вызова, мог бы отработать ещё один кадр над уже отсоединяемым видео).
     cancelAnimationFrame(this.videoProgressRAF)
 
-    // tweb :963-969 — освобождаем зарегистрированные в animationIntersector
-    // видео-аватарки: пока правая панель была закрыта, toggleVideosUnder мог
-    // их ЗАЛОЧИТЬ, а залоченный элемент не снимается с учёта сам по себе при
-    // уходе из DOM (checkAnimation игнорирует locked) — снимаем и освобождаем
-    // декодер явно.
-    this.container.querySelectorAll<HTMLVideoElement>('video.avatar-video').forEach((video) => {
-      animationIntersector.removeAnimationByPlayer(video)
-      video.pause()
-      video.src = ''
-      video.load()
-    })
+    this.releaseVideoAvatars()
     this.listenerSetter.removeAll()
     this.swipeHandler.removeListeners()
     this.intersectionObserver.disconnect()

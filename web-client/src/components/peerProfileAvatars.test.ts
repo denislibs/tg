@@ -522,6 +522,40 @@ describe('PeerProfileAvatars.setPeer() — лента данных (задача
     expect(tabsEl.children.length).toBe(1)
   })
 
+  // НАХОДКА ФИНАЛЬНОГО РЕВЬЮ ВЕТКИ (Important, п.3): `avatars.replaceChildren()`
+  // выше выбрасывает `<video class="avatar-video">` прежнего пира из DOM, а
+  // снятие с учёта (`removeAnimationByPlayer`/`pause`/`src=''`/`load()`) было
+  // ТОЛЬКО в `cleanup()`, которую панель не зовёт при смене пира (инстанс
+  // переживает смену пира, докблок `setPeer`). Залоченный `animationIntersector`-
+  // ом элемент (пока панель была закрыта) не снимается с учёта сам при уходе
+  // из DOM — утёк бы. Тест — то же наблюдение, что и в
+  // `PeerProfileAvatars.cleanup() — лента данных`, describe ниже, но
+  // триггером служит ВТОРОЙ `setPeer`, а не `cleanup()`.
+  it('setPeer снимает регистрацию видео ПРЕЖНЕГО пира перед replaceChildren (находка ревью, п.3)', async () => {
+    const mgrs = makeManagers({ [ALICE]: [photo(1), photo(2, 999)], [GHOST]: [] })
+    const { instance } = make(mgrs)
+    const avatarsEl = instance.container.querySelector('.profile-avatars-avatars')!
+
+    await instance.setPeer(ALICE)
+    const video = await vi.waitFor(() => {
+      const el = avatarsEl.children[1].querySelector('video.avatar-video') as HTMLVideoElement | null
+      expect(el).toBeTruthy()
+      return el!
+    })
+
+    const removeSpy = vi.spyOn(animationIntersector, 'removeAnimationByPlayer')
+    const pauseSpy = vi.spyOn(video, 'pause')
+
+    await instance.setPeer(GHOST) // смена пира — БЕЗ cleanup()
+
+    expect(removeSpy).toHaveBeenCalledWith(video)
+    expect(pauseSpy).toHaveBeenCalled()
+    // `video.src` (свойство) резолвится happy-dom в абсолютный URL страницы
+    // даже для пустой строки — проверяем АТРИБУТ напрямую, как он реально
+    // выставлен (`video.src = ''`).
+    expect(video.getAttribute('src')).toBe('')
+  })
+
   it('группа/канал — listPhotos не зовётся вовсе, в ленте одно текущее фото без карусели (tweb :443-499, долг backlogs/frontend/profile-chat-photo-history.md)', async () => {
     const CHANNEL = -601
     // Фото под ALICE есть — если бы isUser-гейт исчез, `toUserId(CHANNEL)`
@@ -1030,8 +1064,17 @@ describe('PeerProfileAvatars — rAF-прогресс полоски видео-
     instance.goWithoutTransition(1) // активный индекс — 1, тот же, что у видео
     // goWithoutTransition сам планирует кадр через fastRaf (снятие
     // no-transition) — эта describe мокает requestAnimationFrame ГЛОБАЛЬНО,
-    // поэтому и он оседает в `frames`; он не по нашей части, сбрасываем.
-    frames.clear()
+    // поэтому и он оседает в `frames`. НАХОДКА ФИНАЛЬНОГО РЕВЬЮ ВЕТКИ
+    // (Important, п.2): `goWithoutTransition` → `ListLoader.go` → `onJump`
+    // теперь ТОЖЕ планирует тик (tweb :517-520, будит самоприостановленный
+    // цикл на листании) — в батче уже ДВА кадра. `flushFrame()`, а не
+    // `frames.clear()`: видео здесь ещё не «играет» по-настоящему (duration/
+    // paused ниже выставлены ПОСЛЕ прыжка), поэтому тик onJump сам корректно
+    // самогасится (`videoProgressRAF` возвращается в 0) — ровно то состояние,
+    // с которого начинался тест до этой находки.
+    expect(frames.size).toBe(2)
+    flushFrame()
+    expect(frames.size).toBe(0)
 
     Object.defineProperty(video, 'duration', { value: 10, configurable: true })
     video.currentTime = 3
@@ -1069,7 +1112,11 @@ describe('PeerProfileAvatars — rAF-прогресс полоски видео-
       return el!
     })
     instance.goWithoutTransition(1)
-    frames.clear() // сбрасываем кадр fastRaf самого goWithoutTransition — см. комментарий в тесте выше
+    // onJump (находка ревью, п.2) тоже планирует тик — прогоняем оба
+    // запланированных кадра (тик + fastRaf) ДО настройки видео, см.
+    // комментарий в предыдущем тесте.
+    flushFrame()
+    expect(frames.size).toBe(0)
     Object.defineProperty(video, 'duration', { value: 10, configurable: true })
     Object.defineProperty(video, 'paused', { value: false, configurable: true })
     video.dispatchEvent(new Event('play'))
@@ -1077,5 +1124,64 @@ describe('PeerProfileAvatars — rAF-прогресс полоски видео-
 
     instance.cleanup()
     expect(frames.size).toBe(0)
+  })
+
+  // НАХОДКА ФИНАЛЬНОГО РЕВЬЮ ВЕТКИ (Important, п.2): tweb :517-520 — хвост
+  // `onJump` будит цикл, если он самоприостановлен. Раньше здесь стоял
+  // комментарий «startVideoProgressLoop не существует» — метод завела
+  // задача 3, но `onJump` его так и не звал: единственный вызывающий был
+  // capture-слушатель 'play', а листание НЕ рождает 'play' на видео, в
+  // которое прыгнули (оно уже играет автоплеем).
+  it('onJump будит УЖЕ играющее видео при прыжке БЕЗ единого события play (tweb :517-520)', async () => {
+    const mgrs = makeManagers({ [ALICE]: [photo(1), photo(2), photo(3, 998)] })
+    const { instance } = make(mgrs)
+    const avatarsEl = instance.container.querySelector('.profile-avatars-avatars')!
+    const tabsEl = instance.container.querySelector('.profile-avatars-tabs')!
+
+    await instance.setPeer(ALICE)
+    const video = await vi.waitFor(() => {
+      const el = avatarsEl.children[2].querySelector('video.avatar-video') as HTMLVideoElement | null
+      expect(el).toBeTruthy()
+      return el!
+    })
+    // Видео "уже играет" (автоплей), но ни разу не дало событию 'play'
+    // сработать НА ЭТОМ инстансе — прыгаем сразу с индекса 0 на индекс 2,
+    // минуя и index 1 (без видео), и любое событие 'play'.
+    Object.defineProperty(video, 'duration', { value: 10, configurable: true })
+    video.currentTime = 5
+    Object.defineProperty(video, 'paused', { value: false, configurable: true })
+
+    instance.goWithoutTransition(2)
+    // БЕЗ фикса единственный кадр здесь был бы от fastRaf снятия
+    // no-transition самого goWithoutTransition; С фиксом onJump сам стартует
+    // цикл ДО него (синхронно внутри listLoader.go(distance)).
+    expect(frames.size).toBe(2)
+
+    flushFrame() // тик прогресса (видит playing) + fastRaf (шум, не по нашей части)
+    const tab = tabsEl.children[2] as HTMLElement
+    expect(tab.classList.contains('is-playing')).toBe(true)
+    expect(tab.style.getPropertyValue('--progress')).toBe('50.0%')
+    expect(frames.size).toBe(1) // тик сам себя перепланировал — видео всё ещё играет
+  })
+
+  // НАХОДКА ФИНАЛЬНОГО РЕВЬЮ ВЕТКИ (Important, п.2), второй пропущенный
+  // вызывающий — tweb :534-537, хвост `setPeer`. У нашего порта элемент #0
+  // («текущий») ВСЕГДА рисуется через `avatarNew` (isFirst-ветка
+  // `processItem`), поэтому у него никогда не бывает `<video class=
+  // "avatar-video">` (см. докблок `updateActiveTabProgress`, тот же
+  // структурный пробел объясняет фолбэк tweb для i===0) — цикл СТАРТУЕТ
+  // (кадр планируется, доказывая, что вызов произошёл), но гасится на первом
+  // же тике. Функционально это самогасящийся no-op и в оригинале — покрываем
+  // ФАКТ вызова, а не эффект (эффекта у него сегодня нет, см. комментарий у
+  // строки в `peerProfileAvatars.ts::setPeer`).
+  it('setPeer будит rAF-цикл, если ТЕКУЩЕЕ фото — видео (tweb :534-537); index 0 никогда не содержит <video> — цикл сам гасится первым тиком', async () => {
+    const mgrs = makeManagers({ [ALICE]: [photo(1, 777)] })
+    const { instance } = make(mgrs)
+
+    await instance.setPeer(ALICE)
+
+    expect(frames.size).toBe(1) // startVideoProgressLoop() запланировал тик
+    flushFrame()
+    expect(frames.size).toBe(0) // index 0 без <video> — activePlaying=false, самогашение
   })
 })
