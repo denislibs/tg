@@ -27,9 +27,20 @@
 // `peerProfileAvatars.test.ts` (DOM конструктора, is-collapsed/need-white на
 // `setCollapsedOn`, header-filled по порогам). `header-filled` остаётся
 // React-состоянием панели (вторая, не сводимая с классом половина, см. бриф
-// задачи 5 п.3) — её пин жив. Peer-title/subtitle в `.profile-avatars-info`
-// остаются React-контентом (портал в `instance.info`, см. коммент в файле) —
-// их пины тоже живы.
+// задачи 5 п.3) — её пин жив.
+//
+// ЗАДАЧА 3 профиля на Solid (docs/superpowers/plans/2026-09-05-profile-card-
+// solid.md): peer-title/subtitle в `.profile-avatars-info` БОЛЬШЕ НЕ React —
+// React-портал туда (`avatarsInfoEl && createPortal(...)`, `VerifiedBadge`/
+// `PremiumBadge`/`EmojiStatus`/`PeerStatus`) снесён вместе со своим пином
+// текстом: это и есть «держалось текстом — теперь держится поведенческими
+// тестами Solid-компонента» (правило задачи, см. её бриф) —
+// `peerProfile.solid.test.tsx` проверяет ФАКТОМ, что имя/статус оказываются
+// внутри переданного `avatarsInfo`, а не здесь. Пин ниже держит только то,
+// что этот файл всё ещё делает: узел-хозяин острова аватарок пуст, а
+// `instance.info` уходит в Solid-мост пропом `avatarsInfo` у того же вызова
+// `mountSolid`, которым смонтирован `.profile-content` (единственный писатель
+// узла — Solid, см. докблок `avatarsHostRef`).
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -150,13 +161,24 @@ describe('UserInfoPanel — каркас на классах tweb', () => {
   // `peerProfileAvatars.test.ts`. Здесь остаётся только контент, которым
   // по-прежнему владеет React: peer-title/бейджи/подзаголовок, портальные в
   // `instance.info` (см. коммент у `avatarsInfoEl` в файле).
-  it('шапка-аватары: узел-хозяин острова + React-контент info (peer-title/subtitle) портальный', () => {
+  it('шапка-аватары: узел-хозяин острова пуст, info уходит в Solid-мост пропом', () => {
     expect(panel).toMatch(/<div ref=\{avatarsHostRef\} \/>/)
-    expect(panel).toMatch(/avatarsInfoEl && createPortal\(/)
-    expect(panel).toMatch(/<span className="peer-title">/)
-    expect(panel).toMatch(/className="profile-subtitle-text"/)
+    expect(panel).toMatch(/avatarsInfo: avatarsInfoEl \?\? undefined/)
     expect(panel).not.toMatch(/className="profile-avatars-avatars"/)
     expect(panel).not.toMatch(/'profile-avatars-avatar media-container'/)
+  })
+
+  // Задача 3 профиля на Solid — React больше НЕ пишет в `.profile-avatars-info`
+  // ни одним из способов, которыми раньше это делал (портал + три бейджа +
+  // презенс-виджет). Отрицательный пин, а не только положительный выше:
+  // именно повторное появление любой из этих строк и означало бы регресс
+  // «второй писатель узла» (правило владения, план, шапка).
+  it('React не пишет в info: старый портал/бейджи/презенс сняты целиком', () => {
+    expect(panel).not.toMatch(/avatarsInfoEl && createPortal/)
+    expect(panel).not.toMatch(/from '\.\/VerifiedBadge'/)
+    expect(panel).not.toMatch(/from '\.\/PremiumBadge'/)
+    expect(panel).not.toMatch(/from '\.\/EmojiStatus'/)
+    expect(panel).not.toMatch(/from '\.\.\/shared\/ui\/peerStatus'/)
   })
 
   // Видео-аватарка (AvatarVideo, animationIntersector.addAnimation/

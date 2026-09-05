@@ -8,9 +8,6 @@ import TgIcon from './TgIcon'
 import ChannelStats from './ChannelStats'
 import Avatar from '../shared/ui/Avatar'
 import { useMediaUrl } from '../core/hooks/useMediaUrl'
-import VerifiedBadge from './VerifiedBadge'
-import PremiumBadge from './PremiumBadge'
-import EmojiStatus from './EmojiStatus'
 import GroupEditFlow from './group/GroupEditFlow'
 import AddMembersScreen from './group/AddMembersScreen'
 import { Row } from './settings/kit'
@@ -25,13 +22,12 @@ import { useMuteToggle } from '../core/hooks/useMuteToggle'
 import { useChatsStore } from '../stores/chatsStore'
 import { useNavLayer } from '../core/hooks/useNavLayer'
 import { useTransitionSlider } from '../core/hooks/useTransitionSlider'
-import { PeerStatus } from '../shared/ui/peerStatus'
 import type { SavedStarGift } from '../core/managers/starsManager'
 import GiftInfoPopup from './stars/GiftInfoPopup'
 import KeyVerificationPopup from './secret/KeyVerificationPopup'
 import SharedMedia from './userInfo/SharedMedia'
 import RightsEditor from './userInfo/RightsEditor'
-import { membersLabel, chatsLabel, countLabel, sharedMediaChatId, shouldForceFold, HEADER_H, ADDITIONAL_OFFSET, BODY_PADDING, TAB_GAP } from './userInfo/helpers'
+import { countLabel, sharedMediaChatId, shouldForceFold, HEADER_H, ADDITIONAL_OFFSET, BODY_PADDING, TAB_GAP } from './userInfo/helpers'
 import installColumnResize from '../core/dom/installColumnResize'
 import { useRightColumnShown } from '../core/hooks/useRightColumnShown'
 import animationIntersector from './animationIntersector'
@@ -179,21 +175,14 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
       ? savedDialogs?.length
       : tabCounts[tab]
 
-  // Онлайн-статус приватного собеседника — из presence-стора (как в топбаре
-  // ChatHeader), а не из статичного chat.status: «в сети» / «был(а) …».
-  const peerPresence = useChatsStore((st) => st.presence[peerId])
-  const presenceLabel =
-    !isSaved && !isGroup && !isChannel
-      ? peerPresence
-        ? <PeerStatus status={peerPresence} />
-        : chat.status
-      : null
-
-  const subtitleText = isSaved
-    ? chatsLabel(savedDialogs?.length ?? 0)
-    : isRealChat && (isGroup || isChannel) && realMembers
-      ? membersLabel(realMembers.length, isChannel)
-      : presenceLabel ?? chat.status
+  // Присутствие/статус приватного собеседника и счётчик участников группы/
+  // канала — раньше считались ЗДЕСЬ (`subtitleText`) для React-портала в
+  // `instance.info`. Задача 3 профиля на Solid перенесла ИМЯ И СТАТУС пира
+  // внутрь `avatars.info` Solid-компонентом (`peerProfile.solid.tsx`,
+  // `SubtitleStatus`/`ChatMembersLabel`) — второго писателя `info` не должно
+  // быть (докблок `avatarsHostRef` ниже, «правило владения»), поэтому эта
+  // ветка вычислений отсюда убрана целиком, а не просто перестала
+  // использоваться.
 
   // ── шапка-аватары (tweb peerProfileAvatars) — задача 5: класс
   // `PeerProfileAvatars` (`./peerProfileAvatars.ts`, задачи 1-4) владеет ВСЕЙ
@@ -225,11 +214,16 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   // трогает `className` этого узла после первого рендера.
   const setCollapsedOnRef = useRef<HTMLDivElement>(null)
   // Хост-узел острова — пуст сам по себе, класс вставляет туда СВОЙ
-  // `container` (structural DOM, tweb :81-109); контент `.profile-avatars-info`
-  // (имя/статус пира) остаётся React-компонентом — портал ниже, в JSX.
+  // `container` (structural DOM, tweb :81-109). Контент `.profile-avatars-info`
+  // (имя/статус пира) с задачи 3 — Solid (`peerProfile.solid.tsx`, `Name`/
+  // `Subtitle`), НЕ React: `instance.info` уходит туда пропом `avatarsInfo`
+  // (см. `profileContentHostRef` ниже) — единственный писатель узла с этой
+  // задачи Solid, React в него не пишет вовсе (правило владения, план
+  // «карточка профиля на Solid», шапка).
   const avatarsHostRef = useRef<HTMLDivElement>(null)
   // Триггер повторного рендера ровно тогда, когда `instance.info` становится
-  // доступен (после монтажа острова) — до этого момента порталить некуда.
+  // доступен (после монтажа острова) — до этого момента отдавать Solid-мосту
+  // (`profileContentHostRef` ниже) нечего.
   const [avatarsInfoEl, setAvatarsInfoEl] = useState<HTMLElement | null>(null)
 
   // Реальный useCollapsable() (задача 4 подготовила только контракт со стороны
@@ -367,6 +361,17 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   // что у `avatarsHostRef` выше, см. его докблок: `render()` вставляет узлы
   // ВНУТРЬ хоста, а не вместо него).
   const profileContentHostRef = useRef<HTMLDivElement>(null)
+  // `avatarsInfoEl` — задача 3: узел `instance.info` класса аватарок (см. его
+  // докблок, поле `info`), КУДА Solid-корень монтирует имя/статус пира —
+  // передаётся сюда ПРОПОМ (не читается классом внутри `peerProfile.solid.tsx`
+  // напрямую), потому что владеет узлом эта панель (`avatarsRef`), а не файл
+  // Solid-компонента. В зависимостях — та же логика, что и у `peerId`/
+  // `searchSuperContainer`: узел появляется ПОСЛЕ первого маунта острова
+  // аватарок (эффект `useImperativeIsland` выше), поэтому самый первый прогон
+  // этого эффекта видит `null` и пересоздаст корень ещё раз, как только
+  // `setAvatarsInfoEl` его выставит, — единственный лишний цикл за всё время
+  // жизни панели (сам узел `instance.info` после этого не меняется, инстанс
+  // класса переживает смену пира — докблок `setPeer`).
   useLayoutEffect(() => {
     const host = profileContentHostRef.current
     if (!host) return
@@ -376,8 +381,9 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
       scrollable: bodyRef.current!,
       setCollapsedOn: setCollapsedOnRef.current!,
       searchSuperContainer,
+      avatarsInfo: avatarsInfoEl ?? undefined,
     })
-  }, [peerId, searchSuperContainer])
+  }, [peerId, searchSuperContainer, avatarsInfoEl])
 
   // Панельная половина `header-filled` (tweb sharedMedia.tsx:513/:547 — ставит
   // доезд до табов, снимает клик «назад», см. onBodyScroll/scrollBackToProfile
@@ -523,10 +529,15 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
           {/* Шапка-аватары (tweb .profile-avatars-container) — задача 5 плана
               аватарок: узел класса `PeerProfileAvatars` встаёт СЮДА через
               useImperativeIsland (host: `avatarsHostRef`). Класс сам строит
-              DOM/ленту/жесты/is-collapsed/need-white/header-filled(своя
-              половина); React по-прежнему владеет ТОЛЬКО контентом
-              `.profile-avatars-info` — портал ниже, в тот же узел (`instance.info`,
-              публичное поле класса, докблок «кто владеет контентом»).
+              DOM/ленту/жесты/is-collapsed/need-white/header-filled (своя
+              половина); контентом `.profile-avatars-info` с задачи 3 владеет
+              Solid (`peerProfile.solid.tsx`, `Name`/`Subtitle`) — узел
+              `instance.info` уходит туда пропом `avatarsInfo` у
+              `profileContentHostRef` ниже, а не порталом ЗДЕСЬ: React больше
+              не пишет в `info` вовсе (было — портал `<> <div className=
+              "profile-name">…`, снесён этой задачей вместе с `PeerStatus`/
+              `VerifiedBadge`/`PremiumBadge`/`EmojiStatus`, которые его
+              питали).
 
               РАСХОЖДЕНИЕ С TWEB (Minor, было ещё до Task 2): этот `<div>` —
               ЛИШНИЙ уровень DOM вокруг `.profile-avatars-container`, которого у
@@ -555,29 +566,16 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
               требует сперва решить именно этот конфликт персистентности —
               долг `web-client/backlogs/frontend/profile-avatar-inside-solid-root.md`. */}
           <div ref={avatarsHostRef} />
-          {avatarsInfoEl && createPortal(
-            <>
-              {/* имя+статус — ОДНИ узлы в обоих состояниях (tweb .profile-avatars-info):
-                  collapsed центрирует их transform'ом и меняет цвет с белого на текстовый */}
-              <div className="profile-name">
-                <span className="peer-title">{chat.name}</span>
-                {profile?.user.pFlags?.verified && <VerifiedBadge size={22} />}
-                {profile?.user.pFlags?.premium && <PremiumBadge size={22} />}
-                {profile?.user.emoji_status_emoticon && <EmojiStatus emoji={profile.user.emoji_status_emoticon} size={22} />}
-              </div>
-              <div className="profile-subtitle">
-                <div className="profile-subtitle-text"><span>{subtitleText}</span></div>
-              </div>
-            </>,
-            avatarsInfoEl,
-          )}
 
           {/* Каркас карточки (задача 2, `peerProfile.solid.tsx`) — `.profile-content`
               (делимитер + `searchSuperContainer` последним ребёнком) рисует
               Solid, смонтированный сюда мостом `mountSolid` (эффект выше, у
               `profileContentHostRef`). Хост — пустой узел-обёртка, тот же
               приём и то же расхождение с оригиналом, что у `avatarsHostRef`
-              выше. */}
+              выше. Тот же вызов `mountSolid` (проп `avatarsInfo`, эффект
+              выше) кладёт имя/статус пира ВНУТРЬ `instance.info` соседнего
+              узла — задача 3, см. докблок `peerProfile.solid.tsx` у
+              компонента `PeerProfile`. */}
           <div ref={profileContentHostRef} />
           {createPortal(
             <SharedMedia
