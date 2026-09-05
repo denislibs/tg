@@ -17,6 +17,20 @@
 // свой файл (`useCollapsable.test.tsx`) — здесь важно только то, что панель
 // СВЯЗЫВАЕТ его `folded`/`unfold`/`fold` с классом, а не то, что хук вообще
 // умеет считать колесо.
+//
+// РЕВЬЮ ЗАДАЧИ 5 (Critical, раунд правок 3): `setCollapsedOnRef`-узел держит
+// ДВУХ писателей классов — класс `PeerProfileAvatars` (`classList.toggle`,
+// мимо React) и панельную половину `header-filled` (tweb sharedMedia.tsx).
+// ПРЕЖДЕ панель писала свою половину через `classNames()` в JSX — а React
+// не мержит атрибут: при смене ВЫЧИСЛЕННОЙ строки `className` он
+// присваивает `node.className` ЦЕЛИКОМ, стирая всё, что выставил не он
+// (is-collapsed/need-white/половину класса). Харнесс ниже держит
+// `headerFilled` ПРОПОМ и применяет его тем же `classList.toggle`, что и
+// класс, — единственный писатель-механизм для ВСЕХ владельцев узла (правило
+// проекта: «узлом владеет тот, кто решает, когда узел меняется»). Тест
+// «Critical (находка ревью)» ниже прогнан МУТАЦИЕЙ харнесса ДО фикса (JSX
+// classNames() вместо classList.toggle — see review, red) — числа в теле
+// коммита.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, cleanup, act } from '@testing-library/react'
 import { useLayoutEffect, useRef } from 'react'
@@ -56,13 +70,16 @@ function makeManagers(): PeerProfileAvatarsManagers {
 
 /**
  * Харнесс — ТА ЖЕ форма вызовов, что `UserInfoPanel.tsx` (собрана вручную из
- * тех же трёх кусков: реальный `useCollapsable()`, `useImperativeIsland` с
- * `host`+`strays`, эффект `folded → setCollapsed` с гейтом `hasPhoto`). Если
- * когда-нибудь эта форма разъедется с панелью — обязанность синхронизировать
- * их у ревью задачи 5 и любых будущих правок обоих файлов; шов в самой панели
- * пинует `UserInfoPanel.shell.test.ts` балансом скобок.
+ * тех же четырёх кусков: реальный `useCollapsable()`, `useImperativeIsland` с
+ * `host`+`strays`, эффект `folded → setCollapsed` с гейтом `hasPhoto`, и —
+ * после находки ревью Critical — ВТОРОЙ писатель классов на ТОМ ЖЕ узле,
+ * `headerFilled` (панельная половина `header-filled`, tweb sharedMedia.tsx),
+ * применяемый ТЕМ ЖЕ `classList.toggle`, а не пересчётом `className` в JSX).
+ * Если когда-нибудь эта форма разъедется с панелью — обязанность
+ * синхронизировать их у ревью задачи 5 и любых будущих правок обоих файлов;
+ * шов в самой панели пинует `UserInfoPanel.shell.test.ts` балансом скобок.
  */
-function Harness({ peerId, managers }: { peerId: number; managers: PeerProfileAvatarsManagers }) {
+function Harness({ peerId, managers, headerFilled = false }: { peerId: number; managers: PeerProfileAvatarsManagers; headerFilled?: boolean }) {
   const avatarsRef = useRef<InstanceType<typeof PeerProfileAvatars> | null>(null)
   const setCollapsedOnRef = useRef<HTMLDivElement>(null)
   const scrollableRef = useRef<HTMLDivElement>(null)
@@ -102,9 +119,23 @@ function Harness({ peerId, managers }: { peerId: number; managers: PeerProfileAv
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [folded])
 
+  // Задача 5, находка ревью (Critical): ВТОРОЙ писатель классов на ЭТОМ ЖЕ
+  // узле — панельная половина `header-filled` — идёт ТЕМ ЖЕ механизмом,
+  // `classList.toggle`, что и класс выше. Если бы вместо этого JSX
+  // ПЕРЕСЧИТЫВАЛ `className` строкой (`classNames('profile-container',
+  // headerFilled ? 'header-filled' : '')`), React при смене `headerFilled`
+  // присвоил бы `node.className` ЦЕЛИКОМ и стёр `is-collapsed`/`need-white`,
+  // выставленные классом мимо React, — именно так и было устроено ДО этой
+  // находки в `UserInfoPanel.tsx` (см. коммент у `setCollapsedOnRef` там же).
+  useLayoutEffect(() => {
+    const el = setCollapsedOnRef.current
+    if (!el) return
+    el.classList.toggle('header-filled', headerFilled)
+  }, [headerFilled])
+
   return (
     <div>
-      <div data-testid="setCollapsedOn" ref={setCollapsedOnRef} />
+      <div data-testid="setCollapsedOn" ref={setCollapsedOnRef} className="profile-container" />
       <div data-testid="scrollable" ref={scrollableRef} />
       <div data-testid="host" ref={avatarsHostRef} />
     </div>
@@ -189,6 +220,37 @@ describe('UserInfoPanel — проводка PeerProfileAvatars ↔ useCollapsab
 
     // useCollapsable САМ по себе флипнул бы folded в false — гейт панели
     // обязан немедленно вернуть его в true через fold().
+    expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(true)
+  })
+
+  // CRITICAL (находка ревью задачи 5): `setCollapsedOnRef` держит ДВУХ
+  // писателей классов — класс `PeerProfileAvatars` (classList.toggle,
+  // is-collapsed/need-white/свою половину header-filled) и панель
+  // (header-filled — свою половину). Мутация харнесса на ЭТОМ тесте (JSX
+  // classNames() вместо classList.toggle для headerFilled) даёт RED —
+  // транскрипт в теле коммита.
+  it('CRITICAL: смена headerFilled (панельная половина header-filled) НЕ стирает is-collapsed класса', async () => {
+    const managers = makeManagers()
+    const { getByTestId, rerender } = render(
+      <Harness peerId={PEER_WITH_PHOTO} managers={managers} headerFilled={false} />,
+    )
+    const setCollapsedOn = getByTestId('setCollapsedOn')
+
+    // Старт — свёрнуто (тот же факт, что и в других тестах файла).
+    expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(true)
+    expect(setCollapsedOn.classList.contains('header-filled')).toBe(false)
+
+    // Имитация «доскроллили до табов sharedMedia» — панельная половина
+    // header-filled взводится (tweb sharedMedia.tsx:513). Ре-рендер с НОВЫМ
+    // пропом — ровно то, что раньше происходило при пересчёте classNames()
+    // в JSX того же узла.
+    act(() => {
+      rerender(<Harness peerId={PEER_WITH_PHOTO} managers={managers} headerFilled={true} />)
+    })
+
+    expect(setCollapsedOn.classList.contains('header-filled')).toBe(true) // панельная половина применилась
+    // is-collapsed выставлен КЛАССОМ, не панелью, — панельный ре-рендер не
+    // имеет права его тронуть (единственный писатель — classList.toggle).
     expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(true)
   })
 

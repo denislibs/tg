@@ -77,14 +77,24 @@ function extractFoldedLayoutEffectBody(src: string): string {
 }
 
 describe('UserInfoPanel — каркас на классах tweb', () => {
-  it('вкладка слайдера: sidebar-slider > tabs-tab.profile-container с состояниями на НЕЙ', () => {
+  it('вкладка слайдера: sidebar-slider > tabs-tab.profile-container, className СТАТИЧЕСКИЙ', () => {
     expect(panel).toMatch(/<div className="sidebar-content sidebar-slider tabs-container">/)
-    expect(panel).toMatch(/'tabs-tab sidebar-slider-item scrollable-y-bordered shared-media-container profile-container active'/)
-    // header-filled — единственная классовая половина, оставшаяся React-состоянием
-    // панели (задача 5, п.3 брифа); is-collapsed/need-white теперь ИСКЛЮЧИТЕЛЬНО
-    // у класса (peerProfileAvatars.test.ts), в этом файле их вычислять НЕЛЬЗЯ —
-    // иначе непричастный пересчёт classNames() стирал бы их с реального DOM.
-    expect(panel).toMatch(/'header-filled'/)
+    // НАХОДКА РЕВЬЮ (Critical, раунд правок 3): ни один из четырёх динамических
+    // классов состояния (is-collapsed/need-white/header-filled/can-add-members)
+    // не вычисляется здесь строкой — className этого узла СТАТИЧЕСКИЙ литерал
+    // (двойные кавычки JSX-атрибута, не аргумент `classNames(...)`), и остаётся
+    // им ВСЕГДА: если бы он менялся, React при смене вычисленной строки
+    // переписал бы `node.className` целиком, стирая классы, выставленные
+    // classList.toggle'ом (класс PeerProfileAvatars и два эффекта панели ниже).
+    expect(panel).toContain('ref={setCollapsedOnRef}')
+    expect(panel).toContain('className="tabs-tab sidebar-slider-item scrollable-y-bordered shared-media-container profile-container active"')
+    expect(panel).not.toMatch(/classNames\(\s*'tabs-tab sidebar-slider-item/)
+    // header-filled/can-add-members/is-collapsed/need-white — ВСЕ четыре теперь
+    // ТОЛЬКО через classList.toggle (класс — свою половину, панель — свою,
+    // см. useLayoutEffect'ы у setCollapsedOnRef); ни один литерал-кавычка этих
+    // классов внутри classNames(...) для ЭТОГО узла быть не должен.
+    expect(panel).toMatch(/classList\.toggle\('header-filled', headerFilled\)/)
+    expect(panel).toMatch(/classList\.toggle\('can-add-members', isGroup && !!canAddMembers && isRealChat\)/)
     expect(panel).not.toMatch(/'is-collapsed'/)
     expect(panel).not.toMatch(/'need-white'/)
   })

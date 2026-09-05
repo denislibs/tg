@@ -199,11 +199,26 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   const managers = useManagers()
   const avatarsRef = useRef<PeerProfileAvatars | null>(null)
   // Узел вкладки (`.profile-container`) — на нём класс вешает `is-collapsed`/
-  // `need-white`/`header-filled` (свою половину), а панель — `header-filled`
-  // (свою половину, см. onBodyScroll выше) и `can-add-members`/`active` через
-  // JSX. Оба владельца толкают классы на ОДИН и тот же узел, `is-collapsed`/
-  // `need-white` при этом больше НЕ вычисляются в JSX (полностью у класса) —
-  // иначе пересчёт classNames() по несвязанному поводу стирал бы их с DOM.
+  // `need-white`/`header-filled` (свою половину) через `classList.toggle`,
+  // МИМО React.
+  //
+  // НАХОДКА РЕВЬЮ (Critical, раунд правок 3): раньше панельная половина
+  // (`header-filled`, `can-add-members`) писалась через `classNames()` в
+  // JSX — а React НЕ мержит атрибут `className`: при смене ВЫЧИСЛЕННОЙ
+  // строки (например, когда `headerFilled` взводится доездом до табов) он
+  // присваивает `node.className` ЦЕЛИКОМ, стирая `is-collapsed`/`need-white`
+  // /половину класса, выставленные НЕ им. Сценарий обычный: свернули шапку →
+  // доскроллили до табов → `headerFilled` стал `true` → React переписал
+  // className → is-collapsed/need-white исчезли из живого DOM → шапка
+  // «раскрылась» сама во время скролла (колесом вернуть нельзя, пока
+  // scrollTop>0 — `useCollapsable.onMove` гасит смену `folded`).
+  //
+  // Правило проекта — «узлом владеет тот, кто решает, когда узел меняется»:
+  // сведено к ОДНОМУ писателю-МЕХАНИЗМУ. И класс, и панель пишут classList
+  // ИМПЕРАТИВНО (`classList.toggle`, два эффекта ниже, после эффекта
+  // `folded → setCollapsed`) — JSX ниже держит ТОЛЬКО статическую часть
+  // строки, которая никогда не меняется, поэтому React больше НИКОГДА не
+  // трогает `className` этого узла после первого рендера.
   const setCollapsedOnRef = useRef<HTMLDivElement>(null)
   // Хост-узел острова — пуст сам по себе, класс вставляет туда СВОЙ
   // `container` (structural DOM, tweb :81-109); контент `.profile-avatars-info`
@@ -280,6 +295,27 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [folded])
 
+  // Панельная половина `header-filled` (tweb sharedMedia.tsx:513/:547 — ставит
+  // доезд до табов, снимает клик «назад», см. onBodyScroll/scrollBackToProfile
+  // выше) — ТЕМ ЖЕ механизмом, что и класс: `classList.toggle`, а не пересчёт
+  // `className` в JSX (находка ревью Critical, коммент у `setCollapsedOnRef`).
+  useLayoutEffect(() => {
+    const el = setCollapsedOnRef.current
+    if (!el) return
+    el.classList.toggle('header-filled', headerFilled)
+  }, [headerFilled])
+
+  // `can-add-members` (`_profile.scss`: `.shared-media-container.can-add-members`
+  // поднимает FAB добавления участников) — статическая по факту (меняется
+  // только сменой самого чата, не скроллом/сворачиванием), но ЭТОТ узел
+  // больше не отдан React на пересчёт целиком — тот же classList.toggle,
+  // чтобы не заводить второй, «немного другой» механизм записи на нём же.
+  useLayoutEffect(() => {
+    const el = setCollapsedOnRef.current
+    if (!el) return
+    el.classList.toggle('can-add-members', isGroup && !!canAddMembers && isRealChat)
+  }, [isGroup, canAddMembers, isRealChat])
+
   // Подарки в профиле (tweb Gifts tab) — только для пользователя (private).
   const meId = useChatsStore((st) => st.meId)
   // «Это человек» — вопрос к ЗНАКУ ключа, а не связка трёх отрицаний по виду
@@ -336,19 +372,17 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
           `div.sidebar-content.sidebar-slider.tabs-container` > сама вкладка
           профиля. Состояния шапки-аватаров — классами НА ВКЛАДКЕ, как в tweb
           (`_profile.scss`: `.profile-container.is-collapsed`, `.need-white`,
-          `.header-filled`), а не на внутренних узлах. `is-collapsed`/
-          `need-white` больше НЕ вычисляются здесь (задача 5, см. коммент у
-          `setCollapsedOnRef` выше) — их держит класс `PeerProfileAvatars`
-          через `ref` на ЭТОТ узел; `header-filled` остаётся React-состоянием
-          (вторая половина, сводить нельзя — см. onBodyScroll). */}
+          `.header-filled`), а не на внутренних узлах. НИ ОДИН из четырёх
+          динамических классов (`is-collapsed`/`need-white`/`header-filled`/
+          `can-add-members`) больше НЕ вычисляется здесь строкой (находка
+          ревью Critical, коммент у `setCollapsedOnRef` выше) — className
+          ниже СТАТИЧЕСКИЙ и не меняется никогда, все писатели идут
+          `classList.toggle` (класс `PeerProfileAvatars` — свою половину,
+          два эффекта выше — панельную). */}
       <div className="sidebar-content sidebar-slider tabs-container">
         <div
           ref={setCollapsedOnRef}
-          className={classNames(
-            'tabs-tab sidebar-slider-item scrollable-y-bordered shared-media-container profile-container active',
-            headerFilled ? 'header-filled' : '',
-            isGroup && canAddMembers && isRealChat ? 'can-add-members' : '',
-          )}
+          className="tabs-tab sidebar-slider-item scrollable-y-bordered shared-media-container profile-container active"
         >
         {/* Шапка: absolute поверх контента (`.profile-container .sidebar-header`).
             Над фото — прозрачная с белыми иконками (`:not(.header-filled)` +
@@ -409,7 +443,25 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
               строит DOM/ленту/жесты/is-collapsed/need-white/header-filled(своя
               половина); React по-прежнему владеет ТОЛЬКО контентом
               `.profile-avatars-info` — портал ниже, в тот же узел (`instance.info`,
-              публичное поле класса, докблок «кто владеет контентом»). */}
+              публичное поле класса, докблок «кто владеет контентом»).
+
+              РАСХОЖДЕНИЕ С TWEB (найдено ревью, Minor): этот `<div>` — ЛИШНИЙ
+              уровень DOM вокруг `.profile-avatars-container`, которого у
+              оригинала нет вовсе (там узел класса — прямой ребёнок
+              `.profile-content`, без React-хозяина). Хук `useImperativeIsland`
+              документирует этот эффект только для `mode: 'own'` (создаёт
+              одноразовый div сам), но `mode: 'host'` (наш выбор) ведёт себя
+              ТАК ЖЕ здесь: `container === host`, а класс кладёт СВОЙ корень
+              (`instance.container`) ОДНИМ ребёнком ВНУТРЬ host — второй
+              уровень появляется не из-за режима хука, а из-за того, что сам
+              host — отдельный, живущий весь срок жизни панели узел, которым
+              класс не может НЕ обернуться (альтернатива — растворить `host` в
+              родителе, но узел для `ref` React всё равно нужен). Проверено:
+              `styles/tweb/_profile.scss` не держит ни селекторов прямого
+              потомка, ни сиблингов для `.profile-avatars-container`, а
+              аспект-хак `padding-bottom: 100%` считается от САМОГО контейнера
+              — сегодня визуально безвредно, но это реальное расхождение, не
+              выдуманное. */}
           <div ref={avatarsHostRef} />
           {avatarsInfoEl && createPortal(
             <>
