@@ -3,9 +3,12 @@
 
 **Статус:** открыт, это дефект самого пина (сканера), а не конкретного
 экрана — предыдущий такой ключ мог оставаться невидимым сколько угодно.
+Раундом правок 2 подтверждено: масштаб РЕПОЗИТОРНЫЙ, минимум 92 ключа в 22
+файлах невидимы наивному скану, 7 из них — подтверждённо без перевода (см.
+раздел «Раунд правок 2» ниже).
 **Дата фиксации:** задача 5 волны «шапка профиля классом PeerProfileAvatars»
 (`docs/superpowers/plans/2026-09-05-profile-avatars-class.md`), ревью раунда
-правок 1 — 2026-09-05.
+правок 1 — 2026-09-05, разведка масштаба — раунд правок 2, 2026-09-05.
 
 ## Что это
 
@@ -99,5 +102,71 @@ NEW total matches: 139  exact-match 'SubscribeRequests': true   swallowed-in-hug
 впервые (это не разовая правка одного файла, а потенциально несколько новых
 находок сразу).
 
+## Раунд правок 2 — проверка настоящего масштаба (не чинилось, только разведка)
+
+Координатор попросил проверить, нет ли РЯДОМ (тот же экран — панель профиля и
+её прямые подэкраны) других ключей, которые скан пропускает по той же
+причине, и оценить масштаб дефекта. Для этого поднят отдельный скрипт —
+собственный посимвольный разбор строк (уважает `//`- и `/* */`-комментарии и
+экранирование, в отличие от парования кавычек по всему файлу) — и прогнан
+ОТДЕЛЬНО от `dictCoverage.test.ts` (сам скрипт не коммитился, только числа
+и списки ниже).
+
+**Тот же экран** (`UserInfoPanel.tsx` + прямые подэкраны — `QrModal.tsx`,
+`ChannelStats.tsx`, `group/GroupEditFlow.tsx`, `group/AddMembersScreen.tsx`,
+`PinnedStoriesSection.tsx`, `stars/GiftInfoPopup.tsx`,
+`secret/KeyVerificationPopup.tsx`, `userInfo/SharedMedia.tsx`,
+`userInfo/RightsEditor.tsx`, `peerProfileAvatars.ts`): расхождение только в
+`UserInfoPanel.tsx` — литералы `'Common.Back'` и `'Close'`
+(`aria-label={t(filled ? 'Common.Back' : 'Close')}`) наивному скану тоже
+невидимы. ХАРАКТЕР ПОСЛЕДСТВИЯ ДРУГОЙ, чем у `SubscribeRequests`: оба ключа
+УЖЕ переведены (`dict.ru.ts:739` — `'Common.Back'`, `dict.ru.ts:1500` —
+`Close`), просто через ДРУГИЕ файлы, где наивный скан их видит корректно
+(`usedKeys()` держит по одному вхождению на ключ — первого найденного файла
+достаточно). Сегодня это не красит тест, но это ТОТ ЖЕ слепой участок: если
+бы `Common.Back`/`Close` были видны наивному скану ТОЛЬКО через
+`UserInfoPanel.tsx`, находка была бы неотличима от `SubscribeRequests`.
+
+**Весь `src/` (репозиторий целиком, не только этот экран)** — тем же
+скриптом, отдельно от `dictCoverage.test.ts`, посчитано:
+- ключей, которые код реально использует (собственный разбор, полное дерево
+  `.ts`/`.tsx`, без `i18n/`, `lang.ts`, `*.test.*`): **1150**;
+- из них видит наивный скан (та же регулярка, что `dictCoverage.test.ts:39`):
+  **1074**;
+- **92** ключа наивному скану НЕВИДИМЫ ВООБЩЕ НИГДЕ в дереве (не только в
+  одном файле — ни в одном файле-потребителе среди всех, где ключ
+  встречается), затрагивая минимум **22** файла хотя бы одним таким ключом
+  (`ChatListItem.tsx`, `Composer.tsx`, `EmojiStatusPicker.tsx`,
+  `HeaderMenu.tsx`, `PremiumModal.tsx`, `SettingsSubScreen.tsx`,
+  `SettingsView.tsx`, `Sidebar.tsx`, `UserInfoPanel.tsx`,
+  `auth/cards/PasswordCard.solid.tsx`, `auth/cards/SignUpCard.solid.tsx`,
+  `chat/contextMenu.ts`, `connectionStatus.ts`, `conversation/ChatDrops.tsx`,
+  `emoji/emojiData.ts` и другие).
+
+Из этих 92 — грубой сверкой с `dict.ru.ts` (наличие записи под ключом) —
+**7 ключей действительно БЕЗ перевода**, то есть находятся в ТОЧНО ТОЙ ЖЕ
+ситуации, что был `SubscribeRequests` до этого раунда правок: код их зовёт,
+`dictCoverage.test.ts` их не видит вовсе, и текст на экране английский:
+
+| Ключ | Файл |
+|---|---|
+| `PremiumPreviewLastSeen` | `components/PremiumModal.tsx:82` (title премиум-фичи) |
+| `PremiumPreviewLastSeenDescription` | `components/PremiumModal.tsx:82` (subtitle той же фичи) |
+| `Chat.CopySelectedText` | `components/chat/contextMenu.ts:633` (пункт контекстного меню) |
+| `Chat.Context.SearchSelected` | `components/chat/contextMenu.ts` (пункт контекстного меню) |
+| `Text.Context.Copy.Email` | `components/chat/contextMenu.ts:658` (пункт контекстного меню) |
+| `Text.Context.Copy.Username` | `components/chat/contextMenu.ts` (пункт контекстного меню) |
+| `Text.Context.Copy.Hashtag` | `components/chat/contextMenu.ts` (пункт контекстного меню) |
+
+Эти 7 — НЕ этого экрана и НЕ этой задачи, чинить их здесь не входило в
+поручение раунда правок 2 (только разведка масштаба). Оставлены будущей
+задаче — как только скан починят настоящим разбором (см. «Что делать»
+выше), эти 7 (и, возможно, другие среди 92 — грубая сверка регуляркой по
+`dict.ru.ts` могла как пропустить многострочные/непрямые формы записи, так и
+ложно засчитать чужое совпадение) обязаны всплыть и получить перевод.
+
 **Затрагиваемые файлы:**
 - `web-client/src/i18n/dictCoverage.test.ts` (`LITERAL`, `usedKeys()`) — сам скан.
+- (раунд 2, НЕ починено, только зафиксировано выше) `web-client/src/components/PremiumModal.tsx`,
+  `web-client/src/components/chat/contextMenu.ts` — держат 7 подтверждённых непереведённых
+  ключей, невидимых текущему скану.
