@@ -44,9 +44,10 @@
 // заглушкой ДО импорта класса: конструктор создаёт наблюдатель сразу, поэтому
 // импорт класса переезжает в динамический `await import`, исполняющийся ПОСЛЕ
 // `vi.stubGlobal` (обычный статический import был бы поднят раньше стаба).
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import animationIntersector from '@components/animationIntersector'
+import * as viewerModule from '@components/mediaViewer/openMediaViewer'
 import type { ProfilePhoto } from '@core/managers/profileManager'
 import type { PeerProfileAvatarsManagers } from './peerProfileAvatars'
 
@@ -661,5 +662,252 @@ describe('PeerProfileAvatars.cleanup() — лента данных (задача
     expect(removeSpy).toHaveBeenCalledWith(video)
     // IntersectionObserver отключён — ни один инстанс не наблюдает узлов.
     expect(ioInstances.some((io) => io.observed.size > 0)).toBe(false)
+  })
+})
+
+// ─── Задача 3: жесты (tweb :127-298, :591-650) ─────────────────────────────
+//
+// happy-dom не считает layout — `getBoundingClientRect()` у всего нулевой
+// (тот же факт документируют `scrollable.test.ts`/`rangeSelector.test.ts` и
+// другие); геометрия контейнера/ленты мокается явно там, где по ней принимает
+// решение клик-зона/свайп (приём — как в `chat/replySwipe.test.ts`).
+//
+// Клик — `Event('click')` с `pageX`, довешенным через `defineProperty`:
+// `MouseEvent` happy-dom НЕ вычисляет `pageX` из `clientX` (координата
+// страницы требует знания скролла) — `pageX` остаётся 0 у любого
+// сконструированного `MouseEvent`, поэтому нужен голый `Event` + ручное поле
+// (тот же приём для тач-полей уже применяет `core/dom/swipeHandler.test.ts::makeEvent`).
+function mockRect(el: HTMLElement, rect: Partial<DOMRect> = {}): void {
+  el.getBoundingClientRect = () => ({
+    left: 0, top: 0, right: 300, bottom: 300, width: 300, height: 300, x: 0, y: 0,
+    toJSON: () => ({}),
+    ...rect,
+  }) as DOMRect
+}
+
+function clickAt(el: HTMLElement, pageX: number): void {
+  const e = new Event('click', { bubbles: true, cancelable: true })
+  Object.defineProperty(e, 'pageX', { value: pageX, configurable: true })
+  el.dispatchEvent(e)
+}
+
+function pointerEvent(type: string, props: Record<string, unknown>): Event {
+  const e = new Event(type, { bubbles: true, cancelable: true })
+  for (const [key, value] of Object.entries(props)) Object.defineProperty(e, key, { value, configurable: true })
+  return e
+}
+
+/** Загруженная лента из `n` фото + замоканная геометрия `container` (300px,
+ *  трети по 100px: [0,100) — prev, (100,200) — viewer, (200,300] — next). */
+async function makeLoaded(n = 3) {
+  const mgrs = makeManagers({ [ALICE]: photos(n) })
+  const { instance, setCollapsedOn, scrollableEl } = make(mgrs)
+  const avatarsEl = instance.container.querySelector<HTMLElement>('.profile-avatars-avatars')!
+  const tabsEl = instance.container.querySelector('.profile-avatars-tabs')!
+
+  await instance.setPeer(ALICE)
+  await vi.waitFor(() => {
+    expect(avatarsEl.children.length).toBe(n)
+    expect(tabsEl.children.length).toBe(n)
+  })
+
+  mockRect(instance.container, { left: 0, width: 300, right: 300 })
+
+  return { instance, avatarsEl, tabsEl, setCollapsedOn, scrollableEl }
+}
+
+describe('PeerProfileAvatars — клик по зонам (tweb :142-233)', () => {
+  it('левая/правая треть листают с закольцовыванием на обоих краях', async () => {
+    const { instance, avatarsEl, tabsEl } = await makeLoaded(3)
+
+    clickAt(instance.container, 30) // левая треть, индекс 0 → закольцовка на последний (tweb :227)
+    expect(avatarsEl.children[2].classList.contains('active')).toBe(true)
+    expect(tabsEl.children[2].classList.contains('active')).toBe(true)
+
+    clickAt(instance.container, 270) // правая треть с последнего индекса → закольцовка на 0 (tweb :228)
+    expect(avatarsEl.children[0].classList.contains('active')).toBe(true)
+    expect(tabsEl.children[0].classList.contains('active')).toBe(true)
+  })
+
+  it('клик в центр открывает просмотрщик с ПРАВИЛЬНЫМ индексом — проверяем аргументы openMediaViewer, не факт вызова', async () => {
+    const { instance, avatarsEl } = await makeLoaded(3)
+    instance.goWithoutTransition(1) // индекс 1 — не первый и не последний, чтобы индекс не совпал случайно с 0
+
+    const openSpy = vi.spyOn(viewerModule, 'openMediaViewer').mockImplementation(() => undefined)
+    clickAt(instance.container, 150) // центр — треть [100,200)
+
+    expect(openSpy).toHaveBeenCalledTimes(1)
+    const args = openSpy.mock.calls[0][0]
+    expect(args.index).toBe(1) // tweb :211 — this.listLoader.previous.length в момент клика
+    expect(args.reverse).toBe(false) // галерея профиля — newest-first (openMediaViewer.ts:31-33), не окно чата
+    expect(args.items).toHaveLength(3)
+    expect(args.target).toBe(avatarsEl.children[1])
+  })
+
+  it('клик при is-collapsed только разворачивает (снимает is-collapsed) и НЕ листает (tweb :174-182)', async () => {
+    const { instance, avatarsEl, setCollapsedOn } = await makeLoaded(3)
+    ;(instance as any).setCollapsed(true)
+    expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(true)
+
+    clickAt(instance.container, 30) // была бы левая треть (листание), но шапка свёрнута
+
+    expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(false) // клик развернул
+    expect(avatarsEl.children[0].classList.contains('active')).toBe(true) // индекс НЕ ушёл со старта — листания не было
+  })
+
+  it('checkScrollTop: ненулевой скролл гасит клик и скроллит контейнер к началу (tweb :127-137, :166-168)', async () => {
+    const { instance, avatarsEl, scrollableEl } = await makeLoaded(3)
+    scrollableEl.scrollTop = 50
+    const scrollToSpy = vi.spyOn(scrollableEl, 'scrollTo')
+
+    clickAt(instance.container, 30) // была бы левая треть
+
+    expect(scrollToSpy).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' })
+    expect(avatarsEl.children[0].classList.contains('active')).toBe(true) // не листнуло
+  })
+})
+
+describe('PeerProfileAvatars — свайп через SwipeHandler (tweb :243-298)', () => {
+  it('нулевой чистый сдвиг (вернулись к точке нажатия до отпускания) возвращает ленту на прежний индекс; is-swiping/no-transition появляются и СНИМАЮТСЯ', async () => {
+    const { instance, avatarsEl } = await makeLoaded(3)
+    mockRect(avatarsEl, { left: 0, width: 300 })
+
+    avatarsEl.dispatchEvent(pointerEvent('mousedown', { clientX: 150, clientY: 100, button: 0 }))
+    await Promise.resolve() // SwipeHandler.handleStart асинхронный (core/dom/swipeHandler.ts:309)
+
+    document.dispatchEvent(pointerEvent('mousemove', { clientX: 170, clientY: 100 }))
+    expect(instance.container.classList.contains('is-swiping')).toBe(true) // onFirstSwipe (tweb :282)
+    expect(avatarsEl.classList.contains('no-transition')).toBe(true)
+
+    document.dispatchEvent(pointerEvent('mousemove', { clientX: 150, clientY: 100 })) // назад к точке старта — net 0
+    document.dispatchEvent(pointerEvent('mouseup', { clientX: 150, clientY: 100 }))
+
+    // fastRaf — реальный requestAnimationFrame (эта describe его не мокает,
+    // в отличие от блока rAF-прогресса ниже) — ждём фактического снятия.
+    await vi.waitFor(() => {
+      expect(instance.container.classList.contains('is-swiping')).toBe(false)
+      expect(avatarsEl.classList.contains('no-transition')).toBe(false)
+    })
+    expect(avatarsEl.children[0].classList.contains('active')).toBe(true) // индекс не менялся
+  })
+
+  it('ЛЮБОЙ ненулевой чистый сдвиг переводит индекс минимум на ±1 — формула ceil(|dx|/width), не пропорциональный порог (tweb :287)', async () => {
+    const { avatarsEl } = await makeLoaded(3)
+    mockRect(avatarsEl, { left: 0, width: 300 })
+
+    avatarsEl.dispatchEvent(pointerEvent('mousedown', { clientX: 150, clientY: 100, button: 0 }))
+    await Promise.resolve()
+
+    document.dispatchEvent(pointerEvent('mousemove', { clientX: 100, clientY: 100 })) // -50px, дальше половины ширины не нужно — ceil любого ненулевого даёт 1
+    document.dispatchEvent(pointerEvent('mouseup', { clientX: 100, clientY: 100 }))
+
+    await vi.waitFor(() => {
+      expect(avatarsEl.children[1].classList.contains('active')).toBe(true)
+    })
+  })
+
+  it('is-single (одно фото) блокирует старт свайпа (verifyTouchTarget, tweb :265)', async () => {
+    const { instance, avatarsEl } = await makeLoaded(1)
+    mockRect(avatarsEl, { left: 0, width: 300 })
+    expect(instance.container.classList.contains('is-single')).toBe(true)
+
+    avatarsEl.dispatchEvent(pointerEvent('mousedown', { clientX: 150, clientY: 100, button: 0 }))
+    await Promise.resolve()
+    document.dispatchEvent(pointerEvent('mousemove', { clientX: 100, clientY: 100 }))
+
+    // verifyTouchTarget вернул false — onFirstSwipe не звался, is-swiping не взводится.
+    expect(instance.container.classList.contains('is-swiping')).toBe(false)
+  })
+})
+
+describe('PeerProfileAvatars — rAF-прогресс полоски видео-аватара (tweb :591-650)', () => {
+  // Управляемая очередь кадров — тот же приём, что `core/chat/gradientRenderer.test.ts`:
+  // `flushFrame()` играет ровно ОДИН тик и даёт тесту решить, продолжать ли.
+  let frames: Map<number, FrameRequestCallback>
+  let nextId: number
+
+  const flushFrame = () => {
+    const queue = Array.from(frames.values())
+    frames.clear()
+    queue.forEach((cb) => cb(0))
+  }
+
+  beforeEach(() => {
+    frames = new Map()
+    nextId = 0
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      nextId += 1
+      frames.set(nextId, cb)
+      return nextId
+    })
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => { frames.delete(id) })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('play запускает цикл; тикает --progress пока видео играет; останавливается на паузе; будится повторным play', async () => {
+    const mgrs = makeManagers({ [ALICE]: [photo(1), photo(2, 999)] })
+    const { instance } = make(mgrs)
+    const avatarsEl = instance.container.querySelector('.profile-avatars-avatars')!
+    const tabsEl = instance.container.querySelector('.profile-avatars-tabs')!
+
+    await instance.setPeer(ALICE)
+    const video = await vi.waitFor(() => {
+      const el = avatarsEl.children[1].querySelector('video.avatar-video') as HTMLVideoElement | null
+      expect(el).toBeTruthy()
+      return el!
+    })
+    instance.goWithoutTransition(1) // активный индекс — 1, тот же, что у видео
+    // goWithoutTransition сам планирует кадр через fastRaf (снятие
+    // no-transition) — эта describe мокает requestAnimationFrame ГЛОБАЛЬНО,
+    // поэтому и он оседает в `frames`; он не по нашей части, сбрасываем.
+    frames.clear()
+
+    Object.defineProperty(video, 'duration', { value: 10, configurable: true })
+    video.currentTime = 3
+    Object.defineProperty(video, 'paused', { value: false, configurable: true })
+
+    video.dispatchEvent(new Event('play')) // capture-слушатель конструктора (tweb :119-125) запускает цикл
+    expect(frames.size).toBe(1)
+
+    flushFrame() // первый тик: видео играет → --progress выставлен, следующий кадр запланирован сам собой
+    const tab = tabsEl.children[1] as HTMLElement
+    expect(tab.classList.contains('is-playing')).toBe(true)
+    expect(tab.style.getPropertyValue('--progress')).toBe('30.0%')
+    expect(frames.size).toBe(1)
+
+    Object.defineProperty(video, 'paused', { value: true, configurable: true })
+    flushFrame() // видео на паузе — тик гасит --progress и НЕ планирует следующий кадр (самоприостановка)
+    expect(tab.classList.contains('is-playing')).toBe(false)
+    expect(tab.style.getPropertyValue('--progress')).toBe('')
+    expect(frames.size).toBe(0)
+
+    Object.defineProperty(video, 'paused', { value: false, configurable: true })
+    video.dispatchEvent(new Event('play')) // будим самоприостановленный цикл
+    expect(frames.size).toBe(1)
+  })
+
+  it('cleanup() гасит цикл — cancelAnimationFrame снимает запланированный кадр', async () => {
+    const mgrs = makeManagers({ [ALICE]: [photo(1), photo(2, 999)] })
+    const { instance } = make(mgrs)
+    const avatarsEl = instance.container.querySelector('.profile-avatars-avatars')!
+
+    await instance.setPeer(ALICE)
+    const video = await vi.waitFor(() => {
+      const el = avatarsEl.children[1].querySelector('video.avatar-video') as HTMLVideoElement | null
+      expect(el).toBeTruthy()
+      return el!
+    })
+    instance.goWithoutTransition(1)
+    frames.clear() // сбрасываем кадр fastRaf самого goWithoutTransition — см. комментарий в тесте выше
+    Object.defineProperty(video, 'duration', { value: 10, configurable: true })
+    Object.defineProperty(video, 'paused', { value: false, configurable: true })
+    video.dispatchEvent(new Event('play'))
+    expect(frames.size).toBe(1)
+
+    instance.cleanup()
+    expect(frames.size).toBe(0)
   })
 })

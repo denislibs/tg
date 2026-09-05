@@ -4,13 +4,18 @@
 // peerProfileAvatars.ts` (класс `PeerProfileAvatars`, 974 строки). Разбор с
 // адресами — `docs/tweb/right-sidebar.md` § 3.3 и § 5.1.
 //
-// ЭТО ЗАДАЧИ 1-2 из шести (`docs/superpowers/plans/
+// ЭТО ЗАДАЧИ 1-3 из шести (`docs/superpowers/plans/
 // 2026-09-05-profile-avatars-class.md`): каркас (поля, конструктор, DOM,
 // `addTab()`, `setCollapsed`/`isCollapsed`/`updateHeaderFilled`, `cleanup()`,
 // задача 1) плюс данные и лента (`ListLoader`, `processItem`, ленивая
-// догрузка, `onJump`, `goWithoutTransition`, задача 2). Жесты (клик/свайп) и
-// связка со сворачиванием через `useCollapsable` — задачи 3-4, в этом файле
-// их нет. Класс пока никем не монтируется — это нормально, встраивание в
+// догрузка, `onJump`, `goWithoutTransition`, задача 2) плюс жесты (задача 3):
+// зоны клика (`attachClickEvent`, зоны `SWITCH_ZONE`, закольцовывание,
+// открытие просмотрщика через общий `openMediaViewer`), свайп через порт
+// `SwipeHandler` (`core/dom/swipeHandler.ts`) и rAF-цикл прогресса полоски у
+// видео-аватара. Связка со сворачиванием через `useCollapsable` — задача 4,
+// в этом файле её нет (клик при `is-collapsed` пока сам вызывает
+// `setCollapsed(false)`, без внешнего `unfold`, см. докблок клика). Класс
+// пока никем не монтируется — это нормально, встраивание в
 // `UserInfoPanel.tsx` через `useImperativeIsland` — задача 5.
 //
 // DOM (конструктор, tweb :81-109), порядок детей дословный:
@@ -70,15 +75,59 @@
 //    принимает `size:'full'`), долг `web-client/backlogs/frontend/
 //    profile-avatars-full-size.md`; пагинация — `loadMore` отдаёт одну
 //    страницу (ручка не постраничная).
+//  • Задача 3 (жесты, tweb :127-298):
+//    — `uploadInProgress`/`fakeAvatar`/`has-stories` (:160-179, :271-274)
+//      клика не портированы — предмета (прогресс своей загрузки, кольца
+//      историй) нет вовсе, это уже объявленные вычеты выше и в плане этапа
+//      («Что НЕ портируем» плана `2026-09-05-profile-avatars-class.md`);
+//    — `findUpClassName(_e.target, 'profile-subtitle-rating' | 'emoji-status')`
+//      (tweb :143-148) не портирован: ни рейтинга в подзаголовке, ни
+//      custom-emoji статуса в шапке у нас нет вовсе — узлов с этими классами
+//      не существует НИГДЕ в дереве, и мёртвая ветка-guard нарушала бы
+//      «мёртвый код удалять агрессивно» (корневой CLAUDE.md), в отличие от
+//      ветки топика (задача 1), которая жива через собственный параметр
+//      `setPeer(peerId, threadId)`. Если рейтинг/статус появятся — guard
+//      возвращается вместе с ними;
+//    — `freeze` (tweb :141, :150-153, :212-221) не портирован: в оригинале
+//      это synchronous true→false БЕЗ единого await между ними (сам вызов
+//      `openAvatarViewer` не awaited) — понаблюдать значение `true` неоткуда,
+//      это уже мёртвая в самом tweb защита от несуществующей реентерабельности
+//      (наш `openMediaViewer.ts` и так не даёт открыть второй вьювер —
+//      модульный синглтон `if (current) return`, `openMediaViewer.ts:40`);
+//    — `hasNoPhoto` (:170-172) — эквивалент есть, но не отдельным полем:
+//      у нас нет факта «есть ли у пира вообще фото» отдельно от списка
+//      (`getPeerPhoto` не портирован), а `listLoader.current === undefined`
+//      бывает РОВНО в тех же случаях, что дало бы `hasNoPhoto=true` у нас
+//      (SHOW_NO_AVATAR с пустой галереей, группа/канал без `listPhotos`) —
+//      см. гейт в начале клик-хендлера;
+//    — «трети» экрана НЕ требуют отдельных JS-обработчиков на
+//      `.profile-avatars-arrow`/`-arrow-next`: стрелки СТРОГО декоративны и
+//      позиционированы CSS по краям контейнера (`_profile.scss:330-372`,
+//      `left:0`/`right:0`), видимость — тоже CSS (`is-single`/`is-swiping`/
+//      hover, `_profile.scss:26-42`); клик по стрелке доходит до ТОГО ЖЕ
+//      контейнерного слушателя зон, что и клик по остальной трети;
+//    — `openAvatarViewer(...)` (:185-221) — специализированного вьювера
+//      аватаров у нас нет, общий `openMediaViewer` (см. `openViewer()` ниже);
+//    — checkScrollTop (:127-137) не зовёт второй `Scrollable` (докблок класса
+//      выше запрещает второй инстанс) — `scrollableEl.scrollTo(...)`, нативный
+//      API, а не буквальная запись `scrollTop =` (`core/scrollWriters.test.ts`
+//      сканирует только последнюю форму).
 import { avatarNew, type AvatarManagers } from '@components/avatar'
 import Icon from '@components/icon'
 import animationIntersector from '@components/animationIntersector'
 import ListLoader from '@components/mediaViewer/listLoader'
+import { openMediaViewer } from '@components/mediaViewer/openMediaViewer'
+import type { ViewerItem } from '@components/mediaViewer/appMediaViewer'
+import SwipeHandler from '@core/dom/swipeHandler'
 import ListenerSetter from '@helpers/listenerSetter'
 import { fastRaf } from '@helpers/schedulers'
 import { renderImageFromUrlPromise } from '@helpers/dom/renderImageFromUrl'
+import { attachClickEvent } from '@helpers/dom/clickEvent'
+import cancelEvent from '@helpers/dom/cancelEvent'
+import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import { getMiddleware, type Middleware, type MiddlewareHelper } from '@helpers/middleware'
 import { isUser, toUserId } from '@core/peers/peerId'
+import { peerTitle } from '@core/peerCache'
 import { ensureMediaUrl } from '@core/media/ensureMediaUrl'
 import { resolveStreamUrl } from '@core/mediaUrl'
 import type { ProfilePhoto } from '@core/managers/profileManager'
@@ -145,16 +194,27 @@ export default class PeerProfileAvatars {
   // всегда false, но поле реальное: от него зависят пороги ниже (tweb :930).
   private readonly hasBackgroundColor = false
 
-  // this.peerId/this.threadId оригинала (:377-378) здесь НЕ заведены и
-  // задачей 2 тоже: она вместо этого замыкает `peerId`/`threadId` —
-  // параметры КОНКРЕТНОГО вызова setPeer — прямо в loadMore/processItem/
-  // onJump, которые собираются внутри самого setPeer (см. его тело). Так
-  // надёжнее, чем общее мутируемое поле: у нас (в отличие от tweb, где под
-  // новый пир создаётся НОВЫЙ инстанс класса) один инстанс переживает смену
-  // пира, и протухший вызов, читающий `this.peerId`, рисковал бы получить
-  // peerId уже СЛЕДУЮЩЕГО пира. Поля появятся, когда настоящий инстанс-
-  // уровневый читатель появится (клик/свайп задачи 3 — им нужен peerId
-  // «что сейчас показано», а не «чей был этот конкретный вызов»).
+  // this.threadId оригинала (:378) здесь НЕ заведён и задачей 3 тоже — на
+  // него читателя нет (топик-ветка `setPeer` не хранит его дальше своего
+  // тела). this.peerId (:377) — ЗАВЕДЁН задачей 3 (`currentPeerId` ниже):
+  // клику/свайпу нужен peerId «что СЕЙЧАС показано» (просмотрщик, тесты
+  // ниже), а не «чей был КОНКРЕТНЫЙ вызов setPeer» (тот случай по-прежнему
+  // закрывают локальные параметры/замыкания внутри самого setPeer, см. его
+  // тело). Гонки нет: как и в оригинале (:377-378), присваивание —
+  // синхронная первая строка setPeer, до единого await.
+  private currentPeerId?: PeerId
+
+  // tweb :55 (this.swipeHandler) — свайп ленты, порт `core/dom/swipeHandler.ts`
+  // (см. конструктор). `!`: создаётся синхронно в конструкторе, до первого
+  // чтения; снимается в cleanup() (tweb :969).
+  private readonly swipeHandler: SwipeHandler
+
+  // tweb :61 (this.videoProgressRAF) — id текущего кадра rAF-цикла прогресса
+  // полоски видео-аватара (0 — цикл не идёт: самоприостановлен или ещё не
+  // запущен). `0`, а не `undefined`/`-1`: `cancelAnimationFrame(0)` — безвредный
+  // no-op (спецификация requestAnimationFrame резервирует id > 0), поэтому
+  // `cleanup()` может звать его безусловно, не проверяя, шёл ли цикл вообще.
+  private videoProgressRAF = 0
 
   public onNeedWhiteChanged?: (needWhite: boolean) => void
 
@@ -199,6 +259,139 @@ export default class PeerProfileAvatars {
     this.listenerSetter = new ListenerSetter()
     this.middlewareHelper = getMiddleware()
 
+    // tweb :119-125 — 'play' НЕ всплывает (bubbles: false у media-событий),
+    // поэтому слушаем на CAPTURE-фазе контейнера: она видит событие на пути
+    // ВНИЗ к цели независимо от всплытия. Будит rAF-цикл прогресса, когда
+    // видео-аватар (пере)стартует — например, после возврата в свёрнутое/
+    // развёрнутое состояние (animationIntersector.toggleVideosUnder) или
+    // после скролла обратно во вьюпорт. Скоуп — именно `.avatar-video`: другие
+    // `<video>`, которые могут появиться в контейнере, цикл не касаются.
+    this.listenerSetter.add(this.container)('play', (e) => {
+      const target = e.target as HTMLElement | null
+      if (target?.classList?.contains('avatar-video') && !this.videoProgressRAF) {
+        this.startVideoProgressLoop()
+      }
+    }, { capture: true })
+
+    // ─── Клик — зоны/закольцовывание/просмотрщик (tweb :127-233) ───────────
+    // Расхождения от буквального текста оригинала объявлены докблоком класса
+    // выше (`uploadInProgress`/`fakeAvatar`/`profile-subtitle-rating`/
+    // `emoji-status`/`freeze` не портированы, `hasNoPhoto` заменён на
+    // `listLoader.current === undefined`, `openAvatarViewer` → `openViewer()`).
+    const SWITCH_ZONE = 1 / 3
+    let cancel = false
+    attachClickEvent(this.container, (e) => {
+      if (cancel) {
+        cancel = false
+        return
+      }
+
+      if (!this.checkScrollTop()) return
+
+      const loader = this.listLoader
+      if (!loader?.current) return // «нет фото вообще» — см. докблок класса (hasNoPhoto)
+
+      if (this.isCollapsed()) {
+        // tweb :174-182 (`this.unfold(_e)`) — внешнего источника разворачивания
+        // (`useCollapsable`) в этой задаче нет, задача 4 его подключит; пока
+        // разворачиваем через уже существующий публичный API этого же класса.
+        this.setCollapsed(false)
+        return
+      }
+
+      const rect = this.container.getBoundingClientRect()
+      const x = e.pageX
+      const clickX = x - rect.left
+
+      if ((!loader.previous.length && !loader.next.length) ||
+        (clickX > rect.width * SWITCH_ZONE && clickX < rect.width - rect.width * SWITCH_ZONE)) {
+        this.openViewer(loader)
+      } else {
+        const centerX = rect.right - rect.width / 2
+        const toRight = x > centerX
+        // tweb :227-228 читает `this.listLoader.count` напрямую — к моменту
+        // клика он уже определён (`load(true)` из setPeer успевает отработать
+        // до первого пользовательского взаимодействия); фолбэк на сумму длин
+        // окон нужен только на случай гонки, тем же значением, каким `count`
+        // станет сам, как только `load()` дотечёт.
+        const count = loader.count ?? loader.previous.length + loader.next.length + 1
+        let distance: number
+        if (loader.index === 0 && !toRight) distance = count - 1
+        else if (loader.index === count - 1 && toRight) distance = -(count - 1)
+        else distance = toRight ? 1 : -1
+
+        this.goWithoutTransition(distance)
+      }
+    }, { listenerSetter: this.listenerSetter })
+
+    // ─── Свайп — ТОЛЬКО через порт SwipeHandler (tweb :243-298) ─────────────
+    const cancelNextClick = () => {
+      cancel = true
+      // tweb :236-240 (`getOverlayRoot()`) — appWindow/Document PiP не
+      // портированы (тот же приём уже принят в `mediaViewer/base.ts:43`),
+      // слушаем напрямую `document.body`.
+      document.body.addEventListener(IS_TOUCH_SUPPORTED ? 'touchend' : 'click', () => {
+        cancel = false
+      }, { once: true })
+    }
+
+    let width = 0
+    let x = 0
+    let lastDiffX = 0
+    let minX = 0
+    this.swipeHandler = new SwipeHandler({
+      element: this.avatars,
+      // `yDiff` оригинала (:245, `yDiff *= -1`) не портирован: карусель горизонтальная,
+      // вертикальный компонент свайпа нигде дальше не читается — присваивание
+      // мертво и в самом tweb (никогда не пропадает никуда после строки).
+      onSwipe: (xDiff, _yDiff) => {
+        xDiff *= -1
+
+        lastDiffX = xDiff
+        let lastX = x + xDiff * -PeerProfileAvatars.SCALE
+        if (lastX > 0) lastX = 0
+        else if (lastX < minX) lastX = minX
+
+        this.avatars.style.transform = PeerProfileAvatars.TRANSLATE_TEMPLATE.replace('{x}', lastX + 'px')
+        return false
+      },
+      verifyTouchTarget: (e) => {
+        if (!this.checkScrollTop()) {
+          cancelNextClick()
+          cancelEvent(e as unknown as Event)
+          return false
+        } else if (this.isCollapsed()) {
+          return false
+        } else if (this.container.classList.contains('is-single')) {
+          return false
+        }
+
+        return true
+      },
+      onFirstSwipe: () => {
+        const rect = this.avatars.getBoundingClientRect()
+        width = rect.width
+        minX = -width * (this.tabs.childElementCount - 1)
+        x = rect.left - this.container.getBoundingClientRect().left
+
+        this.avatars.style.transform = PeerProfileAvatars.TRANSLATE_TEMPLATE.replace('{x}', x + 'px')
+
+        this.container.classList.add('is-swiping')
+        this.avatars.classList.add('no-transition')
+        void this.avatars.offsetLeft // reflow
+      },
+      onReset: () => {
+        const addIndex = Math.ceil(Math.abs(lastDiffX) / (width / PeerProfileAvatars.SCALE)) * (lastDiffX >= 0 ? 1 : -1)
+        cancelNextClick()
+
+        this.avatars.classList.remove('no-transition')
+        fastRaf(() => {
+          this.listLoader?.go(addIndex)
+          this.container.classList.remove('is-swiping')
+        })
+      },
+    })
+
     // tweb :300-307 — колбэк наблюдателя зовёт loadNearestToTarget на самой
     // пересёкшейся entry, ничего больше.
     this.intersectionObserver = new IntersectionObserver((entries) => {
@@ -206,6 +399,24 @@ export default class PeerProfileAvatars {
         if (entry.isIntersecting) this.loadNearestToTarget(entry.target)
       }
     })
+  }
+
+  /**
+   * tweb :127-137. Возвращает `false` и скроллит шапку в начало, если
+   * `scrollableEl` сейчас прокручен, — вызывающий (клик/свайп) обязан
+   * погасить своё действие в этом случае. `scrollTo(...)` — нативный API
+   * (анимированный, порождает настоящие 'scroll'-события), а НЕ буквальная
+   * запись `scrollTop = ` — второй `Scrollable`/`ScrollSaver`-конкурент
+   * заводить здесь нельзя (докблок класса выше), и `core/scrollWriters.test.ts`
+   * сканирует только буквальную форму записи, не `scrollTo`.
+   */
+  private checkScrollTop(): boolean {
+    if (this.scrollableEl.scrollTop !== 0) {
+      this.scrollableEl.scrollTo({ top: 0, behavior: 'smooth' })
+      return false
+    }
+
+    return true
   }
 
   /** tweb :795-805. */
@@ -235,6 +446,11 @@ export default class PeerProfileAvatars {
    * при повторном вызове.
    */
   public async setPeer(peerId: PeerId, threadId?: number): Promise<void> {
+    // tweb :377 (`this.peerId = peerId`) — задача 3 заводит `currentPeerId`
+    // (см. докблок поля выше): синхронно, ДО единого await, как и в
+    // оригинале, поэтому гонки со сменой пира нет — клик/свайп всегда читают
+    // peerId ленты, которая реально сейчас в DOM.
+    this.currentPeerId = peerId
     this.middlewareHelper.clean()
 
     if (!threadId) {
@@ -363,6 +579,59 @@ export default class PeerProfileAvatars {
 
     fastRaf(() => {
       this.avatars.classList.remove('no-transition')
+    })
+  }
+
+  /**
+   * tweb :185-221 (`openAvatarViewer(...)`). Специализированного вьювера
+   * аватаров у нас нет — общий `components/mediaViewer/openMediaViewer.ts:39`
+   * (`ViewerItem`-модель, докблок `openMediaViewer.ts:31-33` объясняет
+   * `reverse: false`: галерея профиля newest-first, как и grid shared media,
+   * а не «по возрастанию seq» — тот случай только у окна чата). Из-за этого
+   * нет и раздельных `prevTargets`/`nextTargets` (:196-209) — общий вьювер
+   * принимает один плоский `items` + `index`, сам умеет листать вокруг него.
+   *
+   * Вызывается ТОЛЬКО когда `loader.current` определён (гейт — в клик-
+   * хендлере, `hasNoPhoto`-эквивалент, см. докблок класса), поэтому здесь
+   * повторной проверки нет.
+   */
+  private openViewer(loader: ListLoader<ProfilePhoto, ProfilePhoto>): void {
+    const peerId = this.currentPeerId
+    if (peerId === undefined) return
+
+    const all = [...loader.previous, loader.current!, ...loader.next]
+    const items: ViewerItem[] = all.map((photo, idx) => {
+      const el = this.avatars.children[idx] as HTMLElement | undefined
+      const rect = el?.getBoundingClientRect()
+      const isVideo = !!photo.videoMediaId
+
+      return {
+        element: el ?? null,
+        mid: 0, // не сообщение — forward/delete/jump не пробрасываются (как и в снесённой UserInfoPanel.tsx::openAvatarViewer)
+        media: {
+          mediaId: photo.mediaId,
+          width: rect?.width ?? 0,
+          height: rect?.height ?? 0, // avatarWrap уже в DOM для ЛЮБОГО элемента ленты (processItem всегда создаёт узел синхронно) — 0 недостижим, кроме гонки layout
+          kind: isVideo ? 'video' : 'photo',
+          gif: isVideo || undefined, // видео-аватар — автоплей-цикл без плеера, как обычный GIF-документ вьювера
+          // Ленивый резолв (`ViewerMedia.url` — `() => Promise<string>`): те же
+          // единственные ванильные точки входа за байты, что и у `processItem`
+          // (докблок `PeerProfileAvatarsManagers`), не `managers.media.*` напрямую.
+          url: isVideo
+            ? () => Promise.resolve(resolveStreamUrl(photo.videoMediaId!))
+            : () => ensureMediaUrl(photo.mediaId),
+        },
+        // Даты у фото профиля нет (ViewerAuthor.date опционален) — подпись
+        // вьювер просто не рисует, как и у снесённой самоделки.
+        author: { peerId, name: peerTitle(peerId) },
+      }
+    })
+
+    void openMediaViewer({
+      items,
+      index: loader.previous.length, // tweb :211 — this.listLoader.previous.length, он же loader.index
+      target: this.avatars.children[loader.previous.length] as HTMLElement,
+      reverse: false,
     })
   }
 
@@ -556,14 +825,11 @@ export default class PeerProfileAvatars {
    * профиля не видны CSS-правилам шапки сайдбара, которые их ждут снаружи.
    *
    * В оригинале метод `private` — вызывающий живёт внутри того же класса
-   * (клик/свайп, :310, :771). Здесь он `public`: клик/свайп и связка со
-   * сворачиванием — задачи 3-4, до них вызывающего внутри класса нет, а
-   * TS strict роняет сборку на приватном методе без единого вызова
-   * («неиспользуемые переменные не пройдут сборку», web-client/CLAUDE.md).
-   * Сузить обратно до `private` можно будет вместе с задачей 3/4, когда
-   * появится внутренний вызывающий.
+   * (клик/свайп, :310, :771). Задача 3 вернула его обратно в `private`: клик
+   * при `is-collapsed` (см. конструктор) теперь и есть тот внутренний
+   * вызывающий, ради которого он был временно расширен до `public` в задаче 2.
    */
-  public setCollapsed(collapsed: boolean): void {
+  private setCollapsed(collapsed: boolean): void {
     // tweb :931-933 — сворачивание (не наоборот) возвращает ленту на первый
     // кадр, если сейчас показан не он, тем же `goWithoutTransition`, что и
     // клик/свайп (задача 3). `ListLoader` заводит эта задача — вызов ниже
@@ -601,11 +867,91 @@ export default class PeerProfileAvatars {
   }
 
   /**
-   * tweb :957-973 в объёме задачи 2: снятие видео-регистрации и наблюдателя
-   * ленивой загрузки. rAF видео-прогресса и `swipeHandler` — задача 3, их
-   * источников в этом файле пока нет.
+   * tweb :597-611 (`startVideoProgressLoop`). Не самозапускается на монтаже —
+   * его будит либо capture-слушатель 'play' в конструкторе (см. там), либо
+   * повторный вызов из самого себя же не нужен: цикл сам себя перепланирует,
+   * пока видео играет, и сам гасится, когда играть перестало (см. `tick`).
+   */
+  private startVideoProgressLoop(): void {
+    cancelAnimationFrame(this.videoProgressRAF)
+
+    // Токен ИМЕННО этого запуска: протухает на следующем `setPeer`
+    // (`middlewareHelper.clean()`) или на `cleanup()` — цикл прежнего пира не
+    // может утечь и молотить DOM, пока грузится следующий (tweb-комментарий:
+    // «robust to transient DOM detachment, unlike an isConnected check»).
+    const middleware = this.middlewareHelper.get()
+    const tick = () => {
+      if (!middleware()) {
+        this.videoProgressRAF = 0
+        return
+      }
+
+      // Самоприостановка в момент, когда активное видео перестало двигаться
+      // (пауза: правая панель закрыта / проскроллено мимо / простаивает /
+      // lite-mode) — анимировать нечего, не молотим rAF просто так. Будит
+      // захваченный в конструкторе 'play'.
+      if (!this.updateActiveTabProgress()) {
+        this.videoProgressRAF = 0
+        return
+      }
+
+      this.videoProgressRAF = requestAnimationFrame(tick)
+    }
+    this.videoProgressRAF = requestAnimationFrame(tick)
+  }
+
+  /**
+   * tweb :613-644. Возвращает, играет ли СЕЙЧАС активное видео-аватар (нужно
+   * циклу выше, чтобы знать, стоит ли планировать следующий кадр).
+   *
+   * tweb-фолбэк для i===0 (:625-627, `this.fakeAvatar?.node.querySelector(...)`)
+   * здесь не нужен структурно: `fakeAvatar` — отдельный оверлей-узел ПЕРЕД
+   * лентой (историй/collapsed-круга, которых у нас нет вовсе, докблок класса
+   * выше), а у нашего порта элемент #0 и так лежит ВНУТРИ `this.avatars`
+   * (`processItem`, isFirst-ветка задачи 2) — второго узла для того же кадра
+   * не существует, смотреть больше негде.
+   */
+  private updateActiveTabProgress(): boolean {
+    const activeIndex = this.listLoader?.index ?? 0
+    const tabs = this.tabs.children
+    const avatars = this.avatars.children
+    let activePlaying = false
+
+    for (let i = 0; i < tabs.length; ++i) {
+      const tab = tabs[i] as HTMLElement
+      const avatar = avatars[i] as HTMLElement | undefined
+      const video = avatar?.querySelector('video.avatar-video') as HTMLVideoElement | null
+      const isPlaying = tab.classList.contains('is-playing')
+
+      if (i === activeIndex && video && video.duration && !video.paused) {
+        activePlaying = true
+        // Трогаем DOM, только если что-то реально изменилось — переустановка
+        // класса/стиля каждый кадр стоит стиль-рекалька и перерисовки почём
+        // зря и может подмигнуть грузящейся аватаркой под полоской.
+        if (!isPlaying) tab.classList.add('is-playing')
+        const value = Math.min(100, (video.currentTime / video.duration) * 100).toFixed(1) + '%'
+        if (tab.style.getPropertyValue('--progress') !== value) {
+          tab.style.setProperty('--progress', value)
+        }
+      } else if (isPlaying) {
+        tab.classList.remove('is-playing')
+        tab.style.removeProperty('--progress')
+      }
+    }
+
+    return activePlaying
+  }
+
+  /**
+   * tweb :957-973. rAF видео-прогресса и `swipeHandler` — задача 3, снимаются
+   * здесь же (`cancelAnimationFrame`/`swipeHandler.removeListeners()`).
    */
   public cleanup(): void {
+    // tweb :957 — ПЕРВАЯ строка cleanup: гасим rAF-цикл прогресса ДО снятия
+    // видео-регистрации ниже (иначе цикл, всё ещё владеющий middleware этого
+    // же вызова, мог бы отработать ещё один кадр над уже отсоединяемым видео).
+    cancelAnimationFrame(this.videoProgressRAF)
+
     // tweb :963-969 — освобождаем зарегистрированные в animationIntersector
     // видео-аватарки: пока правая панель была закрыта, toggleVideosUnder мог
     // их ЗАЛОЧИТЬ, а залоченный элемент не снимается с учёта сам по себе при
@@ -618,6 +964,7 @@ export default class PeerProfileAvatars {
       video.load()
     })
     this.listenerSetter.removeAll()
+    this.swipeHandler.removeListeners()
     this.intersectionObserver.disconnect()
     // Наблюдатель уже отключён (строка выше) — колбэки выстрелить не могут,
     // но Map держала бы ссылки на отсоединённые узлы `.profile-avatars-avatar`
