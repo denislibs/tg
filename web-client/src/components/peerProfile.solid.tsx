@@ -8,7 +8,10 @@
  * `Subtitle` в `avatars.info`), `:273-421` (`Name`/`Subtitle`/`SubtitleStatus`),
  * `:1510-1533` (сборка `MainSection`) и сами строки (адреса — у каждой функции
  * ниже). Наши секции (Statistics/Discussion/JoinRequests/ключ секретного
- * чата) — Task 5: они по-прежнему НЕ перенесены сюда.
+ * чата) — Task 5 (план, «Задача 5»): перенесены СЮДА, между `<MainSection/>`
+ * и `{props.searchSuperContainer}` (см. докблок компонента `PeerProfile`,
+ * «Корень и порядок детей», и докблоки самих функций ниже за адресами
+ * оригинала и причиной, по которой у нас они не там).
  *
  * ── Task 4: что портировано, что нет (сводная таблица) ──────────────────────
  * Оригинал (`:1517-1529`, порядок строк MainSection): Phone → Username →
@@ -135,10 +138,11 @@
  *
  * Прямыми детьми `.profile-content` здесь — delimiter, `<MainSection />`
  * (Task 4, строки Phone/Username/Bio/Link/Birthday/Notifications — см. её
- * докблок ниже) и `{props.searchSuperContainer}` (последним, дословно тот же
- * контракт, что и в оригинале); наши секции (Statistics/Discussion/…) — Task 5,
- * им ещё предстоит встать МЕЖДУ `MainSection` и `searchSuperContainer`.
- * `AutoAvatar` в это дерево вообще НЕ входит — см. докблок
+ * докблок ниже), четыре НАШИХ секции без аналога в оригинале
+ * (`<Statistics/>`/`<Discussion/>`/`<JoinRequests/>`/`<EncryptionKey/>`,
+ * Task 5 — см. их докблоки за адресами оригинала) и
+ * `{props.searchSuperContainer}` (последним, дословно тот же контракт, что и
+ * в оригинале). `AutoAvatar` в это дерево вообще НЕ входит — см. докблок
  * `UserInfoPanel.tsx` у `avatarsHostRef` (там же причина: наш класс
  * `PeerProfileAvatars` переживает смену пира, а этот Solid-корень
  * пересоздаётся на каждый peerId, как и в оригинале — см. ниже). Задача 3
@@ -165,7 +169,7 @@
  * при каждом пересоздании. Ровно так же ведёт себя `tab.searchSuper.container`
  * оригинала (переживает `fillProfileElements`, встраивается заново).
  */
-import { createContext, useContext, createMemo, createSignal, onCleanup, Show } from 'solid-js'
+import { createContext, useContext, createMemo, createSignal, onCleanup, Show, For } from 'solid-js'
 import classNames from '../helpers/string/classNames'
 import { usePeer } from '../stores/peers.solid'
 import { useFullPeer } from '../stores/fullPeers.solid'
@@ -176,7 +180,7 @@ import { mountSolid } from '../shared/solid/mountSolid.solid'
 import { subscribeExternal } from '../helpers/solid/subscribeExternal'
 import { getPeerTitle } from '../core/peers/getPeerTitle'
 import { wrapEmojiText, wrapRichText } from '../lib/richtext'
-import { isUser, HIDDEN_PEER_ID } from '../core/peers/peerId'
+import { isUser, HIDDEN_PEER_ID, NULL_PEER_ID } from '../core/peers/peerId'
 import { isBroadcast, isPublic } from '../core/peers/predicates'
 import { userStatusLabel } from '../core/presence'
 import { membersLabel } from './userInfo/helpers'
@@ -225,6 +229,35 @@ export type PeerProfileContextValue = {
    * опционально — чтобы тесты каркаса (Task 2/3), не знающие про QR, не были
    * обязаны его передавать. */
   onOpenQrCode?: (payload: { url: string; label: string }) => void
+
+  // ── Task 5: наши секции без аналога в оригинале ────────────────────────────
+  // Гейты и данные — уже посчитанные значения React `useGroupInfo`
+  // (`UserInfoPanel.tsx`, реальные `useState`, а не поля без писателя — проверено
+  // грепом перед портом, см. бриф задачи и докблоки функций ниже) и `chat.type
+  // === 'secret'`. Второй сетевой поход/второй расчёт этих величин здесь не
+  // заводим — Solid только читает то, что посчитал вызывающий, тем же мостом
+  // пропов, что `onOpenQrCode` выше (второго способа нет).
+  /** Порт `chat/topbar.ts:664` (пункт «Statistics» меню топбара) — см. докблок
+   *  функции `Statistics` ниже. Предикат `isRealChat && isChannel &&
+   *  canViewStats` свёрнут ВЫЗЫВАЮЩИМ (той же логикой, что была у React-строки). */
+  showStatistics?: boolean
+  onOpenStatistics?: () => void
+  /** Порт `editChat.tsx:362` (строка «Discussion»/«LinkedChannel» вкладки
+   *  редактирования) — см. докблок `Discussion` ниже. */
+  showDiscussion?: boolean
+  discussionPeerId?: PeerId
+  enablingDiscussion?: boolean
+  onEnableDiscussion?: () => void
+  /** Порт `editChat.tsx:227` (+ плашка `chat/requests.tsx`) — см. докблок
+   *  `JoinRequests` ниже. */
+  showJoinRequests?: boolean
+  joinRequests?: { userId: number; title: string }[]
+  onApproveJoinRequest?: (userId: number) => void
+  onDeclineJoinRequest?: (userId: number) => void
+  /** У tweb секретных чатов нет вовсе — эталона не существует, см. докблок
+   *  `EncryptionKey` ниже. */
+  isSecret?: boolean
+  onOpenEncryptionKey?: () => void
 }
 
 const PeerProfileContext = createContext<PeerProfileContextValue>()
@@ -264,6 +297,21 @@ export type PeerProfileProps = {
   /** Задача 4, см. докблок поля `onOpenQrCode` контекста выше — тот же
    *  колбэк, прокинутый пропом (как `avatarsInfo`/`searchSuperContainer`). */
   onOpenQrCode?: (payload: { url: string; label: string }) => void
+
+  // Задача 5 — см. докблоки одноимённых полей контекста выше, они те же
+  // пропы, прокинутые дальше без изменений (тот же приём, что у `onOpenQrCode`).
+  showStatistics?: boolean
+  onOpenStatistics?: () => void
+  showDiscussion?: boolean
+  discussionPeerId?: PeerId
+  enablingDiscussion?: boolean
+  onEnableDiscussion?: () => void
+  showJoinRequests?: boolean
+  joinRequests?: { userId: number; title: string }[]
+  onApproveJoinRequest?: (userId: number) => void
+  onDeclineJoinRequest?: (userId: number) => void
+  isSecret?: boolean
+  onOpenEncryptionKey?: () => void
 }
 
 /**
@@ -309,6 +357,19 @@ export function createPeerProfileContextValue(props: PeerProfileProps): PeerProf
         ? { peerId: value.threadId!, threadId: undefined }
         : { peerId: value.peerId, threadId: value.threadId },
     onOpenQrCode: props.onOpenQrCode,
+    // Задача 5 — сквозной проброс, см. докблоки полей контекста выше.
+    showStatistics: props.showStatistics,
+    onOpenStatistics: props.onOpenStatistics,
+    showDiscussion: props.showDiscussion,
+    discussionPeerId: props.discussionPeerId,
+    enablingDiscussion: props.enablingDiscussion,
+    onEnableDiscussion: props.onEnableDiscussion,
+    showJoinRequests: props.showJoinRequests,
+    joinRequests: props.joinRequests,
+    onApproveJoinRequest: props.onApproveJoinRequest,
+    onDeclineJoinRequest: props.onDeclineJoinRequest,
+    isSecret: props.isSecret,
+    onOpenEncryptionKey: props.onOpenEncryptionKey,
   }
   return value
 }
@@ -366,6 +427,10 @@ const PeerProfile = (props: PeerProfileProps) => {
       <div class={classNames('profile-content', value.peerId === meId ? 'is-me' : '')}>
         <div class="profile-content-delimiter" />
         <MainSection />
+        <Statistics />
+        <Discussion />
+        <JoinRequests />
+        <EncryptionKey />
         {props.searchSuperContainer}
       </div>
     </PeerProfileContext.Provider>
@@ -867,6 +932,18 @@ function Bio() {
  * `isTopic`-ветка (`:979-989`, ссылка на конкретное сообщение форума) не
  * портирована — `isTopic` у нас недостижим (докблок контекста, Task 2).
  * `getUsernamesAlso` — та же причина, что у `Username` выше.
+ *
+ * ── Паритет: обычный участник приватной группы БЕЗ прав на инвайт-ссылки ────
+ * Проверено по хвосту задачи 5: такой участник не видит ни строку `Link`
+ * (username нет — не эта ветка), ни фолбэк `UserInfoPanel.tsx` (прав нет —
+ * `inviteLinks` пуст). У ОРИГИНАЛА — то же самое: `exported_invite`
+ * (`:999`) — поле СХЕМЫ (`layer.d.ts:813,866`, `ChatFull.channelFull.
+ * exported_invite?: ExportedChatInvite`), которое сервер кладёт в ответ
+ * `channels.getFullChannel`/`messages.getFullChat` ТОЛЬКО зрителю с правом на
+ * приглашения (создателю или админу с `invite_users`) — участник без этого
+ * права получает `chatFull` вовсе БЕЗ поля, и `toFill()` возвращает
+ * `undefined` той же веткой, что и у нас. Это ПАРИТЕТ, а не расхождение —
+ * ни портировать, ни заводить долг не нужно.
  */
 function Link() {
   const context = usePeerProfileContext()
@@ -985,6 +1062,206 @@ function Notifications() {
         <Row.Icon icon="unmute" />
         <Row.Title>{i18n('Notifications')}</Row.Title>
       </Row>
+    </Show>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Задача 5: наши секции без аналога в оригинале
+// (план «карточка профиля на Solid», `docs/superpowers/plans/
+// 2026-09-05-profile-card-solid.md`, «Задача 5»)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// У tweb `PeerProfile` этих четырёх секций НЕТ вовсе — они переехали из
+// React 1:1 («как есть», перенос без редизайна) в объёме брифа задачи: тот же
+// гейт показа, то же действие по клику, тот же визуал (`Section`/`Row` —
+// те же Solid-примитивы, что уже несёт `MainSection`, четвёртого способа
+// рисовать строку не заводим). Гейты и данные приходят ПРОПОМ из React
+// (`UserInfoPanel.tsx`, `useGroupInfo`/`chat.type`) — вторых зеркал/повторных
+// сетевых походов эта задача не заводит, только относит уже посчитанные
+// значения в правильный узел DOM.
+//
+// Каждая секция вставлена сюда «как есть» — правильное место (там, где стоит
+// в tweb эквивалентный пункт меню/строка вкладки редактирования) остаётся
+// долгом: `web-client/backlogs/frontend/profile-sections-misplaced.md`.
+//
+// Попапы, которые открывают эти строки (`ChannelStats`, `KeyVerificationPopup`)
+// — САМИ остаются React-оверлеями СНАРУЖИ `.profile-content` (тот же приём,
+// что и у `QrModal` в задаче 4): узел строки рисует Solid целиком (единственный
+// писатель), а «открыть попап» — колбэк-мост, а не второй рендер оверлея.
+
+/**
+ * Порт пункта «Statistics» меню топбара чата (tweb `chat/topbar.ts:664-671`:
+ * `AppStatisticsTab` в правом сайдбаре, гейт `!monoforumThreadId &&
+ * canViewStatistics`). У tweb это НЕ строка профиля — этот пункт открывается
+ * из меню «⋮» шапки чата, а не из карточки. У нас профиль остаётся
+ * единственным местом, где вообще есть доступ к статистике (топбар такого
+ * меню/пункта не имеет), поэтому строка живёт здесь — долг на перенос в
+ * правильное место (меню топбара) заведён отдельно (см. докблок раздела).
+ *
+ * `showStatistics` — уже свёрнутый ВЫЗЫВАЮЩИМ предикат `isRealChat &&
+ * isChannel && canViewStats` (`useGroupInfo.ts`, реальные `useState`-поля с
+ * писателем — `managers.groups.card(...).then(...)`, проверено грепом перед
+ * портом). Открытие — мост в React `ChannelStats` (слайд-ин, `UserInfoPanel.tsx`),
+ * тот же приём, что `onOpenQrCode` в задаче 4.
+ */
+function Statistics() {
+  const context = usePeerProfileContext()
+  return (
+    <Show when={context.showStatistics}>
+      <Section noDelimiter>
+        <Row clickable={() => context.onOpenStatistics?.()}>
+          <Row.Icon icon="statistics" />
+          <Row.Title>{i18n('Statistics')}</Row.Title>
+        </Row>
+      </Section>
+    </Show>
+  )
+}
+
+/**
+ * Порт строки «Discussion»/«LinkedChannel» вкладки редактирования канала
+ * (tweb `editChat.tsx:362-390`: `AppChatDiscussionTab`, подзаголовок —
+ * привязанный чат или `PeerInfo.Discussion.Add`). У tweb это строка ВКЛАДКИ
+ * `editChat`, а не профиля — у нас вкладки редактирования (752 строки
+ * оригинала) нет вовсе, поэтому упрощённый тумблер «включить обсуждение»
+ * живёт здесь; полноценный перенос (с привязкой конкретного чата через
+ * `AppChatDiscussionTab`) — тот же долг, что и у `Statistics` выше.
+ *
+ * Текст строк («Discussion enabled»/«Enable discussion») — БЕЗ i18n-ключа, как
+ * и в прежнем React (`translate={false}`): ключей для них не заводили ни разу,
+ * не заводим и сейчас — не расширять словарь ради переноса разметки.
+ *
+ * `discussionPeerId !== NULL_PEER_ID` — ЗНАКОВЫЙ ключ группы обсуждения (`0` —
+ * обсуждения нет, не `> 0`), тот же предикат, что был у React-строки
+ * (`useGroupInfo.ts`, комментарий у поля `discussionPeerId`). «Enabled»-ветка
+ * рисует галочку в `titleRight` (порт `selected` прежнего React `Row` —
+ * `settings/kit.tsx`, `titleRight = selected ? <TgIcon name="check".../> :
+ * …`), «Enable»-ветка красится классом `primary` (порт `accent` того же
+ * компонента, `_bridge.scss:282` — общая утилита цвета текста, не завязана на
+ * конкретный тип узла) и гасит клик, пока идёт запрос (`enablingDiscussion`),
+ * — дословно то же условие, что было у React `onClick`.
+ */
+function Discussion() {
+  const context = usePeerProfileContext()
+  return (
+    <Show when={context.showDiscussion}>
+      <Section noDelimiter name="PeerInfo.Discussion">
+        <Show
+          when={context.discussionPeerId !== NULL_PEER_ID}
+          fallback={
+            <Row
+              clickable={context.enablingDiscussion ? undefined : () => context.onEnableDiscussion?.()}
+              class="primary"
+            >
+              <Row.Icon icon="comments" />
+              <Row.Title>{'Enable discussion'}</Row.Title>
+            </Row>
+          }
+        >
+          <Row>
+            <Row.Icon icon="comments" />
+            <Row.Title titleRight={<IconTsx icon="check" style={{ color: 'var(--primary-color)', 'font-size': '22px' }} />}>
+              {'Discussion enabled'}
+            </Row.Title>
+          </Row>
+        </Show>
+      </Section>
+    </Show>
+  )
+}
+
+/**
+ * Порт строки «MemberRequests»/«SubscribeRequests» вкладки редактирования
+ * (tweb `editChat.tsx:227-244`: `AppChatRequestsTab`, счётчик —
+ * `chatFull.requests_pending`) плюс плашка топбара `chat/requests.tsx`
+ * (карусель аватарок над лентой — не портирована, у нас нет предмета
+ * `StackedAvatars`/`recent_requesters`, см. долг раздела). У tweb это
+ * отдельная вкладка, открываемая строкой из `editChat`, а не список ВНУТРИ
+ * профиля — у нас список рисуется прямо здесь (перенос «как есть» прежнего
+ * React-цикла по `joinRequests`, без вкладки).
+ *
+ * `showJoinRequests`/`joinRequests` — уже посчитанные `useGroupInfo.ts`
+ * (реальные `useState`, писатели — `managers.groups.listJoinRequests` +
+ * `managers.peers.getUsers`, проверено грепом перед портом). Одобрение/отклонение
+ * — те же мутации, что были у React-кнопок (`approveJoinRequest`/
+ * `declineJoinRequest`), поданные мостом-колбэком.
+ *
+ * Аватар заявки — `RequestAvatar` ниже (текстовый инициал, тот же приём, что
+ * у React `shared/ui/Avatar`); Solid-порта `Avatar` в кодовой базе нет, а
+ * заводить его ради одной буквы в кружке — за пределами этой задачи.
+ */
+function JoinRequests() {
+  const context = usePeerProfileContext()
+  return (
+    <Show when={context.showJoinRequests && (context.joinRequests?.length ?? 0) > 0}>
+      <Section noDelimiter name="SubscribeRequests">
+        <For each={context.joinRequests}>
+          {(req) => (
+            <Row havePadding>
+              <div class="row-icon"><RequestAvatar title={req.title} /></div>
+              <Row.Title>{req.title}</Row.Title>
+              <Row.RightContent>
+                <Button.Icon
+                  icon="check"
+                  aria-label={`Одобрить заявку: ${req.title}`}
+                  onClick={() => context.onApproveJoinRequest?.(req.userId)}
+                />
+                <Button.Icon
+                  icon="close"
+                  class="danger"
+                  aria-label={`Отклонить заявку: ${req.title}`}
+                  onClick={() => context.onDeclineJoinRequest?.(req.userId)}
+                />
+              </Row.RightContent>
+            </Row>
+          )}
+        </For>
+      </Section>
+    </Show>
+  )
+}
+
+/** Текстовый аватар заявки (первая буква имени, заглавная) — дословный слепок
+ *  no-photo-веток React `shared/ui/Avatar/Avatar.tsx` (`avatar avatar-like
+ *  avatar-{N} avatar-gradient`, `size='md'` → 42px, класс `avatar-42` есть в
+ *  наборе известных tweb-размеров): фото у заявки нет никогда (сервер отдаёт
+ *  только `userId`+`title`), поэтому остальные ветки того компонента (фото/
+ *  эмодзи/онлайн-точка) сюда не переносим — предмета нет. */
+function RequestAvatar(props: { title: string }) {
+  return (
+    <div class="avatar avatar-like avatar-42 avatar-gradient" style={{ background: 'var(--primary-color)' }}>
+      {props.title[0]?.toUpperCase()}
+    </div>
+  )
+}
+
+/**
+ * Ключ шифрования секретного чата (tweb `chatEncryptionKey`, emoji-fingerprint
+ * E2E-сессии) — В ОРИГИНАЛЕ ПРЕДМЕТА НЕТ ВООБЩЕ: у tweb секретных чатов не
+ * существует (`docs/tweb/...` не описывает их ни разу — это НАША подсистема,
+ * `core/secret/*`), поэтому ссылки `file:line` на оригинал у этой секции нет и
+ * быть не может. Строка стоит в профиле, потому что это единственное место,
+ * где у секретного чата вообще есть info-панель — заводить для него отдельную
+ * вкладку ради одной строки не входит в объём этой задачи (тот же долг, что у
+ * `Statistics`/`Discussion`/`JoinRequests`, хоть и без адреса оригинала —
+ * критерий готовности долга не требует «переехать в tweb-эквивалент», которого
+ * нет, только «не жить в профиле»).
+ *
+ * Открытие — мост в React `KeyVerificationPopup` (`UserInfoPanel.tsx`), тот же
+ * приём, что `onOpenQrCode`/`onOpenStatistics` выше: узел эмодзи-отпечатка сам
+ * попап не строит, дальше решает React.
+ */
+function EncryptionKey() {
+  const context = usePeerProfileContext()
+  return (
+    <Show when={context.isSecret}>
+      <Section noDelimiter>
+        <Row clickable={() => context.onOpenEncryptionKey?.()}>
+          <Row.Icon icon="key" />
+          <Row.Title>{i18n('SecretChat.EncryptionKey')}</Row.Title>
+        </Row>
+      </Section>
     </Show>
   )
 }

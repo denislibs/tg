@@ -6,7 +6,6 @@ import QrModal from './QrModal'
 import rootScope from '@lib/rootScope'
 import TgIcon from './TgIcon'
 import ChannelStats from './ChannelStats'
-import Avatar from '../shared/ui/Avatar'
 import { useMediaUrl } from '../core/hooks/useMediaUrl'
 import GroupEditFlow from './group/GroupEditFlow'
 import AddMembersScreen from './group/AddMembersScreen'
@@ -30,7 +29,7 @@ import { countLabel, sharedMediaChatId, shouldForceFold, HEADER_H, ADDITIONAL_OF
 import installColumnResize from '../core/dom/installColumnResize'
 import { useRightColumnShown } from '../core/hooks/useRightColumnShown'
 import animationIntersector from './animationIntersector'
-import { NULL_PEER_ID, isUser as isUserPeer } from '../core/peers/peerId'
+import { isUser as isUserPeer } from '../core/peers/peerId'
 import { usePeers } from '../core/hooks/usePeers'
 import { isPublicPeer } from '../core/peerCache'
 // Шапка-аватары (tweb peerProfileAvatars) — задача 5: класс на классах tweb,
@@ -75,6 +74,12 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
     animationIntersector.toggleVideosUnder(columnRef.current, !open)
   }, [open])
   const isSaved = chat.type === 'saved'
+  // «Ключ шифрования» (tweb chatEncryptionKey, Task 5 плана «карточка профиля
+  // на Solid» — секции без аналога в оригинале) — только для секретного чата.
+  // Объявлено выше прежнего места (было — рядом с `keyPopupOpen`) ради
+  // мостового эффекта `mountSolid` ниже (deps `[…, isSecret]`): в JS/TS
+  // `const` не хостится, а этот эффект читает `isSecret` до её прежней строки.
+  const isSecret = chat.type === 'secret'
   // группы — таб «Участники», избранное — «Чаты» (tweb savedDialogs first), остальные — «Медиа»
   const [tab, setTab] = useState<LangPackKey>(chat.type === 'group' ? 'PeerMedia.Members' : isSaved ? 'FilterChats' : 'SharedMediaTab2')
 
@@ -376,8 +381,40 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
       // Task 4: мост QR-попапа для Solid-строк `Username`/`Link`
       // (`peerProfile.solid.tsx`, докблок поля контекста `onOpenQrCode`).
       onOpenQrCode: openQrCode,
+      // Task 5 (наши секции без аналога в оригинале, `peerProfile.solid.tsx`
+      // «Задача 5»): гейты — те же предикаты, что были у снесённой React-
+      // разметки ниже по файлу (см. `git blame`/докблоки Solid-функций), сюда
+      // приходят уже свёрнутыми (`isRealChat`/`isChannel` сложены в один
+      // булев на месте вызова — второго вычисления в Solid не заводим).
+      showStatistics: isRealChat && isChannel && canViewStats,
+      onOpenStatistics: () => setShowStats(true),
+      showDiscussion: isRealChat && isChannel && canManageDiscussion,
+      discussionPeerId,
+      enablingDiscussion,
+      onEnableDiscussion: () => void enableDiscussion(),
+      showJoinRequests: isRealChat && canInvite,
+      joinRequests,
+      onApproveJoinRequest: (userId) => void approveJoinRequest(userId),
+      onDeclineJoinRequest: (userId) => void declineJoinRequest(userId),
+      isSecret,
+      onOpenEncryptionKey: () => setKeyPopupOpen(true),
     })
-  }, [peerId, searchSuperContainer, avatarsInfoEl])
+    // Гейты/данные Task 5 — НЕ производные от `peerId`/`searchSuperContainer`/
+    // `avatarsInfoEl` (предыдущих deps): `useGroupInfo` грузит их асинхронно
+    // ПОСЛЕ первого монтажа (см. докблок функций в `peerProfile.solid.tsx`,
+    // «показывается ровно при своём условии») — без них в зависимостях Solid-
+    // корень навсегда видел бы значения самого первого прогона (`false`/`[]`,
+    // до ответа сети), и ни одна из четырёх секций не показалась бы никогда.
+    // `mountSolid` не умеет живых пропов (докблок моста, «render» вызывается
+    // один раз на весь срок жизни корня) — единственный способ доставить
+    // изменившееся значение уже смонтированному дереву — пересоздать корень,
+    // тем же приёмом, что уже даёт `avatarsInfoEl` выше.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    peerId, searchSuperContainer, avatarsInfoEl,
+    isRealChat, isChannel, canViewStats, canManageDiscussion, discussionPeerId, enablingDiscussion,
+    canInvite, joinRequests, isSecret,
+  ])
 
   // Панельная половина `header-filled` (tweb sharedMedia.tsx:513/:547 — ставит
   // доезд до табов, снимает клик «назад», см. onBodyScroll/scrollBackToProfile
@@ -406,8 +443,6 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   // диалога (`peerId != null` там же было мёртвым: ключ есть у любого пира).
   const isUser = !isSaved && isUserPeer(peerId)
 
-  // «Ключ шифрования» (tweb chatEncryptionKey) — только для секретного чата.
-  const isSecret = chat.type === 'secret'
   const [keyPopupOpen, setKeyPopupOpen] = useState<boolean | null>(null)
   const { gifts, reload: loadGifts } = useProfileGifts(isUser, peerId)
   const [selectedGift, setSelectedGift] = useState<SavedStarGift | null>(null)
@@ -627,9 +662,14 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
               Task 4 плана «карточка профиля на Solid»): Phone/Username(+QR)/
               Bio/Link/Birthday/Notifications — дословно, со своими условиями
               показа. Наши секции (Statistics/Discussion/JoinRequests/ключ
-              шифрования секретного чата) — Task 5, по-прежнему React,
-              СНАРУЖИ `.profile-content` (соседи, а не дети) — перенос
-              каждой из них отдельной задачей. */}
+              шифрования секретного чата) — Task 5 ТОГО ЖЕ плана: теперь тоже
+              Solid, ДЕТИ `.profile-content` (между `MainSection` и
+              `searchSuperContainer`, см. докблок `peerProfile.solid.tsx`) —
+              гейты и данные едут туда пропами `mountSolid` выше
+              (`showStatistics`/`showDiscussion`/`showJoinRequests`/
+              `isSecret` и соседние поля), сама разметка полностью снесена
+              отсюда. Долг на перенос каждой в правильное место оригинала —
+              `backlogs/frontend/profile-sections-misplaced.md`. */}
 
           {/* Фолбэк-строка ссылки: группа/канал БЕЗ публичного username
               (Solid `PeerProfile.Link` показывает строку только когда
@@ -661,94 +701,8 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
           </SidebarSection>
           )}
 
-          {/* Ключ шифрования (tweb chatEncryptionKey) — emoji-fingerprint
-              секретного чата; в оригинале строка той же секции, что
-              Notifications (tweb MainSection), — Notifications теперь Solid
-              (выше), эта строка остаётся React (Task 5, «наши секции», в
-              tweb секретных чатов нет вовсе). */}
-          {isSecret && (
-          <SidebarSection noDelimiter>
-            <Row
-              icon={<TgIcon name="key" size={24} />}
-              label="SecretChat.EncryptionKey"
-              onClick={() => setKeyPopupOpen(true)}
-            />
-          </SidebarSection>
-          )}
-
           {/* Закреплённые в профиле истории (tweb profile stories) — только у пользователя */}
           {isUser && <PinnedStoriesSection peerId={peerId} />}
-
-          {/* Статистика — только канал (у групп не показываем) */}
-          {isRealChat && isChannel && canViewStats && (
-            <SidebarSection noDelimiter>
-              <Row
-                icon={<TgIcon name="statistics" size={24} />}
-                label="Statistics"
-                onClick={() => setShowStats(true)}
-              />
-            </SidebarSection>
-          )}
-
-          {/* Форум-топики группы («Обсуждения») перенесены в «Изменить группу». */}
-
-          {/* Channel discussions: admin (creator/CHANGE_INFO) toggle / enabled state */}
-          {isRealChat && isChannel && canManageDiscussion && (
-            <SidebarSection noDelimiter title={t('PeerInfo.Discussion')}>
-              {/* ЗНАКОВЫЙ ключ: у чата он ОТРИЦАТЕЛЬНЫЙ, и прежнее «> 0»
-                  выключило бы обсуждение ровно наоборот. */}
-              {discussionPeerId !== NULL_PEER_ID ? (
-                <Row
-                  icon={<TgIcon name="comments" size={24} />}
-                  label="Discussion enabled"
-                  translate={false}
-                  selected
-                />
-              ) : (
-                <Row
-                  icon={<TgIcon name="comments" size={24} />}
-                  label="Enable discussion"
-                  translate={false}
-                  accent
-                  onClick={enablingDiscussion ? undefined : () => void enableDiscussion()}
-                />
-              )}
-            </SidebarSection>
-          )}
-
-          {/* Real group/channel: pending join requests (admins with INVITE_USERS / creator) */}
-          {isRealChat && canInvite && joinRequests.length > 0 && (
-            <SidebarSection noDelimiter title={t('SubscribeRequests')}>
-              {joinRequests.map((req) => (
-                <Row
-                  key={req.userId}
-                  icon={<Avatar background="var(--primary-color)" text={req.title[0]?.toUpperCase()} size="md" />}
-                  label={req.title}
-                  translate={false}
-                  right={
-                    <>
-                      <button
-                        type="button"
-                        className="btn-icon rp"
-                        aria-label={`Одобрить заявку: ${req.title}`}
-                        onClick={() => void approveJoinRequest(req.userId)}
-                      >
-                        <TgIcon name="check" size={22} />
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-icon rp danger"
-                        aria-label={`Отклонить заявку: ${req.title}`}
-                        onClick={() => void declineJoinRequest(req.userId)}
-                      >
-                        <TgIcon name="close" size={22} />
-                      </button>
-                    </>
-                  }
-                />
-              ))}
-            </SidebarSection>
-          )}
 
           {/* Shared media: табы Медиа/Файлы/Ссылки/Музыка/Голосовые (tweb sharedMedia).
               Контент пока моковый — реального API истории по типам ещё нет.
