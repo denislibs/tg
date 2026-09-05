@@ -16,6 +16,17 @@
  * читает и в зеркало не пишет вовсе, держит собственный `useState` — прежняя
  * формулировка коммита задачи 1 называла писателем его, это было неточно).
  *
+ * ── Task 2: «пятый писатель» (находка ревью 1.5) ────────────────────────────
+ * `useUserProfileData.ts::useUserProfile` (React, живёт в `UserInfoPanel.tsx`)
+ * ДЕЙСТВИТЕЛЬНО звал `managers.privacy.profile(peerId)` НАПРЯМУЮ — тот же
+ * эндпоинт, мимо этой функции, в собственный `useState`. Причина не была
+ * ленью: `.user.phone` — единственное поле ответа `privacy.profile()`,
+ * которое настоящей политикой приватности считает ТОЛЬКО эта ручка (разбор —
+ * докблок `core/profilePhoneCache.ts`), и `requestFullPeer` его раньше
+ * отбрасывал. Теперь `requestFullPeer` кладёт телефон В СВОЁ зеркало
+ * (`saveProfilePhone`, ниже), и `useUserProfile` читает готовое — сеть зовёт
+ * ТОЛЬКО эта функция, для ОБОИХ фреймворков.
+ *
  * ── Task 1.5: сведение писателей ────────────────────────────────────────────
  * `requestFullPeer` — ОДНА функция для сетевого похода: порт
  * `appProfileManager.getProfileByPeerId`, ветвится по `isUser(peerId)` между
@@ -115,6 +126,7 @@ import {
   chatFullMirrorVersion,
   type PeerFull,
 } from '../core/chatFullCache'
+import { saveProfilePhone } from '../core/profilePhoneCache'
 import { isUser } from '../core/peers/peerId'
 
 /** Порт `tweb/src/lib/appManagers/constants.ts:35` — чистая клиентская
@@ -134,12 +146,27 @@ const expirations = new Map<PeerId, number>()
  *  «принеси, если там пусто, но не обновляй TTL» (оригинал: тот же признак,
  *  `fullPeers.ts:18`, используется для мягкой первой догрузки без сброса
  *  расписания, которое, возможно, уже тикает у другого потребителя того же
- *  peerId под `useDynamicCachedValue`). */
+ *  peerId под `useDynamicCachedValue`).
+ *
+ *  Task 2 профиля на Solid («пятый писатель», находка ревью 1.5): ветка
+ *  `isUser` получает от `privacy.profile()` ПАРУ `{user, fullUser}` — раньше
+ *  `.user` отбрасывался, и `core/hooks/useUserProfileData.ts::useUserProfile`
+ *  (React) звал ТУ ЖЕ ручку САМ второй раз ради телефона (единственное поле
+ *  `.user`, которого нет больше нигде на проводе — см. докблок
+ *  `core/profilePhoneCache.ts`). Теперь эта функция — ЕДИНСТВЕННЫЙ вызывающий
+ *  `managers.privacy.profile()` для чужого пира, и `.user.phone` кладётся в
+ *  СВОЁ зеркало тем же тикетом, что и `fullUser`. */
 async function requestFullPeer(managers: Managers, peerId: PeerId, overwrite: boolean): Promise<void> {
   const ticket = beginPeerFullFetch(peerId)
-  const full: PeerFull | null = isUser(peerId)
-    ? (await managers.privacy.profile(peerId)).fullUser
-    : (await managers.groups.card(peerId))?.fullChat ?? null
+
+  let full: PeerFull | null
+  if (isUser(peerId)) {
+    const profile = await managers.privacy.profile(peerId)
+    full = profile.fullUser
+    saveProfilePhone(peerId, profile.user.phone ?? '', ticket)
+  } else {
+    full = (await managers.groups.card(peerId))?.fullChat ?? null
+  }
 
   if (!full) return
   if (overwrite) expirations.set(peerId, Date.now() + PEER_FULL_TTL)

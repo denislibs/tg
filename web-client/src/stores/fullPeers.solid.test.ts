@@ -6,11 +6,20 @@
 // состояние, общее для всех тестов файла.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRoot } from 'solid-js'
+import { cleanup, renderHook, act } from '@testing-library/react'
 import type { Managers } from '../client/bootstrap'
 
-const { profile, card } = vi.hoisted(() => ({ profile: vi.fn(), card: vi.fn() }))
+const { profile, card, fillMirror } = vi.hoisted(() => ({ profile: vi.fn(), card: vi.fn(), fillMirror: vi.fn() }))
 vi.mock('../client/bootstrap', () => ({
   startClient: () => ({ managers: { privacy: { profile }, groups: { card } } }),
+}))
+// `useUserProfile` (Task 2, React-панель) идёт через DI-контекст
+// (`useManagers()`), а не `startClient()` напрямую — см. докблок
+// `core/hooks/useManagers.tsx`. Managers ТЕ ЖЕ шпионы `profile`/`card`, что и
+// у мока `startClient` выше: единственность пути проверяется именно ИХ
+// СЧЁТЧИКОМ ВЫЗОВОВ, а не тем, что обе функции существуют.
+vi.mock('../core/hooks/useManagers', () => ({
+  useManagers: () => ({ privacy: { profile }, groups: { card }, peers: { fillMirror } }),
 }))
 
 const userFull = (id: number, over: Partial<Record<string, unknown>> = {}) => ({
@@ -37,12 +46,15 @@ beforeEach(async () => {
   vi.useFakeTimers()
   profile.mockReset()
   card.mockReset()
+  fillMirror.mockReset()
   profile.mockResolvedValue({ user: { _: 'user', id: 1 }, fullUser: userFull(1), canMessage: true })
   card.mockResolvedValue({ peerId: -1, chat: { _: 'channel', id: 1 }, fullChat: channelFull(1) })
+  fillMirror.mockResolvedValue(undefined)
   m = await import('./fullPeers.solid')
 })
 
 afterEach(() => {
+  cleanup()
   vi.useRealTimers()
 })
 
@@ -256,5 +268,114 @@ describe('ensureFullPeer: односторонняя выгода для чат�
     // Solid не увидит карточку свежей и продублирует поход, здесь будет 2.
     expect(card).toHaveBeenCalledTimes(1)
     dispose()
+  })
+})
+
+// Task 2 профиля на Solid, «пятый писатель» (находка ревью 1.5):
+// `core/hooks/useUserProfileData.ts::useUserProfile` (React, живёт в
+// `UserInfoPanel.tsx`) раньше звал `managers.privacy.profile(peerId)` САМ —
+// второй, независимый от Solid-профиля поход за той же карточкой. Здесь
+// `useUserProfile` — настоящий (не заглушка), рендерится `renderHook`; Solid
+// сторона — `m.useFullPeer`, как и в блоке выше. Пин — счётчик вызовов
+// `profile` (менеджер), а не факт «функция позвалась».
+describe('useUserProfile (React, UserInfoPanel): единственность сетевого пути (Task 2)', () => {
+  const seedPeerMirror = async () => {
+    const peerCache = await import('../core/peerCache')
+    peerCache.applyPeerOps([{
+      op: 'upsert',
+      peers: [{ _: 'user', id: 1, first_name: 'Дн', pFlags: { verified: true } }],
+    }])
+    return peerCache
+  }
+
+  it('React-хук (панель) фетчит первым — Solid-профиль того же пира сеть повторно не открывает', async () => {
+    await seedPeerMirror()
+    const { useUserProfile } = await import('../core/hooks/useUserProfileData')
+
+    const { result, unmount } = renderHook(() => useUserProfile(1, false))
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    expect(profile).toHaveBeenCalledTimes(1)
+    expect(result.current?.fullUser).toEqual(userFull(1))
+    unmount()
+
+    let dispose!: () => void
+    createRoot((d) => {
+      dispose = d
+      m.useFullPeer(1) // Task 2: Solid-профиль того же пира монтируется рядом
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    // МУТАЦИЯ: верни `useUserProfile` к прямому `managers.privacy.profile()` —
+    // второй независимый поход случится, здесь будет 2.
+    expect(profile).toHaveBeenCalledTimes(1)
+    dispose()
+  })
+
+  // Обратный порядок: пользователь открыл Solid-профиль (например, из чужого
+  // чата) раньше, чем открыл панель профиля того же пира.
+  it('и наоборот: Solid фетчит первым — React-хук (панель) того же пира сеть повторно не открывает', async () => {
+    await seedPeerMirror()
+    const { useUserProfile } = await import('../core/hooks/useUserProfileData')
+
+    let dispose!: () => void
+    createRoot((d) => {
+      dispose = d
+      m.useFullPeer(1)
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(profile).toHaveBeenCalledTimes(1)
+
+    const { result, unmount } = renderHook(() => useUserProfile(1, false))
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    expect(profile).toHaveBeenCalledTimes(1)
+    expect(result.current?.fullUser).toEqual(userFull(1)) // подхватил карточку, которую принёс Solid
+    unmount()
+    dispose()
+  })
+
+  it('телефон — из ЕДИНСТВЕННОГО ответа privacy.profile(), смёрженный в user; username/verified — из общего зеркала пиров, а не из этого ответа', async () => {
+    profile.mockResolvedValue({
+      user: { _: 'user', id: 1, phone: '+79990001122', username: 'из-privacy-profile-ИГНОРИРУЕТСЯ' },
+      fullUser: userFull(1),
+      canMessage: true,
+    })
+    await seedPeerMirror() // username в общем зеркале не задан — undefined, а не то, что "приехало" в profile()
+    const { useUserProfile } = await import('../core/hooks/useUserProfileData')
+
+    const { result, unmount } = renderHook(() => useUserProfile(1, false))
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+
+    expect(result.current?.user.phone).toBe('+79990001122') // из privacy.profile(), единственного источника
+    expect(result.current?.user.pFlags?.verified).toBe(true) // из ОБЩЕГО зеркала (seedPeerMirror), не из profile()
+    // МУТАЦИЯ: замени источник username/verified на `profile.user` вместо
+    // общего зеркала — эта строка перестанет отличать источники и может
+    // случайно пройти; см. вместо неё явную проверку username ниже.
+    expect(result.current?.user.username).toBeUndefined()
+    unmount()
+  })
+
+  it('пробел общего зеркала пиров объявляется (fillMirror), если панель открылась раньше диалогов', async () => {
+    const { useUserProfile } = await import('../core/hooks/useUserProfileData')
+    // Зеркало НЕ засеяно — cachedPeer(1) === undefined.
+    const { unmount } = renderHook(() => useUserProfile(1, false))
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    // МУТАЦИЯ: убери вызов `managers.peers.fillMirror([peerId])` — этот
+    // expect упадёт (пробел останется необъявленным).
+    expect(fillMirror).toHaveBeenCalledWith([1])
+    unmount()
+  })
+
+  it('isSaved=true / peerId=null — сеть не открывается вовсе (свой профиль показывает панель иначе)', async () => {
+    const { useUserProfile } = await import('../core/hooks/useUserProfileData')
+    const { result: r1, unmount: u1 } = renderHook(() => useUserProfile(1, true))
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    expect(profile).not.toHaveBeenCalled()
+    expect(r1.current).toBeNull()
+    u1()
+
+    const { result: r2, unmount: u2 } = renderHook(() => useUserProfile(null, false))
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    expect(profile).not.toHaveBeenCalled()
+    expect(r2.current).toBeNull()
+    u2()
   })
 })

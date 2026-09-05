@@ -79,6 +79,19 @@ export function beginPeerFullFetch(peerId: PeerId): number {
 }
 
 /**
+ * Билет ещё не перекрыт более новым походом за той же карточкой — тот же
+ * вопрос, каким `saveChatFull` гейтит СВОЮ запись, вынесен отдельной функцией
+ * ради `core/profilePhoneCache.ts` (Task 2 профиля на Solid): телефон
+ * приходит В ТОЙ ЖЕ сетевой паре, что и `fullUser` (`privacy.profile()`,
+ * `stores/fullPeers.solid.ts::requestFullPeer`), и обязан гаситься ТОЙ ЖЕ
+ * гонкой — заводить вторую карту билетов под тот же поход означало бы два
+ * источника истины про «какой ответ последний».
+ */
+export function isFetchTicketCurrent(peerId: PeerId, ticket?: number): boolean {
+  return ticket === undefined || ticket === latestFetch.get(peerId)
+}
+
+/**
  * Положить загруженную карточку. Совпавшая с лежащей подписчиков не будит.
  *
  * `ticket` — билет из `beginPeerFullFetch`, взятый непосредственно перед
@@ -90,7 +103,7 @@ export function beginPeerFullFetch(peerId: PeerId): number {
  * `applyChatTheme` рядом) билет ни к чему.
  */
 export function saveChatFull(peerId: PeerId, full: PeerFull, ticket?: number): void {
-  if (ticket !== undefined && ticket !== latestFetch.get(peerId)) return
+  if (!isFetchTicketCurrent(peerId, ticket)) return
   const prev = fullMirror.get(peerId)
   if (prev && JSON.stringify(prev) === JSON.stringify(full)) return
   fullMirror.set(peerId, full)
