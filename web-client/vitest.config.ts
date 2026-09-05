@@ -31,7 +31,7 @@ export default defineConfig({
   },
   test: {
     environment: 'happy-dom',
-    // Заглушка `lottie-web` на всю среду — см. докблок файла.
+    // Заглушка `fetch` для `/assets/tgs/*.json` на всю среду — см. докблок файла.
     setupFiles: [r('src/test/setup.ts')],
     // scripts/** — DOM-diff харнес (обычный JS вне tsconfig), его тесты гоняем тем же прогоном.
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'scripts/**/*.test.js'],

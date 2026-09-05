@@ -1,10 +1,6 @@
 // Гейт стикеров-саджестов: панель показывается только когда текст композера —
 // РОВНО один эмодзи (tweb stickersHelper.checkEmoticon по одиночному эмотикону).
-import { describe, it, expect, vi } from 'vitest'
-
-// StickersHelper тянет StickerMedia → lottie-web, который при импорте лезет в
-// canvas 2d-контекст (нет в happy-dom) — мокаем, здесь тестируется только гейт.
-vi.mock('lottie-web', () => ({ default: { loadAnimation: vi.fn() } }))
+import { describe, it, expect } from 'vitest'
 
 import { stickerSuggestEmoji } from './StickersHelper'
 

@@ -1,26 +1,5 @@
 // Общий сетап прогона.
 //
-// `lottie-web` невозможно вычислить под happy-dom: библиотека на СВОЁМ модульном
-// инициализаторе создаёт канву и пишет в 2D-контекст, а happy-dom отдаёт на
-// `getContext('2d')` → `null`. Получается `TypeError: Cannot set properties of
-// null (setting 'fillStyle')` — незаловленное отклонение, которое не валит тест,
-// но засоряет прогон и, как предупреждает сам vitest, «might cause false positive
-// tests»: ошибка прилетает к случайному файлу, который в этот момент держит
-// воркер, а не к тому, кто её породил. Отсюда и репутация «плавающей».
-//
-// Ловится это не импортом, а рантаймом: плеер грузится лениво
-// (`components/lottie.ts::loadLottie`, ~521 kB отдельным чанком), и любой тест,
-// который добирается до реального рендера анимации — уточки пустого состояния
-// селектора, стикера, обезьянки пароля, — вычисляет модуль и падает. До сих пор
-// с этим боролись поштучно: `PeerSelector.test.tsx` и `StickersHelper.suggest.
-// test.ts` глушат каждый по-своему, и то же самое всплыло третьим файлом
-// (`InputSearch.test.tsx` тянет `MemberPicker` → `PeerSelector` → уточка).
-//
-// Заглушка стоит на самом модуле, а не на канве: подменять `getContext` глобально
-// значило бы менять поведение тестов, которые сознательно живут с `null`
-// (`ChatBackground.test.tsx` — комментарий там прямо про это). Настоящего
-// поведения `lottie-web` не проверяет ни один тест, поэтому терять здесь нечего.
-//
 // ── ПОЧЕМУ ЯЗЫК НАПОЛНЯЕТСЯ В `beforeAll`, А НЕ ИМПОРТОМ СВЕРХУ ───────────────
 //
 // В продукте ядро локализации (`lib/langPack.ts`) наполняет холодный старт:
@@ -46,34 +25,62 @@
 // создании), и работал он через раз — только если модуль стора случайно оказывался в
 // графе теста. Тесты, что строят узлы `i18n()`, ставили этот импорт поштучно; теперь
 // наполнение объявлено один раз здесь, и поштучные импорты сняты.
-import { beforeAll, vi } from 'vitest'
+import { readdirSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { beforeAll } from 'vitest'
 
 import { installDomKeyLeakPin } from './domKeyLeak'
 
-vi.mock('lottie-web', () => {
-  const anim = {
-    play: vi.fn(),
-    pause: vi.fn(),
-    stop: vi.fn(),
-    destroy: vi.fn(),
-    goToAndStop: vi.fn(),
-    goToAndPlay: vi.fn(),
-    setSpeed: vi.fn(),
-    setDirection: vi.fn(),
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-  }
-  const lottie = {
-    loadAnimation: vi.fn(() => anim),
-    setQuality: vi.fn(),
-    destroy: vi.fn(),
-    registerAnimation: vi.fn(),
-  }
-  return { default: lottie, ...lottie }
-})
-
 // Пин на утечку ключа в DOM — общий для всех компонентных тестов (см. `domKeyLeak.ts`).
 installDomKeyLeakPin()
+
+// Ассеты `public/assets/tgs/*.json` (обезьянки/уточки, Этап 0 плана «один
+// движок lottie») грузятся теперь настоящим `fetch` — под happy-dom нет
+// раздачи `public/`, и любой тест, домонтировавший такой узел, ронял прогон
+// необработанным `NetworkError`. Путь: раньше — бандл-`import()` через мост
+// `components/lottie.ts::loadTgsAsset` (снят Этапом 2, потребителей у него
+// больше нет), теперь — `lib/lottie/lottieLoader.ts::loadAnimationAsAsset`
+// (tlottie, тот же URL строит `makeAssetUrl`) для ВСЕХ встроенных ассетов.
+// Содержимое JSON тестам не важно, подставляем пустышку только для
+// `/assets/tgs/`, всё остальное идёт настоящим fetch.
+//
+// Заглушка СВЕРЯЕТСЯ С ДИСКОМ (round 1 ревью этапа 0): раньше она отвечала
+// 200 на ЛЮБОЕ имя под `/assets/tgs/`, и опечатка в имени ассета молча
+// резолвилась бы успехом в компонентном тесте, который не мокает
+// `@lib/lottie/lottieLoader` целиком. Список читается с диска один раз при
+// старте сетапа (`public/assets/tgs/`, та же директория, что заполнил
+// Этап 0 `git mv`), несуществующее имя получает честный 404 — `res.json()`
+// на нём падает, как и должно быть у настоящей опечатки (пин —
+// `setup.test.ts`). Скан РЕАЛЬНЫХ продакшн-колл-сайтов (JSX-проп `name` у
+// `LottieSticker`/`MediaHeader.Sticker`, литеральный второй аргумент методу
+// загрузки ассета по имени) на файл на диске живёт отдельно, в
+// `lib/lottie/tgsAssets.test.ts`
+// (Этап 2 его по ошибке снёс вместе с мостом `loadTgsAsset`, финальное
+// ревью программы это поймало — скан восстановлен в новом виде).
+const TGS_DIR = resolve(__dirname, '../../public/assets/tgs')
+const existingTgsNames = new Set(
+  readdirSync(TGS_DIR)
+    .filter((f) => f.endsWith('.json'))
+    .map((f) => f.slice(0, -'.json'.length)),
+)
+
+const realFetch = globalThis.fetch?.bind(globalThis)
+if (realFetch) {
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' || input instanceof URL ? new URL(input, location.href) : new URL(input.url, location.href)
+    if (url.origin === location.origin && url.pathname.startsWith('/assets/tgs/')) {
+      const name = url.pathname.slice('/assets/tgs/'.length).replace(/\.json$/, '')
+      if (existingTgsNames.has(name)) {
+        return Promise.resolve(new Response(JSON.stringify({ v: '5.5.2', layers: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }))
+      }
+      return Promise.resolve(new Response(null, { status: 404 }))
+    }
+    return realFetch(input, init)
+  }) as typeof fetch
+}
 
 // Английские строки в ядро — ОДИН РАЗ НА ФАЙЛ ПРОГОНА (разбор — в шапке файла).
 // Язык, отличный от английского, тест применяет сам: `applyLang` из `./lang`.

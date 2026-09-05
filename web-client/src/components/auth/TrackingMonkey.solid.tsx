@@ -1,43 +1,31 @@
 /** @jsxImportSource solid-js */
 // TrackingMonkey — обезьянка на карточке ввода кода подтверждения. Порт tweb
-// `src/components/monkeys/tracking.ts` (164 строки, целиком): две lottie-канвы
-// (idle-луп + tracking) в одном `div.media-sticker-wrapper`; на фокусе поля
-// обезьянка открывает глаза и «отслеживает» набор цифр — кадр tracking-
-// анимации считается от доли набранного кода. Долг закрыт (был записан
-// в бэклоге фронта — запись удалена вместе с этим портом).
+// `src/components/monkeys/tracking.ts` (164 строки, целиком, дословно —
+// оригинал уже написан под tlottie): один tlottie-контейнер `div.media-
+// sticker-wrapper` с ДВУМЯ канвами внутри (idle-луп + tracking); на фокусе
+// поля обезьянка открывает глаза и «отслеживает» набор цифр — кадр tracking-
+// анимации считается от доли набранного кода.
 //
-// ── Движок анимации — осознанное отступление от tweb ─────────────────────
-// tweb грузит обе анимации через `lottieLoader.loadAnimationAsAsset(...)`
-// (tlottie, SIMD-декод в воркере), ассет — по URL `assets/tgs/<name>.json`.
-// У нас `web-client/public/assets/` не содержит каталога `tgs/` — обе исходные
-// json-ки (`TwoFactorSetupMonkeyIdle.json`/`TwoFactorSetupMonkeyTracking.json`)
-// лежат БАНДЛОМ в `src/assets/tgs/`. Поэтому привязка — `lottie-web` через
-// `components/lottie.ts::loadLottie()` + динамический `import()` json, тем же
-// приёмом, что у `PasswordMonkey.tsx` (React, вторая обезьянка) и
-// `MediaHeader.solid.tsx::StickerLottie` (тот же приём уже на Solid). Само
-// ПОВЕДЕНИЕ (арифметика кадра, направление, скорость, переключение канв) —
-// 1:1 с оригиналом; отступление только в том, кто крутит кадры.
+// Движок — tlottie (`lottieLoader.loadAnimationAsAsset`, SIMD-декод в
+// воркере), ассет — по URL `assets/tgs/<name>.json` (Этап 0 плана «один
+// движок lottie», docs/superpowers/plans/2026-09-05-lottie-single-engine.md).
+// Обе анимации делят ОДИН `container` (tweb :19-20/:104/:121 — `this.
+// container` передаётся в оба `loadAnimationAsAsset`), тлотти сама кладёт
+// каждый `canvas` внутрь него (`LottiePlayer.canvas[0]`), а видимость
+// переключается на самой канве (`canvas[0].style.display`), а не на
+// обёртке — идентично оригиналу, отдельного host-`div` на анимацию больше
+// нет (это было отступление версии на `lottie-web`, у `AnimationItem` такого
+// поля не было).
 //
-// Из первого отступления тянется второе, мельче: у tweb ОБЕ анимации рисуются
-// в ОДИН `container` (tlottie сама кладёт `canvas` внутрь переданного узла,
-// `LottiePlayer.canvas[0]`), и переключение видимости идёт через
-// `canvas[0].style.display`. У raw `lottie-web` такого поля на `AnimationItem`
-// нет — как и у `MediaHeader.solid.tsx::StickerLottie`, у каждой анимации свой
-// host-`div` (свой `container`), и переключается видимость ХОСТА, а не канвы
-// напрямую. Оба хоста лежат в одном `div.media-sticker-wrapper`, поэтому
-// снаружи разметка не отличается от оригинала. Оверлея друг на друга им не
-// требуется: idle и tracking взаимоисключающе видимы (второй всегда
-// `display:none`, пока показан первый), а `.sticker` (mediaHeader.module.scss)
-// центрирует единственного видимого ребёнка флексом — как в оригинале.
+// Ручной подсчёт кадров через `enterFrame`+`needFrame` — НЕ отступление: у
+// `LottiePlayer` есть готовые `playPart`/`playToFrame` (tweb
+// `lottiePlayer.ts:1068-1119`), но сам оригинал `tracking.ts` ими не
+// пользуется — считает кадр вручную и сравнивает в `enterFrame` (:133-152).
+// Порт повторяет ровно это.
 import { createEffect, on, onCleanup, onMount, type JSX } from 'solid-js'
-import type { AnimationItem } from 'lottie-web'
+import lottieLoader from '@lib/lottie/lottieLoader'
+import type LottiePlayer from '@lib/lottie/lottiePlayer'
 import { fastRaf } from '@helpers/schedulers'
-import { loadLottie } from '../lottie'
-
-const ASSETS = {
-  idle: () => import('../../assets/tgs/TwoFactorSetupMonkeyIdle.json'),
-  tracking: () => import('../../assets/tgs/TwoFactorSetupMonkeyTracking.json'),
-}
 
 /** tweb `monkeys/tracking.ts` максимум диапазона слежения (класс-поле `max`). */
 const MAX = 45
@@ -113,19 +101,20 @@ export type TrackingMonkeyProps = {
 }
 
 export default function TrackingMonkey(props: TrackingMonkeyProps): JSX.Element {
-  let idleHost: HTMLDivElement | undefined
-  let trackingHost: HTMLDivElement | undefined
+  let containerEl: HTMLDivElement | undefined
 
-  let idleAnim: AnimationItem | undefined
-  let trackingAnim: AnimationItem | undefined
+  let idleAnim: LottiePlayer | undefined
+  let trackingAnim: LottiePlayer | undefined
   // Гонка «ассет догрузился после размонтирования» (два независимых
-  // `import()`+`loadLottie()`) — общий `alive`-флаг перед записью в замыкание,
-  // тем же приёмом, что `PasswordMonkey.tsx`/`MediaHeader.solid.tsx`.
+  // `loadAnimationAsAsset`) — общий `alive`-флаг перед записью в замыкание,
+  // тем же приёмом, что `PasswordMonkey.tsx`.
   let alive = true
 
-  // Состояние подыгрывания — класс-поля `needFrame`/направление у tweb.
+  // `needFrame` — класс-поле tweb (`protected needFrame = 0`). Направление
+  // отдельным полем НЕ дублируем: `LottiePlayer.direction` (tweb :137-138
+  // читает именно `this.animation.direction`, не своё поле) — источник
+  // истины один, как в оригинале.
   let needFrame = 0
-  let direction: 1 | -1 = 1
 
   // tweb `playAnimation` целиком (:54-98) — общая точка входа и для focus/blur,
   // и для input.
@@ -136,15 +125,14 @@ export default function TrackingMonkey(props: TrackingMonkeyProps): JSX.Element 
 
     if (frame) {
       if (idleAnim) {
-        idleAnim.stop()
-        if (idleHost) idleHost.style.display = 'none'
+        idleAnim.stop(true)
+        idleAnim.canvas[0].style.display = 'none'
       }
-      if (trackingHost) trackingHost.style.display = ''
+      trackingAnim.canvas[0].style.display = ''
     }
 
     const step = computeTrackingStep(needFrame, frame)
-    direction = step.direction
-    trackingAnim.setDirection(direction)
+    trackingAnim.setDirection(step.direction)
     if (step.resetSpeed) trackingAnim.setSpeed(7)
     needFrame = frame
 
@@ -152,63 +140,83 @@ export default function TrackingMonkey(props: TrackingMonkeyProps): JSX.Element 
   }
 
   onMount(() => {
+    if (!containerEl) return
+    const container = containerEl
+
     // tweb `load()` :100-158 — два независимых лоадера в `Promise.all`, порядок
-    // резолва не гарантирован (у нас — два параллельных `import()`), поэтому
-    // каждая ветка пишет только СВОЙ ref и не зависит от соседней.
-    void Promise.all([loadLottie(), ASSETS.idle()]).then(([lottie, mod]) => {
-      if (!alive || !idleHost) return
-      idleAnim = lottie.loadAnimation({
-        container: idleHost,
-        renderer: 'canvas',
-        loop: true,
-        autoplay: true,
-        animationData: mod.default as unknown,
-        rendererSettings: { className: 'lottie', dpr: window.devicePixelRatio || 1 },
-      })
-    })
-
-    void Promise.all([loadLottie(), ASSETS.tracking()]).then(([lottie, mod]) => {
-      if (!alive || !trackingHost) return
-      // Локальный const-алиас: TS не переносит сужение non-null через `let`
-      // во вложенное замыкание (`enterFrame`-колбэк ниже) — та же причина,
-      // по которой захват в замыкание обычно требует стабильной ссылки.
-      const trackingHostEl = trackingHost
-      const anim = lottie.loadAnimation({
-        container: trackingHostEl,
-        renderer: 'canvas',
-        loop: false,
-        autoplay: false,
-        animationData: mod.default as unknown,
-        rendererSettings: { className: 'lottie', dpr: window.devicePixelRatio || 1 },
-      })
-      trackingAnim = anim
-
-      // tweb :129-131 — при пустом значении поля tracking-канва скрыта с самого начала.
-      if (!props.value().length) trackingHostEl.style.display = 'none'
-
-      anim.addEventListener('enterFrame', (e: { currentTime: number }) => {
-        const currentFrame = Math.round(e.currentTime)
-
-        if (shouldPauseOnFrame(direction, currentFrame, needFrame)) {
-          anim.setSpeed(1)
-          anim.pause()
+    // резолва не гарантирован, поэтому каждая ветка пишет только СВОЙ ref и не
+    // зависит от соседней. ОБА делят один и тот же `container` (tweb :104/:121
+    // — `this.container`), tlottie сама кладёт canvas каждой анимации внутрь
+    // него.
+    //
+    // Деградация без WASM SIMD (решение плана «один движок lottie», раздел
+    // «Решение по деградации без WASM SIMD»): `loadAnimationAsAsset` бросает
+    // `NO_WASM` (`lib/lottie/lottieLoader.ts:216`), канва в DOM не появляется
+    // (`lib/lottie/lottiePlayer.ts:1207` — аппендится только на первом кадре) —
+    // idle-обезьянка просто не показывается, как в оригинале. Долг на случай,
+    // если такой хвост браузеров окажется важен:
+    // `web-client/backlogs/frontend/lottie-no-wasm-fallback.md`.
+    const idleLoad = lottieLoader
+      .loadAnimationAsAsset(
+        { container, loop: true, autoplay: true, width: props.size, height: props.size },
+        'TwoFactorSetupMonkeyIdle',
+      )
+      .then((animation) => {
+        if (!alive) {
+          animation.remove()
+          return
         }
+        idleAnim = animation
 
-        // tweb :143-151 — возврат к idle-лупу строго на нулевом кадре и только
-        // если idle вообще загружена (та же проверка, что в оригинале).
-        if (currentFrame === 0 && needFrame === 0 && idleAnim) {
-          if (idleHost) idleHost.style.display = ''
-          idleAnim.play()
-          trackingHostEl.style.display = 'none'
-        }
+        // tweb :113-115 — играть сразу, если поле уже пустое к моменту загрузки.
+        if (!props.value().length) animation.play()
+
+        return lottieLoader.waitForFirstFrame(animation)
       })
-    })
+
+    // Та же деградация NO_WASM, что у idle-загрузки выше.
+    const trackingLoad = lottieLoader
+      .loadAnimationAsAsset(
+        { container, loop: false, autoplay: false, width: props.size, height: props.size },
+        'TwoFactorSetupMonkeyTracking',
+      )
+      .then((animation) => {
+        if (!alive) {
+          animation.remove()
+          return
+        }
+        trackingAnim = animation
+
+        // tweb :129-131 — при пустом значении поля tracking-канва скрыта с самого начала.
+        if (!props.value().length) animation.canvas[0].style.display = 'none'
+
+        animation.addEventListener('enterFrame', (currentFrame: number) => {
+          if (shouldPauseOnFrame(animation.direction as 1 | -1, currentFrame, needFrame)) {
+            animation.setSpeed(1)
+            animation.pause()
+          }
+
+          // tweb :143-151 — возврат к idle-лупу строго на нулевом кадре и только
+          // если idle вообще загружена (та же проверка, что в оригинале).
+          if (currentFrame === 0 && needFrame === 0 && idleAnim) {
+            idleAnim.canvas[0].style.display = ''
+            idleAnim.play()
+            animation.canvas[0].style.display = 'none'
+          }
+        })
+
+        return lottieLoader.waitForFirstFrame(animation)
+      })
+
+    // Реджект любой загрузки (NO_WASM/сеть) гасим ЗДЕСЬ, в одном месте — приём
+    // `StickerMedia.tsx:282`, а не россыпью `.catch(() => {})` по каждому чейну.
+    void Promise.all([idleLoad, trackingLoad]).catch(() => {})
   })
 
   onCleanup(() => {
     alive = false
-    idleAnim?.destroy()
-    trackingAnim?.destroy()
+    idleAnim?.remove()
+    trackingAnim?.remove()
     idleAnim = undefined
     trackingAnim = undefined
   })
@@ -265,9 +273,10 @@ export default function TrackingMonkey(props: TrackingMonkeyProps): JSX.Element 
   )
 
   return (
-    <div class="media-sticker-wrapper">
-      <div ref={idleHost} style={{ width: `${props.size}px`, height: `${props.size}px` }} />
-      <div ref={trackingHost} style={{ width: `${props.size}px`, height: `${props.size}px` }} />
-    </div>
+    <div
+      ref={containerEl}
+      class="media-sticker-wrapper"
+      style={{ width: `${props.size}px`, height: `${props.size}px` }}
+    />
   )
 }

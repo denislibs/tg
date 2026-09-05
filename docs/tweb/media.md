@@ -1305,7 +1305,10 @@ wrapSticker (wrappers/sticker.ts:65)
 | `src/core/audio/mediaPlaybackController.ts` (295) + `src/stores/audioStore.ts` + `src/components/NowPlayingBar.tsx` | глобальный плеер + верхняя плашка (аналог ChatAudio); `VoiceMessage.tsx` |
 | `src/components/preloader.ts` (302), `RadialProgress.tsx` | порт `ProgressivePreloader` |
 | `src/components/messages/RealMediaBubble.tsx` (542) | фото/видео/gif-бабл: канвас-blur-превью (`useBlurThumb`), кольцо аплоада с отменой, DocRow с управляемым скачиванием |
-| `src/components/StickerMedia.tsx`, `LottieSticker.tsx`, `src/core/stickers/*` | tlottie (SIMD-WASM порт rlottie из tweb, декод в воркере; PR #55) |
+| `src/components/StickerMedia.tsx`, `src/core/stickers/*` | реальные стикеры (по mediaId) — tlottie (SIMD-WASM порт rlottie из tweb, декод в воркере; PR #55) |
+| `src/lib/lottie/lottieLoader.ts` + `lottiePlayer.ts` | единственный движок lottie в дереве (программа «один движок lottie», `docs/superpowers/plans/2026-09-05-lottie-single-engine.md`, PR #55 + Этапы 0-4); второй движок (`lottie-web`) снесён из зависимостей, скан-пин — `lib/lottie/noLottieWeb.test.ts` |
+| `src/components/lottieAnimation.solid.tsx` (Solid), `LottieSticker.tsx` (React) | единая точка входа для встроенных ассетов (обезьянки, уточки, иконки папок/ключа/пасскода, шапки карточек) — порт tweb `components/lottieAnimation.tsx`, зовёт `lottieLoader.loadAnimationAsAsset(params, name: LottieAssetName)` |
+| `public/assets/tgs/*.json` | встроенные ассеты статикой, как в оригинале (было — 11 json'ов отдельными JS-чанками бандла); `lottieLoader.makeAssetUrl` резолвит `assets/tgs/<name>.json` |
 | `src/components/mediaEditor/`, `StoryViewer.tsx`, `GifsMasonry.tsx` | медиа-редактор, сторис-вьювер, сетка GIF |
 
 ## 10.2 Главные расхождения с tweb

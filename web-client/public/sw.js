@@ -66,6 +66,15 @@ const APP_SHELL = 'app-shell-1'
 const IMMUTABLE_RE = /^\/(assets|fonts)\//
 const SHELL_MAX = 80 // потолок записей (старые хеш-чанки после деплоев — под нож)
 
+/* Встроенные lottie-json (Этап 0 «один движок lottie», docs/superpowers/plans/
+ * 2026-09-05-lottie-single-engine.md): единственные файлы под /assets/ БЕЗ
+ * контентного хеша в имени — nginx уже завёл им отдельный `location /assets/tgs/`
+ * с `max-age=300, must-revalidate` (nginx/nginx.conf) вместо годового immutable,
+ * ровно потому что обновлённый/дозалитый файл (например ReactionGeneric.json)
+ * иначе не долетит. Проверять этот путь регэкспом IMMUTABLE_RE ДО TGS_RE нельзя —
+ * подстрока /assets/ матчит оба, порядок веток в fetch-хендлере ниже решает. */
+const TGS_RE = /^\/assets\/tgs\//
+
 // Ключ кэша — URL без короткоживущего token (иначе каждая ротация токена
 // плодит дубликаты); v=thumb остаётся — превью и оригинал живут раздельно.
 function mediaCacheKey(rawUrl) {
@@ -104,6 +113,13 @@ self.addEventListener('fetch', (event) => {
   // Навигации (SPA) — network-first, оффлайн-фолбэк на закэшированный index.html.
   if (req.mode === 'navigate') {
     event.respondWith(handleNavigation(req))
+    return
+  }
+
+  // Lottie-json без хеша в имени (§ TGS_RE выше) — ДО общей IMMUTABLE_RE-ветки,
+  // иначе более широкий /assets/ заберёт их себе первым.
+  if (TGS_RE.test(url.pathname)) {
+    event.respondWith(handleTgs(req))
     return
   }
 
@@ -173,6 +189,29 @@ async function handleImmutable(req) {
   } catch (_e) {
     return fetch(req)
   }
+}
+
+/* Stale-while-revalidate, а не cache-first и не network-first: это мелкие
+ * лупующиеся анимации (обезьянка 2FA, конверт и т.п.), которые ПОВТОРНО
+ * показываются в рамках одного сценария — network-first дёргал бы сеть на
+ * каждый показ, ровно то, от чего предостерегает комментарий в
+ * nginx/nginx.conf:163-171 («не долбить сеть на каждый показ обезьянки»).
+ * Поэтому отдаём то, что уже в кэше, СРАЗУ (быстрый повторный показ), а
+ * свежую версию тянем в кэш фоном — она попадёт под раздачу уже на
+ * СЛЕДУЮЩИЙ показ, что и есть смысл must-revalidate из nginx.conf (не «раз
+ * и навсегда», а «проверяем и подтягиваем, не блокируя текущий кадр»).
+ * Если кэша ещё нет (самый первый визит) — ждём сеть, как handleImmutable. */
+async function handleTgs(req) {
+  const cache = await caches.open(APP_SHELL)
+  const hit = await cache.match(req)
+  const revalidate = fetch(req)
+    .then((res) => {
+      if (res.status === 200) cache.put(req, res.clone()).catch(() => {}) // quota — не мешаем
+      return res
+    })
+    .catch(() => null) // офлайн/сеть недоступна — фоновая ревалидация просто не удалась
+  if (hit) return hit
+  return (await revalidate) || Response.error()
 }
 
 // Хеш-имена уникальны, ревалидация не нужна — но старые чанки после деплоев

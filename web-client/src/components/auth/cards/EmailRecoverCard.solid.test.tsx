@@ -14,11 +14,28 @@
  * а не какое-то производное значение, обратно на `password`. Мутация,
  * вернувшая Cancel к `navigate({name:'password'})` без payload — или вообще к
  * модульной переменной, — обязана красить второй тест ниже.
+ *
+ * Шапка карточки (`MediaHeader.Sticker name="Mailbox"`) с Этапа 2 плана «один
+ * движок lottie» рисует `LottieAnimation`/tlottie — `lottie-web` в дереве
+ * больше нет вовсе (пакет и его глобальный мок в `test/setup.ts` снесены
+ * Этапом 4) — мокаем `@lib/lottie/lottieLoader` целиком, тот же приём, что
+ * `PasswordMonkey.test.tsx`/`TrackingMonkey.solid.test.tsx` (Этап 1): без
+ * этого мока карточка дошла бы до настоящего `loadAnimationAsAsset`
+ * (WASM-воркер, реальный `fetch`), который тестам не нужен и не гарантирован
+ * под happy-dom.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'solid-js/web'
 import type { Managers } from '@/client/bootstrap'
 import { AuthFlowContext, type AuthFlowContextValue } from '../authFlow.solid'
+
+const { loadAnimationAsAsset } = vi.hoisted(() => ({
+  loadAnimationAsAsset: vi.fn(() => new Promise(() => {})),
+}))
+vi.mock('@lib/lottie/lottieLoader', () => ({
+  default: { loadAnimationAsAsset },
+}))
+
 import EmailRecoverCard from './EmailRecoverCard.solid'
 
 vi.mock('@components/dotRenderer', () => ({ default: { attachBluffTextSpoilerTarget: vi.fn() } }))

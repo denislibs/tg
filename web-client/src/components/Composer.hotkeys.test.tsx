@@ -5,10 +5,6 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import type { VoiceRecorder } from '../core/hooks/useVoiceRecorder'
 
-// Композер тянет StickerMedia → lottie-web, который при импорте лезет в canvas
-// (в happy-dom его нет) — мокаем, как в StickerMedia.test.
-vi.mock('lottie-web', () => ({ default: { loadAnimation: vi.fn() } }))
-
 // applyMarkup замокан — проверяем, что Ctrl+K зовёт его с конструктором messageEntityTextUrl.
 vi.mock('../core/richtext/markdown', async (orig) => {
   const actual = await orig<typeof import('../core/richtext/markdown')>()

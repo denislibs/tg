@@ -1,43 +1,81 @@
-// PasswordMonkey — обезьянка на экранах пароля (порт tweb
-// `components/monkeys/password.ts`): одна lottie TwoFactorSetupMonkeyPeek в
-// контейнере `div.media-sticker-wrapper`, канва — `canvas.lottie` с атрибутами
-// size × devicePixelRatio. Закрывает глаза лапами; когда пароль показан
-// «глазком» — подглядывает (кадры 0→16, обратно 16→0, как в tweb).
+// PasswordMonkey — обезьянка на экранах пароля. Порт tweb
+// `components/monkeys/password.ts` (62 строки, целиком, дословно — оригинал
+// уже написан под tlottie): одна анимация `TwoFactorSetupMonkeyPeek` в
+// `container` (`div.media-sticker-wrapper`), tlottie сама кладёт canvas
+// внутрь него (`LottiePlayer.canvas[0]`) — отдельного host-`div` нет, как и
+// в оригинале (это было отступление версии на `lottie-web`). Закрывает глаза
+// лапами; когда пароль показан «глазком» — подглядывает.
+//
+// Кадр 0→16 (открыть)/16→0 (закрыть) — ручной подсчёт через `enterFrame`+
+// `needFrame`, как в оригинале (:29-51), а НЕ `playSegments`/`playPart`:
+// `LottiePlayer` даёт готовые `playPart`/`playToFrame`
+// (tweb `lottiePlayer.ts:1068-1119`), но `password.ts` ими не пользуется —
+// задаёт `direction`/`curFrame`/`needFrame` вручную и зовёт `play()`, а
+// `enterFrame`-листенер сам останавливает подыгрывание на цели. Порт
+// повторяет ровно это, а не сокращает до `playSegments` (было отступлением
+// версии на `lottie-web`, у которой не было ручного `needFrame`).
 import { useEffect, useRef } from 'react'
-import { type AnimationItem } from 'lottie-web'
-import { loadLottie } from './lottie'
+import lottieLoader from '@lib/lottie/lottieLoader'
+import type LottiePlayer from '@lib/lottie/lottiePlayer'
 
 const PEEK_FRAME = 16 // tweb PasswordMonkey: сегмент [0..16] — раскрыть глаза
 
 export default function PasswordMonkey({ peeking, size = 130 }: { peeking: boolean; size?: number }) {
   const wrapRef = useRef<HTMLDivElement>(null)
-  const animRef = useRef<AnimationItem | null>(null)
+  const animRef = useRef<LottiePlayer | null>(null)
+  const needFrameRef = useRef(0)
 
   useEffect(() => {
     let alive = true
     const container = wrapRef.current
     if (!container) return
-    void Promise.all([loadLottie(), import('../assets/tgs/TwoFactorSetupMonkeyPeek.json')]).then(
-      ([lottie, mod]) => {
-        if (!alive) return
-        const anim = lottie.loadAnimation({
-          container,
-          renderer: 'canvas',
-          loop: false,
-          autoplay: false,
-          animationData: mod.default as unknown,
-          rendererSettings: { className: 'lottie', dpr: window.devicePixelRatio || 1 },
+
+    // Деградация без WASM SIMD (решение плана «один движок lottie»,
+    // docs/superpowers/plans/2026-09-05-lottie-single-engine.md, раздел
+    // «Решение по деградации без WASM SIMD»): `loadAnimationAsAsset` бросает
+    // `NO_WASM` (`lib/lottie/lottieLoader.ts:216`), канва в DOM не появляется
+    // (`lib/lottie/lottiePlayer.ts:1207`) — обезьянка просто не показывается,
+    // как в оригинале. Долг на случай, если такой хвост браузеров окажется
+    // важен: `web-client/backlogs/frontend/lottie-no-wasm-fallback.md`.
+    const load = lottieLoader
+      .loadAnimationAsAsset(
+        { container, loop: false, autoplay: false, width: size, height: size, noCache: true },
+        'TwoFactorSetupMonkeyPeek',
+      )
+      .then((animation) => {
+        if (!alive) {
+          animation.remove()
+          return
+        }
+        animRef.current = animation
+
+        // tweb :29-36 — останавливаем подыгрывание, когда добрались до цели
+        // (`needFrame`); `direction`/`curFrame` читаются с самого плеера, как
+        // в оригинале (`this.animation.direction`).
+        animation.addEventListener('enterFrame', (currentFrame: number) => {
+          const needFrame = needFrameRef.current
+          if (
+            (animation.direction === 1 && currentFrame >= needFrame) ||
+            (animation.direction === -1 && currentFrame <= needFrame)
+          ) {
+            animation.setSpeed(1)
+            animation.pause()
+          }
         })
-        anim.goToAndStop(0, true)
-        animRef.current = anim
-      },
-    )
+
+        return lottieLoader.waitForFirstFrame(animation)
+      })
+
+    // Реджект (NO_WASM/сеть) гасим ЗДЕСЬ, в одном месте — приём
+    // `StickerMedia.tsx:282`, а не россыпью `.catch(() => {})`.
+    void load.catch(() => {})
+
     return () => {
       alive = false
-      animRef.current?.destroy()
+      animRef.current?.remove()
       animRef.current = null
     }
-  }, [])
+  }, [size])
 
   const first = useRef(true)
   useEffect(() => {
@@ -45,12 +83,26 @@ export default function PasswordMonkey({ peeking, size = 130 }: { peeking: boole
     if (!anim) return
     if (first.current && !peeking) return // стартовое состояние — глаза закрыты
     first.current = false
-    anim.playSegments(peeking ? [0, PEEK_FRAME] : [PEEK_FRAME, 0], true)
+
+    // tweb :39-51 — ручной перевод: направление + стартовый кадр + цель, сам
+    // `play()` двигает плеер, а `enterFrame`-листенер выше тормозит на цели.
+    if (peeking) {
+      anim.setDirection(1)
+      anim.curFrame = 0
+      needFrameRef.current = PEEK_FRAME
+    } else {
+      anim.setDirection(-1)
+      anim.curFrame = PEEK_FRAME
+      needFrameRef.current = 0
+    }
+    anim.play()
   }, [peeking])
 
-  // Размер задаём явно: lottie-web считает атрибуты канвы от offsetWidth хоста,
-  // а хост внутри flex-центрированного `._sticker` иначе схлопнулся бы в ноль.
-  // отступление от tweb: `margin: 0 auto` — обезьянку зовут ещё два экрана
+  // width/height контейнера — раскладка ДО первого кадра (canvas ложится в
+  // DOM только когда анимация реально прогрузилась, `lottiePlayer.ts:1207`);
+  // сам размер канвы задаётся явно в `loadAnimationAsAsset` (width/height:
+  // size), а не читается с контейнера.
+  // Отступление от tweb: `margin: 0 auto` — обезьянку зовут ещё два экрана
   // (пасскод, 2FA в настройках), где центрировать её больше некому.
   return (
     <div

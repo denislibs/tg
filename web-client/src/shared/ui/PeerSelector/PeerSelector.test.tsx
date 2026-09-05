@@ -15,10 +15,11 @@ import PeerSelector, { type SelectorPeer } from './PeerSelector'
 import { ManagersProvider } from '../../../core/hooks/useManagers'
 import type { Managers } from '../../../client/bootstrap'
 
-// Уточка пустого состояния — рантайм lottie-web, который в happy-dom валится на
-// собственном модульном инициализаторе (canvas без контекста). Проверяем мы
-// ОБЁРТКУ (`.media-sticker-wrapper.selector-empty-placeholder-sticker`), её
-// рендерит сам селектор, поэтому плеер здесь лишний.
+// Уточка пустого состояния — рантайм tlottie (`LottieSticker.tsx`, Этап 2
+// плана «один движок lottie»): реальный плеер тянет WASM-воркер и canvas,
+// которых под happy-dom нет. Проверяем мы ОБЁРТКУ
+// (`.media-sticker-wrapper.selector-empty-placeholder-sticker`), её рендерит
+// сам селектор, поэтому плеер здесь лишний.
 vi.mock('../../../components/LottieSticker', () => ({ default: () => null }))
 
 // Аватарка ряда идёт в зеркало медиа-URL через `UserAvatar` → `useMediaUrl`;

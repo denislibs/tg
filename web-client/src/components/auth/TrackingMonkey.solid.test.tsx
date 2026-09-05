@@ -8,17 +8,27 @@
  * от реактивных пропов до `playAnimation`, уничтожение анимаций на
  * размонтировании (включая гонку «ассет догрузился после cleanup»).
  *
- * `lottie-web` замокан ГЛОБАЛЬНО в `src/test/setup.ts` (один и тот же мок на
- * весь прогон, см. `src/test/setup.test.ts`) — здесь он не заводится заново,
- * а переопределяется точечно через `vi.mocked(lottie.loadAnimation)`, чтобы
- * различать idle- и tracking-инстансы по узлу-контейнеру (у обеих канв свой
- * host-`div`, см. докблок компонента про отступление от tweb).
+ * Движок — tlottie (`@lib/lottie/lottieLoader`): мокаем модуль целиком (тот
+ * же приём, что `wrappers/sticker.test.ts` — `loadAnimationWorker` там,
+ * `loadAnimationAsAsset` здесь). `lottie-web` и его глобальный мок в
+ * `test/setup.ts` больше не существуют вовсе (пакет снесён Этапом 4).
+ * Обе анимации теперь делят ОДИН контейнер (см. докблок компонента про
+ * отказ от host-`div` на канву), поэтому идле/tracking-инстансы различаем по
+ * ИМЕНИ ассета, вторым аргументом `loadAnimationAsAsset`, а не по узлу.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'solid-js/web'
 import { createSignal } from 'solid-js'
-import lottie from 'lottie-web'
-import type { AnimationItem } from 'lottie-web'
+import type { LottieAssetName } from '@lib/lottie/lottieLoader'
+
+const { loadAnimationAsAsset, waitForFirstFrame } = vi.hoisted(() => ({
+  loadAnimationAsAsset: vi.fn(),
+  waitForFirstFrame: vi.fn((player: unknown) => Promise.resolve(player)),
+}))
+vi.mock('@lib/lottie/lottieLoader', () => ({
+  default: { loadAnimationAsAsset, waitForFirstFrame },
+}))
+
 import TrackingMonkey, {
   computeTrackingFrame,
   computeTrackingStep,
@@ -98,28 +108,33 @@ function unmount() {
 
 afterEach(() => {
   unmount()
-  vi.mocked(lottie.loadAnimation).mockReset()
+  loadAnimationAsAsset.mockReset()
+  waitForFirstFrame.mockClear()
 })
 
-function makeFakeAnim() {
-  return {
+function makeFakePlayer() {
+  const player = {
+    canvas: [document.createElement('canvas')] as HTMLCanvasElement[],
+    direction: 1,
     play: vi.fn(),
     pause: vi.fn(),
     stop: vi.fn(),
-    destroy: vi.fn(),
     setSpeed: vi.fn(),
-    setDirection: vi.fn(),
+    setDirection: vi.fn((d: number) => {
+      player.direction = d
+    }),
     addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
+    remove: vi.fn(),
   }
+  return player
 }
 
-type FakeAnim = ReturnType<typeof makeFakeAnim>
+type FakePlayer = ReturnType<typeof makeFakePlayer>
 
-function getEnterFrameCallback(anim: FakeAnim): (e: { currentTime: number }) => void {
+function getEnterFrameCallback(anim: FakePlayer): (currentFrame: number) => void {
   const call = anim.addEventListener.mock.calls.find((c) => c[0] === 'enterFrame')
   if (!call) throw new Error('enterFrame listener не зарегистрирован')
-  return call[1] as (e: { currentTime: number }) => void
+  return call[1] as (currentFrame: number) => void
 }
 
 function mount(length = 5) {
@@ -136,8 +151,12 @@ function mount(length = 5) {
   host = document.createElement('div')
   document.body.append(host)
 
-  const idleAnim = makeFakeAnim()
-  const trackingAnim = makeFakeAnim()
+  const idleAnim = makeFakePlayer()
+  const trackingAnim = makeFakePlayer()
+
+  loadAnimationAsAsset.mockImplementation((_params: unknown, name: LottieAssetName) =>
+    Promise.resolve(name === 'TwoFactorSetupMonkeyIdle' ? idleAnim : trackingAnim),
+  )
 
   dispose = render(
     () => (
@@ -146,36 +165,38 @@ function mount(length = 5) {
     host,
   )
 
-  // Два host-div'а (idle/tracking) — тот же порядок, что в JSX компонента.
-  const hosts = host.querySelectorAll<HTMLDivElement>('.media-sticker-wrapper > div')
-  const idleHostEl = hosts[0]
-  const trackingHostEl = hosts[1]
+  // Единственный контейнер — сам `.media-sticker-wrapper` (обе анимации
+  // делят его, см. докблок компонента про отказ от host-`div` на канву).
+  const containerEl = host.querySelector<HTMLDivElement>('.media-sticker-wrapper')!
 
-  vi.mocked(lottie.loadAnimation).mockImplementation(
-    (opts) => (opts.container === idleHostEl ? idleAnim : trackingAnim) as unknown as AnimationItem,
-  )
-
-  return { setValue, setTypedValue, setFocused, idleHostEl, trackingHostEl, idleAnim, trackingAnim }
+  return { setValue, setTypedValue, setFocused, containerEl, idleAnim, trackingAnim }
 }
 
 async function mountAndLoad(length = 5) {
   const ctx = mount(length)
-  // Обе канвы грузятся асинхронно (`loadLottie()` + динамический `import()` json).
-  await vi.waitFor(() => expect(lottie.loadAnimation).toHaveBeenCalledTimes(2))
+  // Обе канвы грузятся асинхронно (`lottieLoader.loadAnimationAsAsset` ×2).
+  await vi.waitFor(() => expect(loadAnimationAsAsset).toHaveBeenCalledTimes(2))
   return ctx
 }
 
 describe('TrackingMonkey.solid: загрузка и начальное состояние', () => {
   it('на пустом значении поля tracking-канва скрыта загрузкой (tweb :129-131)', async () => {
-    const { trackingHostEl } = await mountAndLoad()
-    expect(trackingHostEl.style.display).toBe('none')
+    const { trackingAnim } = await mountAndLoad()
+    expect(trackingAnim.canvas[0].style.display).toBe('none')
+  })
+
+  it('обе загрузки идут в ОДИН и тот же контейнер (tweb :104/:121 — общий `this.container`)', async () => {
+    const { containerEl } = await mountAndLoad()
+    for (const call of loadAnimationAsAsset.mock.calls) {
+      expect((call[0] as { container: unknown }).container).toBe(containerEl)
+    }
   })
 })
 
-// ───────────────── проводка focus/blur/input → playAnimation (пин 5) ────────
+// ───────────────────── проводка focus/blur/input → playAnimation (пин 5) ────
 describe('TrackingMonkey.solid: проводка focus/blur/input', () => {
   it('focus доводит до playAnimation(1): direction 1, без разгона, tracking-канва показана', async () => {
-    const { setFocused, idleAnim, trackingAnim, idleHostEl, trackingHostEl } = await mountAndLoad()
+    const { setFocused, idleAnim, trackingAnim } = await mountAndLoad()
 
     setFocused(true)
     await vi.waitFor(() => expect(trackingAnim.play).toHaveBeenCalled())
@@ -183,9 +204,9 @@ describe('TrackingMonkey.solid: проводка focus/blur/input', () => {
     // computeTrackingFrame(1,45) = 15, needFrame стартовал с 0 → direction 1
     expect(trackingAnim.setDirection).toHaveBeenLastCalledWith(1)
     expect(trackingAnim.setSpeed).not.toHaveBeenCalled()
-    expect(idleAnim.stop).toHaveBeenCalled()
-    expect(idleHostEl.style.display).toBe('none')
-    expect(trackingHostEl.style.display).toBe('')
+    expect(idleAnim.stop).toHaveBeenCalledWith(true)
+    expect(idleAnim.canvas[0].style.display).toBe('none')
+    expect(trackingAnim.canvas[0].style.display).toBe('')
   })
 
   it('blur после focus доводит до playAnimation(0): direction -1 И разгон скорости до 7', async () => {
@@ -237,31 +258,31 @@ describe('TrackingMonkey.solid: проводка focus/blur/input', () => {
   })
 })
 
-// ───────────────── переключение канв idle↔tracking (пин 4) ──────────────────
+// ───────────────────── переключение канв idle↔tracking (пин 4) ──────────────
 describe('TrackingMonkey.solid: переключение канв idle↔tracking', () => {
   it('focus прячет idle и показывает tracking; blur готовит возврат (разгон), а САМ возврат — на нулевом кадре enterFrame', async () => {
-    const { setFocused, idleAnim, trackingAnim, idleHostEl, trackingHostEl } = await mountAndLoad()
+    const { setFocused, idleAnim, trackingAnim } = await mountAndLoad()
 
     setFocused(true)
-    await vi.waitFor(() => expect(trackingHostEl.style.display).toBe(''))
-    expect(idleHostEl.style.display).toBe('none')
+    await vi.waitFor(() => expect(trackingAnim.canvas[0].style.display).toBe(''))
+    expect(idleAnim.canvas[0].style.display).toBe('none')
 
     setFocused(false)
     await vi.waitFor(() => expect(trackingAnim.setSpeed).toHaveBeenCalledWith(7))
     // playAnimation(0) сам по себе канвы НЕ трогает (tweb: переключение видимости —
     // только в ветке `if(length)`) — возврат идёт через enterFrame на кадре 0.
-    expect(trackingHostEl.style.display).toBe('')
+    expect(trackingAnim.canvas[0].style.display).toBe('')
 
     const enterFrame = getEnterFrameCallback(trackingAnim)
-    enterFrame({ currentTime: 0 })
+    enterFrame(0)
 
-    expect(idleHostEl.style.display).toBe('')
+    expect(idleAnim.canvas[0].style.display).toBe('')
     expect(idleAnim.play).toHaveBeenCalled()
-    expect(trackingHostEl.style.display).toBe('none')
+    expect(trackingAnim.canvas[0].style.display).toBe('none')
   })
 
   it('возврат к idle на enterFrame НЕ срабатывает, если needFrame ещё не 0 (кадр 0 достигнут, но цель другая)', async () => {
-    const { setTypedValue, trackingAnim, idleHostEl } = await mountAndLoad()
+    const { setTypedValue, trackingAnim, idleAnim } = await mountAndLoad()
 
     setTypedValue('1')
     await vi.waitFor(() => expect(trackingAnim.play).toHaveBeenCalled())
@@ -269,9 +290,9 @@ describe('TrackingMonkey.solid: переключение канв idle↔trackin
     const enterFrame = getEnterFrameCallback(trackingAnim)
     // currentFrame случайно 0, но needFrame — не 0 (набор цифры, needFrame=77) —
     // условие `currentFrame===0 && needFrame===0` не выполняется.
-    enterFrame({ currentTime: 0 })
+    enterFrame(0)
 
-    expect(idleHostEl.style.display).not.toBe('')
+    expect(idleAnim.canvas[0].style.display).not.toBe('')
   })
 })
 
@@ -284,10 +305,10 @@ describe('TrackingMonkey.solid: пауза подыгрывания в enterFram
     await vi.waitFor(() => expect(trackingAnim.setDirection).toHaveBeenLastCalledWith(1))
     const enterFrame = getEnterFrameCallback(trackingAnim)
 
-    enterFrame({ currentTime: 10 }) // ещё не догнали needFrame(15)
+    enterFrame(10) // ещё не догнали needFrame(15)
     expect(trackingAnim.pause).not.toHaveBeenCalled()
 
-    enterFrame({ currentTime: 15 }) // догнали — пауза
+    enterFrame(15) // догнали — пауза
     expect(trackingAnim.pause).toHaveBeenCalled()
     expect(trackingAnim.setSpeed).toHaveBeenCalledWith(1)
 
@@ -295,10 +316,10 @@ describe('TrackingMonkey.solid: пауза подыгрывания в enterFram
     setFocused(false) // needFrame=0, direction=-1
     await vi.waitFor(() => expect(trackingAnim.setDirection).toHaveBeenLastCalledWith(-1))
 
-    enterFrame({ currentTime: 5 }) // ещё выше needFrame(0) — для direction -1 условие currentFrame<=needFrame не выполняется
+    enterFrame(5) // ещё выше needFrame(0) — для direction -1 условие currentFrame<=needFrame не выполняется
     expect(trackingAnim.pause).not.toHaveBeenCalled()
 
-    enterFrame({ currentTime: 0 }) // спустились до 0 — пауза
+    enterFrame(0) // спустились до 0 — пауза
     expect(trackingAnim.pause).toHaveBeenCalled()
   })
 })
@@ -310,18 +331,49 @@ describe('TrackingMonkey.solid: размонтирование', () => {
 
     unmount()
 
-    expect(idleAnim.destroy).toHaveBeenCalled()
-    expect(trackingAnim.destroy).toHaveBeenCalled()
+    expect(idleAnim.remove).toHaveBeenCalled()
+    expect(trackingAnim.remove).toHaveBeenCalled()
   })
 
   it('размонтирование ДО того как ассет догрузился — гонка не оставляет живой анимации', async () => {
-    mount()
-    unmount() // синхронно, раньше, чем резолвятся loadLottie()/import()
+    const idleAnim = makeFakePlayer()
+    const trackingAnim = makeFakePlayer()
+    // Промисы намеренно НЕ резолвятся синхронно — резолвим их уже ПОСЛЕ unmount(),
+    // чтобы поймать именно гонку «ассет догрузился после cleanup». Рендерим
+    // НАПРЯМУЮ (не через общий `mount()`, который сам перезаписывает
+    // `loadAnimationAsAsset.mockImplementation` резолвящимся моком).
+    let resolveIdle!: (p: FakePlayer) => void
+    let resolveTracking!: (p: FakePlayer) => void
+    loadAnimationAsAsset.mockImplementation((_params: unknown, name: LottieAssetName) =>
+      new Promise((resolve) => {
+        if (name === 'TwoFactorSetupMonkeyIdle') resolveIdle = resolve
+        else resolveTracking = resolve
+      }),
+    )
 
-    // Даём реальным динамическим импортам время долететь: если бы `alive`-гейт
-    // не работал, loadAnimation позвали бы уже после cleanup.
-    await new Promise((r) => setTimeout(r, 50))
+    host = document.createElement('div')
+    document.body.append(host)
+    dispose = render(
+      () => (
+        <TrackingMonkey
+          size={130}
+          length={5}
+          value={() => ''}
+          typedValue={() => ''}
+          focused={() => false}
+        />
+      ),
+      host,
+    )
+    unmount() // синхронно, раньше, чем резолвятся промисы загрузки
 
-    expect(lottie.loadAnimation).not.toHaveBeenCalled()
+    resolveIdle(idleAnim)
+    resolveTracking(trackingAnim)
+    await new Promise((r) => setTimeout(r, 0))
+
+    // `alive`-гейт: анимация, догрузившаяся уже после cleanup, немедленно снимается.
+    expect(idleAnim.remove).toHaveBeenCalled()
+    expect(trackingAnim.remove).toHaveBeenCalled()
+    expect(idleAnim.play).not.toHaveBeenCalled()
   })
 })
