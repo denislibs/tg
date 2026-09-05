@@ -14,7 +14,10 @@
 //       (:574-589) и снимается после проявления (:598-602);
 //   (7) `readyThumbPromise` разрешается ВСЕГДА — включая «фотографии нет» и сбой
 //       загрузки (:609-618): его ждёт серия баблов, и висящий промис подвесил бы
-//       открытие чата.
+//       открытие чата;
+//   (8) `size: 'full'` (задача 7) даёт класс `avatar-full`, а не `avatar-{N}`
+//       (tweb :417, :1073) и `noFadeIn: true` (:409, :549) гасит `fade-in` у
+//       большой фотографии даже когда лайт-режим разрешает анимации.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getMiddleware } from '@helpers/middleware'
 import liteMode from '@helpers/liteMode'
@@ -72,9 +75,15 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-const make = (options: { peerId?: PeerId, peerTitle?: string, size?: number } = {}) =>
+const make = (options: {
+  peerId?: PeerId
+  peerTitle?: string
+  size?: number | 'full'
+  noFadeIn?: boolean
+} = {}) =>
   avatarNew({
     size: options.size ?? 40,
+    noFadeIn: options.noFadeIn,
     peerId: options.peerId,
     peerTitle: options.peerTitle,
     middleware: middlewareHelper.get(),
@@ -98,6 +107,14 @@ describe('avatarNew — разметка узла', () => {
       'avatar', 'avatar-like', 'avatar-40', 'avatar-gradient',
     ])
     expect(node.dataset.peerId).toBe('' + ALICE)
+  })
+
+  it('size: \'full\' даёт класс avatar-full, а не avatar-{число} (задача 7, tweb :417/:1073)', () => {
+    const { node } = make({ peerId: ALICE, size: 'full' })
+
+    expect(node.className.split(' ').slice(0, 4)).toEqual([
+      'avatar', 'avatar-like', 'avatar-full', 'avatar-gradient',
+    ])
   })
 })
 
@@ -255,6 +272,20 @@ describe('avatarNew — фотография', () => {
     expect(image).not.toBeNull()
     expect((image as HTMLImageElement).classList.contains('fade-in')).toBe(false)
     expect(node.querySelector('img.avatar-photo-thumbnail')).toBeNull()
+  })
+
+  it('noFadeIn: true гасит fade-in даже когда лайт-режим разрешает анимации (tweb :409, :549 — задача 7)', async () => {
+    // Без stripped-подложки — иначе `img.avatar-photo` матчит ЕЁ (тот же
+    // класс, `avatar.ts::putAvatar`), а не полную фотографию, и тест был бы
+    // слеп к мутации, убирающей `noFadeIn` из вычисления `animate`.
+    withPhoto()
+
+    const { node, readyThumbPromise } = make({ peerId: ALICE, noFadeIn: true })
+    await readyThumbPromise
+
+    const image = node.querySelector('img.avatar-photo')
+    expect(image).not.toBeNull()
+    expect((image as HTMLImageElement).classList.contains('fade-in')).toBe(false)
   })
 
   it('сбой загрузки не подвешивает серию: остаёмся на инициалах, промис разрешается', async () => {

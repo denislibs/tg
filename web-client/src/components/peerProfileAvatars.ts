@@ -21,8 +21,12 @@
 // (host: чужой ref, `strays` чистит `instance.container` на teardown) плюс
 // реальный `useCollapsable()` — эффект `folded → setCollapsed(folded)` (с
 // гейтом «нет фото → держать свёрнутым», см. геттер `hasPhoto` ниже) живёт
-// снаружи, в панели. Задача 6 (последняя, не код) — долги/документация/живая
-// проверка на стенде, список «что не портировано» ниже её не меняет.
+// снаружи, в панели. Задача 6 (последняя из плана, не код) — долги/
+// документация/живая проверка на стенде. Задача 7 (добавлена ПОСЛЕ живой
+// проверки, живьём «minor»-долг оказался видимой поломкой шапки) закрыла один
+// из долгов, найденных задачей 6: первый элемент ленты рисует `avatarNew` c
+// `size: 'full'` (было `120` — квадрат 360×360 показывал фото 120×120 по
+// центру), см. `processItem` ниже.
 //
 // ─── Осознанное отступление: кто владеет useCollapsable (задача 4) ─────────
 // В tweb хук — на Solid и создаётся ПРЯМО В КОНСТРУКТОРЕ через `createRoot`
@@ -116,10 +120,7 @@
 //    группы/канала (ручки нет вовсе, tweb :443-499) — показываем только
 //    текущее фото, долг `web-client/backlogs/frontend/
 //    profile-chat-photo-history.md`; видео-аватар в галерее (провод теряет
-//    `videoMediaId`, см. комментарий у ветки в `processItem`); первый элемент
-//    ленты рисуется размером 120 вместо `avatar-full` (наш `avatarNew` не
-//    принимает `size:'full'`), долг `web-client/backlogs/frontend/
-//    profile-avatars-full-size.md`; пагинация — `loadMore` отдаёт одну
+//    `videoMediaId`, см. комментарий у ветки в `processItem`); пагинация — `loadMore` отдаёт одну
 //    страницу (ручка не постраничная).
 //  • Задача 3 (жесты, tweb :127-298):
 //    — `uploadInProgress`/`fakeAvatar`/`has-stories` (:160-179, :271-274)
@@ -852,15 +853,22 @@ export default class PeerProfileAvatars {
     const loadCallback = async () => {
       try {
         if (isFirst || !photo) {
-          // tweb :822-841 — size:'full' (масштабируется под .profile-avatars-
-          // avatar через CSS-класс `avatar-full`, `_avatar.scss:447`). Наш
-          // avatarNew принимает только фиксированное число размера (его же
-          // докблок: «size:'full' — вызывающих нет»); 120 — визуальный
-          // компромисс, расхождение и критерий закрытия —
-          // web-client/backlogs/frontend/profile-avatars-full-size.md.
+          // tweb :824-833 (внутри `processItem` :807-865, не топик-ветка,
+          // `isTopic` у нас недостижима — см. докблок `setPeer` ниже): size:
+          // 'full' — масштабируется под `.profile-avatars-avatar` через
+          // CSS-класс `avatar-full` (`_avatar.scss:447`), а не фиксированный
+          // кружок. Задача 7 расширила `avatarNew` до `size: 'full'` (был
+          // компромисс `120` — долг `profile-avatars-full-size.md` закрыт).
+          // `noFadeIn: true` — тот же приём, что у оригинала: заменяем
+          // маленький кэшированный кружок на большую фотографию БЕЗ проявления,
+          // иначе сквозь fade-in на миг просвечивает цветная подложка.
+          // `isBig: true` не портирован НАМЕРЕННО — у нас нет пары
+          // `photo_big`/`photo_small` (`components/avatar.ts::putAvatar`
+          // докблок: «isBig не портирован вместе с профилем»), эквивалента нет.
           const avatarElem = avatarNew({
             peerId,
-            size: 120,
+            size: 'full',
+            noFadeIn: true,
             middleware,
             managers: this.managers,
           })

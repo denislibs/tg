@@ -417,6 +417,26 @@ describe('PeerProfileAvatars.setPeer() — лента данных (задача
     })
     expect(avatarsEl.children[0].classList.contains('active')).toBe(true)
     expect(tabsEl.children[0].classList.contains('active')).toBe(true)
+
+    // Задача 7 (баг со стенда: развёрнутая шапка — фото 120×120 в пустом
+    // квадрате 360×360). Элемент #0 — мирроr пира через avatarNew, tweb
+    // :824-833: класс должен быть `avatar-full` (растягивается на весь
+    // `.profile-avatars-avatar`, `_avatar.scss:447`), а НЕ фиксированный
+    // `avatar-120`. Мутация «вернуть size: 120» в processItem красит именно
+    // эту строку.
+    const firstAvatar = avatarsEl.children[0].querySelector('.avatar-like') as HTMLElement
+    expect(firstAvatar.classList.contains('avatar-full')).toBe(true)
+    expect(firstAvatar.classList.contains('avatar-120')).toBe(false)
+
+    // Остальные элементы ленты — КОНКРЕТНЫЕ исторические фотографии: узел
+    // строится напрямую (`<img class="avatar-photo">`, а не avatarNew —
+    // см. докблок processItem), поэтому у них нет ни `.avatar-like`, ни
+    // `avatar-full`/`avatar-120` вовсе — «полноразмерность» им проставляет
+    // не avatarNew, а `_profile.scss` (`.avatar-photo{width:100%!important}`).
+    expect(avatarsEl.children[1].querySelector('.avatar-like')).toBeNull()
+    expect(avatarsEl.children[2].querySelector('.avatar-like')).toBeNull()
+    expect(avatarsEl.children[1].querySelector('img.avatar-photo')).not.toBeNull()
+    expect(avatarsEl.children[2].querySelector('img.avatar-photo')).not.toBeNull()
   })
 
   it('setPeer() резолвится, НЕ дожидаясь байтов фото #1 (round 1 ревью: void listLoader.load(true))', async () => {
@@ -524,6 +544,8 @@ describe('PeerProfileAvatars.setPeer() — лента данных (задача
     const avatarNode = avatarsEl.children[0].querySelector('.avatar-like') as HTMLElement
     expect(avatarNode).toBeTruthy()
     expect(avatarNode.dataset.peerId).toBe(String(CHANNEL))
+    // Задача 7 — та же isFirst-ветка processItem, что и у обычного пользователя.
+    expect(avatarNode.classList.contains('avatar-full')).toBe(true)
   })
 
   it('ответ на ПРОТУХШИЙ peerId игнорируется — гонка «переключили пира, пока грузилось»', async () => {
@@ -606,6 +628,8 @@ describe('PeerProfileAvatars.setPeer() — лента данных (задача
     const avatarNode = node.querySelector('.avatar-like') as HTMLElement
     expect(avatarNode).toBeTruthy()
     expect(avatarNode.dataset.peerId).toBe(String(ALICE))
+    // Задача 7 — SHOW_NO_AVATAR тоже идёт через isFirst-ветку processItem.
+    expect(avatarNode.classList.contains('avatar-full')).toBe(true)
   })
 
   it('видео-аватар (videoMediaId) — <video class="avatar-photo avatar-video">, комментарий у ветки объясняет недостижимость на проводе', async () => {
