@@ -7,7 +7,10 @@ plans/2026-09-05-profile-avatars-class.md`, задача 2 (данные и ле
 `PeerProfileAvatars`), ревью задачи 6 — 2026-09-05.
 **Контекст:** `components/peerProfileAvatars.ts::setPeer` — ветка
 `isUser(peerId)`, сборка `ListLoader`. Полей `fallbackPhotoId`/
-`fallbackAppended` у класса нет вовсе.
+`fallbackAppended` у класса нет вовсе. Якорь в коде (находка финального
+ревью ветки, Minor, п.8 — файл раньше не имел адреса): комментарий сразу
+после фетча `items` через `managers.profile.listPhotos(...)`, там же, где
+tweb резолвит `fallbackPhotoId` (:422-431).
 
 ## Что в tweb
 

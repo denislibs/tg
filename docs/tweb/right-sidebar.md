@@ -872,18 +872,25 @@ chat.finishPeerChange → fillProfileElements() (готовит коммит) �
 
 ## 1. Компоненты правой колонки
 
-### 1.1 Корень — `src/components/UserInfoPanel.tsx` (781 строка)
+### 1.1 Корень — `src/components/UserInfoPanel.tsx` (818 строк)
 
 Один компонент на все типы пира: `private / group / channel / saved / secret` (`chat.type`).
 
 **Карусель аватаров с 2026-09-05 (`docs/superpowers/plans/
 2026-09-05-profile-avatars-class.md`) больше не инлайновый JSX этого файла** —
 DOM/лента/жесты/сворачивание живут в отдельном классе
-`src/components/peerProfileAvatars.ts` (порт tweb `PeerProfileAvatars`,
-разбор — § 3.3 ниже), панель лишь монтирует его через `useImperativeIsland`
+`src/components/peerProfileAvatars.ts` (порт tweb `PeerProfileAvatars`).
+Разбор ОРИГИНАЛА tweb — § 3.3 ВЫШЕ (не ниже — она стоит раньше по документу,
+до этого раздела); НАЙДЕНО ФИНАЛЬНЫМ РЕВЬЮ ВЕТКИ (Minor, п.7): её адреса —
+это адреса tweb-исходника, а не нашего порта, и часть строк таблицы § 3.3
+описывает то, чего у нашего класса НЕТ вовсе («Fallback-фото», «Тема
+профиля», «Загрузка аватара», узел `.profile-avatars-avatar-fake`, канвас
+`canvas.profile-avatars-pattern`) — что из этого реально отсутствует и
+почему, см. § 7 п.11 ниже. Панель лишь монтирует класс через `useImperativeIsland`
 (строка «Шапка-аватары» в таблице). Файл при этом почти не похудел (было
-826 строк ДО сноса самодельной карусели/сворачивания, 776 в предыдущей
-редакции этого документа, сейчас 781) — снесённый инлайновый код (карусель,
+826 строк ДО сноса самодельной карусели/сворачивания, 776 в редакции задачи
+5, 781 в редакции задачи 6/7, сейчас 818 — находка финального ревью ветки,
+п.1, добавила эффект сброса свёрнутости на смену пира) — снесённый инлайновый код (карусель,
 `AvatarVideo`, `onBodyWheel`, `core/photoPager.ts`) по объёму примерно равен
 докблокам, которые обязательны у каждой строки проводки этого шва (мандат
 «ссылка `file:line` на оригинал у каждого портированного поведения», корень
@@ -892,23 +899,23 @@ CLAUDE.md/`web-client/CLAUDE.md`) — счёт строк тут плохой п
 
 | Блок | Строки |
 |---|---|
-| Портал + `#column-right`, `inert={!open}` | 365-370, 778-780 |
+| Портал + `#column-right`, `inert={!open}` | 402-407, 815-817 |
 | Ресайз колонки (`installColumnResize({side:'right'})`) | 61-70 |
 | `useNavLayer(open, onClose)` — Back закрывает панель | 52 |
-| Вкладка-слайдер `.sidebar-content.sidebar-slider.tabs-container` | 382 |
-| Вкладка профиля `.tabs-tab…shared-media-container.profile-container` + состояния `is-collapsed / header-filled / need-white / can-add-members` | 383-386 |
-| Шапка `.sidebar-header` + `animated-close-icon[.state-back]` + `.transition.slide-fade` (заголовок ⇄ «имя + счётчик») | 391-432 |
-| Тело `.sidebar-content > .scrollable.scrollable-y > .profile-content` | 437-439 |
-| Шапка-аватары — остров класса `PeerProfileAvatars` (`useImperativeIsland`, host: `avatarsHostRef`); сам DOM/лента/жесты/`is-collapsed`/`need-white`/`header-filled`(своя половина) — в классе, НЕ здесь (§ 3.3); эта панель владеет только контентом `.profile-avatars-info` (имя/бейджи/статус, React-портал) и реальным `useCollapsable()` | 200-306, 438-482 |
-| Info-card (`SidebarSection` + `Row`): канал — Info/Link; группа — Link+QR; юзер — Phone/Username/Bio/Birthday; всем — Notifications; секрет — Encryption Key | 484-594 |
-| `PinnedStoriesSection` (истории профиля) | 597 |
-| Statistics (канал, `canViewStats`) | 600-608 |
-| Discussion (канал, `canManageDiscussion`) | 613-634 |
-| Join requests (approve/decline) | 637-668 |
-| `<div className="search-super"><SharedMedia …/></div>` | 676-694 |
-| FAB `.btn-circle.btn-corner` «добавить участников» | 734-738 |
-| Подэкраны-оверлеи: `GroupEditFlow`, `AddMembersScreen`, `ChannelStats`, `RightsEditor` | 743-776 |
-| Попапы: `GiftInfoPopup`, `KeyVerificationPopup`, `QrModal` | 697-726 |
+| Вкладка-слайдер `.sidebar-content.sidebar-slider.tabs-container` | 419 |
+| Вкладка профиля `.tabs-tab…shared-media-container.profile-container` + состояния `is-collapsed / header-filled / need-white / can-add-members` | 420-423 |
+| Шапка `.sidebar-header` + `animated-close-icon[.state-back]` + `.transition.slide-fade` (заголовок ⇄ «имя + счётчик») | 428-469 |
+| Тело `.sidebar-content > .scrollable.scrollable-y > .profile-content` | 474-476 |
+| Шапка-аватары — остров класса `PeerProfileAvatars` (`useImperativeIsland`, host: `avatarsHostRef`); сам DOM/лента/жесты/`is-collapsed`/`need-white`/`header-filled`(своя половина) — в классе, НЕ здесь (§ 3.3); эта панель владеет только контентом `.profile-avatars-info` (имя/бейджи/статус, React-портал) и реальным `useCollapsable()` | 199-333, 476-518 |
+| Info-card (`SidebarSection` + `Row`): канал — Info/Link; группа — Link+QR; юзер — Phone/Username/Bio/Birthday; всем — Notifications; секрет — Encryption Key | 521-631 |
+| `PinnedStoriesSection` (истории профиля) | 634 |
+| Statistics (канал, `canViewStats`) | 637-645 |
+| Discussion (канал, `canManageDiscussion`) | 650-671 |
+| Join requests (approve/decline) | 674-705 |
+| `<div className="search-super"><SharedMedia …/></div>` | 713-731 |
+| FAB `.btn-circle.btn-corner` «добавить участников» | 771-775 |
+| Подэкраны-оверлеи: `GroupEditFlow`, `AddMembersScreen`, `ChannelStats`, `RightsEditor` | 780-813 |
+| Попапы: `GiftInfoPopup`, `KeyVerificationPopup`, `QrModal` | 734-763 |
 
 Монтирование: `src/components/Chat.tsx:101` (`lazy`), `:332-337` (`infoOpen`/`infoMounted` — после первого открытия панель НЕ размонтируется), `:1584-1596`, тумблер `:1005`, клик по шапке чата `:1326`.
 
@@ -926,7 +933,7 @@ CLAUDE.md/`web-client/CLAUDE.md`) — счёт строк тут плохой п
 
 ### 1.4 Хелперы/хуки
 
-`src/components/userInfo/helpers.ts` (склонения, `HEADER_H=56`, `ADDITIONAL_OFFSET=16`, `BODY_PADDING=16`, `TAB_GAP=8`, `sharedMediaChatId`), `src/core/format/sharedMediaFmt.ts` (ext/цвета/размер/длительность/host), `core/hooks/useGroupInfo.ts` (252), `core/hooks/useUserProfileData.ts` (108), `useMuteToggle.ts`, `useChannelStats.ts`, `usePinnedStories.ts`, `useTransitionSlider.ts`, `useRightColumnShown.ts`, `core/dom/installColumnResize.ts`.
+`src/components/userInfo/helpers.ts` (склонения, `HEADER_H=56`, `ADDITIONAL_OFFSET=16`, `BODY_PADDING=16`, `TAB_GAP=8`, `sharedMediaChatId`), `src/core/format/sharedMediaFmt.ts` (ext/цвета/размер/длительность/host), `core/hooks/useGroupInfo.ts` (252), `core/hooks/useUserProfileData.ts` (58), `useMuteToggle.ts`, `useChannelStats.ts`, `usePinnedStories.ts`, `useTransitionSlider.ts`, `useRightColumnShown.ts`, `core/dom/installColumnResize.ts`.
 
 ## 2. Табы контента
 
@@ -1021,10 +1028,18 @@ TAB_FILTER  = Media→media, Files→files, Links→links, Music→music, Voice�
   сама во время скролла, и колесом вернуть было нельзя (`useCollapsable.
   onMove` гасит смену, пока `scrollTop>0`). Правило проекта — «узлом
   владеет тот, кто решает, когда узел меняется» — свело оба источника
-  правды к ОДНОМУ механизму: и класс, и панель пишут `classList.toggle`
-  императивно (`UserInfoPanel.tsx:283-306`), JSX (`:385`) держит только
-  статическую часть строки, которую React больше никогда не трогает после
-  первого рендера.
+  правды к ОДНОМУ механизму: класс пишет свою половину изнутри себя
+  (`peerProfileAvatars.ts::setCollapsed`/`updateHeaderFilled`), панель — свою
+  ДВУМЯ эффектами `classList.toggle` (`UserInfoPanel.tsx:339-343` —
+  `header-filled`, `:350-354` — `can-add-members`); JSX (`:422`) держит
+  только статическую часть строки, которую React больше никогда не трогает
+  после первого рендера. **НАЙДЕНО ФИНАЛЬНЫМ РЕВЬЮ ВЕТКИ (Minor, п.7),
+  протухшие числа:** прежняя редакция называла диапазон `283-306` «и класс,
+  и панель пишут classList» — тот диапазон это эффект `folded →
+  instance.setCollapsed(folded)` (`:283-296`, см. выше), который classList
+  узла НЕ пишет вовсе (пишет ЧЕРЕЗ вызов метода класса), а панельные
+  писатели `classList.toggle` (тогда — один-единственный, `header-filled`)
+  лежали ЗА пределами диапазона.
 - Свой `Scrollable`-инстанс здесь НЕ создаётся (по инварианту проекта единственный владелец — лента чата, `components/chat/bubbles.ts`); классы `scrollable scrollable-y` — визуальный слепок. Класс `PeerProfileAvatars` тоже не создаёт второй — читает `scrollableEl.scrollTop` напрямую (докблок класса, «Зависимости через конструктор»).
 
 ## 5. Стили
@@ -1102,7 +1117,7 @@ TAB_FILTER  = Media→media, Files→files, Links→links, Music→music, Voice�
    React-state этой панели.
 5. **`ChannelStats` и `RightsEditor` появляются без анимации** — комментарий `UserInfoPanel.tsx:736-737` («въезд справа играет CSS самого экрана») для них неверен: классов `.statistics-container` / `.user-permissions-container` в `styles/` нет вообще, а родительский `.tabs-container` без `data-animation`.
 6. **`RightsEditor` восстанавливает битовую маску эвристикой:** `RightsEditor.tsx:37-39` — если роль admin/creator, ставит **все** биты (реальные права участника с сервера не приходят). Сохранение перетрёт фактические права.
-7. **Ручные `alive`-флаги** вместо `@helpers/middleware`, что запрещено CLAUDE.md для нового кода: `useGroupInfo.ts:116,159,171`, `useUserProfileData.ts:28,76-104`, `usePinnedStories.ts:10`, `useChannelStats.ts:18`, `SharedMedia.tsx:130-138`. Плюс `useProfileGifts` (`useUserProfileData.ts:48-56`) вообще без защиты от гонки + `eslint-disable exhaustive-deps`.
+7. **Ручные `alive`-флаги** вместо `@helpers/middleware`, что запрещено CLAUDE.md для нового кода: `useGroupInfo.ts:116,159,171`, `useUserProfileData.ts:29-34` (`useUserProfile`), `usePinnedStories.ts:10`, `useChannelStats.ts:18`, `SharedMedia.tsx:130-138`. Плюс `useProfileGifts` (`useUserProfileData.ts:42-57`) вообще без защиты от гонки + `eslint-disable exhaustive-deps` (**протухшая ссылка поправлена находкой финального ревью ветки, Minor, п.7**: файл — 58 строк, прежние «28,76-104»/«48-56» указывали за пределы файла — задача 5 сократила его до трёх хуков, сняв `useProfilePhotos`/`HeaderPhoto`).
 8. **`refreshMembers` (`useGroupInfo.ts:177-189`) теряет поля** `username`/`avatarUrl`, которые заполняет первичная загрузка (`:160-169`) — после одобрения заявки у строк участников пропадают аватарки.
 9. **Хардкод русских строк мимо i18n:** `helpers.ts:14-35` (`countLabel`, `membersLabel`, `chatsLabel`), `useGroupInfo.ts:11-20` (`RIGHTS[].label`), `:46-50` (`roleLabel`), `GroupEditFlow.tsx:209` («Обсуждения»).
 10. **`getComputedStyle` в цикле по предкам** на каждый пересчёт sentinel-обсервера (`SharedMedia.tsx:199-201`) — вместо явного рефа на скроллер.
