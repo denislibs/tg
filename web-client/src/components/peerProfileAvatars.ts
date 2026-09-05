@@ -4,7 +4,7 @@
 // peerProfileAvatars.ts` (класс `PeerProfileAvatars`, 974 строки). Разбор с
 // адресами — `docs/tweb/right-sidebar.md` § 3.3 и § 5.1.
 //
-// ЭТО ЗАДАЧИ 1-3 из шести (`docs/superpowers/plans/
+// ЭТО ЗАДАЧИ 1-4 из шести (`docs/superpowers/plans/
 // 2026-09-05-profile-avatars-class.md`): каркас (поля, конструктор, DOM,
 // `addTab()`, `setCollapsed`/`isCollapsed`/`updateHeaderFilled`, `cleanup()`,
 // задача 1) плюс данные и лента (`ListLoader`, `processItem`, ленивая
@@ -12,11 +12,44 @@
 // зоны клика (`attachClickEvent`, зоны `SWITCH_ZONE`, закольцовывание,
 // открытие просмотрщика через общий `openMediaViewer`), свайп через порт
 // `SwipeHandler` (`core/dom/swipeHandler.ts`) и rAF-цикл прогресса полоски у
-// видео-аватара. Связка со сворачиванием через `useCollapsable` — задача 4,
-// в этом файле её нет (клик при `is-collapsed` пока сам вызывает
-// `setCollapsed(false)`, без внешнего `unfold`, см. докблок клика). Класс
-// пока никем не монтируется — это нормально, встраивание в
-// `UserInfoPanel.tsx` через `useImperativeIsland` — задача 5.
+// видео-аватара. Плюс контракт сворачивания под внешний `useCollapsable`
+// (задача 4): конструктор принимает необязательный `unfold`, клик при
+// `is-collapsed` зовёт его, а НЕ трогает `is-collapsed` сам — это делает
+// владелец состояния СНАРУЖИ (см. «Осознанное отступление» и докблок клика).
+// Класс пока никем не монтируется — это нормально, встраивание в
+// `UserInfoPanel.tsx` через `useImperativeIsland` вместе с реальным
+// `useCollapsable()` — задача 5.
+//
+// ─── Осознанное отступление: кто владеет useCollapsable (задача 4) ─────────
+// В tweb хук — на Solid и создаётся ПРЯМО В КОНСТРУКТОРЕ через `createRoot`
+// (tweb :322-348): `const {folded, unfold, fold} = useCollapsable({...})`,
+// класс сохраняет `unfold`/`fold` СЕБЕ (`:63,67`) и эффектом же
+// (`createEffect(() => this.setCollapsed(folded()))`, :340-348) приводит DOM
+// в соответствие. Наш `useCollapsable` (`core/hooks/useCollapsable.ts`, 229
+// строк) — React-хук (`useState`/`useRef`, строка 21): он писался под
+// React-потребителя `components/StoriesRow.tsx`, и класс на Solid не сидит.
+// Поэтому здесь хук зовёт ВНЕШНИЙ React-компонент (обёртка правой панели,
+// задача 5) и толкает состояние в класс через уже публичный `setCollapsed`
+// (см. его докблок), а `unfold` он же передаёт СЮДА через конструктор готовой
+// функцией — класс её только использует, не создаёт. `fold` внутрь класса
+// сознательно НЕ заведён — см. докблок поля `unfold` в теле класса, там же
+// причина и отсылка к задаче 5. Сведение к устройству оригинала (хук внутри
+// Solid-компонента-владельца) — шаг 2 этапа 2 (Solid-порт `peerProfile.tsx`);
+// долг — `web-client/backlogs/frontend/collapsable-solid-owner.md`.
+//
+// Сигналы, которые понадобятся задаче 5, чтобы собрать `useCollapsable(...)`
+// (прочитаны из `core/hooks/useCollapsable.ts` целиком, `CollapsableOptions`)
+// и как они ложатся на ЭТОТ класс (tweb :322-348 — та же связка):
+//   • `scrollable: () => HTMLElement | null`      → `() => scrollableEl`
+//     (в конструктор приходит уже готовый DOM-узел, см. ниже);
+//   • `listenWheelOn: () => HTMLElement | null`   → `() => setCollapsedOn`
+//     (tweb передаёт то же самое: `listenWheelOn: this.setCollapsedOn`);
+//   • `container: () => HTMLElement | null`       → `() => instance.container`
+//     (публичное поле этого класса — на нём хук слушает transitionstart/end);
+//   • `shouldIgnore?: () => boolean`               → у нас предмета нет
+//     (в tweb — `this.uploadInProgress`, прогресс своей загрузки не
+//     портирован, см. таблицу «Что не портируем» плана этапа); можно не
+//     передавать вовсе.
 //
 // DOM (конструктор, tweb :81-109), порядок детей дословный:
 //
@@ -41,6 +74,10 @@
 // (`scrollable.ts:370-375` — это и есть `container[scrollPositionProperty]`,
 // для вертикального скроллера `scrollTop`, `scrollable.ts:440`), поэтому чтение
 // сырого `scrollableEl.scrollTop` даёт то же значение без второго инстанса.
+// `unfold` (задача 4) — НЕОБЯЗАТЕЛЕН: класс без внешнего владельца
+// сворачивания (сегодня, до задачи 5) разворачивает себя сам, см. докблок
+// клика в конструкторе ниже. `fold` не заведён вовсе — см. докблок поля
+// `unfold` в теле класса.
 //
 // ─── Что НЕ портировано в этой задаче (и почему) ───────────────────────────
 //  • Фон-паттерн профиля (`_applyAppearance`/`applyAppearance`, :652-793,
@@ -188,6 +225,31 @@ export default class PeerProfileAvatars {
   private readonly setCollapsedOn: HTMLElement
   private readonly scrollableEl: HTMLElement
 
+  // tweb :63 (`private unfold`) — там поле СОЗДАЁТ сам класс (`createRoot` в
+  // конструкторе, :322-348); у нас useCollapsable — React-хук, которым
+  // владеет ВНЕШНИЙ React-компонент (см. докблок класса, «Осознанное
+  // отступление»), поэтому функция приходит СЮДА уже готовой через
+  // конструктор — класс её только вызывает, не создаёт. Опционально: до
+  // задачи 5 (встраивание через `useImperativeIsland` вместе с реальным
+  // `useCollapsable()`) конструктор может не передать её вовсе — см.
+  // временную ветку клик-хендлера ниже.
+  //
+  // `fold` (tweb :67, `private fold`) — брифом задачи 4 предлагался как
+  // симметричный параметр, но СОЗНАТЕЛЬНО не заведён: у оригинала единственный
+  // вызов `this.fold?.()` живёт в `showUploadProgress` (:567) — прогресс своей
+  // загрузки не портирован (докблок класса выше); а реактивный гейт
+  // `hasNoPhoto && !folded() → fold()` (createEffect, tweb :341-344) — часть
+  // ИМЕННО того эффекта, которым в задаче 5 владеет внешний React-компонент, а
+  // не этот класс (см. «Осознанное отступление»). Внутри класса вызывающего
+  // для `fold` нет и не появится в объёме этой задачи — сохранённое, но
+  // никогда не читаемое поле было бы ровно тем стабом, который запрещает
+  // корневой CLAUDE.md («не оставлять заглушки»), и его же ловит tsc
+  // (`noUnusedLocals` красит непрочитанное `private`-поле классов). Если
+  // класс когда-нибудь заведёт собственный вызывающий — параметр добавляется
+  // одной строкой; до тех пор владелец хука (задача 5) держит свой `fold` сам
+  // и вызывает его напрямую, минуя класс.
+  private readonly unfold?: (e?: { preventDefault: () => void; stopPropagation: () => void }) => void
+
   // tweb :56 — общий на всю ленту, создаётся один раз в конструкторе (не
   // per-setPeer): наблюдает узлы, ждущие ленивой догрузки (processItem),
   // колбэк — loadNearestToTarget.
@@ -246,10 +308,12 @@ export default class PeerProfileAvatars {
     managers: PeerProfileAvatarsManagers
     setCollapsedOn: HTMLElement
     scrollableEl: HTMLElement
+    unfold?: (e?: { preventDefault: () => void; stopPropagation: () => void }) => void
   }) {
     this.managers = options.managers
     this.setCollapsedOn = options.setCollapsedOn
     this.scrollableEl = options.scrollableEl
+    this.unfold = options.unfold
 
     // DOM конструктора — tweb :81-109, порядок append (:107) дословный.
     this.container = document.createElement('div')
@@ -315,10 +379,24 @@ export default class PeerProfileAvatars {
       if (!this.currentHasPhoto) return // tweb :170-172 (hasNoPhoto) — см. докблок поля `currentHasPhoto`
 
       if (this.isCollapsed()) {
-        // tweb :174-182 (`this.unfold(_e)`) — внешнего источника разворачивания
-        // (`useCollapsable`) в этой задаче нет, задача 4 его подключит; пока
-        // разворачиваем через уже существующий публичный API этого же класса.
-        this.setCollapsed(false)
+        if (this.unfold) {
+          // tweb :174-182 (`this.unfold(_e)`) — унифицированный источник
+          // разворачивания: `unfold` приходит из `useCollapsable`, которым
+          // владеет ВНЕШНИЙ React-компонент правой панели (задача 4, докблок
+          // класса выше). Класс сам НЕ трогает `is-collapsed` — DOM в
+          // соответствие приведёт эффект хука (`folded → setCollapsed`,
+          // задача 5, аналог tweb createEffect :340-348).
+          this.unfold(e)
+        } else {
+          // ВРЕМЕННАЯ ветка задачи 4: до задачи 5 (встраивание класса через
+          // `useImperativeIsland` и подключение реального `useCollapsable()`)
+          // конструктор может не получить `unfold` вовсе — класс живёт без
+          // внешнего владельца сворачивания и разворачивает себя сам тем же
+          // публичным `setCollapsed`. Ветка УЙДЁТ ЦЕЛИКОМ, как только задача 5
+          // начнёт передавать `unfold` всегда (мёртвый код удаляем агрессивно,
+          // корневой CLAUDE.md).
+          this.setCollapsed(false)
+        }
         return
       }
 
@@ -908,12 +986,19 @@ export default class PeerProfileAvatars {
    * (узел вкладки панели), а НЕ на собственный `container` — иначе классы
    * профиля не видны CSS-правилам шапки сайдбара, которые их ждут снаружи.
    *
-   * В оригинале метод `private` — вызывающий живёт внутри того же класса
-   * (клик/свайп, :310, :771). Задача 3 вернула его обратно в `private`: клик
-   * при `is-collapsed` (см. конструктор) теперь и есть тот внутренний
-   * вызывающий, ради которого он был временно расширен до `public` в задаче 2.
+   * В оригинале метод `private` — вызывающий (createEffect `folded →
+   * setCollapsed`, tweb :340-348) живёт ВНУТРИ того же класса, потому что там
+   * useCollapsable создаётся в конструкторе этого же класса. У нас хук —
+   * React-хук, которым владеет ВНЕШНИЙ React-компонент (задача 4, докблок
+   * класса, «Осознанное отступление»), поэтому именно ЕГО эффект (задача 5)
+   * зовёт `setCollapsed` СНАРУЖИ, приводя DOM в соответствие с состоянием
+   * хука, — метод расширен обратно до `public` ради этого вызывающего (был
+   * сужен до `private` в задаче 3, когда клик стал внутренним вызывающим сам
+   * по себе). Клик по-прежнему зовёт его напрямую, но только во ВРЕМЕННОЙ
+   * ветке без переданного `unfold` (см. конструктор, клик-хендлер) — с
+   * переходом на задачу 5 этот вызов уйдёт вместе с самой веткой.
    */
-  private setCollapsed(collapsed: boolean): void {
+  public setCollapsed(collapsed: boolean): void {
     // tweb :931-933 — сворачивание (не наоборот) возвращает ленту на первый
     // кадр, если сейчас показан не он, тем же `goWithoutTransition`, что и
     // клик/свайп (задача 3). `ListLoader` заводит эта задача — вызов ниже

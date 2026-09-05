@@ -1,5 +1,5 @@
 // `PeerProfileAvatars` (`components/peerProfileAvatars.ts`, порт tweb
-// `components/peerProfileAvatars.ts`) — задачи 1-2 из шести
+// `components/peerProfileAvatars.ts`) — задачи 1-4 из шести
 // (`docs/superpowers/plans/2026-09-05-profile-avatars-class.md`).
 //
 // Пины ЗАДАЧИ 1 (каркас), норма проводки из её брифа:
@@ -31,6 +31,18 @@
 //  (12) пустая галерея — `SHOW_NO_AVATAR`;
 //  (13) `cleanup()` снимает `IntersectionObserver` и регистрацию видео в
 //       `animationIntersector`.
+//
+// Пины ЗАДАЧИ 4 (контракт под внешний `useCollapsable`) — норма проводки из
+// её брифа (см. также «Периметр УТОЧНЁН против плана» в брифе задачи —
+// `UserInfoPanel.tsx` эта задача не трогает, только сторона класса):
+//  (14) клик при `is-collapsed` С переданным `unfold` зовёт ИМЕННО его и НЕ
+//       трогает `is-collapsed` сам (владелец состояния — снаружи);
+//  (15) БЕЗ переданного `unfold` — прежнее поведение (класс разворачивает
+//       себя сам); эта ветка ВРЕМЕННАЯ, уходит целиком в задаче 5;
+//  (16) `setCollapsed(true/false)` — публичный, снаружи по-прежнему двигает
+//       классы и зовёт `onNeedWhiteChanged` (задача 1 не сломана);
+//  (17) клик при `is-collapsed` (что с `unfold`, что без) НЕ листает (гейт
+//       задачи 3 не сломан).
 //
 // `avatarNew` не мокается целиком (нужен настоящий узел — data-peer-id,
 // классы), а оборачивается шпионом: реальная реализация зовётся как есть,
@@ -152,10 +164,14 @@ function makeManagers(byUserId: Record<number, ProfilePhoto[]> = {}): PeerProfil
 
 const managers = makeManagers()
 
-function make(mgrs: PeerProfileAvatarsManagers = managers) {
+// `unfold` — задача 4: опциональный контракт под внешний `useCollapsable`
+// (см. докблок класса). По умолчанию не передаём — большинство тестов бьёт
+// по ВРЕМЕННОЙ ветке (класс разворачивает себя сам, до задачи 5); тесты,
+// которым нужен внешний владелец сворачивания, передают `unfold` явно.
+function make(mgrs: PeerProfileAvatarsManagers = managers, unfold?: () => void) {
   const setCollapsedOn = document.createElement('div')
   const scrollableEl = document.createElement('div')
-  const instance = new PeerProfileAvatars({ managers: mgrs, setCollapsedOn, scrollableEl })
+  const instance = new PeerProfileAvatars({ managers: mgrs, setCollapsedOn, scrollableEl, unfold })
   return { instance, setCollapsedOn, scrollableEl }
 }
 
@@ -212,17 +228,17 @@ describe('PeerProfileAvatars.setCollapsed()', () => {
   it('вешает/снимает is-collapsed НА setCollapsedOn, а не на свой container', () => {
     const { instance, setCollapsedOn } = make()
 
-    ;(instance as any).setCollapsed(true)
+    instance.setCollapsed(true)
     expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(true)
     expect(instance.container.classList.contains('is-collapsed')).toBe(false)
 
-    ;(instance as any).setCollapsed(false)
+    instance.setCollapsed(false)
     expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(false)
   })
 
   it('isCollapsed() читает тот же setCollapsedOn', () => {
     const { instance, setCollapsedOn } = make()
-    ;(instance as any).setCollapsed(true)
+    instance.setCollapsed(true)
     expect((instance as any).isCollapsed()).toBe(true)
     setCollapsedOn.classList.remove('is-collapsed')
     expect((instance as any).isCollapsed()).toBe(false)
@@ -231,10 +247,10 @@ describe('PeerProfileAvatars.setCollapsed()', () => {
   it('need-white: hasBackgroundColor у нас всегда false, поэтому need-white === !collapsed', () => {
     const { instance, setCollapsedOn } = make()
 
-    ;(instance as any).setCollapsed(true)
+    instance.setCollapsed(true)
     expect(setCollapsedOn.classList.contains('need-white')).toBe(false)
 
-    ;(instance as any).setCollapsed(false)
+    instance.setCollapsed(false)
     expect(setCollapsedOn.classList.contains('need-white')).toBe(true)
   })
 
@@ -243,14 +259,14 @@ describe('PeerProfileAvatars.setCollapsed()', () => {
     const onNeedWhiteChanged = vi.fn()
     instance.onNeedWhiteChanged = onNeedWhiteChanged
 
-    ;(instance as any).setCollapsed(true) // need-white: false — было false по умолчанию, не меняется
+    instance.setCollapsed(true) // need-white: false — было false по умолчанию, не меняется
     expect(onNeedWhiteChanged).not.toHaveBeenCalled()
 
-    ;(instance as any).setCollapsed(false) // need-white: true — изменилось
+    instance.setCollapsed(false) // need-white: true — изменилось
     expect(onNeedWhiteChanged).toHaveBeenCalledTimes(1)
     expect(onNeedWhiteChanged).toHaveBeenCalledWith(true)
 
-    ;(instance as any).setCollapsed(false) // повторный тот же collapsed — значение не меняется
+    instance.setCollapsed(false) // повторный тот же collapsed — значение не меняется
     expect(onNeedWhiteChanged).toHaveBeenCalledTimes(1)
   })
 })
@@ -258,7 +274,7 @@ describe('PeerProfileAvatars.setCollapsed()', () => {
 describe('PeerProfileAvatars — header-filled (tweb :949-955)', () => {
   it('порог 5px — только когда свёрнуто и без цветного фона (у нас фона нет никогда)', () => {
     const { instance, setCollapsedOn, scrollableEl } = make()
-    ;(instance as any).setCollapsed(true)
+    instance.setCollapsed(true)
     setCollapsedOn.classList.remove('header-filled') // setCollapsed уже дёрнул updateHeaderFilled на scrollTop=0
 
     scrollableEl.scrollTop = 4
@@ -277,7 +293,7 @@ describe('PeerProfileAvatars — header-filled (tweb :949-955)', () => {
 
   it('порог 200px — взводится ДАЖЕ развёрнутым (второе условие OR)', () => {
     const { instance, setCollapsedOn, scrollableEl } = make()
-    ;(instance as any).setCollapsed(false) // развёрнуто — первое условие порога 5px невозможно
+    instance.setCollapsed(false) // развёрнуто — первое условие порога 5px невозможно
 
     scrollableEl.scrollTop = 199
     instance.updateHeaderFilled()
@@ -624,14 +640,14 @@ describe('PeerProfileAvatars.setPeer() — лента данных (задача
     instance.goWithoutTransition(2) // ушли на последний индекс (2)
     expect(avatarsEl.children[2].classList.contains('active')).toBe(true)
 
-    ;(instance as any).setCollapsed(true) // сворачивание — лента обязана вернуться на индекс 0
+    instance.setCollapsed(true) // сворачивание — лента обязана вернуться на индекс 0
     expect(avatarsEl.children[0].classList.contains('active')).toBe(true)
     expect(avatarsEl.style.transform).toBe('translate(-0%, 0)')
 
     // Повторное сворачивание (уже свёрнуто) — новых прыжков нет, полоска
     // остаётся на месте (tweb-условие `!this.isCollapsed()`).
     instance.goWithoutTransition(1)
-    ;(instance as any).setCollapsed(true)
+    instance.setCollapsed(true)
     expect(avatarsEl.children[1].classList.contains('active')).toBe(true) // НЕ откатилось на 0
   })
 })
@@ -699,9 +715,9 @@ function pointerEvent(type: string, props: Record<string, unknown>): Event {
 
 /** Загруженная лента из `n` фото + замоканная геометрия `container` (300px,
  *  трети по 100px: [0,100) — prev, (100,200) — viewer, (200,300] — next). */
-async function makeLoaded(n = 3) {
+async function makeLoaded(n = 3, unfold?: () => void) {
   const mgrs = makeManagers({ [ALICE]: photos(n) })
-  const { instance, setCollapsedOn, scrollableEl } = make(mgrs)
+  const { instance, setCollapsedOn, scrollableEl } = make(mgrs, unfold)
   const avatarsEl = instance.container.querySelector<HTMLElement>('.profile-avatars-avatars')!
   const tabsEl = instance.container.querySelector('.profile-avatars-tabs')!
 
@@ -750,15 +766,36 @@ describe('PeerProfileAvatars — клик по зонам (tweb :142-233)', () =
     expect(args.target).toBe(avatarsEl.children[1])
   })
 
-  it('клик при is-collapsed только разворачивает (снимает is-collapsed) и НЕ листает (tweb :174-182)', async () => {
+  // ЗАДАЧА 4: БЕЗ переданного `unfold` — временное поведение (класс живёт без
+  // внешнего владельца сворачивания, см. докблок клика в конструкторе) — клик
+  // разворачивает СЕБЯ САМ тем же `setCollapsed`, как и до задачи 4. Норма
+  // проводки задачи 4, тест 2/4 («без unfold — прежнее поведение»).
+  it('клик при is-collapsed БЕЗ unfold только разворачивает (снимает is-collapsed) сам и НЕ листает (tweb :174-182)', async () => {
     const { instance, avatarsEl, setCollapsedOn } = await makeLoaded(3)
-    ;(instance as any).setCollapsed(true)
+    instance.setCollapsed(true)
     expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(true)
 
     clickAt(instance.container, 30) // была бы левая треть (листание), но шапка свёрнута
 
-    expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(false) // клик развернул
+    expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(false) // клик развернул сам
     expect(avatarsEl.children[0].classList.contains('active')).toBe(true) // индекс НЕ ушёл со старта — листания не было
+  })
+
+  // ЗАДАЧА 4, тест 1/4 («клик зовёт переданный unfold и НЕ трогает
+  // is-collapsed сам»): с переданным `unfold` клик обязан звать ИМЕННО его, а
+  // `is-collapsed` остаётся нетронутым классом — приводит его в соответствие
+  // владелец состояния СНАРУЖИ (эффект хука, задача 5), а не сам click-хендлер.
+  it('клик при is-collapsed С unfold зовёт переданный unfold и НЕ трогает is-collapsed сам (владелец состояния снаружи, задача 4)', async () => {
+    const unfold = vi.fn()
+    const { instance, avatarsEl, setCollapsedOn } = await makeLoaded(3, unfold)
+    instance.setCollapsed(true)
+    expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(true)
+
+    clickAt(instance.container, 30) // была бы левая треть (листание), но шапка свёрнута
+
+    expect(unfold).toHaveBeenCalledTimes(1)
+    expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(true) // класс НЕ снят — ждёт внешнего владельца
+    expect(avatarsEl.children[0].classList.contains('active')).toBe(true) // листания не было
   })
 
   it('checkScrollTop: ненулевой скролл гасит клик и скроллит контейнер к началу (tweb :127-137, :166-168)', async () => {
@@ -800,7 +837,7 @@ describe('PeerProfileAvatars — клик по зонам (tweb :142-233)', () =
     mockRect(instance.container, { left: 0, width: 300, right: 300 })
 
     // Свёрнуто: клик обязан РАЗВЕРНУТЬ (листать и так некуда — один элемент).
-    ;(instance as any).setCollapsed(true)
+    instance.setCollapsed(true)
     expect(setCollapsedOn.classList.contains('is-collapsed')).toBe(true)
 
     clickAt(instance.container, 150)
@@ -891,7 +928,7 @@ describe('PeerProfileAvatars — свайп через SwipeHandler (tweb :243-2
   it('isCollapsed гейт свайпа: свёрнутая шапка блокирует старт (verifyTouchTarget, tweb :263)', async () => {
     const { instance, avatarsEl } = await makeLoaded(3)
     mockRect(avatarsEl, { left: 0, width: 300 })
-    ;(instance as any).setCollapsed(true)
+    instance.setCollapsed(true)
 
     avatarsEl.dispatchEvent(pointerEvent('mousedown', { clientX: 150, clientY: 100, button: 0 }))
     await Promise.resolve()
