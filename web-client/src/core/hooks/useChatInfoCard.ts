@@ -25,7 +25,8 @@ import type { ChannelFull, Chat } from '../peers/peer'
 import { getLinkedChatPeerId, isUserStatusOnline } from '../peers/peer'
 import { cachedChat } from '../peerCache'
 import { isUser } from '../peers/peerId'
-import { saveChatFull } from '../chatFullCache'
+import { beginPeerFullFetch, saveChatFull } from '../chatFullCache'
+import { markFullPeerFetched } from '../../stores/fullPeers.solid'
 import { isMegagroup } from '../peers/predicates'
 import { hasRights } from '../peers/rights'
 
@@ -44,14 +45,31 @@ interface FullCard {
 // композера при переходе в канал из сайдбара. Сеть при этом ходит как раньше,
 // но её ответ уже ничего не двигает.
 //
-// Порт `appProfileManager.chatsFull` (там же и TTL — `PEER_FULL_TTL`, который у
-// нас пока не заведён: инвалидация приходит кадром `chat_update`).
+// Порт `appProfileManager.chatsFull`. Поход в сеть здесь остаётся
+// БЕЗУСЛОВНЫМ на каждый маунт/смену чата — так и было, тест «повторный вход
+// в канал» (`useChatInfoCard.test.tsx`) держит именно это: права известны
+// СИНХРОННО из локального `fullCache`, а сеть всё равно перепрашивается
+// (stale-while-revalidate, а не TTL-гейт). Свой вклад в общую с Solid
+// (`stores/fullPeers.solid.ts`, Task 1.5) политику свежести — ОДНОСТОРОННИЙ:
+// после своего успешного похода хук зовёт `markFullPeerFetched`, и это
+// избавляет Solid-профиль ТОГО ЖЕ чата/канала от повторного запроса (см.
+// докблок `fullPeers.solid.ts`), но не наоборот — сам хук чужую свежесть не
+// спрашивает (`isFullPeerFresh` здесь не читается, только пишется через
+// `markFullPeerFetched`).
 //
 // Сам конструктор `channelFull` при этом уезжает ЕЩЁ и в `core/chatFullCache.ts`
 // — общее зеркало полных карточек. Здесь он лежит ради СИНХРОННОГО первого
 // рендера (см. выше), а зеркало обслуживает вне-экранных читателей: тему
 // оформления (`theme_emoticon`) читают обои шелла, и кадр `chat_theme_update`
 // патчит именно зеркало.
+//
+// В общее зеркало пишется ТОЛЬКО для настоящего чата/канала (`!isUser`) — см.
+// комментарий у вызова `saveChatFull` ниже: этот хук вызывается и для
+// личного диалога/«Избранного» (их `numericChatId` — id пользователя), а для
+// них backend отвечает валидной, но ПУСТОЙ `channelFull` (общая таблица
+// `chats`), которая под тем же ключом легко перепишет настоящий `userFull`,
+// пришедший от `Chat.tsx`/`ensureFullPeer` (Task 1.5, найдено при сведении
+// писателей).
 const fullCache = new Map<PeerId, FullCard>()
 
 /**
@@ -123,13 +141,21 @@ export function useChatInfoCard(args: {
     memberIds.current = new Set()
     if (!isRealChat) return
     let alive = true
+    const ticket = beginPeerFullFetch(numericChatId)
     void managers.groups.card(numericChatId).then((c) => {
       if (!alive || !c) return
       const next: FullCard = { fullChat: c.fullChat }
       fullCache.set(numericChatId, next)
-      // Полная карточка — в общее зеркало: её тема нужна и вне этого экрана
-      // (колонка чата и обои шелла), а второго загрузчика карточки чата нет.
-      saveChatFull(numericChatId, c.fullChat)
+      // В общее зеркало — ТОЛЬКО настоящий чат/канал. Для личного диалога и
+      // «Избранного» (`isUser(numericChatId)`) backend отвечает валидной, но
+      // пустой `channelFull` (см. докблок файла) — писать её в зеркало,
+      // которым для ЭТОГО ЖЕ peerId пользуется настоящий `userFull`
+      // (`Chat.tsx` → `ensureFullPeer`), нельзя: более медленный ответ card()
+      // затёр бы настоящий профиль пустышкой.
+      if (!isUser(numericChatId)) {
+        markFullPeerFetched(numericChatId)
+        saveChatFull(numericChatId, c.fullChat, ticket)
+      }
       setLoaded({ peerId: numericChatId, full: next })
       if (isMegagroup(c.chat)) {
         void managers.groups.members(numericChatId).then((mem) => {

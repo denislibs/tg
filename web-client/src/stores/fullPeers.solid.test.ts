@@ -1,10 +1,12 @@
 // Пин Solid-порта tweb `stores/fullPeers.ts` (Task 1, план
-// docs/superpowers/plans/2026-09-05-profile-card-solid.md). Каждый кейс
-// поднимает свежий реестр модулей (`vi.resetModules`): и зеркало
-// (`core/chatFullCache.ts`), и локальная карта `expirations` внутри
-// `fullPeers.solid.ts` — модульное состояние, общее для всех тестов файла.
+// docs/superpowers/plans/2026-09-05-profile-card-solid.md) + сведения
+// писателей (Task 1.5, `ensureFullPeer`). Каждый кейс поднимает свежий
+// реестр модулей (`vi.resetModules`): и зеркало (`core/chatFullCache.ts`), и
+// локальная карта `expirations` внутри `fullPeers.solid.ts` — модульное
+// состояние, общее для всех тестов файла.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRoot } from 'solid-js'
+import type { Managers } from '../client/bootstrap'
 
 const { profile, card } = vi.hoisted(() => ({ profile: vi.fn(), card: vi.fn() }))
 vi.mock('../client/bootstrap', () => ({
@@ -177,6 +179,82 @@ describe('useFullPeer (Solid)', () => {
     // МУТАЦИЯ: вызови `_useFullPeer` напрямую вместо `useDynamicCachedValue(...)`
     // — каждый потребитель заведёт свой запрос, здесь будет 2.
     expect(profile).toHaveBeenCalledTimes(1)
+    dispose()
+  })
+})
+
+// Task 1.5: сведение писателей `useChatInfoCard.ts`/`Chat.tsx` на `ensureFullPeer`.
+// Пин на саму мотивацию задачи — ревью задачи 1 нашло, что как только Solid-
+// профиль (Task 2) смонтируется РЯДОМ с открытым чатом, за один и тот же peerId
+// полетят два независимых запроса. Здесь `ensureFullPeer(managers, peerId)`
+// подставлен на место реального вызова `Chat.tsx`, а `m.useFullPeer` — на
+// место реального Solid-профиля; менеджеры общие (`vi.mock` выше), как в
+// проде — общий `startClient()`/`useManagers()`.
+describe('ensureFullPeer: единственность сетевого пути (Task 1.5)', () => {
+  const managers = { privacy: { profile }, groups: { card } } as unknown as Managers
+
+  it('React-эффект (Chat.tsx) фетчит первым — Solid-профиль того же пира сеть повторно не открывает', async () => {
+    m.ensureFullPeer(managers, 1)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(profile).toHaveBeenCalledTimes(1)
+
+    let dispose!: () => void
+    createRoot((d) => {
+      dispose = d
+      m.useFullPeer(1) // Task 2: профиль монтируется рядом с открытым чатом
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    // МУТАЦИЯ: в `isFullPeerFresh` требуй `expirations` даже при лежащей
+    // карточке (как дословный порт tweb) — второй вызов случится, здесь будет 2.
+    expect(profile).toHaveBeenCalledTimes(1)
+    dispose()
+  })
+
+  // Обратный порядок: Solid успевает первым (пользователь открыл профиль
+  // раньше, чем это заметил React-эффект приватного чата, либо повторный
+  // маунт того же профиля).
+  it('и наоборот: Solid фетчит первым — React-эффект (Chat.tsx) того же пира сеть повторно не открывает', async () => {
+    let dispose!: () => void
+    createRoot((d) => {
+      dispose = d
+      m.useFullPeer(1)
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(profile).toHaveBeenCalledTimes(1)
+
+    m.ensureFullPeer(managers, 1) // Chat.tsx: эффект приватного чата того же пира
+    await vi.advanceTimersByTimeAsync(0)
+    expect(profile).toHaveBeenCalledTimes(1)
+    dispose()
+  })
+})
+
+// `useChatInfoCard.ts` (чат/канал, НЕ пользователь) через `ensureFullPeer` не
+// идёт вовсе — см. её докблок: она вызывается и для приватного диалога, где
+// `isUser(peerId)` увёл бы запрос на `privacy.profile()` вместо `groups.card()`.
+// Поэтому она продолжает звать `groups.card()` НАПРЯМУЮ и БЕЗУСЛОВНО при
+// каждом маунте (пин — `useChatInfoCard.test.tsx`, «повторный вход в канал»),
+// а вклад в Task 1.5 с её стороны — `markFullPeerFetched` ПОСЛЕ своего
+// успешного похода: другую сторону (Solid-профиль ТОГО ЖЕ чата/канала) это
+// избавляет от повторного запроса, хотя сама она себя так не бережёт.
+describe('ensureFullPeer: односторонняя выгода для чата/канала (useChatInfoCard не гейтится, Solid — да)', () => {
+  it('чат уже загружен мимо ensureFullPeer (как это делает useChatInfoCard) — Solid того же чата сеть не открывает', async () => {
+    const chatFullCache = await import('../core/chatFullCache')
+    const c = await card(-1) // тот же вызов, что делает useChatInfoCard.ts
+    const ticket = chatFullCache.beginPeerFullFetch(-1)
+    chatFullCache.saveChatFull(-1, c.fullChat, ticket)
+    m.markFullPeerFetched(-1) // ровно то, что useChatInfoCard.ts зовёт после saveChatFull
+    expect(card).toHaveBeenCalledTimes(1)
+
+    let dispose!: () => void
+    createRoot((d) => {
+      dispose = d
+      m.useFullPeer(-1) // Task 2: Solid-профиль ТОГО ЖЕ чата рядом
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    // МУТАЦИЯ: убери вызов `markFullPeerFetched` в useChatInfoCard.ts —
+    // Solid не увидит карточку свежей и продублирует поход, здесь будет 2.
+    expect(card).toHaveBeenCalledTimes(1)
     dispose()
   })
 })
