@@ -326,6 +326,15 @@ describe('PeerProfileAvatars.setPeer() — ветка топика (tweb :396-40
     expect(instance.container.classList.contains('is-topic')).toBe(true)
     expect(avatarsEl.children.length).toBe(1)
 
+    // НАХОДКА ФИНАЛЬНОГО РЕВЬЮ ВЕТКИ (Minor, п.4): топик-ветка обязана
+    // звать addTab() (аналог tweb processItem(undefined) для КАЖДОГО
+    // элемента ленты) — иначе `is-single` (единственное место, где он
+    // взводится) не встанет и покажутся декоративные стрелки, которым
+    // здесь листать нечего.
+    const tabsEl = instance.container.querySelector('.profile-avatars-tabs')!
+    expect(tabsEl.children.length).toBe(1)
+    expect(instance.container.classList.contains('is-single')).toBe(true)
+
     const node = avatarsEl.children[0] as HTMLElement
     expect(node.classList.contains('profile-avatars-avatar')).toBe(true)
     // Содержимое — НАСТОЯЩИЙ узел avatarNew для peerId (data-peer-id + его
@@ -354,6 +363,19 @@ describe('PeerProfileAvatars.setPeer() — ветка топика (tweb :396-40
     // реализована, и SHOW_NO_AVATAR (детальный тест — ниже) рисует ОДИН
     // узел-заглушку даже без единой фотографии — как в оригинале.
     expect(avatarsEl.children.length).toBe(1)
+  })
+
+  // НАХОДКА ФИНАЛЬНОГО РЕВЬЮ ВЕТКИ (Minor, п.4): `is-topic` вешался и никогда
+  // не снимался — не-топиковая ветка `setPeer` симметрично `is-single` теперь
+  // снимает и его.
+  it('возврат из топика в обычную ленту снимает is-topic (симметрично is-single)', async () => {
+    const { instance } = make()
+
+    await instance.setPeer(ALICE, 7)
+    expect(instance.container.classList.contains('is-topic')).toBe(true)
+
+    await instance.setPeer(ALICE)
+    expect(instance.container.classList.contains('is-topic')).toBe(false)
   })
 })
 

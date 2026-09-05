@@ -596,6 +596,10 @@ export default class PeerProfileAvatars {
       this.avatars.replaceChildren()
       this.tabs.replaceChildren()
       this.container.classList.remove('is-single')
+      // НАХОДКА ФИНАЛЬНОГО РЕВЬЮ ВЕТКИ (Minor, п.4): симметрично `is-single`
+      // выше — топик-ветка (см. дальше по методу) вешает `is-topic` и никогда
+      // не снимала его на возврат в обычную (не-топиковую) ленту.
+      this.container.classList.remove('is-topic')
       this.loadCallbacks.clear()
       this.intersectionObserver.disconnect() // старые узлы всё равно удалены выше, но снимаем и наблюдение явно
       this.listLoader = undefined
@@ -725,6 +729,16 @@ export default class PeerProfileAvatars {
     avatar.node.classList.add(PeerProfileAvatars.BASE_CLASS + '-avatar')
     await avatar.readyThumbPromise
     this.avatars.append(avatar.node)
+    // НАХОДКА ФИНАЛЬНОГО РЕВЬЮ ВЕТКИ (Minor, п.4): в оригинале один статичный
+    // аватар темы форума всё равно проходит через `processItem(undefined)`
+    // (tweb :807-861), а тот вызывает `addTab()` для КАЖДОГО элемента ленты —
+    // топик-ветка здесь его не звала вовсе, поэтому `this.tabs` оставался
+    // пуст и `is-single` (единственное место, где он взводится, см.
+    // `addTab()` ниже) никогда не вставал: декоративные стрелки
+    // (`_profile.scss`, видимость — CSS по отсутствию `is-single`) были бы
+    // видны у темы форума, у которой листать нечего. Ветка недостижима
+    // (см. комментарий выше) — почищено на будущее.
+    this.addTab()
   }
 
   /** tweb :365-374. */
