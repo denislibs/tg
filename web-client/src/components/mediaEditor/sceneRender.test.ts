@@ -2,8 +2,34 @@
 // без canvas) — паддинги/межстрочный интервал/выравнивание/базовая линия — и
 // контрастный цвет текста для стилей outline/background.
 import { describe, it, expect } from 'vitest'
-import { layoutText, fontInfoMap } from './sceneRender'
+import { layoutText, fontInfoMap, unresolvedStickerLayers, type StickerLayer } from './sceneRender'
 import { contrastColor } from './editorMath'
+
+// ПИН (backlogs/frontend/lottie-no-wasm-fallback.md, «медиаредактор — потеря
+// тяжелее», часть 1 задачи «фолбэк без WASM SIMD»): слой lottie-стикера,
+// оставшийся НАВСЕГДА без источника (StickerAssets.hasFailed), обязан быть
+// найден этой функцией — MediaEditor.tsx использует её результат, чтобы не
+// пропустить экспорт молча (doFinish блокирует сохранение, банер предупреждает).
+describe('unresolvedStickerLayers — слой без источника не теряется молча', () => {
+  const layer = (id: number, mediaId: number): StickerLayer => ({ id, mediaId, x: 0, y: 0, scale: 1, rotation: 0 })
+
+  it('находит слои, чей mediaId отмечен как НАВСЕГДА упавший', () => {
+    const stickers = [layer(1, 100), layer(2, 200), layer(3, 300)]
+    const failed = new Set([200])
+    expect(unresolvedStickerLayers(stickers, failed)).toEqual([layer(2, 200)])
+  })
+
+  it('пустой список failed → ничего не находит (сцена без проблем)', () => {
+    const stickers = [layer(1, 100)]
+    expect(unresolvedStickerLayers(stickers, new Set())).toEqual([])
+  })
+
+  it('несколько упавших слоёв — возвращает все, в исходном порядке', () => {
+    const stickers = [layer(1, 100), layer(2, 200), layer(3, 300)]
+    const failed = new Set([300, 100])
+    expect(unresolvedStickerLayers(stickers, failed)).toEqual([layer(1, 100), layer(3, 300)])
+  })
+})
 
 describe('layoutText — паддинги и межстрочный интервал', () => {
   it('normal/outline: padX = 0.2*size, lineHeight = 1.33*size', () => {

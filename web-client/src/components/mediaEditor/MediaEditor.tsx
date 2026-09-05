@@ -34,6 +34,7 @@ import {
 } from './editorMath'
 import {
   composeScene, fontInfoMap, measureTextBlock, rebuildDrawLayer, srcSize, stickerBaseSize,
+  unresolvedStickerLayers,
   type BrushType, type FontKey, type Scene, type SrcImage, type StickerLayer, type Stroke,
   type TextAlign, type TextBlock, type TextStyle,
 } from './sceneRender'
@@ -246,6 +247,12 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   const [editingText, setEditingText] = useState<EditingText | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  // Долг «фолбэк без WASM SIMD» (backlogs/frontend/lottie-no-wasm-fallback.md):
+  // mediaId lottie-стикеров, НАВСЕГДА оставшихся без источника (StickerAssets.onFail).
+  // `StickerPicker` не даёт добавить такой стикер вовсе — это состояние остаётся
+  // защитой на случай, если слой всё же оказался в сцене без источника: экспорт
+  // не должен молча пропустить его (см. doFinish/doFinishVideo ниже).
+  const [failedStickerIds, setFailedStickerIds] = useState<Set<number>>(() => new Set())
   const [vp, setVp] = useState({ w: 0, h: 0 })
   // ── Видео: трим/обложка/mute/скраббинг + прогресс энкода ──
   const [videoDuration, setVideoDuration] = useState(0)
@@ -363,14 +370,17 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   // ── Кадры стикеров ── создаём один раз; onFrame (кадр lottie) → перерисовка
   // превью, коалесцированная через rAF (renderRef.current — всегда свежий).
   useEffect(() => {
-    const assets = new StickerAssets(() => {
-      if (renderScheduledRef.current) return
-      renderScheduledRef.current = true
-      requestAnimationFrame(() => {
-        renderScheduledRef.current = false
-        renderRef.current()
-      })
-    })
+    const assets = new StickerAssets(
+      () => {
+        if (renderScheduledRef.current) return
+        renderScheduledRef.current = true
+        requestAnimationFrame(() => {
+          renderScheduledRef.current = false
+          renderRef.current()
+        })
+      },
+      (mediaId) => setFailedStickerIds((prev) => (prev.has(mediaId) ? prev : new Set(prev).add(mediaId))),
+    )
     stickerAssetsRef.current = assets
     return () => {
       assets.destroy()
@@ -596,6 +606,11 @@ export default function MediaEditor({ file, onDone, onCancel }: {
     m.translateSelf(-W / 2, -H / 2)
     return m
   }
+
+  // Слои, чей источник кадра НАВСЕГДА отсутствует — см. докблок у
+  // unresolvedStickerLayers (sceneRender.ts) и failedStickerIds выше;
+  // doFinish блокирует сохранение, пока список не пуст.
+  const unresolvedStickers = unresolvedStickerLayers(stickers, failedStickerIds)
 
   const scene = (exportTexts?: TextBlock[]): Scene => ({
     img: img as SrcImage,
@@ -833,6 +848,15 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   // ── Экспорт (полное разрешение обрезанного/повёрнутого результата) ──
   const doFinish = async () => {
     if (!img || !crop || busy) return
+    // Не пропускать молча: слой без источника не попадёт в экспорт (photo и
+    // video идут через один и тот же resolveSticker/composeScene) — вместо
+    // тихой дыры возвращаем пользователя к стикеру, который нужно удалить,
+    // см. failedStickerIds выше.
+    if (unresolvedStickers.length) {
+      setTab('stickers')
+      setSelectedSticker(unresolvedStickers[0].id)
+      return
+    }
     if (isVideo) { void doFinishVideo(); return }
     const exportTexts = editingRef.current ? commitEditing() : texts
     setBusy(true)
@@ -1625,6 +1649,14 @@ export default function MediaEditor({ file, onDone, onCancel }: {
             </>
           )}
         </div>
+
+        {/* Долг «фолбэк без WASM SIMD» (backlogs/frontend/
+            lottie-no-wasm-fallback.md): слой без источника — не молча, а
+            видимым предупреждением поверх панели, независимо от открытой
+            вкладки (доФинish() блокирует сохранение, пока список не пуст). */}
+        {unresolvedStickers.length > 0 && (
+          <div className={s.stickerWarning}>{t('MediaEditor.StickerNotRendered')}</div>
+        )}
 
         {/* tweb не масштабирует угловую кнопку по нажатию — отклик даёт ripple
             и фон (_button.scss:75-77); whileTap снят. */}

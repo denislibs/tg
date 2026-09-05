@@ -6,12 +6,22 @@
 // onPick добавляет слой. Поиска нет — у нашего sticker-API нет текстового
 // поиска стикеров (только по эмодзи в саджестах композера), StickersTab
 // дропдауна тоже без строки поиска; здесь тот же набор возможностей.
+//
+// Долг «фолбэк без WASM SIMD» (backlogs/frontend/lottie-no-wasm-fallback.md,
+// «Отдельно и жирно: медиаредактор»): без SIMD движок tlottie не может
+// декодировать lottie-стикер вовсе (`lottieLoader.ts` бросает NO_WASM ДО
+// первого кадра), а один канвас-композер обслуживает и превью, и экспорт —
+// добавленный такой стикер молча пропадает из сохранённого файла. Гасим
+// причину, а не следствие: lottie-ячейки становятся недоступны для клика
+// здесь же, в панели, ДО того как слой попал в сцену.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import StickerMedia from '../StickerMedia'
 import TgIcon, { type IconName } from '../TgIcon'
 import { useStickersPanel } from '../../core/hooks/useStickers'
 import type { Sticker } from '../../core/managers/stickersManager'
 import { setThumbMediaId } from '../../core/stickers/setThumb'
+import { isLottieMime } from '../../core/stickers/tgs'
+import IS_WEB_ASSEMBLY_SIMD_SUPPORTED from '@environment/webAssemblySimdSupport'
 import { useT } from '../../i18n'
 import classNames from '../../shared/lib/classNames'
 import s from './MediaEditor.module.scss'
@@ -66,6 +76,8 @@ export default function StickerPicker({ onPick }: { onPick: (st: Sticker) => voi
   }
 
   const pick = (st: Sticker) => {
+    // См. докблок вверху файла — lottie без WASM SIMD не добавляем вовсе.
+    if (!IS_WEB_ASSEMBLY_SIMD_SUPPORTED && isLottieMime(st.mime_type)) return
     panel.markUsed(st)
     onPick(st)
   }
@@ -94,11 +106,19 @@ export default function StickerPicker({ onPick }: { onPick: (st: Sticker) => voi
           <div key={c.key} ref={(el) => { if (el) catElsRef.current.set(c.key, el); else catElsRef.current.delete(c.key) }}>
             <div className={s.stickerSectionTitle}>{c.title}</div>
             <div className={s.stickerGrid}>
-              {c.stickers.map((st) => (
-                <span key={st.id} className={s.stickerCell} onClick={() => pick(st)}>
-                  <StickerMedia doc={st} width={64} height={64} playOnHover loop />
-                </span>
-              ))}
+              {c.stickers.map((st) => {
+                const unsupported = !IS_WEB_ASSEMBLY_SIMD_SUPPORTED && isLottieMime(st.mime_type)
+                return (
+                  <span
+                    key={st.id}
+                    className={classNames(s.stickerCell, unsupported ? s.stickerCellDisabled : '')}
+                    title={unsupported ? t('MediaEditor.StickerAnimatedUnsupported') : undefined}
+                    onClick={() => pick(st)}
+                  >
+                    <StickerMedia doc={st} width={64} height={64} playOnHover={!unsupported} loop />
+                  </span>
+                )
+              })}
             </div>
           </div>
         ))}

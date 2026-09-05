@@ -143,7 +143,7 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // цифры — `web-client/backlogs/frontend/dict-coverage-scan-quote-pairing.md`.
 // `plural` не менялся — строка не числовая.
 const COMPOSITION = {
-  ru: { keys: 1303, plural: 30 },
+  ru: { keys: 1305, plural: 30 },
   uk: { keys: 684, plural: 24 },
   es: { keys: 683, plural: 24 },
   de: { keys: 683, plural: 24 },
@@ -198,8 +198,14 @@ const COMPOSITION = {
 // добавлен `SubscribeRequests` (см. докблок у `COMPOSITION` выше — там же
 // разбор, почему это правка НЕ задачи 5 по существу, а снятие слепоты скана
 // покрытия). У остальных четырёх словарей набор не менялся — их снимок тот же.
+// Сдвиг набора задачей «фолбэк без WASM SIMD»: русскому добавлены два ключа
+// медиаредактора (`MediaEditor.StickerAnimatedUnsupported`,
+// `MediaEditor.StickerNotRendered`) — lottie-стикер без декодера WASM SIMD
+// недоступен для добавления, а слой без источника не пропадает молча из
+// экспорта (backlogs/frontend/lottie-no-wasm-fallback.md). У остальных
+// четырёх словарей набор не менялся — их снимок тот же.
 const FINGERPRINT = {
-  ru: '562147f9',
+  ru: 'f4212ead',
   uk: 'c2475b60',
   es: '32bfb526',
   de: '32bfb526',
