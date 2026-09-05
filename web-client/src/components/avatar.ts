@@ -49,8 +49,16 @@
 //    (`avatar-star`), premium-звезда — предметов нет;
 //  • `REPLIES_PEER_ID` (:831-834) — служебного пира «Replies» у нас нет,
 //    константы тоже (`core/peers/peerId.ts` объявляет только NULL/SERVICE/HIDDEN);
-//  • `size: 'full'` (класс `avatar-full`) и `props.accountNumber`
-//    (мультиаккаунт) — вызывающих нет.
+//  • `props.isBig` (:804, :817, :644-655 — выбор `photo_big`/`photo_small` и
+//    видео-оверлея по ступеням) и `props.accountNumber` (мультиаккаунт) —
+//    у нашей карточки пира ОДИН `photo_id` без ступеней (`core/peers/peer.ts:80`),
+//    решать в `putAvatar` нечего — предмета нет, а не забыто.
+//
+// Задача 7 (`docs/superpowers/plans/2026-09-05-profile-avatars-class.md`)
+// портировала `size: 'full'` (класс `avatar-full`, :1073 — тот же шаблон
+// `avatar-${size}`, строкой он и так работал) и `noFadeIn` (:409, :549 —
+// глушит анимацию проявления фотографии, см. `putAvatar`). Единственный
+// вызывающий — `peerProfileAvatars.ts::processItem`, первый элемент ленты.
 //
 // ─── Известный долг разметки (НЕ чинится здесь) ────────────────────────────
 // Класс `avatar-{size}` ставится безусловно, как в оригинале (:1073), а
@@ -98,8 +106,12 @@ export interface AvatarOptions {
   /** готовое имя строкой — карточки пира нет и быть не может (порт `peerTitle`
    *  оригинала, avatarNew.tsx:410; там же он уводит `peerId` в `NULL_PEER_ID`) */
   peerTitle?: string
-  /** размер в пикселях — уезжает в класс `avatar-{size}` (:1073) */
-  size: number
+  /** размер в пикселях, либо `'full'` — уезжает в класс `avatar-{size}` (:417,
+   *  :1073) буквально тем же шаблоном; `avatar-full` (`_avatar.scss:447`)
+   *  растягивает узел на 100% родителя вместо фиксированного `--size`. */
+  size: number | 'full'
+  /** гасит анимацию проявления фотографии (:409, :549) — см. `putAvatar`. */
+  noFadeIn?: boolean
   middleware: Middleware
   managers: AvatarManagers
 }
@@ -279,7 +291,10 @@ class Avatar {
     // :549 `cached = !(result instanceof Promise)` — попадание в зеркало URL:
     // байтов ждать не надо, значит и анимации проявления быть не должно.
     const cached = cachedMediaUrl(photoId) !== undefined
-    const animate = !cached && liteMode.isAvailable('animations') // :551
+    // :549 `!props.noFadeIn` — вызывающий явно просит без анимации (задача 7:
+    // первый элемент карусели профиля меняет маленький кэшированный кружок на
+    // большую фотографию, и проявление сквозь него дало бы «мигание» цветом).
+    const animate = !cached && liteMode.isAvailable('animations') && !this.options.noFadeIn // :551
 
     const image = document.createElement('img') // :552
     image.className = animate ? 'avatar-photo fade-in' : 'avatar-photo' // :554

@@ -628,6 +628,9 @@ const ru = {
   ChannelType: 'Тип канала',
   'ChannelDirectMessages.Settings.Title': 'Личные сообщения',
   'PeerInfo.Discussion': 'Обсуждение',
+  // Заголовок секции заявок на вступление в группу/канал (tweb PeerInfo,
+  // тот же экран, что и Discussion выше) — src/lang.ts:1279 'Join Requests'.
+  SubscribeRequests: 'Заявки на вступление',
   Add: 'Добавить',
   RecentActions: 'Последние действия',
   Administrators: 'Администраторы',

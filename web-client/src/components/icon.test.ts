@@ -111,8 +111,14 @@ const ALLOWED_TSX: Record<string, number> = {
   // `<TgIcon>` — отдельная работа, к ванильному порту отношения не имеет.
   'shared/ui/Avatar/Avatar.tsx': 1,
   'shared/ui/Menu/MenuItem.tsx': 1,
-  // Пустые span'ы: глиф им ставит CSS (`content` у класса), а не JS.
-  'components/UserInfoPanel.tsx': 2,
+  // Пустой span: глиф ставит CSS (`content` у класса), а не JS.
+  // `components/UserInfoPanel.tsx` держал здесь `2` (стрелки карусели фото
+  // профиля, `.profile-avatars-arrow-icon`) — запись снята: карусель снесена
+  // (задача 5, docs/superpowers/plans/2026-09-05-profile-avatars-class.md),
+  // стрелки теперь рисует класс `PeerProfileAvatars` (`components/
+  // peerProfileAvatars.ts`, `Icon('avatarprevious'/'avatarnext', …)` через
+  // ванильный `components/icon.ts` — тот самый общий модуль, единственность
+  // которого пинует этот файл, счётчику здесь взяться неоткуда).
   'components/group/GroupEditFlow.tsx': 1,
 }
 
