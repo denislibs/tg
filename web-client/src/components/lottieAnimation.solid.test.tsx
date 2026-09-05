@@ -13,6 +13,12 @@
 //  4. Расхождение с tweb, объявленное в докблоке: `lottieLoader` необязателен
 //     и по умолчанию берёт синглтон `@lib/lottie/lottieLoader` (в оригинале
 //     проп обязателен и приходит из `useHotReloadGuard()`, которого у нас нет).
+//  5. `needRaf` — дословный порт (tweb `lottieAnimation.tsx:38-42`): пока узел
+//     не в DOM, загрузка откладывается на `requestAnimationFrame` и не зовёт
+//     `loadAnimationAsAsset` вовсе; как только узел подключается — грузит.
+//     У нас на момент Этапа 5 нет ни одного потребителя с `needRaf` (найдено
+//     финальным ревью программы), поэтому без этого теста ветка не краснела
+//     бы ни при каком сносе.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'solid-js/web'
 import type { LottieLoader } from '@lib/lottie/lottieLoader'
@@ -131,6 +137,35 @@ describe('LottieAnimation — единственная точка входа д�
     await Promise.resolve()
     // без второго аргумента у `onCleanup`'s `.then()` (см. комментарий у
     // строки в компоненте) этот прогон дал бы Unhandled Rejection.
+  })
+
+  it('needRaf: не грузит, пока узел не подключён к DOM, грузит после подключения (tweb lottieAnimation.tsx:38-42)', async () => {
+    const player = fakePlayer()
+    const { loader, loadAnimationAsAsset } = fakeLoader(player)
+
+    // Контейнер НЕ добавлен в document — узел, который рендерит компонент,
+    // остаётся отключённым от DOM (`isConnected === false`).
+    const detachedHost = document.createElement('div')
+    const localDispose = render(
+      () => <LottieAnimation lottieLoader={loader} name="UtyanPasscode" needRaf />,
+      detachedHost,
+    )
+    const div = detachedHost.firstElementChild as HTMLDivElement
+
+    await Promise.resolve()
+    expect(div.isConnected).toBe(false)
+    expect(loadAnimationAsAsset).not.toHaveBeenCalled()
+
+    document.body.append(detachedHost)
+    expect(div.isConnected).toBe(true)
+    // requestAnimationFrame, запланированный в первом заходе loadAnimation(),
+    // срабатывает следующим кадром.
+    await new Promise((r) => requestAnimationFrame(r))
+
+    expect(loadAnimationAsAsset).toHaveBeenCalledTimes(1)
+
+    localDispose()
+    detachedHost.remove()
   })
 
   it('без lottieLoader-пропа использует синглтон @lib/lottie/lottieLoader (расхождение с tweb объявлено в докблоке)', () => {

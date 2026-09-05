@@ -1,9 +1,9 @@
 // Пины `LottieSticker.tsx` (Этап 2 плана «один движок lottie»,
 // docs/superpowers/plans/2026-09-05-lottie-single-engine.md): движок —
 // tlottie (`@lib/lottie/lottieLoader`), мокаем модуль целиком, тот же приём,
-// что `PasswordMonkey.test.tsx`/`TrackingMonkey.solid.test.tsx` (Этап 1), а
-// не `lottie-web` (глобальный мок в `test/setup.ts` этого компонента больше
-// не касается — движок сменился, локальная карта `ASSETS` снята).
+// что `PasswordMonkey.test.tsx`/`TrackingMonkey.solid.test.tsx` (Этап 1).
+// `lottie-web` и его глобальный мок в `test/setup.ts` больше не существуют
+// вовсе (пакет снесён Этапом 4) — локальная карта `ASSETS` снята.
 //
 // Норма проводки: ассет грузится по ИМЕНИ (не факт вызова, а конкретное
 // значение `LottieAssetName` для каждого потребителя-примера), click —

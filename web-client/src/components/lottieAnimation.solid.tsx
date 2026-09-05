@@ -32,12 +32,13 @@
 // мажоритарный приём оригинала — вызывающему не нужно ничего прокидывать, а
 // тесты по-прежнему могут подменить его инъекцией.
 //
-// Потребителей на этот компонент пока НЕТ (Этап 0 — только фундамент):
-// `LottieSticker.tsx`/`MediaHeader.solid.tsx` переезжают на него по одному в
-// Этапах 2-3. Обе обезьянки (`PasswordMonkey.tsx`/`TrackingMonkey.solid.tsx`)
-// на него НЕ переезжают — оригиналы (`monkeys/{password,tracking}.ts`) ходят
-// в `lottieLoader.loadAnimationAsAsset` напрямую, минуя `lottieAnimation.tsx`,
-// порт (Этап 1) повторяет это же устройство.
+// Потребитель — `MediaHeader.solid.tsx::Sticker` (Этап 2 плана, слот `name`).
+// `LottieSticker.tsx` на него НЕ переезжал и не переедет: это React-компонент
+// (не Solid-остров, см. его собственный докблок), он зовёт
+// `lottieLoader.loadAnimationAsAsset` напрямую — тем же приёмом, что и обе
+// обезьянки (`PasswordMonkey.tsx`/`TrackingMonkey.solid.tsx`), у которых
+// оригиналы (`monkeys/{password,tracking}.ts`) тоже ходят в
+// `lottieLoader.loadAnimationAsAsset` напрямую, минуя `lottieAnimation.tsx`.
 import { type Component, createRenderEffect, mergeProps, onCleanup } from 'solid-js'
 
 import defaultLottieLoader, { type LottieAssetName, type LottieLoader } from '@lib/lottie/lottieLoader'

@@ -10,8 +10,8 @@
  *
  * Движок — tlottie (`@lib/lottie/lottieLoader`): мокаем модуль целиком (тот
  * же приём, что `wrappers/sticker.test.ts` — `loadAnimationWorker` там,
- * `loadAnimationAsAsset` здесь), а не `lottie-web` (глобальный мок в
- * `test/setup.ts` этого компонента больше не касается — движок сменился).
+ * `loadAnimationAsAsset` здесь). `lottie-web` и его глобальный мок в
+ * `test/setup.ts` больше не существуют вовсе (пакет снесён Этапом 4).
  * Обе анимации теперь делят ОДИН контейнер (см. докблок компонента про
  * отказ от host-`div` на канву), поэтому идле/tracking-инстансы различаем по
  * ИМЕНИ ассета, вторым аргументом `loadAnimationAsAsset`, а не по узлу.

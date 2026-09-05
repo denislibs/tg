@@ -42,7 +42,7 @@
 
 ## Отдельно и жирно: медиаредактор — потеря тяжелее
 
-**`web-client/src/components/mediaEditor/stickerAssets.ts:124-136`.**
+**`web-client/src/components/mediaEditor/stickerAssets.ts:124-138`.**
 
 У остальных четырёх мест пропадает только *превью* — часть интерфейса, не
 результат работы пользователя. У медиаредактора не так: `StickerAssets.ensure()`
