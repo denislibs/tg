@@ -503,15 +503,20 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   // (докблок `Link` в том файле).
   //
   // НАХОДКА РЕВЬЮ (Critical, финальный раунд Task 4): гейт раньше читал
-  // `chat.username` — поле вью-модели (`data.ts:179`), которое НИКТО не
-  // пишет (`core/dialogToChat.ts` его не выставляет ни для одного вида чата,
-  // синтетический тред-`Chat` `App.tsx:169-175` тоже) — было мертво, и гейт
-  // был истинен ВСЕГДА. У публичного канала/группы с уже созданной лениво
-  // инвайт-ссылкой (`useGroupInfo.ts:142-151`, право `invite_links`) поэтому
-  // рисовались ОБЕ строки разом: эта (инвайт) и Solid-`Link` (публичный
-  // username), с разными URL и двумя QR-кнопками. Это НЕ было «явно
-  // разведённым владением на переходный период» — раздел был мнимым, поле
-  // с самого начала не имело писателя.
+  // `chat.username` — поле вью-модели, у которого не было НИ ОДНОГО читателя
+  // (`core/dialogToChat.ts` его не выставляет ни для одного вида чата), а
+  // писатель был РОВНО ОДИН — `App.tsx` (черновик-чат приватного диалога) —
+  // и тот всегда для ПРИВАТНОГО чата (`draftChat`, `type: 'private'`), то
+  // есть для группы/канала (единственные потребители этого гейта) поле было
+  // мертво ВСЕГДА, и гейт был истинен ВСЕГДА для них. У публичного
+  // канала/группы с уже созданной лениво инвайт-ссылкой (`useGroupInfo.ts:
+  // 142-151`, право `invite_links`) поэтому рисовались ОБЕ строки разом: эта
+  // (инвайт) и Solid-`Link` (публичный username), с разными URL и двумя
+  // QR-кнопками. Это НЕ было «явно разведённым владением на переходный
+  // период» — раздел был мнимым: единственный писатель поля адресовал
+  // ДРУГОЙ вид чата, чем читатель. Поле (`data.ts::Chat.username`) и его
+  // писатель снесены следующей находкой того же ревью — мёртвый код без
+  // читателей, «мёртвый код удалять агрессивно» (корневой CLAUDE.md).
   //
   // Фикс — свести к ОДНОМУ источнику истины: тому же предикату и тому же
   // зеркалу пиров, что читает Solid (`isPublicPeer`, `core/peerCache.ts`, порт
@@ -722,7 +727,18 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
               (Solid `PeerProfile.Link` показывает строку только когда
               username есть — докблок там же). Клик копирует + тост (tweb
               PeerProfile.Link), QR — тот же мост `openQrCode`, которым
-              пользуются Solid-строки `Username`/`Link`. */}
+              пользуются Solid-строки `Username`/`Link`.
+
+              НАХОДКА РЕВЬЮ (Minor, финальный раунд волны): у оригинала это
+              содержимое — ребёнок `.profile-content` (`peerProfile.tsx:
+              194-214`), и на `main` (до задачи 2) этот узел ТОЖЕ был прямым
+              ребёнком React-владетого `.profile-content`. Сейчас `.profile-
+              content` рисует Solid (хост — `profileContentHostRef` ниже), и
+              правило владения узла (план, шапка) не даёт React писать
+              ВНУТРЬ него — поэтому узел остался здесь, СИБЛИНГОМ хоста
+              вместо потомка `.profile-content`. Порядок среди сиблингов не
+              воспроизводит оригинал, расхождение объявлено и разобрано —
+              `backlogs/frontend/profile-content-sibling-nodes.md`. */}
           {(isGroup || isChannel) && fallbackInviteUrl && (
           <SidebarSection noDelimiter>
             <Row
@@ -748,7 +764,11 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
           </SidebarSection>
           )}
 
-          {/* Закреплённые в профиле истории (tweb profile stories) — только у пользователя */}
+          {/* Закреплённые в профиле истории (tweb profile stories) — только у
+              пользователя. Та же находка ревью, что у фолбэк-ссылки выше:
+              был ребёнком React-владетого `.profile-content` на `main`,
+              теперь — сиблинг Solid-хоста (`backlogs/frontend/
+              profile-content-sibling-nodes.md`). */}
           {isUser && <PinnedStoriesSection peerId={peerId} />}
 
           {/* Shared media: табы Медиа/Файлы/Ссылки/Музыка/Голосовые (tweb sharedMedia).

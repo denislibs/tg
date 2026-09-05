@@ -2,13 +2,17 @@
 // docs/superpowers/plans/2026-09-05-profile-card-solid.md): панель рисовала
 // ДВЕ строки ссылки одновременно — React-фолбэк инвайт-ссылки
 // (UserInfoPanel.tsx) и Solid-`Link` (peerProfile.solid.tsx) — потому что
-// React-гейт `!chat.username` читал МЁРТВОЕ поле вью-модели (`data.ts:179`):
-// его не пишет ни `core/dialogToChat.ts`, ни синтетический тред-`Chat`
-// (`App.tsx:169-175`), ни `draftChat` для приватных чатов (значение не читает
-// НИКТО) — поле было пусто ВСЕГДА, и гейт был истинен ВСЕГДА. У публичного
-// канала/группы с уже лениво созданной инвайт-ссылкой (`useGroupInfo.ts:
-// 142-151`, право `invite_links`) поэтому рисовались обе строки разом (эта +
-// Solid-Link), с разными URL и двумя QR-кнопками.
+// React-гейт `!chat.username` читал МЁРТВОЕ поле вью-модели (было `data.ts:
+// 179`, снесено следующей находкой того же ревью вместе с единственным
+// писателем): у поля был РОВНО ОДИН писатель (`App.tsx`, `draftChat` —
+// ТОЛЬКО для приватного черновик-чата, `type: 'private'`) и ноль читателей
+// для группы/канала — `core/dialogToChat.ts` его не выставляет вовсе, а этот
+// гейт живёт под `(isGroup || isChannel)`, то есть адресует ДРУГОЙ вид чата,
+// чем единственный писатель. Для группы/канала поле было пусто ВСЕГДА, и
+// гейт был истинен ВСЕГДА. У публичного канала/группы с уже лениво созданной
+// инвайт-ссылкой (`useGroupInfo.ts:142-151`, право `invite_links`) поэтому
+// рисовались обе строки разом (эта + Solid-Link), с разными URL и двумя
+// QR-кнопками.
 //
 // Фикс сводит источник истины к ОДНОМУ предикату — `isPublic`
 // (`core/peers/predicates.ts:79`, порт `appChatsManager.isPublic`; до фикса
@@ -98,8 +102,9 @@ describe('гейт фолбэка (React) и Solid-Link — взаимоискл
   it('репродукция старого бага: дохлое chat.username даёт ИСТИНА && ИСТИНА одновременно с Solid-Link', () => {
     seedChannel('public') // публичный канал — реальный username есть
     const inviteLinkExists = true
-    // Симуляция СТАРОГО гейта: `chat.username` — поле вью-модели, которое
-    // НИКОГДА не пишется (см. докблок файла) — в проде оно ровно undefined.
+    // Симуляция СТАРОГО гейта: `chat.username` — поле вью-модели, у которого
+    // для группы/канала не было ни писателя, ни читателя (см. докблок файла) —
+    // в проде оно ровно undefined.
     const deadChatUsername: string | undefined = undefined
     const oldReactShowsFallback = !deadChatUsername && inviteLinkExists
     const solidShowsLink = isPublic(cachedChat(peerId))

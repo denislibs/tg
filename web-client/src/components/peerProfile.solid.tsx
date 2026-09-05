@@ -178,7 +178,7 @@ import type { User, Chat, Channel, ChannelFull } from '../core/peers/peer'
 import { useChatsStore } from '../stores/chatsStore'
 import { mountSolid } from '../shared/solid/mountSolid.solid'
 import { subscribeExternal } from '../helpers/solid/subscribeExternal'
-import { getPeerTitle } from '../core/peers/getPeerTitle'
+import { getPeerTitle, SAVED_MESSAGES_TITLE } from '../core/peers/getPeerTitle'
 import { wrapEmojiText, wrapRichText } from '../lib/richtext'
 import { isUser, HIDDEN_PEER_ID, NULL_PEER_ID } from '../core/peers/peerId'
 import { isBroadcast, isPublic } from '../core/peers/predicates'
@@ -356,20 +356,64 @@ export function createPeerProfileContextValue(props: PeerProfileProps): PeerProf
       value.isSavedDialog
         ? { peerId: value.threadId!, threadId: undefined }
         : { peerId: value.peerId, threadId: value.threadId },
-    onOpenQrCode: props.onOpenQrCode,
-    // Задача 5 — сквозной проброс, см. докблоки полей контекста выше.
-    showStatistics: props.showStatistics,
-    onOpenStatistics: props.onOpenStatistics,
-    showDiscussion: props.showDiscussion,
-    discussionPeerId: props.discussionPeerId,
-    enablingDiscussion: props.enablingDiscussion,
-    onEnableDiscussion: props.onEnableDiscussion,
-    showJoinRequests: props.showJoinRequests,
-    joinRequests: props.joinRequests,
-    onApproveJoinRequest: props.onApproveJoinRequest,
-    onDeclineJoinRequest: props.onDeclineJoinRequest,
-    isSecret: props.isSecret,
-    onOpenEncryptionKey: props.onOpenEncryptionKey,
+    // НАХОДКА РЕВЬЮ (Critical, финальный раунд волны): `onOpenQrCode` и ВСЕ
+    // поля задачи 5 ниже раньше лежали здесь ОБЫЧНЫМИ полями (`x: props.x`) —
+    // значение вычислялось РОВНО ОДИН РАЗ, в момент вызова этой функции
+    // (первый рендер, ДО того, как `UserInfoPanel.tsx` вообще узнаёт ответы
+    // `useGroupInfo`/`useState`). `props` здесь — прокси Solid-стора
+    // (`mountSolid.solid.tsx`, единственный вызывающий), и `update(patch)`
+    // пишет В ЭТОТ СТОР уже ПОСЛЕ первого рендера — но обычное поле объекта
+    // `value` эту запись не видит: оно скопировало значение снимком и больше
+    // к `props` не возвращается. `peer`/`fullPeer` выше от этого бага не
+    // страдали ТОЛЬКО потому, что уже были геттерами, перечитывающими свой
+    // аксессор заново при каждом обращении — тот же приём применён здесь.
+    // Живой пример поломки: `showStatistics`/`showDiscussion`/
+    // `showJoinRequests` приходят `false`/`undefined` на первом коммите
+    // (макет монтируется в layout-фазе, `useGroupInfo` отвечает позже
+    // асинхронно) — со снимком секции Statistics/Discussion/JoinRequests не
+    // появлялись НИКОГДА, а для статистики канала это ЕДИНСТВЕННЫЙ вход в
+    // фичу (в топбаре пункта нет) — пин на факт (не на форму вызова моста) —
+    // `peerProfileLiveProps.solid.test.tsx`.
+    get onOpenQrCode() {
+      return props.onOpenQrCode
+    },
+    // ── Задача 5 — сквозной проброс, см. докблоки полей контекста выше ──────
+    get showStatistics() {
+      return props.showStatistics
+    },
+    get onOpenStatistics() {
+      return props.onOpenStatistics
+    },
+    get showDiscussion() {
+      return props.showDiscussion
+    },
+    get discussionPeerId() {
+      return props.discussionPeerId
+    },
+    get enablingDiscussion() {
+      return props.enablingDiscussion
+    },
+    get onEnableDiscussion() {
+      return props.onEnableDiscussion
+    },
+    get showJoinRequests() {
+      return props.showJoinRequests
+    },
+    get joinRequests() {
+      return props.joinRequests
+    },
+    get onApproveJoinRequest() {
+      return props.onApproveJoinRequest
+    },
+    get onDeclineJoinRequest() {
+      return props.onDeclineJoinRequest
+    },
+    get isSecret() {
+      return props.isSecret
+    },
+    get onOpenEncryptionKey() {
+      return props.onOpenEncryptionKey
+    },
   }
   return value
 }
@@ -471,15 +515,47 @@ export default PeerProfile
  * же React-компоненты, вставлявшиеся порталом из `UserInfoPanel.tsx`, красили
  * иконки фиксированным цветом независимо от `need-white`) — не регресс,
  * известный пробел на будущее, если понадобится точная белизна значков.
+ *
+ * ── НАХОДКА РЕВЬЮ (Important): «Избранное» подписывалось собственным именем ──
+ * `getPeerTitle` (`core/peers/getPeerTitle.ts`) не знает про диалог с самим
+ * собой — это дословный порт ВЕНДОРНОГО `wrappers/getPeerTitle.ts`, а не
+ * класса `PeerTitle`, и в самом оригинале эта функция SavedMessages тоже не
+ * ветвит (проверено по исходнику: ветки `dialog`/`myId` там нет вовсе). Ветка
+ * живёт ВЫШЕ, в `PeerTitle.update` (tweb `peerTitle.ts:140-148`:
+ * `peerId === rootScope.myId && this.options.dialog` → `i18n('SavedMessages')`
+ * / `'Saved'`), и именно оттуда её зовёт `PeerProfile.Name`
+ * (`peerProfile.tsx:276`, `dialog: context.isDialog`). Раньше здесь ветки не
+ * было вовсе — заголовок «Избранного» строился тем же `getPeerTitle`, что и
+ * у любого чужого пользователя, и получал ИМЯ ЗРИТЕЛЯ вместо «Избранное»:
+ * регресс и против оригинала, и против снесённого React (`dialogToChat.ts`
+ * подставляет `SAVED_MESSAGES_TITLE` в `chat.name` для СПИСКА, но профиль
+ * этот путь не разделял). `meAsNotes` (заметки внутри «Избранного» — тред
+ * снутри Saved Messages, `:143`) не портирован — предмета «заметки» у нас
+ * нет нигде в кодовой базе, а `isSavedDialog`/`getDetailsForUse` (ветка,
+ * которая привела бы к этому сценарию) сегодня недостижимы (докблок Task 2).
  */
 function Name() {
   const context = usePeerProfileContext()
   const { peerId } = context.getDetailsForUse()
+  const meId = useChatsStore.getState().meId
 
-  const titleNode = createMemo(() => wrapEmojiText(getPeerTitle({ peerId, peer: context.peer })))
+  // Порт `peerId === rootScope.myId && this.options.dialog` — см. докблок
+  // функции выше. Бейджи (verified/premium/эмодзи-статус) в этой ветке ТОЖЕ
+  // не рисуются: у оригинала генерация иконок (`generateTitleIcons`,
+  // `peerTitle.ts:187` и далее) стоит только в ветке ELSE (реальный пир),
+  // SavedMessages-ветка обрывается на замене текста раньше.
+  const isSavedMessages = createMemo(() => peerId === meId && context.isDialog)
+
+  const titleNode = createMemo(() =>
+    isSavedMessages()
+      ? wrapEmojiText(SAVED_MESSAGES_TITLE)
+      : wrapEmojiText(getPeerTitle({ peerId, peer: context.peer })),
+  )
   // Бейджи верификации/премиума/эмодзи-статуса — только у пользователя
-  // (`UserReal`); `Chat`/`Channel` их не несут вовсе в нашей модели.
+  // (`UserReal`), и НЕ у «Избранного» (см. `isSavedMessages` выше); `Chat`/
+  // `Channel` бейджей не несут вовсе в нашей модели.
   const user = createMemo(() => {
+    if (isSavedMessages()) return undefined
     const peer = context.peer
     return peer && peer._ === 'user' ? peer : undefined
   })
@@ -543,6 +619,18 @@ const TYPING_TTL = 6000
  *    Портирован СЧЁТЧИК (`ChatMembersLabel` ниже) БЕЗ онлайн-числа — тем же
  *    хелпером `membersLabel`, что и раньше (чистая функция, второго способа
  *    считать не заводит).
+ *
+ * ── ПОТЕРЯ (объявлена, не регресс): подзаголовок «N чатов» у «Избранного» ────
+ * Снесённый React-подзаголовок (`subtitleText`, `UserInfoPanel.tsx`, до Task 3)
+ * у диалога с самим собой показывал число сгруппированных по источнику
+ * сохранённых диалогов («N чатов»). Здесь эта строка не появится вовсе:
+ * `needStatus` (см. выше) ложен для own-диалога (`meId === peerId && isDialog`),
+ * ровно как в оригинале (`:335-339` — тот же own-диалог гасит ВЕСЬ
+ * `SubtitleStatus`, а не только typing/presence-часть, и у `PeerProfile` нет
+ * отдельной ветки «N чатов» для Saved Messages ни у одного счётчика). Прав
+ * оригинал — счётчика сохранённых диалогов в подзаголовке профиля у tweb нет
+ * никогда, это была самодеятельность прежнего React. Заводить эту строку
+ * заново значило бы чинить то, что не сломано.
  */
 function SubtitleStatus() {
   const context = usePeerProfileContext()
@@ -724,7 +812,24 @@ function EmojiStatusIcon(props: { emoji: string; size: number }) {
 
 /** Порт `PeerProfile.MainSection` (tweb `:1510-1533`) — обёртка
  *  `<Show when={!(isBotforum && threadId)}>` снята как мёртвый код, см.
- *  докблок файла. */
+ *  докблок файла.
+ *
+ * ── Проверено ревью: пустая карточка у own-диалога («Избранное») — НЕ баг ───
+ * У own-диалога (`peerId === meId && isDialog`) гейт `canBeDetailed()` гасит
+ * Phone/Username, `Notifications` гасится тем же условием, `Link` не
+ * показывается вовсе (это не чат/канал) — при отсутствии своих Bio/Birthday
+ * `<Section>` (`section.solid.tsx`) отрисует контейнер БЕЗ единой строки
+ * внутри: `Section` не гейтует себя по пустоте детей (`section.solid.tsx`
+ * рисует `-container`/`-content` безусловно), `:empty`-CSS в `_section.scss`
+ * нет. Это НЕ регресс порта: у tweb `PeerProfile.MainSection` (`:1509-1530`)
+ * — ТОТ ЖЕ `<Section noDelimiter>` без гейта по пустоте, и та же цепочка
+ * условий (`canBeDetailed`) гасит Phone/Username/Notifications для own-
+ * диалога там тоже (`:639`, `:696`, `:1177` оригинала) — при пустых
+ * bio/birthday тот же видимый исход (пустая карточка с паддингом) возможен
+ * И У ОРИГИНАЛА, поскольку `.sidebar-left-section` (`_section.scss`) красит
+ * фон/паддинг безусловно. Добавлять здесь гейт «не рисовать секцию, если
+ * дети не дали ни одной строки», которого у оригинала нет, значило бы
+ * отсебятина (корневой CLAUDE.md, «без отсебятины») — прав оригинал. */
 function MainSection() {
   return (
     <Section noDelimiter>
@@ -920,8 +1025,10 @@ function Bio() {
  * ── Разведение владения строкой — ОДНИМ предикатом, не двумя гейтами ────────
  * Раньше здесь стояло «не регресс, временное разделение владения на
  * переходный период» — формулировка была НЕВЕРНОЙ: React-фолбэк проверял
- * `!chat.username`, поле вью-модели (`data.ts:179`), которое НЕ пишет НИКТО
- * (`core/dialogToChat.ts`, синтетический тред-`Chat` `App.tsx:169-175`) —
+ * `!chat.username`, поле вью-модели (было `data.ts:179`, снесено следующей
+ * находкой того же ревью), у которого не было ЧИТАТЕЛЕЙ ни для группы, ни
+ * для канала — единственный писатель (`App.tsx`) заполнял его только у
+ * приватного черновик-чата, для которого этот гейт вообще не читается —
  * гейт был истинен всегда, и разведения по факту не было: при уже созданной
  * инвайт-ссылке (`useGroupInfo.ts:142-151`) React рисовал свою строку
  * ОДНОВРЕМЕННО с этой (находка ревью Critical, финальный раунд Task 4).

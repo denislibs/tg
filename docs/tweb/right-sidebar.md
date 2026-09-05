@@ -949,7 +949,7 @@ DOM/лента/жесты/сворачивание живут в отдельн�
 
 ### 1.4 Хелперы/хуки
 
-`src/components/userInfo/helpers.ts` (склонения, `HEADER_H=56`, `ADDITIONAL_OFFSET=16`, `BODY_PADDING=16`, `TAB_GAP=8`, `sharedMediaChatId`), `src/core/format/sharedMediaFmt.ts` (ext/цвета/размер/длительность/host), `core/hooks/useGroupInfo.ts` (252), `core/hooks/useUserProfileData.ts` (50, `useSavedDialogs`/`useProfileGifts` — `useUserProfile` снят задачей 6), `useMuteToggle.ts`, `useChannelStats.ts`, `usePinnedStories.ts`, `useTransitionSlider.ts`, `useRightColumnShown.ts`, `core/dom/installColumnResize.ts`.
+`src/components/userInfo/helpers.ts` (склонения, `HEADER_H=56`, `ADDITIONAL_OFFSET=16`, `BODY_PADDING=16`, `TAB_GAP=8`, `sharedMediaChatId`), `src/core/format/sharedMediaFmt.ts` (ext/цвета/размер/длительность/host), `core/hooks/useGroupInfo.ts` (261), `core/hooks/useUserProfileData.ts` (50, `useSavedDialogs`/`useProfileGifts` — `useUserProfile` снят задачей 6), `useMuteToggle.ts`, `useChannelStats.ts`, `usePinnedStories.ts`, `useTransitionSlider.ts`, `useRightColumnShown.ts`, `core/dom/installColumnResize.ts`.
 
 ## 2. Табы контента
 
