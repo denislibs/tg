@@ -152,13 +152,15 @@ describe('sw.js — app-shell кэш ассетов', () => {
 
   /* Этап 0 плана «один движок lottie»
    * (docs/superpowers/plans/2026-09-05-lottie-single-engine.md) перенёс 11
-   * встроенных json-ассетов из бандла в `public/assets/tgs/*.json` — план
-   * требует ПРОВЕРИТЬ ФАКТОМ, что они кешируются, а не предполагать это по
-   * общему правилу `IMMUTABLE_RE`. Тест ниже гоняет НАСТОЯЩИЙ json одного из
-   * перенесённых файлов (читается с диска, не выдуман) через НАСТОЯЩИЙ
-   * обработчик `fetch` этого же sw.js — тем же приёмом, что соседние тесты
-   * файла. */
-  it('json-ассет из public/assets/tgs (Этап 0 «один движок lottie») кешируется по факту: второй запрос без сети', async () => {
+   * встроенных json-ассетов из бандла в `public/assets/tgs/*.json`. У этих
+   * файлов, В ОТЛИЧИЕ от остального `/assets/`, СТАБИЛЬНЫЕ имена без
+   * контентного хеша — финальное ревью нашло, что общая immutable cache-first
+   * ветка (`IMMUTABLE_RE`) из-за этого хоронит обновления навсегда: у
+   * прогретого клиента дозалитый/поправленный json не долетит вовсе. Ниже —
+   * НАСТОЯЩИЙ путь `/assets/tgs/` (`TGS_RE` → `handleTgs`, stale-while-
+   * revalidate) прогоняется через НАСТОЯЩИЙ файл sw.js тем же приёмом, что и
+   * соседние тесты. */
+  it('json-ассет из public/assets/tgs кешируется по факту (первый заход — сеть)', async () => {
     const realJson = readFileSync(resolve(__dirname, '../../public/assets/tgs/Mailbox.json'), 'utf8')
     const cache = new FakeCache()
     const net = vi.fn(async () => new Response(realJson, { status: 200, headers: { 'Content-Type': 'application/json' } }))
@@ -169,9 +171,62 @@ describe('sw.js — app-shell кэш ассетов', () => {
     expect(await first.text()).toBe(realJson)
     expect(cache.puts).toEqual(['https://localhost/assets/tgs/Mailbox.json'])
     expect(net).toHaveBeenCalledTimes(1)
+  })
 
+  it('обновление файла на «сервере» долетает: фоновая ревалидация реально ходит в сеть и обновляет кэш', async () => {
+    const cache = new FakeCache()
+    let payload = 'v1' // "старая" версия json
+    const net = vi.fn(async () => new Response(payload, { status: 200 }))
+    const handlers = loadServiceWorker(cache, net)
+    const req = makeRequest('https://localhost/assets/tgs/Mailbox.json')
+
+    const first = await dispatchFetch(handlers, req)!
+    expect(await first.text()).toBe('v1')
+
+    payload = 'v2' // деплой дозалил/поправил файл на "сервере"
     const second = await dispatchFetch(handlers, req)!
-    expect(await second.text()).toBe(realJson) // тот же настоящий контент — не пересказ
-    expect(net).toHaveBeenCalledTimes(1) // второй раз обработчик в сеть НЕ ходил — отдал из cache.match
+    // SWR: пока фон не догнал, второй ответ ещё может быть старым — это
+    // ожидаемо и допустимо (сценарий задачи явно разрешает «либо новое
+    // содержимое, либо хотя бы поход в сеть»). Важное здесь — сеть реально
+    // была вызвана повторно, а не проигнорирована, как раньше с IMMUTABLE_RE.
+    expect(await second.text()).toBe('v1')
+    await vi.waitFor(() => expect(net).toHaveBeenCalledTimes(2))
+
+    // Ревалидация долетела и легла в кэш — следующий показ уже свежий.
+    const third = await dispatchFetch(handlers, req)!
+    expect(await third.text()).toBe('v2')
+  })
+
+  it('при недоступной сети по-прежнему отдаёт закэшированную версию, не роняя ответ', async () => {
+    const cache = new FakeCache()
+    let online = true
+    const net = vi.fn(async () => {
+      if (!online) throw new TypeError('network unavailable')
+      return new Response('v1', { status: 200 })
+    })
+    const handlers = loadServiceWorker(cache, net)
+    const req = makeRequest('https://localhost/assets/tgs/Mailbox.json')
+
+    await dispatchFetch(handlers, req) // прогреваем кэш, пока сеть есть
+
+    online = false
+    const res = await dispatchFetch(handlers, req)!
+    expect(await res.text()).toBe('v1') // офлайн — но ответ есть, из кэша
+  })
+
+  // Правка не должна задеть хешированные ассеты: они — не /assets/tgs/,
+  // остаются на IMMUTABLE_RE/handleImmutable и держат cache-first без похода
+  // в сеть повторно (уже покрыто тестом выше «обычный ассет...», пин здесь —
+  // явно по имени с хешем, как в задаче).
+  it('хешированный ассет /assets/index-*.js остаётся cache-first — TGS-правка его не задевает', async () => {
+    const cache = new FakeCache()
+    const net = vi.fn(async () => new Response('js', { status: 200 }))
+    const handlers = loadServiceWorker(cache, net)
+    const req = makeRequest('https://localhost/assets/index-4f9a1c2b.js')
+
+    await dispatchFetch(handlers, req)
+    const second = await dispatchFetch(handlers, req)!
+    expect(await second.text()).toBe('js')
+    expect(net).toHaveBeenCalledTimes(1) // второй раз — из кэша, сеть не трогали
   })
 })
