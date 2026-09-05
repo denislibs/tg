@@ -68,7 +68,7 @@
 //     ├ div.profile-avatars-tabs          (полоски-индикаторы; `addTab()`)
 //     ├ div.profile-avatars-arrow         (prev)
 //     ├ div.profile-avatars-arrow-next
-//     └ div.profile-avatars-info          (пустой узел; контент — задача 5,
+//     └ div.profile-avatars-info          (пустой узел; контент — Solid,
 //                                          см. ниже про владельца контента)
 //
 // ─── Зависимости через конструктор ──────────────────────────────────────────
@@ -226,11 +226,15 @@ export default class PeerProfileAvatars {
   private readonly gradientTop: HTMLElement
   // Публичный (как tweb `:49`, `public info`) — узел пуст, класс сам его не
   // наполняет (имени/статуса пира здесь предмета нет — `chat.name`/бейджи
-  // живут во ViewModel панели, не в этом классе). Задача 5 портирует
-  // `React.createPortal` СОДЕРЖИМОГО (`.profile-name`/`.profile-subtitle`) в
-  // этот узел из `UserInfoPanel.tsx` — тот же React-JSX, что раньше рисовался
-  // внутри снесённой инлайновой карусели, просто адресован сюда: класс владеет
-  // ТОЛЬКО структурным DOM (tweb :81-109), контент пира — по-прежнему View.
+  // живут во ViewModel панели, не в этом классе). Содержимое (`.profile-name`/
+  // `.profile-subtitle`) сюда кладёт Solid-компонент `peerProfile.solid.tsx`
+  // (`Name`/`Subtitle`) через мост `mountSolid` — узел передаётся туда пропом
+  // `avatarsInfo` из `UserInfoPanel.tsx` (докблок `avatarsHostRef` там же);
+  // ЕДИНСТВЕННЫЙ писатель узла — этот мост, React в `info` не пишет вовсе
+  // (правило владения узла, план «карточка профиля на Solid», шапка; было
+  // React-порталом до задачи 3 профиля на Solid — с неё владелец сменился).
+  // Класс владеет ТОЛЬКО структурным DOM (tweb :81-109), контент пира —
+  // по-прежнему не его забота.
   public readonly info: HTMLElement
   private readonly tabs: HTMLDivElement
   private readonly arrowPrevious: HTMLElement

@@ -27,8 +27,16 @@ vi.mock('../stores/peers.solid', () => ({ usePeer: (id: unknown) => usePeerSpy(i
 vi.mock('../stores/fullPeers.solid', () => ({ useFullPeer: (id: unknown) => useFullPeerSpy(id) }))
 
 let meId: number | null = 100
+// `dialogs`/`subscribe` — Task 4 (`MainSection.Notifications`, теперь
+// прямой ребёнок `.profile-content`) читает их у ЛЮБОГО монтажа компонента;
+// пустой массив и no-op подписка достаточны для тестов ЭТОГО файла (предмет —
+// каркас/контекст, не строки MainSection — у них свой файл
+// `peerProfileMainSection.solid.test.tsx`).
 vi.mock('../stores/chatsStore', () => ({
-  useChatsStore: { getState: () => ({ meId }) },
+  useChatsStore: {
+    getState: () => ({ meId, dialogs: [] as unknown[] }),
+    subscribe: () => () => {},
+  },
 }))
 
 const { default: PeerProfile, createPeerProfileContextValue, usePeerProfileContext } = await import('./peerProfile.solid')
@@ -58,7 +66,7 @@ afterEach(() => {
 const el = () => document.createElement('div')
 
 describe('PeerProfile: корень .profile-content', () => {
-  it('создаёт .profile-content с delimiter\'ом и searchSuperContainer ПОСЛЕДНИМ ребёнком', () => {
+  it('создаёт .profile-content с delimiter\'ом, MainSection и searchSuperContainer ПОСЛЕДНИМ ребёнком', () => {
     const searchSuperContainer = document.createElement('div')
     searchSuperContainer.className = 'search-super'
 
@@ -68,15 +76,18 @@ describe('PeerProfile: корень .profile-content', () => {
 
     const root = h.querySelector('.profile-content')
     expect(root).not.toBeNull()
-    expect(root!.children).toHaveLength(2)
+    // delimiter, `<MainSection />` (Task 4 — её собственный рендер и условия
+    // показа строк проверяет `peerProfileMainSection.solid.test.tsx`, здесь
+    // предмет — ТОЛЬКО порядок прямых детей корня), searchSuperContainer.
+    expect(root!.children).toHaveLength(3)
     expect(root!.children[0].className).toBe('profile-content-delimiter')
     expect(root!.lastElementChild).toBe(searchSuperContainer)
   })
 
-  it('без searchSuperContainer рисует только delimiter — узел не выдуман', () => {
+  it('без searchSuperContainer рисует delimiter + MainSection, третьего узла не выдумываем', () => {
     const h = mount(() => <PeerProfile peerId={7} scrollable={el()} setCollapsedOn={el()} />)
     const root = h.querySelector('.profile-content')!
-    expect(root.children).toHaveLength(1)
+    expect(root.children).toHaveLength(2)
   })
 
   it('is-me: пир — сам зритель (peerId === meId)', () => {

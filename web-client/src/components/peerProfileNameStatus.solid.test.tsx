@@ -21,9 +21,13 @@ vi.mock('../stores/peers.solid', () => ({ usePeer: () => peerSignal[0] }))
 vi.mock('../stores/fullPeers.solid', () => ({ useFullPeer: () => fullPeerSignal[0] }))
 
 let meId: number | null = 1
-let storeState: { presence: Record<number, unknown>; typing: Record<number, Record<number, unknown>> } = {
+let storeState: { presence: Record<number, unknown>; typing: Record<number, Record<number, unknown>>; dialogs: unknown[] } = {
   presence: {},
   typing: {},
+  // Task 4 (`MainSection.Notifications`, теперь ребёнок `.profile-content`)
+  // читает `dialogs` у ЛЮБОГО монтажа этого компонента — пустой массив
+  // достаточен для теста ЭТОГО файла (предмет — имя/статус, не Notifications).
+  dialogs: [],
 }
 const subs = new Set<() => void>()
 function setStoreState(patch: Partial<typeof storeState>) {
@@ -64,7 +68,7 @@ afterEach(() => {
   dispose?.()
   dispose = undefined
   meId = 1
-  storeState = { presence: {}, typing: {} }
+  storeState = { presence: {}, typing: {}, dialogs: [] }
   subs.clear()
   peerSignal[1](undefined)
   fullPeerSignal[1](undefined)

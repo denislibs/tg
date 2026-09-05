@@ -1,13 +1,67 @@
 /** @jsxImportSource solid-js */
 /**
  * Порт tweb `src/components/peerProfile.tsx` — каркас (Task 2) + имя/статус
- * внутри `avatars.info` (Task 3, план
- * `docs/superpowers/plans/2026-09-05-profile-card-solid.md`, «Задача 3»).
+ * внутри `avatars.info` (Task 3) + строки `MainSection` (Task 4, план
+ * `docs/superpowers/plans/2026-09-05-profile-card-solid.md`, «Задача 4»).
  * Читать оригинал `:60-215` (контекст, корень, порядок детей), `:1535-1544`
  * (`renderPeerProfile`), `:217-272` (`Avatar`/`AutoAvatar` — кладут `Name`/
- * `Subtitle` в `avatars.info`), `:273-421` (`Name`/`Subtitle`/`SubtitleStatus`).
- * Строки MainSection — Task 4, наши секции — Task 5: они по-прежнему НЕ
- * перенесены сюда.
+ * `Subtitle` в `avatars.info`), `:273-421` (`Name`/`Subtitle`/`SubtitleStatus`),
+ * `:1510-1533` (сборка `MainSection`) и сами строки (адреса — у каждой функции
+ * ниже). Наши секции (Statistics/Discussion/JoinRequests/ключ секретного
+ * чата) — Task 5: они по-прежнему НЕ перенесены сюда.
+ *
+ * ── Task 4: что портировано, что нет (сводная таблица) ──────────────────────
+ * Оригинал (`:1517-1529`, порядок строк MainSection): Phone → Username →
+ * Location → Bio → Link → Birthday → ContactNote → BusinessHours →
+ * BusinessLocation → Notifications → BotAddToChat → BotPrivacyPolicy.
+ * Портированы (под них есть предмет — данные из `usePeer`/`useFullPeer`,
+ * Task 1): **Phone, Username (+QrButton), Bio, Link, Birthday,
+ * Notifications** — см. докблок каждой функции ниже за деталями и частичными
+ * расхождениями (у некоторых портирована не вся строка, а её часть с
+ * предметом — например, `Username` без `getUsernamesAlso`).
+ *
+ * НЕ портированы (предмета нет вовсе — таблица адресов оригинала):
+ *  • `Location` (`:873-893`) — геолокация канала (`ChannelFull.location`),
+ *    поля нет в нашем `ChannelFull` (`core/peers/peer.ts`);
+ *  • `ContactNote` (`:833-871`) — заметка о контакте (`UserFull.note`), поля
+ *    нет в нашем `UserFull`;
+ *  • `BusinessHours` (`:1082-1111`) — часы работы бизнес-аккаунта
+ *    (`UserFull.business_work_hours` + `HelpTimezonesList` с сервера), обоих
+ *    предметов нет;
+ *  • `BusinessLocation` (`:1113-1173`) — адрес бизнес-аккаунта
+ *    (`UserFull.business_location`), поля нет;
+ *  • `BotAddToChat` (`:1059-1080`) — добавление бота в чат
+ *    (`UserFull.bot_info` + `getAddBotToChatAction`), `bot_info` в нашем
+ *    `UserFull` нет (только `pFlags.bot` на кратком `User` — самого предмета
+ *    «бот-метаданные» нет);
+ *  • `BotPrivacyPolicy` (`:1038-1057`) — та же причина, тот же `bot_info`;
+ *  • `PersonalChannel` (`:477-595`) — привязанный личный канал пользователя
+ *    (`UserFull.personal_channel_id`/`personal_channel_message`), полей нет;
+ *  • `PinnedGifts` (`:423-476`) — закреплённые подарки в шапке профиля
+ *    (`UserFull.stargifts_count` + `appGiftsManager.getPinnedGifts`), поля
+ *    `stargifts_count` в нашем `UserFull` нет (у нас гифты профиля — отдельная
+ *    Task 5-секция вне `MainSection`, другой предмет);
+ *  • `PinnedMusic` (`:596-630`) — уже разобрано выше по файлу
+ *    (`hasSavedMusic`/`saved_music`, «НЕ портированы» в контексте) — тот же
+ *    пробел, вторая запись здесь только для полноты таблицы Task 4;
+ *  • `StoryPreviews` (`:1355-1479`) — превью историй ВНУТРИ `avatars.info`
+ *    (сегменты `StoriesProvider`/`avatarNew.tsx`), у нас нет подсистемы
+ *    историй-в-аватарке этого вида (наш `PinnedStoriesSection`, если он есть
+ *    на экране, — Task 5, другой предмет и другое место в дереве);
+ *  • `BotVerification` (`:1220-1259`) — значок сторонней верификации бота
+ *    (`UserFull.bot_verification`), поля нет; официальный `verified`-путь
+ *    той же функции — часть значка ИМЕНИ (`Name`, Task 3), не строки;
+ *  • `UnofficialWarning` (`:1260-1283`) — предупреждение о поддельном боте
+ *    (`UserFull.pFlags.unofficial_security_risk`), поля нет;
+ *  • `BotPermissions` (`:1284-1354`) — переключатели доступа бота
+ *    (эмодзи-статус/локация, `UserFull.bot_info` + `appBotsManager`
+ *    internal-storage), `bot_info` нет (та же причина, что у `BotAddToChat`);
+ *  • `BotMainApp` (`:1480-1508`) — кнопка запуска мини-приложения бота
+ *    (`UserFull.bot_info.app`), `bot_info` нет.
+ * Внешняя обёртка `MainSection` (`<Show when={!(isBotforum && threadId)}>`,
+ * `:1517`) не портирована КАК ВЕТВЛЕНИЕ — `isBotforum` у нас всегда `false`
+ * (докблок файла выше, «НЕ портированы» у корня), условие оригинала поэтому
+ * всегда истинно, и обёртка-Show была бы мёртвым кодом (`<Show when={true}>`).
  *
  * ── Контекст: что портировано и почему ──────────────────────────────────────
  * Оригинал (`:62-82`): peerId, threadId, scrollable, setCollapsedOn, isDialog,
@@ -79,10 +133,12 @@
  * PersonalChannel, MainSection, BotMainApp, BotVerification, BotPermissions,
  * `{props.searchSuperContainer}` (последним).
  *
- * Прямыми детьми `.profile-content` здесь — только delimiter и
- * `{props.searchSuperContainer}` (последним, дословно тот же контракт, что и
- * в оригинале): строки MainSection/наши секции — задачи 4-5, им ещё предстоит
- * встать МЕЖДУ. `AutoAvatar` в это дерево вообще НЕ входит — см. докблок
+ * Прямыми детьми `.profile-content` здесь — delimiter, `<MainSection />`
+ * (Task 4, строки Phone/Username/Bio/Link/Birthday/Notifications — см. её
+ * докблок ниже) и `{props.searchSuperContainer}` (последним, дословно тот же
+ * контракт, что и в оригинале); наши секции (Statistics/Discussion/…) — Task 5,
+ * им ещё предстоит встать МЕЖДУ `MainSection` и `searchSuperContainer`.
+ * `AutoAvatar` в это дерево вообще НЕ входит — см. докблок
  * `UserInfoPanel.tsx` у `avatarsHostRef` (там же причина: наш класс
  * `PeerProfileAvatars` переживает смену пира, а этот Solid-корень
  * пересоздаётся на каждый peerId, как и в оригинале — см. ниже). Задача 3
@@ -119,14 +175,29 @@ import { useChatsStore } from '../stores/chatsStore'
 import { mountSolid } from '../shared/solid/mountSolid.solid'
 import { subscribeExternal } from '../helpers/solid/subscribeExternal'
 import { getPeerTitle } from '../core/peers/getPeerTitle'
-import { wrapEmojiText } from '../lib/richtext'
+import { wrapEmojiText, wrapRichText } from '../lib/richtext'
 import { isUser, HIDDEN_PEER_ID } from '../core/peers/peerId'
 import { isBroadcast } from '../core/peers/predicates'
 import { userStatusLabel } from '../core/presence'
 import { membersLabel } from './userInfo/helpers'
 import { IconTsx } from './iconTsx.solid'
+import { VERIFIED_BADGE_SEAL_PATH, VERIFIED_BADGE_CHECK_PATH } from '../shared/icons/verifiedBadgePath'
 import { i18n } from '@lib/langPack'
 import typingStyles from './conversation/TypingIndicator.module.scss'
+// ── Task 4: строки MainSection ───────────────────────────────────────────────
+import Section from './section.solid'
+import Row from './rowTsx.solid'
+import Button from './buttonTsx.solid'
+import CheckboxFieldTsx from './checkboxFieldTsx.solid'
+import { copyTextToClipboard } from '../helpers/clipboard'
+import { toastNew } from './toast'
+import cancelEvent from '../helpers/dom/cancelEvent'
+import { formatUserPhone } from '../core/format/phone'
+import { formatBirthday } from '../core/format/birthday'
+import { isPeerMuted } from '../core/dialogs/notifySettings'
+import { startClient } from '../client/bootstrap'
+import type { UserFull } from '../core/peers/peer'
+import { cachedProfilePhone, subscribeProfilePhoneMirror, profilePhoneMirrorVersion } from '../core/profilePhoneCache'
 
 export type PeerProfileContextValue = {
   peerId: PeerId
@@ -144,6 +215,16 @@ export type PeerProfileContextValue = {
    *  Task 2 сознательно не заводила это поле («заводить неиспользуемый
    *  экспорт — заглушка», её докблок), сегодня он появляется. */
   getDetailsForUse: () => { peerId: PeerId; threadId?: number }
+  /**
+   * Мост Solid → React для QR-попапа (`QrModal.tsx`) — оригинал зовёт
+   * `showMyQrCodePopup(peerId)` (глобальная Solid-функция, `:695,736,971`),
+   * у нас попап — React-компонент, смонтированный и управляемый состоянием
+   * `UserInfoPanel.tsx` (тот же приём проброса узла/колбэка, что и
+   * `avatarsInfo`/`searchSuperContainer` в пропах ниже, не второй способ).
+   * `undefined` у единственного вызывающего быть не должно (передаётся всегда),
+   * опционально — чтобы тесты каркаса (Task 2/3), не знающие про QR, не были
+   * обязаны его передавать. */
+  onOpenQrCode?: (payload: { url: string; label: string }) => void
 }
 
 const PeerProfileContext = createContext<PeerProfileContextValue>()
@@ -180,6 +261,9 @@ export type PeerProfileProps = {
    *  же причине, что и `searchSuperContainer`: до монтажа острова аватарок
    *  (`UserInfoPanel.tsx`) узла ещё нет. */
   avatarsInfo?: HTMLElement
+  /** Задача 4, см. докблок поля `onOpenQrCode` контекста выше — тот же
+   *  колбэк, прокинутый пропом (как `avatarsInfo`/`searchSuperContainer`). */
+  onOpenQrCode?: (payload: { url: string; label: string }) => void
 }
 
 /**
@@ -224,6 +308,7 @@ export function createPeerProfileContextValue(props: PeerProfileProps): PeerProf
       value.isSavedDialog
         ? { peerId: value.threadId!, threadId: undefined }
         : { peerId: value.peerId, threadId: value.threadId },
+    onOpenQrCode: props.onOpenQrCode,
   }
   return value
 }
@@ -280,6 +365,7 @@ const PeerProfile = (props: PeerProfileProps) => {
     <PeerProfileContext.Provider value={value}>
       <div class={classNames('profile-content', value.peerId === meId ? 'is-me' : '')}>
         <div class="profile-content-delimiter" />
+        <MainSection />
         {props.searchSuperContainer}
       </div>
     </PeerProfileContext.Provider>
@@ -521,6 +607,11 @@ function TypingDots() {
  * `avatars.info`, которым React больше не владеет (см. докблок компонента
  * `PeerProfile` выше), — мостить обратно в React ради трёх строк SVG/иконки
  * было бы отдельным (и более сложным) мостом ради меньшей работы.
+ *
+ * SVG-путь verified-бейджа (`VerifiedBadgeIcon` ниже) больше НЕ дублирует
+ * байты `VerifiedBadge.tsx` — оба читают `shared/icons/verifiedBadgePath.ts`,
+ * единственный источник геометрии (найдено ревью задачи 3, см. план «карточка
+ * профиля на Solid», Задача 4, п.1).
  */
 function VerifiedBadgeIcon(props: { size: number }) {
   return (
@@ -531,14 +622,8 @@ function VerifiedBadgeIcon(props: { size: number }) {
       style={{ 'flex-shrink': 0, display: 'block' }}
       aria-label="verified"
     >
-      <path
-        fill="var(--primary-color)"
-        d="M12.3 2.9c.1.1.2.1.3.2.7.6 1.3 1.1 2 1.7.3.2.6.4.9.4.9.1 1.7.2 2.6.2.5 0 .6.1.7.7.1.9.1 1.8.2 2.6 0 .4.2.7.4 1 .6.7 1.1 1.3 1.7 2 .3.4.3.5 0 .8-.5.6-1.1 1.3-1.6 1.9-.3.3-.5.7-.5 1.2-.1.8-.2 1.7-.2 2.5 0 .4-.2.5-.6.6-.8 0-1.6.1-2.5.2-.5 0-1 .2-1.4.5-.6.5-1.3 1.1-1.9 1.6-.3.3-.5.3-.8 0-.7-.6-1.4-1.2-2-1.8-.3-.2-.6-.4-.9-.4-.9-.1-1.8-.2-2.7-.2-.4 0-.5-.2-.6-.5 0-.9-.1-1.7-.2-2.6 0-.4-.2-.8-.4-1.1-.6-.6-1.1-1.3-1.6-2-.4-.4-.3-.5 0-1 .6-.6 1.1-1.3 1.7-1.9.3-.3.4-.6.4-1 0-.8.1-1.6.2-2.5 0-.5.1-.6.6-.6.9-.1 1.7-.1 2.6-.2.4 0 .7-.2 1-.4.7-.6 1.4-1.2 2.1-1.7.1-.2.3-.3.5-.2z"
-      />
-      <path
-        fill="#fff"
-        d="M16.4 10.1l-.2.2-5.4 5.4c-.1.1-.2.2-.4 0l-2.6-2.6c-.2-.2-.1-.3 0-.4.2-.2.5-.6.7-.6.3 0 .5.4.7.6l1.1 1.1c.2.2.3.2.5 0l4.3-4.3c.2-.2.4-.3.6 0 .1.2.3.3.4.5.2 0 .3.1.3.1z"
-      />
+      <path fill="var(--primary-color)" d={VERIFIED_BADGE_SEAL_PATH} />
+      <path fill="#fff" d={VERIFIED_BADGE_CHECK_PATH} />
     </svg>
   )
 }
@@ -552,5 +637,340 @@ function EmojiStatusIcon(props: { emoji: string; size: number }) {
     <span aria-label="emoji status" style={{ 'flex-shrink': 0, 'font-size': `${props.size}px`, 'line-height': 1 }}>
       {props.emoji}
     </span>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Задача 4: строки MainSection (tweb `:633-1218`, сборка `:1510-1533`)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Примитивы — те же, что уже возит остальной Solid-порт настроек:
+// `section.solid.tsx`/`rowTsx.solid.tsx`/`buttonTsx.solid.tsx`/
+// `checkboxFieldTsx.solid.tsx`. Четвёртого способа рисовать строку не заводим.
+//
+// Контекстное меню (`contextMenu` — «Скопировать», ссылка на fragment.com,
+// перевод и т.п. у КАЖДОЙ строки ниже) нигде не портировано: `Row`
+// (`rowTsx.solid.tsx`) не несёт проп `contextMenu` вовсе — предмета
+// (`helpers/dom/createContextMenu`) нет в репозитории (докблок файла, задача
+// #110). Одна и та же причина для Phone/Bio/Birthday/Link — не повторяется у
+// каждой функции по отдельности.
+
+/** Порт `PeerProfile.MainSection` (tweb `:1510-1533`) — обёртка
+ *  `<Show when={!(isBotforum && threadId)}>` снята как мёртвый код, см.
+ *  докблок файла. */
+function MainSection() {
+  return (
+    <Section noDelimiter>
+      <Phone />
+      <Username />
+      <Bio />
+      <Link />
+      <Birthday />
+      <Notifications />
+    </Section>
+  )
+}
+
+/**
+ * Порт `PeerProfile.Phone` (tweb `:633-691`).
+ *
+ * `isAnonymous`/подпись `AnonymousNumber` (Fragment-купленные анонимные
+ * номера, `:650`, `appConfig.fragment_prefixes`) не портированы — предмета
+ * (`appConfig`, конфиг с сервера) в кодовой базе нет вовсе. Подпись всегда
+ * `i18n('Phone')`.
+ *
+ * Форматирование — `core/format/phone.ts::formatUserPhone`; деталь и отличие
+ * от `formatPhoneNumber.ts` оригинала (нет `HelpCountry`/`help.countriesList`)
+ * — в докблоке самого хелпера.
+ */
+function Phone() {
+  const context = usePeerProfileContext()
+
+  // `context.peer.phone` (общее зеркало пиров, `usePeer`/`core/peerCache.ts`)
+  // тут НЕ источник: приватность-применённый телефон отдаёт ровно одна ручка
+  // (`GET /users/{id}`), а общий путь наполнения зеркала (диалоги, отправители,
+  // массовый `/users?ids=`) его вообще не спрашивает — см. докблок
+  // `core/profilePhoneCache.ts` целиком («Почему это ОТДЕЛЬНОЕ зеркало»).
+  // Пишет его `requestFullPeer` (`fullPeers.solid.ts`) КАК ПОБОЧНЫЙ эффект
+  // ТОГО ЖЕ похода, который уже гонит `useFullPeer` этого контекста — второй
+  // сетевой поход здесь не нужен, только чтение уже наполненного зеркала.
+  const phoneVersion = subscribeExternal(subscribeProfilePhoneMirror, profilePhoneMirrorVersion)
+  const phone = createMemo(() => {
+    if (!isUser(context.peerId) || !context.canBeDetailed()) return undefined
+    phoneVersion()
+    // Пустая строка — «приватность скрыла номер», не «номера нет вовсе»
+    // (докблок `cachedProfilePhone`); показываем строку только при непустом.
+    return cachedProfilePhone(context.peerId) || undefined
+  })
+
+  const onClick = () => {
+    const value = phone()
+    if (!value) return
+    void copyTextToClipboard(formatUserPhone(value).replace(/\s/g, ''))
+    toastNew({ langPackKey: 'PhoneCopied' })
+  }
+
+  return (
+    <Show when={phone()}>
+      {(value) => (
+        <Row clickable={onClick}>
+          <Row.Icon icon="phone" />
+          <Row.Title>{formatUserPhone(value())}</Row.Title>
+          <Row.Subtitle>{i18n('Phone')}</Row.Subtitle>
+        </Row>
+      )}
+    </Show>
+  )
+}
+
+/**
+ * Порт `PeerProfile.Username` (tweb `:693-732`).
+ *
+ * `getUsernamesAlso` (доп. subtitle «также: @a, @b» у нескольких активных
+ * username) не портирован — предмета нет: `User.username` у нас ОДНА строка,
+ * схемного `usernames: Username[]` в модели нет (`core/peers/peer.ts`).
+ * Subtitle поэтому всегда `i18n('Username')`.
+ *
+ * URL для QR/копии — `${location.origin}/@username`, а не буквальный
+ * `t.me/username` оригинала: у нас нет t.me, та же подмена домена уже принята
+ * проектом (`QrModal`/`SettingsView.tsx`/прежний `UserInfoPanel.tsx::inviteUrl`).
+ */
+function Username() {
+  const context = usePeerProfileContext()
+
+  const username = createMemo(() => {
+    if (!isUser(context.peerId) || !context.canBeDetailed()) return undefined
+    const peer = context.peer
+    return (peer && peer._ === 'user' && peer.username) || undefined
+  })
+
+  const onClick = () => {
+    const value = username()
+    if (!value) return
+    void copyTextToClipboard('@' + value)
+    toastNew({ langPackKey: 'UsernameCopied' })
+  }
+
+  return (
+    <Show when={username()}>
+      {(value) => (
+        <Row clickable={onClick}>
+          <Row.Icon icon="username" />
+          <Row.Title>{value()}</Row.Title>
+          <Row.Subtitle>{i18n('Username')}</Row.Subtitle>
+          <QrButton url={`${location.origin}/@${value()}`} label={`@${value()}`} />
+        </Row>
+      )}
+    </Show>
+  )
+}
+
+/**
+ * Порт `PeerProfile.QrButton` (tweb `:734-747`) — общий для `Username` и
+ * `Link` (как в оригинале). Открытие — не `showMyQrCodePopup` (Solid-функция
+ * оригинала), а мост в React (`context.onOpenQrCode`, см. докблок поля
+ * контекста): попап QR у нас — React `QrModal.tsx`, которым владеет
+ * `UserInfoPanel.tsx`.
+ */
+function QrButton(props: { url: string; label: string }) {
+  const context = usePeerProfileContext()
+  const meId = useChatsStore.getState().meId
+
+  return (
+    <Show when={context.peerId !== meId}>
+      <Row.RightContent>
+        <Button.Icon
+          icon="qr"
+          onClick={(e) => {
+            cancelEvent(e)
+            context.onOpenQrCode?.({ url: props.url, label: props.label })
+          }}
+        />
+      </Row.RightContent>
+    </Show>
+  )
+}
+
+/**
+ * Порт `PeerProfile.Bio` (tweb `:895-967`) — общая строка для bio пользователя
+ * И описания канала/группы (`context.fullPeer?.about`: `UserFull.about` и
+ * `ChannelFull.about` — одно и то же поле схемы `about`, никакого ветвления
+ * по типу пира не требуется, ровно как в оригинале).
+ *
+ * НЕ гейтится `canBeDetailed()` — оригинал тоже не гейтит (`about()` читается
+ * без проверки), поэтому свой bio в «Избранном» (диалог с самим собой) МОЖЕТ
+ * показаться, если он есть у полной карточки: расхождение с прежним React,
+ * который прятал ВСЮ секцию под `!isSaved`, — здесь прав оригинал.
+ *
+ * `whitelistedDomains`/премиум-гейт линков в bio (`:910`, `appConfig`) не
+ * портирован — предмета (`appConfig`) нет, см. докблок `Phone` выше;
+ * `wrapRichText` зовётся без опций (те же ссылки, что разрешает
+ * дефолтный allow-list `@core/safeUrl`). Перевод (`usePeerTranslation`,
+ * контекстное меню «Перевести») не портирован — предмета (модуль перевода)
+ * нет в кодовой базе.
+ */
+function Bio() {
+  const context = usePeerProfileContext()
+
+  const about = createMemo(() => context.fullPeer?.about)
+  const wrapped = createMemo(() => {
+    const value = about()
+    return value ? wrapRichText(value) : undefined
+  })
+
+  const onClick = (e: MouseEvent) => {
+    // Клик по автоссылке внутри bio — переход, а не копирование (порт `:915-917`).
+    if ((e.target as HTMLElement).tagName === 'A') return
+    const value = about()
+    if (!value) return
+    void copyTextToClipboard(value)
+    toastNew({ langPackKey: 'BioCopied' })
+  }
+
+  return (
+    <Show when={wrapped()}>
+      <Row clickable={onClick}>
+        <Row.Icon icon="info" />
+        <Row.Title class="pre-wrap">{wrapped()}</Row.Title>
+        <Row.Subtitle>{i18n(isUser(context.peerId) ? 'UserBio' : 'Info')}</Row.Subtitle>
+      </Row>
+    </Show>
+  )
+}
+
+/**
+ * Порт `PeerProfile.Link` (tweb `:969-1036`) — ТОЛЬКО ветка публичного
+ * username (`getPeerActiveUsernames`, первая); фолбэк на `exported_invite`
+ * (`:999-1004`, приватная ссылка-приглашение канала/группы БЕЗ публичного
+ * username) не портирован — поля `exported_invite` в нашем `ChannelFull`
+ * нет (Task 1, `fullPeers.solid.ts`, докблок «что есть у ChannelFull»); у нас
+ * это отдельный сетевой поход (`managers.groups.listInvites`,
+ * `core/hooks/useGroupInfo.ts`), заводить его в реактивный слой пира —
+ * вне объёма этой задачи («новых зеркал не заводить», бриф). Приватная
+ * группа/канал БЕЗ публичного username по-прежнему получает свою
+ * инвайт-ссылку строкой из React (`UserInfoPanel.tsx`, отмечено там же) —
+ * не регресс, временное разделение владения на переходный период.
+ * `isTopic`-ветка (`:979-989`, ссылка на конкретное сообщение форума) не
+ * портирована — `isTopic` у нас недостижим (докблок контекста, Task 2).
+ * `getUsernamesAlso` — та же причина, что у `Username` выше.
+ */
+function Link() {
+  const context = usePeerProfileContext()
+
+  const username = createMemo(() => {
+    if (isUser(context.peerId)) return undefined
+    const peer = context.peer as Channel | undefined
+    return peer?.username || undefined
+  })
+
+  const onClick = () => {
+    const value = username()
+    if (!value) return
+    void copyTextToClipboard(`${location.origin}/@${value}`)
+    toastNew({ langPackKey: 'LinkCopied' })
+  }
+
+  return (
+    <Show when={username()}>
+      {(value) => (
+        <Row clickable={onClick}>
+          <Row.Icon icon="link" />
+          <Row.Title>{`${location.host}/@${value()}`}</Row.Title>
+          <Row.Subtitle>{i18n('SetUrlPlaceholder')}</Row.Subtitle>
+          <QrButton url={`${location.origin}/@${value()}`} label={`${location.host}/@${value()}`} />
+        </Row>
+      )}
+    </Show>
+  )
+}
+
+/**
+ * Порт `PeerProfile.Birthday` (tweb `:749-831`).
+ *
+ * Текст — уже существующий `core/format/birthday.ts::formatBirthday`
+ * (использовался прежним React-рядом); он НЕ добавляет 🎂-префикс дню
+ * рождения СЕГОДНЯ и суффикс `BirthdayYearsOld` (`differenceInYears`,
+ * оригинал `:776-781`) — оба требуют НОВЫЙ лангпак-ключ, а ключи здесь не
+ * только словари (`i18n/dict.*.ts`), но и источник для бэкендового генератора
+ * (`backend/internal/langsource`, докблок `i18n/dict.ts`) — заводить ключ и
+ * трогать бэкенд ради декоративного суффикса вне объёма этой задачи. Условие
+ * показа — дословно.
+ *
+ * `onClick` — оригинал ветвится натрое: владелец профиля → редактор своего
+ * дня рождения (`showBirthdayPopup`/`saveMyBirthday`); сегодня чужой день
+ * рождения → попап отправки подарка (`PopupSendGift` с `birthday: true`);
+ * иначе → копия текста. Ни редактора, ни birthday-режима попапа подарка
+ * (`components/stars/SendGiftPopup.tsx` такого пропа не принимает) у нас нет
+ * предметом — обе ветки схлопнуты в копию, тот же исход, что у ELSE-ветки
+ * оригинала. Тост пропущен (не «TextCopied» оригинала — этого ключа тоже нет,
+ * см. абзац выше про генератор): копия происходит молча, без ложной подписи.
+ */
+function Birthday() {
+  const context = usePeerProfileContext()
+  const birthday = createMemo(() => (context.fullPeer as UserFull | undefined)?.birthday)
+
+  const onClick = () => {
+    const value = birthday()
+    if (!value) return
+    void copyTextToClipboard(formatBirthday(value))
+  }
+
+  return (
+    <Show when={birthday()}>
+      {(value) => (
+        <Row clickable={onClick}>
+          <Row.Icon icon="gift" />
+          <Row.Title>{formatBirthday(value())}</Row.Title>
+          <Row.Subtitle>{i18n('Birthday')}</Row.Subtitle>
+        </Row>
+      )}
+    </Show>
+  )
+}
+
+/**
+ * Порт `PeerProfile.Notifications` (tweb `:1175-1218`).
+ *
+ * Источник мьюта — ТЕ ЖЕ примитивы, что у React `core/hooks/useMuteToggle.ts`
+ * (`core/dialogs/notifySettings.ts::isPeerMuted` + `chatsStore.dialogs` +
+ * `managers.groups.setMute`), без обёртки-хука (Solid не читает React-хуки);
+ * второго способа мьютить нет — `useMuteToggle` остаётся у `EditContactView`
+ * (докблок хука), эта функция и он читают/пишут ОДНО и то же состояние.
+ * `managers` — `startClient().managers`, тот же приём, что у Task 1
+ * (`fullPeers.solid.ts`, докблок «зачем `managers` параметром»).
+ *
+ * Условие оригинала — `isDialog && canBeDetailed() && (!muted.loading ||
+ * muted.latest !== undefined)`: единственный вызывающий всегда передаёт
+ * `isDialog: true` (докблок файла, «Пересоздание на каждый peerId»), и мьют
+ * читается СИНХРОННО из уже загруженного `chatsStore` — состояния «загрузки»
+ * у этого источника нет вовсе. Условие поэтому схлопывается в
+ * `canBeDetailed()` (= `peerId !== meId`, раз `isDialog` истинен всегда).
+ */
+function Notifications() {
+  const context = usePeerProfileContext()
+  const meId = useChatsStore.getState().meId
+
+  const muted = subscribeExternal(
+    (onChange) => useChatsStore.subscribe(onChange),
+    () => {
+      const notify = useChatsStore.getState().dialogs.find((d) => d.peerId === context.peerId)?.notify_settings
+      return isPeerMuted(notify, Math.floor(Date.now() / 1000))
+    },
+  )
+
+  const onChange = (checked: boolean) => {
+    void startClient().managers.groups.setMute(context.peerId, !checked)
+  }
+
+  return (
+    <Show when={context.peerId !== meId}>
+      <Row>
+        <Row.CheckboxFieldToggle>
+          <CheckboxFieldTsx checked={!muted()} onChange={onChange} toggle />
+        </Row.CheckboxFieldToggle>
+        <Row.Icon icon="unmute" />
+        <Row.Title>{i18n('Notifications')}</Row.Title>
+      </Row>
+    </Show>
   )
 }

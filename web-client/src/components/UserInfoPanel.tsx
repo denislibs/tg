@@ -17,8 +17,7 @@ import classNames from '../shared/lib/classNames'
 import type { Chat, OpenPeer } from '../data'
 import {useT} from '../i18n'
 import { useGroupInfo } from '../core/hooks/useGroupInfo'
-import { useSavedDialogs, useUserProfile, useProfileGifts } from '../core/hooks/useUserProfileData'
-import { useMuteToggle } from '../core/hooks/useMuteToggle'
+import { useSavedDialogs, useProfileGifts } from '../core/hooks/useUserProfileData'
 import { useChatsStore } from '../stores/chatsStore'
 import { useNavLayer } from '../core/hooks/useNavLayer'
 import { useTransitionSlider } from '../core/hooks/useTransitionSlider'
@@ -32,7 +31,6 @@ import installColumnResize from '../core/dom/installColumnResize'
 import { useRightColumnShown } from '../core/hooks/useRightColumnShown'
 import animationIntersector from './animationIntersector'
 import { NULL_PEER_ID, isUser as isUserPeer } from '../core/peers/peerId'
-import { formatBirthday } from '../core/format/birthday'
 // Шапка-аватары (tweb peerProfileAvatars) — задача 5: класс на классах tweb,
 // вмонтированный через useImperativeIsland (мост не пишем руками), плюс
 // реальный useCollapsable(). Мост фактов взят из докблока класса целиком.
@@ -91,17 +89,8 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   // «собеседник приватного чата» больше нет: у приватного диалога ключ и есть
   // id собеседника.
   const peerId = Number(chat.id)
-  // `/users/{id}` и галерея фото профиля есть ТОЛЬКО у человека. Прежде отбор
-  // делался самим существованием поля (`chat.peerId` заполнялся лишь у
-  // приватного диалога) — теперь ключ есть у любого пира, и вид спрашивают
-  // предикатом: без него панель группы ушла бы за профилем по отрицательному id.
-  const userPeerId = isUserPeer(peerId) ? peerId : null
-  const profile = useUserProfile(userPeerId, isSaved)
 
-  // Тумблер Notifications = per-chat mute (tweb PeerProfile: checked = !muted,
-  // переключение — togglePeerMute напрямую, без попапа длительности)
   const numericChatId = Number(chat.id)
-  const { muted, toggle: toggleNotifications } = useMuteToggle(numericChatId, chat.muted)
 
   const {
     isRealChat,
@@ -382,6 +371,9 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
       setCollapsedOn: setCollapsedOnRef.current!,
       searchSuperContainer,
       avatarsInfo: avatarsInfoEl ?? undefined,
+      // Task 4: мост QR-попапа для Solid-строк `Username`/`Link`
+      // (`peerProfile.solid.tsx`, докблок поля контекста `onOpenQrCode`).
+      onOpenQrCode: openQrCode,
     })
   }, [peerId, searchSuperContainer, avatarsInfoEl])
 
@@ -418,26 +410,38 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   const { gifts, reload: loadGifts } = useProfileGifts(isUser, peerId)
   const [selectedGift, setSelectedGift] = useState<SavedStarGift | null>(null)
 
-  // Ссылка группы в инфо-карточке: публичный username, иначе первая инвайт-ссылка.
-  const inviteUrl = chat.username
-    ? `${location.origin}/@${chat.username}`
-    : inviteLinks[0]
-      ? `${location.origin}/join/${inviteLinks[0].token}`
-      : null
-  const inviteShort = inviteUrl?.replace(/^https?:\/\//, '') ?? ''
+  // Ссылка группы/канала БЕЗ публичного username — фолбэк на первую
+  // инвайт-ссылку (tweb `chatFull.exported_invite`). Публичный username
+  // (`t.me/username`-эквивалент) теперь рисует Solid (`peerProfile.solid.tsx`
+  // `PeerProfile.Link`, Task 4 плана «карточка профиля на Solid») — оттуда
+  // ушла ветка «есть username», здесь остаётся ТОЛЬКО ветка «username нет,
+  // есть инвайт-ссылка»: у Solid-версии предмета `exported_invite` нет
+  // (докблок `Link` в том файле) — временное разделение владения строкой на
+  // переходный период, не второй рендер того же самого.
+  const fallbackInviteUrl = !chat.username && inviteLinks[0]
+    ? `${location.origin}/join/${inviteLinks[0].token}`
+    : null
+  const fallbackInviteShort = fallbackInviteUrl?.replace(/^https?:\/\//, '') ?? ''
+  // QR-попап (`QrModal.tsx`) — один на панель, открывается ЛИБО этим фолбэком,
+  // ЛИБО Solid-строками `Username`/`Link` через мост `onOpenQrCode` (проп
+  // `mountSolid` ниже): `qrPayload` несёт url/label конкретного клика,
+  // `qrOpen` — только видимость (та же пара состояний, что раньше держала
+  // одна константная `inviteUrl` персистентным пропом).
   const [qrOpen, setQrOpen] = useState(false)
-
-  const linkText = chat.links?.length ? chat.links : null
+  const [qrPayload, setQrPayload] = useState<{ url: string; label: string } | null>(null)
+  const openQrCode = (payload: { url: string; label: string }) => {
+    setQrPayload(payload)
+    setQrOpen(true)
+  }
 
   // Клик по инфо-строке копирует значение + глобальный тост (tweb peerProfile:
-  // copyTextToClipboard + toast(PhoneCopied/UsernameCopied/BioCopied)).
+  // copyTextToClipboard + toast(PhoneCopied/UsernameCopied/BioCopied)) —
+  // остаётся только у фолбэк-ссылки выше: Phone/Username/Bio/Birthday теперь
+  // строки Solid (`peerProfile.solid.tsx`, Task 4), со своим копированием.
   const copyInfo = (value: string, toastKey: LangPackKey) => {
     void navigator.clipboard.writeText(value)
     rootScope.dispatchEvent('ui:toast', t(toastKey))
   }
-  const infoPhone = profile?.user.phone
-  const infoUsername = profile?.user.username ?? chat.username
-  const infoBio = profile?.fullUser.about
 
   // Заголовок шапки: 0 — название раздела, 1 — «имя + счётчик таба» (tweb
   // sharedMedia.setIsSharedMedia переключает тот же TransitionSlider).
@@ -598,129 +602,57 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
             searchSuperContainer,
           )}
 
-          {/* НИЖЕ — секции info-карточки (tweb MainSection) и наши доп. секции
-              /попапы. РАСХОЖДЕНИЕ С TWEB (Task 2, временное): в оригинале эти
-              строки — Solid-дети `.profile-content`, МЕЖДУ delimiter и
-              searchSuperContainer (`MainSection`, tweb `:1510-1533`). У нас
-              они пока остаются React и стоят СНАРУЖИ узла `.profile-content`
-              (соседи, а не дети) — перенос каждой секции внутрь, нативным
-              Solid-рендером, — задачи 3 (имя/статус), 4 (Phone/Username/Bio/
-              Link/Birthday/Notifications) и 5 (наши секции: Statistics/
-              Discussion/JoinRequests/ключ шифрования секретного чата).
-              Функционально ничего не потеряно — секции по-прежнему
-              рендерятся и работают, расхождение только в точной вложенности
-              DOM (`.profile-content`'а own `min-height`, `_rightSidebar.scss`,
-              из-за этого визуально короче, чем в оригинале, до задачи 6). */}
+          {/* Строки info-карточки (tweb MainSection, `:1510-1533`) теперь
+              рисует Solid ВНУТРИ `.profile-content` (`peerProfile.solid.tsx`,
+              Task 4 плана «карточка профиля на Solid»): Phone/Username(+QR)/
+              Bio/Link/Birthday/Notifications — дословно, со своими условиями
+              показа. Наши секции (Statistics/Discussion/JoinRequests/ключ
+              шифрования секретного чата) — Task 5, по-прежнему React,
+              СНАРУЖИ `.profile-content` (соседи, а не дети) — перенос
+              каждой из них отдельной задачей. */}
 
-          {/* Info card — те же секции, что в настройках (settings/kit Section+Row).
-              В «Избранном» её нет вовсе (tweb: свой профиль без phone/username/bio). */}
-          {!isSaved && (
+          {/* Фолбэк-строка ссылки: группа/канал БЕЗ публичного username
+              (Solid `PeerProfile.Link` показывает строку только когда
+              username есть — докблок там же). Клик копирует + тост (tweb
+              PeerProfile.Link), QR — тот же мост `openQrCode`, которым
+              пользуются Solid-строки `Username`/`Link`. */}
+          {(isGroup || isChannel) && fallbackInviteUrl && (
           <SidebarSection noDelimiter>
-            {isChannel ? (
-              <>
-                {/* Описание канала — обычная `.row` с иконкой (tweb PeerProfile
-                    MainSection: Info-строка), многострочная через `pre-wrap`. */}
-                <Row
-                  icon={<TgIcon name="info" size={24} />}
-                  label={chat.description ?? t('Profile.ChannelDescription')}
-                  sublabel={t('Info')}
-                  translate={false}
-                  multiline
-                />
-                {/* клик по ссылке канала — копирование + тост (tweb PeerProfile.Link) */}
-                {linkText?.map((l) => (
-                  <Row
-                    key={l.label}
-                    icon={<TgIcon name="link" size={24} />}
-                    label={l.value}
-                    sublabel={l.label}
-                    translate={false}
-                    onClick={() => copyInfo(l.value, 'LinkCopied')}
-                  />
-                ))}
-              </>
-            ) : isGroup ? (
-              // Ссылка группы: `.row.row-grid` с QR-кнопкой в `.row-right`
-              // (дамп 15-right-11). Клик копирует + тост (tweb PeerProfile.Link).
-              inviteUrl && (
-                <Row
-                  icon={<TgIcon name="link" size={24} />}
-                  label={inviteShort}
-                  sublabel={t('SetUrlPlaceholder')}
-                  translate={false}
-                  onClick={() => copyInfo(inviteUrl, 'LinkCopied')}
-                  right={
-                    <button
-                      type="button"
-                      className="btn-icon qr rp"
-                      aria-label="QR"
-                      onClick={(e) => { e.stopPropagation(); setQrOpen(true) }}
-                    >
-                      <TgIcon name="qr" size={22} />
-                    </button>
-                  }
-                />
-              )
-            ) : (
-              <>
-                {/* Порядок строк — как в tweb peerProfile MainSection: Phone →
-                    Username → Bio → Birthday. Данные — GET /users/{id} с уже
-                    применённой конфиденциальностью: скрытое сюда не приходит.
-                    Клик по строке копирует значение + тост (tweb Row clickable). */}
-                {infoPhone && (
-                  <Row
-                    icon={<TgIcon name="phone" size={24} />}
-                    label={infoPhone}
-                    sublabel={t('Phone')}
-                    translate={false}
-                    onClick={() => copyInfo(infoPhone, 'PhoneCopied')}
-                  />
-                )}
-                {infoUsername && (
-                  <Row
-                    icon={<TgIcon name="mention" size={24} />}
-                    label={`@${infoUsername}`}
-                    sublabel={t('Username')}
-                    translate={false}
-                    onClick={() => copyInfo(`@${infoUsername}`, 'UsernameCopied')}
-                  />
-                )}
-                {infoBio && (
-                  <Row
-                    icon={<TgIcon name="info" size={24} />}
-                    label={infoBio}
-                    sublabel={t('UserBio')}
-                    translate={false}
-                    multiline
-                    onClick={() => copyInfo(infoBio, 'BioCopied')}
-                  />
-                )}
-                {profile?.fullUser.birthday && (
-                  <Row
-                    icon={<TgIcon name="gift" size={24} />}
-                    label={formatBirthday(profile.fullUser.birthday)}
-                    sublabel={t('Birthday')}
-                    translate={false}
-                  />
-                )}
-              </>
-            )}
             <Row
-              icon={<TgIcon name="unmute" size={24} />}
-              label="Notifications"
-              toggle
-              checked={!muted}
-              onClick={toggleNotifications}
+              icon={<TgIcon name="link" size={24} />}
+              label={fallbackInviteShort}
+              sublabel={t('SetUrlPlaceholder')}
+              translate={false}
+              onClick={() => copyInfo(fallbackInviteUrl, 'LinkCopied')}
+              right={
+                <button
+                  type="button"
+                  className="btn-icon qr rp"
+                  aria-label="QR"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    openQrCode({ url: fallbackInviteUrl, label: chat.name })
+                  }}
+                >
+                  <TgIcon name="qr" size={22} />
+                </button>
+              }
             />
-            {/* Ключ шифрования (tweb chatEncryptionKey) — emoji-fingerprint
-                секретного чата; в той же секции, что и уведомления */}
-            {isSecret && (
-              <Row
-                icon={<TgIcon name="key" size={24} />}
-                label="SecretChat.EncryptionKey"
-                onClick={() => setKeyPopupOpen(true)}
-              />
-            )}
+          </SidebarSection>
+          )}
+
+          {/* Ключ шифрования (tweb chatEncryptionKey) — emoji-fingerprint
+              секретного чата; в оригинале строка той же секции, что
+              Notifications (tweb MainSection), — Notifications теперь Solid
+              (выше), эта строка остаётся React (Task 5, «наши секции», в
+              tweb секретных чатов нет вовсе). */}
+          {isSecret && (
+          <SidebarSection noDelimiter>
+            <Row
+              icon={<TgIcon name="key" size={24} />}
+              label="SecretChat.EncryptionKey"
+              onClick={() => setKeyPopupOpen(true)}
+            />
           </SidebarSection>
           )}
 
@@ -827,13 +759,15 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
             />
           )}
 
-          {/* QR-код ссылки (иконка в инфо-карточке) — tweb-модалка с темами */}
-          {inviteUrl && (
+          {/* QR-код (tweb-модалка с темами) — общий попап для фолбэк-ссылки
+              выше И Solid-строк `Username`/`Link` (мост `openQrCode`,
+              `qrPayload` несёт конкретные url/label клика). */}
+          {qrPayload && (
             <QrModal
               open={qrOpen}
               onClose={() => setQrOpen(false)}
-              url={inviteUrl}
-              label={chat.name}
+              url={qrPayload.url}
+              label={qrPayload.label}
               avatar={{ src: headerAvatarSrc, background: chat.avatar, text: chat.avatarText }}
             />
           )}
