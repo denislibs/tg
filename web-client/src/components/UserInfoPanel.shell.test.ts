@@ -76,6 +76,27 @@ function extractFoldedLayoutEffectBody(src: string): string {
   return extractBraceBalanced(src, braceStart)
 }
 
+/** Тело `useLayoutEffect(...)`, содержащего маркер `marker` где-то внутри —
+ *  тот же приём, что `extractUseLayoutEffectBodies` в `App.authMount.test.ts`
+ *  (собрать ВСЕ эффекты, найти СВОЙ балансом скобок, а не индексом до
+ *  произвольной точки дальше по файлу), но с фильтром по содержимому: в этом
+ *  файле несколько `useLayoutEffect`, и «первый по тексту» — случайная
+ *  привязка к сегодняшнему порядку хуков. */
+function extractLayoutEffectBodyContaining(src: string, marker: string): string {
+  const effectMarker = 'useLayoutEffect('
+  let searchFrom = 0
+  for (;;) {
+    const start = src.indexOf(effectMarker, searchFrom)
+    if (start === -1) break
+    const braceStart = src.indexOf('{', start)
+    if (braceStart === -1) throw new Error('открывающая { тела эффекта не найдена')
+    const body = extractBraceBalanced(src, braceStart)
+    if (body.includes(marker)) return body
+    searchFrom = braceStart + body.length
+  }
+  throw new Error(`ни один useLayoutEffect не содержит ${JSON.stringify(marker)}`)
+}
+
 describe('UserInfoPanel — каркас на классах tweb', () => {
   it('вкладка слайдера: sidebar-slider > tabs-tab.profile-container, className СТАТИЧЕСКИЙ', () => {
     expect(panel).toMatch(/<div className="sidebar-content sidebar-slider tabs-container">/)
@@ -108,11 +129,19 @@ describe('UserInfoPanel — каркас на классах tweb', () => {
     expect(panel).toMatch(/className="sidebar-header__subtitle"/)
   })
 
-  it('тело: sidebar-content > scrollable-y > profile-content с разделителем', () => {
+  // Task 2 профиля на Solid (`docs/superpowers/plans/2026-09-05-profile-card-solid.md`):
+  // `.profile-content`/delimiter больше НЕ строки этого файла — их рисует
+  // Solid (`peerProfile.solid.tsx`), пин на их структуру — ТАМ
+  // (`peerProfile.solid.test.tsx`, describe «корень .profile-content»), тем же
+  // приёмом, каким структура карусели переехала в `peerProfileAvatars.test.ts`
+  // (см. коммент выше). Здесь остаётся пин на сам ШОВ монтирования — см.
+  // describe «шов монтирования PeerProfile» ниже.
+  it('тело: sidebar-content > scrollable-y, узел-хозяин Solid-карточки', () => {
     expect(panel).toMatch(/<div className="sidebar-content">/)
     expect(panel).toMatch(/<div ref=\{bodyRef\} className="scrollable scrollable-y"/)
-    expect(panel).toMatch(/<div className="profile-content">/)
-    expect(panel).toMatch(/<div className="profile-content-delimiter" \/>/)
+    expect(panel).toMatch(/<div ref=\{profileContentHostRef\} \/>/)
+    expect(panel).not.toMatch(/<div className="profile-content">/)
+    expect(panel).not.toMatch(/<div className="profile-content-delimiter" \/>/)
   })
 
   // Структура самой карусели (.profile-avatars-avatars, стрелки, градиенты,
@@ -191,5 +220,37 @@ describe('UserInfoPanel — шов монтирования PeerProfileAvatars (
     expect(gateIdx).toBeGreaterThan(-1)
     expect(foldIdx).toBeGreaterThan(gateIdx) // fold() — ветка ПОСЛЕ гейта
     expect(setCollapsedIdx).toBeGreaterThan(foldIdx) // setCollapsed — уже после обеих веток гейта
+  })
+})
+
+// Пин на шов задачи 2 (`docs/superpowers/plans/2026-09-05-profile-card-solid.md`):
+// та же норма проводки, тот же приём (баланс скобок ВНУТРИ тела эффекта, не
+// «строка где-то в файле»), что и у шва `PeerProfileAvatars` выше и у
+// `App.authMount.test.ts`.
+describe('UserInfoPanel — шов монтирования PeerProfile (Solid, mountSolid)', () => {
+  it('mountSolid(host, PeerProfile, props) вызывается ВНУТРИ ТЕЛА эффекта, keyed на peerId', () => {
+    const body = extractLayoutEffectBodyContaining(panel, 'mountSolid(')
+    expect(body).toMatch(/return mountSolid\(\s*host,\s*PeerProfile,\s*\{/)
+    // Эффект обязан быть keyed на peerId — иначе Solid-корень не пересоздаётся
+    // при смене пира (докблок `peerProfile.solid.tsx` § «Пересоздание на
+    // каждый peerId»), и context.peer/fullPeer застревают на первом пире.
+    // Deps проверяем СНАРУЖИ тела (React синтаксис), балансом до `}, [`.
+    const afterBody = panel.slice(panel.indexOf(body) + body.length)
+    const depsMatch = afterBody.match(/^\s*,\s*\[([^\]]*)\]/)
+    expect(depsMatch, 'массив зависимостей useLayoutEffect не найден сразу после тела').not.toBeNull()
+    expect(depsMatch![1]).toMatch(/\bpeerId\b/)
+  })
+
+  it('searchSuperContainer — стабильный узел (useState, создан один раз), а не пересоздаётся на рендер', () => {
+    expect(panel).toMatch(/const \[searchSuperContainer\] = useState\(\(\) => \{/)
+  })
+
+  it('SharedMedia рисуется порталом В searchSuperContainer, а не инлайн-JSX', () => {
+    // Инлайн-обёртки `<div className="search-super">` вокруг <SharedMedia>
+    // больше нет — узел теперь создаёт и отдаёт Solid (см. проп searchSuperContainer
+    // в вызове mountSolid выше), React рисует В НЕГО порталом.
+    expect(panel).not.toMatch(/<div className="search-super">/)
+    expect(panel).toMatch(/createPortal\(\s*<SharedMedia/)
+    expect(panel).toMatch(/searchSuperContainer,\s*\)/)
   })
 })

@@ -45,6 +45,11 @@ import useCollapsable from '../core/hooks/useCollapsable'
 import { fastRaf } from '@helpers/schedulers'
 import PeerProfileAvatars from './peerProfileAvatars'
 import { useManagers } from '../core/hooks/useManagers'
+// Каркас карточки (Task 2, план `docs/superpowers/plans/
+// 2026-09-05-profile-card-solid.md`): `.profile-content` теперь рисует Solid,
+// смонтированный мостом `mountSolid` — см. докблок у `profileContentHostRef`.
+import PeerProfile from './peerProfile.solid'
+import { mountSolid } from '../shared/solid/mountSolid.solid'
 
 export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddMembers, onEditContact, onSendGift }: { open: boolean; chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; canAddMembers?: boolean; onEditContact?: () => void; onSendGift?: () => void }) {
   const t = useT()
@@ -331,6 +336,49 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [peerId])
 
+  // ── каркас карточки (задача 2 плана `2026-09-05-profile-card-solid.md`) ──
+  // `.profile-content` (делимитер + грид шаред-медиа) теперь рисует Solid
+  // (`peerProfile.solid.tsx`), смонтированный сюда мостом `mountSolid` — БЕЗ
+  // `useImperativeIsland`, потому что этот остров, В ОТЛИЧИЕ от острова
+  // аватарок выше, обязан ПЕРЕСОЗДАВАТЬСЯ на каждый peerId (deps `[peerId]`):
+  // ровно так ведёт себя оригинал (`sidebarLeft/tabs/settings.tsx::
+  // fillProfileElements` гасит прежний Solid-корень и создаёт новый на каждый
+  // `peerChanged`, докблок `peerProfile.solid.tsx` § «Пересоздание на каждый
+  // peerId»), а не переживает смену пира, как наш класс `PeerProfileAvatars`
+  // (осознанное отступление ИМЕННО у класса, см. его докблок — сюда оно не
+  // распространяется).
+  //
+  // `searchSuperContainer` — контракт оригинала (tweb `peerProfile.tsx:121,211`,
+  // `sharedMedia.tsx:166`): готовый DOM-узел, который Solid вставляет
+  // ПОСЛЕДНИМ ребёнком `.profile-content`, а наш React-`SharedMedia`
+  // рисуется В НЕГО порталом (см. JSX ниже). Узел создаётся ЗДЕСЬ, в React,
+  // ОДИН РАЗ на весь срок жизни панели (лениво, `useState`) — это то, что
+  // позволяет пересоздавать Solid-корень на каждый peerId, не теряя состояние
+  // `SharedMedia` (вкладку/скролл шаред-медиа): узел просто перевстраивается
+  // в новый `.profile-content`, React его не пересоздаёт и не размонтирует
+  // содержимое портала. Ровно так же `tab.searchSuper.container` оригинала
+  // переживает `fillProfileElements`.
+  const [searchSuperContainer] = useState(() => {
+    const el = document.createElement('div')
+    el.className = 'search-super'
+    return el
+  })
+  // Хост — пустой узел-обёртка (тот же приём и то же расхождение с оригиналом,
+  // что у `avatarsHostRef` выше, см. его докблок: `render()` вставляет узлы
+  // ВНУТРЬ хоста, а не вместо него).
+  const profileContentHostRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const host = profileContentHostRef.current
+    if (!host) return
+    return mountSolid(host, PeerProfile, {
+      peerId,
+      isDialog: true, // панель — всегда диалог зрителя (tweb: оба известных вызывающих передают true)
+      scrollable: bodyRef.current!,
+      setCollapsedOn: setCollapsedOnRef.current!,
+      searchSuperContainer,
+    })
+  }, [peerId, searchSuperContainer])
+
   // Панельная половина `header-filled` (tweb sharedMedia.tsx:513/:547 — ставит
   // доезд до табов, снимает клик «назад», см. onBodyScroll/scrollBackToProfile
   // выше) — ТЕМ ЖЕ механизмом, что и класс: `classList.toggle`, а не пересчёт
@@ -472,32 +520,40 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
             (`position:absolute; inset:0; overflow-y:auto` из `_scrollable.scss`). */}
         <div className="sidebar-content">
         <div ref={bodyRef} className="scrollable scrollable-y" onScroll={onBodyScroll}>
-        <div className="profile-content">
-          {/* Шапка-аватары (tweb .profile-avatars-container) — задача 5: узел
-              класса `PeerProfileAvatars` встаёт СЮДА через useImperativeIsland
-              (host: `avatarsHostRef`, см. коммент у объявления выше). Класс сам
-              строит DOM/ленту/жесты/is-collapsed/need-white/header-filled(своя
+          {/* Шапка-аватары (tweb .profile-avatars-container) — задача 5 плана
+              аватарок: узел класса `PeerProfileAvatars` встаёт СЮДА через
+              useImperativeIsland (host: `avatarsHostRef`). Класс сам строит
+              DOM/ленту/жесты/is-collapsed/need-white/header-filled(своя
               половина); React по-прежнему владеет ТОЛЬКО контентом
               `.profile-avatars-info` — портал ниже, в тот же узел (`instance.info`,
               публичное поле класса, докблок «кто владеет контентом»).
 
-              РАСХОЖДЕНИЕ С TWEB (найдено ревью, Minor): этот `<div>` — ЛИШНИЙ
-              уровень DOM вокруг `.profile-avatars-container`, которого у
-              оригинала нет вовсе (там узел класса — прямой ребёнок
-              `.profile-content`, без React-хозяина). Хук `useImperativeIsland`
-              документирует этот эффект только для `mode: 'own'` (создаёт
-              одноразовый div сам), но `mode: 'host'` (наш выбор) ведёт себя
-              ТАК ЖЕ здесь: `container === host`, а класс кладёт СВОЙ корень
-              (`instance.container`) ОДНИМ ребёнком ВНУТРЬ host — второй
-              уровень появляется не из-за режима хука, а из-за того, что сам
-              host — отдельный, живущий весь срок жизни панели узел, которым
-              класс не может НЕ обернуться (альтернатива — растворить `host` в
-              родителе, но узел для `ref` React всё равно нужен). Проверено:
-              `styles/tweb/_profile.scss` не держит ни селекторов прямого
-              потомка, ни сиблингов для `.profile-avatars-container`, а
-              аспект-хак `padding-bottom: 100%` считается от САМОГО контейнера
-              — сегодня визуально безвредно, но это реальное расхождение, не
-              выдуманное. */}
+              РАСХОЖДЕНИЕ С TWEB (Minor, было ещё до Task 2): этот `<div>` —
+              ЛИШНИЙ уровень DOM вокруг `.profile-avatars-container`, которого у
+              оригинала нет (там узел класса — прямой ребёнок `.profile-content`).
+              `useImperativeIsland` в режиме `host` (наш выбор) всегда даёт
+              такой уровень — см. докблок хука.
+
+              ВТОРОЕ РАСХОЖДЕНИЕ С TWEB (Task 2 профиля на Solid, тоже Minor):
+              этот узел — БОЛЬШЕ НЕ ребёнок `.profile-content` (в оригинале
+              AutoAvatar — первый ребёнок, tweb `:203`), а СОСЕДНИЙ узел ПЕРЕД
+              Solid-корнем `.profile-content` (см. `profileContentHostRef`
+              ниже). Причина — конфликт двух реальных решений, оба уже приняты
+              РАНЬШЕ этой задачи и оба менять не входит в её объём: наш класс
+              `PeerProfileAvatars` переживает смену пира (не пересоздаётся,
+              см. его докблок «Осознанное отступление»), а Solid-корень
+              `.profile-content`, наоборот, ПЕРЕСОЗДАЁТСЯ на каждый peerId (как
+              и в оригинале — см. докблок `peerProfile.solid.tsx`). Если бы
+              `avatarsHostRef` был ребёнком пересоздаваемого корня, каждая
+              смена пира отрывала бы живой инстанс от DOM. Проверено по
+              `styles/tweb/_profile.scss`: правила на `.profile-avatars-container`
+              бьют через `.profile-container` (`setCollapsedOnRef`), не через
+              `.profile-content`, кроме `.has-music .profile-avatars-info` — а
+              `has-music` у нас НИКОГДА не взводится (нет поля `saved_music`,
+              см. докблок `fullPeers.solid.ts`), так что сегодня визуально
+              безвредно. Сведение (сделать AutoAvatar настоящим Solid-ребёнком)
+              требует сперва решить именно этот конфликт персистентности —
+              долг `web-client/backlogs/frontend/profile-avatar-inside-solid-root.md`. */}
           <div ref={avatarsHostRef} />
           {avatarsInfoEl && createPortal(
             <>
@@ -515,7 +571,48 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
             </>,
             avatarsInfoEl,
           )}
-          <div className="profile-content-delimiter" />
+
+          {/* Каркас карточки (задача 2, `peerProfile.solid.tsx`) — `.profile-content`
+              (делимитер + `searchSuperContainer` последним ребёнком) рисует
+              Solid, смонтированный сюда мостом `mountSolid` (эффект выше, у
+              `profileContentHostRef`). Хост — пустой узел-обёртка, тот же
+              приём и то же расхождение с оригиналом, что у `avatarsHostRef`
+              выше. */}
+          <div ref={profileContentHostRef} />
+          {createPortal(
+            <SharedMedia
+              tab={tab}
+              onTab={setTab}
+              chatId={sharedMediaChatId(chat.id)}
+              members={isRealChat && (isGroup || isChannel) ? realMembers ?? [] : undefined}
+              savedDialogs={isSaved ? savedDialogs ?? [] : undefined}
+              gifts={isUser ? gifts : undefined}
+              onOpenGift={setSelectedGift}
+              onSendGift={isUser && peerId !== meId ? onSendGift : undefined}
+              isChannel={isChannel}
+              canManageAdmins={canManageAdmins}
+              onOpenPeer={onOpenPeer}
+              onEditMember={setEditMember}
+              navRef={tabsBarRef}
+              stickyTop={TAB_GAP}
+              onCount={(name, n) => setTabCounts((c) => (c[name] === n ? c : { ...c, [name]: n }))}
+            />,
+            searchSuperContainer,
+          )}
+
+          {/* НИЖЕ — секции info-карточки (tweb MainSection) и наши доп. секции
+              /попапы. РАСХОЖДЕНИЕ С TWEB (Task 2, временное): в оригинале эти
+              строки — Solid-дети `.profile-content`, МЕЖДУ delimiter и
+              searchSuperContainer (`MainSection`, tweb `:1510-1533`). У нас
+              они пока остаются React и стоят СНАРУЖИ узла `.profile-content`
+              (соседи, а не дети) — перенос каждой секции внутрь, нативным
+              Solid-рендером, — задачи 3 (имя/статус), 4 (Phone/Username/Bio/
+              Link/Birthday/Notifications) и 5 (наши секции: Statistics/
+              Discussion/JoinRequests/ключ шифрования секретного чата).
+              Функционально ничего не потеряно — секции по-прежнему
+              рендерятся и работают, расхождение только в точной вложенности
+              DOM (`.profile-content`'а own `min-height`, `_rightSidebar.scss`,
+              из-за этого визуально короче, чем в оригинале, до задачи 6). */}
 
           {/* Info card — те же секции, что в настройках (settings/kit Section+Row).
               В «Избранном» её нет вовсе (tweb: свой профиль без phone/username/bio). */}
@@ -704,30 +801,12 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
           )}
 
           {/* Shared media: табы Медиа/Файлы/Ссылки/Музыка/Голосовые (tweb sharedMedia).
-              Контент пока моковый — реального API истории по типам ещё нет. */}
-          {/* isRealChat из useGroupInfo — только группы/каналы; для шаред-медиа
-              реальность чата определяем по numeric id (private тоже подходит) */}
-          {/* блок не ниже вьюпорта панели — табы всегда доезжают до шапки
-              (tweb _searchSuper.scss: min-height var(--super-height)) */}
-          <div className="search-super">
-          <SharedMedia
-            tab={tab}
-            onTab={setTab}
-            chatId={sharedMediaChatId(chat.id)}
-            members={isRealChat && (isGroup || isChannel) ? realMembers ?? [] : undefined}
-            savedDialogs={isSaved ? savedDialogs ?? [] : undefined}
-            gifts={isUser ? gifts : undefined}
-            onOpenGift={setSelectedGift}
-            onSendGift={isUser && peerId !== meId ? onSendGift : undefined}
-            isChannel={isChannel}
-            canManageAdmins={canManageAdmins}
-            onOpenPeer={onOpenPeer}
-            onEditMember={setEditMember}
-            navRef={tabsBarRef}
-            stickyTop={TAB_GAP}
-            onCount={(name, n) => setTabCounts((c) => (c[name] === n ? c : { ...c, [name]: n }))}
-          />
-          </div>
+              Контент пока моковый — реального API истории по типам ещё нет.
+              Сам `<SharedMedia>` теперь рисуется ВЫШЕ, порталом в
+              `searchSuperContainer` (см. каркас карточки) — второго рендера
+              здесь нет, это только комментарий-ориентир по месту в разметке
+              оригинала (tweb `sharedMedia.tsx`, `_searchSuper.scss`:
+              min-height var(--super-height)). */}
 
           {/* Инфо полученного подарка (tweb PopupStarGiftInfo) */}
           {selectedGift && (
@@ -760,7 +839,6 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
               avatar={{ src: headerAvatarSrc, background: chat.avatar, text: chat.avatarText }}
             />
           )}
-        </div>{/* /.profile-content */}
         </div>
         </div>
 
