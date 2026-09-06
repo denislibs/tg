@@ -559,15 +559,31 @@ div.reply.quote-like.quote-like-hoverable.quote-like-border[.quote-like-icon.rep
 - Элемент — custom element `reactions-element` (reactions.ts:87,449), классы
   `reactions reactions-block reactions-like-block` (block) / `reactions-inline`;
   тип Tag — для Saved Messages. Внутри — custom elements `reaction-element.reaction.
-  reaction-block[.is-chosen][.is-paid]` с `div.reaction-sticker` и `span.reaction-counter`
-  (reaction.ts:34–35, 739–1032). Размер стикера: block/tag 22, inline 14; аватары
-  реагировавших до 3-х, счётчик — с 4-х (reaction.ts:43–51).
+  reaction-block.reaction-like-block[.is-chosen.forwards][.is-last][.is-paid]` с
+  `div.reaction-sticker` и `span.reaction-counter` (reaction.ts:34–35, 739–1032).
+  Классы чипа ставит `init` (reaction.ts:757–758): `reaction-like-block` общий для
+  block и tag, и в нём — высота пилюли, её внешние отступы и
+  `--chosen-background-color` (`_reaction.scss:219–230`). `is-last` — на последнем
+  чипе ряда (reactions.ts:319). `is-chosen` ставится ПЕРЕХОДОМ (`setIsChosen`,
+  reaction.ts:1086–1097): подложку своей реакции CSS зажигает только по паре
+  `.is-chosen.forwards` (`_reaction.scss:127–133`), а длительность — `isConnected ?
+  300 : 0`, поэтому при первом показе бабла заливка не «проявляется».
+  Размер стикера: block/tag 22, inline 14; аватары реагировавших до 3-х, счётчик —
+  с 4-х, компактной формой `formatNumber` (reaction.ts:43–51, :1035).
 - Куда вставляется: floating-time или service → в `bubble-content-wrapper`; multiple
   documents → в `.document-message` последнего дока; иначе — в конец `.message` (9849–9870).
   При этом `timeSpan` переезжает ВНУТРЬ reactions-element (`appendBubbleTime`, 9855).
 - `USER_REACTIONS_INLINE = false` (bubbles.ts:260) — inline-режим в личках выключен, всегда block.
 
-**У нас (web-client, `components/chat/bubbles.ts::renderMessageMeta`):** развилка
+**У нас (чип, `components/chat/reactions.ts`):** все три класса чипа, `is-last` и
+переход `is-chosen`/`forwards` портированы; счётчик печатается `formatNumber`
+(`helpers/number/formatNumber.ts`). Ветка `duration: 300` у `setIsChosen`
+недостижима: узел реакций пересобирается целиком, и чип на этот момент всегда
+отсоединён — смену состояния проигрывает только оригинал, где чип переживает
+обновление (reactions.ts:310–313). Не портированы: `positionElementByIndex`,
+`has-no-reactions`, кастом-эмодзи, платная ⭐-реакция, раскладки Inline и Tag.
+
+**У нас (вставка в бабл, `components/chat/bubbles.ts::renderMessageMeta`):** развилка
 floating-time/`.message` портирована — у бабла с `has-floating-time` (медиа без подписи)
 время (`is-floating`) вставляется прямо в `bubble-content` (сосед `.message`, не потомок),
 а контейнер реакций — в `bubble-content-wrapper`; иначе оба уходят в `.message`, как раньше.
