@@ -653,6 +653,76 @@ describe('fireAroundAnimation', () => {
       expect(icon.player.remove).not.toHaveBeenCalled()
       expect(around.player.remove).not.toHaveBeenCalled()
     })
+
+    /**
+     * ВЕЛИЧИНА срока, а не только его наличие. Без этого пина потолок можно
+     * было бы сделать сколь угодно жёстким (2500 → 1) — в бою это убило бы
+     * почти каждый эффект (старт на тёплом кэше — 68 мс), а тесты остались бы
+     * зелёными. Срок взят у оригинала: `pause(2500)` в
+     * `LottieLoader.waitForFirstFrame` (tweb lottieLoader.ts:213-219).
+     */
+    it('срок — ровно 2500 мс: за миллисекунду до него эффект ещё ждёт', async () => {
+      stuckEffect()
+      const el = fire()
+      await vi.advanceTimersByTimeAsync(0)
+
+      const chip = el.querySelector<ReactionChip>('.reaction')!
+      const flight = wrapStickerAnimationMock.mock.results[0].value.animationDiv as HTMLElement
+      const container = document.createElement('div')
+      container.append(flight)
+
+      await vi.advanceTimersByTimeAsync(2499)
+      // Срок ещё не вышел — эффект ждёт: гейт закрыт, полёт на месте.
+      expect(chip.hasAroundAnimation).not.toBe(undefined)
+      expect(flight.parentElement).toBe(container)
+
+      await vi.advanceTimersByTimeAsync(1)
+      // Ровно на 2500-й миллисекунде — снят.
+      expect(chip.hasAroundAnimation).toBe(undefined)
+      expect(flight.parentElement).toBeNull()
+    })
+  })
+
+  /**
+   * Гейт `chip.hasAroundAnimation` снимают ДВЕ точки — уборка зоны эффекта и
+   * его собственное завершение, — и обе обязаны гасить только СВОЙ гейт. У
+   * оригинала проверка идентичности стоит лишь в `finally` (tweb
+   * reaction.ts:1542-1546), и там этого хватает: `options.middleware` одна на
+   * чип. У нас зона эффекта своя на каждый запуск (она заведена под потолок),
+   * поэтому уборка старой зоны не вправе гасить гейт нового эффекта — иначе
+   * третий клик прошёл бы мимо закрытого гейта и сыграл поверх второго.
+   */
+  it('уборка старого эффекта не гасит гейт нового', async () => {
+    const first = fakePlayer()
+    wrapStickerMock.mockImplementation((o) => ({
+      render: Promise.resolve(o.group === 'none' ? first.player : fakePlayer().player),
+      width: o.width, height: o.height, destroy: vi.fn(),
+    }))
+
+    const el = createReactionsElement(agg({ emoticon: '👍', count: 1 }), options())!
+    const chip = el.querySelector<ReactionChip>('.reaction')!
+
+    const firstZone = getMiddleware()
+    const fireOn = (middleware: ReturnType<typeof getMiddleware>) => fireAroundAnimation({
+      chip,
+      reaction: { _: 'reactionEmoji', emoticon: '👍' },
+      middleware: middleware.get(),
+      managers: { peers: { fillMirror: vi.fn(async () => {}) }, reactions: catalog },
+    })
+
+    // Первый эффект отыграл: гейт снялся сам, зона осталась жива (её убивает
+    // только бабл).
+    fireOn(firstZone)
+    await flush()
+    expect(chip.hasAroundAnimation).toBe(undefined)
+
+    // Второй эффект — гейт снова закрыт, теперь уже вторым.
+    fireOn(getMiddleware())
+    const second = chip.hasAroundAnimation
+    expect(second).not.toBe(undefined)
+
+    firstZone.destroy()
+    expect(chip.hasAroundAnimation).toBe(second)
   })
 })
 

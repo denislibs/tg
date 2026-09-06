@@ -195,4 +195,34 @@ describe('предзагрузка каталога (tweb appReactionsManager.ts
       vi.useRealTimers()
     }
   })
+
+  /**
+   * Пометка «этот каталог уже прогрет» не должна переживать ОТКАЗ запроса
+   * каталога: `catalogCache` (reactions.ts:146-148) упавший запрос выбрасывает,
+   * и остальное приложение список перезапросит. Если пометку не снимать, один
+   * сетевой сбой на 7.5-й секунде выключал бы предзагрузку на всю жизнь
+   * страницы — а у оригинала её питает зеркало воркера, которое держит свой
+   * retry (appReactionsManager.ts:94).
+   */
+  it('отказ каталога не выключает предзагрузку навсегда', async () => {
+    vi.useFakeTimers()
+    try {
+      const catalog = {
+        list: vi.fn()
+          .mockImplementationOnce(async () => { throw new Error('offline') })
+          .mockImplementation(async () => [full('e0', 100)]),
+      }
+
+      await preloadReactionAssets({ reactions: catalog })
+      expect(catalog.list).toHaveBeenCalledTimes(1)
+      expect(fetchMock).not.toHaveBeenCalled()
+
+      // Второй заход (следующее монтирование Shell) обязан попробовать заново.
+      void preloadReactionAssets({ reactions: catalog })
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(fetchMock.mock.calls.map(([u]) => u)).toContain(url(100))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

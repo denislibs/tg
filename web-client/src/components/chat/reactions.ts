@@ -672,6 +672,17 @@ async function handleChangedResults(
  * произвольно длинная, и эффект стартовал через сотни миллисекунд после
  * клика — либо не стартовал вовсе, а гейт `chip.hasAroundAnimation` при этом
  * не снимался и следующий клик тоже оставался без эффекта.
+ *
+ * РАСХОЖДЕНИЕ, названное прямым текстом: у нас под этот же потолок попадает и
+ * ЗАПРОС ЗА ОПИСАНИЕМ РЕАКЦИИ — `getAvailableReaction` (сетевой `list()` через
+ * `catalogCache`), которого у оригинала под потолком нет: там каталог читается
+ * СИНХРОННО из зеркала (`apiManagerProxy.getReaction(emoticon)`,
+ * reaction.ts:1476, отдаёт уже загруженный `AvailableReaction`), а потолок
+ * накрывает только ожидание первого кадра. То есть наши 2500 мс делятся между
+ * двумя ожиданиями, а у оригинала целиком уходят на второе. Сойдётся, когда
+ * каталог реакций переедет в синхронное зеркало воркера, как у оригинала;
+ * до тех пор потолок консервативнее оригинального, но не мягче — а именно
+ * этого от него и требуется.
  */
 const AROUND_FIRST_FRAME_TIMEOUT = 2500
 
@@ -718,7 +729,12 @@ const PRELOAD_REACTION_PAUSE = 1000
 /** Каталоги, для которых предзагрузка уже отработала. Ключ — сам объект-каталог,
  *  как у `catalogCache`: у оригинала подписка на `user_auth` срабатывает раз на
  *  вход, у нас точка входа — эффект React, переигрываемый на каждом монтировании
- *  Shell. */
+ *  Shell.
+ *
+ *  Пометка снимается, если каталог не приехал: `catalogCache` выбрасывает
+ *  упавший запрос (:146-148) и остальное приложение список перезапросит —
+ *  значит и предзагрузка обязана уметь зайти второй раз. Иначе единственный
+ *  сетевой отказ на 7.5-й секунде выключал бы её на всю жизнь страницы. */
 const preloadedCatalogs = new WeakSet<object>()
 
 /**
@@ -731,13 +747,32 @@ const preloadedCatalogs = new WeakSet<object>()
  *
  * `select_animation` в списке оригинала нет — его качает сама панель, когда
  * открывается.
+ *
+ * РАСХОЖДЕНИЕ ПО ЦЕНЕ, названо долгом: у оригинала прогрев — это
+ * `downloadMediaURL` в шаред-воркере, он держит БАЙТЫ (`Blob` + objectURL,
+ * apiFileManager.ts:1029-1045), а gunzip и разбор делает lottie-воркер в
+ * момент показа. Наш `loadStickerContent` кэширует РАЗОБРАННЫЙ lottie-JSON в
+ * модульной карте без вытеснения и разбирает его на главном потоке: 28 файлов
+ * семи реакций — 430 КБ на проводе, 3.3 МБ текста после gunzip. Правится не
+ * здесь: это контракт общего кэша стикеров, на котором стоит вся лента.
+ * Долг с замерами и планом — `backlogs/frontend/sticker-content-cache-holds-parsed-json.md`.
  */
 export async function preloadReactionAssets(managers: ReactionsCatalogManagers): Promise<void> {
   const catalog = managers.reactions
   if (!catalog || preloadedCatalogs.has(catalog)) return
   preloadedCatalogs.add(catalog)
 
-  const available = await getAvailableReactions(managers)!.catch(() => [])
+  let available: AvailableReaction[]
+  try {
+    available = await getAvailableReactions(managers)!
+  } catch {
+    // Каталог не приехал — снять пометку, чтобы следующий вход в Shell зашёл
+    // заново (см. комментарий у `preloadedCatalogs`). У оригинала этой ветки
+    // нет: там `getAvailableReactions` читается из зеркала воркера, которое
+    // держит свой retry.
+    preloadedCatalogs.delete(catalog)
+    return
+  }
 
   // tweb :104-113.
   for (let i = 0, length = Math.min(PRELOAD_REACTIONS_COUNT, available.length); i < length; ++i) {
@@ -795,12 +830,17 @@ export async function preloadReactionAssets(managers: ReactionsCatalogManagers):
  *    не просто маршрут), это бэкенд-работа за периметром фронтового Этапа 5.
  *    При этом наше поведение — не самодеятельность, а ветка того же оригинала:
  *    :1512-1514, «генерика взять негде» → играть каталожный эффект поздно,
- *    когда файлы догрузятся. Загрузку мы начинаем тем же кликом (ниже,
- *    `warmUpReactionEffect` — порт `warmUpDownload`, :1495), а «поздно»
+ *    когда файлы догрузятся. Отдельного `warmUpDownload` (:1495) в этой ветке
+ *    у нас НЕТ и быть не может: у оригинала он нужен, потому что кадры рисует
+ *    генерик, а каталожные файлы никто не запрашивает; мы же играем сам
+ *    каталожный эффект, и его файлы тем же тиком качают `wrapSticker` и
+ *    `wrapStickerAnimation` — через тот же модульный кэш
+ *    (`wrappers/stickerContent.ts`), которым пользуется и прогрев. Вернуть
+ *    `warmUpDownload` сюда придётся вместе с генериком — это записано в долг
+ *    (`backlogs/frontend/reaction-generic-effect.md`). «Поздно» при этом
  *    ограничено потолком `AROUND_FIRST_FRAME_TIMEOUT`: не успел к сроку —
  *    эффект честно не играет, вместо того чтобы выстрелить через секунды
- *    после клика и держать гейт чипа. Долг — с точным списком того, что
- *    нужно на бэке: `backlogs/frontend/reaction-generic-effect.md`.
+ *    после клика и держать гейт чипа.
  *  • Ветка платной ⭐-реакции (:1523-1528, ассеты `StarReactionEffect*`) и ветка
  *    кастом-эмодзи (:1529) — своих подсистем нет.
  */
@@ -856,15 +896,6 @@ export function fireAroundAnimation(options: {
   const promise = lookup.then((availableReaction) => {
     if (!effectMiddleware()) return
     if (!availableReaction?.aroundMediaId || !availableReaction.centerMediaId) return
-
-    // tweb :1484-1495: оригинал синхронно проверяет, лежат ли ОБА файла эффекта
-    // в кэше, и на промахе играет generic, параллельно докачивая каталожные
-    // файлы. Генерика у нас нет (см. докблок выше и
-    // `backlogs/frontend/reaction-generic-effect.md`) — остаётся вторая
-    // половина той же ветки: докачать (:1495) и играть каталожный эффект, как
-    // это делает сам оригинал, когда генерика взять негде (:1512-1514).
-    // Прогрев здесь идемпотентен: скачанный файл `warmUpDownload` пропускает.
-    warmUpReactionEffect(availableReaction)
 
     // tweb :1170-1172.
     const div = document.createElement('div')
@@ -965,12 +996,19 @@ export function fireAroundAnimation(options: {
   // tweb :1531-1537. Гейт снимается и по потолку: `promise` — гонка с
   // `ceiling`, поэтому висеть дольше срока он не может даже на застрявшем
   // декоде.
+  // Обе точки снятия гейта — с проверкой идентичности. У оригинала она стоит
+  // только в `finally` (:1542-1546), а `onDestroy` (:1537-1539) гасит поле
+  // безусловно, и это у него безопасно: `options.middleware` там ОДНА на чип,
+  // общая для всех его эффектов, поэтому её уборка не может застать чужой,
+  // более свежий гейт. У нас зона эффекта СВОЯ на каждый запуск (`helper`
+  // выше — она заведена под потолок), и «безусловно» держалось бы только на
+  // порядке уборки. Поэтому здесь тот же приём, что в `finally`, а не копия
+  // оригинальной асимметрии.
   const gate = Promise.race([promise, ceiling])
-  effectMiddleware.onDestroy(() => { chip.hasAroundAnimation = undefined })
+  const release = () => { if (chip.hasAroundAnimation === gate) chip.hasAroundAnimation = undefined }
+  effectMiddleware.onDestroy(release)
   chip.hasAroundAnimation = gate
-  gate.finally(() => {
-    if (chip.hasAroundAnimation === gate) chip.hasAroundAnimation = undefined
-  }).catch(noop)
+  gate.finally(release).catch(noop)
 }
 
 /**
