@@ -204,8 +204,9 @@ export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBot
     const bubblesViewport = document.createElement('div')
     bubblesViewport.classList.add('bubbles-viewport', 'disable-hover')
 
-    // `navigation` (адресат кликов, см. `BubblesNavigation`) заполнен ДВУМЯ
-    // полями — календарём и тредом. Два других сознательно не передаются: открыть пир
+    // `navigation` (адресат кликов, см. `BubblesNavigation`) заполнен четырьмя
+    // полями — календарём, тредом, пересылкой и перезвоном.
+    // Два оставшихся сознательно не передаются: открыть пир
     // умеет `useNavigationActions().openPeer`, но ему нужна карточка пира
     // (`OpenPeer.title`), которой у ленты нет, а разбора внутренних
     // t.me-ссылок (tweb `internalLinkProcessor`) в приложении пока нет вовсе.
@@ -230,6 +231,10 @@ export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBot
         navigation: {
           openDatePicker: (initDate, onPick) => gesture.current.onOpenDatePicker?.(initDate, onPick),
           openDiscussion: (args) => gesture.current.onOpenDiscussion?.(args),
+          // Пересылка кнопкой сбоку от поста канала (tweb bubbles.ts:3512).
+          // Отдельной ручки хосту не заводится: попап тот же, что открывает
+          // пункт «Переслать» меню, — и вход у него тот же `menuPopups`.
+          showForward: (fromPeerIdsMids) => gesture.current.menuPopups?.showForward(fromPeerIdsMids),
           // ПЕРЕЗВОН по баблу лога звонка — порт `appImManager.callUser(peerId
           // .toUserId(), type)` (tweb bubbles.ts:3194). Роль `appImManager`
           // здесь исполняет хост, потому что у нашего движка звонков вход не по

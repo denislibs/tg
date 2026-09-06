@@ -70,9 +70,9 @@ div.bubbles-group                                    ← нет bubbles-group-av
       svg > use                                      ← хвост
 ```
 
-У нас `out = meId != null && m.senderId === meId && !m.sendAs` (`core/messageToConvMsg.ts:46`)
-и дальше `const out = !!m.out` (`ChatFeed.tsx:260`). Свои посты уезжают вправо, зелёными,
-с тиком (`Time.tsx:141` рисует тик по `out && status`).
+У нас сторона бабла считается тем же порядком: `isOurMessage`/`isOutMessage`
+(`core/models.ts:458`, зовёт лента — `components/chat/bubbles.ts::isOutMessage`),
+и терм `!pFlags.post` в них стоит. Свои посты идут слева, входящим баблом, без тиков.
 
 ### 2.2 Таблица бабла
 
@@ -83,11 +83,11 @@ div.bubbles-group                                    ← нет bubbles-group-av
 | имя отправителя | `hide-name`; `needName` требует `isLikeGroup` (`bubbles.ts:9331`) | ✅ (`showName={isGroup && …}`) |
 | аватар-колонка | нет; `needAvatar = isLikeGroup && !isOutMessage` (`bubbles.ts:11706`) | ✅ |
 | `signature_profiles` | канал становится `isLikeGroup` → имена и аватарки возвращаются | ❌ флаг есть в карточке, в рендере не используется |
-| подпись автора | `.time-post-author` из `post_author`, только при `!isLikeGroup` (`chat.ts:1419-1432`) | ❌ |
-| класс `channel-post` | по `message.views` (`bubbles.ts:7672`) | 🟡 по виду чата (`bubbleClasses.ts:148`, `ctx.isChannel`). Гейт наблюдения за просмотрами в ленте уже переведён на `message.views`, как у оригинала: сервер шлёт пару `views`/`forwards` ровно у поста и всегда, минимум единица (`domain.MessageReal.PostCounters`). Сам класс на вид чата остаётся — отдельная строка |
-| просмотры в `.time` | `.post-views` + иконка `channelviews`, tooltip `ViewsTooltip`/`SharesTooltip` | 🟡 счётчик есть, tooltip с пересылками нет |
+| подпись автора | `.time-post-author` из `post_author`, только при `!isLikeGroup` (`chat.ts:1419-1432`) | ❌ поля `post_author` нет на проводе вовсе — долг `web-client/backlogs/frontend/post-author-signature.md` |
+| класс `channel-post` | по `message.views` (`bubbles.ts:7672-7673`) | ✅ тот же гейт — `bubbleClasses.ts` (`if (m.views)`), зовёт его ванильная лента. Признака «открыт канал» в контексте вычислителя больше нет вовсе: сервер шлёт пару `views`/`forwards` ровно у поста и всегда, минимум единица (`domain.MessageReal.PostCounters`), поэтому вид чата спрашивать незачем. Пин — `chat/bubbles.channelPost.test.ts` |
+| просмотры в `.time` | `.post-views` + иконка `channelviews`, tooltip `ViewsTooltip`/`SharesTooltip` | 🟡 счётчик есть, tooltip с просмотрами/пересылками нет — долг `web-client/backlogs/frontend/post-time-tooltips.md` |
 | инкремент просмотров | IntersectionObserver → дебаунс 1000 мс → `getMessagesViews{increment}` (`bubbles.ts:2305-2328`, `:2129-2147`, `appMessagesManager.ts:9136-9156`) | ✅ то же: `viewsObserverCallback` ленты (одноразовое наблюдение) → дебаунс 1000 мс → `POST /channels/{id}/views` (`channelsManager.registerViews`). Ответ применяется у себя, как в оригинале; чужие просмотры приезжают кадром `views_update` (`updateChannelMessageViews`) → `messages.cacheViews` → событие `messages_views` → лента переписывает `.post-views` (порт `bubbles.ts:2094-2124`) |
-| кнопка «переслать» сбоку | `.bubble-beside-button.with-hover.forward` + `with-beside-button` | 🟡 рендерится, но привязана к `channel-post`, т.е. к обсуждениям |
+| кнопка «переслать» сбоку | `.bubble-beside-button.with-hover.forward` + `with-beside-button` (`bubbles.ts:7675-7681`), клик → `showForwardPopup` (`bubbles.ts:3511-3517`) | ✅ узел, классы и гейт те же (`chat/bubbles.ts`, блок поста канала); клик уходит в тот же попап пересылки, что пункт меню (`navigation.showForward` → `menuPopups.showForward`). Из условия оригинала не портирован только терм `chat.type !== ChatType.Pinned` — ленты закреплённых у нас нет как понятия |
 | футер комментариев | `replies-element` при `replies.pFlags.comments` (`appMessagesManager.ts:9237-9247`) | ✅ тот же гейт — `getMessageWithCommentReplies` в `chat/bubbles.ts`; узел строит `chat/replies.ts`. Счётчик живится кадром `replies_update` (`updateChannelMessageReplies`) → `messages.cacheReplies` → событие `replies_updated` → `setRepliesElementCount` (порт `replies.ts:17-22`, `bubbles.ts:1137-1142`) |
 | группировка постов | общее правило `canItemsBeGrouped`, `newGroupDiff = 121 c` (`bubbleGroups.ts:360,578`) | не проверял на совпадение порога |
 | рекламные посты | `is-sponsored`, `topbarSponsored`, меню «About this ad / Report / Remove ads» | ❌ рекламы нет как подсистемы |
@@ -192,7 +192,11 @@ tweb различает набор прав broadcast vs megagroup и умеет
    рождается с `pFlags.post` (порт `generateFlags`) — иначе он стоял бы справа
    до эха и прыгал влево на подтверждении.
 2. ~~Тики статуса на посте.~~ **ЗАКРЫТО** — следствие того же терма.
-3. `channel-post` привязан к обсуждениям, а не к `views`.
+3. ~~`channel-post` привязан к виду чата, а не к `views`.~~ **ЗАКРЫТО** — гейт
+   переведён на `message.views` (`bubbleClasses.ts`), вместе с ним появились
+   `with-beside-button` и сама кнопка «переслать» сбоку: прежде ванильная лента
+   звала вычислитель классов со стабом, где признак канала стоял захардкоженным
+   `false`, и ни один бабл признаков поста не получал вовсе.
 4. Плейсхолдер композера `Message` вместо `Broadcast`.
 
 **Функционально отсутствует:**
