@@ -4,7 +4,8 @@ import type { PositionedEntity } from '@lib/richtext/wrapRichText'
 import { safeUrl } from '../core/safeUrl'
 import CodeBlock from './CodeBlock'
 import StickerMedia from './StickerMedia'
-import MessageSpoilerOverlay from './messages/MessageSpoilerOverlay'
+import { createMessageSpoilerOverlay } from './messages/messageSpoilerOverlay'
+import { useImperativeIsland } from '@core/hooks/useImperativeIsland'
 import { revealSpoiler } from '@lib/spoiler/spoilerReveal'
 import classNames from '../shared/lib/classNames'
 import s from './RichText.module.scss'
@@ -145,6 +146,31 @@ const handleSpoilerClick = (e: React.MouseEvent<HTMLSpanElement>) => {
   }
 }
 
+/**
+ * Оверлей частиц для React-потребителей `RichText` (подпись медиавьювера —
+ * `mediaViewer/base.ts:525` вешает на неё `spoilers-container`). Узлом владеет
+ * ванильная фабрика `createMessageSpoilerOverlay`, а React отдаёт ей место
+ * через `useImperativeIsland` — мост руками не пишем (докблок
+ * `core/hooks/useImperativeIsland.ts`).
+ *
+ * Хост объявлен `display: contents` — тем же приёмом, что `VanillaFeed.tsx` и
+ * `SolidIsland.tsx`: бокса он не создаёт, поэтому `.message-spoiler-overlay`
+ * (`position: absolute`, `width/height: 100%`) считает проценты и позицию от
+ * НАСТОЯЩЕГО тела сообщения, а не от обёртки.
+ */
+function SpoilerOverlayIsland() {
+  const ref = useImperativeIsland((host) => {
+    const messageElement = host.parentElement
+    if (!messageElement) return
+    const overlay = createMessageSpoilerOverlay({ messageElement })
+    if (!overlay) return
+    host.append(overlay.element)
+    return overlay.dispose
+  }, [])
+
+  return <div ref={ref} style={{ display: 'contents' }} />
+}
+
 function Spoiler({ children }: { children: ReactNode }) {
   return (
     <span className="spoiler" onClick={handleSpoilerClick}>
@@ -229,7 +255,7 @@ export default function RichText({
   // Оверлей частиц — ОДИН на весь текст (в tweb он тоже один на `.message`,
   // bubbles.ts:9780 addMessageSpoilerOverlay); идёт последним, чтобы его канва
   // легла поверх слов.
-  const overlay = ents.some((e) => e._ === 'messageEntitySpoiler') ? <MessageSpoilerOverlay /> : null
+  const overlay = ents.some((e) => e._ === 'messageEntitySpoiler') ? <SpoilerOverlayIsland /> : null
   const pres = ents.filter((e) => e._ === 'messageEntityPre').sort((a, b) => a.offset - b.offset)
   if (pres.length > 0) {
     const parts: ReactNode[] = []

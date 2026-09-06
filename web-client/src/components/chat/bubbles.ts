@@ -129,6 +129,7 @@ import wrapSticker from '@components/wrappers/sticker'
 import wrapDocument from '@components/wrappers/document'
 import wrapAlbum from '@components/wrappers/album'
 import wrapMediaSpoiler, { onMediaSpoilerClick } from '@components/wrappers/mediaSpoiler'
+import { createMessageSpoilerOverlay } from '@components/messages/messageSpoilerOverlay'
 import wrapMessageForReply from '@components/wrappers/messageForReply'
 import { setAttachmentSize } from '@core/dom/mediaSizes'
 import { openMediaViewer, type OpenMediaViewerArgs } from '@components/mediaViewer/openMediaViewer'
@@ -829,6 +830,20 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
   private listenerSetter = new ListenerSetter()
   public middlewareHelper = getMiddleware()
+
+  /**
+   * Живые оверлеи спойлеров — по телу сообщения, которому принадлежат.
+   *
+   * В tweb хендл никто не хранит: там он гасится через `middleware.onDestroy`
+   * ПОБАБЛЬНОГО `bubble.middlewareHelper` (:6198, снос — :4408/:4416), а
+   * побабльного middleware в нашем порте ленты нет вовсе. Карта заменяет
+   * ровно его и ничего больше: адресуемся `messageDiv`, потому что оверлей
+   * живёт в нём (tweb :9792) и переживает те же события, что и он.
+   *
+   * `WeakMap` — снятый бабл не должен держаться картой; всё, что карта умеет,
+   * это отдать `dispose` по живому узлу.
+   */
+  private spoilerOverlays = new WeakMap<HTMLElement, VoidFunction>()
 
   constructor(private chat: ChatContext, private managers: BubblesManagers) {
     this.constructBubbles()
@@ -1847,7 +1862,46 @@ export default class ChatBubbles implements BubbleGroupsHost {
       bubbleContainer.append(generateTail())
     }
 
+    this.addMessageSpoilerOverlay(messageDiv)
+
     return bubble
+  }
+
+  /**
+   * Порт tweb `addMessageSpoilerOverlay` (bubbles.ts:9781-9799), вызов — с того
+   * же места: конец сборки бабла (:9770).
+   *
+   * Без этого узла спойлер закрывает ЗАЛИВКА, а не частицы: правило
+   * `styles/tweb/_spoiler.scss:60` (`.spoilers-container:has(.message-spoiler-overlay)
+   * .spoiler {background-color: unset}`) снимает её только при живом оверлее.
+   *
+   * Из оригинала здесь нет:
+   *  • `if(IS_FIREFOX) return` (:9782) — гейт переехал в саму фабрику
+   *    (`canUseMessageSpoilerOverlay`), потому что вызывателей у неё два;
+   *  • `await Promise.all(loadPromises)` (:9783, :9797) и `controls.update()`
+   *    (:9798) — очереди ожиданий у нашей сборки нет, она синхронна, а первый
+   *    `update()` фабрика делает сама.
+   *
+   * Гейт `.spoiler-text` (:9785) остаётся: канва, частицы и наблюдатели заводятся
+   * ТОЛЬКО у сообщения со спойлером.
+   */
+  private addMessageSpoilerOverlay(messageDiv: HTMLElement) {
+    // Правка тела (`onMessageEdit`) пересобирает содержимое и уносит из DOM
+    // прежний оверлей — сначала гасим его, потом ставим новый. В tweb правка
+    // пересоздаёт бабл целиком (:6338), и вопроса не возникает.
+    this.spoilerOverlays.get(messageDiv)?.()
+    this.spoilerOverlays.delete(messageDiv)
+
+    if(!messageDiv.querySelector('.spoiler-text')) return
+
+    const overlay = createMessageSpoilerOverlay({ messageElement: messageDiv })
+    if(!overlay) return
+
+    messageDiv.append(overlay.element)
+    this.spoilerOverlays.set(messageDiv, overlay.dispose)
+    // Смена пира и снос ленты: бабл уходит не через `deleteMessagesByIds`, а
+    // целым окном (`cleanup`), и снимать оверлей там больше некому.
+    this.getMiddleware().onClean(overlay.dispose)
   }
 
   /**
@@ -5188,6 +5242,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
       messageDiv,
       observedMid === undefined ? undefined : (element) => this.setUnreadObserver(element, observedMid),
     )
+    this.addMessageSpoilerOverlay(messageDiv)
   }
 
   /** Порт tweb `deleteMessagesByIds` (bubbles.ts:4302-4313/4470-4478): забыть
@@ -5213,6 +5268,14 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
       if (this.firstUnreadBubble === bubble) {
         this.firstUnreadBubble = undefined
+      }
+
+      // tweb гасит здесь ВЕСЬ побабльный middleware (:4408/:4416), а с ним и
+      // оверлей спойлеров; у нас гасить надо адресно — см. `spoilerOverlays`.
+      const messageDiv = bubble.querySelector<HTMLElement>('.message')
+      if (messageDiv) {
+        this.spoilerOverlays.get(messageDiv)?.()
+        this.spoilerOverlays.delete(messageDiv)
       }
 
       this.bubbleGroups.removeAndUnmountBubble(bubble)

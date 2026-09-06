@@ -722,7 +722,7 @@ export default class DotRenderer implements AnimationItemWrapper {
   /**
    * The worker counterpart of attachTextSpoilerTarget: the overlay canvas is
    * transferred to the worker, which draws and animates it from pushed geometry —
-   * the DOM measurements stay on the main thread (see MessageSpoilerOverlay)
+   * the DOM measurements stay on the main thread (see messageSpoilerOverlay)
    */
   public static attachTextSpoilerOverlay({
     canvas,

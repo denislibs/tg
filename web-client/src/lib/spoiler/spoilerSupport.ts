@@ -1,6 +1,6 @@
 // Общие проверки доступности спойлер-рендера: их спрашивают оба потребителя —
 // «блеф-спойлер» адреса почты (bluffSpoilerController) и оверлей спойлеров в
-// сообщениях (components/messages/MessageSpoilerOverlay).
+// сообщениях (components/messages/messageSpoilerOverlay).
 //
 // В tweb `isWorkerSimSupported` — статический метод `BluffSpoilerController`;
 // у нас он вынесен сюда (одна реализация на подсистему), а метод оригинала
