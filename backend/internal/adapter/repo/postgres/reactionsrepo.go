@@ -35,6 +35,31 @@ func (r *ReactionsRepo) Remove(ctx context.Context, messageID, userID int64, emo
 	return err
 }
 
+// UserReactions lists the emojis a user placed on a message, oldest first —
+// `created_at` здесь и есть `chosen_order` оригинала (отдельной колонки порядка
+// у нас нет). Эмодзи вторым ключом сортировки, чтобы у реакций, поставленных в
+// одну и ту же микросекунду, порядок был детерминированным.
+func (r *ReactionsRepo) UserReactions(ctx context.Context, messageID, userID int64) ([]string, error) {
+	q := querier(ctx, r.pool)
+	rows, err := q.Query(ctx,
+		`SELECT emoji FROM reactions WHERE message_id=$1 AND user_id=$2
+		 ORDER BY created_at, emoji`,
+		messageID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]string, 0, 4)
+	for rows.Next() {
+		var e string
+		if err := rows.Scan(&e); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 // ReactionsFor batch-loads aggregated counts per emoji for messages, most popular
 // first; Mine marks emojis the viewer reacted with. One query for the whole window.
 func (r *ReactionsRepo) ReactionsFor(ctx context.Context, messageIDs []int64, viewerID int64) (map[int64][]domain.ReactionCount, error) {

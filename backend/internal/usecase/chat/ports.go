@@ -424,6 +424,11 @@ type SearchRepo interface {
 type ReactionRepo interface {
 	Add(ctx context.Context, messageID, userID int64, emoji string) error
 	Remove(ctx context.Context, messageID, userID int64, emoji string) error
+	// UserReactions — реакции ОДНОГО пользователя на одном сообщении, СТАРЕЙШИЕ
+	// первыми (порядок постановки). Порядок здесь значащий: лимит «сколько
+	// реакций ставит один пользователь» вытесняет самую старую свою реакцию, а
+	// не произвольную (tweb src/lib/appManagers/appReactionsManager.ts:733-751).
+	UserReactions(ctx context.Context, messageID, userID int64) ([]string, error)
 	// ReactionsFor batch-loads aggregated reaction counts for messages (history
 	// read model). Mine is set when viewerID reacted with that emoji. Messages
 	// without reactions are simply absent from the map.

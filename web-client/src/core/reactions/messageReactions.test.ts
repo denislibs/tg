@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import type { MessageReactions } from '../models'
 import {
-  hasMyReaction, isChosen, mergeReactions, myEmoticons, myPaidStars, reactionDelta,
-  recentOf, sameReactions, setPaidReaction, totalReactions,
+  excessChosenReactions, hasMyReaction, isChosen, mergeReactions, myEmoticons, myPaidStars,
+  reactionDelta, reactionsUserLimit, recentOf, sameReactions, setPaidReaction, totalReactions,
 } from './messageReactions'
 
 const emoji = (emoticon: string) => ({ _: 'reactionEmoji' as const, emoticon })
@@ -184,6 +184,102 @@ describe('sameReactions', () => {
     expect(sameReactions(
       agg({ top_reactors: [{ _: 'messageReactor', pFlags: { my: true }, count: 1 }] }),
       agg({ top_reactors: [{ _: 'messageReactor', pFlags: { my: true }, count: 2 }] }),
+    )).toBe(false)
+  })
+})
+
+// Лимит «сколько реакций ставит ОДИН пользователь на одном сообщении» и
+// вытеснение старейшей — порт tweb appReactionsManager.ts:733-751 (лимит
+// приходит из конфигурации приложения, apiManagerMethods.ts:369-395; у нас
+// зашит константами, потому что appConfig не портирован).
+describe('лимит своих реакций', () => {
+  it('без премиума лимит 1, с премиумом 3', () => {
+    expect(reactionsUserLimit(false)).toBe(1)
+    expect(reactionsUserLimit(true)).toBe(3)
+  })
+
+  it('без премиума новая реакция вытесняет единственную прежнюю', () => {
+    const mine = agg({ results: [count('❤', 1, 0)] })
+    expect(excessChosenReactions(mine, '🔥', 1)).toEqual(['❤'])
+  })
+
+  // Тот самый случай из отчёта: три реакции от одного аккаунта на одном посте.
+  it('с премиумом три уживаются, а ЧЕТВЁРТАЯ вытесняет САМУЮ СТАРУЮ', () => {
+    const two = agg({ results: [count('❤', 1, 0), count('🔥', 1, 1)] })
+    expect(excessChosenReactions(two, '🥰', 3)).toEqual([])
+    const three = agg({ results: [count('❤', 1, 0), count('🔥', 1, 1), count('🥰', 1, 2)] })
+    expect(excessChosenReactions(three, '👏', 3)).toEqual(['❤'])
+  })
+
+  // Чужие чипы лимитом не двигаются: он про МОИ реакции (chosen_order).
+  it('чужие реакции в вытеснение не попадают', () => {
+    const mixed = agg({ results: [count('👏', 5), count('❤', 1, 0)] })
+    expect(excessChosenReactions(mixed, '🔥', 1)).toEqual(['❤'])
+  })
+
+  // Повторный выбор уже поставленной реакции набор не увеличивает, значит и
+  // вытеснять нечего (порт `limit - +(chosenReactionIdx === -1)`).
+  it('повторный выбор своей же реакции ничего не вытесняет', () => {
+    const mine = agg({ results: [count('❤', 1, 0)] })
+    expect(excessChosenReactions(mine, '❤', 1)).toEqual([])
+  })
+
+  // Номера идут подряд и после вытеснения: иначе «самая старая» перестаёт быть
+  // определена, а новая реакция получает номер, уже кем-то занятый.
+  it('после снятия своей номера перенумеровываются подряд, новая получает следующий', () => {
+    const three = agg({ results: [count('❤', 1, 0), count('🔥', 1, 1), count('🥰', 1, 2)] })
+    const evicted = reactionDelta(three, '❤', 'remove', true)!
+    expect(myEmoticons(evicted)).toEqual(['🔥', '🥰'])
+    expect(evicted.results.map((c) => c.chosen_order)).toEqual([0, 1])
+    const next = reactionDelta(evicted, '👏', 'add', true)!
+    expect(myEmoticons(next)).toEqual(['🔥', '🥰', '👏'])
+    expect(next.results.find((c) => c.reaction._ === 'reactionEmoji' && c.reaction.emoticon === '👏')?.chosen_order).toBe(2)
+  })
+})
+
+// Эхо собственного клика: кадр описывает ТО ЖЕ состояние, и «изменением» его
+// считать нельзя — иначе ряд реакций пересобирается второй раз и выбрасывает
+// узел чипа, вокруг которого летит эффект.
+describe('эхо кадра не выглядит изменением', () => {
+  it('слитый кадр равен состоянию, собранному локальной дельтой', () => {
+    const local = reactionDelta(agg({ results: [count('👍', 1)] }), '👍', 'add', true, { me: 7, peerId: DM })!
+    // Тело кадра: тот же состав, но БЕЗ пер-зрительской части и с пометкой min.
+    const frame = agg({
+      results: [count('👍', 2)],
+      recent_reactions: [{ _: 'messagePeerReaction', peer_id: { _: 'peerUser', user_id: 7 }, date: 0, reaction: emoji('👍') }],
+      pFlags: { min: true },
+    })
+    const merged = mergeReactions(local, frame)
+    expect(sameReactions(local, merged)).toBe(true)
+    // `min` — свойство тела кадра, а не состояния сообщения: слияние его снимает.
+    expect(merged?.pFlags?.min).toBeUndefined()
+  })
+
+  it('чужой клик тем же кадром изменением ОСТАЁТСЯ', () => {
+    const local = reactionDelta(agg({ results: [count('👍', 1)] }), '👍', 'add', true, { me: 7, peerId: DM })!
+    const frame = agg({ results: [count('👍', 3)], pFlags: { min: true } })
+    expect(sameReactions(local, mergeReactions(local, frame))).toBe(false)
+  })
+
+  // Аватарки в чипе рисуются из recent_reactions — их подмена это изменение,
+  // даже когда числа совпали.
+  it('смена реагировавших при том же счётчике — изменение', () => {
+    const a = agg({
+      results: [count('👍', 1)],
+      recent_reactions: [{ _: 'messagePeerReaction', peer_id: { _: 'peerUser', user_id: 7 }, date: 0, reaction: emoji('👍') }],
+    })
+    const b = agg({
+      results: [count('👍', 1)],
+      recent_reactions: [{ _: 'messagePeerReaction', peer_id: { _: 'peerUser', user_id: 8 }, date: 0, reaction: emoji('👍') }],
+    })
+    expect(sameReactions(a, b)).toBe(false)
+  })
+
+  // «Аватарки или число» решает право видеть список — оно тоже видно в чипе.
+  it('появление can_see_list — изменение', () => {
+    expect(sameReactions(
+      agg({ results: [count('👍', 1)] }),
+      agg({ results: [count('👍', 1)], pFlags: { can_see_list: true } }),
     )).toBe(false)
   })
 })

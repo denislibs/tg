@@ -194,6 +194,10 @@ export function createWorkerCore() {
     rest,
     decryptSecret: (peerId, encBody) => secret.decryptMessage(peerId, encBody),
     getMeId: () => me?.user.id ?? null,
+    // Порт `rootScope.premium` (tweb apiManagerMethods.ts:393): от подписки
+    // зависит лимит своих реакций на сообщении. Геттер, а не значение, — `me`
+    // разрешается лениво и меняется покупкой премиума (premiumManager → setMe).
+    getMePremium: () => !!me?.user.pFlags?.premium,
     // Порт `appPeersManager.isBroadcast(peerId)` для `generateFlags`: бабл поста
     // вещательного канала рождается с `pFlags.post` — иначе он стоял бы справа
     // до эха и прыгал влево (см. `PendingCtx.isBroadcastChat`). Стрелка ленивая

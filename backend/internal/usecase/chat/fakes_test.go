@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -50,17 +51,21 @@ type store struct {
 	nextChatID int64
 	nextMsgID  int64
 	chatType   map[int64]string
-	chatSeq    map[int64]int64                     // chatID -> last_seq
-	members    map[int64]map[int64]*member         // chatID -> userID -> member
-	messages   map[int64][]domain.Message          // chatID -> messages (by seq order)
-	owners     map[int64]int64                     // mediaID -> ownerID
-	mediaDims  map[int64]domain.MediaSource        // mediaID -> мета медиа (read model)
-	reactions  map[int64]map[int64]map[string]bool // msgID -> userID -> emoji set
-	hidden     map[int64]map[int64]bool            // userID -> msgID -> hidden ("delete for me")
-	pins       map[int64][]int64                   // chatID -> pinned msgIDs (newest first)
-	viewed     map[int64]map[int64]bool            // msgID -> userID -> viewed (channel view dedup)
-	mentions   []mentionRow                        // message_mentions rows
-	readMarks  map[int64]map[int64][]readMark      // chatID -> userID -> история горизонта чтения
+	chatSeq    map[int64]int64              // chatID -> last_seq
+	members    map[int64]map[int64]*member  // chatID -> userID -> member
+	messages   map[int64][]domain.Message   // chatID -> messages (by seq order)
+	owners     map[int64]int64              // mediaID -> ownerID
+	mediaDims  map[int64]domain.MediaSource // mediaID -> мета медиа (read model)
+	// reactions — msgID -> userID -> эмодзи В ПОРЯДКЕ ПОСТАНОВКИ (старейшие
+	// первыми). Порядок значащий: лимит своих реакций вытесняет самую старую,
+	// и множество на его месте отвечало бы «любую» (реальная таблица упорядочена
+	// по reactions.created_at).
+	reactions map[int64]map[int64][]string
+	hidden    map[int64]map[int64]bool       // userID -> msgID -> hidden ("delete for me")
+	pins      map[int64][]int64              // chatID -> pinned msgIDs (newest first)
+	viewed    map[int64]map[int64]bool       // msgID -> userID -> viewed (channel view dedup)
+	mentions  []mentionRow                   // message_mentions rows
+	readMarks map[int64]map[int64][]readMark // chatID -> userID -> история горизонта чтения
 
 	// discussionChat — channelID -> текущая привязанная группа обсуждения
 	// (chats.discussion_chat_id в реальной БД); 0/отсутствие — не привязана.
@@ -91,7 +96,7 @@ func newStore() *store {
 		messages:       map[int64][]domain.Message{},
 		owners:         map[int64]int64{},
 		mediaDims:      map[int64]domain.MediaSource{},
-		reactions:      map[int64]map[int64]map[string]bool{},
+		reactions:      map[int64]map[int64][]string{},
 		viewed:         map[int64]map[int64]bool{},
 		pts:            map[int64]int64{},
 		date:           map[int64]int64{},
@@ -881,7 +886,7 @@ func (r fakeMsgs) SearchMessages(_ context.Context, chatID int64, q string, f Se
 		if f.Reaction != "" {
 			has := false
 			for _, emojis := range r.s.reactions[m.ID] {
-				if emojis[f.Reaction] {
+				if slices.Contains(emojis, f.Reaction) {
 					has = true
 					break
 				}
@@ -1163,7 +1168,7 @@ func (r fakeMsgs) GetHistory(_ context.Context, chatID, userID, offsetSeq int64,
 		}
 		// Фильтр «Избранного» по тегу-реакции: оставляем помеченные зрителем tag.
 		if tag != "" {
-			if _, ok := r.s.reactions[m.ID][userID][tag]; !ok {
+			if !slices.Contains(r.s.reactions[m.ID][userID], tag) {
 				return true
 			}
 		}
@@ -1608,22 +1613,28 @@ func (r fakeReactions) Add(_ context.Context, messageID, userID int64, emoji str
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	if r.s.reactions[messageID] == nil {
-		r.s.reactions[messageID] = map[int64]map[string]bool{}
+		r.s.reactions[messageID] = map[int64][]string{}
 	}
-	if r.s.reactions[messageID][userID] == nil {
-		r.s.reactions[messageID][userID] = map[string]bool{}
+	if slices.Contains(r.s.reactions[messageID][userID], emoji) {
+		return nil // идемпотентно, как ON CONFLICT DO NOTHING
 	}
-	r.s.reactions[messageID][userID][emoji] = true
+	r.s.reactions[messageID][userID] = append(r.s.reactions[messageID][userID], emoji)
 	return nil
 }
 
 func (r fakeReactions) Remove(_ context.Context, messageID, userID int64, emoji string) error {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
-	if u := r.s.reactions[messageID][userID]; u != nil {
-		delete(u, emoji)
+	if u, ok := r.s.reactions[messageID][userID]; ok {
+		r.s.reactions[messageID][userID] = slices.DeleteFunc(u, func(e string) bool { return e == emoji })
 	}
 	return nil
+}
+
+func (r fakeReactions) UserReactions(_ context.Context, messageID, userID int64) ([]string, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	return slices.Clone(r.s.reactions[messageID][userID]), nil
 }
 
 func (r fakeReactions) ReactionsFor(_ context.Context, messageIDs []int64, viewerID int64) (map[int64][]domain.ReactionCount, error) {
@@ -1634,7 +1645,7 @@ func (r fakeReactions) ReactionsFor(_ context.Context, messageIDs []int64, viewe
 		counts := map[string]int{}
 		mine := map[string]bool{}
 		for userID, emojis := range r.s.reactions[messageID] {
-			for e := range emojis {
+			for _, e := range emojis {
 				counts[e]++
 				if userID == viewerID {
 					mine[e] = true
@@ -1663,7 +1674,7 @@ func (r fakeReactions) ReactionUsers(_ context.Context, messageID int64) ([]doma
 	defer r.s.mu.Unlock()
 	var out []domain.ReactionUser
 	for userID, emojis := range r.s.reactions[messageID] {
-		for e := range emojis {
+		for _, e := range emojis {
 			out = append(out, domain.ReactionUser{User: domain.UserReal{ID: userID}, Emoji: e})
 		}
 	}
