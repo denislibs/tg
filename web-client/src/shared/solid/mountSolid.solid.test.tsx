@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { onMount } from 'solid-js'
 import { createManagers, registerManagers } from '@rpc/managersProxy'
 import { SuperMessagePort } from '@rpc/superMessagePort'
+import { createStore, unwrap } from 'solid-js/store'
 import { mountSolid } from './mountSolid.solid'
 
 describe('mountSolid', () => {
@@ -76,20 +77,39 @@ describe('mountSolid', () => {
     dispose()
   })
 
+  // ── Среда пина: та же сборка `solid-js/store`, что и в прод-бандле ────────
+  // У пакета три сборки: проксирующие `store.js` (prod) и `dev.js`, и SSR-заглушка
+  // `server.js` (условие экспорта `node`), где `createStore` возвращает СЫРОЙ
+  // объект без единого прокси. Под заглушкой пин ниже не проверяет ничего —
+  // он был бы зелёным на любом коде. Проверяем поведением, а не именем файла.
+  it('среда даёт проксирующую сборку solid-js/store, а не SSR-заглушку', () => {
+    const [store] = createStore<{ nested: object }>({ nested: {} })
+    expect(unwrap(store)).not.toBe(store)
+  })
+
   // ── Пин на регресс «экран входа пуст» (mountSolid + прокси менеджеров) ─────
-  // Через мост ездит НЕ только plain-данные: `mountAuthFlow` кладёт в пропы
-  // прокси из `createManagers`. `createStore` на входе зовёт `unwrap`/
-  // `isWrappable`/`wrap`, а те спрашивают у значения служебные символы
-  // ($RAW/$PROXY/$NODE); прокси, отвечающий «менеджером» на любой ключ, эти
-  // вопросы подтверждал, и стор подменял им сам объект менеджеров —
-  // `managers.auth` в карточке становился `undefined`.
+  // Через мост ездят НЕ только plain-данные: `mountAuthFlow` кладёт в пропы
+  // прокси из `createManagers`. Экран входа гас дважды, двумя разными способами,
+  // и оба живут ровно в этом шве:
   //
-  // Поэтому здесь НАСТОЯЩИЙ `createManagers` поверх настоящего транспорта, а не
-  // литерал-заглушка: подмена объекта менеджеров происходит именно в местах,
-  // которые заглушка обходит. Проверяется ИСХОД (вызов доехал до воркера и
-  // вернул значение), а не внутренности стора — они у dev- и prod-сборок
-  // `solid-js/store` разные, а контракт моста один.
-  it('прокси менеджеров переживает мост: вызов из острова доезжает до транспорта', async () => {
+  //  1) Прокси отвечал «менеджером» на ЛЮБОЙ ключ, включая символы. `unwrap`
+  //     Solid-стора спрашивает `value[$RAW]`, получал объект и подменял им сам
+  //     объект менеджеров: `managers.auth` в карточке становился `undefined`.
+  //  2) Прокси отвечал `undefined` на ЛЮБОЙ символ. Тогда `wrap`/`getNodes`
+  //     стора кладут на нашу цель `Object.defineProperty(handle, $PROXY|$NODE,
+  //     {value})` — non-writable + non-configurable, — и следующее чтение того
+  //     же символа падает: «TypeError: 'get' on proxy: property 'Symbol(store-
+  //     node)' is a read-only and non-configurable data property…».
+  //
+  // Отсюда форма пина. НАСТОЯЩИЙ `createManagers` поверх настоящего транспорта,
+  // а не литерал-заглушка: заглушка обходит ровно те места, где ломается.
+  // И читаем хендл ПОВТОРНО — прежний пин был зелёным на поломке (2) именно
+  // потому, что читал один раз: первое чтение символ ОПРЕДЕЛЯЕТ, падает второе.
+  //
+  // `expect(seen).toBe(managers)` — пин на второй эшелон: хендл не выглядит
+  // plain-объектом (`managersProxy.ts`, `HANDLE_PROTO`), поэтому стор отдаёт
+  // компоненту РОВНО переданный объект, а не свою обёртку над ним.
+  it('прокси менеджеров переживает мост: тот же объект, повторные вызовы доезжают до транспорта', async () => {
     const ch = new MessageChannel()
     const ui = new SuperMessagePort(ch.port1)
     const worker = new SuperMessagePort(ch.port2)
@@ -99,17 +119,28 @@ describe('mountSolid', () => {
 
     const host = document.createElement('div')
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    let call: Promise<string> | undefined
+    let seen: M | undefined
+    const calls: Promise<string>[] = []
     const Probe = (p: { managers: M }) => {
-      onMount(() => { call = p.managers.auth.nearestCountry() })
+      onMount(() => {
+        // Сначала — как `AuthCardsHost`: один раз взять `props.managers` в
+        // контекст и дёргать его много раз. Повтор ломается на `Symbol(store-
+        // node)` — ровно та ошибка, что пришла с прод-сборки index-xXn1WifZ.js.
+        const held = (seen = p.managers)
+        calls.push(held.auth.nearestCountry(), held.auth.nearestCountry())
+        // Потом — повторное чтение самого пропа: этот путь ломается на
+        // `Symbol(solid-proxy)`. Обе ветки инварианта в одном пине.
+        calls.push(p.managers.auth.nearestCountry(), p.managers.auth.nearestCountry())
+      })
       return <i />
     }
     const { dispose } = mountSolid(host, Probe, { managers })
 
-    // Остров не должен был упасть на границе: без гарда символов здесь
-    // TypeError «Cannot read properties of undefined (reading 'nearestCountry')».
+    // Остров не упал на границе: ни TypeError про символ, ни обращение к
+    // `undefined.nearestCountry` после подмены объекта менеджеров.
     expect(spy).not.toHaveBeenCalled()
-    await expect(call).resolves.toBe('RU')
+    expect(seen).toBe(managers)
+    await expect(Promise.all(calls)).resolves.toEqual(['RU', 'RU', 'RU', 'RU'])
 
     spy.mockRestore()
     dispose()
