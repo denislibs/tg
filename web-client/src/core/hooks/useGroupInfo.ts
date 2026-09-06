@@ -66,8 +66,6 @@ export interface GroupInfo {
   canManageAdmins: boolean
   canInvite: boolean
   canManageDiscussion: boolean
-  // управление темами (форум) — создатель/CHANGE_INFO группы
-  canManageTopics: boolean
   // доступ к статистике (tweb chatFull.can_view_stats) — создатель/админ канала
   // или супергруппы
   canViewStats: boolean
@@ -102,7 +100,6 @@ export function useGroupInfo(chat: Chat): GroupInfo {
   const [editMember, setEditMember] = useState<RealMember | null>(null)
   // Channel discussions: admin gate (creator or CHANGE_INFO) + enabled state.
   const [canManageDiscussion, setCanManageDiscussion] = useState(false)
-  const [canManageTopics, setCanManageTopics] = useState(false)
   const [canViewStats, setCanViewStats] = useState(false)
   const [discussionPeerId, setDiscussionPeerId] = useState<PeerId>(NULL_PEER_ID)
   const [enablingDiscussion, setEnablingDiscussion] = useState(false)
@@ -118,7 +115,6 @@ export function useGroupInfo(chat: Chat): GroupInfo {
       setInviteLinks([])
       setJoinRequests([])
       setCanManageDiscussion(false)
-      setCanManageTopics(false)
       setCanViewStats(false)
       setDiscussionPeerId(NULL_PEER_ID)
       return
@@ -135,7 +131,6 @@ export function useGroupInfo(chat: Chat): GroupInfo {
       setCanViewStats((isChannel || isGroup) && hasRights(c.chat, 'just_admin'))
       setCanManageAdmins(hasRights(c.chat, 'add_admins'))
       setCanManageDiscussion(isChannel && hasRights(c.chat, 'change_info'))
-      setCanManageTopics(isGroup && hasRights(c.chat, 'change_info'))
       setDiscussionPeerId(getLinkedChatPeerId(c.fullChat))
       // tweb `invite_links`: раздел ссылок доступен админу с `invite_users`
       // (создателю — всегда). Это НЕ то же, что «участнику можно звать людей»
@@ -249,7 +244,6 @@ export function useGroupInfo(chat: Chat): GroupInfo {
     canManageAdmins,
     canInvite,
     canManageDiscussion,
-    canManageTopics,
     canViewStats,
     discussionPeerId,
     enablingDiscussion,

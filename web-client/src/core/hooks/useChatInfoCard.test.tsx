@@ -17,6 +17,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { useChatInfoCard, resetChatCardCache } from './useChatInfoCard'
 import { ManagersProvider } from './useManagers'
 import { applyPeerOps, resetPeerMirror } from '../peerCache'
+import { cachedPeerFull } from '../chatFullCache'
 import type { Channel, ChannelFull } from '../peers/peer'
 import type { ChatCard } from '../managers/groupsManager'
 
@@ -250,5 +251,23 @@ describe('useChatInfoCard: личный диалог и «Избранное»',
     expect(result.current.chat).toBeUndefined()
     expect(result.current.canSendText).toBe(true)
     expect(result.current.canSendMedia).toBe(true)
+  })
+
+  // Task 1.5 (ревью задачи 1, п.2): найденный при сведении писателей баг —
+  // backend отвечает на `/chats/{id}/card` валидной, но ПУСТОЙ `channelFull`
+  // даже для личного диалога/«Избранного» (общая таблица `chats`). Раньше
+  // этот ответ безусловно уезжал в общее зеркало (`chatFullCache`), где для
+  // ТОГО ЖЕ peerId настоящий `userFull` кладёт `Chat.tsx`/`ensureFullPeer` —
+  // более медленный card() мог затереть его пустышкой (в т.ч. `theme_emoticon`,
+  // и обои чата откатились бы к дефолту). Локальный `result.current.full`
+  // хука при этом ПО-ПРЕЖНЕМУ показывает карточку (тест выше) — только общее
+  // зеркало теперь не пишется.
+  it('карточка личного диалога — НЕ в общее зеркало (там место настоящего userFull, не пустышки card())', async () => {
+    const { result } = renderHook(
+      () => useChatInfoCard({ isRealChat: true, isChannel: false, numericChatId: PEER_ID }),
+      { wrapper: wrapper(privateManagers(PEER_ID)) },
+    )
+    await waitFor(() => expect(result.current.full).not.toBeNull())
+    expect(cachedPeerFull(PEER_ID)).toBeUndefined()
   })
 })

@@ -17,6 +17,7 @@ import { applyMediaToken, resetMediaToken } from '../../core/mediaUrl'
 import { applyMediaUrl, resetMediaUrlMirror } from '../../core/mediaCache'
 import { resetPlayback } from '../../core/audio/mediaPlaybackController'
 import { applyOpsToMirror, resetMessagesMirror } from '../../core/history/messagesMirror'
+import { resetProfilePhoneMirror } from '../../core/profilePhoneCache'
 import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
 import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type MessageErrorEvt, type BotCallbackAnswerEvt, type StoryUpdateEvt, type SentStoryReactionEvt, type ReadStoriesEvt } from '../../core/realtime/events'
 import { useSecretChatStore } from '../../stores/secretChatStore'
@@ -82,7 +83,12 @@ const APPLY: Projector = {
   // (core/audio/mediaPlaybackController) — её элементы держат URL'ы прошлой
   // сессии (токен-стрим, blob расшифрованного секретного голоса) и продолжают
   // играть после логаута, если их не снять.
-  [RT.loggingOut]: () => { resetMediaToken(); resetMediaUrlMirror(); resetMessagesMirror(); resetPeerMirror(); resetChatFullMirror(); resetPlayback() },
+  // Пятое зеркало того же кадра (Task 2 профиля на Solid): телефон чужого
+  // пира, посчитанный privacy.profile() для ПРОШЛОЙ сессии
+  // (core/profilePhoneCache.ts) — синхронное чтение на рендере профиля, без
+  // сброса следующий аккаунт увидит телефон, который приватность разрешила
+  // видеть предыдущему зрителю.
+  [RT.loggingOut]: () => { resetMediaToken(); resetMediaUrlMirror(); resetMessagesMirror(); resetPeerMirror(); resetChatFullMirror(); resetPlayback(); resetProfilePhoneMirror() },
   // Stage 1B.2 (Task 4): операции воркера (mirror-протокол, порт tweb SlicedArray)
   // переигрываются поверх окон — единственный писатель окна для входящих
   // сообщений (заменяет прямой applyIncoming из обработчика RT.newMessage ниже).

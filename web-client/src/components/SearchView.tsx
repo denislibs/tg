@@ -470,8 +470,13 @@ function ChatRow({ chat, q, onClick }: { chat: Chat; q?: string; onClick: () => 
           {chat.premium && <PremiumBadge size={16} />}
           {chat.emojiStatus && <EmojiStatus emoji={chat.emojiStatus} size={16} />}
         </div>
+        {/* `chat.username` (`data.ts::Chat`) снесён (мёртвое поле: единственный
+            писатель — черновик-чат приватного диалога в `App.tsx`, а сюда
+            (`recentChats`/`localMatches`/`myChannels`) попадают только записи
+            `useChatList()`/`dialogToChat.ts`, который его никогда не выставлял, —
+            фолбэк был недостижим). `chat.status` остаётся единственным источником. */}
         <Text noWrap size={14.5} color="var(--secondary-text-color)">
-          {chat.status || (chat.username ? `@${chat.username}` : '')}
+          {chat.status || ''}
         </Text>
       </div>
     </div>

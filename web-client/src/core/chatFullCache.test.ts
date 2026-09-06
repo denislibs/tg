@@ -8,6 +8,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   applyChatTheme,
+  beginPeerFullFetch,
   cachedPeerFull,
   cachedPeerTheme,
   chatFullMirrorVersion,
@@ -83,5 +84,39 @@ describe('chatFullCache: зеркало полных карточек', () => {
     saveChatFull(-9, channelFull(9, 'sunset'))
     resetChatFullMirror()
     expect(cachedPeerTheme(-9)).toBeUndefined()
+  })
+})
+
+// Task 1.5 (ревью задачи 1, п.2): у полной карточки теперь два независимых
+// писателя (useChatInfoCard.ts, stores/fullPeers.solid.ts) — сеть может
+// ответить в любом порядке, и ответ, СОБРАННЫЙ раньше, не должен затирать
+// карточку, которую уже применил запрос, ОТКРЫТЫЙ позже.
+describe('chatFullCache: билет beginPeerFullFetch — защита от устаревшего ответа', () => {
+  it('ответ со старым билетом, пришедший ПОСЛЕ более нового, отбрасывается', () => {
+    const older = beginPeerFullFetch(-9)
+    const newer = beginPeerFullFetch(-9)
+
+    // Более новый поход успевает ответить первым...
+    saveChatFull(-9, channelFull(9, 'night'), newer)
+    // ...а старый прилетает следом — сеть не гарантирует порядок ответов.
+    // МУТАЦИЯ: убери проверку билета в saveChatFull — тема откатится на 'sunset'.
+    saveChatFull(-9, channelFull(9, 'sunset'), older)
+
+    expect(cachedPeerTheme(-9)).toBe('night')
+  })
+
+  it('билет свежее уже применённого — пишет как обычно', () => {
+    const t1 = beginPeerFullFetch(-9)
+    saveChatFull(-9, channelFull(9, 'sunset'), t1)
+    const t2 = beginPeerFullFetch(-9)
+    saveChatFull(-9, channelFull(9, 'night'), t2)
+
+    expect(cachedPeerTheme(-9)).toBe('night')
+  })
+
+  it('без билета (undefined) пишет безусловно — путь для источников без гонки', () => {
+    beginPeerFullFetch(-9) // билет выдан, но НЕ передан ниже
+    saveChatFull(-9, channelFull(9, 'sunset'))
+    expect(cachedPeerTheme(-9)).toBe('sunset')
   })
 })

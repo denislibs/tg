@@ -34,7 +34,7 @@
 import { getPeerTitle, type PeerTitleOptions } from './peers/getPeerTitle'
 import { peerKey, type Chat, type User } from './peers/peer'
 import type { PeerOp } from './managers/peersManager'
-import { isAnyGroup, isBroadcast, isChannel, isForum, isInChat, isMegagroup } from './peers/predicates'
+import { isAnyGroup, isBroadcast, isChannel, isForum, isInChat, isMegagroup, isPublic } from './peers/predicates'
 import { hasRights, type ChatRights } from './peers/rights'
 
 const peerMirror = new Map<PeerId, User | Chat>()
@@ -101,6 +101,21 @@ export const isForumPeer = (peerId: PeerId): boolean => isForum(cachedChat(peerI
 export const isBroadcastPeer = (peerId: PeerId): boolean => isBroadcast(cachedChat(peerId))
 export const isAnyGroupPeer = (peerId: PeerId): boolean => isAnyGroup(peerId, cachedChat(peerId))
 export const isInChatPeer = (peerId: PeerId): boolean => isInChat(cachedChat(peerId))
+
+/**
+ * Есть ли у пира публичный username (`t.me/username`-эквивалент). Порт
+ * `appChatsManager.isPublic` через `isPublic` (`core/peers/predicates.ts:79`,
+ * до находки ревью Critical Task 4 «карточка профиля на Solid» — объявлен, но
+ * не имел ни одного вызывающего). Единственный источник истины «показывать ли
+ * строку инвайт-ссылки/публичной ссылки» — читают ОБА рендерера: React
+ * (`UserInfoPanel.tsx`, фолбэк-строка инвайта) и Solid
+ * (`peerProfile.solid.tsx::Link`, через `usePeer`/`context.peer` — то же
+ * зеркало, тот же `cachedChat`). Раньше React читал мёртвое поле вью-модели
+ * `data.ts::Chat.username` (никто его не писал) — гейт был истинен ВСЕГДА, и
+ * при уже созданной инвайт-ссылке (`useGroupInfo.ts`, право `invite_links`)
+ * обе строки рисовались одновременно.
+ */
+export const isPublicPeer = (peerId: PeerId): boolean => isPublic(cachedChat(peerId))
 
 /** Порт `appChatsManager.hasRights(id, action)` — тот же вопрос по ключу пира.
  *  Карточки чата ещё нет — «нельзя»: ровно так же отвечает оригинал

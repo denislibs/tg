@@ -237,9 +237,24 @@ function isUnsafeKey(property) {
 входа целиком на Solid, React-версия снесена, семь карточек лениво подгружаются под
 `<Transition mode="outin">`, шаг живёт в модульном сигнале, как в оригинале. Своих
 Zustand-сторов у экрана не было, поэтому DoD п.12 остался без предмета, а нагруженным
-был п.14. Дальше — этап 2 (профиль) и этап 3 (`SharedMedia`), каждый со своим планом;
-их порт тянет за собой `PeerProfileAvatars` (974), `AppSearchSuper` (2843) и
-`useCollapsable` (209), которых у нас нет вовсе.
+был п.14.
+
+**Этап 2 (профиль) — сделан целиком**, двумя шагами: шаг 1 — шапка-карусель
+классом `PeerProfileAvatars` (план `plans/2026-09-05-profile-avatars-class.md`,
+974 строк оригинала, `useCollapsable` (209) внутри неё); шаг 2 — сама карточка
+профиля на Solid (план `plans/2026-09-05-profile-card-solid.md`, задачи 1-6):
+слой данных (`stores/peers.solid.ts`/`fullPeers.solid.ts`), каркас
+`peerProfile.solid.tsx` с именем/статусом в шапке, строки `MainSection`, наши
+секции без аналога в оригинале (Statistics/Discussion/JoinRequests/ключ
+секретного чата) и снос React-остатков в `UserInfoPanel.tsx`. React в этом
+экране остался только там, где у САМОГО tweb он не Solid-компонент, а
+отдельный экран/своя подсистема — `SharedMedia` (грид/табы шаред-медиа,
+её очередь — этап 3 ниже) и подэкраны (`GroupEditFlow`, `RightsEditor`,
+`ChannelStats`, `AddMembersScreen`), которые Solid принимает готовым узлом
+(`searchSuperContainer`) без обратного моста.
+
+Дальше — этап 3 (`SharedMedia`), со своим планом; её порт тянет за собой
+`AppSearchSuper` (2843), которого у нас нет вовсе.
 | 4 | `StoryViewer`, `MediaEditor` | Крупные, но изолированные |
 | 5 | `TopbarSearch`, `EmojiDropdown` | Уже трогают чат |
 | 6 | `Composer` → класс `chat/input.ts` | Шов с лентой, требует аккуратности |

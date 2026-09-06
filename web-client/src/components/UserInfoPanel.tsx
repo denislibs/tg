@@ -6,11 +6,7 @@ import QrModal from './QrModal'
 import rootScope from '@lib/rootScope'
 import TgIcon from './TgIcon'
 import ChannelStats from './ChannelStats'
-import Avatar from '../shared/ui/Avatar'
 import { useMediaUrl } from '../core/hooks/useMediaUrl'
-import VerifiedBadge from './VerifiedBadge'
-import PremiumBadge from './PremiumBadge'
-import EmojiStatus from './EmojiStatus'
 import GroupEditFlow from './group/GroupEditFlow'
 import AddMembersScreen from './group/AddMembersScreen'
 import { Row } from './settings/kit'
@@ -20,23 +16,22 @@ import classNames from '../shared/lib/classNames'
 import type { Chat, OpenPeer } from '../data'
 import {useT} from '../i18n'
 import { useGroupInfo } from '../core/hooks/useGroupInfo'
-import { useSavedDialogs, useUserProfile, useProfileGifts } from '../core/hooks/useUserProfileData'
-import { useMuteToggle } from '../core/hooks/useMuteToggle'
+import { useSavedDialogs, useProfileGifts } from '../core/hooks/useUserProfileData'
 import { useChatsStore } from '../stores/chatsStore'
 import { useNavLayer } from '../core/hooks/useNavLayer'
 import { useTransitionSlider } from '../core/hooks/useTransitionSlider'
-import { PeerStatus } from '../shared/ui/peerStatus'
 import type { SavedStarGift } from '../core/managers/starsManager'
 import GiftInfoPopup from './stars/GiftInfoPopup'
 import KeyVerificationPopup from './secret/KeyVerificationPopup'
 import SharedMedia from './userInfo/SharedMedia'
 import RightsEditor from './userInfo/RightsEditor'
-import { membersLabel, chatsLabel, countLabel, sharedMediaChatId, shouldForceFold, HEADER_H, ADDITIONAL_OFFSET, BODY_PADDING, TAB_GAP } from './userInfo/helpers'
+import { countLabel, sharedMediaChatId, shouldForceFold, HEADER_H, ADDITIONAL_OFFSET, BODY_PADDING, TAB_GAP } from './userInfo/helpers'
 import installColumnResize from '../core/dom/installColumnResize'
 import { useRightColumnShown } from '../core/hooks/useRightColumnShown'
 import animationIntersector from './animationIntersector'
-import { NULL_PEER_ID, isUser as isUserPeer } from '../core/peers/peerId'
-import { formatBirthday } from '../core/format/birthday'
+import { isUser as isUserPeer } from '../core/peers/peerId'
+import { usePeers } from '../core/hooks/usePeers'
+import { isPublicPeer } from '../core/peerCache'
 // Шапка-аватары (tweb peerProfileAvatars) — задача 5: класс на классах tweb,
 // вмонтированный через useImperativeIsland (мост не пишем руками), плюс
 // реальный useCollapsable(). Мост фактов взят из докблока класса целиком.
@@ -45,6 +40,11 @@ import useCollapsable from '../core/hooks/useCollapsable'
 import { fastRaf } from '@helpers/schedulers'
 import PeerProfileAvatars from './peerProfileAvatars'
 import { useManagers } from '../core/hooks/useManagers'
+// Каркас карточки (Task 2, план `docs/superpowers/plans/
+// 2026-09-05-profile-card-solid.md`): `.profile-content` теперь рисует Solid,
+// смонтированный мостом `mountSolid` — см. докблок у `profileContentHostRef`.
+import PeerProfile, { type PeerProfileProps } from './peerProfile.solid'
+import { mountSolid } from '../shared/solid/mountSolid.solid'
 
 export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddMembers, onEditContact, onSendGift }: { open: boolean; chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; canAddMembers?: boolean; onEditContact?: () => void; onSendGift?: () => void }) {
   const t = useT()
@@ -74,6 +74,12 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
     animationIntersector.toggleVideosUnder(columnRef.current, !open)
   }, [open])
   const isSaved = chat.type === 'saved'
+  // «Ключ шифрования» (tweb chatEncryptionKey, Task 5 плана «карточка профиля
+  // на Solid» — секции без аналога в оригинале) — только для секретного чата.
+  // Объявлено выше прежнего места (было — рядом с `keyPopupOpen`) ради
+  // мостового эффекта `mountSolid` ниже (deps `[…, isSecret]`): в JS/TS
+  // `const` не хостится, а этот эффект читает `isSecret` до её прежней строки.
+  const isSecret = chat.type === 'secret'
   // группы — таб «Участники», избранное — «Чаты» (tweb savedDialogs first), остальные — «Медиа»
   const [tab, setTab] = useState<LangPackKey>(chat.type === 'group' ? 'PeerMedia.Members' : isSaved ? 'FilterChats' : 'SharedMediaTab2')
 
@@ -90,17 +96,8 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   // «собеседник приватного чата» больше нет: у приватного диалога ключ и есть
   // id собеседника.
   const peerId = Number(chat.id)
-  // `/users/{id}` и галерея фото профиля есть ТОЛЬКО у человека. Прежде отбор
-  // делался самим существованием поля (`chat.peerId` заполнялся лишь у
-  // приватного диалога) — теперь ключ есть у любого пира, и вид спрашивают
-  // предикатом: без него панель группы ушла бы за профилем по отрицательному id.
-  const userPeerId = isUserPeer(peerId) ? peerId : null
-  const profile = useUserProfile(userPeerId, isSaved)
 
-  // Тумблер Notifications = per-chat mute (tweb PeerProfile: checked = !muted,
-  // переключение — togglePeerMute напрямую, без попапа длительности)
   const numericChatId = Number(chat.id)
-  const { muted, toggle: toggleNotifications } = useMuteToggle(numericChatId, chat.muted)
 
   const {
     isRealChat,
@@ -174,21 +171,14 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
       ? savedDialogs?.length
       : tabCounts[tab]
 
-  // Онлайн-статус приватного собеседника — из presence-стора (как в топбаре
-  // ChatHeader), а не из статичного chat.status: «в сети» / «был(а) …».
-  const peerPresence = useChatsStore((st) => st.presence[peerId])
-  const presenceLabel =
-    !isSaved && !isGroup && !isChannel
-      ? peerPresence
-        ? <PeerStatus status={peerPresence} />
-        : chat.status
-      : null
-
-  const subtitleText = isSaved
-    ? chatsLabel(savedDialogs?.length ?? 0)
-    : isRealChat && (isGroup || isChannel) && realMembers
-      ? membersLabel(realMembers.length, isChannel)
-      : presenceLabel ?? chat.status
+  // Присутствие/статус приватного собеседника и счётчик участников группы/
+  // канала — раньше считались ЗДЕСЬ (`subtitleText`) для React-портала в
+  // `instance.info`. Задача 3 профиля на Solid перенесла ИМЯ И СТАТУС пира
+  // внутрь `avatars.info` Solid-компонентом (`peerProfile.solid.tsx`,
+  // `SubtitleStatus`/`ChatMembersLabel`) — второго писателя `info` не должно
+  // быть (докблок `avatarsHostRef` ниже, «правило владения»), поэтому эта
+  // ветка вычислений отсюда убрана целиком, а не просто перестала
+  // использоваться.
 
   // ── шапка-аватары (tweb peerProfileAvatars) — задача 5: класс
   // `PeerProfileAvatars` (`./peerProfileAvatars.ts`, задачи 1-4) владеет ВСЕЙ
@@ -220,11 +210,16 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   // трогает `className` этого узла после первого рендера.
   const setCollapsedOnRef = useRef<HTMLDivElement>(null)
   // Хост-узел острова — пуст сам по себе, класс вставляет туда СВОЙ
-  // `container` (structural DOM, tweb :81-109); контент `.profile-avatars-info`
-  // (имя/статус пира) остаётся React-компонентом — портал ниже, в JSX.
+  // `container` (structural DOM, tweb :81-109). Контент `.profile-avatars-info`
+  // (имя/статус пира) с задачи 3 — Solid (`peerProfile.solid.tsx`, `Name`/
+  // `Subtitle`), НЕ React: `instance.info` уходит туда пропом `avatarsInfo`
+  // (см. `profileContentHostRef` ниже) — единственный писатель узла с этой
+  // задачи Solid, React в него не пишет вовсе (правило владения, план
+  // «карточка профиля на Solid», шапка).
   const avatarsHostRef = useRef<HTMLDivElement>(null)
   // Триггер повторного рендера ровно тогда, когда `instance.info` становится
-  // доступен (после монтажа острова) — до этого момента порталить некуда.
+  // доступен (после монтажа острова) — до этого момента отдавать Solid-мосту
+  // (`profileContentHostRef` ниже) нечего.
   const [avatarsInfoEl, setAvatarsInfoEl] = useState<HTMLElement | null>(null)
 
   // Реальный useCollapsable() (задача 4 подготовила только контракт со стороны
@@ -331,6 +326,143 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [peerId])
 
+  // ── каркас карточки (задача 2 плана `2026-09-05-profile-card-solid.md`) ──
+  // `.profile-content` (делимитер + грид шаред-медиа) теперь рисует Solid
+  // (`peerProfile.solid.tsx`), смонтированный сюда мостом `mountSolid` — БЕЗ
+  // `useImperativeIsland`, потому что этот остров, В ОТЛИЧИЕ от острова
+  // аватарок выше, обязан ПЕРЕСОЗДАВАТЬСЯ на каждый peerId (deps `[peerId]`):
+  // ровно так ведёт себя оригинал (`sidebarLeft/tabs/settings.tsx::
+  // fillProfileElements` гасит прежний Solid-корень и создаёт новый на каждый
+  // `peerChanged`, докблок `peerProfile.solid.tsx` § «Пересоздание на каждый
+  // peerId»), а не переживает смену пира, как наш класс `PeerProfileAvatars`
+  // (осознанное отступление ИМЕННО у класса, см. его докблок — сюда оно не
+  // распространяется).
+  //
+  // `searchSuperContainer` — контракт оригинала (tweb `peerProfile.tsx:121,211`,
+  // `sharedMedia.tsx:166`): готовый DOM-узел, который Solid вставляет
+  // ПОСЛЕДНИМ ребёнком `.profile-content`, а наш React-`SharedMedia`
+  // рисуется В НЕГО порталом (см. JSX ниже). Узел создаётся ЗДЕСЬ, в React,
+  // ОДИН РАЗ на весь срок жизни панели (лениво, `useState`) — это то, что
+  // позволяет пересоздавать Solid-корень на каждый peerId, не теряя состояние
+  // `SharedMedia` (вкладку/скролл шаред-медиа): узел просто перевстраивается
+  // в новый `.profile-content`, React его не пересоздаёт и не размонтирует
+  // содержимое портала. Ровно так же `tab.searchSuper.container` оригинала
+  // переживает `fillProfileElements`.
+  const [searchSuperContainer] = useState(() => {
+    const el = document.createElement('div')
+    el.className = 'search-super'
+    return el
+  })
+  // Хост — пустой узел-обёртка (тот же приём и то же расхождение с оригиналом,
+  // что у `avatarsHostRef` выше, см. его докблок: `render()` вставляет узлы
+  // ВНУТРЬ хоста, а не вместо него).
+  const profileContentHostRef = useRef<HTMLDivElement>(null)
+  // `avatarsInfoEl` — задача 3: узел `instance.info` класса аватарок (см. его
+  // докблок, поле `info`), КУДА Solid-корень монтирует имя/статус пира —
+  // передаётся сюда ПРОПОМ (не читается классом внутри `peerProfile.solid.tsx`
+  // напрямую), потому что владеет узлом эта панель (`avatarsRef`), а не файл
+  // Solid-компонента. В зависимостях — та же логика, что и у `peerId`/
+  // `searchSuperContainer`: узел появляется ПОСЛЕ первого маунта острова
+  // аватарок (эффект `useImperativeIsland` выше), поэтому самый первый прогон
+  // этого эффекта видит `null` и пересоздаст корень ещё раз, как только
+  // `setAvatarsInfoEl` его выставит, — единственный лишний цикл за всё время
+  // жизни панели (сам узел `instance.info` после этого не меняется, инстанс
+  // класса переживает смену пира — докблок `setPeer`).
+  // Задача 5.5 плана «карточка профиля на Solid»: находка ревью задачи 5 —
+  // `mountSolid` не умел живых пропов, поэтому единственным способом доставить
+  // изменившееся значение уже смонтированному дереву было пересоздать корень
+  // целиком (внести поле в deps ЭТОГО эффекта). За одно открытие панели корень
+  // пересоздавался минимум 4 раза (маунт → готовность аватарок → ответ
+  // карточки чата → ответ списка заявок), плюс по разу на каждый клик
+  // одобрить/отклонить заявку и дважды на «включить обсуждение» — с побочным
+  // перезапуском минутного таймера статуса (`peerProfile.solid.tsx`,
+  // `UserStatusLine`) и потерей фокуса на узлах строк. Мост (докблок
+  // `mountSolid.solid.tsx`) теперь возвращает `update(patch)` поверх одного
+  // стора — гейты/данные/колбэки Task 5 (плюс `onOpenQrCode`) едут туда, а
+  // структурными зависимостями, которые ДЕЙСТВИТЕЛЬНО обязаны пересоздавать
+  // корень, остаются только `peerId`/`searchSuperContainer`/
+  // `avatarsInfoEl` — величины, под которые построены `usePeer`/`useFullPeer`
+  // внутри `PeerProfile` (Solid не умеет переподписать уже созданный
+  // `createMemo` на другой `peerId` без пересоздания, докблок
+  // `peerProfile.solid.tsx` § «Пересоздание на каждый peerId»).
+  //
+  // `buildProfilePatch` — общий строитель патча для ОБОИХ эффектов ниже
+  // (структурного маунта и апдейта): не второй способ считать те же поля, а
+  // общая функция, вызванная дважды (на маунте — внутри самого `mountSolid`,
+  // на каждое изменение — через `update`).
+  const buildProfilePatch = () => ({
+    // Task 4: мост QR-попапа для Solid-строк `Username`/`Link`
+    // (`peerProfile.solid.tsx`, докблок поля контекста `onOpenQrCode`).
+    onOpenQrCode: openQrCode,
+    // Task 5 (наши секции без аналога в оригинале, `peerProfile.solid.tsx`
+    // «Задача 5»): гейты — те же предикаты, что были у снесённой React-
+    // разметки ниже по файлу (см. `git blame`/докблоки Solid-функций), сюда
+    // приходят уже свёрнутыми (`isRealChat`/`isChannel` сложены в один
+    // булев на месте вызова — второго вычисления в Solid не заводим).
+    showStatistics: isRealChat && isChannel && canViewStats,
+    onOpenStatistics: () => setShowStats(true),
+    showDiscussion: isRealChat && isChannel && canManageDiscussion,
+    discussionPeerId,
+    enablingDiscussion,
+    onEnableDiscussion: () => void enableDiscussion(),
+    showJoinRequests: isRealChat && canInvite,
+    joinRequests,
+    onApproveJoinRequest: (userId: number) => void approveJoinRequest(userId),
+    onDeclineJoinRequest: (userId: number) => void declineJoinRequest(userId),
+    isSecret,
+    onOpenEncryptionKey: () => setKeyPopupOpen(true),
+  })
+  // `update` живого корня — записан структурным эффектом ниже, прочитан
+  // эффектом апдейта. `null` между dispose старого корня и маунтом нового
+  // (тот же кадр, layout-эффекты синхронны) — апдейт в этом окне невозможен
+  // физически, эффект апдейта в нём и не запускается (React зовёт cleanup
+  // прежде следующего прогона той же зависимости).
+  const profileUpdateRef = useRef<((patch: Partial<PeerProfileProps>) => void) | null>(null)
+
+  useLayoutEffect(() => {
+    const host = profileContentHostRef.current
+    if (!host) return
+    // Дженерик — ЯВНО `PeerProfileProps`, не по умолчанию (inference из
+    // литерала пропов ниже даёт УЖЕ конкретные типы полей — например,
+    // `onEnableDiscussion: () => undefined` вместо объявленного в
+    // `PeerProfileProps` `() => void` — и `profileUpdateRef` выше перестаёт
+    // собираться): `update` обязан остаться типизирован ИМЕННО контрактом
+    // `PeerProfileProps`, который читает `PeerProfile`.
+    const { dispose, update } = mountSolid<PeerProfileProps>(host, PeerProfile, {
+      peerId,
+      isDialog: true, // панель — всегда диалог зрителя (tweb: оба известных вызывающих передают true)
+      scrollable: bodyRef.current!,
+      setCollapsedOn: setCollapsedOnRef.current!,
+      searchSuperContainer,
+      avatarsInfo: avatarsInfoEl ?? undefined,
+      ...buildProfilePatch(),
+    })
+    profileUpdateRef.current = update
+    return () => {
+      profileUpdateRef.current = null
+      dispose()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [peerId, searchSuperContainer, avatarsInfoEl])
+
+  // Гейты/данные Task 5 — НЕ производные от `peerId`/`searchSuperContainer`/
+  // `avatarsInfoEl` (deps эффекта выше): `useGroupInfo` грузит их асинхронно
+  // ПОСЛЕ первого монтажа (см. докблок функций в `peerProfile.solid.tsx`,
+  // «показывается ровно при своём условии») — без доставки сюда Solid-корень
+  // навсегда видел бы значения самого первого прогона (`false`/`[]`, до
+  // ответа сети), и ни одна из четырёх секций не показалась бы никогда.
+  // Раньше это тоже был структурный deps эффекта выше (пересоздание корня) —
+  // теперь `update(patch)` того же живого корня: ни один узел строки не
+  // уничтожается и не создаётся заново (фокус не слетает), минутный таймер
+  // статуса (`peerProfile.solid.tsx`, `UserStatusLine`) не перезапускается.
+  useLayoutEffect(() => {
+    profileUpdateRef.current?.(buildProfilePatch())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    isRealChat, isChannel, canViewStats, canManageDiscussion, discussionPeerId, enablingDiscussion,
+    canInvite, joinRequests, isSecret,
+  ])
+
   // Панельная половина `header-filled` (tweb sharedMedia.tsx:513/:547 — ставит
   // доезд до табов, снимает клик «назад», см. onBodyScroll/scrollBackToProfile
   // выше) — ТЕМ ЖЕ механизмом, что и класс: `classList.toggle`, а не пересчёт
@@ -358,32 +490,65 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   // диалога (`peerId != null` там же было мёртвым: ключ есть у любого пира).
   const isUser = !isSaved && isUserPeer(peerId)
 
-  // «Ключ шифрования» (tweb chatEncryptionKey) — только для секретного чата.
-  const isSecret = chat.type === 'secret'
   const [keyPopupOpen, setKeyPopupOpen] = useState<boolean | null>(null)
   const { gifts, reload: loadGifts } = useProfileGifts(isUser, peerId)
   const [selectedGift, setSelectedGift] = useState<SavedStarGift | null>(null)
 
-  // Ссылка группы в инфо-карточке: публичный username, иначе первая инвайт-ссылка.
-  const inviteUrl = chat.username
-    ? `${location.origin}/@${chat.username}`
-    : inviteLinks[0]
-      ? `${location.origin}/join/${inviteLinks[0].token}`
-      : null
-  const inviteShort = inviteUrl?.replace(/^https?:\/\//, '') ?? ''
+  // Ссылка группы/канала БЕЗ публичного username — фолбэк на первую
+  // инвайт-ссылку (tweb `chatFull.exported_invite`). Публичный username
+  // (`t.me/username`-эквивалент) теперь рисует Solid (`peerProfile.solid.tsx`
+  // `PeerProfile.Link`, Task 4 плана «карточка профиля на Solid») — оттуда
+  // ушла ветка «есть username», здесь остаётся ТОЛЬКО ветка «username нет,
+  // есть инвайт-ссылка»: у Solid-версии предмета `exported_invite` нет
+  // (докблок `Link` в том файле).
+  //
+  // НАХОДКА РЕВЬЮ (Critical, финальный раунд Task 4): гейт раньше читал
+  // `chat.username` — поле вью-модели, у которого не было НИ ОДНОГО читателя
+  // (`core/dialogToChat.ts` его не выставляет ни для одного вида чата), а
+  // писатель был РОВНО ОДИН — `App.tsx` (черновик-чат приватного диалога) —
+  // и тот всегда для ПРИВАТНОГО чата (`draftChat`, `type: 'private'`), то
+  // есть для группы/канала (единственные потребители этого гейта) поле было
+  // мертво ВСЕГДА, и гейт был истинен ВСЕГДА для них. У публичного
+  // канала/группы с уже созданной лениво инвайт-ссылкой (`useGroupInfo.ts:
+  // 142-151`, право `invite_links`) поэтому рисовались ОБЕ строки разом: эта
+  // (инвайт) и Solid-`Link` (публичный username), с разными URL и двумя
+  // QR-кнопками. Это НЕ было «явно разведённым владением на переходный
+  // период» — раздел был мнимым: единственный писатель поля адресовал
+  // ДРУГОЙ вид чата, чем читатель. Поле (`data.ts::Chat.username`) и его
+  // писатель снесены следующей находкой того же ревью — мёртвый код без
+  // читателей, «мёртвый код удалять агрессивно» (корневой CLAUDE.md).
+  //
+  // Фикс — свести к ОДНОМУ источнику истины: тому же предикату и тому же
+  // зеркалу пиров, что читает Solid (`isPublicPeer`, `core/peerCache.ts`, порт
+  // `appChatsManager.isPublic`). `usePeers` ниже — не второй запрос карточки,
+  // а объявление того же пробела зеркала (докблок `usePeers.ts`) плюс подписка
+  // на его движение: без неё гейт не увидел бы, что username появился, пока
+  // панель уже открыта.
+  usePeers([peerId])
+  const fallbackInviteUrl = !isPublicPeer(peerId) && inviteLinks[0]
+    ? `${location.origin}/join/${inviteLinks[0].token}`
+    : null
+  const fallbackInviteShort = fallbackInviteUrl?.replace(/^https?:\/\//, '') ?? ''
+  // QR-попап (`QrModal.tsx`) — один на панель, открывается ЛИБО этим фолбэком,
+  // ЛИБО Solid-строками `Username`/`Link` через мост `onOpenQrCode` (проп
+  // `mountSolid` ниже): `qrPayload` несёт url/label конкретного клика,
+  // `qrOpen` — только видимость (та же пара состояний, что раньше держала
+  // одна константная `inviteUrl` персистентным пропом).
   const [qrOpen, setQrOpen] = useState(false)
-
-  const linkText = chat.links?.length ? chat.links : null
+  const [qrPayload, setQrPayload] = useState<{ url: string; label: string } | null>(null)
+  const openQrCode = (payload: { url: string; label: string }) => {
+    setQrPayload(payload)
+    setQrOpen(true)
+  }
 
   // Клик по инфо-строке копирует значение + глобальный тост (tweb peerProfile:
-  // copyTextToClipboard + toast(PhoneCopied/UsernameCopied/BioCopied)).
+  // copyTextToClipboard + toast(PhoneCopied/UsernameCopied/BioCopied)) —
+  // остаётся только у фолбэк-ссылки выше: Phone/Username/Bio/Birthday теперь
+  // строки Solid (`peerProfile.solid.tsx`, Task 4), со своим копированием.
   const copyInfo = (value: string, toastKey: LangPackKey) => {
     void navigator.clipboard.writeText(value)
     rootScope.dispatchEvent('ui:toast', t(toastKey))
   }
-  const infoPhone = profile?.user.phone
-  const infoUsername = profile?.user.username ?? chat.username
-  const infoBio = profile?.fullUser.about
 
   // Заголовок шапки: 0 — название раздела, 1 — «имя + счётчик таба» (tweb
   // sharedMedia.setIsSharedMedia переключает тот же TransitionSlider).
@@ -472,262 +637,147 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
             (`position:absolute; inset:0; overflow-y:auto` из `_scrollable.scss`). */}
         <div className="sidebar-content">
         <div ref={bodyRef} className="scrollable scrollable-y" onScroll={onBodyScroll}>
-        <div className="profile-content">
-          {/* Шапка-аватары (tweb .profile-avatars-container) — задача 5: узел
-              класса `PeerProfileAvatars` встаёт СЮДА через useImperativeIsland
-              (host: `avatarsHostRef`, см. коммент у объявления выше). Класс сам
-              строит DOM/ленту/жесты/is-collapsed/need-white/header-filled(своя
-              половина); React по-прежнему владеет ТОЛЬКО контентом
-              `.profile-avatars-info` — портал ниже, в тот же узел (`instance.info`,
-              публичное поле класса, докблок «кто владеет контентом»).
+          {/* Шапка-аватары (tweb .profile-avatars-container) — задача 5 плана
+              аватарок: узел класса `PeerProfileAvatars` встаёт СЮДА через
+              useImperativeIsland (host: `avatarsHostRef`). Класс сам строит
+              DOM/ленту/жесты/is-collapsed/need-white/header-filled (своя
+              половина); контентом `.profile-avatars-info` с задачи 3 владеет
+              Solid (`peerProfile.solid.tsx`, `Name`/`Subtitle`) — узел
+              `instance.info` уходит туда пропом `avatarsInfo` у
+              `profileContentHostRef` ниже, а не порталом ЗДЕСЬ: React больше
+              не пишет в `info` вовсе (было — портал `<> <div className=
+              "profile-name">…`, снесён этой задачей вместе с `PeerStatus`/
+              `VerifiedBadge`/`PremiumBadge`/`EmojiStatus`, которые его
+              питали).
 
-              РАСХОЖДЕНИЕ С TWEB (найдено ревью, Minor): этот `<div>` — ЛИШНИЙ
-              уровень DOM вокруг `.profile-avatars-container`, которого у
-              оригинала нет вовсе (там узел класса — прямой ребёнок
-              `.profile-content`, без React-хозяина). Хук `useImperativeIsland`
-              документирует этот эффект только для `mode: 'own'` (создаёт
-              одноразовый div сам), но `mode: 'host'` (наш выбор) ведёт себя
-              ТАК ЖЕ здесь: `container === host`, а класс кладёт СВОЙ корень
-              (`instance.container`) ОДНИМ ребёнком ВНУТРЬ host — второй
-              уровень появляется не из-за режима хука, а из-за того, что сам
-              host — отдельный, живущий весь срок жизни панели узел, которым
-              класс не может НЕ обернуться (альтернатива — растворить `host` в
-              родителе, но узел для `ref` React всё равно нужен). Проверено:
-              `styles/tweb/_profile.scss` не держит ни селекторов прямого
-              потомка, ни сиблингов для `.profile-avatars-container`, а
-              аспект-хак `padding-bottom: 100%` считается от САМОГО контейнера
-              — сегодня визуально безвредно, но это реальное расхождение, не
-              выдуманное. */}
+              РАСХОЖДЕНИЕ С TWEB (Minor, было ещё до Task 2): этот `<div>` —
+              ЛИШНИЙ уровень DOM вокруг `.profile-avatars-container`, которого у
+              оригинала нет (там узел класса — прямой ребёнок `.profile-content`).
+              `useImperativeIsland` в режиме `host` (наш выбор) всегда даёт
+              такой уровень — см. докблок хука.
+
+              ВТОРОЕ РАСХОЖДЕНИЕ С TWEB (Task 2 профиля на Solid, тоже Minor):
+              этот узел — БОЛЬШЕ НЕ ребёнок `.profile-content` (в оригинале
+              AutoAvatar — первый ребёнок, tweb `:203`), а СОСЕДНИЙ узел ПЕРЕД
+              Solid-корнем `.profile-content` (см. `profileContentHostRef`
+              ниже). Причина — конфликт двух реальных решений, оба уже приняты
+              РАНЬШЕ этой задачи и оба менять не входит в её объём: наш класс
+              `PeerProfileAvatars` переживает смену пира (не пересоздаётся,
+              см. его докблок «Осознанное отступление»), а Solid-корень
+              `.profile-content`, наоборот, ПЕРЕСОЗДАЁТСЯ на каждый peerId (как
+              и в оригинале — см. докблок `peerProfile.solid.tsx`). Если бы
+              `avatarsHostRef` был ребёнком пересоздаваемого корня, каждая
+              смена пира отрывала бы живой инстанс от DOM. Проверено по
+              `styles/tweb/_profile.scss`: правила на `.profile-avatars-container`
+              бьют через `.profile-container` (`setCollapsedOnRef`), не через
+              `.profile-content`, кроме `.has-music .profile-avatars-info` — а
+              `has-music` у нас НИКОГДА не взводится (нет поля `saved_music`,
+              см. докблок `fullPeers.solid.ts`), так что сегодня визуально
+              безвредно. Сведение (сделать AutoAvatar настоящим Solid-ребёнком)
+              требует сперва решить именно этот конфликт персистентности —
+              долг `web-client/backlogs/frontend/profile-avatar-inside-solid-root.md`. */}
           <div ref={avatarsHostRef} />
-          {avatarsInfoEl && createPortal(
-            <>
-              {/* имя+статус — ОДНИ узлы в обоих состояниях (tweb .profile-avatars-info):
-                  collapsed центрирует их transform'ом и меняет цвет с белого на текстовый */}
-              <div className="profile-name">
-                <span className="peer-title">{chat.name}</span>
-                {profile?.user.pFlags?.verified && <VerifiedBadge size={22} />}
-                {profile?.user.pFlags?.premium && <PremiumBadge size={22} />}
-                {profile?.user.emoji_status_emoticon && <EmojiStatus emoji={profile.user.emoji_status_emoticon} size={22} />}
-              </div>
-              <div className="profile-subtitle">
-                <div className="profile-subtitle-text"><span>{subtitleText}</span></div>
-              </div>
-            </>,
-            avatarsInfoEl,
-          )}
-          <div className="profile-content-delimiter" />
 
-          {/* Info card — те же секции, что в настройках (settings/kit Section+Row).
-              В «Избранном» её нет вовсе (tweb: свой профиль без phone/username/bio). */}
-          {!isSaved && (
+          {/* Каркас карточки (задача 2, `peerProfile.solid.tsx`) — `.profile-content`
+              (делимитер + `searchSuperContainer` последним ребёнком) рисует
+              Solid, смонтированный сюда мостом `mountSolid` (эффект выше, у
+              `profileContentHostRef`). Хост — пустой узел-обёртка, тот же
+              приём и то же расхождение с оригиналом, что у `avatarsHostRef`
+              выше. Тот же вызов `mountSolid` (проп `avatarsInfo`, эффект
+              выше) кладёт имя/статус пира ВНУТРЬ `instance.info` соседнего
+              узла — задача 3, см. докблок `peerProfile.solid.tsx` у
+              компонента `PeerProfile`. */}
+          <div ref={profileContentHostRef} />
+          {createPortal(
+            <SharedMedia
+              tab={tab}
+              onTab={setTab}
+              chatId={sharedMediaChatId(chat.id)}
+              members={isRealChat && (isGroup || isChannel) ? realMembers ?? [] : undefined}
+              savedDialogs={isSaved ? savedDialogs ?? [] : undefined}
+              gifts={isUser ? gifts : undefined}
+              onOpenGift={setSelectedGift}
+              onSendGift={isUser && peerId !== meId ? onSendGift : undefined}
+              isChannel={isChannel}
+              canManageAdmins={canManageAdmins}
+              onOpenPeer={onOpenPeer}
+              onEditMember={setEditMember}
+              navRef={tabsBarRef}
+              stickyTop={TAB_GAP}
+              onCount={(name, n) => setTabCounts((c) => (c[name] === n ? c : { ...c, [name]: n }))}
+            />,
+            searchSuperContainer,
+          )}
+
+          {/* Строки info-карточки (tweb MainSection, `:1510-1533`) теперь
+              рисует Solid ВНУТРИ `.profile-content` (`peerProfile.solid.tsx`,
+              Task 4 плана «карточка профиля на Solid»): Phone/Username(+QR)/
+              Bio/Link/Birthday/Notifications — дословно, со своими условиями
+              показа. Наши секции (Statistics/Discussion/JoinRequests/ключ
+              шифрования секретного чата) — Task 5 ТОГО ЖЕ плана: теперь тоже
+              Solid, ДЕТИ `.profile-content` (между `MainSection` и
+              `searchSuperContainer`, см. докблок `peerProfile.solid.tsx`) —
+              гейты и данные едут туда пропами `mountSolid` выше
+              (`showStatistics`/`showDiscussion`/`showJoinRequests`/
+              `isSecret` и соседние поля), сама разметка полностью снесена
+              отсюда. Долг на перенос каждой в правильное место оригинала —
+              `backlogs/frontend/profile-sections-misplaced.md`. */}
+
+          {/* Фолбэк-строка ссылки: группа/канал БЕЗ публичного username
+              (Solid `PeerProfile.Link` показывает строку только когда
+              username есть — докблок там же). Клик копирует + тост (tweb
+              PeerProfile.Link), QR — тот же мост `openQrCode`, которым
+              пользуются Solid-строки `Username`/`Link`.
+
+              НАХОДКА РЕВЬЮ (Minor, финальный раунд волны): у оригинала это
+              содержимое — ребёнок `.profile-content` (`peerProfile.tsx:
+              194-214`), и на `main` (до задачи 2) этот узел ТОЖЕ был прямым
+              ребёнком React-владетого `.profile-content`. Сейчас `.profile-
+              content` рисует Solid (хост — `profileContentHostRef` ниже), и
+              правило владения узла (план, шапка) не даёт React писать
+              ВНУТРЬ него — поэтому узел остался здесь, СИБЛИНГОМ хоста
+              вместо потомка `.profile-content`. Порядок среди сиблингов не
+              воспроизводит оригинал, расхождение объявлено и разобрано —
+              `backlogs/frontend/profile-content-sibling-nodes.md`. */}
+          {(isGroup || isChannel) && fallbackInviteUrl && (
           <SidebarSection noDelimiter>
-            {isChannel ? (
-              <>
-                {/* Описание канала — обычная `.row` с иконкой (tweb PeerProfile
-                    MainSection: Info-строка), многострочная через `pre-wrap`. */}
-                <Row
-                  icon={<TgIcon name="info" size={24} />}
-                  label={chat.description ?? t('Profile.ChannelDescription')}
-                  sublabel={t('Info')}
-                  translate={false}
-                  multiline
-                />
-                {/* клик по ссылке канала — копирование + тост (tweb PeerProfile.Link) */}
-                {linkText?.map((l) => (
-                  <Row
-                    key={l.label}
-                    icon={<TgIcon name="link" size={24} />}
-                    label={l.value}
-                    sublabel={l.label}
-                    translate={false}
-                    onClick={() => copyInfo(l.value, 'LinkCopied')}
-                  />
-                ))}
-              </>
-            ) : isGroup ? (
-              // Ссылка группы: `.row.row-grid` с QR-кнопкой в `.row-right`
-              // (дамп 15-right-11). Клик копирует + тост (tweb PeerProfile.Link).
-              inviteUrl && (
-                <Row
-                  icon={<TgIcon name="link" size={24} />}
-                  label={inviteShort}
-                  sublabel={t('SetUrlPlaceholder')}
-                  translate={false}
-                  onClick={() => copyInfo(inviteUrl, 'LinkCopied')}
-                  right={
-                    <button
-                      type="button"
-                      className="btn-icon qr rp"
-                      aria-label="QR"
-                      onClick={(e) => { e.stopPropagation(); setQrOpen(true) }}
-                    >
-                      <TgIcon name="qr" size={22} />
-                    </button>
-                  }
-                />
-              )
-            ) : (
-              <>
-                {/* Порядок строк — как в tweb peerProfile MainSection: Phone →
-                    Username → Bio → Birthday. Данные — GET /users/{id} с уже
-                    применённой конфиденциальностью: скрытое сюда не приходит.
-                    Клик по строке копирует значение + тост (tweb Row clickable). */}
-                {infoPhone && (
-                  <Row
-                    icon={<TgIcon name="phone" size={24} />}
-                    label={infoPhone}
-                    sublabel={t('Phone')}
-                    translate={false}
-                    onClick={() => copyInfo(infoPhone, 'PhoneCopied')}
-                  />
-                )}
-                {infoUsername && (
-                  <Row
-                    icon={<TgIcon name="mention" size={24} />}
-                    label={`@${infoUsername}`}
-                    sublabel={t('Username')}
-                    translate={false}
-                    onClick={() => copyInfo(`@${infoUsername}`, 'UsernameCopied')}
-                  />
-                )}
-                {infoBio && (
-                  <Row
-                    icon={<TgIcon name="info" size={24} />}
-                    label={infoBio}
-                    sublabel={t('UserBio')}
-                    translate={false}
-                    multiline
-                    onClick={() => copyInfo(infoBio, 'BioCopied')}
-                  />
-                )}
-                {profile?.fullUser.birthday && (
-                  <Row
-                    icon={<TgIcon name="gift" size={24} />}
-                    label={formatBirthday(profile.fullUser.birthday)}
-                    sublabel={t('Birthday')}
-                    translate={false}
-                  />
-                )}
-              </>
-            )}
             <Row
-              icon={<TgIcon name="unmute" size={24} />}
-              label="Notifications"
-              toggle
-              checked={!muted}
-              onClick={toggleNotifications}
+              icon={<TgIcon name="link" size={24} />}
+              label={fallbackInviteShort}
+              sublabel={t('SetUrlPlaceholder')}
+              translate={false}
+              onClick={() => copyInfo(fallbackInviteUrl, 'LinkCopied')}
+              right={
+                <button
+                  type="button"
+                  className="btn-icon qr rp"
+                  aria-label="QR"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    openQrCode({ url: fallbackInviteUrl, label: chat.name })
+                  }}
+                >
+                  <TgIcon name="qr" size={22} />
+                </button>
+              }
             />
-            {/* Ключ шифрования (tweb chatEncryptionKey) — emoji-fingerprint
-                секретного чата; в той же секции, что и уведомления */}
-            {isSecret && (
-              <Row
-                icon={<TgIcon name="key" size={24} />}
-                label="SecretChat.EncryptionKey"
-                onClick={() => setKeyPopupOpen(true)}
-              />
-            )}
           </SidebarSection>
           )}
 
-          {/* Закреплённые в профиле истории (tweb profile stories) — только у пользователя */}
+          {/* Закреплённые в профиле истории (tweb profile stories) — только у
+              пользователя. Та же находка ревью, что у фолбэк-ссылки выше:
+              был ребёнком React-владетого `.profile-content` на `main`,
+              теперь — сиблинг Solid-хоста (`backlogs/frontend/
+              profile-content-sibling-nodes.md`). */}
           {isUser && <PinnedStoriesSection peerId={peerId} />}
 
-          {/* Статистика — только канал (у групп не показываем) */}
-          {isRealChat && isChannel && canViewStats && (
-            <SidebarSection noDelimiter>
-              <Row
-                icon={<TgIcon name="statistics" size={24} />}
-                label="Statistics"
-                onClick={() => setShowStats(true)}
-              />
-            </SidebarSection>
-          )}
-
-          {/* Форум-топики группы («Обсуждения») перенесены в «Изменить группу». */}
-
-          {/* Channel discussions: admin (creator/CHANGE_INFO) toggle / enabled state */}
-          {isRealChat && isChannel && canManageDiscussion && (
-            <SidebarSection noDelimiter title={t('PeerInfo.Discussion')}>
-              {/* ЗНАКОВЫЙ ключ: у чата он ОТРИЦАТЕЛЬНЫЙ, и прежнее «> 0»
-                  выключило бы обсуждение ровно наоборот. */}
-              {discussionPeerId !== NULL_PEER_ID ? (
-                <Row
-                  icon={<TgIcon name="comments" size={24} />}
-                  label="Discussion enabled"
-                  translate={false}
-                  selected
-                />
-              ) : (
-                <Row
-                  icon={<TgIcon name="comments" size={24} />}
-                  label="Enable discussion"
-                  translate={false}
-                  accent
-                  onClick={enablingDiscussion ? undefined : () => void enableDiscussion()}
-                />
-              )}
-            </SidebarSection>
-          )}
-
-          {/* Real group/channel: pending join requests (admins with INVITE_USERS / creator) */}
-          {isRealChat && canInvite && joinRequests.length > 0 && (
-            <SidebarSection noDelimiter title={t('SubscribeRequests')}>
-              {joinRequests.map((req) => (
-                <Row
-                  key={req.userId}
-                  icon={<Avatar background="var(--primary-color)" text={req.title[0]?.toUpperCase()} size="md" />}
-                  label={req.title}
-                  translate={false}
-                  right={
-                    <>
-                      <button
-                        type="button"
-                        className="btn-icon rp"
-                        aria-label={`Одобрить заявку: ${req.title}`}
-                        onClick={() => void approveJoinRequest(req.userId)}
-                      >
-                        <TgIcon name="check" size={22} />
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-icon rp danger"
-                        aria-label={`Отклонить заявку: ${req.title}`}
-                        onClick={() => void declineJoinRequest(req.userId)}
-                      >
-                        <TgIcon name="close" size={22} />
-                      </button>
-                    </>
-                  }
-                />
-              ))}
-            </SidebarSection>
-          )}
-
           {/* Shared media: табы Медиа/Файлы/Ссылки/Музыка/Голосовые (tweb sharedMedia).
-              Контент пока моковый — реального API истории по типам ещё нет. */}
-          {/* isRealChat из useGroupInfo — только группы/каналы; для шаред-медиа
-              реальность чата определяем по numeric id (private тоже подходит) */}
-          {/* блок не ниже вьюпорта панели — табы всегда доезжают до шапки
-              (tweb _searchSuper.scss: min-height var(--super-height)) */}
-          <div className="search-super">
-          <SharedMedia
-            tab={tab}
-            onTab={setTab}
-            chatId={sharedMediaChatId(chat.id)}
-            members={isRealChat && (isGroup || isChannel) ? realMembers ?? [] : undefined}
-            savedDialogs={isSaved ? savedDialogs ?? [] : undefined}
-            gifts={isUser ? gifts : undefined}
-            onOpenGift={setSelectedGift}
-            onSendGift={isUser && peerId !== meId ? onSendGift : undefined}
-            isChannel={isChannel}
-            canManageAdmins={canManageAdmins}
-            onOpenPeer={onOpenPeer}
-            onEditMember={setEditMember}
-            navRef={tabsBarRef}
-            stickyTop={TAB_GAP}
-            onCount={(name, n) => setTabCounts((c) => (c[name] === n ? c : { ...c, [name]: n }))}
-          />
-          </div>
+              Контент пока моковый — реального API истории по типам ещё нет.
+              Сам `<SharedMedia>` теперь рисуется ВЫШЕ, порталом в
+              `searchSuperContainer` (см. каркас карточки) — второго рендера
+              здесь нет, это только комментарий-ориентир по месту в разметке
+              оригинала (tweb `sharedMedia.tsx`, `_searchSuper.scss`:
+              min-height var(--super-height)). */}
 
           {/* Инфо полученного подарка (tweb PopupStarGiftInfo) */}
           {selectedGift && (
@@ -750,17 +800,18 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
             />
           )}
 
-          {/* QR-код ссылки (иконка в инфо-карточке) — tweb-модалка с темами */}
-          {inviteUrl && (
+          {/* QR-код (tweb-модалка с темами) — общий попап для фолбэк-ссылки
+              выше И Solid-строк `Username`/`Link` (мост `openQrCode`,
+              `qrPayload` несёт конкретные url/label клика). */}
+          {qrPayload && (
             <QrModal
               open={qrOpen}
               onClose={() => setQrOpen(false)}
-              url={inviteUrl}
-              label={chat.name}
+              url={qrPayload.url}
+              label={qrPayload.label}
               avatar={{ src: headerAvatarSrc, background: chat.avatar, text: chat.avatarText }}
             />
           )}
-        </div>{/* /.profile-content */}
         </div>
         </div>
 
