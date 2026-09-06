@@ -65,8 +65,8 @@ function fullDate(date: number): string {
 /**
  * `span.time` со всеми частями и их дублем в `div.time-inner`.
  *
- * Порядок частей — оригинала: просмотры поста, метка правки, само время
- * последним (:340-342).
+ * Порядок частей — оригинала: метка правки первой (:298 — `unshift`), затем
+ * просмотры поста с иконкой «глаз» (:264-286), само время последним (:340-342).
  */
 export function createMessageTime(message: MyMessage): HTMLElement {
   const t = useI18nStore.getState().t
@@ -84,7 +84,11 @@ export function createMessageTime(message: MyMessage): HTMLElement {
       const views = document.createElement('span')
       views.classList.add('post-views')
       views.textContent = fmtViews(real.views)
-      out.push(views)
+      // За числом — иконка «глаз» (:278, :286). Она же ОТДЕЛЯЕТ счётчик от
+      // времени: отступ несёт класс `time-part` (`_chatBubble.scss` `.time-part`
+      // — `margin-inline-end: .375rem`). Без неё «1» и «22:50» слипались в
+      // «122:50».
+      out.push(views, Icon('channelviews', 'time-icon', 'time-part', 'time-icon-views'))
     }
 
     // «edited». Гейта `edit_hide` у оригинала здесь нет предмета: этого флага
@@ -92,9 +96,12 @@ export function createMessageTime(message: MyMessage): HTMLElement {
     // правки, а ботов-редакторов у нас нет).
     if (real?.edit_date) {
       const edited = document.createElement('i')
-      edited.classList.add('time-edited')
+      // `time-edited` + `time-part` (:55-60): второй класс даёт отступ, иначе
+      // метка липнет к следующей части.
+      edited.classList.add('time-edited', 'time-part')
       edited.textContent = t('EditedMessage')
-      out.push(edited)
+      // Метка уходит В НАЧАЛО (:298 — `args.unshift`), перед просмотрами.
+      out.unshift(edited)
     }
 
     // Время — последним (:340-342). Узел СВОЙ на каждый вызов `parts()`: у
