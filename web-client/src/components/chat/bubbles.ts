@@ -138,6 +138,7 @@ import wrapDocument from '@components/wrappers/document'
 import wrapAlbum from '@components/wrappers/album'
 import wrapMediaSpoiler, { onMediaSpoilerClick } from '@components/wrappers/mediaSpoiler'
 import { createMessageSpoilerOverlay } from '@components/messages/messageSpoilerOverlay'
+import { createPollMessageContent, type PollMessageContentHandle } from '@components/messages/pollMessageContent'
 import wrapMessageForReply from '@components/wrappers/messageForReply'
 import { setAttachmentSize } from '@core/dom/mediaSizes'
 import { openMediaViewer, type OpenMediaViewerArgs } from '@components/mediaViewer/openMediaViewer'
@@ -436,6 +437,22 @@ export interface BubblesManagers extends PeerTitleManagers {
      *  поднимается тест, которому реакции нужны только как разметка. */
     react?(peerId: number, msgId: number, emoji: string): Promise<void>
     unreact?(peerId: number, msgId: number, emoji: string): Promise<void>
+    /**
+     * ГОЛОС В ОПРОСЕ — порт `appPollsManager.sendVote(message, indexes)`
+     * (tweb usePollMutations.ts:52). Пустой список означает отзыв голоса, но
+     * ОТСЮДА он не зовётся: отзыв живёт в контекстном меню
+     * (`chat/contextMenu.ts:1602`), как и в оригинале
+     * (`contextMenu.ts:2002-2004`).
+     *
+     * `peerId` в сигнатуре, хотя опрос адресуется своим `pollId`: ответ ручки
+     * авторитетен и несёт ПЕР-ЗРИТЕЛЬСКИЕ итоги (флаг `chosen`), которых нет
+     * в общем кадре `poll_update`, — и менеджер раскладывает их по окнам
+     * именно этого чата (`core/managers/messages/pollMethods.ts:80-91`).
+     *
+     * Опциональна по той же причине, что `react`/`unreact`: без неё лента
+     * рисует опрос, но не голосует.
+     */
+    votePoll?(peerId: number, pollId: number, options: number[]): Promise<unknown>
     /**
      * ОТМЕНА ОТДАЧИ ФАЙЛА с бабла — единственный вызыватель ручки
      * `messages.cancelPending` (`core/managers/messages/pending.ts:748`).
@@ -882,6 +899,18 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * Отсюда `Map`, а не `WeakMap`: слить карту можно только обойдя её.
    */
   private spoilerOverlays = new Map<HTMLElement, VoidFunction>()
+
+  /**
+   * ХЕНДЛЫ ТЕЛА ОПРОСА, по тому же правилу владения, что и `spoilerOverlays`
+   * выше: узел опроса живой (анимации процента и полоски идут ОТ ПРЕДЫДУЩЕГО
+   * значения), поэтому правка его не пересобирает, а ОБНОВЛЯЕТ — и обновлять
+   * должен тот, у кого есть хендл.
+   *
+   * Это порт карты `updateLocalOnEdit` оригинала
+   * (tweb bubbles.ts:8793 `this.updateLocalOnEdit.set(bubble, msg => …)`),
+   * включая ключ: адресуемся БАБЛОМ, а не телом, ровно как там.
+   */
+  private pollContents = new Map<HTMLElement, PollMessageContentHandle>()
 
   constructor(private chat: ChatContext, private managers: BubblesManagers) {
     this.constructBubbles()
@@ -1613,6 +1642,46 @@ export default class ChatBubbles implements BubbleGroupsHost {
   }
 
   /**
+   * ОПРОС — порт ветки `case 'messageMediaPoll'` (tweb bubbles.ts:8757-8814).
+   *
+   * Оригинал делает здесь ровно четыре вещи, и все четыре перенесены:
+   * заводит `div.poll-message-content` (:8764-8765), монтирует в него тело
+   * опроса (:8785-8791), кладёт узел `messageDiv.prepend(container)` (:8810)
+   * и регистрирует обновлятель в карте по баблу (:8793). Пятая, класс
+   * `poll-message` (:8811), у нас живёт в `bubbleClasses` — он выводится из
+   * сообщения, и там ему место (как и остальные классы вида).
+   *
+   * Само тело — ванильная фабрика `createPollMessageContent`
+   * (`components/messages/pollMessageContent.ts`); почему не остров — в её
+   * докблоке.
+   *
+   * `mediaRequiresMessageDiv = true` оригинала (:8759) у нас уже выражен:
+   * `bubbleClasses` держит `poll` в наборе `MEDIA_IN_MESSAGE_DIV`, поэтому
+   * бабл не уходит в `is-message-empty` и тело не снимается.
+   */
+  private renderPoll(message: MyMessage, bubble: HTMLElement, messageDiv: HTMLElement): void {
+    if (message._ !== 'message' || message.media?._ !== 'messageMediaPoll') return
+
+    const media = message.media
+    const handle = createPollMessageContent({
+      media,
+      // Текст сообщения рисует САМ опрос — описанием над вопросом
+      // (tweb usePollDerivedProps.ts:87-88 `props.message.message`).
+      text: getMessageText(message),
+      entities: message.entities,
+      isOutgoing: this.isOutMessage(message),
+      // Ручка опциональна ровно как `react`/`unreact`: без неё лента рисует
+      // опрос, но не голосует, — так поднимается тест, которому нужна разметка.
+      vote: this.managers.messages.votePoll
+        ? (pollId, options) => this.managers.messages.votePoll!(this.peerId, pollId, options)
+        : undefined,
+    })
+
+    messageDiv.prepend(handle.element)
+    this.pollContents.set(bubble, handle)
+  }
+
+  /**
    * Стикер — порт `ChatBubbles.wrapSticker` (tweb bubbles.ts:6069-6119) в
    * применимом объёме.
    *
@@ -1842,6 +1911,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // встаёт вложение), и сам `bubble` (классы `photo`/`video`/`round`).
     this.renderMedia(message, bubbleContainer, messageDiv)
 
+    // Опрос — соседняя ветка того же switch'а оригинала (:8757), но своя
+    // функция: в `renderMedia` она не попадает, потому что тот выходит на
+    // `getBubbleMedia` (вложение опроса — не файл), а класс `poll-message`
+    // ставит `bubbleClasses`, как и остальные классы вида.
+    this.renderPoll(message, bubble, messageDiv)
+
     // Лог звонка — соседняя ветка того же switch'а оригинала (:8650), поэтому
     // и здесь она стоит рядом с медиа. Само сообщение при этом СЛУЖЕБНОЕ:
     // из пилюли его увёл `getMessageKind` (см. ветку сервисного бабла выше),
@@ -1958,6 +2033,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
   private disposeSpoilerOverlays() {
     for (const dispose of this.spoilerOverlays.values()) dispose()
     this.spoilerOverlays.clear()
+
+    // Тела опросов сливаются той же точкой и по той же причине: у них тоже
+    // висят таймеры и анимации, а бабл уходит вместе со всем деревом.
+    for (const handle of this.pollContents.values()) handle.destroy()
+    this.pollContents.clear()
   }
 
   /**
@@ -2210,6 +2290,13 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *     общий рендерер кастом-эмодзи, медиа-таймстемпы и sponsored-сообщения не
    *     портированы (см. шапку `lib/richtext/wrapRichText.ts`). */
   private wrapMessageContent(message: MyMessage): DocumentFragment {
+    // ОПРОС забирает текст сообщения СЕБЕ: оригинал обнуляет его до сборки тела
+    // (tweb bubbles.ts:7345-7347 и :8760 — `context.messageMessage =
+    // totalEntities = undefined`), потому что рисует его описанием внутри
+    // `.poll-message-content`. Без этого гейта текст стоял бы в бабле дважды.
+    if (message._ === 'message' && message.media?._ === 'messageMediaPoll') {
+      return document.createDocumentFragment()
+    }
     return wrapMessageText(getMessageText(message), message._ === 'message' ? message.entities : undefined, { middleware: this.getMiddleware() })
   }
 
@@ -2229,8 +2316,14 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *
    * Хвост (`.time`, `.reactions`) в списке потому, что он тоже НЕ содержимое.
    * Снимает и выкладывает его заново свой владелец — `renderMessageMeta`.
+   *
+   * `.poll-message-content` — по той же причине, что строка документа: узел
+   * живой (идут анимации процента и полоски от ПРЕДЫДУЩЕГО значения), и правка
+   * его не пересобирает, а обновляет через хендл — `pollContents`. У оригинала
+   * ровно то же разделение: тело опроса он не трогает пересборкой, а зовёт
+   * `updateLocalOnEdit` (tweb bubbles.ts:8793-8804).
    */
-  private static readonly BODY_NOT_CONTENT = '.document, .audio, .time, .reactions'
+  private static readonly BODY_NOT_CONTENT = '.document, .audio, .time, .reactions, .poll-message-content'
 
   /**
    * СОДЕРЖИМОЕ тела — текст сообщения с разметкой.
@@ -5538,6 +5631,15 @@ export default class ChatBubbles implements BubbleGroupsHost {
     bubble.className = this.classesFor(message).join(' ')
     this.bubbleGroups.getItemByBubble(bubble)?.group?.updateClassNames()
 
+    // ТЕЛО ОПРОСА обновляется, а не пересобирается — порт `updateLocalOnEdit`
+    // (tweb bubbles.ts:8793-8804): туда прилетает то же самое сообщение, и
+    // обновляются ровно `poll`/`results`. У нас это единственный путь, которым
+    // до бабла доходит кадр `poll_update`: воркер кладёт его патчем `media`,
+    // зеркало объявляет патч правкой (см. докблок ниже).
+    if (message._ === 'message' && message.media?._ === 'messageMediaPoll') {
+      this.pollContents.get(bubble)?.update(message.media, getMessageText(message), message.entities)
+    }
+
     this.renderMessageContent(message, messageDiv)
     this.renderMessageMeta(
       message,
@@ -5581,6 +5683,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
         this.spoilerOverlays.get(messageDiv)?.()
         this.spoilerOverlays.delete(messageDiv)
       }
+
+      // Тело опроса — тот же адресный снос (у tweb это `middleware.onDestroy`
+      // → `updateLocalOnEdit.delete(bubble)`, bubbles.ts:8806-8808).
+      this.pollContents.get(bubble)?.destroy()
+      this.pollContents.delete(bubble)
 
       this.bubbleGroups.removeAndUnmountBubble(bubble)
 

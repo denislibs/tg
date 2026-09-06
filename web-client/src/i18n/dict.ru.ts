@@ -866,9 +866,21 @@ const ru = {
   'Chat.Poll.Type.AnonymousQuiz': 'Анонимная викторина',
   'Chat.Poll.TotalVotesEmpty': 'Пока нет голосов',
   'Chat.Poll.TotalVotesResultEmpty': 'Нет голосов',
-  'Chat.Poll.VotedSuffix': 'проголосовало',
-  'Chat.Quiz.AnsweredSuffix': 'ответило',
   'Chat.Poll.Unvote': 'Отменить голос',
+  'Chat.Poll.Type.Public': 'Опрос',
+  'Chat.Poll.SelectAnOption': 'Выберите вариант',
+  'Chat.Poll.MembersVoted': {
+    one_value: '%d человек проголосовал',
+    few_value: '%d человека проголосовало',
+    many_value: '%d человек проголосовало',
+    other_value: '%d человека проголосовало',
+  },
+  'Chat.Quiz.MembersAnswered': {
+    one_value: '%d человек ответил',
+    few_value: '%d человека ответило',
+    many_value: '%d человек ответило',
+    other_value: '%d человека ответило',
+  },
   // ── Чек-листы (Telegram todo list) ──
   Create: 'Создать',
   'Common.Creating': 'Создание…',

@@ -1,0 +1,354 @@
+// Порт `tweb/src/components/chat/bubbleParts/pollMessageContent/styles.module.scss`.
+// В оригинале это CSS-МОДУЛЬ (не глобальный партиал `_poll.scss` — тот описывает
+// легаси-элемент `poll-element`, которого ни один компонент tweb больше не
+// создаёт: единственные ссылки на него — `_chatBubble.scss` и список
+// `badSelectors` в `contextMenu.ts:300`). Поэтому и у нас это модуль рядом с
+// компонентом, а не файл в `styles/tweb/` — так же, как модульный слой описан в
+// `docs/tweb/inventory/coverage.md`.
+//
+// Портирован ПОДМНОЖЕСТВОМ, равным объёму порта разметки: медиа в вариантах,
+// добавление вариантов, объяснение викторины, таймер закрытия и аватарки
+// проголосовавших не рисуются, потому что их не производит бэкенд, — их классы
+// сюда не переносились. Долги перечислены в
+// `web-client/backlogs/frontend/poll-backend-gaps.md`.
+@use '../../styles/foundation' as *;
+
+// tweb styles.module.scss:4-22 — 1:1.
+@mixin hoverable {
+  --hover-bg-color: rgba(0, 0, 0, 0.05);
+
+  @include hover-global(var(--hover-bg-color), background-color, true);
+
+  :global(.night) & {
+    --hover-bg-color: rgba(255, 255, 255, 0.075);
+  }
+
+  .outgoing & {
+    --hover-bg-color: hsla(from var(--message-primary-color) h s l / 0.08);
+    --ripple-color: hsla(from var(--message-primary-color) h s l / 0.15);
+
+    :global(.night) & {
+      --hover-bg-color: rgba(255, 255, 255, 0.1);
+      --ripple-color: rgba(255, 255, 255, 0.175);
+    }
+  }
+}
+
+// :24-29
+.container {
+  display: block;
+  position: relative;
+}
+
+// :31-44
+.pollOption {
+  position: relative;
+
+  display: flex;
+  align-items: center;
+
+  --vertical-padding: 0.75rem;
+  padding: var(--vertical-padding) 0.75rem var(--vertical-padding) 0.625rem;
+
+  min-width: 260px;
+
+  // :175-178
+  &SpacerFirst {
+    flex-shrink: 0;
+    width: 1.5rem;
+  }
+}
+
+// :198-217
+.clickableArea {
+  position: absolute;
+  overflow: hidden;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  cursor: pointer;
+
+  @include hoverable;
+
+  &.hoveredTransition {
+    transition: background-color 0.4s ease-in-out;
+  }
+
+  &.hovered {
+    background-color: var(--hover-bg-color);
+  }
+}
+
+// :219-286
+.label {
+  &Row {
+    position: relative;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1.5rem;
+    flex: 1;
+  }
+
+  &Text {
+    flex: 1;
+  }
+
+  &Stats {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    user-select: none;
+  }
+
+  &Number {
+    color: var(--secondary-text-color);
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-size: 0.75rem;
+  }
+
+  &Progress {
+    position: absolute;
+
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 0.25rem;
+    border-radius: 0.25rem;
+    transform: translateY(13px);
+
+    --opacity: 0.15;
+    background-color: rgba(0, 0, 0, var(--opacity));
+
+    :global(.night) & {
+      background-color: rgba(255, 255, 255, var(--opacity));
+    }
+
+    &Fill {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      --zero-offset: 5px;
+      width: calc(var(--zero-offset) + var(--progress, 0) * (100% - var(--zero-offset)));
+
+      border-radius: inherit;
+      background-color: var(--primary-color);
+
+      // 1:1 с оригиналом, включая то, что `--transition-time` в этой области
+      // НЕ объявлена ни у нас, ни в tweb (её задаёт только
+      // `_passcodeLockScreen.scss` у себя): правило инертно, ширину гонит
+      // JS — `animateValue` через `--progress` (PollOption.tsx:304-337).
+      transition: width var(--transition-time) linear;
+    }
+
+    &.correct &Fill {
+      background-color: var(--gc-green-text-color);
+    }
+
+    &.wrong &Fill {
+      background-color: var(--gc-red-text-color);
+    }
+  }
+}
+
+// :288-292
+.checkContainer {
+  position: relative;
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+// :294-299
+.checkbox {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+// :301-310
+.percent {
+  font-size: 0.75rem;
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translate(0.5rem, -50%);
+  white-space: nowrap;
+  font-weight: var(--font-weight-bold);
+  user-select: none;
+}
+
+// :312-352
+.chosenCheckbox {
+  // Удвоение специфичности — приём оригинала: иначе базовые правила
+  // `.Checkbox` перебивают эти.
+  &#{&} {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    transform: translate(-1.875rem, 18px);
+
+    --checkbox-size: 0.875rem;
+    --checkbox-scale: 1.25;
+  }
+
+  &.correct {
+    --checkbox-background-color: var(--gc-green-text-color);
+  }
+
+  &.wrong {
+    --checkbox-background-color: var(--gc-red-text-color);
+  }
+
+  &Dot {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    transform: translate(-41px, 15px);
+
+    width: 0.5rem;
+    height: 0.5rem;
+    background-color: var(--primary-color);
+    border-radius: 50%;
+
+    &.correct {
+      background-color: var(--gc-green-text-color);
+    }
+
+    &.wrong {
+      background-color: var(--gc-red-text-color);
+    }
+  }
+}
+
+// :353-359
+.footer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+}
+
+// :360-390
+.footerButton {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+
+  padding: 0.5rem 1rem;
+  border-radius: 16px;
+  font-size: 0.875rem;
+
+  user-select: none;
+  text-align: center;
+
+  color: #939fa9;
+
+  &.outgoing {
+    color: var(--secondary-text-color);
+
+    :global(.night) & {
+      color: inherit;
+    }
+  }
+
+  &.clickable {
+    cursor: pointer;
+    color: var(--primary-color);
+    font-weight: var(--font-weight-bold);
+
+    @include hoverable;
+  }
+}
+
+// :392-419
+.header {
+  display: flex;
+  gap: 1rem;
+  padding: 0.25rem 0.625rem 0.25rem 0.5rem;
+  align-items: center;
+
+  &TitleContainer {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  &Title {
+    font-weight: var(--font-weight-bold);
+  }
+
+  &Subtitle {
+    color: var(--secondary-text-color);
+    font-size: 0.875rem;
+
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+
+    user-select: none;
+  }
+}
+
+// :516-523
+.description {
+  padding: 0.5rem 0.5rem 0.25rem;
+  text-wrap: balance;
+
+  &:global(.is-hovering-spoiler) {
+    cursor: pointer;
+  }
+}
+
+// :561-566
+.pathDot {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  transform: translate(-33px, 9px);
+}
+
+// :580-600
+.spinnerContainer {
+  position: absolute;
+  width: 1.25rem;
+  height: 1.25rem;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+
+  & circle {
+    stroke: var(--secondary-text-color);
+  }
+
+  .outgoing & circle {
+    stroke: var(--primary-color);
+  }
+
+  :global(.night) & circle,
+  :global(.night) .outgoing & circle {
+    stroke: white;
+  }
+}
+
+// :602-604
+.pointerDisabled {
+  pointer-events: none;
+}
+
+// Порт `tweb/src/components/chat/bubbleParts/inMessageCheckbox.module.scss` —
+// 1:1. Отдельного файла не заводим: у нас единственный потребитель — опрос.
+.isOutgoing {
+  --checkbox-check-color: var(--message-out-background-color);
+  --checkbox-border-color: var(--primary-color);
+
+  :global(.night) & {
+    --checkbox-border-color: white;
+  }
+}

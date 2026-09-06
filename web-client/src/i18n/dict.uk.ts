@@ -379,8 +379,6 @@ const uk = {
   'Chat.Poll.Type.AnonymousQuiz': 'Анонімна вікторина',
   'Chat.Poll.TotalVotesEmpty': 'Поки немає голосів',
   'Chat.Poll.TotalVotesResultEmpty': 'Немає голосів',
-  'Chat.Poll.VotedSuffix': 'проголосувало',
-  'Chat.Quiz.AnsweredSuffix': 'відповіло',
   'Chat.Poll.Unvote': 'Скасувати голос',
   UnreadMessages: 'Непрочитані повідомлення',
   'ForumTopic.Context.ShowAsMessages': 'Єдиний чат',
