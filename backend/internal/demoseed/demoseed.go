@@ -1,9 +1,10 @@
 // Package demoseed наполняет дев-стенд демо-контентом: тематические каналы с
-// постами, обычные группы с перепиской, опросы, закрепления и реакции.
+// постами, группа обсуждения с комментариями к постам, обычные группы с
+// перепиской, опросы, закрепления и реакции.
 //
 // Всё создаётся ЧЕРЕЗ НАСТОЯЩИЕ методы интерактора чата — теми же вызовами,
 // которые делает живой клиент (CreateChannel/CreateGroup/JoinPublic/AddMember/
-// Send/PostToChannel/SendPoll/SetPin/React). Прямых INSERT'ов в chats/messages
+// LinkDiscussion/Send/PostToChannel/PostComment/SendPoll/SetPin/React). Прямых INSERT'ов в chats/messages
 // здесь нет сознательно: только реальный путь порождает служебные сообщения,
 // записи журнала updates с pts, веер по участникам и корректную адресацию — а
 // проверяют на стенде именно их. Сид, пишущий в таблицы, наполнил бы базу, но
@@ -28,8 +29,28 @@ import (
 // reactionEmojis — чем демо-подписчики реагируют на посты.
 var reactionEmojis = []string{"👍", "❤️", "🔥", "😮", "👏", "🎉"}
 
+// chatAPI — та часть интерактора чата, которой пользуется сид. Сид держит
+// интерфейс, а не *usecasechat.Interactor, чтобы его собственные проводки
+// (связка канал↔обсуждение, адресация комментариев, идемпотентность повторного
+// прогона) проверялись тестом без постгреса.
+type chatAPI interface {
+	ListDialogs(ctx context.Context, userID int64) ([]domain.DialogRecord, error)
+	CreateChannel(ctx context.Context, creatorID int64, title, about, username string, isPublic bool) (int64, error)
+	CreateGroup(ctx context.Context, creatorID int64, title, about, username string, isPublic bool, memberIDs []int64) (int64, error)
+	JoinPublic(ctx context.Context, username string, userID int64) error
+	AddMember(ctx context.Context, chatID, actorID, userID int64) error
+	LinkDiscussion(ctx context.Context, channelID, groupID, actorID int64) (int64, error)
+	PostToChannel(ctx context.Context, channelID, actorID int64, text string, entities domain.MessageEntities, clientMsgID string) (domain.Message, error)
+	PostComment(ctx context.Context, channelID, postID, userID int64, text, clientMsgID string) (domain.Message, error)
+	Send(ctx context.Context, in usecasechat.SendInput) (domain.Message, error)
+	SendPoll(ctx context.Context, in usecasechat.SendPollInput) (domain.Message, error)
+	VotePoll(ctx context.Context, pollID, userID int64, optionIdxs []int) (domain.PollInfo, error)
+	SetPin(ctx context.Context, chatID, msgID, userID int64, pin bool) error
+	React(ctx context.Context, chatID, messageID, userID int64, emoji string, add bool) error
+}
+
 type seeder struct {
-	uc    *usecasechat.Interactor
+	uc    chatAPI
 	media *usecasemedia.Interactor
 	users map[string]int64
 	// names — юзернеймы в стабильном порядке: обход map недетерминирован, а
@@ -47,9 +68,15 @@ type seeder struct {
 // postgres.SeedDemo; media может быть nil (MinIO недоступен) — тогда посты
 // уходят без картинок, а альбомы просто не отправляются.
 func Seed(ctx context.Context, uc *usecasechat.Interactor, media *usecasemedia.Interactor, users map[string]int64) {
+	// nil проверяется на КОНКРЕТНОМ типе: в интерфейсе chatAPI нулевой
+	// указатель перестал бы быть nil.
 	if uc == nil || len(users) == 0 {
 		return
 	}
+	seed(ctx, uc, media, users)
+}
+
+func seed(ctx context.Context, uc chatAPI, media *usecasemedia.Interactor, users map[string]int64) {
 	// groupedSeq стартует с крупного числа: ключ медиагруппы генерирует
 	// отправитель, и демо-альбомы не должны пересекаться с клиентскими.
 	s := &seeder{uc: uc, media: media, users: users, owned: map[int64]map[string]bool{}, groupedSeq: 1 << 40}
@@ -110,6 +137,10 @@ func (s *seeder) channel(ctx context.Context, c channelSpec) int {
 		return 0
 	}
 	s.mark(creator, c.title)
+	// Обсуждение привязывается ДО постов: зеркало поста в группе обсуждения
+	// (корень треда комментариев) рождается на вставке самого поста и только
+	// если привязка уже есть.
+	s.discussion(ctx, chatID, creator, c)
 
 	// Подписка идёт публичным путём — по юзернейму, ровно как из поиска.
 	subs := make([]int64, 0, len(s.names))
@@ -127,6 +158,10 @@ func (s *seeder) channel(ctx context.Context, c channelSpec) int {
 
 	pics := s.uploadPhotos(ctx, creator, c.photos)
 	msgIDs := make([]int64, 0, len(c.posts))
+	// postIDs адресуется ИНДЕКСОМ ПОСТА в спеке (в отличие от msgIDs, куда
+	// попадают только отправленные): комментарии спеки ссылаются на посты по
+	// этому индексу, и сорвавшаяся отправка не имеет права сдвинуть адресацию.
+	postIDs := make([]int64, len(c.posts))
 	var pinID int64
 	for idx, p := range c.posts {
 		text, ents := compose(p.body)
@@ -150,6 +185,7 @@ func (s *seeder) channel(ctx context.Context, c channelSpec) int {
 			continue
 		}
 		msgIDs = append(msgIDs, msg.ID)
+		postIDs[idx] = msg.ID
 		if idx == c.pinIndex {
 			pinID = msg.ID
 		}
@@ -159,10 +195,65 @@ func (s *seeder) channel(ctx context.Context, c channelSpec) int {
 			log.Printf("seed: закрепление в %q не удалось: %v", c.title, err)
 		}
 	}
+	comments := s.comments(ctx, chatID, c, postIDs)
 	s.sendPoll(ctx, chatID, creator, c.poll, subs)
 	s.react(ctx, chatID, msgIDs, subs)
-	log.Printf("seed: канал %q — %d постов, %d подписчиков", c.title, len(msgIDs), len(subs))
+	log.Printf("seed: канал %q — %d постов, %d подписчиков, %d комментариев",
+		c.title, len(msgIDs), len(subs), comments)
 	return len(msgIDs)
+}
+
+// discussion заводит группу обсуждения канала и привязывает её ТЕМ ЖЕ путём,
+// что и клиент: обычная группа (CreateGroup) плюс LinkDiscussion — аналог
+// channels.setDiscussionGroup, за которым стоит PUT /channels/{id}/discussion.
+// EnableDiscussion тут не годится: он создаёт группу сам и с несменяемым
+// названием "Discussion", а демо-стенду нужна группа с человеческим именем.
+func (s *seeder) discussion(ctx context.Context, channelID, creator int64, c channelSpec) int64 {
+	if c.discussion == nil {
+		return 0
+	}
+	// Участников группе не раздаём: комментатора подписывает на обсуждение сам
+	// PostComment (auto-join), как и у живого клиента.
+	groupID, err := s.uc.CreateGroup(ctx, creator, c.discussion.title, c.discussion.about, "", false, nil)
+	if err != nil {
+		log.Printf("seed: группа обсуждения для %q не создана: %v", c.title, err)
+		return 0
+	}
+	s.mark(creator, c.discussion.title)
+	if _, err := s.uc.LinkDiscussion(ctx, channelID, groupID, creator); err != nil {
+		log.Printf("seed: обсуждение не привязано к %q: %v", c.title, err)
+		return 0
+	}
+	return groupID
+}
+
+// comments наполняет треды постов канала. Комментарий уходит штатным
+// PostComment: он сам резолвит зеркало поста в группе обсуждения, подписывает
+// автора на неё и тредит комментарий на зеркало — руками адресовать тред сид
+// не имеет права, иначе разъедется с живым клиентом.
+func (s *seeder) comments(ctx context.Context, channelID int64, c channelSpec, postIDs []int64) int {
+	if c.discussion == nil {
+		return 0
+	}
+	n := 0
+	for idx, cm := range c.discussion.comments {
+		if cm.post < 0 || cm.post >= len(postIDs) || postIDs[cm.post] == 0 {
+			log.Printf("seed: комментарий %d канала %q без поста", idx, c.title)
+			continue
+		}
+		author := s.users[cm.author]
+		if author == 0 {
+			log.Printf("seed: комментарий %d канала %q пропущен — нет автора @%s", idx, c.title, cm.author)
+			continue
+		}
+		if _, err := s.uc.PostComment(ctx, channelID, postIDs[cm.post], author, cm.text,
+			fmt.Sprintf("seed-%s-c%d", c.username, idx)); err != nil {
+			log.Printf("seed: комментарий %d канала %q не отправлен: %v", idx, c.title, err)
+			continue
+		}
+		n++
+	}
+	return n
 }
 
 // ── Группы ──────────────────────────────────────────────────────────────────
