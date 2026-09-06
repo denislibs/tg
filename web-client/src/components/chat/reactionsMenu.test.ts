@@ -82,7 +82,6 @@ function menu(
   return new ChatReactionsMenu({
     managers: { reactions: catalog },
     peerId: USER,
-    type: 'horizontal',
     middleware: getMiddleware().get(),
     onFinish,
     ...over,

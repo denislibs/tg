@@ -9,7 +9,7 @@
 // доказывает — мок повторяет то, что делает настоящий враппер с узлом
 // (`wrappers/sticker.ts:160` — `div.dataset.docId`), и проверяется узел.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { resetMessagesMirror } from '@core/history/messagesMirror'
+import { putMirrorPage, resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
 import { resetChatFullMirror } from '@core/chatFullCache'
 import { makeMessage } from '@core/messages/testMessage'
@@ -154,7 +154,6 @@ describe('ховер-реакция над баблом', () => {
     await settleHover()
 
     const hoverReaction = button()!
-    expect(hoverReaction.dataset.loaded).toBeUndefined()
     expect(hoverReaction.classList.contains('is-visible')).toBe(false)
     expect(content.classList.contains('hover-reaction-visible')).toBe(false)
   })
@@ -166,7 +165,6 @@ describe('ховер-реакция над баблом', () => {
     await settleHover()
 
     const hoverReaction = button()!
-    expect(hoverReaction.dataset.loaded).toBe('1')
     expect(hoverReaction.classList.contains('is-visible')).toBe(true)
     expect(hoverReaction.classList.contains('forwards')).toBe(true)
     expect(content.classList.contains('hover-reaction-visible')).toBe(true)
@@ -203,6 +201,24 @@ describe('ховер-реакция над баблом', () => {
 
     hover(content)
     await settleHover()
+    button()!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+
+    expect(unreact).toHaveBeenCalledWith(CHAT, 1, '👍')
+    expect(react).not.toHaveBeenCalled()
+  })
+
+  it('направление тоггла решается СОСТОЯНИЕМ НА МОМЕНТ КЛИКА, а не наведения', async() => {
+    // Кнопка появляется на 400 мс позже наведения (tweb :2773), и за эту паузу
+    // реакция сообщения успевает измениться — своим кликом в другой вкладке,
+    // чужим кадром. Оригинал страхуется перечитыванием сообщения перед
+    // отправкой (appReactionsManager.ts:669); стенд повторяет ровно это.
+    const { content, react, unreact } = await open()
+
+    hover(content)
+    await settleHover()
+    // Реакция приехала УЖЕ ПОСЛЕ того, как кнопка построилась.
+    putMirrorPage(String(CHAT), [msg(mine)])
+
     button()!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
 
     expect(unreact).toHaveBeenCalledWith(CHAT, 1, '👍')

@@ -8,7 +8,7 @@
 // (`chat/reactions.ts::renderIcon`), и тоггл обязан читать значение с самого
 // чипа (`data-reaction`), как оригинал читает его из `reactionCount.reaction`.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { resetMessagesMirror } from '@core/history/messagesMirror'
+import { putMirrorPage, resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
 import { resetChatFullMirror } from '@core/chatFullCache'
 import { makeMessage } from '@core/messages/testMessage'
@@ -135,6 +135,22 @@ describe('клик по чипу с УЖЕ ЗАГРУЖЕННОЙ иконкой
 
   it('своя реакция всё равно СНИМАЕТСЯ', async () => {
     const { chip, react, unreact } = await openWith(mine)
+
+    chip.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+
+    expect(unreact).toHaveBeenCalledWith(CHAT, 1, '👍')
+    expect(react).not.toHaveBeenCalled()
+  })
+
+  it('направление тоггла берётся из СВЕЖЕГО сообщения, а не из класса чипа', async () => {
+    // У оригинала клик по чипу отдаёт в `chat.sendReaction` только ЗНАЧЕНИЕ
+    // реакции (bubbles.ts:3257-3259, :3275), а направление решает перечитанное
+    // сообщение (appReactionsManager.ts:669). Здесь чип нарисован по старому
+    // агрегату («не моя»), а окно уже несёт новый («моя») — уйти обязано
+    // снятие.
+    const { chip, react, unreact } = await openWith(reactions)
+    expect(chip.classList.contains('is-chosen')).toBe(false)
+    putMirrorPage(String(CHAT), [msg(mine)])
 
     chip.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
 

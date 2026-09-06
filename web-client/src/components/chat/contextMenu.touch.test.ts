@@ -228,6 +228,15 @@ describe('тач: долгое нажатие по чипу реакции (tweb
   })
 })
 
+describe('тач: отступ панели быстрых реакций (tweb :2196-2199)', () => {
+  it('на таче левый отступ шире на 32', () => {
+    // Единственное наблюдаемое следствие ветки `IS_TOUCH_SUPPORTED` в
+    // `getReactionsMenuPadding`; в `contextMenu.test.ts` тот же пин стоит на
+    // десктопной половине (56).
+    expect(ChatContextMenu.getReactionsMenuPadding().left).toBe(88)
+  })
+})
+
 describe('тач: обычный тап (tweb :282-315)', () => {
   it('по телу бабла открывает меню', async() => {
     const { bubble, content } = makeBubble(1)

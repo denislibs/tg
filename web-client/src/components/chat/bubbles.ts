@@ -110,7 +110,7 @@ import { dayLabel } from '@core/format/dayLabel'
 import { fmtViews } from '@core/format/fmtViews'
 import { getMessageText, isOurMessage, isOutMessage, type MessageReal, type MessageReplies, type MessageService, type MyMessage, type OurMessageChat, type Reaction } from '@core/models'
 import { getOutputPeer, isAnyChat, toPeerId } from '@core/peers/peerId'
-import { hasReactionEmoticon, isChosen } from '@core/reactions/messageReactions'
+import { hasReactionEmoticon } from '@core/reactions/messageReactions'
 import type { HistoryArgs, HistoryResult } from '@core/managers/messagesManager'
 import { bubbleClasses, type BubbleCtx } from '../messages/bubbleClasses'
 import BubbleGroups, {
@@ -124,7 +124,7 @@ import BubbleGroups, {
 import { createDateBubble as createServiceDateBubble, createServiceBubble } from './serviceMessage'
 import { createReplyContainer } from './replyContainer'
 import { createMessageTime, setRepliesCount, setSendingStatus } from './messageTime'
-import { createReactionsElement, getAvailableReactions, getAvailableReactionsForPeer, type ReactionsManagers } from './reactions'
+import { createReactionsElement, getAvailableReactions, getAvailableReactionsForPeer, sendReaction, type ReactionsManagers } from './reactions'
 import { renderReplies, setRepliesElementCount } from './replies'
 import { attachReplySwipe, findDoubleClickReplyBubble } from './replySwipe'
 import type ChatContextMenu from './contextMenu'
@@ -418,8 +418,8 @@ export interface BubblesManagers extends PeerTitleManagers {
     /** Порт `Chat.sendReaction` (tweb chat.ts:1457) в объёме тоггла: у
      *  оригинала это ОДИН метод, который сам решает, ставить или снимать; у
      *  нашего владельца операций две, потому что каждая несёт свою
-     *  оптимистичную дельту и свой откат. Решение остаётся за лентой — она
-     *  знает `is-chosen` кликнутого чипа.
+     *  оптимистичную дельту и свой откат. Направление выбирает общая точка
+     *  отправки (`chat/reactions.ts::sendReaction`) по перечитанному сообщению.
      *
      *  Опциональны: без них лента рисует реакции, но не переключает их — так
      *  поднимается тест, которому реакции нужны только как разметка. */
@@ -2829,12 +2829,14 @@ export default class ChatBubbles implements BubbleGroupsHost {
     }
 
     // tweb :2796-2812 — кнопка показывается по ПЕРВОМУ КАДРУ, не по загрузке.
+    // `hoverReaction.dataset.loaded` оригинала (:2802) не пишется: его читает
+    // только ветка «кнопка уже есть, просто показать её снова» (:2739-2747), а
+    // она не портирована (см. выше — она недостижима и в оригинале).
     const onFirstFrame = () => {
       if (!middleware()) {
         return
       }
 
-      hoverReaction.dataset.loaded = '1'
       this.setHoverVisible(hoverReaction, true)
     }
 
@@ -2847,34 +2849,23 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // tweb :2814-2826
     attachClickEvent(hoverReaction, (e) => {
       cancelEvent(e) // cancel triggering selection
-      this.sendReaction(reactionsMessage, reaction)
+      this.sendReaction(reactionsMessage.id, reaction)
       this.unhoverPrevious()
     }, { listenerSetter: this.listenerSetter })
   }
 
-  /**
-   * Порт `chat.sendReaction` (tweb chat.ts:1457) в объёме обычной
-   * эмодзи-реакции — ТОГГЛ, а не «поставить»: повторный выбор уже своей реакции
-   * снимает её (appReactionsManager.ts:733-747). Что стоит сейчас, читается из
-   * агрегата сообщения — того же источника, из которого `chat/reactions.ts`
-   * красит чип `is-chosen`. У клика по ЧИПУ источник другой и ближе —
-   * см. `toggleReaction`.
-   */
-  private sendReaction(message: MyMessage, reaction: Reaction) {
-    if (reaction._ !== 'reactionEmoji') return
-
-    const { react, unreact } = this.managers.messages
-    if (!react || !unreact) return
-
-    const emoticon = reaction.emoticon
-    const count = message.reactions?.results.find((c) => {
-      return c.reaction._ === 'reactionEmoji' && c.reaction.emoticon === emoticon
+  /** Порт `chat.sendReaction` (tweb chat.ts:1457) — тонкая обёртка над общей
+   *  точкой решения (`chat/reactions.ts::sendReaction`), потому что и клик по
+   *  ховер-кнопке, и клик по чипу у оригинала приходят в неё же
+   *  (bubbles.ts:2820, :3275). */
+  private sendReaction(mid: number, reaction: Reaction) {
+    sendReaction({
+      peerId: this.peerId,
+      mid,
+      reaction,
+      messages: this.managers.messages,
+      getMessage: (id) => this.getMessage(id),
     })
-
-    const promise = count && isChosen(count) ?
-      unreact(this.peerId, message.id, emoticon) :
-      react(this.peerId, message.id, emoticon)
-    promise.catch(noop)
   }
 
   /** Порт tweb bubbles.ts:2837-2853. */
@@ -3144,43 +3135,34 @@ export default class ChatBubbles implements BubbleGroupsHost {
   }
 
   /**
-   * Тоггл своей реакции по клику на чип — порт `Chat.sendReaction`
-   * (tweb chat.ts:1457) в объёме, который есть у нашего владельца.
+   * Тоггл своей реакции по клику на чип — порт ветки `reactionElement`
+   * обработчика ленты (tweb bubbles.ts:3245-3279).
    *
-   * ЧТО ДЕЛАТЬ — ставить или снимать — лента решает по КЛИКНУТОМУ ЧИПУ
-   * (`is-chosen`), а не по перечитыванию сообщения: у оригинала тот же
-   * источник (`reactionsElement.getReactionCount(reactionElement)` даёт
-   * `chosen_order` именно этого чипа). Иначе быстрый повторный клик успел бы
-   * прочитать ещё не обновлённое состояние.
+   * У оригинала эта ветка достаёт из чипа только ЗНАЧЕНИЕ реакции
+   * (`reactionsElement.getReactionCount(reactionElement).reaction`, :3257-3259)
+   * и отдаёт его в `chat.sendReaction` (:3275) — направление тоггла решается
+   * там же, где и для двух других входов. Так же и здесь.
    *
    * Оптимистика и откат живут у ВЛАДЕЛЬЦА (воркерный менеджер применяет дельту
    * до сети и откатывает её на ошибке) — лента их не дублирует и результата не
    * ждёт: обновление приедет операцией, как и всякое изменение сообщения.
-   *
-   * Платная ⭐-реакция пропускается: адресовать её нашим ручкам нечем
-   * (подсистемы нет — тот же вычет у `chat/reactions.ts`).
    */
   private toggleReaction(chip: HTMLElement): void {
-    const { react, unreact } = this.managers.messages
-    if (!react || !unreact) return
-
     const mid = Number(chip.closest<HTMLElement>('.bubble')?.dataset.mid)
-    // Значение реакции берётся С САМОГО ЧИПА (`data-reaction`, порт
-    // `reactionElement.reactionCount.reaction` оригинала — bubbles.ts:3257-3259):
-    // текстовое эмодзи внутри `.reaction-sticker` — лишь подложка на время
-    // загрузки иконки, и `chat/reactions.ts::renderIcon` снимает её, как только
-    // стикер приехал; читать тоггл оттуда значило бы терять его на КАЖДОМ
+    // Значение реакции берётся С САМОГО ЧИПА (`data-reaction`): текстовое
+    // эмодзи внутри `.reaction-sticker` — лишь подложка на время загрузки
+    // иконки, и `chat/reactions.ts::renderIcon` снимает её, как только стикер
+    // приехал; читать значение оттуда значило бы терять тоггл на КАЖДОМ
     // сообщении с показанной иконкой.
     const emoji = chip.dataset.reaction ?? ''
-    // Ключ платной ⭐-реакции — сам конструктор, а не эмодзи
-    // (`core/reactions/messageReactions.ts::reactionKey`); адресовать её нашим
-    // ручкам нечем (подсистемы нет), см. докблок выше.
-    if (!mid || !emoji || emoji === 'reactionPaid') return
+    if (!mid || !emoji) return
 
-    const promise = chip.classList.contains('is-chosen')
-      ? unreact(this.peerId, mid, emoji)
-      : react(this.peerId, mid, emoji)
-    promise.catch(noop)
+    // Ключ платной ⭐-реакции — сам конструктор, а не эмодзи
+    // (`core/reactions/messageReactions.ts::reactionKey`); её отсев — в общей
+    // точке отправки, поэтому здесь конструктор восстанавливается как есть.
+    this.sendReaction(mid, emoji === 'reactionPaid'
+      ? { _: 'reactionPaid' }
+      : { _: 'reactionEmoji', emoticon: emoji })
   }
 
   /**

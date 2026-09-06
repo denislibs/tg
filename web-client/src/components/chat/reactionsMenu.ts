@@ -97,9 +97,6 @@ export interface ChatReactionsMenuOptions {
    *  `getAvailableReactionsByMessage` берёт `message.peerId`,
    *  appReactionsManager.ts:369-386). */
   peerId: PeerId
-  /** tweb :83; вертикальный вариант у оригинала закомментирован целиком
-   *  (`_button.scss:747-777`), но класс-модификатор ставится по этому полю */
-  type: 'horizontal' | 'vertical'
   middleware: Middleware
   /** tweb :64,82 — выбор сделан. `Promise<Reaction>` оригинала (ветка «ещё»)
    *  здесь предмета не имеет: кнопки «ещё» нет. */
@@ -116,7 +113,6 @@ export default class ChatReactionsMenu {
   private peerId: PeerId
   private onFinish: ChatReactionsMenuOptions['onFinish']
   private listenerSetter: ListenerSetter
-  public inited = false
 
   constructor(options: ChatReactionsMenuOptions) {
     this.managers = options.managers
@@ -131,11 +127,15 @@ export default class ChatReactionsMenu {
       this.listenerSetter.removeAll()
     })
 
-    // tweb :106-112
+    // tweb :106-112. Модификатор раскладки у оригинала берётся из
+    // `options.type` (:83,110), но другого значения, кроме `horizontal`, туда
+    // не приходит: `reactionsMenuPosition` дописан `|| true`
+    // (contextMenu.ts:1664), а стили вертикальной раскладки закомментированы
+    // целиком (`_button.scss:747-777`). Мёртвая развилка не переносится.
     const widthContainer = this.widthContainer = document.createElement('div')
     widthContainer.classList.add(
       REACTIONS_CLASS_NAME + '-container',
-      REACTIONS_CLASS_NAME + '-container-' + options.type,
+      REACTIONS_CLASS_NAME + '-container-horizontal',
       'btn-menu-transition',
     )
 
@@ -238,10 +238,11 @@ export default class ChatReactionsMenu {
     })
   }
 
-  /** tweb :283-306 (`init`) без ветки эффектов и без `cached` (см. шапку). */
+  /** tweb :283-306 (`init`) без ветки эффектов и без `cached` (см. шапку).
+   *  Поле `inited` (:78,312) не портировано: у оригинала оно write-only —
+   *  читателя нет ни у него, ни тем более у нас. */
   public async init() {
     const renderPromise = this.prepareReactions()
-    this.inited = true
     if(!renderPromise) {
       return
     }

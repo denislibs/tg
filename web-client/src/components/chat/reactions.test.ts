@@ -629,6 +629,53 @@ describe('getAvailableReactionsForPeer', () => {
     expect(emoticons(r)).toEqual(['👍'])
   })
 
+  it('карточка спрашивается ОДИН раз на чат: ответ прогревает зеркало', async () => {
+    // Политику спрашивает каждый бабл под курсором (`onBubblesMouseMove`), а
+    // зеркало в треде комментариев не наполняет никто (`components/Chat.tsx:348`
+    // гейтит `useChatInfoCard` термом `!thread`). Без записи ответа в зеркало
+    // проход по ленте стоил бы по запросу на бабл — оригинал же пишет ответ в
+    // `chatsFull` (`saveFullPeerResult`, appProfileManager.ts:217).
+    catalog = trio()
+    const card = vi.fn(async () => ({
+      fullChat: { available_reactions: { _: 'chatReactionsSome', reactions: [{ _: 'reactionEmoji', emoticon: '👍' }] } },
+    }))
+    const managers = { reactions: catalog, groups: { card } as never }
+
+    for (let i = 0; i < 30; ++i) {
+      expect(emoticons(await getAvailableReactionsForPeer(CHAT, managers))).toEqual(['👍'])
+    }
+
+    expect(card).toHaveBeenCalledTimes(1)
+  })
+
+  it('карточка спрашивается ОДИН раз и при ОДНОВРЕМЕННЫХ вопросах', async () => {
+    // Пока ответ летит, зеркало ещё холодное: дедупликация летящего похода —
+    // порт `invokeApiSingleProcess` (appProfileManager.ts:643).
+    catalog = trio()
+    const card = vi.fn(async () => ({
+      fullChat: { available_reactions: { _: 'chatReactionsSome', reactions: [{ _: 'reactionEmoji', emoticon: '👍' }] } },
+    }))
+    const managers = { reactions: catalog, groups: { card } as never }
+
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () => getAvailableReactionsForPeer(CHAT, managers)),
+    )
+
+    expect(card).toHaveBeenCalledTimes(1)
+    for (const r of results) expect(emoticons(r)).toEqual(['👍'])
+  })
+
+  it('провалившийся поход не запоминается — следующий спрашивает заново', async () => {
+    catalog = trio()
+    const card = vi.fn(async () => { throw new Error('offline') })
+    const managers = { reactions: catalog, groups: { card } as never }
+
+    await getAvailableReactionsForPeer(CHAT, managers)
+    await getAvailableReactionsForPeer(CHAT, managers)
+
+    expect(card).toHaveBeenCalledTimes(2)
+  })
+
   it('карточку достать нечем — реакции НЕ выключаются молча', async () => {
     // Право проверяет и бэк (`usecase/chat/reaction.go:35-46`); панель,
     // исчезнувшая из-за незнания политики, — это другой баг, а не защита.

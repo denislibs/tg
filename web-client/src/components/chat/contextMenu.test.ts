@@ -811,4 +811,60 @@ describe('ChatContextMenu — панель быстрых реакций (tweb :
     expect(managers.messages.unreact).toHaveBeenCalledWith(PEER, 1, '👍')
     expect(managers.messages.react).not.toHaveBeenCalled()
   })
+
+  it('направление тоггла решается СОСТОЯНИЕМ НА МОМЕНТ ВЫБОРА, а не сборки меню', async() => {
+    // Меню собирается по правому клику, а выбор в панели случается позже —
+    // реакция за это время успевает измениться. Оригинал перечитывает сообщение
+    // прямо перед отправкой (appReactionsManager.ts:669); стенд повторяет ровно
+    // это: меню собралось на «реакции нет», окно уже несёт «моя».
+    putMirrorPage(KEY, [message(1)])
+    const { bubble, content } = makeBubble(1)
+    container.append(bubble)
+
+    const managers = makeReactionManagers('👍')
+    const menu = new ChatContextMenu(makeChat(), {}, managers, makePopups())
+    menu.attachTo(container)
+    rightClick(content)
+    await flush()
+
+    putMirrorPage(KEY, [message(1, {
+      reactions: {
+        _: 'messageReactions',
+        results: [{ _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '👍' }, count: 1, chosen_order: 0 }],
+      },
+    } as Partial<MyMessage>)])
+
+    menuElement()!.querySelector<HTMLElement>('.btn-menu-reactions-reaction')!.click()
+
+    expect(managers.messages.unreact).toHaveBeenCalledWith(PEER, 1, '👍')
+    expect(managers.messages.react).not.toHaveBeenCalled()
+  })
+
+  it('над ещё НЕ ОТПРАВЛЕННЫМ сообщением панели нет (tweb :1654 `pFlags.is_outgoing`)', async() => {
+    // Дробный номер — наш признак «ещё не отправлено» (`isLocalMessageId`).
+    // Реакция по такому номеру ушла бы в сеть с локальным идентификатором и
+    // молча пропала бы; у оригинала панель над ним не поднимается вовсе.
+    putMirrorPage(KEY, [message(1.5)])
+    const { bubble, content } = makeBubble(1.5)
+    container.append(bubble)
+
+    const menu = new ChatContextMenu(makeChat(), {}, makeReactionManagers('👍'), makePopups())
+    menu.attachTo(container)
+    rightClick(content)
+    await flush()
+
+    // Меню ОТКРЫТО — иначе «панели нет» ничего не значило бы.
+    const element = menuElement()!
+    expect(element.classList.contains('active')).toBe(true)
+    expect(element.querySelector('.btn-menu-reactions-container')).toBeNull()
+  })
+
+  it('отступы панели — числа оригинала (tweb :2192-2218)', () => {
+    // Прямой пин на функцию, а не через `positionMenu`: тот читает только
+    // `right`/`bottom`/`left` (`helpers/positionMenu.ts:83-91` — `top` не
+    // читает и сам оригинал), а `left` — лишь в мобильной ветке (`side ===
+    // 'right'`, :123). Через позиционирование проверяем `right` (стенд выше);
+    // остальные два числа наблюдать больше нечем.
+    expect(ChatContextMenu.getReactionsMenuPadding()).toEqual({ top: 44, right: 40, left: 56 })
+  })
 })

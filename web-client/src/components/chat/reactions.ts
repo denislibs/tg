@@ -27,11 +27,11 @@
 //    Иконка чипа НЕПОДВИЖНА и там и тут: оригинал рисует растр, мы — первый
 //    кадр lottie (`play: false`). Играет не она, а эффект постановки
 //    (`fireAroundAnimation`) и панель выбора (`chat/reactionsMenu.ts`).
-import type { MessageReactions, Reaction, ReactionCount } from '@core/models'
+import type { MessageReactions, MyMessage, Reaction, ReactionCount } from '@core/models'
 import type { AvailableReaction } from '@core/managers/reactionsManager'
 import type { ChannelFull, ChatReactions } from '@core/peers/peer'
 import { isUser } from '@core/peers/peerId'
-import { cachedPeerFull } from '@core/chatFullCache'
+import { beginPeerFullFetch, cachedPeerFull, saveChatFull } from '@core/chatFullCache'
 import { canViewReactionsList, isChosen, reactionKey, recentOf, totalReactions } from '@core/reactions/messageReactions'
 import { getHeavyAnimationPromise } from '@core/dom/heavyAnimation'
 import { setTransition } from '@core/dom/setTransition'
@@ -158,11 +158,34 @@ export interface PeerAvailableReactions {
   reactions: Reaction[]
 }
 
+/** Походы за карточкой, которые ещё летят, — порт дедупликации
+ *  `invokeApiSingleProcess` (appProfileManager.ts:643): у оригинала два
+ *  одновременных `getChannelFull` одного чата дают ОДИН запрос. Спрашивает
+ *  карточку каждый бабл под курсором (`bubbles.ts::onBubblesMouseMove`), и без
+ *  этого проход курсором по ленте стоил бы по запросу на бабл. */
+const chatFullFetches = new Map<PeerId, Promise<ChannelFull | undefined>>()
+
 /**
  * Полная карточка чата: сперва зеркало главного потока (`core/chatFullCache.ts`
  * — его наполняет колонка чата), иначе поход в сеть. Ровно развилка
  * `appProfileManager.getChatFull` у оригинала (appReactionsManager.ts:226):
  * там она тоже отдаёт кэш синхронно и ходит в сеть только на промах.
+ *
+ * Удачный ответ КЛАДЁТСЯ В ЗЕРКАЛО — это тоже оригинал: `getChannelFull` отдаёт
+ * ответ через `saveFullPeerResult` (appProfileManager.ts:643-648), а тот пишет
+ * `chatsFull[id]` (:217), поэтому промах бывает один раз на чат. Без записи
+ * зеркало не прогревалось вовсе там, где его не наполняет колонка чата, — в
+ * треде комментариев карточку не грузит никто (`components/Chat.tsx:348`
+ * гейтит `useChatInfoCard` термом `!thread`).
+ *
+ * Билет `beginPeerFullFetch`/`saveChatFull` — уже существующая защита зеркала
+ * от устаревшего ответа (`core/chatFullCache.ts`), второй такой здесь не
+ * заводим. Личный диалог сюда не доходит (его ветка выше по стеку), а это
+ * важно: на пользователя `card()` отвечает пустой `channelFull`, и писать её в
+ * зеркало нельзя — от того же затирания гейтится `useChatInfoCard.ts:151-157`.
+ * TTL-отметку (`markFullPeerFetched`) не ставим: лежащая карточка без срока и
+ * так считается свежей (`stores/fullPeers.solid.ts::isFullPeerFresh`), а
+ * расписание протухания — дело владельца свежести, а не панели реакций.
  */
 async function getChatFull(
   peerId: PeerId,
@@ -170,8 +193,28 @@ async function getChatFull(
 ): Promise<ChannelFull | undefined> {
   const cached = cachedPeerFull(peerId)
   if (cached) return cached as ChannelFull
-  if (!managers.groups) return undefined
-  return managers.groups.card(peerId).then((card) => card?.fullChat, () => undefined)
+
+  const groups = managers.groups
+  if (!groups) return undefined
+
+  let pending = chatFullFetches.get(peerId)
+  if (!pending) {
+    const ticket = beginPeerFullFetch(peerId)
+    const fetching = groups.card(peerId).then((card) => {
+      const fullChat = card?.fullChat
+      if (fullChat) saveChatFull(peerId, fullChat, ticket)
+      return fullChat
+    }, () => undefined)
+    chatFullFetches.set(peerId, fetching)
+    // Провалившийся поход из карты выбрасывается, чтобы следующий спрашивающий
+    // попробовал заново, — тот же приём, что у `catalogCache` выше.
+    void fetching.then(() => {
+      if (chatFullFetches.get(peerId) === fetching) chatFullFetches.delete(peerId)
+    })
+    pending = fetching
+  }
+
+  return pending
 }
 
 /**
@@ -247,6 +290,58 @@ export async function getAvailableReactionsForPeer(
     .map((reaction): Reaction => ({ _: 'reactionEmoji', emoticon: reaction.emoticon }))
 
   return { type: policy._, reactions }
+}
+
+/** Ручки реакции у владельца сообщений — та же пара, что объявляют своими
+ *  порт-интерфейсами лента и контекстное меню. Необязательны: без них путь
+ *  реакции не существует вовсе. */
+export interface ReactionSender {
+  react?(peerId: number, msgId: number, emoji: string): Promise<void>
+  unreact?(peerId: number, msgId: number, emoji: string): Promise<void>
+}
+
+/**
+ * Отправка реакции — ЕДИНСТВЕННОЕ место, где решается направление тоггла, для
+ * всех трёх входов: панель контекстного меню, ховер-кнопка над баблом и клик по
+ * чипу. У оригинала это тоже один путь: все три зовут `chat.sendReaction`
+ * (chat.ts:1457 ← contextMenu.ts:1686, bubbles.ts:2820, bubbles.ts:3275), а
+ * решает `appReactionsManager.sendReaction` (:647-966).
+ *
+ * Состояние читается НЕПОСРЕДСТВЕННО ПЕРЕД ОТПРАВКОЙ — `getMessage(mid)`. Ровно
+ * этим страхуется оригинал: `message = getMessageByPeer(message.peerId,
+ * message.mid)` (appReactionsManager.ts:669) перечитывает сообщение, потому что
+ * объект на руках у вызывающего уже мог устареть — меню собралось раньше клика,
+ * ховер-кнопка появилась раньше на паузу в 400 мс. Тоггл — тоже оригинал: своя
+ * реакция повторным выбором СНИМАЕТСЯ (:733-747).
+ *
+ * Платная ⭐-реакция пропускается: адресовать её нашим ручкам нечем (подсистемы
+ * нет — тот же вычет по всему файлу).
+ */
+export function sendReaction(options: {
+  peerId: PeerId
+  /** Номер сообщения, которому принадлежит реакция; у альбома это ПЕРВОЕ
+   *  сообщение группы (tweb `getGroupsFirstMessage`) — его выбирает вызывающий. */
+  mid: number
+  reaction: Reaction
+  messages: ReactionSender
+  /** Перечитать сообщение из окна владельца — зеркала, из которого рисуются
+   *  и сами чипы (`is-chosen`). */
+  getMessage: (mid: number) => MyMessage | undefined
+}): void {
+  const { react, unreact } = options.messages
+  if (!react || !unreact) return
+  if (options.reaction._ !== 'reactionEmoji') return
+
+  const emoticon = options.reaction.emoticon
+  const message = options.getMessage(options.mid)
+  const count = message?.reactions?.results.find((c) => {
+    return c.reaction._ === 'reactionEmoji' && c.reaction.emoticon === emoticon
+  })
+
+  const promise = count && isChosen(count) ?
+    unreact(options.peerId, options.mid, emoticon) :
+    react(options.peerId, options.mid, emoticon)
+  promise.catch(noop)
 }
 
 /** Порт `apiManagerProxy.getReaction(emoticon)` (reaction.ts:805,1476):
