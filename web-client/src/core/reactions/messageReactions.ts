@@ -100,6 +100,90 @@ export function myEmoticons(agg: MessageReactions | undefined): string[] {
     .map((c) => (c.reaction as { emoticon: string }).emoticon)
 }
 
+/**
+ * Сколько реакций ставит ОДИН пользователь на ОДНОМ сообщении.
+ *
+ * У оригинала это не константа: значение приходит конфигурацией приложения
+ * (`help.getAppConfig`, ключи `reactions_user_max_default` /
+ * `reactions_user_max_premium`) и читается через `getLimit('reactions')` —
+ * tweb `src/lib/appManagers/apiManagerMethods.ts:369-395`, строка `:375`.
+ * Понятия appConfig у нас нет вовсе (ни ручки на бэке, ни кэша на клиенте),
+ * поэтому здесь зашиты дефолтные значения Telegram; когда appConfig появится,
+ * лимит должен приехать из него, а не отсюда.
+ *
+ * Те же два числа держит СЕРВЕР (`backend/internal/usecase/chat/reaction.go`) —
+ * он и есть источник истины: клиент лишь не обещает невозможного.
+ */
+export const REACTIONS_USER_MAX_DEFAULT = 1
+export const REACTIONS_USER_MAX_PREMIUM = 3
+
+/** Лимит своих реакций по подписке (порт `getLimit('reactions', isPremium)`). */
+export function reactionsUserLimit(premium: boolean): number {
+  return premium ? REACTIONS_USER_MAX_PREMIUM : REACTIONS_USER_MAX_DEFAULT
+}
+
+/**
+ * Мои реакции, которые ВЫТЕСНЯЕТ постановка `emoji`, — самые старые сверх
+ * лимита, в порядке от старейшей.
+ *
+ * Порт `appReactionsManager.ts:733-738`: свои реакции берутся по `chosen_order`,
+ * ставящаяся из них исключается (`splice(chosenReactionIdx, 1)`), а хвост за
+ * пределом лимита снимается — `unsetReactions.push(...chosenReactions.splice(
+ * limit - +(chosenReactionIdx === -1)))`. Снимается молча: тоста об упёршемся
+ * лимите нет ни в `chat.ts:1457`, ни в `components/chat/reactions.ts` (там
+ * гасится ДРУГОЙ лимит — `reactions_uniq_max`, `reactionsMenu.ts:250-254`).
+ */
+/*
+ * ОГОВОРКА о нашем проводе: `chosen_order` приезжает НУЛЁМ у всех моих
+ * реакций (backend `internal/domain/mtmessage.go` — колонки порядка в витрине
+ * нет), поэтому после перезагрузки страницы «самая старая» здесь вырождается
+ * в порядок чипов. Серверное вытеснение при этом точное (оно читает
+ * `reactions.created_at`), и разойтись они могут только у премиума.
+ *
+ * Кадр расхождение НЕ ЛЕЧИТ: он приводит к серверному СОСТАВ чипов, но не
+ * пометку «моя» — `chosen_order` пер-зрительский, в общем теле кадра его нет,
+ * и `mergeReactions` берёт мой выбор из предыдущего состояния, то есть из уже
+ * разошедшегося. Снятый сервером чип исчезнет, а снятый локально останется в
+ * ленте чужим на вид, пока по нему не кликнут снова или не перезагрузят
+ * историю. Долг: backend/backlogs/reaction-chosen-order-on-wire.md.
+ */
+export function excessChosenReactions(
+  agg: MessageReactions | undefined,
+  emoji: string,
+  limit: number,
+): string[] {
+  const others = myEmoticons(agg).filter((e) => e !== emoji) // старейшие первыми
+  const excess = others.length - (limit - 1) // место под ставящуюся
+  return excess > 0 ? others.slice(0, excess) : []
+}
+
+/**
+ * Следующий `chosen_order` — НА ЕДИНИЦУ БОЛЬШЕ максимального из моих (порт
+ * `appReactionsManager.ts:832-833`: `chosenReactions[0].chosen_order + 1`, где
+ * массив отсортирован по убыванию).
+ *
+ * Не «сколько моих»: после вытеснения номера могут идти не подряд, и счётчик
+ * выдал бы новой реакции номер уже занятый — две реакции с одним порядком
+ * означают, что «самая старая» перестаёт быть определена.
+ */
+function nextChosenOrder(agg: MessageReactions | undefined): number {
+  const orders = (agg?.results ?? []).filter(isChosen).map((c) => c.chosen_order!)
+  return orders.length ? Math.max(...orders) + 1 : 0
+}
+
+/**
+ * Перенумерация моих `chosen_order` подряд с нуля после снятия — порт
+ * `appReactionsManager.ts:749-752` (`reactionCount.chosen_order =
+ * chosenReactionsLength - 1 - idx`). Без неё в наборе остаются дыры, и
+ * следующая постановка считает «самой старой» не ту.
+ */
+function renumberChosen(results: ReactionCount[]): ReactionCount[] {
+  const orders = results.filter(isChosen).map((c) => c.chosen_order!).sort((a, b) => a - b)
+  if (!orders.length) return results
+  const rank = new Map(orders.map((o, i) => [o, i]))
+  return results.map((c) => (isChosen(c) ? { ...c, chosen_order: rank.get(c.chosen_order!)! } : c))
+}
+
 const EMPTY: MessageReactions = { _: 'messageReactions', results: [] }
 
 function withResults(agg: MessageReactions | undefined, results: ReactionCount[]): MessageReactions | undefined {
@@ -148,15 +232,15 @@ export function reactionDelta(
         reaction: { _: 'reactionEmoji', emoticon: emoji },
         count: 1,
         // Порядок моих реакций: новая становится последней. Ноль — значащее
-        // значение («моя первая»), поэтому считается по числу уже моих.
-        ...(mine ? { chosen_order: myEmoticons(agg).length } : {}),
+        // значение («моя первая»), поэтому нумерация идёт от максимума уже моих.
+        ...(mine ? { chosen_order: nextChosenOrder(agg) } : {}),
       })
     } else {
       if (mine && isChosen(results[i])) return null // эхо своей уже применённой
       results[i] = {
         ...results[i],
         count: results[i].count + 1,
-        ...(mine && !isChosen(results[i]) ? { chosen_order: myEmoticons(agg).length } : {}),
+        ...(mine && !isChosen(results[i]) ? { chosen_order: nextChosenOrder(agg) } : {}),
       }
     }
     return withResults(withRecent(agg, emoji, mine ? by : undefined, 'add'), results)
@@ -168,7 +252,10 @@ export function reactionDelta(
   if (mine) delete next.chosen_order
   if (next.count <= 0) results.splice(i, 1)
   else results[i] = next
-  return withResults(withRecent(agg, emoji, mine ? by : undefined, 'remove'), results)
+  return withResults(
+    withRecent(agg, emoji, mine ? by : undefined, 'remove'),
+    mine ? renumberChosen(results) : results,
+  )
 }
 
 /**
@@ -255,6 +342,14 @@ export function mergeReactions(
   const merged: MessageReactions = { ...next, results }
   if (top?.length) merged.top_reactors = top
   else delete merged.top_reactors
+  // `min` — свойство ТЕЛА КАДРА («пер-зрительской части здесь нет»), а не
+  // состояния сообщения: слияние её только что вернуло, и оставленный флаг
+  // сделал бы слитый агрегат отличным от такого же, собранного локальной
+  // дельтой, — то есть каждое эхо своего клика выглядело бы изменением.
+  if (merged.pFlags?.min) {
+    const { min: _min, ...pFlags } = merged.pFlags
+    merged.pFlags = pFlags
+  }
   return merged
 }
 
@@ -285,7 +380,27 @@ export function setPaidReaction(
   return out
 }
 
-/** Совпадают ли агрегаты по тому, что видно в чипах. */
+/**
+ * Совпадают ли агрегаты по тому, что ВИДНО В ЧИПАХ: состав и порядок чипов,
+ * числа, мой выбор, аватарки реагировавших, мой вклад звёздами и
+ * `can_see_list` — право, которым ряд решает «аватарки или число».
+ *
+ * `reactions_as_tags` НЕ сравнивается, хотя поле в модели объявлено: у
+ * оригинала им чип рисуется тегом (tweb `components/chat/reactions.ts:149-156`),
+ * а у нас его не читает ни один рендерер и не производит бэкенд (прямая
+ * оговорка — `backend/internal/domain/mtmessage.go:971`): самочат рисует те же
+ * чипы, что любой чат, а имена тегов живут отдельной панелью
+ * (`components/conversation/SavedTagsPanel.tsx`). Сравнивать по нему значило
+ * бы утверждать, что в чипе видно то, чего в нём нет; вернётся сюда вместе с
+ * портом формы чипа-тега.
+ *
+ * Служебного `pFlags.min` здесь нет намеренно: это свойство ТЕЛА КАДРА, а не
+ * состояния сообщения, и в чипе оно не видно ничем.
+ *
+ * `date` записи `recent_reactions` тоже не сравнивается: в чипе рисуется пир, а
+ * не время, и на нашем проводе оно всегда ноль (backend
+ * `internal/domain/messagewire.go:296`).
+ */
 export function sameReactions(a: MessageReactions | undefined, b: MessageReactions | undefined): boolean {
   const ra = a?.results ?? []
   const rb = b?.results ?? []
@@ -294,5 +409,13 @@ export function sameReactions(a: MessageReactions | undefined, b: MessageReactio
     if (reactionKey(ra[i].reaction) !== reactionKey(rb[i].reaction)) return false
     if (ra[i].count !== rb[i].count || isChosen(ra[i]) !== isChosen(rb[i])) return false
   }
+  const pa = a?.recent_reactions ?? []
+  const pb = b?.recent_reactions ?? []
+  if (pa.length !== pb.length) return false
+  for (let i = 0; i < pa.length; i++) {
+    if (getPeerId(pa[i].peer_id) !== getPeerId(pb[i].peer_id)) return false
+    if (reactionKey(pa[i].reaction) !== reactionKey(pb[i].reaction)) return false
+  }
+  if (!!a?.pFlags?.can_see_list !== !!b?.pFlags?.can_see_list) return false
   return myPaidStars(a) === myPaidStars(b)
 }

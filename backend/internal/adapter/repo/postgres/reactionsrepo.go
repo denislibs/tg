@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -33,6 +34,48 @@ func (r *ReactionsRepo) Remove(ctx context.Context, messageID, userID int64, emo
 		`DELETE FROM reactions WHERE message_id=$1 AND user_id=$2 AND emoji=$3`,
 		messageID, userID, emoji)
 	return err
+}
+
+// LockUserReactions takes a tx-scoped advisory lock on the (message, user) pair
+// so the reactions-per-user limit stays a real invariant: `evictExcessReactions`
+// читает набор и дописывает в него, а на READ COMMITTED два одновременных
+// клика одного пользователя читают одинаковое «до» и оба вставляют.
+//
+// Advisory, а не строчный: строк в момент первой реакции ещё нет — `SELECT ...
+// FOR SHARE` заблокировал бы пустое множество и обе транзакции прошли бы
+// насквозь. Ключ — та же форма `hashtext(текст)`, что у остальных пар-замков
+// репозиториев (chatsrepo.go: `saved:%d`, `private:%d:%d`); замок транзакционный,
+// поэтому снимается коммитом сам, и метод обязан вызываться внутри TxManager.
+func (r *ReactionsRepo) LockUserReactions(ctx context.Context, messageID, userID int64) error {
+	q := querier(ctx, r.pool)
+	_, err := q.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`,
+		fmt.Sprintf("reactions:%d:%d", messageID, userID))
+	return err
+}
+
+// UserReactions lists the emojis a user placed on a message, oldest first —
+// `created_at` здесь и есть `chosen_order` оригинала (отдельной колонки порядка
+// у нас нет). Эмодзи вторым ключом сортировки, чтобы у реакций, поставленных в
+// одну и ту же микросекунду, порядок был детерминированным.
+func (r *ReactionsRepo) UserReactions(ctx context.Context, messageID, userID int64) ([]string, error) {
+	q := querier(ctx, r.pool)
+	rows, err := q.Query(ctx,
+		`SELECT emoji FROM reactions WHERE message_id=$1 AND user_id=$2
+		 ORDER BY created_at, emoji`,
+		messageID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]string, 0, 4)
+	for rows.Next() {
+		var e string
+		if err := rows.Scan(&e); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }
 
 // ReactionsFor batch-loads aggregated counts per emoji for messages, most popular

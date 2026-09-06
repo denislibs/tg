@@ -117,6 +117,9 @@ export interface MessagesDeps {
    * присоединились» против «X присоединился», `refineMessageAction`).
    * Разрешается лениво (воркер зовёт /me), поэтому геттер, а не значение. */
   getMeId?: () => number | null
+  /** Есть ли у текущего пользователя премиум (порт `rootScope.premium`) — от
+   *  него зависит лимит своих реакций на сообщении, см. `MessagesCtx`. */
+  getMePremium?: () => boolean
   /** Гейт «личность уже известна» (workerCore: гидрация `me` с диска / первый
    *  setMe). Сетевые пути, отдающие сообщения, ждут его ПЕРЕД маппингом:
    *  уточнение служебного действия сравнивает автора с `getMeId()`, а страница
@@ -153,7 +156,7 @@ export interface MessagesDeps {
   uploadProgress?: (id: string, loaded: number, total: number, done?: boolean) => void
 }
 
-export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBroadcastChat, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress, peers }: MessagesDeps) {
+export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium, meReady, isBroadcastChat, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress, peers }: MessagesDeps) {
   // ── Граница маппинга ────────────────────────────────────────────────────────
   // `pFlags.out` производит СЕРВЕР (решение Р7 разбора отменено): после порта у
   // сообщения от лица канала автором на проводе становится сам канал, и прежней
@@ -333,7 +336,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, meReady, isBr
     patchMsg(peerId, (m) => m.id === msgId, (m) => (m._ !== 'message' ? m : { ...m, factcheck }))
     emitFactCheckOps(peerId, msgId, factcheck)
   }
-  const ctx = { rest, patchMsg, getMeId, opWindowsFor, emitOps, readMsg, peers }
+  const ctx = { rest, patchMsg, getMeId, getMePremium, opWindowsFor, emitOps, readMsg, peers }
   // Локальной ссылкой (а не только спредом ниже) — её зовёт cacheLive, чтобы эхо
   // своей отправки убирало временный бабл из SSOT (порт tweb checkPendingMessage).
   const pending = newPendingMethods({

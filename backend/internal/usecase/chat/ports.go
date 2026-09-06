@@ -424,6 +424,18 @@ type SearchRepo interface {
 type ReactionRepo interface {
 	Add(ctx context.Context, messageID, userID int64, emoji string) error
 	Remove(ctx context.Context, messageID, userID int64, emoji string) error
+	// UserReactions — реакции ОДНОГО пользователя на одном сообщении, СТАРЕЙШИЕ
+	// первыми (порядок постановки). Порядок здесь значащий: лимит «сколько
+	// реакций ставит один пользователь» вытесняет самую старую свою реакцию, а
+	// не произвольную (tweb src/lib/appManagers/appReactionsManager.ts:733-751).
+	UserReactions(ctx context.Context, messageID, userID int64) ([]string, error)
+	// LockUserReactions берёт ИСКЛЮЧИТЕЛЬНЫЙ замок на пару «сообщение +
+	// пользователь» до конца транзакции. Нужен ровно одному правилу — лимиту
+	// своих реакций: он читает набор и дописывает в него, а на READ COMMITTED
+	// два одновременных клика читают одно и то же «до» и оба пишут. Замок
+	// именно на КЛЮЧ пары, а не на строки: в момент первой реакции строк ещё
+	// нет, и блокировать было бы нечего.
+	LockUserReactions(ctx context.Context, messageID, userID int64) error
 	// ReactionsFor batch-loads aggregated reaction counts for messages (history
 	// read model). Mine is set when viewerID reacted with that emoji. Messages
 	// without reactions are simply absent from the map.

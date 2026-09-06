@@ -9,6 +9,30 @@ import (
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
+// Сколько реакций ставит ОДИН пользователь на ОДНО сообщение. В оригинале это
+// не константа: значение приезжает конфигурацией приложения (help.getAppConfig,
+// ключи `reactions_user_max_default` / `reactions_user_max_premium` —
+// tweb src/lib/appManagers/apiManagerMethods.ts:369-395, строка :375), и клиент
+// читает её через `getLimit('reactions')`. Ручки appConfig у нас нет вовсе,
+// поэтому здесь зашиты дефолтные значения Telegram; когда ручка появится,
+// лимит должен приехать из неё, а не отсюда.
+//
+// Тот же лимит и с теми же числами держит фронт
+// (web-client/src/core/reactions/messageReactions.ts) — сервер здесь источник
+// истины, потому что прямой POST мимо клиента иначе обходит правило.
+//
+// ЭТИ ЖЕ ЧИСЛА ЛИТЕРАЛАМИ ЛЕЖАТ В МИГРАЦИИ
+// internal/store/postgres/migrations/0130_reactions_user_limit.sql (`CASE WHEN
+// u.is_premium THEN 3 ELSE 1 END`). Свести в одно место нельзя: миграция —
+// статический SQL, goose применяет её без участия кода. Когда лимит переедет в
+// конфигурацию (help.getAppConfig), константы отсюда исчезнут, а числа в 0130
+// останутся описанием уже применённой однажды чистки и меняться не должны; в
+// миграции стоит встречная пометка.
+const (
+	reactionsUserMaxDefault = 1
+	reactionsUserMaxPremium = 3
+)
+
 // React adds or removes a user's reaction to a message in a chat, then appends a
 // reaction update to every member and publishes it live. The chatID must match
 // the message's chat and the user must be a member.
@@ -54,6 +78,19 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 	ptsByUser := map[int64]int64{} // per-recipient pts на каждый live-кадр реакции
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if add {
+			// Лимит своих реакций: лишние СНИМАЮТСЯ, начиная со старейшей, и
+			// снимаются молча — тоста об упёршемся лимите нет и в оригинале
+			// (tweb appReactionsManager.ts:733-751).
+			//
+			// КРОМЕ «ИЗБРАННОГО»: реакция на сообщение самочата — это ТЕГ
+			// (признак тот же, что у оригинала, `peerId === myId`: tweb
+			// contextMenu.ts:1660, reactions.ts:149-156), а теги под лимит не
+			// попадают — см. isSavedTag ниже.
+			if !i.isSavedTag(ctx, chatID) {
+				if e := i.evictExcessReactions(ctx, messageID, userID, emoji); e != nil {
+					return e
+				}
+			}
 			if e := i.reactions.Add(ctx, messageID, userID, emoji); e != nil {
 				return e
 			}
@@ -114,6 +151,78 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 		for _, uid := range members {
 			body := reactionsPayload(reactionAddr.forViewer(uid), msg.Seq, *aggregate)
 			_ = i.publisher.PublishToUser(ctx, uid, framePts("reaction", body, ptsByUser[uid]))
+		}
+	}
+	return nil
+}
+
+// isSavedTag — реакции ЭТОГО чата являются ТЕГАМИ «Избранного», а не реакциями.
+// Признак ровно тот же, что у оригинала («сообщение в самочате»: tweb
+// `message.peerId === rootScope.myId`, contextMenu.ts:1660 и
+// reactions.ts:149-156). У нас самочат — чат типа `saved` с единственным
+// участником, и этот участник автор всех реакций в нём, поэтому по типу чата
+// строки тегов отделяются от строк реакций однозначно (таблица одна:
+// adapter/repo/postgres/savedtagsrepo.go читает теги из `reactions`).
+//
+// ПОЧЕМУ ТЕГИ ВЫВЕДЕНЫ ИЗ-ПОД ЛИМИТА. В оригинале лимит и теги связаны
+// подпиской: тег ставит ТОЛЬКО премиум — не-подписчику вместо постановки
+// показывают предложение премиума (tweb contextMenu.ts:1681-1684), — и
+// состояния «не-подписчик с одним тегом на заметке» там не существует. Мы
+// портировали половину связки (лимит) и не портировали вторую (премиум-гейт на
+// теги); применив лимит к тегам, мы получили бы поведение, которого нет ни у
+// кого в оригинале: каждый новый тег молча стирает предыдущий. Долг на вторую
+// половину — backend/backlogs/saved-tags-under-reactions-limit.md.
+func (i *Interactor) isSavedTag(ctx context.Context, chatID int64) bool {
+	return i.chatKind(ctx, chatID) == domain.ChatTypeSaved
+}
+
+// evictExcessReactions приводит набор СВОИХ реакций пользователя на сообщении к
+// лимиту ПЕРЕД постановкой `emoji`: снимает самые старые, освобождая место под
+// новую. Порт вытеснения из оригинала — tweb
+// src/lib/appManagers/appReactionsManager.ts:733-751, ключевая строка :738
+// (`unsetReactions.push(...chosenReactions.splice(limit - +(chosenReactionIdx === -1)))`):
+// снимаются САМЫЕ СТАРЫЕ и молча, без ошибки вызывающему.
+//
+// Ставящаяся реакция из кандидатов на вытеснение исключается: повторный POST по
+// уже поставленной реакции набор не увеличивает (Add идемпотентен), и снимать
+// её, чтобы тут же вернуть, значило бы переставить её в конец очереди.
+//
+// Констрейнтом БД это не выражается: лимит зависит от users.is_premium, то есть
+// от строки ДРУГОЙ таблицы, — правило держит юзкейс, а миграция
+// 0130_reactions_user_limit приводит к нему уже накопленные данные.
+func (i *Interactor) evictExcessReactions(ctx context.Context, messageID, userID int64, emoji string) error {
+	// Пара «сообщение + пользователь» БЕРЁТСЯ ПОД ЗАМОК до чтения набора.
+	// Правило здесь read-modify-write, а транзакция идёт на READ COMMITTED: два
+	// одновременных клика одного пользователя по разным чипам прочитали бы
+	// каждый «своих ноль» и оба вставили — у аккаунта осталось бы две реакции
+	// при лимите одна. Строчной блокировки для этого мало: при пустом наборе
+	// блокировать нечего (`SELECT ... FOR SHARE` не видит ещё не вставленных
+	// строк), поэтому замок берётся на КЛЮЧ пары, а не на строки.
+	if err := i.reactions.LockUserReactions(ctx, messageID, userID); err != nil {
+		return err
+	}
+	mine, err := i.reactions.UserReactions(ctx, messageID, userID) // старейшие первыми
+	if err != nil {
+		return err
+	}
+	others := slices.DeleteFunc(mine, func(e string) bool { return e == emoji })
+	// Премиум-репозиторий необязателен (SetPremiumRepo): без него у всех
+	// базовый лимит — это же значение у Telegram и стоит для не-подписчика.
+	limit := reactionsUserMaxDefault
+	if i.premium != nil {
+		prem, e := i.premium.IsPremium(ctx, userID)
+		if e != nil {
+			return e
+		}
+		if prem {
+			limit = reactionsUserMaxPremium
+		}
+	}
+	// После Add своих реакций станет len(others)+1, значит чужих места —
+	// не больше limit-1.
+	for k := 0; k < len(others)-(limit-1); k++ {
+		if e := i.reactions.Remove(ctx, messageID, userID, others[k]); e != nil {
+			return e
 		}
 	}
 	return nil

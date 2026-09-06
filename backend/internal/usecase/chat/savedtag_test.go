@@ -24,7 +24,7 @@ func (r *fakeSavedTags) ListWithCounts(_ context.Context, userID, savedChatID in
 		if m.Deleted {
 			continue
 		}
-		for e := range r.s.reactions[m.ID][userID] {
+		for _, e := range r.s.reactions[m.ID][userID] {
 			counts[e]++
 		}
 	}
