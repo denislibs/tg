@@ -532,6 +532,27 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	return msg, nil
 }
 
+// MessageByClientMsgID — сообщение по КЛЮЧУ ИДЕМПОТЕНТНОСТИ ОТПРАВКИ (чат +
+// автор + client_msg_id): ровно по нему Send отсекает повторную отправку. Метод
+// отвечает на вопрос «это уже отправлено?» ДО вызова Send — тому, кто платит за
+// саму подготовку отправки (заливка медиа, создание опроса) и не может
+// позволить себе узнать про дубль только внутри Send.
+// Спрашивают ОТ ИМЕНИ senderID (метод отдаёт только его собственные
+// сообщения), и он обязан состоять в чате — как у соседних сквозных чтений
+// (ListPins, MessageViewers): без этой проверки метод отвечал бы по паре
+// «чат + автор», к которой спрашивающий отношения не имеет.
+// domain.ErrNotFound — сообщения нет либо senderID в чате не состоит.
+func (i *Interactor) MessageByClientMsgID(ctx context.Context, chatID, senderID int64, clientMsgID string) (domain.Message, error) {
+	ok, err := i.chats.IsMember(ctx, chatID, senderID)
+	if err != nil {
+		return domain.Message{}, err
+	}
+	if !ok {
+		return domain.Message{}, domain.ErrNotFound
+	}
+	return i.msgs.FindByClientMsgID(ctx, chatID, senderID, clientMsgID)
+}
+
 // SendStoryShare posts a story into a chat as a regular media message with an
 // attribution caption (story-usecase's MessageSender port; tweb inputMediaStory,
 // lightweight variant without a dedicated message type). The story-usecase has
