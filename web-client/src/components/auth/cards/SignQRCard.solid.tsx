@@ -31,14 +31,30 @@
 // исключения), у него нет третьего/четвёртого конструктора под 2FA. Как
 // именно REST-бэкенд обошёлся бы с паролем на QR-входе — вопрос протокола
 // `POST/GET /auth/qr/*`, не этой карточки.
+//
+// ── Отказ виден, а не проглочен ─────────────────────────────────────────────
+// У tweb `iterate()` разбирает ошибку ПО ТИПУ (`SignQRCard.tsx:172-188`) и ни
+// одну не гасит молча: `SESSION_PASSWORD_NEEDED` (:174) уводит на карточку
+// пароля, `AUTH_TOKEN_EXPIRED` (:178) пишет `console.warn` и крутит цикл
+// дальше, ЛЮБАЯ прочая (`default:`, :181-184) — `console.error` плюс
+// `stopped = true`, то есть остановка опроса. Прежняя редакция этой карточки
+// держала на обоих вызовах ПУСТОЙ `catch {}`: падение (например, недоступный
+// `managers.auth` при поломке RPC-прокси) превращалось в вечный прелоадер без
+// единой строки в консоли — кнопка «нажимается и ничего не происходит».
+// Здесь — ветка `default:` оригинала дословно (след в консоли + остановка) и,
+// сверх неё, видимый отказ: `toastNew` (tweb `components/toast.ts`, ключ из
+// словаря). Двух других веток у нас нет предмета — см. абзац выше про 2FA и
+// `qrStatus`, где протухший токен приезжает ЗНАЧЕНИЕМ `expired`, а не броском.
 import { createSignal, onCleanup, onMount, Show, type JSX } from 'solid-js'
 import Button from '@components/buttonTsx.solid'
+import { toastNew } from '@components/toast'
 import { i18n } from '@lib/langPack'
 import { isWebAuthnSupported, getPasskeyAssertion } from '@core/webauthnBrowser'
 import AuthCard from '../AuthCard.solid'
 import MediaHeader from '../MediaHeader.solid'
 import Preloader from '../Preloader.solid'
 import QrCode from '../QrCode.solid'
+import { reportPasskeyLoginError } from '../passkeyLoginError'
 import { useAuthFlow, type CardSpec } from '../authFlow.solid'
 import styles from '../AuthFlow.module.scss'
 
@@ -58,10 +74,28 @@ export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
   // Пока QR не нарисован, в `._sticker` крутится прелоадер (tweb putPreloader).
   const [painted, setPainted] = createSignal(false)
   const [preloaderVisible, setPreloaderVisible] = createSignal(true)
+  // Опрос остановлен отказом (ветка `default:` tweb). Всплывашка живёт 3с и
+  // уходит — а состояние карточки остаётся неверным («сканируйте» при мёртвом
+  // опросе), поэтому подзаголовок переключается на текст отказа. Это ТОТ ЖЕ
+  // узел `MediaHeader.Subtitle`, что и в оригинале, только с другим ключом
+  // словаря: своей разметки/стилей под ошибку здесь не заводится.
+  const [failed, setFailed] = createSignal(false)
   let qrToken = ''
 
   onMount(() => {
     let alive = true
+
+    // Ветка `default:` разбора ошибки у tweb (`SignQRCard.tsx:181-184`):
+    // `console.error` + `stopped = true`. Останавливаем оба таймера тем же
+    // `cleanup`, что и успешный вход, и показываем всплывашку — иначе на
+    // экране остался бы бесконечно крутящийся прелоадер без объяснения.
+    const fail = (what: string, err: unknown) => {
+      if (!alive) return
+      console.error(`SignQRCard: ${what} error:`, err)
+      cleanup()
+      setFailed(true)
+      toastNew({ langPackKey: 'Login.Error.Generic' })
+    }
 
     const regen = async () => {
       try {
@@ -71,8 +105,8 @@ export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
         // URL для сканера строим от реального origin — с бэка он не едет
         // (за nginx мог потерять порт из Host-заголовков прокси).
         setQrUrl(`${location.origin}/qr/${token}`)
-      } catch {
-        /* следующая ротация повторит попытку — прелоадер остаётся на месте */
+      } catch (err) {
+        fail('qrNew', err)
       }
     }
     const tick = async () => {
@@ -87,8 +121,11 @@ export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
         } else if (r.status === 'expired') {
           void regen() // крутим свежий код
         }
-      } catch {
-        /* транзиентная ошибка — продолжаем опрос */
+      } catch (err) {
+        // Протухший код сюда НЕ попадает — `qrStatus` отдаёт его значением
+        // `expired` (`core/managers/authManager.ts`, ветка 404). Значит здесь
+        // только настоящий отказ (сеть/воркер) — ветка `default:` оригинала.
+        fail('qrStatus', err)
       }
     }
     const cleanup = () => {
@@ -117,7 +154,10 @@ export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
       const assertion = await getPasskeyAssertion(options)
       await managers.auth.passkeyLoginFinish(session, assertion, 'web', 'browser')
       void toIm()
-    } catch {
+    } catch (err) {
+      // Разбор — общий на обе карточки, см. `../passkeyLoginError.ts`
+      // (tweb держит его в `components/passkeyLoginButton.tsx:68-80`).
+      reportPasskeyLoginError('SignQRCard', err)
       setPasskeyBusy(false)
     }
   }
@@ -145,7 +185,9 @@ export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
             </Show>
           </MediaHeader.Sticker>
           <MediaHeader.Title>{i18n('Login.QR.Title')}</MediaHeader.Title>
-          <MediaHeader.Subtitle secondary>{i18n('Login.QR.Subtitle')}</MediaHeader.Subtitle>
+          <MediaHeader.Subtitle secondary>
+            {i18n(failed() ? 'Login.Error.Generic' : 'Login.QR.Subtitle')}
+          </MediaHeader.Subtitle>
         </MediaHeader>
       }
     >

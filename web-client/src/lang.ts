@@ -625,6 +625,7 @@ const lang = {
   'Login.Next': 'Next',
   'Login.Passkey': 'Log in by passkey >',
   'Login.Passkey.Action': 'Log in with a Passkey',
+  'Login.Passkey.Error': 'Something went wrong',
   'Login.Password.Subtitle': 'Your account is protected with\nan additional password',
   'Login.Password.Title': 'Enter Your Password',
   'Login.PhoneLabel': 'Phone Number',

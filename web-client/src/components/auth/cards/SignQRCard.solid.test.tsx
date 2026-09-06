@@ -18,6 +18,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'solid-js/web'
+import { toastNew } from '@components/toast'
 import type { Managers } from '@/client/bootstrap'
 import { AuthFlowContext, type AuthFlowContextValue } from '../authFlow.solid'
 import SignQRCard from './SignQRCard.solid'
@@ -27,11 +28,16 @@ vi.mock('@core/webauthnBrowser', () => ({
   getPasskeyAssertion: vi.fn(),
 }))
 
+// Всплывашку мокаем, чтобы пин смотрел на КЛЮЧ СЛОВАРЯ, а не на текст в DOM:
+// «строка написана в коде вместо ключа» обязана краснеть здесь же.
+vi.mock('@components/toast', () => ({ toastNew: vi.fn() }))
+
 let dispose: (() => void) | undefined
 let host: HTMLDivElement | undefined
 
 beforeEach(() => {
   vi.useFakeTimers()
+  vi.mocked(toastNew).mockClear()
 })
 
 afterEach(() => {
@@ -42,13 +48,22 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-function mount(overrides: { qrNew?: ReturnType<typeof vi.fn>; qrStatus?: ReturnType<typeof vi.fn> } = {}) {
+function mount(
+  overrides: {
+    qrNew?: ReturnType<typeof vi.fn>
+    qrStatus?: ReturnType<typeof vi.fn>
+    passkeyLoginBegin?: ReturnType<typeof vi.fn>
+    passkeyLoginFinish?: ReturnType<typeof vi.fn>
+  } = {},
+) {
   const navigate = vi.fn()
   const toIm = vi.fn().mockResolvedValue(undefined)
   const managers = {
     auth: {
       qrNew: overrides.qrNew ?? vi.fn().mockResolvedValue('tok-1'),
       qrStatus: overrides.qrStatus ?? vi.fn().mockResolvedValue({ status: 'pending' }),
+      passkeyLoginBegin: overrides.passkeyLoginBegin ?? vi.fn(),
+      passkeyLoginFinish: overrides.passkeyLoginFinish ?? vi.fn(),
     },
   } as unknown as Managers
 
@@ -171,6 +186,100 @@ describe('SignQRCard.solid: таймеры снимаются вместе с к
     await Promise.resolve()
 
     expect(toIm).not.toHaveBeenCalled()
+  })
+})
+
+describe('SignQRCard.solid: отказ ДОХОДИТ до пользователя, а не гасится', () => {
+  // Дыра, ради которой пины заведены: у обоих вызовов стоял ПУСТОЙ `catch {}`.
+  // Сломанный `managers.auth` (баг прокси, PR #237) давал вечный прелоадер и
+  // ПУСТУЮ консоль — «кнопка нажимается, ничего не происходит». Оригинал так
+  // не делает: `tweb/src/pages/cards/SignQRCard.tsx:181-184`, ветка
+  // `default:` — `console.error(...)` плюс `stopped = true`.
+  const SUBTITLE_OK = 'Scan with Telegram app on your phone' // lang.ts «Login.QR.Subtitle»
+  const SUBTITLE_FAIL = 'Something went wrong. Try again.' //  lang.ts «Login.Error.Generic»
+
+  it('qrNew упал: след в консоли, всплывашка по ключу словаря, подзаголовок — текст отказа, опрос остановлен', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    // Ровно та ошибка, которую глотал пустой перехват (recon: подменённый прокси).
+    const qrNew = vi.fn().mockRejectedValue(new TypeError('managers.auth.qrNew is not a function'))
+    const qrStatus = vi.fn().mockResolvedValue({ status: 'pending' })
+    mount({ qrNew, qrStatus })
+
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(consoleError).toHaveBeenCalled()
+    expect(vi.mocked(toastNew)).toHaveBeenCalledWith({ langPackKey: 'Login.Error.Generic' })
+    // Видимое состояние: подзаголовок карточки больше не зовёт сканировать.
+    expect(host!.textContent).toContain(SUBTITLE_FAIL)
+    expect(host!.textContent).not.toContain(SUBTITLE_OK)
+
+    // И цикл остановлен — как `stopped = true` у оригинала, а не «следующая
+    // ротация повторит попытку» (что и делал прежний пустой перехват).
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(qrNew).toHaveBeenCalledTimes(1)
+    expect(qrStatus).not.toHaveBeenCalled()
+
+    consoleError.mockRestore()
+  })
+
+  it('qrStatus упал: то же самое — консоль, всплывашка, текст отказа, опрос остановлен', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const qrNew = vi.fn().mockResolvedValue('tok-1')
+    const qrStatus = vi.fn().mockRejectedValue(new Error('network down'))
+    mount({ qrNew, qrStatus })
+
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(2_000)
+
+    expect(consoleError).toHaveBeenCalled()
+    expect(vi.mocked(toastNew)).toHaveBeenCalledWith({ langPackKey: 'Login.Error.Generic' })
+    expect(host!.textContent).toContain(SUBTITLE_FAIL)
+
+    const statusCalls = qrStatus.mock.calls.length
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(qrStatus.mock.calls.length).toBe(statusCalls)
+    expect(qrNew).toHaveBeenCalledTimes(1)
+
+    consoleError.mockRestore()
+  })
+
+  it('исправный путь молчит: ни консоли, ни всплывашки, подзаголовок обычный', async () => {
+    // Контрпин: без него «всегда показывать отказ» тоже было бы зелёным.
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mount()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(2_000)
+
+    expect(consoleError).not.toHaveBeenCalled()
+    expect(vi.mocked(toastNew)).not.toHaveBeenCalled()
+    expect(host!.textContent).toContain(SUBTITLE_OK)
+
+    consoleError.mockRestore()
+  })
+
+  it('вход по ключу доступа упал: консоль + всплывашка Login.Passkey.Error, кнопка снова активна', async () => {
+    const webauthn = await import('@core/webauthnBrowser')
+    vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(true)
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    // discoverable-логин без единого ключа на устройстве — ровно случай стенда
+    // (recon §3.4: в БД 0 passkeys), браузер бросает NotAllowedError.
+    const passkeyLoginBegin = vi.fn().mockRejectedValue(new Error('NotAllowedError'))
+    const { toIm } = mount({ passkeyLoginBegin })
+
+    const buttons = [...host!.querySelectorAll('button')]
+    const passkeyBtn = buttons[buttons.length - 1]
+    passkeyBtn.click()
+
+    await vi.waitFor(() => expect(vi.mocked(toastNew)).toHaveBeenCalled())
+    expect(vi.mocked(toastNew)).toHaveBeenCalledWith({ langPackKey: 'Login.Passkey.Error' })
+    expect(consoleError).toHaveBeenCalled()
+    expect(toIm).not.toHaveBeenCalled()
+    // Кнопку отпустило — повторить попытку можно (tweb: `setSubmitting(false)`).
+    await vi.waitFor(() => expect(passkeyBtn.disabled).toBe(false))
+
+    consoleError.mockRestore()
+    vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(false)
   })
 })
 

@@ -28,8 +28,9 @@
  * (см. комментарий у вызова в `SignInCard.solid.tsx`), поэтому предмет пина
  * не изменился — изменилась только точка входа (карточка, а не хост).
  */
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'solid-js/web'
+import { toastNew } from '@components/toast'
 import type { Managers } from '@/client/bootstrap'
 import { AuthFlowContext, type AuthFlowContextValue } from '../authFlow.solid'
 import SignInCard from './SignInCard.solid'
@@ -39,8 +40,15 @@ vi.mock('@core/webauthnBrowser', () => ({
   getPasskeyAssertion: vi.fn().mockResolvedValue({ assertion: true }),
 }))
 
+// Как и в пинах QR-карточки: смотрим на КЛЮЧ СЛОВАРЯ, а не на текст в DOM.
+vi.mock('@components/toast', () => ({ toastNew: vi.fn() }))
+
 let dispose: (() => void) | undefined
 let host: HTMLDivElement | undefined
+
+beforeEach(() => {
+  vi.mocked(toastNew).mockClear()
+})
 
 afterEach(() => {
   dispose?.()
@@ -153,7 +161,13 @@ describe('SignInCard.solid: ввод номера → отправка кода 
     expect(navigate).toHaveBeenCalledWith({ name: 'authCode', payload: { phone: '+7' } })
   })
 
-  it('ошибка сервера — поле уходит в error, перехода нет', async () => {
+  it('ошибка сервера — поле уходит в error, перехода нет, след в консоли остаётся', async () => {
+    // Красное поле — УТВЕРЖДЕНИЕ «номер неверный», а под ним может лежать что
+    // угодно (сеть, воркер, сломанный RPC). У tweb ветка `default:` пишет
+    // `console.error('auth.sendCode error:', err)` и печатает `err.type` на
+    // кнопке (`SignInCard.tsx:151-153`) — чужую ошибку за ошибку ввода
+    // оригинал не выдаёт; у нас различать нечем, но след обязан быть.
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { navigate, managers } = mount()
     ;(managers.auth.requestCode as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('nope'))
     const button = host!.querySelector('button.btn-primary.btn-color-primary') as HTMLButtonElement
@@ -162,6 +176,9 @@ describe('SignInCard.solid: ввод номера → отправка кода 
     const tel = () => host!.querySelectorAll('[contenteditable]')[1] as HTMLElement
     await vi.waitFor(() => expect(tel().className).toMatch(/error/))
     expect(navigate).not.toHaveBeenCalled()
+    expect(consoleError).toHaveBeenCalled()
+
+    consoleError.mockRestore()
   })
 })
 
@@ -181,6 +198,41 @@ describe('SignInCard.solid: вход по ключу доступа', () => {
     expect(passkeyLoginBegin).toHaveBeenCalled()
     expect(passkeyLoginFinish).toHaveBeenCalledWith('s1', { assertion: true }, 'web', 'browser')
     await vi.waitFor(() => expect(toIm).toHaveBeenCalled())
+  })
+
+  // Дыра, ради которой пин заведён: `catch {}` здесь был ПУСТОЙ — с
+  // комментарием «tweb показывает тост», но БЕЗ тоста. Отказ (в т.ч.
+  // «ключей на устройстве нет») исчезал бесследно.
+  it('отказ не гасится: консоль + всплывашка Login.Passkey.Error, входа нет, кнопка активна', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const passkeyLoginBegin = vi.fn().mockRejectedValue(new Error('NotAllowedError'))
+    const { toIm } = mount({ passkeyLoginBegin })
+
+    const passkeyBtn = [...host!.querySelectorAll('button')]
+      .find((b) => b.textContent?.includes('Passkey')) as HTMLButtonElement
+    passkeyBtn.click()
+
+    await vi.waitFor(() => expect(vi.mocked(toastNew)).toHaveBeenCalled())
+    expect(vi.mocked(toastNew)).toHaveBeenCalledWith({ langPackKey: 'Login.Passkey.Error' })
+    expect(consoleError).toHaveBeenCalled()
+    expect(toIm).not.toHaveBeenCalled()
+    await vi.waitFor(() => expect(passkeyBtn.disabled).toBe(false))
+
+    consoleError.mockRestore()
+  })
+
+  it('успешный вход всплывашку НЕ показывает', async () => {
+    // Контрпин: «показывать отказ всегда» тоже было бы зелёным без него.
+    const passkeyLoginBegin = vi.fn().mockResolvedValue({ session: 's1', options: { publicKey: {} } })
+    const passkeyLoginFinish = vi.fn().mockResolvedValue(undefined)
+    const { toIm } = mount({ passkeyLoginBegin, passkeyLoginFinish })
+
+    const passkeyBtn = [...host!.querySelectorAll('button')]
+      .find((b) => b.textContent?.includes('Passkey')) as HTMLButtonElement
+    passkeyBtn.click()
+
+    await vi.waitFor(() => expect(toIm).toHaveBeenCalled())
+    expect(vi.mocked(toastNew)).not.toHaveBeenCalled()
   })
 })
 

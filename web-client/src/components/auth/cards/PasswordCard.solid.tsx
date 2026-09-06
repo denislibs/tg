@@ -99,6 +99,9 @@ export default function PasswordCard(props: { spec: Spec }): JSX.Element {
       titleLangKey: 'Login.ResetAccountFail.Title',
       descriptionLangKey: message,
       button: { langKey: 'OK' },
+      // Плашка ОДНОКНОПОЧНАЯ: реджект здесь означает лишь «закрыли Esc/Back/
+      // мимо», то есть тот же исход, что и «ОК». Гасить его правильно —
+      // ошибки в этом промисе нет (у tweb это `onClose` попапа, а не отказ).
     }).catch(() => {})
   }
 
@@ -159,7 +162,7 @@ export default function PasswordCard(props: { spec: Spec }): JSX.Element {
           button: { langKey: 'Login.ResetPassword.ResetAccount', isDanger: true },
         })
       } catch {
-        return
+        return // то же, что веткой выше: отказ второй плашки — это ОТМЕНА, а не ошибка
       }
       void resetAccount()
       return
