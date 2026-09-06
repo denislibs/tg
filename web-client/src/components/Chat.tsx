@@ -47,7 +47,6 @@ import { useMessageActions } from '../core/hooks/useMessageActions'
 import { useChannelLive } from '../core/hooks/useChannelLive'
 import Composer from './Composer'
 import VanillaFeed, { type ChatFeedApi } from './chat/VanillaFeed'
-import { openStickerSetModal } from './stickers/StickerSetModal'
 import type { InputStickerSetID } from '@core/media/messageMedia'
 import { useChatAutoDownload } from '@core/hooks/useChatAutoDownload'
 import { messageToViewerItem, type LightboxCtx } from './mediaViewer/collectLightboxItems'
@@ -1027,8 +1026,16 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // (`showStickersPopup(doc.stickerSetInput, undefined, this.chat.input)`):
   // третий аргумент оригинала — композер, которым попап отправляет выбранный
   // стикер, поэтому владелец вызова здесь, а не в ленте.
+  // Чанк попапа грузим по клику, а не статическим импортом: попап тяжёлый
+  // (сетка набора + StickerViewer) и до этого клика не нужен ни разу. Приём тот
+  // же, что у EmojiDropdown в `Composer.tsx:63` и `UserInfoPanel` выше, но точка
+  // входа императивная (не JSX), поэтому `import()` в обработчике — как у
+  // `CodeBlock.tsx:68` (prism) и `QrModal.tsx:310`, а не `lazy()` + Suspense.
+  // Права отправки снимаются СИНХРОННО, на клике: пока грузится чанк, чат мог
+  // смениться, и попап открылся бы с правами уже другого чата.
   const onFeedShowStickerSet = useEvent((input: InputStickerSetID) => {
-    openStickerSetModal({ id: input.id }, canSendStickers ? onComposerPickSticker : undefined)
+    const onPick = canSendStickers ? onComposerPickSticker : undefined
+    void import('./stickers/StickerSetModal').then((m) => { m.openStickerSetModal({ id: input.id }, onPick) })
   })
   // GIF из вкладки пикера — те же ограничения, что у стикеров (не канал, не секретный).
   const onComposerPickGif = useEvent((g: GifItem) => { sendGif(g); slowmodeMarkSent() })
