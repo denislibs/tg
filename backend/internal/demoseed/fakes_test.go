@@ -11,8 +11,10 @@ import (
 
 // fakeChat — интерактор чата в памяти. Повторяет не подпись методов, а их
 // ИНВАРИАНТЫ: комментарий без привязанного обсуждения не проходит, тред
-// комментария садится на зеркало поста, зеркало рождается вместе с постом.
-// Иначе сид «проходил» бы тест, ошибаясь ровно там, где ошибиться и можно.
+// комментария садится на зеркало поста, зеркало рождается вместе с постом,
+// отправка отсекает дубль по client_msg_id, а приглашение и закрепление кладут
+// в ленту служебную пилюлю на КАЖДЫЙ вызов. Иначе сид «проходил» бы тест,
+// ошибаясь ровно там, где ошибиться и можно.
 type fakeChat struct {
 	chats      map[int64]*fakeChatRec
 	byUsername map[string]int64
@@ -23,8 +25,12 @@ type fakeChat struct {
 	// mirrors — пост канала → его зеркало в группе обсуждения (корень треда).
 	mirrors map[int64]int64
 	pins    map[int64]int64
-	// reactions — сообщение → сколько реакций поставлено.
-	reactions  map[int64]int
+	// reactions — сообщение → эмодзи+автор поставленных реакций.
+	reactions map[int64]map[string]bool
+	// reactCalls — сколько раз вообще звали React: повторный вызов с той же
+	// реакцией бампит счётчик непрочитанных реакций автора, то есть no-op'ом
+	// не является.
+	reactCalls int
 	nextChatID int64
 	nextMsgID  int64
 	nextPollID int64
@@ -44,9 +50,12 @@ type fakeMsg struct {
 	chatID     int64
 	senderID   int64
 	text       string
+	cmid       string
 	threadRoot int64
 	// mirrorOf — id поста канала, зеркалом которого является это сообщение.
 	mirrorOf int64
+	// service — служебная пилюля (добавление участника, закрепление).
+	service bool
 }
 
 func newFakeChat() *fakeChat {
@@ -57,7 +66,7 @@ func newFakeChat() *fakeChat {
 		discussion: map[int64]int64{},
 		mirrors:    map[int64]int64{},
 		pins:       map[int64]int64{},
-		reactions:  map[int64]int{},
+		reactions:  map[int64]map[string]bool{},
 	}
 }
 
@@ -85,9 +94,12 @@ func (f *fakeChat) createChat(typ, title, about, username string, creator int64)
 	return id, nil
 }
 
-func (f *fakeChat) insert(chatID, senderID int64, text string, threadRoot, mirrorOf int64) domain.Message {
+func (f *fakeChat) insert(chatID, senderID int64, text, cmid string, threadRoot, mirrorOf int64) domain.Message {
 	f.nextMsgID++
-	m := &fakeMsg{id: f.nextMsgID, chatID: chatID, senderID: senderID, text: text, threadRoot: threadRoot, mirrorOf: mirrorOf}
+	m := &fakeMsg{
+		id: f.nextMsgID, chatID: chatID, senderID: senderID, text: text, cmid: cmid,
+		threadRoot: threadRoot, mirrorOf: mirrorOf,
+	}
 	f.msgs[m.id] = m
 	f.msgOrder = append(f.msgOrder, m.id)
 	out := domain.Message{ID: m.id, ChatID: chatID, Seq: m.id, SenderID: senderID, Text: text}
@@ -96,6 +108,13 @@ func (f *fakeChat) insert(chatID, senderID int64, text string, threadRoot, mirro
 		out.ThreadRootID = &root
 	}
 	return out
+}
+
+// service кладёт в ленту служебную пилюлю — то, что оставляет за собой
+// AddMember и SetPin при каждом вызове.
+func (f *fakeChat) service(chatID, senderID int64) {
+	m := f.insert(chatID, senderID, "", "", 0, 0)
+	f.msgs[m.ID].service = true
 }
 
 // mirror повторяет mirrorChannelPost: зеркало поста появляется в группе
@@ -109,7 +128,7 @@ func (f *fakeChat) mirror(post domain.Message) {
 	if disc == 0 || f.mirrors[post.ID] != 0 {
 		return
 	}
-	m := f.insert(disc, post.SenderID, post.Text, 0, post.ID)
+	m := f.insert(disc, post.SenderID, post.Text, "", 0, post.ID)
 	f.mirrors[post.ID] = m.ID
 }
 
@@ -127,6 +146,59 @@ func (f *fakeChat) ListDialogs(_ context.Context, userID int64) ([]domain.Dialog
 		out = append(out, domain.DialogRecord{ChatID: id, Type: c.typ, Title: c.title, Username: c.username})
 	}
 	return out, nil
+}
+
+func (f *fakeChat) ChatCard(_ context.Context, chatID, _ int64) (domain.ChatRecord, error) {
+	c := f.chats[chatID]
+	if c == nil {
+		return domain.ChatRecord{}, domain.ErrNotFound
+	}
+	return domain.ChatRecord{
+		ID: c.id, Type: c.typ, Title: c.title, Username: c.username,
+		CreatorID: c.creator, DiscussionChatID: f.discussion[chatID],
+	}, nil
+}
+
+// MessageByClientMsgID — тот же ключ, которым отсекает дубль Send.
+func (f *fakeChat) MessageByClientMsgID(_ context.Context, chatID, senderID int64, clientMsgID string) (domain.Message, error) {
+	if m := f.byClientMsgID(chatID, senderID, clientMsgID); m != nil {
+		return f.wire(m), nil
+	}
+	return domain.Message{}, domain.ErrNotFound
+}
+
+func (f *fakeChat) ListPins(_ context.Context, chatID, userID int64) ([]domain.Message, error) {
+	c := f.chats[chatID]
+	if c == nil || !c.members[userID] {
+		return nil, errFake
+	}
+	pinned := f.pins[chatID]
+	if pinned == 0 {
+		return nil, nil
+	}
+	return []domain.Message{f.wire(f.msgs[pinned])}, nil
+}
+
+func (f *fakeChat) byClientMsgID(chatID, senderID int64, cmid string) *fakeMsg {
+	if cmid == "" {
+		return nil
+	}
+	for _, id := range f.msgOrder {
+		m := f.msgs[id]
+		if m.chatID == chatID && m.senderID == senderID && m.cmid == cmid {
+			return m
+		}
+	}
+	return nil
+}
+
+func (f *fakeChat) wire(m *fakeMsg) domain.Message {
+	out := domain.Message{ID: m.id, ChatID: m.chatID, Seq: m.id, SenderID: m.senderID, Text: m.text}
+	if m.threadRoot != 0 {
+		root := m.threadRoot
+		out.ThreadRootID = &root
+	}
+	return out
 }
 
 func (f *fakeChat) CreateChannel(_ context.Context, creatorID int64, title, about, username string, _ bool) (int64, error) {
@@ -153,12 +225,15 @@ func (f *fakeChat) JoinPublic(_ context.Context, username string, userID int64) 
 	return nil
 }
 
+// AddMember кладёт служебную пилюлю на каждый вызов — даже если участник в чате
+// уже был (postGroupService зовётся безусловно).
 func (f *fakeChat) AddMember(_ context.Context, chatID, actorID, userID int64) error {
 	c := f.chats[chatID]
 	if c == nil || !c.members[actorID] {
 		return errFake
 	}
 	c.members[userID] = true
+	f.service(chatID, actorID)
 	return nil
 }
 
@@ -184,14 +259,15 @@ func (f *fakeChat) LinkDiscussion(_ context.Context, channelID, groupID, actorID
 	return groupID, nil
 }
 
-func (f *fakeChat) PostToChannel(_ context.Context, channelID, actorID int64, text string, _ domain.MessageEntities, _ string) (domain.Message, error) {
+func (f *fakeChat) PostToChannel(ctx context.Context, channelID, actorID int64, text string, ents domain.MessageEntities, clientMsgID string) (domain.Message, error) {
 	c := f.chats[channelID]
 	if c == nil || c.typ != domain.ChatTypeChannel || c.creator != actorID {
 		return domain.Message{}, errFake
 	}
-	m := f.insert(channelID, actorID, text, 0, 0)
-	f.mirror(m)
-	return m, nil
+	// У интерактора это та же Send: пост канала — ветка обычной отправки.
+	return f.Send(ctx, usecasechat.SendInput{
+		ChatID: channelID, SenderID: actorID, Text: text, Entities: ents, ClientMsgID: clientMsgID,
+	})
 }
 
 func (f *fakeChat) Send(_ context.Context, in usecasechat.SendInput) (domain.Message, error) {
@@ -199,17 +275,22 @@ func (f *fakeChat) Send(_ context.Context, in usecasechat.SendInput) (domain.Mes
 	if c == nil || !c.members[in.SenderID] {
 		return domain.Message{}, errFake
 	}
+	if m := f.byClientMsgID(in.ChatID, in.SenderID, in.ClientMsgID); m != nil {
+		return f.wire(m), nil
+	}
 	var root int64
 	if in.ThreadRootID != nil {
 		root = *in.ThreadRootID
 	}
-	m := f.insert(in.ChatID, in.SenderID, in.Text, root, 0)
+	m := f.insert(in.ChatID, in.SenderID, in.Text, in.ClientMsgID, root, 0)
 	f.mirror(m)
 	return m, nil
 }
 
 // PostComment повторяет путь комментария: без обсуждения — отказ, тред садится
-// на зеркало поста, автор доподписывается на группу обсуждения.
+// на зеркало поста, автор доподписывается на группу обсуждения. Зеркала может
+// не быть вовсе (пост опубликован до привязки обсуждения) — тогда его дозаводит
+// сам комментарий, как lazyMirrorPost.
 func (f *fakeChat) PostComment(ctx context.Context, channelID, postID, userID int64, text, clientMsgID string) (domain.Message, error) {
 	disc := f.discussion[channelID]
 	if disc == 0 {
@@ -221,7 +302,7 @@ func (f *fakeChat) PostComment(ctx context.Context, channelID, postID, userID in
 	}
 	root := f.mirrors[postID]
 	if root == 0 {
-		m := f.insert(disc, post.senderID, post.text, 0, postID)
+		m := f.insert(disc, post.senderID, post.text, "", 0, postID)
 		f.mirrors[postID] = m.ID
 		root = m.ID
 	}
@@ -232,22 +313,30 @@ func (f *fakeChat) PostComment(ctx context.Context, channelID, postID, userID in
 	})
 }
 
-func (f *fakeChat) SendPoll(_ context.Context, in usecasechat.SendPollInput) (domain.Message, error) {
+func (f *fakeChat) SendPoll(ctx context.Context, in usecasechat.SendPollInput) (domain.Message, error) {
 	c := f.chats[in.ChatID]
 	if c == nil || !c.members[in.SenderID] {
 		return domain.Message{}, errFake
 	}
-	m := f.insert(in.ChatID, in.SenderID, in.Question, 0, 0)
+	msg, err := f.Send(ctx, usecasechat.SendInput{
+		ChatID: in.ChatID, SenderID: in.SenderID, Type: "poll",
+		Text: in.Question, ClientMsgID: in.ClientMsgID,
+	})
+	if err != nil {
+		return domain.Message{}, err
+	}
 	f.nextPollID++
 	pollID := f.nextPollID
-	m.PollID = &pollID
-	return m, nil
+	msg.PollID = &pollID
+	return msg, nil
 }
 
 func (f *fakeChat) VotePoll(_ context.Context, _, _ int64, _ []int) (domain.PollInfo, error) {
 	return domain.PollInfo{}, nil
 }
 
+// SetPin кладёт служебную пилюлю на каждое ЗАКРЕПЛЕНИЕ (messageActionPinMessage),
+// открепление проходит молча — как у интерактора.
 func (f *fakeChat) SetPin(_ context.Context, chatID, msgID, userID int64, pin bool) error {
 	c := f.chats[chatID]
 	if c == nil || !c.members[userID] {
@@ -255,19 +344,26 @@ func (f *fakeChat) SetPin(_ context.Context, chatID, msgID, userID int64, pin bo
 	}
 	if pin {
 		f.pins[chatID] = msgID
+		f.service(chatID, userID)
 	} else {
 		delete(f.pins, chatID)
 	}
 	return nil
 }
 
-func (f *fakeChat) React(_ context.Context, chatID, messageID, userID int64, _ string, add bool) error {
+func (f *fakeChat) React(_ context.Context, chatID, messageID, userID int64, emoji string, add bool) error {
 	c := f.chats[chatID]
 	if c == nil || !c.members[userID] || f.msgs[messageID] == nil {
 		return errFake
 	}
 	if add {
-		f.reactions[messageID]++
+		f.reactCalls++
+		set, ok := f.reactions[messageID]
+		if !ok {
+			set = map[string]bool{}
+			f.reactions[messageID] = set
+		}
+		set[emoji] = true
 	}
 	return nil
 }

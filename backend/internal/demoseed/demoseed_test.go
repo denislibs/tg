@@ -57,6 +57,57 @@ func channelWithDiscussion(t *testing.T) channelSpec {
 	return found[0]
 }
 
+// seedOldVersion прогоняет сид спекой БЕЗ обсуждений — ровно то состояние, в
+// котором стенд оставила версия сида, которая про обсуждения ещё не знала.
+func seedOldVersion(t *testing.T, f *fakeChat, users map[string]int64) {
+	t.Helper()
+	orig := channels
+	defer func() { channels = orig }()
+	old := make([]channelSpec, len(channels))
+	copy(old, channels)
+	for i := range old {
+		old[i].discussion = nil
+	}
+	channels = old
+	seed(context.Background(), f, nil, users)
+}
+
+// checkComments — комментарии спеки сели на свои посты, в порядке спеки, от
+// своих авторов и в группу обсуждения канала.
+func checkComments(t *testing.T, f *fakeChat, ch *fakeChatRec, spec channelSpec, users map[string]int64) {
+	t.Helper()
+	type want struct {
+		text   string
+		author int64
+	}
+	expected := map[int][]want{}
+	for _, cm := range spec.discussion.comments {
+		expected[cm.post] = append(expected[cm.post], want{cm.text, users[cm.author]})
+	}
+	for postIdx, wants := range expected {
+		text, _ := compose(spec.posts[postIdx].body)
+		post := f.postByText(ch.id, text)
+		if post == nil {
+			t.Fatalf("пост %d канала %q не найден", postIdx, spec.title)
+		}
+		got := f.commentsOn(post.id)
+		if len(got) != len(wants) {
+			t.Fatalf("пост %d: комментариев %d, ожидалось %d", postIdx, len(got), len(wants))
+		}
+		for i, w := range wants {
+			if got[i].text != w.text {
+				t.Fatalf("пост %d, комментарий %d: текст %q, ожидался %q", postIdx, i, got[i].text, w.text)
+			}
+			if got[i].senderID != w.author {
+				t.Fatalf("пост %d, комментарий %d: автор %d, ожидался %d", postIdx, i, got[i].senderID, w.author)
+			}
+			if got[i].chatID != f.discussion[ch.id] {
+				t.Fatalf("пост %d, комментарий %d лёг в чат %d, а не в группу обсуждения", postIdx, i, got[i].chatID)
+			}
+		}
+	}
+}
+
 func TestSeed_DiscussionLinkedToChannel(t *testing.T) {
 	f := newFakeChat()
 	seed(context.Background(), f, nil, demoUsers())
@@ -109,46 +160,14 @@ func TestSeed_CommentsAttachedToTheirPosts(t *testing.T) {
 	if ch == nil {
 		t.Fatalf("канал %q не создан", spec.title)
 	}
-
-	// Ожидаемое: индекс поста → комментарии (текст + автор) в порядке спеки.
-	type want struct {
-		text   string
-		author int64
-	}
-	expected := map[int][]want{}
-	for _, cm := range spec.discussion.comments {
-		expected[cm.post] = append(expected[cm.post], want{cm.text, users[cm.author]})
-	}
-
-	for postIdx, wants := range expected {
-		text, _ := compose(spec.posts[postIdx].body)
-		post := f.postByText(ch.id, text)
-		if post == nil {
-			t.Fatalf("пост %d канала %q не найден", postIdx, spec.title)
-		}
-		got := f.commentsOn(post.id)
-		if len(got) != len(wants) {
-			t.Fatalf("пост %d: комментариев %d, ожидалось %d", postIdx, len(got), len(wants))
-		}
-		for i, w := range wants {
-			if got[i].text != w.text {
-				t.Fatalf("пост %d, комментарий %d: текст %q, ожидался %q", postIdx, i, got[i].text, w.text)
-			}
-			if got[i].senderID != w.author {
-				t.Fatalf("пост %d, комментарий %d: автор %d, ожидался %d", postIdx, i, got[i].senderID, w.author)
-			}
-			if got[i].chatID != f.discussion[ch.id] {
-				t.Fatalf("пост %d, комментарий %d лёг в чат %d, а не в группу обсуждения", postIdx, i, got[i].chatID)
-			}
-		}
-	}
+	checkComments(t, f, ch, spec, users)
 
 	// Футер поста рисует стек последних комментаторов (RecentRepliersLimit = 3),
 	// поэтому хотя бы у одного поста комментаторов должно быть три разных —
 	// иначе стек на стенде не проверить.
 	maxAuthors := 0
-	for postIdx := range expected {
-		text, _ := compose(spec.posts[postIdx].body)
+	for _, cm := range spec.discussion.comments {
+		text, _ := compose(spec.posts[cm.post].body)
 		post := f.postByText(ch.id, text)
 		seen := map[int64]bool{}
 		for _, m := range f.commentsOn(post.id) {
@@ -163,17 +182,137 @@ func TestSeed_CommentsAttachedToTheirPosts(t *testing.T) {
 	}
 }
 
-// Сид идемпотентен по чату автора: повторный прогон не должен ни создавать
-// вторую группу обсуждения, ни дублировать комментарии.
+// Сид ДОЗАВОДИТ недостающее уже засеянному чату: канал, заведённый версией без
+// обсуждения (ровно так выглядит живой стенд), получает и привязку обсуждения,
+// и комментарии — гвард по названию канала отсекал бы его целиком.
+func TestSeed_BackfillsDiscussionIntoSeededChannel(t *testing.T) {
+	f := newFakeChat()
+	users := demoUsers()
+	spec := channelWithDiscussion(t)
+
+	seedOldVersion(t, f, users)
+
+	ch := f.chatByTitle(spec.title)
+	if ch == nil {
+		t.Fatalf("старый сид не завёл канал %q", spec.title)
+	}
+	if len(f.discussion) != 0 {
+		t.Fatalf("старый сид завёл обсуждений: %d, ожидалось 0", len(f.discussion))
+	}
+	chats, msgs, reacts := len(f.chats), len(f.msgOrder), f.reactCalls
+
+	seed(context.Background(), f, nil, users)
+
+	discID := f.discussion[ch.id]
+	if discID == 0 {
+		t.Fatalf("обсуждение не привязано к уже засеянному каналу %q", spec.title)
+	}
+	if got := f.chats[discID].title; got != spec.discussion.title {
+		t.Fatalf("привязана группа %q, ожидалась %q", got, spec.discussion.title)
+	}
+	if got := len(f.chats); got != chats+1 {
+		t.Fatalf("чатов %d, ожидалось %d (только новая группа обсуждения)", got, chats+1)
+	}
+	checkComments(t, f, ch, spec, users)
+
+	// Ничего, кроме комментариев и зеркал их постов, не добавилось: посты,
+	// подписки, закрепления и реакции у канала уже были.
+	commented := map[int]bool{}
+	for _, cm := range spec.discussion.comments {
+		commented[cm.post] = true
+	}
+	want := msgs + len(spec.discussion.comments) + len(commented)
+	if got := len(f.msgOrder); got != want {
+		t.Fatalf("сообщений %d, ожидалось %d (было %d + %d комментариев + %d зеркал)",
+			got, want, msgs, len(spec.discussion.comments), len(commented))
+	}
+	if f.reactCalls != reacts {
+		t.Fatalf("реакции переставлены заново: вызовов %d, было %d", f.reactCalls, reacts)
+	}
+
+	// Честная граница бэкфилла: зеркало поста (корень треда, он же условие
+	// футера комментариев) рождается на вставке поста и только при уже
+	// привязанном обсуждении. Посты канала опубликованы РАНЬШЕ привязки,
+	// поэтому зеркало дозаводит первый комментарий — и футер появляется только
+	// под прокомментированными постами, а не под всеми.
+	for idx := range spec.posts {
+		text, _ := compose(spec.posts[idx].body)
+		post := f.postByText(ch.id, text)
+		if post == nil {
+			t.Fatalf("пост %d канала %q не найден", idx, spec.title)
+		}
+		if got := f.mirrorOfPost(post.id) != 0; got != commented[idx] {
+			t.Fatalf("пост %d: зеркало есть=%v, ожидалось %v (прокомментирован=%v)",
+				idx, got, commented[idx], commented[idx])
+		}
+	}
+}
+
+// Пополнение спеки доезжает до уже засеянного стенда: новый комментарий
+// добавляется в тред, а не теряется вместе со всем каналом.
+func TestSeed_BackfillsNewSpecCommentIntoSeededChannel(t *testing.T) {
+	f := newFakeChat()
+	users := demoUsers()
+	ctx := context.Background()
+	seed(ctx, f, nil, users)
+
+	spec := channelWithDiscussion(t)
+	ch := f.chatByTitle(spec.title)
+	if ch == nil {
+		t.Fatalf("канал %q не создан", spec.title)
+	}
+	// Пост, к которому в спеке комментариев ещё нет.
+	const postIdx = 2
+	for _, cm := range spec.discussion.comments {
+		if cm.post == postIdx {
+			t.Fatalf("пост %d уже прокомментирован спекой — для пина нужен чистый", postIdx)
+		}
+	}
+	msgs := len(f.msgOrder)
+
+	const text = "Комментарий, которого в спеке раньше не было."
+	orig := channels
+	defer func() { channels = orig }()
+	grown := make([]channelSpec, len(channels))
+	copy(grown, channels)
+	for i := range grown {
+		if grown[i].discussion == nil {
+			continue
+		}
+		d := *grown[i].discussion
+		d.comments = append(append([]comment{}, d.comments...),
+			cm(postIdx, spec.discussion.comments[0].author, text))
+		grown[i].discussion = &d
+	}
+	channels = grown
+	seed(ctx, f, nil, users)
+
+	body, _ := compose(spec.posts[postIdx].body)
+	post := f.postByText(ch.id, body)
+	if post == nil {
+		t.Fatalf("пост %d канала %q не найден", postIdx, spec.title)
+	}
+	got := f.commentsOn(post.id)
+	if len(got) != 1 || got[0].text != text {
+		t.Fatalf("в треде поста %d %d комментариев, ожидался один новый", postIdx, len(got))
+	}
+	if want := msgs + 1; len(f.msgOrder) != want {
+		t.Fatalf("сообщений %d, ожидалось %d (только новый комментарий)", len(f.msgOrder), want)
+	}
+}
+
+// Сид идемпотентен по каждой единице содержимого: повторный прогон не должен ни
+// создавать вторую группу обсуждения, ни дублировать комментарии, посты,
+// служебные пилюли и реакции.
 func TestSeed_RerunCreatesNothing(t *testing.T) {
 	f := newFakeChat()
 	users := demoUsers()
 	ctx := context.Background()
 	seed(ctx, f, nil, users)
 
-	chats, msgs, links := len(f.chats), len(f.msgOrder), len(f.discussion)
-	if chats == 0 || msgs == 0 || links == 0 {
-		t.Fatalf("первый прогон пуст: чатов %d, сообщений %d, привязок %d", chats, msgs, links)
+	chats, msgs, links, reacts := len(f.chats), len(f.msgOrder), len(f.discussion), f.reactCalls
+	if chats == 0 || msgs == 0 || links == 0 || reacts == 0 {
+		t.Fatalf("первый прогон пуст: чатов %d, сообщений %d, привязок %d, реакций %d", chats, msgs, links, reacts)
 	}
 
 	seed(ctx, f, nil, users)
@@ -186,5 +325,36 @@ func TestSeed_RerunCreatesNothing(t *testing.T) {
 	}
 	if got := len(f.discussion); got != links {
 		t.Fatalf("после повторного прогона привязок обсуждения %d, было %d", got, links)
+	}
+	if f.reactCalls != reacts {
+		t.Fatalf("после повторного прогона вызовов React %d, было %d", f.reactCalls, reacts)
+	}
+}
+
+// То же самое поверх ДОЗАВЕДЁННОГО состояния: бэкфилл не должен превратиться в
+// источник дублей на следующем старте стенда.
+func TestSeed_RerunAfterBackfillCreatesNothing(t *testing.T) {
+	f := newFakeChat()
+	users := demoUsers()
+	ctx := context.Background()
+
+	seedOldVersion(t, f, users)
+	seed(ctx, f, nil, users)
+
+	chats, msgs, links, reacts := len(f.chats), len(f.msgOrder), len(f.discussion), f.reactCalls
+
+	seed(ctx, f, nil, users)
+
+	if got := len(f.chats); got != chats {
+		t.Fatalf("после прогона поверх бэкфилла чатов %d, было %d", got, chats)
+	}
+	if got := len(f.msgOrder); got != msgs {
+		t.Fatalf("после прогона поверх бэкфилла сообщений %d, было %d", got, msgs)
+	}
+	if got := len(f.discussion); got != links {
+		t.Fatalf("после прогона поверх бэкфилла привязок обсуждения %d, было %d", got, links)
+	}
+	if f.reactCalls != reacts {
+		t.Fatalf("после прогона поверх бэкфилла вызовов React %d, было %d", f.reactCalls, reacts)
 	}
 }
