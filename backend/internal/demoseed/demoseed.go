@@ -14,7 +14,11 @@
 // целиком, а каждая единица содержимого — своим настоящим ключом. Чат —
 // названием у автора, привязка обсуждения — полем chats.discussion_chat_id,
 // сообщение — ключом идемпотентности отправки (чат + автор + client_msg_id),
-// членство — строкой chat_members, закрепление — списком закреплённых.
+// членство — строкой chat_members, закрепление — списком закреплённых. Номер в
+// ключе сообщения ЗАПИСАН В САМОЙ СПЕКЕ (post.key, comment.key, reply.key,
+// groupSpec.key) — см. правило спеки в content.go; позиция элемента в срезе
+// ключом не является, иначе перестановка или вставка в середину переименовала
+// бы ключи всему хвосту и стенд получил бы вторую копию ленты.
 // Поэтому сид ДОЗАВОДИТ недостающее: чат, заведённый прошлой версией сида,
 // получает то, что спека добавила позже, а то, что уже есть, не дублируется.
 // Гвард «чат с таким названием у автора есть — пропускаем чат целиком» такого
@@ -26,6 +30,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"slices"
 
@@ -39,12 +44,15 @@ var reactionEmojis = []string{"👍", "❤️", "🔥", "😮", "👏", "🎉"}
 
 // Ключи идемпотентности отправки. Живут одним местом и НЕ МЕНЯЮТСЯ: по ним сид
 // узнаёт своё же сообщение на уже засеянном стенде, и переименование ключа
-// означало бы «этого сообщения нет» — то есть дубль всей ленты.
-func postKey(username string, idx int) string    { return fmt.Sprintf("seed-%s-%d", username, idx) }
-func commentKey(username string, idx int) string { return fmt.Sprintf("seed-%s-c%d", username, idx) }
+// означало бы «этого сообщения нет» — то есть дубль всей ленты. Номер в ключе
+// берётся ИЗ САМОЙ СПЕКИ (post.key, comment.key, reply.key, groupSpec.key), а
+// не из позиции элемента в срезе: иначе перестановка или вставка в середину
+// переименовывала бы ключи всему хвосту — см. правило спеки в content.go.
+func postKey(username string, key int) string    { return fmt.Sprintf("seed-%s-%d", username, key) }
+func commentKey(username string, key int) string { return fmt.Sprintf("seed-%s-c%d", username, key) }
 func channelPollKey(username string) string      { return fmt.Sprintf("seed-%s-poll", username) }
-func replyKey(gidx, idx int) string              { return fmt.Sprintf("seed-g%d-%d", gidx, idx) }
-func groupPollKey(gidx int) string               { return fmt.Sprintf("seed-g%d-poll", gidx) }
+func replyKey(gkey, key int) string              { return fmt.Sprintf("seed-g%d-%d", gkey, key) }
+func groupPollKey(gkey int) string               { return fmt.Sprintf("seed-g%d-poll", gkey) }
 func albumFrameKey(base string, i int) string    { return fmt.Sprintf("%s-a%d", base, i) }
 
 // chatAPI — та часть интерактора чата, которой пользуется сид. Сид держит
@@ -54,6 +62,8 @@ func albumFrameKey(base string, i int) string    { return fmt.Sprintf("%s-a%d", 
 type chatAPI interface {
 	ListDialogs(ctx context.Context, userID int64) ([]domain.DialogRecord, error)
 	ChatCard(ctx context.Context, chatID, viewerID int64) (domain.ChatRecord, error)
+	// MessageByClientMsgID отвечает ТОЛЬКО участнику чата — как ListPins и
+	// остальные сквозные чтения интерактора; сид зовёт её от автора сообщения.
 	MessageByClientMsgID(ctx context.Context, chatID, senderID int64, clientMsgID string) (domain.Message, error)
 	ListPins(ctx context.Context, chatID, userID int64) ([]domain.Message, error)
 	CreateChannel(ctx context.Context, creatorID int64, title, about, username string, isPublic bool) (int64, error)
@@ -70,9 +80,17 @@ type chatAPI interface {
 	React(ctx context.Context, chatID, messageID, userID int64, emoji string, add bool) error
 }
 
+// mediaAPI — та часть медиа-usecase, которой пользуется сид. Интерфейс, а не
+// *usecasemedia.Interactor, по той же причине, что и chatAPI: без него
+// альбомный путь сида (ключ идемпотентности кадра) тестом не исполняется вовсе.
+type mediaAPI interface {
+	CreateUpload(ctx context.Context, in usecasemedia.UploadInput) (domain.Media, string, error)
+	PutContent(ctx context.Context, id, ownerID int64, r io.Reader, size int64) error
+}
+
 type seeder struct {
 	uc    chatAPI
-	media *usecasemedia.Interactor
+	media mediaAPI
 	users map[string]int64
 	// names — юзернеймы в стабильном порядке: обход map недетерминирован, а
 	// состав подписчиков и реакций должен воспроизводиться от прогона к прогону.
@@ -91,15 +109,19 @@ type seeder struct {
 // postgres.SeedDemo; media может быть nil (MinIO недоступен) — тогда посты
 // уходят без картинок, а альбомы просто не отправляются.
 func Seed(ctx context.Context, uc *usecasechat.Interactor, media *usecasemedia.Interactor, users map[string]int64) {
-	// nil проверяется на КОНКРЕТНОМ типе: в интерфейсе chatAPI нулевой
-	// указатель перестал бы быть nil.
+	// nil проверяется на КОНКРЕТНОМ типе: в интерфейсе (chatAPI, mediaAPI)
+	// нулевой указатель перестал бы быть nil.
 	if uc == nil || len(users) == 0 {
 		return
 	}
-	seed(ctx, uc, media, users)
+	var m mediaAPI
+	if media != nil {
+		m = media
+	}
+	seed(ctx, uc, m, users)
 }
 
-func seed(ctx context.Context, uc chatAPI, media *usecasemedia.Interactor, users map[string]int64) {
+func seed(ctx context.Context, uc chatAPI, media mediaAPI, users map[string]int64) {
 	// groupedSeq стартует с крупного числа: ключ медиагруппы генерирует
 	// отправитель, и демо-альбомы не должны пересекаться с клиентскими.
 	s := &seeder{uc: uc, media: media, users: users, dialogs: map[int64]map[string]int64{}, groupedSeq: 1 << 40}
@@ -113,8 +135,8 @@ func seed(ctx context.Context, uc chatAPI, media *usecasemedia.Interactor, users
 		posts += s.channel(ctx, c)
 	}
 	msgs := 0
-	for i, g := range groups {
-		msgs += s.group(ctx, i, g)
+	for _, g := range groups {
+		msgs += s.group(ctx, g)
 	}
 	log.Printf("seed: демо-контент готов (добавлено %d постов в каналах, %d сообщений в группах)", posts, msgs)
 }
@@ -244,15 +266,15 @@ func (s *seeder) channel(ctx context.Context, c channelSpec) int {
 		subs = append(subs, uid)
 	}
 
-	// postIDs адресуется ИНДЕКСОМ ПОСТА в спеке: комментарии спеки ссылаются на
-	// посты по этому индексу, и сорвавшаяся отправка не имеет права сдвинуть
-	// адресацию.
-	postIDs := make([]int64, len(c.posts))
+	// postIDs адресуется КЛЮЧОМ ПОСТА: по нему же на пост ссылаются комментарии
+	// спеки и pinKey, и ни сорвавшаяся отправка, ни правка спеки не имеют права
+	// сдвинуть адресацию.
+	postIDs := make(map[int]int64, len(c.posts))
 	todo := make([]int, 0, len(c.posts))
 	needPhotos := false
 	for idx, p := range c.posts {
-		if m, ok := s.sent(ctx, chatID, creator, postKey(c.username, idx)); ok {
-			postIDs[idx] = m.ID
+		if m, ok := s.sent(ctx, chatID, creator, postKey(c.username, p.key)); ok {
+			postIDs[p.key] = m.ID
 			continue
 		}
 		todo = append(todo, idx)
@@ -268,7 +290,7 @@ func (s *seeder) channel(ctx context.Context, c channelSpec) int {
 	for _, idx := range todo {
 		p := c.posts[idx]
 		text, ents := compose(p.body)
-		cmid := postKey(c.username, idx)
+		cmid := postKey(c.username, p.key)
 		var msg domain.Message
 		var err error
 		if p.photo >= 0 && p.photo < len(pics) {
@@ -284,22 +306,22 @@ func (s *seeder) channel(ctx context.Context, c channelSpec) int {
 			msg, err = s.uc.PostToChannel(ctx, chatID, creator, text, ents, cmid)
 		}
 		if err != nil {
-			log.Printf("seed: пост %d канала %q не отправлен: %v", idx, c.title, err)
+			log.Printf("seed: пост %d канала %q не отправлен: %v", p.key, c.title, err)
 			continue
 		}
-		postIDs[idx] = msg.ID
+		postIDs[p.key] = msg.ID
 		added = append(added, msg.ID)
 	}
-	if c.pinIndex >= 0 && c.pinIndex < len(postIDs) {
-		s.pin(ctx, chatID, postIDs[c.pinIndex], creator, c.title)
-	}
+	s.pin(ctx, chatID, postIDs[c.pinKey], creator, c.title)
 	comments := s.comments(ctx, chatID, discID, c, postIDs)
 	if newChat {
 		// Опрос уезжает только в ТОЛЬКО ЧТО заведённый канал: у опросов,
 		// отправленных ранними версиями сида, ключа идемпотентности нет вовсе
 		// (ClientMsgID им тогда не проставляли), и на уже существующем чате
-		// «опроса нет» от «опрос уже стоит» не отличить. Ключ теперь
-		// проставляется — повторную отправку в тот же чат отсечёт сам Send.
+		// «опроса нет» от «опрос уже стоит» не отличить. Ослабить этот гвард
+		// нельзя и на будущее: SendPoll заводит строку опроса ДО отправки
+		// сообщения, поэтому дубль, отсечённый уже внутри Send, оставил бы за
+		// собой осиротевшую строку опроса.
 		s.sendPoll(ctx, chatID, creator, channelPollKey(c.username), c.poll, subs)
 	}
 	s.react(ctx, chatID, added, subs)
@@ -327,17 +349,16 @@ func (s *seeder) discussion(ctx context.Context, channelID, creator int64, c cha
 	} else if card.DiscussionChatID != 0 {
 		return card.DiscussionChatID
 	}
-	groupID := s.chatID(ctx, creator, c.discussion.title)
-	if groupID == 0 {
-		// Участников группе не раздаём: комментатора подписывает на обсуждение
-		// сам PostComment (auto-join), как и у живого клиента.
-		id, err := s.uc.CreateGroup(ctx, creator, c.discussion.title, c.discussion.about, "", false, nil)
-		if err != nil {
-			log.Printf("seed: группа обсуждения для %q не создана: %v", c.title, err)
-			return 0
-		}
-		groupID = id
-		s.mark(creator, c.discussion.title, groupID)
+	// Искать группу по названию тут нечем: привязанная группа обсуждения из
+	// списка диалогов ИСКЛЮЧЕНА (см. ListDialogs), так что поиск по названию
+	// всегда отвечал бы «такой группы нет». Единственный ключ привязки — поле
+	// выше; не нашлось — заводим группу.
+	// Участников группе не раздаём: комментатора подписывает на обсуждение сам
+	// PostComment (auto-join), как и у живого клиента.
+	groupID, err := s.uc.CreateGroup(ctx, creator, c.discussion.title, c.discussion.about, "", false, nil)
+	if err != nil {
+		log.Printf("seed: группа обсуждения для %q не создана: %v", c.title, err)
+		return 0
 	}
 	if _, err := s.uc.LinkDiscussion(ctx, channelID, groupID, creator); err != nil {
 		log.Printf("seed: обсуждение не привязано к %q: %v", c.title, err)
@@ -350,29 +371,32 @@ func (s *seeder) discussion(ctx context.Context, channelID, creator int64, c cha
 // PostComment: он сам резолвит зеркало поста в группе обсуждения, подписывает
 // автора на неё и тредит комментарий на зеркало — руками адресовать тред сид
 // не имеет права, иначе разъедется с живым клиентом.
-func (s *seeder) comments(ctx context.Context, channelID, discID int64, c channelSpec, postIDs []int64) int {
+func (s *seeder) comments(ctx context.Context, channelID, discID int64, c channelSpec, postIDs map[int]int64) int {
 	if c.discussion == nil || discID == 0 {
 		return 0
 	}
 	n := 0
-	for idx, cm := range c.discussion.comments {
-		if cm.post < 0 || cm.post >= len(postIDs) || postIDs[cm.post] == 0 {
-			log.Printf("seed: комментарий %d канала %q без поста", idx, c.title)
+	for _, cm := range c.discussion.comments {
+		postID := postIDs[cm.post]
+		if postID == 0 {
+			log.Printf("seed: комментарий %d канала %q без поста", cm.key, c.title)
 			continue
 		}
 		author := s.users[cm.author]
 		if author == 0 {
-			log.Printf("seed: комментарий %d канала %q пропущен — нет автора @%s", idx, c.title, cm.author)
+			log.Printf("seed: комментарий %d канала %q пропущен — нет автора @%s", cm.key, c.title, cm.author)
 			continue
 		}
 		// Комментарий физически лежит в ГРУППЕ ОБСУЖДЕНИЯ — там же его и ищем:
-		// ключ идемпотентности отправки считается по чату-получателю.
-		key := commentKey(c.username, idx)
+		// ключ идемпотентности отправки считается по чату-получателю. Гвард
+		// здесь — ЭКОНОМИЯ, а не корректность: дубль отсёк бы и сам Send внутри
+		// PostComment; сберегаются резолв зеркала и auto-join на каждом прогоне.
+		key := commentKey(c.username, cm.key)
 		if _, ok := s.sent(ctx, discID, author, key); ok {
 			continue
 		}
-		if _, err := s.uc.PostComment(ctx, channelID, postIDs[cm.post], author, cm.text, key); err != nil {
-			log.Printf("seed: комментарий %d канала %q не отправлен: %v", idx, c.title, err)
+		if _, err := s.uc.PostComment(ctx, channelID, postID, author, cm.text, key); err != nil {
+			log.Printf("seed: комментарий %d канала %q не отправлен: %v", cm.key, c.title, err)
 			continue
 		}
 		n++
@@ -382,7 +406,7 @@ func (s *seeder) comments(ctx context.Context, channelID, discID int64, c channe
 
 // ── Группы ──────────────────────────────────────────────────────────────────
 
-func (s *seeder) group(ctx context.Context, gidx int, g groupSpec) int {
+func (s *seeder) group(ctx context.Context, g groupSpec) int {
 	creator := s.users[g.creator]
 	if creator == 0 {
 		log.Printf("seed: группа %q пропущена — нет автора @%s", g.title, g.creator)
@@ -425,8 +449,10 @@ func (s *seeder) group(ctx context.Context, gidx int, g groupSpec) int {
 	// Опоздавших зовут в середине переписки — каждый такой вызов оставляет в
 	// ленте свою служебную пилюлю.
 	lateAt := len(g.script) / 2
-	seqs := make([]int64, len(g.script))
-	ids := make([]int64, len(g.script))
+	// seqs/ids адресуются КЛЮЧОМ реплики: по нему же на неё ссылается replyTo,
+	// и правка спеки не имеет права сдвинуть адресацию.
+	seqs := make(map[int]int64, len(g.script))
+	ids := make(map[int]int64, len(g.script))
 	added := make([]int64, 0, len(g.script))
 	for idx, r := range g.script {
 		if idx == lateAt {
@@ -444,21 +470,24 @@ func (s *seeder) group(ctx context.Context, gidx int, g groupSpec) int {
 		if author == 0 {
 			continue
 		}
-		cmid := replyKey(gidx, idx)
-		// У альбома ключ первого кадра: он же и голова медиагруппы.
+		cmid := replyKey(g.key, r.key)
+		// У альбома ключ первого кадра: он же и голова медиагруппы. Спрашивать
+		// про сам cmid нельзя — под ним не отправлено ни одного кадра, и на
+		// повторном прогоне альбом уехал бы вторым экземпляром.
 		key := cmid
 		if r.album > 0 {
 			key = albumFrameKey(cmid, 0)
 		}
 		if m, ok := s.sent(ctx, chatID, author, key); ok {
-			seqs[idx] = m.Seq
-			ids[idx] = m.ID
+			seqs[r.key] = m.Seq
+			ids[r.key] = m.ID
 			continue
 		}
 		text, ents := compose(r.body)
 		var replyTo *int64
-		if r.replyTo >= 0 && r.replyTo < idx && seqs[r.replyTo] != 0 {
-			replyTo = &seqs[r.replyTo]
+		if seq := seqs[r.replyTo]; r.replyTo >= 0 && seq != 0 {
+			to := seq
+			replyTo = &to
 		}
 		in := usecasechat.SendInput{
 			ChatID: chatID, SenderID: author, Text: text, Entities: ents,
@@ -469,8 +498,8 @@ func (s *seeder) group(ctx context.Context, gidx int, g groupSpec) int {
 			if len(album) == 0 {
 				continue
 			}
-			seqs[idx] = album[0].Seq
-			ids[idx] = album[0].ID
+			seqs[r.key] = album[0].Seq
+			ids[r.key] = album[0].ID
 			for _, m := range album {
 				added = append(added, m.ID)
 			}
@@ -478,19 +507,17 @@ func (s *seeder) group(ctx context.Context, gidx int, g groupSpec) int {
 		}
 		msg, err := s.uc.Send(ctx, in)
 		if err != nil {
-			log.Printf("seed: реплика %d в %q не отправлена: %v", idx, g.title, err)
+			log.Printf("seed: реплика %d в %q не отправлена: %v", r.key, g.title, err)
 			continue
 		}
-		seqs[idx] = msg.Seq
-		ids[idx] = msg.ID
+		seqs[r.key] = msg.Seq
+		ids[r.key] = msg.ID
 		added = append(added, msg.ID)
 	}
-	if g.pinIndex >= 0 && g.pinIndex < len(ids) {
-		s.pin(ctx, chatID, ids[g.pinIndex], creator, g.title)
-	}
+	s.pin(ctx, chatID, ids[g.pinKey], creator, g.title)
 	if newChat {
 		// Про «только в новый чат» — см. тот же комментарий в channel().
-		s.sendPoll(ctx, chatID, creator, groupPollKey(gidx), g.poll, members)
+		s.sendPoll(ctx, chatID, creator, groupPollKey(g.key), g.poll, members)
 	}
 	s.react(ctx, chatID, added, members)
 	log.Printf("seed: группа %q — добавлено %d сообщений, %d участников", g.title, len(added), len(members))

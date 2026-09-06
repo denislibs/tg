@@ -3,11 +3,34 @@ package demoseed
 import (
 	"context"
 	"errors"
+	"io"
 	"sort"
 
 	"github.com/messenger-denis/backend/internal/domain"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
+	usecasemedia "github.com/messenger-denis/backend/internal/usecase/media"
 )
+
+// fakeMedia — медиа-usecase в памяти. Нужен затем, что без него сид уходит в
+// ветку «медиа недоступно»: альбомы не отправляются вовсе, и весь альбомный
+// путь (ключ идемпотентности кадра) тестом не исполняется.
+type fakeMedia struct {
+	nextID int64
+	// uploads — сколько картинок заведено: заливка платная, и на повторном
+	// прогоне её не должно быть ни одной.
+	uploads int
+}
+
+func (m *fakeMedia) CreateUpload(_ context.Context, in usecasemedia.UploadInput) (domain.Media, string, error) {
+	m.nextID++
+	m.uploads++
+	return domain.Media{ID: m.nextID, OwnerID: in.OwnerID, Mime: in.Mime, Size: in.Size}, "", nil
+}
+
+func (m *fakeMedia) PutContent(_ context.Context, _, _ int64, r io.Reader, _ int64) error {
+	_, err := io.Copy(io.Discard, r)
+	return err
+}
 
 // fakeChat — интерактор чата в памяти. Повторяет не подпись методов, а их
 // ИНВАРИАНТЫ: комментарий без привязанного обсуждения не проходит, тред
@@ -31,9 +54,13 @@ type fakeChat struct {
 	// реакцией бампит счётчик непрочитанных реакций автора, то есть no-op'ом
 	// не является.
 	reactCalls int
-	nextChatID int64
-	nextMsgID  int64
-	nextPollID int64
+	// postCommentCalls — сколько раз сид ВООБЩЕ полез отправлять комментарий:
+	// гвард комментария — экономия, дубль отсёк бы и Send, поэтому иначе его
+	// снятие ничем не отличить.
+	postCommentCalls int
+	nextChatID       int64
+	nextMsgID        int64
+	nextPollID       int64
 }
 
 type fakeChatRec struct {
@@ -49,6 +76,7 @@ type fakeMsg struct {
 	id         int64
 	chatID     int64
 	senderID   int64
+	typ        string
 	text       string
 	cmid       string
 	threadRoot int64
@@ -94,10 +122,10 @@ func (f *fakeChat) createChat(typ, title, about, username string, creator int64)
 	return id, nil
 }
 
-func (f *fakeChat) insert(chatID, senderID int64, text, cmid string, threadRoot, mirrorOf int64) domain.Message {
+func (f *fakeChat) insert(chatID, senderID int64, typ, text, cmid string, threadRoot, mirrorOf int64) domain.Message {
 	f.nextMsgID++
 	m := &fakeMsg{
-		id: f.nextMsgID, chatID: chatID, senderID: senderID, text: text, cmid: cmid,
+		id: f.nextMsgID, chatID: chatID, senderID: senderID, typ: typ, text: text, cmid: cmid,
 		threadRoot: threadRoot, mirrorOf: mirrorOf,
 	}
 	f.msgs[m.id] = m
@@ -113,7 +141,7 @@ func (f *fakeChat) insert(chatID, senderID int64, text, cmid string, threadRoot,
 // service кладёт в ленту служебную пилюлю — то, что оставляет за собой
 // AddMember и SetPin при каждом вызове.
 func (f *fakeChat) service(chatID, senderID int64) {
-	m := f.insert(chatID, senderID, "", "", 0, 0)
+	m := f.insert(chatID, senderID, "service", "", "", 0, 0)
 	f.msgs[m.ID].service = true
 }
 
@@ -128,14 +156,23 @@ func (f *fakeChat) mirror(post domain.Message) {
 	if disc == 0 || f.mirrors[post.ID] != 0 {
 		return
 	}
-	m := f.insert(disc, post.SenderID, post.Text, "", 0, post.ID)
+	m := f.insert(disc, post.SenderID, "text", post.Text, "", 0, post.ID)
 	f.mirrors[post.ID] = m.ID
 }
 
+// ListDialogs повторяет предикат прода: служебные группы обсуждения канала из
+// списка диалогов ИСКЛЮЧЕНЫ (chatsrepo: `c.id NOT IN (SELECT discussion_chat_id
+// ...)`) — доступ к ним только через тред комментариев. Фейк, отдающий их
+// наравне с остальными, разрешал бы сиду искать группу обсуждения по названию —
+// в проде такой поиск не находит ничего никогда.
 func (f *fakeChat) ListDialogs(_ context.Context, userID int64) ([]domain.DialogRecord, error) {
+	hidden := map[int64]bool{}
+	for _, disc := range f.discussion {
+		hidden[disc] = true
+	}
 	ids := make([]int64, 0, len(f.chats))
 	for id, c := range f.chats {
-		if c.members[userID] {
+		if c.members[userID] && !hidden[id] {
 			ids = append(ids, id)
 		}
 	}
@@ -159,8 +196,13 @@ func (f *fakeChat) ChatCard(_ context.Context, chatID, _ int64) (domain.ChatReco
 	}, nil
 }
 
-// MessageByClientMsgID — тот же ключ, которым отсекает дубль Send.
+// MessageByClientMsgID — тот же ключ, которым отсекает дубль Send, и та же
+// проверка участия, что у интерактора: не участнику — domain.ErrNotFound.
 func (f *fakeChat) MessageByClientMsgID(_ context.Context, chatID, senderID int64, clientMsgID string) (domain.Message, error) {
+	c := f.chats[chatID]
+	if c == nil || !c.members[senderID] {
+		return domain.Message{}, domain.ErrNotFound
+	}
 	if m := f.byClientMsgID(chatID, senderID, clientMsgID); m != nil {
 		return f.wire(m), nil
 	}
@@ -282,7 +324,11 @@ func (f *fakeChat) Send(_ context.Context, in usecasechat.SendInput) (domain.Mes
 	if in.ThreadRootID != nil {
 		root = *in.ThreadRootID
 	}
-	m := f.insert(in.ChatID, in.SenderID, in.Text, in.ClientMsgID, root, 0)
+	typ := in.Type
+	if typ == "" {
+		typ = "text"
+	}
+	m := f.insert(in.ChatID, in.SenderID, typ, in.Text, in.ClientMsgID, root, 0)
 	f.mirror(m)
 	return m, nil
 }
@@ -292,6 +338,7 @@ func (f *fakeChat) Send(_ context.Context, in usecasechat.SendInput) (domain.Mes
 // не быть вовсе (пост опубликован до привязки обсуждения) — тогда его дозаводит
 // сам комментарий, как lazyMirrorPost.
 func (f *fakeChat) PostComment(ctx context.Context, channelID, postID, userID int64, text, clientMsgID string) (domain.Message, error) {
+	f.postCommentCalls++
 	disc := f.discussion[channelID]
 	if disc == 0 {
 		return domain.Message{}, domain.ErrNotFound
@@ -302,7 +349,7 @@ func (f *fakeChat) PostComment(ctx context.Context, channelID, postID, userID in
 	}
 	root := f.mirrors[postID]
 	if root == 0 {
-		m := f.insert(disc, post.senderID, post.text, "", 0, postID)
+		m := f.insert(disc, post.senderID, "text", post.text, "", 0, postID)
 		f.mirrors[postID] = m.ID
 		root = m.ID
 	}
@@ -413,4 +460,27 @@ func (f *fakeChat) postByText(chatID int64, text string) *fakeMsg {
 		}
 	}
 	return nil
+}
+
+// pollMsgs — сообщения-опросы в порядке отправки.
+func (f *fakeChat) pollMsgs() []*fakeMsg {
+	var out []*fakeMsg
+	for _, id := range f.msgOrder {
+		if m := f.msgs[id]; m.typ == "poll" {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// dropPollKeys стирает у опросов ключ идемпотентности отправки — ровно так они
+// лежат в базе живого стенда: ранние версии сида ClientMsgID опросам не
+// проставляли, и «опроса нет» от «опрос уже стоит» по ключу не отличить.
+func (f *fakeChat) dropPollKeys() int {
+	n := 0
+	for _, m := range f.pollMsgs() {
+		m.cmid = ""
+		n++
+	}
+	return n
 }

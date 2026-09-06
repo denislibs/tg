@@ -41,6 +41,19 @@ func demoUsers() map[string]int64 {
 	return users
 }
 
+// postSpecByKey — пост спеки по его КЛЮЧУ (не по позиции в срезе): им спека
+// адресует пост из comment.post и pinKey.
+func postSpecByKey(t *testing.T, spec channelSpec, key int) post {
+	t.Helper()
+	for _, p := range spec.posts {
+		if p.key == key {
+			return p
+		}
+	}
+	t.Fatalf("в спеке канала %q нет поста с ключом %d", spec.title, key)
+	return post{}
+}
+
 // channelWithDiscussion — единственный канал спеки, у которого заведено
 // обсуждение: без него футер комментариев не появляется ни под одним постом.
 func channelWithDiscussion(t *testing.T) channelSpec {
@@ -84,25 +97,25 @@ func checkComments(t *testing.T, f *fakeChat, ch *fakeChatRec, spec channelSpec,
 	for _, cm := range spec.discussion.comments {
 		expected[cm.post] = append(expected[cm.post], want{cm.text, users[cm.author]})
 	}
-	for postIdx, wants := range expected {
-		text, _ := compose(spec.posts[postIdx].body)
+	for postKey, wants := range expected {
+		text, _ := compose(postSpecByKey(t, spec, postKey).body)
 		post := f.postByText(ch.id, text)
 		if post == nil {
-			t.Fatalf("пост %d канала %q не найден", postIdx, spec.title)
+			t.Fatalf("пост %d канала %q не найден", postKey, spec.title)
 		}
 		got := f.commentsOn(post.id)
 		if len(got) != len(wants) {
-			t.Fatalf("пост %d: комментариев %d, ожидалось %d", postIdx, len(got), len(wants))
+			t.Fatalf("пост %d: комментариев %d, ожидалось %d", postKey, len(got), len(wants))
 		}
 		for i, w := range wants {
 			if got[i].text != w.text {
-				t.Fatalf("пост %d, комментарий %d: текст %q, ожидался %q", postIdx, i, got[i].text, w.text)
+				t.Fatalf("пост %d, комментарий %d: текст %q, ожидался %q", postKey, i, got[i].text, w.text)
 			}
 			if got[i].senderID != w.author {
-				t.Fatalf("пост %d, комментарий %d: автор %d, ожидался %d", postIdx, i, got[i].senderID, w.author)
+				t.Fatalf("пост %d, комментарий %d: автор %d, ожидался %d", postKey, i, got[i].senderID, w.author)
 			}
 			if got[i].chatID != f.discussion[ch.id] {
-				t.Fatalf("пост %d, комментарий %d лёг в чат %d, а не в группу обсуждения", postIdx, i, got[i].chatID)
+				t.Fatalf("пост %d, комментарий %d лёг в чат %d, а не в группу обсуждения", postKey, i, got[i].chatID)
 			}
 		}
 	}
@@ -134,18 +147,31 @@ func TestSeed_DiscussionLinkedToChannel(t *testing.T) {
 	if g.creator != ch.creator {
 		t.Fatalf("группу обсуждения завёл %d, а канал — %d", g.creator, ch.creator)
 	}
+	// Привязанная группа обсуждения в списке диалогов НЕ ПОКАЗЫВАЕТСЯ (правило
+	// прода, chatsrepo.ListDialogs): доступ к ней только через тред. Поэтому
+	// искать её по названию сид и не имеет права — ключ привязки один,
+	// chats.discussion_chat_id.
+	dialogs, err := f.ListDialogs(context.Background(), ch.creator)
+	if err != nil {
+		t.Fatalf("ListDialogs: %v", err)
+	}
+	for _, d := range dialogs {
+		if d.ChatID == groupID {
+			t.Fatalf("группа обсуждения %q попала в список диалогов автора", d.Title)
+		}
+	}
 
 	// Привязка обязана состояться ДО постов: зеркало (корень треда) рождается
 	// на вставке поста, и у канала с обсуждением зеркало есть у КАЖДОГО поста,
 	// а не только у прокомментированных.
-	for idx, p := range spec.posts {
+	for _, p := range spec.posts {
 		text, _ := compose(p.body)
 		post := f.postByText(ch.id, text)
 		if post == nil {
-			t.Fatalf("пост %d канала %q не найден", idx, spec.title)
+			t.Fatalf("пост %d канала %q не найден", p.key, spec.title)
 		}
 		if f.mirrorOfPost(post.id) == 0 {
-			t.Fatalf("у поста %d канала %q нет зеркала в группе обсуждения", idx, spec.title)
+			t.Fatalf("у поста %d канала %q нет зеркала в группе обсуждения", p.key, spec.title)
 		}
 	}
 }
@@ -167,7 +193,7 @@ func TestSeed_CommentsAttachedToTheirPosts(t *testing.T) {
 	// иначе стек на стенде не проверить.
 	maxAuthors := 0
 	for _, cm := range spec.discussion.comments {
-		text, _ := compose(spec.posts[cm.post].body)
+		text, _ := compose(postSpecByKey(t, spec, cm.post).body)
 		post := f.postByText(ch.id, text)
 		seen := map[int64]bool{}
 		for _, m := range f.commentsOn(post.id) {
@@ -235,15 +261,15 @@ func TestSeed_BackfillsDiscussionIntoSeededChannel(t *testing.T) {
 	// привязанном обсуждении. Посты канала опубликованы РАНЬШЕ привязки,
 	// поэтому зеркало дозаводит первый комментарий — и футер появляется только
 	// под прокомментированными постами, а не под всеми.
-	for idx := range spec.posts {
-		text, _ := compose(spec.posts[idx].body)
+	for _, p := range spec.posts {
+		text, _ := compose(p.body)
 		post := f.postByText(ch.id, text)
 		if post == nil {
-			t.Fatalf("пост %d канала %q не найден", idx, spec.title)
+			t.Fatalf("пост %d канала %q не найден", p.key, spec.title)
 		}
-		if got := f.mirrorOfPost(post.id) != 0; got != commented[idx] {
+		if got := f.mirrorOfPost(post.id) != 0; got != commented[p.key] {
 			t.Fatalf("пост %d: зеркало есть=%v, ожидалось %v (прокомментирован=%v)",
-				idx, got, commented[idx], commented[idx])
+				p.key, got, commented[p.key], commented[p.key])
 		}
 	}
 }
@@ -261,11 +287,11 @@ func TestSeed_BackfillsNewSpecCommentIntoSeededChannel(t *testing.T) {
 	if ch == nil {
 		t.Fatalf("канал %q не создан", spec.title)
 	}
-	// Пост, к которому в спеке комментариев ещё нет.
-	const postIdx = 2
+	// Пост, к которому в спеке комментариев ещё нет (адресуется КЛЮЧОМ).
+	const postKey = 2
 	for _, cm := range spec.discussion.comments {
-		if cm.post == postIdx {
-			t.Fatalf("пост %d уже прокомментирован спекой — для пина нужен чистый", postIdx)
+		if cm.post == postKey {
+			t.Fatalf("пост %d уже прокомментирован спекой — для пина нужен чистый", postKey)
 		}
 	}
 	msgs := len(f.msgOrder)
@@ -281,20 +307,20 @@ func TestSeed_BackfillsNewSpecCommentIntoSeededChannel(t *testing.T) {
 		}
 		d := *grown[i].discussion
 		d.comments = append(append([]comment{}, d.comments...),
-			cm(postIdx, spec.discussion.comments[0].author, text))
+			cm(freeCommentKey(d.comments), postKey, spec.discussion.comments[0].author, text))
 		grown[i].discussion = &d
 	}
 	channels = grown
 	seed(ctx, f, nil, users)
 
-	body, _ := compose(spec.posts[postIdx].body)
+	body, _ := compose(postSpecByKey(t, spec, postKey).body)
 	post := f.postByText(ch.id, body)
 	if post == nil {
-		t.Fatalf("пост %d канала %q не найден", postIdx, spec.title)
+		t.Fatalf("пост %d канала %q не найден", postKey, spec.title)
 	}
 	got := f.commentsOn(post.id)
 	if len(got) != 1 || got[0].text != text {
-		t.Fatalf("в треде поста %d %d комментариев, ожидался один новый", postIdx, len(got))
+		t.Fatalf("в треде поста %d %d комментариев, ожидался один новый", postKey, len(got))
 	}
 	if want := msgs + 1; len(f.msgOrder) != want {
 		t.Fatalf("сообщений %d, ожидалось %d (только новый комментарий)", len(f.msgOrder), want)
