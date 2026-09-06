@@ -106,6 +106,25 @@ describe('collectLightboxItems: фильтрация окна', () => {
     expect(items[0].media.kind).toBe('photo')
   })
 
+  // Фолбэк — РОВНО для сервисного фото. Раньше он ловил любое нефото/невидео и
+  // отдавал ему `kind: 'photo'`: вьювер открывался на стикере/голосовом и грузил
+  // .tgs как картинку. Оригинал в этом месте вьювер просто не открывает
+  // (tweb bubbles.ts:3823-3826 `no target for media viewer!`).
+  it('нефото/невидео (стикер) фолбэка НЕ получает — вьюверу открывать нечего', () => {
+    const msgs: MyMessage[] = [
+      msg({ id: cid(1), media: photoMedia(101) }),
+      msg({
+        id: cid(2),
+        media: docMedia(303, 'image/webp', [
+          { _: 'documentAttributeSticker', alt: '🙂', stickerset: { _: 'inputStickerSetEmpty' } },
+          { _: 'documentAttributeImageSize', w: 512, h: 512 },
+        ]),
+      }),
+    ]
+    const { items, index } = collectLightboxItems({ msgs, mediaId: 303, ctx })
+    expect(items[index]).toBeUndefined()
+  })
+
   it('элементы соседей — из findElement; не отрендеренные остаются null', () => {
     const el = document.createElement('div')
     const msgs: MyMessage[] = [

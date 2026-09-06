@@ -14,7 +14,7 @@ import { useLayoutEffect, useRef, type RefObject } from 'react'
 import { winKey } from '@core/history/messagesMirror'
 import contextMenuController from '@helpers/contextMenuController'
 import { getMediaId } from '@core/messages/messageKind'
-import type { MyDocument } from '@core/media/messageMedia'
+import type { InputStickerSetID, MyDocument } from '@core/media/messageMedia'
 import ChatBubbles, { type ChatContext } from './bubbles'
 import type { ChatAutoDownload } from '@core/hooks/useChatAutoDownload'
 import ChatContextMenu, { type ContextMenuPopups } from './contextMenu'
@@ -65,7 +65,7 @@ export interface ChatFeedApi {
   setSavedReaction(reaction: string | null): void
 }
 
-export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBottomPx, peerId, threadRootId, isLikeGroup, isBroadcast, isMegagroup, autoDownload, canSend, canSendPlain, onReply, onEdit, onDownload, onSendSticker, menuPopups, mediaViewerActions, onSelection, onOpenDatePicker, onOpenDiscussion }: {
+export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBottomPx, peerId, threadRootId, isLikeGroup, isBroadcast, isMegagroup, autoDownload, canSend, canSendPlain, onReply, onEdit, onDownload, onSendSticker, onShowStickerSet, menuPopups, mediaViewerActions, onSelection, onOpenDatePicker, onOpenDiscussion }: {
   /** Ручки ленты наружу — заполняются на маунте, гасятся на размонтировании. */
   api?: RefObject<ChatFeedApi | null>
   /** Скролл-контейнер ленты (`Scrollable.container`) — тем же способом, что
@@ -128,6 +128,12 @@ export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBot
    */
   onSendSticker?: (doc: MyDocument) => void
   /**
+   * Порт `showStickersPopup(doc.stickerSetInput, undefined, this.chat.input)`
+   * (tweb bubbles.ts:3438) — набор кликнутого в ленте стикера. Попап и его
+   * отправка — дело композера, поэтому лента отдаёт наружу только АДРЕС набора.
+   */
+  onShowStickerSet?: (input: InputStickerSetID) => void
+  /**
    * Носители попапов контекстного меню — порт `ContextMenuPopups`
    * (`chat/contextMenu.ts`). В tweb пункты меню сами зовут
    * `PopupElement.createPopup(...)`; ни одного из этих попапов в ванильном виде
@@ -174,8 +180,8 @@ export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBot
   const bubblesRef = useRef<ChatBubbles | null>(null)
   const paddingRef = useRef({ top: paddingTopPx, bottom: paddingBottomPx })
   paddingRef.current = { top: paddingTopPx, bottom: paddingBottomPx }
-  const gesture = useRef({ autoDownload, canSend, canSendPlain, onReply, onEdit, onDownload, onSendSticker, menuPopups, mediaViewerActions, onSelection, onOpenDatePicker, onOpenDiscussion })
-  gesture.current = { autoDownload, canSend, canSendPlain, onReply, onEdit, onDownload, onSendSticker, menuPopups, mediaViewerActions, onSelection, onOpenDatePicker, onOpenDiscussion }
+  const gesture = useRef({ autoDownload, canSend, canSendPlain, onReply, onEdit, onDownload, onSendSticker, onShowStickerSet, menuPopups, mediaViewerActions, onSelection, onOpenDatePicker, onOpenDiscussion })
+  gesture.current = { autoDownload, canSend, canSendPlain, onReply, onEdit, onDownload, onSendSticker, onShowStickerSet, menuPopups, mediaViewerActions, onSelection, onOpenDatePicker, onOpenDiscussion }
 
   // Одно место, где состояние выделения уходит наверх: и счётчик, и признак
   // режима, и способ его снять (плашка снимает выбор кликом по счётчику —
@@ -339,6 +345,7 @@ export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBot
         autoDownload: () => gesture.current.autoDownload,
         initMessageReply: (mid) => gesture.current.onReply?.(mid),
         sendSticker: (doc) => gesture.current.onSendSticker?.(doc),
+        showStickerSet: (input) => gesture.current.onShowStickerSet?.(input),
         // Через реф — по той же причине, что попапы меню: ни один из колбэков
         // не стабилен между рендерами хоста, а лента создаётся один раз.
         mediaViewerActions: {
