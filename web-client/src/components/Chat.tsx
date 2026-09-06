@@ -47,6 +47,8 @@ import { useMessageActions } from '../core/hooks/useMessageActions'
 import { useChannelLive } from '../core/hooks/useChannelLive'
 import Composer from './Composer'
 import VanillaFeed, { type ChatFeedApi } from './chat/VanillaFeed'
+import { openStickerSetModal } from './stickers/StickerSetModal'
+import type { InputStickerSetID } from '@core/media/messageMedia'
 import { useChatAutoDownload } from '@core/hooks/useChatAutoDownload'
 import { messageToViewerItem, type LightboxCtx } from './mediaViewer/collectLightboxItems'
 import { closeMediaViewer } from './mediaViewer/openMediaViewer'
@@ -1018,9 +1020,16 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const onComposerPickSticker = useEvent((st: Sticker) => { sendSticker(st); slowmodeMarkSent() })
   // Тот же гейт, что у кнопки стикеров композера (JSX ниже,
   // onPickSticker={canSendStickers ? onComposerPickSticker : undefined}):
-  // держим оба входа (композер/поиск и клик по стикеру в бабле — попап
-  // StickerSetModal из StickerRealBubble) идентичными по правам отправки.
+  // держим оба входа (композер/поиск и клик по стикеру в ленте — попап
+  // StickerSetModal) идентичными по правам отправки.
   const canSendStickers = canType && canSendMedia && !isChannel && chat.type !== 'secret'
+  // Набор кликнутого в ленте стикера — порт tweb bubbles.ts:3438
+  // (`showStickersPopup(doc.stickerSetInput, undefined, this.chat.input)`):
+  // третий аргумент оригинала — композер, которым попап отправляет выбранный
+  // стикер, поэтому владелец вызова здесь, а не в ленте.
+  const onFeedShowStickerSet = useEvent((input: InputStickerSetID) => {
+    openStickerSetModal({ id: input.id }, canSendStickers ? onComposerPickSticker : undefined)
+  })
   // GIF из вкладки пикера — те же ограничения, что у стикеров (не канал, не секретный).
   const onComposerPickGif = useEvent((g: GifItem) => { sendGif(g); slowmodeMarkSent() })
   // Ответ жестом из императивной ленты (свайп на таче / даблклик на десктопе,
@@ -1289,7 +1298,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
             группа это `channel` с `pFlags.megagroup` (`core/peers/peer.ts:325`).
             Берётся из диалога, а не из карточки пира: карточка приезжает позже,
             и до неё баблы моргнули бы стороной. */}
-        <VanillaFeed api={feedApi} scrollerRef={feedScrollRef} paddingTopPx={padTopPx} paddingBottomPx={padBottomPx} mediaViewerActions={mediaViewerActions} peerId={numericChatId} threadRootId={threadRootId} isLikeGroup={isGroup} isBroadcast={isChannel} isMegagroup={isGroup} autoDownload={autoDownload} canSend={canType} canSendPlain={composerUsable} onReply={onFeedReply} onEdit={startEditFor} onDownload={downloadMedia} onSendSticker={canSendStickers ? onComposerPickSticker : undefined} menuPopups={feedMenuPopups} onSelection={onFeedSelection} onOpenDatePicker={showDatePicker} onOpenDiscussion={openFeedDiscussion} />
+        <VanillaFeed api={feedApi} scrollerRef={feedScrollRef} paddingTopPx={padTopPx} paddingBottomPx={padBottomPx} mediaViewerActions={mediaViewerActions} peerId={numericChatId} threadRootId={threadRootId} isLikeGroup={isGroup} isBroadcast={isChannel} isMegagroup={isGroup} autoDownload={autoDownload} canSend={canType} canSendPlain={composerUsable} onReply={onFeedReply} onEdit={startEditFor} onDownload={downloadMedia} onSendSticker={canSendStickers ? onComposerPickSticker : undefined} onShowStickerSet={onFeedShowStickerSet} menuPopups={feedMenuPopups} onSelection={onFeedSelection} onOpenDatePicker={showDatePicker} onOpenDiscussion={openFeedDiscussion} />
 
         {/* Композер и его замены — tweb .chat-input.chat-input-main (absolute
             bottom 0 внутри #column-center) > .chat-input-container (max-width

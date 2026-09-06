@@ -134,7 +134,7 @@ import { setAttachmentSize } from '@core/dom/mediaSizes'
 import { openMediaViewer, type OpenMediaViewerArgs } from '@components/mediaViewer/openMediaViewer'
 import { collectLightboxItems } from '@components/mediaViewer/collectLightboxItems'
 import { cachedPeer } from '@core/peerCache'
-import { getBubbleMedia, getStrippedThumb, isMediaSpoiler, type MyDocument } from '@core/media/messageMedia'
+import { getBubbleMedia, getStrippedThumb, isMediaSpoiler, type InputStickerSetID, type MyDocument } from '@core/media/messageMedia'
 import { getMediaId, getMessageKind } from '@core/messages/messageKind'
 import type { MessageActionPhoneCall } from '@core/messages/messageAction'
 import Icon from '@components/icon'
@@ -371,6 +371,16 @@ export interface ChatContext {
    * Не передан — стикер приветствия просто не кликается.
    */
   sendSticker?(doc: MyDocument): void
+  /**
+   * ПОКАЗАТЬ НАБОР кликнутого стикера — порт tweb bubbles.ts:3432-3442
+   * (`showStickersPopup(doc.stickerSetInput, undefined, this.chat.input)`).
+   *
+   * Здесь, а не внутри ленты, по адресу оригинала: третий аргумент
+   * `showStickersPopup` — КОМПОЗЕР (`chat.input`), которым попап отправляет
+   * выбранный стикер; композера у ленты нет. Не передан — клик по стикеру
+   * ничего не открывает (и во вьювер всё равно не проваливается, как в tweb).
+   */
+  showStickerSet?(input: InputStickerSetID): void
   /**
    * Действия МЕДИАВЬЮВЕРА, которых у самой ленты быть не может: прыжок к
    * сообщению, пересылка, удаление и догрузка соседей за пределами окна.
@@ -1609,7 +1619,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
       middleware: this.getMiddleware(),
       width: parseInt(attachmentDiv.style.width, 10) || boxSize.width,
       height: parseInt(attachmentDiv.style.height, 10) || boxSize.height,
-      emoji: doc.stickerEmojiRaw,
+      // tweb :6087-6088 — у стикера ленты `play`/`loop` по умолчанию `true`;
+      // `emoji` оригинал передаёт ТОЛЬКО у больших эмодзи (:6135), а во враппере
+      // оно гасит цикл (wrappers/sticker.ts:167, tweb sticker.ts:135).
+      play: true,
+      loop: true,
       liteModeKey: 'stickers_chat',
       thumb: getStrippedThumb(doc),
       docWidth: doc.w,
@@ -2829,6 +2843,22 @@ export default class ChatBubbles implements BubbleGroupsHost {
     if (replyEl) {
       cancelEvent(e)
       this.jumpToMessage(Number(replyEl.dataset.replyToMid))
+      return
+    }
+
+    // Стикер — НАБОР, а не медиавьювер (tweb bubbles.ts:3432-3442). Ветка
+    // обязана стоять ПЕРЕД медиа (:3479): стикер лежит в том же `.attachment`,
+    // и без неё клик по нему уходит во вьювер. Выход безусловный, как у
+    // оригинала: набора у документа может не быть — тогда клик не делает
+    // ничего.
+    if (bubble?.classList.contains('sticker') && target.parentElement?.classList.contains('attachment')) {
+      const message = this.getMessage(Number(bubble.dataset.mid))
+      const media = message?._ === 'message' ? message.media : undefined
+      const doc = media?._ === 'messageMediaDocument' ? media.document : undefined
+      if (doc?.stickerSetInput) {
+        this.chat.showStickerSet?.(doc.stickerSetInput)
+      }
+
       return
     }
 
@@ -5443,7 +5473,10 @@ export default class ChatBubbles implements BubbleGroupsHost {
       middleware,
       width: GREETING_STICKER_SIZE,
       height: GREETING_STICKER_SIZE,
-      emoji: doc.stickerEmojiRaw,
+      // tweb :10580-10581 — приветствие играет и зациклено; `emoji` оригинал
+      // не передаёт (оно гасит цикл, wrappers/sticker.ts:167).
+      play: true,
+      loop: true,
       liteModeKey: 'stickers_chat',
       thumb: getStrippedThumb(doc),
       docWidth: doc.w,

@@ -119,16 +119,24 @@ export function collectLightboxItems({ msgs, mediaId, ctx, findElement }: {
     return { items: viewable.map((m) => messageToViewerItem(m, ctx, findElement?.(m) ?? null)), index }
   }
 
-  // Медиа не в ленте фото/видео (сервисное сообщение смены фото группы — type
-  // 'service'): одиночный просмотр именно этого фото (фолбэк useLightbox).
-  const src = msgs.find((m) => getMediaId(m) === mediaId)
-  const item: ViewerItem = src
-    ? messageToViewerItem(src, ctx, findElement?.(src) ?? null)
-    : {
+  // Сообщение с этим файлом в окне ЕСТЬ, а квалификацию оно не прошло — значит
+  // файл нефото/невидео (стикер, голосовое, документ): вьюверу открывать
+  // нечего, и он не открывается, как в оригинале (tweb bubbles.ts:3823-3826 —
+  // `no target for media viewer!`, фолбэка у него нет вовсе). Прежде здесь
+  // строился одиночный `kind: 'photo'` на ЛЮБОЙ такой файл, и вьювер грузил
+  // .tgs как картинку.
+  if (msgs.some((m) => getMediaId(m) === mediaId)) return { items: [], index: 0 }
+
+  // Файла нет ни у одного сообщения окна — это медиа СЛУЖЕБНОГО сообщения
+  // (смена фото группы: фото едет внутри действия, `getMediaId` его не видит):
+  // одиночный просмотр именно его (фолбэк useLightbox).
+  return {
+    items: [{
       element: null,
       mid: 0,
       media: { mediaId, width: 0, height: 0, kind: 'photo' },
       author: { peerId: -1, name: ctx.chatName || '' },
-    }
-  return { items: [item], index: 0 }
+    }],
+    index: 0,
+  }
 }
