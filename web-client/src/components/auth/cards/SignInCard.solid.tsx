@@ -50,6 +50,7 @@ import MediaHeader from '../MediaHeader.solid'
 import CountryInput from '../CountryInput.solid'
 import TelInput from '../TelInput.solid'
 import { PreloaderCircular } from '../Preloader.solid'
+import { reportPasskeyLoginError } from '../passkeyLoginError'
 import { useAuthFlow, type CardSpec } from '../authFlow.solid'
 import { COUNTRIES, countryByPhone, leftPattern, phoneMask, type Country } from '../countries'
 import styles from '../AuthFlow.module.scss'
@@ -169,7 +170,15 @@ export default function SignInCard(_props: { spec: Spec }): JSX.Element {
     try {
       await managers.auth.requestCode(fullPhone())
       navigate({ name: 'authCode', payload: { phone: phone() } })
-    } catch {
+    } catch (err) {
+      // Красный `Login.PhoneLabelInvalid` — единственное, что мы можем сказать
+      // пользователю (различать нечем, см. докблок файла). Но это УТВЕРЖДЕНИЕ
+      // про его ввод, и если под ним на самом деле лежит обрыв сети или
+      // сломанный RPC — след в консоли обязан остаться: у tweb ветка
+      // `default:` пишет `console.error('auth.sendCode error:', err)` и
+      // печатает `err.type` прямо на кнопке (`SignInCard.tsx:151-153`), то
+      // есть оригинал чужую ошибку за ошибку ввода не выдаёт.
+      console.error('SignInCard: requestCode error:', err)
       setPhoneError(true)
     } finally {
       setBusy(false)
@@ -184,9 +193,13 @@ export default function SignInCard(_props: { spec: Spec }): JSX.Element {
       const assertion = await getPasskeyAssertion(options)
       await managers.auth.passkeyLoginFinish(session, assertion, 'web', 'browser')
       void toIm()
-    } catch {
-      // tweb PasskeyLoginButton показывает тост и остаётся на карточке; поле
-      // телефона к этой ошибке отношения не имеет и в error не уходит.
+    } catch (err) {
+      // tweb PasskeyLoginButton показывает тост и остаётся на карточке
+      // (`passkeyLoginButton.tsx:68-80`) — вот он, разбор общий на обе
+      // карточки: `../passkeyLoginError.ts`. Прежняя редакция ЭТОТ комментарий
+      // уже несла, а тела у `catch` не было вовсе — ни тоста, ни консоли.
+      // Поле телефона к этой ошибке отношения не имеет и в `phoneError` не уходит.
+      reportPasskeyLoginError('SignInCard', err)
     } finally {
       setBusy(false)
     }
