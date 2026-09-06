@@ -44,6 +44,17 @@ const mine: MessageReactions = {
   }],
 }
 
+/**
+ * Платная ⭐-реакция: ключ чипа — сам конструктор (`reactionKey`), эмодзи у неё
+ * нет. Стенд нужен потому, что снятый охранный терм тоггла
+ * (`bubbles.ts::toggleReaction`) не ронял ни одного прежнего стенда: чипа с
+ * `data-reaction="reactionPaid"` в них не было вовсе.
+ */
+const paid: MessageReactions = {
+  _: 'messageReactions',
+  results: [{ _: 'reactionCount', reaction: { _: 'reactionPaid' }, count: 7 }],
+}
+
 const msg = (agg: MessageReactions): MyMessage => ({
   ...makeMessage({ peerId: CHAT, fromId: 2, id: 1, text: 'привет', createdAt: '2026-08-15T12:34:00' }),
   reactions: agg,
@@ -129,5 +140,21 @@ describe('клик по чипу с УЖЕ ЗАГРУЖЕННОЙ иконкой
 
     expect(unreact).toHaveBeenCalledWith(CHAT, 1, '👍')
     expect(react).not.toHaveBeenCalled()
+  })
+})
+
+describe('клик по платной ⭐-реакции', () => {
+  it('чип есть, и ключ у него — конструктор, а не эмодзи', async () => {
+    const { chip } = await openWith(paid)
+    expect(chip.dataset.reaction).toBe('reactionPaid')
+  })
+
+  it('в менеджер НЕ уходит ничего: адресовать платную реакцию нечем', async () => {
+    const { chip, react, unreact } = await openWith(paid)
+
+    chip.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+
+    expect(react).not.toHaveBeenCalled()
+    expect(unreact).not.toHaveBeenCalled()
   })
 })
