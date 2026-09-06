@@ -133,6 +133,14 @@ export function reactionsUserLimit(premium: boolean): number {
  * лимите нет ни в `chat.ts:1457`, ни в `components/chat/reactions.ts` (там
  * гасится ДРУГОЙ лимит — `reactions_uniq_max`, `reactionsMenu.ts:250-254`).
  */
+/*
+ * ОГОВОРКА о нашем проводе: `chosen_order` приезжает НУЛЁМ у всех моих
+ * реакций (backend `internal/domain/mtmessage.go:1043-1050` — колонки порядка
+ * в витрине нет), поэтому после перезагрузки страницы «самая старая» здесь
+ * вырождается в порядок чипов. Серверное вытеснение при этом точное — оно
+ * читает `reactions.created_at`, — и кадр приводит картинку к нему. Долг:
+ * backend/backlogs/reaction-chosen-order-on-wire.md.
+ */
 export function excessChosenReactions(
   agg: MessageReactions | undefined,
   emoji: string,
