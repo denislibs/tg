@@ -23,7 +23,7 @@ export function registerManagers(smp: SuperMessagePort, registry: Record<string,
  *
  * Рантаймы, которые сами решают, что можно завернуть, отличают «обычный
  * объект» по прототипу: у Solid-стора `isWrappable(obj)` истинна, когда
- * прототип — ровно `Object.prototype` (либо объект массив/уже обёрнут)
+ * прототип — ровно `Object.prototype` (плюс массивы и уже обёрнутые объекты)
  * (`solid-js/store@1.9.15 dist/store.js:37-40`, та же проверка в `dev.js:41-44`
  * и в SSR-сборке `server.js:2-4`). Инстанс класса и DOM-узел под неё не
  * попадают и едут ПО ССЫЛКЕ — ровно то, что нужно хендлу.
