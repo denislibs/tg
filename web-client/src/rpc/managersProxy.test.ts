@@ -22,4 +22,16 @@ describe('managers proxy', () => {
     expect(managers.health.check).toBe(managers.health.check) // та же функция метода
     expect(managers.health).not.toBe(managers.auth)          // разные менеджеры — разные прокси
   })
+
+  // Символы — служебный протокол чужих рантаймов, а не имена менеджеров/методов.
+  // Ответ «менеджером» на $RAW/$PROXY ломал прокси в Solid-сторе (пин на исход —
+  // shared/solid/mountSolid.solid.test.tsx).
+  it('на символьные ключи отвечает undefined, а не менеджером/методом', () => {
+    const ch = new MessageChannel()
+    const ui = new SuperMessagePort(ch.port1)
+    const managers = createManagers<Record<string, unknown>>(ui) as Record<PropertyKey, unknown>
+
+    expect(managers[Symbol.for('store-raw')]).toBeUndefined()
+    expect((managers.auth as Record<PropertyKey, unknown>)[Symbol.iterator]).toBeUndefined()
+  })
 })
