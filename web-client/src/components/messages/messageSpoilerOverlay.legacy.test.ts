@@ -6,7 +6,6 @@
 // (`DotRenderer.attachTextSpoilerTarget`) и красит слова сам, в 2d-контекст
 // своей канвы.
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render } from '@testing-library/react'
 
 // Нет WebGL2 в OffscreenCanvas → tweb выбирает legacy-путь
 vi.mock('@lib/spoiler/spoilerSupport', async (importOriginal) => ({
@@ -47,38 +46,28 @@ HTMLCanvasElement.prototype.getContext = function getContext(this: HTMLCanvasEle
   return id === '2d' ? (fake2d() as unknown as CanvasRenderingContext2D) : null
 } as HTMLCanvasElement['getContext']
 
-const { default: MessageSpoilerOverlay } = await import('./MessageSpoilerOverlay')
+const { createMessageSpoilerOverlay } = await import('./messageSpoilerOverlay')
 
 const SPAN_RECT = { left: 10, top: 4, width: 60, height: 18, right: 70, bottom: 22, x: 10, y: 4 }
 
 /**
- * Бабл со спойлерным словом — как его собирает `RichText.tsx`: слово и оверлей
+ * Тело сообщения со спойлерным словом — как его собирает лента: слово и оверлей
  * соседи внутри `.spoilers-container`. Клиентские прямоугольники слова
  * подменены: happy-dom их не считает.
  */
-function Harness() {
-  return (
-    <>
-      <span
-        className="spoiler-text"
-        ref={(el) => {
-          if (el) el.getClientRects = (() => [SPAN_RECT]) as unknown as Element['getClientRects']
-        }}
-      >
-        secret
-      </span>
-      <MessageSpoilerOverlay />
-    </>
-  )
-}
-
-function renderOverlay() {
+function mountOverlay() {
   const messageElement = document.createElement('div')
   messageElement.className = 'message spoilers-container'
+  const span = document.createElement('span')
+  span.className = 'spoiler-text'
+  span.textContent = 'secret'
+  span.getClientRects = (() => [SPAN_RECT]) as unknown as Element['getClientRects']
+  messageElement.append(span)
   document.body.append(messageElement)
 
-  const result = render(<Harness />, { container: messageElement })
-  return { messageElement, result }
+  const handle = createMessageSpoilerOverlay({ messageElement })
+  handle && messageElement.append(handle.element)
+  return { messageElement, handle }
 }
 
 beforeEach(() => {
@@ -89,18 +78,18 @@ beforeEach(() => {
   document.body.replaceChildren()
 })
 
-describe('MessageSpoilerOverlay — legacy-путь', () => {
+describe('оверлей спойлеров — legacy-путь', () => {
   it('без воркерной симуляции подключается к главнопоточной, а не пропадает', () => {
-    const { messageElement } = renderOverlay()
+    const { messageElement } = mountOverlay()
 
     expect(spies.attachTextSpoilerTarget).toHaveBeenCalledTimes(1)
     expect(spies.attachTextSpoilerOverlay).not.toHaveBeenCalled()
-    // оверлей остался в DOM — значит бабл не свалился на CSS-фолбэк
+    // оверлей остался в DOM — значит сообщение не свалилось на CSS-фолбэк
     expect(messageElement.querySelector('.message-spoiler-overlay')).not.toBeNull()
   })
 
   it('рисует слова спойлера в главном потоке', () => {
-    renderOverlay()
+    mountOverlay()
 
     // цикл симуляции зовёт этот колбэк; в оригинале это `drawCallbacks`
     expect(captured.draw).toBeTypeOf('function')

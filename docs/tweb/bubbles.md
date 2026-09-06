@@ -331,6 +331,17 @@ tweb `bubbles.ts:9707-9712` — оба флага читаются с уже в�
   `.message` напрямую — текст уходит в подпись документа (7341, `wrapGroupedDocuments`).
 - Спойлер-оверлей текста: `createMessageSpoilerOverlay` поверх `.message`, если есть
   `.spoiler-text` (9781–9800, не Firefox).
+  **У нас:** портирован — `ChatBubbles.addMessageSpoilerOverlay`
+  (`components/chat/bubbles.ts`, вызовы из `renderMessage` и `onMessageEdit`) поверх
+  ванильной фабрики `components/messages/messageSpoilerOverlay.ts`. Расхождения:
+  гейт `IS_FIREFOX` живёт в фабрике (вызывателей два — лента и React-`RichText`),
+  `loadPromises`/`controls.update()` предмета не имеют (сборка синхронна), а хендл
+  снимается по карте `spoilerOverlays` вместо побабльного `middlewareHelper`,
+  которого в нашей ленте нет: карта — владелец хендлов, адресно её чистят правка
+  тела и `deleteMessagesByIds`, а на смерти окна (`cleanup`/`destroy`) она
+  сливается целиком (`disposeSpoilerOverlays`). НЕ портирован второй потребитель оверлея — опросы
+  (`bubbleParts/pollMessageContent/utils.ts:65`), долг —
+  `web-client/backlogs/frontend/poll-spoiler-overlay.md`.
 
 ## 4.2 Big-emoji / анимированные эмодзи (7357–7538)
 

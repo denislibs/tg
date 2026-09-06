@@ -99,15 +99,26 @@ grep -rn --include='*.ts' --include='*.tsx' -E "from '[^']*(ChatFeed|MessageRow|
 |---|---|
 | `components/messages/ChatDialogs.tsx` (`ForwardPicker`/`ContactPicker`/`DiscardVoiceDialog`) | `StoryViewer.tsx:18`, `core/hooks/useChatPopups.tsx:32`, `Composer.tsx:58` |
 | `components/messages/SendMediaPopup.tsx` | `Chat.tsx:103` (композер, не лента) |
-| `components/messages/MessageSpoilerOverlay.tsx` | `components/RichText.tsx:7` — а `RichText` живёт в 13 местах (`ScheduledView`, `SuggestedPostsView`, `SuggestPostPopup`, `StickersHelper`, `mediaViewer/appMediaViewer.ts`, `auth/emailPattern.tsx` …) |
+| `components/messages/messageSpoilerOverlay.ts` (было `MessageSpoilerOverlay.tsx`) | `components/RichText.tsx:7` — а `RichText` живёт в 13 местах (`ScheduledView`, `SuggestedPostsView`, `SuggestPostPopup`, `StickersHelper`, `mediaViewer/appMediaViewer.ts`, `auth/emailPattern.tsx` …) **и `components/chat/bubbles.ts:132`** — см. сноску под таблицей |
 | `components/messages/videoPlayback.ts` | `components/audio.ts:58`, `components/mediaProgressLine.ts:21`, `components/wrappers/video.ts:130`, `lib/mediaPlayer/index.ts:60` |
-| `components/messages/bubbleClasses.ts` | **`components/chat/bubbles.ts:88`** — общий вычислитель модификаторов бабла у обеих лент. Остаётся вместе с типом `ConvMsg` |
+| `components/messages/bubbleClasses.ts` | **`components/chat/bubbles.ts:107`** — общий вычислитель модификаторов бабла у обеих лент. Остаётся вместе с типом `ConvMsg` |
 | `components/messages/StackedAvatars.tsx` | `CommentsBar.tsx:2` и `MessageReactions.tsx:11` — оба ленточные, но сам компонент это порт tweb `components/stackedAvatars.ts`; уходит только вместе с портом чипов и футера |
 | `components/messages/EmptyChatGreeting.tsx`, `SimilarChannels.tsx` | `Chat.tsx:68,69` — рендерит их **`Chat`, а не `ChatFeed`**; в tweb владелец обоих — `bubbles.ts` (`tweb bubbles.ts:7083` SimilarChannels, `tweb bubbles.ts:10516/10849` `renderEmptyPlaceholder('greeting')`). Значит это **порт**, а не снос |
 
+> **Сноска про оверлей спойлеров — ЗАКРЫТО (2026-09-06).** Разведка записала его в
+> «лентой НЕ является», и по React-ленте это было верно; по ИМПЕРАТИВНОЙ — нет.
+> В tweb владелец узла как раз `bubbles.ts` (`addMessageSpoilerOverlay`,
+> tweb `bubbles.ts:9781-9799`), и без него текстовый спойлер оставался сплошной
+> заливкой. Сделано: React-компонент `MessageSpoilerOverlay.tsx` **удалён**,
+> вместо него ванильная фабрика `components/messages/messageSpoilerOverlay.ts`
+> (`createMessageSpoilerOverlay`); лента зовёт её из `chat/bubbles.ts:1896`
+> (`addMessageSpoilerOverlay`), `RichText` — через `useImperativeIsland`
+> (`RichText.tsx:165`). Модуль по-прежнему НЕ удалять: потребителей теперь
+> два, а не один.
+
 ## 1.3 Что из «общего» лента тянет и обязано остаться
 
-`core/messageToConvMsg.ts` (`bubbles.ts:84` использует `messageToConvMsg` для
+`core/messageToConvMsg.ts` (`bubbles.ts:100` использует `messageToConvMsg` для
 `classesFor` и `setSendingStatus`), тип `ConvMsg` (`data.ts:10`), `core/draftReply.ts`
 (`draftReplyState`/`convMsgReplyState` — плашка ответа над композером),
 `components/StickerMedia.tsx` (полтора десятка потребителей вне ленты —
@@ -232,8 +243,8 @@ tweb, не React-версия.
 
 ## 3.2 Типы контента, которых у ванили нет вовсе
 
-`renderMedia` (`chat/bubbles.ts:684`) знает ровно пять веток: стикер, видео/gif/кружок,
-документ, фото, альбом. `renderMessage` (`chat/bubbles.ts:947`) добавляет текст, reply,
+`renderMedia` (`chat/bubbles.ts:1271`) знает ровно пять веток: стикер, видео/gif/кружок,
+документ, фото, альбом. `renderMessage` (`chat/bubbles.ts:1701`) добавляет текст, reply,
 время, реакции, имя. Всё остальное из `MessageContent.tsx` — пробел:
 
 | Что | Где в React | Где в tweb |
@@ -259,7 +270,7 @@ tweb, не React-версия.
 `components/chat/serviceMessage.ts` **уже содержит** порт экшен-бабла:
 `createServiceBubble` (`serviceMessage.ts:149`) и `wrapMessageActionText`
 (`serviceMessage.ts:116`). Но `bubbles.ts` импортирует оттуда **только**
-`createDateBubble` (`chat/bubbles.ts:98`):
+`createDateBubble` (`chat/bubbles.ts:116`):
 
 ```
 $ grep -rn "createServiceBubble\|wrapMessageActionText" web-client/src
@@ -362,9 +373,9 @@ const STUB_CTX = { firstInGroup: true, lastInGroup: true, isChannel: false,
 `isChannel: false` → нет `channel-post`/`with-beside-button` (`bubbleClasses.ts:145`).
 `bigEmojiCount: 0` → нет `emoji-big`/`can-have-big-emoji`/`sticker`
 (`bubbleClasses.ts:123`). `animatedSticker` компенсируется в
-`renderStickerMedia` (`chat/bubbles.ts:905`), `isHighlighted`/`isFirstUnread` — в
-`highlightBubble` (`chat/bubbles.ts:2662`) и `setUnreadDelimiter`
-(`chat/bubbles.ts:2438`); остальные два — реальные дыры.
+`renderStickerMedia` (`chat/bubbles.ts:1600`), `isHighlighted`/`isFirstUnread` — в
+`highlightBubble` (`chat/bubbles.ts:4734`) и `setUnreadDelimiter`
+(`chat/bubbles.ts:4772`); остальные два — реальные дыры.
 
 ## 3.7 Контекстное меню
 
@@ -636,12 +647,19 @@ big-emoji, ховер-реакция, чипы реакций, размеры а
 ## 5.3 Не трогать
 
 `components/messages/bubbleClasses.test.ts` (17) — общий вычислитель, живой у ванили
-(`chat/bubbles.ts:88`). `components/messages/videoPlayback.test.ts` (6),
-`MessageSpoilerOverlay.legacy.test.tsx` (2), `ChatDialogs.test.tsx` (2),
-`ForwardPicker.test.tsx` (5), `SendMediaPopup.spoiler.test.tsx` (4) — не лента (§1.2).
+(`chat/bubbles.ts:107`). `components/messages/videoPlayback.test.ts` (6),
+`messageSpoilerOverlay.legacy.test.ts` (2, был `MessageSpoilerOverlay.legacy.test.tsx`),
+`ChatDialogs.test.tsx` (2), `ForwardPicker.test.tsx` (5),
+`SendMediaPopup.spoiler.test.tsx` (4) — не лента (§1.2).
 Итого 36 тестов в каталоге `messages/` переживают снос без изменений.
 
 Проверка арифметики каталога: 121 = 72 (умирают) + 13 (переписать) + 36 (остаются).
+
+Числа — снимок разведки. Оверлей спойлеров с тех пор оброс пинами и в ленте тоже
+(`components/messages/messageSpoilerOverlay.test.ts` (6),
+`components/chat/bubbles.spoilerOverlay.test.ts` (7),
+`styles/spoilerPlate.test.ts` (3)) — см. сноску в §1.2; в арифметику выше они не
+входят, она про состав каталога на момент сноса.
 
 ## 5.4 Что придётся ДОБАВИТЬ
 
@@ -670,7 +688,7 @@ big-emoji, ховер-реакция, чипы реакций, размеры а
 |---|---|---|
 | `bubbleClasses` | `components/chat/bubbles.ts` | общий вычислитель модификаторов бабла, им пользуется ИМПЕРАТИВНАЯ лента |
 | `videoPlayback` | `components/audio.ts`, `mediaProgressLine.ts`, `wrappers/video.ts`, `lib/mediaPlayer/index.ts` | подсистема плеера, к ленте отношения не имеет |
-| `MessageSpoilerOverlay` | `components/RichText.tsx` | спойлер текста, нужен везде, где есть rich-text |
+| `messageSpoilerOverlay` | `components/RichText.tsx`, **`components/chat/bubbles.ts`** | спойлер текста, нужен везде, где есть rich-text; с 2026-09-06 это ванильная фабрика, и императивная лента — её второй потребитель (§1.2, сноска) |
 | `ChatDialogs` | `StoryViewer.tsx`, `conversation/ChatMsgActionPopups.tsx`, `core/hooks/useChatPopups.tsx` | пикер чатов, лежит в папке ленты по историческим причинам |
 | `SendMediaPopup`, `TranslatePopup`, `StackedAvatars` | `Chat.tsx`, `ChatMsgActionPopups.tsx`, `CommentsBar.tsx` | попапы и мелкие узлы окружения |
 | `EmptyChatGreeting`, `SimilarChannels` | `Chat.tsx` | **это ПОРТ, а не снос**: в tweb владелец обоих — `bubbles.ts` |
