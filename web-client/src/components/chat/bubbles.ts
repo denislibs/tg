@@ -239,6 +239,17 @@ export interface BubblesNavigation {
    */
   openDiscussion?(args: { peerId: PeerId, postMid: number }): void
   /**
+   * Попап пересылки — порт ветки клика по кнопке «переслать» сбоку от поста
+   * канала (tweb bubbles.ts:3511-3517: `showForwardPopup({[this.peerId]:
+   * getMidsByMessage(message)})`).
+   *
+   * Здесь, а не внутри ленты, по той же причине, что календарь и тред: попап у
+   * нас React-компонент, его владелец — хост. Форма записи взята у оригинала
+   * (`{[peerId]: mids}`) и совпадает с той, которой пользуется пункт меню
+   * (`ContextMenuPopups.showForward`) — открывается тот же попап.
+   */
+  showForward?(fromPeerIdsMids: Record<number, number[]>): void
+  /**
    * ПЕРЕЗВОНИТЬ по баблу лога звонка — порт ветки tweb bubbles.ts:3192-3196
    * (`this.chat.appImManager.callUser(this.peerId.toUserId(), callDiv.dataset
    * .type)`).
@@ -558,7 +569,17 @@ const DO_NOT_SLICE_VIEWPORT_ON_RENDER = false
 const DO_NOT_SLICE_VIEWPORT_ON_SCROLL = IS_SAFARI
 
 // Модификаторы бабла, которых на рендере ещё неоткуда взять: подсветка
-// jump-to-message и граница непрочитанных (этап 5) и признаки канала.
+// jump-to-message и граница непрочитанных (этап 5).
+//
+// `bigEmojiCount` здесь — ЗАГЛУШКА, и она врёт: сообщения из одних эмодзи
+// ванильная лента рисует обычным текстовым баблом, классов `emoji-big`/
+// `can-have-big-emoji`/`sticker` (tweb bubbles.ts:7531-7537) не получает ни
+// один бабл. Долг назван — `backlogs/frontend/vanilla-feed-big-emoji.md`.
+//
+// `animatedSticker` заглушкой быть ПЕРЕСТАЁТ сразу после сборки каркаса:
+// класс `sticker-animated` вешает сама ветка стикера (`renderStickerMedia`),
+// когда узнаёт тип документа, — там же, где его вешает оригинал
+// (bubbles.ts:6104).
 //
 // `firstInGroup`/`lastInGroup` здесь — СЕМЯ РЕНДЕРА, а не позиция в серии:
 // из них `bubbleClasses` выводит `can-have-tail`, который tweb тоже ставит на
@@ -569,7 +590,6 @@ const DO_NOT_SLICE_VIEWPORT_ON_SCROLL = IS_SAFARI
 const STUB_CTX: Omit<BubbleCtx, 'out' | 'showName'> = {
   firstInGroup: true,
   lastInGroup: true,
-  isChannel: false,
   isHighlighted: false,
   isFirstUnread: false,
   bigEmojiCount: 0,
@@ -1055,6 +1075,15 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * возрастанию номера. Именно оно получает бабл, остальные не рисуются вовсе
    * (tweb bubbles.ts:6600-6605).
    */
+  /** Порт `appMessagesManager.getMidsByMessage` (tweb, зовётся из
+   *  bubbles.ts:3514): номера ВСЕГО альбома либо один номер. У поста-альбома
+   *  бабл один, а пересылать надо все его части. */
+  private midsByMessage(message: MyMessage): number[] {
+    const groupedId = message._ === 'message' ? message.grouped_id : undefined
+    if (!groupedId) return [message.id]
+    return this.groupedMessages(groupedId).map((m) => m.id)
+  }
+
   private mainGroupedMessage(message: MyMessage): MyMessage | undefined {
     const groupedId = message._ === 'message' ? message.grouped_id : undefined
     if (!groupedId) return undefined
@@ -1712,10 +1741,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
       setUnreadObserver?.(bubble)
     }
 
-    // Просмотры — порт tweb :7672/:7684-7690. Наблюдаемый узел — САМ бабл, в
-    // отличие от отметки прочтения (та у поста канала висит на времени: пост
-    // бывает выше вьюпорта, и «прочитан» он, только когда домотали до конца, а
-    // «просмотрен» — как только показался край).
+    // ПОСТ КАНАЛА — порт всего блока tweb :7671-7691 одним куском, как в
+    // оригинале: класс, кнопка «переслать» сбоку и наблюдение просмотров живут
+    // под ОДНИМ гейтом.
     //
     // Гейт — НАЛИЧИЕ счётчика (`isMessage && message.views`, :7672), а не вид
     // чата: у поста канала `views:flags.10?int` стоит с первой публикации и
@@ -1723,12 +1751,34 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // поста в оригинале, appMessagesManager.ts:2930). Наш сервер шлёт пару
     // views/forwards ровно у поста и всегда — domain.MessageReal.PostCounters.
     //
-    // `!message.pFlags.is_outgoing` (:7684) у нас выражает ДРОБНЫЙ номер: своя
-    // ещё не отправленная публикация номера в канале не имеет, регистрировать
-    // просмотр нечему. Ветки `previewOnly` и метрик чтения (:7687-7690) предмета
-    // не имеют — превью-ленты и метрик у нас нет.
-    if(message._ === 'message' && message.views && !isLocalMessageId(message.id)) {
-      this.observer?.observe(bubble, this.viewsObserverCallback)
+    // Сам класс `channel-post` (:7673) ставит `bubbleClasses` по тому же
+    // признаку — он выводится из сообщения, и там ему место.
+    if(message._ === 'message' && message.views) {
+      // Кнопка «переслать» сбоку от поста — tweb :7675-7682. Из двух слагаемых
+      // условия оригинала переносится первое (`!fwd_from.saved_from_msg_id` —
+      // у пересылки, ведущей к оригиналу, сбоку висит «перейти к оригиналу», а
+      // не «переслать»); второе (`chat.type !== ChatType.Pinned`) предмета не
+      // имеет — ленты закреплённых у нас нет как понятия.
+      if(!message.fwd_from?.saved_from_msg_id) {
+        const forward = document.createElement('div')
+        forward.classList.add('bubble-beside-button', 'with-hover', 'forward')
+        forward.append(Icon('forward_filled'))
+        bubbleContainer.append(forward)
+        bubble.classList.add('with-beside-button')
+      }
+
+      // Наблюдаемый узел — САМ бабл, в отличие от отметки прочтения (та у поста
+      // канала висит на времени: пост бывает выше вьюпорта, и «прочитан» он,
+      // только когда домотали до конца, а «просмотрен» — как только показался
+      // край).
+      //
+      // `!message.pFlags.is_outgoing` (:7684) у нас выражает ДРОБНЫЙ номер: своя
+      // ещё не отправленная публикация номера в канале не имеет, регистрировать
+      // просмотр нечему. Ветки `previewOnly` и метрик чтения (:7687-7690)
+      // предмета не имеют — превью-ленты и метрик у нас нет.
+      if(!isLocalMessageId(message.id)) {
+        this.observer?.observe(bubble, this.viewsObserverCallback)
+      }
     }
 
     // Медиа — после сборки каркаса: ветке нужен и `bubbleContainer` (куда
@@ -2752,6 +2802,23 @@ export default class ChatBubbles implements BubbleGroupsHost {
     if (commentsDiv && bubble) {
       cancelEvent(e)
       this.openDiscussion(bubble)
+      return
+    }
+
+    // Кнопка «переслать» сбоку от поста канала — tweb bubbles.ts:3511-3517
+    // (`showForwardPopup({[peerId]: getMidsByMessage(message)})`). У оригинала
+    // ветка стоит между медиа (:3479) и reply-заголовком (:3520); здесь она
+    // раньше обеих, и порядок безразличен: кнопка лежит ВНЕ тела бабла, ни с
+    // вложением, ни с заголовком она не пересекается.
+    //
+    // Расхождение одно: оригинал читает класс с самого кликнутого узла
+    // (`target.classList.contains('forward')`, :3511), у нас — `closest`.
+    // Внутри кнопки лежит узел иконки, и клик по нему приходит с него же.
+    const forwardButton = target.closest<HTMLElement>('.bubble-beside-button.forward')
+    if (forwardButton && bubble) {
+      cancelEvent(e)
+      const message = this.getMessage(Number(bubble.dataset.mid))
+      if (message) this.chat.navigation?.showForward?.({ [this.peerId]: this.midsByMessage(message) })
       return
     }
 

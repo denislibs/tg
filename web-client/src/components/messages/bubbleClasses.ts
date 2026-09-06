@@ -23,7 +23,6 @@ export interface BubbleCtx {
   lastInGroup: boolean
   /** имя отправителя показывается (групповой чат, входящее, первое в серии) */
   showName: boolean
-  isChannel: boolean
   isHighlighted: boolean
   /** перед этим баблом проходит граница «непрочитанные» (tweb bubbles.ts:11609) */
   isFirstUnread: boolean
@@ -143,9 +142,14 @@ export function bubbleClasses(m: ConvMsg, ctx: BubbleCtx): string[] {
   // Пересланное всегда показывает шапку «Forwarded from» (tweb bubbles.ts:9413,9645).
   if (m.forwardFrom) cls.push('forwarded', 'must-have-name')
   if (!ctx.showName && !m.forwardFrom) cls.push('hide-name')
-  // Пост канала: рядом с баблом висит круглая кнопка «переслать», под неё
-  // резервируется место (tweb bubbles.ts:7673-7681).
-  if (ctx.isChannel) cls.push('channel-post', 'with-beside-button')
+  // Пост канала — tweb bubbles.ts:7672-7673: гейт стоит на САМОМ сообщении
+  // (`isMessage && message.views`), а не на виде чата. Счётчик просмотров есть
+  // ровно у поста и с первой публикации (`views:flags.10?int`, минимум единица
+  // — appMessagesManager.ts:2930), поэтому вид чата спрашивать незачем.
+  // Парный класс `with-beside-button` ставит НЕ этот вычислитель, а место,
+  // где создаётся сама кнопка: в оригинале узел и класс идут одним блоком под
+  // своим условием (bubbles.ts:7675-7681).
+  if (m.views) cls.push('channel-post')
   // tweb вешает класс, только если инлайн-клавиатура реально дала кнопки
   // (bubbles.ts:7743 — `containerDiv.childElementCount`).
   if (getInlineMarkupRows(m.replyMarkup)) cls.push('with-reply-markup')

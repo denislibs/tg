@@ -19,7 +19,7 @@ const docMedia = (mime: string, attributes: DocumentAttribute[] = []): MessageMe
 
 const msg = (over: Partial<ConvMsg> = {}): ConvMsg => ({ id: 1, type: 'text', text: 'hi', time: '12:00', ...over } as ConvMsg)
 const ctx = (over: Partial<BubbleCtx> = {}): BubbleCtx => ({
-  out: false, firstInGroup: true, lastInGroup: true, showName: false, isChannel: false,
+  out: false, firstInGroup: true, lastInGroup: true, showName: false,
   isHighlighted: false, isFirstUnread: false, bigEmojiCount: 0, animatedSticker: false,
   ...over,
 })
@@ -104,9 +104,27 @@ describe('bubbleClasses', () => {
   })
 
   it('пересланное: forwarded + must-have-name, hide-name не ставится', () => {
-    const cls = bubbleClasses(msg({ forwardFrom: { name: 'канал' } as ConvMsg['forwardFrom'] }), ctx({ out: true, isChannel: true }))
-    expect(cls).toEqual(expect.arrayContaining(['forwarded', 'must-have-name', 'channel-post', 'with-beside-button']))
+    const cls = bubbleClasses(msg({ forwardFrom: { name: 'канал' } as ConvMsg['forwardFrom'] }), ctx({ out: true }))
+    expect(cls).toEqual(expect.arrayContaining(['forwarded', 'must-have-name']))
     expect(cls).not.toContain('hide-name')
+  })
+
+  // Пост канала — гейт tweb bubbles.ts:7672-7673: `isMessage && message.views`.
+  // Признака «открыт канал» в контексте больше нет вовсе: класс выводится из
+  // САМОГО сообщения, поэтому мутация «вернуть гейт по виду чата» краснит здесь
+  // обеими половинами пары.
+  it('пост канала: channel-post по счётчику просмотров', () => {
+    expect(bubbleClasses(msg({ views: 2 }), ctx())).toContain('channel-post')
+  })
+
+  it('сообщение без просмотров: channel-post не ставится', () => {
+    expect(bubbleClasses(msg(), ctx())).not.toContain('channel-post')
+  })
+
+  // `with-beside-button` идёт вместе с УЗЛОМ кнопки (tweb :7675-7681), поэтому
+  // его ставит лента, а не этот вычислитель (пин — `bubbles.channelPost.test.ts`).
+  it('with-beside-button вычислителем не ставится', () => {
+    expect(bubbleClasses(msg({ views: 2 }), ctx())).not.toContain('with-beside-button')
   })
 
   // `is-selected` здесь не проверяется: он больше не из bubbleClasses, а из

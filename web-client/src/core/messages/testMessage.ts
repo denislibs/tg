@@ -45,6 +45,10 @@ export interface MessageFixture {
   /** Клавиатура сообщения. Нужна кадру правки: он несёт сообщение ЦЕЛИКОМ, а
    *  значит и разметку — прежде она ехала отдельным ключом конверта. */
   replyMarkup?: ReplyMarkup
+  /** Счётчик просмотров (`views:flags.10?int`) — признак ПОСТА: по нему
+   *  ставится `channel-post` и кнопка «переслать» сбоку (tweb
+   *  bubbles.ts:7672-7681). */
+  views?: number
 }
 
 /** Обычное сообщение — минимальный валидный `message`. */
@@ -79,6 +83,7 @@ export function makeMessage(f: MessageFixture): MessageReal {
     ...(f.editDate != null ? { edit_date: f.editDate } : {}),
     ...(f.replyMarkup ? { reply_markup: f.replyMarkup } : {}),
     ...(f.replies ? { replies: f.replies } : {}),
+    ...(f.views != null ? { views: f.views } : {}),
   }
 }
 
