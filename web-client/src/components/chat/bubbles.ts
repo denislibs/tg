@@ -43,7 +43,8 @@
 //    которого уже есть предмет: делегирование кликов по размеченным узлам
 //    rich-text и ответ жестом (даблклик на десктопе / свайп на таче, порт
 //    bubbles.ts:1496-1572), плюс контекстное меню (:1478) и выделение (:1479) —
-//    оба лента поднимает фабрикой хоста (`createContextMenu`/`createSelection`).
+//    оба лента поднимает фабрикой хоста (`createContextMenu`/`createSelection`)
+//    — и ховер-реакция (`setReactionsHoverListeners`, :2830).
 //    Зовёт его конструктор: в tweb это делает `Chat` (`chat.ts:638`), а у нас
 //    `Chat`-хоста нет.
 //  • `processBatch` портирован вместе со скроллом (`changedTop`/`changedBottom`
@@ -81,6 +82,13 @@ import BatchProcessor, { type MiddlewareAwaiter } from '@helpers/batchProcessor'
 import indexOfAndSplice from '@helpers/array/indexOfAndSplice'
 import noop from '@helpers/noop'
 import cancelEvent from '@helpers/dom/cancelEvent'
+import { attachClickEvent } from '@helpers/dom/clickEvent'
+import contextMenuController from '@helpers/contextMenuController'
+import overlayCounter from '@helpers/overlayCounter'
+import pause from '@helpers/schedulers/pause'
+import LottiePlayer from '@lib/lottie/lottiePlayer'
+import lottieLoader from '@lib/lottie/lottieLoader'
+import { setTransition } from '@core/dom/setTransition'
 import findUpClassName from '@helpers/dom/findUpClassName'
 import getViewportSlice from '@helpers/dom/getViewportSlice'
 import ScrollSaver from '@helpers/scrollSaver'
@@ -100,9 +108,9 @@ import { generateTempMessageId, isLocalMessageId } from '@core/history/messageId
 import { messageToConvMsg } from '@core/messageToConvMsg'
 import { dayLabel } from '@core/format/dayLabel'
 import { fmtViews } from '@core/format/fmtViews'
-import { getMessageText, isOurMessage, isOutMessage, type MessageReal, type MessageReplies, type MessageService, type MyMessage, type OurMessageChat } from '@core/models'
+import { getMessageText, isOurMessage, isOutMessage, type MessageReal, type MessageReplies, type MessageService, type MyMessage, type OurMessageChat, type Reaction } from '@core/models'
 import { getOutputPeer, isAnyChat, toPeerId } from '@core/peers/peerId'
-import { hasReactionEmoticon } from '@core/reactions/messageReactions'
+import { hasReactionEmoticon, isChosen } from '@core/reactions/messageReactions'
 import type { HistoryArgs, HistoryResult } from '@core/managers/messagesManager'
 import { bubbleClasses, type BubbleCtx } from '../messages/bubbleClasses'
 import BubbleGroups, {
@@ -116,7 +124,7 @@ import BubbleGroups, {
 import { createDateBubble as createServiceDateBubble, createServiceBubble } from './serviceMessage'
 import { createReplyContainer } from './replyContainer'
 import { createMessageTime, setRepliesCount, setSendingStatus } from './messageTime'
-import { createReactionsElement, type ReactionsManagers } from './reactions'
+import { createReactionsElement, getAvailableReactions, getAvailableReactionsForPeer, type ReactionsManagers } from './reactions'
 import { renderReplies, setRepliesElementCount } from './replies'
 import { attachReplySwipe, findDoubleClickReplyBubble } from './replySwipe'
 import type ChatContextMenu from './contextMenu'
@@ -528,6 +536,13 @@ export interface BubblesManagers extends PeerTitleManagers {
  *  а «дальше не работаем». */
 const PEER_CHANGED_ERROR = new Error('peer changed')
 
+/** Кнопка быстрой реакции над баблом. Свою зону актуальности она держит на
+ *  самом узле — как и в tweb (`hoverReaction.middlewareHelper`,
+ *  bubbles.ts:2751): узел уносит её с собой, когда его удаляют из DOM.
+ *  Глобальных дополнений `HTMLElement` в проекте нет (тот же вычет у
+ *  `wrappers/sticker.ts::StickerVideo`), поэтому контракт выражен типом. */
+type HoverReaction = HTMLElement & { middlewareHelper: ReturnType<typeof getMiddleware> }
+
 /** Единица очереди рендера — порт того, что `safeRenderMessage` возвращает в
  *  tweb (bubbles.ts:6307-6310: результат `renderMessage` + `updatePosition`).
  *  У нас состав бабла — текст, поэтому от результата остаются ровно сообщение и
@@ -812,6 +827,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
   /** Порт поля tweb `this.replySwipeHandler` (bubbles.ts:1543) — слушатели
    *  жеста висят на контейнере и снимаются на `destroy`. */
   private replySwipeHandler?: { removeListeners(): void }
+
+  /** Порт полей tweb bubbles.ts:618-619 — бабл под курсором и его кнопка
+   *  быстрой реакции (см. `onBubblesMouseMove`). */
+  private hoverBubble?: HTMLElement
+  private hoverReaction?: HoverReaction
 
   /**
    * Живые отдачи файлов этой ленты: `clientMsgId` → промис, которым кормится
@@ -2642,6 +2662,247 @@ export default class ChatBubbles implements BubbleGroupsHost {
         canSend: () => this.chat.canSend?.() ?? false,
         initMessageReply: (mid) => this.chat.initMessageReply?.(mid),
       })
+    }
+
+    // Ховер-реакция — tweb chat.ts:633-635: `if(!IS_TOUCH_SUPPORTED)
+    // this.bubbles.setReactionsHoverListeners()`. У оригинала строка стоит
+    // РАНЬШЕ `attachContainerListeners` (chat.ts:637), потому что режим
+    // выделения там уже создан (chat.ts:615); у нас его создаёт этот же метод
+    // строкой выше — отсюда и место вызова.
+    if (!IS_TOUCH_SUPPORTED) {
+      this.setReactionsHoverListeners()
+    }
+  }
+
+  /** Порт tweb bubbles.ts:2830-2835. */
+  private setReactionsHoverListeners() {
+    this.listenerSetter.add(contextMenuController)('toggle', this.unhoverPrevious)
+    this.listenerSetter.add(overlayCounter)('change', this.unhoverPrevious)
+    // Режима выделения может не быть вовсе (`chat.createSelection` опционален —
+    // см. `attachContainerListeners`); у оригинала он есть всегда.
+    if (this.selection) {
+      this.listenerSetter.add(this.selection)('toggle', this.unhoverPrevious)
+    }
+    this.listenerSetter.add(this.container)('mousemove', this.onBubblesMouseMove)
+  }
+
+  /**
+   * Быстрая реакция под курсором — порт `onBubblesMouseMove`
+   * (tweb bubbles.ts:2708-2828).
+   *
+   * Кнопка-пилюля `div.bubble-hover-reaction > div.bubble-hover-reaction-sticker`
+   * вставляется в `.bubble-content` наведённого бабла, показывает `select`-роль
+   * реакции 18×18 и по клику её ставит. Стили портированы целиком
+   * (`styles/tweb/_chatBubble.scss:414-446`, `:3659-3661` для исходящих).
+   *
+   * ─── КАКУЮ реакцию показывать ──────────────────────────────────────────────
+   * Оригинал берёт ПЕРВУЮ не-платную из `getAvailableReactionsByMessage(message,
+   * true)` (:2770-2776). Флаг `true` — `unshiftQuickReaction`: БЫСТРАЯ реакция
+   * пользователя (`config.reactions_default`, appReactionsManager.ts:437-450)
+   * поднимается в начало списка, и то только когда политика пира —
+   * `chatReactionsAll` (:268) либо это личка (:214-221). При `chatReactionsSome`
+   * оригинал НИЧЕГО не поднимает и показывает ровно первую разрешённую чатом
+   * реакцию.
+   *
+   * Быстрой реакции у нас нет по всей вертикали: ни `reactions_default` в
+   * конфиге, ни `updateDefaultReaction`, ни хранилища — то есть поднимать
+   * нечего. Поэтому здесь ВСЕГДА первая разрешённая политикой пира
+   * (`getAvailableReactionsForPeer` — `chat/reactions.ts`): для `chatReactionsSome`
+   * это буквально поведение оригинала, для остальных — оно же минус
+   * персонализация. Обмана в этом нет: на кнопке нарисована та самая реакция,
+   * которую отправит клик по ней. Экран «Быстрая реакция» в настройках
+   * (`components/settings/QuickReaction.tsx`) ничего не сохраняет и ни на что не
+   * влияет — расходиться с выбором пользователя тут тоже нечему.
+   * Долг — `backlogs/frontend/quick-reaction-default.md`.
+   */
+  private onBubblesMouseMove = async(e: MouseEvent) => {
+    const target = e.target as HTMLElement
+
+    // tweb :2712-2722. `chat.type !== ChatType.Scheduled` не портирован: видов
+    // чата у ленты нет как понятия (тот же вычет у `attachContainerListeners`).
+    const content = findUpClassName(target, 'bubble-content')
+    if (!(
+      content &&
+      !this.selection?.isSelecting &&
+      !findUpClassName(target, 'service') &&
+      !findUpClassName(target, 'bubble-beside-button') &&
+      this.peerId !== rootScope.myId
+    )) {
+      this.unhoverPrevious()
+      return
+    }
+
+    // tweb :2724-2728. Без режима выделения правило «этот бабл вообще
+    // интерактивен?» проверить нечем — считаем, что да (у оригинала тот же
+    // `canSelectBubble` заодно отсекает и «бабла нет вовсе»).
+    const bubble = findUpClassName(content, 'bubble')
+    if (!bubble || (this.selection && !this.selection.canSelectBubble(bubble))) {
+      this.unhoverPrevious()
+      return
+    }
+
+    // tweb :2730-2747
+    if (bubble === this.hoverBubble) {
+      return
+    }
+
+    this.unhoverPrevious()
+
+    this.hoverBubble = bubble
+
+    // tweb :2739-2747 — ветка «кнопка уже есть, просто показать её снова» не
+    // портирована: она недостижима и в оригинале. `this.hoverReaction`
+    // читается СРАЗУ ПОСЛЕ `unhoverPrevious()`, а тот обнуляет поле — оба
+    // поля живут и гаснут парой.
+
+    // tweb :2749-2758
+    const hoverReaction = this.hoverReaction = document.createElement('div') as HoverReaction
+    hoverReaction.classList.add('bubble-hover-reaction')
+    const middlewareHelper = hoverReaction.middlewareHelper = this.getMiddleware().create()
+    const middleware = middlewareHelper.get(() => this.hoverReaction === hoverReaction)
+
+    const stickerWrapper = document.createElement('div')
+    stickerWrapper.classList.add('bubble-hover-reaction-sticker')
+    hoverReaction.append(stickerWrapper)
+
+    content.append(hoverReaction)
+
+    // tweb :2760-2768 — реакция принадлежит ПЕРВОМУ сообщению альбома
+    // (`getGroupsFirstMessage`).
+    const message = this.getMessage(Number(bubble.dataset.mid))
+    if (message?._ !== 'message') {
+      this.unhoverPrevious()
+      return
+    }
+
+    const reactionsMessage = this.mainGroupedMessage(message) ?? message
+
+    const catalog = getAvailableReactions(this.managers)
+    if (!catalog) {
+      hoverReaction.remove()
+      return
+    }
+
+    // tweb :2770-2776 — пауза 400 мс перед показом: кнопка не должна мигать на
+    // проездах курсора.
+    const [peerAvailableReactions, availableReactions] = await Promise.all([
+      // tweb берёт пир у САМОГО сообщения (`getAvailableReactionsByMessage`,
+      // appReactionsManager.ts:373-386) — ради пересланного поста канала в
+      // мегагруппе. У нас окно одно, и бабл несёт ровно пир ленты
+      // (`bubble.dataset.peerId = this.peerId`, :1737).
+      getAvailableReactionsForPeer(this.peerId, this.managers),
+      catalog,
+      pause(400),
+    ])
+
+    const reaction = peerAvailableReactions?.reactions.find((reaction) => reaction._ !== 'reactionPaid')
+    if (!reaction) {
+      hoverReaction.remove()
+      return
+    }
+
+    // tweb :2778-2782 — кастом-эмодзи-реакции у нас нет (`appEmojiManager
+    // .getCustomEmojiDocument`), поэтому только каталог.
+    const availableReaction = reaction._ === 'reactionEmoji' ?
+      availableReactions.find((r) => r.emoji === reaction.emoticon) :
+      undefined
+    const mediaId = availableReaction?.selectMediaId
+    if (!middleware() || !mediaId) {
+      return
+    }
+
+    // tweb :2784-2794. `needUpscale: true` опции у нашего `wrapSticker` нет
+    // (тот же вычет, что у `chat/reactionsMenu.ts`).
+    const player = await wrapSticker({
+      div: stickerWrapper,
+      mediaId,
+      width: 18,
+      height: 18,
+      middleware,
+      group: 'chat',
+      withThumb: false,
+      needFadeIn: false,
+    }).render.catch(() => undefined)
+
+    if (!player || !middleware()) {
+      return
+    }
+
+    // tweb :2796-2812 — кнопка показывается по ПЕРВОМУ КАДРУ, не по загрузке.
+    const onFirstFrame = () => {
+      if (!middleware()) {
+        return
+      }
+
+      hoverReaction.dataset.loaded = '1'
+      this.setHoverVisible(hoverReaction, true)
+    }
+
+    if (player instanceof LottiePlayer) {
+      void lottieLoader.waitForFirstFrame(player).then(onFirstFrame, noop)
+    } else {
+      onFirstFrame()
+    }
+
+    // tweb :2814-2826
+    attachClickEvent(hoverReaction, (e) => {
+      cancelEvent(e) // cancel triggering selection
+      this.sendReaction(reactionsMessage, reaction)
+      this.unhoverPrevious()
+    }, { listenerSetter: this.listenerSetter })
+  }
+
+  /**
+   * Порт `chat.sendReaction` (tweb chat.ts:1457) в объёме обычной
+   * эмодзи-реакции — ТОГГЛ, а не «поставить»: повторный выбор уже своей реакции
+   * снимает её (appReactionsManager.ts:733-747). Что стоит сейчас, читается из
+   * агрегата сообщения — того же источника, из которого `chat/reactions.ts`
+   * красит чип `is-chosen`. У клика по ЧИПУ источник другой и ближе —
+   * см. `toggleReaction`.
+   */
+  private sendReaction(message: MyMessage, reaction: Reaction) {
+    if (reaction._ !== 'reactionEmoji') return
+
+    const { react, unreact } = this.managers.messages
+    if (!react || !unreact) return
+
+    const emoticon = reaction.emoticon
+    const count = message.reactions?.results.find((c) => {
+      return c.reaction._ === 'reactionEmoji' && c.reaction.emoticon === emoticon
+    })
+
+    const promise = count && isChosen(count) ?
+      unreact(this.peerId, message.id, emoticon) :
+      react(this.peerId, message.id, emoticon)
+    promise.catch(noop)
+  }
+
+  /** Порт tweb bubbles.ts:2837-2853. */
+  private setHoverVisible(hoverReaction: HoverReaction, visible: boolean) {
+    if (hoverReaction.parentElement) {
+      hoverReaction.parentElement.classList.toggle('hover-reaction-visible', visible)
+    }
+
+    setTransition({
+      element: hoverReaction,
+      className: 'is-visible',
+      forwards: visible,
+      duration: 200,
+      onTransitionEnd: visible ? undefined : () => {
+        hoverReaction.remove()
+        hoverReaction.middlewareHelper.destroy()
+      },
+      useRafs: visible ? 2 : 0,
+    })
+  }
+
+  /** Порт tweb bubbles.ts:2855-2863. */
+  private unhoverPrevious = () => {
+    const { hoverBubble, hoverReaction } = this
+    if (hoverBubble && hoverReaction) {
+      this.setHoverVisible(hoverReaction, false)
+      this.hoverBubble = undefined
+      this.hoverReaction = undefined
     }
   }
 

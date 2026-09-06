@@ -8,7 +8,8 @@
  *
  * ─── Что портировано ────────────────────────────────────────────────────────
  *  • `attachTo` (:246-348): десктоп — `attachContextMenuListener` (правый клик),
- *    тач — обычный тап по баблу с отсевом по «плохим селекторам» (:289-307);
+ *    тач — долгое нажатие по чипу реакции (:249-280) и обычный тап по баблу с
+ *    отсевом по «плохим селекторам» (:289-307);
  *    подписка на `history_delete` закрывает открытое меню (:323-347);
  *  • `onContextMenu` (:350-585): `bubble-content-wrapper` → `bubble`, отсев
  *    дата-бабла, `preventDefault` только для мыши, выход при уже активном меню,
@@ -117,8 +118,12 @@
  *  • `getReactionsOpenPosition` (:2220-2227) — прямоугольник, от которого
  *    открывается ПОЛНЫЙ пикер за кнопкой «ещё»; самой кнопки в панели нет
  *    (см. `chat/reactionsMenu.ts` и `backlogs/frontend/reactions-more-button.md`).
- *  • Long-press по реакции на таче (:249-280) — цель жеста (`reaction-element`)
- *    не существует, см. выше.
+ *  • `openReactionContextMenu` (:588-670) — меню САМОЙ реакции («кто поставил»
+ *    + пак эмодзи), куда оригинал уводит и правый клик по чипу (:392-413), и
+ *    долгое нажатие на таче. Ни списка реагировавших отдельным меню, ни паков
+ *    кастом-эмодзи у нас нет; оба жеста открывают обычное меню сообщения —
+ *    ветку, в которую сваливается и сам оригинал при `canOpenReactionMenu ===
+ *    false` (:404-410).
  *  • `PopupToggleReadDate` (:878-880) — попапа приватности «когда прочитано»
  *    нет; пункт read-date остаётся информационным, как и в React-версии.
  *  • `StackedAvatars` в групповой ветке `views` (:1596-1644) — компонента нет,
@@ -334,6 +339,11 @@ type ChatContextMenuButton = ButtonMenuItemOptions & {
 // `this.isOverBubble || IS_TOUCH_SUPPORTED || true`, то есть ветка
 // `button.notDirect && ...` недостижима (:705-707).
 
+/** Чип реакции — цель тач-жестов (tweb `closest('reaction-element')`, :261,392).
+ *  Кастом-элемента `reaction-element` у нас нет, чип это `div.reaction`
+ *  (`chat/reactions.ts:469`). */
+const REACTION_SELECTOR = '.reaction'
+
 /** Селекторы, по которым обычный тап НЕ открывает меню — tweb :289-307,
  *  дословно. Ни один не выброшен: узла с таким классом у нас может ещё не
  *  быть, но список это ПРАВИЛО оригинала, а не перечень существующих узлов. */
@@ -415,10 +425,61 @@ export default class ChatContextMenu {
     this.attachListenerSetter.removeAll()
 
     if(IS_TOUCH_SUPPORTED) {
+      // tweb :249-280 — ДОЛГОЕ нажатие по чипу реакции. Слушается `touchstart`
+      // в фазе перехвата, потому что обычный путь до сюда не доходит: тап по
+      // чипу разбирает делегат ленты и гасит событие (tweb bubbles.ts:1337
+      // `attachClickEvent(scrollable.container, onBubblesClick)` + :3251
+      // `cancelEvent`), а меню слушает то же `mousedown` на внешнем контейнере.
+      //
+      // Цель жеста у оригинала — кастом-элемент `reaction-element`; у нас чип
+      // это `div.reaction` (`chat/reactions.ts:469`), сам элемент не заведён.
+      //
+      // РАСХОЖДЕНИЕ: у оригинала жест открывает МЕНЮ САМОЙ РЕАКЦИИ
+      // (`openReactionContextMenu`, :588-670 — кто поставил + пак эмодзи);
+      // подсистемы у нас нет. Остаётся ровно та ветка, в которую сваливается и
+      // сам оригинал, когда список реагировавших смотреть нельзя
+      // (`canOpenReactionMenu === false`, :404-410): обычное меню сообщения.
+      attachContextMenuListener({
+        element,
+        callback: (e) => {
+          if(this.selection?.isSelecting || !(e.target as HTMLElement).closest(REACTION_SELECTOR)) {
+            return
+          }
+
+          this.onContextMenu(e)
+
+          // tweb :260-274 — синтетические мышиные события приезжают ПОСЛЕ
+          // `touchend`, и без этого гашения первое же из них закрыло бы
+          // только что открытое меню.
+          const options = { capture: true, once: true }
+          const listenerSetter = this.attachListenerSetter
+          function onTouchEnd(e: Event) {
+            listenerSetter.removeManual(element, 'touchcancel', onTouchCancel, options)
+            cancelEvent(e)
+          }
+          function onTouchCancel() {
+            listenerSetter.removeManual(element, 'touchend', onTouchEnd, options)
+          }
+          listenerSetter.add(element)('touchend', onTouchEnd, options)
+          listenerSetter.add(element)('touchcancel', onTouchCancel, options)
+        },
+        listenerSetter: this.attachListenerSetter,
+        listenerOptions: { capture: true },
+      })
+
       // tweb :282-315 — обычный тап по баблу открывает меню, если цель не
       // попала в «плохие селекторы».
       attachClickEvent(element, (e) => {
         if(this.selection?.isSelecting) {
+          return
+        }
+
+        // Чип реакции у оригинала до этого слушателя не доходит (см. выше:
+        // делегат ленты гасит то же событие раньше). У нас чип разбирает
+        // `click`-делегат ленты (`bubbles.ts::onContainerClick`), а меню —
+        // `mousedown`: гасить нечего, и тот же результат даёт проверка цели.
+        // Без неё тап по чипу И ставил бы реакцию, И открывал меню.
+        if((e.target as HTMLElement).closest(REACTION_SELECTOR)) {
           return
         }
 
