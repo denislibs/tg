@@ -61,14 +61,42 @@
 
 // :198-217
 .clickableArea {
-  position: absolute;
-  overflow: hidden;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  // УДВОЕНИЕ СПЕЦИФИЧНОСТИ — приём самого оригинала (styles.module.scss:313-314,
+  // `.chosenCheckbox`: «those styles do not take priority over the default ones,
+  // so doubling the specificity here»), применённый здесь по той же причине.
+  //
+  // На узле два класса: модульный `clickableArea` и глобальный `rp` — его вешает
+  // `ripple()` (наш `components/ripple.ts`, порт tweb `src/components/ripple.ts`;
+  // в оригинале `use:ripple`, PollOption.tsx:128). Глобальное правило
+  // `.rp { position: relative }` (`styles/tweb/_ripple.scss:1-3` = tweb
+  // `src/scss/partials/_ripple.scss:1-3`) равно по специфичности модульному
+  // `.clickableArea`, поэтому спор решает ПОРЯДОК в итоговом css.
+  //
+  // РАСХОЖДЕНИЕ С ОРИГИНАЛОМ, из-за которого порядок у нас другой: tweb грузит
+  // тело опроса динамическим импортом (`await import('./bubbleParts/
+  // pollMessageContent')`, tweb bubbles.ts:8763) — css-модуль уезжает в
+  // отдельный асинхронный чанк и подключается ПОСЛЕ основной таблицы, поэтому
+  // там модуль перебивает `.rp`. У нас модуль импортируется статически
+  // (`components/chat/bubbles.ts:141`) и в собранном `index-*.css` оказывается
+  // ПЕРЕД партиалами — замер на сборке до починки: `._clickableArea_*{…
+  // position:absolute}` на смещении 57188, `.rp{position:relative}` — на 128695.
+  // Побеждал `.rp`: накладка переставала
+  // быть абсолютной, становилась обычным flex-ребёнком строки варианта, теряла
+  // высоту (`height:100%` от неопределённой высоты flex-родителя → 0) и съедала
+  // ширину у подписи — мышью проголосовать было нельзя.
+  //
+  // Порядок css задаёт сборка, поэтому лечим не порядком, а специфичностью.
   z-index: 1;
   cursor: pointer;
+
+  &#{&} {
+    position: absolute;
+    overflow: hidden;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+  }
 
   @include hoverable;
 
