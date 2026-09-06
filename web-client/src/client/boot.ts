@@ -20,6 +20,7 @@ import { preventCrossTabDynamicImportDeadlock } from '../core/preventDeadlock'
 import { useChatsStore } from '../stores/chatsStore'
 import type { DialogOp } from '../core/dialogs/dialogOps'
 import type { PeerProfile } from '../core/managers/authManager'
+import { bootstrapHash } from '../core/hooks/useUrlSync'
 
 const TOKEN_KEY = 'session_token' // тот же ключ, что у TokenStore
 
@@ -159,6 +160,32 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   // а State сбрасывался бы к дефолтам на КАЖДОМ старте.
   if (!locked && stateWasResetToDefaults()) setAppState('version', STATE_VERSION)
   if (!locked) migrateRecentSearchFromLocalStorage()
+
+  // ── Открытие по ссылке — ЗДЕСЬ, до списка диалогов ──────────────────────────
+  // Порт порядка холодного старта оригинала: `appImManager.construct` зовёт
+  // `this.onHashChange(true)` (tweb `appImManager.ts:834`) РАНЬШЕ, чем
+  // `appDialogsManager` берётся за чатлист (`appDialogsManager.ts:726`
+  // `this.onStateLoaded(appState)`). Единственная гарантия, которую открытие
+  // пира там ждёт, — поднятое состояние (`await apiManagerProxy.loadAllStates()`,
+  // tweb `index.ts:455`), и оно у нас поднято строкой выше.
+  //
+  // Раньше первое применение хэша висело на эффекте смонтированного React
+  // (`App.tsx` → `useUrlSync`), то есть стояло ПОСЛЕ `await dialogsOp` ниже и
+  // после всего маунта дерева: ссылка на канал начинала резолвиться последней
+  // из всего старта. Теперь резолв уходит в воркер здесь, параллельно
+  // диалогам, — как в оригинале.
+  //
+  // НЕ `await`: у оригинала `onHashChange` тоже вызывается без ожидания. Ждать
+  // его нельзя ни в коем случае — в ветке «канал, в котором мы не состоим» он
+  // ходит в сеть за вступлением, и первый кадр повис бы на этой сети.
+  //
+  // Под passcode-локом — не применяем вовсе: RPC под локом не летят (#0 выше).
+  // Без токена — тоже: у оригинала `bootstrapIm()` (а с ним и `onHashChange`)
+  // вызывается ТОЛЬКО под авторизацией (tweb `index.ts:628`/`:641`), а у нас
+  // без токена не поднят даже Shell. Этот случай (открыли ссылку, вошли по
+  // OTP — `useAuthGate.login()` перезагрузки не делает) закрывает вторая точка
+  // той же защёлки — монтирование `Shell`, см. `bootstrapHash`.
+  if (!locked && token) bootstrapHash(managers)
 
   // Ответ владельца применяем к витрине ДО первого рендера (см. докблок
   // applyDialogsMirror); dialogsOp был запущен выше, ещё до чтения State —

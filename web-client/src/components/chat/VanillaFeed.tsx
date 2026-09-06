@@ -15,7 +15,7 @@ import { winKey } from '@core/history/messagesMirror'
 import contextMenuController from '@helpers/contextMenuController'
 import { getMediaId } from '@core/messages/messageKind'
 import type { InputStickerSetID, MyDocument } from '@core/media/messageMedia'
-import ChatBubbles, { type ChatContext } from './bubbles'
+import ChatBubbles, { PEER_CHANGED_ERROR, type ChatContext } from './bubbles'
 import type { ChatAutoDownload } from '@core/hooks/useChatAutoDownload'
 import ChatContextMenu, { type ContextMenuPopups } from './contextMenu'
 import ChatSelection from './selection'
@@ -28,6 +28,18 @@ import { getPeerPhotoId } from '../../core/peers/peer'
 import { gradientFor } from '../../core/dialogToChat'
 import { isAnyChat } from '@core/peers/peerId'
 import noop from '@helpers/noop'
+
+/**
+ * Сколько раз повторить ПЕРВУЮ загрузку истории, если она отказала, и с каким
+ * шагом (шаг растёт линейно: 1×, 2×). У оригинала повтор делает транспорт —
+ * `networker.resend()` пере-отправляет непринятые вызовы на переподключении
+ * (tweb `mtproto/networker.ts:1701-1716`), задержка одного повтора там
+ * `pushResend(messageId, delay = 100)`. Под нашим REST такого слоя нет вовсе,
+ * поэтому повтор живёт в ленте; секунда вместо ста миллисекунд — потому что
+ * повторяется целый HTTP-запрос истории, а не кадр в живом соединении.
+ */
+const FIRST_LOAD_RETRIES = 2
+const FIRST_LOAD_RETRY_MS = 1000
 
 /**
  * Ручки ленты для её ОКРУЖЕНИЯ — ровно те роли, которые в tweb исполняет
@@ -387,10 +399,37 @@ export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBot
     // Порт `Chat.setPeer` (tweb chat.ts:1119) в единственной применимой здесь
     // форме: пир только что открыт, значит `samePeer: false` — лента набирает
     // окно от низа истории и уводит скролл вниз без анимации. Цепочка до
-    // ВТОРОГО промиса и `.catch(noop)` — 1:1 оригинал (chat.ts:1120-1126):
-    // окно, вытесненное следующим `setPeer` (у нас — размонтированием ленты),
-    // отвергается `PEER_CHANGED_ERROR`, и это не сбой.
-    void bubbles.setPeer().then((result) => result?.promise).catch(noop)
+    // ВТОРОГО промиса — 1:1 оригинал (chat.ts:1120-1126): окно, вытесненное
+    // следующим `setPeer` (у нас — размонтированием ленты), отвергается
+    // `PEER_CHANGED_ERROR`, и это не сбой.
+    //
+    // ── ПОВТОРНАЯ ПОПЫТКА ───────────────────────────────────────────────────
+    // Прежде здесь стоял `.catch(noop)`, и первая загрузка была ЕДИНСТВЕННОЙ:
+    // любой отказ (упавший RPC, оборванный запрос истории) оставлял ленту
+    // пустой навсегда — при уже отрисованных шапке и закрепе, — а поднимал её
+    // только НОВЫЙ `setPeer`, то есть клик по строке чатлиста.
+    //
+    // У оригинала одной попытки достаточно потому, что повтор делает
+    // ТРАНСПОРТ: непринятый ответом вызов пере-отправляется на каждом
+    // переподключении (`networker.resend()`, tweb `mtproto/networker.ts:1701-1716`,
+    // зовётся из `onTransportOpen` :1010 и `setConnectionStatus` :542/:553).
+    // У нас под лентой обычный REST без такого слоя (`core/net/restClient.ts`),
+    // поэтому повтор приходится делать на этом же уровне — иначе первая
+    // страница остаётся не полученной вовсе.
+    //
+    // `PEER_CHANGED_ERROR` из повтора исключён: это не отказ, а «окно
+    // вытеснено следующим» — повторять его значило бы драться с новым окном.
+    let attemptsLeft = FIRST_LOAD_RETRIES
+    let retryTimer: number | undefined
+    const firstLoad = () => {
+      void bubbles.setPeer().then((result) => result?.promise).catch((err) => {
+        // Лента уже мертва (эффект переигран/размонтирован) — повторять некому.
+        if (err === PEER_CHANGED_ERROR || bubblesRef.current !== bubbles) return
+        if (attemptsLeft-- <= 0) return
+        retryTimer = window.setTimeout(firstLoad, FIRST_LOAD_RETRY_MS * (FIRST_LOAD_RETRIES - attemptsLeft))
+      })
+    }
+    firstLoad()
 
     // Узлы, которые лента добавила в хост, она же и снимает. Раньше здесь
     // стояло обратное («React уберёт хост сам, `remove()` — мёртвый код»), и
@@ -412,6 +451,9 @@ export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBot
       if (api) api.current = null
       if (scrollerRef) scrollerRef.current = null
       bubblesRef.current = null
+      // Отложенный повтор первой загрузки снимаем вместе с лентой: без этого
+      // он разбудил бы уже уничтоженный `ChatBubbles`.
+      if (retryTimer !== undefined) clearTimeout(retryTimer)
       // Открытое меню сообщения принадлежит НЕ ленте, а синглтону
       // `contextMenuController`, и живёт оно в `document.body`
       // (`contextMenu.ts:851`, порт tweb contextMenu.ts:1753

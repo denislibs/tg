@@ -544,8 +544,12 @@ export interface BubblesManagers extends PeerTitleManagers {
 
 /** Порт tweb bubbles.ts:308. Ошибка, которой `BatchProcessor` отвергает пачку,
  *  когда поколение ленты умерло за время её обработки: для ждущего это не сбой,
- *  а «дальше не работаем». */
-const PEER_CHANGED_ERROR = new Error('peer changed')
+ *  а «дальше не работаем».
+ *
+ *  Экспортирована (у оригинала она модульная): хост ленты обязан отличать её от
+ *  НАСТОЯЩЕГО отказа первой загрузки — см. `VanillaFeed.tsx`, где по этому
+ *  различию и решается, повторять попытку или нет. */
+export const PEER_CHANGED_ERROR = new Error('peer changed')
 
 /** Кнопка быстрой реакции над баблом. Свою зону актуальности она держит на
  *  самом узле — как и в tweb (`hoverReaction.middlewareHelper`,

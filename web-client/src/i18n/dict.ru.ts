@@ -1645,6 +1645,10 @@ const ru = {
   'EditProfile.LastNameLabel': 'Фамилия',
   'AutoDeleteMessages.Disable': 'Отключить',
   'Statistics.Posts': 'Посты',
+  // ── Открытие по ссылке `#@username`: отказ резолва имени (tweb
+  //    `appImManager.ts:1802-1809`, `openUsername`) ──
+  NoUsernameFound: 'Аккаунта с таким именем пользователя не существует.',
+  'Alert.UserDoesntExists': 'Извините, такого пользователя не существует.',
   // Самоназвание языка — им подписана строка «Язык» в настройках (tweb
   // `settings.tsx:254`, `i18n('LanguageName')`).
   LanguageName: 'Русский',

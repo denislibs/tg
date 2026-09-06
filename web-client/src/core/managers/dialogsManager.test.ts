@@ -1162,3 +1162,23 @@ describe('dialogsManager: finally прошлой гидратации не сб�
     expect(ids(op3)).toEqual([9]) // присоединилась к ТОЙ ЖЕ гидратации, увидела её результат
   })
 })
+
+// ── hasDialog ────────────────────────────────────────────────────────────────
+// Порт `appMessagesManager.getDialogOnly` (tweb :4363-4365) в применимой форме.
+// Спрашивает открытие по ссылке: вступать в канал надо ТОЛЬКО если строки
+// диалога нет. Ответ обязан считаться по КЭШУ С ДИСКА, а не по тому, успел ли
+// кто-то позвать `fillMirror()`, — иначе на каждом холодном старте ответ был бы
+// «диалога нет» и ссылка стоила бы лишнего вступления с догоном списка.
+describe('dialogsManager.hasDialog', () => {
+  it('видит диалог с диска БЕЗ предварительного fillMirror()', async () => {
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: () => {},
+      loadCache: async () => [dialog(-42, '2026-08-01T00:00:00Z')],
+      loadState: async () => ({ pinnedOrders: {} }),
+    })
+
+    expect(await mgr.hasDialog(-42)).toBe(true)
+    expect(await mgr.hasDialog(-77)).toBe(false)
+  })
+})
