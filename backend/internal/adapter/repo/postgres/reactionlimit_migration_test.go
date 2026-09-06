@@ -46,14 +46,34 @@ func TestMigration0130_TrimsUserReactionsToLimit(t *testing.T) {
 		t.Fatalf("seed message: %v", err)
 	}
 
+	// «Избранное» того же не-подписчика: реакции на СВОЮ заметку — это ТЕГИ,
+	// и чистка обязана обойти их стороной (см. ниже).
+	var savedID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO chats (type) VALUES ('saved') RETURNING id`).Scan(&savedID); err != nil {
+		t.Fatalf("seed saved chat: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO chat_members (chat_id, user_id) VALUES ($1,$2)`, savedID, plain); err != nil {
+		t.Fatalf("seed saved member: %v", err)
+	}
+	var noteID int64
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO messages (chat_id, seq, sender_id, type, text) VALUES ($1,1,$2,'text','note') RETURNING id`,
+		savedID, plain).Scan(&noteID); err != nil {
+		t.Fatalf("seed note: %v", err)
+	}
+
 	base := time.Now().Add(-time.Hour)
-	seed := func(uid int64, emoji string, at time.Time) {
+	seedOn := func(msg, uid int64, emoji string, at time.Time) {
 		t.Helper()
 		if _, err := pool.Exec(ctx,
 			`INSERT INTO reactions (message_id, user_id, emoji, created_at) VALUES ($1,$2,$3,$4)`,
-			msgID, uid, emoji, at); err != nil {
+			msg, uid, emoji, at); err != nil {
 			t.Fatalf("seed reaction: %v", err)
 		}
+	}
+	seed := func(uid int64, emoji string, at time.Time) {
+		t.Helper()
+		seedOn(msgID, uid, emoji, at)
 	}
 	// Ровно случай из отчёта: три реакции одного аккаунта на одном посте.
 	seed(plain, "❤", base.Add(1*time.Minute))
@@ -64,16 +84,20 @@ func TestMigration0130_TrimsUserReactionsToLimit(t *testing.T) {
 	seed(premium, "🔥", base.Add(2*time.Minute))
 	seed(premium, "🥰", base.Add(3*time.Minute))
 	seed(premium, "👏", base.Add(4*time.Minute))
+	// Три тега на одной заметке у того же не-подписчика.
+	seedOn(noteID, plain, "❤", base.Add(1*time.Minute))
+	seedOn(noteID, plain, "🔥", base.Add(2*time.Minute))
+	seedOn(noteID, plain, "🥰", base.Add(3*time.Minute))
 
 	// ── 2. Накат: данные приведены к правилу ────────────────────────────────
 	if err := storepostgres.Migrate(url); err != nil {
 		t.Fatalf("накат 0130: %v", err)
 	}
 
-	mine := func(uid int64) []string {
+	mineOn := func(msg, uid int64) []string {
 		t.Helper()
 		rows, err := pool.Query(ctx,
-			`SELECT emoji FROM reactions WHERE message_id=$1 AND user_id=$2`, msgID, uid)
+			`SELECT emoji FROM reactions WHERE message_id=$1 AND user_id=$2`, msg, uid)
 		if err != nil {
 			t.Fatalf("чтение реакций: %v", err)
 		}
@@ -89,6 +113,7 @@ func TestMigration0130_TrimsUserReactionsToLimit(t *testing.T) {
 		sort.Strings(out)
 		return out
 	}
+	mine := func(uid int64) []string { t.Helper(); return mineOn(msgID, uid) }
 
 	// Без премиума остаётся ОДНА, и именно новейшая.
 	if got, want := mine(plain), []string{"🥰"}; !equalStringsPG(got, want) {
@@ -97,6 +122,13 @@ func TestMigration0130_TrimsUserReactionsToLimit(t *testing.T) {
 	// С премиумом остаются ТРИ новейшие: старейшая ❤ вытеснена.
 	if got, want := mine(premium), []string{"👏", "🔥", "🥰"}; !equalStringsPG(got, want) {
 		t.Fatalf("у подписчика осталось %v; want %v (три новейшие)", got, want)
+	}
+	// А ТЕГИ «Избранного» целы ВСЕ ТРИ, хотя лежат в той же таблице и
+	// поставлены тем же не-подписчиком. Это и есть цена вопроса: без
+	// `c.type <> 'saved'` миграция безвозвратно стёрла бы пользователю
+	// расставленные им теги, оставив по одному на заметку.
+	if got, want := mineOn(noteID, plain), []string{"❤", "🔥", "🥰"}; !equalStringsPG(got, want) {
+		t.Fatalf("тегов на заметке осталось %v; want %v (чистка теги не трогает)", got, want)
 	}
 }
 

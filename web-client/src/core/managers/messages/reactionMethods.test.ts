@@ -34,10 +34,15 @@ const like: MessageReactions = {
 
 function managerWith(peerId: PeerId, reactions?: MessageReactions, premium = false) {
   const wire = { ...makeRawMessage({ id: 2, peerId, fromId: 5, text: 'm2' }), ...(reactions ? { reactions } : {}) }
+  // `calls` — что менеджер отправил НА ПРОВОД. Нужен отдельным ответом: правило
+  // лимита обещает, что вытеснение стоит клиенту нисколько (весь набор держит
+  // сам POST), и проверить это по агрегату нельзя — он одинаков и с лишними
+  // запросами, и без них.
+  const calls: string[] = []
   const rest = {
     get: async () => ({ messages: [wire as RawMessage], count: 1 }),
-    post: async () => ({}),
-    del: async () => ({}),
+    post: async (url: string) => { calls.push(`POST ${url}`); return {} },
+    del: async (url: string) => { calls.push(`DELETE ${url}`); return {} },
   } as unknown as RestClient
   const ops: MessageOp[] = []
   const mgr = newMessagesManager({
@@ -46,7 +51,7 @@ function managerWith(peerId: PeerId, reactions?: MessageReactions, premium = fal
     getMePremium: () => premium,
     broadcast: (e, p) => { if (e === RT.messageOp) ops.push(...(p as { ops: MessageOp[] }).ops) },
   })
-  return { mgr, ops }
+  return { mgr, ops, calls }
 }
 
 /** Агрегат, объявленный окну последней операцией своего клика. */
@@ -139,6 +144,33 @@ describe('messages.react — лимит своих реакций', () => {
 
     await mgr.react(DM, cid(2), '👏')
     expect(myEmoticons(declared(ops))).toEqual(['🔥', '🥰', '👏'])
+  })
+
+  // Вытеснение стоит клиенту НИСКОЛЬКО запросов: снятие лишней реакции идёт
+  // только в SSOT. У оригинала весь набор едет одним `messages.sendReaction`
+  // (appReactionsManager.ts:948-951), у нас серверную половину правила держит
+  // сам POST (backend usecase/chat/reaction.go::evictExcessReactions) — DELETE
+  // на вытесненную был бы вторым кадром реакции всему чату на один клик.
+  it('вытеснение не порождает ни одного лишнего запроса', async () => {
+    const { mgr, calls } = managerWith(DM)
+    await mgr.getHistory({ peerId: DM, offsetId: 0, addOffset: 0, limit: 40 })
+    await mgr.react(DM, cid(2), '👍')
+    calls.length = 0
+
+    await mgr.react(DM, cid(2), '🔥')
+    expect(calls).toEqual([`POST /chats/${DM}/messages/2/reactions`])
+  })
+
+  // «ИЗБРАННОЕ»: реакция на своё же сообщение — это ТЕГ (признак `peerId ===
+  // myId`, порт tweb contextMenu.ts:1660), а теги наш сервер из-под лимита
+  // выводит (backend usecase/chat/reaction.go::isSavedTag). Вытеснив здесь,
+  // клиент обещал бы то, чего сервер не делает.
+  it('в «Избранном» теги не вытесняются — их лимит не ограничивает', async () => {
+    const { mgr, ops } = managerWith(ME)
+    await mgr.getHistory({ peerId: ME, offsetId: 0, addOffset: 0, limit: 40 })
+    await mgr.react(ME, cid(2), '👍')
+    await mgr.react(ME, cid(2), '🔥')
+    expect(myEmoticons(declared(ops))).toEqual(['👍', '🔥'])
   })
 
   it('чужой чип вытеснением не трогается — уходит только мой голос', async () => {

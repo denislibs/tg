@@ -135,11 +135,17 @@ export function reactionsUserLimit(premium: boolean): number {
  */
 /*
  * ОГОВОРКА о нашем проводе: `chosen_order` приезжает НУЛЁМ у всех моих
- * реакций (backend `internal/domain/mtmessage.go:1043-1050` — колонки порядка
- * в витрине нет), поэтому после перезагрузки страницы «самая старая» здесь
- * вырождается в порядок чипов. Серверное вытеснение при этом точное — оно
- * читает `reactions.created_at`, — и кадр приводит картинку к нему. Долг:
- * backend/backlogs/reaction-chosen-order-on-wire.md.
+ * реакций (backend `internal/domain/mtmessage.go` — колонки порядка в витрине
+ * нет), поэтому после перезагрузки страницы «самая старая» здесь вырождается
+ * в порядок чипов. Серверное вытеснение при этом точное (оно читает
+ * `reactions.created_at`), и разойтись они могут только у премиума.
+ *
+ * Кадр расхождение НЕ ЛЕЧИТ: он приводит к серверному СОСТАВ чипов, но не
+ * пометку «моя» — `chosen_order` пер-зрительский, в общем теле кадра его нет,
+ * и `mergeReactions` берёт мой выбор из предыдущего состояния, то есть из уже
+ * разошедшегося. Снятый сервером чип исчезнет, а снятый локально останется в
+ * ленте чужим на вид, пока по нему не кликнут снова или не перезагрузят
+ * историю. Долг: backend/backlogs/reaction-chosen-order-on-wire.md.
  */
 export function excessChosenReactions(
   agg: MessageReactions | undefined,
@@ -376,9 +382,17 @@ export function setPaidReaction(
 
 /**
  * Совпадают ли агрегаты по тому, что ВИДНО В ЧИПАХ: состав и порядок чипов,
- * числа, мой выбор, аватарки реагировавших, мой вклад звёздами и права,
- * которыми ряд рисуется (`can_see_list` решает «аватарки или число»,
- * `reactions_as_tags` — «чип это тег»).
+ * числа, мой выбор, аватарки реагировавших, мой вклад звёздами и
+ * `can_see_list` — право, которым ряд решает «аватарки или число».
+ *
+ * `reactions_as_tags` НЕ сравнивается, хотя поле в модели объявлено: у
+ * оригинала им чип рисуется тегом (tweb `components/chat/reactions.ts:149-156`),
+ * а у нас его не читает ни один рендерер и не производит бэкенд (прямая
+ * оговорка — `backend/internal/domain/mtmessage.go:971`): самочат рисует те же
+ * чипы, что любой чат, а имена тегов живут отдельной панелью
+ * (`components/conversation/SavedTagsPanel.tsx`). Сравнивать по нему значило
+ * бы утверждать, что в чипе видно то, чего в нём нет; вернётся сюда вместе с
+ * портом формы чипа-тега.
  *
  * Служебного `pFlags.min` здесь нет намеренно: это свойство ТЕЛА КАДРА, а не
  * состояния сообщения, и в чипе оно не видно ничем.
@@ -403,6 +417,5 @@ export function sameReactions(a: MessageReactions | undefined, b: MessageReactio
     if (reactionKey(pa[i].reaction) !== reactionKey(pb[i].reaction)) return false
   }
   if (!!a?.pFlags?.can_see_list !== !!b?.pFlags?.can_see_list) return false
-  if (!!a?.pFlags?.reactions_as_tags !== !!b?.pFlags?.reactions_as_tags) return false
   return myPaidStars(a) === myPaidStars(b)
 }

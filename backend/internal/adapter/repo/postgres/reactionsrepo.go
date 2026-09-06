@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -32,6 +33,23 @@ func (r *ReactionsRepo) Remove(ctx context.Context, messageID, userID int64, emo
 	_, err := q.Exec(ctx,
 		`DELETE FROM reactions WHERE message_id=$1 AND user_id=$2 AND emoji=$3`,
 		messageID, userID, emoji)
+	return err
+}
+
+// LockUserReactions takes a tx-scoped advisory lock on the (message, user) pair
+// so the reactions-per-user limit stays a real invariant: `evictExcessReactions`
+// читает набор и дописывает в него, а на READ COMMITTED два одновременных
+// клика одного пользователя читают одинаковое «до» и оба вставляют.
+//
+// Advisory, а не строчный: строк в момент первой реакции ещё нет — `SELECT ...
+// FOR SHARE` заблокировал бы пустое множество и обе транзакции прошли бы
+// насквозь. Ключ — та же форма `hashtext(текст)`, что у остальных пар-замков
+// репозиториев (chatsrepo.go: `saved:%d`, `private:%d:%d`); замок транзакционный,
+// поэтому снимается коммитом сам, и метод обязан вызываться внутри TxManager.
+func (r *ReactionsRepo) LockUserReactions(ctx context.Context, messageID, userID int64) error {
+	q := querier(ctx, r.pool)
+	_, err := q.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`,
+		fmt.Sprintf("reactions:%d:%d", messageID, userID))
 	return err
 }
 

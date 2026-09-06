@@ -1631,6 +1631,14 @@ func (r fakeReactions) Remove(_ context.Context, messageID, userID int64, emoji 
 	return nil
 }
 
+// LockUserReactions — заглушка: замок пары «сообщение + пользователь» держит
+// СУБД (advisory-замок транзакции, adapter/repo/postgres/reactionsrepo.go), и
+// изобразить его на мапе под общим мьютексом нельзя — фейковой транзакции,
+// до конца которой замок должен жить, здесь нет вовсе (fakeTx зовёт fn прямо).
+// Пин настоящей блокировки поэтому стоит на настоящей БД:
+// adapter/repo/postgres/reactionrace_test.go.
+func (r fakeReactions) LockUserReactions(_ context.Context, _, _ int64) error { return nil }
+
 func (r fakeReactions) UserReactions(_ context.Context, messageID, userID int64) ([]string, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

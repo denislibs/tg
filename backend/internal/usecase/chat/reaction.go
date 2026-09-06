@@ -20,6 +20,14 @@ import (
 // Тот же лимит и с теми же числами держит фронт
 // (web-client/src/core/reactions/messageReactions.ts) — сервер здесь источник
 // истины, потому что прямой POST мимо клиента иначе обходит правило.
+//
+// ЭТИ ЖЕ ЧИСЛА ЛИТЕРАЛАМИ ЛЕЖАТ В МИГРАЦИИ
+// internal/store/postgres/migrations/0130_reactions_user_limit.sql (`CASE WHEN
+// u.is_premium THEN 3 ELSE 1 END`). Свести в одно место нельзя: миграция —
+// статический SQL, goose применяет её без участия кода. Когда лимит переедет в
+// конфигурацию (help.getAppConfig), константы отсюда исчезнут, а числа в 0130
+// останутся описанием уже применённой однажды чистки и меняться не должны; в
+// миграции стоит встречная пометка.
 const (
 	reactionsUserMaxDefault = 1
 	reactionsUserMaxPremium = 3
@@ -73,8 +81,15 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 			// Лимит своих реакций: лишние СНИМАЮТСЯ, начиная со старейшей, и
 			// снимаются молча — тоста об упёршемся лимите нет и в оригинале
 			// (tweb appReactionsManager.ts:733-751).
-			if e := i.evictExcessReactions(ctx, messageID, userID, emoji); e != nil {
-				return e
+			//
+			// КРОМЕ «ИЗБРАННОГО»: реакция на сообщение самочата — это ТЕГ
+			// (признак тот же, что у оригинала, `peerId === myId`: tweb
+			// contextMenu.ts:1660, reactions.ts:149-156), а теги под лимит не
+			// попадают — см. isSavedTag ниже.
+			if !i.isSavedTag(ctx, chatID) {
+				if e := i.evictExcessReactions(ctx, messageID, userID, emoji); e != nil {
+					return e
+				}
 			}
 			if e := i.reactions.Add(ctx, messageID, userID, emoji); e != nil {
 				return e
@@ -141,6 +156,26 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 	return nil
 }
 
+// isSavedTag — реакции ЭТОГО чата являются ТЕГАМИ «Избранного», а не реакциями.
+// Признак ровно тот же, что у оригинала («сообщение в самочате»: tweb
+// `message.peerId === rootScope.myId`, contextMenu.ts:1660 и
+// reactions.ts:149-156). У нас самочат — чат типа `saved` с единственным
+// участником, и этот участник автор всех реакций в нём, поэтому по типу чата
+// строки тегов отделяются от строк реакций однозначно (таблица одна:
+// adapter/repo/postgres/savedtagsrepo.go читает теги из `reactions`).
+//
+// ПОЧЕМУ ТЕГИ ВЫВЕДЕНЫ ИЗ-ПОД ЛИМИТА. В оригинале лимит и теги связаны
+// подпиской: тег ставит ТОЛЬКО премиум — не-подписчику вместо постановки
+// показывают предложение премиума (tweb contextMenu.ts:1681-1684), — и
+// состояния «не-подписчик с одним тегом на заметке» там не существует. Мы
+// портировали половину связки (лимит) и не портировали вторую (премиум-гейт на
+// теги); применив лимит к тегам, мы получили бы поведение, которого нет ни у
+// кого в оригинале: каждый новый тег молча стирает предыдущий. Долг на вторую
+// половину — backend/backlogs/saved-tags-under-reactions-limit.md.
+func (i *Interactor) isSavedTag(ctx context.Context, chatID int64) bool {
+	return i.chatKind(ctx, chatID) == domain.ChatTypeSaved
+}
+
 // evictExcessReactions приводит набор СВОИХ реакций пользователя на сообщении к
 // лимиту ПЕРЕД постановкой `emoji`: снимает самые старые, освобождая место под
 // новую. Порт вытеснения из оригинала — tweb
@@ -156,6 +191,16 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 // от строки ДРУГОЙ таблицы, — правило держит юзкейс, а миграция
 // 0130_reactions_user_limit приводит к нему уже накопленные данные.
 func (i *Interactor) evictExcessReactions(ctx context.Context, messageID, userID int64, emoji string) error {
+	// Пара «сообщение + пользователь» БЕРЁТСЯ ПОД ЗАМОК до чтения набора.
+	// Правило здесь read-modify-write, а транзакция идёт на READ COMMITTED: два
+	// одновременных клика одного пользователя по разным чипам прочитали бы
+	// каждый «своих ноль» и оба вставили — у аккаунта осталось бы две реакции
+	// при лимите одна. Строчной блокировки для этого мало: при пустом наборе
+	// блокировать нечего (`SELECT ... FOR SHARE` не видит ещё не вставленных
+	// строк), поэтому замок берётся на КЛЮЧ пары, а не на строки.
+	if err := i.reactions.LockUserReactions(ctx, messageID, userID); err != nil {
+		return err
+	}
 	mine, err := i.reactions.UserReactions(ctx, messageID, userID) // старейшие первыми
 	if err != nil {
 		return err

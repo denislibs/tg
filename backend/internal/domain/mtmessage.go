@@ -1037,9 +1037,13 @@ type MTReactionCount struct {
 	Count       int      `json:"count"`
 }
 
-// NewReactionCount — чип реакции. mine=true даёт chosen_order = 0: несколькими
-// своими реакциями на одно сообщение мы не оперируем, но ноль это ЗНАЧЕНИЕ, а
-// не отсутствие, и разница видна на проводе.
+// NewReactionCount — чип реакции. mine=true даёт chosen_order = 0 КАЖДОЙ моей
+// реакции: своих реакций на сообщении бывает несколько (до трёх у премиума —
+// usecase/chat/reaction.go), но витрина domain.ReactionCount несёт про них
+// булево «моя», а не номер, и номера взяться неоткуда. Ноль при этом
+// ЗНАЧЕНИЕ, а не отсутствие: «не моя» выражается отсутствием параметра, и
+// разница видна на проводе. Потеря порядка названа долгом:
+// backend/backlogs/reaction-chosen-order-on-wire.md.
 func NewReactionCount(reaction Reaction, count int, mine bool) MTReactionCount {
 	c := MTReactionCount{Underscore: ReactionCountTag, Reaction: reaction, Count: count}
 	if mine {

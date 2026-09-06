@@ -184,3 +184,76 @@ func TestReact_UserLimit_DoesNotTouchOthers(t *testing.T) {
 		t.Fatalf("чипы сообщения = %v; ждали чужое ❤ и своё 🔥", got)
 	}
 }
+
+// ТЕГИ «ИЗБРАННОГО» ПОД ЛИМИТ НЕ ПОПАДАЮТ. Тег — это реакция владельца на
+// сообщение своего самочата (таблица одна, `reactions`:
+// adapter/repo/postgres/savedtagsrepo.go), и вытеснение по лимиту стирало бы
+// пользователю уже расставленные теги молча. В оригинале такого состояния нет:
+// там тег ставит только премиум (tweb components/chat/contextMenu.ts:1681-1684),
+// а этой половины связки у нас нет — долг
+// backend/backlogs/saved-tags-under-reactions-limit.md.
+func TestReact_SavedTags_NotEvictedByLimit(t *testing.T) {
+	in, _ := newInteractor()
+	ctx := context.Background()
+	const a int64 = 1 // без премиума: в обычном чате его лимит — ОДНА реакция
+
+	savedID, err := in.GetOrCreateSaved(ctx, a)
+	if err != nil {
+		t.Fatalf("GetOrCreateSaved: %v", err)
+	}
+	note, err := in.Send(ctx, SendInput{ChatID: savedID, SenderID: a, Text: "заметка"})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	for _, e := range []string{"❤", "🔥", "🥰"} {
+		if err := in.React(ctx, savedID, note.ID, a, e, true); err != nil {
+			t.Fatalf("React(%s): %v", e, err)
+		}
+	}
+
+	if got := myReactions(t, in, note.ID, a); !equalStrings(got, []string{"❤", "🔥", "🥰"}) {
+		t.Fatalf("теги заметки = %v; ждали все три — лимит реакций к тегам не применяется", got)
+	}
+}
+
+// ...и это НЕ значит «лимита нет вовсе»: в обычном чате тот же пользователь
+// по-прежнему держит одну свою реакцию. Пара к тесту выше: без неё вывод тегов
+// из-под правила не отличить от снятия правила целиком.
+func TestReact_SavedTagsExemption_DoesNotDisableLimitElsewhere(t *testing.T) {
+	in, _ := newInteractor()
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+
+	savedID, err := in.GetOrCreateSaved(ctx, a)
+	if err != nil {
+		t.Fatalf("GetOrCreateSaved: %v", err)
+	}
+	note, err := in.Send(ctx, SendInput{ChatID: savedID, SenderID: a, Text: "заметка"})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	for _, e := range []string{"❤", "🔥"} {
+		if err := in.React(ctx, savedID, note.ID, a, e, true); err != nil {
+			t.Fatalf("React(saved,%s): %v", e, err)
+		}
+	}
+
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	msg, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: b, Text: "hi"})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	for _, e := range []string{"❤", "🔥"} {
+		if err := in.React(ctx, chatID, msg.ID, a, e, true); err != nil {
+			t.Fatalf("React(private,%s): %v", e, err)
+		}
+	}
+
+	if got := myReactions(t, in, note.ID, a); !equalStrings(got, []string{"❤", "🔥"}) {
+		t.Fatalf("теги заметки = %v; ждали оба", got)
+	}
+	if got := myReactions(t, in, msg.ID, a); !equalStrings(got, []string{"🔥"}) {
+		t.Fatalf("реакции в личке = %v; ждали только последнюю", got)
+	}
+}

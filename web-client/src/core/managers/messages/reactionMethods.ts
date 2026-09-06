@@ -297,7 +297,16 @@ export function newReactionMethods({ rest, patchMsg, getMeId, getMePremium, opWi
       // серверную половину правила держит сам обработчик POST
       // (backend/internal/usecase/chat/reaction.go::evictExcessReactions) —
       // слать ещё и DELETE значило бы разослать всему чату лишний кадр.
-      const evicted = me == null ? [] : excessChosenReactions(
+      //
+      // В «ИЗБРАННОМ» ВЫТЕСНЕНИЯ НЕТ: реакция на своё же сообщение — это ТЕГ
+      // (признак `peerId === myId`, порт tweb contextMenu.ts:1660 и
+      // reactions.ts:149-156), а теги наш сервер из-под лимита выводит
+      // (usecase/chat/reaction.go::isSavedTag, долг
+      // backend/backlogs/saved-tags-under-reactions-limit.md). Вытеснив здесь,
+      // клиент обещал бы то, чего сервер не делает: чип тега исчез бы из ленты
+      // до кадра и вернулся с ним.
+      const isSavedTag = me != null && peerId === me
+      const evicted = me == null || isSavedTag ? [] : excessChosenReactions(
         readMsg(peerId, generateMessageId(serverId))?.reactions,
         emoji,
         reactionsUserLimit(getMePremium?.() ?? false),
