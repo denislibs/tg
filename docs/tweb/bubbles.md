@@ -337,7 +337,9 @@ tweb `bubbles.ts:9707-9712` — оба флага читаются с уже в�
   гейт `IS_FIREFOX` живёт в фабрике (вызывателей два — лента и React-`RichText`),
   `loadPromises`/`controls.update()` предмета не имеют (сборка синхронна), а хендл
   снимается по карте `spoilerOverlays` вместо побабльного `middlewareHelper`,
-  которого в нашей ленте нет. НЕ портирован второй потребитель оверлея — опросы
+  которого в нашей ленте нет: карта — владелец хендлов, адресно её чистят правка
+  тела и `deleteMessagesByIds`, а на смерти окна (`cleanup`/`destroy`) она
+  сливается целиком (`disposeSpoilerOverlays`). НЕ портирован второй потребитель оверлея — опросы
   (`bubbleParts/pollMessageContent/utils.ts:65`), долг —
   `web-client/backlogs/frontend/poll-spoiler-overlay.md`.
 

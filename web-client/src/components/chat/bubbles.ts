@@ -840,10 +840,18 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * ровно его и ничего больше: адресуемся `messageDiv`, потому что оверлей
    * живёт в нём (tweb :9792) и переживает те же события, что и он.
    *
-   * `WeakMap` — снятый бабл не должен держаться картой; всё, что карта умеет,
-   * это отдать `dispose` по живому узлу.
+   * Карта — ВЛАДЕЛЕЦ хендлов, а не подсказка: запись заводится ровно там, где
+   * оверлей построен (`addMessageSpoilerOverlay`), и уходит ровно там, где он
+   * погашен, — правка тела, снятие бабла (`deleteMessagesByIds`, он же подрезка
+   * вьюпорта) и слив всей карты на смерти окна (`disposeSpoilerOverlays` из
+   * `cleanup`/`destroy`). Других путей у оверлея нет, поэтому регистрировать
+   * `dispose` ещё и в общем `middlewareHelper` не нужно: тот список чистится
+   * только на смене собеседника и до неё копил бы по записи на каждый рендер и
+   * каждую правку спойлерного сообщения — включая давно снятые баблы.
+   *
+   * Отсюда `Map`, а не `WeakMap`: слить карту можно только обойдя её.
    */
-  private spoilerOverlays = new WeakMap<HTMLElement, VoidFunction>()
+  private spoilerOverlays = new Map<HTMLElement, VoidFunction>()
 
   constructor(private chat: ChatContext, private managers: BubblesManagers) {
     this.constructBubbles()
@@ -1899,9 +1907,23 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     messageDiv.append(overlay.element)
     this.spoilerOverlays.set(messageDiv, overlay.dispose)
-    // Смена пира и снос ленты: бабл уходит не через `deleteMessagesByIds`, а
-    // целым окном (`cleanup`), и снимать оверлей там больше некому.
-    this.getMiddleware().onClean(overlay.dispose)
+  }
+
+  /**
+   * Слить ВСЕ живые оверлеи — смерть окна целиком.
+   *
+   * Отдельная точка нужна потому, что тут бабл уходит не через
+   * `deleteMessagesByIds`, а вместе со всем деревом: `cleanup` подменяет
+   * `chatInner` на новое (см. `setPeer`), `destroy` отдаёт ленту хосту на снос.
+   * Адресовать по `this.bubbles` в обоих случаях нельзя — `cleanup` обнуляет
+   * реестр, — поэтому владелец хендлов сама карта, и сливается она вся.
+   *
+   * В tweb этой точки нет: там каждый бабл несёт свой `middlewareHelper`
+   * (:6198), и `cleanup` гасит их скопом вместе с деревом.
+   */
+  private disposeSpoilerOverlays() {
+    for (const dispose of this.spoilerOverlays.values()) dispose()
+    this.spoilerOverlays.clear()
   }
 
   /**
@@ -5610,6 +5632,10 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // решит, что плейсхолдер уже показан.
     this.emptyPlaceholderBubble = undefined
 
+    // Оверлеи спойлеров ПРОШЛОГО окна: их баблы уходят вместе с `chatInner`,
+    // адресно снять их после обнуления реестра уже не с чего.
+    this.disposeSpoilerOverlays()
+
     this.middlewareHelper.clean()
   }
 
@@ -5728,6 +5754,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
     }
     this.renderNewPromises.clear()
     this.batchProcessor.clear()
+    // `destroy` НЕ проходит через `cleanup` (см. докблок метода), а узлы ленты
+    // хост сносит целиком — оверлеи надо погасить здесь же.
+    this.disposeSpoilerOverlays()
     this.middlewareHelper.destroy()
   }
 }

@@ -8,7 +8,8 @@
 //
 // Проверяется ПОВЕДЕНИЕ, а не форма вызова: узел появляется там и только там,
 // где есть спойлерное слово; симуляция получает задачу; правка бабла оверлей не
-// теряет; снятие бабла его гасит.
+// теряет; гасят его и снятие бабла, и смерть окна целиком — пересборка
+// (`cleanup`) и снос ленты (`destroy`).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { resetMessagesMirror } from '@core/history/messagesMirror'
@@ -185,6 +186,39 @@ describe('ChatBubbles — оверлей спойлеров', () => {
 
     bubbles.deleteMessagesByIds([`${CHAT}_1`])
     await settle()
+
+    expect(middleware()).toBe(false)
+  })
+
+  // Окно уходит целиком: баблы прошлого окна снимает не `deleteMessagesByIds`,
+  // а подмена `chatInner` внутри `setPeer` — оверлеи гасит слив карты
+  // (`disposeSpoilerOverlays`).
+  it('пересборка окна гасит оверлеи прошлого окна', async () => {
+    bubbles = new ChatBubbles(chatContext(), managersWith([msg(1, SPOILER)]))
+    await openFeed(bubbles)
+    await settle()
+
+    const middleware = tasks.middlewares[tasks.middlewares.length - 1]
+    expect(middleware()).toBe(true)
+
+    await openFeed(bubbles)
+    await settle()
+
+    expect(middleware()).toBe(false)
+  })
+
+  // Смена собеседника у нас — снос инстанса ленты хостом (`VanillaFeed`), а
+  // `destroy` через `cleanup` НЕ проходит: слив карты нужен и здесь.
+  it('снос ленты гасит оверлеи', async () => {
+    bubbles = new ChatBubbles(chatContext(), managersWith([msg(1, SPOILER)]))
+    await openFeed(bubbles)
+    await settle()
+
+    const middleware = tasks.middlewares[tasks.middlewares.length - 1]
+    expect(middleware()).toBe(true)
+
+    bubbles.destroy()
+    bubbles = undefined
 
     expect(middleware()).toBe(false)
   })
