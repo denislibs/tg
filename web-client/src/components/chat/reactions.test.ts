@@ -129,11 +129,26 @@ describe('createReactionsElement', () => {
     expect(el.classList.contains('reactions-block')).toBe(true)
 
     const chip = el.querySelector('.reaction')!
+    // tweb reaction.ts:757-758: класс раскладки И общий для block/tag
+    // `reaction-like-block` — в нём высота пилюли, её внешние отступы и
+    // `--chosen-background-color` (`_reaction.scss:219-230`).
     expect(chip.classList.contains('reaction-block')).toBe(true)
+    expect(chip.classList.contains('reaction-like-block')).toBe(true)
     expect(chip.querySelector('.reaction-sticker')!.textContent).toBe('👍')
   })
 
-  it('МОЯ реакция помечена is-chosen', () => {
+  it('is-last — только на последнем чипе ряда (tweb reactions.ts:319)', () => {
+    const el = createReactionsElement(agg(
+      { emoticon: '👍', count: 1 },
+      { emoticon: '🔥', count: 1 },
+    ))!
+
+    const chips = el.querySelectorAll('.reaction')
+    expect(chips[0].classList.contains('is-last')).toBe(false)
+    expect(chips[1].classList.contains('is-last')).toBe(true)
+  })
+
+  it('МОЯ реакция помечена is-chosen ВМЕСТЕ с forwards (tweb reaction.ts:1086-1097)', () => {
     const el = createReactionsElement(agg(
       { emoticon: '👍', count: 2, mine: true },
       { emoticon: '🔥', count: 1 },
@@ -141,7 +156,20 @@ describe('createReactionsElement', () => {
 
     const chips = el.querySelectorAll('.reaction')
     expect(chips[0].classList.contains('is-chosen')).toBe(true)
+    // Подложку акцентного цвета CSS зажигает только по паре классов
+    // (`_reaction.scss:127-133`), поэтому `forwards` — часть состояния, а не
+    // деталь анимации.
+    expect(chips[0].classList.contains('forwards')).toBe(true)
     expect(chips[1].classList.contains('is-chosen')).toBe(false)
+    expect(chips[1].classList.contains('forwards')).toBe(false)
+  })
+
+  it('при первом показе бабла заливка не проигрывается (tweb reaction.ts:1093 — duration 0)', () => {
+    const el = createReactionsElement(agg({ emoticon: '👍', count: 2, mine: true }))!
+
+    // `animating` — единственный класс, включающий transition
+    // (`_reaction.scss:140-148`); на ещё не вставленном чипе его быть не должно.
+    expect(el.querySelector('.reaction')!.classList.contains('animating')).toBe(false)
   })
 
   it('реакций нет — узла тоже нет (пустой занял бы строку под баблом)', () => {
@@ -281,6 +309,15 @@ describe('аватарки вместо числа (tweb renderAvatars/renderCou
   it('без опций (нечем строить аватарки) — тоже число', () => {
     const el = createReactionsElement(agg({ emoticon: '👍', count: 1 }))!
     expect(el.querySelector('.reaction-counter')!.textContent).toBe('1')
+  })
+
+  it('большое число сокращается (tweb reaction.ts:1035 formatNumber)', () => {
+    // В канале счётчик уходит в тысячи; сырое «12500» растянуло бы пилюлю.
+    const el = createReactionsElement(agg({ emoticon: '👍', count: 12500 }), options({ peerId: CHAT }))!
+    expect(el.querySelector('.reaction-counter')!.textContent).toBe('12.5K')
+
+    const el2 = createReactionsElement(agg({ emoticon: '👍', count: 1234 }), options({ peerId: CHAT }))!
+    expect(el2.querySelector('.reaction-counter')!.textContent).toBe('1.23K')
   })
 })
 

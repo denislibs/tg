@@ -5,7 +5,8 @@
 // док `docs/tweb/bubbles.md` §4.21):
 //
 //   div.reactions.reactions-block.reactions-like-block
-//     └ div.reaction.reaction-block[.is-chosen][.is-inactive]
+//     └ div.reaction.reaction-block.reaction-like-block
+//         [.is-chosen.forwards][.is-last][.is-inactive]
 //         ├ div.reaction-sticker[.is-regular|.is-static]  ← иконка из каталога
 //         ├ div.stacked-avatars       ← ЛИБО аватарки реагировавших (count < 4)
 //         └ span.reaction-counter     ← ЛИБО число (см. `renderCounter` ниже)
@@ -27,6 +28,8 @@ import type { MessageReactions, Reaction, ReactionCount } from '@core/models'
 import type { AvailableReaction } from '@core/managers/reactionsManager'
 import { canViewReactionsList, isChosen, reactionKey, recentOf, totalReactions } from '@core/reactions/messageReactions'
 import { getHeavyAnimationPromise } from '@core/dom/heavyAnimation'
+import { setTransition } from '@core/dom/setTransition'
+import formatNumber from '@helpers/number/formatNumber'
 import StackedAvatars from '@components/stackedAvatars'
 import type { AvatarManagers } from '@components/avatar'
 import wrapSticker from '@components/wrappers/sticker'
@@ -154,16 +157,15 @@ function reactionEmoticon(reaction: Reaction): string {
  * Прежде здесь стоял только первый терм — и чип с одной-двумя реакциями в
  * группе оставался вообще без числа: аватарок ещё нет, счётчика уже нет.
  *
- * `formatNumber` оригинала (:1035) не портирован: компактная форма («1,2K») —
- * отдельный форматтер, у нас его роль играет `fmtViews`, но у него другая
- * точность. Расхождение видно только на тысячах реакций.
+ * Число печатается компактной формой оригинала (`formatNumber`, :1035) — в
+ * канале счётчик доходит до тысяч, и сырое «12500» пилюлю растягивает.
  */
 function renderCounter(chip: HTMLElement, count: ReactionCount, canRenderAvatars: boolean): void {
   if (count.count < REACTIONS_DISPLAY_COUNTER_AT && canRenderAvatars) return
 
   const counter = document.createElement('span')
   counter.classList.add('reaction-counter')
-  counter.textContent = String(count.count)
+  counter.textContent = formatNumber(count.count)
   chip.append(counter)
 }
 
@@ -267,6 +269,27 @@ function renderIcon(
   }).catch(noop)
 }
 
+/**
+ * Порт `ReactionElement.setIsChosen` (reaction.ts:1086-1097): МОЯ реакция
+ * помечается не голым `is-chosen`, а ПЕРЕХОДОМ — подложку акцентного цвета CSS
+ * зажигает только по паре `.is-chosen.forwards` (`_reaction.scss:127-133`), и
+ * со статическим классом своя реакция оставалась незалитой.
+ *
+ * `duration` у оригинала — `this.isConnected ? 300 : 0` (:1093): чипу, ещё не
+ * вставленному в документ, перехода не дают, иначе заливка «проявлялась» бы
+ * разом на всех уже стоявших реакциях при первом показе бабла. У нас узел
+ * реакций пересобирается целиком, а вставляет его `bubbles.ts`, — значит чип
+ * здесь отсоединён ВСЕГДА, ветка `300` недостижима. Проиграть смену состояния
+ * может только оригинал: там чип переживает обновление (reactions.ts:310-313).
+ */
+function setIsChosen(chip: HTMLElement, chosen: boolean): void {
+  // tweb :1088-1089.
+  const wasChosen = chip.classList.contains('is-chosen') && !chip.classList.contains('backwards')
+  if (wasChosen === chosen) return
+
+  setTransition({ element: chip, className: 'is-chosen', forwards: chosen, duration: 0 })
+}
+
 /** Один чип — порт `ReactionElement` (reaction.ts:739-1032). */
 function createReaction(
   count: ReactionCount,
@@ -275,10 +298,13 @@ function createReaction(
   options?: ReactionsElementOptions,
 ): ReactionChip {
   const chip = document.createElement('div') as ReactionChip
-  chip.classList.add('reaction', 'reaction-block')
-  // `is-chosen` — МОЯ реакция (`chosen_order` у оригинала): по нему CSS красит
-  // чип в цвет акцента.
-  if (isChosen(count)) chip.classList.add('is-chosen')
+  // tweb reaction.ts:757-758 (`init`): к общему `reaction` идут класс раскладки
+  // и `reaction-like-block` — общий для block и tag. Второй несёт высоту
+  // пилюли, её внешние отступы, `position: relative` под подложку и саму
+  // переменную `--chosen-background-color` (`_reaction.scss:219-230`).
+  chip.classList.add('reaction', 'reaction-block', 'reaction-like-block')
+  // МОЯ реакция (`chosen_order` у оригинала) — см. `setIsChosen`.
+  setIsChosen(chip, isChosen(count))
   chip.dataset.reaction = reactionKey(count.reaction)
   // Своя версия счётчика на самом узле. У tweb её носит поле
   // `reactionElement.reactionCount` (reaction.ts:722), но там чип ПЕРЕЖИВАЕТ
@@ -565,8 +591,11 @@ export function createReactionsElement(
   const container = document.createElement('div')
   container.classList.add('reactions', 'reactions-block', 'reactions-like-block')
 
-  const chips = results.map((count) => {
+  const chips = results.map((count, idx, arr) => {
     const chip = createReaction(count, reactions!, canRenderAvatars, options)
+    // tweb reactions.ts:319 — последний чип ряда без внешнего отступа справа
+    // (`_reaction.scss:227-229`), иначе ряд шире своего содержимого.
+    chip.classList.toggle('is-last', idx === arr.length - 1)
     container.append(chip)
     return { count, chip }
   })
