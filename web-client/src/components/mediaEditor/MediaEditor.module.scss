@@ -621,6 +621,29 @@
   font-size: var(--font-size-14);
 }
 
+// Долг «фолбэк без WASM SIMD» (backlogs/frontend/lottie-no-wasm-fallback.md):
+// lottie-стикер без декодера недоступен для добавления — гасим ячейку и убираем
+// курсор-руку, но саму ячейку не прячем (чтобы набор не «терял» стикеры молча).
+.stickerCellDisabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+
+  @media (hover: hover) {
+    &:hover { background: transparent; }
+  }
+}
+
+// Баннер «стикер не отрисован» (та же причина) — над сеткой пикера и над
+// областью превью, когда в сцене есть lottie-слой без источника.
+.stickerWarning {
+  flex-shrink: 0;
+  padding: 10px 12px;
+  font-size: var(--font-size-13);
+  line-height: 1.35;
+  color: #fff;
+  background: var(--danger-color);
+}
+
 // кнопка удаления выбранного стикера — у его левого-верхнего угла
 .stickerDelete {
   position: absolute;

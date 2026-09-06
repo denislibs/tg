@@ -40,11 +40,12 @@ export default function LottieSticker({
     // без него autoplay ждёт первую отмашку `animationIntersector`
     // (карусель/скрытые табы), а эти уточки монтируются сразу видимыми.
     //
-    // Деградация без WASM SIMD (решение плана «один движок lottie», раздел
-    // «Решение по деградации без WASM SIMD»): `loadAnimationAsAsset` бросает
-    // `NO_WASM` (`lib/lottie/lottieLoader.ts:216`), канва в DOM не появляется
-    // — уточка просто не показывается. Долг:
-    // `web-client/backlogs/frontend/lottie-no-wasm-fallback.md`.
+    // Деградация без WASM SIMD (backlogs/frontend/lottie-no-wasm-fallback.md,
+    // часть 2 — закрыта): `loadAnimationAsAsset` бросает `NO_WASM`
+    // (`lib/lottie/lottieLoader.ts:216`), канва в DOM не появляется — но сама
+    // `loadAnimationAsAsset` вставляет в `container` статичный PNG первого
+    // кадра ДО реджекта (`lib/lottie/lottieAssetFallback.ts`), поэтому уточка
+    // не пропадает совсем, а перестаёт двигаться.
     const load = lottieLoader
       .loadAnimationAsAsset({ container, loop, autoplay: true, width: size, height: size, group: 'none' }, name)
       .then((animation) => {

@@ -690,6 +690,8 @@ const lang = {
   'MediaEditor.RecentlyUsed': 'Recently Used',
   'MediaEditor.Rotate': 'Rotate',
   'MediaEditor.Square': 'Square',
+  'MediaEditor.StickerAnimatedUnsupported': 'Animated stickers are not supported in this browser',
+  'MediaEditor.StickerNotRendered': 'This sticker cannot be rendered in this browser and will not be saved. Remove it to continue.',
   'MediaEditor.TextSize': 'Text size',
   'MediaEditor.Tool': 'Tool',
   'MediaEditor.Unmute': 'Unmute video',

@@ -99,6 +99,21 @@ export interface StickerLayer {
   rotation: number
 }
 
+/**
+ * Слои сцены, чей источник кадра НАВСЕГДА отсутствует (не «ещё грузится», а
+ * `StickerAssets.hasFailed`/`onFail` — сегодня единственная причина NO_WASM).
+ * `composeScene` рисует слой, только когда `resolveSticker` вернул источник, и
+ * молча пропускает остальные — здесь та самая точка, где вызывающий (MediaEditor)
+ * обязан не пропустить это молча: не дать сохранить экспорт и предупредить
+ * пользователя (backlogs/frontend/lottie-no-wasm-fallback.md, «медиаредактор —
+ * потеря тяжелее»). Чистая функция — пин на неё не зависит от рендера React.
+ */
+export function unresolvedStickerLayers(
+  stickers: StickerLayer[], failedMediaIds: ReadonlySet<number>,
+): StickerLayer[] {
+  return stickers.filter((l) => failedMediaIds.has(l.mediaId))
+}
+
 export const srcSize = (img: SrcImage): { w: number; h: number } => {
   if (typeof HTMLVideoElement !== 'undefined' && img instanceof HTMLVideoElement) {
     return { w: img.videoWidth, h: img.videoHeight }

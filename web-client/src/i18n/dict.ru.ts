@@ -433,6 +433,11 @@ const ru = {
   'CallSettings.AcceptCallsShort': 'Принимать звонки',
   Translate: 'Перевести',
   'MediaEditor.Original': 'Оригинал',
+  // Долг «фолбэк без WASM SIMD» (backlogs/frontend/lottie-no-wasm-fallback.md):
+  // без SIMD lottie-стикер нельзя добавить в редактор и нельзя молча потерять в экспорте.
+  'MediaEditor.StickerAnimatedUnsupported': 'Анимированные стикеры не поддерживаются в этом браузере',
+  'MediaEditor.StickerNotRendered':
+    'Этот стикер не может быть отрисован в этом браузере и не попадёт в сохранённый результат. Удалите его, чтобы продолжить.',
   Translation: 'Перевод',
   'Translate.FromLanguage': 'С',
   'Translate.ToLanguage': 'На',
