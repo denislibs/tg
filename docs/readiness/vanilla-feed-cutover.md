@@ -111,7 +111,7 @@ grep -rn --include='*.ts' --include='*.tsx' -E "from '[^']*(ChatFeed|MessageRow|
 > tweb `bubbles.ts:9781-9799`), и без него текстовый спойлер оставался сплошной
 > заливкой. Сделано: React-компонент `MessageSpoilerOverlay.tsx` **удалён**,
 > вместо него ванильная фабрика `components/messages/messageSpoilerOverlay.ts`
-> (`createMessageSpoilerOverlay`); лента зовёт её из `chat/bubbles.ts:1888`
+> (`createMessageSpoilerOverlay`); лента зовёт её из `chat/bubbles.ts:1896`
 > (`addMessageSpoilerOverlay`), `RichText` — через `useImperativeIsland`
 > (`RichText.tsx:165`). Модуль по-прежнему НЕ удалять: потребителей теперь
 > два, а не один.
@@ -243,8 +243,8 @@ tweb, не React-версия.
 
 ## 3.2 Типы контента, которых у ванили нет вовсе
 
-`renderMedia` (`chat/bubbles.ts:1248`) знает ровно пять веток: стикер, видео/gif/кружок,
-документ, фото, альбом. `renderMessage` (`chat/bubbles.ts:1678`) добавляет текст, reply,
+`renderMedia` (`chat/bubbles.ts:1271`) знает ровно пять веток: стикер, видео/gif/кружок,
+документ, фото, альбом. `renderMessage` (`chat/bubbles.ts:1701`) добавляет текст, reply,
 время, реакции, имя. Всё остальное из `MessageContent.tsx` — пробел:
 
 | Что | Где в React | Где в tweb |
@@ -373,9 +373,9 @@ const STUB_CTX = { firstInGroup: true, lastInGroup: true, isChannel: false,
 `isChannel: false` → нет `channel-post`/`with-beside-button` (`bubbleClasses.ts:145`).
 `bigEmojiCount: 0` → нет `emoji-big`/`can-have-big-emoji`/`sticker`
 (`bubbleClasses.ts:123`). `animatedSticker` компенсируется в
-`renderStickerMedia` (`chat/bubbles.ts:1577`), `isHighlighted`/`isFirstUnread` — в
-`highlightBubble` (`chat/bubbles.ts:4658`) и `setUnreadDelimiter`
-(`chat/bubbles.ts:4696`); остальные два — реальные дыры.
+`renderStickerMedia` (`chat/bubbles.ts:1600`), `isHighlighted`/`isFirstUnread` — в
+`highlightBubble` (`chat/bubbles.ts:4734`) и `setUnreadDelimiter`
+(`chat/bubbles.ts:4772`); остальные два — реальные дыры.
 
 ## 3.7 Контекстное меню
 
