@@ -35,14 +35,13 @@
 //    только полный пикер.
 //
 // ─── Адаптации ─────────────────────────────────────────────────────────────
-//  • ЧТО ПОКАЗЫВАТЬ. У оригинала это `getAvailableReactionsByMessage` →
-//    `getAvailableReactionsForPeer` (appReactionsManager.ts:205-277): личка →
-//    топ-реакции, чат → политика `chatFull.available_reactions`. Ни топа, ни
-//    политики чата в проводе меню нет, поэтому берём ветку, которую оригинал
-//    вычисляет для `chatReactionsAll` без кастом-эмодзи (:239-245):
-//    `activeAvailableReactions` — весь каталог без `inactive`, в порядке
-//    каталога. Отбор `!inactive` — дословно `getActiveAvailableReactions`
-//    (:199-204).
+//  • ЧТО ПОКАЗЫВАТЬ решает политика пира — порт
+//    `getAvailableReactionsForPeer` (appReactionsManager.ts:205-277), он живёт
+//    рядом с каталогом (`chat/reactions.ts`) и там же описаны его расхождения.
+//    `getAvailableReactionsByMessage` (:369-424) не портирован целиком: его
+//    ветки — теги «Избранного», сортировка по уже стоящим реакциям для
+//    `chatReactionsSome` и лимит `reactions_uniq_max`; ни тегов, ни лимита у нас
+//    нет, а сортировка бессмысленна без второй.
 //  • Документ роли у нас — плоский номер файла (`*MediaId`), а не `Document`;
 //    `wrapSticker` принимает `mediaId` (`wrappers/sticker.ts`).
 //  • `cached`-путь (:288-303) не портирован: у оригинала каталог лежит
@@ -53,7 +52,12 @@
 //    загрузки умеет возвращаемый `render`, им и собирается `renderPromises`.
 import type { Reaction } from '@core/models'
 import type { AvailableReaction } from '@core/managers/reactionsManager'
-import { getAvailableReactions, type ReactionsCatalogManagers } from './reactions'
+import {
+  getAvailableReactions,
+  getAvailableReactionsForPeer,
+  type PeerAvailableReactions,
+  type ReactionsCatalogManagers,
+} from './reactions'
 import animationIntersector, { type AnimationItemGroup } from '@components/animationIntersector'
 import wrapSticker from '@components/wrappers/sticker'
 import LottiePlayer from '@lib/lottie/lottiePlayer'
@@ -89,6 +93,10 @@ type ChatReactionsMenuPlayers = {
 
 export interface ChatReactionsMenuOptions {
   managers: ReactionsCatalogManagers
+  /** Чей это чат — по нему читается политика реакций (tweb
+   *  `getAvailableReactionsByMessage` берёт `message.peerId`,
+   *  appReactionsManager.ts:369-386). */
+  peerId: PeerId
   /** tweb :83; вертикальный вариант у оригинала закомментирован целиком
    *  (`_button.scss:747-777`), но класс-модификатор ставится по этому полю */
   type: 'horizontal' | 'vertical'
@@ -105,12 +113,14 @@ export default class ChatReactionsMenu {
   private animationGroup: AnimationItemGroup
   private middlewareHelper: ReturnType<typeof getMiddleware>
   private managers: ReactionsCatalogManagers
+  private peerId: PeerId
   private onFinish: ChatReactionsMenuOptions['onFinish']
   private listenerSetter: ListenerSetter
   public inited = false
 
   constructor(options: ChatReactionsMenuOptions) {
     this.managers = options.managers
+    this.peerId = options.peerId
     // tweb :92
     this.middlewareHelper = options.middleware ? options.middleware.create() : getMiddleware()
     this.onFinish = options.onFinish
@@ -178,40 +188,53 @@ export default class ChatReactionsMenu {
     }
   }
 
-  /** tweb :200-218 (`renderReactions`). */
-  private renderReactions(availableReactions: AvailableReaction[]) {
-    const renderPromises = availableReactions
+  /** tweb :201-220 (`renderReactions`): идём по СПИСКУ ПОЛИТИКИ, а файлы ролей
+   *  ищем в каталоге (:214-215). Реакции, которой в каталоге нет, ячейка
+   *  покажет текстовым эмодзи — см. `renderReaction`. */
+  private renderReactions(
+    { reactions }: PeerAvailableReactions,
+    availableReactions: AvailableReaction[],
+  ) {
+    const renderPromises = reactions
       .slice(0, REACTIONS_MAX_LENGTH)
-      .map((availableReaction) => this.renderReaction(
-        { _: 'reactionEmoji', emoticon: availableReaction.emoji },
-        availableReaction,
+      .map((reaction) => this.renderReaction(
+        reaction,
+        reaction._ === 'reactionEmoji'
+          ? availableReactions.find((availableReaction) => availableReaction.emoji === reaction.emoticon)
+          : undefined,
       ))
 
     return this.render(renderPromises)
   }
 
-  /** tweb :228-258 (`prepareReactions`) в объёме «каталог вместо политики пира»
-   *  — см. шапку. */
+  /** tweb :228-258 (`prepareReactions`) без веток эффектов и кастом-эмодзи. */
   private prepareReactions() {
     const middleware = this.middlewareHelper.get()
     const catalog = getAvailableReactions(this.managers)
-    // Каталога нет вовсе — это ровно исход `chatReactionsNone` оригинала
-    // (:245-247): панель остаётся невидимой (`is-visible` не ставится) и, раз
-    // она `position: absolute` (`_button.scss:721`), места в меню не занимает.
+    // Каталога нет вовсе — рисовать нечем; результат тот же, что у
+    // `chatReactionsNone` (:250-252): панель остаётся невидимой (`is-visible` не
+    // ставится) и, раз она `position: absolute` (`_button.scss:721`), места в
+    // меню не занимает.
     if(!catalog) return undefined
 
-    return catalog.then((availableReactions) => {
+    return Promise.all([
+      getAvailableReactionsForPeer(this.peerId, this.managers),
+      catalog,
+    ]).then(([peerAvailableReactions, availableReactions]) => {
       if(!middleware()) {
         return
       }
 
-      // tweb `getActiveAvailableReactions` (appReactionsManager.ts:199-204).
-      const active = availableReactions.filter((availableReaction) => !availableReaction.inactive)
-      if(!active.length) {
+      // tweb :250-252 — реакции в этом пире запрещены.
+      if(!peerAvailableReactions || peerAvailableReactions.type === 'chatReactionsNone') {
         return
       }
 
-      return this.renderReactions(active)
+      if(!peerAvailableReactions.reactions.length) {
+        return
+      }
+
+      return this.renderReactions(peerAvailableReactions, availableReactions)
     })
   }
 
@@ -246,8 +269,12 @@ export default class ChatReactionsMenu {
     return liteMode.isAvailable('animations') && liteMode.isAvailable('stickers_chat') && !IS_MOBILE
   }
 
-  /** tweb :517-677 (`renderReaction`) в ветке обычной эмодзи-реакции. */
-  private async renderReaction(reaction: Reaction, availableReaction: AvailableReaction) {
+  /** tweb :517-677 (`renderReaction`) в ветке обычной эмодзи-реакции.
+   *  `availableReaction` необязателен по той же причине, что и у оригинала
+   *  (:214-215 `find(...)` может не найти): политика чата вправе разрешить
+   *  реакцию, которой в каталоге нет. Такая ячейка остаётся текстовым эмодзи —
+   *  файлов ролей для неё не существует. */
+  private async renderReaction(reaction: Reaction, availableReaction?: AvailableReaction) {
     // tweb :522-524 `warmUpReactionEffect` не портирован: прогрева ассетов
     // эффекта (`reaction.ts:268-285`) у нас нет — точки входа «скачать документ
     // заранее» у `wrapSticker` не существует.
@@ -264,7 +291,7 @@ export default class ChatReactionsMenu {
 
     // tweb :535-538 — второй слой заводится, только если анимациям быть.
     const canUseAnimations = this.canUseAnimations() &&
-      !!availableReaction.appearMediaId &&
+      !!availableReaction?.appearMediaId &&
       !!availableReaction.selectMediaId
     let selectWrapper: HTMLElement | undefined
     if(canUseAnimations) {
@@ -300,14 +327,14 @@ export default class ChatReactionsMenu {
     // стоит у чипа бабла (`chat/reactions.ts::renderIcon`). Здесь он вдобавок
     // закрывает случай «ассетов реакций на бэке нет вовсе»: ячейка показывает
     // эмодзи, а не остаётся пустым квадратом.
-    const emojiText = document.createTextNode(availableReaction.emoji)
+    const emojiText = document.createTextNode(reaction._ === 'reactionEmoji' ? reaction.emoticon : '')
     appearWrapper.append(emojiText)
     const dropEmojiText = () => { emojiText.remove() }
 
     const renderPromises: Promise<unknown>[] = []
     if(!canUseAnimations) {
       // tweb :598-640 — статичная иконка вместо пары анимаций.
-      const mediaId = availableReaction.staticMediaId ?? availableReaction.centerMediaId
+      const mediaId = availableReaction?.staticMediaId ?? availableReaction?.centerMediaId
       if(mediaId) {
         renderPromises.push(wrapSticker({
           div: appearWrapper,

@@ -2896,16 +2896,25 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * до сети и откатывает её на ошибке) — лента их не дублирует и результата не
    * ждёт: обновление приедет операцией, как и всякое изменение сообщения.
    *
-   * Кастом-эмодзи реакции пропускаются: у чипа тогда нет эмодзи, а адресовать
-   * реакцию документом наш владелец не умеет (задача #47).
+   * Платная ⭐-реакция пропускается: адресовать её нашим ручкам нечем
+   * (подсистемы нет — тот же вычет у `chat/reactions.ts`).
    */
   private toggleReaction(chip: HTMLElement): void {
     const { react, unreact } = this.managers.messages
     if (!react || !unreact) return
 
     const mid = Number(chip.closest<HTMLElement>('.bubble')?.dataset.mid)
-    const emoji = chip.querySelector('.reaction-sticker')?.textContent ?? ''
-    if (!mid || !emoji) return
+    // Значение реакции берётся С САМОГО ЧИПА (`data-reaction`, порт
+    // `reactionElement.reactionCount.reaction` оригинала — bubbles.ts:3257-3259):
+    // текстовое эмодзи внутри `.reaction-sticker` — лишь подложка на время
+    // загрузки иконки, и `chat/reactions.ts::renderIcon` снимает её, как только
+    // стикер приехал; читать тоггл оттуда значило бы терять его на КАЖДОМ
+    // сообщении с показанной иконкой.
+    const emoji = chip.dataset.reaction ?? ''
+    // Ключ платной ⭐-реакции — сам конструктор, а не эмодзи
+    // (`core/reactions/messageReactions.ts::reactionKey`); адресовать её нашим
+    // ручкам нечем (подсистемы нет), см. докблок выше.
+    if (!mid || !emoji || emoji === 'reactionPaid') return
 
     const promise = chip.classList.contains('is-chosen')
       ? unreact(this.peerId, mid, emoji)

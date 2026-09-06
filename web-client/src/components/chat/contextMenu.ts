@@ -162,7 +162,7 @@
 import ButtonMenu, { type ButtonMenuItemOptions } from '@components/buttonMenu'
 import Icon from '@components/icon'
 import ChatReactionsMenu, { REACTION_CONTAINER_SIZE } from './reactionsMenu'
-import type { ReactionsCatalog } from './reactions'
+import type { ChatFullSource, ReactionsCatalog } from './reactions'
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import { IS_MOBILE } from '@environment/userAgent'
 import filterAsync from '@helpers/array/filterAsync'
@@ -270,6 +270,11 @@ export interface ContextMenuManagers {
   /** Каталог доступных реакций — содержимое панели быстрых реакций
    *  (tweb `apiManagerProxy.getAvailableReactions()`, reactionsMenu.ts:235). */
   reactions?: ReactionsCatalog
+  /** Карточка чата — политика реакций пира (tweb
+   *  `appProfileManager.getChatFull`, appReactionsManager.ts:226). Необязателен:
+   *  без него панель довольствуется зеркалом главного потока
+   *  (`core/chatFullCache.ts`), которое наполняет колонка чата. */
+  groups?: ChatFullSource
   chats: {
     /** Порт `appMessagesManager.getOutboxReadDate` (:1518) */
     getReadDate(peerId: number, msgId: number): Promise<ReadDateResult>
@@ -998,6 +1003,11 @@ export default class ChatContextMenu {
       reactionsMenuPosition = 'horizontal'
       reactionsMenu = this.reactionsMenu = new ChatReactionsMenu({
         managers: this.managers,
+        // tweb :1656 `getReactionsMessage(message)` + appReactionsManager.ts:373-386:
+        // политика читается по пиру САМОГО сообщения, а не по открытому чату
+        // (у пересланного поста канала в мегагруппе это разные пиры).
+        // `this.peerId` — ровно он (`bubble.dataset.peerId`, :506-508).
+        peerId: this.peerId,
         type: reactionsMenuPosition,
         middleware: this.middleware.get(),
         onFinish: (reaction) => {

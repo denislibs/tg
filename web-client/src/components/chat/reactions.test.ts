@@ -5,15 +5,21 @@
 // одному чипу); отсутствие узла, когда реакций нет вовсе; и эффект вокруг чипа
 // (`fireAroundAnimation`) — кто его запускает и что он рисует.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MessageReactions } from '@core/models'
+import type { MessageReactions, Reaction } from '@core/models'
 import type { AvailableReaction } from '@core/managers/reactionsManager'
 import LottiePlayer from '@lib/lottie/lottiePlayer'
 import { getMiddleware } from '@helpers/middleware'
 import { resetPeerMirror } from '@core/peerCache'
+import { resetChatFullMirror, saveChatFull } from '@core/chatFullCache'
 import { useSettingsStore } from '@/settings'
 import wrapSticker from '@components/wrappers/sticker'
 import wrapStickerAnimation from '@components/wrappers/stickerAnimation'
-import { createReactionsElement, REACTIONS_DISPLAY_COUNTER_AT, type ReactionsElementOptions } from './reactions'
+import {
+  createReactionsElement,
+  getAvailableReactionsForPeer,
+  REACTIONS_DISPLAY_COUNTER_AT,
+  type ReactionsElementOptions,
+} from './reactions'
 
 vi.mock('@components/wrappers/sticker', () => ({ default: vi.fn() }))
 vi.mock('@components/wrappers/stickerAnimation', () => ({ default: vi.fn() }))
@@ -29,11 +35,16 @@ function fakePlayer() {
   const firstFrameListeners: (() => void)[] = []
   Object.assign(player, {
     maxFrame: 10,
+    // Канвасы у настоящего плеера есть всегда (`lottiePlayer.ts:102`), и
+    // иконка чипа помечает их классом `media-sticker` — двойник без них
+    // притворялся бы контрактом, которого не бывает.
+    canvas: [document.createElement('canvas')],
+    paused: true,
     addEventListener: (name: string, cb: (frameNo: number) => void) => {
       if (name === 'enterFrame') frameListeners.push(cb)
     },
     onFirstFrame: (cb: () => void) => { firstFrameListeners.push(cb) },
-    play: vi.fn(),
+    play: vi.fn(function(this: LottiePlayer) { (this as { paused: boolean }).paused = false }),
     remove: vi.fn(),
   })
   return {
@@ -108,6 +119,7 @@ function options(over: Partial<ReactionsElementOptions> = {}): ReactionsElementO
 
 beforeEach(() => {
   resetPeerMirror()
+  resetChatFullMirror()
   document.body.replaceChildren()
   vi.clearAllMocks()
   useSettingsStore.setState({ reduceMotion: false })
@@ -193,13 +205,16 @@ describe('иконка чипа из каталога (tweb ReactionElement.rend
     for (let i = 0; i < 5; ++i) await new Promise((resolve) => setTimeout(resolve, 0))
   }
 
-  it('роль каталога — center, размер REACTIONS_SIZE[Block], класс is-regular', async () => {
+  it('роль каталога — center, размер показа 40 (is-regular), класс is-regular', async () => {
     const el = createReactionsElement(agg({ emoticon: '\u{1F44D}', count: 1 }), options())!
     await flushIcon()
 
-    // tweb reaction.ts:817 + :888-897.
+    // tweb reaction.ts:817 + :888-897. Размер — ПОКАЗЫВАЕМЫЙ: `is-regular`
+    // раздувает медиа до `--reaction-size + --reaction-offset * -2` = 22 + 18
+    // (`_reaction.scss:47-56`), и канвас обязан быть нарисован в этот размер,
+    // иначе CSS растянет 22 до 40 мылом.
     expect(wrapStickerMock).toHaveBeenCalledWith(expect.objectContaining({
-      mediaId: CENTER_ID, width: 22, height: 22, play: false, loop: false, needFadeIn: false,
+      mediaId: CENTER_ID, width: 40, height: 40, play: false, loop: false, needFadeIn: false,
     }))
     // tweb :807-811.
     const sticker = el.querySelector('.reaction-sticker')!
@@ -209,15 +224,36 @@ describe('иконка чипа из каталога (tweb ReactionElement.rend
     expect(sticker.textContent).toBe('')
   })
 
-  it('нет center — берётся static и класс is-static (tweb :807-808,:817)', async () => {
+  it('нет center — берётся static, класс is-static и размер контейнера (tweb :807-808,:817)', async () => {
     catalog = makeCatalog({ emoji: '\u{1F44D}', staticMediaId: STATIC_ID })
 
     const el = createReactionsElement(agg({ emoticon: '\u{1F44D}', count: 1 }), options())!
     await flushIcon()
 
-    expect(wrapStickerMock).toHaveBeenCalledWith(expect.objectContaining({ mediaId: STATIC_ID }))
+    // У `is-static` правила раздувания нет вовсе (`_reaction.scss:47-56` — только
+    // `is-regular`), значит показывается ровно `REACTIONS_SIZE[Block]`.
+    expect(wrapStickerMock).toHaveBeenCalledWith(expect.objectContaining({
+      mediaId: STATIC_ID, width: 22, height: 22,
+    }))
     const sticker = el.querySelector('.reaction-sticker')!
     expect(sticker.classList.contains('is-static')).toBe(true)
+  })
+
+  it('канвас иконки помечен media-sticker — иначе правила чипа до него не достают', async () => {
+    // На этом классе висят ОБА правила иконки: гашение на время эффекта
+    // (`_reaction.scss:41-45`) и размер `is-regular` (:47-56). У tweb медиа
+    // иконки всегда `img.media-sticker` (`static: true`, reaction.ts:894), у нас
+    // — `canvas.lottie`, и без явного класса чип оставался бы видимым ПОД
+    // оверлеем эффекта.
+    const canvas = document.createElement('canvas')
+    const player = fakePlayer().player
+    Object.assign(player, { canvas: [canvas] })
+    wrapStickerMock.mockReturnValue({ render: Promise.resolve(player), width: 40, height: 40, destroy: vi.fn() })
+
+    createReactionsElement(agg({ emoticon: '\u{1F44D}', count: 1 }), options())
+    await flushIcon()
+
+    expect(canvas.classList.contains('media-sticker')).toBe(true)
   })
 
   it('inactive-реакция помечает ЧИП (tweb :813-815)', async () => {
@@ -355,9 +391,10 @@ describe('fireAroundAnimation', () => {
       mediaId: AROUND_ID, size: 80, target: stickerContainer, play: false,
     })
     // tweb :1233-1245 — иконка эффекта размером REACTIONS_SIZE[Block] + 18.
-    // `wrapSticker` теперь зовут и чипы (иконка, 22), поэтому вызов эффекта
-    // ищется по своему размеру, а не по порядку.
-    const effectCall = wrapStickerMock.mock.calls.find(([o]) => o.width === 40)![0]
+    // `wrapSticker` теперь зовут и чипы, и эффект, причём В ОДИН И ТОТ ЖЕ
+    // размер (в этом и смысл: оверлей подменяет иконку без скачка), поэтому
+    // вызов эффекта ищется по его группе `none` (tweb :1250).
+    const effectCall = wrapStickerMock.mock.calls.find(([o]) => o.group === 'none')![0]
     expect(effectCall).toMatchObject({
       mediaId: CENTER_ID, width: 40, height: 40, play: false, loop: false,
     })
@@ -365,11 +402,45 @@ describe('fireAroundAnimation', () => {
     await vi.waitFor(() => expect(icon.player.play).not.toBe(undefined))
     icon.fireFirstFrame()
 
-    // tweb :1456-1467.
+    // tweb :1456-1467. Пин на СОСТОЯНИЕ плееров, а не на факт вызова: «эффект
+    // играет» — это `paused === false` у обоих, иначе двойник, у которого
+    // `play()` ничего не делает, объявил бы анимацию сыгранной.
     expect(stickerContainer.querySelector('.reaction-sticker-activate')).not.toBeNull()
     expect(stickerContainer.classList.contains('has-animation')).toBe(true)
-    expect(icon.player.play).toHaveBeenCalled()
-    expect(around.player.play).toHaveBeenCalled()
+    expect(icon.player.paused).toBe(false)
+    expect(around.player.paused).toBe(false)
+  })
+
+  it('правило `has-animation` ДОСТАЁТ до иконки чипа', async () => {
+    // Оригинал гасит базовую иконку на время эффекта:
+    // `.reaction-sticker.has-animation > .media-sticker {opacity: 0}`
+    // (`_reaction.scss:41-45`). Стилей jsdom не считает, поэтому пин на то, что
+    // здесь и решает: СЕЛЕКТОР ЭТОГО ПРАВИЛА совпадает с нашим узлом. Раньше не
+    // совпадал — канвас lottie шёл без класса `media-sticker`, и иконка
+    // оставалась видна под оверлеем.
+    const chipCanvas = document.createElement('canvas')
+    const chipIcon = fakePlayer()
+    Object.assign(chipIcon.player, { canvas: [chipCanvas] })
+    const effect = fakePlayer()
+    wrapStickerMock.mockImplementation((o) => {
+      const isEffect = o.group === 'none'
+      // Настоящий `wrapSticker` вешает канвас плеера в переданный контейнер —
+      // без этого «родитель» селектора не проверить.
+      if (!isEffect) o.div.append(chipCanvas)
+      return {
+        render: Promise.resolve(isEffect ? effect.player : chipIcon.player),
+        width: o.width, height: o.height, destroy: vi.fn(),
+      }
+    })
+
+    const previous = previousWith({ emoticon: '👍', count: 1 })
+    createReactionsElement(agg({ emoticon: '👍', count: 2, mine: true }), options({ previous }))
+
+    await vi.waitFor(() => expect(wrapStickerAnimationMock).toHaveBeenCalled())
+    await flush()
+    effect.fireFirstFrame()
+
+    expect(chipCanvas.matches('.reaction-sticker.has-animation > .media-sticker')).toBe(true)
   })
 
   it('чужая реакция на МОЁМ сообщении тоже играет (tweb pFlags.out)', async () => {
@@ -422,10 +493,11 @@ describe('fireAroundAnimation', () => {
   /** tweb :1446-1456 — оверлей на последнем кадре снимается СРАЗУ, только если
    *  иконка самого чипа уже показана; иначе сначала ждём её. */
   describe('снятие оверлея ждёт иконку чипа (tweb wrapStickerPromise)', () => {
-    /** Развести двойники: 22 — иконка чипа, 40 — иконка эффекта. */
+    /** Развести двойники: группа `none` — иконка эффекта (tweb :1250), всё
+     *  остальное — иконка самого чипа. */
     const splitByWidth = (chipRender: Promise<LottiePlayer>, effect: LottiePlayer) => {
       wrapStickerMock.mockImplementation((o) => ({
-        render: o.width === 40 ? Promise.resolve(effect) : chipRender,
+        render: o.group === 'none' ? Promise.resolve(effect) : chipRender,
         width: o.width, height: o.height, destroy: vi.fn(),
       }))
     }
@@ -475,5 +547,99 @@ describe('fireAroundAnimation', () => {
     await flush()
     expect(catalog.list).toHaveBeenCalled()
     expect(wrapStickerAnimationMock).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * Политика реакций пира — порт `getAvailableReactionsForPeer`
+ * (appReactionsManager.ts:206-277). Пины на ИСХОД, а не на маршрут: панель
+ * выбора показывает ровно то, что вернёт эта функция.
+ */
+describe('getAvailableReactionsForPeer', () => {
+  /** Каталог из трёх реакций; порядок каталога — «сердце, палец, огонь». */
+  const trio = () => makeCatalog(
+    { emoji: '❤' }, { emoji: '👍' }, { emoji: '🔥' },
+  )
+
+  const emoticons = (r: { reactions: Reaction[] } | undefined) =>
+    r!.reactions.map((x) => (x._ === 'reactionEmoji' ? x.emoticon : x._))
+
+  const chatFullWith = (available: unknown) => {
+    saveChatFull(CHAT, {
+      _: 'channelFull', id: 700, about: '', read_inbox_max_id: 0, read_outbox_max_id: 0,
+      unread_count: 0, chat_photo: null,
+      ...(available === undefined ? {} : { available_reactions: available }),
+    } as never)
+  }
+
+  it('личка — весь активный каталог, тип chatReactionsAll (tweb :214-224)', async () => {
+    catalog = trio()
+    const r = await getAvailableReactionsForPeer(USER, { reactions: catalog })
+
+    expect(r!.type).toBe('chatReactionsAll')
+    expect(emoticons(r)).toEqual(['❤', '👍', '🔥'])
+  })
+
+  it('inactive-реакция не предлагается (tweb getActiveAvailableReactions :199-204)', async () => {
+    catalog = makeCatalog({ emoji: '❤' }, { emoji: '👍', inactive: true })
+    const r = await getAvailableReactionsForPeer(USER, { reactions: catalog })
+
+    expect(emoticons(r)).toEqual(['❤'])
+  })
+
+  it('chatReactionsNone — предлагать нечего (tweb :227,250-252)', async () => {
+    catalog = trio()
+    chatFullWith({ _: 'chatReactionsNone' })
+
+    const r = await getAvailableReactionsForPeer(CHAT, { reactions: catalog })
+    expect(r!.type).toBe('chatReactionsNone')
+    expect(r!.reactions).toEqual([])
+  })
+
+  it('chatReactionsAll — весь активный каталог', async () => {
+    catalog = trio()
+    chatFullWith({ _: 'chatReactionsAll' })
+
+    const r = await getAvailableReactionsForPeer(CHAT, { reactions: catalog })
+    expect(emoticons(r)).toEqual(['❤', '👍', '🔥'])
+  })
+
+  it('chatReactionsSome — только разрешённые и В ПОРЯДКЕ КАТАЛОГА (tweb :253-262)', async () => {
+    catalog = trio()
+    // Политика перечисляет их задом наперёд — порядок обязан задавать каталог.
+    chatFullWith({
+      _: 'chatReactionsSome',
+      reactions: [{ _: 'reactionEmoji', emoticon: '🔥' }, { _: 'reactionEmoji', emoticon: '❤' }],
+    })
+
+    const r = await getAvailableReactionsForPeer(CHAT, { reactions: catalog })
+    expect(r!.type).toBe('chatReactionsSome')
+    expect(emoticons(r)).toEqual(['❤', '🔥'])
+  })
+
+  it('карточки в зеркале нет — спрашиваем её у владельца (tweb getChatFull :226)', async () => {
+    catalog = trio()
+    const card = vi.fn(async () => ({
+      fullChat: { available_reactions: { _: 'chatReactionsSome', reactions: [{ _: 'reactionEmoji', emoticon: '👍' }] } },
+    }))
+
+    const r = await getAvailableReactionsForPeer(CHAT, { reactions: catalog, groups: { card } as never })
+
+    expect(card).toHaveBeenCalledWith(CHAT)
+    expect(emoticons(r)).toEqual(['👍'])
+  })
+
+  it('карточку достать нечем — реакции НЕ выключаются молча', async () => {
+    // Право проверяет и бэк (`usecase/chat/reaction.go:35-46`); панель,
+    // исчезнувшая из-за незнания политики, — это другой баг, а не защита.
+    catalog = trio()
+    const r = await getAvailableReactionsForPeer(CHAT, { reactions: catalog })
+
+    expect(r!.type).toBe('chatReactionsAll')
+    expect(emoticons(r)).toEqual(['❤', '👍', '🔥'])
+  })
+
+  it('каталога нет вовсе — политике не на чём стоять', async () => {
+    expect(await getAvailableReactionsForPeer(USER, {})).toBeUndefined()
   })
 })

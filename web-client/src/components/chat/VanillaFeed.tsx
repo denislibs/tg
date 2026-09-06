@@ -298,6 +298,11 @@ export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBot
             // Каталог реакций — содержимое панели быстрых реакций в меню
             // (`chat/reactionsMenu.ts`); тот же объект получает и лента.
             reactions: managers.reactions,
+            // Карточка чата — политика реакций пира (какие реакции здесь вообще
+            // разрешены). Панель спрашивает её только на промах зеркала
+            // `core/chatFullCache.ts`: в открытом чате карточку уже принесла
+            // колонка, а в треде комментариев — нет.
+            groups: managers.groups,
             media: {
               downloadToDisc: (message) => {
                 const mediaId = getMediaId(message)

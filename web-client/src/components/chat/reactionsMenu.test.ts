@@ -15,6 +15,7 @@ import wrapSticker from '@components/wrappers/sticker'
 import animationIntersector from '@components/animationIntersector'
 import { getMiddleware } from '@helpers/middleware'
 import { useSettingsStore } from '@/settings'
+import { resetChatFullMirror, saveChatFull } from '@core/chatFullCache'
 import ChatReactionsMenu, { REACTIONS_MAX_LENGTH } from './reactionsMenu'
 
 vi.mock('@components/wrappers/sticker', () => ({ default: vi.fn() }))
@@ -59,12 +60,32 @@ function bigCatalog(n: number) {
   return makeCatalog(...Array.from({ length: n }, (_, i) => ({ emoji: `e${i}` })))
 }
 
-function menu(catalog?: { list(): Promise<AvailableReaction[]> }) {
+/** Личка: у неё политики чата нет вовсе (tweb appReactionsManager.ts:214-224),
+ *  поэтому базовые пины разметки её и берут. */
+const USER: PeerId = 42
+/** Группа: только у неё есть `chatFull.available_reactions`. */
+const CHAT: PeerId = -700
+
+/** Положить политику реакций в зеркало полных карточек — тот же источник, из
+ *  которого её читает панель (порт `appProfileManager.getChatFull`). */
+function chatPolicy(available: unknown) {
+  saveChatFull(CHAT, {
+    _: 'channelFull', id: 700, about: '', read_inbox_max_id: 0, read_outbox_max_id: 0,
+    unread_count: 0, chat_photo: null, available_reactions: available,
+  } as never)
+}
+
+function menu(
+  catalog?: { list(): Promise<AvailableReaction[]> },
+  over: Partial<ConstructorParameters<typeof ChatReactionsMenu>[0]> = {},
+) {
   return new ChatReactionsMenu({
     managers: { reactions: catalog },
+    peerId: USER,
     type: 'horizontal',
     middleware: getMiddleware().get(),
     onFinish,
+    ...over,
   })
 }
 
@@ -78,6 +99,7 @@ function cells(m: ChatReactionsMenu) {
 
 beforeEach(() => {
   document.body.replaceChildren()
+  resetChatFullMirror()
   vi.clearAllMocks()
   useSettingsStore.setState({ reduceMotion: false })
   onFinish = vi.fn()
@@ -151,6 +173,43 @@ describe('ChatReactionsMenu — состав (tweb :213 + getActiveAvailableReac
 
     expect(cells(m)).toHaveLength(0)
     expect(m.widthContainer.classList.contains('is-visible')).toBe(false)
+  })
+
+  it('в чате с запрещёнными реакциями панели нет вовсе (tweb :250-252)', async() => {
+    // Иначе пользователь тычет в панель, а бэк постановку отклоняет
+    // (`usecase/chat/reaction.go:35-46`) — «реакции не работают».
+    chatPolicy({ _: 'chatReactionsNone' })
+    const m = menu(makeCatalog({ emoji: '👍' }, { emoji: '🔥' }), { peerId: CHAT })
+    await m.init()
+    await flush()
+
+    expect(cells(m)).toHaveLength(0)
+    expect(m.widthContainer.classList.contains('is-visible')).toBe(false)
+  })
+
+  it('в чате с частичной политикой панель показывает только разрешённые', async() => {
+    chatPolicy({ _: 'chatReactionsSome', reactions: [{ _: 'reactionEmoji', emoticon: '🔥' }] })
+    const m = menu(makeCatalog(
+      { emoji: '👍', appearMediaId: 91, selectMediaId: 92 },
+      { emoji: '🔥', appearMediaId: 71, selectMediaId: 72 },
+    ), { peerId: CHAT })
+    await m.init()
+    await flush()
+
+    expect(cells(m)).toHaveLength(1)
+    const mediaIds = wrapStickerMock.mock.calls.map((call) => call[0].mediaId).sort()
+    expect(mediaIds).toEqual([71, 72])
+  })
+
+  it('политика разрешила реакцию, которой нет в каталоге — ячейка с эмодзи (tweb :214-215)', async() => {
+    chatPolicy({ _: 'chatReactionsSome', reactions: [{ _: 'reactionEmoji', emoticon: '🦄' }] })
+    const m = menu(makeCatalog({ emoji: '👍' }), { peerId: CHAT })
+    await m.init()
+    await flush()
+
+    expect(cells(m)).toHaveLength(1)
+    expect(cells(m)[0].textContent).toBe('🦄')
+    expect(wrapStickerMock).not.toHaveBeenCalled()
   })
 
   it('реакция без файлов ролей показывает своё эмодзи, а не пустую ячейку', async() => {

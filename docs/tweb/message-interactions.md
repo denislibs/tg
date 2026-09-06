@@ -501,7 +501,7 @@ scheduled и т.д. — **TODO: см. popups.md**. Пункт меню Delete
 
 | Что | У нас | Почему |
 |---|---|---|
-| Источник списка | весь каталог `GET /reactions` без `inactive`, до 7 | политики пира (`chatFull.available_reactions`) и топ-реакций в проводе меню нет; берётся ветка, которую оригинал вычисляет для `chatReactionsAll` без кастом-эмодзи (`appReactionsManager.ts:239-245`) |
+| Источник списка | политика пира (`getAvailableReactionsForPeer`, `chat/reactions.ts`) над каталогом `GET /reactions` без `inactive`, до 7 | 1:1 `appReactionsManager.ts:206-277`, кроме: топ-реакций нет ни на бэке, ни на проводе (личка и `chatReactionsAll` берут весь активный каталог в его порядке), переписывание `chatReactionsAll → Some{trulyAll}` (:238-245) не портировано — его читает только полный пикер, а список у обеих веток одинаковый; карточку чата достать не удалось → считаем `chatReactionsAll` (у оригинала `getChatFull` всегда доводит ответ) |
 | Кнопка «ещё» + полный пикер | НЕТ (режим `noMoreButton` самого оригинала, reactionsMenu.ts:70) | нет `EmojiTab`/`EmoticonsDropdown`, нет топ/недавних реакций на бэке, нет кастом-эмодзи-реакций — долг `web-client/backlogs/frontend/reactions-more-button.md` |
 | Теги «Избранного», эффекты сообщений, ⭐-реакция | НЕТ | своих подсистем нет |
 | Тач: long-press, мобильная раскладка | НЕТ (этап 3 порта) | — |
@@ -518,6 +518,14 @@ bubbles.ts:3245–3279: клик по `reaction-element` → `cancelEvent`; `is-
 реакцию** (снятие происходит в оптимистике менеджера).
 
 **Даблклик быстрый-реакцией не является**: dblclick на десктопе — это reply (§9.3).
+
+**У нас** (`components/chat/bubbles.ts::toggleReaction`): ветка портирована, значение
+реакции читается с самого чипа — `chip.dataset.reaction` (аналог
+`reactionCount.reaction` оригинала, bubbles.ts:3257–3259). Раньше оно бралось из
+текстового узла внутри `.reaction-sticker`, а его снимает `renderIcon`, как только
+приезжает иконка, — тоггл переставал работать на каждом сообщении с показанной
+иконкой (пин — `bubbles.reactionClick.test.ts`). Не портированы: гейт `is-inactive`,
+ветка тегов «Избранного» и премиум-гейт.
 
 ## 7.4 Оптимистичное применение — `appReactionsManager.sendReaction` (647–966)
 
