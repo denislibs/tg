@@ -164,6 +164,22 @@ describe('AuthCodeCard.solid: исходы ввода кода', () => {
     focusSpy.mockRestore()
   })
 
+  it('«Invalid code» — утверждение про ввод, поэтому настоящая ошибка ОСТАЁТСЯ в консоли', async () => {
+    // Дыра, ради которой пин заведён: `catch {}` без параметра выдавал ЛЮБОЙ
+    // отказ (сеть, воркер, сломанный `managers.auth`) за опечатку пользователя
+    // и не оставлял ни следа. У tweb ветка `default:` печатает сам `err.type`
+    // в тот же лейбл (`AuthCodeCard.tsx:138-140`) — подмены там нет.
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const signIn = vi.fn().mockRejectedValue(new TypeError('managers.auth.signIn is not a function'))
+    const { typeCode } = mount(signIn)
+
+    typeCode('00000')
+    await vi.waitFor(() => expect(host!.textContent).toContain('Invalid code'))
+    expect(consoleError).toHaveBeenCalled()
+
+    consoleError.mockRestore()
+  })
+
   it('карандаш у номера — назад на signIn без запроса к серверу', () => {
     const signIn = vi.fn()
     const { navigate } = mount(signIn)

@@ -108,7 +108,15 @@ export default function AuthCodeCard(props: { spec: Spec }): JSX.Element {
         return
       }
       void toIm()
-    } catch {
+    } catch (err) {
+      // `PHONE_CODE_INVALID` — утверждение про ВВОД пользователя, а под ним
+      // может лежать что угодно (сеть, воркер, сломанный RPC). У tweb ветка
+      // `default:` такой подмены не делает: она печатает в тот же лейбл сам
+      // `err.type` (`AuthCodeCard.tsx:138-140`), различая коды по имени
+      // отказа. Наш `signIn` типизированного имени на этом пути не даёт
+      // (см. докблок), поэтому текст остаётся один — но след в консоли
+      // остаётся тоже, иначе чужая ошибка навсегда выдаётся за опечатку.
+      console.error('AuthCodeCard: signIn error:', err)
       setError('PHONE_CODE_INVALID')
       setValue('')
       refocus = true
