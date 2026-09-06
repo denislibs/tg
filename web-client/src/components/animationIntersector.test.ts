@@ -62,7 +62,7 @@ function intersect(el: Element, isIntersecting: boolean) {
 
 let players: FakePlayer[] = []
 
-function register(group: 'chat' | 'emoticons-dropdown' = 'chat') {
+function register(group: 'chat' | 'emoticons-dropdown' | `CHAT-MENU-REACTIONS-${number}` = 'chat') {
   const el = makeElement()
   const animation = makePlayer()
   players.push(animation)
@@ -182,6 +182,32 @@ describe('animationIntersector', () => {
     window.dispatchEvent(new Event('focus'))
     animationIntersector.checkAnimations2(false)
     expect(animation.play).toHaveBeenCalledTimes(1)
+  })
+
+  // tweb :48,111,186-189,349 (`overrideIdleGroups`). Панель быстрых реакций
+  // (`chat/reactionsMenu.ts`) открывается поверх ленты и живёт только пока
+  // открыто меню — простой окна не должен запрещать ей играть: её содержимое
+  // и ЕСТЬ анимация. Проверяется результат (играет/не играет), а не факт
+  // вызова: no-op в `setOverrideIdleGroup` обязан быть виден отсюда.
+  it('группа с override играет вопреки простою окна, остальные — нет', () => {
+    const GROUP = 'CHAT-MENU-REACTIONS-1' as const
+    window.dispatchEvent(new Event('blur')) // окно простаивает
+    expect(idleController.isIdle).toBe(true)
+
+    const plain = register()
+    intersect(plain.el, true)
+    expect(plain.animation.play).not.toHaveBeenCalled()
+
+    animationIntersector.setOverrideIdleGroup(GROUP, true)
+    const panel = register(GROUP)
+    intersect(panel.el, true)
+    expect(panel.animation.play).toHaveBeenCalledTimes(1)
+
+    // Снятие override возвращает группу под общее правило.
+    animationIntersector.setOverrideIdleGroup(GROUP, false)
+    const after = register(GROUP)
+    intersect(after.el, true)
+    expect(after.animation.play).not.toHaveBeenCalled()
   })
 
   // Порт tweb :167-184. Правая колонка прячется ТРАНСФОРМОМ: узел остаётся в

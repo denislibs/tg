@@ -588,10 +588,27 @@ div.reply.quote-like.quote-like-hoverable.quote-like-border[.quote-like-icon.rep
 
 **У нас (чип, `components/chat/reactions.ts`):** все три класса чипа, `is-last` и
 переход `is-chosen`/`forwards` портированы; счётчик печатается `formatNumber`
-(`helpers/number/formatNumber.ts`). Ветка `duration: 300` у `setIsChosen`
-недостижима: узел реакций пересобирается целиком, и чип на этот момент всегда
-отсоединён — смену состояния проигрывает только оригинал, где чип переживает
-обновление (reactions.ts:310–313). Не портированы: `positionElementByIndex`,
+(`helpers/number/formatNumber.ts`). Выражение длительности стоит дословно
+(`chip.isConnected ? 300 : 0`), но ветка `300` СЕГОДНЯ НЕДОСТИЖИМА: узел реакций
+пересобирается целиком (`bubbles.ts::renderMessageMeta` сносит прошлый `.reactions`
+и строит новый), и чип на момент вызова всегда отсоединён. У оригинала чип
+ПЕРЕЖИВАЕТ обновление (`reactions.ts:290–296` — `this.sorted.find(...)`
+переиспользует `ReactionElement`), поэтому там второй вызов застаёт узел
+подключённым. Ветка оживёт вместе с переиспользованием чипов; подделывать её
+константой 300 нельзя — переход отыграется на каждом показе бабла.
+
+**Иконка чипа НЕПОДВИЖНА и у нас, и в оригинале:** tweb рисует её `static: true`
+(reaction.ts:894 → `wrappers/sticker.ts:206–208`, `:521–522` → растровый
+`img.media-sticker`), мы — первым кадром `center.tgs` (`play: false`). Играет не
+она, а эффект постановки (`fireAroundAnimation`) и панель выбора. Поскольку у нас
+это `canvas.lottie`, класс `media-sticker` канвасу ставится ЯВНО: на нём висят оба
+правила иконки — гашение на время эффекта (`.has-animation > .media-sticker`,
+`_reaction.scss:41–45`) и раздувание `is-regular` до
+`--reaction-size + --reaction-offset * -2` = 40 (:47–56). Канвас поэтому и
+рисуется в 40, а не в 22: наш плеер рисует ровно в названный размер, и 22
+растянулись бы правилом CSS.
+
+Не портированы: `positionElementByIndex`,
 `has-no-reactions`, кастом-эмодзи, платная ⭐-реакция, раскладки Inline и Tag.
 
 **У нас (вставка в бабл, `components/chat/bubbles.ts::renderMessageMeta`):** развилка

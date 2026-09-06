@@ -8,7 +8,8 @@
  *
  * ─── Что портировано ────────────────────────────────────────────────────────
  *  • `attachTo` (:246-348): десктоп — `attachContextMenuListener` (правый клик),
- *    тач — обычный тап по баблу с отсевом по «плохим селекторам» (:289-307);
+ *    тач — долгое нажатие по чипу реакции (:249-280) и обычный тап по баблу с
+ *    отсевом по «плохим селекторам» (:289-307);
  *    подписка на `history_delete` закрывает открытое меню (:323-347);
  *  • `onContextMenu` (:350-585): `bubble-content-wrapper` → `bubble`, отсев
  *    дата-бабла, `preventDefault` только для мыши, выход при уже активном меню,
@@ -114,12 +115,15 @@
  *    QR-код профиля, `popups/myQrCode.tsx:945`). Изобретение React-версии.
  *
  * ─── Механика, которой здесь нет ────────────────────────────────────────────
- *  • ПАНЕЛЬ БЫСТРЫХ РЕАКЦИЙ (`appendReactionsMenu`, :2229-2282, и весь
- *    `getReactionsMenuPadding`/`getReactionsOpenPosition`) — `ChatReactionsMenu`
- *    не портирован. Поэтому `menuPadding` не считается и в `positionMenu` не
- *    передаётся: без панели он в оригинале тоже `undefined`.
- *  • Long-press по реакции на таче (:249-280) — цель жеста (`reaction-element`)
- *    не существует, см. выше.
+ *  • `getReactionsOpenPosition` (:2220-2227) — прямоугольник, от которого
+ *    открывается ПОЛНЫЙ пикер за кнопкой «ещё»; самой кнопки в панели нет
+ *    (см. `chat/reactionsMenu.ts` и `backlogs/frontend/reactions-more-button.md`).
+ *  • `openReactionContextMenu` (:588-670) — меню САМОЙ реакции («кто поставил»
+ *    + пак эмодзи), куда оригинал уводит и правый клик по чипу (:392-413), и
+ *    долгое нажатие на таче. Ни списка реагировавших отдельным меню, ни паков
+ *    кастом-эмодзи у нас нет; оба жеста открывают обычное меню сообщения —
+ *    ветку, в которую сваливается и сам оригинал при `canOpenReactionMenu ===
+ *    false` (:404-410).
  *  • `PopupToggleReadDate` (:878-880) — попапа приватности «когда прочитано»
  *    нет; пункт read-date остаётся информационным, как и в React-версии.
  *  • `StackedAvatars` в групповой ветке `views` (:1596-1644) — компонента нет,
@@ -162,7 +166,10 @@
  */
 import ButtonMenu, { type ButtonMenuItemOptions } from '@components/buttonMenu'
 import Icon from '@components/icon'
+import ChatReactionsMenu, { REACTION_CONTAINER_SIZE } from './reactionsMenu'
+import { sendReaction, type ChatFullSource, type ReactionsCatalog } from './reactions'
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
+import { IS_MOBILE } from '@environment/userAgent'
 import filterAsync from '@helpers/array/filterAsync'
 import { copyTextToClipboard } from '@helpers/clipboard'
 import contextMenuController from '@helpers/contextMenuController'
@@ -175,13 +182,13 @@ import isSelectionEmpty from '@helpers/dom/isSelectionEmpty'
 import ListenerSetter from '@helpers/listenerSetter'
 import { getMiddleware } from '@helpers/middleware'
 import noop from '@helpers/noop'
-import positionMenu from '@helpers/positionMenu'
+import positionMenu, { type MenuPositionPadding } from '@helpers/positionMenu'
 import rootScope from '@lib/rootScope'
 import { isLocalMessageId, getServerMessageId } from '@core/history/messageId'
 import { mirrorWindow } from '@core/history/messagesMirror'
 import { getMediaFromMessage, type MyDocument } from '@core/media/messageMedia'
 import { buildMessageLink } from '@core/messageLink'
-import { getMessageText, type MyMessage, type MessageReal } from '@core/models'
+import { getMessageText, type MyMessage, type MessageReal, type Reaction } from '@core/models'
 import {
   cachedChat,
   cachedUser,
@@ -250,7 +257,29 @@ export interface ContextMenuManagers {
     /** Порт `appMessagesManager.getMessageReadParticipants` — кто просмотрел
      *  (групповая ветка пункта `views`, :1596-1644) */
     viewers(peerId: number, msgId: number): Promise<number[]>
+    /**
+     * Порт `chat.sendReaction` (chat.ts:1457 → `appReactionsManager
+     * .sendReaction`) — выбор в панели быстрых реакций. Пара, а не один вызов:
+     * у оригинала «поставить» и «снять» это ОДИН метод, который сам снимает
+     * уже стоявшую свою реакцию (appReactionsManager.ts:733-747
+     * `unsetReactionCount`), а у нашего владельца это две REST-ручки. Какую
+     * позвать, решает общая точка отправки (`chat/reactions.ts::sendReaction`)
+     * — та же, что и для ленты.
+     *
+     * Необязательны: без них панель не показывается вовсе (ставить будет
+     * нечем), как и без каталога ниже.
+     */
+    react?(peerId: number, msgId: number, emoji: string): Promise<void>
+    unreact?(peerId: number, msgId: number, emoji: string): Promise<void>
   }
+  /** Каталог доступных реакций — содержимое панели быстрых реакций
+   *  (tweb `apiManagerProxy.getAvailableReactions()`, reactionsMenu.ts:235). */
+  reactions?: ReactionsCatalog
+  /** Карточка чата — политика реакций пира (tweb
+   *  `appProfileManager.getChatFull`, appReactionsManager.ts:226). Необязателен:
+   *  без него панель довольствуется зеркалом главного потока
+   *  (`core/chatFullCache.ts`), которое наполняет колонка чата. */
+  groups?: ChatFullSource
   chats: {
     /** Порт `appMessagesManager.getOutboxReadDate` (:1518) */
     getReadDate(peerId: number, msgId: number): Promise<ReadDateResult>
@@ -309,6 +338,11 @@ type ChatContextMenuButton = ButtonMenuItemOptions & {
 // у самого tweb это МЁРТВАЯ ветка `filterButtons` — условие там записано как
 // `this.isOverBubble || IS_TOUCH_SUPPORTED || true`, то есть ветка
 // `button.notDirect && ...` недостижима (:705-707).
+
+/** Чип реакции — цель тач-жестов (tweb `closest('reaction-element')`, :261,392).
+ *  Кастом-элемента `reaction-element` у нас нет, чип это `div.reaction`
+ *  (`chat/reactions.ts:469`). */
+const REACTION_SELECTOR = '.reaction'
 
 /** Селекторы, по которым обычный тап НЕ открывает меню — tweb :289-307,
  *  дословно. Ни один не выброшен: узла с таким классом у нас может ещё не
@@ -371,6 +405,9 @@ export default class ChatContextMenu {
   private attachListenerSetter = new ListenerSetter()
   private middleware = getMiddleware()
 
+  /** tweb :231 — живёт ровно столько, сколько открыто меню. */
+  private reactionsMenu?: ChatReactionsMenu
+
   constructor(
     private chat: ContextMenuChat,
     private bubbles: ContextMenuBubbles,
@@ -388,10 +425,61 @@ export default class ChatContextMenu {
     this.attachListenerSetter.removeAll()
 
     if(IS_TOUCH_SUPPORTED) {
+      // tweb :249-280 — ДОЛГОЕ нажатие по чипу реакции. Слушается `touchstart`
+      // в фазе перехвата, потому что обычный путь до сюда не доходит: тап по
+      // чипу разбирает делегат ленты и гасит событие (tweb bubbles.ts:1337
+      // `attachClickEvent(scrollable.container, onBubblesClick)` + :3251
+      // `cancelEvent`), а меню слушает то же `mousedown` на внешнем контейнере.
+      //
+      // Цель жеста у оригинала — кастом-элемент `reaction-element`; у нас чип
+      // это `div.reaction` (`chat/reactions.ts:469`), сам элемент не заведён.
+      //
+      // РАСХОЖДЕНИЕ: у оригинала жест открывает МЕНЮ САМОЙ РЕАКЦИИ
+      // (`openReactionContextMenu`, :588-670 — кто поставил + пак эмодзи);
+      // подсистемы у нас нет. Остаётся ровно та ветка, в которую сваливается и
+      // сам оригинал, когда список реагировавших смотреть нельзя
+      // (`canOpenReactionMenu === false`, :404-410): обычное меню сообщения.
+      attachContextMenuListener({
+        element,
+        callback: (e) => {
+          if(this.selection?.isSelecting || !(e.target as HTMLElement).closest(REACTION_SELECTOR)) {
+            return
+          }
+
+          this.onContextMenu(e)
+
+          // tweb :260-274 — синтетические мышиные события приезжают ПОСЛЕ
+          // `touchend`, и без этого гашения первое же из них закрыло бы
+          // только что открытое меню.
+          const options = { capture: true, once: true }
+          const listenerSetter = this.attachListenerSetter
+          function onTouchEnd(e: Event) {
+            listenerSetter.removeManual(element, 'touchcancel', onTouchCancel, options)
+            cancelEvent(e)
+          }
+          function onTouchCancel() {
+            listenerSetter.removeManual(element, 'touchend', onTouchEnd, options)
+          }
+          listenerSetter.add(element)('touchend', onTouchEnd, options)
+          listenerSetter.add(element)('touchcancel', onTouchCancel, options)
+        },
+        listenerSetter: this.attachListenerSetter,
+        listenerOptions: { capture: true },
+      })
+
       // tweb :282-315 — обычный тап по баблу открывает меню, если цель не
       // попала в «плохие селекторы».
       attachClickEvent(element, (e) => {
         if(this.selection?.isSelecting) {
+          return
+        }
+
+        // Чип реакции у оригинала до этого слушателя не доходит (см. выше:
+        // делегат ленты гасит то же событие раньше). У нас чип разбирает
+        // `click`-делегат ленты (`bubbles.ts::onContainerClick`), а меню —
+        // `mousedown`: гасить нечего, и тот же результат даёт проверка цели.
+        // Без неё тап по чипу И ставил бы реакцию, И открывал меню.
+        if((e.target as HTMLElement).closest(REACTION_SELECTOR)) {
           return
         }
 
@@ -537,15 +625,21 @@ export default class ChatContextMenu {
       }
 
       element = initResult.element
-      const { cleanup, destroy } = initResult
+      const { cleanup, destroy, menuPadding, reactionsMenu } = initResult
+      // tweb :546-547
+      const reactionsCallbacks = reactionsMenu && ChatContextMenu.appendReactionsMenu({
+        element,
+        reactionsMenu,
+      })
 
       // tweb :550 — сторона РАСКРЫТИЯ: у входящего влево, у исходящего вправо.
       const side: 'left' | 'right' = bubbleElement.classList.contains('is-in') ? 'left' : 'right'
-      // `menuPadding` не передаётся: его считает только панель быстрых реакций
-      // (:1693), которой в порте нет — в оригинале без неё он тоже undefined.
-      positionMenu(e, element, side)
+      // tweb :554 — `menuPadding` считает панель быстрых реакций (:1693): это
+      // место, которое она занимает вокруг меню.
+      positionMenu(e, element, side, menuPadding)
 
       contextMenuController.openBtnMenu(element, () => {
+        reactionsCallbacks?.onClose()
         this.mid = 0
         this.peerId = NULL_PEER_ID
         this.target = null
@@ -557,14 +651,18 @@ export default class ChatContextMenu {
           destroy()
         }, 300)
       })
+
+      // tweb :584
+      reactionsCallbacks?.onAfterInit()
     }
 
     void openMenu()
   }
 
-  /** Порт `cleanup` (:682-686) без панели реакций. */
+  /** Порт `cleanup` (:682-686). */
   public cleanup() {
     this.listenerSetter.removeAll()
+    this.reactionsMenu?.cleanup()
     this.middleware.clean()
   }
 
@@ -935,6 +1033,52 @@ export default class ChatContextMenu {
       }
     }
 
+    // tweb :1646-1695 — панель быстрых реакций. Условия оригинала в
+    // применимом составе: `chat.type !== Logs` (вкладки логов нет),
+    // `!this.reactionElement` (меню по чипу реакции не портировано — оба
+    // тождественно истинны), `pFlags.local` покрыт тем же `isOutgoing`, что и
+    // `pFlags.is_outgoing` (у нас это ОДИН признак — дробный номер сообщения).
+    // Служебное сообщение с `pFlags.reactions_are_possible` отсеивается вместе
+    // со всем `messageService`: такого флага в нашей модели нет вовсе
+    // (`core/models.ts` — `MessageService['pFlags']`), то есть ветка была бы
+    // мёртвой. Режим тегов «Избранного» (:1660-1662) не портирован — подсистемы нет.
+    let menuPadding: MenuPositionPadding | undefined
+    let reactionsMenu: ChatReactionsMenu | undefined
+    const message = this.message
+    if(
+      message?._ === 'message' &&
+      !this.selection?.isSelecting &&
+      !this.isOutgoing(message) &&
+      !message.pFlags.is_scheduled &&
+      this.managers.reactions &&
+      this.managers.messages.react &&
+      this.managers.messages.unreact
+    ) {
+      // tweb :1663 `getGroupsFirstMessage` — у альбома реакция принадлежит
+      // ПЕРВОМУ сообщению группы; `mainMessage` и есть оно (`getMainGroupedMessage`).
+      const reactionsMessage = this.mainMessage ?? message
+      // tweb :1664 (`reactionsMenuPosition`) не портирован: вертикальный
+      // вариант там дописан `|| true`, то есть недостижим — раскладка панели
+      // ВСЕГДА горизонтальная (см. `getReactionsMenuPadding`).
+      reactionsMenu = this.reactionsMenu = new ChatReactionsMenu({
+        managers: this.managers,
+        // tweb :1656 `getReactionsMessage(message)` + appReactionsManager.ts:373-386:
+        // политика читается по пиру САМОГО сообщения, а не по открытому чату
+        // (у пересланного поста канала в мегагруппе это разные пиры).
+        // `this.peerId` — ровно он (`bubble.dataset.peerId`, :506-508).
+        peerId: this.peerId,
+        middleware: this.middleware.get(),
+        onFinish: (reaction) => {
+          // tweb :1669-1687
+          contextMenuController.close()
+          this.sendReaction(reactionsMessage, reaction)
+        },
+      })
+      await reactionsMenu.init()
+
+      menuPadding = ChatContextMenu.getReactionsMenuPadding()
+    }
+
     document.body.append(element)
 
     return {
@@ -944,6 +1088,115 @@ export default class ChatContextMenu {
       },
       destroy: () => {
         element.remove()
+        // tweb :1765 — панель живёт вне меню (`btn-menu-items`-обёртка её не
+        // усыновляет), поэтому снимается отдельно.
+        reactionsMenu?.widthContainer.remove()
+      },
+      menuPadding,
+      reactionsMenu,
+    }
+  }
+
+  /** Порт `chat.sendReaction` (chat.ts:1457) — тонкая обёртка над общей точкой
+   *  решения (`chat/reactions.ts::sendReaction`): у оригинала выбор в панели
+   *  меню приходит туда же, куда клик по чипу и по ховер-кнопке
+   *  (contextMenu.ts:1686). ⭐-реакция и теги — свои подсистемы (см. шапку
+   *  `chat/reactionsMenu.ts`). */
+  private sendReaction(message: MyMessage, reaction: Reaction) {
+    sendReaction({
+      peerId: message.peerId,
+      mid: message.id,
+      reaction,
+      messages: this.managers.messages,
+      getMessage: (mid: number) => this.getMessageByPeer(mid),
+    })
+  }
+
+  /**
+   * Порт `getReactionsMenuPadding` (:2192-2218) — место, которое панель
+   * занимает вокруг меню; его учитывает `positionMenu`.
+   *
+   * Аргумент `position` не портирован вместе с веткой `vertical` (:2203-2208):
+   * вертикальная раскладка у оригинала недостижима — `reactionsMenuPosition`
+   * там дописан `|| true` (:1664), а её стили закомментированы целиком
+   * (`_button.scss:747-777`). Мёртвая развилка не переносится (правило проекта).
+   */
+  public static getReactionsMenuPadding(): MenuPositionPadding {
+    const size = 36
+    const margin = 8
+    const totalSize = size + margin
+    let paddingLeft = 56
+    const paddingRight = 40
+    if(IS_TOUCH_SUPPORTED) {
+      paddingLeft += 32
+    }
+
+    return {
+      top: totalSize,
+      right: paddingRight,
+      left: paddingLeft,
+    }
+  }
+
+  /**
+   * Порт `appendReactionsMenu` (:2229-2286).
+   *
+   * Делает три вещи: подгоняет минимальную ширину МЕНЮ так, чтобы следующая
+   * (невлезающая) реакция выглядывала минимум на 65 % — визуальная подсказка
+   * «панель шире меню»; кладёт панель в меню (на десктопе — рядом с обёрткой
+   * пунктов `btn-menu-items`, которую заводит здесь же); отдаёт пару колбэков
+   * показа/скрытия.
+   */
+  public static appendReactionsMenu({ element, reactionsMenu }: {
+    element: HTMLElement,
+    reactionsMenu: ChatReactionsMenu,
+  }) {
+    // tweb :2234-2237 — перед измерением видимость снимается, после вставки
+    // возвращается (`onAfterInit`).
+    const className = 'is-visible'
+    const isReactionsMenuVisible = reactionsMenu.container.classList.contains(className)
+    if(isReactionsMenuVisible) reactionsMenu.container.classList.remove(className)
+
+    // tweb :2239-2252. Гейт `reactionsMenuPosition === 'horizontal'` (:2240) не
+    // портирован по той же причине, что и ветка `vertical` в
+    // `getReactionsMenuPadding`: другой раскладки у оригинала не бывает.
+    const offsetSize = element.offsetWidth
+    const INNER_CONTAINER_PADDING = 8
+    const visibleLength = (offsetSize - INNER_CONTAINER_PADDING) / REACTION_CONTAINER_SIZE
+    const nextVisiblePart = visibleLength % 1
+    const MIN_NEXT_VISIBLE_PART = 0.65
+    if(nextVisiblePart < MIN_NEXT_VISIBLE_PART) {
+      const minSize = (offsetSize + (MIN_NEXT_VISIBLE_PART - nextVisiblePart) * REACTION_CONTAINER_SIZE) | 0
+      element.style.minWidth = minSize + 'px'
+    }
+
+    // tweb :2255-2268
+    const container = reactionsMenu.widthContainer
+    if(!IS_MOBILE) {
+      const i = document.createElement('div')
+      i.classList.add('btn-menu-items', 'btn-menu-transition')
+      i.append(...Array.from(element.childNodes))
+      element.classList.add('has-items-wrapper')
+      element.append(container, i)
+    } else {
+      element.prepend(container)
+    }
+
+    container.style.setProperty('--height', container.offsetHeight + 'px')
+
+    // tweb :2271-2285. Оба колбэка — НО-ОП, и это 1:1 с оригиналом: показывает
+    // панель `render` (reactionsMenu.ts:192-196), вешая `is-visible` на
+    // `widthContainer`, а здесь класс снимается и возвращается на `container` —
+    // другой узел, и CSS читает его только у первого (`_button.scss:724-726`).
+    // Баг оригинала, не наш; чинить его — расхождение с tweb.
+    return {
+      onAfterInit: () => {
+        if(isReactionsMenuVisible) {
+          reactionsMenu.container.classList.add(className)
+        }
+      },
+      onClose: () => {
+        reactionsMenu.container.classList.remove(className)
       },
     }
   }

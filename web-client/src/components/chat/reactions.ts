@@ -24,8 +24,14 @@
 //    оригинала это ОТДЕЛЬНЫЙ растровый `photoSize` документа
 //    (`wrappers/sticker.ts:206-208`, `:521-522` → `<img class="media-sticker">`),
 //    а у нас вход стикера — плоский номер файла без превью-ступеней (задача #47).
-import type { MessageReactions, Reaction, ReactionCount } from '@core/models'
+//    Иконка чипа НЕПОДВИЖНА и там и тут: оригинал рисует растр, мы — первый
+//    кадр lottie (`play: false`). Играет не она, а эффект постановки
+//    (`fireAroundAnimation`) и панель выбора (`chat/reactionsMenu.ts`).
+import type { MessageReactions, MyMessage, Reaction, ReactionCount } from '@core/models'
 import type { AvailableReaction } from '@core/managers/reactionsManager'
+import type { ChannelFull, ChatReactions } from '@core/peers/peer'
+import { isUser } from '@core/peers/peerId'
+import { beginPeerFullFetch, cachedPeerFull, saveChatFull } from '@core/chatFullCache'
 import { canViewReactionsList, isChosen, reactionKey, recentOf, totalReactions } from '@core/reactions/messageReactions'
 import { getHeavyAnimationPromise } from '@core/dom/heavyAnimation'
 import { setTransition } from '@core/dom/setTransition'
@@ -49,7 +55,11 @@ export const REACTIONS_DISPLAY_COUNTER_AT = 4
 const REACTIONS_SIZE_BLOCK = 22
 
 /** tweb reaction.ts:1100-1105: у block/tag к размеру иконки добавляется 18 —
- *  это и есть сторона квадрата, которым эффект перерисовывает иконку. */
+ *  это и есть сторона квадрата, которым эффект перерисовывает иконку. То же
+ *  число стоит и в CSS: `--reaction-offset` у block равен -.5625rem, то есть
+ *  раздувание `is-regular` — `--reaction-offset * -2` = те же 18
+ *  (`_reaction.scss:47-56`, :84-86). Оверлей эффекта и базовая иконка обязаны
+ *  совпадать по геометрии — иначе на подмене был бы скачок. */
 const AROUND_ADD = 18
 
 /** tweb reaction.ts:1119 `sizes.effectSize`. */
@@ -76,12 +86,33 @@ type ReactionChip = HTMLElement & {
   stackedAvatars?: StackedAvatars
 }
 
-export interface ReactionsManagers extends AvatarManagers {
-  /** Каталог доступных реакций — единственный источник файлов чипа (`center`/
-   *  `static`) и эффекта (`around`/`center`). Необязателен: без него чип
-   *  показывает текстовое эмодзи и не играет эффект. */
-  reactions?: { list(): Promise<AvailableReaction[]> }
+/** Каталог доступных реакций (`messages.getAvailableReactions`) — источник
+ *  файлов чипа (`center`/`static`), эффекта (`around`/`center`) и панели
+ *  быстрых реакций (`appear`/`select`, `chat/reactionsMenu.ts`). */
+export interface ReactionsCatalog {
+  list(): Promise<AvailableReaction[]>
 }
+
+/** Полная карточка чата — источник политики реакций
+ *  (`chatFull.available_reactions`). Порт `appProfileManager.getChatFull`
+ *  (appReactionsManager.ts:226): у оригинала это тоже «отдай кэш, иначе сходи». */
+export interface ChatFullSource {
+  card(peerId: PeerId): Promise<{ fullChat: ChannelFull } | null>
+}
+
+/** Носитель каталога. Отдельно от `ReactionsManagers`: панели выбора не нужны
+ *  ни аватарки, ни что-либо ещё из среза ленты — ей нужен только каталог. */
+export interface ReactionsCatalogManagers {
+  /** Необязателен: без него чип показывает текстовое эмодзи и не играет
+   *  эффект, а панель выбора не появляется вовсе. */
+  reactions?: ReactionsCatalog
+  /** Необязателен: спрашивает его только политика реакций чата
+   *  (`getAvailableReactionsForPeer`), и только когда карточки ещё нет в
+   *  зеркале. */
+  groups?: ChatFullSource
+}
+
+export interface ReactionsManagers extends AvatarManagers, ReactionsCatalogManagers {}
 
 /**
  * Каталог читается ОДИН РАЗ за сессию — порт кэша оригинала
@@ -97,12 +128,12 @@ export interface ReactionsManagers extends AvatarManagers {
  */
 const catalogCache = new WeakMap<object, Promise<AvailableReaction[]>>()
 
-/** Порт `apiManagerProxy.getReaction(emoticon)` (reaction.ts:805,1476):
- *  каталог + поиск по эмодзи. `undefined` — каталога нет вовсе. */
-function getAvailableReaction(
-  managers: ReactionsManagers,
-  emoticon: string,
-): Promise<AvailableReaction | undefined> | undefined {
+/** Порт `apiManagerProxy.getAvailableReactions()` (reaction.ts:805 «второй
+ *  аргумент», reactionsMenu.ts:235): весь каталог одним обещанием.
+ *  `undefined` — каталога нет вовсе. */
+export function getAvailableReactions(
+  managers: ReactionsCatalogManagers,
+): Promise<AvailableReaction[]> | undefined {
   const catalog = managers.reactions
   if (!catalog) return undefined
 
@@ -115,7 +146,211 @@ function getAvailableReaction(
     })
   }
 
-  return list.then((available) => available.find((r) => r.emoji === emoticon))
+  return list
+}
+
+/** Что панель выбора вправе показать в этом пире — порт `PeerAvailableReactions`
+ *  (appReactionsManager.ts:52-61) без `trulyAll`/`atUniqCap`: первый читает
+ *  только кнопка «ещё» (её нет), второй — лимит `reactions_uniq_max`, которого
+ *  нет на бэке (`0003_reactions.sql:7` — PK без лимита на число видов). */
+export interface PeerAvailableReactions {
+  type: ChatReactions['_']
+  reactions: Reaction[]
+}
+
+/** Походы за карточкой, которые ещё летят, — порт дедупликации
+ *  `invokeApiSingleProcess` (appProfileManager.ts:643): у оригинала два
+ *  одновременных `getChannelFull` одного чата дают ОДИН запрос. Спрашивает
+ *  карточку каждый бабл под курсором (`bubbles.ts::onBubblesMouseMove`), и без
+ *  этого проход курсором по ленте стоил бы по запросу на бабл. */
+const chatFullFetches = new Map<PeerId, Promise<ChannelFull | undefined>>()
+
+/**
+ * Полная карточка чата: сперва зеркало главного потока (`core/chatFullCache.ts`
+ * — его наполняет колонка чата), иначе поход в сеть. Ровно развилка
+ * `appProfileManager.getChatFull` у оригинала (appReactionsManager.ts:226):
+ * там она тоже отдаёт кэш синхронно и ходит в сеть только на промах.
+ *
+ * Удачный ответ КЛАДЁТСЯ В ЗЕРКАЛО — это тоже оригинал: `getChannelFull` отдаёт
+ * ответ через `saveFullPeerResult` (appProfileManager.ts:643-648), а тот пишет
+ * `chatsFull[id]` (:217), поэтому промах бывает один раз на чат. Без записи
+ * зеркало не прогревалось вовсе там, где его не наполняет колонка чата, — в
+ * треде комментариев карточку не грузит никто (`components/Chat.tsx:348`
+ * гейтит `useChatInfoCard` термом `!thread`).
+ *
+ * Билет `beginPeerFullFetch`/`saveChatFull` — уже существующая защита зеркала
+ * от устаревшего ответа (`core/chatFullCache.ts`), второй такой здесь не
+ * заводим. Личный диалог сюда не доходит (его ветка выше по стеку), а это
+ * важно: на пользователя `card()` отвечает пустой `channelFull`, и писать её в
+ * зеркало нельзя — от того же затирания гейтится `useChatInfoCard.ts:151-157`.
+ * TTL-отметку (`markFullPeerFetched`) не ставим: лежащая карточка без срока и
+ * так считается свежей (`stores/fullPeers.solid.ts::isFullPeerFresh`), а
+ * расписание протухания — дело владельца свежести, а не панели реакций.
+ */
+async function getChatFull(
+  peerId: PeerId,
+  managers: ReactionsCatalogManagers,
+): Promise<ChannelFull | undefined> {
+  const cached = cachedPeerFull(peerId)
+  if (cached) return cached as ChannelFull
+
+  const groups = managers.groups
+  if (!groups) return undefined
+
+  let pending = chatFullFetches.get(peerId)
+  if (!pending) {
+    const ticket = beginPeerFullFetch(peerId)
+    const fetching = groups.card(peerId).then((card) => {
+      const fullChat = card?.fullChat
+      if (fullChat) saveChatFull(peerId, fullChat, ticket)
+      return fullChat
+    }, () => undefined)
+    chatFullFetches.set(peerId, fetching)
+    // Провалившийся поход из карты выбрасывается, чтобы следующий спрашивающий
+    // попробовал заново, — тот же приём, что у `catalogCache` выше.
+    void fetching.then(() => {
+      if (chatFullFetches.get(peerId) === fetching) chatFullFetches.delete(peerId)
+    })
+    pending = fetching
+  }
+
+  return pending
+}
+
+/**
+ * Политика реакций пира — порт `AppReactionsManager.getAvailableReactionsForPeer`
+ * (appReactionsManager.ts:206-277). Отвечает на единственный вопрос панели
+ * выбора: КАКИЕ реакции здесь вообще можно поставить.
+ *
+ * Ветки оригинала:
+ *  • личка (:214-224) — топ-реакции пользователя; топа у нас нет ни на бэке, ни
+ *    на проводе (`docs` разведки §3.3), поэтому берётся весь активный каталог в
+ *    его порядке. Тип при этом `chatReactionsAll`, как и у оригинала.
+ *  • чат/канал (:226-277) — `chatFull.available_reactions`:
+ *      `chatReactionsNone` → пустой список, панели нет;
+ *      `chatReactionsSome` → пересечение с активным каталогом В ПОРЯДКЕ КАТАЛОГА
+ *        (:253-262);
+ *      `chatReactionsAll` → весь активный каталог, но НЕ одноимённой веткой
+ *        (:250-251 отдаёт ТОП-реакции) — переписыванием :240-247, см. ниже.
+ *
+ * ─── Расхождения ───────────────────────────────────────────────────────────
+ *  • Переписывание `chatReactionsAll` (без `allow_custom`) в `chatReactionsSome`
+ *    с флагом `trulyAll` (:240-247) не портировано. Ветки при этом НЕ равны: после
+ *    переписывания под `chatReactionsAll` остаётся только политика С
+ *    `allow_custom`, и она отдаёт ТОП-реакции (:250-251), а весь активный каталог
+ *    отдаёт как раз переписанная ветка (:252-261). Наш `all()` сходится с
+ *    оригиналом не по свойству алгоритма, а по свойству бэкенда: `allow_custom` он
+ *    не выставляет никогда — единственный конструктор этого значения зовётся с
+ *    `false` (`backend/internal/domain/rights.go:74`), так что ветка топ-реакций
+ *    недостижима. Появится `allow_custom` на бэке — портировать придётся и
+ *    переписывание, и топ-реакции. Читателя `trulyAll` (вкладки кастом-эмодзи в
+ *    полном пикере) у нас нет: кастом-эмодзи-реакций нет по всей вертикали.
+ *  • Реакция политики, которой нет в каталоге, ОСТАЁТСЯ в списке — как у
+ *    оригинала (:254 `|| reaction`); её ячейка покажет текстовое эмодзи без
+ *    иконки. Порядок таких — тоже оригинала: `indexes.get(...) || 0` (:257)
+ *    ставит их в начало.
+ *  • `unshiftQuickReaction` (:222,268) и платная ⭐-реакция (:271-273) — свои
+ *    подсистемы, ни одной из них у нас нет.
+ *  • Карточку чата достать не удалось (менеджера нет либо запрос упал) —
+ *    считаем `chatReactionsAll`. Молча выключать реакции по НЕЗНАНИЮ политики
+ *    нельзя: право проверяет и бэк (`usecase/chat/reaction.go:35-46`), а панель,
+ *    исчезнувшая из-за сетевой ошибки, — это уже другой баг. У оригинала такой
+ *    развилки нет: `getChatFull` там всегда доводит ответ.
+ */
+export async function getAvailableReactionsForPeer(
+  peerId: PeerId,
+  managers: ReactionsCatalogManagers,
+): Promise<PeerAvailableReactions | undefined> {
+  const catalog = getAvailableReactions(managers)
+  if (!catalog) return undefined
+
+  // tweb `getActiveAvailableReactions` (appReactionsManager.ts:199-204).
+  const active = (await catalog).filter((availableReaction) => !availableReaction.inactive)
+  const all = (): PeerAvailableReactions => ({
+    type: 'chatReactionsAll',
+    reactions: active.map((availableReaction) => ({ _: 'reactionEmoji', emoticon: availableReaction.emoji })),
+  })
+
+  // tweb :214-224.
+  if (isUser(peerId)) return all()
+
+  const chatFull = await getChatFull(peerId, managers)
+  if (!chatFull) return all()
+
+  // tweb :227.
+  const policy: ChatReactions = chatFull.available_reactions ?? { _: 'chatReactionsNone' }
+  if (policy._ === 'chatReactionsNone') return { type: policy._, reactions: [] }
+  if (policy._ === 'chatReactionsAll') return all()
+
+  // tweb :253-262 — порядок КАТАЛОГА, а не порядок политики.
+  const indexes = new Map(active.map((availableReaction, idx) => [availableReaction.emoji, idx]))
+  const reactions = policy.reactions
+    .slice()
+    .sort((a, b) => (indexes.get(a.emoticon) || 0) - (indexes.get(b.emoticon) || 0))
+    .map((reaction): Reaction => ({ _: 'reactionEmoji', emoticon: reaction.emoticon }))
+
+  return { type: policy._, reactions }
+}
+
+/** Ручки реакции у владельца сообщений — та же пара, что объявляют своими
+ *  порт-интерфейсами лента и контекстное меню. Необязательны: без них путь
+ *  реакции не существует вовсе. */
+export interface ReactionSender {
+  react?(peerId: number, msgId: number, emoji: string): Promise<void>
+  unreact?(peerId: number, msgId: number, emoji: string): Promise<void>
+}
+
+/**
+ * Отправка реакции — ЕДИНСТВЕННОЕ место, где решается направление тоггла, для
+ * всех трёх входов: панель контекстного меню, ховер-кнопка над баблом и клик по
+ * чипу. У оригинала это тоже один путь: все три зовут `chat.sendReaction`
+ * (chat.ts:1457 ← contextMenu.ts:1686, bubbles.ts:2820, bubbles.ts:3275), а
+ * решает `appReactionsManager.sendReaction` (:647-966).
+ *
+ * Состояние читается НЕПОСРЕДСТВЕННО ПЕРЕД ОТПРАВКОЙ — `getMessage(mid)`. Ровно
+ * этим страхуется оригинал: `message = getMessageByPeer(message.peerId,
+ * message.mid)` (appReactionsManager.ts:669) перечитывает сообщение, потому что
+ * объект на руках у вызывающего уже мог устареть — меню собралось раньше клика,
+ * ховер-кнопка появилась раньше на паузу в 400 мс. Тоггл — тоже оригинал: своя
+ * реакция повторным выбором СНИМАЕТСЯ (:733-747).
+ *
+ * Платная ⭐-реакция пропускается: адресовать её нашим ручкам нечем (подсистемы
+ * нет — тот же вычет по всему файлу).
+ */
+export function sendReaction(options: {
+  peerId: PeerId
+  /** Номер сообщения, которому принадлежит реакция; у альбома это ПЕРВОЕ
+   *  сообщение группы (tweb `getGroupsFirstMessage`) — его выбирает вызывающий. */
+  mid: number
+  reaction: Reaction
+  messages: ReactionSender
+  /** Перечитать сообщение из окна владельца — зеркала, из которого рисуются
+   *  и сами чипы (`is-chosen`). */
+  getMessage: (mid: number) => MyMessage | undefined
+}): void {
+  const { react, unreact } = options.messages
+  if (!react || !unreact) return
+  if (options.reaction._ !== 'reactionEmoji') return
+
+  const emoticon = options.reaction.emoticon
+  const message = options.getMessage(options.mid)
+  const count = message?.reactions?.results.find((c) => {
+    return c.reaction._ === 'reactionEmoji' && c.reaction.emoticon === emoticon
+  })
+
+  const promise = count && isChosen(count) ?
+    unreact(options.peerId, options.mid, emoticon) :
+    react(options.peerId, options.mid, emoticon)
+  promise.catch(noop)
+}
+
+/** Порт `apiManagerProxy.getReaction(emoticon)` (reaction.ts:805,1476):
+ *  каталог + поиск по эмодзи. `undefined` — каталога нет вовсе. */
+function getAvailableReaction(
+  managers: ReactionsManagers,
+  emoticon: string,
+): Promise<AvailableReaction | undefined> | undefined {
+  return getAvailableReactions(managers)?.then((available) => available.find((r) => r.emoji === emoticon))
 }
 
 export interface ReactionsElementOptions {
@@ -210,12 +445,12 @@ function renderAvatars(
  *  • `static: true` (:894) не портирован: у нашего `wrapSticker` такой опции
  *    нет, и портировать её нечем — у оригинала она означает «взять растровый
  *    `photoSize` документа» (`wrappers/sticker.ts:206-208`), а плоский номер
- *    файла превью-ступеней не несёт (задача #47). Мы играем сам `center.tgs`
- *    плеером с `play: false` — это тот же ПЕРВЫЙ КАДР, но узлом `canvas.lottie`,
- *    а не `img.media-sticker`. Отсюда — единственное живое следствие: правило
- *    `.has-animation > .media-sticker` (`_reaction.scss:41-45`) по-прежнему
- *    ничего не гасит, и на время эффекта иконка остаётся видна ПОД оверлеем
- *    (геометрия у них общая: и то и другое — квадрат 40px по центру чипа).
+ *    файла превью-ступеней не несёт (задача #47). Мы показываем ПЕРВЫЙ КАДР
+ *    самого `center.tgs` (`play: false`, `loop: false`) — это ровно тот же
+ *    неподвижный кадр, что и у оригинала, но узлом `canvas.lottie`, а не
+ *    `img.media-sticker`. Класс `media-sticker` канвасу ставим сами (см. ниже):
+ *    на нём висят ОБА правила иконки чипа — гашение на время эффекта
+ *    (`_reaction.scss:41-45`) и раздувание `is-regular` (:47-56).
  *  • Текстовое эмодзи нижним слоем — НАШЕ, у оригинала его нет: там место
  *    иконки на время загрузки занимает stripped-превью документа
  *    (`wrappers/sticker.ts:247-276`), которого у плоского номера файла тоже
@@ -238,7 +473,8 @@ function renderIcon(
     if (!options.middleware() || !availableReaction) return
 
     // tweb :807-811.
-    stickerContainer.classList.add(availableReaction.centerMediaId ? 'is-regular' : 'is-static')
+    const isRegular = !!availableReaction.centerMediaId
+    stickerContainer.classList.add(isRegular ? 'is-regular' : 'is-static')
     // tweb :813-815.
     if (availableReaction.inactive) chip.classList.add('is-inactive')
 
@@ -246,18 +482,49 @@ function renderIcon(
     const mediaId = availableReaction.centerMediaId ?? availableReaction.staticMediaId
     if (!mediaId) return
 
-    // tweb :889-897.
+    // tweb :889-897 — но размер ПОКАЗЫВАЕМЫЙ, а не размер контейнера.
+    // `is-regular` раздувает медиа до `--reaction-size + --reaction-offset * -2`
+    // = 22 + 18 = 40 и режет его `overflow: hidden` самого `.reaction-sticker`
+    // (`_reaction.scss:47-56`) — так центральная иконка заполняет пилюлю.
+    // Оригинал зовёт `wrapSticker` с 22 (:888), потому что медиа у него
+    // РАСТРОВОЕ (`static: true`) и `choosePhotoSize` берёт ступень НЕ МЕНЬШЕ
+    // запрошенной; наш плеер рисует канвас ровно в названный размер, и
+    // 22 растянулись бы правилом CSS до 40 мылом.
+    const size = isRegular ? REACTIONS_SIZE_BLOCK + AROUND_ADD : REACTIONS_SIZE_BLOCK
+
     return wrapSticker({
       div: stickerContainer,
       mediaId,
-      width: REACTIONS_SIZE_BLOCK,
-      height: REACTIONS_SIZE_BLOCK,
+      width: size,
+      height: size,
       needFadeIn: false,
       play: false,
       loop: false,
       middleware: options.middleware,
     }).render.then((media) => {
+      // Ставится класс ради двух правил иконки чипа — у оригинала они оба висят
+      // на `media-sticker`: гашение на время эффекта (`_reaction.scss:41-45`) и
+      // размер `is-regular` (:47-56). У tweb медиа иконки ВСЕГДА растровое
+      // `img.media-sticker` (`static: true`, reaction.ts:894 →
+      // `wrappers/sticker.ts:521-522`), у нас растра нет (задача #47) и приезжает
+      // `canvas.lottie` — класс ставим сами, иначе оба правила до нашего узла не
+      // достают: на время around-эффекта базовая иконка оставалась бы видна ПОД
+      // оверлеем, а превью прошлого показа (`stickerAppearance` кладёт его с тем
+      // же классом) разошлось бы с канвасом в размере.
+      //
+      // Класс тянет и ТРЕТЬЕ правило, к иконке чипа отношения не имеющее:
+      // растяжение по контейнеру `_bridge.scss:597-607` (порт tweb
+      // base.scss:1282-1296; по порядку сборки его перекрывает расширенная копия
+      // `index.scss:248-257` — порт base.scss:1300-1307). Оно ничего не меняет:
+      // ровно то же канвас уже имеет от СВОЕГО класса `.lottie`
+      // (`index.scss:234-241`). У `is-regular` растяжение всё равно снимает
+      // `_reaction.scss:47-56` (`inset: auto` и размер с `!important`), а у
+      // `is-static` растягивать нечего — канвас запрошен размером контейнера
+      // (`REACTIONS_SIZE_BLOCK` = `--reaction-size`).
       emojiText.remove()
+      if (media instanceof LottiePlayer) {
+        media.canvas.forEach((canvas) => canvas.classList.add('media-sticker'))
+      }
       return media
     })
   })
@@ -275,19 +542,28 @@ function renderIcon(
  * зажигает только по паре `.is-chosen.forwards` (`_reaction.scss:127-133`), и
  * со статическим классом своя реакция оставалась незалитой.
  *
- * `duration` у оригинала — `this.isConnected ? 300 : 0` (:1093): чипу, ещё не
- * вставленному в документ, перехода не дают, иначе заливка «проявлялась» бы
- * разом на всех уже стоявших реакциях при первом показе бабла. У нас узел
- * реакций пересобирается целиком, а вставляет его `bubbles.ts`, — значит чип
- * здесь отсоединён ВСЕГДА, ветка `300` недостижима. Проиграть смену состояния
- * может только оригинал: там чип переживает обновление (reactions.ts:310-313).
+ * `duration` — выражение оригинала слово в слово: `this.isConnected ? 300 : 0`
+ * (:1093). Чипу, ещё не вставленному в документ, перехода не дают, иначе
+ * заливка «проявлялась» бы разом на всех уже стоявших реакциях при первом
+ * показе бабла.
+ *
+ * ЧЕСТНО ПРО НАШУ ВЕТКУ: сегодня выражение всегда даёт 0. Чип у нас создаётся
+ * отсоединённым и в документ попадает уже вместе со всем контейнером, который
+ * `bubbles.ts::renderMessageMeta` (:1898-1901) сносит и собирает ЗАНОВО на
+ * каждое обновление сообщения. У оригинала чип ПЕРЕЖИВАЕТ обновление
+ * (reactions.ts:290-296 — `this.sorted.find(...)` переиспользует
+ * `ReactionElement`), поэтому там второй вызов застаёт узел подключённым и
+ * играет 300 мс. Ветка «300» станет достижимой ровно тогда, когда ряд начнёт
+ * переиспользовать чипы; подделывать её постоянной 300 нельзя — переход
+ * отыграется на КАЖДОМ показе бабла, чего у оригинала нет.
  */
 function setIsChosen(chip: HTMLElement, chosen: boolean): void {
   // tweb :1088-1089.
   const wasChosen = chip.classList.contains('is-chosen') && !chip.classList.contains('backwards')
   if (wasChosen === chosen) return
 
-  setTransition({ element: chip, className: 'is-chosen', forwards: chosen, duration: 0 })
+  // tweb :1093.
+  setTransition({ element: chip, className: 'is-chosen', forwards: chosen, duration: chip.isConnected ? 300 : 0 })
 }
 
 /** Один чип — порт `ReactionElement` (reaction.ts:739-1032). */
@@ -402,12 +678,6 @@ async function handleChangedResults(
  * последнему кадру иконки (:1444-1454) и по смерти `middleware` (:1441).
  *
  * ─── Расхождения, каждое со своей причиной ─────────────────────────────────
- *  • Класс `has-animation` ставится, как в оригинале (:1462), но НИЧЕГО не
- *    гасит: его правило прячет `.media-sticker` (`_reaction.scss:41-45`), а
- *    иконка чипа у нас — `canvas.lottie` (почему — см. `renderIcon`). Оверлей
- *    ложится ПОВЕРХ иконки, а не вместо неё; геометрия у них общая, так что
- *    видно это только на просвет. Класс всё равно ставится и снимается: правило
- *    заработает само, как только иконка станет растровой (задача #47).
  *  • Ветка «эффект ещё не скачан» (:1484-1519). Оригинал заходит в неё, когда
  *    ХОТЬ ОДИН из файлов `around_animation`/`center_icon` ещё не в кэше
  *    (:1484-1487), и вместо каталожного эффекта играет ГЕНЕРИК: случайную

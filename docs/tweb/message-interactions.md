@@ -493,6 +493,24 @@ scheduled и т.д. — **TODO: см. popups.md**. Пункт меню Delete
 - Появление панели: класс `is-visible` ставится после первого рендера/после открытия меню
   (`appendReactionsMenu.onAfterInit`, contextMenu.ts:2270–2281) — CSS-анимация.
 
+**У нас:** панель портирована — `web-client/src/components/chat/reactionsMenu.ts`
+(`ChatReactionsMenu`) + встройка в `web-client/src/components/chat/contextMenu.ts`
+(`appendReactionsMenu`, `getReactionsMenuPadding`, четвёртый аргумент `positionMenu`).
+Разметка, семь ячеек, `appear → select` по последнему кадру, перезапуск `select` на
+наведении и `is-visible` — 1:1. Отличия и их причины:
+
+| Что | У нас | Почему |
+|---|---|---|
+| Источник списка | политика пира (`getAvailableReactionsForPeer`, `chat/reactions.ts`) над каталогом `GET /reactions` без `inactive`, до 7 | 1:1 `appReactionsManager.ts:206-277`, кроме: топ-реакций нет ни на бэке, ни на проводе (личка и `chatReactionsAll` берут весь активный каталог в его порядке), переписывание `chatReactionsAll → Some{trulyAll}` (:238-245) не портировано — его читает только полный пикер, а список у обеих веток одинаковый; карточку чата достать не удалось → считаем `chatReactionsAll` (у оригинала `getChatFull` всегда доводит ответ) |
+| Кнопка «ещё» + полный пикер | НЕТ (режим `noMoreButton` самого оригинала, reactionsMenu.ts:70) | нет `EmojiTab`/`EmoticonsDropdown`, нет топ/недавних реакций на бэке, нет кастом-эмодзи-реакций — долг `web-client/backlogs/frontend/reactions-more-button.md` |
+| Теги «Избранного», эффекты сообщений, ⭐-реакция | НЕТ | своих подсистем нет |
+| Тач: long-press по чипу, отсев чипа из обычного тапа | ЕСТЬ (`contextMenu.ts::attachTo`, пин — `contextMenu.touch.test.ts`) | 1:1 с tweb :249-315 |
+| Мобильная (вертикальная) раскладка панели | НЕТ | её нет и у оригинала: `reactionsMenuPosition` дописан `\|\| true` (contextMenu.ts:1664), стили закомментированы целиком (`_button.scss:747-777`) — мёртвая развилка не переносится |
+| Ховер-реакция над баблом (`bubble-hover-reaction`) | ЕСТЬ (`bubbles.ts::onBubblesMouseMove`, пин — `bubbles.hoverReaction.test.ts`) | 1:1 с tweb :2708-2828, кроме выбора реакции: показывается ПЕРВАЯ разрешённая политикой пира. `unshiftQuickReaction` (:222,268) поднимать нечего — быстрой реакции (`reactions_default`) нет ни в конфиге, ни на проводе, ни в хранилище; решено показывать первую разрешённую, а не прятать кнопку — долг `web-client/backlogs/frontend/quick-reaction-default.md` |
+| `warmUpReactionEffect` (прогрев `around`/`center`) | НЕТ | точки входа «скачать документ заранее» у нашего `wrapSticker` нет |
+| Пустой каталог | панель остаётся невидимой и `position: absolute` — места не занимает | исход `chatReactionsNone` оригинала (reactionsMenu.ts:245-247) |
+| Реакция без файлов ролей | ячейка показывает текстовое эмодзи | у номера файла нет stripped-превью, которым оригинал закрывает загрузку; тот же приём у чипа бабла (`chat/reactions.ts::renderIcon`) |
+
 ## 7.3 Клик по реакции на бабле
 
 bubbles.ts:3245–3279: клик по `reaction-element` → `cancelEvent`; `is-inactive` игнор;
@@ -501,6 +519,15 @@ bubbles.ts:3245–3279: клик по `reaction-element` → `cancelEvent`; `is-
 реакцию** (снятие происходит в оптимистике менеджера).
 
 **Даблклик быстрый-реакцией не является**: dblclick на десктопе — это reply (§9.3).
+
+**У нас** (`components/chat/bubbles.ts::toggleReaction`): ветка портирована, значение
+реакции читается с самого чипа — `chip.dataset.reaction` (аналог
+`reactionCount.reaction` оригинала, bubbles.ts:3257–3259). Раньше оно бралось из
+текстового узла внутри `.reaction-sticker`, а его снимает `renderIcon`, как только
+приезжает иконка, — тоггл переставал работать на каждом сообщении с показанной
+иконкой (пин — `bubbles.reactionClick.test.ts`). Направление тоггла эта ветка НЕ решает —
+как и у оригинала, она отдаёт значение дальше (§7.4). Не портированы: гейт `is-inactive`,
+ветка тегов «Избранного» и премиум-гейт.
 
 ## 7.4 Оптимистичное применение — `appReactionsManager.sendReaction` (647–966)
 
@@ -519,6 +546,18 @@ bubbles.ts:3245–3279: клик по `reaction-element` → `cancelEvent`; `is-
    `messages.sendPaidReaction` с random_id (стр. 930–944) и 5-секундным undo-окном
    (`chat.sendReaction`, chat.ts:1457–1554: `PENDING_PAID_REACTIONS`, тултип с отменой,
    `PopupStars` при нехватке звёзд).
+
+**У нас** оптимистика и откат живут в воркерном менеджере сообщений, а у фронта от этого
+шага остаётся ОДНО решение — ставить или снимать. Оно в единственном месте
+(`components/chat/reactions.ts::sendReaction`), куда приходят все три входа: панель
+контекстного меню, ховер-кнопка над баблом и клик по чипу — ровно как у оригинала, где
+все три зовут `chat.sendReaction` (contextMenu.ts:1686, bubbles.ts:2820, bubbles.ts:3275).
+Состояние читается перечитыванием сообщения из зеркала окна НЕПОСРЕДСТВЕННО ПЕРЕД
+отправкой — порт `message = getMessageByPeer(...)` (appReactionsManager.ts:669): объект на
+руках у вызывающего успевает устареть (меню собралось раньше выбора, ховер-кнопка — раньше
+на паузу в 400 мс). Пины — `contextMenu.test.ts`, `bubbles.hoverReaction.test.ts`,
+`bubbles.reactionClick.test.ts` (в каждом — стенд «состояние изменилось между показом и
+кликом»).
 
 ## 7.5 Рендер и анимации — `ReactionsElement.render` (reactions.ts:259–429)
 
@@ -672,7 +711,7 @@ time|code-header-button|reaction|bubble-beside-button|poll-message-content`; ц�
 |---|---|---|
 | Контекстное меню | `src/components/conversation/MessageContextMenu.tsx` (182 строки) | декларативный список `MenuItem {label, ...}` с i18n `t(label)`; на порядок меньше пунктов, чем в tweb (нет Quote/translate/statistics/fact-check/фаворитов/тегов/views-строки) |
 | Композер/плашки | `src/components/Composer.tsx` (756 строк) | reply/edit-плашка живёт внутри композера, а не отдельным `rows-wrapper` с ховер-меню (`ShowMessage`/`ReplyToAnotherChat`/`DoNotReply` отсутствуют) |
-| Реакции | `src/components/messages/MessageReactions.tsx` (171 строка) | нет `ChatReactionsMenu`-панели с lottie appear/select, нет around-эффектов и стека аватарок; кастом-эмодзи-реакций нет |
+| Реакции | `web-client/src/components/chat/reactions.ts` (чипы бабла), `web-client/src/components/chat/reactionsMenu.ts` (панель выбора) | панель с lottie `appear`/`select`, around-эффект и стек аватарок портированы; нет кнопки «ещё» с полным пикером, кастом-эмодзи-реакций, тегов и ⭐-реакции — см. §7.2 «У нас» |
 | Бабл/клики | `src/components/messages/MessageRow.tsx`, `MessageContent.tsx` | роутинг кликов размазан по React-обработчикам, нет единого делегата уровня контейнера как `onBubblesClick` |
 | Медиавьювер | `src/components/mediaViewer/appMediaViewer.ts`, `base.ts` | порт tweb (программа «tweb media model») |
 
