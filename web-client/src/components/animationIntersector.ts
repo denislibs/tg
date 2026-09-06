@@ -14,11 +14,6 @@
 // Отличия от tweb (всё остальное — 1:1):
 //   • нет `getAppWindow`/`onAppWindowChange` (Document PiP, куда tweb переносит
 //     весь DOM и пересоздаёт наблюдателя) — у нас такого механизма нет;
-//   • нет `overrideIdleGroups`/`setOverrideIdleGroup`: единственный, кто зовёт
-//     их в оригинале, — меню реакций (`chat/reactionsMenu.ts`), которого у нас
-//     нет. Множество всегда было бы пустым, а терм `|| overrideIdleGroups.has(
-//     player.group)` — тождественно ложным; заведётся меню — вернуть вместе
-//     с ним;
 //   • сам наблюдатель создаётся ЛЕНИВО, на первой регистрации: в jsdom/happy-dom
 //     `IntersectionObserver` появляется только после стаба в тесте, а модуль —
 //     синглтон и импортируется раньше;
@@ -99,6 +94,18 @@ export class AnimationIntersector {
   private intersectionLockedGroups: {[group in AnimationItemGroup]?: true};
   /** tweb :59 — пока играет кружок, все видео-анимации стоят (см. toggleMediaPause). */
   private videosLocked: boolean;
+  /**
+   * tweb :48,111,186-189 — группы, которым простой окна не запрет играть.
+   *
+   * Зовёт их единственный потребитель и в оригинале, и у нас — панель быстрых
+   * реакций (`chat/reactionsMenu.ts`, tweb reactionsMenu.ts:148-149,313-314).
+   * Ей это нужно потому, что `idleController` стартует ЗНАЧЕНИЕМ `true` и
+   * возвращается в него по blur окна (`helpers/idleController.ts`): панель
+   * живёт ровно столько, сколько открыто меню, и её содержимое — САМА
+   * анимация (`appear` → `select`). Без override она открылась бы пустыми
+   * ячейками, пока пользователь не подвигает мышью.
+   */
+  private overrideIdleGroups: Set<AnimationItemGroup>;
 
   constructor() {
     this.onObserve = (entries) => {
@@ -142,6 +149,7 @@ export class AnimationIntersector {
 
     this.intersectionLockedGroups = {};
     this.videosLocked = false;
+    this.overrideIdleGroups = new Set();
 
     // tweb :137-139 — пока окно простаивает, анимации стоят.
     idleController.addEventListener('change', (idle) => {
@@ -372,10 +380,17 @@ export class AnimationIntersector {
       this.visible.has(player) &&
       animation.autoplay &&
       (!this.onlyOnePlayableGroup || this.onlyOnePlayableGroup === group) &&
-      !idleController.isIdle
+      // tweb :349
+      (!idleController.isIdle || this.overrideIdleGroups.has(player.group))
     ) {
       safePlay(animation);
     }
+  }
+
+  /** tweb :186-189 */
+  public setOverrideIdleGroup(group: AnimationItemGroup, override: boolean) {
+    if(override) this.overrideIdleGroups.add(group);
+    else this.overrideIdleGroups.delete(group);
   }
 
   public getOnlyOnePlayableGroup() {

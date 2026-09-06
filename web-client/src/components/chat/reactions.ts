@@ -76,12 +76,22 @@ type ReactionChip = HTMLElement & {
   stackedAvatars?: StackedAvatars
 }
 
-export interface ReactionsManagers extends AvatarManagers {
-  /** Каталог доступных реакций — единственный источник файлов чипа (`center`/
-   *  `static`) и эффекта (`around`/`center`). Необязателен: без него чип
-   *  показывает текстовое эмодзи и не играет эффект. */
-  reactions?: { list(): Promise<AvailableReaction[]> }
+/** Каталог доступных реакций (`messages.getAvailableReactions`) — источник
+ *  файлов чипа (`center`/`static`), эффекта (`around`/`center`) и панели
+ *  быстрых реакций (`appear`/`select`, `chat/reactionsMenu.ts`). */
+export interface ReactionsCatalog {
+  list(): Promise<AvailableReaction[]>
 }
+
+/** Носитель каталога. Отдельно от `ReactionsManagers`: панели выбора не нужны
+ *  ни аватарки, ни что-либо ещё из среза ленты — ей нужен только каталог. */
+export interface ReactionsCatalogManagers {
+  /** Необязателен: без него чип показывает текстовое эмодзи и не играет
+   *  эффект, а панель выбора не появляется вовсе. */
+  reactions?: ReactionsCatalog
+}
+
+export interface ReactionsManagers extends AvatarManagers, ReactionsCatalogManagers {}
 
 /**
  * Каталог читается ОДИН РАЗ за сессию — порт кэша оригинала
@@ -97,12 +107,12 @@ export interface ReactionsManagers extends AvatarManagers {
  */
 const catalogCache = new WeakMap<object, Promise<AvailableReaction[]>>()
 
-/** Порт `apiManagerProxy.getReaction(emoticon)` (reaction.ts:805,1476):
- *  каталог + поиск по эмодзи. `undefined` — каталога нет вовсе. */
-function getAvailableReaction(
-  managers: ReactionsManagers,
-  emoticon: string,
-): Promise<AvailableReaction | undefined> | undefined {
+/** Порт `apiManagerProxy.getAvailableReactions()` (reaction.ts:805 «второй
+ *  аргумент», reactionsMenu.ts:235): весь каталог одним обещанием.
+ *  `undefined` — каталога нет вовсе. */
+export function getAvailableReactions(
+  managers: ReactionsCatalogManagers,
+): Promise<AvailableReaction[]> | undefined {
   const catalog = managers.reactions
   if (!catalog) return undefined
 
@@ -115,7 +125,16 @@ function getAvailableReaction(
     })
   }
 
-  return list.then((available) => available.find((r) => r.emoji === emoticon))
+  return list
+}
+
+/** Порт `apiManagerProxy.getReaction(emoticon)` (reaction.ts:805,1476):
+ *  каталог + поиск по эмодзи. `undefined` — каталога нет вовсе. */
+function getAvailableReaction(
+  managers: ReactionsManagers,
+  emoticon: string,
+): Promise<AvailableReaction | undefined> | undefined {
+  return getAvailableReactions(managers)?.then((available) => available.find((r) => r.emoji === emoticon))
 }
 
 export interface ReactionsElementOptions {

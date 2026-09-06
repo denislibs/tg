@@ -295,6 +295,9 @@ export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBot
           {
             messages: managers.messages,
             chats: managers.chats,
+            // Каталог реакций — содержимое панели быстрых реакций в меню
+            // (`chat/reactionsMenu.ts`); тот же объект получает и лента.
+            reactions: managers.reactions,
             media: {
               downloadToDisc: (message) => {
                 const mediaId = getMediaId(message)
