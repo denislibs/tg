@@ -1,5 +1,8 @@
 /** @jsxImportSource solid-js */
 import { describe, expect, it, vi } from 'vitest'
+import { onMount } from 'solid-js'
+import { createManagers, registerManagers } from '@rpc/managersProxy'
+import { SuperMessagePort } from '@rpc/superMessagePort'
 import { mountSolid } from './mountSolid.solid'
 
 describe('mountSolid', () => {
@@ -71,5 +74,46 @@ describe('mountSolid', () => {
 
     expect(host.querySelector('i')?.textContent).toBe('Дн:2')
     dispose()
+  })
+
+  // ── Пин на регресс «экран входа пуст» (mountSolid + прокси менеджеров) ─────
+  // Через мост ездит НЕ только plain-данные: `mountAuthFlow` кладёт в пропы
+  // прокси из `createManagers`. `createStore` на входе зовёт `unwrap`/
+  // `isWrappable`/`wrap`, а те спрашивают у значения служебные символы
+  // ($RAW/$PROXY/$NODE); прокси, отвечающий «менеджером» на любой ключ, эти
+  // вопросы подтверждал, и стор подменял им сам объект менеджеров —
+  // `managers.auth` в карточке становился `undefined`.
+  //
+  // Поэтому здесь НАСТОЯЩИЙ `createManagers` поверх настоящего транспорта, а не
+  // литерал-заглушка: подмена объекта менеджеров происходит именно в местах,
+  // которые заглушка обходит. Проверяется ИСХОД (вызов доехал до воркера и
+  // вернул значение), а не внутренности стора — они у dev- и prod-сборок
+  // `solid-js/store` разные, а контракт моста один.
+  it('прокси менеджеров переживает мост: вызов из острова доезжает до транспорта', async () => {
+    const ch = new MessageChannel()
+    const ui = new SuperMessagePort(ch.port1)
+    const worker = new SuperMessagePort(ch.port2)
+    registerManagers(worker, { auth: { async nearestCountry() { return 'RU' } } })
+    type M = { auth: { nearestCountry(): Promise<string> } }
+    const managers = createManagers<M>(ui)
+
+    const host = document.createElement('div')
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    let call: Promise<string> | undefined
+    const Probe = (p: { managers: M }) => {
+      onMount(() => { call = p.managers.auth.nearestCountry() })
+      return <i />
+    }
+    const { dispose } = mountSolid(host, Probe, { managers })
+
+    // Остров не должен был упасть на границе: без гарда символов здесь
+    // TypeError «Cannot read properties of undefined (reading 'nearestCountry')».
+    expect(spy).not.toHaveBeenCalled()
+    await expect(call).resolves.toBe('RU')
+
+    spy.mockRestore()
+    dispose()
+    ui.dispose()
+    worker.dispose()
   })
 })

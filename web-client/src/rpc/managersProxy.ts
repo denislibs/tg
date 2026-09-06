@@ -25,19 +25,29 @@ export function registerManagers(smp: SuperMessagePort, registry: Record<string,
  * доступ создавал новый Proxy/функцию). Это и убирает аллокацию на каждый вызов
  * (188 обращений по коду), и даёт стабильную идентичность метода — безопасно
  * класть в deps хуков / прокидывать в мемоизированные компоненты.
+ *
+ * Символьные ключи обе ловушки отдают как `undefined`: имена менеджеров и их
+ * методов на проводе — всегда строки (`ManagerCall`), а символы приходят от
+ * чужих рантаймов как служебный протокол (`$RAW`/`$PROXY`/`$NODE` у
+ * Solid-стора, `Symbol.toPrimitive`, `Symbol.iterator`). Ответ «да, есть» на
+ * такой ключ рантайм принимает за настоящее служебное значение: `createStore`
+ * в `mountSolid` подменял этим ответом сам объект менеджеров, и в компоненте
+ * `managers.auth` становился `undefined` — весь экран входа гас.
  */
 export function createManagers<T extends object>(smp: SuperMessagePort): T {
-  const mgrCache = new Map<PropertyKey, object>()
+  const mgrCache = new Map<string, object>()
   return new Proxy({}, {
-    get: (_t, name: PropertyKey) => {
+    get: (_t, name: string | symbol) => {
+      if (typeof name === 'symbol') return undefined
       let mgr = mgrCache.get(name)
       if (!mgr) {
-        const methodCache = new Map<PropertyKey, (...args: unknown[]) => Promise<unknown>>()
+        const methodCache = new Map<string, (...args: unknown[]) => Promise<unknown>>()
         mgr = new Proxy({}, {
-          get: (_t2, method: PropertyKey) => {
+          get: (_t2, method: string | symbol) => {
+            if (typeof method === 'symbol') return undefined
             let fn = methodCache.get(method)
             if (!fn) {
-              fn = (...args: unknown[]) => smp.invoke('manager', { name: name as string, method: method as string, args })
+              fn = (...args: unknown[]) => smp.invoke('manager', { name, method, args })
               methodCache.set(method, fn)
             }
             return fn
