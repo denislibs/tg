@@ -40,10 +40,12 @@ import StackedAvatars from '@components/stackedAvatars'
 import type { AvatarManagers } from '@components/avatar'
 import wrapSticker from '@components/wrappers/sticker'
 import wrapStickerAnimation from '@components/wrappers/stickerAnimation'
+import { hasStickerContent, loadStickerContent } from '@components/wrappers/stickerContent'
 import LottiePlayer from '@lib/lottie/lottiePlayer'
 import liteMode from '@helpers/liteMode'
 import type { Middleware } from '@helpers/middleware'
 import { fastRaf } from '@helpers/schedulers'
+import pause from '@helpers/schedulers/pause'
 import noop from '@helpers/noop'
 
 /** Счётчик показывается начиная с ЧЕТВЁРТОЙ реакции (tweb
@@ -662,6 +664,95 @@ async function handleChangedResults(
 }
 
 /**
+ * Потолок ожидания первого кадра — порт `LottieLoader.waitForFirstFrame`
+ * (tweb lottieLoader.ts:206-222): там ожидание кадра стоит В ГОНКЕ с
+ * `pause(2500)`, то есть ни один ждущий кадра путь оригинала не может ждать
+ * дольше. У нас этого потолка не было нигде, и эффект реакции ждал декода
+ * ДВУХ lottie в очереди воркера, общей с лентой: под нагрузкой очередь
+ * произвольно длинная, и эффект стартовал через сотни миллисекунд после
+ * клика — либо не стартовал вовсе, а гейт `chip.hasAroundAnimation` при этом
+ * не снимался и следующий клик тоже оставался без эффекта.
+ */
+const AROUND_FIRST_FRAME_TIMEOUT = 2500
+
+/**
+ * Прогревочные загрузки идут ПОСЛЕДОВАТЕЛЬНО — порт `warmUpChain`
+ * (tweb reaction.ts:254-265) вместе с его причиной: тяжёлые файлы эффектов не
+ * должны голодать интерактивные загрузки (иконку чипа, медиа полёта).
+ *
+ * Что «скачать заранее» — `loadStickerContent` (`wrappers/stickerContent.ts`),
+ * тот же вход, которым потом пойдёт `wrapSticker`: у него на файл один
+ * модульный кэш, поэтому прогретый файл клик уже не качает. Синхронная
+ * проверка «уже скачан» — `hasStickerContent`, наш `cacheContext.downloaded`
+ * оригинала (reaction.ts:257-260).
+ */
+let warmUpChain: Promise<unknown> = Promise.resolve()
+
+/** tweb reaction.ts:256-265 (`warmUpDownload`). */
+function warmUpDownload(mediaId: number | undefined): void {
+  if (!mediaId || hasStickerContent(mediaId)) return
+  warmUpChain = warmUpChain.then(() => loadStickerContent(mediaId)).catch(noop)
+}
+
+/**
+ * Прогреть эффект постановки, пока пользователь только целится в реакцию —
+ * порт `warmUpReactionEffect` (tweb reaction.ts:268-278). Зовёт его каждая
+ * ячейка панели быстрых реакций (`chat/reactionsMenu.ts`, порт
+ * reactionsMenu.ts:517-520): к моменту клика оба файла эффекта уже скачаны, и
+ * ожидание клика сводится к декоду.
+ */
+export function warmUpReactionEffect(availableReaction: AvailableReaction | undefined): void {
+  if (!availableReaction || !liteMode.isAvailable('effects_reactions')) return
+
+  // tweb :274-277 — ровно два файла: полёт и центральная иконка.
+  warmUpDownload(availableReaction.aroundMediaId)
+  warmUpDownload(availableReaction.centerMediaId)
+}
+
+/** tweb appReactionsManager.ts:104 — прогреваются ПЕРВЫЕ СЕМЬ реакций каталога. */
+const PRELOAD_REACTIONS_COUNT = 7
+
+/** tweb appReactionsManager.ts:112 — пауза между реакциями. */
+const PRELOAD_REACTION_PAUSE = 1000
+
+/** Каталоги, для которых предзагрузка уже отработала. Ключ — сам объект-каталог,
+ *  как у `catalogCache`: у оригинала подписка на `user_auth` срабатывает раз на
+ *  вход, у нас точка входа — эффект React, переигрываемый на каждом монтировании
+ *  Shell. */
+const preloadedCatalogs = new WeakSet<object>()
+
+/**
+ * Фоновая предзагрузка ассетов первых семи реакций каталога — порт
+ * `AppReactionsManager.after` (tweb appReactionsManager.ts:88-115): по четыре
+ * файла на реакцию (`around_animation`, `static_icon`, `appear_animation`,
+ * `center_icon`), последовательно по реакциям, с паузой в секунду между ними.
+ * Оригинал ставит это на `user_auth` + 7.5 с; у нас точка та же по смыслу —
+ * вход в Shell (`core/hooks/useAppBootstrap.ts`), с той же задержкой.
+ *
+ * `select_animation` в списке оригинала нет — его качает сама панель, когда
+ * открывается.
+ */
+export async function preloadReactionAssets(managers: ReactionsCatalogManagers): Promise<void> {
+  const catalog = managers.reactions
+  if (!catalog || preloadedCatalogs.has(catalog)) return
+  preloadedCatalogs.add(catalog)
+
+  const available = await getAvailableReactions(managers)!.catch(() => [])
+
+  // tweb :104-113.
+  for (let i = 0, length = Math.min(PRELOAD_REACTIONS_COUNT, available.length); i < length; ++i) {
+    const availableReaction = available[i]
+    await Promise.all([
+      availableReaction.aroundMediaId,
+      availableReaction.staticMediaId,
+      availableReaction.appearMediaId,
+      availableReaction.centerMediaId,
+    ].map((mediaId) => mediaId && loadStickerContent(mediaId).catch(noop)))
+    await pause(PRELOAD_REACTION_PAUSE)
+  }
+}
+
+/**
  * Эффект вокруг чипа — порт `ReactionElement.fireAroundAnimation`
  * (reaction.ts:1099-1122 → статический :1124-1290, ветка обычной эмодзи-реакции
  * с УЖЕ ЗАГРУЖЕННЫМ эффектом, :1439-1470).
@@ -704,8 +795,12 @@ async function handleChangedResults(
  *    не просто маршрут), это бэкенд-работа за периметром фронтового Этапа 5.
  *    При этом наше поведение — не самодеятельность, а ветка того же оригинала:
  *    :1512-1514, «генерика взять негде» → играть каталожный эффект поздно,
- *    когда файлы догрузятся. Загрузку мы начинаем тем же кликом (ниже),
- *    то есть делаем и `warmUpDownload` оригинала (:1495).
+ *    когда файлы догрузятся. Загрузку мы начинаем тем же кликом (ниже,
+ *    `warmUpReactionEffect` — порт `warmUpDownload`, :1495), а «поздно»
+ *    ограничено потолком `AROUND_FIRST_FRAME_TIMEOUT`: не успел к сроку —
+ *    эффект честно не играет, вместо того чтобы выстрелить через секунды
+ *    после клика и держать гейт чипа. Долг — с точным списком того, что
+ *    нужно на бэке: `backlogs/frontend/reaction-generic-effect.md`.
  *  • Ветка платной ⭐-реакции (:1523-1528, ассеты `StarReactionEffect*`) и ветка
  *    кастом-эмодзи (:1529) — своих подсистем нет.
  */
@@ -734,11 +829,42 @@ export function fireAroundAnimation(options: {
   const stickerContainer = chip.querySelector<HTMLElement>('.reaction-sticker')
   if (!stickerContainer) return
 
+  // Зона бабла уже мертва — `create()` на убранной зоне бросает MIDDLEWARE
+  // (`helpers/middleware.ts`), а играть эффект в снятом бабле и незачем.
+  if (!middleware()) return
+
   const size = REACTIONS_SIZE_BLOCK + AROUND_ADD
 
+  // Своя зона актуальности эффекта — ребёнок зоны бабла. У оригинала её нет
+  // (там всюду `options.middleware`), и она заведена ровно под потолок: снять
+  // недоехавшие плееры может только тот, кто их создал, а `lottieLoader`
+  // убирает плеер по `middleware.onClean` (lottieLoader.ts:285-287). Смерть
+  // бабла по-прежнему убивает эффект — уборка вложенных зон каскадная
+  // (`helpers/middleware.ts::clean`).
+  const helper = middleware.create()
+  const effectMiddleware = helper.get()
+
+  // tweb lottieLoader.ts:206-222: ожидание первого кадра стоит В ГОНКЕ с
+  // `pause(2500)`. Гонка нужна дважды: снять эффект, который к этому сроку не
+  // показал ни кадра (иначе он либо не покажется никогда, либо выстрелит
+  // спустя секунды — уже не про этот клик), и отпустить гейт
+  // `chip.hasAroundAnimation`, чтобы следующий клик не оставался без эффекта.
+  const ceiling = pause(AROUND_FIRST_FRAME_TIMEOUT)
+  let started = false
+  void ceiling.then(() => { if (!started) helper.destroy() })
+
   const promise = lookup.then((availableReaction) => {
-    if (!middleware()) return
+    if (!effectMiddleware()) return
     if (!availableReaction?.aroundMediaId || !availableReaction.centerMediaId) return
+
+    // tweb :1484-1495: оригинал синхронно проверяет, лежат ли ОБА файла эффекта
+    // в кэше, и на промахе играет generic, параллельно докачивая каталожные
+    // файлы. Генерика у нас нет (см. докблок выше и
+    // `backlogs/frontend/reaction-generic-effect.md`) — остаётся вторая
+    // половина той же ветки: докачать (:1495) и играть каталожный эффект, как
+    // это делает сам оригинал, когда генерика взять негде (:1512-1514).
+    // Прогрев здесь идемпотентен: скачанный файл `warmUpDownload` пропускает.
+    warmUpReactionEffect(availableReaction)
 
     // tweb :1170-1172.
     const div = document.createElement('div')
@@ -750,8 +876,19 @@ export function fireAroundAnimation(options: {
       size: AROUND_EFFECT_SIZE,
       target: stickerContainer,
       play: false,
-      middleware,
+      middleware: effectMiddleware,
       scrollable: options.scrollable,
+    })
+
+    // Узлы, которые до старта эффекта не снимает никто: оверлей ещё не
+    // подвешен, а `wrapStickerAnimation` убирает свой полёт только вместе с
+    // плеером (`unmountAnimation`), то есть не раньше, чем плеер приедет.
+    // Потолок обязан убрать оба — иначе отменённый эффект оставлял бы в
+    // общем контейнере пустой квадрат.
+    effectMiddleware.onDestroy(() => {
+      div.remove()
+      aroundWrap.animationDiv.remove()
+      stickerContainer.classList.remove('has-animation')
     })
 
     // tweb :1233-1257 (`stickerResult`).
@@ -765,12 +902,21 @@ export function fireAroundAnimation(options: {
       play: false,
       loop: false,
       group: 'none',
-      middleware,
+      middleware: effectMiddleware,
     }).render
 
-    // tweb :1259-1270.
-    return Promise.all([iconRender, aroundWrap.stickerPromise, options.waitPromise])
-      .then(([icon, aroundPlayer]) => {
+    // tweb :1259-1270. `ceiling` в гонке — тот же приём, что у оригинала в
+    // `waitForFirstFrame` (lottieLoader.ts:213-219): ждать декода обоих файлов
+    // можно, но не дольше срока.
+    return Promise.race([
+      Promise.all([iconRender, aroundWrap.stickerPromise, options.waitPromise]),
+      ceiling.then(() => undefined),
+    ])
+      .then((players) => {
+        // Потолок выиграл гонку — плееры уже сняты вместе с зоной (`ceiling`
+        // выше), показывать нечего.
+        if (!players) return
+        const [icon, aroundPlayer] = players
         // tweb :1267-1276 (`remove`).
         const remove = () => {
           if (icon instanceof LottiePlayer) icon.remove()
@@ -787,7 +933,7 @@ export function fireAroundAnimation(options: {
         const iconPlayer = icon
         // tweb :1437-1441.
         const removeOnFrame = () => fastRaf(remove)
-        middleware.onDestroy(removeOnFrame)
+        effectMiddleware.onDestroy(removeOnFrame)
 
         // tweb :1446-1456: оверлей снимается на последнем кадре иконки эффекта,
         // но если иконка САМОГО ЧИПА ещё показывается (`wrapStickerPromise`) —
@@ -804,6 +950,10 @@ export function fireAroundAnimation(options: {
 
         // tweb :1456-1467.
         iconPlayer.onFirstFrame(() => {
+          // Кадр показан — эффект состоялся, и потолок его уже не снимает
+          // (у оригинала гонка `waitForFirstFrame` кончается ровно здесь же,
+          // lottieLoader.ts:213-216).
+          started = true
           stickerContainer.append(div)
           stickerContainer.classList.add('has-animation')
           iconPlayer.play()
@@ -812,11 +962,14 @@ export function fireAroundAnimation(options: {
       })
   })
 
-  // tweb :1531-1537.
-  middleware.onDestroy(() => { chip.hasAroundAnimation = undefined })
-  chip.hasAroundAnimation = promise
-  promise.finally(() => {
-    if (chip.hasAroundAnimation === promise) chip.hasAroundAnimation = undefined
+  // tweb :1531-1537. Гейт снимается и по потолку: `promise` — гонка с
+  // `ceiling`, поэтому висеть дольше срока он не может даже на застрявшем
+  // декоде.
+  const gate = Promise.race([promise, ceiling])
+  effectMiddleware.onDestroy(() => { chip.hasAroundAnimation = undefined })
+  chip.hasAroundAnimation = gate
+  gate.finally(() => {
+    if (chip.hasAroundAnimation === gate) chip.hasAroundAnimation = undefined
   }).catch(noop)
 }
 

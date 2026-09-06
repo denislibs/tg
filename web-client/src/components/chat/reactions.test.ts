@@ -4,7 +4,7 @@
 // :1065 + reactions.ts:304-307 — считается по СУММЕ реакций сообщения, а не по
 // одному чипу); отсутствие узла, когда реакций нет вовсе; и эффект вокруг чипа
 // (`fireAroundAnimation`) — кто его запускает и что он рисует.
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MessageReactions, Reaction } from '@core/models'
 import type { AvailableReaction } from '@core/managers/reactionsManager'
 import LottiePlayer from '@lib/lottie/lottiePlayer'
@@ -16,10 +16,15 @@ import wrapSticker from '@components/wrappers/sticker'
 import wrapStickerAnimation from '@components/wrappers/stickerAnimation'
 import {
   createReactionsElement,
+  fireAroundAnimation,
   getAvailableReactionsForPeer,
   REACTIONS_DISPLAY_COUNTER_AT,
   type ReactionsElementOptions,
 } from './reactions'
+
+/** Чип носит своё состояние на самом узле (порт полей `ReactionElement`) —
+ *  гейт эффекта читается оттуда же, откуда его читает код. */
+type ReactionChip = HTMLElement & { hasAroundAnimation?: Promise<unknown> }
 
 vi.mock('@components/wrappers/sticker', () => ({ default: vi.fn() }))
 vi.mock('@components/wrappers/stickerAnimation', () => ({ default: vi.fn() }))
@@ -547,6 +552,107 @@ describe('fireAroundAnimation', () => {
     await flush()
     expect(catalog.list).toHaveBeenCalled()
     expect(wrapStickerAnimationMock).not.toHaveBeenCalled()
+  })
+
+  /**
+   * Потолок ожидания — порт гонки с `pause(2500)` из `LottieLoader.
+   * waitForFirstFrame` (tweb lottieLoader.ts:206-222). Пины на ИСХОД: что
+   * ждущий эффект перестаёт ждать и убирает за собой, что уже ИГРАЮЩИЙ
+   * эффект потолок не трогает, и что гейт чипа (tweb `cache.hasAroundAnimation`,
+   * reaction.ts:1145) не остаётся закрытым навсегда.
+   */
+  describe('потолок ожидания (tweb lottieLoader.ts:206-222)', () => {
+    beforeEach(() => { vi.useFakeTimers() })
+    afterEach(() => { vi.useRealTimers() })
+
+    /** Эффект, чьи плееры никогда не приедут: ровно то, что даёт забитая
+     *  очередь декода tlottie-воркера (общая с лентой). */
+    const stuckEffect = () => {
+      wrapStickerMock.mockImplementation((o) => ({
+        render: o.group === 'none'
+          ? new Promise<LottiePlayer>(() => {})
+          : Promise.resolve(fakePlayer().player),
+        width: o.width, height: o.height, destroy: vi.fn(),
+      }))
+      wrapStickerAnimationMock.mockImplementation(() => ({
+        animationDiv: document.createElement('div'),
+        stickerPromise: new Promise<LottiePlayer>(() => {}),
+      }))
+    }
+
+    const fire = (opts: Partial<ReactionsElementOptions> = {}) => createReactionsElement(
+      agg({ emoticon: '👍', count: 2, mine: true }),
+      options({ previous: previousWith({ emoticon: '👍', count: 1 }), ...opts }),
+    )!
+
+    it('застрявший декод не подвешивает эффект: к сроку он снят, узлы убраны', async () => {
+      stuckEffect()
+      const el = fire()
+
+      await vi.advanceTimersByTimeAsync(0)
+      expect(wrapStickerAnimationMock).toHaveBeenCalled()
+      const flight = wrapStickerAnimationMock.mock.results[0].value.animationDiv as HTMLElement
+      const container = document.createElement('div')
+      container.append(flight) // как `emojiAnimationContainer` у настоящего полёта
+
+      await vi.advanceTimersByTimeAsync(2500)
+
+      const stickerContainer = el.querySelector<HTMLElement>('.reaction-sticker')!
+      expect(stickerContainer.classList.contains('has-animation')).toBe(false)
+      expect(stickerContainer.querySelector('.reaction-sticker-activate')).toBeNull()
+      // Полёт снят из своего контейнера — иначе отменённый эффект оставлял бы
+      // поверх приложения пустой квадрат 80×80.
+      expect(flight.parentElement).toBeNull()
+    })
+
+    it('гейт чипа снимается по сроку — следующий клик снова играет', async () => {
+      stuckEffect()
+      const el = fire()
+      await vi.advanceTimersByTimeAsync(0)
+      const chip = el.querySelector<ReactionChip>('.reaction')!
+      expect(chip.hasAroundAnimation).not.toBe(undefined)
+
+      await vi.advanceTimersByTimeAsync(2500)
+      expect(chip.hasAroundAnimation).toBe(undefined)
+
+      // Повторный запуск на том же чипе больше не упирается в гейт.
+      wrapStickerAnimationMock.mockClear()
+      fireAroundAnimation({
+        chip,
+        reaction: { _: 'reactionEmoji', emoticon: '👍' },
+        middleware: getMiddleware().get(),
+        managers: { peers: { fillMirror: vi.fn(async () => {}) }, reactions: catalog },
+      })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(wrapStickerAnimationMock).toHaveBeenCalled()
+    })
+
+    it('успевший эффект потолок не трогает: он играет и после срока', async () => {
+      const icon = fakePlayer()
+      const around = fakePlayer()
+      wrapStickerMock.mockImplementation((o) => ({
+        render: Promise.resolve(o.group === 'none' ? icon.player : fakePlayer().player),
+        width: o.width, height: o.height, destroy: vi.fn(),
+      }))
+      wrapStickerAnimationMock.mockReturnValue({
+        animationDiv: document.createElement('div'),
+        stickerPromise: Promise.resolve(around.player),
+      })
+
+      const el = fire()
+      await vi.advanceTimersByTimeAsync(0)
+      icon.fireFirstFrame()
+
+      const stickerContainer = el.querySelector<HTMLElement>('.reaction-sticker')!
+      expect(stickerContainer.classList.contains('has-animation')).toBe(true)
+
+      await vi.advanceTimersByTimeAsync(3000)
+
+      expect(stickerContainer.classList.contains('has-animation')).toBe(true)
+      expect(stickerContainer.querySelector('.reaction-sticker-activate')).not.toBeNull()
+      expect(icon.player.remove).not.toHaveBeenCalled()
+      expect(around.player.remove).not.toHaveBeenCalled()
+    })
   })
 })
 
