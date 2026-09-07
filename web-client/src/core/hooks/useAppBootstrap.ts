@@ -20,11 +20,18 @@ import { initAppBadge } from '../../client/appBadge'
 import { useSettingsStore } from '../../settings'
 import { bootPrefetch, bootWasLocked } from '../../client/bootData'
 import { fillDialogsMirror, applyDialogsMirror } from '../../client/boot'
+import { preloadReactionAssets } from '../../components/chat/reactions'
+
+/** tweb appReactionsManager.ts:94-96 — предзагрузка ассетов реакций заводится
+ *  через 7.5 с после `user_auth`, то есть заведомо позади всего, что нужно
+ *  показать пользователю сразу. */
+const REACTIONS_PRELOAD_DELAY = 7.5e3
 
 export function useAppBootstrap(): void {
   const managers = useManagers()
   useEffect(() => {
     let stopPresenceDegradation: (() => void) | undefined
+    let reactionsPreload: ReturnType<typeof setTimeout> | undefined
     // Под passcode-локом (решён в boot.ts до рендера) НИЧЕГО не грузим и не
     // коннектим — вся первичная загрузка + realtime стартуют один раз после
     // разблокировки. Не под локом — сразу (runWhenUnlocked дергает fn синхронно).
@@ -95,12 +102,19 @@ export function useAppBootstrap(): void {
       stopPresenceDegradation = startPresenceDegradation()
       // offline-уведомления (web push) подписываем только если не выключены в настройках
       if (useSettingsStore.getState().notifyPush) void setupPush()
+      // Ассеты реакций — фоном, спустя задержку (порт подписки на `user_auth`,
+      // appReactionsManager.ts:88-115). Вход в Shell — наша точка «пользователь
+      // авторизован»: она отрабатывает и на холодном старте с токеном, и сразу
+      // после входа. Внутри стоит гейт на каталог, поэтому повторное
+      // монтирование Shell второй предзагрузки не даёт.
+      reactionsPreload = setTimeout(() => { void preloadReactionAssets(managers) }, REACTIONS_PRELOAD_DELAY)
     }
     const stopWhenUnlocked = runWhenUnlocked(run)
     return () => {
       stopWhenUnlocked()
       stopPresenceDegradation?.()
       stopPresenceDegradation = undefined
+      clearTimeout(reactionsPreload)
     }
   }, [managers])
 }

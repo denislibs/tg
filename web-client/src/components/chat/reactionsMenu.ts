@@ -55,6 +55,7 @@ import type { AvailableReaction } from '@core/managers/reactionsManager'
 import {
   getAvailableReactions,
   getAvailableReactionsForPeer,
+  warmUpReactionEffect,
   type PeerAvailableReactions,
   type ReactionsCatalogManagers,
 } from './reactions'
@@ -276,9 +277,10 @@ export default class ChatReactionsMenu {
    *  реакцию, которой в каталоге нет. Такая ячейка остаётся текстовым эмодзи —
    *  файлов ролей для неё не существует. */
   private async renderReaction(reaction: Reaction, availableReaction?: AvailableReaction) {
-    // tweb :522-524 `warmUpReactionEffect` не портирован: прогрева ассетов
-    // эффекта (`reaction.ts:268-285`) у нас нет — точки входа «скачать документ
-    // заранее» у `wrapSticker` не существует.
+    // tweb :517-520 — прогрев эффекта постановки на КАЖДУЮ ячейку панели: пока
+    // пользователь целится, оба файла эффекта уже качаются, и клик не платит
+    // за загрузку (порт — `chat/reactions.ts::warmUpReactionEffect`).
+    warmUpReactionEffect(availableReaction)
 
     // tweb :526-533
     const reactionDiv = document.createElement('div')
