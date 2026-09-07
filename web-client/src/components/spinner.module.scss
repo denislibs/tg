@@ -1,0 +1,39 @@
+// Порт `tweb/src/components/spinner.module.scss` — 1:1.
+// Класс `.container` оригинала не портирован: его потребителей у нас нет
+// (опрос кладёт крутилку в свой `.spinnerContainer`).
+//
+// Ловушка CSS-модулей (см. `web-client/CLAUDE.md`): имена кейфреймов Vite
+// хеширует вместе с классами, поэтому и объявление, и ссылка живут в ЭТОМ
+// файле — иначе `animation:` молча не сыграет.
+.spinner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+
+  circle {
+    transform-origin: 50% 50%; /* центр вращения */
+    animation:
+      transcribe-button-spinner-animation 1s linear infinite,
+      transcribe-button-spinner-length-animation 1.2s linear infinite alternate;
+  }
+}
+
+@keyframes transcribe-button-spinner-animation {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes transcribe-button-spinner-length-animation {
+  0% {
+    stroke-dasharray: 0 65.97;
+  }
+  100% {
+    stroke-dasharray: 32.98 32.98;
+  }
+}
