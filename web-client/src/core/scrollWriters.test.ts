@@ -78,6 +78,14 @@ const ALLOWED: Record<string, number> = {
   // `VerticalVirtualList.tsx`, Task 5) — это парный механизм самого
   // `useShouldAnimate`: тот решает КОГДА компенсировать, эта функция — КАК.
   'components/virtual/useShouldAnimate.ts': 1,
+  // components/verticalVirtualList.solid.tsx — ТОТ ЖЕ компенсатор, что строкой
+  // выше, в исходной Solid-форме tweb (`verticalVirtualList.tsx:49-53`,
+  // `onScrollShift` под `untrack`): порт файлом 1:1 для Solid-вкладки «Чаты»
+  // правой колонки (`sidebarRight/savedDialogsTab.solid.tsx`). Импортировать
+  // React-соседа `createScrollShiftCompensator` из `virtual/useShouldAnimate.ts`
+  // Solid-файл не может — тот модуль тянет `react` (граница рантаймов,
+  // `shared/solid/boundary.test.ts`).
+  'components/verticalVirtualList.solid.tsx': 1,
 }
 
 describe('scrollTop: единственный владелец — Scrollable/ScrollSaver', () => {
