@@ -798,6 +798,10 @@ const lang = {
   OK: 'OK',
   Off: 'Off',
   Online: 'online',
+  OnlineCount: {
+    one_value: '%1$d online',
+    other_value: '%1$d online',
+  },
   OnlyAllowThisReactions: 'Only allow these reactions',
   OpenChat: 'Open Chat',
   OpenInNewTab: 'Open in new tab',

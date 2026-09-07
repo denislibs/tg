@@ -38,6 +38,7 @@ import { useSetTransition } from '../core/hooks/useSetTransition'
 import { useChatInfoCard } from '../core/hooks/useChatInfoCard'
 import { hasRights } from '../core/peers/rights'
 import { isBroadcast, isMegagroup } from '../core/peers/predicates'
+import { getChatMembersString, getChatStatusString } from './wrappers/getChatMembersString'
 import { usePinnedBar } from '../core/hooks/usePinnedBar'
 import { useChatSend } from '../core/hooks/useChatSend'
 import { useSendAs } from '../core/hooks/useSendAs'
@@ -859,16 +860,21 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // Добавление участников: полноценный под-экран живёт в UserInfoPanel
   const canAddMember = isRealChat && isGroup
 
-  // Header subtitle for real group/channel chats: derive a member/online (or
-  // subscriber) count from the card + live online count. Private and draft chats
-  // keep the existing chat.status text (returned as null here).
+  // Подпись шапки у группы/канала — «N подписчиков» / «N участников, N онлайн».
+  //
+  // Считает её ОДИН владелец на всё приложение — `wrappers/getChatMembersString`
+  // (порт tweb `getChatMembersString.ts:9-22` + хвоста `appImManager.ts:3096-3110`).
+  // Здесь стоял русский ЛИТЕРАЛ (`${members} подписчиков`), который словаря не
+  // спрашивал вовсе: на браузере с локалью `en-US` шапка оставалась русской, пока
+  // весь остальной интерфейс шёл по-английски. Заодно литерал не склонял («1
+  // подписчиков») и показывал ноль там, где у оригинала минимум единица.
+  //
+  // У личного чата и черновика подпись другая (присутствие/статус) — здесь null.
   const realSubtitle: string | null = (() => {
     if (!isRealChat || !chatPeer) return null
     // Вид чата — предикат по конструктору, а не строка `type`.
-    const members = chatPeer._ === 'channel' ? chatPeer.participants_count ?? 0 : 0
-    if (isBroadcast(chatPeer)) return `${members} подписчиков`
-    if (isMegagroup(chatPeer))
-      return `${members} участников${onlineCount > 0 ? `, ${onlineCount} онлайн` : ''}`
+    if (isBroadcast(chatPeer)) return getChatMembersString(chatPeer, tArgs)
+    if (isMegagroup(chatPeer)) return getChatStatusString(chatPeer, onlineCount, tArgs)
     return null
   })()
 
