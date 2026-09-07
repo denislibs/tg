@@ -23,7 +23,9 @@
 // ссылкой на строку tweb и номер задачи; когда задача приедет, вызов встанет
 // ровно туда.
 //
-//  • `processXFilter`, медиавьювер по клику — задачи 7-9 (`tweb:826-1283`, `:716-777`);
+//  • `processDocumentFilter`/`processUrlFilter` и клик по документу — задачи
+//    8-9 (`tweb:940-1094`, `:770-774`); `processEmptyFilter` (`:826-871`) —
+//    левая колонка, в правой его вкладки нет;
 //  • `loadFirstTime`/`firstLoad`, предикаты `canView*` — задача 10 (`tweb:2362-2529`);
 //  • `SortedUserList`/участники — задача 11 (`tweb:1525-1758`);
 //  • `SearchSelection`, `SearchContextMenu` — задача 14 (`tweb:156-345`,
@@ -100,6 +102,37 @@
 //     видно: живой апдейт всегда несёт ровно одно сообщение
 //     (`sharedMedia.tsx:247`). Портировать переворот значит закладывать
 //     дефект под первый же альбом; правим и объявляем.
+// 13. «Чувствительный контент» не портирован: `isMessageSensitive`
+//     (`tweb:2371-2373`), `hasSensitiveSpoiler`/`skipSensitive` в клике
+//     (`:738-744`, `:757`) и `sensitive` у крышки (`:912-925`). Это отдельная
+//     аккаунт-настройка Telegram с проверкой возраста, у нас нет ни её API, ни
+//     поля у медиа — та же причина, что в шапке `wrappers/mediaSpoiler.ts`.
+//     Крышка ставится ровно по `pFlags.spoiler` (`isMediaSpoiler`).
+// 14. Медиавьювер. Оригинал (`tweb:757-766`) заводит `new AppMediaViewer()`,
+//     отдаёт ему копию контекста поиска (`setSearchContext`) и `prevTargets`/
+//     `nextTargets` из `{element, mid, peerId}` — сообщения вьювер спрашивает у
+//     менеджера сам. У нас один живой вьювер (`mediaViewer/openMediaViewer.ts`)
+//     с плоским `items` + `index`, и каждая цель — ГОТОВЫЙ `ViewerItem`
+//     (`messageToViewerItem`), собранный из кэша вкладки
+//     (`getSharedMediaMessage`) — того самого, из которого плитка и нарисована;
+//     RPC `getMessageByPeer` (`:737`) сюда не нужен. Роль `setSearchContext`
+//     (листать за пределы плиток по тому же фильтру) исполняет `loadMoreMedia`
+//     поверх `createMediaNeighboursLoader` на ручке `mediaHistory`; загрузчик
+//     живёт одно открытие, как `SearchListLoader` у оригинала, но страницы
+//     берёт с сети, а не из кэша менеджера — своего кэша сообщений по
+//     `offset_id` у вкладки нет.
+// 15. `onMediaClick` — метод класса, а не замыкание конструктора
+//     (`tweb:716-767`): в конструкторе остаётся только подписка, тело лежит
+//     рядом с `processPhotoVideoFilter`, чтобы задачи 8-9 (документы, ссылки)
+//     не правили конструктор одновременно.
+// 16. `multiply: 0.3` у `wrapMediaSpoiler` (`tweb:924`) не передаётся: в
+//     оригинале он доезжает только до ЗАКОММЕНТИРОВАННОГО `resize`
+//     (`tweb/src/components/dotRenderer.ts:331`), у нашего `DotRenderer.create`
+//     такого параметра нет.
+// 17. `this.log.warn`/`this.log.error` (`tweb:722`, `:1178`) — логгера у
+//     подсистемы нет (см. `loadType`); клик без `data-mid` молча игнорируется,
+//     ошибка рендера одного сообщения — как в оригинале — не роняет партию, но
+//     и не логируется.
 import Scrollable, { ScrollableX } from '@components/scrollable'
 import { horizontalMenu } from '@components/horizontalMenu'
 import type { SelectTab } from '@components/horizontalMenu'
@@ -125,6 +158,18 @@ import { getMessageKind } from '@core/messages/messageKind'
 import { getSharedMediaMessage, saveSharedMediaMessages } from '@components/sharedMediaHistories'
 import { getHeavyAnimationPromise } from '@core/dom/heavyAnimation'
 import windowSize from '@helpers/windowSize'
+import { attachClickEvent } from '@helpers/dom/clickEvent'
+import { choosePhotoSize, getMediaFromMessage, isMediaSpoiler } from '@core/media/messageMedia'
+import wrapPhoto, { type WrappedPhoto } from '@components/wrappers/photo'
+import wrapVideo from '@components/wrappers/video'
+import wrapMediaSpoiler, { onMediaSpoilerClick } from '@components/wrappers/mediaSpoiler'
+import { openMediaViewer, type OpenMediaViewerArgs } from '@components/mediaViewer/openMediaViewer'
+import { messageToViewerItem, type LightboxCtx } from '@components/mediaViewer/collectLightboxItems'
+import type { ViewerItem } from '@components/mediaViewer/appMediaViewer'
+import { createMediaNeighboursLoader } from '@components/mediaViewer/mediaNeighbours'
+import rootScope from '@lib/rootScope'
+import { cachedPeer } from '@core/peerCache'
+import { useI18nStore } from '@/i18n'
 
 /**
  * tweb `:111` — фильтр сообщений (`inputMessagesFilterPhotoVideo` и т.п.).
@@ -210,6 +255,22 @@ type PerformSearchResultArgs = {
   mediaTab: SearchSuperMediaTab
   append?: boolean
 }
+
+/**
+ * tweb `:346-353` — что получает рендерер ОДНОГО сообщения. `elemsToAppend`
+ * (накопитель `performSearchResult`, рендереры его не читают) и `searchGroup`
+ * (левая колонка, расхождение 11) не портированы.
+ */
+type ProcessSearchSuperResult = {
+  message: MyMessage
+  middleware: Middleware
+  promises: Promise<unknown>[]
+  inputFilter: SearchSuperType
+  mediaTab: SearchSuperMediaTab
+}
+
+/** tweb `:1173` — узел вкладки вместе с сообщением, из которого он собран. */
+type SearchSuperItem = { element: HTMLElement, message: MyMessage }
 
 /** Ручки менеджеров, которыми пользуется подсистема — расхождение 6 в шапке. */
 export type SearchSuperManagers = {
@@ -589,8 +650,16 @@ export default class AppSearchSuper {
 
     // tweb `:709-714` — перехват клика при активном выделении; выделение
     // приезжает задачей 14 вместе с `SearchSelection`.
-    // tweb `:716-777` — открытие медиавьювера по клику в грид/по документу;
-    // приезжает задачей 7 вместе с рендером элементов.
+    // tweb `:768-772` — открытие медиавьювера по клику в грид. Тело
+    // обработчика — метод `onMediaClick` (расхождение 15 в шапке). Подписка
+    // для документов (`:773-777`) приезжает задачей 8.
+    if(this.tabs.inputMessagesFilterPhotoVideo) {
+      attachClickEvent(
+        this.tabs.inputMessagesFilterPhotoVideo,
+        (e) => this.onMediaClick('grid-item', 'grid-item', 'inputMessagesFilterPhotoVideo', e),
+        { listenerSetter: this.listenerSetter },
+      )
+    }
 
     this.mediaTab = this.mediaTabs[0]
 
@@ -687,10 +756,8 @@ export default class AppSearchSuper {
    * tweb `:1096-1257`. Собирает узлы по сообщениям и кладёт их в список вкладки
    * — в конец (`append`) при пагинации и в НАЧАЛО при живом апдейте.
    *
-   * Расхождение 9 в шапке — про группы левой колонки. Сам рендер элемента
-   * (`processPhotoVideoFilter` и соседи, `tweb:874-1094`) приезжает задачами
-   * 7-9; до тех пор `buildItem` отдаёт голый узел, а вся обвязка вокруг него —
-   * классы, `data-mid`/`data-peer-id`, порядок вставки — уже оригинальная.
+   * Расхождение 11 в шапке — про группы левой колонки. Рендер одного
+   * элемента — `buildItem` (развилка по фильтру, `tweb:1143-1170`).
    */
   public async performSearchResult({ messages, mediaTab, append = true }: PerformSearchResultArgs) {
     const middleware = this.middleware.get()
@@ -703,7 +770,17 @@ export default class AppSearchSuper {
     await getHeavyAnimationPromise()
 
     const promises: Promise<unknown>[] = []
-    const elemsToAppend = messages.map((message) => ({ element: this.buildItem(message), message }))
+
+    // tweb `:1173-1186` — сообщения рендерятся ПАРАЛЛЕЛЬНО, и ошибка на одном
+    // не роняет партию (расхождение 17 в шапке — про её лог).
+    const results = messages.map(async(message): Promise<SearchSuperItem | undefined> => {
+      try {
+        return await this.buildItem({ message, middleware, promises, inputFilter, mediaTab })
+      } catch {
+        return undefined
+      }
+    })
+    const elemsToAppend = (await Promise.all(results)).filter((item): item is SearchSuperItem => !!item)
 
     if(this.loadMutex) {
       promises.push(this.loadMutex)
@@ -736,13 +813,200 @@ export default class AppSearchSuper {
   }
 
   /**
-   * Узел одного элемента вкладки. Настоящие рендереры (`processPhotoVideoFilter`
-   * `tweb:874-938`, `processDocumentFilter` `:940-962`, `processUrlFilter`
-   * `:964-1094`) приезжают задачами 7-9 и встанут ровно сюда — развилкой по
-   * `inputFilter`, как в оригинале (`tweb:1143-1170`).
+   * tweb `:1143-1170` — выбор рендерера по фильтру (там `switch` стоит прямо в
+   * `performSearchResult`; здесь вынесен, чтобы ветки приезжали по одной).
+   * `processDocumentFilter` (`:940-962`) и `processUrlFilter` (`:964-1094`) —
+   * задачи 8-9; до них их фильтры получают голый узел, а обвязка вокруг
+   * (классы, `data-mid`/`data-peer-id`, порядок вставки) уже оригинальная.
    */
-  private buildItem(_message: MyMessage) {
-    return document.createElement('div')
+  private buildItem(options: ProcessSearchSuperResult): Promise<SearchSuperItem> | SearchSuperItem {
+    switch(options.inputFilter) {
+      case 'inputMessagesFilterPhotoVideo':
+        return this.processPhotoVideoFilter(options)
+
+      default:
+        return { element: document.createElement('div'), message: options.message }
+    }
+  }
+
+  /**
+   * tweb `:874-938` — плитка грида. Размер плитке задаёт CSS
+   * (`.search-super-content-media-grid .grid-item`), поэтому бокс — нули, а
+   * ступень выбирается заранее под 200×200 (`choosePhotoSize`) и уезжает в
+   * оба враппера явно (`size`/`photoSize`). Видео — только постер: ни файла
+   * (`onlyPreview`), ни кнопки воспроизведения (`noPlayButton`), ни кольца
+   * (`withoutPreloader`). Расхождения 13, 16 в шапке — про крышку.
+   */
+  private async processPhotoVideoFilter({ message, promises, middleware }: ProcessSearchSuperResult): Promise<SearchSuperItem> {
+    // фильтр пропускает только фото/видео/gif — файл у вложения есть по построению
+    const media = getMediaFromMessage(message)!
+
+    const div = document.createElement('div')
+    div.classList.add('grid-item')
+
+    let wrapped: WrappedPhoto | undefined
+    const size = choosePhotoSize(media, 200, 200)
+    if(media._ !== 'photo') {
+      wrapped = (await wrapVideo({
+        doc: media,
+        message: { mid: message.id, peerId: message.peerId, date: message.date },
+        container: div,
+        boxWidth: 0,
+        boxHeight: 0,
+        lazyLoadQueue: this.lazyLoadQueue,
+        middleware,
+        onlyPreview: true,
+        withoutPreloader: true,
+        noPlayButton: true,
+        photoSize: size,
+      })).thumb
+    } else {
+      wrapped = await wrapPhoto({
+        photo: media,
+        container: div,
+        boxWidth: 0,
+        boxHeight: 0,
+        lazyLoadQueue: this.lazyLoadQueue,
+        middleware,
+        withoutPreloader: true,
+        noBlur: true,
+        size,
+      })
+    }
+
+    if(isMediaSpoiler(message)) {
+      const mediaSpoiler = await wrapMediaSpoiler({
+        animationGroup: 'chat',
+        media,
+        middleware,
+        width: 140,
+        height: 140,
+      })
+
+      // без stripped-ступени крышки нет (`wrapMediaSpoiler` отдаёт `undefined`)
+      if(mediaSpoiler) {
+        div.append(mediaSpoiler)
+      }
+    }
+
+    // `thumb` у видео есть всегда: постер в ветке `onlyPreview` строится без
+    // условий (`wrappers/video.ts`), а у фото это сам результат `wrapPhoto`
+    if(wrapped) {
+      [
+        wrapped.images.thumb,
+        wrapped.images.full,
+      ].filter((image): image is NonNullable<typeof image> => !!image).forEach((image) => {
+        image.classList.add('grid-item-media')
+      })
+
+      promises.push(wrapped.loadPromises.thumb)
+    }
+
+    return { element: div, message }
+  }
+
+  /**
+   * tweb `:716-767` — клик по медиа во вкладке. Крышка спойлера перехватывает
+   * первый клик (`:726-733`); иначе открывается вьювер, и ЛИСТАЕТ ОН ПО
+   * ЭЛЕМЕНТАМ ЭТОЙ ВКЛАДКИ (`:740-751`), а не по ленте чата. Расхождения
+   * 13-15 в шапке.
+   */
+  private onMediaClick(className: string, targetClassName: string, inputFilter: SearchSuperType, e: MouseEvent) {
+    const target = findUpClassName(e.target as HTMLElement, className)
+    if(!target) return
+
+    const mid = +target.dataset.mid!
+    if(!mid) {
+      return
+    }
+
+    const mediaSpoiler = target.querySelector<HTMLElement>('.media-spoiler-container')
+    if(mediaSpoiler) {
+      onMediaSpoilerClick({
+        event: e,
+        mediaSpoiler,
+      })
+      return
+    }
+
+    const peerId = +target.dataset.peerId!
+    const message = getSharedMediaMessage(peerId, mid)
+    if(!message) {
+      return
+    }
+
+    const container = this.tabs[inputFilter]!
+    const targets = Array.from(container.querySelectorAll<HTMLElement>('.' + targetClassName)).map((el) => {
+      const containerEl = findUpClassName(el, className)!
+      return {
+        element: el,
+        message: getSharedMediaMessage(+containerEl.dataset.peerId!, +containerEl.dataset.mid!),
+      }
+    }).filter((t): t is { element: HTMLElement, message: MyMessage } => !!t.message)
+
+    const ctx = this.lightboxCtx(targets.map((t) => t.message))
+    const items = targets.map((t) => messageToViewerItem(t.message, ctx, t.element))
+    const idx = items.findIndex((item) => item.mid === mid)
+
+    void openMediaViewer({
+      items,
+      index: idx,
+      target: items[idx].element!,
+      // порядок вкладки — newest-first (`ORDER BY seq DESC`), это и есть
+      // порядок листания вьювера (см. докблок `OpenMediaViewerArgs.reverse`)
+      reverse: false,
+      loadMoreMedia: this.loadMoreMedia(inputFilter, className),
+    })
+  }
+
+  /**
+   * Роль `copySearchContext` → `setSearchContext` (`tweb:757`, `:2795-2801`):
+   * за пределы отрисованных плиток вьювер листает той же ручкой, что и
+   * вкладка. Расхождение 14 в шапке.
+   */
+  private loadMoreMedia(inputFilter: SearchSuperType, className: string): OpenMediaViewerArgs['loadMoreMedia'] {
+    const { peerId } = this.searchContext
+    const wireFilter = WIRE_FILTER[inputFilter]!
+    const loader = createMediaNeighboursLoader({
+      fetchPage: async(offsetId, limit) =>
+        (await this.managers.messages.mediaHistory(peerId, wireFilter, offsetId, limit)).messages,
+    })
+
+    return async(older: boolean, anchor: ViewerItem | undefined, loadCount: number) => {
+      if(!anchor) return []
+      try {
+        const slice = await loader.neighbours(anchor.mid, older, loadCount)
+        const ctx = this.lightboxCtx(slice)
+        const container = this.tabs[inputFilter]!
+        // сосед может быть уже отрисован (плитка ниже кликнутой) — тогда полёт
+        // закрытия летит в неё; иначе `element: null`, как у tweb `processItem`
+        return slice.map((m) => messageToViewerItem(
+          m, ctx, container.querySelector<HTMLElement>(`.${className}[data-mid="${m.id}"]`),
+        ))
+      } catch {
+        return [] // ошибка сети = край списка: вьювер листает уже загруженное
+      }
+    }
+  }
+
+  /**
+   * Контекст авторов для подписей вьювера — как у ленты
+   * (`chat/bubbles.ts::openMediaViewerFor`): карточки пиров точечно из зеркала.
+   */
+  private lightboxCtx(messages: readonly MyMessage[]): LightboxCtx {
+    const peers = new Map<PeerId, NonNullable<ReturnType<typeof cachedPeer>>>()
+    for(const m of messages) {
+      const fromId = m.fromId
+      if(fromId == null || peers.has(fromId)) continue
+      const peer = cachedPeer(fromId)
+      if(peer) peers.set(fromId, peer)
+    }
+
+    return {
+      meId: rootScope.myId,
+      peers,
+      lang: useI18nStore.getState().lang,
+    }
   }
 
   /** tweb `:1259-1283`. */

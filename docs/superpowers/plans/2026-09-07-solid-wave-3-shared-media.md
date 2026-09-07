@@ -386,14 +386,14 @@ tweb-`SearchListLoader`): она докручивает страницы `mediaH
 - Изменить: `web-client/src/components/appSearchSuper.ts`
 - Тест: `web-client/src/components/appSearchSuper.media.test.ts`
 
-- [ ] **Шаг 1: прочитать** `:874-938` и `:716-774`.
-- [ ] **Шаг 2: падающий тест**: фото и видео дают `.grid-item.search-super-item`
+- [x] **Шаг 1: прочитать** `:874-938` и `:716-774`.
+- [x] **Шаг 2: падающий тест**: фото и видео дают `.grid-item.search-super-item`
   с `data-mid`/`data-peer-id` в `.search-super-content-media-grid`; сообщение со
   спойлером получает `.media-spoiler-container`, и первый клик по нему **снимает
   спойлер, а не открывает вьювер**; клик по обычной плитке открывает вьювер, а
   список для листания собран из элементов ЭТОЙ вкладки, а не из ленты чата.
-- [ ] **Шаг 3: убедиться, что тест падает.**
-- [ ] **Шаг 4: реализовать** поверх наших `wrappers/{photo,video,mediaSpoiler}.ts`
+- [x] **Шаг 3: убедиться, что тест падает.**
+- [x] **Шаг 4: реализовать** поверх наших `wrappers/{photo,video,mediaSpoiler}.ts`
   и `components/mediaViewer/openMediaViewer.ts`.
 
 **Готово когда:** пустая вкладка получает `.content-empty` с
