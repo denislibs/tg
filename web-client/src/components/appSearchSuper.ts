@@ -18,12 +18,14 @@
 // выделение и контекстное меню в этом файле ОТСУТСТВУЮТ — ни полей, ни пустых
 // методов: заглушка, которую никто не зовёт, — мёртвый код (`CLAUDE.md`).
 // Единственное исключение — `buildItem`: его зовёт уже приехавший
-// `performSearchResult`, и он честно отдаёт узел, просто пока пустой.
+// `performSearchResult`, и он честно отдаёт узел — для вкладок, чей рендерер
+// ещё не приехал, пока пустой.
 // Места, где оригинал зовёт ещё не приехавшее, помечены комментарием со
 // ссылкой на строку tweb и номер задачи; когда задача приедет, вызов встанет
 // ровно туда.
 //
-//  • `processXFilter`, медиавьювер по клику — задачи 7-9 (`tweb:826-1283`, `:716-777`);
+//  • `processPhotoVideoFilter`/`processUrlFilter`, медиавьювер по клику —
+//    задачи 7 и 9 (`tweb:874-938`, `:964-1094`, `:716-777`);
 //  • `loadFirstTime`/`firstLoad`, предикаты `canView*` — задача 10 (`tweb:2362-2529`);
 //  • `SortedUserList`/участники — задача 11 (`tweb:1525-1758`);
 //  • `SearchSelection`, `SearchContextMenu` — задача 14 (`tweb:156-345`,
@@ -100,6 +102,24 @@
 //     видно: живой апдейт всегда несёт ровно одно сообщение
 //     (`sharedMedia.tsx:247`). Портировать переворот значит закладывать
 //     дефект под первый же альбом; правим и объявляем.
+// 13. `processDocumentFilter` НЕ передаёт врапперу `searchContext`
+//     (`tweb:951`, `copySearchContext(inputFilter, this.nextRates.files, false)`).
+//     У оригинала контекст нужен контроллеру плеера, чтобы ДОГРУЖАТЬ очередь
+//     с сервера за границей отрисованного и понять, что очередь пора
+//     пересобрать; у нашего контроллера очередь идёт значением и собирается
+//     на каждый запуск сканом соседей (шапка `components/audio.ts`). Сам
+//     источник очереди «элементы вкладки» портирован ветвью `search-super-item`
+//     в `findMediaTargets` (tweb `audio.ts:461-462`), а `nextRates` — это
+//     расхождение 9. Вместе с контекстом отпадает и `copySearchContext`
+//     (`tweb:2795-2801`): второй его потребитель — медиавьювер задачи 7.
+// 14. `lazyLoadQueue` (`tweb:952`) врапперу не передаётся: у `wrapDocument`
+//     оригинала очередь нужна только обложке трека, которой у нас нет
+//     (шапка `components/audio.ts`).
+// 15. Шов менеджеров (расхождение 6) расширен третьей ручкой —
+//     `peers.fillMirror`: имя отправителя в подписи «кто ➝ куда»
+//     (`wrapSenderToPeer`) строит `PeerTitle`, а тот обязан объявить пробел
+//     зеркала карточек владельцу. У оригинала это `rootScope.managers`
+//     внутри самого враппера.
 import Scrollable, { ScrollableX } from '@components/scrollable'
 import { horizontalMenu } from '@components/horizontalMenu'
 import type { SelectTab } from '@components/horizontalMenu'
@@ -125,6 +145,8 @@ import { getMessageKind } from '@core/messages/messageKind'
 import { getSharedMediaMessage, saveSharedMediaMessages } from '@components/sharedMediaHistories'
 import { getHeavyAnimationPromise } from '@core/dom/heavyAnimation'
 import windowSize from '@helpers/windowSize'
+import wrapDocument from '@components/wrappers/document'
+import { getDocumentFromMessage, type MyDocument } from '@core/media/messageMedia'
 
 /**
  * tweb `:111` — фильтр сообщений (`inputMessagesFilterPhotoVideo` и т.п.).
@@ -211,9 +233,23 @@ type PerformSearchResultArgs = {
   append?: boolean
 }
 
-/** Ручки менеджеров, которыми пользуется подсистема — расхождение 6 в шапке. */
+/**
+ * tweb `:346-354` — что рендерер одного элемента получает от
+ * `performSearchResult`. Сужено до того, что читают наши рендереры:
+ * `promises`/`elemsToAppend` у оригинала пишет только `processPhotoVideoFilter`
+ * (задача 7), `searchGroup` — группы левой колонки (расхождение 11),
+ * `mediaTab` не читает никто.
+ */
+type ProcessSearchSuperResult = {
+  message: MyMessage
+  middleware: Middleware
+  inputFilter: SearchSuperType
+}
+
+/** Ручки менеджеров, которыми пользуется подсистема — расхождения 6 и 15 в шапке. */
 export type SearchSuperManagers = {
   messages: Pick<Managers['messages'], 'mediaHistory' | 'searchCounters'>
+  peers: Pick<Managers['peers'], 'fillMirror'>
 }
 
 /** Вид шаред-медиа на проводе (`GET /chats/{id}/media?filter=…`). */
@@ -255,6 +291,9 @@ export type AppSearchSuperOptions = {
   scrollable: Scrollable
   managers: SearchSuperManagers
   hideEmptyTabs?: boolean
+  /** tweb `:411`, `:447` — подписывать документы отправителем («кто ➝ куда»);
+   *  у голосовых и кружков отправитель показывается и без него (`:942`). */
+  showSender?: boolean
   onChangeTab?: (mediaTab: SearchSuperMediaTab) => void
   /** tweb `:428` — «во вкладке стало N элементов»; читает шапка профиля. */
   onLengthChange?: (type: SearchSuperMediaType, length: number) => void
@@ -315,6 +354,7 @@ export default class AppSearchSuper {
   public scrollable!: Scrollable
   public managers!: SearchSuperManagers
   public hideEmptyTabs? = true
+  public showSender? = false
   public onChangeTab?: (mediaTab: SearchSuperMediaTab) => void
   public scrollOffset?: number
 
@@ -703,7 +743,7 @@ export default class AppSearchSuper {
     await getHeavyAnimationPromise()
 
     const promises: Promise<unknown>[] = []
-    const elemsToAppend = messages.map((message) => ({ element: this.buildItem(message), message }))
+    const elemsToAppend = messages.map((message) => this.buildItem({ message, inputFilter, middleware }))
 
     if(this.loadMutex) {
       promises.push(this.loadMutex)
@@ -736,13 +776,68 @@ export default class AppSearchSuper {
   }
 
   /**
-   * Узел одного элемента вкладки. Настоящие рендереры (`processPhotoVideoFilter`
-   * `tweb:874-938`, `processDocumentFilter` `:940-962`, `processUrlFilter`
-   * `:964-1094`) приезжают задачами 7-9 и встанут ровно сюда — развилкой по
-   * `inputFilter`, как в оригинале (`tweb:1143-1170`).
+   * Узел одного элемента вкладки — развилка по `inputFilter`, как в оригинале
+   * (`tweb:1143-1170`). Рендереры медиа (`processPhotoVideoFilter`,
+   * `tweb:874-938`) и ссылок (`processUrlFilter`, `:964-1094`) приезжают
+   * задачами 7 и 9 и встанут своими ветками; до тех пор их вкладки получают
+   * голый узел.
    */
-  private buildItem(_message: MyMessage) {
-    return document.createElement('div')
+  private buildItem(options: ProcessSearchSuperResult): { element: HTMLElement, message: MyMessage } {
+    switch(options.inputFilter) {
+      // tweb `:1154-1160` — ОДИН рендерер на файлы, музыку, голосовые и кружки.
+      case 'inputMessagesFilterRoundVoice':
+      case 'inputMessagesFilterMusic':
+      case 'inputMessagesFilterDocument':
+        return this.processDocumentFilter(options)
+
+      default:
+        return { element: document.createElement('div'), message: options.message }
+    }
+  }
+
+  /**
+   * tweb `:940-962`. Файл — строка `.document` с именем, размером и временем
+   * отправки; музыка, голосовое и кружок — `audio-element` с классом
+   * `audio-48`. Голосовое и кружок рисуются КАК ТРЕК (`voiceAsMusic`): у них
+   * заголовком стоит отправитель, поэтому подписью времени они не
+   * дублируются (`withTime: !showSender`).
+   *
+   * Возврат синхронный: наш `wrapDocument` синхронен (см. его шапку).
+   * `searchContext`/`lazyLoadQueue` не передаются — расхождения 13-14 в шапке.
+   */
+  private processDocumentFilter({ message, middleware }: ProcessSearchSuperResult) {
+    const doc = getDocumentFromMessage(message)!
+    const showSender = this.showSender || (['voice', 'round'] as MyDocument['type'][]).includes(doc.type)
+
+    const div = wrapDocument({
+      doc,
+      // `MyMessage` целиком враппер не берёт (порт в объёме ленты) — ему
+      // отдаётся то, что нужно подписи и плееру: адрес, дата, отправитель и
+      // гейт точки «не прослушано».
+      message: {
+        mid: message.id,
+        peerId: message.peerId,
+        date: message.date,
+        fromId: message.fromId,
+        fwd_from: message._ === 'message' ? message.fwd_from : undefined,
+        out: !!message.pFlags.out,
+        mediaUnread: !!message.pFlags.media_unread,
+      },
+      middleware,
+      withTime: !showSender,
+      fontWeight: 400,
+      voiceAsMusic: true,
+      showSender,
+      managers: this.managers,
+      autoDownloadSize: 0,
+      getSize: () => 320,
+    })
+
+    if((['audio', 'voice', 'round'] as MyDocument['type'][]).includes(doc.type)) {
+      div.classList.add('audio-48')
+    }
+
+    return { message, element: div }
   }
 
   /** tweb `:1259-1283`. */

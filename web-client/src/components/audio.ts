@@ -32,15 +32,18 @@
  *     Бабл — следующий этап и вне периметра этой задачи, поэтому кнопка здесь
  *     была бы мёртвой ручкой. Кнопки расшифровки в клиенте сейчас нет вовсе:
  *     она жила в снесённой React-ленте — долг этапа 7;
- *   • `voiceAsMusic`, `showSender`, `withTime`-подпись отправителя
- *     (`wrapSenderToPeer`/`wrapSentTime`) — это режимы поиска/shared-media
- *     (tweb `searchContext`), а не ленты; враппера `senderToPeer` у нас нет;
  *   • обложка трека (`doc.thumbs` → `wrapPhoto`, `audio-with-thumb`) — ступени
  *     аудиофайла наш бэкенд не производит (`domain/mtmedia.go::thumbs` строит их
  *     из stripped-превью, которого у аудио нет), так что ветка была бы мёртвой;
  *   • `appMediaPlaybackController.setSearchContext/setTargets/isSafariBuffering`
  *     и `willBePlayed`-механика Safari — у нашего контроллера другой контракт
- *     (очередь передаётся значением, см. `findMediaTargets` ниже);
+ *     (очередь передаётся значением, см. `findMediaTargets` ниже). Вместе с
+ *     `setSearchContext` отпадает и поле `searchContext` узла (tweb audio.ts:521):
+ *     у оригинала оно нужно контроллеру, чтобы ДОГРУЖАТЬ очередь с сервера за
+ *     границей отрисованного (`SearchListLoader`) и чтобы понять, что очередь
+ *     надо пересобрать; у нас очередь — только то, что есть в DOM, и
+ *     пересобирается на каждый запуск. Сам источник очереди в shared-media —
+ *     ветка `search-super-item` в `findMediaTargets` — портирован;
  *   • ветка аплоада (`uploadingFileName`) — прогресс отдачи живёт в
  *     `stores/uploadsStore` и приезжает в бабл отдельно; это отдельный этап.
  */
@@ -68,6 +71,12 @@ import ListenerSetter, { type Listener } from '@helpers/listenerSetter'
 import type { Middleware } from '@helpers/middleware'
 import { formatBytes } from '@core/mediaCache'
 import { useI18nStore } from '../i18n'
+import type { MessageFwdHeader } from '@core/models'
+import type { PeerTitleManagers } from '@components/chat/peerTitle'
+import wrapSenderToPeer from '@components/wrappers/senderToPeer'
+import wrapSentTime from '@components/wrappers/sentTime'
+import { formatFullSentTime } from '@helpers/date'
+import { joinElementsWith } from '@lib/langPack'
 
 const UNMOUNT_PRELOADER = true
 
@@ -112,8 +121,13 @@ export interface AudioElementMessage {
   /** не прослушано (tweb `message.pFlags.media_unread`) */
   mediaUnread?: boolean
   /** дата отправки, СЕКУНДЫ (tweb `message.date`) — подзаголовок голосового и
-   *  кружка в плашке плеера (`chat/audio.tsx:214`) */
+   *  кружка в плашке плеера (`chat/audio.tsx:214`); в режиме поиска
+   *  (`withTime`/`showSender`) обязательна — из неё строится подпись */
   date?: number
+  /** отправитель (tweb `message.fromId`) — подпись «кто ➝ куда» в режиме поиска */
+  fromId?: PeerId
+  /** заголовок пересылки — имя скрытого автора, когда `fromId` нет */
+  fwd_from?: MessageFwdHeader
 }
 
 /**
@@ -273,22 +287,42 @@ function wrapVoiceMessage(audioEl: AudioElement): () => (() => void) {
   return onLoad
 }
 
-/** tweb audio.ts:342-444 — музыкальный трек: название, подпись, полоса прогресса. */
+/**
+ * tweb audio.ts:342-444 — музыкальный трек: название, подпись, полоса прогресса.
+ * Сюда же попадает голосовое/кружок под `voiceAsMusic` (shared-media): у него
+ * нет описания (`:355`), а заголовком служит отправитель (`:392-394`).
+ */
 function wrapAudio(audioEl: AudioElement): () => (() => void) {
   const doc = audioEl.doc
+  const message = audioEl.message
   const t = useI18nStore.getState().t
 
+  // tweb :348 — здесь «голосовое» это ТИП документа, а не режим отрисовки.
+  const isVoice = doc.type === 'voice' || doc.type === 'round'
   const descriptionEl = document.createElement('div')
   descriptionEl.classList.add('audio-description')
 
   const audioAttribute = getAudioAttribute(doc)
 
-  // tweb audio.ts:354-371: части описания — [performer]; размер файла идёт
-  // ТОЛЬКО когда частей нет. Строка всегда начинается с ' • '.
-  const parts: string[] = []
-  if(audioAttribute?.performer) parts.push(audioAttribute.performer)
-  if(!parts.length) parts.push(formatBytes(doc.size, t))
-  if(parts.length) descriptionEl.append(' • ' + parts.join(' • '))
+  // tweb audio.ts:354-371: части описания — [performer], затем время отправки
+  // (`withTime`) ЛИБО размер файла, когда частей нет; отправитель — последним.
+  // Строка всегда начинается с ' • '.
+  if(!isVoice) {
+    const parts: (Node | string)[] = []
+    if(audioAttribute?.performer) parts.push(audioAttribute.performer)
+
+    if(audioEl.withTime) {
+      parts.push(formatFullSentTime(message.date!))
+    } else if(!parts.length) {
+      parts.push(formatBytes(doc.size, t))
+    }
+
+    if(audioEl.showSender) {
+      parts.push(wrapSenderToPeer(message, audioEl.middleware, audioEl.managers!))
+    }
+
+    descriptionEl.append(' • ', ...joinElementsWith(parts, ' • '))
+  }
 
   const details = document.createElement('div')
   details.classList.add('audio-details')
@@ -306,9 +340,20 @@ function wrapAudio(audioEl: AudioElement): () => (() => void) {
   middleEllipsisEl.dataset.fontWeight = audioEl.dataset.fontWeight
   middleEllipsisEl.dataset.fontSize = audioEl.dataset.fontSize
   if(audioEl.dataset.sizeType) middleEllipsisEl.dataset.sizeType = audioEl.dataset.sizeType
-  // tweb audio.ts:390 — `audioAttribute?.title ?? doc.file_name`
-  middleEllipsisEl.textContent = audioAttribute?.title ?? doc.file_name ?? ''
+  if(audioEl.getSize) (middleEllipsisEl as HTMLElement & { getSize?: () => number }).getSize = audioEl.getSize
+  if(isVoice) {
+    // tweb audio.ts:392-393 — у голосового-как-музыки заголовок это отправитель
+    middleEllipsisEl.append(wrapSenderToPeer(message, audioEl.middleware, audioEl.managers!))
+  } else {
+    // tweb audio.ts:395 — `audioAttribute?.title ?? doc.file_name`
+    middleEllipsisEl.textContent = audioAttribute?.title ?? doc.file_name ?? ''
+  }
   titleEl.append(middleEllipsisEl)
+
+  // tweb audio.ts:400-402
+  if(audioEl.showSender) {
+    titleEl.append(wrapSentTime({ date: message.date! }))
+  }
 
   subtitleDiv.append(descriptionEl)
 
@@ -398,14 +443,19 @@ export interface MediaTargetElement extends HTMLElement {
  * сообщения нет серверного `mid`, ему в очереди делать нечего (наш кружок этот
  * атрибут ставит, `wrappers/video.ts::wrapRound`).
  *
- * Отличия от оригинала: нет ветки `search-super-item` (панели shared media,
- * играющей звук, у нас нет — контейнер всегда `bubbles-inner`), нет фильтра
- * `data-to-be-skipped` (его ставит транскрибация, не портированная) и нет
- * разворота пары `prev/next` для ленты, идущей в обратном порядке: очередь у
- * нас — один массив в порядке узлов плюс индекс якоря, а не две половины.
+ * Две среды (tweb :461-462): элемент вкладки shared-media (`search-super-item`)
+ * ищет соседей внутри СВОЕЙ вкладки (`tabs-tab`) и без префикса бабла — так
+ * очередь голосовых собирается из содержимого вкладки «Голосовые», а музыки —
+ * из «Музыки»; всё прочее — лента (`bubbles-inner`).
+ *
+ * Отличия от оригинала: нет фильтра `data-to-be-skipped` (его ставит
+ * транскрибация, не портированная) и нет разворота пары `prev/next` для ленты,
+ * идущей в обратном порядке: очередь у нас — один массив в порядке узлов плюс
+ * индекс якоря, а не две половины.
  */
 export function findMediaTargets(anchor: MediaTargetElement): { queue: AudioTrack[], index: number } {
-  const container = findUpClassName(anchor, 'bubbles-inner')
+  const isBubbles = !anchor.classList.contains('search-super-item')
+  const container = findUpClassName(anchor, !isBubbles ? 'tabs-tab' : 'bubbles-inner')
   if(!container) {
     return { queue: [anchor.track], index: 0 }
   }
@@ -413,12 +463,17 @@ export function findMediaTargets(anchor: MediaTargetElement): { queue: AudioTrac
   const attr = ':not([data-is-outgoing="1"])'
   const justAudioSelector = `audio-element.audio:not(.is-voice)${attr}`
   // Голосовые и кружки — одна очередь; музыка — своя (tweb :467-471).
-  const selectors = anchor.matches(justAudioSelector) ?
+  let selectors = anchor.matches(justAudioSelector) ?
     [justAudioSelector] :
     [`audio-element.audio.is-voice${attr}`, `.media-round${attr}`]
 
-  const prefix = '.bubble:not(.webpage) '
-  const selector = selectors.map((s) => prefix + s).join(', ')
+  // tweb :473-476 — префикс бабла только в ленте
+  if(isBubbles) {
+    const prefix = '.bubble:not(.webpage) '
+    selectors = selectors.map((s) => prefix + s)
+  }
+
+  const selector = selectors.join(', ')
 
   const elements = Array.from(container.querySelectorAll<MediaTargetElement>(selector))
   const index = elements.indexOf(anchor)
@@ -437,6 +492,21 @@ export default class AudioElement extends HTMLElement {
   public track!: AudioTrack
   /** СВОЙ медиа-элемент этого сообщения (tweb `this.audio` = результат `addMedia`) */
   public media!: HTMLMediaElement
+
+  // Режим поиска/shared-media (tweb audio.ts:519-522); ставит `wrapDocument`.
+  /** время отправки в описании трека вместо размера файла */
+  public withTime = false
+  /** голосовое и кружок рисуются как музыка: заголовок + подпись, без волны */
+  public voiceAsMusic = false
+  /** подпись отправителя («кто ➝ куда») и `sent-time` у заголовка */
+  public showSender = false
+  /** ручки для имени отправителя; обязательны при `showSender` и у
+   *  голосового под `voiceAsMusic` (там отправитель — заголовок) */
+  public managers?: PeerTitleManagers
+  /** живой геттер ширины для `MiddleEllipsisElement` (tweb `(audioEl as any).getSize`) */
+  public getSize?: () => number
+  /** «голосовое» как РЕЖИМ отрисовки (tweb `:549`) — им же решается формат времени */
+  private isVoice = false
 
   /** слушатели узла и его медиа — живут всё время жизни элемента (tweb 1:1) */
   public listenerSetter = new ListenerSetter()
@@ -459,7 +529,11 @@ export default class AudioElement extends HTMLElement {
     if(this.message.peerId !== undefined) this.dataset.peerId = '' + this.message.peerId
 
     const doc = this.doc
-    const isVoice = doc.type === 'voice' || doc.type === 'round'
+    // tweb audio.ts:548-549 — под `voiceAsMusic` голосовое рисуется как трек.
+    // Кружок в ленте сюда не попадает (его рисует `wrappers/video.ts::wrapRound`),
+    // в shared-media он идёт этой же веткой «как музыка».
+    const isRealVoice = doc.type === 'voice'
+    const isVoice = this.isVoice = !this.voiceAsMusic && isRealVoice
 
     // tweb audio.ts:558-564
     this.innerHTML = `
@@ -534,10 +608,10 @@ export default class AudioElement extends HTMLElement {
     return formatVideoTime(duration | 0)
   }
 
+  /** tweb audio.ts:606 — «текущее / всего» только у голосового-как-голосового. */
   private getTimeStr(): string {
-    const isVoice = this.doc.type !== 'audio'
     const current = formatVideoTime(this.media ? this.media.currentTime | 0 : 0)
-    return isVoice ? current + ' / ' + this.getDurationStr() : current
+    return this.isVoice ? current + ' / ' + this.getDurationStr() : current
   }
 
   /**
