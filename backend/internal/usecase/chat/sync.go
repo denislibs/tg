@@ -330,6 +330,12 @@ func (i *Interactor) MediaHistory(ctx context.Context, chatID, userID int64, fil
 	if err != nil {
 		return HistoryResult{}, err
 	}
+	// Вложение собирается здесь же, как у истории и поиска: ручка отдаёт
+	// ТОЛЬКО медиа, и без `Media` клиенту нечего рисовать в плитке
+	// (пин — TestMediaHistory_HydratesAttachment).
+	if e := i.hydrateMedia(ctx, msgs); e != nil {
+		return HistoryResult{}, e
+	}
 	return HistoryResult{Messages: msgs, Count: count}, nil
 }
 
