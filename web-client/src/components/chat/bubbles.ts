@@ -102,7 +102,7 @@ import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import idleController from '@helpers/idleController'
 import { getHeavyAnimationPromise, onHeavyAnimation as useHeavyAnimationCheck } from '@core/dom/heavyAnimation'
 import rootScope from '@lib/rootScope'
-import { ANCHOR_ACTION_ATTRIBUTE, wrapMessageText, type AnchorAction } from '@lib/richtext'
+import { ANCHOR_ACTION_ATTRIBUTE, wrapEmojiText, wrapMessageText, type AnchorAction } from '@lib/richtext'
 import { mirrorWindow, putMirrorPage, replaceMirrorWindow } from '@core/history/messagesMirror'
 import { generateTempMessageId, isLocalMessageId } from '@core/history/messageId'
 import { messageToConvMsg } from '@core/messageToConvMsg'
@@ -152,6 +152,9 @@ import { formatVideoTime } from '@components/messages/videoPlayback'
 import PeerTitle, { type PeerTitleManagers } from './peerTitle'
 import { generateTail } from './tail'
 import { avatarNew } from '@components/avatar'
+import { formatUserPhone } from '@core/format/phone'
+import { copyTextToClipboard } from '@helpers/clipboard'
+import { toastNew } from '@components/toast'
 import ProgressivePreloader from '@components/preloader'
 import liteMode from '@helpers/liteMode'
 import deferredPromise, { type CancellablePromise } from '@helpers/cancellablePromise'
@@ -159,7 +162,7 @@ import { animateLadderLists, type LadderStep } from '@core/dom/ladder'
 import { deleteChatPosition, getChatPosition, saveChatPosition, type ChatPosition } from '@core/chat/chatPositions'
 import { getActiveGradientRenderer } from '@core/chat/activeGradient'
 import type { ChatAutoDownload } from '@core/hooks/useChatAutoDownload'
-import { i18n } from '@lib/langPack'
+import I18n, { i18n } from '@lib/langPack'
 import { useI18nStore } from '../../i18n'
 
 /** Адрес бабла — порт tweb `FullMid` (`${peerId}_${mid}`, bubbles.ts:440-449).
@@ -1686,6 +1689,92 @@ export default class ChatBubbles implements BubbleGroupsHost {
   }
 
   /**
+   * КОНТАКТ (визитка) — порт ветки `case 'messageMediaContact'`
+   * (tweb bubbles.ts:8706-8755) целиком, узел в узел.
+   *
+   * Оригинал собирает разметку ПРЯМО ЗДЕСЬ, без отдельного модуля (в отличие от
+   * опроса, у которого в tweb свой `bubbleParts/pollMessageContent/`), —
+   * поэтому и здесь она собирается на месте, а не выносится в файл: своего
+   * состояния у визитки нет вовсе, это снимок имени и телефона на момент
+   * отправки.
+   *
+   *   • `div.contact[data-peer-id]` (:8708-8710) — ключ пира на самом узле:
+   *     по нему ветка клика решает, открывать профиль или копировать номер
+   *     (:3174-3186), второй раз спрашивать это у сообщения незачем;
+   *   • `div.contact-details > .contact-name + .contact-number` (:8715-8735);
+   *   • аватарка 54 px впереди (`contactDiv.prepend`, :8740-8748);
+   *   • `messageDiv.append(contactDiv)` (:8752) — ИМЕННО append, а не prepend:
+   *     текст сообщения визитка себе не забирает (`context.messageMessage`
+   *     она не обнуляет, в отличие от опроса на :8760), и подпись остаётся
+   *     НАД карточкой.
+   *
+   * `mediaRequiresMessageDiv = true` (:8750) у нас уже выражен: `bubbleClasses`
+   * держит `contact` в наборе `MEDIA_IN_MESSAGE_DIV`. Класс `contact-message`
+   * (:8751) — там же, как и остальные классы вида.
+   *
+   * Расхождений с оригиналом три, и все три — отсутствие предмета:
+   *   • `noAttachmentDivNeeded` (:8712) выражать нечем: у нас `renderMedia`
+   *     до визитки не доходит вовсе (`getBubbleMedia` отвечает `undefined`),
+   *     и контейнера вложения никто не создаёт;
+   *   • номер группируется `core/format/phone.ts::formatUserPhone` — тем же
+   *     портом `formatPhoneNumber`, которым уже живёт телефон профиля.
+   *     Оригинал зовёт его с `{defaultCountryCode: this.myCountryCode}`
+   *     (:8732) и ставит `+` только при распознанном коде страны; своей
+   *     страны (`myCountryCode`) у нас нет вовсе — ни поля, ни ручки, — и
+   *     национальная запись номера без кода нам не приезжает: витрина хранит
+   *     `contact_phone` как прислал отправитель. Поэтому `+` ставится всегда,
+   *     ровно как у tweb-обёртки `formatUserPhone.ts`;
+   *   • класс `contact-avatar` (`_chatBubble.scss:1326`) не ставится: его не
+   *     ставит и оригинал — `avatarNew` даёт узлу только свои четыре класса,
+   *     а правило в партиале мёртвое.
+   */
+  private renderContact(message: MyMessage, messageDiv: HTMLElement): void {
+    if (message._ !== 'message' || message.media?._ !== 'messageMediaContact') return
+
+    const contact = message.media
+
+    const contactDiv = document.createElement('div')
+    contactDiv.classList.add('contact')
+    contactDiv.dataset.peerId = '' + contact.user_id
+
+    const contactDetails = document.createElement('div')
+    contactDetails.className = 'contact-details'
+
+    const contactNameDiv = document.createElement('div')
+    contactNameDiv.className = 'contact-name'
+    // :8719-8725 — имя склеивается из двух параметров схемы; пустые отбрасываются.
+    const fullName = [contact.first_name, contact.last_name].filter(Boolean).join(' ')
+    contactNameDiv.append(fullName.trim() ? wrapEmojiText(fullName) : i18n('AttachContact'))
+
+    const contactNumberDiv = document.createElement('div')
+    contactNumberDiv.className = 'contact-number'
+    // :8729 — строка ОРИГИНАЛА, не ключ словаря: `i18n` у неё нет и там.
+    contactNumberDiv.textContent = contact.phone_number
+      ? formatUserPhone(contact.phone_number)
+      : 'Unknown phone number'
+
+    contactDiv.append(contactDetails)
+    contactDetails.append(contactNameDiv, contactNumberDiv)
+
+    // :8740-8748. `peerTitle` вместо `peerId` — ветка оригинала «карточки пира
+    // нет и быть не может»: визитка присланного не-пользователя едет с
+    // `user_id: 0`, и рисовать аватарку надо по ИМЕНИ.
+    const avatar = avatarNew({
+      middleware: this.getMiddleware(),
+      size: 54,
+      ...(contact.user_id
+        ? { peerId: contact.user_id }
+        // `[0]` — буквально из оригинала (:8746). Видимого следствия у среза
+        // нет: инициалы аватарка всё равно берёт первой буквой имени.
+        : { peerTitle: fullName.trim() ? fullName : I18n.format('AttachContact', true)[0] }),
+      managers: this.managers,
+    })
+    contactDiv.prepend(avatar.node)
+
+    messageDiv.append(contactDiv)
+  }
+
+  /**
    * Стикер — порт `ChatBubbles.wrapSticker` (tweb bubbles.ts:6069-6119) в
    * применимом объёме.
    *
@@ -1920,6 +2009,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // `getBubbleMedia` (вложение опроса — не файл), а класс `poll-message`
     // ставит `bubbleClasses`, как и остальные классы вида.
     this.renderPoll(message, bubble, messageDiv)
+
+    // Контакт — соседняя ветка того же switch'а (:8706), и попадает сюда по
+    // той же причине, что опрос: визитка файла не несёт, `renderMedia` на ней
+    // выходит. Стоит ПОСЛЕ `renderPoll` только ради читаемости — ветки
+    // взаимоисключительны, вложение у сообщения ровно одно.
+    this.renderContact(message, messageDiv)
 
     // Лог звонка — соседняя ветка того же switch'а оригинала (:8650), поэтому
     // и здесь она стоит рядом с медиа. Само сообщение при этом СЛУЖЕБНОЕ:
@@ -2326,8 +2421,15 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * его не пересобирает, а обновляет через хендл — `pollContents`. У оригинала
    * ровно то же разделение: тело опроса он не трогает пересборкой, а зовёт
    * `updateLocalOnEdit` (tweb bubbles.ts:8793-8804).
+   *
+   * `.contact` — тоже не содержимое, но по третьей причине: визитка это
+   * СНИМОК имени и телефона на момент отправки, изменить её правка не может
+   * (`messageMediaContact` неизменяем, и подписи у него не бывает вовсе — в
+   * схеме у визитки нет `message`). Не будь её в списке, любая перерисовка
+   * тела — например, приехавшая реакция — уносила бы карточку насовсем, и
+   * бабл возвращался ровно в тот пустой вид, ради которого задача.
    */
-  private static readonly BODY_NOT_CONTENT = '.document, .audio, .time, .reactions, .poll-message-content'
+  private static readonly BODY_NOT_CONTENT = '.document, .audio, .time, .reactions, .poll-message-content, .contact'
 
   /**
    * СОДЕРЖИМОЕ тела — текст сообщения с разметкой.
@@ -3207,6 +3309,28 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // спрашивать это у сообщения незачем. `cancelEvent` у оригинала здесь нет,
     // и его нет здесь: под баблом звонка нет ничего, что могло бы перехватить
     // клик.
+    // Визитка — порт ветки tweb bubbles.ts:3174-3190. Стоит ПЕРЕД баблом
+    // звонка ровно как у оригинала (:3174 против :3192).
+    //
+    // Развилка та же: есть ключ пира — открыть профиль (`setInnerPeer`,
+    // :3177-3181); ключа нет (визитка не-пользователя, `user_id: 0`) —
+    // скопировать ЦИФРЫ номера без пробелов группировки и показать тост
+    // (:3183-3186). `cancelEvent` у оригинала только во второй ветке — здесь
+    // тоже.
+    const contactDiv = target.closest<HTMLElement>('.contact')
+    if (contactDiv) {
+      const peerId = Number(contactDiv.dataset.peerId)
+      if (peerId) {
+        navigation?.openPeer?.(peerId, contactDiv)
+      } else {
+        const phone = contactDiv.querySelector<HTMLElement>('.contact-number')
+        void copyTextToClipboard((phone?.textContent ?? '').replace(/\s/g, ''))
+        toastNew({ langPackKey: 'PhoneCopied' })
+        cancelEvent(e)
+      }
+      return
+    }
+
     const callDiv = target.closest<HTMLElement>('.bubble-call')
     if (callDiv) {
       navigation?.callUser?.(callDiv.dataset.type as 'voice' | 'video')

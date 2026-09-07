@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 11,
+      "version": 12,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -2975,6 +2975,13 @@
           "value": "online"
         },
         {
+          "key": "OnlineCount",
+          "forms": {
+            "one_value": "%1$d online",
+            "other_value": "%1$d online"
+          }
+        },
+        {
           "key": "OnlyAllowThisReactions",
           "value": "Only allow these reactions"
         },
@@ -5385,7 +5392,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 11,
+      "version": 12,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -6034,6 +6041,15 @@
         {
           "key": "Online",
           "value": "в сети"
+        },
+        {
+          "key": "OnlineCount",
+          "forms": {
+            "one_value": "%1$d онлайн",
+            "few_value": "%1$d онлайн",
+            "many_value": "%1$d онлайн",
+            "other_value": "%1$d онлайн"
+          }
         },
         {
           "key": "ShareWith",

@@ -36,14 +36,26 @@ try {
 } catch (_e) { /* нет sw-stream — DNP-стриминг недоступен, остальное работает */ }
 
 self.addEventListener('install', () => self.skipWaiting())
+/* Активация сносит кэш ассетов ЦЕЛИКОМ — эталон tweb
+ * (`serviceWorker/index.service.ts:357-359`: `ctx.caches.delete(CACHE_ASSETS_NAME)`),
+ * а не «все app-shell-*, КРОМЕ текущего».
+ *
+ * Прежнее условие `n !== APP_SHELL` опиралось на то, что имя кэша меняется от
+ * сборки к сборке. Оно не менялось НИ РАЗУ: номер в имя штампует
+ * `scripts/write-version.mjs:33-36` из `package.json.build`, а тот закоммичен
+ * единицей и никем не инкрементируется (`VITE_BUILD` не выставляет ни один
+ * скрипт, CI-воркфлоу в репозитории нет). То есть фильтр всегда исключал
+ * единственный существующий кэш, и очистка была мёртвой: `app-shell-1` копил
+ * чанки всех сборок подряд.
+ *
+ * У оригинала имя вообще ни при чём — он сносит свой кэш безусловно, и это
+ * единственная форма, которая не зависит от того, вспомнил ли кто-то поднять
+ * номер сборки. Media-кэш (`cachedFiles`) не трогаем: он не про оболочку. */
 self.addEventListener('activate', (e) =>
   e.waitUntil(
     (async () => {
-      // Подчищаем предыдущие версии app-shell кэша (media-кэш не трогаем).
       const names = await caches.keys()
-      await Promise.all(
-        names.filter((n) => n.startsWith('app-shell-') && n !== APP_SHELL).map((n) => caches.delete(n)),
-      )
+      await Promise.all(names.filter((n) => n.startsWith('app-shell-')).map((n) => caches.delete(n)))
       await self.clients.claim()
     })(),
   ),
@@ -64,7 +76,17 @@ const MEDIA_RE = /^\/api\/media\/\d+\/content$/
  * новое имя → activate удаляет старые app-shell-* (см. ниже) → свежая оболочка. */
 const APP_SHELL = 'app-shell-1'
 const IMMUTABLE_RE = /^\/(assets|fonts)\//
-const SHELL_MAX = 80 // потолок записей (старые хеш-чанки после деплоев — под нож)
+/* Потолок записей. Число обязано быть БОЛЬШЕ, чем ассетов в одной сборке,
+ * иначе кэш вытесняет живые чанки текущей сборки, ещё пока она грузится, — и
+ * cache-first перестаёт что-либо экономить. Прежние 80 этому не отвечали:
+ * одна сборка — 137 файлов под `/assets/`, 2 шрифта и 22 lottie-json
+ * (`/assets/tgs/`, они ложатся в тот же кэш), то есть ~161 запись.
+ *
+ * У оригинала потолка нет вовсе — там кэш сносится целиком на каждой активации
+ * (см. `activate` выше). У нас активация случается не на каждом выкате (байты
+ * `sw.js` меняются не всегда), поэтому предел нужен: он держит рост, а не
+ * подрезает сборку. 400 — примерно две с половиной сборки. */
+const SHELL_MAX = 400
 
 /* Встроенные lottie-json (Этап 0 «один движок lottie», docs/superpowers/plans/
  * 2026-09-05-lottie-single-engine.md): единственные файлы под /assets/ БЕЗ
@@ -110,11 +132,31 @@ self.addEventListener('fetch', (event) => {
   // API/WS и публичные @username-страницы — никогда не перехватываем и не кэшируем.
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/ws') || url.pathname.startsWith('/@')) return
 
-  // Навигации (SPA) — network-first, оффлайн-фолбэк на закэшированный index.html.
-  if (req.mode === 'navigate') {
-    event.respondWith(handleNavigation(req))
-    return
-  }
+  /* НАВИГАЦИЮ НЕ ПЕРЕХВАТЫВАЕМ — как оригинал.
+   *
+   * tweb до навигационного запроса не доходит вовсе: его гейт кэша требует
+   * РАСШИРЕНИЯ ФАЙЛА (`serviceWorker/index.service.ts:274` —
+   * `\.(js|css|jpe?g|json|wasm|png|mp3|svg|tgs|ico|woff2?|ttf|webmanifest?)`;
+   * `.html` в списке нет), `switch` по последнему сегменту URL навигацию тоже
+   * не ловит, а его ветка `default` закомментирована (`:339-342`). Оболочку
+   * оригинал не кэширует НИКОГДА и оффлайн-фолбэка на неё не имеет.
+   *
+   * Здесь стояло обратное — network-first с сохранением `/index.html` в тот же
+   * кэш, что и ассеты, — и это был корень «пустой страницы при F5 после
+   * выката»:
+   *   • закэшированная оболочка ссылается на ХЕШИРОВАННЫЕ чанки той сборки, в
+   *     том числе на корневой `assets/rolldown-runtime-<hash>.js`, с которого
+   *     начинается ВЕСЬ граф модулей;
+   *   • деплой физически стирает старые хеши (`vite build --emptyOutDir`,
+   *     package.json:9), а nginx отдаёт `/assets/` через `try_files $uri =404`;
+   *   • значит любой возврат к старой оболочке — оффлайн-фолбэк или просто
+   *     эвристически свежий ответ HTTP-кэша — даёт 404 на рантайм-чанке. Ни
+   *     одна строка приложения не выполняется, `#root` остаётся пуст.
+   * Новая вкладка при этом стартовала нормально: у неё навигация шла в сеть.
+   *
+   * Убирая ветку, мы теряем ровно то, чего у оригинала и нет: показ оболочки
+   * без сети. Взамен документ ВСЕГДА приходит из сети, и ни одна навигация
+   * больше не собирается из ресурсов двух разных поколений воркера. */
 
   // Lottie-json без хеша в имени (§ TGS_RE выше) — ДО общей IMMUTABLE_RE-ветки,
   // иначе более широкий /assets/ заберёт их себе первым.
@@ -150,18 +192,6 @@ async function handleMedia(req) {
   return res
 }
 
-async function handleNavigation(req) {
-  const cache = await caches.open(APP_SHELL)
-  try {
-    const res = await fetch(req)
-    if (res.ok) cache.put('/index.html', res.clone()) // свежая оболочка для оффлайна
-    return res
-  } catch (_e) {
-    const fallback = await cache.match('/index.html')
-    return fallback || Response.error()
-  }
-}
-
 /* Гейт кэширования — РОВНО 200, а не любой `ok` (эталон tweb
  * `serviceWorker/cache.ts:6-8` — `isCorrectResponse`). Разница не косметическая:
  * 206 тоже `ok`, но Cache Storage его не принимает — `put` бросает
@@ -178,7 +208,12 @@ async function handleNavigation(req) {
 async function handleImmutable(req) {
   try {
     const cache = await caches.open(APP_SHELL)
-    const hit = await cache.match(req)
+    // `ignoreVary` — оттуда же (`cache.ts:20`). Без него промах гарантирован на
+    // ровном месте: nginx отдаёт ассеты с `gzip_vary on`, то есть
+    // `Vary: Accept-Encoding`, и сохранённый ответ перестаёт совпадать с
+    // запросом, у которого набор кодировок хоть чем-то отличается. Ключ у нас
+    // и так контентный (хеш в имени файла), различать варианты нечем и незачем.
+    const hit = await cache.match(req, { ignoreVary: true })
     if (hit) return hit
     const res = await fetch(req)
     if (res.status === 200) {
@@ -203,7 +238,7 @@ async function handleImmutable(req) {
  * Если кэша ещё нет (самый первый визит) — ждём сеть, как handleImmutable. */
 async function handleTgs(req) {
   const cache = await caches.open(APP_SHELL)
-  const hit = await cache.match(req)
+  const hit = await cache.match(req, { ignoreVary: true }) // тот же `Vary`, см. выше
   const revalidate = fetch(req)
     .then((res) => {
       if (res.status === 200) cache.put(req, res.clone()).catch(() => {}) // quota — не мешаем
@@ -215,14 +250,16 @@ async function handleTgs(req) {
 }
 
 // Хеш-имена уникальны, ревалидация не нужна — но старые чанки после деплоев
-// копятся. Держим потолок: сверх лимита выбрасываем старейшие (index.html — нет).
+// копятся. Держим потолок: сверх лимита выбрасываем старейшие.
+//
+// Оговорки про `/index.html` здесь больше нет: оболочку воркер не кэширует
+// вовсе (см. ветку навигации в `fetch`), и защищать от вытеснения нечего.
 async function trimShell(cache) {
   try {
     const keys = await cache.keys()
     if (keys.length <= SHELL_MAX) return
-    const evictable = keys.filter((k) => !k.url.endsWith('/index.html'))
     const over = keys.length - SHELL_MAX
-    for (let i = 0; i < over && i < evictable.length; i++) await cache.delete(evictable[i])
+    for (let i = 0; i < over && i < keys.length; i++) await cache.delete(keys[i])
   } catch (_e) { /* не роняем SW */ }
 }
 

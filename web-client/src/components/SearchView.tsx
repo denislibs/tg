@@ -3,7 +3,6 @@
 // директория) → «Сообщения» (полнотекст по всем чатам); пустой запрос —
 // «Недавние». Табы Медиа/Ссылки/Файлы/Музыка/Голосовые — глобальный
 // searchGlobal с фильтром типа (tweb inputMessagesFilter*).
-import type { LangPackKey } from '@/lang'
 import { useEffect, useState } from 'react'
 import Text from '../shared/ui/Text'
 import { RowDate, SentTime } from '../shared/ui/dateNodes'
@@ -31,6 +30,7 @@ import { gradientFor, mediaLabel } from '../core/dialogToChat'
 import { EXT_COLORS, extOf, firstUrl, fmtDur, fmtSize, hostOf } from '../core/format/sharedMediaFmt'
 import { useT, useTArgs } from '../i18n'
 import { getChatTitle, isBroadcast } from '../core/peers/predicates'
+import { getChatMembersString, type MembersStringFormatter } from './wrappers/getChatMembersString'
 import { getUserTitle } from '../core/peers/getPeerTitle'
 import { getPeerPhoto, getPeerPhotoId, peerKey, type Chat as PeerChat, type UserReal } from '../core/peers/peer'
 import { Tabs, TabSlide } from '../shared/ui/Tabs'
@@ -295,7 +295,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
                           photoId={getPeerPhotoId(getPeerPhoto(c)) || undefined}
                           t={(getChatTitle(c) || '?').charAt(0).toUpperCase()}
                           title={getChatTitle(c)}
-                          subtitle={tArgs('Subscribers', [participantsCount(c)])}
+                          subtitle={getChatMembersString(c, tArgs)}
                           onClick={() => onResultChat(c)}
                         />
                       ))}
@@ -442,17 +442,14 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
 }
 
 // ── helpers ─────────────────────────────────────────────────────────
-/** Число участников есть только у `channel`/`chat` — у `*Forbidden` его нет по
- *  схеме, а не «равно нулю». */
-function participantsCount(c: PeerChat): number {
-  return c._ === 'channel' || c._ === 'chat' ? c.participants_count ?? 0 : 0
-}
-
-/** Подпись строки директории: «@username, N подписчиков/участников». Канал от
- *  супергруппы отличает `isBroadcast`, а не строка вида чата. */
-function chatResultSubtitle(c: PeerChat, tArgs: (key: LangPackKey, args: (string | number)[]) => string): string {
+/** Подпись строки директории: «@username, N подписчиков/участников». Саму
+ *  подпись считает ОДИН владелец — `wrappers/getChatMembersString` (порт tweb
+ *  `getChatMembersString.ts:9-22`); здесь только приставка с юзернеймом. Прежде
+ *  правило («канал → Subscribers, иначе Members») жило и здесь, и в шапке чата
+ *  — во второй копии русским литералом мимо словаря. */
+function chatResultSubtitle(c: PeerChat, tArgs: MembersStringFormatter): string {
   const username = c._ === 'channel' && c.username ? `@${c.username}, ` : ''
-  return `${username}${tArgs(isBroadcast(c) ? 'Subscribers' : 'Members', [participantsCount(c)])}`
+  return `${username}${getChatMembersString(c, tArgs)}`
 }
 
 // Ряд своего диалога (недавние / локальные совпадения / мои каналы)

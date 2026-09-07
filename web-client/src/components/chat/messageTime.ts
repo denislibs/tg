@@ -22,6 +22,7 @@ import Icon from '@components/icon'
 import type { IconName } from '@core/tgico-icons'
 import { fmtViews } from '@core/format/fmtViews'
 import { formatTime, getFullDate, isValidTimestamp } from '@helpers/date'
+import numberThousandSplitter from '@helpers/number/numberThousandSplitter'
 import { useI18nStore } from '../../i18n'
 
 /**
@@ -179,13 +180,6 @@ export function setSendingStatus(timeSpan: HTMLElement, status: SendingStatus | 
     if (isReplacingFirst) existing.replaceWith(icon)
     else target.prepend(icon)
   }
-}
-
-/** Порт `numberThousandSplitter` (tweb `helpers/number/numberThousandSplitter.ts`)
- *  с разделителем по умолчанию — неразрывным он в оригинале не делается.
- *  Копия локальная: ванильный потребитель у него ровно один — счётчик ниже. */
-function numberThousandSplitter(x: number): string {
-  return String(x).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
 }
 
 /**

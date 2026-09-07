@@ -40,7 +40,7 @@ const PLACEHOLDER = /%\d\$[sd]|%[sd]/
  * пятёрки» требовало бы выдумать несуществующее склонение; со списком — проверяется в
  * обе стороны, чтобы он не стал лазейкой (см. «исключение протухло» ниже).
  */
-const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSender.SendVideo'])
+const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSender.SendVideo', 'OnlineCount'])
 
 // Состав словарей ничем, кроме этого пина, не держится: молча уронить строку могут обе
 // самые массовые задачи волны — кодмод задачи 6 и снос `t()` задачей 9. Потеря выглядит
@@ -158,8 +158,17 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `#@username` глушился пустым `catch {}` в `core/hooks/useUrlSync.ts`, а у
 // оригинала он показывается тостом (`appImManager.ts:1802-1809`). `plural` не
 // менялся — обе строки не числовые.
+// Сдвиг набора задачей «разнобой языка интерфейса»: русскому добавлен ОДИН
+// числовой ключ — `OnlineCount` (tweb lang.ts:1810, «%1$d online»), которого у
+// нас не было вовсе. Его зовёт шапка чата
+// (`wrappers/getChatMembersString.ts::getChatStatusString`, порт хвоста
+// `appImManager.ts:3105`): до этого «, N онлайн» приклеивалось к подписи РУССКИМ
+// ЛИТЕРАЛОМ мимо словаря. Отсюда `keys` 1310 → 1311 и `plural` 32 → 33. В
+// остальных четырёх словарях ключа нет намеренно — они покрыты наполовину by
+// design, под ними английский нижний слой. «Онлайн» в русском не склоняется,
+// поэтому ключ стоит в `RU_INDECLINABLE`.
 const COMPOSITION = {
-  ru: { keys: 1310, plural: 32 },
+  ru: { keys: 1311, plural: 33 },
   uk: { keys: 682, plural: 24 },
   es: { keys: 681, plural: 24 },
   de: { keys: 681, plural: 24 },
@@ -237,7 +246,7 @@ const COMPOSITION = {
 // `NoUsernameFound` и `Alert.UserDoesntExists` (разбор — у `COMPOSITION` выше).
 // У остальных четырёх словарей набор не менялся — их снимок тот же.
 const FINGERPRINT = {
-  ru: '526274f4',
+  ru: 'a2edf950',
   uk: 'e1335ac1',
   es: 'a6b1aad3',
   de: 'a6b1aad3',
