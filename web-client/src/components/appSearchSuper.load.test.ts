@@ -31,13 +31,13 @@ const photo = (id: number): MyMessage => makeMessage({
 const feed = (n: number) => Array.from({ length: n }, (_, i) => photo(n - i))
 
 function fakeBackend(all: MyMessage[]) {
-  const calls: { filter: string; offsetId: number; limit: number; got: MyMessage[] }[] = []
+  const calls: { peerId: number; filter: string; offsetId: number; limit: number; got: MyMessage[] }[] = []
   const managers = {
     messages: {
-      mediaHistory: async (_peerId: number, filter: string, offsetId = 0, limit = 30) => {
+      mediaHistory: async (peerId: number, filter: string, offsetId = 0, limit = 30) => {
         const from = offsetId ? all.filter((m) => m.id < offsetId) : all
         const got = from.slice(0, limit)
-        calls.push({ filter, offsetId, limit, got })
+        calls.push({ peerId, filter, offsetId, limit, got })
         return { messages: got, count: all.length }
       },
       searchCounters: async (_peerId: number, filters: string[]) =>
@@ -194,6 +194,36 @@ describe('AppSearchSuper: рендер из кэша', () => {
     // а вот пустая `files` за своим списком сходила — ровно один раз
     expect(calls.filter((c) => c.filter === 'files').length).toBe(1)
     // и узлы `media` на месте, в том же порядке
+    expect(mids(searchSuper)).toEqual([3, 2, 1])
+  })
+})
+
+describe('AppSearchSuper: смена пира', () => {
+  // Пин шага 6а плана: `cleanup()` обязан обнулять поля загрузки
+  // (`loaded`/`loadPromises`/`counters`, tweb `:2715-2721`). Иначе после
+  // `setQuery()` с другим пиром `loaded[type]` останется `true` с ПРОШЛОГО
+  // пира, `load()` посчитает вкладку уже загруженной и молча ничего не
+  // запросит — вкладка навсегда пустая, без ошибки и без записи в консоль.
+  it('после смены пира вкладка грузится заново — новым запросом с новым peerId', async () => {
+    const OTHER: PeerId = 2
+    // короткая лента: вкладка «закрыта» (`loaded[type] = true`) уже после первой страницы
+    const { managers, calls } = fakeBackend(feed(3))
+    const searchSuper = build(managers)
+
+    await searchSuper.load(true)
+    await settle()
+    expect(mids(searchSuper)).toEqual([3, 2, 1])
+    const network = calls.length
+
+    searchSuper.cleanup()
+    searchSuper.cleanupHTML()
+    searchSuper.setQuery({ peerId: OTHER, historyStorage: getHistoryStorage(OTHER) })
+    await searchSuper.load(true)
+    await settle()
+
+    const fresh = calls.slice(network)
+    expect(fresh.length).toBeGreaterThan(0)
+    expect(fresh.every((c) => c.peerId === OTHER)).toBe(true)
     expect(mids(searchSuper)).toEqual([3, 2, 1])
   })
 })
