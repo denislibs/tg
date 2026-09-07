@@ -40,6 +40,24 @@ import { attachClickEvent } from '@helpers/dom/clickEvent'
 import { fastRaf } from '@helpers/schedulers'
 import liteMode from '@helpers/liteMode'
 
+/**
+ * Время перехода между вкладками, мс — литерал `200` оригинала
+ * (`tweb/src/components/horizontalMenu.ts:48` и `:139`, дважды одно и то же
+ * число).
+ *
+ * Число обязано совпадать с CSS-переменной `--tabs-transition`
+ * (`styles/_tokens.scss` ← tweb `scss/base.scss:60`): по ней CSS играет сам
+ * переезд вкладок и подчёркивания (`styles/tweb/_slider.scss:114,215`), а по
+ * этому числу JS считает страховочный таймер уборки (`transition.ts`,
+ * `transitionTime + 100`) и длительность доводки полосы вкладок
+ * (`fastSmoothScroll({forceDuration})` ниже). Разъедутся — подчёркивание
+ * доиграет раньше содержимого, а ряд доедет позже обоих.
+ *
+ * Совпадение пинится тестом `horizontalMenu.test.ts` («время перехода
+ * запинено на CSS-переменную»): он читает `_tokens.scss` и сверяет числа.
+ */
+export const TABS_TRANSITION_TIME = 200
+
 type OnChangeArgs = {
   element: HTMLElement
   active: boolean
@@ -112,7 +130,7 @@ export async function selectTarget({
   content,
   onClick,
   scrollableX,
-  transitionTime = 200,
+  transitionTime = TABS_TRANSITION_TIME,
   prevId = -1,
   selectTab,
   onChange,
@@ -213,7 +231,7 @@ export function horizontalMenu({
   createSelectTab = TransitionSlider,
   onClick,
   onTransitionEnd,
-  transitionTime = 200,
+  transitionTime = TABS_TRANSITION_TIME,
   scrollableX,
   listenerSetter,
   onChange,
