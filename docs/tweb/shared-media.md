@@ -325,7 +325,7 @@ sharedMedia.tsx:47-57   setQuery() — достаёт стор пира и от�
 | Ряд вкладок (разметка) | **есть, 1:1** | `SharedMedia.tsx:73-97` (`SharedMediaTab`), ряд `:320-349` | классы совпадают, включая `i.menu-horizontal-div-item-background` и `is-single`; **но** ряд рисуется React-списком по `ALL_TABS`, а не строится классом |
 | Стили подсистемы | **есть, 1:1** | `web-client/src/styles/tweb/_searchSuper.scss` — **428 строк, ровно как оригинал** | портированы целиком, включая `is-selecting`/`is-full-viewport`, под которые у нас пока нет кода |
 | Анимация перехода между вкладками | **механизм есть, потребителя ещё нет** | `components/transition.ts` — `TransitionSlider` с `slideTabs`; старый React-путь `shared/ui/Tabs/TabSlide.tsx` (177) + `core/hooks/useTransitionSlider.ts` (60) пока жив | `slideTabs` (`transition.ts:45-95`) портирован 1:1 (волна 3, задача 3): вкладки не размонтируются, а сдвигаются на ±width, поэтому поддерево и `scrollTop` переживают переключение. React-путь с `keepMounted`-дефектом (`SharedMedia.tsx:352`) уйдёт вместе с `SharedMedia.tsx` (задача 13) |
-| Горизонтальный скролл ряда + автоцентрирование активной | **нет** | — | `horizontalMenu.ts:64-79` не портирован: ряд скроллится, но активная вкладка сама в вид не доезжает |
+| Горизонтальный скролл ряда + автоцентрирование активной | **портирован, к ряду ещё не подключён** | `components/horizontalMenu.ts` (задача 4 плана этапа 3) | порт `horizontalMenu.ts` целиком, включая автоцентрирование (`:64-79`) и переезд подчёркивания (`:104-127`); React-ряд `SharedMedia.tsx` им пока не пользуется — подключение приезжает с `AppSearchSuper` (задача 5) |
 | Свайп между вкладками | **нет** | — | |
 | Пагинация | **есть частично** | `SharedMedia.tsx:139,147,185-224` (`byFilter`, `PAGE_SIZE = 30`), sentinel `:226-242` | **по числовому `offset`, а не по `offsetId`** — прямое следствие формы ручки (§ 3); infinite scroll через `IntersectionObserver` с `rootMargin: 300px` вместо `scrollable.onScrolledBottom` |
 | Кэш вкладок | **есть частично** | `byFilter` — `SharedMedia.tsx:139` | живёт в стейте компонента: смена пира сносит компонент (`components/chat/ChatsContainer.tsx:151`, `key={desc.id}`) вместе с кэшем. У оригинала кэш модульный и переживает смену пира (`sharedMedia.tsx:33-36`) |
@@ -352,12 +352,12 @@ sharedMedia.tsx:47-57   setQuery() — достаёт стор пира и от�
 | `components/chat/selection.ts` (844) | `chat/selection.ts` (1189) — база `AppSelection` | база есть, `SearchSelection` нет |
 | `helpers/{listenerSetter,middleware,middlewarePromise,positionMenu,contextMenuController}.ts`, `helpers/dom/attachContextMenuListener.ts` | одноимённые | есть |
 | `core/lazyLoadQueue.ts`, `core/dom/setTransition.ts`, `core/dom/swipeHandler.ts`, `helpers/dom/handleHorizontalSwipe.ts` | одноимённые | есть |
-| `components/transition.ts` (~430) | `transition.ts` (383) | **портирован целиком** (волна 3, задача 3): `TransitionSlider` с обеими функциями анимации — `slideNavigation` (`:23-43`) и `slideTabs` (`:45-95`) |
+| `components/transition.ts` (~460) | `transition.ts` (383) | **портирован целиком** (волна 3, задача 3): `TransitionSlider` с обеими функциями анимации — `slideNavigation` (`:23-43`) и `slideTabs` (`:45-95`) |
+| `components/horizontalMenu.ts` (273) | `components/horizontalMenu.ts` (215) | **портирован целиком** (волна 3, задача 4): автоцентрирование (`:64-79`) и переезд подчёркивания (`:104-127`); слайдер содержимого по умолчанию — `TransitionSlider` выше |
 | `styles/tweb/_searchSuper.scss` (428), `_profile.scss`, `_rightSidebar.scss`, `_searchGroup.scss`, `_transition.scss` | одноимённые партиалы | стили готовы |
 | `components/stargifts/{stargiftsGrid,profileList}.module.scss` | одноимённые | стили готовы, кода нет |
 
-**Чего у нас нет вовсе** (нужно портировать): `horizontalMenu.ts` (215),
-`sortedUserList.ts` (134) вместе с
+**Чего у нас нет вовсе** (нужно портировать): `sortedUserList.ts` (134) вместе с
 ванильным строителем строки чатлиста (`appDialogsManager.addDialogNew` —
 аналога нет), сам `appSearchSuper.ts` (2843), `SearchSelection`,
 `SearchContextMenu`.
