@@ -22,7 +22,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 import fastSmoothScroll from '@helpers/fastSmoothScroll'
-import { horizontalMenu, type CreateSelectTab, type SelectTab } from '@components/horizontalMenu'
+import { horizontalMenu, TABS_TRANSITION_TIME, type CreateSelectTab, type SelectTab } from '@components/horizontalMenu'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 vi.mock('@helpers/fastSmoothScroll', async (importOriginal) => {
   const mod = await importOriginal<typeof import('@helpers/fastSmoothScroll')>()
@@ -550,5 +552,50 @@ describe('полоса вкладок поверх настоящего Transiti
 
     expect(content.children[0].querySelector('.inner-list')).toBe(list)
     expect(list.scrollTop).toBe(137)
+  })
+})
+
+// ── Время перехода ──────────────────────────────────────────────────────────
+// Пин заводится вместе с первым живым потребителем полосы (`AppSearchSuper`,
+// задача 5 плана `docs/superpowers/plans/2026-09-07-solid-wave-3-shared-media.md`).
+// До него дефолт `transitionTime` не был запинён ничем: его можно было поменять
+// на любое число, и весь набор промолчал бы, — а разъезд с CSS видно только
+// глазами в браузере.
+//
+// Тремя участниками одного перехода командуют РАЗНЫЕ числа:
+//   • содержимое вкладок и подчёркивание едут по CSS-переходу длиной
+//     `var(--tabs-transition)` (`styles/tweb/_slider.scss:114,215`);
+//   • страховочный таймер уборки слайдера считает от `transitionTime`
+//     (`transition.ts`, `transitionTime + 100`);
+//   • доводка активной вкладки в ряд идёт `fastSmoothScroll({forceDuration:
+//     transitionTime})` (`horizontalMenu.ts`, порт `tweb:64-79`).
+// Разъедутся — подчёркивание доиграет раньше содержимого, а ряд доедет позже
+// обоих. Поэтому проверяем не «функция вызвана с 200», а САМ ИСТОЧНИК: текст
+// токена в SCSS против константы в TS.
+describe('время перехода вкладок запинено на CSS-переменную --tabs-transition', () => {
+  const readScss = (relative: string) => readFileSync(resolve(__dirname, relative), 'utf8')
+
+  it('дефолт полосы вкладок равен --tabs-transition из токенов', () => {
+    const tokens = readScss('../styles/_tokens.scss')
+    const match = tokens.match(/--tabs-transition:\s*([\d.]+)(ms|s)\b/)
+    expect(match, 'токен --tabs-transition должен быть объявлен в styles/_tokens.scss').not.toBeNull()
+
+    const [, value, unit] = match!
+    const ms = unit === 's' ? Number(value) * 1000 : Number(value)
+
+    expect(TABS_TRANSITION_TIME).toBe(ms)
+  })
+
+  it('переход вкладок в CSS действительно играет по этому токену, а не по своему числу', () => {
+    const slider = readScss('../styles/tweb/_slider.scss')
+
+    // содержимое вкладок (`tweb/scss/partials/_slider.scss:214-216`) — правило
+    // целиком, а не «где-то рядом»: соседний блок `premiumTabs` тоже ссылается
+    // на токен и подменил бы собой проверку
+    expect(slider).toMatch(
+      /&\[data-animation="tabs"\] \.tabs-tab \{\s*transition: transform var\(--tabs-transition\);\s*\}/,
+    )
+    // подчёркивание активной вкладки (`:114`)
+    expect(slider).toContain('transition: transform var(--tabs-transition), width var(--tabs-transition)')
   })
 })

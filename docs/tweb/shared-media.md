@@ -126,7 +126,7 @@
 `scrollToStart` — `:800-807`: `scrollable.scrollIntoViewNew({element: container, position: 'start', startCallback: this.scrollStartCallback})`.
 `cleanScrollPositions()` — `:2756-2760`: обнуляет `mediaTab.scroll` у всех вкладок; вызывается **снаружи** при выходе из полноэкранного режима (`sharedMedia.tsx:515`).
 
-**Свайп** — `:500-539`: `handleTabSwipe` на `tabsContainer`; у вкладок `gifts`/`stories` есть своя горизонтальная навигация (альбомы/коллекции), она перехватывает свайп первой (`:508-515`); иначе ищется соседняя невидимая-`hide` вкладка и вызывается `selectTab(idx)` с `lockTouchScroll`.
+**Свайп** — `:498-542`: `handleTabSwipe` на `tabsContainer`; у вкладок `gifts`/`stories` есть своя горизонтальная навигация (альбомы/коллекции), она перехватывает свайп первой (`:508-515`); иначе ищется соседняя невидимая-`hide` вкладка и вызывается `selectTab(idx)` с `lockTouchScroll`.
 
 **Автоцентрирование ряда** — `horizontalMenu.ts:64-79`: `fastSmoothScroll` по оси X у `ScrollableX`, с оптимизацией (`scrollWidth <= clientWidth` → пропуск; `scrollLeft === 0` и выбран первый — тоже).
 
@@ -322,17 +322,17 @@ sharedMedia.tsx:47-57   setQuery() — достаёт стор пира и от�
 | Вкладка «Общие группы» | **нет вовсе** | — | ручки бэкенда тоже нет (§ 3) |
 | Вкладка «Похожие каналы» | **нет вовсе** | — | ручка бэкенда **есть** |
 | Вкладка `saved` (Saved Messages внутри пира) | **нет вовсе** | — | |
-| Ряд вкладок (разметка) | **есть, 1:1** | `SharedMedia.tsx:73-97` (`SharedMediaTab`), ряд `:320-349` | классы совпадают, включая `i.menu-horizontal-div-item-background` и `is-single`; **но** ряд рисуется React-списком по `ALL_TABS`, а не строится классом |
+| Ряд вкладок (разметка) | **есть дважды**: React-копия и ядро класса | `SharedMedia.tsx:73-97` (`SharedMediaTab`), ряд `:320-349`; ядро — `components/appSearchSuper.ts` (волна 3, задача 5) | классы совпадают у обоих, включая `i.menu-horizontal-div-item-background`. Ядро строит ряд как оригинал (`appSearchSuper.ts:462-493`) и сверено с дампом `dom/dumps/07-right-sidebar.json:121-131`; React-копия по `ALL_TABS` уходит с задачей 13 |
 | Стили подсистемы | **есть, 1:1** | `web-client/src/styles/tweb/_searchSuper.scss` — **428 строк, ровно как оригинал** | портированы целиком, включая `is-selecting`/`is-full-viewport`, под которые у нас пока нет кода |
-| Анимация перехода между вкладками | **механизм есть, потребителя ещё нет** | `components/transition.ts` — `TransitionSlider` с `slideTabs`; старый React-путь `shared/ui/Tabs/TabSlide.tsx` (177) + `core/hooks/useTransitionSlider.ts` (60) пока жив | `slideTabs` (`transition.ts:45-95`) портирован 1:1 (волна 3, задача 3): вкладки не размонтируются, а сдвигаются на ±width, поэтому поддерево и `scrollTop` переживают переключение. React-путь с `keepMounted`-дефектом (`SharedMedia.tsx:352`) уйдёт вместе с `SharedMedia.tsx` (задача 13) |
-| Горизонтальный скролл ряда + автоцентрирование активной | **портирован, к ряду ещё не подключён** | `components/horizontalMenu.ts` (задача 4 плана этапа 3) | порт `horizontalMenu.ts` целиком, включая автоцентрирование (`:64-79`) и переезд подчёркивания (`:104-127`); React-ряд `SharedMedia.tsx` им пока не пользуется — подключение приезжает с `AppSearchSuper` (задача 5) |
-| Свайп между вкладками | **нет** | — | |
+| Анимация перехода между вкладками | **есть, потребитель — ядро класса** | `components/transition.ts` — `TransitionSlider` с `slideTabs`; старый React-путь `shared/ui/Tabs/TabSlide.tsx` (177) + `core/hooks/useTransitionSlider.ts` (60) пока жив | `slideTabs` (`transition.ts:45-95`) портирован 1:1 (волна 3, задача 3): вкладки не размонтируются, а сдвигаются на ±width, поэтому поддерево и `scrollTop` переживают переключение. Потребителем стал `AppSearchSuper` (задача 5) — через `horizontalMenu`. React-путь с `keepMounted`-дефектом (`SharedMedia.tsx:352`) уйдёт вместе с `SharedMedia.tsx` (задача 13) |
+| Горизонтальный скролл ряда + автоцентрирование активной | **есть, подключён к ядру** | `components/horizontalMenu.ts` (задачи 4-5 плана этапа 3) | порт `horizontalMenu.ts` целиком, включая автоцентрирование (`:64-79`) и переезд подчёркивания (`:104-127`); ряд ядра `AppSearchSuper` им и управляется. Время перехода вынесено в `TABS_TRANSITION_TIME` и запинено на CSS-токен `--tabs-transition` (`horizontalMenu.test.ts`) |
+| Свайп между вкладками | **есть в ядре** | `appSearchSuper.ts` (порт `tweb:498-542`) + `helpers/dom/handleTabSwipe.ts`, `helpers/dom/lockTouchScroll.ts` | соседняя вкладка со `hide` пропускается, замок скролла снимается по концу перехода. Перехват свайпа вкладками `gifts`/`stories` (`tweb:508-515`) приедет с задачами 11-12 |
 | Пагинация | **есть частично** | `SharedMedia.tsx:139,147,185-224` (`byFilter`, `PAGE_SIZE = 30`), sentinel `:226-242` | **по числовому `offset`, а не по `offsetId`** — прямое следствие формы ручки (§ 3); infinite scroll через `IntersectionObserver` с `rootMargin: 300px` вместо `scrollable.onScrolledBottom` |
 | Кэш вкладок | **есть частично** | `byFilter` — `SharedMedia.tsx:139` | живёт в стейте компонента: смена пира сносит компонент (`components/chat/ChatsContainer.tsx:151`, `key={desc.id}`) вместе с кэшем. У оригинала кэш модульный и переживает смену пира (`sharedMedia.tsx:33-36`) |
 | Живые апдейты | **есть, но грубее** | `SharedMedia.tsx:177-183` | **любое** изменение длины окна сообщений сбрасывает ВЕСЬ `byFilter` — включая подгрузку старых сообщений при скролле ленты. Все накопленные страницы теряются, активная вкладка грузится с нуля. У оригинала — точечный prepend/remove (`sharedMedia.tsx:209-345`) |
 | Счётчики вкладок / скрытие пустых | **есть, но 5 запросами** | `SharedMedia.tsx:149-163` — `Promise.all` из пяти `mediaHistory(..., 0, 1)` | у оригинала один batch `getSearchCounters` (`:2388-2389`) — ручки нет (§ 3) |
 | Приоритет первой открытой вкладки | **есть частично** | `UserInfoPanel.tsx:84` — по `chat.type`; `SharedMedia.tsx:309-313` — переключение, если активная пропала | у оригинала — `loadFirstTime:2478-2495` по `canView*` и счётчикам |
-| Память скролла между вкладками | **нет вовсе** | — | вкладка размонтируется (нет `keepMounted`), позиция не запоминается и не восстанавливается; `mediaTab.scroll`/`cleanScrollPositions` аналога нет |
+| Память скролла между вкладками | **есть в ядре класса** | `components/appSearchSuper.ts` (порт `tweb:624-708`, `:2756-2760`), пины — `appSearchSuper.scroll.test.ts` | портировано дословно: позиция уходящей запоминается, приходящая на время анимации сдвигается инлайновым `translateY(diff)`, по концу перехода сдвиг снимается и ставится настоящий `scrollPosition`. React-`SharedMedia` этого по-прежнему не умеет (вкладка размонтируется) — уйдёт с задачей 13 |
 | Выделение элементов | **нет вовсе** | база есть: `components/chat/selection.ts` (844, `AppSelection` + `ChatSelection`) | `SearchSelection` (`chat/selection.ts:583-763`) не портирован; стили под него уже лежат |
 | Контекстное меню элемента | **нет вовсе** | инфраструктура есть: `helpers/contextMenuController.ts`, `helpers/dom/attachContextMenuListener.ts`, `helpers/positionMenu.ts`, `components/buttonMenu.ts` | `SearchContextMenu` (`:156-345`) не портирован: из shared media нельзя ни переслать, ни скачать, ни перейти к сообщению |
 | Строка поиска внутри вкладки | **нет — и в оригинале нет** | — | не расхождение (§ 0) |
@@ -356,10 +356,20 @@ sharedMedia.tsx:47-57   setQuery() — достаёт стор пира и от�
 | `components/horizontalMenu.ts` (273) | `components/horizontalMenu.ts` (215) | **портирован целиком** (волна 3, задача 4): автоцентрирование (`:64-79`) и переезд подчёркивания (`:104-127`); слайдер содержимого по умолчанию — `TransitionSlider` выше |
 | `styles/tweb/_searchSuper.scss` (428), `_profile.scss`, `_rightSidebar.scss`, `_searchGroup.scss`, `_transition.scss` | одноимённые партиалы | стили готовы |
 | `components/stargifts/{stargiftsGrid,profileList}.module.scss` | одноимённые | стили готовы, кода нет |
+| `components/putPreloader.ts`, `helpers/dom/{handleTabSwipe,lockTouchScroll}.ts` | одноимённые | заведены задачей 5 — их требует ядро класса; `putPreloader` собирает узлы `createElement`'ом вместо `innerHTML` оригинала (правило безопасности репозитория), дерево то же |
+
+**`appSearchSuper.ts` — портировано ядро** (волна 3, задача 5):
+`components/appSearchSuper.ts` строит разметку подсистемы (`tweb:439-603`),
+держит слайдер вкладок и память скролла (`:624-708`, `:800-815`), свайп
+(`:498-542`), очистку и смену пира (`:2714-2793`, `:2803-2843`). Загрузка,
+рендер элементов, первый показ вкладок, участники, выделение и контекстное меню
+в файле ОТСУТСТВУЮТ (не заглушки — пропуски с комментарием и ссылкой на строку
+оригинала); приезжают задачами 6-14. Потребителя у класса ещё нет: панель
+профиля до задачи 13 работает на React-`SharedMedia`.
 
 **Чего у нас нет вовсе** (нужно портировать): `sortedUserList.ts` (134) вместе с
 ванильным строителем строки чатлиста (`appDialogsManager.addDialogNew` —
-аналога нет), сам `appSearchSuper.ts` (2843), `SearchSelection`,
+аналога нет), остальные 2/3 `appSearchSuper.ts`, `SearchSelection`,
 `SearchContextMenu`.
 
 ## 2.3 Наши известные дефекты в этой зоне (подтверждены на 2026-09-07)
