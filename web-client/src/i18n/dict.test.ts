@@ -159,11 +159,11 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // оригинала он показывается тостом (`appImManager.ts:1802-1809`). `plural` не
 // менялся — обе строки не числовые.
 const COMPOSITION = {
-  ru: { keys: 1308, plural: 30 },
-  uk: { keys: 684, plural: 24 },
-  es: { keys: 683, plural: 24 },
-  de: { keys: 683, plural: 24 },
-  fr: { keys: 683, plural: 24 },
+  ru: { keys: 1310, plural: 32 },
+  uk: { keys: 682, plural: 24 },
+  es: { keys: 681, plural: 24 },
+  de: { keys: 681, plural: 24 },
+  fr: { keys: 681, plural: 24 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -223,15 +223,25 @@ const COMPOSITION = {
 // Сдвиг набора задачей «глухие перехваты на экране входа»: русскому добавлен
 // `Login.Passkey.Error` (разбор — у `COMPOSITION` выше). У остальных четырёх
 // словарей набор не менялся — их снимок тот же.
+// Сдвиг набора задачей «опрос в ленте» (`feat/poll-message-content`): у ВСЕХ
+// пяти словарей сняты два ключа, которых нет в оригинале вовсе, —
+// `Chat.Poll.VotedSuffix` и `Chat.Quiz.AnsweredSuffix`. Они были нашей
+// выдумкой времён React-компонента `PollBubble` (тот снесён вместе с React-
+// лентой) и склеивали счётчик руками: «N» + «проголосовало». tweb считает его
+// ОДНОЙ строкой с формой числа — `Chat.Poll.MembersVoted` /
+// `Chat.Quiz.MembersAnswered`, — и порт тела опроса зовёт именно их, поэтому
+// суффиксы стали мёртвыми. Русскому вместе с этой парой множественных форм
+// добавлены `Chat.Poll.Type.Public` и `Chat.Poll.SelectAnOption`: −2 +4 = +2
+// ключа и +2 множественные формы; остальным четырём — только −2.
 // Сдвиг набора задачей «открытие чата по ссылке»: русскому добавлены
 // `NoUsernameFound` и `Alert.UserDoesntExists` (разбор — у `COMPOSITION` выше).
 // У остальных четырёх словарей набор не менялся — их снимок тот же.
 const FINGERPRINT = {
-  ru: 'e04444a1',
-  uk: 'c2475b60',
-  es: '32bfb526',
-  de: '32bfb526',
-  fr: '32bfb526',
+  ru: '526274f4',
+  uk: 'e1335ac1',
+  es: 'a6b1aad3',
+  de: 'a6b1aad3',
+  fr: 'a6b1aad3',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

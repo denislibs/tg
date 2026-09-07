@@ -362,8 +362,6 @@ const de = {
   'Chat.Poll.Type.AnonymousQuiz': 'Anonymes Quiz',
   'Chat.Poll.TotalVotesEmpty': 'Noch keine Stimmen',
   'Chat.Poll.TotalVotesResultEmpty': 'Keine Stimmen',
-  'Chat.Poll.VotedSuffix': 'abgestimmt',
-  'Chat.Quiz.AnsweredSuffix': 'geantwortet',
   'Chat.Poll.Unvote': 'Stimme zurückziehen',
   UnreadMessages: 'Ungelesene Nachrichten',
   'ForumTopic.Context.ShowAsMessages': 'Einheitlicher Chat',

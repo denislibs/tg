@@ -363,8 +363,6 @@ const fr = {
   'Chat.Poll.Type.AnonymousQuiz': 'Quiz anonyme',
   'Chat.Poll.TotalVotesEmpty': 'Pas encore de votes',
   'Chat.Poll.TotalVotesResultEmpty': 'Aucun vote',
-  'Chat.Poll.VotedSuffix': 'ont voté',
-  'Chat.Quiz.AnsweredSuffix': 'ont répondu',
   'Chat.Poll.Unvote': 'Retirer le vote',
   UnreadMessages: 'Messages non lus',
   'ForumTopic.Context.ShowAsMessages': 'Chat unifié',

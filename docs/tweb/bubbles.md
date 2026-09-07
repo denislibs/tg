@@ -457,6 +457,32 @@ div.message > div.bubble-call data-type=video|voice
   `updateLocalOnEdit`-Map (8793–8808).
 - ToDo (`messageMediaToDo`): `ChecklistBubble` в `div.checklist-content` (8817–8838).
 
+**У нас (опрос портирован, ветка `feat/poll-message-content`).** Разметка и поведение —
+`web-client/src/components/messages/pollMessageContent.ts`, точка входа —
+`ChatBubbles.renderPoll` (`components/chat/bubbles.ts`). Совпадает с оригиналом: узел
+`div.poll-message-content` prepend в `.message`, класс `poll-message` (его ставит
+`bubbleClasses`, потому что он выводится из сообщения), текст сообщения обнуляется
+в `wrapMessageContent`, живые обновления — карта `pollContents` по баблу (порт
+`updateLocalOnEdit`), стили — CSS-модуль рядом с компонентом (в tweb это тоже
+`styles.module.scss`, а глобальный `_poll.scss` описывает ЛЕГАСИ-элемент
+`poll-element`, которого ни один компонент tweb уже не создаёт).
+
+Расхождение формы: у нас не Solid-компонент, а **ванильная фабрика с хендлом**
+(`createPollMessageContent` → `{element, update, destroy}`) — приём
+`components/progressRing.ts`; лента ванильная, и тянуть в неё второй UI-рантайм ради
+листа бабла нельзя. Обновление точечное, а не пересборкой: от этого зависит видимое
+поведение — процент и полоска досчитываются ОТ ПРЕДЫДУЩЕГО значения.
+
+Портированы: вопрос, подзаголовок вида (`PollType`), варианты с чекбоксом/радио,
+проценты (`roundPercents`), полоски, счётчик проголосовавших (`PollVotes`), футер
+(«Select an option» / «Vote» / счётчик), одиночный и множественный выбор, закрытый
+опрос, викторина с галочкой/крестиком, «летящая точка» (`PathDot`), спиннер отправки.
+Не портированы (нет данных на бэкенде) — 17 пунктов списком в
+`web-client/backlogs/frontend/poll-backend-gaps.md`.
+
+**Чек-лист, контакт, гео и розыгрыш по-прежнему не рисуются вовсе** (бабл нулевой
+высоты) — долг `web-client/backlogs/frontend/vanilla-feed-missing-media-kinds.md`.
+
 ## 4.13 Гео / venue / live (9045–9099)
 
 Класс `photo`; `wrapGeo({attachmentDiv, messageMedia, peerId, date, onLiveExpire…})`

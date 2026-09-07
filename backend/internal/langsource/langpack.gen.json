@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 9,
+      "version": 11,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -47,6 +47,10 @@
         {
           "key": "Administrators",
           "value": "Administrators"
+        },
+        {
+          "key": "Alert.UserDoesntExists",
+          "value": "Sorry, this user doesn't seem to exist."
         },
         {
           "key": "AllReactions",
@@ -835,6 +839,17 @@
           "value": "owner"
         },
         {
+          "key": "Chat.Poll.MembersVoted",
+          "forms": {
+            "one_value": "%d member voted",
+            "other_value": "%d members voted"
+          }
+        },
+        {
+          "key": "Chat.Poll.SelectAnOption",
+          "value": "Select an option"
+        },
+        {
           "key": "Chat.Poll.Stop",
           "value": "Stop Poll"
         },
@@ -863,6 +878,10 @@
           "value": "Final Results"
         },
         {
+          "key": "Chat.Poll.Type.Public",
+          "value": "Poll"
+        },
+        {
           "key": "Chat.Poll.Type.Quiz",
           "value": "Quiz"
         },
@@ -871,12 +890,11 @@
           "value": "Retract Vote"
         },
         {
-          "key": "Chat.Poll.VotedSuffix",
-          "value": "voted"
-        },
-        {
-          "key": "Chat.Quiz.AnsweredSuffix",
-          "value": "answered"
+          "key": "Chat.Quiz.MembersAnswered",
+          "forms": {
+            "one_value": "%d member answered",
+            "other_value": "%d members answered"
+          }
         },
         {
           "key": "Chat.Search.NothingFound",
@@ -2326,6 +2344,10 @@
           "value": "Log in with a Passkey"
         },
         {
+          "key": "Login.Passkey.Error",
+          "value": "Something went wrong"
+        },
+        {
           "key": "Login.Password.Subtitle",
           "value": "Your account is protected with\nan additional password"
         },
@@ -2584,6 +2606,14 @@
         {
           "key": "MediaEditor.Square",
           "value": "Square"
+        },
+        {
+          "key": "MediaEditor.StickerAnimatedUnsupported",
+          "value": "Animated stickers are not supported in this browser"
+        },
+        {
+          "key": "MediaEditor.StickerNotRendered",
+          "value": "This sticker cannot be rendered in this browser and will not be saved. Remove it to continue."
         },
         {
           "key": "MediaEditor.TextSize",
@@ -2852,6 +2882,10 @@
         {
           "key": "NoTopics",
           "value": "No topics"
+        },
+        {
+          "key": "NoUsernameFound",
+          "value": "There is no Telegram account with this username."
         },
         {
           "key": "NobodyViewed",
@@ -5351,7 +5385,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 9,
+      "version": 11,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -6859,6 +6893,14 @@
           "value": "Оригинал"
         },
         {
+          "key": "MediaEditor.StickerAnimatedUnsupported",
+          "value": "Анимированные стикеры не поддерживаются в этом браузере"
+        },
+        {
+          "key": "MediaEditor.StickerNotRendered",
+          "value": "Этот стикер не может быть отрисован в этом браузере и не попадёт в сохранённый результат. Удалите его, чтобы продолжить."
+        },
+        {
           "key": "Translation",
           "value": "Перевод"
         },
@@ -7494,6 +7536,10 @@
         {
           "key": "PeerInfo.Discussion",
           "value": "Обсуждение"
+        },
+        {
+          "key": "SubscribeRequests",
+          "value": "Заявки на вступление"
         },
         {
           "key": "Add",
@@ -8268,16 +8314,34 @@
           "value": "Нет голосов"
         },
         {
-          "key": "Chat.Poll.VotedSuffix",
-          "value": "проголосовало"
-        },
-        {
-          "key": "Chat.Quiz.AnsweredSuffix",
-          "value": "ответило"
-        },
-        {
           "key": "Chat.Poll.Unvote",
           "value": "Отменить голос"
+        },
+        {
+          "key": "Chat.Poll.Type.Public",
+          "value": "Опрос"
+        },
+        {
+          "key": "Chat.Poll.SelectAnOption",
+          "value": "Выберите вариант"
+        },
+        {
+          "key": "Chat.Poll.MembersVoted",
+          "forms": {
+            "one_value": "%d человек проголосовал",
+            "few_value": "%d человека проголосовало",
+            "many_value": "%d человек проголосовало",
+            "other_value": "%d человека проголосовало"
+          }
+        },
+        {
+          "key": "Chat.Quiz.MembersAnswered",
+          "forms": {
+            "one_value": "%d человек ответил",
+            "few_value": "%d человека ответило",
+            "many_value": "%d человек ответило",
+            "other_value": "%d человека ответило"
+          }
         },
         {
           "key": "Create",
@@ -9312,6 +9376,10 @@
         {
           "key": "Login.Passkey",
           "value": "Войти по ключу доступа \u003e"
+        },
+        {
+          "key": "Login.Passkey.Error",
+          "value": "Что-то пошло не так"
         },
         {
           "key": "Login.QR.Title",
@@ -10705,6 +10773,14 @@
           "value": "Посты"
         },
         {
+          "key": "NoUsernameFound",
+          "value": "Аккаунта с таким именем пользователя не существует."
+        },
+        {
+          "key": "Alert.UserDoesntExists",
+          "value": "Извините, такого пользователя не существует."
+        },
+        {
           "key": "LanguageName",
           "value": "Русский"
         }
@@ -10717,7 +10793,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 6,
+      "version": 7,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -12044,14 +12120,6 @@
         {
           "key": "Chat.Poll.TotalVotesResultEmpty",
           "value": "Aucun vote"
-        },
-        {
-          "key": "Chat.Poll.VotedSuffix",
-          "value": "ont voté"
-        },
-        {
-          "key": "Chat.Quiz.AnsweredSuffix",
-          "value": "ont répondu"
         },
         {
           "key": "Chat.Poll.Unvote",
@@ -13529,7 +13597,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 6,
+      "version": 7,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -14855,14 +14923,6 @@
         {
           "key": "Chat.Poll.TotalVotesResultEmpty",
           "value": "Keine Stimmen"
-        },
-        {
-          "key": "Chat.Poll.VotedSuffix",
-          "value": "abgestimmt"
-        },
-        {
-          "key": "Chat.Quiz.AnsweredSuffix",
-          "value": "geantwortet"
         },
         {
           "key": "Chat.Poll.Unvote",
@@ -16340,7 +16400,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 6,
+      "version": 7,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -17667,14 +17727,6 @@
         {
           "key": "Chat.Poll.TotalVotesResultEmpty",
           "value": "Sin votos"
-        },
-        {
-          "key": "Chat.Poll.VotedSuffix",
-          "value": "votaron"
-        },
-        {
-          "key": "Chat.Quiz.AnsweredSuffix",
-          "value": "respondieron"
         },
         {
           "key": "Chat.Poll.Unvote",
@@ -19152,7 +19204,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 6,
+      "version": 7,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -20495,14 +20547,6 @@
         {
           "key": "Chat.Poll.TotalVotesResultEmpty",
           "value": "Немає голосів"
-        },
-        {
-          "key": "Chat.Poll.VotedSuffix",
-          "value": "проголосувало"
-        },
-        {
-          "key": "Chat.Quiz.AnsweredSuffix",
-          "value": "відповіло"
         },
         {
           "key": "Chat.Poll.Unvote",
