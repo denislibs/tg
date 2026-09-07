@@ -35,8 +35,8 @@
 
 | Что | Где | Суть |
 |---|---|---|
-| Sticky-табы уезжают под шапку | `SharedMedia.tsx:300` | инлайновый `stickyTop=8` перебивает верный портированный CSS `top: var(--super-offset)` = 72px; `TAB_GAP` — остаток снесённой самописной `TabsBar`, удалить вместе с ним |
-| Кэш табов сбрасывается постоянно | `SharedMedia.tsx:146-151` | инвалидация по любому изменению длины окна сообщений, включая подгрузку истории при скролле чата → все страницы infinite scroll теряются |
+| Sticky-табы уезжают под шапку | `UserInfoPanel.tsx:706` + `SharedMedia.tsx:334` | инлайновый `stickyTop=8` перебивает верный портированный CSS `top: var(--super-offset)` = 72px; `TAB_GAP` — остаток снесённой самописной `TabsBar`, удалить вместе с ним. **Закрывается задачей 13** плана [shared media](../superpowers/plans/2026-09-07-solid-wave-3-shared-media.md) |
+| Кэш табов сбрасывается постоянно | `SharedMedia.tsx:177-183` | инвалидация по любому изменению длины окна сообщений, включая подгрузку истории при скролле чата → все страницы infinite scroll теряются. **Закрывается задачей 6** того же плана (живые апдейты в форме оригинала: точечный prepend вместо сброса) |
 | Состояние панели не сбрасывается при смене чата | `UserInfoPanel.tsx`, `Chat.tsx:1586` | панель не размонтируется и не имеет `key`; переживают чужие `tabCounts`, `scrollTop`, `filled/headerFilled` |
 | `ChannelStats` и `RightsEditor` без анимации и стилей | `UserInfoPanel.tsx:738-771` | классов `.statistics-container` / `.user-permissions-container` в наших SCSS нет вовсе, родитель без `data-animation` |
 
