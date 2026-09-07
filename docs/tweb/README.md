@@ -45,6 +45,7 @@
 | **Действия с сообщением**: контекст-меню (43 пункта с verify), reply/quote, edit, forward, pin, delete, реакции, selection, свайп | [message-interactions.md](message-interactions.md) |
 | **Медиа везде**: wrappers, thumb-пайплайн, загрузка/скачивание, SW+cacheStorage, видео, аудио-плеер, медиавьювер, стикеры/lottie | [media.md](media.md) |
 | **Правая колонка**: слайдер табов, профиль user/group/channel, shared media, скролл-механика шапки | [right-sidebar.md](right-sidebar.md) |
+| **Shared media**: `AppSearchSuper` — вкладки контента, ленивая подгрузка по типам, память скролла между вкладками, выделение и контекст-меню, живые апдейты, что блокировано бэкендом | [shared-media.md](shared-media.md) |
 | **Левая колонка**: слайдер, все табы настроек, бургер, глобальный поиск, чатлист, фолдеры, сторис-лента | [left-sidebar.md](left-sidebar.md) |
 | **Попапы и меню**: `PopupElement`, каталог всех попапов, `PopupPeer`/confirm, `ButtonMenu`/контекст-меню, позиционирование, тосты, тултипы | [popups.md](popups.md) |
 | **Композер**: DOM-дерево, морф кнопки отправки, плашка reply/edit, запись голоса, эмодзи-дропдаун, тайминги | [composer.md](composer.md) |
