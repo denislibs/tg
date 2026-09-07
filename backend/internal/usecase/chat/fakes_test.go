@@ -699,42 +699,82 @@ func (r fakeMsgs) CallLog(context.Context, int64, int, int) ([]domain.CallLogEnt
 	return nil, nil
 }
 
-func (r fakeMsgs) MediaHistory(_ context.Context, chatID int64, filter string, offset, limit int) ([]domain.Message, int, error) {
+// matchesMediaFilter — те же предикаты вкладок, что у репозитория
+// (adapter/repo/postgres/messagesrepo.go::mediaFilterCond).
+func matchesMediaFilter(m domain.Message, filter string) bool {
+	switch filter {
+	case "media":
+		return m.Type == "photo" || m.Type == "video"
+	case "files":
+		return m.Type == "document"
+	case "music":
+		return m.Type == "audio"
+	case "voice":
+		return m.Type == "voice" || m.Type == "roundVideo"
+	case "links":
+		return m.Type == "text" && (strings.Contains(m.Text, "http://") || strings.Contains(m.Text, "https://"))
+	}
+	return false
+}
+
+func (r fakeMsgs) MediaHistory(_ context.Context, chatID int64, filter string, page MediaPage) ([]domain.Message, int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	var out []domain.Message
 	all := r.s.messages[chatID]
 	for i := len(all) - 1; i >= 0; i-- { // newest first
 		m := all[i]
-		if m.Deleted {
-			continue
-		}
-		ok := false
-		switch filter {
-		case "media":
-			ok = m.Type == "photo" || m.Type == "video"
-		case "files":
-			ok = m.Type == "document"
-		case "music":
-			ok = m.Type == "audio"
-		case "voice":
-			ok = m.Type == "voice" || m.Type == "roundVideo"
-		case "links":
-			ok = m.Type == "text" && (strings.Contains(m.Text, "http://") || strings.Contains(m.Text, "https://"))
-		}
-		if ok {
+		if !m.Deleted && matchesMediaFilter(m, filter) {
 			out = append(out, m)
 		}
 	}
 	total := len(out)
-	if offset > len(out) {
-		offset = len(out)
+	if page.OffsetID > 0 {
+		// Курсор: строго ниже последнего показанного (см. MediaPage).
+		kept := out[:0:0]
+		for _, m := range out {
+			if m.Seq < page.OffsetID {
+				kept = append(kept, m)
+			}
+		}
+		out = kept
+	} else if page.Offset > 0 {
+		if page.Offset > len(out) {
+			page.Offset = len(out)
+		}
+		out = out[page.Offset:]
 	}
-	out = out[offset:]
-	if len(out) > limit {
-		out = out[:limit]
+	if len(out) > page.Limit {
+		out = out[:page.Limit]
 	}
 	return out, total, nil
+}
+
+func (r fakeMsgs) SearchCounters(_ context.Context, chatID int64, filters []string) (map[string]int, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	out := make(map[string]int, len(filters))
+	for _, f := range filters {
+		if !isKnownMediaFilter(f) {
+			continue
+		}
+		n := 0
+		for _, m := range r.s.messages[chatID] {
+			if !m.Deleted && matchesMediaFilter(m, f) {
+				n++
+			}
+		}
+		out[f] = n
+	}
+	return out, nil
+}
+
+func isKnownMediaFilter(f string) bool {
+	switch f {
+	case "media", "files", "music", "voice", "links":
+		return true
+	}
+	return false
 }
 
 func (r fakeMsgs) ByPollID(_ context.Context, pollID int64) ([]domain.Message, error) {
