@@ -445,3 +445,110 @@ describe('полоса вкладок: переезд подчёркивания
     expect(indicatorOf(items(tabs)[1]).style.transform).toBe('')
   })
 })
+
+/**
+ * СТЫК с настоящим слайдером содержимого. Выше слайдер — дублёр: он проверяет
+ * полосу в отрыве от бухгалтерии классов `TransitionSlider` (у неё свой файл
+ * пинов, `components/transition.test.ts`). Здесь наоборот — дублёра нет вовсе,
+ * `createSelectTab` не передан, то есть работает дефолт (`TransitionSlider`,
+ * `tweb horizontalMenu.ts:141-147`), и пин ловит ровно то, что ломается на шве:
+ * одно переключение обязано сдвинуть И содержимое, И подчёркивание, причём
+ * подчёркивание едет от вкладки, которую слайдер считает текущей
+ * (`prevId()` — `tweb transition.ts:376`).
+ */
+describe('полоса вкладок поверх настоящего TransitionSlider', () => {
+  const WIDTH = 400
+
+  function buildWired() {
+    const { tabs, content } = build(3)
+    // happy-dom не считает layout: геометрия полосы и ширина вкладки — моками.
+    const offsets = [0, 120, 240]
+    const widths = [100, 90, 80]
+    items(tabs).forEach((item, i) => {
+      stub(item, 'offsetLeft', offsets[i])
+      stub(indicatorOf(item), 'clientWidth', widths[i])
+    })
+    Array.from(content.children).forEach((child) => {
+      ;(child as HTMLElement).getBoundingClientRect = () => ({ width: WIDTH }) as DOMRect
+    })
+    return { tabs, content }
+  }
+
+  it('одно переключение двигает и содержимое, и подчёркивание', () => {
+    const { tabs, content } = buildWired()
+    const selectTab = horizontalMenu({ tabs, content, transitionTime: 200 })
+
+    selectTab(0)
+    flushFrame()
+    expect(activeIndex(tabs)).toBe(0)
+    expect(activeIndex(content)).toBe(0)
+    // Первый показ — мгновенный: сдвига нет (tweb `animateFirst: false`).
+    expect((content.children[0] as HTMLElement).style.transform).toBe('')
+
+    selectTab(2)
+
+    // Содержимое поехало сразу, в том же кадре: `selectTab` слайдера зовётся
+    // синхронно, вне `fastRaf` (`tweb horizontalMenu.ts:129`).
+    expect(content.classList.contains('animating')).toBe(true)
+    expect(content.classList.contains('backwards')).toBe(false)
+    expect((content.children[0] as HTMLElement).style.transform).toBe(`translate3d(${-WIDTH}px, 0px, 0)`)
+    expect(content.children[0].classList.contains('from')).toBe(true)
+    expect(content.children[2].classList.contains('active')).toBe(true)
+    expect(content.children[2].classList.contains('to')).toBe(true)
+
+    // Подчёркивание — следующим кадром, и ОТ вкладки 0: слайдер отдал полосе
+    // `prevId() === 0` ДО переключения, иначе сдвиг считался бы от самой себя.
+    flushFrame()
+    const to = indicatorOf(items(tabs)[2])
+    expect(activeIndex(tabs)).toBe(2)
+    expect(to.style.transform).toBe('translate3d(-240px, 0, 0)')
+    expect(to.style.width).toBe('100px')
+
+    flushFrame()
+    expect(to.classList.contains('animate')).toBe(true)
+    expect(to.style.transform).toBe('none')
+  })
+
+  it('возврат назад: содержимому `backwards`, подчёркиванию — положительный сдвиг', () => {
+    const { tabs, content } = buildWired()
+    const selectTab = horizontalMenu({ tabs, content, transitionTime: 200 })
+
+    selectTab(2)
+    flushFrame()
+    flushFrame()
+    // Настоящий конец CSS-перехода — иначе слайдер держит `animating`.
+    for (const el of [content.children[2], content.children[0]]) {
+      el.dispatchEvent(new Event('transitionend', { bubbles: true }))
+    }
+
+    selectTab(0)
+    flushFrame()
+
+    expect(content.classList.contains('backwards')).toBe(true)
+    expect((content.children[2] as HTMLElement).style.transform).toBe(`translate3d(${WIDTH}px, 0px, 0)`)
+    expect(indicatorOf(items(tabs)[0]).style.transform).toBe('translate3d(240px, 0, 0)')
+    expect(activeIndex(tabs)).toBe(0)
+  })
+
+  it('содержимое вкладки переживает переключение туда-обратно: тот же узел и `scrollTop`', () => {
+    const { tabs, content } = buildWired()
+    const list = document.createElement('div')
+    list.className = 'inner-list'
+    content.children[0].append(list)
+    const selectTab = horizontalMenu({ tabs, content, transitionTime: 200 })
+
+    selectTab(0)
+    flushFrame()
+    list.scrollTop = 137
+
+    selectTab(1)
+    flushFrame()
+    flushFrame()
+    selectTab(0)
+    flushFrame()
+    flushFrame()
+
+    expect(content.children[0].querySelector('.inner-list')).toBe(list)
+    expect(list.scrollTop).toBe(137)
+  })
+})

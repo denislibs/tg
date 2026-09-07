@@ -18,12 +18,12 @@
 //
 // Отступления от оригинала (осознанные, см. отчёт задачи 4):
 //
-//  1. Слайдер СОДЕРЖИМОГО инжектится (`createSelectTab`), а не создаётся внутри
-//     вызовом `TransitionSlider` (`tweb:141-147`). `TransitionSlider` с веткой
-//     `slideTabs` — предмет соседней задачи 3; когда он приедет в
-//     `components/transition.ts`, поле уходит, а на его место встаёт прямой
-//     вызов — правка в одну строку. Всё остальное, включая проводку
-//     `onTransitionEnd`/`transitionTime`/`listenerSetter` в слайдер, уже здесь.
+//  1. Слайдер СОДЕРЖИМОГО можно подменить (`createSelectTab`), тогда как
+//     оригинал зовёт `TransitionSlider` прямо в теле (`tweb:141-147`). По
+//     умолчанию тут и стоит настоящий `TransitionSlider` из
+//     `components/transition.ts` — потребители получают оригинальное поведение,
+//     а параметр остаётся швом для пинов полосы: они проверяют полосу, а не
+//     бухгалтерию классов слайдера, у которой свой файл тестов.
 //  2. Позиционная форма `horizontalMenu(tabs, content, onClick, …)` не
 //     портирована: она в tweb нужна ради 40 старых мест вызова, у нас
 //     потребитель один (`AppSearchSuper`, задача 5) и он новый. Осталась
@@ -31,6 +31,7 @@
 //  3. Ветка `if(!tabs) return _selectTab` (`tweb:155-157`) не портирована: она
 //     обслуживает вызовы «слайдер без полосы вкладок» (tweb `slider.ts:23`).
 //     У нас такой потребитель зовёт слайдер напрямую, и ветка была бы мёртвой.
+import TransitionSlider from '@components/transition'
 import fastSmoothScroll, { FocusDirection } from '@helpers/fastSmoothScroll'
 import findUpAsChild from '@helpers/dom/findUpAsChild'
 import whichChild from '@helpers/dom/whichChild'
@@ -69,7 +70,8 @@ export type CreateSelectTab = (options: {
 type Args = {
   tabs: HTMLElement
   content: HTMLElement
-  createSelectTab: CreateSelectTab
+  /** по умолчанию — `TransitionSlider` (`components/transition.ts`), как в оригинале */
+  createSelectTab?: CreateSelectTab
   onClick?: (id: number, tabContent: HTMLElement, animate: boolean) => void | boolean | Promise<void | boolean>
   onTransitionEnd?: () => void
   transitionTime?: number
@@ -202,7 +204,7 @@ export async function selectTarget({
 export function horizontalMenu({
   tabs,
   content,
-  createSelectTab,
+  createSelectTab = TransitionSlider,
   onClick,
   onTransitionEnd,
   transitionTime = 200,
