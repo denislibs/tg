@@ -1,4 +1,4 @@
-// Ссылки — порт tweb `lib/richTextProcessor/{matchUrlProtocol,wrapUrl,setBlankToAnchor,wrapTelegramUrlToAnchor}.ts`
+// Ссылки — порт tweb `lib/richTextProcessor/{matchUrlProtocol,matchUrl,wrapUrl,setBlankToAnchor,wrapTelegramUrlToAnchor}.ts`
 // с ДВУМЯ обязательными отличиями (оба — требования `web-client/CLAUDE.md`, раздел «Безопасность»):
 //
 // 1. **Allow-list схем.** tweb (`matchUrlProtocol.ts`) блокирует ровно одну схему —
@@ -12,6 +12,7 @@
 //    и рассчитывает на глобали из `addAnchorListener`. Мы кладём имя действия в
 //    `dataset.anchorAction`, а слушателя вешает лента одним делегированием.
 import { safeUrl } from '@core/safeUrl'
+import { URL_REG_EXP } from './parseEntities'
 
 /** Атрибут-носитель действия вместо tweb'овского inline `onclick`. */
 export const ANCHOR_ACTION_ATTRIBUTE = 'data-anchor-action'
@@ -128,6 +129,16 @@ export function setBlankToAnchor(anchor: HTMLAnchorElement) {
   anchor.target = '_blank'
   anchor.rel = 'noopener noreferrer'
   return anchor
+}
+
+/**
+ * Порт tweb `matchUrl.ts` — первая ссылка в тексте по `URL_REG_EXP`
+ * (строка-шаблон, оттого `match` собирает регексп без флагов — как оригинал).
+ * Читатели: рендер ссылок shared media (`components/appSearchSuper.ts`,
+ * `processUrlFilter`) и его же фильтр по типу.
+ */
+export function matchUrl(text: string) {
+  return !text ? null : text.match(URL_REG_EXP)
 }
 
 /**
