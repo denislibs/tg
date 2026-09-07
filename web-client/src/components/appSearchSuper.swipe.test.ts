@@ -19,7 +19,7 @@
 // как поля.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LangPackKey } from '@lib/langPack'
-import type { SearchSuperMediaTab } from '@components/appSearchSuper'
+import type { SearchSuperManagers, SearchSuperMediaTab } from '@components/appSearchSuper'
 
 function makeEvent(type: string, props: Record<string, unknown> = {}): Event {
   const e = new Event(type, { bubbles: true, cancelable: true })
@@ -32,6 +32,17 @@ function makeEvent(type: string, props: Record<string, unknown> = {}): Event {
 function touchPoint(x: number, y: number, target: EventTarget) {
   return { clientX: x, clientY: y, pageX: x, pageY: y, target }
 }
+
+/**
+ * Свайп в сеть не ходит: ручки обязательны (`AppSearchSuperOptions`), поэтому
+ * стоят заглушки, которые обязаны остаться НЕПОЗВАННЫМИ.
+ */
+const IDLE_MANAGERS = {
+  messages: {
+    mediaHistory: () => { throw new Error('свайп не грузит данные') },
+    searchCounters: () => { throw new Error('свайп не грузит данные') },
+  },
+} as unknown as SearchSuperManagers
 
 async function loadWithTouch() {
   vi.resetModules()
@@ -182,7 +193,7 @@ describe('AppSearchSuper: свайп между вкладками', () => {
     host.getBoundingClientRect = () => ({ y: 0 }) as DOMRect
     scrollable.container.append(host)
 
-    const searchSuper = new AppSearchSuper({ mediaTabs: makeMediaTabs(), scrollable })
+    const searchSuper = new AppSearchSuper({ mediaTabs: makeMediaTabs(), scrollable, managers: IDLE_MANAGERS })
     searchSuper.container.getBoundingClientRect = () => ({ y: 0 }) as DOMRect
     host.append(searchSuper.container)
 

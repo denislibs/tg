@@ -694,12 +694,36 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       return { messages: asc, reachedTop, reachedBottom }
     },
 
-    // Search messages in a chat by text (newest first) + total match count.
     // Шаред-медиа профиля (табы Media/Files/Links/Music/Voice) — история чата
-    // одного типа, новые сверху (tweb inputMessagesFilter*).
-    async mediaHistory(peerId: number, filter: 'media' | 'files' | 'links' | 'music' | 'voice', offset = 0, limit = 30): Promise<{ messages: MyMessage[]; count: number }> {
-      const r = await rest.get<MessagesContainer>(`/chats/${peerId}/media`, { filter, offset, limit })
+    // одного типа, новые сверху (tweb inputMessagesFilter*) + общее число.
+    //
+    // Листается КУРСОРОМ: `offsetId` — номер ПОСЛЕДНЕГО уже показанного
+    // сообщения, страница отдаётся строго ниже него (порт tweb
+    // `appSearchSuper.ts:2278-2279` — `offsetId = lastItem?.mid`). Смещения
+    // здесь быть не может: тот же список одновременно пополняется СВЕРХУ
+    // живыми апдейтами (tweb `sharedMedia.tsx:239` — `history.unshift`), и
+    // каждое новое сообщение сдвигало бы окно на единицу — вторая страница
+    // приезжала бы с дублем последнего элемента первой (или с дырой).
+    //
+    // Номер наружу КЛИЕНТСКИЙ, в URL уходит серверный: `getServerMessageId` —
+    // ровно та граница пространств, о которой `core/history/messageId.ts`.
+    async mediaHistory(peerId: number, filter: 'media' | 'files' | 'links' | 'music' | 'voice', offsetId = 0, limit = 30): Promise<{ messages: MyMessage[]; count: number }> {
+      const r = await rest.get<MessagesContainer>(`/chats/${peerId}/media`, {
+        filter, offset_id: getServerMessageId(offsetId), limit,
+      })
       return { messages: await mapContainer(r), count: r.count ?? 0 }
+    },
+
+    // Число сообщений по КАЖДОМУ виду шаред-медиа ОДНИМ ответом — аналог
+    // MTProto `messages.getSearchCounters`, которым оригинал спрашивает
+    // счётчики всех вкладок правой колонки сразу (tweb
+    // `appSearchSuper.ts:2375-2377`). Ответ идёт в порядке запроса и содержит
+    // запись на каждый фильтр: неизвестный вид — ноль, а не пропуск.
+    async searchCounters(peerId: number, filters: string[]): Promise<{ filter: string; count: number }[]> {
+      const r = await rest.get<{ counters?: { filter: string; count: number }[] }>(
+        `/chats/${peerId}/search_counters`, { filters: filters.join(',') },
+      )
+      return r.counters ?? []
     },
 
     // Поиск в чате: текст + необязательные фильтры (tweb topbarSearch) —

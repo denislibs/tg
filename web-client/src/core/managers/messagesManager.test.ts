@@ -1113,3 +1113,37 @@ describe('MessagesManager: вид чата доходит до временно�
     expect((await pendingOp(() => false))!.msg.pFlags).toEqual({ out: true })
   })
 })
+
+// Шаред-медиа листается КУРСОРОМ, а не смещением (порт tweb
+// `appSearchSuper.ts:2278-2279` — `offsetId = lastItem?.mid`). Разница не
+// косметическая: тот же список пополняется СВЕРХУ живыми апдейтами, и числовое
+// смещение при этом отдаёт вторую страницу с дублем или дырой. Здесь пинится
+// ГРАНИЦА пространств номеров: наружу менеджер берёт клиентский `mid`, а в URL
+// уходит серверный `seq` (`getServerMessageId`).
+describe('MessagesManager.mediaHistory: курсор `offset_id`', () => {
+  const capturingRest = () => {
+    const queries: Record<string, string | number>[] = []
+    const rest = {
+      get: async (_path: string, q?: Record<string, string | number>) => {
+        queries.push(q ?? {})
+        return { messages: [], count: 0 }
+      },
+      post: async () => ({}),
+    } as unknown as RestClient
+    return { rest, queries }
+  }
+
+  it('первая страница идёт без курсора', async () => {
+    const { rest, queries } = capturingRest()
+    await newMessagesManager({ rest }).mediaHistory(1, 'media', 0, 30)
+    expect(queries[0]).toEqual({ filter: 'media', offset_id: 0, limit: 30 })
+    // смещения на проводе больше нет вовсе — иначе сервер листал бы по нему
+    expect(queries[0]).not.toHaveProperty('offset')
+  })
+
+  it('следующая страница — по СЕРВЕРНОМУ номеру последнего показанного', async () => {
+    const { rest, queries } = capturingRest()
+    await newMessagesManager({ rest }).mediaHistory(1, 'files', cid(77), 50)
+    expect(queries[0]).toEqual({ filter: 'files', offset_id: 77, limit: 50 })
+  })
+})
