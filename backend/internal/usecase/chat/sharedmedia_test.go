@@ -130,14 +130,4 @@ func TestMediaHistory_CursorSurvivesInsertOnTop(t *testing.T) {
 			seqs(page2.Messages), photos[3].Seq, photos[2].Seq)
 	}
 
-	// Пин на совместимость: пока живёт React-`SharedMedia`, листающий смещением,
-	// Offset обязан работать как раньше (учитывается только без OffsetID).
-	// Уедет вместе с этим компонентом — шаг 6 задачи 1 плана shared media.
-	legacy, err := in.MediaHistory(ctx, chatID, a, "media", MediaPage{Offset: 2, Limit: 2})
-	if err != nil {
-		t.Fatalf("legacy offset: %v", err)
-	}
-	if len(legacy.Messages) != 2 || legacy.Messages[0].Seq != photos[4].Seq || legacy.Messages[1].Seq != photos[3].Seq {
-		t.Fatalf("legacy offset seqs = %v, want [%d %d]", seqs(legacy.Messages), photos[4].Seq, photos[3].Seq)
-	}
 }

@@ -26,7 +26,7 @@
 // `scrollToStart` про себя утверждает (`appSearchSuper.ts`, порт `tweb:800-807`).
 import { describe, it, expect, afterEach, beforeEach } from 'vitest'
 import Scrollable from '@components/scrollable'
-import AppSearchSuper, { type SearchSuperMediaTab } from '@components/appSearchSuper'
+import AppSearchSuper, { type SearchSuperManagers, type SearchSuperMediaTab } from '@components/appSearchSuper'
 import type { ScrollOptions } from '@helpers/fastSmoothScroll'
 import { fastRaf } from '@helpers/schedulers'
 import type { LangPackKey } from '@lib/langPack'
@@ -43,6 +43,18 @@ function makeMediaTabs(): SearchSuperMediaTab[] {
     { type: 'links', inputFilter: 'inputMessagesFilterUrl', name: 'SharedLinksTab2' as LangPackKey },
   ]
 }
+
+/**
+ * Ядро в сеть не ходит: эти тесты про разметку и скролл, и загрузку они не
+ * запускают вовсе. Ручки — обязательные (`AppSearchSuperOptions`), поэтому
+ * стоят заглушки, которые обязаны остаться НЕПОЗВАННЫМИ.
+ */
+const IDLE_MANAGERS = {
+  messages: {
+    mediaHistory: () => { throw new Error('ядро не грузит данные') },
+    searchCounters: () => { throw new Error('ядро не грузит данные') },
+  },
+} as unknown as SearchSuperManagers
 
 let scrollable: Scrollable
 /** аргументы каждого `scrollToStart` — см. докблок файла */
@@ -74,7 +86,7 @@ function build(options?: { scrollOffset?: number }) {
   host.getBoundingClientRect = () => ({ y: 0 }) as DOMRect
   scrollable.container.append(host)
 
-  const searchSuper = new AppSearchSuper({ mediaTabs: makeMediaTabs(), scrollable, ...options })
+  const searchSuper = new AppSearchSuper({ mediaTabs: makeMediaTabs(), scrollable, managers: IDLE_MANAGERS, ...options })
   searchSuper.container.getBoundingClientRect = () => ({ y: SUPER_OFFSET_FROM_PARENT }) as DOMRect
   host.append(searchSuper.container)
 

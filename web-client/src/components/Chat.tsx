@@ -51,6 +51,7 @@ import VanillaFeed, { type ChatFeedApi } from './chat/VanillaFeed'
 import type { InputStickerSetID } from '@core/media/messageMedia'
 import { useChatAutoDownload } from '@core/hooks/useChatAutoDownload'
 import { messageToViewerItem, type LightboxCtx } from './mediaViewer/collectLightboxItems'
+import { createMediaNeighboursLoader, type MediaNeighboursLoader } from './mediaViewer/mediaNeighbours'
 import { closeMediaViewer } from './mediaViewer/openMediaViewer'
 import { cachedPeer } from '../core/peerCache'
 import { isUserStatusOnline, userStatusWasOnline } from '../core/peers/peer'
@@ -739,7 +740,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // снесённого React-лайтбокса. Сбор items — из окна сообщений
   // (collectLightboxItems — чистая логика бывшего useLightbox), действия —
   // существующие флоу чата, дозагрузка соседей — REST /chats/{id}/media. ──
-  const mediaPagesRef = useRef<{ msgs: MyMessage[]; complete: boolean } | null>(null)
+  const mediaPagesRef = useRef<MediaNeighboursLoader | null>(null)
   // close-колбэк вьювера на время открытого попапа удаления/пересылки:
   // подтверждение попапа закрывает вьювер (tweb PopupDeleteMessages/
   // showForwardPopup зовут this.close() по действию), отмена — снимает колбэк
@@ -768,27 +769,18 @@ export default function Chat({ chat, onBack, thread }: Props) {
       `[data-mid="${id}"] .attachment, [data-mid="${id}"] img, [data-mid="${id}"] video`,
     ) ?? null
   // Дозагрузка соседей листания (наш источник вместо tweb SearchListLoader):
-  // REST отдаёт newest-first постранично — докручиваем страницы, пока не найдём
-  // якорь и не наберём loadCount за ним; кэш живёт одно открытие вьювера.
+  // страницы фильтра `media` копит `mediaNeighbours.ts`, кэш живёт одно
+  // открытие вьювера. Листается КУРСОРОМ (`offset_id` = номер последнего
+  // загруженного, tweb appSearchSuper.ts:2278-2279): смещением нельзя — тот же
+  // список пополняется сверху живыми апдейтами, и страница уехала бы на дубль.
   const loadMoreMedia = async (older: boolean, anchor: ViewerItem | undefined, loadCount: number): Promise<ViewerItem[]> => {
     if (!anchor || !isRealChat) return []
-    const cache = (mediaPagesRef.current ??= { msgs: [], complete: false })
-    const fetchNext = async () => {
-      const r = await managers.messages.mediaHistory(numericChatId, 'media', cache.msgs.length, 50)
-      cache.msgs.push(...r.messages)
-      if (!r.messages.length || cache.msgs.length >= r.count) cache.complete = true
-    }
+    const loader = (mediaPagesRef.current ??= createMediaNeighboursLoader({
+      fetchPage: async (offsetId, limit) =>
+        (await managers.messages.mediaHistory(numericChatId, 'media', offsetId, limit)).messages,
+    }))
     try {
-      const idxOf = () => cache.msgs.findIndex((m) => m.id === anchor.mid)
-      while (idxOf() === -1 && !cache.complete) await fetchNext()
-      const i = idxOf()
-      if (i === -1) return [] // якоря нет в фильтре media (секретный чат) — край
-      if (older) {
-        while (cache.msgs.length - i - 1 < loadCount && !cache.complete) await fetchNext()
-      }
-      const slice = older
-        ? cache.msgs.slice(i + 1, i + 1 + loadCount)
-        : cache.msgs.slice(Math.max(0, i - loadCount), i)
+      const slice = await loader.neighbours(anchor.mid, older, loadCount)
       const ctx = lightboxCtx(slice)
       // порядок newest-first сохраняем — ListLoader (reverse: true) сам разложит
       return slice.map((m) => messageToViewerItem(m, ctx, findBubbleMedia(m.id)))

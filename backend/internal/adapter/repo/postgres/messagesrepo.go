@@ -483,9 +483,9 @@ func (r *MessagesRepo) MediaHistory(ctx context.Context, chatID int64, filter st
 	if err := qq.QueryRow(ctx, `SELECT count(*)`+where, chatID).Scan(&count); err != nil {
 		return nil, 0, err
 	}
-	// Курсор и legacy-смещение дописываются в текст запроса, а не прячутся за
-	// «($2=0 OR m.seq<$2)»: такое условие планировщик не умеет превратить в
-	// границу индексного скана и читает весь чат.
+	// Курсор дописывается в текст запроса, а не прячется за «($2=0 OR
+	// m.seq<$2)»: такое условие планировщик не умеет превратить в границу
+	// индексного скана и читает весь чат.
 	args := []any{chatID}
 	q := `SELECT ` + messageColsPrefixed("m") + where
 	if page.OffsetID > 0 {
@@ -494,10 +494,6 @@ func (r *MessagesRepo) MediaHistory(ctx context.Context, chatID int64, filter st
 	}
 	args = append(args, page.Limit)
 	q += fmt.Sprintf(` ORDER BY m.seq DESC LIMIT $%d`, len(args))
-	if page.OffsetID == 0 && page.Offset > 0 {
-		args = append(args, page.Offset)
-		q += fmt.Sprintf(` OFFSET $%d`, len(args))
-	}
 	rows, err := qq.Query(ctx, q, args...)
 	if err != nil {
 		return nil, 0, err

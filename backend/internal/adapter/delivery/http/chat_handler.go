@@ -984,9 +984,8 @@ func (h *ChatHandler) NextMention(w http.ResponseWriter, r *http.Request) {
 // GET /chats/{chatID}/media?filter=media|files|links|music|voice&offset_id=&limit=
 //
 // offset_id — seq последнего уже показанного сообщения (0/нет — с начала), как
-// в оригинале (tweb appSearchSuper.ts:2278-2279). Устаревший offset остаётся
-// только ради текущего React-клиента и учитывается лишь без offset_id — см.
-// usecasechat.MediaPage.
+// в оригинале (tweb appSearchSuper.ts:2278-2279). Смещения у ручки нет вовсе:
+// почему — см. usecasechat.MediaPage.
 func (h *ChatHandler) MediaHistory(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
@@ -995,7 +994,6 @@ func (h *ChatHandler) MediaHistory(w http.ResponseWriter, r *http.Request) {
 	filter := r.URL.Query().Get("filter")
 	page := usecasechat.MediaPage{
 		OffsetID: queryInt(r, "offset_id", 0),
-		Offset:   int(queryInt(r, "offset", 0)),
 		Limit:    int(queryInt(r, "limit", 30)),
 	}
 	res, err := h.svc.MediaHistory(r.Context(), chatID, h.meID(r), filter, page)
