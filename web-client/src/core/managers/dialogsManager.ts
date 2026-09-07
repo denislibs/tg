@@ -1128,6 +1128,24 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     },
 
     /**
+     * Порт `appMessagesManager.getDialogOnly` (tweb :4363-4365) в единственной
+     * применимой форме — «строка диалога у меня есть». Спрашивает открытие по
+     * ссылке (`core/hooks/useUrlSync.ts`): у нас публичный канал, в котором
+     * пользователь не состоит, истории НЕ отдаёт (`chat_handler.go:499-502`,
+     * 403 «not a member of this chat»), поэтому в него приходится вступать, а
+     * лишний раз вступать в уже открытый канал — лишний round-trip.
+     *
+     * `await hydrate()`, а не голый `findDialog`, как у двух соседей выше:
+     * вопрос задаётся ДО того, как зеркало объявило пробел (`fillMirror`), —
+     * ровно то, ради чего разбор хэша и уехал в boot. Без гидратации ответ был
+     * бы «диалога нет» на каждом холодном старте.
+     */
+    async hasDialog(peerId: number): Promise<boolean> {
+      await hydrate()
+      return !!findDialog(peerId)
+    },
+
+    /**
      * Контакты для правил папок `contacts`/`non_contacts`. Зовётся оттуда же,
      * откуда наполняется UI-стор (`stores/foldersStore.ts::loadFolders` →
      * `setContacts`): один источник, два потребителя — отдельного владения

@@ -26,6 +26,7 @@ import type { HistoryResult } from '@core/managers/messagesManager'
 import type { ContextMenuPopups } from './contextMenu'
 import type { ChatAutoDownload } from '@core/hooks/useChatAutoDownload'
 import { saveDocument, type MessageMedia } from '@core/media/messageMedia'
+import { HttpError } from '@core/net/restClient'
 import VanillaFeed from './VanillaFeed'
 
 // Байты документа берёт `appDownloadManager` прямым fetch'ем по токен-URL, а за
@@ -52,9 +53,13 @@ function msg(id: number, over: Partial<MessageReal> = {}): MyMessage {
   return { ...makeMessage({ id, peerId: CHAT, fromId: 2, text: `m${id}`, date: 1_755_259_200 }), ...over }
 }
 
-function managersWith(messages: MyMessage[]) {
+function managersWith(messages: MyMessage[], failFirst = 0) {
+  let failures = failFirst
   const getHistory = vi.fn(
-    async (): Promise<HistoryResult> => ({ messages, count: messages.length, reachedTop: true, reachedBottom: true }),
+    async (): Promise<HistoryResult> => {
+      if (failures-- > 0) throw new HttpError(500, 'history failed')
+      return { messages, count: messages.length, reachedTop: true, reachedBottom: true }
+    },
   )
   const fillMirror = vi.fn(async () => {})
   const dialogs = { getReadMaxSeqIfUnread: async () => 0, getHistoryMaxSeq: async () => 0 }
@@ -79,13 +84,16 @@ function mount(
     autoDownload?: ChatAutoDownload
     menuPopups?: ContextMenuPopups
     onOpenDatePicker?: (initDate: number, onPick: (timestamp: number) => void) => void
+    /** Сколько ПЕРВЫХ запросов истории обязаны отказать — для пина повтора. */
+    failFirstHistory?: number
   } = { peerId: CHAT },
 ) {
-  const { managers, getHistory, messageByDate } = managersWith(messages)
+  const { failFirstHistory = 0, ...feedProps } = props
+  const { managers, getHistory, messageByDate } = managersWith(messages, failFirstHistory)
   const view = render(
     <ManagersProvider managers={managers}>
       <div className="chat">
-        <VanillaFeed paddingTopPx={0} paddingBottomPx={0} {...props} />
+        <VanillaFeed paddingTopPx={0} paddingBottomPx={0} {...feedProps} />
       </div>
     </ManagersProvider>,
   )
@@ -246,6 +254,41 @@ describe('VanillaFeed — проводка императивной ленты �
     })
     expect(container.querySelector('.document')?.classList.contains('downloading')).toBe(false)
   })
+
+  // ── ПОВТОР ПЕРВОЙ ЗАГРУЗКИ ──────────────────────────────────────────────
+  // Первая загрузка была ЕДИНСТВЕННОЙ: отказ оставлял ленту пустой навсегда
+  // (шапка и закреп при этом уже нарисованы), и поднимал её только клик по
+  // строке чатлиста. У оригинала повтор делает транспорт — непринятый вызов
+  // пере-отправляется на переподключении (`networker.resend()`,
+  // tweb `mtproto/networker.ts:1701-1716`); под нашим REST такого слоя нет.
+  //
+  // Пин смотрит на ИТОГ (сообщения на экране), а не на число вызовов: сними
+  // повтор — и лента останется пустой.
+  it('первая загрузка отказала — лента повторяет попытку и всё-таки набирает окно', async () => {
+    const { container, getHistory } = mount([msg(cid(1)), msg(cid(2))], { peerId: CHAT, failFirstHistory: 1 })
+
+    await vi.waitFor(() => {
+      expect(getHistory).toHaveBeenCalledTimes(1)
+    })
+    // После первого (отказавшего) запроса баблов нет — это и есть описанный симптом.
+    expect(bubblesIn(container)).toHaveLength(0)
+
+    await vi.waitFor(() => {
+      expect(bubblesIn(container)).toHaveLength(2)
+    }, { timeout: 5000 })
+  })
+
+  // Попыток КОНЕЧНОЕ число: отказ, который не лечится повтором (403 «не
+  // участник»), не должен превращаться в бесконечный поток запросов.
+  it('повтор не бесконечен', async () => {
+    const { getHistory } = mount([msg(cid(1))], { peerId: CHAT, failFirstHistory: 99 })
+
+    await vi.waitFor(() => {
+      expect(getHistory).toHaveBeenCalledTimes(3)
+    }, { timeout: 8000 })
+    await new Promise((resolve) => setTimeout(resolve, 3500))
+    expect(getHistory).toHaveBeenCalledTimes(3)
+  }, 15000)
 
   it('размонтирование гасит ленту: узел снят, подписки сняты (`bubbles.destroy()`)', async () => {
     const { container, unmount } = mount([msg(cid(1))])

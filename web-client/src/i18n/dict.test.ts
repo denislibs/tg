@@ -152,8 +152,14 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // ключу доступа (tweb `langSign.ts:36`, текст сверяет `langTweb.test.ts`),
 // вместо прежнего ПУСТОГО `catch {}`. `Error.SomethingWentWrong` при этом жив
 // и своих пятерых вызывающих не теряет. `plural` не менялся — строка не числовая.
+// Сдвиг набора задачей «открытие чата по ссылке»: русскому добавлены два ключа
+// отказа резолва имени — `NoUsernameFound` и `Alert.UserDoesntExists` (оба взяты
+// у оригинала дословно, tweb `lang.ts:1718` и `:3391`). До этой задачи отказ
+// `#@username` глушился пустым `catch {}` в `core/hooks/useUrlSync.ts`, а у
+// оригинала он показывается тостом (`appImManager.ts:1802-1809`). `plural` не
+// менялся — обе строки не числовые.
 const COMPOSITION = {
-  ru: { keys: 1308, plural: 32 },
+  ru: { keys: 1310, plural: 32 },
   uk: { keys: 682, plural: 24 },
   es: { keys: 681, plural: 24 },
   de: { keys: 681, plural: 24 },
@@ -227,8 +233,11 @@ const COMPOSITION = {
 // суффиксы стали мёртвыми. Русскому вместе с этой парой множественных форм
 // добавлены `Chat.Poll.Type.Public` и `Chat.Poll.SelectAnOption`: −2 +4 = +2
 // ключа и +2 множественные формы; остальным четырём — только −2.
+// Сдвиг набора задачей «открытие чата по ссылке»: русскому добавлены
+// `NoUsernameFound` и `Alert.UserDoesntExists` (разбор — у `COMPOSITION` выше).
+// У остальных четырёх словарей набор не менялся — их снимок тот же.
 const FINGERPRINT = {
-  ru: '7db3fb61',
+  ru: '526274f4',
   uk: 'e1335ac1',
   es: 'a6b1aad3',
   de: 'a6b1aad3',

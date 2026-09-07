@@ -60,8 +60,18 @@ vi.mock('../core/state/loadState', async () => {
 
 import { bootstrap } from './boot'
 import { persistScope } from '../core/store/persist'
+import { useNavigationStore } from '../stores/navigationStore'
+import { resetHashBootstrap } from '../core/hooks/useUrlSync'
 
-beforeEach(() => { calls.length = 0; vi.clearAllMocks() })
+beforeEach(() => {
+  calls.length = 0
+  vi.clearAllMocks()
+  location.hash = ''
+  useNavigationStore.getState().selectChat(null)
+  // Защёлка «первое применение хэша» — модульная и одна на жизнь страницы;
+  // между прогонами её надо снимать, иначе второй bootstrap() её не увидит.
+  resetHashBootstrap()
+})
 
 describe('boot: гидрация владельца диалогов упорядочена относительно persistScope', () => {
   it('fillMirror() владельца стартует ПОСЛЕ await persistScope(token)', async () => {
@@ -78,5 +88,65 @@ describe('boot: гидрация владельца диалогов упоря�
     await bootstrap()
 
     expect(calls.indexOf('dialogs.fillMirror')).toBeLessThan(calls.indexOf('loadStateOnce'))
+  })
+})
+
+// ── Открытие по ссылке стоит ДО списка диалогов ─────────────────────────────
+// Порядок оригинала: `appImManager.construct` зовёт `onHashChange(true)`
+// (tweb `appImManager.ts:834`), и только ПОТОМ `appDialogsManager` берётся за
+// чатлист (`appDialogsManager.ts:726`). У нас первое применение хэша жило на
+// эффекте смонтированного React (`App.tsx` → `useUrlSync`), то есть стояло
+// после `await dialogsOp` и после всего маунта: под нагрузкой ссылка на канал
+// начинала открываться последней из всего старта.
+//
+// Пин смотрит на ПОРЯДОК, а не на факт вызова: ответ владельца про диалоги
+// держится неотвеченным, и чат обязан быть выбран ДО того, как он приедет.
+// Верни применение хэша обратно за `await dialogsOp` — и `waitFor` ниже
+// никогда не дождётся.
+describe('boot: хэш применяется до загрузки списка диалогов', () => {
+  it('чат из хэша выбран ещё до ответа fillMirror()', async () => {
+    let release!: () => void
+    dialogs.fillMirror.mockImplementationOnce(
+      () => new Promise((resolve) => { release = () => resolve({ op: 'reset' as const, items: [] }) }),
+    )
+    location.hash = '#-42'
+
+    const booted = bootstrap()
+
+    await vi.waitFor(() => {
+      expect(useNavigationStore.getState().selectedId).toBe('-42')
+    })
+    // ...и это действительно ДО чатлиста: ни ответа владельца, ни сетевого догона.
+    expect(calls).not.toContain('dialogs.refresh')
+
+    release()
+    await booted
+  })
+
+  // Без токена IM не поднимается вовсе (Shell рендерится под `authed`), и у
+  // оригинала `bootstrapIm()` тоже зовётся только под авторизацией
+  // (tweb `index.ts:628`/`:641`). Открывать по хэшу чат на экране входа значило
+  // бы получить 401 и тост поверх формы логина.
+  it('без токена boot хэш НЕ применяет — это делает монтирование Shell', async () => {
+    const { idbGet } = await import('../core/store/idbKv')
+    vi.mocked(idbGet).mockResolvedValueOnce(undefined as never)
+    location.hash = '#-42'
+
+    await bootstrap()
+
+    expect(useNavigationStore.getState().selectedId).toBeNull()
+  })
+
+  it('под passcode-локом хэш не применяется — RPC под локом не летят', async () => {
+    const { useSettingsStore } = await import('../settings')
+    const before = useSettingsStore.getState().passcodeEnabled
+    useSettingsStore.setState({ passcodeEnabled: true })
+    location.hash = '#-42'
+    try {
+      await bootstrap()
+      expect(useNavigationStore.getState().selectedId).toBeNull()
+    } finally {
+      useSettingsStore.setState({ passcodeEnabled: before })
+    }
   })
 })

@@ -261,3 +261,95 @@ describe('PeersManager — границы объявления', () => {
     expect(ops[0].peers).toEqual([chat, user(2)])
   })
 })
+
+// ── resolveUsername ──────────────────────────────────────────────────────────
+// Порт `appUsersManager.resolveUsername` (tweb `appUsersManager.ts:344-359`):
+// индекс имён, один запрос на промахе, именованный отказ. До него имя резолвил
+// СКАН ВИТРИНЫ ДИАЛОГОВ на главном потоке — из-за чего открытие по ссылке
+// стояло за загрузкой чатлиста, тогда как у оригинала `onHashChange` идёт ДО
+// неё (tweb `appImManager.ts:834` против `appDialogsManager.ts:726`).
+describe('PeersManager.resolveUsername', () => {
+  const channel = (id: number, username: string): Chat =>
+    ({ _: 'channel', id, title: `C${id}`, username, photo: { _: 'chatPhotoEmpty' }, date: 0 })
+
+  /** Директория: префиксный поиск, как в `searchrepo.go` (`ILIKE 'q%'`). */
+  function directory(chats: Chat[], users: UserReal[] = []) {
+    const calls: string[] = []
+    const rest = {
+      async get<R>(path: string, query?: Record<string, string | number>): Promise<R> {
+        calls.push(path)
+        const q = String(query?.q ?? '').toLowerCase()
+        return {
+          chats: chats.filter((c) => 'username' in c && c.username?.toLowerCase().startsWith(q)),
+          users: users.filter((u) => u.username?.toLowerCase().startsWith(q)),
+        } as unknown as R
+      },
+    } as unknown as RestClient
+    return { rest, calls }
+  }
+
+  it('имя, приехавшее попутно с ответом, резолвится БЕЗ запроса', async () => {
+    const { rest, calls } = directory([])
+    const mgr = newPeersManager({ rest })
+    // Порт `modifyUsernamesCache`: индекс ведётся там же, где карточка ложится
+    // в кэш, — то есть на `saveApiPeers` любого ответа.
+    mgr.saveApiPeers({ chats: [channel(42, 'durov')] })
+
+    expect(await mgr.resolveUsername('@Durov')).toEqual(channel(42, 'durov'))
+    expect(calls).toEqual([])
+  })
+
+  it('промах индекса — ровно ОДИН запрос, и ответ ложится в кэш', async () => {
+    const { rest, calls } = directory([channel(42, 'durov')])
+    const mgr = newPeersManager({ rest })
+
+    expect(await mgr.resolveUsername('durov')).toEqual(channel(42, 'durov'))
+    expect(calls).toEqual(['/search'])
+    // Второй раз — уже из индекса.
+    await mgr.resolveUsername('durov')
+    expect(calls).toEqual(['/search'])
+  })
+
+  it('префиксное совпадение чужим именем не считается', async () => {
+    const { rest } = directory([channel(42, 'durov')])
+    const mgr = newPeersManager({ rest })
+
+    await expect(mgr.resolveUsername('dur')).rejects.toMatchObject({ type: 'USERNAME_NOT_OCCUPIED' })
+  })
+
+  it('имени нет вовсе — именованный отказ оригинала', async () => {
+    const { rest } = directory([])
+    const mgr = newPeersManager({ rest })
+
+    await expect(mgr.resolveUsername('nobody')).rejects.toMatchObject({ type: 'USERNAME_NOT_OCCUPIED' })
+  })
+
+  it('пустое имя — USERNAME_INVALID, в сеть не ходим', async () => {
+    const { rest, calls } = directory([])
+    const mgr = newPeersManager({ rest })
+
+    await expect(mgr.resolveUsername('@ ')).rejects.toMatchObject({ type: 'USERNAME_INVALID' })
+    expect(calls).toEqual([])
+  })
+
+  // Порт `setUsernameToCache` (tweb :536-546): прежнее имя СНИМАЕТСЯ. Без
+  // снятия переименованный канал вечно резолвился бы по имени, которого у него
+  // уже нет, — и ссылка вела бы в чужой чат.
+  it('переименование снимает прежнее имя с индекса', async () => {
+    const { rest } = directory([])
+    const mgr = newPeersManager({ rest })
+    mgr.saveApiPeers({ chats: [channel(42, 'durov')] })
+    mgr.saveApiPeers({ chats: [channel(42, 'pavel')] })
+
+    expect(await mgr.resolveUsername('pavel')).toEqual(channel(42, 'pavel'))
+    await expect(mgr.resolveUsername('durov')).rejects.toMatchObject({ type: 'USERNAME_NOT_OCCUPIED' })
+  })
+
+  it('человек резолвится тем же вызовом', async () => {
+    const petya = user(7, { username: 'petya' })
+    const { rest } = directory([], [petya])
+    const mgr = newPeersManager({ rest })
+
+    expect(await mgr.resolveUsername('@petya')).toEqual(petya)
+  })
+})

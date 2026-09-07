@@ -64,12 +64,41 @@ export type PeerOp = { op: 'upsert'; peers: (User | Chat)[] }
  */
 export function newPeersManager({ rest, onPeerOps }: { rest: Pick<RestClient, 'get'>; onPeerOps?: (ops: PeerOp[]) => void }) {
   const cache = new Map<PeerId, User | Chat>()
+  /**
+   * Индекс `публичное имя → ключ пира` — порт `appUsersManager.usernames`
+   * (tweb `appUsersManager.ts:350`). Держится СБОКУ от кэша карточек и ведётся
+   * там же, где карточка кладётся в кэш (`modifyUsernamesCache` зовётся из
+   * `saveApiUser`/`saveApiChat`, tweb `appUsersManager.ts:518-533`), — именно
+   * поэтому `resolveUsername` у оригинала попадает в кэш ещё до того, как
+   * загружен список диалогов.
+   */
+  const usernames = new Map<string, PeerId>()
 
   const publish = (peers: (User | Chat)[]) => { if (peers.length) onPeerOps?.([{ op: 'upsert', peers }]) }
   // Карточка — абсолютный снимок, поэтому сравниваем её целиком (тот же
   // предикат, что у зеркала: `peerCache::samePeer`). Ручной список полей
   // приходилось бы расширять при каждом новом поле пира — и он молча отставал.
   const same = (a: User | Chat, b: User | Chat) => JSON.stringify(a) === JSON.stringify(b)
+
+  /** Публичное имя пира. У `user` и `channel` параметр свой, у базового `chat`
+   *  он объявлен, но не производится (см. докблок `Chat` в `peers/peer.ts`),
+   *  поэтому спрашиваем наличие, а не конструктор. */
+  const peerUsername = (peer: User | Chat): string | undefined =>
+    ('username' in peer ? peer.username : undefined) || undefined
+
+  /**
+   * Порт `setUsernameToCache`/`modifyUsernamesCache` (tweb
+   * `appUsersManager.ts:518-546`): СНЯТЬ прежнее имя и поставить новое. Снятие
+   * обязательно — иначе переименованный канал вечно резолвился бы по старому
+   * имени, которого у него уже нет.
+   */
+  function indexUsername(peer: User | Chat, prev?: User | Chat): void {
+    const oldName = prev && peerUsername(prev)?.toLowerCase()
+    const newName = peerUsername(peer)?.toLowerCase()
+    if (oldName === newName) return
+    if (oldName && usernames.get(oldName) === peerKey(peer)) usernames.delete(oldName)
+    if (newName) usernames.set(newName, peerKey(peer))
+  }
 
   /**
    * Положить карточки в кэш. Возвращает подмножество `changed` — те, что
@@ -97,6 +126,7 @@ export function newPeersManager({ rest, onPeerOps }: { rest: Pick<RestClient, 'g
       const prev = cache.get(key)
       if (prev && same(prev, peer)) continue
       cache.set(key, peer)
+      indexUsername(peer, prev)
       written.push(peer)
       if (prev) replaced.push(peer)
       if (peer._ === 'user') persist.push(peer)
@@ -250,9 +280,55 @@ export function newPeersManager({ rest, onPeerOps }: { rest: Pick<RestClient, 'g
   async function hydrateFromDisk(): Promise<void> {
     if (cache.size) return
     const [users, chats] = await Promise.all([loadUsers(), loadChats()])
-    for (const p of [...users, ...chats]) if (!cache.has(peerKey(p))) cache.set(peerKey(p), p)
+    for (const p of [...users, ...chats]) if (!cache.has(peerKey(p))) { cache.set(peerKey(p), p); indexUsername(p) }
   }
 
-  return { getPeers, getUsers, saveApiPeers, fillMirror, applyUserUpdate, cachedPeer, hydrateFromDisk }
+  /**
+   * Порт `appUsersManager.resolveUsername` (tweb `appUsersManager.ts:344-359`):
+   * СНАЧАЛА индекс имён, и только на промахе — ОДИН запрос, чей ответ
+   * прогоняется через сохранение пиров (`processResolvedPeer`, tweb
+   * `appUsersManager.ts:368-373`).
+   *
+   * До этого порта имя резолвил СКАН ВИТРИНЫ ДИАЛОГОВ на главном потоке
+   * (`useUrlSync.ts`), то есть открытие по ссылке было заперто за загрузкой
+   * списка чатов — у оригинала же `onHashChange` стоит ДО неё
+   * (tweb `appImManager.ts:834` против `appDialogsManager.ts:726`). Поэтому
+   * первым делом поднимаем карточки с диска: у оригинала кэш к моменту разбора
+   * хэша уже поднят (`await apiManagerProxy.loadAllStates()`, tweb
+   * `index.ts:455`, стоит раньше `bootstrapIm()`), и попадание в него сети не
+   * стоит вовсе.
+   *
+   * Отличие от оригинала одно, и оно в ручке: `contacts.resolveUsername` у нас
+   * нет, ближайший эквивалент — директория `GET /search` (тот же конструктор
+   * `contacts.found`, тот же один запрос). Совпадение проверяется ТОЧНО по
+   * имени: директория ищет префиксом (`searchrepo.go::SearchChats`, `ILIKE
+   * 'q%'`), и без сверки `@lenta` открывал бы `lenta_news`.
+   *
+   * Отказ — `USERNAME_NOT_OCCUPIED` оригинала: имя отказа переживает границу
+   * воркера (`superMessagePort.ts:239-252` кладёт `HttpError.type` в
+   * `errorType`), и вызывающий ветвится по нему, как `openUsername`
+   * (tweb `appImManager.ts:1801-1809`).
+   */
+  async function resolveUsername(username: string): Promise<User | Chat> {
+    const name = username.replace(/^@+/, '').trim().toLowerCase()
+    if (!name) throw new HttpError(400, 'username invalid', 'USERNAME_INVALID')
+
+    await hydrateFromDisk()
+    const cached = usernames.get(name)
+    const peer = cached !== undefined ? cache.get(cached) : undefined
+    if (peer) return peer
+
+    const found = await rest.get<{ chats?: Chat[]; users?: UserReal[] }>('/search', { q: name })
+    // Порт `processResolvedPeer` (tweb :368-373): ответ сначала СОХРАНЯЕТСЯ —
+    // вместе с ним наполняется и индекс имён, — и только потом из него
+    // выбирается пир.
+    saveApiPeers(found)
+    const match = [...(found.chats ?? []), ...(found.users ?? [])]
+      .find((p) => peerUsername(p)?.toLowerCase() === name)
+    if (!match) throw new HttpError(404, 'username not occupied', 'USERNAME_NOT_OCCUPIED')
+    return match
+  }
+
+  return { getPeers, getUsers, saveApiPeers, fillMirror, applyUserUpdate, cachedPeer, hydrateFromDisk, resolveUsername }
 }
 export type PeersManager = ReturnType<typeof newPeersManager>
