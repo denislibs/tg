@@ -13,7 +13,7 @@
 // `.animating` играют кейфреймы.
 //
 // Ветка `animationFunction` (навигация слайдера с JS-transform и brightness)
-// сюда НЕ портирована: ею владеет `core/dom/navigationTransition.ts`, у неё
+// сюда НЕ портирована: ею владеет `components/transition.ts`, у неё
 // другой контракт (императивный, с inline-стилями на узлах).
 import { useEffect, useRef, useState } from 'react'
 import liteMode from '@helpers/liteMode'

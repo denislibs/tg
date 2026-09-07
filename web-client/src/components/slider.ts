@@ -46,13 +46,9 @@
  *    `emoticonsDropdown/index.ts:297,301`.
  *
  * ── Адаптации под наш стек ──────────────────────────────────────────────────
- *  • `TransitionSlider({content, type:'navigation', transitionTime})` (:41-45)
- *    → `createNavigationTransition(container, time)` из
- *    `core/dom/navigationTransition.ts` — тот же порт `transition.ts`, второго
- *    движка анимации не заведено;
- *  • `TRANSITION_TIME = 250` (:11) → `NAVIGATION_TRANSITION_TIME` оттуда же —
- *    константа уже была портирована, дублировать её числом нельзя (разъедутся
- *    с CSS по отдельности);
+ *  • `TRANSITION_TIME = 250` (:11) → `NAVIGATION_TRANSITION_TIME` из
+ *    `components/transition.ts`: ту же константу читают ещё два React-хоста
+ *    перехода, дублировать её числом нельзя (разъедутся с CSS по отдельности);
  *  • `AppManagers` → наш `Managers` (`client/bootstrap.ts`), тот же реестр
  *    ручек к воркеру. В tweb `SidebarSliderOptions` его не объявляет —
  *    подмешивает подкласс (`sidebarLeft/settingsSliderPopup.ts:7-10`) поверх
@@ -68,7 +64,7 @@ import SliderSuperTab, { type SliderSuperTabConstructable } from '@components/sl
 import indexOfAndSplice from '@helpers/array/indexOfAndSplice'
 import safeAssign from '@helpers/object/safeAssign'
 import { getMiddleware, type Middleware, type MiddlewareHelper } from '@helpers/middleware'
-import { createNavigationTransition, NAVIGATION_TRANSITION_TIME } from '@core/dom/navigationTransition'
+import TransitionSlider, { NAVIGATION_TRANSITION_TIME } from '@components/transition'
 import appNavigationController, { type NavigationItem, type NavigationItemType } from '@core/navigation/appNavigationController'
 import type { Managers } from '../client/bootstrap'
 
@@ -105,7 +101,7 @@ type SliderTabHooks = {
 const tabHooks = (tab: SliderSuperTab) => tab as unknown as SliderTabHooks
 
 export default class SidebarSlider {
-  protected _selectTab!: ReturnType<typeof createNavigationTransition>
+  protected _selectTab!: ReturnType<typeof TransitionSlider>
   protected historyTabIds: (number | SliderSuperTab)[] = [] // * key is any, since right sidebar is ugly now
   protected tabsContainer!: HTMLElement
   public sidebarEl!: HTMLElement
@@ -133,7 +129,11 @@ export default class SidebarSlider {
     // Разметка колонки обязана содержать `.sidebar-slider` (tweb
     // `scss/partials/_slider.scss`) — без него слайдеру некуда класть вкладки.
     this.tabsContainer = this.sidebarEl.querySelector('.sidebar-slider') as HTMLElement
-    this._selectTab = createNavigationTransition(this.tabsContainer, NAVIGATION_TRANSITION_TIME)
+    this._selectTab = TransitionSlider({
+      content: this.tabsContainer,
+      type: 'navigation',
+      transitionTime: NAVIGATION_TRANSITION_TIME,
+    })
     if(!this.canHideFirst) {
       this._selectTab(0)
     }

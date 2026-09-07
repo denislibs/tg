@@ -21,7 +21,7 @@
 // того файла: «Порт tweb hooks/useHeavyAnimationCheck.ts»), это ЕДИНСТВЕННАЯ
 // шина тяжёлых анимаций в проекте, на неё уже подписан `animationIntersector`
 // (глушит стикеры/видео) и её же дёргают `App.tsx`, `useThemeToggle`,
-// `core/dom/ladder.ts`, `core/dom/navigationTransition.ts`,
+// `core/dom/ladder.ts`, `components/transition.ts`,
 // `core/dom/smoothScrollToElement.ts`. Заводить вторую, парную, но
 // несвязанную шину под путём `@hooks/useHeavyAnimationCheck` значило бы,
 // что скролл этого файла глушил бы стикеры в СВОЁМ инстансе шины, а
