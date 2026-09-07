@@ -285,9 +285,41 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 	return AroundResult{Messages: msgs, Count: count}, nil
 }
 
-// SearchMessages returns messages in a chat matching q (newest first) + total count.
+// MediaPage — окно выборки шаред-медиа профиля (вкладки Медиа/Файлы/Ссылки/
+// Музыка/Голосовые).
+//
+// Листается КУРСОРОМ, а не смещением: оригинал просит следующую страницу по id
+// последнего уже показанного сообщения (tweb
+// src/components/appSearchSuper.ts:2278-2279 — `offsetId = lastItem?.mid`).
+// Разница не косметическая. Тот же список одновременно пополняется СВЕРХУ от
+// живых апдейтов (tweb src/components/sidebarRight/tabs/sharedMedia.tsx:239 —
+// `history.unshift`), а числовое смещение считается от начала списка: каждое
+// новое сообщение сдвигает окно на единицу, и вторая страница приезжает с
+// дублем последнего элемента первой (или, при удалении, с дырой). Курсор к
+// пополнению сверху нечувствителен по построению.
+type MediaPage struct {
+	// OffsetID — seq последнего уже показанного сообщения; страница отдаётся
+	// строго ниже него. 0 — с начала (самые новые).
+	OffsetID int64
+	// Offset — СОВМЕСТИМОСТЬ с текущим клиентом: смещением ещё листают
+	// web-client/src/components/userInfo/SharedMedia.tsx:193 (вкладки профиля)
+	// и Chat.tsx:776 (соседи медиавьювера). Учитывается только при
+	// OffsetID == 0. Удалять его можно лишь вместе с ОБОИМИ — не только с
+	// React-`SharedMedia`. Новый код обязан пользоваться OffsetID: смещение
+	// даёт неверный результат — см. выше.
+	Offset int
+	Limit  int
+}
+
+// SearchCounter — число сообщений чата одного вида (аналог MTProto
+// messages.searchCounter).
+type SearchCounter struct {
+	Filter string
+	Count  int
+}
+
 // MediaHistory lists a chat's shared media of one kind (profile tabs).
-func (i *Interactor) MediaHistory(ctx context.Context, chatID, userID int64, filter string, offset, limit int) (HistoryResult, error) {
+func (i *Interactor) MediaHistory(ctx context.Context, chatID, userID int64, filter string, page MediaPage) (HistoryResult, error) {
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil {
 		return HistoryResult{}, err
@@ -295,17 +327,51 @@ func (i *Interactor) MediaHistory(ctx context.Context, chatID, userID int64, fil
 	if !ok {
 		return HistoryResult{}, domain.ErrNotFound
 	}
-	if limit <= 0 || limit > 60 {
-		limit = 30
+	if page.Limit <= 0 || page.Limit > 60 {
+		page.Limit = 30
 	}
-	if offset < 0 {
-		offset = 0
+	if page.OffsetID < 0 {
+		page.OffsetID = 0
 	}
-	msgs, count, err := i.msgs.MediaHistory(ctx, chatID, filter, offset, limit)
+	if page.Offset < 0 {
+		page.Offset = 0
+	}
+	msgs, count, err := i.msgs.MediaHistory(ctx, chatID, filter, page)
 	if err != nil {
 		return HistoryResult{}, err
 	}
 	return HistoryResult{Messages: msgs, Count: count}, nil
+}
+
+// SearchCounters — число сообщений по КАЖДОМУ из filters одним ответом (аналог
+// MTProto messages.getSearchCounters). Оригинал спрашивает счётчики всех вкладок
+// сразу, одним вызовом (tweb src/components/appSearchSuper.ts:2375-2377,
+// результат используется в loadFirstTime:2388-2389), чтобы решить, какие вкладки
+// показать и какую открыть первой; у нас это стоило пяти запросов на открытие
+// профиля.
+//
+// Ответ идёт В ПОРЯДКЕ ЗАПРОСА и содержит запись на каждый фильтр: неизвестный
+// вид — ноль, а не ошибка и не пропущенный ключ. Так же устроен и оригинал:
+// вкладка ищет СВОЮ запись по имени фильтра и разыменовывает её без проверки
+// (`counters.find(...).count`, tweb src/components/appSearchSuper.ts:2429-2434),
+// то есть пропущенный фильтр там — не пустая вкладка, а исключение.
+func (i *Interactor) SearchCounters(ctx context.Context, chatID, userID int64, filters []string) ([]SearchCounter, error) {
+	ok, err := i.chats.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	counts, err := i.msgs.SearchCounters(ctx, chatID, filters)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SearchCounter, 0, len(filters))
+	for _, f := range filters {
+		out = append(out, SearchCounter{Filter: f, Count: counts[f]})
+	}
+	return out, nil
 }
 
 // SearchFilter сужает поиск внутри чата (tweb topbarSearch): по автору (в

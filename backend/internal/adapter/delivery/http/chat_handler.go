@@ -981,16 +981,24 @@ func (h *ChatHandler) NextMention(w http.ResponseWriter, r *http.Request) {
 }
 
 // MediaHistory serves the profile's shared-media tabs:
-// GET /chats/{chatID}/media?filter=media|files|links|music|voice
+// GET /chats/{chatID}/media?filter=media|files|links|music|voice&offset_id=&limit=
+//
+// offset_id — seq последнего уже показанного сообщения (0/нет — с начала), как
+// в оригинале (tweb appSearchSuper.ts:2278-2279). Устаревший offset остаётся
+// только ради текущего React-клиента и учитывается лишь без offset_id — см.
+// usecasechat.MediaPage.
 func (h *ChatHandler) MediaHistory(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
 	filter := r.URL.Query().Get("filter")
-	offset := int(queryInt(r, "offset", 0))
-	limit := int(queryInt(r, "limit", 30))
-	res, err := h.svc.MediaHistory(r.Context(), chatID, h.meID(r), filter, offset, limit)
+	page := usecasechat.MediaPage{
+		OffsetID: queryInt(r, "offset_id", 0),
+		Offset:   int(queryInt(r, "offset", 0)),
+		Limit:    int(queryInt(r, "limit", 30)),
+	}
+	res, err := h.svc.MediaHistory(r.Context(), chatID, h.meID(r), filter, page)
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
 		return
@@ -1000,6 +1008,47 @@ func (h *ChatHandler) MediaHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeMessagesSlice(w, r, h.svc, res.Count, res.Messages)
+}
+
+// SearchCounters serves the shared-media tab counters in one call:
+// GET /chats/{chatID}/search_counters?filters=media,files,links,music,voice
+//
+// Аналог MTProto messages.getSearchCounters: оригинал спрашивает все вкладки
+// разом (tweb appSearchSuper.ts:2375-2377), у нас это стоило пяти запросов на
+// открытие профиля. Порядок ответа = порядок запроса, на каждый фильтр ровно
+// одна запись.
+func (h *ChatHandler) SearchCounters(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := peerChatID(w, r, h.svc)
+	if !ok {
+		return
+	}
+	// Вкладок в оригинале десяток, поэтому список короткий по существу; предел
+	// стоит, чтобы ответ на `filters=a,a,a,…` не рос вместе с запросом.
+	const maxFilters = 20
+	var filters []string
+	for _, f := range strings.Split(r.URL.Query().Get("filters"), ",") {
+		if f = strings.TrimSpace(f); f != "" && len(filters) < maxFilters {
+			filters = append(filters, f)
+		}
+	}
+	counters, err := h.svc.SearchCounters(r.Context(), chatID, h.meID(r), filters)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusForbidden, "not a member of this chat")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "search counters failed")
+		return
+	}
+	type counter struct {
+		Filter string `json:"filter"`
+		Count  int    `json:"count"`
+	}
+	out := make([]counter, 0, len(counters))
+	for _, c := range counters {
+		out = append(out, counter{Filter: c.Filter, Count: c.Count})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"counters": out})
 }
 
 func (h *ChatHandler) SearchMessages(w http.ResponseWriter, r *http.Request) {

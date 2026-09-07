@@ -442,35 +442,63 @@ func (s *joinedScanner) Scan(dest ...any) error {
 	return s.row.Scan(append(dest, s.extra...)...)
 }
 
+// mediaFilterCond — SQL-предикат одного вида шаред-медиа (вкладки профиля,
+// tweb inputMessagesFilter*). Пустая строка — вид неизвестен. Один источник
+// правды для постраничной выборки и для батч-счётчиков: разъехавшись, они дадут
+// вкладку с числом, которое не сходится с содержимым грида.
+//
+// Предикаты попарно НЕ ПЕРЕСЕКАЮТСЯ (по type; links — только среди text), и на
+// этом стоит одна GROUP BY-агрегация в SearchCounters.
+func mediaFilterCond(filter string) string {
+	switch filter {
+	case "media":
+		return `m.type IN ('photo','video')`
+	case "files":
+		return `m.type = 'document'`
+	case "music":
+		return `m.type = 'audio'`
+	case "voice":
+		return `m.type IN ('voice','roundVideo')`
+	case "links":
+		return `m.type = 'text' AND m.text ~* 'https?://'`
+	}
+	return ""
+}
+
 // MediaHistory returns a chat's messages of one shared-media kind (the
 // profile's Media/Files/Links/Music/Voice tabs — tweb inputMessagesFilter*),
 // newest first. "links" is text messages containing a URL; the rest filter by
 // message type.
-func (r *MessagesRepo) MediaHistory(ctx context.Context, chatID int64, filter string, offset, limit int) ([]domain.Message, int, error) {
-	qq := querier(ctx, r.pool)
-	var cond string
-	switch filter {
-	case "media":
-		cond = `m.type IN ('photo','video')`
-	case "files":
-		cond = `m.type = 'document'`
-	case "music":
-		cond = `m.type = 'audio'`
-	case "voice":
-		cond = `m.type IN ('voice','roundVideo')`
-	case "links":
-		cond = `m.type = 'text' AND m.text ~* 'https?://'`
-	default:
+//
+// Окно — курсор `m.seq < page.OffsetID` (tweb appSearchSuper.ts:2278-2279);
+// почему не OFFSET, объяснено у usecasechat.MediaPage.
+func (r *MessagesRepo) MediaHistory(ctx context.Context, chatID int64, filter string, page usecasechat.MediaPage) ([]domain.Message, int, error) {
+	cond := mediaFilterCond(filter)
+	if cond == "" {
 		return nil, 0, nil
 	}
+	qq := querier(ctx, r.pool)
 	where := ` FROM messages m WHERE m.chat_id=$1 AND m.deleted_at IS NULL AND ` + cond
 	var count int
 	if err := qq.QueryRow(ctx, `SELECT count(*)`+where, chatID).Scan(&count); err != nil {
 		return nil, 0, err
 	}
-	rows, err := qq.Query(ctx,
-		`SELECT `+messageColsPrefixed("m")+where+` ORDER BY m.seq DESC LIMIT $2 OFFSET $3`,
-		chatID, limit, offset)
+	// Курсор и legacy-смещение дописываются в текст запроса, а не прячутся за
+	// «($2=0 OR m.seq<$2)»: такое условие планировщик не умеет превратить в
+	// границу индексного скана и читает весь чат.
+	args := []any{chatID}
+	q := `SELECT ` + messageColsPrefixed("m") + where
+	if page.OffsetID > 0 {
+		args = append(args, page.OffsetID)
+		q += fmt.Sprintf(` AND m.seq < $%d`, len(args))
+	}
+	args = append(args, page.Limit)
+	q += fmt.Sprintf(` ORDER BY m.seq DESC LIMIT $%d`, len(args))
+	if page.OffsetID == 0 && page.Offset > 0 {
+		args = append(args, page.Offset)
+		q += fmt.Sprintf(` OFFSET $%d`, len(args))
+	}
+	rows, err := qq.Query(ctx, q, args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -484,6 +512,49 @@ func (r *MessagesRepo) MediaHistory(ctx context.Context, chatID int64, filter st
 		out = append(out, m)
 	}
 	return out, count, rows.Err()
+}
+
+// SearchCounters counts a chat's messages per shared-media kind in ONE query
+// (аналог MTProto messages.getSearchCounters).
+//
+// Одна агрегация с CASE, а не N подзапросов: подзапросы прочитали бы сообщения
+// чата столько раз, сколько вкладок, а вкладок пять. Неизвестные виды в карту не
+// попадают — вызывающий читает их как ноль.
+func (r *MessagesRepo) SearchCounters(ctx context.Context, chatID int64, filters []string) (map[string]int, error) {
+	out := make(map[string]int, len(filters))
+	var arms, conds []string
+	seen := make(map[string]bool, len(filters))
+	for _, f := range filters {
+		cond := mediaFilterCond(f)
+		if cond == "" || seen[f] {
+			continue
+		}
+		seen[f] = true
+		out[f] = 0
+		arms = append(arms, `WHEN `+cond+` THEN '`+f+`'`)
+		conds = append(conds, `(`+cond+`)`)
+	}
+	if len(arms) == 0 {
+		return out, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT CASE `+strings.Join(arms, " ")+` END AS f, count(*)
+		   FROM messages m
+		  WHERE m.chat_id=$1 AND m.deleted_at IS NULL AND (`+strings.Join(conds, " OR ")+`)
+		  GROUP BY 1`, chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var f string
+		var n int
+		if err := rows.Scan(&f, &n); err != nil {
+			return nil, err
+		}
+		out[f] = n
+	}
+	return out, rows.Err()
 }
 
 // ByPollID возвращает сообщения, ссылающиеся на опрос (обычно одно).
