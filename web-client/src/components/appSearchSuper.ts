@@ -18,12 +18,15 @@
 // выделение и контекстное меню в этом файле ОТСУТСТВУЮТ — ни полей, ни пустых
 // методов: заглушка, которую никто не зовёт, — мёртвый код (`CLAUDE.md`).
 // Единственное исключение — `buildItem`: его зовёт уже приехавший
-// `performSearchResult`, и он честно отдаёт узел, просто пока пустой.
+// `performSearchResult`, и он честно отдаёт узел — строку ссылки для вкладки
+// `links`, а для медиа/документов пока пустой.
 // Места, где оригинал зовёт ещё не приехавшее, помечены комментарием со
 // ссылкой на строку tweb и номер задачи; когда задача приедет, вызов встанет
 // ровно туда.
 //
-//  • `processXFilter`, медиавьювер по клику — задачи 7-9 (`tweb:826-1283`, `:716-777`);
+//  • `processPhotoVideoFilter`/`processDocumentFilter`, медиавьювер по клику —
+//    задачи 7-8 (`tweb:826-962`, `:716-777`); ссылки (`processUrlFilter`,
+//    `:964-1094`) уже здесь;
 //  • `loadFirstTime`/`firstLoad`, предикаты `canView*` — задача 10 (`tweb:2362-2529`);
 //  • `SortedUserList`/участники — задача 11 (`tweb:1525-1758`);
 //  • `SearchSelection`, `SearchContextMenu` — задача 14 (`tweb:156-345`,
@@ -85,12 +88,16 @@
 //     «всё загружено» (`tweb:2312`) — остаётся первая, `history.length <
 //     loadCount`, ровно та, что применима к нашей ручке.
 // 10. `filterMessagesByType` (`tweb:822-824`) делегирует в оригинале общей
-//     утилите `filterMessagesByInputFilter` (её потребителей у нас нет), и там
-//     же выясняется, что фильтр `inputMessagesFilterUrl` смотрит на сущности
-//     ЛИБО на `matchUrl` текста. Порта `matchUrl` у нас нет; текст проверяется
-//     тем же регекспом, каким его проверяет наш бэкенд
-//     (`messagesrepo.go::mediaFilterCond`), — расхождение объявлено в
-//     `docs/tweb/shared-media.md` § 3 и снимается задачей 15.
+//     утилите `filterMessagesByInputFilter` (её потребителей у нас нет); сюда
+//     перенесена только её ветка `inputMessagesFilterUrl`
+//     (`filterMessagesByInputFilter.ts:121-126`): сущности ЛИБО `matchUrl`
+//     текста, дословно. Дословность и есть расхождение — с БЭКЕНДОМ: его
+//     фильтр `links` — регексп `https?://` по тексту
+//     (`messagesrepo.go::mediaFilterCond`), поэтому живой апдейт покажет во
+//     вкладке ссылку без схемы или за текстом-якорем, которой следующая
+//     страница с сервера уже не принесёт. Объявлено в
+//     `docs/tweb/shared-media.md` § 3, снимается задачей 15 плана (фильтр по
+//     сущностям на бэкенде).
 // 11. `searchGroups`/`searchGroupMedia` в `performSearchResult`
 //     (`tweb:1106-1128`, `:1189-1194`) пропущены целиком: группы — часть ЛЕВОЙ
 //     колонки (`docs/tweb/shared-media.md` § 1.2), в правой их нет.
@@ -100,6 +107,24 @@
 //     видно: живой апдейт всегда несёт ровно одно сообщение
 //     (`sharedMedia.tsx:247`). Портировать переворот значит закладывать
 //     дефект под первый же альбом; правим и объявляем.
+// 13. `message.totalEntities` (`tweb:968`) → `message.entities`. У tweb это
+//     сущности сервера, СЛИТЫЕ с найденными клиентом (`parseEntities`); у нас
+//     такое поле не производится. Ссылку без серверной сущности находит та же
+//     ветка `matchUrl` (`:971-977`), которой оригинал обходится для сообщения
+//     без сущностей вовсе, — исход тот же, только чаще через неё.
+// 14. Наша `WebPage` (`core/media/messageMedia.ts`) — только конструктор
+//     `webPage`: проверке `webPageEmpty` (`tweb:1020-1022`) не на что
+//     сработать, а у синтетической карточки (`:1010-1017`) нет `pFlags`/`id`/
+//     `hash` — полей нет в модели, значений для них — тоже.
+// 15. Inline `onclick` якоря, переносимый на строку (`tweb:1080-1081`), у нас
+//     запрещён (шапка `lib/richtext/url.ts`): действие внутренней ссылки живёт
+//     в `data-anchor-action`, и на строку переносится он.
+// 16. `showSender`/`wrapSenderToPeer` (`tweb:1051-1053`) не портированы: это
+//     опция ГЛОБАЛЬНОГО поиска левой колонки (отложено, задача 20 плана),
+//     правая колонка её не задаёт. Единственный `await` рендерера был ради
+//     неё, поэтому `processUrlFilter` у нас синхронный.
+// 17. `wrapPlainText(display_url…)` (`tweb:1057`) без сущностей — тождество
+//     (`wrapPlainText.ts:7-13`); хост дописывается строкой.
 import Scrollable, { ScrollableX } from '@components/scrollable'
 import { horizontalMenu } from '@components/horizontalMenu'
 import type { SelectTab } from '@components/horizontalMenu'
@@ -125,6 +150,16 @@ import { getMessageKind } from '@core/messages/messageKind'
 import { getSharedMediaMessage, saveSharedMediaMessages } from '@components/sharedMediaHistories'
 import { getHeavyAnimationPromise } from '@core/dom/heavyAnimation'
 import windowSize from '@helpers/windowSize'
+import Row from '@components/row'
+import wrapPhoto from '@components/wrappers/photo'
+import wrapWebPageTitle from '@components/wrappers/webPageTitle'
+import wrapWebPageDescription from '@components/wrappers/webPageDescription'
+import wrapSentTime from '@components/wrappers/sentTime'
+import { choosePhotoSize, type WebPage } from '@core/media/messageMedia'
+import { wrapAbbreviation } from '@lib/richtext/abbreviation'
+import wrapRichText from '@lib/richtext/wrapRichText'
+import { ANCHOR_ACTION_ATTRIBUTE, matchUrl, setBlankToAnchor } from '@lib/richtext/url'
+import setInnerHTML from '@helpers/dom/setInnerHTML'
 
 /**
  * tweb `:111` — фильтр сообщений (`inputMessagesFilterPhotoVideo` и т.п.).
@@ -211,6 +246,19 @@ type PerformSearchResultArgs = {
   append?: boolean
 }
 
+/**
+ * tweb `:346-354` — то, что получает рендерер одного элемента
+ * (`processXFilter`). `elemsToAppend`, `searchGroup` и `mediaTab` оригинала
+ * не читает ни один рендерер правой колонки (`searchGroup` — левая, расхождение
+ * 11): сообщение, фильтр, копилка промисов и актуальность.
+ */
+type ProcessSearchSuperResult = {
+  message: MyMessage
+  inputFilter: SearchSuperType
+  promises: Promise<unknown>[]
+  middleware: Middleware
+}
+
 /** Ручки менеджеров, которыми пользуется подсистема — расхождение 6 в шапке. */
 export type SearchSuperManagers = {
   messages: Pick<Managers['messages'], 'mediaHistory' | 'searchCounters'>
@@ -245,9 +293,6 @@ const FILTER_KINDS: Partial<Record<SearchSuperType, ReadonlySet<ReturnType<typeo
   inputMessagesFilterMusic: new Set(['audio'] as const),
   inputMessagesFilterRoundVoice: new Set(['voice', 'roundVideo'] as const),
 }
-
-/** Расхождение 8 в шапке: тот же регексп, каким ссылки ищет наш бэкенд. */
-const URL_IN_TEXT = /https?:\/\//i
 
 export type AppSearchSuperOptions = {
   mediaTabs: SearchSuperMediaTab[]
@@ -654,7 +699,6 @@ export default class AppSearchSuper {
    * tweb `:822-824` (через `filterMessagesByInputFilter`) — какие из сообщений
    * относятся к этому фильтру. Спрашивают отсюда двое: рендер из кэша
    * (`:2258`) и живой апдейт (`sharedMedia.tsx:229`), поэтому вывод один.
-   * Расхождение 8 в шапке — про ветку ссылок.
    */
   public filterMessagesByType(messages: (MyMessage | undefined)[], type: SearchSuperType): MyMessage[] {
     const kinds = FILTER_KINDS[type]
@@ -664,9 +708,11 @@ export default class AppSearchSuper {
       }
 
       if(type === 'inputMessagesFilterUrl') {
+        // Дословно (`filterMessagesByInputFilter.ts:121-126`), и потому шире,
+        // чем ищет бэкенд, — расхождение 10 в шапке, задача 15 плана.
         const entities = message._ === 'message' ? message.entities : undefined
         return !!entities?.some((e) => e._ === 'messageEntityUrl' || e._ === 'messageEntityTextUrl') ||
-          (message._ === 'message' && URL_IN_TEXT.test(message.message))
+          (message._ === 'message' && !!matchUrl(message.message))
       }
 
       return !!kinds?.has(getMessageKind(message))
@@ -684,13 +730,148 @@ export default class AppSearchSuper {
   }
 
   /**
+   * tweb `:964-1094` — строка вкладки «Ссылки». Карточку (`webPage`) даёт
+   * сообщение; если её нет, карточка собирается из ПЕРВОЙ ссылки в сущностях
+   * или в тексте (`:967-1018`): превью — абвиатура, описание — весь текст,
+   * заголовок — хост. Ничего не даёт для сообщения без ссылки и для строки, в
+   * которой нечего показать (`:1092-1094`). Расхождения 13-17 в шапке.
+   */
+  private processUrlFilter({ message, promises, middleware }: ProcessSearchSuperResult): HTMLElement | undefined {
+    // Пилюля не несёт ни текста, ни вложения — ссылке взяться неоткуда.
+    if(message._ !== 'message') {
+      return
+    }
+
+    let webPage: WebPage | undefined = message.media?._ === 'messageMediaWebPage' ? message.media.webpage : undefined
+
+    if(!webPage) {
+      const entity = message.entities ? message.entities.find((e) => e._ === 'messageEntityUrl' || e._ === 'messageEntityTextUrl') : null
+      let url: string
+
+      if(!entity) {
+        const match = matchUrl(message.message)
+        if(!match) {
+          return
+        }
+
+        url = match[0]
+      } else {
+        url = message.message.slice(entity.offset, entity.offset + entity.length)
+      }
+
+      if(entity?._ === 'messageEntityTextUrl') {
+        url = entity.url
+      }
+
+      let display_url = url
+
+      const same = message.message === url
+      if(!url.match(/^(ftp|http|https):\/\//)) {
+        display_url = 'https://' + url
+        url = url.includes('@') ? url : 'https://' + url
+      }
+
+      display_url = new URL(display_url).hostname
+
+      webPage = {
+        _: 'webPage',
+        url,
+        display_url,
+      }
+
+      if(!same) {
+        webPage.description = message.message
+      }
+    }
+
+    const previewDiv = document.createElement('div')
+    previewDiv.classList.add('preview')
+
+    if(webPage.photo) {
+      // Не ждём, как и оригинал (`:1028`): в копилку `promises` враппер сам
+      // кладёт превью, полное фото догружает очередь.
+      void wrapPhoto({
+        container: previewDiv,
+        photo: webPage.photo,
+        boxWidth: 0,
+        boxHeight: 0,
+        withoutPreloader: true,
+        lazyLoadQueue: this.lazyLoadQueue,
+        middleware,
+        size: choosePhotoSize(webPage.photo, 60, 60),
+        loadPromises: promises,
+        noBlur: true,
+      })
+    } else {
+      previewDiv.classList.add('empty')
+      setInnerHTML(previewDiv, wrapAbbreviation(webPage.title || webPage.display_url || webPage.description || webPage.url, true))
+    }
+
+    const title = wrapWebPageTitle(webPage)
+
+    const subtitleFragment = wrapWebPageDescription(webPage)
+    // `htmlToDocumentFragment` оригинала (`:1042`) для фрагмента — тождество
+    // (`htmlToDocumentFragment.ts:2`); наш `wrapRichText` отдаёт фрагмент сразу.
+    const aFragment = wrapRichText(webPage.url || '')
+    const a = aFragment.firstElementChild
+    const aIsAnchor = a instanceof HTMLAnchorElement
+    if(aIsAnchor) {
+      try { // can have 'URIError: URI malformed'
+        a.innerText = decodeURIComponent(a.href)
+      } catch {
+        // адрес остаётся закодированным — как в оригинале (`:1046-1050`)
+      }
+    }
+
+    if(subtitleFragment.firstChild) {
+      subtitleFragment.append('\n')
+    }
+
+    // Оригинал (`:1064`) кладёт `a` как есть; без якоря (адрес не распознан
+    // ссылкой) он получил бы текст «null» — кладём сам адрес текстом.
+    subtitleFragment.append(a ?? aFragment)
+
+    if(!title.textContent) {
+      // расхождение 17: `wrapPlainText` без сущностей — тождество
+      title.append(webPage.display_url.split('/', 1)[0])
+    }
+
+    const row = new Row({
+      title,
+      titleRight: wrapSentTime(message),
+      subtitle: subtitleFragment,
+      havePadding: true,
+      clickable: true,
+      noRipple: true,
+      asLink: aIsAnchor,
+    })
+
+    if(aIsAnchor) {
+      (row.container as HTMLAnchorElement).href = a.href
+      // расхождение 15: вместо inline `onclick` (`:1080-1081`) — атрибут действия
+      const action = a.getAttribute(ANCHOR_ACTION_ATTRIBUTE)
+      if(action) {
+        row.container.setAttribute(ANCHOR_ACTION_ATTRIBUTE, action)
+      }
+      if(a.target === '_blank') {
+        setBlankToAnchor(row.container as HTMLAnchorElement)
+      }
+    }
+
+    row.applyMediaElement(previewDiv, 'big')
+
+    if(row.container.innerText.trim().length) {
+      return row.container
+    }
+  }
+
+  /**
    * tweb `:1096-1257`. Собирает узлы по сообщениям и кладёт их в список вкладки
    * — в конец (`append`) при пагинации и в НАЧАЛО при живом апдейте.
    *
-   * Расхождение 9 в шапке — про группы левой колонки. Сам рендер элемента
-   * (`processPhotoVideoFilter` и соседи, `tweb:874-1094`) приезжает задачами
-   * 7-9; до тех пор `buildItem` отдаёт голый узел, а вся обвязка вокруг него —
-   * классы, `data-mid`/`data-peer-id`, порядок вставки — уже оригинальная.
+   * Расхождение 11 в шапке — про группы левой колонки. Рендер элемента —
+   * развилка `buildItem` (`tweb:1143-1170`); обвязка вокруг него — классы,
+   * `data-mid`/`data-peer-id`, порядок вставки — оригинальная.
    */
   public async performSearchResult({ messages, mediaTab, append = true }: PerformSearchResultArgs) {
     const middleware = this.middleware.get()
@@ -703,7 +884,12 @@ export default class AppSearchSuper {
     await getHeavyAnimationPromise()
 
     const promises: Promise<unknown>[] = []
-    const elemsToAppend = messages.map((message) => ({ element: this.buildItem(message), message }))
+    // tweb `:1169-1180` — рендерер вправе не дать узла (ссылки в сообщении
+    // не нашлось, строка вышла пустой): такое сообщение пропускается.
+    const elemsToAppend = messages.flatMap((message) => {
+      const element = this.buildItem({ message, inputFilter, promises, middleware })
+      return element ? [{ element, message }] : []
+    })
 
     if(this.loadMutex) {
       promises.push(this.loadMutex)
@@ -736,13 +922,20 @@ export default class AppSearchSuper {
   }
 
   /**
-   * Узел одного элемента вкладки. Настоящие рендереры (`processPhotoVideoFilter`
-   * `tweb:874-938`, `processDocumentFilter` `:940-962`, `processUrlFilter`
-   * `:964-1094`) приезжают задачами 7-9 и встанут ровно сюда — развилкой по
-   * `inputFilter`, как в оригинале (`tweb:1143-1170`).
+   * tweb `:1143-1170` — развилка «фильтр → рендерер». Медиа
+   * (`processPhotoVideoFilter`, `tweb:874-938`) и документы
+   * (`processDocumentFilter`, `:940-962`) приезжают задачами 7-8 и встанут
+   * своими ветками; до тех пор их вкладки получают голый узел.
    */
-  private buildItem(_message: MyMessage) {
-    return document.createElement('div')
+  private buildItem(options: ProcessSearchSuperResult): HTMLElement | undefined {
+    switch(options.inputFilter) {
+      case 'inputMessagesFilterUrl': {
+        return this.processUrlFilter(options)
+      }
+
+      default:
+        return document.createElement('div')
+    }
   }
 
   /** tweb `:1259-1283`. */
