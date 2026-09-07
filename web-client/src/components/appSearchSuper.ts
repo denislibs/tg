@@ -6,7 +6,9 @@
 // Разбор подсистемы с адресами — `docs/tweb/shared-media.md` § 1.3, § 1.4, § 1.9;
 // план этапа — `docs/superpowers/plans/2026-09-07-solid-wave-3-shared-media.md`,
 // задачи 5-6. Эталон разметки — живой дамп Telegram
-// `docs/tweb/dom/dumps/07-right-sidebar.json:120-310`.
+// `docs/tweb/dom/dumps/07-right-sidebar.json:121-308` (дамп — ОДНА физическая
+// строка JSON; здесь и ниже нумерация по РАЗВЁРНУТОМУ тексту, где первая
+// строка — первая, `json.load(...).split('\n')`).
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ЧТО ЗДЕСЬ ЕЩЁ НЕ ЖИВЁТ (и почему это не заглушки, а пропуски)
@@ -21,7 +23,7 @@
 // ссылкой на строку tweb и номер задачи; когда задача приедет, вызов встанет
 // ровно туда.
 //
-//  • `processXFilter`, медиавьювер по клику — задачи 7-9 (`tweb:826-1283`, `:716-774`);
+//  • `processXFilter`, медиавьювер по клику — задачи 7-9 (`tweb:826-1283`, `:716-777`);
 //  • `loadFirstTime`/`firstLoad`, предикаты `canView*` — задача 10 (`tweb:2362-2529`);
 //  • `SortedUserList`/участники — задача 11 (`tweb:1525-1758`);
 //  • `SearchSelection`, `SearchContextMenu` — задача 14 (`tweb:156-345`,
@@ -34,12 +36,12 @@
 //     отдельным модулем: у нас нет `components/tabs.tsx`, а у фабрики
 //     единственный потребитель — этот класс. Два узла градиента собираются
 //     здесь же с ТЕМИ ЖЕ классами, что отдаёт фабрика (сверено с дампом
-//     `07-right-sidebar.json:121-122`). Собственных стилей у
+//     `07-right-sidebar.json:122-123`). Собственных стилей у
 //     `menu-horizontal-gradient*` нет ни у нас, ни в tweb — во всём
 //     `tweb/src` эти классы встречаются только в самой `tabs.tsx`; видимое
 //     правило одно, и оно наше: `.search-super-tabs-gradient-container`
 //     (`styles/tweb/_searchSuper.scss:92-98`).
-//  2. `createRoot` вокруг `Section` (`tweb:559-567`) у нас ВОЗВРАЩАЕТ dispose,
+//  2. `createRoot` вокруг `Section` (`tweb:567-576`) у нас ВОЗВРАЩАЕТ dispose,
 //     и `destroy()` его зовёт. В оригинале корень не утилизируется никогда —
 //     у нас `destroy()` обязан не оставлять следов (DoD 5 спеки волны 3).
 //  3. `lazyLoadQueue.lock()`/`unlockAndRefresh()` под `useHeavyAnimationCheck`
@@ -47,30 +49,52 @@
 //     порт (`push`/`clear`), ручек паузы у него нет. Гасить очередь на время
 //     тяжёлой анимации станет нечем до тех пор, пока очередь не дорастёт; на
 //     ядро это не влияет — задачи в неё кладёт рендер (задачи 7-9).
-//  4. `searchGroupMedia.clear()` в `cleanupHTML` (`tweb:2789`) пропущен:
+//  4. `searchGroupMedia.clear()` в `cleanupHTML` (`tweb:2791`) пропущен:
 //     `searchGroup.tsx` — часть ЛЕВОЙ колонки (`docs/tweb/shared-media.md` § 1.2),
 //     в правой этот узел не создаётся и у нас не портирован.
-//  5. `slider`/`appSidebarRight` (`tweb:453`) не в опциях: поле нужно только
-//     вкладкам «участники»/«похожие каналы» для открытия подэкранов (задачи 11-12).
+//  5. `slider`/`appSidebarRight` (поле `tweb:432`, опция `:450`, дефолт `:453`)
+//     не в опциях: поле нужно только вкладкам «участники»/«похожие каналы»
+//     для открытия подэкранов (задачи 11-12).
 //  6. `managers` (`tweb:419` — весь `AppManagers`) сужены до двух ручек
 //     (`SearchSuperManagers`): подсистема ходит только за списком одного вида и
 //     за счётчиками вкладок. Узкий шов и проверяем узко.
-//  7. `nextRate` (`tweb:2288`, `:2321`) не портирован: это курсор ГЛОБАЛЬНОГО
+//  7. ВЛАДЕНИЕ СКРОЛЛЕРОМ. Правило у нас такое: скроллер уничтожается только
+//     если создан и принадлежит классу. Оригинал ему удовлетворяет даром —
+//     `this.scrollable.destroy()` (`tweb:2831`) там роняет скроллер, который
+//     создан владельцем класса (вкладка сайдбара `SliderSuperTab`) и умирает
+//     вместе с ним, третьих читателей у него нет. У нас (задача 13 плана) тот
+//     же скроллер будет ОБЩИМ с шапкой профиля и переживёт подсистему, а строка
+//     скопирована дословно — то есть ПРАВИЛО СЕЙЧАС НЕ СОБЛЮДЕНО, и это
+//     ловушка: `Scrollable.destroy()` лишь снимает слушателей и обнуляет
+//     колбэки (`components/scrollable.ts:227-232`) — ни исключения, ни записи
+//     в консоль; панель просто перестанет реагировать на прокрутку. Развилка
+//     («класс заводит свой скроллер» ИЛИ «уничтожение уходит») закрывается
+//     задачей 13 плана, там же предупреждение.
+//  8. `destroy()` дополнительно СНИМАЕТ контейнер из DOM (`container.remove()`),
+//     чего в оригинале нет вовсе: там узел снимает владелец вместе со своим
+//     экраном, у нас его обязан убрать сам класс (DoD 5 — «после destroy() узлов
+//     класса в документе нет»). Обратная сторона того же расхождения: `selectTab`
+//     мы НЕ обнуляем, хотя оригинал обнуляет (`tweb:2837`) — поле объявлено
+//     `selectTab!: SelectTab` и под `strictNullChecks` (в tweb он выключен)
+//     присвоение `undefined` не проходит по типу; после `destroy()` вызов
+//     `selectTab` безопасен — слушатели сняты, а переключение уже мёртвого
+//     дерева ничего не наблюдает.
+//  9. `nextRate` (`tweb:2288`, `:2321`) не портирован: это курсор ГЛОБАЛЬНОГО
 //     поиска левой колонки (`folderId`), которого в этом порте нет вовсе
 //     (см. поправку 3 плана). Вместе с ним отпадает и вторая ветка критерия
 //     «всё загружено» (`tweb:2312`) — остаётся первая, `history.length <
 //     loadCount`, ровно та, что применима к нашей ручке.
-//  8. `filterMessagesByType` (`tweb:822-824`) делегирует в оригинале общей
+// 10. `filterMessagesByType` (`tweb:822-824`) делегирует в оригинале общей
 //     утилите `filterMessagesByInputFilter` (её потребителей у нас нет), и там
 //     же выясняется, что фильтр `inputMessagesFilterUrl` смотрит на сущности
 //     ЛИБО на `matchUrl` текста. Порта `matchUrl` у нас нет; текст проверяется
 //     тем же регекспом, каким его проверяет наш бэкенд
 //     (`messagesrepo.go::mediaFilterCond`), — расхождение объявлено в
 //     `docs/tweb/shared-media.md` § 3 и снимается задачей 15.
-//  9. `searchGroups`/`searchGroupMedia` в `performSearchResult`
+// 11. `searchGroups`/`searchGroupMedia` в `performSearchResult`
 //     (`tweb:1106-1128`, `:1189-1194`) пропущены целиком: группы — часть ЛЕВОЙ
 //     колонки (`docs/tweb/shared-media.md` § 1.2), в правой их нет.
-// 10. Вставка НЕСКОЛЬКИХ узлов в начало (`append: false`) идёт обратным
+// 12. Вставка НЕСКОЛЬКИХ узлов в начало (`append: false`) идёт обратным
 //     обходом. Оригинал (`tweb:1214-1229`) обходит список вперёд и зовёт
 //     `prepend` на каждом — порядок при этом переворачивается. У него это не
 //     видно: живой апдейт всегда несёт ровно одно сообщение
@@ -116,7 +140,7 @@ export type SearchSuperType =
   'inputMessagesFilterMusic' |
   'inputMessagesFilterRoundVoice'
 
-/** tweb `:112-124`. `nextRate`/`chatType` — расхождение 7 в шапке. */
+/** tweb `:112-124`. `nextRate`/`chatType` — расхождение 9 в шапке. */
 export type SearchSuperContext = {
   peerId: PeerId
   inputFilter: { _: SearchSuperType | undefined }
@@ -152,7 +176,7 @@ export type SearchSuperMediaTab = {
 }
 
 /**
- * tweb `:543-546` — типы, которым НЕ нужна карточка `Section`: они рисуют свою
+ * tweb `:545-553` — типы, которым НЕ нужна карточка `Section`: они рисуют свою
  * разметку целиком (грид медиа, Solid-вкладки историй/подарков, чатлисты).
  */
 const NO_SECTION_TYPES: Set<SearchSuperMediaType> = new Set([
@@ -179,7 +203,7 @@ type SearchSuperLoadTypeOptions = {
 /**
  * tweb `:149-154`. `canAnimateIn` не портирован вместе с группами левой
  * колонки: у оригинала он включает появление ИХ контейнера (`:1115-1128`) и
- * больше нигде не читается — расхождение 9 в шапке.
+ * больше нигде не читается — расхождение 11 в шапке.
  */
 type PerformSearchResultArgs = {
   messages: MyMessage[]
@@ -255,7 +279,7 @@ export default class AppSearchSuper {
   public middleware = getMiddleware()
 
   /**
-   * tweb `:373-374`. Кэш сообщений по фильтру ЖИВЁТ СНАРУЖИ класса (владелец —
+   * tweb `:372-373`. Кэш сообщений по фильтру ЖИВЁТ СНАРУЖИ класса (владелец —
    * обвязка правой колонки, `sharedMedia.tsx:33-36`) и переживает и `cleanup()`,
    * и смену пира; класс лишь держит ссылку и помечает, сколько он из кэша уже
    * отрисовал.
@@ -294,11 +318,27 @@ export default class AppSearchSuper {
   public onChangeTab?: (mediaTab: SearchSuperMediaTab) => void
   public scrollOffset?: number
 
-  /** tweb `:423` — назначается потребителем (`sharedMedia.tsx:682-684`). */
+  /** tweb `:416` — назначается потребителем (`sharedMedia.tsx:682-684`). */
   public scrollStartCallback?: (dimensions: ScrollStartCallbackDimensions) => void
 
   private listenerSetter: ListenerSetter
   private swipeHandler?: SwipeHandler
+
+  /**
+   * tweb `:437` — узел градиента (тот, что `Tabs.MenuGradient` отдаёт наружу,
+   * то есть КОНТЕЙНЕР, а не внутренний слой: `tabs.tsx:77-93`). Читается при
+   * первом показе вкладок: когда доступна ровно одна вкладка, ряд получает
+   * `is-single`, а градиент — `hide` (`tweb:2509-2511` и `:2523-2525`).
+   * Обе точки приезжают задачей 10; поле заводится здесь, потому что узел
+   * создаётся здесь.
+   *
+   * `public`, а не `private` как в оригинале: у нас включён `noUnusedLocals`
+   * (`web-client/tsconfig.json:32`, в tweb выключен), и приватное поле, которое
+   * пока только пишется, но ещё не читается, — ошибка TS6133. Соседние узлы
+   * подсистемы (`container`, `nav`, `navScrollableContainer`, `tabsContainer`)
+   * и так публичные.
+   */
+  public menuGradient: HTMLElement
 
   /** см. расхождение 2 в шапке файла */
   private disposeSections: (() => void)[] = []
@@ -311,7 +351,7 @@ export default class AppSearchSuper {
 
     this.listenerSetter = new ListenerSetter()
 
-    // tweb `:461-472` — липкий ряд вкладок в горизонтальном скроллере.
+    // tweb `:462-472` — липкий ряд вкладок в горизонтальном скроллере.
     const navScrollableContainer = this.navScrollableContainer = document.createElement('div')
     navScrollableContainer.classList.add('search-super-tabs-scrollable', 'menu-horizontal-scrollable', 'sticky')
 
@@ -324,8 +364,8 @@ export default class AppSearchSuper {
 
     navScrollable.container.append(nav)
 
-    // tweb `:474-495` — по вкладке на строку: подчёркивание (`i`) идёт ПЕРВЫМ,
-    // название — вторым (дамп `07-right-sidebar.json:127-130`: ripple, i, span).
+    // tweb `:474-493` — по вкладке на строку: подчёркивание (`i`) идёт ПЕРВЫМ,
+    // название — вторым (дамп `07-right-sidebar.json:128-130`: ripple, i, span).
     for(const mediaTab of this.mediaTabs) {
       const menuTab = document.createElement('div')
       menuTab.classList.add('menu-horizontal-div-item')
@@ -350,8 +390,8 @@ export default class AppSearchSuper {
     this.tabsContainer = document.createElement('div')
     this.tabsContainer.classList.add('search-super-tabs-container', 'tabs-container')
 
-    // tweb `:500-539` — свайп между вкладками. `unlockScroll` объявлен ЗДЕСЬ,
-    // а снимается в `onTransitionEnd` слайдера (`tweb:699-702`): замок держится
+    // tweb `:498-542` — свайп между вкладками. `unlockScroll` объявлен ЗДЕСЬ,
+    // а снимается в `onTransitionEnd` слайдера (`tweb:701-704`): замок держится
     // ровно до конца анимации перехода.
     let unlockScroll: ReturnType<typeof lockTouchScroll> | undefined
     if(IS_TOUCH_SUPPORTED) {
@@ -397,7 +437,8 @@ export default class AppSearchSuper {
       })
     }
 
-    // tweb `:543-589` — содержимое вкладок.
+    // tweb `:554-594` — содержимое вкладок (сам набор `noSectionTypes`,
+    // `tweb:545-553`, у нас поднят в модульную константу `NO_SECTION_TYPES`).
     for(const mediaTab of this.mediaTabs) {
       const container = document.createElement('div')
       container.classList.add('search-super-tab-container', 'search-super-container-' + mediaTab.type, 'tabs-tab')
@@ -443,10 +484,10 @@ export default class AppSearchSuper {
       mediaTab.itemsTab = itemsContainer
     }
 
-    // Оригинал (`:598`) кладёт узел градиента ещё и в приватное поле
-    // `menuGradient` (`:437`), которое дальше никто не читает, — поля у нас нет.
+    // tweb `:596-600` — узел градиента и создаётся, и запоминается в поле прямо
+    // в `append`.
     this.container.append(
-      this.createMenuGradient(),
+      this.menuGradient = this.createMenuGradient(),
       navScrollableContainer,
       this.tabsContainer,
     )
@@ -495,7 +536,7 @@ export default class AppSearchSuper {
           if(newMediaTab.scroll === undefined) {
             // Первый заход на вкладку: её «позиция» — не ноль, а расстояние от
             // верха контейнера подсистемы до верха его родителя, иначе новая
-            // вкладка улетела бы вверх мимо шапки профиля (`tweb:661-670`).
+            // вкладка улетела бы вверх мимо шапки профиля (`tweb:653-661`).
             const rect = this.container.getBoundingClientRect()
             const rect2 = this.container.parentElement!.getBoundingClientRect()
             const diff = rect.y - rect2.y
@@ -546,14 +587,14 @@ export default class AppSearchSuper {
       listenerSetter: this.listenerSetter,
     })
 
-    // tweb `:710-714` — перехват клика при активном выделении; выделение
+    // tweb `:709-714` — перехват клика при активном выделении; выделение
     // приезжает задачей 14 вместе с `SearchSelection`.
-    // tweb `:716-786` — открытие медиавьювера по клику в грид/по документу;
+    // tweb `:716-777` — открытие медиавьювера по клику в грид/по документу;
     // приезжает задачей 7 вместе с рендером элементов.
 
     this.mediaTab = this.mediaTabs[0]
 
-    // tweb `:793-795` — пауза `lazyLoadQueue` на время тяжёлой анимации;
+    // tweb `:793-797` — пауза `lazyLoadQueue` на время тяжёлой анимации;
     // см. расхождение 3 в шапке файла.
   }
 
@@ -561,7 +602,7 @@ export default class AppSearchSuper {
    * Градиент, растворяющий содержимое под липким рядом вкладок.
    * Классы — те же, что отдаёт `Tabs.MenuGradient({color: 'background',
    * className: 'search-super-tabs-gradient'})` (`tweb/src/components/tabs.tsx:71-95`),
-   * сверено с дампом `07-right-sidebar.json:121-122`. Почему не через фабрику —
+   * сверено с дампом `07-right-sidebar.json:122-123`. Почему не через фабрику —
    * расхождение 1 в шапке файла.
    */
   private createMenuGradient() {
@@ -817,7 +858,7 @@ export default class AppSearchSuper {
       }
 
       // `tweb:2310-2319`, первая ветка — единственная применимая к нашей ручке
-      // (расхождение 7 в шапке).
+      // (расхождение 9 в шапке).
       if(messages.length < loadCount) {
         this.loaded[type] = true
       }
@@ -895,14 +936,14 @@ export default class AppSearchSuper {
   }
 
   /**
-   * tweb `:2714-2755`. Помечает всё загруженное недействительным, НО САМ КЭШ
+   * tweb `:2714-2754`. Помечает всё загруженное недействительным, НО САМ КЭШ
    * СООБЩЕНИЙ НЕ ТРЁТ: `usedFromHistory[filter] = -1` значит «из кэша ничего не
    * отрисовано», а не «кэша нет» — вернувшись к тому же пиру, вкладки
    * нарисуются без сети (`tweb:2239-2276`).
    *
    * Не портировано (нечего сбрасывать до своих задач): `loadedChats`/
    * `nextRates`/`firstLoad`/`loadFirstTimePromise` (`:2717-2719`, `:2746`) —
-   * задача 10 и расхождение 7; отмена выделения (`:2735-2737`) — задача 14;
+   * задача 10 и расхождение 9; отмена выделения (`:2735-2737`) — задача 14;
    * состояние участников (`:2749-2753`) — задача 11.
    */
   public cleanup() {
@@ -942,7 +983,7 @@ export default class AppSearchSuper {
    * показывали»: списки пусты, карточки секций снова скрыты, у вкладок без
    * кэша крутится прелоадер, скролл — в начало.
    *
-   * `searchGroupMedia.clear()` (`:2789`) пропущен — расхождение 4 в шапке.
+   * `searchGroupMedia.clear()` (`:2791`) пропущен — расхождение 4 в шапке.
    */
   public cleanupHTML() {
     this.mediaTabs.forEach((tab) => {
@@ -1004,7 +1045,15 @@ export default class AppSearchSuper {
     this.cleanup()
   }
 
-  /** tweb `:2828-2843`. Скроллер уничтожается вместе с классом — так в оригинале. */
+  /**
+   * tweb `:2828-2843`.
+   *
+   * `this.scrollable.destroy()` — дословно как в оригинале (`:2831`), НО у нас
+   * скроллер чужой: см. расхождение 7 в шапке файла (правило «уничтожается
+   * только если создан и принадлежит классу» сейчас НЕ соблюдено, развилка —
+   * задача 13 плана). `container.remove()` и несброшенный `selectTab` —
+   * расхождение 8.
+   */
   public destroy() {
     this.cleanup()
     this.listenerSetter.removeAll()
