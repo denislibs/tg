@@ -104,11 +104,28 @@ export default function PasswordMonkey({ peeking, size = 130 }: { peeking: boole
   // size), а не читается с контейнера.
   // Отступление от tweb: `margin: 0 auto` — обезьянку зовут ещё два экрана
   // (пасскод, 2FA в настройках), где центрировать её больше некому.
+  //
+  // Оттуда же `position: relative` + `maxWidth/maxHeight: 100%`: в оригинале
+  // контейнер обезьянки едет в `MediaHeader.Sticker` (tweb `pages/cards/
+  // PasswordCard.tsx:228`), и базу позиционирования размером ровно со стикер
+  // даёт обёртка — `mediaHeader.module.scss:31-46` (`.sticker
+  // {position:relative; width/height: var(--sticker-size)}`). У нас этих двух
+  // экранов такой обёртки нет, и канва плеера (`position:absolute; inset:0;
+  // 100%×100%` — класс `lottie`, `styles/index.scss` = tweb
+  // `base.scss:1214-1226`) считала проценты от `position:fixed` оверлея
+  // блокировки, то есть от всего экрана. Пин — `styles/lottieStickerBox.test.tsx`.
   return (
     <div
       ref={wrapRef}
       className="media-sticker-wrapper"
-      style={{ width: size, height: size, margin: '0 auto' }}
+      style={{
+        width: size,
+        height: size,
+        maxWidth: '100%',
+        maxHeight: '100%',
+        position: 'relative',
+        margin: '0 auto',
+      }}
     />
   )
 }
