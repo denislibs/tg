@@ -50,9 +50,11 @@
  *    вызывающий (так же сделано в `wrapPhoto`);
  *  • `videoSize`/`altDoc` (анимированная обложка, HEVC-дубль) — конструкторов
  *    нет в модели; вместе с `altDoc` отпадает и ветка `<source>`-ов с
- *    `video.load()`. Параметр `photoSize` оригинала = `size` нашего `wrapPhoto`;
- *    сюда его, как и в tweb, никто не передаёт, ступень постера выбирает сам
- *    `wrapPhoto` (`choosePhotoSize` по `doc.thumbs`);
+ *    `video.load()`. Параметр `photoSize` оригинала = `size` нашего `wrapPhoto`
+ *    и едет туда в обеих ветках, как в tweb (video.ts:199, :425): без него
+ *    ступень постера выбирает сам `wrapPhoto` (`choosePhotoSize` по
+ *    `doc.thumbs`), с ним — вызывающий (грид shared media,
+ *    `appSearchSuper.ts:887`, считает её под свою плитку);
  *  • постер: как и в оригинале, его целиком рисует `wrapPhoto` — одной веткой,
  *    без развилки «есть серверный постер / нет». Развилка живёт ВНУТРИ
  *    `wrapPhoto`: подходящей ступени у документа нет (единственная — stripped) →
@@ -109,7 +111,7 @@ import mediaSizesInstance, { ScreenSize } from '@core/dom/mediaSizes'
 import type { ChatAutoDownload } from '@core/hooks/useChatAutoDownload'
 import type { LazyLoadQueue } from '@core/lazyLoadQueue'
 import getMediaThumbIfNeeded from '@core/media/getStrippedThumbIfNeeded'
-import { getStrippedThumb, type MyDocument } from '@core/media/messageMedia'
+import { getStrippedThumb, type MyDocument, type PhotoSize } from '@core/media/messageMedia'
 import { markMediaPlayed } from '@core/mediaRead'
 import { resolveStreamUrl, subscribeMediaToken } from '@core/mediaUrl'
 import { IS_SAFARI } from '@environment/userAgent'
@@ -226,6 +228,9 @@ export interface WrapVideoOptions {
   /** не рисовать `.video-time`/кнопку воспроизведения (tweb `noInfo`) */
   noInfo?: boolean
   noPlayButton?: boolean
+  /** ступень постера, выбранная вызывающим (tweb `photoSize`) — уходит в
+   *  `wrapPhoto` как `size`; без неё ступень выбирает сам `wrapPhoto` */
+  photoSize?: PhotoSize
   /** группа `animationIntersector` (tweb `group`) */
   group?: AnimationItemGroup
   /** только постер, видео не грузить (tweb `onlyPreview`) */
@@ -274,7 +279,7 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
     doc, container, message, boxWidth, boxHeight, middleware, lazyLoadQueue, isVisible,
     noInfo, noPlayButton, group, onlyPreview, noPreview, withPreview, withoutPreloader,
     loadPromises, autoDownload, noAutoplayAttribute, useBlur, uploadPromise,
-    hasMessageBlock, onLoad,
+    hasMessageBlock, onLoad, photoSize,
   } = options
 
   // tweb video.ts:120-123 — гифка адресуема из ленты по `data-doc-id`
@@ -362,6 +367,7 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
       // но медиа при этом остаётся ДОКУМЕНТОМ (`type: 'gif'`), и все вопросы о
       // нём (геометрия, ступени, гейт минимумов бокса) задаются ему самому
       photo: doc,
+      size: photoSize, // tweb video.ts:199
       container,
       boxWidth,
       boxHeight,
@@ -407,6 +413,7 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
         // (единственная — stripped) → ранний выход photo.ts:207, превью
         // показывается КАК медиа и полный mp4 в `<img>` не тянется.
         photo: doc,
+        size: photoSize, // tweb video.ts:425
         container,
         boxWidth,
         boxHeight,
