@@ -24,12 +24,10 @@
  *   • ВЕТКА АПЛОАДА (`uploadingFileName`, tweb document.ts:422-427) — прогресс
  *     отдачи живёт в `stores/uploadsStore` и приезжает в бабл отдельно; вынос
  *     оптимистичного медиа на императивную ленту — отдельный этап;
- *   • `withTime`/`showSender` (`formatFullSentTime`, `wrapSenderToPeer`,
- *     `wrapSentTime`, tweb document.ts:225-239,263-265) — это режим
- *     поиска/shared-media, а не ленты; соответствующих врапперов у нас нет.
- *     Ветка «нет времени и нет отправителя» (скрытый дубль размера ради
- *     стабильной ширины, document.ts:233-239) портирована — в ленте работает
- *     именно она;
+ *   • `searchContext` и `lazyLoadQueue` (tweb document.ts:143, :127) — первое
+ *     нужно контроллеру плеера оригинала, чтобы догружать очередь с сервера
+ *     (у нас очередь — соседи по DOM, см. шапку `components/audio.ts`), второе
+ *     — обложке трека, которой нет (там же);
  *   • markdown-instant-view, pdf-ветка и предупреждение про IP-раскрывающие
  *     расширения (tweb document.ts:349-385) — фич нет;
  *   • `span.i18n` вокруг размера (виден в живом дампе `03-document.json`) —
@@ -52,6 +50,11 @@ import AudioElement, { type AudioElementMessage } from '@components/audio'
 import { downloadToDisc, getDownload, isDownloading } from '@lib/appDownloadManager'
 import type { AudioTrack } from '@stores/audioStore'
 import { useI18nStore } from '../../i18n'
+import type { PeerTitleManagers } from '@components/chat/peerTitle'
+import wrapSenderToPeer from '@components/wrappers/senderToPeer'
+import wrapSentTime from '@components/wrappers/sentTime'
+import { formatFullSentTime } from '@helpers/date'
+import { joinElementsWith } from '@lib/langPack'
 
 export interface WrapDocumentOptions {
   /** документ вложения (tweb `doc: MyDocument`) */
@@ -72,10 +75,21 @@ export interface WrapDocumentOptions {
   autoDownloadSize?: number
   /** трек для плеера (аудио/голосовое) — см. `AudioElement.track` */
   track?: AudioTrack
+
+  // Режим поиска/shared-media (tweb document.ts:52-56). Все три требуют
+  // `message.date`; `showSender` и `voiceAsMusic` у голосового — ещё и `managers`.
+  /** время отправки в описании вместо скрытого дубля размера */
+  withTime?: boolean
+  /** голосовое/кружок как трек: заголовок + подпись, без волны */
+  voiceAsMusic?: boolean
+  /** подпись отправителя («кто ➝ куда») и `sent-time` у имени */
+  showSender?: boolean
+  /** ручки для имени отправителя (tweb `managers = rootScope.managers`) */
+  managers?: PeerTitleManagers
 }
 
 export default function wrapDocument(options: WrapDocumentOptions): HTMLElement {
-  const { doc, middleware, autoDownloadSize, getSize } = options
+  const { doc, middleware, autoDownloadSize, getSize, withTime, voiceAsMusic, showSender, managers } = options
   const message = options.message ?? {}
   const fontWeight = options.fontWeight ?? 500
   const fontSize = options.fontSize ?? 16
@@ -89,6 +103,11 @@ export default function wrapDocument(options: WrapDocumentOptions): HTMLElement 
     audioElement.doc = doc
     audioElement.message = message
     audioElement.middleware = middleware
+    audioElement.withTime = !!withTime
+    audioElement.getSize = getSize
+    if(voiceAsMusic) audioElement.voiceAsMusic = voiceAsMusic
+    if(showSender) audioElement.showSender = showSender
+    audioElement.managers = managers
     // Трек для контроллера коллекции — наш узел поверх оригинала (tweb кладёт
     // в плейлист сам документ). ID3-теги живут в атрибуте, а не в файле:
     // `audioAttribute?.title ?? doc.file_name` (tweb audio.ts:159).
@@ -149,14 +168,40 @@ export default function wrapDocument(options: WrapDocumentOptions): HTMLElement 
   middleEllipsisEl.textContent = fileName
   nameDiv.append(middleEllipsisEl)
 
-  // tweb document.ts:220-239: размер и его СКРЫТЫЙ дубль (' / N') — он держит
-  // ширину строки, чтобы она не прыгала, когда во время скачивания появится
-  // «сколько скачано / всего».
+  // tweb document.ts:263-265
+  if(showSender) {
+    nameDiv.append(wrapSentTime({ date: message.date! }))
+  }
+
+  // tweb document.ts:220-239: части описания — размер, затем время отправки
+  // (`withTime`) и отправитель (`showSender`), через « · »; а когда нет ни того,
+  // ни другого — СКРЫТЫЙ дубль размера (' / N'), который держит ширину строки,
+  // чтобы она не прыгала, когда во время скачивания появится «сколько
+  // скачано / всего».
   const bytesEl = doc.size ? formatBytes(doc.size, t) : ''
-  const hiddenMax = document.createElement('span')
-  hiddenMax.append(bytesJoiner, bytesEl)
-  hiddenMax.style.visibility = 'hidden'
-  bytesContainer.append(bytesEl, hiddenMax)
+  const descriptionParts: (Node | string)[] = [bytesEl]
+
+  if(withTime) {
+    descriptionParts.push(formatFullSentTime(message.date!))
+  }
+
+  if(showSender) {
+    descriptionParts.push(wrapSenderToPeer(message, middleware, managers!))
+  }
+
+  bytesContainer.append(...joinElementsWith(descriptionParts, ' · '))
+
+  if(!withTime && !showSender) {
+    const hiddenMax = document.createElement('span')
+    hiddenMax.append(bytesJoiner, bytesEl)
+    hiddenMax.style.visibility = 'hidden'
+    // У tweb дубль лежит в том же списке частей и потому получает перед собой
+    // ВИДИМЫЙ « · » (document.ts:233-239, :270). В живом DOM его нет
+    // (`docs/tweb/dom/dumps/03-document.json`: у контейнера размера нет своего
+    // текста), поэтому дубль кладётся без разделителя — как и было в ленте.
+    bytesContainer.append(hiddenMax)
+  }
+
   sizeDiv.append(bytesContainer)
 
   docDiv.prepend(icoDiv)
