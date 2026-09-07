@@ -68,10 +68,29 @@ export default function LottieSticker({
   }, [name, size, loop])
 
   // клик — проиграть ещё раз (tweb `restartOnClick`, `lottieAnimation.tsx:29-33`)
+  //
+  // `position: relative` + `maxWidth/maxHeight: 100%` — 1:1 с классом, который
+  // оригинал вешает на этот же узел: tweb `mediaHeader.module.scss:41-46`
+  // (`.lottie {width/height: var(--size); max-width/max-height: 100%;
+  // position: relative}`), он же у нас — `auth/mediaHeader.module.scss` для
+  // Solid-ветки (`MediaHeader.solid.tsx::Sticker`). Здесь размер задан
+  // инлайном (см. докблок файла), а `position` терялся — и канва плеера,
+  // которая приезжает `position:absolute; inset:0; 100%×100%` (класс `lottie`,
+  // `styles/index.scss` = tweb `base.scss:1214-1226`), считала свои проценты
+  // не от стикера, а от первого позиционированного предка: в попапе passkey —
+  // от всей карточки `.popup-container`. Пин — `styles/lottieStickerBox.test.tsx`.
   return (
     <div
       ref={ref}
-      style={{ width: size, height: size, margin: '0 auto', cursor: 'pointer' }}
+      style={{
+        width: size,
+        height: size,
+        maxWidth: '100%',
+        maxHeight: '100%',
+        position: 'relative',
+        margin: '0 auto',
+        cursor: 'pointer',
+      }}
       onClick={() => animRef.current?.playOrRestart()}
     />
   )
