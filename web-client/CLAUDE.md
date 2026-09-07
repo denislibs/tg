@@ -554,6 +554,7 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
 | `components/DatePickerPopup.tsx:195` | Начальная позиция (месяц `initDate`) при открытии попапа календаря | Одноразовая установка до первого показа; попап, не лента |
 | `components/conversation/TopbarSearch.tsx:219` | Центрирование активной строки выдачи поиска по стрелкам | Формула 1:1 из tweb (`topbarSearch.tsx:678-681`); изолированный дропдаун, не лента |
 | `components/virtual/useShouldAnimate.ts` (`createScrollShiftCompensator`) | Компенсация `scrollTop` вместо анимации, когда ВСЕ видимые строки виртуального списка сдвинулись на одинаковое число позиций | Порт побочного эффекта `verticalVirtualList.tsx:49-53`; список чатов не ходит через Scrollable/ScrollSaver — конкурировать за корректирующую запись не с кем |
+| `components/verticalVirtualList.solid.tsx` (`onScrollShift`) | Тот же компенсатор в исходной Solid-форме tweb — ядро виртуального списка для Solid-вкладки «Чаты» правой колонки | Порт файлом 1:1 (`verticalVirtualList.tsx:49-53`); Solid-файл не может импортировать React-соседа `createScrollShiftCompensator` (граница рантаймов) |
 
 Сброс списка чатов на верх при смене папки (`useSidebarFolders.tsx`) из этого
 списка ушёл вместе со строкой: у каждой папки теперь свой `.folders-scrollable`

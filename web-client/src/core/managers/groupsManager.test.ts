@@ -614,3 +614,39 @@ describe('GroupsManager: участники — объединение конс�
     }])
   })
 })
+
+// Вкладка «Участники» shared media листает страницами (tweb `getChannelParticipants`,
+// LOAD_COUNT 50 → 200) и читает конструкторы участников как есть: плоская
+// форма `members` ей не подходит ни пагинацией, ни потерей конструктора.
+describe('GroupsManager.channelParticipants', () => {
+  const page = () => ({
+    _: 'channels.channelParticipants',
+    count: 260,
+    participants: [
+      { _: 'channelParticipantCreator', user_id: 7, admin_rights: { _: 'chatAdminRights' } },
+      { _: 'channelParticipant', user_id: 9, date: 2 },
+    ],
+    chats: [],
+    users: [{ _: 'user', id: 9, first_name: 'Аня', status: { _: 'userStatusRecently' } }],
+  })
+
+  it('offset/limit уходят ручке query-параметрами, назад — сырой контейнер', async () => {
+    const gets: { path: string; query?: unknown }[] = []
+    const rest = {
+      async get<R>(path: string, query?: unknown): Promise<R> {
+        gets.push({ path, query })
+        return page() as R
+      },
+    } as unknown as RestClient
+    const peers = fakePeers()
+    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers })
+
+    const r = await mgr.channelParticipants(-5, 50, 200)
+
+    expect(gets).toEqual([{ path: '/chats/-5/members', query: { offset: 50, limit: 200 } }])
+    expect(r.count).toBe(260)
+    expect(r.participants.map((p) => p._)).toEqual(['channelParticipantCreator', 'channelParticipant'])
+    // карточки участников — в зеркало, тем же вызовом, что у карточки чата
+    expect(peers.saveApiPeers).toHaveBeenCalledWith({ users: r.users })
+  })
+})

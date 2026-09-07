@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 12,
+      "version": 14,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -41,8 +41,16 @@
           "value": "Add member"
         },
         {
+          "key": "AddToChannel",
+          "value": "Add to Channel"
+        },
+        {
           "key": "AddToFavorites",
           "value": "Add to Favorites"
+        },
+        {
+          "key": "AddToGroup",
+          "value": "Add to Group"
         },
         {
           "key": "Administrators",
@@ -703,6 +711,10 @@
         {
           "key": "Chat.Alert.Forward.ShowSenderName",
           "value": "Show sender name"
+        },
+        {
+          "key": "Chat.ChannelBadge",
+          "value": "channel"
         },
         {
           "key": "Chat.ClearHistory.Text",
@@ -1514,6 +1526,10 @@
           "value": "Admin Rights"
         },
         {
+          "key": "EditAdminRights",
+          "value": "Edit admin rights"
+        },
+        {
           "key": "EditAdminWhatCanDo",
           "value": "What can this admin do?"
         },
@@ -2207,6 +2223,10 @@
         {
           "key": "KickFromGroup",
           "value": "Remove from group"
+        },
+        {
+          "key": "KickFromSupergroup",
+          "value": "Restrict user"
         },
         {
           "key": "LanguageName",
@@ -3896,6 +3916,10 @@
           "value": "User Info"
         },
         {
+          "key": "ProfileStories",
+          "value": "Posts"
+        },
+        {
           "key": "QRCode.Copied",
           "value": "QR Code copied to clipboard"
         },
@@ -4314,6 +4338,10 @@
           "value": "Active Sessions"
         },
         {
+          "key": "SetAsAdmin",
+          "value": "Promote to admin"
+        },
+        {
           "key": "SetColor",
           "value": "Set a color"
         },
@@ -4470,12 +4498,20 @@
           "value": "View Gift"
         },
         {
+          "key": "StarGiftCollectionsEmptyOther",
+          "value": "No matching gifts."
+        },
+        {
           "key": "StarGiftFromShort",
           "value": "From"
         },
         {
           "key": "StarGiftHideMyName",
           "value": "Hide My Name"
+        },
+        {
+          "key": "StarGiftLimitedBadgeNum",
+          "value": "1 of %s"
         },
         {
           "key": "StarGiftSellTitleStars",
@@ -5392,7 +5428,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 12,
+      "version": 14,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -5975,6 +6011,10 @@
           "value": "Истории"
         },
         {
+          "key": "ProfileStories",
+          "value": "Публикации"
+        },
+        {
           "key": "Premium.Boarding.Double.Title",
           "value": "Удвоенные лимиты"
         },
@@ -6234,6 +6274,14 @@
         {
           "key": "StarGiftFromShort",
           "value": "От"
+        },
+        {
+          "key": "StarGiftCollectionsEmptyOther",
+          "value": "Подходящих подарков нет."
+        },
+        {
+          "key": "StarGiftLimitedBadgeNum",
+          "value": "1 из %s"
         },
         {
           "key": "AuthorHiddenShort",
@@ -10799,6 +10847,30 @@
         {
           "key": "LanguageName",
           "value": "Русский"
+        },
+        {
+          "key": "SetAsAdmin",
+          "value": "Назначить администратором"
+        },
+        {
+          "key": "EditAdminRights",
+          "value": "Изменить права администратора"
+        },
+        {
+          "key": "KickFromSupergroup",
+          "value": "Ограничить пользователя"
+        },
+        {
+          "key": "AddToGroup",
+          "value": "Добавить в группу"
+        },
+        {
+          "key": "AddToChannel",
+          "value": "Добавить в канал"
+        },
+        {
+          "key": "Chat.ChannelBadge",
+          "value": "канал"
         }
       ]
     },

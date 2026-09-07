@@ -167,8 +167,19 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // остальных четырёх словарях ключа нет намеренно — они покрыты наполовину by
 // design, под ними английский нижний слой. «Онлайн» в русском не склоняется,
 // поэтому ключ стоит в `RU_INDECLINABLE`.
+// Сдвиг набора волной 3 shared media: задача 10 добавила русскому
+// `ProfileStories` (tweb lang.ts:2437, «Posts») — заголовок вкладки историй у
+// канала/группы, который `loadFirstTime` подставляет вместо «Stories»
+// (`appSearchSuper.ts:2483-2486`); задача 11 — ШЕСТЬ ключей 1:1 с tweb lang.ts:
+// пять пунктов `createParticipantContextMenu` (`SetAsAdmin`, `EditAdminRights`,
+// `KickFromSupergroup`, `AddToGroup`, `AddToChannel`) и подпись ранга
+// `Chat.ChannelBadge` (`wrappers/participantRank.ts`); задача 12 — два ключа
+// витрины подарков `StarGiftCollectionsEmptyOther` (tweb lang.ts:3326) и
+// `StarGiftLimitedBadgeNum` (lang.ts:3178), их зовёт `stargifts/*.solid.tsx`.
+// Отсюда `keys` 1311 → 1320, множественных форм не прибавилось. В остальных четырёх
+// словарях ключей нет намеренно — под ними английский нижний слой.
 const COMPOSITION = {
-  ru: { keys: 1311, plural: 33 },
+  ru: { keys: 1320, plural: 33 },
   uk: { keys: 682, plural: 24 },
   es: { keys: 681, plural: 24 },
   de: { keys: 681, plural: 24 },
@@ -245,8 +256,12 @@ const COMPOSITION = {
 // Сдвиг набора задачей «открытие чата по ссылке»: русскому добавлены
 // `NoUsernameFound` и `Alert.UserDoesntExists` (разбор — у `COMPOSITION` выше).
 // У остальных четырёх словарей набор не менялся — их снимок тот же.
+// Сдвиг набора волной 3 shared media (задачи 10-12): русскому добавлены
+// `ProfileStories`, шесть ключей меню участника и ранга и два ключа витрины
+// подарков (разбор — у `COMPOSITION` выше). У остальных четырёх словарей
+// набор не менялся.
 const FINGERPRINT = {
-  ru: 'a2edf950',
+  ru: '6c899d54',
   uk: 'e1335ac1',
   es: 'a6b1aad3',
   de: 'a6b1aad3',

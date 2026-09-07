@@ -174,6 +174,7 @@ const ru = {
     'Автопродление отключено. Подписка Premium завершится в указанную выше дату.',
   'Premium.Manage.NoSubscription': 'Нет активной подписки.',
   Stories: 'Истории',
+  ProfileStories: 'Публикации',
   'Premium.Boarding.Double.Title': 'Удвоенные лимиты',
   'Premium.Feature.Voice.Title': 'Голос в текст',
   'Premium.Feature.Download.Title': 'Ускоренная загрузка',
@@ -249,6 +250,8 @@ const ru = {
   StarGiftSoldOutBadge: 'Распродано',
   StarGiftShowLimited: 'Лимит',
   StarGiftFromShort: 'От',
+  StarGiftCollectionsEmptyOther: 'Подходящих подарков нет.',
+  StarGiftLimitedBadgeNum: '1 из %s',
   AuthorHiddenShort: 'Аноним',
   'StarGift.ShowInProfile': 'Показать в профиле',
   'StarGift.HideFromProfile': 'Скрыть из профиля',
@@ -1670,6 +1673,14 @@ const ru = {
   // Самоназвание языка — им подписана строка «Язык» в настройках (tweb
   // `settings.tsx:254`, `i18n('LanguageName')`).
   LanguageName: 'Русский',
+  // ── Контекстное меню участника и ранг в строке (tweb
+  //    `createParticipantContextMenu.ts`, `wrappers/participantRank.ts`) ──
+  SetAsAdmin: 'Назначить администратором',
+  EditAdminRights: 'Изменить права администратора',
+  KickFromSupergroup: 'Ограничить пользователя',
+  AddToGroup: 'Добавить в группу',
+  AddToChannel: 'Добавить в канал',
+  'Chat.ChannelBadge': 'канал',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)

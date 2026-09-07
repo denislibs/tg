@@ -103,3 +103,31 @@ export function userStatusLabel(status: UserStatus | undefined): HTMLElement {
       return i18n('ALongTimeAgo')
   }
 }
+
+/**
+ * Индекс присутствия для сортировки — порт `appUsersManager.getUserStatusForSort`
+ * (`appUsersManager.ts:707-739`) в объёме ветки по статусу (карточку по id там
+ * достаёт сам менеджер; у нас её даёт зеркало, `cachedUser`). Убывающий порядок
+ * даёт «онлайн первыми»: у онлайна и оффлайна это срок/время последнего входа
+ * (большие числа), у «недавно/на неделе/в месяце» — 3/2/1, у прочих — 0.
+ * Потребитель — `components/sortedUserList.ts` (`getIndex`).
+ */
+export function getUserStatusForSort(status: UserStatus | undefined): number {
+  if(status) {
+    const expires = status._ === 'userStatusOnline' ? status.expires : (status._ === 'userStatusOffline' ? status.was_online : 0)
+    if(expires) {
+      return expires
+    }
+
+    switch(status._) {
+      case 'userStatusRecently':
+        return 3
+      case 'userStatusLastWeek':
+        return 2
+      case 'userStatusLastMonth':
+        return 1
+    }
+  }
+
+  return 0
+}

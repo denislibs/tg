@@ -86,9 +86,19 @@ function build(options?: { scrollOffset?: number }) {
   host.getBoundingClientRect = () => ({ y: 0 }) as DOMRect
   scrollable.container.append(host)
 
-  const searchSuper = new AppSearchSuper({ mediaTabs: makeMediaTabs(), scrollable, managers: IDLE_MANAGERS, ...options })
+  // Первый показ (`loadFirstTime`, счётчики и выбор вкладки) — не предмет
+  // памяти скролла; `hideEmptyTabs: false` выключает его, как у левой колонки
+  // (tweb `:2384-2386`): иначе `load`, который `selectTab` зовёт за пустой
+  // вкладкой, требует `searchContext` и живых счётчиков.
+  const searchSuper = new AppSearchSuper({ mediaTabs: makeMediaTabs(), scrollable, managers: IDLE_MANAGERS, hideEmptyTabs: false, ...options })
+  // контекст поиска обязателен до первого `load` (tweb `:2382`) — его ставит владелец
+  searchSuper.setQuery({ peerId: 1 })
   searchSuper.container.getBoundingClientRect = () => ({ y: SUPER_OFFSET_FROM_PARENT }) as DOMRect
   host.append(searchSuper.container)
+  // Контекст поиска — до первой загрузки, как у потребителя оригинала
+  // (`sharedMediaTab.setPeer` → `setQuery`): `load` читает `searchContext.peerId`
+  // безусловно (tweb `:2532`, у нас — фильтр вкладок по виду пира, `:2551-2555`).
+  searchSuper.setQuery({ peerId: 1 })
 
   // ширина вкладки нужна самой анимации `slideTabs` (`transition.ts:45-95`)
   Array.from(searchSuper.tabsContainer.children).forEach((tab) => {

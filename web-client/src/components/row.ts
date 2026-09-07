@@ -22,13 +22,14 @@
  *    (см. ниже), но визуально ничего не делает уже в tweb.
  *
  * ── Опущено (не объявлено в типе, не имитировано заглушкой) ─────────────────
- *  • `contextMenu` (#110) — требует `helpers/dom/createContextMenu`, которого в
- *    репозитории нет. У нас есть `contextMenuController` +
- *    `attachContextMenuListener` + `positionMenu`; вкладка «Устройства»
- *    (`sidebarLeft/tabs/activeSessions.solid.tsx`, шаг 7 плана волны 2) пользуется ими
- *    напрямую, минуя `Row`, — ровно как оригинал
- *    (`tweb components/sidebarLeft/tabs/activeSessions.tsx:13-16` строит
- *    контекстное меню тем же способом, а не опцией `Row`).
+ *  • `contextMenu` (#110) — опция не портирована: у неё нет потребителя.
+ *    Сам `helpers/dom/createContextMenu` с задачи 11 волны 3 есть (его зовёт
+ *    меню участника, `helpers/dom/createParticipantContextMenu.ts`); вкладка
+ *    «Устройства» (`sidebarLeft/tabs/activeSessions.solid.tsx`, шаг 7 плана
+ *    волны 2) по-прежнему собирает меню из `contextMenuController` +
+ *    `attachContextMenuListener` + `positionMenu` напрямую, минуя `Row`, — ровно
+ *    как оригинал (`tweb components/sidebarLeft/tabs/activeSessions.tsx:13-16`
+ *    строит контекстное меню тем же способом, а не опцией `Row`).
  *
  * ── `navigationTab` (tweb :74-79, :216-247) ─────────────────────────────────
  * Опция появилась здесь позже остального файла: она открывает вкладку на
