@@ -131,3 +131,41 @@ func TestMediaHistory_CursorSurvivesInsertOnTop(t *testing.T) {
 	}
 
 }
+
+// Вкладки shared media рисуют ВЛОЖЕНИЕ, а не сообщение: без собранного
+// `Media` клиенту нечего показать — плитка `.grid-item` остаётся пустым
+// узлом (`getMediaId(m)` → undefined). История и поиск собирают вложение через
+// hydrateMedia; `MediaHistory` обязан делать то же самое, иначе единственная
+// ручка, которая отдаёт ТОЛЬКО медиа, отдаёт их без медиа. Найдено на стенде:
+// `/chats/-6/media` отвечал сообщениями без поля `media`.
+func TestMediaHistory_HydratesAttachment(t *testing.T) {
+	s := newStore()
+	in := New(fakeTx{}, fakeChats{s}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, newFakeGroupRepo(), nil, nil, nil, nil)
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := fakeChats{s}.CreatePrivate(ctx, a, b)
+
+	const mediaID int64 = 91
+	s.seedMedia(mediaID, a)
+	s.seedMediaDims(mediaID, domain.MediaSource{Mime: "image/jpeg", Width: 1280, Height: 720, Size: 26941})
+	id := mediaID
+	if _, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Type: "photo", MediaID: &id}); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+
+	res, err := in.MediaHistory(ctx, chatID, a, "media", MediaPage{Limit: 10})
+	if err != nil {
+		t.Fatalf("MediaHistory: %v", err)
+	}
+	if len(res.Messages) != 1 {
+		t.Fatalf("messages = %d, want 1", len(res.Messages))
+	}
+	photo, ok := res.Messages[0].Media.(*domain.MessageMediaPhoto)
+	if !ok {
+		t.Fatalf("вложение не собрано: Media = %#v", res.Messages[0].Media)
+	}
+	// размеры доехали — иначе клиент не зарезервирует бокс плитки
+	if w, h := domain.MediaDimensions(photo); w != 1280 || h != 720 {
+		t.Fatalf("dims = %dx%d, want 1280x720", w, h)
+	}
+}
