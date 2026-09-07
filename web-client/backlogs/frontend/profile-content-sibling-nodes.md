@@ -1,61 +1,41 @@
-# Фолбэк инвайт-ссылки и `PinnedStoriesSection` — сиблинги `.profile-content`, а не его дети
+# `PinnedStoriesSection` — сиблинг `.profile-content`, а не его ребёнок
 
-**Статус:** открыт, объявленное отступление (не баг). Живёт до того, как
-появится готовый приём проброса React-контента внутрь Solid-корня по месту
-(тот же, что уже есть для `searchSuperContainer`/`avatarsInfo`).
+**Статус:** открыт, объявленное отступление (не баг). Второй узел этого
+бэклога — React-фолбэк инвайт-ссылки — **закрыт задачей 13 плана shared media**
+(`docs/superpowers/plans/2026-09-07-solid-wave-3-shared-media.md`): строка
+портирована в Solid-`Link` веткой `exported_invite` оригинала
+(`peerProfile.solid.tsx`, проп `exportedInviteUrl`), React-сиблинга больше нет.
 **Дата фиксации:** волна 3 «Solid-миграция», программа `docs/superpowers/
 plans/2026-09-05-profile-card-solid.md`, финальное ревью ветки (после задач
-2-6).
-**Контекст:** `web-client/src/components/UserInfoPanel.tsx` — узлы фолбэк-
-ссылки (`SidebarSection` с `Row` инвайта, было `:726-749` на момент фиксации)
-и `<PinnedStoriesSection>` (было `:756` на тот же момент) стоят ПОСЛЕ
-`<div ref={profileContentHostRef} />` (хост Solid-корня `.profile-content`),
-то есть в DOM — сиблинги хоста, а не потомки самого `.profile-content`.
+2-6); сужен 2026-09-07.
+**Контекст:** `web-client/src/components/UserInfoPanel.tsx` —
+`<PinnedStoriesSection>` стоит ПОСЛЕ `<div ref={profileContentHostRef} />`
+(хост Solid-корня `.profile-content`), то есть в DOM — сиблинг хоста, а не
+потомок самого `.profile-content`.
 
-## Что в tweb и что было на `main`
+## Почему это не только косметика
+
+`.search-super` (узел класса `AppSearchSuper`, последний ребёнок
+`.profile-content`) стоит `position: absolute; top: 100%` от корня
+(`_rightSidebar.scss:89-92`). Любой React-сиблинг ПОСЛЕ хоста корня попадает
+в поток ровно на то же место и оказывается ПОД абсолютным узлом шаред-медиа —
+так до задачи 13 была не видна строка инвайт-ссылки под липким рядом вкладок.
+`PinnedStoriesSection` рендерит `null`, пока у пира нет закреплённых историй,
+поэтому сегодня симптома нет; появится — секция окажется под вкладками.
+
+## Что в tweb
 
 У оригинала (`peerProfile.tsx:194-214`) ВСЁ содержимое карточки — прямые дети
-`.profile-content` (аватар, delimiter, секции, `searchSuperContainer`
-последним). До переезда карточки на Solid (когда `.profile-content` целиком
-рисовал React) обе эти строки — фолбэк-ссылка и `PinnedStoriesSection` —
-ТОЖЕ были прямыми детьми того же React-узла `.profile-content`, то есть
-структурно совпадали с оригиналом.
-
-## Что стало
-
-После задач 2-5 плана `.profile-content` рисует Solid (`peerProfile.solid.tsx`,
-`PeerProfile`), смонтированный мостом `mountSolid` в пустой узел-обёртку
-`profileContentHostRef` (см. докблок `peerProfile.solid.tsx` — «Хост — пустой
-узел-обёртка», `render()` вставляет содержимое НАПРЯМУЮ в этот узел, без
-дополнительной обёртки). Правило владения узла (план, шапка) запрещает
-React писать ВНУТРЬ этого поддерева — поэтому строки, которым по контракту
-tweb место среди детей `.profile-content` (фолбэк-ссылка — аналог
-`PeerProfile.Link`-ветки без публичного username, `PinnedStoriesSection` —
-аналог `StoryPreviews`/`PinnedGifts` области), физически остались там, где их
-рисовал React ДО задачи 2 — прямыми детьми `.sidebar-content`, то есть теперь
-СИБЛИНГАМИ хоста `.profile-content`, а не его потомками.
-
-Визуально сегодня почти безвредно: медиа-грид и большинство CSS-правил
-`_profile.scss` бьют либо по классам самих узлов, либо через
-`.profile-container` (`setCollapsedOnRef`, охватывает и `.profile-content`, и
-его текущих сиблингов одинаково), а не по descendant-селекторам конкретно от
-`.profile-content` для ЭТИХ двух узлов. Тем не менее порядок сместился
-относительно и оригинала, и `main`, и это расхождение раньше нигде не было
-объявлено — находка финального ревью.
+`.profile-content`; истории профиля — не секция, а ВКЛАДКА ряда шаред-медиа
+(`stories`, `stories/profileList.tsx`), с приоритетом первой открытой.
 
 ## Что делать
 
-Единственный корректный приём — тот же мост, каким уже пробрасывается
-`searchSuperContainer`/`avatarsInfo`: `UserInfoPanel.tsx` заводит ещё один
-пустой DOM-узел (например, `fallbackLinkHost`/`pinnedStoriesHost`), кладёт
-его пропом в `PeerProfile` (`peerProfile.solid.tsx` вставляет узел ребёнком
-`.profile-content` в нужном месте — рядом с `MainSection`/после неё, как в
-оригинале), а React портирует туда содержимое (`createPortal`), как уже
-делает для `SharedMedia` → `searchSuperContainer`. Требует правки контракта
-`PeerProfileProps`/`PeerProfileContextValue` (два новых опциональных поля) и
-соответствующих тестов каркаса (`peerProfile.solid.test.tsx`, «Корень и
-порядок детей»).
+Предмет — задача 19 плана shared media («Истории вкладкой ряда вместо отдельной
+секции»): портировать вкладку `stories` в `AppSearchSuper`, после чего
+`PinnedStoriesSection` уходит целиком. Промежуточный вариант (узел-проп в
+Solid-корень + React-портал, как раньше делалось для `searchSuperContainer`)
+оправдан только если симптом проявится раньше задачи 19.
 
-**Критерий готовности:** оба узла — потомки `.profile-content`, порядок среди
-детей 1:1 с местом их аналога в оригинале (там, где он есть) или с прежним
-React-порядком (там, где аналога нет).
+**Критерий готовности:** `PinnedStoriesSection.tsx` снесён, истории — вкладка
+ряда `AppSearchSuper`.

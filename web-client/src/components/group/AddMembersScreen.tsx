@@ -21,13 +21,10 @@ import { getUserTitle } from '../../core/peers/getPeerTitle'
 
 export default function AddMembersScreen({
   chatId,
-  existingIds,
   onClose,
   onAdded,
 }: {
   chatId: number
-  /** уже участники — прячем из кандидатов */
-  existingIds: number[]
   onClose: () => void
   onAdded: () => void
 }) {
@@ -39,7 +36,20 @@ export default function AddMembersScreen({
   const [q, setQ] = useState('')
   const [selected, setSelected] = useState<number[]>([])
   const [saving, setSaving] = useState(false)
-  const existing = useMemo(() => new Set(existingIds), [existingIds])
+  // Уже участники — видны с проставленным неактивным чекбоксом. Плоский список
+  // экран берёт сам (`groups.members` остаётся экранам редактирования группы —
+  // задача 13 плана shared media, пункт 6): панель профиля участников больше
+  // не держит, их владелец — класс `AppSearchSuper`.
+  const [existing, setExisting] = useState<Set<number>>(() => new Set())
+  useEffect(() => {
+    let alive = true
+    void managers.groups.members(chatId).then((mem) => {
+      if (alive) setExisting(new Set(mem.map((m) => m.userId)))
+    })
+    return () => {
+      alive = false
+    }
+  }, [chatId, managers])
 
   // Глобальный поиск людей по имени/username (как в Telegram): результаты
   // подмешиваются к контактам при вводе запроса.

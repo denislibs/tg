@@ -488,7 +488,8 @@ export function isOurMessage(m: MyMessage, chat: OurMessageChat): boolean {
  * «Избранное» (единственный чат, где `peerId === myId`) ни тем, ни другим не
  * бывает. Окна сохранённого диалога (tweb `ChatType.Saved`, где `threadId` —
  * это `savedPeerId`) у нас нет вовсе: строка списка «Избранного» открывает
- * ОРИГИНАЛЬНЫЙ чат пира (`SharedMedia.tsx::SavedDialogRow` → `onOpenPeer`), а
+ * ОРИГИНАЛЬНЫЙ чат пира (`sidebarRight/savedDialogsTab.solid.tsx` →
+ * `core/navigation/openPeer.ts`), а
  * не под-окно «Избранного».
  *
  * `this.peerId` оригинала здесь — `message.peerId`: окно одно, и все его

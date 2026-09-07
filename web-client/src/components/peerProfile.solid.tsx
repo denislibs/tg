@@ -79,8 +79,9 @@
  *
  * НЕ портированы (не заглушки — предмета нет, или нет потребителя):
  *  • `onPinnedGiftsChange`/`onAvatarReady` — колбэки для `AppSearchSuper`
- *    (`setPinnedGifts`) и её же интеграции с аватаркой (tweb :166-169); наш
- *    `SharedMedia` (React) не отдаёт такого API наружу.
+ *    (`setPinnedGifts`) и её же интеграции с аватаркой (tweb :166-169);
+ *    закреплённых подарков в ряду у нас нет (расхождение 38 класса —
+ *    `setPinnedGifts` без вызывающего, пока ручка не отдаёт `pinned_to_top`).
  *  • `needWhite`/`setNeedWhite` — у оригинала это ОБЩИЙ Solid-сигнал: секции
  *    читают его, чтобы красить текст в белый над фото профиля, а класс
  *    `PeerProfileAvatars` его же выставляет. Задача 3 — та самая секция,
@@ -136,19 +137,31 @@
  * PersonalChannel, MainSection, BotMainApp, BotVerification, BotPermissions,
  * `{props.searchSuperContainer}` (последним).
  *
- * Прямыми детьми `.profile-content` здесь — delimiter, `<MainSection />`
- * (Task 4, строки Phone/Username/Bio/Link/Birthday/Notifications — см. её
- * докблок ниже), четыре НАШИХ секции без аналога в оригинале
- * (`<Statistics/>`/`<Discussion/>`/`<JoinRequests/>`/`<EncryptionKey/>`,
- * Task 5 — см. их докблоки за адресами оригинала) и
+ * Прямыми детьми `.profile-content` здесь — `{props.avatarsContainer}`
+ * (ПЕРВЫМ — место `AutoAvatar`, `:196`; это `container` класса
+ * `PeerProfileAvatars`, узел приходит ПРОПОМ ровно так же, как
+ * `searchSuperContainer`, — с задачи 13 плана shared media, см. ниже),
+ * delimiter, `<MainSection />` (Task 4, строки Phone/Username/Bio/Link/
+ * Birthday/Notifications — см. её докблок ниже), четыре НАШИХ секции без
+ * аналога в оригинале (`<Statistics/>`/`<Discussion/>`/`<JoinRequests/>`/
+ * `<EncryptionKey/>`, Task 5 — см. их докблоки за адресами оригинала) и
  * `{props.searchSuperContainer}` (последним, дословно тот же контракт, что и
- * в оригинале). `AutoAvatar` в это дерево вообще НЕ входит — см. докблок
- * `UserInfoPanel.tsx` у `avatarsHostRef` (там же причина: наш класс
- * `PeerProfileAvatars` переживает смену пира, а этот Solid-корень
- * пересоздаётся на каждый peerId, как и в оригинале — см. ниже). Задача 3
- * (`Name`/`Subtitle`) — тоже не прямой ребёнок ЭТОГО узла: она встаёт в
- * `avatars.info`, СОСЕДНИЙ узел класса — см. докблок компонента `PeerProfile`
- * у места монтирования, ниже по файлу.
+ * в оригинале). Задача 3 (`Name`/`Subtitle`) — не прямой ребёнок ЭТОГО узла:
+ * она встаёт в `avatars.info` ВНУТРИ узла карусели — см. докблок компонента
+ * `PeerProfile` у места монтирования, ниже по файлу.
+ *
+ * Почему узел карусели — проп, а не Solid-ребёнок: наш класс переживает смену
+ * пира (докблок `peerProfileAvatars.ts`, «Осознанное отступление»), а этот
+ * корень пересоздаётся на каждый peerId. До задачи 13 карусель стояла СОСЕДОМ
+ * перед корнем (`backlogs/frontend/profile-avatar-inside-solid-root.md`,
+ * закрыт), и от этого ломалась геометрия `AppSearchSuper`: класс меряет
+ * позицию «свежей» вкладки от верха `container.parentElement`
+ * (`appSearchSuper.ts`, порт `:653-661`) и `container.offsetTop` — у оригинала
+ * это и есть верх прокручиваемого содержимого, потому что карусель ВНУТРИ
+ * `.profile-content`. У нас позиция занижалась на высоту карусели, «свежая»
+ * вкладка вставала выше ряда, режим шаред-медиа сбрасывался и память позиций
+ * терялась (стенд 2026-09-07). Узел-проп решает и это, и `.has-music &`-правила
+ * `_profile.scss:221,830,968` (descendant-селекторы от `.profile-content`).
  *
  * `has-music` (`:199`) не взведён вовсе — см. «НЕ портированы» выше про
  * `hasSavedMusic`.
@@ -163,10 +176,11 @@
  * «пробросить новый peerId в живой корень»: новый peerId — это буквально
  * новый корень с собственными `usePeer`/`useFullPeer`.
  *
- * `props.searchSuperContainer`, в отличие от корня, ЖИВЁТ ДОЛЬШЕ одного
- * peerId — это тот же самый DOM-узел (владеет им `UserInfoPanel.tsx`,
- * создаётся один раз), просто перевстраивается в новый `.profile-content`
- * при каждом пересоздании. Ровно так же ведёт себя `tab.searchSuper.container`
+ * `props.avatarsContainer` и `props.searchSuperContainer`, в отличие от корня,
+ * ЖИВУТ ДОЛЬШЕ одного peerId — это те же самые DOM-узлы (владеют ими классы
+ * `PeerProfileAvatars` и `AppSearchSuper`, инстансы создаются один раз на
+ * панель), просто перевстраиваются в новый `.profile-content` при каждом
+ * пересоздании. Ровно так же ведёт себя `tab.searchSuper.container`
  * оригинала (переживает `fillProfileElements`, встраивается заново).
  */
 import { createContext, useContext, createMemo, createSignal, onCleanup, Show, For } from 'solid-js'
@@ -229,6 +243,14 @@ export type PeerProfileContextValue = {
    * опционально — чтобы тесты каркаса (Task 2/3), не знающие про QR, не были
    * обязаны его передавать. */
   onOpenQrCode?: (payload: { url: string; label: string }) => void
+  /** Порт ветки `exported_invite` строки `Link` (tweb `:999-1004`): полный URL
+   *  инвайт-ссылки группы/канала БЕЗ публичного username. В оригинале лежит в
+   *  `chatFull.exported_invite`; в нашей модели поля нет — ссылку отдельным
+   *  походом (`groups.listInvites`) знает `useGroupInfo` панели, и она едет
+   *  сюда живым пропом (`update(patch)`), как гейты задачи 5 ниже. Задача 13
+   *  плана shared media: до неё эту ветку рисовал React-сиблинг ПОСЛЕ корня и
+   *  оказывался под absolute-узлом шаред-медиа. */
+  exportedInviteUrl?: string
 
   // ── Task 5: наши секции без аналога в оригинале ────────────────────────────
   // Гейты и данные — уже посчитанные значения React `useGroupInfo`
@@ -283,10 +305,15 @@ export type PeerProfileProps = {
   scrollable: HTMLElement
   setCollapsedOn: HTMLElement
   /** Контракт оригинала (tweb `:121`, `:211`, `sharedMedia.tsx:166`) — готовый
-   *  DOM-узел грида шаред-медиа, отдаётся ПОСЛЕДНИМ ребёнком. У нас его
-   *  создаёт и держит `UserInfoPanel.tsx` (React `SharedMedia` рисуется в него
-   *  порталом) — см. докблок точки монтирования там же. */
+   *  DOM-узел подсистемы шаред-медиа, отдаётся ПОСЛЕДНИМ ребёнком. Это
+   *  `container` класса `AppSearchSuper` (хук-шов `core/hooks/useSearchSuper.ts`,
+   *  задача 13): узел один на всю жизнь панели и переезжает в каждый новый
+   *  корень — см. докблок точки монтирования в `UserInfoPanel.tsx`. */
   searchSuperContainer?: HTMLElement
+  /** Место `AutoAvatar` (tweb `:196`) — `container` класса `PeerProfileAvatars`,
+   *  ПЕРВЫМ ребёнком. Тот же контракт узла-пропа, что у `searchSuperContainer`
+   *  (см. докблок файла, «Корень и порядок детей»). */
+  avatarsContainer?: HTMLElement
   /** Задача 3. Узел `PeerProfileAvatars.info` (`peerProfileAvatars.ts`,
    *  публичное поле, docblock «кто владеет контентом») — карусель-шапка сама
    *  его не наполняет (структурный DOM — задача класса, контент — этой
@@ -297,6 +324,8 @@ export type PeerProfileProps = {
   /** Задача 4, см. докблок поля `onOpenQrCode` контекста выше — тот же
    *  колбэк, прокинутый пропом (как `avatarsInfo`/`searchSuperContainer`). */
   onOpenQrCode?: (payload: { url: string; label: string }) => void
+  /** См. одноимённое поле контекста выше. */
+  exportedInviteUrl?: string
 
   // Задача 5 — см. докблоки одноимённых полей контекста выше, они те же
   // пропы, прокинутые дальше без изменений (тот же приём, что у `onOpenQrCode`).
@@ -376,6 +405,9 @@ export function createPeerProfileContextValue(props: PeerProfileProps): PeerProf
     // `peerProfileLiveProps.solid.test.tsx`.
     get onOpenQrCode() {
       return props.onOpenQrCode
+    },
+    get exportedInviteUrl() {
+      return props.exportedInviteUrl
     },
     // ── Задача 5 — сквозной проброс, см. докблоки полей контекста выше ──────
     get showStatistics() {
@@ -471,6 +503,7 @@ const PeerProfile = (props: PeerProfileProps) => {
   return (
     <PeerProfileContext.Provider value={value}>
       <div class={classNames('profile-content', value.peerId === meId ? 'is-me' : '')}>
+        {props.avatarsContainer}
         <div class="profile-content-delimiter" />
         <MainSection />
         <Statistics />
@@ -1011,16 +1044,17 @@ function Bio() {
 }
 
 /**
- * Порт `PeerProfile.Link` (tweb `:969-1036`) — ТОЛЬКО ветка публичного
- * username (`getPeerActiveUsernames`, первая); фолбэк на `exported_invite`
- * (`:999-1004`, приватная ссылка-приглашение канала/группы БЕЗ публичного
- * username) не портирован — поля `exported_invite` в нашем `ChannelFull`
- * нет (Task 1, `fullPeers.solid.ts`, докблок «что есть у ChannelFull»); у нас
- * это отдельный сетевой поход (`managers.groups.listInvites`,
- * `core/hooks/useGroupInfo.ts`), заводить его в реактивный слой пира —
- * вне объёма этой задачи («новых зеркал не заводить», бриф). Приватная
- * группа/канал БЕЗ публичного username по-прежнему получает свою
- * инвайт-ссылку строкой из React (`UserInfoPanel.tsx`, отмечено там же).
+ * Порт `PeerProfile.Link` (tweb `:969-1036`): ветка публичного username
+ * (`getPeerActiveUsernames`, первая) и фолбэк на инвайт-ссылку (`:999-1004`,
+ * приватная группа/канал БЕЗ публичного username). У оригинала фолбэк читает
+ * `chatFull.exported_invite`; поля в нашем `ChannelFull` нет (Task 1,
+ * `fullPeers.solid.ts`, докблок «что есть у ChannelFull») — ссылка приходит
+ * пропом `exportedInviteUrl` из `useGroupInfo` панели (отдельный поход
+ * `groups.listInvites`, докблок поля контекста). С задачи 13 плана shared
+ * media обе ветки — ЗДЕСЬ, единственной строкой: прежний React-фолбэк
+ * (`UserInfoPanel.tsx`) стоял сиблингом ПОСЛЕ Solid-корня и попадал под
+ * absolute-узел шаред-медиа (`.search-super`, `top: 100%` от `.profile-content`).
+ * Подпись — URL без схемы, как `t.me/…` у оригинала (`:1002`).
  *
  * ── Разведение владения строкой — ОДНИМ предикатом, не двумя гейтами ────────
  * Раньше здесь стояло «не регресс, временное разделение владения на
@@ -1063,27 +1097,31 @@ function Bio() {
 function Link() {
   const context = usePeerProfileContext()
 
-  const username = createMemo(() => {
+  // tweb `toFill` (`:973-1005`): полный URL строки — публичный username, иначе
+  // инвайт-ссылка; пользователю строка не показывается вовсе.
+  const url = createMemo(() => {
     if (isUser(context.peerId)) return undefined
     const peer = context.peer as Channel | undefined
-    return isPublic(peer) ? peer!.username : undefined
+    if (isPublic(peer)) return `${location.origin}/@${peer!.username}`
+    return context.exportedInviteUrl
   })
+  const label = (value: string) => value.replace(/^https?:\/\//, '')
 
   const onClick = () => {
-    const value = username()
+    const value = url()
     if (!value) return
-    void copyTextToClipboard(`${location.origin}/@${value}`)
+    void copyTextToClipboard(value)
     toastNew({ langPackKey: 'LinkCopied' })
   }
 
   return (
-    <Show when={username()}>
+    <Show when={url()}>
       {(value) => (
         <Row clickable={onClick}>
           <Row.Icon icon="link" />
-          <Row.Title>{`${location.host}/@${value()}`}</Row.Title>
+          <Row.Title>{label(value())}</Row.Title>
           <Row.Subtitle>{i18n('SetUrlPlaceholder')}</Row.Subtitle>
-          <QrButton url={`${location.origin}/@${value()}`} label={`${location.host}/@${value()}`} />
+          <QrButton url={value()} label={label(value())} />
         </Row>
       )}
     </Show>

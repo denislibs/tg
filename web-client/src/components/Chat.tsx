@@ -1452,7 +1452,6 @@ export default function Chat({ chat, onBack, thread }: Props) {
             onOpenPeer={onOpenPeer}
             canAddMembers={canAddMember}
             onEditContact={() => { setInfoOpen(false); pop.openEditContact() }}
-            onSendGift={chat.type === 'private' && isRealChat && numericChatId !== meId ? pop.openGift : undefined}
           />
         )}
       </Suspense>

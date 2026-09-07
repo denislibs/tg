@@ -79,9 +79,9 @@ const TOPIC_ITEM_HEIGHT = 64
  * строк нет, а вызов и так пустой (проверено мутацией «инлайновая стрелка
  * вместо константы» — `TopicsPanel.test.tsx` остаётся зелёным).
  *
- * Тот же локальный `NO_ITEM_REQUEST` под тот же контракт живёт в
- * `userInfo/SharedMedia.tsx:479` (у архива своего больше нет: `Sidebar.tsx`
- * теперь просит страницы настоящим курсором — `useDialogListSource`).
+ * У архива своего `NO_ITEM_REQUEST` больше нет: `Sidebar.tsx` теперь просит
+ * страницы настоящим курсором (`useDialogListSource`), а список «Чаты»
+ * правой колонки ушёл на Solid-ядро (`sidebarRight/savedDialogsTab.solid.tsx`).
  */
 const NO_ITEM_REQUEST = () => {}
 

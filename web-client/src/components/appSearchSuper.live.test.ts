@@ -157,6 +157,39 @@ describe('shared media: подписка на события окна', () => {
 
     listenerSetter.removeAll()
   })
+
+  // Стенд 2026-09-07 (задача 13): своё фото попадало во вкладку ВРЕМЕННЫМ
+  // баблом (`history_append` зеркала для оптимистичной вставки, дробный id
+  // `generateTempMessageId`), а `history_delete` приходил с ФИНАЛЬНЫМ id — узел
+  // оставался навсегда, счётчик не убывал. У оригинала подсистема слушает
+  // `history_multiappend` — только СОХРАНЁННЫЕ сообщения; временный бабл до
+  // неё не доходит вовсе (расхождение 4 в шапке `sharedMediaHistories.ts`).
+  it('свой временный бабл (дробный id) во вкладку не попадает; финальное сообщение доезжает по ack (history_update) один раз, и удаление его находит', async () => {
+    const { searchSuper, counters } = build([photo(3), photo(2), photo(1)])
+    const listenerSetter = new ListenerSetter()
+    subscribeSharedMediaLiveUpdates(searchSuper, listenerSetter)
+    await searchSuper.load(true)
+    await settle()
+    counters.length = 0
+
+    const pending = photo(3.0001)
+    rootScope.dispatchEventSingle('history_append', { storageKey: String(PEER), message: pending })
+    await settle()
+    expect(mids(searchSuper), 'временный бабл не рисуется').toEqual([3, 2, 1])
+    expect(counters).toEqual([])
+
+    rootScope.dispatchEventSingle('history_update', { storageKey: String(PEER), message: photo(4), tempId: 3.0001 })
+    await settle()
+    expect(mids(searchSuper), 'финальное — одним узлом сверху, с настоящим mid').toEqual([4, 3, 2, 1])
+    expect(counters).toEqual([['media', 4]])
+
+    rootScope.dispatchEventSingle('history_delete', { peerId: PEER, msgs: new Set([4]) })
+    await settle()
+    expect(mids(searchSuper), 'удаление по финальному mid находит узел').toEqual([3, 2, 1])
+    expect(counters[counters.length - 1]).toEqual(['media', 3])
+
+    listenerSetter.removeAll()
+  })
 })
 
 describe('shared media: удаление сообщения', () => {

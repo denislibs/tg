@@ -35,10 +35,24 @@
 //     (`winKey`: "peerId" | "peerId:threadRoot"), потому что именно им
 //     объявляются события `history_append`. Ответ на вопрос «какому списку
 //     принадлежит сообщение» тот же, источник ответа другой.
+//  4. СВОЁ сообщение доезжает до вкладки ПО ACK, а не временным баблом. У
+//     оригинала подсистема слушает `history_multiappend` (`:596`) — событие
+//     только о СОХРАНЁННЫХ сообщениях; временный бабл объявляется другим
+//     событием (`history_append`), которое она не слушает. У нас зеркало
+//     (`core/history/messagesMirror.ts:270-273`) объявляет `history_append` и
+//     для чужого сообщения, и для своей оптимистичной вставки (id дробный —
+//     порт `generateTempMessageId`, tweb `appMessagesIdsManager.ts:11`, ровно
+//     так оригинал и отличает временный: `!Number.isInteger`), а слияние с
+//     ответом сервера — `history_update` с `tempId`. Поэтому подписка
+//     пропускает временный бабл (`isLocalMessageId`) и рисует финальное по
+//     `history_update`: иначе во вкладке жил узел с временным mid, а
+//     `history_delete` с настоящим mid его не находил (стенд 2026-09-07,
+//     задача 13). Пин — `appSearchSuper.live.test.ts`.
 import type AppSearchSuper from '@components/appSearchSuper'
 import type { SearchSuperMediaTab, SearchSuperType } from '@components/appSearchSuper'
 import type { MyMessage } from '@core/models'
 import rootScope from '@lib/rootScope'
+import { isLocalMessageId } from '@core/history/messageId'
 import type ListenerSetter from '@helpers/listenerSetter'
 
 /** tweb `:29-31`. */
@@ -242,9 +256,28 @@ export function deleteDeletedMessages(searchSuper: AppSearchSuper, peerId: PeerI
  * (расхождение 3 в шапке).
  */
 export function subscribeSharedMediaLiveUpdates(searchSuper: AppSearchSuper, listenerSetter: ListenerSetter) {
-  listenerSetter.add(rootScope)('history_append', ({ storageKey, message }) => {
+  const render = (storageKey: string, message: MyMessage) => {
     const [peerId, threadRoot] = storageKey.split(':')
     renderNewMessage(searchSuper, message, +peerId, threadRoot ? +threadRoot : undefined)
+  }
+
+  listenerSetter.add(rootScope)('history_append', ({ storageKey, message }) => {
+    // Расхождение 4 в шапке: временный бабл своей отправки — не предмет вкладки.
+    if(isLocalMessageId(message.id)) {
+      return
+    }
+
+    render(storageKey, message)
+  })
+
+  // Расхождение 4: слияние временного бабла с ответом сервера — это и есть
+  // «сохранённое сообщение» оригинала (`history_multiappend`).
+  listenerSetter.add(rootScope)('history_update', ({ storageKey, message, tempId }) => {
+    if(tempId === undefined) {
+      return
+    }
+
+    render(storageKey, message)
   })
 
   listenerSetter.add(rootScope)('history_delete', ({ peerId, msgs }) => {

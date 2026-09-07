@@ -1,116 +1,42 @@
-// НАХОДКА РЕВЬЮ (Critical, финальный раунд Task 4 плана
-// docs/superpowers/plans/2026-09-05-profile-card-solid.md): панель рисовала
-// ДВЕ строки ссылки одновременно — React-фолбэк инвайт-ссылки
-// (UserInfoPanel.tsx) и Solid-`Link` (peerProfile.solid.tsx) — потому что
-// React-гейт `!chat.username` читал МЁРТВОЕ поле вью-модели (было `data.ts:
-// 179`, снесено следующей находкой того же ревью вместе с единственным
-// писателем): у поля был РОВНО ОДИН писатель (`App.tsx`, `draftChat` —
-// ТОЛЬКО для приватного черновик-чата, `type: 'private'`) и ноль читателей
-// для группы/канала — `core/dialogToChat.ts` его не выставляет вовсе, а этот
-// гейт живёт под `(isGroup || isChannel)`, то есть адресует ДРУГОЙ вид чата,
-// чем единственный писатель. Для группы/канала поле было пусто ВСЕГДА, и
-// гейт был истинен ВСЕГДА. У публичного канала/группы с уже лениво созданной
-// инвайт-ссылкой (`useGroupInfo.ts:142-151`, право `invite_links`) поэтому
-// рисовались обе строки разом (эта + Solid-Link), с разными URL и двумя
-// QR-кнопками.
+// Инвайт-ссылка группы/канала БЕЗ публичного username (tweb `PeerProfile.Link`,
+// ветка `exported_invite` `:999-1004`).
 //
-// Фикс сводит источник истины к ОДНОМУ предикату — `isPublic`
-// (`core/peers/predicates.ts:79`, порт `appChatsManager.isPublic`; до фикса
-// был объявлен, но не имел ни одного вызывающего) над ОДНИМ зеркалом пиров
-// (`core/peerCache.ts`): React читает `isPublicPeer(peerId)`
-// (`UserInfoPanel.tsx`), Solid — `isPublic(context.peer)`
-// (`peerProfile.solid.tsx::Link`) через `usePeer`/`stores/peers.solid.ts` —
-// то же `cachedPeer`/`cachedChat`.
+// История: НАХОДКА РЕВЬЮ (Critical, финальный раунд Task 4 плана
+// docs/superpowers/plans/2026-09-05-profile-card-solid.md) — панель рисовала
+// ДВЕ строки ссылки одновременно (React-фолбэк инвайта в `UserInfoPanel.tsx`
+// и Solid-`Link`), потому что React-гейт читал мёртвое поле `chat.username`.
+// Фикс тогда свёл оба гейта к одному предикату `isPublic` над зеркалом пиров.
 //
-// Панель нерендерибельна в vitest целиком (портал, менеджеры, полдюжины
-// сторов — то же основание, что у `UserInfoPanel.shell.test.ts`), поэтому пин
-// разбит на два уровня: текстовый (гейт в реальном файле не откатился на
-// мёртвое поле) + поведенческий (сам предикат над РЕАЛЬНЫМ зеркалом пиров
-// действительно взаимоисключает фолбэк и Solid-Link, и — отдельным кейсом —
-// воспроизводит старый баг на эмулированном дохлом поле).
+// Задача 13 плана shared media убрала и второе место: React-фолбэк стоял
+// сиблингом ПОСЛЕ Solid-корня и оказывался под absolute-узлом шаред-медиа
+// (`.search-super`, `top: 100%` от `.profile-content`) — строка была не видна
+// под липким рядом вкладок. Теперь строку целиком рисует Solid-`Link`
+// (обе ветки оригинала), а панель отдаёт ей только URL живым пропом
+// `exportedInviteUrl` из `buildProfilePatch`. Поведение самой строки —
+// `peerProfileMainSection.solid.test.tsx` (describe «Link»); здесь — пин, что
+// панель НЕ вернула второй гейт и что проп едет через патч (иначе Solid
+// никогда не увидит ссылку, созданную лениво после первого рендера).
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
-import { applyPeerOps, cachedChat, isPublicPeer, resetPeerMirror } from '../core/peerCache'
-import { isPublic } from '../core/peers/predicates'
+import { describe, expect, it } from 'vitest'
 
 const panel = readFileSync(join(__dirname, 'UserInfoPanel.tsx'), 'utf8')
 
-/** Statement `const fallbackInviteUrl = ...` — от маркера до соседнего
- *  `const fallbackInviteShort` сразу под ним. Тернарник без вложенных фигурных
- *  скобок — балансовая экстракция соседних пинов файла здесь не нужна. */
-function extractFallbackInviteUrlStatement(src: string): string {
-  const start = src.indexOf('const fallbackInviteUrl =')
-  if (start === -1) throw new Error('const fallbackInviteUrl = ... не найден')
-  const end = src.indexOf('const fallbackInviteShort', start)
-  if (end === -1) throw new Error('конец statement (маркер fallbackInviteShort) не найден')
-  return src.slice(start, end)
-}
-
-describe('UserInfoPanel — гейт фолбэк-строки инвайт-ссылки', () => {
-  it('не читает мёртвое chat.username — читает isPublicPeer(peerId), тот же предикат, что Solid-Link', () => {
-    const stmt = extractFallbackInviteUrlStatement(panel)
-    expect(stmt, 'мутация: вернулся дохлый гейт !chat.username').not.toMatch(/chat\.username/)
-    expect(stmt).toMatch(/!isPublicPeer\(peerId\)/)
-  })
-})
-
-describe('гейт фолбэка (React) и Solid-Link — взаимоисключающие для одного пира', () => {
-  afterEach(() => resetPeerMirror())
-
-  const CHANNEL_ID = 100 // peerKey (peer.ts:503) — знаковый ключ канала: -Math.abs(id)
-  const peerId = -CHANNEL_ID
-
-  function seedChannel(username: string | undefined) {
-    applyPeerOps([
-      {
-        op: 'upsert',
-        peers: [{
-          _: 'channel', id: CHANNEL_ID, title: 'Канал', pFlags: { megagroup: true },
-          photo: { _: 'chatPhotoEmpty' }, date: 0, username,
-        }],
-      },
-    ])
-  }
-
-  it('публичный канал (username задан) + уже созданная инвайт-ссылка: фолбэк гасится, Solid-Link рисуется', () => {
-    seedChannel('public')
-    const inviteLinkExists = true // useGroupInfo.ts:142-151 создаёт ссылку лениво
-
-    // React: буквально та же формула, что в UserInfoPanel.tsx (см. пин выше).
-    const reactShowsFallback = !isPublicPeer(peerId) && inviteLinkExists
-    // Solid: буквально та же формула, что в peerProfile.solid.tsx::Link.
-    const solidShowsLink = isPublic(cachedChat(peerId))
-
-    expect(solidShowsLink).toBe(true)
-    expect(reactShowsFallback).toBe(false)
-    expect(reactShowsFallback && solidShowsLink, 'обе строки не могут появиться одновременно').toBe(false)
+describe('UserInfoPanel — инвайт-ссылка живёт в Solid-Link, а не React-фолбэком', () => {
+  it('React-фолбэка нет: ни гейта isPublicPeer, ни строки SetUrlPlaceholder, ни SidebarSection', () => {
+    expect(panel).not.toMatch(/fallbackInviteUrl/)
+    expect(panel).not.toMatch(/isPublicPeer\(/)
+    expect(panel).not.toMatch(/SetUrlPlaceholder/)
+    expect(panel).not.toMatch(/<SidebarSection/)
   })
 
-  it('приватный канал (username не задан) + инвайт-ссылка: фолбэк рисуется, Solid-Link — нет', () => {
-    seedChannel(undefined)
-    const inviteLinkExists = true
-
-    const reactShowsFallback = !isPublicPeer(peerId) && inviteLinkExists
-    const solidShowsLink = isPublic(cachedChat(peerId))
-
-    expect(solidShowsLink).toBe(false)
-    expect(reactShowsFallback).toBe(true)
-    expect(reactShowsFallback && solidShowsLink).toBe(false)
-  })
-
-  it('репродукция старого бага: дохлое chat.username даёт ИСТИНА && ИСТИНА одновременно с Solid-Link', () => {
-    seedChannel('public') // публичный канал — реальный username есть
-    const inviteLinkExists = true
-    // Симуляция СТАРОГО гейта: `chat.username` — поле вью-модели, у которого
-    // для группы/канала не было ни писателя, ни читателя (см. докблок файла) —
-    // в проде оно ровно undefined.
-    const deadChatUsername: string | undefined = undefined
-    const oldReactShowsFallback = !deadChatUsername && inviteLinkExists
-    const solidShowsLink = isPublic(cachedChat(peerId))
-
-    expect(oldReactShowsFallback).toBe(true)
-    expect(solidShowsLink).toBe(true)
-    expect(oldReactShowsFallback && solidShowsLink, 'старый гейт: обе строки рисовались разом — это и есть находка ревью').toBe(true)
+  it('URL инвайта едет в Solid живым пропом exportedInviteUrl из buildProfilePatch, deps апдейта включают inviteLinks', () => {
+    const patchStart = panel.indexOf('const buildProfilePatch = () => (')
+    const patchEnd = panel.indexOf('})', patchStart)
+    const patch = panel.slice(patchStart, patchEnd)
+    expect(patch).toMatch(/exportedInviteUrl:\s*inviteLinks\[0\]\s*\?\s*`\$\{location\.origin\}\/join\/\$\{inviteLinks\[0\]\.token\}`\s*:\s*undefined/)
+    const updateIdx = panel.indexOf('profileUpdateRef.current?.(buildProfilePatch())')
+    const deps = panel.slice(panel.indexOf('}, [', updateIdx), panel.indexOf('])', updateIdx))
+    expect(deps, 'без inviteLinks в deps ссылка, созданная лениво, не доедет до Solid').toMatch(/\binviteLinks\b/)
   })
 })
