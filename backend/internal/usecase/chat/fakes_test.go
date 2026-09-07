@@ -738,11 +738,6 @@ func (r fakeMsgs) MediaHistory(_ context.Context, chatID int64, filter string, p
 			}
 		}
 		out = kept
-	} else if page.Offset > 0 {
-		if page.Offset > len(out) {
-			page.Offset = len(out)
-		}
-		out = out[page.Offset:]
 	}
 	if len(out) > page.Limit {
 		out = out[:page.Limit]

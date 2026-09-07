@@ -301,14 +301,7 @@ type MediaPage struct {
 	// OffsetID — seq последнего уже показанного сообщения; страница отдаётся
 	// строго ниже него. 0 — с начала (самые новые).
 	OffsetID int64
-	// Offset — СОВМЕСТИМОСТЬ с текущим клиентом: смещением ещё листают
-	// web-client/src/components/userInfo/SharedMedia.tsx:193 (вкладки профиля)
-	// и Chat.tsx:776 (соседи медиавьювера). Учитывается только при
-	// OffsetID == 0. Удалять его можно лишь вместе с ОБОИМИ — не только с
-	// React-`SharedMedia`. Новый код обязан пользоваться OffsetID: смещение
-	// даёт неверный результат — см. выше.
-	Offset int
-	Limit  int
+	Limit    int
 }
 
 // SearchCounter — число сообщений чата одного вида (аналог MTProto
@@ -332,9 +325,6 @@ func (i *Interactor) MediaHistory(ctx context.Context, chatID, userID int64, fil
 	}
 	if page.OffsetID < 0 {
 		page.OffsetID = 0
-	}
-	if page.Offset < 0 {
-		page.Offset = 0
 	}
 	msgs, count, err := i.msgs.MediaHistory(ctx, chatID, filter, page)
 	if err != nil {

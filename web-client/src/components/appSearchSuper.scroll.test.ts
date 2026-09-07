@@ -20,7 +20,7 @@
 // значениями, а не поведением.
 import { describe, it, expect, afterEach, beforeEach } from 'vitest'
 import Scrollable from '@components/scrollable'
-import AppSearchSuper, { type SearchSuperMediaTab } from '@components/appSearchSuper'
+import AppSearchSuper, { type SearchSuperManagers, type SearchSuperMediaTab } from '@components/appSearchSuper'
 import type { LangPackKey } from '@lib/langPack'
 
 /** высота содержимого профиля, которую happy-dom сам не посчитает */
@@ -36,6 +36,18 @@ function makeMediaTabs(): SearchSuperMediaTab[] {
   ]
 }
 
+/**
+ * Ядро в сеть не ходит: эти тесты про разметку и скролл, и загрузку они не
+ * запускают вовсе. Ручки — обязательные (`AppSearchSuperOptions`), поэтому
+ * стоят заглушки, которые обязаны остаться НЕПОЗВАННЫМИ.
+ */
+const IDLE_MANAGERS = {
+  messages: {
+    mediaHistory: () => { throw new Error('ядро не грузит данные') },
+    searchCounters: () => { throw new Error('ядро не грузит данные') },
+  },
+} as unknown as SearchSuperManagers
+
 let scrollable: Scrollable
 
 function build() {
@@ -49,7 +61,7 @@ function build() {
   host.getBoundingClientRect = () => ({ y: 0 }) as DOMRect
   scrollable.container.append(host)
 
-  const searchSuper = new AppSearchSuper({ mediaTabs: makeMediaTabs(), scrollable })
+  const searchSuper = new AppSearchSuper({ mediaTabs: makeMediaTabs(), scrollable, managers: IDLE_MANAGERS })
   searchSuper.container.getBoundingClientRect = () => ({ y: SUPER_OFFSET_FROM_PARENT }) as DOMRect
   host.append(searchSuper.container)
 

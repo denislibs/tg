@@ -1,27 +1,28 @@
 // Порт tweb `src/components/appSearchSuper.ts` (2843) — ЯДРО класса: разметка
 // подсистемы, полоса вкладок, слайдер содержимого, ПАМЯТЬ ПОЗИЦИИ СКРОЛЛА,
-// свайп между вкладками, очистка и смена пира.
+// свайп между вкладками, очистка и смена пира, плюс ЗАГРУЗКА данных вкладок
+// (`load`/`loadType`/`performSearchResult`).
 //
 // Разбор подсистемы с адресами — `docs/tweb/shared-media.md` § 1.3, § 1.4, § 1.9;
 // план этапа — `docs/superpowers/plans/2026-09-07-solid-wave-3-shared-media.md`,
-// задача 5. Эталон разметки — живой дамп Telegram
+// задачи 5-6. Эталон разметки — живой дамп Telegram
 // `docs/tweb/dom/dumps/07-right-sidebar.json:120-310`.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ЧТО ЗДЕСЬ ЕЩЁ НЕ ЖИВЁТ (и почему это не заглушки, а пропуски)
 //
 // Класс в оригинале — один файл на всю подсистему, и портируется он этапами
-// (задачи 5→14 плана). Всё, что относится к загрузке данных, рендеру элементов,
-// выделению и контекстному меню, в этом файле ОТСУТСТВУЕТ ЦЕЛИКОМ — ни полей,
-// ни пустых методов: заглушка, которую никто не зовёт, — мёртвый код
-// (`CLAUDE.md`). Места, где оригинал зовёт ещё не приехавшее, помечены
-// комментарием со ссылкой на строку tweb и номер задачи; когда задача приедет,
-// вызов встанет ровно туда.
+// (задачи 5→14 плана). Рендер конкретного элемента, первый показ вкладок,
+// выделение и контекстное меню в этом файле ОТСУТСТВУЮТ — ни полей, ни пустых
+// методов: заглушка, которую никто не зовёт, — мёртвый код (`CLAUDE.md`).
+// Единственное исключение — `buildItem`: его зовёт уже приехавший
+// `performSearchResult`, и он честно отдаёт узел, просто пока пустой.
+// Места, где оригинал зовёт ещё не приехавшее, помечены комментарием со
+// ссылкой на строку tweb и номер задачи; когда задача приедет, вызов встанет
+// ровно туда.
 //
-//  • `load`/`loadType`/`historyStorage`-рендер, `nextRates`, `loadPromises`,
-//    `loaded`, `firstLoad`, `setCounter`/`counters` — задача 6 (`tweb:2181-2577`);
 //  • `processXFilter`, медиавьювер по клику — задачи 7-9 (`tweb:826-1283`, `:716-774`);
-//  • `loadFirstTime`, предикаты `canView*` — задача 10 (`tweb:2362-2529`);
+//  • `loadFirstTime`/`firstLoad`, предикаты `canView*` — задача 10 (`tweb:2362-2529`);
 //  • `SortedUserList`/участники — задача 11 (`tweb:1525-1758`);
 //  • `SearchSelection`, `SearchContextMenu` — задача 14 (`tweb:156-345`,
 //    `chat/selection.ts:583-763`).
@@ -51,8 +52,30 @@
 //     в правой этот узел не создаётся и у нас не портирован.
 //  5. `slider`/`appSidebarRight` (`tweb:453`) не в опциях: поле нужно только
 //     вкладкам «участники»/«похожие каналы» для открытия подэкранов (задачи 11-12).
-//  6. `managers` (`tweb:451`) не в опциях: ядро не ходит в сеть. Приедет с
-//     задачей 6 вместе с первым обращением к менеджерам.
+//  6. `managers` (`tweb:419` — весь `AppManagers`) сужены до двух ручек
+//     (`SearchSuperManagers`): подсистема ходит только за списком одного вида и
+//     за счётчиками вкладок. Узкий шов и проверяем узко.
+//  7. `nextRate` (`tweb:2288`, `:2321`) не портирован: это курсор ГЛОБАЛЬНОГО
+//     поиска левой колонки (`folderId`), которого в этом порте нет вовсе
+//     (см. поправку 3 плана). Вместе с ним отпадает и вторая ветка критерия
+//     «всё загружено» (`tweb:2312`) — остаётся первая, `history.length <
+//     loadCount`, ровно та, что применима к нашей ручке.
+//  8. `filterMessagesByType` (`tweb:822-824`) делегирует в оригинале общей
+//     утилите `filterMessagesByInputFilter` (её потребителей у нас нет), и там
+//     же выясняется, что фильтр `inputMessagesFilterUrl` смотрит на сущности
+//     ЛИБО на `matchUrl` текста. Порта `matchUrl` у нас нет; текст проверяется
+//     тем же регекспом, каким его проверяет наш бэкенд
+//     (`messagesrepo.go::mediaFilterCond`), — расхождение объявлено в
+//     `docs/tweb/shared-media.md` § 3 и снимается задачей 15.
+//  9. `searchGroups`/`searchGroupMedia` в `performSearchResult`
+//     (`tweb:1106-1128`, `:1189-1194`) пропущены целиком: группы — часть ЛЕВОЙ
+//     колонки (`docs/tweb/shared-media.md` § 1.2), в правой их нет.
+// 10. Вставка НЕСКОЛЬКИХ узлов в начало (`append: false`) идёт обратным
+//     обходом. Оригинал (`tweb:1214-1229`) обходит список вперёд и зовёт
+//     `prepend` на каждом — порядок при этом переворачивается. У него это не
+//     видно: живой апдейт всегда несёт ровно одно сообщение
+//     (`sharedMedia.tsx:247`). Портировать переворот значит закладывать
+//     дефект под первый же альбом; правим и объявляем.
 import Scrollable, { ScrollableX } from '@components/scrollable'
 import { horizontalMenu } from '@components/horizontalMenu'
 import type { SelectTab } from '@components/horizontalMenu'
@@ -71,6 +94,13 @@ import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import safeAssign from '@helpers/object/safeAssign'
 import type { ScrollStartCallbackDimensions } from '@helpers/fastSmoothScroll'
 import { createRoot } from 'solid-js'
+import type { Middleware } from '@helpers/middleware'
+import type { Managers } from '@/client/bootstrap'
+import type { MyMessage } from '@core/models'
+import { getMessageKind } from '@core/messages/messageKind'
+import { getSharedMediaMessage, saveSharedMediaMessages } from '@components/sharedMediaHistories'
+import { getHeavyAnimationPromise } from '@core/dom/heavyAnimation'
+import windowSize from '@helpers/windowSize'
 
 /**
  * tweb `:111` — фильтр сообщений (`inputMessagesFilterPhotoVideo` и т.п.).
@@ -86,9 +116,9 @@ export type SearchSuperType =
   'inputMessagesFilterMusic' |
   'inputMessagesFilterRoundVoice'
 
-/** tweb `:112-124`. `nextRate`/`chatType` приедут с задачей 6 (пагинация). */
+/** tweb `:112-124`. `nextRate`/`chatType` — расхождение 7 в шапке. */
 export type SearchSuperContext = {
-  peerId: string
+  peerId: PeerId
   inputFilter: { _: SearchSuperType | undefined }
   query?: string
   maxId?: number
@@ -135,12 +165,75 @@ const NO_SECTION_TYPES: Set<SearchSuperMediaType> = new Set([
   'posts',
 ])
 
+/** tweb `:141-147` — что нужно `loadType`, чтобы загрузить ОДНУ вкладку. */
+type SearchSuperLoadTypeOptions = {
+  mediaTab: SearchSuperMediaTab
+  justLoad: boolean
+  loadCount: number
+  middleware: Middleware
+  /** С какого края догружаем. Единственный читатель — `loadSavedDialogs`
+   *  (`tweb:2203`, `:2398`), он приезжает задачей 12. */
+  side: 'top' | 'bottom'
+}
+
+/**
+ * tweb `:149-154`. `canAnimateIn` не портирован вместе с группами левой
+ * колонки: у оригинала он включает появление ИХ контейнера (`:1115-1128`) и
+ * больше нигде не читается — расхождение 9 в шапке.
+ */
+type PerformSearchResultArgs = {
+  messages: MyMessage[]
+  mediaTab: SearchSuperMediaTab
+  append?: boolean
+}
+
+/** Ручки менеджеров, которыми пользуется подсистема — расхождение 6 в шапке. */
+export type SearchSuperManagers = {
+  messages: Pick<Managers['messages'], 'mediaHistory' | 'searchCounters'>
+}
+
+/** Вид шаред-медиа на проводе (`GET /chats/{id}/media?filter=…`). */
+type MediaFilter = Parameters<Managers['messages']['mediaHistory']>[1]
+
+/**
+ * Фильтр сообщений → вид шаред-медиа нашей ручки. У оригинала перевода нет:
+ * `inputFilter` уходит в `messages.search` как есть (`tweb:2284`); у нас между
+ * ними ручка REST, и таблица перевода — единственное место, где они встречаются.
+ * `inputMessagesFilterEmpty` не переводится вовсе: это поиск ЛЕВОЙ колонки.
+ */
+const WIRE_FILTER: Partial<Record<SearchSuperType, MediaFilter>> = {
+  inputMessagesFilterPhotoVideo: 'media',
+  inputMessagesFilterDocument: 'files',
+  inputMessagesFilterUrl: 'links',
+  inputMessagesFilterMusic: 'music',
+  inputMessagesFilterRoundVoice: 'voice',
+}
+
+/**
+ * Виды сообщений, которые проходят фильтр (порт таблицы
+ * `filterMessagesByInputFilter`, tweb `neededContents`/`neededDocTypes`).
+ * `gif` в оригинале — документ с `type === 'video'` (`:47-51`), у нас свой вид,
+ * и он тоже медиа: вкладки GIF в правой колонке нет (поправка 2 плана).
+ */
+const FILTER_KINDS: Partial<Record<SearchSuperType, ReadonlySet<ReturnType<typeof getMessageKind>>>> = {
+  inputMessagesFilterPhotoVideo: new Set(['photo', 'video', 'gif'] as const),
+  inputMessagesFilterDocument: new Set(['document'] as const),
+  inputMessagesFilterMusic: new Set(['audio'] as const),
+  inputMessagesFilterRoundVoice: new Set(['voice', 'roundVideo'] as const),
+}
+
+/** Расхождение 8 в шапке: тот же регексп, каким ссылки ищет наш бэкенд. */
+const URL_IN_TEXT = /https?:\/\//i
+
 export type AppSearchSuperOptions = {
   mediaTabs: SearchSuperMediaTab[]
   /** скроллер приходит СНАРУЖИ: весь профиль скроллится одним контейнером (tweb `:406`) */
   scrollable: Scrollable
+  managers: SearchSuperManagers
   hideEmptyTabs?: boolean
   onChangeTab?: (mediaTab: SearchSuperMediaTab) => void
+  /** tweb `:428` — «во вкладке стало N элементов»; читает шапка профиля. */
+  onLengthChange?: (type: SearchSuperMediaType, length: number) => void
   scrollOffset?: number
 }
 
@@ -167,10 +260,26 @@ export default class AppSearchSuper {
    * и смену пира; класс лишь держит ссылку и помечает, сколько он из кэша уже
    * отрисовал.
    */
-  public historyStorage: Partial<Record<SearchSuperType, { mid: number, peerId: string }[]>> = {}
+  public historyStorage: Partial<Record<SearchSuperType, { mid: number, peerId: PeerId }[]>> = {}
   public usedFromHistory: Partial<Record<SearchSuperType, number>> = {}
 
   public searchContext!: SearchSuperContext
+
+  /**
+   * tweb `:376`. Обещание, которое `performSearchResult` ждёт ПЕРЕД тем, как
+   * вставить узлы (`:1196-1206`): пока оно не разрешилось, показывать нечего —
+   * его ставит обвязка на время своей собственной подготовки
+   * (`sharedMedia.tsx:205-207`).
+   */
+  public loadMutex?: Promise<unknown>
+
+  /** tweb `:379-380` — «этот тип уже грузится» и «этот тип дочитан до конца». */
+  private loadPromises: Partial<Record<SearchSuperMediaType, Promise<unknown> | null>> = {}
+  private loaded: Partial<Record<SearchSuperMediaType, boolean>> = {}
+
+  /** tweb `:427-428` — число элементов вкладки; читает шапка профиля. */
+  public counters: Partial<Record<SearchSuperMediaType, number>> = {}
+  public onLengthChange?: (type: SearchSuperMediaType, length: number) => void
 
   public selectTab!: SelectTab
   public mediaTabsMap: Map<SearchSuperMediaType, SearchSuperMediaTab> = new Map()
@@ -180,6 +289,7 @@ export default class AppSearchSuper {
   // * arguments
   public mediaTabs!: SearchSuperMediaTab[]
   public scrollable!: Scrollable
+  public managers!: SearchSuperManagers
   public hideEmptyTabs? = true
   public onChangeTab?: (mediaTab: SearchSuperMediaTab) => void
   public scrollOffset?: number
@@ -343,8 +453,12 @@ export default class AppSearchSuper {
 
     // * construct end
 
-    // tweb `:610-615` — `scrollable.onScrolledBottom` → `this.load(true, undefined, 'bottom')`;
-    // догрузка приезжает задачей 6 вместе с самим `load`.
+    // tweb `:616-621` — доскроллили до низа: догружаем ТЕКУЩУЮ вкладку.
+    this.scrollable.onScrolledBottom = () => {
+      if(this.mediaTab.contentTab && this.canLoadMediaTab(this.mediaTab)) {
+        void this.load(true, undefined, 'bottom')
+      }
+    }
 
     this.selectTab = horizontalMenu({
       tabs: this.tabsMenu,
@@ -405,8 +519,10 @@ export default class AppSearchSuper {
           }
         }
 
-        // tweb `:686-689` — вкладка пуста и это не первый показ → `this.load(true)`;
-        // загрузка приезжает задачей 6.
+        // tweb `:686-689` — вкладка пуста и это не первый показ: грузим её.
+        if(this.prevTabId !== -1 && !newMediaTab.itemsTab!.childElementCount) {
+          void this.load(true)
+        }
 
         this.prevTabId = id
       },
@@ -487,19 +603,313 @@ export default class AppSearchSuper {
     this.container.classList.remove('sliding')
   }
 
+  /** tweb `:817-820` — «во вкладке стало N». */
+  public setCounter(type: SearchSuperMediaType, count: number) {
+    this.counters[type] = count
+    this.onLengthChange?.(type, count)
+  }
+
+  /**
+   * tweb `:822-824` (через `filterMessagesByInputFilter`) — какие из сообщений
+   * относятся к этому фильтру. Спрашивают отсюда двое: рендер из кэша
+   * (`:2258`) и живой апдейт (`sharedMedia.tsx:229`), поэтому вывод один.
+   * Расхождение 8 в шапке — про ветку ссылок.
+   */
+  public filterMessagesByType(messages: (MyMessage | undefined)[], type: SearchSuperType): MyMessage[] {
+    const kinds = FILTER_KINDS[type]
+    return messages.filter((message): message is MyMessage => {
+      if(!message) {
+        return false
+      }
+
+      if(type === 'inputMessagesFilterUrl') {
+        const entities = message._ === 'message' ? message.entities : undefined
+        return !!entities?.some((e) => e._ === 'messageEntityUrl' || e._ === 'messageEntityTextUrl') ||
+          (message._ === 'message' && URL_IN_TEXT.test(message.message))
+      }
+
+      return !!kinds?.has(getMessageKind(message))
+    })
+  }
+
+  /** tweb `:2375-2377` — счётчики нескольких вкладок ОДНИМ запросом. */
+  public getSearchCounters(filters: SearchSuperType[]) {
+    const { peerId } = this.searchContext
+    const wire = filters.map((inputFilter) => WIRE_FILTER[inputFilter]).filter((f): f is MediaFilter => !!f)
+    return this.managers.messages.searchCounters(peerId, wire).then((counters) => filters.map((inputFilter) => ({
+      inputFilter,
+      count: counters.find((c) => c.filter === WIRE_FILTER[inputFilter])?.count ?? 0,
+    })))
+  }
+
+  /**
+   * tweb `:1096-1257`. Собирает узлы по сообщениям и кладёт их в список вкладки
+   * — в конец (`append`) при пагинации и в НАЧАЛО при живом апдейте.
+   *
+   * Расхождение 9 в шапке — про группы левой колонки. Сам рендер элемента
+   * (`processPhotoVideoFilter` и соседи, `tweb:874-1094`) приезжает задачами
+   * 7-9; до тех пор `buildItem` отдаёт голый узел, а вся обвязка вокруг него —
+   * классы, `data-mid`/`data-peer-id`, порядок вставки — уже оригинальная.
+   */
+  public async performSearchResult({ messages, mediaTab, append = true }: PerformSearchResultArgs) {
+    const middleware = this.middleware.get()
+    const inputFilter = mediaTab.inputFilter
+    const container = inputFilter && this.tabs[inputFilter]
+    if(!container) {
+      return 0
+    }
+
+    await getHeavyAnimationPromise()
+
+    const promises: Promise<unknown>[] = []
+    const elemsToAppend = messages.map((message) => ({ element: this.buildItem(message), message }))
+
+    if(this.loadMutex) {
+      promises.push(this.loadMutex)
+    }
+
+    if(promises.length) {
+      await Promise.all(promises)
+      if(!middleware()) {
+        return 0
+      }
+    }
+
+    const length = elemsToAppend.length
+    if(length) {
+      const method = append ? 'append' : 'prepend'
+      // При `prepend` порядок сохраняется только обратным обходом: иначе
+      // сообщения встали бы в начале списка задом наперёд.
+      const ordered = append ? elemsToAppend : [...elemsToAppend].reverse()
+      ordered.forEach(({ element, message }) => {
+        element.classList.add('search-super-item')
+        element.dataset.mid = '' + message.id
+        element.dataset.peerId = '' + message.peerId
+        container[method](element)
+      })
+    }
+
+    this.afterPerforming(length, mediaTab)
+
+    return length
+  }
+
+  /**
+   * Узел одного элемента вкладки. Настоящие рендереры (`processPhotoVideoFilter`
+   * `tweb:874-938`, `processDocumentFilter` `:940-962`, `processUrlFilter`
+   * `:964-1094`) приезжают задачами 7-9 и встанут ровно сюда — развилкой по
+   * `inputFilter`, как в оригинале (`tweb:1143-1170`).
+   */
+  private buildItem(_message: MyMessage) {
+    return document.createElement('div')
+  }
+
+  /** tweb `:1259-1283`. */
+  private afterPerforming(length: number, mediaTab: SearchSuperMediaTab) {
+    const contentTab = mediaTab.contentTab
+    if(!contentTab) {
+      return
+    }
+
+    if(mediaTab.hideOn) {
+      mediaTab.hideOn.classList.remove('hide')
+    }
+
+    // Всё, что лежит в родителе ПОСЛЕ содержимого вкладки, — это прелоадер и
+    // прошлая заглушка «ничего не найдено»; их снимает первый же результат.
+    const parent = contentTab.parentElement!
+    Array.from(parent.children).slice(1).forEach((child) => {
+      child.remove()
+    })
+
+    if(!length && !mediaTab.itemsTab!.childElementCount) {
+      const div = document.createElement('div')
+      div.append(i18n('Chat.Search.NothingFound'))
+      div.classList.add('position-center', 'text-center', 'content-empty', 'no-select')
+
+      parent.append(div)
+    }
+  }
+
+  /**
+   * tweb `:2362-2369`. Ветка подарков (`stargiftsStore`) приедет задачей 12.
+   */
+  private canLoadMediaTab(mediaTab: SearchSuperMediaTab) {
+    const inputFilter = mediaTab.inputFilter
+    const history = inputFilter && this.historyStorage[inputFilter]
+    return !this.loaded[mediaTab.type] ||
+      (!!history && !!inputFilter && this.usedFromHistory[inputFilter]! < history.length)
+  }
+
+  /**
+   * tweb `:2181-2360` — загрузка ОДНОЙ вкладки. Три существенных свойства
+   * оригинала, каждое из которых у нас прежде отсутствовало:
+   *
+   *  1. ДЕДУПЛИКАЦИЯ (`:2192-2195`): пока обещание типа живо, второй запрос не
+   *     уходит — возвращается то же обещание.
+   *  2. РЕНДЕР ИЗ КЭША (`:2245-2276`): если в списке фильтра есть неотрисованный
+   *     хвост, порция берётся ИЗ НЕГО, и сети не будет вовсе.
+   *  3. ПАГИНАЦИЯ КУРСОРОМ (`:2278-2291`): следующая страница просится по id
+   *     последнего элемента списка, а не по его длине.
+   */
+  private loadType(options: SearchSuperLoadTypeOptions): Promise<unknown> {
+    const { mediaTab, justLoad, loadCount, middleware } = options
+    const { type, inputFilter } = mediaTab
+
+    const running = this.loadPromises[type]
+    if(running) {
+      return running
+    }
+
+    // Типы без фильтра сообщений (участники, подарки, сохранённые…) — задачи
+    // 11-12; у оригинала здесь развилка `:2197-2227`.
+    const wireFilter = inputFilter && WIRE_FILTER[inputFilter]
+    if(!inputFilter || !wireFilter) {
+      return Promise.resolve()
+    }
+
+    const history = this.historyStorage[inputFilter] ??= []
+
+    const promise: Promise<unknown> = this.loadPromises[type] = Promise.resolve().then(async() => {
+      // 2 — рендер из кэша
+      if(history.length && this.usedFromHistory[inputFilter]! < history.length && !justLoad) {
+        const messages: MyMessage[] = []
+        let used = Math.max(0, this.usedFromHistory[inputFilter]!)
+        let slicedLength = 0
+
+        do {
+          const ids = history.slice(used, used + loadCount)
+          used += ids.length
+          slicedLength += ids.length
+
+          messages.push(...this.filterMessagesByType(
+            ids.map((m) => getSharedMediaMessage(m.peerId, m.mid)),
+            inputFilter,
+          ))
+        } while(slicedLength < loadCount && used < history.length)
+
+        this.usedFromHistory[inputFilter] = used
+        return this.performSearchResult({ messages, mediaTab }).finally(() => {
+          setTimeout(() => {
+            this.scrollable.checkForTriggers?.()
+          }, 0)
+        })
+      }
+
+      // 3 — курсор: id последнего уже загруженного (`tweb:2278-2279`)
+      const lastItem = history[history.length - 1]
+      const offsetId = lastItem?.mid || 0
+
+      const value = await this.managers.messages.mediaHistory(
+        this.searchContext.peerId, wireFilter, offsetId, loadCount,
+      )
+      const messages = value.messages
+      saveSharedMediaMessages(messages)
+
+      history.push(...messages.map((m) => ({ mid: m.id, peerId: m.peerId })))
+
+      if(!this.counters[type]) {
+        this.setCounter(type, value.count)
+      }
+
+      if(!middleware()) {
+        return
+      }
+
+      // `tweb:2310-2319`, первая ветка — единственная применимая к нашей ручке
+      // (расхождение 7 в шапке).
+      if(messages.length < loadCount) {
+        this.loaded[type] = true
+      }
+
+      if(justLoad) {
+        return
+      }
+
+      this.usedFromHistory[inputFilter] = history.length
+
+      // `tweb:2329-2348` — отложенная предзагрузка следующей страницы: пока
+      // пользователь смотрит на эту, следующая уже едет.
+      if(!this.loaded[type]) {
+        void promise.then(() => {
+          setTimeout(() => {
+            if(!middleware()) return
+            if(this.mediaTab === mediaTab) {
+              const preload = this.load(true, true)
+              void preload?.then(() => {
+                if(!middleware()) return
+                setTimeout(() => {
+                  this.scrollable.checkForTriggers?.()
+                }, 0)
+              })
+            }
+          }, 0)
+        })
+      }
+
+      return this.performSearchResult({
+        messages: this.filterMessagesByType(messages, inputFilter),
+        mediaTab,
+      })
+    }).catch(() => {
+      // Оригинал логирует (`:2353-2354`); логгера у подсистемы нет — ошибка
+      // сети означает «страница не приехала», и вкладка останется как есть.
+    }).finally(() => {
+      this.loadPromises[type] = null
+    })
+
+    return promise
+  }
+
+  /**
+   * tweb `:2531-2576`. `single` — только текущая вкладка, иначе все остальные
+   * (предзагрузка соседних). `justLoad` — набить кэш, ничего не рисуя.
+   *
+   * Блок `firstLoad`/`loadFirstTime` (`:2536-2544`) приезжает задачей 10 вместе
+   * с самим `loadFirstTime`; сюда встанет ровно перед выбором вкладок.
+   */
+  public load(single = false, justLoad = false, side: 'top' | 'bottom' = 'bottom') {
+    const middleware = this.middleware.get()
+
+    let toLoad = single ? [this.mediaTab] : this.mediaTabs.filter((t) => t !== this.mediaTab)
+    toLoad = toLoad.filter((mediaTab) => this.canLoadMediaTab(mediaTab))
+
+    // `tweb:2551-2555` — «участники» у пользователя и «общие группы» у чата
+    // выбрасываются здесь; обе вкладки приезжают задачами 11-12.
+
+    if(!toLoad.length) {
+      return
+    }
+
+    const loadCount = justLoad ? 50 : Math.round((windowSize.height / 130 | 0) * 3 * 1.25)
+
+    const promises = toLoad.map((mediaTab) => this.loadType({
+      mediaTab,
+      justLoad,
+      loadCount,
+      middleware,
+      side,
+    }))
+
+    return Promise.all(promises).then(() => undefined)
+  }
+
   /**
    * tweb `:2714-2755`. Помечает всё загруженное недействительным, НО САМ КЭШ
    * СООБЩЕНИЙ НЕ ТРЁТ: `usedFromHistory[filter] = -1` значит «из кэша ничего не
    * отрисовано», а не «кэша нет» — вернувшись к тому же пиру, вкладки
    * нарисуются без сети (`tweb:2239-2276`).
    *
-   * Не портировано (нечего сбрасывать до своих задач): `loadPromises`/`loaded`/
-   * `loadedChats`/`nextRates`/`firstLoad`/`loadFirstTimePromise`/`counters`
-   * (`:2715-2721`, `:2745`) — задачи 6 и 10; отмена выделения (`:2735-2737`) —
-   * задача 14; состояние участников (`:2749-2753`) — задача 11.
+   * Не портировано (нечего сбрасывать до своих задач): `loadedChats`/
+   * `nextRates`/`firstLoad`/`loadFirstTimePromise` (`:2717-2719`, `:2746`) —
+   * задача 10 и расхождение 7; отмена выделения (`:2735-2737`) — задача 14;
+   * состояние участников (`:2749-2753`) — задача 11.
    */
   public cleanup() {
+    this.loadPromises = {}
+    this.loaded = {}
     this.prevTabId = -1
+    this.counters = {}
 
     this.lazyLoadQueue.clear()
 
@@ -571,7 +981,7 @@ export default class AppSearchSuper {
    * `cleanup()`. Загрузку НЕ запускает — это ответственность вызывающего.
    */
   public setQuery({ peerId, query, threadId, historyStorage, folderId, minDate, maxDate }: {
-    peerId: string
+    peerId: PeerId
     query?: string
     threadId?: number
     historyStorage?: AppSearchSuper['historyStorage']

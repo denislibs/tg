@@ -181,22 +181,30 @@ export default function SharedMedia({ tab, onTab, chatId, members, savedDialogs,
     setByFilter({})
   }, [winLen])
 
-  // Догрузка следующей страницы фильтра (append) с offset = уже загружено.
+  // Догрузка следующей страницы фильтра (append) по КУРСОРУ: `offset_id` =
+  // номер последнего уже показанного сообщения, как в оригинале (tweb
+  // appSearchSuper.ts:2278-2279). Смещением листать нельзя — список пополняется
+  // сверху живыми апдейтами, и страница уехала бы на дубль (докблок
+  // `messagesManager.mediaHistory`). Панель уезжает вместе с React-`SharedMedia`
+  // (задача 13 этапа 3), но до тех пор она обязана листать верно.
   const loadPage = (f: MediaFilter | undefined, forTab: LangPackKey) => {
     if (chatId == null || !f || loadingRef.current.has(f)) return
     const cur = byFilterRef.current[f]
     if (cur && !cur.hasMore) return
-    const offset = cur?.msgs.length ?? 0
+    const offsetId = cur?.msgs[cur.msgs.length - 1]?.id ?? 0
     const gen = genRef.current
     loadingRef.current.add(f)
     void managers.messages
-      .mediaHistory(chatId, f, offset, PAGE_SIZE)
+      .mediaHistory(chatId, f, offsetId, PAGE_SIZE)
       .then((r) => {
         if (gen !== genRef.current) return
         setByFilter((d) => {
           const prev = d[f]?.msgs ?? []
           const msgs = prev.concat(r.messages)
-          return { ...d, [f]: { msgs, hasMore: r.messages.length > 0 && msgs.length < r.count } }
+          // Критерий конца — страница короче запрошенной (tweb :2311).
+          // Сравнивать накопленное с TOTAL нельзя: под курсором total живёт
+          // своей жизнью (новые сообщения, удаления).
+          return { ...d, [f]: { msgs, hasMore: r.messages.length >= PAGE_SIZE } }
         })
         // подзаголовок залитой шапки — TOTAL по фильтру (tweb onLengthChange)
         onCount?.(forTab, r.count)

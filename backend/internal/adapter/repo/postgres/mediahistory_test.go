@@ -112,17 +112,6 @@ func TestMessagesRepo_MediaHistoryCursorSurvivesInsertOnTop(t *testing.T) {
 		t.Fatalf("tail=%d сообщений, want 0", len(tail))
 	}
 
-	// Пин на совместимость: пока жив React-`SharedMedia`, листающий смещением,
-	// ветка OFFSET обязана работать как раньше (только когда курсора нет).
-	// Уедет вместе с этим компонентом — шаг 6 задачи 1 плана shared media.
-	// Сейчас в чате 7 фото (6 + вставленное), сверху вниз: 7,6,5,4,3,2,1.
-	legacy, _, err := msgs.MediaHistory(ctx, chatID, "media", usecasechat.MediaPage{Offset: 2, Limit: 2})
-	if err != nil {
-		t.Fatalf("legacy offset: %v", err)
-	}
-	if got := seqs(legacy); !eq(got, photos[4].Seq, photos[3].Seq) {
-		t.Fatalf("legacy offset seqs=%v, want [%d %d]", got, photos[4].Seq, photos[3].Seq)
-	}
 }
 
 // TestMessagesRepo_SearchCounters — batch-счётчики (аналог MTProto

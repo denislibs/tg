@@ -11,7 +11,7 @@
 // дерево они втроём складывают.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import Scrollable from '@components/scrollable'
-import AppSearchSuper, { type SearchSuperMediaTab } from '@components/appSearchSuper'
+import AppSearchSuper, { type SearchSuperManagers, type SearchSuperMediaTab } from '@components/appSearchSuper'
 import type { LangPackKey } from '@lib/langPack'
 
 /**
@@ -33,6 +33,18 @@ function makeMediaTabs(): SearchSuperMediaTab[] {
   ]
 }
 
+/**
+ * Ядро в сеть не ходит: эти тесты про разметку и скролл, и загрузку они не
+ * запускают вовсе. Ручки — обязательные (`AppSearchSuperOptions`), поэтому
+ * стоят заглушки, которые обязаны остаться НЕПОЗВАННЫМИ.
+ */
+const IDLE_MANAGERS = {
+  messages: {
+    mediaHistory: () => { throw new Error('ядро не грузит данные') },
+    searchCounters: () => { throw new Error('ядро не грузит данные') },
+  },
+} as unknown as SearchSuperManagers
+
 let scrollable: Scrollable
 let host: HTMLElement
 
@@ -51,6 +63,7 @@ function build(options?: { hideEmptyTabs?: boolean }) {
   const searchSuper = new AppSearchSuper({
     mediaTabs: makeMediaTabs(),
     scrollable,
+    managers: IDLE_MANAGERS,
     ...options,
   })
   host.append(searchSuper.container)
@@ -255,7 +268,7 @@ describe('AppSearchSuper: cleanupHTML', () => {
 describe('AppSearchSuper: cleanup и setQuery', () => {
   it('cleanup помечает кэш неиспользованным, но САМ КЭШ НЕ ТРОГАЕТ (tweb :2726-2732)', () => {
     const searchSuper = build()
-    const cached = [{ mid: 7, peerId: '1' }]
+    const cached = [{ mid: 7, peerId: 1 }]
     searchSuper.historyStorage.inputMessagesFilterPhotoVideo = cached
     searchSuper.usedFromHistory.inputMessagesFilterPhotoVideo = 1
 
@@ -285,14 +298,14 @@ describe('AppSearchSuper: cleanup и setQuery', () => {
 
   it('setQuery пересобирает контекст, подменяет кэш на внешний и чистит состояние', () => {
     const searchSuper = build()
-    searchSuper.historyStorage.inputMessagesFilterPhotoVideo = [{ mid: 1, peerId: '1' }]
+    searchSuper.historyStorage.inputMessagesFilterPhotoVideo = [{ mid: 1, peerId: 1 }]
     searchSuper.usedFromHistory.inputMessagesFilterPhotoVideo = 1
 
-    const outer = { inputMessagesFilterDocument: [{ mid: 5, peerId: '2' }] }
-    searchSuper.setQuery({ peerId: '777', threadId: 3, historyStorage: outer })
+    const outer = { inputMessagesFilterDocument: [{ mid: 5, peerId: 2 }] }
+    searchSuper.setQuery({ peerId: 777, threadId: 3, historyStorage: outer })
 
     expect(searchSuper.searchContext).toEqual({
-      peerId: '777',
+      peerId: 777,
       query: '',
       // стартовая вкладка `savedDialogs` фильтра не имеет — контекст честно несёт undefined
       inputFilter: { _: undefined },
@@ -310,9 +323,9 @@ describe('AppSearchSuper: cleanup и setQuery', () => {
 
   it('без historyStorage снаружи кэш становится пустым (tweb :2822)', () => {
     const searchSuper = build()
-    searchSuper.historyStorage.inputMessagesFilterUrl = [{ mid: 2, peerId: '3' }]
+    searchSuper.historyStorage.inputMessagesFilterUrl = [{ mid: 2, peerId: 3 }]
 
-    searchSuper.setQuery({ peerId: '1' })
+    searchSuper.setQuery({ peerId: 1 })
 
     expect(searchSuper.historyStorage).toEqual({})
   })
