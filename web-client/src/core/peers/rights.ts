@@ -36,7 +36,11 @@ import type { Chat, ChatAdminRights, ChatBannedRights } from './peer'
  * `manage_topics`, `manage_ranks`, `post/edit/delete_stories`,
  * `manage_direct_messages`, гранулярные запреты новых слоёв
  * (`send_photos`/`send_videos`/…/`view_messages`), а также `change_type`/
- * `delete_chat`/`toggle_forum`/`view_participants`/`create_giveaway`.
+ * `delete_chat`/`toggle_forum`/`create_giveaway`.
+ *
+ * `view_participants` — третье синтетическое действие: бита у него нет и в
+ * оригинале, ответ складывается из вида чата и флагов (`hasRights.ts:140-142`).
+ * Потребитель — `AppSearchSuper.canViewMembers` (вкладка «Участники»).
  */
 export type ChatRights =
   | 'change_info'
@@ -51,6 +55,7 @@ export type ChatRights =
   | 'send_media'
   | 'invite_links'
   | 'just_admin'
+  | 'view_participants'
 
 /**
  * Порт `hasRights(chat, action, rights?)`. Ветвление и порядок проверок — как в
@@ -127,6 +132,11 @@ export function hasRights(
 
     case 'just_admin':
       return isAdmin
+
+    // `hasRights.ts:140-142` — список участников закрыт только у вещательного
+    // канала, и то не для создателя и админов.
+    case 'view_participants':
+      return !!(chat._ === 'chat' || !chat.pFlags?.broadcast || chat.pFlags?.creator || isAdmin)
   }
 
   return true

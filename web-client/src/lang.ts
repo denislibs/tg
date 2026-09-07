@@ -1050,6 +1050,7 @@ const lang = {
   'Profile.Info.Channel': 'Channel Info',
   'Profile.Info.Group': 'Group Info',
   'Profile.Info.User': 'User Info',
+  ProfileStories: 'Posts',
   'QRCode.Copied': 'QR Code copied to clipboard',
   'QRCode.CopiedLink': 'Profile link copied to clipboard',
   'QRCode.Copy': 'Copy QR Code',

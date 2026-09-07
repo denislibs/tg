@@ -167,8 +167,13 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // остальных четырёх словарях ключа нет намеренно — они покрыты наполовину by
 // design, под ними английский нижний слой. «Онлайн» в русском не склоняется,
 // поэтому ключ стоит в `RU_INDECLINABLE`.
+// Сдвиг набора задачей «первый показ вкладок shared media» (волна 3, задача
+// 10): русскому добавлен `ProfileStories` (tweb lang.ts:2437, «Posts») — заголовок
+// вкладки историй у канала/группы, который `loadFirstTime` подставляет вместо
+// «Stories» (`appSearchSuper.ts:2483-2486`). `keys` 1311 → 1312, `plural` без
+// изменений; в остальных четырёх словарях ключа нет — тот же нижний слой.
 const COMPOSITION = {
-  ru: { keys: 1311, plural: 33 },
+  ru: { keys: 1312, plural: 33 },
   uk: { keys: 682, plural: 24 },
   es: { keys: 681, plural: 24 },
   de: { keys: 681, plural: 24 },
@@ -245,8 +250,10 @@ const COMPOSITION = {
 // Сдвиг набора задачей «открытие чата по ссылке»: русскому добавлены
 // `NoUsernameFound` и `Alert.UserDoesntExists` (разбор — у `COMPOSITION` выше).
 // У остальных четырёх словарей набор не менялся — их снимок тот же.
+// Сдвиг задачей «первый показ вкладок shared media»: русскому добавлен
+// `ProfileStories` (см. `COMPOSITION` выше); остальные четыре — без изменений.
 const FINGERPRINT = {
-  ru: 'a2edf950',
+  ru: '820ac986',
   uk: 'e1335ac1',
   es: 'a6b1aad3',
   de: 'a6b1aad3',

@@ -174,6 +174,7 @@ const ru = {
     'Автопродление отключено. Подписка Premium завершится в указанную выше дату.',
   'Premium.Manage.NoSubscription': 'Нет активной подписки.',
   Stories: 'Истории',
+  ProfileStories: 'Публикации',
   'Premium.Boarding.Double.Title': 'Удвоенные лимиты',
   'Premium.Feature.Voice.Title': 'Голос в текст',
   'Premium.Feature.Download.Title': 'Ускоренная загрузка',

@@ -14,15 +14,14 @@
 // ЧТО ЗДЕСЬ ЕЩЁ НЕ ЖИВЁТ (и почему это не заглушки, а пропуски)
 //
 // Класс в оригинале — один файл на всю подсистему, и портируется он этапами
-// (задачи 5→14 плана). Рендер конкретного элемента, первый показ вкладок,
-// выделение и контекстное меню в этом файле ОТСУТСТВУЮТ — ни полей, ни пустых
-// методов: заглушка, которую никто не зовёт, — мёртвый код (`CLAUDE.md`).
+// (задачи 5→14 плана). Рендер конкретного элемента, выделение и контекстное
+// меню в этом файле ОТСУТСТВУЮТ — ни полей, ни пустых методов: заглушка,
+// которую никто не зовёт, — мёртвый код (`CLAUDE.md`).
 // Места, где оригинал зовёт ещё не приехавшее, помечены комментарием со
 // ссылкой на строку tweb и номер задачи; когда задача приедет, вызов встанет
 // ровно туда.
 //
 //  • `processEmptyFilter` (`:826-871`) — левая колонка, в правой его вкладки нет;
-//  • `loadFirstTime`/`firstLoad`, предикаты `canView*` — задача 10 (`tweb:2362-2529`);
 //  • `SortedUserList`/участники — задача 11 (`tweb:1525-1758`);
 //  • `SearchSelection`, `SearchContextMenu` — задача 14 (`tweb:156-345`,
 //    `chat/selection.ts:583-763`).
@@ -169,6 +168,34 @@
 //     неё, поэтому `processUrlFilter` у нас синхронный.
 // 25. `wrapPlainText(display_url…)` (`tweb:1057`) без сущностей — тождество
 //     (`wrapPlainText.ts:7-13`); хост дописывается строкой.
+// 26. `canViewSaved` (`tweb:2627-2643`), `canViewGroups` (`:2658-2664`) и
+//     `canViewSimilar` (`:2686-2699`) возвращают `false` без похода в сеть:
+//     вкладок `saved`/`groups`/`similar` нет — задачи 17/16/18 плана
+//     («Отложено»). У первых двух нет и ручки бэкенда; у `similar` ручка есть,
+//     но без вкладки запрос рекомендаций на каждое открытие чата — впустую
+//     (оригинал зовёт его безусловно, `:2692`).
+// 27. `canViewMembers` (`tweb:2644-2657`) три вопроса о чате задаёт не RPC
+//     `appChatsManager.isBroadcast/hasRights/isForum`, а зеркалу карточек
+//     (`core/peerCache.ts`) после объявления пробела `peers.fillMirror`; сами
+//     предикаты — порт тех же функций. Действие `view_participants` добавлено
+//     в `ChatRights` (порт `hasRights.ts:140-142`).
+// 28. `canViewStories` (`tweb:2665-2685`): ветка пользователя спрашивает
+//     `stories.pinnedStories(peerId)` без `limit` и судит по длине списка (у
+//     ручки нет `count`); ветка чата — `false`, флага
+//     `stories_pinned_available` у нашей `ChannelFull` нет; `storiesArchive`
+//     (`:2674-2676`) не портирован — такой опции у класса нет (задача 19).
+// 29. Шов менеджеров (расхождения 6 и 20) расширен тремя ручками первого
+//     показа: `chats.savedDialogs` вместо `dialogsStorage.getDialogs`
+//     (`canViewSavedDialogs`), `stories.pinnedStories` (`canViewStories`),
+//     `stars.profileGifts` вместо `stargifts_count` полной карточки
+//     (`getGiftsCount`, `tweb:2704-2712` — поля у нас нет, считается длина
+//     списка; и раз это запрос, а не чтение кэша, без вкладки `gifts` он не
+//     уходит). В треде `getGiftsCount` отдаёт `0`, а не `undefined`: счётчик
+//     типизирован числом, на видимость это не влияет.
+// 30. `updateContainerHidden` (`tweb:2520-2529`) — `public`, а не `private`:
+//     единственный вызывающий (`onCountChange` подарков, `:2151-2154`)
+//     приезжает задачей 12, а приватный метод без читателя под
+//     `noUnusedLocals` — ошибка TS6133. Пин — `appSearchSuper.firstTime.test.ts`.
 import Scrollable, { ScrollableX } from '@components/scrollable'
 import { horizontalMenu } from '@components/horizontalMenu'
 import type { SelectTab } from '@components/horizontalMenu'
@@ -204,7 +231,7 @@ import { messageToViewerItem, type LightboxCtx } from '@components/mediaViewer/c
 import type { ViewerItem } from '@components/mediaViewer/appMediaViewer'
 import { createMediaNeighboursLoader } from '@components/mediaViewer/mediaNeighbours'
 import rootScope from '@lib/rootScope'
-import { cachedPeer } from '@core/peerCache'
+import { cachedPeer, hasRightsPeer, isBroadcastPeer, isForumPeer } from '@core/peerCache'
 import { useI18nStore } from '@/i18n'
 import wrapDocument from '@components/wrappers/document'
 import { getDocumentFromMessage, type MyDocument } from '@core/media/messageMedia'
@@ -217,6 +244,7 @@ import { wrapAbbreviation } from '@lib/richtext/abbreviation'
 import wrapRichText from '@lib/richtext/wrapRichText'
 import { ANCHOR_ACTION_ATTRIBUTE, matchUrl, setBlankToAnchor } from '@lib/richtext/url'
 import setInnerHTML from '@helpers/dom/setInnerHTML'
+import { isAnyChat, isUser } from '@core/peers/peerId'
 
 /**
  * tweb `:111` — фильтр сообщений (`inputMessagesFilterPhotoVideo` и т.п.).
@@ -320,10 +348,14 @@ type ProcessSearchSuperResult = {
 /** tweb `:1173` — узел вкладки вместе с сообщением, из которого он собран. */
 type SearchSuperItem = { element: HTMLElement, message: MyMessage }
 
-/** Ручки менеджеров, которыми пользуется подсистема — расхождения 6 и 20 в шапке. */
+/** Ручки менеджеров, которыми пользуется подсистема — расхождения 6, 20 и 29 в шапке. */
 export type SearchSuperManagers = {
   messages: Pick<Managers['messages'], 'mediaHistory' | 'searchCounters'>
   peers: Pick<Managers['peers'], 'fillMirror'>
+  /** предикаты первого показа (`canViewStories`, `canViewSavedDialogs`, `getGiftsCount`) */
+  stories: Pick<Managers['stories'], 'pinnedStories'>
+  chats: Pick<Managers['chats'], 'savedDialogs'>
+  stars: Pick<Managers['stars'], 'profileGifts'>
 }
 
 /** Вид шаред-медиа на проводе (`GET /chats/{id}/media?filter=…`). */
@@ -411,6 +443,10 @@ export default class AppSearchSuper {
   private loadPromises: Partial<Record<SearchSuperMediaType, Promise<unknown> | null>> = {}
   private loaded: Partial<Record<SearchSuperMediaType, boolean>> = {}
 
+  /** tweb `:382`, `:420` — «вкладки ещё не выбирали» и живое обещание первого показа. */
+  private firstLoad = true
+  private loadFirstTimePromise?: Promise<void>
+
   /** tweb `:427-428` — число элементов вкладки; читает шапка профиля. */
   public counters: Partial<Record<SearchSuperMediaType, number>> = {}
   public onLengthChange?: (type: SearchSuperMediaType, length: number) => void
@@ -438,16 +474,13 @@ export default class AppSearchSuper {
   /**
    * tweb `:437` — узел градиента (тот, что `Tabs.MenuGradient` отдаёт наружу,
    * то есть КОНТЕЙНЕР, а не внутренний слой: `tabs.tsx:77-93`). Читается при
-   * первом показе вкладок: когда доступна ровно одна вкладка, ряд получает
+   * первом показе вкладок (`loadFirstTime`) и при пересчёте видимых
+   * (`updateContainerHidden`): когда доступна ровно одна вкладка, ряд получает
    * `is-single`, а градиент — `hide` (`tweb:2509-2511` и `:2523-2525`).
-   * Обе точки приезжают задачей 10; поле заводится здесь, потому что узел
-   * создаётся здесь.
    *
-   * `public`, а не `private` как в оригинале: у нас включён `noUnusedLocals`
-   * (`web-client/tsconfig.json:32`, в tweb выключен), и приватное поле, которое
-   * пока только пишется, но ещё не читается, — ошибка TS6133. Соседние узлы
-   * подсистемы (`container`, `nav`, `navScrollableContainer`, `tabsContainer`)
-   * и так публичные.
+   * `public`, а не `private` как в оригинале: узел читает пин разметки
+   * (`appSearchSuper.dom.test.ts`), как и соседние узлы подсистемы
+   * (`container`, `nav`, `navScrollableContainer`, `tabsContainer`).
    */
   public menuGradient: HTMLElement
 
@@ -1295,6 +1328,175 @@ export default class AppSearchSuper {
   }
 
   /**
+   * tweb `:2380-2513` — ПЕРВЫЙ ПОКАЗ: какие вкладки есть у этого пира и какая
+   * открывается первой. Счётчики всех медиа-вкладок берутся ОДНИМ запросом
+   * (`:2388-2389`), предикаты остальных — параллельно с ним; вкладка, которой
+   * нечего показать, получает `hide` на строке ряда, но ИЗ DOM НЕ УХОДИТ — так
+   * свайп (`:517-531`) и `updateContainerHidden` знают о ней. Приоритет первой
+   * открытой (`:2478-2495`): stories → members (перебивает stories) →
+   * savedDialogs → gifts, иначе первая непустая медиа-вкладка. Выбор идёт без
+   * анимации и без прокрутки (`skipScroll`).
+   *
+   * `maybePinnedGifts`/`setPinnedGifts` (`:2410`, `:2499-2501` — топ-3
+   * подарков стикерами в ряду) приезжают задачей 12. Расхождения 26-29 в шапке.
+   */
+  private async loadFirstTime() {
+    const middleware = this.middleware.get()
+    const { peerId } = this.searchContext
+    if(!this.hideEmptyTabs) {
+      return
+    }
+
+    const mediaTabs = this.mediaTabs.filter((mediaTab) => mediaTab.inputFilter && mediaTab.inputFilter !== 'inputMessagesFilterEmpty')
+    const filters = mediaTabs.map((mediaTab) => mediaTab.inputFilter!)
+
+    const [
+      counters,
+      canViewSavedDialogs,
+      canViewSaved,
+      canViewMembers,
+      canViewGroups,
+      canViewStories,
+      canViewSimilar,
+      canViewGifts,
+      giftsCount,
+    ] = await Promise.all([
+      this.getSearchCounters(filters),
+      this.canViewSavedDialogs(),
+      this.canViewSaved(),
+      this.canViewMembers(),
+      this.canViewGroups(),
+      this.canViewStories(),
+      this.canViewSimilar(),
+      // единственный синхронный предикат (`:2700`); в `Promise.all` — под `await-thenable`
+      Promise.resolve(this.canViewGifts()),
+      this.getGiftsCount(),
+      // `:2410` — `appGiftsManager.getPinnedGifts(peerId)` у своего профиля: задача 12.
+    ])
+
+    if(!middleware()) {
+      return
+    }
+
+    if(this.loadMutex) {
+      await this.loadMutex
+
+      if(!middleware()) {
+        return
+      }
+    }
+
+    let firstMediaTab: SearchSuperMediaTab | undefined
+    let count = 0
+    mediaTabs.forEach((mediaTab) => {
+      const counter = counters.find((c) => c.inputFilter === mediaTab.inputFilter)!
+
+      mediaTab.menuTab!.classList.toggle('hide', !counter.count)
+      mediaTab.menuTab!.classList.remove('active')
+
+      this.setCounter(mediaTab.type, counter.count)
+
+      if(counter.count) {
+        if(firstMediaTab === undefined) {
+          firstMediaTab = mediaTab
+        }
+
+        ++count
+      }
+    })
+
+    const savedDialogsTab = this.mediaTabsMap.get('savedDialogs')
+    const savedTab = this.mediaTabsMap.get('saved')
+    const membersTab = this.mediaTabsMap.get('members')
+    const storiesTab = this.mediaTabsMap.get('stories')
+    const groupsTab = this.mediaTabsMap.get('groups')
+    const similarTab = this.mediaTabsMap.get('similar')
+    const giftsTab = this.mediaTabsMap.get('gifts')
+
+    const showGiftsTab = canViewGifts && giftsCount !== 0
+
+    const a: [SearchSuperMediaTab | undefined, boolean][] = [
+      [savedDialogsTab, canViewSavedDialogs],
+      [savedTab, canViewSaved],
+      [storiesTab, canViewStories],
+      [membersTab, canViewMembers],
+      [groupsTab, canViewGroups],
+      [similarTab, canViewSimilar],
+      [giftsTab, showGiftsTab],
+    ]
+
+    a.forEach(([tab, value]) => {
+      if(!tab) {
+        return
+      }
+
+      tab.menuTab!.classList.toggle('hide', !value)
+
+      if(value) {
+        ++count
+      }
+    })
+
+    this.setCounter('gifts', giftsCount)
+
+    // Каждый `canView*` ниже истинен только при объявленной вкладке — узел есть.
+    if(canViewStories) {
+      firstMediaTab = storiesTab
+
+      const newTitle = i18n(isUser(peerId) ? 'Stories' : 'ProfileStories')
+      storiesTab!.menuTabName!.replaceWith(storiesTab!.menuTabName = newTitle)
+    }
+
+    if(canViewMembers) {
+      firstMediaTab = membersTab
+    }
+
+    if(canViewSavedDialogs) {
+      firstMediaTab = savedDialogsTab
+    }
+
+    if(showGiftsTab && !firstMediaTab) {
+      firstMediaTab = giftsTab
+    }
+
+    // `:2499-2501` — `setPinnedGifts(maybePinnedGifts)`: задача 12.
+
+    this.toggleContainerHidden(!firstMediaTab)
+    if(firstMediaTab) {
+      this.skipScroll = true
+      this.selectTab(this.mediaTabs.indexOf(firstMediaTab), false)
+
+      const isSingle = count <= 1
+      this.navScrollableContainer.classList.toggle('is-single', isSingle)
+      this.menuGradient.classList.toggle('hide', isSingle)
+    }
+  }
+
+  /** tweb `:2515-2518` — подсистема целиком: `hide` на контейнере, `search-empty` — на родителе. */
+  private toggleContainerHidden(hidden: boolean) {
+    this.container.classList.toggle('hide', hidden)
+    this.container.parentElement?.classList.toggle('search-empty', hidden)
+  }
+
+  /**
+   * tweb `:2520-2529` — пересчёт по ФАКТИЧЕСКИ видимым строкам ряда: когда
+   * вкладка обнулилась живым апдейтом. `changeActive` — среди пропавших была
+   * активная, переключиться на первую видимую. Единственный вызывающий у
+   * оригинала — счётчик подарков (`:2151-2154`), он приезжает задачей 12;
+   * `public` вместо `private` — расхождение 30 в шапке.
+   */
+  public updateContainerHidden(changeActive = false) {
+    const visibleTabs = this.mediaTabs.filter((tab) => !tab.menuTab!.classList.contains('hide'))
+    this.toggleContainerHidden(visibleTabs.length === 0)
+    const isSingle = visibleTabs.length <= 1
+    this.navScrollableContainer.classList.toggle('is-single', isSingle)
+    this.menuGradient.classList.toggle('hide', isSingle)
+    if(changeActive && visibleTabs.length) {
+      this.selectTab(this.mediaTabs.indexOf(visibleTabs[0]), false)
+    }
+  }
+
+  /**
    * tweb `:2181-2360` — загрузка ОДНОЙ вкладки. Три существенных свойства
    * оригинала, каждое из которых у нас прежде отсутствовало:
    *
@@ -1388,8 +1590,7 @@ export default class AppSearchSuper {
           setTimeout(() => {
             if(!middleware()) return
             if(this.mediaTab === mediaTab) {
-              const preload = this.load(true, true)
-              void preload?.then(() => {
+              void this.load(true, true).then(() => {
                 if(!middleware()) return
                 setTimeout(() => {
                   this.scrollable.checkForTriggers?.()
@@ -1418,11 +1619,22 @@ export default class AppSearchSuper {
    * tweb `:2531-2576`. `single` — только текущая вкладка, иначе все остальные
    * (предзагрузка соседних). `justLoad` — набить кэш, ничего не рисуя.
    *
-   * Блок `firstLoad`/`loadFirstTime` (`:2536-2544`) приезжает задачей 10 вместе
-   * с самим `loadFirstTime`; сюда встанет ровно перед выбором вкладок.
+   * Первый вызов после `cleanup()` сначала ждёт `loadFirstTime` (`:2536-2544`):
+   * до него `this.mediaTab` — просто первая вкладка набора, а не та, что
+   * выбрана по счётчикам. Обещание одно на все параллельные вызовы (`??=`).
    */
-  public load(single = false, justLoad = false, side: 'top' | 'bottom' = 'bottom') {
+  public async load(single = false, justLoad = false, side: 'top' | 'bottom' = 'bottom') {
     const middleware = this.middleware.get()
+
+    if(this.firstLoad) {
+      await (this.loadFirstTimePromise ??= this.loadFirstTime())
+      if(!middleware()) {
+        return
+      }
+
+      this.loadFirstTimePromise = undefined
+      this.firstLoad = false
+    }
 
     let toLoad = single ? [this.mediaTab] : this.mediaTabs.filter((t) => t !== this.mediaTab)
     toLoad = toLoad.filter((mediaTab) => this.canLoadMediaTab(mediaTab))
@@ -1448,19 +1660,125 @@ export default class AppSearchSuper {
   }
 
   /**
+   * tweb `:2611-2626`. У оригинала «диалоги Избранного достались» —
+   * `dialogsStorage.getDialogs({filterId: myId})`; у нас тот же вопрос задаёт
+   * ручка `chats.savedDialogs` (расхождение 29). Сам список тянет вкладка
+   * (`loadSavedDialogs`, задача 12).
+   */
+  public async canViewSavedDialogs() {
+    if(this.searchContext.peerId !== rootScope.myId || this.searchContext.threadId || !this.mediaTabsMap.has('savedDialogs')) {
+      return false
+    }
+
+    try {
+      await this.managers.chats.savedDialogs()
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * tweb `:2627-2643` — вкладка `saved` (Saved Messages внутри пира). Всегда
+   * `false`: историю треда по `saved_peer_id` бэкенд не отдаёт — задача 17
+   * плана («Отложено»), расхождение 26.
+   */
+  public async canViewSaved() {
+    return false
+  }
+
+  /**
+   * tweb `:2644-2657`. Три вопроса о чате (`isBroadcast`,
+   * `hasRights('view_participants')`, `isForum`) у оригинала — RPC в
+   * `appChatsManager`; у нас они читаются из зеркала карточек после объявления
+   * пробела владельцу (`peers.fillMirror`) — расхождение 27.
+   */
+  public async canViewMembers() {
+    const { peerId } = this.searchContext
+    if(!isAnyChat(peerId) || !this.mediaTabsMap.has('members')) return false
+    await this.managers.peers.fillMirror([peerId])
+    const isBroadcast = isBroadcastPeer(peerId)
+    const hasRights = hasRightsPeer(peerId, 'view_participants')
+    const isForum = isForumPeer(peerId)
+    return !isBroadcast && hasRights && (!this.searchContext.threadId || !isForum)
+  }
+
+  /**
+   * tweb `:2658-2664` — «Общие группы». Всегда `false`: аналога
+   * `users.getCommonChats` у бэкенда нет вовсе — задача 16 плана («Отложено»),
+   * расхождение 26.
+   */
+  public async canViewGroups() {
+    return false
+  }
+
+  /**
+   * tweb `:2665-2685`. Ветка пользователя — есть ли закреплённые истории
+   * (`stories.pinnedStories`); ветка чата — `false`: флага
+   * `stories_pinned_available` у нашей `ChannelFull` нет. `storiesArchive`
+   * (`:2674-2676`) не портирован — такой опции у класса нет. Расхождение 28.
+   */
+  public async canViewStories() {
+    const { peerId, threadId } = this.searchContext
+    if(!this.mediaTabsMap.has('stories') || threadId) {
+      return false
+    }
+
+    if(peerId === rootScope.myId) {
+      return false
+    }
+
+    if(isUser(peerId)) {
+      return this.managers.stories.pinnedStories(peerId).then((stories) => !!stories.length).catch(() => false)
+    }
+
+    return false
+  }
+
+  /**
+   * tweb `:2686-2699` — «Похожие каналы». Всегда `false`: вкладка отложена
+   * (задача 18 плана), а без неё `getChannelRecommendations` на каждое
+   * открытие чата — запрос впустую. Расхождение 26.
+   */
+  public async canViewSimilar() {
+    return false
+  }
+
+  /** tweb `:2700-2703` */
+  public canViewGifts() {
+    return !this.searchContext.threadId && this.mediaTabsMap.has('gifts')
+  }
+
+  /**
+   * tweb `:2704-2712`. `stargifts_count` полной карточки у нас нет — число
+   * берётся длиной списка `stars.profileGifts`, и потому не считается вовсе,
+   * когда вкладки `gifts` нет (у оригинала это чтение кэшированного профиля,
+   * у нас — запрос списка). В треде оригинал отдаёт `undefined`, у нас `0`:
+   * тип счётчика — число, а на видимость это не влияет. Расхождение 29.
+   */
+  public async getGiftsCount() {
+    if(!this.canViewGifts()) {
+      return 0
+    }
+
+    const gifts = await this.managers.stars.profileGifts(this.searchContext.peerId)
+    return gifts.length
+  }
+
+  /**
    * tweb `:2714-2754`. Помечает всё загруженное недействительным, НО САМ КЭШ
    * СООБЩЕНИЙ НЕ ТРЁТ: `usedFromHistory[filter] = -1` значит «из кэша ничего не
    * отрисовано», а не «кэша нет» — вернувшись к тому же пиру, вкладки
    * нарисуются без сети (`tweb:2239-2276`).
    *
    * Не портировано (нечего сбрасывать до своих задач): `loadedChats`/
-   * `nextRates`/`firstLoad`/`loadFirstTimePromise` (`:2717-2719`, `:2746`) —
-   * задача 10 и расхождение 9; отмена выделения (`:2735-2737`) — задача 14;
-   * состояние участников (`:2749-2753`) — задача 11.
+   * `nextRates` (`:2717-2718`) — расхождение 9; отмена выделения
+   * (`:2735-2737`) — задача 14; состояние участников (`:2749-2753`) — задача 11.
    */
   public cleanup() {
     this.loadPromises = {}
     this.loaded = {}
+    this.firstLoad = true
     this.prevTabId = -1
     this.counters = {}
 
@@ -1476,6 +1794,7 @@ export default class AppSearchSuper {
     })
 
     this.middleware.clean()
+    this.loadFirstTimePromise = undefined
     this.cleanScrollPositions()
   }
 
