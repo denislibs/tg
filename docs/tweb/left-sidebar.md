@@ -351,6 +351,10 @@ FAB `#new-menu` (стр. 1062-1076): `.btn-circle.btn-corner.btn-menu-toggle.ani
 
 # Часть 4. Глобальный поиск
 
+> Разбор до адресов порта (loadChats, курсор `next_rate`, чипы, `cleanup`, шов с бэкендом)
+> и наши расхождения — в отдельном референсе [`global-search.md`](global-search.md);
+> план порта — `docs/superpowers/plans/2026-09-07-solid-wave-3-global-search.md`.
+
 ## 1. `InputSearch` — `src/components/inputSearch.ts`
 
 Обёртка над `InputField` (plain DOM, не Solid). Контейнер `.input-search` (+`.old-style`),
