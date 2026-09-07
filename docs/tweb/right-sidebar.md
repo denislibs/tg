@@ -910,8 +910,8 @@ DOM/лента/жесты/сворачивание живут в отдельн�
 описывает то, чего у нашего класса НЕТ вовсе («Fallback-фото», «Тема
 профиля», «Загрузка аватара», узел `.profile-avatars-avatar-fake`, канвас
 `canvas.profile-avatars-pattern`) — что из этого реально отсутствует и
-почему, см. § 7 п.11 ниже. Панель лишь монтирует класс через `useImperativeIsland`
-(строка «Шапка-аватары» в таблице). Байтовая история файла (826 строк ДО
+почему, см. § 7 п.11 ниже. Панель лишь создаёт инстанс класса layout-эффектом и
+отдаёт его узел Solid-корню пропом `avatarsContainer` (строка «Шапка-аватары» в таблице). Байтовая история файла (826 строк ДО
 сноса самодельной карусели, 817 после карусельной задачи и раунда ревью) на
 этом не заканчивается — задачи 2-6 плана «карточка профиля на Solid» сняли
 ВЕСЬ JSX info-карточки/Statistics/Discussion/Join requests (~200 строк) и
@@ -929,8 +929,8 @@ DOM/лента/жесты/сворачивание живут в отдельн�
 | Вкладка профиля `.tabs-tab…shared-media-container.profile-container` + состояния `is-collapsed / header-filled / need-white / can-add-members` (classList.toggle, className статический) | 579-582 |
 | Шапка `.sidebar-header` + `animated-close-icon[.state-back]` + `.transition.slide-fade` (заголовок ⇄ «имя + счётчик») | 587-628 |
 | Тело `.sidebar-content > .scrollable.scrollable-y`, хост Solid-карточки | 633-634, 685 |
-| Шапка-аватары — остров класса `PeerProfileAvatars` (`useImperativeIsland`, host: `avatarsHostRef`); сам DOM/лента/жесты/`is-collapsed`/`need-white`/`header-filled`(своя половина) — в классе, НЕ здесь (§ 3.3); эта панель владеет только контентом `.profile-avatars-info` (передаётся Solid-мосту пропом `avatarsInfo`, React в узел не пишет — задача 3) и реальным `useCollapsable()` | 219-259, 674 |
-| **Мост `mountSolid`: карточка `.profile-content` целиком** — контекст, имя/статус, `MainSection` (Phone/Username+QR/Bio/Link/Birthday/Notifications), наши секции (Statistics/Discussion/JoinRequests/EncryptionKey) — теперь `src/components/peerProfile.solid.tsx` (см. новую врезку выше и её докблок). Структурный эффект (маунт, keyed на `peerId`/`searchSuperContainer`/`avatarsInfoEl`) + эффект `update(patch)` (гейты/данные Task 5, задача 5.5) | 393-464 |
+| Шапка-аватары — инстанс класса `PeerProfileAvatars` (layout-эффект, deps `[]`; с задачи 13 shared media его `container` едет в Solid-корень пропом `avatarsContainer` ПЕРВЫМ ребёнком `.profile-content`, как AutoAvatar tweb `:196` — React-хоста-соседа больше нет, бэклог `profile-avatar-inside-solid-root.md` закрыт); сам DOM/лента/жесты/`is-collapsed`/`need-white`/`header-filled`(своя половина) — в классе, НЕ здесь (§ 3.3); панель владеет только `useCollapsable()`, а контент `.profile-avatars-info` — Solid (проп `avatarsInfo`, задача 3) | — |
+| **Мост `mountSolid`: карточка `.profile-content` целиком** — контекст, имя/статус, `MainSection` (Phone/Username+QR/Bio/Link/Birthday/Notifications), наши секции (Statistics/Discussion/JoinRequests/EncryptionKey) — теперь `src/components/peerProfile.solid.tsx` (см. новую врезку выше и её докблок). Структурный эффект (маунт, keyed на `peerId`/`searchSuper`/`avatars`) + эффект `update(patch)` (гейты/данные Task 5, задача 5.5) | 393-464 |
 | `PinnedStoriesSection` (истории профиля) | 752 |
 | Фолбэк-строка инвайт-ссылки (группа/канал БЕЗ публичного username — у Solid `Link` предмета `exported_invite` нет) | 726-749 |
 | `SharedMedia` рисуется порталом В `searchSuperContainer` (узел создаёт и держит эта панель, Solid вставляет его последним ребёнком `.profile-content`) | 351-355, 686-705 |
@@ -940,9 +940,14 @@ DOM/лента/жесты/сворачивание живут в отдельн�
 
 Монтирование: `src/components/Chat.tsx:101` (`lazy`), `:332-337` (`infoOpen`/`infoMounted` — после первого открытия панель НЕ размонтируется), `:1584-1596`, тумблер `:1005`, клик по шапке чата `:1326`.
 
-### 1.2 Шаред-медиа — `src/components/userInfo/SharedMedia.tsx` (741)
+### 1.2 Шаред-медиа — класс `src/components/appSearchSuper.ts` + хук-шов `src/core/hooks/useSearchSuper.ts`
 
-Таб-ряд + контент табов + виртуальный список «Избранного» (`SavedDialogsList` 632-694, `SavedDialogRow` 701-741).
+Порт `AppSearchSuper` целиком (волна 3, задачи 5-12; разбор — [`shared-media.md`](shared-media.md)).
+Хук-шов исполняет роль `AppSharedMediaTab`/`sharedMedia.tsx`: создаёт скроллер вкладки
+поверх `bodyRef` панели (`sliderTab.ts:66`) и сам класс — один на панель; на смену пира —
+`setQuery({peerId, historyStorage})` → `cleanupHTML()` → `load(true)`. Узел класса Solid-карточка
+получает пропом `searchSuperContainer` (`sharedMedia.tsx:166`) и переставляет в каждый новый
+корень. React-`userInfo/SharedMedia.tsx` снесён задачей 13.
 
 ### 1.3 Подэкраны
 
@@ -954,7 +959,7 @@ DOM/лента/жесты/сворачивание живут в отдельн�
 
 ### 1.4 Хелперы/хуки
 
-`src/components/userInfo/helpers.ts` (склонения, `HEADER_H=56`, `ADDITIONAL_OFFSET=16`, `BODY_PADDING=16`, `TAB_GAP=8`, `sharedMediaChatId`), `src/core/format/sharedMediaFmt.ts` (ext/цвета/размер/длительность/host), `core/hooks/useGroupInfo.ts` (261), `core/hooks/useUserProfileData.ts` (50, `useSavedDialogs`/`useProfileGifts` — `useUserProfile` снят задачей 6), `useMuteToggle.ts`, `useChannelStats.ts`, `usePinnedStories.ts`, `useTransitionSlider.ts`, `useRightColumnShown.ts`, `core/dom/installColumnResize.ts`.
+`src/components/userInfo/helpers.ts` (склонения, `countLabel` по `SearchSuperMediaType`, `HEADER_H=56`, `ADDITIONAL_OFFSET=16`, `BODY_PADDING=16`, `isSharedMediaReached` — порт `sharedMedia.tsx:487-492`), `src/core/format/sharedMediaFmt.ts` (ext/цвета/размер/длительность/host), `core/hooks/useGroupInfo.ts` (карточка/ссылки/заявки; участников грузит класс), `core/hooks/useSearchSuper.ts` (шов), `useMuteToggle.ts`, `useChannelStats.ts`, `usePinnedStories.ts`, `useTransitionSlider.ts`, `useRightColumnShown.ts`, `core/dom/installColumnResize.ts`.
 
 ## 2. Табы контента
 
@@ -1023,20 +1028,24 @@ TAB_FILTER  = Media→media, Files→files, Links→links, Music→music, Voice�
   больше нет — их развело было раундами задач 1-4 плана «карусель» намеренно
   (класс подготовил только КОНТРАКТ под хук, реальный вызов завела задача 5
   того же плана), это не регресс, а закрытый долг.
-- `onBodyScroll` (`UserInfoPanel.tsx:142-159`) НЕ управляет `is-collapsed`
-  больше — эту половину полностью держит `useCollapsable`/класс. Он остался
-  ради ДРУГОГО, не связанного порога: заливки шапки при доезде до таб-ряда
-  шаред-медиа (`filled`/`headerFilled`, tweb `sharedMedia.setIsSharedMedia`)
-  — и попутно будит `instance.updateHeaderFilled()` (`fastRaf`, потому что
-  класс сам на скролл не подписан, докблок `peerProfileAvatars.ts` §
-  «Скролл»). `header-filled` поэтому раздвоен ПО ДИЗАЙНУ на две независимые
-  половины на одном и том же классе узла: класс ставит её по порогам
-  скролла 5/200px (`updateHeaderFilled`, зависит от `hasBackgroundColor` —
-  см. `web-client/backlogs/frontend/profile-appearance-emoji-pattern.md`,
-  у нас всегда `false`, порог всегда 200px), панель — по доезду до табов и
-  снимает клик по «назад» (`scrollBackToProfile`, `:161-164`). Обе половины
-  пишут ТЕМ ЖЕ механизмом — `classList.toggle`, не React `className` (см.
-  ниже, «единственный писатель»), — поэтому не гасят друг друга.
+- React-обработчика `onBodyScroll` больше нет (задача 13 плана shared media):
+  скролл слушает `Scrollable` хозяина, а панель декорирует его
+  `onAdditionalScroll` (эффект у `setIsSharedMedia` в `UserInfoPanel.tsx`,
+  порт tweb `sharedMedia.tsx:484-493`). Он НЕ управляет `is-collapsed` — эту
+  половину полностью держит `useCollapsable`/класс — а держит ДРУГОЙ порог:
+  заливку шапки при доезде до ряда вкладок шаред-медиа (`isSharedMediaReached`
+  → `setIsSharedMedia`: `filled`/`headerFilled`, `is-full-viewport` на узле
+  класса, `cleanScrollPositions()` при выходе) и попутно будит
+  `instance.updateHeaderFilled()` (`fastRaf`, потому что класс аватарок сам на
+  скролл не подписан, докблок `peerProfileAvatars.ts` § «Скролл»).
+  `header-filled` поэтому раздвоен ПО ДИЗАЙНУ на две независимые половины на
+  одном и том же классе узла: класс ставит её по порогам скролла 5/200px
+  (`updateHeaderFilled`, зависит от `hasBackgroundColor` — см.
+  `web-client/backlogs/frontend/profile-appearance-emoji-pattern.md`, у нас
+  всегда `false`, порог всегда 200px), панель — по доезду до табов и снимает
+  клик по «назад» (`scrollBackToProfile`: `scrollIntoViewNew` к узлу аватарок).
+  Обе половины пишут ТЕМ ЖЕ механизмом — `classList.toggle`, не React
+  `className` (см. ниже, «единственный писатель»), — поэтому не гасят друг друга.
 - **Единственный писатель `classList` узла `.profile-container`
   (`setCollapsedOnRef`).** Найдено раундом правок 3 (Critical): раньше
   панельная половина классов (`header-filled`/`can-add-members`) писалась
@@ -1057,7 +1066,7 @@ TAB_FILTER  = Media→media, Files→files, Links→links, Music→music, Voice�
   после первого рендера. Числа-цитаты этого узла двигаются с каждой задачей
   плана «карточка на Solid» (2-6 добавляли докблоки и мост `mountSolid` перед
   этим JSX) — здесь актуальные на конец задачи 6.
-- Свой `Scrollable`-инстанс здесь НЕ создаётся (по инварианту проекта единственный владелец — лента чата, `components/chat/bubbles.ts`); классы `scrollable scrollable-y` — визуальный слепок. Класс `PeerProfileAvatars` тоже не создаёт второй — читает `scrollableEl.scrollTop` напрямую (докблок класса, «Зависимости через конструктор»).
+- `Scrollable` панели — ОДИН, его создаёт хук-шов `core/hooks/useSearchSuper.ts` поверх `bodyRef` (пятым аргументом-контейнером, без обёртки; роль tweb `SliderSuperTab`, `sliderTab.ts:66`) и он же роняет на размонтировании (`sliderTab.ts:109`). На его `onAdditionalScroll` цепочкой сидят `attachBorderListeners` → шапка панели (`sharedMedia.tsx:484-493`, порог — `isSharedMediaReached`), `onScrolledBottom` — хук класса `AppSearchSuper`; `destroy()` класса скроллер не роняет (расхождение 7 класса, пин `appSearchSuper.seam.test.ts`). React-`onScroll` на теле снят. Класс `PeerProfileAvatars` второй не создаёт — читает `scrollableEl.scrollTop` напрямую; `updateHeaderFilled` будит тот же `onAdditionalScroll`.
 
 ## 5. Стили
 
@@ -1089,7 +1098,7 @@ TAB_FILTER  = Media→media, Files→files, Links→links, Music→music, Voice�
 **Императивное состояние вне React (`useRef`, задача 5 того же плана):**
 `avatarsRef` держит единственный инстанс `PeerProfileAvatars` (переживает
 смену пира — `setPeer(peerId)` в эффекте по `[peerId]`, класс не
-пересоздаётся); `avatarsHostRef`/`setCollapsedOnRef` — DOM-узлы, которые
+пересоздаётся); `bodyRef`/`setCollapsedOnRef` — DOM-узлы, которые
 класс и хук `useCollapsable` получают через конструктор/геттеры, панель их
 структуру не читает и не пересчитывает. Разбор владения — § 3.3 (доклад
 класса) и § 4 выше.
@@ -1116,7 +1125,7 @@ TAB_FILTER  = Media→media, Files→files, Links→links, Music→music, Voice�
 
 **Найденные в коде расхождения/подозрения (по убыванию значимости):**
 
-1. **`stickyTop={TAB_GAP}` = 8px перебивает портированный CSS.** `UserInfoPanel.tsx:706` передаёт `stickyTop={TAB_GAP}`, `SharedMedia.tsx:334` ставит инлайновый `style={{ top: 8 }}` на `.search-super-tabs-scrollable`, у которого CSS уже даёт правильный `top: var(--super-offset)` = `3.5rem + 1rem = 72px` (`_rightSidebar.scss:87-91`, `_searchSuper.scss:19-24`). Инлайн выигрывает → липкий таб-ряд прилипает на 8px от верха скроллера, то есть **под absolute-шапку** (`z-index` 2 против 3). `TAB_GAP` и его комментарий в `helpers.ts:43-45` («TabsBar gap») — остаток от снесённой самописной `TabsBar`. Ровно этот пункт был помечен P1 в `docs/research/2026-08-08-tweb-deep-structural-audit.md` и не закрыт.
+1. ~~**`stickyTop={TAB_GAP}` = 8px перебивает портированный CSS.**~~ **Закрыто задачей 13** (React-`SharedMedia.tsx` и `TAB_GAP` снесены, ряд вкладок класса липнет на `--super-offset`; ниже — история дефекта). `UserInfoPanel.tsx:706` передаёт `stickyTop={TAB_GAP}`, `SharedMedia.tsx:334` ставит инлайновый `style={{ top: 8 }}` на `.search-super-tabs-scrollable`, у которого CSS уже даёт правильный `top: var(--super-offset)` = `3.5rem + 1rem = 72px` (`_rightSidebar.scss:87-91`, `_searchSuper.scss:19-24`). Инлайн выигрывает → липкий таб-ряд прилипает на 8px от верха скроллера, то есть **под absolute-шапку** (`z-index` 2 против 3). `TAB_GAP` и его комментарий в `helpers.ts:43-45` («TabsBar gap») — остаток от снесённой самописной `TabsBar`. Ровно этот пункт был помечен P1 в `docs/research/2026-08-08-tweb-deep-structural-audit.md` и не закрыт.
 2. **Устаревший комментарий-ложь:** `UserInfoPanel.tsx:706-707` — «Контент пока моковый — реального API истории по типам ещё нет», хотя `mediaHistory` реализован и работает.
 3. **Инвалидация кэша шаред-медиа слишком широкая:** `SharedMedia.tsx:177-183` сбрасывает **весь** `byFilter` на любое изменение длины окна сообщений — включая подгрузку старых сообщений при скролле чата. Все накопленные страницы infinite scroll теряются и таб перезагружается с offset 0.
 4. **Нет сброса состояния панели при смене чата** (кроме карусели аватаров).

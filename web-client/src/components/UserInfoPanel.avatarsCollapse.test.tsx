@@ -3,17 +3,19 @@
 // `UserInfoPanel.tsx`. Сама панель нерендерибельна в vitest (тянет портал,
 // менеджеры и полдюжины сторов — то же основание, что у `UserInfoPanel.
 // shell.test.ts`), поэтому здесь — узкий ХАРНЕСС, воспроизводящий БУКВАЛЬНО
-// ТУ ЖЕ форму вызовов, что и панель (`useCollapsable` → `useImperativeIsland`
-// → эффект `folded → setCollapsed`, тот же порядок хуков и тот же гейт
+// ТУ ЖЕ форму вызовов, что и панель (`useCollapsable` → layout-эффект с
+// `new PeerProfileAvatars` → эффект `folded → setCollapsed`, тот же порядок хуков и тот же гейт
 // `hasPhoto`): `UserInfoPanel.shell.test.ts` пином на шов (баланс скобок)
 // проверяет, что РЕАЛЬНЫЙ файл вызывает класс и убирает его именно так, а
 // этот файл проверяет, что ЭТА ФОРМА, если она на месте, реально работает —
 // разворачивается/сворачивается колесом, гасится гейтом «нет фото», и не
 // переживает размонтирование.
 //
-// `useImperativeIsland` (мост host+strays) уже покрыт своими тестами
-// (`useImperativeIsland.test.tsx`) — здесь его механику НЕ передоказываем,
-// только композицию с классом. `useCollapsable` (колесо/свайп/скролл) — тоже
+// С задачи 13 плана shared media узел класса в панели уходит в Solid-корень
+// пропом `avatarsContainer` (React-хоста нет; `useImperativeIsland` снят);
+// здесь Solid-корня нет, и харнесс кладёт `instance.container` в свой
+// `host`-div сам — предмет файла не место узла, а связка с
+// `useCollapsable`. `useCollapsable` (колесо/свайп/скролл) — тоже
 // свой файл (`useCollapsable.test.tsx`) — здесь важно только то, что панель
 // СВЯЗЫВАЕТ его `folded`/`unfold`/`fold` с классом, а не то, что хук вообще
 // умеет считать колесо.
@@ -35,7 +37,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, cleanup, act } from '@testing-library/react'
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
-import { useImperativeIsland } from '../core/hooks/useImperativeIsland'
 import useCollapsable from '../core/hooks/useCollapsable'
 import type { PeerProfileAvatarsManagers } from './peerProfileAvatars'
 import { shouldForceFold } from './userInfo/helpers'
@@ -73,8 +74,8 @@ function makeManagers(): PeerProfileAvatarsManagers {
 
 /**
  * Харнесс — ТА ЖЕ форма вызовов, что `UserInfoPanel.tsx` (собрана вручную из
- * тех же шести кусков: реальный `useCollapsable()`, `useImperativeIsland` с
- * `host`+`strays`, `setPeer` в СВОЁМ эффекте по deps `[peerId]`, сброс
+ * тех же шести кусков: реальный `useCollapsable()`, layout-эффект с
+ * `new PeerProfileAvatars` (deps `[]`), `setPeer` в СВОЁМ эффекте по deps `[peerId]`, сброс
  * свёрнутости на смену `[peerId]`, эффект `folded → setCollapsed` с гейтом
  * `hasPhoto`, и — после находки ревью Critical — ВТОРОЙ писатель классов на
  * ТОМ ЖЕ узле, `headerFilled` (панельная половина `header-filled`, tweb
@@ -104,7 +105,7 @@ function Harness({ peerId, managers, headerFilled = false }: { peerId: number; m
     container: () => avatarsRef.current?.container ?? null,
   })
 
-  useImperativeIsland((container) => {
+  useLayoutEffect(() => {
     const instance = new PeerProfileAvatars({
       managers,
       setCollapsedOn: setCollapsedOnRef.current!,
@@ -112,13 +113,15 @@ function Harness({ peerId, managers, headerFilled = false }: { peerId: number; m
       unfold,
     })
     avatarsRef.current = instance
-    container.appendChild(instance.container)
+    // В панели узел уходит в Solid-корень пропом; здесь корня нет — кладём в host сами.
+    avatarsHostRef.current!.appendChild(instance.container)
     return () => {
       instance.cleanup()
+      instance.container.remove()
       avatarsRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [], { host: avatarsHostRef, strays: '.profile-avatars-container' })
+  }, [])
 
   // ФОРМА ПАНЕЛИ (`UserInfoPanel.tsx`): смена пира — тот же инстанс класса
   // просто перегружает ленту (докблок `setPeer` в `peerProfileAvatars.ts`).

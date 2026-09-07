@@ -44,6 +44,7 @@ const managers = {
     ]),
   },
   channels: { search: vi.fn(async () => ({ users: [] })) },
+  groups: { members: vi.fn(async () => []) },
   media: { downloadMediaURL: vi.fn(async () => '') },
 } as unknown as Managers
 
@@ -59,7 +60,7 @@ const renderScreen = async () => {
   await act(async () => {
     render(
       <ManagersProvider managers={managers}>
-        <AddMembersScreen chatId={10} existingIds={[]} onClose={() => {}} onAdded={() => {}} />
+        <AddMembersScreen chatId={10} onClose={() => {}} onAdded={() => {}} />
       </ManagersProvider>,
     )
   })

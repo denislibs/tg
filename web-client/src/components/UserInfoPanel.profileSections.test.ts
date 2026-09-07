@@ -3,7 +3,7 @@
 // задачи 5.5 («живые пропы в мосте React→Solid»): гейты и данные наших секций
 // (Statistics/Discussion/JoinRequests/EncryptionKey) БОЛЬШЕ НЕ уезжают в
 // deps структурного эффекта (`mountSolid` пересоздаёт корень ТОЛЬКО на
-// `peerId`/`searchSuperContainer`/`avatarsInfoEl` — докблок эффекта в файле),
+// `peerId`/`searchSuper`/`avatars` — докблок эффекта в файле),
 // а едут в общий строитель `buildProfilePatch()`, который вызывают ОБА
 // эффекта: структурный (на маунте, через `...buildProfilePatch()`) и
 // отдельный эффект апдейта (`profileUpdateRef.current?.(buildProfilePatch())`).
@@ -76,6 +76,11 @@ describe('UserInfoPanel — buildProfilePatch (Task 5, проводка секц
     expect(patch).toMatch(/showJoinRequests:\s*isRealChat && canInvite/)
   })
 
+  // Задача 13 плана shared media: инвайт-ссылка — тоже живой проп (Solid-`Link`).
+  it('exportedInviteUrl строится из inviteLinks[0].token', () => {
+    expect(patch).toMatch(/exportedInviteUrl:\s*inviteLinks\[0\]/)
+  })
+
   it('joinRequests/discussionPeerId/enablingDiscussion/isSecret едут пропом БЕЗ переименования', () => {
     expect(patch).toMatch(/\bjoinRequests,/)
     expect(patch).toMatch(/\bdiscussionPeerId,/)
@@ -99,7 +104,7 @@ describe('UserInfoPanel — buildProfilePatch (Task 5, проводка секц
   const updateDeps = extractUpdateEffectDeps(panel)
   it.each([
     'isRealChat', 'isChannel', 'canViewStats', 'canManageDiscussion',
-    'discussionPeerId', 'enablingDiscussion', 'canInvite', 'joinRequests', 'isSecret',
+    'discussionPeerId', 'enablingDiscussion', 'canInvite', 'joinRequests', 'isSecret', 'inviteLinks',
   ])('deps-массив эффекта апдейта включает %s', (name) => {
     expect(updateDeps).toMatch(new RegExp(`\\b${name}\\b`))
   })
@@ -118,13 +123,13 @@ describe('UserInfoPanel — buildProfilePatch (Task 5, проводка секц
   }
   const mountDeps = extractMountEffectDeps(panel)
 
-  it('deps-массив структурного эффекта — ТОЛЬКО peerId/searchSuperContainer/avatarsInfoEl', () => {
-    expect(mountDeps).toMatch(/\[peerId, searchSuperContainer, avatarsInfoEl\]/)
+  it('deps-массив структурного эффекта — ТОЛЬКО peerId/searchSuper/avatars', () => {
+    expect(mountDeps).toMatch(/\[peerId, searchSuper, avatars\]/)
   })
 
   it.each([
     'isRealChat', 'isChannel', 'canViewStats', 'canManageDiscussion',
-    'discussionPeerId', 'enablingDiscussion', 'canInvite', 'joinRequests', 'isSecret',
+    'discussionPeerId', 'enablingDiscussion', 'canInvite', 'joinRequests', 'isSecret', 'inviteLinks',
   ])('deps-массив структурного эффекта НЕ включает %s (иначе приход данных снова пересоздаёт корень)', (name) => {
     expect(mountDeps).not.toMatch(new RegExp(`\\b${name}\\b`))
   })

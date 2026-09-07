@@ -35,8 +35,8 @@
 
 | Что | Где | Суть |
 |---|---|---|
-| Sticky-табы уезжают под шапку | `UserInfoPanel.tsx:706` + `SharedMedia.tsx:334` | инлайновый `stickyTop=8` перебивает верный портированный CSS `top: var(--super-offset)` = 72px; `TAB_GAP` — остаток снесённой самописной `TabsBar`, удалить вместе с ним. **Закрывается задачей 13** плана [shared media](../superpowers/plans/2026-09-07-solid-wave-3-shared-media.md) |
-| Кэш табов сбрасывается постоянно | `SharedMedia.tsx:177-183` | инвалидация по любому изменению длины окна сообщений, включая подгрузку истории при скролле чата → все страницы infinite scroll теряются. **Закрывается задачей 6** того же плана (живые апдейты в форме оригинала: точечный prepend вместо сброса) |
+| ~~Sticky-табы уезжают под шапку~~ | `UserInfoPanel.tsx` + `SharedMedia.tsx` | **Закрыто задачей 13** плана [shared media](../superpowers/plans/2026-09-07-solid-wave-3-shared-media.md): React-`SharedMedia.tsx` и `TAB_GAP` снесены, ряд вкладок класса `AppSearchSuper` липнет на `top: var(--super-offset)` = 72px (пин `useSearchSuper.test.tsx`) |
+| ~~Кэш табов сбрасывается постоянно~~ | `SharedMedia.tsx:177-183` | **Закрыто задачами 6 и 13** того же плана: кэш модульный (`sharedMediaHistories.ts`), апдейты точечные, React-панель со сбросом по длине окна снесена |
 | Состояние панели не сбрасывается при смене чата | `UserInfoPanel.tsx`, `Chat.tsx:1586` | панель не размонтируется и не имеет `key`; переживают чужие `tabCounts`, `scrollTop`, `filled/headerFilled` |
 | `ChannelStats` и `RightsEditor` без анимации и стилей | `UserInfoPanel.tsx:738-771` | классов `.statistics-container` / `.user-permissions-container` в наших SCSS нет вовсе, родитель без `data-animation` |
 

@@ -383,14 +383,15 @@ export default TransitionSlider
 //
 // ДОЛГ-3. Императивный вкладочник в репозитории теперь один, но React-слой
 // держит СВОИ переписи того же оригинала: `shared/ui/Tabs/TabSlide.tsx` (177) —
-// ветка `slideTabs`, потребители `ChatList.tsx`, `SearchView.tsx`,
-// `userInfo/SharedMedia.tsx`; `core/hooks/useTransitionSlider.ts` (60) — ветка
+// ветка `slideTabs`, потребители `ChatList.tsx`, `SearchView.tsx`
+// (шаред-медиа профиля с задачи 13 плана `docs/superpowers/plans/2026-09-07-
+// solid-wave-3-shared-media.md` ходит через этот файл — `AppSearchSuper` →
+// `horizontalMenu`); `core/hooks/useTransitionSlider.ts` (60) — ветка
 // БЕЗ `animationFunction` (`fade`/`slide-fade`/`zoom-fade`, у нас её играют
 // кейфреймы `styles/tweb/_transition.scss`), потребитель `UserInfoPanel.tsx`.
 // Перевести их на этот файл нельзя, не переписав хосты: там вкладки —
 // JSX-дети, а не заранее лежащие в DOM узлы, адресуемые индексом. Обе копии
-// уходят вместе со своими React-экранами (`SharedMedia.tsx` — задача 13 плана
-// `docs/superpowers/plans/2026-09-07-solid-wave-3-shared-media.md`).
+// уходят вместе со своими React-экранами.
 
 /**
  * Снять с узла таймер уборки от ПРЕДЫДУЩЕГО перехода (`transition.ts:326-329`).

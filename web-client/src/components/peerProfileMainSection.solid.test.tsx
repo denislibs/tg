@@ -243,7 +243,35 @@ describe('Bio (tweb :895-967)', () => {
   })
 })
 
-describe('Link (tweb :969-1036, только ветка публичного username)', () => {
+describe('Link (tweb :969-1036): ветка публичного username и фолбэк на инвайт-ссылку (:999-1004)', () => {
+  // Задача 13 плана shared media: фолбэк `exported_invite` оригинала — у нас
+  // проп `exportedInviteUrl` (ссылку знает `useGroupInfo` панели).
+  it('фолбэк: username нет, exportedInviteUrl есть — строка с URL без схемы, клик копирует полный URL', () => {
+    peerSignal[1]({ _: 'channel', id: 100, pFlags: { megagroup: true } })
+    const url = 'https://localhost:38443/join/abc'
+    const h = mount({ peerId: -100, isDialog: true, scrollable: el(), setCollapsedOn: el(), exportedInviteUrl: url })
+    const row = rowByIcon(h, 'link')!
+    expect(row).not.toBeNull()
+    expect(row.querySelector('.row-title')!.textContent).toBe('localhost:38443/join/abc')
+    row.click()
+    expect(copyTextToClipboardSpy).toHaveBeenCalledWith(url)
+    expect(toastNewSpy).toHaveBeenCalledWith({ langPackKey: 'LinkCopied' })
+  })
+
+  it('username и инвайт одновременно — ОДНА строка, и это username (порядок веток оригинала)', () => {
+    peerSignal[1]({ _: 'channel', id: 100, pFlags: { megagroup: true }, username: 'mygroup' })
+    const h = mount({ peerId: -100, isDialog: true, scrollable: el(), setCollapsedOn: el(), exportedInviteUrl: 'https://x/join/abc' })
+    const rows = Array.from(h.querySelectorAll('.row-icon')).filter((s) => s.textContent === glyph('link'))
+    expect(rows).toHaveLength(1)
+    expect(rowByIcon(h, 'link')!.querySelector('.row-title')!.textContent).toBe(`${location.host}/@mygroup`)
+  })
+
+  it('фолбэк не показывается пользователю даже при переданном exportedInviteUrl', () => {
+    peerSignal[1]({ _: 'user', id: 7 })
+    const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el(), exportedInviteUrl: 'https://x/join/abc' })
+    expect(rowByIcon(h, 'link')).toBeNull()
+  })
+
   it('показывается: канал/группа с username', () => {
     peerSignal[1]({ _: 'channel', id: 100, pFlags: { megagroup: true }, username: 'mygroup' })
     const h = mount({ peerId: -100, isDialog: true, scrollable: el(), setCollapsedOn: el() })

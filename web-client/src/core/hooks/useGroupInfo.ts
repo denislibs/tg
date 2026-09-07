@@ -1,13 +1,20 @@
 // src/core/hooks/useGroupInfo.ts
 //
 // ViewModel for UserInfoPanel's group/channel sections: loads the server-backed
-// card/members/invites/join-requests via managers and exposes the derived flags
+// card/invites/join-requests via managers and exposes the derived flags
 // (isRealChat/isChannel/isGroup), data and admin actions. The View stays render-only.
+//
+// Список участников хук НЕ грузит (задача 13 плана shared media, пункт 6): его
+// владелец — класс `AppSearchSuper` (`loadMembers` → `groups.channelParticipants`),
+// а живые изменения состава он же перечитывает по `rt:chat_update`
+// (расхождение 32 в шапке класса). Плоский `groups.members` остаётся экранам
+// редактирования группы (`useGroupEdit`, `AddMembersScreen`). Пин —
+// `useGroupInfo.test.tsx`.
 import { useEffect, useState } from 'react'
 import type { Chat } from '../../data'
 import { useManagers } from './useManagers'
 import type { UserStatus } from '../peers/peer'
-import { getLinkedChatPeerId, getPeerPhotoId } from '../peers/peer'
+import { getLinkedChatPeerId } from '../peers/peer'
 import { getUserTitle } from '../peers/getPeerTitle'
 import { hasRights } from '../peers/rights'
 import { NULL_PEER_ID } from '../peers/peerId'
@@ -24,6 +31,9 @@ export const RIGHTS: { label: string; bit: number }[] = [
   { label: 'Назначение админов', bit: 128 },
 ]
 
+/** Участник для экрана прав (`userInfo/RightsEditor.tsx`); собирается панелью
+ *  из `Participant` класса и зеркала карточек (`UserInfoPanel.tsx`,
+ *  `openUserPermissions`). */
 export interface RealMember {
   userId: number
   role: string
@@ -52,17 +62,10 @@ interface JoinRequest {
   title: string
 }
 
-export function roleLabel(role: string, isChannel: boolean): string {
-  if (role === 'creator') return 'владелец'
-  if (role === 'admin') return 'админ'
-  return isChannel ? 'подписчик' : ''
-}
-
 export interface GroupInfo {
   isRealChat: boolean
   isChannel: boolean
   isGroup: boolean
-  realMembers: RealMember[] | null
   canManageAdmins: boolean
   canInvite: boolean
   canManageDiscussion: boolean
@@ -81,7 +84,6 @@ export interface GroupInfo {
   saveRights: (userId: number, bitmask: number) => Promise<void>
   removeRights: (userId: number) => Promise<void>
   enableDiscussion: () => Promise<void>
-  refreshMembers: () => Promise<void>
 }
 
 export function useGroupInfo(chat: Chat): GroupInfo {
@@ -94,7 +96,6 @@ export function useGroupInfo(chat: Chat): GroupInfo {
   const numericId = Number(chat.id)
   const isRealChat = (isGroup || isChannel) && Number.isFinite(numericId) && String(numericId) === chat.id
 
-  const [realMembers, setRealMembers] = useState<RealMember[] | null>(null)
   const [canManageAdmins, setCanManageAdmins] = useState(false)
   const [canInvite, setCanInvite] = useState(false)
   const [editMember, setEditMember] = useState<RealMember | null>(null)
@@ -109,7 +110,6 @@ export function useGroupInfo(chat: Chat): GroupInfo {
 
   useEffect(() => {
     if (!isRealChat) {
-      setRealMembers(null)
       setCanManageAdmins(false)
       setCanInvite(false)
       setInviteLinks([])
@@ -161,47 +161,14 @@ export function useGroupInfo(chat: Chat): GroupInfo {
         })
       }
     })
-    void managers.groups.members(numericId).then(async (mem) => {
-      const peers = await managers.peers.getUsers(mem.map((m) => m.userId))
-      const byId = new Map(peers.map((p) => [p.id, p]))
-      if (!alive) return
-      setRealMembers(
-        mem.map((m) => ({
-          userId: m.userId,
-          role: m.role,
-          status: m.status,
-          title: getUserTitle(byId.get(m.userId)),
-          username: byId.get(m.userId)?.username,
-          photoId: getPeerPhotoId(byId.get(m.userId)?.photo) || undefined,
-        })),
-      )
-    })
     return () => {
       alive = false
     }
   }, [isRealChat, numericId, managers, isChannel, isGroup])
 
-  // Refresh the members section/count (used after approving a join request).
-  async function refreshMembers() {
-    const mem = await managers.groups.members(numericId)
-    const peers = await managers.peers.getUsers(mem.map((m) => m.userId))
-    const byId = new Map(peers.map((p) => [p.id, p]))
-    setRealMembers(
-      mem.map((m) => ({
-        userId: m.userId,
-        role: m.role,
-        status: m.status,
-        title: getUserTitle(byId.get(m.userId)),
-        username: byId.get(m.userId)?.username,
-        photoId: getPeerPhotoId(byId.get(m.userId)?.photo) || undefined,
-      })),
-    )
-  }
-
   async function approveJoinRequest(userId: number) {
     await managers.groups.approveRequest(numericId, userId)
     setJoinRequests((prev) => prev.filter((r) => r.userId !== userId))
-    void refreshMembers()
   }
 
   async function declineJoinRequest(userId: number) {
@@ -211,17 +178,11 @@ export function useGroupInfo(chat: Chat): GroupInfo {
 
   async function saveRights(userId: number, bitmask: number) {
     await managers.groups.promoteAdmin(numericId, userId, bitmask)
-    setRealMembers((prev) =>
-      prev ? prev.map((m) => (m.userId === userId ? { ...m, role: bitmask ? 'admin' : 'member' } : m)) : prev,
-    )
     setEditMember(null)
   }
 
   async function removeRights(userId: number) {
     await managers.groups.demoteAdmin(numericId, userId)
-    setRealMembers((prev) =>
-      prev ? prev.map((m) => (m.userId === userId ? { ...m, role: 'member' } : m)) : prev,
-    )
     setEditMember(null)
   }
 
@@ -240,7 +201,6 @@ export function useGroupInfo(chat: Chat): GroupInfo {
     isRealChat,
     isChannel,
     isGroup,
-    realMembers,
     canManageAdmins,
     canInvite,
     canManageDiscussion,
@@ -256,6 +216,5 @@ export function useGroupInfo(chat: Chat): GroupInfo {
     saveRights,
     removeRights,
     enableDiscussion,
-    refreshMembers,
   }
 }

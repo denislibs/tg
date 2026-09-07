@@ -1,7 +1,9 @@
 // userInfo/helpers.ts
 // Чистые хелперы и константы панели профиля (UserInfoPanel): склонения счётчиков
-// подзаголовков, подпись активного таба в залитой шапке, геометрия шапки/табов и
-// парсинг chatId для шаред-медиа.
+// подзаголовков, подпись активной вкладки в залитой шапке, геометрия шапки и
+// порог «доехали до шаред-медиа».
+import type AppSearchSuper from '../appSearchSuper'
+import type { SearchSuperMediaType } from '../appSearchSuper'
 
 // склонение «N единиц» (счётчики подзаголовков)
 export function plural(n: number, one: string, few: string, many: string): string {
@@ -19,35 +21,47 @@ export function membersLabel(n: number, isChannel: boolean): string {
 // «N чат(а/ов)» — подзаголовок «Избранного» (число сохранённых диалогов)
 export const chatsLabel = (n: number) => plural(n, 'чат', 'чата', 'чатов')
 
-// подпись счётчика активного таба в залитой шапке (tweb sharedMedia.tsx:
-// пары type→LangPackKey — Members/MediaFiles/Files/Links/MusicFiles/Voice)
-export function countLabel(tab: string, n: number, isChannel: boolean): string {
+// подпись счётчика активной вкладки в залитой шапке (tweb sharedMedia.tsx:
+// 458-471 — пары type→LangPackKey: SavedDialogsTabCount/Members/MediaFiles/
+// StarGiftsCount/Files/Links/MusicFiles/Voice). Ключ — тип вкладки класса
+// `AppSearchSuper` (`SearchSuperMediaType`), число приходит из `onLengthChange`.
+export function countLabel(tab: SearchSuperMediaType, n: number, isChannel: boolean): string {
   switch (tab) {
-    case 'Members': return membersLabel(n, isChannel)
-    case 'Chats': return chatsLabel(n)
-    case 'Gifts': return plural(n, 'подарок', 'подарка', 'подарков')
-    case 'Media': return plural(n, 'медиафайл', 'медиафайла', 'медиафайлов')
-    case 'Files': return plural(n, 'файл', 'файла', 'файлов')
-    case 'Links': return plural(n, 'ссылка', 'ссылки', 'ссылок')
-    case 'Music': return plural(n, 'аудиофайл', 'аудиофайла', 'аудиофайлов')
-    case 'Voice': return plural(n, 'голосовое сообщение', 'голосовых сообщения', 'голосовых сообщений')
+    case 'members': return membersLabel(n, isChannel)
+    case 'savedDialogs': return chatsLabel(n)
+    case 'gifts': return plural(n, 'подарок', 'подарка', 'подарков')
+    case 'media': return plural(n, 'медиафайл', 'медиафайла', 'медиафайлов')
+    case 'files': return plural(n, 'файл', 'файла', 'файлов')
+    case 'links': return plural(n, 'ссылка', 'ссылки', 'ссылок')
+    case 'music': return plural(n, 'аудиофайл', 'аудиофайла', 'аудиофайлов')
+    case 'voice': return plural(n, 'голосовое сообщение', 'голосовых сообщения', 'голосовых сообщений')
     default: return String(n)
   }
 }
 
-// высота шапки панели — sticky-отступ табов и порог header-filled (tweb 3.5rem)
+// высота шапки панели — порог header-filled (tweb 3.5rem)
 export const HEADER_H = 56
 /** tweb sharedMedia.tsx:481-483 — ADDITIONAL_OFFSET/BODY_PADDING порога header-filled */
 export const ADDITIONAL_OFFSET = 16
 export const BODY_PADDING = 16
-// зазор шапка↔таб-плашка; градиент плашки растягивается вверх на столько же
-// (TabsBar gap), чтобы закрыть зазор и контент не просвечивал.
-export const TAB_GAP = 8
 
-// id чата из строки диалога (валиден только для «настоящих» числовых чатов).
-export function sharedMediaChatId(id: string): number | null {
-  const n = Number(id)
-  return Number.isFinite(n) && String(n) === id ? n : null
+/**
+ * «Доехали до шаред-медиа?» — порт tweb `sharedMedia.tsx:487-492` (тело
+ * `scrollable.onAdditionalScroll`): меряется ряд вкладок класса, а при
+ * единственной вкладке (`is-single` — ряд схлопнут в ноль, `_searchSuper.scss:
+ * 27-34`) — сам контейнер подсистемы. Узел без ширины (панель скрыта) — `undefined`:
+ * оригинал в этом случае выходит, не меняя режим. Чистая функция, потому что
+ * сам обработчик живёт в нерендерибельной панели (`UserInfoPanel.tsx`), а
+ * порог обязан быть проверен (`helpers.test.ts`).
+ */
+export function isSharedMediaReached(
+  searchSuper: Pick<AppSearchSuper, 'navScrollableContainer' | 'container' | 'nav'>,
+): boolean | undefined {
+  const isSingle = searchSuper.navScrollableContainer.classList.contains('is-single')
+  const rect = (isSingle ? searchSuper.container : searchSuper.nav).getBoundingClientRect()
+  if (!rect.width) return undefined
+  const top = rect.top - 1
+  return top <= HEADER_H + ADDITIONAL_OFFSET + BODY_PADDING
 }
 
 /**

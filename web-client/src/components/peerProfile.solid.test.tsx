@@ -84,6 +84,23 @@ describe('PeerProfile: корень .profile-content', () => {
     expect(root!.lastElementChild).toBe(searchSuperContainer)
   })
 
+  // Задача 13 плана shared media: карусель (`PeerProfileAvatars.container`)
+  // едет тем же узлом-пропом и встаёт ПЕРВЫМ ребёнком (tweb `:196`, AutoAvatar)
+  // — от этого зависит геометрия `AppSearchSuper` (докблок файла компонента).
+  it('avatarsContainer — ПЕРВЫЙ ребёнок .profile-content, перед delimiter', () => {
+    const avatarsContainer = document.createElement('div')
+    avatarsContainer.className = 'profile-avatars-container'
+    const searchSuperContainer = document.createElement('div')
+    const h = mount(() => (
+      <PeerProfile peerId={7} scrollable={el()} setCollapsedOn={el()} avatarsContainer={avatarsContainer} searchSuperContainer={searchSuperContainer} />
+    ))
+    const root = h.querySelector('.profile-content')!
+    expect(root.children).toHaveLength(4)
+    expect(root.firstElementChild).toBe(avatarsContainer)
+    expect(root.children[1].className).toBe('profile-content-delimiter')
+    expect(root.lastElementChild).toBe(searchSuperContainer)
+  })
+
   it('без searchSuperContainer рисует delimiter + MainSection, третьего узла не выдумываем', () => {
     const h = mount(() => <PeerProfile peerId={7} scrollable={el()} setCollapsedOn={el()} />)
     const root = h.querySelector('.profile-content')!

@@ -11,7 +11,7 @@
 //             > div.profile-avatars-container > … + div.profile-content-delimiter
 //
 // Пин текстовый (а не рендер) — по тому же основанию, что и в
-// `userInfo/SharedMedia.saved.test.tsx`: `UserInfoPanel` тянет портал,
+// `core/hooks/useSearchSuper.test.tsx`: `UserInfoPanel` тянет портал,
 // менеджеры и полдюжины сторов, а проверяемое здесь — ровно строки разметки.
 // Мутация «вернули модульный класс вместо глобального» краснит здесь: без
 // tweb-имён панель теряет портированную геометрию и анимации
@@ -20,7 +20,8 @@
 //
 // ЗАДАЧА 5 (docs/superpowers/plans/2026-09-05-profile-avatars-class.md):
 // панель больше не рисует карусель инлайн — узел класса `PeerProfileAvatars`
-// встаёт вместо неё через `useImperativeIsland`. Пины на `is-collapsed`/
+// встаёт вместо неё (с задачи 13 плана shared media — пропом `avatarsContainer`
+// в Solid-корень, первым ребёнком `.profile-content`). Пины на `is-collapsed`/
 // `need-white`/структуру карусели (`.profile-avatars-avatars`, стрелки,
 // градиенты, …) СНЯТЫ — этих строк в файле больше нет, они переехали в
 // `peerProfileAvatars.ts` и держатся ПОВЕДЕНЧЕСКИМИ тестами
@@ -37,10 +38,11 @@
 // тестами Solid-компонента» (правило задачи, см. её бриф) —
 // `peerProfile.solid.test.tsx` проверяет ФАКТОМ, что имя/статус оказываются
 // внутри переданного `avatarsInfo`, а не здесь. Пин ниже держит только то,
-// что этот файл всё ещё делает: узел-хозяин острова аватарок пуст, а
-// `instance.info` уходит в Solid-мост пропом `avatarsInfo` у того же вызова
-// `mountSolid`, которым смонтирован `.profile-content` (единственный писатель
-// узла — Solid, см. докблок `avatarsHostRef`).
+// что этот файл всё ещё делает: React-хоста у карусели нет вовсе, а
+// `instance.container`/`instance.info` уходят в Solid-мост пропами
+// `avatarsContainer`/`avatarsInfo` у того же вызова `mountSolid`, которым
+// смонтирован `.profile-content` (единственный писатель узла — Solid, см.
+// докблок `avatars`).
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -64,27 +66,18 @@ function extractBraceBalanced(src: string, braceStart: number): string {
   throw new Error('не сбалансированы скобки')
 }
 
-/** Тело первого вызова `useImperativeIsland(` — от `(container) => {` до ЕГО
- *  закрывающей скобки (баланс, не индекс до произвольной точки дальше по файлу). */
-function extractImperativeIslandBody(src: string): string {
-  const marker = 'useImperativeIsland('
-  const start = src.indexOf(marker)
-  if (start === -1) throw new Error('useImperativeIsland(...) не найден')
-  const braceStart = src.indexOf('{', start)
-  if (braceStart === -1) throw new Error('открывающая { тела setup не найдена')
-  return extractBraceBalanced(src, braceStart)
+/** Тело layout-эффекта, создающего класс аватарок (`new PeerProfileAvatars(`)
+ *  — с задачи 13 это обычный `useLayoutEffect` (deps `[]`), а не
+ *  `useImperativeIsland`: узел класса уходит в Solid-корень, React-хоста нет. */
+function extractAvatarsEffectBody(src: string): string {
+  return extractLayoutEffectBodyContaining(src, 'new PeerProfileAvatars(')
 }
 
-/** Тело единственного `useLayoutEffect(() => {...}, [folded])` — эффект
- *  «folded → setCollapsed» с гейтом `shouldForceFold` (tweb createEffect
- *  `:340-348`). Балансом скобок, тем же приёмом. */
+/** Тело `useLayoutEffect(() => {...}, [folded])` — эффект «folded →
+ *  setCollapsed» с гейтом `shouldForceFold` (tweb createEffect `:340-348`).
+ *  По СОДЕРЖИМОМУ, а не «первый по тексту»: порядок хуков в файле — не предмет пина. */
 function extractFoldedLayoutEffectBody(src: string): string {
-  const marker = 'useLayoutEffect('
-  const start = src.indexOf(marker)
-  if (start === -1) throw new Error('useLayoutEffect(...) не найден')
-  const braceStart = src.indexOf('{', start)
-  if (braceStart === -1) throw new Error('открывающая { тела эффекта не найдена')
-  return extractBraceBalanced(src, braceStart)
+  return extractLayoutEffectBodyContaining(src, 'shouldForceFold(')
 }
 
 /** Тело `useLayoutEffect(...)`, содержащего маркер `marker` где-то внутри —
@@ -161,9 +154,11 @@ describe('UserInfoPanel — каркас на классах tweb', () => {
   // `peerProfileAvatars.test.ts`. Здесь остаётся только контент, которым
   // по-прежнему владеет React: peer-title/бейджи/подзаголовок, портальные в
   // `instance.info` (см. коммент у `avatarsInfoEl` в файле).
-  it('шапка-аватары: узел-хозяин острова пуст, info уходит в Solid-мост пропом', () => {
-    expect(panel).toMatch(/<div ref=\{avatarsHostRef\} \/>/)
-    expect(panel).toMatch(/avatarsInfo: avatarsInfoEl \?\? undefined/)
+  it('шапка-аватары: React-хоста нет, container/info класса уходят в Solid-мост пропами', () => {
+    expect(panel).not.toMatch(/avatarsHostRef/)
+    const body = extractLayoutEffectBodyContaining(panel, 'mountSolid<PeerProfileProps>(')
+    expect(body).toMatch(/avatarsContainer: avatars\.container/)
+    expect(body).toMatch(/avatarsInfo: avatars\.info/)
     expect(panel).not.toMatch(/className="profile-avatars-avatars"/)
     expect(panel).not.toMatch(/'profile-avatars-avatar media-container'/)
   })
@@ -206,25 +201,23 @@ describe('UserInfoPanel — каркас на классах tweb', () => {
 // `src/App.authMount.test.ts`, привязка БАЛАНСОМ СКОБОК внутри тела эффекта,
 // а не по факту наличия строки где-то в файле (та же история ложных
 // срабатываний/пропусков, что там описана).
-describe('UserInfoPanel — шов монтирования PeerProfileAvatars (useImperativeIsland)', () => {
-  it('класс создаётся и добавляется в DOM ВНУТРИ тела setup, а не рядом с вызовом', () => {
-    const body = extractImperativeIslandBody(panel)
-    expect(body, 'new PeerProfileAvatars(...) не найден внутри тела setup useImperativeIsland').toMatch(/new PeerProfileAvatars\(/)
-    expect(body, 'container.appendChild(instance.container) не найден внутри тела setup').toMatch(/container\.appendChild\(instance\.container\)/)
+describe('UserInfoPanel — шов монтирования PeerProfileAvatars (layout-эффект + узел-проп)', () => {
+  it('класс создаётся ВНУТРИ тела layout-эффекта и отдаётся панели состоянием (setAvatars)', () => {
+    const body = extractAvatarsEffectBody(panel)
+    expect(body).toMatch(/new PeerProfileAvatars\(/)
+    expect(body).toMatch(/avatarsRef\.current = instance/)
+    expect(body).toMatch(/setAvatars\(instance\)/)
+    // Узел класса НЕ кладётся в React-хост — он уходит в Solid-корень пропом
+    // (см. тест «шапка-аватары» выше); `useImperativeIsland` здесь не место.
+    expect(body).not.toMatch(/appendChild/)
+    expect(panel).not.toMatch(/useImperativeIsland\(/)
   })
 
-  it('teardown ВНУТРИ того же тела зовёт instance.cleanup() и обнуляет ref (уборка)', () => {
-    const body = extractImperativeIslandBody(panel)
-    expect(body, 'instance.cleanup() не найден внутри тела setup').toMatch(/instance\.cleanup\(\)/)
-    expect(body, 'avatarsRef.current = null не найден внутри тела setup (ref не обнуляется)').toMatch(/avatarsRef\.current = null/)
-  })
-
-  it('useImperativeIsland смонтирован с host+strays под ЖИВОЙ (не одноразовый) хост-узел панели', () => {
-    // `mode: 'own'` создавал бы ЛИШНИЙ уровень DOM внутри host — панель
-    // держит host сама (`avatarsHostRef`, живёт весь срок жизни панели),
-    // поэтому выбран `host`-режим (дефолт, mode не передан) + `strays` —
-    // decided-and-declared выбор, см. коммент у вызова в файле.
-    expect(panel).toMatch(/\{ host: avatarsHostRef, strays: '\.profile-avatars-container' \}/)
+  it('teardown ВНУТРИ того же тела зовёт instance.cleanup() и обнуляет ref/состояние (уборка)', () => {
+    const body = extractAvatarsEffectBody(panel)
+    expect(body, 'instance.cleanup() не найден внутри тела эффекта').toMatch(/instance\.cleanup\(\)/)
+    expect(body, 'avatarsRef.current = null не найден внутри тела эффекта (ref не обнуляется)').toMatch(/avatarsRef\.current = null/)
+    expect(body).toMatch(/setAvatars\(null\)/)
   })
 
   // tweb createEffect `:340-348`, портирован ЦЕЛИКОМ (не только setCollapsed):
@@ -269,7 +262,7 @@ describe('UserInfoPanel — шов монтирования PeerProfile (Solid, 
     expect(depsMatch, 'массив зависимостей useLayoutEffect не найден сразу после тела').not.toBeNull()
     expect(depsMatch![1]).toMatch(/\bpeerId\b/)
     // Задача 5.5: структурный эффект пересоздаёт корень ТОЛЬКО на peerId/
-    // searchSuperContainer/avatarsInfoEl — гейты/данные Task 5 (canViewStats,
+    // searchSuper/avatars — гейты/данные Task 5 (canViewStats,
     // joinRequests, …) уехали в отдельный эффект апдейта (см. describe ниже),
     // сюда они не должны вернуться ни в тело (кроме `...buildProfilePatch()`,
     // общего строителя, а не отдельных полей), ни в deps.
@@ -290,16 +283,54 @@ describe('UserInfoPanel — шов монтирования PeerProfile (Solid, 
     expect(depsMatch![1]).not.toMatch(/\bpeerId\b/)
   })
 
-  it('searchSuperContainer — стабильный узел (useState, создан один раз), а не пересоздаётся на рендер', () => {
-    expect(panel).toMatch(/const \[searchSuperContainer\] = useState\(\(\) => \{/)
+  // Задача 13 плана shared media (`docs/superpowers/plans/2026-09-07-solid-wave-3-
+  // shared-media.md`): узел шаред-медиа больше НЕ создаёт React — его создаёт и
+  // уничтожает класс `AppSearchSuper` (хук `useSearchSuper`), а Solid-корень
+  // получает `searchSuper.container` пропом (tweb `sharedMedia.tsx:166`).
+  // Поведение шва (узел один на панель, переезжает в новый корень, следов после
+  // размонтирования нет) — `core/hooks/useSearchSuper.test.tsx`; здесь пин,
+  // что РЕАЛЬНАЯ панель собрана в той же форме.
+  it('узел шаред-медиа — контейнер класса из useSearchSuper, а не свой div и не портал React', () => {
+    expect(panel).toMatch(/useSearchSuper\(/)
+    const body = extractLayoutEffectBodyContaining(panel, 'mountSolid<PeerProfileProps>(')
+    expect(body).toMatch(/searchSuperContainer: searchSuper\.container/)
+    expect(panel).not.toMatch(/className = 'search-super'/)
+    expect(panel).not.toMatch(/userInfo\/SharedMedia/)
+    expect(panel).not.toMatch(/<SharedMedia/)
   })
 
-  it('SharedMedia рисуется порталом В searchSuperContainer, а не инлайн-JSX', () => {
-    // Инлайн-обёртки `<div className="search-super">` вокруг <SharedMedia>
-    // больше нет — узел теперь создаёт и отдаёт Solid (см. проп searchSuperContainer
-    // в вызове mountSolid выше), React рисует В НЕГО порталом.
-    expect(panel).not.toMatch(/<div className="search-super">/)
-    expect(panel).toMatch(/createPortal\(\s*<SharedMedia/)
-    expect(panel).toMatch(/searchSuperContainer,\s*\)/)
+  // Шаг 3 задачи 13: инлайновый `stickyTop`/`TAB_GAP` перебивал портированный
+  // `top: var(--super-offset)` (`_searchSuper.scss:24`) — липкий ряд прилипал
+  // под absolute-шапку (P1 из `docs/research/2026-08-08-tweb-deep-structural-audit.md`).
+  // Мутация «вернуть stickyTop={TAB_GAP}» или любую запись `style.top` — красная.
+  it('липкость ряда вкладок — CSS, без инлайнового top (stickyTop/TAB_GAP сняты)', () => {
+    expect(panel).not.toMatch(/stickyTop/)
+    expect(panel).not.toMatch(/TAB_GAP/)
+    expect(panel).not.toMatch(/style\.top/)
+  })
+
+  // Контракт шапки — tweb `sharedMedia.tsx:484-517`: `onAdditionalScroll`
+  // скроллера меряет ряд класса (`isSharedMediaReached`, `userInfo/helpers.ts`),
+  // `setIsSharedMedia` переключает `is-full-viewport` на контейнере класса и
+  // при выходе зовёт `cleanScrollPositions()`; `scrollStartCallback` класса
+  // ставит режим шаред-медиа. React-обработчик `onScroll` на теле снят —
+  // скролл слушает `Scrollable` хозяина.
+  it('шапка переведена на контракт класса: onAdditionalScroll → isSharedMediaReached, is-full-viewport, cleanScrollPositions', () => {
+    expect(panel).toMatch(/scrollable\.onAdditionalScroll = \(\) => \{/)
+    expect(panel).toMatch(/isSharedMediaReached\(searchSuper\)/)
+    expect(panel).toMatch(/searchSuper\.container\.classList\.toggle\('is-full-viewport', isSharedMedia\)/)
+    expect(panel).toMatch(/searchSuper\.cleanScrollPositions\(\)/)
+    expect(panel).toMatch(/searchSuper\.scrollStartCallback = /)
+    expect(panel).not.toMatch(/onScroll=\{/)
+    expect(panel).not.toMatch(/tabsBarRef/)
+  })
+
+  // Пункт 6 задачи 13: участников грузит класс (`loadMembers`), хосту отдаются
+  // `openPeer`/`openUserPermissions` (расхождение 33 в шапке класса).
+  it('участники — у класса: realMembers/refreshMembers сняты, хосту переданы openPeer/openUserPermissions', () => {
+    expect(panel).not.toMatch(/realMembers/)
+    expect(panel).not.toMatch(/refreshMembers/)
+    expect(panel).toMatch(/openPeer:/)
+    expect(panel).toMatch(/openUserPermissions:/)
   })
 })

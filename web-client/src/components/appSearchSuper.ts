@@ -57,15 +57,19 @@
 //  7. ВЛАДЕНИЕ СКРОЛЛЕРОМ. Правило у нас такое: скроллер уничтожается только
 //     если создан и принадлежит классу. Оригинал ему удовлетворяет даром —
 //     `this.scrollable.destroy()` (`tweb:2831`) там роняет скроллер, который
-//     создан владельцем класса (вкладка сайдбара `SliderSuperTab`) и умирает
-//     вместе с ним, третьих читателей у него нет. У нас (задача 13 плана) тот
-//     же скроллер будет ОБЩИМ с шапкой профиля и переживёт подсистему, а строка
-//     скопирована дословно — то есть ПРАВИЛО СЕЙЧАС НЕ СОБЛЮДЕНО, и это
-//     ловушка: `Scrollable.destroy()` лишь снимает слушателей и обнуляет
-//     колбэки (`components/scrollable.ts:227-232`) — ни исключения, ни записи
-//     в консоль; панель просто перестанет реагировать на прокрутку. Развилка
-//     («класс заводит свой скроллер» ИЛИ «уничтожение уходит») закрывается
-//     задачей 13 плана, там же предупреждение.
+//     создан владельцем класса (вкладка сайдбара, `sliderTab.ts:66`) и умирает
+//     вместе с ним (`sliderTab.ts:109` роняет его же ещё раз), третьих
+//     читателей у него нет. У нас (задача 13 плана) тот же скроллер ОБЩИЙ с
+//     шапкой профиля и переживает подсистему: его создаёт и роняет хозяин —
+//     хук `core/hooks/useSearchSuper.ts` (роль `SliderSuperTab`), на его
+//     `onAdditionalScroll` сидит шапка панели (`sharedMedia.tsx:484-493`).
+//     Развилка закрыта В ПОЛЬЗУ ХОЗЯИНА: `destroy()` скроллер НЕ роняет, а
+//     снимает только то, что класс повесил сам — свой `onScrolledBottom`
+//     (`:616-621`), и только если хозяин не переназначил его после. Отказ при
+//     регрессе был бы тихим (`Scrollable.destroy()` лишь снимает слушателей и
+//     обнуляет колбэки, `components/scrollable.ts:227-232`), поэтому пин
+//     `appSearchSuper.seam.test.ts` проверяет доставку настоящего `scroll` до
+//     колбэка хозяина ПОСЛЕ `destroy()`.
 //  8. `destroy()` дополнительно СНИМАЕТ контейнер из DOM (`container.remove()`),
 //     чего в оригинале нет вовсе: там узел снимает владелец вместе со своим
 //     экраном, у нас его обязан убрать сам класс (DoD 5 — «после destroy() узлов
@@ -586,6 +590,13 @@ export default class AppSearchSuper {
   /** tweb `:416` — назначается потребителем (`sharedMedia.tsx:682-684`). */
   public scrollStartCallback?: (dimensions: ScrollStartCallbackDimensions) => void
 
+  /** tweb `:616-621`; см. вызов в конструкторе и расхождение 7. */
+  private onScrolledBottom = () => {
+    if(this.mediaTab.contentTab && this.canLoadMediaTab(this.mediaTab)) {
+      void this.load(true, undefined, 'bottom')
+    }
+  }
+
   private listenerSetter: ListenerSetter
   private swipeHandler?: SwipeHandler
 
@@ -762,11 +773,8 @@ export default class AppSearchSuper {
     // * construct end
 
     // tweb `:616-621` — доскроллили до низа: догружаем ТЕКУЩУЮ вкладку.
-    this.scrollable.onScrolledBottom = () => {
-      if(this.mediaTab.contentTab && this.canLoadMediaTab(this.mediaTab)) {
-        void this.load(true, undefined, 'bottom')
-      }
-    }
+    // Полем, а не замыканием: `destroy()` снимает ровно этот хук (расхождение 7).
+    this.scrollable.onScrolledBottom = this.onScrolledBottom
 
     this.selectTab = horizontalMenu({
       tabs: this.tabsMenu,
@@ -2357,16 +2365,17 @@ export default class AppSearchSuper {
   /**
    * tweb `:2828-2843`.
    *
-   * `this.scrollable.destroy()` — дословно как в оригинале (`:2831`), НО у нас
-   * скроллер чужой: см. расхождение 7 в шапке файла (правило «уничтожается
-   * только если создан и принадлежит классу» сейчас НЕ соблюдено, развилка —
-   * задача 13 плана). `container.remove()` и несброшенный `selectTab` —
-   * расхождение 8.
+   * `this.scrollable.destroy()` (`:2831`) НЕ портирован: скроллер чужой и
+   * переживает подсистему — снимается только свой `onScrolledBottom`
+   * (расхождение 7 в шапке файла). `container.remove()` и несброшенный
+   * `selectTab` — расхождение 8.
    */
   public destroy() {
     this.cleanup()
     this.listenerSetter.removeAll()
-    this.scrollable.destroy()
+    if(this.scrollable.onScrolledBottom === this.onScrolledBottom) {
+      this.scrollable.onScrolledBottom = undefined
+    }
     this.swipeHandler?.removeListeners()
 
     // Расхождение 2 в шапке: корни Solid-секций утилизируются, чтобы
