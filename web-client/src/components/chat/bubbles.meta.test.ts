@@ -225,6 +225,67 @@ describe('ChatBubbles — время и реакции в бабле', () => {
       expect(messageDiv.querySelector<HTMLElement>('.time')!.parentElement).toBe(reactionsEl)
     })
 
+    /**
+     * Правка ПЕРЕИСПОЛЬЗУЕТ ряд, а не пересобирает его — порт
+     * tweb bubbles.ts:1285-1289 (существующий `reactions-element` получает
+     * `update`, а не заменяется).
+     *
+     * Пин ровно на дефект «анимация постановки обрывается»: эффект держится за
+     * живой узел `.reaction-sticker`, и снос ряда ответом сервера на свой же
+     * клик убивал анимацию через десятки миллисекунд после старта.
+     */
+    it('правка НЕ пересобирает ряд: узлы ряда, чипа и его иконки те же', async () => {
+      bubbles = new ChatBubbles(chatContext(), managersWith([msg(1, { reactions })]))
+      await openFeed(bubbles)
+      await settle()
+
+      const before = bubbleOf(bubbles, 1).querySelector<HTMLElement>('.reactions')!
+      const chip = before.querySelector<HTMLElement>('.reaction')!
+      const sticker = before.querySelector<HTMLElement>('.reaction-sticker')!
+
+      const removals: Node[] = []
+      const observer = new MutationObserver((records) => {
+        for (const record of records) {
+          record.removedNodes.forEach((node) => { if (node === before) removals.push(node) })
+        }
+      })
+      observer.observe(bubbleOf(bubbles, 1), { childList: true, subtree: true })
+
+      editTo(msg(1, { reactions }))
+
+      // Записи наблюдателя приезжают микрозадачей — дождаться их.
+      await Promise.resolve()
+      observer.takeRecords().forEach((record) => {
+        record.removedNodes.forEach((node) => { if (node === before) removals.push(node) })
+      })
+      observer.disconnect()
+
+      const after = bubbleOf(bubbles, 1).querySelector<HTMLElement>('.reactions')!
+      expect(after).toBe(before)
+      expect(after.querySelector('.reaction')).toBe(chip)
+      expect(after.querySelector('.reaction-sticker')).toBe(sticker)
+      // Узел иконки не покидал бабл — за него держатся оверлей эффекта и
+      // проверка `isInDOM(target)` летящей around-анимации.
+      expect(bubbleOf(bubbles, 1).contains(sticker)).toBe(true)
+      // ...и не покидал его ДАЖЕ НА МГНОВЕНИЕ: снять узел и вернуть его тем же
+      // тиком — не то же самое, что не трогать. `isInDOM(target)` спрашивают на
+      // каждом кадре анимации, и кадр может лечь ровно в этот промежуток.
+      expect(removals).toHaveLength(0)
+    })
+
+    it('в переиспользованном ряду остаётся РОВНО ОДНО время', async () => {
+      bubbles = new ChatBubbles(chatContext(), managersWith([msg(1, { reactions })]))
+      await openFeed(bubbles)
+      await settle()
+
+      editTo(msg(1, { reactions }))
+
+      // Прошлое время лежало ВНУТРИ ряда (tweb :9855); ряд теперь переживает
+      // правку, поэтому снимать прошлый узел приходится отдельно — иначе их
+      // становится два.
+      expect(bubbleOf(bubbles, 1).querySelectorAll('.time')).toHaveLength(1)
+    })
+
     it('приехавшая с правкой реакция ПОЯВЛЯЕТСЯ (её и объявляет `patch {reactions}`)', async () => {
       bubbles = new ChatBubbles(chatContext(), managersWith([msg(1)]))
       await openFeed(bubbles)
@@ -265,7 +326,7 @@ describe('ChatBubbles — время и реакции в бабле', () => {
   })
 
   // ПРОВОДКА реакций из ленты. Сам агрегат покрыт `reactions.test.ts`, но он
-  // видит только `createReactionsElement(reactions, options)` — то, что лента
+  // видит только `renderReactionsElement(previous, reactions, options)` — то, что лента
   // ДАЁТ ему `options`, оттуда не видно. А без них порт молча сваливается в
   // ветку оригинала `canRenderAvatars === false`: чипы рисуются текстом, эффект
   // не играет, аватарок нет. Снятие второго аргумента в `renderMessageMeta` не
