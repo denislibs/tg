@@ -504,6 +504,26 @@ export function newGroupsManager({ rest, dialogs, peers, messages }: {
         return { userId: id, role: participantRole(p), status: byId.get(id)?.status }
       })
     },
+    /**
+     * Страница участников КОНТЕЙНЕРОМ — порт `appProfileManager.getChannelParticipants`
+     * в объёме вкладки «Участники» shared media (`components/appSearchSuper.ts::
+     * loadMembers`, tweb `:1720-1724`): `offset`/`limit` уходят ручке как есть
+     * (`group_handler.go::ListMembers` их читает, дефолт 200), назад — сырой
+     * `channels.channelParticipants` с конструкторами участников и `count`.
+     * Карточки из вектора `users` сразу уезжают в зеркало (`saveApiPeers`),
+     * как у оригинала (`appProfileManager.ts:653-656` — `saveApiUsers`): строка
+     * списка читает карточку синхронно, и к моменту ответа она уже там.
+     *
+     * `members` выше остаётся плоской формой без пагинации для экранов
+     * редактирования группы; эта ручка — для списка, который листает.
+     */
+    async channelParticipants(peerId: PeerId, offset: number, limit: number): Promise<ChannelsChannelParticipants> {
+      const r = await rest.get<ChannelsChannelParticipants>(`/chats/${peerId}/members`, { offset, limit })
+      // `chats` контейнера у этой ручки пуст всегда (`group_handler.go::ListMembers`
+      // кладёт только карточки участников) — в зеркало едут `users`.
+      peers.saveApiPeers({ users: r.users })
+      return r
+    },
     async promoteAdmin(peerId: number, userId: number, rights: number): Promise<void> {
       await rest.post(`/chats/${peerId}/admins`, { user_id: userId, rights })
     },

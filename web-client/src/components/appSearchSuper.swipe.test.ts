@@ -196,6 +196,10 @@ describe('AppSearchSuper: свайп между вкладками', () => {
     const searchSuper = new AppSearchSuper({ mediaTabs: makeMediaTabs(), scrollable, managers: IDLE_MANAGERS })
     searchSuper.container.getBoundingClientRect = () => ({ y: 0 }) as DOMRect
     host.append(searchSuper.container)
+    // Контекст поиска — до первой загрузки, как у потребителя оригинала
+    // (`sharedMediaTab.setPeer` → `setQuery`): `load` читает `searchContext.peerId`
+    // безусловно (tweb `:2532`, у нас — фильтр вкладок по виду пира, `:2551-2555`).
+    searchSuper.setQuery({ peerId: 1 })
 
     Array.from(searchSuper.tabsContainer.children).forEach((tab) => {
       ;(tab as HTMLElement).getBoundingClientRect = () => ({ width: 400 }) as DOMRect

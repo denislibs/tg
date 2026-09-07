@@ -167,8 +167,15 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // остальных четырёх словарях ключа нет намеренно — они покрыты наполовину by
 // design, под ними английский нижний слой. «Онлайн» в русском не склоняется,
 // поэтому ключ стоит в `RU_INDECLINABLE`.
+// Сдвиг набора задачей 11 волны 3 (вкладка «Участники» — `SortedUserList` и
+// меню участника): русскому добавлены ШЕСТЬ ключей 1:1 с tweb lang.ts —
+// пять пунктов `createParticipantContextMenu` (`SetAsAdmin`, `EditAdminRights`,
+// `KickFromSupergroup`, `AddToGroup`, `AddToChannel`) и подпись ранга
+// `Chat.ChannelBadge` (`wrappers/participantRank.ts`). Отсюда `keys`
+// 1311 → 1317, множественных форм не прибавилось. В остальных четырёх
+// словарях ключей нет намеренно — под ними английский нижний слой.
 const COMPOSITION = {
-  ru: { keys: 1311, plural: 33 },
+  ru: { keys: 1317, plural: 33 },
   uk: { keys: 682, plural: 24 },
   es: { keys: 681, plural: 24 },
   de: { keys: 681, plural: 24 },
@@ -245,8 +252,11 @@ const COMPOSITION = {
 // Сдвиг набора задачей «открытие чата по ссылке»: русскому добавлены
 // `NoUsernameFound` и `Alert.UserDoesntExists` (разбор — у `COMPOSITION` выше).
 // У остальных четырёх словарей набор не менялся — их снимок тот же.
+// Сдвиг набора задачей 11 волны 3: русскому добавлены шесть ключей меню
+// участника и ранга (разбор — у `COMPOSITION` выше). У остальных четырёх
+// словарей набор не менялся — их снимок тот же.
 const FINGERPRINT = {
-  ru: 'a2edf950',
+  ru: '5deacdb7',
   uk: 'e1335ac1',
   es: 'a6b1aad3',
   de: 'a6b1aad3',

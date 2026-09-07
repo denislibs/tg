@@ -89,6 +89,10 @@ function build(options?: { scrollOffset?: number }) {
   const searchSuper = new AppSearchSuper({ mediaTabs: makeMediaTabs(), scrollable, managers: IDLE_MANAGERS, ...options })
   searchSuper.container.getBoundingClientRect = () => ({ y: SUPER_OFFSET_FROM_PARENT }) as DOMRect
   host.append(searchSuper.container)
+  // Контекст поиска — до первой загрузки, как у потребителя оригинала
+  // (`sharedMediaTab.setPeer` → `setQuery`): `load` читает `searchContext.peerId`
+  // безусловно (tweb `:2532`, у нас — фильтр вкладок по виду пира, `:2551-2555`).
+  searchSuper.setQuery({ peerId: 1 })
 
   // ширина вкладки нужна самой анимации `slideTabs` (`transition.ts:45-95`)
   Array.from(searchSuper.tabsContainer.children).forEach((tab) => {

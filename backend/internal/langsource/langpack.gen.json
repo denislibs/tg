@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 12,
+      "version": 13,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -41,8 +41,16 @@
           "value": "Add member"
         },
         {
+          "key": "AddToChannel",
+          "value": "Add to Channel"
+        },
+        {
           "key": "AddToFavorites",
           "value": "Add to Favorites"
+        },
+        {
+          "key": "AddToGroup",
+          "value": "Add to Group"
         },
         {
           "key": "Administrators",
@@ -703,6 +711,10 @@
         {
           "key": "Chat.Alert.Forward.ShowSenderName",
           "value": "Show sender name"
+        },
+        {
+          "key": "Chat.ChannelBadge",
+          "value": "channel"
         },
         {
           "key": "Chat.ClearHistory.Text",
@@ -1514,6 +1526,10 @@
           "value": "Admin Rights"
         },
         {
+          "key": "EditAdminRights",
+          "value": "Edit admin rights"
+        },
+        {
           "key": "EditAdminWhatCanDo",
           "value": "What can this admin do?"
         },
@@ -2207,6 +2223,10 @@
         {
           "key": "KickFromGroup",
           "value": "Remove from group"
+        },
+        {
+          "key": "KickFromSupergroup",
+          "value": "Restrict user"
         },
         {
           "key": "LanguageName",
@@ -4314,6 +4334,10 @@
           "value": "Active Sessions"
         },
         {
+          "key": "SetAsAdmin",
+          "value": "Promote to admin"
+        },
+        {
           "key": "SetColor",
           "value": "Set a color"
         },
@@ -5392,7 +5416,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 12,
+      "version": 13,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -10799,6 +10823,30 @@
         {
           "key": "LanguageName",
           "value": "Русский"
+        },
+        {
+          "key": "SetAsAdmin",
+          "value": "Назначить администратором"
+        },
+        {
+          "key": "EditAdminRights",
+          "value": "Изменить права администратора"
+        },
+        {
+          "key": "KickFromSupergroup",
+          "value": "Ограничить пользователя"
+        },
+        {
+          "key": "AddToGroup",
+          "value": "Добавить в группу"
+        },
+        {
+          "key": "AddToChannel",
+          "value": "Добавить в канал"
+        },
+        {
+          "key": "Chat.ChannelBadge",
+          "value": "канал"
         }
       ]
     },
