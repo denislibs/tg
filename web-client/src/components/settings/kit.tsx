@@ -7,7 +7,7 @@ import classNames from '../../shared/lib/classNames'
 import TgIcon from '../TgIcon'
 import TgSwitch from '../TgSwitch'
 import liteMode from '../../helpers/liteMode'
-import { clearPendingTransitionCleanup, NAVIGATION_TRANSITION_TIME, runNavigationTransition } from '../../core/dom/navigationTransition'
+import { clearPendingTransitionCleanup, NAVIGATION_TRANSITION_TIME, runNavigationTransition } from '../transition'
 import { useT } from '../../i18n'
 import s from './kit.module.scss'
 
@@ -29,7 +29,7 @@ const InSliderContext = createContext(false)
  *
  * Поэтому саб-экран приходит НЕ детьми, а пропом `sub`: только так он
  * оказывается вкладкой-соседом, а не потомком, и уходящему экрану есть куда
- * сдвигаться. JS-часть перехода — `core/dom/navigationTransition.ts`,
+ * сдвигаться. JS-часть перехода — `components/transition.ts`,
  * CSS — `styles/tweb/_slider.scss:226-241`.
  */
 export function SettingsScreen({

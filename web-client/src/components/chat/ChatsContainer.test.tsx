@@ -6,8 +6,8 @@ const runNavigationTransition = vi.fn()
 // (`importOriginal`): `clearPendingTransitionCleanup` — предмет теста
 // «мгновенная смена не отдаёт активный чат чужому таймеру» ниже, и подменять
 // его значило бы проверять заглушку.
-vi.mock('../../core/dom/navigationTransition', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../core/dom/navigationTransition')>()),
+vi.mock('../transition', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../transition')>()),
   runNavigationTransition: (...args: unknown[]) => runNavigationTransition(...args),
 }))
 

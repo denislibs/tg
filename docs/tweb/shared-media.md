@@ -55,7 +55,7 @@
 | `src/components/sidebarRight/tabs/sharedMedia.tsx` | 711 | Solid-обвязка: создаёт экземпляр, задаёт список вкладок, шапку, живые апдейты |
 | `src/components/sidebarRight/tabs/sharedMediaTab.tsx` | 135 | тонкий `SliderSuperTab`-фасад (`setPeer`/`fillProfileElements`/`loadSidebarMedia`/`setSearchTab`/`setLoadMutex`) |
 | `src/components/horizontalMenu.ts` | 215 | ряд вкладок + автоцентрирование активной в `ScrollableX` |
-| `src/components/transition.ts` | 383 | `TransitionSlider`; вкладкам нужна функция `slideTabs` (`:45-95`) |
+| `src/components/transition.ts` | 383 | `TransitionSlider`; вкладкам нужна функция `slideTabs` (`:45-95`). **Портирован** — `web-client/src/components/transition.ts` |
 | `src/components/chat/selection.ts` | 1189 | `AppSelection` (база) + `SearchSelection` (`:583-763`) |
 | `src/components/sortedUserList.ts` | 134 | список участников/общих групп |
 | `src/components/searchGroup.tsx` | 170 | группы результатов — только для левой колонки |
@@ -324,7 +324,7 @@ sharedMedia.tsx:47-57   setQuery() — достаёт стор пира и от�
 | Вкладка `saved` (Saved Messages внутри пира) | **нет вовсе** | — | |
 | Ряд вкладок (разметка) | **есть, 1:1** | `SharedMedia.tsx:73-97` (`SharedMediaTab`), ряд `:320-349` | классы совпадают, включая `i.menu-horizontal-div-item-background` и `is-single`; **но** ряд рисуется React-списком по `ALL_TABS`, а не строится классом |
 | Стили подсистемы | **есть, 1:1** | `web-client/src/styles/tweb/_searchSuper.scss` — **428 строк, ровно как оригинал** | портированы целиком, включая `is-selecting`/`is-full-viewport`, под которые у нас пока нет кода |
-| Анимация перехода между вкладками | **есть частично** | `shared/ui/Tabs/TabSlide.tsx` (177), `core/hooks/useTransitionSlider.ts` (60) | у нас CSS-вариант; `slideTabs` (`transition.ts:45-95`) с JS-transform не портирован; `keepMounted` не передан (`SharedMedia.tsx:352`) → **неактивная вкладка размонтируется** |
+| Анимация перехода между вкладками | **механизм есть, потребителя ещё нет** | `components/transition.ts` — `TransitionSlider` с `slideTabs`; старый React-путь `shared/ui/Tabs/TabSlide.tsx` (177) + `core/hooks/useTransitionSlider.ts` (60) пока жив | `slideTabs` (`transition.ts:45-95`) портирован 1:1 (волна 3, задача 3): вкладки не размонтируются, а сдвигаются на ±width, поэтому поддерево и `scrollTop` переживают переключение. React-путь с `keepMounted`-дефектом (`SharedMedia.tsx:352`) уйдёт вместе с `SharedMedia.tsx` (задача 13) |
 | Горизонтальный скролл ряда + автоцентрирование активной | **нет** | — | `horizontalMenu.ts:64-79` не портирован: ряд скроллится, но активная вкладка сама в вид не доезжает |
 | Свайп между вкладками | **нет** | — | |
 | Пагинация | **есть частично** | `SharedMedia.tsx:139,147,185-224` (`byFilter`, `PAGE_SIZE = 30`), sentinel `:226-242` | **по числовому `offset`, а не по `offsetId`** — прямое следствие формы ручки (§ 3); infinite scroll через `IntersectionObserver` с `rootMargin: 300px` вместо `scrollable.onScrolledBottom` |
@@ -352,12 +352,12 @@ sharedMedia.tsx:47-57   setQuery() — достаёт стор пира и от�
 | `components/chat/selection.ts` (844) | `chat/selection.ts` (1189) — база `AppSelection` | база есть, `SearchSelection` нет |
 | `helpers/{listenerSetter,middleware,middlewarePromise,positionMenu,contextMenuController}.ts`, `helpers/dom/attachContextMenuListener.ts` | одноимённые | есть |
 | `core/lazyLoadQueue.ts`, `core/dom/setTransition.ts`, `core/dom/swipeHandler.ts`, `helpers/dom/handleHorizontalSwipe.ts` | одноимённые | есть |
-| `core/dom/navigationTransition.ts` (236) | `transition.ts` — но только ветка `slideNavigation` (`:23-43`) | **`slideTabs` (`:45-95`) не портирован** |
+| `components/transition.ts` (~430) | `transition.ts` (383) | **портирован целиком** (волна 3, задача 3): `TransitionSlider` с обеими функциями анимации — `slideNavigation` (`:23-43`) и `slideTabs` (`:45-95`) |
 | `styles/tweb/_searchSuper.scss` (428), `_profile.scss`, `_rightSidebar.scss`, `_searchGroup.scss`, `_transition.scss` | одноимённые партиалы | стили готовы |
 | `components/stargifts/{stargiftsGrid,profileList}.module.scss` | одноимённые | стили готовы, кода нет |
 
 **Чего у нас нет вовсе** (нужно портировать): `horizontalMenu.ts` (215),
-`transition.ts::slideTabs` (`:45-95`), `sortedUserList.ts` (134) вместе с
+`sortedUserList.ts` (134) вместе с
 ванильным строителем строки чатлиста (`appDialogsManager.addDialogNew` —
 аналога нет), сам `appSearchSuper.ts` (2843), `SearchSelection`,
 `SearchContextMenu`.

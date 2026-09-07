@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useChatStackStore, type ChatInstanceDesc } from '../../stores/chatStackStore'
 import { ChatInstanceProvider } from '../../core/chat/chatInstanceContext'
-import { clearPendingTransitionCleanup, NAVIGATION_TRANSITION_TIME, runNavigationTransition } from '../../core/dom/navigationTransition'
+import { clearPendingTransitionCleanup, NAVIGATION_TRANSITION_TIME, runNavigationTransition } from '../transition'
 
 // Порт `appImManager.chatsSelectTab` (tweb lib/appImManager.ts:2237) поверх уже
 // портированного примитива перехода: контейнер — `.chats-container.tabs-container

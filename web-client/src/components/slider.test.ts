@@ -24,7 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SidebarSlider from './slider'
 import SliderSuperTab from './sliderTab'
 import appNavigationController from '@core/navigation/appNavigationController'
-import { NAVIGATION_TRANSITION_TIME } from '@core/dom/navigationTransition'
+import { NAVIGATION_TRANSITION_TIME } from '@components/transition'
 
 /**
  * Эмулирует РЕАЛЬНУЮ асинхронность `history.back()`: браузер фиксирует индекс

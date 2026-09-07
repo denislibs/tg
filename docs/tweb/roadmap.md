@@ -139,8 +139,9 @@ navigation-переход с параллаксом, интеграция с н�
 `navigation` / `tabs` / `slide-fade`), горизонтальные табы с сохранением и восстановлением
 scroll-позиции каждого таба.
 
-Частично основа есть: `core/dom/navigationTransition.ts` (порт `slideNavigation`),
-`useTransitionSlider`, `settings/kit.tsx` — их обобщаем, а не пишем с нуля.
+Частично основа есть: `components/transition.ts` — `TransitionSlider` портирован целиком,
+с обеими функциями анимации (`slideNavigation` и `slideTabs`); `useTransitionSlider`,
+`settings/kit.tsx` — их обобщаем, а не пишем с нуля.
 
 **Что это открывает.** Профиль user/group/channel как набор декларативных секций
 (в tweb различия — не форки по типу пира, а `<Show>` внутри каждой секции), shared media
