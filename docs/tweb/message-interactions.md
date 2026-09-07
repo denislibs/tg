@@ -580,6 +580,38 @@ bubbles.ts:3245–3279: клик по `reaction-element` → `cancelEvent`; `is-
   (reactions.ts:362–374); пустая paid-кнопка (count 0) добавляется на посты каналов
   (`shouldAddEmptyPaidReaction`, стр. 234–257).
 
+**Ключевое свойство `render`, которое легко потерять при порте: ряд и его чипы ПЕРЕЖИВАЮТ
+обновление сообщения.** Оригинал снимает только чипы исчезнувших реакций (reactions.ts:290–299,
+`middlewareHelper.destroy()`), прежние находит по значению реакции (:311–317), обновляет на
+месте (`renderCounter` reaction.ts:1013–1058, `renderAvatars` :1060–1084 — оба идемпотентны:
+узел счётчика и стек аватарок создаются один раз) и лишь переставляет `positionElementByIndex`
+(:358–360). Сам ряд лента тоже не пересоздаёт: на обновление она достаёт существующий
+`reactions-element` из `REACTIONS_ELEMENTS` и зовёт `update` (bubbles.ts:1285–1289), а
+`appendReactionsElementToBubble` (:9849–9856) работает только на СБОРКЕ бабла.
+
+Это не оптимизация. За живой узел `.reaction-sticker` держатся оба узла эффекта: оверлей
+`div.reaction-sticker-activate` лежит ВНУТРИ него (reaction.ts:1458–1465), а летящая
+around-анимация снимает себя сама, как только её цель ушла из документа
+(`wrappers/stickerAnimation.ts:126,154` — `!isInDOM(target)`).
+
+**У нас** ряд собирался ЗАНОВО на каждое обновление сообщения
+(`chat/bubbles.ts::renderMessageMeta` сносил `:scope > .reactions`), и ответ сервера на мой же
+клик — второй `message_edit` через ~300 мс после оптимистичного — выбрасывал чип вместе с
+играющей анимацией. Замер на стенде: старт эффекта +221 мс от клика, снос ряда +305 мс,
+эффект жил **86 мс вместо ~1470 мс**. Порт сделан: `chat/reactions.ts::renderReactionsElement`
+принимает прошлый ряд и обновляет его на месте (`createReaction` — только то, что делается
+один раз; `updateReaction` — то, что меняется), `bubbles.ts::renderMessageMeta` ряд больше не
+сносит и не перевешивает уже стоящий узел (`append` уже стоящего узла — это его снятие и
+повторная вставка, а `isInDOM(target)` спрашивают на каждом кадре). Пины —
+`reactions.test.ts` («переиспользование ряда», «эхо сервера не обрывает играющий эффект»),
+`bubbles.meta.test.ts` («правка НЕ пересобирает ряд»), `bubbles.reactionEcho.test.ts`.
+Побочный эффект порта: стала достижима ветка `duration: this.isConnected ? 300 : 0` в
+`setIsChosen` (reaction.ts:1093) — раньше она всегда давала 0.
+
+Не портировано и остаётся долгом: `withDelay`/`animationShouldHaveDelay` (пауза 150 мс для
+реакции, которая была unread, reactions.ts:348–351,436) — признака `unread` наш провод не
+несёт.
+
 ## 7.6 Контекстное меню реакции (`reactionContextMenu.ts`)
 
 Открывается из `ChatContextMenu.onContextMenu` по правому клику/лонгтапу на реакции

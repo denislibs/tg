@@ -139,8 +139,10 @@ export function whichChild(elem: Element): number {
   return i
 }
 
-/** Порт tweb `helpers/dom/positionElementByIndex.ts`. */
-function positionElementByIndex(element: HTMLElement, container: HTMLElement, pos: number): boolean {
+/** Порт tweb `helpers/dom/positionElementByIndex.ts`. Экспортируется по той же
+ *  причине, что и `whichChild` выше: тем же хелпером оригинал переставляет чипы
+ *  ряда реакций (`chat/reactions.ts`, tweb reactions.ts:358-360). */
+export function positionElementByIndex(element: HTMLElement, container: HTMLElement, pos: number): boolean {
   const prevPos = element.parentElement === container ? whichChild(element) : -1
 
   if (prevPos === pos) {

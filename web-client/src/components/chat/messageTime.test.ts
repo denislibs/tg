@@ -11,7 +11,7 @@ import type { MyMessage } from '@core/models'
 import I18n from '@lib/langPack'
 import '../../test/lang'
 import { createMessageTime } from './messageTime'
-import { createReactionsElement } from './reactions'
+import { renderReactionsElement } from './reactions'
 
 const at = (iso: string, over: Partial<{ editedAt: string; views: number }> = {}): MyMessage => {
   const m = makeMessage({ peerId: 7, fromId: 2, id: 1, text: 'привет', createdAt: iso })
@@ -79,7 +79,7 @@ describe('createMessageTime', () => {
     // tweb :9855 `reactionsElement.append(timeSpan)` — чипы и время образуют
     // одну строку-обёртку. Если время останется соседом, оно уедет на свою
     // строку под чипами.
-    const reactions = createReactionsElement({
+    const reactions = renderReactionsElement(undefined, {
       _: 'messageReactions',
       results: [{ _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '👍' }, count: 1 }],
     })!

@@ -124,7 +124,7 @@ import BubbleGroups, {
 import { createDateBubble as createServiceDateBubble, createServiceBubble } from './serviceMessage'
 import { createReplyContainer } from './replyContainer'
 import { createMessageTime, setRepliesCount, setSendingStatus } from './messageTime'
-import { createReactionsElement, getAvailableReactions, getAvailableReactionsForPeer, sendReaction, type ReactionsManagers } from './reactions'
+import { renderReactionsElement, getAvailableReactions, getAvailableReactionsForPeer, sendReaction, type ReactionsManagers } from './reactions'
 import { renderReplies, setRepliesElementCount } from './replies'
 import { attachReplySwipe, findDoubleClickReplyBubble } from './replySwipe'
 import type ChatContextMenu from './contextMenu'
@@ -2179,16 +2179,25 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // (`messageDiv` — обычный бабл, `bubbleContainer` — floating без реакций,
     // `contentWrapper` — floating с реакциями): какой из них сейчас занят,
     // решают классы бабла, а они могли смениться (правка добавила/убрала
-    // медиа). Прошлое поколение контейнера реакций забирается ДО сноса: только
-    // в нём живёт предыдущая версия агрегата, по которой считается
-    // `changedResults` (порт appMessagesManager.ts:10651-10677 — у tweb обе
-    // версии на руках у владельца сообщения, у нас `message_edit` несёт только
-    // новую).
+    // медиа).
+    //
+    // РЯД РЕАКЦИЙ — ИСКЛЮЧЕНИЕ, и это порт, а не поблажка: у оригинала ряд
+    // ПЕРЕЖИВАЕТ обновление сообщения (tweb bubbles.ts:1285-1289 достаёт
+    // существующий `reactions-element` и зовёт его `update`), потому что за
+    // живой узел `.reaction-sticker` держится играющий эффект постановки.
+    // Снося ряд, мы обрывали собственную анимацию ответом сервера на свой же
+    // клик. Поэтому прошлый узел не удаляется, а ОТДАЁТСЯ
+    // `renderReactionsElement`, который его и обновит (или снимет, если реакций
+    // больше нет).
     const previousReactions = messageDiv.querySelector<HTMLElement>(':scope > .reactions')
       ?? contentWrapper?.querySelector<HTMLElement>(':scope > .reactions')
     for (const owner of [messageDiv, bubbleContainer, contentWrapper]) {
-      owner?.querySelectorAll(':scope > .time, :scope > .reactions').forEach((node) => node.remove())
+      owner?.querySelectorAll(':scope > .time').forEach((node) => node.remove())
     }
+    // Время ПЕРЕЕЗЖАЕТ внутрь ряда реакций (:9855), поэтому прошлое поколение
+    // времени лежит там же — и снимается вместе с остальными, а не остаётся
+    // вторым `.time` в переиспользованном ряду.
+    previousReactions?.querySelectorAll(':scope > .time').forEach((node) => node.remove())
 
     // Точка вставки у оригинала меняется (подпись документа, floating), но
     // базовая именно эта; остальные приедут вместе со своими подсистемами.
@@ -2248,7 +2257,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     this.renderMessageReplies(message, bubble, bubbleContainer)
 
-    const reactionsElement = createReactionsElement(
+    const reactionsElement = renderReactionsElement(
+      previousReactions,
       message._ === 'message' ? message.reactions : undefined,
       {
         peerId: this.peerId,
@@ -2256,7 +2266,6 @@ export default class ChatBubbles implements BubbleGroupsHost {
         middleware: this.getMiddleware(),
         managers: this.managers,
         isOut: !!message.pFlags.out,
-        previous: previousReactions,
         scrollable: this.scrollable,
       },
     )
@@ -2273,12 +2282,16 @@ export default class ChatBubbles implements BubbleGroupsHost {
       // floating-бабла С реакциями уезжало в `.bubble-content-wrapper`,
       // другой узел дерева, где `position: absolute` резолвится не
       // относительно медиа (см. docs/tweb/bubbles.md §4.21).
-      if (isFloatingTime) {
-        (contentWrapper ?? bubbleContainer).append(reactionsElement)
-      } else {
-        reactionsElement.append(timeSpan)
-        messageDiv.append(reactionsElement)
-      }
+      // Выкладка ряда — ТОЛЬКО когда он ещё не на своём месте. `append`
+      // уже стоящего узла — это его СНЯТИЕ и повторная вставка: наблюдатели
+      // DOM видят удаление, а летящая around-анимация спрашивает
+      // `isInDOM(target)` на каждом кадре (`wrappers/stickerAnimation.ts`,
+      // порт tweb stickerAnimation.ts:126). У оригинала этой ловушки нет по
+      // построению: `appendReactionsElementToBubble` (:9849-9856) зовётся на
+      // СБОРКЕ бабла, а обновление (bubbles.ts:1285-1289) узел не трогает.
+      const owner = isFloatingTime ? (contentWrapper ?? bubbleContainer) : messageDiv
+      if (!isFloatingTime) reactionsElement.append(timeSpan)
+      if (reactionsElement.parentElement !== owner) owner.append(reactionsElement)
     }
   }
 

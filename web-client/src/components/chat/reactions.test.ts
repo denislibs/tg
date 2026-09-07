@@ -15,7 +15,7 @@ import { useSettingsStore } from '@/settings'
 import wrapSticker from '@components/wrappers/sticker'
 import wrapStickerAnimation from '@components/wrappers/stickerAnimation'
 import {
-  createReactionsElement,
+  renderReactionsElement,
   fireAroundAnimation,
   getAvailableReactionsForPeer,
   REACTIONS_DISPLAY_COUNTER_AT,
@@ -138,9 +138,9 @@ beforeEach(() => {
   }))
 })
 
-describe('createReactionsElement', () => {
+describe('renderReactionsElement', () => {
   it('чип несёт эмодзи и разметку оригинала', () => {
-    const el = createReactionsElement(agg({ emoticon: '👍', count: 1 }))!
+    const el = renderReactionsElement(undefined, agg({ emoticon: '👍', count: 1 }))!
 
     expect(el.classList.contains('reactions')).toBe(true)
     expect(el.classList.contains('reactions-block')).toBe(true)
@@ -155,7 +155,7 @@ describe('createReactionsElement', () => {
   })
 
   it('is-last — только на последнем чипе ряда (tweb reactions.ts:319)', () => {
-    const el = createReactionsElement(agg(
+    const el = renderReactionsElement(undefined, agg(
       { emoticon: '👍', count: 1 },
       { emoticon: '🔥', count: 1 },
     ))!
@@ -166,7 +166,7 @@ describe('createReactionsElement', () => {
   })
 
   it('МОЯ реакция помечена is-chosen ВМЕСТЕ с forwards (tweb reaction.ts:1086-1097)', () => {
-    const el = createReactionsElement(agg(
+    const el = renderReactionsElement(undefined, agg(
       { emoticon: '👍', count: 2, mine: true },
       { emoticon: '🔥', count: 1 },
     ))!
@@ -182,7 +182,7 @@ describe('createReactionsElement', () => {
   })
 
   it('при первом показе бабла заливка не проигрывается (tweb reaction.ts:1093 — duration 0)', () => {
-    const el = createReactionsElement(agg({ emoticon: '👍', count: 2, mine: true }))!
+    const el = renderReactionsElement(undefined, agg({ emoticon: '👍', count: 2, mine: true }))!
 
     // `animating` — единственный класс, включающий transition
     // (`_reaction.scss:140-148`); на ещё не вставленном чипе его быть не должно.
@@ -190,12 +190,12 @@ describe('createReactionsElement', () => {
   })
 
   it('реакций нет — узла тоже нет (пустой занял бы строку под баблом)', () => {
-    expect(createReactionsElement(undefined)).toBeUndefined()
-    expect(createReactionsElement({ _: 'messageReactions', results: [] })).toBeUndefined()
+    expect(renderReactionsElement(undefined, undefined)).toBeUndefined()
+    expect(renderReactionsElement(undefined, { _: 'messageReactions', results: [] })).toBeUndefined()
   })
 
   it('порядок чипов — порядок вектора результатов', () => {
-    const el = createReactionsElement(agg(
+    const el = renderReactionsElement(undefined, agg(
       { emoticon: '👍', count: 5 },
       { emoticon: '🔥', count: 9 },
     ))!
@@ -211,7 +211,7 @@ describe('иконка чипа из каталога (tweb ReactionElement.rend
   }
 
   it('роль каталога — center, размер показа 40 (is-regular), класс is-regular', async () => {
-    const el = createReactionsElement(agg({ emoticon: '\u{1F44D}', count: 1 }), options())!
+    const el = renderReactionsElement(undefined, agg({ emoticon: '\u{1F44D}', count: 1 }), options())!
     await flushIcon()
 
     // tweb reaction.ts:817 + :888-897. Размер — ПОКАЗЫВАЕМЫЙ: `is-regular`
@@ -232,7 +232,7 @@ describe('иконка чипа из каталога (tweb ReactionElement.rend
   it('нет center — берётся static, класс is-static и размер контейнера (tweb :807-808,:817)', async () => {
     catalog = makeCatalog({ emoji: '\u{1F44D}', staticMediaId: STATIC_ID })
 
-    const el = createReactionsElement(agg({ emoticon: '\u{1F44D}', count: 1 }), options())!
+    const el = renderReactionsElement(undefined, agg({ emoticon: '\u{1F44D}', count: 1 }), options())!
     await flushIcon()
 
     // У `is-static` правила раздувания нет вовсе (`_reaction.scss:47-56` — только
@@ -255,7 +255,7 @@ describe('иконка чипа из каталога (tweb ReactionElement.rend
     Object.assign(player, { canvas: [canvas] })
     wrapStickerMock.mockReturnValue({ render: Promise.resolve(player), width: 40, height: 40, destroy: vi.fn() })
 
-    createReactionsElement(agg({ emoticon: '\u{1F44D}', count: 1 }), options())
+    renderReactionsElement(undefined, agg({ emoticon: '\u{1F44D}', count: 1 }), options())
     await flushIcon()
 
     expect(canvas.classList.contains('media-sticker')).toBe(true)
@@ -264,14 +264,14 @@ describe('иконка чипа из каталога (tweb ReactionElement.rend
   it('inactive-реакция помечает ЧИП (tweb :813-815)', async () => {
     catalog = makeCatalog({ emoji: '\u{1F44D}', centerMediaId: CENTER_ID, inactive: true })
 
-    const el = createReactionsElement(agg({ emoticon: '\u{1F44D}', count: 1 }), options())!
+    const el = renderReactionsElement(undefined, agg({ emoticon: '\u{1F44D}', count: 1 }), options())!
     await flushIcon()
 
     expect(el.querySelector('.reaction')!.classList.contains('is-inactive')).toBe(true)
   })
 
   it('реакции нет в каталоге — остаётся текстовое эмодзи, стикер не грузится', async () => {
-    const el = createReactionsElement(agg({ emoticon: '\u{1F525}', count: 1 }), options())!
+    const el = renderReactionsElement(undefined, agg({ emoticon: '\u{1F525}', count: 1 }), options())!
     await flushIcon()
 
     expect(wrapStickerMock).not.toHaveBeenCalled()
@@ -280,8 +280,8 @@ describe('иконка чипа из каталога (tweb ReactionElement.rend
 
   it('каталог читается ОДИН раз на все чипы (порт кэша appReactionsManager.ts:169)', async () => {
     const opts = options()
-    createReactionsElement(agg({ emoticon: '\u{1F44D}', count: 1 }, { emoticon: '\u{1F525}', count: 1 }), opts)
-    createReactionsElement(agg({ emoticon: '\u{1F44D}', count: 2 }), opts)
+    renderReactionsElement(undefined, agg({ emoticon: '\u{1F44D}', count: 1 }, { emoticon: '\u{1F525}', count: 1 }), opts)
+    renderReactionsElement(undefined, agg({ emoticon: '\u{1F44D}', count: 2 }), opts)
     await flushIcon()
 
     expect(catalog.list).toHaveBeenCalledTimes(1)
@@ -292,7 +292,7 @@ describe('аватарки вместо числа (tweb renderAvatars/renderCou
   it('до порога в личке — стек аватарок, числа нет', () => {
     expect(REACTIONS_DISPLAY_COUNTER_AT).toBe(4)
 
-    const el = createReactionsElement(agg({ emoticon: '👍', count: 2, recent: [7, 8] }), options())!
+    const el = renderReactionsElement(undefined, agg({ emoticon: '👍', count: 2, recent: [7, 8] }), options())!
 
     expect(el.querySelector('.reaction-counter')).toBeNull()
     const stack = el.querySelector('.stacked-avatars')!
@@ -300,7 +300,7 @@ describe('аватарки вместо числа (tweb renderAvatars/renderCou
   })
 
   it('с порога — число, а стека нет', () => {
-    const el = createReactionsElement(agg({ emoticon: '👍', count: 4, recent: [7] }), options())!
+    const el = renderReactionsElement(undefined, agg({ emoticon: '👍', count: 4, recent: [7] }), options())!
 
     expect(el.querySelector('.reaction-counter')!.textContent).toBe('4')
     expect(el.querySelector('.stacked-avatars')).toBeNull()
@@ -308,7 +308,7 @@ describe('аватарки вместо числа (tweb renderAvatars/renderCou
 
   it('порог считается по СУММЕ реакций сообщения (tweb reactions.ts:304-307)', () => {
     // Каждый чип поодиночке ниже порога, но вместе их уже четыре.
-    const el = createReactionsElement(agg(
+    const el = renderReactionsElement(undefined, agg(
       { emoticon: '👍', count: 2, recent: [7] },
       { emoticon: '🔥', count: 2, recent: [8] },
     ), options())!
@@ -320,14 +320,15 @@ describe('аватарки вместо числа (tweb renderAvatars/renderCou
   it('в группе БЕЗ can_see_list — аватарок нет, показывается число', () => {
     // Так приезжает вещательный канал: реакции там анонимны, сервер флага не
     // ставит, и остаётся ветка оригинала `canRenderAvatars === false`.
-    const el = createReactionsElement(agg({ emoticon: '👍', count: 2, recent: [7] }), options({ peerId: CHAT }))!
+    const el = renderReactionsElement(undefined, agg({ emoticon: '👍', count: 2, recent: [7] }), options({ peerId: CHAT }))!
 
     expect(el.querySelector('.stacked-avatars')).toBeNull()
     expect(el.querySelector('.reaction-counter')!.textContent).toBe('2')
   })
 
   it('в группе С can_see_list — стек аватарок, числа нет (tweb reactions.ts:306)', () => {
-    const el = createReactionsElement(
+    const el = renderReactionsElement(
+      undefined,
       canSeeList(agg({ emoticon: '👍', count: 2, recent: [7, 8] })),
       options({ peerId: CHAT }),
     )!
@@ -338,7 +339,8 @@ describe('аватарки вместо числа (tweb renderAvatars/renderCou
   })
 
   it('can_see_list порога не отменяет: с порога в группе снова число', () => {
-    const el = createReactionsElement(
+    const el = renderReactionsElement(
+      undefined,
       canSeeList(agg({ emoticon: '👍', count: 4, recent: [7] })),
       options({ peerId: CHAT }),
     )!
@@ -348,24 +350,124 @@ describe('аватарки вместо числа (tweb renderAvatars/renderCou
   })
 
   it('без опций (нечем строить аватарки) — тоже число', () => {
-    const el = createReactionsElement(agg({ emoticon: '👍', count: 1 }))!
+    const el = renderReactionsElement(undefined, agg({ emoticon: '👍', count: 1 }))!
     expect(el.querySelector('.reaction-counter')!.textContent).toBe('1')
   })
 
   it('большое число сокращается (tweb reaction.ts:1035 formatNumber)', () => {
     // В канале счётчик уходит в тысячи; сырое «12500» растянуло бы пилюлю.
-    const el = createReactionsElement(agg({ emoticon: '👍', count: 12500 }), options({ peerId: CHAT }))!
+    const el = renderReactionsElement(undefined, agg({ emoticon: '👍', count: 12500 }), options({ peerId: CHAT }))!
     expect(el.querySelector('.reaction-counter')!.textContent).toBe('12.5K')
 
-    const el2 = createReactionsElement(agg({ emoticon: '👍', count: 1234 }), options({ peerId: CHAT }))!
+    const el2 = renderReactionsElement(undefined, agg({ emoticon: '👍', count: 1234 }), options({ peerId: CHAT }))!
     expect(el2.querySelector('.reaction-counter')!.textContent).toBe('1.23K')
+  })
+})
+
+/**
+ * Ряд ПЕРЕЖИВАЕТ обновление сообщения — порт `ReactionsElement.render`
+ * (tweb reactions.ts:290-299 снимает только исчезнувшие чипы, :311-317 находит
+ * прежние по значению реакции, :358-360 переставляет их на место).
+ *
+ * Это не оптимизация: за живой узел `.reaction-sticker` держится играющий
+ * эффект постановки (пин ниже, «эхо сервера не обрывает эффект»). Пока ряд
+ * пересобирался заново, ответ сервера на мой же клик выбрасывал чип вместе с
+ * анимацией.
+ */
+describe('переиспользование ряда (tweb reactions.ts:290-360)', () => {
+  it('узел чипа и его иконка те же после обновления счётчика', () => {
+    const el = renderReactionsElement(undefined, agg({ emoticon: '👍', count: 1 }), options({ peerId: CHAT }))!
+    const chip = el.querySelector<HTMLElement>('.reaction')!
+    const sticker = el.querySelector<HTMLElement>('.reaction-sticker')!
+
+    const el2 = renderReactionsElement(el, agg({ emoticon: '👍', count: 2 }), options({ peerId: CHAT }))!
+
+    expect(el2).toBe(el)
+    expect(el2.querySelector('.reaction')).toBe(chip)
+    expect(el2.querySelector('.reaction-sticker')).toBe(sticker)
+  })
+
+  it('счётчик ПЕРЕПИСЫВАЕТСЯ, а не дописывается вторым (tweb reaction.ts:1042-1049)', () => {
+    const el = renderReactionsElement(undefined, agg({ emoticon: '👍', count: 1 }), options({ peerId: CHAT }))!
+    renderReactionsElement(el, agg({ emoticon: '👍', count: 2 }), options({ peerId: CHAT }))
+
+    expect(el.querySelectorAll('.reaction-counter')).toHaveLength(1)
+    expect(el.querySelector('.reaction-counter')!.textContent).toBe('2')
+  })
+
+  it('счётчик снимается, когда число сменилось аватарками (tweb reaction.ts:1053-1056)', () => {
+    const withAvatars = () => canSeeList(agg({ emoticon: '👍', count: 1, recent: [7] }))
+    // Сперва ряд без права на список — значит с числом.
+    const el = renderReactionsElement(undefined, agg({ emoticon: '👍', count: 1 }), options({ peerId: CHAT }))!
+    expect(el.querySelector('.reaction-counter')).not.toBeNull()
+
+    renderReactionsElement(el, withAvatars(), options({ peerId: CHAT }))
+
+    expect(el.querySelector('.reaction-counter')).toBeNull()
+    expect(el.querySelectorAll('.stacked-avatars')).toHaveLength(1)
+  })
+
+  it('стек аватарок ОДИН и обновляется на месте (tweb reaction.ts:1074-1083)', () => {
+    const opts = () => options({ peerId: CHAT })
+    const el = renderReactionsElement(undefined, canSeeList(agg({ emoticon: '👍', count: 1, recent: [7] })), opts())!
+    const stack = el.querySelector<HTMLElement>('.stacked-avatars')!
+
+    renderReactionsElement(el, canSeeList(agg({ emoticon: '👍', count: 2, recent: [7, 8] })), opts())
+
+    expect(el.querySelectorAll('.stacked-avatars')).toHaveLength(1)
+    expect(el.querySelector('.stacked-avatars')).toBe(stack)
+    expect(stack.querySelectorAll('.stacked-avatars-avatar-container')).toHaveLength(2)
+  })
+
+  it('исчезнувшая реакция снимает СВОЙ чип, соседний остаётся тем же (tweb :290-299)', () => {
+    const el = renderReactionsElement(
+      undefined,
+      agg({ emoticon: '👍', count: 1 }, { emoticon: '🔥', count: 1 }),
+      options({ peerId: CHAT }),
+    )!
+    const kept = el.querySelector<HTMLElement>('.reaction[data-reaction="🔥"]')!
+
+    renderReactionsElement(el, agg({ emoticon: '🔥', count: 1 }), options({ peerId: CHAT }))
+
+    expect(el.querySelector('.reaction[data-reaction="👍"]')).toBeNull()
+    expect(el.querySelector('.reaction[data-reaction="🔥"]')).toBe(kept)
+  })
+
+  it('порядок задаётся перестановкой прежних чипов (tweb :358-360)', () => {
+    const el = renderReactionsElement(
+      undefined,
+      agg({ emoticon: '👍', count: 1 }, { emoticon: '🔥', count: 1 }),
+      options({ peerId: CHAT }),
+    )!
+    const thumb = el.querySelector<HTMLElement>('.reaction[data-reaction="👍"]')!
+    const fire = el.querySelector<HTMLElement>('.reaction[data-reaction="🔥"]')!
+
+    renderReactionsElement(
+      el,
+      agg({ emoticon: '🔥', count: 2 }, { emoticon: '👍', count: 1 }),
+      options({ peerId: CHAT }),
+    )
+
+    expect(Array.from(el.querySelectorAll('.reaction'))).toEqual([fire, thumb])
+    // `is-last` переезжает вместе с порядком (tweb reactions.ts:319).
+    expect(thumb.classList.contains('is-last')).toBe(true)
+    expect(fire.classList.contains('is-last')).toBe(false)
+  })
+
+  it('реакций не осталось — прошлый ряд снимается из документа', () => {
+    const bubble = mountedBubble()
+    const el = renderReactionsElement(undefined, agg({ emoticon: '👍', count: 1 }), options({ peerId: CHAT }))!
+    bubble.append(el)
+
+    expect(renderReactionsElement(el, undefined, options({ peerId: CHAT }))).toBeUndefined()
+    expect(el.parentElement).toBeNull()
   })
 })
 
 describe('fireAroundAnimation', () => {
   /** Прошлое поколение узла: только из него берётся «а сколько было». */
   const previousWith = (...counts: Parameters<typeof agg>) =>
-    createReactionsElement(agg(...counts), options())!
+    renderReactionsElement(undefined, agg(...counts), options())!
 
   /** Пропустить все ступени цепочки запуска (heavy-animation, каталог,
    *  `Promise.all` плееров) — иначе «не позвали» значило бы «не успели». */
@@ -383,9 +485,10 @@ describe('fireAroundAnimation', () => {
     })
 
     const previous = previousWith({ emoticon: '👍', count: 1 })
-    const el = createReactionsElement(
+    const el = renderReactionsElement(
+      previous,
       agg({ emoticon: '👍', count: 2, mine: true }),
-      options({ previous }),
+      options(),
     )!
 
     await vi.waitFor(() => expect(wrapStickerAnimationMock).toHaveBeenCalled())
@@ -439,7 +542,7 @@ describe('fireAroundAnimation', () => {
     })
 
     const previous = previousWith({ emoticon: '👍', count: 1 })
-    createReactionsElement(agg({ emoticon: '👍', count: 2, mine: true }), options({ previous }))
+    renderReactionsElement(previous, agg({ emoticon: '👍', count: 2, mine: true }), options())
 
     await vi.waitFor(() => expect(wrapStickerAnimationMock).toHaveBeenCalled())
     await flush()
@@ -448,11 +551,69 @@ describe('fireAroundAnimation', () => {
     expect(chipCanvas.matches('.reaction-sticker.has-animation > .media-sticker')).toBe(true)
   })
 
+  /**
+   * ГЛАВНЫЙ пин дефекта «анимация обрывается»: на свой клик приходит ДВА
+   * обновления — оптимистичное и эхо сервера через ~300 мс. Пока ряд
+   * пересобирался, второе выбрасывало чип вместе с играющим эффектом:
+   * замер на стенде — эффект жил 86 мс вместо ~1470 мс.
+   *
+   * У оригинала этой развилки нет по построению: чип переиспользуется
+   * (tweb reactions.ts:311-317), поэтому `.reaction-sticker` остаётся в
+   * документе и оверлей эффекта вместе с ним.
+   */
+  it('эхо сервера не обрывает играющий эффект: оверлей и цель полёта живы', async () => {
+    const icon = fakePlayer()
+    wrapStickerMock.mockImplementation((o) => ({
+      render: Promise.resolve(o.group === 'none' ? icon.player : fakePlayer().player),
+      width: o.width, height: o.height, destroy: vi.fn(),
+    }))
+
+    const previous = previousWith({ emoticon: '👍', count: 1 })
+    const opts = options()
+    // Ряд висит в бабле — так его выкладывает `bubbles.ts::renderMessageMeta`;
+    // без этого `isConnected` цели полёта не о чем было бы спрашивать.
+    opts.bubble.append(previous)
+    const el = renderReactionsElement(previous, agg({ emoticon: '👍', count: 2, mine: true }), opts)!
+
+    await vi.waitFor(() => expect(wrapStickerAnimationMock).toHaveBeenCalled())
+    await flush()
+    icon.fireFirstFrame()
+
+    const sticker = el.querySelector<HTMLElement>('.reaction-sticker')!
+    expect(sticker.classList.contains('has-animation')).toBe(true)
+    // Цель летящей around-анимации — тот самый узел иконки (tweb :1185-1194).
+    expect(wrapStickerAnimationMock.mock.calls[0][0].target).toBe(sticker)
+
+    // ЭХО: тот же агрегат приезжает вторым обновлением.
+    const el2 = renderReactionsElement(el, agg({ emoticon: '👍', count: 2, mine: true }), opts)!
+
+    expect(el2).toBe(el)
+    expect(el2.querySelector('.reaction-sticker')).toBe(sticker)
+    // Узел иконки не покидал документ — значит `isInDOM(target)` не снимет полёт.
+    expect(sticker.isConnected).toBe(true)
+    expect(sticker.classList.contains('has-animation')).toBe(true)
+    expect(sticker.querySelector('.reaction-sticker-activate')).not.toBeNull()
+  })
+
+  it('эхо сервера не запускает эффект ВТОРОЙ раз', async () => {
+    const previous = previousWith({ emoticon: '👍', count: 1 })
+    const opts = options()
+    const el = renderReactionsElement(previous, agg({ emoticon: '👍', count: 2, mine: true }), opts)!
+
+    await vi.waitFor(() => expect(wrapStickerAnimationMock).toHaveBeenCalled())
+    expect(wrapStickerAnimationMock).toHaveBeenCalledTimes(1)
+
+    renderReactionsElement(el, agg({ emoticon: '👍', count: 2, mine: true }), opts)
+    await flush()
+
+    expect(wrapStickerAnimationMock).toHaveBeenCalledTimes(1)
+  })
+
   it('чужая реакция на МОЁМ сообщении тоже играет (tweb pFlags.out)', async () => {
     wrapStickerMock.mockReturnValue({ render: Promise.resolve(fakePlayer().player), width: 40, height: 40, destroy: vi.fn() })
 
     const previous = previousWith({ emoticon: '👍', count: 1 })
-    createReactionsElement(agg({ emoticon: '👍', count: 2 }), options({ previous, isOut: true }))
+    renderReactionsElement(previous, agg({ emoticon: '👍', count: 2 }), options({ isOut: true }))
 
     await vi.waitFor(() => expect(wrapStickerAnimationMock).toHaveBeenCalled())
   })
@@ -461,14 +622,15 @@ describe('fireAroundAnimation', () => {
     wrapStickerMock.mockReturnValue({ render: Promise.resolve(fakePlayer().player), width: 40, height: 40, destroy: vi.fn() })
 
     const previous = previousWith({ emoticon: '👍', count: 1 })
-    createReactionsElement(agg({ emoticon: '👍', count: 2 }), options({ previous }))
+    renderReactionsElement(previous, agg({ emoticon: '👍', count: 2 }), options())
 
     await flush()
     expect(wrapStickerAnimationMock).not.toHaveBeenCalled()
   })
 
   it('первая сборка бабла (узел ещё не в документе) не играет ничего', async () => {
-    createReactionsElement(
+    renderReactionsElement(
+      undefined,
       agg({ emoticon: '👍', count: 2, mine: true }),
       options({ bubble: document.createElement('div') }),
     )
@@ -480,7 +642,7 @@ describe('fireAroundAnimation', () => {
   it('ПЕРВАЯ реакция на сообщении (прошлого узла нет) играет — это тоже изменение', async () => {
     wrapStickerMock.mockReturnValue({ render: Promise.resolve(fakePlayer().player), width: 40, height: 40, destroy: vi.fn() })
 
-    createReactionsElement(agg({ emoticon: '👍', count: 1, mine: true }), options())
+    renderReactionsElement(undefined, agg({ emoticon: '👍', count: 1, mine: true }), options())
 
     await vi.waitFor(() => expect(wrapStickerAnimationMock).toHaveBeenCalled())
   })
@@ -489,7 +651,7 @@ describe('fireAroundAnimation', () => {
     const previous = previousWith({ emoticon: '👍', count: 1 })
     useSettingsStore.setState({ reduceMotion: true })
 
-    createReactionsElement(agg({ emoticon: '👍', count: 2, mine: true }), options({ previous }))
+    renderReactionsElement(previous, agg({ emoticon: '👍', count: 2, mine: true }), options())
 
     await flush()
     expect(wrapStickerAnimationMock).not.toHaveBeenCalled()
@@ -510,9 +672,10 @@ describe('fireAroundAnimation', () => {
     const fireLastFrame = async (previousCount: number) => {
       const icon = fakePlayer()
       const previous = previousWith({ emoticon: '👍', count: previousCount })
-      const el = createReactionsElement(
+      const el = renderReactionsElement(
+        previous,
         agg({ emoticon: '👍', count: previousCount + 1, mine: true }),
-        options({ previous }),
+        options(),
       )!
       await vi.waitFor(() => expect(wrapStickerAnimationMock).toHaveBeenCalled())
       await flush()
@@ -547,7 +710,7 @@ describe('fireAroundAnimation', () => {
 
   it('реакции нет в каталоге — играть нечем', async () => {
     const previous = previousWith({ emoticon: '🔥', count: 1 })
-    createReactionsElement(agg({ emoticon: '🔥', count: 2, mine: true }), options({ previous }))
+    renderReactionsElement(previous, agg({ emoticon: '🔥', count: 2, mine: true }), options())
 
     await flush()
     expect(catalog.list).toHaveBeenCalled()
@@ -580,9 +743,10 @@ describe('fireAroundAnimation', () => {
       }))
     }
 
-    const fire = (opts: Partial<ReactionsElementOptions> = {}) => createReactionsElement(
+    const fire = (opts: Partial<ReactionsElementOptions> = {}) => renderReactionsElement(
+      previousWith({ emoticon: '👍', count: 1 }),
       agg({ emoticon: '👍', count: 2, mine: true }),
-      options({ previous: previousWith({ emoticon: '👍', count: 1 }), ...opts }),
+      options(opts),
     )!
 
     it('застрявший декод не подвешивает эффект: к сроку он снят, узлы убраны', async () => {
@@ -699,7 +863,7 @@ describe('fireAroundAnimation', () => {
       width: o.width, height: o.height, destroy: vi.fn(),
     }))
 
-    const el = createReactionsElement(agg({ emoticon: '👍', count: 1 }), options())!
+    const el = renderReactionsElement(undefined, agg({ emoticon: '👍', count: 1 }), options())!
     const chip = el.querySelector<ReactionChip>('.reaction')!
 
     const firstZone = getMiddleware()

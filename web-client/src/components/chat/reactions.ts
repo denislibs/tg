@@ -44,6 +44,7 @@ import { hasStickerContent, loadStickerContent } from '@components/wrappers/stic
 import LottiePlayer from '@lib/lottie/lottiePlayer'
 import liteMode from '@helpers/liteMode'
 import type { Middleware } from '@helpers/middleware'
+import { positionElementByIndex } from './bubbleGroups'
 import { fastRaf } from '@helpers/schedulers'
 import pause from '@helpers/schedulers/pause'
 import noop from '@helpers/noop'
@@ -86,6 +87,9 @@ type ReactionChip = HTMLElement & {
    *  держится эффект, чтобы не снять оверлей посреди кроссфейда (:1446-1451). */
   wrapStickerPromise?: Promise<unknown>
   stackedAvatars?: StackedAvatars
+  /** tweb `this.counter` (reaction.ts:1030-1055) — узел числа переживает
+   *  обновление, поэтому им владеет чип, а не поиск по селектору. */
+  counter?: HTMLElement
 }
 
 /** Каталог доступных реакций (`messages.getAvailableReactions`) — источник
@@ -374,15 +378,6 @@ export interface ReactionsElementOptions {
   /** сообщение исходящее (tweb `message.pFlags.out`) — половина правила
    *  `changedResults`, см. `getChangedResults` */
   isOut?: boolean
-  /** узел `.reactions` ЭТОГО ЖЕ бабла прошлого поколения; `null`/отсутствует —
-   *  реакций у сообщения не было вовсе. У tweb сравнивать не с чем: там
-   *  `changedResults` считает ВЛАДЕЛЕЦ сообщения
-   *  (appMessagesManager.ts:10651-10677 — у него на руках обе версии агрегата) и
-   *  приносит их событием `messages_reactions`. У нас событие другое:
-   *  `message_edit` — единственная воронка любого изменения сообщения и несёт
-   *  только НОВУЮ версию (`lib/rootScope.ts:183`), поэтому предыдущая берётся
-   *  оттуда, где она ещё жива, — из прошлого узла. */
-  previous?: HTMLElement | null
   /** скроллер ленты: за ним следует летящий эффект (tweb reaction.ts:1120) */
   scrollable?: { container: HTMLElement }
 }
@@ -402,19 +397,42 @@ function reactionEmoticon(reaction: Reaction): string {
  *
  * Число печатается компактной формой оригинала (`formatNumber`, :1035) — в
  * канале счётчик доходит до тысяч, и сырое «12500» пилюлю растягивает.
+ *
+ * ИДЕМПОТЕНТЕН, как и оригинал: узел числа создаётся один раз (:1031-1034),
+ * дальше переписывается его текст (:1043-1045), а когда число больше не нужно
+ * — снимается (:1053-1056). Чип у нас теперь переживает обновление, и второй
+ * вызов обязан застать ровно один счётчик, а не дописать второй.
  */
-function renderCounter(chip: HTMLElement, count: ReactionCount, canRenderAvatars: boolean): void {
-  if (count.count < REACTIONS_DISPLAY_COUNTER_AT && canRenderAvatars) return
+function renderCounter(chip: ReactionChip, count: ReactionCount, canRenderAvatars: boolean): void {
+  // tweb :1029 (инвертировано) + :1053-1056.
+  if (count.count < REACTIONS_DISPLAY_COUNTER_AT && canRenderAvatars) {
+    chip.counter?.remove()
+    chip.counter = undefined
+    return
+  }
 
-  const counter = document.createElement('span')
-  counter.classList.add('reaction-counter')
-  counter.textContent = formatNumber(count.count)
-  chip.append(counter)
+  // tweb :1031-1034.
+  let counter = chip.counter
+  if (!counter) {
+    counter = chip.counter = document.createElement('span')
+    counter.classList.add('reaction-counter')
+  }
+
+  // tweb :1042-1045 — текст переписывается только если он изменился.
+  const formatted = formatNumber(count.count)
+  if (counter.textContent !== formatted) counter.textContent = formatted
+
+  // tweb :1047-1049.
+  if (!counter.parentElement) chip.append(counter)
 }
 
 /**
  * Порт `ReactionElement.renderAvatars` (reaction.ts:1060-1084): аватарки вместо
  * числа, пока реакций этого чипа меньше порога и список видно.
+ *
+ * ИДЕМПОТЕНТЕН, как и оригинал: стек создаётся один раз (:1075-1082), дальше
+ * ему отдаётся новый список (:1083, сам `StackedAvatars.render` переиспользует
+ * узлы), а когда аватарки больше не показываются — стек снимается (:1066-1071).
  */
 function renderAvatars(
   chip: ReactionChip,
@@ -424,18 +442,24 @@ function renderAvatars(
   options: ReactionsElementOptions,
 ): void {
   // tweb :1065-1072.
-  if (count.count >= REACTIONS_DISPLAY_COUNTER_AT || !canRenderAvatars) return
-  if (!recent.length) return
+  if (count.count >= REACTIONS_DISPLAY_COUNTER_AT || !canRenderAvatars || !recent.length) {
+    chip.stackedAvatars?.destroy()
+    chip.stackedAvatars = undefined
+    return
+  }
 
-  const stackedAvatars = new StackedAvatars({
-    avatarSize: AVATAR_SIZE,
-    middleware: options.middleware,
-    managers: options.managers,
-  })
+  // tweb :1074-1082.
+  if (!chip.stackedAvatars) {
+    chip.stackedAvatars = new StackedAvatars({
+      avatarSize: AVATAR_SIZE,
+      middleware: options.middleware,
+      managers: options.managers,
+    })
+    chip.append(chip.stackedAvatars.container)
+  }
 
-  chip.stackedAvatars = stackedAvatars
-  chip.append(stackedAvatars.container)
-  void stackedAvatars.render(recent)
+  // tweb :1083.
+  void chip.stackedAvatars.render(recent)
 }
 
 /**
@@ -555,15 +579,10 @@ function renderIcon(
  * заливка «проявлялась» бы разом на всех уже стоявших реакциях при первом
  * показе бабла.
  *
- * ЧЕСТНО ПРО НАШУ ВЕТКУ: сегодня выражение всегда даёт 0. Чип у нас создаётся
- * отсоединённым и в документ попадает уже вместе со всем контейнером, который
- * `bubbles.ts::renderMessageMeta` (:1898-1901) сносит и собирает ЗАНОВО на
- * каждое обновление сообщения. У оригинала чип ПЕРЕЖИВАЕТ обновление
- * (reactions.ts:290-296 — `this.sorted.find(...)` переиспользует
- * `ReactionElement`), поэтому там второй вызов застаёт узел подключённым и
- * играет 300 мс. Ветка «300» станет достижимой ровно тогда, когда ряд начнёт
- * переиспользовать чипы; подделывать её постоянной 300 нельзя — переход
- * отыграется на КАЖДОМ показе бабла, чего у оригинала нет.
+ * Ветка «300» достижима с тех пор, как ряд стал ПЕРЕИСПОЛЬЗОВАТЬ чипы
+ * (`renderReactionsElement`): второй вызов застаёт узел подключённым — ровно
+ * как у оригинала, где `this.sorted.find(...)` (reactions.ts:290-296) отдаёт
+ * прежний `ReactionElement`.
  */
 function setIsChosen(chip: HTMLElement, chosen: boolean): void {
   // tweb :1088-1089.
@@ -574,11 +593,14 @@ function setIsChosen(chip: HTMLElement, chosen: boolean): void {
   setTransition({ element: chip, className: 'is-chosen', forwards: chosen, duration: chip.isConnected ? 300 : 0 })
 }
 
-/** Один чип — порт `ReactionElement` (reaction.ts:739-1032). */
+/**
+ * СОЗДАНИЕ чипа — то, что у оригинала делается один раз на весь срок жизни
+ * `ReactionElement`: конструктор + `init` (reaction.ts:753-760) + `render`
+ * (:782-796, где `hadStickerContainer` даёт ранний выход на повторном вызове).
+ * Всё, что меняется от обновления к обновлению, живёт в `updateReaction`.
+ */
 function createReaction(
   count: ReactionCount,
-  reactions: MessageReactions,
-  canRenderAvatars: boolean,
   options?: ReactionsElementOptions,
 ): ReactionChip {
   const chip = document.createElement('div') as ReactionChip
@@ -587,14 +609,7 @@ function createReaction(
   // пилюли, её внешние отступы, `position: relative` под подложку и саму
   // переменную `--chosen-background-color` (`_reaction.scss:219-230`).
   chip.classList.add('reaction', 'reaction-block', 'reaction-like-block')
-  // МОЯ реакция (`chosen_order` у оригинала) — см. `setIsChosen`.
-  setIsChosen(chip, isChosen(count))
   chip.dataset.reaction = reactionKey(count.reaction)
-  // Своя версия счётчика на самом узле. У tweb её носит поле
-  // `reactionElement.reactionCount` (reaction.ts:722), но там чип ПЕРЕЖИВАЕТ
-  // обновление, а у нас узел собирается заново — значит, прошлое значение может
-  // жить только в прошлом узле (см. `previous` в опциях).
-  chip.dataset.count = String(count.count)
 
   // tweb :784-787.
   const sticker = document.createElement('div')
@@ -603,14 +618,39 @@ function createReaction(
 
   if (options) {
     renderIcon(chip, sticker, count.reaction, options)
-    renderAvatars(chip, recentOf(reactions, count.reaction), count, canRenderAvatars, options)
   } else {
     // Каталога нет вовсе — рисовать нечем, кроме самого значения реакции.
     sticker.textContent = reactionEmoticon(count.reaction)
   }
-  renderCounter(chip, count, canRenderAvatars)
 
   return chip
+}
+
+/**
+ * ОБНОВЛЕНИЕ чипа — порт тела цикла `ReactionsElement.render`
+ * (reactions.ts:310-346): своя версия счётчика, `setIsChosen`, `renderCounter`,
+ * `renderAvatars`. Зовётся и сразу после создания, и на каждом следующем
+ * обновлении сообщения — у оригинала ровно так же, там развилки «первый раз /
+ * не первый» нет вовсе.
+ */
+function updateReaction(
+  chip: ReactionChip,
+  count: ReactionCount,
+  reactions: MessageReactions,
+  canRenderAvatars: boolean,
+  options?: ReactionsElementOptions,
+): void {
+  // Своя версия счётчика на самом узле — она же прошлая версия для
+  // `getChangedResults`. У tweb её носит поле `reactionElement.reactionCount`
+  // (reaction.ts:722); у нас узлом владеет вызывающий, поэтому значение живёт
+  // на узле.
+  chip.dataset.count = String(count.count)
+  // МОЯ реакция (`chosen_order` у оригинала) — см. `setIsChosen`.
+  setIsChosen(chip, isChosen(count))
+  renderCounter(chip, count, canRenderAvatars)
+  if (options) {
+    renderAvatars(chip, recentOf(reactions, count.reaction), count, canRenderAvatars, options)
+  }
 }
 
 /**
@@ -619,23 +659,31 @@ function createReaction(
  * сообщения любая подросшая реакция (кто-то отреагировал мне), у любого — та,
  * которую я только что поставил сам.
  *
- * Предыдущая версия читается из прошлого узла: `data-reaction` + `data-count` +
- * класс `is-chosen` — это ровно те три факта, которыми пользуется правило
- * оригинала (`reactionsEqual`, `count`, `chosen_order !== undefined`).
+ * Предыдущая версия читается с самих чипов ДО их обновления: `data-reaction` +
+ * `data-count` + класс `is-chosen` — это ровно те три факта, которыми
+ * пользуется правило оригинала (`reactionsEqual`, `count`,
+ * `chosen_order !== undefined`). У tweb сравнивать не с чем: там `changedResults`
+ * считает ВЛАДЕЛЕЦ сообщения (appMessagesManager.ts:10651-10677 — у него на
+ * руках обе версии агрегата) и приносит их событием `messages_reactions`; у нас
+ * событие другое — `message_edit` несёт только НОВУЮ версию, поэтому прошлая
+ * берётся оттуда, где она ещё жива, — с ряда, который мы вот-вот обновим.
  */
-function getChangedResults(
-  results: ReactionCount[],
-  previous: HTMLElement | null | undefined,
-  isOut: boolean,
-): ReactionCount[] {
+function snapshotPrevious(container: HTMLElement | null | undefined): Map<string, { count: number, chosen: boolean }> {
   const prev = new Map<string, { count: number, chosen: boolean }>()
-  previous?.querySelectorAll<HTMLElement>('.reaction[data-reaction]').forEach((chip) => {
+  container?.querySelectorAll<HTMLElement>(':scope > .reaction[data-reaction]').forEach((chip) => {
     prev.set(chip.dataset.reaction!, {
       count: Number(chip.dataset.count),
       chosen: chip.classList.contains('is-chosen'),
     })
   })
+  return prev
+}
 
+function getChangedResults(
+  results: ReactionCount[],
+  prev: Map<string, { count: number, chosen: boolean }>,
+  isOut: boolean,
+): ReactionCount[] {
   return results.filter((count) => {
     const before = prev.get(reactionKey(count.reaction))
     return (isOut && (!before || count.count > before.count)) ||
@@ -1018,30 +1066,52 @@ export function fireAroundAnimation(options: {
 }
 
 /**
- * Контейнер реакций сообщения.
+ * Ряд реакций сообщения — порт `ReactionsElement.render`
+ * (tweb reactions.ts:259-360) вместе с его ГЛАВНЫМ свойством: ряд и его чипы
+ * ПЕРЕЖИВАЮТ обновление сообщения. Оригинал снимает только те чипы, чьей
+ * реакции больше нет (:290-299), остальные находит по значению реакции
+ * (:311-317), обновляет на месте и переставляет `positionElementByIndex`
+ * (:358-360).
  *
- * `undefined` — реакций нет вовсе, и узла быть не должно: пустой контейнер
- * занял бы строку под баблом (тот же гейт у оригинала — :9835-9837
- * `!reactions.results.length`).
+ * Почему это не косметика. Эффект постановки реакции (`fireAroundAnimation`)
+ * держится за ЖИВОЙ узел `.reaction-sticker`: оверлей `div.reaction-sticker-activate`
+ * лежит внутри него, а летящая around-анимация снимает себя сама, как только
+ * её цель ушла из документа (`wrappers/stickerAnimation.ts`, порт tweb
+ * stickerAnimation.ts:126,154 — `!isInDOM(target)`). Пока ряд пересобирался
+ * заново, ответ сервера на мой же клик (второй `message_edit` через ~300 мс
+ * после оптимистичного) выбрасывал чип вместе с играющим эффектом — эффект
+ * обрывался через десятки миллисекунд после старта. Замер на стенде:
+ * старт эффекта +221 мс от клика, снос ряда +305 мс, эффект жил 86 мс вместо
+ * ~1470 мс.
+ *
+ * `existing` — ряд ЭТОГО ЖЕ бабла прошлого поколения (`null`/отсутствует, если
+ * реакций не было вовсе). Возвращается он же, обновлённый, либо новый узел,
+ * либо `undefined` — реакций не осталось, и узла быть не должно: пустой ряд
+ * занял бы строку под баблом (тот же гейт у оригинала — bubbles.ts:9835-9837
+ * `!reactions.results.length`). В последнем случае прошлый узел снимается
+ * здесь же — его владелец больше ничего о нём не знает.
  *
  * Без `options` спросить нечего и некому: чипы рисуются текстовым эмодзи, без
  * иконки каталога, без аватарок и без эффекта. По счётчику это ровно ветка
  * оригинала `canRenderAvatars === false` (число тогда показывается всегда,
  * reaction.ts:1029).
  */
-export function createReactionsElement(
+export function renderReactionsElement(
+  existing: HTMLElement | null | undefined,
   reactions: MessageReactions | undefined,
   options?: ReactionsElementOptions,
 ): HTMLElement | undefined {
   const results = reactions?.results
-  if (!results?.length) return undefined
 
-  // Прошлое поколение чипов гасит СВОИ аватарки: у оригинала чип переживает
-  // обновление и своей зоной актуальности владеет сам, у нас узел новый, и
-  // старую зону некому закрыть, кроме владельца новой.
-  options?.previous?.querySelectorAll<ReactionChip>('.reaction').forEach((chip) => {
-    chip.stackedAvatars?.destroy()
-  })
+  // Прошлая версия ряда нужна ДО того, как чипы обновятся: она и есть
+  // «предыдущий агрегат» для `changedResults` (см. `snapshotPrevious`).
+  const previous = snapshotPrevious(existing)
+
+  if (!results?.length) {
+    destroyChips(existing, () => true)
+    existing?.remove()
+    return undefined
+  }
 
   // tweb reactions.ts:304-307 — условие ЦЕЛИКОМ. Аватарки вместо числа
   // показываются там, где видно, КТО поставил реакцию, — и это ТОТ ЖЕ вопрос,
@@ -1055,22 +1125,42 @@ export function createReactionsElement(
     canViewReactionsList(reactions, options.peerId) &&
     totalReactions(reactions) < REACTIONS_DISPLAY_COUNTER_AT
 
-  const container = document.createElement('div')
-  container.classList.add('reactions', 'reactions-block', 'reactions-like-block')
+  let container = existing ?? undefined
+  if (!container) {
+    container = document.createElement('div')
+    container.classList.add('reactions', 'reactions-block', 'reactions-like-block')
+  }
+
+  // tweb :290-299 — чипы, чьей реакции в новом агрегате нет, снимаются вместе
+  // со своей зоной актуальности (там это `middlewareHelper.destroy()`, у нас
+  // зону держит стек аватарок).
+  const keys = new Set(results.map((count) => reactionKey(count.reaction)))
+  const reusable = new Map<string, ReactionChip>()
+  destroyChips(container, (chip) => {
+    const key = chip.dataset.reaction
+    if (key !== undefined && keys.has(key)) {
+      reusable.set(key, chip)
+      return false
+    }
+    return true
+  })
 
   const chips = results.map((count, idx, arr) => {
-    const chip = createReaction(count, reactions!, canRenderAvatars, options)
+    // tweb :311-317 — прежний чип этой же реакции, иначе новый.
+    const chip = reusable.get(reactionKey(count.reaction)) ?? createReaction(count, options)
+    updateReaction(chip, count, reactions!, canRenderAvatars, options)
     // tweb reactions.ts:319 — последний чип ряда без внешнего отступа справа
     // (`_reaction.scss:227-229`), иначе ряд шире своего содержимого.
     chip.classList.toggle('is-last', idx === arr.length - 1)
-    container.append(chip)
+    // tweb :358-360 — порядок задаётся перестановкой, а не пересборкой.
+    positionElementByIndex(chip, container!, idx)
     return { count, chip }
   })
 
   // tweb reactions.ts:419-428: эффект играется только у УЖЕ показанного бабла;
   // пока бабл собирается, «изменения» нет по построению — это первая сборка.
   if (options?.bubble.isConnected) {
-    const changed = getChangedResults(results, options.previous, !!options.isOut)
+    const changed = getChangedResults(results, previous, !!options.isOut)
     if (changed.length) {
       void handleChangedResults(
         chips.filter(({ count }) => changed.includes(count)),
@@ -1080,4 +1170,18 @@ export function createReactionsElement(
   }
 
   return container
+}
+
+/** Снять чипы ряда по признаку, погасив их зоны актуальности (стек аватарок
+ *  держит свою — `StackedAvatars.destroy`). Порт `forEachReverse` из
+ *  tweb reactions.ts:290-299. */
+function destroyChips(
+  container: HTMLElement | null | undefined,
+  shouldRemove: (chip: ReactionChip) => boolean,
+): void {
+  container?.querySelectorAll<ReactionChip>(':scope > .reaction').forEach((chip) => {
+    if (!shouldRemove(chip)) return
+    chip.stackedAvatars?.destroy()
+    chip.remove()
+  })
 }

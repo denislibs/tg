@@ -1,14 +1,21 @@
-// Эхо своего клика по реакции НЕ пересобирает ряд реакций.
+// Ряд реакций ПЕРЕЖИВАЕТ и свой клик, и эхо сервера.
 //
 // Кадр реакции сервер шлёт всем членам чата, включая автора клика
 // (backend/internal/usecase/chat/reaction.go), поэтому через 10–130 мс после
 // оптимистичной дельты приходит абсолютный агрегат, описывающий ТО ЖЕ самое
-// состояние. Пока слияние всегда возвращало новый объект, окно получало вторую
-// операцию `patch`, а лента на неё пересобирает ряд целиком — и выбрасывает из
-// документа узел чипа, вокруг которого В ЭТОТ МОМЕНТ летит эффект реакции
-// (`components/wrappers/stickerAnimation.ts` снимает полёт по «узла нет в
-// документе»). Отсюда и была жалоба «анимация то играет, то нет»: успеет ли
-// `around.tgs` догрузиться до второго пересбора, решал кэш.
+// состояние. Защит здесь ДВЕ, и они на разных уровнях:
+//
+//  1. воркер на такой кадр не порождает операции вовсе (слияние возвращает тот
+//     же объект) — пин в `core/managers/messages/reactionMethods.test.ts:193`;
+//  2. лента, получив обновление, ряд НЕ ПЕРЕСОБИРАЕТ, а обновляет на месте —
+//     порт tweb (bubbles.ts:1285-1289 + reactions.ts:290-360), пин здесь.
+//
+// Второй уровень и есть настоящее лечение жалобы «ставишь реакцию — анимация
+// обрывается»: эффект летит вокруг узла `.reaction-sticker` и снимает себя
+// сам, как только цель ушла из документа (`components/wrappers/
+// stickerAnimation.ts`). Пока ряд пересобирался, ЛЮБОЕ обновление сообщения —
+// не только эхо — обрывало анимацию: замер на стенде показал 86 мс жизни
+// эффекта вместо ~1470 мс.
 //
 // Стенд намеренно СКВОЗНОЙ: клик идёт в НАСТОЯЩИЙ менеджер воркера, его
 // операции применяются к зеркалу тем же `applyOpsToMirror`, которым их
@@ -150,43 +157,50 @@ const chipRow = (container: HTMLElement) => container.querySelector<HTMLElement>
 const chip = (container: HTMLElement) => container.querySelector<HTMLElement>('.reaction')!
 
 describe('эхо своего клика по реакции', () => {
-  it('после клика ряд пересобирается ОДИН раз, эхо второго пересбора не даёт', async () => {
+  it('ни клик, ни эхо ряд не пересобирают — узлы те же и остаются в документе', async () => {
     const { mgr, container, rebuilds } = await stand()
+
+    const beforeClick = chipRow(container)
+    const chipBeforeClick = chip(container)
+    const stickerBeforeClick = container.querySelector<HTMLElement>('.reaction-sticker')!
 
     chip(container).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
     await settle()
-    const afterClick = chipRow(container)
-    const chipAfterClick = chip(container)
-    expect(rebuilds()).toBe(1)
+
+    expect(rebuilds()).toBe(0)
+    expect(chipRow(container)).toBe(beforeClick)
+    expect(chip(container)).toBe(chipBeforeClick)
     // Клик применён оптимистично: чип стал моим и посчитал меня.
-    expect(chipAfterClick.classList.contains('is-chosen')).toBe(true)
-    expect(chipAfterClick.dataset.count).toBe('2')
+    expect(chipBeforeClick.classList.contains('is-chosen')).toBe(true)
+    expect(chipBeforeClick.dataset.count).toBe('2')
 
     // Кадр от сервера — тем же путём, каким его применяет вкладка
     // (workerCore.dispatch: messages.cacheReaction → applyOpsToMirror).
     applyOpsToMirror(mgr.cacheReaction(echoFrame(2)))
     await settle()
 
-    expect(rebuilds()).toBe(1)
-    // Узел чипа тот же и ОСТАЁТСЯ В ДОКУМЕНТЕ — иначе эффект реакции снимает
-    // сам себя по «узла нет в документе».
-    expect(chipRow(container)).toBe(afterClick)
-    expect(chip(container)).toBe(chipAfterClick)
-    expect(chipAfterClick.isConnected).toBe(true)
+    expect(rebuilds()).toBe(0)
+    // Узел ЦЕЛИ эффекта тот же и ОСТАЁТСЯ В ДОКУМЕНТЕ — иначе летящая
+    // around-анимация снимает сама себя по «узла нет в документе».
+    expect(chipRow(container)).toBe(beforeClick)
+    expect(chip(container)).toBe(chipBeforeClick)
+    expect(container.querySelector('.reaction-sticker')).toBe(stickerBeforeClick)
+    expect(chipBeforeClick.isConnected).toBe(true)
   })
 
-  it('кадр с ЧУЖИМ кликом ряд пересобирает — обновление не потеряно', async () => {
+  it('кадр с ЧУЖИМ кликом обновляет ряд НА МЕСТЕ — обновление не потеряно', async () => {
     const { mgr, container, rebuilds } = await stand()
 
     chip(container).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
     await settle()
-    expect(rebuilds()).toBe(1)
+    const chipAfterClick = chip(container)
 
     applyOpsToMirror(mgr.cacheReaction(echoFrame(3)))
     await settle()
 
-    expect(rebuilds()).toBe(2)
-    expect(chip(container).dataset.count).toBe('3')
-    expect(chip(container).classList.contains('is-chosen')).toBe(true)
+    expect(rebuilds()).toBe(0)
+    expect(chip(container)).toBe(chipAfterClick)
+    expect(chipAfterClick.dataset.count).toBe('3')
+    expect(chipAfterClick.classList.contains('is-chosen')).toBe(true)
   })
 })
