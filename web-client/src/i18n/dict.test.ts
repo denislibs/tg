@@ -167,8 +167,12 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // остальных четырёх словарях ключа нет намеренно — они покрыты наполовину by
 // design, под ними английский нижний слой. «Онлайн» в русском не склоняется,
 // поэтому ключ стоит в `RU_INDECLINABLE`.
+// Сдвиг набора задачей 12 волны 3 (витрина подарков на Solid): русскому добавлены
+// `StarGiftCollectionsEmptyOther` (пустая витрина, tweb lang.ts:3326) и
+// `StarGiftLimitedBadgeNum` (бейдж «1 of %s», tweb lang.ts:3178) — оба зовёт
+// `components/stargifts/*.solid.tsx`; `keys` 1311 → 1313, форм числа нет.
 const COMPOSITION = {
-  ru: { keys: 1311, plural: 33 },
+  ru: { keys: 1313, plural: 33 },
   uk: { keys: 682, plural: 24 },
   es: { keys: 681, plural: 24 },
   de: { keys: 681, plural: 24 },
@@ -245,8 +249,10 @@ const COMPOSITION = {
 // Сдвиг набора задачей «открытие чата по ссылке»: русскому добавлены
 // `NoUsernameFound` и `Alert.UserDoesntExists` (разбор — у `COMPOSITION` выше).
 // У остальных четырёх словарей набор не менялся — их снимок тот же.
+// Сдвиг задачей 12 волны 3: русскому добавлены два ключа витрины подарков
+// (разбор — у `COMPOSITION` выше), остальные четыре без изменений.
 const FINGERPRINT = {
-  ru: 'a2edf950',
+  ru: '1700b0b5',
   uk: 'e1335ac1',
   es: 'a6b1aad3',
   de: 'a6b1aad3',

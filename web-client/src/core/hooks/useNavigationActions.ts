@@ -6,11 +6,10 @@ import { useCallback } from 'react'
 import type { TopicRow } from '../managers/groupsManager'
 import type { OpenPeer } from '../../data'
 import { useManagers } from './useManagers'
-import { useChatsStore, loadPresence } from '../../stores/chatsStore'
 import { useNavigationStore } from '../../stores/navigationStore'
 import { useChatStackStore } from '../../stores/chatStackStore'
-import { isAnyChat } from '../peers/peerId'
 import { peerTitle } from '../peerCache'
+import { openPeer as openPeerPlain } from '../navigation/openPeer'
 
 export function useNavigationActions() {
   const managers = useManagers()
@@ -46,28 +45,10 @@ export function useNavigationActions() {
   }, [])
 
   // Открыть чат с пользователем (участник, автор в группе, результат поиска).
-  // Переиспользует существующий приватный диалог; иначе — черновик, который
-  // становится реальным чатом лишь после первого сообщения.
-  const openPeer = useCallback((peer: OpenPeer) => {
-    const nav = useNavigationStore.getState()
-    const { meId, dialogs } = useChatsStore.getState()
-    if (meId != null && peer.id === meId) return // skip self for now
-    // Ключ пира И ЕСТЬ ключ диалога: у приватного это id собеседника, у
-    // группы/канала `-id`. Прежняя пара `id` + `chatId` описывала одно число
-    // двумя, и ветка «диалог уже известен» была отдельной. Черновик бывает
-    // только у ЧЕЛОВЕКА — группы/канала без диалога открыть нечем.
-    if (isAnyChat(peer.id) || dialogs.some((d) => d.peerId === peer.id)) {
-      nav.selectChat(String(peer.id))
-      return
-    }
-    // selectChat кладёт корневой инстанс в chatStackStore (иначе ChatsContainer
-    // ничего не отрендерит — с переездом App.tsx на стек он больше НЕ читает
-    // draftPeer/selectedId напрямую), но сам обнуляет draftPeer в своём set() —
-    // поэтому setDraftPeer идёт ВТОРЫМ, восстанавливая peer уже после него.
-    nav.selectChat(`draft:${peer.id}`)
-    nav.setDraftPeer(peer)
-    void loadPresence(managers, [peer.id])
-  }, [managers])
+  // Само правило («диалог есть → выбрать, человека без диалога → черновик»)
+  // живёт в `core/navigation/openPeer.ts` — им же пользуется Solid-список
+  // «Чаты» правой колонки, у которого React-хука нет.
+  const openPeer = useCallback((peer: OpenPeer) => openPeerPlain(managers, peer), [managers])
 
   // Первое сообщение в черновике создало реальный чат: обновить список и открыть.
   const onChatCreated = useCallback((peerId: PeerId) => {

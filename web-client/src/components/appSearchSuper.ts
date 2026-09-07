@@ -169,6 +169,40 @@
 //     неё, поэтому `processUrlFilter` у нас синхронный.
 // 25. `wrapPlainText(display_url…)` (`tweb:1057`) без сущностей — тождество
 //     (`wrapPlainText.ts:7-13`); хост дописывается строкой.
+// 36. Solid-вкладки «Подарки» и «Чаты» монтируются мостом `mountSolid`
+//     (`shared/solid/mountSolid.solid.tsx`, `ErrorBoundary` сдерживания), а не
+//     прямым вызовом компонента внутри своего `createRoot` (`tweb:2137-2168`,
+//     `:1894-1930`). `store`/`actions` витрины класс получает `ref`-пропом
+//     (`stargifts/profileList.solid.tsx`, «Форма шва с классом»), а не из
+//     возврата функции; `getFirstChild(giftsList)` (`:2165`) не нужен — мост
+//     сам кладёт дерево в `itemsTab`.
+// 37. `stargiftsStore`/`stargiftsActions` СБРАСЫВАЮТСЯ по `middleware.onClean`
+//     (`cleanup()` → смена пира). В оригинале поля живут вечно (`cleanup`
+//     `:2714-2754` их не трогает): там `setQuery` зовётся один раз на
+//     экземпляр вкладки (`sharedMedia.tsx:47-58`), у нас класс переживает
+//     смену пира, и без сброса `canLoadMediaTab` (`:2363-2365`) считал бы
+//     витрину прошлого пира дочитанной.
+// 38. `setPinnedGifts` (`tweb:2579-2610`) рисует СИМВОЛ подарка (`gift.emoji`)
+//     вместо стикера `wrapSticker({static: true, doc: gift.sticker, 18×18})`:
+//     в модели внешность подарка — unicode-символ, документа-стикера нет
+//     (`core/messages/messageAction.ts`, докблок `StarGift`). Узел несёт тот же
+//     класс `media-sticker-wrapper`, которым его метит `wrapSticker`, — на него
+//     рассчитан `.search-super-pinned-gifts .media-sticker-wrapper`
+//     (`_searchSuper.scss:415-419`).
+// 39. Перехват свайпа вкладкой `gifts` (`tweb:508-511`,
+//     `stargiftsActions.handleSwipe(xDiff, stargiftsSetCollection)`) не
+//     портирован: `handleSwipe` листает КОЛЛЕКЦИИ подарков, а коллекций у
+//     ручки `GET /users/{id}/gifts` нет (`stargifts/profileStore.solid.ts`).
+//     Вкладка `stories` (`:513-515`) в правой колонке у нас не вкладка
+//     (`docs/tweb/shared-media.md` § 2.1).
+// 40. `loadSavedDialogs` (`tweb:1890-1941`): вместо `AutonomousSavedDialogList`
+//     + `SortedDialogList` (пагинация `onChatsScroll(side)`, счётчик из
+//     `dialogsStorage.getDialogs`) — Solid `sidebarRight/savedDialogsTab.solid.tsx`
+//     поверх порта `verticalVirtualList.tsx`: набор приезжает ОДНИМ RPC
+//     (`chats.savedDialogs`), поэтому `side` не читается, а счётчик — длина
+//     набора. `openSavedDialogsInner`/`slider` (`:430`, `:1915`) не в опциях:
+//     окна сохранённого диалога у нас нет, клик открывает оригинальный чат
+//     пира (`core/navigation/openPeer.ts`), — см. шапку вкладки.
 import Scrollable, { ScrollableX } from '@components/scrollable'
 import { horizontalMenu } from '@components/horizontalMenu'
 import type { SelectTab } from '@components/horizontalMenu'
@@ -217,6 +251,13 @@ import { wrapAbbreviation } from '@lib/richtext/abbreviation'
 import wrapRichText from '@lib/richtext/wrapRichText'
 import { ANCHOR_ACTION_ATTRIBUTE, matchUrl, setBlankToAnchor } from '@lib/richtext/url'
 import setInnerHTML from '@helpers/dom/setInnerHTML'
+import { createEffect, on } from 'solid-js'
+import { unwrap } from 'solid-js/store'
+import { mountSolid } from '@shared/solid/mountSolid.solid'
+import { StarGiftsProfileTab, type StarGiftsProfileTabProps } from '@components/stargifts/profileList.solid'
+import type { StarGiftsProfileActions, StarGiftsProfileStore } from '@components/stargifts/profileStore.solid'
+import SavedDialogsTab, { type SavedDialogsTabProps } from '@components/sidebarRight/savedDialogsTab.solid'
+import type { SavedStarGift } from '@core/managers/starsManager'
 
 /**
  * tweb `:111` — фильтр сообщений (`inputMessagesFilterPhotoVideo` и т.п.).
@@ -287,8 +328,11 @@ type SearchSuperLoadTypeOptions = {
   justLoad: boolean
   loadCount: number
   middleware: Middleware
-  /** С какого края догружаем. Единственный читатель — `loadSavedDialogs`
-   *  (`tweb:2203`, `:2398`), он приезжает задачей 12. */
+  /** С какого края догружаем. Единственный читатель у оригинала —
+   *  `loadSavedDialogs` (`tweb:1892`, `:2203`, `:2398`): там `side` уходит в
+   *  пагинацию `AutonomousSavedDialogList.onChatsScroll`; у нас список приезжает
+   *  одним RPC, и наш `loadSavedDialogs` его не читает — расхождение 40. Поле
+   *  остаётся: это форма публичного `load(single, justLoad, side)`. */
   side: 'top' | 'bottom'
 }
 
@@ -320,10 +364,18 @@ type ProcessSearchSuperResult = {
 /** tweb `:1173` — узел вкладки вместе с сообщением, из которого он собран. */
 type SearchSuperItem = { element: HTMLElement, message: MyMessage }
 
-/** Ручки менеджеров, которыми пользуется подсистема — расхождения 6 и 20 в шапке. */
+/**
+ * Ручки менеджеров, которыми пользуется подсистема — расхождения 6 и 20 в
+ * шапке. `chats`/`stars`/`presence` — вкладки «Чаты» и «Подарки» (задача 12):
+ * список сохранённых, витрина подарков и присутствие пира для черновика
+ * (`core/navigation/openPeer.ts`).
+ */
 export type SearchSuperManagers = {
   messages: Pick<Managers['messages'], 'mediaHistory' | 'searchCounters'>
   peers: Pick<Managers['peers'], 'fillMirror'>
+  chats: SavedDialogsTabProps['managers']['chats']
+  stars: StarGiftsProfileTabProps['managers']['stars']
+  presence: SavedDialogsTabProps['managers']['presence']
 }
 
 /** Вид шаред-медиа на проводе (`GET /chats/{id}/media?filter=…`). */
@@ -411,6 +463,9 @@ export default class AppSearchSuper {
   private loadPromises: Partial<Record<SearchSuperMediaType, Promise<unknown> | null>> = {}
   private loaded: Partial<Record<SearchSuperMediaType, boolean>> = {}
 
+  /** tweb `:398` — «список сохранённых уже смонтирован»; см. `loadSavedDialogs`. */
+  private _loadSavedDialogs?: () => Promise<void>
+
   /** tweb `:427-428` — число элементов вкладки; читает шапка профиля. */
   public counters: Partial<Record<SearchSuperMediaType, number>> = {}
   public onLengthChange?: (type: SearchSuperMediaType, length: number) => void
@@ -450,6 +505,11 @@ export default class AppSearchSuper {
    * и так публичные.
    */
   public menuGradient: HTMLElement
+
+  /** tweb `:434-435` — стор и действия витрины подарков; живут от `loadGifts`
+   *  до `middleware.clean()` (расхождение 37). */
+  public stargiftsStore?: StarGiftsProfileStore
+  public stargiftsActions?: StarGiftsProfileActions
 
   /** см. расхождение 2 в шапке файла */
   private disposeSections: (() => void)[] = []
@@ -516,7 +576,7 @@ export default class AppSearchSuper {
 
           // tweb `:508-515` — у вкладок `gifts`/`stories` своя горизонтальная
           // навигация (коллекции/альбомы), и она перехватывает свайп первой.
-          // Обе вкладки приезжают задачами 11-12 вместе со своими `*Actions`.
+          // Не портировано — расхождение 39 в шапке.
 
           // Соседняя СКРЫТАЯ вкладка пропускается: `hide` на строке ряда значит
           // «в этом чате такой вкладки нет» (`tweb:517-531`).
@@ -1285,9 +1345,104 @@ export default class AppSearchSuper {
   }
 
   /**
-   * tweb `:2362-2369`. Ветка подарков (`stargiftsStore`) приедет задачей 12.
+   * tweb `:1890-1941` — вкладка «Чаты» (savedDialogs). Список — Solid
+   * `SavedDialogsTab` (расхождение 40 в шапке) в карточке секции
+   * (`mediaTab.itemsTab`), хост окна — скроллер ВСЕЙ панели (`:1897`, `:1904`).
+   * Второй и последующие вызовы (`:1891-1893`) ничего не догружают: страница
+   * одна. `afterPerforming(1, mediaTab)` (`:1932`) раскрывает карточку до
+   * ответа — как и в оригинале, где список сначала пуст.
    */
+  private loadSavedDialogs({ mediaTab, middleware }: SearchSuperLoadTypeOptions): Promise<void> {
+    if(this._loadSavedDialogs) {
+      return this._loadSavedDialogs()
+    }
+
+    const { dispose } = mountSolid<SavedDialogsTabProps>(mediaTab.itemsTab!, SavedDialogsTab, {
+      scrollableHost: this.scrollable.container,
+      managers: this.managers,
+      // `getCount` → `setCounter` (`:1922-1932`)
+      onCountChange: (count) => {
+        if(!middleware()) return
+        this.setCounter(mediaTab.type, count)
+      },
+    })
+
+    this.afterPerforming(1, mediaTab)
+
+    this._loadSavedDialogs = () => Promise.resolve()
+    middleware.onClean(() => {
+      dispose()
+      this._loadSavedDialogs = undefined
+    })
+
+    return Promise.resolve()
+  }
+
+  /**
+   * tweb `:2130-2179` — вкладка «Подарки». Первый вызов монтирует Solid-витрину
+   * (расхождение 36) и отдаёт ей счётчик: ноль подарков прячет строку ряда, а
+   * если витрина была активной — уступает первой видимой вкладке
+   * (`:2143-2153`). Каждый новый набор кладёт первые три подарка в имя вкладки
+   * (`setPinnedGifts`, `:2156-2160`). Повторный вызов — догрузка
+   * (`:2174-2178`), у нас после первого ответа набор дочитан.
+   */
+  private loadGifts(): Promise<void> {
+    const mediaTab = this.mediaTabsMap.get('gifts')
+    if(!mediaTab) return Promise.resolve()
+
+    if(!this.stargiftsStore) {
+      const middleware = this.middleware.get()
+      const { dispose } = mountSolid<StarGiftsProfileTabProps>(mediaTab.itemsTab!, StarGiftsProfileTab, {
+        peerId: this.searchContext.peerId,
+        managers: this.managers,
+        onCountChange: (count) => {
+          this.setCounter('gifts', count)
+
+          mediaTab.menuTab!.classList.toggle('hide', count === 0)
+          let needChangeActive = false
+          if(count === 0) {
+            needChangeActive = mediaTab.menuTab!.classList.contains('active')
+            mediaTab.menuTab!.classList.remove('active')
+          }
+          this.updateContainerHidden(needChangeActive)
+        },
+        ref: ({ store, actions }) => {
+          // `:2156-2160`; условие `chosenCollection === ALL_COLLECTIONS_ID`
+          // у нас всегда истинно — коллекций нет (расхождение 39).
+          createEffect(on(() => store.items, (items) => {
+            if(items.length > 0) {
+              this.setPinnedGifts(unwrap(items))
+            }
+          }))
+          this.stargiftsStore = store
+          this.stargiftsActions = actions
+        },
+      })
+      // расхождение 37 — сброс вместе с корнем
+      middleware.onClean(() => {
+        dispose()
+        this.stargiftsStore = this.stargiftsActions = undefined
+      })
+
+      if(this.mediaTab?.type === 'gifts') {
+        this.onChangeTab?.(this.mediaTab)
+      }
+      return Promise.resolve()
+    }
+
+    if(this.stargiftsStore.loading || this.stargiftsStore.loaded) {
+      return Promise.resolve()
+    }
+
+    return this.stargiftsActions!.loadNext()
+  }
+
+  /** tweb `:2362-2369`. */
   private canLoadMediaTab(mediaTab: SearchSuperMediaTab) {
+    if(mediaTab.type === 'gifts') {
+      return !this.stargiftsStore || (!this.stargiftsStore.loading && !this.stargiftsStore.loaded)
+    }
+
     const inputFilter = mediaTab.inputFilter
     const history = inputFilter && this.historyStorage[inputFilter]
     return !this.loaded[mediaTab.type] ||
@@ -1314,8 +1469,32 @@ export default class AppSearchSuper {
       return running
     }
 
-    // Типы без фильтра сообщений (участники, подарки, сохранённые…) — задачи
-    // 11-12; у оригинала здесь развилка `:2197-2227`.
+    // tweb `:2197-2226` — развилка типов без фильтра сообщений. Участники и
+    // общие группы (`:2197-2198`) — задача 11; истории/похожие каналы/чаты/
+    // приложения/посты — не вкладки правой колонки у нас
+    // (`docs/tweb/shared-media.md` § 2.1).
+    let tabPromise: Promise<unknown> | undefined
+    if(type === 'savedDialogs') {
+      tabPromise = this.loadSavedDialogs(options)
+    } else if(type === 'gifts') {
+      tabPromise = this.loadGifts()
+    }
+
+    if(tabPromise) {
+      return this.loadPromises[type] = tabPromise.finally(() => {
+        if(!middleware()) {
+          return
+        }
+
+        this.loadPromises[type] = null
+
+        // докрутить, если содержимого не хватило на экран (`:2222-2224`)
+        setTimeout(() => {
+          this.scrollable.checkForTriggers?.()
+        }, 0)
+      })
+    }
+
     const wireFilter = inputFilter && WIRE_FILTER[inputFilter]
     if(!inputFilter || !wireFilter) {
       return Promise.resolve()
@@ -1445,6 +1624,63 @@ export default class AppSearchSuper {
     }))
 
     return Promise.all(promises).then(() => undefined)
+  }
+
+  /**
+   * tweb `:2579-2610` — первые три подарка набора рисуются в имени вкладки
+   * (`menuTabName`, тот самый узел `i18n(mediaTab.name)`), под классом-обёрткой
+   * `search-super-pinned-gifts-wrap`. Пустой набор снимает узел; повторный
+   * вызов ПОДМЕНЯЕТ детей (`replaceChildren`), а не копит. Символ вместо
+   * стикера — расхождение 38 в шапке; `Promise.all` оригинала ждал рендера
+   * стикеров, символу ждать нечего — узлы строятся синхронно.
+   */
+  public setPinnedGifts(gifts: SavedStarGift[]) {
+    const giftsTab = this.mediaTabsMap.get('gifts')
+    const menuTabName = giftsTab?.menuTabName
+    if(!menuTabName) return
+    menuTabName.classList.add('search-super-pinned-gifts-wrap')
+    const nodes = gifts.slice(0, 3).map((gift) => {
+      const div = document.createElement('div')
+      div.classList.add('media-sticker-wrapper')
+      div.textContent = gift.gift.emoji ?? ''
+      return div
+    })
+
+    let wrap = menuTabName.querySelector('.search-super-pinned-gifts')
+    if(nodes.length === 0) {
+      wrap?.remove()
+      return
+    }
+
+    if(!wrap) {
+      wrap = document.createElement('div')
+      wrap.className = 'search-super-pinned-gifts'
+      menuTabName.append(wrap)
+    }
+    wrap.replaceChildren(...nodes)
+  }
+
+  /** tweb `:2515-2518`. */
+  private toggleContainerHidden(hidden: boolean) {
+    this.container.classList.toggle('hide', hidden)
+    this.container.parentElement?.classList.toggle('search-empty', hidden)
+  }
+
+  /**
+   * tweb `:2520-2529` — пересчитать видимость подсистемы по строкам ряда: нет
+   * видимых вкладок → спрятать всё; одна → ряд `is-single`, градиент `hide`;
+   * `changeActive` — активная только что спряталась, выбрать первую видимую.
+   * Единственный вызывающий у оригинала — `loadGifts` (`:2153`).
+   */
+  private updateContainerHidden(changeActive = false) {
+    const visibleTabs = this.mediaTabs.filter((tab) => !tab.menuTab!.classList.contains('hide'))
+    this.toggleContainerHidden(visibleTabs.length === 0)
+    const isSingle = visibleTabs.length <= 1
+    this.navScrollableContainer.classList.toggle('is-single', isSingle)
+    this.menuGradient.classList.toggle('hide', isSingle)
+    if(changeActive && visibleTabs.length) {
+      this.selectTab(this.mediaTabs.indexOf(visibleTabs[0]), false)
+    }
   }
 
   /**

@@ -249,6 +249,8 @@ const ru = {
   StarGiftSoldOutBadge: 'Распродано',
   StarGiftShowLimited: 'Лимит',
   StarGiftFromShort: 'От',
+  StarGiftCollectionsEmptyOther: 'Подходящих подарков нет.',
+  StarGiftLimitedBadgeNum: '1 из %s',
   AuthorHiddenShort: 'Аноним',
   'StarGift.ShowInProfile': 'Показать в профиле',
   'StarGift.HideFromProfile': 'Скрыть из профиля',
