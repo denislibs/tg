@@ -22,7 +22,6 @@
 // ровно туда.
 //
 //  • `processEmptyFilter` (`:826-871`) — левая колонка, в правой его вкладки нет;
-//  • `SortedUserList`/участники — задача 11 (`tweb:1525-1758`);
 //  • `SearchSelection`, `SearchContextMenu` — задача 14 (`tweb:156-345`,
 //    `chat/selection.ts:583-763`).
 //
@@ -196,6 +195,42 @@
 //     единственный вызывающий (`onCountChange` подарков, `:2151-2154`)
 //     приезжает задачей 12, а приватный метод без читателя под
 //     `noUnusedLocals` — ошибка TS6133. Пин — `appSearchSuper.firstTime.test.ts`.
+// 31. `loadMembers` (`tweb:1525-1758`) портирован ОДНОЙ веткой — канала
+//     (`:1718-1739`, `getChannelParticipants` → наш `groups.channelParticipants`).
+//     Ветка «общих групп» (`userId`/`getCommonChats`, `:1696-1717`) — ручки
+//     нет (`docs/tweb/shared-media.md` § 3), поэтому `groups` в `loadType` на
+//     `loadMembers` не заводится; ветка legacy-чата (`getChatFull`,
+//     `:1740-1756`) — базовый `chat` бэкенд не производит вовсе (решение №2
+//     разбора, `core/peers/peerId.ts::getOutputPeer`).
+// 32. ЖИВЫЕ ОБНОВЛЕНИЯ состава. Кадра `updateChannelParticipant`
+//     (`chat_participant`, `:1627-1645`) на проводе нет: бэкенд на любое
+//     изменение состава публикует `updateChannelFullSnapshot`
+//     (`usecase/chat/group.go:153`, `:203`) — у нас `rt:chat_update`. Класс
+//     обрабатывает его так, как оригинал обрабатывает `chat_full_update`
+//     legacy-чата (`:1598-1625`): перечитывает список и сводит — новых рисует,
+//     ушедших снимает. Отличия от той ветки навязаны проводом: `channelFull`
+//     вектора `participants` не несёт, поэтому перечитывается ОТРИСОВАННОЕ
+//     ОКНО списка ручкой участников (`offset: 0, limit: nextRates`), а счётчик
+//     берётся из `count` ответа (как в самой ветке канала, `:1736`), а не
+//     ±1 на строку (`:1589`, `:1594`). Кадр общий на 13 поводов бэкенда
+//     (`publishChatUpdate`) — каждый из них перечитывает окно, пока список
+//     жив. Настоящее лекарство — кадр по участнику на бэкенде, см. § 3 дока.
+// 33. `slider`/`appSidebarRight` (расхождение 5) для участников заменены
+//     двумя колбэками хоста в опциях: `openPeer` — вместо
+//     `appImManager.setInnerPeer({peerId})` (`:1569`; `toggleSidebar(false)` на
+//     мобиле, `:1564-1566`, — тоже дело хоста) и `openUserPermissions` — вместо
+//     `openUserPermissionsTab(slider, …)` из меню участника (Solid-вкладка
+//     `AppUserPermissionsTab` не портирована). Тот же шов, что
+//     `BubblesNavigation.openPeer` у ленты; оба опциональны и зовутся через
+//     `?.`, как остальные колбэки хоста в этом классе.
+// 34. Проверка карточки участника (`:1667-1678`, `appPeersManager.getPeer`) —
+//     по ЗЕРКАЛУ (`cachedPeer`); пробел объявляется владельцу через
+//     `peers.fillMirror` (шов расхождения 20). Шов менеджеров расширен ручкой
+//     `groups` (`channelParticipants` + действия меню участника).
+// 35. `nextRates` (`tweb:381`) портирован здесь — под смещение страницы
+//     участников (`:1723`, `:1730`) и сброс в `cleanup` (`:2718`). Это
+//     пер-типовое поле подсистемы, а не курсор глобального поиска `nextRate`
+//     (расхождение 9).
 import Scrollable, { ScrollableX } from '@components/scrollable'
 import { horizontalMenu } from '@components/horizontalMenu'
 import type { SelectTab } from '@components/horizontalMenu'
@@ -244,7 +279,17 @@ import { wrapAbbreviation } from '@lib/richtext/abbreviation'
 import wrapRichText from '@lib/richtext/wrapRichText'
 import { ANCHOR_ACTION_ATTRIBUTE, matchUrl, setBlankToAnchor } from '@lib/richtext/url'
 import setInnerHTML from '@helpers/dom/setInnerHTML'
-import { isAnyChat, isUser } from '@core/peers/peerId'
+import SortedUserList from '@components/sortedUserList'
+import createParticipantContextMenu, { type Participant } from '@helpers/dom/createParticipantContextMenu'
+import { DIALOG_LIST_ELEMENT_TAG } from '@components/dialogRow'
+import findUpTag from '@helpers/dom/findUpTag'
+import filterAsync from '@helpers/array/filterAsync'
+import findAndSplice from '@helpers/array/findAndSplice'
+import findAndSpliceAll from '@helpers/array/findAndSpliceAll'
+import type { MiddlewareHelper } from '@helpers/middleware'
+import { getParticipantPeerId, getParticipantRank } from '@core/peers/participant'
+import { getPeerId, isAnyChat, isUser, toChatId } from '@core/peers/peerId'
+import { RT, type ChatUpdateEvt } from '@core/realtime/events'
 
 /**
  * tweb `:111` — фильтр сообщений (`inputMessagesFilterPhotoVideo` и т.п.).
@@ -348,10 +393,11 @@ type ProcessSearchSuperResult = {
 /** tweb `:1173` — узел вкладки вместе с сообщением, из которого он собран. */
 type SearchSuperItem = { element: HTMLElement, message: MyMessage }
 
-/** Ручки менеджеров, которыми пользуется подсистема — расхождения 6, 20 и 29 в шапке. */
+/** Ручки менеджеров, которыми пользуется подсистема — расхождения 6, 20, 29 и 34 в шапке. */
 export type SearchSuperManagers = {
   messages: Pick<Managers['messages'], 'mediaHistory' | 'searchCounters'>
   peers: Pick<Managers['peers'], 'fillMirror'>
+  groups: Pick<Managers['groups'], 'channelParticipants' | 'addMember' | 'removeMember' | 'unban'>
   /** предикаты первого показа (`canViewStories`, `canViewSavedDialogs`, `getGiftsCount`) */
   stories: Pick<Managers['stories'], 'pinnedStories'>
   chats: Pick<Managers['chats'], 'savedDialogs'>
@@ -401,6 +447,10 @@ export type AppSearchSuperOptions = {
   /** tweb `:428` — «во вкладке стало N элементов»; читает шапка профиля. */
   onLengthChange?: (type: SearchSuperMediaType, length: number) => void
   scrollOffset?: number
+  /** Открыть чат с участником — расхождение 33 в шапке. */
+  openPeer?: (peerId: PeerId) => void
+  /** Открыть экран прав участника из его меню — расхождение 33 в шапке. */
+  openUserPermissions?: (participant: Participant, isAdmin?: boolean) => void
 }
 
 export default class AppSearchSuper {
@@ -442,6 +492,8 @@ export default class AppSearchSuper {
   /** tweb `:379-380` — «этот тип уже грузится» и «этот тип дочитан до конца». */
   private loadPromises: Partial<Record<SearchSuperMediaType, Promise<unknown> | null>> = {}
   private loaded: Partial<Record<SearchSuperMediaType, boolean>> = {}
+  /** tweb `:381` — смещение следующей страницы по типу; расхождение 35 в шапке. */
+  private nextRates: Partial<Record<SearchSuperMediaType, number>> = {}
 
   /** tweb `:382`, `:420` — «вкладки ещё не выбирали» и живое обещание первого показа. */
   private firstLoad = true
@@ -456,6 +508,11 @@ export default class AppSearchSuper {
 
   private skipScroll?: boolean
 
+  /** tweb `:392-394` — состояние вкладки «Участники»: от первого рендера до `cleanup()`. */
+  private membersList?: SortedUserList
+  private membersParticipantMap?: Map<PeerId, Participant>
+  private membersMiddlewareHelper?: MiddlewareHelper
+
   // * arguments
   public mediaTabs!: SearchSuperMediaTab[]
   public scrollable!: Scrollable
@@ -464,6 +521,8 @@ export default class AppSearchSuper {
   public showSender? = false
   public onChangeTab?: (mediaTab: SearchSuperMediaTab) => void
   public scrollOffset?: number
+  public openPeer?: (peerId: PeerId) => void
+  public openUserPermissions?: (participant: Participant, isAdmin?: boolean) => void
 
   /** tweb `:416` — назначается потребителем (`sharedMedia.tsx:682-684`). */
   public scrollStartCallback?: (dimensions: ScrollStartCallbackDimensions) => void
@@ -1318,6 +1377,191 @@ export default class AppSearchSuper {
   }
 
   /**
+   * tweb `:1525-1758` — вкладка «Участники». `SortedUserList` создаётся ЛЕНИВО
+   * ОДИН РАЗ (`:1543-1574`) и живёт до `cleanup()`; каждая страница лишь
+   * доливает в него строки, первая партия — 50, дальше по 200 (`:1719`).
+   * Портирована ветка канала (`:1718-1739`) — расхождение 31; живые обновления
+   * — 32; навигация и подэкраны — 33; проверка карточки — 34; `nextRates` — 35.
+   */
+  private async loadMembers({ mediaTab }: SearchSuperLoadTypeOptions) {
+    const peerId = this.searchContext.peerId
+    const chatId = toChatId(peerId)
+    const middleware = this.middleware.get()
+
+    const renderParticipants = async(participants: Participant[]) => {
+      if(this.loadMutex) {
+        await this.loadMutex
+
+        if(!middleware()) {
+          return
+        }
+      }
+
+      let membersList = this.membersList,
+        membersParticipantMap = this.membersParticipantMap,
+        membersMiddlewareHelper = this.membersMiddlewareHelper
+      if(!membersList || !membersParticipantMap || !membersMiddlewareHelper) {
+        membersParticipantMap = this.membersParticipantMap = new Map()
+        membersMiddlewareHelper = this.membersMiddlewareHelper = getMiddleware()
+        membersList = this.membersList = new SortedUserList({
+          rippleEnabled: false,
+          managers: this.managers,
+          middleware,
+        })
+        attachClickEvent(membersList.list, (e) => {
+          if(findUpClassName(e.target!, 'has-stories')) {
+            return
+          }
+
+          const li = findUpTag(e.target!, DIALOG_LIST_ELEMENT_TAG)
+          if(!li) {
+            return
+          }
+
+          // `:1562-1570` — `toggleSidebar(false)` на мобиле и `setInnerPeer`
+          // здесь оба у хоста (расхождение 33).
+          this.openPeer?.(+li.dataset.peerId!)
+        })
+        mediaTab.itemsTab!.append(membersList.list)
+        this.afterPerforming(1, mediaTab)
+
+        if(chatId) {
+          const middleware = membersMiddlewareHelper.get()
+          createParticipantContextMenu({
+            chatId,
+            listenTo: membersList.list,
+            participants: membersParticipantMap,
+            managers: this.managers,
+            middleware,
+            openPeer: (peerId) => this.openPeer?.(peerId),
+            openUserPermissions: (participant, isAdmin) => this.openUserPermissions?.(participant, isAdmin),
+          })
+
+          // `:1585-1590` без `setCounter(… − 1)`: счётчик приходит из `count`
+          // перечитанного окна (расхождение 32).
+          const deleteByPeerId = (peerId: PeerId) => {
+            membersList!.ranks.delete(peerId)
+            membersList!.delete(peerId)
+            membersParticipantMap!.delete(peerId)
+          }
+
+          // `:1597-1625` в форме, навязанной проводом (расхождение 32):
+          // перечитать отрисованное окно, нарисовать новых, снять ушедших.
+          const onChatUpdate = async(update: ChatUpdateEvt) => {
+            if(getPeerId(update.peer) !== peerId) {
+              return
+            }
+
+            // Окно — всё отрисованное; если список был дочитан до конца, то
+            // и всё, что появилось за ним (число — из самого снимка).
+            const rendered = this.nextRates[mediaTab.type] || 0
+            if(!rendered) {
+              return
+            }
+
+            const total = update.chat_full?.full_chat?.participants_count ?? rendered
+            const limit = this.loaded[mediaTab.type] ? Math.max(rendered, total) : rendered
+            const participants = await this.managers.groups.channelParticipants(peerId, 0, limit)
+            if(!middleware()) {
+              return
+            }
+
+            this.nextRates[mediaTab.type] = participants.participants.length
+            this.loaded[mediaTab.type] = participants.participants.length >= participants.count
+            this.setCounter(mediaTab.type, participants.count)
+
+            const processedPeerIds = new Set<PeerId>()
+            for(const participant of participants.participants) {
+              processedPeerIds.add(getParticipantPeerId(participant))
+            }
+
+            membersParticipantMap!.forEach((_participant, peerId) => {
+              if(!processedPeerIds.has(peerId)) {
+                deleteByPeerId(peerId)
+              }
+            })
+
+            return renderParticipants(participants.participants)
+          }
+          rootScope.addEventListener(RT.chatUpdate, onChatUpdate)
+          middleware.onClean(() => {
+            rootScope.removeEventListener(RT.chatUpdate, onChatUpdate)
+          })
+        }
+      }
+
+      // `:1650-1665` — ветка `chatId`: пиры-чаты в списке участников пропускаются.
+      const peerIds = participants.flatMap((participant) => {
+        const peerId = getParticipantPeerId(participant)
+        if(isAnyChat(peerId)) {
+          return []
+        }
+
+        return [{
+          peerId,
+          rank: getParticipantRank(participant),
+          participant,
+        }]
+      })
+
+      // `:1667-1678` — карточка из зеркала, пробел объявляем владельцу
+      // (расхождение 34); удалённые аккаунты в список не попадают.
+      const filtered = await filterAsync(peerIds, async({ peerId }) => {
+        let peer = cachedPeer(peerId)
+        if(!peer) {
+          await this.managers.peers.fillMirror([peerId])
+          peer = cachedPeer(peerId)
+        }
+
+        if(!middleware()) {
+          return false
+        }
+
+        if(!peer || (peer._ === 'user' && peer.pFlags?.deleted)) {
+          return false
+        }
+
+        return true
+      })
+
+      for(const { peerId, rank, participant } of filtered) {
+        if(rank) {
+          membersList.ranks.set(peerId, rank)
+        } else {
+          membersList.ranks.delete(peerId)
+        }
+
+        membersParticipantMap.set(peerId, participant)
+        if(membersList.has(peerId)) {
+          void membersList.update(peerId)
+        } else {
+          void membersList.add(peerId)
+        }
+      }
+    }
+
+    // `:1718-1739` — страница участников канала; `groups.channelParticipants`
+    // — наш `getChannelParticipants` (расхождение 31).
+    const LOAD_COUNT = !this.membersList ? 50 : 200
+    return this.managers.groups.channelParticipants(peerId, this.nextRates[mediaTab.type] || 0, LOAD_COUNT).then((participants) => {
+      if(!middleware()) {
+        return
+      }
+
+      const list = mediaTab.itemsTab!.firstElementChild as HTMLUListElement | null
+      this.nextRates[mediaTab.type] = (list ? list.childElementCount : 0) + participants.participants.length
+
+      if(participants.participants.length < LOAD_COUNT) {
+        this.loaded[mediaTab.type] = true
+      }
+
+      this.setCounter(mediaTab.type, participants.count)
+
+      return renderParticipants(participants.participants)
+    })
+  }
+
+  /**
    * tweb `:2362-2369`. Ветка подарков (`stargiftsStore`) приедет задачей 12.
    */
   private canLoadMediaTab(mediaTab: SearchSuperMediaTab) {
@@ -1516,8 +1760,27 @@ export default class AppSearchSuper {
       return running
     }
 
-    // Типы без фильтра сообщений (участники, подарки, сохранённые…) — задачи
-    // 11-12; у оригинала здесь развилка `:2197-2227`.
+    // tweb `:2197-2227` — типы без фильтра сообщений. Портирована ветка
+    // участников (`groups` — расхождение 31); подарки и сохранённые — задача 12.
+    let special: Promise<unknown> | undefined
+    if(type === 'members') {
+      special = this.loadMembers(options)
+    }
+
+    if(special) {
+      return this.loadPromises[type] = special.finally(() => {
+        if(!middleware()) {
+          return
+        }
+
+        this.loadPromises[type] = null
+
+        setTimeout(() => {
+          this.scrollable.checkForTriggers?.()
+        }, 0)
+      })
+    }
+
     const wireFilter = inputFilter && WIRE_FILTER[inputFilter]
     if(!inputFilter || !wireFilter) {
       return Promise.resolve()
@@ -1639,8 +1902,13 @@ export default class AppSearchSuper {
     let toLoad = single ? [this.mediaTab] : this.mediaTabs.filter((t) => t !== this.mediaTab)
     toLoad = toLoad.filter((mediaTab) => this.canLoadMediaTab(mediaTab))
 
-    // `tweb:2551-2555` — «участники» у пользователя и «общие группы» у чата
-    // выбрасываются здесь; обе вкладки приезжают задачами 11-12.
+    // tweb `:2551-2555` — «участники» у пользователя и «общие группы» у чата
+    // выбрасываются здесь.
+    if(isUser(this.searchContext.peerId)) {
+      findAndSplice(toLoad, (mediaTab) => mediaTab.type === 'members')
+    } else {
+      findAndSpliceAll(toLoad, (mediaTab) => mediaTab.type === 'groups')
+    }
 
     if(!toLoad.length) {
       return
@@ -1771,14 +2039,14 @@ export default class AppSearchSuper {
    * отрисовано», а не «кэша нет» — вернувшись к тому же пиру, вкладки
    * нарисуются без сети (`tweb:2239-2276`).
    *
-   * Не портировано (нечего сбрасывать до своих задач): `loadedChats`/
-   * `nextRates` (`:2717-2718`) — расхождение 9; отмена выделения
-   * (`:2735-2737`) — задача 14; состояние участников (`:2749-2753`) — задача 11.
+   * Не портировано (нечего сбрасывать до своих задач):
+   * `loadedChats` — задача 12; отмена выделения (`:2735-2737`) — задача 14.
    */
   public cleanup() {
     this.loadPromises = {}
     this.loaded = {}
     this.firstLoad = true
+    this.nextRates = {}
     this.prevTabId = -1
     this.counters = {}
 
@@ -1796,6 +2064,13 @@ export default class AppSearchSuper {
     this.middleware.clean()
     this.loadFirstTimePromise = undefined
     this.cleanScrollPositions()
+
+    // tweb `:2749-2752` — состояние участников; следующий `loadMembers`
+    // заведёт список заново.
+    this.membersList = undefined
+    this.membersParticipantMap = undefined
+    this.membersMiddlewareHelper?.destroy()
+    this.membersMiddlewareHelper = undefined
   }
 
   /**

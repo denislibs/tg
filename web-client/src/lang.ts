@@ -17,7 +17,9 @@ const lang = {
   AddContact: 'Add to contacts',
   AddFactCheck: 'Add Fact Check',
   AddOneMemberAlertTitle: 'Add member',
+  AddToChannel: 'Add to Channel',
   AddToFavorites: 'Add to Favorites',
+  AddToGroup: 'Add to Group',
   Administrators: 'Administrators',
   'Alert.UserDoesntExists': 'Sorry, this user doesn\'t seem to exist.',
   AllReactions: 'All reactions',
@@ -196,6 +198,7 @@ const lang = {
   'Chat.Alert.Forward.HideSenderName': 'Hide sender name',
   'Chat.Alert.Forward.ShowCaption': 'Show caption',
   'Chat.Alert.Forward.ShowSenderName': 'Show sender name',
+  'Chat.ChannelBadge': 'channel',
   'Chat.ClearHistory.Text': 'Are you sure you want to clear history?',
   'Chat.Close': 'Close Chat',
   'Chat.CommentsLabel': 'Comments',
@@ -408,6 +411,7 @@ const lang = {
   'EditAccount.Logout': 'Log Out',
   'EditAccount.Title': 'Edit Profile',
   EditAdmin: 'Admin Rights',
+  EditAdminRights: 'Edit admin rights',
   EditAdminWhatCanDo: 'What can this admin do?',
   'EditContact.PhotoHint': 'You can suggest a new profile photo to your contact — or change their photo just for yourself.',
   EditFactCheck: 'Edit Fact Check',
@@ -592,6 +596,7 @@ const lang = {
   // текста, а самоназвание. Им подписана строка «Язык» в настройках, как у tweb
   // (`sidebarLeft/tabs/settings.tsx:254` — `i18n('LanguageName')`); списка
   // языков для этого не нужно.
+  KickFromSupergroup: 'Restrict user',
   LanguageName: 'English',
   LastName: 'Last name (optional)',
   'LastSeen.HoursAgo': {
@@ -1157,6 +1162,7 @@ const lang = {
   SessionsInfo: 'Manage your sessions on all your devices.',
   SessionsListInfo: 'The official Telegram app is available for Android, iPhone, iPad, Windows, macOS and Linux.',
   SessionsTitle: 'Active Sessions',
+  SetAsAdmin: 'Promote to admin',
   SetColor: 'Set a color',
   SetUrlPlaceholder: 'Link',
   Settings: 'Settings',

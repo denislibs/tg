@@ -50,6 +50,11 @@ function fakeBackend(world: World) {
       },
     },
     peers: { fillMirror: async () => {} },
+    // первый показ у группы открывает «Участники» и тут же их грузит (задача 11):
+    // пустой список — предмет этого файла лишь в том, КАКАЯ вкладка выбрана
+    groups: {
+      channelParticipants: async () => ({ _: 'channels.channelParticipants', count: 0, participants: [], chats: [], users: [] }),
+    },
     stories: {
       pinnedStories: async () => Array.from({ length: world.pinnedStories ?? 0 }, (_, i) => ({ id: i + 1 })),
     },

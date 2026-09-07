@@ -1671,6 +1671,14 @@ const ru = {
   // Самоназвание языка — им подписана строка «Язык» в настройках (tweb
   // `settings.tsx:254`, `i18n('LanguageName')`).
   LanguageName: 'Русский',
+  // ── Контекстное меню участника и ранг в строке (tweb
+  //    `createParticipantContextMenu.ts`, `wrappers/participantRank.ts`) ──
+  SetAsAdmin: 'Назначить администратором',
+  EditAdminRights: 'Изменить права администратора',
+  KickFromSupergroup: 'Ограничить пользователя',
+  AddToGroup: 'Добавить в группу',
+  AddToChannel: 'Добавить в канал',
+  'Chat.ChannelBadge': 'канал',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)
