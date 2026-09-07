@@ -1,6 +1,6 @@
 {
   "meta": {
-    "generatedAt": "2026-08-16",
+    "generatedAt": "2026-09-07",
     "twebDir": "/Users/denisurevic/Documents/tweb",
     "twebCommit": "e52b5d931"
   },
@@ -215,7 +215,7 @@
       "files": [
         "src/components/sidebarLeft/newAuthorization.module.scss"
       ],
-      "inOurScss": true,
+      "inOurScss": false,
       "inOurCode": true
     },
     "action-button": {
@@ -307,7 +307,7 @@
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "addCollection": {
       "files": [
@@ -812,7 +812,7 @@
         "src/scss/partials/_document.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "audio-ico": {
       "files": [
@@ -954,7 +954,7 @@
         "src/scss/partials/_audio.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "AuthorDate": {
       "files": [
@@ -1083,7 +1083,7 @@
         "src/scss/partials/_avatar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "avatar-128": {
       "files": [
@@ -1160,7 +1160,7 @@
         "src/scss/partials/_avatar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "avatar-34": {
       "files": [
@@ -1195,14 +1195,14 @@
         "src/scss/partials/_avatar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "avatar-42": {
       "files": [
         "src/scss/partials/_avatar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "avatar-44": {
       "files": [
@@ -1352,7 +1352,7 @@
         "src/scss/partials/_chat.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "avatar-for-suggested-reply-markup": {
       "files": [
@@ -1389,7 +1389,7 @@
         "src/scss/partials/_avatar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "avatar-icon-calendarfilter": {
       "files": [
@@ -1403,7 +1403,7 @@
         "src/scss/partials/_avatar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "avatar-icon-mynotes": {
       "files": [
@@ -1463,7 +1463,7 @@
         "src/scss/partials/_profile.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "avatar-stories-simple": {
       "files": [
@@ -1488,7 +1488,7 @@
         "src/scss/partials/_avatar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "avatarGroup": {
       "files": [
@@ -1515,7 +1515,7 @@
       "files": [
         "src/components/sidebarLeft/birthdaySuggestions.module.scss"
       ],
-      "inOurScss": true,
+      "inOurScss": false,
       "inOurCode": true
     },
     "avatarWrap": {
@@ -1553,7 +1553,7 @@
         "src/components/staticCheckbox.module.scss",
         "src/components/staticSwitch.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "background-colors-canvas": {
@@ -1701,7 +1701,7 @@
         "src/components/stargifts/stargiftsGrid.module.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "badgeSoldout": {
       "files": [
@@ -1721,7 +1721,7 @@
       "files": [
         "src/components/popups/createStarGiftOffer.module.scss"
       ],
-      "inOurScss": true,
+      "inOurScss": false,
       "inOurCode": true
     },
     "bg-warning": {
@@ -1943,15 +1943,15 @@
         "src/components/simpleFormField/styles.module.scss",
         "src/components/staticCheckbox.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "bordered": {
       "files": [
         "src/components/genericTable.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "BorderThick": {
       "files": [
@@ -2014,7 +2014,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "bottom": {
       "files": [
@@ -2269,7 +2269,7 @@
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "btn-control-small": {
       "files": [
@@ -2278,7 +2278,7 @@
         "src/scss/partials/_ripple.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "btn-corner": {
       "files": [
@@ -2334,7 +2334,7 @@
         "src/scss/partials/_button.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "btn-menu": {
       "files": [
@@ -2395,7 +2395,7 @@
         "src/scss/partials/_button.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "btn-menu-item-header": {
       "files": [
@@ -2543,7 +2543,7 @@
         "src/scss/partials/_button.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "btn-menu-reactions-reaction": {
       "files": [
@@ -2558,7 +2558,7 @@
         "src/scss/partials/_button.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "btn-menu-reactions-reaction-scale": {
       "files": [
@@ -2572,7 +2572,7 @@
         "src/scss/partials/_button.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "btn-menu-search": {
       "files": [
@@ -2964,14 +2964,14 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "bubble-gesture-reply-icon": {
       "files": [
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "bubble-giveaway": {
       "files": [
@@ -3158,7 +3158,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "bubble-service-media": {
       "files": [
@@ -3172,14 +3172,14 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "bubble-service-media-button": {
       "files": [
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "bubble-service-media-text": {
       "files": [
@@ -3299,7 +3299,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "bubble-view-button-text": {
       "files": [
@@ -3389,7 +3389,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "bubbles-inner": {
       "files": [
@@ -3420,14 +3420,14 @@
         "src/scss/partials/_chat.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "bubbles-remover-container": {
       "files": [
         "src/scss/partials/_chat.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "bubbles-scrollable": {
       "files": [
@@ -3600,7 +3600,7 @@
       "files": [
         "src/scss/partials/popups/_call.scss"
       ],
-      "inOurScss": true,
+      "inOurScss": false,
       "inOurCode": true
     },
     "call-avatar": {
@@ -3835,7 +3835,7 @@
         "src/scss/partials/_audio.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "can-zoom-fade": {
       "files": [
@@ -3863,7 +3863,7 @@
         "src/scss/partials/_row.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "canvas": {
       "files": [
@@ -3878,7 +3878,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "canvas-thumbnail": {
       "files": [
@@ -4695,7 +4695,7 @@
       "files": [
         "src/components/staticCheckbox.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "checkable-button-menu": {
@@ -4720,7 +4720,7 @@
       "files": [
         "src/components/staticCheckbox.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "checkbox-box": {
@@ -4864,7 +4864,7 @@
         "src/scss/partials/_checkbox.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "checkbox-toggle": {
       "files": [
@@ -4905,8 +4905,8 @@
       "files": [
         "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "checked": {
       "files": [
@@ -4950,15 +4950,15 @@
       "files": [
         "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "chosenCheckboxDot": {
       "files": [
         "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "circle-hover": {
       "files": [
@@ -5027,8 +5027,8 @@
       "files": [
         "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "close": {
       "files": [
@@ -5096,7 +5096,7 @@
         "src/scss/base.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "codeInputField": {
       "files": [
@@ -5150,21 +5150,21 @@
         "src/components/popups/previewCard/previewCard.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": true
+      "inOurCode": false
     },
     "collectionContent": {
       "files": [
         "src/components/stargifts/profileList.module.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "collections": {
       "files": [
         "src/components/stargifts/profileList.module.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "color-picker": {
       "files": [
@@ -5220,7 +5220,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "commonChats": {
       "files": [
@@ -5282,7 +5282,7 @@
       "files": [
         "src/components/chat/bubbles/checklist.module.scss"
       ],
-      "inOurScss": true,
+      "inOurScss": false,
       "inOurCode": true
     },
     "conference-fingerprint-badge": {
@@ -5367,7 +5367,7 @@
         "src/components/popups/createPoll/styles.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "connection-status-bottom": {
       "files": [
@@ -5551,14 +5551,14 @@
         "src/scss/base.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "contentWrapper": {
       "files": [
         "src/components/stargifts/profileList.module.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "contextmenu": {
       "files": [
@@ -5594,13 +5594,13 @@
         "src/scss/partials/_document.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "correct": {
       "files": [
         "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "Count": {
@@ -5786,7 +5786,7 @@
         "src/scss/partials/_customEmoji.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "custom-emoji-placeholder": {
       "files": [
@@ -5997,7 +5997,7 @@
         "src/scss/base.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "deactivated-backwards": {
       "files": [
@@ -6080,7 +6080,7 @@
         "src/components/popups/starsRating.module.scss",
         "src/components/sidebarLeft/globalPostsSearch.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "Description": {
@@ -6393,7 +6393,7 @@
       "files": [
         "src/components/popups/previewCard/previewCard.module.scss"
       ],
-      "inOurScss": true,
+      "inOurScss": false,
       "inOurCode": true
     },
     "Divider": {
@@ -6434,7 +6434,7 @@
         "src/scss/partials/_searchSuper.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "document-ico": {
       "files": [
@@ -6475,7 +6475,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "document-size": {
       "files": [
@@ -6499,7 +6499,7 @@
         "src/scss/partials/popups/_mediaAttacher.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "document-wrapper": {
       "files": [
@@ -6738,15 +6738,15 @@
         "src/scss/partials/popups/_premium.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "emoji-animation-container": {
       "files": [
         "src/scss/partials/_emojiAnimation.scss",
         "src/scss/partials/_print.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "emoji-big": {
       "files": [
@@ -6796,7 +6796,7 @@
         "src/scss/partials/_slider.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "emoji-native": {
       "files": [
@@ -6831,7 +6831,7 @@
         "src/scss/partials/_profile.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "emoji-status-text-color": {
       "files": [
@@ -6904,7 +6904,7 @@
         "src/scss/partials/_emojiDropdown.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "emoticons-categories": {
       "files": [
@@ -7116,7 +7116,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "empty-bubble-placeholder-list-check": {
       "files": [
@@ -7130,7 +7130,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "empty-bubble-placeholder-logs": {
       "files": [
@@ -7179,21 +7179,21 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "empty-bubble-placeholder-subtitle": {
       "files": [
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "empty-bubble-placeholder-title": {
       "files": [
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "empty-bubble-placeholder-topic": {
       "files": [
@@ -7278,14 +7278,14 @@
         "src/components/stargifts/profileList.module.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "emptyTitle": {
       "files": [
         "src/components/stargifts/profileList.module.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "end": {
       "files": [
@@ -7333,7 +7333,7 @@
         "src/components/popups/aiEditorPopup/bodyContent.module.scss",
         "src/components/popups/translate/bodyContent.module.scss"
       ],
-      "inOurScss": true,
+      "inOurScss": false,
       "inOurCode": true
     },
     "ExpandableContent": {
@@ -7426,28 +7426,28 @@
         "src/scss/partials/_document.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "ext-pdf": {
       "files": [
         "src/scss/partials/_document.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "ext-zip": {
       "files": [
         "src/scss/partials/_document.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "extended-media-buy": {
       "files": [
         "src/scss/base.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "extended-media-buy-icon": {
       "files": [
@@ -7524,14 +7524,14 @@
         "src/scss/partials/_transition.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "fade-enter-active": {
       "files": [
         "src/scss/partials/_transition.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "fade-exit-active": {
       "files": [
@@ -7632,7 +7632,7 @@
         "src/components/sidebarRight/tabs/adminRecentActions/expandToggleButton.module.scss",
         "src/components/simpleFormField/styles.module.scss"
       ],
-      "inOurScss": true,
+      "inOurScss": false,
       "inOurCode": true
     },
     "FirstSection": {
@@ -7668,7 +7668,7 @@
         "src/components/chat/bubbleParts/chatThreadSeparator.module.scss",
         "src/components/staticRadio.module.scss"
       ],
-      "inOurScss": true,
+      "inOurScss": false,
       "inOurCode": true
     },
     "floating-button-menu-container": {
@@ -7683,7 +7683,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "focused": {
       "files": [
@@ -7884,8 +7884,8 @@
       "files": [
         "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "footerButtons": {
       "files": [
@@ -8180,7 +8180,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "geo-footer": {
       "files": [
@@ -8459,7 +8459,7 @@
         "src/scss/partials/_profile.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "GradientCanvas": {
       "files": [
@@ -8530,7 +8530,7 @@
       "files": [
         "src/scss/base.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": false
     },
     "grid-item-media": {
@@ -8546,7 +8546,7 @@
       "files": [
         "src/scss/base.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": false
     },
     "gridItem": {
@@ -8827,7 +8827,7 @@
         "src/scss/partials/_reaction.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "has-auth-pages": {
       "files": [
@@ -8870,7 +8870,7 @@
         "src/scss/partials/_button.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "has-collectible": {
       "files": [
@@ -8997,7 +8997,7 @@
         "src/scss/partials/_profile.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "has-no-reactions": {
       "files": [
@@ -9083,14 +9083,14 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "has-square-photo": {
       "files": [
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "has-sticky-dates": {
       "files": [
@@ -9156,7 +9156,7 @@
         "src/components/stargifts/profileList.module.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "hasCount": {
       "files": [
@@ -9249,8 +9249,8 @@
       "files": [
         "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "headerTitle": {
       "files": [
@@ -9263,8 +9263,8 @@
       "files": [
         "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "HeadingH1": {
       "files": [
@@ -9423,7 +9423,7 @@
         "src/components/sidebarRight/tabs/adminRecentActions/filters/styles.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "hiding": {
       "files": [
@@ -9504,7 +9504,7 @@
         "src/pages/authFlow.module.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "hostExit": {
       "files": [
@@ -9518,7 +9518,7 @@
         "src/pages/authFlow.module.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "hover-danger-effect": {
       "files": [
@@ -9567,14 +9567,14 @@
       "files": [
         "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": false
     },
     "hoveredTransition": {
       "files": [
         "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": false
     },
     "hoverEnabled": {
@@ -10237,14 +10237,14 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "is-broadcast": {
       "files": [
         "src/scss/partials/_chat.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-buffering": {
       "files": [
@@ -10259,7 +10259,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "is-calling": {
       "files": [
@@ -10421,7 +10421,7 @@
         "src/scss/partials/_row.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-dragging": {
       "files": [
@@ -10507,7 +10507,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-fake-disabled": {
       "files": [
@@ -10515,7 +10515,7 @@
         "src/scss/partials/_row.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-firefox": {
       "files": [
@@ -10575,7 +10575,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-forum": {
       "files": [
@@ -10584,14 +10584,14 @@
         "src/scss/partials/_crop.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-forum-open": {
       "files": [
         "src/scss/partials/_chatlist.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-forum-visible": {
       "files": [
@@ -10634,7 +10634,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-gift": {
       "files": [
@@ -10874,7 +10874,7 @@
         "src/scss/partials/_button.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-multiple": {
       "files": [
@@ -10888,7 +10888,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-muted": {
       "files": [
@@ -11030,7 +11030,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-recording": {
       "files": [
@@ -11079,8 +11079,8 @@
       "files": [
         "src/scss/base.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "is-right-column-shown": {
       "files": [
@@ -11097,7 +11097,7 @@
         "src/scss/partials/_chatlist.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "is-rtl": {
       "files": [
@@ -11184,7 +11184,7 @@
         "src/scss/partials/_button.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-seeking": {
       "files": [
@@ -11280,7 +11280,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-square-photo": {
       "files": [
@@ -11308,7 +11308,7 @@
         "src/scss/partials/_button.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-sticky": {
       "files": [
@@ -11587,8 +11587,8 @@
         "src/components/chat/bubbleParts/inMessageCheckbox.module.scss",
         "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "IsPattern": {
       "files": [
@@ -11795,14 +11795,14 @@
         "src/components/stargifts/stargiftsGrid.module.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "itemPremium": {
       "files": [
         "src/components/stargifts/stargiftsGrid.module.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "itemPremiumBackground": {
       "files": [
@@ -11816,7 +11816,7 @@
         "src/components/stargifts/stargiftsGrid.module.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "itemReadonly": {
       "files": [
@@ -11836,7 +11836,7 @@
       "files": [
         "src/components/sidebarLeft/tabs/passkeys.module.scss"
       ],
-      "inOurScss": true,
+      "inOurScss": false,
       "inOurCode": true
     },
     "Items": {
@@ -11986,22 +11986,22 @@
       "files": [
         "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "labelProgress": {
       "files": [
         "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "labelProgressFill": {
       "files": [
         "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "labelRow": {
       "files": [
@@ -12014,15 +12014,15 @@
       "files": [
         "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "labelText": {
       "files": [
         "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "LabelText": {
       "files": [
@@ -12036,7 +12036,7 @@
         "src/components/simpleFormField/styles.module.scss",
         "src/scss/partials/popups/_starGiftInfo.scss"
       ],
-      "inOurScss": true,
+      "inOurScss": false,
       "inOurCode": true
     },
     "Latex": {
@@ -12242,7 +12242,7 @@
       "files": [
         "src/components/limitLineTsx.module.scss"
       ],
-      "inOurScss": true,
+      "inOurScss": false,
       "inOurCode": true
     },
     "Line": {
@@ -12250,7 +12250,7 @@
         "src/components/sidebarRight/tabs/adminRecentActions/logDiff.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": true
+      "inOurCode": false
     },
     "lineFilled": {
       "files": [
@@ -12380,7 +12380,7 @@
         "src/components/chat/attachMenuButton.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": true
+      "inOurCode": false
     },
     "loading": {
       "files": [
@@ -12717,7 +12717,7 @@
       "files": [
         "src/components/sidebarLeft/birthdaySuggestions.module.scss"
       ],
-      "inOurScss": true,
+      "inOurScss": false,
       "inOurCode": true
     },
     "Media": {
@@ -13741,7 +13741,7 @@
         "src/scss/partials/_stickerViewer.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "media-progress-line": {
       "files": [
@@ -13798,28 +13798,28 @@
         "src/scss/base.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "media-spoiler": {
       "files": [
         "src/scss/base.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": false
     },
     "media-spoiler-container": {
       "files": [
         "src/scss/base.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "media-spoiler-thumbnail": {
       "files": [
         "src/scss/base.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "media-sticker": {
       "files": [
@@ -14355,7 +14355,7 @@
         "src/scss/partials/popups/_stars.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "month": {
       "files": [
@@ -14686,7 +14686,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "nextLevelStars": {
       "files": [
@@ -14771,7 +14771,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "no-button": {
       "files": [
@@ -14977,7 +14977,7 @@
         "src/components/stories/viewer.module.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "not-bottom": {
       "files": [
@@ -15040,7 +15040,7 @@
         "src/components/simpleFormField/styles.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": true
+      "inOurCode": false
     },
     "NoTransition": {
       "files": [
@@ -15203,7 +15203,7 @@
       "files": [
         "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "overflow-hidden": {
@@ -15248,14 +15248,14 @@
         "src/scss/base.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "overlayed-icon__floating-icon": {
       "files": [
         "src/scss/base.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "overlays": {
       "files": [
@@ -15276,7 +15276,7 @@
         "src/components/instantView.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "page": {
       "files": [
@@ -15396,8 +15396,8 @@
       "files": [
         "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "paused": {
       "files": [
@@ -15695,7 +15695,7 @@
         "src/components/chat/bubbles/unknownUser.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "PeerTitle": {
       "files": [
@@ -15703,7 +15703,7 @@
         "src/components/sidebarRight/tabs/adminRecentActions/logEntry.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "PeerTitleText": {
       "files": [
@@ -15723,8 +15723,8 @@
       "files": [
         "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "person": {
       "files": [
@@ -16206,7 +16206,7 @@
         "src/components/sidebarRight/tabs/adminRecentActions/expandToggleButton.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "placeholder-when-no-messages": {
       "files": [
@@ -16304,8 +16304,8 @@
       "files": [
         "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "poll": {
       "files": [
@@ -16499,8 +16499,8 @@
         "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss",
         "src/components/popups/createPoll/styles.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "pollOptionCheckWrapper": {
       "files": [
@@ -16625,8 +16625,8 @@
       "files": [
         "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "pollOptionSpacerLast": {
       "files": [
@@ -17073,7 +17073,7 @@
         "src/scss/partials/popups/_confirmation.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "popup-container": {
       "files": [
@@ -17593,7 +17593,7 @@
         "src/scss/partials/popups/_mute.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "popup-new-media": {
       "files": [
@@ -19358,7 +19358,7 @@
         "src/scss/partials/_profile.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "profile-avatars-avatars": {
       "files": [
@@ -19608,7 +19608,7 @@
         "src/components/sidebarLeft/tabs/privacy/messages/starsRangeInput.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "progress-line": {
       "files": [
@@ -19663,7 +19663,7 @@
         "src/scss/base.scss",
         "src/scss/partials/_poll.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "progress-ring__circle": {
@@ -19808,7 +19808,7 @@
         "src/scss/partials/_quote.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "quote-like": {
       "files": [
@@ -19858,7 +19858,7 @@
         "src/components/staticRadio.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": true
+      "inOurCode": false
     },
     "radio-field": {
       "files": [
@@ -19874,7 +19874,7 @@
         "src/scss/partials/_checkbox.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "radio-field-main": {
       "files": [
@@ -19890,7 +19890,7 @@
         "src/scss/partials/_row.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "range-edge-left": {
       "files": [
@@ -19978,7 +19978,7 @@
         "src/scss/partials/popups/_starGiftInfo.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "rarity-blue": {
       "files": [
@@ -20143,7 +20143,7 @@
         "src/scss/partials/_reaction.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "reaction-sticker-icon": {
       "files": [
@@ -20356,14 +20356,14 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "replies-beside-text": {
       "files": [
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "replies-footer": {
       "files": [
@@ -20391,7 +20391,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "replies-footer-icon-next": {
       "files": [
@@ -20422,7 +20422,7 @@
         "src/scss/partials/_chatPinned.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "reply-cancel": {
       "files": [
@@ -20489,14 +20489,14 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "reply-markup-button": {
       "files": [
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "reply-markup-button-bg": {
       "files": [
@@ -20567,7 +20567,7 @@
         "src/scss/partials/_chatPinned.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "reply-no-subtitle": {
       "files": [
@@ -20768,7 +20768,7 @@
         "src/components/instantView.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "RichMessageMore": {
       "files": [
@@ -20947,7 +20947,7 @@
         "src/scss/partials/_row.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "row-media-bigger": {
       "files": [
@@ -20970,7 +20970,7 @@
         "src/scss/partials/_row.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "row-right": {
       "files": [
@@ -20998,21 +20998,21 @@
         "src/scss/partials/_row.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "row-sortable": {
       "files": [
         "src/scss/partials/_row.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "row-sortable-icon": {
       "files": [
         "src/scss/partials/_row.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "row-subtitle": {
       "files": [
@@ -21030,7 +21030,7 @@
         "src/scss/partials/_row.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "row-subtitle-row": {
       "files": [
@@ -21263,24 +21263,24 @@
         "src/components/popups/starsRating.module.scss",
         "src/components/stargifts/stargiftBackdrop.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "s-enter-active": {
       "files": [
         "src/components/codeInputField.module.scss",
         "src/components/popups/starsRating.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "s-exit-active": {
       "files": [
         "src/components/codeInputField.module.scss",
         "src/components/popups/starsRating.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "s-exit-to": {
       "files": [
@@ -21288,7 +21288,7 @@
         "src/components/popups/starsRating.module.scss",
         "src/components/stargifts/stargiftBackdrop.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "saved-music-container": {
@@ -21398,7 +21398,7 @@
         "src/scss/partials/_scrollable.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "scrollable-thumb-container": {
       "files": [
@@ -21474,21 +21474,21 @@
         "src/components/popups/previewCard/previewCard.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "scrolled-only-end-manual": {
       "files": [
         "src/components/popups/previewCard/previewCard.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "scrolled-only-start-manual": {
       "files": [
         "src/components/popups/previewCard/previewCard.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "scrolled-start": {
       "files": [
@@ -21511,7 +21511,7 @@
         "src/scss/partials/_profile.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "search-group": {
       "files": [
@@ -21577,14 +21577,14 @@
         "src/scss/partials/_profile.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "search-super-container-media": {
       "files": [
         "src/scss/partials/_searchSuper.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "search-super-container-stories": {
       "files": [
@@ -21607,7 +21607,7 @@
         "src/scss/partials/_searchSuper.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "search-super-content-gifts": {
       "files": [
@@ -21621,7 +21621,7 @@
         "src/scss/partials/_searchSuper.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "search-super-content-media": {
       "files": [
@@ -21635,7 +21635,7 @@
         "src/scss/partials/_searchSuper.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "search-super-content-music": {
       "files": [
@@ -21643,7 +21643,7 @@
         "src/scss/partials/_searchSuper.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "search-super-content-saved": {
       "files": [
@@ -21657,7 +21657,7 @@
         "src/scss/partials/_searchSuper.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "search-super-content-stories": {
       "files": [
@@ -21680,7 +21680,7 @@
         "src/scss/partials/_searchSuper.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "search-super-item": {
       "files": [
@@ -21701,14 +21701,14 @@
         "src/scss/partials/_searchSuper.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "search-super-pinned-gifts-wrap": {
       "files": [
         "src/scss/partials/_searchSuper.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "search-super-selection": {
       "files": [
@@ -21827,7 +21827,7 @@
         "src/components/popups/aiEditorPopup/bodyContent.module.scss",
         "src/components/popups/createBot/createBot.module.scss"
       ],
-      "inOurScss": true,
+      "inOurScss": false,
       "inOurCode": true
     },
     "sectionArrow": {
@@ -21870,7 +21870,7 @@
         "src/components/sidebarRight/tabs/adminRecentActions/filters/flagFilters.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "sectionWrapper": {
       "files": [
@@ -22196,7 +22196,7 @@
         "src/scss/partials/_searchSuper.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "sending-status": {
       "files": [
@@ -22238,7 +22238,7 @@
         "src/scss/partials/_searchSuper.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "Separator": {
       "files": [
@@ -22246,7 +22246,7 @@
         "src/components/sidebarRight/tabs/adminRecentActions/logDiff.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "SeparatorLeft": {
       "files": [
@@ -23001,7 +23001,7 @@
         "src/scss/partials/_searchSuper.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "Slot": {
       "files": [
@@ -23217,8 +23217,8 @@
       "files": [
         "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "spoiler": {
       "files": [
@@ -23254,7 +23254,7 @@
         "src/scss/partials/popups/_mediaAttacher.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "spoilers-container": {
       "files": [
@@ -23289,7 +23289,7 @@
         "src/scss/partials/_stackedAvatars.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "stacked-avatars-avatar-container": {
       "files": [
@@ -23518,15 +23518,15 @@
       "files": [
         "src/components/chat/bubbles/starGiftOffer.module.scss"
       ],
-      "inOurScss": true,
+      "inOurScss": false,
       "inOurCode": true
     },
     "statusError": {
       "files": [
         "src/components/popups/createBot/createBot.module.scss"
       ],
-      "inOurScss": true,
-      "inOurCode": true
+      "inOurScss": false,
+      "inOurCode": false
     },
     "statusLoading": {
       "files": [
@@ -23754,7 +23754,7 @@
         "src/components/genericTable.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "stripped": {
       "files": [
@@ -23845,7 +23845,7 @@
         "src/components/sidebarLeft/pendingSuggestion.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "suggestionContainer": {
       "files": [
@@ -24432,7 +24432,7 @@
         "src/scss/base.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "text-overflow-no-wrap": {
       "files": [
@@ -24610,14 +24610,14 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "time-effect": {
       "files": [
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "time-icon": {
       "files": [
@@ -24652,7 +24652,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "time-post-author": {
       "files": [
@@ -24680,14 +24680,14 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "time-replies-icon": {
       "files": [
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "time-sending-status": {
       "files": [
@@ -24791,8 +24791,8 @@
       "files": [
         "src/scss/base.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "toggle-visible": {
       "files": [
@@ -24808,7 +24808,7 @@
         "src/components/sidebarRight/tabs/adminRecentActions/filters/expandableFilterGroup.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "ton-amount": {
       "files": [
@@ -24831,7 +24831,7 @@
         "src/components/popups/aiEditorPopup/bodyContent.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "toneContextMenuIcon": {
       "files": [
@@ -25150,7 +25150,7 @@
         "src/scss/partials/_topbarSearch.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "topbar-search-container": {
       "files": [
@@ -25912,8 +25912,8 @@
       "files": [
         "src/scss/base.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "video-time": {
       "files": [
@@ -26642,14 +26642,14 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "webpage-footer": {
       "files": [
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "webpage-footer-icon": {
       "files": [
@@ -26663,7 +26663,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "webpage-name-tip": {
       "files": [
@@ -26677,14 +26677,14 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "webpage-preview-resizer": {
       "files": [
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "webpage-preview-with-document": {
       "files": [
@@ -26698,7 +26698,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "webpage-stickerset": {
       "files": [
@@ -26726,7 +26726,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "webPageBackdrop": {
       "files": [
@@ -26754,7 +26754,7 @@
         "src/components/popups/pollLink/styles.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "webPageSticker": {
       "files": [
@@ -26804,7 +26804,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "with-contacts": {
       "files": [
@@ -26875,14 +26875,14 @@
         "src/scss/partials/_chat.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "with-midtitle": {
       "files": [
         "src/scss/partials/_row.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "with-placeholder": {
       "files": [
@@ -26896,7 +26896,7 @@
         "src/scss/partials/_chatBubble.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "with-reply-markup": {
       "files": [
@@ -26910,7 +26910,7 @@
         "src/scss/partials/_button.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "withEndButtonIcon": {
       "files": [
@@ -26939,7 +26939,7 @@
         "src/components/popups/createPoll/mediaAttachment.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "WithPhoto": {
       "files": [
@@ -26993,7 +26993,7 @@
       "files": [
         "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "WrongLayout": {

@@ -2,16 +2,16 @@
 
 <!-- Файл генерируется: node tools/tweb-parity/inventory.mjs. Руками не править. -->
 
-Снято: 2026-08-16. Источник: `/Users/denisurevic/Documents/tweb` @ `e52b5d931`.
+Снято: 2026-09-07. Источник: `/Users/denisurevic/Documents/tweb` @ `e52b5d931`.
 
 | Срез | Значение |
 |---|---|
 | Общих партиалов `src/scss` в tweb (в скоупе) | 129 |
-| Из них есть файлом у нас | 70 |
+| Из них есть файлом у нас | 71 |
 | CSS-классов в tweb | 3638 |
-| Из них встречаются у нас | 2240 (62%) |
+| Из них встречаются у нас | 2298 (63%) |
 | Попапов в tweb | 84 |
-| Из них нашлись у нас по имени | 11 точно, 3 предположительно |
+| Из них нашлись у нас по имени | 8 точно, 3 предположительно |
 | Локальных `*.module.scss` компонентов форка | 138 (отдельный слой, см. ниже) |
 
 «Встречается у нас» = имя класса найдено в наших scss или в коде компонентов.
@@ -29,13 +29,13 @@
 
 | Файл | Классов | Нет у нас | Док |
 |---|---|---|---|
-| `base.scss` | 241 | 100 | — |
+| `base.scss` | 241 | 86 | — |
 | `_stars.scss` | 73 | 47 | right-sidebar.md |
-| `_starGiftInfo.scss` | 49 | 40 | right-sidebar.md |
+| `_starGiftInfo.scss` | 49 | 39 | right-sidebar.md |
 | `_poll.scss` | 34 | 22 | bubbles.md |
 | `_similarChannels.scss` | 23 | 19 | right-sidebar.md |
 | `_starGiftUpgrade.scss` | 21 | 18 | right-sidebar.md |
-| `_mediaAttacher.scss` | 37 | 17 | composer.md |
+| `_mediaAttacher.scss` | 37 | 16 | composer.md |
 | `_global.scss` | 33 | 15 | state-and-layout.md |
 | `_foldersSidebar.scss` | 28 | 15 | left-sidebar.md |
 | `_boost.scss` | 15 | 13 | channels.md |
@@ -68,13 +68,10 @@
 | `_instanceDeactivated.scss` | 4 | 2 | state-and-layout.md |
 | `editableFieldContent.module.scss` | 1 | 1 | — |
 | `inlineRippleLink.module.scss` | 1 | 1 | — |
-| `_customEmoji.scss` | 7 | 1 | media.md |
-| `_emojiAnimation.scss` | 2 | 1 | media.md |
 | `_sparkles.scss` | 2 | 1 | — |
 | `_starGift.scss` | 1 | 1 | right-sidebar.md |
 | `_starsBadge.scss` | 5 | 1 | right-sidebar.md |
 | `_limit.scss` | 4 | 1 | popups.md |
-| `_mute.scss` | 2 | 1 | popups.md |
 | `_reactedList.scss` | 10 | 1 | popups.md |
 | `_sponsored.scss` | 5 | 1 | channels.md |
 | `_normalize.scss` | 0 | 0 | state-and-layout.md |
@@ -83,6 +80,8 @@
 | `fonts.scss` | 0 | 0 | — |
 | `functions.scss` | 0 | 0 | — |
 | `mixins.scss` | 0 | 0 | — |
+| `_customEmoji.scss` | 7 | 0 | media.md |
+| `_mute.scss` | 2 | 0 | popups.md |
 | `shared.scss` | 0 | 0 | — |
 | `style.scss` | 0 | 0 | — |
 | `_style.scss` | 1 | 0 | — |
@@ -101,7 +100,7 @@
 Сопоставление идёт по имени файла, поэтому переименованный попап тоже попадёт сюда —
 список читать как «проверить», а не как «отсутствует».
 
-`aboutAd`, `addBotToChat`, `ageVerification`, `aiEditorPopup`, `channelsTooMuch`, `chatPreview`, `convertToGigagroup`, `createBot`, `createContact`, `createStarGiftOffer`, `emailSetup`, `featureDetails`, `floatingStarsBalance`, `forward`, `frozen`, `limit`, `logOut`, `myQrCode`, `noForwards`, `password`, `pickCountry`, `pickUser`, `pollLink`, `PopupAvatar`, `PopupBoostsViaGifts`, `PopupBuyResaleGift`, `PopupChooseGift`, `PopupChooseStory`, `PopupDeleteDialog`, `PopupDeleteMegagroupMessages`, `PopupDeleteMessages`, `PopupGiftLink`, `PopupGiftPremium`, `PopupJoinChatInvite`, `PopupMakePaid`, `PopupNewMedia`, `PopupPayment`, `PopupPaymentCard`, `PopupPaymentCardConfirmation`, `PopupPaymentMethods`, `PopupPaymentShipping`, `PopupPaymentShippingMethods`, `PopupPaymentVerification`, `PopupPeer`, `PopupPinMessage`, `PopupReactedList`, `PopupReassignBoost`, `PopupSellStarGift`, `PopupSendNow`, `PopupSharedFolderInvite`, `PopupSponsored`, `PopupStarGiftInfo`, `PopupStarGiftValue`, `PopupStarGiftWear`, `PopupStarsPay`, `PopupToggleReadDate`, `PopupWebAppEmojiStatusAccess`, `PopupWebAppLocationAccess`, `PopupWebAppPreparedMessage`, `previewCard`, `reportAd`, `requestPeer`, `scheduleSendingPopup`, `shareUrl`, `simpleConfirmation`, `starGiftUpgrade`, `starGiftUpgradePrice`, `starsRating`, `storiesStealthMode`, `transferStarGift`
+`aboutAd`, `addBotToChat`, `ageVerification`, `aiEditorPopup`, `channelsTooMuch`, `chatPreview`, `convertToGigagroup`, `createBot`, `createContact`, `createStarGiftOffer`, `emailSetup`, `featureDetails`, `floatingStarsBalance`, `forward`, `frozen`, `limit`, `logOut`, `myQrCode`, `noForwards`, `password`, `pickCountry`, `pickUser`, `pollLink`, `PopupAvatar`, `PopupBoostsViaGifts`, `PopupBuyResaleGift`, `PopupChooseGift`, `PopupChooseStory`, `PopupDeleteDialog`, `PopupDeleteMegagroupMessages`, `PopupDeleteMessages`, `PopupGiftLink`, `PopupGiftPremium`, `PopupJoinChatInvite`, `PopupMakePaid`, `PopupMute`, `PopupNewMedia`, `PopupPayment`, `PopupPaymentCard`, `PopupPaymentCardConfirmation`, `PopupPaymentMethods`, `PopupPaymentShipping`, `PopupPaymentShippingMethods`, `PopupPaymentVerification`, `PopupPeer`, `PopupPinMessage`, `PopupReactedList`, `PopupReassignBoost`, `PopupSellStarGift`, `PopupSendNow`, `PopupSharedFolderInvite`, `PopupSponsored`, `PopupStarGiftInfo`, `PopupStarGiftValue`, `PopupStarGiftWear`, `PopupStarReaction`, `PopupStarsPay`, `PopupToggleReadDate`, `PopupWebAppEmojiStatusAccess`, `PopupWebAppLocationAccess`, `PopupWebAppPreparedMessage`, `previewCard`, `reportAd`, `requestPeer`, `scheduleSendingPopup`, `shareUrl`, `simpleConfirmation`, `starGiftUpgrade`, `starGiftUpgradePrice`, `starsRating`, `storiesStealthMode`, `transferStarGift`, `translate`
 
 ### Предположительные пары (совпало не точно)
 
@@ -109,7 +108,7 @@
 
 ## Наши попапы без прямого аналога в tweb
 
-`AddContactView`, `AddStorySheet`, `CallsView`, `CloseFriendsSheet`, `ConfirmPopup`, `ContactsView`, `CreateGiveawayPopup`, `EditContactView`, `EditStorySheet`, `FolderInvitePopup`, `GiftInfoPopup`, `InstantView`, `KeyVerificationPopup`, `NewContactPopup`, `ReportPopup`, `RepostStorySheet`, `SchedulePopup`, `ScheduledView`, `SearchView`, `SendMediaPopup`, `SettingsView`, `StealthModePopup`, `StoriesArchiveSheet`, `StreamSettingsPopup`, `SuggestPostPopup`, `SuggestedPostsView`, `WalletView`
+`AddContactView`, `AddStorySheet`, `CallsView`, `CloseFriendsSheet`, `ConfirmDialog`, `ContactsView`, `CreateGiveawayPopup`, `EditContactView`, `EditStorySheet`, `FolderInvitePopup`, `GiftInfoPopup`, `InstantView`, `KeyVerificationPopup`, `NewContactPopup`, `ReportPopup`, `RepostStorySheet`, `SchedulePopup`, `ScheduledView`, `SearchView`, `SendMediaPopup`, `SettingsView`, `StealthModePopup`, `StoriesArchiveSheet`, `StreamSettingsPopup`, `SuggestPostPopup`, `SuggestedPostsView`, `WalletView`
 
 Часть из них — переименования (сопоставление идёт по имени файла), часть — наше собственное.
 

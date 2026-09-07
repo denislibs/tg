@@ -1,6 +1,6 @@
 {
   "meta": {
-    "generatedAt": "2026-08-16",
+    "generatedAt": "2026-09-07",
     "twebDir": "/Users/denisurevic/Documents/tweb",
     "twebCommit": "e52b5d931"
   },
@@ -165,8 +165,8 @@
       "twebSelectors": 323,
       "twebDynamicSelectors": 0,
       "twebClasses": 241,
-      "classesPresent": 141,
-      "coverage": 0.585,
+      "classesPresent": 155,
+      "coverage": 0.643,
       "missingClasses": [
         "accordion",
         "accordion-counter",
@@ -187,38 +187,27 @@
         "business-location",
         "cant-select",
         "color-premium",
-        "content-empty",
         "currency-star-icon-stroke",
         "cursor-pointer",
-        "deactivated",
         "deactivated-backwards",
         "delimiter-with-text",
         "delimiter-with-text-stripe",
-        "extended-media-buy",
         "extended-media-buy-icon",
         "fade-in-transition",
-        "grid-item-archived",
-        "grid-item-pin",
         "hover-danger-effect",
         "hover-underline",
         "inner-shadow",
         "inner-shadow-inset",
         "input-selectable",
         "input-something",
-        "is-revealing",
         "lottie-icon",
         "margin-0",
         "media-container-contain",
         "media-container-cover",
-        "media-spoiler",
-        "media-spoiler-container",
-        "media-spoiler-thumbnail",
         "missing-icon",
         "missing-icon-path",
         "no-view-transition",
         "overflow-hidden",
-        "overlayed-icon",
-        "overlayed-icon__floating-icon",
         "personal-channel",
         "personal-channel-counter",
         "personal-channel-name",
@@ -258,14 +247,11 @@
         "tchart--wrapper",
         "tchart--zoom",
         "text-loading",
-        "text-overflow",
         "text-overflow-no-wrap",
-        "toasts-container",
         "ton-amount",
         "ton-amount-icon",
         "username-purchase-help",
         "verified-icon-svg",
-        "video-round-canvas",
         "xtr",
         "xtr-icon"
       ]
@@ -281,8 +267,8 @@
       "twebSelectors": 97,
       "twebDynamicSelectors": 0,
       "twebClasses": 82,
-      "classesPresent": 18,
-      "coverage": 0.22,
+      "classesPresent": 21,
+      "coverage": 0.256,
       "missingClasses": [
         "AuthorDate",
         "BlockContainer",
@@ -291,7 +277,6 @@
         "BlockquoteBlocks",
         "BlockquoteCaption",
         "BlockquoteWrapper",
-        "Border",
         "CaptionCredit",
         "CaptionText",
         "Collage",
@@ -324,7 +309,6 @@
         "ListItemNumber",
         "ListOrdered",
         "MathBlockWrapper",
-        "Padding",
         "Paragraph",
         "PostAuthor",
         "PostAuthorPhoto",
@@ -336,7 +320,6 @@
         "RelatedArticleDescription",
         "RelatedArticlePhoto",
         "RelatedArticleTitle",
-        "RichMessage",
         "RichMessageMore",
         "RichMessageWrapper",
         "SectionName",
@@ -348,77 +331,6 @@
         "TaskCheckbox",
         "WithPhoto",
         "WrongLayout"
-      ]
-    },
-    {
-      "file": "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss",
-      "base": "styles.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 94,
-      "twebDynamicSelectors": 1,
-      "twebClasses": 80,
-      "classesPresent": 25,
-      "coverage": 0.313,
-      "missingClasses": [
-        "addOptionPlus",
-        "avatarGroup",
-        "avatarGroupItem",
-        "avatarGroupItemWrapper",
-        "checkContainer",
-        "chosenCheckbox",
-        "chosenCheckboxDot",
-        "clickableArea",
-        "emojiDropdownButton",
-        "explanation",
-        "explanationDocument",
-        "explanationMedia",
-        "explanationText",
-        "explanationWebPage",
-        "footerButton",
-        "headerSubtitle",
-        "headerTitleContainer",
-        "hovered",
-        "hoveredTransition",
-        "inputFieldInput",
-        "inputFieldInternals",
-        "inputFieldPlaceholder",
-        "isAddOption",
-        "isIncoming",
-        "isOutgoing",
-        "labelNumber",
-        "labelProgress",
-        "labelProgressFill",
-        "labelStats",
-        "labelText",
-        "pathDot",
-        "percent",
-        "pointerDisabled",
-        "pollDescriptionMedia",
-        "pollDescriptionMediaWrapper",
-        "pollDescriptionWebPage",
-        "pollDocumentWrapper",
-        "pollOption",
-        "pollOptionGeo",
-        "pollOptionMedia",
-        "pollOptionMediaAttachBtn",
-        "pollOptionMediaAttachImg",
-        "pollOptionMediaDim",
-        "pollOptionMediaGifLabel",
-        "pollOptionMediaLinkIcon",
-        "pollOptionMediaLinkOverlay",
-        "pollOptionMediaLinkPhoto",
-        "pollOptionMediaPlay",
-        "pollOptionMediaWebPage",
-        "pollOptionSpacerFirst",
-        "pollOptionSpacerLast",
-        "pollWebPageMedia",
-        "pushOverNext",
-        "spinnerContainer",
-        "withPhoto"
       ]
     },
     {
@@ -555,8 +467,8 @@
       "twebSelectors": 58,
       "twebDynamicSelectors": 6,
       "twebClasses": 49,
-      "classesPresent": 9,
-      "coverage": 0.184,
+      "classesPresent": 10,
+      "coverage": 0.204,
       "missingClasses": [
         "finishing",
         "has-delete",
@@ -590,7 +502,6 @@
         "popup-star-gift-info-upgrade-model",
         "popup-star-gift-info-upgrade-models",
         "popup-star-gift-info-upgrade-models-container",
-        "rarity",
         "rarity-blue",
         "rarity-gold",
         "rarity-green",
@@ -751,6 +662,55 @@
       ]
     },
     {
+      "file": "src/components/chat/bubbleParts/pollMessageContent/styles.module.scss",
+      "base": "styles.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 94,
+      "twebDynamicSelectors": 1,
+      "twebClasses": 80,
+      "classesPresent": 47,
+      "coverage": 0.588,
+      "missingClasses": [
+        "addOptionPlus",
+        "avatarGroup",
+        "avatarGroupItem",
+        "avatarGroupItemWrapper",
+        "emojiDropdownButton",
+        "explanation",
+        "explanationDocument",
+        "explanationMedia",
+        "explanationText",
+        "explanationWebPage",
+        "inputFieldInput",
+        "inputFieldInternals",
+        "inputFieldPlaceholder",
+        "isAddOption",
+        "isIncoming",
+        "pollDescriptionMedia",
+        "pollDescriptionMediaWrapper",
+        "pollDescriptionWebPage",
+        "pollDocumentWrapper",
+        "pollOptionGeo",
+        "pollOptionMedia",
+        "pollOptionMediaAttachBtn",
+        "pollOptionMediaAttachImg",
+        "pollOptionMediaDim",
+        "pollOptionMediaGifLabel",
+        "pollOptionMediaLinkIcon",
+        "pollOptionMediaLinkOverlay",
+        "pollOptionMediaLinkPhoto",
+        "pollOptionMediaPlay",
+        "pollOptionMediaWebPage",
+        "pollOptionSpacerLast",
+        "pollWebPageMedia",
+        "pushOverNext"
+      ]
+    },
+    {
       "file": "src/components/stories/viewer.module.scss",
       "base": "viewer.module.scss",
       "kind": "module",
@@ -791,48 +751,6 @@
         "isReacted",
         "quiz-hint",
         "record-ripple"
-      ]
-    },
-    {
-      "file": "src/components/popups/createPoll/styles.module.scss",
-      "base": "styles.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 37,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 33,
-      "classesPresent": 7,
-      "coverage": 0.212,
-      "missingClasses": [
-        "addOptionButton",
-        "addOptionButtonIcon",
-        "animatedInputFieldWrapper",
-        "captionOverride",
-        "checkButtonWrapper",
-        "confirmButton",
-        "draggableSideContent",
-        "emojiDropdownButton",
-        "flexFull",
-        "forceFocused",
-        "formField",
-        "inputFieldPlaceholder",
-        "mediaAttachmentImage",
-        "mediaIcon",
-        "pollDuration",
-        "pollDurationMenu",
-        "pollOption",
-        "pollOptionCheckWrapper",
-        "pollOptionIcon",
-        "pollOptionIconContainer",
-        "pollOptionIconFloating",
-        "pollOptionInputField",
-        "pollOptionRow",
-        "sectionTitle",
-        "sectionWrapper",
-        "smallerHrWrapper"
       ]
     },
     {
@@ -918,6 +836,46 @@
       ]
     },
     {
+      "file": "src/components/popups/createPoll/styles.module.scss",
+      "base": "styles.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 37,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 33,
+      "classesPresent": 9,
+      "coverage": 0.273,
+      "missingClasses": [
+        "addOptionButton",
+        "addOptionButtonIcon",
+        "animatedInputFieldWrapper",
+        "captionOverride",
+        "checkButtonWrapper",
+        "draggableSideContent",
+        "emojiDropdownButton",
+        "flexFull",
+        "forceFocused",
+        "formField",
+        "inputFieldPlaceholder",
+        "mediaAttachmentImage",
+        "mediaIcon",
+        "pollDuration",
+        "pollDurationMenu",
+        "pollOptionCheckWrapper",
+        "pollOptionIcon",
+        "pollOptionIconContainer",
+        "pollOptionIconFloating",
+        "pollOptionInputField",
+        "pollOptionRow",
+        "sectionTitle",
+        "sectionWrapper",
+        "smallerHrWrapper"
+      ]
+    },
+    {
       "file": "src/components/mediaEditor/canvas/videoControls.module.scss",
       "base": "videoControls.module.scss",
       "kind": "module",
@@ -954,45 +912,6 @@
         "ThumbnailMark",
         "ThumbnailTrack",
         "TimeStick"
-      ]
-    },
-    {
-      "file": "src/components/popups/previewCard/previewCard.module.scss",
-      "base": "previewCard.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 35,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 32,
-      "classesPresent": 9,
-      "coverage": 0.281,
-      "missingClasses": [
-        "copyButton",
-        "emojifyCheckbox",
-        "hasTransition",
-        "nonInteractive",
-        "originalArrow",
-        "originalArrowIcon",
-        "originalCheckbox",
-        "originalContent",
-        "originalFakeHeight",
-        "originalHeader",
-        "originalOverlay",
-        "resultContent",
-        "resultHeader",
-        "resultLanguage",
-        "resultSkeleton",
-        "resultTitle",
-        "resultTitleWrapper",
-        "richTextScrollable",
-        "richTextScrollableContent",
-        "scrolled-none-manual",
-        "scrolled-only-end-manual",
-        "scrolled-only-start-manual",
-        "toggled"
       ]
     },
     {
@@ -1035,44 +954,6 @@
       ]
     },
     {
-      "file": "src/components/popups/aiEditorPopup/bodyContent.module.scss",
-      "base": "bodyContent.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 36,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 35,
-      "classesPresent": 13,
-      "coverage": 0.371,
-      "missingClasses": [
-        "applyButton",
-        "autoHeight",
-        "bodyContent",
-        "footerButtons",
-        "scrollableContent",
-        "sectionArrow",
-        "sectionArrowLeft",
-        "sectionArrowRight",
-        "sectionWrapper",
-        "sendButton",
-        "sendButtonIcon",
-        "sendButtonWrapper",
-        "tabIcon",
-        "tabLabel",
-        "tone",
-        "toneContextMenuIcon",
-        "toneIcon",
-        "toneName",
-        "toneSkeleton",
-        "toneSkeletonIcon",
-        "toneSkeletonText",
-        "tonesList"
-      ]
-    },
-    {
       "file": "src/scss/partials/_poll.scss",
       "base": "_poll.scss",
       "kind": "global",
@@ -1108,6 +989,79 @@
         "poll-title",
         "poll-type",
         "poll-votes-count"
+      ]
+    },
+    {
+      "file": "src/components/popups/aiEditorPopup/bodyContent.module.scss",
+      "base": "bodyContent.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 36,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 35,
+      "classesPresent": 14,
+      "coverage": 0.4,
+      "missingClasses": [
+        "applyButton",
+        "autoHeight",
+        "bodyContent",
+        "footerButtons",
+        "scrollableContent",
+        "sectionArrow",
+        "sectionArrowLeft",
+        "sectionArrowRight",
+        "sectionWrapper",
+        "sendButton",
+        "sendButtonIcon",
+        "sendButtonWrapper",
+        "tabIcon",
+        "tabLabel",
+        "toneContextMenuIcon",
+        "toneIcon",
+        "toneName",
+        "toneSkeleton",
+        "toneSkeletonIcon",
+        "toneSkeletonText",
+        "tonesList"
+      ]
+    },
+    {
+      "file": "src/components/popups/previewCard/previewCard.module.scss",
+      "base": "previewCard.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 35,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 32,
+      "classesPresent": 12,
+      "coverage": 0.375,
+      "missingClasses": [
+        "collapsible",
+        "copyButton",
+        "emojifyCheckbox",
+        "hasTransition",
+        "nonInteractive",
+        "originalArrow",
+        "originalArrowIcon",
+        "originalCheckbox",
+        "originalContent",
+        "originalFakeHeight",
+        "originalHeader",
+        "originalOverlay",
+        "resultContent",
+        "resultHeader",
+        "resultLanguage",
+        "resultSkeleton",
+        "resultTitle",
+        "resultTitleWrapper",
+        "richTextScrollable",
+        "richTextScrollableContent"
       ]
     },
     {
@@ -1225,8 +1179,8 @@
       "twebSelectors": 49,
       "twebDynamicSelectors": 7,
       "twebClasses": 37,
-      "classesPresent": 20,
-      "coverage": 0.541,
+      "classesPresent": 21,
+      "coverage": 0.568,
       "missingClasses": [
         "popup-item",
         "popup-item-album",
@@ -1243,40 +1197,7 @@
         "popup-send-photo",
         "popup-send-photo-documents",
         "spoiler-off",
-        "spoiler-on",
-        "spoiler-toggle"
-      ]
-    },
-    {
-      "file": "src/components/popups/createPoll/mediaAttachment.module.scss",
-      "base": "mediaAttachment.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 17,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 16,
-      "classesPresent": 0,
-      "coverage": 0,
-      "missingClasses": [
-        "linkAttachment",
-        "linkAttachmentDim",
-        "linkAttachmentIcon",
-        "linkAttachmentPhoto",
-        "videoAttachmentBadge",
-        "videoAttachmentBadgeIcon",
-        "videoAttachmentDim",
-        "videoAttachmentVideo",
-        "videoAttachmentWrapper",
-        "videoCreatingCancel",
-        "videoCreatingCancelIcon",
-        "videoCreatingOverlay",
-        "videoCreatingPreview",
-        "videoCreatingProgress",
-        "videoCreatingWrapper",
-        "withPhoto"
+        "spoiler-on"
       ]
     },
     {
@@ -1308,6 +1229,68 @@
         "LabelText",
         "ScrollableContainer",
         "withScrollable"
+      ]
+    },
+    {
+      "file": "src/components/popups/createBot/createBot.module.scss",
+      "base": "createBot.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 23,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 23,
+      "classesPresent": 8,
+      "coverage": 0.348,
+      "missingClasses": [
+        "linkInfoLink",
+        "popupCloseButton",
+        "popupContainer",
+        "popupFooter",
+        "popupHeader",
+        "statusError",
+        "statusLoading",
+        "statusSuccess",
+        "usernameField",
+        "usernameFieldHiddenPrefix",
+        "usernameInput",
+        "usernameOverlay",
+        "usernameOverlayPrefix",
+        "usernameOverlaySuffix",
+        "usernameOverlayValue"
+      ]
+    },
+    {
+      "file": "src/components/popups/createPoll/mediaAttachment.module.scss",
+      "base": "mediaAttachment.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 17,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 16,
+      "classesPresent": 1,
+      "coverage": 0.063,
+      "missingClasses": [
+        "linkAttachment",
+        "linkAttachmentDim",
+        "linkAttachmentIcon",
+        "linkAttachmentPhoto",
+        "videoAttachmentBadge",
+        "videoAttachmentBadgeIcon",
+        "videoAttachmentDim",
+        "videoAttachmentVideo",
+        "videoAttachmentWrapper",
+        "videoCreatingCancel",
+        "videoCreatingCancelIcon",
+        "videoCreatingOverlay",
+        "videoCreatingPreview",
+        "videoCreatingProgress",
+        "videoCreatingWrapper"
       ]
     },
     {
@@ -1373,36 +1356,6 @@
       ]
     },
     {
-      "file": "src/components/popups/createBot/createBot.module.scss",
-      "base": "createBot.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 23,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 23,
-      "classesPresent": 9,
-      "coverage": 0.391,
-      "missingClasses": [
-        "linkInfoLink",
-        "popupCloseButton",
-        "popupContainer",
-        "popupFooter",
-        "popupHeader",
-        "statusLoading",
-        "statusSuccess",
-        "usernameField",
-        "usernameFieldHiddenPrefix",
-        "usernameInput",
-        "usernameOverlay",
-        "usernameOverlayPrefix",
-        "usernameOverlaySuffix",
-        "usernameOverlayValue"
-      ]
-    },
-    {
       "file": "src/components/simpleFormField/styles.module.scss",
       "base": "styles.module.scss",
       "kind": "module",
@@ -1416,7 +1369,6 @@
       "classesPresent": 10,
       "coverage": 0.417,
       "missingClasses": [
-        "Border",
         "BorderThick",
         "BorderThin",
         "InputStub",
@@ -1425,6 +1377,7 @@
         "forceFocused",
         "hoverEnabled",
         "lengthLeft",
+        "noTransition",
         "solidBackground",
         "withEndButtonIcon",
         "withFixedIcon",
@@ -1460,35 +1413,6 @@
         "web-app-fullscreen-buttons",
         "web-app-header",
         "web-app-icon"
-      ]
-    },
-    {
-      "file": "src/components/popups/starsRating.module.scss",
-      "base": "starsRating.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 27,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 25,
-      "classesPresent": 12,
-      "coverage": 0.48,
-      "missingClasses": [
-        "limitLine",
-        "limitLineNegative",
-        "negativeDescription",
-        "nextLevelStars",
-        "popupButton",
-        "popupCloseButton",
-        "popupContainer",
-        "popupHeader",
-        "previewButton",
-        "rowSubtitle",
-        "s-enter",
-        "s-enter-active",
-        "s-exit-active"
       ]
     },
     {
@@ -1630,58 +1554,6 @@
       ]
     },
     {
-      "file": "src/components/chat/bubbles/unknownUser.module.scss",
-      "base": "unknownUser.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 20,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 21,
-      "classesPresent": 11,
-      "coverage": 0.524,
-      "missingClasses": [
-        "commonChats",
-        "commonChatsArrow",
-        "footerIcon",
-        "notAContact",
-        "peerTitle",
-        "phoneCountry",
-        "spacerBottom",
-        "spacerTop",
-        "tableLeft",
-        "tableRight"
-      ]
-    },
-    {
-      "file": "src/components/genericTable.module.scss",
-      "base": "genericTable.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 18,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 12,
-      "classesPresent": 2,
-      "coverage": 0.167,
-      "missingClasses": [
-        "bordered",
-        "cellAlignCenter",
-        "cellAlignRight",
-        "cellValignBottom",
-        "cellValignMiddle",
-        "genericCell",
-        "genericHeaderCell",
-        "genericRow",
-        "genericTable",
-        "striped"
-      ]
-    },
-    {
       "file": "src/components/popups/starGiftUpgradePrice.module.scss",
       "base": "starGiftUpgradePrice.module.scss",
       "kind": "module",
@@ -1708,29 +1580,29 @@
       ]
     },
     {
-      "file": "src/components/sidebarRight/tabs/adminRecentActions/filters/styles.module.scss",
-      "base": "styles.module.scss",
+      "file": "src/components/popups/starsRating.module.scss",
+      "base": "starsRating.module.scss",
       "kind": "module",
       "doc": null,
       "outOfScope": false,
       "ported": false,
       "ours": null,
-      "twebSelectors": 15,
+      "twebSelectors": 27,
       "twebDynamicSelectors": 0,
-      "twebClasses": 15,
-      "classesPresent": 5,
-      "coverage": 0.333,
+      "twebClasses": 25,
+      "classesPresent": 15,
+      "coverage": 0.6,
       "missingClasses": [
-        "ContainerBackdrop",
-        "ContainerBackdropExtension",
-        "ContainerBackdropFill",
-        "ContainerEnter",
-        "ContainerEnterActive",
-        "ContainerExitActive",
-        "ContainerExitTo",
-        "Overlay",
-        "TopLevelCheckbox",
-        "hideThumb"
+        "limitLine",
+        "limitLineNegative",
+        "negativeDescription",
+        "nextLevelStars",
+        "popupButton",
+        "popupCloseButton",
+        "popupContainer",
+        "popupHeader",
+        "previewButton",
+        "rowSubtitle"
       ]
     },
     {
@@ -1812,53 +1684,53 @@
       ]
     },
     {
-      "file": "src/components/sidebarRight/tabs/adminRecentActions/filters/expandableFilterGroup.module.scss",
-      "base": "expandableFilterGroup.module.scss",
+      "file": "src/components/chat/bubbles/unknownUser.module.scss",
+      "base": "unknownUser.module.scss",
       "kind": "module",
       "doc": null,
       "outOfScope": false,
       "ported": false,
       "ours": null,
-      "twebSelectors": 11,
+      "twebSelectors": 20,
       "twebDynamicSelectors": 0,
-      "twebClasses": 11,
-      "classesPresent": 2,
-      "coverage": 0.182,
+      "twebClasses": 21,
+      "classesPresent": 12,
+      "coverage": 0.571,
       "missingClasses": [
-        "CountArrow",
-        "ExpandedItems",
-        "RowCheckbox",
-        "RowCheckboxCickArea",
-        "RowCheckboxWrapper",
-        "RowLabel",
-        "RowOffset",
-        "RowSeparator",
-        "toggled"
+        "commonChats",
+        "commonChatsArrow",
+        "footerIcon",
+        "notAContact",
+        "phoneCountry",
+        "spacerBottom",
+        "spacerTop",
+        "tableLeft",
+        "tableRight"
       ]
     },
     {
-      "file": "src/components/sidebarRight/tabs/adminRecentActions/logEntry.module.scss",
-      "base": "logEntry.module.scss",
+      "file": "src/components/sidebarRight/tabs/adminRecentActions/filters/styles.module.scss",
+      "base": "styles.module.scss",
       "kind": "module",
       "doc": null,
       "outOfScope": false,
       "ported": false,
       "ours": null,
-      "twebSelectors": 19,
+      "twebSelectors": 15,
       "twebDynamicSelectors": 0,
-      "twebClasses": 16,
-      "classesPresent": 7,
-      "coverage": 0.438,
+      "twebClasses": 15,
+      "classesPresent": 6,
+      "coverage": 0.4,
       "missingClasses": [
-        "ExpandableContent",
-        "ExpandableContentSpace",
-        "ExpandableContentTitle",
-        "ExpandableContentWrapper",
-        "NameRow",
-        "PeerTitle",
-        "PeerTitleText",
-        "PeerTitleTextClickArea",
-        "interactable"
+        "ContainerBackdrop",
+        "ContainerBackdropExtension",
+        "ContainerBackdropFill",
+        "ContainerEnter",
+        "ContainerEnterActive",
+        "ContainerExitActive",
+        "ContainerExitTo",
+        "Overlay",
+        "TopLevelCheckbox"
       ]
     },
     {
@@ -1936,6 +1808,30 @@
       ]
     },
     {
+      "file": "src/components/genericTable.module.scss",
+      "base": "genericTable.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 18,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 12,
+      "classesPresent": 4,
+      "coverage": 0.333,
+      "missingClasses": [
+        "cellAlignCenter",
+        "cellAlignRight",
+        "cellValignBottom",
+        "cellValignMiddle",
+        "genericCell",
+        "genericHeaderCell",
+        "genericRow",
+        "genericTable"
+      ]
+    },
+    {
       "file": "src/components/popups/aiEditorPopup/viewTonePopup/styles.module.scss",
       "base": "styles.module.scss",
       "kind": "module",
@@ -1981,6 +1877,54 @@
         "popupHeader",
         "privacyInfo",
         "privacyInfoLink"
+      ]
+    },
+    {
+      "file": "src/components/sidebarRight/tabs/adminRecentActions/filters/expandableFilterGroup.module.scss",
+      "base": "expandableFilterGroup.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 11,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 11,
+      "classesPresent": 3,
+      "coverage": 0.273,
+      "missingClasses": [
+        "CountArrow",
+        "ExpandedItems",
+        "RowCheckbox",
+        "RowCheckboxCickArea",
+        "RowCheckboxWrapper",
+        "RowLabel",
+        "RowOffset",
+        "RowSeparator"
+      ]
+    },
+    {
+      "file": "src/components/sidebarRight/tabs/adminRecentActions/logEntry.module.scss",
+      "base": "logEntry.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 19,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 16,
+      "classesPresent": 8,
+      "coverage": 0.5,
+      "missingClasses": [
+        "ExpandableContent",
+        "ExpandableContentSpace",
+        "ExpandableContentTitle",
+        "ExpandableContentWrapper",
+        "NameRow",
+        "PeerTitleText",
+        "PeerTitleTextClickArea",
+        "interactable"
       ]
     },
     {
@@ -2100,29 +2044,6 @@
       ]
     },
     {
-      "file": "src/components/sidebarRight/tabs/adminRecentActions/logDiff.module.scss",
-      "base": "logDiff.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 20,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 15,
-      "classesPresent": 8,
-      "coverage": 0.533,
-      "missingClasses": [
-        "Border",
-        "Separator",
-        "Strip",
-        "unroundedBottom",
-        "unroundedLeft",
-        "unroundedRight",
-        "unroundedTop"
-      ]
-    },
-    {
       "file": "src/components/slideshow.module.scss",
       "base": "slideshow.module.scss",
       "kind": "module",
@@ -2215,28 +2136,6 @@
       ]
     },
     {
-      "file": "src/components/chat/bubbleParts/chatThreadSeparator.module.scss",
-      "base": "chatThreadSeparator.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 15,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 15,
-      "classesPresent": 9,
-      "coverage": 0.6,
-      "missingClasses": [
-        "ArrowIcon",
-        "PeerTitle",
-        "Separator",
-        "SeparatorLeft",
-        "SeparatorRight",
-        "ServiceMsg"
-      ]
-    },
-    {
       "file": "src/components/rtmp/adminStreamPopup.scss",
       "base": "adminStreamPopup.scss",
       "kind": "module",
@@ -2278,6 +2177,28 @@
         "KeysContainer",
         "PlusIcon",
         "TargetKey"
+      ]
+    },
+    {
+      "file": "src/components/sidebarRight/tabs/adminRecentActions/logDiff.module.scss",
+      "base": "logDiff.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 20,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 15,
+      "classesPresent": 9,
+      "coverage": 0.6,
+      "missingClasses": [
+        "Line",
+        "Strip",
+        "unroundedBottom",
+        "unroundedLeft",
+        "unroundedRight",
+        "unroundedTop"
       ]
     },
     {
@@ -2581,6 +2502,26 @@
       ]
     },
     {
+      "file": "src/components/chat/bubbleParts/chatThreadSeparator.module.scss",
+      "base": "chatThreadSeparator.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 15,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 15,
+      "classesPresent": 11,
+      "coverage": 0.733,
+      "missingClasses": [
+        "ArrowIcon",
+        "SeparatorLeft",
+        "SeparatorRight",
+        "ServiceMsg"
+      ]
+    },
+    {
       "file": "src/components/chat/priceChangedInterceptor/priceChangedTooltip.module.scss",
       "base": "priceChangedTooltip.module.scss",
       "kind": "module",
@@ -2678,26 +2619,6 @@
         "footerButtons",
         "okButton",
         "scrollableContent"
-      ]
-    },
-    {
-      "file": "src/components/sidebarLeft/tabs/privacy/messages/starsRangeInput.module.scss",
-      "base": "starsRangeInput.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 11,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 9,
-      "classesPresent": 5,
-      "coverage": 0.556,
-      "missingClasses": [
-        "InputWrapper",
-        "LimitLast",
-        "Progress",
-        "Thumb"
       ]
     },
     {
@@ -2818,25 +2739,6 @@
       ]
     },
     {
-      "file": "src/components/codeInputField.module.scss",
-      "base": "codeInputField.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 14,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 12,
-      "classesPresent": 9,
-      "coverage": 0.75,
-      "missingClasses": [
-        "s-enter",
-        "s-enter-active",
-        "s-exit-active"
-      ]
-    },
-    {
       "file": "src/components/featureDetailsIconSticker.module.scss",
       "base": "featureDetailsIconSticker.module.scss",
       "kind": "module",
@@ -2856,25 +2758,6 @@
       ]
     },
     {
-      "file": "src/components/popups/pollLink/styles.module.scss",
-      "base": "styles.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 5,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 5,
-      "classesPresent": 2,
-      "coverage": 0.4,
-      "missingClasses": [
-        "inviteLinkContainer",
-        "openLinkBody",
-        "webPagePreview"
-      ]
-    },
-    {
       "file": "src/components/sidebarLeft/globalPostsSearch.module.scss",
       "base": "globalPostsSearch.module.scss",
       "kind": "module",
@@ -2891,6 +2774,25 @@
         "buttonPaidSearch",
         "remainingUntilReset",
         "searchQuery"
+      ]
+    },
+    {
+      "file": "src/components/sidebarLeft/tabs/privacy/messages/starsRangeInput.module.scss",
+      "base": "starsRangeInput.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 11,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 9,
+      "classesPresent": 6,
+      "coverage": 0.667,
+      "missingClasses": [
+        "InputWrapper",
+        "LimitLast",
+        "Thumb"
       ]
     },
     {
@@ -2985,6 +2887,24 @@
       "missingClasses": [
         "hasTransition",
         "overflowHidden"
+      ]
+    },
+    {
+      "file": "src/components/chat/attachMenuButton.module.scss",
+      "base": "attachMenuButton.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 7,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 7,
+      "classesPresent": 5,
+      "coverage": 0.714,
+      "missingClasses": [
+        "Loader",
+        "LoadingContainer"
       ]
     },
     {
@@ -3096,6 +3016,24 @@
       ]
     },
     {
+      "file": "src/components/popups/pollLink/styles.module.scss",
+      "base": "styles.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 5,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 5,
+      "classesPresent": 3,
+      "coverage": 0.6,
+      "missingClasses": [
+        "inviteLinkContainer",
+        "openLinkBody"
+      ]
+    },
+    {
       "file": "src/components/popups/webAppEmojiStatusAccess.module.scss",
       "base": "webAppEmojiStatusAccess.module.scss",
       "kind": "module",
@@ -3150,42 +3088,6 @@
       ]
     },
     {
-      "file": "src/components/sidebarRight/tabs/adminRecentActions/expandToggleButton.module.scss",
-      "base": "expandToggleButton.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 6,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 5,
-      "classesPresent": 3,
-      "coverage": 0.6,
-      "missingClasses": [
-        "Placeholder",
-        "toggled"
-      ]
-    },
-    {
-      "file": "src/components/sidebarRight/tabs/adminRecentActions/keyValuePair.module.scss",
-      "base": "keyValuePair.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 4,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 4,
-      "classesPresent": 2,
-      "coverage": 0.5,
-      "missingClasses": [
-        "Border",
-        "hoverable"
-      ]
-    },
-    {
       "file": "src/components/skeleton/skeleton.scss",
       "base": "skeleton.scss",
       "kind": "module",
@@ -3201,24 +3103,6 @@
       "missingClasses": [
         "skeleton-base",
         "skeleton-base--secondary"
-      ]
-    },
-    {
-      "file": "src/components/stargifts/stargiftBackdrop.module.scss",
-      "base": "stargiftBackdrop.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 6,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 6,
-      "classesPresent": 4,
-      "coverage": 0.667,
-      "missingClasses": [
-        "haloSmall",
-        "s-enter"
       ]
     },
     {
@@ -3294,24 +3178,6 @@
       ]
     },
     {
-      "file": "src/scss/partials/_print.scss",
-      "base": "_print.scss",
-      "kind": "global",
-      "doc": "state-and-layout.md",
-      "outOfScope": true,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 7,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 6,
-      "classesPresent": 4,
-      "coverage": 0.667,
-      "missingClasses": [
-        "emoji-animation-container",
-        "printable"
-      ]
-    },
-    {
       "file": "src/scss/partials/_stickerViewer.scss",
       "base": "_stickerViewer.scss",
       "kind": "global",
@@ -3384,23 +3250,6 @@
       ]
     },
     {
-      "file": "src/components/chat/attachMenuButton.module.scss",
-      "base": "attachMenuButton.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 7,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 7,
-      "classesPresent": 6,
-      "coverage": 0.857,
-      "missingClasses": [
-        "LoadingContainer"
-      ]
-    },
-    {
       "file": "src/components/chat/bubbleParts/continueLastTopicReplyMarkup/styles.module.scss",
       "base": "styles.module.scss",
       "kind": "module",
@@ -3415,23 +3264,6 @@
       "coverage": 0.5,
       "missingClasses": [
         "ArrowIcon"
-      ]
-    },
-    {
-      "file": "src/components/chat/bubbleParts/inMessageCheckbox.module.scss",
-      "base": "inMessageCheckbox.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 2,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 2,
-      "classesPresent": 1,
-      "coverage": 0.5,
-      "missingClasses": [
-        "isOutgoing"
       ]
     },
     {
@@ -3588,23 +3420,6 @@
       ]
     },
     {
-      "file": "src/components/sidebarLeft/pendingSuggestion.module.scss",
-      "base": "pendingSuggestion.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": true,
-      "ours": "components/sidebarLeft/pendingSuggestion.module.scss",
-      "twebSelectors": 10,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 10,
-      "classesPresent": 9,
-      "coverage": 0.9,
-      "missingClasses": [
-        "suggestion"
-      ]
-    },
-    {
       "file": "src/components/sidebarLeft/tabs/passcodeLock/common.module.scss",
       "base": "common.module.scss",
       "kind": "module",
@@ -3622,20 +3437,20 @@
       ]
     },
     {
-      "file": "src/components/sidebarRight/tabs/adminRecentActions/filters/flagFilters.module.scss",
-      "base": "flagFilters.module.scss",
+      "file": "src/components/sidebarRight/tabs/adminRecentActions/keyValuePair.module.scss",
+      "base": "keyValuePair.module.scss",
       "kind": "module",
       "doc": null,
       "outOfScope": false,
       "ported": false,
       "ours": null,
-      "twebSelectors": 5,
+      "twebSelectors": 4,
       "twebDynamicSelectors": 0,
-      "twebClasses": 5,
-      "classesPresent": 4,
-      "coverage": 0.8,
+      "twebClasses": 4,
+      "classesPresent": 3,
+      "coverage": 0.75,
       "missingClasses": [
-        "SectionTitle"
+        "hoverable"
       ]
     },
     {
@@ -3673,20 +3488,37 @@
       ]
     },
     {
-      "file": "src/components/staticCheckbox.module.scss",
-      "base": "staticCheckbox.module.scss",
+      "file": "src/components/stargifts/stargiftBackdrop.module.scss",
+      "base": "stargiftBackdrop.module.scss",
       "kind": "module",
       "doc": null,
       "outOfScope": false,
       "ported": false,
       "ours": null,
-      "twebSelectors": 10,
+      "twebSelectors": 6,
       "twebDynamicSelectors": 0,
-      "twebClasses": 7,
-      "classesPresent": 6,
-      "coverage": 0.857,
+      "twebClasses": 6,
+      "classesPresent": 5,
+      "coverage": 0.833,
       "missingClasses": [
-        "Border"
+        "haloSmall"
+      ]
+    },
+    {
+      "file": "src/components/staticRadio.module.scss",
+      "base": "staticRadio.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 5,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 3,
+      "classesPresent": 2,
+      "coverage": 0.667,
+      "missingClasses": [
+        "Radio"
       ]
     },
     {
@@ -3741,37 +3573,20 @@
       ]
     },
     {
-      "file": "src/scss/partials/_customEmoji.scss",
-      "base": "_customEmoji.scss",
+      "file": "src/scss/partials/_print.scss",
+      "base": "_print.scss",
       "kind": "global",
-      "doc": "media.md",
-      "outOfScope": false,
+      "doc": "state-and-layout.md",
+      "outOfScope": true,
       "ported": false,
       "ours": null,
-      "twebSelectors": 8,
+      "twebSelectors": 7,
       "twebDynamicSelectors": 0,
-      "twebClasses": 7,
-      "classesPresent": 6,
-      "coverage": 0.857,
+      "twebClasses": 6,
+      "classesPresent": 5,
+      "coverage": 0.833,
       "missingClasses": [
-        "custom-emoji-custom-sized"
-      ]
-    },
-    {
-      "file": "src/scss/partials/_emojiAnimation.scss",
-      "base": "_emojiAnimation.scss",
-      "kind": "global",
-      "doc": "media.md",
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 2,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 2,
-      "classesPresent": 1,
-      "coverage": 0.5,
-      "missingClasses": [
-        "emoji-animation-container"
+        "printable"
       ]
     },
     {
@@ -3840,23 +3655,6 @@
       "coverage": 0.75,
       "missingClasses": [
         "popup-limit"
-      ]
-    },
-    {
-      "file": "src/scss/partials/popups/_mute.scss",
-      "base": "_mute.scss",
-      "kind": "global",
-      "doc": "popups.md",
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 2,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 2,
-      "classesPresent": 1,
-      "coverage": 0.5,
-      "missingClasses": [
-        "popup-mute"
       ]
     },
     {
@@ -3977,6 +3775,21 @@
       "missingClasses": [
         "popup-web-app"
       ]
+    },
+    {
+      "file": "src/components/chat/bubbleParts/inMessageCheckbox.module.scss",
+      "base": "inMessageCheckbox.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 2,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 2,
+      "classesPresent": 2,
+      "coverage": 1,
+      "missingClasses": []
     },
     {
       "file": "src/components/chat/bubbleParts/suggestedPostAcceptWithTimePopup/styles.module.scss",
@@ -4155,6 +3968,21 @@
       "twebDynamicSelectors": 0,
       "twebClasses": 5,
       "classesPresent": 5,
+      "coverage": 1,
+      "missingClasses": []
+    },
+    {
+      "file": "src/components/codeInputField.module.scss",
+      "base": "codeInputField.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 14,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 12,
+      "classesPresent": 12,
       "coverage": 1,
       "missingClasses": []
     },
@@ -4429,6 +4257,21 @@
       "missingClasses": []
     },
     {
+      "file": "src/components/sidebarLeft/pendingSuggestion.module.scss",
+      "base": "pendingSuggestion.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": true,
+      "ours": "components/sidebarLeft/pendingSuggestion.module.scss",
+      "twebSelectors": 10,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 10,
+      "classesPresent": 10,
+      "coverage": 1,
+      "missingClasses": []
+    },
+    {
       "file": "src/components/sidebarLeft/tabs/autoDeleteMessages/customTimePopup/styles.module.scss",
       "base": "styles.module.scss",
       "kind": "module",
@@ -4519,6 +4362,36 @@
       "missingClasses": []
     },
     {
+      "file": "src/components/sidebarRight/tabs/adminRecentActions/expandToggleButton.module.scss",
+      "base": "expandToggleButton.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 6,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 5,
+      "classesPresent": 5,
+      "coverage": 1,
+      "missingClasses": []
+    },
+    {
+      "file": "src/components/sidebarRight/tabs/adminRecentActions/filters/flagFilters.module.scss",
+      "base": "flagFilters.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 5,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 5,
+      "classesPresent": 5,
+      "coverage": 1,
+      "missingClasses": []
+    },
+    {
       "file": "src/components/sidebarRight/tabs/adminRecentActions/previewMessageButtons.module.scss",
       "base": "previewMessageButtons.module.scss",
       "kind": "module",
@@ -4569,8 +4442,8 @@
       "kind": "module",
       "doc": null,
       "outOfScope": false,
-      "ported": false,
-      "ours": null,
+      "ported": true,
+      "ours": "components/spinner.module.scss",
       "twebSelectors": 3,
       "twebDynamicSelectors": 0,
       "twebClasses": 2,
@@ -4599,8 +4472,8 @@
       "kind": "module",
       "doc": null,
       "outOfScope": false,
-      "ported": false,
-      "ours": null,
+      "ported": true,
+      "ours": "components/stargifts/stargiftBadge.module.scss",
       "twebSelectors": 2,
       "twebDynamicSelectors": 0,
       "twebClasses": 2,
@@ -4624,17 +4497,17 @@
       "missingClasses": []
     },
     {
-      "file": "src/components/staticRadio.module.scss",
-      "base": "staticRadio.module.scss",
+      "file": "src/components/staticCheckbox.module.scss",
+      "base": "staticCheckbox.module.scss",
       "kind": "module",
       "doc": null,
       "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 5,
+      "ported": true,
+      "ours": "components/staticCheckbox.module.scss",
+      "twebSelectors": 10,
       "twebDynamicSelectors": 0,
-      "twebClasses": 3,
-      "classesPresent": 3,
+      "twebClasses": 7,
+      "classesPresent": 7,
       "coverage": 1,
       "missingClasses": []
     },
@@ -5254,6 +5127,21 @@
       "missingClasses": []
     },
     {
+      "file": "src/scss/partials/_customEmoji.scss",
+      "base": "_customEmoji.scss",
+      "kind": "global",
+      "doc": "media.md",
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 8,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 7,
+      "classesPresent": 7,
+      "coverage": 1,
+      "missingClasses": []
+    },
+    {
       "file": "src/scss/partials/_document.scss",
       "base": "_document.scss",
       "kind": "global",
@@ -5265,6 +5153,21 @@
       "twebDynamicSelectors": 0,
       "twebClasses": 28,
       "classesPresent": 28,
+      "coverage": 1,
+      "missingClasses": []
+    },
+    {
+      "file": "src/scss/partials/_emojiAnimation.scss",
+      "base": "_emojiAnimation.scss",
+      "kind": "global",
+      "doc": "media.md",
+      "outOfScope": false,
+      "ported": true,
+      "ours": "styles/tweb/_emojiAnimation.scss",
+      "twebSelectors": 2,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 2,
+      "classesPresent": 2,
       "coverage": 1,
       "missingClasses": []
     },
@@ -5775,6 +5678,21 @@
       "twebDynamicSelectors": 2,
       "twebClasses": 25,
       "classesPresent": 25,
+      "coverage": 1,
+      "missingClasses": []
+    },
+    {
+      "file": "src/scss/partials/popups/_mute.scss",
+      "base": "_mute.scss",
+      "kind": "global",
+      "doc": "popups.md",
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 2,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 2,
+      "classesPresent": 2,
       "coverage": 1,
       "missingClasses": []
     },
