@@ -173,18 +173,22 @@ samp {
   100% { transform: translateX(100%); }
 }
 
-/* Theme toggle circular reveal: disable the default cross-fade so only our
-   clip-path animation on ::view-transition-new(root) is visible. */
-::view-transition-old(root),
-::view-transition-new(root) {
+// Круговое раскрытие темы — tweb base.scss:1960-1972 (812502980) 1:1. Классы
+// на <html> ставит `core/theme/themeTransition.ts` только на время раскрытия
+// из точки клика: дефолтный кроссфейд гасится, а при уходе в ночь СТАРЫЙ
+// снапшот ложится поверх нового и сжимается (`reverse`).
+.no-view-transition::view-transition-old(root) {
   animation: none;
-  mix-blend-mode: normal;
 }
-::view-transition-new(root) {
-  z-index: 1;
+
+.no-view-transition::view-transition-new(root) {
+  animation: none;
 }
-::view-transition-old(root) {
-  z-index: 0;
+
+.reverse::view-transition-old(root) {
+  background: none;
+  // position: relative;
+  z-index: 2;
 }
 
 /* Telegram icon font (tgico) — ported 1:1 from tweb (icomoon export). Glyphs are

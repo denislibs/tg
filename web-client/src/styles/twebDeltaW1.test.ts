@@ -1,0 +1,37 @@
+// Пины на СКОМПИЛИРОВАННЫЙ `styles/index.scss` для CSS-правок волны 1 дельты
+// tweb e52b5d931 → 812502980 (docs/tweb/delta/README.md, «Одиночные S»).
+// Приём — тот же, что у `styles/mediaGridTile.test.ts`: настоящая компиляция
+// sass, проверяется то, что уедет в браузер, а не исходник партиала. Каждый
+// describe — отдельный коммит tweb; правило, которого нет в скомпилированном
+// CSS, красит свой describe.
+import { beforeAll, describe, expect, it } from 'vitest'
+import { join } from 'node:path'
+import * as sass from 'sass'
+
+let css: string
+
+beforeAll(() => {
+  css = sass.compile(join(__dirname, 'index.scss'), {
+    loadPaths: [__dirname, join(__dirname, '..', '..', 'node_modules')],
+    silenceDeprecations: ['import', 'global-builtin', 'color-functions', 'legacy-js-api', 'slash-div'],
+    quietDeps: true,
+  }).css
+})
+
+/** Тело первого правила с ТОЧНО таким селектором (без пробелов по краям). */
+function rule(selector: string): string | undefined {
+  const esc = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return css.match(new RegExp(`(?:^|[}\\n])\\s*${esc}\\s*\\{([^}]*)\\}`))?.[1]
+}
+
+describe('круговое раскрытие темы (tweb base.scss:1960-1972, 7082e1a18 → 091b476a9)', () => {
+  it('кроссфейд гасится только под классом на время раскрытия, а не глобально', () => {
+    expect(rule('.no-view-transition::view-transition-old(root)')).toMatch(/animation:\s*none/)
+    expect(rule('.no-view-transition::view-transition-new(root)')).toMatch(/animation:\s*none/)
+    expect(rule('::view-transition-old(root),\n::view-transition-new(root)')).toBeUndefined()
+  })
+
+  it('при уходе в ночь старый снапшот поверх нового', () => {
+    expect(rule('.reverse::view-transition-old(root)')).toMatch(/z-index:\s*2/)
+  })
+})

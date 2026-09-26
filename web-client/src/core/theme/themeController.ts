@@ -12,8 +12,7 @@
 // перенесены сюда 1:1 в виде override-таблицы (см. `getColorOverride` ниже,
 // каждый кейс — с точной ссылкой на строку в tweb).
 //
-// НЕ портировано (out-of-scope PR-1, см. бриф): View Transitions API/reveal
-// (THEME_TRANSITION_TIMEOUT, dispatchHeavyAnimationEvent), accent-preset
+// НЕ портировано (out-of-scope PR-1, см. бриф): accent-preset
 // (applyAccentPreset — произвольный акцент, включая сам факт того, что в tweb
 // `--primary-color`/`--saved-color`/`--message-out-primary-color` реально
 // строятся из `changeColorAccent(...)`, а не из статичного `colorMap[name]` —
@@ -21,7 +20,9 @@
 // `presetToColorMap`, как и Task 2), реальная tinted-деривация (iOS-подобный
 // wallpaper-blend/surface, themeController.ts:748-831, ветка
 // `if (themeName === 'tinted')`) — tinted берётся статично из
-// `presetToColorMap('tinted')` как есть. `setTheme` синхронный.
+// `presetToColorMap('tinted')` как есть. `setTheme` синхронный. Круговое
+// раскрытие (View Transitions, `THEME_TRANSITION_TIMEOUT`) живёт отдельно —
+// `core/theme/themeTransition.ts`.
 
 import IS_TOUCH_SUPPORTED from '../../environment/touchSupport'
 import type { AppColor, AppColorName, ThemePresetName } from '../../config/themePresets'
