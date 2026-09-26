@@ -55,3 +55,38 @@ describe('иконка строки — плашка 30×30 (tweb 2197fee9c, _ro
     expect(css).toMatch(/\.row\.no-subtitle,\s*\.row\.row-small\s*\{[^}]*min-height:\s*3\.375rem/)
   })
 })
+
+describe('переключатель перерисован (tweb 2197fee9c, _checkbox.scss)', () => {
+  it('дорожка 2.625rem × 1.5rem с рамкой 2px, прозрачная в выключенном', () => {
+    const r = rule('.checkbox-field-toggle .checkbox-toggle')!
+    expect(r).toMatch(/--toggle-width:\s*2\.625rem/)
+    expect(r).toMatch(/height:\s*var\(--size\)/)
+    expect(r).toMatch(/border:\s*2px solid var\(--secondary-color\)/)
+    expect(r).toMatch(/background-color:\s*transparent/)
+    expect(rule('.checkbox-field-toggle')).toMatch(/--size:\s*1\.5rem/)
+  })
+
+  it('кружок 1rem, в выключенном scale(.75), во включённом — цвета поверхности и scale(1)', () => {
+    expect(rule('.checkbox-field-toggle .checkbox-toggle-circle')).toMatch(/scale\(0\.75\)/)
+    expect(css).toMatch(/\.checkbox-field-toggle \[type=checkbox\]:checked:not\(\.is-fake-disabled\) \+ \.checkbox-toggle \.checkbox-toggle-circle\s*\{[^}]*background-color:\s*var\(--surface-color\)[^}]*scale\(1\)/)
+  })
+})
+
+describe('поля строки — по классам row-* (tweb 803f9599d → ef41b29db, _row.scss)', () => {
+  it('раскладка чекбокса/радио строки целится в row-checkbox-field / row-radio-field', () => {
+    expect(rule('.row .row-checkbox-field')).toMatch(/position:\s*absolute/)
+    expect(rule('.row .row-radio-field')).toMatch(/margin-top:\s*0/)
+    expect(rule('.row-grid > .row-checkbox-field')).toMatch(/grid-area:\s*left/)
+  })
+
+  it('чужой чекбокс внутри строки раскладку строки не подхватывает', () => {
+    expect(css).not.toMatch(/\.row \.checkbox-field\b/)
+    expect(css).not.toMatch(/\.row \.radio-field\b/)
+  })
+
+  it('ряд заголовка/подписи в grid-строке и правый контрол (ef41b29db)', () => {
+    expect(rule('.row-grid .row-title-row')).toMatch(/grid-area:\s*title/)
+    expect(rule('.row-grid .row-subtitle-row')).toMatch(/grid-area:\s*subtitle/)
+    expect(rule('.row-title-right-with-control')).toMatch(/gap:\s*0?\.5rem/)
+  })
+})

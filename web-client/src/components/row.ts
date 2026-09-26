@@ -73,6 +73,7 @@ import RadioForm from '@components/radioForm'
 import Button from '@components/button'
 import Icon from '@components/icon'
 import { setRowIconBackground } from '@helpers/rowIconBackground'
+import { ROW_CHECKBOX_FIELD_CLASS, ROW_CHECKBOX_FIELD_TOGGLE_CLASS, ROW_RADIO_FIELD_CLASS } from '@components/rowFieldClasses'
 import type { IconName } from '@core/tgico-icons'
 import { i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
 import setInnerHTML, { setDirection } from '@helpers/dom/setInnerHTML'
@@ -195,15 +196,19 @@ export default class Row<T extends SliderSuperTabEventableConstructable = any> {
     if(options.radioField || options.checkboxField) {
       if(options.radioField) {
         this.radioField = options.radioField
+        this.radioField.label.classList.add(ROW_RADIO_FIELD_CLASS)
         this.container.append(this.radioField.label)
         havePadding = true
       }
 
       if(options.checkboxField) {
         this.checkboxField = options.checkboxField
+        // tweb 803f9599d: поле — своё для строки, см. `rowFieldClasses`
+        this.checkboxField.label.classList.add(ROW_CHECKBOX_FIELD_CLASS)
 
         const isToggle = options.checkboxField.label.classList.contains('checkbox-field-toggle')
         if(isToggle) {
+          this.checkboxField.label.classList.add(ROW_CHECKBOX_FIELD_TOGGLE_CLASS)
           this.container.classList.add('row-with-toggle')
           options.titleRight = this.checkboxField.label
         } else {

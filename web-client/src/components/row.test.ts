@@ -96,6 +96,22 @@ describe('Row', () => {
     expect(withCaption.label.classList.contains('checkbox-field-absolute')).toBe(false)
   })
 
+  it('свои поля строка метит классами row-* (tweb 803f9599d, rowFieldClasses): чекбокс, тумблер, радио', () => {
+    const checkbox = new CheckboxField()
+    new Row({ checkboxField: checkbox })
+    expect(checkbox.label.classList.contains('row-checkbox-field')).toBe(true)
+    expect(checkbox.label.classList.contains('row-checkbox-field-toggle')).toBe(false)
+
+    const toggle = new CheckboxField({ toggle: true })
+    new Row({ checkboxField: toggle })
+    expect(toggle.label.classList.contains('row-checkbox-field')).toBe(true)
+    expect(toggle.label.classList.contains('row-checkbox-field-toggle')).toBe(true)
+
+    const radio = new RadioField({ text: 'Вариант', name: 'g2', value: 'a' })
+    new Row({ radioField: radio })
+    expect(radio.label.classList.contains('row-radio-field')).toBe(true)
+  })
+
   it('withCheckboxSubtitle переключает подпись строки по input.checked чекбокса (tweb :152-161, у нас — input.checked вместо .checked)', () => {
     const checkboxField = new CheckboxField()
     const row = new Row({ checkboxField, withCheckboxSubtitle: true })

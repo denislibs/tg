@@ -147,6 +147,19 @@ describe('Row — разметка tweb', () => {
     }
   })
 
+  it('свои поля строки — с классами row-* (tweb 803f9599d): чекбокс и тумблер', () => {
+    const { container, unmount } = render(<Row label="History" translate={false} checkbox checked />)
+    const cb = row(container).querySelector<HTMLElement>('.checkbox-field')!
+    expect(cb.classList.contains('row-checkbox-field')).toBe(true)
+    expect(cb.classList.contains('row-checkbox-field-toggle')).toBe(false)
+    unmount()
+
+    const { container: c2 } = render(<Row label="Sound" translate={false} toggle checked />)
+    const toggle = row(c2).querySelector<HTMLElement>('.checkbox-field-toggle')!
+    expect(toggle.classList.contains('row-checkbox-field')).toBe(true)
+    expect(toggle.classList.contains('row-checkbox-field-toggle')).toBe(true)
+  })
+
   it('onClick получает событие (координаты — для перехода темы)', () => {
     const onClick = vi.fn()
     const { container } = render(<Row label="Night" translate={false} onClick={onClick} />)

@@ -51,6 +51,7 @@ import { usePopupTransition } from './settings/kit'
 import { useT } from '../i18n'
 import { PREMIUM_PLANS, planById, formatUsd, perMonthCents, discountPct, type PremiumPlan, type PremiumPlanId } from '../core/premium/plans'
 import s from './PremiumModal.module.scss'
+import { ROW_CHECKBOX_FIELD_CLASS } from './rowFieldClasses'
 
 interface Feature {
   icon: IconName
@@ -151,7 +152,8 @@ function PlanRow({ plan, active, onSelect }: { plan: PremiumPlan; active: boolea
         shape="round"
         asRadio
         name="premium-period"
-        className="checkbox-field-absolute disable-hover"
+        // tweb 803f9599d: чекбокс строки несёт `row-checkbox-field` (`rowFieldClasses`)
+        className={`checkbox-field-absolute disable-hover ${ROW_CHECKBOX_FIELD_CLASS}`}
         onToggle={() => onSelect(plan.id)}
       />
       <div className="row-title">

@@ -7,6 +7,7 @@ import classNames from '../../shared/lib/classNames'
 import TgIcon from '../TgIcon'
 import type { IconName } from '@core/tgico-icons'
 import { getRowIconBackgroundImage } from '@helpers/rowIconBackground'
+import { ROW_CHECKBOX_FIELD_CLASS, ROW_CHECKBOX_FIELD_TOGGLE_CLASS } from '../rowFieldClasses'
 import TgSwitch from '../TgSwitch'
 import liteMode from '../../helpers/liteMode'
 import { clearPendingTransitionCleanup, NAVIGATION_TRANSITION_TIME, runNavigationTransition } from '../transition'
@@ -396,8 +397,10 @@ export function Row({
       ? cloneElement(icon, { className: classNames('row-icon', icon.props.className ?? '') })
       : icon
 
+  // tweb 803f9599d: тумблер — тоже чекбокс строки, у него оба класса
+  // (`rowFieldClasses`, `rowTsx.tsx` `Row.CheckboxFieldToggle`).
   const titleRight = toggle
-    ? <TgSwitch checked={!!checked} restriction={restriction} />
+    ? <TgSwitch checked={!!checked} restriction={restriction} className={`${ROW_CHECKBOX_FIELD_CLASS} ${ROW_CHECKBOX_FIELD_TOGGLE_CLASS}`} />
     : selected
       ? <TgIcon name="check" size={22} color="var(--primary-color)" />
       : value ?? null
@@ -464,7 +467,7 @@ export function Row({
         <Checkbox
           checked={!!checked}
           shape="square"
-          className="checkbox-field-absolute disable-hover"
+          className={`checkbox-field-absolute disable-hover ${ROW_CHECKBOX_FIELD_CLASS}`}
         />
       )}
       {sublabel && <div className="row-subtitle">{sublabel}</div>}

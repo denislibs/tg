@@ -9,6 +9,7 @@ import TgIcon from '../../TgIcon'
 import { useT } from '../../../i18n'
 import type { GroupEdit } from '../../../core/hooks/useGroupEdit'
 import { isPublic as chatIsPublic } from '../../../core/peers/predicates'
+import { ROW_RADIO_FIELD_CLASS } from '../../rowFieldClasses'
 
 export function ChatTypeScreen({ g, isChannel, onBack }: { g: GroupEdit; isChannel: boolean; onBack: () => void }) {
   const t = useT()
@@ -44,7 +45,7 @@ export function ChatTypeScreen({ g, isChannel, onBack }: { g: GroupEdit; isChann
     >
       {/* Выбор типа — радио-строки 1:1 с дампом 15-right-17:
           `label.row.row-with-padding.row-clickable.hover-effect.rp` с
-          `.row-subtitle` и `label.radio-field.disable-hover > input[type=radio]
+          `.row-subtitle` и `label.radio-field.disable-hover.row-radio-field > input[type=radio]
           + div.radio-field-main` (стили — `_checkbox.scss` / `_row.scss`). */}
       <Section caption={isChannel ? 'ChannelType' : 'GroupType'}>
         <form>
@@ -59,7 +60,7 @@ export function ChatTypeScreen({ g, isChannel, onBack }: { g: GroupEdit; isChann
                     ? 'ChannelPrivateInfo'
                     : 'MegaPrivateInfo')}
               </div>
-              <label className="radio-field disable-hover">
+              <label className={`radio-field disable-hover ${ROW_RADIO_FIELD_CLASS}`}>
                 <input
                   type="radio"
                   name="chat-type"
