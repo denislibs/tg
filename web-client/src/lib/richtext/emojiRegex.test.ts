@@ -12,7 +12,9 @@ import parseEntities from './parseEntities'
 
 describe('регэксп эмодзи', () => {
   it('чистый ASCII — сборщику нечего испортить', () => {
-    const offenders = [...emojiRegExp].filter((char) => char.charCodeAt(0) > 0x7f)
+    // По кодовым единицам UTF-16 (`split('')`), а не по кодпоинтам, как
+    // `[...str]` у tweb: одиночный суррогат и есть кодовая единица.
+    const offenders = emojiRegExp.split('').filter((char) => char.charCodeAt(0) > 0x7f)
 
     expect(offenders).toEqual([])
   })
