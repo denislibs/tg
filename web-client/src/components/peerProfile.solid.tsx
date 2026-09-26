@@ -16,10 +16,11 @@
  * ── Task 4: что портировано, что нет (сводная таблица) ──────────────────────
  * Оригинал (`:1517-1529`, порядок строк MainSection): Phone → Username →
  * Location → Bio → Link → Birthday → ContactNote → BusinessHours →
- * BusinessLocation → Notifications → BotAddToChat → BotPrivacyPolicy.
+ * BusinessLocation → Notifications → BotAddToChat → BotPrivacyPolicy →
+ * BotReport (последняя — 2488f2cf0, по 812502980).
  * Портированы (под них есть предмет — данные из `usePeer`/`useFullPeer`,
  * Task 1): **Phone, Username (+QrButton), Bio, Link, Birthday,
- * Notifications** — см. докблок каждой функции ниже за деталями и частичными
+ * Notifications, BotReport** — см. докблок каждой функции ниже за деталями и частичными
  * расхождениями (у некоторых портирована не вся строка, а её часть с
  * предметом — например, `Username` без `getUsernamesAlso`).
  *
@@ -190,6 +191,8 @@ import { useFullPeer } from '../stores/fullPeers.solid'
 import type { PeerFull } from '../core/chatFullCache'
 import type { User, Chat, Channel, ChannelFull } from '../core/peers/peer'
 import { useChatsStore } from '../stores/chatsStore'
+import { useReportStore } from '../stores/reportStore'
+import canReportBot from '../core/peers/canReportBot'
 import { mountSolid } from '../shared/solid/mountSolid.solid'
 import { subscribeExternal } from '../helpers/solid/subscribeExternal'
 import { getPeerTitle, SAVED_MESSAGES_TITLE } from '../core/peers/getPeerTitle'
@@ -872,6 +875,7 @@ function MainSection() {
       <Link />
       <Birthday />
       <Notifications />
+      <BotReport />
     </Section>
   )
 }
@@ -1214,6 +1218,28 @@ function Notifications() {
         </Row.CheckboxFieldToggle>
         <Row.Icon icon="unmute" />
         <Row.Title>{i18n('Notifications')}</Row.Title>
+      </Row>
+    </Show>
+  )
+}
+
+/**
+ * Порт `PeerProfile.BotReport` (tweb 2488f2cf0, 812502980 `:1098-1111`, сборка `:1675`) —
+ * строка «Пожаловаться» в профиле бота. Предмет — только `pFlags.bot` краткого
+ * `User` (`canReportBot`), `bot_info` ей не нужен, поэтому она портирована в
+ * отличие от `BotAddToChat`/`BotPrivacyPolicy`. `showPeerReport(peerId)`
+ * оригинала у нас — глобальный `ReportPopup`, который открывает `reportStore`
+ * (тот же вход, что у пункта ⋮-меню чата, `HeaderMenu.tsx`).
+ */
+function BotReport() {
+  const context = usePeerProfileContext()
+  const canReport = createMemo(() => canReportBot(context.peer as User | undefined))
+
+  return (
+    <Show when={canReport()}>
+      <Row clickable={() => useReportStore.getState().open({ peerId: context.peerId })}>
+        <Row.Icon icon="flag" />
+        <Row.Title>{i18n('ReportChat')}</Row.Title>
       </Row>
     </Show>
   )

@@ -392,3 +392,22 @@ describe('Notifications (tweb :1175-1218)', () => {
     expect(row.querySelector<HTMLInputElement>('input[type=checkbox]')!.checked).toBe(false)
   })
 })
+
+describe('BotReport (tweb 2488f2cf0, 812502980 :1098-1111)', () => {
+  it('у бота есть строка «Пожаловаться», клик открывает жалобу на пира', async () => {
+    const { useReportStore } = await import('../stores/reportStore')
+    peerSignal[1]({ _: 'user', id: 7, pFlags: { bot: true } })
+    const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el() })
+    const row = rowByIcon(h, 'flag')
+    expect(row).not.toBeNull()
+    row!.click()
+    expect(useReportStore.getState().target).toEqual({ peerId: 7 })
+    useReportStore.getState().close()
+  })
+
+  it('у обычного пользователя строки нет', () => {
+    peerSignal[1]({ _: 'user', id: 7, pFlags: {} })
+    const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el() })
+    expect(rowByIcon(h, 'flag')).toBeNull()
+  })
+})
