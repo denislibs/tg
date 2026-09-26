@@ -453,7 +453,6 @@ const fr = {
   AutoDownloadLargeFilesInfo: 'Les fichiers plus volumineux ne sont jamais téléchargés automatiquement.',
   AutoDownloadMaxVideoSize: 'Taille vidéo max.',
   DoubleTapSetting: 'Réaction rapide',
-  DoubleTapSettingInfo: 'Touchez deux fois un message pour envoyer cette réaction rapidement.',
   EnableAnimations: 'Activer les animations',
   'LiteMode.Caption': 'Désactivez les animations et effets pour réduire la consommation d\'énergie.',
   Animations: 'Animations',

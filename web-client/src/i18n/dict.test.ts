@@ -222,12 +222,15 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `NotificationsPrivateChats` («Private Chats»), у fr — заголовка
 // («Notifications»). ru 1346 → 1350, uk 682 → 686, es 681 → 685,
 // de/fr 681 → 684. `plural` не менялся.
+// Задачей 14 плана 2D (вкладка «Быстрая реакция») снят самодельный
+// `DoubleTapSettingInfo` — подпись React-экрана, которой у tweb нет, читатель ушёл
+// вместе с экраном: всем пяти по −1 (ru 1349, uk 685, es 684, de/fr 683).
 const COMPOSITION = {
-  ru: { keys: 1350, plural: 35 },
-  uk: { keys: 686, plural: 24 },
-  es: { keys: 685, plural: 24 },
-  de: { keys: 684, plural: 24 },
-  fr: { keys: 684, plural: 24 },
+  ru: { keys: 1349, plural: 35 },
+  uk: { keys: 685, plural: 24 },
+  es: { keys: 684, plural: 24 },
+  de: { keys: 683, plural: 24 },
+  fr: { keys: 683, plural: 24 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -323,12 +326,13 @@ const COMPOSITION = {
 // (разбор — у `COMPOSITION` выше). Портом 72c50bfef — `Notifications.Restricted`.
 // Пилотом 2D — заголовок вкладки уведомлений и три имени секций (разбор — у
 // `COMPOSITION` выше; de и fr расходятся по одному совпавшему ключу).
+// Задачей 14 плана 2D — минус `DoubleTapSettingInfo` у всех пяти.
 const FINGERPRINT = {
-  ru: 'fc80fe50',
-  uk: 'a3272773',
-  es: '1c37914d',
-  de: '5fb99ee1',
-  fr: '3fb1ce0b',
+  ru: '8f917c3a',
+  uk: 'e9911a2d',
+  es: '19e3c4ff',
+  de: '9b8dd343',
+  fr: 'f6706245',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
