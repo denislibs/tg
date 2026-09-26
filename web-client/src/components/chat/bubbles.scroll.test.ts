@@ -89,15 +89,16 @@ function pagingManagers(pages: { first: HistoryResult, older?: HistoryResult, ne
   const getReadMaxSeqIfUnread = vi.fn(async () => 0)
   const markRead = vi.fn(async () => ({ ok: true }))
   const getHistoryMaxSeq = vi.fn(async () => 0)
+  const getDialogReadState = vi.fn(async (): Promise<{ readInboxMaxSeq: number, unreadCount: number } | undefined> => undefined)
   const managers: BubblesManagers = {
     messages: { getHistory, getAround, messageByDate },
     peers: { fillMirror: vi.fn(async () => {}) },
-    dialogs: { getReadMaxSeqIfUnread, getHistoryMaxSeq, getDialogReadState: vi.fn(async () => undefined) },
+    dialogs: { getReadMaxSeqIfUnread, getHistoryMaxSeq, getDialogReadState },
     // Ручка отметки прочтения: наблюдатель непрочитанных живёт в самой ленте
     // (порт tweb bubbles.ts:2941-3012).
     realtime: { markRead },
   }
-  return Object.assign(managers, { calls, aroundCalls, getHistory, getAround, messageByDate, getReadMaxSeqIfUnread, getHistoryMaxSeq, markRead })
+  return Object.assign(managers, { calls, aroundCalls, getHistory, getAround, messageByDate, getReadMaxSeqIfUnread, getHistoryMaxSeq, getDialogReadState, markRead })
 }
 
 /** Троттлинг Scrollable в этой среде — `setTimeout(24)`
@@ -790,5 +791,90 @@ describe('ChatBubbles — граница непрочитанных', () => {
     await settle()
 
     expect(b.chatInner.querySelectorAll('.is-first-unread')).toHaveLength(0)
+  })
+})
+
+// ─── «Вниз» к первому непрочитанному ───────────────────────────────────────
+//
+// tweb ce37ebeb3 (tdesktop `HistoryWidget::insideJumpToEndInsteadOfToUnread`):
+// в УЖЕ открытом чате кнопка «вниз» ведёт к первому непрочитанному позицией
+// 'start', пока оно ниже вьюпорта; когда оно уже не ниже — в самый конец.
+// Якорь — `firstUnreadBubble` (черта непрочитанных): она заморожена на время
+// жизни окна, поэтому второе нажатие находит её на экране и уходит в конец.
+
+describe('ChatBubbles — «вниз» к первому непрочитанному', () => {
+  /** Чат 11…20, прочитано по `readMaxSeq`, непрочитанных `unreadCount`. */
+  async function openWithUnread(readMaxSeq: number, unreadCount: number) {
+    const managers = pagingManagers({ first: page([11, 12, 13, 14, 15, 16, 17, 18, 19, 20], true, true) })
+    managers.getReadMaxSeqIfUnread.mockResolvedValue(readMaxSeq)
+    managers.getHistoryMaxSeq.mockResolvedValue(20)
+    managers.getDialogReadState.mockResolvedValue({ readInboxMaxSeq: readMaxSeq, unreadCount })
+    // видимая зона ленты — те же 500px, что и у фейкового контейнера
+    const bubblesViewport = document.createElement('div')
+    bubblesViewport.getBoundingClientRect = () => rect(0, VIEWPORT_H)
+    const { b } = mount(managers, { bubblesViewport })
+    await openFeed(b)
+    await settle()
+    return { b, managers }
+  }
+
+  it('непрочитанное ниже вьюпорта: «вниз» ставит первое непрочитанное к верху, окно не пересобирается', async () => {
+    const { b, managers } = await openWithUnread(17, 3)
+    b.scrollable.container.scrollTop = 0 // пользователь ушёл вверх — черта далеко внизу
+
+    const chatInnerBefore = b.chatInner
+    const historyCalls = managers.getHistory.mock.calls.length
+    const spy = vi.spyOn(b.scrollable, 'scrollIntoViewNew').mockResolvedValue(undefined)
+    const result = await b.setMessageId()
+
+    expect(result).toBeNull()
+    expect(b.chatInner).toBe(chatInnerBefore)
+    expect(managers.getHistory.mock.calls.length).toBe(historyCalls)
+    // узел сверяется `toBe`: `toMatchObject` сравнивает DOM-узлы по своим
+    // перечислимым полям, которых у них нет, — совпал бы любой бабл
+    expect(spy.mock.calls[0][0].element).toBe(b.getBubble(makeFullMid(CHAT, 18)))
+    expect(spy.mock.calls[0][0].position).toBe('start')
+  })
+
+  it('первое непрочитанное уже не ниже вьюпорта — второе нажатие уводит в самый конец', async () => {
+    const { b } = await openWithUnread(17, 3)
+    b.scrollable.container.scrollTop = 99999 // внизу: черта на экране
+
+    const spy = vi.spyOn(b.scrollable, 'scrollIntoViewNew').mockResolvedValue(undefined)
+    await b.setMessageId()
+
+    expect(spy.mock.calls[0][0].element).toBe(b.chatInner)
+    expect(spy.mock.calls[0][0].position).toBe('end')
+  })
+
+  it('одно непрочитанное (`unread_count === 1`) — сразу в конец, как у tweb', async () => {
+    const { b } = await openWithUnread(19, 1)
+    b.scrollable.container.scrollTop = 0
+
+    const spy = vi.spyOn(b.scrollable, 'scrollIntoViewNew').mockResolvedValue(undefined)
+    await b.setMessageId()
+
+    expect(spy.mock.calls[0][0].element).toBe(b.chatInner)
+    expect(spy.mock.calls[0][0].position).toBe('end')
+  })
+
+  it('непрочитанных в окне нет (ушли далеко вверх): окно пересобирается вокруг курсора и встаёт на черту', async () => {
+    const { b, managers } = await openWithUnread(17, 3)
+    managers.getAround.mockImplementation(async (_peerId: number, centerId: number) => {
+      const ids = centerId === 3 ? [1, 2, 3, 4, 5] : [14, 15, 16, 17, 18, 19, 20]
+      return { messages: ids.map((id) => msg(id)), reachedTop: centerId === 3, reachedBottom: centerId !== 3 }
+    })
+    await (await b.setMessageId({ lastMsgId: 3 }))?.promise
+    await settle()
+
+    const spy = vi.spyOn(b.scrollable, 'scrollIntoViewNew').mockResolvedValue(undefined)
+    await (await b.setMessageId())?.promise
+    await settle()
+
+    expect(managers.getAround.mock.calls.map(([, centerId]) => centerId)).toEqual([3, 17])
+    const firstUnread = b.getBubble(makeFullMid(CHAT, 18))!
+    expect(firstUnread.classList.contains('is-first-unread')).toBe(true)
+    expect(spy.mock.calls[0][0].element).toBe(firstUnread)
+    expect(spy.mock.calls[0][0].position).toBe('start')
   })
 })

@@ -120,12 +120,21 @@ div.chat.tabs-tab                        (chat.container)
    - `topMessageFullMid` — `historyStorage.maxId`;
    - `savedPosition = appImManager.getChatSavedPosition(chat)` (только не samePeer и не target);
    - если нет target и нет savedPosition: `readMaxId = getReadMaxIdIfUnread(...)`; при
-     непрочитанных (`unread_count !== 1`) → `followingUnread = true`,
+     непрочитанных (`unread_count !== 1`) и `!samePeer || (sameSearch &&
+     !shouldJumpToEndInsteadOfUnread(readMaxId))` → `followingUnread = true`,
      `lastMsgFullMid = readMaxId`, а `overrideAdditionMsgId = slice[offset − 25]` — чтобы под
-     разделителем было ~25 сообщений снизу;
+     разделителем было ~25 сообщений снизу. Вторая половина гейта — tweb ce37ebeb3 (tdesktop
+     `insideJumpToEndInsteadOfToUnread`): в открытом чате «вниз» и повторный клик по диалогу
+     ведут к первому непрочитанному, пока оно ниже вьюпорта (`getFirstUnreadBubble` —
+     `firstUnreadBubble` или скан `findFirstUnreadFullMid`), иначе в конец;
+     **у нас:** портирована половина `samePeer` (`bubbles.ts::setPeer`, кнопка «вниз» →
+     `setMessageId()`); открытие чата (`!samePeer`) на непрочитанном — нет. Повторного клика
+     по открытому диалогу у нас нет вовсе: `navigationStore.selectChat` того же id ленту не
+     трогает;
    - `isJump = lastMsgFullMid !== topMessageFullMid`.
 4. **samePeer && sameSearch** и целевой бабл уже смонтирован (`:5155-5200`): без перезагрузки —
-   `scrollToBubble(bubble, 'center')` + `highlightBubble`, либо `scrollToEnd()`;
+   `followingUnread` → `scrollToBubble(getFirstUnreadBubble(readMaxId), 'start')` (tweb ce37ebeb3),
+   иначе `scrollToBubble(bubble, 'center')` + `highlightBubble`, либо `scrollToEnd()`;
    `followStack.push(stack)` если пришли «из ответа». Выход (`return null`).
 5. Иначе: новый `lazyLoadQueue.queueId` (сброс приоритетов загрузки медиа), `followStack = []`.
 6. `additionalMid` (`:5219`) — при заходе «в самый низ» topMessage добавляется отдельным

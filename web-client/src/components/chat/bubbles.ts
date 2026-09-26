@@ -4049,11 +4049,13 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *    у ленты нет. У нас пир меняет ХОСТ, пересоздавая ленту эффектом по
    *    `peerId` (`VanillaFeed.tsx`), поэтому «тот же инстанс на новый пир»
    *    предмета пока не имеет.
-   *  • `followingUnread` (:5121-5133, :5453/:5463/:5471) — открытие чата на первом
-   *    непрочитанном.
-   *    Требует `!samePeer` И `dialog.unread_count !== 1`; счётчика диалога
-   *    ленте никто не отдаёт (`BubblesManagers.dialogs` знает только горизонт
-   *    чтения). Сама черта непрочитанных при этом работает и здесь — её ставит
+   *  • `followingUnread` при ОТКРЫТИИ чата (`!samePeer`, :5908-5924) — окно
+   *    сразу на первом непрочитанном. Портирована только половина
+   *    `samePeer` (tweb ce37ebeb3: «вниз» в открытом чате ведёт к первому
+   *    непрочитанному, см. гейт ниже); открытие по-прежнему встаёт вниз —
+   *    ему нужны `overrideAdditionMsgId` и развязка с сохранённой позицией.
+   *    Данные для гейта есть (`dialogs.getDialogReadState` — счётчик
+   *    непрочитанных). Сама черта непрочитанных работает и здесь — её ставит
    *    `setUnreadDelimiter` на любой отрисованной странице.
    *  • `additionalFullMid` (:5219-5220) — дорисовать последнее сообщение поверх
    *    страницы прыжка; ветка его обработки не портирована и в `getHistory`
@@ -4128,10 +4130,14 @@ export default class ChatBubbles implements BubbleGroupsHost {
     //
     // Вторым здесь едет КУРСОР ПРОЧТЕНИЯ — снимок под наблюдатель
     // непрочитанных (см. поле `renderReadMaxSeq`; в оригинале его спрашивает
-    // сам `renderMessage`, :7942). Владелец факта — тот же `dialogsManager`.
-    const [historyMaxId, readState] = await m(Promise.all([
+    // сам `renderMessage`, :7942) — вместе со счётчиком непрочитанных для
+    // гейта «вниз к непрочитанному» ниже. Третьим — «горизонт, если есть
+    // непрочитанное» (tweb `getReadMaxIdIfUnread`, :5896-5901). Владелец всех
+    // трёх фактов — тот же `dialogsManager`.
+    const [historyMaxId, readState, readMaxId] = await m(Promise.all([
       this.managers.dialogs.getHistoryMaxSeq(peerId),
       this.managers.dialogs.getDialogReadState(peerId),
+      this.managers.dialogs.getReadMaxSeqIfUnread(peerId),
     ]))
     const topMessageFullMid: FullMid = historyMaxId ? makeFullMid(peerId, historyMaxId) : EMPTY_FULL_MID
     const isTarget = lastMsgFullMid !== EMPTY_FULL_MID
@@ -4152,19 +4158,40 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // перехватывает управление у «уйти к последнему сообщению» ниже. Здесь она
     // выражена тем же условием в `else if`.
     let savedPosition: ChatPosition | undefined
+    // tweb :5886-5924 — «вести к первому непрочитанному», а не в конец.
+    let followingUnread = false
     if(!isTarget) {
       if(!samePeer) {
         savedPosition = getChatPosition(peerId, this.chat.threadId)
       }
 
       if(!savedPosition && topMessageFullMid !== EMPTY_FULL_MID) {
-        lastMsgFullMid = topMessageFullMid
+        // tweb ce37ebeb3 (tdesktop `insideJumpToEndInsteadOfToUnread`): в УЖЕ
+        // открытом чате «вниз» ведёт к первому непрочитанному, пока оно ниже
+        // вьюпорта; когда оно уже не ниже — в самый конец. `sameSearch`
+        // оставлен ключом: уход из фильтра по-прежнему идёт в конец. Гейт
+        // `unread_count !== 1` — оригинала: единственное непрочитанное и есть
+        // последнее сообщение. `isSavedDialog` оригинала предмета не имеет —
+        // вложенных диалогов «Избранного» у нас нет.
+        //
+        // Половина `!samePeer ||` (открытие чата сразу на непрочитанном) НЕ
+        // портирована — это отдельная ветка открытия (`overrideAdditionMsgId`,
+        // сохранённая позиция); при `!samePeer` окно по-прежнему встаёт вниз.
+        if(
+          readMaxId &&
+          samePeer && sameSearch && !this.shouldJumpToEndInsteadOfUnread(readMaxId) &&
+          (!readState || readState.unreadCount !== 1)
+        ) {
+          followingUnread = true
+          lastMsgFullMid = makeFullMid(peerId, readMaxId)
+        } else {
+          lastMsgFullMid = topMessageFullMid
+        }
       }
     }
 
-    // tweb :5137-5138. `followingUnread` в формуле нет — ветки, которая его
-    // взводит, здесь тоже нет (см. докблок).
-    const isGoingToBottomEnd = lastMsgFullMid === topMessageFullMid || lastMsgFullMid === EMPTY_FULL_MID
+    // tweb :5927-5928.
+    const isGoingToBottomEnd = lastMsgFullMid === topMessageFullMid || (lastMsgFullMid === EMPTY_FULL_MID && !followingUnread)
     const isJump = lastMsgFullMid !== topMessageFullMid
 
     // tweb :5140-5147: «уходим в самый низ, но такого сообщения у нас нет» —
@@ -4182,9 +4209,18 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // сколько бы целей в нём ни было смонтировано.
     if(samePeer && sameSearch) {
       const mounted = await m(this.getMountedBubble(lastMsgFullMid))
-      const bubble = mounted?.bubble
+      let bubble = mounted?.bubble
+
+      // * `lastMsgFullMid` is the read cursor here, but we have to land on the delimiter after it
+      // (tweb ce37ebeb3)
+      if(followingUnread) {
+        bubble = this.getFirstUnreadBubble(readMaxId) || bubble
+      }
+
       if(bubble) {
-        if(isTarget) {
+        if(followingUnread) {
+          void this.scrollToBubble(bubble, 'start')
+        } else if(isTarget) {
           void this.scrollToBubble(bubble, 'center')
           this.highlightBubble(bubble)
         } else if(topMessageFullMid !== EMPTY_FULL_MID && !isJump) {
@@ -4388,7 +4424,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
           scrollable.setScrollPositionSilently(0)
         }
 
-        let bubble = mountedByLastMsgId?.bubble
+        let bubble = (followingUnread && this.firstUnreadBubble) || mountedByLastMsgId?.bubble
         const foundTarget = !!bubble?.parentElement
         if(!foundTarget) {
           bubble = this.findNextMountedBubbleByMsgId(lastMsgFullMid, false) || this.findNextMountedBubbleByMsgId(lastMsgFullMid, true)
@@ -4398,9 +4434,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
         // ! sometimes there can be no bubble
         if(bubble) {
           const lastBubble = this.getLastBubble()
-          // `followingUnread ? 'start' : ...` (:5463) свёрнуто: ветки, которая
-          // его взводит, здесь нет.
-          const position: ScrollLogicalPosition = !isJump && !isTarget && lastBubble === bubble ? 'end' : 'center'
+          const position: ScrollLogicalPosition = followingUnread ? 'start' : (!isJump && !isTarget && lastBubble === bubble ? 'end' : 'center')
+          const willHighlight = !followingUnread && isTarget && foundTarget
 
           if(position === 'end' && lastBubble === bubble && samePeer) {
             scrollPromise = this.scrollToEnd()
@@ -4408,7 +4443,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
             scrollPromise = this.scrollToBubble(bubble, position, !samePeer ? FocusDirection.Static : undefined)
           }
 
-          if(isTarget && foundTarget) {
+          if(willHighlight) {
             this.highlightBubble(bubble)
           }
         }
@@ -5269,6 +5304,42 @@ export default class ChatBubbles implements BubbleGroupsHost {
     return item?.element
   }
 
+  /** The first rendered incoming message past the read cursor — where the unread delimiter goes
+   *  (tweb ce37ebeb3, `findFirstUnreadFullMid`). Сравнение — по номеру серии, как и было в
+   *  `setUnreadDelimiter` (см. его докблок). */
+  private findFirstUnreadFullMid(readMaxId: number): FullMid | undefined {
+    return this.getRenderedHistory('asc', true).find((fullMid) => {
+      const bubble = this.getBubble(fullMid)
+      return !!bubble && !bubble.classList.contains('is-out') &&
+        (this.bubbleGroups.getItemByBubble(bubble)?.mid ?? 0) > readMaxId
+    })
+  }
+
+  /**
+   * The bubble the unread delimiter sits on (or would sit on), i.e. tdesktop's
+   * `History::firstUnreadMessage()`. Falls back to a scan when the delimiter itself hasn't been
+   * attached yet (or has been sliced out of the viewport). (tweb ce37ebeb3)
+   */
+  private getFirstUnreadBubble(readMaxId: number): HTMLElement | undefined {
+    if(this.firstUnreadBubble?.parentElement) {
+      return this.firstUnreadBubble
+    }
+
+    const fullMid = this.findFirstUnreadFullMid(readMaxId)
+    return fullMid ? this.getBubble(fullMid) : undefined
+  }
+
+  /**
+   * tdesktop's `HistoryWidget::insideJumpToEndInsteadOfToUnread` — in an already opened chat the
+   * go-down button (and re-clicking the open dialog in the chat list) jumps to the first unread
+   * message, and only goes to the very end once that message is no longer below the viewport.
+   * (tweb ce37ebeb3)
+   */
+  private shouldJumpToEndInsteadOfUnread(readMaxId: number): boolean {
+    const bubble = this.getFirstUnreadBubble(readMaxId)
+    return !!bubble && bubble.getBoundingClientRect().top <= this.chat.bubblesViewport.getBoundingClientRect().bottom
+  }
+
   /**
    * Порт tweb `setUnreadDelimiter` (bubbles.ts:11556) — граница «Непрочитанные
    * сообщения» (класс `is-first-unread` на баббле, текст рисует CSS).
@@ -5299,10 +5370,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     ])
     if(!readMaxSeq || !middleware()) return
 
-    const found = this.getRenderedHistory('asc', true)
-      .filter((fullMid) => !this.getBubble(fullMid)!.classList.contains('is-out'))
-      .find((fullMid) => (this.bubbleGroups.getItemByBubble(this.getBubble(fullMid)!)?.mid ?? 0) > readMaxSeq)
-
+    const found = this.findFirstUnreadFullMid(readMaxSeq)
     if(!found) {
       return
     }
