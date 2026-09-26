@@ -497,9 +497,12 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
   буквальным присваиванием, а через динамическое свойство
   (`this.container[this.scrollPositionProperty] = value` — один класс
   обслуживает и вертикальный, и горизонтальный скролл). **Инстанцирован в
-  ТРЁХ местах, у каждого — свой узел**: `components/chat/bubbles.ts::setScroll`
+  ЧЕТЫРЁХ местах, у каждого — свой узел**: `components/chat/bubbles.ts::setScroll`
   (императивная лента, порт tweb `ChatBubbles`), `components/sliderTab.ts`
-  (скроллер вкладки слайдера, порт `SliderSuperTab`) и
+  (скроллер вкладки слайдера, порт `SliderSuperTab`), `lib/appDialogsManager.ts::FolderList`
+  (скроллер `.folders-scrollable` одной папки чатлиста, порт `generateScrollable`
+  tweb `autonomousDialogList/dialogs.ts:207-212`; в колонку владелец въезжает
+  задачей 6 плана папок, до неё список чатов рисует React без `Scrollable`) и
   `core/hooks/useSearchSuper.ts` (скроллер панели профиля поверх её `bodyRef`
   — та же роль `SliderSuperTab` для React-панели; общий для шапки панели,
   класса `AppSearchSuper` и `PeerProfileAvatars`, роняет его только хук —
@@ -507,7 +510,7 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
   конкурирующего писателя на том же узле нет. Прежде у ленты инстансов было два
   (React-лента держала свой в `core/hooks/useChatScroll.ts`), и они жили под
   взаимоисключающим флагом `VITE_VANILLA_FEED`; этап 7 снёс и React-ленту, и
-  флаг. `grep -rn "new Scrollable(" src` держит это число: **три** вхождения в
+  флаг. `grep -rn "new Scrollable(" src` держит это число: **четыре** вхождения в
   продакшн-коде (плюс тесты). Рост числа = новый владелец скролла, это
   осознанное решение, а не побочный эффект — правь правило руками.
 
