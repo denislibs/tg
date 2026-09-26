@@ -12,8 +12,9 @@
  * Дерево в тесте собрано ровно как у потребителя в оригинале —
  * `tweb/src/components/foldersTabs.tsx:51-59` с пропами владельца
  * `appDialogsManager.ts:654-686` (градиент `surface`/`smaller`, класс
- * `folders-tabs-scrollable`, `id="folders-tabs"`). Сам `foldersTabs` — задача 4,
- * здесь его разметку повторяет тест.
+ * `folders-tabs-scrollable`, `id="folders-tabs"`). Здесь разметку ряда
+ * повторяет тест — пин обёртки без стора; сам ряд `foldersTabs.solid.tsx`
+ * пинится на тот же дамп в `foldersTabs.solid.test.tsx`.
  *
  * Отдельно — два способа вызвать `Tabs.MenuGradient`: JSX (`foldersTabs.tsx:53`)
  * и прямой вызов функции с приведением к узлу (`appSearchSuper.ts:597`).
