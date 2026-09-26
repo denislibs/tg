@@ -13,9 +13,12 @@ function makeFile(name: string, type: string, size: number, w: number, h: number
 
 let toBlobCalls: Array<{ type?: string; quality?: number }>
 let realCreateElement: typeof document.createElement
+/** Вес закодированного результата по качеству — по умолчанию крошечный. */
+let encodedSize: (quality?: number) => number
 
 beforeEach(() => {
   toBlobCalls = []
+  encodedSize = () => 3
 
   // createImageBitmap: с resizeWidth/Height — отдаёт бокс ресайза, иначе —
   // натуральный размер файла (probe).
@@ -39,7 +42,9 @@ beforeEach(() => {
         getContext: () => ctx,
         toBlob: (cb: (b: Blob | null) => void, type?: string, quality?: number) => {
           toBlobCalls.push({ type, quality })
-          cb(new File(['out'], 'out', { type }))
+          const out = new File(['out'], 'out', { type })
+          Object.defineProperty(out, 'size', { value: encodedSize(quality) })
+          cb(out)
         },
       } as unknown as HTMLCanvasElement
     }
@@ -80,6 +85,36 @@ describe('scaleImageForSend', () => {
     expect(out.width).toBe(1000)
     expect(out.height).toBe(1000)
     expect(out.file.type).toBe('image/jpeg')
+    expect(toBlobCalls).toEqual([{ type: 'image/jpeg', quality: 0.9 }])
+  })
+
+  // tweb 6af482b82 (newMedia.tsx `PHOTO_MAX_BYTES`): вес исходника предсказывает
+  // вес результата только для png/bmp. Детализированный lossy-исходник (webp,
+  // heic, avif) мал на диске, а на качестве 1 кодируется в ~12 МБ — сервер
+  // отвечает PHOTO_SAVE_FILE_INVALID. Результат взвешивается, и только
+  // перевесивший бюджет кодируется второй раз со сжатием.
+  it('результат тяжелее 6 МБ кодируется второй раз с quality 0.9', async () => {
+    encodedSize = (quality) => (quality === 1 ? 12 * 1024 * 1024 : 2 * 1024 * 1024)
+    const file = makeFile('detailed.webp', 'image/webp', 400_000, 2560, 1440)
+    const out = await scaleImageForSend(file)
+    expect(toBlobCalls).toEqual([
+      { type: 'image/jpeg', quality: 1 },
+      { type: 'image/jpeg', quality: 0.9 },
+    ])
+    expect(out.file.type).toBe('image/jpeg')
+  })
+
+  it('влезший в бюджет результат второй раз не кодируется', async () => {
+    encodedSize = () => 6 * 1024 * 1024
+    const file = makeFile('photo.webp', 'image/webp', 400_000, 2000, 1000)
+    await scaleImageForSend(file)
+    expect(toBlobCalls).toEqual([{ type: 'image/jpeg', quality: 1 }])
+  })
+
+  it('тяжёлый png уже сжат с 0.9 — третьего прохода нет, даже если результат большой', async () => {
+    encodedSize = () => 8 * 1024 * 1024
+    const file = makeFile('heavy.png', 'image/png', 3 * 1024 * 1024, 2000, 2000)
+    await scaleImageForSend(file)
     expect(toBlobCalls).toEqual([{ type: 'image/jpeg', quality: 0.9 }])
   })
 
