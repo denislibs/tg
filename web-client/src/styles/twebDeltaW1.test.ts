@@ -87,3 +87,12 @@ describe('аватар над многорядной клавиатурой бо
     expect(rule('.avatar-for-reply-markup')).toBeUndefined()
   })
 })
+
+describe('кнопка меню бота (tweb 5b1636d61, _chat.scss)', () => {
+  it('--commands-size 2.5rem, паддинг .75rem, иконка без уменьшения', () => {
+    expect(css).toMatch(/--commands-size:\s*2\.5rem/)
+    expect(css).not.toMatch(/--commands-size:\s*2\.375rem/)
+    expect(rule('.rows-wrapper .new-message-wrapper .new-message-bot-commands')).toMatch(/padding:\s*0 0?\.75rem/)
+    expect(rule('.rows-wrapper .new-message-wrapper .new-message-bot-commands-icon-scale')).toMatch(/transform:\s*scale\(1\)/)
+  })
+})

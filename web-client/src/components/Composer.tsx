@@ -288,7 +288,10 @@ function Composer({
     if (!wrapper) return
     if (!botMenuButton) { wrapper.style.removeProperty('--commands-size'); return }
     const text = botCommandsTextRef.current
-    if (text) wrapper.style.setProperty('--commands-size', `${Math.ceil(text.scrollWidth) + 22}px`)
+    // tweb 5b1636d61: паддинги кнопки 2 × .75rem (было 2 × .6875rem) → +24.
+    // Иконки у нашей кнопки нет, поэтому `+ 20 + 6` оригинала (размер и
+    // отступ иконки, input.ts:2944) не прибавляются.
+    if (text) wrapper.style.setProperty('--commands-size', `${Math.ceil(text.scrollWidth) + 24}px`)
   }, [botMenuButton])
 
   const clearEditor = () => {
@@ -525,7 +528,13 @@ function Composer({
               <div
                 className="new-message-bot-commands"
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={botMenuButton.onClick}
+                onClick={() => {
+                  // tweb 5b1636d61 (input.ts:987-989): кнопка работает, только пока
+                  // сдвиг строки отдан ей и едет вперёд — спрятанная send-as'ом
+                  // или уезжающая назад клика не принимает.
+                  if (offset !== 'commands' || !offsetCls.split(' ').includes('forwards')) return
+                  botMenuButton.onClick()
+                }}
               >
                 <span ref={botCommandsTextRef} className="new-message-bot-commands-view">{botMenuButton.text}</span>
               </div>
