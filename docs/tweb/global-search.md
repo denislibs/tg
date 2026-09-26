@@ -240,8 +240,9 @@ GroupsOnly/ChannelsOnly` (`:21-26`); пункты `ButtonMenu` с галочко
 | `shared/ui/InputSearch/InputSearch.tsx` | React-порт `InputSearch` (без `onEnter`, без debounce внутри) | `inputSearch.ts` | остаётся; `onEnter` добавить |
 | `components/appSearchSuper.ts` (2393) | класс, портирован правой колонкой; расхождения 9 (`nextRate`, `:82-86`), 11 (`searchGroups`, `:98-100`), 24 (`showSender`, `:168-171`), 33 (колбэки хоста), 36 (Solid-вкладки через `mountSolid`); `SearchSuperManagers` `:456-462`; `NO_SECTION_TYPES` `:397-405` | `appSearchSuper.ts` | расширяется: `searchGroups`/`asChatList`/`hideEmptyTabs`/`showSender`, `processEmptyFilter`, `loadChats`, `loadChannels`, `nextRate` |
 | `core/hooks/useSearchSuper.ts` | шов «панель профиля ↔ класс» (скроллер создаёт хозяин) | `sharedMediaTab.tsx` | образец формы для владельца поиска |
-| `components/dialogRow.ts` (215) | узкий `DialogElement`/`addDialogNew`/`createChatList` без `setLastMessage` и без `setListClickListener` | `appDialogsManager.ts` | расширяется: превью сообщения с подсветкой и временем, клик по строке |
-| `components/wrappers/messageForReply.ts` | порт `wrapMessageForReply` **без** `highlightWord` (шапка, строка 22) | `messageForReply.ts:36-49`, `:384` | дописать подсветку |
+| `components/dialogRow.ts` | `DialogElement`/`addDialogNew` (+`container.dialogElement`)/`createChatList`, **`setListClickListener`** (клик → `openPeer` + `requestMessageJump` по `data-mid`, `onFound`, `active` в автономном списке) и **`setLastMessageN`** в объёме поиска (`data-mid`, иконка форварда, миниатюра 20×20 с play, «Автор:»/«You:», подсветка, время); что не портировано — шапка файла | `appDialogsManager.ts:1751-1949`, `:1983-2244`, `:2636-2652` | задача 7 — сделано |
+| `components/wrappers/messageForReply.ts` | порт `wrapMessageForReply`: строка по умолчанию и богатая форма `plain: false` с `highlightWord` → `messageEntityHighlight` → `i.text-highlight` (`lib/richtext/wrapRichText.ts`) | `messageForReply.ts:36-49`, `:384-397` | задача 7 — сделано |
+| `components/searchGroup.solid.tsx` | `createSearchGroup` — порт 1:1 (расхождения в шапке: `managers`, `name: LangPackKey \| false`, мемо в корне) | `searchGroup.tsx` | задача 7 — сделано; потребители — класс (задача 8) и владелец поиска (задача 12) |
 | `components/wrappers/senderToPeer.ts` | `wrapSenderToPeer` (синхронный) | `senderToPeer.ts` | используется как есть |
 | `components/section.solid.tsx` | Solid-`Section` с `nameRight`/`nameRef`/`innerClass`/`contentProps`/`ref` | `section.tsx` | база для `createSearchGroup` |
 | `components/lottieAnimation.solid.tsx`, `components/buttonMenu.ts`, `components/popups/popupPeer.ts` | Solid-lottie, `ButtonMenu`/`ButtonMenuToggle`, `PopupPeer` | — | база для `EmptySearchPlaceholder`, `ChatTypeMenu`, `confirmationPopup` |
@@ -303,9 +304,10 @@ GroupsOnly/ChannelsOnly` (`:21-26`); пункты `ButtonMenu` с галочко
 8. **`showSender`/`nextRate`/`searchGroups` в классе объявлены расхождениями**
    9, 11, 24 (`components/appSearchSuper.ts:82-101`, `:168-172`) — снимаются
    этой программой.
-9. **`dialogRow.ts` не умеет превью сообщения**: `setLastMessage` не портирован,
-   `wrapMessageForReply` — без `highlightWord`; клик по строке (`setListClickListener`)
-   тоже не портирован — правая колонка вешала клик сама (`SortedUserList`).
+9. ~~**`dialogRow.ts` не умеет превью сообщения**~~ — снято задачей 7:
+   `setLastMessageN`, `setListClickListener`, `highlightWord` портированы (§ 2.1).
+   Участники правой колонки по-прежнему вешают клик сами (`appSearchSuper.ts`,
+   расхождение 33) — у оригинала там тоже свой обработчик (`:1562-1570`).
 10. **Локальных индексов нет**: поиск по контактам и диалогам по имени в воркере
     отсутствует (`SearchView` фильтрует `chats` в главном потоке,
     `localMatches`/`myChannels`/`recentChats` `:165-169`).
