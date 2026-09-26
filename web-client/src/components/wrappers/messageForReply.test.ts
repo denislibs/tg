@@ -94,3 +94,45 @@ describe('wrapMessageForReply — лейбл вложения', () => {
     expect(wrapMessageForReply({ message: msg({ text: long }) })).toHaveLength(100)
   })
 })
+
+// Богатая форма (`plain: false`) и подсветка поиска — tweb
+// `messageForReply.ts:36`, `:45-46`, `:384-397`. Потребитель — превью строки
+// в группе «Messages» глобального поиска (`dialogRow.setLastMessageN`,
+// tweb `appDialogsManager.ts:2184-2192`). Пин на УЗЛЫ: вхождение запроса —
+// `i.text-highlight` (tweb `wrapRichText.ts:346-350`), лейбл вложения — свой
+// `span`, запятая между частями — текстом.
+describe('wrapMessageForReply — богатая форма и highlightWord', () => {
+  it('каждое вхождение запроса, без учёта регистра, — отдельный i.text-highlight', () => {
+    const fragment = wrapMessageForReply({ message: msg({ text: 'Мир, мир и ещё раз МИР' }), highlightWord: 'мир', plain: false })
+    const host = document.createElement('div')
+    host.append(fragment)
+
+    const marks = Array.from(host.querySelectorAll('i.text-highlight'))
+    expect(marks.map((m) => m.textContent)).toEqual(['Мир', 'мир', 'МИР'])
+    // текст между вхождениями не теряется
+    expect(host.textContent).toBe('Мир, мир и ещё раз МИР')
+  })
+
+  it('запрос обрезается по краям (tweb :45-46) — пробелы в поле не ломают подсветку', () => {
+    const fragment = wrapMessageForReply({ message: msg({ text: 'привет, мир' }), highlightWord: '  мир ', plain: false })
+    const host = document.createElement('div')
+    host.append(fragment)
+    expect(host.querySelector('i.text-highlight')?.textContent).toBe('мир')
+  })
+
+  it('лейбл вложения — span, затем «, » и текст с подсветкой', () => {
+    const fragment = wrapMessageForReply({ message: msg({ media: photo, text: 'закат' }), highlightWord: 'кат', plain: false })
+    const host = document.createElement('div')
+    host.append(fragment)
+
+    const first = host.firstChild as HTMLElement
+    expect(first.tagName).toBe('SPAN')
+    expect(first.textContent).toBe('Photo')
+    expect(host.textContent).toBe('Photo, закат')
+    expect(host.querySelector('i.text-highlight')?.textContent).toBe('кат')
+  })
+
+  it('plain-форма подсветку не строит (у оригинала она живёт только в богатой ветке)', () => {
+    expect(wrapMessageForReply({ message: msg({ text: 'привет, мир' }), highlightWord: 'мир' })).toBe('привет, мир')
+  })
+})

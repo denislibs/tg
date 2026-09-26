@@ -30,10 +30,12 @@
 //  • `options` в оригинале богаче (`dialog`, `onlyFirstName`, `limitSymbols`,
 //    `withIcons`/`withPremiumIcon`, `threadId`, `asAllChats`, …) — у каждого из
 //    них свой предмет (Saved Messages, топики форума, значки премиума/скам,
-//    monoforum), которого у ленты на этом этапе нет. Оставлены ровно два:
-//    `peerId` (обычный автор) и `fromName` (имя строкой, когда пира нет —
+//    monoforum), которого у ленты на этом этапе нет. Оставлены три:
+//    `peerId` (обычный автор), `fromName` (имя строкой, когда пира нет —
 //    порт того же поля tweb: скрытый форвард, а у нас send-as, где заголовок
-//    личности приезжает прямо в сообщении).
+//    личности приезжает прямо в сообщении) и `onlyFirstName` — автор в превью
+//    строки чатлиста (`components/dialogRow.ts::setLastMessageN`, tweb
+//    `appDialogsManager.ts:2168-2171`).
 //  • Имя идёт через `wrapEmojiText` (`lib/richtext/wrapEmojiText.ts`) — как в
 //    оригинале, где его прогоняет `getPeerTitle` (`wrappers/getPeerTitle.ts:91`,
 //    `plainText` там не передаётся) и ветка `fromName` самого `PeerTitle`
@@ -55,6 +57,8 @@ export interface PeerTitleOptions {
   peerId?: PeerId
   /** готовое имя строкой — когда карточки пира нет и быть не может (send-as) */
   fromName?: string
+  /** только имя (tweb `onlyFirstName`) — автор в превью строки чатлиста */
+  onlyFirstName?: boolean
   middleware: Middleware
   managers: PeerTitleManagers
 }
@@ -100,7 +104,7 @@ export default class PeerTitle {
 
   /** Порт tweb `update` в применимом объёме (peerTitle.ts:104-200). */
   public update() {
-    const { fromName, peerId, managers, middleware } = this.options
+    const { fromName, peerId, onlyFirstName, managers, middleware } = this.options
     if (!middleware()) {
       return
     }
@@ -120,7 +124,7 @@ export default class PeerTitle {
     // хранилищу пиров; спросив зеркало, узел остался бы пустым навсегда и в
     // придачу без конца объявлял бы пробел за пиром, которого нет.
     if (peerId === HIDDEN_PEER_ID) {
-      this.setTitle(getPeerTitle({ peerId, peer: undefined }))
+      this.setTitle(getPeerTitle({ peerId, peer: undefined, onlyFirstName }))
       return
     }
 
@@ -142,7 +146,7 @@ export default class PeerTitle {
     // (`getPeerTitle.ts:62`), то есть промах кэша и удалённый аккаунт дают одну
     // и ту же надпись. Иначе пир, которого владелец отдать не может (удалён,
     // недоступен), остался бы пустым узлом навсегда.
-    this.setTitle(getPeerTitle({ peerId, peer }))
+    this.setTitle(getPeerTitle({ peerId, peer, onlyFirstName }))
   }
 
   /** Порт `setInnerHTML(this.element, wrapEmojiText(title))` (peerTitle.ts:114,

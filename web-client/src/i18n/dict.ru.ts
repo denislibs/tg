@@ -37,6 +37,7 @@ const ru = {
   'FactCheck.CountryPlaceholder': 'Код страны (необязательно)',
   'FactCheck.AdminNote': 'Эту проверку добавил администратор.',
   'Separator.ShowMore': 'Показать больше',
+  'Separator.ShowLess': 'Показать меньше',
   // ── Транскрибация голосовых/кружков (tweb transcribeAudio) ──
   TranscribeVoice: 'Расшифровать голосовое',
   TranscribeHide: 'Скрыть расшифровку',

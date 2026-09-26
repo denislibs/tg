@@ -6,18 +6,43 @@
 // (тот же `a.chatlist-chat` во вкладке «Участники» shared media: без `rp` —
 // список создаётся с `rippleEnabled: false`, `appSearchSuper.ts:1548`).
 // Порядок детей — как в оригинале: подпись, заголовок, аватар.
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getMiddleware } from '@helpers/middleware'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
-import { addDialogNew, createChatList, DIALOG_LIST_ELEMENT_TAG } from './dialogRow'
+import { makeMessage } from '@core/messages/testMessage'
+import { saveDocument, THUMB_TYPE_FULL, type MessageMedia } from '@core/media/messageMedia'
+import { useNavigationStore } from '@stores/navigationStore'
+import { useSearchStore } from '@stores/searchStore'
+import { useChatsStore } from '@stores/chatsStore'
+import { addDialogNew, createChatList, DIALOG_LIST_ELEMENT_TAG, setLastMessageN, setListClickListener } from './dialogRow'
+
+// Превью медиа в подписи строит `wrapPhoto` (сеть/кэш медиа) — здесь важна
+// РАЗМЕТКА вокруг него (tweb `appDialogsManager.ts:2104-2146`), а не загрузка.
+vi.mock('@components/wrappers/photo', () => ({
+  default: async ({ container }: { container: HTMLElement }) => {
+    const img = document.createElement('img')
+    img.className = 'media-photo'
+    container.append(img)
+    return { loadPromises: { thumb: Promise.resolve(), full: Promise.resolve() }, images: { thumb: null, full: img }, preloader: null, aspecter: container }
+  },
+}))
 
 const ALICE: PeerId = 7
+const ME: PeerId = 1
+/** супергруппа: ключ пира ОТРИЦАТЕЛЬНЫЙ (`peerKey`), диалог ей не нужен для открытия */
+const GROUP: PeerId = -100
 
-const managers = { peers: { fillMirror: async () => {} } }
+const managers = { peers: { fillMirror: async () => {} }, presence: { get: async () => [] } }
 
 beforeEach(() => {
   resetPeerMirror()
-  applyPeerOps([{ op: 'upsert', peers: [{ _: 'user', id: ALICE, first_name: 'Алиса', pFlags: {} }] }])
+  applyPeerOps([{ op: 'upsert', peers: [
+    { _: 'user', id: ALICE, first_name: 'Алиса', last_name: 'Иванова', pFlags: {} },
+    { _: 'channel', id: 100, title: 'Группа', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true } },
+  ] }])
+  useChatsStore.setState({ meId: ME })
+  useNavigationStore.setState({ selectedId: null, draftPeer: null })
+  useSearchStore.setState({ pendingJump: null })
 })
 afterEach(() => document.body.replaceChildren())
 
@@ -76,7 +101,7 @@ describe('dialogRow: разметка строки участника', () => {
     expect(peerTitle.tagName).toBe('SPAN')
     expect(peerTitle.classList.contains('peer-title')).toBe(true)
     expect(peerTitle.dataset.peerId).toBe(String(ALICE))
-    expect(peerTitle.textContent).toBe('Алиса')
+    expect(peerTitle.textContent).toBe('Алиса Иванова')
     expect(titleRight.className).toBe('row-title row-title-right row-title-right-secondary dialog-title-details')
     expect(Array.from(titleRight.children).map((c) => c.className)).toEqual(['message-status sending-status', 'message-time'])
 
@@ -118,5 +143,170 @@ describe('dialogRow: разметка строки участника', () => {
     expect(list.firstElementChild).toBe(dialogElement.container)
     dialogElement.remove()
     expect(list.childElementCount).toBe(0)
+  })
+})
+
+// tweb `appDialogsManager.ts:1751-1949` — клик по строке. Строка находится по
+// тегу `a` (`findUpTag`), открытие — `appImManager.setPeer({peerId, lastMsgId})`,
+// у нас `core/navigation/openPeer.ts` + `searchStore.setPendingJump` для
+// строки-сообщения (`data-mid`).
+describe('dialogRow: setListClickListener', () => {
+  const makeRow = (list: HTMLElement, peerId: PeerId) => addDialogNew({
+    peerId,
+    container: list,
+    avatarSize: 'abitbigger',
+    wrapOptions: { middleware: getMiddleware().get() },
+    managers,
+  })
+
+  const mousedown = (target: Element, init: MouseEventInit = {}) =>
+    target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, ...init }))
+
+  it('mousedown по потомку строки открывает пира и зовёт onFound со строкой', () => {
+    const list = createChatList()
+    document.body.append(list)
+    const row = makeRow(list, GROUP)
+    const onFound = vi.fn()
+    setListClickListener({ list, onFound, autonomous: true, managers })
+
+    mousedown(row.dom.titleSpan)
+
+    expect(onFound).toHaveBeenCalledWith(row.container)
+    expect(useNavigationStore.getState().selectedId).toBe(String(GROUP))
+    expect(list.dataset.autonomous).toBe('1')
+  })
+
+  it('строка-сообщение (`data-mid`) ставит прыжок к нему до открытия чата', () => {
+    const list = createChatList()
+    document.body.append(list)
+    const row = makeRow(list, GROUP)
+    row.container.dataset.mid = '42'
+    setListClickListener({ list, managers })
+
+    mousedown(row.container)
+
+    expect(useSearchStore.getState().pendingJump).toEqual({ peerId: GROUP, seq: 42 })
+    expect(useNavigationStore.getState().selectedId).toBe(String(GROUP))
+  })
+
+  it('onFound вернул false — открытия нет; правая кнопка — тоже', () => {
+    const list = createChatList()
+    document.body.append(list)
+    const row = makeRow(list, GROUP)
+    setListClickListener({ list, onFound: () => false, managers })
+
+    mousedown(row.container)
+    mousedown(row.container, { button: 2 })
+
+    expect(useNavigationStore.getState().selectedId).toBeNull()
+  })
+
+  it('автономный список переносит `active` на последнюю нажатую строку', () => {
+    const list = createChatList()
+    document.body.append(list)
+    const a = makeRow(list, GROUP)
+    const b = makeRow(list, ALICE)
+    setListClickListener({ list, autonomous: true, managers })
+
+    mousedown(a.container)
+    expect(a.container.classList.contains('active')).toBe(true)
+    mousedown(b.container)
+    expect(a.container.classList.contains('active')).toBe(false)
+    expect(b.container.classList.contains('active')).toBe(true)
+  })
+
+  it('click по строке гасится (переход по ссылке-строке не нужен, tweb :1927-1937)', () => {
+    const list = createChatList()
+    document.body.append(list)
+    const row = makeRow(list, GROUP)
+    setListClickListener({ list, managers })
+
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 })
+    row.container.dispatchEvent(click)
+    expect(click.defaultPrevented).toBe(true)
+  })
+})
+
+// tweb `appDialogsManager.ts:2020-2244` в объёме поиска (`setUnread` не
+// передан → `isSearch`, диалога нет — только найденное сообщение).
+describe('dialogRow: setLastMessageN — превью найденного сообщения', () => {
+  const row = (peerId: PeerId) => {
+    const d = addDialogNew({
+      peerId,
+      container: false,
+      wrapOptions: { middleware: getMiddleware().get() },
+      managers,
+    })
+    document.body.append(d.container)
+    return d
+  }
+
+  it('подсветка запроса, время справа и `data-mid` для прыжка', async () => {
+    const d = row(ALICE)
+    const message = makeMessage({ id: 42, peerId: ALICE, fromId: ALICE, text: 'Привет, мир!', createdAt: '2026-01-05T12:00:00Z' })
+
+    await setLastMessageN({ dialog: { peerId: ALICE }, lastMessage: message, dialogElement: d, highlightWord: 'мир' })
+
+    const span = d.dom.lastMessageSpan
+    // дамп 14-left-03b: `div.row-subtitle.no-wrap.dialog-subtitle-flex > span.dialog-subtitle-span…-last > i.text-highlight`
+    expect(span.classList.contains('dialog-subtitle-flex')).toBe(true)
+    const parts = Array.from(span.children) as HTMLElement[]
+    expect(parts).toHaveLength(1)
+    expect(parts[0].className).toBe('dialog-subtitle-span dialog-subtitle-span-overflow dialog-subtitle-span-last')
+    expect(parts[0].dir).toBe('auto')
+    expect(parts[0].querySelector('i.text-highlight')?.textContent).toBe('мир')
+    expect(span.textContent).toBe('Привет, мир!')
+
+    expect(d.dom.lastTimeSpan.textContent).not.toBe('')
+    expect(d.dom.listEl.dataset.mid).toBe('42')
+  })
+
+  it('в группе чужое сообщение подписано именем автора, своё — «You»', async () => {
+    const d = row(GROUP)
+    await setLastMessageN({
+      dialog: { peerId: GROUP },
+      lastMessage: makeMessage({ id: 1, peerId: GROUP, fromId: ALICE, text: 'текст' }),
+      dialogElement: d,
+    })
+    const [sender, text] = Array.from(d.dom.lastMessageSpan.children) as HTMLElement[]
+    // `span.primary-text` с `onlyFirstName` (tweb :2159-2177)
+    expect(sender.querySelector('.primary-text')?.textContent).toBe('Алиса: ')
+    expect(text.textContent).toBe('текст')
+
+    const mine = row(GROUP)
+    await setLastMessageN({
+      dialog: { peerId: GROUP },
+      lastMessage: makeMessage({ id: 2, peerId: GROUP, fromId: ME, text: 'моё' }),
+      dialogElement: mine,
+    })
+    expect(mine.dom.lastMessageSpan.querySelector('.primary-text')?.textContent).toBe('You: ')
+  })
+
+  it('пересланное — иконка forward_filled первой частью (tweb :2087-2099)', async () => {
+    const d = row(ALICE)
+    const message = { ...makeMessage({ id: 3, peerId: ALICE, fromId: ALICE, text: 'x' }), fwd_from: { _: 'messageFwdHeader' as const, date: 0 } }
+    await setLastMessageN({ dialog: { peerId: ALICE }, lastMessage: message, dialogElement: d })
+    const icon = d.dom.lastMessageSpan.firstElementChild!.firstElementChild as HTMLElement
+    expect(icon.className).toBe('tgico dialog-subtitle-ico dialog-subtitle-ico-forward_filled')
+  })
+
+  it('видео с подписью: миниатюра с play-иконкой вместо лейбла «Video» (tweb :2101-2146, :2179)', async () => {
+    const d = row(ALICE)
+    const video: MessageMedia = {
+      _: 'messageMediaDocument',
+      document: saveDocument({
+        _: 'document', id: 9, mime_type: 'video/mp4', size: 10,
+        attributes: [{ _: 'documentAttributeVideo', duration: 5, w: 40, h: 30 }],
+        thumbs: [{ _: 'photoSize', type: THUMB_TYPE_FULL, w: 40, h: 30, size: 1 }],
+      }),
+    }
+    const message = makeMessage({ id: 4, peerId: ALICE, fromId: ALICE, text: 'подпись', media: video })
+    await setLastMessageN({ dialog: { peerId: ALICE }, lastMessage: message, dialogElement: d })
+
+    const media = d.dom.lastMessageSpan.querySelector('.dialog-subtitle-media')!
+    expect(media).not.toBeNull()
+    expect(media.querySelector('.tgico.dialog-subtitle-media-play')).not.toBeNull()
+    expect(d.dom.lastMessageSpan.textContent).not.toContain('Video')
+    expect(d.dom.lastMessageSpan.lastElementChild!.textContent).toBe('подпись')
   })
 })

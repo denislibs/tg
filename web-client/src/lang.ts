@@ -1158,6 +1158,7 @@ const lang = {
   Send: 'Send',
   SendAsFile: 'Send as file',
   SendMessage: 'Send Message',
+  'Separator.ShowLess': 'show less',
   'Separator.ShowMore': 'show more',
   SessionsInfo: 'Manage your sessions on all your devices.',
   SessionsListInfo: 'The official Telegram app is available for Android, iPhone, iPad, Windows, macOS and Linux.',

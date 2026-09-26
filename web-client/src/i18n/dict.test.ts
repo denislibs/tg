@@ -178,8 +178,12 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `StarGiftLimitedBadgeNum` (lang.ts:3178), их зовёт `stargifts/*.solid.tsx`.
 // Отсюда `keys` 1311 → 1320, множественных форм не прибавилось. В остальных четырёх
 // словарях ключей нет намеренно — под ними английский нижний слой.
+//
+// Задача 7 глобального поиска: русскому добавлен `Separator.ShowLess` — кнопка
+// «Показать меньше» группы поиска (`components/searchGroup.solid.tsx`, tweb
+// `searchGroup.tsx:73`). `keys` 1320 → 1321.
 const COMPOSITION = {
-  ru: { keys: 1320, plural: 33 },
+  ru: { keys: 1321, plural: 33 },
   uk: { keys: 682, plural: 24 },
   es: { keys: 681, plural: 24 },
   de: { keys: 681, plural: 24 },
@@ -260,8 +264,10 @@ const COMPOSITION = {
 // `ProfileStories`, шесть ключей меню участника и ранга и два ключа витрины
 // подарков (разбор — у `COMPOSITION` выше). У остальных четырёх словарей
 // набор не менялся.
+// Сдвиг набора задачей 7 глобального поиска: русскому добавлен
+// `Separator.ShowLess` (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '6c899d54',
+  ru: 'a29ab74f',
   uk: 'e1335ac1',
   es: 'a6b1aad3',
   de: 'a6b1aad3',

@@ -12,14 +12,25 @@
 // Поэтому «Фото» у фото без подписи и «Фото, привет» у фото с подписью — это
 // не два правила, а одно.
 //
+// ДВЕ ФОРМЫ, как у оригинала: строка (`plain`) и фрагмент с узлами. Богатую
+// зовёт превью строки в группе «Messages» глобального поиска
+// (`components/dialogRow.ts::setLastMessageN`, tweb `appDialogsManager.ts:2184-2192`)
+// — ради подсветки запроса (`highlightWord`, tweb :36, :45-46, :384-397):
+// каждое вхождение — сущность `messageEntityHighlight`, её рисует
+// `wrapRichText` узлом `i.text-highlight`.
+//
 // ─── Чего здесь нет и почему ────────────────────────────────────────────────
-//  • `plain: false` (богатая форма с сущностями и DOM-узлами). Оригинал умеет
-//    обе; у нас пока ВСЕ три места показывают строку, поэтому ветка узлов не
-//    заводится — пустая была бы мёртвым кодом. Вернётся вместе с
-//    reply-заголовком в бабле, которому нужны сущности.
+//  • форма по умолчанию — СТРОКА, у оригинала наоборот (`plain` не передан →
+//    фрагмент). Реплай-плашка (`chat/replyContainer.ts`) и лента
+//    (`chat/bubbles.ts`) у нас берут строку; богатая форма заказывается явным
+//    `plain: false`. Функция синхронная (у оригинала `async`): ни одна ветка
+//    ниже не ждёт менеджеров — альбом приходит готовым `groupedMessages`;
+//  • лейбл вложения в богатой форме — `span` с готовой строкой, а не живой
+//    узел `i18n(langKey)` (tweb `addPart`, :56-71): таблица лейблов общая с
+//    plain-формой и отдаёт уже переведённое;
 //  • самоуничтожающееся медиа (`ttl_seconds`), `rich_message`, ограничения
-//    (`restriction_reason`), перевод (`canTranslate`), подсветка поиска
-//    (`highlightWord`) — подсистем нет.
+//    (`restriction_reason`), перевод (`canTranslate`), спойлер кода служебных
+//    ботов (`SERVICE_PEER_ID`, :399-414) — подсистем нет.
 //  • история (`messageMediaStory`), игра (`messageMediaGame`), кубик
 //    (`messageMediaDice`), счёт (`messageMediaInvoice`) — вложений таких видов
 //    наша модель не производит.
@@ -27,6 +38,10 @@ import type { LangPackKey } from '@/lang'
 import { getMessageText, type MyMessage } from '@core/models'
 import { getDocumentFromMessage, type MessageMedia } from '@core/media/messageMedia'
 import { serviceMsgText } from '@core/serviceMsg'
+import type { MessageEntity } from '@layer'
+import { parseEntities, wrapRichText } from '@lib/richtext'
+import { sortEntities } from '@lib/richtext/entities'
+import escapeRegExp from '@helpers/string/escapeRegExp'
 import { useI18nStore } from '../../i18n'
 
 // КЛЮЧИ ЛОКАЛИЗАЦИИ — английские строки, как принято в проекте
@@ -46,29 +61,41 @@ export interface WrapMessageForReplyOptions {
   withoutMediaType?: boolean
   /** сообщения группы, если превью показывает альбом целиком (tweb `usingMids`) */
   groupedMessages?: MyMessage[]
+  /** запрос поиска: его вхождения подсвечиваются (tweb `highlightWord`, :36) — только богатая форма */
+  highlightWord?: string
+  /** `false` — фрагмент с узлами (tweb `plain`); по умолчанию строка, см. шапку */
+  plain?: boolean
 }
 
 /**
- * Строка превью сообщения.
+ * Превью сообщения.
  *
  * Порядок ветвления и состав частей — оригинала (messageForReply.ts:100-345):
  * альбом даёт свой лейбл и подпись группы, стикер — «эмодзи + Стикер» и гасит
  * текст, аудио — «🎵 исполнитель - название», файл — своё имя, опрос — «📊
  * вопрос». Служебное сообщение отдаёт своё действие целиком.
  */
-export default function wrapMessageForReply(options: WrapMessageForReplyOptions): string {
+export default function wrapMessageForReply(options: WrapMessageForReplyOptions & { plain: false }): DocumentFragment
+export default function wrapMessageForReply(options: WrapMessageForReplyOptions & { plain?: true }): string
+export default function wrapMessageForReply(options: WrapMessageForReplyOptions): string | DocumentFragment {
   const { message, withoutMediaType, groupedMessages } = options
+  const plain = options.plain !== false
+  // tweb :45-46 — запрос чистится только для богатой формы: у строки подсветки нет
+  const highlightWord = !plain && options.highlightWord ? options.highlightWord.trim() : undefined
   const t = useI18nStore.getState().t
 
   // Служебное — целиком своё действие, без лейблов вложения (оригинал зовёт
-  // `wrapMessageActionTextNew`, у нас ту же роль играет `serviceMsgText`).
+  // `wrapMessageActionTextNew` и кладёт его `addPart`, :356-366; у нас ту же
+  // роль играет `serviceMsgText`).
   if (message._ === 'messageService') {
-    return serviceMsgText(message)
+    const action = serviceMsgText(message)
+    return plain ? action : fragmentOf([labelSpan(action)])
   }
-  if (message._ !== 'message') return ''
+  if (message._ !== 'message') return plain ? '' : document.createDocumentFragment()
 
   const parts: string[] = []
   let text = options.text ?? getMessageText(message)
+  let entities = message.entities
 
   const rawMedia = message.media
 
@@ -77,7 +104,9 @@ export default function wrapMessageForReply(options: WrapMessageForReplyOptions)
   // показывает группу ЦЕЛИКОМ (`usingFullGrouped`).
   const isFullGrouped = !!message.grouped_id && !!groupedMessages?.length
   if (isFullGrouped) {
-    text = groupedMessages.map((m) => getMessageText(m)).find(Boolean) ?? ''
+    const withText = groupedMessages.find((m) => getMessageText(m))
+    text = withText ? getMessageText(withText) : ''
+    entities = withText?._ === 'message' ? withText.entities : undefined
     if (!withoutMediaType) parts.push(t('AttachAlbum'))
   }
 
@@ -90,9 +119,57 @@ export default function wrapMessageForReply(options: WrapMessageForReplyOptions)
     if (part !== undefined && stealsText(rawMedia)) text = ''
   }
 
-  if (text) parts.push(text.length > MAX_LENGTH ? text.slice(0, MAX_LENGTH) : text)
+  if (text.length > MAX_LENGTH) text = text.slice(0, MAX_LENGTH)
 
-  return parts.filter(Boolean).join(', ')
+  if (plain) {
+    if (text) parts.push(text)
+    return parts.filter(Boolean).join(', ')
+  }
+
+  // Богатая форма (tweb :347-354, :376-440): лейблы — узлами, между частями
+  // «, » текстом, сам текст — `wrapRichText` без ссылок и форматирования.
+  const nodes: (Node | string)[] = []
+  parts.filter(Boolean).forEach((part, idx) => {
+    if (idx) nodes.push(', ')
+    nodes.push(labelSpan(part))
+  })
+
+  if (text) {
+    if (nodes.length) nodes.push(', ')
+
+    let textEntities: MessageEntity[] = entities ?? parseEntities(text)
+    if (highlightWord) {
+      let found = false
+      let match: RegExpExecArray | null
+      const regExp = new RegExp(escapeRegExp(highlightWord), 'gi')
+      textEntities = textEntities.slice() // fix leaving highlight entity
+      while ((match = regExp.exec(text)) !== null) {
+        textEntities.push({ _: 'messageEntityHighlight', length: highlightWord.length, offset: match.index })
+        found = true
+      }
+
+      if (found) {
+        sortEntities(textEntities)
+      }
+    }
+
+    nodes.push(wrapRichText(text, { noLinks: true, noTextFormat: true, entities: textEntities }))
+  }
+
+  return fragmentOf(nodes)
+}
+
+/** tweb `addPart` для готовой строки (:65-69); текст — `textContent`, не `innerHTML`. */
+function labelSpan(part: string): HTMLSpanElement {
+  const el = document.createElement('span')
+  el.textContent = part
+  return el
+}
+
+function fragmentOf(nodes: (Node | string)[]): DocumentFragment {
+  const fragment = document.createDocumentFragment()
+  fragment.append(...nodes)
+  return fragment
 }
 
 /** Вложения, у которых лейбл ЗАМЕНЯЕТ текст (tweb обнуляет `options.text`). */
