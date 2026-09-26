@@ -147,6 +147,25 @@ a {
   -webkit-tap-highlight-color: transparent;
 }
 
+// tweb components/_global.scss:31-43 — сброс браузерной кнопки. Без него
+// `<button>` тянет из UA-стиля свой шрифт 13.33px и не наследует размер
+// контекста: «Enable Notifications» (`button.btn-primary.btn-transparent`,
+// `notifications.tsx:464-471`) выходил мельче соседних строк (замерено на
+// стенде: 13.33px против 16px у `.row-title`). Селекторы классов выигрывают
+// у элементного, поэтому оформленным кнопкам сброс не мешает.
+button {
+  background: none;
+  outline: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-size: inherit;
+}
+
+button:focus {
+  outline: none;
+}
+
 // tweb components/_global.scss:13-22 — сброс браузерного списка. Без него
 // `ul` выпадающего списка стран получает `padding-inline-start: 40px` и строки
 // уезжают (замерено: li 320px вместо 360).

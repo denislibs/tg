@@ -5,16 +5,16 @@
  * подтягивается динамическим `import()` — только когда вкладку открыли.
  *
  * В оригинале файл держит 75 объявлений разом (`grep -c "^export const App"`);
- * у нас их два — «Устройства» и «Язык». Остальные добавляются по мере
+ * у нас их три — «Устройства», «Язык» и «Уведомления». Остальные добавляются по мере
  * портирования своих модулей (#112): перенести сюда объявление вкладки, чей
  * модуль ещё не портирован, значило бы завести `import()` в несуществующий
  * файл.
  *
  * Реестра `providedTabs` (второй элемент кортежа `useSuperTab()`) здесь нет
- * НАМЕРЕННО: в оригинале ни «Устройства», ни «Язык» в него не входят
+ * НАМЕРЕННО: в оригинале ни одна из наших вкладок в него не входит
  * (`solidJsTabs/providedTabs.ts` — там шесть других вкладок), а реестр нужен
  * только тем вкладкам, которых открывают ПО ИМЕНИ из чужого модуля, объезжая
- * циклический импорт. Ни у одной из наших двух такого вызывающего нет ни там,
+ * циклический импорт. Ни у одной из наших такого вызывающего нет ни там,
  * ни здесь — запись в `ProvidedTabs` была бы объявлением без потребителя.
  */
 import type { Authorization } from '@layer'
@@ -41,4 +41,13 @@ export const AppLanguageTab =
   scaffoldSolidJSTab({
     title: 'Telegram.LanguageViewController',
     getComponentModule: () => import('../sidebarLeft/tabs/language.solid'),
+  })
+
+// tweb :77-81. Форма обычная, без полезной нагрузки: состояние вкладка берёт
+// сама (мост `useAppSettings`, `stores/notifyStore.ts`). Открывает её строка
+// корня настроек `AccountSettings.Notifications` (tweb `settings.tsx:252`).
+export const AppNotificationsTab =
+  scaffoldSolidJSTab({
+    title: 'Telegram.NotificationSettingsViewController',
+    getComponentModule: () => import('../sidebarLeft/tabs/notifications.solid'),
   })
