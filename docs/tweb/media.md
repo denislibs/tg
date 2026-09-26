@@ -1237,23 +1237,32 @@ wrapSticker (wrappers/sticker.ts:65)
 
 ## 9.3 `animationIntersector` — диспетчер воспроизведения
 
-`components/animationIntersector.ts:43`. Один `IntersectionObserver` на всё приложение (`:142-146`),
-индексы `byGroups` / `byPlayer` / `byElement`.
+Адреса — tweb `812502980`. `components/animationIntersector.ts:52`. Один `IntersectionObserver` на всё
+приложение (`createObserver()` `:157`), индексы `byGroups` / `byPlayer` / `byElement`.
 
 | Механизм | Строка | Поведение |
 |---|---|---|
-| Регистрация | `addAnimation()` `:236` | типы `'lottie' \| 'dots' \| 'video' \| 'emoji'`; `controlled: Middleware` авто-снимает по `onClean` |
-| Уход из вьюпорта | `onObserve` `:62-104` | пауза + для lottie `clearCacheWhenSafe()` (`:96`) — освобождение памяти кадров |
+| Регистрация | `addAnimation()` `:256` | типы `'lottie' \| 'dots' \| 'video' \| 'emoji'`; `controlled: Middleware` авто-снимает по `onClean` |
+| Уход из вьюпорта | `onObserve` `:71-120` | пауза + для lottie `clearCacheWhenSafe()` (`:111`) — освобождение памяти кадров |
 | Группы | `:14-17` | `'chat-N'`, `'emoticons-dropdown'`, `'STICKERS-POPUP'`, `'EMOJI'`, `'STICKER-VIEWER'`, `'none'` |
-| «Играет только одна группа» | `setOnlyOnePlayableGroup()` `:360` | из `stickerViewer`, `popups/stickers`, `popups/newMedia`, `appImManager` |
-| Пауза всего | `checkAnimations/checkAnimations2` `:283, :316` | blur/idle/медиавьювер/попап; idle — через `idleController` с исключениями `overrideIdleGroups` |
-| `toggleVideosUnder(el, paused)` | `:167` | правая колонка скрыта `transform`ом, IO считает её видимой → принудительная пауза видео внутри (`sidebarRight/index.ts:98, 132`) |
-| `toggleMediaPause` | `:148` | глобальный `videosLocked` при проигрывании аудио/видео |
-| lite mode | `setAutoplay` `:404`, `setLoop` `:419` | ключи `stickers_chat`, `stickers_panel`, `effects_emoji`… |
-| PiP | `onAppWindowChange` `:127-135` | при поп-ауте в Document PiP IO пересоздаётся в новом realm |
+| «Играет только одна группа» | `setOnlyOnePlayableGroup()` `:420` | из `stickerViewer`, `popups/stickers`, `popups/newMedia`, `appImManager` |
+| Пауза всего | `checkAnimations/checkAnimations2` `:309, :342` | blur/idle/медиавьювер/попап; idle — через `idleController` с исключениями `overrideIdleGroups` |
+| Снятие ушедшего из DOM | `checkAnimation()` `:346-389` | ветка «вне DOM» стоит ВЫШЕ выхода по `locked` (`:391`, 88ee036f1) — залоченное видео тоже снимается; видео перед снятием ставится на паузу (c1c10b8c6); `controlled` оставляет item владельцу |
+| `toggleVideosUnder(el, paused)` | `:182` | правая колонка скрыта `transform`ом, IO считает её видимой → принудительная пауза видео внутри (`sidebarRight/index.ts:98, 132`) |
+| `toggleMediaPause` | `:163` | глобальный `videosLocked` при проигрывании аудио/видео |
+| lite mode | `setAutoplay` `:464`, `setLoop` `:479` | ключи `stickers_chat`, `stickers_panel`, `effects_emoji`… |
+| PiP | `onAppWindowChange` `:142-150` | при поп-ауте в Document PiP IO пересоздаётся в новом realm |
 
-`AnimationItemWrapper` (`:30`) — минимальный контракт (`play/pause/remove/paused/autoplay/loop`),
+`AnimationItemWrapper` (`:35`) — минимальный контракт (`play/pause/remove/paused/autoplay/loop`),
 поэтому в интерсекторе одинаково живут `LottiePlayer`, `HTMLVideoElement` и `CustomEmojiElement`.
+
+**У нас** — `web-client/src/components/animationIntersector.ts`, порт с отличиями из шапки файла (нет PiP,
+наблюдатель ленивый, heavy-animation подписан прямо в классе). Снятие ушедшего из DOM — как в tweb 88ee036f1 +
+c1c10b8c6 (пины в `animationIntersector.test.ts`). Видео-аватарка профиля (`peerProfileAvatars.ts`, ветка
+`videoMediaId`) регистрируется с `controlled: middleware` и освобождает декодер на `onClean`
+(`helpers/dom/clearMediaElementSource.ts`) — жизненный цикл tweb `createAvatarVideo.ts`; ручного обхода
+`releaseVideoAvatars` больше нет. Сам `createAvatarVideo` (лимит трёх повторов у мелких аватарок, запуск
+только интерсектором) не перенесён: у `components/avatar.ts` видео-аватарок нет.
 
 ## 9.4 Custom emoji — общий canvas
 

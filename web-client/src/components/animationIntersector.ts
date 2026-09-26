@@ -354,15 +354,29 @@ export class AnimationIntersector {
 
   public checkAnimation(player: AnimationItem, blurred?: boolean, destroy?: boolean) {
     const {el, animation, group, locked} = player;
-    if(locked) {
-      return;
-    }
 
+    // tweb 88ee036f1 — снятие ДО выхода по `locked`. Флаг значит «воспроизведением
+    // сейчас рулят руками» (hover-to-play ленты лочит видео, которое перестал
+    // вести; видео со звуком регистрируются залоченными), а не «держать вечно».
+    // Раньше выход стоял выше этой ветки, и залоченный item не снимался никогда:
+    // элемент ушёл из DOM вместе с баблом, а реестр держал всё поддерево. У узла
+    // вне DOM управлять нечем; то, что владелец сохраняет для повторной вставки,
+    // по-прежнему защищает `controlled`.
     if(destroy || (!this.lockedGroups[group] && !isInDOM(el))) {
+      // tweb c1c10b8c6 — декодер ушедшего видео останавливаем, даже если item
+      // остаётся за владельцем (`controlled`).
+      if(player.type === 'video') {
+        animation.pause();
+      }
+
       if(!player.controlled || destroy) {
         this.removeAnimation(player);
       }
 
+      return;
+    }
+
+    if(locked) {
       return;
     }
 

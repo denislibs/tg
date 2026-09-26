@@ -277,6 +277,41 @@ describe('animationIntersector', () => {
     expect(animation.play).toHaveBeenCalledTimes(1)
   })
 
+  // tweb 88ee036f1. `locked` значит «воспроизведением сейчас рулят руками»
+  // (hover-to-play ленты, видео со звуком регистрируются залоченными), а не
+  // «держать вечно»: выход по `locked` стоял ВЫШЕ ветки «элемент вне DOM», и
+  // залоченный item не снимался никогда — реестр держал всё отсоединённое
+  // поддерево бабла.
+  it('locked-элемент, выпавший из DOM, снимается с учёта (tweb 88ee036f1)', () => {
+    const el = makeElement()
+    const animation = makePlayer()
+    players.push(animation)
+    animationIntersector.addAnimation({ animation, group: 'chat', observeElement: el, type: 'video', locked: true })
+    el.remove()
+
+    animationIntersector.checkAnimations2()
+    expect(animationIntersector.getAnimations(el)).toHaveLength(0)
+    expect(observed.has(el)).toBe(false)
+  })
+
+  // tweb c1c10b8c6: у ушедшего из DOM видео нечем управлять, но декодер ещё
+  // крутится — перед снятием его ставят на паузу (и тогда, когда `controlled`
+  // оставляет item за владельцем).
+  it('видео, выпавшее из DOM, ставится на паузу при снятии (tweb c1c10b8c6)', () => {
+    const el = makeElement()
+    const video = makePlayer()
+    players.push(video)
+    animationIntersector.addAnimation({ animation: video, group: 'chat', observeElement: el, type: 'video' })
+    intersect(el, true)
+    expect(video.paused).toBe(false)
+    el.remove()
+
+    animationIntersector.checkAnimations2()
+    expect(video.pause).toHaveBeenCalledTimes(1)
+    expect(video.paused).toBe(true)
+    expect(animationIntersector.getAnimations(el)).toHaveLength(0)
+  })
+
   it('setLoop переписывает loop у зарегистрированных плееров', () => {
     const { animation } = register()
     expect(animationIntersector.setLoop(false)).toBe(true)
