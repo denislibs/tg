@@ -96,14 +96,14 @@ func TestMigration0132_AudioDocumentsBecomeAudio(t *testing.T) {
 		t.Errorf("scheduled: type = %q, want audio", schedType)
 	}
 
-	counters, err := msgs.SearchCounters(ctx, chatID, []string{"files", "music", "voice"})
+	counters, err := msgs.SearchCounters(ctx, chatID, a, []string{"files", "music", "voice"})
 	if err != nil {
 		t.Fatalf("counters: %v", err)
 	}
 	if counters["music"] != 3 || counters["files"] != 2 || counters["voice"] != 1 {
 		t.Fatalf("счётчики вкладок после миграции = %v, want music=3 files=2 voice=1", counters)
 	}
-	music, _, err := msgs.MediaHistory(ctx, chatID, "music", usecasechat.MediaPage{Limit: 10})
+	music, _, err := msgs.MediaHistory(ctx, chatID, a, "music", usecasechat.MediaPage{Limit: 10})
 	if err != nil {
 		t.Fatalf("music history: %v", err)
 	}

@@ -52,6 +52,15 @@ export const AppNotificationsTab =
     getComponentModule: () => import('../sidebarLeft/tabs/notifications.solid'),
   })
 
+// tweb :113-117. Форма обычная, без полезной нагрузки: вкладка статична, настроек
+// не пишет. Открывает её строка корня настроек `KeyboardShortcuts.Title`
+// (tweb `settings.tsx:413-416`).
+export const AppKeyboardShortcutsTab =
+  scaffoldSolidJSTab({
+    title: 'KeyboardShortcuts.Title',
+    getComponentModule: () => import('../sidebarLeft/tabs/keyboardShortcuts.solid'),
+  })
+
 // tweb :419-443 — «Данные и память» и её вкладки автозагрузки, все eventable:
 // корень пишет квоту кэша на своём `destroy` (`dataAndStorage/index.tsx:83-87`).
 // Открывает корень строка `DataSettings` корня настроек (tweb `settings.tsx`,

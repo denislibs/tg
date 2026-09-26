@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import RadioField from './radioField'
 
 // Пин на setValueSilently (radioField.ts) отдельным тестом: раньше это состояние
-// проверялось только косвенно, через RadioForm — там arrange (`setValueSilently(true)`)
+// проверялось только косвенно, через тест RadioForm (снят вместе с `radioForm.ts`,
+// задача 8 плана 2D) — там arrange (`setValueSilently(true)`)
 // и assert (`.toBe(false)` после смены выбора другим полем) схлопывались в одно и то
 // же значение `false`, и пустое тело метода проходило тест зелёным (ревью проверило
 // фактически). Здесь проверка стоит СРАЗУ после arrange, до всякого dispatchEvent —

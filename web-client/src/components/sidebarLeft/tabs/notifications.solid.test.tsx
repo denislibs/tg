@@ -27,6 +27,7 @@ import { useNotifyStore } from '@/stores/notifyStore'
 import type { NotifySettings } from '@core/managers/notifyManager'
 import { AppNotificationsTab } from '@components/solidJsTabs/tabs'
 import { createSettingsSliderHost, type SettingsSliderHost } from '../settingsSliderHost'
+import { installSpecLabelActivation } from '@/test/specLabelActivation'
 
 const support = vi.hoisted(() => ({ value: true }))
 vi.mock('@environment/notificationSupport', () => ({
@@ -55,31 +56,6 @@ const SERVER: NotifySettings = {
 }
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-
-/**
- * Активация label — по спецификации, а не по happy-dom. Браузер досылает click
- * в поле ПОСЛЕ всего диспатча и только если клик не отменён (activation
- * behavior); happy-dom делает это прямо на узле label по ходу всплытия
- * (`HTMLLabelElement.dispatchEvent`), то есть ДО делегированного обработчика
- * Solid на `document` — `cancelEvent` строки его уже не отменит, и «ровно один
- * раз» мерилось бы по поведению, которого в браузере нет. Шим снимает
- * активацию с узла и исполняет её слушателем на `window` — последней точке
- * всплытия, после `document`.
- */
-function installSpecLabelActivation() {
-  const baseDispatch = Object.getPrototypeOf(HTMLLabelElement.prototype).dispatchEvent as EventTarget['dispatchEvent']
-  vi.spyOn(HTMLLabelElement.prototype, 'dispatchEvent').mockImplementation(function(this: HTMLLabelElement, event: Event) {
-    return baseDispatch.call(this, event)
-  })
-  const activate = (event: Event) => {
-    if(event.defaultPrevented || !(event instanceof MouseEvent)) return
-    const target = event.target as Element
-    const control = target.closest?.('label')?.control
-    if(control && control !== target) control.click()
-  }
-  window.addEventListener('click', activate)
-  return () => window.removeEventListener('click', activate)
-}
 
 let host: SettingsSliderHost
 let uninstallLabelActivation: () => void

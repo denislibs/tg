@@ -1,63 +1,56 @@
 /** @jsxImportSource solid-js */
 /**
- * Порт tweb `src/components/sidebarLeft/tabs/language.tsx` — вкладка «Язык».
- * Вторая настоящая Solid-вкладка после «Устройств» (#112, пункт 2).
+ * Порт tweb/src/components/sidebarLeft/tabs/language.tsx:91-176 (812502980) —
+ * вкладка «Язык» (`AppLanguageTab`, `solidJsTabs/tabs.ts`). Задача 8 плана 2D
+ * (`docs/superpowers/plans/2026-09-26-wave-2d-settings-rowtsx.md`): список —
+ * `createSignal` + `For` + `Row.RadioField`/`RadioFieldTsx` HEAD (ef41b29db,
+ * `:98-154`) вместо императивных `new Row` + `RadioFormFromRows`.
  *
- * ── Из ДВУХ секций оригинала портирована ОДНА, и это не сокращение объёма ──
- * У оригинала вкладка состоит из секции перевода сообщений
- * (`TranslateSection`, :23-89) и списка языков (`LanguageListSection`,
- * :96-146). Первой у нас нет ПРЕДМЕТА — притом что ПРОВОД перевода есть:
- * ручка `POST /translate` (`backend/.../chat_handler.go::Translate`, провайдер
- * LibreTranslate) и менеджер `messages.translate`
- * (`core/managers/messages/translationMethods.ts:18`) живы и покрыты тестами.
- * Нет ровно того, чем секция управляет:
- *  • у `messages.translate` НЕТ НИ ОДНОГО ВЫЗЫВАЮЩЕГО в интерфейсе. Пункта
- *    «Перевести» в меню сообщения нет (не портирован осознанно — разбор в
- *    шапке `components/chat/contextMenu.ts`), плашки перевода чата тоже, и
- *    `pickLanguage` (tweb `components/chat/translation.ts`) не портирован;
- *  • нет `usePremium`/`PopupPremium`, которыми оригинал гейтит две из трёх
- *    строк секции (`:41`, `:63-67`): дословный порт дал бы строки, чей
- *    единственный исход — открыть попап, которого нет;
- *  • сами настройки, которые секция редактирует (`showTranslateButton`,
- *    `translateTo` в `settings.tsx`), СЕГОДНЯ НЕ ЧИТАЕТ НИКТО — их писал и
- *    читал только снесённый React-экран `settings/LanguageSettings.tsx`.
- * Перенести секцию «как есть» значило бы нарисовать три переключателя, ни один
- * из которых ни на что не влияет: переключать нечего, пока переводить нечем.
- * Секция целиком — ЗАДАЧА #133 (там же решается судьба двух осиротевших ключей
- * настроек).
+ * Расхождения с оригиналом:
+ *  1. Секции перевода сообщений (`TranslateSection`, `:22-89`) нет — ЗАДАЧА #133,
+ *     обоснование сверено заново 2026-09-26 и не устарело. ПРОВОД перевода есть:
+ *     ручка `POST /translate` (`backend/.../chat_handler.go::Translate`) и
+ *     менеджер `messages.translate` (`core/managers/messages/translationMethods.ts`).
+ *     Нет ровно того, чем секция управляет:
+ *     • у `messages.translate` НЕТ НИ ОДНОГО ВЫЗЫВАЮЩЕГО в интерфейсе: пункта
+ *       «Перевести» в меню сообщения нет (разбор — шапка `components/chat/contextMenu.ts`),
+ *       плашки перевода чата нет, `pickLanguage` (tweb `components/chat/translation.ts`,
+ *       строка «Do Not Translate», `:73-86`) не портирован;
+ *     • нет `usePremium`/`showPremiumPopup`, которыми оригинал гейтит две из трёх
+ *       строк секции (`:24`, `:38-41`, `:56-60`): строка, чей единственный исход —
+ *       попап, которого нет;
+ *     • настройки секции (`showTranslateButton`, `translateTo` в `settings.tsx`)
+ *       НЕ ЧИТАЕТ НИКТО.
+ *     Три переключателя, ни один из которых ни на что не влияет, — не порт.
+ *  2. `rootScope.managers.apiManager.invokeApiCacheable('langpack.getLanguages',
+ *     {lang_pack: 'web'})` (`:106-108`) → `tab.managers.langPack.getLanguages()`:
+ *     кэш, ради которого у tweb `invokeApiCacheable`, живёт внутри нашего
+ *     менеджера (`core/managers/langPackManager.ts`), повторное открытие так же
+ *     не ходит в сеть.
+ *  3. `langs2` (пакет macOS, `:109-110`) у оригинала — ПУСТОЙ массив «disabled in
+ *     legacy tab», то есть мёртвая половина `concat`. Не переносим ни массив, ни
+ *     `concat`, ни дедуп `rendered` (`:112-118`), который защищал только от этого
+ *     `concat`, ни `webLangCodes` (`:103`, `:113`): второй параметр
+ *     `getLangPackAndApply(code, webLangCodes.includes(code))` (`:143`) отвечает
+ *     «web-пакет или macOS», а пакет у нас один — `getLangPackAndApply(code)`.
+ *  4. Проверка «применённый язык есть в списке» с `console.error('no language
+ *     row')` (`:121-124`) снята: отметку даёт сравнение `selectedLanguage() ===
+ *     lang_code` в самой строке, и язык не из списка просто не отмечает ни одной
+ *     строки — видимый исход тот же. У нас это штатное состояние, а не отладочный
+ *     след: локальный английский до первого ответа сети (`lib/langPack.ts` —
+ *     `applyServerLangPack(null)` на холодном старте).
  *
- * ── Список языков — дословно ───────────────────────────────────────────────
  * Порядок выдачи НЕ трогаем: он серверный (`position`, миграция 0129 — сначала
- * предложенные, дальше по алфавиту), и у оригинала так же — выдача
- * перебирается без сортировки (:117). Отсортируй здесь, и русский уехал бы на
- * четвёртое место.
- *
- * ── Адаптации под наш стек ─────────────────────────────────────────────────
- *  • `apiManager.invokeApiCacheable('langpack.getLanguages', {lang_pack: 'web'})`
- *    (:103-105) → `tab.managers.langPack.getLanguages()`. Кэширование, ради
- *    которого у tweb стоит `invokeApiCacheable`, живёт у нас внутри самого
- *    менеджера (`core/managers/langPackManager.ts:212`), поэтому повторное
- *    открытие вкладки так же не ходит в сеть;
- *  • `langs2` (пакет macOS, :107-108) — у оригинала это ПУСТОЙ массив с
- *    комментарием «disabled in legacy tab», то есть мёртвая половина `concat`.
- *    Не переносим ни массив, ни `concat`, ни `rendered`-дедуп, который только
- *    от этого `concat` и защищал: у одного источника дублей быть не может;
- *  • `I18n.getLangPackAndApply(value, webLangCodes.includes(value))` (:131) →
- *    `getLangPackAndApply(value)`. Второй параметр оригинала отвечает на
- *    вопрос «этот язык из web-пакета или из macOS-пакета»; пакет у нас один,
- *    и вопроса не существует;
- *  • `console.error('no row', …)` (:141) на ненайденной строке заменён на
- *    молчание. У оригинала это отладочный след, а у нас единственный путь
- *    сюда — «применённый язык отсутствует в серверном списке», то есть
- *    штатное состояние локального английского до первого ответа сети
- *    (`lib/langPack.ts` — `applyServerLangPack(null)` на холодном старте).
+ * предложенные, дальше по алфавиту), у оригинала выдача тоже без сортировки.
+ * Сбой применения языка откатывает запрошенный язык в самом `getLangPackAndApply`
+ * (tweb 00c1e1a86); отметку строки оригинал при этом не возвращает — у нас так же.
  */
-import { onMount } from 'solid-js'
-import type { Component } from 'solid-js'
+import { createSignal, For, onMount } from 'solid-js'
+import type { LangPackLanguage } from '@layer'
 import I18n from '@lib/langPack'
 import { randomLong } from '@helpers/random'
-import Row, { RadioFormFromRows } from '@components/row'
-import RadioField from '@components/radioField'
+import RadioFieldTsx from '@components/radioFieldTsx.solid'
+import Row from '@components/rowTsx.solid'
 import Section from '@components/section.solid'
 import { useSuperTab } from '@components/solidJsTabs/superTabProvider.solid'
 import { usePromiseCollector } from '@components/solidJsTabs/promiseCollector.solid'
@@ -66,55 +59,49 @@ import type { AppLanguageTab } from '@components/solidJsTabs/tabs'
 const LanguageListSection = () => {
   const [tab] = useSuperTab<typeof AppLanguageTab>()
   const promiseCollector = usePromiseCollector()
-  let containerEl!: HTMLDivElement
+  const [languages, setLanguages] = createSignal<LangPackLanguage[]>([])
+  const [selectedLanguage, setSelectedLanguage] = createSignal<string>()
+  const radioName = randomLong()
 
-  // Список собирается в коллектор вкладки (tweb :98, :102): открытие ЖДЁТ
-  // его, иначе секция въезжает пустой и на глазах доливается полусотней
-  // строк. При повторном открытии менеджер отвечает из кэша, то есть ждать
-  // будет нечего.
+  // tweb :92-96 — список собирается в коллектор вкладки: открытие ЖДЁТ его,
+  // иначе секция въезжает пустой и на глазах доливается полусотней строк.
   promiseCollector.collect((async() => {
-    const languages = await tab.managers!.langPack.getLanguages()
+    setLanguages(await tab.managers!.langPack.getLanguages())
 
-    const radioRows = new Map<string, Row>()
-    const random = randomLong()
-
-    languages.forEach((language) => {
-      // Имя языка — заголовком строки, а не текстом радио: у радио HEAD
-      // подписи нет (`radioField.ts`), как у tweb `language.tsx` HEAD
-      // (`Row.RadioField` + `Row.Title`). Остальной перевод экрана на HEAD —
-      // задача 8 плана 2D.
-      const row = new Row({
-        radioField: new RadioField({
-          name: random,
-          value: language.lang_code,
-        }),
-        title: language.name,
-        subtitle: language.native_name,
-      })
-
-      radioRows.set(language.lang_code, row)
-    })
-
-    const form = RadioFormFromRows([...radioRows.values()], (value) => {
-      I18n.getLangPackAndApply(value)
-    })
-
-    containerEl.replaceChildren(form)
-
-    // Отметка ставится по ПРИМЕНЁННОМУ пакету, а не по тому, куда кликнули:
-    // выбор мог не состояться (офлайн), и тогда гореть обязан прежний язык.
+    // Отметка на открытии — по ПРИМЕНЁННОМУ пакету (tweb :120-126), а не по
+    // первому в списке: выбор мог не состояться (офлайн), гореть обязан прежний.
     const langPack = await I18n.getCacheLangPackAndApply()
-    radioRows.get(langPack.lang_code)?.radioField.setValueSilently(true)
+    setSelectedLanguage(langPack.lang_code)
   })())
 
   return (
     <Section>
-      <div ref={containerEl} />
+      <form>
+        <For each={languages()}>{(language) => (
+          <Row>
+            <Row.RadioField>
+              <RadioFieldTsx
+                class="disable-hover"
+                checked={selectedLanguage() === language.lang_code}
+                name={radioName}
+                value={language.lang_code}
+                onChange={(checked) => {
+                  if(!checked) return
+                  setSelectedLanguage(language.lang_code)
+                  void I18n.getLangPackAndApply(language.lang_code)
+                }}
+              />
+            </Row.RadioField>
+            <Row.Title>{language.name}</Row.Title>
+            <Row.Subtitle>{language.native_name}</Row.Subtitle>
+          </Row>
+        )}</For>
+      </form>
     </Section>
   )
 }
 
-const Language: Component = () => {
+const Language = () => {
   const [tab] = useSuperTab<typeof AppLanguageTab>()
 
   onMount(() => {
@@ -122,6 +109,7 @@ const Language: Component = () => {
     tab.container.classList.add('language-container')
   })
 
+  // tweb :168-173 — без `TranslateSection` (расхождение 1).
   return (
     <LanguageListSection />
   )

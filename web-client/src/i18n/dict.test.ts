@@ -222,19 +222,44 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `NotificationsPrivateChats` («Private Chats»), у fr — заголовка
 // («Notifications»). ru 1346 → 1350, uk 682 → 686, es 681 → 685,
 // de/fr 681 → 684. `plural` не менялся.
+//
+// Выравнивание корня настроек по tweb (`fix/settings-root-items`): у ВСЕХ пяти
+// словарей снят `General.NightMode` — строки «Ночной режим» в корне у tweb нет
+// (ночной режим — пункт подменю «Ещё» бургера). У русского вдобавок сняты
+// выдумки `Premium.Row.Subtitle`/`Premium.Row.Active` (подзаголовка у строки
+// Premium у оригинала нет) и `DarkMode` (пункт бургера у tweb подписан по теме),
+// а добавлены четыре ключа 1:1 с tweb lang.ts — `EnableDarkMode`,
+// `DisableDarkMode`, `MenuTelegramStars`, `SetAsEmojiStatus`: у русского
+// −4 +4, число то же; у остальных −1 (поверх пилота: ru 1350, uk 685, es 684, de/fr 683).
+//
+// Задача 10 плана 2D (вкладка «Горячие клавиши», порт tweb keyboardShortcuts.tsx):
+// десять ключей tweb lang.ts — `KeyboardShortcuts.Action.{Send,OpenSearch,
+// SavedMessages,ZoomIn,ZoomOut,PlayPauseStory,CloseStories,Undo}`,
+// `KeyboardShortcuts.Section.Formatting.Caption`, `…Section.MediaEditor` — всем пяти
+// словарям (с английским дословно не совпал ни один): +10 каждому. ru 1350 → 1360,
+// uk 686 → 696, es 685 → 695, de/fr 684 → 694. Врезкой той же задачи снесён React-экран
+// `settings/HotkeysSettings.tsx`, а с ним — десять ключей, которые читал только он:
+// самодельные `KeyboardShortcuts.Action.{HistoryStart,HistoryEnd,PlayPause,Exit,LockApp}`,
+// `KeyboardShortcuts.Hint.PasscodeNotSet`, `KeyboardShortcuts.Section.PhotoEditor` и ключи
+// tweb `MediaZoomIn`/`MediaZoomOut`/`Undo` (на вкладке их место заняли ключи
+// `keyboardShortcuts.tsx`): −10 каждому. ru 1360 → 1350, uk 696 → 686, es 695 → 685,
+// de/fr 694 → 684 — числа те же, что до задачи, набор другой (см. `FINGERPRINT`).
+// Поверх корня настроек (снят `General.NightMode`): ru 1350, uk 685, es 684, de/fr 683.
+//
 // Задача 7 плана 2D («Данные и память» и автозагрузка): ключи tweb lang.ts
 // `AutoDownloadContacts/Groups/Channels/Off/Files` (подписи строк Photos/Videos/
 // Files), `AutodownloadContacts/Channels` (строки вкладок автозагрузки),
 // `StorageQuota.Clear/Other/FailedToCalculate` и формы числа `Seconds`/`Minutes`
 // (полная карта разрядов `wrapDuration.ts::DURATION_LANG_KEYS`). У fr нет двух
 // `…Contacts` — совпали с английским дословно. ru 1350 → 1362, uk 686 → 698,
-// es 685 → 697, de 684 → 696, fr 684 → 694; `plural` +2 у всех.
+// es 685 → 697, de 684 → 696, fr 684 → 694; `plural` +2 у всех. Поверх корня настроек
+// (у uk/es/de/fr −1): ru 1362, uk 697, es 696, de 695, fr 693.
 const COMPOSITION = {
   ru: { keys: 1362, plural: 37 },
-  uk: { keys: 698, plural: 26 },
-  es: { keys: 697, plural: 26 },
-  de: { keys: 696, plural: 26 },
-  fr: { keys: 694, plural: 26 },
+  uk: { keys: 697, plural: 26 },
+  es: { keys: 696, plural: 26 },
+  de: { keys: 695, plural: 26 },
+  fr: { keys: 693, plural: 26 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -330,14 +355,18 @@ const COMPOSITION = {
 // (разбор — у `COMPOSITION` выше). Портом 72c50bfef — `Notifications.Restricted`.
 // Пилотом 2D — заголовок вкладки уведомлений и три имени секций (разбор — у
 // `COMPOSITION` выше; de и fr расходятся по одному совпавшему ключу).
+// Выравниванием корня настроек по tweb — снят `General.NightMode` у всех пяти,
+// у русского ещё −3 +4 (разбор — у `COMPOSITION` выше).
+// Задачей 10 плана 2D — десять ключей вкладки «Горячие клавиши» всем пяти и снос
+// десяти ключей React-экрана (разбор — у `COMPOSITION` выше).
 // Задачей 7 плана 2D — ключи «Данных и памяти» и `Seconds`/`Minutes` (разбор —
 // у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '626cc359',
-  uk: '8536f508',
-  es: 'aa2c31b0',
-  de: 'd961d23c',
-  fr: '03fef172',
+  ru: '92b5a04b',
+  uk: 'fdfaff85',
+  es: '42ceb6dd',
+  de: 'd7beb575',
+  fr: '15d8848b',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

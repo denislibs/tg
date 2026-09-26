@@ -20,6 +20,7 @@ import RightsEditor from './userInfo/RightsEditor'
 import { countLabel, isSharedMediaReached, shouldForceFold } from './userInfo/helpers'
 import installColumnResize from '../core/dom/installColumnResize'
 import { useRightColumnShown } from '../core/hooks/useRightColumnShown'
+import { useOpenAfterTimeout } from '../core/hooks/useOpenAfterTimeout'
 import animationIntersector from './animationIntersector'
 import { isUser as isUserPeer } from '../core/peers/peerId'
 import { cachedUser } from '../core/peerCache'
@@ -395,10 +396,9 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
 
   // tweb sharedMediaTab.tsx:106-108 (`onOpenAfterTimeout` → `scrollable.onScroll()`):
   // открывшаяся панель пересчитывает триггеры скроллера — пока она была
-  // закрыта (`inert`), догрузка по низу могла не сработать.
-  useEffect(() => {
-    if (open) seam?.scrollable.onScroll()
-  }, [open, seam])
+  // закрыта (`inert`), догрузка по низу могла не сработать. Как у tweb —
+  // ПОСЛЕ выезда колонки (slider.ts:133-137), а не в кадре клика.
+  useOpenAfterTimeout(open, () => seam?.scrollable.onScroll())
 
   // Клик по «назад» в залитой шапке — к началу профиля (tweb sharedMedia.tsx:
   // 537-552: `scrollIntoViewNew({element: '.profile-content', position:
