@@ -25,15 +25,15 @@
 
 ### Лента чата
 
-| # | Что | Где у нас | Коммит tweb | Размер |
-|---|---|---|---|---|
-| B1 | Зависший рендерер спойлера навсегда блокирует открытие чата | `web-client/src/components/dotRendererCore.ts:191` (`mediaWorkerReady`, `processBatch`) | 293cb4509 | S |
-| B2 | Одна ошибка внутри callback `fastRaf` роняет все остальные callback'и кадра | `fastRaf` | 12fbb8506 | S |
-| B3 | Две галочки на одном сообщении | `web-client/src/components/chat/messageTime.ts:171` | 127188295 | S |
-| B4 | В полностью прочитанном чате все баблы считаются непрочитанными и получают лишние read-observer'ы — гейт смотрит не на курсор прочтения | `web-client/src/components/chat/bubbles.ts:1886-1899` | 79d6a8f95 | S |
-| B5 | Кнопка «вниз» и повторный клик по открытому чату ведут в конец, а не к первому непрочитанному (нужны `read_inbox_max_id`/`unread_count` в `BubblesManagers.dialogs` — общий с B4) | `bubbles.ts` | ce37ebeb3 | M |
-| B6 | «Удалённый аккаунт печатает…» — печатающего нет в зеркале пиров, а его всё равно называют | typing-лейбл | 50da390c6 | S |
-| B7 | Кружок не играет во время аплоада | `web-client/src/components/wrappers/video.ts` | 173f3c6dc | S |
+| # | Что | Где у нас | Коммит tweb | Размер | Статус |
+|---|---|---|---|---|---|
+| B1 | Зависший рендерер спойлера навсегда блокирует открытие чата | `web-client/src/lib/spoiler/dotRendererCore.ts:191` (`mediaWorkerReady`, `processBatch`) | 293cb4509 | S | исправлено (ветка `fix/w1-feed`). У нас открытие чата не блокировалось (`processBatch` медиа не ждёт, дедупа `setPeer` нет), но медиа под спойлером оставалось открытым: крышку вставляют после ответа `wrapMediaSpoiler`. Перенесены таймаут/сброс кэша шейдера, дедлайн ответа воркера, дедлайн `wrapMediaSpoiler` |
+| B2 | Одна ошибка внутри callback `fastRaf` роняет все остальные callback'и кадра | `web-client/src/helpers/schedulers.ts` (`fastRaf`) | 12fbb8506 | S | исправлено (ветка `fix/w1-feed`) |
+| B3 | Две галочки на одном сообщении | `web-client/src/components/chat/messageTime.ts:171` | 127188295 | S | исправлено (ветка `fix/w1-feed`) |
+| B4 | В полностью прочитанном чате все баблы считаются непрочитанными и получают лишние read-observer'ы — гейт смотрит не на курсор прочтения | `web-client/src/components/chat/bubbles.ts:1886-1899` | 79d6a8f95 | S | исправлено (ветка `fix/w1-feed`); `BubblesManagers.dialogs.getDialogReadState` |
+| B5 | Кнопка «вниз» и повторный клик по открытому чату ведут в конец, а не к первому непрочитанному (нужны `read_inbox_max_id`/`unread_count` в `BubblesManagers.dialogs` — общий с B4) | `bubbles.ts` | ce37ebeb3 | M | исправлено для кнопки «вниз» (ветка `fix/w1-feed`). Повторного клика по открытому диалогу у нас нет (`selectChat` того же id ленту не трогает); открытие чата сразу на непрочитанном (`!samePeer`) — не портировано |
+| B6 | «Удалённый аккаунт печатает…» — печатающего нет в зеркале пиров, а его всё равно называют | `web-client/src/core/hooks/useTypingLabel.ts` | 50da390c6 | S | исправлено (ветка `fix/w1-feed`) |
+| B7 | Кружок не играет во время аплоада | `web-client/src/components/wrappers/video.ts` | 173f3c6dc | S | исправлено (ветка `fix/w1-feed`) |
 
 ### Профиль и shared media
 
