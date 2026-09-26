@@ -1,0 +1,35 @@
+/*
+ * Порт tweb/src/components/sidebarLeft/tabs/sessionDetails.module.scss:1-27 (812502980)
+ * — экран сессии (`session.solid.tsx`) и его строки (`sessionInfoRow.solid.tsx`).
+ *
+ * Расхождение: `.deviceValue`, `.profileLink`, `.manageRow` (:29-50) не
+ * перенесены — их читает только экран сессии бизнес-бота
+ * (`connectedBotSession.tsx`), а бизнес-ботов у нас нет.
+ */
+@use '../../../styles/mixins' as *;
+
+.heroHeader {
+  padding-bottom: 1rem;
+}
+
+.deviceIcon {
+  width: var(--sticker-size);
+  height: var(--sticker-size);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: calc(var(--sticker-size) / 2);
+}
+
+.deviceName {
+  @include text-overflow(2);
+}
+
+/* Short right-hand values (app name, OS, location). The cap is what the label
+   keeps, not what the value gets, so a long location elides instead of
+   squeezing "Location" down to "Locati…". */
+.value {
+  max-width: calc(100% - 5rem);
+}

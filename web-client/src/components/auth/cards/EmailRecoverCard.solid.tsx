@@ -8,10 +8,10 @@
 // названным расхождением в подзаголовке (см. ниже):
 //
 //   div.card                                    ← БЕЗ page-модификатора (его нет и в scss tweb)
-//     div
+//     div.container                         ← MediaHeader (ритм — gap блока, О-29)
 //       div.sticker[--sticker-size: 130px] > div.lottie[--size] > canvas.lottie
-//       div.title.text-center.text-overflow-wrap > span.i18n
-//       div.subtitle.text-center > span.i18n > br + b > span.bluff-spoiler…
+//       h1.title[data-popup-title] > span.i18n
+//       div.subtitle > span.i18n > br + b > span.bluff-spoiler…
 //     div.input-wrapper
 //       div.wrap (поле кода — ШЕСТЬ ячеек, ВНУТРИ input-wrapper, БЕЗ .codeInputField)
 //       div.errorLabel
@@ -139,7 +139,7 @@ export default function EmailRecoverCard(props: { spec: Spec }): JSX.Element {
       header={
         <MediaHeader>
           <MediaHeader.Sticker size={STICKER_SIZE} name="Mailbox" />
-          <MediaHeader.Title>{i18n('Login.ResetPassword.Title')}</MediaHeader.Title>
+          <MediaHeader.Title tag="h1">{i18n('Login.ResetPassword.Title')}</MediaHeader.Title>
           {/* без .secondary — подзаголовок этой карточки в tweb белый; см.
               докблок файла «Подзаголовок — ОДНА строка tweb» про %s-аргумент. */}
           <MediaHeader.Subtitle>

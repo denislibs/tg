@@ -83,7 +83,7 @@ beforeEach(() => {
   document.body.replaceChildren()
   vi.clearAllMocks()
   resetStickerContentCache()
-  useSettingsStore.setState({ reduceMotion: false })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: false } })
   fetchMock = stubFetch()
   wrapStickerMock.mockImplementation(() => ({
     render: Promise.resolve(fakePlayer()), width: 28, height: 28, destroy: vi.fn(),
@@ -126,7 +126,7 @@ describe('прогрев эффекта панелью (tweb reactionsMenu.ts:51
   })
 
   it('«без анимаций» не качает ничего (tweb :269-271 liteMode effects_reactions)', async () => {
-    useSettingsStore.setState({ reduceMotion: true })
+    useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
     await openMenu(makeCatalog({
       emoji: '👍', title: '', position: 0, premium: false, inactive: false,
       aroundMediaId: AROUND_ID, centerMediaId: CENTER_ID,

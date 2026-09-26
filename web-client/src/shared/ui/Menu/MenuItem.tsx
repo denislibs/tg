@@ -1,5 +1,5 @@
 import { cloneElement, isValidElement } from 'react'
-import type { ReactElement, ReactNode } from 'react'
+import type { MouseEvent, ReactElement, ReactNode } from 'react'
 import classNames from '../../lib/classNames'
 import Icons from '@core/tgico-icons'
 
@@ -15,7 +15,8 @@ interface MenuItemProps {
   /** пункт раскрывает подменю: подпись уезжает в submenu-label + шеврон */
   submenu?: boolean
   className?: string
-  onClick?: () => void
+  /** событие — ради координат (круг перехода темы у пункта тёмного режима) */
+  onClick?: (e: MouseEvent<HTMLDivElement>) => void
   onMouseEnter?: () => void
 }
 

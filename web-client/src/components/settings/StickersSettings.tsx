@@ -9,6 +9,8 @@ import { useManagers } from '../../core/hooks/useManagers'
 import { useSettingsStore } from '../../settings'
 import { useT, useTArgs } from '../../i18n'
 import type { StickerSet } from '../../core/managers/stickersManager'
+import { getSettingsSliderHost } from '../sidebarLeft/settingsSliderHost'
+import { AppQuickReactionTab } from '../solidJsTabs/tabs'
 
 export default function StickersSettings({ onBack }: { onBack: () => void }) {
   const t = useT()
@@ -58,6 +60,16 @@ export default function StickersSettings({ onBack }: { onBack: () => void }) {
   return (
     <SettingsScreen title="StickersName" onBack={onBack} zIndex={50}>
       <Section>
+        {/* tweb stickersAndEmoji.tsx:60-66 — строка открывает вкладку «Быстрая
+            реакция» (задача 14 плана 2D). Экран ещё React (переезд — задача 15),
+            поэтому вкладку открывает хост слайдера, а не `tab.slider.createTab`.
+            Превью выбранной реакции справа (`ReactionStickerPreview`) нет: быстрой
+            реакции у нас нет по всей вертикали (О-30), у оригинала без неё
+            превью тоже пустое (`Show when={props.sticker}`). */}
+        <Row
+          label="DoubleTapSetting"
+          onClick={() => void getSettingsSliderHost().openTab(AppQuickReactionTab)}
+        />
         <Row
           label="InstalledStickers.LoopAnimated"
           toggle

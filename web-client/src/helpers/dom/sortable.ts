@@ -8,19 +8,16 @@
  * `sortable-item-transition`, у нас то же правило развёрнуто на месте).
  *
  * Отличия от оригинала:
- *  1. `getOverlayRoot()` (`helpers/appWindow.ts`) → `document.body`: окна-
- *     выноса приложения (Document PiP всего клиента) у нас нет, и корень
- *     оверлеев у tweb вне выноса — ровно `document.body`
- *     (`appWindow.ts:33-35`).
- *  2. `SwipeHandler` — наш `core/dom/swipeHandler.ts` (у tweb
+ *  1. `SwipeHandler` — наш `core/dom/swipeHandler.ts` (у tweb
  *     `components/swipeHandler`), тот же порт.
- *  3. Под наш strict: поля жеста — `?`/`!` или нулевые значения, `clearState`
+ *  2. Под наш strict: поля жеста — `?`/`!` или нулевые значения, `clearState`
  *     сбрасывает их по одному (у tweb — цепочкой присваиваний `undefined`
  *     через поля разных типов; `elementRect` не сбрасывается — его
  *     перезаписывает каждый подъём), `onReset` отдан `SwipeHandler` через
  *     `void`; поведение то же.
  */
 import type { ScrollableBase } from '@components/scrollable'
+import { getOverlayRoot } from '@helpers/appWindow'
 import SwipeHandler from '@core/dom/swipeHandler'
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import liteMode from '@helpers/liteMode'
@@ -115,7 +112,7 @@ export default class Sortable {
       verifyTouchTarget: this.verifyTouchTarget,
       onStart: this.onStart,
       onReset: () => void this.onReset(),
-      setCursorTo: document.body, // см. шапку, п. 1
+      setCursorTo: getOverlayRoot(), // tweb :98
       middleware: this.middleware,
       withDelay: true,
     })
@@ -271,7 +268,7 @@ export default class Sortable {
       // `ignoreMove` is what lets this one past the moved-since-mousedown guard - without it the
       // swallow is skipped in the very case it is here for, and the row the drag began on is acted
       // upon (a chat list in selection mode toggles it).
-      attachClickEvent(document.body, cancelEvent, { capture: true, once: true, ignoreMove: true }) // см. шапку, п. 1
+      attachClickEvent(getOverlayRoot(), cancelEvent, { capture: true, once: true, ignoreMove: true }) // tweb :252
     }
 
     if(liteMode.isAvailable('animations')) {

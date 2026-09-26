@@ -333,4 +333,15 @@ describe('UserInfoPanel — шов монтирования PeerProfile (Solid, 
     expect(panel).toMatch(/openPeer:/)
     expect(panel).toMatch(/openUserPermissions:/)
   })
+
+  // tweb `AppSharedMediaTab.onOpenAfterTimeout` (sharedMediaTab.tsx:105-108) —
+  // пересчёт триггеров скроллера (догрузка шаред-медиа) ПОСЛЕ выезда колонки
+  // (`slider.ts:133-137`, `setTimeout(…, TRANSITION_TIME)`), а не в кадре
+  // клика. Сам тайминг держит `core/hooks/useOpenAfterTimeout.test.tsx`;
+  // здесь — что панель зовёт `onScroll` именно через него.
+  it('пересчёт скроллера по открытию — через useOpenAfterTimeout, не в кадре клика', () => {
+    expect(panel).toMatch(/useOpenAfterTimeout\(open, \(\) => seam\?\.scrollable\.onScroll\(\)\)/)
+    // прежний вызов прямо в эффекте открытия — снят
+    expect(panel).not.toMatch(/if \(open\) seam\?\.scrollable\.onScroll\(\)/)
+  })
 })

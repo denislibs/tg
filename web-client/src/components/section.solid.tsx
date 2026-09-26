@@ -19,8 +19,9 @@
  * `padding-bottom` контейнера (`styles/tweb/_section.scss`, tweb
  * `_section.scss:82-91`), поэтому `noMarginBottom` ставит класс на контейнер.
  *
- * Та же разметка у императивного `settingSection.ts` (порт удалённого в tweb
- * 2556fc949 файла) и у React-двойника `shared/ui/SidebarSection` — стили общие.
+ * Та же разметка у React-двойника `shared/ui/SidebarSection` — стили общие
+ * (императивный `settingSection.ts`, порт удалённого в tweb 2556fc949 файла,
+ * снят задачей 9 плана 2D вместе с последним потребителем).
  *
  * Расхождения с оригиналом:
  *  1. `caption` типизирован как `LangPackKey | Exclude<JSX.Element, string>`

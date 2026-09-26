@@ -92,14 +92,14 @@ beforeEach(() => {
   // Открытие чата — БЕЗ «лестницы»: она тут не проверяется, а объявляет себя
   // тяжёлой анимацией на всю длительность. Гейт градиента поднимаем обратно
   // сразу после открытия, в самих кейсах.
-  useSettingsStore.setState({ reduceMotion: true })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
 })
 
 afterEach(() => {
   bubbles?.destroy()
   bubbles = undefined
   setActiveGradientRenderer(undefined)
-  useSettingsStore.setState({ reduceMotion: false })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: false } })
 })
 
 async function openFeed(messages: MyMessage[]) {
@@ -107,7 +107,7 @@ async function openFeed(messages: MyMessage[]) {
   bubbles = b
   await (await b.setPeer())?.promise
   await settle()
-  useSettingsStore.setState({ reduceMotion: false })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: false } })
   return b
 }
 
@@ -162,7 +162,7 @@ describe('ChatBubbles — сдвиг градиента обоев (tweb updateG
   it('«без анимаций» (liteMode chat_background) — сдвига нет', async () => {
     const b = await openFeed([msg(1, 2), msg(2, ME)])
     catchStartCallback(b)
-    useSettingsStore.setState({ reduceMotion: true })
+    useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
 
     append(3, ME)
     await settle()

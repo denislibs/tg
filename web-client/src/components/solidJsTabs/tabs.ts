@@ -52,6 +52,15 @@ export const AppNotificationsTab =
     getComponentModule: () => import('../sidebarLeft/tabs/notifications.solid'),
   })
 
+// tweb :113-117. Форма обычная, без полезной нагрузки: вкладка статична, настроек
+// не пишет. Открывает её строка корня настроек `KeyboardShortcuts.Title`
+// (tweb `settings.tsx:413-416`).
+export const AppKeyboardShortcutsTab =
+  scaffoldSolidJSTab({
+    title: 'KeyboardShortcuts.Title',
+    getComponentModule: () => import('../sidebarLeft/tabs/keyboardShortcuts.solid'),
+  })
+
 // tweb :167-171 и :275-279. Обе формы обычные, без полезной нагрузки: обои
 // вкладки читают сами (zustand `useSettingsStore`, фон чата — `ChatBackground.tsx`).
 // «Обои» открывает строка «Общих» (tweb `generalSettings.tsx:65`), «Цвет» —
@@ -66,4 +75,69 @@ export const AppBackgroundColorTab =
   scaffoldSolidJSTab({
     title: 'SetColor',
     getComponentModule: () => import('../sidebarLeft/tabs/backgroundColor.solid'),
+  })
+
+// tweb :195-199. Форма обычная, без полезной нагрузки: каталог вкладка берёт
+// сама (в свой `promiseCollector`). Открывает её строка «Quick Reaction» экрана
+// «Стикеры и эмодзи» (tweb `stickersAndEmoji.tsx:60-66`); до переезда самого
+// экрана (задача 15 плана 2D) — его React-строка через `getSettingsSliderHost`.
+export const AppQuickReactionTab =
+  scaffoldSolidJSTab({
+    title: 'DoubleTapSetting',
+    getComponentModule: () => import('../sidebarLeft/tabs/quickReaction.solid'),
+  })
+
+// tweb :241-245. Форма обычная, без полезной нагрузки: галочки вкладка читает
+// сама (мост `useAppSettings`, `liteMode`). Открывает её строка «Общих»
+// `LiteMode.Title` (tweb `generalSettings.tsx:89`).
+export const AppPowerSavingTab =
+  scaffoldSolidJSTab({
+    title: 'LiteMode.Title',
+    getComponentModule: () => import('../sidebarLeft/tabs/powerSaving.solid'),
+  })
+
+// tweb :385-400. Экран одной сессии: открывает строка «Устройств»
+// (`activeSessions.solid.tsx::openSession`). Завершение приходит колбэком от
+// списка — он же снимает строку; у текущей сессии колбэка нет (свою сессию не
+// завершают, из неё выходят). `onSettingsChanged` оригинала (:392-393) не
+// заведён: его зовёт только секция `AuthSessions.View.AcceptTitle`, а её нет —
+// нет `account.changeAuthorizationSettings` (О-8 плана 2D).
+type AppSessionTabPayload = {
+  authorization: Authorization.authorization
+  /** Подтверждает и завершает сессию; разрешается исходом. Нет у текущей. */
+  onTerminate?: () => Promise<boolean>
+}
+
+export const AppSessionTab =
+  scaffoldSolidJSTabEventable<AppSessionTabPayload>({
+    title: 'AuthSessions.View.Device',
+    getComponentModule: () => import('../sidebarLeft/tabs/session.solid'),
+  })
+
+// tweb :419-443 — «Данные и память» и её вкладки автозагрузки, все eventable:
+// корень пишет квоту кэша на своём `destroy` (`dataAndStorage/index.tsx:83-87`).
+// Открывает корень строка `DataSettings` корня настроек (tweb `settings.tsx`,
+// `makeSubTabConfig`), вкладки автозагрузки — строки Photos/Videos/Files.
+export const AppAutoDownloadPhotoTab =
+  scaffoldSolidJSTabEventable({
+    title: 'AutoDownloadPhotos',
+    getComponentModule: () => import('../sidebarLeft/tabs/autoDownload/photo.solid'),
+  })
+
+export const AppAutoDownloadVideoTab =
+  scaffoldSolidJSTabEventable({
+    title: 'AutoDownloadVideos',
+    getComponentModule: () => import('../sidebarLeft/tabs/autoDownload/video.solid'),
+  })
+
+export const AppAutoDownloadFileTab =
+  scaffoldSolidJSTabEventable({
+    title: 'AutoDownloadFiles',
+    getComponentModule: () => import('../sidebarLeft/tabs/autoDownload/file.solid'),
+  })
+
+export const AppDataAndStorageTab =
+  scaffoldSolidJSTabEventable({
+    title: 'DataSettings',
+    getComponentModule: () => import('../sidebarLeft/tabs/dataAndStorage/index.solid'),
   })

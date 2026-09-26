@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 21,
+      "version": 27,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -67,10 +67,6 @@
         {
           "key": "AllReactions",
           "value": "All reactions"
-        },
-        {
-          "key": "Animations",
-          "value": "Animations"
         },
         {
           "key": "AppName",
@@ -177,6 +173,38 @@
           "value": "Video"
         },
         {
+          "key": "AuthSessions.IncompleteAttempts",
+          "value": "Incomplete login attempts"
+        },
+        {
+          "key": "AuthSessions.IncompleteAttemptsInfo",
+          "value": "These devices have no access to your account. The code was entered correctly, but no correct password was given."
+        },
+        {
+          "key": "AuthSessions.View.Application",
+          "value": "Application"
+        },
+        {
+          "key": "AuthSessions.View.Device",
+          "value": "Device"
+        },
+        {
+          "key": "AuthSessions.View.Location",
+          "value": "Location"
+        },
+        {
+          "key": "AuthSessions.View.LocationInfo",
+          "value": "This location estimate is based on the IP address and may not always be accurate."
+        },
+        {
+          "key": "AuthSessions.View.System",
+          "value": "System version"
+        },
+        {
+          "key": "AuthSessions.View.TerminateSession",
+          "value": "Terminate Session"
+        },
+        {
           "key": "AuthorHiddenShort",
           "value": "Anonymous"
         },
@@ -209,8 +237,24 @@
           "value": "Voice messages are tiny, so they're always downloaded automatically."
         },
         {
+          "key": "AutoDownloadChannels",
+          "value": "Channels"
+        },
+        {
+          "key": "AutoDownloadContacts",
+          "value": "Contacts"
+        },
+        {
+          "key": "AutoDownloadFiles",
+          "value": "Files"
+        },
+        {
           "key": "AutoDownloadFilesTitle",
           "value": "Auto-download files and music"
+        },
+        {
+          "key": "AutoDownloadGroups",
+          "value": "Groups"
         },
         {
           "key": "AutoDownloadLargeFilesInfo",
@@ -231,6 +275,10 @@
         {
           "key": "AutoDownloadMobile",
           "value": "When using mobile data"
+        },
+        {
+          "key": "AutoDownloadOff",
+          "value": "Off"
         },
         {
           "key": "AutoDownloadOnAllChats",
@@ -283,6 +331,14 @@
         {
           "key": "AutoDownloadWifi",
           "value": "When connected to Wi-Fi"
+        },
+        {
+          "key": "AutodownloadChannels",
+          "value": "Channels"
+        },
+        {
+          "key": "AutodownloadContacts",
+          "value": "Contacts"
         },
         {
           "key": "AutodownloadGroupChats",
@@ -1367,10 +1423,6 @@
           "value": "This device"
         },
         {
-          "key": "DarkMode",
-          "value": "Dark Mode"
-        },
-        {
           "key": "DataSettings",
           "value": "Data and Storage"
         },
@@ -1477,6 +1529,10 @@
           "value": "Disable Animations"
         },
         {
+          "key": "DisableDarkMode",
+          "value": "Disable Dark Mode"
+        },
+        {
           "key": "DisablePhotoSpoiler",
           "value": "Remove spoiler"
         },
@@ -1543,10 +1599,6 @@
         {
           "key": "DoubleTapSetting",
           "value": "Quick Reaction"
-        },
-        {
-          "key": "DoubleTapSettingInfo",
-          "value": "Double-tap a message to send this reaction quickly."
         },
         {
           "key": "Draft",
@@ -1691,6 +1743,10 @@
         {
           "key": "EnableAnimations",
           "value": "Enable Animations"
+        },
+        {
+          "key": "EnableDarkMode",
+          "value": "Enable Dark Mode"
         },
         {
           "key": "EnablePhotoSpoiler",
@@ -1915,10 +1971,6 @@
         {
           "key": "General",
           "value": "General"
-        },
-        {
-          "key": "General.NightMode",
-          "value": "Night Mode"
         },
         {
           "key": "General.TextSize",
@@ -2148,20 +2200,12 @@
           "value": "Close popup or menu"
         },
         {
+          "key": "KeyboardShortcuts.Action.CloseStories",
+          "value": "Close stories"
+        },
+        {
           "key": "KeyboardShortcuts.Action.EditLast",
           "value": "Edit last message"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.Exit",
-          "value": "Exit"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.HistoryEnd",
-          "value": "Go to End of History"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.HistoryStart",
-          "value": "Go to Beginning of History"
         },
         {
           "key": "KeyboardShortcuts.Action.Italic",
@@ -2170,10 +2214,6 @@
         {
           "key": "KeyboardShortcuts.Action.Link",
           "value": "Add Link"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.LockApp",
-          "value": "Lock the App"
         },
         {
           "key": "KeyboardShortcuts.Action.Monospace",
@@ -2196,8 +2236,12 @@
           "value": "Next story"
         },
         {
-          "key": "KeyboardShortcuts.Action.PlayPause",
-          "value": "Play/Pause"
+          "key": "KeyboardShortcuts.Action.OpenSearch",
+          "value": "Open search"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.PlayPauseStory",
+          "value": "Play / pause story"
         },
         {
           "key": "KeyboardShortcuts.Action.PreviousChat",
@@ -2220,6 +2264,14 @@
           "value": "Reply to previous message"
         },
         {
+          "key": "KeyboardShortcuts.Action.SavedMessages",
+          "value": "Open Saved Messages"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.Send",
+          "value": "Send message"
+        },
+        {
           "key": "KeyboardShortcuts.Action.Spoiler",
           "value": "Spoiler"
         },
@@ -2232,8 +2284,16 @@
           "value": "Underline"
         },
         {
-          "key": "KeyboardShortcuts.Hint.PasscodeNotSet",
-          "value": "Passcode is configured in Privacy settings"
+          "key": "KeyboardShortcuts.Action.Undo",
+          "value": "Undo"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.ZoomIn",
+          "value": "Zoom in"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.ZoomOut",
+          "value": "Zoom out"
         },
         {
           "key": "KeyboardShortcuts.Hint.WhenInputEmpty",
@@ -2248,6 +2308,14 @@
           "value": "Text Formatting"
         },
         {
+          "key": "KeyboardShortcuts.Section.Formatting.Caption",
+          "value": "Select text in the chat input to apply formatting."
+        },
+        {
+          "key": "KeyboardShortcuts.Section.MediaEditor",
+          "value": "Media Editor"
+        },
+        {
           "key": "KeyboardShortcuts.Section.MediaViewer",
           "value": "Media Viewer"
         },
@@ -2258,10 +2326,6 @@
         {
           "key": "KeyboardShortcuts.Section.Navigation",
           "value": "Navigation"
-        },
-        {
-          "key": "KeyboardShortcuts.Section.PhotoEditor",
-          "value": "Photo Editor"
         },
         {
           "key": "KeyboardShortcuts.Section.Stories",
@@ -2327,32 +2391,72 @@
           "value": "This link is already taken."
         },
         {
-          "key": "LiteMode.Caption",
-          "value": "Disable animations and effects to reduce power usage."
+          "key": "LiteMode.DisableAlert",
+          "value": "Disable Power Saving Mode"
+        },
+        {
+          "key": "LiteMode.EnableText",
+          "value": "Power Saving Mode"
+        },
+        {
+          "key": "LiteMode.Info",
+          "value": "Reduce all power-intensive animations and improve performance."
         },
         {
           "key": "LiteMode.Key.animations.Title",
           "value": "Interface Animations"
         },
         {
-          "key": "LiteMode.Key.background_animation.Title",
-          "value": "Chat background animation"
+          "key": "LiteMode.Key.blur.Title",
+          "value": "Blur Effects"
+        },
+        {
+          "key": "LiteMode.Key.chat.Title",
+          "value": "Chat Animations"
+        },
+        {
+          "key": "LiteMode.Key.chat_background.Title",
+          "value": "Wallpaper rotation"
         },
         {
           "key": "LiteMode.Key.chat_spoilers.Title",
           "value": "Animated spoiler effect"
         },
         {
+          "key": "LiteMode.Key.effects.Title",
+          "value": "Interactive Effects"
+        },
+        {
+          "key": "LiteMode.Key.effects_emoji.Title",
+          "value": "Emoji effect"
+        },
+        {
+          "key": "LiteMode.Key.effects_premiumstickers.Title",
+          "value": "Premium stickers effect"
+        },
+        {
           "key": "LiteMode.Key.effects_reactions.Title",
           "value": "Reaction effect"
         },
         {
-          "key": "LiteMode.Key.emoji.Title",
-          "value": "Emoji Animations"
+          "key": "LiteMode.Key.emoji_appear.Title",
+          "value": "Emoji appear effect"
         },
         {
           "key": "LiteMode.Key.gif.Title",
           "value": "Autoplay GIFs"
+        },
+        {
+          "key": "LiteMode.Key.stickers.Title",
+          "value": "Sticker Animations"
+        },
+        {
+          "key": "LiteMode.Key.stickers_chat.Title",
+          "value": "Autoplay in chat"
+        },
+        {
+          "key": "LiteMode.Key.stickers_panel.Title",
+          "value": "Autoplay in panel"
         },
         {
           "key": "LiteMode.Key.video.Title",
@@ -2715,14 +2819,6 @@
           "value": "Download"
         },
         {
-          "key": "MediaZoomIn",
-          "value": "Zoom In"
-        },
-        {
-          "key": "MediaZoomOut",
-          "value": "Zoom Out"
-        },
-        {
           "key": "MegaPrivate",
           "value": "Private Group"
         },
@@ -2748,6 +2844,10 @@
             "one_value": "%1$d member",
             "other_value": "%1$d members"
           }
+        },
+        {
+          "key": "MenuTelegramStars",
+          "value": "My Stars"
         },
         {
           "key": "Message",
@@ -2823,6 +2923,13 @@
         {
           "key": "MiniApps.AppsMore",
           "value": "Show more"
+        },
+        {
+          "key": "Minutes",
+          "forms": {
+            "one_value": "%1$d minute",
+            "other_value": "%1$d minutes"
+          }
         },
         {
           "key": "Months",
@@ -3704,14 +3811,6 @@
           "value": "Renews on"
         },
         {
-          "key": "Premium.Row.Active",
-          "value": "Active — manage subscription"
-        },
-        {
-          "key": "Premium.Row.Subtitle",
-          "value": "Unlock exclusive features"
-        },
-        {
           "key": "Premium.SubscribeFor",
           "value": "Subscribe for"
         },
@@ -4393,6 +4492,13 @@
           "value": "Messages"
         },
         {
+          "key": "Seconds",
+          "forms": {
+            "one_value": "%1$d second",
+            "other_value": "%1$d seconds"
+          }
+        },
+        {
           "key": "SecretChat.Accept",
           "value": "Accept"
         },
@@ -4463,6 +4569,10 @@
         {
           "key": "SetAsAdmin",
           "value": "Promote to admin"
+        },
+        {
+          "key": "SetAsEmojiStatus",
+          "value": "Set as Status"
         },
         {
           "key": "SetColor",
@@ -4848,6 +4958,10 @@
           "value": "Note that cache required for the app to function properly will not be cleared."
         },
         {
+          "key": "StorageQuota.Clear",
+          "value": "Clear"
+        },
+        {
           "key": "StorageQuota.ClearAll",
           "value": "Clear All"
         },
@@ -4872,8 +4986,16 @@
           "value": "Are you sure you want to clear the cached data?"
         },
         {
+          "key": "StorageQuota.FailedToCalculate",
+          "value": "Failed to calculate"
+        },
+        {
           "key": "StorageQuota.Images",
           "value": "Images"
+        },
+        {
+          "key": "StorageQuota.Other",
+          "value": "Other"
         },
         {
           "key": "StorageQuota.StickersEmoji",
@@ -5322,10 +5444,6 @@
           "value": "Unblock user"
         },
         {
-          "key": "Undo",
-          "value": "Undo"
-        },
-        {
           "key": "Unit.Bytes",
           "value": "B"
         },
@@ -5566,7 +5684,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 21,
+      "version": 27,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -6073,14 +6191,6 @@
           "value": "Показывайте премиум-значок рядом с именем."
         },
         {
-          "key": "Premium.Row.Subtitle",
-          "value": "Откройте эксклюзивные функции"
-        },
-        {
-          "key": "Premium.Row.Active",
-          "value": "Активна — управление подпиской"
-        },
-        {
           "key": "Payment.Title",
           "value": "Оплата"
         },
@@ -6256,10 +6366,6 @@
         {
           "key": "Username",
           "value": "Имя пользователя"
-        },
-        {
-          "key": "General.NightMode",
-          "value": "Ночной режим"
         },
         {
           "key": "AccountSettings.Language",
@@ -6466,8 +6572,12 @@
           "value": "Скрыт из вашего профиля"
         },
         {
-          "key": "DarkMode",
-          "value": "Тёмный режим"
+          "key": "EnableDarkMode",
+          "value": "Включить тёмный режим"
+        },
+        {
+          "key": "DisableDarkMode",
+          "value": "Выключить тёмный режим"
         },
         {
           "key": "DisableAnimations",
@@ -7173,6 +7283,10 @@
         {
           "key": "Stars.Wallet",
           "value": "Кошелёк"
+        },
+        {
+          "key": "MenuTelegramStars",
+          "value": "Мои звёзды"
         },
         {
           "key": "MultiAccount.More",
@@ -9024,20 +9138,8 @@
           "value": "Быстрая реакция"
         },
         {
-          "key": "DoubleTapSettingInfo",
-          "value": "Дважды коснитесь сообщения, чтобы быстро отправить эту реакцию."
-        },
-        {
           "key": "EnableAnimations",
           "value": "Включить анимации"
-        },
-        {
-          "key": "LiteMode.Caption",
-          "value": "Отключите анимации и эффекты, чтобы снизить расход энергии."
-        },
-        {
-          "key": "Animations",
-          "value": "Анимации"
         },
         {
           "key": "LiteMode.Key.gif.Title",
@@ -9046,10 +9148,6 @@
         {
           "key": "LiteMode.Key.video.Title",
           "value": "Автовоспроизведение видео"
-        },
-        {
-          "key": "LiteMode.Key.emoji.Title",
-          "value": "Анимированные эмодзи"
         },
         {
           "key": "LiteMode.Key.animations.Title",
@@ -9064,8 +9162,56 @@
           "value": "Эффекты спойлеров"
         },
         {
-          "key": "LiteMode.Key.background_animation.Title",
-          "value": "Анимация фона чата"
+          "key": "LiteMode.EnableText",
+          "value": "Режим энергосбережения"
+        },
+        {
+          "key": "LiteMode.Info",
+          "value": "Отключает все энергоёмкие анимации и повышает производительность."
+        },
+        {
+          "key": "LiteMode.DisableAlert",
+          "value": "Отключите режим энергосбережения"
+        },
+        {
+          "key": "LiteMode.Key.stickers.Title",
+          "value": "Анимации стикеров"
+        },
+        {
+          "key": "LiteMode.Key.stickers_panel.Title",
+          "value": "Автовоспроизведение в панели"
+        },
+        {
+          "key": "LiteMode.Key.stickers_chat.Title",
+          "value": "Автовоспроизведение в чате"
+        },
+        {
+          "key": "LiteMode.Key.emoji_appear.Title",
+          "value": "Эффект появления эмодзи"
+        },
+        {
+          "key": "LiteMode.Key.effects.Title",
+          "value": "Интерактивные эффекты"
+        },
+        {
+          "key": "LiteMode.Key.effects_premiumstickers.Title",
+          "value": "Эффекты Premium-стикеров"
+        },
+        {
+          "key": "LiteMode.Key.effects_emoji.Title",
+          "value": "Эффекты эмодзи"
+        },
+        {
+          "key": "LiteMode.Key.chat.Title",
+          "value": "Анимации в чате"
+        },
+        {
+          "key": "LiteMode.Key.chat_background.Title",
+          "value": "Вращение обоев"
+        },
+        {
+          "key": "LiteMode.Key.blur.Title",
+          "value": "Эффекты размытия"
         },
         {
           "key": "Privacy.Passkeys",
@@ -9445,6 +9591,24 @@
           "value": "Выбрать другой срок"
         },
         {
+          "key": "Seconds",
+          "forms": {
+            "one_value": "%1$d секунда",
+            "few_value": "%1$d секунды",
+            "many_value": "%1$d секунд",
+            "other_value": "%1$d секунды"
+          }
+        },
+        {
+          "key": "Minutes",
+          "forms": {
+            "one_value": "%1$d минута",
+            "few_value": "%1$d минуты",
+            "many_value": "%1$d минут",
+            "other_value": "%1$d минуты"
+          }
+        },
+        {
           "key": "Hours",
           "forms": {
             "one_value": "%1$d час",
@@ -9815,6 +9979,46 @@
         {
           "key": "AutoDownloadPm",
           "value": "Личные чаты"
+        },
+        {
+          "key": "AutoDownloadContacts",
+          "value": "Контакты"
+        },
+        {
+          "key": "AutoDownloadGroups",
+          "value": "Группы"
+        },
+        {
+          "key": "AutoDownloadChannels",
+          "value": "Каналы"
+        },
+        {
+          "key": "AutoDownloadOff",
+          "value": "Выключено"
+        },
+        {
+          "key": "AutoDownloadFiles",
+          "value": "Файлы"
+        },
+        {
+          "key": "AutodownloadContacts",
+          "value": "Контакты"
+        },
+        {
+          "key": "AutodownloadChannels",
+          "value": "Каналы"
+        },
+        {
+          "key": "StorageQuota.Clear",
+          "value": "Очистить"
+        },
+        {
+          "key": "StorageQuota.Other",
+          "value": "Другое"
+        },
+        {
+          "key": "StorageQuota.FailedToCalculate",
+          "value": "Не удалось подсчитать"
         },
         {
           "key": "AutodownloadGroupChats",
@@ -10223,18 +10427,6 @@
           "value": "Просмотр медиа"
         },
         {
-          "key": "KeyboardShortcuts.Section.PhotoEditor",
-          "value": "Фоторедактор"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.HistoryStart",
-          "value": "Переход к началу истории"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.HistoryEnd",
-          "value": "Переход к концу истории"
-        },
-        {
           "key": "KeyboardShortcuts.Action.EditLast",
           "value": "Изменение последнего сообщения"
         },
@@ -10267,14 +10459,6 @@
           "value": "Предыдущий медиафайл"
         },
         {
-          "key": "MediaZoomIn",
-          "value": "Увеличение масштаба"
-        },
-        {
-          "key": "MediaZoomOut",
-          "value": "Уменьшение масштаба"
-        },
-        {
           "key": "KeyboardShortcuts.Action.NextStory",
           "value": "Следующая история"
         },
@@ -10283,28 +10467,48 @@
           "value": "Предыдущая история"
         },
         {
-          "key": "KeyboardShortcuts.Action.PlayPause",
-          "value": "Запуск/пауза"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.Exit",
-          "value": "Выход"
-        },
-        {
-          "key": "Undo",
-          "value": "Отмена"
-        },
-        {
           "key": "KeyboardShortcuts.Action.Redo",
           "value": "Повтор"
         },
         {
-          "key": "KeyboardShortcuts.Action.LockApp",
-          "value": "Блокировка приложения"
+          "key": "KeyboardShortcuts.Action.Send",
+          "value": "Отправка сообщения"
         },
         {
-          "key": "KeyboardShortcuts.Hint.PasscodeNotSet",
-          "value": "Код-пароль настраивается в разделе «Конфиденциальность»"
+          "key": "KeyboardShortcuts.Action.OpenSearch",
+          "value": "Открытие поиска"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.SavedMessages",
+          "value": "Открытие Избранного"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.ZoomIn",
+          "value": "Увеличение масштаба"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.ZoomOut",
+          "value": "Уменьшение масштаба"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.PlayPauseStory",
+          "value": "Запуск/пауза истории"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.CloseStories",
+          "value": "Закрытие историй"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.Undo",
+          "value": "Отмена"
+        },
+        {
+          "key": "KeyboardShortcuts.Section.Formatting.Caption",
+          "value": "Выделите текст в поле ввода, чтобы применить форматирование."
+        },
+        {
+          "key": "KeyboardShortcuts.Section.MediaEditor",
+          "value": "Редактор медиа"
         },
         {
           "key": "MarkupTooltip.LinkPlaceholder",
@@ -10421,6 +10625,38 @@
         {
           "key": "RecentSessions.Error.FreshReset",
           "value": "В целях безопасности вы не можете завершать более старые сеансы с устройства, которое подключили только что. Воспользуйтесь более ранним подключением или подождите несколько часов."
+        },
+        {
+          "key": "AuthSessions.IncompleteAttempts",
+          "value": "Незавершённые попытки входа"
+        },
+        {
+          "key": "AuthSessions.IncompleteAttemptsInfo",
+          "value": "У этих устройств нет доступа к вашему аккаунту. Код был введён верно, но правильный пароль указан не был."
+        },
+        {
+          "key": "AuthSessions.View.Application",
+          "value": "Приложение"
+        },
+        {
+          "key": "AuthSessions.View.Device",
+          "value": "Устройство"
+        },
+        {
+          "key": "AuthSessions.View.Location",
+          "value": "Местоположение"
+        },
+        {
+          "key": "AuthSessions.View.LocationInfo",
+          "value": "Местоположение определено по IP-адресу и может быть неточным."
+        },
+        {
+          "key": "AuthSessions.View.System",
+          "value": "Версия системы"
+        },
+        {
+          "key": "AuthSessions.View.TerminateSession",
+          "value": "Завершить сеанс"
         },
         {
           "key": "Message.Preview.Call",
@@ -10697,6 +10933,10 @@
         {
           "key": "EmojiStatus.Set",
           "value": "Установить эмодзи-статус"
+        },
+        {
+          "key": "SetAsEmojiStatus",
+          "value": "Установить как статус"
         },
         {
           "key": "ExportedInvitation.Status.Expired",
@@ -11153,7 +11393,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 9,
+      "version": 15,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -11290,10 +11530,6 @@
         {
           "key": "BioCopied",
           "value": "Bio copiée"
-        },
-        {
-          "key": "General.NightMode",
-          "value": "Mode nuit"
         },
         {
           "key": "AccountSettings.Language",
@@ -11818,6 +12054,34 @@
         {
           "key": "TerminateAllSessions",
           "value": "Fermer toutes les autres sessions"
+        },
+        {
+          "key": "AuthSessions.IncompleteAttempts",
+          "value": "Tentatives de connexion incomplètes"
+        },
+        {
+          "key": "AuthSessions.IncompleteAttemptsInfo",
+          "value": "Ces appareils n'ont pas accès à votre compte. Le code a été saisi correctement, mais aucun mot de passe valide n'a été fourni."
+        },
+        {
+          "key": "AuthSessions.View.Device",
+          "value": "Appareil"
+        },
+        {
+          "key": "AuthSessions.View.Location",
+          "value": "Localisation"
+        },
+        {
+          "key": "AuthSessions.View.LocationInfo",
+          "value": "Cette localisation est estimée à partir de l'adresse IP et peut ne pas toujours être exacte."
+        },
+        {
+          "key": "AuthSessions.View.System",
+          "value": "Version du système"
+        },
+        {
+          "key": "AuthSessions.View.TerminateSession",
+          "value": "Fermer la session"
         },
         {
           "key": "Translate",
@@ -12829,20 +13093,8 @@
           "value": "Réaction rapide"
         },
         {
-          "key": "DoubleTapSettingInfo",
-          "value": "Touchez deux fois un message pour envoyer cette réaction rapidement."
-        },
-        {
           "key": "EnableAnimations",
           "value": "Activer les animations"
-        },
-        {
-          "key": "LiteMode.Caption",
-          "value": "Désactivez les animations et effets pour réduire la consommation d'énergie."
-        },
-        {
-          "key": "Animations",
-          "value": "Animations"
         },
         {
           "key": "LiteMode.Key.gif.Title",
@@ -12851,10 +13103,6 @@
         {
           "key": "LiteMode.Key.video.Title",
           "value": "Lire les vidéos automatiquement"
-        },
-        {
-          "key": "LiteMode.Key.emoji.Title",
-          "value": "Emojis animés"
         },
         {
           "key": "LiteMode.Key.animations.Title",
@@ -12869,8 +13117,56 @@
           "value": "Effets de spoiler"
         },
         {
-          "key": "LiteMode.Key.background_animation.Title",
-          "value": "Animation du fond du chat"
+          "key": "LiteMode.EnableText",
+          "value": "Mode économie d'énergie"
+        },
+        {
+          "key": "LiteMode.Info",
+          "value": "Réduit toutes les animations énergivores et améliore les performances."
+        },
+        {
+          "key": "LiteMode.DisableAlert",
+          "value": "Désactivez le mode économie d'énergie"
+        },
+        {
+          "key": "LiteMode.Key.stickers.Title",
+          "value": "Animations des stickers"
+        },
+        {
+          "key": "LiteMode.Key.stickers_panel.Title",
+          "value": "Lecture auto dans le panneau"
+        },
+        {
+          "key": "LiteMode.Key.stickers_chat.Title",
+          "value": "Lecture auto dans le chat"
+        },
+        {
+          "key": "LiteMode.Key.emoji_appear.Title",
+          "value": "Effet d'apparition des emojis"
+        },
+        {
+          "key": "LiteMode.Key.effects.Title",
+          "value": "Effets interactifs"
+        },
+        {
+          "key": "LiteMode.Key.effects_premiumstickers.Title",
+          "value": "Effet des stickers Premium"
+        },
+        {
+          "key": "LiteMode.Key.effects_emoji.Title",
+          "value": "Effet des emojis"
+        },
+        {
+          "key": "LiteMode.Key.chat.Title",
+          "value": "Animations du chat"
+        },
+        {
+          "key": "LiteMode.Key.chat_background.Title",
+          "value": "Rotation du fond d'écran"
+        },
+        {
+          "key": "LiteMode.Key.blur.Title",
+          "value": "Effets de flou"
         },
         {
           "key": "Privacy.Passkeys",
@@ -13244,6 +13540,20 @@
           "value": "Choisir un autre délai"
         },
         {
+          "key": "Seconds",
+          "forms": {
+            "one_value": "%1$d seconde",
+            "other_value": "%1$d secondes"
+          }
+        },
+        {
+          "key": "Minutes",
+          "forms": {
+            "one_value": "%1$d minute",
+            "other_value": "%1$d minutes"
+          }
+        },
+        {
           "key": "Hours",
           "forms": {
             "one_value": "%1$d heure",
@@ -13512,6 +13822,38 @@
           "value": "Chats privés"
         },
         {
+          "key": "AutoDownloadGroups",
+          "value": "Groupes"
+        },
+        {
+          "key": "AutoDownloadChannels",
+          "value": "Chaînes"
+        },
+        {
+          "key": "AutoDownloadOff",
+          "value": "Désactivé"
+        },
+        {
+          "key": "AutoDownloadFiles",
+          "value": "Fichiers"
+        },
+        {
+          "key": "AutodownloadChannels",
+          "value": "Chaînes"
+        },
+        {
+          "key": "StorageQuota.Clear",
+          "value": "Effacer"
+        },
+        {
+          "key": "StorageQuota.Other",
+          "value": "Autre"
+        },
+        {
+          "key": "StorageQuota.FailedToCalculate",
+          "value": "Échec du calcul"
+        },
+        {
           "key": "AutodownloadGroupChats",
           "value": "Groupes"
         },
@@ -13684,18 +14026,6 @@
           "value": "Visionneuse de médias"
         },
         {
-          "key": "KeyboardShortcuts.Section.PhotoEditor",
-          "value": "Éditeur de photo"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.HistoryStart",
-          "value": "Aller au début de l’historique"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.HistoryEnd",
-          "value": "Aller à la fin de l’historique"
-        },
-        {
           "key": "KeyboardShortcuts.Action.EditLast",
           "value": "Modifier le dernier message"
         },
@@ -13728,14 +14058,6 @@
           "value": "Média précédent"
         },
         {
-          "key": "MediaZoomIn",
-          "value": "Zoom avant"
-        },
-        {
-          "key": "MediaZoomOut",
-          "value": "Zoom arrière"
-        },
-        {
           "key": "KeyboardShortcuts.Action.NextStory",
           "value": "Story suivante"
         },
@@ -13744,28 +14066,48 @@
           "value": "Story précédente"
         },
         {
-          "key": "KeyboardShortcuts.Action.PlayPause",
-          "value": "Lecture/Pause"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.Exit",
-          "value": "Quitter"
-        },
-        {
-          "key": "Undo",
-          "value": "Annuler"
-        },
-        {
           "key": "KeyboardShortcuts.Action.Redo",
           "value": "Rétablir"
         },
         {
-          "key": "KeyboardShortcuts.Action.LockApp",
-          "value": "Verrouiller l’application"
+          "key": "KeyboardShortcuts.Action.Send",
+          "value": "Envoyer le message"
         },
         {
-          "key": "KeyboardShortcuts.Hint.PasscodeNotSet",
-          "value": "Le code est configuré dans Confidentialité"
+          "key": "KeyboardShortcuts.Action.OpenSearch",
+          "value": "Ouvrir la recherche"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.SavedMessages",
+          "value": "Ouvrir les Messages enregistrés"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.ZoomIn",
+          "value": "Zoom avant"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.ZoomOut",
+          "value": "Zoom arrière"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.PlayPauseStory",
+          "value": "Lecture/pause de la story"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.CloseStories",
+          "value": "Fermer les stories"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.Undo",
+          "value": "Annuler"
+        },
+        {
+          "key": "KeyboardShortcuts.Section.Formatting.Caption",
+          "value": "Sélectionnez du texte dans le champ de saisie pour le mettre en forme."
+        },
+        {
+          "key": "KeyboardShortcuts.Section.MediaEditor",
+          "value": "Éditeur de médias"
         },
         {
           "key": "MarkupTooltip.LinkPlaceholder",
@@ -13973,7 +14315,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 9,
+      "version": 15,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -14110,10 +14452,6 @@
         {
           "key": "BioCopied",
           "value": "Bio kopiert"
-        },
-        {
-          "key": "General.NightMode",
-          "value": "Nachtmodus"
         },
         {
           "key": "AccountSettings.Language",
@@ -14637,6 +14975,38 @@
         {
           "key": "TerminateAllSessions",
           "value": "Alle anderen Sitzungen beenden"
+        },
+        {
+          "key": "AuthSessions.IncompleteAttempts",
+          "value": "Unvollständige Anmeldeversuche"
+        },
+        {
+          "key": "AuthSessions.IncompleteAttemptsInfo",
+          "value": "Diese Geräte haben keinen Zugriff auf dein Konto. Der Code wurde korrekt eingegeben, aber kein richtiges Passwort."
+        },
+        {
+          "key": "AuthSessions.View.Application",
+          "value": "Anwendung"
+        },
+        {
+          "key": "AuthSessions.View.Device",
+          "value": "Gerät"
+        },
+        {
+          "key": "AuthSessions.View.Location",
+          "value": "Standort"
+        },
+        {
+          "key": "AuthSessions.View.LocationInfo",
+          "value": "Dieser Standort wird anhand der IP-Adresse geschätzt und ist möglicherweise nicht immer genau."
+        },
+        {
+          "key": "AuthSessions.View.System",
+          "value": "Systemversion"
+        },
+        {
+          "key": "AuthSessions.View.TerminateSession",
+          "value": "Sitzung beenden"
         },
         {
           "key": "Translate",
@@ -15648,20 +16018,8 @@
           "value": "Schnelle Reaktion"
         },
         {
-          "key": "DoubleTapSettingInfo",
-          "value": "Tippe doppelt auf eine Nachricht, um diese Reaktion schnell zu senden."
-        },
-        {
           "key": "EnableAnimations",
           "value": "Animationen aktivieren"
-        },
-        {
-          "key": "LiteMode.Caption",
-          "value": "Deaktiviere Animationen und Effekte, um Energie zu sparen."
-        },
-        {
-          "key": "Animations",
-          "value": "Animationen"
         },
         {
           "key": "LiteMode.Key.gif.Title",
@@ -15670,10 +16028,6 @@
         {
           "key": "LiteMode.Key.video.Title",
           "value": "Videos automatisch abspielen"
-        },
-        {
-          "key": "LiteMode.Key.emoji.Title",
-          "value": "Animierte Emojis"
         },
         {
           "key": "LiteMode.Key.animations.Title",
@@ -15688,8 +16042,56 @@
           "value": "Spoiler-Effekte"
         },
         {
-          "key": "LiteMode.Key.background_animation.Title",
-          "value": "Chat-Hintergrundanimation"
+          "key": "LiteMode.EnableText",
+          "value": "Energiesparmodus"
+        },
+        {
+          "key": "LiteMode.Info",
+          "value": "Reduziert alle energieintensiven Animationen und verbessert die Leistung."
+        },
+        {
+          "key": "LiteMode.DisableAlert",
+          "value": "Energiesparmodus deaktivieren"
+        },
+        {
+          "key": "LiteMode.Key.stickers.Title",
+          "value": "Sticker-Animationen"
+        },
+        {
+          "key": "LiteMode.Key.stickers_panel.Title",
+          "value": "Autoplay im Panel"
+        },
+        {
+          "key": "LiteMode.Key.stickers_chat.Title",
+          "value": "Autoplay im Chat"
+        },
+        {
+          "key": "LiteMode.Key.emoji_appear.Title",
+          "value": "Emoji-Einblendeffekt"
+        },
+        {
+          "key": "LiteMode.Key.effects.Title",
+          "value": "Interaktive Effekte"
+        },
+        {
+          "key": "LiteMode.Key.effects_premiumstickers.Title",
+          "value": "Premium-Sticker-Effekt"
+        },
+        {
+          "key": "LiteMode.Key.effects_emoji.Title",
+          "value": "Emoji-Effekt"
+        },
+        {
+          "key": "LiteMode.Key.chat.Title",
+          "value": "Chat-Animationen"
+        },
+        {
+          "key": "LiteMode.Key.chat_background.Title",
+          "value": "Hintergrundrotation"
+        },
+        {
+          "key": "LiteMode.Key.blur.Title",
+          "value": "Unschärfe-Effekte"
         },
         {
           "key": "Privacy.Passkeys",
@@ -16063,6 +16465,20 @@
           "value": "Andere Zeit festlegen"
         },
         {
+          "key": "Seconds",
+          "forms": {
+            "one_value": "%1$d Sekunde",
+            "other_value": "%1$d Sekunden"
+          }
+        },
+        {
+          "key": "Minutes",
+          "forms": {
+            "one_value": "%1$d Minute",
+            "other_value": "%1$d Minuten"
+          }
+        },
+        {
           "key": "Hours",
           "forms": {
             "one_value": "%1$d Stunde",
@@ -16331,6 +16747,46 @@
           "value": "Private Chats"
         },
         {
+          "key": "AutoDownloadContacts",
+          "value": "Kontakte"
+        },
+        {
+          "key": "AutoDownloadGroups",
+          "value": "Gruppen"
+        },
+        {
+          "key": "AutoDownloadChannels",
+          "value": "Kanäle"
+        },
+        {
+          "key": "AutoDownloadOff",
+          "value": "Aus"
+        },
+        {
+          "key": "AutoDownloadFiles",
+          "value": "Dateien"
+        },
+        {
+          "key": "AutodownloadContacts",
+          "value": "Kontakte"
+        },
+        {
+          "key": "AutodownloadChannels",
+          "value": "Kanäle"
+        },
+        {
+          "key": "StorageQuota.Clear",
+          "value": "Löschen"
+        },
+        {
+          "key": "StorageQuota.Other",
+          "value": "Sonstiges"
+        },
+        {
+          "key": "StorageQuota.FailedToCalculate",
+          "value": "Berechnung fehlgeschlagen"
+        },
+        {
           "key": "AutodownloadGroupChats",
           "value": "Gruppen"
         },
@@ -16503,18 +16959,6 @@
           "value": "Medienansicht"
         },
         {
-          "key": "KeyboardShortcuts.Section.PhotoEditor",
-          "value": "Fotoeditor"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.HistoryStart",
-          "value": "Zum Anfang des Verlaufs"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.HistoryEnd",
-          "value": "Zum Ende des Verlaufs"
-        },
-        {
           "key": "KeyboardShortcuts.Action.EditLast",
           "value": "Letzte Nachricht bearbeiten"
         },
@@ -16547,14 +16991,6 @@
           "value": "Vorherige Mediendatei"
         },
         {
-          "key": "MediaZoomIn",
-          "value": "Vergrößern"
-        },
-        {
-          "key": "MediaZoomOut",
-          "value": "Verkleinern"
-        },
-        {
           "key": "KeyboardShortcuts.Action.NextStory",
           "value": "Nächste Story"
         },
@@ -16563,28 +16999,48 @@
           "value": "Vorherige Story"
         },
         {
-          "key": "KeyboardShortcuts.Action.PlayPause",
-          "value": "Wiedergabe/Pause"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.Exit",
-          "value": "Beenden"
-        },
-        {
-          "key": "Undo",
-          "value": "Rückgängig"
-        },
-        {
           "key": "KeyboardShortcuts.Action.Redo",
           "value": "Wiederholen"
         },
         {
-          "key": "KeyboardShortcuts.Action.LockApp",
-          "value": "App sperren"
+          "key": "KeyboardShortcuts.Action.Send",
+          "value": "Nachricht senden"
         },
         {
-          "key": "KeyboardShortcuts.Hint.PasscodeNotSet",
-          "value": "Der Code wird in den Datenschutz-Einstellungen festgelegt"
+          "key": "KeyboardShortcuts.Action.OpenSearch",
+          "value": "Suche öffnen"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.SavedMessages",
+          "value": "Gespeicherte Nachrichten öffnen"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.ZoomIn",
+          "value": "Vergrößern"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.ZoomOut",
+          "value": "Verkleinern"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.PlayPauseStory",
+          "value": "Story abspielen/pausieren"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.CloseStories",
+          "value": "Storys schließen"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.Undo",
+          "value": "Rückgängig"
+        },
+        {
+          "key": "KeyboardShortcuts.Section.Formatting.Caption",
+          "value": "Markiere Text im Eingabefeld, um ihn zu formatieren."
+        },
+        {
+          "key": "KeyboardShortcuts.Section.MediaEditor",
+          "value": "Medien-Editor"
         },
         {
           "key": "MarkupTooltip.LinkPlaceholder",
@@ -16792,7 +17248,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 9,
+      "version": 15,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -16929,10 +17385,6 @@
         {
           "key": "BioCopied",
           "value": "Biografía copiada al portapapeles"
-        },
-        {
-          "key": "General.NightMode",
-          "value": "Modo nocturno"
         },
         {
           "key": "AccountSettings.Language",
@@ -17461,6 +17913,38 @@
         {
           "key": "TerminateAllSessions",
           "value": "Cerrar las demás sesiones"
+        },
+        {
+          "key": "AuthSessions.IncompleteAttempts",
+          "value": "Intentos de inicio de sesión incompletos"
+        },
+        {
+          "key": "AuthSessions.IncompleteAttemptsInfo",
+          "value": "Estos dispositivos no tienen acceso a tu cuenta. El código se introdujo correctamente, pero no se proporcionó la contraseña correcta."
+        },
+        {
+          "key": "AuthSessions.View.Application",
+          "value": "Aplicación"
+        },
+        {
+          "key": "AuthSessions.View.Device",
+          "value": "Dispositivo"
+        },
+        {
+          "key": "AuthSessions.View.Location",
+          "value": "Ubicación"
+        },
+        {
+          "key": "AuthSessions.View.LocationInfo",
+          "value": "Esta ubicación se estima a partir de la dirección IP y puede no ser siempre exacta."
+        },
+        {
+          "key": "AuthSessions.View.System",
+          "value": "Versión del sistema"
+        },
+        {
+          "key": "AuthSessions.View.TerminateSession",
+          "value": "Cerrar sesión"
         },
         {
           "key": "Translate",
@@ -18472,20 +18956,8 @@
           "value": "Reacción rápida"
         },
         {
-          "key": "DoubleTapSettingInfo",
-          "value": "Toca dos veces un mensaje para enviar esta reacción rápidamente."
-        },
-        {
           "key": "EnableAnimations",
           "value": "Activar animaciones"
-        },
-        {
-          "key": "LiteMode.Caption",
-          "value": "Desactiva animaciones y efectos para reducir el consumo de energía."
-        },
-        {
-          "key": "Animations",
-          "value": "Animaciones"
         },
         {
           "key": "LiteMode.Key.gif.Title",
@@ -18494,10 +18966,6 @@
         {
           "key": "LiteMode.Key.video.Title",
           "value": "Reproducir vídeos automáticamente"
-        },
-        {
-          "key": "LiteMode.Key.emoji.Title",
-          "value": "Emojis animados"
         },
         {
           "key": "LiteMode.Key.animations.Title",
@@ -18512,8 +18980,56 @@
           "value": "Efectos de spoiler"
         },
         {
-          "key": "LiteMode.Key.background_animation.Title",
-          "value": "Animación del fondo del chat"
+          "key": "LiteMode.EnableText",
+          "value": "Modo de ahorro de energía"
+        },
+        {
+          "key": "LiteMode.Info",
+          "value": "Reduce todas las animaciones que consumen mucha energía y mejora el rendimiento."
+        },
+        {
+          "key": "LiteMode.DisableAlert",
+          "value": "Desactiva el modo de ahorro de energía"
+        },
+        {
+          "key": "LiteMode.Key.stickers.Title",
+          "value": "Animaciones de stickers"
+        },
+        {
+          "key": "LiteMode.Key.stickers_panel.Title",
+          "value": "Reproducir en el panel"
+        },
+        {
+          "key": "LiteMode.Key.stickers_chat.Title",
+          "value": "Reproducir en el chat"
+        },
+        {
+          "key": "LiteMode.Key.emoji_appear.Title",
+          "value": "Efecto de aparición de emojis"
+        },
+        {
+          "key": "LiteMode.Key.effects.Title",
+          "value": "Efectos interactivos"
+        },
+        {
+          "key": "LiteMode.Key.effects_premiumstickers.Title",
+          "value": "Efecto de stickers Premium"
+        },
+        {
+          "key": "LiteMode.Key.effects_emoji.Title",
+          "value": "Efecto de emojis"
+        },
+        {
+          "key": "LiteMode.Key.chat.Title",
+          "value": "Animaciones del chat"
+        },
+        {
+          "key": "LiteMode.Key.chat_background.Title",
+          "value": "Rotación del fondo"
+        },
+        {
+          "key": "LiteMode.Key.blur.Title",
+          "value": "Efectos de desenfoque"
         },
         {
           "key": "Privacy.Passkeys",
@@ -18887,6 +19403,20 @@
           "value": "Elegir otro plazo"
         },
         {
+          "key": "Seconds",
+          "forms": {
+            "one_value": "%1$d segundo",
+            "other_value": "%1$d segundos"
+          }
+        },
+        {
+          "key": "Minutes",
+          "forms": {
+            "one_value": "%1$d minuto",
+            "other_value": "%1$d minutos"
+          }
+        },
+        {
           "key": "Hours",
           "forms": {
             "one_value": "%1$d hora",
@@ -19155,6 +19685,46 @@
           "value": "Chats privados"
         },
         {
+          "key": "AutoDownloadContacts",
+          "value": "Contactos"
+        },
+        {
+          "key": "AutoDownloadGroups",
+          "value": "Grupos"
+        },
+        {
+          "key": "AutoDownloadChannels",
+          "value": "Canales"
+        },
+        {
+          "key": "AutoDownloadOff",
+          "value": "Desactivado"
+        },
+        {
+          "key": "AutoDownloadFiles",
+          "value": "Archivos"
+        },
+        {
+          "key": "AutodownloadContacts",
+          "value": "Contactos"
+        },
+        {
+          "key": "AutodownloadChannels",
+          "value": "Canales"
+        },
+        {
+          "key": "StorageQuota.Clear",
+          "value": "Borrar"
+        },
+        {
+          "key": "StorageQuota.Other",
+          "value": "Otros"
+        },
+        {
+          "key": "StorageQuota.FailedToCalculate",
+          "value": "No se pudo calcular"
+        },
+        {
           "key": "AutodownloadGroupChats",
           "value": "Grupos"
         },
@@ -19327,18 +19897,6 @@
           "value": "Visor multimedia"
         },
         {
-          "key": "KeyboardShortcuts.Section.PhotoEditor",
-          "value": "Editor de fotos"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.HistoryStart",
-          "value": "Ir al inicio del historial"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.HistoryEnd",
-          "value": "Ir al final del historial"
-        },
-        {
           "key": "KeyboardShortcuts.Action.EditLast",
           "value": "Editar el último mensaje"
         },
@@ -19371,14 +19929,6 @@
           "value": "Archivo anterior"
         },
         {
-          "key": "MediaZoomIn",
-          "value": "Acercar"
-        },
-        {
-          "key": "MediaZoomOut",
-          "value": "Alejar"
-        },
-        {
           "key": "KeyboardShortcuts.Action.NextStory",
           "value": "Historia siguiente"
         },
@@ -19387,28 +19937,48 @@
           "value": "Historia anterior"
         },
         {
-          "key": "KeyboardShortcuts.Action.PlayPause",
-          "value": "Reproducir/Pausar"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.Exit",
-          "value": "Salir"
-        },
-        {
-          "key": "Undo",
-          "value": "Deshacer"
-        },
-        {
           "key": "KeyboardShortcuts.Action.Redo",
           "value": "Rehacer"
         },
         {
-          "key": "KeyboardShortcuts.Action.LockApp",
-          "value": "Bloquear la aplicación"
+          "key": "KeyboardShortcuts.Action.Send",
+          "value": "Enviar mensaje"
         },
         {
-          "key": "KeyboardShortcuts.Hint.PasscodeNotSet",
-          "value": "El código de acceso se configura en Privacidad"
+          "key": "KeyboardShortcuts.Action.OpenSearch",
+          "value": "Abrir búsqueda"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.SavedMessages",
+          "value": "Abrir Mensajes guardados"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.ZoomIn",
+          "value": "Acercar"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.ZoomOut",
+          "value": "Alejar"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.PlayPauseStory",
+          "value": "Reproducir/pausar historia"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.CloseStories",
+          "value": "Cerrar historias"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.Undo",
+          "value": "Deshacer"
+        },
+        {
+          "key": "KeyboardShortcuts.Section.Formatting.Caption",
+          "value": "Selecciona texto en el campo de entrada para aplicar formato."
+        },
+        {
+          "key": "KeyboardShortcuts.Section.MediaEditor",
+          "value": "Editor multimedia"
         },
         {
           "key": "MarkupTooltip.LinkPlaceholder",
@@ -19616,7 +20186,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 9,
+      "version": 15,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -19753,10 +20323,6 @@
         {
           "key": "BioCopied",
           "value": "Про себе скопійовано"
-        },
-        {
-          "key": "General.NightMode",
-          "value": "Нічний режим"
         },
         {
           "key": "AccountSettings.Language",
@@ -20290,6 +20856,38 @@
         {
           "key": "TerminateAllSessions",
           "value": "Завершити всі інші сеанси"
+        },
+        {
+          "key": "AuthSessions.IncompleteAttempts",
+          "value": "Незавершені спроби входу"
+        },
+        {
+          "key": "AuthSessions.IncompleteAttemptsInfo",
+          "value": "Ці пристрої не мають доступу до вашого акаунта. Код було введено правильно, але правильний пароль не вказано."
+        },
+        {
+          "key": "AuthSessions.View.Application",
+          "value": "Застосунок"
+        },
+        {
+          "key": "AuthSessions.View.Device",
+          "value": "Пристрій"
+        },
+        {
+          "key": "AuthSessions.View.Location",
+          "value": "Місцезнаходження"
+        },
+        {
+          "key": "AuthSessions.View.LocationInfo",
+          "value": "Місцезнаходження визначено за IP-адресою і може бути неточним."
+        },
+        {
+          "key": "AuthSessions.View.System",
+          "value": "Версія системи"
+        },
+        {
+          "key": "AuthSessions.View.TerminateSession",
+          "value": "Завершити сеанс"
         },
         {
           "key": "Translate",
@@ -21314,20 +21912,8 @@
           "value": "Швидка реакція"
         },
         {
-          "key": "DoubleTapSettingInfo",
-          "value": "Двічі торкніться повідомлення, щоб швидко надіслати цю реакцію."
-        },
-        {
           "key": "EnableAnimations",
           "value": "Увімкнути анімації"
-        },
-        {
-          "key": "LiteMode.Caption",
-          "value": "Вимкніть анімації та ефекти, щоб зменшити споживання енергії."
-        },
-        {
-          "key": "Animations",
-          "value": "Анімації"
         },
         {
           "key": "LiteMode.Key.gif.Title",
@@ -21336,10 +21922,6 @@
         {
           "key": "LiteMode.Key.video.Title",
           "value": "Автовідтворення відео"
-        },
-        {
-          "key": "LiteMode.Key.emoji.Title",
-          "value": "Анімовані емодзі"
         },
         {
           "key": "LiteMode.Key.animations.Title",
@@ -21354,8 +21936,56 @@
           "value": "Ефекти спойлерів"
         },
         {
-          "key": "LiteMode.Key.background_animation.Title",
-          "value": "Анімація фону чату"
+          "key": "LiteMode.EnableText",
+          "value": "Режим енергозбереження"
+        },
+        {
+          "key": "LiteMode.Info",
+          "value": "Вимикає всі енергоємні анімації та покращує продуктивність."
+        },
+        {
+          "key": "LiteMode.DisableAlert",
+          "value": "Вимкніть режим енергозбереження"
+        },
+        {
+          "key": "LiteMode.Key.stickers.Title",
+          "value": "Анімації стікерів"
+        },
+        {
+          "key": "LiteMode.Key.stickers_panel.Title",
+          "value": "Автовідтворення на панелі"
+        },
+        {
+          "key": "LiteMode.Key.stickers_chat.Title",
+          "value": "Автовідтворення в чаті"
+        },
+        {
+          "key": "LiteMode.Key.emoji_appear.Title",
+          "value": "Ефект появи емодзі"
+        },
+        {
+          "key": "LiteMode.Key.effects.Title",
+          "value": "Інтерактивні ефекти"
+        },
+        {
+          "key": "LiteMode.Key.effects_premiumstickers.Title",
+          "value": "Ефекти Premium-стікерів"
+        },
+        {
+          "key": "LiteMode.Key.effects_emoji.Title",
+          "value": "Ефекти емодзі"
+        },
+        {
+          "key": "LiteMode.Key.chat.Title",
+          "value": "Анімації в чаті"
+        },
+        {
+          "key": "LiteMode.Key.chat_background.Title",
+          "value": "Обертання шпалер"
+        },
+        {
+          "key": "LiteMode.Key.blur.Title",
+          "value": "Ефекти розмиття"
         },
         {
           "key": "Privacy.Passkeys",
@@ -21731,6 +22361,24 @@
           "value": "Обрати інший строк"
         },
         {
+          "key": "Seconds",
+          "forms": {
+            "one_value": "%1$d секунда",
+            "few_value": "%1$d секунди",
+            "many_value": "%1$d секунд",
+            "other_value": "%1$d секунди"
+          }
+        },
+        {
+          "key": "Minutes",
+          "forms": {
+            "one_value": "%1$d хвилина",
+            "few_value": "%1$d хвилини",
+            "many_value": "%1$d хвилин",
+            "other_value": "%1$d хвилини"
+          }
+        },
+        {
           "key": "Hours",
           "forms": {
             "one_value": "%1$d година",
@@ -22007,6 +22655,46 @@
           "value": "Особисті чати"
         },
         {
+          "key": "AutoDownloadContacts",
+          "value": "Контакти"
+        },
+        {
+          "key": "AutoDownloadGroups",
+          "value": "Групи"
+        },
+        {
+          "key": "AutoDownloadChannels",
+          "value": "Канали"
+        },
+        {
+          "key": "AutoDownloadOff",
+          "value": "Вимкнено"
+        },
+        {
+          "key": "AutoDownloadFiles",
+          "value": "Файли"
+        },
+        {
+          "key": "AutodownloadContacts",
+          "value": "Контакти"
+        },
+        {
+          "key": "AutodownloadChannels",
+          "value": "Канали"
+        },
+        {
+          "key": "StorageQuota.Clear",
+          "value": "Очистити"
+        },
+        {
+          "key": "StorageQuota.Other",
+          "value": "Інше"
+        },
+        {
+          "key": "StorageQuota.FailedToCalculate",
+          "value": "Не вдалося підрахувати"
+        },
+        {
           "key": "AutodownloadGroupChats",
           "value": "Групи"
         },
@@ -22179,18 +22867,6 @@
           "value": "Перегляд медіа"
         },
         {
-          "key": "KeyboardShortcuts.Section.PhotoEditor",
-          "value": "Фоторедактор"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.HistoryStart",
-          "value": "Перехід до початку історії"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.HistoryEnd",
-          "value": "Перехід до кінця історії"
-        },
-        {
           "key": "KeyboardShortcuts.Action.EditLast",
           "value": "Редагування останнього повідомлення"
         },
@@ -22223,14 +22899,6 @@
           "value": "Попередній медіафайл"
         },
         {
-          "key": "MediaZoomIn",
-          "value": "Збільшення масштабу"
-        },
-        {
-          "key": "MediaZoomOut",
-          "value": "Зменшення масштабу"
-        },
-        {
           "key": "KeyboardShortcuts.Action.NextStory",
           "value": "Наступна історія"
         },
@@ -22239,28 +22907,48 @@
           "value": "Попередня історія"
         },
         {
-          "key": "KeyboardShortcuts.Action.PlayPause",
-          "value": "Пуск/пауза"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.Exit",
-          "value": "Вихід"
-        },
-        {
-          "key": "Undo",
-          "value": "Скасувати"
-        },
-        {
           "key": "KeyboardShortcuts.Action.Redo",
           "value": "Повторити"
         },
         {
-          "key": "KeyboardShortcuts.Action.LockApp",
-          "value": "Блокування застосунку"
+          "key": "KeyboardShortcuts.Action.Send",
+          "value": "Надсилання повідомлення"
         },
         {
-          "key": "KeyboardShortcuts.Hint.PasscodeNotSet",
-          "value": "Код-пароль налаштовується в розділі «Конфіденційність»"
+          "key": "KeyboardShortcuts.Action.OpenSearch",
+          "value": "Відкриття пошуку"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.SavedMessages",
+          "value": "Відкриття Збереженого"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.ZoomIn",
+          "value": "Збільшення масштабу"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.ZoomOut",
+          "value": "Зменшення масштабу"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.PlayPauseStory",
+          "value": "Пуск/пауза історії"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.CloseStories",
+          "value": "Закриття історій"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.Undo",
+          "value": "Скасувати"
+        },
+        {
+          "key": "KeyboardShortcuts.Section.Formatting.Caption",
+          "value": "Виділіть текст у полі введення, щоб застосувати форматування."
+        },
+        {
+          "key": "KeyboardShortcuts.Section.MediaEditor",
+          "value": "Редактор медіа"
         },
         {
           "key": "MarkupTooltip.LinkPlaceholder",
