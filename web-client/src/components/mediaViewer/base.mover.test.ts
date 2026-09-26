@@ -71,6 +71,34 @@ afterEach(() => {
 })
 
 describe('setMoverToTarget: открытие (tweb base.ts:1176-1798)', () => {
+  // tweb 7a52f3631 (812502980 base.ts:1697-1702): стартовый transform
+  // коммитится рефлоу ДО того, как `.active` включит переходы. Без барьера
+  // асинхронный путь добавляет `.active` в том же пересчёте стилей, что и
+  // стартовый transform, — браузер начинает анимацию от `none` и обрывает её.
+  it('рефлоу-барьер: мувер виден и ещё НЕ active, когда браузер коммитит стартовый transform', async () => {
+    const v = makeViewer()
+    const { img } = makeScene(v)
+    const mover = v.contentMap.mover
+    const reads: { visible: boolean, active: boolean, transform: string }[] = []
+    Object.defineProperty(mover, 'offsetLeft', {
+      configurable: true,
+      get: () => {
+        reads.push({ visible: mover.style.visibility === '', active: mover.classList.contains('active'), transform: mover.style.transform })
+        return 0
+      },
+    })
+
+    const p = v.callSetMoverToTarget(img, false, 0)
+    const committed = reads.some((r) => r.visible && !r.active && r.transform.includes('translate3d(100px,200px,0)'))
+    const activeTooEarly = mover.classList.contains('active')
+
+    await vi.advanceTimersByTimeAsync(400)
+    await p
+    delete (mover as { offsetLeft?: number }).offsetLeft
+    expect(committed).toBe(true)
+    expect(activeTooEarly).toBe(false)
+  })
+
   it('стартовый transform = translate3d(rect) + scale3d(rect/containerRect), мувер сайзится в целевой rect', async () => {
     const v = makeViewer()
     const { img } = makeScene(v)
