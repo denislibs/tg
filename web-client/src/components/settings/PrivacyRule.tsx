@@ -155,11 +155,15 @@ export default function PrivacyRule({ title, onBack }: { title: LangPackKey; onB
           caption="Exceptions"
           footer="PrivacySettingsController.PeerInfo"
         >
+          {/* tweb privacySection.tsx:214-216: `Row.Title` — формулировка,
+              `Row.Subtitle` — число пользователей / «Add Users». Справа
+              (`value` → `.row-title-right`, `flex: 0 0 auto !important`,
+              _row.scss:230-234) значение выдавливало заголовок до «Н…». */}
           {showDeny && (
             <Row
               icon={<TgIcon name="person_crossed_filled" size={24} />}
               label={denyTitle}
-              value={usersCountLabel(rule.denyUserIds.length, t, tArgs)}
+              sublabel={usersCountLabel(rule.denyUserIds.length, t, tArgs)}
               onClick={() => setPicker('deny')}
             />
           )}
@@ -167,7 +171,7 @@ export default function PrivacyRule({ title, onBack }: { title: LangPackKey; onB
             <Row
               icon={<TgIcon name="adduser" size={24} />}
               label={allowTitle}
-              value={usersCountLabel(rule.allowUserIds.length, t, tArgs)}
+              sublabel={usersCountLabel(rule.allowUserIds.length, t, tArgs)}
               onClick={() => setPicker('allow')}
             />
           )}
