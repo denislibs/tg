@@ -191,8 +191,16 @@ export async function selectTarget({
   if (prevId !== -1 && animate) {
     const selector = '.menu-horizontal-div-item-background'
     mutateCallback(() => {
-      const indicator = target.querySelector(selector)! as HTMLElement
-      const currentIndicator = target.parentElement!.children[prevId].querySelector(selector)! as HTMLElement
+      const indicator = target.querySelector(selector) as HTMLElement | null
+      const previous = target.parentElement!.children[prevId] as Element | undefined
+      const currentIndicator = previous?.querySelector(selector) as HTMLElement | null | undefined
+
+      // tweb 1ca7cb99e (B10):
+      // the callback runs a frame later, by which point the row may have been rebuilt or the
+      // previous item removed — the stripe is decoration, so skip it rather than throw
+      if (!indicator || !currentIndicator) {
+        return
+      }
 
       currentIndicator.classList.remove('animate')
       indicator.classList.remove('animate')
