@@ -1147,3 +1147,39 @@ describe('MessagesManager.mediaHistory: курсор `offset_id`', () => {
     expect(queries[0]).toEqual({ filter: 'files', offset_id: 77, limit: 50 })
   })
 })
+
+// Глобальный поиск листается курсором СЕРВЕРА `next_rate`, а не смещением
+// (tweb `appMessagesManager.ts:9995` — `offset_rate: nextRate`, `:9432` —
+// `nextRate: slice.next_rate`). Пинится граница: курсор уходит в URL
+// параметром `offset_rate`, приходит из ключа `next_rate`, а его отсутствие —
+// «дальше ничего» (undefined), по которому класс помечает вкладку
+// загруженной (tweb `appSearchSuper.ts:2312`).
+describe('MessagesManager.searchGlobal: курсор `next_rate`', () => {
+  const rateRest = (reply: Record<string, unknown>) => {
+    const queries: Record<string, string | number>[] = []
+    const rest = {
+      get: async (_path: string, q?: Record<string, string | number>) => {
+        queries.push(q ?? {})
+        return { _: 'messages.messagesSlice', messages: [], users: [], chats: [], count: 0, ...reply }
+      },
+      post: async () => ({}),
+    } as unknown as RestClient
+    return { rest, queries }
+  }
+
+  it('первая страница — offset_rate 0, next_rate ответа уходит наружу', async () => {
+    const { rest, queries } = rateRest({ count: 7, next_rate: 4242 })
+    const r = await newMessagesManager({ rest }).searchGlobal('кот', '', { limit: 30 })
+    expect(queries[0]).toEqual({ q: 'кот', filter: '', offset_rate: 0, limit: 30 })
+    expect(queries[0]).not.toHaveProperty('offset')
+    expect(r.nextRate).toBe(4242)
+    expect(r.count).toBe(7)
+  })
+
+  it('следующая страница — по курсору; последняя — без nextRate', async () => {
+    const { rest, queries } = rateRest({ count: 7 })
+    const r = await newMessagesManager({ rest }).searchGlobal('кот', 'media', { offsetRate: 4242, limit: 30 })
+    expect(queries[0]).toEqual({ q: 'кот', filter: 'media', offset_rate: 4242, limit: 30 })
+    expect(r.nextRate).toBeUndefined()
+  })
+})

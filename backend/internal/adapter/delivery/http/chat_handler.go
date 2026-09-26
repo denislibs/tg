@@ -1123,19 +1123,25 @@ func (h *ChatHandler) Calendar(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewMessagesSearchResultsCalendar(page.Periods, page.Messages, page.Users))
 }
 
-// GlobalSearchMessages — GET /search/messages?q=&filter=&offset=&limit=: поиск
-// по сообщениям всех чатов юзера (сайдбар-поиск, tweb SearchTypes).
+// GlobalSearchMessages — GET /search/messages?q=&filter=&offset_rate=&limit=:
+// поиск по сообщениям всех чатов юзера (сайдбар-поиск, tweb SearchTypes).
+//
+// offset_rate — next_rate предыдущей страницы (0/нет — с начала); ответ —
+// messages.messagesSlice с next_rate, пока за страницей что-то есть. Смещения
+// у ручки нет: почему — см. usecasechat.GlobalSearchQuery.
 func (h *ChatHandler) GlobalSearchMessages(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query().Get("q")
-	filter := r.URL.Query().Get("filter")
-	offset := int(queryInt(r, "offset", 0))
-	limit := int(queryInt(r, "limit", 20))
-	res, err := h.svc.GlobalSearchMessages(r.Context(), h.meID(r), q, filter, offset, limit)
+	q := usecasechat.GlobalSearchQuery{
+		Q:          r.URL.Query().Get("q"),
+		Filter:     r.URL.Query().Get("filter"),
+		OffsetRate: queryInt(r, "offset_rate", 0),
+		Limit:      int(queryInt(r, "limit", 20)),
+	}
+	res, err := h.svc.GlobalSearchMessages(r.Context(), h.meID(r), q)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "search failed")
 		return
 	}
-	writeMessagesSlice(w, r, h.svc, res.Count, res.Messages)
+	writeMessagesSliceRate(w, r, h.svc, res.Count, res.Messages, res.NextRate)
 }
 
 // CallLog — GET /calls?offset=&limit=: журнал звонков (вкладка «Звонки»).
@@ -2255,13 +2261,19 @@ func messagesJSON(ctx context.Context, svc *usecasechat.Interactor, msgs []domai
 // count и запрошенного окна (порт appMessagesManager.ts:9508-9518). Наши
 // reached_top/reached_bottom были сервером, делавшим арифметику клиента.
 func writeMessagesSlice(w http.ResponseWriter, r *http.Request, svc *usecasechat.Interactor, count int, msgs []domain.Message) {
+	writeMessagesSliceRate(w, r, svc, count, msgs, 0)
+}
+
+// writeMessagesSliceRate — тот же кусок с курсором next_rate (глобальный
+// поиск); nextRate <= 0 — ключа в ответе нет.
+func writeMessagesSliceRate(w http.ResponseWriter, r *http.Request, svc *usecasechat.Interactor, count int, msgs []domain.Message, nextRate int64) {
 	me, _ := UserFromContext(r.Context())
 	out, users, err := svc.MessagesContainer(r.Context(), me.ID, msgs)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not render messages")
 		return
 	}
-	writeJSON(w, http.StatusOK, domain.NewMessagesMessagesSlice(count, out, nil, users))
+	writeJSON(w, http.StatusOK, domain.NewMessagesMessagesSlice(count, out, nil, users).WithNextRate(nextRate))
 }
 
 // writeMessagesAll — витрина ПОЛНОГО набора: конструктор messages.messages.

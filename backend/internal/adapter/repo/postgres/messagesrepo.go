@@ -343,10 +343,21 @@ func (r *MessagesRepo) CalendarMonth(ctx context.Context, chatID int64, from, to
 // GlobalSearchMessages searches messages across every chat the user is a member
 // of (tweb global search: «Сообщения» section + Media/Links/Files/Music/Voice
 // tabs). q matches text or attached file name (case-insensitive substring);
-// filter narrows by shared-media kind (same kinds as MediaHistory, "" = any
-// type). Visibility mirrors GetHistory: deleted, per-user hides and hidden
-// pre-join history are excluded. Newest first + total count.
-func (r *MessagesRepo) GlobalSearchMessages(ctx context.Context, userID int64, q, filter string, offset, limit int) ([]domain.Message, int, error) {
+// filter narrows by shared-media kind (mediaFilterCond, "" = any type).
+// Visibility mirrors GetHistory: deleted, per-user hides and hidden pre-join
+// history are excluded. Newest first + total count.
+//
+// Окно — курсор `m.id < OffsetRate` (почему не OFFSET — у
+// usecasechat.GlobalSearchQuery). Берётся Limit+1 строка: лишняя говорит,
+// что за страницей что-то есть, и только тогда отдаётся NextRate. Иначе
+// страница ровно в лимит несла бы курсор, и клиент делал бы лишний пустой
+// запрос, чтобы узнать, что всё (tweb appSearchSuper.ts:2312 — `!value.nextRate`).
+//
+// План: порядок и курсор — по первичному ключу messages.id (обратный
+// Index Scan с границей), видимость — по PK chat_members (chat_id, user_id).
+// Отдельный индекс не нужен: `ORDER BY m.id DESC LIMIT` читает ровно
+// Limit+1 подходящих строк ниже курсора.
+func (r *MessagesRepo) GlobalSearchMessages(ctx context.Context, userID int64, gq usecasechat.GlobalSearchQuery) (usecasechat.GlobalSearchResult, error) {
 	qq := querier(ctx, r.pool)
 	where := ` FROM messages m
 		JOIN chat_members cm ON cm.chat_id = m.chat_id AND cm.user_id = $1
@@ -355,45 +366,55 @@ func (r *MessagesRepo) GlobalSearchMessages(ctx context.Context, userID int64, q
 		  AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id = m.id AND h.user_id = $1)
 		  AND ((SELECT c.history_for_new FROM chats c WHERE c.id = m.chat_id)
 		       OR cm.role <> 'member' OR m.created_at >= cm.joined_at)`
-	switch filter {
-	case "":
-	case "media":
-		where += ` AND m.type IN ('photo','video')`
-	case "files":
-		where += ` AND m.type = 'document'`
-	case "music":
-		where += ` AND m.type = 'audio'`
-	case "voice":
-		where += ` AND m.type IN ('voice','roundVideo')`
-	case "links":
-		where += ` AND m.type = 'text' AND m.text ~* 'https?://'`
-	default:
-		return nil, 0, nil
+	if gq.Filter != "" {
+		cond := mediaFilterCond(gq.Filter)
+		if cond == "" {
+			return usecasechat.GlobalSearchResult{}, nil
+		}
+		where += ` AND ` + cond
 	}
 	args := []any{userID}
-	if q != "" {
-		where += ` AND (m.text ILIKE $2 OR md.file_name ILIKE $2)`
-		args = append(args, "%"+q+"%")
+	add := func(v any) string {
+		args = append(args, v)
+		return fmt.Sprintf("$%d", len(args))
+	}
+	if gq.Q != "" {
+		p := add("%" + gq.Q + "%")
+		where += ` AND (m.text ILIKE ` + p + ` OR md.file_name ILIKE ` + p + `)`
 	}
 	var count int
 	if err := qq.QueryRow(ctx, `SELECT count(*)`+where, args...).Scan(&count); err != nil {
-		return nil, 0, err
+		return usecasechat.GlobalSearchResult{}, err
 	}
-	lim := fmt.Sprintf(` ORDER BY m.id DESC LIMIT $%d OFFSET $%d`, len(args)+1, len(args)+2)
-	rows, err := qq.Query(ctx, `SELECT `+messageColsPrefixed("m")+where+lim, append(args, limit, offset)...)
+	// Курсор — в текст запроса, а не «($N=0 OR m.id<$N)»: такое условие
+	// планировщик не превращает в границу индексного скана (см. MediaHistory).
+	page := where
+	if gq.OffsetRate > 0 {
+		page += ` AND m.id < ` + add(gq.OffsetRate)
+	}
+	page += ` ORDER BY m.id DESC LIMIT ` + add(gq.Limit+1)
+	rows, err := qq.Query(ctx, `SELECT `+messageColsPrefixed("m")+page, args...)
 	if err != nil {
-		return nil, 0, err
+		return usecasechat.GlobalSearchResult{}, err
 	}
 	defer rows.Close()
 	var out []domain.Message
 	for rows.Next() {
 		m, e := scanMessage(rows)
 		if e != nil {
-			return nil, 0, e
+			return usecasechat.GlobalSearchResult{}, e
 		}
 		out = append(out, m)
 	}
-	return out, count, rows.Err()
+	if err := rows.Err(); err != nil {
+		return usecasechat.GlobalSearchResult{}, err
+	}
+	res := usecasechat.GlobalSearchResult{Messages: out, Count: count}
+	if gq.Limit > 0 && len(out) > gq.Limit {
+		res.Messages = out[:gq.Limit]
+		res.NextRate = res.Messages[gq.Limit-1].ID
+	}
+	return res, nil
 }
 
 // CallLog — журнал звонков пользователя: сообщения type='call' из его личных

@@ -241,8 +241,10 @@ type MessageRepo interface {
 	// messages.getSearchResultsCalendar). Дни без медиа не возвращаются.
 	CalendarMonth(ctx context.Context, chatID int64, from, to time.Time) ([]domain.CalendarDay, error)
 	// GlobalSearchMessages searches across every chat userID is a member of;
-	// filter narrows by shared-media kind ("" = any type).
-	GlobalSearchMessages(ctx context.Context, userID int64, q, filter string, offset, limit int) ([]domain.Message, int, error)
+	// filter narrows by shared-media kind ("" = any type). Окно — курсор
+	// q.OffsetRate; NextRate ответа — id последнего отданного, 0 на последней
+	// странице (см. GlobalSearchQuery).
+	GlobalSearchMessages(ctx context.Context, userID int64, q GlobalSearchQuery) (GlobalSearchResult, error)
 	// MediaHistory — шаред-медиа чата одного вида, новые сверху; окно задаётся
 	// курсором MediaPage.OffsetID (см. её комментарий — почему не смещением).
 	MediaHistory(ctx context.Context, chatID int64, filter string, page MediaPage) ([]domain.Message, int, error)

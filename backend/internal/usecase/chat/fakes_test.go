@@ -814,7 +814,8 @@ func (r fakeMsgs) ByGiveawayID(_ context.Context, giveawayID int64) ([]domain.Me
 	return out, nil
 }
 
-func (r fakeMsgs) GlobalSearchMessages(_ context.Context, userID int64, q, filter string, offset, limit int) ([]domain.Message, int, error) {
+func (r fakeMsgs) GlobalSearchMessages(_ context.Context, userID int64, gq GlobalSearchQuery) (GlobalSearchResult, error) {
+	q, filter := gq.Q, gq.Filter
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	var hits []domain.Message
@@ -858,15 +859,18 @@ func (r fakeMsgs) GlobalSearchMessages(_ context.Context, userID int64, q, filte
 		}
 	}
 	sort.Slice(hits, func(a, b int) bool { return hits[a].ID > hits[b].ID })
-	count := len(hits)
-	if offset > len(hits) {
-		offset = len(hits)
+	res := GlobalSearchResult{Count: len(hits)}
+	for _, m := range hits {
+		if gq.OffsetRate > 0 && m.ID >= gq.OffsetRate {
+			continue // курсор: строго ниже next_rate (см. GlobalSearchQuery)
+		}
+		if len(res.Messages) == gq.Limit {
+			res.NextRate = res.Messages[gq.Limit-1].ID
+			break
+		}
+		res.Messages = append(res.Messages, m)
 	}
-	hits = hits[offset:]
-	if len(hits) > limit {
-		hits = hits[:limit]
-	}
-	return hits, count, nil
+	return res, nil
 }
 
 func (r fakeMsgs) SearchMessages(_ context.Context, chatID int64, q string, f SearchFilter, offset, limit int) ([]domain.Message, int, error) {

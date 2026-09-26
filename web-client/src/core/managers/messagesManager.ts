@@ -61,6 +61,9 @@ export interface MessagesContainer {
   users: UserReal[]
   chats: Chat[]
   count?: number
+  /** Курсор следующей страницы глобального поиска (`messages.searchGlobal`);
+   *  нет ключа — дальше ничего. */
+  next_rate?: number
 }
 
 /**
@@ -773,9 +776,22 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
 
     // Глобальный поиск по сообщениям всех чатов (сайдбар-поиск): q — текст,
     // filter сужает по типу шаред-медиа ('' — любой тип, q обязателен).
-    async searchGlobal(q: string, filter: '' | 'media' | 'files' | 'links' | 'music' | 'voice' = '', offset = 0, limit = 20): Promise<{ messages: MyMessage[]; count: number }> {
-      const r = await rest.get<MessagesContainer>('/search/messages', { q, filter, offset, limit })
-      return { messages: await mapContainer(r), count: r.count ?? 0 }
+    //
+    // Листается КУРСОРОМ сервера: `offsetRate` — `nextRate` предыдущей
+    // страницы (0 — с начала), как `offset_rate: nextRate` у оригинала
+    // (tweb `appMessagesManager.ts:9995`). `nextRate` ответа отсутствует на
+    // последней странице — по нему класс и помечает вкладку загруженной
+    // (`appSearchSuper.ts:2312`). Смещения нет: кэш вкладки растёт сверху
+    // от живых апдейтов, и числовое окно поехало бы (дубль/дыра).
+    async searchGlobal(
+      q: string,
+      filter: '' | 'media' | 'files' | 'links' | 'music' | 'voice' = '',
+      opts: { offsetRate?: number; limit?: number } = {},
+    ): Promise<{ messages: MyMessage[]; count: number; nextRate?: number }> {
+      const r = await rest.get<MessagesContainer>('/search/messages', {
+        q, filter, offset_rate: opts.offsetRate ?? 0, limit: opts.limit ?? 20,
+      })
+      return { messages: await mapContainer(r), count: r.count ?? 0, nextRate: r.next_rate || undefined }
     },
 
     // Сообщения треда (форум-топика) по возрастанию + total.
