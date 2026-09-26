@@ -1,5 +1,7 @@
 package domain
 
+import "strings"
+
 // Медиа сообщения в форме оригинала — структуры схемы TL (MTProto), а не
 // плоский набор полей и не собственный формат.
 //
@@ -693,8 +695,12 @@ func (s MediaSource) attributes() []DocumentAttribute {
 	default:
 		// Обычный файл: кадр описывается documentAttributeImageSize только если
 		// это картинка — у оригинала ровно тот же смысл, из него выводится
-		// doc.type === 'photo'.
-		if s.Width > 0 && s.Height > 0 {
+		// doc.type === 'photo' (tweb `makeDocumentAndMetaForSendingFile`:
+		// `if(isPhoto) attributes.push({_: 'documentAttributeImageSize', …})`).
+		// Размеры в строке media бывают и у не-картинки — кадр видео «как файл»,
+		// обложка трека из ID3, — и без проверки mime такой документ разбирался
+		// клиентом в фотографию.
+		if s.Width > 0 && s.Height > 0 && strings.HasPrefix(s.Mime, "image/") {
 			attrs = append(attrs, DocumentAttributeImageSize{Underscore: AttrImageSize, W: s.Width, H: s.Height})
 		}
 	}
