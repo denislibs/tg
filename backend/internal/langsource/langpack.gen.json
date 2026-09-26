@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 17,
+      "version": 18,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -71,6 +71,10 @@
         {
           "key": "Animations",
           "value": "Animations"
+        },
+        {
+          "key": "AppName",
+          "value": "Telegram"
         },
         {
           "key": "ApproveNewMembers",
@@ -686,6 +690,10 @@
           "value": "Channels"
         },
         {
+          "key": "ChannelsTab",
+          "value": "Channels"
+        },
+        {
           "key": "Chat.Accessory.Edit",
           "value": "Edit message"
         },
@@ -1176,8 +1184,16 @@
           "value": "Clear"
         },
         {
+          "key": "ClearButton",
+          "value": "Clear"
+        },
+        {
           "key": "ClearOtherSessionsHelp",
           "value": "Logs out all devices except for this one."
+        },
+        {
+          "key": "ClearRecentSearch",
+          "value": "clear"
         },
         {
           "key": "ClearRecentStickersAlertTitle",
@@ -4293,6 +4309,10 @@
           "value": "My Channels"
         },
         {
+          "key": "SearchAllChatsShort",
+          "value": "Chats"
+        },
+        {
           "key": "SearchEmoji",
           "value": "Search Emoji"
         },
@@ -5475,7 +5495,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 17,
+      "version": 18,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -10967,6 +10987,26 @@
         {
           "key": "SearchInAllChats",
           "value": "Искать во всех чатах"
+        },
+        {
+          "key": "AppName",
+          "value": "Telegram"
+        },
+        {
+          "key": "SearchAllChatsShort",
+          "value": "Чаты"
+        },
+        {
+          "key": "ChannelsTab",
+          "value": "Каналы"
+        },
+        {
+          "key": "ClearRecentSearch",
+          "value": "очистить"
+        },
+        {
+          "key": "ClearButton",
+          "value": "Очистить"
         }
       ]
     },

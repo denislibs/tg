@@ -34,6 +34,18 @@ describe('confirmationPopup — порт tweb popups/peer.ts + simpleConfirmatio
     expect(root.querySelector('.popup-description')?.textContent).toBe('Are you sure you want to delete this message?')
   })
 
+  it('без titleLangKey заголовок — имя приложения (peer.ts:58, `AppName`)', () => {
+    // так зовёт очистку недавних владелец глобального поиска (`sidebarLeft/index.ts:1506-1512`)
+    void confirmationPopup({
+      descriptionLangKey: 'Search.Confirm.ClearHistory',
+      button: { langKey: 'ClearButton', isDanger: true },
+    }).catch(() => {})
+
+    const root = document.querySelector('.popup-confirmation') as HTMLElement
+    expect(root.querySelector('.popup-title')?.textContent).toBe('Telegram')
+    expect(root.querySelector('.popup-button.danger')?.textContent).toBe('Clear')
+  })
+
   it('клик по кнопке подтверждения резолвит промис, попап закрывается после исхода', async() => {
     vi.useFakeTimers()
 

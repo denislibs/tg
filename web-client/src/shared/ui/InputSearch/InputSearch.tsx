@@ -47,6 +47,10 @@ interface InputSearchProps {
   /** accent border/icon (parent's persistent "searching" state) */
   focused?: boolean
   onClear?: () => void
+  /** tweb `onEnter` (inputSearch.ts:26, :238-243): Enter при непустом значении.
+   *  Потребитель — владелец глобального поиска (`sidebarLeft/index.ts:1312-1321`,
+   *  у нас `components/sidebarLeft/globalSearch.ts`): введённая ссылка открывается. */
+  onEnter?: (value: string) => void
   className?: string
   /** класс на самом `<input>` (tweb: `input.classList.add('selector-search-input')`) */
   inputClassName?: string
@@ -147,7 +151,7 @@ function createStatusPreloader(): HTMLDivElement {
 // а JSX выражает только один. React такие узлы не трогает — свои дети он
 // вставляет по ссылкам на собственные, а лишние никогда не удаляет.
 const InputSearch = forwardRef<HTMLInputElement, InputSearchProps>(function InputSearch(
-  { value, onChange, onFocus, onBlur, placeholder, focused, onClear, className, inputClassName, noBorder, noFocusEffect, afterInput, afterIcon, iconClassName, statusRef },
+  { value, onChange, onFocus, onBlur, placeholder, focused, onClear, onEnter, className, inputClassName, noBorder, noFocusEffect, afterInput, afterIcon, iconClassName, statusRef },
   ref,
 ) {
   const has = value.length > 0
@@ -276,6 +280,13 @@ const InputSearch = forwardRef<HTMLInputElement, InputSearchProps>(function Inpu
         onChange={(e) => onChange(e.target.value)}
         onFocus={onFocus}
         onBlur={onBlur}
+        onKeyDown={onEnter && ((e) => {
+          // tweb :238-243 — значение читается из поля, пустое не уходит
+          if (e.key !== 'Enter') return
+          const v = e.currentTarget.value
+          if (!v) return
+          onEnter(v)
+        })}
       />
       {afterInput}
       {!noBorder && <div className="input-field-border" />}

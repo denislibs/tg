@@ -83,7 +83,11 @@ import { i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
  *  `managers` обязателен вместе с `peerId` — ими пользуется только `avatarNew`
  *  (peer.ts:46-53); без `peerId` он не нужен и не запрашивается. */
 export type PopupPeerOptions = {
-  titleLangKey: LangPackKey // peer.ts:58-59 — `i18n(titleLangKey, titleLangArgs)`
+  /** peer.ts:19, :58-59 — `i18n(titleLangKey || 'AppName', titleLangArgs)`.
+   *  Опционален, как у оригинала: подтверждение очистки недавних в глобальном
+   *  поиске (`sidebarLeft/index.ts:1506-1512`) заголовка не задаёт, и попап
+   *  подписан именем приложения. */
+  titleLangKey?: LangPackKey
   /** peer.ts:21 — аргументы заголовка. До задачи 7 их не было, и вызывающий отдавал
    *  сюда ГОТОВУЮ строку («Удалить 5 сообщений») отдельным пропом `titleText`: у
    *  строкового `t()` подстановки не было. Теперь число подставляет попап. */
@@ -162,7 +166,7 @@ export default class PopupPeer extends PopupElement {
     // peer.ts:58-59. Аргументы подставляет ЗАГОЛОВОК, а не вызывающий: до задачи 7
     // «Удалить N сообщений» приезжало сюда готовой строкой (`titleText`), потому что
     // строковый `t()` подстановки не умел.
-    this.title.append(i18n(options.titleLangKey, options.titleLangArgs))
+    this.title.append(i18n(options.titleLangKey || 'AppName', options.titleLangArgs))
 
     // Проверка на ИСТИННОСТЬ, как у оригинала (`peer.ts:44`: `if(options.peerId)`),
     // а не `!== undefined`. Разница видима: `peerId: 0` — это «пира нет» (наш
@@ -243,7 +247,7 @@ export default class PopupPeer extends PopupElement {
  * (simpleConfirmation.ts:37-42).
  */
 export function confirmationPopup(options: {
-  titleLangKey: LangPackKey
+  titleLangKey?: LangPackKey
   titleLangArgs?: FormatterArguments
   descriptionLangKey?: LangPackKey
   descriptionLangArgs?: FormatterArguments

@@ -1700,6 +1700,13 @@ const ru = {
   NoResultsTitle: 'Нет результатов',
   NoResultsSubtitle: 'Попробуйте другой запрос',
   SearchInAllChats: 'Искать во всех чатах',
+  // ── Владелец глобального поиска (tweb `sidebarLeft/index.ts:1096`, :1130,
+  //    :1504-1517; заголовок попапа без `titleLangKey` — `popups/peer.ts:58`) ──
+  AppName: 'Telegram',
+  SearchAllChatsShort: 'Чаты',
+  ChannelsTab: 'Каналы',
+  ClearRecentSearch: 'очистить',
+  ClearButton: 'Очистить',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)
