@@ -1,7 +1,10 @@
-import { useMemo, useState, type CSSProperties } from 'react'
+import { useMemo, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { useFolders, useFoldersStore, loadFolders } from '../../stores/foldersStore'
+import { useChatsStore } from '../../stores/chatsStore'
+import { useNotifyStore } from '../../stores/notifyStore'
 import { ALL_FOLDER_ID } from '../folderIds'
-import { chatMatchesFolder } from '../folderFilter'
+import { folderUnreadCounts } from '../folders/folderUnreadCounts'
+import { cachedChat, peerMirrorVersion, subscribePeerMirror } from '../peerCache'
 import { openPopup } from '../../stores/popupStore'
 import { useManagers } from './useManagers'
 import { useT } from '../../i18n'
@@ -31,9 +34,8 @@ export function useSidebarFolders({ chats, onOpenFolderSettings }: {
 
   const tabOrder = useMemo(() => [ALL_FOLDER_ID, ...folders.map((f) => f.id)], [folders])
 
-  // Мемоизировано, чтобы <ChatList>/<FolderTabs> получали стабильные пропсы —
-  // ре-рендер сайдбара под тогл оверлея не пересоздаёт массивы и не бьёт их memo.
-  const visibleChats = useMemo(() => chats.filter((c) => !c.archived), [chats])
+  // Мемоизировано, чтобы <ChatList> получал стабильный проп — ре-рендер
+  // сайдбара под тогл оверлея не пересоздаёт массив и не бьёт его memo.
   const archivedChats = useMemo(() => chats.filter((c) => !!c.archived), [chats])
 
   // Отбор строк ПАПКИ здесь больше не делается: список фильтрует себя сам
@@ -41,15 +43,23 @@ export function useSidebarFolders({ chats, onOpenFolderSettings }: {
   // размер набора для пагинации. Второе такое правило здесь означало бы, что
   // витрина и пагинация считают папку по-разному.
 
-  // Badge таба = число непрочитанных чатов папки (tweb folders-tabs Badge);
-  // у «Все» — только незамьюченные (tweb unreadUnmutedCount).
+  // Badge таба — правило одно на оба ряда: `core/folders/folderUnreadCounts.ts`
+  // (порт tweb `stores/folders.ts:19-30`), им же считает Solid-стор
+  // `stores/folders.solid.ts`. Хук уходит задачей 6 плана папок
+  // (docs/superpowers/plans/2026-09-07-solid-wave-3-folders-tabs.md), до тех
+  // пор ряд и колонка читают отсюда только `count`. Карточка чата решает
+  // «канал или группа» для правил папки и мьюта типа — отсюда подписка на
+  // зеркало пиров.
+  const dialogs = useChatsStore((s) => s.dialogs)
+  const notifySettings = useNotifyStore((s) => s.settings)
+  const peersVersion = useSyncExternalStore(subscribePeerMirror, peerMirrorVersion)
   const folderUnread: Record<number, number> = useMemo(() => {
-    const counts: Record<number, number> = {
-      [ALL_FOLDER_ID]: visibleChats.filter((c) => c.unread && !c.muted).length,
-    }
-    for (const f of folders) counts[f.id] = visibleChats.filter((c) => c.unread && chatMatchesFolder(c, f, contactIds)).length
+    const counts: Record<number, number> = {}
+    const all = folderUnreadCounts(dialogs, folders, contactIds, notifySettings, cachedChat)
+    for (const id in all) counts[id] = all[id].count
     return counts
-  }, [visibleChats, folders, contactIds])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- peersVersion: движение зеркала пиров, читаемого через cachedChat
+  }, [dialogs, folders, contactIds, notifySettings, peersVersion])
 
   // Прокрутку списка тут больше НЕ трогаем: у каждой папки свой
   // `.folders-scrollable` со своим `scrollTop` (`components/ChatList.tsx`, порт
