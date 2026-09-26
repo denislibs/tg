@@ -229,15 +229,13 @@ GroupsOnly/ChannelsOnly` (`:21-26`); пункты `ButtonMenu` с галочко
 
 | Наш файл | Роль | Аналог tweb | Судьба в порте |
 |---|---|---|---|
-| `components/SearchView.tsx` (515) + `SearchView.module.scss` | React-экран поиска: вкладки `Tabs`/`TabSlide` (`:39`), секции `SidebarSection`, свои строки (`ChatRow` `:456`) | `initSearch` + `AppSearchSuper` | **удаляется** |
-| `core/hooks/useSidebarSearch.ts` (34) | `query`/`searching`/`inputRef`, `searchReal` (`channels.search`), `onJoin`, событие `tg-focus-search` | часть `initSearch` (`onFocus`, `close`) | **удаляется**, роль уходит во владельца поиска |
-| `core/hooks/useGlobalSearch.ts` (+`.test.tsx`) | пагинация `messages.searchGlobal` по `offset` | `loadType` глобальной ветки | **удаляется** |
-| `components/searchNotVirtualized.test.ts` | пин «SearchView не на ядре виртуализации» | — | **удаляется** вместе с `SearchView` |
-| `shared/ui/Tabs/{Tabs,TabsBar,TabSlide}.tsx` | React-переписи `horizontalMenu`/`slideTabs` | `transition.ts:45-95` | потребители после порта — только `ChatList.tsx:129` (`TabSlide`) и `FolderTabs.tsx:1` (`Tabs`); см. § 2.3 п. 7 |
-| `core/hooks/useTransitionSlider.ts` (60) | React-перепись ветки без `animationFunction` (`zoom-fade`/`fade`/`slide-fade`) | `transition.ts:291-352` | потребитель после порта — только `UserInfoPanel.tsx:594` |
-| `components/Sidebar.tsx` | шапка (`:241-257`: бургер, `InputSearch` с `onFocus → setSearching(true)`), `.sidebar-content.transition.zoom-fade` (`:286`), `#chatlist-container` с `active` по `!searching` (`:292`), **`#search-container` рендерится условно** (`:377-386`), `is-search-active` на `.item-main` (`:240`) | `index.html:91-102` + `initSearch` | шов: узел `#search-container` становится постоянным, переходом владеет `TransitionSlider` |
-| `components/SidebarMenuButton.tsx` | бургер + `state-back` по пропу `searching` | эффект `index.ts:408-418` | остаётся; проп `searching` — от владельца поиска |
-| `shared/ui/InputSearch/InputSearch.tsx` | React-порт `InputSearch` (без debounce внутри); проп `onEnter` (Enter при непустом значении, `inputSearch.ts:238-243`) — задача 12 | `inputSearch.ts` | остаётся; к владельцу поиска его подключает адаптер контракта `GlobalSearchInputSearch` (задача 13) |
+| ~~`components/SearchView.tsx` (515) + `SearchView.module.scss`, `core/hooks/useSidebarSearch.ts`, прежний `core/hooks/useGlobalSearch.ts` (+`.test.tsx`), `components/searchNotVirtualized.test.ts`, `components/MediaGridThumb.tsx`, `core/format/sharedMediaFmt.ts`~~ | React-экран поиска и всё, что жило только ради него | `initSearch` + `AppSearchSuper` | **удалены задачей 13** |
+| ~~`shared/ui/Tabs/{Tabs,TabSlide,index}.tsx` (+`Tabs.module.scss`, `TabSlide.test.tsx`)~~ | React-переписи `horizontalMenu`/`slideTabs` | `transition.ts:45-95` | **удалены задачей 13** вместе с последним потребителем (`ChatList.tsx`/`FolderTabs.tsx` сняла программа папок) |
+| `core/hooks/useTransitionSlider.ts` (60) | React-перепись ветки без `animationFunction` (`zoom-fade`/`fade`/`slide-fade`) | `transition.ts:291-352` | потребитель — только `UserInfoPanel.tsx:594` (шапка профиля, волна 8) |
+| `components/Sidebar.tsx` | каркас `index.html:91-102`: `#search-container.transition-item.sidebar-search` — **постоянный пустой** узел; `className` у `#chatlist-container` (`transition-item active` — стартовый каркас), `.item-main` и `.sidebar-content` постоянный — классы `active/from/to/animating/backwards` и `is-search-active` ставит только владелец; `searching` — отражение `onSearchActive` владельца (морф бургера, FAB, замок, `has-open-tabs`); `closeEverythingInside` → `closeSearch()` владельца | `index.html:91-102` + `AppSidebarLeft.construct` | задача 13 — сделано |
+| `core/hooks/useGlobalSearch.ts` | **шов** «колонка ↔ владелец»: остров `useImperativeIsland` на `#search-container`, `new GlobalSearch({searchContainer, inputSearch, backBtn, managers, onSearchActive, openUrl})`, `destroy()` на размонтировании; deep-open `initialQuery`; `openUrl` — `applyHash('#@username[/пост]')` для `im`, иначе внешняя вкладка через `safeWrapUrl` (2 расхождения — шапка) | `AppSidebarLeft.construct` (часть про поиск), `appImManager.openUrl` | задача 13 — сделано |
+| `components/SidebarMenuButton.tsx` | бургер + `state-back` по пропу `searching`; стрелка `.sidebar-back-button` отдаётся владельцу ref'ом (`backBtnRef`), своего обработчика нет; бургер в DOM всегда (при показанной колонке папок и закрытом поиске — `hide`) | эффект `index.ts:408-418`, `this.backBtn` | задача 13 — сделано |
+| `shared/ui/InputSearch/InputSearch.tsx` + `inputSearchHandle.ts` | React-разметка поля; режим ручки (`searchRef`) — объект tweb `InputSearch`: значение только в `<input>`, `onChange` с debounce 300 мс, Enter → `onEnter`, крестик → `value = ''` + `onChange('')` + `onClear`, `set value` отменяет висящий debounce, `is-empty` ведёт ручка; классы узлов — императивными токенами (ре-рендер не стирает чужие) | `inputSearch.ts:200-255` | задача 13 — сделано; контролируемый режим остался прочим семи потребителям (без debounce внутри, как было) |
 | `components/appSearchSuper.ts` | класс, портирован правой колонкой; **задача 8 — сделано**: опция `searchGroups`, группа `searchGroupMedia` (медиа с запросом — строки, а не плитки), `processEmptyFilter` (строка чатлиста с превью и подсветкой), курсор `nextRate` (контекст, запрос, критерий «загружено» при `folderId`, сброс), `showSender` у ссылок, `hideEmptyTabs: false`; вся история — через `messages.searchHistory` (задача 6), `mediaHistory` класс больше не зовёт. Расхождения 4, 9, 11, 24 сняты; заведены 41 (`asChatList` у tweb без читателя — не заводится), 42 (объём `processEmptyFilter`, корень `searchGroupMedia`), 43 (`offsetPeerId`, `isEnd.top`). **Задача 9 — сделано**: `loadChats` (группы кладёт в вкладку `chats` и чистит на каждый запрос; с запросом — книга с лимитом 10, `channels.search` → `my_results` в «Chats» / `results` в «Global search» с `is-short` и «show more» при >3, локальный индекс диалогов, дедуп `renderedPeerIds`, подпись «chat with yourself» / `@username` / телефон / число участников; без запроса — «Recent» реактивно из `recentSearch`, строки переиспользуются `For`), триггер `loadedChats` в `loadType` и его сброс в `cleanup`, `loadChannels` (с запросом — только вещательные из `results` с лимитом 200, группа без заголовка; без запроса — «Channels you joined» из зеркала диалогов, `is-short-5` при >5), `renderPeerDialogs`. Заведены 44 (источники: шов `contacts`/`channels`/`dialogs`, карточки из зеркала через `peers.fillMirror`, State — zustand-стор сигналом), 45 («show more» прошлого запроса снимается сигналом, а не удалением узла — баг оригинала на втором запросе), 46 (реклама, лента «люди» — задача 14, «SimilarChannels» — 15, ветки ботов — 16, `withStories`/`meAsSaved`), 47 (проверка `middleware` после ответа в `loadChannels`, гашение строки «Recent») | `appSearchSuper.ts` | потребитель — владелец поиска (задача 12): пять групп в `searchGroups`, вкладка `channels` в `mediaTabs` |
 | `core/hooks/useSearchSuper.ts` | шов «панель профиля ↔ класс» (скроллер создаёт хозяин) | `sharedMediaTab.tsx` | образец формы для владельца поиска |
 | `components/dialogRow.ts` | `DialogElement`/`addDialogNew` (+`container.dialogElement`)/`createChatList`, **`setListClickListener`** (клик → `openPeer` + `requestMessageJump` по `data-mid`, `onFound`, `active` в автономном списке) и **`setLastMessageN`** в объёме поиска (`data-mid`, иконка форварда, миниатюра 20×20 с play, «Автор:»/«You:», подсветка, время); что не портировано — шапка файла | `appDialogsManager.ts:1751-1949`, `:1983-2244`, `:2636-2652` | задача 7 — сделано |
@@ -249,14 +247,14 @@ GroupsOnly/ChannelsOnly` (`:21-26`); пункты `ButtonMenu` с галочко
 | `components/chatTypeMenu.solid.tsx`, `components/emptySearchPlaceholder.solid.tsx` (+`*.module.scss` 1:1), `shared/solid/defineSolidElement.solid.tsx` | `<chat-type-menu>`/`<empty-search-placeholder>` — custom elements, как у оригинала: изменяемые `props` (`new ChatTypeMenu()`, `feedProps`, `props.selected`), корень гаснет на снятии узла | `chatTypeMenu/index.tsx`, `emptySearchPlaceholder/index.tsx`, `lib/solidjs/defineSolidElement.tsx` | потребитель — владелец поиска (задача 12) |
 | `shared/ui/PeerSelector/PeerSelector.tsx:100` | React-`renderEntity` (чип `.selector-user`) | `selectorSearch.ts:319-400` | остаётся своему экрану; чипу поиска — ванильный `components/selectorEntity.ts` |
 | `components/selectorEntity.ts` | `renderEntity({key, middleware, managers, title?, avatarSize, fallbackIcon?, meAsSaved = true, primary?})` → `{element, avatar, promises}`: `div.selector-user[.selector-user-primary][data-key]` с `middlewareHelper` на узле, аватар (`avatarNew`, `isDialog` → «Избранное», `setIcon` для ключа-не-пира) + крестик, заголовок (`PeerTitle` с `dialog` или строка текстом); расхождения — шапка файла | `selectorSearch.ts:321-404` | задача 11 — сделано; потребитель — владелец поиска (задача 12) |
-| `components/sidebarLeft/globalSearch.ts` (класс `GlobalSearch`) | **владелец поиска — задача 12, сделано**: порт `initSearch` файлом — скроллер, пять групп (`createSearchGroup`), `ChatTypeMenu` в правом слоте «Messages», `EmptySearchPlaceholder` (`createPlaceholder`), класс с 7 вкладками, `onChangeTab`, видимость вкладки «Channels», `resetSearch`, чипы (helper `div.search-helper` в `nav.parentElement`, перенос в поле, `is-picked`/`is-picked-twice`/`is-first`/`is-last`, `--paddingLeft`, `unselectEntity`, `onClear`), `onChange`/`onEnter` (ссылка → `openUrl`), `updateSearchQuery`, запись недавних по `mousedown` capture, «clear» через `confirmationPopup`, `TransitionSlider` `zoom-fade` на `.sidebar-content`, `cleanup` по `onTransitionEnd(0)`, запись навигации `global-search`, `openWithPeerId`; плюс once-подписка на фокус (`index.ts:220`), Ctrl+F (`:451-454`), `closeSearch` (`:1583`) и наш `destroy()`. Шов: `{searchContainer, inputSearch, backBtn, managers, onSearchActive, openUrl}`; 10 расхождений — шапка файла | `sidebarLeft/index.ts:1084-1585` | в `Sidebar.tsx` не встроен — задача 13 |
+| `components/sidebarLeft/globalSearch.ts` (класс `GlobalSearch`) | **владелец поиска — задача 12, сделано**: порт `initSearch` файлом — скроллер, пять групп (`createSearchGroup`), `ChatTypeMenu` в правом слоте «Messages», `EmptySearchPlaceholder` (`createPlaceholder`), класс с 7 вкладками, `onChangeTab`, видимость вкладки «Channels», `resetSearch`, чипы (helper `div.search-helper` в `nav.parentElement`, перенос в поле, `is-picked`/`is-picked-twice`/`is-first`/`is-last`, `--paddingLeft`, `unselectEntity`, `onClear`), `onChange`/`onEnter` (ссылка → `openUrl`), `updateSearchQuery`, запись недавних по `mousedown` capture, «clear» через `confirmationPopup`, `TransitionSlider` `zoom-fade` на `.sidebar-content`, `cleanup` по `onTransitionEnd(0)`, запись навигации `global-search`, `openWithPeerId`; плюс once-подписка на фокус (`index.ts:220`), Ctrl+F (`:451-454`), `closeSearch` (`:1583`) и наш `destroy()`. Шов: `{searchContainer, inputSearch, backBtn, managers, onSearchActive, openUrl}`; 10 расхождений — шапка файла | `sidebarLeft/index.ts:1084-1585` | встроен в `Sidebar.tsx` швом `core/hooks/useGlobalSearch.ts` — задача 13 |
 | `helpers/date.ts` `fillTipDates`/`DateData`, `fillLocalizedDates`, `monthsLocalized`/`daysLocalized`, `getWeekDays`/`getMonths` | разбор запроса в чипы дат (границы в мс); названия месяцев/дней — `Intl` на языке пакета, наполняются в `client/boot.ts` на каждое `language_apply` (tweb `index.ts:482-491`); новых ключей локализации нет | `helpers/date.ts:6-57`, `:220-592` | задача 11 — сделано; два бага оригинала исправлены и объявлены в шапке (дни с понедельника под индексом `getDay()`; `Date.UTC` при местном форматировании) |
 | `core/navigation/appNavigationController.ts` | порт контроллера; тип `'global-search'` объявлен (`:84`) | `appNavigationController.ts` | используется как есть |
 | `core/state/state.ts:22`, `core/state/migrateRecentSearch.ts` | `recentSearch: string[]` в `AppState` (ключ чата — строка, не число: разница модели) | `config/state.ts:209` | используется как есть; писатель — `pushRecentSearch` в менеджере |
-| `stores/searchStore.ts` `pendingJump` | «результат ждёт открытия чата → прыжок к сообщению» (`SearchView.tsx:134`) | `appImManager.setInnerPeer({peerId, lastMsgId})` | остаётся: клик по строке группы `messages` ставит `pendingJump` |
+| `stores/searchStore.ts` `pendingJump` | «результат ждёт открытия чата → прыжок к сообщению» | `appImManager.setInnerPeer({peerId, lastMsgId})` | остаётся: клик по строке группы `messages` ставит `pendingJump` |
 | `core/peerCache.ts` (`isBroadcastPeer`, `cachedPeer`), `core/navigation/openPeer.ts` | зеркало карточек, открытие пира | `appPeersManager`, `appImManager.setPeer` | как есть |
 | `styles/tweb/_searchGroup.scss`, `_leftSidebar.scss:332-391`, `:663`, `_transition.scss`, `_selector.scss` | стили групп, чипов, `#search-container`, `zoom-fade`, `.selector-user` — портированы 1:1 | те же партиалы | как есть |
-| `core/hotkeys.ts:71` → `useAppHotkeys.ts:55` → событие `tg-focus-search` | Ctrl+F | `addShortcutListener(['ctrl+f', …])` `index.ts:451-454` | слушает владелец поиска (`initSearch().open()`, гейт «не под попапом»); до задачи 13 — ещё и `useSidebarSearch` |
+| `core/hotkeys.ts:71` → `useAppHotkeys.ts:55` → событие `tg-focus-search` | Ctrl+F | `addShortcutListener(['ctrl+f', …])` `index.ts:451-454` | слушает только владелец поиска (`initSearch().open()`, гейт «не под попапом») |
 
 ## 2.2 Менеджеры и ручки — что есть
 
@@ -279,24 +277,26 @@ GroupsOnly/ChannelsOnly` (`:21-26`); пункты `ButtonMenu` с галочко
 
 ## 2.3 Расхождения (подтверждены на 2026-09-08)
 
-1. **Экран поиска — React, класс не участвует.** `SearchView.tsx` — своя реализация
+1. ~~**Экран поиска — React, класс не участвует.**~~ — снято задачей 13 (выдачу рисует класс,
+   `SearchView.tsx` удалён). Историческая запись: `SearchView.tsx` — своя реализация
    вкладок (`TABS` `:39`), своих строк (`ChatRow`/`ResultRow`/`Empty` `:456-515`), своих
    секций. Дефект, ради которого программа: `TabSlide` вставляет приходящий кадр
    в DOM **в том же кадре**, что и стартовый `transform` (`TabSlide.tsx:112-118`
    — `useLayoutEffect` после рендера нового кадра), переход не стартует; у класса
    (`horizontalMenu` + `slideTabs`) кадры лежат в DOM заранее — для профиля это
    уже починено задачей 13 плана shared media.
-2. **`#search-container` создаётся условно** (`Sidebar.tsx:377`): узел появляется
+2. ~~**`#search-container` создаётся условно**~~ — снято задачей 13 (узел постоянный, переход
+   ведёт `TransitionSlider` владельца, пин `Sidebar.globalSearch.test.tsx`). Было (`Sidebar.tsx:377`): узел появляется
    вместе с `active`, а `zoom-fade` играет на вставке; `backwards`-ветка
    (`_transition.scss:43-60`) не играет вовсе — узел просто исчезает. У оригинала
    узел постоянный, переход ведёт `TransitionSlider`, а `cleanup()` — по
    `onTransitionEnd(0)`.
-3. **Вкладок 7 вместо 9**: нет `apps`, `posts`; у нас есть `channels` (`SearchView.tsx:39`).
+3. **Вкладок 7 вместо 9**: нет `apps`, `posts` (задачи 16-17, «Отложено» плана); список — `MEDIA_TABS` владельца (`components/sidebarLeft/globalSearch.ts`, расхождение 1).
 4. **Групп нет**: результаты — плоские `SidebarSection`; нет `searchGroups`,
    `search-group-*`, «показать ещё», `people`-ленты; `recent` есть, но своим кодом
    (`pushRecent` `:52-55`, «Clear» через React `ConfirmDialog`). Пять групп,
    запись недавних и «clear» через `confirmationPopup` уже живут во владельце
-   поиска (задача 12); `SearchView` уходит вместе с этим пунктом в задаче 13.
+   поиска (задача 12); задачей 13 `SearchView` удалён — пункт снят.
 5. ~~**Чипов в выдаче нет**~~ — механика снята задачей 12 (`components/sidebarLeft/globalSearch.ts`,
    § 2.1); видимой она станет со швом задачи 13. Историческая запись:
    строительные блоки портированы задачей 11 —
@@ -313,7 +313,9 @@ GroupsOnly/ChannelsOnly` (`:21-26`); пункты `ButtonMenu` с галочко
    `messagesrepo.go:382`): та же математическая ошибка, что была у медиа профиля
    (задача 1 плана shared media) — вставка сверху сдвигает окно. Курсор оригинала
    — `next_rate` (§ 1.5), у нас его нет ни на проводе, ни в слайсе.
-7. **Две React-переписи `TransitionSlider`** (`components/transition.ts:384-394`,
+7. ~~**Две React-переписи `TransitionSlider`**~~ — одна снята задачей 13 (`shared/ui/Tabs`
+   удалён вместе с последним потребителем); осталась `useTransitionSlider.ts` (`UserInfoPanel.tsx`).
+   Историческая запись (`components/transition.ts:384-394`,
    «ДОЛГ-3»): `TabSlide.tsx` (потребители `ChatList.tsx`, `SearchView.tsx`) и
    `useTransitionSlider.ts` (потребитель `UserInfoPanel.tsx`). После сноса
    `SearchView` у `TabSlide` остаётся один потребитель — `ChatList.tsx` (папки);
@@ -325,9 +327,8 @@ GroupsOnly/ChannelsOnly` (`:21-26`); пункты `ButtonMenu` с галочко
    Участники правой колонки по-прежнему вешают клик сами (`appSearchSuper.ts`,
    расхождение 33) — у оригинала там тоже свой обработчик (`:1562-1570`).
 10. ~~**Локальных индексов нет**~~ — снято задачей 5 (`SearchIndex` книги и
-    диалогов в воркере); класс читает их задачей 9 (`loadChats`). `SearchView`
-    до задачи 13 по-прежнему фильтрует `chats` в главном потоке
-    (`localMatches`/`myChannels`/`recentChats`).
+    диалогов в воркере); класс читает их задачей 9 (`loadChats`); фильтра `chats` в главном
+    потоке (`localMatches`/`myChannels`/`recentChats` `SearchView`) больше нет — задача 13.
 11. ~~**`contacts.found.my_results` пуст**~~ — снято задачей 4 (бэкенд отделяет
     свои попадания); группа `contacts` собирается из трёх источников оригинала
     задачей 9 (§ 2.1, строка класса).

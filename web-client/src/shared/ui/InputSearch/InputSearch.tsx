@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useImperativeHandle, useLayoutEffect, useRef, type ReactNode, type Ref } from 'react'
+import { forwardRef, useCallback, useImperativeHandle, useLayoutEffect, useRef, useState, type ChangeEvent, type ReactNode, type Ref, type RefObject } from 'react'
 import type { LangPackKey } from '@/lang'
 import { i18n, type FormatterArguments } from '@lib/langPack'
 import classNames from '../../lib/classNames'
@@ -6,6 +6,7 @@ import { setTransition } from '../../../core/dom/setTransition'
 import TgIcon from '../../../components/TgIcon'
 import IconButton from '../IconButton'
 import s from './InputSearch.module.scss'
+import InputSearchHandle from './inputSearchHandle'
 
 /** `ConnectionStatusComponent.ANIMATION_DURATION` (tweb connectionStatus.ts:20).
  *  У tweb `inputSearch.ts` импортирует её из самого компонента статуса; у нас
@@ -36,9 +37,7 @@ export interface InputSearchStatus {
   setPlaceholder(key: LangPackKey, args?: FormatterArguments): void
 }
 
-interface InputSearchProps {
-  value: string
-  onChange: (v: string) => void
+interface InputSearchCommonProps {
   onFocus?: () => void
   onBlur?: () => void
   /** СИМВОЛИЧЕСКИЙ КЛЮЧ, а не готовая строка: перевод делает сам компонент
@@ -46,11 +45,6 @@ interface InputSearchProps {
   placeholder?: LangPackKey
   /** accent border/icon (parent's persistent "searching" state) */
   focused?: boolean
-  onClear?: () => void
-  /** tweb `onEnter` (inputSearch.ts:26, :238-243): Enter при непустом значении.
-   *  Потребитель — владелец глобального поиска (`sidebarLeft/index.ts:1312-1321`,
-   *  у нас `components/sidebarLeft/globalSearch.ts`): введённая ссылка открывается. */
-  onEnter?: (value: string) => void
   className?: string
   /** класс на самом `<input>` (tweb: `input.classList.add('selector-search-input')`) */
   inputClassName?: string
@@ -72,14 +66,59 @@ interface InputSearchProps {
   iconClassName?: string
   /**
    * Хэндл трёх методов выше. Отдельный ref, а НЕ основной: основной `ref`
-   * компонента — сам `HTMLInputElement`, на нём висят `focus()`/`blur()`
-   * (`useSidebarSearch`), `parentElement` (`EmoticonsTab`) и `foldInto`
-   * (`StoriesRow`). Слить их в один объект можно только расширив тип-параметр
-   * `forwardRef`, а тогда `useRef<HTMLInputElement>` и
-   * `RefObject<HTMLInputElement | null>` у существующих вызывающих перестают
-   * подходить по типу — правка ради удобства нового API, которой здесь не место.
+   * компонента — сам `HTMLInputElement`, на нём висят `focus()`/`blur()`,
+   * `parentElement` (`EmoticonsTab`) и `foldInto` (`StoriesRow`). Слить их в
+   * один объект можно только расширив тип-параметр `forwardRef`, а тогда
+   * `useRef<HTMLInputElement>` и `RefObject<HTMLInputElement | null>` у
+   * существующих вызывающих перестают подходить по типу — правка ради удобства
+   * нового API, которой здесь не место.
    */
   statusRef?: Ref<InputSearchStatus>
+}
+
+/** Контролируемое поле: значение — в состоянии вызывающего. */
+interface InputSearchControlledProps extends InputSearchCommonProps {
+  value: string
+  onChange: (v: string) => void
+  onClear?: () => void
+  searchRef?: never
+}
+
+/**
+ * Поле-объект tweb (`inputSearch.ts`): значение живёт только в `<input>`,
+ * события разбирает `InputSearchHandle` — debounce 300 мс у `onChange`,
+ * Enter → `onEnter`, крестик → `value = ''` + `onChange('')` + `onClear`.
+ * Колбэки вызывающий пишет в САМ объект, как владелец глобального поиска
+ * (`components/sidebarLeft/globalSearch.ts`) пишет их в `InputSearch` tweb.
+ * Режим выбирается на монтировании и на ходу не меняется.
+ */
+interface InputSearchHandleProps extends InputSearchCommonProps {
+  searchRef: Ref<InputSearchHandle>
+  value?: never
+  onChange?: never
+  onClear?: never
+}
+
+type InputSearchProps = InputSearchControlledProps | InputSearchHandleProps
+
+/**
+ * Классы узла ведёт императивный слой — единственный писатель. Если оставить
+ * их пропом `className`, React перепишет строку целиком на любом изменении
+ * пропа и снесёт чужие классы узла (у корня — `is-connecting`/`forwards`/
+ * `animating` от `setTransition`, у поля в режиме ручки — `is-empty` от
+ * `InputSearchHandle`): React не читает DOM, а сравнивает пропы. Эффект слоя
+ * раскладки, а не обычный: классы должны быть на узле до первой отрисовки.
+ */
+function useOwnedTokens(ref: RefObject<HTMLElement | null>, className: string) {
+  const ownTokens = useRef<string[]>([])
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const tokens = className.split(' ').filter(Boolean)
+    for (const token of ownTokens.current) if (!tokens.includes(token)) el.classList.remove(token)
+    if (tokens.length) el.classList.add(...tokens)
+    ownTokens.current = tokens
+  })
 }
 
 // Разметка прелоадера — tweb `ProgressivePreloader.constructContainer({color:
@@ -151,31 +190,35 @@ function createStatusPreloader(): HTMLDivElement {
 // а JSX выражает только один. React такие узлы не трогает — свои дети он
 // вставляет по ссылкам на собственные, а лишние никогда не удаляет.
 const InputSearch = forwardRef<HTMLInputElement, InputSearchProps>(function InputSearch(
-  { value, onChange, onFocus, onBlur, placeholder, focused, onClear, onEnter, className, inputClassName, noBorder, noFocusEffect, afterInput, afterIcon, iconClassName, statusRef },
+  { value, onChange, onFocus, onBlur, placeholder, focused, onClear, className, inputClassName, noBorder, noFocusEffect, afterInput, afterIcon, iconClassName, statusRef, searchRef },
   ref,
 ) {
-  const has = value.length > 0
   const rootRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const clearRef = useRef<HTMLButtonElement>(null)
   const iconRef = useRef<HTMLSpanElement>(null)
   const preloaderRef = useRef<HTMLDivElement | null>(null)
   const placeholderRef = useRef<HTMLElement | null>(null)
   const placeholderKeyRef = useRef<string | undefined>(undefined)
+  // Режим ручки (`searchRef`) фиксируется на монтировании: объект один на
+  // жизнь поля, как `InputSearch` tweb.
+  const [handle] = useState(() => searchRef ? new InputSearchHandle() : undefined)
 
-  // Классы корня ведёт императивный слой — единственный писатель. Если оставить
-  // их пропом `className`, React перепишет строку целиком на любом изменении
-  // `focused`/`className` и снесёт `is-connecting`/`forwards`/`animating`,
-  // которые сюда кладёт `setTransition` (у React нет способа их сохранить —
-  // он не читает DOM, а сравнивает пропы). Эффект слоя раскладки, а не обычный:
-  // классы должны быть на узле до первой отрисовки.
-  const reactTokens = useRef<string[]>([])
+  useOwnedTokens(rootRef, classNames('input-search', focused ? s.focused : '', className ?? ''))
+  // `is-empty` в режиме ручки ставит `InputSearchHandle` (значение живёт в
+  // DOM), в контролируемом — производная `value`.
+  useOwnedTokens(inputRef, classNames(
+    'input-field-input', 'input-search-input', noFocusEffect ? '' : 'with-focus-effect',
+    handle || value ? '' : 'is-empty', focused ? s.input : '', inputClassName ?? '',
+  ))
+
+  // Узлы готовы — ручка вешает слушатели (конструктор tweb :83-94); снимает
+  // их и висящий debounce на размонтировании (`remove`, :251-255).
   useLayoutEffect(() => {
-    const root = rootRef.current
-    if (!root) return
-    const tokens = classNames('input-search', focused ? s.focused : '', className ?? '').split(' ').filter(Boolean)
-    for (const token of reactTokens.current) if (!tokens.includes(token)) root.classList.remove(token)
-    root.classList.add(...tokens)
-    reactTokens.current = tokens
-  })
+    if (!handle) return
+    handle.bind(rootRef.current!, inputRef.current!, clearRef.current!)
+    return () => handle.remove()
+  }, [handle])
 
   // tweb :175-198
   const setPlaceholder = useCallback((key: LangPackKey, args?: FormatterArguments) => {
@@ -252,6 +295,8 @@ const InputSearch = forwardRef<HTMLInputElement, InputSearchProps>(function Inpu
     toggleLoading,
     setPlaceholder,
   ])
+  useImperativeHandle(searchRef, () => handle!, [handle])
+  useImperativeHandle(ref, () => inputRef.current!, [])
 
   // Декларативный проп — та же императивная процедура (tweb :96-99 зовёт
   // `setPlaceholder` из конструктора). Слой раскладки — чтобы плейсхолдер был
@@ -269,24 +314,16 @@ const InputSearch = forwardRef<HTMLInputElement, InputSearchProps>(function Inpu
 
   return (
     <div ref={rootRef}>
+      {/* `className` у поля не пропом — см. `useOwnedTokens` */}
       <input
-        ref={ref}
-        className={classNames('input-field-input', 'input-search-input', noFocusEffect ? '' : 'with-focus-effect', has ? '' : 'is-empty', focused ? s.input : '', inputClassName ?? '')}
+        ref={inputRef}
         type="text"
         autoComplete="off"
         dir="auto"
         placeholder=" "
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
+        {...(handle ? {} : { value, onChange: (e: ChangeEvent<HTMLInputElement>) => onChange!(e.target.value) })}
         onFocus={onFocus}
         onBlur={onBlur}
-        onKeyDown={onEnter && ((e) => {
-          // tweb :238-243 — значение читается из поля, пустое не уходит
-          if (e.key !== 'Enter') return
-          const v = e.currentTarget.value
-          if (!v) return
-          onEnter(v)
-        })}
       />
       {afterInput}
       {!noBorder && <div className="input-field-border" />}
@@ -297,11 +334,13 @@ const InputSearch = forwardRef<HTMLInputElement, InputSearchProps>(function Inpu
       {/* tweb держит кнопку очистки в DOM всегда (inputSearch.ts:90,111), при
           пустом поле её прячет CSS `input.is-empty ~ .input-search-clear`
           (_inputSearch.scss:128) — не рендерить её условно по `has` */}
-      {onClear && (
+      {(handle || onClear) && (
         <IconButton
+          ref={clearRef}
           className={classNames('input-search-clear', 'input-search-part', 'input-search-button')}
           size="small"
-          onClick={onClear}
+          // в режиме ручки клик разбирает `InputSearchHandle.onClearClick`
+          onClick={handle ? undefined : onClear}
           aria-label="Clear"
         >
           <TgIcon name="close" size={20} />

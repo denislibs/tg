@@ -11,7 +11,8 @@
 // `docs/superpowers/plans/2026-09-07-solid-wave-3-global-search.md`, задача 12.
 //
 // ── Форма шва (вместо полей `AppSidebarLeft`) ─────────────────────────────
-// Хозяин (у нас — `Sidebar.tsx`, задача 13) отдаёт узлы статического каркаса
+// Хозяин (у нас — `Sidebar.tsx` через шов `core/hooks/useGlobalSearch.ts`,
+// задача 13) отдаёт узлы статического каркаса
 // оригинала (`index.html:91-102`) и колбэки:
 //  • `searchContainer` — `#search-container.transition-item.sidebar-search`,
 //    ПОСТОЯННЫЙ и пустой; его родитель — `.sidebar-content.transition.zoom-fade`
@@ -19,7 +20,8 @@
 //    `.item-main` (`is-search-active`, :1431); первый ребёнок `.sidebar-content`
 //    — `#chatlist-container.transition-item`. Классы `active/from/to/animating/
 //    backwards` на этих узлах и `is-search-active` ставит ТОЛЬКО владелец.
-//  • `inputSearch` — объект с контрактом tweb `InputSearch` (`inputSearch.ts`):
+//  • `inputSearch` — объект с контрактом tweb `InputSearch` (`inputSearch.ts`;
+//    у колонки — `shared/ui/InputSearch/inputSearchHandle.ts`):
 //    `container`, `input`, `value` (чтение и запись), а `onChange`/`onClear`/
 //    `onEnter` владелец ПИШЕТ в объект сам и снимает в `cleanup`, как оригинал.
 //  • `backBtn` — стрелка «назад» бургера: единственный путь закрыть поиск
@@ -27,7 +29,8 @@
 //  • `onSearchActive(active)` — роль сеттера `isSearchActive` +
 //    `onSomethingOpenInsideChange()` (:1484-1485, :1498-1499): морф бургера,
 //    FAB, ряд папок — дело хозяина.
-//  • `openUrl(url)` — роль `appImManager.openUrl` (:1320).
+//  • `openUrl(url)` — роль `appImManager.openUrl` (:1320); чем исполняется у
+//    нас — расхождение 1 шапки шва `core/hooks/useGlobalSearch.ts`.
 //
 // ── ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ С ОРИГИНАЛОМ ───────────────────────────────────
 //  1. Вкладок 7 из 9 (`:1128-1161`): `apps` и `posts` не объявляются — ручек
@@ -214,7 +217,7 @@ export default class GlobalSearch {
     const { searchContainer, inputSearch, backBtn, managers } = this
 
     // :1089 — скроллер выдачи создаёт хозяин, класс получает его опцией
-    // (четвёртый владелец `Scrollable` в продакшн-коде, см. «Скролл» в
+    // (один из пяти владельцев `Scrollable` в продакшн-коде, см. «Скролл» в
     // `web-client/CLAUDE.md`); `cleanup` его роняет — расхождение 3
     const scrollable = new Scrollable(searchContainer)
 

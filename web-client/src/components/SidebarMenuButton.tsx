@@ -19,14 +19,23 @@
 // непрочитанное неактивных аккаунтов, поэтому бейдж всегда пустой и несёт
 // `is-badge-empty` — ровно то состояние, в котором он снят с живого клиента
 // (дамп `14-left-01-chatlist.json`). Появится счётчик — сюда придёт число.
-import { memo, useState } from 'react'
+import { memo, useState, type Ref } from 'react'
 import classNames from '../shared/lib/classNames'
 import IconButton from '../shared/ui/IconButton'
 import MainMenu from './MainMenu'
 
 export interface SidebarMenuButtonProps {
   searching: boolean
-  onBack: () => void // close search (when searching)
+  /**
+   * Узел `.sidebar-back-button` (tweb `index.html:95`, `this.backBtn`). Клик по
+   * нему вешает владелец глобального поиска (`sidebarLeft/globalSearch.ts`,
+   * tweb `sidebarLeft/index.ts:1491-1502`) — это единственный путь закрыть
+   * поиск (`close()` оригинала — `simulateClickEvent(backBtn)`, :1091-1093),
+   * поэтому своего React-обработчика у кнопки нет: он закрывал бы поиск в
+   * обход владельца. Узел стабилен на всю жизнь колонки — владелец держит
+   * ссылку на него с монтирования.
+   */
+  backBtnRef: Ref<HTMLDivElement>
   onOpenSettings: () => void
   onOpenContacts: () => void
   onOpenSaved: () => void
@@ -40,7 +49,7 @@ export interface SidebarMenuButtonProps {
 }
 
 function SidebarMenuButton({
-  searching, onBack, onOpenSettings, onOpenContacts, onOpenSaved, onOpenPremium, onOpenMyStories, onOpenCloseFriends, onOpenWallet, onOpenCalls, onLogout, onToggleMode,
+  searching, backBtnRef, onOpenSettings, onOpenContacts, onOpenSaved, onOpenPremium, onOpenMyStories, onOpenCloseFriends, onOpenWallet, onOpenCalls, onLogout, onToggleMode,
 }: SidebarMenuButtonProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const close = () => setMenuOpen(false)
@@ -60,8 +69,8 @@ function SidebarMenuButton({
         <span className="badge badge-20 badge-primary is-badge-empty sidebar-tools-button-notifications" />
       </IconButton>
       <div
+        ref={backBtnRef}
         className={classNames('btn-icon', 'sidebar-back-button', showBack ? 'is-visible' : '')}
-        onClick={onBack}
       />
       <MainMenu
         open={menuOpen}

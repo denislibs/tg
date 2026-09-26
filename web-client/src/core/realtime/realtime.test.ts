@@ -1,7 +1,7 @@
 // src/core/realtime/realtime.test.ts
 //
 // Регрессия (финальное ревью feat/remaining-ops, Regression 1): markMediaRead —
-// RPC-путь клика по голосовому/кружку (useVoiceQueue/SearchView/SharedMedia/
+// RPC-путь клика по голосовому/кружку (useVoiceQueue/React-экран поиска (снесён)/SharedMedia/
 // mediaBubbles → core/mediaRead.ts → realtime.markMediaRead). Stage 1B.3 убрала
 // [RT.mediaRead] из реестра APPLY проектора (storeProjection.ts) — окно теперь
 // правит ТОЛЬКО applyOps(RT.messageOp). messages.cacheMediaRead уже отдаёт

@@ -86,8 +86,7 @@
  *
  * ── Остаток волны (#112) ─────────────────────────────────────────────────
  * `web-client/src/shared/ui/SidebarSection/SidebarSection.tsx` — React-двойник
- * этой же карточки (потребители: `SearchView.tsx`, `UserInfoPanel.tsx`,
- * `components/settings/kit.tsx`), рисующий тот же внешний
+ * этой же карточки (потребитель: `components/settings/kit.tsx`), рисующий тот же внешний
  * `div.sidebar-left-section-container`. Снимать не нужно — уйдёт вместе с
  * React-экранами, которые его используют, по мере переезда волны на Solid.
  */

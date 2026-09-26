@@ -295,7 +295,7 @@
 //     поиска). Шов менеджеров расширен тремя ручками: `contacts.getContactsPeerIds`,
 //     `channels.search` (роль `appUsersManager.searchContacts`) и
 //     `dialogs.getDialogs`. `channels.search` отдаёт `contacts.found` как есть —
-//     ССЫЛКИ `Peer` и тела (их до задачи 13 читает React-`SearchView`), поэтому
+//     ССЫЛКИ `Peer` и тела (так их читал снесённый задачей 13 React-экран поиска), поэтому
 //     перевод в ключи и дедуп `my_results` (`appUsersManager.ts:1089`) сделаны
 //     здесь, а не в менеджере; тела менеджер отдаёт владельцу карточек до
 //     ответа, как `saveApiUsers`/`saveApiChats` (`:1085-1086`). Карточка

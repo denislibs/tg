@@ -733,8 +733,8 @@ Close/RestartTopic `:224` · ChargeFee `:238` · Delete `:248`.
 | `src/components/chatlist/dialogsPlaceholder.ts` | canvas-шиммер | `helpers/dialogsPlaceholder.ts` |
 | `src/components/foldersTabs.solid.tsx` + `src/components/folders/FoldersSidebar.tsx` + `src/helpers/dom/createFolderContextMenu.ts` | горизонтальный ряд (Solid, узлами владельца) и вертикальная колонка папок (React, `tabsInSidebar`; клик — тот же `selectTab` владельца); меню папки — одна фабрика `createFolderContextMenu` на оба ряда (задача 7) | `foldersTabs` + `foldersSidebarContent` + `createFolderContextMenu` |
 | `src/components/StoriesRow.tsx` (Sidebar.tsx:268-282) | сторис-лента (`foldInto`/`setScrolledOn`/`getScrollable`/`listenWheelOn`) | `stories/list.tsx` |
-| `src/components/SidebarMenuButton.tsx` | бургер + морф (`searching` prop) | `createToolsMenu` + animated-menu-icon |
-| `src/components/SearchView.tsx` + `useSidebarSearch` + `shared/ui/InputSearch` | поиск (transition-узлы в JSX, Sidebar.tsx:285-386) | `initSearch` + `AppSearchSuper` |
+| `src/components/SidebarMenuButton.tsx` | бургер + морф (`searching` prop — отражение владельца поиска); узел `.sidebar-back-button` отдаётся владельцу поиска ref'ом (`backBtnRef`), своего React-обработчика у него нет; бургер в DOM всегда, при показанной колонке папок и закрытом поиске — `hide` | `createToolsMenu` + animated-menu-icon + `this.backBtn` |
+| `src/components/sidebarLeft/globalSearch.ts` + шов `src/core/hooks/useGlobalSearch.ts` + `shared/ui/InputSearch` (режим ручки `searchRef` → `inputSearchHandle.ts`) | глобальный поиск: владелец (порт `initSearch`) строит и сносит детей постоянного `#search-container`, ведёт `zoom-fade` и `is-search-active`; поле — объект tweb с debounce 300 мс (задача 13 плана `2026-09-07-solid-wave-3-global-search.md`; разбор — `global-search.md`) | `initSearch` + `AppSearchSuper` + `InputSearch` |
 | `src/components/connectionStatus/*` (Sidebar.tsx:88-94) | автомат плейсхолдера/спиннера поля поиска | `ConnectionStatusComponent` |
 | `src/core/dom/{updateColumnWidths,installColumnResize}.ts` (Sidebar.tsx:159-189) | ресайз/коллапс колонки | `installColumnResize`, `updateColumnWidths` |
 
@@ -757,11 +757,17 @@ DOM-паритет первого таба выдержан сознательн
    часть пунктов tweb отсутствует (Background как таб, 2FA-мастер из 7 шагов сжат в
    `TwoStepVerification.tsx` и т.д.); нет попап-режима настроек при свёрнутой колонке
    (`SettingsSliderPopup`).
-3. **Поиск без `AppSearchSuper`.** У нас один `SearchView` (не виртуализирован — пин
-   `components/searchNotVirtualized.test.ts`); нет контент-табов Chats/Channels/Apps/Posts/Media/…,
-   нет чипов пира/даты (`fillTipDates`), нет `ChatTypeMenu`, нет recent-механики `pushRecentSearch`
-   с лимитом 20 и «Clear». Транзишен `zoom-fade` и класс `is-search-active` на `.item-main`
-   воспроизведены (Sidebar.tsx:236-239, 376-386).
+3. ~~**Поиск без `AppSearchSuper`.**~~ Снято задачей 13 плана
+   `docs/superpowers/plans/2026-09-07-solid-wave-3-global-search.md`: выдачу рисует тот же класс
+   `AppSearchSuper` вторым потребителем, обвязку — владелец `components/sidebarLeft/globalSearch.ts`
+   (порт `initSearch`: пять групп, `ChatTypeMenu`, чипы пира/даты, recent с «Clear» через
+   `confirmationPopup`, `TransitionSlider` 'zoom-fade', `cleanup` по окончании обратного перехода).
+   В колонку он встроен швом `core/hooks/useGlobalSearch.ts`: `#search-container` постоянный и
+   пустой, `className` у `#chatlist-container`/`.item-main`/`.sidebar-content` постоянный — классы
+   перехода и `is-search-active` ставит только владелец; `searching` колонки — отражение его
+   `onSearchActive`. React-`SearchView`, `useSidebarSearch`, `shared/ui/Tabs` удалены. Остаток:
+   вкладки `apps`/`posts`, лента «люди», «SimilarChannels» — «Отложено» плана (нет ручек);
+   исполнителя внутренних t.me-ссылок нет (Enter со ссылкой — расхождение 1 шапки шва).
 4. **Чатлист — уже портирован программой, не переизобретать.** Порт «виртуальный список диалогов 1:1»
    смержен целиком (4 этапа, `0d41dc41`): ядро `components/virtual/`, владелец диалогов в воркере
    `core/managers/dialogsManager.ts`, источник `useDialogListSource`. Спеки:
