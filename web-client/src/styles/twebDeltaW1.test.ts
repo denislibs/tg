@@ -54,3 +54,15 @@ describe('contenteditable переносит неразрывный текст (
     expect(rule("[contenteditable='true']") ?? rule('[contenteditable=true]')).toMatch(/overflow-wrap:\s*break-word/)
   })
 })
+
+describe('угловые кнопки ленты не наезжают друг на друга (tweb 41d9adb14, _chat.scss)', () => {
+  it('сдвиг --translateY (упоминания/реакции/голоса) входит в transform угловой кнопки', () => {
+    expect(rule('.bubbles-corner-button')).toMatch(
+      /transform:\s*translateY\(var\(--translateY\)\) translateY\(calc\(var\(--chat-input-height-surplus\) \* -1\)\) !important/,
+    )
+  })
+
+  it('кнопка «вниз» свой сдвиг обнуляет', () => {
+    expect(rule('.bubbles-go-down')).toMatch(/--translateY:\s*0/)
+  })
+})
