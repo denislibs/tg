@@ -31,7 +31,8 @@ import { cachedChat, peerTitle } from '../../core/peerCache'
 import { isUser } from '../../core/peers/peerId'
 import { useFolders, useFoldersStore } from '../../stores/foldersStore'
 import { ALL_FOLDER_ID } from '../../core/folderIds'
-import FolderTabs from '../FolderTabs'
+import { useImperativeIsland } from '../../core/hooks/useImperativeIsland'
+import createFolderTabs from '../popups/pickUserFolderTabs'
 import type { Chat, ChatType } from '../../data'
 import type { Dialog } from '../../core/models'
 import s from './ChatDialogs.module.scss'
@@ -162,7 +163,8 @@ function RecentChip({ chat, selected, onToggle }: { chat: Chat; selected: boolea
 }
 
 // Forward target picker («Поделиться»): порт tweb popupForward — поиск, ряд
-// недавних, табы папок (липкие при скролле) и список чатов с аватарами/подписями.
+// недавних, табы папок (липкие при скролле, порт `pickUser.tsx:325-424` —
+// `popups/pickUserFolderTabs.ts`) и список чатов с аватарами/подписями.
 // Мультивыбор; аккордная кнопка «Переслать (N)» шлёт во все выбранные чаты сразу.
 export function ForwardPicker({ dialogs, onPick, onClose }: {
   dialogs: Dialog[]
@@ -178,7 +180,10 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
   const folders = useFolders()
   const contactIds = useFoldersStore((st) => st.contactIds)
   const [q, setQ] = useState('')
+  // `selectedFolderId` селектора (`appSelectPeers.ts:70`, `:1358-1366`); пишет
+  // его только ряд папок (`createFolderTabs` → `setFolderId`).
   const [folderId, setFolderId] = useState(ALL_FOLDER_ID)
+  const folderTabsRef = useImperativeIsland((mount) => createFolderTabs({ mount, setFolderId }), [])
   // exit-анимация: закрытие/выбор сначала гасят open; колбэк владельцу (который
   // размонтирует пикер) — только из onExitComplete, когда карточка уехала.
   const [open, setOpen] = useState(true)
@@ -202,7 +207,13 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
     [dialogs, meId],
   )
   const query = q.trim().toLowerCase()
-  const activeFolder = folderId !== ALL_FOLDER_ID ? folders.find((f) => f.id === folderId) : undefined
+  // tweb `_setFolderId(value)` (`appSelectPeers.ts:631-633`, зов `:644-647`):
+  // пока в поле запрос, скоуп — «Все чаты», выбранная папка лишь помнится и
+  // возвращается пустым полем. Сам скоуп у оригинала — `filterId` в
+  // `dialogsStorage.getDialogs`; у нас список уже на руках, и чат отбирает то же
+  // правило папки, что и везде (`chatMatchesFolder`).
+  const scopeFolderId = query ? ALL_FOLDER_ID : folderId
+  const activeFolder = scopeFolderId !== ALL_FOLDER_ID ? folders.find((f) => f.id === scopeFolderId) : undefined
   const list = useMemo(() => {
     let out = chats
     if (activeFolder) out = out.filter((c) => chatMatchesFolder(c, activeFolder, contactIds))
@@ -274,9 +285,13 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
                 </div>
               </div>
             )}
-            {!searching && folders.length > 0 && (
-              <FolderTabs value={folderId} onChange={setFolderId} folders={folders} />
-            )}
+            {/* `afterElement.after(mount)` (`pickUser.tsx:326-330`): ряд папок —
+                сразу за «недавними», в DOM всегда (даже с одной «Все чаты»,
+                как у оригинала), на запросе сворачивается `is-collapsed`. */}
+            <div
+              ref={folderTabsRef}
+              className={classNames('popup-forward-folder-tabs-container', 'collapsable', searching ? 'is-collapsed' : '')}
+            />
           </>
         }
       />

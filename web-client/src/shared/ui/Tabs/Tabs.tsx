@@ -6,7 +6,7 @@
 // Compound API:
 //   <Tabs value={v} onChange={setV} order={['a','b','c']}>
 //     <Tabs.List framed>
-//       <Tabs.Tab value="a" badge={3}>Label A</Tabs.Tab> …
+//       <Tabs.Tab value="a">Label A</Tabs.Tab> …
 //     </Tabs.List>
 //   </Tabs>
 import {
@@ -58,7 +58,7 @@ export function Tabs({
 
 // Ряд табов (tweb .menu-horizontal-div). `framed` оборачивает в карточку-скролл
 // (tweb .menu-horizontal-scrollable: surface-фон, скруглённый, с тенью).
-function List({ children, framed, className }: { children: ReactNode; framed?: boolean; className?: string }) {
+function List({ children, framed }: { children: ReactNode; framed?: boolean }) {
   const { value, items, bgs } = useTabs()
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevRef = useRef<TabValue | null>(null)
@@ -109,20 +109,15 @@ function List({ children, framed, className }: { children: ReactNode; framed?: b
     </div>
   )
   if (!framed) return row
-  return <div className={classNames('menu-horizontal-scrollable', className ?? '')}>{row}</div>
+  return <div className="menu-horizontal-scrollable">{row}</div>
 }
 
 function Tab({
   value,
   children,
-  badge,
-  onContextMenu,
 }: {
   value: TabValue
   children: ReactNode
-  badge?: number
-  /** правый клик по табу (tweb: контекстное меню папки) */
-  onContextMenu?: (e: React.MouseEvent) => void
 }) {
   const { value: active, select, items, bgs } = useTabs()
   const isActive = active === value
@@ -133,17 +128,9 @@ function Tab({
         else items.current.delete(value)
       }}
       onClick={() => select(value)}
-      onContextMenu={onContextMenu}
       className={classNames('menu-horizontal-div-item', isActive ? 'active' : '')}
     >
-      <span className="menu-horizontal-div-item-span">
-        {children}
-        {badge != null && badge > 0 && (
-          // Неактивный таб — серый бейдж; `.menu-horizontal-div-item.active .badge`
-          // сам перекрашивает его в акцент (_slider.scss:87).
-          <span className={classNames('badge', 'badge-20', 'badge-gray')}>{badge > 99 ? '99+' : badge}</span>
-        )}
-      </span>
+      <span className="menu-horizontal-div-item-span">{children}</span>
       <div
         ref={(el) => {
           if (el) bgs.current.set(value, el)
