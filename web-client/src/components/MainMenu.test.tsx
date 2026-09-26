@@ -18,6 +18,7 @@ import { ManagersProvider } from '../core/hooks/useManagers'
 import type { Managers } from '../client/bootstrap'
 import lang from '@/lang'
 import { DEFAULTS, useSettingsStore } from '../settings'
+import { applyLang } from '@/test/lang'
 
 // Меню читает реестр аккаунтов при открытии — больше от менеджеров ему ничего не нужно.
 const fakeManagers = { auth: { listAccounts: vi.fn(async () => []) } } as unknown as Managers
@@ -89,5 +90,48 @@ describe('MainMenu — дерево бургер-меню 1:1 с tweb', () => {
 
     expect(useSettingsStore.getState().liteMode).toEqual({ ...DEFAULTS.liteMode, gif: true, animations: true })
     useSettingsStore.getState().update({ liteMode: { ...DEFAULTS.liteMode } })
+  })
+})
+
+// Ночной режим живёт здесь, а не строкой в корне настроек: tweb
+// `sidebarLeft/index.ts` `createMoreSubmenu` — ПЕРВЫЙ пункт подменю «Ещё»,
+// иконка `darkmode`, подпись по текущей теме (`EnableDarkMode`/`DisableDarkMode`),
+// круг перехода темы — из центра иконки пункта (`toggleTheme`).
+describe('MainMenu — пункт тёмного режима (tweb createMoreSubmenu)', () => {
+  const openMore = () => {
+    act(() => { fireEvent.mouseEnter(document.querySelector('.btn-menu-item.submenu-trigger')!) })
+    return document.querySelector('.btn-menu-submenu')!.querySelector('.btn-menu-item')!
+  }
+  const mountWith = (onToggleMode: (c?: { x: number; y: number }) => void) => render(
+    <ManagersProvider managers={fakeManagers}>
+      <MainMenu open onClose={() => {}} onOpenSettings={() => {}} onToggleMode={onToggleMode} />
+    </ManagersProvider>,
+  )
+
+  afterEach(() => { useSettingsStore.setState({ themeChoice: 'system' }) })
+
+  it('в светлой теме первый пункт подменю — «Enable Dark Mode»', async () => {
+    await applyLang('en')
+    useSettingsStore.setState({ themeChoice: 'day' })
+    mountWith(() => {})
+    expect(openMore().querySelector('.btn-menu-item-text')!.textContent).toBe('Enable Dark Mode')
+  })
+
+  it('в тёмной — «Disable Dark Mode»', async () => {
+    await applyLang('en')
+    useSettingsStore.setState({ themeChoice: 'night' })
+    mountWith(() => {})
+    expect(openMore().querySelector('.btn-menu-item-text')!.textContent).toBe('Disable Dark Mode')
+  })
+
+  it('клик переключает тему с координатами центра иконки пункта', async () => {
+    await applyLang('en')
+    const toggle = vi.fn()
+    mountWith(toggle)
+    const item = openMore()
+    const icon = item.querySelector<HTMLElement>('.btn-menu-item-icon')!
+    icon.getBoundingClientRect = () => ({ left: 10, top: 20, width: 24, height: 30 }) as DOMRect
+    fireEvent.click(item)
+    expect(toggle).toHaveBeenCalledWith({ x: 22, y: 35 })
   })
 })

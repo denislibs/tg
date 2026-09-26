@@ -1,24 +1,31 @@
 /** @jsxImportSource solid-js */
 /**
  * Тесты вкладки «Язык» (`language.solid.tsx`, порт tweb
- * `sidebarLeft/tabs/language.tsx`).
+ * `sidebarLeft/tabs/language.tsx`, 812502980).
  *
- * Вкладка гоняется НАСТОЯЩАЯ — через `AppLanguageTab` из `solidJsTabs/tabs.ts`:
- * так под пином оказывается и объявление вкладки (заголовок, ленивый модуль),
- * и её содержимое. Стаб — только слайдер (`sliderTab.testStub.ts`, общий с
- * остальными тестами вкладок) и менеджер языков.
+ * Вкладка гоняется НАСТОЯЩАЯ — `AppLanguageTab` из `solidJsTabs/tabs.ts`,
+ * открытая через хост (`settingsSliderHost.ts`) тем же путём, что строка корня
+ * настроек: под пином и объявление вкладки, и её содержимое, и уборка острова на
+ * закрытии. Стабы — только границы: менеджер языков (воркер), применение пакета
+ * (`I18n`) и геометрия (happy-dom её не считает).
  *
- * Предмет проверок — ровно то, чем вкладка отличается от «списка строк»:
+ * Предмет проверок:
+ *  • разметка HEAD — `form` со строками `Row.RadioField` + `Row.Title` +
+ *    `Row.Subtitle` прямо в секции, радио `disable-hover` (tweb `:127-150`);
  *  • открытие ЖДЁТ список (сбор в `promiseCollector`), а не въезжает пустым;
  *  • порядок строк — СЕРВЕРНЫЙ, вкладка его не сортирует;
- *  • отмечен ПРИМЕНЁННЫЙ язык, а не тот, по которому кликнули;
- *  • клик применяет язык через ядро.
+ *  • на открытии отмечен ПРИМЕНЁННЫЙ язык, а не первый в списке;
+ *  • клик по строке применяет язык ровно один раз и переносит отметку.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Managers } from '@/client/bootstrap'
 import type { LangPackLanguage } from '@layer'
+import type SliderSuperTab from '@components/sliderTab'
+import lang from '@/lang'
 import I18n from '@lib/langPack'
-import { createSliderStub } from '@components/sliderTab.testStub'
 import { AppLanguageTab } from '@components/solidJsTabs/tabs'
+import { createSettingsSliderHost, type SettingsSliderHost } from '../settingsSliderHost'
+import { installSpecLabelActivation } from '@/test/specLabelActivation'
 
 /** Поля конструктора, которые вкладка не читает, но тип требует. */
 const rest = { plural_code: '', strings_count: 0, translated_count: 0, translations_url: '' }
@@ -29,107 +36,179 @@ const LANGS: LangPackLanguage[] = [
   { _: 'langPackLanguage', name: 'German', native_name: 'Deutsch', lang_code: 'de', pFlags: {}, ...rest },
 ]
 
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+let host: SettingsSliderHost
+let uninstallLabelActivation: () => void
 let getLanguages: ReturnType<typeof vi.fn>
 let getCacheLangPackAndApply: ReturnType<typeof vi.spyOn>
 let getLangPackAndApply: ReturnType<typeof vi.spyOn>
 
-function makeTab() {
-  const tab = new AppLanguageTab(createSliderStub(), true)
-  tab.managers = { langPack: { getLanguages } } as never
-  return tab
-}
-
 beforeEach(() => {
-  getLanguages = vi.fn(async () => LANGS)
+  uninstallLabelActivation = installSpecLabelActivation()
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width: 420 } as DOMRect)
+
+  getLanguages = vi.fn(async() => LANGS)
   getCacheLangPackAndApply = vi.spyOn(I18n, 'getCacheLangPackAndApply')
     .mockResolvedValue({ _: 'langPackDifference', lang_code: 'ru', from_version: 0, version: 1, strings: [] })
   getLangPackAndApply = vi.spyOn(I18n, 'getLangPackAndApply').mockResolvedValue(undefined)
+
+  const managers = { langPack: { getLanguages } } as unknown as Managers
+  const columnEl = document.createElement('div')
+  columnEl.id = 'column-left'
+  document.body.append(columnEl)
+  host = createSettingsSliderHost(columnEl, managers)
 })
 
-afterEach(() => {
+afterEach(async() => {
+  uninstallLabelActivation()
+  host.destroy()
+  await pause(400)
+  document.body.replaceChildren()
   vi.restoreAllMocks()
 })
 
-describe('вкладка «Язык»', () => {
-  it('к моменту открытия список УЖЕ нарисован', async () => {
-    const tab = makeTab()
-    await tab.open()
+const open = () => host.openTab(AppLanguageTab)
 
-    const rows = tab.scrollable.container.querySelectorAll('.row')
-    expect(rows).toHaveLength(LANGS.length)
+const radios = (tab: SliderSuperTab) =>
+  [...tab.scrollable.container.querySelectorAll<HTMLInputElement>('input[type="radio"]')]
+
+const checkedCodes = (tab: SliderSuperTab) => radios(tab).filter((input) => input.checked).map((input) => input.value)
+
+/** Строка по английскому имени языка. */
+function row(tab: SliderSuperTab, name: string) {
+  const el = [...tab.scrollable.container.querySelectorAll('.row')]
+    .find((r) => r.querySelector('.row-title')?.textContent === name)
+  if(!el) throw new Error('no row ' + name)
+  return el as HTMLElement
+}
+
+describe('вкладка «Язык» — разметка HEAD', () => {
+  it('одна секция без имени: строки — прямые дети form в карточке, без обёртки', async() => {
+    const tab = await open()
+
+    const containers = tab.scrollable.container.querySelectorAll('.sidebar-left-section-container')
+    // Секция перевода сообщений (tweb `TranslateSection`) не портирована — шапка файла.
+    expect(containers).toHaveLength(1)
+    expect(containers[0].querySelector('.sidebar-left-section-name')).toBeNull()
+
+    const form = containers[0].querySelector('.sidebar-left-section-content > form')!
+    expect(form).not.toBeNull()
+    expect([...form.children].map((child) => child.classList.contains('row'))).toEqual([true, true, true])
   })
 
-  it('открытие ЖДЁТ ответ ручки, а не показывает пустую секцию', async () => {
+  it('строка: радио слева (row-radio-field, disable-hover), имя — .row-title, самоназвание — .row-subtitle', async() => {
+    const tab = await open()
+
+    const russian = row(tab, 'Russian')
+    expect(russian.tagName).toBe('LABEL')
+    expect(russian.classList.contains('row-with-padding')).toBe(true)
+    expect(russian.querySelector('.row-subtitle')!.textContent).toBe('Русский')
+
+    const field = russian.querySelector('.radio-field')!
+    expect([...field.classList].sort()).toEqual(['disable-hover', 'radio-field', 'row-radio-field'])
+    // Слева, а не в правой части заголовка (`radioFieldRight` у «Языка» нет).
+    expect(field.parentElement).toBe(russian)
+    expect(russian.querySelector('.row-title-right')).toBeNull()
+  })
+
+  it('все радио — одна группа (общий name)', async() => {
+    const tab = await open()
+    const names = new Set(radios(tab).map((input) => input.name))
+    expect(names.size).toBe(1)
+    expect([...names][0]).not.toBe('')
+  })
+})
+
+describe('вкладка «Язык» — список', () => {
+  it('открытие ЖДЁТ ответ ручки, а не показывает пустую секцию', async() => {
     let release!: (langs: LangPackLanguage[]) => void
     getLanguages.mockImplementation(() => new Promise<LangPackLanguage[]>((r) => { release = r }))
 
-    const tab = makeTab()
     const opened = vi.fn()
-    const p = tab.open().then(opened)
+    const p = open()
+    void p.then(opened)
 
     // Граница макрозадачи сливает всю очередь микрозадач — тот же приём, что в
     // `scaffoldSolidJSTab.solid.test.tsx`: считать тики вручную хрупко.
-    await new Promise((r) => setTimeout(r, 0))
+    await pause(0)
     expect(opened).not.toHaveBeenCalled()
 
     release(LANGS)
-    await p
+    const tab = await p
     expect(opened).toHaveBeenCalled()
+    expect(tab.scrollable.container.querySelectorAll('.row')).toHaveLength(LANGS.length)
   })
 
-  it('порядок строк — серверный, вкладка его НЕ сортирует', async () => {
-    const tab = makeTab()
-    await tab.open()
-
-    const codes = [...tab.scrollable.container.querySelectorAll<HTMLInputElement>('input[type="radio"]')]
-      .map((input) => input.value)
+  it('порядок строк — серверный, вкладка его НЕ сортирует', async() => {
+    const tab = await open()
     // Английский, русский, немецкий — в выдаче именно так (предложенные первыми),
     // алфавит дал бы 'de', 'en', 'ru'.
-    expect(codes).toEqual(['en', 'ru', 'de'])
+    expect(radios(tab).map((input) => input.value)).toEqual(['en', 'ru', 'de'])
   })
 
-  it('строка несёт имя языка и его самоназвание', async () => {
-    const tab = makeTab()
-    await tab.open()
-
-    const row = tab.scrollable.container.querySelectorAll('.row')[1]
-    expect(row.textContent).toContain('Russian')
-    expect(row.textContent).toContain('Русский')
-  })
-
-  it('отмечен ПРИМЕНЁННЫЙ язык, а не первый в списке', async () => {
-    const tab = makeTab()
-    await tab.open()
-
-    const checked = [...tab.scrollable.container.querySelectorAll<HTMLInputElement>('input[type="radio"]')]
-      .filter((input) => input.checked)
-      .map((input) => input.value)
-
+  it('отмечен ПРИМЕНЁННЫЙ язык, а не первый в списке', async() => {
+    const tab = await open()
     expect(getCacheLangPackAndApply).toHaveBeenCalled()
-    expect(checked).toEqual(['ru'])
+    expect(checkedCodes(tab)).toEqual(['ru'])
   })
 
-  it('применённого языка нет в серверном списке — молча ничего не отмечено', async () => {
+  it('применённого языка нет в серверном списке — молча ничего не отмечено', async() => {
     getCacheLangPackAndApply.mockResolvedValue(
       { _: 'langPackDifference', lang_code: 'xx', from_version: 0, version: 1, strings: [] } as never,
     )
 
-    const tab = makeTab()
-    await expect(tab.open()).resolves.toBeUndefined()
+    const tab = await open()
+    expect(checkedCodes(tab)).toHaveLength(0)
+  })
+})
 
-    const checked = [...tab.scrollable.container.querySelectorAll<HTMLInputElement>('input[type="radio"]')]
-      .filter((input) => input.checked)
-    expect(checked).toHaveLength(0)
+describe('вкладка «Язык» — выбор', () => {
+  it('клик по ТЕКСТУ строки применяет язык ровно один раз и переносит отметку', async() => {
+    const tab = await open()
+
+    row(tab, 'German').querySelector<HTMLElement>('.row-title')!.click()
+
+    expect(getLangPackAndApply).toHaveBeenCalledTimes(1)
+    expect(getLangPackAndApply).toHaveBeenCalledWith('de')
+    expect(checkedCodes(tab)).toEqual(['de'])
   })
 
-  it('выбор строки применяет язык через ядро', async () => {
-    const tab = makeTab()
-    await tab.open()
+  it('клик по радио — тоже ровно один раз', async() => {
+    const tab = await open()
 
-    const german = tab.scrollable.container.querySelector<HTMLInputElement>('input[value="de"]')!
-    german.checked = true
-    german.dispatchEvent(new Event('change', { bubbles: true }))
+    row(tab, 'German').querySelector<HTMLInputElement>('input[type="radio"]')!.click()
 
+    expect(getLangPackAndApply).toHaveBeenCalledTimes(1)
     expect(getLangPackAndApply).toHaveBeenCalledWith('de')
+  })
+
+  it('клик по уже отмеченному языку ничего не применяет', async() => {
+    const tab = await open()
+
+    row(tab, 'Russian').querySelector<HTMLElement>('.row-title')!.click()
+
+    expect(getLangPackAndApply).not.toHaveBeenCalled()
+  })
+})
+
+describe('вкладка «Язык» — каркас', () => {
+  it('шапка — Telegram.LanguageViewController, с линией; контейнер language-container', async() => {
+    const tab = await open()
+    expect(tab.container.querySelector('.sidebar-header__title')!.textContent)
+      .toBe(lang['Telegram.LanguageViewController'])
+    expect(tab.header.classList.contains('with-border')).toBe(true)
+    expect(tab.container.classList.contains('language-container')).toBe(true)
+  })
+
+  it('после закрытия Solid-остров снят: строк в DOM нет (DoD 5)', async() => {
+    const tab = await open()
+    expect(document.querySelectorAll('.row').length).toBeGreaterThan(0)
+
+    tab.close()
+    await pause(400)
+
+    expect(document.querySelectorAll('.row')).toHaveLength(0)
+    expect(tab.container.isConnected).toBe(false)
   })
 })

@@ -69,7 +69,6 @@ import type { SliderSuperTabConstructable, SliderSuperTabEventable, SliderSuperT
 import CheckboxField, { CheckboxFieldOptions } from '@components/checkboxField'
 import RadioField from '@components/radioField'
 import ripple from '@components/ripple'
-import RadioForm from '@components/radioForm'
 import Button from '@components/button'
 import Icon from '@components/icon'
 import { setRowIconBackground } from '@helpers/rowIconBackground'
@@ -446,47 +445,4 @@ export default class Row<T extends SliderSuperTabEventableConstructable = any> {
   public toggleSorting(enabled?: boolean) {
     this.container.classList.toggle('cant-sort', !enabled)
   }
-}
-
-export const RadioFormFromRows = (rows: Row[], onChange: (value: string) => void) => {
-  return RadioForm(rows.map((r) => ({ container: r.container, input: r.radioField.input })), onChange)
-}
-
-export const RadioFormFromValues = (values: {
-  // Имя поля — как в оригинале (tweb row.ts:395 `langPackKey`), а НЕ `langKey`
-  // (RadioField.langKey, tweb radioField.ts:17): вкладки настроек копируются
-  // из tweb почти дословно, и расхождение в имени поля здесь дало бы TS-ошибку
-  // на месте порта, а не рабочий код.
-  langPackKey?: LangPackKey,
-  value: number | string,
-  checked?: boolean,
-  textElement?: HTMLElement | DocumentFragment
-}[], onChange: Parameters<typeof RadioFormFromRows>[1], fireInit?: boolean) => {
-  const name = 'name-' + (Math.random() * 0x7FFFFF | 0)
-  let checkedRadioField: RadioField | undefined
-  const rows = values.map(({ langPackKey, value, checked, textElement }) => {
-    // tweb row.ts:397-405 (старая база) отдавал текст самому радио; у радио
-    // HEAD подписи нет (`radioField.ts`), поэтому текст — заголовком строки.
-    const row = new Row({
-      radioField: new RadioField({
-        name,
-        value: '' + value,
-      }),
-      title: textElement,
-      titleLangKey: langPackKey,
-    })
-
-    if(checked) {
-      checkedRadioField = row.radioField
-    }
-
-    return row
-  })
-
-  const form = RadioFormFromRows(rows, onChange)
-  if(checkedRadioField) {
-    if(fireInit) checkedRadioField.checked = true
-    else checkedRadioField.setValueSilently(true)
-  }
-  return form
 }

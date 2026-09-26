@@ -11,6 +11,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@environment/touchSupport', () => ({ default: false }))
 
+// Корень оверлеев подменяется узлом ВНЕ body (сосед body под <html>): курсор жеста
+// и глотание клика после перестановки обязаны уйти в `getOverlayRoot()`
+// (tweb sortable.ts:98, :252), а не в `document.body` напрямую.
+const overlay = vi.hoisted(() => ({ root: undefined as HTMLElement | undefined }))
+vi.mock('@helpers/appWindow', () => ({ getOverlayRoot: () => overlay.root ?? document.body }))
+
 import { useSettingsStore } from '@/settings'
 import { getMiddleware } from '@helpers/middleware'
 import Sortable from './sortable'
@@ -126,5 +132,33 @@ describe('Sortable', () => {
     expect(rows[1].classList.contains('is-dragging')).toBe(false)
     expect(onSort).not.toHaveBeenCalled()
     middleware.destroy()
+  })
+
+  it('курсор жеста и глотание клика — на getOverlayRoot() (tweb :98, :252)', async() => {
+    const root = overlay.root = document.createElement('div')
+    document.documentElement.append(root)
+    const target = document.createElement('button')
+    root.append(target)
+    try {
+      const { list, rows } = makeList(3)
+      const middleware = getMiddleware()
+      new Sortable({ list, middleware: middleware.get(), onSort: vi.fn() })
+
+      let cursorDuringDrag: [string, string] | undefined
+      await drag(rows[1], 75, 25, () => {
+        cursorDuringDrag = [root.style.getPropertyValue('cursor'), document.body.style.getPropertyValue('cursor')]
+      })
+      expect(cursorDuringDrag).toEqual(['grabbing', ''])
+
+      // клик, завершающий перестановку, глотается в фазе захвата на корне оверлеев
+      const onClick = vi.fn()
+      target.addEventListener('click', onClick)
+      target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }))
+      expect(onClick).not.toHaveBeenCalled()
+      middleware.destroy()
+    } finally {
+      overlay.root = undefined
+      root.remove()
+    }
   })
 })

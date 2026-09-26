@@ -52,6 +52,15 @@ export const AppNotificationsTab =
     getComponentModule: () => import('../sidebarLeft/tabs/notifications.solid'),
   })
 
+// tweb :113-117. Форма обычная, без полезной нагрузки: вкладка статична, настроек
+// не пишет. Открывает её строка корня настроек `KeyboardShortcuts.Title`
+// (tweb `settings.tsx:413-416`).
+export const AppKeyboardShortcutsTab =
+  scaffoldSolidJSTab({
+    title: 'KeyboardShortcuts.Title',
+    getComponentModule: () => import('../sidebarLeft/tabs/keyboardShortcuts.solid'),
+  })
+
 // tweb :241-245. Форма обычная, без полезной нагрузки: галочки вкладка читает
 // сама (мост `useAppSettings`, `liteMode`). Открывает её строка «Общих»
 // `LiteMode.Title` (tweb `generalSettings.tsx:89`).
@@ -59,4 +68,32 @@ export const AppPowerSavingTab =
   scaffoldSolidJSTab({
     title: 'LiteMode.Title',
     getComponentModule: () => import('../sidebarLeft/tabs/powerSaving.solid'),
+  })
+
+// tweb :419-443 — «Данные и память» и её вкладки автозагрузки, все eventable:
+// корень пишет квоту кэша на своём `destroy` (`dataAndStorage/index.tsx:83-87`).
+// Открывает корень строка `DataSettings` корня настроек (tweb `settings.tsx`,
+// `makeSubTabConfig`), вкладки автозагрузки — строки Photos/Videos/Files.
+export const AppAutoDownloadPhotoTab =
+  scaffoldSolidJSTabEventable({
+    title: 'AutoDownloadPhotos',
+    getComponentModule: () => import('../sidebarLeft/tabs/autoDownload/photo.solid'),
+  })
+
+export const AppAutoDownloadVideoTab =
+  scaffoldSolidJSTabEventable({
+    title: 'AutoDownloadVideos',
+    getComponentModule: () => import('../sidebarLeft/tabs/autoDownload/video.solid'),
+  })
+
+export const AppAutoDownloadFileTab =
+  scaffoldSolidJSTabEventable({
+    title: 'AutoDownloadFiles',
+    getComponentModule: () => import('../sidebarLeft/tabs/autoDownload/file.solid'),
+  })
+
+export const AppDataAndStorageTab =
+  scaffoldSolidJSTabEventable({
+    title: 'DataSettings',
+    getComponentModule: () => import('../sidebarLeft/tabs/dataAndStorage/index.solid'),
   })

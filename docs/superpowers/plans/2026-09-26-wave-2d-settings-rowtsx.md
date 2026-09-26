@@ -572,7 +572,7 @@ React-экран как список сценариев; **Шаг 2** — пад
 «Готово когда» у всех включает: старый React-файл удалён в том же PR, `git grep` по его имени
 пуст, «у нас» обновлено.
 
-### Задача 7: «Данные и память» + автозагрузка
+### Задача 7: «Данные и память» + автозагрузка — ✅ сделано (PR feat/w2d-data-storage)
 
 **Порт:** `dataAndStorage/index.tsx` + `storageQuota.tsx` (+ `.module.scss`) →
 `sidebarLeft/tabs/dataAndStorage/{index,storageQuota}.solid.tsx`; `autoDownload/{autoDownloadTab,
@@ -593,7 +593,27 @@ delete primaryTransparent` + `confirmationPopup` (`:72-81`), квота — 2 с
 **Отдельно выяснить:** строка «Cached video stream chunks» (`storageQuota.tsx:374-382`) — есть ли у
 нас кэш потоковых чанков (SW `/dnp-stream/`); нет — О-6.
 
-### Задача 8: «Язык» → HEAD
+**Итог задачи 7 (2026-09-26) — что учесть следующим экранам:**
+- О-6 выяснено: корзин потоковых чанков нет (DNP-стрим собирает SW без CacheStorage, DNP-OFF —
+  токен-URL мимо кэша); `watchedCachedStorageNames` у нас = `cachedFiles`. Строки нет, у места —
+  комментарий с номером.
+- `useAppSettings` расширен (шапка `stores/appSettings.solid.ts`, п. 2, 6, 7): лист с `codec`
+  (обратный смысл ключа — `autoDownloadNew.pFlags.disabled` ↔ `autoDownloadEnabled`), путь внутрь
+  значения-объекта, запись поддерева одним `update` со слиянием верхнего уровня (как `setStore`
+  Solid-стора), `SETTINGS_INIT` — представление над `DEFAULTS`. Задаче 11 (`liteMode`) и прочим —
+  дописывать таблицу, форму записи не изобретать.
+- Из Solid-вкладки дочерняя вкладка открывается `(tab.slider as SidebarSlider).createTab(T).open()`:
+  узкий контракт `SliderSuperTabSlider` (`sliderTab.ts`) `createTab` не объявляет. Добавить его в
+  контракт (и в `sliderTab.testStub.ts`) — одной правкой, когда таких вызывающих станет больше.
+- `CheckboxFieldTsx stateKey` у нас нет — поля по ключу состояния пишутся `checked`/`onChange`
+  через `useAppSettings` (расхождение в шапке `autoDownload/peerTypeSection.solid.tsx`).
+- Шим `installSpecLabelActivation` — общий модуль `src/test/specLabelActivation.ts` (задача 8).
+- Побочка `cacheTTL`/`cacheSize` → SW — подписчик `core/mediaCache.ts::watchCacheSettings`.
+- Стенд не прощёлкан (эксклюзивно у другого агента): пункт чеклиста `settings-rows.md` открыт.
+- Шапка `solidJsTabs/tabs.ts` («их три») устарела — не правилась ради механического слияния с
+  задачами 8/10/11; поправить в сводном docs-PR.
+
+### Задача 8: «Язык» → HEAD — ✅ сделано (PR feat/w2d-language)
 
 **Порт:** дельта `e52b5d931 → 812502980` в `language.tsx` (референс § 8.2, отчёт сверки): список
 — `createSignal` + `For` + `Row.RadioField`/`RadioFieldTsx class="disable-hover"`, `Row.Title
@@ -603,6 +623,16 @@ name` + `Row.Subtitle native_name` (`:98-154`) вместо `new Row` + `RadioFo
 **Файлы:** `sidebarLeft/tabs/language.solid.tsx` (+ тест). Врезки нет (вкладка уже заведена).
 **Мутация:** снять `disable-hover` — тест класса краснеет. **Зависимости:** 0, 1, 2.
 **Готово когда:** `git grep -n "components/row'" web-client/src/components/sidebarLeft/tabs/language.solid.tsx` пуст.
+
+**Итог (2026-09-26):** список — дословно `:98-154` (`createSignal` + `For` + `RadioFieldTsx
+class="disable-hover"`, `form` прямо в секции); `TranslateSection` не портирован — обоснование #133
+сверено заново и верно (вызывающих `messages.translate` нет, `usePremium`/`pickLanguage` нет,
+настройки перевода никто не читает). Сверх плана: с последним потребителем сняты
+`RadioFormFromRows`/`RadioFormFromValues` (`row.ts`) и `radioForm.ts` + тест — предусловие задачи 31
+«`radioForm` без потребителей» закрыто досрочно (у tweb HEAD `radioForm.ts` жив ради
+`ButtonMenuSync.radioGroups`, у нас не портированных). Шим `installSpecLabelActivation` вынесен из
+теста пилота в `web-client/src/test/specLabelActivation.ts` — брать оттуда. RTL-признак
+(`setDocumentLangPackProperties`) не трогался: PR #291 не влит. Новых ключей нет.
 
 ### Задача 9: «Устройства» → HEAD + экран сессии (944b578e9)
 
@@ -627,7 +657,7 @@ payload `{authorization, onTerminate?, onSettingsChanged?}`), `core/managers/ses
 **Зависимости:** 0, 1, 3, 5 (`MediaHeader`, `InlineSelect` для TTL). **Готово когда:**
 `git grep -n "components/row'\|settingSection'" web-client/src/components/sidebarLeft` пуст.
 
-### Задача 10: «Горячие клавиши»
+### Задача 10: «Горячие клавиши» — ✅ сделано (PR feat/w2d-shortcuts)
 
 **Порт:** `keyboardShortcuts.tsx` (292) + `.module.scss` → `sidebarLeft/tabs/keyboardShortcuts.solid.tsx`;
 вкладка `AppKeyboardShortcutsTab` :113. 8 секций с подписями Formatting/Messages, `ShortcutRow` =
@@ -638,6 +668,23 @@ payload `{authorization, onTerminate?, onSettingsChanged?}`), `core/managers/ses
 **Мутация:** `titleRight` без `titleRightSecondary` — тест класса краснеет.
 **Зависимости:** 0, 1, 5. **Врезка:** `tabs.ts`, `SettingsView.tsx`, `SettingsSubScreen.tsx`; удалить
 `settings/HotkeysSettings.tsx` + `.module.scss` + `.test.tsx`.
+
+**Итог (2026-09-26).** Уточнение координатора: на вкладке — только сочетания, которые клиент
+обрабатывает, без записи в «Отложено». Отсюда поправки к постановке:
+- `sendShortcut` у нас нет (ни настройки, ни `isSendShortcutPressed`) — строка Send статичная
+  (Enter), без `InlineSelect`; вместе с выбором ушла и подпись `Section.Messages.Caption`
+  («Choose how messages are sent…» — выбирать нечего). О-10 НЕ заводится. Зависимость от 5
+  (`InlineSelect`) фактически не понадобилась.
+- `JumpToInputStart/End` не портируются: у tweb это каретка в поле (`chat/input.ts:3187-3200`),
+  у нас Ctrl+PageUp/PageDown листает ленту (`useFeedPageHotkeys`, своей строки у tweb нет).
+- Секция Other/`LockPasscode` вернётся с задачей 18, когда появится сочетание блокировки
+  (`ShortcutBuilder`) — отметить там.
+- Врезка тронула ещё `settingsSubScreen.reachable.test.ts` (нижние границы 7 → 6 и 3 → 4) — ту же
+  строку правит каждый переезжающий экран.
+- С экраном снесены 10 ключей, которые читал только он (в т.ч. ключи tweb `MediaZoomIn`/
+  `MediaZoomOut`/`Undo`); числа пинов `dict.test.ts` вернулись к прежним, отпечатки — новые.
+- Шапка `solidJsTabs/tabs.ts` («у нас их три…») не правилась: общий файл, строку правят все
+  врезки — поправить одной правкой после очереди.
 
 ### Задача 11: «Энергосбережение» — ✅ сделано (PR feat/w2d-power-saving)
 
@@ -891,6 +938,10 @@ Shortcuts; Premium-секция — `showPremiumPopup`/`showStarsPopup`/`showSen
 `premiumBlocked`. Наши лишние строки «Ночной режим», карточка контактов, `EmojiStatus.Set`,
 `PremiumManage` — у tweb их в корне нет: удалить (продуктовый вопрос — вынести пользователю
 до задачи, ответ — в коммит).
+> **Заметка:** состав строк корня уже выровнен PR `fix/settings-root-items` — «Ночной режим»,
+> `EmojiStatus.Set` и подзаголовок Premium сняты, «Мои звёзды» добавлены, вход в выбор статуса —
+> кнопка `.sidebar-emoji-status` в шапке колонки; порт переносит этот состав (пин
+> `SettingsView.rootItems.test.tsx`) и остаток — карточку контактов, `PremiumManage`, ключи tweb.
 
 **Снос шва** (`settings-rows.md` § «Ключевой шов»): слайдер переезжает на колоночный
 `.sidebar-slider` (`Sidebar.tsx:350`), вкладка №0 — `.item-main` React-колонки (узлом владеет
@@ -961,7 +1012,7 @@ media; брать задачу, когда в них нет открытых в�
 | О-3 | Секция «Stories» уведомлений (`:112-235`) | нет `stories_muted`/`stories_hide_sender` в `/me/notify_settings` (`notify_handler.go:27-47`) | уведомления о новых историях |
 | О-4 | Секция «Reactions» (`:237-347`) | нет `account.get/setReactionsNotifySettings` | уведомления о реакциях |
 | О-5 | «Contact joined» (`:349-377`) | нет `get/setContactSignUpNotification` | уведомление о новом контакте |
-| О-6 | «Cached video stream chunks» (`storageQuota.tsx:374-382`) | выяснить в задаче 7: есть ли кэш потоковых чанков | полная квота кэша |
+| О-6 | «Cached video stream chunks» (`storageQuota.tsx:374-382`) и их доля в «Clear All» | корзин потоковых чанков у нас нет (выяснено задачей 7): DNP-стрим собирает SW из Noise-канала без CacheStorage (`public/sw.js`, `/dnp-stream/`), DNP-OFF — токен-URL мимо кэша | кэш потоковых чанков видео (HLS/стрим в CacheStorage) |
 | О-7 | TTL сессий (`activeSessions.tsx:238-292`, `:392`) | `authorization_ttl_days` всегда 0, нет `setAuthorizationTTL` (`backend/internal/domain/mtaccount.go:105-122`) | автозавершение неактивных сессий |
 | О-8 | `changeAuthorizationSettings` — AcceptSecretChats/AcceptIncomingCalls (`session.tsx:112-143`, `speakersAndCamera.tsx`) | нет ручки и колонок | запрет звонков/секретных чатов на устройстве |
 | О-9 | Переименование устройства (`activeSessions.tsx:211-236`) | сервер подставляет имя из UA (`backend/internal/usecase/auth/auth.go:291-294`) | своё имя устройства |
@@ -983,6 +1034,7 @@ media; брать задачу, когда в них нет открытых в�
 | О-25 | Личный канал в профиле | выяснить в задаче 27 (`updatePersonalChannel`) | секция PersonalChannel |
 | О-26 | Поиск по настройкам и меню шапки из 34f417d12 (`SliderSuperTab.shown`, NavigationItem `settings-search`, `tg://settings/…`) | волна 4 дельты; нужен индекс вкладок, который строится после переезда всех вкладок | поиск по настройкам |
 | О-27 | Попап настроек при свёрнутой колонке (`SettingsSliderPopup`, `createTab`-override `sidebarLeft/index.ts:1730-1741`) | предмет появляется только после задачи 28 | настройки поверх чата на узкой колонке |
+| ~~О-29~~ | ~~Модель отступов `MediaHeader` HEAD (`gap: .5rem`) и под неё `authFlow`~~ | **снято** (ветка `fix/w2d-mediaheader-rtl-overlay`): `mediaHeader.module.scss` дословно с HEAD, `auth/AuthFlow.module.scss` `.qrContainer`, карточки входа — `h1` и `class="secondary"`; отступы экрана входа = tweb HEAD, замеры — `docs/tweb/dom/auth.md` §8.4 | — |
 
 ## Оценка объёма
 

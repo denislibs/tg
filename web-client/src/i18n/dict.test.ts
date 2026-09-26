@@ -222,6 +222,39 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `NotificationsPrivateChats` («Private Chats»), у fr — заголовка
 // («Notifications»). ru 1346 → 1350, uk 682 → 686, es 681 → 685,
 // de/fr 681 → 684. `plural` не менялся.
+//
+// Выравнивание корня настроек по tweb (`fix/settings-root-items`): у ВСЕХ пяти
+// словарей снят `General.NightMode` — строки «Ночной режим» в корне у tweb нет
+// (ночной режим — пункт подменю «Ещё» бургера). У русского вдобавок сняты
+// выдумки `Premium.Row.Subtitle`/`Premium.Row.Active` (подзаголовка у строки
+// Premium у оригинала нет) и `DarkMode` (пункт бургера у tweb подписан по теме),
+// а добавлены четыре ключа 1:1 с tweb lang.ts — `EnableDarkMode`,
+// `DisableDarkMode`, `MenuTelegramStars`, `SetAsEmojiStatus`: у русского
+// −4 +4, число то же; у остальных −1 (поверх пилота: ru 1350, uk 685, es 684, de/fr 683).
+//
+// Задача 10 плана 2D (вкладка «Горячие клавиши», порт tweb keyboardShortcuts.tsx):
+// десять ключей tweb lang.ts — `KeyboardShortcuts.Action.{Send,OpenSearch,
+// SavedMessages,ZoomIn,ZoomOut,PlayPauseStory,CloseStories,Undo}`,
+// `KeyboardShortcuts.Section.Formatting.Caption`, `…Section.MediaEditor` — всем пяти
+// словарям (с английским дословно не совпал ни один): +10 каждому. ru 1350 → 1360,
+// uk 686 → 696, es 685 → 695, de/fr 684 → 694. Врезкой той же задачи снесён React-экран
+// `settings/HotkeysSettings.tsx`, а с ним — десять ключей, которые читал только он:
+// самодельные `KeyboardShortcuts.Action.{HistoryStart,HistoryEnd,PlayPause,Exit,LockApp}`,
+// `KeyboardShortcuts.Hint.PasscodeNotSet`, `KeyboardShortcuts.Section.PhotoEditor` и ключи
+// tweb `MediaZoomIn`/`MediaZoomOut`/`Undo` (на вкладке их место заняли ключи
+// `keyboardShortcuts.tsx`): −10 каждому. ru 1360 → 1350, uk 696 → 686, es 695 → 685,
+// de/fr 694 → 684 — числа те же, что до задачи, набор другой (см. `FINGERPRINT`).
+// Поверх корня настроек (снят `General.NightMode`): ru 1350, uk 685, es 684, de/fr 683.
+//
+// Задача 7 плана 2D («Данные и память» и автозагрузка): ключи tweb lang.ts
+// `AutoDownloadContacts/Groups/Channels/Off/Files` (подписи строк Photos/Videos/
+// Files), `AutodownloadContacts/Channels` (строки вкладок автозагрузки),
+// `StorageQuota.Clear/Other/FailedToCalculate` и формы числа `Seconds`/`Minutes`
+// (полная карта разрядов `wrapDuration.ts::DURATION_LANG_KEYS`). У fr нет двух
+// `…Contacts` — совпали с английским дословно. ru 1350 → 1362, uk 686 → 698,
+// es 685 → 697, de 684 → 696, fr 684 → 694; `plural` +2 у всех. Поверх корня настроек
+// (у uk/es/de/fr −1): ru 1362, uk 697, es 696, de 695, fr 693.
+//
 // Задача 11 плана 2D (вкладка «Энергосбережение»): +13 ключей tweb lang.ts —
 // `LiteMode.EnableText`/`Info`/`DisableAlert` и десять `LiteMode.Key.*.Title`
 // дерева ключей — всем пяти словарям: ru 1350 → 1363, uk 686 → 699, es 685 → 698,
@@ -229,12 +262,13 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // tweb нет или которых больше никто не читает (`LiteMode.Caption`,
 // `LiteMode.Key.background_animation.Title`, `LiteMode.Key.emoji.Title`,
 // `Animations`): −4 каждому словарю.
+// Поверх задач 7 и 10 и корня настроек (+9 каждому): ru 1371, uk 706, es 705, de 704, fr 702.
 const COMPOSITION = {
-  ru: { keys: 1359, plural: 35 },
-  uk: { keys: 695, plural: 24 },
-  es: { keys: 694, plural: 24 },
-  de: { keys: 693, plural: 24 },
-  fr: { keys: 693, plural: 24 },
+  ru: { keys: 1371, plural: 37 },
+  uk: { keys: 706, plural: 26 },
+  es: { keys: 705, plural: 26 },
+  de: { keys: 704, plural: 26 },
+  fr: { keys: 702, plural: 26 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -330,13 +364,19 @@ const COMPOSITION = {
 // (разбор — у `COMPOSITION` выше). Портом 72c50bfef — `Notifications.Restricted`.
 // Пилотом 2D — заголовок вкладки уведомлений и три имени секций (разбор — у
 // `COMPOSITION` выше; de и fr расходятся по одному совпавшему ключу).
+// Выравниванием корня настроек по tweb — снят `General.NightMode` у всех пяти,
+// у русского ещё −3 +4 (разбор — у `COMPOSITION` выше).
+// Задачей 10 плана 2D — десять ключей вкладки «Горячие клавиши» всем пяти и снос
+// десяти ключей React-экрана (разбор — у `COMPOSITION` выше).
+// Задачей 7 плана 2D — ключи «Данных и памяти» и `Seconds`/`Minutes` (разбор —
+// у `COMPOSITION` выше).
 // Задачей 11 плана 2D — ключи «Энергосбережения» (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: 'ebe7b931',
-  uk: 'e5d786c0',
-  es: '72f4e408',
-  de: '71e1b490',
-  fr: 'f66de2b2',
+  ru: 'd3839cd8',
+  uk: '1457bdca',
+  es: 'fecb6edc',
+  de: '78f339b0',
+  fr: '8bf82c96',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

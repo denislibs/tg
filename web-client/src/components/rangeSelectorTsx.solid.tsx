@@ -7,15 +7,13 @@
  * — `RangeSettingSelector` (настройки: уведомления, общие, квота хранилища).
  *
  * Отличия от оригинала:
- *  1. RTL-отражение оси (`I18n.getIsRTL()`, tweb `:110-112`) не портировано —
- *     RTL-локалей у нас нет (то же отступление — в `rangeSelector.ts` и
- *     `lib/langPack.ts`).
- *  2. Под наш strict: рефы — `!`, `removeListeners` — `| undefined`
+ *  1. Под наш strict: рефы — `!`, `removeListeners` — `| undefined`
  *     (у tweb `strict` выключен), поведение то же.
  */
 import { createSignal, onMount, onCleanup, createEffect, type JSX } from 'solid-js'
 import attachGrabListeners, { type GrabEvent } from '@helpers/dom/attachGrabListeners'
 import clamp from '@helpers/number/clamp'
+import I18n from '@lib/langPack'
 import classNames from '@helpers/string/classNames'
 
 export interface RangeSelectorProps {
@@ -113,7 +111,7 @@ export default function RangeSelector(props: RangeSelectorProps) {
       rectMax -= offsetAxisValue
     }
 
-    const offsetAxisValue_ = clamp(
+    let offsetAxisValue_ = clamp(
       vertical ?
         -(event.y - currentRect.bottom) :
         event.x - currentRect.left - offsetAxisValue / 2,
@@ -121,7 +119,10 @@ export default function RangeSelector(props: RangeSelectorProps) {
       rectMax,
     )
 
-    // RTL-отражение tweb (`:110-112`) не портировано — см. шапку, п. 1
+    // tweb :110-112 — в RTL горизонтальная ось зеркальна
+    if(!vertical && I18n.getIsRTL()) {
+      offsetAxisValue_ = rectMax - offsetAxisValue_
+    }
 
     let val = min + (offsetAxisValue_ / rectMax * (max - min))
 
