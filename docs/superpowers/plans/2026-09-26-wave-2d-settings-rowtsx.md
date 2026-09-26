@@ -880,8 +880,9 @@ media; брать задачу, когда в них нет открытых в�
 | кит в `group/**` (11), `userInfo/RightsEditor.tsx`, `EditContactView.tsx` | вкладки правой колонки tweb `sidebarRight/tabs/*` (`editChat`, `chatType`, `chatReactions`, `groupPermissions`, `chatMembers`, `userPermissions`, `editContact`, …) на тех же примитивах 0–2 | **развилка**: отдельная волна правой колонки (спека § 8, волна 2 — «и правой панели») или расширение 2D |
 | кит/`usePopupTransition` в `Premium*`, `QrModal`, `EmojiStatusPicker`, `stars/*` | попапы 2C (`premium`, `myQrCode`, `emojiStatusPicker`, `stars`, `sendGift`, …) | после 2C |
 
-**Решение по развилке — за пользователем** (вынести до начала задачи). По умолчанию план ведёт
-первые две строки в 2D, групповые экраны — отдельной волной правой колонки, попапы — 2C; кит
+**Решение принято пользователем 2026-09-26 — вариант «отдельная волна»:** первые две строки
+(`ConfirmDialog`, `AvatarCropper`) — в 2D, групповые экраны и прочие вкладки правой колонки —
+отдельной волной правой колонки, попапы — 2C; кит
 **не переносится** в другое место (это была бы вторая копия под новым именем, DoD 14), а задача 31
 ждёт, пока `git grep -n "settings/kit" web-client/src` не опустеет.
 
