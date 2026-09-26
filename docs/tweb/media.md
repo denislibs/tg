@@ -1243,11 +1243,12 @@ wrapSticker (wrappers/sticker.ts:65)
 | Механизм | Строка | Поведение |
 |---|---|---|
 | Регистрация | `addAnimation()` `:256` | типы `'lottie' \| 'dots' \| 'video' \| 'emoji'`; `controlled: Middleware` авто-снимает по `onClean` |
-| Уход из вьюпорта | `onObserve` `:71-120` | пауза + для lottie `clearCacheWhenSafe()` (`:111`) — освобождение памяти кадров |
+| Уход из вьюпорта | `onObserve` `:71-120` | обходит КАЖДЫЙ item элемента (`forEachReverse` `:87`, cab52547f — у обезьянки входа два плеера в одном `.media-sticker-wrapper`); пауза + для lottie `clearCacheWhenSafe()` (`:111`) — освобождение памяти кадров |
+| Снятие с учёта | `removeAnimation()` `:212` | `unobserve` только когда с узла снят последний item (cab52547f) |
 | Группы | `:14-17` | `'chat-N'`, `'emoticons-dropdown'`, `'STICKERS-POPUP'`, `'EMOJI'`, `'STICKER-VIEWER'`, `'none'` |
 | «Играет только одна группа» | `setOnlyOnePlayableGroup()` `:420` | из `stickerViewer`, `popups/stickers`, `popups/newMedia`, `appImManager` |
 | Пауза всего | `checkAnimations/checkAnimations2` `:309, :342` | blur/idle/медиавьювер/попап; idle — через `idleController` с исключениями `overrideIdleGroups` |
-| Снятие ушедшего из DOM | `checkAnimation()` `:346-389` | ветка «вне DOM» стоит ВЫШЕ выхода по `locked` (`:391`, 88ee036f1) — залоченное видео тоже снимается; видео перед снятием ставится на паузу (c1c10b8c6); `controlled` оставляет item владельцу |
+| Снятие ушедшего из DOM | `checkAnimation()` `:346-389` | ветка «вне DOM» стоит ВЫШЕ выхода по `locked` (`:391`, 88ee036f1) — залоченное видео тоже снимается; видео перед снятием ставится на паузу (c1c10b8c6); `controlled` оставляет item владельцу. Снимается только узел, побывавший в DOM (`wasInDOM`): плеер, зарегистрированный до вставки (`<Transition mode="outin">` карточек входа), переживает первый «не пересекается»; не вставленный никогда — снимается через `NEVER_SHOWN_RECLAIM_TIMEOUT` = 60 с (`:50`) своим таймером (cab52547f) |
 | `toggleVideosUnder(el, paused)` | `:182` | правая колонка скрыта `transform`ом, IO считает её видимой → принудительная пауза видео внутри (`sidebarRight/index.ts:98, 132`) |
 | `toggleMediaPause` | `:163` | глобальный `videosLocked` при проигрывании аудио/видео |
 | lite mode | `setAutoplay` `:464`, `setLoop` `:479` | ключи `stickers_chat`, `stickers_panel`, `effects_emoji`… |
@@ -1258,7 +1259,9 @@ wrapSticker (wrappers/sticker.ts:65)
 
 **У нас** — `web-client/src/components/animationIntersector.ts`, порт с отличиями из шапки файла (нет PiP,
 наблюдатель ленивый, heavy-animation подписан прямо в классе). Снятие ушедшего из DOM — как в tweb 88ee036f1 +
-c1c10b8c6 (пины в `animationIntersector.test.ts`). Видео-аватарка профиля (`peerProfileAvatars.ts`, ветка
+c1c10b8c6 + cab52547f (пины в `animationIntersector.test.ts`, в том числе сценарий обезьянки входа
+`auth/AuthCardsHost.solid.tsx` + `auth/TrackingMonkey.solid.tsx`). Гард `appSettings?.stickers` из cab52547f не
+нужен: наш `useSettingsStore` (zustand) заполнен значениями по умолчанию с импорта. Видео-аватарка профиля (`peerProfileAvatars.ts`, ветка
 `videoMediaId`) регистрируется с `controlled: middleware` и освобождает декодер на `onClean`
 (`helpers/dom/clearMediaElementSource.ts`) — жизненный цикл tweb `createAvatarVideo.ts`; ручного обхода
 `releaseVideoAvatars` больше нет. Сам `createAvatarVideo` (лимит трёх повторов у мелких аватарок, запуск

@@ -312,6 +312,97 @@ describe('animationIntersector', () => {
     expect(animationIntersector.getAnimations(el)).toHaveLength(0)
   })
 
+  // tweb cab52547f. Несколько плееров на одном наблюдаемом узле: обезьянка
+  // входа (`auth/TrackingMonkey.solid.tsx`) кладёт idle- и tracking-плеер в
+  // один `.media-sticker-wrapper`. Колбэк наблюдателя действовал только на
+  // первом item'е — второй не играл, не вставал на паузу и не снимался.
+  it('колбэк наблюдателя обрабатывает КАЖДЫЙ item элемента (tweb cab52547f)', () => {
+    const el = makeElement()
+    const idle = makePlayer()
+    const tracking = makePlayer()
+    players.push(idle, tracking)
+    animationIntersector.addAnimation({ animation: idle, observeElement: el, type: 'lottie' })
+    animationIntersector.addAnimation({ animation: tracking, observeElement: el, type: 'lottie' })
+
+    intersect(el, true)
+    expect(idle.play).toHaveBeenCalledTimes(1)
+    expect(tracking.play).toHaveBeenCalledTimes(1)
+
+    intersect(el, false)
+    expect(idle.pause).toHaveBeenCalledTimes(1)
+    expect(tracking.pause).toHaveBeenCalledTimes(1)
+  })
+
+  it('снятие одного из item\'ов элемента не снимает наблюдение с остальных (tweb cab52547f)', () => {
+    const el = makeElement()
+    const idle = makePlayer()
+    const tracking = makePlayer()
+    players.push(idle, tracking)
+    animationIntersector.addAnimation({ animation: idle, observeElement: el, type: 'lottie' })
+    animationIntersector.addAnimation({ animation: tracking, observeElement: el, type: 'lottie' })
+
+    animationIntersector.removeAnimationByPlayer(idle)
+    expect(observed.has(el)).toBe(true)
+    expect(animationIntersector.getAnimations(el)).toHaveLength(1)
+
+    animationIntersector.removeAnimationByPlayer(tracking)
+    expect(observed.has(el)).toBe(false)
+  })
+
+  // Пин на обезьянку входа: `AuthCardsHost` (`<Transition mode="outin">`)
+  // монтирует входящую карточку, пока уходящая ещё доигрывает, — плееры
+  // `TrackingMonkey` регистрируются на ОТСОЕДИНЁННОМ узле, и наблюдатель сразу
+  // сообщает «не пересекается». Снятие «вне DOM» уничтожало стикер до показа.
+  it('обезьянка входа: плееры, зарегистрированные до вставки узла, переживают первый «не пересекается» (tweb cab52547f)', () => {
+    const wrapper = document.createElement('div')
+    wrapper.className = 'media-sticker-wrapper'
+    const idle = makePlayer()
+    const tracking = makePlayer()
+    tracking.autoplay = false
+    players.push(idle, tracking)
+    animationIntersector.addAnimation({ animation: idle, observeElement: wrapper, type: 'lottie' })
+    animationIntersector.addAnimation({ animation: tracking, observeElement: wrapper, type: 'lottie' })
+
+    intersect(wrapper, false)
+    animationIntersector.checkAnimations2()
+    expect(idle.remove).not.toHaveBeenCalled()
+    expect(tracking.remove).not.toHaveBeenCalled()
+    expect(animationIntersector.getAnimations(wrapper)).toHaveLength(2)
+
+    // карточка вставилась — обезьянка играет
+    document.body.append(wrapper)
+    intersect(wrapper, true)
+    expect(idle.play).toHaveBeenCalledTimes(1)
+
+    // побывавший в DOM узел снимается сразу, как только уходит
+    wrapper.remove()
+    animationIntersector.checkAnimations2()
+    expect(idle.remove).toHaveBeenCalledTimes(1)
+    expect(tracking.remove).toHaveBeenCalledTimes(1)
+    expect(observed.has(wrapper)).toBe(false)
+  })
+
+  it('узел, так и не вставленный в DOM, снимается по своему сроку (tweb cab52547f, NEVER_SHOWN_RECLAIM_TIMEOUT)', () => {
+    vi.useFakeTimers()
+    try {
+      const el = document.createElement('div')
+      const animation = makePlayer()
+      players.push(animation)
+      animationIntersector.addAnimation({ animation, observeElement: el, type: 'lottie' })
+
+      intersect(el, false)
+      vi.advanceTimersByTime(59999)
+      expect(animation.remove).not.toHaveBeenCalled()
+
+      vi.advanceTimersByTime(1)
+      expect(animation.remove).toHaveBeenCalledTimes(1)
+      expect(animationIntersector.getAnimations(el)).toHaveLength(0)
+      expect(observed.has(el)).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('setLoop переписывает loop у зарегистрированных плееров', () => {
     const { animation } = register()
     expect(animationIntersector.setLoop(false)).toBe(true)
