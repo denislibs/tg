@@ -71,8 +71,8 @@ const settle = () => pause(400)
 /** Узел вкладки «Устройства» в колонке (её заголовок — ключ `SessionsTitle`). */
 const openedTab = () => columnEl.querySelector('.sidebar-slider > .tabs-tab.sidebar-slider-item')
 
-/** Узел, который вкладка кладёт в `document.body` МИМО колонки. */
-const tabMenu = () => document.getElementById('active-sessions-contextmenu')
+/** Строки сессий доехавшей вкладки (`activeSessions.solid.tsx`, `Row class="session-row"`). */
+const sessionRows = () => document.querySelectorAll('.session-row').length
 
 /**
  * Ждать, пока содержимое вкладки доедет. Ждём именно ФАКТ, а не «достаточно
@@ -128,7 +128,7 @@ describe('шов React → слайдер: проводка вкладки «У�
     expect(openedTab()).toBeNull()
 
     await act(async() => { fireEvent.click(getByText('Devices')) })
-    await flush(() => !!tabMenu())
+    await flush(() => sessionRows() > 0)
 
     expect(list).toHaveBeenCalledTimes(1)
     const tab = openedTab()
@@ -142,19 +142,20 @@ describe('шов React → слайдер: проводка вкладки «У�
     const { getByText, unmount } = mountSettings(managers)
 
     await act(async() => { fireEvent.click(getByText('Devices')) })
-    await flush(() => !!tabMenu())
+    await flush(() => sessionRows() > 0)
 
     const tab = openedTab()!
     expect(tab).not.toBeNull()
-    expect(tabMenu()).not.toBeNull()
+    expect(sessionRows()).toBe(2)
 
     unmount()
     await settle()
 
     // Вкладка разрушена ЕЮ САМОЙ, а не выброшена поддеревом React: у узла нет
-    // родителя, а Solid-остров успел снять своё меню из `document.body`.
+    // родителя. Разбор Solid-острова (опрос вне колонки) пинит
+    // `settingsSliderHost.test.ts` — «размонтирование … уничтожает открытые вкладки».
     expect(tab.parentElement).toBeNull()
-    expect(tabMenu()).toBeNull()
+    expect(sessionRows()).toBe(0)
     // И слой хоста ушёл из колонки вместе с экраном.
     expect(columnEl.querySelector('.sidebar-slider')).toBeNull()
   })
@@ -175,7 +176,7 @@ describe('шов React → слайдер: проводка вкладки «У�
     )
 
     await act(async() => { fireEvent.click(rowByTitle(screen, 'Active Sessions')) })
-    await flush(() => !!tabMenu())
+    await flush(() => sessionRows() > 0)
 
     expect(list).toHaveBeenCalledTimes(1)
     expect(openedTab()).not.toBeNull()

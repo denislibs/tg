@@ -51,3 +51,21 @@ export const AppNotificationsTab =
     title: 'Telegram.NotificationSettingsViewController',
     getComponentModule: () => import('../sidebarLeft/tabs/notifications.solid'),
   })
+
+// tweb :385-400. Экран одной сессии: открывает строка «Устройств»
+// (`activeSessions.solid.tsx::openSession`). Завершение приходит колбэком от
+// списка — он же снимает строку; у текущей сессии колбэка нет (свою сессию не
+// завершают, из неё выходят). `onSettingsChanged` оригинала (:392-393) не
+// заведён: его зовёт только секция `AuthSessions.View.AcceptTitle`, а её нет —
+// нет `account.changeAuthorizationSettings` (О-8 плана 2D).
+type AppSessionTabPayload = {
+  authorization: Authorization.authorization
+  /** Подтверждает и завершает сессию; разрешается исходом. Нет у текущей. */
+  onTerminate?: () => Promise<boolean>
+}
+
+export const AppSessionTab =
+  scaffoldSolidJSTabEventable<AppSessionTabPayload>({
+    title: 'AuthSessions.View.Device',
+    getComponentModule: () => import('../sidebarLeft/tabs/session.solid'),
+  })

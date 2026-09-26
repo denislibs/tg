@@ -1,34 +1,53 @@
 /** @jsxImportSource solid-js */
 /**
- * Тесты вкладки «Устройства» (`activeSessions.solid.tsx`). Гоняют НАСТОЯЩИЕ
- * классы на реальном DOM (happy-dom) — вкладку строит её же объявление
- * (`solidJsTabs/tabs.ts`), подтверждение показывает настоящий `PopupPeer`,
- * всплывашку — настоящий `toast`. Замокан ровно один шов — менеджеры
- * (`tab.managers`), то есть граница с воркером.
+ * Вкладка «Устройства» (`activeSessions.solid.tsx`, порт tweb
+ * `sidebarLeft/tabs/activeSessions.tsx`, 812502980) — задача 9 плана волны 2D.
+ *
+ * Вкладка гоняется НАСТОЯЩАЯ — `AppActiveSessionsTab` из `solidJsTabs/tabs.ts`,
+ * открытая через хост (`settingsSliderHost.ts`) тем же путём, что строка корня
+ * настроек; клик по строке открывает НАСТОЯЩУЮ `AppSessionTab` тем же слайдером.
+ * Стабы — только границы: менеджеры (`tab.managers.sessions` — граница с
+ * воркером), попап подтверждения (`confirmationPopup` — свой DOM-слой со своими
+ * тестами), всплывашка (`toastNew`), геометрия.
  *
  * Данные — конструкторы `authorization` ТАКИМИ, какими их шлёт наш бэкенд
  * (`internal/domain/mtaccount.go`): даты в СЕКУНДАХ эпохи, `pFlags` объектом у
- * КАЖДОЙ строки (у не-текущей — пустым), а адрес текущей сессии — НОЛЬ: её не
- * отзывают по hash, из неё выходят. По этому нулю вкладка и узнаёт свою
- * строку — единственную, которую нельзя завершить.
+ * КАЖДОЙ строки (у не-текущей — пустым), адрес текущей сессии — ноль.
+ *
+ * Предмет — расхождения прежней вкладки (старая база) с HEAD, видимые в DOM:
+ *  • клик по строке — экран сессии (`AppSessionTab`), а не попап завершения;
+ *  • завершение — из контекстного меню строки и с экрана сессии;
+ *  • подпись `ClearOtherSessionsHelp` и кнопка — только при других сессиях;
+ *  • `password_pending` — своя секция «Incomplete login attempts»;
+ *  • список перечитывается раз в минуту, опрос гаснет с вкладкой.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Authorization } from '@layer'
 import type { Managers } from '@/client/bootstrap'
-import { createSliderStub } from '@components/sliderTab.testStub'
-import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
-import { hideToast } from '@components/toast'
-import contextMenuController from '@helpers/contextMenuController'
+import type SliderSuperTab from '@components/sliderTab'
+import lang from '@/lang'
 import { useI18nStore } from '@/i18n'
 import { applyLang } from '@/test/lang'
-import { AppActiveSessionsTab } from '@components/solidJsTabs/tabs'
 import { glyph } from '@core/tgico-icons'
 import { getRowIconBackgroundImage } from '@helpers/rowIconBackground'
+import contextMenuController from '@helpers/contextMenuController'
+import { AppActiveSessionsTab } from '@components/solidJsTabs/tabs'
+import { createSettingsSliderHost, type SettingsSliderHost } from '../settingsSliderHost'
+
+const confirmationPopup = vi.hoisted(() => vi.fn(async(_options: unknown) => {}))
+vi.mock('@components/popups/popupPeer', async(importOriginal) => ({
+  ...(await importOriginal<object>()),
+  confirmationPopup,
+}))
+
+const toastNew = vi.hoisted(() => vi.fn())
+vi.mock('@components/toast', async(importOriginal) => ({
+  ...(await importOriginal<object>()),
+  toastNew,
+}))
 
 type Auth = Authorization.authorization
 
-// Всё, кроме `hash`/`pFlags`/имени приложения, у обеих сессий одинаково —
-// различия ниже задаются точечно, чтобы в тесте было видно, что именно важно.
 const baseAuth = {
   _: 'authorization',
   device_model: 'Chrome',
@@ -44,294 +63,335 @@ const baseAuth = {
   region: '',
 } as Omit<Auth, 'pFlags' | 'hash'>
 
-// Адрес текущей сессии — ноль (см. докблок): отозвать её по hash нельзя.
 const current = { ...baseAuth, hash: 0, pFlags: { current: true } } as Auth
-// Под-объект флагов есть и у не-текущей строки, просто пустой.
 const other = { ...baseAuth, hash: 2, pFlags: {}, app_name: 'Telegram Android', app_version: '11.2' } as Auth
 
-function makeManagers() {
-  const terminate = vi.fn<(id: number) => Promise<boolean>>(async() => true)
-  const terminateOthers = vi.fn<() => Promise<boolean>>(async() => true)
-  return {
-    terminate,
-    terminateOthers,
-    managers: { sessions: { terminate, terminateOthers } } as unknown as Managers,
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+let host: SettingsSliderHost
+let sessions: {
+  list: ReturnType<typeof vi.fn<() => Promise<Auth[]>>>
+  terminate: ReturnType<typeof vi.fn<(id: number) => Promise<boolean>>>
+  terminateOthers: ReturnType<typeof vi.fn<() => Promise<boolean>>>
+}
+
+beforeEach(() => {
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width: 420 } as DOMRect)
+  confirmationPopup.mockReset().mockResolvedValue(undefined)
+  toastNew.mockReset()
+  sessions = {
+    list: vi.fn(async() => [current, other]),
+    terminate: vi.fn(async() => true),
+    terminateOthers: vi.fn(async() => true),
   }
-}
 
-async function openTab(authorizations: Auth[], managers: Managers) {
-  const tab = new AppActiveSessionsTab(createSliderStub(), true)
-  tab.managers = managers
-  await tab.open({ authorizations })
-  return tab
-}
-
-/** Правый клик по строке сессии — второй вход в то же завершение. */
-function rightClick(row: Element) {
-  row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }))
-  return document.getElementById('active-sessions-contextmenu')!
-}
-
-/** Клик по строке сессии → подтверждение → кнопка «Terminate» в попапе. */
-function confirmTerminate(tab: { scrollable: { container: HTMLElement } }, hash: number) {
-  const row = tab.scrollable.container.querySelector<HTMLElement>(`.row[data-hash="${hash}"]`)!
-  row.dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
-
-  const popup = document.querySelector('.popup-peer')!
-  expect(popup).not.toBeNull()
-  popup.querySelector<HTMLElement>('.popup-button:not(.popup-close)')!
-    .dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
-}
+  const columnEl = document.createElement('div')
+  columnEl.id = 'column-left'
+  document.body.append(columnEl)
+  host = createSettingsSliderHost(columnEl, { sessions } as unknown as Managers)
+})
 
 afterEach(async() => {
   // Контекстное меню — общий синглтон-контроллер: незакрытое меню утекает
   // в следующий тест классом `active`.
   contextMenuController.close()
-
-  // Всплывашка — модульный синглтон: пока её узел висит в своём контейнере,
-  // повторный `toast()` не переприкрепит контейнер к body и следующий тест
-  // не увидит всплывашку вовсе. Гасим её ПО-НАСТОЯЩЕМУ (снятие узла у
-  // `hideToast` отложено на 200мс), а не сносом поддерева body.
-  if(document.querySelector('.toast')) {
-    hideToast()
-    await new Promise((r) => setTimeout(r, 250))
-  }
+  host.destroy()
+  await pause(400)
   document.body.replaceChildren()
-
-  // Язык — тоже общее состояние (`I18n.strings` + хранилище): тесты перевода ниже
-  // переключают его по-настоящему, и следующий тест иначе читал бы русские подписи.
+  vi.restoreAllMocks()
+  vi.useRealTimers()
   if(useI18nStore.getState().lang !== 'en') {
     useI18nStore.setState({ lang: 'en' })
     await applyLang('en')
   }
 })
 
-describe('вкладка «Устройства» — порт tweb sidebarLeft/tabs/activeSessions.tsx', () => {
-  it('текущая сессия идёт отдельной секцией, остальные — списком', async() => {
-    const { managers } = makeManagers()
-    const tab = await openTab([current, other], managers)
+const open = (authorizations: Auth[]) => host.openTab(AppActiveSessionsTab, { authorizations })
 
-    const sections = tab.scrollable.container.querySelectorAll('.sidebar-left-section')
-    expect(sections).toHaveLength(2)
-    expect(sections[0].querySelector('.row-title')!.textContent).toBe('Telegram Web 1.0')
-    expect(sections[0].querySelector('.row-midtitle')!.textContent).toBe('Chrome, macOS')
-    expect(sections[1].querySelectorAll('.row[data-hash]')).toHaveLength(1)
-    expect(sections[1].querySelector('.row-title')!.textContent).toBe('Telegram Android 11.2')
-    // Дата последней активности стоит только у ЧУЖИХ сессий: у текущей она
-    // бессмысленна («сейчас»), поэтому `titleRight` там `undefined`.
-    expect(sections[0].querySelector('.row-title-right')).toBeNull()
-    expect(sections[1].querySelector('.row-title-right')!.textContent).not.toBe('')
+function sectionByName(tab: SliderSuperTab, name: string) {
+  return [...tab.scrollable.container.querySelectorAll<HTMLElement>('.sidebar-left-section-container')]
+    .find((c) => c.querySelector('.sidebar-left-section-name')?.textContent === name)
+}
+
+function section(tab: SliderSuperTab, name: string) {
+  const el = sectionByName(tab, name)
+  if(!el) throw new Error('no section ' + name)
+  return el
+}
+
+function rowByTitle(root: ParentNode, title: string) {
+  const el = [...root.querySelectorAll<HTMLElement>('.row')]
+    .find((r) => r.querySelector('.row-title:not(.row-title-right)')?.textContent === title)
+  if(!el) throw new Error('no row ' + title)
+  return el
+}
+
+const caption = (container: HTMLElement) =>
+  container.querySelector<HTMLElement>(':scope > .sidebar-left-section-caption')
+
+/** Верхняя (активная) вкладка слайдера хоста. */
+const topTab = () => {
+  const tabs = document.querySelectorAll<HTMLElement>('.sidebar-slider > .tabs-tab.sidebar-slider-item')
+  return tabs[tabs.length - 1]
+}
+
+function rightClick(row: HTMLElement) {
+  row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+}
+
+/** Пункт открытого контекстного меню — меню собирается асинхронно (`filterAsync`). */
+const openedMenuItem = () => vi.waitFor(() => {
+  const item = document.querySelector<HTMLElement>('.btn-menu.active .btn-menu-item')
+  if(!item) throw new Error('меню не открыто')
+  return item
+})
+
+/** Экран сессии въехал и достроен (модуль вкладки грузится `import()`). */
+const openedSessionTab = (listTab: SliderSuperTab) => vi.waitFor(() => {
+  const el = topTab()
+  if(el === listTab.container || !el.querySelector('.sidebar-left-section-container')) {
+    throw new Error('экран сессии не открыт')
+  }
+  return el
+})
+
+describe('«Устройства» — разметка', () => {
+  it('текущая сессия — секцией CurrentSession, прочие — OtherSessions; строки session-row', async() => {
+    // Порядок обратный: текущая узнаётся по флагу, а не по месту в списке.
+    const tab = await open([other, current])
+
+    const names = [...tab.scrollable.container.querySelectorAll('.sidebar-left-section-name')].map((n) => n.textContent)
+    expect(names).toEqual([lang.CurrentSession, lang.OtherSessions])
+
+    const mine = rowByTitle(section(tab, lang.CurrentSession), 'Telegram Web 1.0')
+    expect(mine.classList.contains('session-row')).toBe(true)
+    expect(mine.classList.contains('row-clickable')).toBe(true)
+    expect(mine.getAttribute('role')).toBe('button')
+    expect(mine.getAttribute('tabindex')).toBe('0')
+    expect(mine.querySelector('.row-midtitle')!.textContent).toBe('Chrome, macOS')
+    expect(mine.querySelector('.row-subtitle')!.textContent).toBe('1.2.3.4 - Germany')
+    // Дата активности — только у ЧУЖОЙ сессии (tweb `:312`).
+    expect(mine.querySelector('.row-title-right')).toBeNull()
+
+    const theirs = rowByTitle(section(tab, lang.OtherSessions), 'Telegram Android 11.2')
+    expect(theirs.classList.contains('session-row')).toBe(true)
+    expect(theirs.querySelector('.row-title-right')!.textContent).not.toBe('')
   })
 
-  // tweb 944b578e9: у каждой строки сессии — иконка платформы на цветной
-  // плашке (`sessionPlatformIcon`, цвета — реестр `rowIconBackground`).
-  it('строка сессии несёт иконку платформы на цветной плашке', async() => {
-    const { managers } = makeManagers()
+  it('строка несёт иконку платформы на цветной плашке', async() => {
     const android = { ...other, api_id: 6, platform: 'Android', device_model: 'Pixel 8' } as Auth
-    const tab = await openTab([current, android], managers)
+    const tab = await open([current, android])
 
-    const plate = (hash: number) => tab.scrollable.container
-      .querySelector<HTMLElement>(`.row[data-hash="${hash}"] > .row-icon.row-icon-colored`)!
-    // «Telegram Web 1.0» из браузера — общий веб-глиф (фиолетовая плашка).
-    expect(plate(0).textContent).toBe(glyph('web_filled'))
-    expect(plate(0).style.backgroundImage).toBe(getRowIconBackgroundImage('web_filled'))
-    expect(plate(2).textContent).toBe(glyph('android_filled'))
-    expect(plate(2).style.backgroundImage).toBe(getRowIconBackgroundImage('android_filled'))
-  })
-
-  it('текущую сессию находит по флагу, а не по месту в списке', async() => {
-    const { managers } = makeManagers()
-    // Порядок обратный: `findAndSplice` дойдёт до текущей ЧЕРЕЗ чужую строку с
-    // пустым `pFlags`. Именно так её и отдаёт провод — под-объект есть всегда.
-    const tab = await openTab([other, current], managers)
-
-    const sections = tab.scrollable.container.querySelectorAll('.sidebar-left-section')
-    expect(sections[0].querySelector('.row')!.getAttribute('data-hash')).toBe('0')
-    expect(sections[1].querySelectorAll('.row[data-hash]')).toHaveLength(1)
+    const plate = (title: string) => rowByTitle(tab.scrollable.container, title)
+      .querySelector<HTMLElement>(':scope > .row-icon.row-icon-colored')!
+    expect(plate('Telegram Web 1.0').textContent).toBe(glyph('web_filled'))
+    expect(plate('Telegram Web 1.0').style.backgroundImage).toBe(getRowIconBackgroundImage('web_filled'))
+    expect(plate('Telegram Android 11.2').textContent).toBe(glyph('android_filled'))
+    expect(plate('Telegram Android 11.2').style.backgroundImage).toBe(getRowIconBackgroundImage('android_filled'))
   })
 
   it('пустые поля не рисуют мусорных разделителей, платформа заменяет версию системы', async() => {
-    const { managers } = makeManagers()
-    // `system_version` пуст у сессий, заведённых не разбором User-Agent (вход
-    // по QR), `country` — когда GeoIP не знает места. Оригинал собирает обе
-    // строки через `filter(Boolean)`, поэтому дыры не превращаются в « - » и
-    // в ", » на конце.
-    const bare = { ...baseAuth, hash: 3, pFlags: {}, system_version: '', country: '' } as Auth
-    const tab = await openTab([current, bare], managers)
+    const bare = { ...other, system_version: '', country: '' } as Auth
+    const tab = await open([current, bare])
 
-    const row = tab.scrollable.container.querySelector('.row[data-hash="3"]')!
+    const row = rowByTitle(section(tab, lang.OtherSessions), 'Telegram Android 11.2')
     expect(row.querySelector('.row-midtitle')!.textContent).toBe('Chrome, browser')
     expect(row.querySelector('.row-subtitle')!.textContent).toBe('1.2.3.4')
   })
 
-  it('завершение сессии подтверждается попапом и снимает строку', async() => {
-    const { terminate, managers } = makeManagers()
-    const tab = await openTab([current, other], managers)
+  it('при других сессиях: подпись ClearOtherSessionsHelp под карточкой и кнопка «завершить все» с иконкой', async() => {
+    const tab = await open([current, other])
+    const mine = section(tab, lang.CurrentSession)
 
-    confirmTerminate(tab, 2)
-
-    await vi.waitFor(() =>
-      expect(tab.scrollable.container.querySelector('.row[data-hash="2"]')).toBeNull())
-    expect(terminate).toHaveBeenCalledWith(2)
+    expect(caption(mine)!.textContent).toBe(lang.ClearOtherSessionsHelp)
+    const button = mine.querySelector<HTMLElement>('.sidebar-left-section-content > button')!
+    expect([...button.classList]).toEqual(expect.arrayContaining(['btn-primary', 'btn-transparent', 'danger']))
+    expect(button.querySelector('.tgico')!.textContent).toBe(glyph('stop'))
+    expect(button.textContent).toContain(lang.TerminateAllSessions)
+    expect(caption(section(tab, lang.OtherSessions))!.textContent).toBe(lang.SessionsListInfo)
   })
 
-  it('без подтверждения сессию не гасит: один клик по строке только открывает попап', async() => {
-    const { terminate, managers } = makeManagers()
-    const tab = await openTab([current, other], managers)
+  it('одна сессия: ни подписи ClearOtherSessionsHelp, ни кнопки, ни секции прочих', async() => {
+    const tab = await open([current])
+    const mine = section(tab, lang.CurrentSession)
 
-    const row = tab.scrollable.container.querySelector<HTMLElement>('.row[data-hash="2"]')!
-    row.dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
-
-    expect(document.querySelector('.popup-peer')).not.toBeNull()
-    await new Promise((r) => setTimeout(r, 0))
-    expect(terminate).not.toHaveBeenCalled()
-    expect(tab.scrollable.container.querySelector('.row[data-hash="2"]')).not.toBeNull()
+    expect(caption(mine)).toBeNull()
+    expect(mine.querySelector('button')).toBeNull()
+    expect(sectionByName(tab, lang.OtherSessions)).toBeUndefined()
   })
 
-  it('клик по строке ТЕКУЩЕЙ сессии не предлагает её завершить', async() => {
-    const { managers } = makeManagers()
-    const tab = await openTab([current, other], managers)
+  it('password_pending — своя секция Incomplete login attempts, не в списке прочих', async() => {
+    const pending = { ...other, hash: 5, app_name: 'Telegram iOS', app_version: '12', pFlags: { password_pending: true } } as Auth
+    const tab = await open([current, pending])
 
-    const row = tab.scrollable.container.querySelector<HTMLElement>('.row[data-hash="0"]')!
-    row.dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
-
-    expect(document.querySelector('.popup-peer')).toBeNull()
+    const incomplete = section(tab, lang['AuthSessions.IncompleteAttempts'])
+    expect(rowByTitle(incomplete, 'Telegram iOS 12')).toBeTruthy()
+    expect(caption(incomplete)!.textContent).toBe(lang['AuthSessions.IncompleteAttemptsInfo'])
+    expect(sectionByName(tab, lang.OtherSessions)).toBeUndefined()
+    // незавершённый вход — тоже «другая сессия»: подпись и кнопка есть
+    expect(caption(section(tab, lang.CurrentSession))).not.toBeNull()
   })
 
-  it('на отказ FRESH_RESET_AUTHORISATION_FORBIDDEN показывает всплывашку', async() => {
-    const { terminate, managers } = makeManagers()
-    // Имя отказа приезжает полем `type` — его довозит через границу воркера
-    // `superMessagePort.ts`, а на HTTP-границе им становится `error.text`
-    // конструктора отказа (`net/restClient.ts`).
-    //
-    // `message` здесь НАМЕРЕННО другой: положи в оба поля одну строку — и
-    // сверка по тексту сообщения прошла бы наравне со сверкой по имени
-    // отказа, то есть тест перестал бы отличать одно от другого. Ветвиться
-    // надо по названной причине, а не по человеческой фразе: её меняют, не
-    // задумываясь, при первой же правке текстов.
-    terminate.mockRejectedValue(Object.assign(
-      new Error('не удалось завершить сессию'),
-      { type: 'FRESH_RESET_AUTHORISATION_FORBIDDEN' }))
-    const tab = await openTab([current, other], managers)
+  it('шапка — SessionsTitle', async() => {
+    const tab = await open([current])
+    expect(tab.container.querySelector('.sidebar-header__title')!.textContent).toBe(lang.SessionsTitle)
+  })
+})
 
-    confirmTerminate(tab, 2)
+describe('«Устройства» — экран сессии и завершение', () => {
+  it('клик по чужой строке открывает экран сессии, а не попап завершения', async() => {
+    const tab = await open([current, other])
 
-    await vi.waitFor(() => expect(document.querySelector('.toast')).not.toBeNull())
-    expect(document.querySelector('.toast')!.textContent)
-      .toContain('For security reasons')
-    // строка на месте: сессия не завершена
-    expect(tab.scrollable.container.querySelector('.row[data-hash="2"]')).not.toBeNull()
+    rowByTitle(tab.scrollable.container, 'Telegram Android 11.2').click()
+
+    const sessionTab = await openedSessionTab(tab)
+    expect(sessionTab.querySelector('.sidebar-header__title')!.textContent).toBe(lang['AuthSessions.View.Device'])
+    expect(sessionTab.querySelector('[data-popup-title]')!.textContent).toBe('Chrome')
+    expect(confirmationPopup).not.toHaveBeenCalled()
+    // у чужой сессии кнопка завершения на экране есть
+    expect(sessionTab.textContent).toContain(lang['AuthSessions.View.TerminateSession'])
   })
 
-  it('«завершить все прочие» подтверждается попапом и убирает всю секцию прочих', async() => {
-    const { terminateOthers, managers } = makeManagers()
-    const tab = await openTab([current, other], managers)
+  it('клик по строке ТЕКУЩЕЙ открывает её экран без кнопки завершения', async() => {
+    const tab = await open([current, other])
 
-    const btn = tab.scrollable.container.querySelector<HTMLElement>('.sidebar-left-section-content .btn-primary.danger')!
-    btn.dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
-    document.querySelector<HTMLElement>('.popup-peer .popup-button:not(.popup-close)')!
-      .dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
+    rowByTitle(tab.scrollable.container, 'Telegram Web 1.0').click()
 
-    await vi.waitFor(() =>
-      expect(tab.scrollable.container.querySelectorAll('.sidebar-left-section')).toHaveLength(1))
-    expect(terminateOthers).toHaveBeenCalled()
+    const sessionTab = await openedSessionTab(tab)
+    expect(sessionTab.textContent).toContain(lang.Online)
+    expect(sessionTab.textContent).not.toContain(lang['AuthSessions.View.TerminateSession'])
   })
 
-  it('кнопки «завершить все прочие» нет, когда прочих сессий нет', async() => {
-    const { managers } = makeManagers()
-    const tab = await openTab([current], managers)
+  it('завершение с экрана сессии: подтверждение → terminate(hash) → экран закрыт, строки в списке нет', async() => {
+    const tab = await open([current, other])
+    rowByTitle(tab.scrollable.container, 'Telegram Android 11.2').click()
+    const sessionTab = await openedSessionTab(tab)
 
-    expect(tab.scrollable.container.querySelectorAll('.sidebar-left-section')).toHaveLength(1)
-    expect(tab.scrollable.container.querySelector('.btn-primary.danger')).toBeNull()
+    const button = [...sessionTab.querySelectorAll<HTMLElement>('button.danger')]
+      .find((b) => b.textContent!.includes(lang['AuthSessions.View.TerminateSession']))!
+    button.click()
+
+    await vi.waitFor(() => expect(sessions.terminate).toHaveBeenCalledWith(2))
+    expect(confirmationPopup).toHaveBeenCalledWith(expect.objectContaining({
+      titleLangKey: 'AreYouSureSessionTitle',
+      descriptionLangKey: 'TerminateSessionText',
+    }))
+    await vi.waitFor(() => expect(sessionTab.isConnected).toBe(false), { timeout: 1000 })
+    expect(sectionByName(tab, lang.OtherSessions)).toBeUndefined()
   })
 
-  it('правый клик по чужой строке открывает меню, а его «Terminate» доводит до подтверждения', async() => {
-    const { terminate, managers } = makeManagers()
-    const tab = await openTab([current, other], managers)
-
-    // Пинит саму проводку `attachContextMenuListener`: без неё меню не
-    // открывается и весь этот вход в завершение сессии недостижим.
-    const menu = rightClick(tab.scrollable.container.querySelector('.row[data-hash="2"]')!)
-    expect(menu.classList.contains('active')).toBe(true)
-
-    menu.querySelector<HTMLElement>('.btn-menu-item')!
-      .dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
-    document.querySelector<HTMLElement>('.popup-peer .popup-button:not(.popup-close)')!
-      .dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
-
-    await vi.waitFor(() =>
-      expect(tab.scrollable.container.querySelector('.row[data-hash="2"]')).toBeNull())
-    expect(terminate).toHaveBeenCalledWith(2)
-  })
-
-  it('пункт контекстного меню ПЕРЕВЕДЁН, а не показывает сырой ключ', async() => {
-    // Боевой дефект, найденный живой проверкой стенда: в `ButtonMenuSync` уезжал
-    // ключ `'Terminate'`, а `ButtonMenuItem` ждал ГОТОВУЮ строку — переводил
-    // вызывающий. В русском интерфейсе пункт меню показывал «Terminate», хотя
-    // `Terminate: 'Завершить'` в словаре есть и всё остальное на вкладке
-    // переведено (`Button`/`Row`/`SettingSection` переводили у себя — на этой
-    // разнице дефект и вырос). Задача 7 свела обе стороны на `LangPackKey`.
-    //
-    // Язык переключается ПО-НАСТОЯЩЕМУ (настоящий `dict.ru`), а не подменой
-    // переводчика: подпись строит `i18n()` ядра, и подмена `t()` в хранилище на
-    // неё уже не влияет — проверка на подмене зеленела бы, ничего не проверяя.
-    const { managers } = makeManagers()
+  it('правый клик по чужой строке: меню «Завершить» (переведено) → подтверждение → строка снята', async() => {
     useI18nStore.setState({ lang: 'ru' })
     await applyLang('ru')
+    const tab = await open([current, other])
 
-    const tab = await openTab([current, other], managers)
-    const menu = rightClick(tab.scrollable.container.querySelector('.row[data-hash="2"]')!)
+    rightClick(rowByTitle(tab.scrollable.container, 'Telegram Android 11.2'))
+    const item = await openedMenuItem()
+    expect(item.classList.contains('danger')).toBe(true)
+    expect(item.querySelector('.btn-menu-item-text')!.textContent).toBe('Завершить')
 
-    expect(menu.querySelector('.btn-menu-item-text')!.textContent).toBe('Завершить')
+    item.click()
+
+    await vi.waitFor(() => expect(sessions.terminate).toHaveBeenCalledWith(2))
+    await vi.waitFor(() => expect(tab.scrollable.container.querySelectorAll('.session-row')).toHaveLength(1))
   })
 
-  it('правый клик по строке ТЕКУЩЕЙ сессии не открывает меню — свою сессию не завершить и отсюда', async() => {
-    const { terminate, managers } = makeManagers()
-    const tab = await openTab([current, other], managers)
+  it('правый клик по строке ТЕКУЩЕЙ не открывает меню', async() => {
+    const tab = await open([current, other])
 
-    const menu = rightClick(tab.scrollable.container.querySelector('.row[data-hash="0"]')!)
-    expect(menu.classList.contains('active')).toBe(false)
+    rightClick(rowByTitle(tab.scrollable.container, 'Telegram Web 1.0'))
+    await pause(0)
 
-    // Второй рубеж: даже если до пункта меню дотянуться руками, закрытое меню
-    // его не исполняет (`ButtonMenuItem` требует класс `active`), значит и
-    // подтверждения не будет.
-    menu.querySelector<HTMLElement>('.btn-menu-item')!
-      .dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
-
-    expect(document.querySelector('.popup-peer')).toBeNull()
-    expect(terminate).not.toHaveBeenCalled()
+    expect(document.querySelector('.btn-menu.active')).toBeNull()
   })
 
-  it('язык, сменённый при открытой вкладке, доезжает до кнопки подтверждения', async() => {
-    const { managers } = makeManagers()
-    const tab = await openTab([current, other], managers)
+  it('отказ от подтверждения — сессия не завершается', async() => {
+    confirmationPopup.mockRejectedValue(undefined)
+    const tab = await open([current, other])
 
-    // Язык обязан читаться в ТОЧКЕ ПРИМЕНЕНИЯ, а не сниматься один раз на открытии
-    // вкладки: попап строится позже. (Перерисовку УЖЕ построенных узлов проверяет
-    // `i18nContract.test.ts` — она возможна только для узлов, вставленных В ДОКУМЕНТ:
-    // `applyLangPack` обходит `document.querySelectorAll('.i18n')`, а дерево вкладки
-    // в этом тесте живёт отдельно от `document`.)
-    useI18nStore.setState({ lang: 'ru' })
-    await applyLang('ru')
+    rightClick(rowByTitle(tab.scrollable.container, 'Telegram Android 11.2'))
+    ;(await openedMenuItem()).click()
 
-    tab.scrollable.container.querySelector<HTMLElement>('.row[data-hash="2"]')!
-      .dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
-    expect(document.querySelector('.popup-peer .popup-button:not(.popup-close)')!.textContent)
-      .toBe('Завершить')
+    await vi.waitFor(() => expect(confirmationPopup).toHaveBeenCalled())
+    await pause(0)
+    expect(sessions.terminate).not.toHaveBeenCalled()
+    expect(tab.scrollable.container.querySelectorAll('.session-row')).toHaveLength(2)
   })
 
-  it('на закрытии вкладки контекстное меню уходит из body', async() => {
-    const { managers } = makeManagers()
-    const tab = await openTab([current, other], managers)
+  it('отказ FRESH_* — всплывашка RecentSessions.Error.FreshReset, строка на месте', async() => {
+    sessions.terminate.mockRejectedValue(Object.assign(new Error('x'), { type: 'FRESH_RESET_AUTHORISATION_FORBIDDEN' }))
+    const tab = await open([current, other])
 
-    // Меню живёт в `document.body`, а НЕ внутри `tab.container` — значит его
-    // не снимает ни `container.remove()` базового класса, ни очистка хоста
-    // Solid. Единственный, кто может его убрать, — `onCleanup` содержимого,
-    // то есть фактический вызов `dispose()` из `onCloseAfterTimeout`.
-    expect(document.getElementById('active-sessions-contextmenu')).not.toBeNull()
+    rightClick(rowByTitle(tab.scrollable.container, 'Telegram Android 11.2'))
+    ;(await openedMenuItem()).click()
 
-    ;(tab as unknown as { onCloseAfterTimeout(): void }).onCloseAfterTimeout()
+    await vi.waitFor(() => expect(toastNew).toHaveBeenCalledWith({ langPackKey: 'RecentSessions.Error.FreshReset' }))
+    expect(tab.scrollable.container.querySelectorAll('.session-row')).toHaveLength(2)
+  })
 
-    expect(document.getElementById('active-sessions-contextmenu')).toBeNull()
+  it('прочий отказ — всплывашка Error.AnError', async() => {
+    sessions.terminate.mockRejectedValue(Object.assign(new Error('x'), { type: 'SESSION_NOT_FOUND' }))
+    const tab = await open([current, other])
+
+    rightClick(rowByTitle(tab.scrollable.container, 'Telegram Android 11.2'))
+    ;(await openedMenuItem()).click()
+
+    await vi.waitFor(() => expect(toastNew).toHaveBeenCalledWith({ langPackKey: 'Error.AnError' }))
+  })
+
+  it('«завершить все»: подтверждение → terminateOthers → остаётся одна строка, подпись и кнопка ушли', async() => {
+    const tab = await open([current, other])
+    const mine = section(tab, lang.CurrentSession)
+
+    mine.querySelector<HTMLElement>('.sidebar-left-section-content > button')!.click()
+
+    await vi.waitFor(() => expect(sessions.terminateOthers).toHaveBeenCalledTimes(1))
+    expect(confirmationPopup).toHaveBeenCalledWith(expect.objectContaining({
+      titleLangKey: 'AreYouSureSessionsTitle',
+      descriptionLangKey: 'AreYouSureSessions',
+    }))
+    await vi.waitFor(() => expect(sectionByName(tab, lang.OtherSessions)).toBeUndefined())
+    expect(caption(mine)).toBeNull()
+    expect(mine.querySelector('button')).toBeNull()
+  })
+
+  it('«завершить все» ответили false — всплывашка Error.AnError, список цел', async() => {
+    sessions.terminateOthers.mockResolvedValue(false)
+    const tab = await open([current, other])
+
+    section(tab, lang.CurrentSession).querySelector<HTMLElement>('.sidebar-left-section-content > button')!.click()
+
+    await vi.waitFor(() => expect(toastNew).toHaveBeenCalledWith({ langPackKey: 'Error.AnError' }))
+    expect(tab.scrollable.container.querySelectorAll('.session-row')).toHaveLength(2)
+  })
+})
+
+describe('«Устройства» — опрос и жизненный цикл', () => {
+  it('список перечитывается раз в минуту: новая сессия появляется без переоткрытия', async() => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    const tab = await open([current])
+    const fresh = { ...other, hash: 9, app_name: 'Telegram Desktop', app_version: '5.0' } as Auth
+    sessions.list.mockResolvedValue([current, fresh])
+
+    vi.advanceTimersByTime(59_999)
+    expect(sessions.list).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    expect(sessions.list).toHaveBeenCalledTimes(1)
+
+    await vi.waitFor(() => expect(rowByTitle(section(tab, lang.OtherSessions), 'Telegram Desktop 5.0')).toBeTruthy())
+  })
+
+  it('после закрытия опрос погашен и Solid-остров снят (DoD 5)', async() => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    const tab = await open([current, other])
+    expect(document.querySelectorAll('.session-row').length).toBe(2)
+
+    tab.close()
+    await pause(400)
+
+    expect(document.querySelectorAll('.session-row')).toHaveLength(0)
+    expect(tab.container.isConnected).toBe(false)
+    vi.advanceTimersByTime(120_000)
+    expect(sessions.list).not.toHaveBeenCalled()
   })
 })
