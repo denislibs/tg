@@ -66,3 +66,12 @@ describe('угловые кнопки ленты не наезжают друг 
     expect(rule('.bubbles-go-down')).toMatch(/--translateY:\s*0/)
   })
 })
+
+describe('панель эмодзи непрозрачная (tweb b85527091, _emojiDropdown.scss)', () => {
+  it('ни backdrop-filter, ни полупрозрачного фона меню — только surface-color', () => {
+    const body = rule('.emoji-dropdown')
+    expect(body).toMatch(/background:\s*var\(--surface-color\)/)
+    expect(body).not.toMatch(/backdrop-filter/)
+    expect(body).not.toMatch(/--menu-background-color/)
+  })
+})
