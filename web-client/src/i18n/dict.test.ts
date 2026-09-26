@@ -188,8 +188,14 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `GroupsOnly`, `ChannelsOnly`) и тексты `EmptySearchPlaceholder`
 // (`NoResultsTitle`, `NoResultsSubtitle`, `SearchInAllChats`). Вместе с задачей 7 `keys`
 // 1320 → 1328, множественных форм не прибавилось; остальным четырём — ничего.
+//
+// Задача 9 глобального поиска: русскому добавлены три ключа 1:1 с tweb lang.ts —
+// подпись своей строки `Presence.YourChat` (:258, `loadChats`), заголовок
+// группы вкладки «Каналы» `Chat.Search.JoinedChannels` (:4093) и форма числа
+// `Channels` (:1353) — имя скрытой группы каналов с запросом. `keys` 1328 →
+// 1331, `plural` 33 → 34; остальным четырём — ничего.
 const COMPOSITION = {
-  ru: { keys: 1328, plural: 33 },
+  ru: { keys: 1331, plural: 34 },
   uk: { keys: 682, plural: 24 },
   es: { keys: 681, plural: 24 },
   de: { keys: 681, plural: 24 },
@@ -273,8 +279,11 @@ const COMPOSITION = {
 // Сдвиг набора задачами 7 и 10 глобального поиска: русскому добавлены
 // `Separator.ShowLess` и семь ключей `ChatTypeMenu`/`EmptySearchPlaceholder`
 // (разбор — у `COMPOSITION` выше).
+// Сдвиг набора задачей 9 глобального поиска: русскому добавлены
+// `Presence.YourChat`, `Chat.Search.JoinedChannels` и `Channels` (разбор — у
+// `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '4e2971a0',
+  ru: 'baecfe13',
   uk: 'e1335ac1',
   es: 'a6b1aad3',
   de: 'a6b1aad3',

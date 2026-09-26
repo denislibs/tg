@@ -184,6 +184,7 @@ const lang = {
   ChannelSignMessagesWithProfile: 'Show Authors\' Profiles',
   ChannelSignProfilesInfo: 'Add names and photos of admins to the messages they post, linking to their profiles.',
   ChannelType: 'Channel Type',
+  Channels: { one_value: '%1$d channel', other_value: '%1$d channels' },
   ChannelsOnly: 'Channels',
   'Chat.Accessory.Edit': 'Edit message',
   // Плашка пересылки в композере. Обе надписи — ФОРМЫ ЧИСЛА со счётчиком внутри,
@@ -249,6 +250,7 @@ const lang = {
   'Chat.Poll.Type.Quiz': 'Quiz',
   'Chat.Poll.Unvote': 'Retract Vote',
   'Chat.Quiz.MembersAnswered': { one_value: '%d member answered', other_value: '%d members answered' },
+  'Chat.Search.JoinedChannels': 'Channels you joined',
   'Chat.Search.NothingFound': 'Nothing interesting here yet...',
   'Chat.Selection.Selected': 'Selected',
   'Chat.Send.ScheduledMessage': 'Schedule Message',
@@ -977,6 +979,7 @@ const lang = {
   PremiumPreviewLastSeenDescription: 'View the last seen and read times of others even if you hide yours.',
   PremiumTierAnnual: 'Annual',
   PremiumTierMonthly: 'Monthly',
+  'Presence.YourChat': 'chat with yourself',
   'PreviewSender.CaptionPlaceholder': 'Add a caption...',
   'PreviewSender.SendAlbum': {
     one_value: 'Send Album',

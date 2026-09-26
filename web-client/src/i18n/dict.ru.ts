@@ -922,6 +922,15 @@ const ru = {
   PinFolderLimitReached: 'К сожалению, закрепить больше чатов нельзя.',
   Recent: 'Недавние',
   'Search.MyChannels': 'Мои каналы',
+  // ── Группы глобального поиска (tweb appSearchSuper.ts:1300, :1974, :1999) ──
+  'Presence.YourChat': 'чат с самим собой',
+  'Chat.Search.JoinedChannels': 'Каналы, на которые вы подписаны',
+  Channels: {
+    one_value: '%1$d канал',
+    few_value: '%1$d канала',
+    many_value: '%1$d каналов',
+    other_value: '%1$d канала',
+  },
   SimilarChannels: 'Похожие каналы',
   MoreSimilar: 'Ещё каналы',
   NoResult: 'Нет результатов',
