@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 14,
+      "version": 15,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -59,6 +59,10 @@
         {
           "key": "Alert.UserDoesntExists",
           "value": "Sorry, this user doesn't seem to exist."
+        },
+        {
+          "key": "AllChats",
+          "value": "All Chats"
         },
         {
           "key": "AllReactions",
@@ -669,6 +673,10 @@
         {
           "key": "ChannelType",
           "value": "Channel Type"
+        },
+        {
+          "key": "ChannelsOnly",
+          "value": "Channels"
         },
         {
           "key": "Chat.Accessory.Edit",
@@ -1994,6 +2002,10 @@
           "value": "Group Type"
         },
         {
+          "key": "GroupsOnly",
+          "value": "Group Chats"
+        },
+        {
           "key": "Hide",
           "value": "Hide"
         },
@@ -2889,6 +2901,14 @@
         },
         {
           "key": "NoResult",
+          "value": "No results"
+        },
+        {
+          "key": "NoResultsSubtitle",
+          "value": "Try a different search term"
+        },
+        {
+          "key": "NoResultsTitle",
           "value": "No results"
         },
         {
@@ -4270,6 +4290,10 @@
           "value": "Search GIFs"
         },
         {
+          "key": "SearchInAllChats",
+          "value": "Search in All Chats"
+        },
+        {
           "key": "SearchMessages",
           "value": "Messages"
         },
@@ -5311,6 +5335,10 @@
           "value": "Username copied to clipboard."
         },
         {
+          "key": "UsersOnly",
+          "value": "Private Chats"
+        },
+        {
           "key": "VideoCall",
           "value": "Video Call"
         },
@@ -5428,7 +5456,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 14,
+      "version": 15,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -10871,6 +10899,34 @@
         {
           "key": "Chat.ChannelBadge",
           "value": "канал"
+        },
+        {
+          "key": "AllChats",
+          "value": "Все чаты"
+        },
+        {
+          "key": "UsersOnly",
+          "value": "Личные чаты"
+        },
+        {
+          "key": "GroupsOnly",
+          "value": "Группы"
+        },
+        {
+          "key": "ChannelsOnly",
+          "value": "Каналы"
+        },
+        {
+          "key": "NoResultsTitle",
+          "value": "Нет результатов"
+        },
+        {
+          "key": "NoResultsSubtitle",
+          "value": "Попробуйте другой запрос"
+        },
+        {
+          "key": "SearchInAllChats",
+          "value": "Искать во всех чатах"
         }
       ]
     },

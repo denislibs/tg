@@ -1,6 +1,6 @@
 {
   "meta": {
-    "generatedAt": "2026-09-07",
+    "generatedAt": "2026-09-26",
     "twebDir": "/Users/denisurevic/Documents/tweb",
     "twebCommit": "e52b5d931"
   },
@@ -2542,26 +2542,6 @@
       ]
     },
     {
-      "file": "src/components/emptySearchPlaceholder/styles.module.scss",
-      "base": "styles.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 6,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 6,
-      "classesPresent": 2,
-      "coverage": 0.333,
-      "missingClasses": [
-        "ActionButton",
-        "NoResults",
-        "NoResultsSubtitle",
-        "NoResultsTitle"
-      ]
-    },
-    {
       "file": "src/components/popups/aiEditorPopup/createTonePopup/styles.module.scss",
       "base": "styles.module.scss",
       "kind": "module",
@@ -4043,6 +4023,21 @@
       "twebDynamicSelectors": 0,
       "twebClasses": 2,
       "classesPresent": 2,
+      "coverage": 1,
+      "missingClasses": []
+    },
+    {
+      "file": "src/components/emptySearchPlaceholder/styles.module.scss",
+      "base": "styles.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 6,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 6,
+      "classesPresent": 6,
       "coverage": 1,
       "missingClasses": []
     },

@@ -1681,6 +1681,15 @@ const ru = {
   AddToGroup: 'Добавить в группу',
   AddToChannel: 'Добавить в канал',
   'Chat.ChannelBadge': 'канал',
+  // ── Глобальный поиск: фильтр типа чата и пустая выдача (tweb
+  //    `chatTypeMenu/index.tsx`, `emptySearchPlaceholder/index.tsx`) ──
+  AllChats: 'Все чаты',
+  UsersOnly: 'Личные чаты',
+  GroupsOnly: 'Группы',
+  ChannelsOnly: 'Каналы',
+  NoResultsTitle: 'Нет результатов',
+  NoResultsSubtitle: 'Попробуйте другой запрос',
+  SearchInAllChats: 'Искать во всех чатах',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)
