@@ -46,10 +46,10 @@ import { mountSolid } from '../shared/solid/mountSolid.solid'
 // въезжает через хук-шов `useSearchSuper` (роль `AppSharedMediaTab`), панель
 // исполняет только контракт шапки (`sharedMedia.tsx:484-517`) — см. эффект у
 // `setIsSharedMedia` ниже.
-import { useSearchSuper } from '../core/hooks/useSearchSuper'
+import { useSearchSuper, type SearchSuperActions } from '../core/hooks/useSearchSuper'
 import type { SearchSuperMediaType } from './appSearchSuper'
 
-export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddMembers, onEditContact }: { open: boolean; chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; canAddMembers?: boolean; onEditContact?: () => void }) {
+export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddMembers, onEditContact, searchSuperActions }: { open: boolean; chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; canAddMembers?: boolean; onEditContact?: () => void; searchSuperActions?: SearchSuperActions }) {
   const t = useT()
   useNavLayer(open, onClose, 'right') // Back закрывает панель профиля (tweb right column)
   // tweb body.is-right-column-shown: пока правая колонка открыта и не «плавает»
@@ -320,6 +320,8 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
     setCollapsedOnRef,
     peerId,
     managers,
+    // меню элемента и плашка выделения (задача 14) — действия хоста чата
+    ...searchSuperActions,
     onChangeTab: (mediaTab) => setTab(mediaTab.type),
     onLengthChange: (type, length) => setCounters((c) => (c[type] === length ? c : { ...c, [type]: length })),
     // `appSearchSuper.ts:1569` оригинала — `appImManager.setInnerPeer({peerId})`;

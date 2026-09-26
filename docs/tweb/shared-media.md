@@ -56,7 +56,7 @@
 | `src/components/sidebarRight/tabs/sharedMediaTab.tsx` | 135 | тонкий `SliderSuperTab`-фасад (`setPeer`/`fillProfileElements`/`loadSidebarMedia`/`setSearchTab`/`setLoadMutex`) |
 | `src/components/horizontalMenu.ts` | 215 | ряд вкладок + автоцентрирование активной в `ScrollableX` |
 | `src/components/transition.ts` | 383 | `TransitionSlider`; вкладкам нужна функция `slideTabs` (`:45-95`). **Портирован** — `web-client/src/components/transition.ts` |
-| `src/components/chat/selection.ts` | 1189 | `AppSelection` (база) + `SearchSelection` (`:583-763`) |
+| `src/components/chat/selection.ts` | 1189 | `AppSelection` (база) + `SearchSelection` (`:583-763`; по 812502980 — `:662-839`, см. § 1.8) |
 | `src/components/sortedUserList.ts` | 134 | список участников/общих групп |
 | `src/components/searchGroup.tsx` | 170 | группы результатов — только для левой колонки |
 | `src/components/stargifts/profileList.tsx` | 472 | Solid-вкладка «Подарки» |
@@ -232,18 +232,40 @@
 
 ## 1.8 Подсистема: выделение и контекстное меню
 
-**`SearchContextMenu`** (внутренний класс) — `:156-345`:
+> **База этого раздела — tweb 812502980**, а не e52b5d931, как у остального
+> дока: задача 14 плана портировалась сразу по новому tweb (решение
+> пользователя). Что поменялось относительно e52b5d931 — в конце раздела.
 
-- `:171-215` — `attachContextMenuListener` на весь `container`; игнор внутри `.search-super-content-stories`; поиск ближайшего `.search-super-item`; асинхронная проверка `verify()` каждой кнопки; если видимых кнопок нет — меню не открывается;
-- `:243-289` — кнопки через `ButtonMenuSync`: **Forward** (одиночный/групповой, `withSelection`), **Download** (`ChatContextMenu.onDownloadClick`/`canDownload`), **`Message.Context.Goto`**, **Select / `Selection.Clear`**, **Delete / `Selection.Delete`** (danger, через `PopupDeleteMessages`); класс меню `search-contextmenu contextmenu`, монтируется в `getOverlayRoot()`;
-- `:291-343` — обработчики: `onGotoClick` → `appImManager.setInnerPeer({peerId, lastMsgId: mid, threadId})`; `onForwardClick`; `onSelectClick`/`onClearSelectionClick` → делегируют в `searchSuper.selection`; `onDeleteClick`.
+**`SearchContextMenu`** (внутренний класс) — `appSearchSuper.ts:182-386`:
 
-**`SearchSelection`** — `chat/selection.ts:583-763`:
+- `:204-272` — `attachContextMenuListener` на весь `container`; игнор внутри `.search-super-content-stories`; поиск ближайшего `.search-super-item`; при уже активном меню — выход; асинхронная проверка `verify()` каждой кнопки (в режиме выделения — только `withSelection`, `:243-247`); скрытые пункты получают `hide`; если видимых нет — меню не открывается; у элемента на время меню класс `menu-open`;
+- `:275-340` — кнопки через `ButtonMenuSync`: **Forward** / `Selection.Forward`, **`MediaViewer.Context.Copy`** (508acd4f5, `keepOpen`, verify — `ChatContextMenu.canCopyMedia`), **Download** / `Selection.Download` (`ChatContextMenu.onDownloadClick`/`canDownload`), **`Message.Context.Goto`**, **Select** / `Selection.Clear`, **Delete** / `Selection.Delete` (danger); класс меню `search-contextmenu contextmenu`, монтируется в `getOverlayRoot()`;
+- `:342-385` — обработчики: `onGotoClick` → `appImManager.setInnerPeer({peerId, lastMsgId: mid, threadId})`; `onCopyMediaClick` → `copyMessageMediaWithFeedback`; `onForwardClick` (в выделении — клик по кнопке плашки); `onSelectClick` → `selection.toggleByElement(target)`; `onClearSelectionClick`; `onDeleteClick`.
 
-- `:596-611` — конфигурация базового `AppSelection`: `getElementFromTarget` → `.search-super-item`, `lookupBetweenParentClassName: 'tabs-tab'`, `lookupBetweenElementsQuery: '.search-super-item'` (диапазон shift-кликом внутри вкладки); слушатели — только не-touch;
-- `:637-651` — `toggleByElement`/`toggleByMid`;
-- `:653-660` — `onUpdateContainer`: счётчик «N messages», видимость goto/forward/delete по правам;
-- `:662-761` — `onToggleSelection`: строит плашку `.search-super-selection-container` и монтирует её **в `searchSuper.navScrollableContainer`** — то есть плашка выделения занимает место ряда вкладок; классы `is-selecting` на `navScrollableContainer` и на `container` (`_searchSuper.scss:351-361`).
+**`SearchSelection`** — `chat/selection.ts:662-839`:
+
+- `:675-691` — конфигурация базового `AppSelection`: `verifyTarget` — протяжка только в уже включённом режиме, `getElementFromTarget` → `.search-super-item`, `lookupBetweenParentClassName: 'tabs-tab'`, `lookupBetweenElementsQuery: '.search-super-item'` (диапазон — внутри вкладки); слушатели — только не-touch;
+- `:703-714` — `toggleSelection` досыпает/убирает чекбоксы всем `.search-super-item` вкладок;
+- `:716-729` — `toggleByElement(element, selected?)` (79b9c44c1: `toggleByMid` удалён, положение `selected` ставится, а не переключается);
+- `:731-737` — `onUpdateContainer`: счётчик «N messages», «перейти» только для одного выбранного, forward/delete по правам;
+- `:739-838` — `onToggleSelection`: плашка `.search-super-selection-container` монтируется **в `searchSuper.navScrollableContainer`** — плашка занимает место ряда вкладок; `is-selecting` на `navScrollableContainer` и на `container` (`_searchSuper.scss:351-361`); слушатели плашки — в своём `ListenerSetter` на сессию.
+
+Точки в самом классе: создание меню и выделения (`:520-521`), перехват клика
+по элементу в режиме выделения (`:767-772`, `cancelClickOrNextIfNotClick` —
+выбрать, а не открыть), чекбокс доехавшему элементу (`:1549-1551`), отмена в
+`cleanup` (`:3121-3123`), `selection.cleanup()` в `destroy` (`:3245`);
+обвязка снимает удалённое с выделения (`sharedMedia.tsx:325-327`).
+
+Стиль (8ff1ea1e7): `z-index: 3` у чекбокса строки документа и аудио —
+иначе иконка, play и прелоадер (позиционированы и стоят в DOM позже)
+красятся поверх кружка.
+
+**Что поменялось с e52b5d931.** 79b9c44c1/d064fdb85 — протяжка по альбомам и
+`toggleByElement(el, selected)` в общей базе; 508acd4f5 — пункт «Копировать
+медиа»; 8ff1ea1e7 — `z-index` чекбокса; 472e3e76b — `ariaLabel` кнопок плашки
+(a11y); 60a83a6f1 — ключ протяжки `getKeyFromElement`, `dragThreshold`,
+`toggleElementSelected` в базе (для выделения чатов). Для `_searchSuper.scss`
+пара 60a83a6f1 + d34f95ef5 в сумме ничего не меняет.
 
 ## 1.9 Подсистема: смена пира, очистка, живые апдейты
 
@@ -362,8 +384,8 @@ Solid-корень пропом `avatarsContainer` тем же контракт�
 | Счётчики вкладок / скрытие пустых | **есть в ядре класса** | `components/appSearchSuper.ts::loadFirstTime` (порт `tweb:2380-2513`), `toggleContainerHidden`/`updateContainerHidden` (`:2515-2529`); пины — `appSearchSuper.firstTime.test.ts` (волна 3, задача 10) | портировано дословно: ОДИН batch `messages.searchCounters` на все медиа-фильтры (ручка задачи 2), нулевая вкладка получает `hide` на строке ряда и ОСТАЁТСЯ в DOM (свайп и `updateContainerHidden` её видят), при единственной видимой — `is-single` на ряду и `hide` на градиенте, при пустом наборе — `hide` на подсистеме и `search-empty` на родителе. `updateContainerHidden` — `public`, вызывающий — `onCountChange` подарков (задача 12). Пять React-запросов счётчиков снесены задачей 13 |
 | Приоритет первой открытой вкладки | **есть в ядре класса** | `components/appSearchSuper.ts::loadFirstTime` (`tweb:2478-2495`) + предикаты `canView*`/`getGiftsCount` (`:2611-2712`); `firstLoad`/`loadFirstTimePromise` в `load()` (`:2536-2544`) и их сброс в `cleanup()`; пины — `appSearchSuper.firstTime.test.ts` | приоритет дословный: stories → members (перебивает stories) → savedDialogs → gifts (только когда больше нечего показать), иначе первая непустая медиа; выбор без анимации и без прокрутки (`skipScroll`). `canViewMembers` — из зеркала карточек после `peers.fillMirror` (не три RPC), действие `view_participants` добавлено в `ChatRights` (порт `hasRights.ts:140-142`); `canViewSaved`/`canViewGroups`/`canViewSimilar` — `false` без сети (задачи 17/16/18 плана); `canViewStories` — ветка пользователя через `stories.pinnedStories`, ветка чата `false` (у `ChannelFull` нет `stories_pinned_available`), `storiesArchive` не портирован; `getGiftsCount` — длина `stars.profileGifts` вместо `stargifts_count` и только при объявленной вкладке `gifts`; `maybePinnedGifts`/`setPinnedGifts` — задача 12. Расхождения 26-30 в шапке файла. Первую вкладку панели теперь выбирает класс — React-ветка начальной вкладки снесена задачей 13 |
 | Память скролла между вкладками | **есть в ядре класса** | `components/appSearchSuper.ts` (порт `tweb:624-708`, `:2756-2760`), пины — `appSearchSuper.scroll.test.ts` | портировано дословно: позиция уходящей запоминается, приходящая на время анимации сдвигается инлайновым `translateY(diff)`, по концу перехода сдвиг снимается и ставится настоящий `scrollPosition`. Выход из режима шаред-медиа сбрасывает память (`cleanScrollPositions`, панель) |
-| Выделение элементов | **нет вовсе** | база есть: `components/chat/selection.ts` (844, `AppSelection` + `ChatSelection`) | `SearchSelection` (`chat/selection.ts:583-763`) не портирован; стили под него уже лежат |
-| Контекстное меню элемента | **нет вовсе** | инфраструктура есть: `helpers/contextMenuController.ts`, `helpers/dom/attachContextMenuListener.ts`, `helpers/positionMenu.ts`, `components/buttonMenu.ts` | `SearchContextMenu` (`:156-345`) не портирован: из shared media нельзя ни переслать, ни скачать, ни перейти к сообщению |
+| Выделение элементов | **есть** (задача 14, по tweb 812502980) | `components/chat/selection.ts::SearchSelection` (порт `:662-839`) поверх общей базы `AppSelection`, догнанной до 79b9c44c1/d064fdb85 (протяжка по альбомам, `toggleByElement(el, selected)`, `chat/selectionRange.ts`); пины — `appSearchSuper.selection.test.ts`, `chat/selection.test.ts`, `chat/selectionRange.test.ts` | плашка в ряду вкладок, `is-selecting`, чекбоксы, протяжка внутри вкладки, клик в режиме выделения выбирает, удалённое снимается, смена пира отменяет. Действия плашки (переход/пересылка/удаление) — колбэки хоста (расхождение 51 класса; исполняет `Chat.tsx` своими попапами); менеджера прав нет — кнопки не прячутся по `noforwards`/праву удаления (факта нет, докблок `SelectionManagers`); `ariaLabel` кнопок (472e3e76b) не перенесён. `z-index: 3` чекбокса (8ff1ea1e7) — в общем блоке `.document, .audio` `_document.scss`: аудио у нас ещё не вынесено в свой блок (803f9599d), одна строка покрывает обе строки |
+| Контекстное меню элемента | **есть** (задача 14, по tweb 812502980) | `components/appSearchSuper.ts::SearchContextMenu` (порт `:182-386`) на общей инфраструктуре (`contextMenuController`, `attachContextMenuListener`, `positionMenu`, `ButtonMenuSync`); «Копировать медиа» — `copyMessageMediaWithFeedback` (508acd4f5, общий с меню ленты и медиавьювером); пины — `appSearchSuper.selection.test.ts` | пункты и порядок 1:1, скрытые `verify()` — `hide`, в выделении — только `withSelection`. Сообщение — из кэша shared media, а не RPC; «можно переслать» — `message._ === 'message'` (нет фактов `noforwards`), «можно удалить» — `core/messages/canDeleteMessage.ts`; `destroy()` снимает узел меню (у оригинала живёт вечно). Расхождения 51-54 в шапке класса |
 | Строка поиска внутри вкладки | **нет — и в оригинале нет** | — | не расхождение (§ 0) |
 | Поиск сообщений внутри чата | **есть, и это другая подсистема** | `components/conversation/TopbarSearch.tsx` (599), `core/hooks/useChatHeaderSearch.ts`, `useChatSearch.ts`, `stores/searchStore.ts`; ручка `core/managers/messagesManager.ts:708-719` → `GET /chats/:id/search` | оригинал — `chat/topbarSearch.tsx` (1318, Solid). **Волна 5**, не этот этап |
 | Тесты | **есть** | `appSearchSuper.*.test.ts` (по подсистемам класса, включая `seam` — скроллер), `core/hooks/useSearchSuper.test.tsx` (шов: узел, смена пира, владение, липкость), `useGroupInfo.test.tsx`, `userInfo/helpers.test.ts` (`isSharedMediaReached`), `UserInfoPanel.shell.test.ts` (форма панели) | React-тесты `SharedMedia.invalidate/saved.test.tsx` снесены с компонентом (сценарии «Избранного» — в `savedDialogsTab.solid.test.tsx`) |
@@ -382,7 +404,7 @@ Solid-корень пропом `avatarsContainer` тем же контракт�
 | `components/slider.ts`, `components/sliderTab.ts` | одноимённые | волна 2 |
 | `components/row.ts`, `settingSection.ts`, `button.ts`, `buttonIcon.ts`, `buttonMenu.ts`, `icon.ts`, `ripple.ts`, `preloader.ts`, `checkboxField.ts` | одноимённые | волны 1-2 |
 | `components/wrappers/{photo,video,document,mediaSpoiler,album,sticker}.ts` | `components/wrappers/*` | есть |
-| `components/chat/selection.ts` (844) | `chat/selection.ts` (1189) — база `AppSelection` | база есть, `SearchSelection` нет |
+| `components/chat/selection.ts` | `chat/selection.ts` (1189) — база `AppSelection` | база + `SearchSelection` (задача 14, по 812502980) |
 | `helpers/{listenerSetter,middleware,middlewarePromise,positionMenu,contextMenuController}.ts`, `helpers/dom/attachContextMenuListener.ts` | одноимённые | есть |
 | `core/lazyLoadQueue.ts`, `core/dom/setTransition.ts`, `core/dom/swipeHandler.ts`, `helpers/dom/handleHorizontalSwipe.ts` | одноимённые | есть |
 | `components/transition.ts` (~460) | `transition.ts` (383) | **портирован целиком** (волна 3, задача 3): `TransitionSlider` с обеими функциями анимации — `slideNavigation` (`:23-43`) и `slideTabs` (`:45-95`) |
@@ -396,13 +418,9 @@ Solid-корень пропом `avatarsContainer` тем же контракт�
 держит слайдер вкладок и память скролла (`:624-708`, `:800-815`), свайп
 (`:498-542`), очистку и смену пира (`:2714-2793`, `:2803-2843`). Загрузка,
 рендер элементов, первый показ вкладок, участники, выделение и контекстное меню
-в файле ОТСУТСТВУЮТ (не заглушки — пропуски с комментарием и ссылкой на строку
-оригинала); приезжают задачами 6-14. С задачи 13 класс — единственная
-реализация шаред-медиа профиля (шов — `core/hooks/useSearchSuper.ts`).
-
-**Чего у нас нет вовсе** (нужно портировать): остальные 2/3
-`appSearchSuper.ts`, `SearchSelection`, `SearchContextMenu`. `sortedUserList.ts`
-и строитель строки чатлиста портированы задачей 11 (см. § 2.1).
+приехали задачами 6-14 (выделение и меню — задача 14, по tweb 812502980).
+С задачи 13 класс — единственная реализация шаред-медиа профиля (шов —
+`core/hooks/useSearchSuper.ts`).
 
 ## 2.3 Наши известные дефекты в этой зоне (подтверждены на 2026-09-07) — закрыты
 
@@ -490,8 +508,8 @@ Solid-корень пропом `avatarsContainer` тем же контракт�
 5. Скролл профиля вниз: заголовок сменился слайд-фейдом, у контейнера появился `is-full-viewport`, крестик стал стрелкой; скролл вверх — всё вернулось и позиции вкладок сброшены (`cleanScrollPositions`).
 6. Отправить в открытый чат фото: во вкладке «Медиа» **добавилась одна плитка сверху**, счётчик вырос на 1, ранее загруженные страницы на месте.
 7. Удалить это сообщение: плитка снялась, счётчик уменьшился.
-8. Правый клик по плитке: меню `search-contextmenu` с Forward/Download/Goto/Select/Delete; пункты, недоступные по правам, скрыты, а не задизейблены.
-9. Выделить два элемента: ряд вкладок сменился плашкой `.search-super-selection-container` со счётчиком.
+8. Правый клик по плитке: меню `search-contextmenu` с Forward/Copy Media/Download/Show in chat/Select/Delete (у видео и документа без картинки — без Copy Media); пункты, недоступные по правам, скрыты, а не задизейблены. «Копировать медиа» кладёт в буфер ПОЛНОРАЗМЕРНУЮ картинку (вставить в редактор), на время копирования в иконке пункта прелоадер, по итогу — тост и закрытие меню.
+9. Выделить два элемента: ряд вкладок сменился плашкой `.search-super-selection-container` со счётчиком; клик по плитке в режиме выделения выбирает её, а не открывает вьювер; протяжка с зажатой кнопкой берёт диапазон внутри вкладки; «Переслать»/«Удалить» открывают попапы чата и по подтверждению снимают выделение; чекбокс строки файла/аудио не перекрыт иконкой.
 10. Клик по плитке открывает вьювер, стрелки листают **по элементам вкладки**, а не по ленте чата.
 11. Открыть другой профиль и вернуться: вкладки нарисовались из кэша, без сети (`historiesStorage`).
 12. `dom-parity.mjs` по дампам правой колонки — `docs/tweb/dom/dumps/07-right-sidebar.json` и `15-right-*.json`.

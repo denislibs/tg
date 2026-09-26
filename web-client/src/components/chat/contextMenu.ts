@@ -179,6 +179,7 @@ import filterAsync from '@helpers/array/filterAsync'
 import { copyTextToClipboard } from '@helpers/clipboard'
 import { canCopyMediaToClipboard } from '@helpers/copyMediaToClipboard'
 import copyMessageMediaWithFeedback from '@components/copyMessageMediaWithFeedback'
+import canDeleteMessage from '@core/messages/canDeleteMessage'
 import contextMenuController from '@helpers/contextMenuController'
 import { formatFullSentTime, getFullDate, isValidTimestamp } from '@helpers/date'
 import { attachContextMenuListener } from '@helpers/dom/attachContextMenuListener'
@@ -921,7 +922,7 @@ export default class ChatContextMenu {
       className: 'danger',
       text: 'Delete',
       onClick: this.onDeleteClick,
-      verify: () => this.canDeleteMessage(this.message),
+      verify: () => canDeleteMessage(this.message),
     }, {
       icon: 'delete',
       className: 'danger',
@@ -1283,17 +1284,6 @@ export default class ChatContextMenu {
   /** Порт `appPeersManager.canPinMessage` (appPeersManager.ts:38-40). */
   private canPinMessage(peerId: PeerId): boolean {
     return isUser(peerId) || hasRightsPeer(peerId, 'pin_messages')
-  }
-
-  /** Порт `appMessagesManager.canDeleteMessage` (:5841-5848). Из четырёх
-   *  слагаемых оригинала выпало одно — базовая группа (`chat._ === 'chat'`):
-   *  такого конструктора бэкенд не производит вовсе (`core/peers/peerId.ts`). */
-  private canDeleteMessage(message: MyMessage | undefined): boolean {
-    return !!message && (
-      isUser(message.peerId) ||
-      !!message.pFlags.out ||
-      hasRightsPeer(message.peerId, 'delete_messages')
-    ) && (!this.isOutgoing(message) || !!(message as MessageReal).failed)
   }
 
   /** Порт `appMessagesManager.canMessageBeEdited` (:5773-5804).
@@ -1709,7 +1699,7 @@ export default class ChatContextMenu {
    *  медиа (у оригинала `appDownloadManager`), поэтому он приезжает
    *  аргументом: сам метод статический, как в tweb. */
   public static onDownloadClick(
-    managers: ContextMenuManagers,
+    managers: Pick<ContextMenuManagers, 'media'>,
     messages: MyMessage | MyMessage[] | undefined,
     noForwards?: boolean,
   ): void {

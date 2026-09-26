@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 17,
+      "version": 18,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -2715,12 +2715,32 @@
           "value": "Message"
         },
         {
+          "key": "Message.Context.Goto",
+          "value": "Show in chat"
+        },
+        {
           "key": "Message.Context.Pin",
           "value": "Pin"
         },
         {
           "key": "Message.Context.Select",
           "value": "Select"
+        },
+        {
+          "key": "Message.Context.Selection.Clear",
+          "value": "Clear selection"
+        },
+        {
+          "key": "Message.Context.Selection.Delete",
+          "value": "Delete selected"
+        },
+        {
+          "key": "Message.Context.Selection.Download",
+          "value": "Download selected"
+        },
+        {
+          "key": "Message.Context.Selection.Forward",
+          "value": "Forward selected"
         },
         {
           "key": "Message.Context.Unpin",
@@ -5450,6 +5470,13 @@
         {
           "key": "YourName",
           "value": "Your Name"
+        },
+        {
+          "key": "messages",
+          "forms": {
+            "one_value": "%1$d message",
+            "other_value": "%1$d messages"
+          }
         }
       ]
     },
@@ -5460,7 +5487,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 17,
+      "version": 18,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -9917,6 +9944,35 @@
         {
           "key": "MediaCopyFailed",
           "value": "Не удалось скопировать медиа в буфер обмена"
+        },
+        {
+          "key": "Message.Context.Goto",
+          "value": "Показать в чате"
+        },
+        {
+          "key": "Message.Context.Selection.Clear",
+          "value": "Снять выделение"
+        },
+        {
+          "key": "Message.Context.Selection.Delete",
+          "value": "Удалить выбранные"
+        },
+        {
+          "key": "Message.Context.Selection.Download",
+          "value": "Загрузить выбранные"
+        },
+        {
+          "key": "Message.Context.Selection.Forward",
+          "value": "Переслать выбранные"
+        },
+        {
+          "key": "messages",
+          "forms": {
+            "one_value": "%1$d сообщение",
+            "few_value": "%1$d сообщения",
+            "many_value": "%1$d сообщений",
+            "other_value": "%1$d сообщения"
+          }
         },
         {
           "key": "MediaEditor.Adjustments.Enhance",

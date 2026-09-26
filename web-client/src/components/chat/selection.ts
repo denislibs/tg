@@ -54,11 +54,11 @@
  *    `IS_TOUCH_SUPPORTED` в `attachListeners` СОХРАНЕНА (иначе на таче
  *    заработала бы мышиная протяжка, которой у оригинала там нет) — в ней
  *    портирован только сбор `selectedText` по `touchend` (:118-121).
- *  • `SearchSelection` (:580-762) — выделение в shared media; носитель
- *    (`AppSearchSuper`) вне периметра ленты.
- *  • `getSelectedMessages` (:409-421) — её единственные вызывающие у tweb это
- *    `contextMenu.ts:492` и `appSearchSuper.ts:208`; обоих в порте нет,
- *    заводить метод без вызывающего = мёртвый код.
+ *  • `getSelectedMessages` (:409-421) — в базе не заводится: у ленты
+ *    выбранные сообщения собирает само меню (`chat/contextMenu.ts`,
+ *    `getSelectedMessages` поверх окна зеркала), а у базы нет хранилища
+ *    сообщений, из которого их брать (`getStorageKey` не портирован, ниже).
+ *    Своя версия есть у `SearchSelection` — поверх кэша shared media.
  *  • `onCancelSelection` (:1177-1189) — в `ChatSelection` его тело это ровно
  *    сброс `reportSelectionData` (остальное закомментировано у самого tweb);
  *    без report-режима у хука нет ни одного реализатора.
@@ -98,8 +98,14 @@ import {
 } from './selectionRange'
 import getSelectedText from '@helpers/dom/getSelectedText'
 import isInDOM from '@helpers/dom/isInDOM'
+import replaceContent from '@helpers/dom/replaceContent'
 import EventListenerBase from '@helpers/eventListenerBase'
-import type ListenerSetter from '@helpers/listenerSetter'
+import ListenerSetter from '@helpers/listenerSetter'
+import ButtonIcon from '@components/buttonIcon'
+import { i18n } from '@lib/langPack'
+import type { MyMessage } from '@core/models'
+import type AppSearchSuper from '@components/appSearchSuper'
+import { getSharedMediaMessage } from '@components/sharedMediaHistories'
 
 /** tweb selection.ts:51-53 (812502980) — обобщён в 79b9c44c1 */
 const accumulateMapSet = <T extends { size: number }>(map: Map<number, T>): number => {
@@ -667,6 +673,212 @@ export class AppSelection extends EventListenerBase<{
 
     if (!batch) after()
     return after
+  }
+}
+
+/**
+ * Порт tweb `SearchSelection` (`chat/selection.ts:662-839`, 812502980) —
+ * выделение элементов shared media (`AppSearchSuper`). Плашка действий
+ * `.search-super-selection-container` встаёт В РЯД ВКЛАДОК
+ * (`navScrollableContainer`), а `is-selecting` — на ряд и на весь контейнер
+ * (`_searchSuper.scss`, правила `is-selecting`).
+ *
+ * ── Адаптации ────────────────────────────────────────────────────────────────
+ *  • действия плашки — колбэки хоста у `AppSearchSuper` (расхождение 51 в
+ *    шапке класса): `appImManager.setInnerPeer` → `searchSuper.setInnerPeer`,
+ *    `showForwardPopup` → `searchSuper.showForwardPopup`,
+ *    `showDeleteMessagesPopup` → `searchSuper.showDeleteMessagesPopup`;
+ *    обратный вызов «снять выделение по подтверждению» едет тем же аргументом,
+ *    что у оригинала;
+ *  • `ariaLabel` кнопок плашки (472e3e76b, a11y) не переносится — своя задача;
+ *  • `getSelectedMessages` (у tweb — базовый, `:482-490`, из хранилища
+ *    сообщений менеджера) — здесь, поверх кэша shared media
+ *    (`getSharedMediaMessage`): из него же нарисованы элементы, и другого
+ *    хранилища этих сообщений на главном потоке нет;
+ *  • менеджер прав (`cantForwardDeleteMids`) не передаётся — факта нет
+ *    (докблок `SelectionManagers`), кнопки не прячутся по правам.
+ */
+export class SearchSelection extends AppSelection {
+  protected selectionContainer?: HTMLElement
+  protected selectionCountEl?: HTMLElement
+  public selectionForwardBtn?: HTMLElement
+  public selectionDeleteBtn?: HTMLElement
+  public selectionGotoBtn?: HTMLElement
+
+  private isPrivate: boolean
+
+  // * plate-scoped: the tab's listenerSetter outlives every selection session,
+  // * so plate button listeners must not accumulate there
+  private containerListenerSetter?: ListenerSetter
+
+  constructor(
+    private searchSuper: AppSearchSuper,
+    managers: SelectionManagers,
+    listenerSetter: ListenerSetter,
+  ) {
+    super({
+      managers,
+      verifyTarget: (_e, target) => !!target && this.isSelecting,
+      getElementFromTarget: (target) => findUpClassName(target, 'search-super-item'),
+      targetLookupClassName: 'search-super-item',
+      lookupBetweenParentClassName: 'tabs-tab',
+      lookupBetweenElementsQuery: '.search-super-item',
+    })
+
+    this.isPrivate = !searchSuper.showSender
+    if (!IS_TOUCH_SUPPORTED) this.attachListeners(searchSuper.container, listenerSetter)
+  }
+
+  /** tweb :703-714 */
+  public override toggleSelection(toggleCheckboxes = true, forceSelection = false): boolean {
+    const ret = super.toggleSelection(toggleCheckboxes, forceSelection)
+
+    if (ret && toggleCheckboxes) {
+      const elements = Array.from(this.searchSuper.tabsContainer.querySelectorAll<HTMLElement>('.search-super-item'))
+      elements.forEach((element) => {
+        this.toggleElementCheckbox(element, this.isSelecting)
+      })
+    }
+
+    return ret
+  }
+
+  /** tweb :716-729 */
+  public override toggleByElement = (element: HTMLElement, selected?: boolean): void => {
+    const mid = +(element.dataset.mid ?? '')
+    const peerId = +(element.dataset.peerId ?? '')
+    const isSelected = this.isMidSelected(peerId, mid)
+    if (selected !== undefined && selected === isSelected) {
+      return
+    }
+
+    if (!this.toggleMid(peerId, mid)) {
+      return
+    }
+
+    this.updateElementSelection(element, this.isMidSelected(peerId, mid))
+  }
+
+  /** tweb :482-490 — см. «Адаптации» в докблоке класса */
+  public getSelectedMessages(): MyMessage[] {
+    const messages: MyMessage[] = []
+    this.selectedMids.forEach((mids, peerId) => {
+      mids.forEach((mid) => {
+        const message = getSharedMediaMessage(peerId, mid)
+        if (message) messages.push(message)
+      })
+    })
+    return messages
+  }
+
+  /** tweb :731-737 */
+  protected override onUpdateContainer = (cantForward: boolean, cantDelete: boolean) => {
+    const length = this.length()
+    replaceContent(this.selectionCountEl!, i18n('messages', [length]))
+    this.selectionGotoBtn!.classList.toggle('hide', length !== 1)
+    this.selectionForwardBtn!.classList.toggle('hide', cantForward)
+    this.selectionDeleteBtn?.classList.toggle('hide', cantDelete)
+  }
+
+  /** tweb :739-838 */
+  protected override onToggleSelection = (forwards: boolean, animate: boolean) => {
+    setTransition({
+      element: this.searchSuper.navScrollableContainer,
+      className: 'is-selecting',
+      forwards,
+      duration: animate ? SELECTION_TRANSITION_DURATION : 0,
+      onTransitionEnd: () => {
+        if (!this.isSelecting) {
+          this.containerListenerSetter?.removeAll()
+          this.containerListenerSetter = undefined
+          this.selectionContainer?.remove()
+          this.selectionContainer =
+            this.selectionForwardBtn =
+            this.selectionDeleteBtn =
+            undefined
+          this.selectedText = undefined
+        }
+      },
+    })
+
+    setTransition({
+      element: this.searchSuper.container,
+      className: 'is-selecting',
+      forwards,
+      duration: SELECTION_TRANSITION_DURATION,
+    })
+
+    if (this.isSelecting) {
+      if (!this.selectionContainer) {
+        const BASE_CLASS = 'search-super-selection'
+        this.selectionContainer = document.createElement('div')
+        this.selectionContainer.classList.add(BASE_CLASS + '-container')
+
+        const containerListenerSetter = this.containerListenerSetter = new ListenerSetter()
+
+        const btnCancel = ButtonIcon(`close ${BASE_CLASS}-cancel`, { noRipple: true })
+        attachClickEvent(btnCancel, () => this.cancelSelection(), { listenerSetter: containerListenerSetter, once: true })
+
+        this.selectionCountEl = document.createElement('div')
+        this.selectionCountEl.classList.add(BASE_CLASS + '-count')
+
+        const attachClickOptions = { listenerSetter: containerListenerSetter }
+
+        this.selectionGotoBtn = ButtonIcon(`message ${BASE_CLASS}-goto`)
+        attachClickEvent(this.selectionGotoBtn, () => {
+          const peerId = [...this.selectedMids.keys()][0]
+          const mid = [...this.selectedMids.get(peerId)!][0]
+          this.cancelSelection()
+
+          this.searchSuper.setInnerPeer?.({
+            peerId,
+            lastMsgId: mid,
+            threadId: this.searchSuper.mediaTab.type === 'saved' ? this.searchSuper.searchContext.peerId : this.searchSuper.searchContext.threadId,
+          })
+        }, attachClickOptions)
+
+        this.selectionForwardBtn = ButtonIcon(`forward ${BASE_CLASS}-forward`)
+        attachClickEvent(this.selectionForwardBtn, () => {
+          const obj: { [fromPeerId: PeerId]: number[] } = {}
+          for (const [fromPeerId, mids] of this.selectedMids) {
+            obj[fromPeerId] = Array.from(mids).sort((a, b) => a - b)
+          }
+
+          this.searchSuper.showForwardPopup?.(obj, () => {
+            this.cancelSelection()
+          })
+        }, attachClickOptions)
+
+        if (this.isPrivate) {
+          this.selectionDeleteBtn = ButtonIcon(`delete danger ${BASE_CLASS}-delete`)
+          attachClickEvent(this.selectionDeleteBtn, () => {
+            const peerId = this.searchSuper.searchContext.peerId
+            this.searchSuper.showDeleteMessagesPopup?.(
+              peerId,
+              this.getSelectedMids(),
+              () => {
+                this.cancelSelection()
+              },
+            )
+          }, attachClickOptions)
+        }
+
+        this.selectionContainer.append(...[
+          btnCancel,
+          this.selectionCountEl,
+          this.selectionGotoBtn,
+          this.selectionForwardBtn,
+          this.selectionDeleteBtn,
+        ].filter((element): element is HTMLElement => !!element))
+
+        const transitionElement = this.selectionContainer
+        transitionElement.style.opacity = '0'
+        this.searchSuper.navScrollableContainer.append(transitionElement)
+
+        void transitionElement.offsetLeft // reflow
+        transitionElement.style.opacity = ''
+      }
+    }
   }
 }
 

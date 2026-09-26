@@ -188,8 +188,15 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `GroupsOnly`, `ChannelsOnly`) и тексты `EmptySearchPlaceholder`
 // (`NoResultsTitle`, `NoResultsSubtitle`, `SearchInAllChats`). Вместе с задачей 7 `keys`
 // 1320 → 1328, множественных форм не прибавилось; остальным четырём — ничего.
+//
+// Сдвиг набора задачей 14 shared media (меню элемента и выделение, tweb
+// 812502980): русскому добавлены шесть ключей 1:1 с tweb lang.ts —
+// `Message.Context.Goto`, `Message.Context.Selection.{Clear,Delete,Download,
+// Forward}` и множественная форма `messages` (счётчик плашки выделения):
+// `keys` 1328 → 1334, `plural` 33 → 34. Замена трёх самодельных ключей
+// копирования медиа ключами оригинала число строк не меняла (у `FINGERPRINT`).
 const COMPOSITION = {
-  ru: { keys: 1328, plural: 33 },
+  ru: { keys: 1334, plural: 34 },
   uk: { keys: 682, plural: 24 },
   es: { keys: 681, plural: 24 },
   de: { keys: 681, plural: 24 },
@@ -277,9 +284,10 @@ const COMPOSITION = {
 // у русского самодельные `MediaViewer.Context.CopyMedia`,
 // `MediaViewer.ImageCopied`, `MediaViewer.CopyError` (выдумка React-меню, ни
 // одного читателя) заменены ключами оригинала `MediaViewer.Context.Copy`,
-// `MediaCopied`, `MediaCopyFailed`: −3 +3, число строк то же.
+// `MediaCopied`, `MediaCopyFailed`: −3 +3, число строк то же. Следом —
+// шесть ключей меню элемента и выделения (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '371bfa04',
+  ru: '97312968',
   uk: 'e1335ac1',
   es: 'a6b1aad3',
   de: 'a6b1aad3',

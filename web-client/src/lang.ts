@@ -723,8 +723,13 @@ const lang = {
     other_value: '%1$d members',
   },
   Message: 'Message',
+  'Message.Context.Goto': 'Show in chat',
   'Message.Context.Pin': 'Pin',
   'Message.Context.Select': 'Select',
+  'Message.Context.Selection.Clear': 'Clear selection',
+  'Message.Context.Selection.Delete': 'Delete selected',
+  'Message.Context.Selection.Download': 'Download selected',
+  'Message.Context.Selection.Forward': 'Forward selected',
   'Message.Context.Unpin': 'Unpin',
   'Message.Preview.Call': 'Call',
   'Message.Unsupported': 'Unsupported message',
@@ -1454,6 +1459,10 @@ const lang = {
   Yesterday: 'yesterday',
   YourEmailSkip: 'Skip',
   YourName: 'Your Name',
+  messages: {
+    one_value: '%1$d message',
+    other_value: '%1$d messages',
+  },
 }
 
 export default lang
