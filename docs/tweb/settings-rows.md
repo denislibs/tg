@@ -334,8 +334,9 @@ div.tabs-container[data-animation="navigation"]  (= .sidebar-slider колонк
 | `components/rowTsx.solid.tsx` (312) | `rowTsx.tsx` старой базы + 803f9599d/2197fee9c | **иначе** | нет: `toggleAside` и `div.row-right` для тумблера; вид поля `radioFieldRight` и константы `RADIO_FIELD_RIGHT_CLASS`; `contextMenu`/`openContextMenuRef`; a11y-блока (`role`, `tabIndex`, `labelControl`, `buttonKeyDown`, `MutationObserver`); проверки `disabled`/`hasMouseMovedSinceDown` в `onClick`; `ref`/`rowClass`/`titleRightClass`/`titleRightRef` у частей; `midtitleRight`; `element`-форм `RightContent`/`Media`; пустой `RightContent` не должен занимать колонку; `style`. Шапка файла (`:21-31`) говорит, что `createContextMenu` в репо нет, — **устарело**: `helpers/dom/createContextMenu.ts` есть |
 | `components/rowFieldClasses.ts` (24) | `rowFieldClasses.ts` | **есть** (значения совпадают) | «ОТСТУПЛЕНИЕ» в шапке (`:10-18`) — **не отступление**: у HEAD тумблер тоже носит только `row-checkbox-field-toggle` (ef41b29db, `rowTsx.tsx:482-492`); та же неверная запись — `rowTsx.solid.tsx:285-287`, `left-sidebar.md` ч. 8 § 3. Нет `RADIO_FIELD_RIGHT_CLASS` и классов выделения |
 | `components/row.ts` (488) | удалённый в HEAD `row.ts` | **нет в HEAD** | потребители: `dialogRow.ts:145` (`class DialogElement extends Row`; у HEAD — `attachRowController`), `appSearchSuper.ts:1532` (строка ссылки; у HEAD — `renderSearchWebPageRow`, `searchWebPageRow.tsx`), `sidebarLeft/tabs/activeSessions.solid.tsx:61`, `language.solid.tsx:82` |
-| `components/section.solid.tsx` (97) | `section.tsx` старой базы | **иначе** | нет `captionTop`, `fakeGradientDelimiter`, `noContent`, экспорта `SectionName`, `appendSectionContent`, `SectionParts`, проброса пропов контента; `no-margin-bottom` стоит на внутренней карточке (`:78`), у HEAD — на контейнере (`section.tsx:86`) |
-| `styles/tweb/_section.scss` | `_section.scss` старой базы | **иначе** | старая модель отступов: `margin-bottom` у карточки и `margin: -.375rem 0 1rem` у подписи (`:65-66`); у HEAD — `padding-bottom` контейнера, подпись вне карточки `margin-top: .625rem`, `captionOld`/`captionTop`/`:empty` отдельно (`_section.scss:53-91`) |
+| `components/section.solid.tsx` | `section.tsx` HEAD (задача 1) | **есть** | в шапке: `caption` без голой строки (`Exclude<JSX.Element, string>`), сообщение `appendSectionContent` без `unwrapSolidElement` (хелпера нет). `generateDelimiter` — `components/generateDelimiter.ts`, стиль `.gradient-delimiter` — `styles/index.scss` (tweb `base.scss:1391`) |
+| `styles/tweb/_section.scss` | `_section.scss` HEAD (задача 1) | **есть** | `scss-parity` 18/18. Парный хунк 2556fc949 в `_chatlist.scss` (`.chatlist-bottom .sidebar-left-section-container { padding-bottom: 0 }`) перенесён; хунк `_popup.scss:266-273` (`:has(+ footer)`) — за 2C |
+| `shared/ui/SidebarSection/SidebarSection.tsx` | React-двойник `section.tsx` (до задачи 31) | **есть** (разметка) | только `title`/`caption` — единственный потребитель `kit.Section` других опций не передаёт; подпись — сосед карточки, заголовок — `.sidebar-left-h2` первым в `-content` |
 | `styles/tweb/_row.scss` | `_row.scss` ef41b29db | **почти** | после 2A: нет `row-midtitle-row`, `sortable-item-transition`, классов выделения (60a83a6f1, ee6f7f9c2); `padding-block` строки `.4375rem` против `.375rem` |
 | `components/settingSection.ts` (179) | удалённый `settingSection.ts` | **нет в HEAD** | единственный потребитель — `activeSessions.solid.tsx:35` |
 | `components/checkboxFieldTsx.solid.tsx` | `checkboxFieldTsx.tsx` | **почти** | нет `lockIcon`, `ref`, эффекта `disabled` |
@@ -380,12 +381,14 @@ div.tabs-container[data-animation="navigation"]  (= .sidebar-slider колонк
 
 ### 8.3. Сквозные расхождения (все React-экраны)
 
-1. **Подпись внутри карточки.** `SidebarSection` кладёт `caption` в `.sidebar-left-section`
-   (`shared/ui/SidebarSection/SidebarSection.tsx:70-71`) — это режим `captionOld` для всех.
-   Комментарий `settings/kit.tsx:222-228` ссылается на дамп `15-right-12`, но в нём подпись —
-   ребёнок `-container` (строка 29 развёрнутого дампа), т. е. снаружи.
-2. **Заголовок вне контент-блока и без `sidebar-left-h2`** (`SidebarSection.tsx:59-67`); у
-   tweb — первым ребёнком `.sidebar-left-section-content` (`section.tsx:101-107`).
+1. ~~Подпись внутри карточки~~ — **снято задачей 1**: `SidebarSection` кладёт подпись соседом
+   карточки в контейнер (`section.tsx:112`, дамп `15-right-12`). Ручная разметка вне кита
+   осталась: `group/GroupEditFlow.tsx` (подпись под полями имени/описания — внутри карточки,
+   в дампе `15-right-12` снаружи) и `group/screens/InviteLinkScreens.tsx` — геометрия у них та
+   же, что до смены модели (правило `captionOld`), `DiscussionScreen.tsx` переведён на форму
+   `noContent`.
+2. ~~Заголовок вне контент-блока и без `sidebar-left-h2`~~ — **снято задачей 1**: первым
+   ребёнком `.sidebar-left-section-content` (`section.tsx:101-107`).
 3. **Имена пропов** `kit.Section`: `caption` — заголовок, `footer` — подпись (`kit.tsx:209-232`).
 4. **Шапка на плашке с линией всегда.** `kit.SettingsScreen` ставит `scrollable-y-bordered`
    статически, без `scrolled-start` (`kit.tsx:146`, `:159`), и правило
@@ -418,8 +421,6 @@ div.tabs-container[data-animation="navigation"]  (= .sidebar-slider колонк
   «Отступление: тумблер…» — см. `rowFieldClasses.ts` выше.
 - `components/sidebarLeft/settingsSliderHost.ts` (шапка) и `left-sidebar.md` ч. 8 § 3 — `Sidebar.tsx:236`
   для колоночного `.sidebar-slider`; сейчас `Sidebar.tsx:350`.
-- `settings/kit.tsx:222-228` и `shared/ui/SidebarSection/SidebarSection.tsx:15-20` — «подпись
-  внутри, 1:1 с дампом 15-right-12» — неверно, см. § 8.3 п. 1.
 
 ---
 
