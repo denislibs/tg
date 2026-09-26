@@ -1104,7 +1104,10 @@ loader'ом (`element === null`) или **проскроллен из видим
   `openMedia({..., fromRight: ∓1})`;
 - `ListLoader.go` (`listLoader.ts:67-101`): сам догружает при `< loadWhenLeft = 20`;
   `loadCount = 50` (`:23`); `load(older)` (`:142-201`) — якорь = крайний элемент, `processItem`,
-  вставка с учётом `reverse`, `onLoadedMore` → перерисовка стрелок (`base.ts:439-443`);
+  вставка с учётом `reverse`, `onLoadedMore` → перерисовка стрелок (`base.ts:439-443`); с c934ddd1e
+  дыры в выдаче (mid без сообщения) пропускаются ДО `processItem` (`listLoader.ts:172-173` по `812502980`).
+  У нас гард перенесён в `mediaViewer/listLoader.ts::load`, хотя наши источники дыр не дают
+  (`Chat.tsx::loadMoreMedia`, `appSearchSuper.ts::loadMoreMedia` берут сообщения из ответа сервера);
 - `SearchListLoader.loadMore` (`searchListLoader.ts:27-61`): `getHistory({...searchContext,
   offsetId: anchor.mid, limit/backLimit})`; `inputFilter` из searchContext —
   `inputMessagesFilterPhotoVideo` / `Document` (`bubbles.ts:3833`), `ChatPhotos`
