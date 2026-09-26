@@ -451,9 +451,14 @@ ul.chatlist {
     // flex: 1 1 auto;
     max-height: 36.375rem;
 
+    // tweb 2556fc949 (`_chatlist.scss:584-586`): отступ после секции — `padding-bottom`
+    // контейнера (`_section.scss`), а не `margin` карточки
+    .sidebar-left-section-container {
+      padding-bottom: 0;
+    }
+
     .sidebar-left-section {
       padding-bottom: 0;
-      margin-bottom: 0 !important;
 
       /* &-name {
         padding-top: 1rem !important;

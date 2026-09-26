@@ -247,12 +247,12 @@ export function Section({
   children: ReactNode
 }) {
   const t = useT()
-  // 1:1 с tweb `SettingSection` (дамп 15-right-12): и заголовок, и подпись
-  // живут ВНУТРИ `.sidebar-left-section` — заголовок как
-  // `.sidebar-left-section-name`, подпись как второй
-  // `.sidebar-left-section-content.sidebar-left-section-caption`. Своей обёртки
-  // у секции нет: расстояние между карточками даёт сам
-  // `.sidebar-left-section-container` (`_section.scss`).
+  // 1:1 с tweb `section.tsx` (812502980), разметку держит `SidebarSection`:
+  // заголовок — `.sidebar-left-h2.sidebar-left-section-name` первым в
+  // `.sidebar-left-section-content`, подпись — соседом карточки в
+  // `.sidebar-left-section-container` (дампы 15-right-12, 14-left-14). Своей
+  // обёртки у секции нет: расстояние между карточками — `padding-bottom`
+  // контейнера (`_section.scss`).
   return (
     <SidebarSection
       title={caption ? t(caption) : captionText}

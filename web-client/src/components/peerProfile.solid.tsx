@@ -840,11 +840,10 @@ function EmojiStatusIcon(props: { emoji: string; size: number }) {
 // `checkboxFieldTsx.solid.tsx`. Четвёртого способа рисовать строку не заводим.
 //
 // Контекстное меню (`contextMenu` — «Скопировать», ссылка на fragment.com,
-// перевод и т.п. у КАЖДОЙ строки ниже) нигде не портировано: `Row`
-// (`rowTsx.solid.tsx`) не несёт проп `contextMenu` вовсе — предмета
-// (`helpers/dom/createContextMenu`) нет в репозитории (докблок файла, задача
-// #110). Одна и та же причина для Phone/Bio/Birthday/Link — не повторяется у
-// каждой функции по отдельности.
+// перевод и т.п. у КАЖДОЙ строки ниже) не портировано. Проп `contextMenu` у
+// `Row` (`rowTsx.solid.tsx`) есть с задачи 0 плана 2D — не перенесены сами
+// наборы пунктов строк профиля. Одна и та же причина для Phone/Bio/Birthday/Link
+// — не повторяется у каждой функции по отдельности.
 
 /** Порт `PeerProfile.MainSection` (tweb `:1510-1533`) — обёртка
  *  `<Show when={!(isBotforum && threadId)}>` снята как мёртвый код, см.

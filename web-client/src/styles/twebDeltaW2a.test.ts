@@ -95,10 +95,11 @@ describe('поля строки — по классам row-* (tweb 803f9599d �
 // `.row .row-checkbox-field { position: absolute }`, а тумблер строки лежит в
 // `.row-title-right` (ноль ширины, `overflow: hidden`) — с этим классом он
 // обрезается целиком, и на экране «Уведомления и звуки» пропали все тумблеры.
-// Тумблер строки носит только `row-checkbox-field-toggle` (отступление —
+// Тумблер строки носит только `row-checkbox-field-toggle` — как у tweb HEAD
+// (ef41b29db снял с него `row-checkbox-field`, `rowTsx.tsx:482-492`; у нас —
 // `components/rowFieldClasses.ts`); здесь — что именно этот набор классов не
 // выбивает его из потока.
-describe('тумблер строки остаётся в потоке (отступление от tweb, rowFieldClasses.ts)', () => {
+describe('тумблер строки остаётся в потоке (классы tweb HEAD, rowFieldClasses.ts)', () => {
   function toggleIn(extra: string) {
     const style = document.createElement('style')
     style.textContent = css
@@ -117,7 +118,7 @@ describe('тумблер строки остаётся в потоке (отст
     expect(toggleIn('row-checkbox-field-toggle')).toBe('relative')
   })
 
-  it('с набором tweb (`row-checkbox-field` + toggle) — absolute, отсюда и отступление', () => {
+  it('с набором 803f9599d (`row-checkbox-field` + toggle) — absolute, потому ef41b29db его и снял', () => {
     expect(toggleIn('row-checkbox-field row-checkbox-field-toggle')).toBe('absolute')
   })
 })
