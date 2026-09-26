@@ -1,6 +1,6 @@
 // src/core/realtime/events.ts
 import type { MessageEntity, RawMyMessage, MessageReactions, Reaction } from '../models'
-import type { MessageMedia } from '../media/messageMedia'
+import type { MessageMedia, MyDocument } from '../media/messageMedia'
 import type { MessagesChatFull, UserReal, UserStatus } from '../peers/peer'
 import type { PeerNotifySettings } from '../dialogs/notifySettings'
 import type { StoryItem } from '../stories/story'
@@ -699,6 +699,9 @@ export interface PendingNewEvt {
   /** ключ альбома — ЧИСЛО (в схеме `grouped_id:flags.17?long`) */
   grouped_id?: number
   media?: PendingMedia
+  /** Готовый документ файла (стикер) — кладётся в бабл как есть, см.
+   *  `SendOptimistic.document` в `core/managers/messages/pending.ts`. */
+  document?: MyDocument
   /** blob-URL локального превью, сминченный воркером (см. выше) */
   local_url?: string
   /** АРГУМЕНТЫ сборки гео-вложения бабла (как и `media` выше — не само

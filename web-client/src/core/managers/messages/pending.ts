@@ -84,6 +84,12 @@ import { sendingParamsToWire, splitSendingParams, type MessageSendingParams, typ
 export interface SendOptimistic {
   senderId: number
   media?: PendingMedia
+  /** Файл — УЖЕ сохранённый документ (стикер): порт ветки `isDocument` tweb
+   *  `sendFile` (appMessagesManager.ts:2904-2987), где в бабл кладётся сам
+   *  документ (`document: isDocument ? file : document`), а не собранный из
+   *  меты файла. Взаимоисключающе с `media`: у готового документа меты нет,
+   *  есть он сам — со ступенями и атрибутами. */
+  document?: MyDocument
   /** имя контакта для бабла — проводной contactUserId имени не несёт */
   contactName?: string
   /** send-as: бабл сразу от лица выбранного канала/группы. Едет ССЫЛКА
@@ -513,10 +519,17 @@ export function newPendingMethods(ctx: PendingCtx) {
       // кладётся УЖЕ сохранённый документ), иначе временный — id самого бабла,
       // ровно как tweb `mediaTempId = message.id` (:1554).
       //
+      // Стикер — та же ветка `isDocument`, но документ приходит ЦЕЛИКОМ
+      // (`document: isDocument ? file : document`, :2987): собирать его заново
+      // из меты нечего, а без него бабл родился бы пустым. ack переносит
+      // содержимое бабла как есть, а эхо с тем же номером окно отбрасывает как
+      // дубль (`messageOps.insert`), — пустой бабл так и оставался пустым.
+      //
       // Гео и визитка собираются здесь же и тем же приёмом: они КОНСТРУКТОРЫ
       // того же объединения, а не собственные поля сообщения рядом с медиа, —
       // значит и у бабла им место ровно одно.
-      media: e.media
+      media: e.document ? { _: 'messageMediaDocument', document: e.document }
+        : e.media
         ? makeDocumentAndMetaForSendingFile({ ...e.media, mediaTempId: e.media_id ?? id, attachType: e.type ?? 'document' })
         : e.geo ? makeGeoMedia(e.geo)
         : e.contact ? makeContactMedia(e.contact)
@@ -645,6 +658,7 @@ export function newPendingMethods(ctx: PendingCtx) {
         media_id: args.mediaId ?? null,
         grouped_id: args.groupedId,
         media: optimistic.media,
+        document: optimistic.document,
         geo: args.geo,
         // Телефон гидрирует сервер (приедет с эхом new_message) — в бабле пока
         // только локальный снимок имени.

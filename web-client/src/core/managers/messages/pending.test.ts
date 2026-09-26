@@ -23,6 +23,7 @@ import type { MessageOp } from '../../realtime/messageOps'
 import type { PendingNewEvt } from '../../realtime/events'
 import type { SendArgs as WireSendArgs } from '../../realtime/connectionManager'
 import type { UploadArgs } from '../mediaManager'
+import { makeSticker } from '../../stickers/testSticker'
 
 /** Стенд владельца: SSOT + срезы окон + все инъекции (транспорт, аплоад, typing,
  *  прогресс). `order` фиксирует порядок «бабл на экран → сеть», ради которого в
@@ -832,6 +833,32 @@ describe('sendText с готовым media_id: вложение под НАСТ�
     const doc = getDocumentFromMessage((h.emitted[0][0] as { msg: MessageReal }).msg)!
     expect(doc.id).toBe(777)
     expect(doc.type).toBe('gif')
+  })
+
+  // tweb `sendFile({file: document})` (appMessagesManager.ts:2904-2987): у
+  // стикера файл — УЖЕ сохранённый документ, и в бабл кладётся ровно он
+  // (`document: isDocument ? file : document`), со всеми атрибутами и ступенями.
+  // Что ломалось без этого (живой стенд): бабл «отправляется…» рождался БЕЗ
+  // вложения — пустой пузырь с одним временем; ack переносит содержимое бабла
+  // как есть, а эхо с тем же номером окно отбрасывает как дубль — стикер не
+  // появлялся до перезагрузки, а время двух отправок подряд ложилось друг на друга.
+  it('стикер: в бабле тот же документ, что выбран в пикере, — и после ack тоже', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [cid(10)])
+    const p = newPendingMethods(h.ctx)
+    const sticker = makeSticker({ id: 2855, emoji: '🥳', mime: 'application/x-tgsticker', pathThumb: 'AAEC' })
+
+    await p.sendText({
+      peerId: 1, text: '', clientMsgId: 'c1', mediaId: sticker.id, type: 'sticker',
+      optimistic: { senderId: 5, document: sticker },
+    })
+
+    const temp = (h.emitted[0][0] as { msg: MessageReal }).msg
+    expect(temp.media).toEqual({ _: 'messageMediaDocument', document: sticker })
+    expect(getDocumentFromMessage(temp)?.type).toBe('sticker')
+
+    const acked = (p.ackPendingMessage({ client_msg_id: 'c1', id: 11, created_at: '2026-09-26T18:36:00Z' })[0] as { msg: MessageReal }).msg
+    expect(acked.media).toEqual({ _: 'messageMediaDocument', document: sticker })
   })
 })
 
