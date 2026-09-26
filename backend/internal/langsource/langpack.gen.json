@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 19,
+      "version": 20,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -1355,10 +1355,6 @@
           "value": "This device"
         },
         {
-          "key": "DarkMode",
-          "value": "Dark Mode"
-        },
-        {
           "key": "DataSettings",
           "value": "Data and Storage"
         },
@@ -1463,6 +1459,10 @@
         {
           "key": "DisableAnimations",
           "value": "Disable Animations"
+        },
+        {
+          "key": "DisableDarkMode",
+          "value": "Disable Dark Mode"
         },
         {
           "key": "DisablePhotoSpoiler",
@@ -1679,6 +1679,10 @@
         {
           "key": "EnableAnimations",
           "value": "Enable Animations"
+        },
+        {
+          "key": "EnableDarkMode",
+          "value": "Enable Dark Mode"
         },
         {
           "key": "EnablePhotoSpoiler",
@@ -1903,10 +1907,6 @@
         {
           "key": "General",
           "value": "General"
-        },
-        {
-          "key": "General.NightMode",
-          "value": "Night Mode"
         },
         {
           "key": "General.TextSize",
@@ -2736,6 +2736,10 @@
             "one_value": "%1$d member",
             "other_value": "%1$d members"
           }
+        },
+        {
+          "key": "MenuTelegramStars",
+          "value": "My Stars"
         },
         {
           "key": "Message",
@@ -3680,14 +3684,6 @@
           "value": "Renews on"
         },
         {
-          "key": "Premium.Row.Active",
-          "value": "Active — manage subscription"
-        },
-        {
-          "key": "Premium.Row.Subtitle",
-          "value": "Unlock exclusive features"
-        },
-        {
           "key": "Premium.SubscribeFor",
           "value": "Subscribe for"
         },
@@ -4439,6 +4435,10 @@
         {
           "key": "SetAsAdmin",
           "value": "Promote to admin"
+        },
+        {
+          "key": "SetAsEmojiStatus",
+          "value": "Set as Status"
         },
         {
           "key": "SetColor",
@@ -5538,7 +5538,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 19,
+      "version": 20,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -6041,14 +6041,6 @@
           "value": "Показывайте премиум-значок рядом с именем."
         },
         {
-          "key": "Premium.Row.Subtitle",
-          "value": "Откройте эксклюзивные функции"
-        },
-        {
-          "key": "Premium.Row.Active",
-          "value": "Активна — управление подпиской"
-        },
-        {
           "key": "Payment.Title",
           "value": "Оплата"
         },
@@ -6224,10 +6216,6 @@
         {
           "key": "Username",
           "value": "Имя пользователя"
-        },
-        {
-          "key": "General.NightMode",
-          "value": "Ночной режим"
         },
         {
           "key": "AccountSettings.Language",
@@ -6430,8 +6418,12 @@
           "value": "Скрыт из вашего профиля"
         },
         {
-          "key": "DarkMode",
-          "value": "Тёмный режим"
+          "key": "EnableDarkMode",
+          "value": "Включить тёмный режим"
+        },
+        {
+          "key": "DisableDarkMode",
+          "value": "Выключить тёмный режим"
         },
         {
           "key": "DisableAnimations",
@@ -7125,6 +7117,10 @@
         {
           "key": "Stars.Wallet",
           "value": "Кошелёк"
+        },
+        {
+          "key": "MenuTelegramStars",
+          "value": "Мои звёзды"
         },
         {
           "key": "MultiAccount.More",
@@ -10651,6 +10647,10 @@
           "value": "Установить эмодзи-статус"
         },
         {
+          "key": "SetAsEmojiStatus",
+          "value": "Установить как статус"
+        },
+        {
           "key": "ExportedInvitation.Status.Expired",
           "value": "истекла"
         },
@@ -11105,7 +11105,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 7,
+      "version": 8,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -11238,10 +11238,6 @@
         {
           "key": "BioCopied",
           "value": "Bio copiée"
-        },
-        {
-          "key": "General.NightMode",
-          "value": "Mode nuit"
         },
         {
           "key": "AccountSettings.Language",
@@ -13909,7 +13905,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 7,
+      "version": 8,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -14042,10 +14038,6 @@
         {
           "key": "BioCopied",
           "value": "Bio kopiert"
-        },
-        {
-          "key": "General.NightMode",
-          "value": "Nachtmodus"
         },
         {
           "key": "AccountSettings.Language",
@@ -16712,7 +16704,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 7,
+      "version": 8,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -16845,10 +16837,6 @@
         {
           "key": "BioCopied",
           "value": "Biografía copiada al portapapeles"
-        },
-        {
-          "key": "General.NightMode",
-          "value": "Modo nocturno"
         },
         {
           "key": "AccountSettings.Language",
@@ -19516,7 +19504,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 7,
+      "version": 8,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -19649,10 +19637,6 @@
         {
           "key": "BioCopied",
           "value": "Про себе скопійовано"
-        },
-        {
-          "key": "General.NightMode",
-          "value": "Нічний режим"
         },
         {
           "key": "AccountSettings.Language",

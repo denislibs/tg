@@ -839,6 +839,10 @@ Shortcuts; Premium-секция — `showPremiumPopup`/`showStarsPopup`/`showSen
 `premiumBlocked`. Наши лишние строки «Ночной режим», карточка контактов, `EmojiStatus.Set`,
 `PremiumManage` — у tweb их в корне нет: удалить (продуктовый вопрос — вынести пользователю
 до задачи, ответ — в коммит).
+> **Заметка:** состав строк корня уже выровнен PR `fix/settings-root-items` — «Ночной режим»,
+> `EmojiStatus.Set` и подзаголовок Premium сняты, «Мои звёзды» добавлены, вход в выбор статуса —
+> кнопка `.sidebar-emoji-status` в шапке колонки; порт переносит этот состав (пин
+> `SettingsView.rootItems.test.tsx`) и остаток — карточку контактов, `PremiumManage`, ключи tweb.
 
 **Снос шва** (`settings-rows.md` § «Ключевой шов»): слайдер переезжает на колоночный
 `.sidebar-slider` (`Sidebar.tsx:350`), вкладка №0 — `.item-main` React-колонки (узлом владеет

@@ -800,6 +800,15 @@ DOM-паритет первого таба выдержан сознательн
    Archived как пункта (архив — только строкой списка), More-подменю (A-version, PWA, PiP, Report Bug),
    verify-предикатов. Есть своё: Wallet, Calls, Logout (в tweb logout живёт в «⋮» настроек).
    Один набор обработчиков переиспользуется бургером и вертикальной колонкой папок — как в tweb.
+   **Ночной режим** — первый пункт подменю «Ещё» (`MainMenu.tsx`), как у tweb `createMoreSubmenu`:
+   подпись по теме (`EnableDarkMode`/`DisableDarkMode`), круг перехода — из центра иконки пункта.
+   Строки «Ночной режим» в корне настроек нет (`fix/settings-root-items`).
+   **Кнопка эмодзи-статуса в шапке** (`statusBtnIcon`) — `SidebarEmojiStatusButton.tsx`: только у
+   подписчика Premium, `button.btn-icon.sidebar-emoji-status` без ripple справа от поиска, глиф
+   `star` без статуса; `is-input-the-last-child` снимается по `toggleRightButtons`. Отступления:
+   статус — юникод-эмодзи, а не документ (`wrapStatus`/`fireAroundAnimation` не портированы), выбор —
+   наш попап `EmojiStatusPicker`, а не `EmoticonsDropdown` у кнопки; клик по своему статусу в профиле
+   (`clickableEmojiStatus`) ждёт `PeerProfile` в корне настроек (задача 28 волны 2D).
 7. **Контекстное меню диалога и contact-list-заглушка** — у tweb богатое меню
    (`dialogsContextMenu.ts`, 13 пунктов) и секция Contacts при <10 чатах; у нас этих подсистем нет
    (меню ПАПКИ — не оно: порт `createFolderContextMenu` на оба ряда, задача 7 плана папок).
@@ -848,8 +857,8 @@ tweb 2197fee9c перевёл иконки всех строк на цветны
 (дамп 14-left-13) с иконками tweb `settings.tsx`: bell_filled (красная), data_filled
 (зелёная), key_filled (серая), general_filled, limit_folders_filled (синяя), reactions_filled,
 speaker_filled, devices_filled, web_filled, keyboard_filled; карточка — phone_filled,
-mention_filled; premium_badge (`--premium-gradient`), gift_filled; наш пункт «Ночной режим» —
-darkmode_filled. Подэкраны переведены на имена tweb для тех же пунктов (privacyAndSecurity,
+mention_filled; premium_badge (`--premium-gradient`), star_circle_filled, gift_filled. Строки
+«Ночной режим» в корне больше нет, как и у tweb. Подэкраны переведены на имена tweb для тех же пунктов (privacyAndSecurity,
 privacy-исключения, passcode, general, editChat, editContact). Строки сессий во вкладке
 «Устройства» несут иконку платформы (`helpers/sessionPlatformIcon.ts`, tweb 944b578e9).
 Тумблер перерисован (`_checkbox.scss` по ef41b29db), поля строки метятся

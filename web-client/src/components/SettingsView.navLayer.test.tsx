@@ -60,7 +60,7 @@ describe('SettingsView — слой навигации', () => {
     appNavigationController.pushItem({ type: 'chat', onPop: base })
     const onBack = vi.fn()
 
-    render(<SettingsView onBack={onBack} onToggleMode={() => {}} />, { wrapper })
+    render(<SettingsView onBack={onBack} />, { wrapper })
 
     pressBack()
 
@@ -73,7 +73,7 @@ describe('SettingsView — слой навигации', () => {
     appNavigationController.pushItem({ type: 'chat', onPop: base })
     const onBack = vi.fn()
 
-    render(<SettingsView onBack={onBack} onToggleMode={() => {}} />, { wrapper })
+    render(<SettingsView onBack={onBack} />, { wrapper })
 
     // Первая строка списка, у которой есть под-экран (ключ
     // `AccountSettings.Notifications`; язык прогона — английский источник).
@@ -101,7 +101,7 @@ describe('SettingsView — слой навигации', () => {
 describe('SettingsView — счётчик устройств', () => {
   it('до ответа подписи нет, после — число сессий', async () => {
     const m = makeManagers([{ hash: 1 }, { hash: 2 }, { hash: 3 }])
-    render(<SettingsView onBack={() => {}} onToggleMode={() => {}} />, { wrapper: wrapperWith(m) })
+    render(<SettingsView onBack={() => {}} />, { wrapper: wrapperWith(m) })
 
     // Строка — `.row` tweb: число встаёт правым значением
     // (`row-title-right-secondary`, у tweb — `titleRight`).
@@ -124,7 +124,7 @@ describe('SettingsView — счётчик устройств', () => {
       sessions: { list: async () => { throw new Error('нет сети') } },
     } as unknown as Managers
 
-    render(<SettingsView onBack={() => {}} onToggleMode={() => {}} />, { wrapper: wrapperWith(m) })
+    render(<SettingsView onBack={() => {}} />, { wrapper: wrapperWith(m) })
     await act(async () => {})
 
     const row = screen.getByText('Devices').closest('.row')!
@@ -148,7 +148,7 @@ describe('SettingsView — список сессий берётся один р�
       sessions: { list },
     } as unknown as Managers
 
-    render(<SettingsView onBack={() => {}} onToggleMode={() => {}} />, { wrapper: wrapperWith(m) })
+    render(<SettingsView onBack={() => {}} />, { wrapper: wrapperWith(m) })
 
     // Клик ДО того, как стартовый запрос успел ответить.
     fireEvent.click(screen.getByText('Devices'))
