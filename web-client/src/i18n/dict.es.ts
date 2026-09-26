@@ -47,6 +47,8 @@ const es = {
   'AccountSettings.SpeakersAndCamera': 'Altavoces y cámara',
   Devices: 'Dispositivos',
   'Telegram.LanguageViewController': 'Idioma',
+  // вкладка «Уведомления и звуки» (tweb `solidJsTabs/tabs.ts:77-81`)
+  'Telegram.NotificationSettingsViewController': 'Notificaciones',
   'KeyboardShortcuts.Title': 'Atajos de teclado',
   'Premium.Boarding.Title': 'Telegram Premium',
   'Chat.Menu.SendGift': 'Enviar un regalo',
@@ -67,6 +69,10 @@ const es = {
   NotificationsForPrivateChats: 'Notificaciones de chats privados',
   NotificationsForGroups: 'Notificaciones de grupos',
   NotificationsForChannels: 'Notificaciones de canales',
+  // имена секций типов чатов на вкладке уведомлений (tweb `notifications.tsx:548-562`)
+  NotificationsPrivateChats: 'Chats privados',
+  NotificationsGroups: 'Grupos',
+  NotificationsChannels: 'Canales',
   MessagePreview: 'Vista previa del mensaje',
   'Notifications.New': 'Nueva notificación',
   // Título de la pestaña con notificaciones nuevas (tweb 'Notifications.Count').

@@ -3046,6 +3046,10 @@
           "value": "Web Notifications"
         },
         {
+          "key": "NotificationsChannels",
+          "value": "Channels"
+        },
+        {
           "key": "NotificationsForChannels",
           "value": "Notifications for channels"
         },
@@ -3056,6 +3060,14 @@
         {
           "key": "NotificationsForPrivateChats",
           "value": "Notifications for private chats"
+        },
+        {
+          "key": "NotificationsGroups",
+          "value": "Groups"
+        },
+        {
+          "key": "NotificationsPrivateChats",
+          "value": "Private Chats"
         },
         {
           "key": "OK",
@@ -5059,6 +5071,10 @@
           "value": "Language"
         },
         {
+          "key": "Telegram.NotificationSettingsViewController",
+          "value": "Notifications"
+        },
+        {
           "key": "TelegramFeatures",
           "value": "Telegram Features"
         },
@@ -6258,6 +6274,10 @@
           "value": "Язык"
         },
         {
+          "key": "Telegram.NotificationSettingsViewController",
+          "value": "Уведомления"
+        },
+        {
           "key": "KeyboardShortcuts.Title",
           "value": "Горячие клавиши"
         },
@@ -6552,6 +6572,18 @@
         {
           "key": "NotificationsForChannels",
           "value": "Уведомления из каналов"
+        },
+        {
+          "key": "NotificationsPrivateChats",
+          "value": "Личные чаты"
+        },
+        {
+          "key": "NotificationsGroups",
+          "value": "Группы"
+        },
+        {
+          "key": "NotificationsChannels",
+          "value": "Каналы"
         },
         {
           "key": "MessagePreview",
@@ -11356,6 +11388,18 @@
           "value": "Notifications des canaux"
         },
         {
+          "key": "NotificationsPrivateChats",
+          "value": "Discussions privées"
+        },
+        {
+          "key": "NotificationsGroups",
+          "value": "Groupes"
+        },
+        {
+          "key": "NotificationsChannels",
+          "value": "Canaux"
+        },
+        {
           "key": "MessagePreview",
           "value": "Aperçu du message"
         },
@@ -14080,6 +14124,10 @@
           "value": "Sprache"
         },
         {
+          "key": "Telegram.NotificationSettingsViewController",
+          "value": "Mitteilungen"
+        },
+        {
           "key": "KeyboardShortcuts.Title",
           "value": "Tastenkürzel"
         },
@@ -14154,6 +14202,14 @@
         {
           "key": "NotificationsForChannels",
           "value": "Benachrichtigungen für Kanäle"
+        },
+        {
+          "key": "NotificationsGroups",
+          "value": "Gruppen"
+        },
+        {
+          "key": "NotificationsChannels",
+          "value": "Kanäle"
         },
         {
           "key": "MessagePreview",
@@ -16879,6 +16935,10 @@
           "value": "Idioma"
         },
         {
+          "key": "Telegram.NotificationSettingsViewController",
+          "value": "Notificaciones"
+        },
+        {
           "key": "KeyboardShortcuts.Title",
           "value": "Atajos de teclado"
         },
@@ -16953,6 +17013,18 @@
         {
           "key": "NotificationsForChannels",
           "value": "Notificaciones de canales"
+        },
+        {
+          "key": "NotificationsPrivateChats",
+          "value": "Chats privados"
+        },
+        {
+          "key": "NotificationsGroups",
+          "value": "Grupos"
+        },
+        {
+          "key": "NotificationsChannels",
+          "value": "Canales"
         },
         {
           "key": "MessagePreview",
@@ -19679,6 +19751,10 @@
           "value": "Мова"
         },
         {
+          "key": "Telegram.NotificationSettingsViewController",
+          "value": "Сповіщення"
+        },
+        {
           "key": "KeyboardShortcuts.Title",
           "value": "Гарячі клавіші"
         },
@@ -19753,6 +19829,18 @@
         {
           "key": "NotificationsForChannels",
           "value": "Сповіщення з каналів"
+        },
+        {
+          "key": "NotificationsPrivateChats",
+          "value": "Особисті чати"
+        },
+        {
+          "key": "NotificationsGroups",
+          "value": "Групи"
+        },
+        {
+          "key": "NotificationsChannels",
+          "value": "Канали"
         },
         {
           "key": "MessagePreview",

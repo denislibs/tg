@@ -214,6 +214,14 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `OpenUrlTitle`, `OpenUrlAlert2` (попап `showMaskedAlert`): `keys` 1334 → 1337.
 // Портом tweb 72c50bfef (уведомления без Web Notifications API) — ключ
 // `Notifications.Restricted`: 1337 → 1338.
+// Пилот плана 2D (задача 6, вкладка «Уведомления и звуки»): ключи tweb lang.ts
+// `Telegram.NotificationSettingsViewController` (заголовок вкладки) и имена
+// секций `NotificationsPrivateChats`/`NotificationsGroups`/`NotificationsChannels`
+// — всем пяти словарям, КРОМЕ совпавших с английским дословно (правило
+// «непереведённый ключ виден как отсутствие перевода»): у de нет
+// `NotificationsPrivateChats` («Private Chats»), у fr — заголовка
+// («Notifications»). ru 1346 → 1350, uk 682 → 686, es 681 → 685,
+// de/fr 681 → 684. `plural` не менялся.
 //
 // Выравнивание корня настроек по tweb (`fix/settings-root-items`): у ВСЕХ пяти
 // словарей снят `General.NightMode` — строки «Ночной режим» в корне у tweb нет
@@ -222,13 +230,13 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Premium у оригинала нет) и `DarkMode` (пункт бургера у tweb подписан по теме),
 // а добавлены четыре ключа 1:1 с tweb lang.ts — `EnableDarkMode`,
 // `DisableDarkMode`, `MenuTelegramStars`, `SetAsEmojiStatus`: у русского
-// −4 +4, число то же; у остальных −1.
+// −4 +4, число то же; у остальных −1 (поверх пилота: ru 1350, uk 685, es 684, de/fr 683).
 const COMPOSITION = {
-  ru: { keys: 1346, plural: 35 },
-  uk: { keys: 681, plural: 24 },
-  es: { keys: 680, plural: 24 },
-  de: { keys: 680, plural: 24 },
-  fr: { keys: 680, plural: 24 },
+  ru: { keys: 1350, plural: 35 },
+  uk: { keys: 685, plural: 24 },
+  es: { keys: 684, plural: 24 },
+  de: { keys: 683, plural: 24 },
+  fr: { keys: 683, plural: 24 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -322,14 +330,16 @@ const COMPOSITION = {
 // шесть ключей меню элемента и выделения (разбор — у `COMPOSITION` выше).
 // Сдвиг набора портом tweb e96e06c37: +3 ключа попапа замаскированной ссылки
 // (разбор — у `COMPOSITION` выше). Портом 72c50bfef — `Notifications.Restricted`.
+// Пилотом 2D — заголовок вкладки уведомлений и три имени секций (разбор — у
+// `COMPOSITION` выше; de и fr расходятся по одному совпавшему ключу).
 // Выравниванием корня настроек по tweb — снят `General.NightMode` у всех пяти,
 // у русского ещё −3 +4 (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '75fe0c8a',
-  uk: 'aa52dc26',
-  es: 'c005d5f0',
-  de: 'c005d5f0',
-  fr: 'c005d5f0',
+  ru: '0ff84dd8',
+  uk: 'b0890b98',
+  es: '01b77f02',
+  de: '25e22802',
+  fr: 'b50abcd4',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

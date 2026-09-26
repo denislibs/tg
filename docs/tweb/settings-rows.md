@@ -341,8 +341,10 @@ div.tabs-container[data-animation="navigation"]  (= .sidebar-slider колонк
 | `components/settingSection.ts` (179) | удалённый `settingSection.ts` | **нет в HEAD** | единственный потребитель — `activeSessions.solid.tsx:35` |
 | `components/checkboxFieldTsx.solid.tsx` | `checkboxFieldTsx.tsx` | **почти** | нет `lockIcon`, `ref`, эффекта `disabled` |
 | `components/buttonTsx.solid.tsx`, `iconTsx.solid.tsx`, `rippleElement.solid.tsx` | те же | есть | — |
+| `components/mediaHeader.solid.tsx` + `.module.scss` | `mediaHeader.tsx`/`.module.scss` HEAD (задача 5) | **есть (HEAD)** | модель отступов HEAD (`gap: .5rem` у блока, части без вертикальных полей) — перенесена вместе с `auth/AuthFlow.module.scss` (`.qrContainer`) и разметкой карточек входа (`h1`, `class="secondary"`), О-29 снята; замеры — `dom/auth.md` §8.4. Отличия: `lottieLoader` по умолчанию, `onPromise` гасит `NO_WASM` |
+| `helpers/dom/sortable.ts`, `sortableRun.ts`, `sidebarLeft/tabs/passcodeLock/inlineSelect.solid.tsx` | те же HEAD (задача 5) | **есть (HEAD)** | корень оверлеев — `getOverlayRoot()` из `helpers/appWindow.ts` (порт `appWindow.ts:33-35`; активное окно — всегда вкладка, выноса клиента в Document PiP нет, переключатели окна не заведены): курсор жеста и глотание клика после перестановки (`sortable.ts:98`, `:252`). `InlineSelect` монтирует список `<Portal>` без `mount` — как у tweb (`inlineSelect.tsx:144`), то есть в `document.body` |
 | `components/radioField.ts`, `radioForm.ts` | классы | есть | Solid `radioFieldTsx` нет |
-| `components/rangeSelector.ts` | класс `RangeSelector` | есть | `rangeSelectorTsx`/`RangeSettingSelector` нет (стили `.range-setting-selector` есть — `_leftSidebar.scss:951`) |
+| `components/rangeSelector.ts`, `rangeSelectorTsx.solid.tsx`, `rangeSettingSelector.solid.tsx` | класс `RangeSelector`, `rangeSelectorTsx.tsx`, `rangeSettingSelector.tsx` HEAD (задача 2) | **есть (HEAD)** | RTL портирован: горизонтальная ось зеркалится по `I18n.getIsRTL()` (`rangeSelector.ts:164-166`, `rangeSelectorTsx.tsx:110-112`); флаг ставит старт (`client/boot.ts`, tweb `index.ts:391-400`) только для `ar` — в списке языков сервера его нет. Стили `.range-setting-selector` — `_leftSidebar.scss:951` |
 | `components/{slider,sliderTab}.ts`, `solidJsTabs/*` | те же | есть | реестр `tabs.ts` — две вкладки (Устройства, Язык); `shown`/`resetShown` (34f417d12) нет |
 | `components/sidebarLeft/settingsSliderHost.ts` | `index.ts:140-148` + `settingsSliderPopup.ts` | шов (задача 3 — каркас закреплён) | свой `.sidebar-slider` поверх React-экрана, заглушка вкладки №0 (первое открытие — без затемнения корня, до задачи 28); тип навигации `'settings-popup'`, как у `settingsSliderPopup` (`'left'` заняли React-слои корня); перекрытие фона вкладки в `--surface-color` снято. Пины каркаса — `settingsTabFrame.solid.test.tsx` |
 | `stores/appSettings.solid.ts` | `stores/appSettings.ts` (`useAppSettings`) | **мост** (задача 4) | без своего стора: чтение — `subscribeExternal` над zustand `useSettingsStore`, запись — его `update`; путь tweb → плоский ключ таблицей `APP_SETTINGS_KEYS` (О-2), пока `notifications.*`; путь вне таблицы — `throw`; `setAppSettingsSilent` не портирован (вызывающий — только гидрация). Уведомления по типам — `stores/notifyStore.ts` |
@@ -353,7 +355,7 @@ div.tabs-container[data-animation="navigation"]  (= .sidebar-slider колонк
 |---|---|---|---|
 | `components/SettingsView.tsx` | `settings.tsx` | React | своя карточка профиля вместо `PeerProfile`; лишняя карточка контактов; ключи `PrivacySettings`, `ChatList.Filter.List.Title` (текст тот же); ⋮ без обработчика; нет поиска/выхода. **Состав строк выровнен** (`fix/settings-root-items`): основная секция — ровно 7 подвкладок + Devices + Language + Shortcuts, «Ночного режима» и `EmojiStatus.Set` нет (ночной режим — подменю «Ещё» бургера, статус — `.sidebar-emoji-status` в шапке колонки); Premium-секция — Premium без подзаголовка, «Мои звёзды» (`star_circle_filled`, при ненулевом балансе, справа баланс) и подарок. Нет гейта `premiumBlocked` (источника нет) и строки TON (нет баланса TON); клик по Premium у подписчика ведёт в наш `PremiumManage`, а не в `showPremiumPopup`; пин — `SettingsView.rootItems.test.tsx` |
 | `components/SettingsSubScreen.tsx` (171) | — (роутер) | React | мок `SCREENS` мёртв: `General` перехвачен раньше (`:114`), `renderDedicated` недостижим → `QuickReaction` недостижим |
-| `settings/NotificationsSettings.tsx` | `notifications.tsx` | React | см. пилот в плане |
+| `sidebarLeft/tabs/notifications.solid.tsx` | `notifications.tsx` | **Solid, HEAD** (пилот 2D, задача 6) | вкладка `AppNotificationsTab` через хост; подпись вне карточки, `NotificationRow` с `fakeDisabled`/`clickable` без разрешения, `Button btn-primary primary btn-transparent` c `unmute`, `RangeSettingSelector`, типы чатов пишутся на закрытии. Расхождения (шапка файла): нет «All Accounts» и подписи `MultiAccount.ShowNotificationsFromCaption` (О-1), секций Stories/Reactions/Other (О-3…О-5); отказ в разрешении даёт тост (у tweb `throw 1` в onFulfilled — необработанный reject); типы чатов — `stores/notifyStore.ts` вместо `appNotificationsManager`; побочка push — подписчик `client/pushSetup.ts::watchPushConditions` (tweb `uiNotificationsManager.ts:320-322`). DOM против `14-left-14`: отличия только `span.checkbox-field` + `row-checkbox-field-toggle` (HEAD, § 7), нет `item-secondary` у вкладки (шов хоста, задача 28) и строки All Accounts (О-1). React `settings/NotificationsSettings.tsx` снесён |
 | `settings/DataStorageSettings.tsx` | `dataAndStorage/*`, `autoDownload/*` | React | подэкраны `sub` вместо вкладок; чекбоксы вместо тумблеров; `Row accent` вместо `Button`; нет строки stream chunks; «Clear All» чистит только файлы; мгновенное сохранение |
 | `settings/PrivacySecuritySettings.tsx` | `privacyAndSecurity.tsx` | React | значения `value` вместо `Row.Subtitle` (`:115-133`); лишние «Сессии» и «Удаление аккаунта»; нет web sessions, login email, секций NewChats/Sensitive/Payments |
 | `settings/PrivacyRule.tsx` | `privacySection.tsx` + `privacy/*` | React | **«Н..»**: счётчик исключения в `value` → `row-title-right` (`:162`, `:170`), правая часть не сжимается (`_row.scss:230-233`), и русский заголовок съедается; у tweb это `Row.Subtitle` (`privacySection.tsx:214-216`). Радио — галочкой; мгновенное сохранение; исключения только пользователи |
@@ -404,9 +406,13 @@ div.tabs-container[data-animation="navigation"]  (= .sidebar-slider колонк
 7. **Кнопки-действия — строки** (`Row accent/danger`), у tweb — `Button btn-primary btn-transparent`.
 8. **Радио — галочка** (`Row selected`, отступление `kit.tsx:318-327`) или свой `RadioRow`.
 9. **Свои CSS-модули** на месте портированных глобальных стилей (громкость, темы, сетки, строки хоткеев).
-10. **Момент сохранения**: у нас сразу, у tweb часть — на закрытии вкладки.
+10. **Момент сохранения**: у нас сразу, у tweb часть — на закрытии вкладки. «Уведомления» (задача 6)
+    уже пишут типы чатов на закрытии (`NotifySection`, пин — `notifications.solid.test.tsx`).
 
 ### 8.3.1. Модель «All Accounts»
+
+Итог задачи 6: строка и подпись не портированы (О-1 плана 2D), у места — комментарий с номером
+(`notifications.solid.tsx`, расхождение 1 шапки).
 
 `notifyAllAccounts` у tweb фильтрует, **какая вкладка браузера** покажет уведомление
 (`appNotificationsManager.ts:449-475`, `appTabsManager.getTabs()` по `accountNumber`): несколько
@@ -432,15 +438,17 @@ div.tabs-container[data-animation="navigation"]  (= .sidebar-slider колонк
       линия появились; вернулись — пропали.
 - [ ] Подписи секций — под карточкой, вне её фона (кроме 2FA/почты — внутри, заблокированных — над).
 - [ ] Заголовок секции — внутри `.sidebar-left-section-content`, класс `sidebar-left-h2`.
-- [ ] «Уведомления»: без разрешения три строки серые (`is-fake-disabled`), клик по ним и
-      «Enable Notifications» просит разрешение; с разрешением — строки обычные, подпись
-      `MultiAccount.ShowNotificationsFromCaption`.
+- [x] «Уведомления» (задача 6): без разрешения ДВЕ строки серые (`is-fake-disabled`, третья —
+      «All Accounts» — О-1), клик по ним и «Enable Notifications» просит разрешение ровно раз;
+      с разрешением — строки обычные, подписи нет (`MultiAccount.ShowNotificationsFromCaption` —
+      О-1).
 - [ ] Исключения приватности: «Никогда не показывать» читается целиком, счётчик — строкой ниже.
 - [ ] Тумблер в строке с подписью стоит в правой колонке (`div.row-right`, `row-grid`).
 - [ ] Строки с меню (`contextMenu`) открывают меню по клику и правому клику, Enter/Space с
       клавиатуры жмут кликабельную строку.
 - [ ] Сохранение на закрытии: поменяли тип уведомлений / правило приватности, закрыли вкладку —
-      значение на сервере (перезагрузка страницы показывает новое).
+      значение на сервере (перезагрузка страницы показывает новое). Типы уведомлений — проверено
+      задачей 6 на стенде.
 
 Машинная сверка: `node tools/tweb-parity/dom-parity.mjs 14-left-14-settings-notifications ours.txt`
 (и прочие дампы § 7) — ожидаемые отличия только в классах, перечисленных в § 7;

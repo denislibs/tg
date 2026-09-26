@@ -24,7 +24,7 @@ import { getPeerPhotoId, getPeerPhotoStrippedThumb } from '../core/peers/peer'
 import { getUserTitle } from '../core/peers/getPeerTitle'
 import { useManagers } from '../core/hooks/useManagers'
 import { createSettingsSliderHost, getSettingsSliderHost, openActiveSessionsTab } from './sidebarLeft/settingsSliderHost'
-import { AppLanguageTab } from './solidJsTabs/tabs'
+import { AppLanguageTab, AppNotificationsTab } from './solidJsTabs/tabs'
 import { toastNew } from './toast'
 import StarsPopup from './stars/StarsPopup'
 import { useStarsBalance } from '../stores/starsStore'
@@ -288,6 +288,14 @@ export default function SettingsView({
                 // передаётся — она берёт их сама в свой `promiseCollector`.
                 if (it.label === 'AccountSettings.Language') {
                   void getSettingsSliderHost().openTab(AppLanguageTab)
+                    .catch(() => toastNew({ langPackKey: 'Error.AnError' }))
+                  return
+                }
+                // «Уведомления и звуки» — вкладка слайдера (пилот плана 2D, задача 6);
+                // у оригинала та же одна строка (`settings.tsx:252`,
+                // `makeSubTabConfig(…, AppNotificationsTab, tab)`).
+                if (it.label === 'AccountSettings.Notifications') {
+                  void getSettingsSliderHost().openTab(AppNotificationsTab)
                     .catch(() => toastNew({ langPackKey: 'Error.AnError' }))
                   return
                 }

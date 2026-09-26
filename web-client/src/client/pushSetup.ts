@@ -1,4 +1,5 @@
 import { startClient } from './bootstrap'
+import { useSettingsStore } from '../settings'
 
 function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
   const padding = '='.repeat((4 - (base64.length % 4)) % 4)
@@ -61,4 +62,29 @@ export async function setPushEnabled(enabled: boolean): Promise<void> {
   } catch {
     /* best-effort */
   }
+}
+
+/**
+ * Порт tweb `uiNotificationsManager.onPushConditionsChange`
+ * (`lib/uiNotificationsManager.ts:405-420`): push нужен, когда включён
+ * «Show offline notifications» (и есть разрешение — его проверяет `setupPush`);
+ * иначе подписка снимается. Зовут подписчик настройки ниже и экран
+ * «Уведомления» — сразу после выданного разрешения (`notifications.tsx:397-399`).
+ */
+export function onPushConditionsChange(): Promise<void> {
+  return setPushEnabled(useSettingsStore.getState().notifyPush)
+}
+
+/**
+ * Подписчик настройки `notifyPush` — порт
+ * `createEffect(on(() => this.settings.push, this.onPushConditionsChange))`
+ * (`uiNotificationsManager.ts:320-322`): побочка переключателя живёт не в
+ * обработчике строки экрана, а у самой настройки, поэтому срабатывает, кто бы
+ * её ни поменял. Как и `on` без `defer`, отрабатывает сразу при заводе.
+ */
+export function watchPushConditions(): () => void {
+  void onPushConditionsChange()
+  return useSettingsStore.subscribe((state, prev) => {
+    if (state.notifyPush !== prev.notifyPush) void onPushConditionsChange()
+  })
 }

@@ -23,6 +23,7 @@ import type { ReactNode } from 'react'
 import type { Managers } from '@/client/bootstrap'
 import { ManagersProvider } from '@core/hooks/useManagers'
 import appNavigationController from '@core/navigation/appNavigationController'
+import lang from '@/lang'
 import SettingsView from './SettingsView'
 
 const makeManagers = (sessions: unknown[] = []) => ({
@@ -75,9 +76,10 @@ describe('SettingsView — слой навигации', () => {
 
     render(<SettingsView onBack={onBack} />, { wrapper })
 
-    // Первая строка списка, у которой есть под-экран (ключ
-    // `AccountSettings.Notifications`; язык прогона — английский источник).
-    fireEvent.click(screen.getByText('Notifications and Sounds'))
+    // Строка списка, у которой ещё есть React-под-экран (ключ `DataSettings`;
+    // язык прогона — английский источник). «Уведомления» под-экраном больше
+    // не служат: это вкладка слайдера (`AppNotificationsTab`).
+    fireEvent.click(screen.getByText(lang.DataSettings))
 
     pressBack()
 

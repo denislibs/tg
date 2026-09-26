@@ -215,6 +215,8 @@ const ru = {
   'AccountSettings.SpeakersAndCamera': 'Динамики и камера',
   Devices: 'Устройства',
   'Telegram.LanguageViewController': 'Язык',
+  // вкладка «Уведомления и звуки» (tweb `solidJsTabs/tabs.ts:77-81`)
+  'Telegram.NotificationSettingsViewController': 'Уведомления',
   'KeyboardShortcuts.Title': 'Горячие клавиши',
   'Premium.Boarding.Title': 'Telegram Premium',
   'Chat.Menu.SendGift': 'Отправить подарок',
@@ -294,6 +296,10 @@ const ru = {
   NotificationsForPrivateChats: 'Уведомления из личных чатов',
   NotificationsForGroups: 'Уведомления из групп',
   NotificationsForChannels: 'Уведомления из каналов',
+  // имена секций типов чатов на вкладке уведомлений (tweb `notifications.tsx:548-562`)
+  NotificationsPrivateChats: 'Личные чаты',
+  NotificationsGroups: 'Группы',
+  NotificationsChannels: 'Каналы',
   MessagePreview: 'Предпросмотр сообщений',
   'Notifications.New': 'Новое уведомление',
   // Заголовок вкладки при новых уведомлениях (tweb 'Notifications.Count').

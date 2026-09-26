@@ -15,7 +15,7 @@
 //
 // Копия узнаётся по паре признаков: файл берёт настройки ПО ТИПУ ЧАТА
 // (`notifyTypeForChat`) и читает у них `.muted`. Экран настроек уведомлений
-// (`components/settings/NotificationsSettings.tsx`) читает `settings[key].muted`
+// (`components/sidebarLeft/tabs/notifications.solid.tsx`) читает `settings[key].muted`
 // напрямую и правило не выводит — под пин не попадает и попадать не должен.
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'

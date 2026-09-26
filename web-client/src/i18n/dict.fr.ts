@@ -67,6 +67,10 @@ const fr = {
   NotificationsForPrivateChats: 'Notifications des discussions privées',
   NotificationsForGroups: 'Notifications des groupes',
   NotificationsForChannels: 'Notifications des canaux',
+  // имена секций типов чатов на вкладке уведомлений (tweb `notifications.tsx:548-562`)
+  NotificationsPrivateChats: 'Discussions privées',
+  NotificationsGroups: 'Groupes',
+  NotificationsChannels: 'Canaux',
   MessagePreview: 'Aperçu du message',
   'Notifications.New': 'Nouvelle notification',
   // Titre de l'onglet en cas de nouvelles notifications (tweb 'Notifications.Count').

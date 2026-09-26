@@ -42,6 +42,14 @@ export function playIncoming(volume = 0.5): void {
   get().playWithThrottle({ name: 'notification', volume }, 300)
 }
 
+// Проба громкости из настроек «Уведомления» — порт tweb
+// `uiNotificationsManager.testSound` (`lib/uiNotificationsManager.ts:1079-1081`):
+// тот же звук, что у входящего, и троттлинг 1 с — частые отпускания ползунка
+// не сливаются в дребезг.
+export function testSound(volume: number): void {
+  get().playWithThrottle({ name: 'notification', volume }, 1000)
+}
+
 // Generic escape hatch for call/voip tones.
 export function playSound(name: SoundName, opts?: { loop?: boolean; volume?: number }): void {
   get().play({ name, ...opts })

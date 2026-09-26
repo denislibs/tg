@@ -9,14 +9,13 @@
 // `vertical`/`offsetAxisValue`) и `snapValue`-параметр `scrub`.
 //
 // Адаптации (поведение не менялось):
-//   • RTL-отражение оси (`I18n.getIsRTL()` в getValueByEvent) не портировано —
-//     RTL-локалей у нас нет (как и `icon-reflect` в mediaViewer/base.ts)
 //   • строгий tsconfig (в tweb `strict` выключен): поля, заполняемые
 //     `safeAssign`, — с инициализаторами или `!`; `rect` — `!` (задан в
 //     onMouseDown до первого чтения в scrub); `_removeListeners` — `| null`
 import attachGrabListeners, { type GrabEvent } from '@helpers/dom/attachGrabListeners'
 import clamp from '@helpers/number/clamp'
 import safeAssign from '@helpers/object/safeAssign'
+import I18n from '@lib/langPack'
 
 export default class RangeSelector {
   public container: HTMLDivElement
@@ -171,7 +170,7 @@ export default class RangeSelector {
       rectMax -= this.offsetAxisValue
     }
 
-    const offsetAxisValue = clamp(
+    let offsetAxisValue = clamp(
       this.vertical ?
         -(event.y - this.rect.bottom) :
         event.x - this.rect.left - this.offsetAxisValue / 2,
@@ -179,7 +178,10 @@ export default class RangeSelector {
       rectMax,
     )
 
-    // RTL-отражение tweb (`I18n.getIsRTL()`) не портировано — см. шапку
+    // tweb :164-166 — в RTL горизонтальная ось зеркальна
+    if (!this.vertical && I18n.getIsRTL()) {
+      offsetAxisValue = rectMax - offsetAxisValue
+    }
 
     return offsetAxisValue / rectMax
   }
