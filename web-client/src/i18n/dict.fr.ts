@@ -587,8 +587,6 @@ const fr = {
   'PasscodeLock.TurnOff.Title': 'Désactiver le code d\'accès',
   'PasscodeLock.TurnOff': 'Désactiver',
   'PasscodeLock.TurnOff.Description': 'Voulez-vous vraiment désactiver le code d\'accès ?',
-  'PasscodeLock.ForgotNotice':
-    'Remarque : si vous oubliez votre code d\'accès, vous devrez vous déconnecter puis vous reconnecter.',
   'PasscodeLock.EnterAPasscode': 'Saisissez un code d\'accès',
   'PasscodeLock.EnterANewPasscode': 'Saisissez un nouveau code d\'accès',
   'PasscodeLock.EnterYourPasscode': 'Saisissez votre code d\'accès',
@@ -600,9 +598,6 @@ const fr = {
   'PasscodeLock.PasscodeHasBeenChanged': 'Votre code d\'accès a été modifié.',
   'PasscodeLock.PasscodeHasBeenDisabled': 'Le code d\'accès a été désactivé.',
   'PasscodeLock.AutoLock': 'Verrouillage automatique',
-  'PasscodeLock.AutoLock.Caption':
-    'Verrouiller automatiquement l\'application si vous êtes absent pendant un certain temps.',
-  'Unit.Minutes.Abbr': 'min',
   'PasscodeLock.WrongPasscodeShort': 'Code d\'accès incorrect',
   'PasscodeLock.TooManyAttempts': 'Trop de tentatives, veuillez réessayer plus tard',
   'PasscodeLock.Proceed': 'Continuer',

@@ -617,8 +617,6 @@ const uk = {
   'PasscodeLock.TurnOff.Title': 'Вимкнути код-пароль',
   'PasscodeLock.TurnOff': 'Вимкнути',
   'PasscodeLock.TurnOff.Description': 'Ви впевнені, що хочете вимкнути код-пароль?',
-  'PasscodeLock.ForgotNotice':
-    'Важливо: якщо Ви забудете код-пароль, потрібно буде вийти та знову авторизуватися.',
   'PasscodeLock.EnterAPasscode': 'Введіть код-пароль',
   'PasscodeLock.EnterANewPasscode': 'Введіть новий код-пароль',
   'PasscodeLock.EnterYourPasscode': 'Введіть код-пароль',
@@ -630,9 +628,6 @@ const uk = {
   'PasscodeLock.PasscodeHasBeenChanged': 'Код-пароль змінено.',
   'PasscodeLock.PasscodeHasBeenDisabled': 'Код-пароль вимкнено.',
   'PasscodeLock.AutoLock': 'Автоблокування',
-  'PasscodeLock.AutoLock.Caption':
-    'Автоматично блокувати застосунок, якщо Ви відсутні певний час.',
-  'Unit.Minutes.Abbr': 'хв',
   'PasscodeLock.WrongPasscodeShort': 'Невірний код-пароль',
   'PasscodeLock.TooManyAttempts': 'Забагато спроб, спробуйте пізніше',
   'PasscodeLock.Proceed': 'Продовжити',

@@ -1174,8 +1174,6 @@ const ru = {
   'PasscodeLock.TurnOff.Title': 'Отключить код-пароль',
   'PasscodeLock.TurnOff': 'Отключить',
   'PasscodeLock.TurnOff.Description': 'Вы уверены, что хотите отключить код-пароль?',
-  'PasscodeLock.ForgotNotice':
-    'Важно: если Вы забудете код-пароль, нужно будет выйти и заново авторизоваться.',
   'PasscodeLock.EnterAPasscode': 'Введите код-пароль',
   'PasscodeLock.EnterANewPasscode': 'Введите новый код-пароль',
   'PasscodeLock.EnterYourPasscode': 'Введите код-пароль',
@@ -1187,9 +1185,6 @@ const ru = {
   'PasscodeLock.PasscodeHasBeenChanged': 'Код-пароль изменён.',
   'PasscodeLock.PasscodeHasBeenDisabled': 'Код-пароль отключён.',
   'PasscodeLock.AutoLock': 'Автоблокировка',
-  'PasscodeLock.AutoLock.Caption':
-    'Автоматически блокировать приложение, если Вы отсутствуете некоторое время.',
-  'Unit.Minutes.Abbr': 'мин',
   'PasscodeLock.WrongPasscodeShort': 'Неверный код-пароль',
   'PasscodeLock.TooManyAttempts': 'Слишком много попыток, попробуйте позже',
   'PasscodeLock.Proceed': 'Продолжить',
@@ -1702,7 +1697,6 @@ const ru = {
   'MediaEditor.Unmute': 'Включить звук видео',
   'ForumTopic.NoIcon': 'Без значка',
   'Common.More': 'Ещё',
-  'Common.Next': 'Далее',
   'Story.Sound': 'Звук',
   'EditProfile.LastNameLabel': 'Фамилия',
   'AutoDeleteMessages.Disable': 'Отключить',

@@ -227,15 +227,18 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Задача 18 плана 2D (вкладка «Код-пароль», порт tweb passcodeLock/*): ключи tweb
 // lang.ts `PasscodeLock.Notice`, `PasscodeLock.Next`, `PasscodeLock.Disabled`,
 // `PasscodeLock.EnableLockShortcut`, `PasscodeLock.LockShortcutDescription` и
-// числовой `MinutesShort` (у es и fr его нет — «%1$d min» совпал с английским).
+// числовой `MinutesShort` (у es и fr его нет — «%1$d min» совпал с английским):
 // ru 1350 → 1356 (plural 35 → 36), uk 686 → 692, de 684 → 690 (plural 24 → 25),
-// es 685 → 690, fr 684 → 689.
+// es 685 → 690, fr 684 → 689. Врезкой той же задачи сняты ключи снесённого
+// React-экрана, у которых не осталось читателей, — `PasscodeLock.ForgotNotice`,
+// `PasscodeLock.AutoLock.Caption`, `Unit.Minutes.Abbr` (и у ru `Common.Next`):
+// ru 1356 → 1352, остальные −3 (uk 689, de 687, es 687, fr 686).
 const COMPOSITION = {
-  ru: { keys: 1356, plural: 36 },
-  uk: { keys: 692, plural: 25 },
-  es: { keys: 690, plural: 24 },
-  de: { keys: 690, plural: 25 },
-  fr: { keys: 689, plural: 24 },
+  ru: { keys: 1352, plural: 36 },
+  uk: { keys: 689, plural: 25 },
+  es: { keys: 687, plural: 24 },
+  de: { keys: 687, plural: 25 },
+  fr: { keys: 686, plural: 24 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -333,11 +336,11 @@ const COMPOSITION = {
 // `COMPOSITION` выше; de и fr расходятся по одному совпавшему ключу).
 // Задачей 18 плана 2D — ключи вкладки «Код-пароль» (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: 'c5542724',
-  uk: '1acdf509',
-  es: '3751a2a6',
-  de: '796636db',
-  fr: '70e6bc60',
+  ru: '876635d3',
+  uk: '647c7a82',
+  es: 'b3143bf1',
+  de: '26802810',
+  fr: '2c14e9eb',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
@@ -618,7 +621,6 @@ const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
     ReportChatSpam: '«spam» — заимствование, в испанском Telegram так же',
     FilterChats: '«chats» — заимствование с испанским множественным',
     'SharedMedia.Audio': '«audio» — латинское слово, совпадает',
-    'Unit.Minutes.Abbr': '«min» — международное сокращение минуты',
     'StorageQuota.CacheSizeLimitAuto': '«auto» — сокращение от «automático»',
     'Unit.Bytes': 'B — единица информации, не переводится',
     'Unit.Kilobytes': 'KB — единица информации, не переводится',
@@ -688,7 +690,6 @@ const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
     'SharedMedia.Audio': '«audio» — французское слово',
     Animations: '«animations» — французское слово',
     Exceptions: '«exceptions» — французское слово',
-    'Unit.Minutes.Abbr': '«min» — сокращение от «minute»',
     'StorageQuota.CacheSizeLimitAuto': '«auto» — сокращение от «automatique»',
     'KeyboardShortcuts.Action.Monospace': '«monospace» — типографский термин',
     'KeyboardShortcuts.Action.Spoiler': '«spoiler» — заимствование',

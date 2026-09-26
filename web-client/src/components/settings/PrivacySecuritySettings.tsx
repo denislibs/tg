@@ -12,12 +12,13 @@ import Passkeys from './Passkeys'
 import PasskeyIntroPopup from './PasskeyIntroPopup'
 import PrivacyRule, { RULE_META } from './PrivacyRule'
 import AutoDeleteMessages, { autoDeleteLabel } from './AutoDeleteMessages'
-import PasscodeLock from './PasscodeLock'
 import ConfirmDialog from './ConfirmDialog'
 import { useSettingsStore } from '../../settings'
 import { useT, useTArgs } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
-import { openActiveSessionsTab } from '../sidebarLeft/settingsSliderHost'
+import { getSettingsSliderHost, openActiveSessionsTab } from '../sidebarLeft/settingsSliderHost'
+import { AppPasscodeEnterPasswordTab, AppPasscodeLockTab } from '../solidJsTabs/tabs'
+import type SidebarSlider from '../slider'
 import { toastNew } from '../toast'
 import { usePrivacyStore } from '../../stores/privacyStore'
 import type { PrivacyRule as Rule } from '../../core/managers/privacyManager'
@@ -97,14 +98,35 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
         return <Passkeys onBack={back} />
       case 'AutoDeleteMessages':
         return <AutoDeleteMessages onBack={back} />
-      case 'PasscodeLock.Item.Title':
-        return <PasscodeLock onBack={back} />
     }
     return null
   }
 
   const blockedValue = blockedTotal > 0 ? `${blockedTotal}` : t('BlockedEmpty')
   const passcodeEnabled = useSettingsStore((st) => st.passcodeEnabled)
+
+  // tweb `privacyAndSecurity.tsx:193-210` (`openPasscodeLock`): при включённом
+  // коде сначала вкладка ввода текущего, при верном — главная вкладка. Вкладки
+  // слайдера открывает хост (шов до задачи 23, когда этот экран сам станет
+  // вкладкой и откроет их своим `tab.slider`); вторую открываем слайдером
+  // вкладки ввода — это тот же слайдер хоста.
+  const openPasscodeLock = () => {
+    const host = getSettingsSliderHost()
+    if (passcodeEnabled) {
+      void host.openTab(AppPasscodeEnterPasswordTab, {
+        buttonText: 'PasscodeLock.Next',
+        inputLabel: 'PasscodeLock.EnterYourPasscode',
+        onSubmit: async (passcode, tab, { isMyPasscode }) => {
+          const isCorrect = await isMyPasscode(passcode)
+          if (!isCorrect) throw new Error('WRONG_PASSCODE')
+
+          void (tab.slider as unknown as SidebarSlider).createTab(AppPasscodeLockTab).open()
+        },
+      })
+    } else {
+      void host.openTab(AppPasscodeLockTab)
+    }
+  }
 
   return (
     <SettingsScreen title="PrivacySettings" onBack={onBack} zIndex={50} sub={renderSub()}>
@@ -125,7 +147,7 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
           icon={<TgIcon name="key_filled" size={24} />}
           label="PasscodeLock.Item.Title"
           value={t(passcodeEnabled ? 'PrivacyAndSecurity.Item.On' : 'Off')}
-          onClick={() => setSub('PasscodeLock.Item.Title')}
+          onClick={openPasscodeLock}
         />
         <Row
           icon={<TgIcon name="two_factor_auth_filled" size={24} />}
