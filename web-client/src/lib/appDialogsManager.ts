@@ -90,7 +90,8 @@
 // 10. `onChange` полосы (`:806-809`, перекраска `custom-emoji-renderer-element`
 //     в названии) не передаётся — сущностей в названии папки нет, отложенная
 //     задача 11.
-// 11. `createFolderContextMenu` (`:814-821`) — задача 7 плана.
+// 11. (снято задачей 7: `createFolderContextMenu` (`:814-821`) вешается на ряд,
+//     остаток расхождения — п. 20.)
 // 12. `setHasFolders(show)` (`:1315-1316`) — стор `foldersSidebar.solid.ts`
 //     заводит задача 8; до неё показ ряда решает только `hide` и `has-filters`.
 // 13. `changeFiltersAllChatsKey` (`:1292-1296`, `:1320`) и слушатель `resize`
@@ -119,10 +120,21 @@
 //     показывалась бы не с начала). `setCollapsed` — наш: свёрнутая в
 //     колонку аватаров панель при открытом форуме гасит клиренс; у tweb
 //     свёрнутый чатлист устроен иначе (`left-sidebar.md` § 8.2).
+// 20. Меню папки (`:814-821`): `appSidebarLeft` и `managers`, которые у tweb
+//     владелец берёт у синглтонов, приходят хуками колонки
+//     (`hooks.appSidebarLeft`/`hooks.managers`, адаптации — шапка
+//     `helpers/dom/createFolderContextMenu.ts`); классов вкладок
+//     `AppChatFoldersTab`/`AppEditFolderTab` не передаётся — экраны открывает
+//     колонка. Возвращённый `destroy` у tweb выбрасывается (владелец вечен), у
+//     нас `destroy()` владельца снимает им слушатели с ряда (п. 1).
 import { createEffect, createRoot, on, untrack } from 'solid-js'
 import Scrollable from '@components/scrollable'
 import { horizontalMenu } from '@components/horizontalMenu'
 import FoldersTabs from '@components/foldersTabs.solid'
+import createFolderContextMenu, {
+  type FolderContextMenuManagers,
+  type FolderContextMenuSidebar,
+} from '@helpers/dom/createFolderContextMenu'
 import type { ScrollableContextValue } from '@components/scrollable2.solid'
 import { createSolidNodes } from '@shared/solid/mountSolid.solid'
 import useFolders from '@stores/folders.solid'
@@ -163,6 +175,10 @@ export type AppDialogsManagerHooks = {
   closeEverythingInsideNaturally: () => boolean | Promise<boolean>
   /** `!!this.forumTab` — открытый форум гасит свайп между папками (`:631-633`). */
   isForumOpen: () => boolean
+  /** `appSidebarLeft` меню папки (`:815`) — расхождение 20 */
+  appSidebarLeft: FolderContextMenuSidebar
+  /** `this.managers` меню папки (`:818`) — расхождение 20 */
+  managers: FolderContextMenuManagers
 }
 
 /**
@@ -260,6 +276,7 @@ export class AppDialogsManager {
   private swipeHandler: SwipeHandler | undefined
   private disposeTabs: (() => void) | undefined
   private disposeListeners: (() => void) | undefined
+  private destroyContextMenu: (() => void) | undefined
 
   private rendered: readonly FolderList[] = []
   private renderedListeners = new Set<() => void>()
@@ -404,6 +421,8 @@ export class AppDialogsManager {
     this.disposeListeners?.()
     this.disposeListeners = undefined
     folders.setOnClick(undefined)
+    this.destroyContextMenu?.()
+    this.destroyContextMenu = undefined
     this.disposeTabs?.()
     this.disposeTabs = undefined
     this.listenerSetter.removeAll()
@@ -501,7 +520,13 @@ export class AppDialogsManager {
 
     setOnClick(() => selectTab)
 
-    // `createFolderContextMenu` (`:814-821`) — расхождение 11, задача 7.
+    // `destroy` — расхождение 20
+    this.destroyContextMenu = createFolderContextMenu({
+      appSidebarLeft: this.hooks.appSidebarLeft,
+      managers: this.hooks.managers,
+      className: 'menu-horizontal-div-item',
+      listenTo: this.folders.menu,
+    }).destroy
   }
 
   /** Расхождение 19: свёрнутая колонка (открыт форум) — без клиренса под FAB. */

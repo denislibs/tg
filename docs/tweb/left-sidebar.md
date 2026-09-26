@@ -731,7 +731,7 @@ Close/RestartTopic `:224` · ChargeFee `:238` · Delete `:248`.
 | `src/core/managers/dialogsManager.ts` (воркер) | владелец диалогов: сортировка, пагинация, refresh | `dialogsStorage` (воркерная сторона) |
 | `src/core/dialogs/{dialogIndex,dialogOps,loadCount}.ts` | индексы, операции, размер страницы | `getDialogIndex*`, `DIALOG_LOAD_COUNT` |
 | `src/components/chatlist/dialogsPlaceholder.ts` | canvas-шиммер | `helpers/dialogsPlaceholder.ts` |
-| `src/components/foldersTabs.solid.tsx` + `src/components/folders/FoldersSidebar.tsx` + `useSidebarFolders` | горизонтальный ряд (Solid, узлами владельца) и вертикальная колонка папок (React, `tabsInSidebar`; клик — тот же `selectTab` владельца); меню папки — `useSidebarFolders` (только у колонки, до задачи 7) | `foldersTabs` + `foldersSidebarContent` |
+| `src/components/foldersTabs.solid.tsx` + `src/components/folders/FoldersSidebar.tsx` + `src/helpers/dom/createFolderContextMenu.ts` | горизонтальный ряд (Solid, узлами владельца) и вертикальная колонка папок (React, `tabsInSidebar`; клик — тот же `selectTab` владельца); меню папки — одна фабрика `createFolderContextMenu` на оба ряда (задача 7) | `foldersTabs` + `foldersSidebarContent` + `createFolderContextMenu` |
 | `src/components/StoriesRow.tsx` (Sidebar.tsx:268-282) | сторис-лента (`foldInto`/`setScrolledOn`/`getScrollable`/`listenWheelOn`) | `stories/list.tsx` |
 | `src/components/SidebarMenuButton.tsx` | бургер + морф (`searching` prop) | `createToolsMenu` + animated-menu-icon |
 | `src/components/SearchView.tsx` + `useSidebarSearch` + `shared/ui/InputSearch` | поиск (transition-узлы в JSX, Sidebar.tsx:285-386) | `initSearch` + `AppSearchSuper` |
@@ -782,8 +782,7 @@ DOM-паритет первого таба выдержан сознательн
    Один набор обработчиков переиспользуется бургером и вертикальной колонкой папок — как в tweb.
 7. **Контекстное меню диалога и contact-list-заглушка** — у tweb богатое меню
    (`dialogsContextMenu.ts`, 13 пунктов) и секция Contacts при <10 чатах; у нас этих подсистем нет
-   (меню папки — `useSidebarFolders.onTabContextMenu`, после задачи 6 плана папок только у
-   вертикальной колонки; общий `createFolderContextMenu` на оба ряда — задача 7).
+   (меню ПАПКИ — не оно: порт `createFolderContextMenu` на оба ряда, задача 7 плана папок).
 8. **Фолдеры**: контейнеры, ряд вкладок и переключение — у владельца `lib/appDialogsManager.ts`
    (план `docs/superpowers/plans/2026-09-07-solid-wave-3-folders-tabs.md`, задача 6: `FolderTabs` и
    `TabSlide` из колонки сняты; переключение = список с начала, свайп есть). Вертикальная колонка

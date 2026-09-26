@@ -20,6 +20,11 @@ import { useNotifyStore } from '../../stores/notifyStore'
 import { folderUnreadCounts } from '../../core/folders/folderUnreadCounts'
 import { cachedChat, peerMirrorVersion, subscribePeerMirror } from '../../core/peerCache'
 import useFoldersProjection from '../../stores/folders.solid'
+import { useImperativeIsland } from '../../core/hooks/useImperativeIsland'
+import createFolderContextMenu, {
+  type FolderContextMenuManagers,
+  type FolderContextMenuSidebar,
+} from '../../helpers/dom/createFolderContextMenu'
 import s from './FoldersSidebar.module.scss'
 
 // tweb getIconForFilter: один включённый тип без точечных чатов — иконка типа,
@@ -36,26 +41,28 @@ function folderIcon(f: Folder): IconName {
   return 'limit_folders'
 }
 
+// `folders-sidebar__folder-item` и `data-filter-id` — по ним меню папки находит
+// строку и папку (tweb `folderItem.tsx:63-71`, `createFolderContextMenu.ts:68-71`).
 function Item({
+  id,
   icon,
   name,
   badge,
   selected,
   onClick,
-  onContextMenu,
 }: {
+  id: number
   icon: ReactNode
   name?: string
   badge?: number
   selected?: boolean
   onClick: () => void
-  onContextMenu?: (e: React.MouseEvent) => void
 }) {
   return (
     <div
-      className={classNames(s.item, selected ? s.selected : '')}
+      className={classNames('folders-sidebar__folder-item', s.item, selected ? s.selected : '')}
+      data-filter-id={id}
       onClick={onClick}
-      onContextMenu={onContextMenu}
     >
       {icon}
       {name != null && <span className={s.name}>{name}</span>}
@@ -95,12 +102,15 @@ function selectFolder(folderId: number) {
 
 export default function FoldersSidebar({
   folders,
-  onContextMenu,
+  appSidebarLeft,
+  managers,
   onOpenFolderSettings,
   menu,
 }: {
   folders: Folder[]
-  onContextMenu: (id: number, e: React.MouseEvent) => void
+  /** колонка и ручки для меню папки (`createFolderContextMenu`) */
+  appSidebarLeft: FolderContextMenuSidebar
+  managers: FolderContextMenuManagers
   onOpenFolderSettings: () => void
   menu: MainMenuHandlers
 }) {
@@ -137,6 +147,18 @@ export default function FoldersSidebar({
     }
   }, [])
 
+  // Меню папки — та же фабрика, что у ряда владельца (tweb
+  // `foldersSidebarContent/index.tsx:83-92`, снятие — `:112-113`), на контейнер
+  // строк. Колбэки колонки стабильны на всё время жизни `Sidebar`.
+  const itemsRef = useImperativeIsland((container) => {
+    return createFolderContextMenu({
+      appSidebarLeft,
+      managers,
+      className: 'folders-sidebar__folder-item',
+      listenTo: container,
+    }).destroy
+  }, [appSidebarLeft, managers])
+
   // Портал в #main-columns: в tweb #folders-sidebar — соседняя колонка каркаса
   // (живой DOM §1), а не потомок #column-left.
   return createPortal(
@@ -158,26 +180,26 @@ export default function FoldersSidebar({
         <TgIcon name="menu" size={24} />
       </div>
 
-      <div className={s.scroll}>
+      <div ref={itemsRef} className={s.scroll}>
         <Item
+          id={ALL_FOLDER_ID}
           icon={<TgIcon name="round_chats_filled" size={30} />}
           name={t('FilterAllChats')}
           badge={counts[ALL_FOLDER_ID]}
           selected={selectedId === ALL_FOLDER_ID}
           onClick={() => selectFolder(ALL_FOLDER_ID)}
-          onContextMenu={(e) => onContextMenu(ALL_FOLDER_ID, e)}
         />
         {folders.map((f) => {
           const [emoji, name] = extractFolderEmoji(f.title)
           return (
             <Item
               key={f.id}
+              id={f.id}
               icon={emoji ? <span className={s.emoji}>{emoji}</span> : <TgIcon name={folderIcon(f)} size={30} />}
               name={name}
               badge={counts[f.id]}
               selected={selectedId === f.id}
               onClick={() => selectFolder(f.id)}
-              onContextMenu={(e) => onContextMenu(f.id, e)}
             />
           )
         })}

@@ -40,6 +40,10 @@ vi.mock('./StoriesRow', () => ({
   },
 }))
 
+// Анимация в шапке редактора папки (его открывает меню папки) тянет `.tgs`
+// через `fetch`, а `fetch` здесь — шпион «сети нет»; к предмету не относится.
+vi.mock('./LottieSticker', () => ({ default: () => null }))
+
 const HOST_HEIGHT = 720
 const DIALOGS = 500
 
@@ -292,6 +296,52 @@ describe('Sidebar — переключение папки: список с на�
       // выбор в сторе сменится, а активный кадр владельца останется «Всех».
       expect(activeFrame()).toBe(frameOf(FOLDER.id))
       expect(useFoldersStore.getState().selectedId).toBe(FOLDER.id)
+    } finally {
+      main.remove()
+    }
+  })
+})
+
+// Меню папки (задача 7 плана): одна фабрика `createFolderContextMenu` на оба
+// ряда, `appSidebarLeft` колонки — один объект на обоих. Здесь — что колонка
+// его ДАЛА обоим и что он открывает её экран (пункты и `verify` запинены в
+// `helpers/dom/createFolderContextMenu.test.ts`).
+describe('Sidebar — меню папки на обоих рядах', () => {
+  const editorWith = (title: string) =>
+    [...document.querySelectorAll<HTMLInputElement>('input')].find((el) => el.value === title)
+
+  async function editVia(target: HTMLElement) {
+    await act(async () => {
+      target.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+    })
+    await settle(0)
+    const item = [...document.querySelectorAll<HTMLElement>('.btn-menu.contextmenu.active .btn-menu-item')]
+      .find((el) => el.textContent?.includes('Edit folder'))!
+    await act(async () => { item.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    await settle(0)
+  }
+
+  it('горизонтальный ряд: «Edit folder» на вкладке «Работа» открывает её редактор', async () => {
+    await renderSidebar()
+    expect(editorWith('Работа')).toBeUndefined()
+
+    const tab = [...document.querySelectorAll<HTMLElement>('#folders-tabs .menu-horizontal-div-item')]
+      .find((el) => el.textContent?.includes('Работа'))!
+    await editVia(tab)
+
+    expect(editorWith('Работа')).toBeDefined()
+  })
+
+  it('вертикальная колонка: «Edit folder» на строке «Работа» открывает её редактор', async () => {
+    useSettingsStore.setState({ tabsInSidebar: true })
+    const main = document.createElement('div')
+    main.id = 'main-columns'
+    document.body.append(main)
+    try {
+      await renderSidebar()
+      await editVia(document.querySelector<HTMLElement>(`#folders-sidebar .folders-sidebar__folder-item[data-filter-id="${FOLDER.id}"]`)!)
+
+      expect(editorWith('Работа')).toBeDefined()
     } finally {
       main.remove()
     }

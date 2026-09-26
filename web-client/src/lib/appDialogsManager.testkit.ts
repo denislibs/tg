@@ -15,7 +15,7 @@
 // настоящий список (`list.register(...)`). Его `clear` пустит `ul`, как
 // `deferredSortedVirtualList.tsx:157-168` у tweb, `onChatsScroll` — рисует первую
 // страницу.
-import { expect } from 'vitest'
+import { expect, vi } from 'vitest'
 import { useAppStateStore } from '@stores/appState'
 import { applyFolderUpdate, useFoldersStore } from '@stores/foldersStore'
 import { useChatsStore } from '@stores/chatsStore'
@@ -230,6 +230,15 @@ export function mountOwner(options: { close?: () => boolean | Promise<boolean>; 
       return options.close ? options.close() : true
     },
     isForumOpen: options.forumOpen ?? (() => false),
+    // меню папки (задача 7): колонка открывает экраны, ручка удаления — дублёр
+    appSidebarLeft: {
+      closeTabsBefore: vi.fn((clb: () => void) => clb()),
+      openEditFolderTab: vi.fn(),
+      openChatFoldersTab: vi.fn(),
+    },
+    managers: {
+      folders: { del: vi.fn(async (_id: number) => {}) },
+    },
   }
 
   const manager = new AppDialogsManager()
