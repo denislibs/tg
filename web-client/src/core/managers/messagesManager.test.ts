@@ -1236,3 +1236,70 @@ describe('MessagesManager.searchMessages: курсор `offset_id`', () => {
     })
   })
 })
+
+// Порт `fetchMessageReplyTo` → `reloadMessage` → `fetchSingleMessages`
+// (tweb appMessagesManager.ts:13609-13880). Сквозная проводка до ленты —
+// `components/chat/bubbles.replyTarget.test.ts`; здесь — правила владельца.
+describe('MessagesManager.fetchMessageReplyTo', () => {
+  const CHAT = -7
+  const reply = (id: number, toId: number, extra: Record<string, unknown> = {}) => ({
+    ...makeRawMessage({ id, peerId: CHAT, fromId: 2, text: `ответ ${id}` }),
+    reply_to: { _: 'messageReplyHeader', reply_to_msg_id: toId, ...extra },
+  }) as unknown as RawMessage
+
+  /** REST: история отдаёт ответы, ручка адресов — то, что есть в `known`,
+   *  остальное — дырой. */
+  function standRest(history: RawMessage[], known: RawMessage[]) {
+    const byId = new Map(known.map((m) => [m.id, m]))
+    const idsCalls: string[] = []
+    const rest = {
+      get: vi.fn(async (path: string, q: Record<string, string | number> = {}) => {
+        if (path.endsWith('/history')) return { _: 'messages.messagesSlice', messages: history, users: [], chats: [], count: history.length }
+        idsCalls.push(`${path}?ids=${q.ids}`)
+        const ids = String(q.ids).split(',').map(Number)
+        return { _: 'messages.messages', messages: ids.map((id) => byId.get(id) ?? { _: 'messageEmpty', id }), users: [], chats: [] }
+      }),
+    } as unknown as RestClient
+    return { rest, idsCalls }
+  }
+
+  it('запросы одного хода уходят ОДНИМ вызовом ручки адресов (tweb pause(0) + needSingleMessages)', async () => {
+    const orig = (id: number) => makeRawMessage({ id, peerId: CHAT, fromId: 3, text: `оригинал ${id}` }) as RawMessage
+    const { rest, idsCalls } = standRest([reply(20, 5), reply(21, 6)], [orig(5), orig(6)])
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ peerId: CHAT, limit: 2 })
+
+    const [a, b] = await Promise.all([mgr.fetchMessageReplyTo(CHAT, cid(20)), mgr.fetchMessageReplyTo(CHAT, cid(21))])
+    expect(idsCalls).toEqual([`/chats/${CHAT}/messages?ids=5,6`])
+    expect(real(a)?.message).toBe('оригинал 5')
+    expect(real(b)?.message).toBe('оригинал 6')
+    // Лёг в SSOT — повторный вопрос сети не трогает.
+    await mgr.fetchMessageReplyTo(CHAT, cid(20))
+    expect(idsCalls).toHaveLength(1)
+  })
+
+  it('дыра: ответ помечается reply_to_msg_deleted и объявляется окну, повтор в сеть не ходит', async () => {
+    const { rest, idsCalls } = standRest([reply(20, 5)], [])
+    const ops: MessageOp[][] = []
+    const mgr = newMessagesManager({ rest, broadcast: (ev, p) => { if (ev === RT.messageOp) ops.push((p as { ops: MessageOp[] }).ops) } })
+    await mgr.getHistory({ peerId: CHAT, limit: 1 })
+
+    expect(await mgr.fetchMessageReplyTo(CHAT, cid(20))).toBeUndefined()
+    expect(mgr.getMessageByPeer(CHAT, cid(20))?.reply_to?.reply_to_msg_deleted).toBe(true)
+    expect(ops.flat()).toEqual([expect.objectContaining({ op: 'patch', key: String(CHAT), msgId: cid(20) })])
+
+    // tweb `missingMessages`: адрес дыры запомнен.
+    expect(await mgr.fetchMessageReplyTo(CHAT, cid(20))).toBeUndefined()
+    expect(idsCalls).toHaveLength(1)
+  })
+
+  it('ответ из ДРУГОГО чата ищется в чате reply_to_peer_id (tweb :13862)', async () => {
+    const OTHER = -9
+    const { rest, idsCalls } = standRest([reply(20, 5, { reply_to_peer_id: { _: 'peerChannel', channel_id: 9 } })], [])
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ peerId: CHAT, limit: 1 })
+
+    await mgr.fetchMessageReplyTo(CHAT, cid(20))
+    expect(idsCalls).toEqual([`/chats/${OTHER}/messages?ids=5`])
+  })
+})

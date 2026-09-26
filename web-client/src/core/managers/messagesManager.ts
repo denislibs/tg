@@ -22,7 +22,9 @@ export interface MessagesSearchResultsCalendar {
   messages: RawMyMessage[]
   users: UserReal[]
 }
-import { getThreadRootId, mapMyMessage, type MyMessage, type MessageReal, type MessageEntity, type MessageFields, type MessageReplies, type RawMyMessage, type SecretMedia } from '../models'
+import { getThreadRootId, mapMyMessage, type MyMessage, type MessageReal, type MessageEntity, type MessageFields, type MessageReplies, type MessageReplyHeader, type RawMessage, type RawMyMessage, type SecretMedia } from '../models'
+import deferredPromise, { type CancellablePromise } from '@helpers/cancellablePromise'
+import pause from '@helpers/schedulers/pause'
 import { getPeerId, type Peer } from '../peers/peerId'
 import type { UserReal, Chat } from '../peers/peer'
 import { generateMessageId, getServerMessageId } from '../history/messageId'
@@ -65,6 +67,16 @@ export interface MessagesContainer {
   /** Курсор следующей страницы глобального поиска (`messages.searchGlobal`);
    *  нет ключа — дальше ничего. */
   next_rate?: number
+}
+
+/**
+ * Ответ ручки АДРЕСОВ (`GET /chats/{peerID}/messages?ids=`, аналог
+ * `messages.getMessages`) — тот же messages.Messages, но единственный, где
+ * бывают дыры `messageEmpty`: на адрес снесённого сообщения сервер отвечает
+ * дырой, а не молчанием (см. `RawMyMessage`).
+ */
+interface MessagesByIdsContainer extends Omit<MessagesContainer, 'messages'> {
+  messages: RawMessage[]
 }
 
 /**
@@ -520,6 +532,99 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     })
   }
 
+  // ── Сообщения ПО АДРЕСУ — порт `reloadMessage` + `fetchSingleMessages` ────
+  // (tweb appMessagesManager.ts:13609-13759). Нужны тому, кто держит ССЫЛКУ на
+  // сообщение вне окна — сегодня это шапка ответа (`fetchMessageReplyTo`).
+  //
+  // Запросы одного хода копятся по пирам и уходят ОДНИМ вызовом на пир после
+  // `pause(0)` — как у оригинала, где лента, отрисовав страницу с десятком
+  // ответов на невидимые сообщения, шлёт один `channels.getMessages`, а не
+  // десять. Ручка — `GET /chats/{peerID}/messages?ids=` (аналог
+  // `messages.getMessages`); отсутствующее она отдаёт дырой `messageEmpty`.
+  //
+  // Догруженное ложится в SSOT (`put`), но НЕ в срез окна: у оригинала
+  // `saveApiResult` пишет в `messagesStorage`, а `historyStorage.history` не
+  // трогает — бабла у такого сообщения нет.
+  //
+  // Расхождения с оригиналом:
+  //  • ошибка сети отвергает промис, а не подставляет пустое сообщение
+  //    (`settleSingleMessageRequests`): у оригинала «пустое» тут же вызывает
+  //    повторный `fetchMessageReplyTo` из перерисовки шапки, у нас шапка
+  //    остаётся «Загрузкой» до следующего рендера бабла;
+  //  • нет `inFlightSingleMessages`/`retrySingleMessageRequests` и
+  //    `deletedMessages` — их предмет (отсечка истории канала
+  //    `channelAvailableMinId`, сброс очереди на смене аккаунта) у нас не
+  //    производится.
+  const needSingleMessages = new Map<number, Map<number, CancellablePromise<MyMessage | undefined>>>()
+  /** tweb `missingMessages` — адрес, на который сервер ответил дырой. */
+  const missingMessages = new Set<string>()
+  let fetchSingleMessagesPromise: Promise<void> | undefined
+
+  const fetchSingleMessages = (): Promise<void> => {
+    if (fetchSingleMessagesPromise) return fetchSingleMessagesPromise
+
+    const batchPromise: Promise<void> = pause(0).then(() => {
+      const requests: Promise<void>[] = []
+      for (const [peerId, map] of needSingleMessages) {
+        needSingleMessages.delete(peerId)
+        const ids = [...map.keys()].map(getServerMessageId).join(',')
+        requests.push(rest.get<MessagesByIdsContainer>(`/chats/${peerId}/messages`, { ids }).then(async (r) => {
+          if (r.users?.length || r.chats?.length) peers?.saveApiPeers({ users: r.users, chats: r.chats })
+          const found = await decryptPage(await mapPage(r.messages.filter((m): m is RawMyMessage => m._ !== 'messageEmpty')))
+          put(String(peerId), found)
+          for (const message of found) {
+            map.get(message.id)?.resolve!(message)
+            map.delete(message.id)
+          }
+          // Остаток — дыры. Сообщение могло лечь в SSOT за время полёта
+          // (страница истории, живой кадр) — тогда отвечает оно (tweb :13676-13680).
+          for (const [mid, promise] of map) {
+            const current = readMsg(peerId, mid)
+            if (!current) missingMessages.add(`${peerId}_${mid}`)
+            promise.resolve!(current)
+          }
+        }, (err: unknown) => {
+          for (const promise of map.values()) promise.reject!(err)
+        }))
+      }
+      return Promise.all(requests).then(() => undefined)
+    }).then(() => {
+      fetchSingleMessagesPromise = undefined
+      if (needSingleMessages.size) void fetchSingleMessages()
+    })
+    fetchSingleMessagesPromise = batchPromise
+    return batchPromise
+  }
+
+  const reloadMessage = (peerId: number, mid: number): MyMessage | undefined | Promise<MyMessage | undefined> => {
+    const message = readMsg(peerId, mid)
+    if (message || missingMessages.has(`${peerId}_${mid}`)) return message
+
+    let map = needSingleMessages.get(peerId)
+    if (!map) needSingleMessages.set(peerId, map = new Map())
+    let promise = map.get(mid)
+    if (promise) return promise
+    promise = deferredPromise<MyMessage | undefined>()
+    map.set(mid, promise)
+    void fetchSingleMessages()
+    return promise
+  }
+
+  /** Порт `clearMessageReplyTo` (tweb :13813-13824): ссылка ответа ведёт в
+   *  дыру — пометить её в SSOT и отзеркалить окнам (`// * mirror it` у
+   *  оригинала), чтобы следующий рендер бабла не спрашивал сервер снова. */
+  const clearMessageReplyTo = (peerId: number, mid: number): void => {
+    let replyTo: MessageReplyHeader | undefined
+    patchMsg(peerId, (m) => m.id === mid, (m) => {
+      if (!m.reply_to || m.reply_to.reply_to_msg_deleted) return null
+      replyTo = { ...m.reply_to, reply_to_msg_deleted: true }
+      return { ...m, reply_to: replyTo }
+    })
+    const next = replyTo
+    if (!next) return
+    emitOps(opWindowsFor(peerId, mid).map((key): MessageOp => ({ op: 'patch', key, msgId: mid, fields: { reply_to: next } })))
+  }
+
   return {
     ...newReactionMethods(ctx),
     ...newPollMethods(ctx),
@@ -569,6 +674,35 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
      */
     getMessageByPeer(peerId: number, seq: number): MyMessage | undefined {
       return seq ? msgsByChat.get(peerId)?.get(seq) : undefined
+    },
+
+    /**
+     * Порт `appMessagesManager.fetchMessageReplyTo` (tweb :13826-13880) —
+     * оригинал ответа `mid` чата `peerId`, которого у спросившего нет.
+     *
+     * Сообщение-ответ перечитывается из SSOT, как у оригинала
+     * (`getMessageByPeerOrFromLogs`): спросившему нужен адрес ответа, а ссылку
+     * владелец знает сам. Оригинал ищется в чате `reply_to_peer_id`, если он
+     * задан, иначе в том же чате. Дыра на сервере — `clearMessageReplyTo`.
+     *
+     * Возвращает оригинал либо `undefined` (его нет). Оригинал рассылает
+     * о приезде событие `messages_downloaded`, и лента перерисовывает шапку
+     * по нему (`updateMessageReply`); у нас ответ едет RPC-результатом тому,
+     * кто спросил, — см. `ChatBubbles.updateMessageReply`.
+     *
+     * Ветки `messageReplyStoryHeader` и `reply_to_ephemeral`, а также
+     * `message_edit` для служебного сообщения (превью закреплённого) — без
+     * предмета: историй-ответов и эфемерных сообщений у нас нет, а превью
+     * закреплённого догрузку ещё не зовёт (`ChatBubbles.renderServiceMessage`).
+     */
+    async fetchMessageReplyTo(peerId: number, mid: number): Promise<MyMessage | undefined> {
+      const replyTo = readMsg(peerId, mid)?.reply_to
+      const replyToMid = replyTo?.reply_to_msg_id
+      if (!replyTo || !replyToMid) return undefined
+      const replyToPeerId = replyTo.reply_to_peer_id ? getPeerId(replyTo.reply_to_peer_id) : peerId
+      const original = await reloadMessage(replyToPeerId, replyToMid)
+      if (!original) clearMessageReplyTo(peerId, mid)
+      return original
     },
 
     async getHistory(args: HistoryArgs): Promise<HistoryResult> {
