@@ -42,6 +42,10 @@ export default function MessageInput({
         className={classNames(base, 'forwards')}
         contentEditable
         suppressContentEditableWarning
+        // tweb 9909f2b1a (inputField.ts:543-546): переводчик браузера переписывает
+        // текстовые узлы прямо в инпуте, и `getRichValueWithCaret` отправил бы
+        // перевод — вместе с поломанными сущностями и кастом-эмодзи
+        translate="no"
         data-peer-id={peerId}
         // отступление от tweb: явные role/aria — у оригинала их нет, но без них
         // contenteditable не виден ассистивным технологиям (и тестам по роли).
@@ -60,6 +64,9 @@ export default function MessageInput({
         className={classNames(base, 'input-field-input-fake')}
         contentEditable
         suppressContentEditableWarning
+        // tweb 9909f2b1a (inputFieldAnimated.ts:40): зеркало высоты держится в
+        // синхроне с непереведённым инпутом
+        translate="no"
         tabIndex={-1}
         aria-hidden
       />

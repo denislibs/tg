@@ -646,7 +646,7 @@ section.bubbles-date-group
   `toggleElementCheckbox` каскадит на `.grouped-item` альбома (`:886-897`).
 - Новорендеренные баблы получают чекбоксы в `processBatch` (`bubbles.ts:5932-5936`);
   удаление — `selection.deleteSelectedMids` из `deleteMessagesByIds` (`:4453-4460`).
-- `canSelectBubble` (`:999`) — фильтр (сервисные/спонсорские/outgoing нельзя).
+- `canSelectBubble` (`:999`) — фильтр (сервисные/спонсорские/outgoing нельзя; с e9428f2a9 сервисные — можно, нельзя даты).
 
 ## 8.2 Свайп-ответ
 

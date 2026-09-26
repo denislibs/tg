@@ -657,7 +657,11 @@ around-анимация снимает себя сама, как только е
 ## 8.2 `ChatSelection` (selection.ts:764–1189)
 
 - `canSelectBubble` (стр. 999–1006): не `service`, не `is-outgoing`, не `is-error`,
-  не `bubble-first`, не `avoid-selection`.
+  не `bubble-first`, не `avoid-selection`. С e9428f2a9 (812502980 :1037-1046) служебные
+  выделяются: вместо `service` отсекаются `is-date`, лог админа и `service` в report-режиме;
+  «Выбрать» есть и у служебного, контент служебной пилюли под `.bubbles.is-selecting`
+  без `pointer-events`. У нас перенесено (волна 1 дельты); лога админа и report-режима
+  нет, «Переслать» на служебном гасит `Chat.tsx` (`selectedHasService`).
 - Альбомы: выбор group-контейнера = выбор всех элементов; чекбокс контейнера отражает
   «все выбраны» (стр. 900–976).
 - Вход из меню: пункт Select → `toggleByElement` (contextMenu.ts:2035–2037); также клик по

@@ -465,7 +465,12 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // топбара и двигает его вниз (см. AUDIO_PLATE_FLOATING_HEIGHT). В резерв
   // ленты она входит так же, как в --pinned-floating-height.
   const audioPlateShown = useAudioStore((st) => st.track != null)
-  const floatingHeight = platesHeight + (audioPlateShown ? AUDIO_PLATE_FLOATING_HEIGHT : 0)
+  // tweb 6ce2cafba (topbar.ts::setFloating, `reservedFloatingHeight`): пока идёт
+  // поиск по тегам (`.chat.is-search-active`), резерв под плашки — ноль и в
+  // --pinned-floating-height, и в распорке ленты: ленту раздвигает строка
+  // тегов своей распоркой (_chat.scss), вторая была бы лишней.
+  const reservedPlatesHeight = searchReactionsShown ? 0 : platesHeight
+  const floatingHeight = reservedPlatesHeight + (audioPlateShown ? AUDIO_PLATE_FLOATING_HEIGHT : 0)
 
   // Распорки ленты — порт tweb `Chat.recomputePaddings` (chat.ts:345): числа
   // считает окружение чата, применяет их сама лента (`ChatBubbles.setPaddings`).
@@ -500,6 +505,10 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // оригинале клик по счётчику зовёт `selection.cancelSelection`
   // (tweb selection.ts:1080-1082).
   const [selected, setSelected] = useState<Set<number>>(() => new Set())
+  const selectedHasService = useMemo(
+    () => selected.size > 0 && mirrorMsgs.some((m) => m._ === 'messageService' && selected.has(m.id)),
+    [selected, mirrorMsgs],
+  )
   const [selecting, setSelecting] = useState(false)
   const clearSelection = useEvent(() => { feedApi.current?.cancelSelection() })
   // Вход в режим выделения из меню шапки — порт tweb topbar.ts:560
@@ -1244,7 +1253,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
           // tweb topbar.setFloating: высота стека плейтов + плавающие плашки
           // плеера/звонка. Отсюда --chat-padding-top и верх маски фейдов.
           ['--pinned-floating-height' as string]:
-            `calc(${platesHeight}px + var(--topbar-floating-call-height) + var(--topbar-floating-audio-height))`,
+            `calc(${reservedPlatesHeight}px + var(--topbar-floating-call-height) + var(--topbar-floating-audio-height))`,
           ['--chat-input-height-surplus' as string]: `${inputSurplus}px`,
           // Текст границы непрочитанных — CSS-контент (tweb
           // `.is-first-unread:before { content: var(--unread-messages-text) }`),
@@ -1417,7 +1426,10 @@ export default function Chat({ chat, onBack, thread }: Props) {
                 onClear={clearSelection}
                 onForward={() => openForwardFor(numericChatId, [...selected])}
                 onDelete={() => openDeleteFor(numericChatId, [...selected])}
-                canForward={!isSecret}
+                // tweb e9428f2a9: служебное сообщение теперь выделяется, а переслать
+                // его нельзя (`canForward` у messageService ложен) — плашка прячет
+                // «Переслать», как только такое попало в выделение.
+                canForward={!isSecret && !selectedHasService}
               />
             )}
 

@@ -1713,6 +1713,14 @@ const ru = {
   NoResultsTitle: 'Нет результатов',
   NoResultsSubtitle: 'Попробуйте другой запрос',
   SearchInAllChats: 'Искать во всех чатах',
+  // ── Подтверждение замаскированной ссылки (tweb `internalLinkProcessor.ts:91-113`,
+  //    `showMaskedAlert`) ──
+  Open: 'Открыть',
+  OpenUrlTitle: 'Открыть ссылку',
+  OpenUrlAlert2: 'Открыть ссылку %1$s?',
+  // ── Уведомления запрещены / недоступны в браузере (tweb
+  //    `sidebarLeft/tabs/notifications.tsx:390`, 72c50bfef) ──
+  'Notifications.Restricted': 'Вы запретили уведомления. Сбросьте разрешение в настройках браузера и попробуйте снова.',
   // ── Владелец глобального поиска (tweb `sidebarLeft/index.ts:1096`, :1130,
   //    :1504-1517; заголовок попапа без `titleLangKey` — `popups/peer.ts:58`) ──
   AppName: 'Telegram',

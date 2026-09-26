@@ -84,11 +84,11 @@
  *    Структура самого back() (классы `.hostExit`/`.hostExiting`, `doubleRaf`,
  *    `pause(200)`) — 1:1 с оригиналом.
  *  • `themeController.switchTheme(...)` (глобальный синглтон tweb) заменён на
- *    локальный `switchTheme()`: та же формула кругового View Transition, что
- *    уже портирована для React в `core/hooks/useThemeToggle.ts` (координаты
- *    клика → `document.startViewTransition` → `clipPath`-круг, `duration: 450`,
+ *    локальный `switchTheme()`: круговое раскрытие отдаёт общий исполнитель
+ *    `core/theme/themeTransition.ts` (порт view-transition части
+ *    `ThemeController.setTheme`, его же зовёт `core/hooks/useThemeToggle.ts`;
  *    фолбэк на мгновенную смену без API/reduced-motion/без координат), но без
- *    её `useLayoutEffect`, который держит `<html data-theme>` В СИНХРОНЕ С
+ *    `useLayoutEffect` React-хука, который держит `<html data-theme>` В СИНХРОНЕ С
  *    настройками ВООБЩЕ (не про клик по кнопке — про применение сохранённого
  *    выбора при каждом маунте). У tweb этим тоже не занимается
  *    `AuthCardsHost` — применение темы при старте живёт в `src/index.ts`,
@@ -126,7 +126,7 @@ import {
 } from '@core/accountTransition'
 import { loadFonts } from '@core/dom/loadFonts'
 import { setTheme } from '@core/theme/themeController'
-import { dispatchHeavyAnimationEvent } from '@core/dom/heavyAnimation'
+import { switchThemeWithTransition } from '@core/theme/themeTransition'
 import { useSettingsStore } from '@/settings'
 import { resolvePreset, PRESET_MODE, type ThemeChoice } from '@/theme'
 import type { Managers } from '@/client/bootstrap'
@@ -214,35 +214,15 @@ export default function AuthCardsHost(props: AuthCardsHostProps): JSX.Element {
 
   function switchTheme(coords?: { x: number; y: number }): void {
     const currentPreset = resolvePreset(useSettingsStore.getState().themeChoice)
-    const next: ThemeChoice = PRESET_MODE[currentPreset] === 'dark' ? 'day' : 'night'
+    const isNight = PRESET_MODE[currentPreset] === 'dark'
+    const next: ThemeChoice = isNight ? 'day' : 'night'
     const apply = () => {
       useSettingsStore.getState().update({ themeChoice: next })
       setTheme(resolvePreset(next))
     }
 
-    const start = (document as Document & {
-      startViewTransition?: (cb: () => void) => { ready: Promise<void>; finished: Promise<void> }
-    }).startViewTransition
-    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-
-    if (!start || !coords || reduce) {
-      apply()
-      return
-    }
-
-    const { x, y } = coords
-    const transition = start.call(document, apply)
-    // Пока играет круговое раскрытие — пауза тяжёлого рендера (стикеры/видео),
-    // как и в React-версии; `.catch` — чтобы реджект `finished` не заклинил
-    // паузу до истечения таймаута.
-    void dispatchHeavyAnimationEvent(transition.finished.catch(() => {}), 2000)
-    void transition.ready.then(() => {
-      const endRadius = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))
-      document.documentElement.animate(
-        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${endRadius}px at ${x}px ${y}px)`] },
-        { duration: 450, easing: 'cubic-bezier(.4, 0, .2, 1)', pseudoElement: '::view-transition-new(root)' },
-      )
-    })
+    // Тот же исполнитель, что у React-переключателя (`core/theme/themeTransition.ts`).
+    switchThemeWithTransition(apply, coords, isNight)
   }
 
   function toggleTheme(e: MouseEvent): void {

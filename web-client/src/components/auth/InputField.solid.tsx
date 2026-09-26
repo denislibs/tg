@@ -109,6 +109,9 @@ export default function InputField(props: InputFieldSolidProps): JSX.Element {
         ref={el}
         class={classNames('input-field-input', props.value ? '' : 'is-empty', error() ? 'error' : '')}
         contentEditable
+        // tweb 9909f2b1a (inputField.ts:543-546): переводчик браузера переписывает
+        // текстовые узлы прямо в поле, и прочитанное значение — уже перевод
+        translate="no"
         data-no-linebreaks="1"
         onInput={() => {
           const raw = el.textContent ?? ''

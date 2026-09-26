@@ -1807,7 +1807,19 @@ export default class AppMediaViewerBase<
         }
       }
 
-      if (target.tagName === 'DIV') { // useContainerAsTarget; `|| findUpAvatar(target)` tweb :1580 — аватарки в Task 16
+      // tweb 7a52f3631 (812502980 :1590-1599): конкретный медиа-элемент
+      // выбирается РАНЬШЕ фолбэка на контейнер. `findUpAvatar(<img>)` у
+      // оригинала тоже истинно, и поиск внутри самого `<img>` не дал бы снимка —
+      // полёт открытия остался бы пустым. У нас `findUpAvatar` ещё нет (Task 16),
+      // но порядок веток держим оригинальный: вернётся аватарка — ветка DIV её
+      // не перехватит.
+      if (target instanceof HTMLImageElement) {
+        mediaElement = new Image()
+        mediaElement.src = target.currentSrc || target.src
+      } else if (target instanceof HTMLVideoElement) {
+        mediaElement = createVideo({ middleware: mover.middlewareHelper.get() })
+        mediaElement.src = target.src
+      } else if (target.tagName === 'DIV') { // useContainerAsTarget; `|| findUpAvatar(target)` tweb :1599 — аватарки в Task 16
         const images = Array.from(target.querySelectorAll('img'))
         const image = images.pop()
         if (image) {
@@ -1815,16 +1827,10 @@ export default class AppMediaViewerBase<
           mediaElement.src = image.currentSrc || image.src
           mover.append(mediaElement)
         }
-        // else-ветка tweb :1587-1594 (клон цветного `.avatar[data-color]`) не
+        // else-ветка tweb :1606-1613 (клон цветного `.avatar[data-color]`) не
         // портирована — цвет-аватары у нас React-компонент без этого класса,
         // цель появится в Task 16
-      } else if (target instanceof HTMLImageElement) {
-        mediaElement = new Image()
-        mediaElement.src = target.currentSrc || target.src
-      } else if (target instanceof HTMLVideoElement) {
-        mediaElement = createVideo({ middleware: mover.middlewareHelper.get() })
-        mediaElement.src = target.src
-        // SVGSVGElement-ветка tweb :1603-1654 (пересборка clip-id, хвостик
+        // SVGSVGElement-ветка tweb :1616-1667 (пересборка clip-id, хвостик
         // use/path, generatePathData) не портирована — SVG-хвостовых баблов нет
       } else if (target instanceof HTMLCanvasElement) {
         mediaElement = target
@@ -1848,6 +1854,12 @@ export default class AppMediaViewerBase<
       }
 
       mover.style.visibility = ''
+      // tweb 7a52f3631 (812502980 :1697-1702): commit the source transform before
+      // .active enables transitions. Without this, async paths can add .active in
+      // the same style update as the initial transform, so the browser starts
+      // animating from `none` and then cancels that transition when the real open
+      // target is applied below.
+      void mover.offsetLeft
 
       fastRaf(() => {
         wrapper.style.transition = ''

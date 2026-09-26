@@ -59,7 +59,7 @@ import { startOfDayMs } from '@core/format/dayLabel'
 import { isOutMessage, type MyMessage, type OurMessageChat } from '@core/models'
 import { isServicePill } from '@core/serviceMsg'
 import { messageDateISO } from '@core/messageToConvMsg'
-import { getInlineMarkupRows } from '@core/markup/replyMarkup'
+import { filterReplyMarkupRows, type KeyboardButtonRow } from '@core/markup/replyMarkup'
 
 /** Порт tweb `bubbles.ts:306`. Позиция первой группы внутри контейнера дня:
  *  перед группами лежат дата-бабл, его `is-fake`-дубль и sentinel, который
@@ -210,10 +210,12 @@ function partition<T>(array: T[], predicate: (value: T) => boolean): [T[], T[]] 
   return [yes, no]
 }
 
-/** Порт tweb `canHaveReplyMarkup` (bubbleGroups.ts:51): у аватара серии свой
- *  отступ, когда под последним баблом висит инлайн-клавиатура. */
-function canHaveReplyMarkup(message: MyMessage): boolean {
-  return !!getInlineMarkupRows(message._ === 'message' ? message.reply_markup : undefined)
+/** Порт tweb `getReplyMarkupRows` (eedb2b74e, прежде `canHaveReplyMarkup`,
+ *  bubbleGroups.ts:80-83): непустые ряды инлайн-клавиатуры под баблом — по их
+ *  числу аватар серии поднимается над клавиатурой. */
+function getReplyMarkupRows(message: MyMessage): KeyboardButtonRow[] {
+  const replyMarkup = message._ === 'message' ? message.reply_markup : undefined
+  return replyMarkup?._ === 'replyInlineMarkup' ? filterReplyMarkupRows(replyMarkup.rows) : []
 }
 
 /** Порт tweb `BubbleGroup`. */
@@ -287,7 +289,15 @@ export class BubbleGroup {
       return
     }
 
-    this.avatar.node.classList.toggle('avatar-for-reply-markup', canHaveReplyMarkup(message))
+    // tweb eedb2b74e (bubbleGroups.ts:200-206): класс и число рядов — на
+    // контейнере аватара; отступ даёт grid в его `::before` (_chatBubble.scss).
+    const replyMarkupRows = getReplyMarkupRows(message)
+    this.avatarContainer!.classList.toggle('avatar-for-reply-markup', !!replyMarkupRows.length)
+    if (replyMarkupRows.length) {
+      this.avatarContainer!.style.setProperty('--reply-markup-row-count', replyMarkupRows.length.toString())
+    } else {
+      this.avatarContainer!.style.removeProperty('--reply-markup-row-count')
+    }
   }
 
   /** Самый старый элемент серии (в DOM — верхний). */

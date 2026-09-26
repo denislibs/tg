@@ -1,9 +1,10 @@
 // Ряд «Архив» — ЗАКРЕПЛЁННЫЙ элемент виртуального списка чатов (порт tweb
 // `components/archiveDialog.tsx`). Ключевое: у него РОВНО тот же набор классов
-// строки, что и у обычного диалога (`archiveDialog.tsx:46` —
+// строки, что и у обычного диалога, кроме риппла (`archiveDialog.tsx:49` —
 // `props.element.classList.add('row', 'no-wrap', 'row-with-padding',
-// 'row-clickable', 'hover-effect', 'rp', 'chatlist-chat', 'chatlist-chat-bigger',
-// 'row-big')`), поэтому геометрия ряда (72px, отступ под аватар, типографика)
+// 'row-clickable', 'hover-effect', 'chatlist-chat', 'chatlist-chat-bigger',
+// 'row-big')`; `rp` и `ripple(...)` сняты в tweb e934b9039), поэтому
+// геометрия ряда (72px, отступ под аватар, типографика)
 // приезжает из тех же партиалов, что и у `ChatListItem`, а не задаётся своя.
 // Дети — 1:1 из оригинала: аватар, `.row-row.row-title-row`,
 // `.row-row.row-subtitle-row` с бейджем суммарного непрочитанного.
@@ -14,7 +15,6 @@
 import { Fragment, memo, type Ref } from 'react'
 import classNames from '../shared/lib/classNames'
 import Badge from '../shared/ui/Badge'
-import { useRipple } from '../shared/ui/Ripple/useRipple'
 import TgIcon from './TgIcon'
 import type { Chat } from '../data'
 import { useT } from '../i18n'
@@ -34,7 +34,6 @@ function ArchiveRow({ chats, onOpen, ref }: {
   ref?: Ref<HTMLDivElement>
 }) {
   const t = useT()
-  const { onPointerDown, ripple } = useRipple()
   const unread = chats.reduce((sum, c) => sum + (c.unread ?? 0), 0)
   const names = chats.slice(0, LIMIT).map((c) => ({
     id: c.id,
@@ -46,14 +45,12 @@ function ArchiveRow({ chats, onOpen, ref }: {
     <div
       ref={ref}
       className={classNames(
-        'row', 'no-wrap', 'row-with-padding', 'row-clickable', 'hover-effect', 'rp',
+        'row', 'no-wrap', 'row-with-padding', 'row-clickable', 'hover-effect',
         'chatlist-chat', 'chatlist-chat-bigger', 'row-big',
         s.row,
       )}
       onClick={onOpen}
-      onPointerDown={onPointerDown}
     >
-      {ripple}
 
       {/* archiveDialog.tsx:414-419 — слот аватара обычного ряда + градиентный круг.
           Своего класса у слота нет: в оригинале `styles.Media` несёт только

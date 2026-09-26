@@ -6,6 +6,8 @@ import { joinGroupCall } from '../core/calls/groupCallEngine'
 import Menu, { MenuItem } from '../shared/ui/Menu'
 import { startCallForChat } from './call/CallProvider'
 import { SERVICE_USER_ID } from '../core/dialogToChat'
+import { cachedUser } from '../core/peerCache'
+import canReportBot from '../core/peers/canReportBot'
 import { useSearchStore } from '../stores/searchStore'
 import useMediaQuery from '../shared/lib/useMediaQuery'
 import type { Chat } from '../data'
@@ -133,7 +135,9 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
         : []),
       ...(themeItem ? [themeItem] : []),
       ...(clearItem ? [clearItem] : []),
-      ...(!isService ? [reportItem] : []),
+      // tweb 2488f2cf0 (`topbar.ts::verifyReport`): жалоба на личку — только
+      // на бота (`canReportBot`), у обычного собеседника пункта нет.
+      ...(canReportBot(cachedUser(peerId)) ? [reportItem] : []),
       { icon: <TgIcon name="delete" size={20} />, label: 'ChatList.Context.DeleteChat', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
     ]
   } else if (chat.type === 'saved') {

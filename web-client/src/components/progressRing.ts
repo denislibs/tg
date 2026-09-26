@@ -5,9 +5,8 @@
  * кружка (`components/composer/RoundRecordPreview.tsx`, порт
  * `chat/recording/videoRecordingPanel.tsx`). Разметка/классы/атрибуты — 1:1 с
  * оригиналом, потому что на них построены CSS-правила (`.progress-ring`,
- * `.progress-ring__circle`) и глобальный resize-хендлер tweb, который правит уже
- * созданный элемент (`video.ts:54-74`, у нас пока не портирован — см. шапку
- * `wrappers/video.ts`).
+ * `.progress-ring__circle`). Размер живого кольца меняет `setSize` хендла
+ * (tweb 1faad1d59 — им пользуется resize кружков в `wrappers/video.ts`).
  *
  * `progress` — 0..1 (0 = пустое кольцо, 1 = полное). Кольцо повёрнуто на -90°,
  * поэтому заполняется по часовой от 12 часов.
@@ -21,10 +20,10 @@
  * (`wrappers/video.ts`, ванильный бабл) начал бы тянуть react/react-dom — ровно
  * та причина, по которой у нас уже разъезжались реализации иконки. Поэтому ядро
  * ванильное (строит те же узлы, что JSX оригинала), а ХЕНДЛ повторяет оригинал
- * дословно: те же поля, та же семантика `destroy` (после него `setProgress`
- * молчит — аналог диспоуза реактивного рута), тот же контракт «вызывающий может
- * писать `stroke-dashoffset` сам, компонент не спорит» (`video.ts` так и делает
- * — гонит кадры кружка руками).
+ * дословно: те же поля (`setSize` — с 1faad1d59), та же семантика `destroy`
+ * (после него `setProgress`/`setSize` молчат — аналог диспоуза реактивного
+ * рута), тот же контракт «вызывающий может писать `stroke-dashoffset` сам,
+ * компонент не спорит» (`video.ts` так и делает — гонит кадры кружка руками).
  */
 import classNames from '@shared/lib/classNames'
 
@@ -46,6 +45,11 @@ export function getProgressRingRadius(size: number, strokeWidth: number = DEFAUL
   return size / 2 - strokeWidth * 2
 }
 
+/** tweb 1faad1d59 (progressRing.tsx:36-38). */
+export function getProgressRingCircumference(size: number, strokeWidth: number = DEFAULT_STROKE_WIDTH): number {
+  return 2 * Math.PI * getProgressRingRadius(size, strokeWidth)
+}
+
 const NS = 'http://www.w3.org/2000/svg'
 
 /** `stroke-dashoffset` для доли заполнения (tweb `dashoffset()`, :40). */
@@ -61,13 +65,9 @@ function getDashoffset(circumference: number, progress: number): number {
  */
 export default function ProgressRing(props: ProgressRingProps): SVGSVGElement {
   const strokeWidth = props.strokeWidth ?? DEFAULT_STROKE_WIDTH
-  const radius = getProgressRingRadius(props.size, strokeWidth)
-  const circumference = 2 * Math.PI * radius
 
   const element = document.createElementNS(NS, 'svg')
   element.setAttributeNS(null, 'class', classNames('progress-ring', props.class ?? ''))
-  element.setAttributeNS(null, 'width', '' + props.size)
-  element.setAttributeNS(null, 'height', '' + props.size)
   element.style.transform = 'rotate(-90deg)'
 
   const circle = document.createElementNS(NS, 'circle')
@@ -75,21 +75,35 @@ export default function ProgressRing(props: ProgressRingProps): SVGSVGElement {
   circle.setAttributeNS(null, 'stroke', props.stroke ?? 'white')
   circle.setAttributeNS(null, 'stroke-opacity', '' + (props.strokeOpacity ?? 0.3))
   circle.setAttributeNS(null, 'stroke-width', '' + strokeWidth)
-  circle.setAttributeNS(null, 'cx', '' + props.size / 2)
-  circle.setAttributeNS(null, 'cy', '' + props.size / 2)
-  circle.setAttributeNS(null, 'r', '' + radius)
   circle.setAttributeNS(null, 'fill', 'transparent')
-  circle.style.strokeDasharray = `${circumference} ${circumference}`
-  circle.style.strokeDashoffset = '' + getDashoffset(circumference, props.progress)
   element.append(circle)
 
+  applyGeometry(element, props.size, strokeWidth, props.progress)
   return element
+}
+
+/** Геометрия от размера — то, что у оригинала пересчитывают реактивные
+ *  `radius()`/`circumference()`/`dashoffset()` при смене `size` (progressRing.tsx:41-44). */
+function applyGeometry(element: SVGSVGElement, size: number, strokeWidth: number, progress: number): void {
+  const circle = element.firstElementChild as SVGCircleElement
+  const radius = getProgressRingRadius(size, strokeWidth)
+  const circumference = getProgressRingCircumference(size, strokeWidth)
+  element.setAttributeNS(null, 'width', '' + size)
+  element.setAttributeNS(null, 'height', '' + size)
+  circle.setAttributeNS(null, 'cx', '' + size / 2)
+  circle.setAttributeNS(null, 'cy', '' + size / 2)
+  circle.setAttributeNS(null, 'r', '' + radius)
+  circle.style.strokeDasharray = `${circumference} ${circumference}`
+  circle.style.strokeDashoffset = '' + getDashoffset(circumference, progress)
 }
 
 export interface ProgressRingHandle {
   element: SVGSVGElement
   circle: SVGCircleElement
   setProgress: (progress: number) => void
+  /** tweb 1faad1d59: размер ведётся императивно, как и прогресс — пересчёт
+   *  геометрии прогресса не теряет. */
+  setSize: (size: number) => void
   destroy: () => void
 }
 
@@ -102,17 +116,25 @@ export interface ProgressRingHandle {
 export function createProgressRing(
   opts: Omit<ProgressRingProps, 'progress'> & { progress?: number },
 ): ProgressRingHandle {
-  const element = ProgressRing({ ...opts, progress: opts.progress ?? 0 })
+  const strokeWidth = opts.strokeWidth ?? DEFAULT_STROKE_WIDTH
+  let progress = opts.progress ?? 0
+  let size = opts.size
+  const element = ProgressRing({ ...opts, progress })
   const circle = element.firstElementChild as SVGCircleElement
-  const circumference = 2 * Math.PI * getProgressRingRadius(opts.size, opts.strokeWidth ?? DEFAULT_STROKE_WIDTH)
   let destroyed = false
 
   return {
     element,
     circle,
-    setProgress: (progress: number) => {
+    setProgress: (value: number) => {
       if(destroyed) return
-      circle.style.strokeDashoffset = '' + getDashoffset(circumference, progress)
+      progress = value
+      circle.style.strokeDashoffset = '' + getDashoffset(getProgressRingCircumference(size, strokeWidth), progress)
+    },
+    setSize: (value: number) => {
+      if(destroyed) return
+      size = value
+      applyGeometry(element, size, strokeWidth, progress)
     },
     destroy: () => {
       destroyed = true

@@ -103,7 +103,7 @@
 import animationIntersector, { type AnimationItemGroup } from '@components/animationIntersector'
 import Icon from '@components/icon'
 import ProgressivePreloader from '@components/preloader'
-import { createProgressRing, getProgressRingRadius } from '@components/progressRing'
+import { createProgressRing, getProgressRingCircumference } from '@components/progressRing'
 import { findMediaTargets, type MediaTargetElement } from '@components/audio'
 import wrapPhoto, { type WrappedPhoto } from '@components/wrappers/photo'
 import { mediaPlayback } from '@core/audio/mediaPlaybackController'
@@ -150,37 +150,17 @@ export const USE_VIDEO_OBSERVER = false
 /** автозагрузка выключена: ждём клика по manual-кольцу (tweb `makeError('NO_AUTO_DOWNLOAD')`) */
 const NO_AUTO_DOWNLOAD_ERROR = makeError('NO_AUTO_DOWNLOAD')
 
-/** tweb video.ts:53 — длина окружности кольца кружка, общая на все кружки */
-let roundVideoCircumference = 0
-
 /**
- * tweb video.ts:54-74 — на смене брейкпоинта размер кружка меняется
- * (`HANDHELDS.round` ≠ `DESKTOP.round`), и ВСЕ живые кольца в ленте
- * пересчитываются на месте: заново атрибуты svg/circle и полный (пустой)
- * `stroke-dashoffset`. Пересборки бабла при этом не происходит, поэтому без
- * этого обработчика кольцо осталось бы прежнего диаметра поверх кружка нового.
- * Радиус считает та же формула, что при создании (`getProgressRingRadius`) —
- * ровно для этого она и общая.
+ * tweb 1faad1d59 (video.ts:53-59) — на смене брейкпоинта размер кружка меняется
+ * (`HANDHELDS.round` ≠ `DESKTOP.round`), и ВСЕ живые кольца пересчитываются на
+ * месте: пересборки бабла при этом не происходит. Каждое кольцо регистрирует
+ * свой пересчёт (размер у кольца теперь свой — по диаметру самого кружка, см.
+ * `wrapRound`), общей на все кружки окружности больше нет.
  */
+const roundVideoProgressRingResizers = new Set<() => void>()
 mediaSizesInstance.addEventListener('changeScreen', (from, to) => {
   if (to === ScreenSize.mobile || from === ScreenSize.mobile) {
-    const elements = Array.from(document.querySelectorAll<SVGSVGElement>('.media-round .progress-ring'))
-    const width = mediaSizesInstance.active.round.width
-    const halfSize = width / 2
-    const radius = getProgressRingRadius(width)
-    roundVideoCircumference = 2 * Math.PI * radius
-    elements.forEach((element) => {
-      element.setAttributeNS(null, 'width', '' + width)
-      element.setAttributeNS(null, 'height', '' + width)
-
-      const circle = element.firstElementChild as SVGCircleElement
-      circle.setAttributeNS(null, 'cx', '' + halfSize)
-      circle.setAttributeNS(null, 'cy', '' + halfSize)
-      circle.setAttributeNS(null, 'r', '' + radius)
-
-      circle.style.strokeDasharray = roundVideoCircumference + ' ' + roundVideoCircumference
-      circle.style.strokeDashoffset = '' + roundVideoCircumference
-    })
+    roundVideoProgressRingResizers.forEach((resize) => resize())
   }
 })
 
@@ -762,21 +742,34 @@ function wrapRound({
 
   const size = mediaSizesInstance.active.round
   const strokeWidth = 3.5
-  const radius = getProgressRingRadius(size.width, strokeWidth)
-  if (!roundVideoCircumference) {
-    roundVideoCircumference = 2 * Math.PI * radius
-  }
+  // tweb 1faad1d59 (video.ts:211-240): старые кружки бывают меньше текущего
+  // размера интерфейса, поэтому кольцо привязано к диаметру самого кружка.
+  const roundVideoSize = doc.w || size.width
+  const getProgressRingSize = () => Math.min(roundVideoSize, mediaSizesInstance.active.round.width)
 
   // Общее кольцо (тот же модуль у превью записи кружка). Ведём его императивно
   // (кадры гонит `onFrame` ниже), поэтому прогресс — обычная запись в DOM,
-  // ровно как в оригинале (комментарий tweb video.ts:234-236).
-  const ring = createProgressRing({ size: size.width, strokeWidth, strokeOpacity: 0.3 })
-  middleware?.onClean(() => { ring.destroy() })
+  // ровно как в оригинале.
+  const progressRingSize = getProgressRingSize()
+  const ring = createProgressRing({ size: progressRingSize, strokeWidth, strokeOpacity: 0.3 })
+  let progress = 0
+  let circumference = getProgressRingCircumference(progressRingSize, strokeWidth)
+  const setProgress = (value: number) => {
+    progress = Math.max(0, Math.min(1, value || 0))
+    ring.circle.style.strokeDashoffset = '' + circumference * (1 - progress)
+  }
+  const resizeProgressRing = () => {
+    const ringSize = getProgressRingSize()
+    ring.setSize(ringSize)
+    circumference = getProgressRingCircumference(ringSize, strokeWidth)
+    setProgress(progress)
+  }
+  roundVideoProgressRingResizers.add(resizeProgressRing)
+  middleware?.onClean(() => {
+    roundVideoProgressRingResizers.delete(resizeProgressRing)
+    ring.destroy()
+  })
   divRound.append(ring.element)
-
-  const circle = ring.circle
-  circle.style.strokeDasharray = roundVideoCircumference + ' ' + roundVideoCircumference
-  circle.style.strokeDashoffset = '' + roundVideoCircumference
 
   if (message?.mediaUnread) {
     divRound.classList.add('is-unread')
@@ -836,8 +829,7 @@ function wrapRound({
       if (ctx) ctx.drawImage(globalVideo, 0, 0)
 
       if (globalVideo.duration) {
-        const offset = roundVideoCircumference - globalVideo.currentTime / globalVideo.duration * roundVideoCircumference
-        circle.style.strokeDashoffset = '' + offset
+        setProgress(globalVideo.currentTime / globalVideo.duration)
       }
 
       return !globalVideo.paused

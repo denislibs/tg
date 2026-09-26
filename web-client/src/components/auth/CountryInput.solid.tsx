@@ -141,6 +141,9 @@ export default function CountryInput(props: CountryInputSolidProps): JSX.Element
         ref={inputEl}
         class={classNames('input-field-input', empty() ? 'is-empty' : '')}
         contentEditable
+        // tweb 9909f2b1a (inputField.ts:543-546): переводчик браузера переписывает
+        // текстовые узлы прямо в поле, и прочитанное значение — уже перевод
+        translate="no"
         data-no-linebreaks="1"
         onFocus={() => {
           setFilter(null)

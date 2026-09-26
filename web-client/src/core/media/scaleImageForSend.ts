@@ -15,6 +15,12 @@ import { calcImageInBox } from '../dom/calcImageInBox'
 const PHOTO_SIDE_LIMIT = 2560
 const PHOTO_HEAVY_BYTES = 2 * 1024 * 1024
 const PHOTO_COMPRESSED_QUALITY = 0.9
+// tweb 6af482b82 (newMedia.tsx:130-138): вес исходника предсказывает вес
+// результата только для названных форматов (png/bmp). Lossy-исходник (HEIC,
+// WEBP, AVIF) мал на диске, но на полном качестве кодируется в ~12 МБ, если
+// детализирован. Поэтому взвешивается и результат, и сжимается только тот, что
+// перевесил этот бюджет — влезающее не трогается.
+const PHOTO_MAX_BYTES = 6 * 1024 * 1024
 
 // tweb appManagers/constants.ts: SERVER_IMAGE_MIME_TYPES — форматы, которые бэкенд
 // принимает как «фото». Всё остальное (webp/heic/avif) конвертируем в jpeg.
@@ -90,9 +96,13 @@ export async function scaleImageForSend(file: File): Promise<PreparedImage> {
       true,
     )
     // Качество роняем только при сжатии тяжёлого lossless; чистый ресайз/конвертация
-    // — near-lossless (quality=1), как tweb (quality ?? 1).
-    const quality = isHeavyLossless ? PHOTO_COMPRESSED_QUALITY : 1
-    const blob = await scaleToBlob(file, size.width, size.height, quality)
+    // — near-lossless (quality=1), как tweb (quality ?? 1). Перевесивший бюджет
+    // результат — второй проход со сжатием (tweb 6af482b82, newMedia.tsx:1153-1158).
+    const initialQuality = isHeavyLossless ? PHOTO_COMPRESSED_QUALITY : undefined
+    let blob = await scaleToBlob(file, size.width, size.height, initialQuality ?? 1)
+    if (initialQuality === undefined && blob.size > PHOTO_MAX_BYTES) {
+      blob = await scaleToBlob(file, size.width, size.height, PHOTO_COMPRESSED_QUALITY)
+    }
     const out = new File([blob], renameToJpg(file.name), { type: 'image/jpeg' })
     return { file: out, width: size.width, height: size.height }
   } catch (err) {

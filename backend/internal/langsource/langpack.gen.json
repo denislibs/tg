@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 18,
+      "version": 19,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -3006,6 +3006,10 @@
           "value": "Show offline notifications"
         },
         {
+          "key": "Notifications.Restricted",
+          "value": "You have restricted notifications. Reset permission in your browser and try again."
+        },
+        {
           "key": "Notifications.Show",
           "value": "Show notifications"
         },
@@ -3073,12 +3077,24 @@
           "value": "Only allow these reactions"
         },
         {
+          "key": "Open",
+          "value": "Open"
+        },
+        {
           "key": "OpenChat",
           "value": "Open Chat"
         },
         {
           "key": "OpenInNewTab",
           "value": "Open in new tab"
+        },
+        {
+          "key": "OpenUrlAlert2",
+          "value": "Do you want to open %1$s?"
+        },
+        {
+          "key": "OpenUrlTitle",
+          "value": "Open Link"
         },
         {
           "key": "Other",
@@ -5522,7 +5538,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 18,
+      "version": 19,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -11043,6 +11059,22 @@
         {
           "key": "SearchInAllChats",
           "value": "Искать во всех чатах"
+        },
+        {
+          "key": "Open",
+          "value": "Открыть"
+        },
+        {
+          "key": "OpenUrlTitle",
+          "value": "Открыть ссылку"
+        },
+        {
+          "key": "OpenUrlAlert2",
+          "value": "Открыть ссылку %1$s?"
+        },
+        {
+          "key": "Notifications.Restricted",
+          "value": "Вы запретили уведомления. Сбросьте разрешение в настройках браузера и попробуйте снова."
         },
         {
           "key": "AppName",

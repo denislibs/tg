@@ -237,7 +237,9 @@ export default function MediaEditor({ file, onDone, onCancel }: {
   const [redoStack, setRedoStack] = useState<RedoItem[]>([])
   const [brush, setBrush] = useState<BrushType>('pen')
   const [brushColors, setBrushColors] = useState<Record<ColoredBrush, string>>(BRUSH_COLORS)
-  const [brushSize, setBrushSize] = useState(18)
+  // tweb 325ed0e15 (brushCanvas.tsx): размер кисти по умолчанию 12, не 18 —
+  // 18 закрывает слишком много на фото с телефона.
+  const [brushSize, setBrushSize] = useState(12)
   const [previewSize, setPreviewSize] = useState<number | null>(null)
   const [textColor, setTextColor] = useState(SWATCHES[0])
   const [textSize, setTextSize] = useState(40)

@@ -1765,8 +1765,9 @@ div.emoji-dropdown.active [style=""]                              T/components/e
   transform: scale(.85);
   opacity: 0;
   transform-origin: 100% 100%;
-  backdrop-filter: var(--menu-backdrop-filter);      /* blur(50px) */
-  background-color: var(--menu-background-color);    /* rgba(surface, .75) в тёмной теме */
+  /* backdrop-filter и полупрозрачный фон сняты в tweb b85527091: панель
+     непрозрачная (background: var(--surface-color) выше) — большие канвасы
+     поверх фильтра мигали отдельными слоями композитора. У нас перенесено. */
 
   body.animation-level-0 & { transition: none; }
   .is-rtl &                { transform-origin: 0 100%; }

@@ -109,6 +109,12 @@ export type ReplyMarkup =
  * (`containerDiv.childElementCount`). Тот же предикат стоит у оригинала в
  * `bubbleGroups.ts:50-55` (`canHaveReplyMarkup`).
  */
+/** Порт tweb `components/chat/bubbleParts/filterReplyMarkupRows.ts` (eedb2b74e):
+ *  ряды инлайн-клавиатуры, в которых есть хоть одна кнопка. */
+export function filterReplyMarkupRows(rows: KeyboardButtonRow[]): KeyboardButtonRow[] {
+  return rows.filter((row) => row.buttons.length)
+}
+
 export function getInlineMarkupRows(markup: ReplyMarkup | undefined): KeyboardButtonRow[] | undefined {
   if (markup?._ !== 'replyInlineMarkup') return undefined
   return markup.rows.some((row) => row.buttons.length) ? markup.rows : undefined

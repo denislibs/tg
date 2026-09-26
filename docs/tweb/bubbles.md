@@ -714,6 +714,10 @@ DOM — в доке про комментарии.
 `bubbles-group-first`/`bubbles-group-last` — крайние группы ленты
 (`updateGroupsClassNames`, 651–656). Также на аватар: `avatar-for-reply-markup` /
 `avatar-for-suggested-reply-markup` (168–175) — приподнять аватар над клавиатурой.
+С eedb2b74e `avatar-for-reply-markup` висит на КОНТЕЙНЕРЕ аватара вместе с
+`--reply-markup-row-count` (число непустых рядов, `filterReplyMarkupRows`), а отступ —
+grid в его `::before` (`$reply-markup-margin-top` + ряды по `$reply-markup-row-height`)
+вместо фиксированных 43px. У нас перенесено (волна 1 дельты).
 
 ## 5.4 Аватар группы
 
