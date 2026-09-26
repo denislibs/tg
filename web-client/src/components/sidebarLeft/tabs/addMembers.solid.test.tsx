@@ -43,7 +43,7 @@ let getDialogs: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
   rootScope.myId = ME
-  useSettingsStore.setState({ reduceMotion: true })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
   useChatsStore.setState({ dialogIndexById: { 2: 900, [-10]: 800, [-20]: 700 } })
   // заглушка пустой выдачи (книга контактов в «не privacy» пуста) — без сети
   vi.spyOn(lottieLoader, 'loadAnimationAsAsset').mockResolvedValue({} as LottiePlayer)
@@ -76,7 +76,7 @@ afterEach(async() => {
   await pause(400)
   document.body.replaceChildren()
   vi.restoreAllMocks()
-  useSettingsStore.setState({ reduceMotion: false })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: false } })
 })
 
 type Payload = Parameters<InstanceType<typeof AppAddMembersTab>['init']>[0]

@@ -236,7 +236,6 @@ export const AppTwoStepVerificationEmailTab =
     getComponentModule: () => import('../sidebarLeft/tabs/2fa/email.solid'),
     onOpenAfterTimeout: twoStepOpenAfterTimeout,
   })
-  })
 
 // tweb :1034-1063. Вкладка выбора участников на `AppSelectPeers` (задача 16
 // плана 2D); открывают её исключения правил приватности (задача 17,

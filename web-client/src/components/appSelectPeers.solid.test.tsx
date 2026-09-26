@@ -91,7 +91,7 @@ const chips = (selector: AppSelectPeers) =>
 beforeEach(() => {
   rootScope.myId = ME
   // Без анимаций чип снимается сразу (у оригинала — по `animationend`).
-  useSettingsStore.setState({ reduceMotion: true })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
   useChatsStore.setState({ dialogIndexById: { 2: 900, 3: 800, [-10]: 700, [-20]: 600, 4: 500 } })
   vi.spyOn(lottieLoader, 'loadAnimationAsAsset').mockResolvedValue({} as LottiePlayer)
   vi.spyOn(lottieLoader, 'waitForFirstFrame').mockResolvedValue(undefined as never)
@@ -107,7 +107,7 @@ afterEach(() => {
   helper.destroy()
   document.body.replaceChildren()
   vi.restoreAllMocks()
-  useSettingsStore.setState({ reduceMotion: false })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: false } })
 })
 
 describe('AppSelectPeers — разметка (дамп 14-left-30b)', () => {
