@@ -36,6 +36,7 @@ import findUpClassName from '@helpers/dom/findUpClassName'
 import setInnerHTML from '@helpers/dom/setInnerHTML'
 import type ListenerSetter from '@helpers/listenerSetter'
 import Icon from '@components/icon'
+import { putPreloader } from '@components/putPreloader'
 import type { IconName } from '@core/tgico-icons'
 import { i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
 
@@ -79,6 +80,34 @@ export type ButtonMenuItemOptions = {
 
 export type ButtonMenuItemOptionsVerifiable = ButtonMenuItemOptions & {
   verify?: () => boolean | Promise<boolean>
+}
+
+/**
+ * tweb `setButtonMenuItemLoading` (`buttonMenu.ts:71-90`, 812502980, коммит
+ * 508acd4f5) — 1:1: пункт с долгим действием (`keepOpen`, меню не закрывается)
+ * показывает прелоадер НА МЕСТЕ своей иконки и глохнет для кликов
+ * (`is-loading`, `_button.scss`), пока действие не кончится. Первый
+ * потребитель — «Копировать» (`components/copyMessageMediaWithFeedback.ts`).
+ */
+export function setButtonMenuItemLoading(
+  options: ButtonMenuItemOptions,
+  loading: boolean,
+  element = options.element,
+) {
+  const iconElement = element?.querySelector('.btn-menu-item-icon:not(.btn-menu-item-icon-right)')
+  if (!element || !iconElement) {
+    return
+  }
+
+  element.classList.toggle('is-loading', loading)
+  const preloader = iconElement.querySelector('.btn-menu-item-preloader')
+  if (loading && !preloader) {
+    const newPreloader = putPreloader(undefined, true)
+    newPreloader.classList.add('btn-menu-item-preloader')
+    iconElement.append(newPreloader)
+  } else if (!loading) {
+    preloader?.remove()
+  }
 }
 
 export function ButtonMenuItem(options: ButtonMenuItemOptions) {

@@ -1337,11 +1337,12 @@ const ru = {
   'Gif.Delete': 'Удалить GIF',
   'Gif.Save': 'Сохранить GIF',
   'Gif.Saved': 'GIF добавлен в сохранённые',
-  'MediaViewer.Context.CopyMedia': 'Копировать медиа',
   'MessageContext.CopyMessageLink1': 'Копировать ссылку',
   LinkCopied: 'Ссылка скопирована',
-  'MediaViewer.ImageCopied': 'Изображение скопировано',
-  'MediaViewer.CopyError': 'Не удалось скопировать изображение',
+  // ── Копирование медиа в буфер (tweb 508acd4f5) ──
+  'MediaViewer.Context.Copy': 'Копировать медиа',
+  MediaCopied: 'Медиа скопировано в буфер обмена',
+  MediaCopyFailed: 'Не удалось скопировать медиа в буфер обмена',
   // ── Медиа-редактор перед отправкой (tweb mediaEditor) ──
   'MediaEditor.Adjustments.Enhance': 'Улучшение',
   'MediaEditor.Adjustments.Brightness': 'Яркость',

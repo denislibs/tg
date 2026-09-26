@@ -393,3 +393,88 @@ describe('мобильное ⋮-меню (порт base :970-973 + минима
     expect(v.menu.element.isConnected).toBe(false)
   })
 })
+
+// tweb 812502980, коммит 508acd4f5: кнопка «Копировать медиа» в топбаре
+// (`mediaViewer/index.ts:78-110`, `:153`, `:318-326`, `:517-519`).
+describe('«Копировать медиа» (tweb 508acd4f5)', () => {
+  class ClipboardItemMock {
+    public static supports = vi.fn(() => true)
+    constructor(public items: Record<string, Blob | Promise<Blob>>) {}
+  }
+
+  const photoMessage = (id: number) => ({
+    _: 'message',
+    id,
+    pFlags: {},
+    peerId: 1,
+    fromId: 1,
+    peer_id: { _: 'peerUser', user_id: 1 },
+    date: 1755255240,
+    message: '',
+    media: { _: 'messageMediaPhoto', pFlags: {}, photo: { _: 'photo', id: 900 + id, sizes: [] } },
+  }) as unknown as NonNullable<ViewerItem['message']>
+
+  let write: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    write = vi.fn((clipboardItems: ClipboardItemMock[]) => clipboardItems[0].items['image/png'])
+    Object.defineProperty(window, 'ClipboardItem', { configurable: true, value: ClipboardItemMock })
+    Object.defineProperty(window.navigator, 'clipboard', { configurable: true, value: { write } })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('кнопка стоит в топбаре с классом и подписью оригинала; в ⋮-меню её нет (verify: () => false)', () => {
+    const v = makeViewer()
+    const copy = v.buttonsMap.copy
+    expect(copy.classList.contains('media-viewer-copy-button')).toBe(true)
+    expect(copy.getAttribute('aria-label')).toBe('Copy Media')
+    expect(copy.parentElement?.classList.contains('media-viewer-buttons')).toBe(true)
+    expect(v.menu.element.querySelectorAll('.btn-menu-item')).toHaveLength(3)
+  })
+
+  it('видна у фото сообщения и скрыта у не-сообщения и у видео', async () => {
+    const v = makeViewer()
+    expect(v.buttonsMap.copy.classList.contains('hide')).toBe(true)
+
+    const p = v.openMedia({ items: [item(1, { message: photoMessage(1) }), item(2)], index: 0 })
+    expect(v.buttonsMap.copy.classList.contains('hide')).toBe(false)
+    await settleOpen(p)
+
+    // сосед без сообщения (фото профиля/служебного действия) — копировать нечего
+    v.buttonsMap.next.click()
+    expect(v.buttonsMap.copy.classList.contains('hide')).toBe(true)
+    await vi.advanceTimersByTimeAsync(800)
+  })
+
+  it('клик: прелоадер вместо глифа и кнопка выключена, пока копируется; после — как было', async () => {
+    let resolveBlob!: (blob: Blob) => void
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({
+      blob: () => new Promise<Blob>((resolve) => { resolveBlob = resolve }),
+    })))
+    const v = makeViewer()
+    const p = v.openMedia({ items: [item(3, { message: photoMessage(3) })], index: 0 })
+    await settleOpen(p)
+
+    const copy = v.buttonsMap.copy as HTMLButtonElement
+    copy.click()
+
+    expect(write).toHaveBeenCalledOnce()
+    expect(copy.disabled).toBe(true)
+    expect(copy.querySelector('.tgico')).toBeNull()
+    expect(copy.querySelector('svg.preloader-circular')).not.toBeNull()
+
+    await vi.advanceTimersByTimeAsync(0)
+    // качается ПОЛНЫЙ файл фото сообщения
+    expect(downloadMediaURL).toHaveBeenCalledWith(903, { thumb: false })
+
+    resolveBlob(new Blob(['png'], { type: 'image/png' }))
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(copy.disabled).toBe(false)
+    expect(copy.querySelector('svg.preloader-circular')).toBeNull()
+    expect(copy.querySelector('.tgico')).not.toBeNull()
+  })
+})

@@ -273,8 +273,13 @@ const COMPOSITION = {
 // Сдвиг набора задачами 7 и 10 глобального поиска: русскому добавлены
 // `Separator.ShowLess` и семь ключей `ChatTypeMenu`/`EmptySearchPlaceholder`
 // (разбор — у `COMPOSITION` выше).
+// Сдвиг набора задачей 14 shared media (копирование медиа, tweb 508acd4f5):
+// у русского самодельные `MediaViewer.Context.CopyMedia`,
+// `MediaViewer.ImageCopied`, `MediaViewer.CopyError` (выдумка React-меню, ни
+// одного читателя) заменены ключами оригинала `MediaViewer.Context.Copy`,
+// `MediaCopied`, `MediaCopyFailed`: −3 +3, число строк то же.
 const FINGERPRINT = {
-  ru: '4e2971a0',
+  ru: '371bfa04',
   uk: 'e1335ac1',
   es: 'a6b1aad3',
   de: 'a6b1aad3',

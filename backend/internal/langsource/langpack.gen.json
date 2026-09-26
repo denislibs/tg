@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 16,
+      "version": 17,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -2512,6 +2512,14 @@
           "value": "Play"
         },
         {
+          "key": "MediaCopied",
+          "value": "Media copied to clipboard"
+        },
+        {
+          "key": "MediaCopyFailed",
+          "value": "Failed to copy media to clipboard"
+        },
+        {
           "key": "MediaEditor.Adjustments.Brightness",
           "value": "Brightness"
         },
@@ -2660,20 +2668,12 @@
           "value": "Unmute video"
         },
         {
-          "key": "MediaViewer.Context.CopyMedia",
+          "key": "MediaViewer.Context.Copy",
           "value": "Copy Media"
         },
         {
           "key": "MediaViewer.Context.Download",
           "value": "Download"
-        },
-        {
-          "key": "MediaViewer.CopyError",
-          "value": "Could not copy the image"
-        },
-        {
-          "key": "MediaViewer.ImageCopied",
-          "value": "Image copied to clipboard"
         },
         {
           "key": "MediaZoomIn",
@@ -5460,7 +5460,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 16,
+      "version": 17,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -9899,10 +9899,6 @@
           "value": "GIF добавлен в сохранённые"
         },
         {
-          "key": "MediaViewer.Context.CopyMedia",
-          "value": "Копировать медиа"
-        },
-        {
           "key": "MessageContext.CopyMessageLink1",
           "value": "Копировать ссылку"
         },
@@ -9911,12 +9907,16 @@
           "value": "Ссылка скопирована"
         },
         {
-          "key": "MediaViewer.ImageCopied",
-          "value": "Изображение скопировано"
+          "key": "MediaViewer.Context.Copy",
+          "value": "Копировать медиа"
         },
         {
-          "key": "MediaViewer.CopyError",
-          "value": "Не удалось скопировать изображение"
+          "key": "MediaCopied",
+          "value": "Медиа скопировано в буфер обмена"
+        },
+        {
+          "key": "MediaCopyFailed",
+          "value": "Не удалось скопировать медиа в буфер обмена"
         },
         {
           "key": "MediaEditor.Adjustments.Enhance",
