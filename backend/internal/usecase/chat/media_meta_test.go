@@ -312,3 +312,61 @@ func TestSend_AlbumItemsCarryOwnDims(t *testing.T) {
 		})
 	}
 }
+
+// mp3, отправленный «как файл» (клиент прислал type='document'), всё равно
+// трек: вид «музыка» решается по самому файлу. У tweb ветка
+// `fileType.indexOf('audio/') === 0` в makeDocumentAndMetaForSendingFile стоит
+// ДО `!args.isMedia`, а сервер Telegram сам определяет тип контента загруженного
+// документа (Bot API sendDocument: disable_content_type_detection). Без этого
+// сообщение легло видом 'document', атрибуты вышли без documentAttributeAudio
+// (клиент рисовал файл, а не плеер), а вкладка «Музыка» его не видела.
+func TestSend_AudioFileAsDocumentBecomesAudio(t *testing.T) {
+	for _, mime := range []string{"audio/mpeg", "audio/ogg", "video/ogg"} {
+		msg, md := sendWithMedia(t, "document", 18, domain.MediaSource{
+			Mime: mime, Size: 4841691, Width: 360, Height: 360, Duration: 212,
+			FileName: "track.mp3", Title: "Уходишь? Ну и пиздуй", Performer: "denis1488",
+		}, SendInput{})
+		if msg.Type != "audio" {
+			t.Fatalf("%s: вид сообщения = %q, want audio", mime, msg.Type)
+		}
+		a, ok := domain.MediaAudioAttr(md)
+		if !ok || a.Duration != 212 || a.Title != "Уходишь? Ну и пиздуй" || a.Performer != "denis1488" || a.PFlags["voice"] {
+			t.Fatalf("%s: documentAttributeAudio = %#v (ok=%v)", mime, a, ok)
+		}
+		if domain.MediaHasAttribute(md, domain.AttrImageSize) {
+			t.Fatalf("%s: обложка трека уехала documentAttributeImageSize: %#v", mime, md)
+		}
+	}
+}
+
+// Остальные виды не трогаются: не-аудио документ остаётся документом, а
+// голосовое — голосовым (его отличает флаг записи, а не mime).
+func TestSend_NonAudioKindsKeepType(t *testing.T) {
+	for _, tc := range []struct{ kind, mime string }{
+		{"document", "application/pdf"},
+		{"document", "video/mp4"},
+		{"voice", "audio/ogg"},
+		{"video", "video/mp4"},
+	} {
+		msg, _ := sendWithMedia(t, tc.kind, 19, domain.MediaSource{Mime: tc.mime, Size: 10, Duration: 3}, SendInput{})
+		if msg.Type != tc.kind {
+			t.Fatalf("%s/%s: вид сообщения = %q", tc.kind, tc.mime, msg.Type)
+		}
+	}
+}
+
+// Предложенный пост публикуется мимо Send, и вид сообщения ему выводит
+// channelMediaType — по тому же правилу: трек (включая video/ogg) — 'audio'.
+func TestChannelMediaType_AudioByMime(t *testing.T) {
+	s := newStore()
+	i := New(fakeTx{}, fakeChats{s}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, newFakeGroupRepo(), nil, nil, nil, nil)
+	for id, tc := range map[int64]struct{ mime, want string }{
+		1: {"audio/mpeg", "audio"}, 2: {"video/ogg", "audio"}, 3: {"video/mp4", "video"},
+		4: {"image/jpeg", "photo"}, 5: {"application/pdf", "document"},
+	} {
+		s.seedMediaDims(id, domain.MediaSource{Mime: tc.mime})
+		if got := i.channelMediaType(context.Background(), id); got != tc.want {
+			t.Errorf("%s: вид = %q, want %q", tc.mime, got, tc.want)
+		}
+	}
+}
