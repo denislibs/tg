@@ -48,6 +48,11 @@ func (i *Interactor) TopicsPage(ctx context.Context, chatID, viewerID int64) (To
 		if err != nil {
 			return TopicsPage{}, err
 		}
+		// Последнее сообщение темы — то же сообщение, что в ленте темы (см.
+		// DialogsPage): сырой строкой вложение и опрос едут лишь ключом.
+		if err := i.hydrateMessages(ctx, viewerID, messages); err != nil {
+			return TopicsPage{}, err
+		}
 	}
 
 	// ── users: авторы тем И авторы последних сообщений ──────────────────────

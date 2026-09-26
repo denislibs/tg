@@ -33,10 +33,11 @@ type DialogsPage struct {
 // DialogsPage собирает страницу списка чатов в раскладке контейнера.
 //
 // Порядок обращений к базе фиксирован и пакетный: полный список диалогов (кэш
-// на 15с) → нарезка страницы → ОДИН запрос за последними сообщениями страницы →
-// ОДИН запрос за недостающими авторами. N+1 на страницу здесь недопустим: он и
-// был причиной, по которой сервер когда-то склеивал sender_name подзапросом
-// внутри LATERAL вместо того, чтобы отдать автора пиром.
+// на 15с) → нарезка страницы → ОДИН запрос за последними сообщениями страницы
+// (и их гидрация — та же, что у истории, см. hydrateMessages) → ОДИН запрос за
+// недостающими авторами. N+1 на страницу здесь недопустим: он и был причиной,
+// по которой сервер когда-то склеивал sender_name подзапросом внутри LATERAL
+// вместо того, чтобы отдать автора пиром.
 func (i *Interactor) DialogsPage(ctx context.Context, viewerID int64, p domain.DialogPage) (DialogsPage, error) {
 	page, err := i.ListDialogsPage(ctx, viewerID, p)
 	if err != nil {
@@ -54,6 +55,13 @@ func (i *Interactor) DialogsPage(ctx context.Context, viewerID int64, p domain.D
 	if len(ids) > 0 && i.msgs != nil {
 		messages, err = i.msgs.GetByIDs(ctx, ids)
 		if err != nil {
+			return DialogsPage{}, err
+		}
+		// top_message в tweb — полный объект message, то же сообщение, что в
+		// истории: превью собирает клиент из него самого (last_text/last_type
+		// с провода сняты). Сырая строка несёт вложение и опрос лишь ключом,
+		// и фото с опросом оставались в списке без превью.
+		if err := i.hydrateMessages(ctx, viewerID, messages); err != nil {
 			return DialogsPage{}, err
 		}
 	}
