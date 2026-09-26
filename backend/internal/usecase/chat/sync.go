@@ -134,6 +134,9 @@ func (i *Interactor) checkHistoryAccess(ctx context.Context, chatID, userID int6
 // a window of messages with one batch query. Best-effort: reactions are cosmetic,
 // a failure must not break history.
 func (i *Interactor) hydrateReactions(ctx context.Context, viewerID int64, msgs []domain.Message) error {
+	if i.reactions == nil {
+		return nil // хранилище реакций не подключено — косметика отключается, как у звёздных
+	}
 	ids := make([]int64, 0, len(msgs))
 	for _, m := range msgs {
 		if !m.Deleted {

@@ -229,6 +229,11 @@ func (i *Interactor) ListComments(ctx context.Context, channelID, postID, userID
 	if err != nil {
 		return nil, 0, err
 	}
+	// Комментарии уходят той же формой, что история треда: без гидрации фото
+	// в комментарии приезжало без media, опрос — без опроса.
+	if err := i.hydrateMessages(ctx, userID, msgs); err != nil {
+		return nil, 0, err
+	}
 	cnt, err := i.msgs.CountThread(ctx, disc, root)
 	return msgs, cnt, err
 }
