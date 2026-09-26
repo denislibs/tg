@@ -386,6 +386,26 @@ describe('ChatBubbles — подписки на события истории', 
       expect(rendered(bubbles!)).toHaveLength(3)
     })
 
+    // Ack перекладывает мета-хвост ТОГО ЖЕ тела (`renderMessageMeta` без
+    // пересборки текста) — распорка за временем (tweb bubbles.ts:9029) обязана
+    // остаться одна, а не прирастать второй на каждом проходе.
+    it('после ack за временем РОВНО одна распорка clearfix', async () => {
+      const tempId = generateTempMessageId(2)
+      rootScope.dispatchEventSingle('history_append', { storageKey: String(CHAT), message: msg({ id: tempId, randomId: 'c2' }) })
+      await settle()
+      rootScope.dispatchEventSingle('history_update', {
+        storageKey: String(CHAT),
+        message: msg({ id: 9, randomId: 'c2' }),
+        tempId,
+      })
+      await settle()
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+
+      const messageDiv = bubbles!.getBubble(makeFullMid(CHAT, 9))!.querySelector('.message')!
+      expect(messageDiv.querySelectorAll(':scope > .clearfix')).toHaveLength(1)
+      expect(messageDiv.querySelector(':scope > .time')!.nextElementSibling?.matches('span.clearfix')).toBe(true)
+    })
+
     it('событие про ЧУЖОЕ окно игнорируется', async () => {
       rootScope.dispatchEventSingle('history_update', {
         storageKey: String(OTHER_CHAT),

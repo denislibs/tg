@@ -470,7 +470,10 @@ describe('ChatBubbles — медиа в бабле', () => {
 
       const messageDiv = bubbleOf(bubbles, 1).querySelector<HTMLElement>('.message')!
       expect(messageDiv.firstElementChild).toBe(messageDiv.querySelector('.document'))
-      expect(messageDiv.lastElementChild).toBe(messageDiv.querySelector('.time'))
+      // Время в конце тела, за ним — распорка (tweb bubbles.ts:9029).
+      const time = messageDiv.querySelector(':scope > .time')!
+      expect(time.nextElementSibling?.matches('span.clearfix')).toBe(true)
+      expect(messageDiv.lastElementChild).toBe(time.nextElementSibling)
       // Подпись — между ними, и она ОДНА: правка не должна её дублировать.
       expect(messageDiv.textContent!.match(/подпись/g)).toHaveLength(1)
       // Подложка бабла (:8616-8618) тоже одна — её кладёт только рендер медиа.

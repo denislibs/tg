@@ -89,6 +89,7 @@ import pause from '@helpers/schedulers/pause'
 import LottiePlayer from '@lib/lottie/lottiePlayer'
 import lottieLoader from '@lib/lottie/lottieLoader'
 import { setTransition } from '@core/dom/setTransition'
+import clearfix from '@helpers/dom/clearfix'
 import findUpClassName from '@helpers/dom/findUpClassName'
 import getViewportSlice from '@helpers/dom/getViewportSlice'
 import ScrollSaver from '@helpers/scrollSaver'
@@ -2273,6 +2274,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     for (const owner of [messageDiv, bubbleContainer, contentWrapper]) {
       owner?.querySelectorAll(':scope > .time').forEach((node) => node.remove())
     }
+    messageDiv.querySelectorAll(':scope > .clearfix').forEach((node) => node.remove())
     // Время ПЕРЕЕЗЖАЕТ внутрь ряда реакций (:9855), поэтому прошлое поколение
     // времени лежит там же — и снимается вместе с остальными, а не остаётся
     // вторым `.time` в переиспользованном ряду.
@@ -2323,7 +2325,16 @@ export default class ChatBubbles implements BubbleGroupsHost {
     } else if (isFloatingTime) {
       bubbleContainer.append(timeSpan)
     } else {
-      messageDiv.append(timeSpan)
+      // tweb bubbles.ts:9029 `messageDiv.append(timeSpan, clearfix())`. Время —
+      // `float: right`; когда тело кончается блоком (цитата, код), float уходит
+      // строкой ниже и в высоту `.message` не входит — абсолютная `.time-inner`
+      // ложилась на текст цитаты. Распорка `clear: both` (tweb base.scss:2328)
+      // возвращает эту строку в высоту тела. Правка застаёт ряд реакций на
+      // месте (см. выше) — время и распорка встают ПЕРЕД ним, как на сборке
+      // (дамп tweb 03-bubbles-123.json: `span.clearfix` → `reactions-element`).
+      const tail = previousReactions?.parentElement === messageDiv ? previousReactions : null
+      messageDiv.insertBefore(timeSpan, tail)
+      messageDiv.insertBefore(clearfix(), tail)
     }
 
     // tweb :7638-7640. У ПОСТА КАНАЛА читающий узел — время, а не бабл: пост

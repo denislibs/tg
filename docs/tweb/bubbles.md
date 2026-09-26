@@ -300,6 +300,15 @@ tweb `bubbles.ts:9707-9712` — оба флага читаются с уже в�
 `bubble-content` при floating → внутрь reactions-element (9855). RTL: `time.is-block`, если
 строка кончается RTL-текстом (7634–7636).
 
+**У нас (распорка за временем):** `renderMessageMeta` кладёт `time` + `span.clearfix`
+(`helpers/dom/clearfix.ts` — порт 1:1) в конец `.message`, как `messageDiv.append(timeSpan,
+clearfix())` (bubbles.ts:9029); у ряда реакций время уезжает в ряд, распорка остаётся в теле
+перед ним (дамп `03-bubbles-123.json`). Глобальное `.clearfix { clear: both; display: table }`
+(base.scss:2328-2331) — в `styles/index.scss`. Раньше не было ни узла, ни правила: у тела,
+кончающегося блоком (цитата, `pre`), float времени уходил строкой ниже, но в высоту `.message`
+не входил, и абсолютная `.time-inner` ложилась на текст цитаты. Пины —
+`bubbles.meta.test.ts` (разметка), `styles/bubbleTimeClearfix.test.ts` (скомпилированный CSS).
+
 ## 3.3 Beside-кнопки (`div.bubble-beside-button` внутри `bubble-content`)
 
 | Вариант | Классы | Условие | Где |
