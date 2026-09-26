@@ -414,6 +414,10 @@ type ChannelRepo interface {
 type SearchRepo interface {
 	SearchChats(ctx context.Context, q string, limit int) ([]domain.ChatRecord, error) // public only
 	SearchUsers(ctx context.Context, q string, limit int) ([]domain.UserReal, error)
+	// OwnPeers — какие из найденных пиров «свои» для viewerID: чаты, где он
+	// участник, и пользователи из его контактов или с общим личным чатом
+	// (my_results contacts.search). ОДИН запрос на всю выдачу, не по пиру.
+	OwnPeers(ctx context.Context, viewerID int64, chatIDs, userIDs []int64) (chats, users map[int64]bool, err error)
 	PublicChatByUsername(ctx context.Context, username string) (int64, error) // domain.ErrNotFound
 	// SimilarChannels рекомендует публичные каналы по пересечению аудитории с
 	// каналом chatID: берём его подписчиков, смотрим на какие ещё публичные

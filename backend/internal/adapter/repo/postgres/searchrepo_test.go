@@ -311,3 +311,53 @@ func TestJoinDate_ReachesChannelConstructor(t *testing.T) {
 		t.Fatalf("канал не попал в список чатов зрителя: %+v", dialogs)
 	}
 }
+
+// OwnPeers — «свои» среди попаданий поиска пиров (my_results contacts.search,
+// tweb appSearchSuper.ts:1427): чат, где зритель участник; пользователь из его
+// контактов; пользователь с общим ЛИЧНЫМ чатом. Общая группа своим не делает,
+// как и чужой контакт (контакты направленные: owner → user).
+func TestSearchRepo_OwnPeers(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	me := seedUser(t, pool, "+7500")
+	contact := seedUser(t, pool, "+7501")
+	dialog := seedUser(t, pool, "+7502")
+	groupmate := seedUser(t, pool, "+7503")
+	stranger := seedUser(t, pool, "+7504")
+	fan := seedUser(t, pool, "+7505") // у него я в контактах, у меня его нет
+
+	for _, pair := range [][2]int64{{me, contact}, {fan, me}} {
+		if _, err := pool.Exec(ctx, `INSERT INTO contacts (owner_id, user_id) VALUES ($1, $2)`, pair[0], pair[1]); err != nil {
+			t.Fatalf("contact: %v", err)
+		}
+	}
+	createPrivate(t, pool, me, dialog)
+	g := NewGroupRepo(pool)
+	group := createGroupLike(t, pool, "group", me)
+	if err := g.AddMember(ctx, group, groupmate, domain.RoleMember, 0); err != nil {
+		t.Fatalf("add groupmate: %v", err)
+	}
+	joined, _ := g.CreateMultiMember(ctx, "channel", "Свой", "", "own500", true, stranger)
+	if err := g.AddMember(ctx, joined, me, domain.RoleSubscriber, 0); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+	foreign, _ := g.CreateMultiMember(ctx, "channel", "Чужой", "", "foreign500", true, stranger)
+
+	chats, users, err := NewSearchRepo(pool).OwnPeers(ctx, me,
+		[]int64{joined, foreign}, []int64{contact, dialog, groupmate, stranger, fan})
+	if err != nil {
+		t.Fatalf("OwnPeers: %v", err)
+	}
+	if !chats[joined] || chats[foreign] || len(chats) != 1 {
+		t.Fatalf("свои чаты = %v, want только %d", chats, joined)
+	}
+	if !users[contact] || !users[dialog] || len(users) != 2 {
+		t.Fatalf("свои люди = %v, want %d (контакт) и %d (личный чат)", users, contact, dialog)
+	}
+
+	// Пустая выдача — без запроса и без ошибки.
+	chats, users, err = NewSearchRepo(pool).OwnPeers(ctx, me, nil, nil)
+	if err != nil || len(chats) != 0 || len(users) != 0 {
+		t.Fatalf("пустая выдача: %v %v %v", chats, users, err)
+	}
+}

@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -194,5 +195,99 @@ func TestChatSearchHTTP_OffsetIDFilterDates(t *testing.T) {
 	}
 	if today := getSlice(t, h, tokenA, q+"&min_date="+itoa(now-3600)+"&max_date="+itoa(now+3600)); today.Count != 5 {
 		t.Fatalf("сегодня: count=%d, want 5", today.Count)
+	}
+}
+
+// Пин на ГРАНИЦУ contacts.search: свой пир (подписанный канал, собеседник по
+// личному чату) едет ссылкой в `my_results`, чужой — в `results` (tweb
+// appSearchSuper.ts:1427-1428); тела — один раз в `chats`/`users`; `limit`
+// режет выдачу (класс просит 20 и 200, :1977).
+func TestPeerSearchHTTP_MyResultsAndLimit(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, idA := signUp(t, h, pool, "+79990004531")
+	tokenB, _ := signUp(t, h, pool, "+79990004532")
+	_, idC := signUp(t, h, pool, "+79990004533")
+	for id, name := range map[int64]string{idA: "kot_a", idC: "kot_c"} {
+		if _, err := pool.Exec(context.Background(), `UPDATE users SET username=$2 WHERE id=$1`, id, name); err != nil {
+			t.Fatalf("username: %v", err)
+		}
+	}
+	if r := authedReq(t, h, http.MethodPost, "/chats", tokenB, map[string]int64{"user_id": idA}); r.Code != http.StatusOK {
+		t.Fatalf("private chat: %d %s", r.Code, r.Body.String())
+	}
+	for _, u := range []string{"kot_own", "kot_foreign"} {
+		if r := authedReq(t, h, http.MethodPost, "/channels", tokenA, map[string]any{"title": u, "username": u, "is_public": true}); r.Code != http.StatusOK {
+			t.Fatalf("channel %s: %d %s", u, r.Code, r.Body.String())
+		}
+	}
+	if r := authedReq(t, h, http.MethodPost, "/channels/join", tokenB, map[string]any{"username": "kot_own"}); r.Code != http.StatusOK {
+		t.Fatalf("join: %d %s", r.Code, r.Body.String())
+	}
+
+	type peer struct {
+		T         string `json:"_"`
+		UserID    int64  `json:"user_id"`
+		ChannelID int64  `json:"channel_id"`
+	}
+	type found struct {
+		My      []peer `json:"my_results"`
+		Results []peer `json:"results"`
+		Chats   []struct {
+			ID       int64  `json:"id"`
+			Username string `json:"username"`
+		} `json:"chats"`
+		Users []struct {
+			ID int64 `json:"id"`
+		} `json:"users"`
+	}
+	search := func(query string) found {
+		t.Helper()
+		rec := authedReq(t, h, http.MethodGet, "/search?"+query, tokenB, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("search %s: %d %s", query, rec.Code, rec.Body.String())
+		}
+		var f found
+		if err := json.Unmarshal(rec.Body.Bytes(), &f); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return f
+	}
+	chanName := func(f found, id int64) string {
+		for _, c := range f.Chats {
+			if c.ID == id {
+				return c.Username
+			}
+		}
+		return ""
+	}
+
+	f := search("q=kot")
+	var myUsers, myChans, resUsers, resChans []string
+	for _, p := range f.My {
+		if p.T == "peerUser" {
+			myUsers = append(myUsers, itoa(p.UserID))
+		} else {
+			myChans = append(myChans, chanName(f, p.ChannelID))
+		}
+	}
+	for _, p := range f.Results {
+		if p.T == "peerUser" {
+			resUsers = append(resUsers, itoa(p.UserID))
+		} else {
+			resChans = append(resChans, chanName(f, p.ChannelID))
+		}
+	}
+	if len(myUsers) != 1 || myUsers[0] != itoa(idA) || len(resUsers) != 1 || resUsers[0] != itoa(idC) {
+		t.Fatalf("люди: my=%v results=%v, want my=[%d] results=[%d]", myUsers, resUsers, idA, idC)
+	}
+	if len(myChans) != 1 || myChans[0] != "kot_own" || len(resChans) != 1 || resChans[0] != "kot_foreign" {
+		t.Fatalf("каналы: my=%v results=%v, want my=[kot_own] results=[kot_foreign]", myChans, resChans)
+	}
+	if len(f.Chats) != 2 || len(f.Users) != 2 {
+		t.Fatalf("тела: chats=%d users=%d, want по 2 (каждое один раз)", len(f.Chats), len(f.Users))
+	}
+
+	if lim := search("q=kot&limit=1"); len(lim.Chats) != 1 || len(lim.Users) != 1 {
+		t.Fatalf("limit=1: chats=%d users=%d, want по 1", len(lim.Chats), len(lim.Users))
 	}
 }

@@ -236,8 +236,28 @@ describe('ChannelsManager.search', () => {
     const rest = { post: vi.fn(), get } as unknown as RestClient
     const mgr = newChannelsManager({ rest, beforeSending: () => {}, peers: fakePeers(), cacheViews: () => {} })
     const r = await mgr.search('news')
-    expect(get).toHaveBeenCalledWith('/search', { q: 'news' })
+    expect(get).toHaveBeenCalledWith('/search', { q: 'news', limit: 20 })
     expect(r).toEqual(found)
+  })
+
+  // `limit` — как `searchContacts(query, limit = 20)` оригинала
+  // (appUsersManager.ts:1069): группа «Chats» просит 20, вкладка Channels —
+  // 200 (appSearchSuper.ts:1977). `my_results` доезжает как есть — класс
+  // рисует его отдельной группой (:1427).
+  it('limit уходит в URL, my_results — наружу', async () => {
+    const found = {
+      _: 'contacts.found',
+      my_results: [{ _: 'peerUser', user_id: 3 }],
+      results: [],
+      chats: [],
+      users: [{ _: 'user', id: 3, first_name: 'Аня', photo: { _: 'userProfilePhotoEmpty' } }],
+    }
+    const get = vi.fn(async () => found)
+    const rest = { post: vi.fn(), get } as unknown as RestClient
+    const mgr = newChannelsManager({ rest, beforeSending: () => {}, peers: fakePeers(), cacheViews: () => {} })
+    const r = await mgr.search('аня', 200)
+    expect(get).toHaveBeenCalledWith('/search', { q: 'аня', limit: 200 })
+    expect(r.my_results).toEqual([{ _: 'peerUser', user_id: 3 }])
   })
 })
 
