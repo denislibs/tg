@@ -12,8 +12,12 @@ const de = {
   'Theme.Light': 'Hell',
   'Theme.Tinted': 'Getönt',
   'Theme.System': 'System',
-  'ChatBackground.Upload': 'Bild hochladen',
+  ChatBackground: 'Chat-Hintergrund',
+  'ChatBackground.UploadWallpaper': 'Hintergrund hochladen',
   SetColor: 'Farbe wählen',
+  'Appearance.Reset': 'Zurücksetzen',
+  'ChatBackground.Blur': 'Bild weichzeichnen',
+  'ChatBackground.Upload': 'Bild hochladen',
   'ChatBackground.Reset': 'Zurücksetzen',
   'ChatBackground.Blurred': 'Verschwommenes Bild',
   'Premium.Feature.Intro':

@@ -51,3 +51,19 @@ export const AppNotificationsTab =
     title: 'Telegram.NotificationSettingsViewController',
     getComponentModule: () => import('../sidebarLeft/tabs/notifications.solid'),
   })
+
+// tweb :167-171 и :275-279. Обе формы обычные, без полезной нагрузки: обои
+// вкладки читают сами (zustand `useSettingsStore`, фон чата — `ChatBackground.tsx`).
+// «Обои» открывает строка «Общих» (tweb `generalSettings.tsx:65`), «Цвет» —
+// кнопка SetColor самих «Обоев» (tweb `background.tsx:585`).
+export const AppChatBackgroundTab =
+  scaffoldSolidJSTab({
+    title: 'ChatBackground',
+    getComponentModule: () => import('../sidebarLeft/tabs/background.solid'),
+  })
+
+export const AppBackgroundColorTab =
+  scaffoldSolidJSTab({
+    title: 'SetColor',
+    getComponentModule: () => import('../sidebarLeft/tabs/backgroundColor.solid'),
+  })

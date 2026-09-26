@@ -12,8 +12,12 @@ const es = {
   'Theme.Light': 'Claro',
   'Theme.Tinted': 'Oscuro',
   'Theme.System': 'Sistema',
-  'ChatBackground.Upload': 'Subir imagen',
+  ChatBackground: 'Fondo de chat',
+  'ChatBackground.UploadWallpaper': 'Subir fondo',
   SetColor: 'Elegir un color',
+  'Appearance.Reset': 'Restablecer',
+  'ChatBackground.Blur': 'Difuminar imagen',
+  'ChatBackground.Upload': 'Subir imagen',
   'ChatBackground.Reset': 'Restablecer',
   'ChatBackground.Blurred': 'Imagen difuminada',
   'Premium.Feature.Intro':

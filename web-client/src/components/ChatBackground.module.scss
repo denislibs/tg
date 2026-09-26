@@ -19,3 +19,19 @@
   width: 100%;
   height: 100%;
 }
+
+// Плитка сетки «Обоев» (`sidebarLeft/tabs/background.solid.tsx::AppBackgroundTab.addWallPaper`):
+// у tweb её рисует тот же `<ChatBackground>`, что и фон чата, — те же классы модуля
+// (`chatBackground.module.scss:15-24`, `:56-77`). Наш фон чата — React
+// (`ChatBackground.tsx`) и их не носит, поэтому правила ниже читает только плитка.
+.IsPattern { background-color: #000; }
+.IsImage { background-color: var(--body-background-color, #000); }
+.CanvasCommon {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: var(--opacity-max, 1);
+}
+.Blend { mix-blend-mode: soft-light; }

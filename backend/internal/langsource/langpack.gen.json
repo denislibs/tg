@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 20,
+      "version": 21,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -75,6 +75,18 @@
         {
           "key": "AppName",
           "value": "Telegram"
+        },
+        {
+          "key": "Appearance.Color.Hex",
+          "value": "HEX"
+        },
+        {
+          "key": "Appearance.Color.RGB",
+          "value": "RGB"
+        },
+        {
+          "key": "Appearance.Reset",
+          "value": "Reset to Defaults"
         },
         {
           "key": "ApproveNewMembers",
@@ -984,6 +996,14 @@
           "value": "admin"
         },
         {
+          "key": "ChatBackground",
+          "value": "Chat Wallpaper"
+        },
+        {
+          "key": "ChatBackground.Blur",
+          "value": "Blur Wallpaper Image"
+        },
+        {
           "key": "ChatBackground.Blurred",
           "value": "Blurred Image"
         },
@@ -998,6 +1018,10 @@
         {
           "key": "ChatBackground.Upload",
           "value": "Upload Image"
+        },
+        {
+          "key": "ChatBackground.UploadWallpaper",
+          "value": "Upload Wallpaper"
         },
         {
           "key": "ChatHistory",
@@ -5554,7 +5578,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 20,
+      "version": 21,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -5969,12 +5993,28 @@
           "value": "По умолчанию"
         },
         {
-          "key": "ChatBackground.Upload",
-          "value": "Загрузить изображение"
+          "key": "ChatBackground",
+          "value": "Обои для чатов"
+        },
+        {
+          "key": "ChatBackground.UploadWallpaper",
+          "value": "Загрузить обои"
         },
         {
           "key": "SetColor",
           "value": "Задать цвет"
+        },
+        {
+          "key": "Appearance.Reset",
+          "value": "Восстановить по умолчанию"
+        },
+        {
+          "key": "ChatBackground.Blur",
+          "value": "Размыть изображение"
+        },
+        {
+          "key": "ChatBackground.Upload",
+          "value": "Загрузить изображение"
         },
         {
           "key": "ChatBackground.Reset",
@@ -11137,7 +11177,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 8,
+      "version": 9,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -11176,12 +11216,28 @@
           "value": "Système"
         },
         {
-          "key": "ChatBackground.Upload",
-          "value": "Importer une image"
+          "key": "ChatBackground",
+          "value": "Fond de discussion"
+        },
+        {
+          "key": "ChatBackground.UploadWallpaper",
+          "value": "Importer un fond"
         },
         {
           "key": "SetColor",
           "value": "Choisir une couleur"
+        },
+        {
+          "key": "Appearance.Reset",
+          "value": "Réinitialiser"
+        },
+        {
+          "key": "ChatBackground.Blur",
+          "value": "Flouter l’image"
+        },
+        {
+          "key": "ChatBackground.Upload",
+          "value": "Importer une image"
         },
         {
           "key": "ChatBackground.Reset",
@@ -13953,7 +14009,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 8,
+      "version": 9,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -13992,12 +14048,28 @@
           "value": "System"
         },
         {
-          "key": "ChatBackground.Upload",
-          "value": "Bild hochladen"
+          "key": "ChatBackground",
+          "value": "Chat-Hintergrund"
+        },
+        {
+          "key": "ChatBackground.UploadWallpaper",
+          "value": "Hintergrund hochladen"
         },
         {
           "key": "SetColor",
           "value": "Farbe wählen"
+        },
+        {
+          "key": "Appearance.Reset",
+          "value": "Zurücksetzen"
+        },
+        {
+          "key": "ChatBackground.Blur",
+          "value": "Bild weichzeichnen"
+        },
+        {
+          "key": "ChatBackground.Upload",
+          "value": "Bild hochladen"
         },
         {
           "key": "ChatBackground.Reset",
@@ -16768,7 +16840,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 8,
+      "version": 9,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -16807,12 +16879,28 @@
           "value": "Sistema"
         },
         {
-          "key": "ChatBackground.Upload",
-          "value": "Subir imagen"
+          "key": "ChatBackground",
+          "value": "Fondo de chat"
+        },
+        {
+          "key": "ChatBackground.UploadWallpaper",
+          "value": "Subir fondo"
         },
         {
           "key": "SetColor",
           "value": "Elegir un color"
+        },
+        {
+          "key": "Appearance.Reset",
+          "value": "Restablecer"
+        },
+        {
+          "key": "ChatBackground.Blur",
+          "value": "Difuminar imagen"
+        },
+        {
+          "key": "ChatBackground.Upload",
+          "value": "Subir imagen"
         },
         {
           "key": "ChatBackground.Reset",
@@ -19588,7 +19676,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 8,
+      "version": 9,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -19627,12 +19715,28 @@
           "value": "За замовчуванням"
         },
         {
-          "key": "ChatBackground.Upload",
-          "value": "Завантажити зображення"
+          "key": "ChatBackground",
+          "value": "Шпалери для чатів"
+        },
+        {
+          "key": "ChatBackground.UploadWallpaper",
+          "value": "Завантажити шпалери"
         },
         {
           "key": "SetColor",
           "value": "Задати колір"
+        },
+        {
+          "key": "Appearance.Reset",
+          "value": "Відновити за замовчуванням"
+        },
+        {
+          "key": "ChatBackground.Blur",
+          "value": "Розмити зображення"
+        },
+        {
+          "key": "ChatBackground.Upload",
+          "value": "Завантажити зображення"
         },
         {
           "key": "ChatBackground.Reset",

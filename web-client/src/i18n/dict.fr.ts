@@ -12,8 +12,12 @@ const fr = {
   'Theme.Light': 'Clair',
   'Theme.Tinted': 'Teinté',
   'Theme.System': 'Système',
-  'ChatBackground.Upload': 'Importer une image',
+  ChatBackground: 'Fond de discussion',
+  'ChatBackground.UploadWallpaper': 'Importer un fond',
   SetColor: 'Choisir une couleur',
+  'Appearance.Reset': 'Réinitialiser',
+  'ChatBackground.Blur': 'Flouter l’image',
+  'ChatBackground.Upload': 'Importer une image',
   'ChatBackground.Reset': 'Réinitialiser',
   'ChatBackground.Blurred': 'Image floutée',
   'Premium.Feature.Intro':

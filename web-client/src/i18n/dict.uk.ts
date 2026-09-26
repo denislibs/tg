@@ -12,8 +12,12 @@ const uk = {
   'Theme.Light': 'Світла',
   'Theme.Tinted': 'Темна',
   'Theme.System': 'За замовчуванням',
-  'ChatBackground.Upload': 'Завантажити зображення',
+  ChatBackground: 'Шпалери для чатів',
+  'ChatBackground.UploadWallpaper': 'Завантажити шпалери',
   SetColor: 'Задати колір',
+  'Appearance.Reset': 'Відновити за замовчуванням',
+  'ChatBackground.Blur': 'Розмити зображення',
+  'ChatBackground.Upload': 'Завантажити зображення',
   'ChatBackground.Reset': 'Відновити за замовчуванням',
   'ChatBackground.Blurred': 'Розмите зображення',
   'Premium.Feature.Intro':
