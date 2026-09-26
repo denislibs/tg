@@ -48,8 +48,6 @@
  *    есть во всех браузерах, которые мы собираем (target ES2020), — предмета нет.
  *  • `countriesList` и раздача имён стран в `strings` (tweb :80, :299-313):
  *    списка стран у нас нет вовсе — предмета нет.
- *  • RTL (`isRTL`/`setRTL`/`getIsRTL`, tweb :88, :98, :94): RTL-локалей в нашем
- *    списке языков нет (то же отступление уже записано в `components/icon.ts`).
  *  • Пересчёт реакций/индексов при смене языка (tweb :316-319): у нас нет ни
  *    `appReactionsManager.resetAvailableReactions`, ни индексов диалогов по имени.
  *  • Карта `langPack` «тип служебного действия → ключ» (tweb :21-67): её предмет
@@ -271,11 +269,20 @@ namespace I18n {
   // читает поле и до неё — поэтому умолчание стоит здесь. `h23` — то же, что
   // выбрано умолчанием в `settings.tsx` (`24h`).
   let timeFormat: TimeFormat = 'h23'
+  // tweb :88 — направление интерфейса. Ставит старт по языку пакета
+  // (`client/boot.ts::setDocumentLangPackProperties`, tweb index.ts:391-400).
+  let isRTL = false
 
   export function getLastRequestedLangCode() { return lastRequestedLangCode }
   export function getLastRequestedNormalizedLangCode() { return lastRequestedNormalizedLangCode }
   export function getLastAppliedLangCode() { return lastAppliedLangCode }
   export function getTimeFormat() { return timeFormat }
+  export function getIsRTL() { return isRTL }
+
+  // tweb :98-100
+  export function setRTL(rtl: boolean) {
+    isRTL = rtl
+  }
 
   /**
    * tweb :102-106 — «язык теперь такой», В ПАМЯТИ. 1:1 с оригиналом: хранилища

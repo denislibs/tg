@@ -23,6 +23,7 @@ import { useChatsStore } from '../stores/chatsStore'
 import type { DialogOp } from '../core/dialogs/dialogOps'
 import type { PeerProfile } from '../core/managers/authManager'
 import { bootstrapHash } from '../core/hooks/useUrlSync'
+import type { LangPackDifference } from '@layer'
 
 const TOKEN_KEY = 'session_token' // тот же ключ, что у TokenStore
 
@@ -76,6 +77,25 @@ export function applyDialogsMirror(op: DialogOp | null, managers: Pick<Managers,
     (netOp) => { if (netOp) useChatsStore.getState().applyDialogOps([netOp]) },
     () => { /* офлайн/401 — витрина остаётся на кэше владельца */ },
   )
+}
+
+/**
+ * Порт tweb `index.ts:391-400` — направление интерфейса по языку применённого
+ * пакета: `dir` корня и флаг `I18n.setRTL`, по которому зеркалят ось ползунки
+ * (`components/rangeSelector.ts`, `rangeSelectorTsx.solid.tsx`). RTL у tweb
+ * включает только `ar`: ветка `fa` выключена в оригинале (`&& IS_BETA && false`)
+ * и сюда не перенесена. Зовётся раз на старт, как и там (:462/:570) — смена
+ * языка без перезагрузки направление не меняет.
+ */
+function setDocumentLangPackProperties(langPack: LangPackDifference) {
+  if (langPack.lang_code === 'ar') {
+    document.documentElement.classList.add('is-rtl')
+    document.documentElement.dir = 'rtl'
+    document.documentElement.lang = langPack.lang_code
+    I18n.setRTL(true)
+  } else {
+    document.documentElement.dir = 'ltr'
+  }
 }
 
 export async function bootstrap(): Promise<{ managers: Managers }> {
@@ -156,6 +176,7 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
     // выше для диалогов.
     I18n.getCacheLangPackAndApply(),
   ])
+  setDocumentLangPackProperties(langPack)
   // Названия месяцев и дней для чипов дат поиска (`helpers/date.ts::fillTipDates`)
   // — порт tweb index.ts:482-491 (`onLanguageApply`): сразу после применения
   // пакета старта и затем на каждую смену строк. Счётчик непрочитанных, который
