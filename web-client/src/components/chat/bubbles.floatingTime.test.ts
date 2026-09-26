@@ -172,7 +172,8 @@ describe('ChatBubbles — время и реакции у медиа без по
       const time = messageDiv.querySelector<HTMLElement>('.time')!
       expect(time).not.toBeNull()
       expect(time.classList.contains('is-floating')).toBe(false)
-      expect(messageDiv.lastElementChild).toBe(time)
+      // tweb bubbles.ts:9029 — за временем распорка `span.clearfix`.
+      expect(time.nextElementSibling?.matches('span.clearfix')).toBe(true)
     })
 
     it('реакции — ребёнок .message, а не .bubble-content-wrapper', async () => {

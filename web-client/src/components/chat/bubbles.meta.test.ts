@@ -86,7 +86,32 @@ describe('ChatBubbles — время и реакции в бабле', () => {
     const time = messageDiv.querySelector<HTMLElement>('.time')!
     expect(time).not.toBeNull()
     expect(time.textContent).toContain('12:34')
-    expect(messageDiv.lastElementChild).toBe(time)
+    // tweb bubbles.ts:9029 `messageDiv.append(timeSpan, clearfix())` — за
+    // временем идёт распорка `span.clearfix`, она последняя в теле.
+    expect(time.nextElementSibling?.matches('span.clearfix')).toBe(true)
+    expect(messageDiv.lastElementChild).toBe(time.nextElementSibling)
+  })
+
+  // Время — `float: right` (_chatBubble.scss:1714-1731): когда оно не влезает
+  // в последнюю строку (тело кончается блоком — цитатой, кодом), float уходит
+  // строкой ниже, но в высоту `.message` не входит, и абсолютная `.time-inner`
+  // (bottom от низа `.message`) ложится на текст цитаты. Высоту возвращает
+  // распорка `span.clearfix` с `clear: both` (tweb base.scss:2328-2331,
+  // стиль — styles/bubbleTimeClearfix.test.ts); здесь — что лента её кладёт.
+  it('тело, кончающееся ЦИТАТОЙ: за временем стоит распорка clearfix', async () => {
+    const quote = {
+      ...msg(1), message: 'цитата',
+      entities: [{ _: 'messageEntityBlockquote', offset: 0, length: 6 }],
+    } as MyMessage
+    bubbles = new ChatBubbles(chatContext(), managersWith([quote]))
+    await openFeed(bubbles)
+    await settle()
+
+    const messageDiv = bubbleOf(bubbles, 1).querySelector('.message')!
+    expect(messageDiv.querySelector('blockquote.quote')).not.toBeNull()
+    const time = messageDiv.querySelector<HTMLElement>(':scope > .time')!
+    expect(time.nextElementSibling?.matches('span.clearfix')).toBe(true)
+    expect(messageDiv.querySelectorAll(':scope > .clearfix')).toHaveLength(1)
   })
 
   it('у сообщения С РЕАКЦИЯМИ время лежит ВНУТРИ контейнера реакций', async () => {
@@ -107,6 +132,10 @@ describe('ChatBubbles — время и реакции в бабле', () => {
     // перед ним.
     expect(messageDiv.lastChild).toBe(reactionsEl)
     expect(messageDiv.firstChild?.textContent).toBe('привет')
+    // Распорка остаётся в теле ПЕРЕД рядом (дамп tweb 03-bubbles-123.json:
+    // `span.clearfix` → `reactions-element`); без `.time` перед собой она
+    // `display: none` (_chatBubble.scss:1858-1865).
+    expect(reactionsEl.previousElementSibling?.matches('span.clearfix')).toBe(true)
   })
 
   // Значок отправки — порт `setBubbleSendingStatus` (:6382-6408). Он стоит в
@@ -211,7 +240,10 @@ describe('ChatBubbles — время и реакции в бабле', () => {
       const time = messageDiv.querySelector<HTMLElement>('.time')!
       expect(time).not.toBeNull()
       expect(time.textContent).toContain('12:34')
-      expect(messageDiv.lastElementChild).toBe(time)
+      // Одна распорка за временем, а не по одной на каждый проход.
+      expect(time.nextElementSibling?.matches('span.clearfix')).toBe(true)
+      expect(messageDiv.lastElementChild).toBe(time.nextElementSibling)
+      expect(messageDiv.querySelectorAll(':scope > .clearfix')).toHaveLength(1)
     })
 
     it('чипы реакций остаются, и время лежит ВНУТРИ их контейнера', async () => {
@@ -300,6 +332,10 @@ describe('ChatBubbles — время и реакции в бабле', () => {
       expect(messageDiv.lastChild).toBe(reactionsEl)
       const text = Array.from(messageDiv.childNodes).map((node) => node === reactionsEl ? '|reactions|' : node.textContent).join('')
       expect(text).toBe('пока|reactions|')
+      // Распорка одна и стоит перед рядом, как на сборке (дамп tweb
+      // 03-bubbles-123.json), а не уезжает за ряд после правки.
+      expect(messageDiv.querySelectorAll(':scope > .clearfix')).toHaveLength(1)
+      expect(reactionsEl.previousElementSibling?.matches('span.clearfix')).toBe(true)
     })
 
     it('реакция, приехавшая ПАТЧЕМ, и следующий патч оставляют ряд под текстом', async () => {
@@ -351,7 +387,10 @@ describe('ChatBubbles — время и реакции в бабле', () => {
 
       const messageDiv = bubbleOf(bubbles, 1).querySelector('.message')!
       expect(messageDiv.querySelector('.reactions')).toBeNull()
-      expect(messageDiv.lastElementChild).toBe(messageDiv.querySelector('.time'))
+      // Время снова в теле, за ним — распорка (tweb bubbles.ts:9029).
+      const time = messageDiv.querySelector(':scope > .time')!
+      expect(time.nextElementSibling?.matches('span.clearfix')).toBe(true)
+      expect(messageDiv.lastElementChild).toBe(time.nextElementSibling)
     })
 
     it('значок отправки своего неотправленного бабла переживает правку', async () => {

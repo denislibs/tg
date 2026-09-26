@@ -259,6 +259,14 @@ div#column-left.tabs-tab.chatlist-container.sidebar.sidebar-left.main-column.sid
 `privacy/messages/*` (optionsSection, paidSettingsSection, starsRangeInput, useSettings, useSaveSettings,
 useStateStore и т.д.) — внутренние Solid-компоненты/хуки таба, не табы.
 
+Строки исключений всех этих табов собирает общий `PrivacySection` (`components/privacySection.tsx:171-218`):
+`Row.Icon` (person_crossed_filled / adduser) + `Row.Title` (Never/Always Allow|Share) +
+`Row.Subtitle` (число пользователей или «Add Users»). **У нас** — React-экран
+`components/settings/PrivacyRule.tsx` на `settings/kit.tsx::Row`: число пользователей — `sublabel`
+(`.row-subtitle` под заголовком), как у tweb. Раньше оно шло в `value` → `.row-title-right`, а тот
+не сжимается (`flex: 0 0 auto !important`, `_row.scss:230-234`) — заголовок выдавливало до «Н…».
+Пин — `PrivacyRule.test.tsx`. Перевод экрана на RowTsx — блок 2D.
+
 ### `passcodeLock/`
 
 | Файл | Конструктор | Назначение | Кто открывает |

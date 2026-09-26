@@ -351,3 +351,15 @@ samp {
   visibility: hidden;
   pointer-events: none;
 }
+
+// tweb base.scss:2328-2331 — распорка за временем бабла (`span.clearfix`, её
+// кладёт лента за `span.time`, tweb bubbles.ts:9029). `clear: both` сносит её
+// под плавающее время (`.time { float: right }`, _chatBubble.scss:1714-1731):
+// когда тело кончается блоком (цитата, код), float уходит строкой ниже и без
+// распорки в высоту `.message` не входит — абсолютная `.time-inner` ложилась
+// на текст цитаты. Видимость распорки в бабле решает _chatBubble.scss:1858-1865
+// (`display: none`, кроме `.time + .clearfix`) — оно специфичнее этого правила.
+.clearfix {
+  clear: both;
+  display: table;
+}
