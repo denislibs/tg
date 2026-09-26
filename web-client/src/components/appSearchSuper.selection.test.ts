@@ -315,7 +315,7 @@ describe('SearchSelection: выделение элементов (tweb chat/sele
     expect(opened).not.toHaveBeenCalled()
     // чекбокс досыпан всем элементам вкладок (tweb :702-714)
     for (const tile of tiles(searchSuper)) {
-      expect(tile.querySelector(':scope > label.checkbox-field input')).not.toBeNull()
+      expect(tile.querySelector(':scope > .checkbox-field input')).not.toBeNull()
     }
   })
 
@@ -375,7 +375,7 @@ describe('SearchSelection: выделение элементов (tweb chat/sele
     expect(searchSuper.selection!.isSelecting).toBe(false)
     expect(searchSuper.navScrollableContainer.querySelector('.search-super-selection-container')).toBeNull()
     expect(searchSuper.navScrollableContainer.classList.contains('is-selecting')).toBe(false)
-    expect(tiles(searchSuper).some((tile) => tile.querySelector('label.checkbox-field'))).toBe(false)
+    expect(tiles(searchSuper).some((tile) => tile.querySelector('.checkbox-field'))).toBe(false)
   })
 
   it('удалённое сообщение снимается с выделения вместе с узлом (tweb sharedMedia.tsx:325-327)', async() => {

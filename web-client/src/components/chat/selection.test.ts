@@ -96,7 +96,7 @@ function setup(bubbles: HTMLElement[]) {
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 
 const checkbox = (element: HTMLElement) =>
-  element.querySelector<HTMLInputElement>(':scope > label.bubble-select-checkbox > input')
+  element.querySelector<HTMLInputElement>(':scope > .bubble-select-checkbox > input')
 
 describe('canSelectBubble (tweb selection.ts:999-1006; e9428f2a9 — 812502980 :1037-1046)', () => {
   // `service` из списка ушёл (e9428f2a9): служебное выделяется, дата — нет
@@ -141,7 +141,7 @@ describe('toggleByElement (tweb :901-937)', () => {
 
     // разметка чекбокса — tweb :342-344 + :824-826 (prepend в бабл)
     const label = bubble.firstElementChild as HTMLElement
-    expect(label.tagName).toBe('LABEL')
+    expect(label.tagName).toBe('SPAN') // tweb HEAD checkboxField.ts:37 (ef41b29db)
     expect(label.classList.contains('checkbox-field')).toBe(true)
     expect(label.classList.contains('checkbox-field-round')).toBe(true)
     expect(label.classList.contains('bubble-select-checkbox')).toBe(true)
