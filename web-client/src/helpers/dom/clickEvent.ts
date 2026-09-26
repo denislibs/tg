@@ -34,6 +34,13 @@ const onGlobalMouseDown = (e: MouseEvent) => {
 document.addEventListener('mousedown', onGlobalMouseDown)
 
 export function hasMouseMovedSinceDown(e: Event) {
+  // tweb 472e3e76b: нативный контрол, нажатый с клавиатуры, шлёт доверенный
+  // клик без предшествующего mousedown. `detail === 0` отличает этот путь (и
+  // активацию вспомогательной технологией) от клика указателем.
+  if(e.type === 'click' && (e as MouseEvent).detail === 0) {
+    return false
+  }
+
   if(e.isTrusted && e.type === 'click' && e.target !== lastMouseDownElement) {
     return true
   }

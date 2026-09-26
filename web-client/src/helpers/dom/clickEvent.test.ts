@@ -30,6 +30,17 @@ describe('clickEvent', () => {
     expect(hasMouseMovedSinceDown({ isTrusted: true, type: 'click', target: a } as unknown as Event)).toBeUndefined()
   })
 
+  // tweb 472e3e76b: нативный контрол, нажатый с клавиатуры (и вспомогательной
+  // технологией), даёт доверенный клик БЕЗ предшествующего mousedown, и
+  // `detail === 0` отличает его от клика указателем — такой клик не «уехал».
+  it('hasMouseMovedSinceDown: доверенный клик с detail 0 (клавиатура) не подавляется', () => {
+    const a = mount()
+    const b = mount()
+    a.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    expect(hasMouseMovedSinceDown({ isTrusted: true, type: 'click', target: b, detail: 0 } as unknown as Event)).toBe(false)
+    expect(hasMouseMovedSinceDown({ isTrusted: true, type: 'click', target: b, detail: 1 } as unknown as Event)).toBe(true)
+  })
+
   it('attachClickEvent вешает обработчик на CLICK_EVENT_NAME, возвращённая функция снимает', () => {
     const el = mount()
     const cb = vi.fn()
