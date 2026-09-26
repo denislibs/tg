@@ -492,6 +492,18 @@ $row-border-radius: $border-radius-medium;
   &.accordion-toggler {
     .row-checkbox-field-toggle {
       pointer-events: all !important;
+
+      // ОТСТУПЛЕНИЕ от tweb (задача 11 плана 2D, проверено на стенде, Chrome 153).
+      // Поле группы выключено намеренно (`checkboxFields.tsx:275-277`, «will control
+      // it myself»), но нативный input лежит поверх тумблера (`_checkbox.scss:292-298`,
+      // `inset: 0; z-index: 1`), а по выключенному полю браузер не шлёт ни mousedown,
+      // ни mouseup, ни click — только pointer-события. Щелчок по тумблеру пропадал
+      // целиком, до обработчика строки он не доходил. Без попадания в поле цель —
+      // `.checkbox-toggle` внутри поля: ветка «поле выключено» переключает вложенные,
+      // а активации label нет (её цель — то же выключенное поле).
+      .checkbox-field-input:disabled {
+        pointer-events: none;
+      }
     }
   }
 }

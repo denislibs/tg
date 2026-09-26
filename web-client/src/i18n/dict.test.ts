@@ -222,18 +222,66 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `NotificationsPrivateChats` («Private Chats»), у fr — заголовка
 // («Notifications»). ru 1346 → 1350, uk 682 → 686, es 681 → 685,
 // de/fr 681 → 684. `plural` не менялся.
+//
+// Выравнивание корня настроек по tweb (`fix/settings-root-items`): у ВСЕХ пяти
+// словарей снят `General.NightMode` — строки «Ночной режим» в корне у tweb нет
+// (ночной режим — пункт подменю «Ещё» бургера). У русского вдобавок сняты
+// выдумки `Premium.Row.Subtitle`/`Premium.Row.Active` (подзаголовка у строки
+// Premium у оригинала нет) и `DarkMode` (пункт бургера у tweb подписан по теме),
+// а добавлены четыре ключа 1:1 с tweb lang.ts — `EnableDarkMode`,
+// `DisableDarkMode`, `MenuTelegramStars`, `SetAsEmojiStatus`: у русского
+// −4 +4, число то же; у остальных −1 (поверх пилота: ru 1350, uk 685, es 684, de/fr 683).
+//
+// Задача 10 плана 2D (вкладка «Горячие клавиши», порт tweb keyboardShortcuts.tsx):
+// десять ключей tweb lang.ts — `KeyboardShortcuts.Action.{Send,OpenSearch,
+// SavedMessages,ZoomIn,ZoomOut,PlayPauseStory,CloseStories,Undo}`,
+// `KeyboardShortcuts.Section.Formatting.Caption`, `…Section.MediaEditor` — всем пяти
+// словарям (с английским дословно не совпал ни один): +10 каждому. ru 1350 → 1360,
+// uk 686 → 696, es 685 → 695, de/fr 684 → 694. Врезкой той же задачи снесён React-экран
+// `settings/HotkeysSettings.tsx`, а с ним — десять ключей, которые читал только он:
+// самодельные `KeyboardShortcuts.Action.{HistoryStart,HistoryEnd,PlayPause,Exit,LockApp}`,
+// `KeyboardShortcuts.Hint.PasscodeNotSet`, `KeyboardShortcuts.Section.PhotoEditor` и ключи
+// tweb `MediaZoomIn`/`MediaZoomOut`/`Undo` (на вкладке их место заняли ключи
+// `keyboardShortcuts.tsx`): −10 каждому. ru 1360 → 1350, uk 696 → 686, es 695 → 685,
+// de/fr 694 → 684 — числа те же, что до задачи, набор другой (см. `FINGERPRINT`).
+// Поверх корня настроек (снят `General.NightMode`): ru 1350, uk 685, es 684, de/fr 683.
+//
+// Задача 7 плана 2D («Данные и память» и автозагрузка): ключи tweb lang.ts
+// `AutoDownloadContacts/Groups/Channels/Off/Files` (подписи строк Photos/Videos/
+// Files), `AutodownloadContacts/Channels` (строки вкладок автозагрузки),
+// `StorageQuota.Clear/Other/FailedToCalculate` и формы числа `Seconds`/`Minutes`
+// (полная карта разрядов `wrapDuration.ts::DURATION_LANG_KEYS`). У fr нет двух
+// `…Contacts` — совпали с английским дословно. ru 1350 → 1362, uk 686 → 698,
+// es 685 → 697, de 684 → 696, fr 684 → 694; `plural` +2 у всех. Поверх корня настроек
+// (у uk/es/de/fr −1): ru 1362, uk 697, es 696, de 695, fr 693.
+//
+// Задача 11 плана 2D (вкладка «Энергосбережение»): +13 ключей tweb lang.ts —
+// `LiteMode.EnableText`/`Info`/`DisableAlert` и десять `LiteMode.Key.*.Title`
+// дерева ключей — всем пяти словарям: ru 1350 → 1363, uk 686 → 699, es 685 → 698,
+// de/fr 684 → 697. Врезкой сняты четыре ключа снесённого React-экрана, которых у
+// tweb нет или которых больше никто не читает (`LiteMode.Caption`,
+// `LiteMode.Key.background_animation.Title`, `LiteMode.Key.emoji.Title`,
+// `Animations`): −4 каждому словарю.
+// Поверх задач 7 и 10 и корня настроек (+9 каждому): ru 1371, uk 706, es 705, de 704, fr 702.
+//
+// Задачей 14 плана 2D (вкладка «Быстрая реакция») снят самодельный
+// `DoubleTapSettingInfo` — подпись React-экрана, которой у tweb нет, читатель ушёл
+// вместе с экраном: всем пяти по −1 (ru 1349, uk 685, es 684, de/fr 683).
+// Поверх задач 7, 10, 11 и корня настроек (−1 каждому): ru 1370, uk 705, es 704, de 703, fr 701.
+//
 // Задача 9 плана 2D (экран сессии, незавершённые входы): восемь ключей tweb
 // lang.ts:5635-5645 — `AuthSessions.View.{Device,Application,System,Location,
 // LocationInfo,TerminateSession}`, `AuthSessions.IncompleteAttempts(Info)` — всем
 // пяти, кроме совпавшего с английским у fr (`AuthSessions.View.Application` —
 // «Application»). ru 1350 → 1358, uk 686 → 694, es 685 → 693, de 684 → 692,
 // fr 684 → 691. `plural` не менялся.
+// Поверх задач 7, 10, 11, 14 и корня настроек: ru 1378, uk 713, es 712, de 711, fr 708.
 const COMPOSITION = {
-  ru: { keys: 1358, plural: 35 },
-  uk: { keys: 694, plural: 24 },
-  es: { keys: 693, plural: 24 },
-  de: { keys: 692, plural: 24 },
-  fr: { keys: 691, plural: 24 },
+  ru: { keys: 1378, plural: 37 },
+  uk: { keys: 713, plural: 26 },
+  es: { keys: 712, plural: 26 },
+  de: { keys: 711, plural: 26 },
+  fr: { keys: 708, plural: 26 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -329,13 +377,21 @@ const COMPOSITION = {
 // (разбор — у `COMPOSITION` выше). Портом 72c50bfef — `Notifications.Restricted`.
 // Пилотом 2D — заголовок вкладки уведомлений и три имени секций (разбор — у
 // `COMPOSITION` выше; de и fr расходятся по одному совпавшему ключу).
+// Выравниванием корня настроек по tweb — снят `General.NightMode` у всех пяти,
+// у русского ещё −3 +4 (разбор — у `COMPOSITION` выше).
+// Задачей 10 плана 2D — десять ключей вкладки «Горячие клавиши» всем пяти и снос
+// десяти ключей React-экрана (разбор — у `COMPOSITION` выше).
+// Задачей 7 плана 2D — ключи «Данных и памяти» и `Seconds`/`Minutes` (разбор —
+// у `COMPOSITION` выше).
+// Задачей 11 плана 2D — ключи «Энергосбережения» (разбор — у `COMPOSITION` выше).
+// Задачей 14 плана 2D — минус `DoubleTapSettingInfo` у всех пяти.
 // Задачей 9 плана 2D — восемь ключей экрана сессии (разбор — у `COMPOSITION`).
 const FINGERPRINT = {
-  ru: '43be4f9e',
-  uk: '187fd703',
-  es: '6720d85d',
-  de: '5cba5e11',
-  fr: '42eb621b',
+  ru: 'fc4f75b2',
+  uk: 'dd482d82',
+  es: '4b4883b4',
+  de: 'f86725a8',
+  fr: '74eec546',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
@@ -684,7 +740,6 @@ const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
     'Chat.Poll.Type.Quiz': '«quiz» — заимствование',
     AttachContact: '«contact» — французское слово',
     'SharedMedia.Audio': '«audio» — французское слово',
-    Animations: '«animations» — французское слово',
     Exceptions: '«exceptions» — французское слово',
     'Unit.Minutes.Abbr': '«min» — сокращение от «minute»',
     'StorageQuota.CacheSizeLimitAuto': '«auto» — сокращение от «automatique»',

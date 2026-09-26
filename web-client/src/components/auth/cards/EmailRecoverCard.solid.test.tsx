@@ -37,6 +37,7 @@ vi.mock('@lib/lottie/lottieLoader', () => ({
 }))
 
 import EmailRecoverCard from './EmailRecoverCard.solid'
+import mediaHeaderStyles from '@components/mediaHeader.module.scss'
 
 vi.mock('@components/dotRenderer', () => ({ default: { attachBluffTextSpoilerTarget: vi.fn() } }))
 
@@ -186,5 +187,16 @@ describe('EmailRecoverCard.solid: автофокус поля кода (ревь
   it('поле кода получает фокус на монтировании', () => {
     const { input } = mount(vi.fn())
     expect(document.activeElement).toBe(input())
+  })
+})
+
+describe('EmailRecoverCard.solid: шапка — разметка tweb HEAD 812502980 (О-29)', () => {
+  it('заголовок — h1, подзаголовок без модульного .secondary (tweb EmailRecoverCard.tsx:74-75)', () => {
+    mount(vi.fn())
+    const title = host!.querySelector(`.${mediaHeaderStyles.title}`) as HTMLElement
+    expect(title.tagName).toBe('H1')
+    const subtitle = host!.querySelector(`.${mediaHeaderStyles.subtitle}`) as HTMLElement
+    expect(subtitle.classList.contains('secondary')).toBe(false)
+    expect(subtitle.classList.contains(mediaHeaderStyles.secondary)).toBe(false)
   })
 })

@@ -20,21 +20,15 @@
  * контейнер + Sticker/Title/Subtitle с `children`/`secondary`); перенесена на
  * место оригинала и доведена до HEAD (задача 5 плана 2D).
  *
+ * Модель отступов — HEAD: ритм между частями держит блок (`gap: .5rem` в
+ * `mediaHeader.module.scss`), у частей нет вертикальных полей, выравнивание —
+ * классами модуля (`.title, .subtitle`), глобальных `text-center`/`secondary`
+ * части не носят (О-29 плана 2D; вместе с ней переведён `auth/AuthFlow.module.scss`).
+ *
  * Отличия от оригинала:
- *  1. Модель отступов — старой базы (`mediaHeader.module.scss`): у HEAD блок
- *     сам держит ритм (`gap: .5rem`, у частей нет вертикальных полей,
- *     `padding-inline`, `text-wrap: balance`, `white-space: pre-line`), и под
- *     неё же у tweb переписан `authFlow.module.scss` (`.qrContainer` и др.).
- *     Наш `auth/AuthFlow.module.scss` — старой базы, и смена модели без него
- *     сдвинула бы экран входа; переезжают вместе, со стендом — О-29 плана 2D
- *     (строку в таблицу «Отложено» вносит план, PR #285). Поэтому же
- *     `Title`/`Subtitle` носят глобальный `text-center` (у HEAD выравнивание —
- *     в `.title, .subtitle` модуля), `Title` — маркер `text-overflow-wrap`, а
- *     `Subtitle color="secondary"` — ещё и глобальный `secondary`, как в живом
- *     DOM старой сборки (`docs/tweb/dom/auth.md`).
- *  2. `lottieLoader` — синглтон по умолчанию `LottieAnimation`, а не импорт
+ *  1. `lottieLoader` — синглтон по умолчанию `LottieAnimation`, а не импорт
  *     tweb `:7` (тот же модуль; явная передача ничего не добавляет).
- *  3. `onPromise` гасит отказ загрузки (`NO_WASM` — деградация без WASM SIMD,
+ *  2. `onPromise` гасит отказ загрузки (`NO_WASM` — деградация без WASM SIMD,
  *     статичный кадр `LottieAnimation` ставит сам): у tweb отказа нет, у нас
  *     он остался бы необработанным.
  */
@@ -121,7 +115,7 @@ MediaHeader.Sticker = function MediaHeaderSticker(props: MediaHeaderStickerProps
           restartOnClick={props.restartOnClick ?? true}
           name={props.name!}
           onPromise={(promise) => {
-            // см. шапку, п. 3
+            // см. шапку, п. 2
             promise.then(props.onReady, () => {})
           }}
         />
@@ -147,8 +141,6 @@ MediaHeader.Title = function MediaHeaderTitle(props: MediaHeaderTitleProps): JSX
       class={classNames(
         styles.title,
         props.size === 20 && styles.title20,
-        'text-center', // см. шапку, п. 1
-        'text-overflow-wrap',
         props.class,
       )}
     >
@@ -170,8 +162,6 @@ MediaHeader.Subtitle = function MediaHeaderSubtitle(props: MediaHeaderSubtitlePr
       class={classNames(
         styles.subtitle,
         props.color && styles[props.color],
-        props.color === 'secondary' && 'secondary', // глобальный двойник живого DOM старой сборки, см. шапку, п. 1
-        'text-center', // см. шапку, п. 1
         props.class,
       )}
     >

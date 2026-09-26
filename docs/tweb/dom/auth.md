@@ -768,6 +768,41 @@ cardEnterActive/cardExitActive/cardEnter/cardEnterTo/cardExit/cardExitTo→…_2
 6. **`.avatar-edit` для карточки регистрации** — брать не из `.page-chats` (см. §2.5), а завязывать на `--sticker-size`.
 7. **Класс `has-auth-pages` на `body`** — нужен и как гейт анимации колонок при выходе в мессенджер (правило уже скопировано в наш `pages/_chats.scss`, но сам класс никто не ставит и не снимает).
 
+### 8.4 Шапка карточки: модель отступов tweb HEAD 812502980 (О-29 волны 2D)
+
+Замеры §2 сняты со сборки `e52b5d931` — это **старая** модель шапки: поля у частей
+(`.sticker{margin: .125rem auto .5rem}`, `.title{margin-bottom: .25rem}`,
+`.subtitle{margin-top: .125rem}`), `._container` пуст. У tweb HEAD (2556fc949 + 472e3e76b)
+ритм держит сам блок: `.container{display:flex; flex-direction:column; gap:.5rem}`, у частей
+вертикальных полей нет (`.title{margin-block:0}`, `.sticker{margin-inline:auto}`), у текста
+`padding-inline: 1rem`, `text-wrap: balance`, у подзаголовка `white-space: pre-line`; под эту
+модель переписан `authFlow.module.scss` (`.qrContainer{margin-block: 1rem 1rem}` без
+`!important` — «.5rem ниже добавит блок»). Карточки HEAD: заголовок — `h1` (`tag="h1"`, у QR —
+голый `h1.title.text-center.text-overflow-wrap[style=margin-top:0]`), подзаголовок —
+`class="secondary"` (глобальный, только цвет, кегль 16px), номер на `authCode` — `span`, не `h4`.
+
+**У нас** — перенесено целиком (`components/mediaHeader.module.scss` дословно с HEAD,
+`components/auth/AuthFlow.module.scss` `.qrContainer`, карточки `components/auth/cards/*`).
+Сверка офлайн: наш собранный CSS в headless Chrome на разметке карточек, против модулей tweb
+HEAD, скомпилированных sass поверх того же глобального CSS (px; «до» — main до переноса):
+
+| карточка | стикер от верха | стикер → заголовок | заголовок → подзаголовок | подзаголовок (кегль/строка) | подзаголовок → дальше | ширина текста |
+|---|---|---|---|---|---|---|
+| signIn — до | 16 | 24 | 4 | 14/18 | 32 | 360 |
+| signIn — у нас = tweb HEAD | 16 | 32 | 8 | 16/21 | 32 | 328 |
+| signQR — до | 16 | 24 | 4 | 14/18 | 24 | 360 |
+| signQR — у нас = tweb HEAD | 16 | 24 | 8 | 16/21 | 24 | 328 |
+| authCode — до | 2 | 8 | 4 | 14/18 | 24 | 360 |
+| authCode — у нас = tweb HEAD | 0 | 8 | 8 | 16/21 | 24 | 328 |
+| password — до | 2 | 8 | 4 | 16/21 | 32 | 360 |
+| password — у нас = tweb HEAD | 0 | 8 | 8 | 16/21 | 32 | 328 |
+
+Кегль 14/18 у «до» — наше прежнее расхождение (карточки звали `color="secondary"`, модульный
+вариант интро-попапов), а не старая модель: и живой DOM §2, и HEAD дают 16/21. Заголовок QR
+(«Log in to Telegram by QR Code», Roboto 500 24px) при ширине текста 328 встаёт в две строки —
+у HEAD так же. Пины: `components/mediaHeader.styles.test.ts` (скомпилированный CSS),
+«шапка — разметка tweb HEAD» в тестах карточек.
+
 ---
 
 ## 9. Не найдено / не замерено

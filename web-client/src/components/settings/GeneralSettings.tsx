@@ -9,7 +9,8 @@ import { useSettings } from '../../settings'
 import { type ThemeChoice, type ThemePreset } from '../../theme'
 import { SettingsScreen, Section, Row } from './kit'
 import ChatWallpaper from './ChatWallpaper'
-import PowerSaving from './PowerSaving'
+import { getSettingsSliderHost } from '../sidebarLeft/settingsSliderHost'
+import { AppPowerSavingTab } from '../solidJsTabs/tabs'
 import s from './GeneralSettings.module.scss'
 
 const THEME_CARDS: { preset: ThemePreset; emoji: string; colors: [string, string, string, string]; accent: string }[] = [
@@ -56,8 +57,8 @@ function RadioRow({
 
 export default function GeneralSettings({ onBack }: { onBack: () => void }) {
   const t = useT()
-  const { textSize, timeFormat, themeChoice, update } = useSettings()
-  const [dedicated, setDedicated] = useState<'wallpaper' | 'power' | null>(null)
+  const { textSize, timeFormat, themeChoice, liteMode, update } = useSettings()
+  const [dedicated, setDedicated] = useState<'wallpaper' | null>(null)
 
   return (
     <SettingsScreen
@@ -65,7 +66,6 @@ export default function GeneralSettings({ onBack }: { onBack: () => void }) {
       onBack={onBack}
       sub={
         dedicated === 'wallpaper' ? <ChatWallpaper onBack={() => setDedicated(null)} /> :
-        dedicated === 'power' ? <PowerSaving onBack={() => setDedicated(null)} /> :
         null
       }
     >
@@ -86,8 +86,11 @@ export default function GeneralSettings({ onBack }: { onBack: () => void }) {
         <Row
           icon={<TgIcon name="sputnik_filled" size={24} />}
           label="LiteMode.Title"
-          value={t('Checkbox.Disabled')}
-          onClick={() => setDedicated('power')}
+          // tweb generalSettings.tsx:37-38 — живой статус режима по `liteMode.all`
+          value={t(liteMode.all ? 'Checkbox.Enabled' : 'Checkbox.Disabled')}
+          // вкладка слайдера (план 2D, задача 11), как tweb :89
+          // `tab.slider.createTab(AppPowerSavingTab).open()`
+          onClick={() => void getSettingsSliderHost().openTab(AppPowerSavingTab)}
         />
       </Section>
 

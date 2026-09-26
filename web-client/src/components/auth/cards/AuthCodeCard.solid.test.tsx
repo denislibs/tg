@@ -15,6 +15,7 @@ import type { LottieAssetName } from '@lib/lottie/lottieLoader'
 import type { Managers } from '@/client/bootstrap'
 import { AuthFlowContext, type AuthFlowContextValue } from '../authFlow.solid'
 import AuthCodeCard from './AuthCodeCard.solid'
+import mediaHeaderStyles from '@components/mediaHeader.module.scss'
 
 // Обезьянка (`TrackingMonkey`) грузит обе свои анимации через tlottie
 // (`@lib/lottie/lottieLoader.loadAnimationAsAsset`) — мокаем модуль целиком,
@@ -248,5 +249,21 @@ describe('AuthCodeCard.solid: проводка фокуса поля до обе
     expect(trackingAnim.setDirection).not.toHaveBeenCalledWith(-1)
 
     loadAnimationAsAsset.mockReset()
+  })
+})
+
+describe('AuthCodeCard.solid: шапка — разметка tweb HEAD 812502980 (О-29)', () => {
+  it('заголовок — h1, подзаголовок без модульного .secondary (tweb AuthCodeCard.tsx:586-592)', () => {
+    mount(vi.fn())
+    const title = host!.querySelector(`.${mediaHeaderStyles.title}`) as HTMLElement
+    expect(title.tagName).toBe('H1')
+    // номер — span внутри span.phoneWrapper (у старой базы — h4 внутри div, 32px)
+    const phone = title.firstElementChild!.firstElementChild!
+    expect(title.firstElementChild!.tagName).toBe('SPAN')
+    expect(phone.tagName).toBe('SPAN')
+    const subtitle = host!.querySelector(`.${mediaHeaderStyles.subtitle}`) as HTMLElement
+    // глобальный .secondary — только цвет; модульный (14px) карточка не берёт
+    expect(subtitle.classList.contains('secondary')).toBe(true)
+    expect(subtitle.classList.contains(mediaHeaderStyles.secondary)).toBe(false)
   })
 })

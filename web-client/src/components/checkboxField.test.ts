@@ -73,3 +73,22 @@ describe('CheckboxField', () => {
     expect(new CheckboxField().input.checked).toBe(false)
   })
 })
+
+// tweb :151-162 — геттер/сеттер `checked`. Сеттер пишет поле И рождает всплывающий
+// `change` (его ждут слушатели групп `checkboxFields.solid.tsx` и форма
+// «Энергосбережения»); `setValueSilently` — без события.
+describe('CheckboxField.checked', () => {
+  it('сеттер взводит поле и шлёт всплывающий change; тихая запись — без события', () => {
+    const field = new CheckboxField()
+    const form = document.createElement('form')
+    form.append(field.label)
+    const changes: boolean[] = []
+    form.addEventListener('change', () => changes.push(field.checked))
+
+    field.checked = true
+    field.setValueSilently(false)
+
+    expect(changes).toEqual([true])
+    expect(field.checked).toBe(false)
+  })
+})

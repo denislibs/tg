@@ -26,9 +26,9 @@
 // Адаптации:
 //   • `getAppWindow()` tweb (окно Document PiP) → `window` / `document`:
 //     Document PiP у нас нет;
-//   • ветка RTL (`I18n.getIsRTL()`, :218-219 и :304-307): langPack не
-//     портирован и RTL-локалей у нас нет — оставлена только LTR-половина
-//     (то же отступление задокументировано в `components/icon.ts`).
+//   • ветка RTL (`I18n.getIsRTL()`, :218-219 и :304-307): оставлена только
+//     LTR-половина. Флаг в langPack есть, но RTL включает лишь `ar`, которого
+//     нет в списке языков сервера (то же отступление — `components/icon.ts`).
 
 import mediaSizes from '@helpers/mediaSizes'
 

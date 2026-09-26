@@ -379,8 +379,7 @@ export function Row({
   sublabel?: ReactNode
   /** Правое значение строки — по той же причине `ReactNode`. */
   value?: ReactNode
-  /** Событие — ради координат (переход темы у строки ночного режима). */
-  onClick?: (e: MouseEvent<HTMLElement>) => void
+  onClick?: () => void
   danger?: boolean
   accent?: boolean
   /** тумблер справа (tweb `checkboxFieldOptions: {toggle: true}`) */

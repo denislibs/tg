@@ -114,7 +114,7 @@ afterEach(async() => {
 function mountSettings(managers: Managers) {
   return render(
     <ManagersProvider managers={managers}>
-      <SettingsView onBack={() => {}} onToggleMode={() => {}} />
+      <SettingsView onBack={() => {}} />
     </ManagersProvider>,
     { container: columnEl },
   )

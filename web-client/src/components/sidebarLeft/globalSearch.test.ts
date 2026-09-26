@@ -230,7 +230,7 @@ afterEach(() => {
   rootScope.myId = prevMyId
   useAppStateStore.setState({ recentSearch: [] })
   useChatsStore.setState({ dialogs: [] })
-  useSettingsStore.setState({ reduceMotion: false })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: false } })
   document.body.replaceChildren()
 })
 
@@ -349,7 +349,7 @@ describe('жизненный цикл: создание по фокусу, сн�
   })
 
   it('без анимаций уборка — сразу на «назад»', async() => {
-    useSettingsStore.setState({ reduceMotion: true })
+    useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
     const { inputSearch, backBtn, searchContainer, chatlistContainer } = build()
     focus(inputSearch)
     await settle()
