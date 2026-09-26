@@ -92,7 +92,7 @@ function pagingManagers(pages: { first: HistoryResult, older?: HistoryResult, ne
   const managers: BubblesManagers = {
     messages: { getHistory, getAround, messageByDate },
     peers: { fillMirror: vi.fn(async () => {}) },
-    dialogs: { getReadMaxSeqIfUnread, getHistoryMaxSeq },
+    dialogs: { getReadMaxSeqIfUnread, getHistoryMaxSeq, getDialogReadState: vi.fn(async () => undefined) },
     // Ручка отметки прочтения: наблюдатель непрочитанных живёт в самой ленте
     // (порт tweb bubbles.ts:2941-3012).
     realtime: { markRead },

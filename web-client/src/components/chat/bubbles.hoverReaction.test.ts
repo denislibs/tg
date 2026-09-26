@@ -67,7 +67,7 @@ function stand(agg?: MessageReactions) {
       unreact,
     },
     peers: { fillMirror: vi.fn(async() => {}) },
-    dialogs: { getReadMaxSeqIfUnread: vi.fn(async() => 0), getHistoryMaxSeq: vi.fn(async() => 0) },
+    dialogs: { getReadMaxSeqIfUnread: vi.fn(async() => 0), getHistoryMaxSeq: vi.fn(async() => 0), getDialogReadState: vi.fn(async () => undefined) },
     realtime: { markRead: vi.fn(async() => ({ ok: true })) },
     // Порядок каталога и есть порядок панели: первая активная — 👍.
     reactions: {

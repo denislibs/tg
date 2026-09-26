@@ -1182,6 +1182,25 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     },
 
     /**
+     * Порт tweb `appMessagesManager.getInboxReadMaxId` (tweb 79d6a8f95) вместе
+     * со счётчиком непрочитанных диалога (tweb `chat.getDialogOrTopic()` →
+     * `dialog.unread_count`) — одним ответом, потому что лента спрашивает их
+     * вместе.
+     *
+     * Курсор — САМ, без схлопывания в 0: в отличие от `getReadMaxSeqIfUnread`
+     * он годится для вопроса «прочитано ли ЭТО сообщение» (гейт наблюдателя
+     * прочтения, `components/chat/bubbles.ts::renderMessage`), — иначе в
+     * полностью прочитанном чате непрочитанным выглядел бы каждый бабл.
+     * Счётчик нужен кнопке «вниз» (tweb ce37ebeb3, `unread_count !== 1`).
+     * Диалога нет — `undefined`: курсор неизвестен, и лента отвечает на это
+     * консервативно (`core/messages/isUnreadByReadCursor.ts`).
+     */
+    getDialogReadState(peerId: number): { readInboxMaxSeq: number, unreadCount: number } | undefined {
+      const d = findDialog(peerId)
+      return d ? { readInboxMaxSeq: d.read_inbox_max_id, unreadCount: d.unread_count } : undefined
+    },
+
+    /**
      * Порт tweb `Chat.getHistoryMaxId` (chat.ts) — seq самого свежего сообщения
      * чата. Ленте он нужен ровно за тем же, зачем оригиналу: НЕ рисовать черту
      * непрочитанных перед последним сообщением (tweb bubbles.ts:11592

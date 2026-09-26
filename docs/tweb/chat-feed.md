@@ -504,7 +504,9 @@ badge растёт от `dialog_unread`); **у низа → плавный по�
 ## 5.4 Прочитанность
 
 **Входящие (read inbox).** В `renderMessage`: `context.isInUnread = !out && unread`
-(`:6667-6678`, для чатов дополнительно `readMaxId < mid`) → `setUnreadObserver('history')`
+(`:7925-7945`, для чатов дополнительно `isUnreadByReadCursor(getInboxReadMaxId(), mid)` у не-out —
+tweb 79d6a8f95: сам курсор, а не `getReadMaxIdIfUnread`, который у прочитанного чата отвечает 0 и
+делал непрочитанным каждый бабл; неизвестный курсор — консервативно «непрочитано») → `setUnreadObserver('history')`
 (`:6433-6443`; broadcast — на `timeSpan`, обычный чат — на бабл). Пересечение →
 `onUnreadedInViewport` (`:2914-2926`): mid в `unreadedSeen`, unobserve →
 `readUnreaded('history')` (`:2940-3011`):
@@ -695,8 +697,11 @@ DOM-лента vs React-окно) разобрана в
    (фон копит, читает по фокусу) + подъём рубежа до `getHistoryMaxSeq` у низа окна —
    `unreadedObserverCallback`/`onUnreadedInViewport`/`readUnreaded`/`setUnreadObserver`.
    Мультиплексора `SuperIntersectionObserver` нет: потребитель у наблюдателя один.
-   Гейт `isInUnread` считается по горизонту прочтения (`dialogs.getReadMaxSeqIfUnread`) —
-   флага `pFlags.unread` на сообщении в нашей модели нет вовсе.
+   Гейт `isInUnread` считается по КУРСОРУ прочтения (`dialogs.getDialogReadState` →
+   `readInboxMaxSeq`, снимок в `setPeer`; порт tweb 79d6a8f95 — свои сообщения исключены,
+   неизвестный курсор наблюдает всё, `core/messages/isUnreadByReadCursor.ts`) — флага
+   `pFlags.unread` на сообщении в нашей модели нет вовсе. Прежний гейт по
+   `getReadMaxSeqIfUnread` в полностью прочитанном чате ставил наблюдатель на каждый бабл.
    *React-лента* (флаг выключен): markRead = «прижат к низу + фокус + активный инстанс»
    (`useChatScroll`), maxSeq всего загруженного окна; под флагом эти эффекты выключены
    гейтом `OWNS_READ_MARKER` — двух отметок в одну ручку быть не должно.

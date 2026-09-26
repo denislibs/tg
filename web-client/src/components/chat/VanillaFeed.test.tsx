@@ -62,7 +62,7 @@ function managersWith(messages: MyMessage[], failFirst = 0) {
     },
   )
   const fillMirror = vi.fn(async () => {})
-  const dialogs = { getReadMaxSeqIfUnread: async () => 0, getHistoryMaxSeq: async () => 0 }
+  const dialogs = { getReadMaxSeqIfUnread: async () => 0, getHistoryMaxSeq: async () => 0, getDialogReadState: vi.fn(async () => undefined) }
   const getAround = vi.fn(async () => ({ messages, reachedTop: true, reachedBottom: true }))
   const messageByDate = vi.fn(async (): Promise<number | null> => null)
   return {
