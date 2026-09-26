@@ -26,8 +26,8 @@
  *     `padding-inline`, `text-wrap: balance`, `white-space: pre-line`), и под
  *     неё же у tweb переписан `authFlow.module.scss` (`.qrContainer` и др.).
  *     Наш `auth/AuthFlow.module.scss` — старой базы, и смена модели без него
- *     сдвинула бы экран входа; переезжают вместе, отдельной задачей со
- *     стендом (правка к плану 2D, отчёт задач 2 и 5). Поэтому же
+ *     сдвинула бы экран входа; переезжают вместе, со стендом — О-29 плана 2D
+ *     (строку в таблицу «Отложено» вносит план, PR #285). Поэтому же
  *     `Title`/`Subtitle` носят глобальный `text-center` (у HEAD выравнивание —
  *     в `.title, .subtitle` модуля), `Title` — маркер `text-overflow-wrap`, а
  *     `Subtitle color="secondary"` — ещё и глобальный `secondary`, как в живом
