@@ -11,7 +11,8 @@
 // 2. **Никаких inline-обработчиков.** tweb вешает `setAttribute('onclick', name + '(this)')`
 //    и рассчитывает на глобали из `addAnchorListener`. Мы кладём имя действия в
 //    `dataset.anchorAction`, а слушателя вешает лента одним делегированием.
-import { safeUrl } from '@core/safeUrl'
+import { matchUrlProtocolText, SAFE_SCHEMES, safeUrl } from '@core/safeUrl'
+import matchTelegramUrlHost, { matchUrlHost, TELESCOPE_LINK_HOST } from './matchTelegramUrlHost'
 import { URL_REG_EXP } from './parseEntities'
 
 /** Атрибут-носитель действия вместо tweb'овского inline `onclick`. */
@@ -26,8 +27,6 @@ export const ANCHOR_ACTION_ATTRIBUTE = 'data-anchor-action'
  */
 export type AnchorAction = string
 
-// tweb `@appManagers/constants.ts:26`
-const T_ME_PREFIXES = new Set(['web', 'k', 'z', 'a'])
 const PHONE_NUMBER_REG_EXP = /^\+\d+$/
 // Первые сегменты t.me-пути, которые сами по себе являются действием (tweb wrapUrl.ts:36-48).
 const T_ME_ACTION_PATHS = new Set([
@@ -124,6 +123,22 @@ export function matchUrlProtocol(text: string) {
   }
 }
 
+/**
+ * Порт tweb `matchUrlProtocol.ts` → `normalizeUrlProtocol` (fcfe06f76).
+ *
+ * Адрес без своей схемы означает обычный https, а схема не из allow-list
+ * (у tweb — только `javascript:`) никогда не должна пережить это место как
+ * переходный адрес: оба случая получают `https://`.
+ * Адрес, который пишет разрешённую схему, возвращается нетронутым, даже если парсер
+ * его отвергает (`https://t.me:99999/x`, порт вне диапазона): префикс собрал бы
+ * `https://https://…` — ни то, что написано, ни ссылку вообще. Поэтому схема
+ * читается с текста (`matchUrlProtocolText`), а не через `new URL`.
+ */
+export function normalizeUrlProtocol(url: string) {
+  const protocol = matchUrlProtocolText(url)
+  return protocol && SAFE_SCHEMES.has(protocol) ? url : 'https://' + url
+}
+
 /** Порт tweb `setBlankToAnchor.ts`. */
 export function setBlankToAnchor(anchor: HTMLAnchorElement) {
   anchor.target = '_blank'
@@ -149,25 +164,30 @@ export function matchUrl(text: string) {
  * Про `tg://iv` и флаг `safe` — см. ниже по коду.
  */
 export function wrapUrl(url: string): { url: string, action?: AnchorAction } {
-  if (!matchUrlProtocol(url)) {
-    url = 'https://' + url
-  }
+  url = normalizeUrlProtocol(url)
 
   const out: { url: string, action?: AnchorAction } = { url }
-  let tgMeMatch, tgMatch
+  // Разбирается один раз на все ветки ниже. Адрес, который парсер отвергает (порт
+  // вне диапазона и т. п.), уходит отсюда обычной внешней ссылкой: `wrapRichText`
+  // исключения не ловит, и бросок уронил бы рендер всего сообщения.
+  let parsedUrl: URL | undefined
+  try {
+    parsedUrl = new URL(url)
+  } catch { /* останется внешней ссылкой */ }
+
+  // Хост — по РАЗОБРАННОМУ адресу, не по тексту: регэксп оригинала до fcfe06f76
+  // пускал `t.me.evil.com`, `t.me@evil.com` (см. `matchTelegramUrlHost.ts`).
+  const telegramUrlMatch = matchTelegramUrlHost(parsedUrl)
+
+  let tgMatch
   let action: AnchorAction | undefined
-  if ((tgMeMatch = url.match(/^(?:https?:\/\/)?(?:(.+?)\.)?(?:(?:web|k|z|a)\.)?t(?:elegram)?\.me(?:\/(.+))?/))) {
-    const u = new URL(url)
-    let prefix: string | undefined = tgMeMatch[1]
-    if (prefix && T_ME_PREFIXES.has(tgMeMatch[1])) {
-      prefix = undefined
-    }
-
+  if (parsedUrl && telegramUrlMatch) {
+    const { prefix } = telegramUrlMatch
     if (prefix) {
-      u.pathname = prefix + (u.pathname === '/' ? '' : u.pathname)
+      parsedUrl.pathname = prefix + (parsedUrl.pathname === '/' ? '' : parsedUrl.pathname)
     }
 
-    const fullPath = u.pathname.slice(1)
+    const fullPath = parsedUrl.pathname.slice(1)
     const path = fullPath.split('/')
 
     if (path[0] && path[0][0] === '$' && path[0].length > 1) {
@@ -185,9 +205,13 @@ export function wrapUrl(url: string): { url: string, action?: AnchorAction } {
         action = 'im'
       }
     }
-  } else if (url.match(/^(?:https?:\/\/)?telesco\.pe\/([^/?]+)\/(\d+)/)) {
+  } else if (
+    // собственное медиа-зеркало Telegram, `telesco.pe/<peer>/<id>` — точный хост, не поддомен
+    parsedUrl && matchUrlHost(parsedUrl, [TELESCOPE_LINK_HOST])?.subdomain === '' &&
+    /^\/[^/]+\/\d+/.test(parsedUrl.pathname)
+  ) {
     action = 'im'
-  } else if ((tgMatch = url.match(/tg:(?:\/\/)?(.+?)(?:\?|$)/))) {
+  } else if ((tgMatch = url.match(/^tg:(?:\/\/)?(.+?)(?:\?|$)/))) {
     action = 'tg_' + tgMatch[1].split('/')[0]
 
     // `tg://iv?url=…` — Instant View. Оригинал (`wrapUrl.ts:67-81`) на этом месте

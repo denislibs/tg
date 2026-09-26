@@ -3,6 +3,7 @@
 // клавиатурные шорткаты форматирования, выбор эффектов сообщения, TTL секретных
 // чатов, санитайзинг вставленного HTML и работа с кареткой.
 import { serialize, type ComposerEntityType } from '../../core/richtext/markdown'
+import { safeUrl } from '../../core/safeUrl'
 import type { MessageEntity } from '@layer'
 import type { EmojiEffectKind } from '../../core/effects/emojiEffects'
 
@@ -40,14 +41,6 @@ export const TTL_OPTIONS: { label: string; secs: number | null }[] = [
 export const ttlShort = (s: number): string =>
   s < 60 ? `${s}с` : s < 3600 ? `${s / 60}м` : s < 86400 ? `${s / 3600}ч` : s < 604800 ? `${s / 86400}д` : `${s / 604800}нед`
 
-// URL schemes safe to keep on a pasted link (others are dropped — see RichText).
-const SAFE_SCHEMES = new Set(['http', 'https', 'mailto', 'tel', 'tg'])
-export function isSafeUrl(u?: string): boolean {
-  if (!u) return false
-  const m = u.trim().match(/^([a-z][a-z0-9+.-]*):/i)
-  return !m || SAFE_SCHEMES.has(m[1].toLowerCase())
-}
-
 // Parse pasted HTML into our { text, entities }. Strips script/style/comments,
 // then reuses serialize() (which understands b/i/u/s/a/code/pre/blockquote +
 // inline styles). Unsafe links are dropped.
@@ -58,7 +51,7 @@ export function htmlToRich(html: string): { text: string; entities: MessageEntit
     .replace(/<!--[\s\S]*?-->/g, '')
   const doc = new DOMParser().parseFromString(cleaned, 'text/html')
   const { text, entities } = serialize(doc.body)
-  return { text, entities: entities.filter((e) => e._ !== 'messageEntityTextUrl' || isSafeUrl(e.url)) }
+  return { text, entities: entities.filter((e) => e._ !== 'messageEntityTextUrl' || !!safeUrl(e.url)) }
 }
 
 export function placeCaretEnd(el: HTMLElement) {
