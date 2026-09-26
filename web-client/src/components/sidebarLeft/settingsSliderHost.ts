@@ -3,7 +3,7 @@
  * (`components/slider.ts`, порт tweb `components/slider.ts`) над разметкой
  * `#column-left` и отдаёт наружу ровно две ручки — открыть вкладку и умереть.
  *
- * ── ШОВ С REACT (временный, снимается задачей #112) ────────────────────────
+ * ── ШОВ С REACT (временный, снимается задачей 28 плана волны 2D) ──────────
  *
  * В tweb корень настроек — ТАКАЯ ЖЕ вкладка того же слайдера
  * (`AppSettingsTab`, `solidJsTabs/tabs.ts`), поэтому «Устройства» открываются
@@ -16,11 +16,35 @@
  * разметку колонки, а корень настроек станет его вкладкой №0 — как в
  * оригинале.
  *
+ * ── Каркас экрана настроек = вкладка этого слайдера (план 2D, задача 3) ─────
+ * Каждый портированный экран — `scaffoldSolidJSTab(Eventable)` в
+ * `solidJsTabs/tabs.ts`; шапку, скроллер, `scrolled-start` и переход он берёт
+ * у `SliderSuperTab`/`SidebarSlider`, своих оболочек не заводит (пины —
+ * `settingsTabFrame.solid.test.tsx`). Открывает его React-строка родителя:
+ * `getSettingsSliderHost().openTab(AppXxxTab, …payload)`; изнутри Solid-вкладки
+ * следующий экран — `tab.slider.createTab(AppYyyTab).open(…)` (`useSuperTab()`),
+ * как у оригинала.
+ *
+ * ЛИСТЬЯ РАНЬШЕ РОДИТЕЛЕЙ. Solid-вкладка не может открыть React-экран: обратного
+ * моста нет и не заводится (спека Solid-миграции § 6). Экран переезжает во
+ * вкладку, только когда все экраны, которые он открывает, уже вкладки; до этого
+ * его открывает React-родитель через этот хост. Порядок сноса шва — задача 28:
+ * корень `AppSettingsTab` встаёт вкладкой колоночного `.sidebar-slider`
+ * (`Sidebar.tsx:350`), вкладка №0 — `.item-main` React-колонки; хост, заглушка,
+ * `destroy()`, `settingsSliderHost.module.scss` и React-запись `has-open-tabs`
+ * для настроек уходят.
+ *
+ * ПЕРВОЕ ОТКРЫТИЕ БЕЗ ЗАТЕМНЕНИЯ КОРНЯ (шов, снимается задачей 28). Уходящей
+ * вкладкой первого перехода служит прозрачная заглушка №0, а не корень: она
+ * честно уезжает на −W/4 с `brightness(80%)` (`transition.ts::slideNavigation`,
+ * tweb :23-42), но под ней неподвижный React-экран, и параллакса корня не
+ * видно. Вложенные вкладки (вкладка → вкладка) едут с параллаксом, как у tweb.
+ *
  * Из шва вытекает всё, чего нет у tweb, и больше ничего:
  *  • СВОЯ разметка `.sidebar-slider.tabs-container` вместо колоночной. В tweb
  *    `AppSidebarLeft` берёт готовую (`index.ts:142`, `sidebarEl:
  *    #column-left`); нам туда нельзя — тот `.sidebar-slider` принадлежит React
- *    (`components/Sidebar.tsx:236`) и лежит ПОД экраном настроек. Приём взят у
+ *    (`components/Sidebar.tsx:350`) и лежит ПОД экраном настроек. Приём взят у
  *    самого tweb: `sidebarLeft/settingsSliderPopup.ts:29-42` точно так же
  *    строит себе пару `element` > `div.sidebar-slider.tabs-container` и отдаёт
  *    её слайдеру как `sidebarEl`. Сам `SettingsSliderPopup` (настройки
@@ -47,7 +71,7 @@
  *  • не трогает `has-open-tabs`/`setOpenTabsLeftSidebar` (tweb :618-620,
  *    `onTabsCountChange → onSomethingOpenInsideChange`): у нас признак уже
  *    взведён React'ом на всё время жизни экрана настроек
- *    (`Sidebar.tsx:162,189` — `screen !== null`), и второй писатель того же
+ *    (`Sidebar.tsx:184`, `:228` — `screen !== null`), и второй писатель того же
  *    класса спорил бы с ним. Хук `onTabsCountChange` занят другим — слоем шва.
  *
  * ── Что хост делает СВЕРХ оригинала (#112) ─────────────────────────────────

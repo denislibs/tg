@@ -11,6 +11,7 @@ import { ROW_CHECKBOX_FIELD_CLASS, ROW_CHECKBOX_FIELD_TOGGLE_CLASS } from '../ro
 import TgSwitch from '../TgSwitch'
 import liteMode from '../../helpers/liteMode'
 import { clearPendingTransitionCleanup, NAVIGATION_TRANSITION_TIME, runNavigationTransition } from '../transition'
+import Scrollable from '../scrollable'
 import { useT } from '../../i18n'
 import s from './kit.module.scss'
 
@@ -58,7 +59,30 @@ export function SettingsScreen({
   const containerRef = useRef<HTMLDivElement>(null)
   const ownRef = useRef<HTMLDivElement>(null)
   const subRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const inSlider = useContext(InSliderContext)
+
+  // Шапка у верхнего края — без плашки и линии, с ними — только после
+  // прокрутки. Классы ведёт тот же `Scrollable`, что у вкладки слайдера
+  // (`sliderTab.ts::_constructor`, tweb `sliderTab.ts:66-67`, `:84`):
+  // `attachBorderListeners` сразу ставит `scrolled-start scrolled-end
+  // scrollable-y-bordered` и дальше переключает их по позиции, а правило
+  // `.scrollable-y-bordered:not(.scrolled-start) .sidebar-header`
+  // (`styles/tweb/_sidebar.scss:89`, tweb :95-100) горит только при прокрутке.
+  // Прежде кит ставил `scrollable-y-bordered` статически и без слушателя — и
+  // плашка с линией стояли на каждом React-экране всегда (задача 3 плана 2D).
+  // Пятый аргумент — ГОТОВЫЙ узел: `new Scrollable(el)` переложил бы детей в
+  // свой div, а этим узлом владеет React (тот же приём — `useSearchSuper.ts`).
+  // Кит — временный двойник вкладки до переезда экранов на Solid (снос —
+  // задача 31 плана), своего правила шапки не заводит.
+  useLayoutEffect(() => {
+    const tab = ownRef.current
+    const scroller = scrollRef.current
+    if (!tab || !scroller) return
+    const scrollable = new Scrollable(undefined, undefined, undefined, undefined, scroller)
+    scrollable.attachBorderListeners(tab)
+    return () => scrollable.destroy()
+  }, [])
 
   // Последний непустой саб — чтобы на закрытии узел дожил до конца обратного
   // слайда (роль AnimatePresence; tweb снимает вкладку в `SidebarSlider.closeTab`
@@ -139,11 +163,12 @@ export function SettingsScreen({
       style={{ zIndex }}
     >
       {/* Вкладка слайдера — вендорный каркас tweb (дампы 15-right-12/16):
-          `div.tabs-tab.sidebar-slider-item.scrollable-y-bordered` >
+          `div.tabs-tab.sidebar-slider-item` >
           `div.sidebar-header` (кнопка `sidebar-close-button` + `__title`) +
           `div.sidebar-content > div.scrollable.scrollable-y`.
-          Класс `active` вешает не React, а слайдер — его здесь нет. */}
-      <div ref={ownRef} className="tabs-tab sidebar-slider-item scrollable-y-bordered">
+          Класс `active` вешает не React, а слайдер — его здесь нет;
+          `scrollable-y-bordered`/`scrolled-*` — `Scrollable` (эффект выше). */}
+      <div ref={ownRef} className="tabs-tab sidebar-slider-item">
         <div className="sidebar-header">
           <button type="button" className="btn-icon sidebar-close-button" onClick={onBack} aria-label={t('Common.Back')}>
             <TgIcon name="back" />
@@ -152,11 +177,14 @@ export function SettingsScreen({
           {headerRight}
         </div>
         <div className="sidebar-content">
-          <div className="scrollable scrollable-y">{children}</div>
+          <div ref={scrollRef} className="scrollable scrollable-y">{children}</div>
         </div>
       </div>
+      {/* Обёртка саба — наш узел (у tweb вкладка-сосед и есть экран): своего
+          скроллера у неё нет, поэтому и `scrollable-y-bordered` нет — иначе
+          правило плашки по предку горело бы на шапке вложенного экрана. */}
       {shownSub != null && (
-        <div ref={subRef} className="tabs-tab sidebar-slider-item scrollable-y-bordered">
+        <div ref={subRef} className="tabs-tab sidebar-slider-item">
           <InSliderContext.Provider value>{shownSub}</InSliderContext.Provider>
         </div>
       )}

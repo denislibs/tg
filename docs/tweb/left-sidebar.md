@@ -827,7 +827,7 @@ DOM-паритет первого таба выдержан сознательн
 | `components/slider.ts` | `src/components/slider.ts` | `SidebarSlider` целиком: история вкладок, `createTab`/`selectTab`/`closeTab`/`closeAllTabs`/`sliceTabsUntilTab`, `onTabsCountChange`, `canHideFirst` |
 | `components/sliderTab.ts` | `src/components/sliderTab.ts` | `SliderSuperTab` + `SliderSuperTabEventable` (шапка, `Scrollable`, порядок разрушения, `managers`) |
 | `components/solidJsTabs/*` | `src/components/solidJsTabs/*` | `scaffoldSolidJSTab(Eventable)`, `useSuperTab`, `PromiseCollector` |
-| `components/solidJsTabs/tabs.ts` | `src/components/solidJsTabs/tabs.ts` | реестр объявлений вкладок; пока ОДНО — `AppActiveSessionsTab` |
+| `components/solidJsTabs/tabs.ts` | `src/components/solidJsTabs/tabs.ts` | реестр объявлений вкладок; пока два — `AppActiveSessionsTab`, `AppLanguageTab` |
 | `components/sidebarLeft/tabs/activeSessions.solid.tsx` | `src/components/sidebarLeft/tabs/activeSessions.tsx` | первая настоящая вкладка, дословный порт |
 | `components/sidebarLeft/settingsSliderHost.ts` | `sidebarLeft/index.ts:140-148` + `settingsSliderPopup.ts:13-51` | хост: один слайдер на колонку, `openTab`/`destroy` |
 
@@ -869,7 +869,7 @@ privacy-исключения, passcode, general, editChat, editContact). Стр�
 `SettingsView`:
 
 - хост строит СВОЮ разметку `.sidebar-slider.tabs-container` (приём взят у `settingsSliderPopup.ts`),
-  а не берёт колоночную: та принадлежит React (`Sidebar.tsx:236`) и лежит ПОД экраном настроек;
+  а не берёт колоночную: та принадлежит React (`Sidebar.tsx:350`) и лежит ПОД экраном настроек;
 - первым ребёнком слайдера лежит пустая заглушка-`.tabs-tab` — сосед, от которого едет
   `slideNavigation`; в оригинале этим соседом служит сама вкладка настроек;
 - слой хоста позиционируется над React-экраном (`settingsSliderHost.module.scss`, `z-index: 100`),
@@ -886,6 +886,35 @@ privacy-исключения, passcode, general, editChat, editContact). Стр�
 `openActiveSessions` (`sidebarLeft/newAuthorization.tsx:116-121`): список сессий забирает
 открывающий и отдаёт вкладке готовым.
 
+### Каркас экрана = вкладка (план 2D, задача 3)
+
+Все экраны волны 2D встают в каркас `SliderSuperTab` + `scaffoldSolidJSTab` + хост; пины —
+`components/sidebarLeft/settingsTabFrame.solid.test.tsx` (настоящая вкладка «Язык» через хост,
+настоящий `transitionend`):
+
+- **Шапка.** Вкладка при открытии несёт `scrolled-start scrolled-end scrollable-y-bordered`
+  (`sliderTab.ts::_constructor` → `Scrollable.attachBorderListeners`, tweb `sliderTab.ts:84`,
+  `scrollable.ts:456-465`); у верха шапка прозрачна (`_sidebar.scss:4-5`), прокрутка снимает
+  `scrolled-start` → фон `--surface-color` и линия (`_sidebar.scss:89-95`, tweb :95-100).
+  Фон вкладки — `.sidebar-slider-item { background-color: var(--background-color) }`
+  (`_sidebar.scss:123-127`, tweb :130-132); прежнее перекрытие хоста в `--surface-color`
+  снято — из-за него шапка у верха выходила цветом плашки.
+- **Переход.** `TransitionSlider({type: 'navigation'})`: контейнер `.animating`
+  (`.backwards` назад), приходящая — из `translate3d(W,0,0)`, уходящая — в `-W/4` с
+  `brightness(80%)`; `.animating` снимает `transitionend` ПРИХОДЯЩЕЙ (к концу `selectTab`
+  `from = to`, tweb `transition.ts:372`, `:212`), `active` у уходящей — её собственный
+  `transitionend` или предохранитель `transitionTime + 100`.
+- **Шов.** Уходящей вкладкой первого перехода служит прозрачная заглушка №0 — параллакса и
+  затемнения React-корня при первом открытии нет (снимается задачей 28). React-экраны до
+  переезда живут как раньше (`SettingsSubScreen`/`sub`, кит): их въезд — свой кейфрейм,
+  выход мгновенный (`SettingsView.tsx:337`); это приходит с переездом каждого экрана.
+- **Кит.** `settings/kit.tsx::SettingsScreen` ведёт `scrolled-start` тем же `Scrollable`
+  (`attachBorderListeners` на свой `div.scrollable`), а не ставит `scrollable-y-bordered`
+  статически; обёртка саба этого класса не несёт. Пин — `settings/kit.test.tsx`.
+- **Не портировано из HEAD-каркаса:** `SliderSuperTab.shown`/`resetShown` (34f417d12 — нужен
+  поиску по настройкам и `internalLinkProcessor`, О-26 плана 2D) и
+  `updateScrollRegionFocusable` (472e3e76b, a11y-волна).
+
 ### Что НЕ портировано
 
 - **`AppSettingsTab` и остальные ~60 вкладок** части 2 — пока React-экраны
@@ -898,7 +927,7 @@ privacy-исключения, passcode, general, editChat, editContact). Стр�
   `AppActiveSessionsTab` не входит в него и в оригинале.
 - **`hasSomethingOpenInside`/`onSomethingOpenInsideChange`** (`index.ts:490-600`): классы
   `has-open-tabs`/`has-real-tabs` и «всплытие» свёрнутой колонки. У нас признак ведёт React
-  (`Sidebar.tsx:162,189`) по своему состоянию экранов, слайдер в него не пишет — иначе
+  (`Sidebar.tsx:184`, `:228`) по своему состоянию экранов, слайдер в него не пишет — иначе
   писателей стало бы два.
 - **`removeByType`-ручка** (`sidebarRight/index.ts:95,128`): снять все слои навигации слайдера
   разом, снаружи и без спроса у вкладок. Потребителя нет: хост закрывает вкладки по одной.
