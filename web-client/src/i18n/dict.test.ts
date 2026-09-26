@@ -182,8 +182,14 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Задача 7 глобального поиска: русскому добавлен `Separator.ShowLess` — кнопка
 // «Показать меньше» группы поиска (`components/searchGroup.solid.tsx`, tweb
 // `searchGroup.tsx:73`). `keys` 1320 → 1321.
+//
+// Сдвиг набора задачей 10 глобального поиска: русскому добавлены семь ключей
+// 1:1 с tweb lang.ts:4296-4303 — пункты `ChatTypeMenu` (`AllChats`, `UsersOnly`,
+// `GroupsOnly`, `ChannelsOnly`) и тексты `EmptySearchPlaceholder`
+// (`NoResultsTitle`, `NoResultsSubtitle`, `SearchInAllChats`). Вместе с задачей 7 `keys`
+// 1320 → 1328, множественных форм не прибавилось; остальным четырём — ничего.
 const COMPOSITION = {
-  ru: { keys: 1321, plural: 33 },
+  ru: { keys: 1328, plural: 33 },
   uk: { keys: 682, plural: 24 },
   es: { keys: 681, plural: 24 },
   de: { keys: 681, plural: 24 },
@@ -264,10 +270,11 @@ const COMPOSITION = {
 // `ProfileStories`, шесть ключей меню участника и ранга и два ключа витрины
 // подарков (разбор — у `COMPOSITION` выше). У остальных четырёх словарей
 // набор не менялся.
-// Сдвиг набора задачей 7 глобального поиска: русскому добавлен
-// `Separator.ShowLess` (разбор — у `COMPOSITION` выше).
+// Сдвиг набора задачами 7 и 10 глобального поиска: русскому добавлены
+// `Separator.ShowLess` и семь ключей `ChatTypeMenu`/`EmptySearchPlaceholder`
+// (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: 'a29ab74f',
+  ru: '4e2971a0',
   uk: 'e1335ac1',
   es: 'a6b1aad3',
   de: 'a6b1aad3',

@@ -25,7 +25,8 @@
 //     закомментированного черновика (:171-174);
 //   • `inner` (`has-inner` + `Icon('next')`, :207-211) и поля-проводники
 //     `id` / `onOpen` / `onClose`: сам этот файл их не читает — их читают
-//     `buttonMenuToggle` / `createSubmenuTrigger`, которых в проекте нет.
+//     потребители меню и `createSubmenuTrigger`, которого в проекте нет
+//     (`ChatTypeMenu` держит `id` пересечением типа у себя).
 //     ChatContextMenu подменю делает через `createSubmenuTrigger`, а не `inner`.
 import flatten from '@helpers/array/flatten'
 import contextMenuController from '@helpers/contextMenuController'

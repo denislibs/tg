@@ -245,7 +245,8 @@ GroupsOnly/ChannelsOnly` (`:21-26`); пункты `ButtonMenu` с галочко
 | `components/searchGroup.solid.tsx` | `createSearchGroup` — порт 1:1 (расхождения в шапке: `managers`, `name: LangPackKey \| false`, мемо в корне) | `searchGroup.tsx` | задача 7 — сделано; потребители — класс (задача 8) и владелец поиска (задача 12) |
 | `components/wrappers/senderToPeer.ts` | `wrapSenderToPeer` (синхронный) | `senderToPeer.ts` | используется как есть |
 | `components/section.solid.tsx` | Solid-`Section` с `nameRight`/`nameRef`/`innerClass`/`contentProps`/`ref` | `section.tsx` | база для `createSearchGroup` |
-| `components/lottieAnimation.solid.tsx`, `components/buttonMenu.ts`, `components/popups/popupPeer.ts` | Solid-lottie, `ButtonMenu`/`ButtonMenuToggle`, `PopupPeer` | — | база для `EmptySearchPlaceholder`, `ChatTypeMenu`, `confirmationPopup` |
+| `components/lottieAnimation.solid.tsx`, `components/buttonMenu.ts`, `components/buttonMenuToggle.ts`, `components/popups/popupPeer.ts` | Solid-lottie, `ButtonMenu`, `ButtonMenuToggle` (порт файлом, задача 10), `PopupPeer` | — | база для `EmptySearchPlaceholder`, `ChatTypeMenu`, `confirmationPopup` |
+| `components/chatTypeMenu.solid.tsx`, `components/emptySearchPlaceholder.solid.tsx` (+`*.module.scss` 1:1), `shared/solid/defineSolidElement.solid.tsx` | `<chat-type-menu>`/`<empty-search-placeholder>` — custom elements, как у оригинала: изменяемые `props` (`new ChatTypeMenu()`, `feedProps`, `props.selected`), корень гаснет на снятии узла | `chatTypeMenu/index.tsx`, `emptySearchPlaceholder/index.tsx`, `lib/solidjs/defineSolidElement.tsx` | потребитель — владелец поиска (задача 12) |
 | `shared/ui/PeerSelector/PeerSelector.tsx:100` | React-`renderEntity` (чип `.selector-user`) | `selectorSearch.ts:319-400` | чипу поиска нужен ванильный `renderEntity` |
 | `core/navigation/appNavigationController.ts` | порт контроллера; тип `'global-search'` объявлен (`:84`) | `appNavigationController.ts` | используется как есть |
 | `core/state/state.ts:22`, `core/state/migrateRecentSearch.ts` | `recentSearch: string[]` в `AppState` (ключ чата — строка, не число: разница модели) | `config/state.ts:209` | используется как есть; писатель — `pushRecentSearch` в менеджере |
@@ -291,7 +292,12 @@ GroupsOnly/ChannelsOnly` (`:21-26`); пункты `ButtonMenu` с галочко
    `search-group-*`, «показать ещё», `people`-ленты; `recent` есть, но своим кодом
    (`pushRecent` `:52-55`, «Clear» через React `ConfirmDialog`).
 5. **Чипов нет**: ни пира, ни даты; `fillTipDates` не портирован (`helpers/date.ts`
-   — только форматирование); `ChatTypeMenu` нет; `EmptySearchPlaceholder` нет.
+   — только форматирование). `ChatTypeMenu` и `EmptySearchPlaceholder` портированы
+   компонентами (задача 10: `components/chatTypeMenu.solid.tsx`,
+   `components/emptySearchPlaceholder.solid.tsx` — custom elements поверх
+   `shared/solid/defineSolidElement.solid.tsx`, меню — на портированном
+   `components/buttonMenuToggle.ts`), но в выдачу не подключены: их вешает
+   владелец поиска (задача 12).
 6. **Пагинация глобальной выдачи — числовой `OFFSET`** (`useGlobalSearch.ts:52`,
    `messagesrepo.go:382`): та же математическая ошибка, что была у медиа профиля
    (задача 1 плана shared media) — вставка сверху сдвигает окно. Курсор оригинала

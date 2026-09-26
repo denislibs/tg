@@ -1,0 +1,23 @@
+// Порт tweb `src/components/chatTypeMenu/styles.module.scss` (15 строк) — дословно.
+// У оригинала это тоже CSS-модуль рядом с компонентом, а не глобальный партиал.
+//
+// `:global(.btn-menu)`/`:global(.btn-menu-item)` у tweb мёртвые: `ButtonMenuToggle`
+// без `appendTo` монтирует меню в overlay-root (`buttonMenuToggle.ts:153-155`),
+// а не внутрь триггера, — потомком `.ButtonMenu` меню не бывает. Перенесены
+// как есть: порт стилей 1:1, судьба правила — у оригинала.
+
+.ButtonMenu {
+  padding: 2px 4px;
+  border-radius: 4px;
+
+  :global(.btn-menu) {
+    min-width: auto;
+  }
+  :global(.btn-menu-item) {
+    padding-right: 24px;
+  }
+}
+
+.hidden {
+  display: none;
+}
