@@ -3,7 +3,7 @@
 // затем «Все чаты» и папки (иконка по типу или эмодзи из названия + имя +
 // badge непрочитанных), снизу кнопка настроек папок (equalizer). Показывается
 // при «Расположение папок → Слева от чатов» (settings.tabsInSidebar).
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import classNames from '../../shared/lib/classNames'
 import TgIcon from '../TgIcon'
@@ -14,6 +14,12 @@ import { ALL_FOLDER_ID } from '../../core/folderIds'
 import type { Folder } from '../../core/managers/foldersManager'
 import { extractFolderEmoji } from './labels'
 import { onActiveGradientRendererChange } from '../../core/chat/activeGradient'
+import { useFoldersStore } from '../../stores/foldersStore'
+import { useChatsStore } from '../../stores/chatsStore'
+import { useNotifyStore } from '../../stores/notifyStore'
+import { folderUnreadCounts } from '../../core/folders/folderUnreadCounts'
+import { cachedChat, peerMirrorVersion, subscribePeerMirror } from '../../core/peerCache'
+import useFoldersProjection from '../../stores/folders.solid'
 import s from './FoldersSidebar.module.scss'
 
 // tweb getIconForFilter: один включённый тип без точечных чатов — иконка типа,
@@ -71,24 +77,37 @@ export interface MainMenuHandlers {
   onToggleMode?: (coords?: { x: number; y: number }) => void
 }
 
+/**
+ * Клик по папке в колонке — tweb `foldersSidebarContent/index.tsx:64-73`:
+ * индекс папки в `folderItems` и тот же `onClick()` стора, что у полосы
+ * вкладок, — `selectTab` владельца папок (`lib/appDialogsManager.ts`,
+ * `setOnClick` `:812`). Закрытие открытого в колонке делает сам владелец
+ * (`closeEverythingInsideNaturally` внутри `selectFolderByIndex`), поэтому
+ * отдельного `closeEverythingInside()` после клика, как у tweb, здесь нет.
+ * Проекцию `folderItems` гидрирует владелец (`start()`): колонка живёт внутри
+ * `Sidebar`, а владелец — ровно столько же.
+ */
+function selectFolder(folderId: number) {
+  const { folderItems, onClick } = useFoldersProjection()
+  const index = folderItems.findIndex(({ filter }) => filter.id === folderId)
+  onClick()?.(index)
+}
+
 export default function FoldersSidebar({
   folders,
-  selectedId,
-  counts,
-  onSelect,
   onContextMenu,
   onOpenFolderSettings,
   menu,
 }: {
   folders: Folder[]
-  selectedId: number
-  counts: Record<number, number>
-  onSelect: (id: number) => void
   onContextMenu: (id: number, e: React.MouseEvent) => void
   onOpenFolderSettings: () => void
   menu: MainMenuHandlers
 }) {
   const t = useT()
+  // Выбранная папка — факт `foldersStore.selectedId`, его пишет только владелец.
+  const selectedId = useFoldersStore((st) => st.selectedId)
+  const counts = useFolderUnreadCounts(folders)
   const [menuOpen, setMenuOpen] = useState(false)
   const backgroundCanvasRef = useRef<HTMLCanvasElement>(null)
   const [hasGradient, setHasGradient] = useState(false)
@@ -145,7 +164,7 @@ export default function FoldersSidebar({
           name={t('FilterAllChats')}
           badge={counts[ALL_FOLDER_ID]}
           selected={selectedId === ALL_FOLDER_ID}
-          onClick={() => onSelect(ALL_FOLDER_ID)}
+          onClick={() => selectFolder(ALL_FOLDER_ID)}
           onContextMenu={(e) => onContextMenu(ALL_FOLDER_ID, e)}
         />
         {folders.map((f) => {
@@ -157,7 +176,7 @@ export default function FoldersSidebar({
               name={name}
               badge={counts[f.id]}
               selected={selectedId === f.id}
-              onClick={() => onSelect(f.id)}
+              onClick={() => selectFolder(f.id)}
               onContextMenu={(e) => onContextMenu(f.id, e)}
             />
           )
@@ -198,4 +217,26 @@ export default function FoldersSidebar({
     </div>,
     document.getElementById('main-columns') ?? document.body,
   )
+}
+
+/**
+ * Badge папки — правило одно на оба ряда: `core/folders/folderUnreadCounts.ts`
+ * (порт tweb `stores/folders.ts:19-30`), им же считает Solid-проекция
+ * `stores/folders.solid.ts` для ряда владельца. Карточка чата решает «канал или
+ * группа» для правил папки и мьюта типа — отсюда подписка на зеркало пиров.
+ * Колонка React до отложенной задачи 17, поэтому читает зеркала своими
+ * подписками, а не Solid-стор.
+ */
+function useFolderUnreadCounts(folders: Folder[]): Record<number, number> {
+  const dialogs = useChatsStore((s) => s.dialogs)
+  const contactIds = useFoldersStore((s) => s.contactIds)
+  const notifySettings = useNotifyStore((s) => s.settings)
+  const peersVersion = useSyncExternalStore(subscribePeerMirror, peerMirrorVersion)
+  return useMemo(() => {
+    const counts: Record<number, number> = {}
+    const all = folderUnreadCounts(dialogs, folders, contactIds, notifySettings, cachedChat)
+    for (const id in all) counts[id] = all[id].count
+    return counts
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- peersVersion: движение зеркала пиров, читаемого через cachedChat
+  }, [dialogs, folders, contactIds, notifySettings, peersVersion])
 }

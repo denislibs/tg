@@ -14,7 +14,7 @@
  *   muted = !unreadUnmutedCount && !!unreadCount && !unreadMentionsCount (`:28`)
  *
  * Одна чистая функция на оба ряда — горизонтальный (`stores/folders.solid.ts`)
- * и вертикальную колонку (пока через `core/hooks/useSidebarFolders.tsx`);
+ * и вертикальную колонку (React-`components/folders/FoldersSidebar.tsx`);
  * второго вывода того же счётчика быть не должно.
  *
  * Расхождения с оригиналом:

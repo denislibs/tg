@@ -6,12 +6,15 @@
 // (`docs/tweb/folders-tabs.md` § 1.2): `.connection-status-bottom` →
 // `.chatlist-overlay` (плашка, градиент, ряд) + `#folders-container` →
 // `.folders-scrollable[data-filter-id]` → `.chatlist-top` + `.chatlist-bottom`.
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import '@/test/lang'
 import {
-  FakeResizeObserver, filterIds, installFrames, mountOwner, putFolders, raw, resetStores,
+  FakeResizeObserver, filterIds, frameEls, frameOf, installFrames, mountOwner, putFolders, raw, resetStores,
   settle, uninstallFrames, type Mounted,
 } from './appDialogsManager.testkit'
+import styles from './appDialogsManager.module.scss'
 import { resetPeerMirror } from '@core/peerCache'
 import useFolders from '@stores/folders.solid'
 
@@ -77,9 +80,44 @@ describe('appDialogsManager: разметка после start()', () => {
     for(const cls of ['scrollable', 'scrollable-y', 'tabs-tab', 'chatlist-parts', 'folders-scrollable', 'scrollable-y-bordered', 'active', 'scrolled-start']) {
       expect(frame.classList.contains(cls)).toBe(true)
     }
-    expect(Array.from(frame.children).filter((el) => !el.classList.contains('scrollable-thumb-container')).map((el) => el.className))
+    expect(Array.from(frame.children).filter((el) => !el.classList.contains('scrollable-thumb-container')).map((el) => el.classList[0]))
       .toEqual(['chatlist-top', 'chatlist-bottom'])
     expect(chatsContainer.classList.contains('has-filters')).toBe(false)
+  })
+
+  // Расхождение 19 шапки владельца: клиренс под compose-FAB и тонкий скроллбар —
+  // наши классы на ЕГО узлах; при свёрнутой колонке (открыт форум) клиренса нет.
+  it('наши классы: скроллбар на кадре, клиренс под FAB на .chatlist-bottom, setCollapsed — и на новых кадрах', async () => {
+    mounted = mountOwner()
+    await settle()
+    const { folders, manager } = mounted
+    const frame = folders.firstElementChild as HTMLElement
+
+    expect(frame.classList.contains(styles.scroll)).toBe(true)
+    expect(frame.querySelector('.chatlist-bottom')!.classList.contains(styles.bottom)).toBe(true)
+
+    manager.setCollapsed(true)
+    expect(frame.classList.contains(styles.collapsed)).toBe(true)
+
+    // Мутация: не переносить флаг на новый кадр в `addFilter` — у папки,
+    // пришедшей при открытом форуме, клиренс останется.
+    putFolders(raw(3, 1, 'Работа'))
+    await settle()
+    expect(frameOf(folders, 3).classList.contains(styles.collapsed)).toBe(true)
+
+    manager.setCollapsed(false)
+    expect(frameEls(folders).some((el) => el.classList.contains(styles.collapsed))).toBe(false)
+  })
+
+  // Геометрию happy-dom не считает, поэтому это скан стиля, а не поведение.
+  // Замер на стенде (задача 6): «Все чаты» прокручены на 272px → «Личные» →
+  // обратно — scrollTop 84 с клиренсом и 0 с этим правилом. Браузер возвращает
+  // скроллеру прежнюю позицию, зажатую содержимым, а у очищенной папки (`ul`
+  // пуст) прокручивать должно быть нечего — как у tweb, где `.chatlist-bottom`
+  // высоты не имеет. Мутация: снять правило — тест красный.
+  it('клиренс под FAB гаснет, пока список папки очищен (пустой ul) — иначе папка вернётся не с начала', () => {
+    const scss = readFileSync(resolve(__dirname, 'appDialogsManager.module.scss'), 'utf8')
+    expect(scss).toMatch(/:global\(\.chatlist-top\):has\(> ul:empty\) \+ \.bottom \{\s*height: 0;/)
   })
 
   it('три папки — четыре кадра в порядке localId, ряд показан, у колонки has-filters (:1298-1322)', async () => {

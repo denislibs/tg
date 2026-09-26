@@ -1,0 +1,51 @@
+// Наши правила на узлах владельца папок (`lib/appDialogsManager.ts`, расхождение
+// 19 шапки): скроллер папки `.folders-scrollable` и `.chatlist-bottom` за её
+// списком. Геометрия и скроллбар — на классах tweb (`.scrollable.scrollable-y` из
+// _scrollable.scss, `.folders-scrollable` из _leftSidebar.scss); здесь только то,
+// чего в партиалах нет. Классы ставит владелец — узлы его, React их не рисует.
+//
+// Скроллбар: tweb включает его классом на <html> (`overlay-scroll`/`custom-scroll`,
+// core/dom/rootClasses.ts — не портировано), поэтому тонкий оверлейный ползунок
+// пока задаём здесь.
+.scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--secondary-text-color) transparent;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 3px;
+    transition: background 0.2s;
+  }
+  &:hover::-webkit-scrollbar-thumb {
+    background: var(--secondary-text-color);
+  }
+}
+
+// Клиренс под compose-FAB — на `.chatlist-bottom`, пустом узле за списком
+// (tweb `addFilter`: `scrollable.append(top, bottom)`). Своей высоты у него в
+// tweb нет; отступ отдан ему, а не паддингу самого скроллера, потому что
+// нижний padding контейнера прокрутки в scrollable-область попадает не везде.
+.bottom {
+  height: 84px;
+}
+
+// Пока список папки очищен (`clear()` владельца: `ul` без строк), клиренса нет.
+// У tweb `.chatlist-bottom` высоты не имеет, и очищенная папка не прокручивается
+// вовсе — на этом держится «папка показывается с начала»: у неактивной папки
+// `.tabs-tab { display: none }`, а браузер при возврате бокса восстанавливает
+// прежнюю позицию скроллера, зажатую содержимым. С нашими 84px зажим оставлял бы
+// её на 84px (замер на стенде, задача 6 плана папок).
+:global(.chatlist-top):has(> ul:empty) + .bottom {
+  height: 0;
+}
+
+// Свёрнутый список — узкая колонка аватаров (tweb --sidebar-collapsed-width 80px)
+// рядом с открытой панелью форум-тем (`AppDialogsManager.setCollapsed`). Ряды
+// становятся avatar-only (.rowCollapsed), видима только левая 80px-полоса —
+// остальное перекрыто панелью тем; FAB-клиренс не нужен.
+.scroll.collapsed .bottom {
+  height: 0;
+}

@@ -51,28 +51,20 @@ describe('foldersStore', () => {
     expect(stateKey).not.toHaveBeenCalledWith('selectedId', expect.anything())
   })
 
-  it('удаление папки сбрасывает выбор на «Все чаты»', () => {
-    useAppStateStore.setState({ folders: [folder] })
+  // Писатель выбора один — владелец папок (`lib/appDialogsManager.ts`): удаление
+  // активной папки он видит подпиской на состав и сам переключает на «Все
+  // чаты» (пины — `lib/appDialogsManager.filters.test.ts`, «удалённая АКТИВНАЯ
+  // папка»). Стор своего сброса не держит — иначе писателей `selectedId` два.
+  it('удаление папки (локально и пушем) выбор в сторе не трогает — его сбрасывает владелец папок', () => {
+    useAppStateStore.setState({ folders: [folder, { ...folder, id: 9, title: 'Другая', pos: 1 }] })
     useFoldersStore.getState().select(7)
 
     useFoldersStore.getState().remove(7)
+    expect(useFoldersStore.getState().selectedId).toBe(7)
 
+    applyFolderUpdate({ folder_id: 9, deleted: true })
     expect(useAppStateStore.getState().folders).toEqual([])
-    expect(useFoldersStore.getState().selectedId).toBe(ALL_FOLDER_ID)
-  })
-
-  // Тот же инвариант на ВТОРОМ пути удаления — пуш с другого устройства. Пока он
-  // его не соблюдал, показанной оставалась папка, которой уже нет в списке табов:
-  // список чатов рисует кадр папки вне `folderOrder` (ChatList/TabSlide), и до
-  // клика по табу пользователь видел бы чужой/пустой список.
-  it('пуш folder_update {deleted} по ВЫБРАННОЙ папке тоже сбрасывает выбор', () => {
-    useAppStateStore.setState({ folders: [folder] })
-    useFoldersStore.getState().select(7)
-
-    applyFolderUpdate({ folder_id: 7, deleted: true })
-
-    expect(useAppStateStore.getState().folders).toEqual([])
-    expect(useFoldersStore.getState().selectedId).toBe(ALL_FOLDER_ID)
+    expect(useFoldersStore.getState().selectedId).toBe(7)
   })
 
   it('пуш об удалении ДРУГОЙ папки выбор не трогает', () => {

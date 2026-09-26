@@ -18,7 +18,11 @@
 //
 // Список папки (`ul` и строки) рисует НЕ владелец: роль tweb `AutonomousDialogList`
 // (`xd`) делят TS-объект `FolderList` (скроллер и узлы — ниже) и хэндл списка,
-// который регистрирует в нём хозяин `ul` (React-`ChatListFolder`, задача 6).
+// который регистрирует в нём хозяин `ul` — React-`ChatListFolder`
+// (`components/ChatList.tsx`): он порталом кладёт свой `ul` в `.chatlist-top`.
+// В колонку владелец встроен `components/Sidebar.tsx` (задача 6 плана):
+// `.connection-status-bottom` — хост `start()`, `#chatlist-container` — второй
+// аргумент.
 //
 // ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
 //
@@ -107,6 +111,14 @@
 //     `destroy()` может прийти, пока ждём `closeEverythingInsideNaturally` (в
 //     том числе прямо на старте — первый `onClick(0, false)` асинхронный), и
 //     продолжение полезло бы в снятые `FolderList`.
+// 19. Скроллеру папки и `.chatlist-bottom` владелец ставит ещё и наши классы
+//     (`appDialogsManager.module.scss`): тонкий скроллбар (у tweb его включает
+//     непортированный класс на `<html>`) и клиренс под compose-FAB (у tweb
+//     `.chatlist-bottom` высоты не имеет; пока `ul` папки пуст, клиренс гаснет —
+//     иначе браузер вернул бы скроллеру очищенной папки прежнюю позицию, и папка
+//     показывалась бы не с начала). `setCollapsed` — наш: свёрнутая в
+//     колонку аватаров панель при открытом форуме гасит клиренс; у tweb
+//     свёрнутый чатлист устроен иначе (`left-sidebar.md` § 8.2).
 import { createEffect, createRoot, on, untrack } from 'solid-js'
 import Scrollable from '@components/scrollable'
 import { horizontalMenu } from '@components/horizontalMenu'
@@ -127,6 +139,7 @@ import clamp from '@helpers/number/clamp'
 import pause from '@helpers/schedulers/pause'
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import { IS_MOBILE_SAFARI } from '@environment/userAgent'
+import styles from './appDialogsManager.module.scss'
 
 /**
  * Хэндл списка одной папки — то, что у tweb умеет `AutonomousDialogList`
@@ -250,6 +263,8 @@ export class AppDialogsManager {
 
   private rendered: readonly FolderList[] = []
   private renderedListeners = new Set<() => void>()
+  /** расхождение 19; переживает `destroy()` — колонка задаёт его своим состоянием */
+  private collapsed = false
 
   /** узел для плашки-подсказки (`:1079-1082`) — в него рисует React-`PendingSuggestion` */
   public get suggestionContainer() {
@@ -489,6 +504,12 @@ export class AppDialogsManager {
     // `createFolderContextMenu` (`:814-821`) — расхождение 11, задача 7.
   }
 
+  /** Расхождение 19: свёрнутая колонка (открыт форум) — без клиренса под FAB. */
+  public setCollapsed(collapsed: boolean) {
+    this.collapsed = collapsed
+    this.xds.forEach((xd) => xd.container.classList.toggle(styles.collapsed, collapsed))
+  }
+
   public setFilterId(filterId: number) {
     this.filterId = filterId
   }
@@ -575,8 +596,10 @@ export class AppDialogsManager {
     }
 
     const { scrollable, top, bottom } = this.l(filter)
-    scrollable.container.classList.add('tabs-tab', 'chatlist-parts', 'folders-scrollable')
+    scrollable.container.classList.add('tabs-tab', 'chatlist-parts', 'folders-scrollable', styles.scroll)
+    scrollable.container.classList.toggle(styles.collapsed, this.collapsed) // расхождение 19
     scrollable.attachBorderListeners()
+    bottom.classList.add(styles.bottom)
 
     scrollable.append(top, bottom)
 

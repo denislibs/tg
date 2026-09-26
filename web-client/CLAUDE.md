@@ -501,8 +501,8 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
   (императивная лента, порт tweb `ChatBubbles`), `components/sliderTab.ts`
   (скроллер вкладки слайдера, порт `SliderSuperTab`), `lib/appDialogsManager.ts::FolderList`
   (скроллер `.folders-scrollable` одной папки чатлиста, порт `generateScrollable`
-  tweb `autonomousDialogList/dialogs.ts:207-212`; в колонку владелец въезжает
-  задачей 6 плана папок, до неё список чатов рисует React без `Scrollable`) и
+  tweb `autonomousDialogList/dialogs.ts:207-212`; владелец встроен в колонку
+  `Sidebar.tsx`, React-список папки рисует в него только свой `ul`) и
   `core/hooks/useSearchSuper.ts` (скроллер панели профиля поверх её `bodyRef`
   — та же роль `SliderSuperTab` для React-панели; общий для шапки панели,
   класса `AppSearchSuper` и `PeerProfileAvatars`, роняет его только хук —
@@ -517,8 +517,8 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
   `MessageInput.tsx` несёт
   только классы `scrollable scrollable-y no-scrollbar` в разметке (комментарий
   над JSX: «в tweb приходят от `new Scrollable(...)`») — визуальный слепок
-  чужого инстанса, не свой; как и ещё ~14 других `.scrollable`-элементов
-  приложения (`ChatList`, `EmojiDropdown`/`StickersTab`/`GifsTab`,
+  чужого инстанса, не свой; как и ещё ~13 других `.scrollable`-элементов
+  приложения (`EmojiDropdown`/`StickersTab`/`GifsTab`,
   `MentionsHelper`, `TopbarSearch`, `StoriesRow`, …), это часть TODO в
   `core/dom/rootClasses.ts` — «Scrollable для остальных скроллеров», отдельная
   задача.
@@ -563,9 +563,11 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
 | `components/virtual/useShouldAnimate.ts` (`createScrollShiftCompensator`) | Компенсация `scrollTop` вместо анимации, когда ВСЕ видимые строки виртуального списка сдвинулись на одинаковое число позиций | Порт побочного эффекта `verticalVirtualList.tsx:49-53`; список чатов не ходит через Scrollable/ScrollSaver — конкурировать за корректирующую запись не с кем |
 | `components/verticalVirtualList.solid.tsx` (`onScrollShift`) | Тот же компенсатор в исходной Solid-форме tweb — ядро виртуального списка для Solid-вкладки «Чаты» правой колонки | Порт файлом 1:1 (`verticalVirtualList.tsx:49-53`); Solid-файл не может импортировать React-соседа `createScrollShiftCompensator` (граница рантаймов) |
 
-Сброс списка чатов на верх при смене папки (`useSidebarFolders.tsx`) из этого
-списка ушёл вместе со строкой: у каждой папки теперь свой `.folders-scrollable`
-со своим `scrollTop` (как в tweb), и позиция не сбрасывается, а сохраняется.
+Сброс списка чатов на верх при смене папки из этого списка ушёл вместе со
+строкой: у каждой папки свой `.folders-scrollable` (узел владельца
+`lib/appDialogsManager.ts`), и позицию никто не пишет — как в tweb, переключение
+папки чистит список (`clear()` цели и неактивных), а скроллер неактивной папки
+скрыт `display: none`, что обнуляет его позицию силами браузера.
 
 **Вне скана `scrollWriters.test.ts` намеренно**: `scrollTo(...)`/`scrollIntoView(...)`
 (по приложению — 12/8 вызовов, восьмой `scrollIntoView` — вендорный

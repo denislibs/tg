@@ -382,11 +382,12 @@ export default TransitionSlider
 // первого снимет `animating`/`backwards` с контейнера посреди второго.
 //
 // ДОЛГ-3. Императивный вкладочник в репозитории теперь один, но React-слой
-// держит СВОИ переписи того же оригинала: `shared/ui/Tabs/TabSlide.tsx` (177) —
-// ветка `slideTabs`, потребители `ChatList.tsx`, `SearchView.tsx`
-// (шаред-медиа профиля с задачи 13 плана `docs/superpowers/plans/2026-09-07-
-// solid-wave-3-shared-media.md` ходит через этот файл — `AppSearchSuper` →
-// `horizontalMenu`); `core/hooks/useTransitionSlider.ts` (60) — ветка
+// держит СВОИ переписи того же оригинала: `shared/ui/Tabs/TabSlide.tsx` —
+// ветка `slideTabs`, потребитель `SearchView.tsx` (шаред-медиа профиля с задачи
+// 13 плана `docs/superpowers/plans/2026-09-07-solid-wave-3-shared-media.md` и
+// папки чатлиста с задачи 6 плана `…-folders-tabs.md` ходят через этот файл —
+// `AppSearchSuper`/`lib/appDialogsManager.ts` → `horizontalMenu`);
+// `core/hooks/useTransitionSlider.ts` (60) — ветка
 // БЕЗ `animationFunction` (`fade`/`slide-fade`/`zoom-fade`, у нас её играют
 // кейфреймы `styles/tweb/_transition.scss`), потребитель `UserInfoPanel.tsx`.
 // Перевести их на этот файл нельзя, не переписав хосты: там вкладки —

@@ -28,9 +28,6 @@ function renderSidebar() {
   const r = render(
     <FoldersSidebar
       folders={[]}
-      selectedId={0}
-      counts={{}}
-      onSelect={() => {}}
       onContextMenu={() => {}}
       onOpenFolderSettings={() => {}}
       menu={menu}

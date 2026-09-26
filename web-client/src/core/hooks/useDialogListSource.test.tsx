@@ -537,6 +537,68 @@ describe('useDialogListSource: гвард актуальности ответа'
   })
 })
 
+// Хэндл списка папки для владельца (`lib/appDialogsManager.ts::FolderList`,
+// задача 6 плана папок) — порт `AutonomousDialogList.clear()`
+// (`autonomousDialogList/base.ts:353-362` → `deferredSortedVirtualList.tsx:157-168`).
+// У tweb переключение папки = список с начала: `clear()` цели перед показом и
+// всех неактивных по концу перехода, затем первая страница заново. Пустое окно
+// рисует потребитель по `wasAtLeastOnceFetched` (пины — `ChatList.test.tsx`).
+describe('useDialogListSource: clear() — список заново, с первой страницы', () => {
+  it('clear() сбрасывает размер набора и wasAtLeastOnceFetched', async () => {
+    seedMirror([{ dialog: dialog(1), index: 30 }, { dialog: dialog(2), index: 20 }])
+    const { managers } = fakeManagers([page([dialog(1), dialog(2)], { count: 2, isEnd: true })])
+
+    const { result } = renderSource(managers, ALL_FOLDER_ID)
+    await act(async () => { result.current.requestItemForIdx(0, 0) })
+    expect(result.current.totalCount).toBe(2)
+    expect(result.current.wasAtLeastOnceFetched).toBe(true)
+
+    act(() => { result.current.clear() })
+
+    expect(result.current.totalCount).toBe(0)
+    expect(result.current.isEnd).toBe(false)
+    expect(result.current.wasAtLeastOnceFetched).toBe(false)
+  })
+
+  it('следующая страница после clear() просится с начала (курсор сброшен)', async () => {
+    seedMirror([{ dialog: dialog(1), index: 30 }, { dialog: dialog(2), index: 20 }])
+    const { managers, calls } = fakeManagers([page([dialog(1), dialog(2)], { count: 9 }), page([], { isEnd: true })])
+
+    const { result } = renderSource(managers, ALL_FOLDER_ID)
+    await act(async () => { result.current.requestItemForIdx(0, 0) })
+    const before = calls.length
+
+    act(() => { result.current.clear() })
+    await act(async () => { result.current.requestItemForIdx(0) })
+
+    // Мутация: снять `fetcher.reset()` из `reset()` — фетчер считает, что
+    // набрал достаточно, и первая страница не запросится вовсе.
+    expect(calls.length).toBeGreaterThan(before)
+    expect(calls[before]).toEqual(expect.objectContaining({ offsetIndex: undefined }))
+    expect(result.current.wasAtLeastOnceFetched).toBe(true)
+  })
+
+  it('ответ, начатый до clear(), состояние не пишет (у tweb clear() отклоняет loadDialogsDeferred)', async () => {
+    seedMirror([{ dialog: dialog(1), index: 30 }])
+    const { managers, pending } = deferredManagers()
+
+    const { result } = renderSource(managers, ALL_FOLDER_ID)
+    act(() => { result.current.requestItemForIdx(0, 0) })
+    expect(pending).toHaveLength(1)
+    expect(result.current.animate).toBe(false)
+
+    act(() => { result.current.clear() })
+    expect(result.current.animate).toBe(true)
+    await act(async () => { pending[0](page([dialog(1)], { count: 1, isEnd: true })) })
+
+    // Мутация: снять проверку поколения в `fetchPage` — опоздавший ответ
+    // поставит `wasAtLeastOnceFetched`, и очищенная папка покажет строки.
+    expect(result.current.wasAtLeastOnceFetched).toBe(false)
+    expect(result.current.totalCount).toBe(0)
+    expect(result.current.animate).toBe(true)
+  })
+})
+
 describe('useDialogListSource: анимация первой загрузки', () => {
   it('animate ложен, пока первая загрузка не завершилась, и истинен после', async () => {
     const { managers, pending } = deferredManagers()
@@ -647,10 +709,11 @@ describe('useDialogListSource: гидратация строки «Архив»'
   })
 
   // РЕТРАЙ, которого не даёт эффект монтирования: запрос fire-and-forget, и
-  // упади он (моргнула сеть на старте), строки «Архив» не будет до перезагрузки
-  // вкладки — кадр списка «Все чаты» переживает переключение папок (`TabSlide
-  // keepMounted`). В оригинале ретрай встроен тем, что гидратация висит на
-  // КАЖДОЙ загрузке списка (dialogs.ts:248-276), а не на его создании.
+  // упади он (моргнула сеть на старте), строки «Архив» не было бы, пока список
+  // «Все чаты» жив — а он живёт, пока жива колонка (контейнер папки владелец
+  // создаёт один раз, `lib/appDialogsManager.ts::addFilter`). В оригинале ретрай
+  // встроен тем, что гидратация висит на КАЖДОЙ загрузке списка
+  // (dialogs.ts:248-276), а не на его создании.
   it('упавший запрос повторяется следующей страницей списка', async () => {
     const { managers, archiveRowCalls, failNextArchiveRow } = fakeManagers([
       page([dialog(1)], { count: 99 }), page([], { isEnd: true }),

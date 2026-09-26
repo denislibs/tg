@@ -67,6 +67,24 @@ export type DialogListSource = {
   animate: boolean
   /** Порт `base.ts:63-65`; `itemsLength` опционален — как в оригинале. */
   requestItemForIdx: (idx: number, itemsLength?: number) => void
+  /**
+   * Порт `AutonomousDialogList.clear()` (`base.ts:353-362` →
+   * `deferredSortedVirtualList.tsx:157-168`) в части источника: размер набора
+   * 0, `wasAtLeastOnceFetched` снят, глушилка анимации обнулена, курсор и
+   * летящая загрузка сброшены. Строк у источника своих нет (`items` —
+   * производная зеркала), поэтому пустое окно рисует потребитель: до
+   * следующей страницы (`wasAtLeastOnceFetched`) он строк не показывает
+   * (`components/ChatList.tsx`). Зовёт `clear()` владелец папок
+   * (`lib/appDialogsManager.ts`) перед показом папки и по концу перехода у
+   * всех неактивных: памяти `scrollTop` у папок в tweb нет.
+   */
+  clear: () => void
+  /**
+   * Сброс состояния страниц и курсора без опустошения окна — то, что владелец
+   * зовёт в `onTabChange` сразу после `clear()` (у tweb `base.ts:364-367`
+   * забывает промисы загрузки; у нас их роль — поколение загрузки).
+   */
+  reset: () => void
 }
 
 type PageState = { filterId: number; totalCount: number; isEnd: boolean; wasAtLeastOnceFetched: boolean }
@@ -189,6 +207,14 @@ export function useDialogListSource(filterId: number, chats: Chat[]): DialogList
   const currentFilterId = useEvent((): number => filterId)
 
   /**
+   * Поколение загрузки — роль `loadDialogsDeferred.reject()` оригинала
+   * (`base.ts:356-357`): `clear()`/`reset()` его сдвигают, и ответ, начатый до
+   * них, в состояние не пишет, а глушилку анимации не отпускает (её счётчик
+   * `clear()` уже обнулил — как `blockedAnimationCallbacks.clear()`, `:164-165`).
+   */
+  const generationRef = useRef(0)
+
+  /**
    * Сколько строк у списка ПРЯМО СЕЙЧАС — аналог `sortedList.itemsLength()`
    * (base.ts:297). Считаем по зеркалу из стора, а не по `items` из замыкания:
    * страница уже применена проектором к моменту ответа RPC (кадр `rt:dialog_op`
@@ -209,11 +235,16 @@ export function useDialogListSource(filterId: number, chats: Chat[]): DialogList
    *
    * `Set` токенов оригинала (защита от повторного вызова `unblock`) не нужен:
    * `unblock` наружу не отдаётся и зовётся ровно один раз — в `finally`
-   * собственного `fetchPage`.
+   * собственного `fetchPage`; токен оригинала от устаревшего `unblock` после
+   * `clear()` здесь заменяет сверка поколения.
    */
   const blockAnimation = useEvent((): VoidFunction => {
+    const generation = generationRef.current
     setBlockedAnimationCount((prev) => prev + 1)
-    return () => setBlockedAnimationCount((prev) => Math.max(0, prev - 1))
+    return () => {
+      if (generation !== generationRef.current) return
+      setBlockedAnimationCount((prev) => Math.max(0, prev - 1))
+    }
   })
 
   /**
@@ -275,14 +306,18 @@ export function useDialogListSource(filterId: number, chats: Chat[]): DialogList
    */
   const fetchPage = useEvent(async (forFilterId: number, offsetIndex: number | undefined): Promise<SequentialCursorFetcherResult<number | undefined>> => {
     const middleware = helper.get()
+    const generation = generationRef.current
     // `isFirstLoad = !offsetIndex` — дословно dialogs.ts:249.
     const unblock = offsetIndex ? noop : blockAnimation()
     ensureArchiveHydrated(forFilterId)
     try {
       const result = await managers.dialogs.getDialogs({ offsetIndex, limit: guessLoadCount(), filterId: forFilterId })
-      // Хук размонтирован либо папку успели переключить: писать в состояние
-      // нечего, а двигать курсор чужого (уже нового) цикла — тем более.
-      if (!middleware() || currentFilterId() !== forFilterId) return { cursor: offsetIndex, count: 0 }
+      // Хук размонтирован, папку успели переключить либо список очистили
+      // (`clear()`/`reset()`): писать в состояние нечего, а двигать курсор
+      // чужого (уже нового) цикла — тем более.
+      if (!middleware() || currentFilterId() !== forFilterId || generation !== generationRef.current) {
+        return { cursor: offsetIndex, count: 0 }
+      }
 
       // Порт base.ts:274-277: курсор — МИНИМАЛЬНЫЙ индекс отданной страницы.
       const indexById = useChatsStore.getState().dialogIndexById
@@ -340,6 +375,17 @@ export function useDialogListSource(filterId: number, chats: Chat[]): DialogList
     fetcher.fetchUntil(idx + 1, itemsLength)
   })
 
+  const reset = useEvent(() => {
+    ++generationRef.current
+    fetcher.reset()
+    setPageState({ filterId, ...EMPTY_PAGE_STATE })
+  })
+
+  const clear = useEvent(() => {
+    reset()
+    setBlockedAnimationCount(0)
+  })
+
   return {
     items,
     totalCount: page.totalCount,
@@ -347,5 +393,7 @@ export function useDialogListSource(filterId: number, chats: Chat[]): DialogList
     wasAtLeastOnceFetched: page.wasAtLeastOnceFetched,
     animate: blockedAnimationCount === 0,
     requestItemForIdx,
+    clear,
+    reset,
   }
 }

@@ -139,6 +139,26 @@ describe('appDialogsManager: папки добавляются, удаляютс
     expect(mounted.host.querySelector('#folders-tabs > .menu-horizontal-div-item.active')!.getAttribute('data-filter-id')).toBe('0')
   })
 
+  // Второй путь удаления — своё действие (`foldersStore.remove`, оптимистичное
+  // удаление из меню папки). Писатель выбора один — владелец; у стора своего
+  // сброса нет (снят задачей 6, пин переехал сюда из `foldersStore.test.ts`).
+  it('локальное удаление АКТИВНОЙ папки (foldersStore.remove) — выбор сбрасывает владелец', async () => {
+    putFolders(raw(3, 1, 'Работа'), raw(4, 2, 'Шум'))
+    mounted = mountOwner()
+    await settle()
+    useFolders().onClick()!(2)
+    await settle()
+    finishTransition(mounted.folders)
+
+    useFoldersStore.getState().remove(4)
+    await settle()
+
+    // Мутация: снять `untrack(onClick)?.(0)` в `initListeners` — выбор
+    // останется на удалённой папке 4, активного кадра не будет вовсе.
+    expectActiveOnly(mounted.folders, 0)
+    expect(useFoldersStore.getState().selectedId).toBe(0)
+  })
+
   it('переупорядочивание — порядок детей #folders-container = порядок folderItems (filter_order)', async () => {
     putFolders(raw(3, 1, 'Работа'), raw(4, 2, 'Шум'), raw(5, 3, 'Учёба'))
     mounted = mountOwner()
