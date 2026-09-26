@@ -75,3 +75,15 @@ describe('панель эмодзи непрозрачная (tweb b85527091, _e
     expect(body).not.toMatch(/--menu-background-color/)
   })
 })
+
+describe('аватар над многорядной клавиатурой бота (tweb eedb2b74e)', () => {
+  it('отступ — grid по числу рядов в ::before контейнера аватара', () => {
+    const body = rule('.bubbles-group-avatar-container.avatar-for-reply-markup::before')
+    expect(body).toMatch(/display:\s*grid/)
+    expect(body).toMatch(/grid-template-rows:\s*0?\.0625rem repeat\(var\(--reply-markup-row-count\), 2\.625rem\)/)
+  })
+
+  it('фиксированных 43px больше нет', () => {
+    expect(rule('.avatar-for-reply-markup')).toBeUndefined()
+  })
+})

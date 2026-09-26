@@ -528,7 +528,34 @@ describe('прилипающий аватар серии', () => {
     void group.createAvatar(group.firstItem.message)
     group.updateClassNames()
 
-    expect(group.avatar!.node.classList.contains('avatar-for-reply-markup')).toBe(true)
+    // tweb eedb2b74e: класс и число рядов — на КОНТЕЙНЕРЕ аватара
+    expect(group.avatarContainer!.classList.contains('avatar-for-reply-markup')).toBe(true)
+    expect(group.avatarContainer!.style.getPropertyValue('--reply-markup-row-count')).toBe('1')
+  })
+
+  // tweb eedb2b74e: отступ аватара под клавиатурой — не фиксированные 43px, а
+  // по числу рядов (`--reply-markup-row-count` → grid в `::before`); пустые
+  // ряды не считаются (`filterReplyMarkupRows`).
+  it('число рядов клавиатуры — без пустых; клавиатура ушла — переменная снята', () => {
+    const btn = { _: 'keyboardButtonCallback' as const, text: 'ok', data: 'b2s=' }
+    const withRows = msg({
+      createdAt: at('12:00:00'),
+      replyMarkup: { _: 'replyInlineMarkup', rows: [
+        { _: 'keyboardButtonRow', buttons: [btn] },
+        { _: 'keyboardButtonRow', buttons: [] },
+        { _: 'keyboardButtonRow', buttons: [btn, btn] },
+        { _: 'keyboardButtonRow', buttons: [btn] },
+      ] },
+    })
+    feed([withRows])
+    const group = groups.lastGroup
+    void group.createAvatar(group.firstItem.message)
+    group.updateAvatarClassNames(withRows)
+    expect(group.avatarContainer!.style.getPropertyValue('--reply-markup-row-count')).toBe('3')
+
+    group.updateAvatarClassNames(msg({ createdAt: at('12:00:05') }))
+    expect(group.avatarContainer!.classList.contains('avatar-for-reply-markup')).toBe(false)
+    expect(group.avatarContainer!.style.getPropertyValue('--reply-markup-row-count')).toBe('')
   })
 })
 
