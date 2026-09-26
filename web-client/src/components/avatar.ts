@@ -33,6 +33,8 @@
 // (`subscribePeerMirror`), а реестр живых узлов чистится по `middleware.onClean`
 // — ровно как в `peerTitle.ts` и по той же причине: узел бабла существует ДО
 // монтирования в документ, и скан `document.querySelectorAll` его бы не нашёл.
+// Реестр при этом аватарками НЕ владеет (tweb e19e8831d): держит их слабо,
+// а жизнь аватарки определяет её узел — см. `live` ниже.
 //
 // ─── Что сознательно НЕ портировано (предмет отсутствует) ──────────────────
 //  • истории (`StoriesSegments`, `has-stories`, `avatar-stories-*`,
@@ -83,6 +85,7 @@ import { HIDDEN_PEER_ID, NULL_PEER_ID, isUser } from '@core/peers/peerId'
 import { wrapAbbreviation } from '@lib/richtext/abbreviation'
 import type { IconName } from '@core/tgico-icons'
 import rootScope from '@lib/rootScope'
+import { MOUNT_CLASS_TO } from '@config/debug'
 
 /** tweb avatarNew.tsx:52 — та же длительность, что у `.fade-in` в `_avatar.scss:126`. */
 const FADE_IN_DURATION = 200
@@ -123,14 +126,40 @@ export interface AvatarOptions {
 }
 
 // Живые аватарки, ждущие движения зеркала карточек. Аналог `avatarsMap` +
-// модульных слушателей `avatar_update`/`peer_title_edit` (avatarNew.tsx:56-93):
+// модульных слушателей `avatar_update`/`peer_title_edit` (avatarNew.tsx:56-120):
 // подписка одна на модуль, а не по одной на узел.
-const live = new Set<Avatar>()
+//
+// tweb e19e8831d — реестр НЕ владеет тем, что отслеживает. Раньше он держал
+// аватарки сильно и отпускал только по `middleware.onClean`, поэтому
+// аватарка, чей владелец мидлварь не погасил (вызов вне зоны актуальности,
+// мидлварь, которая не выстрелила), держала всё отсоединённое поддерево до
+// закрытия вкладки. Теперь аватаркой владеет её УЗЕЛ (`avatarByElement`), а
+// реестр указывает на неё слабо: аватарка с достижимым узлом — смонтированным
+// или отложенным на перемонтаж, как строки списка чатов, — продолжает
+// обновляться, а выброшенная насовсем уносит свою запись с собой.
+const live = new Set<WeakRef<Avatar>>()
+const avatarByElement = new WeakMap<HTMLElement, Avatar>()
+const collectedAvatars = new FinalizationRegistry<WeakRef<Avatar>>((ref) => {
+  live.delete(ref)
+})
+
+// Обход заодно выбрасывает ссылки, чья аватарка уже собрана, а финализатор
+// ещё не отработал.
 subscribePeerMirror(() => {
-  for (const avatar of live) {
+  for (const ref of live) {
+    const avatar = ref.deref()
+    if (!avatar) {
+      live.delete(ref)
+      continue
+    }
+
     avatar.render()
   }
 })
+
+// Для диагностики (tweb — то же имя): размер реестра — самый дешёвый способ
+// понять, отпускаются ли аватарки.
+if (MOUNT_CLASS_TO) MOUNT_CLASS_TO.avatarsMap = live
 
 class Avatar {
   public readonly node: HTMLDivElement
@@ -170,9 +199,18 @@ class Avatar {
 
     // Имя строкой измениться не может — такому узлу реестр не нужен.
     if (options.peerTitle === undefined && options.peerId !== undefined) {
-      live.add(this)
-      options.middleware.onClean(() => { live.delete(this) })
+      const selfRef = new WeakRef<Avatar>(this)
+      live.add(selfRef)
+      collectedAvatars.register(this, selfRef, this)
+      options.middleware.onClean(() => {
+        live.delete(selfRef)
+        collectedAvatars.unregister(this) // уже не в реестре — финализатору делать нечего
+      })
     }
+
+    // Сильное ребро, на которое опирается слабый реестр: пока достижим узел,
+    // достижима и его аватарка (tweb e19e8831d).
+    avatarByElement.set(node, this)
   }
 
   /**
