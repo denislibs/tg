@@ -231,6 +231,20 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // а добавлены четыре ключа 1:1 с tweb lang.ts — `EnableDarkMode`,
 // `DisableDarkMode`, `MenuTelegramStars`, `SetAsEmojiStatus`: у русского
 // −4 +4, число то же; у остальных −1 (поверх пилота: ru 1350, uk 685, es 684, de/fr 683).
+//
+// Задача 10 плана 2D (вкладка «Горячие клавиши», порт tweb keyboardShortcuts.tsx):
+// десять ключей tweb lang.ts — `KeyboardShortcuts.Action.{Send,OpenSearch,
+// SavedMessages,ZoomIn,ZoomOut,PlayPauseStory,CloseStories,Undo}`,
+// `KeyboardShortcuts.Section.Formatting.Caption`, `…Section.MediaEditor` — всем пяти
+// словарям (с английским дословно не совпал ни один): +10 каждому. ru 1350 → 1360,
+// uk 686 → 696, es 685 → 695, de/fr 684 → 694. Врезкой той же задачи снесён React-экран
+// `settings/HotkeysSettings.tsx`, а с ним — десять ключей, которые читал только он:
+// самодельные `KeyboardShortcuts.Action.{HistoryStart,HistoryEnd,PlayPause,Exit,LockApp}`,
+// `KeyboardShortcuts.Hint.PasscodeNotSet`, `KeyboardShortcuts.Section.PhotoEditor` и ключи
+// tweb `MediaZoomIn`/`MediaZoomOut`/`Undo` (на вкладке их место заняли ключи
+// `keyboardShortcuts.tsx`): −10 каждому. ru 1360 → 1350, uk 696 → 686, es 695 → 685,
+// de/fr 694 → 684 — числа те же, что до задачи, набор другой (см. `FINGERPRINT`).
+// Поверх корня настроек (снят `General.NightMode`): ru 1350, uk 685, es 684, de/fr 683.
 const COMPOSITION = {
   ru: { keys: 1350, plural: 35 },
   uk: { keys: 685, plural: 24 },
@@ -334,12 +348,14 @@ const COMPOSITION = {
 // `COMPOSITION` выше; de и fr расходятся по одному совпавшему ключу).
 // Выравниванием корня настроек по tweb — снят `General.NightMode` у всех пяти,
 // у русского ещё −3 +4 (разбор — у `COMPOSITION` выше).
+// Задачей 10 плана 2D — десять ключей вкладки «Горячие клавиши» всем пяти и снос
+// десяти ключей React-экрана (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '0ff84dd8',
-  uk: 'b0890b98',
-  es: '01b77f02',
-  de: '25e22802',
-  fr: 'b50abcd4',
+  ru: 'dd701aee',
+  uk: '44293b5e',
+  es: '91a9ea04',
+  de: 'ae32e56c',
+  fr: '718c6586',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
