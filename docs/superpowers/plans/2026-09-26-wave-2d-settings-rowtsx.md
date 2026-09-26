@@ -696,7 +696,7 @@ class="disable-hover"`) + превью; `setDefaultReaction` сразу; дан�
 `extraCategories`, боты) — в шапку с О-номерами.
 **Зависимости:** 0, 1, 2. Врезки нет (потребители — задачи 17, 22, 25). Размер — L.
 
-### Задача 18: «Код-пароль»
+### Задача 18: «Код-пароль» — ✅ сделано (PR feat/w2d-passcode)
 
 **Порт:** `passcodeLock/{mainTab,enterPasswordTab,shortcutBuilder}.tsx` (+ scss) →
 `sidebarLeft/tabs/passcodeLock/*.solid.tsx`; вкладки :27 (`onOpenAfterTimeout: sliceTabsUntilTab
@@ -708,6 +708,33 @@ class="disable-hover"`) + превью; `setDefaultReaction` сразу; дан�
 **Мутация:** «TurnOff» с `color="danger"` — тест краснеет.
 **Зависимости:** 0–5. **Врезка:** `tabs.ts`, `PrivacySecuritySettings.tsx` (строка Passcode →
 `openTab`); удалить `settings/PasscodeLock.tsx`.
+
+**Итог (2026-09-26):** `mainTab`/`enterPasswordTab`/`shortcutBuilder` — дословно (`.solid.tsx` +
+модули scss); смена кода, как у HEAD `mainTab.tsx:199-224`, НЕ спрашивает старый код — его
+спрашивает вход из «Конфиденциальности» (`privacyAndSecurity.tsx:193-210`), так и врезано.
+Сверх плана (без них экран неполон): порт `components/passwordInputField.ts`,
+`components/quizHint.ts` + `_quizHint.scss` (подсказки «код задан/изменён/отключён»), сочетание
+блокировки — настройки `passcodeLockShortcut(Enabled)`, `helpers/shortcutListener.ts`,
+`core/hooks/useLockScreenShortcut.ts` (вызов в `App.tsx`; без слушателя тумблер был бы мёртвым).
+Новые ключи tweb: `PasscodeLock.{Notice,Next,Disabled,EnableLockShortcut,LockShortcutDescription}`,
+`MinutesShort`; сняты без читателей `PasscodeLock.ForgotNotice`, `PasscodeLock.AutoLock.Caption`,
+`Unit.Minutes.Abbr`, `Common.Next`. О-12 — срез `onOpenAfterTimeout` до корня хоста и подсказка
+после выключения в слое хоста (`tab.slider.sidebarEl`) — снимаются задачей 23.
+**Открыто:** секция `Other/LockPasscode` «Горячих клавиш» (заметка задачи 10) — сочетание теперь
+есть, но `keyboardShortcuts.solid.tsx` в `main` ещё нет (PR #295); вернуть tweb
+`keyboardShortcuts.tsx:250-277` (`[...lockShortcut, 'L']` из `appSettings.passcode.*`) после
+слияния обоих. `canCloseOnPeerChange` у `quizHint` и `appImManager.isShiftLockShortcut` — без
+потребителей у нас (подсказки опросов и «печать → композер» не портированы).
+**Безопасность (вне объёма задачи, не чинилось):** модель tweb 65c6ea8f8/«Encrypt the stores» к
+нам не относится буквально — ключа, выведенного из кода, у нас нет вовсе (код не шифрует
+хранилища), поэтому и в `localStorage` он не лежит. Но код-пароль — только запор интерфейса:
+`session_token` и список аккаунтов с токенами лежат открытым текстом в IndexedDB `msgr/kv`
+(`core/auth/tokenStore.ts`, `core/auth/accounts.ts`), корзина медиа `cachedFiles` при включении
+кода не чистится и пишется дальше (`core/files/cacheStorage.ts`, шапка: шифрование не
+портировано). У tweb под кодом ключи авторизации лежат только в `localStorage__encrypted`
+(`AccountController.updateStorageForLegacy(null)`), шифруемые корзины чистятся и шифруются. Нужна
+отдельная задача: шифрование хранилищ под кодом (порт `lib/passcode/*` + `EncryptionKeyStore` с
+ключом ТОЛЬКО в памяти/`window.sessionStorage` на время переключения, как 65c6ea8f8).
 
 ### Задача 19: «Двухэтапная проверка» (мастер 2FA)
 

@@ -271,9 +271,15 @@ useStateStore и т.д.) — внутренние Solid-компоненты/х�
 
 | Файл | Конструктор | Назначение | Кто открывает |
 |---|---|---|---|
-| `mainTab.tsx` :320 | `AppPasscodeLockTab` :21-32 (`onOpenAfterTimeout: sliceTabsUntilTab(AppPrivacyAndSecurityTab)`) | вкл/выкл/смена passcode | `privacyAndSecurity.tsx:263,267`; `sliceTabsUntilTab` из `mainTab.tsx:98,221` |
-| `enterPasswordTab.tsx` :106 | `AppPasscodeEnterPasswordTab` :42-46 | ввод/подтверждение passcode | `privacyAndSecurity.tsx:254`; `mainTab.tsx:80,92,203,215` |
-| `inlineSelect.tsx` :13, `shortcutBuilder.tsx` :15 | контролы (не табы) | — | `mainTab.tsx:287,311` (inlineSelect также `keyboardShortcuts.tsx:112`) |
+| `mainTab.tsx` :315 | `AppPasscodeLockTab` `tabs.ts:27-39` (`onOpenAfterTimeout: sliceTabsUntilTab(AppPrivacyAndSecurityTab)`) | вкл/выкл/смена passcode | `privacyAndSecurity.tsx:204,208`; `sliceTabsUntilTab` из `mainTab.tsx:98,221` |
+| `enterPasswordTab.tsx` :106 | `AppPasscodeEnterPasswordTab` `tabs.ts:41-53` | ввод/подтверждение passcode | `privacyAndSecurity.tsx:195`; `mainTab.tsx:80,92,203,215` |
+| `inlineSelect.tsx` :191, `shortcutBuilder.tsx` :72 | контролы (не табы) | — | `mainTab.tsx:287,306` (inlineSelect также `keyboardShortcuts.tsx:112`) |
+
+У нас (задача 18 плана 2D, адреса выше — по `812502980`): `sidebarLeft/tabs/passcodeLock/
+{mainTab,enterPasswordTab,shortcutBuilder}.solid.tsx` — вкладки `AppPasscodeLockTab`/
+`AppPasscodeEnterPasswordTab` (`solidJsTabs/tabs.ts`), открывает строка React-экрана
+«Конфиденциальность» через хост; срез `onOpenAfterTimeout` — до корня хоста (О-12, до задачи 23).
+Сочетание блокировки — `core/hooks/useLockScreenShortcut.ts` (вызов в `App.tsx`).
 
 ### `2fa/` (мастер, все — `scaffoldSolidJSTab`)
 
@@ -736,8 +742,8 @@ Close/RestartTopic `:224` · ChargeFee `:238` · Delete `:248`.
 |---|---|---|
 | `src/components/Sidebar.tsx` (:61) | оркестратор колонки: `#column-left` с tweb-классами (:213-215), композиция хуков `useSidebar*` | `AppSidebarLeft.construct` |
 | `src/components/SidebarScreens.tsx` (:22-24) | экраны колонки — **один enum-стейт** `'settings'\|'contacts'\|'wallet'\|'calls'\|'newGroup'\|'newChannel'\|'newPrivate'\|'newSecret'\|null`, lazy-подгрузка Settings/Wallet/Calls | стек `SliderSuperTab` |
-| `src/components/SettingsView.tsx` (:47) + `SettingsSubScreen.tsx` (:82-95, :134-152) | настройки: корневой список + под-экраны по строковому title (General/SpeakersCamera/ChatFolders/Privacy/DataStorage/Stickers/Hotkeys); «Устройства», «Язык» и «Уведомления» — вкладки слайдера через хост | `AppSettingsTab` + дерево части 2 |
-| `src/components/settings/*` | реализации ещё не портированных под-экранов (TwoStepVerification, PasscodeLock, Passkeys, BlockedUsers, AutoDelete, PowerSaving, QuickReaction, EditProfile, ChatWallpaper…). «Устройства» здесь БОЛЬШЕ НЕТ — уехали на слайдер, см. §3 | `sidebarLeft/tabs/*` |
+| `src/components/SettingsView.tsx` (:47) + `SettingsSubScreen.tsx` (:82-95, :134-152) | настройки: корневой список + под-экраны по строковому title (General/SpeakersCamera/ChatFolders/Privacy/DataStorage/Stickers/Hotkeys); «Устройства», «Язык» и «Уведомления» — вкладки слайдера через хост (из «Конфиденциальности» так же открывается «Код-пароль») | `AppSettingsTab` + дерево части 2 |
+| `src/components/settings/*` | реализации ещё не портированных под-экранов (TwoStepVerification, Passkeys, BlockedUsers, AutoDelete, PowerSaving, QuickReaction, EditProfile, ChatWallpaper…). «Устройства» здесь БОЛЬШЕ НЕТ — уехали на слайдер, см. §3 | `sidebarLeft/tabs/*` |
 | `src/lib/appDialogsManager.ts` | папочный срез владельца: `.chatlist-overlay` с Solid-рядом вкладок, `#folders-container`, скроллер на папку, переключение (`horizontalMenu` + `TransitionSlider`); встроен в колонку `Sidebar.tsx` (план папок, задача 6) | `AppDialogsManager` (папки) |
 | `src/components/ChatList.tsx` / `ChatListItem.tsx` | списки папок на виртуальном ядре — порталом в `.chatlist-top` контейнеров владельца | `AutonomousDialogList` (строки) + `DialogElement` |
 | `src/components/virtual/DeferredSortedVirtualList.*` | порт `deferredSortedVirtualList` | 1:1 |
