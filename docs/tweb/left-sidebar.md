@@ -855,12 +855,13 @@ privacy-исключения, passcode, general, editChat, editContact). Стр�
 Тумблер перерисован (`_checkbox.scss` по ef41b29db), поля строки метятся
 `row-checkbox-field`/`row-radio-field`/`row-checkbox-field-toggle` (`rowFieldClasses.ts`,
 803f9599d) — `_row.scss` больше не стилизует любой `.checkbox-field` внутри `.row`.
-**Отступление:** тумблер строки носит только `row-checkbox-field-toggle` — с набором tweb
-(`row-checkbox-field` тоже) правило ef41b29db `.row .row-checkbox-field { position: absolute }`
-выбивает тумблер из `.row-title-right` (нулевая ширина, `overflow: hidden`), и он пропадает
-целиком (так было на стенде на экране «Уведомления и звуки»); пин —
-`styles/twebDeltaW2a.test.ts`, разбор — `components/rowFieldClasses.ts`.
-Перевод строк на RowTsx (ef41b29db, блок 2D) не делался.
+Тумблер строки носит только `row-checkbox-field-toggle` — **так и у tweb HEAD**: ef41b29db снял с
+него `row-checkbox-field` (`rowTsx.tsx:482-492`), а с этим классом правило
+`.row .row-checkbox-field { position: absolute }` выбило бы тумблер из `.row-title-right`.
+Прежняя запись «отступление» сверялась с 803f9599d и была неверна; пин —
+`styles/twebDeltaW2a.test.ts`. Solid `Row` (`rowTsx.solid.tsx`) доведён до tweb HEAD задачей 0
+плана 2D (`toggleAside`, радио справа, `contextMenu`, a11y, `element`-части); экраны на нём —
+следующие задачи того же плана.
 
 ### Шов с React (временный)
 

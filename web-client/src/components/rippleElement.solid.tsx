@@ -13,11 +13,19 @@
  * держала импорт от вытряхивания сборщиком, когда `ripple` использовался только
  * внутри эффекта; здесь он вызывается в теле `createRenderEffect`, то есть
  * обычным использованием, и удержания не требует.
+ *
+ * На HEAD (ef41b29db, 803f9599d) — две вещи, без которых на этом узле не
+ * живёт `Row` (`rowTsx.solid.tsx`):
+ *   • `ref` вынут из остальных пропов и зовётся один раз. В `rest` он уходил
+ *     в `Passthrough` и `assign` звал его на КАЖДОМ перезапуске эффекта — у
+ *     строки в `ref` заводится `createContextMenu`, и меню множились бы;
+ *   • классы — через `classList` (Solid переключает ключ за ключом), а не
+ *     склеенной строкой в `class`: строку Solid пишет в `className` и стирает
+ *     всё, что узел получил снаружи (`menu-open` от `createContextMenu`).
  */
 import { createRenderEffect, createSignal, onCleanup, splitProps, type Ref, type ValidComponent } from 'solid-js'
 import type { DynamicProps } from 'solid-js/web'
 import ripple from '@components/ripple'
-import classNames from '@helpers/string/classNames'
 import Passthrough from '@helpers/solid/passthrough'
 
 export default function RippleElement<T extends ValidComponent>(props: DynamicProps<T> & {
@@ -29,7 +37,7 @@ export default function RippleElement<T extends ValidComponent>(props: DynamicPr
     rippleSquare?: boolean
     class?: string
     classList?: { [key: string]: boolean | undefined }
-  }, ['noRipple', 'rippleSquare', 'component', 'children', 'class', 'classList'])
+  }, ['noRipple', 'rippleSquare', 'component', 'children', 'class', 'classList', 'ref'])
   const [rippleElement, setRippleElement] = createSignal<HTMLElement>()
   const el = document.createElement((local.component as string) || 'div')
 
@@ -46,18 +54,18 @@ export default function RippleElement<T extends ValidComponent>(props: DynamicPr
     }
   })
 
-  ;(props.ref as Ref<HTMLElement> as ((el: HTMLElement) => void) | undefined)?.(el)
+  ;(local.ref as Ref<HTMLElement> as ((el: HTMLElement) => void) | undefined)?.(el)
 
   return (
     <Passthrough
       element={el}
       {...rest}
-      class={classNames(
-        local.class,
-        !local.noRipple && 'rp',
-        !local.noRipple && local.rippleSquare && 'rp-square',
-        ...Object.entries(local.classList || {}).map(([key, value]) => value ? key : undefined),
-      )}
+      classList={{
+        [local.class as string]: !!local.class,
+        'rp': !local.noRipple,
+        'rp-square': !local.noRipple && !!local.rippleSquare,
+        ...(local.classList || {}),
+      }}
     >
       {rippleElement()}
       {local.children}

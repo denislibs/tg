@@ -27,9 +27,15 @@ export default function Passthrough<E extends Element>(props: PassthroughProps<E
 
   insert(element, resolved)
 
+  // tweb 803f9599d: `assign` должен видеть, что применил в прошлый раз, иначе
+  // он ничего не может откатить — ключ `classList`, ставший false, не снимается
+  // с узла, а слушатель (`on:*`) на каждом перезапуске навешивается заново
+  // вместо замены. Свежий `{}` по умолчанию на каждый прогон всё это терял.
+  const prevProps = {}
+
   createEffect(() => {
     const [, others] = splitProps(props, ['element', 'children'])
-    assign(element, others, element instanceof SVGElement, true)
+    assign(element, others, element instanceof SVGElement, true, prevProps)
   })
 
   return element
