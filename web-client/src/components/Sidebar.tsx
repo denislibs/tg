@@ -1,12 +1,13 @@
 import type { LangPackKey } from '@/lang'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
-import { isUserCollapsedLeft, setFoldersSidebarShown, setOpenTabsLeftSidebar } from '../core/dom/updateColumnWidths'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { isUserCollapsedLeft, setOpenTabsLeftSidebar } from '../core/dom/updateColumnWidths'
 import installColumnResize from '../core/dom/installColumnResize'
 import PendingSuggestion from './sidebarLeft/pendingSuggestion'
 import classNames from '../shared/lib/classNames'
 import s from './Sidebar.module.scss'
 import { useChatsStore } from '../stores/chatsStore'
-import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '../core/folderIds'
+import { ARCHIVE_FOLDER_ID } from '../core/folderIds'
 import ChatList from './ChatList'
 import ChatListItem from './ChatListItem'
 import DeferredSortedVirtualList, {
@@ -16,6 +17,10 @@ import { useDialogListSource } from '../core/hooks/useDialogListSource'
 import { useEvent } from '../core/hooks/useEvent'
 import type { Chat } from '../data'
 import FoldersSidebar, { type MainMenuHandlers } from './folders/FoldersSidebar'
+import FolderEditor from './folders/FolderEditor'
+import type { Folder } from '../core/managers/foldersManager'
+import type { FolderContextMenuSidebar } from '../helpers/dom/createFolderContextMenu'
+import pause from '../helpers/schedulers/pause'
 import { useSettings, useSettingsStore } from '../settings'
 import useMediaQuery from '../shared/lib/useMediaQuery'
 import Text from '../shared/ui/Text'
@@ -35,14 +40,15 @@ import { useChatStackStore, selectOpenThreadDesc } from '../stores/chatStackStor
 import { useNavigationActions } from '../core/hooks/useNavigationActions'
 import { openPopup } from '../stores/popupStore'
 import InputSearch from '../shared/ui/InputSearch'
-import FolderTabs from './FolderTabs'
 import { useT } from '../i18n'
 import { useSidebarSearch } from '../core/hooks/useSidebarSearch'
 import { useSidebarActions } from '../core/hooks/useSidebarActions'
 import { useSidebarStories } from '../core/hooks/useSidebarStories'
 import { useForumPanel } from '../core/hooks/useForumPanel'
-import { useSidebarFolders } from '../core/hooks/useSidebarFolders'
-import useMeasuredHeight from '../shared/lib/useMeasuredHeight'
+import { useImperativeIsland } from '../core/hooks/useImperativeIsland'
+import { useFolders } from '../stores/foldersStore'
+import { AppDialogsManager } from '../lib/appDialogsManager'
+import { useFoldersSidebarShown, useIsSidebarCollapsed } from '../stores/foldersSidebar.solid'
 import ConnectionStatusComponent from './connectionStatus'
 import type { InputSearchStatus } from '../shared/ui/InputSearch'
 
@@ -93,13 +99,14 @@ export default function Sidebar({
     connectionStatus.construct(managers, status)
     return () => connectionStatus.destroy()
   }, [managers])
-  // Контейнер прокрутки АКТИВНОЙ папки: скроллер теперь свой у каждой (кадр
-  // слайда, `components/ChatList.tsx`), а ряду историй нужен ровно тот, что
-  // сейчас перед глазами, — его ChatList сюда и публикует.
-  const listScrollRef = useRef<HTMLDivElement>(null)
-  // Узлы, которые нужны сворачиванию ряда историй (tweb setScrolledOn / listenWheelOn).
+  // Узлы, которые нужны сворачиванию ряда историй (tweb setScrolledOn / listenWheelOn)
+  // и владельцу папок (`#chatlist-container`, хост `.connection-status-bottom`).
   const chatlistContainerRef = useRef<HTMLDivElement>(null)
   const bottomPartRef = useRef<HTMLDivElement>(null)
+  // Владелец контейнеров папок и их переключения — порт папочного среза tweb
+  // `appDialogsManager` (`lib/appDialogsManager.ts`). Экземпляр на колонку: она
+  // монтируется и размонтируется (расхождение 1 его шапки).
+  const [dialogsManager] = useState(() => new AppDialogsManager())
 
   // Навигация — из navigationStore/useNavigationActions напрямую; список чатов —
   // свой селектор (та же useChatList, что и в Shell; вторая подписка — норма).
@@ -125,23 +132,21 @@ export default function Sidebar({
   const { query, setQuery, searching, setSearching, inputRef, closeSearch, searchReal, onJoin } = useSidebarSearch(initialQuery)
   const stories = useSidebarStories()
   const actions = useSidebarActions(chats, onChatCreated)
-  const { handleSelect, forumChat, panel: forumPanel } = useForumPanel({ chats, onSelect, activeTopicId, onOpenTopic })
+  const { handleSelect, forumChat, closeForum, panel: forumPanel } = useForumPanel({ chats, onSelect, activeTopicId, onOpenTopic })
 
   const openFolderSettings = () => {
     setSettingsSub('ChatList.Filter.List.Title')
     setScreen('settings')
   }
-  const {
-    folders, folderId, tabOrder, archivedChats, folderUnread,
-    changeFolder, onTabContextMenu, overlays: folderOverlays,
-  } = useSidebarFolders({ chats, onOpenFolderSettings: openFolderSettings })
+  const folders = useFolders()
+  // Редактор папки — экран колонки, то есть вкладка слайдера сайдбара (tweb
+  // `AppEditFolderTab`, `SidebarSlider.createTab`); вход/уход ведёт сам экран
+  // (`components/settings/kit.tsx` → SettingsScreen). Открывает его меню папки.
+  const [editingFolder, setEditingFolder] = useState<Folder | null>(null)
 
-  // --chatlist-overlay-height: живая высота .chatlist-overlay (нотисы + табы папок).
-  // tweb ставит её ResizeObserver'ом на .connection-status-bottom, а .folders-scrollable
-  // читает как padding-top (appDialogsManager.start(), _leftSidebar.scss:418).
-  const [overlayHeight, setOverlayHeight] = useState(0)
-  const overlayRef = useMeasuredHeight(setOverlayHeight)
-  const overlayHeightVar = { '--chatlist-overlay-height': `${overlayHeight}px` } as CSSProperties
+  // Мемоизировано, чтобы <ChatList> получал стабильный проп — ре-рендер
+  // сайдбара под тогл оверлея не пересоздаёт массив и не бьёт его memo.
+  const archivedChats = useMemo(() => chats.filter((c) => !!c.archived), [chats])
 
   // Вьюпортная модалка Premium — через глобальный popupStore (не экран колонки).
   const openPremium = () => openPopup((p) => (
@@ -153,9 +158,6 @@ export default function Sidebar({
   const tabsInSidebar = useSettings((st) => st.tabsInSidebar)
   const narrowScreen = useMediaQuery('(max-width:900px)')
   const foldersSidebarShown = tabsInSidebar && folders.length > 0 && !narrowScreen && !fullWidth
-  // tweb stores/foldersSidebar.ts → setFoldersSidebarShown: панель папок резервирует
-  // место, значит правая колонка начинает всплывать раньше, а чат — уже.
-  useEffect(() => { setFoldersSidebarShown(foldersSidebarShown) }, [foldersSidebarShown])
 
   // --- Ресайз левой колонки (tweb sidebarLeft/index.ts:612-635 initSidebarResize) ---
   const columnRef = useRef<HTMLDivElement>(null)
@@ -166,6 +168,23 @@ export default function Sidebar({
   const floatingLeft = useMediaQuery('(max-width:925px)')
   const [collapsedPref, setCollapsedPref] = useState(isUserCollapsedLeft)
   const collapsed = collapsedPref && !floatingLeft && !fullWidth
+  // Режим папок (tweb `stores/foldersSidebar.ts:90-112`): стор решает,
+  // горизонтальный ряд или вертикальная колонка, и ставит `body.has-*-folders`
+  // (он же резервирует место колонке — `setFoldersSidebarShown`). «Показана» и
+  // «свёрнута» сообщает колонка — она их рисует (расхождения 1 и 3 шапки
+  // стора). Слой раскладки: класс должен смениться до кадра, где колонка уже
+  // нарисована, иначе на один кадр видны и ряд, и колонка. Размонтирование
+  // сбрасывает оба факта — колонки на экране больше нет.
+  useLayoutEffect(() => {
+    const [, setShown] = useFoldersSidebarShown()
+    setShown(foldersSidebarShown)
+    return () => { setShown(false) }
+  }, [foldersSidebarShown])
+  useLayoutEffect(() => {
+    const [, setIsSidebarCollapsed] = useIsSidebarCollapsed()
+    setIsSidebarCollapsed(collapsed)
+    return () => { setIsSidebarCollapsed(false) }
+  }, [collapsed])
   // Ручка вешается один раз на живой узел — актуальные значения читаются из рефов.
   const collapsedRef = useRef(collapsed)
   collapsedRef.current = collapsed
@@ -188,6 +207,90 @@ export default function Sidebar({
   // tweb onSomethingOpenInsideChange: свёрнутая колонка всплывает до полной
   // ширины, пока внутри что-то открыто (sidebarLeft/index.ts:535).
   useEffect(() => { setOpenTabsLeftSidebar(somethingOpenInside) }, [somethingOpenInside])
+
+  // `appSidebarLeft.closeAllTabs()` — экраны колонки (у tweb это вкладки
+  // слайдера: экран-вкладка, архив, редактор папки). Отвечает, было ли что
+  // закрывать.
+  const closeAllTabsRef = useRef<() => boolean>(() => false)
+  closeAllTabsRef.current = () => {
+    const hadTabs = screen !== null || archiveOpen || editingFolder !== null
+    setScreen(null)
+    setSettingsSub(null)
+    setArchiveOpen(false)
+    setEditingFolder(null)
+    return hadTabs
+  }
+  // `appSidebarLeft.closeEverythingInside()` (tweb `sidebarLeft/index.ts:494-499`):
+  // поиск, форум, вкладки. Им же отвечает колбэк владельцу папок
+  // `closeEverythingInsideNaturally` (`:505-516`) — переключение папки
+  // закрывает то, что открыто в колонке. Хуки владельцу отдаются один раз,
+  // поэтому состояние читается через ref. Отказа (вкладка просит
+  // подтверждения, `closeAllTabsNaturally`) у наших экранов нет — владельцу
+  // ответ всегда `true`.
+  const closeEverythingInsideRef = useRef<() => boolean>(() => false)
+  closeEverythingInsideRef.current = () => {
+    if (searching) closeSearch()
+    closeForum()
+    return closeAllTabsRef.current()
+  }
+  // То, что меню папки (`createFolderContextMenu`, оба ряда) берёт у колонки —
+  // у tweb `appSidebarLeft` и классы вкладок. Объект один на жизнь колонки:
+  // его получают владелец папок (хуки `start()`) и вертикальная колонка.
+  const [appSidebarLeft] = useState<FolderContextMenuSidebar>(() => ({
+    // tweb `sidebarLeft/index.ts:1613-1616`: пауза — на уход закрытой вкладки
+    closeTabsBefore: async (clb) => {
+      if (closeEverythingInsideRef.current()) await pause(200)
+      clb()
+    },
+    openEditFolderTab: (filter) => setEditingFolder(filter),
+    openChatFoldersTab: () => openFolderSettings(),
+  }))
+  const forumOpenRef = useRef(false)
+  forumOpenRef.current = !!forumChat
+  // Плашка-подсказка рисуется порталом в узел владельца (tweb `:1079-1082`);
+  // узел появляется со `start()`, поэтому это состояние.
+  const [suggestionContainer, setSuggestionContainer] = useState<HTMLElement>()
+
+  // Владелец въезжает в `.connection-status-bottom` (tweb `start()`,
+  // `:587-604`): кладёт туда `.chatlist-overlay` и `#folders-container`, ставит
+  // `--chatlist-overlay-height` на хост и `has-filters` на `#chatlist-container`.
+  // Хост приходит чужим ref'ом — к layout-фазе Sidebar оба узла уже в DOM (у
+  // ref-колбэка хоста `#chatlist-container` ещё не был бы привязан: React
+  // цепляет ref'ы детей раньше родителя).
+  useImperativeIsland((host) => {
+    // Первый `onClick(0, false)` владелец делает ВНУТРИ `start()` (tweb
+    // `:1064-1065`), и у tweb в этот момент в колонке ничего не открыто. У нас
+    // открытым может быть поиск — префилл deep-open (`initialQuery`); стартовый
+    // показ «Всех чатов» его не закрывает.
+    let starting = true
+    dialogsManager.start(host, chatlistContainerRef.current!, {
+      closeEverythingInsideNaturally: () => {
+        if (!starting) closeEverythingInsideRef.current()
+        return true
+      },
+      isForumOpen: () => forumOpenRef.current,
+      appSidebarLeft,
+      managers,
+    })
+    starting = false
+    setSuggestionContainer(dialogsManager.suggestionContainer)
+    return () => dialogsManager.destroy()
+  }, [], { host: bottomPartRef })
+
+  // `active` на `#chatlist-container` — не `className` React: на узле два
+  // писателя классов, колонка (`active`, поиск) и владелец папок (`has-filters`,
+  // `onFiltersLengthChange` `:1310-1312`), а React пишет `className` целиком и
+  // стёр бы чужой класс на первом же ре-рендере. У tweb `active` здесь тоже
+  // ставит императивный код (`TransitionSlider` 'zoom-fade' поиска).
+  useLayoutEffect(() => {
+    chatlistContainerRef.current!.classList.toggle('active', !searching) // ownership-ok: узел делят колонка и владелец папок, см. выше
+  }, [searching])
+
+  // Свёрнутая колонка аватаров при открытом форуме — клиренс под FAB у
+  // скроллеров папок снимает владелец (его узлы, расхождение 19).
+  useLayoutEffect(() => {
+    dialogsManager.setCollapsed(!!forumChat)
+  }, [dialogsManager, forumChat])
 
   // Меню бургера и вертикальной колонки папок — один набор обработчиков на оба места.
   const menuActions: MainMenuHandlers = {
@@ -219,10 +322,8 @@ export default function Sidebar({
       {foldersSidebarShown && (
         <FoldersSidebar
           folders={folders}
-          selectedId={folderId}
-          counts={folderUnread}
-          onSelect={changeFolder}
-          onContextMenu={onTabContextMenu}
+          appSidebarLeft={appSidebarLeft}
+          managers={managers}
           onOpenFolderSettings={openFolderSettings}
           menu={menuActions}
         />
@@ -275,9 +376,10 @@ export default function Sidebar({
             onAddStory={stories.pickStoryFile}
             foldInto={() => inputRef.current}
             setScrolledOn={() => chatlistContainerRef.current}
-            getScrollable={() => listScrollRef.current}
+            // скроллер АКТИВНОЙ папки — `xd` владельца (`appDialogsManager.ts:723`)
+            getScrollable={() => dialogsManager.xd?.scrollable.container ?? null}
             listenWheelOn={() => bottomPartRef.current}
-            onExpand={() => listScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+            onExpand={() => dialogsManager.xd?.scrollable.container.scrollTo({ top: 0, behavior: 'smooth' })}
           />
         </div>
       )}
@@ -289,45 +391,20 @@ export default function Sidebar({
       {/* `.transition > .transition-item:not(.active)` — display:none !important
           (_transition.scss:12). Значит `active` носит РОВНО ОДИН из двух узлов:
           при открытом поиске он уходит на #search-container, иначе на чатлист. */}
-      <div ref={chatlistContainerRef} id="chatlist-container" className={classNames('transition-item', searching ? '' : 'active', folders.length > 0 ? 'has-filters' : '', s.body)}>
+      {/* `className` постоянный: `active` и `has-filters` ставит не React (см.
+          layout-эффект `active` выше). */}
+      <div ref={chatlistContainerRef} id="chatlist-container" className={classNames('transition-item', s.body)}>
       {/* tweb appDialogsManager.start(): bottomPart = .connection-status-bottom,
-          в него prepend'ится .chatlist-overlay и append'ится #folders-container.
-          Высота оверлея уезжает в --chatlist-overlay-height (ResizeObserver там же),
-          её читает padding-top у .folders-scrollable — так табы никогда не
-          накрывают первый ряд списка. */}
-      <div ref={bottomPartRef} className="connection-status-bottom" style={overlayHeightVar}>
-        {/* tweb .chatlist-overlay — один абсолютный оверлей над списком, дети в нём
-            текут обычным потоком: плашка-подсказка (appDialogsManager.ts:1079-1082
-            prepend'ит её сюда) СВЕРХУ, градиент-фейд и карточка табов под ней.
-            Позиционирование даёт портированный `#column-left .chatlist-overlay`
-            (_leftSidebar.scss:295). */}
-        <div ref={overlayRef} className="chatlist-overlay">
-          <PendingSuggestion collapsed={collapsed} />
-          {/* tweb (живой DOM :8099): градиент-фейд — ПРЯМОЙ ребёнок .chatlist-overlay,
-              а не часть плашки табов; `.folders-tabs-gradient-container { inset: 0 }`
-              растягивает его на ВЕСЬ оверлей (плашка-подсказка + табы), и строки
-              списка, уезжающие под их поля, гаснут в --surface-color. Без него
-              чат-лист просвечивает в 8px-полях вокруг плашки. */}
-          <div className={classNames('menu-horizontal-gradient-container', 'folders-tabs-gradient-container')}>
-            <div className={classNames('menu-horizontal-gradient', 'menu-horizontal-gradient-color-surface', 'menu-horizontal-gradient-smaller', 'folders-tabs-gradient')} />
-          </div>
-          {/* tweb (живой DOM :8099): карточка табов — ПРЯМОЙ ребёнок .chatlist-overlay
-              рядом с градиентом, без обёртки; слои даёт сам партиал
-              (`#column-left .item-main .menu-horizontal-scrollable`: position:relative,
-              z-index:2 — _leftSidebar.scss:274). */}
-          {!searching && folders.length > 0 && !foldersSidebarShown && (
-            <FolderTabs
-              value={folderId}
-              onChange={changeFolder}
-              folders={folders}
-              counts={folderUnread}
-              onTabContextMenu={onTabContextMenu}
-            />
-          )}
-        </div>
-        <div id="folders-container" className="tabs-container">
+          в него prepend'ится .chatlist-overlay (плашка-подсказка, градиент, ряд
+          вкладок папок) и append'ится #folders-container с контейнерами папок.
+          Всё это — узлы владельца (`lib/appDialogsManager.ts`); высоту оверлея
+          он же кладёт в --chatlist-overlay-height, её читает padding-top у
+          .folders-scrollable — так табы никогда не накрывают первый ряд списка.
+          React рисует сюда только оверлей архива; списки папок — порталами в
+          `.chatlist-top` их контейнеров (<ChatList>). */}
+      <div ref={bottomPartRef} className="connection-status-bottom">
         <ChatList
-          ref={listScrollRef}
+          manager={dialogsManager}
           // Витрина зеркала ЦЕЛИКОМ: по папке список фильтрует себя сам
           // (`useDialogListSource`) — там это правило одно и на строки, и на
           // размер набора для пагинации.
@@ -335,17 +412,18 @@ export default function Sidebar({
           selectedId={selectedId}
           onSelect={handleSelect}
           loaded={loaded}
-          folder={folderId}
-          folderOrder={tabOrder}
-          archived={folderId === ALL_FOLDER_ID ? archivedChats : undefined}
+          archived={archivedChats}
           onOpenArchive={() => setArchiveOpen(true)}
           collapsed={!!forumChat}
         />
+        {suggestionContainer && createPortal(<PendingSuggestion collapsed={collapsed} />, suggestionContainer)}
 
         {/* Архив — в tweb отдельная вкладка слайдера (AppArchivedTab,
             SliderSuperTab), поэтому появление у неё то же, что у прочих вкладок:
             въезд справа за --transition-standard-in. Кейфрейм на вставке узла
-            вместо движка анимаций. */}
+            вместо движка анимаций. Лежит в `.connection-status-bottom`, а не в
+            `#folders-container`: там дети — только кадры папок, слайдер берёт
+            кадр индексом (`content.children[id]`, `horizontalMenu.ts:56`). */}
         {archiveOpen && (
             <div className={s.archiveOverlay}>
               <div className={s.archiveHeader}>
@@ -370,7 +448,6 @@ export default function Sidebar({
               </div>
             </div>
         )}
-        </div>
       </div>
       </div>
 
@@ -402,7 +479,9 @@ export default function Sidebar({
       </div>
       </div>
 
-      {folderOverlays}
+      {editingFolder && (
+        <FolderEditor folder={editingFolder} chats={chats} onClose={() => setEditingFolder(null)} />
+      )}
 
       <SidebarScreens
         screen={screen}

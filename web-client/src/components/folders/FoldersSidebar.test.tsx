@@ -6,6 +6,12 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, cleanup, act } from '@testing-library/react'
 import FoldersSidebar, { type MainMenuHandlers } from './FoldersSidebar'
+import contextMenuController from '../../helpers/contextMenuController'
+import { CLICK_EVENT_NAME } from '../../helpers/dom/clickEvent'
+import { applyFolderUpdate } from '../../stores/foldersStore'
+import { useAppStateStore } from '../../stores/appState'
+import { initialState } from '../../core/state/state'
+import type { Folder, RawFolder } from '../../core/managers/foldersManager'
 import { setActiveGradientRenderer } from '../../core/chat/activeGradient'
 import type ChatBackgroundGradientRenderer from '../../core/chat/gradientRenderer'
 import s from './FoldersSidebar.module.scss'
@@ -21,28 +27,42 @@ const menu: MainMenuHandlers = {
   onOpenPremium: () => {},
 }
 
-function renderSidebar() {
+function makeAppSidebarLeft() {
+  return {
+    closeTabsBefore: vi.fn((clb: () => void) => clb()),
+    openEditFolderTab: vi.fn(),
+    openChatFoldersTab: vi.fn(),
+  }
+}
+
+function makeManagers() {
+  return { folders: { del: vi.fn(async (_id: number) => {}) } }
+}
+
+function renderSidebar(folders: Folder[] = []) {
   const host = document.createElement('div')
   host.id = 'main-columns'
   document.body.append(host)
+  const appSidebarLeft = makeAppSidebarLeft()
+  const managers = makeManagers()
   const r = render(
     <FoldersSidebar
-      folders={[]}
-      selectedId={0}
-      counts={{}}
-      onSelect={() => {}}
-      onContextMenu={() => {}}
+      folders={folders}
+      appSidebarLeft={appSidebarLeft}
+      managers={managers}
       onOpenFolderSettings={() => {}}
       menu={menu}
     />,
   )
-  return { host, ...r }
+  return { host, appSidebarLeft, managers, ...r }
 }
 
 afterEach(() => {
+  contextMenuController.close()
   act(() => setActiveGradientRenderer(undefined))
   cleanup()
-  document.getElementById('main-columns')?.remove()
+  document.body.replaceChildren()
+  useAppStateStore.setState(initialState(), true)
 })
 
 describe('FoldersSidebar — зеркало градиента обоев', () => {
@@ -82,5 +102,81 @@ describe('FoldersSidebar — зеркало градиента обоев', () =
     expect(detach).toHaveBeenCalledTimes(1)
     expect(second.attachMirror).toHaveBeenCalledWith(host.querySelector('canvas'))
     expect(host.querySelector(`.${s.backgroundDarkPattern}`)).not.toBeNull()
+  })
+})
+
+// Меню папки у колонки — ТА ЖЕ фабрика `createFolderContextMenu`, что у ряда
+// владельца (tweb `foldersSidebarContent/index.tsx:84-92`: `className:
+// 'folders-sidebar__folder-item'`, `listenTo` — контейнер строк). Пины ряда —
+// `helpers/dom/createFolderContextMenu.test.ts`; здесь — что колонка на неё
+// посажена: `data-filter-id` на строках, меню портированной разметки.
+const raw = (id: number, pos: number, title: string): RawFolder => ({
+  id, title, pos,
+  contacts: false, non_contacts: false, groups: false, broadcasts: false, bots: false,
+  exclude_muted: false, exclude_read: false, include_chats: [], exclude_chats: [],
+})
+
+const settle = async () => {
+  for(let i = 0; i < 4; ++i) await new Promise((resolve) => setTimeout(resolve, 0))
+}
+
+async function openOn(el: Element) {
+  el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+  await settle()
+  return document.querySelector<HTMLElement>('.btn-menu.contextmenu.active')
+}
+
+const itemTexts = (menu: HTMLElement | null) =>
+  Array.from(menu?.querySelectorAll('.btn-menu-item .btn-menu-item-text') ?? []).map((el) => el.textContent)
+
+function clickItem(menu: HTMLElement, text: string) {
+  Array.from(menu.querySelectorAll<HTMLElement>('.btn-menu-item'))
+    .find((el) => el.querySelector('.btn-menu-item-text')!.textContent === text)!
+    .dispatchEvent(new MouseEvent('click', { bubbles: true }))
+}
+
+describe('FoldersSidebar — меню папки (createFolderContextMenu)', () => {
+  function renderWithFolders() {
+    applyFolderUpdate({ folder: raw(3, 1, 'Работа') })
+    applyFolderUpdate({ folder: raw(5, 2, 'Учёба') })
+    const r = renderSidebar(useAppStateStore.getState().folders)
+    const row = (filterId: number) =>
+      r.host.querySelector(`.folders-sidebar__folder-item[data-filter-id="${filterId}"]`)!
+    return { ...r, row }
+  }
+
+  it('строки несут data-filter-id; на папке — «Edit folder» и «Delete», на «Все чаты» — «Edit folders»', async () => {
+    const { host, row } = renderWithFolders()
+    expect(Array.from(host.querySelectorAll<HTMLElement>('.folders-sidebar__folder-item'))
+      .map((el) => el.dataset.filterId)).toEqual(['0', '3', '5'])
+
+    const menu = await openOn(row(3))
+    expect(itemTexts(menu)).toEqual(['Edit folder', 'Delete'])
+    expect(menu!.querySelectorAll('.btn-menu-item').length).toBe(2)
+    contextMenuController.close()
+    await settle()
+
+    expect(itemTexts(await openOn(row(0)))).toEqual(['Edit folders'])
+  })
+
+  it('«Edit folder» открывает редактор папки строки; «Delete» после подтверждения удаляет её', async () => {
+    const { row, appSidebarLeft, managers } = renderWithFolders()
+    clickItem((await openOn(row(5)))!, 'Edit folder')
+    await settle()
+    expect(appSidebarLeft.openEditFolderTab.mock.calls[0][0]).toMatchObject({ id: 5 })
+
+    clickItem((await openOn(row(3)))!, 'Delete')
+    await settle()
+    document.querySelector<HTMLElement>('.popup-confirmation .popup-button.danger')!
+      .dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
+    await settle()
+    expect(managers.folders.del).toHaveBeenCalledWith(3)
+  })
+
+  it('размонтирование колонки снимает меню', async () => {
+    const { row, unmount } = renderWithFolders()
+    const el = row(3)
+    unmount()
+    expect(await openOn(el)).toBeNull()
   })
 })

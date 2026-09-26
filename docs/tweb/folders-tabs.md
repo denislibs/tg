@@ -44,6 +44,7 @@
 |---|---|---|
 | `index.html:98-101` | — | статический скелет: `#chatlist-container.transition-item > #folders-container.tabs-container` |
 | `src/components/foldersTabs.tsx` | 61 | Solid-компонент ряда вкладок папок |
+| `src/components/popups/pickUser.tsx:325-424` | 100 | **второй потребитель ряда** — `createFolderTabs` попапа пересылки: ставится при `showTopPeers` (`:509`), который передаёт `showForwardPopup` (`popups/forward.tsx:360-376`); клик → `selectTarget` → прокрутка списка к началу → `selector.setFolderId` (`appSelectPeers.ts:1358-1366`); на запросе ряд `is-collapsed`, скоуп — «Все чаты» (`_setFolderId`, `:631-633`) |
 | `src/components/tabs.tsx` | 172 | Solid-обёртка `Tabs.*` вокруг классов `.menu-horizontal-*` и `horizontalMenu` |
 | `src/components/badge.tsx` | 26 | Solid-бейдж `badge badge-{size} badge-{color}` |
 | `src/components/scrollable2.tsx` | 355 | Solid-скроллер; `MenuScrollable` берёт его с `axis="x"` |
@@ -130,6 +131,10 @@
 | `:37-39` | `span.text-super` вокруг заголовка |
 | `:40-46` | `<Badge tag="div" size={20} color={muted ? 'gray' : 'primary'}>{count}</Badge>` — при `count` 0 у бейджа `is-badge-empty` (`badge.tsx:19`) |
 | `:51-59` | `Tabs > [MenuGradient] > MenuScrollable > Menu > For each={folderItems}` |
+
+Потребителей у компонента два: владелец колонки (`appDialogsManager.ts:654-686`) и
+попап пересылки (`popups/pickUser.tsx:391-419`: `popup-forward-folder-tabs`, градиент
+`background` без `smaller`, `menuProps.onClick` → `selectTarget`).
 
 Компонент **не читает `selectedFolderId`** и не ставит `active` сам: класс
 переставляет `horizontalMenu` на DOM (`horizontalMenu.ts:97-103`, `:129-132`).
@@ -295,52 +300,71 @@
 
 | Наш файл | Роль | Аналог tweb |
 |---|---|---|
-| `components/FolderTabs.tsx` (50) | React-ряд поверх `shared/ui/Tabs` | `foldersTabs.tsx` |
-| `shared/ui/Tabs/Tabs.tsx` (159) | React-переписка `.menu-horizontal-*` + полоски Jolly Cobra | `tabs.tsx` + кусок `horizontalMenu.ts` |
-| `shared/ui/Tabs/TabSlide.tsx` (177) | React-переписка `slideTabs` + `selectTab`; `keepMounted` | `transition.ts:45-95`, `:300-352` |
-| `shared/ui/Tabs/TabsBar.tsx` (45) | липкая плашка с градиентом — **потребителей нет** | — |
-| `components/ChatList.tsx` (305) | `TabSlide keepMounted` = контейнеры папок; `ChatListFolder` = `xd` | `addFilter` + `AutonomousDialogList` |
-| `components/Sidebar.tsx:292-341` | `has-filters`, `.connection-status-bottom` + `--chatlist-overlay-height` (`useMeasuredHeight`), `.chatlist-overlay` с плашкой, градиентом и `FolderTabs`, `#folders-container` | `start()` `:587-604`, `:654-686`, `onFiltersLengthChange` |
-| `core/hooks/useSidebarFolders.tsx` (137) | `tabOrder`, счётчики (зовёт `folderUnreadCounts`), `changeFolder` (`:60-63`), React-меню папки (`:89-121`) | стор + `selectFolderByIndex` + `createFolderContextMenu` |
-| `stores/foldersStore.ts` (157) | Zustand: `selectedId`, `contactIds`; определения папок — в `appState.folders` | `stores/folders.ts` + `filtersStorage` |
+| `components/foldersTabs.solid.tsx` | Solid-порт ряда (задача 4); потребителей два, как у оригинала: владелец `lib/appDialogsManager.ts` кладёт узлы в оверлей колонки (задача 6), `components/popups/pickUserFolderTabs.ts` монтирует ряд в попап пересылки (задача 9). React-`FolderTabs.tsx` удалён задачей 9 | `foldersTabs.tsx` |
+| `components/popups/pickUserFolderTabs.ts` | порт `createFolderTabs` (задача 9): `mountSolid` ряда в узел React-хоста, `selectTarget` полосы, `fastSmoothScroll` списка к началу, липкий `top` по высоте поиска; 6 расхождений в шапке (узел и `is-collapsed` держит React; узлы селектора ищутся по классам; лимита нет — задача 10; `deferred` не нужен; гидрация проекции; клик — нативным слушателем, т. к. React-`Popup` гасит всплытие до делегированного `onClick` Solid) | `pickUser.tsx:325-424` |
+| `lib/appDialogsManager.ts` | TS-владелец контейнеров папок и переключения (задача 5): `AppDialogsManager.start(host, chatsContainer, hooks)`/`destroy()`, `FolderList` (роль `xd`) с поздней регистрацией хэндла списка, `setCollapsed` (расхождение 19); тесты `appDialogsManager.{dom,switch,filters}.test.ts`, обвязка `appDialogsManager.testkit.ts`. **Встроен в колонку задачей 6**: хост — `.connection-status-bottom` `Sidebar.tsx` (`useImperativeIsland` с чужим ref'ом), наши классы на его узлах — `appDialogsManager.module.scss` | папочный срез `appDialogsManager.ts` + `AutonomousDialogList` |
+| `shared/ui/Tabs/Tabs.tsx` | React-переписка `.menu-horizontal-*` + полоски Jolly Cobra; после задачи 9 потребитель один — `SearchView.tsx`, и пропы, которые держал только папочный ряд (`badge`, `onContextMenu`, `className` у `List`), сняты. Сносит программа глобального поиска вместе с `SearchView` (отложенная задача 19 плана) | `tabs.tsx` + кусок `horizontalMenu.ts` |
+| `shared/ui/Tabs/TabSlide.tsx` | React-переписка `slideTabs` + `selectTab`; после задачи 6 потребитель один — `SearchView.tsx` (программа глобального поиска), мёртвый проп `keepMounted` снят | `transition.ts:45-95`, `:300-352` |
+| `components/ChatList.tsx` | с задачи 6: на каждый `FolderList` владельца (`manager.subscribe/getRendered`) — `createPortal(<ChatListFolder/>, list.top)`; `ChatListFolder` владеет только `ul` и строками, регистрирует хэндл `{clear, reset, onChatsScroll}`; своего запроса первой страницы и своего `.chatlist-bottom` нет | React-половина `AutonomousDialogList` |
+| `components/Sidebar.tsx` | с задачи 6: пустой хост `.connection-status-bottom` для владельца, хуки `closeEverythingInsideNaturally`/`isForumOpen` из своего состояния, портал `PendingSuggestion` в `manager.suggestionContainer`, `StoriesRow.getScrollable` → `manager.xd`; `active` на `#chatlist-container` — imperative (там же `has-filters` владельца); с задачи 8 — пишет стору режима `useFoldersSidebarShown`/`useIsSidebarCollapsed` layout-эффектом (размонтирование сбрасывает); с задачи 7 — отдаёт владельцу и колонке объект `appSidebarLeft` (`closeTabsBefore`, редактор и список папок) | `AppSidebarLeft` + вызов `appDialogsManager.start()` |
+| `helpers/dom/createFolderContextMenu.ts` | меню папки, ОДНА фабрика на оба ряда (задача 7): ряд — владелец (`listenTo: folders.menu`), колонка — `FoldersSidebar.tsx` (`useImperativeIsland` на контейнер строк); экраны открывает колонка (`appSidebarLeft` — объект `Sidebar.tsx`: `closeTabsBefore`, редактор папки, список папок) | `createFolderContextMenu.ts` |
+| `components/sidebarLeft/tabs/editFolderShared.ts` | `deleteFolder`: `confirmationPopup` «Remove Folder» → `folders.del` → `foldersStore.remove` после ответа (задача 7; React-хук `useSidebarFolders.tsx` снят) | `editFolderShared.ts:14-41` |
+| `stores/foldersStore.ts` (157) | Zustand: `selectedId` (писатель один — владелец папок), `contactIds`; определения папок — в `appState.folders` | `stores/folders.ts` + `filtersStorage` |
 | `stores/folders.solid.ts` | Solid-проекция `folderItems` (подписка на `appState.folders`, диалоги, контакты, настройки мьюта, зеркало пиров) + `onClick`-сигнал; `selectedFolderId` не держит — факт в `foldersStore.selectedId` (задача 3 плана) | `stores/folders.ts` |
 | `core/folders/folderUnreadCounts.ts` | чистая функция `{count, muted}` по папкам из зеркала диалогов — одна на оба ряда | `getNotificationCountForFilter` + `dialogsStorage.getFolderUnreadCount` |
 | `core/hooks/useDialogListSource.ts` | курсор/страницы/размер набора одной папки | `AutonomousDialogListBase` |
-| `components/folders/FoldersSidebar.tsx` (201) | вертикальная колонка, React, портал в `#main-columns` | `foldersSidebarContent/index.tsx` |
-| `components/messages/ChatDialogs.tsx:167-278` | `ForwardPicker` со **своим** рядом `FolderTabs` (`:278`) | у `appSelectPeers.ts` ряда папок нет — только скоуп по одной папке (`:631-646`, `:1358-1366`) |
-| `index.html:33` | `has-horizontal-folders` стоит на `<body>` **статически** | `stores/foldersSidebar.ts:90-112` |
+| `components/folders/FoldersSidebar.tsx` | вертикальная колонка, React, портал в `#main-columns`; клик — `useFolders().onClick()(index)` Solid-проекции (тот же `selectTab` владельца, задача 6), выбранная — `foldersStore.selectedId`, счётчики — `folderUnreadCounts` своими подписками; меню папки — `createFolderContextMenu` на контейнер строк (`.folders-sidebar__folder-item[data-filter-id]`, задача 7) | `foldersSidebarContent/index.tsx` |
+| `components/messages/ChatDialogs.tsx` (`ForwardPicker`) | с задачи 9: узел-хост `div.popup-forward-folder-tabs-container.collapsable` за «недавними» (`is-collapsed` на запросе), остров `useImperativeIsland` → `createFolderTabs`; `folderId` — роль `selectedFolderId` селектора, скоуп на запросе — «Все чаты» (`_setFolderId`), отбор — `chatMatchesFolder` по пропу `dialogs` | `popups/forward.tsx:360-376` + `pickUser.tsx:325-424` + `appSelectPeers.ts:631-647`, `:1358-1366` |
+| `stores/foldersSidebar.solid.ts` | с задачи 8: сигналы `useHasFolders` (пишет владелец из `onFiltersLengthChange`, `destroy()` сбрасывает), `useFoldersSidebarShown`, `useIsSidebarCollapsed` (оба пишет `Sidebar.tsx` layout-эффектом из своего состояния) + эффект `body.has-horizontal-folders`/`has-vertical-folders` и `setFoldersSidebarShown`; статического класса в `index.html` больше нет. Тесты — `foldersSidebar.solid.test.ts` (формула, владелец, `index.html`, `display` ряда под настоящим CSS) и `components/Sidebar.foldersMode.test.tsx` (проводка из колонки) | `stores/foldersSidebar.ts` |
 | `components/horizontalMenu.ts` (299), `components/transition.ts` (470), `helpers/dom/{handleTabSwipe,positionElementByIndex,lockTouchScroll}.ts`, `components/scrollable.ts`, `components/scrollable2.solid.tsx`, `shared/solid/mountSolid.solid.tsx`, `core/hooks/useImperativeIsland.ts`, `helpers/solid/subscribeExternal.ts`, `core/navigation/appNavigationController.ts` (`'filters'` в типах `:82-86`, `spliceItems` `:467`, `removeItem` `:477`), `helpers/dom/createContextMenu.ts`, `helpers/fastSmoothScroll.ts:79-91` (`fastSmoothScrollToStart`), `environment/{touchSupport,userAgent}.ts`, `lib/langPack.ts:914` (`i18n`) | **портировано и переиспользуется** | одноимённые |
 
 ## 2.2 Статус по подсистемам
 
+Снято после задачи 6 плана (шов, 2026-09-26): владелец `lib/appDialogsManager.ts`
+встроен в колонку, React-ряд `FolderTabs` и `TabSlide` из неё сняты.
+
 | Подсистема оригинала | Статус | Расхождение |
 |---|---|---|
-| Solid-обёртка `Tabs.*` | **есть** — `components/tabs.solid.tsx` (задача 1 плана папок; `Menu`/`MenuTab`/`MenuScrollable`/`MenuGradient`, разметка запинена на дамп `14-left-01-chatlist.json:46-56`) | потребитель пока один — `appSearchSuper.ts` строит градиент `Tabs.MenuGradient({...})` прямым вызовом, как tweb `appSearchSuper.ts:596-600` (задача 2; расхождение 1 в его шапке снято); ряд папок — задача 4; `Content`/`ContentTab`/`Simple` не портированы (шапка `tabs.solid.tsx`, п. 2) |
-| Solid-`Badge` | **есть** — `components/badge.solid.tsx` (задача 1) | до задачи 4 ряд папок рисует React-бейдж инлайн в `Tabs.tsx:141-145`, всегда `badge-gray` и `99+` (у tweb цвет по `muted`, число без обрезки) |
-| Ряд вкладок | React `FolderTabs.tsx` | рендерится условно (`Sidebar.tsx:319-327`: не при поиске, не при вертикальной колонке); в tweb — всегда в DOM, скрыт CSS; `data-filter-id` на вкладке нет; название папки — `f.title` строкой |
-| Слайдер папок | React `TabSlide keepMounted` | **дефект**: переход папок то без выезда, то рывком (стенд, `shared-media.md` § 2.3, последний абзац — тот же `TabSlide`). Порядок операций другой: React коммитит `active` на кадр, потом layout-эффект ставит оба `transform` и делает reflow (`TabSlide.tsx:113-118`); у `slideTabs` — сперва `transform` обоим, потом `active`, reflow, снятие (`transition.ts:63-70`). Кадры в DOM по порядку ПЕРВОГО ПОКАЗА, не по `localId` (`TabSlide.tsx:134-140`, объявлено там) |
-| Владелец контейнеров | **нет** — роль размазана по `Sidebar.tsx`, `ChatList.tsx`, `useSidebarFolders.tsx`, `foldersStore.ts` | контейнер — React-кадр `TabSlide`; скроллер папки — `ul.parentElement` (`ChatList.tsx:178-182`); нет `Scrollable` на папку (нет `attachBorderListeners` → нет `scrolled-start/end`, `scrollable-y-bordered`); нет `.chatlist-top` (`ChatList.tsx:294-299`) |
-| `clear()` на переключение и по концу перехода | **нет, наоборот** | список каждой папки живёт и помнит `scrollTop` — § 0, поправка 1; так и запинено (`Sidebar.chatlist.test.tsx:131-160`, `ChatList.test.tsx:542-600`) |
-| Повторный клик → прокрутка к началу | **нет** | `changeFolder` (`useSidebarFolders.tsx:60-63`) выходит на `id === folderId` |
-| Лимит папок / `closeEverythingInsideNaturally` / навигационный `'filters'` | **нет** | тип `'filters'` в `appNavigationController.ts:84` объявлен, никем не ставится |
-| Показ ряда при >1 папке, `has-filters` | частично | `has-filters` — `folders.length > 0` (`Sidebar.tsx:292`); `hide` на ряд/градиент не ставится (ряд условно не рендерится); `body.has-horizontal-folders` статичен (`index.html:33`) |
-| Счётчики | с main из зеркала, одной функцией | `core/folders/folderUnreadCounts.ts` (правило `folders.ts:27-28`, `muted` с упоминаниями); tweb считает воркер (`dialogs.ts:482-489`) — отложенная задача 16; в счёт входят только диалоги, уже лежащие в зеркале |
-| Свайп | **нет** | `left-sidebar.md` § 8.2 п. 8 |
-| Меню папки | React-меню (`useSidebarFolders.tsx:89-121`) | нет `MarkAllAsRead`; два разных меню-механизма у ряда и колонки (у tweb — одно) |
-| Выбор папки (факт) | `foldersStore.selectedId` (Zustand) | писатели: `changeFolder`, `deselectIfRemoved` (`foldersStore.ts:47-49`) — эквивалент `deleteFolder` без дефекта `:131` |
+| Solid-обёртка `Tabs.*` | **есть** — `components/tabs.solid.tsx` (задача 1; `Menu`/`MenuTab`/`MenuScrollable`/`MenuGradient`, разметка запинена на дамп `14-left-01-chatlist.json:46-56`); потребители — ряд папок и `appSearchSuper.ts` (`Tabs.MenuGradient`, задача 2) | `Content`/`ContentTab`/`Simple` не портированы (шапка `tabs.solid.tsx`, п. 2; отложенная задача 18) |
+| Solid-`Badge` | **есть** — `components/badge.solid.tsx`, в колонке с задачи 6 (цвет по `muted`, число без обрезки) | — |
+| Ряд вкладок | **в колонке** — `components/foldersTabs.solid.tsx` узлами владельца прямо в `.chatlist-overlay` (дамп `14-left-01-chatlist.json:46-71`; стенд: `dom-parity` по предмету — 0 недостающих классов) | название папки — `filter.title` текстом (отложенная задача 11). Ряд ВСЕГДА в DOM, как у tweb, а видимость решает только `body.has-horizontal-folders`, который с задачи 8 ставит эффект режима (`stores/foldersSidebar.solid.ts`, порт `foldersSidebar.ts:90-112`): при «папки слева» — `has-vertical-folders`, ряд в DOM, но `display: none`; в свёрнутой колонке на немобильном экране — тоже вертикальный режим (как у tweb). Меню папки — `createFolderContextMenu` (задача 7), одно на ряд и колонку |
+| Слайдер папок | **порт в колонке** — живые `horizontalMenu` + `TransitionSlider.slideTabs` на `#folders-container`, кадры по `localId`. Стенд (задача 6): переход выезжает за 210 мс (`--tabs-transition: .2s ease-in-out`), кадры `0:[active,from]`/`1:[active,to]`, контейнер `animating` (+`backwards` влево), `transitionend` обоим на 219 мс | — |
+| Владелец контейнеров | **порт в колонке** (задачи 5-6): хост — `.connection-status-bottom` `Sidebar.tsx`, `#chatlist-container` вторым аргументом; `destroy()` на размонтировании колонки (пин `Sidebar.chatlist.test.tsx`); 19 расхождений в шапке файла | `FolderList` + React-`ChatListFolder` порталом в `.chatlist-top` вместо `AutonomousDialogList` (расхождение 3) |
+| `clear()` на переключение и по концу перехода | **порт в колонке**: хэндл `ChatListFolder` — `useDialogListSource.clear()` + пересоздание `ul` (ключ показа), окно пусто до страницы владельца. Стенд: у неактивных `ul` пуст, активная папка после возврата — `scrollTop` 0 (272 → 0), страница из кэша воркера, запросов к бэкенду при 6 переключениях — 0 | позицию обнуляет браузер (`display: none` у неактивной) — у нас для этого клиренс под FAB гаснет у пустого списка (расхождение 19) |
+| Повторный клик → прокрутка к началу | **порт в колонке** — стенд: 272 → 0 за ~500 мс плавно | — |
+| Лимит папок / `closeEverythingInsideNaturally` / навигационный `'filters'` | `closeEverythingInsideNaturally` — хук колонки (закрывает экран-вкладку, архив, поиск, форум; стартовый показ «Всех чатов» префилл поиска deep-open не закрывает); `'filters'` — стенд: Esc с «Новых» вернул на «Все чаты»; лимит — **нет** (задача 10) | отказа у наших экранов нет — ответ всегда `true` |
+| Показ ряда при >1 папке, `has-filters` | **порт в колонке**: `has-filters` на `#chatlist-container` ставит только владелец (React `className` узла постоянный, `active` ставится imperative); стенд: одна папка → `hide` на ряд и контейнер градиента, `has-filters` снят; вернули папки → показан. **Расхождение (21 в шапке владельца):** `hide` градиента синхронизируется с рядом на КАЖДОМ проходе `onFiltersLengthChange`, а не только при смене показа, и в ref не ставится — у tweb он из ref затирается class-эффектом `Tabs.MenuGradient` (`tabs.tsx:71-95`; скомпилированный JSX зовёт `use(ref)` раньше `effect(className)`, `vendor/solid/web/dist/web.js:2`, `:247-250`), а `onFiltersLengthChange` трогает градиент только внутри `show !== wasShowing` (`appDialogsManager.ts:1308-1312`, `wasShowing` — по ряду). Итог у оригинала: одна папка на холодном старте — градиент без `hide`, растянут на оверлей (`_leftSidebar.scss:315-325`, `inset: 0; z-index: -1`): без плашки-подсказки его высота 0 (ряд `display: none`), с плашкой он лежит под ней на высоту оверлея (стенд: 96px) и в её полях гасит прокрученные строки (стенд: разница кадров до 19/255). Видимый артефакт — у нас скрыт | `setHasFolders(show)` → стор режима → `body.has-horizontal-folders`/`has-vertical-folders` (задача 8); одна папка — ни одного класса |
+| Счётчики | с main из зеркала, одной функцией | `core/folders/folderUnreadCounts.ts`; вертикальная колонка считает её сама (`FoldersSidebar.tsx`); воркерного счёта нет — отложенная задача 16 |
+| Свайп | **порт в колонке** — стенд (touch-эмуляция): 0 → 4 → 5 → 5 (край) → 4 → 0 → 0 (край) | — |
+| Меню папки | **порт на обоих рядах** (задача 7) — `helpers/dom/createFolderContextMenu.ts` поверх `createContextMenu`: `FilterEdit`/`Delete` на папке, `FilterEditAll` на «Все чаты», не прошедшее `verify` не создаётся; удаление — `deleteFolder` (`editFolderShared.ts`) с подтверждением, папка уходит из стора после ответа сервера (как `updateDialogFilter`, без оптимистики) | `MarkAllAsRead` не объявлен — задача 12; ветки shared-папки у `deleteFolder` нет (шапка `editFolderShared.ts`); стенд после слияния 7-9 |
+| Выбор папки (факт) | `foldersStore.selectedId`, писатель ОДИН — `selectFolderByIndex` владельца (`deselectIfRemoved` снят задачей 6); стенд: удаление активной папки с другого устройства — контейнер снят, активной стала «Все чаты» | — |
+| Вертикальная колонка | клик — `useFolders().onClick()(index)` Solid-проекции, тот же `selectTab` владельца; стенд: клик при открытом поиске закрыл поиск и переключил папку | React до отложенной задачи 17 |
 | Пустая папка (📂 + «Edit Folder», `:1399-1430`) | **нет** | — |
 | Плашка «N новых чатов» shared-папки (`:1103-1165`) | **нет** | ручки `getChatlistUpdates` нет |
 
-## 2.3 Наши известные дефекты в этой зоне (подтверждены на 2026-09-08)
+## 2.3 Наши известные дефекты в этой зоне
 
-1. **Переход папок без выезда / рывком** — `TabSlide` (см. таблицу выше).
-2. **«Память `scrollTop`» узаконена как «как в tweb»** — `useSidebarFolders.tsx:54-59`
-   утверждает обратное оригиналу (§ 0).
-3. **Ряд папок в `ForwardPicker`** (`ChatDialogs.tsx:278`) — у оригинала селектор пиров
-   ряда папок не имеет.
-4. **`TabsBar.tsx`** — мёртвый файл (потребителей нет).
-5. **`body.has-horizontal-folders` никто не переключает** — при показанной
-   вертикальной колонке класс остаётся; ряд скрыт только тем, что React его не рендерит.
+1. ~~Переход папок без выезда / рывком~~ — снят задачей 6 (живой `TransitionSlider`).
+2. ~~«Память `scrollTop`» узаконена как «как в tweb»~~ — снята задачей 6 (`keepMounted` удалён, пины переписаны).
+3. ~~Ряд папок в `ForwardPicker` — «у оригинала его нет»~~ — постановка была неверна и
+   снята задачей 9. Ряд у оригинала ЕСТЬ: `showForwardPopup` → `showPickUserPopup({showTopPeers: true})`
+   (`popups/forward.tsx:360-376`) → `createFolderTabs` (`popups/pickUser.tsx:325-424`, вызов `:509`);
+   прежняя ссылка на `popups/forward.ts`/`pickUser.ts` указывала на несуществующие файлы (в базе
+   e52b5d931 они `.tsx`). Дефект был в другом: ряд строил React-`FolderTabs` поверх
+   `shared/ui/Tabs` (без `selectTarget`, без прокрутки списка к началу, скрывался условным
+   рендером на запросе и при отсутствии папок, а запрос искал ВНУТРИ папки). Теперь — порт
+   `components/popups/pickUserFolderTabs.ts` на Solid-`FoldersTabs`; `FolderTabs.tsx` удалён.
+4. ~~`TabsBar.tsx` — мёртвый файл~~ — удалён задачей 9 вместе с `TabsBar.module.scss` и
+   экспортом из `shared/ui/Tabs/index.ts`.
+5. ~~`body.has-horizontal-folders` никто не переключает~~ — снят задачей 8 (эффект режима
+   `stores/foldersSidebar.solid.ts`, статический класс из `index.html` убран). Остаток:
+   `body.has-folders-sidebar` (`foldersSidebar.ts:32`) не ставится — его правила прячут
+   `.left-sidebar-burger` без `.is-visible`, а у нас `is-visible` носят кнопки внутри бургера;
+   вместе с портом колонки и бургера (отложенная задача 17). «Показана» у нас — факт колонки,
+   а не производная от настройки и ширины (≤925px), потому что React-колонка рисуется по
+   своему условию (`Sidebar.tsx`: `tabsInSidebar ∧ папки есть ∧ ширина > 900px`); «свёрнута» —
+   `collapsed` колонки, ложный в диапазоне 601–925px, где у tweb `is-collapsed` стоит.
+6. ~~У горизонтального ряда нет контекстного меню~~ — снято задачей 7: `createFolderContextMenu` вешает владелец на ряд, та же фабрика — на вертикальную колонку.
 
 ---
 
@@ -375,7 +399,7 @@
 Прощёлкать на стенде; числа сверять с `web.telegram.org/k`.
 
 1. Ряд папок: карточка и градиент — прямые дети `.chatlist-overlay`; у вкладки `data-filter-id`, `span.text-super`, `div.badge.badge-20` (`badge-gray` у замьюченной, `is-badge-empty` при 0).
-2. Одна папка (только «Все чаты») — ряда и градиента нет (`hide`), `has-filters` снят, `body.has-horizontal-folders` снят.
+2. Одна папка (только «Все чаты»), в том числе на холодном старте с плашкой-подсказкой — ряда и градиента нет (`hide` у `.folders-tabs-scrollable` и у `.folders-tabs-gradient-container`), `has-filters` снят, `body.has-horizontal-folders` снят. У tweb на холодном старте градиент `hide` не получает (разбор — строка «Показ ряда» таблицы 2.2); у нас — получает, это объявленное расхождение.
 3. Клик по соседней папке: уходящий кадр получает `from`, приходящий — `active to`, контейнер — `animating` (+`backwards` при движении влево); переход **выезжает** (не рывком), оба кадра в DOM на время перехода.
 4. По концу перехода: у неактивных папок `ul` пуст; открытая папка показана **с начала** (`scrollTop = 0`); сетевого запроса нет (страница из кэша воркера).
 5. Повторный клик по активной папке после прокрутки — плавная прокрутка к началу.

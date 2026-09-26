@@ -569,17 +569,28 @@ React-меню `openTabMenu`/`onTabContextMenu` (`useSidebarFolders.tsx:89-121`)
   состояния), `web-client/index.html`
 - Тест: `web-client/src/stores/foldersSidebar.solid.test.ts`
 
-- [ ] **Шаг 1: прочитать** `foldersSidebar.ts` целиком и `Sidebar.tsx:151-190`.
-- [ ] **Шаг 2: падающий тест**: одна папка → ни того, ни другого класса; две папки
+- [x] **Шаг 1: прочитать** `foldersSidebar.ts` целиком и `Sidebar.tsx:151-190`.
+- [x] **Шаг 2: падающий тест**: одна папка → ни того, ни другого класса; две папки
   → `has-horizontal-folders`; включили «папки слева» на широком экране →
   `has-vertical-folders`, горизонтальный снят; сузили экран → снова горизонтальный.
-- [ ] **Шаг 3: убедиться, что тест падает.**
-- [ ] **Шаг 4: реализовать**; из `index.html` класс убрать (комментарий там же
+- [x] **Шаг 3: убедиться, что тест падает.**
+- [x] **Шаг 4: реализовать**; из `index.html` класс убрать (комментарий там же
   обновить).
 
 **Готово когда:** `grep -n has-horizontal-folders web-client/index.html` пуст; на
 стенде переключение «Расположение папок» прячет/показывает ряд без перерендера
 колонки.
+
+**Факт (2026-09-26).** Стор — `stores/foldersSidebar.solid.ts`, пять расхождений в
+шапке: «показана» — сигнал, который пишет колонка (React-колонка рисуется по своему
+условию, класс обязан с ним совпадать), а не `createMemo` от настройки и ширины;
+`body.has-folders-sidebar` не ставится (его правила прячут бургер без `.is-visible`,
+у нас `is-visible` на кнопках внутри — задача 17); «свёрнута» — `collapsed` колонки;
+активный экран — сигнал от `mediaSizes` `changeScreen` (реактивного `useMediaSizes`
+нет); `useHasOpenLeftTabs`/`useIsLeftSearchActive` без читателей. `setFoldersSidebarShown`
+переехал из `Sidebar.tsx` в эффект стора (`:30-34`). Владелец сбрасывает `hasFolders`
+в `destroy()` (расхождение 12 его шапки). Тесты — `foldersSidebar.solid.test.ts`,
+`components/Sidebar.foldersMode.test.tsx`. Стенд — после слияния 7–9.
 
 ---
 
@@ -607,10 +618,26 @@ React-меню `openTabMenu`/`onTabContextMenu` (`useSidebarFolders.tsx:89-121`)
 - Тесты: `components/messages/ForwardPicker.test.tsx` (пин: в попапе нет
   `.menu-horizontal-div`)
 
-- [ ] **Шаг 1:** снять ряд и состояние папки из `ForwardPicker`; тест.
-- [ ] **Шаг 2:** `git grep -n "TabsBar"` пуст; решить по `shared/ui/Tabs` по правилу выше.
+- [x] **Шаг 1:** ~~снять ряд и состояние папки из `ForwardPicker`~~ — см. поправку ниже: ряд
+  портирован, а не снят; тест `components/messages/ForwardPicker.test.tsx`.
+- [x] **Шаг 2:** `git grep -n "TabsBar"` пуст; решить по `shared/ui/Tabs` по правилу выше.
 
 **Готово когда:** `git grep -n "components/FolderTabs\|from './FolderTabs'" web-client/src` пуст.
+
+**Поправка при выполнении (проверено в tweb e52b5d931).** Посылка «у оригинала селектор пиров ряда
+папок не имеет» неверна: ссылки `popups/forward.ts`/`popups/pickUser.ts` указывали на файлы,
+которых в базе нет (они `.tsx`). `showForwardPopup` зовёт `showPickUserPopup({showTopPeers: true, …})`
+(`popups/forward.tsx:360-376`), а тот при `showTopPeers` ставит за «недавними» Solid-`FoldersTabs`
+(`createFolderTabs`, `popups/pickUser.tsx:325-424`, вызов `:509`): клик → `selectTarget` →
+прокрутка списка к началу → `selector.setFolderId`; на запросе ряд `is-collapsed`, скоуп —
+«Все чаты» (`appSelectPeers.ts:631-633`, `:644-647`). Поэтому ряд не снят, а ПОРТИРОВАН:
+`components/popups/pickUserFolderTabs.ts` (6 расхождений в шапке) монтирует Solid-`FoldersTabs`
+в узел-хост `ForwardPicker`; состояние `folderId` осталось — это `selectedFolderId` селектора.
+Удалены `components/FolderTabs.tsx`, `shared/ui/Tabs/TabsBar.tsx` + `TabsBar.module.scss` и
+экспорт `TabsBar`; у `Tabs.tsx` сняты пропы, которые держал только папочный ряд. У
+`shared/ui/Tabs/{Tabs,TabSlide,index}` остаётся потребитель `SearchView.tsx` — не удалены,
+отложенная задача 19. Регэксп DoD `FolderTabs\b` ловит теперь только имя порта
+`createFolderTabs`/`pickUserFolderTabs` (имя функции tweb); `git grep -nw FolderTabs web-client/src` пуст.
 
 ---
 
@@ -627,7 +654,7 @@ React-меню `openTabMenu`/`onTabContextMenu` (`useSidebarFolders.tsx:89-121`)
 | 16 | Счётчик папки от воркера (`dialogsStorage.getFolderUnreadCount`, `folders.ts:19-30`) | Воркер папочный unread не считает; сейчас — чистая функция с main из зеркала (`core/folders/folderUnreadCounts.ts`, задача 3): считает только диалоги, уже лежащие в зеркале, без `unread_mark` и суммы по топикам форума. `muted` с упоминаниями уже портирован целиком (`folders.ts:28`), `unread_mentions_count` в `Dialog` есть | Один владелец счётчика в воркере, счёт по всей папке, а не по загруженной части |
 | 17 | Вертикальная колонка на Solid — порт `foldersSidebarContent/index.tsx` (242) с бургером-в-колонке и кнопкой «добавить чаты» | По карте спеки § 4 — оболочка сайдбара, волна 7; здесь колонка только переводится на общий `selectTab`, счётчики и меню | Снятие React с левой колонки |
 | 18 | `Tabs.Content`/`Tabs.ContentTab`/`Tabs.Simple` (`tabs.tsx:97-170`) | Потребители у tweb — `boosts.tsx`, `popups/stars.tsx`, которых у нас нет | Вкладки бустов/звёзд |
-| 19 | `shared/ui/Tabs/{Tabs,TabSlide}.tsx` — последний потребитель `SearchView.tsx` | Сносится программой глобального поиска (`AppSearchSuper` с `asChatList`, отложенная задача 20 плана shared media) | Ноль React-переписок полосы вкладок |
+| 19 | `shared/ui/Tabs/{Tabs,TabSlide}.tsx` (+ `Tabs.module.scss`, `index.ts`, `TabSlide.test.tsx`) — последний потребитель `SearchView.tsx:36` (проверено задачей 9: `git grep -n "shared/ui/Tabs" web-client/src` → только `SearchView.tsx`; `TabsBar` и папочные пропы `Tabs.tsx` удалены задачей 9) | Сносится программой глобального поиска (`AppSearchSuper` с `asChatList`, отложенная задача 20 плана shared media) — по правилу задачи 9 каталог удаляет та программа, что снимает последнего потребителя | Ноль React-переписок полосы вкладок |
 | 20 | Архив как вкладка слайдера (`AppArchivedTab`, `left-sidebar.md` часть 1 § 6) и побочки `onCollapsedChange` (`left-sidebar.md` § 8.2 п. 5, 9) | Не предмет ряда папок; свои задачи в `left-sidebar.md` | — |
 | 21 | `shared/ui/PeerSelector/PeerSelector.tsx:252-256` собирает `menu-horizontal-gradient*` руками (найдено задачей 1) | React-файл вне ряда папок; Solid-фабрику `Tabs.MenuGradient` из React напрямую не позвать — нужен остров или порт `PeerSelector` | Один строитель градиента на весь репозиторий (критерий задачи 2) |
 
