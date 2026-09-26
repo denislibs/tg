@@ -657,32 +657,51 @@ Remove own scheduled message. 403 when not the author.
 Send own scheduled message immediately (tweb Send Now). Returns the created
 Message; the queue entry is removed.
 
-### GET /search?q=  · auth
-Global directory search: public chats (channels/public groups) by `@username` or
-title prefix, plus users by `username`/имени (колонка `users.display_name`
-остаётся ПОИСКОВОЙ, на провод она не выходит). Private chats are
-never returned. Both lists are capped at 20 and ordered (chats by `member_count`).
-- Query: `q` — search prefix (empty `q` yields empty results).
-- 200 — конструктор `contacts.found`: найденное едет ССЫЛКАМИ (`results`), а
-  сами объекты — векторами `chats`/`users`, один раз каждый:
+### GET /search?q=&limit=  · auth
+Peer search (аналог `contacts.search`): public chats (channels/public groups) by
+`@username` or title prefix, plus users by `username`/имени (колонка
+`users.display_name` остаётся ПОИСКОВОЙ, на провод она не выходит). Private
+chats are never returned. Chats are ordered by `member_count`.
+- Query: `q` — search prefix (empty `q` yields empty results); `limit` — на
+  каждый вид (чаты, люди), default 20, max 200.
+- 200 — конструктор `contacts.found`: найденное едет ССЫЛКАМИ, а сами объекты —
+  векторами `chats`/`users`, один раз каждый. `my_results` — «свои» попадания:
+  чат, где вызывающий участник; пользователь из его контактов или с общим
+  личным чатом. `results` — остальные; вектора не пересекаются (класс рисует
+  их группами «Chats» и «Global search»):
 ```json
 { "_": "contacts.found",
-  "my_results": [],
-  "results": [ { "_": "peerChannel", "channel_id": 1 }, { "_": "peerUser", "user_id": 2 } ],
+  "my_results": [ { "_": "peerUser", "user_id": 2 } ],
+  "results": [ { "_": "peerChannel", "channel_id": 1 } ],
   "chats": [ { "_": "channel", "id": 1, "title": "News", "username": "news", "…": "…" } ],
   "users": [ { "_": "user", "id": 2, "username": "alice", "…": "…" } ] }
 ```
 
-### GET /search/messages?q=&filter=  · auth
-Global message search across every chat the caller is a member of (sidebar
-search: «Сообщения» section + Media/Links/Files/Music/Voice tabs). Matches
-message text or attached file name (case-insensitive substring). Visibility
-mirrors history: deleted messages, per-user hides and hidden pre-join history
-are excluded. Newest first.
-- Query: `q` — substring (optional when `filter` set); `filter` — one of
-  `media|links|files|music|voice` (empty = any type; empty `q` AND empty
-  `filter` yields empty results); `offset` (default 0); `limit` (default 20, max 50).
-- 200: контейнер `messages.messagesSlice` (`count` = total matches)
+### GET /search/messages?q=&filter=&offset_rate=&limit=&chat_type=&min_date=&max_date=  · auth
+Global message search across every chat the caller is a member of (аналог
+`messages.searchGlobal`; sidebar search: «Сообщения» section +
+Media/Links/Files/Music/Voice tabs). Matches message text or attached file name
+(case-insensitive substring). Visibility mirrors history: deleted messages,
+per-user hides and hidden pre-join history are excluded. Newest first.
+- Query: `q` — substring; `filter` — one of `media|links|files|music|voice`
+  (empty = any type); empty `q` AND empty `filter` AND no dates yields empty
+  results. `offset_rate` — `next_rate` предыдущей страницы (0/нет — с начала);
+  `limit` (default 20, max 100); `chat_type` — `users|groups|channels`
+  (users = личные чаты и Избранное; иное — 400); `min_date`/`max_date` —
+  unix-секунды, обе границы включительно.
+- 200: контейнер `messages.messagesSlice` (`count` = total matches) с
+  `next_rate` — курсором следующей страницы; на последней странице ключа нет.
+
+### GET /chats/{chatID}/search?q=&offset_id=&limit=&sender_id=&media_type=&reaction=&filter=&min_date=&max_date=  · auth
+Search inside one chat (аналог `messages.search`): поиск в чате и класс
+AppSearchSuper с чипом пира. Newest first; service messages excluded.
+- Query: `q` — substring (пустой `q` без фильтров — вся история чата);
+  `offset_id` — номер последнего отданного сообщения (0/нет — с начала);
+  `limit` (default 20, max 100); `sender_id`; `media_type` —
+  `photo|video|voice|roundvideo|file|music|link`; `filter` —
+  `media|files|links|music|voice` (складывается с `media_type` по И);
+  `reaction` — эмодзи; `min_date`/`max_date` — unix-секунды, включительно.
+- 200: контейнер `messages.messagesSlice` (`count` = total matches); 403 — не участник.
 
 ---
 
