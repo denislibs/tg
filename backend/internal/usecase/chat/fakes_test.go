@@ -717,14 +717,14 @@ func matchesMediaFilter(m domain.Message, filter string) bool {
 	return false
 }
 
-func (r fakeMsgs) MediaHistory(_ context.Context, chatID int64, filter string, page MediaPage) ([]domain.Message, int, error) {
+func (r fakeMsgs) MediaHistory(_ context.Context, chatID, userID int64, filter string, page MediaPage) ([]domain.Message, int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	var out []domain.Message
 	all := r.s.messages[chatID]
 	for i := len(all) - 1; i >= 0; i-- { // newest first
 		m := all[i]
-		if !m.Deleted && matchesMediaFilter(m, filter) {
+		if !m.Deleted && !r.s.hiddenFor(userID, m.ID) && matchesMediaFilter(m, filter) {
 			out = append(out, m)
 		}
 	}
@@ -745,7 +745,7 @@ func (r fakeMsgs) MediaHistory(_ context.Context, chatID int64, filter string, p
 	return out, total, nil
 }
 
-func (r fakeMsgs) SearchCounters(_ context.Context, chatID int64, filters []string) (map[string]int, error) {
+func (r fakeMsgs) SearchCounters(_ context.Context, chatID, userID int64, filters []string) (map[string]int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	out := make(map[string]int, len(filters))
@@ -755,7 +755,7 @@ func (r fakeMsgs) SearchCounters(_ context.Context, chatID int64, filters []stri
 		}
 		n := 0
 		for _, m := range r.s.messages[chatID] {
-			if !m.Deleted && matchesMediaFilter(m, f) {
+			if !m.Deleted && !r.s.hiddenFor(userID, m.ID) && matchesMediaFilter(m, f) {
 				n++
 			}
 		}
@@ -873,14 +873,14 @@ func (r fakeMsgs) GlobalSearchMessages(_ context.Context, userID int64, gq Globa
 	return res, nil
 }
 
-func (r fakeMsgs) SearchMessages(_ context.Context, chatID int64, q string, f SearchFilter, page MediaPage) ([]domain.Message, int, error) {
+func (r fakeMsgs) SearchMessages(_ context.Context, chatID, userID int64, q string, f SearchFilter, page MediaPage) ([]domain.Message, int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	var hits []domain.Message
 	all := r.s.messages[chatID]
 	for i := len(all) - 1; i >= 0; i-- { // newest first
 		m := all[i]
-		if m.Deleted {
+		if m.Deleted || r.s.hiddenFor(userID, m.ID) {
 			continue
 		}
 		if q != "" && !strings.Contains(strings.ToLower(m.Text), strings.ToLower(q)) {
@@ -1194,6 +1194,11 @@ func (r fakeMsgs) SetDestructOnRead(_ context.Context, chatID, readerID, readSeq
 	defer r.s.mu.Unlock()
 	r.s.destructCalls = append(r.s.destructCalls, destructCall{chatID, readerID, readSeq})
 	return nil
+}
+
+// hiddenFor — «удалено у себя» (message_hides); вызывать под s.mu.
+func (s *store) hiddenFor(userID, msgID int64) bool {
+	return s.hidden != nil && s.hidden[userID] != nil && s.hidden[userID][msgID]
 }
 
 func (r fakeMsgs) HideForUser(_ context.Context, userID, msgID int64) error {

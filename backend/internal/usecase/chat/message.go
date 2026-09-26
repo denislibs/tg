@@ -50,7 +50,7 @@ func mentionedUserIDs(entities domain.MessageEntities) map[int64]bool {
 	var out map[int64]bool
 	for _, e := range entities {
 		v, ok := e.(domain.MessageEntityMentionName)
-		if !ok || v.UserID == 0 {
+		if !ok || v.UserID <= 0 {
 			continue
 		}
 		if out == nil {

@@ -191,8 +191,9 @@ func (r *ChatsRepo) ChatPartners(ctx context.Context, userID int64) ([]int64, er
 // и вместе с ним ушёл подзапрос sender_name по users: имя автора собирает
 // клиент из конструктора `user`, который едет вектором users контейнера.
 //
-// Пер-юзерная очистка истории (seq > m.cleared_max_seq) остаётся здесь: без
-// неё очищенная история вернулась бы в превью списка.
+// Пер-юзерная очистка истории (seq > m.cleared_max_seq) и «удалить у себя»
+// (message_hides) остаются здесь: без них очищенное или скрытое зрителем
+// вернулось бы в превью списка.
 func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.DialogRecord, error) {
 	q := querier(ctx, r.pool)
 	rows, err := q.Query(ctx,
@@ -227,10 +228,16 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		 JOIN chats c ON c.id = m.chat_id
 		 -- stripped-превью фото группы/канала — из media по photo_media_id
 		 LEFT JOIN media pm ON pm.id = c.photo_media_id
+		 -- Последнее ВИДИМОЕ зрителю сообщение: «удалить у себя»
+		 -- (message_hides) отсекается тем же условием, что в GetHistory, —
+		 -- иначе список показывает последним то, чего в открытом чате нет.
+		 -- По lm.created_at идёт и сортировка, так что порядок списка тоже
+		 -- считается по видимому последнему.
 		 LEFT JOIN LATERAL (
 		   SELECT id, seq, created_at
 		   FROM messages
 		   WHERE chat_id = c.id AND deleted_at IS NULL AND seq > m.cleared_max_seq
+		     AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id = messages.id AND h.user_id = $1)
 		   ORDER BY seq DESC LIMIT 1
 		 ) lm ON true
 		 LEFT JOIN LATERAL (
