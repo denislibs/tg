@@ -3,6 +3,13 @@
 // навигация листания через listLoader, подпись RichText-островом, мобильное
 // ⋮-меню, клик по автору → close→jumpToMessage, скачивание.
 //
+// Кнопка «Копировать медиа» (topButtons + 'copy') — по tweb 812502980, коммит
+// 508acd4f5 (`mediaViewer/index.ts:78-110`, `:153-165`, `:318-326`, `:420-431`,
+// `:517-519`): полноразмерная картинка в буфер через
+// `copyMessageMediaWithFeedback`, на время копирования глиф кнопки уступает
+// место прелоадеру (`setButtonLoader`). Сообщение, у которого оригинал
+// спрашивает медиа (`this.target.message`), у нас едет в `ViewerItem.message`.
+//
 // Адаптации (каждая помечена и на месте):
 //   • модель данных: вместо MyMessage+managers (getMediaFromMessage, RPC
 //     appMessagesManager) — готовый `ViewerItem` (лайтбокс-модель useLightbox:
@@ -39,7 +46,13 @@ import { doubleRaf } from '@helpers/schedulers'
 import type { IconName } from '@core/tgico-icons'
 import type { MessageEntity } from '@core/models'
 import { startClient } from '@/client/bootstrap'
-import { _i18n } from '@lib/langPack'
+import { _i18n, i18n } from '@lib/langPack'
+import type { MyMessage } from '@core/models'
+import { getMediaFromMessage } from '@core/media/messageMedia'
+import type { ButtonMenuItemOptions } from '@components/buttonMenu'
+import { setButtonLoader } from '@components/putPreloader'
+import { canCopyMediaToClipboard } from '@helpers/copyMediaToClipboard'
+import copyMessageMediaWithFeedback from '@components/copyMessageMediaWithFeedback'
 import RichText from '../RichText'
 import Icon from '@components/icon'
 import AppMediaViewerBase, { btnIcon, type ViewerAuthor, type ViewerMedia } from './base'
@@ -59,6 +72,10 @@ export type ViewerItem = {
   author: ViewerAuthor
   caption?: string
   captionEntities?: MessageEntity[]
+  /** сообщение-источник (tweb `target.message`) — у него «Копировать медиа»
+   *  спрашивает медиа (`copyMessageMediaWithFeedback`); у не-сообщений (фото
+   *  профиля, фото из служебного действия) отсутствует — копировать нечего */
+  message?: MyMessage
 }
 
 // Порт tweb AppMediaViewerTargetType (:39-45): element+mid; вместо
@@ -84,10 +101,24 @@ export type AppMediaViewerOptions = {
   loadMoreMedia?: (older: boolean, anchor: ViewerItem | undefined, loadCount: number) => Promise<ViewerItem[]>
 }
 
-export default class AppMediaViewer extends AppMediaViewerBase<'caption', 'delete' | 'forward', ViewerTarget> {
+export default class AppMediaViewer extends AppMediaViewerBase<'caption', 'delete' | 'forward' | 'copy', ViewerTarget> {
   protected btnMenuToggle!: HTMLButtonElement
   protected btnMenu!: HTMLElement
   protected btnMenuForward!: HTMLElement
+  /**
+   * tweb :154-159 (812502980) — пункт ⋮-меню с `verify: () => false`: ТАКОЙ
+   * пункт `ButtonMenuToggle` отфильтровывает до постройки
+   * (`buttonMenuToggle.ts:68-70`), и узла у него не бывает никогда, — на
+   * мобиле копирования нет. Объект живёт как носитель действия для
+   * `copyMessageMediaWithFeedback` (прелоадер пункта без узла — no-op), в
+   * наше статичное ⋮-меню он поэтому не встаёт вовсе.
+   */
+  protected btnMenuCopy: ButtonMenuItemOptions = {
+    icon: 'copy',
+    text: 'MediaViewer.Context.Copy',
+    onClick: () => this.onCopyMediaClick(),
+    keepOpen: true,
+  }
   protected btnMenuDownload!: HTMLElement
   protected btnMenuDelete!: HTMLElement
   /** снять ⋮-меню (immediate — вместе с DOM-узлом сразу): body-смонтированное
@@ -105,9 +136,14 @@ export default class AppMediaViewer extends AppMediaViewerBase<'caption', 'delet
         const items = await opts.loadMoreMedia(older, anchor?.item, loadCount)
         return { count: items.length, items: items.map(AppMediaViewer.toTarget) }
       },
-    }), ['delete', 'forward'])
+    }), ['delete', 'forward', 'copy'])
+
+    // tweb index.ts:108-109 (812502980)
+    this.buttons.copy.classList.add('media-viewer-copy-button')
+    this.buttons.copy.setAttribute('aria-label', i18n('MediaViewer.Context.Copy').textContent ?? '')
 
     attachClickEvent(this.buttons.delete, this.onDeleteClick) // tweb index.ts:145
+    attachClickEvent(this.buttons.copy, this.onCopyMediaClick) // tweb index.ts:153 (812502980)
 
     this.setBtnMenuToggle() // tweb index.ts:147-162 + base :970-973
 
@@ -115,6 +151,7 @@ export default class AppMediaViewer extends AppMediaViewerBase<'caption', 'delet
     // действие статично — задан ли колбэк (см. шапку файла).
     this.setMessageActionVisibility({
       cantForward: !opts.onForward,
+      cantCopy: true,
       cantDownload: false,
       cantDelete: !opts.onDelete,
     })
@@ -231,6 +268,17 @@ export default class AppMediaViewer extends AppMediaViewerBase<'caption', 'delet
     a.remove()
   }
 
+  // tweb onCopyMediaClick (index.ts:318-326, 812502980, 508acd4f5). Аргумент
+  // `index` оригинала не едет — см. шапку `copyMessageMediaWithFeedback.ts`.
+  protected onCopyMediaClick = () => {
+    const message = this.target?.item.message
+    copyMessageMediaWithFeedback({
+      message,
+      button: this.btnMenuCopy,
+      cleanup: setButtonLoader(this.buttons.copy as HTMLButtonElement),
+    })
+  }
+
   // Порт tweb setCaption (index.ts:304-356) в нашем объёме: подпись —
   // RichText-остров (renderCaptionIsland ставит/снимает hide — tweb :354).
   // Спонсорская ветка (:305-341), TranslatableMessage и saveTimestamps —
@@ -250,11 +298,14 @@ export default class AppMediaViewer extends AppMediaViewerBase<'caption', 'delet
   // ButtonMenu нет) — обе группы прячутся классом hide.
   private setMessageActionVisibility(options: {
     cantForward: boolean,
+    cantCopy: boolean,
     cantDownload: boolean,
     cantDelete: boolean,
   }) {
     const actions: [HTMLElement[], boolean][] = [
       [[this.buttons.forward, this.btnMenuForward], options.cantForward],
+      // пункта ⋮-меню у копирования нет (докблок `btnMenuCopy`)
+      [[this.buttons.copy], options.cantCopy],
       [[this.buttons.download, this.btnMenuDownload], options.cantDownload],
       [[this.buttons.delete, this.btnMenuDelete], options.cantDelete],
     ]
@@ -383,6 +434,17 @@ export default class AppMediaViewer extends AppMediaViewerBase<'caption', 'delet
     if (!item) return
 
     this.setCaption(item) // tweb :468
+
+    // tweb :517-519 (812502980, 508acd4f5): `cantCopy = cantDownload ||
+    // !canCopyMediaToClipboard(media)`. Право скачать у нас статично
+    // (`cantDownload: false` в конструкторе), поэтому решает только медиа
+    // сообщения; у не-сообщения (`message` нет) копировать нечего.
+    this.setMessageActionVisibility({
+      cantForward: !this.opts.onForward,
+      cantCopy: !canCopyMediaToClipboard(getMediaFromMessage(item.message)),
+      cantDownload: false,
+      cantDelete: !this.opts.onDelete,
+    })
 
     const promise = this._openMedia({
       media: item.media,

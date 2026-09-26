@@ -99,6 +99,8 @@ import s from './Chat.module.scss'
 import useMediaQuery from '../shared/lib/useMediaQuery'
 import useMeasuredHeight from '../shared/lib/useMeasuredHeight'
 import type { Sticker } from '../core/managers/stickersManager'
+import type { SearchSuperActions } from '../core/hooks/useSearchSuper'
+import { getMediaId } from '../core/messages/messageKind'
 
 // Инфо-панель — не первый кадр; ленивый чанк.
 const UserInfoPanel = lazy(() => import('./UserInfoPanel'))
@@ -806,6 +808,31 @@ export default function Chat({ chat, onBack, thread }: Props) {
     },
     loadMoreMedia,
   }
+  // Меню элемента и плашка выделения shared media (задача 14; расхождение 51
+  // в шапке `components/appSearchSuper.ts`) — те же флоу чата, что у вьювера.
+  // Обратный вызов «по подтверждению» (у tweb — снять выделение) едет через
+  // тот же `viewerActionCloseRef`: его зовёт обёртка doForward/doDelete у
+  // <ChatMsgActionPopups>, а отмена попапа его снимает. Переход к сообщению —
+  // прыжок ленты: панель профиля показывает шаред-медиа ТЕКУЩЕГО чата.
+  const searchSuperActions: SearchSuperActions = {
+    setInnerPeer: ({ peerId, lastMsgId }) => {
+      if (peerId === numericChatId) jumpToSeqE(lastMsgId)
+    },
+    showForwardPopup: (fromPeerIdsMids, onSelect) => {
+      viewerActionCloseRef.current = onSelect ?? null
+      for (const [fromPeerId, mids] of Object.entries(fromPeerIdsMids)) {
+        if (mids.length) openForwardFor(Number(fromPeerId), mids)
+      }
+    },
+    showDeleteMessagesPopup: (peerId, mids, onConfirm) => {
+      viewerActionCloseRef.current = onConfirm ?? null
+      openDeleteFor(peerId, mids)
+    },
+    downloadToDisc: (message) => {
+      const mediaId = getMediaId(message)
+      if (mediaId != null) void downloadMedia(mediaId)
+    },
+  }
   // Смена чата / unmount: vanilla-вьювер живёт в body — закрываем сами.
   useEffect(() => () => closeMediaViewer(), [numericChatId])
   // Перезвон по баблу звонка, отметка «кружок/голосовое прослушано» и отмена
@@ -1452,6 +1479,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
             onOpenPeer={onOpenPeer}
             canAddMembers={canAddMember}
             onEditContact={() => { setInfoOpen(false); pop.openEditContact() }}
+            searchSuperActions={searchSuperActions}
           />
         )}
       </Suspense>

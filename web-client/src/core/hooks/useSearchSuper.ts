@@ -51,6 +51,7 @@
 import { useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import Scrollable from '@components/scrollable'
 import AppSearchSuper, {
+  type AppSearchSuperOptions,
   type SearchSuperManagers,
   type SearchSuperMediaTab,
   type SearchSuperMediaType,
@@ -83,7 +84,15 @@ export type UseSearchSuperOptions = {
   onLengthChange?: (type: SearchSuperMediaType, length: number) => void
   openPeer?: (peerId: PeerId) => void
   openUserPermissions?: (participant: Participant, isAdmin?: boolean) => void
-}
+} & SearchSuperActions
+
+/**
+ * Действия меню элемента и плашки выделения (задача 14) — колбэки хоста
+ * класса, расхождение 51 в шапке `components/appSearchSuper.ts`: попапы
+ * пересылки/удаления и переход к сообщению живут в хосте чата (`Chat.tsx`).
+ */
+export type SearchSuperActions = Pick<AppSearchSuperOptions,
+  'setInnerPeer' | 'showForwardPopup' | 'showDeleteMessagesPopup' | 'downloadToDisc'>
 
 export type SearchSuperSeam = {
   searchSuper: AppSearchSuper
@@ -125,6 +134,10 @@ export function useSearchSuper(options: UseSearchSuperOptions): SearchSuperSeam 
       onLengthChange: (type, length) => optionsRef.current.onLengthChange?.(type, length),
       openPeer: (peerId) => optionsRef.current.openPeer?.(peerId),
       openUserPermissions: (participant, isAdmin) => optionsRef.current.openUserPermissions?.(participant, isAdmin),
+      setInnerPeer: (options) => optionsRef.current.setInnerPeer?.(options),
+      showForwardPopup: (fromPeerIdsMids, onSelect) => optionsRef.current.showForwardPopup?.(fromPeerIdsMids, onSelect),
+      showDeleteMessagesPopup: (peerId, mids, onConfirm) => optionsRef.current.showDeleteMessagesPopup?.(peerId, mids, onConfirm),
+      downloadToDisc: (message) => optionsRef.current.downloadToDisc?.(message),
       scrollOffset: SCROLL_OFFSET,
     })
 

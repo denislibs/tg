@@ -644,6 +644,15 @@ around-анимация снимает себя сама, как только е
   кнопок плашки.
 - Явного числового лимита нет: старый лимит `forwarded_count_max` закомментирован
   (стр. 526–543); фактический предел — дизейбл Forward при непересылаемых.
+- **С 812502980** (перенесено у нас задачей 14 shared media): протяжка по альбому
+  раскрывает его ячейки (`chat/selectionRange.ts`, 79b9c44c1), сгруппированный бабл —
+  одна единица протяжки (`isSameSelectionUnit` + `dragAnchor`, d064fdb85);
+  `toggleByElement(el, selected)` ставит элемент в заданное положение, `toggleByMid`
+  удалён. Адреса по 812502980: `isSameSelectionUnit` :338-340,
+  `getElementsBetween` :365-393, `ChatSelection.getElementsBetween` :904-917,
+  `toggleByElement` :997-1051. Прочая дельта базы (60a83a6f1 — ключ протяжки и
+  `dragThreshold` для выделения чатов, 472e3e76b — aria, e9428f2a9 — выделяемые
+  служебные) у нас не перенесена — перечень в шапке `web-client/src/components/chat/selection.ts`.
 
 ## 8.2 `ChatSelection` (selection.ts:764–1189)
 

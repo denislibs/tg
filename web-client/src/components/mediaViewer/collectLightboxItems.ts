@@ -86,6 +86,9 @@ export function messageToViewerItem(m: MyMessage, ctx: LightboxCtx, element: HTM
     // подпись к медиа — текст самого сообщения (tweb `.media-viewer-caption`)
     caption: getMessageText(m) || undefined,
     captionEntities: m._ === 'message' ? m.entities : undefined,
+    // tweb `target.message` — «Копировать медиа» вьювера спрашивает медиа у
+    // самого сообщения (`mediaViewer/index.ts:318-326`, 812502980)
+    message: m,
   }
 }
 

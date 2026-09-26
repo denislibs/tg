@@ -11,6 +11,45 @@
 // которого в проекте нет — копируется чистый текст, как и в React-версии меню.
 // Опция `rethrow` тоже не портирована: её единственный потребитель в tweb —
 // попап QR-кода.
+//
+// ЗАПИСЬ `ClipboardItem` (`canWriteClipboardItem`/`writeClipboardItem`,
+// 812502980 `:8-34`, коммит 508acd4f5) портирована 1:1 — её потребитель
+// `helpers/copyMediaToClipboard.ts` (картинка в буфер из контекстного меню и
+// медиавьювера). Адаптация одна: `getAppWindow()` (окно Document PiP) →
+// `window`, как во всём порте (`helpers/dom/clickEvent.ts`). Параметр
+// `appWindow` оставлен: через него оригинал передаёт окно, и тем же путём
+// его подменяет тест.
+
+type ClipboardItemData = ConstructorParameters<typeof ClipboardItem>[0]
+
+// Конструктор берётся У ОКНА, а не глобальным именем: `ClipboardItem` нет в
+// небезопасном контексте и в части браузеров — тогда вызов имени бросил бы
+// `ReferenceError`, а проверка ниже честно отвечает «нельзя».
+function getClipboardContext(appWindow: Window = window) {
+  const ClipboardItemConstructor = (appWindow as Window & { ClipboardItem?: typeof ClipboardItem }).ClipboardItem
+  const clipboard = appWindow.navigator.clipboard as Clipboard | undefined
+
+  return { ClipboardItemConstructor, clipboard }
+}
+
+export function canWriteClipboardItem(mimeType: string, appWindow: Window = window) {
+  const { ClipboardItemConstructor, clipboard } = getClipboardContext(appWindow)
+  return !!(
+    ClipboardItemConstructor &&
+    clipboard?.write &&
+    // `supports` появился позже самого `ClipboardItem`: нет метода — нет и отказа
+    (!(ClipboardItemConstructor.supports as unknown) || ClipboardItemConstructor.supports(mimeType))
+  )
+}
+
+export function writeClipboardItem(data: ClipboardItemData, appWindow: Window = window) {
+  const { ClipboardItemConstructor, clipboard } = getClipboardContext(appWindow)
+  if (!ClipboardItemConstructor || !clipboard?.write) {
+    throw new Error('Clipboard item writing is not supported')
+  }
+
+  return clipboard.write([new ClipboardItemConstructor(data)])
+}
 
 // https://stackoverflow.com/a/30810322
 function fallbackCopyTextToClipboard(text: string) {

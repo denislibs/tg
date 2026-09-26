@@ -254,3 +254,170 @@ type errChatRepo struct {
 func (r errChatRepo) ListDialogs(_ context.Context, _ int64) ([]domain.DialogRecord, error) {
 	return nil, r.err
 }
+
+// Последнее сообщение диалога — ТО ЖЕ сообщение, что и в истории чата (в tweb
+// top_message адресует полный объект message), поэтому гидрация у него та же.
+// Превью (last_text/last_type) с провода сняты, и сообщение, уехавшее сырым,
+// оставляло фото и опрос в списке чатов без превью: `message` пуст, `media`
+// нет вовсе. Пин проходит по всей цепочке: вложение, опрос, ответ, реакции.
+func TestDialogsPage_TopMessagesHydratedLikeHistory(t *testing.T) {
+	s := newStore()
+	in := New(fakeTx{}, fakeChats{s}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, newFakeGroupRepo(), nil, nil, nil, nil)
+	in.SetPolls(newFakePolls())
+	in.SetPublisher(&fakePublisher{})
+	ctx := context.Background()
+	const a int64 = 1
+
+	// Чат с фото последним сообщением.
+	photoChat, _ := in.CreatePrivateChat(ctx, a, 2)
+	const mediaID int64 = 91
+	s.seedMedia(mediaID, a)
+	s.seedMediaDims(mediaID, domain.MediaSource{Mime: "image/jpeg", Width: 1280, Height: 720, Size: 26941})
+	mid := mediaID
+	photo, err := in.Send(ctx, SendInput{ChatID: photoChat, SenderID: a, Type: "photo", MediaID: &mid})
+	if err != nil {
+		t.Fatalf("send photo: %v", err)
+	}
+	if err := (fakeReactions{s}).Add(ctx, photo.ID, 2, "👍"); err != nil {
+		t.Fatalf("react: %v", err)
+	}
+
+	// Чат с опросом последним сообщением.
+	pollChat, _ := in.CreatePrivateChat(ctx, a, 3)
+	poll, err := in.SendPoll(ctx, SendPollInput{ChatID: pollChat, SenderID: a, Question: "Куда?", Options: []string{"сюда", "туда"}})
+	if err != nil {
+		t.Fatalf("send poll: %v", err)
+	}
+
+	// Чат с ответом последним сообщением.
+	replyChat, _ := in.CreatePrivateChat(ctx, a, 4)
+	orig, err := in.Send(ctx, SendInput{ChatID: replyChat, SenderID: 4, Text: "вопрос"})
+	if err != nil {
+		t.Fatalf("send orig: %v", err)
+	}
+	reply, err := in.Send(ctx, SendInput{ChatID: replyChat, SenderID: a, Text: "ответ", ReplyToID: &orig.Seq})
+	if err != nil {
+		t.Fatalf("send reply: %v", err)
+	}
+
+	page, err := in.DialogsPage(ctx, a, domain.DialogPage{Limit: 20})
+	if err != nil {
+		t.Fatalf("DialogsPage: %v", err)
+	}
+	byID := map[int64]domain.Message{}
+	for _, m := range page.Messages {
+		byID[m.ID] = m
+	}
+
+	got, ok := byID[photo.ID]
+	if !ok {
+		t.Fatalf("фото нет в векторе messages")
+	}
+	ph, ok := got.Media.(*domain.MessageMediaPhoto)
+	if !ok {
+		t.Fatalf("вложение последнего сообщения не собрано: Media = %#v", got.Media)
+	}
+	if w, h := domain.MediaDimensions(ph); w != 1280 || h != 720 {
+		t.Fatalf("dims = %dx%d, want 1280x720", w, h)
+	}
+	if len(got.Reactions) != 1 || got.Reactions[0].Emoji != "👍" {
+		t.Fatalf("реакции последнего сообщения не наполнены: %+v", got.Reactions)
+	}
+
+	if got := byID[poll.ID]; got.Poll == nil || got.Poll.Question != "Куда?" {
+		t.Fatalf("опрос последнего сообщения не наполнен: Poll = %+v", got.Poll)
+	}
+
+	if got := byID[reply.ID]; got.ReplyTo == nil || got.ReplyTo.Seq != orig.Seq {
+		t.Fatalf("ответ последнего сообщения не наполнен: ReplyTo = %+v", got.ReplyTo)
+	}
+}
+
+// savedTopMsgs — хранилище, у которого «Избранное» разложено по источникам:
+// строка адресует последнее сообщение ключом top.
+type savedTopMsgs struct {
+	fakeMsgs
+	top domain.Message
+}
+
+func (r savedTopMsgs) SavedDialogs(context.Context, int64, int64) ([]domain.SavedDialogRecord, error) {
+	return []domain.SavedDialogRecord{{PeerID: domain.PeerID(r.top.SenderID), LastMsgID: r.top.ID, LastMsgSeq: r.top.Seq}}, nil
+}
+
+// topicRows — темы чата, у которых последнее сообщение адресовано ключом top;
+// остальные методы порта этим тестам не нужны.
+type topicRows struct {
+	TopicRepo
+	top domain.Message
+}
+
+func (r topicRows) ListByChat(context.Context, int64, int64) ([]domain.TopicRow, error) {
+	return []domain.TopicRow{{LastMsgID: r.top.ID, LastMsgSeq: r.top.Seq}}, nil
+}
+
+// sendPhoto отправляет фото с известными размерами — сообщение, которое сырой
+// строкой несёт лишь ключ файла.
+func sendPhoto(t *testing.T, in *Interactor, s *store, chatID, senderID int64) domain.Message {
+	t.Helper()
+	const mediaID int64 = 92
+	s.seedMedia(mediaID, senderID)
+	s.seedMediaDims(mediaID, domain.MediaSource{Mime: "image/jpeg", Width: 800, Height: 600, Size: 1000})
+	mid := mediaID
+	m, err := in.Send(context.Background(), SendInput{ChatID: chatID, SenderID: senderID, Type: "photo", MediaID: &mid})
+	if err != nil {
+		t.Fatalf("send photo: %v", err)
+	}
+	return m
+}
+
+func assertPhotoHydrated(t *testing.T, msgs []domain.Message, id int64) {
+	t.Helper()
+	for _, m := range msgs {
+		if m.ID != id {
+			continue
+		}
+		if _, ok := m.Media.(*domain.MessageMediaPhoto); !ok {
+			t.Fatalf("вложение последнего сообщения не собрано: Media = %#v", m.Media)
+		}
+		return
+	}
+	t.Fatalf("сообщения %d нет в векторе messages", id)
+}
+
+// Та же болезнь, что у списка чатов: последнее сообщение темы форума едет
+// вектором `messages` и должно быть тем же сообщением, что в ленте темы.
+func TestTopicsPage_TopMessageHydrated(t *testing.T) {
+	s := newStore()
+	in := New(fakeTx{}, fakeChats{s}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, newFakeGroupRepo(), nil, nil, nil, nil)
+	in.SetPublisher(&fakePublisher{})
+	ctx := context.Background()
+	const a int64 = 1
+	chatID, _ := in.CreatePrivateChat(ctx, a, 2)
+	top := sendPhoto(t, in, s, chatID, a)
+	in.SetTopics(topicRows{top: top})
+
+	page, err := in.TopicsPage(ctx, chatID, a)
+	if err != nil {
+		t.Fatalf("TopicsPage: %v", err)
+	}
+	assertPhotoHydrated(t, page.Messages, top.ID)
+}
+
+// И у «Избранного» в разрезе источников: строка адресует последнее
+// сохранённое сообщение, превью клиент собирает из него самого.
+func TestSavedDialogsPage_TopMessageHydrated(t *testing.T) {
+	s := newStore()
+	ctx := context.Background()
+	const a int64 = 1
+	saved, _ := fakeChats{s}.CreateSaved(ctx, a)
+	pre := New(fakeTx{}, fakeChats{s}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, newFakeGroupRepo(), nil, nil, nil, nil)
+	pre.SetPublisher(&fakePublisher{})
+	top := sendPhoto(t, pre, s, saved, a)
+
+	in := New(fakeTx{}, fakeChats{s}, savedTopMsgs{fakeMsgs{s}, top}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, newFakeGroupRepo(), nil, nil, nil, nil)
+	page, err := in.SavedDialogsPage(ctx, a)
+	if err != nil {
+		t.Fatalf("SavedDialogsPage: %v", err)
+	}
+	assertPhotoHydrated(t, page.Messages, top.ID)
+}
