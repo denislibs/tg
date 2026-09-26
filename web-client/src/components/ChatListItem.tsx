@@ -3,6 +3,7 @@ import { memo, useMemo, useState, type CSSProperties, type ReactNode, type Ref }
 import Avatar from '../shared/ui/Avatar'
 import DomNode from '../shared/ui/DomNode'
 import { formatDateAccordingToTodayNew } from '@helpers/date'
+import getDialogMentionBadgeState from '../core/dialogs/dialogMentionBadgeState'
 import classNames from '../shared/lib/classNames'
 import Menu, { MenuItem, cornerFrom, type MenuCorner } from '../shared/ui/Menu'
 import { useRipple } from '../shared/ui/Ripple/useRipple'
@@ -163,6 +164,19 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
   const badgeCls = (...extra: string[]) =>
     classNames('dialog-subtitle-badge', 'badge', 'badge-22', 'is-visible', 'forwards', ...extra)
 
+  // tweb 08d07c2b4 (appDialogsManager.ts:2779-2791): упоминание показывается
+  // ЛИБО бейджем непрочитанного, ставшим «@», ЛИБО отдельным бейджем рядом со
+  // счётчиком — никогда обоими. Бейдж непрочитанного у нас считает сообщения
+  // (форумного счёта по темам в строке нет), поэтому оба числа — `unread`.
+  const hasUnreadBadge = chat.unread != null
+  const { isMention, hasMentionsBadge } = getDialogMentionBadgeState({
+    unreadCount: chat.unread ?? 0,
+    unreadMessagesCount: chat.unread ?? 0,
+    unreadMentionsCount: chat.unreadMentions ?? 0,
+    hasUnreadBadge,
+  })
+  const unreadBadgeText = hasUnreadBadge ? (isMention ? '@' : chat.unread) : undefined
+
   return (
     <>
       {/* Строка диалога — дерево tweb (живой DOM §2): порядок детей
@@ -231,11 +245,12 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
               <TgIcon name="reactions_filled" size={16} />
             </div>
           ) : null}
-          {chat.unreadMentions ? (
+          {hasMentionsBadge ? (
             <div className={badgeCls('mention', 'mention-badge', 'dialog-subtitle-badge-mention')}>@</div>
           ) : null}
-          {chat.unread != null ? (
-            <div className={badgeCls('unread', 'dialog-subtitle-badge-unread')}>{chat.unread}</div>
+          {hasUnreadBadge ? (
+            // tweb appDialogsManager.ts:667-668: `unread` + `mention`, пока бейдж — «@»
+            <div className={badgeCls('dialog-subtitle-badge-unread', 'unread', isMention ? 'mention' : '')}>{unreadBadgeText}</div>
           ) : chat.pinned ? (
             <div className={badgeCls('badge-icon', 'dialog-subtitle-badge-pinned')}>
               <TgIcon name="chatspinned" size={19} />
@@ -282,9 +297,11 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
 
         {/* Свёрнутый ряд (форум открыт): компактный бейдж непрочитанного в нижнем
             правом углу аватара, как в Telegram (текст ряда скрыт). */}
-        {collapsed && (chat.unread != null || chat.unreadMentions) ? (
+        {/* tweb appDialogsManager.ts:2769-2775, 2797: аватарный бейдж — тот же
+            текст, что у бейджа непрочитанного, и только при непрочитанном. */}
+        {collapsed && hasUnreadBadge ? (
           <span className={chat.muted ? `${s.cornerBadge} ${s.cornerBadgeMuted}` : s.cornerBadge}>
-            {chat.unread != null ? chat.unread : '@'}
+            {unreadBadgeText}
           </span>
         ) : null}
       </a>
