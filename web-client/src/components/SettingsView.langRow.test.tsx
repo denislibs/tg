@@ -54,13 +54,13 @@ function languageRowValue() {
   // молча читать чужую строку он не начал.
   //
   // Позиция берётся из ЭКСПОРТИРОВАННОЙ таблицы, а не из константы в тесте:
-  // перестановка пунктов в продукте не должна требовать правки пина. Первой
-  // строкой секции идёт «Ночной режим», отсюда сдвиг на единицу.
+  // перестановка пунктов в продукте не должна требовать правки пина. Строки
+  // секции — ровно пункты таблицы, как у tweb («Ночного режима» в корне нет).
   const index = settingsItems.findIndex((it) => it.value)
   expect(settingsItems.filter((it) => it.value)).toHaveLength(1)
 
   const rows = Array.from(document.querySelectorAll('.profile-buttons > .row'))
-  const row = rows[index + 1]
+  const row = rows[index]
   return row.querySelector('.row-title-right-secondary')!.textContent
 }
 
@@ -72,13 +72,13 @@ describe('строка «Язык» в настройках', () => {
 
   it('на английском подписана «English»', async() => {
     await applyLang('en')
-    render(<SettingsView onBack={() => {}} onToggleMode={() => {}} />, { wrapper })
+    render(<SettingsView onBack={() => {}} />, { wrapper })
 
     expect(languageRowValue()).toBe('English')
   })
 
   it('после смены языка подписана его самоназванием', async() => {
-    render(<SettingsView onBack={() => {}} onToggleMode={() => {}} />, { wrapper })
+    render(<SettingsView onBack={() => {}} />, { wrapper })
     expect(languageRowValue()).toBe('English')
 
     await act(async () => {
@@ -111,11 +111,10 @@ describe('иконки корня настроек — цветные плашк
 
   it('строки списка — .row с плашкой нужного цвета (Notifications красная, Data зелёная, Privacy серая)', async() => {
     await applyLang('en')
-    render(<SettingsView onBack={() => {}} onToggleMode={() => {}} />, { wrapper })
+    render(<SettingsView onBack={() => {}} />, { wrapper })
     const plates = Array.from(document.querySelectorAll<HTMLElement>('.profile-buttons > .row > .row-icon.row-icon-colored'))
-    // «Ночной режим» + пункты таблицы.
-    expect(plates).toHaveLength(settingsItems.length + 1)
-    const bg = (i: number) => plates[i + 1].style.backgroundImage
+    expect(plates).toHaveLength(settingsItems.length)
+    const bg = (i: number) => plates[i].style.backgroundImage
     expect(bg(0)).toBe(getRowIconBackground(ROW_ICON_COLORS.red))
     expect(bg(1)).toBe(getRowIconBackground(ROW_ICON_COLORS.green))
     expect(bg(2)).toBe(getRowIconBackground(ROW_ICON_COLORS.grey))

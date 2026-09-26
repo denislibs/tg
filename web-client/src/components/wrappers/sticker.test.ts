@@ -257,8 +257,8 @@ describe('wrapSticker: очередь и lite-mode', () => {
   })
 
   it('lite-mode «без анимаций» снимает автоплей и зацикливание', async () => {
-    const previous = useSettingsStore.getState().reduceMotion
-    useSettingsStore.setState({ reduceMotion: true })
+    const previous = useSettingsStore.getState().liteMode
+    useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
     try {
       stubFetch('application/json')
       const { render } = wrapSticker({
@@ -276,7 +276,7 @@ describe('wrapSticker: очередь и lite-mode', () => {
       expect(opts.autoplay).toBe(false)
       expect(opts.loop).toBe(false)
     } finally {
-      useSettingsStore.setState({ reduceMotion: previous })
+      useSettingsStore.setState({ liteMode: previous })
     }
   })
 

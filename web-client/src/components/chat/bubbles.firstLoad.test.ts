@@ -137,7 +137,7 @@ beforeEach(() => {
   clearChatPositions()
   interruptHeavyAnimation()
   rootScope.myId = 999
-  useSettingsStore.setState({ reduceMotion: false })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: false } })
   HTMLElement.prototype.getBoundingClientRect = function(this: HTMLElement) {
     const container = current?.scrollable.container
     if(!container) return rect(0, 0)
@@ -170,7 +170,7 @@ afterEach(() => {
 // анимаций не зависит.
 describe('ChatBubbles — спиннер первой загрузки (порт ProgressivePreloader)', () => {
   beforeEach(() => {
-    useSettingsStore.setState({ reduceMotion: true })
+    useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
   })
 
   it('пока летит первая страница — спиннер в `.bubbles`, а окна в скролле нет', async () => {
@@ -345,7 +345,7 @@ describe('ChatBubbles — «лестница» при открытии чата 
   })
 
   it('без анимаций лестницы нет вовсе (гейт `liteMode.isAvailable`, tweb :11540)', async () => {
-    useSettingsStore.setState({ reduceMotion: true })
+    useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
     const b = mount(managersFor(page([1, 2, 3])))
     await openFeed(b)
 
@@ -389,7 +389,7 @@ describe('ChatBubbles — «лестница» при открытии чата 
 // ровно то, что здесь проверяется.
 describe('ChatBubbles — сохранённая позиция чата (порт savedPosition)', () => {
   beforeEach(() => {
-    useSettingsStore.setState({ reduceMotion: true })
+    useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
   })
 
   const twelve = () => page([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], true, true)

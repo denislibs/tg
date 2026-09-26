@@ -8,7 +8,7 @@
 // (порт tweb index.ts setRootClasses).
 @forward "mixins/hover";
 // animation-level — `body.animation-level-2`; класс на <body> (index.html),
-// переключение по настройке reduceMotion — фаза 7 (P0 №30).
+// переключение по настройке liteMode — `client/liteModeSettings.ts`.
 @forward "mixins/animationLevel";
 // premium — `body.is-premium`; класс пока никто не ставит, правила не матчатся.
 @forward "mixins/premium";

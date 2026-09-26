@@ -149,9 +149,10 @@ export default function AuthCodeCard(props: { spec: Spec }): JSX.Element {
               focused={focused}
             />
           </>)} />
-          <MediaHeader.Title>
-            <div class={styles.phoneWrapper}>
-              <h4 class={styles.phone}>{phone()}</h4>
+          {/* tweb AuthCodeCard.tsx:586-592 (472e3e76b): заголовок — h1, номер — span */}
+          <MediaHeader.Title tag="h1">
+            <span class={styles.phoneWrapper}>
+              <span class={styles.phone}>{phone()}</span>
               {/* tweb .phoneEdit: правка номера — единственный путь назад отсюда */}
               <span
                 class={styles.phoneEdit}
@@ -161,9 +162,9 @@ export default function AuthCodeCard(props: { spec: Spec }): JSX.Element {
               >
                 <IconTsx icon="edit" style={{ 'font-size': '1.5rem' }} />
               </span>
-            </div>
+            </span>
           </MediaHeader.Title>
-          <MediaHeader.Subtitle color="secondary">{i18n('Login.Code.SentSms')}</MediaHeader.Subtitle>
+          <MediaHeader.Subtitle class="secondary">{i18n('Login.Code.SentSms')}</MediaHeader.Subtitle>
         </MediaHeader>
       }
     >

@@ -121,14 +121,14 @@ beforeEach(() => {
   clearChatPositions()
   resetPlayback()
   rootScope.myId = 1
-  useSettingsStore.setState({ reduceMotion: true })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
 })
 
 afterEach(() => {
   bubbles?.destroy()
   bubbles = undefined
   resetPlayback()
-  useSettingsStore.setState({ reduceMotion: false })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: false } })
 })
 
 async function settle(times = 6) {

@@ -52,6 +52,7 @@ import { i18n } from '@lib/langPack'
 import { isWebAuthnSupported, getPasskeyAssertion } from '@core/webauthnBrowser'
 import AuthCard from '../AuthCard.solid'
 import MediaHeader from '@components/mediaHeader.solid'
+import mediaHeaderStyles from '@components/mediaHeader.module.scss'
 import Preloader from '../Preloader.solid'
 import QrCode from '../QrCode.solid'
 import { reportPasskeyLoginError } from '../passkeyLoginError'
@@ -184,8 +185,14 @@ export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
               <QrCode class={styles.qrCanvas} data={qrUrl()} size={QR_SIZE} onPainted={() => setPainted(true)} />
             </Show>
           </>)} />
-          <MediaHeader.Title>{i18n('Login.QR.Title')}</MediaHeader.Title>
-          <MediaHeader.Subtitle color="secondary">
+          {/* tweb SignQRCard.tsx:228-233 — голый h1 с классом заголовка модуля, не MediaHeader.Title */}
+          <h1
+            class={`${mediaHeaderStyles.title} text-center text-overflow-wrap`}
+            style={{ 'margin-top': 0 }}
+          >
+            {i18n('Login.QR.Title')}
+          </h1>
+          <MediaHeader.Subtitle class="secondary">
             {i18n(failed() ? 'Login.Error.Generic' : 'Login.QR.Subtitle')}
           </MediaHeader.Subtitle>
         </MediaHeader>
