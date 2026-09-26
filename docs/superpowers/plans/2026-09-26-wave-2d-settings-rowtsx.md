@@ -572,7 +572,7 @@ React-экран как список сценариев; **Шаг 2** — пад
 «Готово когда» у всех включает: старый React-файл удалён в том же PR, `git grep` по его имени
 пуст, «у нас» обновлено.
 
-### Задача 7: «Данные и память» + автозагрузка
+### Задача 7: «Данные и память» + автозагрузка — ✅ сделано (PR feat/w2d-data-storage)
 
 **Порт:** `dataAndStorage/index.tsx` + `storageQuota.tsx` (+ `.module.scss`) →
 `sidebarLeft/tabs/dataAndStorage/{index,storageQuota}.solid.tsx`; `autoDownload/{autoDownloadTab,
@@ -592,6 +592,26 @@ delete primaryTransparent` + `confirmationPopup` (`:72-81`), квота — 2 с
 `settings/DataStorageSettings.tsx` + `.module.scss`.
 **Отдельно выяснить:** строка «Cached video stream chunks» (`storageQuota.tsx:374-382`) — есть ли у
 нас кэш потоковых чанков (SW `/dnp-stream/`); нет — О-6.
+
+**Итог задачи 7 (2026-09-26) — что учесть следующим экранам:**
+- О-6 выяснено: корзин потоковых чанков нет (DNP-стрим собирает SW без CacheStorage, DNP-OFF —
+  токен-URL мимо кэша); `watchedCachedStorageNames` у нас = `cachedFiles`. Строки нет, у места —
+  комментарий с номером.
+- `useAppSettings` расширен (шапка `stores/appSettings.solid.ts`, п. 2, 6, 7): лист с `codec`
+  (обратный смысл ключа — `autoDownloadNew.pFlags.disabled` ↔ `autoDownloadEnabled`), путь внутрь
+  значения-объекта, запись поддерева одним `update` со слиянием верхнего уровня (как `setStore`
+  Solid-стора), `SETTINGS_INIT` — представление над `DEFAULTS`. Задаче 11 (`liteMode`) и прочим —
+  дописывать таблицу, форму записи не изобретать.
+- Из Solid-вкладки дочерняя вкладка открывается `(tab.slider as SidebarSlider).createTab(T).open()`:
+  узкий контракт `SliderSuperTabSlider` (`sliderTab.ts`) `createTab` не объявляет. Добавить его в
+  контракт (и в `sliderTab.testStub.ts`) — одной правкой, когда таких вызывающих станет больше.
+- `CheckboxFieldTsx stateKey` у нас нет — поля по ключу состояния пишутся `checked`/`onChange`
+  через `useAppSettings` (расхождение в шапке `autoDownload/peerTypeSection.solid.tsx`).
+- Шим `installSpecLabelActivation` — общий модуль `src/test/specLabelActivation.ts` (задача 8).
+- Побочка `cacheTTL`/`cacheSize` → SW — подписчик `core/mediaCache.ts::watchCacheSettings`.
+- Стенд не прощёлкан (эксклюзивно у другого агента): пункт чеклиста `settings-rows.md` открыт.
+- Шапка `solidJsTabs/tabs.ts` («их три») устарела — не правилась ради механического слияния с
+  задачами 8/10/11; поправить в сводном docs-PR.
 
 ### Задача 8: «Язык» → HEAD
 
@@ -930,7 +950,7 @@ media; брать задачу, когда в них нет открытых в�
 | О-3 | Секция «Stories» уведомлений (`:112-235`) | нет `stories_muted`/`stories_hide_sender` в `/me/notify_settings` (`notify_handler.go:27-47`) | уведомления о новых историях |
 | О-4 | Секция «Reactions» (`:237-347`) | нет `account.get/setReactionsNotifySettings` | уведомления о реакциях |
 | О-5 | «Contact joined» (`:349-377`) | нет `get/setContactSignUpNotification` | уведомление о новом контакте |
-| О-6 | «Cached video stream chunks» (`storageQuota.tsx:374-382`) | выяснить в задаче 7: есть ли кэш потоковых чанков | полная квота кэша |
+| О-6 | «Cached video stream chunks» (`storageQuota.tsx:374-382`) и их доля в «Clear All» | корзин потоковых чанков у нас нет (выяснено задачей 7): DNP-стрим собирает SW из Noise-канала без CacheStorage (`public/sw.js`, `/dnp-stream/`), DNP-OFF — токен-URL мимо кэша | кэш потоковых чанков видео (HLS/стрим в CacheStorage) |
 | О-7 | TTL сессий (`activeSessions.tsx:238-292`, `:392`) | `authorization_ttl_days` всегда 0, нет `setAuthorizationTTL` (`backend/internal/domain/mtaccount.go:105-122`) | автозавершение неактивных сессий |
 | О-8 | `changeAuthorizationSettings` — AcceptSecretChats/AcceptIncomingCalls (`session.tsx:112-143`, `speakersAndCamera.tsx`) | нет ручки и колонок | запрет звонков/секретных чатов на устройстве |
 | О-9 | Переименование устройства (`activeSessions.tsx:211-236`) | сервер подставляет имя из UA (`backend/internal/usecase/auth/auth.go:291-294`) | своё имя устройства |

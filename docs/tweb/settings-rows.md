@@ -354,7 +354,7 @@ div.tabs-container[data-animation="navigation"]  (= .sidebar-slider колонк
 | `components/SettingsView.tsx` (361) | `settings.tsx` | React | своя карточка профиля вместо `PeerProfile`; лишние «Ночной режим», карточка контактов, `EmojiStatus.Set`; ключи `PrivacySettings`, `ChatList.Filter.List.Title`; ⋮ без обработчика; нет поиска/выхода; Premium-секция иначе |
 | `components/SettingsSubScreen.tsx` (171) | — (роутер) | React | мок `SCREENS` мёртв: `General` перехвачен раньше (`:114`), `renderDedicated` недостижим → `QuickReaction` недостижим |
 | `sidebarLeft/tabs/notifications.solid.tsx` | `notifications.tsx` | **Solid, HEAD** (пилот 2D, задача 6) | вкладка `AppNotificationsTab` через хост; подпись вне карточки, `NotificationRow` с `fakeDisabled`/`clickable` без разрешения, `Button btn-primary primary btn-transparent` c `unmute`, `RangeSettingSelector`, типы чатов пишутся на закрытии. Расхождения (шапка файла): нет «All Accounts» и подписи `MultiAccount.ShowNotificationsFromCaption` (О-1), секций Stories/Reactions/Other (О-3…О-5); отказ в разрешении даёт тост (у tweb `throw 1` в onFulfilled — необработанный reject); типы чатов — `stores/notifyStore.ts` вместо `appNotificationsManager`; побочка push — подписчик `client/pushSetup.ts::watchPushConditions` (tweb `uiNotificationsManager.ts:320-322`). DOM против `14-left-14`: отличия только `span.checkbox-field` + `row-checkbox-field-toggle` (HEAD, § 7), нет `item-secondary` у вкладки (шов хоста, задача 28) и строки All Accounts (О-1). React `settings/NotificationsSettings.tsx` снесён |
-| `settings/DataStorageSettings.tsx` | `dataAndStorage/*`, `autoDownload/*` | React | подэкраны `sub` вместо вкладок; чекбоксы вместо тумблеров; `Row accent` вместо `Button`; нет строки stream chunks; «Clear All» чистит только файлы; мгновенное сохранение |
+| `sidebarLeft/tabs/dataAndStorage/{index,storageQuota}.solid.tsx`, `autoDownload/*.solid.tsx` | `dataAndStorage/*`, `autoDownload/*` | **Solid, HEAD** (задача 7 плана 2D) | вкладки `AppDataAndStorageTab`, `AppAutoDownload{Photo,Video,File}Tab` (eventable) через хост; тумблер `AutoDownloadMedia`, Photos/Videos/Files — `Row disabled` + подпись (`getAutoDownloadSubtitle`, ключи `AutoDownload*`) и открывают вкладки слайдера; сброс — `Button icon=delete primaryTransparent` через `confirmationPopup`; квота — «Clear» в `row-right` (CSS-модуль tweb), 4 × `Row.Icon`, 2 × `RangeSettingSelector`, «Clear All» — `Button`; срок/предел кэша пишутся на `destroy`; вкладки автозагрузки — тумблеры `Autodownload*`, предел файла — локальный `RangeSettingSelector` tweb с дебаунсом. Расхождения (шапки файлов): нет строки «Cached video stream chunks» (О-6 — корзин потоковых чанков нет, «Clear All» чистит `cachedFiles`); подсчёт/очистка — `core/mediaCache.ts`, а не `CacheStorageController`/`apiManagerProxy`; `formatBytes` — строкой (`Unit.*`), не узлом `FileSize.*`; `stateKey` поля → `checked`/`onChange` через `useAppSettings` (`autoDownloadNew.pFlags.disabled` ↔ `autoDownloadEnabled` — `codec`); побочка квоты → SW — подписчик `core/mediaCache.ts::watchCacheSettings`. React `settings/DataStorageSettings.tsx` снесён |
 | `settings/PrivacySecuritySettings.tsx` | `privacyAndSecurity.tsx` | React | значения `value` вместо `Row.Subtitle` (`:115-133`); лишние «Сессии» и «Удаление аккаунта»; нет web sessions, login email, секций NewChats/Sensitive/Payments |
 | `settings/PrivacyRule.tsx` | `privacySection.tsx` + `privacy/*` | React | **«Н..»**: счётчик исключения в `value` → `row-title-right` (`:162`, `:170`), правая часть не сжимается (`_row.scss:230-233`), и русский заголовок съедается; у tweb это `Row.Subtitle` (`privacySection.tsx:214-216`). Радио — галочкой; мгновенное сохранение; исключения только пользователи |
 | `settings/PrivacyUserPicker.tsx` | `addMembers.tsx` + `appSelectPeers.tsx` | React | `PeerSelector` вместо `AppSelectPeers` |
@@ -405,7 +405,8 @@ div.tabs-container[data-animation="navigation"]  (= .sidebar-slider колонк
 8. **Радио — галочка** (`Row selected`, отступление `kit.tsx:318-327`) или свой `RadioRow`.
 9. **Свои CSS-модули** на месте портированных глобальных стилей (громкость, темы, сетки, строки хоткеев).
 10. **Момент сохранения**: у нас сразу, у tweb часть — на закрытии вкладки. «Уведомления» (задача 6)
-    уже пишут типы чатов на закрытии (`NotifySection`, пин — `notifications.solid.test.tsx`).
+    уже пишут типы чатов на закрытии (`NotifySection`, пин — `notifications.solid.test.tsx`),
+    «Данные и память» (задача 7) — срок и предел кэша на `destroy` (`dataAndStorage.solid.test.tsx`).
 
 ### 8.3.1. Модель «All Accounts»
 
@@ -440,6 +441,11 @@ div.tabs-container[data-animation="navigation"]  (= .sidebar-slider колонк
       «All Accounts» — О-1), клик по ним и «Enable Notifications» просит разрешение ровно раз;
       с разрешением — строки обычные, подписи нет (`MultiAccount.ShowNotificationsFromCaption` —
       О-1).
+- [ ] «Данные и память» (задача 7): первая строка — тумблер; выключили — Photos/Videos/Files
+      серые и не открываются; «Photos» въезжает вкладкой с четырьмя тумблерами; сброс серый на
+      дефолтах; «Clear» справа в строке «Cached files»; сдвинули срок кэша, закрыли вкладку —
+      значение сохранилось. Пины — `dataAndStorage.solid.test.tsx`, `autoDownload.solid.test.tsx`;
+      стенд — не прощёлкан (эксклюзивно у другого агента в момент задачи).
 - [ ] Исключения приватности: «Никогда не показывать» читается целиком, счётчик — строкой ниже.
 - [ ] Тумблер в строке с подписью стоит в правой колонке (`div.row-right`, `row-grid`).
 - [ ] Строки с меню (`contextMenu`) открывают меню по клику и правому клику, Enter/Space с
