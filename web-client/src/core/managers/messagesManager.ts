@@ -1000,8 +1000,9 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       // временный бабл уходит из SSOT воркера ДО вставки настоящего. Иначе в
       // хранилище остались бы два объекта, и переоткрытие чата показало бы
       // «отправляется…» рядом с уже отправленным. Слияние полей (random_id,
-      // localUrl, secret) делает потребитель — messageOps.insert.
-      pending.checkPendingMessage(m.random_id)
+      // localUrl, secret) делает потребитель — messageOps.insert. Признак
+      // `sequential` снятого бабла едет в `insert` финального — как у ack.
+      const sequential = pending.checkPendingMessage(m.random_id)
       const root = getThreadRootId(m)
       const keys = root ? [hkey(m.peerId), hkey(m.peerId, root)] : [hkey(m.peerId)]
       const ops: MessageOp[] = []
@@ -1014,7 +1015,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
         if (!sa || !sa.first.isEnd(SliceEnd.Bottom)) continue
         put(key, [m])
         if (!sa.findSlice(m.id)) sa.unshift(m.id)
-        ops.push({ op: 'insert', key, msg: m })
+        ops.push(sequential ? { op: 'insert', key, msg: m, sequential } : { op: 'insert', key, msg: m })
       }
       return ops
     },

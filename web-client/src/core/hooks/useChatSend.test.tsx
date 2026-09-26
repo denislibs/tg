@@ -174,6 +174,19 @@ describe('useChatSend: пакет параметров доезжает КАЖД
     expect(managers.messages.sendText.mock.calls[0][0]).toMatchObject({ type: 'contact', replyToMsgId: ORIG })
   })
 
+  // tweb `sendMessageWithDocument` → `sendFile({file: document})`: бабл
+  // «отправляется…» несёт сам выбранный документ. Без него бабл рождался пустым
+  // и оставался таким до перезагрузки (эхо с тем же номером окно отбрасывает).
+  it('стикер: в бабл уходит сам выбранный документ', async () => {
+    const { managers, result } = setup()
+    const st = makeSticker({ id: 500, emoji: '😀' })
+    act(() => { result.current.sendSticker(st) })
+    await waitFor(() => expect(managers.messages.sendText).toHaveBeenCalled())
+    expect(managers.messages.sendText.mock.calls[0][0]).toMatchObject({
+      type: 'sticker', mediaId: 500, optimistic: { senderId: ME, document: st },
+    })
+  })
+
   it('тред: threadId едет пакетом, а не отдельным аргументом каждого пути', async () => {
     const { managers, result } = setup({ threadRootId: 3 })
     act(() => { result.current.sendSticker(makeSticker({ id: 500, emoji: '😀' })) })

@@ -263,7 +263,9 @@ export function useChatSend({
       if (draftPeerId != null) cid = await managers.chats.createPrivate(draftPeerId)
       // Ключ один — id ДОКУМЕНТА: и в сообщении, и в отметке использования.
       // Прежде их было два (media_id и суррогатный ключ строки набора).
-      void managers.messages.sendText({ peerId: cid, text: '', clientMsgId, mediaId: st.id, type: 'sticker', ...sendingParams, optimistic: isRealChat ? { senderId: meId ?? -1 } : undefined })
+      // В бабл «отправляется…» — сам документ (tweb `sendFile({file: document})`):
+      // стикер рисуется сразу, а не пустым пузырём до перезагрузки.
+      void managers.messages.sendText({ peerId: cid, text: '', clientMsgId, mediaId: st.id, type: 'sticker', ...sendingParams, optimistic: isRealChat ? { senderId: meId ?? -1, document: st } : undefined })
       void managers.stickers.use(st.id).catch(() => {})
       if (draftPeerId != null) onChatCreated?.(cid)
     })()
