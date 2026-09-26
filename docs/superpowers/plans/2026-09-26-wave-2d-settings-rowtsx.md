@@ -840,7 +840,7 @@ class="disable-hover"`) + превью; `setDefaultReaction` сразу; дан�
 **Зависимости:** 0–5. **Врезка:** `tabs.ts`, `PrivacySecuritySettings.tsx` (строка Passcode →
 `openTab`); удалить `settings/PasscodeLock.tsx`.
 
-### Задача 19: «Двухэтапная проверка» (мастер 2FA)
+### Задача 19: «Двухэтапная проверка» (мастер 2FA) — ✅ сделано (PR feat/w2d-2fa)
 
 **Порт:** `2fa/{index,enterPassword,reEnterPassword,hint,email,emailConfirmation,passwordSet}.tsx`
 + `forgotPasswordLink.ts` → `sidebarLeft/tabs/2fa/*.solid.tsx`; вкладки :891-989. `captionOld` на
@@ -853,6 +853,25 @@ class="disable-hover"`) + превью; `setDefaultReaction` сразу; дан�
 **Мутация:** `captionOld` снят на главной — тест места подписи краснеет.
 **Зависимости:** 0, 1, 5. **Врезка:** `tabs.ts`, `PrivacySecuritySettings.tsx`; удалить
 `settings/TwoStepVerification.tsx` + `.module.scss`.
+
+**Итог (2026-09-26):** шесть вкладок `AppTwoStepVerification{,EnterPassword,ReEnterPassword,Hint,
+Email,Set}Tab` (`sidebarLeft/tabs/2fa/*.solid.tsx`) — дословно по tweb; врезка — строка
+React-«Конфиденциальности» по состоянию пароля (`privacyAndSecurity.tsx:257-271`). Сверх плана
+пришлось завести первых потребителей: `components/passwordInputField.ts`,
+`components/monkeys/{password,tracking}.ts` (классы tweb; React `PasswordMonkey.tsx` остался у
+`PasscodeLockScreen.tsx`, а не у 2FA — решение плана «портировать или найти в `PasswordCard`» снято:
+в `PasswordCard.solid.tsx` обезьянка — заглушка), `components/wrappers/stickerEmoji.ts`,
+`lib/richtext/matchEmail.ts`, `helpers/dom/canFocus.ts`, ассет `LoveLetter` (+PNG фолбэка, пин
+состава статики 11 → 12), стиль `.popup-disable-password/.popup-skip-email`. Пароль — через
+`/me/password` (SRP у сервера нет, пароль телом внутри TLS, в журнал не пишется). Попапы —
+`PopupPeer` (2C не понадобилась). Ловушки: (1) `sliceTabsUntilTab(AppSettingsTab)` без вкладки
+корня — срез до корня хоста (`2fa/sliceTabsUntilSettings.ts`), финал закрывается на
+«Конфиденциальность»; (2) React-экран под хостом переживает мастер — хост получил
+`onTabsEmpty`, экран перечитывает состояние; (3) `TwoStepVerification.module.scss` не удалён —
+его импортирует `settings/PasscodeLock.tsx` (удалит задача 18); (4) у хоста `removeTabFromHistory`
+посреди мастера на миг опустошает стек — `onTabsEmpty` срабатывает и там (безвредно).
+Сняты 7 наших ключей без tweb-аналога, читавшихся только React-мастером. О-13 расширен:
+«Skip» не снимает почту.
 
 ## Пакет B — родители и экраны с 2C
 
@@ -1082,7 +1101,7 @@ media; брать задачу, когда в них нет открытых в�
 | О-10 | Строка Send с `InlineSelect` (если нет настройки отправки) | выяснить в задаче 10 | Ctrl+Enter для отправки |
 | О-11 | Серверные обои (`account.getWallPapers`, `uploadWallPaper`, `saveWallPaper`; `background.tsx:404-416`, `:546-554`) | ручек обоев на бэкенде нет вовсе (выяснено задачей 12): сетка — клиентские `WALLPAPER_PRESETS`, своё фото — общая `/media/upload` + `customWallpaperMediaId`, список загруженных обоев не хранится | сетка обоев 1:1, обои по темам, загруженные обои в выдаче |
 | О-12 | `sliceTabsUntilTab(AppPrivacyAndSecurityTab)` у код-пароля | хаб — вкладка только с задачи 23 | снимается задачей 23 |
-| О-13 | Подтверждение почты 2FA кодом, «Забыли пароль» | нет unconfirmed pattern (`authManager.ts:118-122`, `:468-475`) | восстановление пароля |
+| О-13 | Подтверждение почты 2FA кодом (`2fa/emailConfirmation.tsx`, ветка `EMAIL_UNCONFIRMED` в `email.tsx:74-83` и `privacyAndSecurity.tsx:261-268`), «Забыли пароль» (`forgotPasswordLink.ts`), снятие почты пропуском («Skip» шлёт `email: ''`) | нет unconfirmed pattern (`authManager.ts:118-122`, `:468-475`); пустая почта у `POST /me/password` = «оставить прежнюю» (`usecase/auth/password.go::SetPassword`) | восстановление пароля, снятие почты |
 | О-14 | Порядок стикерсетов (`reorderStickerSets`) | выяснить в задаче 15 | сортировка наборов |
 | О-15 | Платные сообщения (`privacy/messages/paidSettingsSection.tsx`) | `privacyKeyMessages` — наш конструктор, звёзд за сообщения нет | «кто может писать» 1:1 |
 | О-16 | Правила Gifts, SavedMusic, P2P | ключей нет (`backend/internal/domain/privacy.go:9-20`) | три вкладки правил |

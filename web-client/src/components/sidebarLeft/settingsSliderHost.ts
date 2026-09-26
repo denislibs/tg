@@ -1,7 +1,8 @@
 /**
  * Хост слайдера вкладок левой колонки: заводит `SidebarSlider`
  * (`components/slider.ts`, порт tweb `components/slider.ts`) над разметкой
- * `#column-left` и отдаёт наружу ровно две ручки — открыть вкладку и умереть.
+ * `#column-left` и отдаёт наружу три ручки — открыть вкладку, узнать, что стек
+ * вкладок опустел (`onTabsEmpty`, шов мастера 2FA), и умереть.
  *
  * ── ШОВ С REACT (временный, снимается задачей 28 плана волны 2D) ──────────
  *
@@ -111,6 +112,18 @@ export interface SettingsSliderHost {
     ctor: SliderSuperTabConstructable<T>,
     ...args: Parameters<T['init']>
   ): Promise<T>
+  /**
+   * Подписка «вкладок в стеке не осталось» (шов, снимается задачей 28).
+   * У tweb экран, открывший мастер 2FA, сам — вкладка, и конец мастера
+   * срезает его из истории (`sliceTabsUntilTab(AppSettingsTab)`,
+   * `2fa/passwordSet.tsx:23`, `2fa/index.tsx:34`): при следующем открытии он
+   * собирается заново и читает состояние свежим. Наш React-экран под слоем хоста
+   * переживает вкладки — ему нужен момент, когда стек опустел, чтобы перечитать
+   * своё. Срабатывает и посреди мастера, когда шаг снимает себя из истории до
+   * въезда следующего (`2fa/enterPassword.tsx:94`), — лишнее перечитывание
+   * безвредно. Возвращает отписку.
+   */
+  onTabsEmpty(callback: () => void): () => void
   /** Экран-владелец умирает — вкладки обязаны умереть с ним. */
   destroy(): void
 }
@@ -157,8 +170,13 @@ export function createSettingsSliderHost(columnEl: HTMLElement, managers: Manage
   // колонку и получает `'left'`, как `sidebarLeft/index.ts` оригинала.
   const slider = new SidebarSlider({ sidebarEl: element, navigationType: 'settings-popup', managers })
 
+  const emptyListeners = new Set<() => void>()
   slider.onTabsCountChange = () => {
-    element.classList.toggle(s.withTabs, slider.hasTabsInNavigation())
+    const withTabs = slider.hasTabsInNavigation()
+    element.classList.toggle(s.withTabs, withTabs)
+    if(!withTabs) {
+      emptyListeners.forEach((callback) => callback())
+    }
   }
 
   const host: SettingsSliderHost = {
@@ -168,7 +186,15 @@ export function createSettingsSliderHost(columnEl: HTMLElement, managers: Manage
       return tab
     },
 
+    onTabsEmpty(callback) {
+      emptyListeners.add(callback)
+      return () => {
+        emptyListeners.delete(callback)
+      }
+    },
+
     destroy() {
+      emptyListeners.clear()
       // `slider.destroy()` = `closeAllTabs()` + гашение миддлвари слайдера.
       // Закрываем силой, а не `closeAllTabsNaturally`: экран-владелец уже
       // уходит, спрашивать подтверждение не у кого и некогда. Тот же выбор в

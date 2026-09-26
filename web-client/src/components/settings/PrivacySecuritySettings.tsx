@@ -3,11 +3,10 @@
 // код-пароль, облачный пароль, ключи доступа, сеансы) + секция privacy-правил
 // с живыми значениями и счётчиками исключений.
 import type { LangPackKey } from '@/lang'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import TgIcon from '../TgIcon'
 import { SettingsScreen, Section, Row } from './kit'
 import BlockedUsers from './BlockedUsers'
-import TwoStepVerification from './TwoStepVerification'
 import Passkeys from './Passkeys'
 import PasskeyIntroPopup from './PasskeyIntroPopup'
 import PrivacyRule, { RULE_META } from './PrivacyRule'
@@ -17,7 +16,9 @@ import ConfirmDialog from './ConfirmDialog'
 import { useSettingsStore } from '../../settings'
 import { useT, useTArgs } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
-import { openActiveSessionsTab } from '../sidebarLeft/settingsSliderHost'
+import { getSettingsSliderHost, openActiveSessionsTab } from '../sidebarLeft/settingsSliderHost'
+import { AppTwoStepVerificationEnterPasswordTab, AppTwoStepVerificationTab } from '../solidJsTabs/tabs'
+import type { PasswordState } from '../../core/managers/authManager'
 import { toastNew } from '../toast'
 import { usePrivacyStore } from '../../stores/privacyStore'
 import type { PrivacyRule as Rule } from '../../core/managers/privacyManager'
@@ -63,7 +64,9 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
 
   // Сабтайтлы On/Off и период автоудаления (перечитываются при возврате
   // из под-экранов).
-  const [pwEnabled, setPwEnabled] = useState<boolean | null>(null)
+  // Состояние облачного пароля целиком, а не только признак: мастер 2FA
+  // открывается с ним (tweb `privacyAndSecurity.tsx:131`, `:339-341`).
+  const [pwState, setPwState] = useState<PasswordState | null>(null)
   const [autoDelete, setAutoDelete] = useState<number | null>(null)
   const [passkeysCount, setPasskeysCount] = useState(0)
   const [passkeyIntro, setPasskeyIntro] = useState(false)
@@ -73,7 +76,7 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
     if (sub !== null) return
     let alive = true
     void managers.auth.passwordState().then((st) => {
-      if (alive) setPwEnabled(st.enabled)
+      if (alive) setPwState(st)
     }).catch(() => {})
     void managers.privacy.autoDelete().then((p) => {
       if (alive) setAutoDelete(p)
@@ -91,8 +94,6 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
     switch (sub) {
       case 'BlockedUsers':
         return <BlockedUsers onBack={back} />
-      case 'TwoStepVerification':
-        return <TwoStepVerification onBack={back} />
       case 'Privacy.Passkeys':
         return <Passkeys onBack={back} />
       case 'AutoDeleteMessages':
@@ -101,6 +102,28 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
         return <PasscodeLock onBack={back} />
     }
     return null
+  }
+
+  // Мастер 2FA — вкладки слайдера (`sidebarLeft/tabs/2fa/*`), экран под ними
+  // остаётся жить. У tweb конец мастера срезает «Конфиденциальность» из истории
+  // (`sliceTabsUntilTab(AppSettingsTab)`), и при следующем открытии она читает
+  // состояние заново; здесь то же перечитывание — когда стек вкладок хоста
+  // опустел (шов, снимается задачей 23/28).
+  const offTabsEmptyRef = useRef<(() => void) | null>(null)
+  useEffect(() => () => offTabsEmptyRef.current?.(), [])
+  const openTwoStepVerification = () => {
+    // tweb :257-271. Пока состояние не пришло, строка «заморожена» (`twoFactorFrozen`).
+    if (!pwState) return
+    const host = getSettingsSliderHost()
+    offTabsEmptyRef.current ??= host.onTabsEmpty(() => {
+      void managers.auth.passwordState().then(setPwState).catch(() => {})
+    })
+    // Ветки `email_unconfirmed_pattern` → `AppTwoStepVerificationEmailConfirmationTab`
+    // (:261-268) нет — О-13: наш сервер ставит почту без подтверждения кодом.
+    const open = pwState.enabled
+      ? host.openTab(AppTwoStepVerificationEnterPasswordTab, { state: pwState })
+      : host.openTab(AppTwoStepVerificationTab, { state: pwState })
+    open.catch(() => toastNew({ langPackKey: 'Error.AnError' }))
   }
 
   const blockedValue = blockedTotal > 0 ? `${blockedTotal}` : t('BlockedEmpty')
@@ -130,8 +153,8 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
         <Row
           icon={<TgIcon name="two_factor_auth_filled" size={24} />}
           label="TwoStepVerification"
-          value={pwEnabled == null ? undefined : t(pwEnabled ? 'PrivacyAndSecurity.Item.On' : 'Off')}
-          onClick={() => setSub('TwoStepVerification')}
+          value={pwState == null ? undefined : t(pwState.enabled ? 'PrivacyAndSecurity.Item.On' : 'Off')}
+          onClick={openTwoStepVerification}
         />
         {/* Как в tweb: без ключей клик открывает интро-попап, с ключами — список */}
         <Row

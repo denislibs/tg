@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 27,
+      "version": 28,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -1305,10 +1305,6 @@
         {
           "key": "Common.Creating",
           "value": "Creating…"
-        },
-        {
-          "key": "Common.DoneSuffix",
-          "value": "done"
         },
         {
           "key": "Common.Menu",
@@ -3615,6 +3611,10 @@
           "value": "Normal"
         },
         {
+          "key": "PleaseEnterCurrentPassword",
+          "value": "Enter your password"
+        },
+        {
           "key": "PleaseEnterFirstPassword",
           "value": "Enter a password"
         },
@@ -5340,32 +5340,12 @@
           "value": "Create a password to protect your account."
         },
         {
-          "key": "TwoStepAuth.EmailHelp",
-          "value": "Add a recovery email to restore access if you forget your password."
-        },
-        {
-          "key": "TwoStepAuth.EnterCurrentPassword",
-          "value": "Please enter your current password"
-        },
-        {
           "key": "TwoStepAuth.GenericHelp",
           "value": "You have enabled Two-Step verification.\nYou'll need the password you set up here to log in to your Telegram account."
         },
         {
           "key": "TwoStepAuth.HintCaption",
           "value": "You can create an optional hint for your password."
-        },
-        {
-          "key": "TwoStepAuth.InvalidPassword",
-          "value": "Invalid password"
-        },
-        {
-          "key": "TwoStepAuth.PasswordHelp",
-          "value": "This password will be required when you log in on a new device in addition to the code you get via SMS."
-        },
-        {
-          "key": "TwoStepAuth.PasswordsDontMatch",
-          "value": "Passwords don’t match."
         },
         {
           "key": "TwoStepAuth.ReEnterPassword",
@@ -5378,10 +5358,6 @@
         {
           "key": "TwoStepAuth.RemovePassword",
           "value": "Disable Password"
-        },
-        {
-          "key": "TwoStepAuth.SetPassword",
-          "value": "Set a Password"
         },
         {
           "key": "TwoStepAuth.SetPasswordCaption",
@@ -5408,6 +5384,14 @@
           "value": "Two-Step Verification"
         },
         {
+          "key": "TwoStepVerificationEmailSet",
+          "value": "Recovery Email Set!"
+        },
+        {
+          "key": "TwoStepVerificationEmailSetInfo",
+          "value": "You will be able to use this recovery email to reset your password and restore access to your account."
+        },
+        {
           "key": "TwoStepVerificationPasswordReturnSettings",
           "value": "Return to Settings"
         },
@@ -5416,8 +5400,16 @@
           "value": "Password Set!"
         },
         {
+          "key": "TwoStepVerificationPasswordSetInfo",
+          "value": "This password will be required when you log in on a new device in addition to the code you get in the SMS."
+        },
+        {
           "key": "TwoStepVerificationSetPassword",
           "value": "Set Password"
+        },
+        {
+          "key": "TwoStepVerificationTitle",
+          "value": "Two-Step Verification"
         },
         {
           "key": "TypePrivate",
@@ -5665,6 +5657,14 @@
           "value": "Skip"
         },
         {
+          "key": "YourEmailSkipWarning",
+          "value": "Warning"
+        },
+        {
+          "key": "YourEmailSkipWarningText",
+          "value": "No, seriously.\n\nIf you forget your password, you will lose access to your Telegram account. There will be no way to restore it."
+        },
+        {
           "key": "YourName",
           "value": "Your Name"
         },
@@ -5684,7 +5684,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 27,
+      "version": 28,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -8740,10 +8740,6 @@
           "value": "из"
         },
         {
-          "key": "Common.DoneSuffix",
-          "value": "выполнено"
-        },
-        {
           "key": "UnreadMessages",
           "value": "Непрочитанные сообщения"
         },
@@ -9022,10 +9018,6 @@
           "value": "Задать пароль"
         },
         {
-          "key": "TwoStepAuth.SetPassword",
-          "value": "Задайте пароль"
-        },
-        {
           "key": "TwoStepAuth.CreateCaption",
           "value": "Создайте пароль для защиты аккаунта."
         },
@@ -9058,10 +9050,6 @@
           "value": "Введите пароль ещё раз"
         },
         {
-          "key": "TwoStepAuth.PasswordsDontMatch",
-          "value": "Пароли не совпадают."
-        },
-        {
           "key": "TwoStepAuth.SetupHintTitle",
           "value": "Подсказка к паролю"
         },
@@ -9076,10 +9064,6 @@
         {
           "key": "RecoveryEmailTitle",
           "value": "Резервный email"
-        },
-        {
-          "key": "TwoStepAuth.EmailHelp",
-          "value": "Добавьте резервный email, чтобы восстановить доступ, если забудете пароль."
         },
         {
           "key": "TwoStepAuth.RecoveryEmailPlaceholder",
@@ -9507,20 +9491,12 @@
           "value": "Введите пароль"
         },
         {
-          "key": "TwoStepAuth.InvalidPassword",
-          "value": "Неверный пароль"
-        },
-        {
           "key": "LoginPassword",
           "value": "Пароль"
         },
         {
           "key": "TwoStepAuth.SetPasswordHelp",
           "value": "Вы можете установить пароль, который будет использоваться для входа с новых устройств в дополнение к проверочному коду из SMS."
-        },
-        {
-          "key": "TwoStepAuth.EnterCurrentPassword",
-          "value": "Введите текущий пароль"
         },
         {
           "key": "TwoStepAuth.GenericHelp",
@@ -9563,12 +9539,36 @@
           "value": "Пароль установлен!"
         },
         {
-          "key": "TwoStepAuth.PasswordHelp",
+          "key": "TwoStepVerificationPasswordReturnSettings",
+          "value": "Вернуться в настройки"
+        },
+        {
+          "key": "TwoStepVerificationTitle",
+          "value": "Двухэтапная аутентификация"
+        },
+        {
+          "key": "PleaseEnterCurrentPassword",
+          "value": "Введите пароль"
+        },
+        {
+          "key": "YourEmailSkipWarning",
+          "value": "Внимание"
+        },
+        {
+          "key": "YourEmailSkipWarningText",
+          "value": "Нет, серьёзно.\n\nЕсли Вы забудете пароль, то потеряете доступ к аккаунту Telegram. Восстановить его будет невозможно."
+        },
+        {
+          "key": "TwoStepVerificationEmailSet",
+          "value": "Резервный email установлен!"
+        },
+        {
+          "key": "TwoStepVerificationPasswordSetInfo",
           "value": "Этот пароль будет запрашиваться при входе с нового устройства в дополнение к коду из SMS."
         },
         {
-          "key": "TwoStepVerificationPasswordReturnSettings",
-          "value": "Вернуться в настройки"
+          "key": "TwoStepVerificationEmailSetInfo",
+          "value": "С помощью этого адреса Вы сможете сбросить пароль и восстановить доступ к аккаунту."
         },
         {
           "key": "Login.Error.Generic",
@@ -11393,7 +11393,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 15,
+      "version": 16,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -12985,10 +12985,6 @@
           "value": "Définir le mot de passe"
         },
         {
-          "key": "TwoStepAuth.SetPassword",
-          "value": "Définir un mot de passe"
-        },
-        {
           "key": "TwoStepAuth.CreateCaption",
           "value": "Créez un mot de passe pour protéger votre compte."
         },
@@ -13013,10 +13009,6 @@
           "value": "Saisissez à nouveau votre mot de passe"
         },
         {
-          "key": "TwoStepAuth.PasswordsDontMatch",
-          "value": "Les mots de passe ne correspondent pas."
-        },
-        {
           "key": "TwoStepAuth.SetupHintTitle",
           "value": "Indice de mot de passe"
         },
@@ -13031,10 +13023,6 @@
         {
           "key": "RecoveryEmailTitle",
           "value": "E-mail de récupération"
-        },
-        {
-          "key": "TwoStepAuth.EmailHelp",
-          "value": "Ajoutez un e-mail de récupération pour restaurer l'accès si vous oubliez votre mot de passe."
         },
         {
           "key": "TwoStepAuth.RecoveryEmailPlaceholder",
@@ -13456,20 +13444,12 @@
           "value": "Saisissez votre mot de passe"
         },
         {
-          "key": "TwoStepAuth.InvalidPassword",
-          "value": "Mot de passe incorrect"
-        },
-        {
           "key": "LoginPassword",
           "value": "Mot de passe"
         },
         {
           "key": "TwoStepAuth.SetPasswordHelp",
           "value": "Vous pouvez définir un mot de passe qui sera demandé lors de la connexion sur un nouvel appareil, en plus du code reçu par SMS."
-        },
-        {
-          "key": "TwoStepAuth.EnterCurrentPassword",
-          "value": "Saisissez votre mot de passe actuel"
         },
         {
           "key": "TwoStepAuth.GenericHelp",
@@ -13512,12 +13492,36 @@
           "value": "Mot de passe défini !"
         },
         {
-          "key": "TwoStepAuth.PasswordHelp",
+          "key": "TwoStepVerificationPasswordReturnSettings",
+          "value": "Retour aux réglages"
+        },
+        {
+          "key": "TwoStepVerificationTitle",
+          "value": "Validation en deux étapes"
+        },
+        {
+          "key": "PleaseEnterCurrentPassword",
+          "value": "Saisissez votre mot de passe"
+        },
+        {
+          "key": "YourEmailSkipWarning",
+          "value": "Avertissement"
+        },
+        {
+          "key": "YourEmailSkipWarningText",
+          "value": "Non, sérieusement.\n\nSi vous oubliez votre mot de passe, vous perdrez l'accès à votre compte Telegram. Il n'y aura aucun moyen de le récupérer."
+        },
+        {
+          "key": "TwoStepVerificationEmailSet",
+          "value": "E-mail de récupération défini !"
+        },
+        {
+          "key": "TwoStepVerificationPasswordSetInfo",
           "value": "Ce mot de passe sera demandé lors de la connexion sur un nouvel appareil, en plus du code reçu par SMS."
         },
         {
-          "key": "TwoStepVerificationPasswordReturnSettings",
-          "value": "Retour aux réglages"
+          "key": "TwoStepVerificationEmailSetInfo",
+          "value": "Vous pourrez utiliser cet e-mail de récupération pour réinitialiser votre mot de passe et restaurer l'accès à votre compte."
         },
         {
           "key": "Login.Error.Generic",
@@ -14315,7 +14319,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 15,
+      "version": 16,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -15910,10 +15914,6 @@
           "value": "Passwort festlegen"
         },
         {
-          "key": "TwoStepAuth.SetPassword",
-          "value": "Passwort festlegen"
-        },
-        {
           "key": "TwoStepAuth.CreateCaption",
           "value": "Erstelle ein Passwort zum Schutz deines Kontos."
         },
@@ -15938,10 +15938,6 @@
           "value": "Passwort erneut eingeben"
         },
         {
-          "key": "TwoStepAuth.PasswordsDontMatch",
-          "value": "Passwörter stimmen nicht überein."
-        },
-        {
           "key": "TwoStepAuth.SetupHintTitle",
           "value": "Passwort-Hinweis"
         },
@@ -15956,10 +15952,6 @@
         {
           "key": "RecoveryEmailTitle",
           "value": "Wiederherstellungs-E-Mail"
-        },
-        {
-          "key": "TwoStepAuth.EmailHelp",
-          "value": "Füge eine Wiederherstellungs-E-Mail hinzu, um den Zugriff bei vergessenem Passwort wiederherzustellen."
         },
         {
           "key": "TwoStepAuth.RecoveryEmailPlaceholder",
@@ -16381,20 +16373,12 @@
           "value": "Gib dein Passwort ein"
         },
         {
-          "key": "TwoStepAuth.InvalidPassword",
-          "value": "Falsches Passwort"
-        },
-        {
           "key": "LoginPassword",
           "value": "Passwort"
         },
         {
           "key": "TwoStepAuth.SetPasswordHelp",
           "value": "Du kannst ein Passwort festlegen, das zusätzlich zum Code aus der SMS benötigt wird, wenn du dich auf einem neuen Gerät anmeldest."
-        },
-        {
-          "key": "TwoStepAuth.EnterCurrentPassword",
-          "value": "Gib dein aktuelles Passwort ein"
         },
         {
           "key": "TwoStepAuth.GenericHelp",
@@ -16437,12 +16421,36 @@
           "value": "Passwort festgelegt!"
         },
         {
-          "key": "TwoStepAuth.PasswordHelp",
+          "key": "TwoStepVerificationPasswordReturnSettings",
+          "value": "Zurück zu den Einstellungen"
+        },
+        {
+          "key": "TwoStepVerificationTitle",
+          "value": "Bestätigung in zwei Schritten"
+        },
+        {
+          "key": "PleaseEnterCurrentPassword",
+          "value": "Gib dein Passwort ein"
+        },
+        {
+          "key": "YourEmailSkipWarning",
+          "value": "Warnung"
+        },
+        {
+          "key": "YourEmailSkipWarningText",
+          "value": "Nein, im Ernst.\n\nWenn du dein Passwort vergisst, verlierst du den Zugang zu deinem Telegram-Konto. Es gibt keine Möglichkeit, ihn wiederherzustellen."
+        },
+        {
+          "key": "TwoStepVerificationEmailSet",
+          "value": "Wiederherstellungs-E-Mail festgelegt!"
+        },
+        {
+          "key": "TwoStepVerificationPasswordSetInfo",
           "value": "Dieses Passwort wird zusätzlich zum Code aus der SMS benötigt, wenn du dich auf einem neuen Gerät anmeldest."
         },
         {
-          "key": "TwoStepVerificationPasswordReturnSettings",
-          "value": "Zurück zu den Einstellungen"
+          "key": "TwoStepVerificationEmailSetInfo",
+          "value": "Mit dieser Wiederherstellungs-E-Mail kannst du dein Passwort zurücksetzen und den Zugang zu deinem Konto wiederherstellen."
         },
         {
           "key": "Login.Error.Generic",
@@ -17248,7 +17256,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 15,
+      "version": 16,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -18848,10 +18856,6 @@
           "value": "Establecer contraseña"
         },
         {
-          "key": "TwoStepAuth.SetPassword",
-          "value": "Establece una contraseña"
-        },
-        {
           "key": "TwoStepAuth.CreateCaption",
           "value": "Crea una contraseña para proteger tu cuenta."
         },
@@ -18876,10 +18880,6 @@
           "value": "Vuelve a introducir tu contraseña"
         },
         {
-          "key": "TwoStepAuth.PasswordsDontMatch",
-          "value": "Las contraseñas no coinciden."
-        },
-        {
           "key": "TwoStepAuth.SetupHintTitle",
           "value": "Pista de contraseña"
         },
@@ -18894,10 +18894,6 @@
         {
           "key": "RecoveryEmailTitle",
           "value": "Correo de recuperación"
-        },
-        {
-          "key": "TwoStepAuth.EmailHelp",
-          "value": "Añade un correo de recuperación para restaurar el acceso si olvidas tu contraseña."
         },
         {
           "key": "TwoStepAuth.RecoveryEmailPlaceholder",
@@ -19319,20 +19315,12 @@
           "value": "Introduce tu contraseña"
         },
         {
-          "key": "TwoStepAuth.InvalidPassword",
-          "value": "Contraseña incorrecta"
-        },
-        {
           "key": "LoginPassword",
           "value": "Contraseña"
         },
         {
           "key": "TwoStepAuth.SetPasswordHelp",
           "value": "Puedes establecer una contraseña que se pedirá al iniciar sesión en un nuevo dispositivo, además del código que recibes por SMS."
-        },
-        {
-          "key": "TwoStepAuth.EnterCurrentPassword",
-          "value": "Introduce tu contraseña actual"
         },
         {
           "key": "TwoStepAuth.GenericHelp",
@@ -19375,12 +19363,36 @@
           "value": "¡Contraseña establecida!"
         },
         {
-          "key": "TwoStepAuth.PasswordHelp",
+          "key": "TwoStepVerificationPasswordReturnSettings",
+          "value": "Volver a ajustes"
+        },
+        {
+          "key": "TwoStepVerificationTitle",
+          "value": "Verificación en dos pasos"
+        },
+        {
+          "key": "PleaseEnterCurrentPassword",
+          "value": "Introduce tu contraseña"
+        },
+        {
+          "key": "YourEmailSkipWarning",
+          "value": "Advertencia"
+        },
+        {
+          "key": "YourEmailSkipWarningText",
+          "value": "No, en serio.\n\nSi olvidas tu contraseña, perderás el acceso a tu cuenta de Telegram. No habrá forma de recuperarla."
+        },
+        {
+          "key": "TwoStepVerificationEmailSet",
+          "value": "¡Correo de recuperación establecido!"
+        },
+        {
+          "key": "TwoStepVerificationPasswordSetInfo",
           "value": "Esta contraseña se pedirá al iniciar sesión en un nuevo dispositivo, además del código que recibes por SMS."
         },
         {
-          "key": "TwoStepVerificationPasswordReturnSettings",
-          "value": "Volver a ajustes"
+          "key": "TwoStepVerificationEmailSetInfo",
+          "value": "Podrás usar este correo de recuperación para restablecer tu contraseña y recuperar el acceso a tu cuenta."
         },
         {
           "key": "Login.Error.Generic",
@@ -20186,7 +20198,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 15,
+      "version": 16,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -21804,10 +21816,6 @@
           "value": "Встановити пароль"
         },
         {
-          "key": "TwoStepAuth.SetPassword",
-          "value": "Встановіть пароль"
-        },
-        {
           "key": "TwoStepAuth.CreateCaption",
           "value": "Створіть пароль для захисту акаунту."
         },
@@ -21832,10 +21840,6 @@
           "value": "Введіть пароль ще раз"
         },
         {
-          "key": "TwoStepAuth.PasswordsDontMatch",
-          "value": "Паролі не збігаються."
-        },
-        {
           "key": "TwoStepAuth.SetupHintTitle",
           "value": "Підказка до пароля"
         },
@@ -21850,10 +21854,6 @@
         {
           "key": "RecoveryEmailTitle",
           "value": "Резервний email"
-        },
-        {
-          "key": "TwoStepAuth.EmailHelp",
-          "value": "Додайте резервний email, щоб відновити доступ, якщо забудете пароль."
         },
         {
           "key": "TwoStepAuth.RecoveryEmailPlaceholder",
@@ -22277,20 +22277,12 @@
           "value": "Введіть пароль"
         },
         {
-          "key": "TwoStepAuth.InvalidPassword",
-          "value": "Невірний пароль"
-        },
-        {
           "key": "LoginPassword",
           "value": "Пароль"
         },
         {
           "key": "TwoStepAuth.SetPasswordHelp",
           "value": "Ви можете встановити пароль, який використовуватиметься для входу з нових пристроїв на додаток до перевірочного коду з SMS."
-        },
-        {
-          "key": "TwoStepAuth.EnterCurrentPassword",
-          "value": "Введіть поточний пароль"
         },
         {
           "key": "TwoStepAuth.GenericHelp",
@@ -22333,12 +22325,36 @@
           "value": "Пароль встановлено!"
         },
         {
-          "key": "TwoStepAuth.PasswordHelp",
+          "key": "TwoStepVerificationPasswordReturnSettings",
+          "value": "Повернутися до налаштувань"
+        },
+        {
+          "key": "TwoStepVerificationTitle",
+          "value": "Двоетапна перевірка"
+        },
+        {
+          "key": "PleaseEnterCurrentPassword",
+          "value": "Введіть пароль"
+        },
+        {
+          "key": "YourEmailSkipWarning",
+          "value": "Увага"
+        },
+        {
+          "key": "YourEmailSkipWarningText",
+          "value": "Ні, серйозно.\n\nЯкщо ви забудете пароль, то втратите доступ до облікового запису Telegram. Відновити його буде неможливо."
+        },
+        {
+          "key": "TwoStepVerificationEmailSet",
+          "value": "Резервний email встановлено!"
+        },
+        {
+          "key": "TwoStepVerificationPasswordSetInfo",
           "value": "Цей пароль запитуватиметься під час входу з нового пристрою на додаток до коду з SMS."
         },
         {
-          "key": "TwoStepVerificationPasswordReturnSettings",
-          "value": "Повернутися до налаштувань"
+          "key": "TwoStepVerificationEmailSetInfo",
+          "value": "За допомогою цієї адреси ви зможете скинути пароль і відновити доступ до облікового запису."
         },
         {
           "key": "Login.Error.Generic",

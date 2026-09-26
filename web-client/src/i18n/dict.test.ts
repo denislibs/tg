@@ -286,12 +286,25 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // (подписи полей выбора цвета) не переводятся — `NO_TRANSLATION` в
 // `dictCoverage.test.ts`. `plural` не менялся.
 // Поверх задач 7, 9, 10, 11, 14 и корня настроек: ru 1379, uk 714, es 713, de 712, fr 709.
+//
+// Мастер 2FA (план 2D, задача 19): +7 ключей tweb lang.ts
+// (`TwoStepVerificationTitle`, `PleaseEnterCurrentPassword`, `YourEmailSkipWarning`,
+// `YourEmailSkipWarningText`, `TwoStepVerificationEmailSet`,
+// `TwoStepVerificationPasswordSetInfo`, `TwoStepVerificationEmailSetInfo`) всем
+// пяти словарям: ru 1350 → 1357, uk 686 → 693, es 685 → 692, de/fr 684 → 691.
+// `plural` не менялся.
+// Снос React-мастера 2FA (`settings/TwoStepVerification.tsx`) — −6 наших ключей,
+// которых нет у tweb и которые читал только он (`TwoStepAuth.EnterCurrentPassword`/
+// `InvalidPassword`/`PasswordsDontMatch`/`EmailHelp`/`PasswordHelp`/`SetPassword`),
+// у ru ещё −1 (`Common.DoneSuffix` — имя шага того же экрана): ru 1357 → 1350,
+// uk 693 → 687, es 692 → 686, de/fr 691 → 685.
+// Поверх задач 7, 9, 10, 11, 12, 14 и корня настроек: ru 1379, uk 715, es 714, de 713, fr 710.
 const COMPOSITION = {
   ru: { keys: 1379, plural: 37 },
-  uk: { keys: 714, plural: 26 },
-  es: { keys: 713, plural: 26 },
-  de: { keys: 712, plural: 26 },
-  fr: { keys: 709, plural: 26 },
+  uk: { keys: 715, plural: 26 },
+  es: { keys: 714, plural: 26 },
+  de: { keys: 713, plural: 26 },
+  fr: { keys: 710, plural: 26 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -398,12 +411,14 @@ const COMPOSITION = {
 // Задачей 9 плана 2D — восемь ключей экрана сессии (разбор — у `COMPOSITION`).
 // Задачей 12 плана 2D — ключи «Обоев» вместо ключей снесённого React-экрана
 // (разбор — у `COMPOSITION` выше), у всех пяти.
+// Мастером 2FA — +7 ключей tweb, сносом React-мастера — −6 (у ru −7) наших
+// (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '63ee43f7',
-  uk: 'ec742d71',
-  es: '5762e979',
-  de: '2466b899',
-  fr: 'cef814df',
+  ru: '8c5e0f7f',
+  uk: 'a251cd67',
+  es: '007155bf',
+  de: '034e859f',
+  fr: '017312c9',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

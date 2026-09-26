@@ -385,6 +385,15 @@ samp {
   }
 }
 
+// tweb base.scss:1130-1135 — попапы мастера 2FA (выключение пароля и пропуск
+// почты, `sidebarLeft/tabs/2fa/{index,email}.solid.tsx`): описание уже карточки.
+.popup-disable-password,
+.popup-skip-email {
+  .popup-description {
+    max-width: 284px;
+  }
+}
+
 // tweb base.scss:1117-1161 — сетка плиток: медиа-грид shared media
 // (`.search-super-content-media-grid` в `_searchSuper.scss` лишь переопределяет
 // шаг и скругление), гриды историй и подарков. Квадрат плитки — через
