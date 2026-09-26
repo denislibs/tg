@@ -4,8 +4,7 @@
 // подпись места не занимает (:63-65), `captionTop` — `:first-child` (:69-72), `captionOld`
 // внутри карточки (:76-79). Правила `.checkbox-field`/`.radio-field` у секции сняты
 // (803f9599d, ef41b29db): раскладку полей строки держит `_row.scss` по классам `row-*-field`.
-// Разметка — `components/section.solid.tsx`, `components/settingSection.ts`,
-// `shared/ui/SidebarSection/SidebarSection.tsx`.
+// Разметка — `components/section.solid.tsx`, `shared/ui/SidebarSection/SidebarSection.tsx`.
 // Расхождение: `@use "../foundation"` вместо `"../shared"` — наш модуль констант и миксинов.
 @use "../foundation" as *;
 

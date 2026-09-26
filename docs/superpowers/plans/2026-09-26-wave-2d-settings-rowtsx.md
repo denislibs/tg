@@ -634,7 +634,7 @@ class="disable-hover"`, `form` прямо в секции); `TranslateSection` �
 теста пилота в `web-client/src/test/specLabelActivation.ts` — брать оттуда. RTL-признак
 (`setDocumentLangPackProperties`) не трогался: PR #291 не влит. Новых ключей нет.
 
-### Задача 9: «Устройства» → HEAD + экран сессии (944b578e9)
+### Задача 9: «Устройства» → HEAD + экран сессии (944b578e9) — ✅ сделано (PR feat/w2d-devices)
 
 **Порт:** `activeSessions.tsx` (401) заново, JSX: `SessionRow` (`:294-323`: `Row class=
 "session-row" clickable contextMenu` + `Row.Icon(getSessionPlatformIcon)` + `Row.Title titleRight`
@@ -656,6 +656,28 @@ payload `{authorization, onTerminate?, onSettingsChanged?}`), `core/managers/ses
 краснеет; подпись `ClearOtherSessionsHelp` без условия — тест «одна сессия → подписи нет» краснеет.
 **Зависимости:** 0, 1, 3, 5 (`MediaHeader`, `InlineSelect` для TTL). **Готово когда:**
 `git grep -n "components/row'\|settingSection'" web-client/src/components/sidebarLeft` пуст.
+
+**Итог (2026-09-26):** `activeSessions.solid.tsx` переписан JSX-портом HEAD (`:48-401`):
+`SessionRow` = `Row class="session-row" clickable role tabIndex contextMenu` + `Row.Icon`/`Title
+titleRight`/`Midtitle`/`Subtitle`; секции `CurrentSession` (подпись и «завершить все» — только при
+других), `AuthSessions.IncompleteAttempts`, `OtherSessions`; опрос раз в минуту;
+`confirmationPopup` вместо `PopupPeer 'revoke-session'`; ошибки — портированный
+`helpers/getAuthorizationErrorLangKey.ts`. Клик по строке → `AppSessionTab` (`tabs.ts`, payload
+`{authorization, onTerminate?}` — `onSettingsChanged` не заведён, его зовёт только секция О-8):
+`session.solid.tsx`, `sessionInfoRow.solid.tsx`, `sessionDetails.module.scss` (только классы
+экрана устройства). Не перенесено: TTL-секция и `ttlDays` полезной нагрузки (О-7 — поэтому
+`sessionsManager.ts` не менялся: отдавать нечего, сервер шлёт 0), `AcceptTitle` (О-8),
+переименование/`customDeviceModel` (О-9), бизнес-бот (SKIP), `unconfirmed_authorizations_update`
+(нет попапа неподтверждённого входа). Секция незавершённых входов портирована, но пуста:
+бэкенд не ставит `password_pending`. Стиль строки — `.session-row` HEAD
+(`_leftSidebar.scss:961-978`) вместо `.active-sessions-container`. Сверх плана: с последним
+потребителем удалены `components/settingSection.ts` (+ тест) и `helpers/dom/toggleDisability.ts`
+— предусловие задачи 31 «`git grep settingSection` пуст» закрыто (остались упоминания в
+комментариях об адресах tweb); `row.ts` теперь нужен только `dialogRow.ts` и `appSearchSuper.ts`
+(задача 29). Маркер «остров разобран» в `settingsSliderHost.test.ts` — вместо меню в `body`
+(его больше нет: меню строит `createContextMenu` строки) минутный опрос: `clearInterval` его id.
+Ключи tweb `AuthSessions.View.*` (6) и `AuthSessions.IncompleteAttempts(Info)` — в пять словарей
+(fr без совпавшего `Application`), пины `dict.test.ts`, `langpack.gen.json`.
 
 ### Задача 10: «Горячие клавиши» — ✅ сделано (PR feat/w2d-shortcuts)
 

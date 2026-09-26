@@ -1505,6 +1505,15 @@ const ru = {
   AreYouSureSessions: 'Вы действительно хотите завершить все другие сеансы?',
   SessionsListInfo: 'Официальное приложение Telegram доступно для Android, iPhone, iPad, Windows, macOS и Linux.',
   'RecentSessions.Error.FreshReset': 'В целях безопасности вы не можете завершать более старые сеансы с устройства, которое подключили только что. Воспользуйтесь более ранним подключением или подождите несколько часов.',
+  // Экран сессии и незавершённые входы (задача 9 плана 2D, tweb lang.ts:5635-5645).
+  'AuthSessions.IncompleteAttempts': 'Незавершённые попытки входа',
+  'AuthSessions.IncompleteAttemptsInfo': 'У этих устройств нет доступа к вашему аккаунту. Код был введён верно, но правильный пароль указан не был.',
+  'AuthSessions.View.Application': 'Приложение',
+  'AuthSessions.View.Device': 'Устройство',
+  'AuthSessions.View.Location': 'Местоположение',
+  'AuthSessions.View.LocationInfo': 'Местоположение определено по IP-адресу и может быть неточным.',
+  'AuthSessions.View.System': 'Версия системы',
+  'AuthSessions.View.TerminateSession': 'Завершить сеанс',
   // Строки, которые до задачи 6 были зашиты в код по-русски (задача 1, п. 2).
   'Message.Preview.Call': 'Звонок',
   'SecretChat.Invitation': 'Приглашение в секретный чат',

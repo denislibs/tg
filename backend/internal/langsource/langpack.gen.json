@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 25,
+      "version": 26,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -159,6 +159,38 @@
         {
           "key": "AttachVideo",
           "value": "Video"
+        },
+        {
+          "key": "AuthSessions.IncompleteAttempts",
+          "value": "Incomplete login attempts"
+        },
+        {
+          "key": "AuthSessions.IncompleteAttemptsInfo",
+          "value": "These devices have no access to your account. The code was entered correctly, but no correct password was given."
+        },
+        {
+          "key": "AuthSessions.View.Application",
+          "value": "Application"
+        },
+        {
+          "key": "AuthSessions.View.Device",
+          "value": "Device"
+        },
+        {
+          "key": "AuthSessions.View.Location",
+          "value": "Location"
+        },
+        {
+          "key": "AuthSessions.View.LocationInfo",
+          "value": "This location estimate is based on the IP address and may not always be accurate."
+        },
+        {
+          "key": "AuthSessions.View.System",
+          "value": "System version"
+        },
+        {
+          "key": "AuthSessions.View.TerminateSession",
+          "value": "Terminate Session"
         },
         {
           "key": "AuthorHiddenShort",
@@ -5640,7 +5672,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 25,
+      "version": 26,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -10579,6 +10611,38 @@
           "value": "В целях безопасности вы не можете завершать более старые сеансы с устройства, которое подключили только что. Воспользуйтесь более ранним подключением или подождите несколько часов."
         },
         {
+          "key": "AuthSessions.IncompleteAttempts",
+          "value": "Незавершённые попытки входа"
+        },
+        {
+          "key": "AuthSessions.IncompleteAttemptsInfo",
+          "value": "У этих устройств нет доступа к вашему аккаунту. Код был введён верно, но правильный пароль указан не был."
+        },
+        {
+          "key": "AuthSessions.View.Application",
+          "value": "Приложение"
+        },
+        {
+          "key": "AuthSessions.View.Device",
+          "value": "Устройство"
+        },
+        {
+          "key": "AuthSessions.View.Location",
+          "value": "Местоположение"
+        },
+        {
+          "key": "AuthSessions.View.LocationInfo",
+          "value": "Местоположение определено по IP-адресу и может быть неточным."
+        },
+        {
+          "key": "AuthSessions.View.System",
+          "value": "Версия системы"
+        },
+        {
+          "key": "AuthSessions.View.TerminateSession",
+          "value": "Завершить сеанс"
+        },
+        {
           "key": "Message.Preview.Call",
           "value": "Звонок"
         },
@@ -11313,7 +11377,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 13,
+      "version": 14,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -11970,6 +12034,34 @@
         {
           "key": "TerminateAllSessions",
           "value": "Fermer toutes les autres sessions"
+        },
+        {
+          "key": "AuthSessions.IncompleteAttempts",
+          "value": "Tentatives de connexion incomplètes"
+        },
+        {
+          "key": "AuthSessions.IncompleteAttemptsInfo",
+          "value": "Ces appareils n'ont pas accès à votre compte. Le code a été saisi correctement, mais aucun mot de passe valide n'a été fourni."
+        },
+        {
+          "key": "AuthSessions.View.Device",
+          "value": "Appareil"
+        },
+        {
+          "key": "AuthSessions.View.Location",
+          "value": "Localisation"
+        },
+        {
+          "key": "AuthSessions.View.LocationInfo",
+          "value": "Cette localisation est estimée à partir de l'adresse IP et peut ne pas toujours être exacte."
+        },
+        {
+          "key": "AuthSessions.View.System",
+          "value": "Version du système"
+        },
+        {
+          "key": "AuthSessions.View.TerminateSession",
+          "value": "Fermer la session"
         },
         {
           "key": "Translate",
@@ -14203,7 +14295,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 13,
+      "version": 14,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -14859,6 +14951,38 @@
         {
           "key": "TerminateAllSessions",
           "value": "Alle anderen Sitzungen beenden"
+        },
+        {
+          "key": "AuthSessions.IncompleteAttempts",
+          "value": "Unvollständige Anmeldeversuche"
+        },
+        {
+          "key": "AuthSessions.IncompleteAttemptsInfo",
+          "value": "Diese Geräte haben keinen Zugriff auf dein Konto. Der Code wurde korrekt eingegeben, aber kein richtiges Passwort."
+        },
+        {
+          "key": "AuthSessions.View.Application",
+          "value": "Anwendung"
+        },
+        {
+          "key": "AuthSessions.View.Device",
+          "value": "Gerät"
+        },
+        {
+          "key": "AuthSessions.View.Location",
+          "value": "Standort"
+        },
+        {
+          "key": "AuthSessions.View.LocationInfo",
+          "value": "Dieser Standort wird anhand der IP-Adresse geschätzt und ist möglicherweise nicht immer genau."
+        },
+        {
+          "key": "AuthSessions.View.System",
+          "value": "Systemversion"
+        },
+        {
+          "key": "AuthSessions.View.TerminateSession",
+          "value": "Sitzung beenden"
         },
         {
           "key": "Translate",
@@ -17100,7 +17224,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 13,
+      "version": 14,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -17761,6 +17885,38 @@
         {
           "key": "TerminateAllSessions",
           "value": "Cerrar las demás sesiones"
+        },
+        {
+          "key": "AuthSessions.IncompleteAttempts",
+          "value": "Intentos de inicio de sesión incompletos"
+        },
+        {
+          "key": "AuthSessions.IncompleteAttemptsInfo",
+          "value": "Estos dispositivos no tienen acceso a tu cuenta. El código se introdujo correctamente, pero no se proporcionó la contraseña correcta."
+        },
+        {
+          "key": "AuthSessions.View.Application",
+          "value": "Aplicación"
+        },
+        {
+          "key": "AuthSessions.View.Device",
+          "value": "Dispositivo"
+        },
+        {
+          "key": "AuthSessions.View.Location",
+          "value": "Ubicación"
+        },
+        {
+          "key": "AuthSessions.View.LocationInfo",
+          "value": "Esta ubicación se estima a partir de la dirección IP y puede no ser siempre exacta."
+        },
+        {
+          "key": "AuthSessions.View.System",
+          "value": "Versión del sistema"
+        },
+        {
+          "key": "AuthSessions.View.TerminateSession",
+          "value": "Cerrar sesión"
         },
         {
           "key": "Translate",
@@ -20002,7 +20158,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 13,
+      "version": 14,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -20668,6 +20824,38 @@
         {
           "key": "TerminateAllSessions",
           "value": "Завершити всі інші сеанси"
+        },
+        {
+          "key": "AuthSessions.IncompleteAttempts",
+          "value": "Незавершені спроби входу"
+        },
+        {
+          "key": "AuthSessions.IncompleteAttemptsInfo",
+          "value": "Ці пристрої не мають доступу до вашого акаунта. Код було введено правильно, але правильний пароль не вказано."
+        },
+        {
+          "key": "AuthSessions.View.Application",
+          "value": "Застосунок"
+        },
+        {
+          "key": "AuthSessions.View.Device",
+          "value": "Пристрій"
+        },
+        {
+          "key": "AuthSessions.View.Location",
+          "value": "Місцезнаходження"
+        },
+        {
+          "key": "AuthSessions.View.LocationInfo",
+          "value": "Місцезнаходження визначено за IP-адресою і може бути неточним."
+        },
+        {
+          "key": "AuthSessions.View.System",
+          "value": "Версія системи"
+        },
+        {
+          "key": "AuthSessions.View.TerminateSession",
+          "value": "Завершити сеанс"
         },
         {
           "key": "Translate",

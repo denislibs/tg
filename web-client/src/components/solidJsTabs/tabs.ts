@@ -80,6 +80,24 @@ export const AppPowerSavingTab =
     getComponentModule: () => import('../sidebarLeft/tabs/powerSaving.solid'),
   })
 
+// tweb :385-400. Экран одной сессии: открывает строка «Устройств»
+// (`activeSessions.solid.tsx::openSession`). Завершение приходит колбэком от
+// списка — он же снимает строку; у текущей сессии колбэка нет (свою сессию не
+// завершают, из неё выходят). `onSettingsChanged` оригинала (:392-393) не
+// заведён: его зовёт только секция `AuthSessions.View.AcceptTitle`, а её нет —
+// нет `account.changeAuthorizationSettings` (О-8 плана 2D).
+type AppSessionTabPayload = {
+  authorization: Authorization.authorization
+  /** Подтверждает и завершает сессию; разрешается исходом. Нет у текущей. */
+  onTerminate?: () => Promise<boolean>
+}
+
+export const AppSessionTab =
+  scaffoldSolidJSTabEventable<AppSessionTabPayload>({
+    title: 'AuthSessions.View.Device',
+    getComponentModule: () => import('../sidebarLeft/tabs/session.solid'),
+  })
+
 // tweb :419-443 — «Данные и память» и её вкладки автозагрузки, все eventable:
 // корень пишет квоту кэша на своём `destroy` (`dataAndStorage/index.tsx:83-87`).
 // Открывает корень строка `DataSettings` корня настроек (tweb `settings.tsx`,
