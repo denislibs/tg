@@ -219,9 +219,15 @@ func (r *MessagesRepo) GetAround(ctx context.Context, chatID, userID, centerSeq 
 // matches q (case-insensitive substring), newest first, plus the total match
 // count. Excludes deleted. The LEFT JOIN on media lets a query like "report.pdf"
 // or "song" find media messages by their file name, not just text/captions.
-// Необязательные фильтры f (tweb topbarSearch): по автору, по виду шаред-медиа и
-// по наличию реакции на сообщении. Пустой q при заданном фильтре допустим.
-func (r *MessagesRepo) SearchMessages(ctx context.Context, chatID int64, q string, f usecasechat.SearchFilter, offset, limit int) ([]domain.Message, int, error) {
+// Необязательные фильтры f: автор, вид медиа в двух лексиках (MediaType —
+// топбар-поиск, Filter — вкладки класса, mediaFilterCond), реакция и даты.
+// Пустой q без фильтров — вся история чата (см. usecasechat.Interactor.SearchMessages).
+//
+// Окно — курсор `m.seq < page.OffsetID` (почему не OFFSET — у
+// usecasechat.MediaPage). План: равенство по чату + курсор по seq + ORDER BY
+// seq DESC — UNIQUE(chat_id, seq), с вкладкой — idx_messages_shared_media
+// (chat_id, type, seq DESC); новый индекс не нужен.
+func (r *MessagesRepo) SearchMessages(ctx context.Context, chatID int64, q string, f usecasechat.SearchFilter, page usecasechat.MediaPage) ([]domain.Message, int, error) {
 	qq := querier(ctx, r.pool)
 	// type <> 'service': системные сообщения (создал группу, сменил фото, set_ttl…)
 	// не индексируются поиском — как в tweb (service-сообщения не ищутся).
@@ -259,15 +265,27 @@ func (r *MessagesRepo) SearchMessages(ctx context.Context, chatID int64, q strin
 	default:
 		return nil, 0, nil
 	}
+	if f.Filter != "" {
+		cond := mediaFilterCond(f.Filter)
+		if cond == "" {
+			return nil, 0, nil
+		}
+		where += ` AND ` + cond
+	}
 	if f.Reaction != "" {
 		where += ` AND EXISTS (SELECT 1 FROM reactions rx WHERE rx.message_id = m.id AND rx.emoji = ` + add(f.Reaction) + `)`
 	}
+	where += dateRangeCond(f.MinDate, f.MaxDate, add)
 	var count int
 	if err := qq.QueryRow(ctx, `SELECT count(*)`+where, args...).Scan(&count); err != nil {
 		return nil, 0, err
 	}
-	lim := fmt.Sprintf(` ORDER BY m.seq DESC LIMIT $%d OFFSET $%d`, len(args)+1, len(args)+2)
-	rows, err := qq.Query(ctx, `SELECT `+messageColsPrefixed("m")+where+lim, append(args, limit, offset)...)
+	// Курсор — в текст запроса, а не «($N=0 OR m.seq<$N)» (см. MediaHistory).
+	if page.OffsetID > 0 {
+		where += ` AND m.seq < ` + add(page.OffsetID)
+	}
+	where += ` ORDER BY m.seq DESC LIMIT ` + add(page.Limit)
+	rows, err := qq.Query(ctx, `SELECT `+messageColsPrefixed("m")+where, args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -343,57 +361,93 @@ func (r *MessagesRepo) CalendarMonth(ctx context.Context, chatID int64, from, to
 // GlobalSearchMessages searches messages across every chat the user is a member
 // of (tweb global search: «Сообщения» section + Media/Links/Files/Music/Voice
 // tabs). q matches text or attached file name (case-insensitive substring);
-// filter narrows by shared-media kind (same kinds as MediaHistory, "" = any
-// type). Visibility mirrors GetHistory: deleted, per-user hides and hidden
-// pre-join history are excluded. Newest first + total count.
-func (r *MessagesRepo) GlobalSearchMessages(ctx context.Context, userID int64, q, filter string, offset, limit int) ([]domain.Message, int, error) {
+// filter narrows by shared-media kind (mediaFilterCond, "" = any type).
+// Visibility mirrors GetHistory: deleted, per-user hides and hidden pre-join
+// history are excluded. Newest first + total count.
+//
+// Окно — курсор `m.id < OffsetRate` (почему не OFFSET — у
+// usecasechat.GlobalSearchQuery). Берётся Limit+1 строка: лишняя говорит,
+// что за страницей что-то есть, и только тогда отдаётся NextRate. Иначе
+// страница ровно в лимит несла бы курсор, и клиент делал бы лишний пустой
+// запрос, чтобы узнать, что всё (tweb appSearchSuper.ts:2312 — `!value.nextRate`).
+//
+// План: порядок и курсор — по первичному ключу messages.id (обратный
+// Index Scan с границей), видимость — по PK chat_members (chat_id, user_id).
+// Отдельный индекс не нужен: `ORDER BY m.id DESC LIMIT` читает ровно
+// Limit+1 подходящих строк ниже курсора.
+func (r *MessagesRepo) GlobalSearchMessages(ctx context.Context, userID int64, gq usecasechat.GlobalSearchQuery) (usecasechat.GlobalSearchResult, error) {
 	qq := querier(ctx, r.pool)
 	where := ` FROM messages m
 		JOIN chat_members cm ON cm.chat_id = m.chat_id AND cm.user_id = $1
+		JOIN chats c ON c.id = m.chat_id
 		LEFT JOIN media md ON md.id = m.media_id
 		WHERE m.deleted_at IS NULL AND m.type <> 'service'
 		  AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id = m.id AND h.user_id = $1)
-		  AND ((SELECT c.history_for_new FROM chats c WHERE c.id = m.chat_id)
-		       OR cm.role <> 'member' OR m.created_at >= cm.joined_at)`
-	switch filter {
+		  AND (c.history_for_new OR cm.role <> 'member' OR m.created_at >= cm.joined_at)`
+	if gq.Filter != "" {
+		cond := mediaFilterCond(gq.Filter)
+		if cond == "" {
+			return usecasechat.GlobalSearchResult{}, nil
+		}
+		where += ` AND ` + cond
+	}
+	// ChatTypeMenu (users_only/groups_only/broadcasts_only). Избранное — это
+	// личный чат с собой (peerUser у оригинала), поэтому входит в users.
+	// Неизвестный вид отсекает юзкейс; здесь он — пустая выдача, а не «все».
+	switch gq.ChatType {
 	case "":
-	case "media":
-		where += ` AND m.type IN ('photo','video')`
-	case "files":
-		where += ` AND m.type = 'document'`
-	case "music":
-		where += ` AND m.type = 'audio'`
-	case "voice":
-		where += ` AND m.type IN ('voice','roundVideo')`
-	case "links":
-		where += ` AND m.type = 'text' AND m.text ~* 'https?://'`
+	case usecasechat.SearchChatTypeUsers:
+		where += ` AND c.type IN ('private','saved')`
+	case usecasechat.SearchChatTypeGroups:
+		where += ` AND c.type = 'group'`
+	case usecasechat.SearchChatTypeChannels:
+		where += ` AND c.type = 'channel'`
 	default:
-		return nil, 0, nil
+		return usecasechat.GlobalSearchResult{}, nil
 	}
 	args := []any{userID}
-	if q != "" {
-		where += ` AND (m.text ILIKE $2 OR md.file_name ILIKE $2)`
-		args = append(args, "%"+q+"%")
+	add := func(v any) string {
+		args = append(args, v)
+		return fmt.Sprintf("$%d", len(args))
 	}
+	if gq.Q != "" {
+		p := add("%" + gq.Q + "%")
+		where += ` AND (m.text ILIKE ` + p + ` OR md.file_name ILIKE ` + p + `)`
+	}
+	where += dateRangeCond(gq.MinDate, gq.MaxDate, add)
 	var count int
 	if err := qq.QueryRow(ctx, `SELECT count(*)`+where, args...).Scan(&count); err != nil {
-		return nil, 0, err
+		return usecasechat.GlobalSearchResult{}, err
 	}
-	lim := fmt.Sprintf(` ORDER BY m.id DESC LIMIT $%d OFFSET $%d`, len(args)+1, len(args)+2)
-	rows, err := qq.Query(ctx, `SELECT `+messageColsPrefixed("m")+where+lim, append(args, limit, offset)...)
+	// Курсор — в текст запроса, а не «($N=0 OR m.id<$N)»: такое условие
+	// планировщик не превращает в границу индексного скана (см. MediaHistory).
+	page := where
+	if gq.OffsetRate > 0 {
+		page += ` AND m.id < ` + add(gq.OffsetRate)
+	}
+	page += ` ORDER BY m.id DESC LIMIT ` + add(gq.Limit+1)
+	rows, err := qq.Query(ctx, `SELECT `+messageColsPrefixed("m")+page, args...)
 	if err != nil {
-		return nil, 0, err
+		return usecasechat.GlobalSearchResult{}, err
 	}
 	defer rows.Close()
 	var out []domain.Message
 	for rows.Next() {
 		m, e := scanMessage(rows)
 		if e != nil {
-			return nil, 0, e
+			return usecasechat.GlobalSearchResult{}, e
 		}
 		out = append(out, m)
 	}
-	return out, count, rows.Err()
+	if err := rows.Err(); err != nil {
+		return usecasechat.GlobalSearchResult{}, err
+	}
+	res := usecasechat.GlobalSearchResult{Messages: out, Count: count}
+	if gq.Limit > 0 && len(out) > gq.Limit {
+		res.Messages = out[:gq.Limit]
+		res.NextRate = res.Messages[gq.Limit-1].ID
+	}
+	return res, nil
 }
 
 // CallLog — журнал звонков пользователя: сообщения type='call' из его личных
@@ -440,6 +494,21 @@ type joinedScanner struct {
 
 func (s *joinedScanner) Scan(dest ...any) error {
 	return s.row.Scan(append(dest, s.extra...)...)
+}
+
+// dateRangeCond — границы чипа даты по created_at (unix-секунды, 0 — без
+// границы). Обе включительно, как у messages.search/searchGlobal: чип дня шлёт
+// max_date = начало следующего дня − 1 с (tweb helpers/date.ts:264), отсюда
+// `< max+1`. add регистрирует значение и отдаёт плейсхолдер.
+func dateRangeCond(minDate, maxDate int64, add func(any) string) string {
+	var cond string
+	if minDate > 0 {
+		cond += ` AND m.created_at >= to_timestamp(` + add(minDate) + `)`
+	}
+	if maxDate > 0 {
+		cond += ` AND m.created_at < to_timestamp(` + add(maxDate+1) + `)`
+	}
+	return cond
 }
 
 // mediaFilterCond — SQL-предикат одного вида шаред-медиа (вкладки профиля,

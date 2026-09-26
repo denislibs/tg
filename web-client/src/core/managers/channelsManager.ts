@@ -207,14 +207,18 @@ export function newChannelsManager({ rest, beforeSending, peers, cacheViews }: {
       const r = await rest.post<RawSuggestedPost>(`/suggested_posts/${id}/reject`, {})
       return mapSuggestedPost(r)
     },
-    async search(q: string): Promise<ContactsFound> {
+    // Поиск пиров — аналог `contacts.search` (`searchContacts(query, limit = 20)`
+    // оригинала, appUsersManager.ts:1069): свои попадания — ссылками в
+    // `my_results`, чужие — в `results`, тела — в `chats`/`users`. `limit` —
+    // на каждый вид; вкладка Channels класса просит 200 (appSearchSuper.ts:1977).
+    async search(q: string, limit = 20): Promise<ContactsFound> {
       // Allow "@username" queries: usernames are stored without the @, so strip
       // a leading one before hitting the directory search.
       const query = q.trim().replace(/^@+/, '')
       const empty: ContactsFound = { _: 'contacts.found', my_results: [], results: [], chats: [], users: [] }
       if (!query) return empty
       // Маппера нет: ответ И ЕСТЬ модель — конструктор схемы приходит в корне.
-      const r = await rest.get<ContactsFound>('/search', { q: query })
+      const r = await rest.get<ContactsFound>('/search', { q: query, limit })
       return { ...empty, ...r }
     },
   }

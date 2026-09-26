@@ -229,9 +229,9 @@ type MessageRepo interface {
 	// НОМЕР сообщения-запуска, а кадр рассылается сам по себе.
 	ByGiveawayID(ctx context.Context, giveawayID int64) ([]domain.Message, error)
 	// SearchMessages ищет по чату (текст/имя файла) с необязательными фильтрами
-	// (автор/тип медиа/реакция — tweb topbarSearch). Пустой q при заданном фильтре
-	// разрешён.
-	SearchMessages(ctx context.Context, chatID int64, q string, f SearchFilter, offset, limit int) ([]domain.Message, int, error)
+	// (SearchFilter), новые сверху; окно — курсор page.OffsetID (номер
+	// последнего отданного). Пустой q без фильтров — вся история чата.
+	SearchMessages(ctx context.Context, chatID int64, q string, f SearchFilter, page MediaPage) ([]domain.Message, int, error)
 	// MessageSeqByDate возвращает seq самого раннего непустого сообщения с
 	// created_at>=from (jump-to-date); если таких нет — seq самого нового
 	// сообщения; для пустого чата — domain.ErrNotFound.
@@ -241,8 +241,10 @@ type MessageRepo interface {
 	// messages.getSearchResultsCalendar). Дни без медиа не возвращаются.
 	CalendarMonth(ctx context.Context, chatID int64, from, to time.Time) ([]domain.CalendarDay, error)
 	// GlobalSearchMessages searches across every chat userID is a member of;
-	// filter narrows by shared-media kind ("" = any type).
-	GlobalSearchMessages(ctx context.Context, userID int64, q, filter string, offset, limit int) ([]domain.Message, int, error)
+	// filter narrows by shared-media kind ("" = any type). Окно — курсор
+	// q.OffsetRate; NextRate ответа — id последнего отданного, 0 на последней
+	// странице (см. GlobalSearchQuery).
+	GlobalSearchMessages(ctx context.Context, userID int64, q GlobalSearchQuery) (GlobalSearchResult, error)
 	// MediaHistory — шаред-медиа чата одного вида, новые сверху; окно задаётся
 	// курсором MediaPage.OffsetID (см. её комментарий — почему не смещением).
 	MediaHistory(ctx context.Context, chatID int64, filter string, page MediaPage) ([]domain.Message, int, error)
@@ -412,6 +414,10 @@ type ChannelRepo interface {
 type SearchRepo interface {
 	SearchChats(ctx context.Context, q string, limit int) ([]domain.ChatRecord, error) // public only
 	SearchUsers(ctx context.Context, q string, limit int) ([]domain.UserReal, error)
+	// OwnPeers — какие из найденных пиров «свои» для viewerID: чаты, где он
+	// участник, и пользователи из его контактов или с общим личным чатом
+	// (my_results contacts.search). ОДИН запрос на всю выдачу, не по пиру.
+	OwnPeers(ctx context.Context, viewerID int64, chatIDs, userIDs []int64) (chats, users map[int64]bool, err error)
 	PublicChatByUsername(ctx context.Context, username string) (int64, error) // domain.ErrNotFound
 	// SimilarChannels рекомендует публичные каналы по пересечению аудитории с
 	// каналом chatID: берём его подписчиков, смотрим на какие ещё публичные

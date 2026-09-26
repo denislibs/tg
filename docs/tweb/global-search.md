@@ -325,6 +325,20 @@ GroupsOnly/ChannelsOnly` (`:21-26`); пункты `ButtonMenu` с галочко
 
 # Часть 3. Что блокировано бэкендом
 
+> **Обновление (задачи 1-4 плана волны 3, ветка `feat/search-backend`):**
+> первые пять строк таблицы СДЕЛАНЫ. `GET /search/messages` листает
+> `offset_rate` → `next_rate` (limit+1: курсора нет и на странице ровно в
+> лимит), знает `chat_type=users|groups|channels` (users — `private` и
+> `saved`; иное — 400) и `min_date`/`max_date` (включительно). `GET
+> /chats/{peerID}/search` — `offset_id` (номер в чате), `filter` рядом с
+> `media_type`, даты; пустой `q` без фильтров — вся история чата
+> (`messages.search` с пустым `q`, чип пира без текста, `appSearchSuper.ts:2233-2236`).
+> Потребителей у неё было ТРИ: `useChatSearch`, фильтр «Избранного» по тегу в
+> `bubbles.ts` (`requestSavedReactionHistory`) и будущий шов. `GET /search`
+> отдаёт `my_results` (свои: участник чата, контакт, собеседник по личному
+> чату) отдельно от `results` и принимает `limit` (до 200). Контракт — в
+> `docs/contracts.md`. §2.2 выше описывает состояние ДО этих правок.
+
 | Что нужно классу | Ручка | Вердикт |
 |---|---|---|
 | Курсор глобальной выдачи (`offset_rate` → `next_rate`) для `chats`/`media`/`links`/`files`/`music`/`voice` при `peerId: 0` | `GET /search/messages` — есть, но `offset` | **правится**: опаковый `next_rate` в слайсе (`domain/mtmessage.go`) и параметр `offset_rate`; `OFFSET` удаляется. У нас `messages.id` глобально монотонен (`ORDER BY m.id DESC`, `messagesrepo.go:382`), поэтому «rate» — это `id` последнего отданного сообщения, а `offset_id`/`offset_peer` оригинала серверу не нужны — клиент их всё равно шлёт, сервер игнорирует |

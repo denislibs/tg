@@ -971,9 +971,11 @@ func NewContactsBlockedSlice(count int, blocked []PeerBlocked, users []UserReal)
 // contacts.found#b3134d9d my_results:Vector<Peer> results:Vector<Peer>
 // chats:Vector<Chat> users:Vector<User> = contacts.Found;
 //
-// Результаты поиска: СПИСОК ССЫЛОК на пиры плюс их тела. my_results — попадания
-// среди своих (контакты/свои чаты); у нас такого разделения выдачи нет, поэтому
-// вектор едет пустым, а не заполняется наугад.
+// Результаты поиска: СПИСОК ССЫЛОК на пиры плюс их тела. my_results —
+// попадания среди своих (подписанные чаты, контакты, собеседники по личному
+// чату), results — остальные; класс рисует их разными группами («Chats» и
+// «Global search», tweb appSearchSuper.ts:1427-1428), поэтому вектора не
+// пересекаются. Тела всех попаданий едут векторами chats/users, каждое один раз.
 type ContactsFound struct {
 	Underscore string     `json:"_"`
 	MyResults  []Peer     `json:"my_results"`
@@ -982,23 +984,28 @@ type ContactsFound struct {
 	Users      []UserReal `json:"users"`
 }
 
-func NewContactsFound(chats []Chat, users []UserReal) ContactsFound {
-	results := make([]Peer, 0, len(chats)+len(users))
-	for _, c := range chats {
-		results = append(results, NewPeer(c.PeerID()))
+// NewContactsFound — выдача поиска пиров: myChats/myUsers уходят ссылками в
+// my_results, chats/users — в results. Обязательные векторы едут пустыми
+// ([], а не null).
+func NewContactsFound(myChats []Chat, myUsers []UserReal, chats []Chat, users []UserReal) ContactsFound {
+	refs := func(cs []Chat, us []UserReal) []Peer {
+		out := make([]Peer, 0, len(cs)+len(us))
+		for _, c := range cs {
+			out = append(out, NewPeer(c.PeerID()))
+		}
+		for _, u := range us {
+			out = append(out, NewPeerUser(u.ID))
+		}
+		return out
 	}
-	for _, u := range users {
-		results = append(results, NewPeerUser(u.ID))
-	}
-	if chats == nil {
-		chats = []Chat{}
-	}
-	if users == nil {
-		users = []UserReal{}
-	}
+	allChats := append(append(make([]Chat, 0, len(myChats)+len(chats)), myChats...), chats...)
+	allUsers := append(append(make([]UserReal, 0, len(myUsers)+len(users)), myUsers...), users...)
 	return ContactsFound{
 		Underscore: ContactsFoundTag,
-		MyResults:  []Peer{}, Results: results, Chats: chats, Users: users,
+		MyResults:  refs(myChats, myUsers),
+		Results:    refs(chats, users),
+		Chats:      allChats,
+		Users:      allUsers,
 	}
 }
 

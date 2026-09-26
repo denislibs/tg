@@ -1147,3 +1147,92 @@ describe('MessagesManager.mediaHistory: курсор `offset_id`', () => {
     expect(queries[0]).toEqual({ filter: 'files', offset_id: 77, limit: 50 })
   })
 })
+
+// Глобальный поиск листается курсором СЕРВЕРА `next_rate`, а не смещением
+// (tweb `appMessagesManager.ts:9995` — `offset_rate: nextRate`, `:9432` —
+// `nextRate: slice.next_rate`). Пинится граница: курсор уходит в URL
+// параметром `offset_rate`, приходит из ключа `next_rate`, а его отсутствие —
+// «дальше ничего» (undefined), по которому класс помечает вкладку
+// загруженной (tweb `appSearchSuper.ts:2312`).
+describe('MessagesManager.searchGlobal: курсор `next_rate`', () => {
+  const rateRest = (reply: Record<string, unknown>) => {
+    const queries: Record<string, string | number>[] = []
+    const rest = {
+      get: async (_path: string, q?: Record<string, string | number>) => {
+        queries.push(q ?? {})
+        return { _: 'messages.messagesSlice', messages: [], users: [], chats: [], count: 0, ...reply }
+      },
+      post: async () => ({}),
+    } as unknown as RestClient
+    return { rest, queries }
+  }
+
+  it('первая страница — offset_rate 0, next_rate ответа уходит наружу', async () => {
+    const { rest, queries } = rateRest({ count: 7, next_rate: 4242 })
+    const r = await newMessagesManager({ rest }).searchGlobal('кот', '', { limit: 30 })
+    expect(queries[0]).toEqual({ q: 'кот', filter: '', offset_rate: 0, limit: 30 })
+    expect(queries[0]).not.toHaveProperty('offset')
+    expect(r.nextRate).toBe(4242)
+    expect(r.count).toBe(7)
+  })
+
+  // ChatTypeMenu и чипы дат (tweb `appMessagesManager.ts:9992-9999`). Даты
+  // менеджер берёт в МИЛЛИСЕКУНДАХ, как `getHistory` оригинала (чипы —
+  // `DateData` в мс, `helpers/date.ts:240-268`), а в URL кладёт секунды —
+  // ровно `minDate / 1000 | 0` оригинала (`:9931-9932`).
+  it('chat_type и даты уходят в URL; даты — секундами', async () => {
+    const { rest, queries } = rateRest({})
+    await newMessagesManager({ rest }).searchGlobal('кот', '', {
+      limit: 30, chatType: 'channels', minDate: 1768089600000, maxDate: 1768175999999,
+    })
+    expect(queries[0]).toEqual({
+      q: 'кот', filter: '', offset_rate: 0, limit: 30,
+      chat_type: 'channels', min_date: 1768089600, max_date: 1768175999,
+    })
+  })
+
+  it('следующая страница — по курсору; последняя — без nextRate', async () => {
+    const { rest, queries } = rateRest({ count: 7 })
+    const r = await newMessagesManager({ rest }).searchGlobal('кот', 'media', { offsetRate: 4242, limit: 30 })
+    expect(queries[0]).toEqual({ q: 'кот', filter: 'media', offset_rate: 4242, limit: 30 })
+    expect(r.nextRate).toBeUndefined()
+  })
+})
+
+// Поиск в одном чате (чип пира → `messages.search`, tweb
+// `appMessagesManager.ts:9966-9982`) листается курсором `offset_id` — СЕРВЕРНЫМ
+// номером последнего отданного, как `/media`; смещения на проводе нет. Даты —
+// миллисекунды на входе, секунды в URL; `filter` — лексика вкладок класса,
+// `media_type` — топбара, обе уходят как есть.
+describe('MessagesManager.searchMessages: курсор `offset_id`', () => {
+  const capture = () => {
+    const queries: Record<string, string | number>[] = []
+    const rest = {
+      get: async (_path: string, q?: Record<string, string | number>) => {
+        queries.push(q ?? {})
+        return { _: 'messages.messagesSlice', messages: [], users: [], chats: [], count: 0 }
+      },
+      post: async () => ({}),
+    } as unknown as RestClient
+    return { rest, queries }
+  }
+
+  it('первая страница — offset_id 0, без offset', async () => {
+    const { rest, queries } = capture()
+    await newMessagesManager({ rest }).searchMessages(1, 'кот', { limit: 30 })
+    expect(queries[0]).toEqual({ q: 'кот', offset_id: 0, limit: 30 })
+    expect(queries[0]).not.toHaveProperty('offset')
+  })
+
+  it('курсор — серверный номер; фильтры и даты — в URL', async () => {
+    const { rest, queries } = capture()
+    await newMessagesManager({ rest }).searchMessages(1, 'кот', {
+      offsetId: cid(77), limit: 30, filter: 'media', mediaType: 'photo', senderId: 5, reaction: '👍',
+      minDate: 1768089600000, maxDate: 1768175999999,
+    })
+    expect(queries[0]).toEqual({
+      q: 'кот', offset_id: 77, limit: 30, filter: 'media', media_type: 'photo', sender_id: 5, reaction: '👍',
+      min_date: 1768089600, max_date: 1768175999,
+    })
+  })
+})

@@ -1261,11 +1261,17 @@ type MessagesMessagesSlice struct {
 	// веткой «страница короче запрошенной» (там же, :9512-9518), и наш клиент
 	// сейчас идёт ровно ею. Предмет есть, производителя нет — считать позицию
 	// значит спросить у базы `count(*)` до смещения; названо задачей.
-	OffsetIDOffset *int        `json:"offset_id_offset,omitempty"`
-	Messages       []MTMessage `json:"messages"`
-	Topics         []any       `json:"topics"`
-	Chats          []Chat      `json:"chats"`
-	Users          []UserReal  `json:"users"`
+	OffsetIDOffset *int `json:"offset_id_offset,omitempty"`
+	// NextRate — flags.0?int: опаковый курсор следующей страницы глобального
+	// поиска (messages.searchGlobal). Клиент кладёт его в offset_rate
+	// следующего запроса (tweb appSearchSuper.ts:2288, :2321) и по его
+	// отсутствию считает выдачу исчерпанной (:2312). Отсутствие ключа — «дальше
+	// ничего», поэтому указатель, а не ноль.
+	NextRate *int        `json:"next_rate,omitempty"`
+	Messages []MTMessage `json:"messages"`
+	Topics   []any       `json:"topics"`
+	Chats    []Chat      `json:"chats"`
+	Users    []UserReal  `json:"users"`
 }
 
 func (MessagesMessagesSlice) isMessagesMessages() {}
@@ -1281,6 +1287,16 @@ func NewMessagesMessages(messages []MTMessage, chats []Chat, users []UserReal) M
 		Chats:      orEmpty(chats),
 		Users:      orEmpty(users),
 	}
+}
+
+// WithNextRate — тот же кусок с курсором следующей страницы; rate <= 0 —
+// страница последняя, ключа next_rate в ответе нет.
+func (m MessagesMessagesSlice) WithNextRate(rate int64) MessagesMessagesSlice {
+	if rate > 0 {
+		v := int(rate)
+		m.NextRate = &v
+	}
+	return m
 }
 
 // NewMessagesMessagesSlice — отдан кусок; count считается по ПОЛНОМУ набору.
