@@ -263,12 +263,17 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `LiteMode.Key.background_animation.Title`, `LiteMode.Key.emoji.Title`,
 // `Animations`): −4 каждому словарю.
 // Поверх задач 7 и 10 и корня настроек (+9 каждому): ru 1371, uk 706, es 705, de 704, fr 702.
+//
+// Задачей 14 плана 2D (вкладка «Быстрая реакция») снят самодельный
+// `DoubleTapSettingInfo` — подпись React-экрана, которой у tweb нет, читатель ушёл
+// вместе с экраном: всем пяти по −1 (ru 1349, uk 685, es 684, de/fr 683).
+// Поверх задач 7, 10, 11 и корня настроек (−1 каждому): ru 1370, uk 705, es 704, de 703, fr 701.
 const COMPOSITION = {
-  ru: { keys: 1371, plural: 37 },
-  uk: { keys: 706, plural: 26 },
-  es: { keys: 705, plural: 26 },
-  de: { keys: 704, plural: 26 },
-  fr: { keys: 702, plural: 26 },
+  ru: { keys: 1370, plural: 37 },
+  uk: { keys: 705, plural: 26 },
+  es: { keys: 704, plural: 26 },
+  de: { keys: 703, plural: 26 },
+  fr: { keys: 701, plural: 26 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -371,12 +376,13 @@ const COMPOSITION = {
 // Задачей 7 плана 2D — ключи «Данных и памяти» и `Seconds`/`Minutes` (разбор —
 // у `COMPOSITION` выше).
 // Задачей 11 плана 2D — ключи «Энергосбережения» (разбор — у `COMPOSITION` выше).
+// Задачей 14 плана 2D — минус `DoubleTapSettingInfo` у всех пяти.
 const FINGERPRINT = {
-  ru: 'd3839cd8',
-  uk: '1457bdca',
-  es: 'fecb6edc',
-  de: '78f339b0',
-  fr: '8bf82c96',
+  ru: 'aa3445ea',
+  uk: '4da25b7c',
+  es: '1768aa4e',
+  de: '3e411aea',
+  fr: '4442dbb8',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

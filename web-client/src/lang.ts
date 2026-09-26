@@ -418,7 +418,6 @@ const lang = {
   DoNotForward: 'Do Not Forward',
   DoNotTranslate: 'Do Not Translate',
   DoubleTapSetting: 'Quick Reaction',
-  DoubleTapSettingInfo: 'Double-tap a message to send this reaction quickly.',
   Draft: 'Draft',
   DynamicPackOrder: 'Dynamic Pack Order',
   Edit: 'Edit',

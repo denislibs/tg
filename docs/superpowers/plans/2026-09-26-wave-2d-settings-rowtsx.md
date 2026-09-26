@@ -742,7 +742,7 @@ btn-primary btn-transparent` (`cameraadd`/`colorize`/`favourites`), тумбле
 **Мутация:** Blur не `disabled` для pattern-обоев — тест краснеет.
 **Зависимости:** 0–4. **Врезка:** `tabs.ts`, `GeneralSettings.tsx`; удалить `settings/ChatWallpaper.tsx` + `.module.scss`.
 
-### Задача 14: «Быстрая реакция»
+### Задача 14: «Быстрая реакция» — ✅ сделано (PR feat/w2d-quick-reaction)
 
 **Порт:** `quickReaction.tsx` (64) → `sidebarLeft/tabs/quickReaction.solid.tsx`;
 `reactionStickerPreview.tsx` (20) → `reactionStickerPreview.solid.tsx`; вкладка :195. `<form>` +
@@ -753,6 +753,25 @@ class="disable-hover"`) + превью; `setDefaultReaction` сразу; дан�
 **Мутация:** радио слева вместо `alignRight` — тест `radio-field-right` краснеет.
 **Зависимости:** 0, 1, 2. **Врезка:** `tabs.ts`; удалить `settings/QuickReaction.tsx`, мок
 `SCREENS` и `renderDedicated` из `SettingsSubScreen.tsx` (мёртвые, поправка 10).
+
+**Итог (2026-09-26):** порт дословный (`quickReaction.tsx:11-64`, `reactionStickerPreview.tsx`);
+для превью заведён `components/wrappers/stickerTsx.solid.tsx` — порт `StickerTsx`
+(`wrappers/sticker.ts:828-880`) отдельным модулем, т.к. наш `sticker.ts` ванильный. Каталог —
+`chat/reactions.ts::getAvailableReactions` (тот же кэш на сессию, что у ленты и панели реакций;
+второй копии нет). **Вход сделан сейчас, а не в задаче 15** (уточнение координатора): строка
+`DoubleTapSetting` первой в первой секции React-экрана `settings/StickersSettings.tsx` →
+`getSettingsSliderHost().openTab(AppQuickReactionTab)` (пин — `StickersSettings.quickReaction.test.tsx`,
+уходит с экраном в задаче 15); превью справа в строке не рисуется — быстрой реакции нет, у tweb без
+неё оно тоже пустое. **О-30:** нет `config.reactions_default`/`messages.setDefaultReaction`/события
+`quick_reaction` — на открытии не отмечено ничего, выбор только переносит отметку (долг —
+`web-client/backlogs/frontend/quick-reaction-default.md`, обновлён). Из `SettingsSubScreen.tsx` снят
+мёртвый мок целиком (`SCREENS`, `NAV`, `renderDedicated`, локальные тумблеры/радио, мок-рендер) — «Общие»
+держались в `hasSubScreen` ТОЛЬКО через `title in SCREENS`, теперь явной клаузой (без неё краснеет
+`settingsSubScreen.reachable.test.ts`). Снят самодельный ключ `DoubleTapSettingInfo` (у tweb нет,
+читатель ушёл с экраном) — пины `dict.test.ts` −1 у всех пяти, `langpack.gen.json` пересобран
+(версии 8→9 — конфликт с соседними PR, пересчитать при слиянии). Задаче 15: строка `DoubleTapSetting`
+уже есть — при переезде `clickable={() => tab.slider.createTab(AppQuickReactionTab).open()}` +
+`ReactionStickerPreview` (пустое до О-30), React-пин снести вместе с экраном.
 
 ### Задача 16: `AppSelectPeers` + вкладка «Выбор участников»
 
@@ -1035,6 +1054,7 @@ media; брать задачу, когда в них нет открытых в�
 | О-26 | Поиск по настройкам и меню шапки из 34f417d12 (`SliderSuperTab.shown`, NavigationItem `settings-search`, `tg://settings/…`) | волна 4 дельты; нужен индекс вкладок, который строится после переезда всех вкладок | поиск по настройкам |
 | О-27 | Попап настроек при свёрнутой колонке (`SettingsSliderPopup`, `createTab`-override `sidebarLeft/index.ts:1730-1741`) | предмет появляется только после задачи 28 | настройки поверх чата на узкой колонке |
 | ~~О-29~~ | ~~Модель отступов `MediaHeader` HEAD (`gap: .5rem`) и под неё `authFlow`~~ | **снято** (ветка `fix/w2d-mediaheader-rtl-overlay`): `mediaHeader.module.scss` дословно с HEAD, `auth/AuthFlow.module.scss` `.qrContainer`, карточки входа — `h1` и `class="secondary"`; отступы экрана входа = tweb HEAD, замеры — `docs/tweb/dom/auth.md` §8.4 | — |
+| О-30 | Быстрая реакция: отметка на открытии (`getQuickReaction`, `quickReaction.tsx:22-30`), запись выбора (`setDefaultReaction`, `:48-51`), превью в строке «Стикеров» и перезапрос по `quick_reaction` (`stickersAndEmoji.tsx:30-35`, `:108-110`), подъём быстрой реакции в панели/ховере (`unshiftQuickReaction`) | нет `config.reactions_default`, `messages.setDefaultReaction`, события `quick_reaction` — ни на бэке, ни на проводе (`web-client/backlogs/frontend/quick-reaction-default.md`) | поле «быстрая реакция» у пользователя + ручка чтения/записи |
 
 ## Оценка объёма
 

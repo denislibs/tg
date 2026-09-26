@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 24,
+      "version": 25,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -1555,10 +1555,6 @@
         {
           "key": "DoubleTapSetting",
           "value": "Quick Reaction"
-        },
-        {
-          "key": "DoubleTapSettingInfo",
-          "value": "Double-tap a message to send this reaction quickly."
         },
         {
           "key": "Draft",
@@ -5644,7 +5640,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 24,
+      "version": 25,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -9094,10 +9090,6 @@
           "value": "Быстрая реакция"
         },
         {
-          "key": "DoubleTapSettingInfo",
-          "value": "Дважды коснитесь сообщения, чтобы быстро отправить эту реакцию."
-        },
-        {
           "key": "EnableAnimations",
           "value": "Включить анимации"
         },
@@ -11321,7 +11313,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 12,
+      "version": 13,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -12989,10 +12981,6 @@
           "value": "Réaction rapide"
         },
         {
-          "key": "DoubleTapSettingInfo",
-          "value": "Touchez deux fois un message pour envoyer cette réaction rapidement."
-        },
-        {
           "key": "EnableAnimations",
           "value": "Activer les animations"
         },
@@ -14215,7 +14203,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 12,
+      "version": 13,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -15882,10 +15870,6 @@
           "value": "Schnelle Reaktion"
         },
         {
-          "key": "DoubleTapSettingInfo",
-          "value": "Tippe doppelt auf eine Nachricht, um diese Reaktion schnell zu senden."
-        },
-        {
           "key": "EnableAnimations",
           "value": "Animationen aktivieren"
         },
@@ -17116,7 +17100,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 12,
+      "version": 13,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -18788,10 +18772,6 @@
           "value": "Reacción rápida"
         },
         {
-          "key": "DoubleTapSettingInfo",
-          "value": "Toca dos veces un mensaje para enviar esta reacción rápidamente."
-        },
-        {
           "key": "EnableAnimations",
           "value": "Activar animaciones"
         },
@@ -20022,7 +20002,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 12,
+      "version": 13,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -21710,10 +21690,6 @@
         {
           "key": "DoubleTapSetting",
           "value": "Швидка реакція"
-        },
-        {
-          "key": "DoubleTapSettingInfo",
-          "value": "Двічі торкніться повідомлення, щоб швидко надіслати цю реакцію."
         },
         {
           "key": "EnableAnimations",

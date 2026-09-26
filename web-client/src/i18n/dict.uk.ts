@@ -472,7 +472,6 @@ const uk = {
   AutoDownloadLargeFilesInfo: 'Більші файли не завантажуються автоматично.',
   AutoDownloadMaxVideoSize: 'Макс. розмір відео',
   DoubleTapSetting: 'Швидка реакція',
-  DoubleTapSettingInfo: 'Двічі торкніться повідомлення, щоб швидко надіслати цю реакцію.',
   EnableAnimations: 'Увімкнути анімації',
   'LiteMode.Key.gif.Title': 'Автовідтворення GIF',
   'LiteMode.Key.video.Title': 'Автовідтворення відео',

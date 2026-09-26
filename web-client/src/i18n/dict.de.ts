@@ -452,7 +452,6 @@ const de = {
   AutoDownloadLargeFilesInfo: 'Größere Dateien werden nie automatisch heruntergeladen.',
   AutoDownloadMaxVideoSize: 'Max. Videogröße',
   DoubleTapSetting: 'Schnelle Reaktion',
-  DoubleTapSettingInfo: 'Tippe doppelt auf eine Nachricht, um diese Reaktion schnell zu senden.',
   EnableAnimations: 'Animationen aktivieren',
   'LiteMode.Key.gif.Title': 'GIFs automatisch abspielen',
   'LiteMode.Key.video.Title': 'Videos automatisch abspielen',

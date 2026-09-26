@@ -452,7 +452,6 @@ const es = {
   AutoDownloadLargeFilesInfo: 'Los archivos más grandes nunca se descargan automáticamente.',
   AutoDownloadMaxVideoSize: 'Tamaño máx. de vídeo',
   DoubleTapSetting: 'Reacción rápida',
-  DoubleTapSettingInfo: 'Toca dos veces un mensaje para enviar esta reacción rápidamente.',
   EnableAnimations: 'Activar animaciones',
   'LiteMode.Key.gif.Title': 'Reproducir GIF automáticamente',
   'LiteMode.Key.video.Title': 'Reproducir vídeos automáticamente',

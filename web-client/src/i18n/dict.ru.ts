@@ -1028,7 +1028,6 @@ const ru = {
   AutoDownloadLargeFilesInfo: 'Более крупные файлы не загружаются автоматически.',
   AutoDownloadMaxVideoSize: 'Макс. размер видео',
   DoubleTapSetting: 'Быстрая реакция',
-  DoubleTapSettingInfo: 'Дважды коснитесь сообщения, чтобы быстро отправить эту реакцию.',
   EnableAnimations: 'Включить анимации',
   'LiteMode.Key.gif.Title': 'Автовоспроизведение GIF',
   'LiteMode.Key.video.Title': 'Автовоспроизведение видео',
