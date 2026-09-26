@@ -3,7 +3,8 @@
 // getRgbColorFromTelegramColor, hexToRgb, hslaStringToHex, hslaStringToRgba,
 // hslaToRgba, hsvToRgb, mixColors, rgbaToHexa, rgbaToHsla, rgbToHsv) + их
 // приватные зависимости (hexaToRgba, computePerceivedBrightness, changeBrightness,
-// getHexColorFromTelegramColor, hslaStringToHexa). Формулы не менять — источник
+// getHexColorFromTelegramColor, hslaStringToHexa) и `hexaToHsla` выбора цвета
+// (`components/colorPicker.ts`). Формулы не менять — источник
 // истины: /Users/denisurevic/Documents/tweb/src/helpers/color.ts.
 
 export type ColorHsla = {
@@ -172,6 +173,12 @@ export function hexaToRgba(hexa: string): number[] {
   }
 
   return arr
+}
+
+// tweb color.ts:168-171 — вход выбора цвета (`components/colorPicker.ts::setColor`).
+export function hexaToHsla(hexa: string): ColorHsla {
+  const rgba = hexaToRgba(hexa)
+  return rgbaToHsla(rgba[0], rgba[1], rgba[2], rgba[3])
 }
 
 export function hexToRgb(hex: string): ColorRgb {

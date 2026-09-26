@@ -69,7 +69,7 @@ beforeEach(() => {
   resetMessagesMirror()
   resetPeerMirror()
   clearChatPositions()
-  useSettingsStore.setState({ reduceMotion: true })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
   rootScope.myId = 1
   applyPeerOps([{ op: 'upsert', peers: [{ _: 'user', id: AUTHOR, first_name: 'Аня', pFlags: {} }] }])
 })

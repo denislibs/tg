@@ -13,11 +13,10 @@ import { loadPrivacy } from '../../stores/privacyStore'
 import { loadStars } from '../../stores/starsStore'
 import { runWhenUnlocked } from '../../stores/lockStore'
 import { primeMediaToken } from '../mediaUrl'
-import { syncCacheSettingsToSW } from '../mediaCache'
+import { watchCacheSettings } from '../mediaCache'
 import { startRealtime } from '../../client/realtimeBridge'
 import { watchPushConditions } from '../../client/pushSetup'
 import { initAppBadge } from '../../client/appBadge'
-import { useSettingsStore } from '../../settings'
 import { bootPrefetch, bootWasLocked } from '../../client/bootData'
 import { fillDialogsMirror, applyDialogsMirror } from '../../client/boot'
 import { preloadReactionAssets } from '../../components/chat/reactions'
@@ -32,6 +31,7 @@ export function useAppBootstrap(): void {
   useEffect(() => {
     let stopPresenceDegradation: (() => void) | undefined
     let stopPushConditions: (() => void) | undefined
+    let stopCacheSettings: (() => void) | undefined
     let reactionsPreload: ReturnType<typeof setTimeout> | undefined
     // Под passcode-локом (решён в boot.ts до рендера) НИЧЕГО не грузим и не
     // коннектим — вся первичная загрузка + realtime стартуют один раз после
@@ -91,9 +91,12 @@ export function useAppBootstrap(): void {
       void loadPrivacy(managers)
       void loadStars(managers)
       void primeMediaToken() // cache the media token so media bubbles build URLs sync
-      // SW чистит медиакэш по TTL/лимиту при получении настроек (tweb clearOldCache)
-      const { cacheTTL, cacheSize } = useSettingsStore.getState()
-      syncCacheSettingsToSW(cacheTTL, cacheSize)
+      // SW чистит медиакэш по TTL/лимиту при получении настроек (tweb clearOldCache):
+      // подписчик отдаёт их на старте и на каждой смене. Сознательно без пина
+      // на сам вызов — как у `watchPushConditions` ниже: у эффекта этого хука
+      // нет своего тестового периметра (web-client/CLAUDE.md, «Тесты»);
+      // подписчик покрыт `core/mediaCache.watchCacheSettings.test.ts`.
+      stopCacheSettings = watchCacheSettings()
       startRealtime()
       initAppBadge() // счётчик непрочитанных: title/favicon/PWA-бейдж
       // Деградация присутствия по `expires` — порт интервала оригинала
@@ -119,6 +122,8 @@ export function useAppBootstrap(): void {
       stopPresenceDegradation = undefined
       stopPushConditions?.()
       stopPushConditions = undefined
+      stopCacheSettings?.()
+      stopCacheSettings = undefined
       clearTimeout(reactionsPreload)
     }
   }, [managers])

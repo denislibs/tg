@@ -65,6 +65,66 @@ hr {
   }
 }
 
+/* tweb base.scss:403-407 — без размытия подложек: меню и тосты берут сплошной
+   фон. Класс ставит подписчик настройки «Энергосбережение»
+   (`client/liteModeSettings.ts`, ключ `liteMode.blur`; у Firefox — всегда). */
+html.no-backdrop {
+  --menu-background-color: var(--surface-color);
+  --menu-backdrop-filter: none;
+  --blur-off: none;
+}
+
+/* tweb base.scss:1786-1872 — аккордеон групп тумблеров (`components/checkboxFields.solid.tsx`,
+   вкладка «Энергосбережение»): свёрнут — высота 0, раскрыт — `--max-height` из
+   `scrollHeight`; счётчик и стрелка в заголовке строки-группы. Круглая форма
+   (`&-right-button`, `&-toggler-round`, :1811-1861) не перенесена вместе с опцией
+   `round` у `CheckboxFields` (её вызывающий — права группы). */
+.accordion {
+  overflow: hidden;
+  height: 0;
+
+  &.is-expanded {
+    height: var(--max-height);
+  }
+
+  @include animation-level(2) {
+    transition: height var(--transition-standard-in);
+  }
+
+  &-icon {
+    --translateY: 4px;
+    transform: rotate(0deg) translateY(var(--translateY));
+    color: var(--secondary-text-color);
+    font-size: 1.25rem;
+    display: inline-block;
+    line-height: 0;
+
+    @include animation-level(2) {
+      transition: transform var(--transition-standard-in);
+    }
+  }
+
+  &-toggler {
+    &-expanded {
+      .accordion-icon {
+        transform: translateY(var(--translateY)) rotate(180deg);
+      }
+    }
+  }
+
+  &-row {
+    .row-title {
+      display: flex;
+      align-items: center;
+      gap: .25rem;
+    }
+
+    .accordion-icon {
+      --translateY: 0;
+    }
+  }
+}
+
 /* Ширины колонок (--default-column-width, --left-column-*, --right-column-width,
    --middle-column-width, --chat-width, --page-chats-padding, --folders-sidebar-*)
    пишет JS — core/dom/updateColumnWidths.ts (порт tweb helpers/updateColumnWidths.ts).

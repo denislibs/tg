@@ -54,8 +54,8 @@ export interface Collapsable {
 // ставят/снимают класс на body, и перевод на liteMode потребовал бы их правки.
 //
 // Цена долга — окно до гидрации, где механизмы РАСХОДЯТСЯ. `index.html:28` держит
-// `animation-level-2` статикой на `<body>` безусловно, а `App.tsx:271-275` приводит класс
-// к настройке `reduceMotion` только в `useLayoutEffect`. Store же читает localStorage
+// `animation-level-2` статикой на `<body>` безусловно, а подписчик `client/liteModeSettings.ts`
+// (заводит `App.tsx` в `useLayoutEffect`) приводит класс к настройке `liteMode` только там. Store же читает localStorage
 // синхронно при создании (`settings.tsx:154-170`, `load()`), поэтому у пользователя с
 // «Без анимаций» в этом окне `liteMode.isAvailable('animations')` уже false, а проверка
 // ниже — ещё true.

@@ -92,7 +92,7 @@ beforeEach(() => {
   resetMessagesMirror()
   resetPeerMirror()
   clearChatPositions()
-  useSettingsStore.setState({ reduceMotion: true })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
   rootScope.myId = 1
 })
 

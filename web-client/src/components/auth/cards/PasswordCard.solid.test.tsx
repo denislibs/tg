@@ -16,6 +16,7 @@ import { render } from 'solid-js/web'
 import type { Managers } from '@/client/bootstrap'
 import { AuthFlowContext, type AuthFlowContextValue } from '../authFlow.solid'
 import PasswordCard from './PasswordCard.solid'
+import mediaHeaderStyles from '@components/mediaHeader.module.scss'
 
 vi.mock('../../popups/popupPeer', () => ({
   confirmationPopup: vi.fn(),
@@ -228,5 +229,16 @@ describe('PasswordCard.solid: сброс аккаунта без привяза�
     await new Promise((r) => setTimeout(r, 0))
     expect(confirmationPopupMock).toHaveBeenCalledTimes(1)
     expect(resetAccount).not.toHaveBeenCalled()
+  })
+})
+
+describe('PasswordCard.solid: шапка — разметка tweb HEAD 812502980 (О-29)', () => {
+  it('заголовок — h1, подзаголовок без модульного .secondary (tweb PasswordCard.tsx:229-230)', () => {
+    mount()
+    const title = host!.querySelector(`.${mediaHeaderStyles.title}`) as HTMLElement
+    expect(title.tagName).toBe('H1')
+    const subtitle = host!.querySelector(`.${mediaHeaderStyles.subtitle}`) as HTMLElement
+    expect(subtitle.classList.contains('secondary')).toBe(false)
+    expect(subtitle.classList.contains(mediaHeaderStyles.secondary)).toBe(false)
   })
 })

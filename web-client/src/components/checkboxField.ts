@@ -49,11 +49,10 @@
  *    оригинала ветка зовёт `toggleDisability` ДО создания `input` (`:58`) и
  *    упала бы на `this.input.disabled` — вызывающих у неё нет и там;
  *    `isDisabled` (`:180-182`) — вызывающего нет;
- *  • сеттер `checked` через `simulateEvent` (tweb :171-179) — хелпера
- *    `helpers/dom/dispatchEvent` в репо нет, оба вызывающих пишут прямо в
- *    `input.checked`, как и сам tweb (selection.ts:367, 490; peer.ts читает
- *    `checkboxField.input.checked` через геттер `.checked`, portable без
- *    `simulateEvent` — сеттер нужен только для программного включения извне).
+ *  • (пара `get/set checked` (tweb :151-162) СНЯТА с этого списка — пришла с
+ *    первым вызывающим сеттера, `checkboxFields.solid.tsx` (план 2D, задача 11):
+ *    групповой тумблер «Энергосбережения» переключает вложенных записью
+ *    `field.checkboxField.checked = …`, и `change` обязан всплыть до формы.)
  *
  * ── ОСТАТОК ВОЛНЫ (#112) ───────────────────────────────────────────────────
  * Живые React-двойники того же поля — `shared/ui/Checkbox` и
@@ -70,6 +69,7 @@
  */
 
 import Icon from '@components/icon'
+import simulateEvent from '@helpers/dom/dispatchEvent'
 import type { IconName } from '@core/tgico-icons'
 import { _i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
 
@@ -178,16 +178,21 @@ export default class CheckboxField {
     }
   }
 
+  /** tweb :151-153 */
+  get checked() {
+    return this.input.checked
+  }
+
+  /** tweb :155-162 — запись с `change` (всплывает): его ждут слушатели поля и формы */
+  set checked(checked: boolean) {
+    this.setValueSilently(checked)
+    simulateEvent(this.input, 'change')
+  }
+
   /**
-   * tweb :180-182 — записать состояние, НЕ порождая `change`. Появился вместе
-   * с `checkboxFieldTsx.solid.ts`: тот синхронизирует чекбокс с сигналом Solid
-   * и обязан отличать «мне сказали снаружи» от «пользователь щёлкнул», иначе
-   * запись в поле снова вызвала бы обработчик и закольцевалась.
-   *
-   * Пары `get/set checked` оригинала (:161-178) здесь нет: сеттер строится на
-   * `simulateEvent` (`helpers/dom/dispatchEvent`), которого в репо нет, а
-   * геттер без сеттера — второе имя для `input.checked`, которое вызывающие
-   * читают напрямую (и в tweb тоже: selection.ts:367).
+   * tweb :176-178 — записать состояние, НЕ порождая `change`. Им синхронизирует
+   * поле с сигналом Solid `checkboxFieldTsx.solid.tsx`: запись снаружи не должна
+   * снова вызвать обработчик и закольцеваться.
    */
   public setValueSilently(checked: boolean) {
     this.input.checked = checked

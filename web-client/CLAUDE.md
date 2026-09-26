@@ -36,7 +36,8 @@ npx vite build --outDir ../client-build
 - **Анимации — только CSS-классами tweb**; JS их лишь переключает. **framer-motion убран** — не возвращать
   (как и MUI). Механика: `core/hooks/useSetTransition` (порт `singleTransition.ts` — классы
   `forwards`/`backwards`/`animating`) и `core/hooks/useMountTransition` (роль `AnimatePresence`: узел живёт
-  в DOM, пока играет exit). Гейт — `body.animation-level-0/2`, ставит `App.tsx` по настройке «Без анимаций».
+  в DOM, пока играет exit). Гейт — `body.animation-level-0/2`, ставит подписчик настройки «Энергосбережение»
+  (`client/liteModeSettings.ts`, заводит `App.tsx`).
   Тяжёлые переходы объявлять через `core/dom/heavyAnimation` — на их время `animationIntersector` глушит
   стикеры/видео. **TS strict** — без `any`, неиспользуемые переменные не пройдут сборку.
 - **Ловушка CSS-модулей:** Vite хеширует любое имя в `animation`, включая ссылку на глобальный кейфрейм
@@ -371,7 +372,7 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
 подтверждённый вызов `managers.acknowledged.*`, у нас подтверждений нет вовсе);
 разбор — у самой строки в `setPeer`. Тесты ленты, которые НЕ про первое
 открытие, гасят лестницу тем же гейтом, что оригинал
-(`useSettingsStore.setState({reduceMotion: true})` → `liteMode.isAvailable`),
+(`useSettingsStore.setState({liteMode: {...liteMode, all: true}})` → `liteMode.isAvailable`),
 и сбрасывают карту позиций (`clearChatPositions()`) — иначе соседний тест
 открывал бы чат ВОЗВРАТОМ.
 

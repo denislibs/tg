@@ -1,0 +1,37 @@
+// Порт tweb `src/scss/partials/_colorPicker.scss:1-36` (812502980) — дословно
+// (путь `@use` — наш foundation). Разметку даёт `components/colorPicker.ts`,
+// потребитель — вкладка «Цвет» (`sidebarLeft/tabs/backgroundColor.solid.tsx`).
+@use "../foundation" as *;
+
+.color-picker {
+  width: 380px;
+  max-width: 100%;
+  margin: 0 auto;
+
+  @include respond-to(handhelds) {
+    padding: 0 .75rem;
+  }
+
+  &-box,
+  &-color-slider,
+  &-dragger {
+    overflow: visible !important;
+  }
+
+  &-sliders {
+    margin: 1rem 0 1.125rem;
+  }
+
+  &-dragger {
+    cursor: grab;
+  }
+
+  &-inputs {
+    display: flex;
+    gap: 1.25rem;
+
+    .input-field {
+      flex: 1 1 auto;
+    }
+  }
+}

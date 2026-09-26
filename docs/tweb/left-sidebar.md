@@ -185,7 +185,7 @@ div#column-left.tabs-tab.chatlist-container.sidebar.sidebar-left.main-column.sid
 | `generalSettings.tsx` :355 | `AppGeneralSettingsTab` :141-145 | размер текста, фон, тема, lite mode | `settings.tsx:129→137` |
 | `notifications.tsx` :543 (812502980) | `AppNotificationsTab` :77-81 (812502980) | уведомления | `settings.tsx:252` (812502980) |
 | `privacyAndSecurity.tsx` :760 | `AppPrivacyAndSecurityTab` = Eventable :533-537 (+`getInitArgs` :541) | хаб приватности | `settings.tsx:128→137`; `sliceTabsUntilTab` из `2fa/forgotPasswordLink.ts:103`, `tabs.ts:27-30` |
-| `dataAndStorage/index.tsx` :202 | `AppDataAndStorageTab` = Eventable :364-368 | данные и хранилище | `settings.tsx:127→137` |
+| `dataAndStorage/index.tsx` :52 (812502980) | `AppDataAndStorageTab` = Eventable :439-443 (812502980) | данные и хранилище | `settings.tsx:127→137` |
 | `chatFolders.tsx` :356 | `AppChatFoldersTab` :612-621 (+`getInitArgs`) | список папок | `settings.tsx:130→137`; `foldersSidebarContent/index.tsx:204`; `createFolderContextMenu.ts:47` |
 | `editFolder.tsx` :715 | `AppEditFolderTab` :630-642 (+`getInitArgs`, `deleteFolder`) | редактор папки | `chatFolders.tsx:110` (edit) / `:334` (new); `appDialogsManager.ts:1426`; `createFolderContextMenu.ts:29` |
 | `includedChats.tsx` :274 | `AppIncludedChatsTab` :489-493 (title по `type`) | included/excluded чаты папки | `editFolder.tsx:420` (included), `:424` (excluded) |
@@ -200,7 +200,7 @@ div#column-left.tabs-tab.chatlist-container.sidebar.sidebar-left.main-column.sid
 | `editProfile.tsx` :63 | `AppEditProfileTab` :86-90 (+префетч :78-84, `noSame`) | редактирование профиля | `settings.tsx:115` (кнопка edit), `internalLinkProcessor.ts:730` |
 | `myStories.tsx` :161 | `AppMyStoriesTab` :657-663 (+`getInitArgs`; title по `isArchive`) | свои истории / архив историй | `sidebarLeft/index.ts:707` (меню), `stories/list.tsx:356,363`, `stories/profileList.tsx:804`, `internalLinkProcessor.ts:1313`, `myStories.tsx:40` |
 | `language.tsx` :176 | `AppLanguageTab` :155-159 | язык | `settings.tsx:252` |
-| `keyboardShortcuts.tsx` :292 | `AppKeyboardShortcutsTab` :94-98 | горячие клавиши | `settings.tsx:258` |
+| `keyboardShortcuts.tsx` :279 (812502980) | `AppKeyboardShortcutsTab` :113-117 (812502980) | горячие клавиши | `settings.tsx:413` (812502980) |
 | `speakersAndCamera.tsx` :29 | `AppSpeakersAndCameraTab` :162-166 | аудио/видео-устройства | `settings.tsx:132→137` |
 | `powerSaving.tsx` :122 | `AppPowerSavingTab` :201-205 | lite mode | `generalSettings.tsx:89`, `sidebarLeft/index.ts:909` (More-подменю) |
 | `stickersAndEmoji.tsx` :307 | `AppStickersAndEmojiTab` :183-187 | стикеры и эмодзи | `settings.tsx:131→137` |
@@ -230,13 +230,13 @@ div#column-left.tabs-tab.chatlist-container.sidebar.sidebar-left.main-column.sid
 | Файл | Конструктор | Назначение | Кто открывает |
 |---|---|---|---|
 | `autoDownloadTab.tsx` :10 | фабрика-обёртка `autoDownloadTab(build)` | доступ императивного `build()` к табу | photo/video/file |
-| `photo.tsx` :4 | `AppAutoDownloadPhotoTab` = Eventable :346-350 | авто-загрузка фото | `dataAndStorage/index.tsx:105` |
-| `video.tsx` :4 | `AppAutoDownloadVideoTab` :352-356 | авто-загрузка видео | `dataAndStorage/index.tsx:114` |
-| `file.tsx` :64 | `AppAutoDownloadFileTab` :358-362 | авто-загрузка файлов | `dataAndStorage/index.tsx:123` |
-| `peerTypeSection.ts` :8 | helper | секция типов пиров | все три |
+| `photo.tsx` :4 | `AppAutoDownloadPhotoTab` = Eventable :421-425 (812502980) | авто-загрузка фото | `dataAndStorage/index.tsx:102` (812502980) |
+| `video.tsx` :4 | `AppAutoDownloadVideoTab` :427-431 (812502980) | авто-загрузка видео | `dataAndStorage/index.tsx:106` (812502980) |
+| `file.tsx` :64 | `AppAutoDownloadFileTab` :433-437 (812502980) | авто-загрузка файлов | `dataAndStorage/index.tsx:110` (812502980) |
+| `peerTypeSection.tsx` :10 (812502980) | helper | секция типов пиров | все три |
 
 `dataAndStorage/storageQuota.tsx:237` — Solid-компонент (не таб), монтируется
-`dataAndStorage/index.tsx:178-192`.
+`dataAndStorage/index.tsx:125` (812502980).
 
 ### `privacy/` (все — Eventable, сохранение на `destroy`)
 
@@ -736,8 +736,8 @@ Close/RestartTopic `:224` · ChargeFee `:238` · Delete `:248`.
 |---|---|---|
 | `src/components/Sidebar.tsx` (:61) | оркестратор колонки: `#column-left` с tweb-классами (:213-215), композиция хуков `useSidebar*` | `AppSidebarLeft.construct` |
 | `src/components/SidebarScreens.tsx` (:22-24) | экраны колонки — **один enum-стейт** `'settings'\|'contacts'\|'wallet'\|'calls'\|'newGroup'\|'newChannel'\|'newPrivate'\|'newSecret'\|null`, lazy-подгрузка Settings/Wallet/Calls | стек `SliderSuperTab` |
-| `src/components/SettingsView.tsx` (:47) + `SettingsSubScreen.tsx` (:82-95, :134-152) | настройки: корневой список + под-экраны по строковому title (General/SpeakersCamera/ChatFolders/Privacy/DataStorage/Stickers/Hotkeys); «Устройства», «Язык» и «Уведомления» — вкладки слайдера через хост | `AppSettingsTab` + дерево части 2 |
-| `src/components/settings/*` | реализации ещё не портированных под-экранов (TwoStepVerification, PasscodeLock, Passkeys, BlockedUsers, AutoDelete, PowerSaving, QuickReaction, EditProfile, ChatWallpaper…). «Устройства» здесь БОЛЬШЕ НЕТ — уехали на слайдер, см. §3 | `sidebarLeft/tabs/*` |
+| `src/components/SettingsView.tsx` (:47) + `SettingsSubScreen.tsx` (:17-34, :36-53) | настройки: корневой список + под-экраны по строковому title (General/SpeakersCamera/ChatFolders/Privacy/Stickers); «Устройства», «Язык», «Уведомления», «Горячие клавиши» и «Данные и память» — вкладки слайдера через хост, «Быстрая реакция» — вкладка из строки «Стикеров» | `AppSettingsTab` + дерево части 2 |
+| `src/components/settings/*` | реализации ещё не портированных под-экранов (TwoStepVerification, PasscodeLock, Passkeys, BlockedUsers, AutoDelete, EditProfile…). «Быстрой реакции» здесь БОЛЬШЕ НЕТ — вкладка `sidebarLeft/tabs/quickReaction.solid.tsx` (задача 14 плана 2D). «Устройства» здесь БОЛЬШЕ НЕТ — уехали на слайдер, см. §3; «Обои» и «Цвет» — тоже (`sidebarLeft/tabs/background.solid.tsx`, `backgroundColor.solid.tsx`, задача 12 плана 2D; открывает строка React-«Общих» через хост) | `sidebarLeft/tabs/*` |
 | `src/lib/appDialogsManager.ts` | папочный срез владельца: `.chatlist-overlay` с Solid-рядом вкладок, `#folders-container`, скроллер на папку, переключение (`horizontalMenu` + `TransitionSlider`); встроен в колонку `Sidebar.tsx` (план папок, задача 6) | `AppDialogsManager` (папки) |
 | `src/components/ChatList.tsx` / `ChatListItem.tsx` | списки папок на виртуальном ядре — порталом в `.chatlist-top` контейнеров владельца | `AutonomousDialogList` (строки) + `DialogElement` |
 | `src/components/virtual/DeferredSortedVirtualList.*` | порт `deferredSortedVirtualList` | 1:1 |
@@ -800,6 +800,15 @@ DOM-паритет первого таба выдержан сознательн
    Archived как пункта (архив — только строкой списка), More-подменю (A-version, PWA, PiP, Report Bug),
    verify-предикатов. Есть своё: Wallet, Calls, Logout (в tweb logout живёт в «⋮» настроек).
    Один набор обработчиков переиспользуется бургером и вертикальной колонкой папок — как в tweb.
+   **Ночной режим** — первый пункт подменю «Ещё» (`MainMenu.tsx`), как у tweb `createMoreSubmenu`:
+   подпись по теме (`EnableDarkMode`/`DisableDarkMode`), круг перехода — из центра иконки пункта.
+   Строки «Ночной режим» в корне настроек нет (`fix/settings-root-items`).
+   **Кнопка эмодзи-статуса в шапке** (`statusBtnIcon`) — `SidebarEmojiStatusButton.tsx`: только у
+   подписчика Premium, `button.btn-icon.sidebar-emoji-status` без ripple справа от поиска, глиф
+   `star` без статуса; `is-input-the-last-child` снимается по `toggleRightButtons`. Отступления:
+   статус — юникод-эмодзи, а не документ (`wrapStatus`/`fireAroundAnimation` не портированы), выбор —
+   наш попап `EmojiStatusPicker`, а не `EmoticonsDropdown` у кнопки; клик по своему статусу в профиле
+   (`clickableEmojiStatus`) ждёт `PeerProfile` в корне настроек (задача 28 волны 2D).
 7. **Контекстное меню диалога и contact-list-заглушка** — у tweb богатое меню
    (`dialogsContextMenu.ts`, 13 пунктов) и секция Contacts при <10 чатах; у нас этих подсистем нет
    (меню ПАПКИ — не оно: порт `createFolderContextMenu` на оба ряда, задача 7 плана папок).
@@ -827,9 +836,14 @@ DOM-паритет первого таба выдержан сознательн
 | `components/slider.ts` | `src/components/slider.ts` | `SidebarSlider` целиком: история вкладок, `createTab`/`selectTab`/`closeTab`/`closeAllTabs`/`sliceTabsUntilTab`, `onTabsCountChange`, `canHideFirst` |
 | `components/sliderTab.ts` | `src/components/sliderTab.ts` | `SliderSuperTab` + `SliderSuperTabEventable` (шапка, `Scrollable`, порядок разрушения, `managers`) |
 | `components/solidJsTabs/*` | `src/components/solidJsTabs/*` | `scaffoldSolidJSTab(Eventable)`, `useSuperTab`, `PromiseCollector` |
-| `components/solidJsTabs/tabs.ts` | `src/components/solidJsTabs/tabs.ts` | реестр объявлений вкладок; пока три — `AppActiveSessionsTab`, `AppLanguageTab`, `AppNotificationsTab` |
-| `components/sidebarLeft/tabs/activeSessions.solid.tsx` | `src/components/sidebarLeft/tabs/activeSessions.tsx` | первая настоящая вкладка, дословный порт |
+| `components/solidJsTabs/tabs.ts` | `src/components/solidJsTabs/tabs.ts` | реестр объявлений вкладок: `AppActiveSessionsTab`, `AppSessionTab`, `AppLanguageTab`, `AppNotificationsTab`, `AppKeyboardShortcutsTab`, `AppChatBackgroundTab`, `AppBackgroundColorTab`, `AppQuickReactionTab`, `AppPowerSavingTab`, `AppDataAndStorageTab` и `AppAutoDownload{Photo,Video,File}Tab` |
+| `components/sidebarLeft/tabs/activeSessions.solid.tsx` | `src/components/sidebarLeft/tabs/activeSessions.tsx` | «Устройства», порт HEAD 812502980 (план 2D, задача 9) |
+| `components/sidebarLeft/tabs/session.solid.tsx` (+ `sessionInfoRow.solid.tsx`, `sessionDetails.module.scss`) | `src/components/sidebarLeft/tabs/session.tsx` (944b578e9) | экран одной сессии `AppSessionTab`, открывает строка «Устройств» |
+| `components/sidebarLeft/tabs/dataAndStorage/*.solid.tsx`, `autoDownload/*.solid.tsx` | `src/components/sidebarLeft/tabs/dataAndStorage/*`, `autoDownload/*` (812502980) | «Данные и память» и вкладки автозагрузки — задача 7 плана 2D; без строки потоковых чанков (О-6); React `settings/DataStorageSettings.tsx` снесён |
 | `components/sidebarLeft/tabs/notifications.solid.tsx` | `src/components/sidebarLeft/tabs/notifications.tsx` (812502980) | «Уведомления и звуки» — пилот плана 2D (задача 6): первый экран на Solid `Row`/`Section` HEAD; без «All Accounts» (О-1) и секций Stories/Reactions/Other (О-3…О-5); React `settings/NotificationsSettings.tsx` снесён |
+| `components/sidebarLeft/tabs/keyboardShortcuts.solid.tsx` | `src/components/sidebarLeft/tabs/keyboardShortcuts.tsx` (812502980) | «Горячие клавиши» (план 2D, задача 10): только обрабатываемые клиентом сочетания — без `InlineSelect` отправки, `JumpToInputStart/End` и секции Other (расхождения в шапке); React `settings/HotkeysSettings.tsx` снесён |
+| `components/sidebarLeft/tabs/powerSaving.solid.tsx` + `components/checkboxFields.solid.tsx` | `src/components/sidebarLeft/tabs/powerSaving.tsx`, `src/components/checkboxFields.tsx` (812502980) | «Энергосбережение» — задача 11 плана 2D; открывает строка «Общих» через хост; пункт меню «Ещё» «Отключить анимации» пишет `liteMode.animations`, пункта «Lite Mode» при `liteMode.all` (`index.ts:946-954`) нет до задачи 28; React `settings/PowerSaving.tsx` снесён |
+| `components/sidebarLeft/tabs/quickReaction.solid.tsx` | `src/components/sidebarLeft/tabs/quickReaction.tsx` (812502980) | «Быстрая реакция» — задача 14 плана 2D; открывает строка `DoubleTapSetting` React-экрана «Стикеры» через хост (до задачи 15); выбор не сохраняется (О-30); React `settings/QuickReaction.tsx` снесён |
 | `components/sidebarLeft/settingsSliderHost.ts` | `sidebarLeft/index.ts:140-148` + `settingsSliderPopup.ts:13-51` | хост: один слайдер на колонку, `openTab`/`destroy` |
 
 Навигация: `pushItem` оригинала разложен на два наших механизма — `navigationStack.pushLayer`
@@ -849,8 +863,8 @@ tweb 2197fee9c перевёл иконки всех строк на цветны
 (дамп 14-left-13) с иконками tweb `settings.tsx`: bell_filled (красная), data_filled
 (зелёная), key_filled (серая), general_filled, limit_folders_filled (синяя), reactions_filled,
 speaker_filled, devices_filled, web_filled, keyboard_filled; карточка — phone_filled,
-mention_filled; premium_badge (`--premium-gradient`), gift_filled; наш пункт «Ночной режим» —
-darkmode_filled. Подэкраны переведены на имена tweb для тех же пунктов (privacyAndSecurity,
+mention_filled; premium_badge (`--premium-gradient`), star_circle_filled, gift_filled. Строки
+«Ночной режим» в корне больше нет, как и у tweb. Подэкраны переведены на имена tweb для тех же пунктов (privacyAndSecurity,
 privacy-исключения, passcode, general, editChat, editContact). Строки сессий во вкладке
 «Устройства» несут иконку платформы (`helpers/sessionPlatformIcon.ts`, tweb 944b578e9).
 Тумблер перерисован (`_checkbox.scss` по ef41b29db), поля строки метятся
@@ -953,7 +967,8 @@ privacy-исключения, passcode, general, editChat, editContact). Стр�
 - [ ] Бургер → настройки → вложенные экраны; Back работает на любую глубину.
 - [ ] Настройки → «Устройства» (и «Конфиденциальность» → «Активные сессии»): вкладка въезжает
       справа, правый клик по чужой сессии → Terminate → строка исчезает, Escape закрывает вкладку,
-      экран настроек под ней остаётся.
+      экран настроек под ней остаётся. Клик по строке → экран сессии въезжает поверх «Устройств»
+      (с параллаксом), у чужой — кнопка «Terminate Session» → подтверждение → экран закрыт, строки нет.
 - [ ] Поиск: пустое состояние, результаты по чатам, табы постов/медиа/ссылок/файлов/музыки/голосовых.
 - [ ] Строка чатлиста: превью последнего сообщения, бейджи, онлайн-точка, typing, draft.
 - [ ] Сортировка и закреплённые вверху; папки переключаются без перерисовки всего списка.

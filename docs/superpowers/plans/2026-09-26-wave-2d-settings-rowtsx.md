@@ -572,7 +572,7 @@ React-экран как список сценариев; **Шаг 2** — пад
 «Готово когда» у всех включает: старый React-файл удалён в том же PR, `git grep` по его имени
 пуст, «у нас» обновлено.
 
-### Задача 7: «Данные и память» + автозагрузка
+### Задача 7: «Данные и память» + автозагрузка — ✅ сделано (PR feat/w2d-data-storage)
 
 **Порт:** `dataAndStorage/index.tsx` + `storageQuota.tsx` (+ `.module.scss`) →
 `sidebarLeft/tabs/dataAndStorage/{index,storageQuota}.solid.tsx`; `autoDownload/{autoDownloadTab,
@@ -592,6 +592,26 @@ delete primaryTransparent` + `confirmationPopup` (`:72-81`), квота — 2 с
 `settings/DataStorageSettings.tsx` + `.module.scss`.
 **Отдельно выяснить:** строка «Cached video stream chunks» (`storageQuota.tsx:374-382`) — есть ли у
 нас кэш потоковых чанков (SW `/dnp-stream/`); нет — О-6.
+
+**Итог задачи 7 (2026-09-26) — что учесть следующим экранам:**
+- О-6 выяснено: корзин потоковых чанков нет (DNP-стрим собирает SW без CacheStorage, DNP-OFF —
+  токен-URL мимо кэша); `watchedCachedStorageNames` у нас = `cachedFiles`. Строки нет, у места —
+  комментарий с номером.
+- `useAppSettings` расширен (шапка `stores/appSettings.solid.ts`, п. 2, 6, 7): лист с `codec`
+  (обратный смысл ключа — `autoDownloadNew.pFlags.disabled` ↔ `autoDownloadEnabled`), путь внутрь
+  значения-объекта, запись поддерева одним `update` со слиянием верхнего уровня (как `setStore`
+  Solid-стора), `SETTINGS_INIT` — представление над `DEFAULTS`. Задаче 11 (`liteMode`) и прочим —
+  дописывать таблицу, форму записи не изобретать.
+- Из Solid-вкладки дочерняя вкладка открывается `(tab.slider as SidebarSlider).createTab(T).open()`:
+  узкий контракт `SliderSuperTabSlider` (`sliderTab.ts`) `createTab` не объявляет. Добавить его в
+  контракт (и в `sliderTab.testStub.ts`) — одной правкой, когда таких вызывающих станет больше.
+- `CheckboxFieldTsx stateKey` у нас нет — поля по ключу состояния пишутся `checked`/`onChange`
+  через `useAppSettings` (расхождение в шапке `autoDownload/peerTypeSection.solid.tsx`).
+- Шим `installSpecLabelActivation` — общий модуль `src/test/specLabelActivation.ts` (задача 8).
+- Побочка `cacheTTL`/`cacheSize` → SW — подписчик `core/mediaCache.ts::watchCacheSettings`.
+- Стенд не прощёлкан (эксклюзивно у другого агента): пункт чеклиста `settings-rows.md` открыт.
+- Шапка `solidJsTabs/tabs.ts` («их три») устарела — не правилась ради механического слияния с
+  задачами 8/10/11; поправить в сводном docs-PR.
 
 ### Задача 8: «Язык» → HEAD — ✅ сделано (PR feat/w2d-language)
 
@@ -614,7 +634,7 @@ class="disable-hover"`, `form` прямо в секции); `TranslateSection` �
 теста пилота в `web-client/src/test/specLabelActivation.ts` — брать оттуда. RTL-признак
 (`setDocumentLangPackProperties`) не трогался: PR #291 не влит. Новых ключей нет.
 
-### Задача 9: «Устройства» → HEAD + экран сессии (944b578e9)
+### Задача 9: «Устройства» → HEAD + экран сессии (944b578e9) — ✅ сделано (PR feat/w2d-devices)
 
 **Порт:** `activeSessions.tsx` (401) заново, JSX: `SessionRow` (`:294-323`: `Row class=
 "session-row" clickable contextMenu` + `Row.Icon(getSessionPlatformIcon)` + `Row.Title titleRight`
@@ -637,7 +657,29 @@ payload `{authorization, onTerminate?, onSettingsChanged?}`), `core/managers/ses
 **Зависимости:** 0, 1, 3, 5 (`MediaHeader`, `InlineSelect` для TTL). **Готово когда:**
 `git grep -n "components/row'\|settingSection'" web-client/src/components/sidebarLeft` пуст.
 
-### Задача 10: «Горячие клавиши»
+**Итог (2026-09-26):** `activeSessions.solid.tsx` переписан JSX-портом HEAD (`:48-401`):
+`SessionRow` = `Row class="session-row" clickable role tabIndex contextMenu` + `Row.Icon`/`Title
+titleRight`/`Midtitle`/`Subtitle`; секции `CurrentSession` (подпись и «завершить все» — только при
+других), `AuthSessions.IncompleteAttempts`, `OtherSessions`; опрос раз в минуту;
+`confirmationPopup` вместо `PopupPeer 'revoke-session'`; ошибки — портированный
+`helpers/getAuthorizationErrorLangKey.ts`. Клик по строке → `AppSessionTab` (`tabs.ts`, payload
+`{authorization, onTerminate?}` — `onSettingsChanged` не заведён, его зовёт только секция О-8):
+`session.solid.tsx`, `sessionInfoRow.solid.tsx`, `sessionDetails.module.scss` (только классы
+экрана устройства). Не перенесено: TTL-секция и `ttlDays` полезной нагрузки (О-7 — поэтому
+`sessionsManager.ts` не менялся: отдавать нечего, сервер шлёт 0), `AcceptTitle` (О-8),
+переименование/`customDeviceModel` (О-9), бизнес-бот (SKIP), `unconfirmed_authorizations_update`
+(нет попапа неподтверждённого входа). Секция незавершённых входов портирована, но пуста:
+бэкенд не ставит `password_pending`. Стиль строки — `.session-row` HEAD
+(`_leftSidebar.scss:961-978`) вместо `.active-sessions-container`. Сверх плана: с последним
+потребителем удалены `components/settingSection.ts` (+ тест) и `helpers/dom/toggleDisability.ts`
+— предусловие задачи 31 «`git grep settingSection` пуст» закрыто (остались упоминания в
+комментариях об адресах tweb); `row.ts` теперь нужен только `dialogRow.ts` и `appSearchSuper.ts`
+(задача 29). Маркер «остров разобран» в `settingsSliderHost.test.ts` — вместо меню в `body`
+(его больше нет: меню строит `createContextMenu` строки) минутный опрос: `clearInterval` его id.
+Ключи tweb `AuthSessions.View.*` (6) и `AuthSessions.IncompleteAttempts(Info)` — в пять словарей
+(fr без совпавшего `Application`), пины `dict.test.ts`, `langpack.gen.json`.
+
+### Задача 10: «Горячие клавиши» — ✅ сделано (PR feat/w2d-shortcuts)
 
 **Порт:** `keyboardShortcuts.tsx` (292) + `.module.scss` → `sidebarLeft/tabs/keyboardShortcuts.solid.tsx`;
 вкладка `AppKeyboardShortcutsTab` :113. 8 секций с подписями Formatting/Messages, `ShortcutRow` =
@@ -649,7 +691,24 @@ payload `{authorization, onTerminate?, onSettingsChanged?}`), `core/managers/ses
 **Зависимости:** 0, 1, 5. **Врезка:** `tabs.ts`, `SettingsView.tsx`, `SettingsSubScreen.tsx`; удалить
 `settings/HotkeysSettings.tsx` + `.module.scss` + `.test.tsx`.
 
-### Задача 11: «Энергосбережение»
+**Итог (2026-09-26).** Уточнение координатора: на вкладке — только сочетания, которые клиент
+обрабатывает, без записи в «Отложено». Отсюда поправки к постановке:
+- `sendShortcut` у нас нет (ни настройки, ни `isSendShortcutPressed`) — строка Send статичная
+  (Enter), без `InlineSelect`; вместе с выбором ушла и подпись `Section.Messages.Caption`
+  («Choose how messages are sent…» — выбирать нечего). О-10 НЕ заводится. Зависимость от 5
+  (`InlineSelect`) фактически не понадобилась.
+- `JumpToInputStart/End` не портируются: у tweb это каретка в поле (`chat/input.ts:3187-3200`),
+  у нас Ctrl+PageUp/PageDown листает ленту (`useFeedPageHotkeys`, своей строки у tweb нет).
+- Секция Other/`LockPasscode` вернётся с задачей 18, когда появится сочетание блокировки
+  (`ShortcutBuilder`) — отметить там.
+- Врезка тронула ещё `settingsSubScreen.reachable.test.ts` (нижние границы 7 → 6 и 3 → 4) — ту же
+  строку правит каждый переезжающий экран.
+- С экраном снесены 10 ключей, которые читал только он (в т.ч. ключи tweb `MediaZoomIn`/
+  `MediaZoomOut`/`Undo`); числа пинов `dict.test.ts` вернулись к прежним, отпечатки — новые.
+- Шапка `solidJsTabs/tabs.ts` («у нас их три…») не правилась: общий файл, строку правят все
+  врезки — поправить одной правкой после очереди.
+
+### Задача 11: «Энергосбережение» — ✅ сделано (PR feat/w2d-power-saving)
 
 **Порт:** `components/checkboxFields.tsx` (346) → `checkboxFields.solid.tsx`; `powerSaving.tsx`
 (122) → `sidebarLeft/tabs/powerSaving.solid.tsx`; вкладка `AppPowerSavingTab` :241. Две секции в
@@ -662,7 +721,38 @@ payload `{authorization, onTerminate?, onSettingsChanged?}`), `core/managers/ses
 **Зависимости:** 0–4. **Врезка:** `tabs.ts`, `GeneralSettings.tsx` (строка LiteMode →
 `openTab(AppPowerSavingTab)`), `SettingsSubScreen.tsx` (`renderDedicated`); удалить `settings/PowerSaving.tsx`.
 
-### Задача 12: «Обои» и «Цвет»
+**Итог задачи 11 (2026-09-26) — поправки к постановке:**
+- «При `all` — строки `is-fake-disabled`» неточно: строки получают `is-disabled`
+  (`row.toggleDisability`, `pointer-events: none`), а `is-fake-disabled` — само поле
+  (`input`, `powerSaving.tsx:87`); тост ловит секция, потому что строки не принимают клик.
+- Мутация сформулирована наоборот: у tweb выключенная анимация (`liteMode.gif = true`) —
+  СНЯТЫЙ тумблер (`checked: !value`, `:48`); пин — «выключенная анимация — тумблер снят».
+- «Сверить ключи стора» оказалось переездом настройки: у нас был один флаг `reduceMotion`
+  («Без анимаций» меню «Ещё»), а это tweb `liteMode.animations`. Настройка стала объектом
+  `liteMode` формы tweb в zustand (`settings.tsx`, миграция в `load()`), `helpers/liteMode.ts` —
+  формула оригинала `!all && !liteMode[key]`, тесты, гасившие анимации `reduceMotion: true`,
+  переведены на `liteMode.all` (та же семантика «всё выключено»). Меню «Ещё» пишет
+  `liteMode.animations`; пункта «Lite Mode» при `all` (`sidebarLeft/index.ts:946-954`) нет —
+  вкладку из меню колонки открыть нечем до задачи 28.
+- Побочки — подписчик `client/liteModeSettings.ts` (tweb `appImManager.setSettings:2738-2757`:
+  `animation-level-*`, `html.no-backdrop` по `blur`, автоплей стикеров); два React-эффекта
+  `App.tsx` по `reduceMotion` сняты. Стили аккордеона и `html.no-backdrop` перенесены в
+  `styles/index.scss` (tweb `base.scss:1786-1872`, `:403-407`).
+- `CheckboxFields` у tweb ставит `input.disabled` полю группы строкой после `createRoot`, а
+  эффект поля `toggleDisability(!!props.disabled)` во вкладке (строки создаются в `onMount`,
+  эффекты встают в общую очередь) его снимает. У нас — эффектом после эффекта поля
+  (расхождение 5 в шапке `checkboxFields.solid.tsx`). Стенд показал второй слой того же риска:
+  по выключенному полю, лежащему поверх тумблера, Chrome не шлёт click (только pointer-события) —
+  щелчок по тумблеру группы пропадал. Выключенное поле строки-группы — `pointer-events: none`
+  (отступление в `styles/tweb/_row.scss`); у tweb с полем, которое включил эффект, щелчок
+  переключает группу дважды (нативно и сеттером) — видно на стенде тем же приёмом.
+- Для императивной сборки строк понадобились `helpers/solid/wrapSolidComponent.ts`
+  (`unwrapSolidElement`), `ListenerSetter.addCleanup`, `helpers/dom/dispatchEvent.ts` и пара
+  `get/set checked` у `CheckboxField`.
+- Для задачи 13: статус строки «Общих» уже живой (`liteMode.all` → Enabled/Disabled), читать —
+  `appSettings.liteMode.all`.
+
+### Задача 12: «Обои» и «Цвет» — ✅ сделано (PR feat/w2d-wallpapers)
 
 **Порт:** `background.tsx` (615; вкладочная часть `:561-611` + нужные утилиты статик-класса) →
 `sidebarLeft/tabs/background.solid.tsx`, `backgroundColor.tsx` (168) → `backgroundColor.solid.tsx`,
@@ -674,7 +764,29 @@ btn-primary btn-transparent` (`cameraadd`/`colorize`/`favourites`), тумбле
 **Мутация:** Blur не `disabled` для pattern-обоев — тест краснеет.
 **Зависимости:** 0–4. **Врезка:** `tabs.ts`, `GeneralSettings.tsx`; удалить `settings/ChatWallpaper.tsx` + `.module.scss`.
 
-### Задача 14: «Быстрая реакция»
+**Итог (2026-09-26):** `background.solid.tsx` (вкладка + статическая часть `AppBackgroundTab`
+с `addWallPaper`/`setBackgroundDocument` — её переиспользует выбор темы задачи 13),
+`backgroundColor.solid.tsx`, `components/colorPicker.ts` + `styles/tweb/_colorPicker.scss`
+(дословно), хелперы tweb `createElementFromMarkup`, `markGridCornerItem`, `requestFile`,
+`hexaToHsla`. Бэкенд выяснен: ручек обоев НЕТ вовсе (ни списка, ни загрузки/сохранения
+обоев) — сетка из `WALLPAPER_PRESETS` с комментарием О-11. Модель обоев осталась нашей
+(zustand `wallpaper`/`customWallpaperMediaId`/`customWallpaperBlur`, рисует React
+`ChatBackground.tsx`) — вкладки пишут ровно её; соответствие tweb: обои с узором ↔ пресет,
+загруженные ↔ своё фото, `wallPaperNoFile` ↔ цвет. Размытие — только у своего фото
+(`needBlur` tweb не размывает обои с узором), поэтому мёртвая настройка `wallpaperBlur`
+(размывала градиент, чего у tweb нет) снята из `settings.tsx` и `ChatBackground.tsx`. Своё
+фото сервер в выдачу не вернёт — его плитку вкладка ставит первой сама. Плитку рисует
+`mountWallPaperThumb` (градиент + узор в `soft-light`, как наш фон в дневной теме; классы —
+дописанные в `ChatBackground.module.scss` правила tweb `chatBackground.module.scss`), потому
+что Solid `<ChatBackground>` у нас нет. Ключи — tweb (`ChatBackground`,
+`ChatBackground.UploadWallpaper`, `ChatBackground.Blur`, `Appearance.Reset`,
+`Appearance.Color.Hex/RGB`); самодельные `ChatBackground.Upload/Reset/Blurred` сняты.
+Строка «Общих» теперь с ключом tweb `ChatBackground` (`generalSettings.tsx:67`). Не
+перенесено (шапки файлов): `blendWallpaperForTinted` (нет tinted-деривации),
+`highlightingColor` выбранных обоев (предмет `ChatBackground.tsx`), кольцо фокуса плитки
+(a11y 472e3e76b), перекодирование PNG → JPEG (требование `account.uploadWallPaper`).
+
+### Задача 14: «Быстрая реакция» — ✅ сделано (PR feat/w2d-quick-reaction)
 
 **Порт:** `quickReaction.tsx` (64) → `sidebarLeft/tabs/quickReaction.solid.tsx`;
 `reactionStickerPreview.tsx` (20) → `reactionStickerPreview.solid.tsx`; вкладка :195. `<form>` +
@@ -685,6 +797,25 @@ class="disable-hover"`) + превью; `setDefaultReaction` сразу; дан�
 **Мутация:** радио слева вместо `alignRight` — тест `radio-field-right` краснеет.
 **Зависимости:** 0, 1, 2. **Врезка:** `tabs.ts`; удалить `settings/QuickReaction.tsx`, мок
 `SCREENS` и `renderDedicated` из `SettingsSubScreen.tsx` (мёртвые, поправка 10).
+
+**Итог (2026-09-26):** порт дословный (`quickReaction.tsx:11-64`, `reactionStickerPreview.tsx`);
+для превью заведён `components/wrappers/stickerTsx.solid.tsx` — порт `StickerTsx`
+(`wrappers/sticker.ts:828-880`) отдельным модулем, т.к. наш `sticker.ts` ванильный. Каталог —
+`chat/reactions.ts::getAvailableReactions` (тот же кэш на сессию, что у ленты и панели реакций;
+второй копии нет). **Вход сделан сейчас, а не в задаче 15** (уточнение координатора): строка
+`DoubleTapSetting` первой в первой секции React-экрана `settings/StickersSettings.tsx` →
+`getSettingsSliderHost().openTab(AppQuickReactionTab)` (пин — `StickersSettings.quickReaction.test.tsx`,
+уходит с экраном в задаче 15); превью справа в строке не рисуется — быстрой реакции нет, у tweb без
+неё оно тоже пустое. **О-30:** нет `config.reactions_default`/`messages.setDefaultReaction`/события
+`quick_reaction` — на открытии не отмечено ничего, выбор только переносит отметку (долг —
+`web-client/backlogs/frontend/quick-reaction-default.md`, обновлён). Из `SettingsSubScreen.tsx` снят
+мёртвый мок целиком (`SCREENS`, `NAV`, `renderDedicated`, локальные тумблеры/радио, мок-рендер) — «Общие»
+держались в `hasSubScreen` ТОЛЬКО через `title in SCREENS`, теперь явной клаузой (без неё краснеет
+`settingsSubScreen.reachable.test.ts`). Снят самодельный ключ `DoubleTapSettingInfo` (у tweb нет,
+читатель ушёл с экраном) — пины `dict.test.ts` −1 у всех пяти, `langpack.gen.json` пересобран
+(версии 8→9 — конфликт с соседними PR, пересчитать при слиянии). Задаче 15: строка `DoubleTapSetting`
+уже есть — при переезде `clickable={() => tab.slider.createTab(AppQuickReactionTab).open()}` +
+`ReactionStickerPreview` (пустое до О-30), React-пин снести вместе с экраном.
 
 ### Задача 16: `AppSelectPeers` + вкладка «Выбор участников»
 
@@ -889,6 +1020,10 @@ Shortcuts; Premium-секция — `showPremiumPopup`/`showStarsPopup`/`showSen
 `premiumBlocked`. Наши лишние строки «Ночной режим», карточка контактов, `EmojiStatus.Set`,
 `PremiumManage` — у tweb их в корне нет: удалить (продуктовый вопрос — вынести пользователю
 до задачи, ответ — в коммит).
+> **Заметка:** состав строк корня уже выровнен PR `fix/settings-root-items` — «Ночной режим»,
+> `EmojiStatus.Set` и подзаголовок Premium сняты, «Мои звёзды» добавлены, вход в выбор статуса —
+> кнопка `.sidebar-emoji-status` в шапке колонки; порт переносит этот состав (пин
+> `SettingsView.rootItems.test.tsx`) и остаток — карточку контактов, `PremiumManage`, ключи tweb.
 
 **Снос шва** (`settings-rows.md` § «Ключевой шов»): слайдер переезжает на колоночный
 `.sidebar-slider` (`Sidebar.tsx:350`), вкладка №0 — `.item-main` React-колонки (узлом владеет
@@ -959,12 +1094,12 @@ media; брать задачу, когда в них нет открытых в�
 | О-3 | Секция «Stories» уведомлений (`:112-235`) | нет `stories_muted`/`stories_hide_sender` в `/me/notify_settings` (`notify_handler.go:27-47`) | уведомления о новых историях |
 | О-4 | Секция «Reactions» (`:237-347`) | нет `account.get/setReactionsNotifySettings` | уведомления о реакциях |
 | О-5 | «Contact joined» (`:349-377`) | нет `get/setContactSignUpNotification` | уведомление о новом контакте |
-| О-6 | «Cached video stream chunks» (`storageQuota.tsx:374-382`) | выяснить в задаче 7: есть ли кэш потоковых чанков | полная квота кэша |
+| О-6 | «Cached video stream chunks» (`storageQuota.tsx:374-382`) и их доля в «Clear All» | корзин потоковых чанков у нас нет (выяснено задачей 7): DNP-стрим собирает SW из Noise-канала без CacheStorage (`public/sw.js`, `/dnp-stream/`), DNP-OFF — токен-URL мимо кэша | кэш потоковых чанков видео (HLS/стрим в CacheStorage) |
 | О-7 | TTL сессий (`activeSessions.tsx:238-292`, `:392`) | `authorization_ttl_days` всегда 0, нет `setAuthorizationTTL` (`backend/internal/domain/mtaccount.go:105-122`) | автозавершение неактивных сессий |
 | О-8 | `changeAuthorizationSettings` — AcceptSecretChats/AcceptIncomingCalls (`session.tsx:112-143`, `speakersAndCamera.tsx`) | нет ручки и колонок | запрет звонков/секретных чатов на устройстве |
 | О-9 | Переименование устройства (`activeSessions.tsx:211-236`) | сервер подставляет имя из UA (`backend/internal/usecase/auth/auth.go:291-294`) | своё имя устройства |
 | О-10 | Строка Send с `InlineSelect` (если нет настройки отправки) | выяснить в задаче 10 | Ctrl+Enter для отправки |
-| О-11 | Серверные обои (`account.getWallPapers`) | выяснить в задаче 12 | обои 1:1 |
+| О-11 | Серверные обои (`account.getWallPapers`, `uploadWallPaper`, `saveWallPaper`; `background.tsx:404-416`, `:546-554`) | ручек обоев на бэкенде нет вовсе (выяснено задачей 12): сетка — клиентские `WALLPAPER_PRESETS`, своё фото — общая `/media/upload` + `customWallpaperMediaId`, список загруженных обоев не хранится | сетка обоев 1:1, обои по темам, загруженные обои в выдаче |
 | О-12 | `sliceTabsUntilTab(AppPrivacyAndSecurityTab)` у код-пароля | хаб — вкладка только с задачи 23 | снимается задачей 23 |
 | О-13 | Подтверждение почты 2FA кодом (`2fa/emailConfirmation.tsx`, ветка `EMAIL_UNCONFIRMED` в `email.tsx:74-83` и `privacyAndSecurity.tsx:261-268`), «Забыли пароль» (`forgotPasswordLink.ts`), снятие почты пропуском («Skip» шлёт `email: ''`) | нет unconfirmed pattern (`authManager.ts:118-122`, `:468-475`); пустая почта у `POST /me/password` = «оставить прежнюю» (`usecase/auth/password.go::SetPassword`) | восстановление пароля, снятие почты |
 | О-14 | Порядок стикерсетов (`reorderStickerSets`) | выяснить в задаче 15 | сортировка наборов |
@@ -981,6 +1116,8 @@ media; брать задачу, когда в них нет открытых в�
 | О-25 | Личный канал в профиле | выяснить в задаче 27 (`updatePersonalChannel`) | секция PersonalChannel |
 | О-26 | Поиск по настройкам и меню шапки из 34f417d12 (`SliderSuperTab.shown`, NavigationItem `settings-search`, `tg://settings/…`) | волна 4 дельты; нужен индекс вкладок, который строится после переезда всех вкладок | поиск по настройкам |
 | О-27 | Попап настроек при свёрнутой колонке (`SettingsSliderPopup`, `createTab`-override `sidebarLeft/index.ts:1730-1741`) | предмет появляется только после задачи 28 | настройки поверх чата на узкой колонке |
+| ~~О-29~~ | ~~Модель отступов `MediaHeader` HEAD (`gap: .5rem`) и под неё `authFlow`~~ | **снято** (ветка `fix/w2d-mediaheader-rtl-overlay`): `mediaHeader.module.scss` дословно с HEAD, `auth/AuthFlow.module.scss` `.qrContainer`, карточки входа — `h1` и `class="secondary"`; отступы экрана входа = tweb HEAD, замеры — `docs/tweb/dom/auth.md` §8.4 | — |
+| О-30 | Быстрая реакция: отметка на открытии (`getQuickReaction`, `quickReaction.tsx:22-30`), запись выбора (`setDefaultReaction`, `:48-51`), превью в строке «Стикеров» и перезапрос по `quick_reaction` (`stickersAndEmoji.tsx:30-35`, `:108-110`), подъём быстрой реакции в панели/ховере (`unshiftQuickReaction`) | нет `config.reactions_default`, `messages.setDefaultReaction`, события `quick_reaction` — ни на бэке, ни на проводе (`web-client/backlogs/frontend/quick-reaction-default.md`) | поле «быстрая реакция» у пользователя + ручка чтения/записи |
 
 ## Оценка объёма
 

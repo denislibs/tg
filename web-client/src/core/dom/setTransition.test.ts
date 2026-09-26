@@ -13,7 +13,7 @@ beforeEach(() => {
 
 afterEach(() => {
   // гейт анимаций — `liteMode.isAvailable('animations')`, т.е. настройка «Без анимаций»
-  useSettingsStore.setState({ reduceMotion: false })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: false } })
   vi.useRealTimers()
 })
 
@@ -109,14 +109,14 @@ describe('setTransition', () => {
   })
 
   it('useRafs при выключенных анимациях не откладывает — синхронный проход', () => {
-    useSettingsStore.setState({ reduceMotion: true })
+    useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
     const element = document.createElement('div')
     setTransition({ element, className: 'is-visible', forwards: true, duration: 250, useRafs: 2 })
     expect([...element.classList]).toEqual(['is-visible', 'forwards'])
   })
 
   it('при выключенных анимациях применяет конечное состояние синхронно', () => {
-    useSettingsStore.setState({ reduceMotion: true })
+    useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
     const element = document.createElement('div')
     const onTransitionEnd = vi.fn()
     setTransition({ element, className: 'is-connecting', forwards: true, duration: 250, onTransitionEnd })
