@@ -40,7 +40,7 @@ vi.mock('../../stores/starsStore', () => ({ loadStars: vi.fn(async () => {}) }))
 vi.mock('../mediaUrl', () => ({ primeMediaToken: vi.fn(async () => {}) }))
 vi.mock('../mediaCache', () => ({ syncCacheSettingsToSW: vi.fn() }))
 vi.mock('../../client/realtimeBridge', () => ({ startRealtime: vi.fn() }))
-vi.mock('../../client/pushSetup', () => ({ setupPush: vi.fn(async () => {}) }))
+vi.mock('../../client/pushSetup', () => ({ watchPushConditions: vi.fn(() => () => {}) }))
 vi.mock('../../client/appBadge', () => ({ initAppBadge: vi.fn() }))
 
 function wrapper(managers: Managers) {
