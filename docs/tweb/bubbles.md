@@ -620,13 +620,11 @@ div.reply.quote-like.quote-like-hoverable.quote-like-border[.quote-like-icon.rep
 **У нас (чип, `components/chat/reactions.ts`):** все три класса чипа, `is-last` и
 переход `is-chosen`/`forwards` портированы; счётчик печатается `formatNumber`
 (`helpers/number/formatNumber.ts`). Выражение длительности стоит дословно
-(`chip.isConnected ? 300 : 0`), но ветка `300` СЕГОДНЯ НЕДОСТИЖИМА: узел реакций
-пересобирается целиком (`bubbles.ts::renderMessageMeta` сносит прошлый `.reactions`
-и строит новый), и чип на момент вызова всегда отсоединён. У оригинала чип
-ПЕРЕЖИВАЕТ обновление (`reactions.ts:290–296` — `this.sorted.find(...)`
-переиспользует `ReactionElement`), поэтому там второй вызов застаёт узел
-подключённым. Ветка оживёт вместе с переиспользованием чипов; подделывать её
-константой 300 нельзя — переход отыграется на каждом показе бабла.
+(`chip.isConnected ? 300 : 0`), и обе ветки достижимы: ряд и чипы ПЕРЕЖИВАЮТ
+обновление сообщения, как у оригинала (`reactions.ts:290–296` — `this.sorted.find(...)`
+переиспользует `ReactionElement`; лента зовёт `update`, bubbles.ts:1285–1289) —
+`renderReactionsElement(previous, …)` снимает только исчезнувшие чипы, прежние
+обновляет на месте и переставляет `positionElementByIndex`.
 
 **Иконка чипа НЕПОДВИЖНА и у нас, и в оригинале:** tweb рисует её `static: true`
 (reaction.ts:894 → `wrappers/sticker.ts:206–208`, `:521–522` → растровый
@@ -639,13 +637,21 @@ div.reply.quote-like.quote-like-hoverable.quote-like-border[.quote-like-icon.rep
 рисуется в 40, а не в 22: наш плеер рисует ровно в названный размер, и 22
 растянулись бы правилом CSS.
 
-Не портированы: `positionElementByIndex`,
+Не портированы:
 `has-no-reactions`, кастом-эмодзи, платная ⭐-реакция, раскладки Inline и Tag.
 
 **У нас (вставка в бабл, `components/chat/bubbles.ts::renderMessageMeta`):** развилка
 floating-time/`.message` портирована — у бабла с `has-floating-time` (медиа без подписи)
 время (`is-floating`) вставляется прямо в `bubble-content` (сосед `.message`, не потомок),
 а контейнер реакций — в `bubble-content-wrapper`; иначе оба уходят в `.message`, как раньше.
+**Ряд — последний ребёнок `.message`, текст перед ним** (оригинал: `messageDiv.append(
+reactionsElement)` в конец уже собранного тела, bubbles.ts:11317 свежей базы; дамп
+`03-bubbles-123.json`). У нас правка идёт поверх того же узла (`onMessageEdit`), а ряд
+её переживает и НЕ перевешивается (снятие узла обрывает эффект постановки), поэтому
+`renderMessageContent` вставляет пересобранный текст ПЕРЕД хвостом (`.reactions`/`.time`),
+а не `append` в конец: иначе после первого же патча (чужая реакция, ответ сервера на свой
+клик) ряд вставал над текстом, сразу под именем автора. Пины — `bubbles.meta.test.ts`
+(«после правки текст стоит ПЕРЕД рядом реакций…», «…следующий патч оставляют ряд под текстом»).
 **Комбинация floating-time + реакции:** перенос времени ВНУТРЬ `reactionsElement`
 (`appendBubbleTime`, 9855) в оригинале стоит ТОЛЬКО в ветке `else` (не floating/service,
 9852–9856) — у floating-бабла С реакциями время НЕ переезжает в контейнер реакций и
