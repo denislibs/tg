@@ -639,7 +639,7 @@ SCSS `_chatToast.scss`: `top: var(--chat-padding-top)`, нотч скрыт, `--
 | `src/shared/ui/ConfirmPopup/ConfirmPopup.tsx` | порт `PopupPeer` (кнопки/чекбоксы/danger); z-index 4090 |
 | `src/components/settings/ConfirmDialog.tsx:20` | второй confirm (настройки), z-index 1400 |
 | `src/components/settings/kit.tsx:162` | `usePopupTransition(open)` — третья копия механики `active`/`hiding` |
-| `src/shared/ui/Menu/Menu.tsx:55` | `Menu` (портал + свой бэкдроп + `.btn-menu.active`), `cornerFrom` :21 |
+| `src/shared/ui/Menu/Menu.tsx` | `Menu` (портал + свой бэкдроп + `.btn-menu.active`), `cornerFrom`. Панель в DOM только от открытия до конца закрытия — как у tweb `createContextMenu.ts::init`/`destroy()` и `buttonMenuToggle.ts:171-220`; раньше закрытый `<Menu>` держал скрытый `.btn-menu` в body — по одному на КАЖДУЮ строку чатлиста (пин `components/ChatListItem.menu.test.tsx`) |
 | `src/core/navigation/navigationStack.ts:42` | `pushLayer`/`removeLayer` — LIFO под браузерный back (владелец `popstate`) |
 | `src/core/hotkeys.ts:11` | `pushEsc` — отдельный LIFO для Esc |
 | `src/core/hooks/useGlobalToast.ts:12` | тост: событие `rootScope('ui:toast')`, автоскрытие 4 c, рендер в `GlobalOverlays.tsx:54–66` |

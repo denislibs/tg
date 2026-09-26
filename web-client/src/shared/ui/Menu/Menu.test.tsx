@@ -7,7 +7,7 @@
 //      снесённое React-меню сообщения) — переводит origin в класс строго по соответствию из
 //      `_button.scss:228-262` (инверсия «класс → origin»).
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, cleanup } from '@testing-library/react'
+import { act, render, cleanup } from '@testing-library/react'
 import Menu, { cornerFrom } from './Menu'
 
 afterEach(cleanup)
@@ -48,6 +48,30 @@ describe('Menu — проп corner', () => {
     const panel = document.querySelector('.btn-menu')!
     const cornerClasses = ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'center-left', 'center-right']
     for (const c of cornerClasses) expect(panel.classList.contains(c)).toBe(false)
+  })
+})
+
+// Панель в DOM только от открытия до конца закрытия — как у tweb
+// (`createContextMenu.ts::init` собирает меню на открытии, `destroy()` снимает
+// его после закрытия). Раньше закрытый `<Menu>` всё равно держал в body
+// скрытый `.btn-menu` — по одному на каждую строку чатлиста.
+describe('Menu — панель по требованию', () => {
+  it('закрытое меню не держит панель в DOM', () => {
+    render(<Menu open={false} onClose={() => {}}><div>item</div></Menu>)
+    expect(document.querySelector('.btn-menu')).toBeNull()
+  })
+
+  it('панель появляется на открытии и снимается по концу закрытия', () => {
+    const { rerender } = render(<Menu open={false} onClose={() => {}}><div>item</div></Menu>)
+    rerender(<Menu open onClose={() => {}}><div>item</div></Menu>)
+    const panel = document.querySelector('.btn-menu')!
+    expect(panel).not.toBeNull()
+
+    rerender(<Menu open={false} onClose={() => {}}><div>item</div></Menu>)
+    // закрытие ещё играет — панель на месте
+    expect(document.querySelector('.btn-menu')).toBe(panel)
+    act(() => { panel.dispatchEvent(new Event('transitionend', { bubbles: true })) })
+    expect(document.querySelector('.btn-menu')).toBeNull()
   })
 })
 
