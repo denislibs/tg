@@ -24,12 +24,12 @@
 //     аналог того зеркала, ограниченный подсистемой; форма списка при этом
 //     остаётся оригинальной (`{mid, peerId}`), чтобы `usedFromHistory` и
 //     `unshift` работали дословно.
-//  2. `_deleteDeletedMessages` в оригинале (`:283-286`) пишет
-//     `if(idx === -1) history.splice(idx, 1)` — при ОТСУТСТВИИ элемента режет
-//     последний (`splice(-1, 1)`). Это опечатка оригинала, а не поведение:
-//     соседний блок в той же функции удаляет найденный узел. Портируем намерение
-//     (`idx !== -1`) — иначе удаление чужого сообщения выбрасывало бы из кэша
-//     хвост чужой вкладки.
+//  2. Снято: опечатку `if(idx === -1) history.splice(idx, 1)` в
+//     `_deleteDeletedMessages` (e52b5d931 `:283-286`, резала последний элемент
+//     при ОТСУТСТВИИ сообщения) tweb исправил сам — в 812502980 там
+//     `idx !== -1` (`sharedMedia.tsx:315-318`, вместе с 553143f1e), ровно как у
+//     нас. Пин — `appSearchSuper.live.test.ts` («…хвост кэша не трогает»).
+//     Номер оставлен, чтобы ссылки на остальные пункты не поехали.
 //  3. Треды: у оригинала `threadId` вычисляется из самого сообщения
 //     (`getMessageThreadId`, `:257`), у нас — приходит ключом окна зеркала
 //     (`winKey`: "peerId" | "peerId:threadRoot"), потому что именно им
@@ -49,7 +49,7 @@
 //     `history_delete` с настоящим mid его не находил (стенд 2026-09-07,
 //     задача 13). Пин — `appSearchSuper.live.test.ts`.
 import type AppSearchSuper from '@components/appSearchSuper'
-import type { SearchSuperMediaTab, SearchSuperType } from '@components/appSearchSuper'
+import { isCounterDrivenMediaTab, type SearchSuperMediaTab, type SearchSuperType } from '@components/appSearchSuper'
 import type { MyMessage } from '@core/models'
 import rootScope from '@lib/rootScope'
 import { isLocalMessageId } from '@core/history/messageId'
@@ -123,8 +123,24 @@ export function renderNewMessage(
 
   for(const mediaTab of searchSuper.mediaTabs) {
     const inputFilter = mediaTab.inputFilter
-    const history = inputFilter && historyStorage[inputFilter]
-    if(!history || !inputFilter) {
+    if(!inputFilter) {
+      continue
+    }
+
+    const history = historyStorage[inputFilter]
+    if(!history) {
+      // tweb ca1416807 (812502980 `:235-244`), B9.
+      // * an empty tab stays hidden and never gets loaded, so count the message right here to reveal
+      // * the tab — its content will be loaded once it gets selected
+      if(
+        isCounterDrivenMediaTab(mediaTab) &&
+        searchSuper.searchContext?.peerId === peerId &&
+        searchSuper.searchContext?.threadId === threadId &&
+        searchSuper.filterMessagesByType([message], inputFilter).length
+      ) {
+        searchSuper.setCounter(mediaTab.type, (searchSuper.counters[mediaTab.type] || 0) + 1)
+      }
+
       continue
     }
 
@@ -176,7 +192,6 @@ function _deleteDeletedMessages(
         searchSuper.searchContext?.threadId === threadId
 
       const idx = history.findIndex((m) => m.mid === mid)
-      // Расхождение 2 в шапке: у оригинала здесь `idx === -1`.
       if(idx !== -1) {
         history.splice(idx, 1)
       }
@@ -208,6 +223,17 @@ function _deleteDeletedMessages(
       }
 
       searchSuper.setCounter(mediaTab.type, (searchSuper.counters[mediaTab.type] ?? 0) - 1)
+    }
+  }
+
+  // tweb ca1416807 (812502980 `:351-359`), B9.
+  // * a tab that has never been loaded (an empty one stays hidden, and a hidden one never loads) has
+  // * no history to look the deleted mids up in — refresh its counter from the server instead
+  if(searchSuper.searchContext?.peerId === peerId && searchSuper.searchContext?.threadId === threadId) {
+    for(const mediaTab of searchSuper.mediaTabs) {
+      if(isCounterDrivenMediaTab(mediaTab) && !historyStorage[mediaTab.inputFilter!]) {
+        notFound.add(mediaTab)
+      }
     }
   }
 

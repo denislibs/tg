@@ -32,6 +32,7 @@ vi.mock('solid-js', async(importOriginal) => {
 })
 
 import GlobalSearch, { type GlobalSearchInputSearch, type GlobalSearchManagers } from '@components/sidebarLeft/globalSearch'
+import type { ScrollableBase } from '@components/scrollable'
 import type { DialogListElement } from '@components/dialogRow'
 import { resetSharedMediaHistories } from '@components/sharedMediaHistories'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
@@ -330,28 +331,21 @@ describe('жизненный цикл: создание по фокусу, сн�
     expect(solidRoots.disposed).toBe(solidRoots.opened)
   })
 
-  it('скроллер, созданный владельцем, снят: его слушатели окна отписаны (расхождение 3)', async() => {
-    // шпионы пропускают вызов к настоящему окну
-    const addSpy = vi.spyOn(window, 'addEventListener')
-    const removeSpy = vi.spyOn(window, 'removeEventListener')
-    const resizeListeners = (spy: typeof addSpy | typeof removeSpy) =>
-      spy.mock.calls.filter(([type]) => (type as string) === 'resize').map(([, listener]) => listener)
-    try {
-      const { inputSearch, backBtn, chatlistContainer } = build()
-      focus(inputSearch)
-      await settle()
-      // `new Scrollable(searchContainer)` (:1089) вешает `resize` на окно
-      const added = resizeListeners(addSpy)
-      expect(added.length).toBeGreaterThan(0)
+  it('скроллер, созданный владельцем, снят: его подписка на окно отписана (расхождение 3)', async() => {
+    // С tweb ffd925068 скроллер не вешает свой `resize` на окно: все живые
+    // экземпляры лежат в ОДНОМ слабом реестре (`scrollable.ts`), выставленном
+    // в `MOUNT_CLASS_TO` (у нас это `window`), а `destroy()` снимает запись.
+    const registry = () => (window as unknown as { listeningScrollables: Set<WeakRef<ScrollableBase>> }).listeningScrollables
+    const { inputSearch, backBtn, searchContainer, chatlistContainer } = build()
+    focus(inputSearch)
+    await settle()
+    // `new Scrollable(searchContainer)` (:1089) записывается в реестр
+    const mine = [...registry()].map((ref) => ref.deref()).filter((s) => s?.el === searchContainer)
+    expect(mine).toHaveLength(1)
 
-      simulateClickEvent(backBtn)
-      animationEnd(chatlistContainer)
-      const removed = resizeListeners(removeSpy)
-      expect(added.every((listener) => removed.includes(listener))).toBe(true)
-    } finally {
-      addSpy.mockRestore()
-      removeSpy.mockRestore()
-    }
+    simulateClickEvent(backBtn)
+    animationEnd(chatlistContainer)
+    expect([...registry()].some((ref) => ref.deref() === mine[0])).toBe(false)
   })
 
   it('без анимаций уборка — сразу на «назад»', async() => {

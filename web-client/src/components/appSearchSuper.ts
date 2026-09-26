@@ -196,8 +196,9 @@
 //     `stargifts_count` в полной карточке на бэкенде (DoD 2a), не кэш в
 //     клиенте.
 // 30. `updateContainerHidden` (`tweb:2520-2529`) — `public`, а не `private`:
-//     вызывающий в классе один (`onCountChange` подарков, `:2151-2154`,
-//     задача 12), а пересчёт видимости пинуется напрямую —
+//     вызывающих в классе два (`onCountChange` подарков, `:2151-2154`,
+//     задача 12, и `updateMediaTabVisibility`, ca1416807), а пересчёт
+//     видимости пинуется напрямую —
 //     `appSearchSuper.firstTime.test.ts` зовёт метод сам.
 // 31. `loadMembers` (`tweb:1525-1758`) портирован ОДНОЙ веткой — канала
 //     (`:1718-1739`, `getChannelParticipants` → наш `groups.channelParticipants`).
@@ -363,7 +364,16 @@
 //     уже обнулил его), и новый запрос каналов не ушёл бы. Строка «Recent» гасит
 //     свой хелпер (`onCleanup`), когда `For` её снимает, — у оригинала хелпер
 //     строки не гасится никогда, и её аватар с именем слушают зеркало вечно.
+// 56. `ScrollableRefiller` (tweb fb18166dc, B8) портирован без двух
+//     `refiller.reset('media')` оригинала (812502980 `:1053`, `:1120`): они
+//     стоят в переключении фильтра вкладки «Медиа» фото/видео (553143f1e),
+//     которого у нас нет — нет ни меню шапки, ни фильтров `photos`/`videos` на
+//     бэкенде (BLOCKED, `docs/tweb/delta/README.md`). Приедет фильтр — сброс
+//     встанет в оба места. E2E-спека `profileSidebarIdle.spec.ts` (нужен
+//     вошедший клиент) заменена шовным пином `appSearchSuper.refill.test.ts`:
+//     живой `Scrollable` в неполном окне, счёт вызовов `load`.
 import Scrollable, { ScrollableX } from '@components/scrollable'
+import ScrollableRefiller from '@components/scrollableRefiller'
 import { horizontalMenu } from '@components/horizontalMenu'
 import type { SelectTab } from '@components/horizontalMenu'
 import { createLazyLoadQueue, type LazyLoadQueue } from '@core/lazyLoadQueue'
@@ -493,6 +503,14 @@ export type SearchSuperMediaTab = {
   menuTabName?: HTMLElement
   scroll?: { scrollTop: number, scrollHeight: number }
   hideOn?: HTMLElement
+}
+
+/**
+ * tweb ca1416807 (812502980 `:154-157`).
+ * * a tab whose visibility follows its message counter — an empty one is hidden (see loadFirstTime)
+ */
+export function isCounterDrivenMediaTab(mediaTab: SearchSuperMediaTab) {
+  return !!mediaTab.inputFilter && mediaTab.inputFilter !== 'inputMessagesFilterEmpty'
 }
 
 /**
@@ -904,6 +922,8 @@ export default class AppSearchSuper {
   /** tweb `:379-380` — «этот тип уже грузится» и «этот тип дочитан до конца». */
   private loadPromises: Partial<Record<SearchSuperMediaType, Promise<unknown> | null>> = {}
   private loaded: Partial<Record<SearchSuperMediaType, boolean>> = {}
+  /** tweb fb18166dc — повторная проверка триггеров после загрузки, пока растёт прогресс вкладки. */
+  private refiller: ScrollableRefiller<SearchSuperMediaType>
   /** tweb `:381` — группы контактов вкладки `chats` уже нарисованы на этот
    *  запрос (`loadChats` зовётся один раз, `:2232-2235`); сброс — `cleanup`. */
   private loadedChats = false
@@ -993,6 +1013,12 @@ export default class AppSearchSuper {
 
   constructor(options: AppSearchSuperOptions) {
     safeAssign(this, options)
+
+    // tweb fb18166dc
+    this.refiller = new ScrollableRefiller({
+      scrollable: this.scrollable,
+      getProgress: (type) => this.getMediaTabProgress(type),
+    })
 
     this.container = document.createElement('div')
     this.container.classList.add('search-super')
@@ -1300,10 +1326,55 @@ export default class AppSearchSuper {
     this.container.classList.remove('sliding')
   }
 
-  /** tweb `:817-820` — «во вкладке стало N». */
+  /** tweb `:817-820` — «во вкладке стало N»; видимость вкладки — за счётчиком (ca1416807). */
   public setCounter(type: SearchSuperMediaType, count: number) {
     this.counters[type] = count
+    this.updateMediaTabVisibility(type)
     this.onLengthChange?.(type, count)
+  }
+
+  /**
+   * tweb ca1416807 (812502980 `:923-961`), B9.
+   * * counter-driven tabs are hidden while empty (see loadFirstTime), so they have to appear
+   * * (and disappear) on the fly when their counter crosses zero
+   */
+  private updateMediaTabVisibility(type: SearchSuperMediaType) {
+    if(!this.hideEmptyTabs || this.firstLoad) {
+      return
+    }
+
+    const mediaTab = this.mediaTabsMap.get(type)
+    if(!mediaTab || !isCounterDrivenMediaTab(mediaTab)) {
+      return
+    }
+
+    const menuTab = mediaTab.menuTab!
+    const hide = !this.counters[type]
+    if(menuTab.classList.contains('hide') === hide) {
+      return
+    }
+
+    menuTab.classList.toggle('hide', hide)
+
+    let needChangeActive: boolean
+    if(hide) {
+      needChangeActive = menuTab.classList.contains('active')
+      menuTab.classList.remove('active')
+    } else {
+      // * there was nothing to select when every tab was empty
+      needChangeActive = !this.mediaTabs.some((tab) => tab.menuTab!.classList.contains('active'))
+    }
+
+    this.updateContainerHidden(needChangeActive)
+
+    if(
+      needChangeActive &&
+      this.mediaTab &&
+      !this.mediaTab.menuTab!.classList.contains('hide') &&
+      this.canLoadMediaTab(this.mediaTab)
+    ) {
+      void this.load(true)
+    }
   }
 
   /**
@@ -2523,6 +2594,29 @@ export default class AppSearchSuper {
     return this.stargiftsActions!.loadNext()
   }
 
+  /**
+   * tweb fb18166dc — How far a tab has got, for `ScrollableRefiller`: fetched
+   * messages plus the ones already rendered out of them. Both only ever grow
+   * within a peer (and `cleanup` resets the refiller along with them), which is
+   * what makes the refill chain terminate.
+   *
+   * This is the exact state behind `canLoadMediaTab`'s second clause: the
+   * `justLoad` preload grows `historyStorage` WITHOUT rendering, and the only
+   * thing that renders the remainder into a list too short to scroll is the
+   * chain. A tab with no `inputFilter` — saved dialogs, stories, gifts, apps,
+   * posts — has no such state and no cache to drain, so it reports a flat 0 and
+   * gets the one check after a load that asks "is the viewport full yet"; its
+   * list owns whatever paging comes after that.
+   */
+  private getMediaTabProgress(type: SearchSuperMediaType) {
+    const inputFilter = this.mediaTabsMap.get(type)?.inputFilter
+    if(!inputFilter) {
+      return 0
+    }
+
+    return Math.max(0, this.usedFromHistory[inputFilter] ?? 0) + (this.historyStorage[inputFilter]?.length ?? 0)
+  }
+
   /** tweb `:2362-2369`. */
   private canLoadMediaTab(mediaTab: SearchSuperMediaTab) {
     if(mediaTab.type === 'gifts') {
@@ -2555,7 +2649,7 @@ export default class AppSearchSuper {
       return
     }
 
-    const mediaTabs = this.mediaTabs.filter((mediaTab) => mediaTab.inputFilter && mediaTab.inputFilter !== 'inputMessagesFilterEmpty')
+    const mediaTabs = this.mediaTabs.filter(isCounterDrivenMediaTab)
     const filters = mediaTabs.map((mediaTab) => mediaTab.inputFilter!)
 
     const [
@@ -2689,9 +2783,10 @@ export default class AppSearchSuper {
   /**
    * tweb `:2520-2529` — пересчёт по ФАКТИЧЕСКИ видимым строкам ряда: когда
    * вкладка обнулилась живым апдейтом. `changeActive` — среди пропавших была
-   * активная, переключиться на первую видимую. Единственный вызывающий у
-   * оригинала — счётчик подарков (`:2151-2154`), он приезжает задачей 12;
-   * `public` вместо `private` — расхождение 30 в шапке.
+   * активная, переключиться на первую видимую. Вызывающих у оригинала два:
+   * счётчик подарков (`:2151-2154`) и видимость вкладки по счётчику
+   * (`updateMediaTabVisibility`, ca1416807); `public` вместо `private` —
+   * расхождение 30 в шапке.
    */
   public updateContainerHidden(changeActive = false) {
     const visibleTabs = this.mediaTabs.filter((tab) => !tab.menuTab!.classList.contains('hide'))
@@ -2748,10 +2843,10 @@ export default class AppSearchSuper {
 
         this.loadPromises[type] = null
 
-        // докрутить, если содержимого не хватило на экран (`:2222-2224`)
-        setTimeout(() => {
-          this.scrollable.checkForTriggers?.()
-        }, 0)
+        // докрутить, если содержимого не хватило на экран (`:2222-2224`) —
+        // только пока вкладка растёт (tweb fb18166dc, B8): у `savedDialogs`
+        // `loaded` не ставится никогда, и безусловный повтор крутился вечно
+        this.refiller.schedule(type, middleware)
       })
     }
 
@@ -2801,9 +2896,7 @@ export default class AppSearchSuper {
 
         this.usedFromHistory[inputFilter] = used
         return this.performSearchResult({ messages, mediaTab }).finally(() => {
-          setTimeout(() => {
-            this.scrollable.checkForTriggers?.()
-          }, 0)
+          this.refiller.schedule(type, middleware) // tweb fb18166dc
         })
       }
 
@@ -2860,9 +2953,7 @@ export default class AppSearchSuper {
             if(this.mediaTab === mediaTab) {
               void this.load(true, true).then(() => {
                 if(!middleware()) return
-                setTimeout(() => {
-                  this.scrollable.checkForTriggers?.()
-                }, 0)
+                this.refiller.schedule(type, middleware) // tweb fb18166dc
               })
             }
           }, 0)
@@ -3085,6 +3176,7 @@ export default class AppSearchSuper {
   public cleanup() {
     this.loadPromises = {}
     this.loaded = {}
+    this.refiller.reset() // tweb fb18166dc
     this.loadedChats = false
     this.firstLoad = true
     this.nextRates = {}
