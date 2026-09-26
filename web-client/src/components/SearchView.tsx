@@ -20,7 +20,8 @@ import { getMessageText, type MyMessage } from '../core/models'
 import { getMediaId, getMessageKind } from '../core/messages/messageKind'
 import { useGlobalSearch, type SearchFilter } from '../core/hooks/useGlobalSearch'
 import { useSearchStore } from '../stores/searchStore'
-import { useAppStateKey, useAppStateStore, setAppState } from '../stores/appState'
+import { useAppStateKey } from '../stores/appState'
+import { useManagers } from '../core/hooks/useManagers'
 import { useChatsStore } from '../stores/chatsStore'
 import { useAudioStore, type AudioTrack } from '../stores/audioStore'
 import { markMediaPlayed } from '../core/mediaRead'
@@ -43,16 +44,10 @@ const TAB_FILTER: Partial<Record<number, 'media' | 'links' | 'files' | 'music' |
   2: 'media', 3: 'links', 4: 'files', 5: 'music', 6: 'voice',
 }
 
-// ── недавние запросы (tweb `recentSearch` в State, cap 20) ──────────────────
-// Живут в AppState, а не в localStorage: State поднимается одним батчем до
-// первого рендера и синхронизируется между вкладками зеркалом из воркера.
-// Отдельное хранилище дублировало бы ключ схемы и обходило обе эти механики.
-const RECENT_CAP = 20
-
-const pushRecent = (id: string) => {
-  const cur = useAppStateStore.getState().recentSearch
-  setAppState('recentSearch', [id, ...cur.filter((x) => x !== id)].slice(0, RECENT_CAP))
-}
+// ── недавние запросы (tweb `recentSearch` в State) ──────────────────────────
+// Пишет их владелец в воркере — `contacts.pushRecentSearch`/`clearRecentSearch`
+// (порт tweb `appUsersManager.ts:277-305`): диск + зеркало ключа во все
+// вкладки, отсюда читается только State (`useAppStateKey`).
 
 interface Props {
   query: string
@@ -84,6 +79,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
   const tArgs = useTArgs()
   const [tab, setTab] = useState(0)
   const [results, setResults] = useState<ContactsFound>(EMPTY_RESULT)
+  const managers = useManagers()
   const recentIds = useAppStateKey('recentSearch')
   const [confirmClear, setConfirmClear] = useState(false)
 
@@ -113,7 +109,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
 
   const byId = new Map(chats.map((c) => [c.id, c]))
   const openDialog = (id: string) => {
-    pushRecent(id)
+    void managers.contacts.pushRecentSearch(Number(id))
     onSelect(id)
   }
   // Результат-чат из директории: свой диалог → открыть; чужой → вступить по
@@ -168,7 +164,7 @@ export default function SearchView({ query, chats, onSelect, searchReal, onJoin,
   const myChannels = chats.filter((c) => c.type === 'channel')
   const recentChats = recentIds.map((id) => byId.get(id)).filter((c): c is Chat => !!c)
 
-  const clearRecent = () => { setAppState('recentSearch', []) }
+  const clearRecent = () => { void managers.contacts.clearRecentSearch() }
 
   // Ряд сообщения: аватар/имя чата + дата + сниппет с подсветкой (tweb setLastMessageN)
   const MsgRow = ({ m }: { m: MyMessage }) => {
