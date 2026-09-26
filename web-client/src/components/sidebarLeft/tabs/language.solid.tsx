@@ -79,12 +79,16 @@ const LanguageListSection = () => {
     const random = randomLong()
 
     languages.forEach((language) => {
+      // Имя языка — заголовком строки, а не текстом радио: у радио HEAD
+      // подписи нет (`radioField.ts`), как у tweb `language.tsx` HEAD
+      // (`Row.RadioField` + `Row.Title`). Остальной перевод экрана на HEAD —
+      // задача 8 плана 2D.
       const row = new Row({
         radioField: new RadioField({
-          text: language.name,
           name: random,
           value: language.lang_code,
         }),
+        title: language.name,
         subtitle: language.native_name,
       })
 

@@ -47,18 +47,22 @@ describe('Row', () => {
   })
 
   it('radioField встраивается в container и получает disable-hover', () => {
-    const radioField = new RadioField({ text: 'Вариант', name: 'g1', value: 'a' })
-    const row = new Row({ radioField })
+    const radioField = new RadioField({ name: 'g1', value: 'a' })
+    const row = new Row({ radioField, title: 'Вариант' })
 
-    expect(row.container.contains(radioField.label)).toBe(true)
-    expect(radioField.label.classList.contains('disable-hover')).toBe(true)
+    expect(row.container.contains(radioField.container)).toBe(true)
+    expect(radioField.container.classList.contains('disable-hover')).toBe(true)
+    // радио HEAD без подписи: текст — заголовок строки, строка-label — его подпись
+    expect(row.container.tagName).toBe('LABEL')
+    expect(row.container.querySelector('.row-title')!.textContent).toBe('Вариант')
+    expect((row.container as HTMLLabelElement).control).toBe(radioField.input)
     expect(row.container.classList.contains('row-with-padding')).toBe(true)
   })
 
   it('RadioFormFromRows кладёт container каждой строки в форму и зовёт onChange только для отмеченного input', () => {
     const rows = [
-      new Row({ radioField: new RadioField({ text: 'A', name: 'grp', value: 'a' }) }),
-      new Row({ radioField: new RadioField({ text: 'B', name: 'grp', value: 'b' }) }),
+      new Row({ radioField: new RadioField({ name: 'grp', value: 'a' }), title: 'A' }),
+      new Row({ radioField: new RadioField({ name: 'grp', value: 'b' }), title: 'B' }),
     ]
     const values: string[] = []
     const form = RadioFormFromRows(rows, (value) => values.push(value))
@@ -104,13 +108,13 @@ describe('Row', () => {
 
     const toggle = new CheckboxField({ toggle: true })
     new Row({ checkboxField: toggle })
-    // Отступление (rowFieldClasses.ts): с `row-checkbox-field` тумблер обрезается.
+    // Как у tweb HEAD (ef41b29db, rowTsx.tsx:482-492): тумблеру — только класс тумблера.
     expect(toggle.label.classList.contains('row-checkbox-field')).toBe(false)
     expect(toggle.label.classList.contains('row-checkbox-field-toggle')).toBe(true)
 
-    const radio = new RadioField({ text: 'Вариант', name: 'g2', value: 'a' })
+    const radio = new RadioField({ name: 'g2', value: 'a' })
     new Row({ radioField: radio })
-    expect(radio.label.classList.contains('row-radio-field')).toBe(true)
+    expect(radio.container.classList.contains('row-radio-field')).toBe(true)
   })
 
   it('withCheckboxSubtitle переключает подпись строки по input.checked чекбокса (tweb :152-161, у нас — input.checked вместо .checked)', () => {

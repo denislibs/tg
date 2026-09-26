@@ -196,8 +196,10 @@ export default class Row<T extends SliderSuperTabEventableConstructable = any> {
     if(options.radioField || options.checkboxField) {
       if(options.radioField) {
         this.radioField = options.radioField
-        this.radioField.label.classList.add(ROW_RADIO_FIELD_CLASS)
-        this.container.append(this.radioField.label)
+        // Радио HEAD — `span`-контрол без подписи (`radioField.ts`): текст — в
+        // заголовке строки, `label`-контейнер строки и есть его подпись.
+        this.radioField.container.classList.add(ROW_RADIO_FIELD_CLASS)
+        this.container.append(this.radioField.container)
         havePadding = true
       }
 
@@ -230,8 +232,8 @@ export default class Row<T extends SliderSuperTabEventableConstructable = any> {
       }
 
       // Внешний `if` уже требует radioField||checkboxField — один из них точно есть.
-      const i = (options.radioField || options.checkboxField)!
-      i.label.classList.add('disable-hover')
+      const i = options.radioField ? options.radioField.container : options.checkboxField!.label
+      i.classList.add('disable-hover')
     }
 
     if(options.title || options.titleLangKey || options.titleRight || options.titleRightSecondary) {
@@ -458,18 +460,20 @@ export const RadioFormFromValues = (values: {
   langPackKey?: LangPackKey,
   value: number | string,
   checked?: boolean,
-  textElement?: ConstructorParameters<typeof RadioField>[0]['textElement']
+  textElement?: HTMLElement | DocumentFragment
 }[], onChange: Parameters<typeof RadioFormFromRows>[1], fireInit?: boolean) => {
   const name = 'name-' + (Math.random() * 0x7FFFFF | 0)
   let checkedRadioField: RadioField | undefined
   const rows = values.map(({ langPackKey, value, checked, textElement }) => {
+    // tweb row.ts:397-405 (старая база) отдавал текст самому радио; у радио
+    // HEAD подписи нет (`radioField.ts`), поэтому текст — заголовком строки.
     const row = new Row({
       radioField: new RadioField({
-        textElement,
-        langKey: langPackKey,
         name,
         value: '' + value,
       }),
+      title: textElement,
+      titleLangKey: langPackKey,
     })
 
     if(checked) {
