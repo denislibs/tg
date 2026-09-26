@@ -817,7 +817,7 @@ class="disable-hover"`) + превью; `setDefaultReaction` сразу; дан�
 уже есть — при переезде `clickable={() => tab.slider.createTab(AppQuickReactionTab).open()}` +
 `ReactionStickerPreview` (пустое до О-30), React-пин снести вместе с экраном.
 
-### Задача 16: `AppSelectPeers` + вкладка «Выбор участников»
+### Задача 16: `AppSelectPeers` + вкладка «Выбор участников» — ✅ сделано (PR feat/w2d-select-peers)
 
 **Порт:** `components/appSelectPeers.tsx` (1453) → `appSelectPeers.solid.tsx` в объёме
 потребителей волны (исключения приватности `type:'privacy'`, чаты папки `peerType:['dialogs']`,
@@ -826,6 +826,28 @@ class="disable-hover"`) + превью; `setDefaultReaction` сразу; дан�
 `dialogRow.ts` (`createChatList`/`addDialogNew`). Нереализуемые ветки (миниаппы в
 `extraCategories`, боты) — в шапку с О-номерами.
 **Зависимости:** 0, 1, 2. Врезки нет (потребители — задачи 17, 22, 25). Размер — L.
+
+**Итог (2026-09-26):** `components/appSelectPeers.solid.tsx` — класс, как у tweb HEAD (не
+Solid-компонент: у оригинала Solid только секции через `wrapSolidComponent`); строки —
+`dialogRow.ts` (`addDialogNew`, `createChatList`; добавлен `meAsSaved`), а не
+`createChatList`/`addDialogNew` «наших» строк списка чатов. Вместе с ним портированы
+`selectorSearch.solid.tsx` (чип — уже бывший `selectorEntity.ts`), ванильный
+`components/inputSearch.ts` (наследует `InputSearchHandle` — поведенческая половина
+одна), `emptyPlaceholder.solid.tsx`, `buttonCorner.ts`, `helpers/solid/wrapSolidComponent.ts`,
+`helpers/array/filterUnique.ts`; `contacts.testSelfSearch` выставлен ручкой. Вкладка —
+`sidebarLeft/tabs/addMembers.solid.tsx`, `AppAddMembersTab` (заголовок-функция вместо
+переопределённого `init`, `noSame`). Скоуп по папке — `setFolderId`/`onSearchChange`, которые
+зовёт уже портированный `popups/pickUserFolderTabs.ts` (своего ряда нет). Курсор страницы —
+индекс из зеркала `dialogIndexById` (как `useDialogListSource`), архив — `ARCHIVE_FOLDER_ID`
+(−1, у tweb 1). Порт в объёме потребителей волны; без потребителя не перенесены `custom`,
+режим `hidden` с меню, `setLimit`, `prependPeerIds`, `getPeerIdFromKey`, `removeBatch`,
+`freezed`, участники канала; права отправки/звёзды/премиум-замок — О-31, `convertPeerTypes`
+(боты) — О-32, категории `extraCategories` (мини-приложения) — О-33. Сверх плана: `_selector.scss`
+и `_row.scss` приведены к HEAD — полоса `.selector-row-with-checkbox`, классы
+`row-with-checkbox-and-media`/`row-selection-*` (690514225) вместо снятого `.selector-square`;
+React `PeerSelector` ставит те же классы строки (иначе квадратные экраны потеряли бы раскладку).
+Ключ `RequestJoin.List.SearchEmpty` — в словари. Стенд не трогался: открывающих вкладку нет до
+задачи 17 (проверка — там).
 
 ### Задача 18: «Код-пароль»
 
@@ -1118,6 +1140,9 @@ media; брать задачу, когда в них нет открытых в�
 | О-27 | Попап настроек при свёрнутой колонке (`SettingsSliderPopup`, `createTab`-override `sidebarLeft/index.ts:1730-1741`) | предмет появляется только после задачи 28 | настройки поверх чата на узкой колонке |
 | ~~О-29~~ | ~~Модель отступов `MediaHeader` HEAD (`gap: .5rem`) и под неё `authFlow`~~ | **снято** (ветка `fix/w2d-mediaheader-rtl-overlay`): `mediaHeader.module.scss` дословно с HEAD, `auth/AuthFlow.module.scss` `.qrContainer`, карточки входа — `h1` и `class="secondary"`; отступы экрана входа = tweb HEAD, замеры — `docs/tweb/dom/auth.md` §8.4 | — |
 | О-30 | Быстрая реакция: отметка на открытии (`getQuickReaction`, `quickReaction.tsx:22-30`), запись выбора (`setDefaultReaction`, `:48-51`), превью в строке «Стикеров» и перезапрос по `quick_reaction` (`stickersAndEmoji.tsx:30-35`, `:108-110`), подъём быстрой реакции в панели/ховере (`unshiftQuickReaction`) | нет `config.reactions_default`, `messages.setDefaultReaction`, события `quick_reaction` — ни на бэке, ни на проводе (`web-client/backlogs/frontend/quick-reaction-default.md`) | поле «быстрая реакция» у пользователя + ручка чтения/записи |
+| О-31 | Права отправки в селекторе пиров: `chatRightsActions`/`filterByRights`, звёзды за сообщение (`starsAmountByPeer`, бейдж), замок премиума (`OnlyPremiumCanMessage`), `appSelectPeers.tsx:321-365`, `:443-457` | нет `getRequirementToContact` и платы звёздами за личное сообщение; единственный потребитель у tweb — попап пересылки (у нас React `ForwardPicker`) | пересылка на `AppSelectPeers` 1:1 |
+| О-32 | `AppSelectPeers.convertPeerTypes` и типы `isBot`/`isRegularUser`/`isBroadcast` (`appSelectPeers.tsx:606-618`) | зовёт только `requestPeer` ботов (`keyboardButtonRequestPeer`) — кнопок ботов нет | выбор пира по кнопке бота |
+| О-33 | Категории в выборе участников (`extraCategories`, «мини-приложения» в исключениях приватности, `addMembers.tsx:98-136`, `privacySection.tsx:204-209`) | нет мини-приложений и такого правила приватности | исключение «мини-приложения» |
 
 ## Оценка объёма
 

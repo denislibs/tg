@@ -427,6 +427,8 @@ const uk = {
   'Chat.Input.Attach.Document': 'Файл',
   'Chat.Search.NothingFound': 'Тут поки нічого немає…',
   SearchEmptyViewTitle: 'Нічого не знайдено',
+  // пустая выдача селектора пиров (tweb `appSelectPeers.tsx:1041`)
+  'RequestJoin.List.SearchEmpty': 'За запитом «%@» нічого не знайдено.\nСпробуйте інший запит.',
   'Search.EmptyQuery': 'Спробуйте пошук.',
   SharedMusicTab2: 'Музика',
   'Chat.CommentsLabel': 'Коментарі',

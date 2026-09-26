@@ -948,6 +948,8 @@ const ru = {
   'Search.Confirm.ClearHistory': 'Вы уверены, что хотите очистить историю поиска?',
   'Chat.Search.NothingFound': 'Здесь пока ничего нет…',
   SearchEmptyViewTitle: 'Ничего не найдено',
+  // пустая выдача селектора пиров (tweb `appSelectPeers.tsx:1041`)
+  'RequestJoin.List.SearchEmpty': 'По запросу «%@» ничего не найдено.\nПопробуйте другой запрос.',
   'Search.EmptyQuery': 'Попробуйте поиск.',
   SharedMusicTab2: 'Музыка',
   'Chat.CommentsLabel': 'Комментарии',

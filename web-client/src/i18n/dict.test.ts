@@ -299,12 +299,18 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // у ru ещё −1 (`Common.DoneSuffix` — имя шага того же экрана): ru 1357 → 1350,
 // uk 693 → 687, es 692 → 686, de/fr 691 → 685.
 // Поверх задач 7, 9, 10, 11, 12, 14 и корня настроек: ru 1379, uk 715, es 714, de 713, fr 710.
+//
+// Задача 16 плана 2D (селектор пиров `AppSelectPeers`): ключ tweb lang.ts
+// `RequestJoin.List.SearchEmpty` — подпись пустой выдачи (`appSelectPeers.tsx:1041`),
+// всем пяти словарям: ru 1350 → 1351, uk 686 → 687, es 685 → 686,
+// de/fr 684 → 685. `plural` не менялся.
+// Поверх задач 7, 9, 10, 11, 12, 14, 19 и корня настроек: ru 1380, uk 716, es 715, de 714, fr 711.
 const COMPOSITION = {
-  ru: { keys: 1379, plural: 37 },
-  uk: { keys: 715, plural: 26 },
-  es: { keys: 714, plural: 26 },
-  de: { keys: 713, plural: 26 },
-  fr: { keys: 710, plural: 26 },
+  ru: { keys: 1380, plural: 37 },
+  uk: { keys: 716, plural: 26 },
+  es: { keys: 715, plural: 26 },
+  de: { keys: 714, plural: 26 },
+  fr: { keys: 711, plural: 26 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -413,12 +419,13 @@ const COMPOSITION = {
 // (разбор — у `COMPOSITION` выше), у всех пяти.
 // Мастером 2FA — +7 ключей tweb, сносом React-мастера — −6 (у ru −7) наших
 // (разбор — у `COMPOSITION` выше).
+// Задачей 16 плана 2D — подпись пустой выдачи селектора пиров (разбор — там же).
 const FINGERPRINT = {
-  ru: '8c5e0f7f',
-  uk: 'a251cd67',
-  es: '007155bf',
-  de: '034e859f',
-  fr: '017312c9',
+  ru: '7582a803',
+  uk: 'a47d6dfb',
+  es: 'f64b3983',
+  de: '3084f663',
+  fr: 'df7c0ca5',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

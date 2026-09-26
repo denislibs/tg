@@ -236,3 +236,32 @@ export const AppTwoStepVerificationEmailTab =
     getComponentModule: () => import('../sidebarLeft/tabs/2fa/email.solid'),
     onOpenAfterTimeout: twoStepOpenAfterTimeout,
   })
+
+// tweb :1034-1063. Вкладка выбора участников на `AppSelectPeers` (задача 16
+// плана 2D); открывают её исключения правил приватности (задача 17,
+// `privacySection.tsx:189`). Заголовок — из полезной нагрузки: у оригинала это
+// переопределённый `init` (`overrideTitle || payload.title`, :1060-1063), у нас —
+// заголовок-функция фабрики, тот же результат; `GroupAddMembers` при
+// обязательном `payload.title` не показывается и там. Чего в нагрузке нет
+// (категории, участники канала, `peerLoader`, лимит) — шапка `addMembers.solid.tsx`.
+// Типы — встроенным `import()`: блок вкладки дописывается в конец файла одним
+// куском, шапку импортов параллельные задачи не делят.
+type AppAddMembersTabPayload = {
+  title: import('@/lang').LangPackKey
+  placeholder: import('@/lang').LangPackKey
+  type: 'channel' | 'chat' | 'privacy'
+  takeOut?: (peerIds: PeerId[]) => Promise<unknown> | false | void
+  skippable: boolean
+  selectedPeerIds?: PeerId[]
+  peerType?: import('@components/appSelectPeers.solid').SelectSearchPeerType[]
+  exceptSelf?: boolean
+  filterPeerTypeBy?: import('@components/appSelectPeers.solid').IsPeerType[]
+  attachToPromise?: (promise: Promise<unknown>) => void
+}
+
+export const AppAddMembersTab =
+  scaffoldSolidJSTab<AppAddMembersTabPayload>({
+    title: (payload) => payload.title,
+    getComponentModule: () => import('../sidebarLeft/tabs/addMembers.solid'),
+  })
+;(AppAddMembersTab as unknown as { noSame: boolean }).noSame = true

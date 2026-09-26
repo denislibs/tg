@@ -213,6 +213,12 @@ export function newContactsManager({ rest, peers, getMe, state }: ContactsDeps) 
   }
 
   return {
+    /** Порт `testSelfSearch` (:501-506) — попадает ли запрос в своё имя: строка
+     *  «Избранного» селектора пиров (`appSelectPeers.solid.tsx::renderSaved`). */
+    testSelfSearch(query: string): boolean {
+      return testSelfSearch(query)
+    },
+
     /**
      * Порт `getContactsPeerIds` (:467-481) — локальный поиск по книге для
      * группы «Chats» глобального поиска и чипов пиров. Сеть — только первое

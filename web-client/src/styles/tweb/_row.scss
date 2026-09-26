@@ -485,6 +485,35 @@ $row-border-radius: $border-radius-medium;
     }
   }
 
+  // A leading selection control followed by media, shared with AppSelectPeers.
+  // tweb _row.scss:476-502 (690514225 + a11y-правка 472e3e76b у row-checkbox-field).
+  $selection-width: 3rem;
+
+  &-with-checkbox-and-media {
+    &.row-with-padding {
+      padding-inline-start: #{4.5rem + $selection-width} !important;
+    }
+  }
+
+  &-selection-media {
+    margin-inline-start: $selection-width !important;
+  }
+
+  &-selection-checkbox {
+    inset-inline-start: 1.25rem !important;
+
+    // a checkbox registered through `Row` is positioned against the row's text; this one leads
+    // the row instead, so that offset has to go
+    &.row-checkbox-field {
+      padding-inline-start: 0 !important;
+      margin-inline-start: 0 !important;
+    }
+  }
+
+  &-selection-radio.row-radio-field {
+    --offset-left: 1.25rem;
+  }
+
   &.menu-open {
     background-color: var(--light-secondary-text-color);
   }

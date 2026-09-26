@@ -1141,6 +1141,7 @@ const lang = {
   ReportChatPornography: 'Pornography',
   ReportChatSpam: 'Spam',
   ReportChatViolence: 'Violence',
+  'RequestJoin.List.SearchEmpty': 'There were no results for "%@".\nTry a new search.',
   Resend: 'Resend',
   Reset: 'Reset',
   ResetAutomaticMediaDownload: 'Reset Auto-Download Settings',

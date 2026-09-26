@@ -7,7 +7,8 @@
  * вызывающему нужен сам узел.
  *
  * `mountSolidComponent` (`:24-50`) не портирован: потребителя у нас нет
- * (первые вызывающие `wrapSolidComponent` — вкладки автозагрузки, им нужен только узел).
+ * (вызывающие `wrapSolidComponent` — вкладки автозагрузки и селектор пиров: секция,
+ * поле поиска; корень гаснет вместе с классом-владельцем).
  */
 import { createRoot, type JSX } from 'solid-js'
 import type { Middleware } from '@helpers/middleware'

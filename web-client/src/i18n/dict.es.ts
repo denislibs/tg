@@ -407,6 +407,8 @@ const es = {
   'Chat.Input.Attach.Document': 'Archivo',
   'Chat.Search.NothingFound': 'Aún no hay nada aquí…',
   SearchEmptyViewTitle: 'Sin resultados',
+  // пустая выдача селектора пиров (tweb `appSelectPeers.tsx:1041`)
+  'RequestJoin.List.SearchEmpty': 'No hay resultados para «%@».\nPrueba con otra búsqueda.',
   'Search.EmptyQuery': 'Prueba a buscar.',
   SharedMusicTab2: 'Música',
   'Chat.CommentsLabel': 'Comentarios',

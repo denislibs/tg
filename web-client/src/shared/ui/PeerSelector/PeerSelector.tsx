@@ -47,6 +47,7 @@ import UserAvatar from '../../../components/UserAvatar'
 import LottieSticker from '../../../components/LottieSticker'
 import { useT } from '../../../i18n'
 import s from './PeerSelector.module.scss'
+import { ROW_SELECTION_CHECKBOX_CLASS, ROW_SELECTION_MEDIA_CLASS, ROW_WITH_CHECKBOX_AND_MEDIA_CLASS } from '../../../components/rowFieldClasses'
 
 export interface SelectorPeer {
   /** ключ строки; он же `data-peer-id` (tweb) и ключ выбранного */
@@ -150,7 +151,9 @@ export function PeerRow({ peer, design = 'round', side = 'right', multi = false,
     // чекбокса внутри селектора целиком задаёт партиал:
     // `.selector .checkbox-field:not(.checkbox-field-toggle)` (_selector.scss:258-271)
     // абсолютит его и гасит `pointer-events`, переключение идёт кликом по строке.
-    <Checkbox checked={checked || !!peer.checked} disabled={peer.disabled} shape={design} className="" />
+    // Квадратный ведущий чекбокс раскладывает `_row.scss` по классу
+    // `row-selection-checkbox` (tweb `appSelectPeers.tsx:1189-1191`, 690514225).
+    <Checkbox checked={checked || !!peer.checked} disabled={peer.disabled} shape={design} className={design === 'square' ? ROW_SELECTION_CHECKBOX_CLASS : ''} />
   ) : null
 
   return (
@@ -160,6 +163,11 @@ export function PeerRow({ peer, design = 'round', side = 'right', multi = false,
         clickable ? 'row-clickable' : '', clickable ? 'hover-effect' : '', clickable ? 'rp' : '',
         'chatlist-chat', 'chatlist-chat-abitbigger',
         peer.subtitle == null ? 'no-subtitle' : '',
+        // tweb `appSelectPeers.tsx:1181-1196`: квадратная форма — ведущий
+        // чекбокс перед аватаром; правый круглый чекбокс лежит поверх строки,
+        // и строка сама держит под него полосу.
+        design === 'square' ? ROW_WITH_CHECKBOX_AND_MEDIA_CLASS : '',
+        multi && side === 'right' ? 'selector-row-with-checkbox' : '',
       )}
       data-peer-id={peer.id}
       onClick={clickable ? onClick : undefined}
@@ -182,7 +190,7 @@ export function PeerRow({ peer, design = 'round', side = 'right', multi = false,
         name={peer.name}
         photoId={peer.photoId}
         size="md"
-        className={classNames('dialog-avatar', 'row-media', 'row-media-abitbigger')}
+        className={classNames('dialog-avatar', 'row-media', 'row-media-abitbigger', design === 'square' ? ROW_SELECTION_MEDIA_CLASS : '')}
       />
       {side === 'right' ? checkbox : null}
       {peer.actions && (
