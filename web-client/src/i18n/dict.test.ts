@@ -189,14 +189,27 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // (`NoResultsTitle`, `NoResultsSubtitle`, `SearchInAllChats`). Вместе с задачей 7 `keys`
 // 1320 → 1328, множественных форм не прибавилось; остальным четырём — ничего.
 //
+// Задача 9 глобального поиска: русскому добавлены три ключа 1:1 с tweb lang.ts —
+// подпись своей строки `Presence.YourChat` (:258, `loadChats`), заголовок
+// группы вкладки «Каналы» `Chat.Search.JoinedChannels` (:4093) и форма числа
+// `Channels` (:1353) — имя скрытой группы каналов с запросом. `keys` 1328 →
+// 1331, `plural` 33 → 34; остальным четырём — ничего.
+//
+// Задача 12 глобального поиска (владелец `initSearch`): русскому добавлены пять
+// ключей 1:1 с tweb lang.ts — заголовок группы `SearchAllChatsShort` (:1819),
+// имя вкладки `ChannelsTab` (:3379), ссылка очистки недавних `ClearRecentSearch`
+// (:2030), кнопка подтверждения `ClearButton` (:1820) и имя приложения `AppName`
+// (:1750) — заголовок попапа без своего (`popups/peer.ts:58`). `keys` 1331 →
+// 1336, множественных форм не прибавилось; остальным четырём — ничего.
+//
 // Сдвиг набора задачей 14 shared media (меню элемента и выделение, tweb
 // 812502980): русскому добавлены шесть ключей 1:1 с tweb lang.ts —
 // `Message.Context.Goto`, `Message.Context.Selection.{Clear,Delete,Download,
 // Forward}` и множественная форма `messages` (счётчик плашки выделения):
-// `keys` 1328 → 1334, `plural` 33 → 34. Замена трёх самодельных ключей
+// Вместе с задачами 9 и 12 глобального поиска `keys` 1328 → 1342, `plural` 33 → 35 (`Channels` и `messages`). Замена трёх самодельных ключей
 // копирования медиа ключами оригинала число строк не меняла (у `FINGERPRINT`).
 const COMPOSITION = {
-  ru: { keys: 1334, plural: 34 },
+  ru: { keys: 1342, plural: 35 },
   uk: { keys: 682, plural: 24 },
   es: { keys: 681, plural: 24 },
   de: { keys: 681, plural: 24 },
@@ -280,6 +293,12 @@ const COMPOSITION = {
 // Сдвиг набора задачами 7 и 10 глобального поиска: русскому добавлены
 // `Separator.ShowLess` и семь ключей `ChatTypeMenu`/`EmptySearchPlaceholder`
 // (разбор — у `COMPOSITION` выше).
+// Сдвиг набора задачей 9 глобального поиска: русскому добавлены
+// `Presence.YourChat`, `Chat.Search.JoinedChannels` и `Channels` (разбор — у
+// `COMPOSITION` выше).
+// Сдвиг набора задачей 12 глобального поиска: русскому добавлены
+// `SearchAllChatsShort`, `ChannelsTab`, `ClearRecentSearch`, `ClearButton` и
+// `AppName` (разбор — у `COMPOSITION` выше).
 // Сдвиг набора задачей 14 shared media (копирование медиа, tweb 508acd4f5):
 // у русского самодельные `MediaViewer.Context.CopyMedia`,
 // `MediaViewer.ImageCopied`, `MediaViewer.CopyError` (выдумка React-меню, ни
@@ -287,7 +306,7 @@ const COMPOSITION = {
 // `MediaCopied`, `MediaCopyFailed`: −3 +3, число строк то же. Следом —
 // шесть ключей меню элемента и выделения (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '97312968',
+  ru: 'c2d26787',
   uk: 'e1335ac1',
   es: 'a6b1aad3',
   de: 'a6b1aad3',
@@ -558,6 +577,7 @@ const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
     OK: 'интернационализм: в русском Telegram кнопка тоже «OK»',
     PaymentShippingEmailPlaceholder: '«Email» — заимствование, в русском Telegram так же',
     AttachGif: 'GIF — аббревиатура формата, не переводится',
+    AppName: 'название продукта — «Telegram» не переводится (заголовок попапа без своего, tweb peer.ts:58)',
   },
   uk: {
     'Premium.Boarding.Title': 'назва продукту — «Telegram Premium» не перекладається',

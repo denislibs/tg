@@ -5,11 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRef } from 'react'
 import { act, cleanup, render } from '@testing-library/react'
 import I18n from '@lib/langPack'
+import type { LangPackKey } from '@/lang'
 import InputSearch, { CONNECTION_ANIMATION_DURATION, type InputSearchStatus } from './InputSearch'
+import type InputSearchHandle from './inputSearchHandle'
+import { simulateClickEvent } from '@helpers/dom/clickEvent'
 import { MemberPicker } from '../../../components/group/screens/shared'
 import { useSettingsStore } from '../../../settings'
 
-function renderInput(props: Partial<Parameters<typeof InputSearch>[0]> = {}) {
+function renderInput(props: { focused?: boolean, className?: string, placeholder?: LangPackKey } = {}) {
   const statusRef = createRef<InputSearchStatus>()
   const view = render(<InputSearch value="" onChange={() => {}} statusRef={statusRef} {...props} />)
   const root = document.querySelector<HTMLElement>('.input-search')!
@@ -257,5 +260,99 @@ describe('InputSearch — декларативный проп placeholder', () =
     const root = document.querySelector<HTMLElement>('.input-search')!
     // язык по умолчанию в тестовой среде — английский, `t('Search')` даёт ключ как есть
     expect(placeholders(root).map((n) => n.textContent)).toEqual(['Search'])
+  })
+})
+
+// Режим ручки — поле-объект tweb `inputSearch.ts` для владельца глобального
+// поиска (`components/sidebarLeft/globalSearch.ts`, шов задачи 13). Значение
+// живёт в DOM: ре-рендер React не возвращает то, что владелец стёр.
+describe('InputSearch — режим ручки (tweb inputSearch.ts:200-255)', () => {
+  function renderHandle(props: { focused?: boolean } = {}) {
+    const searchRef = createRef<InputSearchHandle>()
+    const view = render(<InputSearch searchRef={searchRef} {...props} />)
+    const input = document.querySelector<HTMLInputElement>('.input-search-input')!
+    const type = (value: string) => act(() => {
+      input.value = value
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    return { searchRef, view, input, type, handle: () => searchRef.current! }
+  }
+
+  it('onChange — через 300 мс после последнего ввода, одним вызовом (tweb :200-220, :77)', () => {
+    const { handle, type } = renderHandle()
+    const onChange = vi.fn()
+    handle().onChange = onChange
+
+    type('d')
+    act(() => { vi.advanceTimersByTime(200) })
+    type('du')
+    act(() => { vi.advanceTimersByTime(299) })
+    // Мутация: звать `onChange` прямо из `onInput` без таймера — вызовов два и сразу.
+    expect(onChange).not.toHaveBeenCalled()
+
+    act(() => { vi.advanceTimersByTime(1) })
+    expect(onChange.mock.calls).toEqual([['du']])
+  })
+
+  it('value = "" владельцем: поле пустое, is-empty, висящий debounce отменён — ре-рендер ничего не возвращает', () => {
+    const { handle, type, input, view, searchRef } = renderHandle({ focused: true })
+    const onChange = vi.fn()
+    handle().onChange = onChange
+    type('durov')
+    expect(input.classList.contains('is-empty')).toBe(false)
+
+    act(() => { handle().value = '' })
+    // Смена `focused` — ровно тот ре-рендер, который делает колонка на закрытии поиска.
+    view.rerender(<InputSearch searchRef={searchRef} focused={false} />)
+    act(() => { vi.advanceTimersByTime(1000) })
+
+    // Мутация: вернуть полю `value`/`onChange` React — ре-рендер вернёт 'durov'.
+    expect(input.value).toBe('')
+    // Мутация: вести `className` поля пропом — ре-рендер сотрёт `is-empty` ручки.
+    expect(input.classList.contains('is-empty')).toBe(true)
+    // Мутация: не отменять таймер в `set value` — придёт отложенный 'durov'.
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('крестик: поле очищено, onChange("") сразу, затем onClear (tweb :229-234)', () => {
+    const { handle, type, input } = renderHandle()
+    const calls: string[] = []
+    handle().onChange = (value) => calls.push('change:' + value)
+    handle().onClear = () => calls.push('clear')
+    type('abc')
+
+    act(() => { simulateClickEvent(document.querySelector<HTMLElement>('.input-search-clear')!) })
+
+    expect(input.value).toBe('')
+    expect(calls).toEqual(['change:', 'clear'])
+  })
+
+  it('Enter с непустым значением — onEnter(value); пустое и другая клавиша — нет (tweb :222-227)', () => {
+    const { handle, type, input } = renderHandle()
+    const onEnter = vi.fn()
+    handle().onEnter = onEnter
+    const key = (k: string) => act(() => { input.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true })) })
+
+    key('Enter')
+    type('t.me/durov')
+    key('a')
+    key('Enter')
+
+    expect(onEnter.mock.calls).toEqual([['t.me/durov']])
+  })
+
+  it('размонтирование снимает слушатели и висящий таймер (tweb remove, :251-255)', () => {
+    const { handle, type, view, input } = renderHandle()
+    const onChange = vi.fn()
+    handle().onChange = onChange
+    type('abc')
+
+    view.unmount()
+    act(() => { vi.advanceTimersByTime(1000) })
+    input.value = 'x'
+    input.dispatchEvent(new Event('input'))
+    act(() => { vi.advanceTimersByTime(1000) })
+
+    expect(onChange).not.toHaveBeenCalled()
   })
 })
