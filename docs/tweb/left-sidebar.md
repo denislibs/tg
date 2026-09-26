@@ -200,7 +200,7 @@ div#column-left.tabs-tab.chatlist-container.sidebar.sidebar-left.main-column.sid
 | `editProfile.tsx` :63 | `AppEditProfileTab` :86-90 (+префетч :78-84, `noSame`) | редактирование профиля | `settings.tsx:115` (кнопка edit), `internalLinkProcessor.ts:730` |
 | `myStories.tsx` :161 | `AppMyStoriesTab` :657-663 (+`getInitArgs`; title по `isArchive`) | свои истории / архив историй | `sidebarLeft/index.ts:707` (меню), `stories/list.tsx:356,363`, `stories/profileList.tsx:804`, `internalLinkProcessor.ts:1313`, `myStories.tsx:40` |
 | `language.tsx` :176 | `AppLanguageTab` :155-159 | язык | `settings.tsx:252` |
-| `keyboardShortcuts.tsx` :292 | `AppKeyboardShortcutsTab` :94-98 | горячие клавиши | `settings.tsx:258` |
+| `keyboardShortcuts.tsx` :279 (812502980) | `AppKeyboardShortcutsTab` :113-117 (812502980) | горячие клавиши | `settings.tsx:413` (812502980) |
 | `speakersAndCamera.tsx` :29 | `AppSpeakersAndCameraTab` :162-166 | аудио/видео-устройства | `settings.tsx:132→137` |
 | `powerSaving.tsx` :122 | `AppPowerSavingTab` :201-205 | lite mode | `generalSettings.tsx:89`, `sidebarLeft/index.ts:909` (More-подменю) |
 | `stickersAndEmoji.tsx` :307 | `AppStickersAndEmojiTab` :183-187 | стикеры и эмодзи | `settings.tsx:131→137` |
@@ -736,7 +736,7 @@ Close/RestartTopic `:224` · ChargeFee `:238` · Delete `:248`.
 |---|---|---|
 | `src/components/Sidebar.tsx` (:61) | оркестратор колонки: `#column-left` с tweb-классами (:213-215), композиция хуков `useSidebar*` | `AppSidebarLeft.construct` |
 | `src/components/SidebarScreens.tsx` (:22-24) | экраны колонки — **один enum-стейт** `'settings'\|'contacts'\|'wallet'\|'calls'\|'newGroup'\|'newChannel'\|'newPrivate'\|'newSecret'\|null`, lazy-подгрузка Settings/Wallet/Calls | стек `SliderSuperTab` |
-| `src/components/SettingsView.tsx` (:47) + `SettingsSubScreen.tsx` (:82-95, :134-152) | настройки: корневой список + под-экраны по строковому title (General/SpeakersCamera/ChatFolders/Privacy/DataStorage/Stickers/Hotkeys); «Устройства», «Язык» и «Уведомления» — вкладки слайдера через хост | `AppSettingsTab` + дерево части 2 |
+| `src/components/SettingsView.tsx` (:47) + `SettingsSubScreen.tsx` (:82-95, :134-152) | настройки: корневой список + под-экраны по строковому title (General/SpeakersCamera/ChatFolders/Privacy/DataStorage/Stickers); «Устройства», «Язык», «Уведомления» и «Горячие клавиши» — вкладки слайдера через хост | `AppSettingsTab` + дерево части 2 |
 | `src/components/settings/*` | реализации ещё не портированных под-экранов (TwoStepVerification, PasscodeLock, Passkeys, BlockedUsers, AutoDelete, PowerSaving, QuickReaction, EditProfile, ChatWallpaper…). «Устройства» здесь БОЛЬШЕ НЕТ — уехали на слайдер, см. §3 | `sidebarLeft/tabs/*` |
 | `src/lib/appDialogsManager.ts` | папочный срез владельца: `.chatlist-overlay` с Solid-рядом вкладок, `#folders-container`, скроллер на папку, переключение (`horizontalMenu` + `TransitionSlider`); встроен в колонку `Sidebar.tsx` (план папок, задача 6) | `AppDialogsManager` (папки) |
 | `src/components/ChatList.tsx` / `ChatListItem.tsx` | списки папок на виртуальном ядре — порталом в `.chatlist-top` контейнеров владельца | `AutonomousDialogList` (строки) + `DialogElement` |
@@ -827,9 +827,10 @@ DOM-паритет первого таба выдержан сознательн
 | `components/slider.ts` | `src/components/slider.ts` | `SidebarSlider` целиком: история вкладок, `createTab`/`selectTab`/`closeTab`/`closeAllTabs`/`sliceTabsUntilTab`, `onTabsCountChange`, `canHideFirst` |
 | `components/sliderTab.ts` | `src/components/sliderTab.ts` | `SliderSuperTab` + `SliderSuperTabEventable` (шапка, `Scrollable`, порядок разрушения, `managers`) |
 | `components/solidJsTabs/*` | `src/components/solidJsTabs/*` | `scaffoldSolidJSTab(Eventable)`, `useSuperTab`, `PromiseCollector` |
-| `components/solidJsTabs/tabs.ts` | `src/components/solidJsTabs/tabs.ts` | реестр объявлений вкладок; пока три — `AppActiveSessionsTab`, `AppLanguageTab`, `AppNotificationsTab` |
+| `components/solidJsTabs/tabs.ts` | `src/components/solidJsTabs/tabs.ts` | реестр объявлений вкладок; пока четыре — `AppActiveSessionsTab`, `AppLanguageTab`, `AppNotificationsTab`, `AppKeyboardShortcutsTab` |
 | `components/sidebarLeft/tabs/activeSessions.solid.tsx` | `src/components/sidebarLeft/tabs/activeSessions.tsx` | первая настоящая вкладка, дословный порт |
 | `components/sidebarLeft/tabs/notifications.solid.tsx` | `src/components/sidebarLeft/tabs/notifications.tsx` (812502980) | «Уведомления и звуки» — пилот плана 2D (задача 6): первый экран на Solid `Row`/`Section` HEAD; без «All Accounts» (О-1) и секций Stories/Reactions/Other (О-3…О-5); React `settings/NotificationsSettings.tsx` снесён |
+| `components/sidebarLeft/tabs/keyboardShortcuts.solid.tsx` | `src/components/sidebarLeft/tabs/keyboardShortcuts.tsx` (812502980) | «Горячие клавиши» (план 2D, задача 10): только обрабатываемые клиентом сочетания — без `InlineSelect` отправки, `JumpToInputStart/End` и секции Other (расхождения в шапке); React `settings/HotkeysSettings.tsx` снесён |
 | `components/sidebarLeft/settingsSliderHost.ts` | `sidebarLeft/index.ts:140-148` + `settingsSliderPopup.ts:13-51` | хост: один слайдер на колонку, `openTab`/`destroy` |
 
 Навигация: `pushItem` оригинала разложен на два наших механизма — `navigationStack.pushLayer`

@@ -627,7 +627,7 @@ payload `{authorization, onTerminate?, onSettingsChanged?}`), `core/managers/ses
 **Зависимости:** 0, 1, 3, 5 (`MediaHeader`, `InlineSelect` для TTL). **Готово когда:**
 `git grep -n "components/row'\|settingSection'" web-client/src/components/sidebarLeft` пуст.
 
-### Задача 10: «Горячие клавиши»
+### Задача 10: «Горячие клавиши» — ✅ сделано (PR feat/w2d-shortcuts)
 
 **Порт:** `keyboardShortcuts.tsx` (292) + `.module.scss` → `sidebarLeft/tabs/keyboardShortcuts.solid.tsx`;
 вкладка `AppKeyboardShortcutsTab` :113. 8 секций с подписями Formatting/Messages, `ShortcutRow` =
@@ -638,6 +638,23 @@ payload `{authorization, onTerminate?, onSettingsChanged?}`), `core/managers/ses
 **Мутация:** `titleRight` без `titleRightSecondary` — тест класса краснеет.
 **Зависимости:** 0, 1, 5. **Врезка:** `tabs.ts`, `SettingsView.tsx`, `SettingsSubScreen.tsx`; удалить
 `settings/HotkeysSettings.tsx` + `.module.scss` + `.test.tsx`.
+
+**Итог (2026-09-26).** Уточнение координатора: на вкладке — только сочетания, которые клиент
+обрабатывает, без записи в «Отложено». Отсюда поправки к постановке:
+- `sendShortcut` у нас нет (ни настройки, ни `isSendShortcutPressed`) — строка Send статичная
+  (Enter), без `InlineSelect`; вместе с выбором ушла и подпись `Section.Messages.Caption`
+  («Choose how messages are sent…» — выбирать нечего). О-10 НЕ заводится. Зависимость от 5
+  (`InlineSelect`) фактически не понадобилась.
+- `JumpToInputStart/End` не портируются: у tweb это каретка в поле (`chat/input.ts:3187-3200`),
+  у нас Ctrl+PageUp/PageDown листает ленту (`useFeedPageHotkeys`, своей строки у tweb нет).
+- Секция Other/`LockPasscode` вернётся с задачей 18, когда появится сочетание блокировки
+  (`ShortcutBuilder`) — отметить там.
+- Врезка тронула ещё `settingsSubScreen.reachable.test.ts` (нижние границы 7 → 6 и 3 → 4) — ту же
+  строку правит каждый переезжающий экран.
+- С экраном снесены 10 ключей, которые читал только он (в т.ч. ключи tweb `MediaZoomIn`/
+  `MediaZoomOut`/`Undo`); числа пинов `dict.test.ts` вернулись к прежним, отпечатки — новые.
+- Шапка `solidJsTabs/tabs.ts` («у нас их три…») не правилась: общий файл, строку правят все
+  врезки — поправить одной правкой после очереди.
 
 ### Задача 11: «Энергосбережение»
 

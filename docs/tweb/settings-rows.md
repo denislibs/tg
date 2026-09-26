@@ -369,7 +369,7 @@ div.tabs-container[data-animation="navigation"]  (= .sidebar-slider колонк
 | `settings/QuickReaction.tsx` | `quickReaction.tsx` | React | недостижим; сетка эмодзи вместо радио-строк; не сохраняет |
 | `settings/StickersSettings.tsx` | `stickersAndEmoji.tsx` | React | нет DoubleTap, Suggest, Emoji, DynamicPackOrder, сортировки; выдуманные секции |
 | `settings/SpeakersCamera.tsx` | `speakersAndCamera.tsx` + `call/*` | React | свои имена секций, свой попап выбора; AcceptCalls в локальных настройках |
-| `settings/HotkeysSettings.tsx` | `keyboardShortcuts.tsx` | React | свои `div.row`; 10+ ключей расходятся; нет `InlineSelect` |
+| `sidebarLeft/tabs/keyboardShortcuts.solid.tsx` (+ `.module.scss`) | `keyboardShortcuts.tsx` | **Solid, HEAD** (задача 10) | вкладка `AppKeyboardShortcutsTab` через хост; `ShortcutRow` = `Row.Title titleRight=<KeyCombo> titleRightSecondary` + `Row.Subtitle`, `KeyAlternatives` у Redo, `KEY_LABELS`/`IS_APPLE` и CSS-модуль дословно, ключи tweb. Состав — только сочетания, которые клиент обрабатывает (решение пользователя, без «Отложено»): Send — статичная строка Enter без `InlineSelect` и без подписи `Section.Messages.Caption` (нет `appSettings.sendShortcut`/`isSendShortcutPressed`), нет `JumpToInputStart/End` (композер не двигает каретку по PageUp/PageDown) и секции Other/`LockPasscode` (сочетания блокировки нет до задачи 18). React `settings/HotkeysSettings.tsx` снесён |
 | `settings/EditProfile.tsx` | `editProfile.tsx` | React | своя вёрстка без `Section`; нет Usernames/PersonalChannel/ChatAutomation |
 | `settings/AvatarCropper.tsx` | `avatarEdit.ts` (+ медиаредактор) | React | также у `NewGroupFlow`, `EditContactView`, `GroupEditFlow` |
 | `settings/BirthdayModal.tsx` | `popups/birthday.tsx` | React | также у `EditContactView` |
@@ -403,7 +403,8 @@ div.tabs-container[data-animation="navigation"]  (= .sidebar-slider колонк
 6. **Значение справа вместо подписи** (`value` → `row-title-right`), отсюда «Н..».
 7. **Кнопки-действия — строки** (`Row accent/danger`), у tweb — `Button btn-primary btn-transparent`.
 8. **Радио — галочка** (`Row selected`, отступление `kit.tsx:318-327`) или свой `RadioRow`.
-9. **Свои CSS-модули** на месте портированных глобальных стилей (громкость, темы, сетки, строки хоткеев).
+9. **Свои CSS-модули** на месте портированных глобальных стилей (громкость, темы, сетки). Строки хоткеев
+   сняты задачей 10: CSS-модуль там у самого tweb (`keyboardShortcuts.module.scss`), перенесён дословно.
 10. **Момент сохранения**: у нас сразу, у tweb часть — на закрытии вкладки. «Уведомления» (задача 6)
     уже пишут типы чатов на закрытии (`NotifySection`, пин — `notifications.solid.test.tsx`).
 
