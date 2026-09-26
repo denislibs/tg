@@ -165,6 +165,12 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 	if err != nil {
 		return err
 	}
+	// Удаление могло снять последнее сообщение диалога (top_message и порядок
+	// списка) — снимок списка чатов затронутых пользователей сбрасываем, иначе
+	// /chats до истечения TTL показывал бы последним удалённое.
+	if i.dialogsCache != nil {
+		i.dialogsCache.Invalidate(ctx, members...)
+	}
 	if i.publisher != nil {
 		for _, uid := range members {
 			body := deletePayload(addr.forViewer(uid), cur.Seq)
