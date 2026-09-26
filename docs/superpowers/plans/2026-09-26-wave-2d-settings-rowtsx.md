@@ -465,7 +465,7 @@ zustand `useSettingsStore` через `subscribeExternal` (прецедент �
 
 ---
 
-### Задача 6 (ПИЛОТ): «Уведомления и звуки» — `sidebarLeft/tabs/notifications.solid.tsx`
+### Задача 6 (ПИЛОТ): «Уведомления и звуки» — `sidebarLeft/tabs/notifications.solid.tsx` — ✅ сделано (PR feat/w2d-notifications)
 
 **Что делаем.** Дословный порт `tweb/src/components/sidebarLeft/tabs/notifications.tsx` (571) в
 объёме, который есть у нас; вкладка `AppNotificationsTab` (`tabs.ts:77-81`: `title:
@@ -504,11 +504,11 @@ zustand `useSettingsStore` через `subscribeExternal` (прецедент �
   `settings/NotificationsSettings.tsx`, `.module.scss`, `.restricted.test.tsx` (сценарий
   «без Notification API → тост» переезжает в новый тест)
 
-- [ ] **Шаг 1: прочитать** `notifications.tsx` целиком, `rangeSettingSelector.tsx`,
+- [x] **Шаг 1: прочитать** `notifications.tsx` целиком, `rangeSettingSelector.tsx`,
   `config/state.ts` (`notifications`), `lib/uiNotificationsManager.ts:315-330`, `:405-430`, `:1079`;
   наши `NotificationsSettings.tsx`, `stores/notifyStore.ts`, `core/managers/notifyManager.ts`,
   `client/pushSetup.ts`, `core/audio/sounds.ts:46`.
-- [ ] **Шаг 2: падающие тесты** (через хост, как `activeSessions.solid.test.tsx`):
+- [x] **Шаг 2: падающие тесты** (через хост, как `activeSessions.solid.test.tsx`):
   1. `Notification.permission = 'default'`: обе строки секции `Notifications.Web` (Show, Offline) имеют
      `is-fake-disabled`, тумблеры сняты; клик по строке зовёт `Notification.requestPermission`;
      в секции есть `button.btn-primary.primary.btn-transparent` с `.tgico` и текстом ключа
@@ -522,15 +522,15 @@ zustand `useSettingsStore` через `subscribeExternal` (прецедент �
      патчем `private.muted`; не переключали → ноль вызовов.
   6. Вкладка: шапка — `Telegram.NotificationSettingsViewController`; после закрытия Solid-остров
      снят (узлов секций в DOM нет) — DoD 5.
-- [ ] **Шаг 3:** падают. **Мутации (фактически):** убрать `fakeDisabled` у `NotificationRow` — (1)
+- [x] **Шаг 3:** падают. **Мутации (фактически):** убрать `fakeDisabled` у `NotificationRow` — (1)
   краснеет; перенести запись типа из `onCleanup` в `onChange` — (5) краснеет; `captionOld` у
   секции — (1) краснеет.
-- [ ] **Шаг 4: реализовать** дословно: `NotificationsSection`, `SoundSection`, `SoundEffectsSection`,
+- [x] **Шаг 4: реализовать** дословно: `NotificationsSection`, `SoundSection`, `SoundEffectsSection`,
   `NotifySection` ×3; `Notifications` собирает их в порядке `:543-569` (без трёх BLOCKED — у места
   комментарий с О-3…О-5). Данные типов — из `notifyStore` (единственный владелец), запись — через
   `managers.notify.update` + зеркало стора (как сейчас делает `updateType`).
-- [ ] **Шаг 5: врезка** (отдельный коммит, по очереди).
-- [ ] **Шаг 6: стенд** — сценарий пользователя: без разрешения — строки серые, подпись под
+- [x] **Шаг 5: врезка** (отдельный коммит, по очереди).
+- [x] **Шаг 6: стенд** — сценарий пользователя: без разрешения — строки серые, подпись под
   карточкой, кнопка primary с колокольчиком; выдать разрешение — строки ожили; въезд/выезд
   вкладки; шапка без плашки у верха. `dom-parity 14-left-14-settings-notifications ours.txt` —
   расхождения только из § 7 референса и О-1. Числа — в коммит.
@@ -538,6 +538,27 @@ zustand `useSettingsStore` через `subscribeExternal` (прецедент �
 **Готово когда:** все 11 пунктов таблицы закрыты (кроме п. 4 — О-1 с комментарием у строки);
 `git grep -n "NotificationsSettings" web-client/src` пуст; число React-`.tsx` уменьшилось на 1;
 «у нас» в `settings-rows.md` § 8.2 обновлено.
+
+---
+
+**Итог пилота (2026-09-26) — что учесть следующим экранам:**
+- Тест «ровно один раз» у строки-label в happy-dom врёт: активация label (досыл click в поле)
+  идёт прямо на узле label ПО ХОДУ всплытия, до делегированного обработчика Solid на `document`,
+  и `cancelEvent` строки её не отменяет. В браузере активация — после диспатча и только для
+  неотменённого клика. Образец шима по спецификации — `installSpecLabelActivation` в
+  `notifications.solid.test.tsx`; без него пины кликов по строкам с `clickable` показывают двойной
+  вызов, которого на стенде нет.
+- Проверенный на стенде «двойной clickable» (уточнение координатора, зона задачи 0) — НЕТ: в Chrome
+  досланный label'ом click несёт `detail: 1` (копия исходного), `isTrusted`, `target` = поле;
+  `hasMouseMovedSinceDown` гасит его по несовпадению цели с `mousedown`. Ветка `detail === 0`
+  срабатывает только на синтетике (`el.click()`, клавиатура).
+- `<button>` не наследовал шрифт: портирован сброс tweb `components/_global.scss:31-43` в
+  `styles/index.scss` (пин — `styles/globalButtonReset.test.ts`) — `Button btn-transparent` других
+  экранов теперь 16px, как у tweb.
+- Новые ключи langpack попадают в русский интерфейс стенда только после пересборки бэкенда
+  (`langpack.gen.json` вшит в сервер); до неё — английский нижний слой.
+- Побочки настроек — подписчиками у самой настройки (`client/pushSetup.ts::watchPushConditions`),
+  а не в обработчике строки.
 
 ---
 

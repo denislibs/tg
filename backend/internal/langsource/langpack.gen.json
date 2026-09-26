@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 19,
+      "version": 20,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -3042,6 +3042,10 @@
           "value": "Web Notifications"
         },
         {
+          "key": "NotificationsChannels",
+          "value": "Channels"
+        },
+        {
           "key": "NotificationsForChannels",
           "value": "Notifications for channels"
         },
@@ -3052,6 +3056,14 @@
         {
           "key": "NotificationsForPrivateChats",
           "value": "Notifications for private chats"
+        },
+        {
+          "key": "NotificationsGroups",
+          "value": "Groups"
+        },
+        {
+          "key": "NotificationsPrivateChats",
+          "value": "Private Chats"
         },
         {
           "key": "OK",
@@ -5059,6 +5071,10 @@
           "value": "Language"
         },
         {
+          "key": "Telegram.NotificationSettingsViewController",
+          "value": "Notifications"
+        },
+        {
           "key": "TelegramFeatures",
           "value": "Telegram Features"
         },
@@ -5538,7 +5554,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 19,
+      "version": 20,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -6270,6 +6286,10 @@
           "value": "Язык"
         },
         {
+          "key": "Telegram.NotificationSettingsViewController",
+          "value": "Уведомления"
+        },
+        {
           "key": "KeyboardShortcuts.Title",
           "value": "Горячие клавиши"
         },
@@ -6560,6 +6580,18 @@
         {
           "key": "NotificationsForChannels",
           "value": "Уведомления из каналов"
+        },
+        {
+          "key": "NotificationsPrivateChats",
+          "value": "Личные чаты"
+        },
+        {
+          "key": "NotificationsGroups",
+          "value": "Группы"
+        },
+        {
+          "key": "NotificationsChannels",
+          "value": "Каналы"
         },
         {
           "key": "MessagePreview",
@@ -11105,7 +11137,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 7,
+      "version": 8,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -11358,6 +11390,18 @@
         {
           "key": "NotificationsForChannels",
           "value": "Notifications des canaux"
+        },
+        {
+          "key": "NotificationsPrivateChats",
+          "value": "Discussions privées"
+        },
+        {
+          "key": "NotificationsGroups",
+          "value": "Groupes"
+        },
+        {
+          "key": "NotificationsChannels",
+          "value": "Canaux"
         },
         {
           "key": "MessagePreview",
@@ -13909,7 +13953,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 7,
+      "version": 8,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -14088,6 +14132,10 @@
           "value": "Sprache"
         },
         {
+          "key": "Telegram.NotificationSettingsViewController",
+          "value": "Mitteilungen"
+        },
+        {
           "key": "KeyboardShortcuts.Title",
           "value": "Tastenkürzel"
         },
@@ -14162,6 +14210,14 @@
         {
           "key": "NotificationsForChannels",
           "value": "Benachrichtigungen für Kanäle"
+        },
+        {
+          "key": "NotificationsGroups",
+          "value": "Gruppen"
+        },
+        {
+          "key": "NotificationsChannels",
+          "value": "Kanäle"
         },
         {
           "key": "MessagePreview",
@@ -16712,7 +16768,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 7,
+      "version": 8,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -16891,6 +16947,10 @@
           "value": "Idioma"
         },
         {
+          "key": "Telegram.NotificationSettingsViewController",
+          "value": "Notificaciones"
+        },
+        {
           "key": "KeyboardShortcuts.Title",
           "value": "Atajos de teclado"
         },
@@ -16965,6 +17025,18 @@
         {
           "key": "NotificationsForChannels",
           "value": "Notificaciones de canales"
+        },
+        {
+          "key": "NotificationsPrivateChats",
+          "value": "Chats privados"
+        },
+        {
+          "key": "NotificationsGroups",
+          "value": "Grupos"
+        },
+        {
+          "key": "NotificationsChannels",
+          "value": "Canales"
         },
         {
           "key": "MessagePreview",
@@ -19516,7 +19588,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 7,
+      "version": 8,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -19695,6 +19767,10 @@
           "value": "Мова"
         },
         {
+          "key": "Telegram.NotificationSettingsViewController",
+          "value": "Сповіщення"
+        },
+        {
           "key": "KeyboardShortcuts.Title",
           "value": "Гарячі клавіші"
         },
@@ -19769,6 +19845,18 @@
         {
           "key": "NotificationsForChannels",
           "value": "Сповіщення з каналів"
+        },
+        {
+          "key": "NotificationsPrivateChats",
+          "value": "Особисті чати"
+        },
+        {
+          "key": "NotificationsGroups",
+          "value": "Групи"
+        },
+        {
+          "key": "NotificationsChannels",
+          "value": "Канали"
         },
         {
           "key": "MessagePreview",
