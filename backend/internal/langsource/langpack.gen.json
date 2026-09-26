@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 29,
+      "version": 30,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -1313,10 +1313,6 @@
         {
           "key": "Common.More",
           "value": "More"
-        },
-        {
-          "key": "Common.Next",
-          "value": "Next"
         },
         {
           "key": "Common.Of",
@@ -2928,6 +2924,13 @@
           }
         },
         {
+          "key": "MinutesShort",
+          "forms": {
+            "one_value": "%1$d min",
+            "other_value": "%1$d min"
+          }
+        },
+        {
           "key": "Months",
           "forms": {
             "one_value": "%1$d month",
@@ -3272,16 +3275,20 @@
           "value": "Auto-lock after"
         },
         {
-          "key": "PasscodeLock.AutoLock.Caption",
-          "value": "Automatically lock the app if you are away for some time."
-        },
-        {
           "key": "PasscodeLock.ChangePasscode",
           "value": "Change passcode"
         },
         {
           "key": "PasscodeLock.Description",
           "value": "When a passcode is set, a lock icon appears above your chat list. Tap it to lock your Telegram."
+        },
+        {
+          "key": "PasscodeLock.Disabled",
+          "value": "Disabled"
+        },
+        {
+          "key": "PasscodeLock.EnableLockShortcut",
+          "value": "Enable lock shortcut"
         },
         {
           "key": "PasscodeLock.EnterANewPasscode",
@@ -3296,10 +3303,6 @@
           "value": "Enter your passcode"
         },
         {
-          "key": "PasscodeLock.ForgotNotice",
-          "value": "Note: if you forget your passcode, you'll need to log out and log in again."
-        },
-        {
           "key": "PasscodeLock.ForgotPasscode.Text",
           "value": "If you forgot your passcode, you need to log out and log in again."
         },
@@ -3312,8 +3315,20 @@
           "value": "Lock the app"
         },
         {
+          "key": "PasscodeLock.LockShortcutDescription",
+          "value": "Play around to find the perfect shortcut to work for your browser."
+        },
+        {
           "key": "PasscodeLock.Logout.Text",
           "value": "Are you sure you want to log out? You will need to sign in again."
+        },
+        {
+          "key": "PasscodeLock.Next",
+          "value": "Next"
+        },
+        {
+          "key": "PasscodeLock.Notice",
+          "value": "Note: If you forget your passcode, you'll need to log out."
         },
         {
           "key": "PasscodeLock.PasscodeHasBeenChanged",
@@ -5464,10 +5479,6 @@
           "value": "MB"
         },
         {
-          "key": "Unit.Minutes.Abbr",
-          "value": "min"
-        },
-        {
           "key": "Unit.Minutes.Short",
           "value": "m"
         },
@@ -5688,7 +5699,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 29,
+      "version": 30,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -9677,10 +9688,6 @@
           "value": "Вы уверены, что хотите отключить код-пароль?"
         },
         {
-          "key": "PasscodeLock.ForgotNotice",
-          "value": "Важно: если Вы забудете код-пароль, нужно будет выйти и заново авторизоваться."
-        },
-        {
           "key": "PasscodeLock.EnterAPasscode",
           "value": "Введите код-пароль"
         },
@@ -9725,14 +9732,6 @@
           "value": "Автоблокировка"
         },
         {
-          "key": "PasscodeLock.AutoLock.Caption",
-          "value": "Автоматически блокировать приложение, если Вы отсутствуете некоторое время."
-        },
-        {
-          "key": "Unit.Minutes.Abbr",
-          "value": "мин"
-        },
-        {
           "key": "PasscodeLock.WrongPasscodeShort",
           "value": "Неверный код-пароль"
         },
@@ -9759,6 +9758,35 @@
         {
           "key": "PasscodeLock.LockNow",
           "value": "Заблокировать приложение"
+        },
+        {
+          "key": "PasscodeLock.Notice",
+          "value": "Примечание: если Вы забудете код-пароль, придётся выйти из аккаунта."
+        },
+        {
+          "key": "PasscodeLock.Next",
+          "value": "Далее"
+        },
+        {
+          "key": "PasscodeLock.Disabled",
+          "value": "Отключена"
+        },
+        {
+          "key": "MinutesShort",
+          "forms": {
+            "one_value": "%1$d мин",
+            "few_value": "%1$d мин",
+            "many_value": "%1$d мин",
+            "other_value": "%1$d мин"
+          }
+        },
+        {
+          "key": "PasscodeLock.EnableLockShortcut",
+          "value": "Сочетание клавиш для блокировки"
+        },
+        {
+          "key": "PasscodeLock.LockShortcutDescription",
+          "value": "Подберите сочетание, которое сработает в Вашем браузере."
         },
         {
           "key": "Passkeys.Caption",
@@ -11273,10 +11301,6 @@
           "value": "Ещё"
         },
         {
-          "key": "Common.Next",
-          "value": "Далее"
-        },
-        {
           "key": "Story.Sound",
           "value": "Звук"
         },
@@ -11401,7 +11425,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 17,
+      "version": 18,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -13622,10 +13646,6 @@
           "value": "Voulez-vous vraiment désactiver le code d'accès ?"
         },
         {
-          "key": "PasscodeLock.ForgotNotice",
-          "value": "Remarque : si vous oubliez votre code d'accès, vous devrez vous déconnecter puis vous reconnecter."
-        },
-        {
           "key": "PasscodeLock.EnterAPasscode",
           "value": "Saisissez un code d'accès"
         },
@@ -13670,14 +13690,6 @@
           "value": "Verrouillage automatique"
         },
         {
-          "key": "PasscodeLock.AutoLock.Caption",
-          "value": "Verrouiller automatiquement l'application si vous êtes absent pendant un certain temps."
-        },
-        {
-          "key": "Unit.Minutes.Abbr",
-          "value": "min"
-        },
-        {
           "key": "PasscodeLock.WrongPasscodeShort",
           "value": "Code d'accès incorrect"
         },
@@ -13704,6 +13716,26 @@
         {
           "key": "PasscodeLock.LockNow",
           "value": "Verrouiller l'application"
+        },
+        {
+          "key": "PasscodeLock.Notice",
+          "value": "Remarque : si vous oubliez votre code d'accès, vous devrez vous déconnecter."
+        },
+        {
+          "key": "PasscodeLock.Next",
+          "value": "Suivant"
+        },
+        {
+          "key": "PasscodeLock.Disabled",
+          "value": "Désactivé"
+        },
+        {
+          "key": "PasscodeLock.EnableLockShortcut",
+          "value": "Raccourci de verrouillage"
+        },
+        {
+          "key": "PasscodeLock.LockShortcutDescription",
+          "value": "Essayez plusieurs combinaisons pour trouver le raccourci qui fonctionne dans votre navigateur."
         },
         {
           "key": "Passkeys.Caption",
@@ -14331,7 +14363,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 17,
+      "version": 18,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -16555,10 +16587,6 @@
           "value": "Möchtest du den Code wirklich deaktivieren?"
         },
         {
-          "key": "PasscodeLock.ForgotNotice",
-          "value": "Hinweis: Wenn du deinen Code vergisst, musst du dich ab- und wieder anmelden."
-        },
-        {
           "key": "PasscodeLock.EnterAPasscode",
           "value": "Code eingeben"
         },
@@ -16603,14 +16631,6 @@
           "value": "Automatische Sperre"
         },
         {
-          "key": "PasscodeLock.AutoLock.Caption",
-          "value": "Die App automatisch sperren, wenn du einige Zeit abwesend bist."
-        },
-        {
-          "key": "Unit.Minutes.Abbr",
-          "value": "Min."
-        },
-        {
           "key": "PasscodeLock.WrongPasscodeShort",
           "value": "Falscher Code"
         },
@@ -16637,6 +16657,33 @@
         {
           "key": "PasscodeLock.LockNow",
           "value": "App sperren"
+        },
+        {
+          "key": "PasscodeLock.Notice",
+          "value": "Hinweis: Wenn du deinen Code vergisst, musst du dich abmelden."
+        },
+        {
+          "key": "PasscodeLock.Next",
+          "value": "Weiter"
+        },
+        {
+          "key": "PasscodeLock.Disabled",
+          "value": "Deaktiviert"
+        },
+        {
+          "key": "MinutesShort",
+          "forms": {
+            "one_value": "%1$d Min.",
+            "other_value": "%1$d Min."
+          }
+        },
+        {
+          "key": "PasscodeLock.EnableLockShortcut",
+          "value": "Tastenkürzel zum Sperren"
+        },
+        {
+          "key": "PasscodeLock.LockShortcutDescription",
+          "value": "Probiere aus, welches Tastenkürzel in deinem Browser funktioniert."
         },
         {
           "key": "Passkeys.Caption",
@@ -17272,7 +17319,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 17,
+      "version": 18,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -19501,10 +19548,6 @@
           "value": "¿Seguro que quieres desactivar el código de acceso?"
         },
         {
-          "key": "PasscodeLock.ForgotNotice",
-          "value": "Nota: si olvidas tu código de acceso, tendrás que cerrar sesión e iniciarla de nuevo."
-        },
-        {
           "key": "PasscodeLock.EnterAPasscode",
           "value": "Introduce un código de acceso"
         },
@@ -19549,14 +19592,6 @@
           "value": "Bloqueo automático"
         },
         {
-          "key": "PasscodeLock.AutoLock.Caption",
-          "value": "Bloquear automáticamente la aplicación si te ausentas durante un tiempo."
-        },
-        {
-          "key": "Unit.Minutes.Abbr",
-          "value": "min"
-        },
-        {
           "key": "PasscodeLock.WrongPasscodeShort",
           "value": "Código incorrecto"
         },
@@ -19583,6 +19618,26 @@
         {
           "key": "PasscodeLock.LockNow",
           "value": "Bloquear la aplicación"
+        },
+        {
+          "key": "PasscodeLock.Notice",
+          "value": "Nota: si olvidas tu código de acceso, tendrás que cerrar sesión."
+        },
+        {
+          "key": "PasscodeLock.Next",
+          "value": "Siguiente"
+        },
+        {
+          "key": "PasscodeLock.Disabled",
+          "value": "Desactivado"
+        },
+        {
+          "key": "PasscodeLock.EnableLockShortcut",
+          "value": "Atajo de bloqueo"
+        },
+        {
+          "key": "PasscodeLock.LockShortcutDescription",
+          "value": "Prueba combinaciones hasta dar con el atajo que funcione en tu navegador."
         },
         {
           "key": "Passkeys.Caption",
@@ -20218,7 +20273,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 17,
+      "version": 18,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -22479,10 +22534,6 @@
           "value": "Ви впевнені, що хочете вимкнути код-пароль?"
         },
         {
-          "key": "PasscodeLock.ForgotNotice",
-          "value": "Важливо: якщо Ви забудете код-пароль, потрібно буде вийти та знову авторизуватися."
-        },
-        {
           "key": "PasscodeLock.EnterAPasscode",
           "value": "Введіть код-пароль"
         },
@@ -22527,14 +22578,6 @@
           "value": "Автоблокування"
         },
         {
-          "key": "PasscodeLock.AutoLock.Caption",
-          "value": "Автоматично блокувати застосунок, якщо Ви відсутні певний час."
-        },
-        {
-          "key": "Unit.Minutes.Abbr",
-          "value": "хв"
-        },
-        {
           "key": "PasscodeLock.WrongPasscodeShort",
           "value": "Невірний код-пароль"
         },
@@ -22561,6 +22604,35 @@
         {
           "key": "PasscodeLock.LockNow",
           "value": "Заблокувати застосунок"
+        },
+        {
+          "key": "PasscodeLock.Notice",
+          "value": "Важливо: якщо Ви забудете код-пароль, доведеться вийти з акаунта."
+        },
+        {
+          "key": "PasscodeLock.Next",
+          "value": "Далі"
+        },
+        {
+          "key": "PasscodeLock.Disabled",
+          "value": "Вимкнено"
+        },
+        {
+          "key": "MinutesShort",
+          "forms": {
+            "one_value": "%1$d хв",
+            "few_value": "%1$d хв",
+            "many_value": "%1$d хв",
+            "other_value": "%1$d хв"
+          }
+        },
+        {
+          "key": "PasscodeLock.EnableLockShortcut",
+          "value": "Сполучення клавіш для блокування"
+        },
+        {
+          "key": "PasscodeLock.LockShortcutDescription",
+          "value": "Підберіть сполучення, яке спрацює у Вашому браузері."
         },
         {
           "key": "Passkeys.Caption",

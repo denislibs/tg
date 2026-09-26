@@ -40,7 +40,9 @@ const PLACEHOLDER = /%\d\$[sd]|%[sd]/
  * пятёрки» требовало бы выдумать несуществующее склонение; со списком — проверяется в
  * обе стороны, чтобы он не стал лазейкой (см. «исключение протухло» ниже).
  */
-const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSender.SendVideo', 'OnlineCount'])
+// `MinutesShort` (задача 18 плана 2D, автоблокировка код-пароля) — сокращение «мин»
+// не склоняется: «1 мин», «5 мин», «21 мин».
+const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSender.SendVideo', 'OnlineCount', 'MinutesShort'])
 
 // Состав словарей ничем, кроме этого пина, не держится: молча уронить строку могут обе
 // самые массовые задачи волны — кодмод задачи 6 и снос `t()` задачей 9. Потеря выглядит
@@ -305,12 +307,23 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // всем пяти словарям: ru 1350 → 1351, uk 686 → 687, es 685 → 686,
 // de/fr 684 → 685. `plural` не менялся.
 // Поверх задач 7, 9, 10, 11, 12, 14, 19 и корня настроек: ru 1380, uk 716, es 715, de 714, fr 711.
+//
+// Задача 18 плана 2D (вкладка «Код-пароль», порт tweb passcodeLock/*): ключи tweb
+// lang.ts `PasscodeLock.Notice`, `PasscodeLock.Next`, `PasscodeLock.Disabled`,
+// `PasscodeLock.EnableLockShortcut`, `PasscodeLock.LockShortcutDescription` и
+// числовой `MinutesShort` (у es и fr его нет — «%1$d min» совпал с английским):
+// ru 1350 → 1356 (plural 35 → 36), uk 686 → 692, de 684 → 690 (plural 24 → 25),
+// es 685 → 690, fr 684 → 689. Врезкой той же задачи сняты ключи снесённого
+// React-экрана, у которых не осталось читателей, — `PasscodeLock.ForgotNotice`,
+// `PasscodeLock.AutoLock.Caption`, `Unit.Minutes.Abbr` (и у ru `Common.Next`):
+// ru 1356 → 1352, остальные −3 (uk 689, de 687, es 687, fr 686).
+// Поверх задач 7, 9, 10, 11, 12, 14, 16, 19 и корня настроек: ru 1382, uk 719, es 717, de 717, fr 713.
 const COMPOSITION = {
-  ru: { keys: 1380, plural: 37 },
-  uk: { keys: 716, plural: 26 },
-  es: { keys: 715, plural: 26 },
-  de: { keys: 714, plural: 26 },
-  fr: { keys: 711, plural: 26 },
+  ru: { keys: 1382, plural: 38 },
+  uk: { keys: 719, plural: 27 },
+  es: { keys: 717, plural: 26 },
+  de: { keys: 717, plural: 27 },
+  fr: { keys: 713, plural: 26 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -420,12 +433,13 @@ const COMPOSITION = {
 // Мастером 2FA — +7 ключей tweb, сносом React-мастера — −6 (у ru −7) наших
 // (разбор — у `COMPOSITION` выше).
 // Задачей 16 плана 2D — подпись пустой выдачи селектора пиров (разбор — там же).
+// Задачей 18 плана 2D — ключи вкладки «Код-пароль» (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '7582a803',
-  uk: 'a47d6dfb',
-  es: 'f64b3983',
-  de: '3084f663',
-  fr: 'df7c0ca5',
+  ru: '8fe8ded0',
+  uk: 'c0937e10',
+  es: '362b8a05',
+  de: '47fb3534',
+  fr: '065d344b',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
@@ -706,7 +720,6 @@ const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
     ReportChatSpam: '«spam» — заимствование, в испанском Telegram так же',
     FilterChats: '«chats» — заимствование с испанским множественным',
     'SharedMedia.Audio': '«audio» — латинское слово, совпадает',
-    'Unit.Minutes.Abbr': '«min» — международное сокращение минуты',
     'StorageQuota.CacheSizeLimitAuto': '«auto» — сокращение от «automático»',
     'Unit.Bytes': 'B — единица информации, не переводится',
     'Unit.Kilobytes': 'KB — единица информации, не переводится',
@@ -775,7 +788,6 @@ const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
     AttachContact: '«contact» — французское слово',
     'SharedMedia.Audio': '«audio» — французское слово',
     Exceptions: '«exceptions» — французское слово',
-    'Unit.Minutes.Abbr': '«min» — сокращение от «minute»',
     'StorageQuota.CacheSizeLimitAuto': '«auto» — сокращение от «automatique»',
     'KeyboardShortcuts.Action.Monospace': '«monospace» — типографский термин',
     'KeyboardShortcuts.Action.Spoiler': '«spoiler» — заимствование',

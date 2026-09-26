@@ -4,7 +4,8 @@
  * «ловушки» автозаполнения `input.stealthy` до и после поля, «глазок»
  * `span.toggle-visible` с иконкой `eye1_filled`/`eye2_filled`. Первый потребитель —
  * мастер 2FA (`sidebarLeft/tabs/2fa/enterPassword.solid.tsx`,
- * `reEnterPassword.solid.tsx`); карточка входа `auth/cards/PasswordCard.solid.tsx`
+ * `reEnterPassword.solid.tsx`), затем ввод код-пароля
+ * (`sidebarLeft/tabs/passcodeLock/enterPasswordTab.solid.tsx`); карточка входа `auth/cards/PasswordCard.solid.tsx`
  * строит ту же разметку своим JSX и этот класс не использует.
  *
  * Отличия от оригинала:

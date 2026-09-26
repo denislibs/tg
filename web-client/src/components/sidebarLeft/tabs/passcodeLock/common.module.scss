@@ -1,0 +1,7 @@
+// Порт tweb `src/components/sidebarLeft/tabs/passcodeLock/common.module.scss`
+// (812502980). Класс `.LottieAnimation` оригинала (`:1-10`) не перенесён: у tweb
+// его не читает ни один модуль (заставку рисует `SettingsTabLottieAnimation` со
+// своим `.Container`).
+.AdditionalPadding {
+  padding: 0 1rem;
+}

@@ -651,8 +651,6 @@ const uk = {
   'PasscodeLock.TurnOff.Title': 'Вимкнути код-пароль',
   'PasscodeLock.TurnOff': 'Вимкнути',
   'PasscodeLock.TurnOff.Description': 'Ви впевнені, що хочете вимкнути код-пароль?',
-  'PasscodeLock.ForgotNotice':
-    'Важливо: якщо Ви забудете код-пароль, потрібно буде вийти та знову авторизуватися.',
   'PasscodeLock.EnterAPasscode': 'Введіть код-пароль',
   'PasscodeLock.EnterANewPasscode': 'Введіть новий код-пароль',
   'PasscodeLock.EnterYourPasscode': 'Введіть код-пароль',
@@ -664,9 +662,6 @@ const uk = {
   'PasscodeLock.PasscodeHasBeenChanged': 'Код-пароль змінено.',
   'PasscodeLock.PasscodeHasBeenDisabled': 'Код-пароль вимкнено.',
   'PasscodeLock.AutoLock': 'Автоблокування',
-  'PasscodeLock.AutoLock.Caption':
-    'Автоматично блокувати застосунок, якщо Ви відсутні певний час.',
-  'Unit.Minutes.Abbr': 'хв',
   'PasscodeLock.WrongPasscodeShort': 'Невірний код-пароль',
   'PasscodeLock.TooManyAttempts': 'Забагато спроб, спробуйте пізніше',
   'PasscodeLock.Proceed': 'Продовжити',
@@ -676,6 +671,18 @@ const uk = {
   'PasscodeLock.Logout.Text':
     'Ви впевнені, що хочете вийти? Доведеться авторизуватися знову.',
   'PasscodeLock.LockNow': 'Заблокувати застосунок',
+  // вкладка «Код-пароль» (порт tweb passcodeLock/*, план 2D, задача 18)
+  'PasscodeLock.Notice': 'Важливо: якщо Ви забудете код-пароль, доведеться вийти з акаунта.',
+  'PasscodeLock.Next': 'Далі',
+  'PasscodeLock.Disabled': 'Вимкнено',
+  MinutesShort: {
+    one_value: '%1$d хв',
+    few_value: '%1$d хв',
+    many_value: '%1$d хв',
+    other_value: '%1$d хв',
+  },
+  'PasscodeLock.EnableLockShortcut': 'Сполучення клавіш для блокування',
+  'PasscodeLock.LockShortcutDescription': 'Підберіть сполучення, яке спрацює у Вашому браузері.',
   // Passkeys
   'Passkeys.Caption':
     'Ключі доступу дозволяють входити без пароля — за відбитком пальця, обличчям або PIN-кодом пристрою.',

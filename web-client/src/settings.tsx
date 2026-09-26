@@ -3,6 +3,8 @@ import I18n from '@lib/langPack'
 import type { ThemeChoice } from './theme'
 import type { Wallpaper } from './wallpapers'
 import type { LiteModeKey } from '@helpers/liteMode'
+// tweb `config/state.ts:8` — тип клавиш сочетания блокировки живёт у ShortcutBuilder.
+import type { ShortcutKey as PasscodeLockShortcutKey } from '@components/sidebarLeft/tabs/passcodeLock/shortcutBuilder.solid'
 
 export type TimeFormat = '12h' | '24h'
 
@@ -46,6 +48,11 @@ export interface Settings {
   // (0 — выключен). Хеш и соль лежат в IndexedDB (core/passcode.ts).
   passcodeEnabled: boolean
   passcodeAutoLockMins: number
+  // Сочетание блокировки (tweb settings.passcode.lockShortcutEnabled/lockShortcut,
+  // `config/state.ts:151-152`): модификаторы + L, слушатель —
+  // `core/hooks/useLockScreenShortcut.ts`.
+  passcodeLockShortcutEnabled: boolean
+  passcodeLockShortcut: PasscodeLockShortcutKey[]
   // Автозагрузка медиа (tweb autoDownload/autoDownloadNew): общий выключатель,
   // по типам чатов для фото/видео/файлов, лимит размера файла (байты).
   autoDownloadEnabled: boolean
@@ -127,6 +134,8 @@ export const DEFAULTS: Settings = {
   tabsInSidebar: false,
   passcodeEnabled: false,
   passcodeAutoLockMins: 0,
+  passcodeLockShortcutEnabled: false, // tweb SETTINGS_INIT.passcode (`config/state.ts:580-581`)
+  passcodeLockShortcut: ['Alt'],
   autoDownloadEnabled: true,
   autoDownloadPhoto: { ...AUTO_DOWNLOAD_ALL },
   autoDownloadVideo: { ...AUTO_DOWNLOAD_ALL },
@@ -255,6 +264,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       tabsInSidebar: s.tabsInSidebar,
       passcodeEnabled: s.passcodeEnabled,
       passcodeAutoLockMins: s.passcodeAutoLockMins,
+      passcodeLockShortcutEnabled: s.passcodeLockShortcutEnabled,
+      passcodeLockShortcut: s.passcodeLockShortcut,
       autoDownloadEnabled: s.autoDownloadEnabled,
       autoDownloadPhoto: s.autoDownloadPhoto,
       autoDownloadVideo: s.autoDownloadVideo,

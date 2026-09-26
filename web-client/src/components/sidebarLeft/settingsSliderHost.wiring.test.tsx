@@ -4,7 +4,9 @@
  *  1. `SettingsView` заводит слайдер и уносит его с собой (эффект + cleanup);
  *  2. строка «Devices» в корне настроек открывает вкладку «Устройства»;
  *  3. строка «Active Sessions» в разделе конфиденциальности — ту же вкладку;
- *  4. строка «Language» в корне настроек открывает вкладку «Язык».
+ *  4. строка «Language» в корне настроек открывает вкладку «Язык»;
+ *  5. строка «Passcode Lock» в разделе конфиденциальности открывает вкладки
+ *     «Код-пароль» (при включённом коде — сначала ввод текущего).
  *
  * Почему отдельным файлом и почему вообще: раунд 1 ревью снял ВСЕ ТРИ строки
  * разом (пустой cleanup + вырезанная ветка `Devices` + `void
@@ -25,6 +27,20 @@ import { ManagersProvider } from '@core/hooks/useManagers'
 import SettingsView from '../SettingsView'
 import PrivacySecuritySettings from '../settings/PrivacySecuritySettings'
 import { createSettingsSliderHost } from './settingsSliderHost'
+import { useSettingsStore } from '@/settings'
+import { enablePasscode } from '@core/passcode'
+
+// Для «Код-пароля»: IndexedDB — словарь в памяти (хеш кода кладёт настоящий
+// `core/passcode.ts`), лотти-заставка — заглушка.
+const idb = vi.hoisted(() => new Map<string, unknown>())
+vi.mock('@core/store/idbKv', () => ({
+  idbGet: async(key: string) => idb.get(key),
+  idbSet: async(key: string, val: unknown) => { idb.set(key, val) },
+  idbDel: async(key: string) => { idb.delete(key) },
+}))
+vi.mock('@lib/lottie/lottieLoader', () => ({
+  default: { loadAnimationAsAsset: vi.fn(async() => ({ playOrRestart() {}, remove() {} })) },
+}))
 
 type Auth = Authorization.authorization
 
@@ -59,6 +75,7 @@ function makeManagers() {
         passkeysList: vi.fn(async() => []),
       },
       privacy: { autoDelete: vi.fn(async() => 0) },
+      persist: { clearAll: vi.fn(async() => {}) },
     } as unknown as Managers,
   }
 }
@@ -206,5 +223,72 @@ describe('шов React → слайдер: проводка вкладки «Я�
     expect(tab).not.toBeNull()
     expect(getLanguages).toHaveBeenCalledTimes(1)
     expect(tab!.querySelectorAll('input[type="radio"]')).toHaveLength(2)
+  })
+})
+
+describe('шов React → слайдер: проводка вкладок «Код-пароль»', () => {
+  const persist = { clearAll: async() => {} }
+
+  function mountPrivacy() {
+    const { managers } = makeManagers()
+    const host = createSettingsSliderHost(columnEl, managers)
+    const screen = document.createElement('div')
+    columnEl.append(screen)
+    render(
+      <ManagersProvider managers={managers}>
+        <PrivacySecuritySettings onBack={() => {}} />
+      </ManagersProvider>,
+      { container: screen },
+    )
+    return { host, screen }
+  }
+
+  const tabs = () => [...columnEl.querySelectorAll<HTMLElement>('.sidebar-slider > .tabs-tab.sidebar-slider-item')]
+  const fieldLabel = (tab: HTMLElement) => tab.querySelector('.input-field label')?.textContent
+
+  async function submit(tab: HTMLElement, value: string) {
+    const input = tab.querySelector<HTMLInputElement>('input.input-field-input')!
+    input.value = value
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await act(async() => { await pause(0) })
+    tab.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+  }
+
+  afterEach(() => {
+    idb.clear()
+    useSettingsStore.getState().update({ passcodeEnabled: false })
+  })
+
+  it('код не задан: строка открывает главную вкладку «Turn Passcode On»', async() => {
+    useSettingsStore.getState().update({ passcodeEnabled: false })
+    const { host, screen } = mountPrivacy()
+
+    await act(async() => { fireEvent.click(rowByTitle(screen, 'Passcode Lock')) })
+    await flush(() => tabs().some((t) => t.textContent?.includes('Turn Passcode On')))
+    expect(tabs()).toHaveLength(1)
+
+    host.destroy()
+  })
+
+  it('код задан: сначала ввод текущего; неверный — ошибка, верный — главная вкладка, ввод срезан', async() => {
+    await enablePasscode('1111', persist)
+    const { host, screen } = mountPrivacy()
+
+    await act(async() => { fireEvent.click(rowByTitle(screen, 'Passcode Lock')) })
+    await flush(() => tabs().some((t) => fieldLabel(t) === 'Enter your passcode'))
+    const enter = tabs().find((t) => fieldLabel(t) === 'Enter your passcode')!
+
+    await submit(enter, '0000')
+    await flush(() => !!enter.querySelector('.input-field-error-label'))
+    expect(enter.querySelector('.input-field-error-label')?.textContent).toBe('Passcodes don’t match, try again')
+
+    await submit(enter, '1111')
+    await flush(() => tabs().some((t) => t.textContent?.includes('Turn Passcode Off')))
+    // `onOpenAfterTimeout` главной вкладки срезает ввод (О-12: до корня хоста)
+    await flush(() => tabs().length === 1)
+    expect(tabs()).toHaveLength(1)
+    expect(tabs()[0].textContent).toContain('Turn Passcode Off')
+
+    host.destroy()
   })
 })

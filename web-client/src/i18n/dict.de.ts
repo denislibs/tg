@@ -617,8 +617,6 @@ const de = {
   'PasscodeLock.TurnOff.Title': 'Code deaktivieren',
   'PasscodeLock.TurnOff': 'Deaktivieren',
   'PasscodeLock.TurnOff.Description': 'Möchtest du den Code wirklich deaktivieren?',
-  'PasscodeLock.ForgotNotice':
-    'Hinweis: Wenn du deinen Code vergisst, musst du dich ab- und wieder anmelden.',
   'PasscodeLock.EnterAPasscode': 'Code eingeben',
   'PasscodeLock.EnterANewPasscode': 'Neuen Code eingeben',
   'PasscodeLock.EnterYourPasscode': 'Gib deinen Code ein',
@@ -630,9 +628,6 @@ const de = {
   'PasscodeLock.PasscodeHasBeenChanged': 'Dein Code wurde geändert.',
   'PasscodeLock.PasscodeHasBeenDisabled': 'Der Code wurde deaktiviert.',
   'PasscodeLock.AutoLock': 'Automatische Sperre',
-  'PasscodeLock.AutoLock.Caption':
-    'Die App automatisch sperren, wenn du einige Zeit abwesend bist.',
-  'Unit.Minutes.Abbr': 'Min.',
   'PasscodeLock.WrongPasscodeShort': 'Falscher Code',
   'PasscodeLock.TooManyAttempts': 'Zu viele Versuche, bitte versuche es später erneut',
   'PasscodeLock.Proceed': 'Fortfahren',
@@ -642,6 +637,16 @@ const de = {
   'PasscodeLock.Logout.Text':
     'Möchtest du dich wirklich abmelden? Du musst dich erneut anmelden.',
   'PasscodeLock.LockNow': 'App sperren',
+  // вкладка «Код-пароль» (порт tweb passcodeLock/*, план 2D, задача 18)
+  'PasscodeLock.Notice': 'Hinweis: Wenn du deinen Code vergisst, musst du dich abmelden.',
+  'PasscodeLock.Next': 'Weiter',
+  'PasscodeLock.Disabled': 'Deaktiviert',
+  MinutesShort: {
+    one_value: '%1$d Min.',
+    other_value: '%1$d Min.',
+  },
+  'PasscodeLock.EnableLockShortcut': 'Tastenkürzel zum Sperren',
+  'PasscodeLock.LockShortcutDescription': 'Probiere aus, welches Tastenkürzel in deinem Browser funktioniert.',
   // Passkeys
   'Passkeys.Caption':
     'Mit Passkeys meldest du dich ohne Passwort an – per Fingerabdruck, Gesicht oder Geräte-PIN.',

@@ -21,6 +21,10 @@ import type { Authorization } from '@layer'
 import type { PasswordState } from '@core/managers/authManager'
 import type SliderSuperTab from '@components/sliderTab'
 import { scaffoldSolidJSTab, scaffoldSolidJSTabEventable } from './scaffoldSolidJSTab.solid'
+import type { LangPackKey } from '@/lang'
+import type { MaybePromise } from '@types'
+import type { PasscodeActions } from '@core/passcode'
+import type SidebarSlider from '@components/slider'
 
 // tweb :327-329 — вкладка получает УЖЕ загруженный список сессий, а не ходит
 // за ним сама: запрос делает открывающая сторона (у нас — `settingsSliderHost
@@ -52,6 +56,40 @@ export const AppNotificationsTab =
   scaffoldSolidJSTab({
     title: 'Telegram.NotificationSettingsViewController',
     getComponentModule: () => import('../sidebarLeft/tabs/notifications.solid'),
+  })
+
+// tweb :27-53 — «Код-пароль»: главная вкладка и вкладка ввода кода, обе обычной
+// формы. Открывает строка `PasscodeLock.Item.Title` раздела конфиденциальности
+// (tweb `privacyAndSecurity.tsx:193-210`): при включённом коде — сначала ввод
+// текущего кода.
+export const AppPasscodeLockTab =
+  scaffoldSolidJSTab({
+    title: 'PasscodeLock.Title',
+    getComponentModule: () => import('../sidebarLeft/tabs/passcodeLock/mainTab.solid'),
+    onOpenAfterTimeout: function() {
+      // Remove the previous enter password tab
+      // (О-12) У tweb — срез до `AppPrivacyAndSecurityTab`; хаб станет вкладкой
+      // задачей 23, до неё под этой вкладкой в истории хоста только вкладки
+      // ввода кода — срезаем до корня (всё, кроме себя).
+      const slider = this.slider as unknown as SidebarSlider
+      // копия: `removeTabFromHistory` вырезает из того же массива истории
+      for(const tab of slider.getHistory().slice()) {
+        if(tab !== this) slider.removeTabFromHistory(tab)
+      }
+    },
+  })
+
+type AppPasscodeEnterPasswordTabPayload = {
+  onSubmit: (passcode: string, tab: InstanceType<typeof AppPasscodeEnterPasswordTab>, passcodeActions: PasscodeActions) => MaybePromise<void>
+
+  inputLabel: LangPackKey
+  buttonText: LangPackKey
+}
+
+export const AppPasscodeEnterPasswordTab =
+  scaffoldSolidJSTab<AppPasscodeEnterPasswordTabPayload>({
+    title: 'PasscodeLock.Title',
+    getComponentModule: () => import('../sidebarLeft/tabs/passcodeLock/enterPasswordTab.solid'),
   })
 
 // tweb :113-117. Форма обычная, без полезной нагрузки: вкладка статична, настроек
