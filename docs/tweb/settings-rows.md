@@ -344,8 +344,8 @@ div.tabs-container[data-animation="navigation"]  (= .sidebar-slider колонк
 | `components/radioField.ts`, `radioForm.ts` | классы | есть | Solid `radioFieldTsx` нет |
 | `components/rangeSelector.ts` | класс `RangeSelector` | есть | `rangeSelectorTsx`/`RangeSettingSelector` нет (стили `.range-setting-selector` есть — `_leftSidebar.scss:951`) |
 | `components/{slider,sliderTab}.ts`, `solidJsTabs/*` | те же | есть | реестр `tabs.ts` — две вкладки (Устройства, Язык); `shown`/`resetShown` (34f417d12) нет |
-| `components/sidebarLeft/settingsSliderHost.ts` | `index.ts:140-148` + `settingsSliderPopup.ts` | шов | свой `.sidebar-slider` поверх React-экрана, заглушка вкладки №0 |
-| `stores/*` | `stores/appSettings.ts` (`useAppSettings`) | **нет** | настройки — zustand `useSettingsStore` (`settings.tsx:178`, 38 потребителей), уведомления по типам — `stores/notifyStore.ts` |
+| `components/sidebarLeft/settingsSliderHost.ts` | `index.ts:140-148` + `settingsSliderPopup.ts` | шов (задача 3 — каркас закреплён) | свой `.sidebar-slider` поверх React-экрана, заглушка вкладки №0 (первое открытие — без затемнения корня, до задачи 28); тип навигации `'settings-popup'`, как у `settingsSliderPopup` (`'left'` заняли React-слои корня); перекрытие фона вкладки в `--surface-color` снято. Пины каркаса — `settingsTabFrame.solid.test.tsx` |
+| `stores/appSettings.solid.ts` | `stores/appSettings.ts` (`useAppSettings`) | **мост** (задача 4) | без своего стора: чтение — `subscribeExternal` над zustand `useSettingsStore`, запись — его `update`; путь tweb → плоский ключ таблицей `APP_SETTINGS_KEYS` (О-2), пока `notifications.*`; путь вне таблицы — `throw`; `setAppSettingsSilent` не портирован (вызывающий — только гидрация). Уведомления по типам — `stores/notifyStore.ts` |
 
 ### 8.2. Экраны: карта наших файлов
 
@@ -390,15 +390,16 @@ div.tabs-container[data-animation="navigation"]  (= .sidebar-slider колонк
 2. ~~Заголовок вне контент-блока и без `sidebar-left-h2`~~ — **снято задачей 1**: первым
    ребёнком `.sidebar-left-section-content` (`section.tsx:101-107`).
 3. **Имена пропов** `kit.Section`: `caption` — заголовок, `footer` — подпись (`kit.tsx:209-232`).
-4. **Шапка на плашке с линией всегда.** `kit.SettingsScreen` ставит `scrollable-y-bordered`
-   статически, без `scrolled-start` (`kit.tsx:146`, `:159`), и правило
-   `:not(.scrolled-start) .sidebar-header` (`styles/tweb/_sidebar.scss:89-95`) горит постоянно.
-   У вкладок слайдера (`sliderTab.ts:208`, `attachBorderListeners`) этого нет.
+4. ~~**Шапка на плашке с линией всегда.**~~ Снято задачей 3: `kit.SettingsScreen` ведёт
+   `scrolled-start`/`scrolled-end` тем же `Scrollable.attachBorderListeners`, что вкладка слайдера,
+   обёртка саба `scrollable-y-bordered` не несёт (пины — `settings/kit.test.tsx`). Там же снят
+   двойной щелчок тумблера кита (активация label досылала второй `click`).
 5. **Нет перехода назад и параллакса.** Подэкран корня монтируется условно
    (`SettingsView.tsx:337` `{sub && …}`) и снимается мгновенно; въезд — свой кейфрейм/`entering`
    (`SettingsView.module.scss:16-20`, `kit.tsx:80-91`) без уходящей вкладки. Слайдер при этом
    портирован (`components/slider.ts`) и уже ведёт «Устройства» и «Язык» через
-   `settingsSliderHost`.
+   `settingsSliderHost`; переход вкладок закреплён пинами задачи 3
+   (`settingsTabFrame.solid.test.tsx`). У React-экранов выход приходит с переездом каждого.
 6. **Значение справа вместо подписи** (`value` → `row-title-right`), отсюда «Н..».
 7. **Кнопки-действия — строки** (`Row accent/danger`), у tweb — `Button btn-primary btn-transparent`.
 8. **Радио — галочка** (`Row selected`, отступление `kit.tsx:318-327`) или свой `RadioRow`.
@@ -417,10 +418,6 @@ div.tabs-container[data-animation="navigation"]  (= .sidebar-slider колонк
 
 - `left-sidebar.md` ч. 2 — адреса `solidJsTabs/tabs.ts` и `settings.tsx` по старой базе (например,
   `AppNotificationsTab` там `:71-75`, в HEAD — `:77-81`).
-- `left-sidebar.md` ч. 8 § 3 — «реестр: пока ОДНО — `AppActiveSessionsTab`» — их два (+ `AppLanguageTab`);
-  «Отступление: тумблер…» — см. `rowFieldClasses.ts` выше.
-- `components/sidebarLeft/settingsSliderHost.ts` (шапка) и `left-sidebar.md` ч. 8 § 3 — `Sidebar.tsx:236`
-  для колоночного `.sidebar-slider`; сейчас `Sidebar.tsx:350`.
 
 ---
 

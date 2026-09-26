@@ -25,7 +25,15 @@ function Screen({ open }: { open: boolean }) {
 
 describe('SettingsScreen', () => {
   beforeEach(() => vi.useFakeTimers())
-  afterEach(() => vi.useRealTimers())
+  // Доигрываем отложенное ДО возврата настоящих таймеров: переход объявляет
+  // тяжёлую анимацию с предохранителем `pause(transitionTime * 2)`
+  // (`transition.ts::runNavigationTransition`), и брошенный фейковый таймер
+  // оставил бы модульный `isAnimating` взведённым навсегда — следующий
+  // `Scrollable` откладывал бы свои замеры до конца несуществующей анимации.
+  afterEach(() => {
+    vi.runOnlyPendingTimers()
+    vi.useRealTimers()
+  })
 
   it('рисует контейнер слайдера с вкладками', () => {
     const { container } = render(<Screen open={false} />)
@@ -63,6 +71,65 @@ describe('SettingsScreen', () => {
     act(() => { vi.advanceTimersByTime(400) })
     expect(container.querySelector('[data-testid="sub"]')).toBeNull()
     expect(container.querySelectorAll('.tabs-tab')).toHaveLength(1)
+  })
+})
+
+// Шапка экрана кита — тот же контракт, что у вкладки слайдера
+// (`sliderTab.ts::_constructor` → `Scrollable.attachBorderListeners`, tweb
+// `sliderTab.ts:84`, `scrollable.ts:456-465`): у верхнего края `scrolled-start`,
+// и правило плашки с линией `.scrollable-y-bordered:not(.scrolled-start)
+// .sidebar-header` (`styles/tweb/_sidebar.scss:89`, tweb :95-100) не горит.
+// Раньше кит ставил `scrollable-y-bordered` статически, без слушателя, — и
+// шапка каждого React-экрана стояла на плашке с линией всегда.
+describe('SettingsScreen — шапка без плашки у верхнего края', () => {
+  /** селектор правила плашки и линии — дословно `_sidebar.scss:89` */
+  const PLATE = '.scrollable-y-bordered:not(.scrolled-start)'
+  /** замер скроллера: `throttleMeasurement` — кадр либо 24мс (`scrollable.ts`) */
+  const measured = () => act(() => new Promise((resolve) => setTimeout(resolve, 50)))
+
+  it('у верхнего края вкладка несёт scrolled-start scrolled-end scrollable-y-bordered', () => {
+    const { container } = render(<Screen open={false} />)
+    const tab = container.querySelector<HTMLElement>('.tabs-tab')!
+    expect([...tab.classList]).toEqual(expect.arrayContaining(['scrolled-start', 'scrolled-end', 'scrollable-y-bordered']))
+    expect(tab.querySelector('.sidebar-header')!.closest(PLATE)).toBeNull()
+  })
+
+  it('прокрутка снимает scrolled-start (плашка и линия), возврат к верху — ставит обратно', async() => {
+    const { container } = render(<Screen open={false} />)
+    const tab = container.querySelector<HTMLElement>('.tabs-tab')!
+    const scroller = tab.querySelector<HTMLElement>('.scrollable')!
+
+    scroller.scrollTop = 10
+    scroller.dispatchEvent(new Event('scroll'))
+    await measured()
+    expect(tab.classList.contains('scrolled-start')).toBe(false)
+    expect(tab.querySelector('.sidebar-header')!.closest(PLATE)).toBe(tab)
+
+    scroller.scrollTop = 0
+    scroller.dispatchEvent(new Event('scroll'))
+    await measured()
+    expect(tab.classList.contains('scrolled-start')).toBe(true)
+  })
+
+  it('шапка вложенного экрана не попадает под правило плашки обёртки саба', () => {
+    function Nested() {
+      return (
+        <SettingsScreen
+          title="PrivacySettings"
+          onBack={noop}
+          sub={<SettingsScreen title="PrivacySettings" onBack={noop}>саб</SettingsScreen>}
+        >
+          корень
+        </SettingsScreen>
+      )
+    }
+
+    const { container } = render(<Nested />)
+    const headers = container.querySelectorAll('.sidebar-header')
+    expect(headers).toHaveLength(2)
+    for(const header of headers) {
+      expect(header.closest(PLATE)).toBeNull()
+    }
   })
 })
 
@@ -165,6 +232,26 @@ describe('Row — разметка tweb', () => {
     const { container } = render(<Row label="Night" translate={false} onClick={onClick} />)
     row(container).dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 7, clientY: 9 }))
     expect(onClick.mock.calls[0][0].clientX).toBe(7)
+  })
+
+  // Строка-тумблер — `label`, а внутри — `label.checkbox-field > input`. Клик
+  // по тексту строки браузер ДОСЫЛАЕТ полю (активация label): второй `click`
+  // с целью-инпутом всплывает в тот же `onClick`. React между ними успевает
+  // перерисоваться (дискретное событие сбрасывается синхронно), и второй вызов
+  // видит уже новое значение — тумблер щёлкал туда и обратно, настройка не
+  // менялась (стенд: «Сообщение отправлено» на «Уведомлениях и звуках»).
+  it('тумблер: клик по тексту строки зовёт onClick ОДИН раз (без досылки полю)', () => {
+    const onClick = vi.fn()
+    const { container } = render(<Row label="Sent" translate={false} toggle checked={false} onClick={onClick} />)
+    container.querySelector<HTMLElement>('.row-title')!.click()
+    expect(onClick).toHaveBeenCalledTimes(1)
+  })
+
+  it('тумблер: клик прямо по полю тоже зовёт onClick ровно один раз', () => {
+    const onClick = vi.fn()
+    const { container } = render(<Row label="Sent" translate={false} toggle checked={false} onClick={onClick} />)
+    container.querySelector<HTMLInputElement>('input')!.click()
+    expect(onClick).toHaveBeenCalledTimes(1)
   })
 
   it('className доклеивается к строке', () => {

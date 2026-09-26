@@ -9,7 +9,7 @@
 .host {
   // Тот же приём, что у всех оверлеев колонки (`ContactsView.module.scss:13`,
   // `SettingsView.module.scss:7`). Отсчёт идёт от САМОЙ КОЛОНКИ: `#column-left`
-  // несёт класс `chatlist-container` (`Sidebar.tsx:215`), а тот позиционирован
+  // несёт класс `chatlist-container` (`Sidebar.tsx:331`), а тот позиционирован
   // — `.chatlist-container { position: relative }`, `styles/tweb/_chatlist.scss:68-70`.
   // Поэтому `inset: 0` — это ровно поле колонки, то же самое, что у
   // перекрываемого React-экрана; своей геометрии не заводим.
@@ -31,14 +31,15 @@
     pointer-events: auto;
   }
 
-  // Вкладка обязана быть непрозрачной: под ней остаётся живой React-экран
-  // настроек (в tweb под вкладкой — соседняя вкладка того же слайдера, а фон
-  // красит сама колонка). Высоту вкладке при этом даёт не наш слой, а
-  // портированное правило колонки — `#column-left .sidebar-slider { height: 100% }`
-  // (`styles/tweb/_leftSidebar.scss:446`) плюс грид `.tabs-container`.
-  // Заглушка-корень класса `sidebar-slider-item` не несёт и остаётся
-  // прозрачной — сквозь неё и виден React-экран.
-  :global(.sidebar-slider-item) {
-    background: var(--surface-color);
-  }
+  // Фон вкладке своим правилом НЕ задаём: он приходит портированным
+  // `.sidebar-slider-item { background-color: var(--background-color) }`
+  // (`styles/tweb/_sidebar.scss:123-127`, tweb :130-132) и уже непрозрачен —
+  // сквозь вкладку React-экран не виден. Прежнее перекрытие в
+  // `--surface-color` красило вкладку цветом плашки, и прозрачная у верха
+  // шапка (`_sidebar.scss:4-5`) выходила «на отдельной плашке своего цвета»
+  // (задача 3 плана 2D). Заглушка-корень этого класса не несёт и остаётся
+  // прозрачной — сквозь неё и виден React-экран. Высоту вкладке даёт
+  // портированное правило колонки — `#column-left .sidebar-slider
+  // { height: 100% }` (`styles/tweb/_leftSidebar.scss:446`) плюс грид
+  // `.tabs-container`.
 }
