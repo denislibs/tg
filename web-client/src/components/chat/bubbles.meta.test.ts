@@ -103,6 +103,10 @@ describe('ChatBubbles — время и реакции в бабле', () => {
     const time = messageDiv.querySelector<HTMLElement>('.time')!
     expect(time.parentElement).toBe(reactionsEl)
     expect(reactionsEl.lastElementChild).toBe(time)
+    // tweb :11317 `messageDiv.append(reactionsElement)` — ряд последний, текст
+    // перед ним.
+    expect(messageDiv.lastChild).toBe(reactionsEl)
+    expect(messageDiv.firstChild?.textContent).toBe('привет')
   })
 
   // Значок отправки — порт `setBubbleSendingStatus` (:6382-6408). Он стоит в
@@ -271,6 +275,47 @@ describe('ChatBubbles — время и реакции в бабле', () => {
       // тиком — не то же самое, что не трогать. `isInDOM(target)` спрашивают на
       // каждом кадре анимации, и кадр может лечь ровно в этот промежуток.
       expect(removals).toHaveLength(0)
+    })
+
+    /**
+     * Ряд реакций — ПОСЛЕДНИЙ ребёнок тела, текст — перед ним: tweb
+     * `appendReactionsElementToBubble` кладёт ряд `messageDiv.append` (:11317)
+     * в конец уже собранного тела, и дамп tweb (`03-bubbles-123.json`) это
+     * подтверждает. Правка у нас идёт поверх ТОГО ЖЕ узла, а ряд её
+     * переживает (bubbles.ts:1285-1289 оригинала) — поэтому пересобранный
+     * текст обязан встать ПЕРЕД рядом, а не в конец тела: иначе после первого
+     * же патча (чужая реакция, ответ сервера на свой клик) ряд оказывается над
+     * текстом, сразу под именем автора.
+     */
+    it('после правки текст стоит ПЕРЕД рядом реакций, ряд — последний в теле', async () => {
+      bubbles = new ChatBubbles(chatContext(), managersWith([msg(1, { reactions })]))
+      await openFeed(bubbles)
+      await settle()
+
+      const edited = { ...msg(1, { reactions }), message: 'пока' } as MyMessage
+      editTo(edited)
+
+      const messageDiv = bubbleOf(bubbles, 1).querySelector<HTMLElement>('.message')!
+      const reactionsEl = messageDiv.querySelector<HTMLElement>(':scope > .reactions')!
+      expect(messageDiv.lastChild).toBe(reactionsEl)
+      const text = Array.from(messageDiv.childNodes).map((node) => node === reactionsEl ? '|reactions|' : node.textContent).join('')
+      expect(text).toBe('пока|reactions|')
+    })
+
+    it('реакция, приехавшая ПАТЧЕМ, и следующий патч оставляют ряд под текстом', async () => {
+      bubbles = new ChatBubbles(chatContext(), managersWith([msg(1)]))
+      await openFeed(bubbles)
+      await settle()
+
+      // Первая реакция — ряд создаётся и встаёт в конец тела; вторая — ряд
+      // переиспользуется, а текст пересобирается.
+      editTo(msg(1, { reactions }))
+      editTo(msg(1, { reactions: { ...reactions, results: [{ ...reactions.results[0], count: 3 }] } }))
+
+      const messageDiv = bubbleOf(bubbles, 1).querySelector<HTMLElement>('.message')!
+      const reactionsEl = messageDiv.querySelector<HTMLElement>(':scope > .reactions')!
+      expect(messageDiv.lastChild).toBe(reactionsEl)
+      expect(messageDiv.firstChild?.textContent).toBe('привет')
     })
 
     it('в переиспользованном ряду остаётся РОВНО ОДНО время', async () => {

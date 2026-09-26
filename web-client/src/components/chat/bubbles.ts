@@ -2455,9 +2455,17 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * `safeRenderMessage({message, bubble})`); почему мы так не делаем — в
    * докблоке `onMessageEdit`.
    *
-   * Новый текст встаёт В КОНЕЦ: строка документа стоит перед подписью
-   * (`renderDocumentMedia`), а хвост выкладывается после — уже
-   * `renderMessageMeta`.
+   * Новый текст встаёт ПОСЛЕ строки документа (она стоит перед подписью,
+   * `renderDocumentMedia`), но ПЕРЕД хвостом — рядом реакций и временем.
+   * У оригинала ряд реакций — последний ребёнок тела
+   * (`appendReactionsElementToBubble`, tweb bubbles.ts:11317
+   * `messageDiv.append(reactionsElement)`), и правка этого не меняет: она
+   * строит бабл заново. У нас же ряд ПЕРЕЖИВАЕТ правку на своём месте
+   * (`renderMessageMeta`, порт tweb :1285-1289), и `renderMessageMeta` его
+   * нарочно не перевешивает — поэтому `append` текста в конец ставил ряд НАД
+   * текстом после первого же патча (чужая реакция, ответ сервера на свой
+   * клик). Время на момент правки лежит ещё в ряду или в конце тела, и его
+   * `renderMessageMeta` выкладывает заново, — точка вставки для обоих одна.
    */
   private renderMessageContent(message: MyMessage, messageDiv: HTMLElement): void {
     for (const node of Array.from(messageDiv.childNodes)) {
@@ -2465,7 +2473,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
       node.remove()
     }
 
-    messageDiv.append(this.wrapMessageContent(message))
+    const tail = messageDiv.querySelector(':scope > .reactions, :scope > .time')
+    messageDiv.insertBefore(this.wrapMessageContent(message), tail)
   }
 
   /** Порт tweb `groupBubbles` (bubbles.ts:5984-6028) в применимом объёме: ветка
