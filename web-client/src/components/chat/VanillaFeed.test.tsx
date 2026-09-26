@@ -106,7 +106,7 @@ beforeEach(() => {
   // (tweb bubbles.ts:10436-10440), и под ней очередь рендера ждёт — соседние
   // тесты этого файла упирались бы в таймаут `vi.waitFor`. Гейт тот же, что в
   // оригинале (`liteMode.isAvailable('animations')`, tweb bubbles.ts:11540).
-  useSettingsStore.setState({ reduceMotion: true })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
   // Размонтирование ленты пишет позицию чата в синглтон-карту (порт
   // `peer_changing` → `appImManager.saveChatPosition`) — без сброса следующий
   // тест открыл бы «тот же чат» ВОЗВРАТОМ, не спросив страницу у менеджера.

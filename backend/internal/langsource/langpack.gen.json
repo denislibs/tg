@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 20,
+      "version": 22,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -2319,6 +2319,18 @@
           "value": "Disable animations and effects to reduce power usage."
         },
         {
+          "key": "LiteMode.DisableAlert",
+          "value": "Disable Power Saving Mode"
+        },
+        {
+          "key": "LiteMode.EnableText",
+          "value": "Power Saving Mode"
+        },
+        {
+          "key": "LiteMode.Info",
+          "value": "Reduce all power-intensive animations and improve performance."
+        },
+        {
           "key": "LiteMode.Key.animations.Title",
           "value": "Interface Animations"
         },
@@ -2327,8 +2339,32 @@
           "value": "Chat background animation"
         },
         {
+          "key": "LiteMode.Key.blur.Title",
+          "value": "Blur Effects"
+        },
+        {
+          "key": "LiteMode.Key.chat.Title",
+          "value": "Chat Animations"
+        },
+        {
+          "key": "LiteMode.Key.chat_background.Title",
+          "value": "Wallpaper rotation"
+        },
+        {
           "key": "LiteMode.Key.chat_spoilers.Title",
           "value": "Animated spoiler effect"
+        },
+        {
+          "key": "LiteMode.Key.effects.Title",
+          "value": "Interactive Effects"
+        },
+        {
+          "key": "LiteMode.Key.effects_emoji.Title",
+          "value": "Emoji effect"
+        },
+        {
+          "key": "LiteMode.Key.effects_premiumstickers.Title",
+          "value": "Premium stickers effect"
         },
         {
           "key": "LiteMode.Key.effects_reactions.Title",
@@ -2339,8 +2375,24 @@
           "value": "Emoji Animations"
         },
         {
+          "key": "LiteMode.Key.emoji_appear.Title",
+          "value": "Emoji appear effect"
+        },
+        {
           "key": "LiteMode.Key.gif.Title",
           "value": "Autoplay GIFs"
+        },
+        {
+          "key": "LiteMode.Key.stickers.Title",
+          "value": "Sticker Animations"
+        },
+        {
+          "key": "LiteMode.Key.stickers_chat.Title",
+          "value": "Autoplay in chat"
+        },
+        {
+          "key": "LiteMode.Key.stickers_panel.Title",
+          "value": "Autoplay in panel"
         },
         {
           "key": "LiteMode.Key.video.Title",
@@ -5554,7 +5606,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 20,
+      "version": 22,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -9052,6 +9104,58 @@
           "value": "Анимация фона чата"
         },
         {
+          "key": "LiteMode.EnableText",
+          "value": "Режим энергосбережения"
+        },
+        {
+          "key": "LiteMode.Info",
+          "value": "Отключает все энергоёмкие анимации и повышает производительность."
+        },
+        {
+          "key": "LiteMode.DisableAlert",
+          "value": "Отключите режим энергосбережения"
+        },
+        {
+          "key": "LiteMode.Key.stickers.Title",
+          "value": "Анимации стикеров"
+        },
+        {
+          "key": "LiteMode.Key.stickers_panel.Title",
+          "value": "Автовоспроизведение в панели"
+        },
+        {
+          "key": "LiteMode.Key.stickers_chat.Title",
+          "value": "Автовоспроизведение в чате"
+        },
+        {
+          "key": "LiteMode.Key.emoji_appear.Title",
+          "value": "Эффект появления эмодзи"
+        },
+        {
+          "key": "LiteMode.Key.effects.Title",
+          "value": "Интерактивные эффекты"
+        },
+        {
+          "key": "LiteMode.Key.effects_premiumstickers.Title",
+          "value": "Эффекты Premium-стикеров"
+        },
+        {
+          "key": "LiteMode.Key.effects_emoji.Title",
+          "value": "Эффекты эмодзи"
+        },
+        {
+          "key": "LiteMode.Key.chat.Title",
+          "value": "Анимации в чате"
+        },
+        {
+          "key": "LiteMode.Key.chat_background.Title",
+          "value": "Вращение обоев"
+        },
+        {
+          "key": "LiteMode.Key.blur.Title",
+          "value": "Эффекты размытия"
+        },
+        {
           "key": "Privacy.Passkeys",
           "value": "Ключи доступа"
         },
@@ -11137,7 +11241,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 8,
+      "version": 10,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -12853,6 +12957,58 @@
           "value": "Animation du fond du chat"
         },
         {
+          "key": "LiteMode.EnableText",
+          "value": "Mode économie d'énergie"
+        },
+        {
+          "key": "LiteMode.Info",
+          "value": "Réduit toutes les animations énergivores et améliore les performances."
+        },
+        {
+          "key": "LiteMode.DisableAlert",
+          "value": "Désactivez le mode économie d'énergie"
+        },
+        {
+          "key": "LiteMode.Key.stickers.Title",
+          "value": "Animations des stickers"
+        },
+        {
+          "key": "LiteMode.Key.stickers_panel.Title",
+          "value": "Lecture auto dans le panneau"
+        },
+        {
+          "key": "LiteMode.Key.stickers_chat.Title",
+          "value": "Lecture auto dans le chat"
+        },
+        {
+          "key": "LiteMode.Key.emoji_appear.Title",
+          "value": "Effet d'apparition des emojis"
+        },
+        {
+          "key": "LiteMode.Key.effects.Title",
+          "value": "Effets interactifs"
+        },
+        {
+          "key": "LiteMode.Key.effects_premiumstickers.Title",
+          "value": "Effet des stickers Premium"
+        },
+        {
+          "key": "LiteMode.Key.effects_emoji.Title",
+          "value": "Effet des emojis"
+        },
+        {
+          "key": "LiteMode.Key.chat.Title",
+          "value": "Animations du chat"
+        },
+        {
+          "key": "LiteMode.Key.chat_background.Title",
+          "value": "Rotation du fond d'écran"
+        },
+        {
+          "key": "LiteMode.Key.blur.Title",
+          "value": "Effets de flou"
+        },
+        {
           "key": "Privacy.Passkeys",
           "value": "Clés d’accès"
         },
@@ -13953,7 +14109,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 8,
+      "version": 10,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -15668,6 +15824,58 @@
           "value": "Chat-Hintergrundanimation"
         },
         {
+          "key": "LiteMode.EnableText",
+          "value": "Energiesparmodus"
+        },
+        {
+          "key": "LiteMode.Info",
+          "value": "Reduziert alle energieintensiven Animationen und verbessert die Leistung."
+        },
+        {
+          "key": "LiteMode.DisableAlert",
+          "value": "Energiesparmodus deaktivieren"
+        },
+        {
+          "key": "LiteMode.Key.stickers.Title",
+          "value": "Sticker-Animationen"
+        },
+        {
+          "key": "LiteMode.Key.stickers_panel.Title",
+          "value": "Autoplay im Panel"
+        },
+        {
+          "key": "LiteMode.Key.stickers_chat.Title",
+          "value": "Autoplay im Chat"
+        },
+        {
+          "key": "LiteMode.Key.emoji_appear.Title",
+          "value": "Emoji-Einblendeffekt"
+        },
+        {
+          "key": "LiteMode.Key.effects.Title",
+          "value": "Interaktive Effekte"
+        },
+        {
+          "key": "LiteMode.Key.effects_premiumstickers.Title",
+          "value": "Premium-Sticker-Effekt"
+        },
+        {
+          "key": "LiteMode.Key.effects_emoji.Title",
+          "value": "Emoji-Effekt"
+        },
+        {
+          "key": "LiteMode.Key.chat.Title",
+          "value": "Chat-Animationen"
+        },
+        {
+          "key": "LiteMode.Key.chat_background.Title",
+          "value": "Hintergrundrotation"
+        },
+        {
+          "key": "LiteMode.Key.blur.Title",
+          "value": "Unschärfe-Effekte"
+        },
+        {
           "key": "Privacy.Passkeys",
           "value": "Passkeys"
         },
@@ -16768,7 +16976,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 8,
+      "version": 10,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -18488,6 +18696,58 @@
           "value": "Animación del fondo del chat"
         },
         {
+          "key": "LiteMode.EnableText",
+          "value": "Modo de ahorro de energía"
+        },
+        {
+          "key": "LiteMode.Info",
+          "value": "Reduce todas las animaciones que consumen mucha energía y mejora el rendimiento."
+        },
+        {
+          "key": "LiteMode.DisableAlert",
+          "value": "Desactiva el modo de ahorro de energía"
+        },
+        {
+          "key": "LiteMode.Key.stickers.Title",
+          "value": "Animaciones de stickers"
+        },
+        {
+          "key": "LiteMode.Key.stickers_panel.Title",
+          "value": "Reproducir en el panel"
+        },
+        {
+          "key": "LiteMode.Key.stickers_chat.Title",
+          "value": "Reproducir en el chat"
+        },
+        {
+          "key": "LiteMode.Key.emoji_appear.Title",
+          "value": "Efecto de aparición de emojis"
+        },
+        {
+          "key": "LiteMode.Key.effects.Title",
+          "value": "Efectos interactivos"
+        },
+        {
+          "key": "LiteMode.Key.effects_premiumstickers.Title",
+          "value": "Efecto de stickers Premium"
+        },
+        {
+          "key": "LiteMode.Key.effects_emoji.Title",
+          "value": "Efecto de emojis"
+        },
+        {
+          "key": "LiteMode.Key.chat.Title",
+          "value": "Animaciones del chat"
+        },
+        {
+          "key": "LiteMode.Key.chat_background.Title",
+          "value": "Rotación del fondo"
+        },
+        {
+          "key": "LiteMode.Key.blur.Title",
+          "value": "Efectos de desenfoque"
+        },
+        {
           "key": "Privacy.Passkeys",
           "value": "Llaves de acceso"
         },
@@ -19588,7 +19848,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 8,
+      "version": 10,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -21324,6 +21584,58 @@
         {
           "key": "LiteMode.Key.background_animation.Title",
           "value": "Анімація фону чату"
+        },
+        {
+          "key": "LiteMode.EnableText",
+          "value": "Режим енергозбереження"
+        },
+        {
+          "key": "LiteMode.Info",
+          "value": "Вимикає всі енергоємні анімації та покращує продуктивність."
+        },
+        {
+          "key": "LiteMode.DisableAlert",
+          "value": "Вимкніть режим енергозбереження"
+        },
+        {
+          "key": "LiteMode.Key.stickers.Title",
+          "value": "Анімації стікерів"
+        },
+        {
+          "key": "LiteMode.Key.stickers_panel.Title",
+          "value": "Автовідтворення на панелі"
+        },
+        {
+          "key": "LiteMode.Key.stickers_chat.Title",
+          "value": "Автовідтворення в чаті"
+        },
+        {
+          "key": "LiteMode.Key.emoji_appear.Title",
+          "value": "Ефект появи емодзі"
+        },
+        {
+          "key": "LiteMode.Key.effects.Title",
+          "value": "Інтерактивні ефекти"
+        },
+        {
+          "key": "LiteMode.Key.effects_premiumstickers.Title",
+          "value": "Ефекти Premium-стікерів"
+        },
+        {
+          "key": "LiteMode.Key.effects_emoji.Title",
+          "value": "Ефекти емодзі"
+        },
+        {
+          "key": "LiteMode.Key.chat.Title",
+          "value": "Анімації в чаті"
+        },
+        {
+          "key": "LiteMode.Key.chat_background.Title",
+          "value": "Обертання шпалер"
+        },
+        {
+          "key": "LiteMode.Key.blur.Title",
+          "value": "Ефекти розмиття"
         },
         {
           "key": "Privacy.Passkeys",

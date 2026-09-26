@@ -49,8 +49,8 @@ export interface StoryMorphElements {
 }
 
 // tweb `liteMode.isAvailable('animations')` (viewer.tsx:3152). У нас тот же гейт
-// выражен классом `body.animation-level-2`, который App.tsx переключает по
-// настройке reduceMotion (1:1 tweb appImManager.ts:2209-2211).
+// выражен классом `body.animation-level-2`, который переключает подписчик настройки
+// liteMode `client/liteModeSettings.ts` (1:1 tweb appImManager.ts:2738-2740).
 function animationsAvailable(): boolean {
   return document.body.classList.contains('animation-level-2') &&
     // отступление от tweb: страхуемся от среды без WAAPI (jsdom в тестах) —

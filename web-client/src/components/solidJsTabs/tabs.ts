@@ -51,3 +51,12 @@ export const AppNotificationsTab =
     title: 'Telegram.NotificationSettingsViewController',
     getComponentModule: () => import('../sidebarLeft/tabs/notifications.solid'),
   })
+
+// tweb :241-245. Форма обычная, без полезной нагрузки: галочки вкладка читает
+// сама (мост `useAppSettings`, `liteMode`). Открывает её строка «Общих»
+// `LiteMode.Title` (tweb `generalSettings.tsx:89`).
+export const AppPowerSavingTab =
+  scaffoldSolidJSTab({
+    title: 'LiteMode.Title',
+    getComponentModule: () => import('../sidebarLeft/tabs/powerSaving.solid'),
+  })

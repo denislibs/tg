@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import I18n from '@lib/langPack'
 import type { ThemeChoice } from './theme'
 import type { Wallpaper } from './wallpapers'
+import type { LiteModeKey } from '@helpers/liteMode'
 
 export type TimeFormat = '12h' | '24h'
 
@@ -55,9 +56,12 @@ export interface Settings {
   // в байтах (0 = Авто, без лимита).
   cacheTTL: number
   cacheSize: number
-  // Без анимаций (tweb liteMode.animations): выключает интерфейсные анимации
-  // (framer MotionConfig reducedMotion + css-гейт).
-  reduceMotion: boolean
+  // Энергосбережение (tweb StateSettings.liteMode, config/state.ts:127): своя
+  // галочка на каждый класс анимаций, `all` — режим целиком. true = анимация
+  // ВЫКЛЮЧЕНА (`liteMode.isAvailable(key) = !all && !liteMode[key]`). Пишут
+  // вкладка «Энергосбережение» и пункт меню «Ещё» (animations); побочки —
+  // подписчик `client/liteModeSettings.ts`.
+  liteMode: Record<LiteModeKey, boolean>
   // Перевод сообщений (tweb translations): показывать ли пункт «Перевести» в
   // контекстном меню; translateTo — целевой язык (ISO-код), '' = язык интерфейса.
   showTranslateButton: boolean
@@ -130,7 +134,28 @@ export const DEFAULTS: Settings = {
   autoDownloadFileSizeMax: 3145728, // 3 МБ (tweb autoDownloadNew.file_size_max)
   cacheTTL: 86400 * 7, // неделя (tweb SETTINGS_INIT.cacheTTL)
   cacheSize: 0, // Авто (tweb SETTINGS_INIT.cacheSize)
-  reduceMotion: false,
+  // tweb SETTINGS_INIT.liteMode (config/state.ts:525-545) — все false
+  liteMode: {
+    all: false,
+    animations: false,
+    blur: false,
+    chat: false,
+    chat_background: false,
+    chat_spoilers: false,
+    effects: false,
+    effects_premiumstickers: false,
+    effects_reactions: false,
+    effects_emoji: false,
+    emoji: false,
+    emoji_appear: false,
+    emoji_messages: false,
+    emoji_panel: false,
+    gif: false,
+    stickers: false,
+    stickers_chat: false,
+    stickers_panel: false,
+    video: false,
+  },
   showTranslateButton: true,
   translateTo: '',
   loopStickers: true, // tweb stickers.loop default true
@@ -164,7 +189,19 @@ export function load(): Settings {
       if (legacy === 'dark') return { ...DEFAULTS, themeChoice: 'night' }
       return DEFAULTS
     }
-    const s = { ...DEFAULTS, ...(JSON.parse(raw) as Partial<Settings>) }
+    const { reduceMotion, ...stored } = JSON.parse(raw) as Partial<Settings> & { reduceMotion?: boolean }
+    const s: Settings = {
+      ...DEFAULTS,
+      ...stored,
+      // Недостающие ключи добираются дефолтами. Прежний флаг «Без анимаций»
+      // (`reduceMotion`) — это tweb `liteMode.animations` (тумблер меню «Ещё»,
+      // sidebarLeft/index.ts:1016-1029): переезжает в него, сам ключ не живёт.
+      liteMode: {
+        ...DEFAULTS.liteMode,
+        ...(reduceMotion ? { animations: true } : {}),
+        ...stored.liteMode,
+      },
+    }
     const mapped = legacyToPreset[s.themeChoice as string]
     return mapped ? { ...s, themeChoice: mapped } : s
   } catch {
@@ -211,7 +248,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       autoDownloadFileSizeMax: s.autoDownloadFileSizeMax,
       cacheTTL: s.cacheTTL,
       cacheSize: s.cacheSize,
-      reduceMotion: s.reduceMotion,
+      liteMode: s.liteMode,
       showTranslateButton: s.showTranslateButton,
       translateTo: s.translateTo,
       loopStickers: s.loopStickers,

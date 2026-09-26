@@ -127,7 +127,7 @@ beforeEach(() => {
   resetChatFullMirror()
   document.body.replaceChildren()
   vi.clearAllMocks()
-  useSettingsStore.setState({ reduceMotion: false })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: false } })
   catalog = makeCatalog({ emoji: '👍', aroundMediaId: AROUND_ID, centerMediaId: CENTER_ID })
   wrapStickerMock.mockReturnValue({
     render: Promise.resolve(fakePlayer().player), width: 22, height: 22, destroy: vi.fn(),
@@ -649,7 +649,7 @@ describe('fireAroundAnimation', () => {
 
   it('режим «без анимаций» гасит эффект (tweb liteMode effects_reactions)', async () => {
     const previous = previousWith({ emoticon: '👍', count: 1 })
-    useSettingsStore.setState({ reduceMotion: true })
+    useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
 
     renderReactionsElement(previous, agg({ emoticon: '👍', count: 2, mine: true }), options())
 

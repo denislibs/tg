@@ -67,7 +67,7 @@ export default function MainMenu({
 }: Props) {
   const t = useT()
   const managers = useManagers()
-  const { reduceMotion, update } = useSettings()
+  const { liteMode, update } = useSettings()
   const canInstall = usePwaStore((st) => st.canInstall)
   const [moreOpen, setMoreOpen] = useState(false)
   // Подменю «Ещё» якорится к своему пункту (не фикс-координаты).
@@ -139,8 +139,11 @@ export default function MainMenu({
     { icon: 'darkmode', label: 'DarkMode', onClick: () => { onToggleMode?.(); close() } },
     {
       icon: 'animations',
-      label: reduceMotion ? 'EnableAnimations' : 'DisableAnimations',
-      onClick: () => { update({ reduceMotion: !reduceMotion }); close() },
+      // tweb sidebarLeft/index.ts:1016-1029 — тумблер пишет `liteMode.animations`.
+      // Пункта «Энергосбережение» вместо него при `liteMode.all` (`:946-954`) нет:
+      // из меню колонки вкладку настроек открыть пока нечем (шов хоста, задача 28).
+      label: liteMode.animations ? 'EnableAnimations' : 'DisableAnimations',
+      onClick: () => { update({ liteMode: { ...liteMode, animations: !liteMode.animations } }); close() },
     },
     { icon: 'help', label: 'TelegramFeatures', onClick: () => openUrl('https://telegram.org/tour') },
     { icon: 'bug', label: 'ReportBug', onClick: () => openUrl('https://bugs.telegram.org/?tag_ids=40&sort=time') },

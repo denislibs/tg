@@ -74,6 +74,34 @@ describe('useAppSettings — один источник правды (zustand)', 
   })
 })
 
+describe('useAppSettings — liteMode (задача 11)', () => {
+  afterEach(() => {
+    useSettingsStore.getState().update({ liteMode: { ...initial.liteMode } })
+  })
+
+  it('setAppSettings(liteMode, объект) пишет объект tweb-формы в zustand и localStorage', async() => {
+    const next = { ...initial.liteMode, gif: true, all: true }
+
+    await setAppSettings('liteMode', next)
+
+    expect(useSettingsStore.getState().liteMode).toEqual(next)
+    expect(JSON.parse(localStorage.getItem('tg-settings')!).liteMode).toEqual(next)
+  })
+
+  it('appSettings.liteMode.all читается реактивно после update() из React', () => {
+    const seen: boolean[] = []
+    const dispose = createRoot((dispose) => {
+      createEffect(() => { seen.push(appSettings.liteMode.all) })
+      return dispose
+    })
+
+    useSettingsStore.getState().update({ liteMode: { ...initial.liteMode, all: true } })
+    dispose()
+
+    expect(seen).toEqual([false, true])
+  })
+})
+
 describe('нет второго стора настроек (скан исходников)', () => {
   function walk(dir: string, acc: string[] = []): string[] {
     for(const name of readdirSync(dir)) {

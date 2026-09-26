@@ -23,10 +23,15 @@
  *     таблицы — `throw` (и ошибка типов), а не молчаливый no-op: у оригинала
  *     любой путь `StateSettings` законен, у нас незаведённый путь значил бы
  *     переключатель, который ничего не сохраняет.
- *  2. Пишется только ЛИСТ. Запись поддерева (`setAppSettings('liteMode', obj)`,
- *     `('autoDownload', copy(...))` у tweb) и функция-обновитель
- *     `SetStoreFunction` не заведены: их потребители ещё не портированы;
- *     вкладка, которой они нужны, дописывает форму вместе со строками таблицы.
+ *  2. Пишется только ЛИСТ. Запись поддерева (`('autoDownload', copy(...))` у
+ *     tweb) и функция-обновитель `SetStoreFunction` не заведены: их потребители
+ *     ещё не портированы; вкладка, которой они нужны, дописывает форму вместе со
+ *     строками таблицы. `liteMode` — лист: в zustand это ОДИН ключ-объект формы
+ *     tweb (`settings.tsx`), поэтому `setAppSettings('liteMode', obj)`
+ *     «Энергосбережения» (`powerSaving.tsx:108`) ложится как есть, а
+ *     `appSettings.liteMode.all` реактивен через мемо листа. Путь внутрь
+ *     (`('liteMode', 'animations', v)`, меню tweb `sidebarLeft/index.ts:1028`)
+ *     не заведён: наше меню «Ещё» — React и пишет zustand напрямую.
  *  3. `setAppSettings` возвращает уже разрешённый промис: `update` zustand
  *     синхронен и сам пишет `localStorage`; у оригинала промис — ответ
  *     `appStateManager.setByKey`. Форма возврата сохранена ради вызывающих
@@ -58,6 +63,8 @@ const APP_SETTINGS_KEYS = {
     volume: 'notifyVolume',
     sentMessageSound: 'sentMessageSound',
   },
+  // tweb `config/state.ts:127` — объект галочек «Энергосбережения» (задача 11)
+  liteMode: 'liteMode',
 } as const satisfies KeyTable
 
 type Table = typeof APP_SETTINGS_KEYS
