@@ -214,12 +214,20 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `OpenUrlTitle`, `OpenUrlAlert2` (попап `showMaskedAlert`): `keys` 1334 → 1337.
 // Портом tweb 72c50bfef (уведомления без Web Notifications API) — ключ
 // `Notifications.Restricted`: 1337 → 1338.
+// Пилот плана 2D (задача 6, вкладка «Уведомления и звуки»): ключи tweb lang.ts
+// `Telegram.NotificationSettingsViewController` (заголовок вкладки) и имена
+// секций `NotificationsPrivateChats`/`NotificationsGroups`/`NotificationsChannels`
+// — всем пяти словарям, КРОМЕ совпавших с английским дословно (правило
+// «непереведённый ключ виден как отсутствие перевода»): у de нет
+// `NotificationsPrivateChats` («Private Chats»), у fr — заголовка
+// («Notifications»). ru 1346 → 1350, uk 682 → 686, es 681 → 685,
+// de/fr 681 → 684. `plural` не менялся.
 const COMPOSITION = {
-  ru: { keys: 1346, plural: 35 },
-  uk: { keys: 682, plural: 24 },
-  es: { keys: 681, plural: 24 },
-  de: { keys: 681, plural: 24 },
-  fr: { keys: 681, plural: 24 },
+  ru: { keys: 1350, plural: 35 },
+  uk: { keys: 686, plural: 24 },
+  es: { keys: 685, plural: 24 },
+  de: { keys: 684, plural: 24 },
+  fr: { keys: 684, plural: 24 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -313,12 +321,14 @@ const COMPOSITION = {
 // шесть ключей меню элемента и выделения (разбор — у `COMPOSITION` выше).
 // Сдвиг набора портом tweb e96e06c37: +3 ключа попапа замаскированной ссылки
 // (разбор — у `COMPOSITION` выше). Портом 72c50bfef — `Notifications.Restricted`.
+// Пилотом 2D — заголовок вкладки уведомлений и три имени секций (разбор — у
+// `COMPOSITION` выше; de и fr расходятся по одному совпавшему ключу).
 const FINGERPRINT = {
-  ru: 'f4a72132',
-  uk: 'e1335ac1',
-  es: 'a6b1aad3',
-  de: 'a6b1aad3',
-  fr: 'a6b1aad3',
+  ru: 'fc80fe50',
+  uk: 'a3272773',
+  es: '1c37914d',
+  de: '5fb99ee1',
+  fr: '3fb1ce0b',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

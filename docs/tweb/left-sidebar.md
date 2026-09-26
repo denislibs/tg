@@ -183,7 +183,7 @@ div#column-left.tabs-tab.chatlist-container.sidebar.sidebar-left.main-column.sid
 |---|---|---|---|
 | `settings.tsx` (комп. :82) | `AppSettingsTab` = `scaffoldSolidJSTab` :169-173 | корневой экран настроек | `sidebarLeft/index.ts:722` (меню), `:797` (клик по своему аккаунту), `lib/internalLinkProcessor.ts:723`; `sliceTabsUntilTab(AppSettingsTab)` из 2fa/email-флоу (`2fa/index.tsx:34`, `2fa/passwordSet.tsx:23`, `2fa/emailConfirmation.tsx:44`, `2fa/forgotPasswordLink.ts:108`, `changeLoginEmail.tsx:30`) |
 | `generalSettings.tsx` :355 | `AppGeneralSettingsTab` :141-145 | размер текста, фон, тема, lite mode | `settings.tsx:129→137` |
-| `notifications.tsx` :560 | `AppNotificationsTab` :71-75 | уведомления | `settings.tsx:126→137` |
+| `notifications.tsx` :543 (812502980) | `AppNotificationsTab` :77-81 (812502980) | уведомления | `settings.tsx:252` (812502980) |
 | `privacyAndSecurity.tsx` :760 | `AppPrivacyAndSecurityTab` = Eventable :533-537 (+`getInitArgs` :541) | хаб приватности | `settings.tsx:128→137`; `sliceTabsUntilTab` из `2fa/forgotPasswordLink.ts:103`, `tabs.ts:27-30` |
 | `dataAndStorage/index.tsx` :202 | `AppDataAndStorageTab` = Eventable :364-368 | данные и хранилище | `settings.tsx:127→137` |
 | `chatFolders.tsx` :356 | `AppChatFoldersTab` :612-621 (+`getInitArgs`) | список папок | `settings.tsx:130→137`; `foldersSidebarContent/index.tsx:204`; `createFolderContextMenu.ts:47` |
@@ -736,7 +736,7 @@ Close/RestartTopic `:224` · ChargeFee `:238` · Delete `:248`.
 |---|---|---|
 | `src/components/Sidebar.tsx` (:61) | оркестратор колонки: `#column-left` с tweb-классами (:213-215), композиция хуков `useSidebar*` | `AppSidebarLeft.construct` |
 | `src/components/SidebarScreens.tsx` (:22-24) | экраны колонки — **один enum-стейт** `'settings'\|'contacts'\|'wallet'\|'calls'\|'newGroup'\|'newChannel'\|'newPrivate'\|'newSecret'\|null`, lazy-подгрузка Settings/Wallet/Calls | стек `SliderSuperTab` |
-| `src/components/SettingsView.tsx` (:47) + `SettingsSubScreen.tsx` (:82-95, :134-152) | настройки: корневой список + под-экраны по строковому title (Language/General/Devices/SpeakersCamera/Notifications/ChatFolders/Privacy/DataStorage/Stickers/Hotkeys) | `AppSettingsTab` + дерево части 2 |
+| `src/components/SettingsView.tsx` (:47) + `SettingsSubScreen.tsx` (:82-95, :134-152) | настройки: корневой список + под-экраны по строковому title (General/SpeakersCamera/ChatFolders/Privacy/DataStorage/Stickers/Hotkeys); «Устройства», «Язык» и «Уведомления» — вкладки слайдера через хост | `AppSettingsTab` + дерево части 2 |
 | `src/components/settings/*` | реализации ещё не портированных под-экранов (TwoStepVerification, PasscodeLock, Passkeys, BlockedUsers, AutoDelete, PowerSaving, QuickReaction, EditProfile, ChatWallpaper…). «Устройства» здесь БОЛЬШЕ НЕТ — уехали на слайдер, см. §3 | `sidebarLeft/tabs/*` |
 | `src/lib/appDialogsManager.ts` | папочный срез владельца: `.chatlist-overlay` с Solid-рядом вкладок, `#folders-container`, скроллер на папку, переключение (`horizontalMenu` + `TransitionSlider`); встроен в колонку `Sidebar.tsx` (план папок, задача 6) | `AppDialogsManager` (папки) |
 | `src/components/ChatList.tsx` / `ChatListItem.tsx` | списки папок на виртуальном ядре — порталом в `.chatlist-top` контейнеров владельца | `AutonomousDialogList` (строки) + `DialogElement` |
@@ -827,8 +827,9 @@ DOM-паритет первого таба выдержан сознательн
 | `components/slider.ts` | `src/components/slider.ts` | `SidebarSlider` целиком: история вкладок, `createTab`/`selectTab`/`closeTab`/`closeAllTabs`/`sliceTabsUntilTab`, `onTabsCountChange`, `canHideFirst` |
 | `components/sliderTab.ts` | `src/components/sliderTab.ts` | `SliderSuperTab` + `SliderSuperTabEventable` (шапка, `Scrollable`, порядок разрушения, `managers`) |
 | `components/solidJsTabs/*` | `src/components/solidJsTabs/*` | `scaffoldSolidJSTab(Eventable)`, `useSuperTab`, `PromiseCollector` |
-| `components/solidJsTabs/tabs.ts` | `src/components/solidJsTabs/tabs.ts` | реестр объявлений вкладок; пока два — `AppActiveSessionsTab`, `AppLanguageTab` |
+| `components/solidJsTabs/tabs.ts` | `src/components/solidJsTabs/tabs.ts` | реестр объявлений вкладок; пока три — `AppActiveSessionsTab`, `AppLanguageTab`, `AppNotificationsTab` |
 | `components/sidebarLeft/tabs/activeSessions.solid.tsx` | `src/components/sidebarLeft/tabs/activeSessions.tsx` | первая настоящая вкладка, дословный порт |
+| `components/sidebarLeft/tabs/notifications.solid.tsx` | `src/components/sidebarLeft/tabs/notifications.tsx` (812502980) | «Уведомления и звуки» — пилот плана 2D (задача 6): первый экран на Solid `Row`/`Section` HEAD; без «All Accounts» (О-1) и секций Stories/Reactions/Other (О-3…О-5); React `settings/NotificationsSettings.tsx` снесён |
 | `components/sidebarLeft/settingsSliderHost.ts` | `sidebarLeft/index.ts:140-148` + `settingsSliderPopup.ts:13-51` | хост: один слайдер на колонку, `openTab`/`destroy` |
 
 Навигация: `pushItem` оригинала разложен на два наших механизма — `navigationStack.pushLayer`
