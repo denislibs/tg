@@ -45,6 +45,26 @@ hr {
   display: none !important;
 }
 
+/* tweb base.scss:1391-1406 — градиентная полоса над секцией вместо линии
+   (`Section fakeGradientDelimiter`, `components/generateDelimiter.ts`); контекстные
+   оверрайды — `styles/tweb/_profile.scss`. */
+.gradient-delimiter {
+  width: 100%;
+  height: .75rem;
+  background-color: var(--background-color);
+  position: relative;
+
+  &:before {
+    content: " ";
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(180deg, rgba(0, 0, 0, .06) 0%, rgba(0, 0, 0, 0) 20%, rgba(0, 0, 0, 0) 94%, rgba(0, 0, 0, .06) 100%);
+  }
+}
+
 /* Ширины колонок (--default-column-width, --left-column-*, --right-column-width,
    --middle-column-width, --chat-width, --page-chats-padding, --folders-sidebar-*)
    пишет JS — core/dom/updateColumnWidths.ts (порт tweb helpers/updateColumnWidths.ts).

@@ -9,9 +9,10 @@
  * иллюстративный тест из брифа проверял класс `sidebar-left-section` прямо
  * на публичном `container`. Ведущий признал это ошибкой брифа: «порт
  * дословный» — сильнее иллюстративного кода теста. Оригинал — два вложенных
- * div'а: внешний `container` (`sidebar-left-section-container`, только
- * `padding-inline` — tweb `scss/partials/_section.scss:78`, наш порт —
- * `styles/tweb/_section.scss:78-79`) и внутренний `innerContainer`
+ * div'а: внешний `container` (`sidebar-left-section-container`: `padding-inline`
+ * и отступ до следующей секции `padding-bottom` — tweb HEAD
+ * `scss/partials/_section.scss:82-91`, наш порт — `styles/tweb/_section.scss`)
+ * и внутренний `innerContainer`
  * (`sidebar-left-section`: фон/тень/скругление, туда льётся контент,
  * `_section.scss` целиком). Оба узла и `title` восстановлены как публичные
  * поля — у них есть живые потребители в tweb:
@@ -29,9 +30,9 @@
  * По умолчанию (`captionOld` не задан) блок подписи создаётся как обычный
  * контент-блок `innerContainer` (`generateContentElement()`), а затем
  * ЯВНО переносится в ВЕШНИЙ `container` — визуально подпись оказывается
- * НИЖЕ карточки, вне её фона/тени/скругления (сравни `-caption` в
- * `_section.scss:65-76`: `margin: -0.375rem 0 1rem` — отступ рассчитан на
- * позицию снаружи, не поверх `--surface-color` карточки). `captionOld:
+ * НИЖЕ карточки, вне её фона/тени/скругления (`-caption` в HEAD
+ * `_section.scss:53-80`: снаружи `margin-top: .625rem`, внутри карточки —
+ * своё правило `.sidebar-left-section > &`). `captionOld:
  * true` пропускает перенос — подпись остаётся ВНУТРИ карточки, старое
  * поведение. Опция жива в оригинале не только у самого класса
  * (`settingSection.ts:72-79`), но и у Solid-обёртки `components/section.tsx`
@@ -70,19 +71,16 @@
  *    `SettingSection`), а РАССТАВЛЯЕТ КЛАССЫ на `innerContainer`
  *    (`no-delimiter`/`with-fake-delimiter`), которыми пользуются контекстные
  *    стили вроде `_boostsViaGifts.scss` выше;
- *  • `.gradient-delimiter` (сам узел делимитера, не маркер) имеет базовый
- *    стиль в `tweb/src/scss/base.scss:1371`, который в наш `styles/tweb/`
- *    ещё не перенесён (сейчас там только контекстный оверрайд в
- *    `_profile.scss`). Перенос самого стиля — #112.
+ *  • `.gradient-delimiter` (сам узел делимитера, не маркер) — базовый стиль
+ *    tweb `scss/base.scss:1391-1406`, у нас в `styles/index.scss`.
  *
  * ── Прочие адаптации под наш стек ────────────────────────────────────────
  *  • заголовок и подпись строит `i18n_({element, key, args})` ядра — дословно
  *    как оригинал (:63, :81), вместе с `nameArgs`/`captionArgs`. Обратите
  *    внимание: `i18n_` пишет В ПЕРЕДАННЫЙ узел, то есть класс `i18n` лежит на
  *    самом `.sidebar-left-section-name`, а не на вложенном `span`;
- *  • `generateDelimiter()` (`@components/generateDelimiter` в tweb) —
- *    тривиальный `div.gradient-delimiter` без внешних зависимостей,
- *    инлайнен сюда же вместо отдельного файла — единственный потребитель.
+ *  • `generateDelimiter()` — общий с Solid `Section` модуль
+ *    `components/generateDelimiter.ts`, как `@components/generateDelimiter` в tweb.
  *
  * ── Остаток волны (#112) ─────────────────────────────────────────────────
  * `web-client/src/shared/ui/SidebarSection/SidebarSection.tsx` — React-двойник
@@ -91,6 +89,7 @@
  * React-экранами, которые его используют, по мере переезда волны на Solid.
  */
 import { i18n_, type FormatterArguments, type LangPackKey } from '@lib/langPack'
+import { generateDelimiter } from '@components/generateDelimiter'
 
 type CaptionOption = LangPackKey | true
 
@@ -106,12 +105,6 @@ export type SettingSectionOptions = {
 }
 
 const className = 'sidebar-left-section'
-
-const generateDelimiter = () => {
-  const delimiter = document.createElement('div')
-  delimiter.classList.add('gradient-delimiter')
-  return delimiter
-}
 
 export default class SettingSection {
   public container: HTMLElement
