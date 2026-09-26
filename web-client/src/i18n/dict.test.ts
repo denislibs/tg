@@ -195,8 +195,12 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Forward}` и множественная форма `messages` (счётчик плашки выделения):
 // `keys` 1328 → 1334, `plural` 33 → 34. Замена трёх самодельных ключей
 // копирования медиа ключами оригинала число строк не меняла (у `FINGERPRINT`).
+//
+// Сдвиг набора портом tweb e96e06c37 (S9, подтверждение замаскированной
+// ссылки): русскому добавлены три ключа 1:1 с tweb lang.ts — `Open`,
+// `OpenUrlTitle`, `OpenUrlAlert2` (попап `showMaskedAlert`): `keys` 1334 → 1337.
 const COMPOSITION = {
-  ru: { keys: 1334, plural: 34 },
+  ru: { keys: 1337, plural: 34 },
   uk: { keys: 682, plural: 24 },
   es: { keys: 681, plural: 24 },
   de: { keys: 681, plural: 24 },
@@ -286,8 +290,10 @@ const COMPOSITION = {
 // одного читателя) заменены ключами оригинала `MediaViewer.Context.Copy`,
 // `MediaCopied`, `MediaCopyFailed`: −3 +3, число строк то же. Следом —
 // шесть ключей меню элемента и выделения (разбор — у `COMPOSITION` выше).
+// Сдвиг набора портом tweb e96e06c37: +3 ключа попапа замаскированной ссылки
+// (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '97312968',
+  ru: '4c9e2864',
   uk: 'e1335ac1',
   es: 'a6b1aad3',
   de: 'a6b1aad3',

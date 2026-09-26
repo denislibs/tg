@@ -1704,6 +1704,11 @@ const ru = {
   NoResultsTitle: 'Нет результатов',
   NoResultsSubtitle: 'Попробуйте другой запрос',
   SearchInAllChats: 'Искать во всех чатах',
+  // ── Подтверждение замаскированной ссылки (tweb `internalLinkProcessor.ts:91-113`,
+  //    `showMaskedAlert`) ──
+  Open: 'Открыть',
+  OpenUrlTitle: 'Открыть ссылку',
+  OpenUrlAlert2: 'Открыть ссылку %1$s?',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)

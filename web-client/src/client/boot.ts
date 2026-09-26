@@ -5,6 +5,7 @@
 import { startClient, type Managers } from './bootstrap'
 import { installBridgeHandoff } from './dnpBridgeHandoff'
 import { initPwaInstall } from '../core/pwa'
+import { listenForMaskedAnchorClicks } from '@lib/richtext/maskedAnchor'
 import I18n, { catchUpLangPack, suggestBrowserLangCode } from '@lib/langPack'
 import rootScope from '@lib/rootScope'
 import { fillLocalizedDates } from '@helpers/date'
@@ -89,6 +90,9 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   }
   // Ловим beforeinstallprompt для пункта «Установить приложение» (PWA).
   initPwaInstall()
+  // Замаскированная ссылка спрашивает «Открыть ссылку?» на основной и средней
+  // кнопке (tweb e96e06c37; у оригинала — `InternalLinkProcessor.construct`).
+  listenForMaskedAnchorClicks()
 
   const { managers, ep } = startClient()
   // DNP-ON: раздаём мост SW↔SharedWorker (self-gated; инертно при DNP-off).
