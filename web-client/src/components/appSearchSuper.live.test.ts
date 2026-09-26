@@ -79,6 +79,14 @@ const settle = async () => {
   await new Promise((resolve) => setTimeout(resolve, 0))
 }
 
+/**
+ * Последний счётчик ВКЛАДКИ, а не последний вообще: удаление теперь перечитывает
+ * с сервера и счётчик никогда не загруженной вкладки «Файлы» (tweb ca1416807,
+ * `sharedMedia.tsx:351-359`), и её `['files', 0]` приходит после счётчика медиа.
+ */
+const lastCounter = (counters: [SearchSuperMediaType, number][], type: SearchSuperMediaType) =>
+  counters.filter(([t]) => t === type).slice(-1)[0]
+
 const mids = (searchSuper: AppSearchSuper) =>
   Array.from(searchSuper.tabs.inputMessagesFilterPhotoVideo!.children)
     .map((el) => +(el as HTMLElement).dataset.mid!)
@@ -189,7 +197,7 @@ describe('shared media: подписка на события окна', () => {
     rootScope.dispatchEventSingle('history_delete', { peerId: PEER, msgs: new Set([4]) })
     await settle()
     expect(mids(searchSuper), 'удаление по финальному mid находит узел').toEqual([3, 2, 1])
-    expect(counters[counters.length - 1]).toEqual(['media', 3])
+    expect(lastCounter(counters, 'media')).toEqual(['media', 3])
 
     listenerSetter.removeAll()
   })
@@ -207,7 +215,7 @@ describe('shared media: удаление сообщения', () => {
 
     expect(mids(searchSuper)).toEqual([3, 1])
     expect(searchSuper.counters.media).toBe(countBefore! - 1)
-    expect(counters[counters.length - 1]).toEqual(['media', countBefore! - 1])
+    expect(lastCounter(counters, 'media')).toEqual(['media', countBefore! - 1])
   })
 
   // Главный пин удаления: узел ушёл из СЕРЕДИНЫ уже отрисованного, а в кэше

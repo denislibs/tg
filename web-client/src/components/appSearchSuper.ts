@@ -196,8 +196,9 @@
 //     `stargifts_count` в полной карточке на бэкенде (DoD 2a), не кэш в
 //     клиенте.
 // 30. `updateContainerHidden` (`tweb:2520-2529`) — `public`, а не `private`:
-//     вызывающий в классе один (`onCountChange` подарков, `:2151-2154`,
-//     задача 12), а пересчёт видимости пинуется напрямую —
+//     вызывающих в классе два (`onCountChange` подарков, `:2151-2154`,
+//     задача 12, и `updateMediaTabVisibility`, ca1416807), а пересчёт
+//     видимости пинуется напрямую —
 //     `appSearchSuper.firstTime.test.ts` зовёт метод сам.
 // 31. `loadMembers` (`tweb:1525-1758`) портирован ОДНОЙ веткой — канала
 //     (`:1718-1739`, `getChannelParticipants` → наш `groups.channelParticipants`).
@@ -502,6 +503,14 @@ export type SearchSuperMediaTab = {
   menuTabName?: HTMLElement
   scroll?: { scrollTop: number, scrollHeight: number }
   hideOn?: HTMLElement
+}
+
+/**
+ * tweb ca1416807 (812502980 `:154-157`).
+ * * a tab whose visibility follows its message counter — an empty one is hidden (see loadFirstTime)
+ */
+export function isCounterDrivenMediaTab(mediaTab: SearchSuperMediaTab) {
+  return !!mediaTab.inputFilter && mediaTab.inputFilter !== 'inputMessagesFilterEmpty'
 }
 
 /**
@@ -1317,10 +1326,55 @@ export default class AppSearchSuper {
     this.container.classList.remove('sliding')
   }
 
-  /** tweb `:817-820` — «во вкладке стало N». */
+  /** tweb `:817-820` — «во вкладке стало N»; видимость вкладки — за счётчиком (ca1416807). */
   public setCounter(type: SearchSuperMediaType, count: number) {
     this.counters[type] = count
+    this.updateMediaTabVisibility(type)
     this.onLengthChange?.(type, count)
+  }
+
+  /**
+   * tweb ca1416807 (812502980 `:923-961`), B9.
+   * * counter-driven tabs are hidden while empty (see loadFirstTime), so they have to appear
+   * * (and disappear) on the fly when their counter crosses zero
+   */
+  private updateMediaTabVisibility(type: SearchSuperMediaType) {
+    if(!this.hideEmptyTabs || this.firstLoad) {
+      return
+    }
+
+    const mediaTab = this.mediaTabsMap.get(type)
+    if(!mediaTab || !isCounterDrivenMediaTab(mediaTab)) {
+      return
+    }
+
+    const menuTab = mediaTab.menuTab!
+    const hide = !this.counters[type]
+    if(menuTab.classList.contains('hide') === hide) {
+      return
+    }
+
+    menuTab.classList.toggle('hide', hide)
+
+    let needChangeActive: boolean
+    if(hide) {
+      needChangeActive = menuTab.classList.contains('active')
+      menuTab.classList.remove('active')
+    } else {
+      // * there was nothing to select when every tab was empty
+      needChangeActive = !this.mediaTabs.some((tab) => tab.menuTab!.classList.contains('active'))
+    }
+
+    this.updateContainerHidden(needChangeActive)
+
+    if(
+      needChangeActive &&
+      this.mediaTab &&
+      !this.mediaTab.menuTab!.classList.contains('hide') &&
+      this.canLoadMediaTab(this.mediaTab)
+    ) {
+      void this.load(true)
+    }
   }
 
   /**
@@ -2595,7 +2649,7 @@ export default class AppSearchSuper {
       return
     }
 
-    const mediaTabs = this.mediaTabs.filter((mediaTab) => mediaTab.inputFilter && mediaTab.inputFilter !== 'inputMessagesFilterEmpty')
+    const mediaTabs = this.mediaTabs.filter(isCounterDrivenMediaTab)
     const filters = mediaTabs.map((mediaTab) => mediaTab.inputFilter!)
 
     const [
@@ -2729,9 +2783,10 @@ export default class AppSearchSuper {
   /**
    * tweb `:2520-2529` — пересчёт по ФАКТИЧЕСКИ видимым строкам ряда: когда
    * вкладка обнулилась живым апдейтом. `changeActive` — среди пропавших была
-   * активная, переключиться на первую видимую. Единственный вызывающий у
-   * оригинала — счётчик подарков (`:2151-2154`), он приезжает задачей 12;
-   * `public` вместо `private` — расхождение 30 в шапке.
+   * активная, переключиться на первую видимую. Вызывающих у оригинала два:
+   * счётчик подарков (`:2151-2154`) и видимость вкладки по счётчику
+   * (`updateMediaTabVisibility`, ca1416807); `public` вместо `private` —
+   * расхождение 30 в шапке.
    */
   public updateContainerHidden(changeActive = false) {
     const visibleTabs = this.mediaTabs.filter((tab) => !tab.menuTab!.classList.contains('hide'))
