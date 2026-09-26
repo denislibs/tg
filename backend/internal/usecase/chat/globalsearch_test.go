@@ -72,3 +72,48 @@ func TestGlobalSearchMessages_UnknownChatTypeIsInvalid(t *testing.T) {
 		}
 	}
 }
+
+// Чип даты без текста — это запрос, а не «искать нечего»: класс шлёт его при
+// query ИЛИ peerId ИЛИ minDate (tweb appSearchSuper.ts:2233-2236).
+func TestGlobalSearchMessages_DateChipWithoutQuery(t *testing.T) {
+	in, _ := newInteractor()
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	if _, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Type: "text", Text: "что угодно"}); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	res, err := in.GlobalSearchMessages(ctx, a, GlobalSearchQuery{MinDate: 1, MaxDate: 4102444800})
+	if err != nil || len(res.Messages) != 1 {
+		t.Fatalf("чип даты без текста: %d сообщений err=%v, want 1", len(res.Messages), err)
+	}
+}
+
+// Поиск в одном чате листается курсором по номеру (как /media) сквозь юзкейс,
+// а лимит больше потолка зажимается до потолка, а не сбрасывается в 20: у
+// класса с чипом пира loadCount бывает больше 50 (tweb appSearchSuper.ts:2561).
+func TestSearchMessages_CursorAndLimitThroughUsecase(t *testing.T) {
+	in, _ := newInteractor()
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	for i := 0; i < 70; i++ {
+		if _, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Type: "text", Text: "кот"}); err != nil {
+			t.Fatalf("send: %v", err)
+		}
+	}
+	page1, err := in.SearchMessages(ctx, chatID, a, "кот", SearchFilter{}, MediaPage{Limit: 60})
+	if err != nil || len(page1.Messages) != 60 || page1.Count != 70 {
+		t.Fatalf("page1: %d из %d err=%v, want 60 из 70", len(page1.Messages), page1.Count, err)
+	}
+	last := page1.Messages[len(page1.Messages)-1].Seq
+	page2, err := in.SearchMessages(ctx, chatID, a, "кот", SearchFilter{}, MediaPage{OffsetID: last, Limit: 60})
+	if err != nil || len(page2.Messages) != 10 {
+		t.Fatalf("page2: %d err=%v, want 10", len(page2.Messages), err)
+	}
+	for _, m := range page2.Messages {
+		if m.Seq >= last {
+			t.Fatalf("page2 несёт seq=%d не ниже курсора %d", m.Seq, last)
+		}
+	}
+}

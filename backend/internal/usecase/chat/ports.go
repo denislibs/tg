@@ -229,9 +229,9 @@ type MessageRepo interface {
 	// НОМЕР сообщения-запуска, а кадр рассылается сам по себе.
 	ByGiveawayID(ctx context.Context, giveawayID int64) ([]domain.Message, error)
 	// SearchMessages ищет по чату (текст/имя файла) с необязательными фильтрами
-	// (автор/тип медиа/реакция — tweb topbarSearch). Пустой q при заданном фильтре
-	// разрешён.
-	SearchMessages(ctx context.Context, chatID int64, q string, f SearchFilter, offset, limit int) ([]domain.Message, int, error)
+	// (SearchFilter), новые сверху; окно — курсор page.OffsetID (номер
+	// последнего отданного). Пустой q без фильтров — вся история чата.
+	SearchMessages(ctx context.Context, chatID int64, q string, f SearchFilter, page MediaPage) ([]domain.Message, int, error)
 	// MessageSeqByDate возвращает seq самого раннего непустого сообщения с
 	// created_at>=from (jump-to-date); если таких нет — seq самого нового
 	// сообщения; для пустого чата — domain.ErrNotFound.

@@ -729,18 +729,39 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       return r.counters ?? []
     },
 
-    // Поиск в чате: текст + необязательные фильтры (tweb topbarSearch) —
-    // senderId (в группах), mediaType (photo/video/voice/roundvideo/file/link/music),
-    // reaction (эмодзи). Пустой q при заданном фильтре допустим.
+    // Поиск в одном чате (аналог `messages.search`): текст + необязательные
+    // фильтры — senderId (в группах), mediaType (мелкая лексика топбара:
+    // photo/video/voice/roundvideo/file/link/music), filter (вкладки класса:
+    // media/files/links/music/voice), reaction (эмодзи), minDate/maxDate
+    // (чипы дат, мс — на провод секундами, `minDate / 1000 | 0`, tweb
+    // `appMessagesManager.ts:9931-9932`). Пустой q без фильтров — вся история.
+    //
+    // Листается КУРСОРОМ, как `mediaHistory`: `offsetId` — клиентский номер
+    // последнего показанного, в URL уходит серверный (`getServerMessageId`).
+    // Смещения нет: выдача пополняется сверху живыми апдейтами.
     async searchMessages(
       peerId: number,
       q: string,
-      opts: { senderId?: number; mediaType?: string; reaction?: string; offset?: number; limit?: number } = {},
+      opts: {
+        offsetId?: number
+        limit?: number
+        senderId?: number
+        mediaType?: string
+        filter?: 'media' | 'files' | 'links' | 'music' | 'voice'
+        reaction?: string
+        minDate?: number
+        maxDate?: number
+      } = {},
     ): Promise<{ messages: MyMessage[]; count: number }> {
-      const query: Record<string, string | number> = { q, offset: opts.offset ?? 0, limit: opts.limit ?? 20 }
-      if (opts.senderId) query.sender_id = opts.senderId
+      const query: Record<string, string | number> = {
+        q, offset_id: getServerMessageId(opts.offsetId ?? 0), limit: opts.limit ?? 20,
+      }
+      if (opts.filter) query.filter = opts.filter
       if (opts.mediaType) query.media_type = opts.mediaType
+      if (opts.senderId) query.sender_id = opts.senderId
       if (opts.reaction) query.reaction = opts.reaction
+      if (opts.minDate) query.min_date = opts.minDate / 1000 | 0
+      if (opts.maxDate) query.max_date = opts.maxDate / 1000 | 0
       const r = await rest.get<MessagesContainer>(`/chats/${peerId}/search`, query)
       return { messages: await mapContainer(r), count: r.count ?? 0 }
     },

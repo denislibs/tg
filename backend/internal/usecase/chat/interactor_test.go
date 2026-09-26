@@ -514,7 +514,7 @@ func TestSearchMessages(t *testing.T) {
 	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: b, Text: "пока"})
 	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "ПРИВЕТ снова"})
 
-	res, err := in.SearchMessages(ctx, chatID, a, "привет", SearchFilter{}, 0, 20)
+	res, err := in.SearchMessages(ctx, chatID, a, "привет", SearchFilter{}, MediaPage{Limit: 20})
 	if err != nil {
 		t.Fatalf("SearchMessages: %v", err)
 	}
@@ -522,7 +522,7 @@ func TestSearchMessages(t *testing.T) {
 		t.Fatalf("search count=%d msgs=%d, want 2/2", res.Count, len(res.Messages))
 	}
 	// Non-member rejected.
-	if _, err := in.SearchMessages(ctx, chatID, 999, "привет", SearchFilter{}, 0, 20); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := in.SearchMessages(ctx, chatID, 999, "привет", SearchFilter{}, MediaPage{Limit: 20}); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("non-member search: want ErrNotFound, got %v", err)
 	}
 }
@@ -538,7 +538,7 @@ func TestSearchMessagesFilters(t *testing.T) {
 	_ = fakeReactions{deps}.Add(ctx, m1.ID, b, "👍")
 
 	// фильтр по автору сужает выдачу
-	res, err := in.SearchMessages(ctx, chatID, a, "привет", SearchFilter{SenderID: a}, 0, 20)
+	res, err := in.SearchMessages(ctx, chatID, a, "привет", SearchFilter{SenderID: a}, MediaPage{Limit: 20})
 	if err != nil {
 		t.Fatalf("search by sender: %v", err)
 	}
@@ -547,7 +547,7 @@ func TestSearchMessagesFilters(t *testing.T) {
 	}
 
 	// пустой запрос + фильтр по реакции
-	res, err = in.SearchMessages(ctx, chatID, a, "", SearchFilter{Reaction: "👍"}, 0, 20)
+	res, err = in.SearchMessages(ctx, chatID, a, "", SearchFilter{Reaction: "👍"}, MediaPage{Limit: 20})
 	if err != nil {
 		t.Fatalf("search by reaction: %v", err)
 	}
@@ -555,10 +555,11 @@ func TestSearchMessagesFilters(t *testing.T) {
 		t.Fatalf("reaction filter: got count=%d msgs=%d", res.Count, len(res.Messages))
 	}
 
-	// пустой запрос без фильтров — ничего не ищем
-	res, err = in.SearchMessages(ctx, chatID, a, "", SearchFilter{}, 0, 20)
-	if err != nil || res.Count != 0 || len(res.Messages) != 0 {
-		t.Fatalf("empty search: count=%d msgs=%d err=%v", res.Count, len(res.Messages), err)
+	// пустой запрос без фильтров — вся история чата, как messages.search с
+	// пустым q (чип пира без текста, tweb appSearchSuper.ts:2233-2236)
+	res, err = in.SearchMessages(ctx, chatID, a, "", SearchFilter{}, MediaPage{Limit: 20})
+	if err != nil || res.Count != 2 || len(res.Messages) != 2 {
+		t.Fatalf("empty search: count=%d msgs=%d err=%v, want вся история (2)", res.Count, len(res.Messages), err)
 	}
 }
 

@@ -286,7 +286,8 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 }
 
 // MediaPage — окно выборки шаред-медиа профиля (вкладки Медиа/Файлы/Ссылки/
-// Музыка/Голосовые).
+// Музыка/Голосовые) и поиска в одном чате (SearchMessages) — у обоих один
+// курсор по номеру сообщения в чате.
 //
 // Листается КУРСОРОМ, а не смещением: оригинал просит следующую страницу по id
 // последнего уже показанного сообщения (tweb
@@ -370,21 +371,32 @@ func (i *Interactor) SearchCounters(ctx context.Context, chatID, userID int64, f
 	return out, nil
 }
 
-// SearchFilter сужает поиск внутри чата (tweb topbarSearch): по автору (в
-// группах), по виду шаред-медиа и по наличию реакции на сообщении. Нулевые
-// значения отключают соответствующий фильтр.
+// SearchFilter сужает поиск внутри чата. Две лексики вида, и обе живые:
+// MediaType — мелкая лексика топбар-поиска чата (tweb topbarSearch), Filter —
+// вкладки класса AppSearchSuper с чипом пира (inputMessagesFilter* →
+// messages.search, tweb appMessagesManager.ts:9966-9982); заданные вместе,
+// складываются по И. Нулевые значения отключают соответствующий фильтр.
 type SearchFilter struct {
 	SenderID  int64  // фильтр по автору (0 — любой)
 	MediaType string // photo/video/voice/roundvideo/file/link/music ("" — любой)
 	Reaction  string // сообщения, у которых есть эта реакция ("" — любая)
+	Filter    string // media/files/links/music/voice — лексика mediaFilterCond ("" — любой)
+	// MinDate/MaxDate — чипы дат, unix-секунды, обе границы включительно
+	// (см. GlobalSearchQuery); 0 — без границы.
+	MinDate, MaxDate int64
 }
 
-// empty — фильтр не задан (ни автор, ни тип, ни реакция).
-func (f SearchFilter) empty() bool {
-	return f.SenderID == 0 && f.MediaType == "" && f.Reaction == ""
-}
-
-func (i *Interactor) SearchMessages(ctx context.Context, chatID, userID int64, q string, f SearchFilter, offset, limit int) (HistoryResult, error) {
+// SearchMessages — поиск по одному чату (аналог messages.search). Окно —
+// курсор page.OffsetID (номер последнего отданного, см. MediaPage), а не
+// смещение: выдачу листают и поиск в чате, и класс с чипом пира, а она
+// пополняется сверху живыми апдейтами.
+//
+// Пустой q без фильтров — это не «искать нечего», а вся история чата: так
+// отвечает messages.search с пустым q и inputMessagesFilterEmpty, и именно его
+// шлёт класс для чипа пира без текста (tweb appSearchSuper.ts:2233-2236 —
+// запрос уходит, если есть query ИЛИ peerId ИЛИ minDate). Топбар-поиск
+// пустую строку на сервер не шлёт сам (useChatSearch: idle).
+func (i *Interactor) SearchMessages(ctx context.Context, chatID, userID int64, q string, f SearchFilter, page MediaPage) (HistoryResult, error) {
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil {
 		return HistoryResult{}, err
@@ -392,17 +404,11 @@ func (i *Interactor) SearchMessages(ctx context.Context, chatID, userID int64, q
 	if !ok {
 		return HistoryResult{}, domain.ErrNotFound
 	}
-	// Пустой запрос без фильтров искать нечего (tweb: пустая строка + нет чипов).
-	if q == "" && f.empty() {
-		return HistoryResult{}, nil
+	page.Limit = clampSearchLimit(page.Limit)
+	if page.OffsetID < 0 {
+		page.OffsetID = 0
 	}
-	if limit <= 0 || limit > 50 {
-		limit = 20
-	}
-	if offset < 0 {
-		offset = 0
-	}
-	msgs, count, err := i.msgs.SearchMessages(ctx, chatID, q, f, offset, limit)
+	msgs, count, err := i.msgs.SearchMessages(ctx, chatID, q, f, page)
 	if err != nil {
 		return HistoryResult{}, err
 	}
@@ -491,7 +497,7 @@ type GlobalSearchResult struct {
 
 // GlobalSearchMessages searches messages across every chat the user belongs to
 // (tweb global search). filter ∈ {"", media, files, links, music, voice}; with
-// an empty q AND empty filter there is nothing to search — returns empty.
+// an empty q, empty filter AND no dates there is nothing to search — returns empty.
 func (i *Interactor) GlobalSearchMessages(ctx context.Context, userID int64, q GlobalSearchQuery) (GlobalSearchResult, error) {
 	switch q.ChatType {
 	case "", SearchChatTypeUsers, SearchChatTypeGroups, SearchChatTypeChannels:
@@ -500,7 +506,10 @@ func (i *Interactor) GlobalSearchMessages(ctx context.Context, userID int64, q G
 		// выглядела бы как работающий фильтр.
 		return GlobalSearchResult{}, domain.ErrInvalid
 	}
-	if q.Q == "" && q.Filter == "" {
+	// Искать нечего, только если нет ни текста, ни вкладки, ни даты: чип даты
+	// без текста — запрос (tweb appSearchSuper.ts:2233-2236 — уходит при
+	// query ИЛИ peerId ИЛИ minDate).
+	if q.Q == "" && q.Filter == "" && q.MinDate == 0 && q.MaxDate == 0 {
 		return GlobalSearchResult{}, nil
 	}
 	// Лишний лимит зажимается до потолка, а не сбрасывается в умолчание:

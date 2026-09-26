@@ -1049,21 +1049,34 @@ func (h *ChatHandler) SearchCounters(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"counters": out})
 }
 
+// SearchMessages — GET /chats/{chatID}/search?q=&offset_id=&limit=&sender_id=
+// &media_type=&reaction=&filter=&min_date=&max_date=: поиск в одном чате
+// (аналог messages.search). Потребителей двое: поиск в чате (топбар) и класс
+// AppSearchSuper с чипом пира.
+//
+// offset_id — номер последнего отданного сообщения (0/нет — с начала), как у
+// /media; смещения нет (см. usecasechat.MediaPage). media_type — мелкая
+// лексика топбара, filter — вкладки класса (media/files/links/music/voice);
+// min_date/max_date — unix-секунды, включительно.
 func (h *ChatHandler) SearchMessages(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
 	q := r.URL.Query().Get("q")
-	offset := int(queryInt(r, "offset", 0))
-	limit := int(queryInt(r, "limit", 20))
-	// tweb topbarSearch: необязательные фильтры автор/тип медиа/реакция.
+	page := usecasechat.MediaPage{
+		OffsetID: queryInt(r, "offset_id", 0),
+		Limit:    int(queryInt(r, "limit", 20)),
+	}
 	f := usecasechat.SearchFilter{
 		SenderID:  queryInt(r, "sender_id", 0),
 		MediaType: r.URL.Query().Get("media_type"),
 		Reaction:  r.URL.Query().Get("reaction"),
+		Filter:    r.URL.Query().Get("filter"),
+		MinDate:   queryInt(r, "min_date", 0),
+		MaxDate:   queryInt(r, "max_date", 0),
 	}
-	res, err := h.svc.SearchMessages(r.Context(), chatID, h.meID(r), q, f, offset, limit)
+	res, err := h.svc.SearchMessages(r.Context(), chatID, h.meID(r), q, f, page)
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
 		return

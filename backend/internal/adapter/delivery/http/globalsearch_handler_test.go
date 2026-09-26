@@ -148,3 +148,51 @@ func sameIDs(got []int64, want ...int64) bool {
 	}
 	return true
 }
+
+// Пин на ГРАНИЦУ поиска в одном чате (чип пира → messages.search, tweb
+// appMessagesManager.ts:9966-9982): `offset_id` — номер последнего
+// отданного, `filter` — лексика вкладок класса, `min_date`/`max_date`.
+// Прежний `offset` ручка больше не слушает.
+func TestChatSearchHTTP_OffsetIDFilterDates(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990004521")
+	_, idB := signUp(t, h, pool, "+79990004522")
+
+	rec := authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": idB})
+	peer := itoa(createdPeerFrom(t, rec))
+	send := func(text, cid string) {
+		t.Helper()
+		r := authedReq(t, h, http.MethodPost, "/chats/"+peer+"/messages", tokenA,
+			map[string]any{"text": text, "client_msg_id": cid})
+		if r.Code != http.StatusOK {
+			t.Fatalf("send %s: %d %s", cid, r.Code, r.Body.String())
+		}
+	}
+	send("кот https://example.com/1", "c1")
+	send("кот без ссылки", "c2")
+	send("кот https://example.com/3", "c3")
+	send("кот без ссылки", "c4")
+	q := "/chats/" + peer + "/search?q=" + url.QueryEscape("кот") + "&limit=2"
+
+	page1 := getSlice(t, h, tokenA, q)
+	if page1.Count != 4 || !sameIDs(sliceIDs(page1), 4, 3) {
+		t.Fatalf("page1 = %+v, want [4 3] из 4", page1)
+	}
+	if ignored := getSlice(t, h, tokenA, q+"&offset=2"); !sameIDs(sliceIDs(ignored), 4, 3) {
+		t.Fatalf("offset=2 сдвинул выдачу: %v", sliceIDs(ignored))
+	}
+	send("ещё кот", "c5") // живой апдейт сверху
+	if page2 := getSlice(t, h, tokenA, q+"&offset_id=3"); !sameIDs(sliceIDs(page2), 2, 1) {
+		t.Fatalf("page2 = %v, want [2 1] (дубль от вставки сверху)", sliceIDs(page2))
+	}
+	if links := getSlice(t, h, tokenA, q+"&filter=links"); links.Count != 2 || !sameIDs(sliceIDs(links), 3, 1) {
+		t.Fatalf("filter=links = %+v, want [3 1]", links)
+	}
+	now := time.Now().Unix()
+	if past := getSlice(t, h, tokenA, q+"&max_date="+itoa(now-86400)); past.Count != 0 {
+		t.Fatalf("max_date=вчера: count=%d, want 0", past.Count)
+	}
+	if today := getSlice(t, h, tokenA, q+"&min_date="+itoa(now-3600)+"&max_date="+itoa(now+3600)); today.Count != 5 {
+		t.Fatalf("сегодня: count=%d, want 5", today.Count)
+	}
+}

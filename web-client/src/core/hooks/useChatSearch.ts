@@ -52,8 +52,12 @@ export function useMessageSearchLoader(
   const keyRef = useRef(key)
   const busyRef = useRef(false)
 
+  // Страница берётся КУРСОРОМ: offsetId — номер последнего сообщения в
+  // списке (0 — с начала), как offsetId у оригинала (topbarSearch.tsx:108-118 →
+  // messages.search). Не длиной списка: выдача пополняется сверху живыми
+  // апдейтами, и смещение отдало бы вторую страницу с дублем.
   const fetchPage = useCallback(
-    async (offset: number, forKey: string) => {
+    async (offsetId: number, forKey: string) => {
       if (busyRef.current) return
       busyRef.current = true
       setLoading(true)
@@ -61,12 +65,12 @@ export function useMessageSearchLoader(
         const r = await managers.messages.searchMessages(peerId, query.trim(), {
           senderId: fromPeerId,
           reaction,
-          offset,
+          offsetId,
           limit: LIMIT,
         })
         if (keyRef.current !== forKey) return
-        setMessages((prev) => (offset === 0 ? r.messages : [...prev, ...r.messages]))
-        setCount((prev) => (offset === 0 ? r.messages.length : (prev ?? 0) + r.messages.length))
+        setMessages((prev) => (offsetId === 0 ? r.messages : [...prev, ...r.messages]))
+        setCount((prev) => (offsetId === 0 ? r.messages.length : (prev ?? 0) + r.messages.length))
         setTotalCount(r.count)
         setIsEnd(r.messages.length < LIMIT)
       } finally {
@@ -95,8 +99,9 @@ export function useMessageSearchLoader(
 
   const loadMore = useMemo(() => {
     if (idle || isEnd) return undefined
-    return () => void fetchPage(messages.length, key)
-  }, [idle, isEnd, fetchPage, messages.length, key])
+    const lastId = messages[messages.length - 1]?.id ?? 0
+    return () => void fetchPage(lastId, key)
+  }, [idle, isEnd, fetchPage, messages, key])
 
   return { messages, count, totalCount, loading, loadMore }
 }

@@ -219,9 +219,15 @@ func (r *MessagesRepo) GetAround(ctx context.Context, chatID, userID, centerSeq 
 // matches q (case-insensitive substring), newest first, plus the total match
 // count. Excludes deleted. The LEFT JOIN on media lets a query like "report.pdf"
 // or "song" find media messages by their file name, not just text/captions.
-// Необязательные фильтры f (tweb topbarSearch): по автору, по виду шаред-медиа и
-// по наличию реакции на сообщении. Пустой q при заданном фильтре допустим.
-func (r *MessagesRepo) SearchMessages(ctx context.Context, chatID int64, q string, f usecasechat.SearchFilter, offset, limit int) ([]domain.Message, int, error) {
+// Необязательные фильтры f: автор, вид медиа в двух лексиках (MediaType —
+// топбар-поиск, Filter — вкладки класса, mediaFilterCond), реакция и даты.
+// Пустой q без фильтров — вся история чата (см. usecasechat.Interactor.SearchMessages).
+//
+// Окно — курсор `m.seq < page.OffsetID` (почему не OFFSET — у
+// usecasechat.MediaPage). План: равенство по чату + курсор по seq + ORDER BY
+// seq DESC — UNIQUE(chat_id, seq), с вкладкой — idx_messages_shared_media
+// (chat_id, type, seq DESC); новый индекс не нужен.
+func (r *MessagesRepo) SearchMessages(ctx context.Context, chatID int64, q string, f usecasechat.SearchFilter, page usecasechat.MediaPage) ([]domain.Message, int, error) {
 	qq := querier(ctx, r.pool)
 	// type <> 'service': системные сообщения (создал группу, сменил фото, set_ttl…)
 	// не индексируются поиском — как в tweb (service-сообщения не ищутся).
@@ -259,15 +265,27 @@ func (r *MessagesRepo) SearchMessages(ctx context.Context, chatID int64, q strin
 	default:
 		return nil, 0, nil
 	}
+	if f.Filter != "" {
+		cond := mediaFilterCond(f.Filter)
+		if cond == "" {
+			return nil, 0, nil
+		}
+		where += ` AND ` + cond
+	}
 	if f.Reaction != "" {
 		where += ` AND EXISTS (SELECT 1 FROM reactions rx WHERE rx.message_id = m.id AND rx.emoji = ` + add(f.Reaction) + `)`
 	}
+	where += dateRangeCond(f.MinDate, f.MaxDate, add)
 	var count int
 	if err := qq.QueryRow(ctx, `SELECT count(*)`+where, args...).Scan(&count); err != nil {
 		return nil, 0, err
 	}
-	lim := fmt.Sprintf(` ORDER BY m.seq DESC LIMIT $%d OFFSET $%d`, len(args)+1, len(args)+2)
-	rows, err := qq.Query(ctx, `SELECT `+messageColsPrefixed("m")+where+lim, append(args, limit, offset)...)
+	// Курсор — в текст запроса, а не «($N=0 OR m.seq<$N)» (см. MediaHistory).
+	if page.OffsetID > 0 {
+		where += ` AND m.seq < ` + add(page.OffsetID)
+	}
+	where += ` ORDER BY m.seq DESC LIMIT ` + add(page.Limit)
+	rows, err := qq.Query(ctx, `SELECT `+messageColsPrefixed("m")+where, args...)
 	if err != nil {
 		return nil, 0, err
 	}

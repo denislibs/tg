@@ -873,7 +873,7 @@ func (r fakeMsgs) GlobalSearchMessages(_ context.Context, userID int64, gq Globa
 	return res, nil
 }
 
-func (r fakeMsgs) SearchMessages(_ context.Context, chatID int64, q string, f SearchFilter, offset, limit int) ([]domain.Message, int, error) {
+func (r fakeMsgs) SearchMessages(_ context.Context, chatID int64, q string, f SearchFilter, page MediaPage) ([]domain.Message, int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	var hits []domain.Message
@@ -934,15 +934,30 @@ func (r fakeMsgs) SearchMessages(_ context.Context, chatID int64, q string, f Se
 				continue
 			}
 		}
+		if f.Filter != "" && !matchesMediaFilter(m, f.Filter) {
+			continue
+		}
+		if f.MinDate > 0 && m.CreatedAt.Unix() < f.MinDate {
+			continue
+		}
+		if f.MaxDate > 0 && m.CreatedAt.Unix() > f.MaxDate {
+			continue
+		}
 		hits = append(hits, m)
 	}
 	count := len(hits)
-	if offset > len(hits) {
-		offset = len(hits)
+	if page.OffsetID > 0 {
+		// Курсор: строго ниже последнего отданного (см. MediaPage).
+		kept := hits[:0:0]
+		for _, m := range hits {
+			if m.Seq < page.OffsetID {
+				kept = append(kept, m)
+			}
+		}
+		hits = kept
 	}
-	hits = hits[offset:]
-	if limit > 0 && len(hits) > limit {
-		hits = hits[:limit]
+	if page.Limit > 0 && len(hits) > page.Limit {
+		hits = hits[:page.Limit]
 	}
 	return hits, count, nil
 }
