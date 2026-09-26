@@ -45,9 +45,11 @@ type Task =
  */
 export const USE_LOCKS = true
 
-/** Метаданные realtime-события. Заполняются ТОЛЬКО funnel'ом воркера —
- *  единственным местом, которое знает происхождение кадра. */
-export interface EventMeta { pts?: number; catchUp?: boolean }
+/** Метаданные realtime-события. `pts`/`catchUp` заполняет ТОЛЬКО funnel
+ *  воркера — единственное место, которое знает происхождение кадра;
+ *  `initialSync` — рассылка `rt:new_message` в воркере (`workerCore.ts::
+ *  routeNewMessage`): кадр пришёл первым difference после старта (tweb 1dc32d889). */
+export interface EventMeta { pts?: number; catchUp?: boolean; initialSync?: boolean }
 
 interface Awaiting {
   resolve: (v: unknown) => void

@@ -235,11 +235,30 @@ describe('I18n: загрузка пакета и применение', () => {
     // ГЛАВНОЕ — экран: русский остаётся русским.
     expect(el.textContent).toBe('Это устройство')
     expect(applied).toBeUndefined()
-    // Запрошенный язык сдвинулся (у оригинала `setLangCode` тоже стоит до
-    // загрузки), а ВЫБОР — нет: переживать перезагрузку несостоявшемуся
-    // переключению нечем.
-    expect(I18n.getLastRequestedLangCode()).toBe('uk')
+    // Запрошенный язык сдвигается до загрузки (у оригинала `setLangCode` тоже
+    // стоит первым), но на отказе ОТКАТЫВАЕТСЯ — tweb 00c1e1a86: иначе
+    // форматтеры дат собирались бы по языку, который так и не применили
+    // (украинские даты посреди русского интерфейса). ВЫБОР не записан тоже:
+    // переживать перезагрузку несостоявшемуся переключению нечем.
+    expect(I18n.getLastRequestedLangCode()).toBe('ru')
     expect(localStorage.getItem('tg-lang')).toBeNull()
+  })
+
+  it('отказ загрузки не откатывает язык, если за это время выбрали третий', async() => {
+    // Условие отката у tweb 00c1e1a86 — `lastRequestedLangCode === langCode`:
+    // опоздавший отказ не имеет права затереть более поздний выбор.
+    I18n.setLangCode('ru')
+    let fail: (p: null) => void = () => {}
+    owner.getPack.mockImplementation((langCode: string) => (
+      langCode === 'uk' ? new Promise((r) => { fail = r }) : Promise.resolve(EN_V1)
+    ))
+
+    const uk = I18n.getLangPackAndApply('uk')
+    await I18n.getLangPackAndApply('en')
+    fail(null)
+
+    await expect(uk).resolves.toBeUndefined()
+    expect(I18n.getLastRequestedLangCode()).toBe('en')
   })
 
   it('язык переключили, пока летела проверка — доехавшая разница наружу не уезжает', async() => {

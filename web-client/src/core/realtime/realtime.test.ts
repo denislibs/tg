@@ -24,6 +24,7 @@ describe('realtime.markMediaRead', () => {
     const rt = newRealtime({
       conn,
       sync: { isSyncing: () => false },
+      syncWait: { waitForSync: async () => undefined },
       tokens: { load: async () => undefined },
       messages,
       broadcast,
@@ -42,6 +43,7 @@ describe('realtime.markMediaRead', () => {
     const rt = newRealtime({
       conn,
       sync: { isSyncing: () => false },
+      syncWait: { waitForSync: async () => undefined },
       tokens: { load: async () => undefined },
       messages,
       broadcast,
@@ -72,6 +74,7 @@ describe('realtime.getStatus', () => {
     const rt = newRealtime({
       conn,
       sync,
+      syncWait: { waitForSync: async () => undefined },
       tokens: { load: async () => undefined },
       messages: { cacheMediaRead: vi.fn(() => []) },
       broadcast: vi.fn(),
@@ -130,6 +133,7 @@ describe('realtime.getStatus — иммунность к потере push-ув�
 
     const rt = newRealtime({
       conn, sync,
+      syncWait: { waitForSync: async () => undefined },
       tokens: { load: async () => undefined },
       messages: { cacheMediaRead: () => [] },
       broadcast: () => {},
