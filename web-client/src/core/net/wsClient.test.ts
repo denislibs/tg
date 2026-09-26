@@ -90,7 +90,10 @@ describe('WsClient', () => {
 
     // До загрузки чанка наружу не ушло ничего.
     expect(got).not.toHaveBeenCalled()
-    await vi.waitFor(() => expect(got).toHaveBeenCalledTimes(2))
+    // Ждём сам промис загрузки, а не таймаут: под нагрузкой трансформация и
+    // загрузка чанка легко переваливают за секунду vi.waitFor.
+    await c.codecReady()
+    expect(got).toHaveBeenCalledTimes(2)
 
     expect(got.mock.calls[0][0]).toBe('hello')
     expect(got.mock.calls[1][0]).toBe('updateDialogPinned')

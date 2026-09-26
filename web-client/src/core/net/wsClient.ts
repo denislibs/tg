@@ -28,13 +28,14 @@ export class WsClient implements Transport {
   private closeCbs: Array<() => void> = []
   private errorCbs: Array<() => void> = []
   private decodeTL: typeof decodeTLFrame | null = null
+  private codecLoad: Promise<void> | null = null
   private queued: Array<string | ArrayBuffer> = []
 
   constructor(private url: string, private tlWire = false) {}
 
   connect(token: string): void {
     if (this.tlWire && !this.decodeTL) {
-      void import('./tlFrames').then((m) => {
+      this.codecLoad ??= import('./tlFrames').then((m) => {
         this.decodeTL = m.decodeTLFrame
         const pending = this.queued
         this.queued = []
@@ -64,6 +65,11 @@ export class WsClient implements Transport {
       for (const cb of this.frameCbs) cb(update._, update, seq)
     }
   }
+
+  // Промис загрузки кодека TL: резолвится, когда очередь, накопленная до
+  // загрузки, уже слита наружу. Нужен тестам — ждать сам чанк, а не угадывать
+  // время его загрузки таймаутом.
+  codecReady(): Promise<void> { return this.codecLoad ?? Promise.resolve() }
 
   onFrame(cb: (type: string, d: unknown, pts?: number) => void): void { this.frameCbs.push(cb) }
   onOpen(cb: () => void): void { this.openCbs.push(cb) }
