@@ -134,7 +134,7 @@ let subscribedToWindow = false
 
 // * Exposed for diagnosis: memoryReport counts it, and a set that keeps growing while the tab is
 // * idle means scrollables are being created and abandoned faster than they are collected
-MOUNT_CLASS_TO && (MOUNT_CLASS_TO.listeningScrollables = listeningScrollables)
+if(MOUNT_CLASS_TO) MOUNT_CLASS_TO.listeningScrollables = listeningScrollables
 
 const subscribeToWindow = () => {
   if(subscribedToWindow) {
