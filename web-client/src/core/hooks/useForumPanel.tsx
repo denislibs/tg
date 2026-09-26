@@ -79,5 +79,9 @@ export function useForumPanel({ chats, onSelect, activeTopicId, onOpenTopic }: {
     </div>
   )
 
-  return { forumChat, handleSelect, panel }
+  // tweb `appDialogsManager.toggleForumTab()` без пира — закрыть панель; его зовёт
+  // `closeEverythingInsideNaturally` колонки при переключении папки.
+  const closeForum = () => setForumChat(null)
+
+  return { forumChat, handleSelect, closeForum, panel }
 }

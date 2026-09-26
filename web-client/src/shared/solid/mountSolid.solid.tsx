@@ -1,5 +1,5 @@
 /** @jsxImportSource solid-js */
-import { ErrorBoundary } from 'solid-js'
+import { children, createRoot, ErrorBoundary } from 'solid-js'
 import { createStore } from 'solid-js/store'
 import { render } from 'solid-js/web'
 import type { JSX } from 'solid-js'
@@ -111,4 +111,54 @@ export function mountSolid<P extends Record<string, unknown>>(
     dispose,
     update: (patch) => setPartial(patch),
   }
+}
+
+/**
+ * Второй вход моста — Solid-узлы БЕЗ хоста: `createRoot` + `children().toArray()`,
+ * как tweb кладёт ряд папок прямо в `.chatlist-overlay`
+ * (`tweb/src/lib/appDialogsManager.ts:654-686`). Нужен там, где обёртка-хост
+ * меняет вёрстку: `.folders-tabs-gradient-container { position: absolute;
+ * inset: 0 }` (`styles/tweb/_leftSidebar.scss:319-324`) растягивается на
+ * ближайшего позиционированного предка, и лишний `div` между оверлеем и
+ * градиентом сузил бы фейд до себя (и показался бы в `dom-parity` чужим узлом).
+ *
+ * Компонент исполняется СИНХРОННО внутри вызова: `ref`-колбэки пропов
+ * срабатывают до возврата — на этом стоит `onRef` владельца папок (он вешает
+ * полосу в `ref` меню, `appDialogsManager.ts:667-671`).
+ *
+ * `ErrorBoundary` — по той же причине, что у `mountSolid` (докблок выше): сток
+ * Solid без границы бросает наружу, а у tweb — логирует. Упавший компонент
+ * отдаёт пустой список узлов.
+ *
+ * Отличие от оригинала: `dispose` у tweb нет (владелец — синглтон, корень живёт
+ * вечно). Здесь `dispose` гасит корень И снимает отданные узлы — снять их больше
+ * некому: хоста, чей `textContent` сбросил бы `render`, нет. Соседей по
+ * родителю он не трогает. Снимаются узлы ПЕРВОГО снимка: если граница позже
+ * заменит поддерево на `fallback`, в чужом родителе это не отразится — у
+ * узлов без хоста нет места, куда вставить замену (у tweb так же).
+ */
+export function createSolidNodes<P extends Record<string, unknown>>(
+  Component: (props: P) => JSX.Element,
+  props: P,
+): { nodes: Node[]; dispose: () => void } {
+  return createRoot((disposeRoot) => {
+    const resolved = children(() => (
+      <ErrorBoundary
+        fallback={(err) => {
+          console.error('solid island error', err)
+          return null
+        }}
+      >
+        <Component {...props} />
+      </ErrorBoundary>
+    ))
+    const nodes = resolved.toArray().filter((node): node is Node => node instanceof Node)
+    return {
+      nodes,
+      dispose: () => {
+        disposeRoot()
+        nodes.forEach((node) => node.parentNode?.removeChild(node))
+      },
+    }
+  })
 }

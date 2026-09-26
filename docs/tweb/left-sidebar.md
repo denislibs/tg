@@ -724,13 +724,14 @@ Close/RestartTopic `:224` · ChargeFee `:238` · Delete `:248`.
 | `src/components/SidebarScreens.tsx` (:22-24) | экраны колонки — **один enum-стейт** `'settings'\|'contacts'\|'wallet'\|'calls'\|'newGroup'\|'newChannel'\|'newPrivate'\|'newSecret'\|null`, lazy-подгрузка Settings/Wallet/Calls | стек `SliderSuperTab` |
 | `src/components/SettingsView.tsx` (:47) + `SettingsSubScreen.tsx` (:82-95, :134-152) | настройки: корневой список + под-экраны по строковому title (Language/General/Devices/SpeakersCamera/Notifications/ChatFolders/Privacy/DataStorage/Stickers/Hotkeys) | `AppSettingsTab` + дерево части 2 |
 | `src/components/settings/*` | реализации ещё не портированных под-экранов (TwoStepVerification, PasscodeLock, Passkeys, BlockedUsers, AutoDelete, PowerSaving, QuickReaction, EditProfile, ChatWallpaper…). «Устройства» здесь БОЛЬШЕ НЕТ — уехали на слайдер, см. §3 | `sidebarLeft/tabs/*` |
-| `src/components/ChatList.tsx` / `ChatListItem.tsx` | список чатов на виртуальном ядре | `AutonomousDialogList` + `DialogElement` |
+| `src/lib/appDialogsManager.ts` | папочный срез владельца: `.chatlist-overlay` с Solid-рядом вкладок, `#folders-container`, скроллер на папку, переключение (`horizontalMenu` + `TransitionSlider`); встроен в колонку `Sidebar.tsx` (план папок, задача 6) | `AppDialogsManager` (папки) |
+| `src/components/ChatList.tsx` / `ChatListItem.tsx` | списки папок на виртуальном ядре — порталом в `.chatlist-top` контейнеров владельца | `AutonomousDialogList` (строки) + `DialogElement` |
 | `src/components/virtual/DeferredSortedVirtualList.*` | порт `deferredSortedVirtualList` | 1:1 |
 | `src/core/hooks/useDialogListSource.ts` | источник набора папки/архива (фильтр, размер, курсор) | `AutonomousDialogListBase` |
 | `src/core/managers/dialogsManager.ts` (воркер) | владелец диалогов: сортировка, пагинация, refresh | `dialogsStorage` (воркерная сторона) |
 | `src/core/dialogs/{dialogIndex,dialogOps,loadCount}.ts` | индексы, операции, размер страницы | `getDialogIndex*`, `DIALOG_LOAD_COUNT` |
 | `src/components/chatlist/dialogsPlaceholder.ts` | canvas-шиммер | `helpers/dialogsPlaceholder.ts` |
-| `src/components/FolderTabs.tsx` + `src/components/folders/FoldersSidebar.tsx` + `useSidebarFolders` | горизонтальные табы и вертикальная колонка папок (`tabsInSidebar`, Sidebar.tsx:150-157, 217-228, 317-325) | `foldersTabs` + `foldersSidebarContent` |
+| `src/components/foldersTabs.solid.tsx` + `src/components/folders/FoldersSidebar.tsx` + `useSidebarFolders` | горизонтальный ряд (Solid, узлами владельца) и вертикальная колонка папок (React, `tabsInSidebar`; клик — тот же `selectTab` владельца); меню папки — `useSidebarFolders` (только у колонки, до задачи 7) | `foldersTabs` + `foldersSidebarContent` |
 | `src/components/StoriesRow.tsx` (Sidebar.tsx:268-282) | сторис-лента (`foldInto`/`setScrolledOn`/`getScrollable`/`listenWheelOn`) | `stories/list.tsx` |
 | `src/components/SidebarMenuButton.tsx` | бургер + морф (`searching` prop) | `createToolsMenu` + animated-menu-icon |
 | `src/components/SearchView.tsx` + `useSidebarSearch` + `shared/ui/InputSearch` | поиск (transition-узлы в JSX, Sidebar.tsx:285-386) | `initSearch` + `AppSearchSuper` |
@@ -770,7 +771,8 @@ DOM-паритет первого таба выдержан сознательн
    (разделы «Отступления» читать перед правкой ядра). Ветка оживления пагинации
    `worktree-dialogs-count-refresh` готова и проверена на стенде, на момент снятия не смержена.
 5. **Архив — оверлей, не таб.** tweb: `AppArchivedTab` в слайдере, переиспользующий `l(FOLDER_ID_ARCHIVE)`.
-   У нас: оверлей внутри `#chatlist-container` (Sidebar.tsx:348-371) с тем же виртуальным ядром и
+   У нас: оверлей внутри `.connection-status-bottom` (React-ребёнок хоста владельца папок; в
+   `#folders-container` ему нельзя — там кадры папок, адресуемые индексом) с тем же виртуальным ядром и
    `useDialogListSource(ARCHIVE_FOLDER_ID)` (`ArchiveList`, Sidebar.tsx:467-524) — отступление названо
    в комментариях там же.
 6. **Бургер-меню — другой состав.** У нас: Settings/Contacts/Saved/Premium/MyStories/CloseFriends/
@@ -780,11 +782,15 @@ DOM-паритет первого таба выдержан сознательн
    Один набор обработчиков переиспользуется бургером и вертикальной колонкой папок — как в tweb.
 7. **Контекстное меню диалога и contact-list-заглушка** — у tweb богатое меню
    (`dialogsContextMenu.ts`, 13 пунктов) и секция Contacts при <10 чатах; у нас этих подсистем нет
-   (меню папок на табах есть — `useSidebarFolders.onTabContextMenu`).
-8. **Фолдеры**: обе панели есть (FolderTabs + FoldersSidebar, включая `tabsInSidebar` и deep-open
-   «Настроить папки» → `SettingsView(initialSub='Chat Folders')`, Sidebar.tsx:129-132), но счётчики
-   непрочитанного считаются на клиенте из зеркала, а не через `dialogsStorage.getFolderUnreadCount`;
-   свайпа между папками нет.
+   (меню папки — `useSidebarFolders.onTabContextMenu`, после задачи 6 плана папок только у
+   вертикальной колонки; общий `createFolderContextMenu` на оба ряда — задача 7).
+8. **Фолдеры**: контейнеры, ряд вкладок и переключение — у владельца `lib/appDialogsManager.ts`
+   (план `docs/superpowers/plans/2026-09-07-solid-wave-3-folders-tabs.md`, задача 6: `FolderTabs` и
+   `TabSlide` из колонки сняты; переключение = список с начала, свайп есть). Вертикальная колонка
+   (React) переключает через тот же `selectTab`. Остаток: body-классы режима папок (задача 8 — до неё
+   при «папки слева» горизонтальный ряд виден вместе с колонкой), общее меню папки (задача 7),
+   счётчики на клиенте из зеркала, а не `dialogsStorage.getFolderUnreadCount` (отложенная задача 16);
+   разбор — `folders-tabs.md` § 2.
 9. **Ресайз/коллапс** — `installColumnResize` портирован (Sidebar.tsx:159-189), но без побочек
    tweb-`onCollapsedChange` (fade/zoom-fade чатлиста, avatar-badges, Ctrl+F-подсказка) — отмечено
    комментарием Sidebar.tsx:176-178; «всплытие» has-open-tabs воспроизведено через

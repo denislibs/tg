@@ -1,10 +1,10 @@
 /** @jsxImportSource solid-js */
 import { describe, expect, it, vi } from 'vitest'
-import { onMount } from 'solid-js'
+import { createSignal, onMount } from 'solid-js'
 import { createManagers, registerManagers } from '@rpc/managersProxy'
 import { SuperMessagePort } from '@rpc/superMessagePort'
 import { createStore, unwrap } from 'solid-js/store'
-import { mountSolid } from './mountSolid.solid'
+import { createSolidNodes, mountSolid } from './mountSolid.solid'
 
 describe('mountSolid', () => {
   it('монтирует компонент в переданный узел и отдаёт ему пропы', () => {
@@ -146,5 +146,57 @@ describe('mountSolid', () => {
     dispose()
     ui.dispose()
     worker.dispose()
+  })
+})
+
+// Второй экспорт моста — Solid-узлы БЕЗ хоста (план папок, задача 5): так tweb
+// кладёт ряд папок в `.chatlist-overlay` (`appDialogsManager.ts:654-686`,
+// `createRoot` + `children(() => element).toArray()`). Обёртка-хост сломала бы
+// `.folders-tabs-gradient-container { inset: 0 }` (`_leftSidebar.scss:319-324`) —
+// он считался бы от неё, а не от оверлея.
+describe('createSolidNodes', () => {
+  it('отдаёт узлы компонента как есть, без обёртки', () => {
+    const { nodes, dispose } = createSolidNodes((p: { a: string }) => (
+      <>
+        <i class="first">{p.a}</i>
+        <b class="second" />
+      </>
+    ), { a: 'x' })
+
+    expect(nodes.map((node) => (node as Element).className)).toEqual(['first', 'second'])
+    expect((nodes[0] as Element).textContent).toBe('x')
+    expect(nodes[0].parentNode).toBeNull()
+    dispose()
+  })
+
+  it('реактивность живёт до dispose; dispose снимает свои узлы и не трогает соседей', () => {
+    const [text, setText] = createSignal('до')
+    const { nodes, dispose } = createSolidNodes(() => <i>{text()}</i>, {})
+    const parent = document.createElement('div')
+    const neighbour = document.createElement('span')
+    parent.append(neighbour, ...nodes)
+
+    setText('после')
+    expect(parent.querySelector('i')!.textContent).toBe('после')
+
+    dispose()
+    setText('мимо')
+
+    expect(parent.querySelector('i')).toBeNull()
+    expect(Array.from(parent.childNodes)).toEqual([neighbour])
+  })
+
+  it('падение внутри держит ErrorBoundary: наружу не бросает, узлов нет', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const Boom = () => {
+      throw new Error('бабах')
+    }
+
+    let result: ReturnType<typeof createSolidNodes> | undefined
+    expect(() => { result = createSolidNodes(Boom, {}) }).not.toThrow()
+    expect(result!.nodes).toEqual([])
+    expect(spy).toHaveBeenCalled()
+    result!.dispose()
+    spy.mockRestore()
   })
 })

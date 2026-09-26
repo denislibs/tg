@@ -30,23 +30,16 @@ export const useFoldersStore = create<FoldersUiState>((set) => ({
   upsert: (f) => {
     applyFolders([...useAppStateStore.getState().folders.filter((x) => x.id !== f.id), f])
   },
+  // Выбор при удалении папки здесь НЕ сбрасывается: писатель `selectedId` один —
+  // владелец папок (`lib/appDialogsManager.ts`, `selectFolderByIndex`). Удаление
+  // АКТИВНОЙ папки — любым путём, локальным `remove` или пушем
+  // `applyFolderUpdate` — он видит подпиской на состав папок: снимает её
+  // контейнер и переключает на «Все чаты» (`selectTab(0)`, расхождение 6 его
+  // шапки; у tweb — `deleteFolder`, `stores/folders.ts:120-134`).
   remove: (id) => {
     applyFolders(useAppStateStore.getState().folders.filter((f) => f.id !== id))
-    deselectIfRemoved(id)
   },
 }))
-
-/**
- * Удалённая папка не может остаться выбранной — выбор уезжает на «Все чаты».
- *
- * Правило ОДНО на оба пути удаления: локальный `remove` (своё действие) и
- * `applyFolderUpdate` (пуш `folder_update {deleted}` с другого устройства). Пока
- * второй путь его не соблюдал, у показанного списка чатов пропадал таб, но
- * оставался `selectedId`: витрина рисовала папку, которой уже нет в `order`.
- */
-function deselectIfRemoved(id: number): void {
-  useFoldersStore.setState((s) => (s.selectedId === id ? { selectedId: ALL_FOLDER_ID } : s))
-}
 
 /** Реактивное чтение папок — единственный способ их получить в UI. */
 export function useFolders(): Folder[] {
@@ -136,7 +129,6 @@ export function applyFolderUpdate(evt: FolderUpdateEvt): void {
   if (evt.deleted) {
     if (evt.folder_id === undefined) return
     applyFolders(prev.filter((f) => f.id !== evt.folder_id))
-    deselectIfRemoved(evt.folder_id)
     return
   }
   if (!evt.folder) return
