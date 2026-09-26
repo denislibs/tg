@@ -1,0 +1,52 @@
+e532dd4b3 Notify when someone reacts to your story
+16bf5ed15 Warn before opening a link that fakes a familiar domain
+b2df09771 Recolor chat list spoilers when a row becomes active
+f57dbcec3 Highlight the found text in bubbles and search rows, and the quoted part on quote click
+1ca7cb99e Show the group's sticker set and emoji pack in the panel, and let admins set them
+2b00c4dae Release chat-list rows the virtual list drops
+a381f8313 Make the dialog list's delete cover both collections it reads from
+8314c57ac Hold the panel's reordering until it hides, and reorder a gif that was used
+5db7cfb6f Center a jump on the highlighted text when the message does not fit the screen
+b21491cfd Build
+0138e970d Center a jump on the poll answer it points at
+3f974c341 Elide the dialog subtitle once, and point a chat name with an arrow
+d035547f0 Mute a collapsed Community row by the Community's own setting
+c6f67f12d Report memory from every isolate of the tab's process, and bound the finished-download cache
+84e847c52 Credit a star gift service message to whoever actually paid for it
+ee2b5cd0f Pick the plural form of a counted text from the count, not the name
+c7c869034 Convert a Lottie icon into a self-contained animated SVG
+2197fee9c Refresh icons and row icon styling
+325ed0e15 Draw a straight, 45°-snapped line while Shift is held
+950f92f55 Finish the dice reveal instead of freezing on the roll
+944b578e9 Rebuild Active Sessions on Solid and give every session its own screen
+3d524908e Highlight the context menu's target message like a selected one
+69a759cbc Paint icon buttons with the primary text color
+f504c0e03 Let the preview mint an authorization from inside a worktree
+803f9599d Give the profile a music playlist, and rebuild the audio row around it
+0e57f604d Let the share popup switch multiselect on from its header
+176ec033c Keep the audio plate's glyphs out of the primary color
+ca1416807 Let the shared media tabs appear and vanish with their counters
+365801e95 Count the pinned tab's title from the search its list uses
+b3cdc150a Re-read the counters the server admits are inexact
+b6d3b059c Support chat-specific hashtag and cashtag search
+293cb4509 Stop a stalled spoiler renderer from bricking a chat
+12fbb8506 Isolate fastRaf callbacks so one throw cannot poison the batch
+127188295 Stop a read receipt from leaving two check marks on one message
+a5a90e719 Keep tag search input focused
+3501e76c9 Take a frame's url and height as input rather than at face value
+e5ad6616f Restore sticker fade-in without delaying settled dice
+ef41b29db Migrate legacy rows to Solid RowTsx
+d3bf83c2b Fix day period rendering for locales that don't put it last
+882c48a2e Fix stale forum avatar unread badge
+e934b9039 Remove ripple from archive and community rows
+8f6b3800c Show forum membership actions
+119c82769 Align chat actions plate with translation layout
+1cb8bb863 Use thread separators instead of topic chips
+1d0e37337 Pinned message plate: thread-scoped everywhere, no flicker
+cc42eb73a Let the link preview be dismissed back to the reply plate
+f30c242a3 Offer Reopen Topic in the chat actions plate
+1f060db3e Page forum topics by server-order offsets, immune to drafts
+173f3c6dc Play the round video while it uploads
+d5c66a010 Update tlottie and ship its no-SIMD build
+dae12932f Split the quote icon into quote and blockquote
+36bf1a75b Complete the chat actions plate's peer-settings states

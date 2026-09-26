@@ -82,6 +82,55 @@ describe('sw-stream handleStreamFetch', () => {
   })
 })
 
+// Порт tweb 8d06fbc9c «Stop the service worker stream endpoint from echoing an
+// attacker's Content-Type». `mime` берётся из query и целиком под контролем того,
+// кто собрал ссылку, а тело — байты файла, скачанные сессией жертвы: отданный как
+// есть `text/html` отрисовал бы байты как разметку в origin приложения.
+describe('sw-stream: Content-Type не эхо из адреса', () => {
+  const s = loadStream()
+  let called = 0
+  const handler = s.createStreamHandler(async (_mediaId: number, offset: number, limit: number) => {
+    called++
+    return { bytes: new Uint8Array(limit).fill(0x3c).subarray(0, Math.min(limit, 100 - offset)), total: 100 }
+  })
+  const reqWithMime = (mime: string) =>
+    new Request('https://x/dnp-stream/7?size=100&mime=' + encodeURIComponent(mime), { headers: { Range: 'bytes=10-19' } })
+
+  it.each(['text/html', 'application/xhtml+xml', 'text/xml', 'text/javascript', 'video/mp4<script>'])(
+    'чужой тип %s отдаётся как application/octet-stream + nosniff',
+    async (mime) => {
+      const r = await handler.handleStreamFetch(reqWithMime(mime))
+      expect(r.status).toBe(206)
+      expect(r.headers.get('Content-Type')).toBe('application/octet-stream')
+      expect(r.headers.get('X-Content-Type-Options')).toBe('nosniff')
+    },
+  )
+
+  it.each(['video/mp4', 'audio/ogg', 'audio/mpeg', 'image/webp', 'video/x-matroska'])(
+    'медиа-тип %s проходит, с nosniff',
+    async (mime) => {
+      const r = await handler.handleStreamFetch(reqWithMime(mime))
+      expect(r.headers.get('Content-Type')).toBe(mime)
+      expect(r.headers.get('X-Content-Type-Options')).toBe('nosniff')
+    },
+  )
+
+  it('навигационный запрос отвергается 403, до сети', async () => {
+    // Медиа-элементы ходят с mode 'cors'/'no-cors'; навигация (или iframe с чужого
+    // origin) — единственный путь, которым ответ мог бы отрисоваться документом.
+    // `new Request` с mode 'navigate' собрать нельзя — берём форму запроса SW.
+    called = 0
+    const navigate = {
+      url: 'https://x/dnp-stream/7?size=100&mime=video/mp4',
+      mode: 'navigate',
+      headers: new Headers({ Range: 'bytes=10-19' }),
+    }
+    const r = await handler.handleStreamFetch(navigate)
+    expect(r.status).toBe(403)
+    expect(called).toBe(0)
+  })
+})
+
 describe('sw-stream tryPatchMp4', () => {
   const s = loadStream()
   const fromHex = (h: string) => new Uint8Array(h.match(/.{2}/g)!.map((b) => parseInt(b, 16)))

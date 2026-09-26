@@ -179,6 +179,12 @@ function WebAppInner() {
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
       if (e.source !== frameRef.current?.contentWindow) return
+      // Порт tweb b59a02302 (`TelegramWebView.onMessage`): WindowProxy фрейма
+      // переживает навигацию на чужой origin, поэтому один `e.source` отдал бы мост
+      // (CloudStorage, invoke_custom_method, sendData) документу, заменившему mini-app.
+      // tweb привязывает только при серверном `same_origin`; у нас этого флага нет, а
+      // исходящие (`post`) адресованы origin'у приложения всегда — входящие так же.
+      if (frameOrigin && e.origin !== frameOrigin) return
       let msg: { eventType?: string; eventData?: unknown }
       try { msg = JSON.parse(typeof e.data === 'string' ? e.data : '') } catch { return }
       const { eventType, eventData } = msg
@@ -300,8 +306,9 @@ function WebAppInner() {
     }
     window.addEventListener('message', onMsg)
     return () => { window.removeEventListener('message', onMsg); stopSensors() }
+    // `url` — привязка пересчитывается при смене адреса (tweb `loadExternal` → `setOrigin`).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [botName, botId])
+  }, [botName, botId, url])
 
   // Пересылать смену темы приложения в открытый mini-app.
   useEffect(() => {

@@ -10,6 +10,7 @@
 import { describe, it, expect } from 'vitest'
 import type { MessageEntity } from '@core/models'
 import { wrapMessageText, wrapRichText, encodeEmoji, isSafeEmojiUnicode } from './index'
+import { matchUrlProtocolText } from '@core/safeUrl'
 
 const render = (text: string, entities?: MessageEntity[], options = {}) => {
   const host = document.createElement('div')
@@ -205,5 +206,66 @@ describe('img.src эмодзи — только численные кодпои�
     expect(host.querySelector('img')).toBeNull()
     expect(host.querySelector('span.emoji.emoji-native')?.textContent).toBe('😀')
     expect(isSafeEmojiUnicode('../../../evil')).toBe(false)
+  })
+})
+
+// Порт дополнений tweb `src/tests/wrapRichTextElectronLinks.test.ts` (fcfe06f76):
+// хост ссылки Telegram решается по РАЗОБРАННОМУ адресу (`matchTelegramUrlHost`),
+// а не по тексту. Раньше `t.me.evil.com` считался внутренним: терял
+// `target=_blank`/`rel=noopener noreferrer` и получал действие `im`.
+describe('хост ссылки Telegram — по разобранному адресу, а не по тексту', () => {
+  const urlEntity = (url: string) => render(url, [{ _: 'messageEntityUrl', offset: 0, length: url.length }])
+    .querySelector('a.anchor-url')!
+  const textUrlEntity = (text: string, url: string) => render(text, [
+    { _: 'messageEntityTextUrl', offset: 0, length: text.length, url },
+  ]).querySelector('a.anchor-url')!
+
+  it('длинный хост, начинающийся с t.me, остаётся внешней ссылкой', () => {
+    const a = urlEntity('https://t.me.evil.com/durov')
+    expect(a.getAttribute('href')).toBe('https://t.me.evil.com/durov')
+    expect(a.getAttribute('data-anchor-action')).toBeNull()
+    expect(a.getAttribute('target')).toBe('_blank')
+    expect(a.getAttribute('rel')).toBe('noopener noreferrer')
+  })
+
+  it('userinfo-трюк t.me@evil.com — внешняя ссылка', () => {
+    const a = urlEntity('https://t.me@evil.com/durov')
+    expect(a.getAttribute('data-anchor-action')).toBeNull()
+    expect(a.getAttribute('target')).toBe('_blank')
+    expect(a.getAttribute('rel')).toBe('noopener noreferrer')
+  })
+
+  it('замаскированная ссылка на длинный хост с t.me сохраняет предупреждение о внешней ссылке', () => {
+    const a = textUrlEntity('t.me/durov', 'https://t.me.evil.com/durov')
+    expect(a.getAttribute('href')).toBe('https://t.me.evil.com/durov')
+    expect(a.getAttribute('data-anchor-action')).toBe('showMaskedAlert')
+    expect(a.getAttribute('target')).toBe('_blank')
+    expect(a.getAttribute('rel')).toBe('noopener noreferrer')
+  })
+
+  it('точный хост t.me сохраняет внутреннее действие', () => {
+    const a = urlEntity('https://t.me/durov')
+    expect(a.getAttribute('data-anchor-action')).toBe('im')
+    expect(a.getAttribute('target')).toBeNull()
+  })
+
+  it('ссылка, которую отвергает парсер URL, всё равно рисуется внешней', () => {
+    const url = 'https://t.me:99999/durov'
+    let a!: Element
+    expect(() => { a = urlEntity(url) }).not.toThrow()
+    expect(a.getAttribute('href')).toBe(url)
+    expect(a.getAttribute('data-anchor-action')).toBeNull()
+    expect(a.getAttribute('target')).toBe('_blank')
+    expect(a.getAttribute('rel')).toBe('noopener noreferrer')
+  })
+
+  it('схема, спрятанная за переводом строки или C0, не становится href', () => {
+    // браузер читает `java\nscript:` и `\x01javascript:` как `javascript:`
+    for (const url of ['java\nscript:alert(1)', '\x01javascript:alert(1)', 'java\tscript:alert(1)']) {
+      const host = render('жми', [{ _: 'messageEntityTextUrl', offset: 0, length: 3, url }])
+      for (const a of host.querySelectorAll('a')) {
+        expect(matchUrlProtocolText(a.getAttribute('href') || '')).not.toBe('javascript:')
+      }
+    }
   })
 })
