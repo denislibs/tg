@@ -28,15 +28,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
 //
-//  1. `Tabs.MenuGradient` (`tweb/src/components/tabs.tsx:71-95`) не заводится
-//     отдельным модулем: у нас нет `components/tabs.tsx`, а у фабрики
-//     единственный потребитель — этот класс. Два узла градиента собираются
-//     здесь же с ТЕМИ ЖЕ классами, что отдаёт фабрика (сверено с дампом
-//     `07-right-sidebar.json:122-123`). Собственных стилей у
-//     `menu-horizontal-gradient*` нет ни у нас, ни в tweb — во всём
-//     `tweb/src` эти классы встречаются только в самой `tabs.tsx`; видимое
-//     правило одно, и оно наше: `.search-super-tabs-gradient-container`
-//     (`styles/tweb/_searchSuper.scss:92-98`).
+//  1. Снято задачей 2 плана папок
+//     (`docs/superpowers/plans/2026-09-07-solid-wave-3-folders-tabs.md`):
+//     градиент строит `Tabs.MenuGradient` из `components/tabs.solid.tsx`,
+//     как у оригинала (`tweb:596-600`). Номер оставлен, чтобы ссылки на
+//     остальные пункты не поехали.
 //  2. `createRoot` вокруг `Section` (`tweb:567-576`) у нас ВОЗВРАЩАЕТ dispose,
 //     и `destroy()` его зовёт. В оригинале корень не утилизируется никогда —
 //     у нас `destroy()` обязан не оставлять следов (DoD 5 спеки волны 3).
@@ -281,6 +277,7 @@ import { createLazyLoadQueue, type LazyLoadQueue } from '@core/lazyLoadQueue'
 import { putPreloader } from '@components/putPreloader'
 import ripple from '@components/ripple'
 import Section from '@components/section.solid'
+import Tabs from '@components/tabs.solid'
 import { i18n, type LangPackKey } from '@lib/langPack'
 import findUpClassName from '@helpers/dom/findUpClassName'
 import { getMiddleware } from '@helpers/middleware'
@@ -765,7 +762,10 @@ export default class AppSearchSuper {
     // tweb `:596-600` — узел градиента и создаётся, и запоминается в поле прямо
     // в `append`.
     this.container.append(
-      this.menuGradient = this.createMenuGradient(),
+      this.menuGradient = Tabs.MenuGradient({
+        color: 'background',
+        className: 'search-super-tabs-gradient',
+      }) as HTMLElement,
       navScrollableContainer,
       this.tabsContainer,
     )
@@ -881,28 +881,6 @@ export default class AppSearchSuper {
 
     // tweb `:793-797` — пауза `lazyLoadQueue` на время тяжёлой анимации;
     // см. расхождение 3 в шапке файла.
-  }
-
-  /**
-   * Градиент, растворяющий содержимое под липким рядом вкладок.
-   * Классы — те же, что отдаёт `Tabs.MenuGradient({color: 'background',
-   * className: 'search-super-tabs-gradient'})` (`tweb/src/components/tabs.tsx:71-95`),
-   * сверено с дампом `07-right-sidebar.json:122-123`. Почему не через фабрику —
-   * расхождение 1 в шапке файла.
-   */
-  private createMenuGradient() {
-    const container = document.createElement('div')
-    container.classList.add('menu-horizontal-gradient-container', 'search-super-tabs-gradient-container')
-
-    const gradient = document.createElement('div')
-    gradient.classList.add(
-      'menu-horizontal-gradient',
-      'menu-horizontal-gradient-color-background',
-      'search-super-tabs-gradient',
-    )
-
-    container.append(gradient)
-    return container
   }
 
   /** tweb `:800-807` */
