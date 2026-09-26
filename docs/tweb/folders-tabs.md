@@ -44,6 +44,7 @@
 |---|---|---|
 | `index.html:98-101` | — | статический скелет: `#chatlist-container.transition-item > #folders-container.tabs-container` |
 | `src/components/foldersTabs.tsx` | 61 | Solid-компонент ряда вкладок папок |
+| `src/components/popups/pickUser.tsx:325-424` | 100 | **второй потребитель ряда** — `createFolderTabs` попапа пересылки: ставится при `showTopPeers` (`:509`), который передаёт `showForwardPopup` (`popups/forward.tsx:360-376`); клик → `selectTarget` → прокрутка списка к началу → `selector.setFolderId` (`appSelectPeers.ts:1358-1366`); на запросе ряд `is-collapsed`, скоуп — «Все чаты» (`_setFolderId`, `:631-633`) |
 | `src/components/tabs.tsx` | 172 | Solid-обёртка `Tabs.*` вокруг классов `.menu-horizontal-*` и `horizontalMenu` |
 | `src/components/badge.tsx` | 26 | Solid-бейдж `badge badge-{size} badge-{color}` |
 | `src/components/scrollable2.tsx` | 355 | Solid-скроллер; `MenuScrollable` берёт его с `axis="x"` |
@@ -130,6 +131,10 @@
 | `:37-39` | `span.text-super` вокруг заголовка |
 | `:40-46` | `<Badge tag="div" size={20} color={muted ? 'gray' : 'primary'}>{count}</Badge>` — при `count` 0 у бейджа `is-badge-empty` (`badge.tsx:19`) |
 | `:51-59` | `Tabs > [MenuGradient] > MenuScrollable > Menu > For each={folderItems}` |
+
+Потребителей у компонента два: владелец колонки (`appDialogsManager.ts:654-686`) и
+попап пересылки (`popups/pickUser.tsx:391-419`: `popup-forward-folder-tabs`, градиент
+`background` без `smaller`, `menuProps.onClick` → `selectTarget`).
 
 Компонент **не читает `selectedFolderId`** и не ставит `active` сам: класс
 переставляет `horizontalMenu` на DOM (`horizontalMenu.ts:97-103`, `:129-132`).
@@ -295,12 +300,11 @@
 
 | Наш файл | Роль | Аналог tweb |
 |---|---|---|
-| `components/FolderTabs.tsx` (50) | React-ряд поверх `shared/ui/Tabs` — из колонки снят задачей 6; единственный оставшийся потребитель — `ForwardPicker` (задача 9) | `foldersTabs.tsx` |
-| `components/foldersTabs.solid.tsx` | Solid-порт ряда (задача 4); его узлы кладёт в оверлей владелец `lib/appDialogsManager.ts` — в колонке с задачи 6 | `foldersTabs.tsx` |
+| `components/foldersTabs.solid.tsx` | Solid-порт ряда (задача 4); потребителей два, как у оригинала: владелец `lib/appDialogsManager.ts` кладёт узлы в оверлей колонки (задача 6), `components/popups/pickUserFolderTabs.ts` монтирует ряд в попап пересылки (задача 9). React-`FolderTabs.tsx` удалён задачей 9 | `foldersTabs.tsx` |
+| `components/popups/pickUserFolderTabs.ts` | порт `createFolderTabs` (задача 9): `mountSolid` ряда в узел React-хоста, `selectTarget` полосы, `fastSmoothScroll` списка к началу, липкий `top` по высоте поиска; 6 расхождений в шапке (узел и `is-collapsed` держит React; узлы селектора ищутся по классам; лимита нет — задача 10; `deferred` не нужен; гидрация проекции; клик — нативным слушателем, т. к. React-`Popup` гасит всплытие до делегированного `onClick` Solid) | `pickUser.tsx:325-424` |
 | `lib/appDialogsManager.ts` | TS-владелец контейнеров папок и переключения (задача 5): `AppDialogsManager.start(host, chatsContainer, hooks)`/`destroy()`, `FolderList` (роль `xd`) с поздней регистрацией хэндла списка, `setCollapsed` (расхождение 19); тесты `appDialogsManager.{dom,switch,filters}.test.ts`, обвязка `appDialogsManager.testkit.ts`. **Встроен в колонку задачей 6**: хост — `.connection-status-bottom` `Sidebar.tsx` (`useImperativeIsland` с чужим ref'ом), наши классы на его узлах — `appDialogsManager.module.scss` | папочный срез `appDialogsManager.ts` + `AutonomousDialogList` |
-| `shared/ui/Tabs/Tabs.tsx` (159) | React-переписка `.menu-horizontal-*` + полоски Jolly Cobra | `tabs.tsx` + кусок `horizontalMenu.ts` |
+| `shared/ui/Tabs/Tabs.tsx` | React-переписка `.menu-horizontal-*` + полоски Jolly Cobra; после задачи 9 потребитель один — `SearchView.tsx`, и пропы, которые держал только папочный ряд (`badge`, `onContextMenu`, `className` у `List`), сняты. Сносит программа глобального поиска вместе с `SearchView` (отложенная задача 19 плана) | `tabs.tsx` + кусок `horizontalMenu.ts` |
 | `shared/ui/Tabs/TabSlide.tsx` | React-переписка `slideTabs` + `selectTab`; после задачи 6 потребитель один — `SearchView.tsx` (программа глобального поиска), мёртвый проп `keepMounted` снят | `transition.ts:45-95`, `:300-352` |
-| `shared/ui/Tabs/TabsBar.tsx` (45) | липкая плашка с градиентом — **потребителей нет** | — |
 | `components/ChatList.tsx` | с задачи 6: на каждый `FolderList` владельца (`manager.subscribe/getRendered`) — `createPortal(<ChatListFolder/>, list.top)`; `ChatListFolder` владеет только `ul` и строками, регистрирует хэндл `{clear, reset, onChatsScroll}`; своего запроса первой страницы и своего `.chatlist-bottom` нет | React-половина `AutonomousDialogList` |
 | `components/Sidebar.tsx` | с задачи 6: пустой хост `.connection-status-bottom` для владельца, хуки `closeEverythingInsideNaturally`/`isForumOpen` из своего состояния, портал `PendingSuggestion` в `manager.suggestionContainer`, `StoriesRow.getScrollable` → `manager.xd`; `active` на `#chatlist-container` — imperative (там же `has-filters` владельца) | `AppSidebarLeft` + вызов `appDialogsManager.start()` |
 | `core/hooks/useSidebarFolders.tsx` | после задачи 6 — только React-меню папки (до задачи 7) и редактор/удаление папки | `createFolderContextMenu` + `AppEditFolderTab` |
@@ -309,7 +313,7 @@
 | `core/folders/folderUnreadCounts.ts` | чистая функция `{count, muted}` по папкам из зеркала диалогов — одна на оба ряда | `getNotificationCountForFilter` + `dialogsStorage.getFolderUnreadCount` |
 | `core/hooks/useDialogListSource.ts` | курсор/страницы/размер набора одной папки | `AutonomousDialogListBase` |
 | `components/folders/FoldersSidebar.tsx` | вертикальная колонка, React, портал в `#main-columns`; клик — `useFolders().onClick()(index)` Solid-проекции (тот же `selectTab` владельца, задача 6), выбранная — `foldersStore.selectedId`, счётчики — `folderUnreadCounts` своими подписками | `foldersSidebarContent/index.tsx` |
-| `components/messages/ChatDialogs.tsx:167-278` | `ForwardPicker` со **своим** рядом `FolderTabs` (`:278`) | у `appSelectPeers.ts` ряда папок нет — только скоуп по одной папке (`:631-646`, `:1358-1366`) |
+| `components/messages/ChatDialogs.tsx` (`ForwardPicker`) | с задачи 9: узел-хост `div.popup-forward-folder-tabs-container.collapsable` за «недавними» (`is-collapsed` на запросе), остров `useImperativeIsland` → `createFolderTabs`; `folderId` — роль `selectedFolderId` селектора, скоуп на запросе — «Все чаты» (`_setFolderId`), отбор — `chatMatchesFolder` по пропу `dialogs` | `popups/forward.tsx:360-376` + `pickUser.tsx:325-424` + `appSelectPeers.ts:631-647`, `:1358-1366` |
 | `index.html:33` | `has-horizontal-folders` стоит на `<body>` **статически** | `stores/foldersSidebar.ts:90-112` |
 | `components/horizontalMenu.ts` (299), `components/transition.ts` (470), `helpers/dom/{handleTabSwipe,positionElementByIndex,lockTouchScroll}.ts`, `components/scrollable.ts`, `components/scrollable2.solid.tsx`, `shared/solid/mountSolid.solid.tsx`, `core/hooks/useImperativeIsland.ts`, `helpers/solid/subscribeExternal.ts`, `core/navigation/appNavigationController.ts` (`'filters'` в типах `:82-86`, `spliceItems` `:467`, `removeItem` `:477`), `helpers/dom/createContextMenu.ts`, `helpers/fastSmoothScroll.ts:79-91` (`fastSmoothScrollToStart`), `environment/{touchSupport,userAgent}.ts`, `lib/langPack.ts:914` (`i18n`) | **портировано и переиспользуется** | одноимённые |
 
@@ -341,9 +345,16 @@
 
 1. ~~Переход папок без выезда / рывком~~ — снят задачей 6 (живой `TransitionSlider`).
 2. ~~«Память `scrollTop`» узаконена как «как в tweb»~~ — снята задачей 6 (`keepMounted` удалён, пины переписаны).
-3. **Ряд папок в `ForwardPicker`** (`ChatDialogs.tsx:278`) — у оригинала селектор пиров
-   ряда папок не имеет; последний потребитель `FolderTabs.tsx` (задача 9).
-4. **`TabsBar.tsx`** — мёртвый файл (потребителей нет, задача 9).
+3. ~~Ряд папок в `ForwardPicker` — «у оригинала его нет»~~ — постановка была неверна и
+   снята задачей 9. Ряд у оригинала ЕСТЬ: `showForwardPopup` → `showPickUserPopup({showTopPeers: true})`
+   (`popups/forward.tsx:360-376`) → `createFolderTabs` (`popups/pickUser.tsx:325-424`, вызов `:509`);
+   прежняя ссылка на `popups/forward.ts`/`pickUser.ts` указывала на несуществующие файлы (в базе
+   e52b5d931 они `.tsx`). Дефект был в другом: ряд строил React-`FolderTabs` поверх
+   `shared/ui/Tabs` (без `selectTarget`, без прокрутки списка к началу, скрывался условным
+   рендером на запросе и при отсутствии папок, а запрос искал ВНУТРИ папки). Теперь — порт
+   `components/popups/pickUserFolderTabs.ts` на Solid-`FoldersTabs`; `FolderTabs.tsx` удалён.
+4. ~~`TabsBar.tsx` — мёртвый файл~~ — удалён задачей 9 вместе с `TabsBar.module.scss` и
+   экспортом из `shared/ui/Tabs/index.ts`.
 5. **`body.has-horizontal-folders` никто не переключает** — после задачи 6 ряд всегда в DOM,
    поэтому при «папки слева» он виден вместе с вертикальной колонкой (стенд). Закрывает задача 8.
 6. **У горизонтального ряда нет контекстного меню** до задачи 7 (React-ряд его имел).
