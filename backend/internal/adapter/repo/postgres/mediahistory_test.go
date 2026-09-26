@@ -66,7 +66,7 @@ func TestMessagesRepo_MediaHistoryCursorSurvivesInsertOnTop(t *testing.T) {
 		return true
 	}
 
-	page1, count, err := msgs.MediaHistory(ctx, chatID, "media", usecasechat.MediaPage{Limit: 2})
+	page1, count, err := msgs.MediaHistory(ctx, chatID, a, "media", usecasechat.MediaPage{Limit: 2})
 	if err != nil {
 		t.Fatalf("page1: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestMessagesRepo_MediaHistoryCursorSurvivesInsertOnTop(t *testing.T) {
 	// Живой апдейт: новое медиа поверх уже показанного окна.
 	fresh := insert("photo", "")
 
-	page2, count, err := msgs.MediaHistory(ctx, chatID, "media",
+	page2, count, err := msgs.MediaHistory(ctx, chatID, a, "media",
 		usecasechat.MediaPage{OffsetID: page1[len(page1)-1].Seq, Limit: 2})
 	if err != nil {
 		t.Fatalf("page2: %v", err)
@@ -95,7 +95,7 @@ func TestMessagesRepo_MediaHistoryCursorSurvivesInsertOnTop(t *testing.T) {
 	}
 
 	// Досбор до конца: курсор доводит до самого старого и останавливается.
-	page3, _, err := msgs.MediaHistory(ctx, chatID, "media",
+	page3, _, err := msgs.MediaHistory(ctx, chatID, a, "media",
 		usecasechat.MediaPage{OffsetID: page2[len(page2)-1].Seq, Limit: 10})
 	if err != nil {
 		t.Fatalf("page3: %v", err)
@@ -103,7 +103,7 @@ func TestMessagesRepo_MediaHistoryCursorSurvivesInsertOnTop(t *testing.T) {
 	if got := seqs(page3); !eq(got, photos[1].Seq, photos[0].Seq) {
 		t.Fatalf("page3 seqs=%v, want [%d %d]", got, photos[1].Seq, photos[0].Seq)
 	}
-	tail, _, err := msgs.MediaHistory(ctx, chatID, "media",
+	tail, _, err := msgs.MediaHistory(ctx, chatID, a, "media",
 		usecasechat.MediaPage{OffsetID: photos[0].Seq, Limit: 10})
 	if err != nil {
 		t.Fatalf("tail: %v", err)
@@ -158,7 +158,7 @@ func TestMessagesRepo_SearchCounters(t *testing.T) {
 	}
 
 	filters := []string{"media", "files", "links", "music", "voice", "gifs"}
-	got, err := msgs.SearchCounters(ctx, chatID, filters)
+	got, err := msgs.SearchCounters(ctx, chatID, a, filters)
 	if err != nil {
 		t.Fatalf("counters: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestMessagesRepo_SearchCounters(t *testing.T) {
 	// Счётчик обязан совпасть с числом, которое отдаёт постраничная выборка
 	// того же фильтра: расхождение здесь — это разъехавшиеся вкладка и грид.
 	for _, f := range []string{"media", "files", "links", "music", "voice"} {
-		ms, count, err := msgs.MediaHistory(ctx, chatID, f, usecasechat.MediaPage{Limit: 60})
+		ms, count, err := msgs.MediaHistory(ctx, chatID, a, f, usecasechat.MediaPage{Limit: 60})
 		if err != nil {
 			t.Fatalf("history %s: %v", f, err)
 		}

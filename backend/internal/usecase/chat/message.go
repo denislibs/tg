@@ -50,7 +50,7 @@ func mentionedUserIDs(entities domain.MessageEntities) map[int64]bool {
 	var out map[int64]bool
 	for _, e := range entities {
 		v, ok := e.(domain.MessageEntityMentionName)
-		if !ok || v.UserID == 0 {
+		if !ok || v.UserID <= 0 {
 			continue
 		}
 		if out == nil {
@@ -193,6 +193,13 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 				}
 			}
 			return domain.Message{}, domain.ErrNotFound // not owned by sender
+		}
+		if in.Type == "document" {
+			t, err := i.documentKind(ctx, *in.MediaID)
+			if err != nil {
+				return domain.Message{}, err
+			}
+			in.Type = t
 		}
 	}
 
@@ -551,6 +558,24 @@ func (i *Interactor) MessageByClientMsgID(ctx context.Context, chatID, senderID 
 		return domain.Message{}, domain.ErrNotFound
 	}
 	return i.msgs.FindByClientMsgID(ctx, chatID, senderID, clientMsgID)
+}
+
+// documentKind — вид сообщения для файла, присланного документом. Трек
+// (domain.IsAudioMime) — это 'audio', каким бы пунктом меню его ни выбрали:
+// у оригинала ветка аудио в makeDocumentAndMetaForSendingFile стоит до
+// `!args.isMedia`, а сервер Telegram определяет тип контента документа сам.
+// Вид строки messages решает атрибуты документа (documentAttributeAudio) и
+// вкладку «Музыка», поэтому нормализуется здесь, при приёме, — данные верны
+// от любого клиента, включая Bot API sendDocument.
+func (i *Interactor) documentKind(ctx context.Context, mediaID int64) (string, error) {
+	dims, err := i.mediaAccess.DimsByIDs(ctx, []int64{mediaID})
+	if err != nil {
+		return "", err
+	}
+	if domain.IsAudioMime(dims[mediaID].Mime) {
+		return "audio", nil
+	}
+	return "document", nil
 }
 
 // SendStoryShare posts a story into a chat as a regular media message with an

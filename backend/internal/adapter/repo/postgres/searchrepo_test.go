@@ -36,7 +36,7 @@ func TestMessagesRepo_SearchFiltersAndByDate(t *testing.T) {
 	_ = reacts.Add(ctx, mA.ID, b, "👍")
 
 	// фильтр по автору
-	got, count, err := msgs.SearchMessages(ctx, chatID, "привет", usecasechat.SearchFilter{SenderID: a}, usecasechat.MediaPage{Limit: 20})
+	got, count, err := msgs.SearchMessages(ctx, chatID, a, "привет", usecasechat.SearchFilter{SenderID: a}, usecasechat.MediaPage{Limit: 20})
 	if err != nil {
 		t.Fatalf("search sender: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestMessagesRepo_SearchFiltersAndByDate(t *testing.T) {
 	}
 
 	// фильтр по типу медиа (пустой запрос допустим)
-	got, count, err = msgs.SearchMessages(ctx, chatID, "", usecasechat.SearchFilter{MediaType: "photo"}, usecasechat.MediaPage{Limit: 20})
+	got, count, err = msgs.SearchMessages(ctx, chatID, a, "", usecasechat.SearchFilter{MediaType: "photo"}, usecasechat.MediaPage{Limit: 20})
 	if err != nil {
 		t.Fatalf("search media: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestMessagesRepo_SearchFiltersAndByDate(t *testing.T) {
 	}
 
 	// фильтр по реакции
-	got, count, err = msgs.SearchMessages(ctx, chatID, "", usecasechat.SearchFilter{Reaction: "👍"}, usecasechat.MediaPage{Limit: 20})
+	got, count, err = msgs.SearchMessages(ctx, chatID, a, "", usecasechat.SearchFilter{Reaction: "👍"}, usecasechat.MediaPage{Limit: 20})
 	if err != nil {
 		t.Fatalf("search reaction: %v", err)
 	}

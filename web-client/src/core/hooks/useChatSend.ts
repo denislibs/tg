@@ -353,11 +353,15 @@ export function useChatSend({
   ) => {
     if (!isRealChat || secretLocked) return
     const origMime = input.type || 'application/octet-stream'
-    const type = asFile
-      ? 'document'
+    // Трек решается по самому файлу, а не по пункту меню: у tweb ветка аудио
+    // (`fileType.indexOf('audio/') === 0 || ['video/ogg'].indexOf(fileType) >= 0`)
+    // в makeDocumentAndMetaForSendingFile стоит ДО `!args.isMedia`, поэтому mp3,
+    // выбранный «как файл», всё равно уходит 'audio' с documentAttributeAudio.
+    const isAudio = origMime.startsWith('audio/') || origMime === 'video/ogg'
+    const type = isAudio ? 'audio'
+      : asFile ? 'document'
       : origMime.startsWith('image/') ? 'photo'
       : origMime.startsWith('video/') ? 'video'
-      : origMime.startsWith('audio/') ? 'audio'
       : 'document'
     // Фото «как медиа»: подготовка 1:1 с tweb (scaleImageForTelegram) ПЕРЕД
     // аплоадом — ресайз стороны >2560, пережатие тяжёлого lossless (png/bmp >2МБ)
@@ -369,9 +373,8 @@ export function useChatSend({
     const width = prepared?.width ?? 0
     const height = prepared?.height ?? 0
     // Длительность читаем ЗДЕСЬ (tweb newMedia.ts:1562-1579), а не ждём асинхронной
-    // обработки на сервере: иначе бабл первого new_message остаётся без неё. mp3,
-    // отправленный «как файл» (type='document'), тоже трек — смотрим на mime.
-    const duration = origMime.startsWith('audio/')
+    // обработки на сервере: иначе бабл первого new_message остаётся без неё.
+    const duration = isAudio
       ? await probeMediaDuration(input, 'audio')
       : origMime.startsWith('video/')
         ? await probeMediaDuration(input, 'video')

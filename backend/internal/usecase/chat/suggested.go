@@ -265,13 +265,16 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 	return msg, nil
 }
 
-// channelMediaType выводит тип сообщения из mime медиа (photo/video/document).
+// channelMediaType выводит тип сообщения из mime медиа (photo/video/audio/document).
+// Трек проверяется ДО видео: video/ogg у оригинала — аудио (domain.IsAudioMime).
 func (i *Interactor) channelMediaType(ctx context.Context, mediaID int64) string {
 	dims, err := i.mediaAccess.DimsByIDs(ctx, []int64{mediaID})
 	if err != nil {
 		return "document"
 	}
 	switch mime := dims[mediaID].Mime; {
+	case domain.IsAudioMime(mime):
+		return "audio"
 	case strings.HasPrefix(mime, "image/"):
 		return "photo"
 	case strings.HasPrefix(mime, "video/"):

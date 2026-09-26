@@ -231,7 +231,9 @@ type MessageRepo interface {
 	// SearchMessages ищет по чату (текст/имя файла) с необязательными фильтрами
 	// (SearchFilter), новые сверху; окно — курсор page.OffsetID (номер
 	// последнего отданного). Пустой q без фильтров — вся история чата.
-	SearchMessages(ctx context.Context, chatID int64, q string, f SearchFilter, page MediaPage) ([]domain.Message, int, error)
+	// userID — зритель: удалённое им «у себя» (message_hides) не находится;
+	// то же у MediaHistory и SearchCounters.
+	SearchMessages(ctx context.Context, chatID, userID int64, q string, f SearchFilter, page MediaPage) ([]domain.Message, int, error)
 	// MessageSeqByDate возвращает seq самого раннего непустого сообщения с
 	// created_at>=from (jump-to-date); если таких нет — seq самого нового
 	// сообщения; для пустого чата — domain.ErrNotFound.
@@ -247,10 +249,10 @@ type MessageRepo interface {
 	GlobalSearchMessages(ctx context.Context, userID int64, q GlobalSearchQuery) (GlobalSearchResult, error)
 	// MediaHistory — шаред-медиа чата одного вида, новые сверху; окно задаётся
 	// курсором MediaPage.OffsetID (см. её комментарий — почему не смещением).
-	MediaHistory(ctx context.Context, chatID int64, filter string, page MediaPage) ([]domain.Message, int, error)
+	MediaHistory(ctx context.Context, chatID, userID int64, filter string, page MediaPage) ([]domain.Message, int, error)
 	// SearchCounters — число сообщений по каждому виду шаред-медиа ОДНИМ
 	// запросом; неизвестный вид отсутствует в карте (читается как ноль).
-	SearchCounters(ctx context.Context, chatID int64, filters []string) (map[string]int, error)
+	SearchCounters(ctx context.Context, chatID, userID int64, filters []string) (map[string]int, error)
 	// CallLog — журнал звонков (type='call' сообщения из личных чатов userID,
 	// обогащённые собеседником). Для вкладки «Звонки».
 	CallLog(ctx context.Context, userID int64, offset, limit int) ([]domain.CallLogEntry, error)

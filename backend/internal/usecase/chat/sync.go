@@ -74,19 +74,41 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 // Остальное — best-effort, как и было у истории: сбой косметики не должен
 // ронять выдачу.
 func (i *Interactor) hydrateMessages(ctx context.Context, userID int64, msgs []domain.Message) error {
+	return i.hydrateMessagesFor(ctx, userID, userID, msgs)
+}
+
+// hydrateBroadcastMessage — та же цепочка для ОДНОГО сообщения, чьё тело кадра
+// одно на всех получателей (правка — edit_message). Зритель здесь «никто» (0):
+// опрос, подарок, розыгрыш и реакции едут снимком без «моих» флагов, как у
+// живого new_message (Send считает их с тем же нулём), а клиент сводит снимок
+// со своим (mergeReactions). Платное медиа — глазами автора: открыто и с
+// ценой; заблокированную копию не-авторам делает вызывающий (lockedPaidCopy),
+// как и доставка нового сообщения.
+func (i *Interactor) hydrateBroadcastMessage(ctx context.Context, m domain.Message) (domain.Message, error) {
+	one := []domain.Message{m}
+	if err := i.hydrateMessagesFor(ctx, 0, m.SenderID, one); err != nil {
+		return m, err
+	}
+	return one[0], nil
+}
+
+// hydrateMessagesFor — сама цепочка: viewerID — чьими глазами собираются
+// пер-зрительские части, paidViewerID — для кого решается блокировка платного
+// медиа (у ленты это один и тот же зритель).
+func (i *Interactor) hydrateMessagesFor(ctx context.Context, viewerID, paidViewerID int64, msgs []domain.Message) error {
 	if err := i.hydrateReplies(ctx, msgs); err != nil {
 		return err
 	}
 	if err := i.hydrateMedia(ctx, msgs); err != nil {
 		return err
 	}
-	_ = i.hydratePolls(ctx, userID, msgs)
+	_ = i.hydratePolls(ctx, viewerID, msgs)
 	i.hydrateChecklists(ctx, msgs)
-	i.hydrateGifts(ctx, userID, msgs)
-	i.hydrateGiveaways(ctx, userID, msgs)
-	i.hydratePaidMedia(ctx, userID, msgs)
-	_ = i.hydrateReactions(ctx, userID, msgs)
-	i.hydrateStarReactions(ctx, userID, msgs)
+	i.hydrateGifts(ctx, viewerID, msgs)
+	i.hydrateGiveaways(ctx, viewerID, msgs)
+	i.hydratePaidMedia(ctx, paidViewerID, msgs)
+	_ = i.hydrateReactions(ctx, viewerID, msgs)
+	i.hydrateStarReactions(ctx, viewerID, msgs)
 	return nil
 }
 
@@ -112,6 +134,9 @@ func (i *Interactor) checkHistoryAccess(ctx context.Context, chatID, userID int6
 // a window of messages with one batch query. Best-effort: reactions are cosmetic,
 // a failure must not break history.
 func (i *Interactor) hydrateReactions(ctx context.Context, viewerID int64, msgs []domain.Message) error {
+	if i.reactions == nil {
+		return nil // хранилище реакций не подключено — косметика отключается, как у звёздных
+	}
 	ids := make([]int64, 0, len(msgs))
 	for _, m := range msgs {
 		if !m.Deleted {
@@ -337,7 +362,7 @@ func (i *Interactor) MediaHistory(ctx context.Context, chatID, userID int64, fil
 	if page.OffsetID < 0 {
 		page.OffsetID = 0
 	}
-	msgs, count, err := i.msgs.MediaHistory(ctx, chatID, filter, page)
+	msgs, count, err := i.msgs.MediaHistory(ctx, chatID, userID, filter, page)
 	if err != nil {
 		return HistoryResult{}, err
 	}
@@ -370,7 +395,7 @@ func (i *Interactor) SearchCounters(ctx context.Context, chatID, userID int64, f
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
-	counts, err := i.msgs.SearchCounters(ctx, chatID, filters)
+	counts, err := i.msgs.SearchCounters(ctx, chatID, userID, filters)
 	if err != nil {
 		return nil, err
 	}
@@ -418,7 +443,7 @@ func (i *Interactor) SearchMessages(ctx context.Context, chatID, userID int64, q
 	if page.OffsetID < 0 {
 		page.OffsetID = 0
 	}
-	msgs, count, err := i.msgs.SearchMessages(ctx, chatID, q, f, page)
+	msgs, count, err := i.msgs.SearchMessages(ctx, chatID, userID, q, f, page)
 	if err != nil {
 		return HistoryResult{}, err
 	}

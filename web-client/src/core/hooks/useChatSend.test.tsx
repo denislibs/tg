@@ -279,3 +279,48 @@ describe('useChatSend: секретный чат', () => {
     expect(managers.secret.sendMedia.mock.calls[0][0]).toMatchObject({ replyToMsgId: ORIG })
   })
 })
+
+// Вид «музыка» решается по САМОМУ файлу, а не по пункту меню: в tweb
+// (appMessagesManager.ts `makeDocumentAndMetaForSendingFile`) ветка
+// `fileType.indexOf('audio/') === 0 || ['video/ogg'].indexOf(fileType) >= 0`
+// стоит ДО `!args.isMedia`, поэтому mp3, выбранный пунктом «Файл», всё равно
+// уходит треком — с documentAttributeAudio и `sendMessageUploadAudioAction`.
+// У нас он уходил видом 'document': бабл рисовал файл вместо плеера, а вкладка
+// «Музыка» его не видела.
+describe('useChatSend: трек уходит треком, каким бы пунктом его ни выбрали', () => {
+  // jsdom метаданных медиа не грузит и objectURL не умеет — зонд длительности
+  // (probeMediaDuration) иначе ждал бы вечно. Ошибка загрузки = «длительности нет».
+  beforeEach(() => {
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test')
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    Object.defineProperty(HTMLMediaElement.prototype, 'src', {
+      configurable: true,
+      get: () => '',
+      set(this: HTMLMediaElement, v: string) { if (v) queueMicrotask(() => this.onerror?.(new Event('error'))) },
+    })
+  })
+
+  const sendOne = async (f: File, asFile: boolean) => {
+    const { managers, result } = setup()
+    act(() => { result.current.setPendingMedia({ files: [f], asFile }) })
+    await act(async () => { await result.current.sendPendingMedia('', asFile) })
+    return managers.messages.sendFile.mock.calls[0][0]
+  }
+
+  it.each([
+    ['mp3 «как файл»', 'song.mp3', 'audio/mpeg', true],
+    ['mp3 «как медиа»', 'song.mp3', 'audio/mpeg', false],
+    ['ogg-трек «как файл»', 'song.ogg', 'audio/ogg', true],
+    ['video/ogg (у tweb — аудио)', 'song.ogv', 'video/ogg', false],
+  ])('%s → audio', async (_n, name, mime, asFile) => {
+    expect(await sendOne(file(name, mime), asFile)).toMatchObject({
+      type: 'audio', uploadAction: { _: 'sendMessageUploadAudioAction' }, isMedia: false,
+    })
+  })
+
+  it('видео «как файл» остаётся документом (ветка `!args.isMedia`)', async () => {
+    expect(await sendOne(file('clip.mp4', 'video/mp4'), true)).toMatchObject({
+      type: 'document', uploadAction: { _: 'sendMessageUploadDocumentAction' },
+    })
+  })
+})

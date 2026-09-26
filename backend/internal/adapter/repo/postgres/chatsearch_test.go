@@ -18,9 +18,9 @@ func msgSeqs(ms []domain.Message) []int64 {
 	return out
 }
 
-func chatSearch(t *testing.T, msgs *MessagesRepo, chatID int64, q string, f usecasechat.SearchFilter, page usecasechat.MediaPage) ([]domain.Message, int) {
+func chatSearch(t *testing.T, msgs *MessagesRepo, chatID, userID int64, q string, f usecasechat.SearchFilter, page usecasechat.MediaPage) ([]domain.Message, int) {
 	t.Helper()
-	got, count, err := msgs.SearchMessages(context.Background(), chatID, q, f, page)
+	got, count, err := msgs.SearchMessages(context.Background(), chatID, userID, q, f, page)
 	if err != nil {
 		t.Fatalf("search %q %+v %+v: %v", q, f, page, err)
 	}
@@ -44,21 +44,21 @@ func TestMessagesRepo_ChatSearchOffsetID(t *testing.T) {
 		insertMsg(t, msgs, chatID, b, "text", "собака")
 	}
 
-	page1, count := chatSearch(t, msgs, chatID, "кот", usecasechat.SearchFilter{}, usecasechat.MediaPage{Limit: 2})
+	page1, count := chatSearch(t, msgs, chatID, a, "кот", usecasechat.SearchFilter{}, usecasechat.MediaPage{Limit: 2})
 	if count != 5 || !sameIDs(msgSeqs(page1), hits[4].Seq, hits[3].Seq) {
 		t.Fatalf("page1 = %v count=%d, want [%d %d] count=5", msgSeqs(page1), count, hits[4].Seq, hits[3].Seq)
 	}
 
 	fresh := insertMsg(t, msgs, chatID, b, "text", "ещё кот") // живой апдейт сверху
 
-	page2, count := chatSearch(t, msgs, chatID, "кот", usecasechat.SearchFilter{},
+	page2, count := chatSearch(t, msgs, chatID, a, "кот", usecasechat.SearchFilter{},
 		usecasechat.MediaPage{OffsetID: page1[len(page1)-1].Seq, Limit: 2})
 	if count != 6 || !sameIDs(msgSeqs(page2), hits[2].Seq, hits[1].Seq) {
 		t.Fatalf("page2 = %v count=%d, want [%d %d] count=6 (дубль/дыра от вставки seq=%d)",
 			msgSeqs(page2), count, hits[2].Seq, hits[1].Seq, fresh.Seq)
 	}
 
-	tail, _ := chatSearch(t, msgs, chatID, "кот", usecasechat.SearchFilter{},
+	tail, _ := chatSearch(t, msgs, chatID, a, "кот", usecasechat.SearchFilter{},
 		usecasechat.MediaPage{OffsetID: hits[0].Seq, Limit: 2})
 	if len(tail) != 0 {
 		t.Fatalf("ниже самого старого: %v, want пусто", msgSeqs(tail))
@@ -103,7 +103,7 @@ func TestMessagesRepo_ChatSearchDatesAndFilter(t *testing.T) {
 		{"пустой q без фильтров — история", "", usecasechat.SearchFilter{}, []int64{other.Seq, voice.Seq, video.Seq, photo.Seq, link.Seq, txt.Seq}},
 	}
 	for _, c := range cases {
-		got, count := chatSearch(t, msgs, chatID, c.q, c.f, all)
+		got, count := chatSearch(t, msgs, chatID, a, c.q, c.f, all)
 		if !sameIDs(msgSeqs(got), c.want...) || count != len(c.want) {
 			t.Fatalf("%s: %v count=%d, want %v", c.name, msgSeqs(got), count, c.want)
 		}
@@ -123,12 +123,12 @@ func TestMessagesRepo_ChatSearchDatesAndFilter(t *testing.T) {
 		}
 	}
 	f := usecasechat.SearchFilter{MinDate: day.Unix(), MaxDate: day.Add(24*time.Hour).Unix() - 1}
-	got, count := chatSearch(t, msgs, chatID, "кот", f, all)
+	got, count := chatSearch(t, msgs, chatID, a, "кот", f, all)
 	if !sameIDs(msgSeqs(got), photo.Seq, link.Seq) || count != 2 {
 		t.Fatalf("сутки: %v count=%d, want [%d %d]", msgSeqs(got), count, photo.Seq, link.Seq)
 	}
 	// Даты без q и без фильтра — тоже запрос (чип даты без текста).
-	got, _ = chatSearch(t, msgs, chatID, "", usecasechat.SearchFilter{MinDate: day.Add(24 * time.Hour).Unix()}, all)
+	got, _ = chatSearch(t, msgs, chatID, a, "", usecasechat.SearchFilter{MinDate: day.Add(24 * time.Hour).Unix()}, all)
 	if !sameIDs(msgSeqs(got), other.Seq, voice.Seq, video.Seq) {
 		t.Fatalf("только min_date: %v, want [%d %d %d]", msgSeqs(got), other.Seq, voice.Seq, video.Seq)
 	}
