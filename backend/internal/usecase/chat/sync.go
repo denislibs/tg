@@ -337,7 +337,7 @@ func (i *Interactor) MediaHistory(ctx context.Context, chatID, userID int64, fil
 	if page.OffsetID < 0 {
 		page.OffsetID = 0
 	}
-	msgs, count, err := i.msgs.MediaHistory(ctx, chatID, filter, page)
+	msgs, count, err := i.msgs.MediaHistory(ctx, chatID, userID, filter, page)
 	if err != nil {
 		return HistoryResult{}, err
 	}
@@ -370,7 +370,7 @@ func (i *Interactor) SearchCounters(ctx context.Context, chatID, userID int64, f
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
-	counts, err := i.msgs.SearchCounters(ctx, chatID, filters)
+	counts, err := i.msgs.SearchCounters(ctx, chatID, userID, filters)
 	if err != nil {
 		return nil, err
 	}
@@ -418,7 +418,7 @@ func (i *Interactor) SearchMessages(ctx context.Context, chatID, userID int64, q
 	if page.OffsetID < 0 {
 		page.OffsetID = 0
 	}
-	msgs, count, err := i.msgs.SearchMessages(ctx, chatID, q, f, page)
+	msgs, count, err := i.msgs.SearchMessages(ctx, chatID, userID, q, f, page)
 	if err != nil {
 		return HistoryResult{}, err
 	}

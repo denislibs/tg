@@ -62,3 +62,56 @@ func TestDeleteMessage_InvalidatesDialogsCache(t *testing.T) {
 		})
 	}
 }
+
+// «Удалить у себя» выкидывает сообщение из вкладки медиа, её счётчика и поиска
+// в чате — у того, кто удалил; у собеседника оно остаётся. Юзкейс обязан
+// доносить до хранилища, КТО смотрит: без зрителя фильтру message_hides не
+// по чему отсекать.
+func TestHiddenForMe_ExcludedFromMediaCountersAndSearch(t *testing.T) {
+	in, _ := newInteractor()
+	in.SetPublisher(&fakePublisher{})
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	kept, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: b, Type: "photo", Text: "кот"})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	gone, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: b, Type: "photo", Text: "кот"})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if err := in.DeleteMessage(ctx, chatID, gone.ID, a, false); err != nil {
+		t.Fatalf("DeleteMessage(for me): %v", err)
+	}
+
+	for _, tc := range []struct {
+		viewer int64
+		want   int
+	}{{a, 1}, {b, 2}} {
+		media, err := in.MediaHistory(ctx, chatID, tc.viewer, "media", MediaPage{Limit: 10})
+		if err != nil {
+			t.Fatalf("MediaHistory(%d): %v", tc.viewer, err)
+		}
+		if media.Count != tc.want || len(media.Messages) != tc.want {
+			t.Fatalf("медиа у %d: count=%d msgs=%d, want %d", tc.viewer, media.Count, len(media.Messages), tc.want)
+		}
+		if tc.viewer == a && media.Messages[0].ID != kept.ID {
+			t.Fatalf("у a во вкладке медиа %d, ждали уцелевшее %d", media.Messages[0].ID, kept.ID)
+		}
+		counters, err := in.SearchCounters(ctx, chatID, tc.viewer, []string{"media"})
+		if err != nil {
+			t.Fatalf("SearchCounters(%d): %v", tc.viewer, err)
+		}
+		if counters[0].Count != tc.want {
+			t.Fatalf("счётчик медиа у %d = %d, want %d", tc.viewer, counters[0].Count, tc.want)
+		}
+		found, err := in.SearchMessages(ctx, chatID, tc.viewer, "кот", SearchFilter{}, MediaPage{Limit: 10})
+		if err != nil {
+			t.Fatalf("SearchMessages(%d): %v", tc.viewer, err)
+		}
+		if found.Count != tc.want || len(found.Messages) != tc.want {
+			t.Fatalf("поиск у %d: count=%d msgs=%d, want %d", tc.viewer, found.Count, len(found.Messages), tc.want)
+		}
+	}
+}

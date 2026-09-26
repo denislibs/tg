@@ -227,13 +227,14 @@ func (r *MessagesRepo) GetAround(ctx context.Context, chatID, userID, centerSeq 
 // usecasechat.MediaPage). План: равенство по чату + курсор по seq + ORDER BY
 // seq DESC — UNIQUE(chat_id, seq), с вкладкой — idx_messages_shared_media
 // (chat_id, type, seq DESC); новый индекс не нужен.
-func (r *MessagesRepo) SearchMessages(ctx context.Context, chatID int64, q string, f usecasechat.SearchFilter, page usecasechat.MediaPage) ([]domain.Message, int, error) {
+func (r *MessagesRepo) SearchMessages(ctx context.Context, chatID, userID int64, q string, f usecasechat.SearchFilter, page usecasechat.MediaPage) ([]domain.Message, int, error) {
 	qq := querier(ctx, r.pool)
 	// type <> 'service': системные сообщения (создал группу, сменил фото, set_ttl…)
 	// не индексируются поиском — как в tweb (service-сообщения не ищутся).
 	where := ` FROM messages m LEFT JOIN media md ON md.id = m.media_id
-		WHERE m.chat_id=$1 AND m.deleted_at IS NULL AND m.type <> 'service'`
-	args := []any{chatID}
+		WHERE m.chat_id=$1 AND m.deleted_at IS NULL AND m.type <> 'service'
+		  AND ` + notHiddenFor("$2")
+	args := []any{chatID, userID}
 	// add регистрирует значение и возвращает его плейсхолдер ($N).
 	add := func(v any) string {
 		args = append(args, v)
@@ -382,7 +383,7 @@ func (r *MessagesRepo) GlobalSearchMessages(ctx context.Context, userID int64, g
 		JOIN chats c ON c.id = m.chat_id
 		LEFT JOIN media md ON md.id = m.media_id
 		WHERE m.deleted_at IS NULL AND m.type <> 'service'
-		  AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id = m.id AND h.user_id = $1)
+		  AND ` + notHiddenFor("$1") + `
 		  AND (c.history_for_new OR cm.role <> 'member' OR m.created_at >= cm.joined_at)`
 	if gq.Filter != "" {
 		cond := mediaFilterCond(gq.Filter)
@@ -511,6 +512,15 @@ func dateRangeCond(minDate, maxDate int64, add func(any) string) string {
 	return cond
 }
 
+// notHiddenFor — предикат «сообщение m не удалено зрителем у себя»
+// (message_hides); p — плейсхолдер id зрителя. Одно условие на все выдачи
+// сообщений чата зрителю, кроме истории (там свой алиас таблицы): вкладки
+// шаред-медиа, их счётчики, поиск в чате и глобальный. Без него «удалить у
+// себя» убирало сообщение из ленты, но не из медиа и не из поиска.
+func notHiddenFor(p string) string {
+	return `NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id = m.id AND h.user_id = ` + p + `)`
+}
+
 // mediaFilterCond — SQL-предикат одного вида шаред-медиа (вкладки профиля,
 // tweb inputMessagesFilter*). Пустая строка — вид неизвестен. Один источник
 // правды для постраничной выборки и для батч-счётчиков: разъехавшись, они дадут
@@ -541,21 +551,21 @@ func mediaFilterCond(filter string) string {
 //
 // Окно — курсор `m.seq < page.OffsetID` (tweb appSearchSuper.ts:2278-2279);
 // почему не OFFSET, объяснено у usecasechat.MediaPage.
-func (r *MessagesRepo) MediaHistory(ctx context.Context, chatID int64, filter string, page usecasechat.MediaPage) ([]domain.Message, int, error) {
+func (r *MessagesRepo) MediaHistory(ctx context.Context, chatID, userID int64, filter string, page usecasechat.MediaPage) ([]domain.Message, int, error) {
 	cond := mediaFilterCond(filter)
 	if cond == "" {
 		return nil, 0, nil
 	}
 	qq := querier(ctx, r.pool)
-	where := ` FROM messages m WHERE m.chat_id=$1 AND m.deleted_at IS NULL AND ` + cond
+	where := ` FROM messages m WHERE m.chat_id=$1 AND m.deleted_at IS NULL AND ` + notHiddenFor("$2") + ` AND ` + cond
 	var count int
-	if err := qq.QueryRow(ctx, `SELECT count(*)`+where, chatID).Scan(&count); err != nil {
+	if err := qq.QueryRow(ctx, `SELECT count(*)`+where, chatID, userID).Scan(&count); err != nil {
 		return nil, 0, err
 	}
 	// Курсор дописывается в текст запроса, а не прячется за «($2=0 OR
 	// m.seq<$2)»: такое условие планировщик не умеет превратить в границу
 	// индексного скана и читает весь чат.
-	args := []any{chatID}
+	args := []any{chatID, userID}
 	q := `SELECT ` + messageColsPrefixed("m") + where
 	if page.OffsetID > 0 {
 		args = append(args, page.OffsetID)
@@ -585,7 +595,7 @@ func (r *MessagesRepo) MediaHistory(ctx context.Context, chatID int64, filter st
 // Одна агрегация с CASE, а не N подзапросов: подзапросы прочитали бы сообщения
 // чата столько раз, сколько вкладок, а вкладок пять. Неизвестные виды в карту не
 // попадают — вызывающий читает их как ноль.
-func (r *MessagesRepo) SearchCounters(ctx context.Context, chatID int64, filters []string) (map[string]int, error) {
+func (r *MessagesRepo) SearchCounters(ctx context.Context, chatID, userID int64, filters []string) (map[string]int, error) {
 	out := make(map[string]int, len(filters))
 	var arms, conds []string
 	seen := make(map[string]bool, len(filters))
@@ -605,8 +615,9 @@ func (r *MessagesRepo) SearchCounters(ctx context.Context, chatID int64, filters
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT CASE `+strings.Join(arms, " ")+` END AS f, count(*)
 		   FROM messages m
-		  WHERE m.chat_id=$1 AND m.deleted_at IS NULL AND (`+strings.Join(conds, " OR ")+`)
-		  GROUP BY 1`, chatID)
+		  WHERE m.chat_id=$1 AND m.deleted_at IS NULL AND `+notHiddenFor("$2")+`
+		    AND (`+strings.Join(conds, " OR ")+`)
+		  GROUP BY 1`, chatID, userID)
 	if err != nil {
 		return nil, err
 	}
