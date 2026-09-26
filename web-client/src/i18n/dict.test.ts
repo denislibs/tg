@@ -276,12 +276,22 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // «Application»). ru 1350 → 1358, uk 686 → 694, es 685 → 693, de 684 → 692,
 // fr 684 → 691. `plural` не менялся.
 // Поверх задач 7, 10, 11, 14 и корня настроек: ru 1378, uk 713, es 712, de 711, fr 708.
+//
+// Задача 12 плана 2D (вкладки «Обои» и «Цвет»): самодельные ключи прежнего
+// React-экрана `ChatBackground.Upload`/`.Reset`/`.Blurred` (после сноса экрана —
+// ни одного читателя) заменены ключами tweb lang.ts `ChatBackground.UploadWallpaper`,
+// `Appearance.Reset`, `ChatBackground.Blur` и добавлен заголовок вкладки
+// `ChatBackground` — всем пяти словарям: −3 +4, у каждого +1 (ru 1350 → 1351,
+// uk 686 → 687, es 685 → 686, de/fr 684 → 685). `Appearance.Color.Hex`/`.RGB`
+// (подписи полей выбора цвета) не переводятся — `NO_TRANSLATION` в
+// `dictCoverage.test.ts`. `plural` не менялся.
+// Поверх задач 7, 9, 10, 11, 14 и корня настроек: ru 1379, uk 714, es 713, de 712, fr 709.
 const COMPOSITION = {
-  ru: { keys: 1378, plural: 37 },
-  uk: { keys: 713, plural: 26 },
-  es: { keys: 712, plural: 26 },
-  de: { keys: 711, plural: 26 },
-  fr: { keys: 708, plural: 26 },
+  ru: { keys: 1379, plural: 37 },
+  uk: { keys: 714, plural: 26 },
+  es: { keys: 713, plural: 26 },
+  de: { keys: 712, plural: 26 },
+  fr: { keys: 709, plural: 26 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -386,12 +396,14 @@ const COMPOSITION = {
 // Задачей 11 плана 2D — ключи «Энергосбережения» (разбор — у `COMPOSITION` выше).
 // Задачей 14 плана 2D — минус `DoubleTapSettingInfo` у всех пяти.
 // Задачей 9 плана 2D — восемь ключей экрана сессии (разбор — у `COMPOSITION`).
+// Задачей 12 плана 2D — ключи «Обоев» вместо ключей снесённого React-экрана
+// (разбор — у `COMPOSITION` выше), у всех пяти.
 const FINGERPRINT = {
-  ru: 'fc4f75b2',
-  uk: 'dd482d82',
-  es: '4b4883b4',
-  de: 'f86725a8',
-  fr: '74eec546',
+  ru: '63ee43f7',
+  uk: 'ec742d71',
+  es: '5762e979',
+  de: '2466b899',
+  fr: 'cef814df',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

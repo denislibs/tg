@@ -752,7 +752,7 @@ titleRight`/`Midtitle`/`Subtitle`; секции `CurrentSession` (подпись
 - Для задачи 13: статус строки «Общих» уже живой (`liteMode.all` → Enabled/Disabled), читать —
   `appSettings.liteMode.all`.
 
-### Задача 12: «Обои» и «Цвет»
+### Задача 12: «Обои» и «Цвет» — ✅ сделано (PR feat/w2d-wallpapers)
 
 **Порт:** `background.tsx` (615; вкладочная часть `:561-611` + нужные утилиты статик-класса) →
 `sidebarLeft/tabs/background.solid.tsx`, `backgroundColor.tsx` (168) → `backgroundColor.solid.tsx`,
@@ -763,6 +763,28 @@ btn-primary btn-transparent` (`cameraadd`/`colorize`/`favourites`), тумбле
 выяснить, что есть на бэкенде; нет ручки — сетка из нашего набора с комментарием и О-11.
 **Мутация:** Blur не `disabled` для pattern-обоев — тест краснеет.
 **Зависимости:** 0–4. **Врезка:** `tabs.ts`, `GeneralSettings.tsx`; удалить `settings/ChatWallpaper.tsx` + `.module.scss`.
+
+**Итог (2026-09-26):** `background.solid.tsx` (вкладка + статическая часть `AppBackgroundTab`
+с `addWallPaper`/`setBackgroundDocument` — её переиспользует выбор темы задачи 13),
+`backgroundColor.solid.tsx`, `components/colorPicker.ts` + `styles/tweb/_colorPicker.scss`
+(дословно), хелперы tweb `createElementFromMarkup`, `markGridCornerItem`, `requestFile`,
+`hexaToHsla`. Бэкенд выяснен: ручек обоев НЕТ вовсе (ни списка, ни загрузки/сохранения
+обоев) — сетка из `WALLPAPER_PRESETS` с комментарием О-11. Модель обоев осталась нашей
+(zustand `wallpaper`/`customWallpaperMediaId`/`customWallpaperBlur`, рисует React
+`ChatBackground.tsx`) — вкладки пишут ровно её; соответствие tweb: обои с узором ↔ пресет,
+загруженные ↔ своё фото, `wallPaperNoFile` ↔ цвет. Размытие — только у своего фото
+(`needBlur` tweb не размывает обои с узором), поэтому мёртвая настройка `wallpaperBlur`
+(размывала градиент, чего у tweb нет) снята из `settings.tsx` и `ChatBackground.tsx`. Своё
+фото сервер в выдачу не вернёт — его плитку вкладка ставит первой сама. Плитку рисует
+`mountWallPaperThumb` (градиент + узор в `soft-light`, как наш фон в дневной теме; классы —
+дописанные в `ChatBackground.module.scss` правила tweb `chatBackground.module.scss`), потому
+что Solid `<ChatBackground>` у нас нет. Ключи — tweb (`ChatBackground`,
+`ChatBackground.UploadWallpaper`, `ChatBackground.Blur`, `Appearance.Reset`,
+`Appearance.Color.Hex/RGB`); самодельные `ChatBackground.Upload/Reset/Blurred` сняты.
+Строка «Общих» теперь с ключом tweb `ChatBackground` (`generalSettings.tsx:67`). Не
+перенесено (шапки файлов): `blendWallpaperForTinted` (нет tinted-деривации),
+`highlightingColor` выбранных обоев (предмет `ChatBackground.tsx`), кольцо фокуса плитки
+(a11y 472e3e76b), перекодирование PNG → JPEG (требование `account.uploadWallPaper`).
 
 ### Задача 14: «Быстрая реакция» — ✅ сделано (PR feat/w2d-quick-reaction)
 
@@ -1058,7 +1080,7 @@ media; брать задачу, когда в них нет открытых в�
 | О-8 | `changeAuthorizationSettings` — AcceptSecretChats/AcceptIncomingCalls (`session.tsx:112-143`, `speakersAndCamera.tsx`) | нет ручки и колонок | запрет звонков/секретных чатов на устройстве |
 | О-9 | Переименование устройства (`activeSessions.tsx:211-236`) | сервер подставляет имя из UA (`backend/internal/usecase/auth/auth.go:291-294`) | своё имя устройства |
 | О-10 | Строка Send с `InlineSelect` (если нет настройки отправки) | выяснить в задаче 10 | Ctrl+Enter для отправки |
-| О-11 | Серверные обои (`account.getWallPapers`) | выяснить в задаче 12 | обои 1:1 |
+| О-11 | Серверные обои (`account.getWallPapers`, `uploadWallPaper`, `saveWallPaper`; `background.tsx:404-416`, `:546-554`) | ручек обоев на бэкенде нет вовсе (выяснено задачей 12): сетка — клиентские `WALLPAPER_PRESETS`, своё фото — общая `/media/upload` + `customWallpaperMediaId`, список загруженных обоев не хранится | сетка обоев 1:1, обои по темам, загруженные обои в выдаче |
 | О-12 | `sliceTabsUntilTab(AppPrivacyAndSecurityTab)` у код-пароля | хаб — вкладка только с задачи 23 | снимается задачей 23 |
 | О-13 | Подтверждение почты 2FA кодом, «Забыли пароль» | нет unconfirmed pattern (`authManager.ts:118-122`, `:468-475`) | восстановление пароля |
 | О-14 | Порядок стикерсетов (`reorderStickerSets`) | выяснить в задаче 15 | сортировка наборов |
