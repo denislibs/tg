@@ -827,8 +827,9 @@ DOM-паритет первого таба выдержан сознательн
 | `components/slider.ts` | `src/components/slider.ts` | `SidebarSlider` целиком: история вкладок, `createTab`/`selectTab`/`closeTab`/`closeAllTabs`/`sliceTabsUntilTab`, `onTabsCountChange`, `canHideFirst` |
 | `components/sliderTab.ts` | `src/components/sliderTab.ts` | `SliderSuperTab` + `SliderSuperTabEventable` (шапка, `Scrollable`, порядок разрушения, `managers`) |
 | `components/solidJsTabs/*` | `src/components/solidJsTabs/*` | `scaffoldSolidJSTab(Eventable)`, `useSuperTab`, `PromiseCollector` |
-| `components/solidJsTabs/tabs.ts` | `src/components/solidJsTabs/tabs.ts` | реестр объявлений вкладок; пока три — `AppActiveSessionsTab`, `AppLanguageTab`, `AppNotificationsTab` |
-| `components/sidebarLeft/tabs/activeSessions.solid.tsx` | `src/components/sidebarLeft/tabs/activeSessions.tsx` | первая настоящая вкладка, дословный порт |
+| `components/solidJsTabs/tabs.ts` | `src/components/solidJsTabs/tabs.ts` | реестр объявлений вкладок; пока три — `AppActiveSessionsTab`, `AppLanguageTab`, `AppNotificationsTab`; задача 9 плана 2D добавила `AppSessionTab` |
+| `components/sidebarLeft/tabs/activeSessions.solid.tsx` | `src/components/sidebarLeft/tabs/activeSessions.tsx` | «Устройства», порт HEAD 812502980 (план 2D, задача 9) |
+| `components/sidebarLeft/tabs/session.solid.tsx` (+ `sessionInfoRow.solid.tsx`, `sessionDetails.module.scss`) | `src/components/sidebarLeft/tabs/session.tsx` (944b578e9) | экран одной сессии `AppSessionTab`, открывает строка «Устройств» |
 | `components/sidebarLeft/tabs/notifications.solid.tsx` | `src/components/sidebarLeft/tabs/notifications.tsx` (812502980) | «Уведомления и звуки» — пилот плана 2D (задача 6): первый экран на Solid `Row`/`Section` HEAD; без «All Accounts» (О-1) и секций Stories/Reactions/Other (О-3…О-5); React `settings/NotificationsSettings.tsx` снесён |
 | `components/sidebarLeft/settingsSliderHost.ts` | `sidebarLeft/index.ts:140-148` + `settingsSliderPopup.ts:13-51` | хост: один слайдер на колонку, `openTab`/`destroy` |
 
@@ -953,7 +954,8 @@ privacy-исключения, passcode, general, editChat, editContact). Стр�
 - [ ] Бургер → настройки → вложенные экраны; Back работает на любую глубину.
 - [ ] Настройки → «Устройства» (и «Конфиденциальность» → «Активные сессии»): вкладка въезжает
       справа, правый клик по чужой сессии → Terminate → строка исчезает, Escape закрывает вкладку,
-      экран настроек под ней остаётся.
+      экран настроек под ней остаётся. Клик по строке → экран сессии въезжает поверх «Устройств»
+      (с параллаксом), у чужой — кнопка «Terminate Session» → подтверждение → экран закрыт, строки нет.
 - [ ] Поиск: пустое состояние, результаты по чатам, табы постов/медиа/ссылок/файлов/музыки/голосовых.
 - [ ] Строка чатлиста: превью последнего сообщения, бейджи, онлайн-точка, typing, draft.
 - [ ] Сортировка и закреплённые вверху; папки переключаются без перерисовки всего списка.
