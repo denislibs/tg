@@ -44,6 +44,18 @@
     return null
   }
 
+  // Порт tweb 8d06fbc9c (serviceWorker/stream.ts `safeContentType`). Тип берётся
+  // из адреса запроса (`?mime=`), то есть целиком под контролем того, кто собрал
+  // ссылку: эхо в Content-Type отдало бы байты файла разметкой из origin
+  // приложения, где скрипт дотягивается до сессии. Эндпоинт отдаёт только
+  // стримируемое медиа (`mediaManager.streamUrl`), всё прочее уходит браузеру
+  // непрозрачной загрузкой.
+  var STREAMABLE_MIME_TYPE = /^(?:video|audio|image)\/[\w.+-]+$/
+
+  function safeContentType(mime) {
+    return STREAMABLE_MIME_TYPE.test(mime) ? mime : 'application/octet-stream'
+  }
+
   // Конкат Uint8Array'ов (порт bufferConcats).
   function concatBytes(parts) {
     var len = 0
@@ -149,6 +161,13 @@
   // мост PR-2a: (mediaId, offset, limit) → Promise<{bytes, total}>.
   function createStreamHandler(requestPart) {
     async function handleStreamFetch(request) {
+      // tweb 8d06fbc9c (`onStreamFetch`): медиа-элементы ходят с mode 'cors'/'no-cors';
+      // навигация или iframe с чужого origin — никогда не законный вход сюда, и это
+      // единственный путь, которым ответ мог бы отрисоваться документом.
+      if (request.mode === 'navigate') {
+        return new self.Response('', { status: 403, statusText: 'Forbidden' })
+      }
+
       var url = new URL(request.url)
       var mediaId = +url.pathname.split('/').pop()
       var size = +url.searchParams.get('size') || 0
@@ -193,7 +212,10 @@
         'Content-Range': 'bytes ' + offset + '-' + (offset + ab.byteLength - 1) + '/' + (size || '*'),
         'Content-Length': '' + ab.byteLength,
       }
-      if (mime) headers['Content-Type'] = mime
+      if (mime) {
+        headers['Content-Type'] = safeContentType(mime)
+        headers['X-Content-Type-Options'] = 'nosniff'
+      }
       return new self.Response(ab, { status: 206, statusText: 'Partial Content', headers })
     }
     return { handleStreamFetch: handleStreamFetch }

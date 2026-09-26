@@ -28,6 +28,7 @@ import { createPortal } from 'react-dom'
 import TgIcon from './TgIcon'
 import classNames from '../shared/lib/classNames'
 import { activeTypes, type ComposerEntityType } from '../core/richtext/markdown'
+import { normalizeUrlProtocol } from '@lib/richtext/url'
 import type { IconName } from '../core/tgico-icons'
 
 // Порядок и иконки — tweb markupTooltip.ts:66-76. Пункт `date` (календарь)
@@ -305,8 +306,8 @@ export default function MarkupTooltip({
     e.stopPropagation()
     resetSelection()
     const raw = linkVal.trim()
-    // tweb matchUrlProtocol: свой протокол сохраняем, иначе дописываем https://
-    if (raw) onApply('messageEntityTextUrl', /^[a-z][a-z\d+\-.]*:/i.test(raw) ? raw : `https://${raw}`)
+    // tweb markupTooltip.ts (fcfe06f76): `normalizeUrlProtocol` вместо своей копии проверки схемы
+    if (raw) onApply('messageEntityTextUrl', normalizeUrlProtocol(raw))
     setTimeout(hide, 0)
   }
 
