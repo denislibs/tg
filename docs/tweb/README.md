@@ -51,6 +51,7 @@
 | **Правая колонка**: слайдер табов, профиль user/group/channel, shared media, скролл-механика шапки | [right-sidebar.md](right-sidebar.md) |
 | **Shared media**: `AppSearchSuper` — вкладки контента, ленивая подгрузка по типам, память скролла между вкладками, выделение и контекст-меню, живые апдейты, что блокировано бэкендом | [shared-media.md](shared-media.md) |
 | **Левая колонка**: слайдер, все табы настроек, бургер, глобальный поиск, чатлист, фолдеры, сторис-лента | [left-sidebar.md](left-sidebar.md) |
+| **Строки и экраны настроек**: Solid `Row`/`RowTsx` и `attachRowController`, `Section` (подпись вне карточки), контейнер вкладки (шапка, переход), все вкладки настроек левой колонки по `812502980`, дампы, карта наших `settings/*` и расхождения (волна 2D) | [settings-rows.md](settings-rows.md) |
 | **Глобальный поиск**: `initSearch` + `AppSearchSuper` вторым потребителем — группы результатов, чипы пира/даты, `ChatTypeMenu`, recent, курсор `next_rate`, переход `zoom-fade`, что блокировано бэкендом | [global-search.md](global-search.md) |
 | **Попапы и меню**: `PopupElement`, каталог всех попапов, `PopupPeer`/confirm, `ButtonMenu`/контекст-меню, позиционирование, тосты, тултипы | [popups.md](popups.md) |
 | **Композер**: DOM-дерево, морф кнопки отправки, плашка reply/edit, запись голоса, эмодзи-дропдаун, тайминги | [composer.md](composer.md) |
