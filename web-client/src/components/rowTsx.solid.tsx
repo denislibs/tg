@@ -282,12 +282,10 @@ Row.RadioField = (props: {
 Row.CheckboxFieldToggle = (props: {
   children: JSX.Element
 }) => {
-  // a toggle is a checkbox too, so the row's checkbox rules go on reaching it
-  return registerRowField(
-    'checkboxFieldToggle',
-    [ROW_CHECKBOX_FIELD_CLASS, ROW_CHECKBOX_FIELD_TOGGLE_CLASS],
-    props.children,
-  )
+  // У tweb здесь ещё `ROW_CHECKBOX_FIELD_CLASS` («a toggle is a checkbox too»),
+  // но с ним `_row.scss` ef41b29db обрезает тумблер — отступление описано в
+  // `rowFieldClasses.ts`.
+  return registerRowField('checkboxFieldToggle', [ROW_CHECKBOX_FIELD_TOGGLE_CLASS], props.children)
 }
 
 Row.Media = (inProps: JSX.HTMLAttributes<HTMLDivElement> & {

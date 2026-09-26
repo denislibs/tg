@@ -156,7 +156,7 @@ describe('Row — разметка tweb', () => {
 
     const { container: c2 } = render(<Row label="Sound" translate={false} toggle checked />)
     const toggle = row(c2).querySelector<HTMLElement>('.checkbox-field-toggle')!
-    expect(toggle.classList.contains('row-checkbox-field')).toBe(true)
+    expect(toggle.classList.contains('row-checkbox-field')).toBe(false) // отступление, rowFieldClasses.ts
     expect(toggle.classList.contains('row-checkbox-field-toggle')).toBe(true)
   })
 

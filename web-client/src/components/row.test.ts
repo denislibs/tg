@@ -104,7 +104,8 @@ describe('Row', () => {
 
     const toggle = new CheckboxField({ toggle: true })
     new Row({ checkboxField: toggle })
-    expect(toggle.label.classList.contains('row-checkbox-field')).toBe(true)
+    // Отступление (rowFieldClasses.ts): с `row-checkbox-field` тумблер обрезается.
+    expect(toggle.label.classList.contains('row-checkbox-field')).toBe(false)
     expect(toggle.label.classList.contains('row-checkbox-field-toggle')).toBe(true)
 
     const radio = new RadioField({ text: 'Вариант', name: 'g2', value: 'a' })

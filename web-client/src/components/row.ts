@@ -204,11 +204,10 @@ export default class Row<T extends SliderSuperTabEventableConstructable = any> {
       if(options.checkboxField) {
         this.checkboxField = options.checkboxField
         // tweb 803f9599d: поле — своё для строки, см. `rowFieldClasses`
-        this.checkboxField.label.classList.add(ROW_CHECKBOX_FIELD_CLASS)
-
+        // (тумблеру — только класс тумблера, отступление описано там же).
         const isToggle = options.checkboxField.label.classList.contains('checkbox-field-toggle')
+        this.checkboxField.label.classList.add(isToggle ? ROW_CHECKBOX_FIELD_TOGGLE_CLASS : ROW_CHECKBOX_FIELD_CLASS)
         if(isToggle) {
-          this.checkboxField.label.classList.add(ROW_CHECKBOX_FIELD_TOGGLE_CLASS)
           this.container.classList.add('row-with-toggle')
           options.titleRight = this.checkboxField.label
         } else {

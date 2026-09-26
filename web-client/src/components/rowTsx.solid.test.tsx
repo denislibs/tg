@@ -194,7 +194,7 @@ describe('Row.Icon — цветная плашка', () => {
 // зарегистрированное через Row, получает класс строки — `_row.scss` раскладывает
 // только свои поля, а не любой чекбокс внутри строки.
 describe('поля строки метятся классами row-*', () => {
-  it('CheckboxField → row-checkbox-field, RadioField → row-radio-field, Toggle → оба класса чекбокса', () => {
+  it('CheckboxField → row-checkbox-field, RadioField → row-radio-field, Toggle → row-checkbox-field-toggle', () => {
     const h = mount(() => (
       <div>
         <Row><Row.CheckboxField><label class="checkbox-field" data-f="cb" /></Row.CheckboxField><Row.Title>a</Row.Title></Row>
@@ -206,7 +206,7 @@ describe('поля строки метятся классами row-*', () => {
     expect(f('cb').contains('row-checkbox-field')).toBe(true)
     expect(f('cb').contains('row-checkbox-field-toggle')).toBe(false)
     expect(f('radio').contains('row-radio-field')).toBe(true)
-    expect(f('toggle').contains('row-checkbox-field')).toBe(true)
+    expect(f('toggle').contains('row-checkbox-field')).toBe(false) // отступление, rowFieldClasses.ts
     expect(f('toggle').contains('row-checkbox-field-toggle')).toBe(true)
   })
 })

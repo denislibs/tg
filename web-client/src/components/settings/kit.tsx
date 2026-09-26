@@ -397,10 +397,10 @@ export function Row({
       ? cloneElement(icon, { className: classNames('row-icon', icon.props.className ?? '') })
       : icon
 
-  // tweb 803f9599d: тумблер — тоже чекбокс строки, у него оба класса
-  // (`rowFieldClasses`, `rowTsx.tsx` `Row.CheckboxFieldToggle`).
+  // tweb 803f9599d: тумблер строки — `row-checkbox-field-toggle` (без
+  // `row-checkbox-field`, отступление — в `rowFieldClasses.ts`).
   const titleRight = toggle
-    ? <TgSwitch checked={!!checked} restriction={restriction} className={`${ROW_CHECKBOX_FIELD_CLASS} ${ROW_CHECKBOX_FIELD_TOGGLE_CLASS}`} />
+    ? <TgSwitch checked={!!checked} restriction={restriction} className={ROW_CHECKBOX_FIELD_TOGGLE_CLASS} />
     : selected
       ? <TgIcon name="check" size={22} color="var(--primary-color)" />
       : value ?? null

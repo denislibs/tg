@@ -19,7 +19,7 @@ function makeAuthorization(overrides: Partial<Authorization.authorization> = {})
     ip: '127.0.0.1',
     country: 'UAE',
     region: 'Dubai',
-    ...overrides
+    ...overrides,
   }
 }
 
@@ -28,7 +28,7 @@ describe('session platform icon', () => {
     const desktop = (platform: string) => getSessionPlatformIcon(makeAuthorization({
       api_id: 2040,
       app_name: 'Telegram Desktop',
-      platform
+      platform,
     }))
 
     expect(desktop('Windows')).toBe('win_key_filled')
@@ -44,7 +44,7 @@ describe('session platform icon', () => {
       api_id: 2496,
       app_name,
       app_version,
-      device_model: 'Chrome'
+      device_model: 'Chrome',
     }))
 
     expect(web('Telegram WebK', '2.2')).toBe('web_k_filled')
@@ -60,7 +60,7 @@ describe('session platform icon', () => {
     expect(getSessionPlatformIcon(makeAuthorization({
       api_id: 424242,
       app_name: 'Unofficial',
-      device_model: 'Firefox 130'
+      device_model: 'Firefox 130',
     }))).toBe('web_filled')
   })
 
@@ -69,20 +69,20 @@ describe('session platform icon', () => {
       api_id: 6,
       app_name: 'Telegram Android',
       device_model: 'Pixel 8',
-      platform: 'Android'
+      platform: 'Android',
     }))).toBe('android_filled')
 
     expect(getSessionPlatformIcon(makeAuthorization({
       api_id: 1,
       app_name: 'Telegram iOS',
       device_model: 'iPhone 15 Pro',
-      platform: 'iOS'
+      platform: 'iOS',
     }))).toBe('apple_filled')
 
     expect(getSessionPlatformIcon(makeAuthorization({
       api_id: 424242,
       app_name: 'Unofficial',
-      device_model: 'iPad Pro'
+      device_model: 'iPad Pro',
     }))).toBe('apple_filled')
   })
 
@@ -91,7 +91,7 @@ describe('session platform icon', () => {
       api_id: 424242,
       app_name: 'Unofficial',
       device_model: 'PC',
-      system_version: 'Windows 11'
+      system_version: 'Windows 11',
     }))).toBe('win_key_filled')
   })
 
@@ -99,9 +99,9 @@ describe('session platform icon', () => {
     expect(getSessionPlatformIcon(makeAuthorization({
       api_id: 424242,
       app_name: 'Unofficial',
-      device_model: 'Chromebook'
+      device_model: 'Chromebook',
     }))).toBe('devices_filled')
 
-    expect(getSessionPlatformIcon(makeAuthorization({api_id: 424242}))).toBe('devices_filled')
+    expect(getSessionPlatformIcon(makeAuthorization({ api_id: 424242 }))).toBe('devices_filled')
   })
 })

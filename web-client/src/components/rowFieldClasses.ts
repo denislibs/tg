@@ -7,6 +7,15 @@
  * эти производные классы, а не в `.checkbox-field` / `.radio-field` напрямую, и
  * носят их только поля, зарегистрированные строкой.
  *
+ * ОТСТУПЛЕНИЕ: тумблер у нас получает только `row-checkbox-field-toggle`, без
+ * `row-checkbox-field`. У tweb (803f9599d, rowTsx `Row.CheckboxFieldToggle`) —
+ * оба класса, но с ef41b29db `_row.scss` даёт `.row .row-checkbox-field
+ * { position: absolute }`, а тумблер лежит в `.row-title-right` — это
+ * `.row-title` с `position: relative` и `overflow: hidden` при нулевой ширине
+ * (единственный ребёнок абсолютный): тумблер обрезается целиком, что видно на
+ * стенде. Раскладке чекбокса строки тумблер не нужен — ему нужны только
+ * правила `row-checkbox-field-toggle` (`is-fake-disabled`, `accordion-toggler`).
+ *
  * Взяты только используемые у нас константы; классы выделения строк
  * (`row-selection-*`, `row-with-checkbox-and-media`) приедут с аудио-строкой.
  */
