@@ -61,18 +61,51 @@ func (r *fakeChannelRepo) CurrentPts(_ context.Context, channelID int64) (int64,
 type fakeSearchRepo struct {
 	mu        sync.Mutex
 	usernames map[string]int64
+	// Выдача поиска пиров и «свои» из неё (OwnPeers).
+	chats              []domain.ChatRecord
+	users              []domain.UserReal
+	ownChats, ownUsers map[int64]bool
+	lastLimit          int
+	searchCalls        int
+	ownCalls           int
+	ownViewer          int64
 }
 
 func newFakeSearchRepo() *fakeSearchRepo {
 	return &fakeSearchRepo{usernames: map[string]int64{}}
 }
 
-func (r *fakeSearchRepo) SearchChats(_ context.Context, _ string, _ int) ([]domain.ChatRecord, error) {
-	return nil, nil
+func (r *fakeSearchRepo) SearchChats(_ context.Context, _ string, limit int) ([]domain.ChatRecord, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.lastLimit, r.searchCalls = limit, r.searchCalls+1
+	return r.chats, nil
 }
 
-func (r *fakeSearchRepo) SearchUsers(_ context.Context, _ string, _ int) ([]domain.UserReal, error) {
-	return nil, nil
+func (r *fakeSearchRepo) SearchUsers(_ context.Context, _ string, limit int) ([]domain.UserReal, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.lastLimit, r.searchCalls = limit, r.searchCalls+1
+	return r.users, nil
+}
+
+func (r *fakeSearchRepo) OwnPeers(_ context.Context, viewerID int64, chatIDs, userIDs []int64) (map[int64]bool, map[int64]bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.ownCalls++
+	r.ownViewer = viewerID
+	chats, users := map[int64]bool{}, map[int64]bool{}
+	for _, id := range chatIDs {
+		if r.ownChats[id] {
+			chats[id] = true
+		}
+	}
+	for _, id := range userIDs {
+		if r.ownUsers[id] {
+			users[id] = true
+		}
+	}
+	return chats, users, nil
 }
 
 func (r *fakeSearchRepo) SimilarChannels(_ context.Context, _, _ int64, _ int) ([]domain.ChatRecord, int, error) {

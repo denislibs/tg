@@ -507,11 +507,26 @@ func (h *ChannelHandler) Similar(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewMessagesChatsSlice(count, channelsOf(chats)))
 }
 
+// Search — GET /search?q=&limit=: поиск пиров (аналог contacts.search).
+// Свои попадания — ссылками в my_results, чужие — в results; limit — на
+// каждый вид (чаты, люди), по умолчанию 20, потолок 200.
 func (h *ChannelHandler) Search(w http.ResponseWriter, r *http.Request) {
-	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	chats, _ := h.uc.SearchChats(r.Context(), q, 20)
-	users, _ := h.uc.SearchUsers(r.Context(), q, 20)
-	// Аватар в выдаче поиска — по правилу profile_photo владельца.
+	viewer, _ := UserFromContext(r.Context())
+	q := r.URL.Query().Get("q")
+	limit := 20
+	if v, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil {
+		limit = v
+	}
+	res, err := h.uc.SearchPeers(r.Context(), viewer.ID, q, limit)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	// Аватар в выдаче поиска — по правилу profile_photo владельца; одним
+	// запросом на обе части выдачи.
+	users := append(append([]domain.UserReal{}, res.MyUsers...), res.Users...)
 	gatePhotos(r, h.privacy, users)
-	writeJSON(w, http.StatusOK, domain.NewContactsFound(channelsOf(chats), users))
+	my := len(res.MyUsers)
+	writeJSON(w, http.StatusOK, domain.NewContactsFound(
+		channelsOf(res.MyChats), users[:my], channelsOf(res.Chats), users[my:]))
 }

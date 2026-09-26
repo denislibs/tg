@@ -48,9 +48,12 @@ function msg(id: number, tag?: string): MessageReal {
 function managersWith(history: MyMessage[], search: { messages: MyMessage[], count: number }) {
   const getHistory = vi.fn(async (): Promise<HistoryResult> =>
     ({ messages: history, count: history.length, reachedTop: true, reachedBottom: true }))
-  // Выдача поиска — от НОВОГО к старому (`ORDER BY m.seq DESC`), как у ручки.
-  const searchMessages = vi.fn(async (_peerId: number, _q: string, opts: { offset?: number, limit?: number }) => ({
-    messages: search.messages.slice().reverse().slice(opts.offset ?? 0, (opts.offset ?? 0) + (opts.limit ?? 20)),
+  // Выдача поиска — от НОВОГО к старому (`ORDER BY m.seq DESC`), строго ниже
+  // курсора `offsetId`, как у ручки: смещения она не знает.
+  const searchMessages = vi.fn(async (_peerId: number, _q: string, opts: { offsetId?: number, limit?: number }) => ({
+    messages: search.messages.slice().reverse()
+      .filter((m) => !opts.offsetId || m.id < opts.offsetId)
+      .slice(0, opts.limit ?? 20),
     count: search.count,
   }))
   const managers: BubblesManagers = {
@@ -105,7 +108,7 @@ describe('ChatBubbles — фильтр «Избранного» по тегу-р
     await settle()
 
     // Выдача пришла ручкой поиска, а окно пересобрано целиком.
-    expect(managers.searchMessages).toHaveBeenCalledWith(SAVED, '', expect.objectContaining({ reaction: '🔥', offset: 0 }))
+    expect(managers.searchMessages).toHaveBeenCalledWith(SAVED, '', expect.objectContaining({ reaction: '🔥', offsetId: 0 }))
     expect(renderedMids(bubbles)).toEqual([2])
   })
 
@@ -123,7 +126,7 @@ describe('ChatBubbles — фильтр «Избранного» по тегу-р
     expect(renderedMids(bubbles)).toEqual([1, 2, 3])
   })
 
-  it('следующая страница фильтра берётся смещением', async () => {
+  it('следующая страница фильтра берётся курсором от верхнего отрисованного', async () => {
     // Совпадений заведомо больше страницы — иначе верх сведётся первым же
     // ответом и листать станет нечего.
     const tagged = Array.from({ length: 100 }, (_, i) => msg(i + 1, '🔥'))
@@ -137,12 +140,23 @@ describe('ChatBubbles — фильтр «Избранного» по тегу-р
     // (`getHistory1`, порт tweb :11346-11358), поэтому вызовов уже два.
     const calls = managers.searchMessages.mock.calls
     expect(calls.length).toBeGreaterThan(1)
-    expect(calls[0][2].offset).toBe(0)
+    expect(calls[0][2].offsetId).toBe(0)
 
-    const taken = (await managers.searchMessages.mock.results[0].value).messages.length
-    expect(taken).toBeGreaterThan(0)
-    // Смещение следующей страницы — ровно столько, сколько уже забрано.
-    expect(calls[1][2].offset).toBe(taken)
+    const first = (await managers.searchMessages.mock.results[0].value).messages as MyMessage[]
+    expect(first.length).toBeGreaterThan(0)
+    // Курсор следующей страницы — САМОЕ СТАРОЕ отрисованное (`maxId`, как у
+    // обычной истории: `requestHistory` оригинала под `savedReaction` уходит
+    // в `messages.search` с тем же `offset_id`, appMessagesManager.ts:9970-9984).
+    expect(calls[1][2].offsetId).toBe(Math.min(...first.map((m) => m.id)))
+
+    // Предзагрузка (`justLoad`) не сдвигает окно: следующая НАСТОЯЩАЯ
+    // страница просит то же самое, а не перескакивает через непоказанное —
+    // отрисованное остаётся сплошным отрезком от самого нового.
+    bubbles.loadMoreHistory(true)
+    await settle()
+    const rendered = renderedMids(bubbles)
+    expect(rendered.length).toBeGreaterThan(first.length)
+    expect(rendered).toEqual(Array.from({ length: rendered.length }, (_, i) => 100 - rendered.length + 1 + i))
   })
 
   it('входящее без тега в отфильтрованное окно не попадает, с тегом — попадает', async () => {

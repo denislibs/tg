@@ -146,8 +146,10 @@ func allPeerConstructors() []any {
 		// Пустая страница: обязательные векторы едут [] , а не null.
 		NewContactsBlockedSlice(0, nil, nil),
 		NewContactsFound([]Chat{NewChannel(8, "группа", NewChatPhotoEmpty(), date, ChannelFlags{Megagroup: true})},
-			[]UserReal{NewUser(42, UserFlags{})}),
-		NewContactsFound(nil, nil),
+			[]UserReal{NewUser(42, UserFlags{})},
+			[]Chat{NewChannel(9, "канал", NewChatPhotoEmpty(), date, ChannelFlags{Broadcast: true})},
+			[]UserReal{NewUser(43, UserFlags{})}),
+		NewContactsFound(nil, nil, nil, nil),
 
 		// ── messageFwdHeader (долг шага B) ───────────────────────────────────
 		// Пост канала: автор — сам канал, есть и channel_post, и saved_from_*.

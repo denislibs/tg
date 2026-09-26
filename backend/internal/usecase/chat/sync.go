@@ -286,7 +286,8 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 }
 
 // MediaPage — окно выборки шаред-медиа профиля (вкладки Медиа/Файлы/Ссылки/
-// Музыка/Голосовые).
+// Музыка/Голосовые) и поиска в одном чате (SearchMessages) — у обоих один
+// курсор по номеру сообщения в чате.
 //
 // Листается КУРСОРОМ, а не смещением: оригинал просит следующую страницу по id
 // последнего уже показанного сообщения (tweb
@@ -370,21 +371,32 @@ func (i *Interactor) SearchCounters(ctx context.Context, chatID, userID int64, f
 	return out, nil
 }
 
-// SearchFilter сужает поиск внутри чата (tweb topbarSearch): по автору (в
-// группах), по виду шаред-медиа и по наличию реакции на сообщении. Нулевые
-// значения отключают соответствующий фильтр.
+// SearchFilter сужает поиск внутри чата. Две лексики вида, и обе живые:
+// MediaType — мелкая лексика топбар-поиска чата (tweb topbarSearch), Filter —
+// вкладки класса AppSearchSuper с чипом пира (inputMessagesFilter* →
+// messages.search, tweb appMessagesManager.ts:9966-9982); заданные вместе,
+// складываются по И. Нулевые значения отключают соответствующий фильтр.
 type SearchFilter struct {
 	SenderID  int64  // фильтр по автору (0 — любой)
 	MediaType string // photo/video/voice/roundvideo/file/link/music ("" — любой)
 	Reaction  string // сообщения, у которых есть эта реакция ("" — любая)
+	Filter    string // media/files/links/music/voice — лексика mediaFilterCond ("" — любой)
+	// MinDate/MaxDate — чипы дат, unix-секунды, обе границы включительно
+	// (см. GlobalSearchQuery); 0 — без границы.
+	MinDate, MaxDate int64
 }
 
-// empty — фильтр не задан (ни автор, ни тип, ни реакция).
-func (f SearchFilter) empty() bool {
-	return f.SenderID == 0 && f.MediaType == "" && f.Reaction == ""
-}
-
-func (i *Interactor) SearchMessages(ctx context.Context, chatID, userID int64, q string, f SearchFilter, offset, limit int) (HistoryResult, error) {
+// SearchMessages — поиск по одному чату (аналог messages.search). Окно —
+// курсор page.OffsetID (номер последнего отданного, см. MediaPage), а не
+// смещение: выдачу листают и поиск в чате, и класс с чипом пира, а она
+// пополняется сверху живыми апдейтами.
+//
+// Пустой q без фильтров — это не «искать нечего», а вся история чата: так
+// отвечает messages.search с пустым q и inputMessagesFilterEmpty, и именно его
+// шлёт класс для чипа пира без текста (tweb appSearchSuper.ts:2233-2236 —
+// запрос уходит, если есть query ИЛИ peerId ИЛИ minDate). Топбар-поиск
+// пустую строку на сервер не шлёт сам (useChatSearch: idle).
+func (i *Interactor) SearchMessages(ctx context.Context, chatID, userID int64, q string, f SearchFilter, page MediaPage) (HistoryResult, error) {
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil {
 		return HistoryResult{}, err
@@ -392,17 +404,11 @@ func (i *Interactor) SearchMessages(ctx context.Context, chatID, userID int64, q
 	if !ok {
 		return HistoryResult{}, domain.ErrNotFound
 	}
-	// Пустой запрос без фильтров искать нечего (tweb: пустая строка + нет чипов).
-	if q == "" && f.empty() {
-		return HistoryResult{}, nil
+	page.Limit = clampSearchLimit(page.Limit)
+	if page.OffsetID < 0 {
+		page.OffsetID = 0
 	}
-	if limit <= 0 || limit > 50 {
-		limit = 20
-	}
-	if offset < 0 {
-		offset = 0
-	}
-	msgs, count, err := i.msgs.SearchMessages(ctx, chatID, q, f, offset, limit)
+	msgs, count, err := i.msgs.SearchMessages(ctx, chatID, q, f, page)
 	if err != nil {
 		return HistoryResult{}, err
 	}
@@ -431,32 +437,104 @@ func (i *Interactor) MessageSeqByDate(ctx context.Context, chatID, userID int64,
 	return i.msgs.MessageSeqByDate(ctx, chatID, from)
 }
 
+// GlobalSearchQuery — запрос глобального поиска по сообщениям всех чатов
+// пользователя (аналог MTProto messages.searchGlobal).
+type GlobalSearchQuery struct {
+	Q      string
+	Filter string // "", media, files, links, music, voice — лексика mediaFilterCond
+	// OffsetRate — курсор: next_rate предыдущей страницы, страница отдаётся
+	// строго ниже него; 0 — с начала (самые новые).
+	//
+	// Курсор, а не смещение, по той же причине, что у MediaPage: кэш вкладки
+	// пополняется сверху живыми апдейтами, и числовой OFFSET на каждое новое
+	// попадание сдвигает окно (дубль или дыра на второй странице). В MTProto
+	// next_rate опаков; у нас messages.id глобально монотонен и выдача им же
+	// упорядочена, поэтому rate — это id последнего отданного сообщения.
+	// offset_id/offset_peer, которые клиент шлёт дословно (tweb
+	// appMessagesManager.ts:9987-10003), серверу не нужны.
+	OffsetRate int64
+	Limit      int
+	// ChatType — вид чатов (ChatTypeMenu, tweb chatTypeMenu/index.tsx):
+	// "" — все, users/groups/channels — флаги users_only/groups_only/
+	// broadcasts_only messages.searchGlobal (tweb appMessagesManager.ts:9997-9999).
+	ChatType string
+	// MinDate/MaxDate — чипы дат, unix-секунды, обе границы включительно
+	// (чип дня шлёт max = начало следующего дня − 1 с, tweb helpers/date.ts:264);
+	// 0 — без границы.
+	MinDate, MaxDate int64
+}
+
+// Виды чатов глобального поиска (GlobalSearchQuery.ChatType).
+const (
+	SearchChatTypeUsers    = "users"
+	SearchChatTypeGroups   = "groups"
+	SearchChatTypeChannels = "channels"
+)
+
+// searchLimitMax — потолок страницы поиска (MTProto режет limit поиска ста).
+const searchLimitMax = 100
+
+// clampSearchLimit — лимит страницы поиска: нет/неположительный — 20,
+// больше потолка — потолок.
+func clampSearchLimit(limit int) int {
+	switch {
+	case limit <= 0:
+		return 20
+	case limit > searchLimitMax:
+		return searchLimitMax
+	}
+	return limit
+}
+
+// GlobalSearchResult — страница глобальной выдачи. NextRate — курсор следующей
+// страницы; 0 — дальше ничего нет (клиент по !nextRate помечает вкладку
+// загруженной, tweb appSearchSuper.ts:2312).
+type GlobalSearchResult struct {
+	Messages []domain.Message
+	Count    int
+	NextRate int64
+}
+
 // GlobalSearchMessages searches messages across every chat the user belongs to
 // (tweb global search). filter ∈ {"", media, files, links, music, voice}; with
-// an empty q AND empty filter there is nothing to search — returns empty.
-func (i *Interactor) GlobalSearchMessages(ctx context.Context, userID int64, q, filter string, offset, limit int) (HistoryResult, error) {
-	if q == "" && filter == "" {
-		return HistoryResult{}, nil
+// an empty q, empty filter AND no dates there is nothing to search — returns empty.
+func (i *Interactor) GlobalSearchMessages(ctx context.Context, userID int64, q GlobalSearchQuery) (GlobalSearchResult, error) {
+	switch q.ChatType {
+	case "", SearchChatTypeUsers, SearchChatTypeGroups, SearchChatTypeChannels:
+	default:
+		// Неизвестный вид — ошибка, а не «все чаты»: молча расширенная выдача
+		// выглядела бы как работающий фильтр.
+		return GlobalSearchResult{}, domain.ErrInvalid
 	}
-	if limit <= 0 || limit > 50 {
-		limit = 20
+	// Искать нечего, только если нет ни текста, ни вкладки, ни даты: чип даты
+	// без текста — запрос (tweb appSearchSuper.ts:2233-2236 — уходит при
+	// query ИЛИ peerId ИЛИ minDate).
+	if q.Q == "" && q.Filter == "" && q.MinDate == 0 && q.MaxDate == 0 {
+		return GlobalSearchResult{}, nil
 	}
-	if offset < 0 {
-		offset = 0
+	// Лишний лимит зажимается до потолка, а не сбрасывается в умолчание:
+	// клиент считает выдачу исчерпанной по короткой странице
+	// (`value.history.length < loadCount`, tweb appSearchSuper.ts:2311), а
+	// loadCount у него до 50 и больше (:2561 — от высоты окна). Сброс в 20
+	// на запрос 60 оборвал бы листание после первой же страницы.
+	q.Limit = clampSearchLimit(q.Limit)
+	if q.OffsetRate < 0 {
+		q.OffsetRate = 0
 	}
-	msgs, count, err := i.msgs.GlobalSearchMessages(ctx, userID, q, filter, offset, limit)
+	res, err := i.msgs.GlobalSearchMessages(ctx, userID, q)
 	if err != nil {
-		return HistoryResult{}, err
+		return GlobalSearchResult{}, err
 	}
+	msgs := res.Messages
 	if e := i.hydrateMedia(ctx, msgs); e != nil {
-		return HistoryResult{}, e
+		return GlobalSearchResult{}, e
 	}
 	_ = i.hydratePolls(ctx, userID, msgs)
 	i.hydrateChecklists(ctx, msgs)
 	i.hydrateGifts(ctx, userID, msgs)
 	i.hydrateGiveaways(ctx, userID, msgs)
 	i.hydratePaidMedia(ctx, userID, msgs)
-	return HistoryResult{Messages: msgs, Count: count}, nil
+	return res, nil
 }
 
 // CallLog — журнал звонков пользователя (вкладка «Звонки»): агрегирует

@@ -1049,21 +1049,34 @@ func (h *ChatHandler) SearchCounters(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"counters": out})
 }
 
+// SearchMessages — GET /chats/{chatID}/search?q=&offset_id=&limit=&sender_id=
+// &media_type=&reaction=&filter=&min_date=&max_date=: поиск в одном чате
+// (аналог messages.search). Потребителей двое: поиск в чате (топбар) и класс
+// AppSearchSuper с чипом пира.
+//
+// offset_id — номер последнего отданного сообщения (0/нет — с начала), как у
+// /media; смещения нет (см. usecasechat.MediaPage). media_type — мелкая
+// лексика топбара, filter — вкладки класса (media/files/links/music/voice);
+// min_date/max_date — unix-секунды, включительно.
 func (h *ChatHandler) SearchMessages(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
 	q := r.URL.Query().Get("q")
-	offset := int(queryInt(r, "offset", 0))
-	limit := int(queryInt(r, "limit", 20))
-	// tweb topbarSearch: необязательные фильтры автор/тип медиа/реакция.
+	page := usecasechat.MediaPage{
+		OffsetID: queryInt(r, "offset_id", 0),
+		Limit:    int(queryInt(r, "limit", 20)),
+	}
 	f := usecasechat.SearchFilter{
 		SenderID:  queryInt(r, "sender_id", 0),
 		MediaType: r.URL.Query().Get("media_type"),
 		Reaction:  r.URL.Query().Get("reaction"),
+		Filter:    r.URL.Query().Get("filter"),
+		MinDate:   queryInt(r, "min_date", 0),
+		MaxDate:   queryInt(r, "max_date", 0),
 	}
-	res, err := h.svc.SearchMessages(r.Context(), chatID, h.meID(r), q, f, offset, limit)
+	res, err := h.svc.SearchMessages(r.Context(), chatID, h.meID(r), q, f, page)
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
 		return
@@ -1123,19 +1136,35 @@ func (h *ChatHandler) Calendar(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewMessagesSearchResultsCalendar(page.Periods, page.Messages, page.Users))
 }
 
-// GlobalSearchMessages — GET /search/messages?q=&filter=&offset=&limit=: поиск
-// по сообщениям всех чатов юзера (сайдбар-поиск, tweb SearchTypes).
+// GlobalSearchMessages — GET /search/messages?q=&filter=&offset_rate=&limit=
+// &chat_type=&min_date=&max_date=: поиск по сообщениям всех чатов юзера
+// (сайдбар-поиск, tweb SearchTypes; аналог messages.searchGlobal).
+//
+// offset_rate — next_rate предыдущей страницы (0/нет — с начала); ответ —
+// messages.messagesSlice с next_rate, пока за страницей что-то есть. Смещения
+// у ручки нет: почему — см. usecasechat.GlobalSearchQuery. chat_type —
+// users|groups|channels (иное — 400); min_date/max_date — unix-секунды,
+// включительно.
 func (h *ChatHandler) GlobalSearchMessages(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query().Get("q")
-	filter := r.URL.Query().Get("filter")
-	offset := int(queryInt(r, "offset", 0))
-	limit := int(queryInt(r, "limit", 20))
-	res, err := h.svc.GlobalSearchMessages(r.Context(), h.meID(r), q, filter, offset, limit)
+	q := usecasechat.GlobalSearchQuery{
+		Q:          r.URL.Query().Get("q"),
+		Filter:     r.URL.Query().Get("filter"),
+		OffsetRate: queryInt(r, "offset_rate", 0),
+		Limit:      int(queryInt(r, "limit", 20)),
+		ChatType:   r.URL.Query().Get("chat_type"),
+		MinDate:    queryInt(r, "min_date", 0),
+		MaxDate:    queryInt(r, "max_date", 0),
+	}
+	res, err := h.svc.GlobalSearchMessages(r.Context(), h.meID(r), q)
+	if errors.Is(err, domain.ErrInvalid) {
+		writeError(w, http.StatusBadRequest, "invalid chat_type")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "search failed")
 		return
 	}
-	writeMessagesSlice(w, r, h.svc, res.Count, res.Messages)
+	writeMessagesSliceRate(w, r, h.svc, res.Count, res.Messages, res.NextRate)
 }
 
 // CallLog — GET /calls?offset=&limit=: журнал звонков (вкладка «Звонки»).
@@ -2255,13 +2284,19 @@ func messagesJSON(ctx context.Context, svc *usecasechat.Interactor, msgs []domai
 // count и запрошенного окна (порт appMessagesManager.ts:9508-9518). Наши
 // reached_top/reached_bottom были сервером, делавшим арифметику клиента.
 func writeMessagesSlice(w http.ResponseWriter, r *http.Request, svc *usecasechat.Interactor, count int, msgs []domain.Message) {
+	writeMessagesSliceRate(w, r, svc, count, msgs, 0)
+}
+
+// writeMessagesSliceRate — тот же кусок с курсором next_rate (глобальный
+// поиск); nextRate <= 0 — ключа в ответе нет.
+func writeMessagesSliceRate(w http.ResponseWriter, r *http.Request, svc *usecasechat.Interactor, count int, msgs []domain.Message, nextRate int64) {
 	me, _ := UserFromContext(r.Context())
 	out, users, err := svc.MessagesContainer(r.Context(), me.ID, msgs)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not render messages")
 		return
 	}
-	writeJSON(w, http.StatusOK, domain.NewMessagesMessagesSlice(count, out, nil, users))
+	writeJSON(w, http.StatusOK, domain.NewMessagesMessagesSlice(count, out, nil, users).WithNextRate(nextRate))
 }
 
 // writeMessagesAll — витрина ПОЛНОГО набора: конструктор messages.messages.

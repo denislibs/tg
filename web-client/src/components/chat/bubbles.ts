@@ -492,7 +492,7 @@ export interface BubblesManagers extends PeerTitleManagers {
      * нефильтрованной.
      */
     searchMessages?(peerId: number, q: string, opts: {
-      reaction?: string, offset?: number, limit?: number,
+      reaction?: string, offsetId?: number, limit?: number,
     }): Promise<{ messages: MyMessage[], count: number }>
   }
   /**
@@ -786,20 +786,6 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * последних сорока, у которых он есть». Это была наша выдумка, а не порт.
    */
   private savedReaction?: string
-  /**
-   * Сколько отфильтрованных сообщений уже забрано — смещение следующей
-   * страницы фильтра.
-   *
-   * РАСХОЖДЕНИЕ С ОРИГИНАЛОМ, И ОНО НАВЯЗАНО РУЧКОЙ. tweb листает
-   * отфильтрованную историю тем же `offset_id`, что и обычную
-   * (`messages.search` принимает `offset_id`/`add_offset`,
-   * appMessagesManager.ts:9970-9984), поэтому отдельного счётчика ему не нужно.
-   * Наш `GET /chats/{id}/search` принимает только `offset`/`limit`
-   * (`chat_handler.go:890-891` → `messagesrepo.go:186` `LIMIT $n OFFSET $n`),
-   * то есть ПОРЯДКОВЫЙ номер в выдаче, — его и приходится вести самому.
-   * Сбрасывается вместе с окном (`cleanup`).
-   */
-  private savedReactionOffset = 0
 
   /** Порт tweb bubbles.ts:599 — бабл-плейсхолдер пустого чата, если он сейчас
    *  показан. Он же гейт «второй раз не рисуем»
@@ -3793,10 +3779,10 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // ФИЛЬТР ПО ТЕГУ — ВТОРАЯ ФОРМА СТРАНИЦЫ, и она у оригинала тоже отдельная:
     // `requestHistory` под `savedReaction` уходит НЕ методом
     // `messages.getHistory`, а `messages.search` (appMessagesManager.ts:9947,
-    // :9970-9984). Отсюда и здесь — ветка до всей арифметики `offsetId`:
-    // адресация у отфильтрованной страницы своя (см. `savedReactionOffset`).
+    // :9970-9984). Отсюда и здесь — ветка до всей арифметики `offsetId`
+    // обычной истории; курсор у неё тот же — `maxId`.
     if(this.savedReaction) {
-      return this.requestSavedReactionHistory(loadCount || backLimit)
+      return this.requestSavedReactionHistory(maxId, loadCount || backLimit)
     }
 
     const { mid } = splitFullMid(maxId)
@@ -3822,36 +3808,41 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * выше, но у оригинала это не отдельный метод, а другая ветка того же
    * (см. `BubblesManagers.messages.searchMessages`).
    *
+   * Курсор — тот же `maxId`, что у обычной истории: самое старое отрисованное
+   * (`loadMoreHistory` → `getRenderedHistory`), в URL — `offset_id`, как у
+   * `messages.search` оригинала (appMessagesManager.ts:9970-9984). Своего
+   * счётчика «сколько забрано» у фильтра нет: предзагрузка (`justLoad`)
+   * ничего не рисует, и счётчик, сдвинутый ею, заставил бы следующую
+   * настоящую страницу перескочить через непоказанное.
+   *
    * Три вывода из ответа, и каждый — оригинала по смыслу:
-   *  • ПОРЯДОК. Выдача поиска идёт от нового к старому (`ORDER BY m.seq DESC`,
-   *    `messagesrepo.go:186`), а `HistoryResult.messages` у нас — по
-   *    возрастанию (контракт `messages.getHistory`); отсюда `reverse()`.
-   *    В tweb тем же занимается `SlicedArray`, который хранит убывающий слайс,
-   *    а наружу отдаёт то, что попросили.
-   *  • НИЗ СВЕДЁН ВСЕГДА. Первая страница фильтра берётся от `offset: 0`, то
-   *    есть от самого нового отмеченного сообщения: ниже него по фильтру ничего
-   *    нет. У tweb тот же вывод делает `historyStorage.searchHistory`
+   *  • ПОРЯДОК. Выдача поиска идёт от нового к старому (`ORDER BY m.seq DESC`),
+   *    а `HistoryResult.messages` у нас — по возрастанию (контракт
+   *    `messages.getHistory`); отсюда `reverse()`. В tweb тем же занимается
+   *    `SlicedArray`, который хранит убывающий слайс, а наружу отдаёт то, что
+   *    попросили.
+   *  • НИЗ СВЕДЁН, когда курсора нет: первая страница фильтра берётся от
+   *    самого нового отмеченного сообщения, ниже него по фильтру ничего нет.
+   *    У tweb тот же вывод делает `historyStorage.searchHistory`
    *    (bubbles.ts:5082-5083 берёт `first[0]` как «верх» окна поиска).
-   *  • ВЕРХ СВЕДЁН, когда выбрано всё: `count` — общее число совпадений
-   *    (`messagesrepo.go:182-185`), поэтому `offset + длина >= count` и есть
-   *    «страниц больше нет».
+   *  • ВЕРХ СВЕДЁН, когда страница короче запрошенной — ветка оригинала без
+   *    `offset_id_offset` (appMessagesManager.ts:9512-9518).
    */
-  private async requestSavedReactionHistory(limit: number): Promise<HistoryResult> {
+  private async requestSavedReactionHistory(maxId: FullMid, limit: number): Promise<HistoryResult> {
     const reaction = this.savedReaction
     const search = this.managers.messages.searchMessages
     if(!reaction || !search) {
       return { messages: [], count: 0, reachedTop: true, reachedBottom: true }
     }
 
-    const offset = this.savedReactionOffset
-    const { messages, count } = await search(this.chat.peerId, '', { reaction, offset, limit })
-    this.savedReactionOffset = offset + messages.length
+    const offsetId = splitFullMid(maxId).mid || 0
+    const { messages, count } = await search(this.chat.peerId, '', { reaction, offsetId, limit })
 
     return {
       messages: messages.slice().reverse(),
       count,
-      reachedTop: this.savedReactionOffset >= count,
-      reachedBottom: offset === 0,
+      reachedTop: messages.length < limit,
+      reachedBottom: offsetId === 0,
     }
   }
 
@@ -6126,12 +6117,6 @@ export default class ChatBubbles implements BubbleGroupsHost {
     this.uploads.clear()
     this.readPromise = undefined
     this.renderReadMaxSeq = 0
-    // Смещение отфильтрованной выдачи принадлежит ПРОШЛОМУ окну — новое окно
-    // фильтра начинается от самого нового отмеченного сообщения. У оригинала
-    // ту же роль играет смена ключа хранилища истории (`getHistoryStorageKey`
-    // включает `savedReaction`, `getHistoryStorageKey.ts:18-22`): под новым
-    // ключом лежит пустой слайс, и листать его тоже не с чего.
-    this.savedReactionOffset = 0
     this.getHistoryTopPromise = this.getHistoryBottomPromise = undefined
     // tweb bubbles.ts:4960 — невостребованный сдвиг градиента принадлежит
     // ПРОШЛОМУ окну: прокрутка нового окна не должна его тратить.

@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"strings"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -98,12 +99,74 @@ func (i *Interactor) JoinPublic(ctx context.Context, username string, userID int
 	return i.groups.AddMember(ctx, id, userID, domain.RoleSubscriber, 0)
 }
 
-// SearchChats returns public chats matching q.
-func (i *Interactor) SearchChats(ctx context.Context, q string, limit int) ([]domain.ChatRecord, error) {
-	if limit <= 0 || limit > 50 {
-		limit = 20
+// PeerSearchResult — выдача поиска пиров (contacts.search): «свои»
+// попадания (my_results) и глобальные (results).
+type PeerSearchResult struct {
+	MyChats []domain.ChatRecord
+	MyUsers []domain.UserReal
+	Chats   []domain.ChatRecord
+	Users   []domain.UserReal
+}
+
+// peerSearchLimitMax — потолок выдачи поиска пиров: вкладка Channels
+// просит 200 (tweb appSearchSuper.ts:1977, «will get filtered anyway»).
+const peerSearchLimitMax = 200
+
+// SearchPeers — поиск пиров для глобального поиска (аналог contacts.search):
+// публичные чаты по @username/названию и пользователи, каждый вид — до limit
+// (нет — 20, больше потолка — потолок). Попадания делятся на «свои» — чат,
+// где зритель участник, пользователь из контактов или с общим личным чатом —
+// и глобальные: класс рисует my_results в группе «Chats», results — в
+// «Global search» (tweb appSearchSuper.ts:1427-1428), и свой диалог в
+// «Global search» был бы дублем. Принадлежность спрашивается одним вызовом
+// на всю выдачу. Пустой q — пусто: префикс «» совпал бы со всей базой.
+func (i *Interactor) SearchPeers(ctx context.Context, viewerID int64, q string, limit int) (PeerSearchResult, error) {
+	q = strings.TrimSpace(q)
+	if q == "" {
+		return PeerSearchResult{}, nil
 	}
-	return i.search.SearchChats(ctx, q, limit)
+	switch {
+	case limit <= 0:
+		limit = 20
+	case limit > peerSearchLimitMax:
+		limit = peerSearchLimitMax
+	}
+	chats, err := i.search.SearchChats(ctx, q, limit)
+	if err != nil {
+		return PeerSearchResult{}, err
+	}
+	users, err := i.search.SearchUsers(ctx, q, limit)
+	if err != nil {
+		return PeerSearchResult{}, err
+	}
+	chatIDs := make([]int64, len(chats))
+	for k, c := range chats {
+		chatIDs[k] = c.ID
+	}
+	userIDs := make([]int64, len(users))
+	for k, u := range users {
+		userIDs[k] = u.ID
+	}
+	ownChats, ownUsers, err := i.search.OwnPeers(ctx, viewerID, chatIDs, userIDs)
+	if err != nil {
+		return PeerSearchResult{}, err
+	}
+	var res PeerSearchResult
+	for _, c := range chats {
+		if ownChats[c.ID] {
+			res.MyChats = append(res.MyChats, c)
+		} else {
+			res.Chats = append(res.Chats, c)
+		}
+	}
+	for _, u := range users {
+		if ownUsers[u.ID] {
+			res.MyUsers = append(res.MyUsers, u)
+		} else {
+			res.Users = append(res.Users, u)
+		}
+	}
+	return res, nil
 }
 
 // SimilarChannels рекомендует публичные каналы, похожие на chatID по аудитории.
@@ -112,12 +175,4 @@ func (i *Interactor) SimilarChannels(ctx context.Context, chatID, viewerID int64
 		limit = 30
 	}
 	return i.search.SimilarChannels(ctx, chatID, viewerID, limit)
-}
-
-// SearchUsers returns users matching q.
-func (i *Interactor) SearchUsers(ctx context.Context, q string, limit int) ([]domain.UserReal, error) {
-	if limit <= 0 || limit > 50 {
-		limit = 20
-	}
-	return i.search.SearchUsers(ctx, q, limit)
 }

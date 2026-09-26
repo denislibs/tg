@@ -13,7 +13,8 @@ import (
 
 // SearchRepo is a postgres-backed adapter implementing the chat usecase's
 // SearchRepo port: public-chat discovery by @username/title prefix (ordered by
-// member_count), user discovery by username/display_name prefix, and
+// member_count), user discovery by username/display_name prefix, the «own»
+// split of those hits (OwnPeers), and
 // case-insensitive @username resolution for join-by-username. The username
 // column is citext, so ILIKE and equality are already case-insensitive. Like the
 // sibling repos every query runs through querier(ctx, pool).
@@ -107,6 +108,47 @@ func (r *SearchRepo) SimilarChannels(ctx context.Context, chatID, viewerID int64
 		out = append(out, c)
 	}
 	return out, total, rows.Err()
+}
+
+// OwnPeers делит попадания поиска пиров на «свои» (my_results contacts.search):
+// чаты, где viewerID участник, и пользователи из его контактов или с общим
+// личным чатом. Один запрос на всю выдачу — три ветки UNION по индексам:
+// PK chat_members (chat_id, user_id), PK contacts (owner_id, user_id) и
+// idx_chat_members_user для личных чатов зрителя.
+func (r *SearchRepo) OwnPeers(ctx context.Context, viewerID int64, chatIDs, userIDs []int64) (map[int64]bool, map[int64]bool, error) {
+	chats, users := map[int64]bool{}, map[int64]bool{}
+	if len(chatIDs) == 0 && len(userIDs) == 0 {
+		return chats, users, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT true, cm.chat_id FROM chat_members cm
+		  WHERE cm.user_id = $1 AND cm.chat_id = ANY($2)
+		 UNION
+		 SELECT false, ct.user_id FROM contacts ct
+		  WHERE ct.owner_id = $1 AND ct.user_id = ANY($3)
+		 UNION
+		 SELECT false, other.user_id FROM chat_members me
+		   JOIN chats c ON c.id = me.chat_id AND c.type = 'private'
+		   JOIN chat_members other ON other.chat_id = me.chat_id AND other.user_id <> $1
+		  WHERE me.user_id = $1 AND other.user_id = ANY($3)`,
+		viewerID, chatIDs, userIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var isChat bool
+		var id int64
+		if err := rows.Scan(&isChat, &id); err != nil {
+			return nil, nil, err
+		}
+		if isChat {
+			chats[id] = true
+		} else {
+			users[id] = true
+		}
+	}
+	return chats, users, rows.Err()
 }
 
 func (r *SearchRepo) PublicChatByUsername(ctx context.Context, username string) (int64, error) {

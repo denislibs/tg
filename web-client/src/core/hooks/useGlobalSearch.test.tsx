@@ -16,7 +16,7 @@ function msg(id: number, text: string): MyMessage {
   return makeMessage({ id, peerId: 1, fromId: 1, text })
 }
 
-type SearchPage = { messages: MyMessage[]; count: number }
+type SearchPage = { messages: MyMessage[]; count: number; nextRate?: number }
 
 // Управляемый deferred-промис: тест сам решает, когда и в каком порядке
 // резолвить страницы searchGlobal (иначе гонку не воспроизвести).
@@ -31,7 +31,7 @@ function deferred<T>() {
 function fakeManagers(calls: ReturnType<typeof deferred<SearchPage>>[]) {
   return {
     messages: {
-      searchGlobal: (_q: string, _filter: string, _offset: number, _limit: number) => {
+      searchGlobal: (_q: string, _filter: string, _opts: { offsetRate?: number; limit?: number }) => {
         const d = deferred<SearchPage>()
         calls.push(d)
         return d.promise
@@ -65,23 +65,23 @@ describe('useGlobalSearch', () => {
     const managers = fakeManagers(calls)
     const { result, rerender } = mount(managers, 'old', 0)
 
-    // 1) дебаунс 250мс -> первый вызов searchGlobal('old', offset=0)
+    // 1) дебаунс 250мс -> первый вызов searchGlobal('old') без курсора
     act(() => { vi.advanceTimersByTime(250) })
     expect(calls).toHaveLength(1)
 
     // 2) резолвим первую страницу 'old' -> msgs = страница A
     const pageA = [msg(1, 'a1'), msg(2, 'a2')]
     await act(async () => {
-      calls[0]!.resolve({ messages: pageA, count: 100 })
+      calls[0]!.resolve({ messages: pageA, count: 100, nextRate: 2 })
       await Promise.resolve()
     })
     expect(result.current.msgs).toEqual(pageA)
 
-    // 3) скролл к нижнему краю -> второй вызов searchGlobal('old', offset=2) — НЕ резолвим
+    // 3) скролл к нижнему краю -> второй вызов searchGlobal('old', offsetRate=2) — НЕ резолвим
     act(() => { result.current.onScroll(bottomScrollEvent()) })
     expect(calls).toHaveLength(2)
 
-    // 4) rerender с q='new' -> дебаунс -> третий вызов searchGlobal('new', offset=0);
+    // 4) rerender с q='new' -> дебаунс -> третий вызов searchGlobal('new') без курсора;
     //    резолвим его -> msgs = страница B
     rerender({ q: 'new', tab: 0, filter: '' })
     act(() => { vi.advanceTimersByTime(250) })
