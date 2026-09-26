@@ -109,7 +109,7 @@ import { messageToConvMsg } from '@core/messageToConvMsg'
 import { dayLabel } from '@core/format/dayLabel'
 import { fmtViews } from '@core/format/fmtViews'
 import { getMessageText, isOurMessage, isOutMessage, type MessageReal, type MessageReplies, type MessageService, type MyMessage, type OurMessageChat, type Reaction } from '@core/models'
-import { getOutputPeer, isAnyChat, toPeerId } from '@core/peers/peerId'
+import { getOutputPeer, getPeerId, isAnyChat, toPeerId } from '@core/peers/peerId'
 import { hasReactionEmoticon } from '@core/reactions/messageReactions'
 import type { HistoryArgs, HistoryResult } from '@core/managers/messagesManager'
 import { bubbleClasses, type BubbleCtx } from '../messages/bubbleClasses'
@@ -495,6 +495,17 @@ export interface BubblesManagers extends PeerTitleManagers {
     searchMessages?(peerId: number, q: string, opts: {
       reaction?: string, offsetId?: number, limit?: number,
     }): Promise<{ messages: MyMessage[], count: number }>
+    /**
+     * Оригинал ответа `mid`, которого нет в окне, — порт
+     * `appMessagesManager.fetchMessageReplyTo` (tweb :13826). `undefined` —
+     * сервер ответил дырой. Зовёт ветка «Loading» шапки ответа
+     * (`ChatBubbles.fetchMessageReplyTo`).
+     *
+     * Опционален по той же причине, что `react`/`unreact`: без него шапка
+     * ответа на сообщение вне окна остаётся «Загрузкой», — так поднимается тест,
+     * которому ответы не нужны.
+     */
+    fetchMessageReplyTo?(peerId: number, mid: number): Promise<MyMessage | undefined>
   }
   /**
    * Порт `appStickersManager.getGreetingSticker`
@@ -1496,16 +1507,86 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // Ответ на корень треда шапки не даёт (:9377-9378).
     if (replyToMid === replyTo.reply_to_top_id) return
 
-    const container = createReplyContainer({ replyTo, original: this.getMessage(replyToMid) })
-    // Адрес оригинала — на самом узле: по нему прыгает клик, и он же нужен
-    // догрузке (tweb хранит его в `bubble.dataset.replyToPeerId`/`mid`).
+    // tweb messageRender.ts:472-479 — оригинал ищется В ЧАТЕ ОРИГИНАЛА
+    // (`reply_to_peer_id`, иначе свой). Окно у ленты одно и своего чата, поэтому
+    // ответ из чужого чата в нём не ищется вовсе: номер там из другого
+    // пространства и совпал бы с чужим сообщением этого окна.
+    const replyToPeerId = replyTo.reply_to_peer_id ? getPeerId(replyTo.reply_to_peer_id) : this.peerId
+    const original = replyToPeerId === this.peerId ? this.getMessage(replyToMid) : undefined
+    const { container, loading } = createReplyContainer({
+      replyTo, original, middleware: this.getMiddleware(), managers: this.managers,
+    })
+    // Адрес оригинала — на самом узле: по нему прыгает клик (tweb хранит его в
+    // `bubble.dataset.replyToPeerId`/`mid`).
     container.dataset.replyToMid = String(replyToMid)
+    if (loading) this.fetchMessageReplyTo(message)
 
     bubbleContainer.prepend(container)
 
     const attachment = bubbleContainer.querySelector<HTMLElement>('.attachment')
     if (!attachment && messageDiv.textContent) container.classList.add('mb-shorter')
     attachment?.classList.add('no-brt')
+  }
+
+  /**
+   * Догрузка оригинала, которого у ленты нет, — вызов
+   * `appMessagesManager.fetchMessageReplyTo(message)` из ветки «Loading»
+   * `setReply` (tweb messageRender.ts:524-529).
+   *
+   * ДОСТАВКА ОТВЕТА — расхождение по транспорту, не по поведению. Оригинал
+   * результат вызова отбрасывает: приезд объявляет событие
+   * `messages_downloaded`, а лента по реестру `needUpdate` (bubbles.ts:709,
+   * наполняет `setReply`, :487-496) находит ждущие баблы и перерисовывает им
+   * шапку (`updateMessageReply`, :3049-3120). Реестр нужен ему потому, что
+   * оригинал он читает из синхронного зеркала всех сообщений
+   * (`apiManagerProxy.getMessageByPeer`), куда догруженное ложится само. У нас
+   * зеркало держит только ОКНА (`core/history/messagesMirror.ts`), и
+   * догруженный оригинал в окно не ложится — у него нет бабла. Поэтому
+   * оригинал приезжает RPC-ответом тому, кто спросил, а реестр заменяет
+   * замыкание: адрес бабла известен в момент вызова. Запросы одного хода
+   * владелец склеивает в один вызов ручки сам (`reloadMessage`), как и у
+   * оригинала.
+   *
+   * Ошибка сети шапку не трогает — она остаётся «Загрузкой» (см. расхождение
+   * в докблоке `reloadMessage` владельца).
+   */
+  private fetchMessageReplyTo(message: MessageReal) {
+    const middleware = this.getMiddleware()
+    this.managers.messages.fetchMessageReplyTo?.(message.peerId, message.id).then((original) => {
+      if (!middleware()) return
+      this.updateMessageReply(message.id, original)
+    }, noop)
+  }
+
+  /**
+   * Перерисовка шапки ответа по приезду оригинала — порт
+   * `updateMessageReply` → `MessageRender.setReply({fromUpdate: true})`
+   * (tweb bubbles.ts:3049-3120, messageRender.ts:595-613): новый узел встаёт
+   * на место старого, унося с собой классы раскладки `floating-part` и
+   * `mb-shorter`, которые ставил не сам заголовок.
+   *
+   * `original === undefined` — владелец спросил сервер и получил дыру. Ссылку
+   * он пометил `reply_to_msg_deleted` (`clearMessageReplyTo`), но пометка едет
+   * ОТДЕЛЬНОЙ операцией окна и может прийти позже ответа — у оригинала
+   * помеченное сообщение уже лежит в зеркале к моменту события. Поэтому
+   * пометка применяется здесь же, из ответа владельца, а не ждётся из окна:
+   * иначе шапка снова сказала бы «Загрузка» про то, чего уже точно нет.
+   */
+  private updateMessageReply(mid: number, original: MyMessage | undefined) {
+    const bubble = this.getBubble(this.peerId, mid)
+    const current = bubble?.querySelector<HTMLElement>('.bubble-content > .reply')
+    const message = this.getMessage(mid)
+    if (!current || message?._ !== 'message' || !message.reply_to) return
+
+    const replyTo = original ? message.reply_to : { ...message.reply_to, reply_to_msg_deleted: true }
+    const { container } = createReplyContainer({
+      replyTo, original, middleware: this.getMiddleware(), managers: this.managers,
+    })
+    for (const className of ['floating-part', 'mb-shorter']) {
+      if (current.classList.contains(className)) container.classList.add(className)
+    }
+    container.dataset.replyToMid = current.dataset.replyToMid
+    current.replaceWith(container)
   }
 
   /**
@@ -1857,8 +1938,10 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * (`messageActionTextNewUnsafe.ts:400-419`: `getMessageByPeer(peerId,
    * reply_to_mid)` → `wrapLinkToMessage`, а без сообщения — ключ
    * `ActionPinnedNoText`). Догрузка отсутствующего оригинала
-   * (`fetchMessageReplyTo`, :411-413) не портирована: этой ручки у ленты нет —
-   * тот же пробел, что у превью ответа (`renderReply` берёт оригинал из окна).
+   * (`fetchMessageReplyTo`, :411-413) здесь не зовётся: ручка у владельца есть
+   * (её зовёт шапка ответа, `renderReply`), но пилюля перерисовывается правкой
+   * (`onMessageEdit`), которая снова читает оригинал из окна, а догруженное в
+   * окно не ложится — перерисовать превью ей нечем.
    *
    * `is-group-first`/`is-group-last` не вешаются здесь (в tweb `is-group-last`
    * ставит сама ветка по `pFlags.is_single`, :7272-7274): у нас «пилюля не

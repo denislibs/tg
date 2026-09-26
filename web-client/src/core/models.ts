@@ -175,6 +175,12 @@ export interface MessageReplyHeader {
   quote_text?: string
   quote_entities?: MessageEntity[]
   quote_offset?: number
+  /** КЛИЕНТСКИЙ параметр (на проводе его нет; tweb объявляет его в
+   *  `schema_additional_params.json`): владелец запросил оригинал по адресу, а
+   *  сервер ответил дырой. Ставит `messages.fetchMessageReplyTo` (порт
+   *  `clearMessageReplyTo`, tweb appMessagesManager.ts:13813-13824); по нему
+   *  шапка ответа показывает «Удалённое сообщение», не спрашивая сервер снова. */
+  reply_to_msg_deleted?: boolean
 }
 
 /**

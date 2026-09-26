@@ -293,6 +293,13 @@ bubbles.ts `onBubblesClick`, стр. 3520–3616:
 5. `setInnerPeer({peerId: replyToPeerId, lastMsgId: replyToMid, threadId, ...})` (3605–3613) →
    скролл к сообщению + `highlightBubble`.
 
+**У нас:** ветка клика — `ChatBubbles.onContainerClick` → `jumpToMessage` по
+`data-reply-to-mid` шапки. Шапка ответа на сообщение вне окна больше не пишет «Удалённое
+сообщение»: пока оригинал едет — «Загрузка», догрузку ведёт воркер
+(`messages.fetchMessageReplyTo`), дыру на сервере он помечает `reply_to_msg_deleted`
+(см. `bubbles.md` §4.19). Тост `DeletedMessageToast` на клике по такой шапке и тосты
+`QuotePrivate`/`ReplyPrivate` не портированы — ключей в словаре нет.
+
 Подсветка — `highlightBubble` (bubbles.ts:4765–4778): класс `is-highlighted` на 2000мс
 (с рестартом через reflow). Возврат — кнопка go-down (стр. 3853–3895): пока `followStack`
 непуст, кнопка возвращает по стеку (`followStack.pop()` → `setMessageId({lastMsgId})`),

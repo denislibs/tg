@@ -126,13 +126,42 @@ describe('ChatBubbles — reply-заголовок', () => {
     expect(reply.classList.contains('quote-like-icon')).toBe(true)
   })
 
-  it('оригинала нет в окне — шапка честно говорит об этом, а не молчит', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([replying(2, 999)]))
+  it('оригинала нет в окне — «Загрузка» и запрос владельцу, а не «Удалённое сообщение» (tweb messageRender.ts:524-529)', async () => {
+    const managers = managersWith([replying(2, 999)])
+    let answer!: (m: MyMessage | undefined) => void
+    const fetchMessageReplyTo = vi.fn((_peerId: number, _mid: number) => new Promise<MyMessage | undefined>((resolve) => { answer = resolve }))
+    managers.messages.fetchMessageReplyTo = fetchMessageReplyTo
+    bubbles = new ChatBubbles(chatContext(), managers)
     await openFeed(bubbles)
     await settle()
 
-    const reply = bubbleOf(bubbles, 2).querySelector<HTMLElement>('.reply')!
-    expect(reply.querySelector('.reply-subtitle')!.textContent).toBe('Deleted message')
+    expect(fetchMessageReplyTo).toHaveBeenCalledWith(CHAT, 2)
+    let reply = bubbleOf(bubbles, 2).querySelector<HTMLElement>('.reply')!
+    expect(reply.querySelector('.reply-title')!.textContent).toBe('Loading...')
+    expect(reply.querySelector('.reply-subtitle')).toBeNull()
+
+    // Сервер ответил дырой — «Удалённое сообщение» заголовком, без подзаголовка.
+    answer(undefined)
+    await settle()
+    reply = bubbleOf(bubbles, 2).querySelector<HTMLElement>('.reply')!
+    expect(reply.querySelector('.reply-title')!.textContent).toBe('Deleted message')
+    expect(reply.querySelector('.reply-subtitle')).toBeNull()
+    expect(reply.dataset.replyToMid).toBe('999')
+  })
+
+  it('ответ из ДРУГОГО чата не ищется в своём окне (tweb messageRender.ts:472-479)', async () => {
+    // Номер №1 чужого чата совпадает с №1 этого окна — это разные сообщения.
+    const crossChat = replying(2, 1)
+    if (crossChat._ === 'message') crossChat.reply_to = { ...crossChat.reply_to!, reply_to_peer_id: { _: 'peerUser', user_id: 99 } }
+    const managers = managersWith([plain(1, 'своё сообщение'), crossChat])
+    const fetchMessageReplyTo = vi.fn(async (_peerId: number, _mid: number): Promise<MyMessage | undefined> => undefined)
+    managers.messages.fetchMessageReplyTo = fetchMessageReplyTo
+    bubbles = new ChatBubbles(chatContext(), managers)
+    await openFeed(bubbles)
+    await settle()
+
+    expect(fetchMessageReplyTo).toHaveBeenCalledWith(CHAT, 2)
+    expect(bubbleOf(bubbles, 2).querySelector('.reply')!.textContent).not.toContain('своё сообщение')
   })
 
   it('клик по шапке прыгает к оригиналу и подсвечивает его', async () => {

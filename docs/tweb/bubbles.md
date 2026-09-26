@@ -560,8 +560,11 @@ divAndCaption.ts:11–29):
 div.reply.quote-like.quote-like-hoverable.quote-like-border[.quote-like-icon.reply-multiline][.is-media][.mb-shorter][.floating-part]
   └ div.reply-content
       ├ div.reply-media[.is-round]        ← превью 32×32, prepend только если setMedia
-      ├ div.reply-title > span.peer-title (или fragment с Icon channel/group/private для reply_from)
-      └ div.reply-subtitle                ← текст оригинала / квота / «Story» / «Deleted message»
+      ├ div.reply-title > span.peer-title (или fragment с Icon channel/group/private для reply_from;
+      │                                    без оригинала — «Loading» / «Deleted message»)
+      └ div.reply-subtitle                ← текст оригинала / квота / «Story»; без сообщения узла
+                                            нет вовсе и на `.reply` встаёт `reply-no-subtitle`
+                                            (wrappers/reply.ts:66-69)
 ```
 
 - Цвет: `setPeerColorToElement` + канвас-паттерн `reply-background-canvas` по peerId автора
@@ -575,8 +578,31 @@ div.reply.quote-like.quote-like-hoverable.quote-like-border[.quote-like-icon.rep
   `floating-part` и живёт в `name-with-reply.floating-part` над медиа
   (bubbles.ts:9577–9596), цвет — highlighting (полупрозрачная подложка,
   `useHighlightingColor: true`, messageRender.ts:571).
-- Оригинал недоступен → «Loading» + `fetchMessageReplyTo`, бабл встаёт в очередь
-  `needUpdate`; при приходе оригинала reply заменяется (`updateMessageReply`, bubbles.ts:2626).
+- Оригинал недоступен (messageRender.ts:506-529): есть `reply_from` → автор атрибуции;
+  ссылка помечена `reply_to_msg_deleted` → заголовок «Deleted message»; иначе заголовок
+  «Loading» + `fetchMessageReplyTo`, бабл встаёт в очередь `needUpdate`; при приходе
+  оригинала (`messages_downloaded`) reply заменяется (`updateMessageReply`,
+  bubbles.ts:3049-3120). Сервер ответил дырой → `clearMessageReplyTo` ставит
+  `reply_to_msg_deleted` (appMessagesManager.ts:13813-13824).
+
+**У нас (шапка ответа, `components/chat/replyContainer.ts` + `ChatBubbles.renderReply`):**
+выбор заголовка — ветки `setReply` 1:1; автор — живой `PeerTitle` (объявляет пробел
+зеркала пиров и перерисовывается приехавшей карточкой), подзаголовка без сообщения нет.
+Оригинал ищется в окне ленты только для ответа в своём чате (`reply_to_peer_id`).
+Догрузка — `messages.fetchMessageReplyTo` воркера (порт `fetchMessageReplyTo` →
+`reloadMessage` → `fetchSingleMessages`: адреса одного хода склеиваются в один
+`GET /chats/{peer}/messages?ids=`, догруженное ложится в SSOT без окна, дыра помечает
+`reply_to_msg_deleted` и уходит окну `patch`-операцией). **Расхождение по транспорту:**
+оригинал приезжает RPC-ответом тому, кто спросил (`ChatBubbles.fetchMessageReplyTo` →
+`updateMessageReply`), а не событием `messages_downloaded` с реестром `needUpdate` —
+зеркало вкладки держит только окна, догруженное в него не ложится. Следствие: бабл,
+пересобранный целиком (новое окно), снова на миг показывает «Loading», пока владелец
+отвечает из SSOT. Не портированы: цвет автора и канвас-паттерн, превью `.reply-media`,
+иконки атрибуции `reply_from`, автор пересланного оригинала (`fwdFromId`), тост
+`DeletedMessageToast` на клике по помеченной шапке. Превью закреплённого в служебной
+пилюле (`renderServiceMessage`) догрузку пока не зовёт. Пины —
+`chat/bubbles.replyTarget.test.ts` (ответы стенда, настоящий менеджер + зеркало + лента),
+`chat/bubbles.reply.test.ts`, `core/managers/messagesManager.test.ts`.
 - Poll-option reply: иконка `checkround_filled` + текст ответа (replyContainer.ts:195–204).
 
 ## 4.20 Имя / forwarded / via-бот (bubbles.ts:9323–9649)
