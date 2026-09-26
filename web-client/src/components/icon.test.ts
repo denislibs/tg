@@ -18,16 +18,16 @@ import Icons from '@core/tgico-icons'
 
 describe('Icon — span.tgico с глифом', () => {
   it('кладёт КОДПОИНТ иконки, а не её имя', () => {
-    const span = Icon('nosound')
+    const span = Icon('nosound_filled')
     expect(span.tagName.toLowerCase()).toBe('span')
     expect(span.className).toBe('tgico')
-    expect(span.textContent).toBe(String.fromCharCode(parseInt(Icons.nosound, 16)))
+    expect(span.textContent).toBe(String.fromCharCode(parseInt(Icons.nosound_filled, 16)))
     expect(span.textContent).not.toBe('nosound')
     expect(span.textContent!.length).toBe(1)
   })
 
   it('дополнительные классы приезжают ПОСЛЕ tgico (на них висит размер/позиция глифа)', () => {
-    const span = Icon('largeplay', 'button-icon', 'video-time-icon')
+    const span = Icon('largeplay_filled', 'button-icon', 'video-time-icon')
     expect(span.className).toBe('tgico button-icon video-time-icon')
   })
 

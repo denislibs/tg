@@ -196,11 +196,15 @@ samp {
 }
 
 /* Telegram icon font (tgico) — ported 1:1 from tweb (icomoon export). Glyphs are
-   addressed by codepoint via the <TgIcon> component / tgico-icons map. */
+   addressed by codepoint via the <TgIcon> component / tgico-icons map.
+   Хвост `?xgs33f` — штамп icomoon-выгрузки tweb (`scss/tgico/_style.scss`,
+   tweb 2197fee9c): SW держит `/fonts/` cache-first без ревалидации
+   (`public/sw.js`, IMMUTABLE_RE), и без смены URL новая карта кодов встала бы
+   поверх старого шрифта из кэша. Меняется вместе со шрифтом. */
 @font-face {
   font-family: 'tgico';
-  src: url('/fonts/tgico.woff') format('woff'),
-       url('/fonts/tgico.ttf') format('truetype');
+  src: url('/fonts/tgico.woff?xgs33f') format('woff'),
+       url('/fonts/tgico.ttf?xgs33f') format('truetype');
   font-weight: normal;
   font-style: normal;
   font-display: block;

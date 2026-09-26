@@ -80,7 +80,7 @@ export default function TwoStepVerification({ onBack }: { onBack: () => void }) 
         />
         <div style={{ position: 'absolute', right: 10, top: 8 }}>
           <IconButton size="small" color="var(--secondary-text-color)" onClick={() => setShowPw((v) => !v)} aria-label="toggle password">
-            <TgIcon name={showPw ? 'eye2' : 'eye1'} size={22} />
+            <TgIcon name={showPw ? 'eye2_filled' : 'eye1_filled'} size={22} />
           </IconButton>
         </div>
       </div>

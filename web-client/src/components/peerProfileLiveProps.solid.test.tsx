@@ -95,12 +95,12 @@ afterEach(() => {
 describe('Живые пропы моста mountSolid доезжают до PeerProfile (Critical, финальный раунд волны)', () => {
   it('Statistics: отсутствует на первом кадре, появляется в DOM после update({showStatistics: true}) и зовёт СВЕЖИЙ onOpenStatistics', () => {
     const { host, update } = mountBridge({ ...baseProps })
-    expect(rowByIcon(host, 'statistics'), 'первый кадр — гейта ещё нет, как в проде до ответа useGroupInfo').toBeNull()
+    expect(rowByIcon(host, 'statistics_filled'), 'первый кадр — гейта ещё нет, как в проде до ответа useGroupInfo').toBeNull()
 
     const onOpenStatistics = vi.fn()
     update({ showStatistics: true, onOpenStatistics })
 
-    const row = rowByIcon(host, 'statistics')
+    const row = rowByIcon(host, 'statistics_filled')
     expect(row, 'мутация: снимок вместо геттера — секция навсегда осталась бы скрытой').not.toBeNull()
     row!.click()
     expect(onOpenStatistics).toHaveBeenCalledTimes(1)

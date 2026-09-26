@@ -72,7 +72,7 @@ export default function PasscodeLock({ onBack }: { onBack: () => void }) {
       />
       <div style={{ position: 'absolute', right: 10, top: 8 }}>
         <IconButton size="small" color="var(--secondary-text-color)" onClick={() => setShow((v) => !v)} aria-label="toggle passcode">
-          <TgIcon name={show ? 'eye2' : 'eye1'} size={22} />
+          <TgIcon name={show ? 'eye2_filled' : 'eye1_filled'} size={22} />
         </IconButton>
       </div>
     </div>

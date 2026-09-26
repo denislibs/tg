@@ -41,7 +41,7 @@ const TOOLS: { type: ComposerEntityType; icon: IconName; activeIcon?: IconName; 
   { type: 'messageEntityStrike', icon: 'strikethrough', title: 'Зачёркнутый' },
   { type: 'messageEntityCode', icon: 'monospace', title: 'Моноширинный' },
   { type: 'messageEntitySpoiler', icon: 'spoiler', title: 'Спойлер' },
-  { type: 'messageEntityBlockquote', icon: 'quote_outline', activeIcon: 'quote', title: 'Цитата' },
+  { type: 'messageEntityBlockquote', icon: 'quote', activeIcon: 'quote_filled', title: 'Цитата' },
 ]
 
 // tweb проверяет ссылку через richTextProcessor/matchUrl — подсистемы у нас нет,

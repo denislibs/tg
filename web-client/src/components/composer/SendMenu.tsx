@@ -48,7 +48,7 @@ export default function SendMenu({ open, onSilent, onSchedule, onWhenOnline, onR
   const hidden = (available: boolean) => open && !available
   return (
     <div className={classNames('btn-menu', 'menu-send', 'top-left', open ? 'active' : '')}>
-      <Item icon="nosound" label={t('Chat.Send.WithoutSound')} onClick={onSilent} />
+      <Item icon="nosound_filled" label={t('Chat.Send.WithoutSound')} onClick={onSilent} />
       <Item icon="schedule" label={t('Chat.Send.ScheduledMessage')} hide={hidden(!!onSchedule)} onClick={onSchedule} />
       {/* «Напоминание» вместо «Запланировать» tweb показывает только в «Избранном»
           (sendContextMenu.ts:38: peerId === myId → type 'reminder'); у нас этой

@@ -319,7 +319,7 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
             willObserveSound = true
           }
 
-          spanTime.append(Icon('nosound', 'video-time-icon'))
+          spanTime.append(Icon('nosound_filled', 'video-time-icon'))
         } else {
           needPlayButton = true
         }
@@ -334,10 +334,10 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
     }
 
     if (needPlayButton) {
-      // tweb `Button('btn-circle video-play position-center', {icon: 'largeplay', noRipple: true})`
+      // tweb `Button('btn-circle video-play position-center', {icon: 'largeplay_filled', noRipple: true})`
       spanPlay = document.createElement('button')
       spanPlay.className = 'btn-circle video-play position-center'
-      spanPlay.append(Icon('largeplay', 'button-icon'))
+      spanPlay.append(Icon('largeplay_filled', 'button-icon'))
       container.append(spanPlay)
     }
   }
@@ -596,7 +596,7 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
         if (spanTime) {
           spanTime.classList.add('is-error')
           const previousIcon = spanTime.querySelector('.video-time-icon')
-          const newIcon = Icon('sendingerror', 'video-time-icon')
+          const newIcon = Icon('sendingerror_filled', 'video-time-icon')
           if (previousIcon) previousIcon.replaceWith(newIcon)
           else spanTime.append(newIcon)
         }
@@ -847,7 +847,7 @@ function wrapRound({
 
     const throttledTimeUpdate = throttle(() => { fastRaf(onTimeUpdate) }, 1000, false)
 
-    const noSoundIcon = Icon('nosound', 'video-time-icon')
+    const noSoundIcon = Icon('nosound_filled', 'video-time-icon')
     const setIsPaused = (paused: boolean) => {
       divRound.classList.toggle('is-paused', paused)
       if (paused) spanTime?.append(noSoundIcon)

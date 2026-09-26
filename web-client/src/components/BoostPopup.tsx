@@ -43,7 +43,7 @@ export default function BoostPopup({ chatId, onClose }: { chatId: number; onClos
       <div className={s.body}>
         <div className={s.bar}>
           <div className={s.hint} style={{ left: `${Math.min(Math.max(progress * 100, 10), 90)}%` }}>
-            <TgIcon name="boost" size={13} color="#fff" />
+            <TgIcon name="boost_filled" size={13} color="#fff" />
             <span>{boosts}</span>
           </div>
           <div className={s.track}>
@@ -63,7 +63,7 @@ export default function BoostPopup({ chatId, onClose }: { chatId: number; onClos
           <div className={s.boosted}>✓ {t('Boost.Boosted')}</div>
         ) : (
           <button className={s.btn} disabled={busy} onClick={doBoost}>
-            <TgIcon name="boost" size={18} color="#fff" />
+            <TgIcon name="boost_filled" size={18} color="#fff" />
             {t('BoostChannel')}
           </button>
         )}

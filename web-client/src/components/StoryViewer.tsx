@@ -324,11 +324,11 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
   const headerRight = (
     <>
       <IconButton onClick={vm.togglePause} aria-label={t(vm.manualPause ? 'Media.Play' : 'Media.Pause')}>
-        <TgIcon name={vm.manualPause ? 'play' : 'pause'} />
+        <TgIcon name={vm.manualPause ? 'play_filled' : 'pause_filled'} />
       </IconButton>
       {videoDurationMs > 0 && (
         <IconButton onClick={() => setMuted((m) => !m)} aria-label={t('Story.Sound')}>
-          <TgIcon name={muted ? 'speakerofffilled' : 'speakerfilled'} />
+          <TgIcon name={muted ? 'speakeroff_filled' : 'speaker_filled'} />
         </IconButton>
       )}
       <IconButton
@@ -541,7 +541,7 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
         />
         {/* tweb ViewStatistics (viewer.tsx:2199-2201) — пункт меню, не кнопка шапки */}
         <MenuItem
-          icon={<TgIcon name="statistics" size={20} />}
+          icon={<TgIcon name="statistics_filled" size={20} />}
           label={t('StoryStatistics')}
           onClick={() => { setMenuOpen(false); vm.openStats() }}
         />
@@ -556,7 +556,7 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
       {/* Меню чужой истории: Hide My View (stealth) — 1:1 с tweb Stories.StealthMode.View. */}
       <Menu open={othersMenuOpen} onClose={() => setOthersMenuOpen(false)} zIndex={3100} corner="bottom-left" style={{ top: 56, right: 16 }}>
         <MenuItem
-          icon={<TgIcon name="eye2" size={20} />}
+          icon={<TgIcon name="eye2_filled" size={20} />}
           label={t('Stories.StealthMode.View')}
           onClick={() => { setOthersMenuOpen(false); setStealthOpen(true) }}
         />

@@ -70,20 +70,20 @@ interface Feature {
 // от всех, продолжая видеть чужой), а не выдуманная фича.
 const FEATURES: Feature[] = [
   { icon: 'stories', title: 'Stories', subtitle: 'Premium.Feature.Stories.Info', color: '#ef6922' },
-  { icon: 'premium_limits', title: 'Premium.Boarding.Double.Title', subtitle: 'Premium.Feature.Double.Info', color: '#e95a2c' },
-  { icon: 'premium_filesize', title: 'Premium.Feature.FileSize.Title', subtitle: 'Premium.Feature.FileSize.Info', color: '#e74e33' },
-  { icon: 'premium_speed', title: 'Premium.Feature.Download.Title', subtitle: 'Premium.Feature.Download.Info', color: '#db374b' },
-  { icon: 'premium_transcription', title: 'Premium.Feature.Voice.Title', subtitle: 'Premium.Feature.Voice.Info', color: '#cb3e6d' },
+  { icon: 'premium_limits_filled', title: 'Premium.Boarding.Double.Title', subtitle: 'Premium.Feature.Double.Info', color: '#e95a2c' },
+  { icon: 'premium_filesize_filled', title: 'Premium.Feature.FileSize.Title', subtitle: 'Premium.Feature.FileSize.Info', color: '#e74e33' },
+  { icon: 'premium_speed_filled', title: 'Premium.Feature.Download.Title', subtitle: 'Premium.Feature.Download.Info', color: '#db374b' },
+  { icon: 'premium_transcription_filled', title: 'Premium.Feature.Voice.Title', subtitle: 'Premium.Feature.Voice.Info', color: '#cb3e6d' },
   { icon: 'premium_translate', title: 'Premium.Boarding.Translate.Title', subtitle: 'Premium.Feature.Translate.Info', color: '#bc4395' },
-  { icon: 'premium_noads', title: 'Premium.Boarding.NoAds.Title', subtitle: 'Premium.Feature.NoAds.Info', color: '#ab4ac4' },
-  { icon: 'premium_reactions', title: 'Premium.Feature.Reactions.Title', subtitle: 'Premium.Feature.Reactions.Info', color: '#9b4fed' },
-  { icon: 'premium_stickers', title: 'Premium.Boarding.Stickers.Title', subtitle: 'Premium.Feature.Stickers.Info', color: '#8958ff' },
-  { icon: 'premium_emoji', title: 'Premium.Feature.Emoji.Title', subtitle: 'Premium.Feature.Emoji.Info', color: '#676bff' },
-  { icon: 'premium_lastseen', title: 'PremiumPreviewLastSeen', subtitle: 'PremiumPreviewLastSeenDescription', color: '#5b79ff', new: true },
-  { icon: 'premium_avatars', title: 'Premium.Boarding.Avatar.Title', subtitle: 'Premium.Feature.Avatar.Info', color: '#4492ff' },
-  { icon: 'premium_status', title: 'Premium.Feature.Status.Title', subtitle: 'Premium.Feature.Status.Info', color: '#41a6a5' },
+  { icon: 'premium_noads_filled', title: 'Premium.Boarding.NoAds.Title', subtitle: 'Premium.Feature.NoAds.Info', color: '#ab4ac4' },
+  { icon: 'premium_reactions_filled', title: 'Premium.Feature.Reactions.Title', subtitle: 'Premium.Feature.Reactions.Info', color: '#9b4fed' },
+  { icon: 'premium_stickers_filled', title: 'Premium.Boarding.Stickers.Title', subtitle: 'Premium.Feature.Stickers.Info', color: '#8958ff' },
+  { icon: 'premium_emoji_filled', title: 'Premium.Feature.Emoji.Title', subtitle: 'Premium.Feature.Emoji.Info', color: '#676bff' },
+  { icon: 'premium_lastseen_filled', title: 'PremiumPreviewLastSeen', subtitle: 'PremiumPreviewLastSeenDescription', color: '#5b79ff', new: true },
+  { icon: 'premium_avatars_filled', title: 'Premium.Boarding.Avatar.Title', subtitle: 'Premium.Feature.Avatar.Info', color: '#4492ff' },
+  { icon: 'premium_status_filled', title: 'Premium.Feature.Status.Title', subtitle: 'Premium.Feature.Status.Info', color: '#41a6a5' },
   { icon: 'premium_badge', title: 'Premium.Feature.Badge.Title', subtitle: 'Premium.Feature.Badge.Info', color: '#3eb26d' },
-  { icon: 'premium_management', title: 'Premium.Feature.Chats.Title', subtitle: 'Premium.Feature.Chats.Info', color: '#3dbd4a' },
+  { icon: 'premium_management_filled', title: 'Premium.Feature.Chats.Title', subtitle: 'Premium.Feature.Chats.Info', color: '#3dbd4a' },
 ]
 
 // Telegram-style gradient premium star — заменяет живой `img.popup-premium-header-image`

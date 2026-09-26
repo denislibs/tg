@@ -250,7 +250,7 @@ export default function PasswordCard(props: { spec: Spec }): JSX.Element {
           role="button"
           aria-label={I18n.format('LoginPassword', true)}
         >
-          <IconTsx icon={showPw() ? 'eye2' : 'eye1'} style={{ 'font-size': '1.5rem' }} />
+          <IconTsx icon={showPw() ? 'eye2_filled' : 'eye1_filled'} style={{ 'font-size': '1.5rem' }} />
         </span>
       </div>
 

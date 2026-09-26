@@ -72,7 +72,7 @@ describe('Statistics — порт chat/topbar.ts:664 (пункт меню топ
   it('показывается при showStatistics и зовёт onOpenStatistics по клику', () => {
     const onOpenStatistics = vi.fn()
     const h = mount({ ...baseProps, showStatistics: true, onOpenStatistics })
-    const row = rowByIcon(h, 'statistics')
+    const row = rowByIcon(h, 'statistics_filled')
     expect(row).not.toBeNull()
     row!.click()
     expect(onOpenStatistics).toHaveBeenCalledTimes(1)
@@ -80,7 +80,7 @@ describe('Statistics — порт chat/topbar.ts:664 (пункт меню топ
 
   it('не показывается без showStatistics', () => {
     const h = mount({ ...baseProps, showStatistics: false })
-    expect(rowByIcon(h, 'statistics')).toBeNull()
+    expect(rowByIcon(h, 'statistics_filled')).toBeNull()
   })
 })
 

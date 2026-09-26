@@ -26,7 +26,7 @@ export default function PlayPauseGlyph({
 }) {
   return (
     <span key={playing ? 'pause' : 'play'} className={classNames(s.glyph, className ?? '')}>
-      {playing ? <TgIcon name="pause" size={size} /> : <TgIcon name="play" size={size} />}
+      {playing ? <TgIcon name="pause_filled" size={size} /> : <TgIcon name="play_filled" size={size} />}
     </span>
   )
 }

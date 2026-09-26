@@ -90,7 +90,7 @@ export default function ComposerMenus({
           {TTL_OPTIONS.map((o) => (
             <MenuItem
               key={o.label}
-              icon={<TgIcon name="timer" size={20} />}
+              icon={<TgIcon name="timer_filled" size={20} />}
               label={o.secs == null ? t('AutoDeleteMessages.Disable') : o.label}
               right={ttlSeconds === o.secs ? <TgIcon name="check" size={18} color="var(--primary-color)" /> : undefined}
               onClick={() => onPickTtl(o.secs)}
@@ -107,7 +107,7 @@ export default function ComposerMenus({
             onClick={() => onPickRecordingMode('voice')}
           />
           <MenuItem
-            icon={<TgIcon name="recordround" size={20} />}
+            icon={<TgIcon name="recordround_filled" size={20} />}
             label={t('Composer.RecordRound')}
             onClick={() => onPickRecordingMode('round')}
           />

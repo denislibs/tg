@@ -844,7 +844,7 @@ export default class ChatContextMenu {
           !!this.message && !this.isOutgoing(this.message)
       },
     }, {
-      icon: 'statistics',
+      icon: 'statistics_chart',
       text: 'Statistics',
       onClick: this.onStatisticsClick,
       verify: this.canViewMessageStatistics,

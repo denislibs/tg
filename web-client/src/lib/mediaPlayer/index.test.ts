@@ -200,15 +200,15 @@ describe('VolumeSelector: mute-тоггл меняет иконку и media.mut
     const vs = new VolumeSelector({ listenerSetter: new ListenerSetter(), media: video })
     const icon = () => vs.btn.querySelector('.button-icon')!.textContent
 
-    expect(icon()).toBe(glyph('volume_up'))
+    expect(icon()).toBe(glyph('volume_up_filled'))
 
     vs.onMuteClick()
     expect(video.muted).toBe(true)
-    expect(icon()).toBe(glyph('volume_off'))
+    expect(icon()).toBe(glyph('volume_off_filled'))
 
     vs.onMuteClick()
     expect(video.muted).toBe(false)
-    expect(icon()).toBe(glyph('volume_up'))
+    expect(icon()).toBe(glyph('volume_up_filled'))
   })
 
   it('пороги иконок tweb: < 0.25 → volume_mute, 0.25..0.5 → volume_down', () => {
@@ -217,9 +217,9 @@ describe('VolumeSelector: mute-тоггл меняет иконку и media.mut
     const icon = () => vs.btn.querySelector('.button-icon')!.textContent
 
     vs.setVolume({ volume: 0.1, muted: false })
-    expect(icon()).toBe(glyph('volume_mute'))
+    expect(icon()).toBe(glyph('volume_mute_filled'))
 
     vs.setVolume({ volume: 0.4, muted: false })
-    expect(icon()).toBe(glyph('volume_down'))
+    expect(icon()).toBe(glyph('volume_down_filled'))
   })
 })

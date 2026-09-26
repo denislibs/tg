@@ -345,7 +345,7 @@ export default function SendMediaPopup({
               placeholder={t('PreviewSender.CaptionPlaceholder')}
             />
             <div className={s.send} onClick={send}>
-              <TgIcon name="send" />
+              <TgIcon name="send_filled" />
             </div>
           </div>
         </div>

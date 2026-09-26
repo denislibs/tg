@@ -466,7 +466,7 @@ async function setLastMessage({
         }))
 
         if(media._ === 'document' && VIDEO_TYPES.has(media.type)) {
-          const playIcon = Icon('play', 'dialog-subtitle-media-play')
+          const playIcon = Icon('play_filled', 'dialog-subtitle-media-play')
           container.append(playIcon)
         }
       }

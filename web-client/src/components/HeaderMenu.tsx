@@ -92,7 +92,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
 
   // «Предложенные посты» (Telegram suggested posts) — админ канала.
   const suggestedItem: Item | null = onOpenSuggested
-    ? { icon: <TgIcon name="add_chat" size={20} />, label: 'SuggestedPosts.Title', onClick: () => { onOpenSuggested(); close() } }
+    ? { icon: <TgIcon name="add_chat_filled" size={20} />, label: 'SuggestedPosts.Title', onClick: () => { onOpenSuggested(); close() } }
     : null
 
   // «Пожаловаться» на чат целиком (tweb reportPeer): открывает глобальный
@@ -113,7 +113,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
     // добавить в контакты — этих пунктов в меню нет (как в Telegram).
     const isService = peerId === SERVICE_USER_ID
     items = [
-      { icon: <TgIcon name="timer" size={20} />, label: 'AutoDeleteMessagesShort', submenu: true },
+      { icon: <TgIcon name="timer_filled" size={20} />, label: 'AutoDeleteMessagesShort', submenu: true },
       ...searchItems,
       muteItem,
       ...(!isService
@@ -153,7 +153,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
     // очистка истории объединены в одно действие «Покинуть диалог» (удаляет
     // секретный чат у себя целиком).
     items = [
-      { icon: <TgIcon name="timer" size={20} />, label: 'AutoDeleteMessagesShort', submenu: true },
+      { icon: <TgIcon name="timer_filled" size={20} />, label: 'AutoDeleteMessagesShort', submenu: true },
       muteItem,
       { icon: <TgIcon name="checkround" size={20} />, label: 'Chat.Menu.SelectMessages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
       { icon: <TgIcon name="delete" size={20} />, label: 'Chat.LeaveChat', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
@@ -166,7 +166,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
         label: 'PeerInfo.Action.VoiceChat',
         onClick: () => { void joinGroupCall(Number(chat.id)); close() },
       },
-      { icon: <TgIcon name="timer" size={20} />, label: 'AutoDeleteMessagesShort', submenu: true },
+      { icon: <TgIcon name="timer_filled" size={20} />, label: 'AutoDeleteMessagesShort', submenu: true },
       ...searchItems,
       muteItem,
       ...(onAddMember
@@ -182,14 +182,14 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
   } else if (owned) {
     // owned channel
     items = [
-      { icon: <TgIcon name="timer" size={20} />, label: 'AutoDeleteMessagesShort', submenu: true },
+      { icon: <TgIcon name="timer_filled" size={20} />, label: 'AutoDeleteMessagesShort', submenu: true },
       ...searchItems,
       muteItem,
       { icon: <TgIcon name="livestream" size={20} />, label: 'Rtmp.Topbar.Title', onClick: onStartStream ? () => { onStartStream(); close() } : undefined },
       { icon: <TgIcon name="checkround" size={20} />, label: 'Chat.Menu.SelectMessages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
       { icon: <TgIcon name="gift" size={20} />, label: 'Chat.Menu.SendGift' },
-      { icon: <TgIcon name="boost" size={20} />, label: 'BoostChannel', onClick: onBoost ? () => { onBoost(); close() } : undefined },
-      { icon: <TgIcon name="gift_premium" size={20} />, label: 'Giveaway.Create', onClick: onCreateGiveaway ? () => { onCreateGiveaway(); close() } : undefined },
+      { icon: <TgIcon name="boost_filled" size={20} />, label: 'BoostChannel', onClick: onBoost ? () => { onBoost(); close() } : undefined },
+      { icon: <TgIcon name="gift_premium_filled" size={20} />, label: 'Giveaway.Create', onClick: onCreateGiveaway ? () => { onCreateGiveaway(); close() } : undefined },
       ...(suggestedItem ? [suggestedItem] : []),
       { icon: <TgIcon name="delete" size={20} />, label: 'PeerInfo.DeleteChannel', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
     ]
@@ -201,7 +201,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
       { icon: <TgIcon name="message" size={20} />, label: 'ViewDiscussion' },
       { icon: <TgIcon name="checkround" size={20} />, label: 'Chat.Menu.SelectMessages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
       { icon: <TgIcon name="gift" size={20} />, label: 'Chat.Menu.SendGift' },
-      { icon: <TgIcon name="boost" size={20} />, label: 'BoostChannel', onClick: onBoost ? () => { onBoost(); close() } : undefined },
+      { icon: <TgIcon name="boost_filled" size={20} />, label: 'BoostChannel', onClick: onBoost ? () => { onBoost(); close() } : undefined },
       reportItem,
       { icon: <TgIcon name="delete" size={20} />, label: 'ChatList.Context.LeaveChannel', danger: true, onClick: onDeleteChat ? () => { onDeleteChat(); close() } : undefined },
     ]
@@ -230,7 +230,7 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
         {autoItems.map((a) => (
           <MenuItem
             key={a.period}
-            icon={a.period === 0 ? <TgIcon name="auto_delete_circle_off" size={20} /> : <TgIcon name="timer" size={20} />}
+            icon={a.period === 0 ? <TgIcon name="auto_delete_circle_off" size={20} /> : <TgIcon name="timer_filled" size={20} />}
             label={a.unit ? tArgs(a.unit, [a.count]) : t('Never')}
             right={currentPeriod === a.period ? <TgIcon name="check" size={20} /> : undefined}
             onClick={() => setChatTtl(a.period)}

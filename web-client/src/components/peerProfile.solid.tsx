@@ -1290,7 +1290,7 @@ function Statistics() {
     <Show when={context.showStatistics}>
       <Section noDelimiter>
         <Row clickable={() => context.onOpenStatistics?.()}>
-          <Row.Icon icon="statistics" />
+          <Row.Icon icon="statistics_filled" />
           <Row.Title>{i18n('Statistics')}</Row.Title>
         </Row>
       </Section>

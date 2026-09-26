@@ -253,7 +253,7 @@ class Avatar {
 
     // :735-738 — «Избранное». `meAsNotes`/`savedAsForum` — см. шапку.
     if (peerId === rootScope.myId && this.options.isDialog) {
-      this.set({ icon: 'saved' })
+      this.set({ icon: 'saved_filled' })
       return false
     }
 
@@ -273,7 +273,7 @@ class Avatar {
 
     // :788-791 — удалённый аккаунт: серая подложка и своя иконка, инициалов нет.
     if (peerId !== NULL_PEER_ID && isUser(peerId) && peer?._ === 'user' && peer.pFlags?.deleted) {
-      this.set({ color: 'archive', icon: 'deletedaccount' })
+      this.set({ color: 'archive', icon: 'deletedaccount_filled' })
       return false
     }
 

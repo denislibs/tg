@@ -11,7 +11,8 @@
 //
 // Стили — портированные партиалы: `styles/tweb/_selector.scss` (сам чип),
 // `_leftSidebar.scss:332-391` (чип в поле поиска и в `.search-helper`),
-// `_avatar.scss` (`avatar-icon-calendarfilter`, `avatar-icon-saved`).
+// `_avatar.scss` (`avatar-icon-calendarfilter`; у `avatar-icon-saved_filled`
+// своего правила нет — tweb 2197fee9c переименовал иконку, не тронув scss).
 //
 // ── Расхождения с оригиналом ───────────────────────────────────────────────
 // 1. `managers` — опцией: аватар и имя объявляют пробел зеркала карточек

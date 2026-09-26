@@ -88,7 +88,7 @@ export default function ReplyWrapper({
       title: <>{t('Chat.Accessory.Reply')} <span className="peer-title" data-peer-id={reply.peerId}>{reply.snapshotName ?? reply.name}</span></>,
       subtitle: reply.quote ? (
         <>
-          <TgIcon name="quote_outline" size={13} style={{ verticalAlign: '-1px', marginRight: 3, opacity: 0.7 }} />
+          <TgIcon name="quote" size={13} style={{ verticalAlign: '-1px', marginRight: 3, opacity: 0.7 }} />
           {reply.quote.text}
         </>
       ) : reply.snapshotText ?? reply.text,

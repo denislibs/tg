@@ -258,9 +258,9 @@ export default function DataStorageSettings({ onBack }: { onBack: () => void }) 
           </div>
         </div>
         {quotaIconRow('image', 'StorageQuota.Images', sizes?.images)}
-        {quotaIconRow('play', 'StorageQuota.VideoFiles', sizes?.videos)}
+        {quotaIconRow('play_filled', 'StorageQuota.VideoFiles', sizes?.videos)}
         {quotaIconRow('stickers_face', 'StorageQuota.StickersEmoji', sizes?.stickers)}
-        {quotaIconRow('limit_file', 'Other', sizes?.other)}
+        {quotaIconRow('limit_file_filled', 'Other', sizes?.other)}
 
         <div className={s.range}>
           <div className={s.rangeDetails}>

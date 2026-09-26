@@ -131,7 +131,7 @@ export default function ScheduledView({ chatId, onClose, onChanged }: {
               </div>
               <div className={s.actions}>
                 <IconButton size="small" onClick={() => sendNow(m.id)} title={t('MessageScheduleSend')} aria-label={t('MessageScheduleSend')}>
-                  <TgIcon name="send" size={18} color="var(--primary-color)" />
+                  <TgIcon name="send_filled" size={18} color="var(--primary-color)" />
                 </IconButton>
                 <IconButton size="small" onClick={() => setReschedule({ id: m.id, sendAt: m._ === 'message' ? (m.send_at ?? 0) : 0 })} title={t('MessageScheduleEditTime')} aria-label={t('MessageScheduleEditTime')}>
                   <TgIcon name="schedule" size={18} color="var(--primary-color)" />

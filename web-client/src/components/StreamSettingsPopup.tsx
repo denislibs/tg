@@ -82,7 +82,7 @@ export default function StreamSettingsPopup({ chatId, active, onClose }: Props) 
                 onClick={(e) => { e.stopPropagation(); setKeyVisible((v) => !v) }}
                 type="button"
               >
-                <TgIcon name={keyVisible ? 'eye2' : 'eye1'} size={20} color="var(--secondary-text-color)" />
+                <TgIcon name={keyVisible ? 'eye2_filled' : 'eye1_filled'} size={20} color="var(--secondary-text-color)" />
               </button>
             }
           />

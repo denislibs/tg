@@ -108,7 +108,7 @@ export function createRepliesElement(options: RepliesElementOptions): HTMLElemen
     // считает общий с просмотрами `fmtViews` (один знак после запятой) —
     // второго форматтера чисел не заводим.
     text.textContent = replies.replies ? fmtViews(replies.replies) : ''
-    element.append(Icon('commentssticker'), text)
+    element.append(Icon('commentssticker_filled'), text)
     return element
   }
 
