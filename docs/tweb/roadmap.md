@@ -38,6 +38,7 @@
 | ~~Sticky-табы уезжают под шапку~~ | `UserInfoPanel.tsx` + `SharedMedia.tsx` | **Закрыто задачей 13** плана [shared media](../superpowers/plans/2026-09-07-solid-wave-3-shared-media.md): React-`SharedMedia.tsx` и `TAB_GAP` снесены, ряд вкладок класса `AppSearchSuper` липнет на `top: var(--super-offset)` = 72px (пин `useSearchSuper.test.tsx`) |
 | ~~Кэш табов сбрасывается постоянно~~ | `SharedMedia.tsx:177-183` | **Закрыто задачами 6 и 13** того же плана: кэш модульный (`sharedMediaHistories.ts`), апдейты точечные, React-панель со сбросом по длине окна снесена |
 | Состояние панели не сбрасывается при смене чата | `UserInfoPanel.tsx`, `Chat.tsx:1586` | панель не размонтируется и не имеет `key`; переживают чужие `tabCounts`, `scrollTop`, `filled/headerFilled` |
+| Глобальный поиск — React-`SearchView` мимо `AppSearchSuper`: переход вкладок не стартует (`TabSlide` вставляет кадр в одном кадре с `transform`), нет групп/чипов/`ChatTypeMenu`, пагинация `OFFSET` | `SearchView.tsx`, `Sidebar.tsx:377-386` | **Программа** [global search](../superpowers/plans/2026-09-07-solid-wave-3-global-search.md) по референсу [global-search.md](global-search.md): класс вторым потребителем, владелец поиска — порт `initSearch`, бэкенд первым (`next_rate`, `chat_type`, даты) |
 | `ChannelStats` и `RightsEditor` без анимации и стилей | `UserInfoPanel.tsx:738-771` | классов `.statistics-container` / `.user-permissions-container` в наших SCSS нет вовсе, родитель без `data-animation` |
 
 Эталон: [right-sidebar §7 «Костыли»](right-sidebar.md).

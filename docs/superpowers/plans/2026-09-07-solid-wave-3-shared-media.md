@@ -674,7 +674,7 @@ audio/voice/round (`:958-960`). Вкладка `voice` в оригинале —
 | 17 | Вкладка `saved` (Saved Messages внутри пира) | Истории треда по `saved_peer_id` бэкенд не отдаёт | Вкладка `SharedMedia.Saved` |
 | 18 | Вкладка «Похожие каналы» (`similar`) | Ручка ЕСТЬ (`GET /channels/{peerID}/similar`, `router.go:370`) — отложено только по объёму, включая paywall для не-Premium (`appSearchSuper.ts:1804-1881`) | Вкладка `similar` у каналов |
 | 19 | «Истории» вкладкой ряда вместо отдельной секции | Сейчас `PinnedStoriesSection` рисуется выше по странице (`UserInfoPanel.tsx:772`); у оригинала это вкладка с приоритетом первой открытой (`:2478-2484`). Оригинал вкладки — Solid `stories/profileList.tsx` (938) | Приоритет вкладок 1:1 с оригиналом |
-| 20 | Второй потребитель класса — глобальный поиск левой колонки (`sidebarLeft/index.ts:1128`): `searchGroups`, `asChatList`, `showSender`, `loadChats` (`:1285-1523`) | Отдельный экран (`SearchView.tsx`), свой этап | Снятие React с глобального поиска |
+| 20 | Второй потребитель класса — глобальный поиск левой колонки (`sidebarLeft/index.ts:1128`): `searchGroups`, `asChatList`, `showSender`, `loadChats` (`:1285-1523`) | Отдельный экран (`SearchView.tsx`), свой этап — **план написан**: [`2026-09-07-solid-wave-3-global-search.md`](2026-09-07-solid-wave-3-global-search.md) (этап 4 волны 3), референс [`docs/tweb/global-search.md`](../../tweb/global-search.md) | Снятие React с глобального поиска |
 | 21 | Поиск внутри чата — `chat/topbarSearch.tsx` (1318, Solid) | По § 8 спеки это **волна 5**, а не этот этап; к `AppSearchSuper` отношения не имеет | — |
 
 ## Оценка объёма
