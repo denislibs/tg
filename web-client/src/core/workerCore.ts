@@ -49,6 +49,7 @@ import { newRealtime } from './realtime/realtime'
 import { newSyncEngine } from './realtime/syncEngine'
 import { newCursor } from './realtime/cursor'
 import { newChannelFunnel, type ChannelDiff } from './realtime/channelFunnel'
+import { newSyncWait } from './realtime/syncWait'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
 import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type RepliesUpdateEvt, type Update } from './realtime/events'
@@ -571,7 +572,10 @@ export function createWorkerCore() {
     // публикует свой patch независимо от rt:new_message ниже (тот остаётся для
     // read-marker/звука/нотификаций на main — см. storeProjection.ts).
     dialogs.applyNewMessage(e)
-    broadcast(RT.newMessage, e, meta)
+    // tweb 1dc32d889 — признак «кадр пришёл первым difference после старта»
+    // снимается В МОМЕНТ РАССЫЛКИ (у tweb — в `handleNewMessage`): к ответу
+    // вкладке по RPC догон уже закончится. Решает по нему подписчик уведомлений.
+    broadcast(RT.newMessage, e, syncWait.isInitialSync() ? { ...meta, initialSync: true } : meta)
   }
 
   // Per-channel pts-конверт (Волна 5): каналы гейтятся против собственного
@@ -621,6 +625,12 @@ export function createWorkerCore() {
     // кто его дожидается (syncEngine.test.ts) — глушим здесь, у fire-and-forget вызова.
     catchUp: () => { void sync.catchUp().catch(() => {}) },
   })
+  // tweb 1dc32d889 — ожидание догона для уведомлений (общий /sync + difference
+  // канала). Вкладка ждёт его по RPC `realtime.waitForSync`.
+  const syncWait = newSyncWait({
+    global: () => sync.syncState(),
+    channel: (peerId) => channelFunnel.syncState(peerId),
+  })
   const conn = newConnectionManager({
     ws, getToken: () => tokens.get(),
     // Unacked sends persist in IndexedDB: a reload doesn't lose queued messages —
@@ -652,7 +662,15 @@ export function createWorkerCore() {
           // Задача #91: catch-up вчленён в цепочку (return), поэтому один .catch в её
           // хвосте кроет и его отказ, и любой бросок из самого колбэка. cursor.ready()
           // не отклоняется по построению (cursor.ts терминирует его .catch'ем).
-          void cursor.ready().then(() => { if (want !== cursor.get().pts) { funnel.clear(); return sync.catchUp() } }).catch(() => {})
+          void cursor.ready().then(() => {
+            const catchingUp = want !== cursor.get().pts ? (funnel.clear(), sync.catchUp()) : undefined
+            // tweb 1dc32d889 — точка attach: первый hello после старта воркера
+            // решает, какой difference «начальный» (или что догонять нечего).
+            syncWait.attach(catchingUp)
+            return catchingUp
+          }).catch(() => {})
+        } else {
+          syncWait.attach(undefined)
         }
         return
       }
@@ -802,7 +820,7 @@ export function createWorkerCore() {
   // sync передан ради getStatus() (Задача 1, ревью «сигнал только push — новая
   // вкладка слепа»): isSyncing() уже существовал для гейта funnel'а, здесь он же
   // питает pull-снимок для позднего подписчика.
-  const realtime = newRealtime({ conn, sync, tokens, messages, broadcast, channelFunnel })
+  const realtime = newRealtime({ conn, sync, syncWait, tokens, messages, broadcast, channelFunnel })
 
   // Единый реестр менеджеров — единственный источник правды. UI-тип Managers
   // (bootstrap.ts) выводится из этого объекта (WorkerRegistry), поэтому рассинхрон

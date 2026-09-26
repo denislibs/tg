@@ -225,10 +225,14 @@ npx vite build --outDir ../client-build
 - Ре-эмитить принятое из воркера событие через `dispatchEvent` — только
   `dispatchEventSingle` (иначе событие уйдёт обратно в воркер и закольцуется;
   инвариант tweb: `apiManagerProxy` ре-эмитит принятое строго локально).
-- Сочинять `meta` события вне funnel'а воркера. Происхождение кадра
-  (`pts`, `catchUp`) знает только он; подписчику, которому важно отличать живой
-  кадр от catch-up (звук, нотификации), читать `meta.catchUp`, а не полагаться
-  на побочный эффект дедупа по pts.
+- Сочинять `meta` события вне воркера. Происхождение кадра (`pts`, `catchUp`)
+  знает только funnel; подписчику, которому важно отличать живой кадр от
+  catch-up (звук), читать `meta.catchUp`, а не полагаться на побочный эффект
+  дедупа по pts. Третье поле — `initialSync` («кадр пришёл первым difference
+  после старта», tweb 1dc32d889) — ставит рассылка `rt:new_message`
+  (`workerCore.ts::routeNewMessage`) по `core/realtime/syncWait.ts`. Уведомления
+  catch-up не глушат, а ПРИДЕРЖИВАЮТ до конца догона (RPC
+  `realtime.waitForSync`) — `client/realtime/notificationSubscriber.ts`.
 - Читать персист (`core/store/persist`) из `stores/`, `components/`, `core/hooks/`. Модель tweb: одно
   батч-чтение `State` до первого рендера (`client/boot.ts` → `loadStateOnce`), дальше только
   синхронные чтения из `stores/appState` и write-through записи через `setAppState`. Асинхронное
