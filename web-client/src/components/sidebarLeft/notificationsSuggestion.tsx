@@ -8,6 +8,7 @@ import { useT } from '../../i18n'
 import { useSettingsStore } from '../../settings'
 import type { PendingSuggestionController, PendingSuggestionProps } from './pendingSuggestionController'
 import { SimpleSuggestion } from './pendingSuggestionItem'
+import IS_NOTIFICATION_SUPPORTED from '@environment/notificationSupport'
 
 const EMOJI = '🔔'
 
@@ -25,6 +26,13 @@ function NotificationsSuggestion({ collapsed }: PendingSuggestionProps) {
   // tweb: granted → запомнить и пересобрать push-подписку
   // (uiNotificationsManager.onPushConditionsChange); denied → throw → onDismissed.
   const onClick = () => {
+    // tweb 72c50bfef: без Web Notifications API спрашивать не у кого —
+    // плашка просто закрывается.
+    if (!IS_NOTIFICATION_SUPPORTED) {
+      onDismissed()
+      return
+    }
+
     Notification.requestPermission()
       .then((permission) => {
         if (permission === 'granted') {
@@ -61,8 +69,8 @@ export default function useNotificationsSuggestion(): PendingSuggestionControlle
 
   return {
     available:
+      IS_NOTIFICATION_SUPPORTED &&
       !notifySuggested &&
-      typeof Notification !== 'undefined' &&
       Notification.permission !== 'granted',
     component: NotificationsSuggestion,
   }

@@ -1709,6 +1709,9 @@ const ru = {
   Open: 'Открыть',
   OpenUrlTitle: 'Открыть ссылку',
   OpenUrlAlert2: 'Открыть ссылку %1$s?',
+  // ── Уведомления запрещены / недоступны в браузере (tweb
+  //    `sidebarLeft/tabs/notifications.tsx:390`, 72c50bfef) ──
+  'Notifications.Restricted': 'Вы запретили уведомления. Сбросьте разрешение в настройках браузера и попробуйте снова.',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)

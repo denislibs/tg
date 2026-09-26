@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 19,
+      "version": 20,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -2979,6 +2979,10 @@
           "value": "Show offline notifications"
         },
         {
+          "key": "Notifications.Restricted",
+          "value": "You have restricted notifications. Reset permission in your browser and try again."
+        },
+        {
           "key": "Notifications.Show",
           "value": "Show notifications"
         },
@@ -5499,7 +5503,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 19,
+      "version": 20,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -11015,6 +11019,10 @@
         {
           "key": "OpenUrlAlert2",
           "value": "Открыть ссылку %1$s?"
+        },
+        {
+          "key": "Notifications.Restricted",
+          "value": "Вы запретили уведомления. Сбросьте разрешение в настройках браузера и попробуйте снова."
         }
       ]
     },

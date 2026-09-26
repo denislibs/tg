@@ -17,6 +17,8 @@ import { playSound } from '../../core/audio/sounds'
 import { setupPush, setPushEnabled } from '../../client/pushSetup'
 import { SettingsScreen, Section, Row } from './kit'
 import s from './NotificationsSettings.module.scss'
+import IS_NOTIFICATION_SUPPORTED from '@environment/notificationSupport'
+import { toastNew } from '../toast'
 
 const PERMISSION_FOOTER =
   'Notifications.Default'
@@ -34,17 +36,26 @@ export default function NotificationsSettings({ onBack }: { onBack: () => void }
   const settings = useNotifyStore((st) => st.settings)
   const setType = useNotifyStore((st) => st.setType)
   const [perm, setPerm] = useState<NotificationPermission>(
-    typeof Notification !== 'undefined' ? Notification.permission : 'denied',
+    IS_NOTIFICATION_SUPPORTED ? Notification.permission : 'denied',
   )
   const granted = perm === 'granted'
 
   // tweb: пока разрешения нет, тумблеры форсятся в выключенное состояние,
   // а клик по ним (и кнопка Enable) запрашивает разрешение браузера.
   const requestPermission = () => {
-    if (typeof Notification === 'undefined') return
+    // tweb 72c50bfef (notifications.tsx:389-392): без API — не молчать, а
+    // сказать, что уведомления недоступны.
+    if (!IS_NOTIFICATION_SUPPORTED) {
+      toastNew({ langPackKey: 'Notifications.Restricted' })
+      return
+    }
+    // tweb notifications.tsx:395-406: отказ (или ошибка запроса) — тот же тост.
     void Notification.requestPermission().then((p) => {
       setPerm(p)
-      if (p === 'granted' && notifyPush) void setupPush()
+      if (p !== 'granted') throw new Error(p)
+      if (notifyPush) void setupPush()
+    }).catch(() => {
+      toastNew({ langPackKey: 'Notifications.Restricted' })
     })
   }
 

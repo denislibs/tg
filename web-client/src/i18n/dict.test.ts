@@ -199,8 +199,10 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Сдвиг набора портом tweb e96e06c37 (S9, подтверждение замаскированной
 // ссылки): русскому добавлены три ключа 1:1 с tweb lang.ts — `Open`,
 // `OpenUrlTitle`, `OpenUrlAlert2` (попап `showMaskedAlert`): `keys` 1334 → 1337.
+// Портом tweb 72c50bfef (уведомления без Web Notifications API) — ключ
+// `Notifications.Restricted`: 1337 → 1338.
 const COMPOSITION = {
-  ru: { keys: 1337, plural: 34 },
+  ru: { keys: 1338, plural: 34 },
   uk: { keys: 682, plural: 24 },
   es: { keys: 681, plural: 24 },
   de: { keys: 681, plural: 24 },
@@ -291,9 +293,9 @@ const COMPOSITION = {
 // `MediaCopied`, `MediaCopyFailed`: −3 +3, число строк то же. Следом —
 // шесть ключей меню элемента и выделения (разбор — у `COMPOSITION` выше).
 // Сдвиг набора портом tweb e96e06c37: +3 ключа попапа замаскированной ссылки
-// (разбор — у `COMPOSITION` выше).
+// (разбор — у `COMPOSITION` выше). Портом 72c50bfef — `Notifications.Restricted`.
 const FINGERPRINT = {
-  ru: '4c9e2864',
+  ru: 'e84d9edb',
   uk: 'e1335ac1',
   es: 'a6b1aad3',
   de: 'a6b1aad3',

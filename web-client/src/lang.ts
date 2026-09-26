@@ -799,6 +799,7 @@ const lang = {
   'Notifications.Enable': 'Enable Notifications',
   'Notifications.New': 'New notification',
   'Notifications.Offline': 'Show offline notifications',
+  'Notifications.Restricted': 'You have restricted notifications. Reset permission in your browser and try again.',
   'Notifications.Show': 'Show notifications',
   'Notifications.Sound': 'Notification Sound',
   'Notifications.Sound.Caption': 'Drag and release or click to test the volume.',
