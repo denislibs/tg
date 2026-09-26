@@ -48,7 +48,7 @@ function managersWith(messages: MyMessage[]) {
   const managers: BubblesManagers = {
     messages: { getHistory, getAround, messageByDate },
     peers: { fillMirror },
-    dialogs: { getReadMaxSeqIfUnread, getHistoryMaxSeq },
+    dialogs: { getReadMaxSeqIfUnread, getHistoryMaxSeq, getDialogReadState: vi.fn(async () => undefined) },
     realtime: { markRead },
   }
   return managers

@@ -70,6 +70,7 @@ function managersWith(history: MyMessage[], search: { messages: MyMessage[], cou
       // до кэш-ветки (`samePeer && sameSearch`), и тест перестаёт видеть, что
       // именно `sameSearch` заставляет ленту пересобрать окно.
       getHistoryMaxSeq: vi.fn(async () => (history.length ? Math.max(...history.map((m) => m.id)) : 0)),
+      getDialogReadState: vi.fn(async () => undefined),
     },
     realtime: { markRead: vi.fn(async () => ({ ok: true })) },
   }

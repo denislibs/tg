@@ -111,3 +111,35 @@ describe('SyncEngine.catchUp', () => {
     expect(onSyncEnd).toHaveBeenCalledTimes(1)
   })
 })
+
+// tweb 1dc32d889: `syncProgressTime` — признак жизни догона (старт и каждая
+// страница); по нему `syncWait` решает, не замолчал ли difference.
+describe('SyncEngine.syncState', () => {
+  it('отдаёт идущий догон и обновляет признак жизни на каждой странице', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(1000)
+      const resolvers: Array<(v: Page) => void> = []
+      const rest = { get: vi.fn(() => new Promise<Page>((r) => { resolvers.push(r) })) } as never
+      const se = newSyncEngine({ rest, cursor: fakeCursor(), onUpdate: vi.fn(), onResync: vi.fn() })
+      expect(se.syncState()).toEqual({ loading: null, progressTime: 0 })
+
+      const p = se.catchUp()
+      expect(se.syncState()).toEqual({ loading: p, progressTime: 1000 })
+
+      await vi.advanceTimersByTimeAsync(0)
+      expect(resolvers).toHaveLength(1)
+      vi.setSystemTime(2000)
+      resolvers[0]({ new_messages: [], other_updates: [], state: { pts: 1, date: 0 }, slice: true })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(resolvers).toHaveLength(2)
+      expect(se.syncState().progressTime).toBe(2000)
+
+      resolvers[1]({ new_messages: [], other_updates: [], state: { pts: 2, date: 0 }, slice: false })
+      await p
+      expect(se.syncState().loading).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})

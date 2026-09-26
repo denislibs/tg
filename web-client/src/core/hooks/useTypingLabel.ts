@@ -43,14 +43,21 @@ export function useTypingLabel(chatId: number, isGroup: boolean): TypingLabel {
   const chatTyping = useChatsStore((s) => s.typing[chatId])
 
   const now = Date.now()
-  const entries = chatTyping
+  const allEntries = chatTyping
     ? Object.entries(chatTyping)
         .filter(([, e]) => now - e.at < TTL)
         .map(([uid, e]) => ({ userId: Number(uid), action: e.action }))
     : []
 
   // Resolve names only for groups (private uses the verb alone). usePeers([]) no-ops.
-  const peers = usePeers(isGroup ? entries.map((e) => e.userId) : [])
+  const peers = usePeers(isGroup ? allEntries.map((e) => e.userId) : [])
+
+  // tweb 50da390c6: печатающий, которого ещё нет в зеркале пиров, назвать
+  // нечем — `getPeerTitle` отдал бы фолбэк «Удалённый аккаунт». Он отбрасывается
+  // до рендера и из счёта тоже, чтобы строка оставалась грамматичной. Личка не
+  // называет никого, поэтому там проверки нет. Пробел зеркала `usePeers` выше
+  // всё равно объявляет — карточка доедет, и имя появится.
+  const entries = isGroup ? allEntries.filter((e) => peers.has(e.userId)) : allEntries
 
   if (!entries.length) return { active: false, label: '', kind: 'text' }
 
@@ -67,8 +74,7 @@ export function useTypingLabel(chatId: number, isGroup: boolean): TypingLabel {
     return { active: true, label: verb[0], kind }
   }
 
-  // Имя собирает клиент; карточки ещё нет — фолбэк оригинала внутри
-  // `getPeerTitle` («Удалённый аккаунт»), а не пустая строка молча.
+  // Имя собирает клиент; печатающие без карточки отсеяны выше (tweb 50da390c6).
   const names = entries.map((e) => getPeerTitle({ peerId: e.userId, peer: peers.get(e.userId), onlyFirstName: true }))
   if (names.length === 1) return { active: true, label: `${names[0]} ${verb[0]}`, kind }
   if (names.length === 2) return { active: true, label: `${names[0]} ${phrases.and} ${names[1]} ${verb[1]}`, kind }

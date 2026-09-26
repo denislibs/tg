@@ -289,6 +289,11 @@ tweb `bubbles.ts:9707-9712` — оба флага читаются с уже в�
 - `span.time-replies` (число ответов + Icon `reply_filled.time-replies-icon.time-icon`) —
   `setBubbleRepliesCount` (bubbles.ts:6410–6431), prepend, только вне треда.
 
+Оба ищут свой прежний узел среди ПРЯМЫХ детей (`:scope > .time-sending-status`,
+`:scope > .time-replies`) и заменяют именно его (tweb 127188295): счётчик ответов встаёт перед
+значком, и прежняя замена `firstElementChild` оставляла две галочки. **У нас:**
+`components/chat/messageTime.ts` (`setSendingStatus`, `setRepliesCount`) — портировано 1:1.
+
 `appendBubbleTime(bubble, element, callback)` (bubbles.ts:468–471): регистрирует «аппендер» в
 `bubble.timeAppenders` (unshift) и вызывает callback. Время физически ОДНО, но точка вставки
 меняется: конец `.message` → конец подписи документа → `.reply`-address гео → низ

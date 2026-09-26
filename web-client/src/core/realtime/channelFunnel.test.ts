@@ -135,3 +135,39 @@ describe('channelFunnel meta — основная ветка и drainPending', (
     expect(h.dispatched[2]).toMatchObject({ t: 'new_message', pts: 7, catchUp: false })
   })
 })
+
+// tweb 1dc32d889: у канала свой догон — `syncWait` ждёт его для уведомлений
+// этого канала (и только его).
+describe('channelFunnel.syncState', () => {
+  it('отдаёт идущий difference канала и обновляет признак жизни на каждой странице', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(1000)
+      const resolvers: Array<(d: ChannelDiff) => void> = []
+      const funnel = newChannelFunnel({
+        dispatch: () => {},
+        getDifference: () => new Promise<ChannelDiff>((r) => { resolvers.push(r) }),
+        loadPts: async () => 5,
+        savePts: () => {},
+      })
+      expect(funnel.syncState(-1)).toBeUndefined()
+
+      await funnel.open(-1)
+      const running = funnel.syncState(-1)
+      expect(running?.loading).toBeInstanceOf(Promise)
+      expect(running?.progressTime).toBe(1000)
+
+      vi.setSystemTime(2000)
+      resolvers[0]({ updates: [{ t: 'new_message', pts: 6, d: {} }], pts: 6, slice: true })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(resolvers).toHaveLength(2)
+      expect(funnel.syncState(-1)?.progressTime).toBe(2000)
+
+      resolvers[1]({ updates: [], pts: 6, slice: false })
+      await running?.loading
+      expect(funnel.syncState(-1)?.loading).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})

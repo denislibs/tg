@@ -51,8 +51,9 @@ export function SentTime({ timestamp, capitalize, noToday, className, fallback =
 
 /**
  * Только «ЧЧ:ММ» — узел `formatTime` (порт tweb `helpers/date.ts:200-205`).
- * Ветка `hour+minute` ядра собирает время РУКАМИ, минуя `Intl`, и только так
- * уважается пользовательская настройка 12/24 часа.
+ * Ветка `hour+minute` ядра форматирует через `Intl` с `-u-hc-` из
+ * пользовательской настройки 12/24 часа и мемо по минуте суток (tweb
+ * 00c1e1a86), поэтому период стоит там, где его ставит язык.
  */
 export function Time({ timestamp, className, fallback = null }: {
   timestamp: number

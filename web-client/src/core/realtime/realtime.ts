@@ -17,6 +17,7 @@
 
 import type { newConnectionManager } from './connectionManager'
 import type { ChannelFunnel } from './channelFunnel'
+import type { SyncWait } from './syncWait'
 import { getOutputPeer } from '../peers/peerId'
 import { RT, type MediaReadEvt, type SendMessageAction } from './events'
 import type { MessageOp } from './messageOps'
@@ -30,6 +31,8 @@ export interface RealtimeDeps {
   // существовал (funnel гейтит по нему живые кадры); getStatus ниже — первый
   // потребитель, которому нужен pull, а не только push onSyncStart/onSyncEnd.
   sync: { isSyncing(): boolean }
+  /** tweb 1dc32d889 — ожидание догона для уведомлений вкладки. */
+  syncWait: Pick<SyncWait, 'waitForSync'>
   tokens: { load(): Promise<unknown> }
   // Тип — MessageOp[], а не void: cacheMediaRead порождает операции (Stage 1B.3
   // сняла media_read с сырого кадра, окно правит только applyOps), и void здесь
@@ -43,7 +46,7 @@ export interface RealtimeDeps {
   channelFunnel: ChannelFunnel
 }
 
-export function newRealtime({ conn, sync, tokens, messages, broadcast, channelFunnel }: RealtimeDeps) {
+export function newRealtime({ conn, sync, syncWait, tokens, messages, broadcast, channelFunnel }: RealtimeDeps) {
   return {
     async start() { await tokens.load(); conn.start(); return { state: conn.state() } },
     // Источник правды о `{state, retryAt}` — pull, а не разовый снапшот. Для ЭТОЙ
@@ -90,6 +93,10 @@ export function newRealtime({ conn, sync, tokens, messages, broadcast, channelFu
     // другой — сверяющий не должен читать ЭТО как расхождение с оригиналом
     // (в отличие от `syncing` выше, которое расхождение и есть).
     async getStatus() { return { state: conn.state(), retryAt: conn.retryAt(), syncing: sync.isSyncing() } },
+    // tweb 1dc32d889 `apiUpdatesManager.waitForSync` — отпускает, когда difference,
+    // который ещё может отменить уведомление этого пира, догнан (или замолчал).
+    // Уведомления у нас строит вкладка, а догон живёт здесь — отсюда RPC.
+    async waitForSync(args: { peerId: number }) { await syncWait.waitForSync(args.peerId) },
     // Горизонт чтения уходит на сервер СЕРВЕРНЫМ номером — как и всё остальное,
     // что покидает клиентское пространство (core/history/messageId.ts).
     async markRead(args: { peerId: number; upToId: number }) { conn.markRead(args.peerId, getServerMessageId(args.upToId)); return { ok: true } },

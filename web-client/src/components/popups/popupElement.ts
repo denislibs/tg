@@ -48,17 +48,6 @@
 //     заново раскладывает уже открытые попапы по актуальному `appendPopupTo()`
 //     после закрытия одного из них (сценарий fullscreen/Document PiP),
 //     которого у нас нет.
-//   • `lateMiddlewareHelper` (tweb :113, :149, :443, «Gets destroyed after
-//     timeout») — второй хелпер оригинала, гасится ПОСЛЕ 250мс-таймера
-//     `destroy()` (тем же тиком, что `element.remove()`/`closeAfterTimeout`/
-//     `cleanup()`), а не сразу. Нет потребителя: ни один узел, порождённый
-//     попапом этой волны, не обязан пережить именно ЭТОТ момент — единственный
-//     нашедшийся потребитель асинхронщины (аватар `PopupPeer`, см. ниже)
-//     умирает вместе с обычным `middlewareHelper`, синхронно в `destroy()`.
-//     Портировать второй хелпер без потребителя значило бы тащить мёртвый код;
-//     когда появится узел/эффект, обязанный пережить именно 250мс-таймер
-//     (а не сам факт закрытия) — заводить здесь же, портом tweb :113/:149/:443.
-//
 // Раунд правок 1 (после отчёта задачи 2): `middlewareHelper` (tweb :109, :148,
 // :423) — ПОРТИРОВАН, вопреки первоначальному решению «нет потребителя»
 // (см. предыдущую версию этого докблока в истории коммитов). Решение было
@@ -71,10 +60,15 @@
 // в закрытом попапе навсегда остаётся в модульном `Set` живых узлов и
 // перерисовывается на каждое чужое движение зеркала: тот же класс утечки,
 // что уже ловили в ленте («лента умирает на каждой смене чата, а слушатели
-// переживают её», `web-client/CLAUDE.md` → «Владение фактами»). Здесь
-// портирован ТОЛЬКО `middlewareHelper` (без `lateMiddlewareHelper` — см.
-// пункт выше), гасится синхронно в `destroy()`, тем же местом, что
-// `listenerSetter.removeAll()` (tweb :422-423, соседние строки).
+// переживают её», `web-client/CLAUDE.md` → «Владение фактами»).
+//
+// tweb 1a5b40d8b развёл два срока жизни попапа: события кончаются на
+// закрытии (`listenerSetter.removeAll()` в `destroy()`), а отрисовка — когда
+// узел снят из DOM (`middlewareHelper.destroy()` в 250мс-таймере `destroy()`,
+// после `element.remove()`/`closeAfterTimeout`/`cleanup()`). Раньше
+// мидлварь гасла сразу, и содержимое (аватар `PopupPeer`) разбиралось
+// посреди анимации скрытия. `lateMiddlewareHelper` в tweb тем же коммитом
+// удалён как дубль — у нас его и не было.
 //
 // Esc и Back — через `appNavigationController` (#108), как в оригинале:
 // ОДНА запись `{type: 'popup'}` отвечает на обе кнопки (tweb :336-354,
@@ -171,14 +165,18 @@ export default class PopupElement<E extends EventListenerListeners = {}> extends
   protected btnConfirm?: HTMLButtonElement // tweb :88
   protected btnConfirmOnEnter?: HTMLButtonElement // tweb :99
 
-  protected listenerSetter = new ListenerSetter() // tweb :96, :150
+  protected listenerSetter = new ListenerSetter() // tweb :96, :151 (по 1a5b40d8b)
+  // tweb 1a5b40d8b — свой сеттер у кнопок: повторный `setButtons` снимает
+  // обработчики прежнего набора, а не копит их.
+  protected buttonsListenerSetter = new ListenerSetter() // tweb :97-98, :152 (по 1a5b40d8b)
   protected buttons: PopupButton[] = [] // tweb :107
 
   protected destroyed = false // tweb :114
   protected shown = false // tweb :115
 
-  // tweb :109 — раунд правок 1: без `lateMiddlewareHelper` (tweb :113), см.
-  // докблок файла. Потребитель — аватар `PopupPeer` (`peer.ts:44-55`).
+  // tweb :111-115 (по 1a5b40d8b) — срок ОТРИСОВКИ попапа: гаснет только после снятия узла из
+  // DOM (1a5b40d8b), см. докблок файла. Потребитель — аватар `PopupPeer`
+  // (`peer.ts:44-55`).
   protected middlewareHelper: MiddlewareHelper
 
   // Наш аналог `navigationItem` (tweb :94) — расщеплён на два примитива вместо
@@ -259,10 +257,14 @@ export default class PopupElement<E extends EventListenerListeners = {}> extends
 
   protected setButtons(buttons: PopupButton[]): void {
     this.buttons = buttons // tweb :248
-    if(this.buttonsEl) { // tweb :249-252
+    if(this.buttonsEl) { // tweb :251-254 (по 1a5b40d8b)
       this.buttonsEl.remove()
       this.buttonsEl = undefined
     }
+
+    // tweb :256-257 (1a5b40d8b) — прежние кнопки ушли из DOM, их обработчики
+    // не должны их пережить
+    this.buttonsListenerSetter.removeAll()
 
     if(!buttons?.length) { // tweb :254-256
       return
@@ -288,7 +290,7 @@ export default class PopupElement<E extends EventListenerListeners = {}> extends
       attachClickEvent(button, () => { // tweb :282-302, упрощено: callback синхронный (см. PopupButton)
         b.callback?.()
         this.hide()
-      }, { listenerSetter: this.listenerSetter })
+      }, { listenerSetter: this.buttonsListenerSetter }) // tweb :307 (1a5b40d8b)
 
       return button
     })
@@ -382,8 +384,10 @@ export default class PopupElement<E extends EventListenerListeners = {}> extends
     this.dispatchEvent<PopupListeners>('close') // tweb :419, тот же явный generic-аргумент, что и в оригинале
     this.element.classList.add('hiding') // tweb :420
     this.element.classList.remove('active') // tweb :421
-    this.listenerSetter.removeAll() // tweb :422
-    this.middlewareHelper.destroy() // tweb :423 — раунд правок 1, см. докблок файла
+    // tweb :427-430 (1a5b40d8b) — события гасим сразу, а отрисовку НЕТ: это
+    // срок `middlewareHelper`, и он переживает анимацию скрытия (см. таймер ниже)
+    this.listenerSetter.removeAll()
+    this.buttonsListenerSetter.removeAll()
 
     // tweb :430-431. Запись уже могла быть снята тем, кто нас закрыл (Back,
     // Esc, `backByItem` из `hide()`) — `removeItem` в этом случае no-op.
@@ -401,7 +405,11 @@ export default class PopupElement<E extends EventListenerListeners = {}> extends
     setTimeout(() => { // tweb :438-448
       this.element.remove() // tweb :439
       this.dispatchEvent<PopupListeners>('closeAfterTimeout') // tweb :440, см. коммент у dispatchEvent('close') выше
-      this.cleanup() // tweb :441 (EventListenerBase.cleanup — своих middlewareHelper/scrollable у нас нет)
+      this.cleanup() // tweb :448 по 1a5b40d8b (EventListenerBase.cleanup; своего scrollable у нас нет)
+      // tweb :449-452 (1a5b40d8b) — узел вне DOM только теперь: погасить мидлварь
+      // раньше значило разобрать всё, что на ней висит (аватар `PopupPeer`),
+      // посреди анимации, пока `.hiding` ещё держит попап на экране
+      this.middlewareHelper.destroy()
       if(this.shown) { // tweb :445-447
         animationIntersector.checkAnimations2(false)
       }

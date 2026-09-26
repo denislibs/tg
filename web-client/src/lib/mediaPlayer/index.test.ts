@@ -9,7 +9,6 @@ import VolumeSelector from '@components/volumeSelector'
 import ListenerSetter from '@helpers/listenerSetter'
 import { glyph } from '@core/tgico-icons'
 import { useSettingsStore } from '../../settings'
-import { useI18nStore } from '../../i18n'
 import { applyLang } from '@/test/lang'
 
 type MediaStub = HTMLVideoElement & {
@@ -152,14 +151,12 @@ describe('VideoPlayer: меню скоростей — персист в setting
     expect(normal).toBeDefined()
     expect(x2).toBeDefined()
 
-    useI18nStore.getState().setLang('ru')
     await applyLang('ru')
 
     expect(normal.textContent).toBe('Обычная')
     expect(x2.textContent).toBe('2x')
 
     player.cleanup()
-    useI18nStore.getState().setLang('en')
     await applyLang('en')
   })
 })

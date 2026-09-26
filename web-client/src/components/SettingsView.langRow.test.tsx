@@ -19,7 +19,6 @@ import type { ReactNode } from 'react'
 
 import type { Managers } from '@/client/bootstrap'
 import { ManagersProvider } from '@core/hooks/useManagers'
-import { useI18nStore } from '@/i18n'
 import { applyLang } from '@/test/lang'
 import SettingsView, { settingsItems } from './SettingsView'
 
@@ -82,7 +81,6 @@ describe('строка «Язык» в настройках', () => {
     expect(languageRowValue()).toBe('English')
 
     await act(async () => {
-      useI18nStore.getState().setLang('ru')
       await applyLang('ru')
     })
 

@@ -187,6 +187,22 @@ div.document.ext-<ext>[data-doc-id][.document-with-thumb][.downloading][.downloa
 | `wrapLocalSticker` | локальный ассет (`loadAnimationAsAsset` + `waitForFirstFrame`) либо `getAnimatedEmojiSticker` → `wrapSticker` |
 | `wrapEmojiPattern` | `wrapSticker({static: true, exportLoad: 2})` → один `<img>` → многократный `drawImage` по `positions [x,y,size,alpha]` в `canvas.emoji-pattern-canvas` с DPR → `applyColorOnContext` |
 
+**Спойлер: ничто не ждёт рендерер вечно (tweb 293cb4509).** Запрос шейдера в
+`DotRendererCore.compileShader` ограничен `AbortSignal.timeout(15000)`, упавший снимается с кэша
+`shaderTexts`; `init()` не мемоизирует провал; ответ воркера `*-inited` ждётся не дольше 8 с
+(`DotRenderer.watchWorkerInit`: deferred резолвится, защёлка `*Inited` снимается);
+`wrapMediaSpoiler` ждёт готовность точек не дольше 2 с (`withTimeout`,
+`helpers/schedulers/withTimeout.ts`). **У нас:** портировано в `lib/spoiler/dotRendererCore.ts`,
+`components/dotRenderer.ts`, `components/wrappers/mediaSpoiler.ts`. Без этого повисший запрос
+шейдера у нас оставлял медиа под спойлером ОТКРЫТЫМ: крышку вызывающий вставляет только после
+ответа `wrapMediaSpoiler`. Не перенесены (предмета нет): «провал `init()` не мемоизируется на
+экземпляре» — наш провал зовёт `destroy()` с `WEBGL_lose_context`, экземпляр мёртв по построению;
+дедлайн `Promise.all` в `processBatch` — наша пачка медиа-промисов не ждёт (`bubbles.ts`,
+докблок `processBatch`); протухание дедупа `Chat.setPeer` — раннего выхода по
+`setPeerPromise` у нас нет. Воркер (`spoilerRenderer.worker.ts`) по-прежнему защёлкивает провал
+симуляции (`mediaSimFailed`) и отвечает `*-init-failed` сразу — наше отступление, повтора после
+сбоя в сессии нет, спойлер остаётся на размытом превью.
+
 ## 2.6 Rich text — `lib/richTextProcessor/wrapRichText.ts:122`
 
 Возвращает `DocumentFragment`. Опции (`:36-70`): `entities`, `contextSite`, `highlightUsername`,
@@ -710,7 +726,11 @@ canAutoplay ??= (
   (`setManual`, стр. 583–586), загрузка `onlyCache` (стр. 595) — скачивание начнётся только по клику;
 - нет автоплея → кнопка `Button('btn-circle video-play position-center', {icon:'largeplay'})` (стр. 173–176);
 - при автоплее в `video-time` добавляется иконка `nosound` (стр. 159);
-- видео в процессе аплоада не автоплеится, доигрывается после завершения (стр. 503–519);
+- видео в процессе аплоада не автоплеится и по завершении получает обратно АТРИБУТ `autoplay` (а не
+  голый `play()`: `animationIntersector` будит только плееры с `autoplay`); КРУЖОК автоплей на время
+  аплоада сохраняет — `suppressAutoplayWhileUploading = !!uploadingFileName && doc.type !== 'round'`
+  (tweb 173f3c6dc, `video.ts:113-115`, `:406`, `:514-519`, `:578`). **У нас:**
+  `components/wrappers/video.ts` — портировано 1:1 (роль `uploadingFileName` играет `uploadPromise`);
 - у видео `timeupdate` перерисовывает `video-time` как «оставшееся время» с троттлом 1 с (стр. 550–563).
 
 ## 6.2 GIF vs video
@@ -1104,7 +1124,10 @@ loader'ом (`element === null`) или **проскроллен из видим
   `openMedia({..., fromRight: ∓1})`;
 - `ListLoader.go` (`listLoader.ts:67-101`): сам догружает при `< loadWhenLeft = 20`;
   `loadCount = 50` (`:23`); `load(older)` (`:142-201`) — якорь = крайний элемент, `processItem`,
-  вставка с учётом `reverse`, `onLoadedMore` → перерисовка стрелок (`base.ts:439-443`);
+  вставка с учётом `reverse`, `onLoadedMore` → перерисовка стрелок (`base.ts:439-443`); с c934ddd1e
+  дыры в выдаче (mid без сообщения) пропускаются ДО `processItem` (`listLoader.ts:172-173` по `812502980`).
+  У нас гард перенесён в `mediaViewer/listLoader.ts::load`, хотя наши источники дыр не дают
+  (`Chat.tsx::loadMoreMedia`, `appSearchSuper.ts::loadMoreMedia` берут сообщения из ответа сервера);
 - `SearchListLoader.loadMore` (`searchListLoader.ts:27-61`): `getHistory({...searchContext,
   offsetId: anchor.mid, limit/backLimit})`; `inputFilter` из searchContext —
   `inputMessagesFilterPhotoVideo` / `Document` (`bubbles.ts:3833`), `ChatPhotos`
@@ -1237,23 +1260,35 @@ wrapSticker (wrappers/sticker.ts:65)
 
 ## 9.3 `animationIntersector` — диспетчер воспроизведения
 
-`components/animationIntersector.ts:43`. Один `IntersectionObserver` на всё приложение (`:142-146`),
-индексы `byGroups` / `byPlayer` / `byElement`.
+Адреса — tweb `812502980`. `components/animationIntersector.ts:52`. Один `IntersectionObserver` на всё
+приложение (`createObserver()` `:157`), индексы `byGroups` / `byPlayer` / `byElement`.
 
 | Механизм | Строка | Поведение |
 |---|---|---|
-| Регистрация | `addAnimation()` `:236` | типы `'lottie' \| 'dots' \| 'video' \| 'emoji'`; `controlled: Middleware` авто-снимает по `onClean` |
-| Уход из вьюпорта | `onObserve` `:62-104` | пауза + для lottie `clearCacheWhenSafe()` (`:96`) — освобождение памяти кадров |
+| Регистрация | `addAnimation()` `:256` | типы `'lottie' \| 'dots' \| 'video' \| 'emoji'`; `controlled: Middleware` авто-снимает по `onClean` |
+| Уход из вьюпорта | `onObserve` `:71-120` | обходит КАЖДЫЙ item элемента (`forEachReverse` `:87`, cab52547f — у обезьянки входа два плеера в одном `.media-sticker-wrapper`); пауза + для lottie `clearCacheWhenSafe()` (`:111`) — освобождение памяти кадров |
+| Снятие с учёта | `removeAnimation()` `:212` | `unobserve` только когда с узла снят последний item (cab52547f) |
 | Группы | `:14-17` | `'chat-N'`, `'emoticons-dropdown'`, `'STICKERS-POPUP'`, `'EMOJI'`, `'STICKER-VIEWER'`, `'none'` |
-| «Играет только одна группа» | `setOnlyOnePlayableGroup()` `:360` | из `stickerViewer`, `popups/stickers`, `popups/newMedia`, `appImManager` |
-| Пауза всего | `checkAnimations/checkAnimations2` `:283, :316` | blur/idle/медиавьювер/попап; idle — через `idleController` с исключениями `overrideIdleGroups` |
-| `toggleVideosUnder(el, paused)` | `:167` | правая колонка скрыта `transform`ом, IO считает её видимой → принудительная пауза видео внутри (`sidebarRight/index.ts:98, 132`) |
-| `toggleMediaPause` | `:148` | глобальный `videosLocked` при проигрывании аудио/видео |
-| lite mode | `setAutoplay` `:404`, `setLoop` `:419` | ключи `stickers_chat`, `stickers_panel`, `effects_emoji`… |
-| PiP | `onAppWindowChange` `:127-135` | при поп-ауте в Document PiP IO пересоздаётся в новом realm |
+| «Играет только одна группа» | `setOnlyOnePlayableGroup()` `:420` | из `stickerViewer`, `popups/stickers`, `popups/newMedia`, `appImManager` |
+| Пауза всего | `checkAnimations/checkAnimations2` `:309, :342` | blur/idle/медиавьювер/попап; idle — через `idleController` с исключениями `overrideIdleGroups` |
+| Снятие ушедшего из DOM | `checkAnimation()` `:346-389` | ветка «вне DOM» стоит ВЫШЕ выхода по `locked` (`:391`, 88ee036f1) — залоченное видео тоже снимается; видео перед снятием ставится на паузу (c1c10b8c6); `controlled` оставляет item владельцу. Снимается только узел, побывавший в DOM (`wasInDOM`): плеер, зарегистрированный до вставки (`<Transition mode="outin">` карточек входа), переживает первый «не пересекается»; не вставленный никогда — снимается через `NEVER_SHOWN_RECLAIM_TIMEOUT` = 60 с (`:50`) своим таймером (cab52547f) |
+| `toggleVideosUnder(el, paused)` | `:182` | правая колонка скрыта `transform`ом, IO считает её видимой → принудительная пауза видео внутри (`sidebarRight/index.ts:98, 132`) |
+| `toggleMediaPause` | `:163` | глобальный `videosLocked` при проигрывании аудио/видео |
+| lite mode | `setAutoplay` `:464`, `setLoop` `:479` | ключи `stickers_chat`, `stickers_panel`, `effects_emoji`… |
+| PiP | `onAppWindowChange` `:142-150` | при поп-ауте в Document PiP IO пересоздаётся в новом realm |
 
-`AnimationItemWrapper` (`:30`) — минимальный контракт (`play/pause/remove/paused/autoplay/loop`),
+`AnimationItemWrapper` (`:35`) — минимальный контракт (`play/pause/remove/paused/autoplay/loop`),
 поэтому в интерсекторе одинаково живут `LottiePlayer`, `HTMLVideoElement` и `CustomEmojiElement`.
+
+**У нас** — `web-client/src/components/animationIntersector.ts`, порт с отличиями из шапки файла (нет PiP,
+наблюдатель ленивый, heavy-animation подписан прямо в классе). Снятие ушедшего из DOM — как в tweb 88ee036f1 +
+c1c10b8c6 + cab52547f (пины в `animationIntersector.test.ts`, в том числе сценарий обезьянки входа
+`auth/AuthCardsHost.solid.tsx` + `auth/TrackingMonkey.solid.tsx`). Гард `appSettings?.stickers` из cab52547f не
+нужен: наш `useSettingsStore` (zustand) заполнен значениями по умолчанию с импорта. Видео-аватарка профиля (`peerProfileAvatars.ts`, ветка
+`videoMediaId`) регистрируется с `controlled: middleware` и освобождает декодер на `onClean`
+(`helpers/dom/clearMediaElementSource.ts`) — жизненный цикл tweb `createAvatarVideo.ts`; ручного обхода
+`releaseVideoAvatars` больше нет. Сам `createAvatarVideo` (лимит трёх повторов у мелких аватарок, запуск
+только интерсектором) не перенесён: у `components/avatar.ts` видео-аватарок нет.
 
 ## 9.4 Custom emoji — общий canvas
 

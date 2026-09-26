@@ -14,7 +14,7 @@
 | S4 | Распаковка TGS без лимита размера (zip-бомба). Долг ещё со старой базы | `web-client/src/core/stickers/tgs.ts:15`, `web-client/src/lib/lottie/lottieLoader.ts:180` | f3733adc2 (есть уже в `e52b5d931`) | S | в работе — там же |
 | S5 | Мост Mini App не проверяет `e.origin` входящих `postMessage` | обработчик моста веб-приложений (уточняется в фиксе) | b59a02302 | S | в работе — там же |
 | S6 | E2E-звонки: нет commitment перед показом эмодзи SAS — сервер-посредник может подобрать совпадающие эмодзи и незаметно встать между собеседниками (MITM) | `web-client/src/core/calls/callEngine.ts` | afb5587c8 (класс атаки) | M | не начато — нужна схема commit-reveal; решение за пользователем |
-| S7 | Неклонируемый payload роняет `invoke` синхронно и оставляет висящую запись в `awaiting` | `web-client/src/rpc/superMessagePort.ts` | 4c5a2373a | S | не начато |
+| S7 | Неклонируемый payload роняет `invoke` синхронно и оставляет висящую запись в `awaiting` | `web-client/src/rpc/superMessagePort.ts` | 4c5a2373a | S | перенесено — ветка `fix/w1-animations-memory`: `post()` реджектит неотправленный invoke `DATA_CLONE_ERROR`, результат заменяет явной ошибкой |
 | S8 | Проверка поддельных доменов в ссылках (punycode) и нормализация протокола в `safeWindowOpen` не портированы; упираются в отсутствие исполнителя `data-anchor-action` и вендорного `convertPunycode` | `web-client/src/lib/richtext/url.ts`, открытие ссылок | 16bf5ed15 → 3501e76c9 | M | не начато — волна 2G |
 | S9 | Средний клик по замаскированной ссылке открывает её без подтверждения «Открыть ссылку?» — у нас обрабатывается только `click` | обработчик замаскированных ссылок | e96e06c37 | S | не начато |
 
@@ -25,15 +25,15 @@
 
 ### Лента чата
 
-| # | Что | Где у нас | Коммит tweb | Размер |
-|---|---|---|---|---|
-| B1 | Зависший рендерер спойлера навсегда блокирует открытие чата | `web-client/src/components/dotRendererCore.ts:191` (`mediaWorkerReady`, `processBatch`) | 293cb4509 | S |
-| B2 | Одна ошибка внутри callback `fastRaf` роняет все остальные callback'и кадра | `fastRaf` | 12fbb8506 | S |
-| B3 | Две галочки на одном сообщении | `web-client/src/components/chat/messageTime.ts:171` | 127188295 | S |
-| B4 | В полностью прочитанном чате все баблы считаются непрочитанными и получают лишние read-observer'ы — гейт смотрит не на курсор прочтения | `web-client/src/components/chat/bubbles.ts:1886-1899` | 79d6a8f95 | S |
-| B5 | Кнопка «вниз» и повторный клик по открытому чату ведут в конец, а не к первому непрочитанному (нужны `read_inbox_max_id`/`unread_count` в `BubblesManagers.dialogs` — общий с B4) | `bubbles.ts` | ce37ebeb3 | M |
-| B6 | «Удалённый аккаунт печатает…» — печатающего нет в зеркале пиров, а его всё равно называют | typing-лейбл | 50da390c6 | S |
-| B7 | Кружок не играет во время аплоада | `web-client/src/components/wrappers/video.ts` | 173f3c6dc | S |
+| # | Что | Где у нас | Коммит tweb | Размер | Статус |
+|---|---|---|---|---|---|
+| B1 | Зависший рендерер спойлера навсегда блокирует открытие чата | `web-client/src/lib/spoiler/dotRendererCore.ts:191` (`mediaWorkerReady`, `processBatch`) | 293cb4509 | S | исправлено (ветка `fix/w1-feed`). У нас открытие чата не блокировалось (`processBatch` медиа не ждёт, дедупа `setPeer` нет), но медиа под спойлером оставалось открытым: крышку вставляют после ответа `wrapMediaSpoiler`. Перенесены таймаут/сброс кэша шейдера, дедлайн ответа воркера, дедлайн `wrapMediaSpoiler` |
+| B2 | Одна ошибка внутри callback `fastRaf` роняет все остальные callback'и кадра | `web-client/src/helpers/schedulers.ts` (`fastRaf`) | 12fbb8506 | S | исправлено (ветка `fix/w1-feed`) |
+| B3 | Две галочки на одном сообщении | `web-client/src/components/chat/messageTime.ts:171` | 127188295 | S | исправлено (ветка `fix/w1-feed`) |
+| B4 | В полностью прочитанном чате все баблы считаются непрочитанными и получают лишние read-observer'ы — гейт смотрит не на курсор прочтения | `web-client/src/components/chat/bubbles.ts:1886-1899` | 79d6a8f95 | S | исправлено (ветка `fix/w1-feed`); `BubblesManagers.dialogs.getDialogReadState` |
+| B5 | Кнопка «вниз» и повторный клик по открытому чату ведут в конец, а не к первому непрочитанному (нужны `read_inbox_max_id`/`unread_count` в `BubblesManagers.dialogs` — общий с B4) | `bubbles.ts` | ce37ebeb3 | M | исправлено для кнопки «вниз» (ветка `fix/w1-feed`). Повторного клика по открытому диалогу у нас нет (`selectChat` того же id ленту не трогает); открытие чата сразу на непрочитанном (`!samePeer`) — не портировано |
+| B6 | «Удалённый аккаунт печатает…» — печатающего нет в зеркале пиров, а его всё равно называют | `web-client/src/core/hooks/useTypingLabel.ts` | 50da390c6 | S | исправлено (ветка `fix/w1-feed`) |
+| B7 | Кружок не играет во время аплоада | `web-client/src/components/wrappers/video.ts` | 173f3c6dc | S | исправлено (ветка `fix/w1-feed`) |
 
 ### Профиль и shared media
 
@@ -42,18 +42,18 @@
 | B8 | Бесконечная догрузка в профиле: после каждой загрузки снова зовётся `checkForTriggers`, а у вкладки `savedDialogs` флаг `loaded` не ставится никогда (`canLoadMediaTab` всегда true). В Избранном с короткой вкладкой «Чаты» — цикл запросов | `web-client/src/components/appSearchSuper.ts:1921-1932`, `:1622-1642` | fb18166dc (`ScrollableRefiller`) | M · **исправлено** — `ScrollableRefiller`, ветка `fix/w1-scroll-shared-media` |
 | B9 | Вкладка, которой не было при открытии профиля, не появляется до переоткрытия: `setCounter` не трогает `hide`, а `sharedMediaHistories.ts` не считает сообщения для скрытой вкладки | `appSearchSuper.ts:911`, `web-client/src/core/sharedMediaHistories.ts` | ca1416807 | M · **исправлено** — `updateMediaTabVisibility` + счёт скрытой вкладки; кэша счётчиков у нас нет, эта часть коммита не нужна; ветка `fix/w1-scroll-shared-media` |
 | B10 | `horizontalMenu.selectTarget` читает `children[prevId]` у пропавшей предыдущей вкладки (удаление последней папки / вкладки) | `web-client/src/components/horizontalMenu.ts:195` | guard из 1ca7cb99e | S · **исправлено** — guard в `selectTarget`, ветка `fix/w1-scroll-shared-media` |
-| B11 | `animationIntersector`: проверка «элемент вне DOM» стоит ниже выхода по `locked` — видео-аватарки не освобождаются; у нас обходной `releaseVideoAvatars` | `web-client/src/components/animationIntersector.ts:355`, `peerProfileAvatars.ts:1219-1240` | 88ee036f1 → c1c10b8c6 | M |
+| B11 | `animationIntersector`: проверка «элемент вне DOM» стоит ниже выхода по `locked` — видео-аватарки не освобождаются; у нас обходной `releaseVideoAvatars`. **Перенесено** (ветка `fix/w1-animations-memory`): снятие выше `locked`, пауза видео; `releaseVideoAvatars` снят — видео-аватарка профиля живёт на `controlled: middleware` + `clearMediaElementSource`; `z-index` у `.avatar-video` снят. `createAvatarVideo` (лимит трёх повторов) — когда `avatar.ts` научится видео | `web-client/src/components/animationIntersector.ts:355`, `peerProfileAvatars.ts:1219-1240` | 88ee036f1 → c1c10b8c6 | M |
 | B12 | Наше «расхождение 2» в `sharedMediaHistories.ts` в tweb исправлено (`idx !== -1`) — снять пометку и выровнять | `sharedMediaHistories.ts` | (часть 1) | S · **снято** — код уже `idx !== -1`, пометка убрана, добавлен пин; ветка `fix/w1-scroll-shared-media` |
 
 ### Анимации, скролл, память
 
 | # | Что | Где у нас | Коммит tweb | Размер |
 |---|---|---|---|---|
-| B13 | `animationIntersector` обрабатывает только первый item элемента, `unobserve` безусловный, плеер ещё не вставленного элемента отбирается сразу. Проявление: обезьянка на экране входа (`AuthCardsHost mode="outin"` + `TrackingMonkey`) может пропадать | `animationIntersector.ts` | cab52547f | S |
+| B13 | `animationIntersector` обрабатывает только первый item элемента, `unobserve` безусловный, плеер ещё не вставленного элемента отбирается сразу. Проявление: обезьянка на экране входа (`AuthCardsHost mode="outin"` + `TrackingMonkey`) может пропадать. **Перенесено** (ветка `fix/w1-animations-memory`), пин сценария обезьянки — `animationIntersector.test.ts` | `animationIntersector.ts` | cab52547f | S |
 | B14 | Утечка в `Scrollable`: каждый экземпляр вешает свой `window.resize` и подписку на heavy-animation | `web-client/src/components/scrollable.ts:186-211` | ffd925068 (`WeakRefSet` + общий слушатель) | M · **исправлено** — `WeakRefSet` (`shared/lib/weakRefSet.ts`) + общий слушатель, ветка `fix/w1-scroll-shared-media` |
-| B15 | Аватарки держат ресурсы после ухода из DOM | аватарки | e19e8831d | S |
-| B16 | Попап гасит мидлварь до окончания анимации скрытия | попапы | 1a5b40d8b | S |
-| B17 | Нет гарда для mid без сообщения в загрузчике медиавьювера | `web-client/src/components/mediaViewer/listLoader.ts` | c934ddd1e | S |
+| B15 | Аватарки держат ресурсы после ухода из DOM. **Перенесено** (ветка `fix/w1-animations-memory`): реестр `live` на WeakRef + `avatarByElement` + FinalizationRegistry, пин через `gc` — `avatar.registry.test.ts` | `web-client/src/components/avatar.ts` | e19e8831d | S |
+| B16 | Попап гасит мидлварь до окончания анимации скрытия. **Перенесено** (ветка `fix/w1-animations-memory`): `middlewareHelper.destroy()` в 250мс-таймере, `buttonsListenerSetter` | `web-client/src/components/popups/popupElement.ts` | 1a5b40d8b | S |
+| B17 | Нет гарда для mid без сообщения в загрузчике медиавьювера. **Перенесено** (ветка `fix/w1-animations-memory`) ради паритета: у наших источников дыр нет (`Chat.tsx::loadMoreMedia`, `appSearchSuper.ts::loadMoreMedia` берут сообщения из ответа сервера) | `web-client/src/components/mediaViewer/listLoader.ts` | c934ddd1e | S |
 
 ### Чатлист, меню, ссылки
 
@@ -68,17 +68,17 @@
 
 | # | Что | Где у нас | Коммит tweb | Размер |
 |---|---|---|---|---|
-| B22 | AM/PM не учитывается для zh/ja/ko/tr/es; `formatTimeString` без мемо, нет отката языка при сбое загрузки пакета | `web-client/src/lib/langPack.ts:466` | d3bf83c2b → f252a5e53 → 00c1e1a86 | S |
+| B22 | AM/PM не учитывается для zh/ja/ko/tr/es; `formatTimeString` без мемо, нет отката языка при сбое загрузки пакета | `web-client/src/lib/langPack.ts` (`formatTimeString`, `setTimeFormat`, `getLangPackAndApply`) | d3bf83c2b → f252a5e53 → 00c1e1a86 | S — **сделано** (`fix/w1-lang-time-notify`): «ЧЧ:ММ» через `Intl` с `-u-hc-` и мемо по минуте, `amPmCache` снят, откат запрошенного языка на отказе загрузки |
 | B23 | Переход темы не учитывает DPR | анимация смены темы | 7082e1a18 | S |
 | B24 | При поиске по тегам резерв под плашки должен быть 0 | поиск по тегам | 6ce2cafba | S |
-| B25 | Эмодзи-регэксп содержит одиночные суррогаты: после сборки в tweb пропадали big emoji. Наш билд пока цел (rolldown 1.1.5, 0 символов U+FFFD), но сломается при обновлении vite/rolldown — профилактика | `web-client/src/lib/richtext/emojiRegex.ts` | 1ddddac9e | S |
+| B25 | Эмодзи-регэксп содержит одиночные суррогаты: после сборки в tweb пропадали big emoji. Наш билд пока цел (rolldown 1.1.5, 0 символов U+FFFD), но сломается при обновлении vite/rolldown — профилактика | `web-client/src/lib/richtext/emojiRegex.ts` | 1ddddac9e (+ fa6ec9fd1) | S — **сделано** (`fix/w1-lang-time-notify`): литерал ASCII (удвоенные `\`), пин `emojiRegex.test.ts`; из fa6ec9fd1 — физические `right`/`left` у `.is-standalone`, `margin-inline-start` и снятый дубль `.empty-bubble-placeholder` в партиалах (у нас пока латентно: классы не используются, `cssTarget` = `esnext` логические свойства не понижает) |
 | B26 | Коды иконок tgico устарели (например `quote`: у нас `ea43`, у tweb `ea05`) — любая иконка из нового tweb встанет не тем глифом | `web-client/src/core/tgico-icons.ts`, шрифт | 2197fee9c, dae12932f | M (волна 2A) |
 
 ### Уведомления
 
 | # | Что | Где у нас | Коммит tweb | Размер |
 |---|---|---|---|---|
-| B27 | Мы глушим уведомления на весь catch-up, а tweb придерживает их только до прихода difference, который мог бы их отменить | уведомления | 1dc32d889 | M |
+| B27 | Мы глушим уведомления на весь catch-up, а tweb придерживает их только до прихода difference, который мог бы их отменить | `client/realtime/notificationSubscriber.ts`, `core/realtime/syncWait.ts` | 1dc32d889 | M — **сделано** (`fix/w1-lang-time-notify`): ожидание догона в воркере (RPC `realtime.waitForSync`, бюджет тишины 10 с), признак начальной синхронизации на кадре; разница моделей — `state-and-layout.md` §4.1 |
 
 ## Известные у нас баги вне дельты (найдены раньше, не закрыты)
 
@@ -88,6 +88,7 @@
 | K2 | «Удалить только у себя» не выкидывает сообщение из `/chats/{id}/media` | backend | там же |
 | K3 | После перезагрузки страницы шапки цитат подписаны «Удалённый аккаунт», хотя авторы баблов подписаны верно | лента | там же |
 | K4 | Флейк `wsClient.test.ts` «кадры до загрузки кодека»: `vi.waitFor` ждёт 1 с, динамический `import('./tlFrames')` под нагрузкой не укладывается | `web-client/src/core/net/wsClient.test.ts:93` | 2026-09-26 |
+| K5 | В body висели скрытые `.btn-menu` — по одному на каждую строку чатлиста: `shared/ui/Menu` рендерил панель всегда. **Закрыто** (ветка `fix/w1-animations-memory`): панель живёт от открытия до конца закрытия, как tweb `createContextMenu`; пин — `ChatListItem.menu.test.tsx` | `web-client/src/shared/ui/Menu/Menu.tsx` | стенд, 2026-09-26 |
 
 ## Порядок
 

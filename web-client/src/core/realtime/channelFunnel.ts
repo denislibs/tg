@@ -19,6 +19,7 @@ import { classifyPts } from './cursor'
 import { frameKey } from './updateCatalog'
 import { newPendingPts, type NewPendingPts } from './pendingPts'
 import type { EventMeta } from '../../rpc/superMessagePort'
+import type { SyncState } from './syncWait'
 
 // Типизированный конверт канального апдейта — строка difference. `t` — тип
 // строки журнала; маршрутизируется кадр по КОНСТРУКТОРУ из тела (frameKey).
@@ -30,6 +31,8 @@ interface ChannelState {
   seeded: boolean                          // курсор инициализирован (stored/первый live)
   pending: NewPendingPts                   // буфер out-of-order живых кадров
   syncing: boolean                         // идёт catch-up — живые кадры придерживаем
+  loading: Promise<void> | null            // идущий catch-up (tweb channelState.syncLoading)
+  progressTime: number                     // tweb 1dc32d889 syncProgressTime: старт и каждая страница
   timer: ReturnType<typeof setTimeout> | null
 }
 
@@ -54,7 +57,7 @@ export function newChannelFunnel(deps: ChannelFunnelDeps) {
   function state(peerId: number): ChannelState {
     let st = states.get(peerId)
     if (!st) {
-      st = { pts: 0, seeded: false, pending: newPendingPts(), syncing: false, timer: null }
+      st = { pts: 0, seeded: false, pending: newPendingPts(), syncing: false, loading: null, progressTime: 0, timer: null }
       states.set(peerId, st)
     }
     return st
@@ -98,14 +101,22 @@ export function newChannelFunnel(deps: ChannelFunnelDeps) {
   // (apiUpdatesManager.ts:462, :466) — канальный догон намеренно не зажигает этот
   // индикатор, только пер-юзерный /sync (см. syncEngine.onSyncStart/onSyncEnd).
   // Не добавлять сюда onSyncStart/onSyncEnd — это было бы отсебятиной сверх tweb.
-  async function catchUp(peerId: number): Promise<void> {
+  function catchUp(peerId: number): Promise<void> {
     const st = state(peerId)
-    if (st.syncing) return
+    if (st.syncing) return Promise.resolve()
     st.syncing = true
+    st.progressTime = Date.now()
+    const loading = runCatchUp(peerId, st)
+    st.loading = loading
+    return loading
+  }
+
+  async function runCatchUp(peerId: number, st: ChannelState): Promise<void> {
     try {
       for (;;) {
         const since = st.pts
         const r = await deps.getDifference(peerId, since)
+        st.progressTime = Date.now()
         for (const u of r.updates) {
           if (u.pts <= st.pts) continue     // дубль (live уже применил)
           deps.dispatch(frameKey(u.t, u.d), u.d, { pts: u.pts, catchUp: true })
@@ -116,6 +127,7 @@ export function newChannelFunnel(deps: ChannelFunnelDeps) {
       }
     } catch { /* сеть моргнула — следующий gap/open доберёт */ } finally {
       st.syncing = false
+      st.loading = null
       drainPending(peerId, state(peerId))
     }
   }
@@ -159,6 +171,12 @@ export function newChannelFunnel(deps: ChannelFunnelDeps) {
         st.seeded = true
         void catchUp(peerId)
       }
+    },
+
+    /** Состояние догона канала для `syncWait`; у пира без канального курсора — `undefined`. */
+    syncState(peerId: number): SyncState | undefined {
+      const st = states.get(peerId)
+      return st && { loading: st.loading, progressTime: st.progressTime }
     },
 
     // Закрытие канала: сбросить транзиентные буфер/таймер, сохранённый курсор оставить.

@@ -69,7 +69,7 @@ div.popup.<className>[.night][.no-overlay][.old]     → this.element (сама 
 - `this.element.className = 'popup' + className` — className попапа живёт на подложке (index.ts:122).
 - Класс `night` вешается, если на момент создания `overlayCounter.isDarkOverlayActive` (открыт медиавьювер/сториз) — попап поверх тёмного оверлея рисуется в ночной теме (index.ts:129–132).
 - Наследование: `PopupElement extends EventListenerBase<{close, closeAfterTimeout}>` — жизненный цикл через события (index.ts:72–77).
-- Внутри — свои `middlewareHelper` (уничтожается в `destroy`) и `lateMiddlewareHelper` (после таймаута анимации), `listenerSetter` для авточистки слушателей (index.ts:109–113, 148–150).
+- Внутри — свои `middlewareHelper` (уничтожается в `destroy`) и `lateMiddlewareHelper` (после таймаута анимации), `listenerSetter` для авточистки слушателей (index.ts:109–113, 148–150). **С 1a5b40d8b** `middlewareHelper` — срок ОТРИСОВКИ, гаснет только в 250мс-таймере (после `element.remove()`), `lateMiddlewareHelper` удалён как дубль, у кнопок свой `buttonsListenerSetter` (повторный `setButtons` снимает обработчики прежнего набора). Сам класс `PopupElement` в `812502980` удалён (2556fc949, волна 2C) — адреса этого раздела по `e52b5d931`.
 - `this.managers = PopupElement.MANAGERS` — статически инжектится в `appDialogsManager.ts:710`.
 
 ## 1.3 `setButtons` (index.ts:247–320)
@@ -98,9 +98,13 @@ div.popup.<className>[.night][.no-overlay][.old]     → this.element (сама 
 
 **`destroy()`** (index.ts:413–449):
 
-- `dispatchEvent('close')`; классы: `+hiding`, `−active`; `listenerSetter.removeAll()`; `middlewareHelper.destroy()`; `MarkupTooltip.hide()`.
+- `dispatchEvent('close')`; классы: `+hiding`, `−active`; `listenerSetter.removeAll()`; `middlewareHelper.destroy()`; `MarkupTooltip.hide()`. С 1a5b40d8b здесь только `listenerSetter`/`buttonsListenerSetter.removeAll()` — события гасятся сразу, отрисовка нет.
 - `overlayCounter.isOverlayActive = false`; снятие navigationItem; удаление из `POPUPS`; `reAppend()` остальных.
-- Через **250 мс** (время CSS-анимации): `element.remove()`, `dispatchEvent('closeAfterTimeout')`, `cleanup()`, `scrollable.destroy()`, `lateMiddlewareHelper.destroy()`, `checkAnimations2(false)` — анимации размораживаются.
+- Через **250 мс** (время CSS-анимации): `element.remove()`, `dispatchEvent('closeAfterTimeout')`, `cleanup()`, `scrollable.destroy()`, `lateMiddlewareHelper.destroy()`, `checkAnimations2(false)` — анимации размораживаются. С 1a5b40d8b вместо `lateMiddlewareHelper` здесь гаснет `middlewareHelper` (сразу после `cleanup()`): содержимое попапа живёт, пока `.hiding` держит его на экране.
+
+**У нас** (`web-client/src/components/popups/popupElement.ts`) — как в 1a5b40d8b: `middlewareHelper.destroy()` в таймере
+`destroy()`, `buttonsListenerSetter` у кнопок; `lateMiddlewareHelper` не было и нет. Пины — `popupElement.test.ts`
+(порядок разборки, повторный `setButtons`) и `popupPeer.test.ts` (аватар отписывается от зеркала после снятия узла).
 
 `hideWithCallback(cb)` — подписка на `closeAfterTimeout` + `hide()` (index.ts:404–407). `forceHide() = destroy()` — минуя навигацию (index.ts:409–411).
 
@@ -635,7 +639,7 @@ SCSS `_chatToast.scss`: `top: var(--chat-padding-top)`, нотч скрыт, `--
 | `src/shared/ui/ConfirmPopup/ConfirmPopup.tsx` | порт `PopupPeer` (кнопки/чекбоксы/danger); z-index 4090 |
 | `src/components/settings/ConfirmDialog.tsx:20` | второй confirm (настройки), z-index 1400 |
 | `src/components/settings/kit.tsx:162` | `usePopupTransition(open)` — третья копия механики `active`/`hiding` |
-| `src/shared/ui/Menu/Menu.tsx:55` | `Menu` (портал + свой бэкдроп + `.btn-menu.active`), `cornerFrom` :21 |
+| `src/shared/ui/Menu/Menu.tsx` | `Menu` (портал + свой бэкдроп + `.btn-menu.active`), `cornerFrom`. Панель в DOM только от открытия до конца закрытия — как у tweb `createContextMenu.ts::init`/`destroy()` и `buttonMenuToggle.ts:171-220`; раньше закрытый `<Menu>` держал скрытый `.btn-menu` в body — по одному на КАЖДУЮ строку чатлиста (пин `components/ChatListItem.menu.test.tsx`) |
 | `src/core/navigation/navigationStack.ts:42` | `pushLayer`/`removeLayer` — LIFO под браузерный back (владелец `popstate`) |
 | `src/core/hotkeys.ts:11` | `pushEsc` — отдельный LIFO для Esc |
 | `src/core/hooks/useGlobalToast.ts:12` | тост: событие `rootScope('ui:toast')`, автоскрытие 4 c, рендер в `GlobalOverlays.tsx:54–66` |

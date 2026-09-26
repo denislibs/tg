@@ -76,7 +76,7 @@ function stand(agg: MessageReactions) {
       unreact,
     },
     peers: { fillMirror: vi.fn(async () => {}) },
-    dialogs: { getReadMaxSeqIfUnread: vi.fn(async () => 0), getHistoryMaxSeq: vi.fn(async () => 0) },
+    dialogs: { getReadMaxSeqIfUnread: vi.fn(async () => 0), getHistoryMaxSeq: vi.fn(async () => 0), getDialogReadState: vi.fn(async () => undefined) },
     realtime: { markRead: vi.fn(async () => ({ ok: true })) },
     reactions: {
       list: vi.fn(async (): Promise<AvailableReaction[]> => [{

@@ -45,15 +45,37 @@ type Task =
  */
 export const USE_LOCKS = true
 
-/** Метаданные realtime-события. Заполняются ТОЛЬКО funnel'ом воркера —
- *  единственным местом, которое знает происхождение кадра. */
-export interface EventMeta { pts?: number; catchUp?: boolean }
+/** Метаданные realtime-события. `pts`/`catchUp` заполняет ТОЛЬКО funnel
+ *  воркера — единственное место, которое знает происхождение кадра;
+ *  `initialSync` — рассылка `rt:new_message` в воркере (`workerCore.ts::
+ *  routeNewMessage`): кадр пришёл первым difference после старта (tweb 1dc32d889). */
+export interface EventMeta { pts?: number; catchUp?: boolean; initialSync?: boolean }
 
 interface Awaiting {
   resolve: (v: unknown) => void
   reject: (e: Error) => void
   type: string
   timer?: ReturnType<typeof setTimeout>
+}
+
+/** tweb 4c5a2373a — явная ошибка вместо кадра, который не прошёл structured clone. */
+const DATA_CLONE_ERROR = 'DATA_CLONE_ERROR'
+const DATA_CLONE_ERROR_MESSAGE = 'Message port task payload could not be cloned'
+
+function createDataCloneError(): Error & { type: string } {
+  return Object.assign(new Error(DATA_CLONE_ERROR_MESSAGE), { type: DATA_CLONE_ERROR })
+}
+
+function isDataCloneError(error: unknown): boolean {
+  return (error as { name?: string } | undefined)?.name === 'DataCloneError'
+}
+
+/** tweb `getInvokeDebugName` (4c5a2373a): тип invoke + имя/метод из payload —
+ *  у RPC менеджеров это `manager:messages:getHistory`, по нему протухший или
+ *  неотправленный invoke опознаётся в логе. */
+function getInvokeDebugName(type: string, value: unknown): string {
+  const payload = value as { name?: unknown, method?: unknown } | undefined
+  return [type, payload?.name, payload?.method].filter(Boolean).join(':')
 }
 
 export class SuperMessagePort {
@@ -85,13 +107,14 @@ export class SuperMessagePort {
    */
   invoke<R = unknown>(type: string, payload: unknown, transfer?: Transferable[], timeoutMs?: number): Promise<R> {
     const id = this.nextId++
+    const debugName = getInvokeDebugName(type, payload) // tweb 4c5a2373a
     const p = new Promise<R>((resolve, reject) => {
-      const entry: Awaiting = { resolve: resolve as (v: unknown) => void, reject, type }
+      const entry: Awaiting = { resolve: resolve as (v: unknown) => void, reject, type: debugName }
       if (timeoutMs && timeoutMs > 0) {
         entry.timer = setTimeout(() => {
           // Дедлайн истёк: снимаем ожидание (поздний result уже никого не найдёт —
           // onMessage тихо его проигнорирует) и реджектим вызывающего.
-          if (this.awaiting.delete(id)) reject(new Error(`invoke timeout: ${type} (${timeoutMs}ms)`))
+          if (this.awaiting.delete(id)) reject(new Error(`invoke timeout: ${debugName} (${timeoutMs}ms)`))
         }, timeoutMs)
       }
       this.awaiting.set(id, entry)
@@ -208,8 +231,51 @@ export class SuperMessagePort {
     void navigator.locks.request(id, () => { this.disconnectPort() })
   }
 
+  /**
+   * Порт tweb `sendTask` (4c5a2373a) в нашем объёме — порт один, батчей нет.
+   * Раньше ошибка `postMessage` летела вызывающему: неклонируемый payload
+   * ронял `invoke` СИНХРОННО и оставлял его запись (с таймером) в `awaiting`,
+   * а `emit` бросал у того, кто рассылает событие. Теперь:
+   *  — результат, который не клонируется, уходит явной DATA_CLONE_ERROR;
+   *  — неотправленный invoke реджектится (DATA_CLONE_ERROR либо сама ошибка
+   *    порта) и снимается из `awaiting`;
+   *  — событие и кадр лока только логируются.
+   */
   private post(task: Task, transfer?: Transferable[]) {
-    this.ep.postMessage(task, transfer)
+    try {
+      this.ep.postMessage(task, transfer)
+    } catch (error) {
+      const cloneFailed = isDataCloneError(error)
+      console.error(
+        cloneFailed ? '[smp] postMessage data clone error:' : '[smp] postMessage error:',
+        task.kind === 'invoke' ? getInvokeDebugName(task.type, task.payload) : task.kind,
+        error,
+      )
+
+      if (task.kind === 'result') {
+        if (cloneFailed) this.sendDataCloneError(task.id)
+      } else if (task.kind === 'invoke') {
+        this.rejectUnsentInvoke(task.id, cloneFailed ? createDataCloneError() : error)
+      }
+    }
+  }
+
+  /** tweb `sendDataCloneError` — вместо неклонируемого результата. */
+  private sendDataCloneError(id: number) {
+    try {
+      this.ep.postMessage({ kind: 'result', id, error: DATA_CLONE_ERROR_MESSAGE, errorType: DATA_CLONE_ERROR } satisfies Task)
+    } catch (error) {
+      console.error('[smp] postMessage clone-error fallback failed:', id, error)
+    }
+  }
+
+  /** tweb `rejectUnsentInvoke`. */
+  private rejectUnsentInvoke(id: number, error: unknown) {
+    const d = this.awaiting.get(id)
+    if (!d) return
+    this.awaiting.delete(id)
+    if (d.timer) clearTimeout(d.timer)
+    d.reject(error instanceof Error ? error : new Error(String(error)))
   }
 
   private onMessage = async (ev: MessageEvent) => {

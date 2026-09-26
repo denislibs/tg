@@ -221,3 +221,81 @@ describe('SuperMessagePort dispose', () => {
     vi.useRealTimers()
   })
 })
+
+// Порт tweb 4c5a2373a (`src/tests/superMessagePort.test.ts`). Эндпоинты гоняют
+// кадр через настоящий `structuredClone` — как браузер в `postMessage`: функция
+// в кадре даёт DOMException `DataCloneError` синхронно у отправителя.
+function clonePair(): [Endpoint, Endpoint] {
+  let listenerA: (ev: MessageEvent) => void = () => {}
+  let listenerB: (ev: MessageEvent) => void = () => {}
+  const epA: Endpoint = {
+    postMessage: (m) => { const data = structuredClone(m); queueMicrotask(() => listenerB({ data } as MessageEvent)) },
+    addEventListener: (_t, l) => { listenerA = l },
+  }
+  const epB: Endpoint = {
+    postMessage: (m) => { const data = structuredClone(m); queueMicrotask(() => listenerA({ data } as MessageEvent)) },
+    addEventListener: (_t, l) => { listenerB = l },
+  }
+  return [epA, epB]
+}
+
+const awaitingCount = (smp: SuperMessagePort) =>
+  (smp as unknown as { awaiting: Map<number, unknown> }).awaiting.size
+
+describe('SuperMessagePort — неклонируемый кадр (tweb 4c5a2373a)', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('invoke с неклонируемым payload реджектится DATA_CLONE_ERROR, не бросает синхронно и не оставляет запись в awaiting', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const [epA, epB] = clonePair()
+    const client = new SuperMessagePort(epA)
+    const worker = new SuperMessagePort(epB)
+    worker.handle('call', (payload) => (payload as { value: unknown }).value)
+
+    let bad!: Promise<unknown>
+    expect(() => { bad = client.invoke('call', { value: () => {} }, undefined, 60000) }).not.toThrow()
+    const good = client.invoke('call', { value: 'ok' })
+
+    await expect(bad).rejects.toMatchObject({ type: 'DATA_CLONE_ERROR' })
+    await expect(good).resolves.toBe('ok')
+    expect(awaitingCount(client)).toBe(0)
+  })
+
+  it('неклонируемый результат доезжает до вызывающего явной DATA_CLONE_ERROR', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const [epA, epB] = clonePair()
+    const client = new SuperMessagePort(epA)
+    const worker = new SuperMessagePort(epB)
+    worker.handle('call', () => () => {})
+
+    await expect(client.invoke('call', {})).rejects.toMatchObject({ type: 'DATA_CLONE_ERROR' })
+    expect(awaitingCount(client)).toBe(0)
+  })
+
+  it('неклонируемое событие не роняет вызывающего, следующие события доходят', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const [epA, epB] = clonePair()
+    const a = new SuperMessagePort(epA)
+    const b = new SuperMessagePort(epB)
+    const got: unknown[] = []
+    b.on('tick', (payload) => { got.push(payload) })
+
+    expect(() => a.emit('tick', { value: () => {} })).not.toThrow()
+    a.emit('tick', 'ok')
+
+    await vi.waitFor(() => expect(got).toEqual(['ok']))
+  })
+
+  it('в awaiting — имя менеджера и метод: протухший invoke опознаётся по сообщению', async () => {
+    vi.useFakeTimers()
+    try {
+      const { ep } = makeEndpoint()
+      const smp = new SuperMessagePort(ep)
+      const p = smp.invoke('manager', { name: 'messages', method: 'getHistory', args: [] }, undefined, 1000)
+      vi.advanceTimersByTime(1000)
+      await expect(p).rejects.toThrow(/invoke timeout: manager:messages:getHistory/)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
