@@ -47,3 +47,13 @@ describe('html.no-backdrop (tweb base.scss:403-407)', () => {
     expect(body).toMatch(/--menu-background-color:\s*var\(--surface-color\)/)
   })
 })
+
+// Стенд (Chrome 153): по выключенному полю группы браузер не шлёт click — щелчок
+// по тумблеру пропадал. Выключенное поле строки-группы не принимает указатель, и
+// цель щелчка — тумблер под ним (отступление в `styles/tweb/_row.scss`).
+describe('тумблер группы кликабелен (отступление _row.scss)', () => {
+  it('выключенное поле строки-группы — pointer-events: none', () => {
+    expect(rule('.row.accordion-toggler .row-checkbox-field-toggle .checkbox-field-input:disabled'))
+      .toMatch(/pointer-events:\s*none/)
+  })
+})

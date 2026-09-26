@@ -48,6 +48,11 @@
  *     а активация label возвращала бы её обратно. Эффект, созданный после поля,
  *     идёт в очереди после его эффекта — замысел оригинала («will control it
  *     myself») держится в обоих случаях.
+ *  6. Выключенное поле группы не принимает указатель
+ *     (`styles/tweb/_row.scss`, `.accordion-toggler … .checkbox-field-input:disabled`):
+ *     оно лежит поверх тумблера, а по выключенному полю Chrome не шлёт click —
+ *     щелчок по тумблеру группы на стенде пропадал целиком. Цель щелчка —
+ *     `.checkbox-toggle`, ветка «поле выключено» (:113-117) переключает вложенные.
  */
 import { createEffect, createRoot, createSignal, type Accessor, type Setter } from 'solid-js'
 import { i18n, type LangPackKey } from '@lib/langPack'

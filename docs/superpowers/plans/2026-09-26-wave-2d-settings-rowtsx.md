@@ -672,8 +672,11 @@ payload `{authorization, onTerminate?, onSettingsChanged?}`), `core/managers/ses
 - `CheckboxFields` у tweb ставит `input.disabled` полю группы строкой после `createRoot`, а
   эффект поля `toggleDisability(!!props.disabled)` во вкладке (строки создаются в `onMount`,
   эффекты встают в общую очередь) его снимает. У нас — эффектом после эффекта поля
-  (расхождение 5 в шапке `checkboxFields.solid.tsx`). Проверить на стенде щелчок по тумблеру
-  группы (поле выключено и лежит поверх тумблера).
+  (расхождение 5 в шапке `checkboxFields.solid.tsx`). Стенд показал второй слой того же риска:
+  по выключенному полю, лежащему поверх тумблера, Chrome не шлёт click (только pointer-события) —
+  щелчок по тумблеру группы пропадал. Выключенное поле строки-группы — `pointer-events: none`
+  (отступление в `styles/tweb/_row.scss`); у tweb с полем, которое включил эффект, щелчок
+  переключает группу дважды (нативно и сеттером) — видно на стенде тем же приёмом.
 - Для императивной сборки строк понадобились `helpers/solid/wrapSolidComponent.ts`
   (`unwrapSolidElement`), `ListenerSetter.addCleanup`, `helpers/dom/dispatchEvent.ts` и пара
   `get/set checked` у `CheckboxField`.
