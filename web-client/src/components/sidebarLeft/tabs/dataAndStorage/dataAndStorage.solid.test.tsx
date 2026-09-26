@@ -22,7 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Managers } from '@/client/bootstrap'
 import type SliderSuperTab from '@components/sliderTab'
 import lang from '@/lang'
-import { DEFAULTS, useSettingsStore } from '@/settings'
+import { DEFAULTS, load, useSettingsStore } from '@/settings'
 import { AppDataAndStorageTab } from '@components/solidJsTabs/tabs'
 import { getIconContent } from '@components/icon'
 import { installSpecLabelActivation } from '@/test/specLabelActivation'
@@ -338,6 +338,22 @@ describe('«Данные и память» — квота хранилища', (
     expect(useSettingsStore.getState().cacheTTL).toBe(86400)
     expect(spy.mock.calls.filter(([patch]) => 'cacheTTL' in patch)).toHaveLength(1)
     expect(spy.mock.calls.some(([patch]) => 'cacheSize' in patch)).toBe(false)
+  })
+
+  it('срок «1 месяц» прежнего экрана (30 дней) — вкладка показывает «1 month», закрытие его не трогает', async() => {
+    // холодный старт с тем, что сохранил React-экран: его месяц — 30 дней
+    localStorage.setItem('tg-settings', JSON.stringify({ ...JSON.parse(localStorage.getItem('tg-settings') ?? '{}'), cacheTTL: 30 * 86400 }))
+    useSettingsStore.setState(load())
+    const tab = await open()
+    const spy = vi.spyOn(useSettingsStore.getState(), 'update').mockClear()
+
+    expect(section(tab, lang['StorageQuota.Title']).querySelector('.range-setting-selector-value')!.textContent).toBe('1 month')
+
+    tab.close()
+    await pause(400)
+
+    expect(spy.mock.calls.some(([patch]) => 'cacheTTL' in patch)).toBe(false)
+    expect(useSettingsStore.getState().cacheTTL).toBe(31 * 86400)
   })
 
   it('ползунки не трогали — на destroy ни одной записи', async() => {
