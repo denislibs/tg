@@ -92,9 +92,16 @@ function detect(el: HTMLElement): Active[] {
     // nonce keeps each element a distinct entity even when repeated back-to-back.
     out.push({ _: 'messageEntityCustomEmoji', document_id: Number(el.dataset.docId) || 0, ce: ++ceSeq })
   }
-  if (tag === 'A' && el.dataset.mentionId) {
-    // custom mention юзера без username (tweb A.follow / messageEntityMentionName)
-    out.push({ _: 'messageEntityMentionName', user_id: Number(el.dataset.mentionId) || 0 })
+  if (tag === 'A' && el.hasAttribute('data-mention-id')) {
+    // custom mention юзера без username (tweb A.follow / messageEntityMentionName).
+    // Порт tweb getRichElementValue.ts (ed51d0c09): `data-mention-id` приезжает и во
+    // вставленном HTML, значит он недоверенный — сущность даёт только положительный
+    // целый id, иначе текст остаётся простым текстом (раньше мусор становился
+    // упоминанием с `user_id: 0`).
+    const mentionId = el.dataset.mentionId ?? ''
+    if (/^\d+$/.test(mentionId) && +mentionId) {
+      out.push({ _: 'messageEntityMentionName', user_id: +mentionId })
+    }
   } else if (tag === 'A') {
     out.push({ _: 'messageEntityTextUrl', url: (el as HTMLAnchorElement).getAttribute('href') || undefined })
   }
