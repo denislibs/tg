@@ -48,6 +48,8 @@ const uk = {
   'AccountSettings.SpeakersAndCamera': 'Динаміки та камера',
   Devices: 'Пристрої',
   'Telegram.LanguageViewController': 'Мова',
+  // вкладка «Уведомления и звуки» (tweb `solidJsTabs/tabs.ts:77-81`)
+  'Telegram.NotificationSettingsViewController': 'Сповіщення',
   'KeyboardShortcuts.Title': 'Гарячі клавіші',
   'Premium.Boarding.Title': 'Telegram Premium',
   'Chat.Menu.SendGift': 'Надіслати подарунок',
@@ -68,6 +70,10 @@ const uk = {
   NotificationsForPrivateChats: 'Сповіщення з особистих чатів',
   NotificationsForGroups: 'Сповіщення з груп',
   NotificationsForChannels: 'Сповіщення з каналів',
+  // имена секций типов чатов на вкладке уведомлений (tweb `notifications.tsx:548-562`)
+  NotificationsPrivateChats: 'Особисті чати',
+  NotificationsGroups: 'Групи',
+  NotificationsChannels: 'Канали',
   MessagePreview: 'Попередній перегляд',
   'Notifications.New': 'Нове сповіщення',
   // Заголовок вкладки при нових сповіщеннях (tweb 'Notifications.Count').

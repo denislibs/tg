@@ -6,7 +6,6 @@ import QuickReaction from './settings/QuickReaction'
 import PowerSaving from './settings/PowerSaving'
 import GeneralSettings from './settings/GeneralSettings'
 import SpeakersCamera from './settings/SpeakersCamera'
-import NotificationsSettings from './settings/NotificationsSettings'
 import ChatFoldersSettings from './folders/ChatFoldersSettings'
 import PrivacySecuritySettings from './settings/PrivacySecuritySettings'
 import DataStorageSettings from './settings/DataStorageSettings'
@@ -68,16 +67,17 @@ const SCREENS: Partial<Record<LangPackKey, SSection[]>> = {
 }
 
 export function hasSubScreen(title: LangPackKey) {
-  // Speakers and Camera, Notifications and Sounds, Chat Folders — реальные
-  // экраны (не из мок-SCREENS). «Устройства» здесь БОЛЬШЕ НЕТ: экран уехал на
-  // слайдер вкладок (`sidebarLeft/tabs/activeSessions.solid.tsx`), в колонку
-  // его завёл шаг 8 плана волны 2. «Языка» — тоже: он стал вкладкой
-  // `AppLanguageTab` (`sidebarLeft/tabs/language.solid.tsx`), и React-экран
+  // Speakers and Camera, Chat Folders — реальные экраны (не из мок-SCREENS).
+  // «Устройства» здесь БОЛЬШЕ НЕТ: экран уехал на слайдер вкладок
+  // (`sidebarLeft/tabs/activeSessions.solid.tsx`), в колонку его завёл шаг 8
+  // плана волны 2. «Языка» — тоже: он стал вкладкой `AppLanguageTab`
+  // (`sidebarLeft/tabs/language.solid.tsx`), и React-экран
   // `settings/LanguageSettings.tsx` снесён вместе со своими стилями и тестом.
+  // «Уведомлений и звуков» — тоже: вкладка `AppNotificationsTab`
+  // (`sidebarLeft/tabs/notifications.solid.tsx`, пилот плана 2D, задача 6).
   return (
     title in SCREENS ||
     title === 'AccountSettings.SpeakersAndCamera' ||
-    title === 'AccountSettings.Notifications' ||
     title === 'ChatList.Filter.List.Title' ||
     title === 'PrivacySettings' ||
     title === 'DataSettings' ||
@@ -114,8 +114,6 @@ export default function SettingsSubScreen({ title, onBack, chats }: { title: Lan
   if (title === 'Telegram.GeneralSettingsViewController') return <GeneralSettings onBack={onBack} />
   // Speakers and Camera — реальные устройства (enumerateDevices/getUserMedia)
   if (title === 'AccountSettings.SpeakersAndCamera') return <SpeakersCamera onBack={onBack} />
-  // Notifications and Sounds — реальные настройки уведомлений (tweb-структура)
-  if (title === 'AccountSettings.Notifications') return <NotificationsSettings onBack={onBack} />
   // Chat Folders — реальные папки чатов (tweb chatFolders)
   if (title === 'ChatList.Filter.List.Title') return <ChatFoldersSettings onBack={onBack} chats={chats} />
   // Privacy and Security — реальный раздел конфиденциальности (tweb privacyAndSecurity)

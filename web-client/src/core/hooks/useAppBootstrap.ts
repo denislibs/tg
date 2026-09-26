@@ -15,7 +15,7 @@ import { runWhenUnlocked } from '../../stores/lockStore'
 import { primeMediaToken } from '../mediaUrl'
 import { syncCacheSettingsToSW } from '../mediaCache'
 import { startRealtime } from '../../client/realtimeBridge'
-import { setupPush } from '../../client/pushSetup'
+import { watchPushConditions } from '../../client/pushSetup'
 import { initAppBadge } from '../../client/appBadge'
 import { useSettingsStore } from '../../settings'
 import { bootPrefetch, bootWasLocked } from '../../client/bootData'
@@ -31,6 +31,7 @@ export function useAppBootstrap(): void {
   const managers = useManagers()
   useEffect(() => {
     let stopPresenceDegradation: (() => void) | undefined
+    let stopPushConditions: (() => void) | undefined
     let reactionsPreload: ReturnType<typeof setTimeout> | undefined
     // Под passcode-локом (решён в boot.ts до рендера) НИЧЕГО не грузим и не
     // коннектим — вся первичная загрузка + realtime стартуют один раз после
@@ -100,8 +101,10 @@ export function useAppBootstrap(): void {
       // оставлял бы зелёную точку навсегда: срок годности приезжает с провода,
       // гасит его КЛИЕНТ.
       stopPresenceDegradation = startPresenceDegradation()
-      // offline-уведомления (web push) подписываем только если не выключены в настройках
-      if (useSettingsStore.getState().notifyPush) void setupPush()
+      // offline-уведомления (web push): подписка следует за настройкой
+      // `notifyPush` — и на старте, и на каждом переключении (tweb
+      // uiNotificationsManager.ts:320-322)
+      stopPushConditions = watchPushConditions()
       // Ассеты реакций — фоном, спустя задержку (порт подписки на `user_auth`,
       // appReactionsManager.ts:88-115). Вход в Shell — наша точка «пользователь
       // авторизован»: она отрабатывает и на холодном старте с токеном, и сразу
@@ -114,6 +117,8 @@ export function useAppBootstrap(): void {
       stopWhenUnlocked()
       stopPresenceDegradation?.()
       stopPresenceDegradation = undefined
+      stopPushConditions?.()
+      stopPushConditions = undefined
       clearTimeout(reactionsPreload)
     }
   }, [managers])

@@ -97,7 +97,10 @@ export interface AutoDownloadPeerTypes {
 
 const AUTO_DOWNLOAD_ALL: AutoDownloadPeerTypes = { contacts: true, private: true, groups: true, channels: true }
 
-const DEFAULTS: Settings = {
+// Экспорт — ради Solid-вкладок, которым нужен дефолт ЛИСТА (у tweb это
+// `SETTINGS_INIT` из `config/state.ts`: «Уведомления» возвращают громкость по
+// умолчанию при включении звука на нуле, `notifications.tsx:489-495`).
+export const DEFAULTS: Settings = {
   themeChoice: 'system',
   textSize: 16,
   timeFormat: '24h',
