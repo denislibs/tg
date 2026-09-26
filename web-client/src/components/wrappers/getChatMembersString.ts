@@ -8,7 +8,8 @@
 // шапка чата, и строки списков. У нас он был раздвоен, причём двумя разными
 // способами сразу:
 //
-//   • `components/SearchView.tsx:447-456` считал его ПРАВИЛЬНО — ключами
+//   • прежний React-экран глобального поиска (снесён задачей 13 плана
+//     `2026-09-07-solid-wave-3-global-search.md`) считал его ПРАВИЛЬНО — ключами
 //     `Subscribers`/`Members` через `tArgs`;
 //   • `components/Chat.tsx:865-873` — РУССКИМ ЛИТЕРАЛОМ (`${members}
 //     подписчиков`), мимо словаря вовсе.
@@ -26,7 +27,7 @@
 // императивном мире и обновляет узел на месте. Оба наших вызывающих —
 // компоненты, и подпись у них строка: реактивность даёт `useI18nStore`
 // (подписан на `language_apply`), а форматтер приезжает параметром — тот же
-// приём, каким уже был написан `chatResultSubtitle` в `SearchView.tsx`.
+// приём, каким уже был написан `chatResultSubtitle` прежнего экрана поиска.
 import { isBroadcast } from '@core/peers/predicates'
 import type { Chat } from '@core/peers/peer'
 import type { LangPackKey } from '@/lang'

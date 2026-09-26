@@ -34,7 +34,7 @@ export interface AudioTrack {
 }
 
 // Реактивное состояние плеера — ВИТРИНА для React-ленты и плашки плеера
-// (NowPlayingBar/VoiceMessage/SearchView/SharedMedia). Коллекцией медиа-элементов
+// (NowPlayingBar/VoiceMessage/SharedMedia). Коллекцией медиа-элементов
 // и всей playback-логикой владеет mediaPlaybackController (порт tweb
 // appMediaPlaybackController); действия здесь — тонкие делегаты в него, чтобы
 // публичный API стора (useAudioStore.getState().toggle() и т.п.) не менялся.

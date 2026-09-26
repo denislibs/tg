@@ -30,7 +30,6 @@ import { useLockStore } from '../stores/lockStore'
 import SidebarMenuButton from './SidebarMenuButton'
 import ComposeFab from './ComposeFab'
 import PremiumModal from './PremiumModal'
-import SearchView from './SearchView'
 import StoriesRow from './StoriesRow'
 import SidebarScreens, { type SidebarScreen } from './SidebarScreens'
 import { useManagers } from '../core/hooks/useManagers'
@@ -41,7 +40,7 @@ import { useNavigationActions } from '../core/hooks/useNavigationActions'
 import { openPopup } from '../stores/popupStore'
 import InputSearch from '../shared/ui/InputSearch'
 import { useT } from '../i18n'
-import { useSidebarSearch } from '../core/hooks/useSidebarSearch'
+import { useGlobalSearch } from '../core/hooks/useGlobalSearch'
 import { useSidebarActions } from '../core/hooks/useSidebarActions'
 import { useSidebarStories } from '../core/hooks/useSidebarStories'
 import { useForumPanel } from '../core/hooks/useForumPanel'
@@ -51,6 +50,7 @@ import { AppDialogsManager } from '../lib/appDialogsManager'
 import { useFoldersSidebarShown, useIsSidebarCollapsed } from '../stores/foldersSidebar.solid'
 import ConnectionStatusComponent from './connectionStatus'
 import type { InputSearchStatus } from '../shared/ui/InputSearch'
+import type InputSearchHandle from '../shared/ui/InputSearch/inputSearchHandle'
 
 interface Props {
   onToggleMode: (coords?: { x: number; y: number }) => void
@@ -78,7 +78,7 @@ export default function Sidebar({
   // Плейсхолдер и спиннер поля поиска ведёт автомат состояния соединения (порт
   // tweb ConnectionStatusComponent), поэтому пропа `placeholder` у InputSearch
   // здесь нет: единственный писатель — автомат. Хэндл трёх его методов приезжает
-  // отдельным `statusRef` (основной `ref` — сам input, его берёт useSidebarSearch).
+  // отдельным `statusRef` (основной `ref` — сам input, его берёт ряд историй).
   const searchStatusRef = useRef<InputSearchStatus>(null)
   // Эффект слоя РАСКЛАДКИ, а не обычный: `construct()` ставит плейсхолдер
   // (tweb :45 делает это синхронно в конструкторе), и он должен быть на узле до
@@ -120,7 +120,7 @@ export default function Sidebar({
     return open?.thread.kind === 'topic' ? open.thread.rootMsgId : null
   })
   const onSelect = useNavigationStore((st) => st.selectChat)
-  const { openTopicThread: onOpenTopic, openPeer: onOpenPeer, onChatCreated } = useNavigationActions()
+  const { openTopicThread: onOpenTopic, onChatCreated } = useNavigationActions()
 
   // Экраны левой колонки взаимоисключающие — один стейт-энум (см. <SidebarScreens>).
   const [screen, setScreen] = useState<SidebarScreen>(null)
@@ -129,10 +129,29 @@ export default function Sidebar({
   const [settingsSub, setSettingsSub] = useState<LangPackKey | null>(null)
   const [archiveOpen, setArchiveOpen] = useState(false)
 
-  const { query, setQuery, searching, setSearching, inputRef, closeSearch, searchReal, onJoin } = useSidebarSearch(initialQuery)
+  // Поле поиска шапки: `inputRef` — сам `<input>` (сворачивание ряда историй),
+  // `inputSearchRef` — объект-поле tweb (`InputSearchHandle`), которое читает
+  // и пишет владелец глобального поиска.
+  const inputRef = useRef<HTMLInputElement>(null)
+  const inputSearchRef = useRef<InputSearchHandle>(null)
+  const searchContainerRef = useRef<HTMLDivElement>(null)
+  const backBtnRef = useRef<HTMLDivElement>(null)
+  // ОТРАЖЕНИЕ владельца поиска (`onSearchActive`, роль сигнала
+  // `isSearchActive` tweb, :1484/:1498), а не его источник: морф бургера, FAB,
+  // замок, `has-open-tabs`. Классы перехода React не ставит — см. разметку.
+  const [searching, setSearching] = useState(false)
   const stories = useSidebarStories()
   const actions = useSidebarActions(chats, onChatCreated)
   const { handleSelect, forumChat, closeForum, panel: forumPanel } = useForumPanel({ chats, onSelect, activeTopicId, onOpenTopic })
+  // Владелец поиска (порт `initSearch`, `components/sidebarLeft/globalSearch.ts`);
+  // шов и расхождения — шапка `core/hooks/useGlobalSearch.ts`.
+  const searchOwnerRef = useGlobalSearch({
+    searchContainerRef,
+    inputSearchRef,
+    backBtnRef,
+    onSearchActive: setSearching,
+    initialQuery,
+  })
 
   const openFolderSettings = () => {
     setSettingsSub('ChatList.Filter.List.Title')
@@ -229,7 +248,8 @@ export default function Sidebar({
   // ответ всегда `true`.
   const closeEverythingInsideRef = useRef<() => boolean>(() => false)
   closeEverythingInsideRef.current = () => {
-    if (searching) closeSearch()
+    // tweb `closeSearch()` (:1583-1585) — клик по стрелке «назад» владельца
+    if (searching) searchOwnerRef.current?.closeSearch()
     closeForum()
     return closeAllTabsRef.current()
   }
@@ -260,31 +280,23 @@ export default function Sidebar({
   useImperativeIsland((host) => {
     // Первый `onClick(0, false)` владелец делает ВНУТРИ `start()` (tweb
     // `:1064-1065`), и у tweb в этот момент в колонке ничего не открыто. У нас
-    // открытым может быть поиск — префилл deep-open (`initialQuery`); стартовый
-    // показ «Всех чатов» его не закрывает.
-    let starting = true
+    // открытым может быть поиск — префилл deep-open (`initialQuery`), — но
+    // колонка на этом кадре его ещё не видит: `searching` — отражение владельца
+    // поиска и приходит следующим рендером, а `closeEverythingInsideRef` —
+    // замыкание первого. Стартовый показ «Всех чатов» поиск не закрывает (пин —
+    // `Sidebar.chatlist.test.tsx`, «deep-open с префиллом поиска»).
     dialogsManager.start(host, chatlistContainerRef.current!, {
       closeEverythingInsideNaturally: () => {
-        if (!starting) closeEverythingInsideRef.current()
+        closeEverythingInsideRef.current()
         return true
       },
       isForumOpen: () => forumOpenRef.current,
       appSidebarLeft,
       managers,
     })
-    starting = false
     setSuggestionContainer(dialogsManager.suggestionContainer)
     return () => dialogsManager.destroy()
   }, [], { host: bottomPartRef })
-
-  // `active` на `#chatlist-container` — не `className` React: на узле два
-  // писателя классов, колонка (`active`, поиск) и владелец папок (`has-filters`,
-  // `onFiltersLengthChange` `:1310-1312`), а React пишет `className` целиком и
-  // стёр бы чужой класс на первом же ре-рендере. У tweb `active` здесь тоже
-  // ставит императивный код (`TransitionSlider` 'zoom-fade' поиска).
-  useLayoutEffect(() => {
-    chatlistContainerRef.current!.classList.toggle('active', !searching) // ownership-ok: узел делят колонка и владелец папок, см. выше
-  }, [searching])
 
   // Свёрнутая колонка аватаров при открытом форуме — клиренс под FAB у
   // скроллеров папок снимает владелец (его узлы, расхождение 19).
@@ -336,23 +348,25 @@ export default function Sidebar({
                                  + #search-container.transition-item.sidebar-search
                                  + кнопка «новый чат» */}
       <div className={classNames('sidebar-slider', 'tabs-container', s.slider)}>
-      {/* tweb вешает is-search-active на .item-main (sidebarLeft/index.ts:1431) —
-          через него гаснет ряд историй (_storiesList.scss) */}
-      <div className={classNames('tabs-tab', 'sidebar-slider-item', 'item-main', 'active', searching ? 'is-search-active' : '', s.sliderItem)}>
+      {/* `is-search-active` на .item-main ставит владелец поиска
+          (`onTransitionStart`, tweb sidebarLeft/index.ts:1431) — через него
+          гаснет ряд историй (_storiesList.scss); `className` постоянный. */}
+      <div className={classNames('tabs-tab', 'sidebar-slider-item', 'item-main', 'active', s.sliderItem)}>
       <div className={classNames('sidebar-header', 'main-search-sidebar-header', 'can-have-forum', 'is-input-the-last-child', s.header)}>
-        {(!foldersSidebarShown || searching) && (
-          <div className={classNames('sidebar-header__btn-container', 'left-sidebar-burger')}>
-            <SidebarMenuButton searching={searching} onBack={closeSearch} {...menuActions} />
-          </div>
-        )}
+        {/* Бургер в DOM всегда (tweb `index.html:93-96`): в нём стрелка
+            «назад» — узел владельца поиска, ссылку на него владелец держит с
+            монтирования колонки. При показанной колонке папок бургер прячется
+            (`hide`), пока поиск закрыт — у колонки свой триггер меню (у tweb то
+            же делает `body.has-folders-sidebar .left-sidebar-burger:not(.is-visible)`,
+            расхождение 2 шапки `stores/foldersSidebar.solid.ts`). */}
+        <div className={classNames('sidebar-header__btn-container', 'left-sidebar-burger', foldersSidebarShown && !searching ? 'hide' : '')}>
+          <SidebarMenuButton searching={searching} backBtnRef={backBtnRef} {...menuActions} />
+        </div>
         <InputSearch
           ref={inputRef}
+          searchRef={inputSearchRef}
           statusRef={searchStatusRef}
           className={classNames('old-style', s.search)}
-          value={query}
-          onChange={setQuery}
-          onFocus={() => setSearching(true)}
-          onClear={() => setQuery('')}
           focused={searching}
         />
         {/* Замок над списком чатов при включённом код-пароле (tweb sidebar-lock-button). */}
@@ -389,11 +403,13 @@ export default function Sidebar({
       {/* #chatlist-container несёт --stories-scrolled, .connection-status-bottom
           на него сдвигается (translateY(92px - var(--stories-scrolled))) */}
       {/* `.transition > .transition-item:not(.active)` — display:none !important
-          (_transition.scss:12). Значит `active` носит РОВНО ОДИН из двух узлов:
-          при открытом поиске он уходит на #search-container, иначе на чатлист. */}
-      {/* `className` постоянный: `active` и `has-filters` ставит не React (см.
-          layout-эффект `active` выше). */}
-      <div ref={chatlistContainerRef} id="chatlist-container" className={classNames('transition-item', s.body)}>
+          (_transition.scss:12). `active` носит ровно один из двух узлов, и
+          переводит его `TransitionSlider` 'zoom-fade' владельца поиска
+          (tweb sidebarLeft/index.ts:1425-1449) вместе с `from/to/animating`.
+          `className` ПОСТОЯННЫЙ: React пишет его один раз (стартовый `active` —
+          статический каркас tweb `index.html:99`) и больше не трогает, иначе
+          ре-рендер стёр бы классы перехода и `has-filters` владельца папок. */}
+      <div ref={chatlistContainerRef} id="chatlist-container" className={classNames('transition-item', 'active', s.body)}>
       {/* tweb appDialogsManager.start(): bottomPart = .connection-status-bottom,
           в него prepend'ится .chatlist-overlay (плашка-подсказка, градиент, ряд
           вкладок папок) и append'ится #folders-container с контейнерами папок.
@@ -451,17 +467,10 @@ export default function Sidebar({
       </div>
       </div>
 
-        {searching && (
-          <div id="search-container" className={classNames('transition-item', 'active', 'sidebar-search', s.searchOverlay)}>
-            {/* tweb: выдача поиска — `.transition-item` внутри
-                `.sidebar-content.transition.zoom-fade`, приходящий узел играет
-                `fade-in-opacity .15s ease, zoom-fade-in-move .15s ease`
-                (_transition.scss:25-40) — scale 1.1 → 1 с фейдом. */}
-            <div className={s.searchInner}>
-              <SearchView query={query} chats={chats} onSelect={handleSelect} searchReal={searchReal} onJoin={onJoin} onOpenPeer={onOpenPeer} />
-            </div>
-          </div>
-        )}
+        {/* tweb `index.html:102` — узел ПОСТОЯННЫЙ и пустой: детей (скроллер,
+            класс `AppSearchSuper`, группы) строит владелец поиска на фокусе
+            поля и сносит по концу обратного перехода (`cleanup`, :1401-1423). */}
+        <div ref={searchContainerRef} id="search-container" className="transition-item sidebar-search" />
 
         {/* tweb: кнопка «новый чат» (#new-menu.btn-corner) живёт ВНУТРИ
             .sidebar-content, рядом с чатлистом и выдачей поиска. */}

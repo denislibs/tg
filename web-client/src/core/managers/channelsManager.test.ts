@@ -259,6 +259,25 @@ describe('ChannelsManager.search', () => {
     expect(get).toHaveBeenCalledWith('/search', { q: 'аня', limit: 200 })
     expect(r.my_results).toEqual([{ _: 'peerUser', user_id: 3 }])
   })
+
+  // `searchContacts` оригинала сохраняет тела ДО ответа (`saveApiUsers` +
+  // `saveApiChats`, appUsersManager.ts:1085-1086): строки групп поиска рисуют
+  // имя и аватар по ключу из зеркала, а карточку чужого публичного канала
+  // больше взять неоткуда — батчевой ручки за чатами нет (`peersManager.resolve`).
+  it('тела пиров уходят владельцу карточек до ответа', async () => {
+    const found = {
+      _: 'contacts.found',
+      my_results: [],
+      results: [{ _: 'peerChannel', channel_id: 1 }],
+      chats: [{ _: 'channel', id: 1, title: 'News', pFlags: { broadcast: true } }],
+      users: [],
+    }
+    const rest = { post: vi.fn(), get: vi.fn(async () => found) } as unknown as RestClient
+    const peers = fakePeers()
+    const mgr = newChannelsManager({ rest, beforeSending: () => {}, peers, cacheViews: () => {} })
+    await mgr.search('news')
+    expect(peers.saveApiPeers).toHaveBeenCalledWith(expect.objectContaining({ chats: found.chats, users: found.users }))
+  })
 })
 
 // РЕГИСТРАЦИЯ просмотра — порт `incrementMessageViews` (tweb
