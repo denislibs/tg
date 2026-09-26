@@ -357,11 +357,6 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // Инфо-панель — локальный toggle (сосуществует с gift-попапом поверх профиля).
   // Остальные попапы колонки открываются императивно через popupStore (useChatPopups).
   const [infoOpen, setInfoOpen] = useState(false)
-  // Ленивый чанк панели монтируем при первом открытии и больше НЕ размонтируем
-  // (tweb #column-right: колонка всегда в DOM, закрыта transform'ом + inert) —
-  // повторное открытие не перезапрашивает профиль.
-  const [infoMounted, setInfoMounted] = useState(false)
-  useEffect(() => { if (infoOpen) setInfoMounted(true) }, [infoOpen])
   // Попапы чат-скоупные: снимаем их со стека при уходе с чата (колонка ремаунтится по key).
   useEffect(() => () => clearPopups(), [])
   // ⋮-меню тред-шапки требует права «Закрыть тему»
@@ -1479,21 +1474,26 @@ export default function Chat({ chat, onBack, thread }: Props) {
         />
       </div>
 
-      {/* Инфо-панель (private / group / channel) — после первого открытия всегда
-          смонтирована; открытие/закрытие — сдвиг transform самой панели (tweb
-          #column-right), поверх неё может открыться gift-попап (стек popupStore). */}
+      {/* Инфо-панель (private / group / channel) строится ВМЕСТЕ С ЧАТОМ, а не
+          по клику: у tweb вкладку шаред-медиа создаёт и наполняет смена пира
+          (chat.ts:1003-1008 `createSharedMediaTab`+`setPeer`, `finishPeerChange`
+          :1224-1229 `fillProfileElements`+`loadSidebarMedia`), а клик по шапке —
+          только `toggleSidebar(true)`: класс на body, выезд колонки transform'ом
+          (sidebarRight/index.ts:111-147). Монтаж по первому клику стоил загрузки
+          чанка, ~300 мс троттлинга Suspense и всего профиля одной задачей в
+          кадре клика — и колонка выскакивала без выезда (пин —
+          `Chat.infoPanelMount.test.ts`). Закрытая панель — inert и за краем
+          экрана; поверх открытой может открыться gift-попап (стек popupStore). */}
       <Suspense fallback={null}>
-        {infoMounted && (
-          <UserInfoPanel
-            open={infoOpen}
-            chat={chat}
-            onClose={() => setInfoOpen(false)}
-            onOpenPeer={onOpenPeer}
-            canAddMembers={canAddMember}
-            onEditContact={() => { setInfoOpen(false); pop.openEditContact() }}
-            searchSuperActions={searchSuperActions}
-          />
-        )}
+        <UserInfoPanel
+          open={infoOpen}
+          chat={chat}
+          onClose={() => setInfoOpen(false)}
+          onOpenPeer={onOpenPeer}
+          canAddMembers={canAddMember}
+          onEditContact={() => { setInfoOpen(false); pop.openEditContact() }}
+          searchSuperActions={searchSuperActions}
+        />
       </Suspense>
 
       {/* Баннер идущего видеочата (tweb topbar-call): Join, пока сам не в звонке */}
