@@ -222,12 +222,18 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `NotificationsPrivateChats` («Private Chats»), у fr — заголовка
 // («Notifications»). ru 1346 → 1350, uk 682 → 686, es 681 → 685,
 // de/fr 681 → 684. `plural` не менялся.
+// Задача 10 плана 2D (вкладка «Горячие клавиши», порт tweb keyboardShortcuts.tsx):
+// десять ключей tweb lang.ts — `KeyboardShortcuts.Action.{Send,OpenSearch,
+// SavedMessages,ZoomIn,ZoomOut,PlayPauseStory,CloseStories,Undo}`,
+// `KeyboardShortcuts.Section.Formatting.Caption`, `…Section.MediaEditor` — всем пяти
+// словарям (с английским дословно не совпал ни один): +10 каждому. ru 1350 → 1360,
+// uk 686 → 696, es 685 → 695, de/fr 684 → 694.
 const COMPOSITION = {
-  ru: { keys: 1350, plural: 35 },
-  uk: { keys: 686, plural: 24 },
-  es: { keys: 685, plural: 24 },
-  de: { keys: 684, plural: 24 },
-  fr: { keys: 684, plural: 24 },
+  ru: { keys: 1360, plural: 35 },
+  uk: { keys: 696, plural: 24 },
+  es: { keys: 695, plural: 24 },
+  de: { keys: 694, plural: 24 },
+  fr: { keys: 694, plural: 24 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -323,12 +329,14 @@ const COMPOSITION = {
 // (разбор — у `COMPOSITION` выше). Портом 72c50bfef — `Notifications.Restricted`.
 // Пилотом 2D — заголовок вкладки уведомлений и три имени секций (разбор — у
 // `COMPOSITION` выше; de и fr расходятся по одному совпавшему ключу).
+// Задачей 10 плана 2D — десять ключей вкладки «Горячие клавиши» всем пяти (разбор —
+// у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: 'fc80fe50',
-  uk: 'a3272773',
-  es: '1c37914d',
-  de: '5fb99ee1',
-  fr: '3fb1ce0b',
+  ru: '53db9f78',
+  uk: 'fed73e25',
+  es: '2723fdcf',
+  de: 'd752bdf3',
+  fr: 'dcd47bf5',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 20,
+      "version": 21,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -2136,6 +2136,10 @@
           "value": "Close popup or menu"
         },
         {
+          "key": "KeyboardShortcuts.Action.CloseStories",
+          "value": "Close stories"
+        },
+        {
           "key": "KeyboardShortcuts.Action.EditLast",
           "value": "Edit last message"
         },
@@ -2184,8 +2188,16 @@
           "value": "Next story"
         },
         {
+          "key": "KeyboardShortcuts.Action.OpenSearch",
+          "value": "Open search"
+        },
+        {
           "key": "KeyboardShortcuts.Action.PlayPause",
           "value": "Play/Pause"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.PlayPauseStory",
+          "value": "Play / pause story"
         },
         {
           "key": "KeyboardShortcuts.Action.PreviousChat",
@@ -2208,6 +2220,14 @@
           "value": "Reply to previous message"
         },
         {
+          "key": "KeyboardShortcuts.Action.SavedMessages",
+          "value": "Open Saved Messages"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.Send",
+          "value": "Send message"
+        },
+        {
           "key": "KeyboardShortcuts.Action.Spoiler",
           "value": "Spoiler"
         },
@@ -2218,6 +2238,18 @@
         {
           "key": "KeyboardShortcuts.Action.Underline",
           "value": "Underline"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.Undo",
+          "value": "Undo"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.ZoomIn",
+          "value": "Zoom in"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.ZoomOut",
+          "value": "Zoom out"
         },
         {
           "key": "KeyboardShortcuts.Hint.PasscodeNotSet",
@@ -2234,6 +2266,14 @@
         {
           "key": "KeyboardShortcuts.Section.Formatting",
           "value": "Text Formatting"
+        },
+        {
+          "key": "KeyboardShortcuts.Section.Formatting.Caption",
+          "value": "Select text in the chat input to apply formatting."
+        },
+        {
+          "key": "KeyboardShortcuts.Section.MediaEditor",
+          "value": "Media Editor"
         },
         {
           "key": "KeyboardShortcuts.Section.MediaViewer",
@@ -5554,7 +5594,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 20,
+      "version": 21,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -10283,6 +10323,46 @@
           "value": "Повтор"
         },
         {
+          "key": "KeyboardShortcuts.Action.Send",
+          "value": "Отправка сообщения"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.OpenSearch",
+          "value": "Открытие поиска"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.SavedMessages",
+          "value": "Открытие Избранного"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.ZoomIn",
+          "value": "Увеличение масштаба"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.ZoomOut",
+          "value": "Уменьшение масштаба"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.PlayPauseStory",
+          "value": "Запуск/пауза истории"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.CloseStories",
+          "value": "Закрытие историй"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.Undo",
+          "value": "Отмена"
+        },
+        {
+          "key": "KeyboardShortcuts.Section.Formatting.Caption",
+          "value": "Выделите текст в поле ввода, чтобы применить форматирование."
+        },
+        {
+          "key": "KeyboardShortcuts.Section.MediaEditor",
+          "value": "Редактор медиа"
+        },
+        {
           "key": "KeyboardShortcuts.Action.LockApp",
           "value": "Блокировка приложения"
         },
@@ -11137,7 +11217,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 8,
+      "version": 9,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -13740,6 +13820,46 @@
           "value": "Rétablir"
         },
         {
+          "key": "KeyboardShortcuts.Action.Send",
+          "value": "Envoyer le message"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.OpenSearch",
+          "value": "Ouvrir la recherche"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.SavedMessages",
+          "value": "Ouvrir les Messages enregistrés"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.ZoomIn",
+          "value": "Zoom avant"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.ZoomOut",
+          "value": "Zoom arrière"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.PlayPauseStory",
+          "value": "Lecture/pause de la story"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.CloseStories",
+          "value": "Fermer les stories"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.Undo",
+          "value": "Annuler"
+        },
+        {
+          "key": "KeyboardShortcuts.Section.Formatting.Caption",
+          "value": "Sélectionnez du texte dans le champ de saisie pour le mettre en forme."
+        },
+        {
+          "key": "KeyboardShortcuts.Section.MediaEditor",
+          "value": "Éditeur de médias"
+        },
+        {
           "key": "KeyboardShortcuts.Action.LockApp",
           "value": "Verrouiller l’application"
         },
@@ -13953,7 +14073,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 8,
+      "version": 9,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -16555,6 +16675,46 @@
           "value": "Wiederholen"
         },
         {
+          "key": "KeyboardShortcuts.Action.Send",
+          "value": "Nachricht senden"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.OpenSearch",
+          "value": "Suche öffnen"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.SavedMessages",
+          "value": "Gespeicherte Nachrichten öffnen"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.ZoomIn",
+          "value": "Vergrößern"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.ZoomOut",
+          "value": "Verkleinern"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.PlayPauseStory",
+          "value": "Story abspielen/pausieren"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.CloseStories",
+          "value": "Storys schließen"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.Undo",
+          "value": "Rückgängig"
+        },
+        {
+          "key": "KeyboardShortcuts.Section.Formatting.Caption",
+          "value": "Markiere Text im Eingabefeld, um ihn zu formatieren."
+        },
+        {
+          "key": "KeyboardShortcuts.Section.MediaEditor",
+          "value": "Medien-Editor"
+        },
+        {
           "key": "KeyboardShortcuts.Action.LockApp",
           "value": "App sperren"
         },
@@ -16768,7 +16928,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 8,
+      "version": 9,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -19375,6 +19535,46 @@
           "value": "Rehacer"
         },
         {
+          "key": "KeyboardShortcuts.Action.Send",
+          "value": "Enviar mensaje"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.OpenSearch",
+          "value": "Abrir búsqueda"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.SavedMessages",
+          "value": "Abrir Mensajes guardados"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.ZoomIn",
+          "value": "Acercar"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.ZoomOut",
+          "value": "Alejar"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.PlayPauseStory",
+          "value": "Reproducir/pausar historia"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.CloseStories",
+          "value": "Cerrar historias"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.Undo",
+          "value": "Deshacer"
+        },
+        {
+          "key": "KeyboardShortcuts.Section.Formatting.Caption",
+          "value": "Selecciona texto en el campo de entrada para aplicar formato."
+        },
+        {
+          "key": "KeyboardShortcuts.Section.MediaEditor",
+          "value": "Editor multimedia"
+        },
+        {
           "key": "KeyboardShortcuts.Action.LockApp",
           "value": "Bloquear la aplicación"
         },
@@ -19588,7 +19788,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 8,
+      "version": 9,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -22221,6 +22421,46 @@
         {
           "key": "KeyboardShortcuts.Action.Redo",
           "value": "Повторити"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.Send",
+          "value": "Надсилання повідомлення"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.OpenSearch",
+          "value": "Відкриття пошуку"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.SavedMessages",
+          "value": "Відкриття Збереженого"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.ZoomIn",
+          "value": "Збільшення масштабу"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.ZoomOut",
+          "value": "Зменшення масштабу"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.PlayPauseStory",
+          "value": "Пуск/пауза історії"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.CloseStories",
+          "value": "Закриття історій"
+        },
+        {
+          "key": "KeyboardShortcuts.Action.Undo",
+          "value": "Скасувати"
+        },
+        {
+          "key": "KeyboardShortcuts.Section.Formatting.Caption",
+          "value": "Виділіть текст у полі введення, щоб застосувати форматування."
+        },
+        {
+          "key": "KeyboardShortcuts.Section.MediaEditor",
+          "value": "Редактор медіа"
         },
         {
           "key": "KeyboardShortcuts.Action.LockApp",
