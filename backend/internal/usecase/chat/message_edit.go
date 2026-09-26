@@ -37,14 +37,28 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 
 	var msg domain.Message
 	var members []int64
-	var pp *peerPayloads
+	var pp, ppLocked *peerPayloads
+	// Тело кадра получателю: автору — открытое, остальным при платном медиа —
+	// заблокированная копия (как у доставки new_message, fanout.go).
+	ppFor := func(uid int64) *peerPayloads {
+		if uid != msg.SenderID {
+			return ppLocked
+		}
+		return pp
+	}
 	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		m, e := i.msgs.UpdateText(ctx, msgID, text, entities)
 		if e != nil {
 			return e
 		}
-		msg = m
+		// Правка заменяет сообщение на клиенте ЦЕЛИКОМ (updateEditMessage),
+		// поэтому и ответ, и кадр несут его той же формой, что история:
+		// без гидрации правка подписи у фото приезжала без media, а без
+		// агрегата реакций клиент их гасил.
+		if msg, e = i.hydrateBroadcastMessage(ctx, m); e != nil {
+			return e
+		}
 		mem, e := i.chats.MemberIDs(ctx, chatID)
 		if e != nil {
 			return e
@@ -55,9 +69,19 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 		if e != nil {
 			return e
 		}
+		// Автор строки — с ним peerPayloads сравнивает получателя, чтобы
+		// поставить пер-зрительский pFlags.out (своё сообщение у автора).
+		pp.sender = msg.SenderID
+		ppLocked = pp
+		if msg.PaidMediaPrice != nil {
+			if ppLocked, e = i.newPeerPayloads(ctx, chatID, i.editMessagePayload(ctx, lockedPaidCopy(msg))); e != nil {
+				return e
+			}
+			ppLocked.sender = msg.SenderID
+		}
 		date := nowMillis()
 		for _, uid := range members {
-			payload, e := pp.payload(uid)
+			payload, e := ppFor(uid).payload(uid)
 			if e != nil {
 				return e
 			}
@@ -74,7 +98,7 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 	}
 	if i.publisher != nil {
 		for _, uid := range members {
-			_ = i.publisher.PublishToUser(ctx, uid, pp.framePts("edit_message", uid, ptsByUser[uid]))
+			_ = i.publisher.PublishToUser(ctx, uid, ppFor(uid).framePts("edit_message", uid, ptsByUser[uid]))
 		}
 	}
 	return msg, nil
