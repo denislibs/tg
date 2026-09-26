@@ -1,3 +1,12 @@
+// Порт tweb `src/scss/partials/_section.scss:1-106` (812502980) — дословно.
+// Модель отступов HEAD (2556fc949): промежуток до следующей секции — `padding-bottom`
+// КОНТЕЙНЕРА (:82-91), подпись вне карточки отстоит от неё на `.625rem` (:53-55), пустая
+// подпись места не занимает (:63-65), `captionTop` — `:first-child` (:69-72), `captionOld`
+// внутри карточки (:76-79). Правила `.checkbox-field`/`.radio-field` у секции сняты
+// (803f9599d, ef41b29db): раскладку полей строки держит `_row.scss` по классам `row-*-field`.
+// Разметка — `components/section.solid.tsx`, `components/settingSection.ts`,
+// `shared/ui/SidebarSection/SidebarSection.tsx`.
+// Расхождение: `@use "../foundation"` вместо `"../shared"` — наш модуль констант и миксинов.
 @use "../foundation" as *;
 
 .sidebar-left {
@@ -5,15 +14,10 @@
     background-color: var(--surface-color);
     padding: .5rem 0;
     border-radius: #{$section-rounded-border-radius};
-    margin-bottom: var(--section-padding-bottom);
     box-shadow: var(--section-box-shadow);
 
     &.no-shadow {
       box-shadow: none;
-    }
-
-    &.no-margin-bottom {
-      margin-bottom: 0;
     }
 
     &-content {
@@ -23,14 +27,7 @@
         margin: 0;
       }
 
-      > .checkbox-field {
-        .checkbox-box {
-          inset-inline-start: auto;
-        }
-      }
-
       @include respond-to(handhelds) {
-        > .checkbox-ripple,
         > .btn-primary {
           border-radius: 0;
         }
@@ -63,36 +60,47 @@
     }
 
     &-caption {
-      margin: -0.375rem 0 1rem;
+      // the distance down from the panel, stated plainly
+      margin-top: .625rem;
       font-size: var(--font-size-14);
       line-height: var(--line-height-14);
       color: var(--secondary-text-color);
       padding: 0 1rem;
 
+      // a live validation hint sits in the DOM with nothing to say until it has something,
+      // and until then it takes no room
+      &:empty {
+        margin-top: 0;
+      }
+
+      // `captionTop` puts the caption above the panel; the distance above it comes from
+      // whatever precedes the section
       &:first-child {
-        margin-top: .8125rem;
+        margin-top: 0;
         margin-bottom: .8125rem;
+      }
+
+      // `captionOld` keeps the caption inside the panel's card, where it spaces itself
+      // against the content above and the card's own bottom padding
+      .sidebar-left-section > & {
+        margin-top: -0.375rem;
+        margin-bottom: var(--section-padding-bottom);
       }
     }
 
     &-container {
       padding-inline: var(--section-padding-inline);
+      // the gap to whatever follows belongs to the section as a whole — inside its own box,
+      // so it neither collapses nor depends on whether the section carries a caption
+      padding-bottom: var(--section-padding-bottom);
+
+      &.no-margin-bottom {
+        padding-bottom: 0;
+      }
 
       a {
         cursor: pointer;
       }
-    }
-
-    .checkbox-field,
-    .radio-field {
-      margin: 0;
-    }
-
-    .checkbox-field {
-      display: flex;
-      align-items: center;
-      height: 3.5rem;
-      padding: 0 1.125rem;
     }
 
     &-disabled {

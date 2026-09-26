@@ -37,15 +37,16 @@ export function DiscussionScreen({ g, onBack }: { g: GroupEdit; onBack: () => vo
 
   return (
     <SettingsScreen title="PeerInfo.Discussion" onBack={onBack} zIndex={70}>
-      {/* Пояснение экрана — вендорная подпись секции
-          (`sidebar-left-section-caption`), а не свой текстовый блок. */}
+      {/* Пояснение экрана — подпись секции без карточки: форма tweb
+          `<Section noContent caption>` (`section.tsx:91`, `:112`). У tweb здесь
+          `div.caption` вне секций (`chatDiscussion.tsx:292`) — текст на фоне, не в
+          карточке; внутри карточки подпись попала бы под правило `captionOld`
+          (`_section.scss`) и прилипла бы к её верхнему краю. */}
       <div className="sidebar-left-section-container">
-        <div className="sidebar-left-section no-delimiter">
-          <div className="sidebar-left-section-content sidebar-left-section-caption">
-            {linkedId
-              ? t('Discussion.Linked')
-              : t('DiscussionChannelHelp3')}
-          </div>
+        <div className="sidebar-left-section-content sidebar-left-section-caption">
+          {linkedId
+            ? t('Discussion.Linked')
+            : t('DiscussionChannelHelp3')}
         </div>
       </div>
 
