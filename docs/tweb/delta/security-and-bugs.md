@@ -68,7 +68,7 @@
 
 | # | Что | Где у нас | Коммит tweb | Размер |
 |---|---|---|---|---|
-| B22 | AM/PM не учитывается для zh/ja/ko/tr/es; `formatTimeString` без мемо, нет отката языка при сбое загрузки пакета | `web-client/src/lib/langPack.ts:466` | d3bf83c2b → f252a5e53 → 00c1e1a86 | S |
+| B22 | AM/PM не учитывается для zh/ja/ko/tr/es; `formatTimeString` без мемо, нет отката языка при сбое загрузки пакета | `web-client/src/lib/langPack.ts` (`formatTimeString`, `setTimeFormat`, `getLangPackAndApply`) | d3bf83c2b → f252a5e53 → 00c1e1a86 | S — **сделано** (`fix/w1-lang-time-notify`): «ЧЧ:ММ» через `Intl` с `-u-hc-` и мемо по минуте, `amPmCache` снят, откат запрошенного языка на отказе загрузки |
 | B23 | Переход темы не учитывает DPR | анимация смены темы | 7082e1a18 | S |
 | B24 | При поиске по тегам резерв под плашки должен быть 0 | поиск по тегам | 6ce2cafba | S |
 | B25 | Эмодзи-регэксп содержит одиночные суррогаты: после сборки в tweb пропадали big emoji. Наш билд пока цел (rolldown 1.1.5, 0 символов U+FFFD), но сломается при обновлении vite/rolldown — профилактика | `web-client/src/lib/richtext/emojiRegex.ts` | 1ddddac9e | S |

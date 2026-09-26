@@ -244,8 +244,8 @@ describe('React-стор ЗЕРКАЛИТ владельца, а не завод
   // ни строки, ни кружок выбранного языка, ни хранилище. Это паритет с
   // оригиналом, у которого `getLangPackAndApply` в этом случае реджектится, а
   // вызывающий (`sidebarLeft/tabs/language.tsx:133`) реджект не ловит — см.
-  // разбор у `loadLangPackAndApply`. Запрошенный язык при этом сдвигается: у
-  // tweb `setLangCode` тоже стоит ДО загрузки.
+  // разбор у `loadLangPackAndApply`. Запрошенный язык сдвигается ДО загрузки (у
+  // tweb `setLangCode` стоит первым), а на отказе откатывается — tweb 00c1e1a86.
   it('пакет не доехал — зеркало, строки и выбор остаются прежними', async() => {
     const { I18n, useI18nStore } = await bootStore()
 
@@ -253,7 +253,7 @@ describe('React-стор ЗЕРКАЛИТ владельца, а не завод
 
     expect(applied).toBeUndefined()
     expect(owner.getPack).toHaveBeenCalledWith('it')
-    expect(I18n.getLastRequestedLangCode()).toBe('it')
+    expect(I18n.getLastRequestedLangCode()).toBe('en')
     expect(useI18nStore.getState().lang).toBe('en')
     expect(useI18nStore.getState().t('ArchivedChats')).toBe('Archived Chats')
     expect(localStorage.getItem('tg-lang')).toBeNull()
@@ -332,6 +332,9 @@ describe('предложение языка по браузеру (#117)', () =>
     // ── Второй запуск, сеть уже есть ─────────────────────────────────────────
     vi.resetModules()
     const second = await import('./langPack')
+    // Сеть есть — пакет доезжает. Без него предложение откатилось бы на
+    // английский (tweb 00c1e1a86), и пин проверял бы отказ, а не дожитие.
+    owner.getPack.mockResolvedValueOnce(serverPack('ru'))
 
     expect(second.default.hasStoredLangCode()).toBe(false)
     await second.suggestBrowserLangCode()
