@@ -8,12 +8,14 @@
  *  • скан: в мосту нет собственного хранилища (ни Solid-стора, ни сигнала,
  *    ни `localStorage`), и ключ `tg-settings` пишет только `settings.tsx`.
  */
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { createEffect, createRoot } from 'solid-js'
-import { useSettingsStore } from '@/settings'
-import { appSettings, setAppSettings, useAppSettings } from './appSettings.solid'
+import { DEFAULTS, useSettingsStore } from '@/settings'
+import copy from '@helpers/object/copy'
+import deepEqual from '@helpers/object/deepEqual'
+import { appSettings, setAppSettings, SETTINGS_INIT, useAppSettings } from './appSettings.solid'
 
 const SRC = join(__dirname, '..')
 const initial = useSettingsStore.getState()
@@ -69,8 +71,82 @@ describe('useAppSettings — один источник правды (zustand)', 
   it('незаведённый путь — throw, а не молчаливый no-op', () => {
     // @ts-expect-error — пути нет в таблице соответствий
     expect(() => setAppSettings('notifications', 'novibrate', true)).toThrow(/novibrate/)
-    // @ts-expect-error — поддерево, а не лист
-    expect(() => setAppSettings('notifications', {})).toThrow(/notifications/)
+    // @ts-expect-error — пути нет и внутри поддерева
+    expect(() => setAppSettings('autoDownloadNew', 'photo_size_max', 1)).toThrow(/photo_size_max/)
+  })
+})
+
+describe('useAppSettings — формы записи «Данных и памяти» (задача 7 плана 2D)', () => {
+  afterEach(() => {
+    useSettingsStore.getState().update({
+      autoDownloadEnabled: DEFAULTS.autoDownloadEnabled,
+      autoDownloadPhoto: { ...DEFAULTS.autoDownloadPhoto },
+      autoDownloadVideo: { ...DEFAULTS.autoDownloadVideo },
+      autoDownloadFile: { ...DEFAULTS.autoDownloadFile },
+      autoDownloadFileSizeMax: DEFAULTS.autoDownloadFileSizeMax,
+    })
+  })
+
+  it('путь внутрь значения-объекта: autoDownload.photo.groups меняет одно поле, остальное не трогает', async() => {
+    const before = useSettingsStore.getState().autoDownloadPhoto
+
+    await setAppSettings('autoDownload', 'photo', 'groups', false)
+
+    const after = useSettingsStore.getState().autoDownloadPhoto
+    expect(after).toEqual({ ...before, groups: false })
+    expect(after).not.toBe(before)
+    expect(appSettings.autoDownload.photo.groups).toBe(false)
+  })
+
+  it('autoDownloadNew.pFlags.disabled — обратный смысл autoDownloadEnabled в обе стороны', async() => {
+    expect(appSettings.autoDownloadNew.pFlags.disabled).toBeUndefined()
+
+    await setAppSettings('autoDownloadNew', 'pFlags', 'disabled', true)
+    expect(useSettingsStore.getState().autoDownloadEnabled).toBe(false)
+    expect(appSettings.autoDownloadNew.pFlags.disabled).toBe(true)
+
+    await setAppSettings('autoDownloadNew', 'pFlags', 'disabled', undefined)
+    expect(useSettingsStore.getState().autoDownloadEnabled).toBe(true)
+  })
+
+  it('запись поддерева — одним update, как setStore(путь, объект) у tweb', async() => {
+    useSettingsStore.getState().update({
+      autoDownloadEnabled: false,
+      autoDownloadPhoto: { contacts: false, private: false, groups: false, channels: false },
+      autoDownloadFileSizeMax: 1024,
+    })
+    const spy = vi.spyOn(useSettingsStore.getState(), 'update')
+
+    await setAppSettings('autoDownload', copy(SETTINGS_INIT.autoDownload))
+    await setAppSettings('autoDownloadNew', copy(SETTINGS_INIT.autoDownloadNew))
+
+    expect(spy).toHaveBeenCalledTimes(2)
+    const state = useSettingsStore.getState()
+    expect(state.autoDownloadPhoto).toEqual(DEFAULTS.autoDownloadPhoto)
+    expect(state.autoDownloadPhoto).not.toBe(DEFAULTS.autoDownloadPhoto)
+    expect(state.autoDownloadEnabled).toBe(true)
+    expect(state.autoDownloadFileSizeMax).toBe(DEFAULTS.autoDownloadFileSizeMax)
+    spy.mockRestore()
+  })
+
+  it('поддерево сливается по ключам объекта: поле, которого в объекте нет, не трогается', async() => {
+    useSettingsStore.getState().update({ autoDownloadVideo: { contacts: false, private: false, groups: false, channels: false } })
+    const video = useSettingsStore.getState().autoDownloadVideo
+
+    await setAppSettings('autoDownload', { photo: { contacts: false, private: true, groups: true, channels: true } })
+
+    expect(useSettingsStore.getState().autoDownloadPhoto.contacts).toBe(false)
+    expect(useSettingsStore.getState().autoDownloadVideo).toBe(video)
+    expect(useSettingsStore.getState().autoDownloadFile).toEqual(DEFAULTS.autoDownloadFile)
+  })
+
+  it('SETTINGS_INIT — дефолты в форме tweb; deepEqual с текущими — признак «ничего не меняли»', async() => {
+    expect(SETTINGS_INIT.autoDownloadNew.file_size_max).toBe(DEFAULTS.autoDownloadFileSizeMax)
+    expect(deepEqual(appSettings.autoDownload, SETTINGS_INIT.autoDownload)).toBe(true)
+    expect(deepEqual(appSettings.autoDownloadNew, SETTINGS_INIT.autoDownloadNew)).toBe(true)
+
+    await setAppSettings('autoDownloadNew', 'pFlags', 'disabled', true)
+    expect(deepEqual(appSettings.autoDownloadNew, SETTINGS_INIT.autoDownloadNew)).toBe(false)
   })
 })
 

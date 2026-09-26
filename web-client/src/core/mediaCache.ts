@@ -1,10 +1,11 @@
 // Работа с медиакэшем (CacheStorage 'cachedFiles') из UI-потока — порт
 // tweb dataAndStorage/storageQuota.tsx: подсчёт объёма с разбивкой по
-// content-type, очистка, синк настроек TTL/лимита в service worker.
+// content-type, очистка, подписчик настроек TTL/лимита → service worker.
 // Ниже — второй жилец модуля (Task 6): зеркало objectURL'ов той же корзины.
 import type { LangPackKey } from '@/lang'
 import type { MediaUrlEvt } from './managers/mediaManager'
 import { isLottieMime } from './stickers/tgs'
+import { useSettingsStore } from '@/settings'
 
 const CACHED_FILES = 'cachedFiles'
 
@@ -106,12 +107,28 @@ export async function clearCachedFiles(): Promise<void> {
 }
 
 // Отдать SW актуальные cacheTTL/cacheSize — он сразу прогоняет очистку
-// (clearOldCache). Вызывается при старте приложения и при смене настроек.
+// (clearOldCache). Зовёт только `watchCacheSettings` ниже.
 export function syncCacheSettingsToSW(cacheTTL: number, cacheSize: number): void {
   if (!('serviceWorker' in navigator)) return
   void navigator.serviceWorker.ready.then((reg) => {
     reg.active?.postMessage({ type: 'cache-settings', cacheTTL, cacheSize })
   }).catch(() => {})
+}
+
+// Побочка настроек медиакэша — у самой настройки, а не в обработчике экрана
+// (образец — `client/pushSetup.ts::watchPushConditions`): SW получает срок и
+// предел на заводе и на каждой их смене, кто бы их ни поменял (вкладка «Данные
+// и память» пишет их на своём `destroy`). У tweb SW читает настройки из
+// состояния сам (`serviceWorker/clearOldCache.ts:30`, `:81`); у нашего SW
+// доступа к `localStorage` нет — ему шлют сообщение.
+export function watchCacheSettings(): () => void {
+  const { cacheTTL, cacheSize } = useSettingsStore.getState()
+  syncCacheSettingsToSW(cacheTTL, cacheSize)
+  return useSettingsStore.subscribe((state, prev) => {
+    if (state.cacheTTL !== prev.cacheTTL || state.cacheSize !== prev.cacheSize) {
+      syncCacheSettingsToSW(state.cacheTTL, state.cacheSize)
+    }
+  })
 }
 
 // Порт tweb helpers/formatBytes: decimals='auto' → i-1 знаков (КБ целыми,

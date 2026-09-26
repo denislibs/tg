@@ -1142,6 +1142,19 @@ const ru = {
   'AutoDeleteMessages.SectionCaption':
     'Включите, чтобы все новые сообщения в Ваших чатах, созданных после изменения настройки, автоматически удалялись для всех участников спустя выбранное время. Автоудаление в ранее созданных чатах включается отдельно.',
   'AutoDeleteMessages.SetOtherTime': 'Выбрать другой срок',
+  // Разряды длительности (`components/wrappers/wrapDuration.ts`, задача 7 плана 2D)
+  Seconds: {
+    one_value: '%1$d секунда',
+    few_value: '%1$d секунды',
+    many_value: '%1$d секунд',
+    other_value: '%1$d секунды',
+  },
+  Minutes: {
+    one_value: '%1$d минута',
+    few_value: '%1$d минуты',
+    many_value: '%1$d минут',
+    other_value: '%1$d минуты',
+  },
   Hours: {
     one_value: '%1$d час',
     few_value: '%1$d часа',
@@ -1283,6 +1296,17 @@ const ru = {
   AutoDownloadOnFor: 'Включено для: %1$s',
   AutoDownloadOnUpToFor: 'До %1$s для: %2$s',
   AutoDownloadPm: 'Личные чаты',
+  // Данные и память, задача 7 плана 2D (tweb lang.ts, ключи дословно)
+  AutoDownloadContacts: 'Контакты',
+  AutoDownloadGroups: 'Группы',
+  AutoDownloadChannels: 'Каналы',
+  AutoDownloadOff: 'Выключено',
+  AutoDownloadFiles: 'Файлы',
+  AutodownloadContacts: 'Контакты',
+  AutodownloadChannels: 'Каналы',
+  'StorageQuota.Clear': 'Очистить',
+  'StorageQuota.Other': 'Другое',
+  'StorageQuota.FailedToCalculate': 'Не удалось подсчитать',
   AutodownloadGroupChats: 'Группы',
   AutoDownloadPhotosTitle: 'Автозагрузка фото',
   AutoDownloadVideosTitle: 'Автозагрузка видео и GIF',
