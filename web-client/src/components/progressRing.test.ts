@@ -14,7 +14,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import ProgressRing, { createProgressRing, DEFAULT_STROKE_WIDTH, getProgressRingRadius } from './progressRing'
+import ProgressRing, { createProgressRing, DEFAULT_STROKE_WIDTH, getProgressRingCircumference, getProgressRingRadius } from './progressRing'
 
 const SIZE = 200
 const RADIUS = SIZE / 2 - DEFAULT_STROKE_WIDTH * 2
@@ -130,6 +130,24 @@ describe('progressRing — императивный хендл (createProgressRi
     const c360 = 2 * Math.PI * getProgressRingRadius(360)
     expect(parseFloat(small.circle.style.strokeDashoffset)).toBeCloseTo(c100 / 2, 6)
     expect(parseFloat(big.circle.style.strokeDashoffset)).toBeCloseTo(c360 / 2, 6)
+  })
+
+  // tweb 1faad1d59: размер ведётся императивно, как прогресс, — resize
+  // пересчитывает геометрию и прогресс не теряет.
+  it('setSize пересчитывает геометрию и держит прогресс', () => {
+    const ring = createProgressRing({ size: SIZE })
+    ring.setProgress(0.25)
+    ring.setSize(100)
+    const c100 = getProgressRingCircumference(100)
+    expect(ring.element.getAttribute('width')).toBe('100')
+    expect(ring.element.getAttribute('height')).toBe('100')
+    expect(ring.circle.getAttribute('cx')).toBe('50')
+    expect(ring.circle.getAttribute('r')).toBe('' + getProgressRingRadius(100))
+    expect(ring.circle.style.strokeDasharray).toBe(`${c100} ${c100}`)
+    expect(parseFloat(ring.circle.style.strokeDashoffset)).toBeCloseTo(c100 * 0.75, 6)
+    // и дальнейший прогресс — уже по новой окружности
+    ring.setProgress(0.5)
+    expect(parseFloat(ring.circle.style.strokeDashoffset)).toBeCloseTo(c100 / 2, 6)
   })
 
   it('вызывающий может писать dashoffset сам — хендл ему не мешает (так делает wrapVideo)', () => {

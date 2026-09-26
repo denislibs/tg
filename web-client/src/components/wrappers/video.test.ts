@@ -728,17 +728,19 @@ describe('wrapVideo: кружок', () => {
     playback.resetPlayback()
   })
 
-  // tweb video.ts:54-74 — размер кружка зависит от брейкпоинта
+  // tweb video.ts:53-59 — размер кружка зависит от брейкпоинта
   // (HANDHELDS.round ≠ DESKTOP.round), а бабл на смене экрана не пересобирается:
   // кольцо обязано пересчитаться на месте, иначе оно останется прежнего диаметра
   // поверх кружка нового размера.
   it('смена брейкпоинта пересчитывает кольца ЖИВЫХ кружков на месте', async () => {
     mediaUrl.applyMediaToken(TOKEN('T1'))
     const container = box()
-    document.body.append(container) // хендлер ищет кольца по документу
+    document.body.append(container)
 
+    // кружок крупнее обоих размеров интерфейса — кольцо идёт за брейкпоинтом
     await wrapVideo({
-      doc: roundDoc(), container, message: { mid: 5, peerId: -42 },
+      doc: videoDoc({ round: true, w: 400, h: 400, duration: 8, serverThumb: false }),
+      container, message: { mid: 5, peerId: -42 },
       ...REGULAR, middleware: getMiddleware().get(),
     })
     await flush()
@@ -768,6 +770,29 @@ describe('wrapVideo: кружок', () => {
 
     sizes.default.active = sizes.DESKTOP
     container.remove()
+    playback.resetPlayback()
+  })
+
+  // tweb 1faad1d59: старый кружок бывает меньше текущего размера интерфейса —
+  // кольцо по диаметру САМОГО кружка (`min(doc.w, round.width)`), иначе оно
+  // шире видео и уходит за его край.
+  it('кольцо маленького кружка — по его диаметру, а не по размеру интерфейса', async () => {
+    mediaUrl.applyMediaToken(TOKEN('T1'))
+    const container = box()
+    const sizes = await import('@core/dom/mediaSizes')
+    expect(sizes.DESKTOP.round.width).toBeGreaterThan(200)
+
+    await wrapVideo({
+      doc: videoDoc({ round: true, w: 200, h: 200, duration: 8, serverThumb: false }),
+      container, message: { mid: 5, peerId: -42 },
+      ...REGULAR, middleware: getMiddleware().get(),
+    })
+    await flush()
+
+    const svg = container.querySelector('.media-round .progress-ring') as SVGSVGElement
+    const circle = svg.firstElementChild as SVGCircleElement
+    expect(svg.getAttribute('width')).toBe('200')
+    expect(circle.getAttribute('r')).toBe('' + (100 - 3.5 * 2))
     playback.resetPlayback()
   })
 })
