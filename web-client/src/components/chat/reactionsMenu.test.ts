@@ -100,7 +100,7 @@ beforeEach(() => {
   document.body.replaceChildren()
   resetChatFullMirror()
   vi.clearAllMocks()
-  useSettingsStore.setState({ reduceMotion: false })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: false } })
   onFinish = vi.fn()
   // Каждый `render` — своя пара плееров: у ячейки их два (appear + select).
   wrapStickerMock.mockImplementation(() => ({

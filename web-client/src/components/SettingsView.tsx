@@ -10,7 +10,6 @@ import EditProfile from './settings/EditProfile'
 import PremiumModal from './PremiumModal'
 import PremiumManage from './PremiumManage'
 import PremiumBadge from './PremiumBadge'
-import EmojiStatusPicker from './EmojiStatusPicker'
 import QrModal from './QrModal'
 import TgIcon from './TgIcon'
 import type { IconName } from '../core/tgico-icons'
@@ -23,12 +22,12 @@ import rootScope from '@lib/rootScope'
 import { useMediaUrl } from '../core/hooks/useMediaUrl'
 import { getPeerPhotoId, getPeerPhotoStrippedThumb } from '../core/peers/peer'
 import { getUserTitle } from '../core/peers/getPeerTitle'
-import { useSettings } from '../settings'
 import { useManagers } from '../core/hooks/useManagers'
 import { createSettingsSliderHost, getSettingsSliderHost, openActiveSessionsTab } from './sidebarLeft/settingsSliderHost'
-import { AppLanguageTab, AppNotificationsTab } from './solidJsTabs/tabs'
+import { AppDataAndStorageTab, AppKeyboardShortcutsTab, AppLanguageTab, AppNotificationsTab } from './solidJsTabs/tabs'
 import { toastNew } from './toast'
-import { resolvePreset, PRESET_MODE } from '../theme'
+import StarsPopup from './stars/StarsPopup'
+import { useStarsBalance } from '../stores/starsStore'
 import s from './SettingsView.module.scss'
 
 // Pretty-print a Russian +7XXXXXXXXXX number as "+7 925 481 7290"; any other
@@ -72,12 +71,10 @@ export const settingsItems: { icon: IconName; label: LangPackKey; value?: LangPa
 
 export default function SettingsView({
   onBack,
-  onToggleMode,
   chats,
   initialSub,
 }: {
   onBack: () => void
-  onToggleMode: (coords?: { x: number; y: number }) => void
   /** список чатов — нужен экранам папок (счётчики, выбор чатов) */
   chats?: import('../data').Chat[]
   /** сразу открыть под-экран (deep-open из контекстного меню папок) */
@@ -85,14 +82,15 @@ export default function SettingsView({
 }) {
   const t = useT()
   const managers = useManagers()
-  const themeChoice = useSettings((s) => s.themeChoice)
-  const isDark = PRESET_MODE[resolvePreset(themeChoice)] === 'dark'
   const [active, setActive] = useState(initialSub ?? 'AccountSettings.Notifications')
   const [sub, setSub] = useState<LangPackKey | null>(initialSub ?? null)
   const [editProfile, setEditProfile] = useState(false)
   const [premiumOpen, setPremiumOpen] = useState(false)
   const [premiumManageOpen, setPremiumManageOpen] = useState(false)
-  const [emojiStatusOpen, setEmojiStatusOpen] = useState(false)
+  const [starsOpen, setStarsOpen] = useState(false)
+  // Баланс звёзд — порт `useStars()` (tweb `settings.tsx`, секция Premium):
+  // строка «Мои звёзды» видна только при ненулевом балансе.
+  const stars = useStarsBalance()
   const [qrOpen, setQrOpen] = useState(false)
   const me = useChatsStore((s) => s.me)
   // Своя карточка — пара конструкторов: краткая `user` (имя, телефон, premium,
@@ -242,19 +240,12 @@ export default function SettingsView({
         </Section>
 
         {/* Список настроек — строки tweb (`div.profile-buttons` > `Row` с
-            `Row.Icon`, дамп 14-left-13-settings-root). Подсветка активного
-            пункта и строка «Ночной режим» первой — наши (у tweb ночной режим
-            живёт в бургере); иконка ночного режима — `darkmode_filled` из
-            того же реестра плашек. */}
+            `Row.Icon`, дамп 14-left-13-settings-root), состав и порядок — JSX
+            `Settings` (`sidebarLeft/tabs/settings.tsx`). «Ночного режима» здесь
+            нет, как и у оригинала: он в бургере, подменю «Ещё» (`MainMenu`).
+            Подсветка активного пункта — наша. */}
         <Section>
           <div className="profile-buttons">
-          <Row
-            icon={<TgIcon name="darkmode_filled" />}
-            label="General.NightMode"
-            toggle
-            checked={isDark}
-            onClick={(e) => onToggleMode({ x: e.clientX, y: e.clientY })}
-          />
           {settingsItems.map((it) => (
             <Row
               key={it.label}
@@ -308,6 +299,21 @@ export default function SettingsView({
                     .catch(() => toastNew({ langPackKey: 'Error.AnError' }))
                   return
                 }
+                // «Горячие клавиши» — вкладка слайдера (план 2D, задача 10); у
+                // оригинала та же одна строка (`settings.tsx:413`,
+                // `tab.slider.createTab(AppKeyboardShortcutsTab).open()`).
+                if (it.label === 'KeyboardShortcuts.Title') {
+                  void getSettingsSliderHost().openTab(AppKeyboardShortcutsTab)
+                    .catch(() => toastNew({ langPackKey: 'Error.AnError' }))
+                  return
+                }
+                // «Данные и память» — вкладка слайдера (план 2D, задача 7); у
+                // оригинала та же одна строка (`settings.tsx`, `makeSubTabConfig`).
+                if (it.label === 'DataSettings') {
+                  void getSettingsSliderHost().openTab(AppDataAndStorageTab)
+                    .catch(() => toastNew({ langPackKey: 'Error.AnError' }))
+                  return
+                }
                 if (hasSubScreen(it.label)) setSub(it.label)
               }}
             />
@@ -315,23 +321,29 @@ export default function SettingsView({
           </div>
         </Section>
 
-        {/* Premium / Gift */}
+        {/* Секция Premium — tweb `settings.tsx` (`<Show when={!premiumBlocked()}>`):
+            «Telegram Premium» БЕЗ подзаголовка, «Мои звёзды» (при ненулевом
+            балансе), «TON», «Отправить подарок». Выбора эмодзи-статуса здесь
+            нет: у оригинала он — кнопка `.sidebar-emoji-status` в шапке колонки
+            (`SidebarEmojiStatusButton`) и клик по своему статусу в профиле
+            (`clickableEmojiStatus`; придёт с `PeerProfile`, задача 28 волны 2D).
+            Отступления: условия `premiumBlocked` нет — у нас нет источника
+            `isPremiumPurchaseBlocked`, секция видна всегда; строки «TON» нет —
+            нет ни баланса TON, ни истории его транзакций. */}
         <Section>
           <Row
             icon={<TgIcon name="premium_badge" />}
             label="Premium.Boarding.Title"
-            sublabel={user?.pFlags?.premium ? t('Premium.Row.Active') : t('Premium.Row.Subtitle')}
             onClick={() => (user?.pFlags?.premium ? setPremiumManageOpen(true) : setPremiumOpen(true))}
           />
-          <Row
-            icon={
-              user?.emoji_status_emoticon
-                ? <span style={{ fontSize: 22, lineHeight: 1 }}>{user.emoji_status_emoticon}</span>
-                : <TgIcon name="emoji_filled" />
-            }
-            label="EmojiStatus.Set"
-            onClick={() => setEmojiStatusOpen(true)}
-          />
+          {!!stars && (
+            <Row
+              icon={<TgIcon name="star_circle_filled" />}
+              label="MenuTelegramStars"
+              value={'' + stars}
+              onClick={() => setStarsOpen(true)}
+            />
+          )}
           <Row
             icon={<TgIcon name="gift_filled" />}
             label="Chat.Menu.SendGift"
@@ -352,8 +364,8 @@ export default function SettingsView({
       {/* Manage active subscription (plan, expiry, cancel auto-renew) */}
       {premiumManageOpen && <PremiumManage onBack={() => setPremiumManageOpen(false)} />}
 
-      {/* Emoji-status picker (own status) */}
-      <EmojiStatusPicker open={emojiStatusOpen} onClose={() => setEmojiStatusOpen(false)} />
+      {/* Баланс и пополнение звёзд (tweb `showStarsPopup()`) */}
+      <StarsPopup open={starsOpen} onClose={() => setStarsOpen(false)} />
 
       {/* «QR-код» профиля (tweb myQrCode) — кодирует нашу публичную страницу
           /@username (аналог t.me/username) */}

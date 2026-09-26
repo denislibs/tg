@@ -120,7 +120,7 @@ beforeEach(() => {
   // лестница выключается тем же гейтом, что в оригинале
   // (`liteMode.isAvailable('animations')`, tweb bubbles.ts:11540). Сама она
   // проверяется в `bubbles.firstLoad.test.ts`.
-  useSettingsStore.setState({ reduceMotion: true })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
   // Карта сохранённых позиций — синглтон модуля, и `destroy()` в `afterEach`
   // в неё пишет: без сброса следующий тест открыл бы «тот же чат» ВОЗВРАТОМ.
   clearChatPositions()

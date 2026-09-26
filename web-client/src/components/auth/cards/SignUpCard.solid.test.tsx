@@ -13,6 +13,7 @@ import { render } from 'solid-js/web'
 import type { Managers } from '@/client/bootstrap'
 import { AuthFlowContext, type AuthFlowContextValue } from '../authFlow.solid'
 import SignUpCard from './SignUpCard.solid'
+import mediaHeaderStyles from '@components/mediaHeader.module.scss'
 
 // Мокаем реальным DocumentFragment'ом (не заглушкой) — так DOM-пин ниже
 // («заголовок собирается через wrapEmojiText») проверяет и ВЫЗОВ, и то, что
@@ -287,5 +288,16 @@ describe('SignUpCard.solid: живой предпросмотр ФИО разб�
   it('пустое имя НЕ зовёт wrapEmojiText — фолбэк «Your Name» идёт мимо него', () => {
     mount()
     expect(wrapEmojiTextMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('SignUpCard.solid: шапка — разметка tweb HEAD 812502980 (О-29)', () => {
+  it('заголовок — h1, подзаголовок без модульного .secondary (tweb SignUpCard.tsx:148-149)', () => {
+    mount()
+    const title = host!.querySelector(`.${mediaHeaderStyles.title}`) as HTMLElement
+    expect(title.tagName).toBe('H1')
+    const subtitle = host!.querySelector(`.${mediaHeaderStyles.subtitle}`) as HTMLElement
+    expect(subtitle.classList.contains('secondary')).toBe(false)
+    expect(subtitle.classList.contains(mediaHeaderStyles.secondary)).toBe(false)
   })
 })

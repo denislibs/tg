@@ -4,6 +4,9 @@
 //     (заполняется в цикле поиска — TS2454 «used before being assigned» иначе)
 //   • закомментированные черновики tweb (прототип `addEventListener`-патча,
 //     `addFromElement`) сохранены как есть.
+// `addCleanup` (tweb :99-102, уборка в `removeAll`) — с первым вызывающим:
+// `checkboxFields.solid.tsx` снимает Solid-корни строк вместе со слушателями
+// вкладки (план 2D, задача 11).
 import type EventListenerBase from '@helpers/eventListenerBase'
 
 export type Listener = {
@@ -33,6 +36,7 @@ HTMLElement.prototype.addEventListener = function(this, name: string, callback: 
 
 export default class ListenerSetter {
   private listeners: Set<Listener> = new Set()
+  private cleanups: Set<() => void> = new Set()
 
   public add<T extends ListenerElement>(element: T): T['addEventListener'] {
     return ((event: string, callback: Function, options: ListenerOptions) => {
@@ -101,9 +105,16 @@ export default class ListenerSetter {
     }
   }
 
+  public addCleanup(cleanup: () => void) {
+    this.cleanups.add(cleanup)
+    return () => this.cleanups.delete(cleanup)
+  }
+
   public removeAll() {
     this.listeners.forEach((listener) => {
       this.remove(listener)
     })
+    this.cleanups.forEach((cleanup) => cleanup())
+    this.cleanups.clear()
   }
 }

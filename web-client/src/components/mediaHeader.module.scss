@@ -1,18 +1,22 @@
 /*
- * Порт tweb `src/components/mediaHeader.module.scss` — общая шапка «стикер →
- * тайтл → сабтайтл» (карточки входа, интро-попапы, вкладки настроек).
- *
- * РАСХОЖДЕНИЕ с HEAD 812502980 (см. шапку `mediaHeader.solid.tsx`, п. 1):
- * отступы — модель старой базы e52b5d931 (поля у `.title`/`.subtitle`/
- * `.sticker`), а не ритм блока HEAD (`.container { display: flex; gap: .5rem }`,
- * `margin-block: 0`, `padding-inline: 1rem`, `text-wrap: balance`,
- * `white-space: pre-line`, `.sticker { margin-inline: auto }`): под ту модель у
- * tweb переписан и `authFlow.module.scss`, а наш `auth/AuthFlow.module.scss` —
- * старой базы. Переезжают вместе, со стендом — О-29 плана 2D.
- * Классы, которые HEAD ДОБАВИЛ и которые модель отступов не трогают, — ниже
- * дословно (`.alignStart`, `.onBackdrop`, `.backdrop`, `.marginTop`,
- * `.marginBottom`, `.title20`, `.danger`, `.sticker > img`).
+ * Порт tweb `src/components/mediaHeader.module.scss` (812502980) — 1:1: общая
+ * шапка «стикер → тайтл → сабтайтл» (карточки входа, интро-попапы, вкладки
+ * настроек). Модель отступов — HEAD (2556fc949 + `margin-block: 0` из
+ * 472e3e76b): ритм между частями держит блок (`gap: .5rem`), у частей нет
+ * вертикальных полей; под неё же переведён `auth/AuthFlow.module.scss`
+ * (`.qrContainer`) — О-29 плана 2D.
  */
+
+// The block owns the rhythm between its own pieces, so the pieces themselves declare no
+// vertical margins — a caller is then free to set any margin on any of them without racing
+// this module's declarations through CSS-module load order.
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  // often a centred flex item, where `fit-content` would let long copy push past the popup
+  max-width: 100%;
+}
 
 .alignStart {
   align-items: flex-start;
@@ -66,11 +70,19 @@
   margin-bottom: 1rem;
 }
 
+.title,
+.subtitle {
+  padding-inline: 1rem;
+  text-align: center;
+  text-wrap: balance;
+  word-break: break-word;
+}
+
 .title {
+  margin-block: 0;
   font-size: var(--font-size-24);
   line-height: var(--line-height-24);
   font-weight: var(--font-weight-bold);
-  margin-bottom: .25rem;
 
   &.title20 {
     font-size: var(--font-size-20);
@@ -81,7 +93,8 @@
 .subtitle {
   font-size: var(--font-size-16);
   line-height: var(--line-height-16);
-  margin-top: .125rem;
+  // a line break belongs to the translated copy, never to the markup; other whitespace collapses
+  white-space: pre-line;
 
   &.secondary {
     color: var(--secondary-text-color);
@@ -97,7 +110,7 @@
 .sticker {
   --sticker-size: 130px;
   position: relative;
-  margin: .125rem auto .5rem;
+  margin-inline: auto;
   width: var(--sticker-size);
   height: var(--sticker-size);
   display: flex;

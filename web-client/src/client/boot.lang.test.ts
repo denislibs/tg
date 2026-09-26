@@ -173,3 +173,38 @@ describe('boot: названия месяцев следуют языку', () =
     expect(monthsLocalized[0]).toBe('January')
   })
 })
+
+// ── НАПРАВЛЕНИЕ ИНТЕРФЕЙСА ПО ЯЗЫКУ (порт tweb index.ts:391-400 `setDocumentLangPackProperties`) ──
+//
+// Старт после применения пакета ставит `dir` корня и флаг `I18n.getIsRTL()`, по
+// которому зеркалят ось ползунки (`components/rangeSelector.ts`,
+// `rangeSelectorTsx.solid.tsx`). У tweb RTL включает только `ar` (`fa` выключен
+// `&& IS_BETA && false`), остальное — `ltr`; на смене языка без перезагрузки
+// направление не меняется и у оригинала.
+describe('boot: направление интерфейса по языку пакета', () => {
+  beforeEach(() => {
+    I18n.setRTL(false)
+    document.documentElement.removeAttribute('dir')
+    document.documentElement.removeAttribute('lang')
+    document.documentElement.classList.remove('is-rtl')
+  })
+
+  it('en — dir="ltr", RTL выключен', async () => {
+    await bootstrap()
+
+    expect(document.documentElement.dir).toBe('ltr')
+    expect(document.documentElement.classList.contains('is-rtl')).toBe(false)
+    expect(I18n.getIsRTL()).toBe(false)
+  })
+
+  it('ar — dir="rtl", класс is-rtl, lang="ar", I18n.getIsRTL()', async () => {
+    I18n.setLangCode('ar')
+
+    await bootstrap()
+
+    expect(document.documentElement.dir).toBe('rtl')
+    expect(document.documentElement.lang).toBe('ar')
+    expect(document.documentElement.classList.contains('is-rtl')).toBe(true)
+    expect(I18n.getIsRTL()).toBe(true)
+  })
+})

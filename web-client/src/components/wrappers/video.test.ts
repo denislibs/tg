@@ -296,7 +296,7 @@ describe('wrapVideo: информационный слой и дерево', () 
   })
 
   it('гейт автоплея гифки (liteMode): без анимаций — кнопка, и стрим только по клику', async () => {
-    settings.useSettingsStore.setState({ reduceMotion: true })
+    settings.useSettingsStore.setState({ liteMode: { ...settings.useSettingsStore.getState().liteMode, all: true } })
     mediaUrl.applyMediaToken(TOKEN('T1'))
     const container = box()
 
@@ -315,7 +315,7 @@ describe('wrapVideo: информационный слой и дерево', () 
 
     expect(res.video!.src).toContain('/api/media/7/content?token=T1')
     expect(container.querySelector('button.video-play')).toBeNull()
-    settings.useSettingsStore.setState({ reduceMotion: false })
+    settings.useSettingsStore.setState({ liteMode: { ...settings.useSettingsStore.getState().liteMode, all: false } })
   })
 })
 

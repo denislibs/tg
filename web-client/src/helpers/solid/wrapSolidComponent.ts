@@ -1,10 +1,14 @@
 /**
- * Порт tweb `src/helpers/solid/wrapSolidComponent.ts` (812502980) в объёме
- * `unwrapSolidElement` + `wrapSolidComponent`: ванильный класс берёт узел
- * Solid-разметки (секцию, поле поиска селектора пиров) и отдаёт её корень
- * своему `middleware` — корень гаснет вместе с классом.
+ * Порт tweb `src/helpers/solid/wrapSolidComponent.ts:1-22` (812502980) —
+ * Solid-разметка как готовый узел для императивного кода: корень `createRoot`,
+ * снятие — на `onClean` переданной миддлвари. `unwrapSolidElement` отдельно зовёт
+ * `components/checkboxFields.solid.tsx`: результат Solid-компонента может быть
+ * функцией-аксессором (обёртка разработки — у нас так в vitest), а императивному
+ * вызывающему нужен сам узел.
  *
- * `mountSolidComponent` (:24-48) не перенесён — вызывающих у нас нет.
+ * `mountSolidComponent` (`:24-50`) не портирован: потребителя у нас нет
+ * (вызывающие `wrapSolidComponent` — вкладки автозагрузки и селектор пиров: секция,
+ * поле поиска; корень гаснет вместе с классом-владельцем).
  */
 import { createRoot, type JSX } from 'solid-js'
 import type { Middleware } from '@helpers/middleware'
