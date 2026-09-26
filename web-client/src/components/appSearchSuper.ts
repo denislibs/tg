@@ -363,7 +363,16 @@
 //     уже обнулил его), и новый запрос каналов не ушёл бы. Строка «Recent» гасит
 //     свой хелпер (`onCleanup`), когда `For` её снимает, — у оригинала хелпер
 //     строки не гасится никогда, и её аватар с именем слушают зеркало вечно.
+// 56. `ScrollableRefiller` (tweb fb18166dc, B8) портирован без двух
+//     `refiller.reset('media')` оригинала (812502980 `:1053`, `:1120`): они
+//     стоят в переключении фильтра вкладки «Медиа» фото/видео (553143f1e),
+//     которого у нас нет — нет ни меню шапки, ни фильтров `photos`/`videos` на
+//     бэкенде (BLOCKED, `docs/tweb/delta/README.md`). Приедет фильтр — сброс
+//     встанет в оба места. E2E-спека `profileSidebarIdle.spec.ts` (нужен
+//     вошедший клиент) заменена шовным пином `appSearchSuper.refill.test.ts`:
+//     живой `Scrollable` в неполном окне, счёт вызовов `load`.
 import Scrollable, { ScrollableX } from '@components/scrollable'
+import ScrollableRefiller from '@components/scrollableRefiller'
 import { horizontalMenu } from '@components/horizontalMenu'
 import type { SelectTab } from '@components/horizontalMenu'
 import { createLazyLoadQueue, type LazyLoadQueue } from '@core/lazyLoadQueue'
@@ -904,6 +913,8 @@ export default class AppSearchSuper {
   /** tweb `:379-380` — «этот тип уже грузится» и «этот тип дочитан до конца». */
   private loadPromises: Partial<Record<SearchSuperMediaType, Promise<unknown> | null>> = {}
   private loaded: Partial<Record<SearchSuperMediaType, boolean>> = {}
+  /** tweb fb18166dc — повторная проверка триггеров после загрузки, пока растёт прогресс вкладки. */
+  private refiller: ScrollableRefiller<SearchSuperMediaType>
   /** tweb `:381` — группы контактов вкладки `chats` уже нарисованы на этот
    *  запрос (`loadChats` зовётся один раз, `:2232-2235`); сброс — `cleanup`. */
   private loadedChats = false
@@ -993,6 +1004,12 @@ export default class AppSearchSuper {
 
   constructor(options: AppSearchSuperOptions) {
     safeAssign(this, options)
+
+    // tweb fb18166dc
+    this.refiller = new ScrollableRefiller({
+      scrollable: this.scrollable,
+      getProgress: (type) => this.getMediaTabProgress(type),
+    })
 
     this.container = document.createElement('div')
     this.container.classList.add('search-super')
@@ -2523,6 +2540,29 @@ export default class AppSearchSuper {
     return this.stargiftsActions!.loadNext()
   }
 
+  /**
+   * tweb fb18166dc — How far a tab has got, for `ScrollableRefiller`: fetched
+   * messages plus the ones already rendered out of them. Both only ever grow
+   * within a peer (and `cleanup` resets the refiller along with them), which is
+   * what makes the refill chain terminate.
+   *
+   * This is the exact state behind `canLoadMediaTab`'s second clause: the
+   * `justLoad` preload grows `historyStorage` WITHOUT rendering, and the only
+   * thing that renders the remainder into a list too short to scroll is the
+   * chain. A tab with no `inputFilter` — saved dialogs, stories, gifts, apps,
+   * posts — has no such state and no cache to drain, so it reports a flat 0 and
+   * gets the one check after a load that asks "is the viewport full yet"; its
+   * list owns whatever paging comes after that.
+   */
+  private getMediaTabProgress(type: SearchSuperMediaType) {
+    const inputFilter = this.mediaTabsMap.get(type)?.inputFilter
+    if(!inputFilter) {
+      return 0
+    }
+
+    return Math.max(0, this.usedFromHistory[inputFilter] ?? 0) + (this.historyStorage[inputFilter]?.length ?? 0)
+  }
+
   /** tweb `:2362-2369`. */
   private canLoadMediaTab(mediaTab: SearchSuperMediaTab) {
     if(mediaTab.type === 'gifts') {
@@ -2748,10 +2788,10 @@ export default class AppSearchSuper {
 
         this.loadPromises[type] = null
 
-        // докрутить, если содержимого не хватило на экран (`:2222-2224`)
-        setTimeout(() => {
-          this.scrollable.checkForTriggers?.()
-        }, 0)
+        // докрутить, если содержимого не хватило на экран (`:2222-2224`) —
+        // только пока вкладка растёт (tweb fb18166dc, B8): у `savedDialogs`
+        // `loaded` не ставится никогда, и безусловный повтор крутился вечно
+        this.refiller.schedule(type, middleware)
       })
     }
 
@@ -2801,9 +2841,7 @@ export default class AppSearchSuper {
 
         this.usedFromHistory[inputFilter] = used
         return this.performSearchResult({ messages, mediaTab }).finally(() => {
-          setTimeout(() => {
-            this.scrollable.checkForTriggers?.()
-          }, 0)
+          this.refiller.schedule(type, middleware) // tweb fb18166dc
         })
       }
 
@@ -2860,9 +2898,7 @@ export default class AppSearchSuper {
             if(this.mediaTab === mediaTab) {
               void this.load(true, true).then(() => {
                 if(!middleware()) return
-                setTimeout(() => {
-                  this.scrollable.checkForTriggers?.()
-                }, 0)
+                this.refiller.schedule(type, middleware) // tweb fb18166dc
               })
             }
           }, 0)
@@ -3085,6 +3121,7 @@ export default class AppSearchSuper {
   public cleanup() {
     this.loadPromises = {}
     this.loaded = {}
+    this.refiller.reset() // tweb fb18166dc
     this.loadedChats = false
     this.firstLoad = true
     this.nextRates = {}
