@@ -191,4 +191,17 @@ describe('MediaHeader: блок, заголовок, подзаголовок (t
     expect(plain.classList.contains(styles.secondary)).toBe(false)
     expect(plain.classList.contains(styles.danger)).toBe(false)
   })
+
+  it('части не носят глобальных text-center/secondary/text-overflow-wrap — выравнивание и цвет у модуля (HEAD, О-29)', () => {
+    mount(() => (
+      <>
+        <MediaHeader.Title>t</MediaHeader.Title>
+        <MediaHeader.Subtitle color="secondary">s</MediaHeader.Subtitle>
+      </>
+    ))
+
+    const [title, subtitle] = [...host!.children] as HTMLElement[]
+    expect([...title.classList]).toEqual([styles.title])
+    expect([...subtitle.classList]).toEqual([styles.subtitle, styles.secondary])
+  })
 })

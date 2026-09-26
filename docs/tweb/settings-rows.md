@@ -341,6 +341,7 @@ div.tabs-container[data-animation="navigation"]  (= .sidebar-slider колонк
 | `components/settingSection.ts` (179) | удалённый `settingSection.ts` | **нет в HEAD** | единственный потребитель — `activeSessions.solid.tsx:35` |
 | `components/checkboxFieldTsx.solid.tsx` | `checkboxFieldTsx.tsx` | **почти** | нет `lockIcon`, `ref`, эффекта `disabled` |
 | `components/buttonTsx.solid.tsx`, `iconTsx.solid.tsx`, `rippleElement.solid.tsx` | те же | есть | — |
+| `components/mediaHeader.solid.tsx` + `.module.scss` | `mediaHeader.tsx`/`.module.scss` HEAD (задача 5) | **есть (HEAD)** | модель отступов HEAD (`gap: .5rem` у блока, части без вертикальных полей) — перенесена вместе с `auth/AuthFlow.module.scss` (`.qrContainer`) и разметкой карточек входа (`h1`, `class="secondary"`), О-29 снята; замеры — `dom/auth.md` §8.4. Отличия: `lottieLoader` по умолчанию, `onPromise` гасит `NO_WASM` |
 | `components/radioField.ts`, `radioForm.ts` | классы | есть | Solid `radioFieldTsx` нет |
 | `components/rangeSelector.ts` | класс `RangeSelector` | есть | `rangeSelectorTsx`/`RangeSettingSelector` нет (стили `.range-setting-selector` есть — `_leftSidebar.scss:951`) |
 | `components/{slider,sliderTab}.ts`, `solidJsTabs/*` | те же | есть | реестр `tabs.ts` — две вкладки (Устройства, Язык); `shown`/`resetShown` (34f417d12) нет |
