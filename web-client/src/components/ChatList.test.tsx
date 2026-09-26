@@ -41,8 +41,10 @@ import { finishTransition, frameOf, mountOwner, stubGeometry, type Mounted } fro
 //   который строка зовёт ровно один раз за рендер и ровно с её `chatId`. Границей
 //   мемоизации при этом остаётся `memo` самой строки, поэтому счётчик краснеет и
 //   на снятом `memo` (ChatListItem.tsx), и на нестабильных пропсах из `ChatList`.
-// `archiveRenders` — рендеры настоящей `ArchiveRow`: считаются по `useRipple`;
-//   в тесте архива список пуст, поэтому кроме архива этот хук звать некому.
+// `archiveRenders` — рендеры настоящей `ArchiveRow`: считаются по чтению
+//   `s.row` из её CSS-модуля — ровно одно на рендер, и больше этот модуль
+//   никто не читает. (Прежде счёт шёл по `useRipple`, но риппла у строки
+//   архива больше нет — tweb e934b9039.)
 // `rowRefs` — какой `ref` приехал строке на каждом её рендере (для этого нужна
 //   обёртка, но БЕЗ `memo`: решение «перерисовывать или нет» остаётся за самой
 //   строкой, обёртка лишь протоколирует пропсы).
@@ -65,14 +67,15 @@ vi.mock('../core/hooks/useTypingLabel', async (importOriginal) => {
   }
 })
 
-vi.mock('../shared/ui/Ripple/useRipple', async (importOriginal) => {
-  const mod = await importOriginal<typeof import('../shared/ui/Ripple/useRipple')>()
+vi.mock('./ArchiveRow.module.scss', async (importOriginal) => {
+  const mod = await importOriginal<{ default: Record<string, string> }>()
   return {
-    ...mod,
-    useRipple: () => {
-      archiveRenders.count++
-      return mod.useRipple()
-    },
+    default: new Proxy(mod.default, {
+      get(target, key: string) {
+        if (key === 'row') archiveRenders.count++
+        return target[key]
+      },
+    }),
   }
 })
 
@@ -468,7 +471,7 @@ describe('ChatList — мемоизация строки переезд пере
   })
 
   it('ArchiveRow — memo: смена выделения закреплённый архив не перерисовывает', async () => {
-    // Диалогов нет — `useRipple` в этом дереве зовёт только архив.
+    // Диалогов нет — архив в этом дереве единственный.
     const { managers } = fakeManagers(page({ count: 0 }))
 
     const { rerender } = await renderList(managers, {
