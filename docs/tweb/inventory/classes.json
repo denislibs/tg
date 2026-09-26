@@ -1,7 +1,7 @@
 {
   "meta": {
     "generatedAt": "2026-09-26",
-    "twebDir": "/Users/denisurevic/Documents/tweb",
+    "twebDir": "/Users/denisurevic/Documents/tweb-e52b5d931",
     "twebCommit": "e52b5d931"
   },
   "classes": {
@@ -653,7 +653,7 @@
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "appear-zoom": {
       "files": [
@@ -1153,7 +1153,7 @@
         "src/scss/partials/_avatar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "avatar-32": {
       "files": [
@@ -1396,14 +1396,14 @@
         "src/scss/partials/_avatar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "avatar-icon-deletedaccount": {
       "files": [
         "src/scss/partials/_avatar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "avatar-icon-mynotes": {
       "files": [
@@ -4777,7 +4777,7 @@
         "src/scss/partials/_checkbox.scss",
         "src/scss/partials/_row.scss"
       ],
-      "inOurScss": true,
+      "inOurScss": false,
       "inOurCode": true
     },
     "checkbox-color-white": {
@@ -4815,7 +4815,7 @@
       "files": [
         "src/scss/partials/_row.scss"
       ],
-      "inOurScss": true,
+      "inOurScss": false,
       "inOurCode": true
     },
     "checkbox-field-input": {
@@ -4863,7 +4863,7 @@
       "files": [
         "src/scss/partials/_checkbox.scss"
       ],
-      "inOurScss": true,
+      "inOurScss": false,
       "inOurCode": false
     },
     "checkbox-toggle": {
@@ -5759,7 +5759,7 @@
         "src/scss/base.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "custom-emoji": {
       "files": [
@@ -5802,7 +5802,7 @@
         "src/scss/partials/_customEmoji.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "custom-scroll": {
       "files": [
@@ -6270,7 +6270,7 @@
         "src/scss/partials/_chatlist.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "dialog-subtitle-ico-storyreply": {
       "files": [
@@ -6284,14 +6284,14 @@
         "src/scss/partials/_chatlist.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "dialog-subtitle-media-play": {
       "files": [
         "src/scss/partials/_chatlist.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "dialog-subtitle-span": {
       "files": [
@@ -7624,7 +7624,7 @@
         "src/scss/partials/popups/_starGiftInfo.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "first": {
       "files": [
@@ -7774,7 +7774,7 @@
         "src/scss/partials/_foldersSidebar.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "folders-sidebar__folder-item--selected": {
       "files": [
@@ -8927,7 +8927,7 @@
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "has-footer": {
       "files": [
@@ -9135,7 +9135,7 @@
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "has-webpage": {
       "files": [
@@ -9554,7 +9554,7 @@
         "src/scss/base.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "hoverable": {
       "files": [
@@ -10972,14 +10972,14 @@
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-picked-twice": {
       "files": [
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-pinned-audio-shown": {
       "files": [
@@ -11097,7 +11097,7 @@
         "src/scss/partials/_chatlist.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-rtl": {
       "files": [
@@ -11222,14 +11222,14 @@
         "src/scss/partials/_searchGroup.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-short-5": {
       "files": [
         "src/scss/partials/_searchGroup.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-shrinking": {
       "files": [
@@ -14096,7 +14096,7 @@
         "src/scss/partials/popups/_chatlistInvite.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "menu-horizontal-div": {
       "files": [
@@ -14612,7 +14612,7 @@
         "src/scss/partials/_chat.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "new-message-bot-commands-view": {
       "files": [
@@ -14918,8 +14918,8 @@
       "files": [
         "src/scss/base.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "no-wrap": {
       "files": [
@@ -17272,28 +17272,28 @@
         "src/scss/partials/popups/_forward.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "popup-forward-folder-tabs-container": {
       "files": [
         "src/scss/partials/popups/_forward.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "popup-forward-folder-tabs-gradient": {
       "files": [
         "src/scss/partials/popups/_forward.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "popup-forward-folder-tabs-gradient-container": {
       "files": [
         "src/scss/partials/popups/_forward.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "popup-forward-footer": {
       "files": [
@@ -18973,7 +18973,7 @@
         "src/scss/base.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "printable": {
       "files": [
@@ -20760,7 +20760,7 @@
         "src/components/limitLineTsx.module.scss",
         "src/scss/base.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "RichMessage": {
@@ -21561,7 +21561,7 @@
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "search-super": {
       "files": [
@@ -21665,7 +21665,7 @@
         "src/scss/partials/_searchSuper.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "search-super-content-stories-albums": {
       "files": [
@@ -21715,21 +21715,21 @@
         "src/scss/partials/_searchSuper.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "search-super-selection-container": {
       "files": [
         "src/scss/partials/_searchSuper.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "search-super-selection-count": {
       "files": [
         "src/scss/partials/_searchSuper.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "search-super-tab-container": {
       "files": [
@@ -23268,7 +23268,7 @@
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "stacked-avatars": {
       "files": [
@@ -24461,7 +24461,7 @@
         "src/scss/partials/_slider.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "text-text-bottom": {
       "files": [
@@ -26811,7 +26811,7 @@
         "src/scss/partials/_chatlist.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "with-delimiter": {
       "files": [

@@ -1074,6 +1074,17 @@ TAB_FILTER  = Media→media, Files→files, Links→links, Music→music, Voice�
 
 Используемые партиалы: `styles/tweb/_profile.scss` (1094), `_rightSidebar.scss` (570, в т.ч. `.shared-media-container` :86-130 и `--super-offset: 4.5rem`), `_searchSuper.scss` (428), `_sidebar.scss`, `_scrollable.scss`, `_slider.scss`, `_transition.scss`, `_row.scss`, `_section.scss`, `_document.scss`, `_audio.scss`, `_chatlist.scss`, `_chatlistRow.scss`, `_animatedIcon.scss`, `_button.scss`, `_ripple.scss`.
 
+**Иконки строк профиля (волна 2A, tweb 2197fee9c).** `Row.Icon` Solid-строки
+(`rowTsx.solid.tsx`) — плашка `span.row-icon.row-icon-colored` с градиентом inline
+(`helpers/rowIconBackground.ts`, реестр «иконка → цвет» по tweb 812502980), глиф
+`span.tgico.row-icon-icon` внутри; `noBackground` портирован. Имена в
+`peerProfile.solid.tsx` — как tweb `peerProfile.tsx`: phone_filled (зелёная),
+mention_filled (синяя @), info_filled (серая i, Bio), link_filled (оранжевая),
+birthday_filled (фиолетовая), bell_filled (красный колокольчик). Наши строки без
+аналога в tweb-профиле: bubble_filled (обсуждение — как `editChat.tsx`),
+key_filled (ключ шифрования), statistics_filled. Пин цветов —
+`peerProfileMainSection.solid.test.tsx` («иконки строк профиля — цветные плашки»).
+
 Остаточные CSS-модули в периметре:
 
 - `components/stargifts/stargiftsGrid.module.scss` + `profileList.module.scss` — **это модули самого tweb**, портированы дословно (там подарки тоже модулями);

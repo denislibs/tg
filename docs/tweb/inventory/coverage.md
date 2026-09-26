@@ -2,14 +2,14 @@
 
 <!-- Файл генерируется: node tools/tweb-parity/inventory.mjs. Руками не править. -->
 
-Снято: 2026-09-26. Источник: `/Users/denisurevic/Documents/tweb` @ `e52b5d931`.
+Снято: 2026-09-26. Источник: `/Users/denisurevic/Documents/tweb-e52b5d931` @ `e52b5d931`.
 
 | Срез | Значение |
 |---|---|
 | Общих партиалов `src/scss` в tweb (в скоупе) | 129 |
 | Из них есть файлом у нас | 71 |
 | CSS-классов в tweb | 3638 |
-| Из них встречаются у нас | 2302 (63%) |
+| Из них встречаются у нас | 2307 (63%) |
 | Попапов в tweb | 84 |
 | Из них нашлись у нас по имени | 8 точно, 3 предположительно |
 | Локальных `*.module.scss` компонентов форка | 138 (отдельный слой, см. ниже) |
@@ -29,15 +29,15 @@
 
 | Файл | Классов | Нет у нас | Док |
 |---|---|---|---|
-| `base.scss` | 241 | 86 | — |
+| `base.scss` | 241 | 82 | — |
 | `_stars.scss` | 73 | 47 | right-sidebar.md |
-| `_starGiftInfo.scss` | 49 | 39 | right-sidebar.md |
+| `_starGiftInfo.scss` | 49 | 38 | right-sidebar.md |
 | `_poll.scss` | 34 | 22 | bubbles.md |
 | `_similarChannels.scss` | 23 | 19 | right-sidebar.md |
 | `_starGiftUpgrade.scss` | 21 | 18 | right-sidebar.md |
 | `_mediaAttacher.scss` | 37 | 16 | composer.md |
 | `_global.scss` | 33 | 15 | state-and-layout.md |
-| `_foldersSidebar.scss` | 28 | 15 | left-sidebar.md |
+| `_foldersSidebar.scss` | 28 | 14 | left-sidebar.md |
 | `_boost.scss` | 15 | 13 | channels.md |
 | `_chatSearch.scss` | 18 | 11 | chat-feed.md |
 | `_movableElement.scss` | 11 | 11 | state-and-layout.md |
@@ -92,6 +92,7 @@
 
 | Файл | Классов в tweb | Есть у нас | Покрытие | Док |
 |---|---|---|---|---|
+| `_checkbox.scss` | 27 | 26 | 96% | — |
 
 Полные списки недостающих классов — в `styles.json`, поле `missingClasses`.
 
@@ -108,7 +109,7 @@
 
 ## Наши попапы без прямого аналога в tweb
 
-`AddContactView`, `AddStorySheet`, `CallsView`, `CloseFriendsSheet`, `ConfirmDialog`, `ContactsView`, `CreateGiveawayPopup`, `EditContactView`, `EditStorySheet`, `FolderInvitePopup`, `GiftInfoPopup`, `InstantView`, `KeyVerificationPopup`, `NewContactPopup`, `ReportPopup`, `RepostStorySheet`, `SchedulePopup`, `ScheduledView`, `SearchView`, `SendMediaPopup`, `SettingsView`, `StealthModePopup`, `StoriesArchiveSheet`, `StreamSettingsPopup`, `SuggestPostPopup`, `SuggestedPostsView`, `WalletView`
+`AddContactView`, `AddStorySheet`, `CallsView`, `CloseFriendsSheet`, `ConfirmDialog`, `ContactsView`, `CreateGiveawayPopup`, `EditContactView`, `EditStorySheet`, `FolderInvitePopup`, `GiftInfoPopup`, `InstantView`, `KeyVerificationPopup`, `NewContactPopup`, `ReportPopup`, `RepostStorySheet`, `SchedulePopup`, `ScheduledView`, `SendMediaPopup`, `SettingsView`, `StealthModePopup`, `StoriesArchiveSheet`, `StreamSettingsPopup`, `SuggestPostPopup`, `SuggestedPostsView`, `WalletView`
 
 Часть из них — переименования (сопоставление идёт по имени файла), часть — наше собственное.
 

@@ -1,7 +1,7 @@
 {
   "meta": {
     "generatedAt": "2026-09-26",
-    "twebDir": "/Users/denisurevic/Documents/tweb",
+    "twebDir": "/Users/denisurevic/Documents/tweb-e52b5d931",
     "twebCommit": "e52b5d931"
   },
   "files": [
@@ -165,8 +165,8 @@
       "twebSelectors": 323,
       "twebDynamicSelectors": 0,
       "twebClasses": 241,
-      "classesPresent": 155,
-      "coverage": 0.643,
+      "classesPresent": 159,
+      "coverage": 0.66,
       "missingClasses": [
         "accordion",
         "accordion-counter",
@@ -188,14 +188,12 @@
         "cant-select",
         "color-premium",
         "currency-star-icon-stroke",
-        "cursor-pointer",
         "deactivated-backwards",
         "delimiter-with-text",
         "delimiter-with-text-stripe",
         "extended-media-buy-icon",
         "fade-in-transition",
         "hover-danger-effect",
-        "hover-underline",
         "inner-shadow",
         "inner-shadow-inset",
         "input-selectable",
@@ -206,7 +204,6 @@
         "media-container-cover",
         "missing-icon",
         "missing-icon-path",
-        "no-view-transition",
         "overflow-hidden",
         "personal-channel",
         "personal-channel-counter",
@@ -220,7 +217,6 @@
         "popup-add-members-subtitle",
         "popup-disable-password",
         "popup-skip-email",
-        "primary-text",
         "privacy-bg",
         "privacy-bg-close",
         "privacy-bg-contacts",
@@ -467,10 +463,9 @@
       "twebSelectors": 58,
       "twebDynamicSelectors": 6,
       "twebClasses": 49,
-      "classesPresent": 10,
-      "coverage": 0.204,
+      "classesPresent": 11,
+      "coverage": 0.224,
       "missingClasses": [
-        "finishing",
         "has-delete",
         "is-collectible",
         "popup-star-gift-info",
@@ -1325,37 +1320,6 @@
       ]
     },
     {
-      "file": "src/scss/partials/_foldersSidebar.scss",
-      "base": "_foldersSidebar.scss",
-      "kind": "global",
-      "doc": "left-sidebar.md",
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 31,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 28,
-      "classesPresent": 13,
-      "coverage": 0.464,
-      "missingClasses": [
-        "folders-sidebar__add-folders-button",
-        "folders-sidebar__add-folders-button-icon",
-        "folders-sidebar__background--dark-pattern",
-        "folders-sidebar__background--no-gradient",
-        "folders-sidebar__background-gradient",
-        "folders-sidebar__background-tint",
-        "folders-sidebar__folder-item",
-        "folders-sidebar__folder-item--selected",
-        "folders-sidebar__folder-item-animated-icon",
-        "folders-sidebar__folder-item-badge",
-        "folders-sidebar__folder-item-icon",
-        "folders-sidebar__folder-item-name",
-        "folders-sidebar__scrollable",
-        "folders-sidebar__scrollable-position",
-        "hide-add-folders"
-      ]
-    },
-    {
       "file": "src/components/simpleFormField/styles.module.scss",
       "base": "styles.module.scss",
       "kind": "module",
@@ -1383,6 +1347,36 @@
         "withFixedIcon",
         "withLimit",
         "withStartButtonIcon"
+      ]
+    },
+    {
+      "file": "src/scss/partials/_foldersSidebar.scss",
+      "base": "_foldersSidebar.scss",
+      "kind": "global",
+      "doc": "left-sidebar.md",
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 31,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 28,
+      "classesPresent": 14,
+      "coverage": 0.5,
+      "missingClasses": [
+        "folders-sidebar__add-folders-button",
+        "folders-sidebar__add-folders-button-icon",
+        "folders-sidebar__background--dark-pattern",
+        "folders-sidebar__background--no-gradient",
+        "folders-sidebar__background-gradient",
+        "folders-sidebar__background-tint",
+        "folders-sidebar__folder-item--selected",
+        "folders-sidebar__folder-item-animated-icon",
+        "folders-sidebar__folder-item-badge",
+        "folders-sidebar__folder-item-icon",
+        "folders-sidebar__folder-item-name",
+        "folders-sidebar__scrollable",
+        "folders-sidebar__scrollable-position",
+        "hide-add-folders"
       ]
     },
     {
@@ -3553,6 +3547,23 @@
       ]
     },
     {
+      "file": "src/scss/partials/_checkbox.scss",
+      "base": "_checkbox.scss",
+      "kind": "global",
+      "doc": null,
+      "outOfScope": false,
+      "ported": true,
+      "ours": "styles/tweb/_checkbox.scss",
+      "twebSelectors": 73,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 27,
+      "classesPresent": 26,
+      "coverage": 0.963,
+      "missingClasses": [
+        "checkbox-ripple"
+      ]
+    },
+    {
       "file": "src/scss/partials/_print.scss",
       "base": "_print.scss",
       "kind": "global",
@@ -5088,21 +5099,6 @@
       "twebDynamicSelectors": 0,
       "twebClasses": 74,
       "classesPresent": 74,
-      "coverage": 1,
-      "missingClasses": []
-    },
-    {
-      "file": "src/scss/partials/_checkbox.scss",
-      "base": "_checkbox.scss",
-      "kind": "global",
-      "doc": null,
-      "outOfScope": false,
-      "ported": true,
-      "ours": "styles/tweb/_checkbox.scss",
-      "twebSelectors": 73,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 27,
-      "classesPresent": 27,
       "coverage": 1,
       "missingClasses": []
     },
