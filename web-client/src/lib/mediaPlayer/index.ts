@@ -234,7 +234,7 @@ export default class VideoPlayer extends ControlsHover {
     this.wrapper.classList.toggle('is-playing', isPlaying)
     this.toggles.forEach((toggle) => {
       // tweb :294 `Icon(...)` — голый span.tgico без класса button-icon
-      toggle.replaceChildren(Icon(isPlaying ? 'pause' : 'play'))
+      toggle.replaceChildren(Icon(isPlaying ? 'pause_filled' : 'play_filled'))
     })
   }
 
@@ -248,10 +248,10 @@ export default class VideoPlayer extends ControlsHover {
     const onPlayCallbacks: (() => void)[] = []
     const onPauseCallbacks: (() => void)[] = []
 
-    // tweb Button(`${skin}__button--big toggle`, {noRipple: true, icon: 'play'})
+    // tweb Button(`${skin}__button--big toggle`, {noRipple: true, icon: 'play_filled'})
     const mainToggle = this.mainToggle = document.createElement('button')
     mainToggle.className = `${skin}__button--big toggle`
-    mainToggle.append(Icon('play', 'button-icon'))
+    mainToggle.append(Icon('play_filled', 'button-icon'))
     wrapper.firstElementChild!.after(mainToggle)
 
     const leftControls = wrapper.querySelector('.left-controls') as HTMLElement

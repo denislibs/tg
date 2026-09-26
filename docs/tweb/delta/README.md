@@ -65,7 +65,7 @@
 
 | Блок | Коммиты | Размер | Зависимости |
 |---|---|---|---|
-| 2A **Иконки и строки** (видно во всём приложении) | 2197fee9c (шрифт tgico с HEAD, карта, переименования `*_filled`) → dae12932f → 12eeb9b1c → 944b578e9; стили `_row.scss`/`_checkbox.scss` из ef41b29db и 803f9599d | M | — |
+| 2A **Иконки и строки** (видно во всём приложении) — **сделано** (`feat/w2a-icons-rows`) | 2197fee9c (шрифт tgico с HEAD, карта, переименования `*_filled`) → dae12932f → 12eeb9b1c → 944b578e9; стили `_row.scss`/`_checkbox.scss` из ef41b29db и 803f9599d. Сделано: шрифт/карта/переименования (B26), quote/blockquote, цветные плашки иконок строк во всех трёх строках (vanilla/Solid/React kit) + иконки настроек и профиля по tweb, тумблер и классы `row-*-field`, иконки платформ сессий. Не делалось: RowTsx-миграция (2D), аудио-строка, экран сессии | M | — |
 | 2B **Примитивы `Tabs`** | 7d50b5dfe (`MenuShell`/`MenuInner`/`MenuIconTab`, `MenuTab.ripple`, ряд `AppSearchSuper` на `Tabs.MenuScrollable`, `nav` → `div`) → `attachTabList` из 472e3e76b | M | после шва папок |
 | 2C **Оболочка попапов на Solid** | 2556fc949 (класс `PopupElement` удалён, `showXxxPopup()`) → 6c3803343 → a11y попапов из 472e3e76b | L | программа Solid; наш `popupElement.ts` — порт удалённого класса |
 | 2D **Строки на `RowTsx`** | ef41b29db (`row.ts` → `rowTsxController`) | L | шаг программы Solid, после 2A |

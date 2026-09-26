@@ -95,16 +95,16 @@ describe('renderEntity — чип пира', () => {
     expect(render(ALICE, { primary: false }).element.classList.contains('selector-user-primary')).toBe(false)
   })
 
-  it('свой пир — «Избранное» (иконка `saved`), с `meAsSaved: false` — имя', () => {
+  it('свой пир — «Избранное» (иконка `saved_filled`), с `meAsSaved: false` — имя', () => {
     upsertUser(ALICE, 'Alice')
     rootScope.myId = ALICE
 
     const saved = render(ALICE).element
-    expect(saved.querySelector('.selector-user-avatar .avatar-icon-saved')).not.toBeNull()
+    expect(saved.querySelector('.selector-user-avatar .avatar-icon-saved_filled')).not.toBeNull()
     expect(saved.querySelector('.peer-title')!.textContent).toBe('Saved Messages')
 
     const plain = render(ALICE, { meAsSaved: false }).element
-    expect(plain.querySelector('.avatar-icon-saved')).toBeNull()
+    expect(plain.querySelector('.avatar-icon-saved_filled')).toBeNull()
     expect(plain.querySelector('.peer-title')!.textContent).toBe('Alice')
   })
 

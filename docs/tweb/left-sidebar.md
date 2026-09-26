@@ -828,6 +828,32 @@ DOM-паритет первого таба выдержан сознательн
 (разбор — в шапке `slider.ts`). В tweb обе кнопки обслуживает один контроллер
 (`appNavigationController.ts:216-219`).
 
+### Иконки строк настроек (волна 2A)
+
+tweb 2197fee9c перевёл иконки всех строк на цветные плашки: `span.row-icon.row-icon-colored`
+(30×30, скругление .625rem, `.75rem` от края, белый глиф) с градиентом inline из
+`helpers/rowIconBackground.ts` (реестр «иконка → цвет» + FNV-хэш по палитре для прочих),
+глиф — `span.tgico.row-icon-icon` внутри. **У нас** так рисуют все три строки: ванильный
+`components/row.ts`, Solid `rowTsx.solid.tsx` и React `settings/kit.tsx` (для `<TgIcon>`;
+у строк `accent`/`danger` — у tweb это `Button btn-primary btn-transparent` — и у не-глифов
+плашки нет). Корень настроек (`SettingsView.tsx`) — строки `.row` в `div.profile-buttons`
+(дамп 14-left-13) с иконками tweb `settings.tsx`: bell_filled (красная), data_filled
+(зелёная), key_filled (серая), general_filled, limit_folders_filled (синяя), reactions_filled,
+speaker_filled, devices_filled, web_filled, keyboard_filled; карточка — phone_filled,
+mention_filled; premium_badge (`--premium-gradient`), gift_filled; наш пункт «Ночной режим» —
+darkmode_filled. Подэкраны переведены на имена tweb для тех же пунктов (privacyAndSecurity,
+privacy-исключения, passcode, general, editChat, editContact). Строки сессий во вкладке
+«Устройства» несут иконку платформы (`helpers/sessionPlatformIcon.ts`, tweb 944b578e9).
+Тумблер перерисован (`_checkbox.scss` по ef41b29db), поля строки метятся
+`row-checkbox-field`/`row-radio-field`/`row-checkbox-field-toggle` (`rowFieldClasses.ts`,
+803f9599d) — `_row.scss` больше не стилизует любой `.checkbox-field` внутри `.row`.
+**Отступление:** тумблер строки носит только `row-checkbox-field-toggle` — с набором tweb
+(`row-checkbox-field` тоже) правило ef41b29db `.row .row-checkbox-field { position: absolute }`
+выбивает тумблер из `.row-title-right` (нулевая ширина, `overflow: hidden`), и он пропадает
+целиком (так было на стенде на экране «Уведомления и звуки»); пин —
+`styles/twebDeltaW2a.test.ts`, разбор — `components/rowFieldClasses.ts`.
+Перевод строк на RowTsx (ef41b29db, блок 2D) не делался.
+
 ### Шов с React (временный)
 
 Корень настроек у нас всё ещё React-экран (`SettingsView.tsx`) поверх колонки, а не вкладка

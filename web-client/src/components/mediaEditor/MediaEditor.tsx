@@ -1472,7 +1472,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
               title={playing ? t('Media.Pause') : t('Media.Play')}
               onClick={togglePlay}
             >
-              <TgIcon name={playing ? 'pause' : 'play'} />
+              <TgIcon name={playing ? 'pause_filled' : 'play_filled'} />
             </IconButton>
             <IconButton
               size="small"
@@ -1480,7 +1480,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
               title={videoMuted ? t('MediaEditor.Unmute') : t('MediaEditor.Mute')}
               onClick={() => { setVideoMuted((m) => !m); const v = img as HTMLVideoElement | null; if (v) v.muted = !videoMuted }}
             >
-              <TgIcon name={videoMuted ? 'volume_off' : 'volume_up'} />
+              <TgIcon name={videoMuted ? 'volume_off_filled' : 'volume_up_filled'} />
             </IconButton>
             <div
               className={s.tlTrack}
@@ -1623,7 +1623,7 @@ export default function MediaEditor({ file, onDone, onCancel }: {
                   ))}
                 </div>
                 <div className={s.toggleGroup}>
-                  {([['fontframe', 'normal'], ['fontframe_outline', 'outline'], ['fontframe_bg', 'background']] as [IconName, TextStyle][]).map(([icon, st]) => (
+                  {([['fontframe_filled', 'normal'], ['fontframe', 'outline'], ['fontframe_bg_filled', 'background']] satisfies [IconName, TextStyle][]).map(([icon, st]) => (
                     <div
                       key={st}
                       className={classNames(s.styleBtn, textStyle === st ? s.styleActive : '')}

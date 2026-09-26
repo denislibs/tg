@@ -102,7 +102,7 @@ export default function EditContactView({
               </div>
             </div>
             <Row
-              icon={<TgIcon name="unmute" size={24} color="var(--secondary-text-color)" />}
+              icon={<TgIcon name="bell_filled" size={24} color="var(--secondary-text-color)" />}
               label="Уведомления"
               translate={false}
               toggle
@@ -110,7 +110,7 @@ export default function EditContactView({
               onClick={toggleNotifications}
             />
             <Row
-              icon={<TgIcon name="gift" size={24} color="var(--secondary-text-color)" />}
+              icon={<TgIcon name="gift_filled" size={24} color="var(--secondary-text-color)" />}
               label="Предложить дату рождения"
               translate={false}
               onClick={() => setBirthdayOpen(true)}

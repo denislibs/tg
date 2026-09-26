@@ -29,12 +29,14 @@
  * Закомментированные у оригинала пропы (`buttonRight`, `rightTextContent`,
  * `checkboxKeys`, `:35-36`, `:39`) не переносятся: они и там не код.
  */
-import { children, Show, splitProps, useContext, type JSX, type Ref } from 'solid-js'
+import { children, createRenderEffect, Show, splitProps, useContext, type JSX, type Ref } from 'solid-js'
 import classNames from '@helpers/string/classNames'
 import { IconTsx } from '@components/iconTsx.solid'
 import RippleElement from '@components/rippleElement.solid'
 import createComponentContext, { type ComponentContextValue } from '@helpers/solid/createComponentContext'
 import type { IconName } from '@core/tgico-icons'
+import { getRowIconBackgroundImage } from '@helpers/rowIconBackground'
+import { ROW_CHECKBOX_FIELD_CLASS, ROW_CHECKBOX_FIELD_TOGGLE_CLASS, ROW_RADIO_FIELD_CLASS } from '@components/rowFieldClasses'
 
 export type RowMediaSizeType = 'small' | 'medium' | 'big' | 'abitbigger' | 'bigger' | '40'
 
@@ -215,12 +217,26 @@ Row.Subtitle = (props: {
   ))
 }
 
+// tweb HEAD rowTsx.tsx:401-420 (2197fee9c + `noBackground`): иконка — плашка
+// `span.row-icon.row-icon-colored` с градиентом inline, глиф внутри.
 Row.Icon = (props: {
   icon: IconName
   class?: string
+  noBackground?: boolean
 }) => {
   return useContext(RowContext)!.register('icon', (
-    <IconTsx icon={props.icon} class={classNames('row-icon', props.class)} />
+    <span
+      class={classNames(
+        'row-icon',
+        'row-icon-colored',
+        props.class,
+      )}
+      style={!props.noBackground ? {
+        'background-image': getRowIconBackgroundImage(props.icon),
+      } : undefined}
+    >
+      <IconTsx icon={props.icon} class="row-icon-icon" />
+    </span>
   ))
 }
 
@@ -231,22 +247,45 @@ Row.RightContent = (inProps: JSX.HTMLAttributes<HTMLDivElement>) => {
   ))
 }
 
+/**
+ * tweb 803f9599d `registerRowField`: регистрирует поле И метит его как своё для
+ * строки, чтобы `_row.scss` раскладывал именно этот чекбокс, а не любой другой
+ * внутри строки (см. `rowFieldClasses`). `attachHotClassName` оригинала — это
+ * `classList.add` плюс снятие на hot-replace; ветка HMR у нас не портирована
+ * (`helpers/solid/classname.ts`), остаётся `classList.add`.
+ */
+function registerRowField(kind: Kind, classes: string[], element: JSX.Element) {
+  const context = useContext(RowContext)!
+  const resolved = children(() => element)
+
+  createRenderEffect(() => {
+    resolved.toArray().forEach((node) => {
+      if(node instanceof HTMLElement) node.classList.add(...classes)
+    })
+  })
+
+  return context.register(kind, resolved())
+}
+
 Row.CheckboxField = (props: {
   children: JSX.Element
 }) => {
-  return useContext(RowContext)!.register('checkboxField', props.children)
+  return registerRowField('checkboxField', [ROW_CHECKBOX_FIELD_CLASS], props.children)
 }
 
 Row.RadioField = (props: {
   children: JSX.Element
 }) => {
-  return useContext(RowContext)!.register('radioField', props.children)
+  return registerRowField('radioField', [ROW_RADIO_FIELD_CLASS], props.children)
 }
 
 Row.CheckboxFieldToggle = (props: {
   children: JSX.Element
 }) => {
-  return useContext(RowContext)!.register('checkboxFieldToggle', props.children)
+  // У tweb здесь ещё `ROW_CHECKBOX_FIELD_CLASS` («a toggle is a checkbox too»),
+  // но с ним `_row.scss` ef41b29db обрезает тумблер — отступление описано в
+  // `rowFieldClasses.ts`.
+  return registerRowField('checkboxFieldToggle', [ROW_CHECKBOX_FIELD_TOGGLE_CLASS], props.children)
 }
 
 Row.Media = (inProps: JSX.HTMLAttributes<HTMLDivElement> & {

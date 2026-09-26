@@ -33,15 +33,18 @@ import type { IconName } from '../core/tgico-icons'
 
 // Порядок и иконки — tweb markupTooltip.ts:66-76. Пункт `date` (календарь)
 // пропущен: сущности «дата» нет ни в нашей модели, ни на бэке.
-// У цитаты в tweb две иконки: неактивная `quote_outline`, активная `quote`.
-const TOOLS: { type: ComposerEntityType; icon: IconName; activeIcon?: IconName; title: string }[] = [
+// У цитаты — одна иконка `blockquote` (tweb dae12932f → 12eeb9b1c: запись
+// `['quote', 'blockquote']` = тип + неактивная иконка без активной), поэтому
+// во включённом состоянии глиф не меняется, как у оригинала. Экспорт — ради
+// пина `MarkupTooltip.tools.test.ts`.
+export const MARKUP_TOOLS: { type: ComposerEntityType; icon: IconName; title: string }[] = [
   { type: 'messageEntityBold', icon: 'bold', title: 'Жирный' },
   { type: 'messageEntityItalic', icon: 'italic', title: 'Курсив' },
   { type: 'messageEntityUnderline', icon: 'underline', title: 'Подчёркнутый' },
   { type: 'messageEntityStrike', icon: 'strikethrough', title: 'Зачёркнутый' },
   { type: 'messageEntityCode', icon: 'monospace', title: 'Моноширинный' },
   { type: 'messageEntitySpoiler', icon: 'spoiler', title: 'Спойлер' },
-  { type: 'messageEntityBlockquote', icon: 'quote_outline', activeIcon: 'quote', title: 'Цитата' },
+  { type: 'messageEntityBlockquote', icon: 'blockquote', title: 'Цитата' },
 ]
 
 // tweb проверяет ссылку через richTextProcessor/matchUrl — подсистемы у нас нет,
@@ -330,7 +333,7 @@ export default function MarkupTooltip({
     >
       <div className="markup-tooltip-wrapper">
         <div ref={toolsRegularRef} className="markup-tooltip-tools markup-tooltip-tools-regular">
-          {TOOLS.map((tool) => {
+          {MARKUP_TOOLS.map((tool) => {
             const on = active.has(tool.type)
             return (
               <button
@@ -340,7 +343,7 @@ export default function MarkupTooltip({
                 className={classNames('btn-icon', on ? 'active' : '')}
                 onMouseDown={applyType(tool.type)}
               >
-                <TgIcon name={on && tool.activeIcon ? tool.activeIcon : tool.icon} size="inherit" />
+                <TgIcon name={tool.icon} size="inherit" />
               </button>
             )
           })}

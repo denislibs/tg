@@ -22,6 +22,8 @@ import contextMenuController from '@helpers/contextMenuController'
 import { useI18nStore } from '@/i18n'
 import { applyLang } from '@/test/lang'
 import { AppActiveSessionsTab } from '@components/solidJsTabs/tabs'
+import { glyph } from '@core/tgico-icons'
+import { getRowIconBackgroundImage } from '@helpers/rowIconBackground'
 
 type Auth = Authorization.authorization
 
@@ -119,6 +121,22 @@ describe('вкладка «Устройства» — порт tweb sidebarLeft/
     // бессмысленна («сейчас»), поэтому `titleRight` там `undefined`.
     expect(sections[0].querySelector('.row-title-right')).toBeNull()
     expect(sections[1].querySelector('.row-title-right')!.textContent).not.toBe('')
+  })
+
+  // tweb 944b578e9: у каждой строки сессии — иконка платформы на цветной
+  // плашке (`sessionPlatformIcon`, цвета — реестр `rowIconBackground`).
+  it('строка сессии несёт иконку платформы на цветной плашке', async() => {
+    const { managers } = makeManagers()
+    const android = { ...other, api_id: 6, platform: 'Android', device_model: 'Pixel 8' } as Auth
+    const tab = await openTab([current, android], managers)
+
+    const plate = (hash: number) => tab.scrollable.container
+      .querySelector<HTMLElement>(`.row[data-hash="${hash}"] > .row-icon.row-icon-colored`)!
+    // «Telegram Web 1.0» из браузера — общий веб-глиф (фиолетовая плашка).
+    expect(plate(0).textContent).toBe(glyph('web_filled'))
+    expect(plate(0).style.backgroundImage).toBe(getRowIconBackgroundImage('web_filled'))
+    expect(plate(2).textContent).toBe(glyph('android_filled'))
+    expect(plate(2).style.backgroundImage).toBe(getRowIconBackgroundImage('android_filled'))
   })
 
   it('текущую сессию находит по флагу, а не по месту в списке', async() => {

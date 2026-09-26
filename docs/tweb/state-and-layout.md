@@ -755,6 +755,15 @@ JS — единственный владелец ширин; SCSS только �
   (ставит хук `useLeftColumnShown` — аналог `appImManager.ts:2593`); мобильный стек — те же
   CSS-переходы `.main-column` без JS-слайда.
 
+- **Шрифт иконок tgico** (волна 2A): `public/fonts/tgico.{woff,ttf}`, карта
+  `core/tgico-icons.ts` и `styles/tgico/_variables.scss` — одна выгрузка icomoon tweb
+  812502980 (641 глиф; после 2197fee9c шрифт перегенерировали ещё в ef41b29db, dae12932f,
+  12eeb9b1c, ee6f7f9c2). URL шрифта несёт штамп выгрузки `?xgs33f` (как tweb
+  `scss/tgico/_style.scss`): SW держит `/fonts/` cache-first. Переименования tweb (`*_filled`,
+  `quote_outline`→`quote`, `quote`→`quote_filled`, `card_outline`→`card`…) разнесены по коду;
+  пин — `core/tgico-icons.test.ts` (скан имён в коде и scss, коды ключевых глифов, sha256
+  шрифта). Карта `IconsReverse` (RTL) по-прежнему не портирована.
+
 ## 9.2 Ключевые расхождения
 
 | Аспект | tweb | у нас |

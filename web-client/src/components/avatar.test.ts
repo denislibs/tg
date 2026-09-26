@@ -176,7 +176,7 @@ describe('avatarNew — ветки без инициалов', () => {
     expect(node.dataset.color).toBe('archive')
     // Иконка — ЕДИНСТВЕННЫЙ ребёнок: буквы «А» рядом с ней быть не должно.
     expect(node.childNodes.length).toBe(1)
-    expect((node.firstChild as HTMLElement).className).toBe('tgico avatar-icon avatar-icon-deletedaccount')
+    expect((node.firstChild as HTMLElement).className).toBe('tgico avatar-icon avatar-icon-deletedaccount_filled')
   })
 
   it('скрытая атрибуция пересылки: фиолетовый и author_hidden, зеркало не спрашивается', () => {

@@ -157,7 +157,7 @@ export default function PrivacyRule({ title, onBack }: { title: LangPackKey; onB
         >
           {showDeny && (
             <Row
-              icon={<TgIcon name="deleteuser" size={24} />}
+              icon={<TgIcon name="person_crossed_filled" size={24} />}
               label={denyTitle}
               value={usersCountLabel(rule.denyUserIds.length, t, tArgs)}
               onClick={() => setPicker('deny')}

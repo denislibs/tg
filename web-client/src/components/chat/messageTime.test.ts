@@ -123,7 +123,7 @@ describe('createMessageTime', () => {
       const icon = views.nextElementSibling as HTMLElement
       expect(icon.className).toBe('tgico time-icon time-part time-icon-views')
       // Глиф `channelviews` (tweb icon.ts:28-37 — содержимое `span.tgico`).
-      expect(icon.textContent).toBe(glyph('channelviews'))
+      expect(icon.textContent).toBe(glyph('channelviews_filled'))
       // Время — сразу за иконкой, отдельным узлом.
       expect(icon.nextElementSibling!.textContent).toBe('22:50')
     }

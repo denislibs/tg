@@ -51,33 +51,7 @@
   margin-top: 8px;
 }
 
-// строка настроек (те, где нужна подсветка активного пункта / кастомный контрол)
-.rowClickable {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  cursor: pointer;
-
-  @media (hover: hover) {
-    &:hover {
-      background: var(--light-secondary-text-color);
-    }
-  }
-}
+// подсветка активного пункта корня настроек (наша; у tweb её нет) — поверх `.row`
 .rowActive {
   background: var(--light-secondary-text-color);
-}
-.rowIcon {
-  color: var(--secondary-text-color);
-  display: flex;
-
-  svg {
-    font-size: var(--font-size-24);
-  }
-}
-.rowBody {
-  flex: 1;
-  min-width: 0;
 }

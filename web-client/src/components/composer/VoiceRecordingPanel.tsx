@@ -95,15 +95,15 @@ export default function VoiceRecordingPanel({ rec, onCancel }: Props) {
               CSS прячет точку и показывает эту кнопку (_voiceRecordingPanel.scss:24-37),
               без неё «лид» пилюли схлопывался бы. */}
           <IconButton className="voice-recording-play">
-            <TgIcon name="play" className="voice-recording-play-icon voice-recording-play-icon--play" size="inherit" />
-            <TgIcon name="pause" className="voice-recording-play-icon voice-recording-play-icon--pause" size="inherit" />
+            <TgIcon name="play_filled" className="voice-recording-play-icon voice-recording-play-icon--play" size="inherit" />
+            <TgIcon name="pause_filled" className="voice-recording-play-icon voice-recording-play-icon--pause" size="inherit" />
           </IconButton>
         </div>
         <canvas ref={canvasRef} className="voice-recording-waveform" />
         <span ref={timerRef} className="voice-recording-timer">0:00,0</span>
       </div>
       <IconButton className="voice-recording-pause-toggle" onClick={rec.togglePause}>
-        <TgIcon name="pause" className="voice-recording-pause-icon voice-recording-pause-icon--pause" size="inherit" />
+        <TgIcon name="pause_filled" className="voice-recording-pause-icon voice-recording-pause-icon--pause" size="inherit" />
         <TgIcon name="microphone_filled" className="voice-recording-pause-icon voice-recording-pause-icon--mic" size="inherit" />
       </IconButton>
     </div>

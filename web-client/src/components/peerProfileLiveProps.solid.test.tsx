@@ -95,12 +95,12 @@ afterEach(() => {
 describe('Живые пропы моста mountSolid доезжают до PeerProfile (Critical, финальный раунд волны)', () => {
   it('Statistics: отсутствует на первом кадре, появляется в DOM после update({showStatistics: true}) и зовёт СВЕЖИЙ onOpenStatistics', () => {
     const { host, update } = mountBridge({ ...baseProps })
-    expect(rowByIcon(host, 'statistics'), 'первый кадр — гейта ещё нет, как в проде до ответа useGroupInfo').toBeNull()
+    expect(rowByIcon(host, 'statistics_filled'), 'первый кадр — гейта ещё нет, как в проде до ответа useGroupInfo').toBeNull()
 
     const onOpenStatistics = vi.fn()
     update({ showStatistics: true, onOpenStatistics })
 
-    const row = rowByIcon(host, 'statistics')
+    const row = rowByIcon(host, 'statistics_filled')
     expect(row, 'мутация: снимок вместо геттера — секция навсегда осталась бы скрытой').not.toBeNull()
     row!.click()
     expect(onOpenStatistics).toHaveBeenCalledTimes(1)
@@ -108,11 +108,11 @@ describe('Живые пропы моста mountSolid доезжают до Peer
 
   it('Discussion: появляется в DOM после update({showDiscussion, discussionPeerId})', () => {
     const { host, update } = mountBridge({ ...baseProps })
-    expect(rowByIcon(host, 'comments')).toBeNull()
+    expect(rowByIcon(host, 'bubble_filled')).toBeNull()
 
     update({ showDiscussion: true, discussionPeerId: 0 })
 
-    const row = rowByIcon(host, 'comments')
+    const row = rowByIcon(host, 'bubble_filled')
     expect(row).not.toBeNull()
     expect(row!.textContent).toContain('Enable discussion')
   })
@@ -123,7 +123,7 @@ describe('Живые пропы моста mountSolid доезжают до Peer
 
     update({ onEnableDiscussion })
 
-    rowByIcon(host, 'comments')!.click()
+    rowByIcon(host, 'bubble_filled')!.click()
     expect(onEnableDiscussion).toHaveBeenCalledTimes(1)
   })
 
@@ -151,12 +151,12 @@ describe('Живые пропы моста mountSolid доезжают до Peer
 
   it('EncryptionKey: появляется в DOM после update({isSecret: true}) и зовёт СВЕЖИЙ onOpenEncryptionKey', () => {
     const { host, update } = mountBridge({ ...baseProps })
-    expect(rowByIcon(host, 'key')).toBeNull()
+    expect(rowByIcon(host, 'key_filled')).toBeNull()
 
     const onOpenEncryptionKey = vi.fn()
     update({ isSecret: true, onOpenEncryptionKey })
 
-    const row = rowByIcon(host, 'key')
+    const row = rowByIcon(host, 'key_filled')
     expect(row).not.toBeNull()
     row!.click()
     expect(onOpenEncryptionKey).toHaveBeenCalledTimes(1)
@@ -170,7 +170,7 @@ describe('Живые пропы моста mountSolid доезжают до Peer
     const secondOpenQrCode = vi.fn()
     update({ onOpenQrCode: secondOpenQrCode })
 
-    const row = rowByIcon(host, 'username')!
+    const row = rowByIcon(host, 'mention_filled')!
     const qr = row.querySelector('button.qr') as HTMLElement
     expect(qr).not.toBeNull()
     qr.click()

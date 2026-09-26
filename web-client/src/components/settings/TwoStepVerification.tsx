@@ -80,7 +80,7 @@ export default function TwoStepVerification({ onBack }: { onBack: () => void }) 
         />
         <div style={{ position: 'absolute', right: 10, top: 8 }}>
           <IconButton size="small" color="var(--secondary-text-color)" onClick={() => setShowPw((v) => !v)} aria-label="toggle password">
-            <TgIcon name={showPw ? 'eye2' : 'eye1'} size={22} />
+            <TgIcon name={showPw ? 'eye2_filled' : 'eye1_filled'} size={22} />
           </IconButton>
         </div>
       </div>
@@ -142,10 +142,11 @@ export default function TwoStepVerification({ onBack }: { onBack: () => void }) 
         {hero('TwoStepAuth.GenericHelp')}
         <div style={{ marginTop: 16 }}>
           <Section>
-            <Row icon={<TgIcon name="edit" size={24} />} label="TwoStepAuth.ChangePassword" onClick={() => { setPwd(''); setConfirm(''); setHint(state.hint); setEmailOnly(false); setStep('password') }} />
+            <Row icon={<TgIcon name="edit" size={24} />} label="TwoStepAuth.ChangePassword" accent onClick={() => { setPwd(''); setConfirm(''); setHint(state.hint); setEmailOnly(false); setStep('password') }} />
             <Row
               icon={<TgIcon name="email" size={24} />}
               label={state.email ? 'TwoStepAuth.ChangeEmail' : 'TwoStepAuth.SetupEmail'}
+              accent
               sublabel={state.email || undefined}
               onClick={() => { setEmail(''); setEmailOnly(true); setStep('email') }}
             />

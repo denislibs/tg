@@ -72,7 +72,7 @@ describe('Statistics — порт chat/topbar.ts:664 (пункт меню топ
   it('показывается при showStatistics и зовёт onOpenStatistics по клику', () => {
     const onOpenStatistics = vi.fn()
     const h = mount({ ...baseProps, showStatistics: true, onOpenStatistics })
-    const row = rowByIcon(h, 'statistics')
+    const row = rowByIcon(h, 'statistics_filled')
     expect(row).not.toBeNull()
     row!.click()
     expect(onOpenStatistics).toHaveBeenCalledTimes(1)
@@ -80,20 +80,20 @@ describe('Statistics — порт chat/topbar.ts:664 (пункт меню топ
 
   it('не показывается без showStatistics', () => {
     const h = mount({ ...baseProps, showStatistics: false })
-    expect(rowByIcon(h, 'statistics')).toBeNull()
+    expect(rowByIcon(h, 'statistics_filled')).toBeNull()
   })
 })
 
 describe('Discussion — порт editChat.tsx:362 (строка вкладки редактирования, у нас — строка профиля)', () => {
   it('не показывается без showDiscussion', () => {
     const h = mount({ ...baseProps, showDiscussion: false, discussionPeerId: 0 })
-    expect(rowByIcon(h, 'comments')).toBeNull()
+    expect(rowByIcon(h, 'bubble_filled')).toBeNull()
   })
 
   it('«Enable discussion»: показывается при discussionPeerId===0, зовёт onEnableDiscussion по клику', () => {
     const onEnableDiscussion = vi.fn()
     const h = mount({ ...baseProps, showDiscussion: true, discussionPeerId: 0, onEnableDiscussion })
-    const row = rowByIcon(h, 'comments')
+    const row = rowByIcon(h, 'bubble_filled')
     expect(row).not.toBeNull()
     expect(row!.textContent).toContain('Enable discussion')
     row!.click()
@@ -103,14 +103,14 @@ describe('Discussion — порт editChat.tsx:362 (строка вкладки 
   it('«Enable discussion» гасит клик, пока enablingDiscussion', () => {
     const onEnableDiscussion = vi.fn()
     const h = mount({ ...baseProps, showDiscussion: true, discussionPeerId: 0, enablingDiscussion: true, onEnableDiscussion })
-    const row = rowByIcon(h, 'comments')!
+    const row = rowByIcon(h, 'bubble_filled')!
     row.click()
     expect(onEnableDiscussion).not.toHaveBeenCalled()
   })
 
   it('«Discussion enabled»: показывается при ЗНАКОВОМ discussionPeerId !== 0, без клика', () => {
     const h = mount({ ...baseProps, showDiscussion: true, discussionPeerId: -100 })
-    const row = rowByIcon(h, 'comments')
+    const row = rowByIcon(h, 'bubble_filled')
     expect(row).not.toBeNull()
     expect(row!.textContent).toContain('Discussion enabled')
   })
@@ -152,7 +152,7 @@ describe('EncryptionKey — у tweb предмета нет вовсе (секр
   it('показывается при isSecret и зовёт onOpenEncryptionKey по клику', () => {
     const onOpenEncryptionKey = vi.fn()
     const h = mount({ ...baseProps, isSecret: true, onOpenEncryptionKey })
-    const row = rowByIcon(h, 'key')
+    const row = rowByIcon(h, 'key_filled')
     expect(row).not.toBeNull()
     row!.click()
     expect(onOpenEncryptionKey).toHaveBeenCalledTimes(1)
@@ -160,6 +160,6 @@ describe('EncryptionKey — у tweb предмета нет вовсе (секр
 
   it('не показывается без isSecret', () => {
     const h = mount({ ...baseProps, isSecret: false })
-    expect(rowByIcon(h, 'key')).toBeNull()
+    expect(rowByIcon(h, 'key_filled')).toBeNull()
   })
 })

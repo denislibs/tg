@@ -205,7 +205,7 @@ export default function MainMenu({
       <MenuItem icon={<TgIcon name="phone" size={20} />} label={t('PrivacySettings.VoiceCalls')} onClick={onOpenCalls ?? onClose} />
       <MenuItem icon={<TgIcon name="newprivate" size={20} />} label={t('CloseFriends.Title')} onClick={onOpenCloseFriends ?? onClose} />
       {divider}
-      <MenuItem icon={<TgIcon name="card_outline" size={20} />} label={t('Stars.Wallet')} onClick={onOpenWallet ?? onClose} />
+      <MenuItem icon={<TgIcon name="card" size={20} />} label={t('Stars.Wallet')} onClick={onOpenWallet ?? onClose} />
       <MenuItem
         icon={<TgIcon name="star_filled" size={20} color="var(--primary-color)" />}
         label={t('Premium.Boarding.Title')}

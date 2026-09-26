@@ -72,7 +72,7 @@ export default function PasscodeLock({ onBack }: { onBack: () => void }) {
       />
       <div style={{ position: 'absolute', right: 10, top: 8 }}>
         <IconButton size="small" color="var(--secondary-text-color)" onClick={() => setShow((v) => !v)} aria-label="toggle passcode">
-          <TgIcon name={show ? 'eye2' : 'eye1'} size={22} />
+          <TgIcon name={show ? 'eye2_filled' : 'eye1_filled'} size={22} />
         </IconButton>
       </div>
     </div>
@@ -131,7 +131,7 @@ export default function PasscodeLock({ onBack }: { onBack: () => void }) {
             footer="PasscodeLock.ForgotNotice"
           >
             <Row icon={<TgIcon name="lockoff" size={24} />} label="PasscodeLock.TurnOff.Title" danger onClick={() => setOffOpen(true)} />
-            <Row icon={<TgIcon name="key" size={24} />} label="PasscodeLock.ChangePasscode" onClick={startChange} />
+            <Row icon={<TgIcon name="key_filled" size={24} />} label="PasscodeLock.ChangePasscode" onClick={startChange} />
           </Section>
           <Section
             caption="PasscodeLock.AutoLock"

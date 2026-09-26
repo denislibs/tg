@@ -21,6 +21,7 @@ import type { Managers } from '@/client/bootstrap'
 import { ManagersProvider } from '@core/hooks/useManagers'
 import { applyLang } from '@/test/lang'
 import SettingsView, { settingsItems } from './SettingsView'
+import { getRowIconBackground, ROW_ICON_COLORS } from '@helpers/rowIconBackground'
 
 // Менеджеры — ШОВ (граница с воркером), всё остальное настоящее: рисуется САМ
 // экран настроек, а не его пересказ. Пересказ здесь уже был и оказался
@@ -58,9 +59,9 @@ function languageRowValue() {
   const index = settingsItems.findIndex((it) => it.value)
   expect(settingsItems.filter((it) => it.value)).toHaveLength(1)
 
-  const rows = Array.from(document.querySelectorAll('[class*="rowClickable"]'))
+  const rows = Array.from(document.querySelectorAll('.profile-buttons > .row'))
   const row = rows[index + 1]
-  return row.lastElementChild!.textContent
+  return row.querySelector('.row-title-right-secondary')!.textContent
 }
 
 describe('строка «Язык» в настройках', () => {
@@ -85,5 +86,39 @@ describe('строка «Язык» в настройках', () => {
     })
 
     expect(languageRowValue()).toBe('Русский')
+  })
+})
+
+// Иконки корня настроек — tweb 2197fee9c (`sidebarLeft/tabs/settings.tsx`):
+// залитые глифы на цветных плашках, цвет — из реестра `rowIconBackground`.
+describe('иконки корня настроек — цветные плашки tweb', () => {
+  afterEach(() => cleanup())
+
+  it('пункты несут те же иконки, что у tweb', () => {
+    expect(Object.fromEntries(settingsItems.map((it) => [it.label, it.icon]))).toEqual({
+      'AccountSettings.Notifications': 'bell_filled',
+      DataSettings: 'data_filled',
+      PrivacySettings: 'key_filled',
+      'Telegram.GeneralSettingsViewController': 'general_filled',
+      'ChatList.Filter.List.Title': 'limit_folders_filled',
+      StickersName: 'reactions_filled',
+      'AccountSettings.SpeakersAndCamera': 'speaker_filled',
+      Devices: 'devices_filled',
+      'AccountSettings.Language': 'web_filled',
+      'KeyboardShortcuts.Title': 'keyboard_filled',
+    })
+  })
+
+  it('строки списка — .row с плашкой нужного цвета (Notifications красная, Data зелёная, Privacy серая)', async() => {
+    await applyLang('en')
+    render(<SettingsView onBack={() => {}} onToggleMode={() => {}} />, { wrapper })
+    const plates = Array.from(document.querySelectorAll<HTMLElement>('.profile-buttons > .row > .row-icon.row-icon-colored'))
+    // «Ночной режим» + пункты таблицы.
+    expect(plates).toHaveLength(settingsItems.length + 1)
+    const bg = (i: number) => plates[i + 1].style.backgroundImage
+    expect(bg(0)).toBe(getRowIconBackground(ROW_ICON_COLORS.red))
+    expect(bg(1)).toBe(getRowIconBackground(ROW_ICON_COLORS.green))
+    expect(bg(2)).toBe(getRowIconBackground(ROW_ICON_COLORS.grey))
+    expect(bg(4)).toBe(getRowIconBackground(ROW_ICON_COLORS.blue))
   })
 })

@@ -29,7 +29,7 @@ const ICONS: [IconName, SendBtnIcon][] = [
   ['schedule', 'schedule'],
   ['check', 'edit'],
   ['microphone_filled', 'record'],
-  ['recordround', 'record-video'],
+  ['recordround_filled', 'record-video'],
   ['forward_filled', 'forward'],
 ]
 

@@ -1,10 +1,13 @@
 import type { LangPackKey } from '@/lang'
-import { cloneElement, createContext, isValidElement, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { cloneElement, createContext, isValidElement, useContext, useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import SidebarSection from '../../shared/ui/SidebarSection'
 import Checkbox from '../../shared/ui/Checkbox'
 import { useRipple } from '../../shared/ui/Ripple/useRipple'
 import classNames from '../../shared/lib/classNames'
 import TgIcon from '../TgIcon'
+import type { IconName } from '@core/tgico-icons'
+import { getRowIconBackgroundImage } from '@helpers/rowIconBackground'
+import { ROW_CHECKBOX_FIELD_CLASS, ROW_CHECKBOX_FIELD_TOGGLE_CLASS } from '../rowFieldClasses'
 import TgSwitch from '../TgSwitch'
 import liteMode from '../../helpers/liteMode'
 import { clearPendingTransitionCleanup, NAVIGATION_TRANSITION_TIME, runNavigationTransition } from '../transition'
@@ -289,7 +292,8 @@ export function EntryRow({
  *           > div.row-title
  *           + div.row-title.row-title-right[.row-title-right-secondary]
  *     + div.row-subtitle                   (при наличии подписи)
- *     + span.tgico.row-icon                (иконка — АБСОЛЮТНАЯ, слева)
+ *     + span.row-icon.row-icon-colored     (плашка — АБСОЛЮТНАЯ, слева; tweb 2197fee9c)
+ *         > span.tgico.row-icon-icon
  *     + div.row-right                      (`rightContent`, `row.ts:280-283`:
  *                                           контейнер получает ещё `row-grid`)
  *
@@ -306,7 +310,7 @@ export function EntryRow({
  *                `_row.scss:361-384`), контейнер получает `row-with-padding`.
  *                Дампы: «Chat history for new members» в `15-right-12-edit-group`,
  *                под-права аккордеона «Send Media» в `15-right-13-group-permissions`;
- *   `icon`     → `Icon(icon, 'row-icon')` (`row.ts:201-210`) — плюс
+ *   `icon`     → плашка + глиф (`row.ts:201-210` в 2197fee9c) — плюс
  *                `row-with-icon` и `row-with-padding` на контейнере;
  *   `danger`/`accent` → классы `.danger`/`.primary` из tweb `base.scss:602-617`
  *                (портированы в `styles/tweb/_bridge.scss`).
@@ -337,6 +341,7 @@ export function Row({
   translate = true,
   multiline,
   right,
+  className,
 }: {
   icon?: ReactNode
   label: string
@@ -346,7 +351,8 @@ export function Row({
   sublabel?: ReactNode
   /** Правое значение строки — по той же причине `ReactNode`. */
   value?: ReactNode
-  onClick?: () => void
+  /** Событие — ради координат (переход темы у строки ночного режима). */
+  onClick?: (e: MouseEvent<HTMLElement>) => void
   danger?: boolean
   accent?: boolean
   /** тумблер справа (tweb `checkboxFieldOptions: {toggle: true}`) */
@@ -362,19 +368,39 @@ export function Row({
   multiline?: boolean
   /** правый слот строки (tweb `rightContent` → `.row-right` + `.row-grid`) */
   right?: ReactNode
+  /** доп. класс строки (подсветка активного пункта корня настроек) */
+  className?: string
 }) {
   const t = useT()
   const { onPointerDown, ripple } = useRipple()
 
-  // Иконка приходит готовой нодой (обычно `<TgIcon/>`, а он уже рендерит
-  // `span.tgico`) — доклеиваем ей класс `row-icon`, как это делает
-  // `Icon(options.icon, 'row-icon')` в tweb.
-  const iconNode = isValidElement<{ className?: string }>(icon)
-    ? cloneElement(icon, { className: classNames('row-icon', icon.props.className ?? '') })
-    : icon
+  // Иконка приходит готовой нодой. Глиф `<TgIcon/>` становится цветной плашкой,
+  // как у tweb 2197fee9c (`row.ts:201-210`, `rowTsx.tsx` `Row.Icon`):
+  // `span.row-icon.row-icon-colored` с градиентом inline
+  // (`helpers/rowIconBackground.ts`), глиф — `span.tgico.row-icon-icon` внутри.
+  // Кегль и цвет глифа задаёт плашка (`_row.scss`: `.row-icon` 1.5rem,
+  // `.row-icon-colored` #fff), поэтому `size`/`color` вызывающего снимаются.
+  // Не-глиф (аватар, чекбокс, эмодзи — у tweb это `row-media`/`checkboxField`,
+  // а не иконка) получает только класс `row-icon`, как раньше. Так же и строки
+  // `accent`/`danger`: у tweb это не `Row`, а `Button('btn-primary
+  // btn-transparent [danger]', {icon})` — глиф цвета текста, без плашки.
+  const iconNode = isValidElement<{ name: IconName }>(icon) && icon.type === TgIcon && !accent && !danger
+    ? (
+      <span
+        className="row-icon row-icon-colored"
+        style={{ backgroundImage: getRowIconBackgroundImage(icon.props.name) }}
+      >
+        <TgIcon name={icon.props.name} size="inherit" className="row-icon-icon" />
+      </span>
+    )
+    : isValidElement<{ className?: string }>(icon)
+      ? cloneElement(icon, { className: classNames('row-icon', icon.props.className ?? '') })
+      : icon
 
+  // tweb 803f9599d: тумблер строки — `row-checkbox-field-toggle` (без
+  // `row-checkbox-field`, отступление — в `rowFieldClasses.ts`).
   const titleRight = toggle
-    ? <TgSwitch checked={!!checked} restriction={restriction} />
+    ? <TgSwitch checked={!!checked} restriction={restriction} className={ROW_CHECKBOX_FIELD_TOGGLE_CLASS} />
     : selected
       ? <TgIcon name="check" size={22} color="var(--primary-color)" />
       : value ?? null
@@ -412,6 +438,7 @@ export function Row({
         onClick ? 'rp' : '',
         right ? 'row-grid' : '', // tweb row.ts:282 — правый слот включает grid-раскладку
         danger ? 'danger' : accent ? 'primary' : '',
+        className ?? '',
       )}
       onClick={onClick}
       onPointerDown={onClick ? onPointerDown : undefined}
@@ -440,7 +467,7 @@ export function Row({
         <Checkbox
           checked={!!checked}
           shape="square"
-          className="checkbox-field-absolute disable-hover"
+          className={`checkbox-field-absolute disable-hover ${ROW_CHECKBOX_FIELD_CLASS}`}
         />
       )}
       {sublabel && <div className="row-subtitle">{sublabel}</div>}

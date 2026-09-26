@@ -7,6 +7,8 @@ import RadioField from './radioField'
 import CheckboxField from './checkboxField'
 import SidebarSlider from './slider'
 import { SliderSuperTabEventable } from './sliderTab'
+import { getRowIconBackgroundImage } from '@helpers/rowIconBackground'
+import { glyph } from '@core/tgico-icons'
 
 // Подписи строит `i18n()`/`_i18n()` ядра, а строки в него кладёт холодный старт
 // (`main.tsx` → `client/boot.ts`); в прогоне — общий сетап (`src/test/setup.ts`).
@@ -94,6 +96,23 @@ describe('Row', () => {
     expect(withCaption.label.classList.contains('checkbox-field-absolute')).toBe(false)
   })
 
+  it('свои поля строка метит классами row-* (tweb 803f9599d, rowFieldClasses): чекбокс, тумблер, радио', () => {
+    const checkbox = new CheckboxField()
+    new Row({ checkboxField: checkbox })
+    expect(checkbox.label.classList.contains('row-checkbox-field')).toBe(true)
+    expect(checkbox.label.classList.contains('row-checkbox-field-toggle')).toBe(false)
+
+    const toggle = new CheckboxField({ toggle: true })
+    new Row({ checkboxField: toggle })
+    // Отступление (rowFieldClasses.ts): с `row-checkbox-field` тумблер обрезается.
+    expect(toggle.label.classList.contains('row-checkbox-field')).toBe(false)
+    expect(toggle.label.classList.contains('row-checkbox-field-toggle')).toBe(true)
+
+    const radio = new RadioField({ text: 'Вариант', name: 'g2', value: 'a' })
+    new Row({ radioField: radio })
+    expect(radio.label.classList.contains('row-radio-field')).toBe(true)
+  })
+
   it('withCheckboxSubtitle переключает подпись строки по input.checked чекбокса (tweb :152-161, у нас — input.checked вместо .checked)', () => {
     const checkboxField = new CheckboxField()
     const row = new Row({ checkboxField, withCheckboxSubtitle: true })
@@ -117,6 +136,19 @@ describe('Row', () => {
     expect(icon).not.toBeNull()
     expect(row.container.classList.contains('row-with-icon')).toBe(true)
     expect(row.container.classList.contains('row-with-padding')).toBe(true)
+  })
+
+  it('иконка — цветная плашка: span.row-icon.row-icon-colored с градиентом, глиф внутри (tweb 2197fee9c, row.ts:201-210)', () => {
+    const row = new Row({ title: 'Уведомления', icon: 'bell_filled', iconClasses: ['extra'] })
+    const plate = row.container.querySelector<HTMLElement>(':scope > .row-icon')!
+    expect(plate.tagName).toBe('SPAN')
+    expect(plate.classList.contains('tgico')).toBe(false)
+    expect(plate.classList.contains('row-icon-colored')).toBe(true)
+    expect(plate.classList.contains('extra')).toBe(true)
+    expect(plate.style.backgroundImage).toBe(getRowIconBackgroundImage('bell_filled'))
+    const glyphEl = plate.firstElementChild!
+    expect(glyphEl.className).toBe('tgico row-icon-icon')
+    expect(glyphEl.textContent).toBe(glyph('bell_filled'))
   })
 
   it('rightContent (buttonRight/rightTextContent) уезжает в .row-right, container получает row-grid (tweb :268-284)', () => {

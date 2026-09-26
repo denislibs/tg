@@ -103,13 +103,13 @@ describe('SettingsView — счётчик устройств', () => {
     const m = makeManagers([{ hash: 1 }, { hash: 2 }, { hash: 3 }])
     render(<SettingsView onBack={() => {}} onToggleMode={() => {}} />, { wrapper: wrapperWith(m) })
 
-    // Строка целиком: у неё есть ещё иконка-глиф, поэтому сверяем ПОСЛЕДНИЙ
-    // блок (правый слот), а не весь `textContent`.
-    const row = screen.getByText('Devices').parentElement!
-    const rightSlot = () => row.children[row.children.length - 1].textContent
+    // Строка — `.row` tweb: число встаёт правым значением
+    // (`row-title-right-secondary`, у tweb — `titleRight`).
+    const row = screen.getByText('Devices').closest('.row')!
+    const rightSlot = () => row.querySelector('.row-title-right-secondary')?.textContent ?? null
 
-    // До ответа правым блоком остаётся сама подпись — числа ещё нет.
-    expect(rightSlot()).toBe('Devices')
+    // До ответа правого значения нет — числа ещё нет.
+    expect(rightSlot()).toBeNull()
 
     // Промис менеджера разрешается микрозадачей — даём ей пройти.
     await act(async () => {})
@@ -127,8 +127,8 @@ describe('SettingsView — счётчик устройств', () => {
     render(<SettingsView onBack={() => {}} onToggleMode={() => {}} />, { wrapper: wrapperWith(m) })
     await act(async () => {})
 
-    const row = screen.getByText('Devices').parentElement!
-    expect(row.children[row.children.length - 1].textContent).toBe('Devices')
+    const row = screen.getByText('Devices').closest('.row')!
+    expect(row.querySelector('.row-title-right-secondary')).toBeNull()
   })
 })
 

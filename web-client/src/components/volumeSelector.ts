@@ -22,7 +22,7 @@ import RangeSelector from './rangeSelector'
 const className = 'player-volume'
 
 export default class VolumeSelector extends RangeSelector {
-  private static ICONS: IconName[] = ['volume_off', 'volume_mute', 'volume_down', 'volume_up']
+  private static ICONS: IconName[] = ['volume_off_filled', 'volume_mute_filled', 'volume_down_filled', 'volume_up_filled']
   public btn: HTMLElement
   protected listenerSetter!: ListenerSetter
   protected media?: HTMLMediaElement

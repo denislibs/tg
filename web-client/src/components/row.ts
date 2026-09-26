@@ -7,7 +7,7 @@
  *  • `tweb/src/scss/partials/_row.scss` (= наш уже портированный
  *    `web-client/src/styles/tweb/_row.scss`) — `row`, `no-subtitle`,
  *    `row-title(-row|-right(-secondary)?)`, `row-subtitle(-row|-right)`,
- *    `row-midtitle`, `row-with-(padding|icon)`, `row-icon`, `row-clickable`,
+ *    `row-midtitle`, `row-with-(padding|icon)`, `row-icon(-icon|-colored)?`, `row-clickable`,
  *    `row-grid`, `row-right`, `row-media(-small|-medium|-big|-abitbigger|
  *    -bigger|-40)`, `row-sortable(-icon)?`, `cant-sort`, `is-disabled`,
  *    `checkbox-field-absolute` (там же, нестинг `.checkbox-field { &-absolute }`
@@ -72,6 +72,8 @@ import ripple from '@components/ripple'
 import RadioForm from '@components/radioForm'
 import Button from '@components/button'
 import Icon from '@components/icon'
+import { setRowIconBackground } from '@helpers/rowIconBackground'
+import { ROW_CHECKBOX_FIELD_CLASS, ROW_CHECKBOX_FIELD_TOGGLE_CLASS, ROW_RADIO_FIELD_CLASS } from '@components/rowFieldClasses'
 import type { IconName } from '@core/tgico-icons'
 import { i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
 import setInnerHTML, { setDirection } from '@helpers/dom/setInnerHTML'
@@ -194,14 +196,17 @@ export default class Row<T extends SliderSuperTabEventableConstructable = any> {
     if(options.radioField || options.checkboxField) {
       if(options.radioField) {
         this.radioField = options.radioField
+        this.radioField.label.classList.add(ROW_RADIO_FIELD_CLASS)
         this.container.append(this.radioField.label)
         havePadding = true
       }
 
       if(options.checkboxField) {
         this.checkboxField = options.checkboxField
-
+        // tweb 803f9599d: поле — своё для строки, см. `rowFieldClasses`
+        // (тумблеру — только класс тумблера, отступление описано там же).
         const isToggle = options.checkboxField.label.classList.contains('checkbox-field-toggle')
+        this.checkboxField.label.classList.add(isToggle ? ROW_CHECKBOX_FIELD_TOGGLE_CLASS : ROW_CHECKBOX_FIELD_CLASS)
         if(isToggle) {
           this.container.classList.add('row-with-toggle')
           options.titleRight = this.checkboxField.label
@@ -264,11 +269,14 @@ export default class Row<T extends SliderSuperTabEventableConstructable = any> {
 
     if(options.icon) {
       havePadding = true
-      if(options.iconClasses?.length) {
-        this.container.append(Icon(options.icon, 'row-icon', ...options.iconClasses))
-      } else {
-        this.container.append(Icon(options.icon, 'row-icon'))
-      }
+      // tweb 2197fee9c (row.ts:201-210): иконка — отдельный контейнер-плашка
+      // `span.row-icon.row-icon-colored` с градиентом inline, глиф —
+      // `span.tgico.row-icon-icon` внутри.
+      const iconContainer = document.createElement('span')
+      iconContainer.classList.add('row-icon', ...(options.iconClasses || []))
+      iconContainer.append(Icon(options.icon, 'row-icon-icon'))
+      setRowIconBackground(iconContainer, options.icon)
+      this.container.append(iconContainer)
       this.container.classList.add('row-with-icon')
     }
 

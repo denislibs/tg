@@ -130,7 +130,7 @@ function NowPlayingBar() {
   }
   const rateLabel = `${rate}X` // 0.5x/1x/1.5x/2x — раньше 0.5x ошибочно показывал «2X»
   const effVol = muted ? 0 : volume
-  const volIconName: IconName = effVol === 0 ? 'volume_off' : effVol < 0.5 ? 'volume_down' : 'volume_up'
+  const volIconName: IconName = effVol === 0 ? 'volume_off_filled' : effVol < 0.5 ? 'volume_down_filled' : 'volume_up_filled'
 
   return (
     <>
@@ -144,7 +144,7 @@ function NowPlayingBar() {
               (её обёртка растянута на всю плашку и иначе съедала бы клики). */}
           <div className={classNames('pinned-container-wrapper', 'pinned-audio-wrapper', s.bar)}>
             <RoundBtn onClick={prev} color="var(--primary-color)" label="prev">
-              <TgIcon name="fast_rewind" />
+              <TgIcon name="fast_rewind_filled" />
             </RoundBtn>
             <RoundBtn onClick={toggle} color="var(--primary-color)" label="play/pause">
               <div className={s.playIconWrap}>
@@ -152,7 +152,7 @@ function NowPlayingBar() {
               </div>
             </RoundBtn>
             <RoundBtn onClick={next} color="var(--primary-color)" label="next">
-              <TgIcon name="fast_forward" />
+              <TgIcon name="fast_forward_filled" />
             </RoundBtn>
 
             <div className={s.meta}>

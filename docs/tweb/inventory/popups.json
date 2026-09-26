@@ -1,7 +1,7 @@
 {
   "meta": {
     "generatedAt": "2026-09-26",
-    "twebDir": "/Users/denisurevic/Documents/tweb",
+    "twebDir": "/Users/denisurevic/Documents/tweb-e52b5d931",
     "twebCommit": "e52b5d931"
   },
   "popups": [
@@ -529,7 +529,6 @@
     "RepostStorySheet",
     "SchedulePopup",
     "ScheduledView",
-    "SearchView",
     "SendMediaPopup",
     "SettingsView",
     "StealthModePopup",

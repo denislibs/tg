@@ -6,6 +6,8 @@ import { render, act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Row, SettingsScreen } from './kit'
 import TgIcon from '../TgIcon'
+import { getRowIconBackgroundImage } from '@helpers/rowIconBackground'
+import { glyph } from '@core/tgico-icons'
 
 const noop = () => {}
 
@@ -102,16 +104,72 @@ describe('Row — разметка tweb', () => {
     expect(r.firstElementChild!.className).toBe('c-ripple')
   })
 
-  it('иконка — span.tgico.row-icon + row-with-icon/row-with-padding', () => {
+  it('иконка — цветная плашка span.row-icon.row-icon-colored, глиф внутри (tweb 2197fee9c) + row-with-icon/row-with-padding', () => {
     const { container } = render(
-      <Row icon={<TgIcon name="link" />} label="Invite Links" translate={false} />,
+      <Row icon={<TgIcon name="link_filled" size={24} color="var(--primary-color)" />} label="Invite Links" translate={false} />,
     )
     const r = row(container)
     expect(r.classList.contains('row-with-icon')).toBe(true)
     expect(r.classList.contains('row-with-padding')).toBe(true)
-    const icon = r.querySelector<HTMLElement>('.row-icon')!
-    expect(icon.tagName).toBe('SPAN')
-    expect(icon.classList.contains('tgico')).toBe(true)
+    const plate = r.querySelector<HTMLElement>(':scope > .row-icon')!
+    expect(plate.tagName).toBe('SPAN')
+    expect(plate.classList.contains('tgico')).toBe(false)
+    expect(plate.classList.contains('row-icon-colored')).toBe(true)
+    expect(plate.style.backgroundImage).toBe(getRowIconBackgroundImage('link_filled'))
+    const glyphEl = plate.firstElementChild as HTMLElement
+    expect(glyphEl.className).toBe('tgico row-icon-icon')
+    expect(glyphEl.textContent).toBe(glyph('link_filled'))
+    // Кегль и цвет глифа — от плашки (`.row-icon` 1.5rem, `.row-icon-colored` #fff):
+    // инлайн TgIcon их не перебивает.
+    expect(glyphEl.style.color).toBe('')
+    expect(glyphEl.style.fontSize).toBe('inherit')
+  })
+
+  it('не-глиф в слоте иконки (аватар, чекбокс, эмодзи) плашки не получает', () => {
+    const { container } = render(
+      <Row icon={<span className="reaction-emoji">👍</span>} label="Like" translate={false} />,
+    )
+    const icon = row(container).querySelector<HTMLElement>('.row-icon')!
+    expect(icon.className).toBe('row-icon reaction-emoji')
+    expect(icon.style.backgroundImage).toBe('')
+  })
+
+  it('accent/danger (у tweb это Button btn-primary btn-transparent, не Row) — глиф без плашки', () => {
+    for (const flag of [{ accent: true }, { danger: true }]) {
+      const { container, unmount } = render(
+        <Row icon={<TgIcon name="delete" />} label="Delete" translate={false} {...flag} />,
+      )
+      const icon = row(container).querySelector<HTMLElement>('.row-icon')!
+      expect(icon.classList.contains('tgico')).toBe(true)
+      expect(icon.classList.contains('row-icon-colored')).toBe(false)
+      expect(icon.style.backgroundImage).toBe('')
+      unmount()
+    }
+  })
+
+  it('свои поля строки — с классами row-* (tweb 803f9599d): чекбокс и тумблер', () => {
+    const { container, unmount } = render(<Row label="History" translate={false} checkbox checked />)
+    const cb = row(container).querySelector<HTMLElement>('.checkbox-field')!
+    expect(cb.classList.contains('row-checkbox-field')).toBe(true)
+    expect(cb.classList.contains('row-checkbox-field-toggle')).toBe(false)
+    unmount()
+
+    const { container: c2 } = render(<Row label="Sound" translate={false} toggle checked />)
+    const toggle = row(c2).querySelector<HTMLElement>('.checkbox-field-toggle')!
+    expect(toggle.classList.contains('row-checkbox-field')).toBe(false) // отступление, rowFieldClasses.ts
+    expect(toggle.classList.contains('row-checkbox-field-toggle')).toBe(true)
+  })
+
+  it('onClick получает событие (координаты — для перехода темы)', () => {
+    const onClick = vi.fn()
+    const { container } = render(<Row label="Night" translate={false} onClick={onClick} />)
+    row(container).dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 7, clientY: 9 }))
+    expect(onClick.mock.calls[0][0].clientX).toBe(7)
+  })
+
+  it('className доклеивается к строке', () => {
+    const { container } = render(<Row label="A" translate={false} className="is-active" />)
+    expect(row(container).classList.contains('is-active')).toBe(true)
   })
 
   it('value → row-row.row-title-row > row-title + row-title.row-title-right.row-title-right-secondary', () => {

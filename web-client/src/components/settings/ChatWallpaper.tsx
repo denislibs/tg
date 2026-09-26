@@ -62,12 +62,14 @@ export default function ChatWallpaper({ onBack }: { onBack: () => void }) {
         <Row
           icon={<TgIcon name="cameraadd" size={24} />}
           label="ChatBackground.Upload"
+          accent
           onClick={() => fileRef.current?.click()}
         />
-        <Row icon={<TgIcon name="colorize" size={24} />} label="SetColor" onClick={() => colorRef.current?.click()} />
+        <Row icon={<TgIcon name="colorize" size={24} />} label="SetColor" accent onClick={() => colorRef.current?.click()} />
         <Row
           icon={<TgIcon name="rotate" size={24} />}
           label="ChatBackground.Reset"
+          accent
           onClick={() => update({ wallpaper: { kind: 'default' }, wallpaperBlur: false, customWallpaperMediaId: undefined, customWallpaperBlur: false })}
         />
         <Row

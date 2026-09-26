@@ -5,7 +5,6 @@
 import type { LangPackKey } from '@/lang'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Text from '../../shared/ui/Text'
-import Checkbox from '../../shared/ui/Checkbox'
 import Slider from '../../shared/ui/Slider'
 import TgIcon from '../TgIcon'
 import type { IconName } from '../TgIcon'
@@ -124,7 +123,8 @@ function AutoDownloadTypeScreen({ type, onBack }: { type: MediaType; onBack: () 
         {PEER_KEYS.map((k) => (
           <Row
             key={k}
-            icon={<Checkbox checked={types[k]} shape="square" size={20} />}
+            checkbox
+            checked={types[k]}
             label={PEER_ROW[k]}
             onClick={() => update({ [key]: { ...types, [k]: !types[k] } })}
           />
@@ -216,7 +216,8 @@ export default function DataStorageSettings({ onBack }: { onBack: () => void }) 
     >
       <Section caption="AutomaticMediaDownload" footer="AutoDownloadAudioInfo">
         <Row
-          icon={<Checkbox checked={settings.autoDownloadEnabled} shape="square" size={20} />}
+          checkbox
+          checked={settings.autoDownloadEnabled}
           label="AutoDownloadMedia"
           onClick={() => update({ autoDownloadEnabled: !settings.autoDownloadEnabled })}
         />
@@ -258,9 +259,9 @@ export default function DataStorageSettings({ onBack }: { onBack: () => void }) 
           </div>
         </div>
         {quotaIconRow('image', 'StorageQuota.Images', sizes?.images)}
-        {quotaIconRow('play', 'StorageQuota.VideoFiles', sizes?.videos)}
+        {quotaIconRow('play_filled', 'StorageQuota.VideoFiles', sizes?.videos)}
         {quotaIconRow('stickers_face', 'StorageQuota.StickersEmoji', sizes?.stickers)}
-        {quotaIconRow('limit_file', 'Other', sizes?.other)}
+        {quotaIconRow('limit_file_filled', 'Other', sizes?.other)}
 
         <div className={s.range}>
           <div className={s.rangeDetails}>

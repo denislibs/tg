@@ -89,7 +89,7 @@ export function createMessageTime(message: MyMessage): HTMLElement {
       // времени: отступ несёт класс `time-part` (`_chatBubble.scss` `.time-part`
       // — `margin-inline-end: .375rem`). Без неё «1» и «22:50» слипались в
       // «122:50».
-      out.push(views, Icon('channelviews', 'time-icon', 'time-part', 'time-icon-views'))
+      out.push(views, Icon('channelviews_filled', 'time-icon', 'time-part', 'time-icon-views'))
     }
 
     // «edited». Гейта `edit_hide` у оригинала здесь нет предмета: этого флага
@@ -137,7 +137,7 @@ export function createMessageTime(message: MyMessage): HTMLElement {
 /** Иконка статуса по его имени — тот же выбор, что у оригинала (:6394-6398). */
 function statusIcon(status: SendingStatus): IconName {
   switch (status) {
-    case 'error': return 'sendingerror'
+    case 'error': return 'sendingerror_filled'
     case 'sending': return 'sending'
     case 'sent': return 'check'
     case 'read': return 'checks'
