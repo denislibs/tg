@@ -7,13 +7,13 @@
 // Дерево близко к живому tweb/React-версии (dom-референс §2.5 React-версии):
 //
 //   div.card.pageSignUp
-//     div                                   ← MediaHeader
+//     div.container                         ← MediaHeader (ритм — gap блока, О-29)
 //       div.sticker[style="--sticker-size: 120px"]
 //         div.avatar-edit
 //           canvas.avatar-edit-canvas#canvas-avatar
 //           span.avatar-edit-icon.tgico
-//       div.title.text-center.text-overflow-wrap             ← живой предпросмотр ФИО
-//       div.subtitle.text-center                              ← БЕЗ .secondary
+//       h1.title[data-popup-title]            ← живой предпросмотр ФИО
+//       div.subtitle                          ← БЕЗ .secondary
 //     div.input-wrapper
 //       div.input-field × 2
 //       button.btn-primary.btn-color-primary.rp
@@ -238,7 +238,7 @@ export default function SignUpCard(props: { spec: Spec }): JSX.Element {
               <IconTsx icon="cameraadd" class="avatar-edit-icon" style={{ 'font-size': '3rem' }} />
             </div>
           </>)} />
-          <MediaHeader.Title>{titleContent()}</MediaHeader.Title>
+          <MediaHeader.Title tag="h1">{titleContent()}</MediaHeader.Title>
           {/* без .secondary — как у tweb на этой карточке */}
           <MediaHeader.Subtitle>{i18n('Login.Register.Subtitle')}</MediaHeader.Subtitle>
         </MediaHeader>

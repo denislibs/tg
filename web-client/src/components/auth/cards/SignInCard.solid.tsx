@@ -217,10 +217,9 @@ export default function SignInCard(_props: { spec: Spec }): JSX.Element {
               <use href="#logo" />
             </svg>
           </>)} />
-          <MediaHeader.Title>
-            <span>{i18n('Login.Title')}</span>
-          </MediaHeader.Title>
-          <MediaHeader.Subtitle color="secondary">
+          <MediaHeader.Title tag="h1">{i18n('Login.Title')}</MediaHeader.Title>
+          {/* глобальный `.secondary` — только цвет, кегль 16px (tweb SignInCard.tsx:243) */}
+          <MediaHeader.Subtitle class="secondary">
             {/* Ядро само разворачивает \n словаря в <br> — superFormatter
                 (React-версия) здесь не нужен, i18n() уже отдаёт готовый узел. */}
             {i18n('Login.StartText')}

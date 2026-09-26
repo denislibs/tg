@@ -37,7 +37,6 @@ const de = {
   PhoneCopied: 'Telefonnummer kopiert',
   UsernameCopied: 'Benutzername kopiert',
   BioCopied: 'Bio kopiert',
-  'General.NightMode': 'Nachtmodus',
   'AccountSettings.Language': 'Sprache',
   'AccountSettings.Notifications': 'Benachrichtigungen und Töne',
   DataSettings: 'Daten und Speicher',

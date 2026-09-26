@@ -56,8 +56,9 @@
 }
 
 // tweb .sidebar-header (_sidebar.scss) + .main-search-sidebar-header (_leftSidebar.scss).
-// Высота — из $header-height (3.5rem), горизонтальный padding 1rem (слева под бургер);
-// справа .5rem — модификатор is-input-the-last-child (у нас инпут всегда последний).
+// Высота — из $header-height (3.5rem), горизонтальный padding 1rem (tweb `_sidebar.scss`);
+// справа .5rem, когда поле поиска последнее, — модификатор is-input-the-last-child
+// (`_leftSidebar.scss`, ставит `Sidebar.tsx` по tweb `toggleRightButtons`).
 .header {
   background-color: transparent;
   display: flex;
@@ -66,7 +67,7 @@
   min-height: $header-height;
   flex: 0 0 auto;
   cursor: default;
-  padding-inline: 1rem 0.5rem;
+  padding-inline: 1rem;
 
   @include respond-to(handhelds) {
     padding-inline: 0.5rem;

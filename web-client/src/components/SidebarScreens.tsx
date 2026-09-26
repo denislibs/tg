@@ -32,7 +32,6 @@ interface SidebarScreensProps {
   /** deep-open настроек на подэкран (контекстное меню «Настроить папки») */
   settingsSub: LangPackKey | null
   onSettingsBack: () => void
-  onToggleMode: (coords?: { x: number; y: number }) => void
   onSelect: (id: string) => void
   onChatCreated?: (chatId: number) => void
   onCreateGroup: (name: string, memberIds: number[], photo: GroupPhoto | null) => void
@@ -46,7 +45,6 @@ export default function SidebarScreens({
   chats,
   settingsSub,
   onSettingsBack,
-  onToggleMode,
   onSelect,
   onChatCreated,
   onCreateGroup,
@@ -57,7 +55,7 @@ export default function SidebarScreens({
     <>
       <Suspense fallback={null}>
         {screen === 'settings' && (
-          <SettingsView onBack={onSettingsBack} onToggleMode={onToggleMode} chats={chats} initialSub={settingsSub ?? undefined} />
+          <SettingsView onBack={onSettingsBack} chats={chats} initialSub={settingsSub ?? undefined} />
         )}
       </Suspense>
       <Suspense fallback={null}>
