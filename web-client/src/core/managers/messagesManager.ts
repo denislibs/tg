@@ -33,6 +33,7 @@ import { RT } from '../realtime/events'
 import type { MessageOp } from '../realtime/messageOps'
 import SlicedArray, { SliceEnd } from '../history/slicedArray'
 import { saveMessageMedia } from '../media/messageMedia'
+import { getWireFilter, type MessagesWireFilter, type MyInputMessagesFilter } from '../messages/inputMessagesFilter'
 import { mergeReactions } from '../reactions/messageReactions'
 import { saveMessages, loadMessages, deletePersistedMessage } from '../store/persist'
 import { newPollMethods } from './messages/pollMethods'
@@ -95,6 +96,32 @@ export interface HistoryResult {
   reachedTop: boolean
   reachedBottom: boolean
   cached?: boolean // served synchronously from the in-memory cache (no network)
+}
+
+/** tweb `RequestHistoryOptions['chatType']` (`appMessagesManager.ts:312`) — `ChatTypeMenu`. */
+export type SearchHistoryChatType = 'all' | 'users' | 'groups' | 'channels'
+
+/**
+ * Контекст `messages.searchHistory` — порт поисковой части tweb
+ * `RequestHistoryOptions` (`appMessagesManager.ts:283-315`): ровно то, что
+ * `AppSearchSuper` кладёт в запрос (`appSearchSuper.ts:2281-2291`). Номера —
+ * клиентские, даты — в миллисекундах, как у оригинала (`minDate / 1000 | 0`
+ * делает менеджер, `:9931-9932`). `peerId: 0` — «без пира» (`NULL_PEER_ID`).
+ */
+export type SearchHistoryOptions = {
+  peerId: number
+  inputFilter: { _: MyInputMessagesFilter }
+  query?: string
+  /** номер последнего уже показанного сообщения; 0 — с начала */
+  offsetId?: number
+  limit?: number
+  /** курсор глобальной выдачи — `nextRate` предыдущей страницы */
+  nextRate?: number
+  /** `0` — глобальный поиск левой колонки (`sidebarLeft/index.ts:1192`); не задан — поиск в чате */
+  folderId?: number
+  minDate?: number
+  maxDate?: number
+  chatType?: SearchHistoryChatType
 }
 
 export interface SendArgs {
@@ -356,6 +383,142 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     sendTyping: sendTyping ?? (() => {}),
     uploadProgress: uploadProgress ?? (() => {}),
   })
+
+  // Шаред-медиа профиля (табы Media/Files/Links/Music/Voice) — история чата
+  // одного типа, новые сверху (tweb inputMessagesFilter*) + общее число.
+  //
+  // Листается КУРСОРОМ: `offsetId` — номер ПОСЛЕДНЕГО уже показанного
+  // сообщения, страница отдаётся строго ниже него (порт tweb
+  // `appSearchSuper.ts:2278-2279` — `offsetId = lastItem?.mid`). Смещения
+  // здесь быть не может: тот же список одновременно пополняется СВЕРХУ
+  // живыми апдейтами (tweb `sharedMedia.tsx:239` — `history.unshift`), и
+  // каждое новое сообщение сдвигало бы окно на единицу — вторая страница
+  // приезжала бы с дублем последнего элемента первой (или с дырой).
+  //
+  // Номер наружу КЛИЕНТСКИЙ, в URL уходит серверный: `getServerMessageId` —
+  // ровно та граница пространств, о которой `core/history/messageId.ts`.
+  const mediaHistory = async (peerId: number, filter: MessagesWireFilter, offsetId = 0, limit = 30): Promise<{ messages: MyMessage[]; count: number }> => {
+    const r = await rest.get<MessagesContainer>(`/chats/${peerId}/media`, {
+      filter, offset_id: getServerMessageId(offsetId), limit,
+    })
+    return { messages: await mapContainer(r), count: r.count ?? 0 }
+  }
+
+  // Поиск в одном чате (аналог `messages.search`): текст + необязательные
+  // фильтры — senderId (в группах), mediaType (мелкая лексика топбара:
+  // photo/video/voice/roundvideo/file/link/music), filter (вкладки класса:
+  // media/files/links/music/voice), reaction (эмодзи), minDate/maxDate
+  // (чипы дат, мс — на провод секундами, `minDate / 1000 | 0`, tweb
+  // `appMessagesManager.ts:9931-9932`). Пустой q без фильтров — вся история.
+  //
+  // Листается КУРСОРОМ, как `mediaHistory`: `offsetId` — клиентский номер
+  // последнего показанного, в URL уходит серверный (`getServerMessageId`).
+  // Смещения нет: выдача пополняется сверху живыми апдейтами.
+  const searchMessages = async (
+    peerId: number,
+    q: string,
+    opts: {
+      offsetId?: number
+      limit?: number
+      senderId?: number
+      mediaType?: string
+      filter?: MessagesWireFilter
+      reaction?: string
+      minDate?: number
+      maxDate?: number
+    } = {},
+  ): Promise<{ messages: MyMessage[]; count: number }> => {
+    const query: Record<string, string | number> = {
+      q, offset_id: getServerMessageId(opts.offsetId ?? 0), limit: opts.limit ?? 20,
+    }
+    if (opts.filter) query.filter = opts.filter
+    if (opts.mediaType) query.media_type = opts.mediaType
+    if (opts.senderId) query.sender_id = opts.senderId
+    if (opts.reaction) query.reaction = opts.reaction
+    if (opts.minDate) query.min_date = opts.minDate / 1000 | 0
+    if (opts.maxDate) query.max_date = opts.maxDate / 1000 | 0
+    const r = await rest.get<MessagesContainer>(`/chats/${peerId}/search`, query)
+    return { messages: await mapContainer(r), count: r.count ?? 0 }
+  }
+
+  // Глобальный поиск по сообщениям всех чатов (сайдбар-поиск): q — текст,
+  // filter сужает по типу шаред-медиа ('' — любой тип, q обязателен).
+  //
+  // Листается КУРСОРОМ сервера: `offsetRate` — `nextRate` предыдущей
+  // страницы (0 — с начала), как `offset_rate: nextRate` у оригинала
+  // (tweb `appMessagesManager.ts:9995`). `nextRate` ответа отсутствует на
+  // последней странице — по нему класс и помечает вкладку загруженной
+  // (`appSearchSuper.ts:2312`). Смещения нет: кэш вкладки растёт сверху
+  // от живых апдейтов, и числовое окно поехало бы (дубль/дыра).
+  //
+  // `chatType` — ChatTypeMenu (флаги users_only/groups_only/broadcasts_only,
+  // `:9997-9999`); `minDate`/`maxDate` — чипы дат в МИЛЛИСЕКУНДАХ, как у
+  // `getHistory` оригинала, а на провод уходят секунды — `minDate / 1000 | 0`
+  // (`:9931-9932`).
+  const searchGlobal = async (
+    q: string,
+    filter: '' | MessagesWireFilter = '',
+    opts: {
+      offsetRate?: number
+      limit?: number
+      chatType?: Exclude<SearchHistoryChatType, 'all'>
+      minDate?: number
+      maxDate?: number
+    } = {},
+  ): Promise<{ messages: MyMessage[]; count: number; nextRate?: number }> => {
+    const query: Record<string, string | number> = {
+      q, filter, offset_rate: opts.offsetRate ?? 0, limit: opts.limit ?? 20,
+    }
+    if (opts.chatType) query.chat_type = opts.chatType
+    if (opts.minDate) query.min_date = opts.minDate / 1000 | 0
+    if (opts.maxDate) query.max_date = opts.maxDate / 1000 | 0
+    const r = await rest.get<MessagesContainer>('/search/messages', query)
+    return { messages: await mapContainer(r), count: r.count ?? 0, nextRate: r.next_rate || undefined }
+  }
+
+  // Порт развилки tweb `requestHistory` (`appMessagesManager.ts:9966-10003`) в
+  // объёме поиска: класс `AppSearchSuper` зовёт ОДИН метод с контекстом поиска
+  // (`appSearchSuper.ts:2281-2291`), а ручку выбирает воркер — там же, где
+  // выбирает её оригинал. Сколько ручек у бэкенда, класс не знает.
+  //
+  //  • пир задан, курсора глобальной выдачи нет и `folderId` не задан — поиск
+  //    в ОДНОМ чате (`messages.search`, `:9966`). Этой ветке у нас отвечают
+  //    ДВЕ ручки: без текста и дат с фильтром вида — шаред-медиа
+  //    `/chats/{id}/media` (та, которой листается правая колонка), иначе —
+  //    `/chats/{id}/search` (текст, чип даты, чип пира без текста — пустой `q`
+  //    с `inputMessagesFilterEmpty` отдаёт всю историю чата, `:2233-2236`).
+  //    Даты уводят на поиск потому, что `/media` их не принимает, а оригинал
+  //    шлёт их в `messages.search` (`:9976-9977`);
+  //  • всё прочее — `messages.searchGlobal` (`:9987-10003`): курсор
+  //    `offset_rate` из `nextRate`, флаги типа чата из `chatType`, даты.
+  //
+  // `nextRate` ответа отдаётся только глобальной веткой (`:9432`) —
+  // `messages.search` курсора не несёт. `offset_id`/`offset_peer` глобальной
+  // ветки (`:9990`, `:9996`) на провод не идут: «rate» нашего сервера — номер
+  // последнего отданного сообщения в глобально монотонной нумерации
+  // (`docs/tweb/global-search.md` часть 3), второй половины курсора ему не
+  // нужно. `threadId` (`top_msg_id`, `:9978`) ни одна из трёх ручек не
+  // принимает — поиск по треду у бэкенда отсутствует.
+  const searchHistory = async ({
+    peerId, inputFilter, query = '', offsetId = 0, limit = 20, nextRate, folderId, minDate, maxDate, chatType,
+  }: SearchHistoryOptions): Promise<{ messages: MyMessage[]; count: number; nextRate?: number }> => {
+    const filter = getWireFilter(inputFilter._)
+    if (peerId && !nextRate && folderId === undefined) {
+      if (filter && !query && !minDate && !maxDate) {
+        return mediaHistory(peerId, filter, offsetId, limit)
+      }
+
+      return searchMessages(peerId, query, { offsetId, limit, filter, minDate, maxDate })
+    }
+
+    return searchGlobal(query, filter ?? '', {
+      offsetRate: nextRate,
+      limit,
+      chatType: chatType === 'all' ? undefined : chatType,
+      minDate,
+      maxDate,
+    })
+  }
 
   return {
     ...newReactionMethods(ctx),
@@ -697,25 +860,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       return { messages: asc, reachedTop, reachedBottom }
     },
 
-    // Шаред-медиа профиля (табы Media/Files/Links/Music/Voice) — история чата
-    // одного типа, новые сверху (tweb inputMessagesFilter*) + общее число.
-    //
-    // Листается КУРСОРОМ: `offsetId` — номер ПОСЛЕДНЕГО уже показанного
-    // сообщения, страница отдаётся строго ниже него (порт tweb
-    // `appSearchSuper.ts:2278-2279` — `offsetId = lastItem?.mid`). Смещения
-    // здесь быть не может: тот же список одновременно пополняется СВЕРХУ
-    // живыми апдейтами (tweb `sharedMedia.tsx:239` — `history.unshift`), и
-    // каждое новое сообщение сдвигало бы окно на единицу — вторая страница
-    // приезжала бы с дублем последнего элемента первой (или с дырой).
-    //
-    // Номер наружу КЛИЕНТСКИЙ, в URL уходит серверный: `getServerMessageId` —
-    // ровно та граница пространств, о которой `core/history/messageId.ts`.
-    async mediaHistory(peerId: number, filter: 'media' | 'files' | 'links' | 'music' | 'voice', offsetId = 0, limit = 30): Promise<{ messages: MyMessage[]; count: number }> {
-      const r = await rest.get<MessagesContainer>(`/chats/${peerId}/media`, {
-        filter, offset_id: getServerMessageId(offsetId), limit,
-      })
-      return { messages: await mapContainer(r), count: r.count ?? 0 }
-    },
+    mediaHistory,
 
     // Число сообщений по КАЖДОМУ виду шаред-медиа ОДНИМ ответом — аналог
     // MTProto `messages.getSearchCounters`, которым оригинал спрашивает
@@ -729,42 +874,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       return r.counters ?? []
     },
 
-    // Поиск в одном чате (аналог `messages.search`): текст + необязательные
-    // фильтры — senderId (в группах), mediaType (мелкая лексика топбара:
-    // photo/video/voice/roundvideo/file/link/music), filter (вкладки класса:
-    // media/files/links/music/voice), reaction (эмодзи), minDate/maxDate
-    // (чипы дат, мс — на провод секундами, `minDate / 1000 | 0`, tweb
-    // `appMessagesManager.ts:9931-9932`). Пустой q без фильтров — вся история.
-    //
-    // Листается КУРСОРОМ, как `mediaHistory`: `offsetId` — клиентский номер
-    // последнего показанного, в URL уходит серверный (`getServerMessageId`).
-    // Смещения нет: выдача пополняется сверху живыми апдейтами.
-    async searchMessages(
-      peerId: number,
-      q: string,
-      opts: {
-        offsetId?: number
-        limit?: number
-        senderId?: number
-        mediaType?: string
-        filter?: 'media' | 'files' | 'links' | 'music' | 'voice'
-        reaction?: string
-        minDate?: number
-        maxDate?: number
-      } = {},
-    ): Promise<{ messages: MyMessage[]; count: number }> {
-      const query: Record<string, string | number> = {
-        q, offset_id: getServerMessageId(opts.offsetId ?? 0), limit: opts.limit ?? 20,
-      }
-      if (opts.filter) query.filter = opts.filter
-      if (opts.mediaType) query.media_type = opts.mediaType
-      if (opts.senderId) query.sender_id = opts.senderId
-      if (opts.reaction) query.reaction = opts.reaction
-      if (opts.minDate) query.min_date = opts.minDate / 1000 | 0
-      if (opts.maxDate) query.max_date = opts.maxDate / 1000 | 0
-      const r = await rest.get<MessagesContainer>(`/chats/${peerId}/search`, query)
-      return { messages: await mapContainer(r), count: r.count ?? 0 }
-    },
+    searchMessages,
 
     // Jump-to-date: НОМЕР ближайшего сообщения на/после даты (unix, сек). null,
     // если сообщений в чате нет (404). Ответ серверный — переводим на границе.
@@ -795,40 +905,9 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       }
     },
 
-    // Глобальный поиск по сообщениям всех чатов (сайдбар-поиск): q — текст,
-    // filter сужает по типу шаред-медиа ('' — любой тип, q обязателен).
-    //
-    // Листается КУРСОРОМ сервера: `offsetRate` — `nextRate` предыдущей
-    // страницы (0 — с начала), как `offset_rate: nextRate` у оригинала
-    // (tweb `appMessagesManager.ts:9995`). `nextRate` ответа отсутствует на
-    // последней странице — по нему класс и помечает вкладку загруженной
-    // (`appSearchSuper.ts:2312`). Смещения нет: кэш вкладки растёт сверху
-    // от живых апдейтов, и числовое окно поехало бы (дубль/дыра).
-    //
-    // `chatType` — ChatTypeMenu (флаги users_only/groups_only/broadcasts_only,
-    // `:9997-9999`); `minDate`/`maxDate` — чипы дат в МИЛЛИСЕКУНДАХ, как у
-    // `getHistory` оригинала, а на провод уходят секунды — `minDate / 1000 | 0`
-    // (`:9931-9932`).
-    async searchGlobal(
-      q: string,
-      filter: '' | 'media' | 'files' | 'links' | 'music' | 'voice' = '',
-      opts: {
-        offsetRate?: number
-        limit?: number
-        chatType?: 'users' | 'groups' | 'channels'
-        minDate?: number
-        maxDate?: number
-      } = {},
-    ): Promise<{ messages: MyMessage[]; count: number; nextRate?: number }> {
-      const query: Record<string, string | number> = {
-        q, filter, offset_rate: opts.offsetRate ?? 0, limit: opts.limit ?? 20,
-      }
-      if (opts.chatType) query.chat_type = opts.chatType
-      if (opts.minDate) query.min_date = opts.minDate / 1000 | 0
-      if (opts.maxDate) query.max_date = opts.maxDate / 1000 | 0
-      const r = await rest.get<MessagesContainer>('/search/messages', query)
-      return { messages: await mapContainer(r), count: r.count ?? 0, nextRate: r.next_rate || undefined }
-    },
+    searchGlobal,
+
+    searchHistory,
 
     // Сообщения треда (форум-топика) по возрастанию + total.
     async threadMessages(peerId: number, rootId: number, offset = 0, limit = 50): Promise<{ messages: MyMessage[]; count: number }> {
