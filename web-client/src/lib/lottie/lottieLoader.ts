@@ -11,6 +11,7 @@ import toArray from '@helpers/array/toArray';
 import lottieMessagePort from '@lib/lottie/lottieMessagePort';
 import animationIntersector from '@components/animationIntersector';
 import tlottieWasmAssetUrl from '@vendor/tlottie/tlottie.wasm?url';
+import {gzipUncompress, TGS_MAX_DECOMPRESSED_SIZE} from '@core/stickers/tgs';
 
 const TLOTTIE_WASM_URL = new URL(tlottieWasmAssetUrl, location.href).href;
 
@@ -176,9 +177,14 @@ export class LottieLoader {
       // 'application/x-tgsticker' (у readLottie). Контракты разные — это вендоренный
       // островок (шапка файла: @ts-nocheck, порт tweb 1:1), трогаем только при
       // расхождении с апстримом.
+      //
+      // Размер распакованного ограничен — порт tweb f3733adc2 (`gzipUncompress` с
+      // `TGS_MAX_DECOMPRESSED_SIZE` в `apiFileManager.uncompressTGS`), общий
+      // хелпер с `readLottie`.
       if(!res.headers || res.headers.get('content-type') === 'application/octet-stream') {
-        const decompressed = new Response(res.body!.pipeThrough(new DecompressionStream('gzip')));
-        return method === 'json' ? decompressed.json() : decompressed.blob();
+        return gzipUncompress(res.body!, TGS_MAX_DECOMPRESSED_SIZE).then((bytes) => {
+          return method === 'json' ? JSON.parse(new TextDecoder().decode(bytes)) : new Blob([bytes]);
+        });
       } else {
         return res[method]();
       }
