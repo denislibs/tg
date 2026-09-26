@@ -1135,6 +1135,14 @@ const ru = {
   TwoStepVerificationPasswordSet: 'Пароль установлен!',
   'TwoStepAuth.PasswordHelp': 'Этот пароль будет запрашиваться при входе с нового устройства в дополнение к коду из SMS.',
   TwoStepVerificationPasswordReturnSettings: 'Вернуться в настройки',
+  // мастер 2FA (tweb `2fa/*.tsx`, `solidJsTabs/tabs.ts:886-976`)
+  TwoStepVerificationTitle: 'Двухэтапная аутентификация',
+  PleaseEnterCurrentPassword: 'Введите пароль',
+  YourEmailSkipWarning: 'Внимание',
+  YourEmailSkipWarningText: 'Нет, серьёзно.\n\nЕсли Вы забудете пароль, то потеряете доступ к аккаунту Telegram. Восстановить его будет невозможно.',
+  TwoStepVerificationEmailSet: 'Резервный email установлен!',
+  TwoStepVerificationPasswordSetInfo: 'Этот пароль будет запрашиваться при входе с нового устройства в дополнение к коду из SMS.',
+  TwoStepVerificationEmailSetInfo: 'С помощью этого адреса Вы сможете сбросить пароль и восстановить доступ к аккаунту.',
   'Login.Error.Generic': 'Что-то пошло не так. Попробуйте ещё раз.',
   'PrivacyAndSecurity.Item.On': 'Вкл.',
   // Auto-Delete Messages

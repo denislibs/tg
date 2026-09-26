@@ -556,6 +556,14 @@ const es = {
   TwoStepVerificationPasswordSet: '¡Contraseña establecida!',
   'TwoStepAuth.PasswordHelp': 'Esta contraseña se pedirá al iniciar sesión en un nuevo dispositivo, además del código que recibes por SMS.',
   TwoStepVerificationPasswordReturnSettings: 'Volver a ajustes',
+  // мастер 2FA (tweb `2fa/*.tsx`, `solidJsTabs/tabs.ts:886-976`)
+  TwoStepVerificationTitle: 'Verificación en dos pasos',
+  PleaseEnterCurrentPassword: 'Introduce tu contraseña',
+  YourEmailSkipWarning: 'Advertencia',
+  YourEmailSkipWarningText: 'No, en serio.\n\nSi olvidas tu contraseña, perderás el acceso a tu cuenta de Telegram. No habrá forma de recuperarla.',
+  TwoStepVerificationEmailSet: '¡Correo de recuperación establecido!',
+  TwoStepVerificationPasswordSetInfo: 'Esta contraseña se pedirá al iniciar sesión en un nuevo dispositivo, además del código que recibes por SMS.',
+  TwoStepVerificationEmailSetInfo: 'Podrás usar este correo de recuperación para restablecer tu contraseña y recuperar el acceso a tu cuenta.',
   'Login.Error.Generic': 'Algo salió mal. Inténtalo de nuevo.',
   'PrivacyAndSecurity.Item.On': 'Activado',
   // Auto-Delete Messages

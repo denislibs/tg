@@ -222,12 +222,18 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `NotificationsPrivateChats` («Private Chats»), у fr — заголовка
 // («Notifications»). ru 1346 → 1350, uk 682 → 686, es 681 → 685,
 // de/fr 681 → 684. `plural` не менялся.
+// Мастер 2FA (план 2D, задача 19): +7 ключей tweb lang.ts
+// (`TwoStepVerificationTitle`, `PleaseEnterCurrentPassword`, `YourEmailSkipWarning`,
+// `YourEmailSkipWarningText`, `TwoStepVerificationEmailSet`,
+// `TwoStepVerificationPasswordSetInfo`, `TwoStepVerificationEmailSetInfo`) всем
+// пяти словарям: ru 1350 → 1357, uk 686 → 693, es 685 → 692, de/fr 684 → 691.
+// `plural` не менялся.
 const COMPOSITION = {
-  ru: { keys: 1350, plural: 35 },
-  uk: { keys: 686, plural: 24 },
-  es: { keys: 685, plural: 24 },
-  de: { keys: 684, plural: 24 },
-  fr: { keys: 684, plural: 24 },
+  ru: { keys: 1357, plural: 35 },
+  uk: { keys: 693, plural: 24 },
+  es: { keys: 692, plural: 24 },
+  de: { keys: 691, plural: 24 },
+  fr: { keys: 691, plural: 24 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -323,12 +329,13 @@ const COMPOSITION = {
 // (разбор — у `COMPOSITION` выше). Портом 72c50bfef — `Notifications.Restricted`.
 // Пилотом 2D — заголовок вкладки уведомлений и три имени секций (разбор — у
 // `COMPOSITION` выше; de и fr расходятся по одному совпавшему ключу).
+// Мастером 2FA — +7 ключей tweb (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: 'fc80fe50',
-  uk: 'a3272773',
-  es: '1c37914d',
-  de: '5fb99ee1',
-  fr: '3fb1ce0b',
+  ru: '4e52e5f6',
+  uk: '5d7223cb',
+  es: '865c9cad',
+  de: '50744739',
+  fr: '30f93083',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

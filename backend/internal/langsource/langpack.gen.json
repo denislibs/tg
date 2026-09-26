@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 20,
+      "version": 21,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -3496,6 +3496,10 @@
           "value": "Normal"
         },
         {
+          "key": "PleaseEnterCurrentPassword",
+          "value": "Enter your password"
+        },
+        {
           "key": "PleaseEnterFirstPassword",
           "value": "Enter a password"
         },
@@ -5274,6 +5278,14 @@
           "value": "Two-Step Verification"
         },
         {
+          "key": "TwoStepVerificationEmailSet",
+          "value": "Recovery Email Set!"
+        },
+        {
+          "key": "TwoStepVerificationEmailSetInfo",
+          "value": "You will be able to use this recovery email to reset your password and restore access to your account."
+        },
+        {
           "key": "TwoStepVerificationPasswordReturnSettings",
           "value": "Return to Settings"
         },
@@ -5282,8 +5294,16 @@
           "value": "Password Set!"
         },
         {
+          "key": "TwoStepVerificationPasswordSetInfo",
+          "value": "This password will be required when you log in on a new device in addition to the code you get in the SMS."
+        },
+        {
           "key": "TwoStepVerificationSetPassword",
           "value": "Set Password"
+        },
+        {
+          "key": "TwoStepVerificationTitle",
+          "value": "Two-Step Verification"
         },
         {
           "key": "TypePrivate",
@@ -5535,6 +5555,14 @@
           "value": "Skip"
         },
         {
+          "key": "YourEmailSkipWarning",
+          "value": "Warning"
+        },
+        {
+          "key": "YourEmailSkipWarningText",
+          "value": "No, seriously.\n\nIf you forget your password, you will lose access to your Telegram account. There will be no way to restore it."
+        },
+        {
           "key": "YourName",
           "value": "Your Name"
         },
@@ -5554,7 +5582,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 20,
+      "version": 21,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -9409,6 +9437,34 @@
           "value": "Вернуться в настройки"
         },
         {
+          "key": "TwoStepVerificationTitle",
+          "value": "Двухэтапная аутентификация"
+        },
+        {
+          "key": "PleaseEnterCurrentPassword",
+          "value": "Введите пароль"
+        },
+        {
+          "key": "YourEmailSkipWarning",
+          "value": "Внимание"
+        },
+        {
+          "key": "YourEmailSkipWarningText",
+          "value": "Нет, серьёзно.\n\nЕсли Вы забудете пароль, то потеряете доступ к аккаунту Telegram. Восстановить его будет невозможно."
+        },
+        {
+          "key": "TwoStepVerificationEmailSet",
+          "value": "Резервный email установлен!"
+        },
+        {
+          "key": "TwoStepVerificationPasswordSetInfo",
+          "value": "Этот пароль будет запрашиваться при входе с нового устройства в дополнение к коду из SMS."
+        },
+        {
+          "key": "TwoStepVerificationEmailSetInfo",
+          "value": "С помощью этого адреса Вы сможете сбросить пароль и восстановить доступ к аккаунту."
+        },
+        {
           "key": "Login.Error.Generic",
           "value": "Что-то пошло не так. Попробуйте ещё раз."
         },
@@ -11137,7 +11193,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 8,
+      "version": 9,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -13204,6 +13260,34 @@
           "value": "Retour aux réglages"
         },
         {
+          "key": "TwoStepVerificationTitle",
+          "value": "Validation en deux étapes"
+        },
+        {
+          "key": "PleaseEnterCurrentPassword",
+          "value": "Saisissez votre mot de passe"
+        },
+        {
+          "key": "YourEmailSkipWarning",
+          "value": "Avertissement"
+        },
+        {
+          "key": "YourEmailSkipWarningText",
+          "value": "Non, sérieusement.\n\nSi vous oubliez votre mot de passe, vous perdrez l'accès à votre compte Telegram. Il n'y aura aucun moyen de le récupérer."
+        },
+        {
+          "key": "TwoStepVerificationEmailSet",
+          "value": "E-mail de récupération défini !"
+        },
+        {
+          "key": "TwoStepVerificationPasswordSetInfo",
+          "value": "Ce mot de passe sera demandé lors de la connexion sur un nouvel appareil, en plus du code reçu par SMS."
+        },
+        {
+          "key": "TwoStepVerificationEmailSetInfo",
+          "value": "Vous pourrez utiliser cet e-mail de récupération pour réinitialiser votre mot de passe et restaurer l'accès à votre compte."
+        },
+        {
           "key": "Login.Error.Generic",
           "value": "Une erreur est survenue. Réessayez."
         },
@@ -13953,7 +14037,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 8,
+      "version": 9,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -16019,6 +16103,34 @@
           "value": "Zurück zu den Einstellungen"
         },
         {
+          "key": "TwoStepVerificationTitle",
+          "value": "Bestätigung in zwei Schritten"
+        },
+        {
+          "key": "PleaseEnterCurrentPassword",
+          "value": "Gib dein Passwort ein"
+        },
+        {
+          "key": "YourEmailSkipWarning",
+          "value": "Warnung"
+        },
+        {
+          "key": "YourEmailSkipWarningText",
+          "value": "Nein, im Ernst.\n\nWenn du dein Passwort vergisst, verlierst du den Zugang zu deinem Telegram-Konto. Es gibt keine Möglichkeit, ihn wiederherzustellen."
+        },
+        {
+          "key": "TwoStepVerificationEmailSet",
+          "value": "Wiederherstellungs-E-Mail festgelegt!"
+        },
+        {
+          "key": "TwoStepVerificationPasswordSetInfo",
+          "value": "Dieses Passwort wird zusätzlich zum Code aus der SMS benötigt, wenn du dich auf einem neuen Gerät anmeldest."
+        },
+        {
+          "key": "TwoStepVerificationEmailSetInfo",
+          "value": "Mit dieser Wiederherstellungs-E-Mail kannst du dein Passwort zurücksetzen und den Zugang zu deinem Konto wiederherstellen."
+        },
+        {
           "key": "Login.Error.Generic",
           "value": "Etwas ist schiefgelaufen. Versuche es erneut."
         },
@@ -16768,7 +16880,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 8,
+      "version": 9,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -18839,6 +18951,34 @@
           "value": "Volver a ajustes"
         },
         {
+          "key": "TwoStepVerificationTitle",
+          "value": "Verificación en dos pasos"
+        },
+        {
+          "key": "PleaseEnterCurrentPassword",
+          "value": "Introduce tu contraseña"
+        },
+        {
+          "key": "YourEmailSkipWarning",
+          "value": "Advertencia"
+        },
+        {
+          "key": "YourEmailSkipWarningText",
+          "value": "No, en serio.\n\nSi olvidas tu contraseña, perderás el acceso a tu cuenta de Telegram. No habrá forma de recuperarla."
+        },
+        {
+          "key": "TwoStepVerificationEmailSet",
+          "value": "¡Correo de recuperación establecido!"
+        },
+        {
+          "key": "TwoStepVerificationPasswordSetInfo",
+          "value": "Esta contraseña se pedirá al iniciar sesión en un nuevo dispositivo, además del código que recibes por SMS."
+        },
+        {
+          "key": "TwoStepVerificationEmailSetInfo",
+          "value": "Podrás usar este correo de recuperación para restablecer tu contraseña y recuperar el acceso a tu cuenta."
+        },
+        {
           "key": "Login.Error.Generic",
           "value": "Algo salió mal. Inténtalo de nuevo."
         },
@@ -19588,7 +19728,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 8,
+      "version": 9,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -21677,6 +21817,34 @@
         {
           "key": "TwoStepVerificationPasswordReturnSettings",
           "value": "Повернутися до налаштувань"
+        },
+        {
+          "key": "TwoStepVerificationTitle",
+          "value": "Двоетапна перевірка"
+        },
+        {
+          "key": "PleaseEnterCurrentPassword",
+          "value": "Введіть пароль"
+        },
+        {
+          "key": "YourEmailSkipWarning",
+          "value": "Увага"
+        },
+        {
+          "key": "YourEmailSkipWarningText",
+          "value": "Ні, серйозно.\n\nЯкщо ви забудете пароль, то втратите доступ до облікового запису Telegram. Відновити його буде неможливо."
+        },
+        {
+          "key": "TwoStepVerificationEmailSet",
+          "value": "Резервний email встановлено!"
+        },
+        {
+          "key": "TwoStepVerificationPasswordSetInfo",
+          "value": "Цей пароль запитуватиметься під час входу з нового пристрою на додаток до коду з SMS."
+        },
+        {
+          "key": "TwoStepVerificationEmailSetInfo",
+          "value": "За допомогою цієї адреси ви зможете скинути пароль і відновити доступ до облікового запису."
         },
         {
           "key": "Login.Error.Generic",

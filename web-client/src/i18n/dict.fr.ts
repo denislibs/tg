@@ -556,6 +556,14 @@ const fr = {
   TwoStepVerificationPasswordSet: 'Mot de passe défini !',
   'TwoStepAuth.PasswordHelp': 'Ce mot de passe sera demandé lors de la connexion sur un nouvel appareil, en plus du code reçu par SMS.',
   TwoStepVerificationPasswordReturnSettings: 'Retour aux réglages',
+  // мастер 2FA (tweb `2fa/*.tsx`, `solidJsTabs/tabs.ts:886-976`)
+  TwoStepVerificationTitle: 'Validation en deux étapes',
+  PleaseEnterCurrentPassword: 'Saisissez votre mot de passe',
+  YourEmailSkipWarning: 'Avertissement',
+  YourEmailSkipWarningText: 'Non, sérieusement.\n\nSi vous oubliez votre mot de passe, vous perdrez l\'accès à votre compte Telegram. Il n\'y aura aucun moyen de le récupérer.',
+  TwoStepVerificationEmailSet: 'E-mail de récupération défini !',
+  TwoStepVerificationPasswordSetInfo: 'Ce mot de passe sera demandé lors de la connexion sur un nouvel appareil, en plus du code reçu par SMS.',
+  TwoStepVerificationEmailSetInfo: 'Vous pourrez utiliser cet e-mail de récupération pour réinitialiser votre mot de passe et restaurer l\'accès à votre compte.',
   'Login.Error.Generic': 'Une erreur est survenue. Réessayez.',
   'PrivacyAndSecurity.Item.On': 'Activé',
   // Auto-Delete Messages
