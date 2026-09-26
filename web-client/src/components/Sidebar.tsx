@@ -17,6 +17,10 @@ import { useDialogListSource } from '../core/hooks/useDialogListSource'
 import { useEvent } from '../core/hooks/useEvent'
 import type { Chat } from '../data'
 import FoldersSidebar, { type MainMenuHandlers } from './folders/FoldersSidebar'
+import FolderEditor from './folders/FolderEditor'
+import type { Folder } from '../core/managers/foldersManager'
+import type { FolderContextMenuSidebar } from '../helpers/dom/createFolderContextMenu'
+import pause from '../helpers/schedulers/pause'
 import { useSettings, useSettingsStore } from '../settings'
 import useMediaQuery from '../shared/lib/useMediaQuery'
 import Text from '../shared/ui/Text'
@@ -41,7 +45,6 @@ import { useSidebarSearch } from '../core/hooks/useSidebarSearch'
 import { useSidebarActions } from '../core/hooks/useSidebarActions'
 import { useSidebarStories } from '../core/hooks/useSidebarStories'
 import { useForumPanel } from '../core/hooks/useForumPanel'
-import { useSidebarFolders } from '../core/hooks/useSidebarFolders'
 import { useImperativeIsland } from '../core/hooks/useImperativeIsland'
 import { useFolders } from '../stores/foldersStore'
 import { AppDialogsManager } from '../lib/appDialogsManager'
@@ -135,7 +138,10 @@ export default function Sidebar({
     setScreen('settings')
   }
   const folders = useFolders()
-  const { onTabContextMenu, overlays: folderOverlays } = useSidebarFolders({ chats, onOpenFolderSettings: openFolderSettings })
+  // Редактор папки — экран колонки, то есть вкладка слайдера сайдбара (tweb
+  // `AppEditFolderTab`, `SidebarSlider.createTab`); вход/уход ведёт сам экран
+  // (`components/settings/kit.tsx` → SettingsScreen). Открывает его меню папки.
+  const [editingFolder, setEditingFolder] = useState<Folder | null>(null)
 
   // Мемоизировано, чтобы <ChatList> получал стабильный проп — ре-рендер
   // сайдбара под тогл оверлея не пересоздаёт массив и не бьёт его memo.
@@ -187,21 +193,43 @@ export default function Sidebar({
   // ширины, пока внутри что-то открыто (sidebarLeft/index.ts:535).
   useEffect(() => { setOpenTabsLeftSidebar(somethingOpenInside) }, [somethingOpenInside])
 
-  // `appSidebarLeft.closeEverythingInsideNaturally()` (tweb
-  // `sidebarLeft/index.ts:505-516`) — колбэк владельцу папок: переключение папки
-  // закрывает то, что открыто в колонке (экран-вкладку, архив, поиск, форум).
-  // Хуки владельцу отдаются один раз, поэтому состояние читается через ref.
-  // Отказа (вкладка просит подтверждения, `closeAllTabsNaturally`) у наших
-  // экранов нет — ответ всегда `true`.
-  const closeEverythingInsideRef = useRef(() => true)
-  closeEverythingInsideRef.current = () => {
+  // `appSidebarLeft.closeAllTabs()` — экраны колонки (у tweb это вкладки
+  // слайдера: экран-вкладка, архив, редактор папки). Отвечает, было ли что
+  // закрывать.
+  const closeAllTabsRef = useRef<() => boolean>(() => false)
+  closeAllTabsRef.current = () => {
+    const hadTabs = screen !== null || archiveOpen || editingFolder !== null
     setScreen(null)
     setSettingsSub(null)
     setArchiveOpen(false)
+    setEditingFolder(null)
+    return hadTabs
+  }
+  // `appSidebarLeft.closeEverythingInside()` (tweb `sidebarLeft/index.ts:494-499`):
+  // поиск, форум, вкладки. Им же отвечает колбэк владельцу папок
+  // `closeEverythingInsideNaturally` (`:505-516`) — переключение папки
+  // закрывает то, что открыто в колонке. Хуки владельцу отдаются один раз,
+  // поэтому состояние читается через ref. Отказа (вкладка просит
+  // подтверждения, `closeAllTabsNaturally`) у наших экранов нет — владельцу
+  // ответ всегда `true`.
+  const closeEverythingInsideRef = useRef<() => boolean>(() => false)
+  closeEverythingInsideRef.current = () => {
     if (searching) closeSearch()
     closeForum()
-    return true
+    return closeAllTabsRef.current()
   }
+  // То, что меню папки (`createFolderContextMenu`, оба ряда) берёт у колонки —
+  // у tweb `appSidebarLeft` и классы вкладок. Объект один на жизнь колонки:
+  // его получают владелец папок (хуки `start()`) и вертикальная колонка.
+  const [appSidebarLeft] = useState<FolderContextMenuSidebar>(() => ({
+    // tweb `sidebarLeft/index.ts:1613-1616`: пауза — на уход закрытой вкладки
+    closeTabsBefore: async (clb) => {
+      if (closeEverythingInsideRef.current()) await pause(200)
+      clb()
+    },
+    openEditFolderTab: (filter) => setEditingFolder(filter),
+    openChatFoldersTab: () => openFolderSettings(),
+  }))
   const forumOpenRef = useRef(false)
   forumOpenRef.current = !!forumChat
   // Плашка-подсказка рисуется порталом в узел владельца (tweb `:1079-1082`);
@@ -221,8 +249,13 @@ export default function Sidebar({
     // показ «Всех чатов» его не закрывает.
     let starting = true
     dialogsManager.start(host, chatlistContainerRef.current!, {
-      closeEverythingInsideNaturally: () => starting || closeEverythingInsideRef.current(),
+      closeEverythingInsideNaturally: () => {
+        if (!starting) closeEverythingInsideRef.current()
+        return true
+      },
       isForumOpen: () => forumOpenRef.current,
+      appSidebarLeft,
+      managers,
     })
     starting = false
     setSuggestionContainer(dialogsManager.suggestionContainer)
@@ -274,7 +307,8 @@ export default function Sidebar({
       {foldersSidebarShown && (
         <FoldersSidebar
           folders={folders}
-          onContextMenu={onTabContextMenu}
+          appSidebarLeft={appSidebarLeft}
+          managers={managers}
           onOpenFolderSettings={openFolderSettings}
           menu={menuActions}
         />
@@ -430,7 +464,9 @@ export default function Sidebar({
       </div>
       </div>
 
-      {folderOverlays}
+      {editingFolder && (
+        <FolderEditor folder={editingFolder} chats={chats} onClose={() => setEditingFolder(null)} />
+      )}
 
       <SidebarScreens
         screen={screen}
