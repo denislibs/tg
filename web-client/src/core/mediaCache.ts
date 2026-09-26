@@ -108,7 +108,7 @@ export async function clearCachedFiles(): Promise<void> {
 
 // Отдать SW актуальные cacheTTL/cacheSize — он сразу прогоняет очистку
 // (clearOldCache). Зовёт только `watchCacheSettings` ниже.
-export function syncCacheSettingsToSW(cacheTTL: number, cacheSize: number): void {
+function syncCacheSettingsToSW(cacheTTL: number, cacheSize: number): void {
   if (!('serviceWorker' in navigator)) return
   void navigator.serviceWorker.ready.then((reg) => {
     reg.active?.postMessage({ type: 'cache-settings', cacheTTL, cacheSize })

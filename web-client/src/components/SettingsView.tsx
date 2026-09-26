@@ -26,7 +26,7 @@ import { getUserTitle } from '../core/peers/getPeerTitle'
 import { useSettings } from '../settings'
 import { useManagers } from '../core/hooks/useManagers'
 import { createSettingsSliderHost, getSettingsSliderHost, openActiveSessionsTab } from './sidebarLeft/settingsSliderHost'
-import { AppLanguageTab, AppNotificationsTab } from './solidJsTabs/tabs'
+import { AppDataAndStorageTab, AppLanguageTab, AppNotificationsTab } from './solidJsTabs/tabs'
 import { toastNew } from './toast'
 import { resolvePreset, PRESET_MODE } from '../theme'
 import s from './SettingsView.module.scss'
@@ -305,6 +305,13 @@ export default function SettingsView({
                 // `makeSubTabConfig(…, AppNotificationsTab, tab)`).
                 if (it.label === 'AccountSettings.Notifications') {
                   void getSettingsSliderHost().openTab(AppNotificationsTab)
+                    .catch(() => toastNew({ langPackKey: 'Error.AnError' }))
+                  return
+                }
+                // «Данные и память» — вкладка слайдера (план 2D, задача 7); у
+                // оригинала та же одна строка (`settings.tsx`, `makeSubTabConfig`).
+                if (it.label === 'DataSettings') {
+                  void getSettingsSliderHost().openTab(AppDataAndStorageTab)
                     .catch(() => toastNew({ langPackKey: 'Error.AnError' }))
                   return
                 }
