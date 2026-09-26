@@ -129,6 +129,12 @@
 //     `AppChatFoldersTab`/`AppEditFolderTab` не передаётся — экраны открывает
 //     колонка. Возвращённый `destroy` у tweb выбрасывается (владелец вечен), у
 //     нас `destroy()` владельца снимает им слушатели с ряда (п. 1).
+// 21. `hide` градиента ряда: у tweb его ставит ref (`:678-681`, затирается
+//     class-эффектом `Tabs.MenuGradient`), а снимает/ставит
+//     `onFiltersLengthChange` лишь при смене показа (`:1310-1312`) — одна папка
+//     на холодном старте оставляет градиент видимым под плашкой-подсказкой.
+//     У нас мёртвой строки в ref нет, а `onFiltersLengthChange` синхронизирует
+//     `hide` градиента с показом ряда на каждом проходе.
 import { createEffect, createRoot, on, untrack } from 'solid-js'
 import Scrollable from '@components/scrollable'
 import { horizontalMenu } from '@components/horizontalMenu'
@@ -386,13 +392,12 @@ export class AppDialogsManager {
         className: 'folders-tabs-gradient',
         color: 'surface',
         smaller: true,
+        // У tweb здесь же `ref.classList.add('hide')` (`:678-681`) — мёртвая
+        // строка: class-эффект `Tabs.MenuGradient` сразу после ref пишет
+        // `className` целиком (пин задачи 4 в `foldersTabs.solid.test.tsx`).
+        // `hide` градиента ставит `onFiltersLengthChange` — расхождение 21.
         ref: (ref: HTMLDivElement) => {
           this.folders.menuGradient = ref
-          // Как у tweb (`:678-681`), и как у tweb НЕ держится: class-эффект
-          // `Tabs.MenuGradient` сразу после ref пишет `className` целиком (пин
-          // задачи 4 в `foldersTabs.solid.test.tsx`). Дальше `hide` градиента
-          // трогает только `onFiltersLengthChange` — при смене показа.
-          ref.classList.add('hide')
         },
       },
     })
@@ -652,9 +657,18 @@ export class AppDialogsManager {
 
       if(show !== wasShowing) {
         this.folders.menuScrollContainer.classList.toggle('hide', !show)
-        this.folders.menuGradient.classList.toggle('hide', !show)
         this.chatsContainer.classList.toggle('has-filters', show)
       }
+
+      // Расхождение 21: у tweb градиент переключается внутри `if`
+      // выше (`:1310-1312`), т.е. только при СМЕНЕ показа, а `wasShowing`
+      // читается по ряду. Ряд несёт `hide` с рождения (проп `class`), градиент
+      // — нет (его `hide` из ref затирается, см. `gradientProps.ref`), поэтому
+      // одна папка на холодном старте оставляет градиент показанным: он
+      // растянут на весь оверлей (`_leftSidebar.scss:315-325`, `inset: 0`) и под
+      // плашкой-подсказкой гасит прокрученные строки в её полях. Это видимый
+      // артефакт оригинала — синхронизируем градиент с рядом на каждом проходе.
+      this.folders.menuGradient.classList.toggle('hide', !show)
 
       const [, setHasFolders] = useHasFolders()
       setHasFolders(show)
