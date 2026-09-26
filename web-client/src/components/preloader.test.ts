@@ -4,7 +4,7 @@
 // 16 мс), и `Date` — поэтому raf-отложенные переходы (`useRafs` у SetTransition),
 // `fastRaf` и замер `elapsedTime` в `attachPromise` прокручиваются
 // `advanceTimersByTime`. Гейт анимаций — `liteMode.isAvailable('animations')`,
-// т.е. настройка «Без анимаций» (`reduceMotion`), как в setTransition.test.ts.
+// т.е. настройка «Энергосбережение» (`liteMode.all`), как в setTransition.test.ts.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ProgressivePreloader from './preloader'
 import deferredPromise from '@helpers/cancellablePromise'
@@ -27,12 +27,12 @@ function click(el: Element) {
 
 beforeEach(() => {
   vi.useFakeTimers()
-  useSettingsStore.setState({ reduceMotion: false })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: false } })
 })
 
 afterEach(() => {
   vi.useRealTimers()
-  useSettingsStore.setState({ reduceMotion: false })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: false } })
   document.body.replaceChildren()
 })
 
@@ -163,7 +163,7 @@ describe('ProgressivePreloader: attach/detach — is-visible через SetTrans
   })
 
   it('при выключенных анимациях attach/detach синхронны', () => {
-    useSettingsStore.setState({ reduceMotion: true })
+    useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
     const p = new ProgressivePreloader()
     p.attach(host())
     expect(p.preloader.classList.contains('is-visible')).toBe(true)
@@ -172,7 +172,7 @@ describe('ProgressivePreloader: attach/detach — is-visible через SetTrans
   })
 
   it('attach(…, reset=true) сбрасывает прогресс', () => {
-    useSettingsStore.setState({ reduceMotion: true })
+    useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
     const p = new ProgressivePreloader()
     const el = host()
     p.attach(el)
@@ -200,7 +200,7 @@ describe('ProgressivePreloader: attachPromise', () => {
   })
 
   it('быстрый резолв (< 150 мс): setProgress(100) и мгновенный detach', async () => {
-    useSettingsStore.setState({ reduceMotion: true })
+    useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
     const p = new ProgressivePreloader()
     p.attach(host())
     const d = deferredPromise<void>()
@@ -213,7 +213,7 @@ describe('ProgressivePreloader: attachPromise', () => {
   })
 
   it('долгий резолв: detach отложен на 150 мс (дождаться перехода дуги к 100%)', async () => {
-    useSettingsStore.setState({ reduceMotion: true })
+    useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
     const p = new ProgressivePreloader()
     p.attach(host())
     const d = deferredPromise<void>()
@@ -229,7 +229,7 @@ describe('ProgressivePreloader: attachPromise', () => {
   })
 
   it('reject + tryAgainOnFail → повторный attach и manual через кадр', async () => {
-    useSettingsStore.setState({ reduceMotion: true })
+    useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
     const p = new ProgressivePreloader()
     p.attach(host())
     const d = deferredPromise<void>()

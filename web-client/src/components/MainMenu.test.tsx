@@ -16,7 +16,8 @@ import { render, cleanup, act, fireEvent } from '@testing-library/react'
 import MainMenu from './MainMenu'
 import { ManagersProvider } from '../core/hooks/useManagers'
 import type { Managers } from '../client/bootstrap'
-import { useSettingsStore } from '../settings'
+import lang from '@/lang'
+import { DEFAULTS, useSettingsStore } from '../settings'
 import { applyLang } from '@/test/lang'
 
 // Меню читает реестр аккаунтов при открытии — больше от менеджеров ему ничего не нужно.
@@ -74,6 +75,21 @@ describe('MainMenu — дерево бургер-меню 1:1 с tweb', () => {
     const footer = document.querySelector('a.btn-menu-footer')!
     expect(footer).not.toBeNull()
     expect(footer.querySelector('.btn-menu-footer-text')!.textContent).toMatch(/Telegram Web/)
+  })
+
+  // tweb sidebarLeft/index.ts:1016-1029: «Отключить анимации» — это галочка
+  // `liteMode.animations` «Энергосбережения», а не отдельный флаг.
+  it('«Disable Animations» пишет liteMode.animations, остальные галочки не трогает', () => {
+    useSettingsStore.getState().update({ liteMode: { ...DEFAULTS.liteMode, gif: true } })
+    mount()
+    act(() => { fireEvent.mouseEnter(document.querySelector('.btn-menu-item.submenu-trigger')!) })
+
+    const item = [...document.querySelectorAll<HTMLElement>('.btn-menu-submenu .btn-menu-item')]
+      .find((el) => el.textContent?.includes(lang.DisableAnimations))!
+    act(() => { fireEvent.click(item) })
+
+    expect(useSettingsStore.getState().liteMode).toEqual({ ...DEFAULTS.liteMode, gif: true, animations: true })
+    useSettingsStore.getState().update({ liteMode: { ...DEFAULTS.liteMode } })
   })
 })
 

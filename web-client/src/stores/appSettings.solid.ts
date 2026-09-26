@@ -31,6 +31,11 @@
  *     ниже, как `setStore(путь, объект)` Solid-стора оригинала (`mergeStoreNode`
  *     сливает только первый уровень). Функция-обновитель `SetStoreFunction` не
  *     заведена: её потребители ещё не портированы.
+ *     `liteMode` — лист: в zustand это ОДИН ключ-объект формы tweb
+ *     (`settings.tsx`), поэтому `setAppSettings('liteMode', obj)`
+ *     «Энергосбережения» (`powerSaving.tsx:108`) ложится как есть, а
+ *     `appSettings.liteMode.all` реактивен через мемо листа. Наше меню «Ещё»
+ *     (tweb `sidebarLeft/index.ts:1028`) — React и пишет zustand напрямую.
  *  3. `setAppSettings` возвращает уже разрешённый промис: `update` zustand
  *     синхронен и сам пишет `localStorage`; у оригинала промис — ответ
  *     `appStateManager.setByKey`. Форма возврата сохранена ради вызывающих
@@ -118,6 +123,8 @@ const APP_SETTINGS_KEYS = {
     },
     file_size_max: 'autoDownloadFileSizeMax',
   },
+  // tweb `config/state.ts:127` — объект галочек «Энергосбережения» (задача 11)
+  liteMode: 'liteMode',
   // tweb `config/state.ts:159-160`
   cacheTTL: 'cacheTTL',
   cacheSize: 'cacheSize',

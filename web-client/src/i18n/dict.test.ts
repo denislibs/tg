@@ -254,12 +254,21 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `…Contacts` — совпали с английским дословно. ru 1350 → 1362, uk 686 → 698,
 // es 685 → 697, de 684 → 696, fr 684 → 694; `plural` +2 у всех. Поверх корня настроек
 // (у uk/es/de/fr −1): ru 1362, uk 697, es 696, de 695, fr 693.
+//
+// Задача 11 плана 2D (вкладка «Энергосбережение»): +13 ключей tweb lang.ts —
+// `LiteMode.EnableText`/`Info`/`DisableAlert` и десять `LiteMode.Key.*.Title`
+// дерева ключей — всем пяти словарям: ru 1350 → 1363, uk 686 → 699, es 685 → 698,
+// de/fr 684 → 697. Врезкой сняты четыре ключа снесённого React-экрана, которых у
+// tweb нет или которых больше никто не читает (`LiteMode.Caption`,
+// `LiteMode.Key.background_animation.Title`, `LiteMode.Key.emoji.Title`,
+// `Animations`): −4 каждому словарю.
+// Поверх задач 7 и 10 и корня настроек (+9 каждому): ru 1371, uk 706, es 705, de 704, fr 702.
 const COMPOSITION = {
-  ru: { keys: 1362, plural: 37 },
-  uk: { keys: 697, plural: 26 },
-  es: { keys: 696, plural: 26 },
-  de: { keys: 695, plural: 26 },
-  fr: { keys: 693, plural: 26 },
+  ru: { keys: 1371, plural: 37 },
+  uk: { keys: 706, plural: 26 },
+  es: { keys: 705, plural: 26 },
+  de: { keys: 704, plural: 26 },
+  fr: { keys: 702, plural: 26 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -361,12 +370,13 @@ const COMPOSITION = {
 // десяти ключей React-экрана (разбор — у `COMPOSITION` выше).
 // Задачей 7 плана 2D — ключи «Данных и памяти» и `Seconds`/`Minutes` (разбор —
 // у `COMPOSITION` выше).
+// Задачей 11 плана 2D — ключи «Энергосбережения» (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '92b5a04b',
-  uk: 'fdfaff85',
-  es: '42ceb6dd',
-  de: 'd7beb575',
-  fr: '15d8848b',
+  ru: 'd3839cd8',
+  uk: '1457bdca',
+  es: 'fecb6edc',
+  de: '78f339b0',
+  fr: '8bf82c96',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
@@ -715,7 +725,6 @@ const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
     'Chat.Poll.Type.Quiz': '«quiz» — заимствование',
     AttachContact: '«contact» — французское слово',
     'SharedMedia.Audio': '«audio» — французское слово',
-    Animations: '«animations» — французское слово',
     Exceptions: '«exceptions» — французское слово',
     'Unit.Minutes.Abbr': '«min» — сокращение от «minute»',
     'StorageQuota.CacheSizeLimitAuto': '«auto» — сокращение от «automatique»',

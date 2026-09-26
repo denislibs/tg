@@ -61,6 +61,15 @@ export const AppKeyboardShortcutsTab =
     getComponentModule: () => import('../sidebarLeft/tabs/keyboardShortcuts.solid'),
   })
 
+// tweb :241-245. Форма обычная, без полезной нагрузки: галочки вкладка читает
+// сама (мост `useAppSettings`, `liteMode`). Открывает её строка «Общих»
+// `LiteMode.Title` (tweb `generalSettings.tsx:89`).
+export const AppPowerSavingTab =
+  scaffoldSolidJSTab({
+    title: 'LiteMode.Title',
+    getComponentModule: () => import('../sidebarLeft/tabs/powerSaving.solid'),
+  })
+
 // tweb :419-443 — «Данные и память» и её вкладки автозагрузки, все eventable:
 // корень пишет квоту кэша на своём `destroy` (`dataAndStorage/index.tsx:83-87`).
 // Открывает корень строка `DataSettings` корня настроек (tweb `settings.tsx`,

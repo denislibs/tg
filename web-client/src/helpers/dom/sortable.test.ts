@@ -5,7 +5,7 @@
  * выключена моком `IS_TOUCH_SUPPORTED`, геометрия строк (50px) — заглушкой
  * `getBoundingClientRect`, которой happy-dom не считает. Переход «доезда»
  * (pause 250 при доступных анимациях) погашен тем же гейтом, что у оригинала:
- * `liteMode` ← «Без анимаций» (`reduceMotion`).
+ * `liteMode.all` («Энергосбережение»).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -57,7 +57,7 @@ async function drag(row: HTMLElement, fromY: number, toY: number, onMove?: () =>
 }
 
 beforeEach(() => {
-  useSettingsStore.setState({ reduceMotion: true })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
 })
 
 afterEach(() => {
