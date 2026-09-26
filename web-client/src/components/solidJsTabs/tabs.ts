@@ -51,3 +51,13 @@ export const AppNotificationsTab =
     title: 'Telegram.NotificationSettingsViewController',
     getComponentModule: () => import('../sidebarLeft/tabs/notifications.solid'),
   })
+
+// tweb :195-199. Форма обычная, без полезной нагрузки: каталог вкладка берёт
+// сама (в свой `promiseCollector`). Открывает её строка «Quick Reaction» экрана
+// «Стикеры и эмодзи» (tweb `stickersAndEmoji.tsx:60-66`); до переезда самого
+// экрана (задача 15 плана 2D) — его React-строка через `getSettingsSliderHost`.
+export const AppQuickReactionTab =
+  scaffoldSolidJSTab({
+    title: 'DoubleTapSetting',
+    getComponentModule: () => import('../sidebarLeft/tabs/quickReaction.solid'),
+  })
