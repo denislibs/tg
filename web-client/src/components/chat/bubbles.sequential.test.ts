@@ -102,7 +102,7 @@ const managers: BubblesManagers = {
     messageByDate: async () => null,
   },
   peers: { fillMirror: async () => {} },
-  dialogs: { getReadMaxSeqIfUnread: async () => 0, getHistoryMaxSeq: async () => 0 },
+  dialogs: { getReadMaxSeqIfUnread: async () => 0, getHistoryMaxSeq: async () => 0, getDialogReadState: async () => undefined },
   realtime: { markRead: async () => ({ ok: true }) },
 }
 

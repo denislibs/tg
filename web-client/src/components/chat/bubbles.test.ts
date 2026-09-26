@@ -86,7 +86,7 @@ function managersWith(messages: MyMessage[]) {
   const managers: BubblesManagers = {
     messages: { getHistory, getAround, messageByDate },
     peers: { fillMirror },
-    dialogs: { getReadMaxSeqIfUnread, getHistoryMaxSeq },
+    dialogs: { getReadMaxSeqIfUnread, getHistoryMaxSeq, getDialogReadState: vi.fn(async () => undefined) },
     // Ручка отметки прочтения: наблюдатель непрочитанных живёт в самой ленте
     // (порт tweb bubbles.ts:2941-3012).
     realtime: { markRead },
@@ -320,7 +320,7 @@ describe('ChatBubbles.getHistory — страница в зеркало и в DO
         messageByDate: async () => null,
       },
       peers: { fillMirror: async () => {} },
-      dialogs: { getReadMaxSeqIfUnread: async () => 0, getHistoryMaxSeq: async () => 0 },
+      dialogs: { getReadMaxSeqIfUnread: async () => 0, getHistoryMaxSeq: async () => 0, getDialogReadState: vi.fn(async () => undefined) },
       realtime: { markRead: async () => ({ ok: true }) },
     })
 

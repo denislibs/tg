@@ -62,6 +62,9 @@ const SHADER_URLS: DotRendererShaderURLs = {
 }
 
 export const IMAGE_SPOILER_SIZE = 480
+// * how long to wait for the worker's `*-inited` answer before giving up on this init round
+// (tweb 293cb4509)
+const WORKER_INIT_TIMEOUT = 8000
 
 // tweb getTextSpoilerConfig — текстовый спойлер мельче и шустрее медийного.
 // Дублёр этой же функции живёт в воркере (там конфиг и строится); здесь она
@@ -434,11 +437,35 @@ export default class DotRenderer implements AnimationItemWrapper {
     }
   }
 
+  /**
+   * The worker answers `*-inited` only once its sim's `init()` resolves, and that can never happen
+   * (a shader request that stalls, a lost WebGL context). `wrapMediaSpoiler` awaits this deferred,
+   * so a silent worker used to park the render queue of every chat holding a spoiler — permanently,
+   * because the `*Inited` latch below suppresses any further init. Give up after a deadline: resolve
+   * the deferred so the spoiler degrades to its blurred thumbnail, and unlatch so the next spoiler
+   * re-sends the init instead of inheriting a promise that can never settle.
+   */
+  // tweb 293cb4509
+  private static watchWorkerInit(deferred: CancellablePromise<void>, unlatch: () => void) {
+    const timeout = window.setTimeout(() => {
+      unlatch()
+      deferred.resolve!()
+    }, WORKER_INIT_TIMEOUT)
+
+    deferred.then(() => clearTimeout(timeout), () => clearTimeout(timeout))
+  }
+
   private static initMediaSim() {
     if (this.mediaInited) return
     this.mediaInited = true
 
-    this.mediaWorkerReady = deferredPromise<void>()
+    const deferred = (this.mediaWorkerReady = deferredPromise<void>())
+    this.watchWorkerInit(deferred, () => {
+      if (this.mediaWorkerReady === deferred) {
+        this.mediaInited = false
+      }
+    })
+
     const dpr = window.devicePixelRatio
     this.connection?.postMessage({
       type: 'media-init',
@@ -454,7 +481,13 @@ export default class DotRenderer implements AnimationItemWrapper {
     if (this.textInited) return
     this.textInited = true
 
-    this.textWorkerReady = deferredPromise<void>()
+    const deferred = (this.textWorkerReady = deferredPromise<void>())
+    this.watchWorkerInit(deferred, () => {
+      if (this.textWorkerReady === deferred) {
+        this.textInited = false
+      }
+    })
+
     const dpr = spoilerSimDpr()
     this.connection?.postMessage({
       type: 'text-init',

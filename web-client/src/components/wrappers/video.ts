@@ -289,6 +289,10 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
   }
 
   let noAutoDownload: boolean | undefined = autoDownload?.video === 0
+  // * a round video keeps looping its muted preview while it uploads, like the official clients do;
+  // * a regular video would just play under the progress spinner, so it waits for the upload instead
+  // (tweb 173f3c6dc)
+  const suppressAutoplayWhileUploading = !!uploadPromise && doc.type !== 'round'
   // tweb video.ts:127 — элемент альбома приходит без бокса (его задаёт грид)
   const isGroupedItem = !(boxWidth && boxHeight)
   // tweb video.ts:129-136
@@ -397,7 +401,7 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
 
   if (doc.type === 'round') {
     wrapRound({ doc, message, container, video, spanTime, middleware, noAutoDownload, getPreloader: () => preloader })
-  } else if (!noAutoplayAttribute && !uploadPromise) {
+  } else if (!noAutoplayAttribute && !suppressAutoplayWhileUploading) {
     video.autoplay = true // для safari (комментарий tweb video.ts:407)
   }
 
@@ -500,9 +504,10 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
     // * autoplay is suppressed while the upload is in progress, and the bubble
     // * isn't re-rendered on send — resume playback once the upload completes
     // (комментарий tweb video.ts:512-513)
-    if (!noAutoplayAttribute && doc.type !== 'round') {
+    if (!noAutoplayAttribute && suppressAutoplayWhileUploading) {
       void uploadPromise.then(() => {
         if (middleware && !middleware()) return
+        video.autoplay = true // * so the intersector resumes it after it scrolls back into view (tweb 173f3c6dc)
         safePlay(video)
       }, noop)
     }
@@ -554,7 +559,7 @@ export default async function wrapVideo(options: WrapVideoOptions): Promise<Wrap
 
   video.muted = true
   video.loop = true
-  if (!noAutoplayAttribute && !uploadPromise) {
+  if (!noAutoplayAttribute && !suppressAutoplayWhileUploading) {
     video.autoplay = true
   }
 

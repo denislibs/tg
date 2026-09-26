@@ -44,6 +44,8 @@
   в одном callback `fastRaf` роняет остальные) · 127188295 (две галочки на сообщении) ·
   79d6a8f95 → ce37ebeb3 (гейт «не прочитан» по курсору; «вниз» — к первому непрочитанному;
   `BubblesManagers.dialogs` расширить один раз) · 50da390c6 (не «Удалённый аккаунт печатает»).
+  Сделано вместе с 173f3c6dc (кружок во время аплоада) — ветка `fix/w1-feed`, статусы B1–B7 в
+  [`security-and-bugs.md`](security-and-bugs.md).
 - **Скроллер и shared media** (`scrollable.ts`, `appSearchSuper.ts`, `sharedMediaHistories.ts`):
   ffd925068 (общий слушатель `Scrollable` через `WeakRefSet` вместо своего на экземпляр) →
   fb18166dc (`ScrollableRefiller`: бесконечная догрузка, `savedDialogs` без `loaded`) ·

@@ -72,6 +72,7 @@ function managersWith(messages: MyMessage[]) {
   const markRead = vi.fn(async () => ({ ok: true }))
   const getReadMaxSeqIfUnread = vi.fn(async () => 0)
   const getHistoryMaxSeq = vi.fn(async () => 0)
+  const getDialogReadState = vi.fn(async (): Promise<{ readInboxMaxSeq: number, unreadCount: number } | undefined> => undefined)
   const managers: BubblesManagers = {
     messages: {
       getHistory: vi.fn(async (): Promise<HistoryResult> => ({
@@ -81,10 +82,18 @@ function managersWith(messages: MyMessage[]) {
       messageByDate: vi.fn(async () => null),
     },
     peers: { fillMirror: vi.fn(async () => {}) },
-    dialogs: { getReadMaxSeqIfUnread, getHistoryMaxSeq },
+    dialogs: { getReadMaxSeqIfUnread, getHistoryMaxSeq, getDialogReadState },
     realtime: { markRead },
   }
-  return Object.assign(managers, { markRead, getReadMaxSeqIfUnread, getHistoryMaxSeq })
+  return Object.assign(managers, { markRead, getReadMaxSeqIfUnread, getHistoryMaxSeq, getDialogReadState })
+}
+
+/** Курсор прочтения диалога — и в форме «горизонт, если есть непрочитанное»
+ *  (граница непрочитанных), и в форме самого курсора (гейт наблюдателя,
+ *  tweb 79d6a8f95). Непрочитанное есть — обе формы совпадают. */
+function setHorizon(managers: ReturnType<typeof managersWith>, readInboxMaxSeq: number) {
+  managers.getReadMaxSeqIfUnread.mockResolvedValue(readInboxMaxSeq)
+  managers.getDialogReadState.mockResolvedValue({ readInboxMaxSeq, unreadCount: 1 })
 }
 
 const msg = (id: number): MyMessage =>
@@ -112,9 +121,43 @@ const bubbleOf = (b: ChatBubbles, mid: number) =>
   b.chatInner.querySelector<HTMLElement>(`.bubble[data-mid="${mid}"]`)!
 
 describe('ChatBubbles — наблюдатель непрочитанных', () => {
+  // tweb 79d6a8f95: гейт спрашивал `getReadMaxSeqIfUnread`, который у
+  // полностью прочитанного чата отвечает 0, — и `0 < mid` выполнялось для
+  // каждого бабла: все получали лишний наблюдатель прочтения.
+  it('в полностью прочитанном чате наблюдателей нет вовсе', async () => {
+    const managers = managersWith([msg(11), msg(12), msg(13), msg(14)])
+    managers.getDialogReadState.mockResolvedValue({ readInboxMaxSeq: 14, unreadCount: 0 })
+    bubbles = new ChatBubbles(chatContext(), managers)
+    await openFeed(bubbles)
+    await settle()
+
+    for (const mid of [11, 12, 13, 14]) expect(observerOf(bubbleOf(bubbles, mid))).toBeUndefined()
+  })
+
+  it('своё сообщение выше курсора не наблюдается: курсор входящих стоит ниже своих', async () => {
+    const own = makeMessage({ peerId: CHAT, fromId: 1, out: true, id: 13, text: 'моё', createdAt: '2026-08-15T12:00:00Z' })
+    const managers = managersWith([msg(11), msg(12), own])
+    managers.getDialogReadState.mockResolvedValue({ readInboxMaxSeq: 12, unreadCount: 0 })
+    bubbles = new ChatBubbles(chatContext(), managers)
+    await openFeed(bubbles)
+    await settle()
+
+    expect(observerOf(bubbleOf(bubbles, 13))).toBeUndefined()
+  })
+
+  it('курсор неизвестен (диалога нет) — наблюдается всё, пропустить отметку нельзя', async () => {
+    const managers = managersWith([msg(11), msg(12)])
+    bubbles = new ChatBubbles(chatContext(), managers)
+    await openFeed(bubbles)
+    await settle()
+
+    expect(observerOf(bubbleOf(bubbles, 11))).toBeDefined()
+    expect(observerOf(bubbleOf(bubbles, 12))).toBeDefined()
+  })
+
   it('наблюдаются только баблы НОВЕЕ горизонта прочтения', async () => {
     const managers = managersWith([msg(11), msg(12), msg(13), msg(14)])
-    managers.getReadMaxSeqIfUnread.mockResolvedValue(12)
+    setHorizon(managers, 12)
     bubbles = new ChatBubbles(chatContext(), managers)
     await openFeed(bubbles)
     await settle()
@@ -127,7 +170,7 @@ describe('ChatBubbles — наблюдатель непрочитанных', ()
 
   it('показавшийся бабл отдаёт свой рубеж в realtime.markRead', async () => {
     const managers = managersWith([msg(11), msg(12), msg(13), msg(14)])
-    managers.getReadMaxSeqIfUnread.mockResolvedValue(12)
+    setHorizon(managers, 12)
     // Низ окна «не сведён с концом истории» — иначе рубеж поднимется до
     // последнего сообщения чата (это отдельный тест ниже).
     managers.messages.getHistory = vi.fn(async (): Promise<HistoryResult> => ({
@@ -146,7 +189,7 @@ describe('ChatBubbles — наблюдатель непрочитанных', ()
 
   it('увиденное дотянулось до низа загруженного окна — рубеж поднимается до последнего сообщения ЧАТА', async () => {
     const managers = managersWith([msg(11), msg(12)])
-    managers.getReadMaxSeqIfUnread.mockResolvedValue(10)
+    setHorizon(managers, 10)
     managers.getHistoryMaxSeq.mockResolvedValue(99)
     bubbles = new ChatBubbles(chatContext(), managers)
     await openFeed(bubbles)
@@ -162,7 +205,7 @@ describe('ChatBubbles — наблюдатель непрочитанных', ()
 
   it('рубеж накрывает и остальные наблюдаемые баблы — второго круга они не требуют', async () => {
     const managers = managersWith([msg(11), msg(12), msg(13)])
-    managers.getReadMaxSeqIfUnread.mockResolvedValue(10)
+    setHorizon(managers, 10)
     managers.messages.getHistory = vi.fn(async (): Promise<HistoryResult> => ({
       messages: [msg(11), msg(12), msg(13)], count: 3, reachedTop: true, reachedBottom: false,
     }))
@@ -187,7 +230,7 @@ describe('ChatBubbles — наблюдатель непрочитанных', ()
     // под наблюдение ради просмотров (:7672), поэтому без него тест проверял
     // бы пост, которого на проводе не бывает.
     const managers = managersWith([{ ...msg(11), views: 1 } as MyMessage])
-    managers.getReadMaxSeqIfUnread.mockResolvedValue(10)
+    setHorizon(managers, 10)
     bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managers)
     await openFeed(bubbles)
     await settle()
@@ -214,7 +257,7 @@ describe('ChatBubbles — наблюдатель непрочитанных', ()
   // чужую реакцию) навсегда снимала бы пост с отметки прочтения.
   it('правка поста канала ПЕРЕВЕШИВАЕТ наблюдение на новое время', async () => {
     const managers = managersWith([msg(11)])
-    managers.getReadMaxSeqIfUnread.mockResolvedValue(10)
+    setHorizon(managers, 10)
     bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managers)
     await openFeed(bubbles)
     await settle()
@@ -241,7 +284,7 @@ describe('ChatBubbles — наблюдатель непрочитанных', ()
   // возвращает в непрочитанные.
   it('правка УЖЕ ПРОЧИТАННОГО поста наблюдение не заводит заново', async () => {
     const managers = managersWith([msg(11)])
-    managers.getReadMaxSeqIfUnread.mockResolvedValue(10)
+    setHorizon(managers, 10)
     bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managers)
     await openFeed(bubbles)
     await settle()
@@ -259,7 +302,7 @@ describe('ChatBubbles — наблюдатель непрочитанных', ()
 
   it('отметка ждёт фокуса окна', async () => {
     const managers = managersWith([msg(11), msg(12)])
-    managers.getReadMaxSeqIfUnread.mockResolvedValue(10)
+    setHorizon(managers, 10)
     bubbles = new ChatBubbles(chatContext(), managers)
     await openFeed(bubbles)
     await settle()
@@ -278,7 +321,7 @@ describe('ChatBubbles — наблюдатель непрочитанных', ()
 
   it('удаление бабла снимает наблюдение', async () => {
     const managers = managersWith([msg(11), msg(12)])
-    managers.getReadMaxSeqIfUnread.mockResolvedValue(10)
+    setHorizon(managers, 10)
     bubbles = new ChatBubbles(chatContext(), managers)
     await openFeed(bubbles)
     await settle()
@@ -292,7 +335,7 @@ describe('ChatBubbles — наблюдатель непрочитанных', ()
 
   it('destroy() отключает наблюдатель', async () => {
     const managers = managersWith([msg(11)])
-    managers.getReadMaxSeqIfUnread.mockResolvedValue(10)
+    setHorizon(managers, 10)
     bubbles = new ChatBubbles(chatContext(), managers)
     await openFeed(bubbles)
     await settle()

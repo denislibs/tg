@@ -187,6 +187,22 @@ div.document.ext-<ext>[data-doc-id][.document-with-thumb][.downloading][.downloa
 | `wrapLocalSticker` | локальный ассет (`loadAnimationAsAsset` + `waitForFirstFrame`) либо `getAnimatedEmojiSticker` → `wrapSticker` |
 | `wrapEmojiPattern` | `wrapSticker({static: true, exportLoad: 2})` → один `<img>` → многократный `drawImage` по `positions [x,y,size,alpha]` в `canvas.emoji-pattern-canvas` с DPR → `applyColorOnContext` |
 
+**Спойлер: ничто не ждёт рендерер вечно (tweb 293cb4509).** Запрос шейдера в
+`DotRendererCore.compileShader` ограничен `AbortSignal.timeout(15000)`, упавший снимается с кэша
+`shaderTexts`; `init()` не мемоизирует провал; ответ воркера `*-inited` ждётся не дольше 8 с
+(`DotRenderer.watchWorkerInit`: deferred резолвится, защёлка `*Inited` снимается);
+`wrapMediaSpoiler` ждёт готовность точек не дольше 2 с (`withTimeout`,
+`helpers/schedulers/withTimeout.ts`). **У нас:** портировано в `lib/spoiler/dotRendererCore.ts`,
+`components/dotRenderer.ts`, `components/wrappers/mediaSpoiler.ts`. Без этого повисший запрос
+шейдера у нас оставлял медиа под спойлером ОТКРЫТЫМ: крышку вызывающий вставляет только после
+ответа `wrapMediaSpoiler`. Не перенесены (предмета нет): «провал `init()` не мемоизируется на
+экземпляре» — наш провал зовёт `destroy()` с `WEBGL_lose_context`, экземпляр мёртв по построению;
+дедлайн `Promise.all` в `processBatch` — наша пачка медиа-промисов не ждёт (`bubbles.ts`,
+докблок `processBatch`); протухание дедупа `Chat.setPeer` — раннего выхода по
+`setPeerPromise` у нас нет. Воркер (`spoilerRenderer.worker.ts`) по-прежнему защёлкивает провал
+симуляции (`mediaSimFailed`) и отвечает `*-init-failed` сразу — наше отступление, повтора после
+сбоя в сессии нет, спойлер остаётся на размытом превью.
+
 ## 2.6 Rich text — `lib/richTextProcessor/wrapRichText.ts:122`
 
 Возвращает `DocumentFragment`. Опции (`:36-70`): `entities`, `contextSite`, `highlightUsername`,
@@ -710,7 +726,11 @@ canAutoplay ??= (
   (`setManual`, стр. 583–586), загрузка `onlyCache` (стр. 595) — скачивание начнётся только по клику;
 - нет автоплея → кнопка `Button('btn-circle video-play position-center', {icon:'largeplay'})` (стр. 173–176);
 - при автоплее в `video-time` добавляется иконка `nosound` (стр. 159);
-- видео в процессе аплоада не автоплеится, доигрывается после завершения (стр. 503–519);
+- видео в процессе аплоада не автоплеится и по завершении получает обратно АТРИБУТ `autoplay` (а не
+  голый `play()`: `animationIntersector` будит только плееры с `autoplay`); КРУЖОК автоплей на время
+  аплоада сохраняет — `suppressAutoplayWhileUploading = !!uploadingFileName && doc.type !== 'round'`
+  (tweb 173f3c6dc, `video.ts:113-115`, `:406`, `:514-519`, `:578`). **У нас:**
+  `components/wrappers/video.ts` — портировано 1:1 (роль `uploadingFileName` играет `uploadPromise`);
 - у видео `timeupdate` перерисовывает `video-time` как «оставшееся время» с троттлом 1 с (стр. 550–563).
 
 ## 6.2 GIF vs video
