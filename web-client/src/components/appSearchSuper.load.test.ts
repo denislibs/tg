@@ -13,6 +13,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import Scrollable from '@components/scrollable'
 import AppSearchSuper, { type SearchSuperManagers, type SearchSuperMediaTab } from '@components/appSearchSuper'
+import type { SearchHistoryOptions } from '@core/managers/messagesManager'
+import { getWireFilter } from '@core/messages/inputMessagesFilter'
 import { getHistoryStorage, resetSharedMediaHistories } from '@components/sharedMediaHistories'
 import { makeMessage } from '@core/messages/testMessage'
 import { saveMessageMedia } from '@core/media/messageMedia'
@@ -34,7 +36,8 @@ function fakeBackend(all: MyMessage[]) {
   const calls: { peerId: number; filter: string; offsetId: number; limit: number; got: MyMessage[] }[] = []
   const managers = {
     messages: {
-      mediaHistory: async (peerId: number, filter: string, offsetId = 0, limit = 30) => {
+      searchHistory: async ({ peerId, inputFilter, offsetId = 0, limit = 30 }: SearchHistoryOptions) => {
+        const filter = getWireFilter(inputFilter._)!
         const from = offsetId ? all.filter((m) => m.id < offsetId) : all
         const got = from.slice(0, limit)
         calls.push({ peerId, filter, offsetId, limit, got })

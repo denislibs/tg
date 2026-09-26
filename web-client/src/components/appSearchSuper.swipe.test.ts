@@ -39,7 +39,7 @@ function touchPoint(x: number, y: number, target: EventTarget) {
  */
 const IDLE_MANAGERS = {
   messages: {
-    mediaHistory: () => { throw new Error('свайп не грузит данные') },
+    searchHistory: () => { throw new Error('свайп не грузит данные') },
     searchCounters: () => { throw new Error('свайп не грузит данные') },
   },
 } as unknown as SearchSuperManagers

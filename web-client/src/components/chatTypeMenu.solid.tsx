@@ -18,10 +18,10 @@
 // владелец читает его оттуда (:1107, :1309).
 //
 // Расхождения с оригиналом:
-//  1. `ChatType` объявлен здесь союзом, а не взят как
-//     `RequestHistoryOptions['chatType']` (`appMessagesManager.ts:312`):
-//     опций истории у нас пока нет — их заводит шов `searchHistory`
-//     (задача 6 плана); значения те же.
+//  1. `ChatType` — `NonNullable` от поля опций: у оригинала тип вместе с
+//     `undefined` (`RequestHistoryOptions['chatType']`, `appMessagesManager.ts:312`),
+//     а ключом `Record` ниже он быть не может. Опции — `SearchHistoryOptions`
+//     шва `messages.searchHistory` (задача 6 плана).
 //  2. `if(import.meta.hot) import.meta.hot.accept()` (`:9`) не перенесён —
 //     HMR у нас нет (расхождение 1 в шапке `shared/solid/defineSolidElement.solid.tsx`).
 //  3. План (задача 10) предлагал монтировать компонент мостом `mountSolid`;
@@ -33,8 +33,9 @@ import defineSolidElement, { type PassedProps } from '@shared/solid/defineSolidE
 import type { ButtonMenuItemOptions } from '@components/buttonMenu'
 import ButtonMenuToggle from '@components/buttonMenuToggle'
 import styles from '@components/chatTypeMenu.module.scss'
+import type { SearchHistoryOptions } from '@core/managers/messagesManager'
 
-export type ChatType = 'all' | 'users' | 'groups' | 'channels'
+export type ChatType = NonNullable<SearchHistoryOptions['chatType']>
 
 type Props = {
   selected?: ChatType

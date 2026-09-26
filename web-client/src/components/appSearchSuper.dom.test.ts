@@ -67,7 +67,7 @@ function makeMediaTabs(): SearchSuperMediaTab[] {
  */
 const IDLE_MANAGERS = {
   messages: {
-    mediaHistory: () => { throw new Error('ядро не грузит данные') },
+    searchHistory: () => { throw new Error('ядро не грузит данные') },
     searchCounters: () => { throw new Error('ядро не грузит данные') },
   },
 } as unknown as SearchSuperManagers
@@ -474,8 +474,9 @@ describe('AppSearchSuper: destroy', () => {
 
     const searchSuper = build()
     // по корню на каждую «секционную» вкладку: savedDialogs, members, files,
-    // links, music, voice — шесть из восьми (media и gifts в noSectionTypes)
-    expect(solidRoots.opened).toBe(6)
+    // links, music, voice — шесть из восьми (media и gifts в noSectionTypes),
+    // плюс корень группы `searchGroupMedia` (tweb `:607`, создаётся всегда)
+    expect(solidRoots.opened).toBe(7)
     expect(solidRoots.disposed).toBe(0)
 
     searchSuper.destroy()

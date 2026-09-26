@@ -23,7 +23,7 @@ import type { LangPackKey } from '@lib/langPack'
 
 const IDLE_MANAGERS = {
   messages: {
-    mediaHistory: () => { throw new Error('шов скроллера данных не грузит') },
+    searchHistory: () => { throw new Error('шов скроллера данных не грузит') },
     searchCounters: () => { throw new Error('шов скроллера данных не грузит') },
   },
 } as unknown as SearchSuperManagers

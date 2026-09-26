@@ -45,7 +45,7 @@ function fakeBackend(countsByPeer: Record<number, Counts>) {
   const counters: { peerId: number; filters: string[] }[] = []
   const managers = {
     messages: {
-      mediaHistory: async () => ({ messages: [], count: 0 }),
+      searchHistory: async () => ({ messages: [], count: 0 }),
       searchCounters: async (peerId: number, filters: string[]) => {
         counters.push({ peerId, filters })
         return filters.map((filter) => ({ filter, count: countsByPeer[peerId]?.[filter as keyof Counts] ?? 0 }))
