@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 type Media struct {
 	ID        int64
@@ -41,4 +44,16 @@ type Media struct {
 	UploadID    string
 	UploadTotal int
 	CreatedAt   time.Time
+}
+
+// IsAudioMime — файл с таким mime отправляется ТРЕКОМ, а не документом: вид
+// «музыка» решается по самому файлу, а не по тому, каким пунктом меню его
+// выбрали. Условие дословно из tweb (appMessagesManager.ts
+// `makeDocumentAndMetaForSendingFile`): `fileType.indexOf('audio/') === 0 ||
+// ['video/ogg'].indexOf(fileType) >= 0`, и стоит эта ветка ДО `!args.isMedia` —
+// mp3, отправленный «как файл», у оригинала всё равно audio с
+// documentAttributeAudio. Голосовое отличается не mime, а флагом записи
+// (isVoiceMessage), поэтому сюда не входит.
+func IsAudioMime(mime string) bool {
+	return strings.HasPrefix(mime, "audio/") || mime == "video/ogg"
 }

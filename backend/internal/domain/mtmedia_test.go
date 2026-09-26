@@ -171,3 +171,78 @@ func TestNoMediaNoObject(t *testing.T) {
 		t.Fatalf("вложение без медиа: %#v", md)
 	}
 }
+
+// attrNames — конструкторы атрибутов документа по порядку.
+func attrNames(t *testing.T, md domain.MessageMedia) []string {
+	t.Helper()
+	doc, ok := md.(*domain.MessageMediaDocument)
+	if !ok || doc.Document == nil {
+		t.Fatalf("ожидался messageMediaDocument: %#v", md)
+	}
+	b, _ := json.Marshal(doc.Document.Attributes)
+	var attrs []map[string]any
+	_ = json.Unmarshal(b, &attrs)
+	out := make([]string, 0, len(attrs))
+	for _, a := range attrs {
+		out = append(out, a["_"].(string))
+	}
+	return out
+}
+
+// Трек описан так же, как его описывает отправляющий клиент Telegram
+// (tweb appMessagesManager.ts `makeDocumentAndMetaForSendingFile`, ветка
+// `fileType.indexOf('audio/') === 0`): documentAttributeAudio + имя файла, и
+// БОЛЬШЕ НИЧЕГО. Размеры обложки из ID3 (360×360) — это обложка, а не кадр:
+// documentAttributeImageSize у оригинала ставится только картинке (`isPhoto`),
+// а в saveDoc он безусловно делает doc.type = 'photo' и затёр бы 'audio'.
+func TestAudioDocument_AudioAttrWithoutImageSize(t *testing.T) {
+	md := domain.BuildMessageMedia(domain.MediaSource{
+		Kind: "audio", MediaID: 18, Mime: "audio/mpeg", Size: 4841691,
+		Width: 360, Height: 360, Duration: 212,
+		Title: "Уходишь? Ну и пиздуй", Performer: "denis1488", FileName: "track.mp3",
+	})
+	if got := strings.Join(attrNames(t, md), ","); got != "documentAttributeAudio,documentAttributeFilename" {
+		t.Fatalf("атрибуты трека = %s", got)
+	}
+	a, _ := domain.MediaAudioAttr(md)
+	if a.Duration != 212 || a.Title != "Уходишь? Ну и пиздуй" || a.Performer != "denis1488" || a.PFlags["voice"] {
+		t.Fatalf("documentAttributeAudio = %#v", a)
+	}
+}
+
+// Обычный файл получает documentAttributeImageSize, только если он картинка
+// (tweb: `if(isPhoto) attributes.push({_: 'documentAttributeImageSize', …})`,
+// isPhoto = IMAGE_MIME_TYPES_SUPPORTED.has(fileType)). Видео или трек «как
+// файл» с размерами кадра/обложки в строке media иначе разбирались бы клиентом
+// в doc.type = 'photo'.
+func TestPlainDocument_ImageSizeOnlyForImages(t *testing.T) {
+	for _, tc := range []struct {
+		mime string
+		want string
+	}{
+		{"image/png", "documentAttributeImageSize,documentAttributeFilename"},
+		{"video/mp4", "documentAttributeFilename"},
+		{"audio/mpeg", "documentAttributeFilename"},
+		{"application/pdf", "documentAttributeFilename"},
+	} {
+		md := domain.BuildMessageMedia(domain.MediaSource{
+			Kind: "document", MediaID: 5, Mime: tc.mime, Width: 360, Height: 360, FileName: "f",
+		})
+		if got := strings.Join(attrNames(t, md), ","); got != tc.want {
+			t.Errorf("%s: атрибуты = %s, want %s", tc.mime, got, tc.want)
+		}
+	}
+}
+
+// Вид «музыка» решается по самому файлу — ровно условие ветки tweb
+// `fileType.indexOf('audio/') === 0 || ['video/ogg'].indexOf(fileType) >= 0`.
+func TestIsAudioMime(t *testing.T) {
+	for mime, want := range map[string]bool{
+		"audio/mpeg": true, "audio/ogg": true, "audio/flac": true, "video/ogg": true,
+		"video/mp4": false, "image/png": false, "application/pdf": false, "": false,
+	} {
+		if got := domain.IsAudioMime(mime); got != want {
+			t.Errorf("IsAudioMime(%q) = %v, want %v", mime, got, want)
+		}
+	}
+}
