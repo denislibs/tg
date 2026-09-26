@@ -21,7 +21,6 @@
 // ссылкой на строку tweb и номер задачи; когда задача приедет, вызов встанет
 // ровно туда.
 //
-//  • `processEmptyFilter` (`:826-871`) — левая колонка, в правой его вкладки нет;
 //  • `SearchSelection`, `SearchContextMenu` — задача 14 (`tweb:156-345`,
 //    `chat/selection.ts:583-763`).
 //
@@ -45,15 +44,16 @@
 //     порт (`push`/`clear`), ручек паузы у него нет. Гасить очередь на время
 //     тяжёлой анимации станет нечем до тех пор, пока очередь не дорастёт; на
 //     ядро это не влияет — задачи в неё кладёт рендер (задачи 7-9).
-//  4. `searchGroupMedia.clear()` в `cleanupHTML` (`tweb:2791`) пропущен:
-//     `searchGroup.tsx` — часть ЛЕВОЙ колонки (`docs/tweb/shared-media.md` § 1.2),
-//     в правой этот узел не создаётся и у нас не портирован.
+//  4. Снято задачей 8 плана поиска: `searchGroupMedia` создаётся (`tweb:607`)
+//     и чистится в `cleanupHTML` (`:2791`), как у оригинала.
 //  5. `slider`/`appSidebarRight` (поле `tweb:432`, опция `:450`, дефолт `:453`)
 //     не в опциях: поле нужно только вкладкам «участники»/«похожие каналы»
 //     для открытия подэкранов (задачи 11-12).
 //  6. `managers` (`tweb:419` — весь `AppManagers`) сужены до двух ручек
-//     (`SearchSuperManagers`): подсистема ходит только за списком одного вида и
-//     за счётчиками вкладок. Узкий шов и проверяем узко.
+//     (`SearchSuperManagers`): подсистема ходит только за историей — шов
+//     `messages.searchHistory`, порт `getHistory`/`requestHistory` (ручку по
+//     контексту выбирает воркер), — и за счётчиками вкладок. Узкий шов и
+//     проверяем узко.
 //  7. ВЛАДЕНИЕ СКРОЛЛЕРОМ. Правило у нас такое: скроллер уничтожается только
 //     если создан и принадлежит классу. Оригинал ему удовлетворяет даром —
 //     `this.scrollable.destroy()` (`tweb:2831`) там роняет скроллер, который
@@ -79,11 +79,9 @@
 //     присвоение `undefined` не проходит по типу; после `destroy()` вызов
 //     `selectTab` безопасен — слушатели сняты, а переключение уже мёртвого
 //     дерева ничего не наблюдает.
-//  9. `nextRate` (`tweb:2288`, `:2321`) не портирован: это курсор ГЛОБАЛЬНОГО
-//     поиска левой колонки (`folderId`), которого в этом порте нет вовсе
-//     (см. поправку 3 плана). Вместе с ним отпадает и вторая ветка критерия
-//     «всё загружено» (`tweb:2312`) — остаётся первая, `history.length <
-//     loadCount`, ровно та, что применима к нашей ручке.
+//  9. Снято задачей 8 плана поиска: курсор глобальной выдачи `nextRate`
+//     портирован — поле контекста, запрос (`:2288`), вторая ветка критерия
+//     «всё загружено» (`:2312`), запись (`:2321`), сброс в `cleanup` (`:2718`).
 // 10. `filterMessagesByType` (`tweb:822-824`) делегирует в оригинале общей
 //     утилите `filterMessagesByInputFilter` (её потребителей у нас нет); сюда
 //     перенесена только её ветка `inputMessagesFilterUrl`
@@ -95,9 +93,9 @@
 //     страница с сервера уже не принесёт. Объявлено в
 //     `docs/tweb/shared-media.md` § 3, снимается задачей 15 плана (фильтр по
 //     сущностям на бэкенде).
-// 11. `searchGroups`/`searchGroupMedia` в `performSearchResult`
-//     (`tweb:1106-1128`, `:1189-1194`) пропущены целиком: группы — часть ЛЕВОЙ
-//     колонки (`docs/tweb/shared-media.md` § 1.2), в правой их нет.
+// 11. Снято задачей 8 плана поиска: `searchGroups`/`searchGroupMedia` в
+//     `performSearchResult` (`tweb:1106-1128`, `:1189-1194`) и
+//     `processEmptyFilter` (`:826-871`) портированы.
 // 12. Вставка НЕСКОЛЬКИХ узлов в начало (`append: false`) идёт обратным
 //     обходом. Оригинал (`tweb:1214-1229`) обходит список вперёд и зовёт
 //     `prepend` на каждом — порядок при этом переворачивается. У него это не
@@ -118,11 +116,14 @@
 //     (`messageToViewerItem`), собранный из кэша вкладки
 //     (`getSharedMediaMessage`) — того самого, из которого плитка и нарисована;
 //     RPC `getMessageByPeer` (`:737`) сюда не нужен. Роль `setSearchContext`
-//     (листать за пределы плиток по тому же фильтру) исполняет `loadMoreMedia`
-//     поверх `createMediaNeighboursLoader` на ручке `mediaHistory`; загрузчик
-//     живёт одно открытие, как `SearchListLoader` у оригинала, но страницы
-//     берёт с сети, а не из кэша менеджера — своего кэша сообщений по
-//     `offset_id` у вкладки нет.
+//     (листать за пределы плиток тем же контекстом поиска) исполняет
+//     `loadMoreMedia` поверх `createMediaNeighboursLoader` на шве
+//     `searchHistory` с копией контекста; загрузчик живёт одно открытие, как
+//     `SearchListLoader` у оригинала, но страницы берёт с сети, а не из кэша
+//     менеджера, и листает С НАЧАЛА выдачи до якоря — поэтому курсор
+//     `nextRate` у него свой, а не вкладки (у оригинала — `copySearchContext(
+//     inputFilter, this.nextRates[type])`, `:757`, `:2795-2801`). Отдельного
+//     метода `copySearchContext` нет: копия берётся на месте.
 // 15. `onMediaClick` — метод класса, а не замыкание конструктора
 //     (`tweb:716-767`): в конструкторе остаётся только подписка, тело лежит
 //     рядом с `processPhotoVideoFilter`, чтобы задачи 8-9 (документы, ссылки)
@@ -142,9 +143,8 @@
 //     пересобрать; у нашего контроллера очередь идёт значением и собирается
 //     на каждый запуск сканом соседей (шапка `components/audio.ts`). Сам
 //     источник очереди «элементы вкладки» портирован ветвью `search-super-item`
-//     в `findMediaTargets` (tweb `audio.ts:461-462`), а `nextRates` — это
-//     расхождение 9. Вместе с контекстом отпадает и `copySearchContext`
-//     (`tweb:2795-2801`): второй его потребитель — медиавьювер задачи 7.
+//     в `findMediaTargets` (tweb `audio.ts:461-462`). Копию контекста у нас
+//     берёт только медиавьювер — расхождение 14.
 // 19. `lazyLoadQueue` (`tweb:952`) врапперу не передаётся: у `wrapDocument`
 //     оригинала очередь нужна только обложке трека, которой у нас нет
 //     (шапка `components/audio.ts`).
@@ -165,10 +165,9 @@
 // 23. Inline `onclick` якоря, переносимый на строку (`tweb:1080-1081`), у нас
 //     запрещён (шапка `lib/richtext/url.ts`): действие внутренней ссылки живёт
 //     в `data-anchor-action`, и на строку переносится он.
-// 24. `showSender`/`wrapSenderToPeer` (`tweb:1051-1053`) не портированы: это
-//     опция ГЛОБАЛЬНОГО поиска левой колонки (отложено, задача 20 плана),
-//     правая колонка её не задаёт. Единственный `await` рендерера был ради
-//     неё, поэтому `processUrlFilter` у нас синхронный.
+// 24. Снято задачей 8 плана поиска: `showSender` в `processUrlFilter`
+//     (`tweb:1061-1063`) портирован; рендерер остаётся синхронным, потому что
+//     синхронен наш `wrapSenderToPeer` (его шапка).
 // 25. `wrapPlainText(display_url…)` (`tweb:1057`) без сущностей — тождество
 //     (`wrapPlainText.ts:7-13`); хост дописывается строкой.
 // 26. `canViewSaved` (`tweb:2627-2643`), `canViewGroups` (`:2658-2664`) и
@@ -236,10 +235,9 @@
 //     по ЗЕРКАЛУ (`cachedPeer`); пробел объявляется владельцу через
 //     `peers.fillMirror` (шов расхождения 20). Шов менеджеров расширен ручкой
 //     `groups` (`channelParticipants` + действия меню участника).
-// 35. `nextRates` (`tweb:381`) портирован здесь — под смещение страницы
-//     участников (`:1723`, `:1730`) и сброс в `cleanup` (`:2718`). Это
-//     пер-типовое поле подсистемы, а не курсор глобального поиска `nextRate`
-//     (расхождение 9).
+// 35. `nextRates` (`tweb:378`) держит и смещение страницы участников
+//     (`:1723`, `:1730`), и курсор глобальной выдачи (`:2288`, `:2321`) — одно
+//     пер-типовое поле на оба, как у оригинала; сброс в `cleanup` (`:2718`).
 // 36. Solid-вкладки «Подарки» и «Чаты» монтируются мостом `mountSolid`
 //     (`shared/solid/mountSolid.solid.tsx`, `ErrorBoundary` сдерживания), а не
 //     прямым вызовом компонента внутри своего `createRoot` (`tweb:2137-2168`,
@@ -274,6 +272,29 @@
 //     набора. `openSavedDialogsInner`/`slider` (`:430`, `:1915`) не в опциях:
 //     окна сохранённого диалога у нас нет, клик открывает оригинальный чат
 //     пира (`core/navigation/openPeer.ts`), — см. шапку вкладки.
+// 41. Опция `asChatList` (`tweb:408`, `:444`) не заводится: у оригинала её
+//     ПИШЕТ левая колонка (`sidebarLeft/index.ts:1165`) и не читает никто —
+//     ни класс, ни кто-либо ещё (`grep -rn asChatList tweb/src` — три
+//     вхождения, все три объявление и запись). Поле без читателя — мёртвый код.
+// 42. `processEmptyFilter` (`tweb:826-871`) — в объёме нашей строки чатлиста
+//     (`components/dialogRow.ts`, шапка «что НЕ портировано»): опций
+//     `meAsSaved`/`withStories`/`fromName`/`loadPromises`/`dontSetActive` у
+//     `DialogElement` нет, поэтому «Избранное» в выдаче подписано именем, а не
+//     «Saved Messages», и промисы аватара партию не ждут (ждёт только
+//     `setLastMessageN`). Ветка `isSaved` (`:827-832`, `noForwardIcon`) — без
+//     вкладки `saved` (расхождение 26); `getPeerMigratedTo` (`:833`) — миграции
+//     legacy-чата в супергруппу у бэкенда нет (`core/peers/peerId.ts::getOutputPeer`,
+//     план глобального поиска, «Отложено» п. 22). Группа `searchGroupMedia`
+//     (`:607`) получает `middleware` своего хелпера, и `destroy()` гасит её
+//     Solid-корень — у оригинала корень не утилизируется (то же, что
+//     расхождение 2); пин — `appSearchSuper.dom.test.ts` (счёт корней).
+// 43. `loadType` не передаёт `offsetPeerId` (`tweb:2280`, `:2286`) и не читает
+//     `value.isEnd.top` (`:2314`). Первое — половина курсора `searchGlobal`
+//     (`offset_peer`), которая нашему серверу не нужна: «rate» — номер
+//     последнего отданного сообщения в глобально монотонной нумерации
+//     (`docs/tweb/global-search.md` часть 3). Второго нет в ответе шва: края
+//     слайса выводит кэш истории менеджера оригинала, а у поисковых ручек его
+//     нет — конец выдачи говорят длина страницы и отсутствие `nextRate`.
 import Scrollable, { ScrollableX } from '@components/scrollable'
 import { horizontalMenu } from '@components/horizontalMenu'
 import type { SelectTab } from '@components/horizontalMenu'
@@ -324,7 +345,13 @@ import { ANCHOR_ACTION_ATTRIBUTE, matchUrl, setBlankToAnchor } from '@lib/richte
 import setInnerHTML from '@helpers/dom/setInnerHTML'
 import SortedUserList from '@components/sortedUserList'
 import createParticipantContextMenu, { type Participant } from '@helpers/dom/createParticipantContextMenu'
-import { DIALOG_LIST_ELEMENT_TAG } from '@components/dialogRow'
+import { addDialogNew, DIALOG_LIST_ELEMENT_TAG, setLastMessageN } from '@components/dialogRow'
+import { createSearchGroup, type SearchGroup, type SearchGroupType } from '@components/searchGroup.solid'
+import wrapSenderToPeer from '@components/wrappers/senderToPeer'
+import { setTransition } from '@core/dom/setTransition'
+import liteMode from '@helpers/liteMode'
+import { INPUT_FILTER_WIRE, type MessagesWireFilter, type MyInputMessagesFilter } from '@core/messages/inputMessagesFilter'
+import type { SearchHistoryOptions } from '@core/managers/messagesManager'
 import findUpTag from '@helpers/dom/findUpTag'
 import filterAsync from '@helpers/array/filterAsync'
 import findAndSplice from '@helpers/array/findAndSplice'
@@ -342,20 +369,13 @@ import SavedDialogsTab, { type SavedDialogsTabProps } from '@components/sidebarR
 import type { SavedStarGift } from '@core/managers/starsManager'
 
 /**
- * tweb `:111` — фильтр сообщений (`inputMessagesFilterPhotoVideo` и т.п.).
- * В оригинале это алиас `MyInputMessagesFilter` из слоя MTProto; у нас слоя нет,
- * поэтому союз выписан явно теми значениями, которые реально ходят через
- * вкладки правой колонки (`sharedMedia.tsx:604-648`).
+ * tweb `:111` — фильтр сообщений (`inputMessagesFilterPhotoVideo` и т.п.),
+ * алиас `MyInputMessagesFilter`, как в оригинале. Союз — в
+ * `core/messages/inputMessagesFilter.ts`: его же читает шов `searchHistory`.
  */
-export type SearchSuperType =
-  'inputMessagesFilterEmpty' |
-  'inputMessagesFilterPhotoVideo' |
-  'inputMessagesFilterDocument' |
-  'inputMessagesFilterUrl' |
-  'inputMessagesFilterMusic' |
-  'inputMessagesFilterRoundVoice'
+export type SearchSuperType = MyInputMessagesFilter
 
-/** tweb `:112-124`. `nextRate`/`chatType` — расхождение 9 в шапке. */
+/** tweb `:112-124`. `chatType` — поле опций истории (`Pick<RequestHistoryOptions, 'chatType'>`). */
 export type SearchSuperContext = {
   peerId: PeerId
   inputFilter: { _: SearchSuperType | undefined }
@@ -364,9 +384,10 @@ export type SearchSuperContext = {
   folderId?: number
   threadId?: number
   date?: number
+  nextRate?: number
   minDate?: number
   maxDate?: number
-}
+} & Pick<SearchHistoryOptions, 'chatType'>
 
 /** tweb `:126-128` — 16 логических вкладок. */
 export type SearchSuperMediaType = 'stories' | 'members' | 'media' |
@@ -418,28 +439,25 @@ type SearchSuperLoadTypeOptions = {
   side: 'top' | 'bottom'
 }
 
-/**
- * tweb `:149-154`. `canAnimateIn` не портирован вместе с группами левой
- * колонки: у оригинала он включает появление ИХ контейнера (`:1115-1128`) и
- * больше нигде не читается — расхождение 11 в шапке.
- */
+/** tweb `:149-154`. `canAnimateIn` — появление контейнера группы (`:1115-1128`). */
 type PerformSearchResultArgs = {
   messages: MyMessage[]
   mediaTab: SearchSuperMediaTab
+  canAnimateIn?: boolean
   append?: boolean
 }
 
 /**
  * tweb `:346-354` — что рендерер ОДНОГО сообщения получает от
- * `performSearchResult`. Сужено до того, что читают наши рендереры:
- * `elemsToAppend` (накопитель, рендереры его не читают) и `searchGroup`
- * (левая колонка, расхождение 11) не портированы.
+ * `performSearchResult`. `elemsToAppend` (накопитель) не портирован: наши
+ * рендереры его не читают, узлы собирает `performSearchResult`.
  */
 type ProcessSearchSuperResult = {
   message: MyMessage
   middleware: Middleware
   promises: Promise<unknown>[]
   inputFilter: SearchSuperType
+  searchGroup?: SearchGroup
   mediaTab: SearchSuperMediaTab
 }
 
@@ -454,7 +472,7 @@ type SearchSuperItem = { element: HTMLElement, message: MyMessage }
  * (`core/navigation/openPeer.ts`).
  */
 export type SearchSuperManagers = {
-  messages: Pick<Managers['messages'], 'mediaHistory' | 'searchCounters'>
+  messages: Pick<Managers['messages'], 'searchHistory' | 'searchCounters'>
   peers: Pick<Managers['peers'], 'fillMirror'>
   groups: Pick<Managers['groups'], 'channelParticipants' | 'addMember' | 'removeMember' | 'unban'>
   stories: Pick<Managers['stories'], 'pinnedStories'>
@@ -464,22 +482,12 @@ export type SearchSuperManagers = {
   presence: SavedDialogsTabProps['managers']['presence']
 }
 
-/** Вид шаред-медиа на проводе (`GET /chats/{id}/media?filter=…`). */
-type MediaFilter = Parameters<Managers['messages']['mediaHistory']>[1]
-
 /**
- * Фильтр сообщений → вид шаред-медиа нашей ручки. У оригинала перевода нет:
- * `inputFilter` уходит в `messages.search` как есть (`tweb:2284`); у нас между
- * ними ручка REST, и таблица перевода — единственное место, где они встречаются.
- * `inputMessagesFilterEmpty` не переводится вовсе: это поиск ЛЕВОЙ колонки.
+ * Фильтр сообщений → вид шаред-медиа на проводе — только для счётчиков вкладок
+ * (`searchCounters` берёт слова REST). Историю класс просит фильтром как есть,
+ * через шов `messages.searchHistory`, как оригинал (`tweb:2284`).
  */
-const WIRE_FILTER: Partial<Record<SearchSuperType, MediaFilter>> = {
-  inputMessagesFilterPhotoVideo: 'media',
-  inputMessagesFilterDocument: 'files',
-  inputMessagesFilterUrl: 'links',
-  inputMessagesFilterMusic: 'music',
-  inputMessagesFilterRoundVoice: 'voice',
-}
+const WIRE_FILTER: Partial<Record<SearchSuperType, MessagesWireFilter>> = INPUT_FILTER_WIRE
 
 /**
  * Виды сообщений, которые проходят фильтр (порт таблицы
@@ -499,6 +507,10 @@ export type AppSearchSuperOptions = {
   /** скроллер приходит СНАРУЖИ: весь профиль скроллится одним контейнером (tweb `:406`) */
   scrollable: Scrollable
   managers: SearchSuperManagers
+  /** tweb `:407` — группы выдачи левой колонки (`sidebarLeft/index.ts:1095-1103`);
+   *  найденные сообщения вкладки `chats` рисуются строками в `messages`. */
+  searchGroups?: { [group in SearchGroupType]: SearchGroup }
+  /** tweb `:409` — `false` у левой колонки: вкладки не прячутся по счётчикам. */
   hideEmptyTabs?: boolean
   /** tweb `:411`, `:447` — подписывать документы отправителем («кто ➝ куда»);
    *  у голосовых и кружков отправитель показывается и без него (`:942`). */
@@ -552,8 +564,9 @@ export default class AppSearchSuper {
   /** tweb `:379-380` — «этот тип уже грузится» и «этот тип дочитан до конца». */
   private loadPromises: Partial<Record<SearchSuperMediaType, Promise<unknown> | null>> = {}
   private loaded: Partial<Record<SearchSuperMediaType, boolean>> = {}
-  /** tweb `:381` — смещение следующей страницы по типу; расхождение 35 в шапке. */
-  private nextRates: Partial<Record<SearchSuperMediaType, number>> = {}
+  /** tweb `:378` — курсор следующей страницы по типу: `nextRate` глобальной
+   *  выдачи (`:2288`, `:2321`) и смещение участников (расхождение 35). */
+  private nextRates: Partial<Record<SearchSuperMediaType, number | undefined>> = {}
 
   /** tweb `:382`, `:420` — «вкладки ещё не выбирали» и живое обещание первого показа. */
   private firstLoad = true
@@ -571,6 +584,11 @@ export default class AppSearchSuper {
 
   private skipScroll?: boolean
 
+  /** tweb `:388`, `:607` — группа «Messages» вкладки `media` при непустом запросе
+   *  (`:1106-1110`); её корень гасит `destroy()` — расхождение 42. */
+  private searchGroupMedia: SearchGroup
+  private searchGroupMediaMiddleware = getMiddleware()
+
   /** tweb `:392-394` — состояние вкладки «Участники»: от первого рендера до `cleanup()`. */
   private membersList?: SortedUserList
   private membersParticipantMap?: Map<PeerId, Participant>
@@ -580,6 +598,7 @@ export default class AppSearchSuper {
   public mediaTabs!: SearchSuperMediaTab[]
   public scrollable!: Scrollable
   public managers!: SearchSuperManagers
+  public searchGroups?: { [group in SearchGroupType]: SearchGroup }
   public hideEmptyTabs? = true
   public showSender? = false
   public onChangeTab?: (mediaTab: SearchSuperMediaTab) => void
@@ -772,6 +791,12 @@ export default class AppSearchSuper {
 
     // * construct end
 
+    this.searchGroupMedia = createSearchGroup({
+      type: 'messages',
+      managers: this.managers,
+      middleware: this.searchGroupMediaMiddleware.get(),
+    })
+
     // tweb `:616-621` — доскроллили до низа: догружаем ТЕКУЩУЮ вкладку.
     // Полем, а не замыканием: `destroy()` снимает ровно этот хук (расхождение 7).
     this.scrollable.onScrolledBottom = this.onScrolledBottom
@@ -947,6 +972,11 @@ export default class AppSearchSuper {
         return false
       }
 
+      // `filterMessagesByInputFilter.ts:18-20` — пустой фильтр пропускает всё
+      if(type === 'inputMessagesFilterEmpty') {
+        return true
+      }
+
       if(type === 'inputMessagesFilterUrl') {
         // Дословно (`filterMessagesByInputFilter.ts:121-126`), и потому шире,
         // чем ищет бэкенд, — расхождение 10 в шапке, задача 15 плана.
@@ -962,7 +992,7 @@ export default class AppSearchSuper {
   /** tweb `:2375-2377` — счётчики нескольких вкладок ОДНИМ запросом. */
   public getSearchCounters(filters: SearchSuperType[]) {
     const { peerId } = this.searchContext
-    const wire = filters.map((inputFilter) => WIRE_FILTER[inputFilter]).filter((f): f is MediaFilter => !!f)
+    const wire = filters.map((inputFilter) => WIRE_FILTER[inputFilter]).filter((f): f is MessagesWireFilter => !!f)
     return this.managers.messages.searchCounters(peerId, wire).then((counters) => filters.map((inputFilter) => ({
       inputFilter,
       count: counters.find((c) => c.filter === WIRE_FILTER[inputFilter])?.count ?? 0,
@@ -1071,6 +1101,12 @@ export default class AppSearchSuper {
     // ссылкой) он получил бы текст «null» — кладём сам адрес текстом.
     subtitleFragment.append(a ?? aFragment)
 
+    // tweb `:1061-1063` — третьей строкой отправитель «кто ➝ куда». Наш
+    // `wrapSenderToPeer` синхронный (его шапка), поэтому рендерер без `await`.
+    if(this.showSender) {
+      subtitleFragment.append('\n', wrapSenderToPeer(message, middleware, this.managers))
+    }
+
     if(!title.textContent) {
       // расхождение 25: `wrapPlainText` без сущностей — тождество
       title.append(webPage.display_url.split('/', 1)[0])
@@ -1106,37 +1142,116 @@ export default class AppSearchSuper {
   }
 
   /**
+   * tweb `:826-871` — найденное сообщение СТРОКОЙ ЧАТЛИСТА: строка пира
+   * (`addDialogNew`) с превью сообщения, подсветкой запроса и временем
+   * (`setLastMessageN`). С группой строка ложится прямо в её список, и узла
+   * наружу нет (`:865-867`); без группы — отдаётся `performSearchResult`.
+   * Расхождение 42 в шапке.
+   */
+  private async processEmptyFilter({ message, searchGroup }: ProcessSearchSuperResult): Promise<SearchSuperItem | undefined> {
+    // `isSaved` (`:827-832`) — вкладки `saved` нет (расхождение 26), а
+    // `getPeerMigratedTo` (`:833`) — миграции чатов нет (расхождение 42).
+    const peerId = message.peerId
+
+    const middleware = this.middleware.get()
+
+    const dialogElement = addDialogNew({
+      peerId,
+      container: searchGroup?.list || false,
+      avatarSize: 'bigger',
+      wrapOptions: {
+        middleware,
+      },
+      autonomous: false,
+      managers: this.managers,
+    })
+
+    await setLastMessageN({
+      dialog: {
+        peerId,
+      },
+      lastMessage: message,
+      dialogElement,
+      highlightWord: this.searchContext.query,
+    })
+
+    if(searchGroup) {
+      return
+    }
+
+    return { element: dialogElement.container, message }
+  }
+
+  /**
    * tweb `:1096-1257`. Собирает узлы по сообщениям и кладёт их в список вкладки
    * — в конец (`append`) при пагинации и в НАЧАЛО при живом апдейте.
    *
-   * Расхождение 11 в шапке — про группы левой колонки. Рендер элемента —
-   * развилка `buildItem` (`tweb:1143-1170`); обвязка вокруг него — классы,
-   * `data-mid`/`data-peer-id`, порядок вставки — оригинальная.
+   * Группы левой колонки (`:1106-1128`, `:1189-1194`): пустой фильтр рисует
+   * строки в `searchGroups.messages`, медиа с непустым запросом — в
+   * `searchGroupMedia` внутри вкладки. Рендер элемента — развилка `buildItem`
+   * (`tweb:1143-1170`); обвязка вокруг него — классы, `data-mid`/`data-peer-id`,
+   * порядок вставки — оригинальная.
    */
-  public async performSearchResult({ messages, mediaTab, append = true }: PerformSearchResultArgs) {
+  public async performSearchResult({ messages, mediaTab, canAnimateIn = false, append = true }: PerformSearchResultArgs) {
+    const sharedMediaDiv = mediaTab.contentTab!
+    const promises: Promise<unknown>[] = []
     const middleware = this.middleware.get()
-    const inputFilter = mediaTab.inputFilter
-    const container = inputFilter && this.tabs[inputFilter]
-    if(!container) {
+    let inputFilter = mediaTab.inputFilter
+    if(!inputFilter) {
       return 0
     }
 
     await getHeavyAnimationPromise()
 
-    const promises: Promise<unknown>[] = []
+    let searchGroup: SearchGroup | undefined
+    if(inputFilter === 'inputMessagesFilterPhotoVideo' && !!this.searchContext.query!.trim()) {
+      inputFilter = 'inputMessagesFilterEmpty'
+      searchGroup = this.searchGroupMedia
+      sharedMediaDiv.append(searchGroup.container)
+    } else if(inputFilter === 'inputMessagesFilterEmpty') {
+      searchGroup = this.searchGroups?.messages
+    }
+
+    // tweb `:1115-1128`. Правил под `is-hidden`/`is-visible` у группы нет и в
+    // стилях оригинала (`_searchGroup.scss`) — классы переключаются как есть.
+    if(canAnimateIn && liteMode.isAvailable('animations') && searchGroup?.container) {
+      const container = searchGroup.container
+      container.classList.add('is-hidden')
+
+      setTimeout(() => setTransition({
+        element: container,
+        className: 'is-visible',
+        forwards: true,
+        duration: 250,
+        onTransitionEnd: () => {
+          container.classList.remove('is-hidden')
+          container.classList.remove('is-visible')
+        },
+      }), 100) // doesn't properly animate without it, even useRafs don't really help
+    }
 
     // tweb `:1173-1186` — сообщения рендерятся ПАРАЛЛЕЛЬНО, и ошибка на одном
     // не роняет партию (расхождение 17 в шапке — про её лог). Рендерер вправе
     // не дать узла (`:1167-1169`, `default: break` — фильтр без рендерера; у
-    // ссылок — строка вышла пустой): такое сообщение пропускается.
+    // ссылок — строка вышла пустой; у пустого фильтра с группой — строка уже
+    // в группе): такое сообщение пропускается.
+    const filter = inputFilter
     const results = messages.map(async(message): Promise<SearchSuperItem | undefined> => {
       try {
-        return await this.buildItem({ message, middleware, promises, inputFilter, mediaTab })
+        return await this.buildItem({ message, middleware, promises, inputFilter: filter, searchGroup, mediaTab })
       } catch {
         return undefined
       }
     })
     const elemsToAppend = (await Promise.all(results)).filter((item): item is SearchSuperItem => !!item)
+
+    // tweb `:1189-1194`
+    const showSearchGroupAnyway = mediaTab.type === 'chats' && searchGroup?.createPlaceholder
+    if(searchGroup && (searchGroup.list.childElementCount || showSearchGroupAnyway)) {
+      searchGroup.setActive()
+
+      if(!searchGroup.list.childElementCount && searchGroup.createPlaceholder) searchGroup.addPlaceholder(searchGroup.createPlaceholder())
+    }
 
     if(this.loadMutex) {
       promises.push(this.loadMutex)
@@ -1152,8 +1267,9 @@ export default class AppSearchSuper {
     const length = elemsToAppend.length
     if(length) {
       const method = append ? 'append' : 'prepend'
+      const container = this.tabs[inputFilter]!
       // При `prepend` порядок сохраняется только обратным обходом: иначе
-      // сообщения встали бы в начале списка задом наперёд.
+      // сообщения встали бы в начале списка задом наперёд (расхождение 12).
       const ordered = append ? elemsToAppend : [...elemsToAppend].reverse()
       ordered.forEach(({ element, message }) => {
         element.classList.add('search-super-item')
@@ -1163,7 +1279,9 @@ export default class AppSearchSuper {
       })
     }
 
-    this.afterPerforming(length, mediaTab)
+    // tweb `:1253` — строки пустого фильтра лежат в группе, узлов наружу нет,
+    // и «ничего не найдено» вкладке не нужно.
+    this.afterPerforming(inputFilter === 'inputMessagesFilterEmpty' ? 1 : length, mediaTab)
 
     return length
   }
@@ -1174,8 +1292,10 @@ export default class AppSearchSuper {
    * задачи 7, 8, 9). Обвязка вокруг узла (классы, `data-mid`/`data-peer-id`,
    * порядок вставки) — в `performSearchResult`, как в оригинале.
    */
-  private buildItem(options: ProcessSearchSuperResult): Promise<SearchSuperItem> | SearchSuperItem | undefined {
+  private buildItem(options: ProcessSearchSuperResult): Promise<SearchSuperItem | undefined> | SearchSuperItem | undefined {
     switch(options.inputFilter) {
+      case 'inputMessagesFilterEmpty':
+        return this.processEmptyFilter(options)
       case 'inputMessagesFilterPhotoVideo':
         return this.processPhotoVideoFilter(options)
       // tweb `:1154-1160` — ОДИН рендерер на файлы, музыку, голосовые и кружки.
@@ -1188,11 +1308,6 @@ export default class AppSearchSuper {
         const element = this.processUrlFilter(options)
         return element ? { element, message: options.message } : undefined
       }
-
-      // tweb `:1167-1169` — фильтр без рендерера (в правой колонке таких нет,
-      // `inputMessagesFilterEmpty` — левая) узла не даёт.
-      default:
-        return undefined
     }
   }
 
@@ -1328,15 +1443,27 @@ export default class AppSearchSuper {
 
   /**
    * Роль `copySearchContext` → `setSearchContext` (`tweb:757`, `:2795-2801`):
-   * за пределы отрисованных плиток вьювер листает той же ручкой, что и
-   * вкладка. Расхождение 14 в шапке.
+   * за пределы отрисованных плиток вьювер листает ТЕМ ЖЕ контекстом поиска,
+   * что и вкладка, — копией на момент открытия (`copy(this.searchContext)`),
+   * через тот же шов `searchHistory`. Курсор у загрузчика СВОЙ: он листает с
+   * начала выдачи до якоря (расхождение 14), поэтому `nextRate` вкладки ему не
+   * передаётся, а свой ведётся страница за страницей.
    */
   private loadMoreMedia(inputFilter: SearchSuperType, className: string): OpenMediaViewerArgs['loadMoreMedia'] {
-    const { peerId } = this.searchContext
-    const wireFilter = WIRE_FILTER[inputFilter]!
+    const context: SearchHistoryOptions = { ...this.searchContext, inputFilter: { _: inputFilter } }
+    let nextRate: number | undefined = 0
     const loader = createMediaNeighboursLoader({
-      fetchPage: async(offsetId, limit) =>
-        (await this.managers.messages.mediaHistory(peerId, wireFilter, offsetId, limit)).messages,
+      fetchPage: async(offsetId, limit) => {
+        // глобальная выдача без курсора дальше кончилась: запрос с пустым
+        // курсором отдал бы её первую страницу заново
+        if(offsetId && context.folderId !== undefined && !nextRate) {
+          return []
+        }
+
+        const value = await this.managers.messages.searchHistory({ ...context, offsetId, limit, nextRate })
+        nextRate = value.nextRate
+        return value.messages
+      },
     })
 
     return async(older: boolean, anchor: ViewerItem | undefined, loadCount: number) => {
@@ -1955,12 +2082,24 @@ export default class AppSearchSuper {
       })
     }
 
-    const wireFilter = inputFilter && WIRE_FILTER[inputFilter]
-    if(!inputFilter || !wireFilter) {
+    // Вкладки без фильтра сообщений, у которых нет и своего загрузчика
+    // (`stories`/`similar`/`channels`/`apps`/`posts`, выше), у нас не
+    // объявляются; у оригинала сюда не доходит ни одна.
+    if(!inputFilter) {
       return Promise.resolve()
     }
 
     const history = this.historyStorage[inputFilter] ??= []
+
+    // tweb `:2231-2240` — вкладка `chats`: пустой запрос без пира и даты
+    // выдачи сообщений не просит вовсе, её содержимое — группы. Сами группы
+    // (`loadChats()` + `loadedChats`, `:2232-2235`) рисует задача 9.
+    if(inputFilter === 'inputMessagesFilterEmpty' && !history.length) {
+      if(!this.searchContext.query!.trim() && !this.searchContext.peerId && !this.searchContext.minDate) {
+        this.loaded[type] = true
+        return Promise.resolve()
+      }
+    }
 
     const promise: Promise<unknown> = this.loadPromises[type] = Promise.resolve().then(async() => {
       // 2 — рендер из кэша
@@ -1988,13 +2127,20 @@ export default class AppSearchSuper {
         })
       }
 
-      // 3 — курсор: id последнего уже загруженного (`tweb:2278-2279`)
+      // 3 — курсор: id последнего уже загруженного (`tweb:2278-2279`), у
+      // глобальной выдачи — ещё и `nextRate` прошлого ответа (`:2288`). Ручку
+      // по контексту выбирает шов `searchHistory` (`requestHistory` оригинала).
+      // `offsetPeerId` (`:2280`) не передаётся — расхождение 43.
       const lastItem = history[history.length - 1]
       const offsetId = lastItem?.mid || 0
 
-      const value = await this.managers.messages.mediaHistory(
-        this.searchContext.peerId, wireFilter, offsetId, loadCount,
-      )
+      const value = await this.managers.messages.searchHistory({
+        ...this.searchContext,
+        inputFilter: { _: inputFilter },
+        offsetId,
+        limit: loadCount,
+        nextRate: this.nextRates[type] ??= 0,
+      })
       const messages = value.messages
       saveSharedMediaMessages(messages)
 
@@ -2008,11 +2154,16 @@ export default class AppSearchSuper {
         return
       }
 
-      // `tweb:2310-2319`, первая ветка — единственная применимая к нашей ручке
-      // (расхождение 9 в шапке).
-      if(messages.length < loadCount) {
+      // `tweb:2310-2319`: страница короче запрошенной ИЛИ глобальная выдача
+      // (`folderId` задан) без курсора дальше. `isEnd.top` — расхождение 43.
+      if(
+        messages.length < loadCount ||
+        (this.searchContext.folderId !== undefined && !value.nextRate)
+      ) {
         this.loaded[type] = true
       }
+
+      this.nextRates[type] = value.nextRate
 
       if(justLoad) {
         return
@@ -2041,6 +2192,7 @@ export default class AppSearchSuper {
       return this.performSearchResult({
         messages: this.filterMessagesByType(messages, inputFilter),
         mediaTab,
+        canAnimateIn: !offsetId,
       })
     }).catch(() => {
       // Оригинал логирует (`:2353-2354`); логгера у подсистемы нет — ошибка
@@ -2251,7 +2403,8 @@ export default class AppSearchSuper {
    * нарисуются без сети (`tweb:2239-2276`).
    *
    * Не портировано (нечего сбрасывать до своих задач):
-   * `loadedChats` — задача 12; отмена выделения (`:2735-2737`) — задача 14.
+   * `loadedChats` — задача 9 плана глобального поиска; отмена выделения
+   * (`:2735-2737`) — задача 14.
    */
   public cleanup() {
     this.loadPromises = {}
@@ -2300,7 +2453,6 @@ export default class AppSearchSuper {
    * показывали»: списки пусты, карточки секций снова скрыты, у вкладок без
    * кэша крутится прелоадер, скролл — в начало.
    *
-   * `searchGroupMedia.clear()` (`:2791`) пропущен — расхождение 4 в шапке.
    */
   public cleanupHTML() {
     this.mediaTabs.forEach((tab) => {
@@ -2330,6 +2482,7 @@ export default class AppSearchSuper {
       }
     })
 
+    this.searchGroupMedia.clear()
     this.scrollable.scrollPosition = 0
   }
 
@@ -2338,7 +2491,7 @@ export default class AppSearchSuper {
    * переданный снаружи (кэш принадлежит обвязке и живёт по пирам) и зовёт
    * `cleanup()`. Загрузку НЕ запускает — это ответственность вызывающего.
    */
-  public setQuery({ peerId, query, threadId, historyStorage, folderId, minDate, maxDate }: {
+  public setQuery({ peerId, query, threadId, historyStorage, folderId, minDate, maxDate, chatType }: {
     peerId: PeerId
     query?: string
     threadId?: number
@@ -2346,7 +2499,7 @@ export default class AppSearchSuper {
     folderId?: number
     minDate?: number
     maxDate?: number
-  }) {
+  } & Pick<SearchHistoryOptions, 'chatType'>) {
     this.searchContext = {
       peerId,
       query: query || '',
@@ -2355,6 +2508,7 @@ export default class AppSearchSuper {
       folderId,
       minDate,
       maxDate,
+      chatType,
     }
 
     this.historyStorage = historyStorage ?? {}
@@ -2379,9 +2533,10 @@ export default class AppSearchSuper {
     this.swipeHandler?.removeListeners()
 
     // Расхождение 2 в шапке: корни Solid-секций утилизируются, чтобы
-    // `destroy()` не оставлял следов.
+    // `destroy()` не оставлял следов; корень группы медиа — расхождение 42.
     this.disposeSections.forEach((dispose) => dispose())
     this.disposeSections.length = 0
+    this.searchGroupMediaMiddleware.destroy()
 
     this.container.remove()
 

@@ -238,7 +238,7 @@ GroupsOnly/ChannelsOnly` (`:21-26`); пункты `ButtonMenu` с галочко
 | `components/Sidebar.tsx` | шапка (`:241-257`: бургер, `InputSearch` с `onFocus → setSearching(true)`), `.sidebar-content.transition.zoom-fade` (`:286`), `#chatlist-container` с `active` по `!searching` (`:292`), **`#search-container` рендерится условно** (`:377-386`), `is-search-active` на `.item-main` (`:240`) | `index.html:91-102` + `initSearch` | шов: узел `#search-container` становится постоянным, переходом владеет `TransitionSlider` |
 | `components/SidebarMenuButton.tsx` | бургер + `state-back` по пропу `searching` | эффект `index.ts:408-418` | остаётся; проп `searching` — от владельца поиска |
 | `shared/ui/InputSearch/InputSearch.tsx` | React-порт `InputSearch` (без `onEnter`, без debounce внутри) | `inputSearch.ts` | остаётся; `onEnter` добавить |
-| `components/appSearchSuper.ts` (2393) | класс, портирован правой колонкой; расхождения 9 (`nextRate`, `:82-86`), 11 (`searchGroups`, `:98-100`), 24 (`showSender`, `:168-171`), 33 (колбэки хоста), 36 (Solid-вкладки через `mountSolid`); `SearchSuperManagers` `:456-462`; `NO_SECTION_TYPES` `:397-405` | `appSearchSuper.ts` | расширяется: `searchGroups`/`asChatList`/`hideEmptyTabs`/`showSender`, `processEmptyFilter`, `loadChats`, `loadChannels`, `nextRate` |
+| `components/appSearchSuper.ts` | класс, портирован правой колонкой; **задача 8 — сделано**: опция `searchGroups`, группа `searchGroupMedia` (медиа с запросом — строки, а не плитки), `processEmptyFilter` (строка чатлиста с превью и подсветкой), курсор `nextRate` (контекст, запрос, критерий «загружено» при `folderId`, сброс), `showSender` у ссылок, `hideEmptyTabs: false`; вся история — через `messages.searchHistory` (задача 6), `mediaHistory` класс больше не зовёт. Расхождения 4, 9, 11, 24 сняты; заведены 41 (`asChatList` у tweb без читателя — не заводится), 42 (объём `processEmptyFilter`, корень `searchGroupMedia`), 43 (`offsetPeerId`, `isEnd.top`) | `appSearchSuper.ts` | задача 9 — `loadChats`, `loadChannels`, `renderPeerDialogs` (группы кладёт в вкладку `loadChats`, у нас до неё — никто) |
 | `core/hooks/useSearchSuper.ts` | шов «панель профиля ↔ класс» (скроллер создаёт хозяин) | `sharedMediaTab.tsx` | образец формы для владельца поиска |
 | `components/dialogRow.ts` | `DialogElement`/`addDialogNew` (+`container.dialogElement`)/`createChatList`, **`setListClickListener`** (клик → `openPeer` + `requestMessageJump` по `data-mid`, `onFound`, `active` в автономном списке) и **`setLastMessageN`** в объёме поиска (`data-mid`, иконка форварда, миниатюра 20×20 с play, «Автор:»/«You:», подсветка, время); что не портировано — шапка файла | `appDialogsManager.ts:1751-1949`, `:1983-2244`, `:2636-2652` | задача 7 — сделано |
 | `components/wrappers/messageForReply.ts` | порт `wrapMessageForReply`: строка по умолчанию и богатая форма `plain: false` с `highlightWord` → `messageEntityHighlight` → `i.text-highlight` (`lib/richtext/wrapRichText.ts`) | `messageForReply.ts:36-49`, `:384-397` | задача 7 — сделано |
@@ -308,9 +308,8 @@ GroupsOnly/ChannelsOnly` (`:21-26`); пункты `ButtonMenu` с галочко
    `useTransitionSlider.ts` (потребитель `UserInfoPanel.tsx`). После сноса
    `SearchView` у `TabSlide` остаётся один потребитель — `ChatList.tsx` (папки);
    он — предмет **соседней программы папок**, здесь не трогается.
-8. **`showSender`/`nextRate`/`searchGroups` в классе объявлены расхождениями**
-   9, 11, 24 (`components/appSearchSuper.ts:82-101`, `:168-172`) — снимаются
-   этой программой.
+8. ~~**`showSender`/`nextRate`/`searchGroups` в классе объявлены расхождениями**
+   9, 11, 24~~ — снято задачей 8 (§ 2.1, строка класса).
 9. ~~**`dialogRow.ts` не умеет превью сообщения**~~ — снято задачей 7:
    `setLastMessageN`, `setListClickListener`, `highlightWord` портированы (§ 2.1).
    Участники правой колонки по-прежнему вешают клик сами (`appSearchSuper.ts`,

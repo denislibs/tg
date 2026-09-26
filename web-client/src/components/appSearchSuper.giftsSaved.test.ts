@@ -45,7 +45,7 @@ function fakeBackend(opts: { gifts?: SavedStarGift[]; dialogs?: SavedDialog[] } 
   const calls = { gifts: 0, dialogs: 0, media: 0 }
   const managers = {
     messages: {
-      mediaHistory: async () => { calls.media++; return { messages: [], count: 0 } },
+      searchHistory: async () => { calls.media++; return { messages: [], count: 0 } },
       searchCounters: async (_peerId: number, filters: string[]) => filters.map((filter) => ({ filter, count: 0 })),
     },
     peers: { fillMirror: async () => {} },

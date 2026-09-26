@@ -103,8 +103,8 @@ export type SearchHistoryChatType = 'all' | 'users' | 'groups' | 'channels'
 
 /**
  * Контекст `messages.searchHistory` — порт поисковой части tweb
- * `RequestHistoryOptions` (`appMessagesManager.ts:283-315`): ровно то, что
- * `AppSearchSuper` кладёт в запрос (`appSearchSuper.ts:2281-2291`). Номера —
+ * `RequestHistoryOptions` (`appMessagesManager.ts:286-316`): ровно то, что
+ * `AppSearchSuper` кладёт в запрос (`appSearchSuper.ts:2282-2290`). Номера —
  * клиентские, даты — в миллисекундах, как у оригинала (`minDate / 1000 | 0`
  * делает менеджер, `:9931-9932`). `peerId: 0` — «без пира» (`NULL_PEER_ID`).
  */
@@ -478,7 +478,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
 
   // Порт развилки tweb `requestHistory` (`appMessagesManager.ts:9966-10003`) в
   // объёме поиска: класс `AppSearchSuper` зовёт ОДИН метод с контекстом поиска
-  // (`appSearchSuper.ts:2281-2291`), а ручку выбирает воркер — там же, где
+  // (`appSearchSuper.ts:2282-2290`), а ручку выбирает воркер — там же, где
   // выбирает её оригинал. Сколько ручек у бэкенда, класс не знает.
   //
   //  • пир задан, курсора глобальной выдачи нет и `folderId` не задан — поиск
