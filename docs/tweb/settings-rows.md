@@ -353,7 +353,7 @@ div.tabs-container[data-animation="navigation"]  (= .sidebar-slider колонк
 |---|---|---|---|
 | `components/SettingsView.tsx` (361) | `settings.tsx` | React | своя карточка профиля вместо `PeerProfile`; лишние «Ночной режим», карточка контактов, `EmojiStatus.Set`; ключи `PrivacySettings`, `ChatList.Filter.List.Title`; ⋮ без обработчика; нет поиска/выхода; Premium-секция иначе |
 | `components/SettingsSubScreen.tsx` (171) | — (роутер) | React | мок `SCREENS` мёртв: `General` перехвачен раньше (`:114`), `renderDedicated` недостижим → `QuickReaction` недостижим |
-| `settings/NotificationsSettings.tsx` | `notifications.tsx` | React | см. пилот в плане |
+| `sidebarLeft/tabs/notifications.solid.tsx` | `notifications.tsx` | **Solid, HEAD** (пилот 2D, задача 6) | вкладка `AppNotificationsTab` через хост; подпись вне карточки, `NotificationRow` с `fakeDisabled`/`clickable` без разрешения, `Button btn-primary primary btn-transparent` c `unmute`, `RangeSettingSelector`, типы чатов пишутся на закрытии. Расхождения (шапка файла): нет «All Accounts» и подписи `MultiAccount.ShowNotificationsFromCaption` (О-1), секций Stories/Reactions/Other (О-3…О-5); отказ в разрешении даёт тост (у tweb `throw 1` в onFulfilled — необработанный reject); типы чатов — `stores/notifyStore.ts` вместо `appNotificationsManager`; побочка push — подписчик `client/pushSetup.ts::watchPushConditions` (tweb `uiNotificationsManager.ts:320-322`). DOM против `14-left-14`: отличия только `span.checkbox-field` + `row-checkbox-field-toggle` (HEAD, § 7), нет `item-secondary` у вкладки (шов хоста, задача 28) и строки All Accounts (О-1). React `settings/NotificationsSettings.tsx` снесён |
 | `settings/DataStorageSettings.tsx` | `dataAndStorage/*`, `autoDownload/*` | React | подэкраны `sub` вместо вкладок; чекбоксы вместо тумблеров; `Row accent` вместо `Button`; нет строки stream chunks; «Clear All» чистит только файлы; мгновенное сохранение |
 | `settings/PrivacySecuritySettings.tsx` | `privacyAndSecurity.tsx` | React | значения `value` вместо `Row.Subtitle` (`:115-133`); лишние «Сессии» и «Удаление аккаунта»; нет web sessions, login email, секций NewChats/Sensitive/Payments |
 | `settings/PrivacyRule.tsx` | `privacySection.tsx` + `privacy/*` | React | **«Н..»**: счётчик исключения в `value` → `row-title-right` (`:162`, `:170`), правая часть не сжимается (`_row.scss:230-233`), и русский заголовок съедается; у tweb это `Row.Subtitle` (`privacySection.tsx:214-216`). Радио — галочкой; мгновенное сохранение; исключения только пользователи |
@@ -404,9 +404,13 @@ div.tabs-container[data-animation="navigation"]  (= .sidebar-slider колонк
 7. **Кнопки-действия — строки** (`Row accent/danger`), у tweb — `Button btn-primary btn-transparent`.
 8. **Радио — галочка** (`Row selected`, отступление `kit.tsx:318-327`) или свой `RadioRow`.
 9. **Свои CSS-модули** на месте портированных глобальных стилей (громкость, темы, сетки, строки хоткеев).
-10. **Момент сохранения**: у нас сразу, у tweb часть — на закрытии вкладки.
+10. **Момент сохранения**: у нас сразу, у tweb часть — на закрытии вкладки. «Уведомления» (задача 6)
+    уже пишут типы чатов на закрытии (`NotifySection`, пин — `notifications.solid.test.tsx`).
 
 ### 8.3.1. Модель «All Accounts»
+
+Итог задачи 6: строка и подпись не портированы (О-1 плана 2D), у места — комментарий с номером
+(`notifications.solid.tsx`, расхождение 1 шапки).
 
 `notifyAllAccounts` у tweb фильтрует, **какая вкладка браузера** покажет уведомление
 (`appNotificationsManager.ts:449-475`, `appTabsManager.getTabs()` по `accountNumber`): несколько
@@ -432,15 +436,17 @@ div.tabs-container[data-animation="navigation"]  (= .sidebar-slider колонк
       линия появились; вернулись — пропали.
 - [ ] Подписи секций — под карточкой, вне её фона (кроме 2FA/почты — внутри, заблокированных — над).
 - [ ] Заголовок секции — внутри `.sidebar-left-section-content`, класс `sidebar-left-h2`.
-- [ ] «Уведомления»: без разрешения три строки серые (`is-fake-disabled`), клик по ним и
-      «Enable Notifications» просит разрешение; с разрешением — строки обычные, подпись
-      `MultiAccount.ShowNotificationsFromCaption`.
+- [x] «Уведомления» (задача 6): без разрешения ДВЕ строки серые (`is-fake-disabled`, третья —
+      «All Accounts» — О-1), клик по ним и «Enable Notifications» просит разрешение ровно раз;
+      с разрешением — строки обычные, подписи нет (`MultiAccount.ShowNotificationsFromCaption` —
+      О-1).
 - [ ] Исключения приватности: «Никогда не показывать» читается целиком, счётчик — строкой ниже.
 - [ ] Тумблер в строке с подписью стоит в правой колонке (`div.row-right`, `row-grid`).
 - [ ] Строки с меню (`contextMenu`) открывают меню по клику и правому клику, Enter/Space с
       клавиатуры жмут кликабельную строку.
 - [ ] Сохранение на закрытии: поменяли тип уведомлений / правило приватности, закрыли вкладку —
-      значение на сервере (перезагрузка страницы показывает новое).
+      значение на сервере (перезагрузка страницы показывает новое). Типы уведомлений — проверено
+      задачей 6 на стенде.
 
 Машинная сверка: `node tools/tweb-parity/dom-parity.mjs 14-left-14-settings-notifications ours.txt`
 (и прочие дампы § 7) — ожидаемые отличия только в классах, перечисленных в § 7;
