@@ -642,6 +642,18 @@ const uk = {
   'PasscodeLock.Logout.Text':
     'Ви впевнені, що хочете вийти? Доведеться авторизуватися знову.',
   'PasscodeLock.LockNow': 'Заблокувати застосунок',
+  // вкладка «Код-пароль» (порт tweb passcodeLock/*, план 2D, задача 18)
+  'PasscodeLock.Notice': 'Важливо: якщо Ви забудете код-пароль, доведеться вийти з акаунта.',
+  'PasscodeLock.Next': 'Далі',
+  'PasscodeLock.Disabled': 'Вимкнено',
+  MinutesShort: {
+    one_value: '%1$d хв',
+    few_value: '%1$d хв',
+    many_value: '%1$d хв',
+    other_value: '%1$d хв',
+  },
+  'PasscodeLock.EnableLockShortcut': 'Сполучення клавіш для блокування',
+  'PasscodeLock.LockShortcutDescription': 'Підберіть сполучення, яке спрацює у Вашому браузері.',
   // Passkeys
   'Passkeys.Caption':
     'Ключі доступу дозволяють входити без пароля — за відбитком пальця, обличчям або PIN-кодом пристрою.',

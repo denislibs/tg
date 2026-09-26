@@ -64,3 +64,24 @@ export async function disablePasscode(): Promise<void> {
 export async function changePasscode(newPasscode: string, persist: { clearAll(): Promise<void> }): Promise<void> {
   await enablePasscode(newPasscode, persist)
 }
+
+/**
+ * Порт tweb `lib/passcode/actions.ts:14-16` (`PasscodeActions`,
+ * `usePasscodeActions`) в нашем объёме: набор действий, который вкладка ввода
+ * кода отдаёт своему `onSubmit` третьим аргументом (`enterPasswordTab.tsx:53`),
+ * — так открывающая сторона проверяет или задаёт код, не зная про `persist`.
+ * Не хук: у tweb действия берут `rootScope`/`apiManagerProxy` из
+ * `useLockScreenHotReloadGuard()`, у нас им нужен только writer офлайн-стора
+ * (`managers.persist`), его передаёт вкладка. `unlockWithPasscode` нет — у нас
+ * нет ключа шифрования, который надо было бы выводить при разблокировке.
+ */
+export function passcodeActions(persist: { clearAll(): Promise<void> }) {
+  return {
+    enablePasscode: (passcode: string) => enablePasscode(passcode, persist),
+    isMyPasscode,
+    disablePasscode,
+    changePasscode: (passcode: string) => changePasscode(passcode, persist),
+  }
+}
+
+export type PasscodeActions = ReturnType<typeof passcodeActions>

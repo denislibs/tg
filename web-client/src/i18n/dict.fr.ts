@@ -612,6 +612,12 @@ const fr = {
   'PasscodeLock.Logout.Text':
     'Voulez-vous vraiment vous déconnecter ? Vous devrez vous reconnecter.',
   'PasscodeLock.LockNow': 'Verrouiller l\'application',
+  // вкладка «Код-пароль» (порт tweb passcodeLock/*, план 2D, задача 18)
+  'PasscodeLock.Notice': 'Remarque : si vous oubliez votre code d\'accès, vous devrez vous déconnecter.',
+  'PasscodeLock.Next': 'Suivant',
+  'PasscodeLock.Disabled': 'Désactivé',
+  'PasscodeLock.EnableLockShortcut': 'Raccourci de verrouillage',
+  'PasscodeLock.LockShortcutDescription': 'Essayez plusieurs combinaisons pour trouver le raccourci qui fonctionne dans votre navigateur.',
   // Passkeys
   'Passkeys.Caption':
     'Les clés d\'accès vous permettent de vous connecter sans mot de passe, avec votre empreinte, votre visage ou le code PIN de l\'appareil.',

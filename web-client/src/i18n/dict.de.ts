@@ -612,6 +612,16 @@ const de = {
   'PasscodeLock.Logout.Text':
     'Möchtest du dich wirklich abmelden? Du musst dich erneut anmelden.',
   'PasscodeLock.LockNow': 'App sperren',
+  // вкладка «Код-пароль» (порт tweb passcodeLock/*, план 2D, задача 18)
+  'PasscodeLock.Notice': 'Hinweis: Wenn du deinen Code vergisst, musst du dich abmelden.',
+  'PasscodeLock.Next': 'Weiter',
+  'PasscodeLock.Disabled': 'Deaktiviert',
+  MinutesShort: {
+    one_value: '%1$d Min.',
+    other_value: '%1$d Min.',
+  },
+  'PasscodeLock.EnableLockShortcut': 'Tastenkürzel zum Sperren',
+  'PasscodeLock.LockShortcutDescription': 'Probiere aus, welches Tastenkürzel in deinem Browser funktioniert.',
   // Passkeys
   'Passkeys.Caption':
     'Mit Passkeys meldest du dich ohne Passwort an – per Fingerabdruck, Gesicht oder Geräte-PIN.',

@@ -28,6 +28,7 @@ import { useUrlSync } from './core/hooks/useUrlSync'
 import { startChatHistory, backChatLevel } from './core/navigation/chatHistory'
 import { useShellEnterAnimation } from './core/hooks/useShellEnterAnimation'
 import { useAutoLock } from './core/hooks/useAutoLock'
+import { useLockScreenShortcut } from './core/hooks/useLockScreenShortcut'
 import { useGlobalToast } from './core/hooks/useGlobalToast'
 import { useDeepLinks } from './core/hooks/useDeepLinks'
 import { useChatList } from './core/hooks/useChatList'
@@ -63,6 +64,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   useAppBootstrap()
   useShellEnterAnimation()
   useAutoLock()
+  useLockScreenShortcut()
   useAppHotkeys()
   const { toast, showToast } = useGlobalToast()
 

@@ -1199,6 +1199,18 @@ const ru = {
   'PasscodeLock.Logout.Text':
     'Вы уверены, что хотите выйти? Придётся авторизоваться заново.',
   'PasscodeLock.LockNow': 'Заблокировать приложение',
+  // вкладка «Код-пароль» (порт tweb passcodeLock/*, план 2D, задача 18)
+  'PasscodeLock.Notice': 'Примечание: если Вы забудете код-пароль, придётся выйти из аккаунта.',
+  'PasscodeLock.Next': 'Далее',
+  'PasscodeLock.Disabled': 'Отключена',
+  MinutesShort: {
+    one_value: '%1$d мин',
+    few_value: '%1$d мин',
+    many_value: '%1$d мин',
+    other_value: '%1$d мин',
+  },
+  'PasscodeLock.EnableLockShortcut': 'Сочетание клавиш для блокировки',
+  'PasscodeLock.LockShortcutDescription': 'Подберите сочетание, которое сработает в Вашем браузере.',
   // Passkeys
   'Passkeys.Caption':
     'Ключи доступа позволяют входить без пароля — по отпечатку пальца, лицу или ПИН-коду устройства.',

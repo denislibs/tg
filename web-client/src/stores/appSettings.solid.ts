@@ -58,6 +58,14 @@ const APP_SETTINGS_KEYS = {
     volume: 'notifyVolume',
     sentMessageSound: 'sentMessageSound',
   },
+  // tweb `config/state.ts:148-154` (`passcode`) — вкладка «Код-пароль» (задача 18).
+  // `canAttemptAgainOn` не заведён: его читает экран блокировки, не вкладка.
+  passcode: {
+    enabled: 'passcodeEnabled',
+    autoLockTimeoutMins: 'passcodeAutoLockMins',
+    lockShortcutEnabled: 'passcodeLockShortcutEnabled',
+    lockShortcut: 'passcodeLockShortcut',
+  },
 } as const satisfies KeyTable
 
 type Table = typeof APP_SETTINGS_KEYS
