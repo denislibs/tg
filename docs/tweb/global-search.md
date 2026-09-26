@@ -238,7 +238,7 @@ GroupsOnly/ChannelsOnly` (`:21-26`); пункты `ButtonMenu` с галочко
 | `components/Sidebar.tsx` | шапка (`:241-257`: бургер, `InputSearch` с `onFocus → setSearching(true)`), `.sidebar-content.transition.zoom-fade` (`:286`), `#chatlist-container` с `active` по `!searching` (`:292`), **`#search-container` рендерится условно** (`:377-386`), `is-search-active` на `.item-main` (`:240`) | `index.html:91-102` + `initSearch` | шов: узел `#search-container` становится постоянным, переходом владеет `TransitionSlider` |
 | `components/SidebarMenuButton.tsx` | бургер + `state-back` по пропу `searching` | эффект `index.ts:408-418` | остаётся; проп `searching` — от владельца поиска |
 | `shared/ui/InputSearch/InputSearch.tsx` | React-порт `InputSearch` (без `onEnter`, без debounce внутри) | `inputSearch.ts` | остаётся; `onEnter` добавить |
-| `components/appSearchSuper.ts` (2393) | класс, портирован правой колонкой; расхождения 9 (`nextRate`, `:82-86`), 11 (`searchGroups`, `:98-100`), 24 (`showSender`, `:168-171`), 33 (колбэки хоста), 36 (Solid-вкладки через `mountSolid`); `SearchSuperManagers` `:456-462`; `NO_SECTION_TYPES` `:397-405` | `appSearchSuper.ts` | расширяется: `searchGroups`/`asChatList`/`hideEmptyTabs`/`showSender`, `processEmptyFilter`, `loadChats`, `loadChannels`, `nextRate` |
+| `components/appSearchSuper.ts` | класс, портирован правой колонкой; **задача 8 — сделано**: опция `searchGroups`, группа `searchGroupMedia` (медиа с запросом — строки, а не плитки), `processEmptyFilter` (строка чатлиста с превью и подсветкой), курсор `nextRate` (контекст, запрос, критерий «загружено» при `folderId`, сброс), `showSender` у ссылок, `hideEmptyTabs: false`; вся история — через `messages.searchHistory` (задача 6), `mediaHistory` класс больше не зовёт. Расхождения 4, 9, 11, 24 сняты; заведены 41 (`asChatList` у tweb без читателя — не заводится), 42 (объём `processEmptyFilter`, корень `searchGroupMedia`), 43 (`offsetPeerId`, `isEnd.top`) | `appSearchSuper.ts` | задача 9 — `loadChats`, `loadChannels`, `renderPeerDialogs` (группы кладёт в вкладку `loadChats`, у нас до неё — никто) |
 | `core/hooks/useSearchSuper.ts` | шов «панель профиля ↔ класс» (скроллер создаёт хозяин) | `sharedMediaTab.tsx` | образец формы для владельца поиска |
 | `components/dialogRow.ts` | `DialogElement`/`addDialogNew` (+`container.dialogElement`)/`createChatList`, **`setListClickListener`** (клик → `openPeer` + `requestMessageJump` по `data-mid`, `onFound`, `active` в автономном списке) и **`setLastMessageN`** в объёме поиска (`data-mid`, иконка форварда, миниатюра 20×20 с play, «Автор:»/«You:», подсветка, время); что не портировано — шапка файла | `appDialogsManager.ts:1751-1949`, `:1983-2244`, `:2636-2652` | задача 7 — сделано |
 | `components/wrappers/messageForReply.ts` | порт `wrapMessageForReply`: строка по умолчанию и богатая форма `plain: false` с `highlightWord` → `messageEntityHighlight` → `i.text-highlight` (`lib/richtext/wrapRichText.ts`) | `messageForReply.ts:36-49`, `:384-397` | задача 7 — сделано |
@@ -247,7 +247,9 @@ GroupsOnly/ChannelsOnly` (`:21-26`); пункты `ButtonMenu` с галочко
 | `components/section.solid.tsx` | Solid-`Section` с `nameRight`/`nameRef`/`innerClass`/`contentProps`/`ref` | `section.tsx` | база для `createSearchGroup` |
 | `components/lottieAnimation.solid.tsx`, `components/buttonMenu.ts`, `components/buttonMenuToggle.ts`, `components/popups/popupPeer.ts` | Solid-lottie, `ButtonMenu`, `ButtonMenuToggle` (порт файлом, задача 10), `PopupPeer` | — | база для `EmptySearchPlaceholder`, `ChatTypeMenu`, `confirmationPopup` |
 | `components/chatTypeMenu.solid.tsx`, `components/emptySearchPlaceholder.solid.tsx` (+`*.module.scss` 1:1), `shared/solid/defineSolidElement.solid.tsx` | `<chat-type-menu>`/`<empty-search-placeholder>` — custom elements, как у оригинала: изменяемые `props` (`new ChatTypeMenu()`, `feedProps`, `props.selected`), корень гаснет на снятии узла | `chatTypeMenu/index.tsx`, `emptySearchPlaceholder/index.tsx`, `lib/solidjs/defineSolidElement.tsx` | потребитель — владелец поиска (задача 12) |
-| `shared/ui/PeerSelector/PeerSelector.tsx:100` | React-`renderEntity` (чип `.selector-user`) | `selectorSearch.ts:319-400` | чипу поиска нужен ванильный `renderEntity` |
+| `shared/ui/PeerSelector/PeerSelector.tsx:100` | React-`renderEntity` (чип `.selector-user`) | `selectorSearch.ts:319-400` | остаётся своему экрану; чипу поиска — ванильный `components/selectorEntity.ts` |
+| `components/selectorEntity.ts` | `renderEntity({key, middleware, managers, title?, avatarSize, fallbackIcon?, meAsSaved = true, primary?})` → `{element, avatar, promises}`: `div.selector-user[.selector-user-primary][data-key]` с `middlewareHelper` на узле, аватар (`avatarNew`, `isDialog` → «Избранное», `setIcon` для ключа-не-пира) + крестик, заголовок (`PeerTitle` с `dialog` или строка текстом); расхождения — шапка файла | `selectorSearch.ts:321-404` | задача 11 — сделано; потребитель — владелец поиска (задача 12) |
+| `helpers/date.ts` `fillTipDates`/`DateData`, `fillLocalizedDates`, `monthsLocalized`/`daysLocalized`, `getWeekDays`/`getMonths` | разбор запроса в чипы дат (границы в мс); названия месяцев/дней — `Intl` на языке пакета, наполняются в `client/boot.ts` на каждое `language_apply` (tweb `index.ts:482-491`); новых ключей локализации нет | `helpers/date.ts:6-57`, `:220-592` | задача 11 — сделано; два бага оригинала исправлены и объявлены в шапке (дни с понедельника под индексом `getDay()`; `Date.UTC` при местном форматировании) |
 | `core/navigation/appNavigationController.ts` | порт контроллера; тип `'global-search'` объявлен (`:84`) | `appNavigationController.ts` | используется как есть |
 | `core/state/state.ts:22`, `core/state/migrateRecentSearch.ts` | `recentSearch: string[]` в `AppState` (ключ чата — строка, не число: разница модели) | `config/state.ts:209` | используется как есть; писатель — `pushRecentSearch` в менеджере |
 | `stores/searchStore.ts` `pendingJump` | «результат ждёт открытия чата → прыжок к сообщению» (`SearchView.tsx:134`) | `appImManager.setInnerPeer({peerId, lastMsgId})` | остаётся: клик по строке группы `messages` ставит `pendingJump` |
@@ -259,6 +261,7 @@ GroupsOnly/ChannelsOnly` (`:21-26`); пункты `ButtonMenu` с галочко
 
 | Наш менеджер | Ручка | Что отдаёт | tweb-аналог |
 |---|---|---|---|
+| `messages.searchHistory(ctx)` (воркер, `messagesManager.ts`; задача 6) — **единственный вход класса** | развилка по контексту: пир без `nextRate` и без `folderId` → `/chats/{id}/media` (фильтр вида, нет текста и дат) или `/chats/{id}/search` (текст / даты / пустой фильтр — вся история); иначе → `/search/messages` (`offset_rate` ← `nextRate`, `chat_type`, даты) | `{messages, count, nextRate?}`; `nextRate` — только из глобальной ветки. Контекст — `SearchHistoryOptions` (поисковая часть `RequestHistoryOptions`), фильтр — `MyInputMessagesFilter` (`core/messages/inputMessagesFilter.ts`, там же перевод на лексику REST) | `requestHistory` `appMessagesManager.ts:9966-10003`; `threadId` (`top_msg_id`) не уходит — ручки поиска по треду нет |
 | `messages.searchGlobal(q, filter, offset, limit)` (`messagesManager.ts:776`) | `GET /search/messages?q&filter&offset&limit` → `chat_handler.go:1126-1138` → `usecase/chat/sync.go:437` → `messagesrepo.go:349-397` | `messages.messagesSlice{count, messages, users}`; `ORDER BY m.id DESC LIMIT OFFSET` (`:382`); `filter` ∈ `media/files/music/voice/links` (та же лексика, что `mediaFilterCond`); `q` — `ILIKE` по тексту и имени файла | `messages.searchGlobal` — **но без `offset_rate`/`next_rate`, без `chat_type`, без `min_date/max_date`** |
 | `messages.searchMessages(peerId, q, {senderId, mediaType, reaction, offset, limit})` (`:732`) | `GET /chats/{peerID}/search` → `chat_handler.go:1052` → `messagesrepo.go:224-284` | `ORDER BY m.seq DESC LIMIT OFFSET` (`:269`); `media_type` — мелкая лексика `photo/video/voice/roundvideo/file/music/link` | `messages.search` — **без `offset_id`, без дат**; второй потребитель — поиск в чате `core/hooks/useChatSearch.ts:61` |
 | `messages.mediaHistory(peerId, filter, offsetId, limit)` (`:710`) | `GET /chats/{peerID}/media?filter&offset_id&limit` (`messagesrepo.go:475-511`) | курсор `m.seq < offset_id` (`:494-496`) | `messages.search` с фильтром и пустым `q` |
@@ -291,8 +294,11 @@ GroupsOnly/ChannelsOnly` (`:21-26`); пункты `ButtonMenu` с галочко
 4. **Групп нет**: результаты — плоские `SidebarSection`; нет `searchGroups`,
    `search-group-*`, «показать ещё», `people`-ленты; `recent` есть, но своим кодом
    (`pushRecent` `:52-55`, «Clear» через React `ConfirmDialog`).
-5. **Чипов нет**: ни пира, ни даты; `fillTipDates` не портирован (`helpers/date.ts`
-   — только форматирование). `ChatTypeMenu` и `EmptySearchPlaceholder` портированы
+5. **Чипов в выдаче нет**: строительные блоки портированы задачей 11 —
+   `fillTipDates` (`helpers/date.ts`) и ванильный `renderEntity`
+   (`components/selectorEntity.ts`), — но helper `div.search-helper`, перенос
+   чипа в поле (`is-picked`, `--paddingLeft`) и снятие живут во владельце поиска
+   (задача 12, `sidebarLeft/index.ts:1200-1303`, `:1349-1381`). `ChatTypeMenu` и `EmptySearchPlaceholder` портированы
    компонентами (задача 10: `components/chatTypeMenu.solid.tsx`,
    `components/emptySearchPlaceholder.solid.tsx` — custom elements поверх
    `shared/solid/defineSolidElement.solid.tsx`, меню — на портированном
@@ -307,9 +313,8 @@ GroupsOnly/ChannelsOnly` (`:21-26`); пункты `ButtonMenu` с галочко
    `useTransitionSlider.ts` (потребитель `UserInfoPanel.tsx`). После сноса
    `SearchView` у `TabSlide` остаётся один потребитель — `ChatList.tsx` (папки);
    он — предмет **соседней программы папок**, здесь не трогается.
-8. **`showSender`/`nextRate`/`searchGroups` в классе объявлены расхождениями**
-   9, 11, 24 (`components/appSearchSuper.ts:82-101`, `:168-172`) — снимаются
-   этой программой.
+8. ~~**`showSender`/`nextRate`/`searchGroups` в классе объявлены расхождениями**
+   9, 11, 24~~ — снято задачей 8 (§ 2.1, строка класса).
 9. ~~**`dialogRow.ts` не умеет превью сообщения**~~ — снято задачей 7:
    `setLastMessageN`, `setListClickListener`, `highlightWord` портированы (§ 2.1).
    Участники правой колонки по-прежнему вешают клик сами (`appSearchSuper.ts`,

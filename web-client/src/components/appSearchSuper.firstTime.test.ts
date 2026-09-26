@@ -12,6 +12,8 @@ import AppSearchSuper, {
   type SearchSuperMediaTab,
   type SearchSuperMediaType,
 } from '@components/appSearchSuper'
+import type { SearchHistoryOptions } from '@core/managers/messagesManager'
+import { getWireFilter } from '@core/messages/inputMessagesFilter'
 import { getHistoryStorage, resetSharedMediaHistories } from '@components/sharedMediaHistories'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import rootScope from '@lib/rootScope'
@@ -40,7 +42,8 @@ function fakeBackend(world: World) {
   const history: string[] = []
   const managers = {
     messages: {
-      mediaHistory: async (_peerId: number, filter: string) => {
+      searchHistory: async ({ inputFilter }: SearchHistoryOptions) => {
+        const filter = getWireFilter(inputFilter._)!
         history.push(filter)
         return { messages: [], count: world.counts?.[filter as keyof Counts] ?? 0 }
       },

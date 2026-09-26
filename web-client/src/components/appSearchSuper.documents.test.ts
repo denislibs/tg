@@ -12,6 +12,8 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import Scrollable from '@components/scrollable'
 import AppSearchSuper, { type SearchSuperManagers, type SearchSuperMediaTab } from '@components/appSearchSuper'
+import type { SearchHistoryOptions } from '@core/managers/messagesManager'
+import { getWireFilter } from '@core/messages/inputMessagesFilter'
 import { getHistoryStorage, resetSharedMediaHistories } from '@components/sharedMediaHistories'
 import { mediaPlayback, resetPlayback } from '@core/audio/mediaPlaybackController'
 import { saveMessageMedia, type MessageMedia } from '@core/media/messageMedia'
@@ -127,7 +129,8 @@ const WIRE_KINDS: Record<string, ReadonlySet<ReturnType<typeof getMessageKind>>>
 function fakeBackend(all: MyMessage[]) {
   const managers = {
     messages: {
-      mediaHistory: async (peerId: number, filter: string, offsetId = 0, limit = 30) => {
+      searchHistory: async ({ peerId, inputFilter, offsetId = 0, limit = 30 }: SearchHistoryOptions) => {
+        const filter = getWireFilter(inputFilter._)!
         const ofFilter = all.filter((m) => m.peerId === peerId && WIRE_KINDS[filter].has(getMessageKind(m)))
         const from = offsetId ? ofFilter.filter((m) => m.id < offsetId) : ofFilter
         return { messages: from.slice(0, limit), count: ofFilter.length }

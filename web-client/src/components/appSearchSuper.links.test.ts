@@ -22,6 +22,8 @@ import { makeMessage } from '@core/messages/testMessage'
 import type { MessageMedia, MyPhoto, WebPage } from '@core/media/messageMedia'
 import type { MyMessage } from '@core/models'
 import type { LangPackKey } from '@lib/langPack'
+import type { SearchHistoryOptions } from '@core/managers/messagesManager'
+import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 
 vi.mock('../client/bootstrap', () => ({
   startClient: () => ({ managers: { media: { downloadMediaURL: async () => 'blob:preview' } } }),
@@ -46,20 +48,21 @@ const webPageMedia = (webpage: Omit<WebPage, '_'>): MessageMedia => ({
 function fakeBackend(all: MyMessage[]) {
   const managers = {
     messages: {
-      mediaHistory: async (_peerId: number, _filter: string, offsetId = 0, limit = 30) => {
+      searchHistory: async ({ offsetId = 0, limit = 30 }: SearchHistoryOptions) => {
         const from = offsetId ? all.filter((m) => m.id < offsetId) : all
         return { messages: from.slice(0, limit), count: all.length }
       },
       searchCounters: async (_peerId: number, filters: string[]) =>
         filters.map((filter) => ({ filter, count: all.length })),
     },
+    peers: { fillMirror: async () => {} },
   } as unknown as SearchSuperManagers
   return managers
 }
 
 const LINKS_TAB: SearchSuperMediaTab = { type: 'links', inputFilter: 'inputMessagesFilterUrl', name: 'SharedLinksTab2' as LangPackKey }
 
-function build(all: MyMessage[]) {
+function build(all: MyMessage[], { showSender }: { showSender?: boolean } = {}) {
   const scrollableEl = document.createElement('div')
   document.body.append(scrollableEl)
   const scrollable = new Scrollable(scrollableEl)
@@ -67,7 +70,7 @@ function build(all: MyMessage[]) {
   host.className = 'profile-content'
   scrollable.container.append(host)
 
-  const searchSuper = new AppSearchSuper({ mediaTabs: [{ ...LINKS_TAB }], scrollable, managers: fakeBackend(all) })
+  const searchSuper = new AppSearchSuper({ mediaTabs: [{ ...LINKS_TAB }], scrollable, managers: fakeBackend(all), showSender })
   host.append(searchSuper.container)
   searchSuper.setQuery({ peerId: PEER, historyStorage: getHistoryStorage(PEER) })
   return searchSuper
@@ -79,8 +82,8 @@ const settle = async () => {
   await new Promise((resolve) => setTimeout(resolve, 0))
 }
 
-async function renderOne(message: MyMessage) {
-  const searchSuper = build([message])
+async function renderOne(message: MyMessage, options?: { showSender?: boolean }) {
+  const searchSuper = build([message], options)
   await searchSuper.load(true)
   await settle()
   const items = searchSuper.tabs.inputMessagesFilterUrl!.querySelectorAll('.search-super-item')
@@ -88,7 +91,11 @@ async function renderOne(message: MyMessage) {
   return items[0] as HTMLElement
 }
 
-beforeEach(() => resetSharedMediaHistories())
+beforeEach(() => {
+  resetSharedMediaHistories()
+  resetPeerMirror()
+  applyPeerOps([{ op: 'upsert', peers: [{ _: 'user', id: PEER, first_name: 'Алиса', pFlags: {} }] }])
+})
 afterEach(() => document.body.replaceChildren())
 
 describe('AppSearchSuper: рендер ссылок', () => {
@@ -187,5 +194,28 @@ describe('AppSearchSuper: рендер ссылок', () => {
 
     expect(length).toBe(0)
     expect(searchSuper.tabs.inputMessagesFilterUrl!.children.length).toBe(0)
+  })
+  // tweb `:1061-1063` — у левой колонки (`showSender: true`,
+  // `sidebarLeft/index.ts:1167`) под якорем третьей строкой идёт отправитель
+  // «кто ➝ куда» (`wrapSenderToPeer`); у правой колонки опции нет — и строки нет.
+  it('showSender: под якорем — отправитель; без опции подпись прежняя', async () => {
+    const message = () => makeMessage({
+      id: 6, peerId: PEER, fromId: PEER, date: 1_700_000_000,
+      text: 'https://example.com/a',
+      media: webPageMedia({ url: 'https://example.com/a', display_url: 'example.com/a', title: 'Заголовок', description: 'Описание' }),
+    })
+
+    const withSender = await renderOne(message(), { showSender: true })
+    const subtitle = withSender.querySelector('.row-subtitle')!
+    const sender = subtitle.lastElementChild as HTMLElement
+    expect(sender.classList.contains('sender-title')).toBe(true)
+    expect(sender.textContent).toBe('Алиса')
+    expect(subtitle.textContent).toBe('Описание\nhttps://example.com/a\nАлиса')
+
+    document.body.replaceChildren()
+    resetSharedMediaHistories()
+    const plain = await renderOne(message())
+    expect(plain.querySelector('.row-subtitle .sender-title')).toBeNull()
+    expect(plain.querySelector('.row-subtitle')!.textContent).toBe('Описание\nhttps://example.com/a')
   })
 })

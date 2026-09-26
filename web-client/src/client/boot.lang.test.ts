@@ -54,6 +54,8 @@ vi.mock('../core/state/loadState', async () => {
 
 import I18n, { i18n } from '@lib/langPack'
 import rootScope from '@lib/rootScope'
+import { fillLocalizedDates, monthsLocalized } from '@helpers/date'
+import { applyLang } from '@/test/lang'
 import { bootstrap } from './boot'
 
 beforeEach(() => {
@@ -147,5 +149,27 @@ describe('boot: смена языка в соседней вкладке при�
     await Promise.resolve()
 
     expect(langPack.getPack).not.toHaveBeenCalled()
+  })
+})
+
+// ── ЛОКАЛИЗОВАННЫЕ МЕСЯЦЫ И ДНИ (порт tweb index.ts:482-491 `onLanguageApply`) ──
+//
+// Чипы дат глобального поиска (`helpers/date.ts::fillTipDates`) читают названия
+// из `monthsLocalized`/`daysLocalized`, а наполняет их `fillLocalizedDates` —
+// после применения пакета на старте И на каждое `language_apply`. Без подписки
+// «январь» после смены языка на русский не находился бы вовсе, а заголовки
+// чипов оставались бы на языке старта.
+describe('boot: названия месяцев следуют языку', () => {
+  it('после bootstrap() смена языка переписывает месяцы', async () => {
+    await applyLang('en')
+    fillLocalizedDates()
+    await bootstrap()
+    expect(monthsLocalized[0]).toBe('January')
+
+    await applyLang('ru')
+    expect(monthsLocalized[0]).toBe('Январь')
+
+    await applyLang('en')
+    expect(monthsLocalized[0]).toBe('January')
   })
 })

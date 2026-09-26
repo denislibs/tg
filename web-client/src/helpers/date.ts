@@ -22,13 +22,85 @@
  * `ONE_DAY` (:9), `getWeekNumber` (:59-67), `formatDate` (:75-105),
  * `formatDateAccordingToTodayNew` (:107-129), `formatFullSentTimeRaw` (:135-176),
  * `formatFullSentTime` (:178-187), `formatTime` (:200-205) и `getFullDate`
- * (tweb `helpers/date/getFullDate.ts`). Остальное файла оригинала
- * (`getWeekDays`/`getMonths`/`fillLocalizedDates`, `formatDaysDuration`,
- * `formatMonthsDuration`) не перенесено: вызывающих нет.
+ * (tweb `helpers/date/getFullDate.ts`); для чипов дат глобального поиска —
+ * `monthsLocalized`/`daysLocalized` (:6-7), `getWeekDays`/`getMonths`/
+ * `fillLocalizedDates` (:32-57) и `fillTipDates` с помощниками (:220-592).
+ * Не перенесено (вызывающих нет): `formatDaysDuration`, `formatMonthsDuration`,
+ * `earliestSelectableMinuteMs`, `ONE_DAY_MINUTES`/`ONE_WEEK*`,
+ * `getDaysPerMonthForYear`, `numberOfDaysEachMonthNonLeapYear`.
+ *
+ * ── Расхождения с оригиналом ───────────────────────────────────────────────
+ * 1. `fillLocalizedDates` кладёт в `daysLocalized` дни С ВОСКРЕСЕНЬЯ. У
+ *    оригинала туда уходит `getWeekDays()` как есть — а он начинает с
+ *    понедельника (опорная дата 2 января 2017-го, понедельник; так его ждёт
+ *    `businessHours.tsx:184`), тогда как `daysLocalized` читается по
+ *    `getDay()` (0 — воскресенье, `formatWeekLong`, :550-553) и до наполнения
+ *    равен `days` с воскресенья. Итог у оригинала: «monday» давал чип
+ *    ВОСКРЕСЕНЬЯ с подписью «Monday». Сам `getWeekDays` оставлен дословным.
+ * 2. `getWeekDays`/`getMonths` строят опорные даты МЕСТНЫМ конструктором, а не
+ *    `Date.UTC(...)`: форматирует `Intl` в местном поясе, и к западу от
+ *    Гринвича полночь 1 января по UTC — ещё 31 декабря, все названия
+ *    сдвигались на одно. Пины обоих — `date.test.ts`, `fillLocalizedDates`.
+ * 3. `MOUNT_CLASS_TO.fillTipDates` (:594) — отладочная выкладка в `window`, не
+ *    портирована.
+ *
+ * Названия месяцев и дней берутся из `Intl` на языке ПАКЕТА
+ * (`I18n.getDateTimeFormat`), а не ключами словаря — как у оригинала; поэтому
+ * новых ключей локализации чипы дат не требуют. Наполняет их
+ * `fillLocalizedDates` на каждое `language_apply` (`client/boot.ts`, порт tweb
+ * `index.ts:482-491`).
  */
 import I18n, { i18n } from '@lib/langPack'
+import capitalizeFirstLetter from '@helpers/string/capitalizeFirstLetter'
 
 export const ONE_DAY = 86400
+
+/**
+ * tweb `helpers/date/common.ts` — месяцы АНГЛИЙСКИМИ константами, и это не
+ * недосмотр оригинала, а его выбор: `getFullDate` рисует ТЕХНИЧЕСКУЮ дату
+ * (подсказка `title` у времени бабла, метка в копируемом тексте), одинаковую
+ * во всех языках, а `fillTipDates` понимает английские названия при любом
+ * языке интерфейса (`getMonth`, :571). Локализованные — `monthsLocalized`.
+ */
+const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+// tweb :6-7 — до первого `fillLocalizedDates` совпадают с английскими.
+export const monthsLocalized = months.slice()
+export const daysLocalized = days.slice()
+
+// tweb :32-41 — дни С ПОНЕДЕЛЬНИКА (порядок оригинала), с заглавной.
+// Опорная дата местная — расхождение 2 шапки.
+export function getWeekDays() {
+  const dateTimeFormat = I18n.getDateTimeFormat({ weekday: 'long' })
+  const date = new Date(2017, 0, 2)
+  const out: string[] = []
+  for(let i = 0; i < 7; ++i) {
+    out.push(capitalizeFirstLetter(dateTimeFormat.format(date)))
+    date.setDate(date.getDate() + 1)
+  }
+  return out
+}
+
+// tweb :43-52. Опорная дата местная — расхождение 2 шапки.
+export function getMonths() {
+  const dateTimeFormat = I18n.getDateTimeFormat({ month: 'long' })
+  const date = new Date(2017, 0, 1)
+  const out: string[] = []
+  for(let i = 0; i < 12; ++i) {
+    out.push(capitalizeFirstLetter(dateTimeFormat.format(date)))
+    date.setMonth(date.getMonth() + 1)
+  }
+  return out
+}
+
+// tweb :54-57. Воскресенье — первым (расхождение 1 шапки): `daysLocalized`
+// читается по `getDay()`.
+export function fillLocalizedDates() {
+  const weekDays = getWeekDays()
+  monthsLocalized.splice(0, monthsLocalized.length, ...getMonths())
+  daysLocalized.splice(0, daysLocalized.length, weekDays[6]!, ...weekDays.slice(0, 6))
+}
 
 /**
  * Секунды эпохи, из которых МОЖНО построить дату.
@@ -193,16 +265,6 @@ export function formatFullSentTime(timestamp: number, capitalize = true, noToday
   return fragment
 }
 
-/**
- * tweb `helpers/date/common.ts` — месяцы АНГЛИЙСКИМИ константами, и это не
- * недосмотр оригинала, а его выбор: единственный потребитель `months` —
- * `getFullDate`, а `getFullDate` рисует ТЕХНИЧЕСКУЮ дату (подсказка `title` у
- * времени бабла, метка в копируемом тексте), одинаковую во всех языках.
- * Локализованные месяцы у оригинала лежат отдельно (`monthsLocalized`, наполняет
- * `fillLocalizedDates`) и сюда не попадают.
- */
-const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-
 // tweb `helpers/date/getFullDate.ts` 1:1.
 export const getFullDate = (date: Date, options: Partial<{
   noTime: boolean
@@ -222,4 +284,386 @@ export const getFullDate = (date: Date, options: Partial<{
     joiner + (options.monthAsNumber ? ('0' + (date.getMonth() + 1)).slice(-2) : months[date.getMonth()]) +
     joiner + (('' + fullYear).slice(options.shortYear ? 2 : 0)) +
     (options.noTime ? '' : (options.timeJoiner || ', ') + time)
+}
+
+// ── Чипы дат глобального поиска (tweb :220-592) ─────────────────────────────
+// Порт разбора Telegram Android (`FiltersView.java`, ссылка оригинала :220):
+// текст запроса → набор суток/месяцев/лет с границами в МИЛЛИСЕКУНДАХ.
+// Потребитель — владелец поиска (`sidebarLeft/index.ts:1351-1359`): чип
+// `date_<minDate>_<maxDate>`, выбранный — в `setQuery({minDate, maxDate})`.
+//
+// Разбор дословный, вместе с его особенностями: `setHours(0, 0, 0)` без
+// миллисекунд оставляет миллисекунды текущего момента; «год месяц» не выходит
+// из разбора и добирает чипы шаблонами месяца и года (:404-419 без `return`).
+const minYear = 2013
+const yearPattern = new RegExp('20[0-9]{1,2}')
+const anyLetterRegExp = '\\p{L}'
+const monthPattern = new RegExp(`(${anyLetterRegExp}{3,})`, 'iu')
+const monthYearOrDayPattern = new RegExp(`(${anyLetterRegExp}{3,}) ([0-9]{0,4})`, 'iu')
+const yearOrDayAndMonthPattern = new RegExp(`([0-9]{0,4}) (${anyLetterRegExp}{2,})`, 'iu')
+const shortDate = new RegExp('^([0-9]{1,4})(\\.| |/|\\-)([0-9]{1,4})$', 'i')
+const longDate = new RegExp('^([0-9]{1,2})(\\.| |/|\\-)([0-9]{1,2})(\\.| |/|\\-)([0-9]{1,4})$', 'i')
+const numberOfDaysEachMonth = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+
+// tweb :240-244
+export type DateData = {
+  title: string
+  minDate: number
+  maxDate: number
+}
+
+// tweb :245-472
+export function fillTipDates(query: string, dates: DateData[]) {
+  const q = query.trim().toLowerCase()
+
+  if(q.length < 3) {
+    return
+  }
+
+  if(['today', I18n.format('Peer.Status.Today', true)].some((haystack) => haystack.indexOf(q) === 0)) {
+    const date = new Date()
+    const year = date.getFullYear()
+    const month = date.getMonth()
+    const day = date.getDate()
+    date.setFullYear(year, month, day)
+    date.setHours(0, 0, 0)
+
+    const minDate = date.getTime()
+    date.setFullYear(year, month, day + 1)
+    date.setHours(0, 0, 0)
+
+    const maxDate = date.getTime() - 1
+    dates.push({
+      title: I18n.format('Date.Today', true),
+      minDate,
+      maxDate,
+    })
+    return
+  }
+
+  if(['yesterday', I18n.format('Peer.Status.Yesterday', true)].some((haystack) => haystack.indexOf(q) === 0)) {
+    const date = new Date()
+    const year = date.getFullYear()
+    const month = date.getMonth()
+    const day = date.getDate()
+    date.setFullYear(year, month, day)
+    date.setHours(0, 0, 0)
+
+    const minDate = date.getTime() - 86400000
+    date.setFullYear(year, month, day + 1)
+    date.setHours(0, 0, 0)
+
+    const maxDate = date.getTime() - 86400001
+    dates.push({
+      title: capitalizeFirstLetter(I18n.format('Yesterday', true)),
+      minDate,
+      maxDate,
+    })
+    return
+  }
+
+  const dayOfWeek = getDayOfWeek(q)
+  if(dayOfWeek >= 0) {
+    const date = new Date()
+    const now = date.getTime()
+    const currentDay = date.getDay()
+    const distance = dayOfWeek - currentDay
+    date.setDate(date.getDate() + distance)
+    if(date.getTime() > now) {
+      date.setTime(date.getTime() - 604800000)
+    }
+    const year = date.getFullYear()
+    const month = date.getMonth()
+    const day = date.getDate()
+    date.setFullYear(year, month, day)
+    date.setHours(0, 0, 0)
+
+    const minDate = date.getTime()
+    date.setFullYear(year, month, day + 1)
+    date.setHours(0, 0, 0)
+
+    const maxDate = date.getTime() - 1
+    dates.push({
+      title: formatWeekLong(minDate),
+      minDate,
+      maxDate,
+    })
+    return
+  }
+
+  let matches: RegExpExecArray | null
+  if((matches = shortDate.exec(q)) !== null) {
+    const g1 = matches[1]!
+    const g2 = matches[3]!
+    const k = parseInt(g1)
+    const k1 = parseInt(g2)
+    if(k > 0 && k <= 31) {
+      if(k1 >= minYear && k <= 12) {
+        const selectedYear = k1
+        const month = k - 1
+        createForMonthYear(dates, month, selectedYear)
+        return
+      } else if(k1 <= 12) {
+        const day = k - 1
+        const month = k1 - 1
+        createForDayMonth(dates, day, month)
+      }
+    } else if(k >= minYear && k1 <= 12) {
+      const selectedYear = k
+      const month = k1 - 1
+      createForMonthYear(dates, month, selectedYear)
+    }
+
+    return
+  }
+
+  if((matches = longDate.exec(q)) !== null) {
+    const g1 = matches[1]!
+    const g2 = matches[3]!
+    const g3 = matches[5]!
+    if(matches[2] !== matches[4]) {
+      return
+    }
+
+    const day = parseInt(g1)
+    const month = parseInt(g2) - 1
+    let year = parseInt(g3)
+    if(year >= 10 && year <= 99) {
+      year += 2000
+    }
+
+    const currentYear = new Date().getFullYear()
+    if(validDateForMonth(day - 1, month) && year >= minYear && year <= currentYear) {
+      const date = new Date()
+      date.setFullYear(year, month, day)
+      date.setHours(0, 0, 0)
+
+      const minDate = date.getTime()
+      date.setFullYear(year, month, day + 1)
+      date.setHours(0, 0, 0)
+
+      const maxDate = date.getTime() - 1
+      dates.push({
+        title: formatterYearMax(minDate),
+        minDate,
+        maxDate,
+      })
+      return
+    }
+
+    return
+  }
+
+  if((matches = monthYearOrDayPattern.exec(q)) !== null) {
+    const g1 = matches[1]!
+    const g2 = matches[2]!
+    const month = getMonth(g1)
+    if(month >= 0) {
+      const k = +g2 || new Date().getUTCFullYear()
+      if(k > 0 && k <= 31) {
+        const day = k - 1
+        createForDayMonth(dates, day, month)
+        return
+      } else if(k >= minYear) {
+        const selectedYear = k
+        createForMonthYear(dates, month, selectedYear)
+        return
+      }
+    }
+  }
+
+  if((matches = yearOrDayAndMonthPattern.exec(q)) !== null) {
+    const g1 = matches[1]!
+    const g2 = matches[2]!
+    const month = getMonth(g2)
+    if(month >= 0) {
+      const k = +g1
+      if(k > 0 && k <= 31) {
+        const day = k - 1
+        createForDayMonth(dates, day, month)
+        return
+      } else if(k >= minYear) {
+        const selectedYear = k
+        createForMonthYear(dates, month, selectedYear)
+      }
+    }
+  }
+
+  if((matches = monthPattern.exec(q)) !== null) {
+    const g1 = matches[1]!
+    const month = getMonth(g1)
+    if(month >= 0) {
+      const currentYear = new Date().getFullYear()
+      for(let i = currentYear; i >= minYear; --i) {
+        createForMonthYear(dates, month, i)
+      }
+    }
+  }
+
+  if((matches = yearPattern.exec(q)) !== null) {
+    let selectedYear = +matches[0]
+    const currentYear = new Date().getFullYear()
+    if(selectedYear < minYear) {
+      selectedYear = minYear
+      for(let i = currentYear; i >= selectedYear; i--) {
+        const date = new Date()
+        date.setFullYear(i, 0, 1)
+        date.setHours(0, 0, 0)
+
+        const minDate = date.getTime()
+        date.setFullYear(i + 1, 0, 1)
+        date.setHours(0, 0, 0)
+
+        const maxDate = date.getTime() - 1
+        dates.push({
+          title: '' + i,
+          minDate,
+          maxDate,
+        })
+      }
+    } else if(selectedYear <= currentYear) {
+      const date = new Date()
+      date.setFullYear(selectedYear, 0, 1)
+      date.setHours(0, 0, 0)
+
+      const minDate = date.getTime()
+      date.setFullYear(selectedYear + 1, 0, 1)
+      date.setHours(0, 0, 0)
+
+      const maxDate = date.getTime() - 1
+      dates.push({
+        title: '' + selectedYear,
+        minDate,
+        maxDate,
+      })
+    }
+
+    return
+  }
+}
+
+// tweb :474-494
+function createForMonthYear(dates: DateData[], month: number, selectedYear: number) {
+  const currentYear = new Date().getFullYear()
+  const today = Date.now()
+  if(selectedYear >= minYear && selectedYear <= currentYear) {
+    const date = new Date()
+    date.setFullYear(selectedYear, month, 1)
+    date.setHours(0, 0, 0)
+    const minDate = date.getTime()
+    if(minDate > today) {
+      return
+    }
+    date.setMonth(date.getMonth() + 1)
+    const maxDate = date.getTime() - 1
+
+    dates.push({
+      title: formatterMonthYear(minDate),
+      minDate,
+      maxDate,
+    })
+  }
+}
+
+// tweb :496-533
+function createForDayMonth(dates: DateData[], day: number, month: number) {
+  if(validDateForMonth(day, month)) {
+    const currentYear = new Date().getFullYear()
+    const today = Date.now()
+
+    for(let i = currentYear; i >= minYear; i--) {
+      if(month === 1 && day === 28 && !isLeapYear(i)) {
+        continue
+      }
+
+      const date = new Date()
+      date.setFullYear(i, month, day + 1)
+      date.setHours(0, 0, 0)
+
+      const minDate = date.getTime()
+      if(minDate > today) {
+        continue
+      }
+
+      date.setFullYear(i, month, day + 2)
+      date.setHours(0, 0, 0)
+      const maxDate = date.getTime() - 1
+      if(i === currentYear) {
+        dates.push({
+          title: formatterDayMonth(minDate),
+          minDate,
+          maxDate,
+        })
+      } else {
+        dates.push({
+          title: formatterYearMax(minDate),
+          minDate,
+          maxDate,
+        })
+      }
+    }
+  }
+}
+
+// tweb :535-553
+function formatterMonthYear(timestamp: number) {
+  const date = new Date(timestamp)
+  return monthsLocalized[date.getMonth()] + ' ' + date.getFullYear()
+}
+
+function formatterDayMonth(timestamp: number) {
+  const date = new Date(timestamp)
+  return monthsLocalized[date.getMonth()] + ' ' + date.getDate()
+}
+
+function formatterYearMax(timestamp: number) {
+  const date = new Date(timestamp)
+  return ('0' + date.getDate()).slice(-2) + '.' + ('0' + (date.getMonth() + 1)).slice(-2) + '.' + date.getFullYear()
+}
+
+function formatWeekLong(timestamp: number) {
+  const date = new Date(timestamp)
+  return daysLocalized[date.getDay()]!
+}
+
+// tweb :555-566
+function validDateForMonth(day: number, month: number) {
+  if(month >= 0 && month < 12) {
+    if(day >= 0 && day < numberOfDaysEachMonth[month]!) {
+      return true
+    }
+  }
+  return false
+}
+
+function isLeapYear(year: number) {
+  return ((year % 4 === 0) && (year % 100 !== 0)) || (year % 400 === 0)
+}
+
+// tweb :568-576 — и английское, и локализованное название.
+function getMonth(q: string) {
+  q = q.toLowerCase()
+  for(let i = 0; i < 12; i++) {
+    if([months[i]!, monthsLocalized[i]!].some((month) => month.toLowerCase().indexOf(q) === 0)) {
+      return i
+    }
+  }
+  return -1
+}
+
+// tweb :578-592 — только локализованное название (`formatWeekLong`), как у оригинала.
+function getDayOfWeek(q: string) {
+  const c = new Date()
+  if(q.length <= 3) {
+    return -1
+  }
+
+  for(let i = 0; i < 7; i++) {
+    c.setDate(c.getDate() + 1)
+
+    if(formatWeekLong(c.getTime()).toLowerCase().indexOf(q) === 0) {
+      return c.getDay()
+    }
+  }
+  return -1
 }

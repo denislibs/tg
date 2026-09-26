@@ -9,6 +9,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import Scrollable from '@components/scrollable'
 import AppSearchSuper, { type SearchSuperManagers, type SearchSuperMediaTab, type SearchSuperMediaType } from '@components/appSearchSuper'
+import type { SearchHistoryOptions } from '@core/managers/messagesManager'
+import { getWireFilter } from '@core/messages/inputMessagesFilter'
 import {
   deleteDeletedMessages,
   getHistoryStorage,
@@ -43,7 +45,8 @@ function build(all: MyMessage[]) {
   const counters: [SearchSuperMediaType, number][] = []
   const managers = {
     messages: {
-      mediaHistory: async (_peerId: number, filter: string, offsetId = 0, limit = 30) => {
+      searchHistory: async ({ inputFilter, offsetId = 0, limit = 30 }: SearchHistoryOptions) => {
+        const filter = getWireFilter(inputFilter._)
         const src = filter === 'media' ? all : []
         const from = offsetId ? src.filter((m) => m.id < offsetId) : src
         return { messages: from.slice(0, limit), count: src.length }

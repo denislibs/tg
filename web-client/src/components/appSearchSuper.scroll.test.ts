@@ -51,7 +51,7 @@ function makeMediaTabs(): SearchSuperMediaTab[] {
  */
 const IDLE_MANAGERS = {
   messages: {
-    mediaHistory: () => { throw new Error('ядро не грузит данные') },
+    searchHistory: () => { throw new Error('ядро не грузит данные') },
     searchCounters: () => { throw new Error('ядро не грузит данные') },
   },
 } as unknown as SearchSuperManagers

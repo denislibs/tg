@@ -76,6 +76,8 @@ HTMLCanvasElement.prototype.getContext = function getContext(this: HTMLCanvasEle
 
 import Scrollable from '@components/scrollable'
 import AppSearchSuper, { type SearchSuperManagers, type SearchSuperMediaTab } from '@components/appSearchSuper'
+import type { SearchHistoryOptions } from '@core/managers/messagesManager'
+import { getWireFilter } from '@core/messages/inputMessagesFilter'
 import { getHistoryStorage, resetSharedMediaHistories } from '@components/sharedMediaHistories'
 import * as viewer from '@components/mediaViewer/openMediaViewer'
 import type { OpenMediaViewerArgs } from '@components/mediaViewer/openMediaViewer'
@@ -141,7 +143,8 @@ const feed = (n: number) => Array.from({ length: n }, (_, i) => photo(n - i))
 function fakeBackend(all: MyMessage[]) {
   const managers = {
     messages: {
-      mediaHistory: async (_peerId: number, filter: string, offsetId = 0, limit = 30) => {
+      searchHistory: async ({ inputFilter, offsetId = 0, limit = 30 }: SearchHistoryOptions) => {
+        const filter = getWireFilter(inputFilter._)
         const src = filter === 'media' ? all : []
         const from = offsetId ? src.filter((m) => m.id < offsetId) : src
         return { messages: from.slice(0, limit), count: src.length }

@@ -43,7 +43,7 @@ function fakeBackend(n: number) {
 
   const managers = {
     messages: {
-      mediaHistory: async () => ({ messages: [], count: 0 }),
+      searchHistory: async () => ({ messages: [], count: 0 }),
       searchCounters: async (_peerId: number, filters: string[]) => filters.map((filter) => ({ filter, count: 0 })),
     },
     peers: {
