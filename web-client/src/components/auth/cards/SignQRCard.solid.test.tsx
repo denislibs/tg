@@ -22,6 +22,7 @@ import { toastNew } from '@components/toast'
 import type { Managers } from '@/client/bootstrap'
 import { AuthFlowContext, type AuthFlowContextValue } from '../authFlow.solid'
 import SignQRCard from './SignQRCard.solid'
+import mediaHeaderStyles from '@components/mediaHeader.module.scss'
 
 vi.mock('@core/webauthnBrowser', () => ({
   isWebAuthnSupported: vi.fn(() => false),
@@ -307,5 +308,21 @@ describe('SignQRCard.solid: стрелка на вторичных кнопка�
     expect(passkeyBtn.querySelector('.tgico.inline-icon')).not.toBeNull()
 
     isWebAuthnSupported.mockReturnValue(false)
+  })
+})
+
+describe('SignQRCard.solid: шапка — разметка tweb HEAD 812502980 (О-29)', () => {
+  it('заголовок — h1, подзаголовок без модульного .secondary (tweb SignQRCard.tsx:228-234)', () => {
+    mount()
+    const title = host!.querySelector(`.${mediaHeaderStyles.title}`) as HTMLElement
+    expect(title.tagName).toBe('H1')
+    // у HEAD заголовок этой карточки — голый h1 с классом модуля, а не MediaHeader.Title
+    expect(title.classList.contains('text-center')).toBe(true)
+    expect(title.style.marginTop).toBe('0px')
+    expect(title.hasAttribute('data-popup-title')).toBe(false)
+    const subtitle = host!.querySelector(`.${mediaHeaderStyles.subtitle}`) as HTMLElement
+    // глобальный .secondary — только цвет; модульный (14px) карточка не берёт
+    expect(subtitle.classList.contains('secondary')).toBe(true)
+    expect(subtitle.classList.contains(mediaHeaderStyles.secondary)).toBe(false)
   })
 })

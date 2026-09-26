@@ -2,6 +2,7 @@
 // мокается через getBoundingClientRect (happy-dom отдаёт нули), pageX
 // прописывается в событие явно (happy-dom его не деривирует из clientX).
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import I18n from '@lib/langPack'
 import RangeSelector from './rangeSelector'
 
 function makeSelector(value = 1) {
@@ -39,6 +40,7 @@ function mouseDownAt(el: HTMLElement, pageX: number) {
 }
 
 afterEach(() => {
+  I18n.setRTL(false)
   document.body.replaceChildren()
 })
 
@@ -116,5 +118,37 @@ describe('RangeSelector (порт tweb rangeSelector.ts)', () => {
     seek.value = '3'
     seek.dispatchEvent(new Event('input'))
     expect(onScrub).not.toHaveBeenCalled()
+  })
+
+  it('RTL: ось горизонтального трека зеркальна — клик у левого края даёт значение у max (tweb :164-166)', () => {
+    const rs = makeSelector()
+    const onScrub = vi.fn()
+    rs.setHandlers({ onScrub })
+    stubTrackRect(rs, 0, 100)
+
+    I18n.setRTL(true)
+    mouseDownAt(rs.container, 20)
+
+    // смещение 20 зеркалится в 100−20=80: 0.5 + 0.8·3.5 = 3.3
+    expect(onScrub).toHaveBeenLastCalledWith(3.3)
+    expect(rs.value).toBe(3.3)
+  })
+
+  it('RTL не трогает вертикальный трек (`!this.vertical && …`, tweb :164)', () => {
+    const rs = new RangeSelector({ step: 0.01, min: 0, max: 1, vertical: true }, 0)
+    rs.setListeners()
+    document.body.append(rs.container)
+    rs.container.getBoundingClientRect = () => ({
+      left: 0, top: 0, width: 4, height: 100, right: 4, bottom: 100, x: 0, y: 0, toJSON: () => null,
+    }) as DOMRect
+
+    I18n.setRTL(true)
+    const e = new MouseEvent('mousedown', { bubbles: true, button: 0 })
+    Object.defineProperty(e, 'pageX', { value: 0 })
+    Object.defineProperty(e, 'pageY', { value: 20 })
+    rs.container.dispatchEvent(e)
+
+    // снизу вверх: −(20−100)=80 → 0.8, без зеркала
+    expect(rs.value).toBe(0.8)
   })
 })
