@@ -7,7 +7,7 @@
 // presets + tinted base wallpapers из Telegram iOS) и существующих
 // WALLPAPER_PRESETS, чтобы оформление совпадало по духу с оригиналом.
 // Не дублируем инфраструктуру обоев: градиент рисуется тем же 4-цветным
-// linear-gradient + pattern.svg, что и превью пресетов в ChatWallpaper.
+// linear-gradient + pattern.svg, что и плитки пресетов вкладки «Обои».
 
 export interface ChatThemeVariant {
   /** акцентный цвет (--primary-color) */

@@ -17,9 +17,6 @@ const de = {
   SetColor: 'Farbe wählen',
   'Appearance.Reset': 'Zurücksetzen',
   'ChatBackground.Blur': 'Bild weichzeichnen',
-  'ChatBackground.Upload': 'Bild hochladen',
-  'ChatBackground.Reset': 'Zurücksetzen',
-  'ChatBackground.Blurred': 'Verschwommenes Bild',
   'Premium.Feature.Intro':
     'Mehr Freiheit und Dutzende exklusive Funktionen mit einem Telegram Premium-Abo.',
   PremiumTierAnnual: 'Jährlich',

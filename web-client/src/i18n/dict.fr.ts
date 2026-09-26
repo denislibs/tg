@@ -17,9 +17,6 @@ const fr = {
   SetColor: 'Choisir une couleur',
   'Appearance.Reset': 'Réinitialiser',
   'ChatBackground.Blur': 'Flouter l’image',
-  'ChatBackground.Upload': 'Importer une image',
-  'ChatBackground.Reset': 'Réinitialiser',
-  'ChatBackground.Blurred': 'Image floutée',
   'Premium.Feature.Intro':
     'Plus de liberté et des dizaines de fonctionnalités exclusives avec un abonnement Telegram Premium.',
   PremiumTierAnnual: 'Annuel',

@@ -1004,20 +1004,8 @@
           "value": "Blur Wallpaper Image"
         },
         {
-          "key": "ChatBackground.Blurred",
-          "value": "Blurred Image"
-        },
-        {
-          "key": "ChatBackground.Reset",
-          "value": "Reset to Default"
-        },
-        {
           "key": "ChatBackground.Title",
           "value": "Chat Background"
-        },
-        {
-          "key": "ChatBackground.Upload",
-          "value": "Upload Image"
         },
         {
           "key": "ChatBackground.UploadWallpaper",
@@ -6011,18 +5999,6 @@
         {
           "key": "ChatBackground.Blur",
           "value": "Размыть изображение"
-        },
-        {
-          "key": "ChatBackground.Upload",
-          "value": "Загрузить изображение"
-        },
-        {
-          "key": "ChatBackground.Reset",
-          "value": "Восстановить по умолчанию"
-        },
-        {
-          "key": "ChatBackground.Blurred",
-          "value": "Размытое изображение"
         },
         {
           "key": "Premium.Feature.Intro",
@@ -11236,18 +11212,6 @@
           "value": "Flouter l’image"
         },
         {
-          "key": "ChatBackground.Upload",
-          "value": "Importer une image"
-        },
-        {
-          "key": "ChatBackground.Reset",
-          "value": "Réinitialiser"
-        },
-        {
-          "key": "ChatBackground.Blurred",
-          "value": "Image floutée"
-        },
-        {
           "key": "Premium.Feature.Intro",
           "value": "Plus de liberté et des dizaines de fonctionnalités exclusives avec un abonnement Telegram Premium."
         },
@@ -14068,18 +14032,6 @@
           "value": "Bild weichzeichnen"
         },
         {
-          "key": "ChatBackground.Upload",
-          "value": "Bild hochladen"
-        },
-        {
-          "key": "ChatBackground.Reset",
-          "value": "Zurücksetzen"
-        },
-        {
-          "key": "ChatBackground.Blurred",
-          "value": "Verschwommenes Bild"
-        },
-        {
           "key": "Premium.Feature.Intro",
           "value": "Mehr Freiheit und Dutzende exklusive Funktionen mit einem Telegram Premium-Abo."
         },
@@ -16897,18 +16849,6 @@
         {
           "key": "ChatBackground.Blur",
           "value": "Difuminar imagen"
-        },
-        {
-          "key": "ChatBackground.Upload",
-          "value": "Subir imagen"
-        },
-        {
-          "key": "ChatBackground.Reset",
-          "value": "Restablecer"
-        },
-        {
-          "key": "ChatBackground.Blurred",
-          "value": "Imagen difuminada"
         },
         {
           "key": "Premium.Feature.Intro",
@@ -19733,18 +19673,6 @@
         {
           "key": "ChatBackground.Blur",
           "value": "Розмити зображення"
-        },
-        {
-          "key": "ChatBackground.Upload",
-          "value": "Завантажити зображення"
-        },
-        {
-          "key": "ChatBackground.Reset",
-          "value": "Відновити за замовчуванням"
-        },
-        {
-          "key": "ChatBackground.Blurred",
-          "value": "Розмите зображення"
         },
         {
           "key": "Premium.Feature.Intro",

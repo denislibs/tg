@@ -14,10 +14,11 @@ export interface Settings {
   textSize: number // message bubble font size (px)
   timeFormat: TimeFormat
   wallpaper: Wallpaper
-  wallpaperBlur: boolean
   // Свои обои чата, загруженные фото (tweb background upload): media_id
   // выбранного изображения. Приоритет над пресетом/цветом (wallpaper) — пока
   // задан, фон рисуется этим фото. customWallpaperBlur — размытие поверх (toggle).
+  // Размытия пресета/цвета нет: у tweb размывается только обои-картинка без
+  // узора (`needBlur` в sidebarLeft/tabs/background.tsx:41-44).
   customWallpaperMediaId?: number
   customWallpaperBlur?: boolean
   // Устройства для звонков (Настройки → Динамики и камера); '' = системное
@@ -105,7 +106,6 @@ export const DEFAULTS: Settings = {
   textSize: 16,
   timeFormat: '24h',
   wallpaper: { kind: 'default' },
-  wallpaperBlur: false,
   customWallpaperMediaId: undefined,
   customWallpaperBlur: false,
   speakerId: '',
@@ -188,7 +188,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       textSize: s.textSize,
       timeFormat: s.timeFormat,
       wallpaper: s.wallpaper,
-      wallpaperBlur: s.wallpaperBlur,
       customWallpaperMediaId: s.customWallpaperMediaId,
       customWallpaperBlur: s.customWallpaperBlur,
       speakerId: s.speakerId,

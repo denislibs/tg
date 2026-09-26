@@ -8,7 +8,8 @@ import { useT } from '../../i18n'
 import { useSettings } from '../../settings'
 import { type ThemeChoice, type ThemePreset } from '../../theme'
 import { SettingsScreen, Section, Row } from './kit'
-import ChatWallpaper from './ChatWallpaper'
+import { getSettingsSliderHost } from '../sidebarLeft/settingsSliderHost'
+import { AppChatBackgroundTab } from '../solidJsTabs/tabs'
 import PowerSaving from './PowerSaving'
 import s from './GeneralSettings.module.scss'
 
@@ -57,14 +58,13 @@ function RadioRow({
 export default function GeneralSettings({ onBack }: { onBack: () => void }) {
   const t = useT()
   const { textSize, timeFormat, themeChoice, update } = useSettings()
-  const [dedicated, setDedicated] = useState<'wallpaper' | 'power' | null>(null)
+  const [dedicated, setDedicated] = useState<'power' | null>(null)
 
   return (
     <SettingsScreen
       title="Telegram.GeneralSettingsViewController"
       onBack={onBack}
       sub={
-        dedicated === 'wallpaper' ? <ChatWallpaper onBack={() => setDedicated(null)} /> :
         dedicated === 'power' ? <PowerSaving onBack={() => setDedicated(null)} /> :
         null
       }
@@ -80,8 +80,10 @@ export default function GeneralSettings({ onBack }: { onBack: () => void }) {
         </div>
         <Row
           icon={<TgIcon name="appearance_filled" size={24} />}
-          label="ChatBackground.Title"
-          onClick={() => setDedicated('wallpaper')}
+          // вкладка слайдера (план 2D, задача 12), как tweb generalSettings.tsx:65-67:
+          // `Row.Title` ChatBackground, `tab.slider.createTab(AppChatBackgroundTab).open()`
+          label="ChatBackground"
+          onClick={() => void getSettingsSliderHost().openTab(AppChatBackgroundTab)}
         />
         <Row
           icon={<TgIcon name="sputnik_filled" size={24} />}

@@ -132,9 +132,6 @@ const ru = {
   SetColor: 'Задать цвет',
   'Appearance.Reset': 'Восстановить по умолчанию',
   'ChatBackground.Blur': 'Размыть изображение',
-  'ChatBackground.Upload': 'Загрузить изображение',
-  'ChatBackground.Reset': 'Восстановить по умолчанию',
-  'ChatBackground.Blurred': 'Размытое изображение',
   'Premium.Feature.Intro':
     'Больше свободы и десятки эксклюзивных функций с подпиской Telegram Premium.',
   PremiumTierAnnual: 'Ежегодно',
