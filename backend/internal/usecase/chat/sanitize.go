@@ -58,6 +58,7 @@ const maxEntities = 500
 // sanitizeEntities drops formatting entities that are unsafe or abusive to persist:
 //   - messageEntityTextUrl with a disallowed URL scheme (javascript:, data:, …) — XSS;
 //   - messageEntityCustomEmoji without a document_id — nothing to render, so meaningless;
+//   - messageEntityMentionName with a non-positive user_id — no such user;
 //   - entities with a non-positive length or negative offset — malformed;
 //   - anything beyond maxEntities — render-time DoS.
 //
@@ -88,6 +89,14 @@ func sanitizeEntities(es domain.MessageEntities) domain.MessageEntities {
 			// content endpoint enforces its own access, so a bogus id just falls back
 			// to the glyph on the client — a positive id is all we validate here.
 			if v.DocumentID <= 0 {
+				continue
+			}
+		case domain.MessageEntityMentionName:
+			// Упоминание без username несёт user_id прямо в сущности; не
+			// положительный id — не пользователь (у клиента NaN становился
+			// inputUserSelf — упоминанием самого себя, tweb ed51d0c09).
+			// Текст остаётся простым текстом.
+			if v.UserID <= 0 {
 				continue
 			}
 		}
