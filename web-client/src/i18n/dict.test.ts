@@ -222,6 +222,16 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `NotificationsPrivateChats` («Private Chats»), у fr — заголовка
 // («Notifications»). ru 1346 → 1350, uk 682 → 686, es 681 → 685,
 // de/fr 681 → 684. `plural` не менялся.
+//
+// Выравнивание корня настроек по tweb (`fix/settings-root-items`): у ВСЕХ пяти
+// словарей снят `General.NightMode` — строки «Ночной режим» в корне у tweb нет
+// (ночной режим — пункт подменю «Ещё» бургера). У русского вдобавок сняты
+// выдумки `Premium.Row.Subtitle`/`Premium.Row.Active` (подзаголовка у строки
+// Premium у оригинала нет) и `DarkMode` (пункт бургера у tweb подписан по теме),
+// а добавлены четыре ключа 1:1 с tweb lang.ts — `EnableDarkMode`,
+// `DisableDarkMode`, `MenuTelegramStars`, `SetAsEmojiStatus`: у русского
+// −4 +4, число то же; у остальных −1 (поверх пилота: ru 1350, uk 685, es 684, de/fr 683).
+//
 // Задача 10 плана 2D (вкладка «Горячие клавиши», порт tweb keyboardShortcuts.tsx):
 // десять ключей tweb lang.ts — `KeyboardShortcuts.Action.{Send,OpenSearch,
 // SavedMessages,ZoomIn,ZoomOut,PlayPauseStory,CloseStories,Undo}`,
@@ -234,12 +244,13 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // tweb `MediaZoomIn`/`MediaZoomOut`/`Undo` (на вкладке их место заняли ключи
 // `keyboardShortcuts.tsx`): −10 каждому. ru 1360 → 1350, uk 696 → 686, es 695 → 685,
 // de/fr 694 → 684 — числа те же, что до задачи, набор другой (см. `FINGERPRINT`).
+// Поверх корня настроек (снят `General.NightMode`): ru 1350, uk 685, es 684, de/fr 683.
 const COMPOSITION = {
   ru: { keys: 1350, plural: 35 },
-  uk: { keys: 686, plural: 24 },
-  es: { keys: 685, plural: 24 },
-  de: { keys: 684, plural: 24 },
-  fr: { keys: 684, plural: 24 },
+  uk: { keys: 685, plural: 24 },
+  es: { keys: 684, plural: 24 },
+  de: { keys: 683, plural: 24 },
+  fr: { keys: 683, plural: 24 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -335,14 +346,16 @@ const COMPOSITION = {
 // (разбор — у `COMPOSITION` выше). Портом 72c50bfef — `Notifications.Restricted`.
 // Пилотом 2D — заголовок вкладки уведомлений и три имени секций (разбор — у
 // `COMPOSITION` выше; de и fr расходятся по одному совпавшему ключу).
+// Выравниванием корня настроек по tweb — снят `General.NightMode` у всех пяти,
+// у русского ещё −3 +4 (разбор — у `COMPOSITION` выше).
 // Задачей 10 плана 2D — десять ключей вкладки «Горячие клавиши» всем пяти и снос
 // десяти ключей React-экрана (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '71fe2516',
-  uk: '77a48e5f',
-  es: 'f1855fdd',
-  de: 'a674b249',
-  fr: '6a6c8a93',
+  ru: 'dd701aee',
+  uk: '44293b5e',
+  es: '91a9ea04',
+  de: 'ae32e56c',
+  fr: '718c6586',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

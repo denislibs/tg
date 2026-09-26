@@ -1,5 +1,5 @@
 import type { LangPackKey } from '@/lang'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import TgIcon from './TgIcon'
 import Avatar from '../shared/ui/Avatar'
 import Menu, { MenuItem } from '../shared/ui/Menu'
@@ -12,6 +12,7 @@ import { getUserTitle } from '../core/peers/getPeerTitle'
 import type { PublicAccount } from '../core/auth/accounts'
 import { ANIMATE_AUTH_KEY, PREV_ACCOUNT_KEY, commandThenReload, playChatlistExit, playMainScreenExit } from '../core/accountTransition'
 import { useSettings } from '../settings'
+import { resolvePreset, PRESET_MODE } from '../theme'
 import { usePwaStore } from '../core/pwa'
 import { enterAppPip, pipSupported } from '../core/pip'
 import rootScope from '@lib/rootScope'
@@ -67,7 +68,8 @@ export default function MainMenu({
 }: Props) {
   const t = useT()
   const managers = useManagers()
-  const { reduceMotion, update } = useSettings()
+  const { reduceMotion, themeChoice, update } = useSettings()
+  const isNight = PRESET_MODE[resolvePreset(themeChoice)] === 'dark'
   const canInstall = usePwaStore((st) => st.canInstall)
   const [moreOpen, setMoreOpen] = useState(false)
   // Подменю «Ещё» якорится к своему пункту (не фикс-координаты).
@@ -133,10 +135,19 @@ export default function MainMenu({
 
   const openUrl = (url: string) => { window.open(url, '_blank', 'noopener'); close() }
 
+  // Тёмный режим — tweb `toggleTheme` в `createMoreSubmenu`: круг перехода
+  // темы раскрывается из центра иконки пункта.
+  const toggleTheme = (e: MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.querySelector('.btn-menu-item-icon')!.getBoundingClientRect()
+    onToggleMode?.({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 })
+    close()
+  }
+
   // Пункты подменю «Ещё» (tweb createMoreSubmenu). «Версию A» опускаем —
   // у нас одна версия, переключение вело бы на сторонний сайт.
-  const moreItems: { icon: string; label: LangPackKey; onClick: () => void; show?: boolean }[] = [
-    { icon: 'darkmode', label: 'DarkMode', onClick: () => { onToggleMode?.(); close() } },
+  const moreItems: { icon: string; label: LangPackKey; onClick: (e: MouseEvent<HTMLDivElement>) => void; show?: boolean }[] = [
+    // Подпись — по текущей теме, как у оригинала (`EnableDarkMode`/`DisableDarkMode`).
+    { icon: 'darkmode', label: isNight ? 'DisableDarkMode' : 'EnableDarkMode', onClick: toggleTheme },
     {
       icon: 'animations',
       label: reduceMotion ? 'EnableAnimations' : 'DisableAnimations',

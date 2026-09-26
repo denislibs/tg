@@ -593,7 +593,7 @@ delete primaryTransparent` + `confirmationPopup` (`:72-81`), квота — 2 с
 **Отдельно выяснить:** строка «Cached video stream chunks» (`storageQuota.tsx:374-382`) — есть ли у
 нас кэш потоковых чанков (SW `/dnp-stream/`); нет — О-6.
 
-### Задача 8: «Язык» → HEAD
+### Задача 8: «Язык» → HEAD — ✅ сделано (PR feat/w2d-language)
 
 **Порт:** дельта `e52b5d931 → 812502980` в `language.tsx` (референс § 8.2, отчёт сверки): список
 — `createSignal` + `For` + `Row.RadioField`/`RadioFieldTsx class="disable-hover"`, `Row.Title
@@ -603,6 +603,16 @@ name` + `Row.Subtitle native_name` (`:98-154`) вместо `new Row` + `RadioFo
 **Файлы:** `sidebarLeft/tabs/language.solid.tsx` (+ тест). Врезки нет (вкладка уже заведена).
 **Мутация:** снять `disable-hover` — тест класса краснеет. **Зависимости:** 0, 1, 2.
 **Готово когда:** `git grep -n "components/row'" web-client/src/components/sidebarLeft/tabs/language.solid.tsx` пуст.
+
+**Итог (2026-09-26):** список — дословно `:98-154` (`createSignal` + `For` + `RadioFieldTsx
+class="disable-hover"`, `form` прямо в секции); `TranslateSection` не портирован — обоснование #133
+сверено заново и верно (вызывающих `messages.translate` нет, `usePremium`/`pickLanguage` нет,
+настройки перевода никто не читает). Сверх плана: с последним потребителем сняты
+`RadioFormFromRows`/`RadioFormFromValues` (`row.ts`) и `radioForm.ts` + тест — предусловие задачи 31
+«`radioForm` без потребителей» закрыто досрочно (у tweb HEAD `radioForm.ts` жив ради
+`ButtonMenuSync.radioGroups`, у нас не портированных). Шим `installSpecLabelActivation` вынесен из
+теста пилота в `web-client/src/test/specLabelActivation.ts` — брать оттуда. RTL-признак
+(`setDocumentLangPackProperties`) не трогался: PR #291 не влит. Новых ключей нет.
 
 ### Задача 9: «Устройства» → HEAD + экран сессии (944b578e9)
 
@@ -877,6 +887,10 @@ Shortcuts; Premium-секция — `showPremiumPopup`/`showStarsPopup`/`showSen
 `premiumBlocked`. Наши лишние строки «Ночной режим», карточка контактов, `EmojiStatus.Set`,
 `PremiumManage` — у tweb их в корне нет: удалить (продуктовый вопрос — вынести пользователю
 до задачи, ответ — в коммит).
+> **Заметка:** состав строк корня уже выровнен PR `fix/settings-root-items` — «Ночной режим»,
+> `EmojiStatus.Set` и подзаголовок Premium сняты, «Мои звёзды» добавлены, вход в выбор статуса —
+> кнопка `.sidebar-emoji-status` в шапке колонки; порт переносит этот состав (пин
+> `SettingsView.rootItems.test.tsx`) и остаток — карточку контактов, `PremiumManage`, ключи tweb.
 
 **Снос шва** (`settings-rows.md` § «Ключевой шов»): слайдер переезжает на колоночный
 `.sidebar-slider` (`Sidebar.tsx:350`), вкладка №0 — `.item-main` React-колонки (узлом владеет
@@ -969,6 +983,7 @@ media; брать задачу, когда в них нет открытых в�
 | О-25 | Личный канал в профиле | выяснить в задаче 27 (`updatePersonalChannel`) | секция PersonalChannel |
 | О-26 | Поиск по настройкам и меню шапки из 34f417d12 (`SliderSuperTab.shown`, NavigationItem `settings-search`, `tg://settings/…`) | волна 4 дельты; нужен индекс вкладок, который строится после переезда всех вкладок | поиск по настройкам |
 | О-27 | Попап настроек при свёрнутой колонке (`SettingsSliderPopup`, `createTab`-override `sidebarLeft/index.ts:1730-1741`) | предмет появляется только после задачи 28 | настройки поверх чата на узкой колонке |
+| ~~О-29~~ | ~~Модель отступов `MediaHeader` HEAD (`gap: .5rem`) и под неё `authFlow`~~ | **снято** (ветка `fix/w2d-mediaheader-rtl-overlay`): `mediaHeader.module.scss` дословно с HEAD, `auth/AuthFlow.module.scss` `.qrContainer`, карточки входа — `h1` и `class="secondary"`; отступы экрана входа = tweb HEAD, замеры — `docs/tweb/dom/auth.md` §8.4 | — |
 
 ## Оценка объёма
 
