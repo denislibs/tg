@@ -45,6 +45,12 @@ func (i *Interactor) SavedDialogsPage(ctx context.Context, viewerID int64) (Save
 		if err != nil {
 			return SavedDialogsPage{}, err
 		}
+		// Последнее сохранённое сообщение — то же сообщение, что в ленте
+		// «Избранного» (см. DialogsPage): сырой строкой вложение и опрос едут
+		// лишь ключом.
+		if err := i.hydrateMessages(ctx, viewerID, messages); err != nil {
+			return SavedDialogsPage{}, err
+		}
 	}
 
 	// ── chats/users: карточки самих источников ──────────────────────────────

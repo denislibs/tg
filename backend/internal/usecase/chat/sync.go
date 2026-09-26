@@ -41,19 +41,9 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	if err != nil {
 		return HistoryResult{}, err
 	}
-	if e := i.hydrateReplies(ctx, msgs); e != nil {
+	if e := i.hydrateMessages(ctx, userID, msgs); e != nil {
 		return HistoryResult{}, e
 	}
-	if e := i.hydrateMedia(ctx, msgs); e != nil {
-		return HistoryResult{}, e
-	}
-	_ = i.hydratePolls(ctx, userID, msgs)
-	i.hydrateChecklists(ctx, msgs)
-	i.hydrateGifts(ctx, userID, msgs)
-	i.hydrateGiveaways(ctx, userID, msgs)
-	i.hydratePaidMedia(ctx, userID, msgs)
-	_ = i.hydrateReactions(ctx, userID, msgs)
-	i.hydrateStarReactions(ctx, userID, msgs)
 	var count int
 	switch {
 	case tag != "":
@@ -68,6 +58,36 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 		return HistoryResult{}, err
 	}
 	return HistoryResult{Messages: msgs, Count: count}, nil
+}
+
+// hydrateMessages — ПОЛНАЯ гидрация окна сообщений для зрителя userID: всё,
+// что строка сообщения несёт лишь ключом (ответ, вложение, опрос, чек-лист,
+// подарок, розыгрыш, платное медиа, реакции), собирается здесь одним ходом.
+//
+// Помощник один на все выдачи, где сообщение уходит клиенту той же формой,
+// что в ленте (история, «перейти к сообщению», последнее сообщение диалога,
+// темы форума и строки «Избранного»):
+// пока цепочка копировалась по местам, список чатов остался без неё вовсе, и
+// фото с опросом приезжали туда без `media` — то есть без превью.
+//
+// Ответ и вложение — с ошибкой: без них сообщение приехало бы другой формой.
+// Остальное — best-effort, как и было у истории: сбой косметики не должен
+// ронять выдачу.
+func (i *Interactor) hydrateMessages(ctx context.Context, userID int64, msgs []domain.Message) error {
+	if err := i.hydrateReplies(ctx, msgs); err != nil {
+		return err
+	}
+	if err := i.hydrateMedia(ctx, msgs); err != nil {
+		return err
+	}
+	_ = i.hydratePolls(ctx, userID, msgs)
+	i.hydrateChecklists(ctx, msgs)
+	i.hydrateGifts(ctx, userID, msgs)
+	i.hydrateGiveaways(ctx, userID, msgs)
+	i.hydratePaidMedia(ctx, userID, msgs)
+	_ = i.hydrateReactions(ctx, userID, msgs)
+	i.hydrateStarReactions(ctx, userID, msgs)
+	return nil
 }
 
 // checkHistoryAccess: член чата — всегда; не-член — только тред в discussion-
@@ -242,7 +262,7 @@ type AroundResult struct {
 }
 
 // GetHistoryAround returns a window centered on centerSeq (for jump-to-message),
-// with reply previews hydrated.
+// hydrated the same way as GetHistory.
 func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, centerSeq int64, limit int, threadRoot *int64) (AroundResult, error) {
 	if err := i.checkHistoryAccess(ctx, chatID, userID, threadRoot); err != nil {
 		return AroundResult{}, err
@@ -260,19 +280,9 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 	if err != nil {
 		return AroundResult{}, err
 	}
-	if e := i.hydrateReplies(ctx, msgs); e != nil {
+	if e := i.hydrateMessages(ctx, userID, msgs); e != nil {
 		return AroundResult{}, e
 	}
-	if e := i.hydrateMedia(ctx, msgs); e != nil {
-		return AroundResult{}, e
-	}
-	_ = i.hydratePolls(ctx, userID, msgs)
-	i.hydrateChecklists(ctx, msgs)
-	i.hydrateGifts(ctx, userID, msgs)
-	i.hydrateGiveaways(ctx, userID, msgs)
-	i.hydratePaidMedia(ctx, userID, msgs)
-	_ = i.hydrateReactions(ctx, userID, msgs)
-	i.hydrateStarReactions(ctx, userID, msgs)
 	var count int
 	if threadRoot != nil {
 		count, err = i.msgs.CountThread(ctx, chatID, *queryRoot)
