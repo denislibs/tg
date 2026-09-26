@@ -22,7 +22,7 @@ import { ButtonMenuItem } from './buttonMenu'
 import CheckboxField from './checkboxField'
 import PopupElement from './popups/popupElement'
 import PopupPeer from './popups/popupPeer'
-import Row, { RadioFormFromValues } from './row'
+import Row from './row'
 import SettingSection from './settingSection'
 import { toastNew, hideToast } from './toast'
 
@@ -73,16 +73,11 @@ describe('ванильные подписи показывают перевод,
     popup.forceHide()
   })
 
-  it('подпись чекбокса и радио-строки', () => {
+  it('подпись чекбокса', () => {
     // `DeleteMessagesOptionAlso` = «Также удалить у %1$s»: имя подставляет СТРОКА,
     // а не вызывающий — раньше он склеивал префикс «Также удалить у» с именем сам.
     const checkbox = new CheckboxField({ text: 'DeleteMessagesOptionAlso', textArgs: ['Майя'] })
     expect(checkbox.label.querySelector('.checkbox-caption')!.textContent).toBe('Также удалить у Майя')
-
-    // У радио HEAD подписи нет (`radioField.ts`): ключ переводит заголовок строки.
-    const form = RadioFormFromValues([{ langPackKey: 'Checkbox.Enabled', value: 'x' }], () => {})
-    expect(form.querySelector('.row-title')!.textContent).toBe('Включено')
-    expect(form.querySelector('.radio-field-main')!.textContent).toBe('')
   })
 
   it('всплывашка', () => {

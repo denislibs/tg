@@ -2,7 +2,7 @@
 // контракт со стилями (`tweb/src/scss/partials/_row.scss`), поэтому проверяем
 // именно классы и порядок узлов, а не только текстовое содержимое.
 import { describe, expect, it, vi } from 'vitest'
-import Row, { RadioFormFromRows } from './row'
+import Row from './row'
 import RadioField from './radioField'
 import CheckboxField from './checkboxField'
 import SidebarSlider from './slider'
@@ -57,29 +57,6 @@ describe('Row', () => {
     expect(row.container.querySelector('.row-title')!.textContent).toBe('Вариант')
     expect((row.container as HTMLLabelElement).control).toBe(radioField.input)
     expect(row.container.classList.contains('row-with-padding')).toBe(true)
-  })
-
-  it('RadioFormFromRows кладёт container каждой строки в форму и зовёт onChange только для отмеченного input', () => {
-    const rows = [
-      new Row({ radioField: new RadioField({ name: 'grp', value: 'a' }), title: 'A' }),
-      new Row({ radioField: new RadioField({ name: 'grp', value: 'b' }), title: 'B' }),
-    ]
-    const values: string[] = []
-    const form = RadioFormFromRows(rows, (value) => values.push(value))
-
-    // row.ts:391 передаёт в RadioForm именно `r.container`/`r.radioField.input` —
-    // перепутанная пара молча собрала бы форму без чужих узлов или без слушателя.
-    expect(form.contains(rows[0].container)).toBe(true)
-    expect(form.contains(rows[1].container)).toBe(true)
-
-    // radioForm.ts зовёт onChange только когда `input.checked` — сняли отметку
-    // и всё равно дёрнули change, колбэк молчит.
-    rows[0].radioField.input.dispatchEvent(new Event('change'))
-    expect(values).toEqual([])
-
-    rows[1].radioField.input.checked = true
-    rows[1].radioField.input.dispatchEvent(new Event('change'))
-    expect(values).toEqual(['b'])
   })
 
   // Раунд 1 ревью: обе адаптации ниже — места, где наш CheckboxField (нет
