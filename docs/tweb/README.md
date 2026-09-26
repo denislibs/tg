@@ -53,6 +53,7 @@
 | **Левая колонка**: слайдер, все табы настроек, бургер, глобальный поиск, чатлист, фолдеры, сторис-лента | [left-sidebar.md](left-sidebar.md) |
 | **Строки и экраны настроек**: Solid `Row`/`RowTsx` и `attachRowController`, `Section` (подпись вне карточки), контейнер вкладки (шапка, переход), все вкладки настроек левой колонки по `812502980`, дампы, карта наших `settings/*` и расхождения (волна 2D) | [settings-rows.md](settings-rows.md) |
 | **Глобальный поиск**: `initSearch` + `AppSearchSuper` вторым потребителем — группы результатов, чипы пира/даты, `ChatTypeMenu`, recent, курсор `next_rate`, переход `zoom-fade`, что блокировано бэкендом | [global-search.md](global-search.md) |
+| **Код-пароль: шифрование хранилищ**: вывод ключа, `EncryptionKeyStore`, что шифруется/чистится при включении-выключении-смене, воркер (`isLocked`/`toggleUsingPasscode`), старт под замком, передача ключа через `window.sessionStorage`, корзины кэша и SW | [passcode-encryption.md](passcode-encryption.md) |
 | **Попапы и меню**: `PopupElement`, каталог всех попапов, `PopupPeer`/confirm, `ButtonMenu`/контекст-меню, позиционирование, тосты, тултипы | [popups.md](popups.md) |
 | **Композер**: DOM-дерево, морф кнопки отправки, плашка reply/edit, запись голоса, эмодзи-дропдаун, тайминги | [composer.md](composer.md) |
 | **Каналы**: бабл поста, композер канала, шапка, редактирование, права, буст/статистика | [channels.md](channels.md) |
