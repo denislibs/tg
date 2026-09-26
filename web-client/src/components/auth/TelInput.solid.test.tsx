@@ -112,3 +112,26 @@ describe('TelInput.solid: полное удаление значения (деф
     expect(el().firstChild!.nodeType).toBe(Node.TEXT_NODE)
   })
 })
+
+// tweb 469b191f0 (telInputField.ts:7-10, :68-71): не больше 36 цифр —
+// мусорный ввод иначе растит поле строка за строкой (E.164 — максимум 15).
+describe('TelInput.solid: лимит цифр (tweb 469b191f0)', () => {
+  it('ввод длиннее 36 цифр обрезается до «+» и первых 36', () => {
+    const { el, value } = mount()
+    const digits = '1234567890'.repeat(4) // 40 цифр
+    el().textContent = '+' + digits
+    el().dispatchEvent(new Event('input', { bubbles: true }))
+
+    expect(value()).toBe('+' + digits.slice(0, 36))
+    expect(el().textContent).toBe('+' + digits.slice(0, 36))
+  })
+
+  it('36 цифр проходят как есть', () => {
+    const { el, value } = mount()
+    const digits = '123456789012345678901234567890123456'
+    el().textContent = '+' + digits
+    el().dispatchEvent(new Event('input', { bubbles: true }))
+
+    expect(value()).toBe('+' + digits)
+  })
+})

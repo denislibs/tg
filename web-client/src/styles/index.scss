@@ -109,6 +109,10 @@ textarea,
   outline: none;
   cursor: text;
   white-space: pre-wrap;
+  // * tweb 469b191f0 (base.scss:988-992): Blink/WebKit set this on editables in
+  // * their UA stylesheet, Gecko doesn't: without it an unbreakable run (a long
+  // * digit sequence, a word) overflows the field in Firefox instead of wrapping
+  overflow-wrap: break-word;
 }
 
 // tweb components/_global.scss:24-30 (то же в _typography.scss:1-3) — сброс

@@ -33,6 +33,12 @@ export type TelInputSolidProps = {
   onEnter: () => void
 }
 
+// tweb 469b191f0 (telInputField.ts:7-10): longest number the field accepts, in
+// digits — same limit as tdesktop (kMaxPhoneCodeLength + kMaxPhoneTailLength).
+// E.164 tops out at 15, so this only cuts off junk input, which would otherwise
+// grow the field line by line.
+const MAX_DIGITS = 4 + 32
+
 export default function TelInput(props: TelInputSolidProps): JSX.Element {
   let el!: HTMLDivElement
   // Значение, посчитанное в обработчике `paste`: в contenteditable
@@ -123,6 +129,9 @@ export default function TelInput(props: TelInputSolidProps): JSX.Element {
         ref={el}
         class={classNames('input-field-input', props.error ? 'error' : '')}
         contentEditable
+        // tweb 9909f2b1a (inputField.ts:543-546): переводчик браузера переписывает
+        // текстовые узлы прямо в поле, и прочитанное значение — уже перевод
+        translate="no"
         inputMode="decimal"
         data-no-linebreaks="1"
         data-left-pattern={props.leftPattern}
@@ -130,6 +139,13 @@ export default function TelInput(props: TelInputSolidProps): JSX.Element {
           if (pasted !== undefined) {
             el.textContent = pasted
             pasted = undefined
+            placeCaretAtEnd(el)
+          }
+          // tweb 469b191f0 (telInputField.ts:68-71): не больше MAX_DIGITS цифр —
+          // иначе мусорный ввод растит поле строка за строкой.
+          const digits = (el.textContent ?? '').replace(/\D/g, '')
+          if (digits.length > MAX_DIGITS) {
+            el.textContent = '+' + digits.slice(0, MAX_DIGITS)
             placeCaretAtEnd(el)
           }
           const raw = el.textContent ?? ''

@@ -18,10 +18,11 @@ beforeAll(() => {
   }).css
 })
 
-/** Тело первого правила с ТОЧНО таким селектором (без пробелов по краям). */
+/** Тела всех правил с ТОЧНО таким селектором (склеены), `undefined` — нет ни одного. */
 function rule(selector: string): string | undefined {
   const esc = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return css.match(new RegExp(`(?:^|[}\\n])\\s*${esc}\\s*\\{([^}]*)\\}`))?.[1]
+  const bodies = [...css.matchAll(new RegExp(`(?:^|[}\\n])\\s*${esc}\\s*\\{([^}]*)\\}`, 'g'))].map((m) => m[1])
+  return bodies.length ? bodies.join('\n') : undefined
 }
 
 describe('круговое раскрытие темы (tweb base.scss:1960-1972, 7082e1a18 → 091b476a9)', () => {
@@ -45,5 +46,11 @@ describe('выделение служебных сообщений (tweb e9428f2
   it('смещение чекбокса — одно правило .1875rem, отдельной ветки «рядом с аватаром» нет', () => {
     expect(rule('.bubble > .bubble-select-checkbox')).toMatch(/bottom:\s*0?\.1875rem/)
     expect(css).not.toMatch(/\.bubbles-inner\.is-chat \.bubble\.is-group-last\.is-in > \.bubble-select-checkbox/)
+  })
+})
+
+describe('contenteditable переносит неразрывный текст (tweb 469b191f0, base.scss:988-992)', () => {
+  it('overflow-wrap: break-word — Gecko не ставит его в UA-стилях', () => {
+    expect(rule("[contenteditable='true']") ?? rule('[contenteditable=true]')).toMatch(/overflow-wrap:\s*break-word/)
   })
 })
