@@ -726,7 +726,11 @@ canAutoplay ??= (
   (`setManual`, стр. 583–586), загрузка `onlyCache` (стр. 595) — скачивание начнётся только по клику;
 - нет автоплея → кнопка `Button('btn-circle video-play position-center', {icon:'largeplay'})` (стр. 173–176);
 - при автоплее в `video-time` добавляется иконка `nosound` (стр. 159);
-- видео в процессе аплоада не автоплеится, доигрывается после завершения (стр. 503–519);
+- видео в процессе аплоада не автоплеится и по завершении получает обратно АТРИБУТ `autoplay` (а не
+  голый `play()`: `animationIntersector` будит только плееры с `autoplay`); КРУЖОК автоплей на время
+  аплоада сохраняет — `suppressAutoplayWhileUploading = !!uploadingFileName && doc.type !== 'round'`
+  (tweb 173f3c6dc, `video.ts:113-115`, `:406`, `:514-519`, `:578`). **У нас:**
+  `components/wrappers/video.ts` — портировано 1:1 (роль `uploadingFileName` играет `uploadPromise`);
 - у видео `timeupdate` перерисовывает `video-time` как «оставшееся время» с троттлом 1 с (стр. 550–563).
 
 ## 6.2 GIF vs video
