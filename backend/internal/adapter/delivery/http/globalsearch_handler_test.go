@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"testing"
+	"time"
 )
 
 // searchSlice — messages.messagesSlice глазами клиента. NextRate — указатель:
@@ -79,6 +80,60 @@ func TestGlobalSearchHTTP_NextRate(t *testing.T) {
 	}
 	if page2.Messages[0].ID >= page1.Messages[1].ID {
 		t.Fatalf("page2 = %v не ниже page1 = %v (дубль от вставки сверху)", sliceIDs(page2), sliceIDs(page1))
+	}
+}
+
+// Пин на ГРАНИЦУ ChatTypeMenu и чипов дат: имена `chat_type` (users/groups/
+// channels) и `min_date`/`max_date` (unix-секунды) — те, на которых поедет
+// шов менеджеров (задача 6). Неизвестный chat_type — 400, а не «всё».
+func TestGlobalSearchHTTP_ChatTypeAndDates(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990004511")
+	_, idB := signUp(t, h, pool, "+79990004512")
+
+	rec := authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": idB})
+	peer := itoa(createdPeerFrom(t, rec))
+	rec = authedReq(t, h, http.MethodPost, "/channels", tokenA, map[string]any{"title": "Коты", "is_public": false})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create channel: %d %s", rec.Code, rec.Body.String())
+	}
+	channel := itoa(createdPeerID(t, rec))
+	for path, text := range map[string]string{
+		"/chats/" + peer + "/messages":       "кот в личке",
+		"/channels/" + channel + "/messages": "кот в канале",
+	} {
+		if r := authedReq(t, h, http.MethodPost, path, tokenA, map[string]any{"text": text}); r.Code != http.StatusOK {
+			t.Fatalf("send %s: %d %s", path, r.Code, r.Body.String())
+		}
+	}
+	q := "/search/messages?q=" + url.QueryEscape("кот")
+
+	if all := getSlice(t, h, tokenA, q); all.Count != 2 {
+		t.Fatalf("без chat_type: count=%d, want 2", all.Count)
+	}
+	if users := getSlice(t, h, tokenA, q+"&chat_type=users"); users.Count != 1 {
+		t.Fatalf("chat_type=users: count=%d, want 1", users.Count)
+	}
+	if chans := getSlice(t, h, tokenA, q+"&chat_type=channels"); chans.Count != 1 {
+		t.Fatalf("chat_type=channels: count=%d, want 1", chans.Count)
+	}
+	if groups := getSlice(t, h, tokenA, q+"&chat_type=groups"); groups.Count != 0 {
+		t.Fatalf("chat_type=groups: count=%d, want 0", groups.Count)
+	}
+	if r := authedReq(t, h, http.MethodGet, q+"&chat_type=bots", tokenA, nil); r.Code != http.StatusBadRequest {
+		t.Fatalf("chat_type=bots: %d %s, want 400", r.Code, r.Body.String())
+	}
+
+	// Всё отправлено только что: вчерашние сутки пусты, сегодняшние — нет.
+	now := time.Now().Unix()
+	if past := getSlice(t, h, tokenA, q+"&max_date="+itoa(now-86400)); past.Count != 0 {
+		t.Fatalf("max_date=вчера: count=%d, want 0", past.Count)
+	}
+	if future := getSlice(t, h, tokenA, q+"&min_date="+itoa(now+86400)); future.Count != 0 {
+		t.Fatalf("min_date=завтра: count=%d, want 0", future.Count)
+	}
+	if today := getSlice(t, h, tokenA, q+"&min_date="+itoa(now-3600)+"&max_date="+itoa(now+3600)); today.Count != 2 {
+		t.Fatalf("сегодня: count=%d, want 2", today.Count)
 	}
 }
 

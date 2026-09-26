@@ -3,6 +3,9 @@ package postgres
 import (
 	"context"
 	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/messenger-denis/backend/internal/domain"
 	storepostgres "github.com/messenger-denis/backend/internal/store/postgres"
@@ -121,5 +124,89 @@ func TestMessagesRepo_GlobalSearchNextRate(t *testing.T) {
 	if !sameIDs(msgIDs(exact.Messages), hits[1].ID, hits[0].ID) || exact.NextRate != 0 {
 		t.Fatalf("exact = %v next_rate=%d, want [%d %d] без next_rate",
 			msgIDs(exact.Messages), exact.NextRate, hits[1].ID, hits[0].ID)
+	}
+}
+
+// createGroupLike — группа или канал, где owner — создатель и участник.
+func createGroupLike(t *testing.T, pool *pgxpool.Pool, typ string, owner int64) int64 {
+	t.Helper()
+	ctx := context.Background()
+	g := NewGroupRepo(pool)
+	id, err := g.CreateMultiMember(ctx, typ, typ+" title", "", "", false, owner)
+	if err != nil {
+		t.Fatalf("create %s: %v", typ, err)
+	}
+	if err := g.AddMember(ctx, id, owner, domain.RoleCreator, 0); err != nil {
+		t.Fatalf("add creator: %v", err)
+	}
+	return id
+}
+
+// TestMessagesRepo_GlobalSearchChatTypeAndDates — задача 2: ChatTypeMenu
+// уходит серверу флагами users_only/groups_only/broadcasts_only, чипы дат —
+// min_date/max_date (tweb appMessagesManager.ts:9992-9999). chat_type режет по
+// виду чата, даты — по created_at с ОБЕИМИ границами включительно: чип дня
+// шлёт max_date = начало следующего дня − 1 с (tweb helpers/date.ts:264,
+// maxDate/1000|0 в appMessagesManager.ts:9933).
+func TestMessagesRepo_GlobalSearchChatTypeAndDates(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+7480")
+	b := seedUser(t, pool, "+7481")
+	priv := createPrivate(t, pool, a, b)
+	saved, err := NewChatsRepo(pool).CreateSaved(ctx, a)
+	if err != nil {
+		t.Fatalf("saved: %v", err)
+	}
+	grp := createGroupLike(t, pool, "group", a)
+	chn := createGroupLike(t, pool, "channel", a)
+	msgs := NewMessagesRepo(pool)
+
+	mp := insertMsg(t, msgs, priv, a, "text", "кот в личке")
+	ms := insertMsg(t, msgs, saved, a, "text", "кот в избранном")
+	mg := insertMsg(t, msgs, grp, a, "text", "кот в группе")
+	mc := insertMsg(t, msgs, chn, a, "text", "кот в канале")
+
+	byType := map[string][]int64{
+		"":         {mc.ID, mg.ID, ms.ID, mp.ID},
+		"users":    {ms.ID, mp.ID}, // Избранное — личный чат с собой (peerUser)
+		"groups":   {mg.ID},
+		"channels": {mc.ID},
+	}
+	for ct, want := range byType {
+		res := globalSearch(t, msgs, a, usecasechat.GlobalSearchQuery{Q: "кот", ChatType: ct, Limit: 10})
+		if !sameIDs(msgIDs(res.Messages), want...) || res.Count != len(want) {
+			t.Fatalf("chat_type=%q: %v count=%d, want %v", ct, msgIDs(res.Messages), res.Count, want)
+		}
+	}
+
+	// Сутки 11.01.2026 UTC: граница снизу и сверху включительно, соседние
+	// сутки — мимо.
+	day := time.Date(2026, 1, 11, 0, 0, 0, 0, time.UTC)
+	for m, at := range map[int64]time.Time{
+		mp.ID: day.Add(-12 * time.Hour),
+		ms.ID: day,
+		mg.ID: day.Add(24*time.Hour - time.Second),
+		mc.ID: day.Add(24 * time.Hour),
+	} {
+		if _, err := pool.Exec(ctx, `UPDATE messages SET created_at=$2 WHERE id=$1`, m, at); err != nil {
+			t.Fatalf("created_at: %v", err)
+		}
+	}
+	minDate, maxDate := day.Unix(), day.Add(24*time.Hour).Unix()-1
+	cases := []struct {
+		name     string
+		min, max int64
+		want     []int64
+	}{
+		{"сутки", minDate, maxDate, []int64{mg.ID, ms.ID}},
+		{"только min", minDate, 0, []int64{mc.ID, mg.ID, ms.ID}},
+		{"только max", 0, maxDate, []int64{mg.ID, ms.ID, mp.ID}},
+	}
+	for _, c := range cases {
+		res := globalSearch(t, msgs, a, usecasechat.GlobalSearchQuery{Q: "кот", MinDate: c.min, MaxDate: c.max, Limit: 10})
+		if !sameIDs(msgIDs(res.Messages), c.want...) || res.Count != len(c.want) {
+			t.Fatalf("%s: %v count=%d, want %v", c.name, msgIDs(res.Messages), res.Count, c.want)
+		}
 	}
 }

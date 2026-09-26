@@ -1176,6 +1176,21 @@ describe('MessagesManager.searchGlobal: курсор `next_rate`', () => {
     expect(r.count).toBe(7)
   })
 
+  // ChatTypeMenu и чипы дат (tweb `appMessagesManager.ts:9992-9999`). Даты
+  // менеджер берёт в МИЛЛИСЕКУНДАХ, как `getHistory` оригинала (чипы —
+  // `DateData` в мс, `helpers/date.ts:240-268`), а в URL кладёт секунды —
+  // ровно `minDate / 1000 | 0` оригинала (`:9931-9932`).
+  it('chat_type и даты уходят в URL; даты — секундами', async () => {
+    const { rest, queries } = rateRest({})
+    await newMessagesManager({ rest }).searchGlobal('кот', '', {
+      limit: 30, chatType: 'channels', minDate: 1768089600000, maxDate: 1768175999999,
+    })
+    expect(queries[0]).toEqual({
+      q: 'кот', filter: '', offset_rate: 0, limit: 30,
+      chat_type: 'channels', min_date: 1768089600, max_date: 1768175999,
+    })
+  })
+
   it('следующая страница — по курсору; последняя — без nextRate', async () => {
     const { rest, queries } = rateRest({ count: 7 })
     const r = await newMessagesManager({ rest }).searchGlobal('кот', 'media', { offsetRate: 4242, limit: 30 })

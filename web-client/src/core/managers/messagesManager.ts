@@ -783,14 +783,29 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     // последней странице — по нему класс и помечает вкладку загруженной
     // (`appSearchSuper.ts:2312`). Смещения нет: кэш вкладки растёт сверху
     // от живых апдейтов, и числовое окно поехало бы (дубль/дыра).
+    //
+    // `chatType` — ChatTypeMenu (флаги users_only/groups_only/broadcasts_only,
+    // `:9997-9999`); `minDate`/`maxDate` — чипы дат в МИЛЛИСЕКУНДАХ, как у
+    // `getHistory` оригинала, а на провод уходят секунды — `minDate / 1000 | 0`
+    // (`:9931-9932`).
     async searchGlobal(
       q: string,
       filter: '' | 'media' | 'files' | 'links' | 'music' | 'voice' = '',
-      opts: { offsetRate?: number; limit?: number } = {},
+      opts: {
+        offsetRate?: number
+        limit?: number
+        chatType?: 'users' | 'groups' | 'channels'
+        minDate?: number
+        maxDate?: number
+      } = {},
     ): Promise<{ messages: MyMessage[]; count: number; nextRate?: number }> {
-      const r = await rest.get<MessagesContainer>('/search/messages', {
+      const query: Record<string, string | number> = {
         q, filter, offset_rate: opts.offsetRate ?? 0, limit: opts.limit ?? 20,
-      })
+      }
+      if (opts.chatType) query.chat_type = opts.chatType
+      if (opts.minDate) query.min_date = opts.minDate / 1000 | 0
+      if (opts.maxDate) query.max_date = opts.maxDate / 1000 | 0
+      const r = await rest.get<MessagesContainer>('/search/messages', query)
       return { messages: await mapContainer(r), count: r.count ?? 0, nextRate: r.next_rate || undefined }
     },
 

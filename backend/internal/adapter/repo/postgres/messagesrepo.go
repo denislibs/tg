@@ -361,17 +361,31 @@ func (r *MessagesRepo) GlobalSearchMessages(ctx context.Context, userID int64, g
 	qq := querier(ctx, r.pool)
 	where := ` FROM messages m
 		JOIN chat_members cm ON cm.chat_id = m.chat_id AND cm.user_id = $1
+		JOIN chats c ON c.id = m.chat_id
 		LEFT JOIN media md ON md.id = m.media_id
 		WHERE m.deleted_at IS NULL AND m.type <> 'service'
 		  AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id = m.id AND h.user_id = $1)
-		  AND ((SELECT c.history_for_new FROM chats c WHERE c.id = m.chat_id)
-		       OR cm.role <> 'member' OR m.created_at >= cm.joined_at)`
+		  AND (c.history_for_new OR cm.role <> 'member' OR m.created_at >= cm.joined_at)`
 	if gq.Filter != "" {
 		cond := mediaFilterCond(gq.Filter)
 		if cond == "" {
 			return usecasechat.GlobalSearchResult{}, nil
 		}
 		where += ` AND ` + cond
+	}
+	// ChatTypeMenu (users_only/groups_only/broadcasts_only). Избранное — это
+	// личный чат с собой (peerUser у оригинала), поэтому входит в users.
+	// Неизвестный вид отсекает юзкейс; здесь он — пустая выдача, а не «все».
+	switch gq.ChatType {
+	case "":
+	case usecasechat.SearchChatTypeUsers:
+		where += ` AND c.type IN ('private','saved')`
+	case usecasechat.SearchChatTypeGroups:
+		where += ` AND c.type = 'group'`
+	case usecasechat.SearchChatTypeChannels:
+		where += ` AND c.type = 'channel'`
+	default:
+		return usecasechat.GlobalSearchResult{}, nil
 	}
 	args := []any{userID}
 	add := func(v any) string {
@@ -382,6 +396,7 @@ func (r *MessagesRepo) GlobalSearchMessages(ctx context.Context, userID int64, g
 		p := add("%" + gq.Q + "%")
 		where += ` AND (m.text ILIKE ` + p + ` OR md.file_name ILIKE ` + p + `)`
 	}
+	where += dateRangeCond(gq.MinDate, gq.MaxDate, add)
 	var count int
 	if err := qq.QueryRow(ctx, `SELECT count(*)`+where, args...).Scan(&count); err != nil {
 		return usecasechat.GlobalSearchResult{}, err
@@ -461,6 +476,21 @@ type joinedScanner struct {
 
 func (s *joinedScanner) Scan(dest ...any) error {
 	return s.row.Scan(append(dest, s.extra...)...)
+}
+
+// dateRangeCond — границы чипа даты по created_at (unix-секунды, 0 — без
+// границы). Обе включительно, как у messages.search/searchGlobal: чип дня шлёт
+// max_date = начало следующего дня − 1 с (tweb helpers/date.ts:264), отсюда
+// `< max+1`. add регистрирует значение и отдаёт плейсхолдер.
+func dateRangeCond(minDate, maxDate int64, add func(any) string) string {
+	var cond string
+	if minDate > 0 {
+		cond += ` AND m.created_at >= to_timestamp(` + add(minDate) + `)`
+	}
+	if maxDate > 0 {
+		cond += ` AND m.created_at < to_timestamp(` + add(maxDate+1) + `)`
+	}
+	return cond
 }
 
 // mediaFilterCond — SQL-предикат одного вида шаред-медиа (вкладки профиля,

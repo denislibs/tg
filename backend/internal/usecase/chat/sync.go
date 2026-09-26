@@ -448,7 +448,22 @@ type GlobalSearchQuery struct {
 	// appMessagesManager.ts:9987-10003), серверу не нужны.
 	OffsetRate int64
 	Limit      int
+	// ChatType — вид чатов (ChatTypeMenu, tweb chatTypeMenu/index.tsx):
+	// "" — все, users/groups/channels — флаги users_only/groups_only/
+	// broadcasts_only messages.searchGlobal (tweb appMessagesManager.ts:9997-9999).
+	ChatType string
+	// MinDate/MaxDate — чипы дат, unix-секунды, обе границы включительно
+	// (чип дня шлёт max = начало следующего дня − 1 с, tweb helpers/date.ts:264);
+	// 0 — без границы.
+	MinDate, MaxDate int64
 }
+
+// Виды чатов глобального поиска (GlobalSearchQuery.ChatType).
+const (
+	SearchChatTypeUsers    = "users"
+	SearchChatTypeGroups   = "groups"
+	SearchChatTypeChannels = "channels"
+)
 
 // searchLimitMax — потолок страницы поиска (MTProto режет limit поиска ста).
 const searchLimitMax = 100
@@ -478,6 +493,13 @@ type GlobalSearchResult struct {
 // (tweb global search). filter ∈ {"", media, files, links, music, voice}; with
 // an empty q AND empty filter there is nothing to search — returns empty.
 func (i *Interactor) GlobalSearchMessages(ctx context.Context, userID int64, q GlobalSearchQuery) (GlobalSearchResult, error) {
+	switch q.ChatType {
+	case "", SearchChatTypeUsers, SearchChatTypeGroups, SearchChatTypeChannels:
+	default:
+		// Неизвестный вид — ошибка, а не «все чаты»: молча расширенная выдача
+		// выглядела бы как работающий фильтр.
+		return GlobalSearchResult{}, domain.ErrInvalid
+	}
 	if q.Q == "" && q.Filter == "" {
 		return GlobalSearchResult{}, nil
 	}

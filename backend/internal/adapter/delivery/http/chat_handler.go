@@ -1123,20 +1123,30 @@ func (h *ChatHandler) Calendar(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewMessagesSearchResultsCalendar(page.Periods, page.Messages, page.Users))
 }
 
-// GlobalSearchMessages — GET /search/messages?q=&filter=&offset_rate=&limit=:
-// поиск по сообщениям всех чатов юзера (сайдбар-поиск, tweb SearchTypes).
+// GlobalSearchMessages — GET /search/messages?q=&filter=&offset_rate=&limit=
+// &chat_type=&min_date=&max_date=: поиск по сообщениям всех чатов юзера
+// (сайдбар-поиск, tweb SearchTypes; аналог messages.searchGlobal).
 //
 // offset_rate — next_rate предыдущей страницы (0/нет — с начала); ответ —
 // messages.messagesSlice с next_rate, пока за страницей что-то есть. Смещения
-// у ручки нет: почему — см. usecasechat.GlobalSearchQuery.
+// у ручки нет: почему — см. usecasechat.GlobalSearchQuery. chat_type —
+// users|groups|channels (иное — 400); min_date/max_date — unix-секунды,
+// включительно.
 func (h *ChatHandler) GlobalSearchMessages(w http.ResponseWriter, r *http.Request) {
 	q := usecasechat.GlobalSearchQuery{
 		Q:          r.URL.Query().Get("q"),
 		Filter:     r.URL.Query().Get("filter"),
 		OffsetRate: queryInt(r, "offset_rate", 0),
 		Limit:      int(queryInt(r, "limit", 20)),
+		ChatType:   r.URL.Query().Get("chat_type"),
+		MinDate:    queryInt(r, "min_date", 0),
+		MaxDate:    queryInt(r, "max_date", 0),
 	}
 	res, err := h.svc.GlobalSearchMessages(r.Context(), h.meID(r), q)
+	if errors.Is(err, domain.ErrInvalid) {
+		writeError(w, http.StatusBadRequest, "invalid chat_type")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "search failed")
 		return

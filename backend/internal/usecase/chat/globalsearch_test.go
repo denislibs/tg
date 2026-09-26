@@ -2,7 +2,10 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"testing"
+
+	"github.com/messenger-denis/backend/internal/domain"
 )
 
 // Глобальный поиск листается курсором next_rate сквозь юзкейс: курсор ответа
@@ -50,5 +53,22 @@ func TestGlobalSearchMessages_NextRateThroughUsecase(t *testing.T) {
 	empty, err := in.GlobalSearchMessages(ctx, a, GlobalSearchQuery{Limit: 20})
 	if err != nil || len(empty.Messages) != 0 || empty.NextRate != 0 {
 		t.Fatalf("пустой запрос: %+v err=%v; want пусто без курсора", empty, err)
+	}
+}
+
+// Неизвестный chat_type — ошибка (400 на ручке), а не молча «все чаты»:
+// расширенная выдача выглядела бы как сработавший фильтр ChatTypeMenu.
+func TestGlobalSearchMessages_UnknownChatTypeIsInvalid(t *testing.T) {
+	in, _ := newInteractor()
+	ctx := context.Background()
+	for _, ct := range []string{"", SearchChatTypeUsers, SearchChatTypeGroups, SearchChatTypeChannels} {
+		if _, err := in.GlobalSearchMessages(ctx, 1, GlobalSearchQuery{Q: "кот", ChatType: ct}); err != nil {
+			t.Fatalf("chat_type=%q: %v", ct, err)
+		}
+	}
+	for _, ct := range []string{"bots", "broadcasts", "USERS"} {
+		if _, err := in.GlobalSearchMessages(ctx, 1, GlobalSearchQuery{Q: "кот", ChatType: ct}); !errors.Is(err, domain.ErrInvalid) {
+			t.Fatalf("chat_type=%q: err=%v, want ErrInvalid", ct, err)
+		}
 	}
 }
