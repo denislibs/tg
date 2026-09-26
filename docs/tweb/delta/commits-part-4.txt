@@ -1,0 +1,52 @@
+f252a5e53 Harden the day-period probe after review
+79455907b Hand notifications back when unarchiving from the settings bar
+00c1e1a86 Render the hh:mm fast path through the cached Intl formatter
+f73102ec0 Explain an unknown sender's emoji status in the actions plate
+1a5b40d8b Keep popup content mounted until the popup leaves the DOM
+f2e5e9a49 Send music-picker tracks as plain documents, not via the bot
+d35c2f4a6 Build
+49d8a4789 Delete an owned bot's avatar from the media viewer
+d8f489525 Support Clear History
+33f47a046 Say which memory-report figures live in the GPU process
+637fc5f6d Restore the topic profile's forum button
+777296562 Close the hidden-listener hole in E2E conference calls
+e19e8831d Release avatars whose owner never disposed them
+3e84076ce Let every control in the profile header own its own click
+0133dae7d Drop lazy-load items whose owner is already gone
+b8d8fa659 Point the header's click guard at the overlay itself
+5209b813c Stop the custom-emoji registries from owning their renderers
+76c4ab54d Stop a tap on the profile music row from unfolding the header
+81f7a7181 Share one heavy-animation subscription across lazy-load queues
+51d8d7517 Bind the profile header's controls with attachClickEvent
+55f8e3a74 Destroy the chat's per-peer middleware when the chat is destroyed
+88ee036f1 Reclaim locked animations once their element leaves the DOM
+62235d87c Bind every profile-header control through one click ref
+c0c2847d5 Make the click-ref test prove the part that matters
+1dc32d889 Hold notifications back until the difference that could cancel them lands
+81a49faaf E2E conference calls: join entry points, invite flow, device handling
+34f417d12 Search the settings from an index generated out of the tabs
+76cdade1e Open any popup with mock data from a sandbox panel
+757f7e386 Build
+7aae7177d Close the eight medium findings of the calls security audit
+e0fb96dd6 Close the low and informational findings of the calls security audit
+fcfe06f76 Decide a Telegram link by its parsed host, never by its text
+d4a5047bd Turn a shared text into a draft of the chosen chat instead of sending it
+ed51d0c09 Accept a pasted mention only with a numeric user id
+4dd3312ab Reject non-positive user ids on the e2e conference chain
+4a82cc766 Build
+39edaf1f4 Stream rich messages, hide links from unknown peers, translate rich content
+a7e696215 Preserve chat scroll when showing original messages
+da4e7ebd7 Fix test failures and guard translation and popup regressions
+7707295af Update tlottie to 758c7cb
+c1c10b8c6 Limit small video avatars to three repeats and respect playback pauses
+c3355d41b Wait for selector dialog rows to be ready before mounting
+a037b577c Add the Calls tab to the left sidebar
+12eeb9b1c Fix quote icon variants
+837346857 Support Stars and Gram transactions and subscriptions
+690514225 Add Story Settings for personal and channel stories
+8ff1ea1e7 Lift the selection checkbox above the row's icon
+6722c7a6e Add dialog context menus to sidebar search
+237a8b38c Rework the call bubble and give conference links a menu
+0b2ba4371 Answer the chats deep links and point at the personal channel
+0281565a5 Stop handing the popup sandbox story promise to the debugger
+662d9bf0f Tint the call bubble's icon and give it more room

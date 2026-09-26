@@ -1,0 +1,52 @@
+108d3f301 Speed up the chat list
+81ac5d478 Build
+b9d75a088 Polish the Community chats panel
+757728898 Stop offering menu actions that aren't available
+fa6ec9fd1 Fix the emoji panel jumping to the window edge in production
+c8e1a973e Fix the stories list not opening the viewer in Firefox
+505295590 Fix the stories store losing track of its current story
+06cdebc76 Stop counting an empty media type in the shared media subtitle
+d2040a0f4 Give Community chats the context menu every other dialog gets
+1ddddac9e Fix big emoji disappearing in production builds
+1d0ec115b Stop rebuilding the emoji suggestions for an emoji already suggested
+e12782571 Show a video chat plate under the topbar for group calls you haven't joined
+558c0f72a Lay the Requests plate out like the translation one
+5801aa2df Build
+6cd749c82 Fix stories never opening in production builds
+e3730e100 Build
+6534c9ea6 Sandbox Instant View embeds instead of running them on our own origin
+908d0d0d6 Count the synthesized current photo in the profile carousel
+bfb93ec2c Snapshot the opening thumbnail when its blob URL was already revoked
+c7f79a49b Resolve min peers by username
+ce0600f47 Fix PWA manifest ID for Telegram link scopes
+ee72f0115 Fix folder recovery after state clear
+05424f94e Build
+267f53961 Fix false pin limit from archived pins leaking into the main folder
+79b177c66 Don't count folded Community members against the pin limit
+4184843ff Fix inline bluff spoilers in Safari
+08e3a63c5 Rename getPinnedOrdersCount to getVisiblePinnedCount
+2a0648862 Build
+9aaf3e00f Open the sender's profile from the gift popup
+effb731fc Don't stack the Community chevron on the avatar's unread badge
+b86253ef5 Duplicate the bot's Report button in the Mini App menu
+469b191f0 Wrap unbreakable text in contenteditable fields on Firefox
+6f3299c96 Update the account badge when the messages are read elsewhere
+37e673629 Load every topic in a big forum
+c934ddd1e Don't crash on a mid without a message behind it
+b185aadfb Stop the ESG search from freezing on a failed fetch
+0af53a342 Stop re-rendering chatlist rows that did not change
+95933b11f Show typing in a dialog row that is built while the peer types
+ce37ebeb3 Jump to the unread messages instead of the chat's end
+2d8f99932 Name the second person typing instead of counting them as an other
+50da390c6 Stop naming a typing peer the tab has not loaded
+be6611452 Build
+c86de9822 Stop archiving the pinned chats of the main folder
+b2ccd23fa Build
+001f8df77 Restore multi-select in pick-user popups
+4311bbbdd Stop a scheduled photo from scheduling the next messages
+695f3c027 Stop counting a forum's unread messages after it leaves a folder
+9909f2b1a Stop browser translators from rewriting what you type
+79d6a8f95 Stop replaying dice in a chat you have already read
+a2662b60d Validate the URL an Instant View link decodes to
+b59a02302 Bind the Mini App bridge to the origin it was opened at
+b0c20529a Stop a group title from running as script in the search chips

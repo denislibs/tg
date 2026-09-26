@@ -1,0 +1,49 @@
+e9428f2a9 Let service messages be selected
+3eb7a9020 Rewrite the star reaction and stars pay popups on SolidJS
+6411a0d71 Rewrite the gift link popup on SolidJS
+cab52547f Keep auth-card stickers alive across a card change
+e26b7de58 Concatenate CTR chunks without the Uint8Array prototype patch
+e22fdde93 Stop the avatar wake-up registry from owning what it tracks
+ffd925068 Share one weak subscription across every scrollable
+2556fc949 Rewrite the popups on the SolidJS shell
+44f22a5c0 Assert the popup shell's layout promises in the sandbox sweep
+e96e06c37 Ask before a middle click opens a masked link
+eff3c59fa Encrypt the stores nobody had opened when the passcode was enabled
+f346c3c02 Show the weather and soundtrack widgets on stories
+0d3d49555 Sign in with every code type the server can ask for
+6c3803343 Give the premium popup the shell's footer button
+44e71e5eb Keep the call popup's buttons white in the day theme
+7468ff029 Keep the tooling inside this checkout, and lint all of it
+fad470170 Play the reconnect tone when an established call drops
+926862d31 Open every call panel from the popup sandbox
+14c10ef3a Stop statistics sections from rendering a stray 0
+7d50b5dfe Build every tab row out of the Tabs primitives
+93b1e6add Forward signed channel posts again
+6af482b82 Send a pasted HEIC screenshot as a photo
+cac8174ea Cancel a web auth token we are not going to use
+346844bf8 Edit a message's media straight from the bubble or the viewer
+8197da758 Layer 229
+a6ca1084f Read our own stars balance without the user cache
+70066e156 Hold on to the load an emoji status starts
+fb18166dc Stop the profile sidebar loading in a loop
+edb62a49e Fill the empty chat column with tip cards
+f25b80852 Paint every floating service plate from one mixin
+4940a8315 Finish Perfect Forward Secrecy behind ?pfs=1
+f9e064dfe Keep the tip deck to two-column layouts and fix its buttons' ripple
+60a83a6f1 Select chats and topics in bulk and drag pinned ones into order
+a27e97144 Unwrap <Section/> before handing it to imperative code
+4a58f7903 Bind previews to IPv4 loopback and move tweb-debug to 9006
+472e3e76b Make the client usable with a keyboard and a screen reader
+ebb9e034b Keep a send on the transport that actually took its bytes
+091b476a9 Start the theme reveal at the click on Chrome 154
+a66af93f6 Archive a sticker set from its popup menu
+cb57f2976 Stop asking a session too fresh to answer about other logins
+ee6f7f9c2 Sort contacts by name or last seen, and select them in bulk
+d34f95ef5 Keep the peer picker's checkboxes in the primary colour
+b2b794a1b Keep the sign-in code card whole, and fix its email and resend lines
+5a87c445e Put the edit avatar back in the middle, and make the tip cards usable from the keyboard
+f39093fe3 Run the accessibility suite in parallel, with a one-theme quick mode
+d07eeea9b Keep the Community chevron under the folder tabs
+567a3df2a Answer a preview reached from another machine with a built bundle
+87c45a189 Let admins write welcome messages, and finish ephemeral messages
+812502980 Add a skill that archives a Telegram chat to disk and keeps it in sync
