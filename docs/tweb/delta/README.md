@@ -35,7 +35,7 @@
 | Распаковка TGS без лимита (zip-бомба; долг ещё с f3733adc2) | — | S | там же |
 | Мост Mini App не проверяет `e.origin` | b59a02302 | S | там же |
 | SAS звонков без commitment: посредник подбирает эмодзи (`core/calls/callEngine.ts`) | afb5587c8 (класс атаки) | M | не начато, нужен commit-reveal |
-| Неклонируемый payload роняет `invoke` и оставляет запись в `awaiting` (`rpc/superMessagePort.ts`) | 4c5a2373a | S | не начато |
+| Неклонируемый payload роняет `invoke` и оставляет запись в `awaiting` (`rpc/superMessagePort.ts`) | 4c5a2373a | S | перенесено — ветка `fix/w1-animations-memory` |
 
 ### Волна 1 — надёжность: баги, которые у нас есть уже сейчас (независимые, параллельно)
 
@@ -51,7 +51,8 @@
   `horizontalMenu` из 1ca7cb99e.
 - **Анимации и память**: cab52547f (`animationIntersector`: только первый item, безусловный
   `unobserve`) · 88ee036f1 → c1c10b8c6 (reclaim видео; затем снести наш `releaseVideoAvatars`) ·
-  e19e8831d · 1a5b40d8b · c934ddd1e.
+  e19e8831d · 1a5b40d8b · c934ddd1e. **Перенесено** — ветка `fix/w1-animations-memory` (вместе с S7 и
+  утечкой `.btn-menu` строк чатлиста, K5 в `security-and-bugs.md`).
 - **Язык и время**: d3bf83c2b → f252a5e53 → 00c1e1a86 (итоговое `formatTimeString`) ·
   1ddddac9e (ASCII-литерал эмодзи-регэкспа до обновления vite/rolldown).
 - **Одиночные S** (по таблицам частей): 41d9adb14, b85527091, eedb2b74e, 5b1636d61, 6ce2cafba,
