@@ -603,6 +603,12 @@ a.row.no-wrap.chatlist-chat.chatlist-chat-bigger.row-big  href="#<peerId>" data-
 | иконка группового звонка `dialog-group-call-icon` | `dialogs.ts:302-341` |
 | auto-delete таймер на аватаре | `dialogs.ts:174-176`; `sortedDialogList.ts:187-198` |
 
+Печатающие, которых нет в зеркале пиров, отбрасываются до рендера и из счёта (tweb 50da390c6,
+`appImManager.getPeerTyping`): иначе имя — фолбэк «Удалённый аккаунт». В личке проверки нет —
+имени там не пишут. Строка, у которой больше некого называть, возвращает последнее сообщение
+(`setDialogTyping` → `unsetTyping`). **У нас:** `core/hooks/useTypingLabel.ts` — фильтр по
+`usePeers` для групп; возврат последнего сообщения у React-строки происходит сам (`active: false`).
+
 ## 6. Контекстное меню и клики
 
 **Drag-n-drop пиннед-диалогов в чатлисте НЕТ** — `Sortable` используется только в
