@@ -10,6 +10,7 @@ import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import Avatar from '../shared/ui/Avatar'
 import TgIcon from './TgIcon'
+import { writeClipboardItem } from '@helpers/clipboard'
 import classNames from '../shared/lib/classNames'
 import { useT } from '../i18n'
 import { useSettings } from '../settings'
@@ -124,14 +125,22 @@ export default function QrModal({ open, onClose, url, label, avatar }: QrModalPr
     toastTimer.current = setTimeout(() => setToast(''), 2500)
   }
 
+  // Запись картинки — общим писателем `writeClipboardItem`, как у tweb с
+  // коммита 508acd4f5 (`popups/myQrCode.tsx:945` там; в 812502980 вынесено в
+  // `helpers/qrCode/copyQrCode.ts:22-29`). Он бросает, если `ClipboardItem` у
+  // окна нет, — тогда та же ветка фолбэка на ссылку.
   const copy = () => {
     const blob = blobRef.current
-    if (blob && navigator.clipboard && 'write' in navigator.clipboard && typeof ClipboardItem !== 'undefined') {
-      navigator.clipboard
-        .write([new ClipboardItem({ 'image/png': blob })])
+    if (!blob) {
+      copyLink()
+      return
+    }
+
+    try {
+      writeClipboardItem({ 'image/png': blob })
         .then(() => showToast(t('QRCode.Copied')))
         .catch(() => copyLink())
-    } else {
+    } catch {
       copyLink()
     }
   }

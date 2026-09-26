@@ -80,11 +80,6 @@ class FakeBubbles implements SelectionBubbles {
   getBubbleGroupedItems(bubble: HTMLElement): HTMLElement[] {
     return Array.from(bubble.querySelectorAll<HTMLElement>('.grouped-item'))
   }
-
-  async getMountedBubble(fullMid: string) {
-    const bubble = this.getBubble(fullMid)
-    return bubble ? { bubble } : undefined
-  }
 }
 
 function makeManagers(): ContextMenuManagers {

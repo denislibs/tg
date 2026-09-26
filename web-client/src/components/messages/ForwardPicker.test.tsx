@@ -28,6 +28,10 @@ import { initialState } from '../../core/state/state'
 import { ALL_FOLDER_ID } from '../../core/folderIds'
 import { makeDialog } from '../../core/dialogs/testDialog'
 import { applyPeerOps, resetPeerMirror } from '../../core/peerCache'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import * as sass from 'sass'
+import selectorStyles from '../../shared/ui/PeerSelector/PeerSelector.module.scss'
 
 // Аватарки строк резолвятся через useMediaUrl → managers.media — пустой стаб.
 const fakeManagers = { media: { downloadMediaURL: vi.fn(async () => '') } } as unknown as Managers
@@ -90,6 +94,61 @@ describe('ForwardPicker — тело на общем селекторе', () => 
     expect(recents.classList.contains('popup-forward-top-peers')).toBe(true)
     expect(recents.classList.contains('collapsable')).toBe(true)
     expect(recents.classList.contains('search-group-with-scroll')).toBe(true)
+  })
+})
+
+// ── Скроллер попапа — `.selector-scrollable`, а не тело ─────────────────────
+//
+// У tweb тело попапа не прокручивается: `.popup-body` — flex-колонка с
+// `overflow: hidden` и `.scrollable { position: relative }`
+// (`scss/partials/popups/_popup.scss:192-200`), `.popup-forward .tabs-container`
+// — `height: 100%` (`popups/_forward.scss`), и прокручивает
+// `selector.scrollable` (`div.scrollable.scrollable-y.selector-scrollable`):
+// в нём липнут поиск и ряд папок, по нему `fastSmoothScroll` ряда везёт список
+// к началу перед сменой скоупа (`popups/pickUser.tsx:339-362`). Наше тело само
+// скроллер (`Popup.module.scss`, `.body.body`), и хост селектора рос по
+// содержимому — стенд: `.popup-body` 724/616, `.selector-scrollable` 724/724.
+//
+// Геометрию happy-dom не считает, поэтому пин — каскад НАСТОЯЩЕГО модуля
+// хоста (скомпилирован sass, имена классов — те же, что отдал модуль тесту) на
+// узле из дерева попапа: хост ограничен телом. Живая проверка — стенд
+// (scrollTop растёт у `.selector-scrollable`, у тела scrollHeight = clientHeight).
+describe('ForwardPicker — прокручивает селектор, а не тело попапа', () => {
+  function injectHostModule() {
+    const file = join(__dirname, '../../shared/ui/PeerSelector/PeerSelector.module.scss')
+    const css = sass.compileString(readFileSync(file, 'utf8'), { loadPaths: [join(file, '..')] }).css
+      .replace(/:global\(([^()]*)\)/g, '$1')
+      .replace(/\.host\b/g, '.' + selectorStyles.host)
+    const style = document.createElement('style')
+    style.textContent = css
+    document.head.append(style)
+  }
+
+  afterEach(() => document.head.replaceChildren())
+
+  it('хост селектора — прямой ребёнок тела, высота — от тела, без нижней границы сайдбара', () => {
+    injectHostModule()
+    mount()
+    const host = document.querySelector<HTMLElement>('.popup-forward .popup-body > .' + selectorStyles.host)!
+
+    expect(host).not.toBeNull()
+    const cs = getComputedStyle(host)
+    expect(cs.height).toBe('100%')
+    expect(cs.minHeight).toMatch(/^0(px)?$/)
+    // Поиск и ряд папок — внутри того скроллера, что заполняет хост.
+    const scroller = host.querySelector(':scope > .selector > .selector-scrollable')!
+    expect(scroller).not.toBeNull()
+    expect(scroller.querySelector('.selector-search-section-container')).not.toBeNull()
+    expect(scroller.querySelector('.popup-forward-folder-tabs-container')).not.toBeNull()
+  })
+
+  it('вне попапа пересылки хост остаётся сайдбарным (min-height 360px)', () => {
+    injectHostModule()
+    render(<div className="popup-body"><div className={selectorStyles.host} /></div>)
+
+    const cs = getComputedStyle(document.querySelector<HTMLElement>('.' + selectorStyles.host)!)
+    expect(cs.minHeight).toBe('360px')
+    expect(cs.height).not.toBe('100%')
   })
 })
 

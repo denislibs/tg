@@ -201,8 +201,15 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // (:2030), кнопка подтверждения `ClearButton` (:1820) и имя приложения `AppName`
 // (:1750) — заголовок попапа без своего (`popups/peer.ts:58`). `keys` 1331 →
 // 1336, множественных форм не прибавилось; остальным четырём — ничего.
+//
+// Сдвиг набора задачей 14 shared media (меню элемента и выделение, tweb
+// 812502980): русскому добавлены шесть ключей 1:1 с tweb lang.ts —
+// `Message.Context.Goto`, `Message.Context.Selection.{Clear,Delete,Download,
+// Forward}` и множественная форма `messages` (счётчик плашки выделения):
+// Вместе с задачами 9 и 12 глобального поиска `keys` 1328 → 1342, `plural` 33 → 35 (`Channels` и `messages`). Замена трёх самодельных ключей
+// копирования медиа ключами оригинала число строк не меняла (у `FINGERPRINT`).
 const COMPOSITION = {
-  ru: { keys: 1336, plural: 34 },
+  ru: { keys: 1342, plural: 35 },
   uk: { keys: 682, plural: 24 },
   es: { keys: 681, plural: 24 },
   de: { keys: 681, plural: 24 },
@@ -292,8 +299,14 @@ const COMPOSITION = {
 // Сдвиг набора задачей 12 глобального поиска: русскому добавлены
 // `SearchAllChatsShort`, `ChannelsTab`, `ClearRecentSearch`, `ClearButton` и
 // `AppName` (разбор — у `COMPOSITION` выше).
+// Сдвиг набора задачей 14 shared media (копирование медиа, tweb 508acd4f5):
+// у русского самодельные `MediaViewer.Context.CopyMedia`,
+// `MediaViewer.ImageCopied`, `MediaViewer.CopyError` (выдумка React-меню, ни
+// одного читателя) заменены ключами оригинала `MediaViewer.Context.Copy`,
+// `MediaCopied`, `MediaCopyFailed`: −3 +3, число строк то же. Следом —
+// шесть ключей меню элемента и выделения (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '55469f41',
+  ru: 'c2d26787',
   uk: 'e1335ac1',
   es: 'a6b1aad3',
   de: 'a6b1aad3',

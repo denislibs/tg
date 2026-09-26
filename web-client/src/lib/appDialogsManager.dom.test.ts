@@ -51,7 +51,7 @@ describe('appDialogsManager: разметка после start()', () => {
     expect(host.lastElementChild!.id).toBe('folders-container')
   })
 
-  it('в оверлее — плашка, градиент, ряд (дамп :30-48); hide у ряда, но НЕ у градиента — как у tweb', async () => {
+  it('в оверлее — плашка, градиент, ряд (дамп :30-48); одна папка — hide и у ряда, и у градиента', async () => {
     mounted = mountOwner()
     await settle()
     const overlay = mounted.host.querySelector('.chatlist-overlay')!
@@ -59,14 +59,16 @@ describe('appDialogsManager: разметка после start()', () => {
 
     expect(overlay.children).toHaveLength(3)
     expect(suggestion).toBe(mounted.manager.suggestionContainer)
-    expect(gradient.className).toBe('menu-horizontal-gradient-container folders-tabs-gradient-container')
     expect(scrollable.className).toBe('menu-horizontal-scrollable folders-tabs-scrollable hide')
-    // `hide`, который tweb ставит градиенту в ref (`appDialogsManager.ts:678-681`),
-    // затирает class-эффект `Tabs.MenuGradient` (тот же JSX и тот же Solid 1.9.9 —
-    // пин задачи 4 в `foldersTabs.solid.test.tsx`), а `onFiltersLengthChange`
-    // (`:1298-1322`) трогает градиент лишь при смене показа. План (шаг 2) ждал
-    // здесь `.hide` — это расхождение плана с оригиналом, порт держит оригинал.
-    expect(gradient.classList.contains('hide')).toBe(false)
+    // ОБЪЯВЛЕННОЕ РАСХОЖДЕНИЕ (стенд, задачи 4–9). У tweb `hide` из ref градиента
+    // (`appDialogsManager.ts:678-681`) затирает class-эффект `Tabs.MenuGradient`
+    // (пин в `foldersTabs.solid.test.tsx`), а `onFiltersLengthChange`
+    // (`:1298-1322`) трогает градиент лишь при смене показа — одна папка на
+    // холодном старте оставляет градиент без `hide`. Он растянут на оверлей
+    // (`_leftSidebar.scss:315-325`, `inset: 0`) и под плашкой-подсказкой гасит
+    // прокрученные строки в её полях. Видимый артефакт — не паритет: владелец
+    // синхронизирует `hide` градиента с показом ряда на каждом проходе.
+    expect(gradient.className).toBe('menu-horizontal-gradient-container folders-tabs-gradient-container hide')
   })
 
   it('«Все чаты» — один кадр .folders-scrollable[data-filter-id=0].active с .chatlist-top и .chatlist-bottom (дамп :74-76)', async () => {

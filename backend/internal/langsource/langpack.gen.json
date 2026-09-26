@@ -2539,6 +2539,14 @@
           "value": "Play"
         },
         {
+          "key": "MediaCopied",
+          "value": "Media copied to clipboard"
+        },
+        {
+          "key": "MediaCopyFailed",
+          "value": "Failed to copy media to clipboard"
+        },
+        {
           "key": "MediaEditor.Adjustments.Brightness",
           "value": "Brightness"
         },
@@ -2687,20 +2695,12 @@
           "value": "Unmute video"
         },
         {
-          "key": "MediaViewer.Context.CopyMedia",
+          "key": "MediaViewer.Context.Copy",
           "value": "Copy Media"
         },
         {
           "key": "MediaViewer.Context.Download",
           "value": "Download"
-        },
-        {
-          "key": "MediaViewer.CopyError",
-          "value": "Could not copy the image"
-        },
-        {
-          "key": "MediaViewer.ImageCopied",
-          "value": "Image copied to clipboard"
         },
         {
           "key": "MediaZoomIn",
@@ -2742,12 +2742,32 @@
           "value": "Message"
         },
         {
+          "key": "Message.Context.Goto",
+          "value": "Show in chat"
+        },
+        {
           "key": "Message.Context.Pin",
           "value": "Pin"
         },
         {
           "key": "Message.Context.Select",
           "value": "Select"
+        },
+        {
+          "key": "Message.Context.Selection.Clear",
+          "value": "Clear selection"
+        },
+        {
+          "key": "Message.Context.Selection.Delete",
+          "value": "Delete selected"
+        },
+        {
+          "key": "Message.Context.Selection.Download",
+          "value": "Download selected"
+        },
+        {
+          "key": "Message.Context.Selection.Forward",
+          "value": "Forward selected"
         },
         {
           "key": "Message.Context.Unpin",
@@ -5485,6 +5505,13 @@
         {
           "key": "YourName",
           "value": "Your Name"
+        },
+        {
+          "key": "messages",
+          "forms": {
+            "one_value": "%1$d message",
+            "other_value": "%1$d messages"
+          }
         }
       ]
     },
@@ -9951,10 +9978,6 @@
           "value": "GIF добавлен в сохранённые"
         },
         {
-          "key": "MediaViewer.Context.CopyMedia",
-          "value": "Копировать медиа"
-        },
-        {
           "key": "MessageContext.CopyMessageLink1",
           "value": "Копировать ссылку"
         },
@@ -9963,12 +9986,45 @@
           "value": "Ссылка скопирована"
         },
         {
-          "key": "MediaViewer.ImageCopied",
-          "value": "Изображение скопировано"
+          "key": "MediaViewer.Context.Copy",
+          "value": "Копировать медиа"
         },
         {
-          "key": "MediaViewer.CopyError",
-          "value": "Не удалось скопировать изображение"
+          "key": "MediaCopied",
+          "value": "Медиа скопировано в буфер обмена"
+        },
+        {
+          "key": "MediaCopyFailed",
+          "value": "Не удалось скопировать медиа в буфер обмена"
+        },
+        {
+          "key": "Message.Context.Goto",
+          "value": "Показать в чате"
+        },
+        {
+          "key": "Message.Context.Selection.Clear",
+          "value": "Снять выделение"
+        },
+        {
+          "key": "Message.Context.Selection.Delete",
+          "value": "Удалить выбранные"
+        },
+        {
+          "key": "Message.Context.Selection.Download",
+          "value": "Загрузить выбранные"
+        },
+        {
+          "key": "Message.Context.Selection.Forward",
+          "value": "Переслать выбранные"
+        },
+        {
+          "key": "messages",
+          "forms": {
+            "one_value": "%1$d сообщение",
+            "few_value": "%1$d сообщения",
+            "many_value": "%1$d сообщений",
+            "other_value": "%1$d сообщения"
+          }
         },
         {
           "key": "MediaEditor.Adjustments.Enhance",

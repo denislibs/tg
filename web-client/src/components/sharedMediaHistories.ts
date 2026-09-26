@@ -192,6 +192,11 @@ function _deleteDeletedMessages(
         continue
       }
 
+      // tweb `:325-327` (812502980) — удалённое уходит и из выделения
+      if(searchSuper.selection?.isSelecting) {
+        searchSuper.selection.toggleByElement(div)
+      }
+
       const divs = container!.querySelectorAll<HTMLElement>('[data-mid][data-peer-id]')
       const domIdx = Array.from(divs).indexOf(div)
       div.remove()

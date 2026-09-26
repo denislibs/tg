@@ -243,11 +243,13 @@ describe('foldersTabs.solid: пропы владельца', () => {
     // У tweb то же самое: разметка `tabs.tsx:71-95` дословно та же, а его
     // вендорный Solid 1.9.9 (`src/vendor/solid/web/dist/web.js:247-250`,
     // `dist/solid.js:215-218`) так же пишет `className` целиком и так же
-    // исполняет render-эффект сразу. Дальше `hide` градиента трогает только
-    // `onFiltersLengthChange` (`:1298-1322`), и то лишь при смене показа
-    // (`show !== wasShowing`, `wasShowing` — по РЯДУ). Факт для задачи 5,
-    // пин — чтобы «починка» ref не выдала себя за порт. У ряда `hide` едет
-    // пропом `class` и живёт.
+    // исполняет render-эффект сразу. У tweb дальше `hide` градиента трогает
+    // только `onFiltersLengthChange` (`:1298-1322`), и то лишь при смене показа
+    // — одна папка оставляет градиент видимым. Наш владелец поэтому ставит
+    // `hide` градиента не в ref, а в `onFiltersLengthChange` на каждом проходе
+    // (расхождение 21 `lib/appDialogsManager.ts`, пин —
+    // `appDialogsManager.dom.test.ts`). Пин здесь — механика компонента: `hide`
+    // из ref не держится. У ряда `hide` едет пропом `class` и живёт.
     expect((got.gradient as HTMLElement).classList.contains('hide')).toBe(false)
     expect(ctxAtMenuRef).toBeDefined()
     expect(ctxAtMenuRef!.container).toBe(el.querySelector('.menu-horizontal-scrollable > .scrollable.scrollable-x'))

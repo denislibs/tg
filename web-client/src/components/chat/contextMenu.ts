@@ -63,10 +63,11 @@
  *    (`BubblesNavigation.openPeer` не передаётся, см. `VanillaFeed.tsx`).
  *
  * ─── Семь пунктов React-меню (строка долгов в `web-client/CLAUDE.md`) ───────
- * Снесённое меню React-ленты держало семь пунктов, которых здесь нет. Разбор
- * каждого: что это в ОРИГИНАЛЕ и чего не хватает. Четыре из семи пунктами
- * `ChatContextMenu` не являются вовсе — их не «забыли портировать», их
- * придумала React-версия либо они принадлежат другому компоненту tweb.
+ * Снесённое меню React-ленты держало семь пунктов, которых здесь не было.
+ * Разбор каждого: что это в ОРИГИНАЛЕ и чего не хватает. Три из семи
+ * пунктами `ChatContextMenu` не являются вовсе — их придумала React-версия
+ * либо они принадлежат другому компоненту tweb; два портированы («Кто
+ * просмотрел», «Копировать медиа»).
  *  • «Переотправить» упавшее сообщение — пункта «повторить сорванную отправку»
  *    у оригинала НЕТ. Единственный `Resend` (:1260-1265) — повторная ОПЛАТА
  *    платного сообщения (`handleRepay`, :2166-2176), он назван выше. Ручного
@@ -109,10 +110,14 @@
  *    каждый правый клик — другое поведение и задержка открытия меню. Тем же
  *    кэшем гейтится парный `Message.Context.RemoveGif` (:1003-1007), без него
  *    пункт всегда предлагал бы «сохранить» уже сохранённое.
- *  • «Copy Media» — такого пункта в tweb нет вовсе: ни ключа в `lang.ts`, ни
- *    записи картинки в буфер из меню (`helpers/clipboard.ts` умеет только
- *    текст и HTML; единственный `ClipboardItem` с картинкой во всём tweb —
- *    QR-код профиля, `popups/myQrCode.tsx:945`). Изобретение React-версии.
+ *  • «Копировать медиа» — ПОРТИРОВАН по tweb 812502980 (коммит 508acd4f5
+ *    «Add full-size media clipboard copying»): пункт `MediaViewer.Context.Copy`
+ *    (:1110-1121, `keepOpen`, прелоадер в иконке — `setButtonMenuItemLoading`),
+ *    `canCopyMedia` (:1658-1666), `onCopyMediaClick` (:2200-2205) поверх
+ *    `components/copyMessageMediaWithFeedback.ts`. Прежняя запись здесь
+ *    («такого пункта в tweb нет вовсе») была верна для e52b5d931 и устарела
+ *    с 508acd4f5; самодельный ключ `MediaViewer.Context.CopyMedia` заменён
+ *    ключом оригинала.
  *
  * ─── Механика, которой здесь нет ────────────────────────────────────────────
  *  • `getReactionsOpenPosition` (:2220-2227) — прямоугольник, от которого
@@ -172,6 +177,9 @@ import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import { IS_MOBILE } from '@environment/userAgent'
 import filterAsync from '@helpers/array/filterAsync'
 import { copyTextToClipboard } from '@helpers/clipboard'
+import { canCopyMediaToClipboard } from '@helpers/copyMediaToClipboard'
+import copyMessageMediaWithFeedback from '@components/copyMessageMediaWithFeedback'
+import canDeleteMessage from '@core/messages/canDeleteMessage'
 import contextMenuController from '@helpers/contextMenuController'
 import { formatFullSentTime, getFullDate, isValidTimestamp } from '@helpers/date'
 import { attachContextMenuListener } from '@helpers/dom/attachContextMenuListener'
@@ -393,6 +401,9 @@ export default class ChatContextMenu {
   private groupedMessages?: MyMessage[]
   private selectedMessages?: MyMessage[]
   private noForwards = false
+  /** tweb :239 (812502980) — пункт «Копировать медиа»: его узел нужен
+   *  прелоадеру на время копирования (`copyMessageMediaWithFeedback`) */
+  private copyMediaButton?: ChatContextMenuButton
   private linkToMessage?: { url: string, isPrivate: boolean }
   private selectedMessagesText?: string
 
@@ -731,6 +742,15 @@ export default class ChatContextMenu {
       text: 'Chat.CopySelectedText',
       onClick: this.onCopyClick,
       verify: () => !this.noForwards && !!this.message && !!getMessageText(this.message) && this.isTextSelected,
+    }, this.copyMediaButton = {
+      // tweb :1110-1121 (812502980, 508acd4f5). Четвёртый аргумент `canCopyMedia`
+      // оригинала (`chat.container`) — носитель ветки сенситив-медиа
+      // `canDownload`, которой у нас нет (докблок `canDownload`).
+      icon: 'copy',
+      text: 'MediaViewer.Context.Copy',
+      onClick: this.onCopyMediaClick,
+      verify: () => ChatContextMenu.canCopyMedia(this.message, this.target, this.noForwards),
+      keepOpen: true,
     }, {
       icon: 'search',
       text: 'Chat.Context.SearchSelected',
@@ -902,7 +922,7 @@ export default class ChatContextMenu {
       className: 'danger',
       text: 'Delete',
       onClick: this.onDeleteClick,
-      verify: () => this.canDeleteMessage(this.message),
+      verify: () => canDeleteMessage(this.message),
     }, {
       icon: 'delete',
       className: 'danger',
@@ -1266,17 +1286,6 @@ export default class ChatContextMenu {
     return isUser(peerId) || hasRightsPeer(peerId, 'pin_messages')
   }
 
-  /** Порт `appMessagesManager.canDeleteMessage` (:5841-5848). Из четырёх
-   *  слагаемых оригинала выпало одно — базовая группа (`chat._ === 'chat'`):
-   *  такого конструктора бэкенд не производит вовсе (`core/peers/peerId.ts`). */
-  private canDeleteMessage(message: MyMessage | undefined): boolean {
-    return !!message && (
-      isUser(message.peerId) ||
-      !!message.pFlags.out ||
-      hasRightsPeer(message.peerId, 'delete_messages')
-    ) && (!this.isOutgoing(message) || !!(message as MessageReal).failed)
-  }
-
   /** Порт `appMessagesManager.canMessageBeEdited` (:5773-5804).
    *
    *  Не портированы (фактов нет): `via_bot_id` и `messageMediaToDo` в модели
@@ -1428,6 +1437,17 @@ export default class ChatContextMenu {
     return isGoodType && hasTarget
   }
 
+  /** tweb `canCopyMedia` (:1658-1666, 812502980, 508acd4f5): скачиваемое И
+   *  пишущееся в буфер картинкой. */
+  public static canCopyMedia(
+    message: MyMessage | undefined,
+    withTarget?: HTMLElement | null,
+    noForwards?: boolean,
+  ): boolean {
+    return ChatContextMenu.canDownload(message, withTarget, noForwards) &&
+      canCopyMediaToClipboard(getMediaFromMessage(message))
+  }
+
   /** Порт `canSaveMessageMedia` (`utils/messages/canSaveMessageMedia.ts`).
    *  `pFlags.noforwards` (у сообщения) и `extended_media` инвойса в нашей
    *  модели отсутствуют, поэтому запрет приезжает только аргументом. */
@@ -1559,6 +1579,14 @@ export default class ChatContextMenu {
     this.popups.showFactCheckEditor(message.peerId, message.id)
   }
 
+  /** tweb `onCopyMediaClick` (:2200-2205, 812502980, 508acd4f5) */
+  private onCopyMediaClick = () => {
+    copyMessageMediaWithFeedback({
+      message: this.message,
+      button: this.copyMediaButton!,
+    })
+  }
+
   /** Порт `onCopyClick` (:1994-2001). */
   private onCopyClick = () => {
     if(isSelectionEmpty()) {
@@ -1671,7 +1699,7 @@ export default class ChatContextMenu {
    *  медиа (у оригинала `appDownloadManager`), поэтому он приезжает
    *  аргументом: сам метод статический, как в tweb. */
   public static onDownloadClick(
-    managers: ContextMenuManagers,
+    managers: Pick<ContextMenuManagers, 'media'>,
     messages: MyMessage | MyMessage[] | undefined,
     noForwards?: boolean,
   ): void {
