@@ -37,6 +37,7 @@
  *     порта. Текст кладётся прямо в `span`, остальная структура дампа совпадает.
  */
 import { formatBytes } from '@core/mediaCache'
+import { clearBadCharsAndTrim } from '@helpers/cleanSearchText'
 import type { MyDocument } from '@core/media/messageMedia'
 import type { MediaTypeSizes } from '@core/dom/mediaSizes'
 import type { CancellablePromise } from '@helpers/cancellablePromise'
@@ -319,13 +320,4 @@ export default function wrapDocument(options: WrapDocumentOptions): HTMLElement 
   })
 
   return docDiv
-}
-
-/**
- * Порт tweb `helpers/cleanSearchText` в объёме одного вызова из `wrapDocument`:
- * из расширения выбрасываются символы, которые не должны попасть в имя класса
- * `ext-<ext>`.
- */
-function clearBadCharsAndTrim(text: string): string {
-  return text.replace(/[^\p{L}\p{N}]/gu, '').trim()
 }

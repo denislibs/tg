@@ -14,7 +14,7 @@
 //     `insertCustomFillers`) — поле ввода живёт своей веткой (`core/richtext/markdown.ts`);
 //   • `messageEntityFormattedDate` (solid-js), `messageEntityDiff*`, `messageEntityTimestamp`,
 //     `messageEntityBotCommand`, `messageEntityAnchor`, `messageEntitySubscript`/`Superscript`,
-//     `messageEntityHighlight`, `messageEntityPhone`, `messageEntityCaret` — конструкторы в
+//     `messageEntityPhone`, `messageEntityCaret` — конструкторы в
 //     схеме есть, но у нас нет ни того, кто их порождает, ни того, кто их показывает;
 //   (bluff-спойлер портирован; ЕДИНСТВЕННОЕ отличие — буквы строятся узлами,
 //    а не `createElementFromMarkup`, см. комментарий в ветке `spoiler`);
@@ -447,6 +447,15 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
           }
         }
 
+        break
+      }
+
+      // tweb :346-350 — вхождение запроса поиска; порождает его
+      // `wrapMessageForReply({highlightWord})` (превью строки в группе
+      // «Messages» глобального поиска), цвет — `.chatlist .text-highlight`.
+      case 'messageEntityHighlight': {
+        element = document.createElement('i')
+        element.className = 'text-highlight'
         break
       }
 

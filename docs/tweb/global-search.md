@@ -240,11 +240,13 @@ GroupsOnly/ChannelsOnly` (`:21-26`); пункты `ButtonMenu` с галочко
 | `shared/ui/InputSearch/InputSearch.tsx` | React-порт `InputSearch` (без `onEnter`, без debounce внутри) | `inputSearch.ts` | остаётся; `onEnter` добавить |
 | `components/appSearchSuper.ts` (2393) | класс, портирован правой колонкой; расхождения 9 (`nextRate`, `:82-86`), 11 (`searchGroups`, `:98-100`), 24 (`showSender`, `:168-171`), 33 (колбэки хоста), 36 (Solid-вкладки через `mountSolid`); `SearchSuperManagers` `:456-462`; `NO_SECTION_TYPES` `:397-405` | `appSearchSuper.ts` | расширяется: `searchGroups`/`asChatList`/`hideEmptyTabs`/`showSender`, `processEmptyFilter`, `loadChats`, `loadChannels`, `nextRate` |
 | `core/hooks/useSearchSuper.ts` | шов «панель профиля ↔ класс» (скроллер создаёт хозяин) | `sharedMediaTab.tsx` | образец формы для владельца поиска |
-| `components/dialogRow.ts` (215) | узкий `DialogElement`/`addDialogNew`/`createChatList` без `setLastMessage` и без `setListClickListener` | `appDialogsManager.ts` | расширяется: превью сообщения с подсветкой и временем, клик по строке |
-| `components/wrappers/messageForReply.ts` | порт `wrapMessageForReply` **без** `highlightWord` (шапка, строка 22) | `messageForReply.ts:36-49`, `:384` | дописать подсветку |
+| `components/dialogRow.ts` | `DialogElement`/`addDialogNew` (+`container.dialogElement`)/`createChatList`, **`setListClickListener`** (клик → `openPeer` + `requestMessageJump` по `data-mid`, `onFound`, `active` в автономном списке) и **`setLastMessageN`** в объёме поиска (`data-mid`, иконка форварда, миниатюра 20×20 с play, «Автор:»/«You:», подсветка, время); что не портировано — шапка файла | `appDialogsManager.ts:1751-1949`, `:1983-2244`, `:2636-2652` | задача 7 — сделано |
+| `components/wrappers/messageForReply.ts` | порт `wrapMessageForReply`: строка по умолчанию и богатая форма `plain: false` с `highlightWord` → `messageEntityHighlight` → `i.text-highlight` (`lib/richtext/wrapRichText.ts`) | `messageForReply.ts:36-49`, `:384-397` | задача 7 — сделано |
+| `components/searchGroup.solid.tsx` | `createSearchGroup` — порт 1:1 (расхождения в шапке: `managers`, `name: LangPackKey \| false`, мемо в корне) | `searchGroup.tsx` | задача 7 — сделано; потребители — класс (задача 8) и владелец поиска (задача 12) |
 | `components/wrappers/senderToPeer.ts` | `wrapSenderToPeer` (синхронный) | `senderToPeer.ts` | используется как есть |
 | `components/section.solid.tsx` | Solid-`Section` с `nameRight`/`nameRef`/`innerClass`/`contentProps`/`ref` | `section.tsx` | база для `createSearchGroup` |
-| `components/lottieAnimation.solid.tsx`, `components/buttonMenu.ts`, `components/popups/popupPeer.ts` | Solid-lottie, `ButtonMenu`/`ButtonMenuToggle`, `PopupPeer` | — | база для `EmptySearchPlaceholder`, `ChatTypeMenu`, `confirmationPopup` |
+| `components/lottieAnimation.solid.tsx`, `components/buttonMenu.ts`, `components/buttonMenuToggle.ts`, `components/popups/popupPeer.ts` | Solid-lottie, `ButtonMenu`, `ButtonMenuToggle` (порт файлом, задача 10), `PopupPeer` | — | база для `EmptySearchPlaceholder`, `ChatTypeMenu`, `confirmationPopup` |
+| `components/chatTypeMenu.solid.tsx`, `components/emptySearchPlaceholder.solid.tsx` (+`*.module.scss` 1:1), `shared/solid/defineSolidElement.solid.tsx` | `<chat-type-menu>`/`<empty-search-placeholder>` — custom elements, как у оригинала: изменяемые `props` (`new ChatTypeMenu()`, `feedProps`, `props.selected`), корень гаснет на снятии узла | `chatTypeMenu/index.tsx`, `emptySearchPlaceholder/index.tsx`, `lib/solidjs/defineSolidElement.tsx` | потребитель — владелец поиска (задача 12) |
 | `shared/ui/PeerSelector/PeerSelector.tsx:100` | React-`renderEntity` (чип `.selector-user`) | `selectorSearch.ts:319-400` | чипу поиска нужен ванильный `renderEntity` |
 | `core/navigation/appNavigationController.ts` | порт контроллера; тип `'global-search'` объявлен (`:84`) | `appNavigationController.ts` | используется как есть |
 | `core/state/state.ts:22`, `core/state/migrateRecentSearch.ts` | `recentSearch: string[]` в `AppState` (ключ чата — строка, не число: разница модели) | `config/state.ts:209` | используется как есть; писатель — `pushRecentSearch` в менеджере |
@@ -262,8 +264,8 @@ GroupsOnly/ChannelsOnly` (`:21-26`); пункты `ButtonMenu` с галочко
 | `messages.mediaHistory(peerId, filter, offsetId, limit)` (`:710`) | `GET /chats/{peerID}/media?filter&offset_id&limit` (`messagesrepo.go:475-511`) | курсор `m.seq < offset_id` (`:494-496`) | `messages.search` с фильтром и пустым `q` |
 | `messages.searchCounters(peerId, filters)` (`:700`) | `GET /chats/{peerID}/search_counters` | по одному чату | не нужен: `hideEmptyTabs: false` |
 | `channels.search(q)` (`channelsManager.ts:210-219`) | `GET /search?q` → `channel_handler.go:510-517` → `searchrepo.go:26-67` | `contacts.found`; **`my_results` всегда пуст** (`domain/mtpeer.go:974-976`, конструктор `:985-1000`); лимит 20 жёстко; чаты — только `is_public`, префикс `ILIKE` по `username`/`title`; пользователи — **все** по `username`/`display_name` | `contacts.search(q, limit)` |
-| `contacts.list()` (`contactsManager.ts:78`) | `GET /contacts` | список контактов | `fillContacts` — локальный индекс у нас не строится |
-| `dialogs` (воркер, `dialogsManager.ts`) | зеркало диалогов | сортировка/пагинация; **поиска по названию нет** | `dialogsStorage.getDialogs({query})` — локальный `SearchIndex` |
+| `contacts.list()` (`contactsManager.ts:78`), `contacts.getContactsPeerIds(query?, includeSaved?, sortBy?, limit?)`, `pushRecentSearch`/`clearRecentSearch` | `GET /contacts` (только первое чтение книги за сессию) | список контактов; локальный `SearchIndex` по книге (`lib/searchIndex.ts`, задача 5); recent — `AppState.recentSearch`, писатель один — менеджер в воркере | `appUsersManager.getContactsPeerIds` (`:467-481`), `fillContacts`, `pushRecentSearch` |
+| `dialogs.getDialogs({query, offsetIndex?, limit?, filterId?})` (воркер, `dialogsManager.ts`) | зеркало диалогов, без сети | ветка `query` — локальный `SearchIndex` (задача 5); индекс обновляется на сохранение страниц, как у tweb, а не на апдейт карточки: после переименования пир находится по новому имени со следующей загрузки списка | `dialogsStorage.getDialogs({query})` (`dialogs.ts:1596-1709`) |
 | — | `GET /channels/{peerID}/similar` (`router.go:371`) | похожие на ОДИН канал | `getChannelRecommendations()` без аргумента — **нет** |
 | — | нет | — | `getTopPeers('correspondents')`, `getTopPeers('bots_app')`, `getPopularAppBots`, `channels.searchPosts`, `getSponsoredPeers` — **нет** |
 | `appState.recentSearch` (`core/state/state.ts:22`) | — | клиентский State через `persistManager.stateKey` | `recentSearch` в State — совпадает |
@@ -290,7 +292,12 @@ GroupsOnly/ChannelsOnly` (`:21-26`); пункты `ButtonMenu` с галочко
    `search-group-*`, «показать ещё», `people`-ленты; `recent` есть, но своим кодом
    (`pushRecent` `:52-55`, «Clear» через React `ConfirmDialog`).
 5. **Чипов нет**: ни пира, ни даты; `fillTipDates` не портирован (`helpers/date.ts`
-   — только форматирование); `ChatTypeMenu` нет; `EmptySearchPlaceholder` нет.
+   — только форматирование). `ChatTypeMenu` и `EmptySearchPlaceholder` портированы
+   компонентами (задача 10: `components/chatTypeMenu.solid.tsx`,
+   `components/emptySearchPlaceholder.solid.tsx` — custom elements поверх
+   `shared/solid/defineSolidElement.solid.tsx`, меню — на портированном
+   `components/buttonMenuToggle.ts`), но в выдачу не подключены: их вешает
+   владелец поиска (задача 12).
 6. **Пагинация глобальной выдачи — числовой `OFFSET`** (`useGlobalSearch.ts:52`,
    `messagesrepo.go:382`): та же математическая ошибка, что была у медиа профиля
    (задача 1 плана shared media) — вставка сверху сдвигает окно. Курсор оригинала
@@ -303,9 +310,10 @@ GroupsOnly/ChannelsOnly` (`:21-26`); пункты `ButtonMenu` с галочко
 8. **`showSender`/`nextRate`/`searchGroups` в классе объявлены расхождениями**
    9, 11, 24 (`components/appSearchSuper.ts:82-101`, `:168-172`) — снимаются
    этой программой.
-9. **`dialogRow.ts` не умеет превью сообщения**: `setLastMessage` не портирован,
-   `wrapMessageForReply` — без `highlightWord`; клик по строке (`setListClickListener`)
-   тоже не портирован — правая колонка вешала клик сама (`SortedUserList`).
+9. ~~**`dialogRow.ts` не умеет превью сообщения**~~ — снято задачей 7:
+   `setLastMessageN`, `setListClickListener`, `highlightWord` портированы (§ 2.1).
+   Участники правой колонки по-прежнему вешают клик сами (`appSearchSuper.ts`,
+   расхождение 33) — у оригинала там тоже свой обработчик (`:1562-1570`).
 10. **Локальных индексов нет**: поиск по контактам и диалогам по имени в воркере
     отсутствует (`SearchView` фильтрует `chats` в главном потоке,
     `localMatches`/`myChannels`/`recentChats` `:165-169`).

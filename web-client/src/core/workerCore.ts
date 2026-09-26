@@ -163,11 +163,12 @@ export function createWorkerCore() {
     // (`items`/`hydrated`) владельца переживает переход сессии (SharedWorker
     // общий на все вкладки), без сброса следующий `fillMirror()` под другим
     // аккаунтом отдал бы чужой список — см. докблок `resetForLogout()`.
-    onLoggingOut: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); broadcast(RT.loggingOut, e) },
+    // `contacts.resetForLogout()` — то же для книги контактов и её индекса.
+    onLoggingOut: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); contacts.resetForLogout(); broadcast(RT.loggingOut, e) },
     // Симметричный кадр входа (порт tweb `account_logged_in`) — тем же веером и
     // с тем же сбросом: активный токен сменился, а значит медиа-токен, добытый
     // до входа, принадлежит прошлой сессии; то же — про кэш диалогов.
-    onLoggedIn: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); broadcast(RT.loggedIn, e) },
+    onLoggedIn: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); contacts.resetForLogout(); broadcast(RT.loggedIn, e) },
   })
   const profile = newProfileManager({ rest, onMeChanged: setMe, getMe: () => me })
   const premium = newPremiumManager({ rest, onMeChanged: setMe })
@@ -254,6 +255,16 @@ export function createWorkerCore() {
   // канал зеркалирования, не два независимых бродкаста. broadcast объявлен ниже —
   // дёргается лениво, тот же приём, что и остальные стрелки на этой странице.
   const mirrorStateKey = (key: string, value: unknown) => broadcast('state:mirror', { key, value })
+  // State воркера С ДИСКА под версионным гейтом — порт `appStateManager.getState()`.
+  // Гейт тот же, что у main (core/state/loadState.ts — при несовпадении
+  // STATE_VERSION он отдаёт чистые дефолты, а не склеивает половинки схемы
+  // прошлой сборки). Через `loadStateOnce()` не идём сознательно: он
+  // мемоизирует промис на модуль, а воркер перечитывает State заново после
+  // `resetForLogout()` (смена аккаунта) — мемо отдало бы State прошлого.
+  const getState = async () => {
+    const st = await loadStateAll()
+    return st.version === STATE_VERSION ? st : initialState()
+  }
   // Task 1 (перенос владения списком диалогов в воркер): список диалогов —
   // воркер единственный владелец (dialogsManager). Веер тот же приём, что у
   // peers ниже: менеджер объявляет операцию (rt:dialog_op), витрина (Task 2)
@@ -265,16 +276,11 @@ export function createWorkerCore() {
     onDialogOps: (ops) => broadcast(RT.dialogOp, { ops }),
     loadCache: () => loadDialogs(),
     loadState: async () => {
-      const st = await loadStateAll()
-      // Fix (финальное ревью, Minor #2): тот же версионный гейт, что у main
-      // (core/state/loadState.ts — при несовпадении STATE_VERSION он отдаёт
-      // чистые дефолты, а не склеивает половинки схемы прошлой сборки). Без него
-      // после ближайшего бампа версии main жил бы на дефолтах, а владелец
+      // Fix (финальное ревью, Minor #2): версионный гейт (`getState` выше). Без
+      // него после ближайшего бампа версии main жил бы на дефолтах, а владелец
       // сортировал бы по СТАРОМУ pinnedOrders/folders — два разных ответа на один
-      // вопрос. Через `loadStateOnce()` не идём сознательно: он мемоизирует
-      // промис на модуль, а воркер перечитывает State заново после
-      // `resetForLogout()` (смена аккаунта) — мемо отдало бы State прошлого.
-      const gated = st.version === STATE_VERSION ? st : initialState()
+      // вопрос.
+      const gated = await getState()
       // Этап 2 (пагинация): `folders` — определения папок для фильтра
       // `getDialogs({filterId})`. Читаются С ДИСКА, а не ждут `setStateKey`:
       // на холодном старте State никто не ПИШЕТ (boot.ts поднимает его
@@ -342,7 +348,16 @@ export function createWorkerCore() {
   const channels = newChannelsManager({ rest, beforeSending, peers, cacheViews: (peerId, views) => { messages.cacheViews(peerId, views) } })
   const presence = newPresenceManager({ rest })
   const stories = newStoriesManager({ rest })
-  const contacts = newContactsManager({ rest })
+  // Книга контактов и «недавние» глобального поиска (половина tweb
+  // `appUsersManager`). Карточки книги втекают в `peers`; State — тем же
+  // writer'ом, что `persistManager.stateKey` (диск + зеркало во вкладки);
+  // `persist` объявлен ниже — стрелка дёргает его лениво.
+  const contacts = newContactsManager({
+    rest,
+    peers,
+    getMe: () => me?.user ?? null,
+    state: { getState, pushToState: (key, value) => persist.stateKey(key, value) },
+  })
   const privacy = newPrivacyManager({ rest })
   const drafts = newDraftsManager({ rest })
   // Тема оформления чата: только REST. Её место в схеме — полная карточка

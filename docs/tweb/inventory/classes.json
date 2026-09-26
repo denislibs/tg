@@ -1,6 +1,6 @@
 {
   "meta": {
-    "generatedAt": "2026-09-07",
+    "generatedAt": "2026-09-26",
     "twebDir": "/Users/denisurevic/Documents/tweb",
     "twebCommit": "e52b5d931"
   },
@@ -243,8 +243,8 @@
       "files": [
         "src/components/emptySearchPlaceholder/styles.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "actions": {
       "files": [
@@ -3543,7 +3543,7 @@
       "files": [
         "src/components/chatTypeMenu/styles.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "buttonPaidSearch": {
@@ -9321,7 +9321,7 @@
         "src/components/sidebarRight/tabs/adminRecentActions/styles.module.scss",
         "src/components/verticalOptionWheel.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "Hidden": {
@@ -12492,7 +12492,7 @@
         "src/components/emptySearchPlaceholder/styles.module.scss",
         "src/components/sidebarLeft/tabs/passcodeLock/common.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "lower": {
@@ -14955,22 +14955,22 @@
       "files": [
         "src/components/emptySearchPlaceholder/styles.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "NoResultsSubtitle": {
       "files": [
         "src/components/emptySearchPlaceholder/styles.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "NoResultsTitle": {
       "files": [
         "src/components/emptySearchPlaceholder/styles.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "noSound": {
       "files": [
