@@ -193,7 +193,7 @@ div#column-left.tabs-tab.chatlist-container.sidebar.sidebar-left.main-column.sid
 | `archivedTab.tsx` :116 | `AppArchivedTab` :666-679 | архив чатов | `sidebarLeft/index.ts:1620` |
 | `archiveSettingsTab.tsx` :18 | `AppArchiveSettingsTab` :135-139 | настройки архива | `archiveDialogContextMenu.ts:91,131` |
 | `contacts.tsx` :126 | `AppContactsTab` :190-197 (`noSame` :198) | контакты | `sidebarLeft/index.ts:661` (меню), `:1039` (new private chat), `internalLinkProcessor.ts:709,771` |
-| `addMembers.tsx` :120 | `AppAddMembersTab` :836-840 (`noSame` :841) | универсальный селектор пиров | `addChatUsers.ts:215`, `privacySection.ts:161`, `createNewGroupTab.ts:6`, `privacy/messages/paidSettingsSection.tsx:26` |
+| `addMembers.tsx` :14 (812502980) | `AppAddMembersTab` :1054-1058 (`noSame` :1059, заголовок из нагрузки :1060-1063; 812502980) | универсальный селектор пиров (`appSelectPeers.tsx`); у нас — `sidebarLeft/tabs/addMembers.solid.tsx` (план 2D, задача 16) | `addChatUsers.ts:215`, `privacySection.tsx:189`, `createNewGroupTab.ts:6`, `privacy/messages/paidSettingsSection.tsx:26`, `chatAutomation.tsx:537` (812502980) |
 | `createNewGroupTab.ts` :5 | функция-обёртка (не таб) | флоу «новая группа»: AddMembers → NewGroup | `sidebarLeft/index.ts:1033`, `internalLinkProcessor.ts:707` |
 | `newGroup.tsx` :267 | `AppNewGroupTab` :246-250 (`noSame`) | финальный шаг создания группы | `createNewGroupTab.ts:9` (`takeOut`), `sidebarRight/tabs/chatDiscussion.tsx:56` |
 | `newChannel.tsx` :101 | `AppNewChannelTab` :222-226 (`noSame`) | создание канала | `sidebarLeft/index.ts:1048`, `internalLinkProcessor.ts:705` |
@@ -830,6 +830,7 @@ DOM-паритет первого таба выдержан сознательн
 | `components/solidJsTabs/tabs.ts` | `src/components/solidJsTabs/tabs.ts` | реестр объявлений вкладок; пока три — `AppActiveSessionsTab`, `AppLanguageTab`, `AppNotificationsTab` |
 | `components/sidebarLeft/tabs/activeSessions.solid.tsx` | `src/components/sidebarLeft/tabs/activeSessions.tsx` | первая настоящая вкладка, дословный порт |
 | `components/sidebarLeft/tabs/notifications.solid.tsx` | `src/components/sidebarLeft/tabs/notifications.tsx` (812502980) | «Уведомления и звуки» — пилот плана 2D (задача 6): первый экран на Solid `Row`/`Section` HEAD; без «All Accounts» (О-1) и секций Stories/Reactions/Other (О-3…О-5); React `settings/NotificationsSettings.tsx` снесён |
+| `components/sidebarLeft/tabs/addMembers.solid.tsx` + `components/appSelectPeers.solid.tsx` | `sidebarLeft/tabs/addMembers.tsx` + `components/appSelectPeers.tsx` (812502980) | вкладка выбора участников на селекторе пиров (план 2D, задача 16); без категорий/мини-приложений (О-33), участников канала, `peerLoader`, лимита — шапки файлов; открывающих пока нет (исключения приватности — задача 17) |
 | `components/sidebarLeft/settingsSliderHost.ts` | `sidebarLeft/index.ts:140-148` + `settingsSliderPopup.ts:13-51` | хост: один слайдер на колонку, `openTab`/`destroy` |
 
 Навигация: `pushItem` оригинала разложен на два наших механизма — `navigationStack.pushLayer`
