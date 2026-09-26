@@ -14,7 +14,9 @@
 //
 // Разметку строит React (`InputSearch.tsx`), объект получает готовые узлы
 // через `bind` — единственное отличие формы от конструктора оригинала
-// (:39-117), который строит их сам.
+// (:39-117), который строит их сам. Ванильное поле с конструктором оригинала —
+// `components/inputSearch.ts`: оно наследует этот объект и строит узлы само,
+// поведенческая половина у них одна.
 //
 // ── Расхождения с оригиналом ───────────────────────────────────────────────
 //  1. Опций `verifyDebounce`/`onDebounce`/`onFocusChange`/`arrowBack`/
@@ -39,7 +41,9 @@ export default class InputSearchHandle {
   public onEnter?: (value: string) => void
 
   private listenerSetter = new ListenerSetter()
-  private debounceTime = 300
+  /** `debounceTime` (:77, по умолчанию 300) — ванильный `components/inputSearch.ts`
+   *  переписывает его из опции конструктора (у селектора пиров — 200) */
+  public debounceTime = 300
 
   /** роль конструктора (:83-94): узлы уже в DOM, вешаем слушатели */
   public bind(container: HTMLElement, input: HTMLInputElement, clearBtn: HTMLElement) {

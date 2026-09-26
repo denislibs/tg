@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 20,
+      "version": 21,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -4143,6 +4143,10 @@
           "value": "Violence"
         },
         {
+          "key": "RequestJoin.List.SearchEmpty",
+          "value": "There were no results for \"%@\".\nTry a new search."
+        },
+        {
           "key": "Resend",
           "value": "Resend"
         },
@@ -5554,7 +5558,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 20,
+      "version": 21,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -8724,6 +8728,10 @@
           "value": "Ничего не найдено"
         },
         {
+          "key": "RequestJoin.List.SearchEmpty",
+          "value": "По запросу «%@» ничего не найдено.\nПопробуйте другой запрос."
+        },
+        {
           "key": "Search.EmptyQuery",
           "value": "Попробуйте поиск."
         },
@@ -11137,7 +11145,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 8,
+      "version": 9,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -12593,6 +12601,10 @@
           "value": "Aucun résultat"
         },
         {
+          "key": "RequestJoin.List.SearchEmpty",
+          "value": "Aucun résultat pour « %@ ».\nEssayez une autre recherche."
+        },
+        {
           "key": "Search.EmptyQuery",
           "value": "Essayez de rechercher."
         },
@@ -13953,7 +13965,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 8,
+      "version": 9,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -15408,6 +15420,10 @@
           "value": "Keine Ergebnisse"
         },
         {
+          "key": "RequestJoin.List.SearchEmpty",
+          "value": "Keine Ergebnisse für „%@“.\nVersuche eine neue Suche."
+        },
+        {
           "key": "Search.EmptyQuery",
           "value": "Versuche zu suchen."
         },
@@ -16768,7 +16784,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 8,
+      "version": 9,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -18228,6 +18244,10 @@
           "value": "Sin resultados"
         },
         {
+          "key": "RequestJoin.List.SearchEmpty",
+          "value": "No hay resultados para «%@».\nPrueba con otra búsqueda."
+        },
+        {
           "key": "Search.EmptyQuery",
           "value": "Prueba a buscar."
         },
@@ -19588,7 +19608,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 8,
+      "version": 9,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -21064,6 +21084,10 @@
         {
           "key": "SearchEmptyViewTitle",
           "value": "Нічого не знайдено"
+        },
+        {
+          "key": "RequestJoin.List.SearchEmpty",
+          "value": "За запитом «%@» нічого не знайдено.\nСпробуйте інший запит."
         },
         {
           "key": "Search.EmptyQuery",

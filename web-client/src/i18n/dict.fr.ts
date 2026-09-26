@@ -398,6 +398,8 @@ const fr = {
   'Chat.Input.Attach.Document': 'Fichier',
   'Chat.Search.NothingFound': 'Rien d\'intéressant pour l\'instant…',
   SearchEmptyViewTitle: 'Aucun résultat',
+  // пустая выдача селектора пиров (tweb `appSelectPeers.tsx:1041`)
+  'RequestJoin.List.SearchEmpty': 'Aucun résultat pour « %@ ».\nEssayez une autre recherche.',
   'Search.EmptyQuery': 'Essayez de rechercher.',
   SharedMusicTab2: 'Musique',
   'Chat.CommentsLabel': 'Commentaires',
