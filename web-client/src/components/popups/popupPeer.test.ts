@@ -104,7 +104,8 @@ describe('confirmationPopup — порт tweb popups/peer.ts + simpleConfirmatio
 })
 
 describe('PopupPeer — аватар пира (peerId), раунд правок 1', () => {
-  it('destroy() снимает подписку аватара на зеркало пиров: обновление карточки не трогает оторванный узел', () => {
+  it('destroy() снимает подписку аватара на зеркало пиров — после снятия узла из DOM (tweb 1a5b40d8b): обновление карточки не трогает оторванный узел', () => {
+    vi.useFakeTimers()
     const ALICE = 90001
     const fillMirror = vi.fn(async() => {})
     const managers: AvatarManagers = { peers: { fillMirror } }
@@ -124,7 +125,8 @@ describe('PopupPeer — аватар пира (peerId), раунд правок 
     expect(avatarNode.dataset.color).toBeUndefined()
     expect(avatarNode.childNodes.length).toBe(0)
 
-    popup.forceHide() // destroy() сразу — включая middlewareHelper.destroy() (popupElement.ts, раунд правок 1)
+    popup.forceHide() // destroy() сразу; middlewareHelper гаснет в его 250мс-таймере (tweb 1a5b40d8b)
+    vi.advanceTimersByTime(250)
 
     applyPeerOps([{ op: 'upsert', peers: [{ _: 'user', id: ALICE, first_name: 'Алиса', pFlags: {} }] }])
 
