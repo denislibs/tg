@@ -28,6 +28,7 @@ import TgIcon from './TgIcon'
 import IconButton from '../shared/ui/IconButton'
 import { useLockStore } from '../stores/lockStore'
 import SidebarMenuButton from './SidebarMenuButton'
+import SidebarEmojiStatusButton from './SidebarEmojiStatusButton'
 import ComposeFab from './ComposeFab'
 import PremiumModal from './PremiumModal'
 import StoriesRow from './StoriesRow'
@@ -75,6 +76,10 @@ export default function Sidebar({
   const t = useT()
   const loaded = useChatsStore((st) => st.loaded)
   const passcodeEnabled = useSettingsStore((st) => st.passcodeEnabled)
+  // Кнопка эмодзи-статуса в шапке — только у подписчика Premium (tweb
+  // `onPremium` → `toggleRightButtons`, `sidebarLeft/index.ts`).
+  const isPremium = useChatsStore((st) => !!st.me?.user.pFlags?.premium)
+  const emojiStatus = useChatsStore((st) => st.me?.user.emoji_status_emoticon)
   // Плейсхолдер и спиннер поля поиска ведёт автомат состояния соединения (порт
   // tweb ConnectionStatusComponent), поэтому пропа `placeholder` у InputSearch
   // здесь нет: единственный писатель — автомат. Хэндл трёх его методов приезжает
@@ -352,7 +357,9 @@ export default function Sidebar({
           (`onTransitionStart`, tweb sidebarLeft/index.ts:1431) — через него
           гаснет ряд историй (_storiesList.scss); `className` постоянный. */}
       <div className={classNames('tabs-tab', 'sidebar-slider-item', 'item-main', 'active', s.sliderItem)}>
-      <div className={classNames('sidebar-header', 'main-search-sidebar-header', 'can-have-forum', 'is-input-the-last-child', s.header)}>
+      {/* `is-input-the-last-child` — tweb `toggleRightButtons`: поле поиска
+          последнее, когда справа нет ни кнопки статуса, ни замка. */}
+      <div className={classNames('sidebar-header', 'main-search-sidebar-header', 'can-have-forum', !isPremium && !passcodeEnabled ? 'is-input-the-last-child' : '', s.header)}>
         {/* Бургер в DOM всегда (tweb `index.html:93-96`): в нём стрелка
             «назад» — узел владельца поиска, ссылку на него владелец держит с
             монтирования колонки. При показанной колонке папок бургер прячется
@@ -369,6 +376,7 @@ export default function Sidebar({
           className={classNames('old-style', s.search)}
           focused={searching}
         />
+        {isPremium && <SidebarEmojiStatusButton emoji={emojiStatus} />}
         {/* Замок над списком чатов при включённом код-пароле (tweb sidebar-lock-button). */}
         {passcodeEnabled && !searching && (
           <IconButton
@@ -498,7 +506,6 @@ export default function Sidebar({
         chats={chats}
         settingsSub={settingsSub}
         onSettingsBack={() => { closeScreen(); setSettingsSub(null) }}
-        onToggleMode={onToggleMode}
         onSelect={onSelect}
         onChatCreated={onChatCreated}
         onCreateGroup={actions.createGroup}

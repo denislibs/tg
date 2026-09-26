@@ -222,12 +222,21 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `NotificationsPrivateChats` («Private Chats»), у fr — заголовка
 // («Notifications»). ru 1346 → 1350, uk 682 → 686, es 681 → 685,
 // de/fr 681 → 684. `plural` не менялся.
+//
+// Выравнивание корня настроек по tweb (`fix/settings-root-items`): у ВСЕХ пяти
+// словарей снят `General.NightMode` — строки «Ночной режим» в корне у tweb нет
+// (ночной режим — пункт подменю «Ещё» бургера). У русского вдобавок сняты
+// выдумки `Premium.Row.Subtitle`/`Premium.Row.Active` (подзаголовка у строки
+// Premium у оригинала нет) и `DarkMode` (пункт бургера у tweb подписан по теме),
+// а добавлены четыре ключа 1:1 с tweb lang.ts — `EnableDarkMode`,
+// `DisableDarkMode`, `MenuTelegramStars`, `SetAsEmojiStatus`: у русского
+// −4 +4, число то же; у остальных −1 (поверх пилота: ru 1350, uk 685, es 684, de/fr 683).
 const COMPOSITION = {
   ru: { keys: 1350, plural: 35 },
-  uk: { keys: 686, plural: 24 },
-  es: { keys: 685, plural: 24 },
-  de: { keys: 684, plural: 24 },
-  fr: { keys: 684, plural: 24 },
+  uk: { keys: 685, plural: 24 },
+  es: { keys: 684, plural: 24 },
+  de: { keys: 683, plural: 24 },
+  fr: { keys: 683, plural: 24 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -323,12 +332,14 @@ const COMPOSITION = {
 // (разбор — у `COMPOSITION` выше). Портом 72c50bfef — `Notifications.Restricted`.
 // Пилотом 2D — заголовок вкладки уведомлений и три имени секций (разбор — у
 // `COMPOSITION` выше; de и fr расходятся по одному совпавшему ключу).
+// Выравниванием корня настроек по tweb — снят `General.NightMode` у всех пяти,
+// у русского ещё −3 +4 (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: 'fc80fe50',
-  uk: 'a3272773',
-  es: '1c37914d',
-  de: '5fb99ee1',
-  fr: '3fb1ce0b',
+  ru: '0ff84dd8',
+  uk: 'b0890b98',
+  es: '01b77f02',
+  de: '25e22802',
+  fr: 'b50abcd4',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
