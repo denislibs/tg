@@ -247,7 +247,9 @@ GroupsOnly/ChannelsOnly` (`:21-26`); пункты `ButtonMenu` с галочко
 | `components/section.solid.tsx` | Solid-`Section` с `nameRight`/`nameRef`/`innerClass`/`contentProps`/`ref` | `section.tsx` | база для `createSearchGroup` |
 | `components/lottieAnimation.solid.tsx`, `components/buttonMenu.ts`, `components/buttonMenuToggle.ts`, `components/popups/popupPeer.ts` | Solid-lottie, `ButtonMenu`, `ButtonMenuToggle` (порт файлом, задача 10), `PopupPeer` | — | база для `EmptySearchPlaceholder`, `ChatTypeMenu`, `confirmationPopup` |
 | `components/chatTypeMenu.solid.tsx`, `components/emptySearchPlaceholder.solid.tsx` (+`*.module.scss` 1:1), `shared/solid/defineSolidElement.solid.tsx` | `<chat-type-menu>`/`<empty-search-placeholder>` — custom elements, как у оригинала: изменяемые `props` (`new ChatTypeMenu()`, `feedProps`, `props.selected`), корень гаснет на снятии узла | `chatTypeMenu/index.tsx`, `emptySearchPlaceholder/index.tsx`, `lib/solidjs/defineSolidElement.tsx` | потребитель — владелец поиска (задача 12) |
-| `shared/ui/PeerSelector/PeerSelector.tsx:100` | React-`renderEntity` (чип `.selector-user`) | `selectorSearch.ts:319-400` | чипу поиска нужен ванильный `renderEntity` |
+| `shared/ui/PeerSelector/PeerSelector.tsx:100` | React-`renderEntity` (чип `.selector-user`) | `selectorSearch.ts:319-400` | остаётся своему экрану; чипу поиска — ванильный `components/selectorEntity.ts` |
+| `components/selectorEntity.ts` | `renderEntity({key, middleware, managers, title?, avatarSize, fallbackIcon?, meAsSaved = true, primary?})` → `{element, avatar, promises}`: `div.selector-user[.selector-user-primary][data-key]` с `middlewareHelper` на узле, аватар (`avatarNew`, `isDialog` → «Избранное», `setIcon` для ключа-не-пира) + крестик, заголовок (`PeerTitle` с `dialog` или строка текстом); расхождения — шапка файла | `selectorSearch.ts:321-404` | задача 11 — сделано; потребитель — владелец поиска (задача 12) |
+| `helpers/date.ts` `fillTipDates`/`DateData`, `fillLocalizedDates`, `monthsLocalized`/`daysLocalized`, `getWeekDays`/`getMonths` | разбор запроса в чипы дат (границы в мс); названия месяцев/дней — `Intl` на языке пакета, наполняются в `client/boot.ts` на каждое `language_apply` (tweb `index.ts:482-491`); новых ключей локализации нет | `helpers/date.ts:6-57`, `:220-592` | задача 11 — сделано; два бага оригинала исправлены и объявлены в шапке (дни с понедельника под индексом `getDay()`; `Date.UTC` при местном форматировании) |
 | `core/navigation/appNavigationController.ts` | порт контроллера; тип `'global-search'` объявлен (`:84`) | `appNavigationController.ts` | используется как есть |
 | `core/state/state.ts:22`, `core/state/migrateRecentSearch.ts` | `recentSearch: string[]` в `AppState` (ключ чата — строка, не число: разница модели) | `config/state.ts:209` | используется как есть; писатель — `pushRecentSearch` в менеджере |
 | `stores/searchStore.ts` `pendingJump` | «результат ждёт открытия чата → прыжок к сообщению» (`SearchView.tsx:134`) | `appImManager.setInnerPeer({peerId, lastMsgId})` | остаётся: клик по строке группы `messages` ставит `pendingJump` |
@@ -292,8 +294,11 @@ GroupsOnly/ChannelsOnly` (`:21-26`); пункты `ButtonMenu` с галочко
 4. **Групп нет**: результаты — плоские `SidebarSection`; нет `searchGroups`,
    `search-group-*`, «показать ещё», `people`-ленты; `recent` есть, но своим кодом
    (`pushRecent` `:52-55`, «Clear» через React `ConfirmDialog`).
-5. **Чипов нет**: ни пира, ни даты; `fillTipDates` не портирован (`helpers/date.ts`
-   — только форматирование). `ChatTypeMenu` и `EmptySearchPlaceholder` портированы
+5. **Чипов в выдаче нет**: строительные блоки портированы задачей 11 —
+   `fillTipDates` (`helpers/date.ts`) и ванильный `renderEntity`
+   (`components/selectorEntity.ts`), — но helper `div.search-helper`, перенос
+   чипа в поле (`is-picked`, `--paddingLeft`) и снятие живут во владельце поиска
+   (задача 12, `sidebarLeft/index.ts:1200-1303`, `:1349-1381`). `ChatTypeMenu` и `EmptySearchPlaceholder` портированы
    компонентами (задача 10: `components/chatTypeMenu.solid.tsx`,
    `components/emptySearchPlaceholder.solid.tsx` — custom elements поверх
    `shared/solid/defineSolidElement.solid.tsx`, меню — на портированном

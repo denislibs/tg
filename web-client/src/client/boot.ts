@@ -7,6 +7,7 @@ import { installBridgeHandoff } from './dnpBridgeHandoff'
 import { initPwaInstall } from '../core/pwa'
 import I18n, { catchUpLangPack, suggestBrowserLangCode } from '@lib/langPack'
 import rootScope from '@lib/rootScope'
+import { fillLocalizedDates } from '@helpers/date'
 import { setBootData } from './bootData'
 import { loadStateOnce, resetStateCache, stateWasResetToDefaults } from '../core/state/loadState'
 import { initialState, STATE_VERSION } from '../core/state/state'
@@ -151,6 +152,12 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
     // выше для диалогов.
     I18n.getCacheLangPackAndApply(),
   ])
+  // Названия месяцев и дней для чипов дат поиска (`helpers/date.ts::fillTipDates`)
+  // — порт tweb index.ts:482-491 (`onLanguageApply`): сразу после применения
+  // пакета старта и затем на каждую смену строк. Счётчик непрочитанных, который
+  // оригинал обновляет там же, у нас пишет лента (`Chat.tsx`).
+  fillLocalizedDates()
+  rootScope.addEventListener('language_apply', fillLocalizedDates)
   // Гидрация — SILENT: прочитанное с диска не должно поехать обратно на диск.
   setAppStateSilent(state)
   // Схема была чужой версии (или базы не было) — фиксируем текущую, чтобы

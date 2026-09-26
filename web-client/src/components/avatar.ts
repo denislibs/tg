@@ -41,8 +41,10 @@
 //    и размеров `photo_video`/`photo_video_full` наша модель фото не объявляет;
 //  • топики форума (`threadId` → `wrapTopicIcon`, :773-784), монофорум
 //    (:756-760, :806) — ни того, ни другого в модели нет;
-//  • `Saved Messages`/`mynotes`/`asAllChats` (:729-753) — это ветки СПИСКА
-//    ЧАТОВ (`isDialog`), лента их не вызывает;
+//  • `mynotes`/`asAllChats` и `savedAsForum` у «Избранного» (:729-753) —
+//    заметок, «всех чатов» и настройки «Избранное как форум» у нас нет; сама
+//    ветка «Избранного» (`isDialog` + свой пир → иконка `saved`) портирована
+//    для чипа пира глобального поиска (`components/selectorEntity.ts`);
 //  • `lazyLoadQueue` (:917-945) и реестр `believeMe` — очереди ленивой
 //    загрузки у ленты нет (её `LazyLoadQueue` не портирован);
 //  • `autoDeletePeriod` (:445-472, :1029-1045), `isSubscribed`
@@ -80,6 +82,7 @@ import { getPeerPhoto, getPeerPhotoId, getPeerPhotoStrippedThumb } from '@core/p
 import { HIDDEN_PEER_ID, NULL_PEER_ID, isUser } from '@core/peers/peerId'
 import { wrapAbbreviation } from '@lib/richtext/abbreviation'
 import type { IconName } from '@core/tgico-icons'
+import rootScope from '@lib/rootScope'
 
 /** tweb avatarNew.tsx:52 — та же длительность, что у `.fade-in` в `_avatar.scss:126`. */
 const FADE_IN_DURATION = 200
@@ -112,6 +115,9 @@ export interface AvatarOptions {
   size: number | 'full'
   /** гасит анимацию проявления фотографии (:409, :549) — см. `putAvatar`. */
   noFadeIn?: boolean
+  /** свой пир рисуется «Избранным» (иконка `saved`, :735-738), а не
+   *  собственной фотографией — как строка списка чатов. */
+  isDialog?: boolean
   middleware: Middleware
   managers: AvatarManagers
 }
@@ -207,6 +213,12 @@ class Avatar {
       return false
     }
 
+    // :735-738 — «Избранное». `meAsNotes`/`savedAsForum` — см. шапку.
+    if (peerId === rootScope.myId && this.options.isDialog) {
+      this.set({ icon: 'saved' })
+      return false
+    }
+
     // Скрытая атрибуция пересылки — не пир: карточки для этого ключа не
     // существует и появиться не может, спрашивать зеркало не о чем (тот же
     // порядок, что у `peerTitle.ts` для `HIDDEN_PEER_ID`).
@@ -241,8 +253,8 @@ class Avatar {
 
     let isSet = false
     if (!avatarRendered && !isAvatarCached) {
-      // :826-828. Терм `peerId !== myId || !isDialog` не портирован вместе с
-      // веткой Saved Messages (см. шапку) — у ленты `isDialog` не бывает.
+      // :826-828. Терм `peerId !== myId || !isDialog` не нужен: свой пир с
+      // `isDialog` уже ушёл веткой «Избранного» выше.
       const color = peerId ? peerAvatarColorByPeer(peerId, !!peer) : undefined
 
       if (peerId === HIDDEN_PEER_ID) { // :836-838
@@ -362,6 +374,14 @@ class Avatar {
     this.apply()
   }
 
+  /** Порт `setIcon` (:430, :1093) — сигнал оригинала: меняется ТОЛЬКО иконка,
+   *  остальное состояние остаётся. Им чип даты ставит `calendarfilter` на
+   *  аватар без пира (`selectorSearch.ts:385`). */
+  public setIcon(icon?: IconName): void {
+    this.icon = icon
+    this.apply()
+  }
+
   /** Порт `_setMedia` (:492-497). */
   private setMedia(media?: HTMLElement): void {
     this.media = media
@@ -410,7 +430,12 @@ class Avatar {
 export function avatarNew(options: AvatarOptions): {
   node: HTMLDivElement
   readyThumbPromise: Promise<void>
+  setIcon: (icon?: IconName) => void
 } {
   const avatar = new Avatar(options)
-  return { node: avatar.node, readyThumbPromise: avatar.readyThumbPromise }
+  return {
+    node: avatar.node,
+    readyThumbPromise: avatar.readyThumbPromise,
+    setIcon: (icon) => avatar.setIcon(icon),
+  }
 }

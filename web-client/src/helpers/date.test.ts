@@ -6,10 +6,13 @@
 //
 // Локаль фиксируем английской (умолчание `useI18nStore`), чтобы утверждения не
 // зависели от языка машины: сам `Intl` тестируется не здесь.
-import { describe, expect, it, vi, afterEach } from 'vitest'
+import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest'
 
 import { useSettingsStore } from '@/settings'
 import {
+  daysLocalized,
+  fillLocalizedDates,
+  fillTipDates,
   formatDate,
   formatDateAccordingToTodayNew,
   formatFullSentTime,
@@ -17,7 +20,10 @@ import {
   formatTime,
   getFullDate,
   getWeekNumber,
+  monthsLocalized,
+  type DateData,
 } from './date'
+import { applyLang } from '@/test/lang'
 
 // Ядро локализации наполняется побочным эффектом создания хранилища языка; в
 // продукте это делает холодный старт (`main.tsx` → `client/boot.ts`).
@@ -227,5 +233,173 @@ describe('getFullDate', () => {
       timeJoiner: ' ',
       leadingZero: true,
     })).toBe('04.06.2026 10:05')
+  })
+})
+
+// ── Чипы дат глобального поиска — порт `fillTipDates` (tweb date.ts:240-592) ──
+//
+// Пины — на РЕЗУЛЬТАТ: заголовок чипа и вычисленные границы [minDate, maxDate]
+// в миллисекундах, ровно то, что владелец поиска положит в `data-key`
+// (`date_<min>_<max>`, tweb sidebarLeft/index.ts:1355) и дальше в запрос.
+// «Сейчас» зафиксировано: суббота, 26 сентября 2026, 15:30:00.000 местного
+// времени — от него считаются «сегодня», «вчера», прошедший день недели и
+// отсечение будущих дат.
+describe('fillTipDates', () => {
+  const NOW = new Date(2026, 8, 26, 15, 30, 0, 0)
+  /** Полночь местного дня (месяц — человеческий, с 1). */
+  const day = (y: number, m: number, d: number) => new Date(y, m - 1, d).getTime()
+  const tips = (q: string) => {
+    const dates: DateData[] = []
+    fillTipDates(q, dates)
+    return dates
+  }
+  const titles = (q: string) => tips(q).map((d) => d.title)
+  const YEARS_DOWN = Array.from({ length: 2026 - 2013 + 1 }, (_, i) => 2026 - i)
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(NOW)
+    fillLocalizedDates()
+  })
+
+  afterEach(async () => {
+    vi.useRealTimers()
+    await applyLang('en')
+    fillLocalizedDates()
+  })
+
+  it('короче трёх символов — ни одного чипа', () => {
+    expect(tips('to')).toEqual([])
+    expect(tips(' 1. ')).toEqual([])
+  })
+
+  it('«today» и его префикс — сегодняшние сутки', () => {
+    const today = [{ title: 'Today', minDate: day(2026, 9, 26), maxDate: day(2026, 9, 27) - 1 }]
+    expect(tips('today')).toEqual(today)
+    expect(tips('  ToD ')).toEqual(today)
+  })
+
+  it('«yesterday» — вчерашние сутки, заголовок с заглавной', () => {
+    expect(tips('yest')).toEqual([{ title: 'Yesterday', minDate: day(2026, 9, 25), maxDate: day(2026, 9, 26) - 1 }])
+  })
+
+  it('день недели — ПРОШЕДШИЙ такой день (сегодняшний — сегодня), заголовок — этот же день', () => {
+    // Пин расхождения 1 шапки `date.ts`: у оригинала `daysLocalized` после
+    // `fillLocalizedDates` начинается с понедельника, а читается по `getDay()`
+    // (0 — воскресенье), и «monday» давал ВОСКРЕСЕНЬЕ с подписью «Monday».
+    expect(tips('monday')).toEqual([{ title: 'Monday', minDate: day(2026, 9, 21), maxDate: day(2026, 9, 22) - 1 }])
+    expect(tips('frid')).toEqual([{ title: 'Friday', minDate: day(2026, 9, 25), maxDate: day(2026, 9, 26) - 1 }])
+    expect(tips('saturday')).toEqual([{ title: 'Saturday', minDate: day(2026, 9, 26), maxDate: day(2026, 9, 27) - 1 }])
+    expect(tips('sunday')).toEqual([{ title: 'Sunday', minDate: day(2026, 9, 20), maxDate: day(2026, 9, 21) - 1 }])
+    // Три буквы — ещё не день недели (`getDayOfWeek`, :580) и не месяц.
+    expect(tips('mon')).toEqual([])
+  })
+
+  it('«12.05» — 12 мая каждого года от текущего вниз до 2013-го; текущий — «May 12»', () => {
+    const dates = tips('12.05')
+    expect(dates.map((d) => d.title)).toEqual(['May 12', ...YEARS_DOWN.slice(1).map((y) => '12.05.' + y)])
+    expect(dates[0]).toEqual({ title: 'May 12', minDate: day(2026, 5, 12), maxDate: day(2026, 5, 13) - 1 })
+    expect(dates[13]).toEqual({ title: '12.05.2013', minDate: day(2013, 5, 12), maxDate: day(2013, 5, 13) - 1 })
+  })
+
+  it('будущий день этого года отсекается, 29.02 — только високосные годы', () => {
+    expect(titles('12.10')[0]).toBe('12.10.2025')
+    expect(titles('12.10')).toHaveLength(13)
+    expect(titles('29.02')).toEqual(['29.02.2024', '29.02.2020', '29.02.2016'])
+  })
+
+  it('месяц и год числами — месяц целиком, в любом порядке', () => {
+    const may2024 = [{ title: 'May 2024', minDate: day(2024, 5, 1), maxDate: day(2024, 6, 1) - 1 }]
+    expect(tips('05.2024')).toEqual(may2024)
+    expect(tips('2024/05')).toEqual(may2024)
+    // Будущий месяц текущего года — не чип.
+    expect(tips('10.2026')).toEqual([])
+  })
+
+  it('«12.05.2024» — один день; двузначный год — 20xx; будущий год и 31.02 — ничего', () => {
+    const d = [{ title: '12.05.2024', minDate: day(2024, 5, 12), maxDate: day(2024, 5, 13) - 1 }]
+    expect(tips('12.05.2024')).toEqual(d)
+    expect(tips('12-05-24')).toEqual(d)
+    expect(tips('12.05.2030')).toEqual([])
+    expect(tips('31.02.2024')).toEqual([])
+  })
+
+  // Порт теста оригинала `src/tests/fillTipDates.test.ts` целиком.
+  it('разделители полной даты обязаны совпадать (тест оригинала)', () => {
+    expect(tips('01.02.2020')).toHaveLength(1)
+    expect(tips('01.02/2020')).toHaveLength(0)
+    expect(tips('01/02-2020')).toHaveLength(0)
+  })
+
+  it('имя месяца — этот месяц каждого года вниз до 2013-го; будущий в этом году пропущен', () => {
+    expect(titles('may')).toEqual(YEARS_DOWN.map((y) => 'May ' + y))
+    expect(tips('may')[0]).toEqual({ title: 'May 2026', minDate: day(2026, 5, 1), maxDate: day(2026, 6, 1) - 1 })
+    expect(titles('oct')).toEqual(YEARS_DOWN.slice(1).map((y) => 'October ' + y))
+  })
+
+  it('месяц с годом или днём — в обоих порядках', () => {
+    expect(titles('may 2024')).toEqual(['May 2024'])
+    expect(titles('may 12')).toEqual(titles('12.05'))
+    expect(titles('12 may')).toEqual(titles('12.05'))
+    // «год месяц» у оригинала не выходит из разбора (:404-419 без `return`):
+    // дальше срабатывают и шаблон месяца, и шаблон года — дословно так же.
+    expect(titles('2024 may')).toEqual(['May 2024', ...YEARS_DOWN.map((y) => 'May ' + y), '2024'])
+  })
+
+  it('год — весь год; раньше 2013-го — все годы; будущий — ничего', () => {
+    expect(tips('2024')).toEqual([{ title: '2024', minDate: day(2024, 1, 1), maxDate: day(2025, 1, 1) - 1 }])
+    expect(titles('2010')).toEqual(YEARS_DOWN.map(String))
+    expect(tips('2027')).toEqual([])
+  })
+
+  it('язык приложения: «сегодня», «вчера», день недели и месяц по-русски; английский тоже понят', async () => {
+    await applyLang('ru')
+    fillLocalizedDates()
+
+    expect(tips('сегодня')).toEqual([{ title: 'Сегодня', minDate: day(2026, 9, 26), maxDate: day(2026, 9, 27) - 1 }])
+    expect(titles('today')).toEqual(['Сегодня'])
+    expect(tips('вчера')).toEqual([{ title: 'Вчера', minDate: day(2026, 9, 25), maxDate: day(2026, 9, 26) - 1 }])
+    expect(tips('понедельник')).toEqual([{ title: 'Понедельник', minDate: day(2026, 9, 21), maxDate: day(2026, 9, 22) - 1 }])
+    expect(titles('январь 2024')).toEqual(['Январь 2024'])
+    expect(titles('май')).toEqual(YEARS_DOWN.map((y) => 'Май ' + y))
+    // `getMonth` сверяет и английские `months` (:571): «may» понят и в русском.
+    expect(titles('may')[0]).toBe('Май 2026')
+    expect(titles('12.05')[0]).toBe('Май 12')
+  })
+})
+
+// Названия месяцев и дней — из `Intl` на ЯЗЫКЕ ПАКЕТА (`I18n.getDateTimeFormat`),
+// индексированные так, как их читают: месяц — по `getMonth()`, день — по
+// `getDay()` (0 — воскресенье, как `days` оригинала).
+describe('fillLocalizedDates', () => {
+  const realTZ = process.env.TZ
+
+  afterEach(async () => {
+    process.env.TZ = realTZ
+    await applyLang('en')
+    fillLocalizedDates()
+  })
+
+  it('русский пакет — русские названия, воскресенье первым', async () => {
+    await applyLang('ru')
+    fillLocalizedDates()
+
+    expect(monthsLocalized[0]).toBe('Январь')
+    expect(monthsLocalized[11]).toBe('Декабрь')
+    expect(daysLocalized[0]).toBe('Воскресенье')
+    expect(daysLocalized[1]).toBe('Понедельник')
+  })
+
+  // Пин расхождения 2 шапки `date.ts`: оригинал строит опорные даты через
+  // `Date.UTC(...)`, а форматирует в МЕСТНОМ поясе, и к западу от Гринвича
+  // полночь 1 января по UTC — это ещё 31 декабря: все месяцы сдвигались на один.
+  it('к западу от Гринвича названия не сдвигаются', async () => {
+    process.env.TZ = 'America/New_York'
+    // Смена языка сбрасывает кэш форматтеров ядра — новые возьмут новый пояс.
+    await applyLang('ru')
+    fillLocalizedDates()
+
+    expect(monthsLocalized[0]).toBe('Январь')
+    expect(daysLocalized[0]).toBe('Воскресенье')
   })
 })
