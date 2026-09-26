@@ -651,17 +651,34 @@ audio/voice/round (`:958-960`). Вкладка `voice` в оригинале —
 - Изменить: `web-client/src/components/appSearchSuper.ts` (`SearchContextMenu`)
 - Тесты: `appSearchSuper.contextMenu.test.ts`, `selection.search.test.ts`
 
-- [ ] **Шаг 1: прочитать** `chat/selection.ts:583-763` и `appSearchSuper.ts:156-345`.
-- [ ] **Шаг 2: падающий тест на меню**: правый клик по `.search-super-item` даёт
+- [x] **Шаг 1: прочитать** `chat/selection.ts:583-763` и `appSearchSuper.ts:156-345`.
+- [x] **Шаг 2: падающий тест на меню**: правый клик по `.search-super-item` даёт
   `.search-contextmenu` с Forward/Download/Goto/Select/Delete; пункт, чей
   `verify()` ложен, **скрыт**; если скрыты все — меню не открывается вовсе.
-- [ ] **Шаг 3: падающий тест на выделение**: выбор двух элементов ставит
+- [x] **Шаг 3: падающий тест на выделение**: выбор двух элементов ставит
   `is-selecting` на `navScrollableContainer` и на контейнер, плашка
   `.search-super-selection-container` встаёт **на место ряда вкладок**, счётчик
   показывает 2; shift-клик выделяет диапазон внутри одной вкладки и не выходит
   за `tabs-tab`.
-- [ ] **Шаг 4: убедиться, что тесты падают.**
-- [ ] **Шаг 5: реализовать.**
+- [x] **Шаг 4: убедиться, что тесты падают.**
+- [x] **Шаг 5: реализовать.**
+
+**Сделано (2026-09-26) — сразу по tweb 812502980**, а не по e52b5d931, на
+котором писан план (решение пользователя): адреса выше устарели, актуальные —
+`SearchSelection` `chat/selection.ts:662-839`, `SearchContextMenu`
+`appSearchSuper.ts:182-386` (`docs/tweb/shared-media.md` § 1.8). Поправки к
+постановке по факту оригинала: диапазон берётся ПРОТЯЖКОЙ мышью (drag), а не
+shift-кликом — shift-клика у tweb нет; «скрыты все — меню не открывается»
+портировано, но пунктом «Перейти» (без `verify`) недостижимо на живых
+элементах. Вместе с задачей перенесены 79b9c44c1 + d064fdb85 (база
+выделения: `toggleByElement(el, selected)`, протяжка по альбомам), 508acd4f5
+целиком (копирование медиа: хелперы, меню ленты, медиавьювер, пункт меню
+shared media) и 8ff1ea1e7 (`z-index` чекбокса). Тесты —
+`appSearchSuper.selection.test.ts` (меню и выделение одним харнессом),
+`chat/selection.test.ts`, `chat/selectionRange.test.ts`,
+`chat/contextMenu.copyMedia.test.ts`, `helpers/copyMediaToClipboard.test.ts`,
+`styles/selectionCheckboxLayer.test.ts`. Расхождения — 51-54 в шапке
+`appSearchSuper.ts`.
 
 ---
 

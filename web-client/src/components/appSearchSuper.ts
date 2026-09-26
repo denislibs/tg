@@ -14,15 +14,15 @@
 // ЧТО ЗДЕСЬ ЕЩЁ НЕ ЖИВЁТ (и почему это не заглушки, а пропуски)
 //
 // Класс в оригинале — один файл на всю подсистему, и портируется он этапами
-// (задачи 5→14 плана). Рендер конкретного элемента, выделение и контекстное
-// меню в этом файле ОТСУТСТВУЮТ — ни полей, ни пустых методов: заглушка,
-// которую никто не зовёт, — мёртвый код (`CLAUDE.md`).
-// Места, где оригинал зовёт ещё не приехавшее, помечены комментарием со
-// ссылкой на строку tweb и номер задачи; когда задача приедет, вызов встанет
-// ровно туда.
+// (задачи 5→14 плана). Места, где оригинал зовёт ещё не приехавшее, помечены
+// комментарием со ссылкой на строку tweb и номер задачи; когда задача
+// приедет, вызов встанет ровно туда. Заглушка, которую никто не зовёт, —
+// мёртвый код (`CLAUDE.md`), поэтому пустых полей и методов здесь нет.
 //
-//  • `SearchSelection`, `SearchContextMenu` — задача 14 (`tweb:156-345`,
-//    `chat/selection.ts:583-763`).
+// Задача 14 — выделение (`SearchSelection`, `chat/selection.ts:662-839`) и
+// меню элемента (`SearchContextMenu`, ниже, `:182-386`) — портирована СРАЗУ
+// ПО НОВОМУ tweb, 812502980 (адреса в её коде и в расхождениях 51-54 — по
+// нему; остальной файл писан по e52b5d931).
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
@@ -284,6 +284,32 @@
 //     (`:607`) получает `middleware` своего хелпера, и `destroy()` гасит её
 //     Solid-корень — у оригинала корень не утилизируется (то же, что
 //     расхождение 2); пин — `appSearchSuper.dom.test.ts` (счёт корней).
+// 51. Действия меню элемента и плашки выделения — колбэки хоста в опциях,
+//     как `openPeer`/`openUserPermissions` (расхождение 33):
+//     `setInnerPeer` — вместо `appImManager.setInnerPeer` (812502980 `:342-348`,
+//     `chat/selection.ts:782-793`), `showForwardPopup`/`showDeleteMessagesPopup`
+//     — вместо одноимённых попапов (`:357-385`, `selection.ts:795-822`),
+//     `downloadToDisc` — вместо `appDownloadManager` внутри
+//     `ChatContextMenu.onDownloadClick` (`:297`, `:302`). Попапы пересылки и
+//     удаления у нас живут в React-хосте чата (`Chat.tsx`), вызвать их
+//     напрямую из класса нечем. Обратный вызов «по подтверждению» (снять
+//     выделение) едет тем же аргументом, что у оригинала.
+// 52. `SearchContextMenu` берёт сообщение из кэша shared media
+//     (`getSharedMediaMessage`) — тот, из которого элемент и нарисован, —
+//     а не RPC `getMessageByPeer` (`:233`); выбранные — так же
+//     (`SearchSelection.getSelectedMessages`). «Можно переслать» — `message._
+//     === 'message'`: остальных слагаемых `canForward` (`noforwards`
+//     сообщения и пира, `ttl_seconds`) в модели нет, та же граница, что у
+//     меню ленты (`ContextMenuChat.canForward`). «Можно удалить» — общий порт
+//     `core/messages/canDeleteMessage.ts`.
+// 53. `destroy()` снимает узел меню из документа (`search-contextmenu`). У
+//     оригинала меню, однажды положенное в `getOverlayRoot()` (`:339`),
+//     живёт там вечно; у нас `destroy()` обязан не оставлять следов (DoD 5,
+//     то же, что расхождение 8).
+// 54. `ChatContextMenu.canDownload`/`canCopyMedia` зовутся без четвёртого
+//     аргумента `attachTo` (`:292`, `:298`, `:303`): у оригинала это носитель
+//     ветки сенситив-медиа `canDownload`, которой у нас нет (расхождение 13,
+//     докблок `canDownload` в `chat/contextMenu.ts`).
 // 43. `loadType` не передаёт `offsetPeerId` (`tweb:2280`, `:2286`) и не читает
 //     `value.isEnd.top` (`:2314`). Первое — половина курсора `searchGlobal`
 //     (`offset_peer`), которая нашему серверу не нужна: «rate» — номер
@@ -364,6 +390,16 @@ import { StarGiftsProfileTab, type StarGiftsProfileTabProps } from '@components/
 import type { StarGiftsProfileActions, StarGiftsProfileStore } from '@components/stargifts/profileStore.solid'
 import SavedDialogsTab, { type SavedDialogsTabProps } from '@components/sidebarRight/savedDialogsTab.solid'
 import type { SavedStarGift } from '@core/managers/starsManager'
+import { SearchSelection } from '@components/chat/selection'
+import { ButtonMenuSync, type ButtonMenuItemOptions } from '@components/buttonMenu'
+import ChatContextMenu from '@components/chat/contextMenu'
+import copyMessageMediaWithFeedback from '@components/copyMessageMediaWithFeedback'
+import canDeleteMessage from '@core/messages/canDeleteMessage'
+import { attachContextMenuListener } from '@helpers/dom/attachContextMenuListener'
+import cancelClickOrNextIfNotClick from '@helpers/dom/cancelClickOrNextIfNotClick'
+import { simulateClickEvent } from '@helpers/dom/clickEvent'
+import contextMenuController from '@helpers/contextMenuController'
+import positionMenu from '@helpers/positionMenu'
 
 /**
  * tweb `:111` — фильтр сообщений (`inputMessagesFilterPhotoVideo` и т.п.),
@@ -445,6 +481,239 @@ type PerformSearchResultArgs = {
 }
 
 /**
+ * Порт tweb `SearchContextMenu` (`appSearchSuper.ts:182-386`, 812502980) —
+ * контекстное меню элемента shared media: правый клик (на таче — долгое
+ * нажатие) по `.search-super-item` открывает `.search-contextmenu`, пункты
+ * которого решает `verify()`; в режиме выделения остаются только пункты
+ * `withSelection`. Если не прошёл ни один — меню не открывается.
+ * Адаптации — расхождения 51-54 в шапке файла.
+ */
+class SearchContextMenu {
+  private buttons!: (ButtonMenuItemOptions & { verify?: () => boolean | Promise<boolean>, withSelection?: true })[]
+  private element?: HTMLElement
+  private target?: HTMLElement
+  private peerId!: PeerId
+  private mid!: number
+  private isSelected = false
+  private noForwards = false
+  private message?: MyMessage
+  private selectedMessages?: MyMessage[]
+  private copyMediaButton?: ButtonMenuItemOptions & {
+    verify?: () => boolean | Promise<boolean>
+  }
+
+  // `attachTo` у оригинала ещё и поле — ради четвёртого аргумента
+  // `canDownload` (расхождение 54); здесь он нужен только подписке.
+  constructor(
+    attachTo: HTMLElement,
+    private searchSuper: AppSearchSuper,
+    private listenerSetter: ListenerSetter,
+  ) {
+    // tweb :204-272
+    const onContextMenu = (e: MouseEvent | TouchEvent) => {
+      if(!this.element) {
+        this.init()
+      }
+
+      const item = findUpClassName(e.target as HTMLElement, 'search-super-item')
+
+      // stories have their own context menu in StoriesProfileTab
+      const isStory = !!findUpClassName(e.target as HTMLElement, 'search-super-content-stories')
+      if(isStory) return
+
+      if(!item) return
+
+      // cross-realm-safe `instanceof MouseEvent` (excludes touch, survives the Document PiP window)
+      if(!('touches' in e)) e.preventDefault()
+      const element = this.element!
+      if(element.classList.contains('active')) {
+        return false
+      }
+      if(!('touches' in e)) e.stopPropagation()
+
+      const selection = this.searchSuper.selection!
+      const r = async() => {
+        this.target = item
+        this.peerId = +(item.dataset.peerId ?? '')
+        this.mid = +(item.dataset.mid ?? '')
+        this.isSelected = selection.isMidSelected(this.peerId, this.mid)
+        // расхождение 52
+        this.message = getSharedMediaMessage(this.peerId, this.mid)
+        this.noForwards = selection.isSelecting ?
+          !!selection.selectionForwardBtn?.classList.contains('hide') :
+          this.message?._ !== 'message'
+        this.selectedMessages = selection.isSelecting ? selection.getSelectedMessages() : undefined
+
+        const f = await Promise.all(this.buttons.map(async(button) => {
+          let good: boolean
+
+          if(selection.isSelecting && !button.withSelection) {
+            good = false
+          } else {
+            good = button.verify ? !!(await button.verify()) : true
+          }
+
+          button.element!.classList.toggle('hide', !good)
+          return good
+        }))
+
+        if(!f.some((v) => v)) {
+          return
+        }
+
+        item.classList.add('menu-open')
+
+        positionMenu(e, element)
+        contextMenuController.openBtnMenu(element, () => {
+          item.classList.remove('menu-open')
+        })
+      }
+
+      void r()
+    }
+
+    attachContextMenuListener({
+      element: attachTo,
+      callback: onContextMenu,
+      listenerSetter,
+    })
+  }
+
+  /** tweb :275-340 */
+  private init() {
+    const selection = () => this.searchSuper.selection!
+    // Носитель скачивания — хост (расхождение 51): `onDownloadClick` зовёт
+    // `media.downloadToDisc`, как у меню ленты.
+    const downloadManagers = {
+      media: { downloadToDisc: (message: MyMessage) => this.searchSuper.downloadToDisc?.(message) },
+    }
+
+    this.buttons = [{
+      icon: 'forward',
+      text: 'Forward',
+      onClick: this.onForwardClick,
+      verify: () => !this.noForwards,
+    }, {
+      icon: 'forward',
+      text: 'Message.Context.Selection.Forward',
+      onClick: this.onForwardClick,
+      verify: () => selection().isSelecting && !this.noForwards,
+      withSelection: true,
+    }, this.copyMediaButton = {
+      icon: 'copy',
+      text: 'MediaViewer.Context.Copy',
+      onClick: this.onCopyMediaClick,
+      verify: () => !selection().isSelecting &&
+        ChatContextMenu.canCopyMedia(this.message, undefined, this.noForwards),
+      keepOpen: true,
+    }, {
+      icon: 'download',
+      text: 'MediaViewer.Context.Download',
+      onClick: () => ChatContextMenu.onDownloadClick(downloadManagers, this.message, this.noForwards),
+      verify: () => !selection().isSelecting && ChatContextMenu.canDownload(this.message, undefined, this.noForwards),
+    }, {
+      icon: 'download',
+      text: 'Message.Context.Selection.Download',
+      onClick: () => ChatContextMenu.onDownloadClick(downloadManagers, this.selectedMessages, this.noForwards),
+      verify: () => selection().isSelecting && ChatContextMenu.canDownload(this.selectedMessages, undefined, this.noForwards),
+      withSelection: true,
+    }, {
+      icon: 'message',
+      text: 'Message.Context.Goto',
+      onClick: this.onGotoClick,
+      withSelection: true,
+    }, {
+      icon: 'select',
+      text: 'Message.Context.Select',
+      onClick: this.onSelectClick,
+      verify: () => !this.isSelected,
+      withSelection: true,
+    }, {
+      icon: 'select',
+      text: 'Message.Context.Selection.Clear',
+      onClick: this.onClearSelectionClick,
+      verify: () => this.isSelected,
+      withSelection: true,
+    }, {
+      icon: 'delete',
+      className: 'danger',
+      text: 'Delete',
+      onClick: this.onDeleteClick,
+      verify: () => !selection().isSelecting && canDeleteMessage(this.message),
+    }, {
+      icon: 'delete',
+      className: 'danger',
+      text: 'Message.Context.Selection.Delete',
+      onClick: this.onDeleteClick,
+      verify: () => selection().isSelecting && !!selection().selectionDeleteBtn && !selection().selectionDeleteBtn!.classList.contains('hide'),
+      withSelection: true,
+    }]
+
+    this.element = ButtonMenuSync({ buttons: this.buttons, listenerSetter: this.listenerSetter })
+    this.element.classList.add('search-contextmenu', 'contextmenu')
+    document.body.append(this.element)
+  }
+
+  /** Расхождение 53 в шапке файла. */
+  public destroy() {
+    this.element?.remove()
+    this.element = undefined
+  }
+
+  /** tweb :342-348 */
+  private onGotoClick = () => {
+    this.searchSuper.setInnerPeer?.({
+      peerId: this.peerId,
+      lastMsgId: this.mid,
+      threadId: this.searchSuper.mediaTab.type === 'saved' ? this.searchSuper.searchContext.peerId : this.searchSuper.searchContext.threadId,
+    })
+  }
+
+  /** tweb :350-355 (508acd4f5) */
+  private onCopyMediaClick = () => {
+    copyMessageMediaWithFeedback({
+      message: this.message,
+      button: this.copyMediaButton!,
+    })
+  }
+
+  /** tweb :357-365 */
+  private onForwardClick = () => {
+    const selection = this.searchSuper.selection!
+    if(selection.isSelecting) {
+      simulateClickEvent(selection.selectionForwardBtn!)
+    } else {
+      this.searchSuper.showForwardPopup?.({
+        [this.peerId]: [this.mid],
+      })
+    }
+  }
+
+  /** tweb :367-369 */
+  private onSelectClick = () => {
+    this.searchSuper.selection!.toggleByElement(this.target!)
+  }
+
+  /** tweb :371-373 */
+  private onClearSelectionClick = () => {
+    this.searchSuper.selection!.cancelSelection()
+  }
+
+  /** tweb :375-385 */
+  private onDeleteClick = () => {
+    const selection = this.searchSuper.selection!
+    if(selection.isSelecting) {
+      simulateClickEvent(selection.selectionDeleteBtn!)
+    } else {
+      this.searchSuper.showDeleteMessagesPopup?.(
+        this.peerId,
+        [this.mid],
+      )
+    }
+  }
+}
+
+/**
  * tweb `:346-354` — что рендерер ОДНОГО сообщения получает от
  * `performSearchResult`. `elemsToAppend` (накопитель) не портирован: наши
  * рендереры его не читают, узлы собирает `performSearchResult`.
@@ -520,6 +789,14 @@ export type AppSearchSuperOptions = {
   openPeer?: (peerId: PeerId) => void
   /** Открыть экран прав участника из его меню — расхождение 33 в шапке. */
   openUserPermissions?: (participant: Participant, isAdmin?: boolean) => void
+  /** tweb `appImManager.setInnerPeer` — «перейти к сообщению»; расхождение 51. */
+  setInnerPeer?: (options: { peerId: PeerId, lastMsgId: number, threadId?: number }) => void
+  /** tweb `showForwardPopup(fromPeerIdsMids, onSelect)`; расхождение 51. */
+  showForwardPopup?: (fromPeerIdsMids: Record<PeerId, number[]>, onSelect?: () => void) => void
+  /** tweb `showDeleteMessagesPopup(peerId, mids, ChatType.Chat, onConfirm)`; расхождение 51. */
+  showDeleteMessagesPopup?: (peerId: PeerId, mids: number[], onConfirm?: () => void) => void
+  /** tweb `appDownloadManager.downloadToDisc` пункта «Скачать»; расхождение 51. */
+  downloadToDisc?: (message: MyMessage) => void
 }
 
 export default class AppSearchSuper {
@@ -602,6 +879,14 @@ export default class AppSearchSuper {
   public scrollOffset?: number
   public openPeer?: (peerId: PeerId) => void
   public openUserPermissions?: (participant: Participant, isAdmin?: boolean) => void
+  public setInnerPeer?: AppSearchSuperOptions['setInnerPeer']
+  public showForwardPopup?: AppSearchSuperOptions['showForwardPopup']
+  public showDeleteMessagesPopup?: AppSearchSuperOptions['showDeleteMessagesPopup']
+  public downloadToDisc?: AppSearchSuperOptions['downloadToDisc']
+
+  /** tweb `:459-460` (812502980) — меню элемента и выделение (задача 14). */
+  private searchContextMenu?: SearchContextMenu
+  public selection?: SearchSelection
 
   /** tweb `:416` — назначается потребителем (`sharedMedia.tsx:682-684`). */
   public scrollStartCallback?: (dimensions: ScrollStartCallbackDimensions) => void
@@ -644,6 +929,10 @@ export default class AppSearchSuper {
     this.container.classList.add('search-super')
 
     this.listenerSetter = new ListenerSetter()
+    // tweb `:520-521` (812502980). Менеджер прав выделению не передаётся —
+    // факта «нельзя переслать/удалить» нет (докблок `SelectionManagers`).
+    this.searchContextMenu = new SearchContextMenu(this.container, this, this.listenerSetter)
+    this.selection = new SearchSelection(this, { messages: {} }, this.listenerSetter)
 
     // tweb `:462-472` — липкий ряд вкладок в горизонтальном скроллере.
     const navScrollableContainer = this.navScrollableContainer = document.createElement('div')
@@ -887,8 +1176,18 @@ export default class AppSearchSuper {
       listenerSetter: this.listenerSetter,
     })
 
-    // tweb `:709-714` — перехват клика при активном выделении; выделение
-    // приезжает задачей 14 вместе с `SearchSelection`.
+    // tweb `:767-772` (812502980) — в режиме выделения клик по элементу
+    // выбирает его, а не открывает: перехват на погружении, до обработчиков
+    // вкладок. Клик мимо элемента у оригинала роняет `toggleByElement(null)`
+    // исключением — здесь он просто ничего не выбирает.
+    attachClickEvent(this.tabsContainer, (e) => {
+      if(this.selection?.isSelecting) {
+        cancelClickOrNextIfNotClick(e)
+        const item = findUpClassName(e.target as HTMLElement, 'search-super-item')
+        if(item) this.selection.toggleByElement(item)
+      }
+    }, { capture: true, passive: false, listenerSetter: this.listenerSetter })
+
     // tweb `:768-772` — открытие медиавьювера по клику в грид. Тело
     // обработчика — метод `onMediaClick` (расхождение 15 в шапке). Подписка
     // для документов (`:773-777`, клик по обложке `document-with-thumb`) не
@@ -1254,6 +1553,11 @@ export default class AppSearchSuper {
         element.dataset.mid = '' + message.id
         element.dataset.peerId = '' + message.peerId
         container[method](element)
+
+        // tweb `:1549-1551` (812502980) — элемент, доехавший в режиме выделения
+        if(this.selection?.isSelecting) {
+          this.selection.toggleElementCheckbox(element, true)
+        }
       })
     }
 
@@ -2381,8 +2685,7 @@ export default class AppSearchSuper {
    * нарисуются без сети (`tweb:2239-2276`).
    *
    * Не портировано (нечего сбрасывать до своих задач):
-   * `loadedChats` — задача 9 плана глобального поиска; отмена выделения
-   * (`:2735-2737`) — задача 14.
+   * `loadedChats` — задача 9 плана глобального поиска.
    */
   public cleanup() {
     this.loadPromises = {}
@@ -2402,6 +2705,11 @@ export default class AppSearchSuper {
 
       this.usedFromHistory[inputFilter] = -1
     })
+
+    // tweb `:3121-3123` (812502980)
+    if(this.selection?.isSelecting) {
+      this.selection.cancelSelection()
+    }
 
     this.middleware.clean()
     this.loadFirstTimePromise = undefined
@@ -2509,6 +2817,9 @@ export default class AppSearchSuper {
       this.scrollable.onScrolledBottom = undefined
     }
     this.swipeHandler?.removeListeners()
+    // tweb `:3245` (812502980); узел меню — расхождение 53
+    this.selection?.cleanup()
+    this.searchContextMenu?.destroy()
 
     // Расхождение 2 в шапке: корни Solid-секций утилизируются, чтобы
     // `destroy()` не оставлял следов; корень группы медиа — расхождение 42.
@@ -2520,7 +2831,9 @@ export default class AppSearchSuper {
 
     this.scrollStartCallback =
       this.onChangeTab =
+      this.searchContextMenu =
       this.swipeHandler =
+      this.selection =
         undefined
   }
 }

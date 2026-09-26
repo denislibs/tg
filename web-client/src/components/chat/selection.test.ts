@@ -64,14 +64,6 @@ class FakeBubbles implements SelectionBubbles {
   getBubbleGroupedItems(bubble: HTMLElement): HTMLElement[] {
     return Array.from(bubble.querySelectorAll<HTMLElement>('.grouped-item'))
   }
-
-  // Аналог tweb `getMountedBubble`: мид ячейки альбома резолвится в её узел
-  async getMountedBubble(fullMid: string): Promise<{ bubble: HTMLElement } | undefined> {
-    const mid = fullMid.slice(fullMid.indexOf('_') + 1)
-    const bubble = this.getBubble(fullMid) ??
-      this.inner.querySelector<HTMLElement>(`.grouped-item[data-mid="${mid}"]`)
-    return bubble ? { bubble } : undefined
-  }
 }
 
 function setup(bubbles: HTMLElement[]) {
@@ -444,4 +436,104 @@ describe('событие toggle (tweb :429)', () => {
 
 beforeEach(() => {
   document.body.className = ''
+})
+
+// Порт tweb `src/tests/chatSelectionInteraction.test.ts` (812502980), блок
+// «chat album pointer drag selection» — коммиты 79b9c44c1 (диапазон раскрывает
+// альбом, `toggleByElement(el, selected)` вместо `toggleByMid`) и d064fdb85
+// (альбом — одна единица протяжки). Раскладка — как в харнессе оригинала:
+// внешний бабл альбома несёт мид первой ячейки.
+describe('протяжка по альбому (tweb 79b9c44c1, d064fdb85)', () => {
+  const rect = (top: number) => ({
+    top, left: 0, bottom: top + 40, right: 100,
+    width: 100, height: 40, x: 0, y: top, toJSON: () => ({}),
+  })
+
+  function albumHarness() {
+    const album = makeBubble(101, ['is-album', 'is-grouped'])
+    album.getBoundingClientRect = () => rect(100)
+    const item = (mid: number, top: number) => {
+      const element = document.createElement('div')
+      element.classList.add('grouped-item')
+      element.dataset.mid = String(mid)
+      element.dataset.peerId = String(PEER)
+      element.getBoundingClientRect = () => rect(top)
+      return element
+    }
+    const firstItem = item(101, 100)
+    const secondItem = item(102, 140)
+    const thirdItem = item(103, 180)
+    album.append(firstItem, secondItem, thirdItem)
+
+    const text = makeBubble(104)
+
+    const harness = setup([album, text])
+    // `setup` раскладывает баблы по порядку; ставим геометрию оригинала
+    album.getBoundingClientRect = () => rect(100)
+    text.getBoundingClientRect = () => rect(240)
+
+    const drag = async(...elements: HTMLElement[]) => {
+      elements[0].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))
+      elements.forEach((element) => element.dispatchEvent(new MouseEvent('mousemove', { bubbles: true })))
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+      await flush()
+    }
+
+    return { ...harness, album, firstItem, secondItem, thirdItem, text, drag }
+  }
+
+  it('альбом → текст выделяет, текст → альбом снимает', async() => {
+    const { album, text, selection, drag } = albumHarness()
+
+    await drag(album, text)
+    expect(selection.getSelectedMids()).toEqual([101, 102, 103, 104])
+
+    await drag(text, album)
+    expect(selection.getSelectedMids()).toEqual([])
+  })
+
+  it('текст → альбом выделяет, альбом → текст снимает', async() => {
+    const { album, text, selection, drag } = albumHarness()
+
+    await drag(text, album)
+    expect(selection.getSelectedMids()).toEqual([101, 102, 103, 104])
+
+    await drag(album, text)
+    expect(selection.getSelectedMids()).toEqual([])
+  })
+
+  it('пока курсор внутри одного альбома, не выделяется ничего', async() => {
+    const { album, secondItem, thirdItem, selection, drag } = albumHarness()
+
+    await drag(album, secondItem, thirdItem)
+    expect(selection.getSelectedMids()).toEqual([])
+  })
+
+  it('альбом выделяется, только когда курсор из него вышел', async() => {
+    const { album, secondItem, text, selection, drag } = albumHarness()
+
+    await drag(album, secondItem, text)
+    expect(selection.getSelectedMids()).toEqual([101, 102, 103, 104])
+  })
+
+  it('диапазон ячеек остаётся поштучным, когда курсор пересекает сам альбом', async() => {
+    const { album, secondItem, thirdItem, text, selection, drag } = albumHarness()
+
+    selection.toggleByElement(text)
+    await flush()
+
+    await drag(secondItem, album, thirdItem)
+    expect(selection.getSelectedMids()).toEqual([102, 103, 104])
+  })
+
+  it('toggleByElement(el, selected) не трогает элемент, уже стоящий в нужном положении', () => {
+    const { text, selection } = albumHarness()
+
+    selection.toggleByElement(text, false)
+    expect(selection.getSelectedMids()).toEqual([])
+
+    selection.toggleByElement(text, true)
+    selection.toggleByElement(text, true)
+    expect(selection.getSelectedMids()).toEqual([104])
+  })
 })

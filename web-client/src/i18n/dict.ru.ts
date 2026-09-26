@@ -1337,11 +1337,24 @@ const ru = {
   'Gif.Delete': 'Удалить GIF',
   'Gif.Save': 'Сохранить GIF',
   'Gif.Saved': 'GIF добавлен в сохранённые',
-  'MediaViewer.Context.CopyMedia': 'Копировать медиа',
   'MessageContext.CopyMessageLink1': 'Копировать ссылку',
   LinkCopied: 'Ссылка скопирована',
-  'MediaViewer.ImageCopied': 'Изображение скопировано',
-  'MediaViewer.CopyError': 'Не удалось скопировать изображение',
+  // ── Копирование медиа в буфер (tweb 508acd4f5) ──
+  'MediaViewer.Context.Copy': 'Копировать медиа',
+  MediaCopied: 'Медиа скопировано в буфер обмена',
+  MediaCopyFailed: 'Не удалось скопировать медиа в буфер обмена',
+  // ── Меню элемента и выделение shared media (tweb SearchContextMenu/SearchSelection) ──
+  'Message.Context.Goto': 'Показать в чате',
+  'Message.Context.Selection.Clear': 'Снять выделение',
+  'Message.Context.Selection.Delete': 'Удалить выбранные',
+  'Message.Context.Selection.Download': 'Загрузить выбранные',
+  'Message.Context.Selection.Forward': 'Переслать выбранные',
+  messages: {
+    one_value: '%1$d сообщение',
+    few_value: '%1$d сообщения',
+    many_value: '%1$d сообщений',
+    other_value: '%1$d сообщения',
+  },
   // ── Медиа-редактор перед отправкой (tweb mediaEditor) ──
   'MediaEditor.Adjustments.Enhance': 'Улучшение',
   'MediaEditor.Adjustments.Brightness': 'Яркость',

@@ -13,9 +13,28 @@
  *    (:484-489), `toggleMid` (:511-550), `deleteSelectedMids` (:552-578);
  *  • `updateContainer` (:385-403) — со срезанным `getStorageKey`, см. ниже;
  *  • `ChatSelection`: `canSelectBubble` (:999-1006), альбомы (:900-976),
- *    `toggleByElement`/`toggleByMid` (:894-984), чекбокс группового
- *    контейнера, `appendCheckbox` (:824-832), обход отрисованной истории в
+ *    `toggleByElement` (:894-984), чекбокс группового контейнера,
+ *    `appendCheckbox` (:824-832), обход отрисованной истории в
  *    `toggleSelection` (:866-885).
+ *
+ * Адреса выше — по tweb e52b5d931, на котором писан порт. ПОВЕРХ него
+ * перенесены два коммита 812502980 (задача 14 shared media, выделение по
+ * новому tweb), адреса у них — по 812502980:
+ *  • 79b9c44c1 — протяжка по альбому раскрывает его ячейки
+ *    (`chat/selectionRange.ts`), `toggleByElement(el, selected)` вместо
+ *    удалённого `toggleByMid`, `seen` хранит сами элементы, а не миды,
+ *    `getElementsBetween` стал protected-методом (:365-393);
+ *  • d064fdb85 — альбом и группа документов — одна единица протяжки
+ *    (`isSameSelectionUnit` :338-340, `dragAnchor` :198, :225-227, :236),
+ *    первый move с `first === last` не раскрывает альбом (`ChatSelection
+ *    .getElementsBetween` :904-917, `isSameSelectionUnit` :900-902).
+ * Остальная дельта базы 812502980 сюда НЕ перенесена — у неё свой предмет:
+ * ключ протяжки `getKeyFromElement`/`clearSelection`/`dragThreshold`/
+ * `toggleElementSelected`/`ignoreMove` (60a83a6f1, выделение чатов в
+ * чатлисте), aria-роли чекбокса (472e3e76b), выделяемые служебные и
+ * эфемерные группы в `canSelectBubble` (e9428f2a9, 2117883fd), разметка
+ * `.bubble-select-checkbox > .checkbox-field-input` (ef41b29db) и
+ * `getSelectionElementFromTarget` (3d524908e).
  *
  * ── Границы порта (у каждой — предмет, а не «у нас так») ────────────────────
  *  • ПАНЕЛЬ ДЕЙСТВИЙ (`onToggleSelection` :1008-1136, `onUpdateContainer`
@@ -35,11 +54,11 @@
  *    `IS_TOUCH_SUPPORTED` в `attachListeners` СОХРАНЕНА (иначе на таче
  *    заработала бы мышиная протяжка, которой у оригинала там нет) — в ней
  *    портирован только сбор `selectedText` по `touchend` (:118-121).
- *  • `SearchSelection` (:580-762) — выделение в shared media; носитель
- *    (`AppSearchSuper`) вне периметра ленты.
- *  • `getSelectedMessages` (:409-421) — её единственные вызывающие у tweb это
- *    `contextMenu.ts:492` и `appSearchSuper.ts:208`; обоих в порте нет,
- *    заводить метод без вызывающего = мёртвый код.
+ *  • `getSelectedMessages` (:409-421) — в базе не заводится: у ленты
+ *    выбранные сообщения собирает само меню (`chat/contextMenu.ts`,
+ *    `getSelectedMessages` поверх окна зеркала), а у базы нет хранилища
+ *    сообщений, из которого их брать (`getStorageKey` не портирован, ниже).
+ *    Своя версия есть у `SearchSelection` — поверх кэша shared media.
  *  • `onCancelSelection` (:1177-1189) — в `ChatSelection` его тело это ровно
  *    сброс `reportSelectionData` (остальное закомментировано у самого tweb);
  *    без report-режима у хука нет ни одного реализатора.
@@ -72,13 +91,24 @@ import cancelSelection from '@helpers/dom/cancelSelection'
 import { attachClickEvent } from '@helpers/dom/clickEvent'
 import findUpAsChild from '@helpers/dom/findUpAsChild'
 import findUpClassName from '@helpers/dom/findUpClassName'
+import {
+  expandAlbumSelectionRange,
+  isSameGroupedSelectionUnit,
+  setAlbumItemsSelection,
+} from './selectionRange'
 import getSelectedText from '@helpers/dom/getSelectedText'
 import isInDOM from '@helpers/dom/isInDOM'
+import replaceContent from '@helpers/dom/replaceContent'
 import EventListenerBase from '@helpers/eventListenerBase'
-import type ListenerSetter from '@helpers/listenerSetter'
+import ListenerSetter from '@helpers/listenerSetter'
+import ButtonIcon from '@components/buttonIcon'
+import { i18n } from '@lib/langPack'
+import type { MyMessage } from '@core/models'
+import type AppSearchSuper from '@components/appSearchSuper'
+import { getSharedMediaMessage } from '@components/sharedMediaHistories'
 
-/** tweb selection.ts:45-47 */
-const accumulateMapSet = (map: Map<number, Set<number>>): number => {
+/** tweb selection.ts:51-53 (812502980) — обобщён в 79b9c44c1 */
+const accumulateMapSet = <T extends { size: number }>(map: Map<number, T>): number => {
   return [...map.values()].reduce((acc, v) => acc + v.size, 0)
 }
 
@@ -97,8 +127,6 @@ export interface SelectionBubbles {
   getBubble(fullMid: string): HTMLElement | undefined
   /** tweb `ChatBubbles.getBubbleGroupedItems` (bubbles.ts:3921) */
   getBubbleGroupedItems(bubble: HTMLElement): HTMLElement[]
-  /** tweb `ChatBubbles.getMountedBubble` (bubbles.ts:3925) */
-  getMountedBubble(fullMid: string): Promise<{ bubble: HTMLElement } | undefined>
   /** tweb `ChatBubbles.skippedMids` (bubbles.ts:531) — мид, отрисованный
    *  ВНУТРИ чужого бабла (альбом, группа документов) и потому не имеющий
    *  своего узла. Опционален: у нашей ленты своего набора пока нет, и без
@@ -171,8 +199,7 @@ export class AppSelection extends EventListenerBase<{
 
   protected onToggleSelection?: (forwards: boolean, animate: boolean) => void | Promise<void>
   protected onUpdateContainer?: (cantForward: boolean, cantDelete: boolean, cantSend: boolean) => void
-  protected toggleByMid?: (peerId: number, mid: number) => void
-  protected toggleByElement?: (bubble: HTMLElement) => void
+  protected toggleByElement?: (bubble: HTMLElement, selected?: boolean) => void
 
   /**
    * tweb :69, :99 — тип записи навигации, УНИКАЛЬНЫЙ НА ЭКЗЕМПЛЯР:
@@ -257,8 +284,13 @@ export class AppSelection extends EventListenerBase<{
       return
     }
 
-    const seen: AppSelection['selectedMids'] = new Map()
+    // 79b9c44c1: `seen` держит сами элементы — вторым элементом протяжки они
+    // уходят в `toggleByElement` как есть, без поиска узла по миду
+    const seen = new Map<number, Map<number, HTMLElement>>()
     let selecting: boolean | undefined
+    // * the first element the drag has actually processed — everything belonging to its selection
+    // * unit is not a second element (d064fdb85)
+    let dragAnchor: HTMLElement | undefined
 
     let firstTarget = element
 
@@ -274,12 +306,16 @@ export class AppSelection extends EventListenerBase<{
         firstTarget = element
       }
 
-      let seenSet = seen.get(peerId)
-      if (!seenSet) {
-        seen.set(peerId, seenSet = new Set())
+      let seenElements = seen.get(peerId)
+      if (!seenElements) {
+        seen.set(peerId, seenElements = new Map())
       }
 
-      if (seenSet.has(mid)) {
+      if (seenElements.has(mid)) {
+        return
+      }
+
+      if (dragAnchor && this.isSameSelectionUnit(dragAnchor, element)) {
         return
       }
 
@@ -288,7 +324,8 @@ export class AppSelection extends EventListenerBase<{
         selecting = !isSelected
       }
 
-      seenSet.add(mid)
+      seenElements.set(mid, element)
+      dragAnchor ??= element
 
       if ((selecting && !isSelected) || (!selecting && isSelected)) {
         const seenLength = accumulateMapSet(seen)
@@ -308,17 +345,19 @@ export class AppSelection extends EventListenerBase<{
         }
 
         // Реальный тоггл начинается со ВТОРОГО бабла (tweb :240-247): пока
-        // выделения нет, одиночный клик-протяжка режим не включает
+        // выделения нет, одиночный клик-протяжка режим не включает. Положение
+        // `selecting` едет явно (79b9c44c1): альбом из диапазона встаёт в него
+        // целиком, а не переключается поштучно.
         if (!this.selectedMids.size) {
-          if (seenLength === 2 && this.toggleByMid) {
-            for (const [peerId, mids] of seen) {
-              for (const mid of mids) {
-                this.toggleByMid(peerId, mid)
+          if (seenLength === 2 && this.toggleByElement) {
+            for (const elements of seen.values()) {
+              for (const element of elements.values()) {
+                this.toggleByElement(element, selecting)
               }
             }
           }
         } else if (this.toggleByElement) {
-          this.toggleByElement(element)
+          this.toggleByElement(element, selecting)
         }
       }
     }
@@ -364,8 +403,17 @@ export class AppSelection extends EventListenerBase<{
     listenerSetter.add(document)('mouseup', onMouseUp, documentListenerOptions)
   }
 
-  /** tweb :308-336 — все элементы ленты между первым и текущим */
-  private getElementsBetween = (first: HTMLElement, last: HTMLElement): HTMLElement[] => {
+  /**
+   * tweb :338-340 (812502980, d064fdb85). Whether `element` is a part of the same selectable unit
+   * the drag has started on, and so must not count as another element of the range
+   */
+  protected isSameSelectionUnit(_anchor: HTMLElement, _element: HTMLElement): boolean {
+    return false
+  }
+
+  /** tweb :365-393 (812502980) — все элементы ленты между первым и текущим;
+   *  метод, а не поле-стрелка (79b9c44c1): `ChatSelection` его переопределяет */
+  protected getElementsBetween(first: HTMLElement, last: HTMLElement): HTMLElement[] {
     if (first === last) {
       return []
     }
@@ -628,6 +676,212 @@ export class AppSelection extends EventListenerBase<{
   }
 }
 
+/**
+ * Порт tweb `SearchSelection` (`chat/selection.ts:662-839`, 812502980) —
+ * выделение элементов shared media (`AppSearchSuper`). Плашка действий
+ * `.search-super-selection-container` встаёт В РЯД ВКЛАДОК
+ * (`navScrollableContainer`), а `is-selecting` — на ряд и на весь контейнер
+ * (`_searchSuper.scss`, правила `is-selecting`).
+ *
+ * ── Адаптации ────────────────────────────────────────────────────────────────
+ *  • действия плашки — колбэки хоста у `AppSearchSuper` (расхождение 51 в
+ *    шапке класса): `appImManager.setInnerPeer` → `searchSuper.setInnerPeer`,
+ *    `showForwardPopup` → `searchSuper.showForwardPopup`,
+ *    `showDeleteMessagesPopup` → `searchSuper.showDeleteMessagesPopup`;
+ *    обратный вызов «снять выделение по подтверждению» едет тем же аргументом,
+ *    что у оригинала;
+ *  • `ariaLabel` кнопок плашки (472e3e76b, a11y) не переносится — своя задача;
+ *  • `getSelectedMessages` (у tweb — базовый, `:482-490`, из хранилища
+ *    сообщений менеджера) — здесь, поверх кэша shared media
+ *    (`getSharedMediaMessage`): из него же нарисованы элементы, и другого
+ *    хранилища этих сообщений на главном потоке нет;
+ *  • менеджер прав (`cantForwardDeleteMids`) не передаётся — факта нет
+ *    (докблок `SelectionManagers`), кнопки не прячутся по правам.
+ */
+export class SearchSelection extends AppSelection {
+  protected selectionContainer?: HTMLElement
+  protected selectionCountEl?: HTMLElement
+  public selectionForwardBtn?: HTMLElement
+  public selectionDeleteBtn?: HTMLElement
+  public selectionGotoBtn?: HTMLElement
+
+  private isPrivate: boolean
+
+  // * plate-scoped: the tab's listenerSetter outlives every selection session,
+  // * so plate button listeners must not accumulate there
+  private containerListenerSetter?: ListenerSetter
+
+  constructor(
+    private searchSuper: AppSearchSuper,
+    managers: SelectionManagers,
+    listenerSetter: ListenerSetter,
+  ) {
+    super({
+      managers,
+      verifyTarget: (_e, target) => !!target && this.isSelecting,
+      getElementFromTarget: (target) => findUpClassName(target, 'search-super-item'),
+      targetLookupClassName: 'search-super-item',
+      lookupBetweenParentClassName: 'tabs-tab',
+      lookupBetweenElementsQuery: '.search-super-item',
+    })
+
+    this.isPrivate = !searchSuper.showSender
+    if (!IS_TOUCH_SUPPORTED) this.attachListeners(searchSuper.container, listenerSetter)
+  }
+
+  /** tweb :703-714 */
+  public override toggleSelection(toggleCheckboxes = true, forceSelection = false): boolean {
+    const ret = super.toggleSelection(toggleCheckboxes, forceSelection)
+
+    if (ret && toggleCheckboxes) {
+      const elements = Array.from(this.searchSuper.tabsContainer.querySelectorAll<HTMLElement>('.search-super-item'))
+      elements.forEach((element) => {
+        this.toggleElementCheckbox(element, this.isSelecting)
+      })
+    }
+
+    return ret
+  }
+
+  /** tweb :716-729 */
+  public override toggleByElement = (element: HTMLElement, selected?: boolean): void => {
+    const mid = +(element.dataset.mid ?? '')
+    const peerId = +(element.dataset.peerId ?? '')
+    const isSelected = this.isMidSelected(peerId, mid)
+    if (selected !== undefined && selected === isSelected) {
+      return
+    }
+
+    if (!this.toggleMid(peerId, mid)) {
+      return
+    }
+
+    this.updateElementSelection(element, this.isMidSelected(peerId, mid))
+  }
+
+  /** tweb :482-490 — см. «Адаптации» в докблоке класса */
+  public getSelectedMessages(): MyMessage[] {
+    const messages: MyMessage[] = []
+    this.selectedMids.forEach((mids, peerId) => {
+      mids.forEach((mid) => {
+        const message = getSharedMediaMessage(peerId, mid)
+        if (message) messages.push(message)
+      })
+    })
+    return messages
+  }
+
+  /** tweb :731-737 */
+  protected override onUpdateContainer = (cantForward: boolean, cantDelete: boolean) => {
+    const length = this.length()
+    replaceContent(this.selectionCountEl!, i18n('messages', [length]))
+    this.selectionGotoBtn!.classList.toggle('hide', length !== 1)
+    this.selectionForwardBtn!.classList.toggle('hide', cantForward)
+    this.selectionDeleteBtn?.classList.toggle('hide', cantDelete)
+  }
+
+  /** tweb :739-838 */
+  protected override onToggleSelection = (forwards: boolean, animate: boolean) => {
+    setTransition({
+      element: this.searchSuper.navScrollableContainer,
+      className: 'is-selecting',
+      forwards,
+      duration: animate ? SELECTION_TRANSITION_DURATION : 0,
+      onTransitionEnd: () => {
+        if (!this.isSelecting) {
+          this.containerListenerSetter?.removeAll()
+          this.containerListenerSetter = undefined
+          this.selectionContainer?.remove()
+          this.selectionContainer =
+            this.selectionForwardBtn =
+            this.selectionDeleteBtn =
+            undefined
+          this.selectedText = undefined
+        }
+      },
+    })
+
+    setTransition({
+      element: this.searchSuper.container,
+      className: 'is-selecting',
+      forwards,
+      duration: SELECTION_TRANSITION_DURATION,
+    })
+
+    if (this.isSelecting) {
+      if (!this.selectionContainer) {
+        const BASE_CLASS = 'search-super-selection'
+        this.selectionContainer = document.createElement('div')
+        this.selectionContainer.classList.add(BASE_CLASS + '-container')
+
+        const containerListenerSetter = this.containerListenerSetter = new ListenerSetter()
+
+        const btnCancel = ButtonIcon(`close ${BASE_CLASS}-cancel`, { noRipple: true })
+        attachClickEvent(btnCancel, () => this.cancelSelection(), { listenerSetter: containerListenerSetter, once: true })
+
+        this.selectionCountEl = document.createElement('div')
+        this.selectionCountEl.classList.add(BASE_CLASS + '-count')
+
+        const attachClickOptions = { listenerSetter: containerListenerSetter }
+
+        this.selectionGotoBtn = ButtonIcon(`message ${BASE_CLASS}-goto`)
+        attachClickEvent(this.selectionGotoBtn, () => {
+          const peerId = [...this.selectedMids.keys()][0]
+          const mid = [...this.selectedMids.get(peerId)!][0]
+          this.cancelSelection()
+
+          this.searchSuper.setInnerPeer?.({
+            peerId,
+            lastMsgId: mid,
+            threadId: this.searchSuper.mediaTab.type === 'saved' ? this.searchSuper.searchContext.peerId : this.searchSuper.searchContext.threadId,
+          })
+        }, attachClickOptions)
+
+        this.selectionForwardBtn = ButtonIcon(`forward ${BASE_CLASS}-forward`)
+        attachClickEvent(this.selectionForwardBtn, () => {
+          const obj: { [fromPeerId: PeerId]: number[] } = {}
+          for (const [fromPeerId, mids] of this.selectedMids) {
+            obj[fromPeerId] = Array.from(mids).sort((a, b) => a - b)
+          }
+
+          this.searchSuper.showForwardPopup?.(obj, () => {
+            this.cancelSelection()
+          })
+        }, attachClickOptions)
+
+        if (this.isPrivate) {
+          this.selectionDeleteBtn = ButtonIcon(`delete danger ${BASE_CLASS}-delete`)
+          attachClickEvent(this.selectionDeleteBtn, () => {
+            const peerId = this.searchSuper.searchContext.peerId
+            this.searchSuper.showDeleteMessagesPopup?.(
+              peerId,
+              this.getSelectedMids(),
+              () => {
+                this.cancelSelection()
+              },
+            )
+          }, attachClickOptions)
+        }
+
+        this.selectionContainer.append(...[
+          btnCancel,
+          this.selectionCountEl,
+          this.selectionGotoBtn,
+          this.selectionForwardBtn,
+          this.selectionDeleteBtn,
+        ].filter((element): element is HTMLElement => !!element))
+
+        const transitionElement = this.selectionContainer
+        transitionElement.style.opacity = '0'
+        this.searchSuper.navScrollableContainer.append(transitionElement)
+
+        void transitionElement.offsetLeft // reflow
+        transitionElement.style.opacity = ''
+      }
+    }
+  }
+}
+
 /** Порт tweb `ChatSelection` (selection.ts:764-1189). */
 export default class ChatSelection extends AppSelection {
   private bubbles: SelectionBubbles
@@ -663,6 +917,28 @@ export default class ChatSelection extends AppSelection {
 
     this.bubbles = bubbles
     this.plate = plate
+  }
+
+  /** tweb :900-902 (812502980, d064fdb85) */
+  protected override isSameSelectionUnit(anchor: HTMLElement, element: HTMLElement): boolean {
+    return isSameGroupedSelectionUnit(anchor, element)
+  }
+
+  /** tweb :904-917 (812502980, 79b9c44c1 + d064fdb85) — диапазон, задевший
+   *  альбом, раскрывается по его ячейкам */
+  protected override getElementsBetween(first: HTMLElement, last: HTMLElement): HTMLElement[] {
+    const elements = super.getElementsBetween(first, last)
+    if (first === last) {
+      // * there is no range yet — expanding the endpoints here would pull in the whole album
+      return elements
+    }
+
+    return expandAlbumSelectionRange({
+      first,
+      last,
+      elements,
+      getGroupedItems: (bubble) => this.bubbles.getBubbleGroupedItems(bubble),
+    })
   }
 
   /** tweb :824-832 */
@@ -712,8 +988,9 @@ export default class ChatSelection extends AppSelection {
     return ret
   }
 
-  /** tweb :901-937 */
-  public override toggleByElement = (bubble: HTMLElement): void => {
+  /** tweb :901-937; `selected` — 79b9c44c1 (812502980 :997-1051): протяжка
+   *  ставит элемент в заданное положение, а не переключает его */
+  public override toggleByElement = (bubble: HTMLElement, selected?: boolean): void => {
     if (!this.canSelectBubble(bubble)) return
 
     const mid = +(bubble.dataset.mid ?? '')
@@ -721,6 +998,17 @@ export default class ChatSelection extends AppSelection {
 
     const isGrouped = bubble.classList.contains('is-grouped')
     if (isGrouped) {
+      // Альбом в заданное положение встаёт целиком — каждой ячейкой
+      // (812502980 :1005-1012)
+      if (selected !== undefined && setAlbumItemsSelection({
+        album: bubble,
+        selected,
+        getGroupedItems: (album) => this.bubbles.getBubbleGroupedItems(album),
+        setElementSelection: (element, selected) => this.toggleByElement(element, selected),
+      })) {
+        return
+      }
+
       // Контейнер альбома: если он выбран не целиком — сначала снимаем всё, что
       // в нём уже выбрано, чтобы дальше ячейки встали в ОДНО положение
       // (tweb :908-916)
@@ -732,7 +1020,12 @@ export default class ChatSelection extends AppSelection {
         }
       }
 
-      this.bubbles.getBubbleGroupedItems(bubble).forEach(this.toggleByElement)
+      this.bubbles.getBubbleGroupedItems(bubble).forEach((item) => this.toggleByElement(item))
+      return
+    }
+
+    const isSelected = this.isMidSelected(peerId, mid)
+    if (selected !== undefined && selected === isSelected) {
       return
     }
 
@@ -756,14 +1049,6 @@ export default class ChatSelection extends AppSelection {
     }
 
     this.updateElementSelection(bubble, this.isMidSelected(peerId, mid))
-  }
-
-  /** tweb :939-944 */
-  protected override toggleByMid = async(peerId: number, mid: number) => {
-    const mounted = await this.bubbles.getMountedBubble(`${peerId}_${mid}`)
-    if (mounted) {
-      this.toggleByElement(mounted.bubble)
-    }
   }
 
   /** tweb :946-949 */
