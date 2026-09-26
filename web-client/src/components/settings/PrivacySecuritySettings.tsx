@@ -110,32 +110,32 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
     <SettingsScreen title="PrivacySettings" onBack={onBack} zIndex={50} sub={renderSub()}>
       <Section footer="SessionsInfo">
         <Row
-          icon={<TgIcon name="deleteuser" size={24} />}
+          icon={<TgIcon name="person_crossed_filled" size={24} />}
           label="BlockedUsers"
           value={blockedValue}
           onClick={() => setSub('BlockedUsers')}
         />
         <Row
-          icon={<TgIcon name="auto_delete_circle_clock" size={24} />}
+          icon={<TgIcon name="auto_delete_filled" size={24} />}
           label="AutoDeleteMessages"
           value={autoDelete == null ? undefined : autoDeleteLabel(autoDelete, t, tArgs)}
           onClick={() => setSub('AutoDeleteMessages')}
         />
         <Row
-          icon={<TgIcon name="key" size={24} />}
+          icon={<TgIcon name="key_filled" size={24} />}
           label="PasscodeLock.Item.Title"
           value={t(passcodeEnabled ? 'PrivacyAndSecurity.Item.On' : 'Off')}
           onClick={() => setSub('PasscodeLock.Item.Title')}
         />
         <Row
-          icon={<TgIcon name="lock" size={24} />}
+          icon={<TgIcon name="two_factor_auth_filled" size={24} />}
           label="TwoStepVerification"
           value={pwEnabled == null ? undefined : t(pwEnabled ? 'PrivacyAndSecurity.Item.On' : 'Off')}
           onClick={() => setSub('TwoStepVerification')}
         />
         {/* Как в tweb: без ключей клик открывает интро-попап, с ключами — список */}
         <Row
-          icon={<TgIcon name="faceid" size={24} />}
+          icon={<TgIcon name="faceid_filled" size={24} />}
           label="Privacy.Passkeys"
           onClick={() => (passkeysCount > 0 ? setSub('Privacy.Passkeys') : setPasskeyIntro(true))}
         />
@@ -145,7 +145,7 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
             не React-подэкран, состояние этого экрана она не трогает. Второй
             вход в те же сессии есть и в оригинале — `newAuthorization.tsx:116`. */}
         <Row
-          icon={<TgIcon name="activesessions" size={24} />}
+          icon={<TgIcon name="devices_filled" size={24} />}
           label="SessionsTitle"
           onClick={() => {
             openActiveSessionsTab(managers).catch(() => toastNew({ langPackKey: 'Error.AnError' }))

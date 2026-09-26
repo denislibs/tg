@@ -923,7 +923,7 @@ function Phone() {
     <Show when={phone()}>
       {(value) => (
         <Row clickable={onClick}>
-          <Row.Icon icon="phone" />
+          <Row.Icon icon="phone_filled" />
           <Row.Title>{formatUserPhone(value())}</Row.Title>
           <Row.Subtitle>{i18n('Phone')}</Row.Subtitle>
         </Row>
@@ -964,7 +964,7 @@ function Username() {
     <Show when={username()}>
       {(value) => (
         <Row clickable={onClick}>
-          <Row.Icon icon="username" />
+          <Row.Icon icon="mention_filled" />
           <Row.Title>{value()}</Row.Title>
           <Row.Subtitle>{i18n('Username')}</Row.Subtitle>
           <QrButton url={`${location.origin}/@${value()}`} label={`@${value()}`} />
@@ -1039,7 +1039,7 @@ function Bio() {
   return (
     <Show when={wrapped()}>
       <Row clickable={onClick}>
-        <Row.Icon icon="info" />
+        <Row.Icon icon="info_filled" />
         <Row.Title class="pre-wrap">{wrapped()}</Row.Title>
         <Row.Subtitle>{i18n(isUser(context.peerId) ? 'UserBio' : 'Info')}</Row.Subtitle>
       </Row>
@@ -1122,7 +1122,7 @@ function Link() {
     <Show when={url()}>
       {(value) => (
         <Row clickable={onClick}>
-          <Row.Icon icon="link" />
+          <Row.Icon icon="link_filled" />
           <Row.Title>{label(value())}</Row.Title>
           <Row.Subtitle>{i18n('SetUrlPlaceholder')}</Row.Subtitle>
           <QrButton url={value()} label={label(value())} />
@@ -1167,7 +1167,7 @@ function Birthday() {
     <Show when={birthday()}>
       {(value) => (
         <Row clickable={onClick}>
-          <Row.Icon icon="gift" />
+          <Row.Icon icon="birthday_filled" />
           <Row.Title>{formatBirthday(value())}</Row.Title>
           <Row.Subtitle>{i18n('Birthday')}</Row.Subtitle>
         </Row>
@@ -1216,7 +1216,7 @@ function Notifications() {
         <Row.CheckboxFieldToggle>
           <CheckboxFieldTsx checked={!muted()} onChange={onChange} toggle />
         </Row.CheckboxFieldToggle>
-        <Row.Icon icon="unmute" />
+        <Row.Icon icon="bell_filled" />
         <Row.Title>{i18n('Notifications')}</Row.Title>
       </Row>
     </Show>
@@ -1333,13 +1333,13 @@ function Discussion() {
               clickable={context.enablingDiscussion ? undefined : () => context.onEnableDiscussion?.()}
               class="primary"
             >
-              <Row.Icon icon="comments" />
+              <Row.Icon icon="bubble_filled" />
               <Row.Title>{'Enable discussion'}</Row.Title>
             </Row>
           }
         >
           <Row>
-            <Row.Icon icon="comments" />
+            <Row.Icon icon="bubble_filled" />
             <Row.Title titleRight={<IconTsx icon="check" style={{ color: 'var(--primary-color)', 'font-size': '22px' }} />}>
               {'Discussion enabled'}
             </Row.Title>
@@ -1437,7 +1437,7 @@ function EncryptionKey() {
     <Show when={context.isSecret}>
       <Section noDelimiter>
         <Row clickable={() => context.onOpenEncryptionKey?.()}>
-          <Row.Icon icon="key" />
+          <Row.Icon icon="key_filled" />
           <Row.Title>{i18n('SecretChat.EncryptionKey')}</Row.Title>
         </Row>
       </Section>

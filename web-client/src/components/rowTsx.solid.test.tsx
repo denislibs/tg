@@ -15,6 +15,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'solid-js/web'
 import Row from './rowTsx.solid'
+import { getIconContent } from './icon'
+import { getRowIconBackgroundImage } from '@helpers/rowIconBackground'
 
 let dispose: (() => void) | undefined
 let host: HTMLDivElement | undefined
@@ -150,5 +152,40 @@ describe('rowTsx: правый слот заголовка', () => {
     const titleRow = row.querySelector('.row-title-row')!
     expect(titleRow).not.toBeNull()
     expect(titleRow.querySelector('.row-title-right .right')?.textContent).toBe('3')
+  })
+})
+
+// Порт tweb `src/tests/rowIcon.test.tsx` (tweb 2197fee9c → HEAD): иконка строки —
+// отдельный контейнер-плашка с градиентом, глиф внутри.
+describe('Row.Icon — цветная плашка', () => {
+  it('renders a registered icon inside a separate gradient container', () => {
+    const container = mount(() => (
+      <Row><Row.Icon icon="data_filled" /><Row.Title>Data</Row.Title></Row>
+    )).querySelector<HTMLElement>('.row-icon')!
+    const icon = container.firstElementChild!
+
+    expect(container.classList.contains('row-icon-colored')).toBe(true)
+    expect(container.classList.contains('tgico')).toBe(false)
+    expect(container.style.backgroundImage).toBe(getRowIconBackgroundImage('data_filled'))
+    expect(icon.classList.contains('row-icon-icon')).toBe(true)
+    expect(icon.classList.contains('tgico')).toBe(true)
+  })
+
+  it('uses a deterministic fallback background when no color is supplied', () => {
+    const container = mount(() => (
+      <Row><Row.Icon icon="data" /><Row.Title>Data</Row.Title></Row>
+    )).querySelector<HTMLElement>('.row-icon')!
+
+    expect(container.classList.contains('row-icon-colored')).toBe(true)
+    expect(container.getAttribute('style')).toContain('linear-gradient')
+    expect(container.firstElementChild!.textContent).toBe(getIconContent('data'))
+  })
+
+  it('noBackground — класс остаётся, градиента нет (tweb HEAD rowTsx.tsx:401-420)', () => {
+    const container = mount(() => (
+      <Row><Row.Icon icon="stop" class="danger" noBackground /><Row.Title>Stop</Row.Title></Row>
+    )).querySelector<HTMLElement>('.row-icon')!
+    expect(container.className).toBe('row-icon row-icon-colored danger')
+    expect(container.style.backgroundImage).toBe('')
   })
 })

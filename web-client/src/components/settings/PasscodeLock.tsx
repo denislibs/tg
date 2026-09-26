@@ -131,7 +131,7 @@ export default function PasscodeLock({ onBack }: { onBack: () => void }) {
             footer="PasscodeLock.ForgotNotice"
           >
             <Row icon={<TgIcon name="lockoff" size={24} />} label="PasscodeLock.TurnOff.Title" danger onClick={() => setOffOpen(true)} />
-            <Row icon={<TgIcon name="key" size={24} />} label="PasscodeLock.ChangePasscode" onClick={startChange} />
+            <Row icon={<TgIcon name="key_filled" size={24} />} label="PasscodeLock.ChangePasscode" onClick={startChange} />
           </Section>
           <Section
             caption="PasscodeLock.AutoLock"

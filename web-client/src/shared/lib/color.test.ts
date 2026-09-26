@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { hexToRgb, rgbToHex, mixColors, relativeLuminance, darkenToMaxLuminance } from './color'
+import { hexToRgb, rgbToHex, mixColors, mixColorsPlusLighter, relativeLuminance, darkenToMaxLuminance } from './color'
 
 describe('color', () => {
   it('hexToRgb', () => {
@@ -14,6 +14,13 @@ describe('color', () => {
     // weight=0.5 даёт floor(255 - 127.5) = 127, а не 128 (не round). Формула
     // портирована 1:1 из tweb helpers/color.ts — тест подогнан под неё.
     expect(mixColors([0, 0, 0], [255, 255, 255], 0.5)).toEqual([127, 127, 127])
+  })
+
+  // tweb 2197fee9c, helpers/color.ts — plus-lighter над непрозрачной подложкой.
+  it('mixColorsPlusLighter складывает каналы с прозрачностью источника и прижимает к 255', () => {
+    expect(mixColorsPlusLighter([126, 87, 194], [255, 255, 255], 0.14)).toEqual([162, 123, 230])
+    expect(mixColorsPlusLighter([33, 150, 243], [255, 255, 255], 0.14)).toEqual([69, 186, 255])
+    expect(mixColorsPlusLighter([10, 20, 30], [255, 255, 255], 0)).toEqual([10, 20, 30])
   })
 
   // tweb helpers/color.ts:310-336 — прижатие чернил QR к порогу контраста.

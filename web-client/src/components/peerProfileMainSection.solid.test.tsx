@@ -20,6 +20,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'solid-js/web'
 import { createSignal } from 'solid-js'
 import { glyph, type IconName } from '../core/tgico-icons'
+import { getRowIconBackground, ROW_ICON_COLORS } from '@helpers/rowIconBackground'
 
 const peerSignal = createSignal<unknown>(undefined)
 const fullPeerSignal = createSignal<unknown>(undefined)
@@ -111,7 +112,7 @@ describe('Phone (tweb :633-691)', () => {
     peerSignal[1]({ _: 'user', id: 7 })
     setPhone(7, '+79261234567')
     const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    const row = rowByIcon(h, 'phone')
+    const row = rowByIcon(h, 'phone_filled')
     expect(row).not.toBeNull()
     expect(row!.querySelector('.row-title')!.textContent).toBe('+7 926 123 4567')
   })
@@ -119,7 +120,7 @@ describe('Phone (tweb :633-691)', () => {
   it('не показывается: телефона в зеркале нет', () => {
     peerSignal[1]({ _: 'user', id: 7 })
     const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    expect(rowByIcon(h, 'phone')).toBeNull()
+    expect(rowByIcon(h, 'phone_filled')).toBeNull()
   })
 
   it('не показывается: свой диалог (peerId===meId, isDialog) — !canBeDetailed()', () => {
@@ -127,21 +128,21 @@ describe('Phone (tweb :633-691)', () => {
     peerSignal[1]({ _: 'user', id: 42 })
     setPhone(42, '+79261234567')
     const h = mount({ peerId: 42, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    expect(rowByIcon(h, 'phone')).toBeNull()
+    expect(rowByIcon(h, 'phone_filled')).toBeNull()
   })
 
   it('не показывается: пир не пользователь (канал/группа)', () => {
     peerSignal[1]({ _: 'channel', id: 7, pFlags: { broadcast: true } })
     setPhone(-7, '+79261234567')
     const h = mount({ peerId: -7, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    expect(rowByIcon(h, 'phone')).toBeNull()
+    expect(rowByIcon(h, 'phone_filled')).toBeNull()
   })
 
   it('клик копирует ЦИФРЫ (без пробелов группировки) и зовёт toastNew(PhoneCopied)', () => {
     peerSignal[1]({ _: 'user', id: 7 })
     setPhone(7, '+79261234567')
     const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    rowByIcon(h, 'phone')!.click()
+    rowByIcon(h, 'phone_filled')!.click()
     expect(copyTextToClipboardSpy).toHaveBeenCalledWith('+79261234567')
     expect(toastNewSpy).toHaveBeenCalledWith({ langPackKey: 'PhoneCopied' })
   })
@@ -151,7 +152,7 @@ describe('Username (tweb :693-732) + QrButton (tweb :734-747)', () => {
   it('показывается: чужой пользователь с username', () => {
     peerSignal[1]({ _: 'user', id: 7, username: 'durov' })
     const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    const row = rowByIcon(h, 'username')
+    const row = rowByIcon(h, 'mention_filled')
     expect(row).not.toBeNull()
     expect(row!.querySelector('.row-title')!.textContent).toBe('durov')
   })
@@ -159,20 +160,20 @@ describe('Username (tweb :693-732) + QrButton (tweb :734-747)', () => {
   it('не показывается: username не задан', () => {
     peerSignal[1]({ _: 'user', id: 7 })
     const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    expect(rowByIcon(h, 'username')).toBeNull()
+    expect(rowByIcon(h, 'mention_filled')).toBeNull()
   })
 
   it('не показывается: свой диалог — !canBeDetailed()', () => {
     meId = 42
     peerSignal[1]({ _: 'user', id: 42, username: 'me' })
     const h = mount({ peerId: 42, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    expect(rowByIcon(h, 'username')).toBeNull()
+    expect(rowByIcon(h, 'mention_filled')).toBeNull()
   })
 
   it('клик копирует «@username» и зовёт toastNew(UsernameCopied)', () => {
     peerSignal[1]({ _: 'user', id: 7, username: 'durov' })
     const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    rowByIcon(h, 'username')!.click()
+    rowByIcon(h, 'mention_filled')!.click()
     expect(copyTextToClipboardSpy).toHaveBeenCalledWith('@durov')
     expect(toastNewSpy).toHaveBeenCalledWith({ langPackKey: 'UsernameCopied' })
   })
@@ -181,7 +182,7 @@ describe('Username (tweb :693-732) + QrButton (tweb :734-747)', () => {
     const onOpenQrCode = vi.fn()
     peerSignal[1]({ _: 'user', id: 7, username: 'durov' })
     const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el(), onOpenQrCode })
-    const row = rowByIcon(h, 'username')!
+    const row = rowByIcon(h, 'mention_filled')!
     const qr = row.querySelector('button.qr') as HTMLElement
     expect(qr).not.toBeNull()
     qr.click()
@@ -194,7 +195,7 @@ describe('Username (tweb :693-732) + QrButton (tweb :734-747)', () => {
     meId = 42
     peerSignal[1]({ _: 'user', id: 42, username: 'me' })
     const h = mount({ peerId: 42, isDialog: false, scrollable: el(), setCollapsedOn: el() })
-    const row = rowByIcon(h, 'username')!
+    const row = rowByIcon(h, 'mention_filled')!
     expect(row.querySelector('.row-title')!.textContent).toBe('me')
     expect(row.querySelector('button.qr')).toBeNull()
   })
@@ -205,7 +206,7 @@ describe('Bio (tweb :895-967)', () => {
     peerSignal[1]({ _: 'user', id: 7 })
     fullPeerSignal[1]({ _: 'userFull', id: 7, about: 'Hello world' })
     const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    const row = rowByIcon(h, 'info')!
+    const row = rowByIcon(h, 'info_filled')!
     expect(row.querySelector('.row-title')!.textContent).toBe('Hello world')
   })
 
@@ -213,7 +214,7 @@ describe('Bio (tweb :895-967)', () => {
     peerSignal[1]({ _: 'channel', id: 7, pFlags: { broadcast: true } })
     fullPeerSignal[1]({ _: 'channelFull', id: 7, about: 'Channel description' })
     const h = mount({ peerId: -7, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    const row = rowByIcon(h, 'info')!
+    const row = rowByIcon(h, 'info_filled')!
     expect(row.querySelector('.row-title')!.textContent).toBe('Channel description')
   })
 
@@ -221,7 +222,7 @@ describe('Bio (tweb :895-967)', () => {
     peerSignal[1]({ _: 'user', id: 7 })
     fullPeerSignal[1]({ _: 'userFull', id: 7 })
     const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    expect(rowByIcon(h, 'info')).toBeNull()
+    expect(rowByIcon(h, 'info_filled')).toBeNull()
   })
 
   it('НЕ гейтится canBeDetailed() — свой bio в «Избранном» показывается, если есть (прав оригинал)', () => {
@@ -229,7 +230,7 @@ describe('Bio (tweb :895-967)', () => {
     peerSignal[1]({ _: 'user', id: 42 })
     fullPeerSignal[1]({ _: 'userFull', id: 42, about: 'My own bio' })
     const h = mount({ peerId: 42, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    const row = rowByIcon(h, 'info')!
+    const row = rowByIcon(h, 'info_filled')!
     expect(row.querySelector('.row-title')!.textContent).toBe('My own bio')
   })
 
@@ -237,7 +238,7 @@ describe('Bio (tweb :895-967)', () => {
     peerSignal[1]({ _: 'user', id: 7 })
     fullPeerSignal[1]({ _: 'userFull', id: 7, about: 'Hello world' })
     const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    rowByIcon(h, 'info')!.click()
+    rowByIcon(h, 'info_filled')!.click()
     expect(copyTextToClipboardSpy).toHaveBeenCalledWith('Hello world')
     expect(toastNewSpy).toHaveBeenCalledWith({ langPackKey: 'BioCopied' })
   })
@@ -250,7 +251,7 @@ describe('Link (tweb :969-1036): ветка публичного username и ф�
     peerSignal[1]({ _: 'channel', id: 100, pFlags: { megagroup: true } })
     const url = 'https://localhost:38443/join/abc'
     const h = mount({ peerId: -100, isDialog: true, scrollable: el(), setCollapsedOn: el(), exportedInviteUrl: url })
-    const row = rowByIcon(h, 'link')!
+    const row = rowByIcon(h, 'link_filled')!
     expect(row).not.toBeNull()
     expect(row.querySelector('.row-title')!.textContent).toBe('localhost:38443/join/abc')
     row.click()
@@ -261,40 +262,40 @@ describe('Link (tweb :969-1036): ветка публичного username и ф�
   it('username и инвайт одновременно — ОДНА строка, и это username (порядок веток оригинала)', () => {
     peerSignal[1]({ _: 'channel', id: 100, pFlags: { megagroup: true }, username: 'mygroup' })
     const h = mount({ peerId: -100, isDialog: true, scrollable: el(), setCollapsedOn: el(), exportedInviteUrl: 'https://x/join/abc' })
-    const rows = Array.from(h.querySelectorAll('.row-icon')).filter((s) => s.textContent === glyph('link'))
+    const rows = Array.from(h.querySelectorAll('.row-icon')).filter((s) => s.textContent === glyph('link_filled'))
     expect(rows).toHaveLength(1)
-    expect(rowByIcon(h, 'link')!.querySelector('.row-title')!.textContent).toBe(`${location.host}/@mygroup`)
+    expect(rowByIcon(h, 'link_filled')!.querySelector('.row-title')!.textContent).toBe(`${location.host}/@mygroup`)
   })
 
   it('фолбэк не показывается пользователю даже при переданном exportedInviteUrl', () => {
     peerSignal[1]({ _: 'user', id: 7 })
     const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el(), exportedInviteUrl: 'https://x/join/abc' })
-    expect(rowByIcon(h, 'link')).toBeNull()
+    expect(rowByIcon(h, 'link_filled')).toBeNull()
   })
 
   it('показывается: канал/группа с username', () => {
     peerSignal[1]({ _: 'channel', id: 100, pFlags: { megagroup: true }, username: 'mygroup' })
     const h = mount({ peerId: -100, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    const row = rowByIcon(h, 'link')!
+    const row = rowByIcon(h, 'link_filled')!
     expect(row.querySelector('.row-title')!.textContent).toBe(`${location.host}/@mygroup`)
   })
 
   it('не показывается: username не задан', () => {
     peerSignal[1]({ _: 'channel', id: 100, pFlags: { megagroup: true } })
     const h = mount({ peerId: -100, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    expect(rowByIcon(h, 'link')).toBeNull()
+    expect(rowByIcon(h, 'link_filled')).toBeNull()
   })
 
   it('не показывается: пир — пользователь (эта ветвь только для чата/канала)', () => {
     peerSignal[1]({ _: 'user', id: 7, username: 'durov' })
     const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    expect(rowByIcon(h, 'link')).toBeNull()
+    expect(rowByIcon(h, 'link_filled')).toBeNull()
   })
 
   it('клик копирует полный URL и зовёт toastNew(LinkCopied)', () => {
     peerSignal[1]({ _: 'channel', id: 100, pFlags: { megagroup: true }, username: 'mygroup' })
     const h = mount({ peerId: -100, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    rowByIcon(h, 'link')!.click()
+    rowByIcon(h, 'link_filled')!.click()
     expect(copyTextToClipboardSpy).toHaveBeenCalledWith(`${location.origin}/@mygroup`)
     expect(toastNewSpy).toHaveBeenCalledWith({ langPackKey: 'LinkCopied' })
   })
@@ -303,7 +304,7 @@ describe('Link (tweb :969-1036): ветка публичного username и ф�
     const onOpenQrCode = vi.fn()
     peerSignal[1]({ _: 'channel', id: 100, pFlags: { megagroup: true }, username: 'mygroup' })
     const h = mount({ peerId: -100, isDialog: true, scrollable: el(), setCollapsedOn: el(), onOpenQrCode })
-    const row = rowByIcon(h, 'link')!
+    const row = rowByIcon(h, 'link_filled')!
     ;(row.querySelector('button.qr') as HTMLElement).click()
     expect(onOpenQrCode).toHaveBeenCalledWith({
       url: `${location.origin}/@mygroup`,
@@ -317,21 +318,21 @@ describe('Birthday (tweb :749-831)', () => {
     peerSignal[1]({ _: 'user', id: 7 })
     fullPeerSignal[1]({ _: 'userFull', id: 7, birthday: { _: 'birthday', day: 1, month: 1, year: 2000 } })
     const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    expect(rowByIcon(h, 'gift')).not.toBeNull()
+    expect(rowByIcon(h, 'birthday_filled')).not.toBeNull()
   })
 
   it('не показывается: birthday нет', () => {
     peerSignal[1]({ _: 'user', id: 7 })
     fullPeerSignal[1]({ _: 'userFull', id: 7 })
     const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    expect(rowByIcon(h, 'gift')).toBeNull()
+    expect(rowByIcon(h, 'birthday_filled')).toBeNull()
   })
 
   it('клик копирует отформатированную дату (тост не портирован — нет ключа TextCopied)', () => {
     peerSignal[1]({ _: 'user', id: 7 })
     fullPeerSignal[1]({ _: 'userFull', id: 7, birthday: { _: 'birthday', day: 1, month: 1, year: 2000 } })
     const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    const row = rowByIcon(h, 'gift')!
+    const row = rowByIcon(h, 'birthday_filled')!
     const title = row.querySelector('.row-title')!.textContent
     row.click()
     expect(copyTextToClipboardSpy).toHaveBeenCalledWith(title)
@@ -344,14 +345,14 @@ describe('Notifications (tweb :1175-1218)', () => {
     meId = 1
     peerSignal[1]({ _: 'user', id: 7 })
     const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    expect(rowByIcon(h, 'unmute')).not.toBeNull()
+    expect(rowByIcon(h, 'bell_filled')).not.toBeNull()
   })
 
   it('не показывается: свой диалог (peerId === meId)', () => {
     meId = 42
     peerSignal[1]({ _: 'user', id: 42 })
     const h = mount({ peerId: 42, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    expect(rowByIcon(h, 'unmute')).toBeNull()
+    expect(rowByIcon(h, 'bell_filled')).toBeNull()
   })
 
   it('чекбокс отражает !muted (dialogs.notify_settings)', () => {
@@ -359,7 +360,7 @@ describe('Notifications (tweb :1175-1218)', () => {
     peerSignal[1]({ _: 'user', id: 7 })
     dialogs = [{ peerId: 7, notify_settings: { _: 'peerNotifySettings', silent: true } }]
     const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    const row = rowByIcon(h, 'unmute')!
+    const row = rowByIcon(h, 'bell_filled')!
     expect(row.querySelector<HTMLInputElement>('input[type=checkbox]')!.checked).toBe(false) // muted → !muted=false
   })
 
@@ -368,7 +369,7 @@ describe('Notifications (tweb :1175-1218)', () => {
     peerSignal[1]({ _: 'user', id: 7 })
     dialogs = [{ peerId: 7, notify_settings: { _: 'peerNotifySettings' } }] // не замьючен
     const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    const row = rowByIcon(h, 'unmute')!
+    const row = rowByIcon(h, 'bell_filled')!
     const input = row.querySelector<HTMLInputElement>('input[type=checkbox]')!
     expect(input.checked).toBe(true) // !muted = true
 
@@ -383,7 +384,7 @@ describe('Notifications (tweb :1175-1218)', () => {
     peerSignal[1]({ _: 'user', id: 7 })
     dialogs = [{ peerId: 7, notify_settings: { _: 'peerNotifySettings' } }]
     const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el() })
-    const row = rowByIcon(h, 'unmute')!
+    const row = rowByIcon(h, 'bell_filled')!
     expect(row.querySelector<HTMLInputElement>('input[type=checkbox]')!.checked).toBe(true)
 
     dialogs = [{ peerId: 7, notify_settings: { _: 'peerNotifySettings', silent: true } }]
@@ -409,5 +410,20 @@ describe('BotReport (tweb 2488f2cf0, 812502980 :1098-1111)', () => {
     peerSignal[1]({ _: 'user', id: 7, pFlags: {} })
     const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el() })
     expect(rowByIcon(h, 'flag')).toBeNull()
+  })
+})
+
+// tweb 2197fee9c (`peerProfile.tsx`): иконки строк профиля — залитые глифы на
+// цветных плашках; цвет — реестр `helpers/rowIconBackground.ts`.
+describe('иконки строк профиля — цветные плашки tweb', () => {
+  it('Username — синяя @, Bio — серая i, Notifications — красный колокольчик', () => {
+    meId = 1
+    peerSignal[1]({ _: 'user', id: 7, username: 'durov' })
+    fullPeerSignal[1]({ _: 'userFull', id: 7, about: 'Hello world' })
+    const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el() })
+    const plate = (icon: IconName) => rowByIcon(h, icon)!.querySelector<HTMLElement>(':scope > .row-icon.row-icon-colored')!
+    expect(plate('mention_filled').style.backgroundImage).toBe(getRowIconBackground(ROW_ICON_COLORS.blue))
+    expect(plate('info_filled').style.backgroundImage).toBe(getRowIconBackground(ROW_ICON_COLORS.grey))
+    expect(plate('bell_filled').style.backgroundImage).toBe(getRowIconBackground(ROW_ICON_COLORS.red))
   })
 })

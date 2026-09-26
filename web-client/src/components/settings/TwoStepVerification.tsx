@@ -142,10 +142,11 @@ export default function TwoStepVerification({ onBack }: { onBack: () => void }) 
         {hero('TwoStepAuth.GenericHelp')}
         <div style={{ marginTop: 16 }}>
           <Section>
-            <Row icon={<TgIcon name="edit" size={24} />} label="TwoStepAuth.ChangePassword" onClick={() => { setPwd(''); setConfirm(''); setHint(state.hint); setEmailOnly(false); setStep('password') }} />
+            <Row icon={<TgIcon name="edit" size={24} />} label="TwoStepAuth.ChangePassword" accent onClick={() => { setPwd(''); setConfirm(''); setHint(state.hint); setEmailOnly(false); setStep('password') }} />
             <Row
               icon={<TgIcon name="email" size={24} />}
               label={state.email ? 'TwoStepAuth.ChangeEmail' : 'TwoStepAuth.SetupEmail'}
+              accent
               sublabel={state.email || undefined}
               onClick={() => { setEmail(''); setEmailOnly(true); setStep('email') }}
             />

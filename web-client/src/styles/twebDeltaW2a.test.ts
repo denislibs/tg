@@ -33,3 +33,25 @@ describe('глиф цитаты в блоке quote (tweb 12eeb9b1c, _quote.scss
     expect(rule('.quote-like-icon:after')).not.toMatch(glyphContent(Icons.quote))
   })
 })
+
+describe('иконка строки — плашка 30×30 (tweb 2197fee9c, _row.scss)', () => {
+  it('.row-icon — абсолютная плашка .75rem от края, 1.875rem, скругление .625rem, глиф по центру', () => {
+    const r = rule('.row-with-padding .row-icon')!
+    expect(r).toMatch(/inset-inline-start:\s*0?\.75rem/)
+    expect(r).toMatch(/width:\s*1\.875rem/)
+    expect(r).toMatch(/height:\s*1\.875rem/)
+    expect(r).toMatch(/border-radius:\s*0?\.625rem/)
+    expect(r).toMatch(/display:\s*flex/)
+    expect(r).toMatch(/justify-content:\s*center/)
+    expect(r).toMatch(/font-size:\s*1\.5rem/)
+  })
+
+  it('глиф внутри наследует кегль плашки, на цветной плашке он белый', () => {
+    expect(rule('.row-with-padding .row-icon-icon')).toMatch(/font-size:\s*inherit/)
+    expect(rule('.row-with-padding .row-icon-colored')).toMatch(/color:\s*#fff/)
+  })
+
+  it('строка без подписи — 3.375rem (было 3rem)', () => {
+    expect(css).toMatch(/\.row\.no-subtitle,\s*\.row\.row-small\s*\{[^}]*min-height:\s*3\.375rem/)
+  })
+})

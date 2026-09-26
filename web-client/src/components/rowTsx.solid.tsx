@@ -35,6 +35,7 @@ import { IconTsx } from '@components/iconTsx.solid'
 import RippleElement from '@components/rippleElement.solid'
 import createComponentContext, { type ComponentContextValue } from '@helpers/solid/createComponentContext'
 import type { IconName } from '@core/tgico-icons'
+import { getRowIconBackgroundImage } from '@helpers/rowIconBackground'
 
 export type RowMediaSizeType = 'small' | 'medium' | 'big' | 'abitbigger' | 'bigger' | '40'
 
@@ -215,12 +216,26 @@ Row.Subtitle = (props: {
   ))
 }
 
+// tweb HEAD rowTsx.tsx:401-420 (2197fee9c + `noBackground`): иконка — плашка
+// `span.row-icon.row-icon-colored` с градиентом inline, глиф внутри.
 Row.Icon = (props: {
   icon: IconName
   class?: string
+  noBackground?: boolean
 }) => {
   return useContext(RowContext)!.register('icon', (
-    <IconTsx icon={props.icon} class={classNames('row-icon', props.class)} />
+    <span
+      class={classNames(
+        'row-icon',
+        'row-icon-colored',
+        props.class,
+      )}
+      style={!props.noBackground ? {
+        'background-image': getRowIconBackgroundImage(props.icon),
+      } : undefined}
+    >
+      <IconTsx icon={props.icon} class="row-icon-icon" />
+    </span>
   ))
 }
 

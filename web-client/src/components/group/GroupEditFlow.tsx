@@ -169,26 +169,26 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
 
       {canChangeInfo && (
         <Section>
-          <Row icon={<TgIcon name="lock" size={22} />} label={isChannel ? 'ChannelType' : 'GroupType'} value={t(chatIsPublic(card?.chat) ? 'TypePublic' : 'TypePrivate')} onClick={() => setSub('type')} />
-          <Row icon={<TgIcon name="link" size={22} />} label="InviteLinks" value={String(Math.max(activeInvites.length, 1))} onClick={() => setSub('links')} />
-          <Row icon={<TgIcon name="reactions" size={22} />} label="Reactions" value={reactionsValue} onClick={() => setSub('reactions')} />
+          <Row icon={<TgIcon name="lock_filled" size={22} />} label={isChannel ? 'ChannelType' : 'GroupType'} value={t(chatIsPublic(card?.chat) ? 'TypePublic' : 'TypePrivate')} onClick={() => setSub('type')} />
+          <Row icon={<TgIcon name="link_filled" size={22} />} label="InviteLinks" value={String(Math.max(activeInvites.length, 1))} onClick={() => setSub('links')} />
+          <Row icon={<TgIcon name="reactions_filled" size={22} />} label="Reactions" value={reactionsValue} onClick={() => setSub('reactions')} />
           {isChannel && (
-            <Row icon={<TgIcon name="comments" size={22} />} label="PeerInfo.Discussion" value={linkedId ? undefined : t('Add')} onClick={() => setSub('discussion')} />
+            <Row icon={<TgIcon name="bubble_filled" size={22} />} label="PeerInfo.Discussion" value={linkedId ? undefined : t('Add')} onClick={() => setSub('discussion')} />
           )}
           {!isChannel && g.canBan && (
-            <Row icon={<TgIcon name="permissions" size={22} />} label="ChannelPermissions" value={`${permsCount}/${PERMS.length}`} onClick={() => setSub('permissions')} />
+            <Row icon={<TgIcon name="key_filled" size={22} />} label="ChannelPermissions" value={`${permsCount}/${PERMS.length}`} onClick={() => setSub('permissions')} />
           )}
         </Section>
       )}
 
       <Section>
-        <Row icon={<TgIcon name="admin" size={22} />} label="Administrators" value={String(g.admins.length)} onClick={() => setSub('admins')} />
-        <Row icon={<TgIcon name="newgroup" size={22} />} label={isChannel ? 'PeerInfo.Subscribers' : 'PeerMedia.Members'} value={String(card?.chat.participants_count ?? g.members.length)} onClick={() => setSub('members')} />
+        <Row icon={<TgIcon name="admin_filled" size={22} />} label="Administrators" value={String(g.admins.length)} onClick={() => setSub('admins')} />
+        <Row icon={<TgIcon name="newgroup_filled" size={22} />} label={isChannel ? 'PeerInfo.Subscribers' : 'PeerMedia.Members'} value={String(card?.chat.participants_count ?? g.members.length)} onClick={() => setSub('members')} />
         {!isChannel && g.canBan && (
           <Row icon={<TgIcon name="permissions" size={22} />} label="RestrictedUsers" value={g.restricted.length ? String(g.restricted.length) : t('BlockedEmpty')} onClick={() => setSub('restricted')} />
         )}
         {g.canBan && (
-          <Row icon={<TgIcon name="deleteuser" size={22} />} label="RemovedUsers" value={g.bans.length ? String(g.bans.length) : t('BlockedEmpty')} onClick={() => setSub('banned')} />
+          <Row icon={<TgIcon name="person_crossed_filled" size={22} />} label="RemovedUsers" value={g.bans.length ? String(g.bans.length) : t('BlockedEmpty')} onClick={() => setSub('banned')} />
         )}
       </Section>
 
@@ -222,7 +222,7 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
       {!isChannel && canChangeInfo && (
         <Section footer="ForumTopic.EnableHint">
           <Row
-            icon={<TgIcon name="comments" size={22} />}
+            icon={<TgIcon name="bubble_filled" size={22} />}
             label="Обсуждения"
             translate={false}
             toggle

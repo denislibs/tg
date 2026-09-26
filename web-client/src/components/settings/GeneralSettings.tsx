@@ -79,12 +79,12 @@ export default function GeneralSettings({ onBack }: { onBack: () => void }) {
           <Slider value={textSize} min={12} max={24} step={1} onChange={(v) => update({ textSize: v })} className={s.slider} />
         </div>
         <Row
-          icon={<TgIcon name="image" size={24} />}
+          icon={<TgIcon name="appearance_filled" size={24} />}
           label="ChatBackground.Title"
           onClick={() => setDedicated('wallpaper')}
         />
         <Row
-          icon={<TgIcon name="animations" size={24} />}
+          icon={<TgIcon name="sputnik_filled" size={24} />}
           label="LiteMode.Title"
           value={t('Checkbox.Disabled')}
           onClick={() => setDedicated('power')}

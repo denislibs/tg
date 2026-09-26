@@ -1,7 +1,6 @@
 import type { LangPackKey } from '@/lang'
 import type { Authorization } from '@layer'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
 import Text from '../shared/ui/Text'
 import IconButton from '../shared/ui/IconButton'
 import SettingsSubScreen, { hasSubScreen } from './SettingsSubScreen'
@@ -14,10 +13,9 @@ import PremiumBadge from './PremiumBadge'
 import EmojiStatusPicker from './EmojiStatusPicker'
 import QrModal from './QrModal'
 import TgIcon from './TgIcon'
-import TgSwitch from './TgSwitch'
+import type { IconName } from '../core/tgico-icons'
 import Avatar from '../shared/ui/Avatar'
 import { Section, Row } from './settings/kit'
-import classNames from '../shared/lib/classNames'
 import { useT } from '../i18n'
 import { useChatsStore } from '../stores/chatsStore'
 import { gradientFor } from '../core/dialogToChat'
@@ -44,15 +42,20 @@ function formatPhone(phone?: string): string {
 // Экспорт — ради пина на подпись строки «Язык» (`SettingsView.langRow.test.tsx`):
 // сам корень настроек тянет за собой слайдер вкладок, карточку и попапы, и
 // рендерить всё это ради одной подписи незачем.
-export const settingsItems: { icon: ReactNode; label: LangPackKey; value?: LangPackKey }[] = [
-  { icon: <TgIcon name="unmute" size={24} />, label: 'AccountSettings.Notifications' },
-  { icon: <TgIcon name="data" size={24} />, label: 'DataSettings' },
-  { icon: <TgIcon name="lock" size={24} />, label: 'PrivacySettings' },
-  { icon: <TgIcon name="settings" size={24} />, label: 'Telegram.GeneralSettingsViewController' },
-  { icon: <TgIcon name="folder" size={24} />, label: 'ChatList.Filter.List.Title' },
-  { icon: <TgIcon name="smile" size={24} />, label: 'StickersName' },
-  { icon: <TgIcon name="videocamera" size={24} />, label: 'AccountSettings.SpeakersAndCamera' },
-  { icon: <TgIcon name="devices" size={24} />, label: 'Devices' },
+//
+// Иконки — tweb 2197fee9c (`sidebarLeft/tabs/settings.tsx`, `makeSubTabConfig`
+// и `Row.Icon`): залитые глифы, цвет плашки — по реестру
+// `helpers/rowIconBackground.ts` (bell_filled — красная, data_filled — зелёная,
+// key_filled — серая, limit_folders_filled — синяя…).
+export const settingsItems: { icon: IconName; label: LangPackKey; value?: LangPackKey }[] = [
+  { icon: 'bell_filled', label: 'AccountSettings.Notifications' },
+  { icon: 'data_filled', label: 'DataSettings' },
+  { icon: 'key_filled', label: 'PrivacySettings' },
+  { icon: 'general_filled', label: 'Telegram.GeneralSettingsViewController' },
+  { icon: 'limit_folders_filled', label: 'ChatList.Filter.List.Title' },
+  { icon: 'reactions_filled', label: 'StickersName' },
+  { icon: 'speaker_filled', label: 'AccountSettings.SpeakersAndCamera' },
+  { icon: 'devices_filled', label: 'Devices' },
   // Подпись строки — имя ТЕКУЩЕГО языка на нём самом, обычным ключом:
   // `LanguageName` переводится каждым словарём в своё самоназвание (tweb
   // `sidebarLeft/tabs/settings.tsx:254`). Списка языков для этого не нужно, и
@@ -63,8 +66,8 @@ export const settingsItems: { icon: ReactNode; label: LangPackKey; value?: LangP
   // ВКЛАДКУ (`solidJsTabs/tabs.ts:157`), и теперь ею же подписана наша
   // (`AppLanguageTab`). По-английски обе строки читаются одинаково — тем
   // легче было спутать, и тем незаметнее разъехались бы переводы.
-  { icon: <TgIcon name="language" size={24} />, label: 'AccountSettings.Language', value: 'LanguageName' },
-  { icon: <TgIcon name="keyboard" size={24} />, label: 'KeyboardShortcuts.Title' },
+  { icon: 'web_filled', label: 'AccountSettings.Language', value: 'LanguageName' },
+  { icon: 'keyboard_filled', label: 'KeyboardShortcuts.Title' },
 ]
 
 export default function SettingsView({
@@ -218,7 +221,7 @@ export default function SettingsView({
               но UI его не вызывает нигде, и вкладки под него в настройках нет —
               поэтому шеврона тут тоже нет, строка никуда не ведёт. */}
           <Row
-            icon={<TgIcon name="phone" size={24} />}
+            icon={<TgIcon name="phone_filled" />}
             label={formatPhone(user?.phone) || '—'}
             sublabel={t('Phone')}
             translate={false}
@@ -229,7 +232,7 @@ export default function SettingsView({
           />
           {user?.username && (
             <Row
-              icon={<TgIcon name="mention" size={24} />}
+              icon={<TgIcon name="mention_filled" />}
               label={user.username}
               sublabel={t('Username')}
               translate={false}
@@ -238,20 +241,29 @@ export default function SettingsView({
           )}
         </Section>
 
-        {/* Settings list — своя строка ради подсветки активного пункта.
-            Ночной режим — первой строкой этой же секции (Appearance-toggle). */}
+        {/* Список настроек — строки tweb (`div.profile-buttons` > `Row` с
+            `Row.Icon`, дамп 14-left-13-settings-root). Подсветка активного
+            пункта и строка «Ночной режим» первой — наши (у tweb ночной режим
+            живёт в бургере); иконка ночного режима — `darkmode_filled` из
+            того же реестра плашек. */}
         <Section>
-          <div className={s.rowClickable} onClick={(e) => onToggleMode({ x: e.clientX, y: e.clientY })}>
-            <div className={s.rowIcon}>
-              <TgIcon name="darkmode" size={24} color="var(--secondary-text-color)" />
-            </div>
-            <Text size={16} color="var(--primary-text-color)" className={s.rowBody}>{t('General.NightMode')}</Text>
-            <TgSwitch checked={isDark} />
-          </div>
+          <div className="profile-buttons">
+          <Row
+            icon={<TgIcon name="darkmode_filled" />}
+            label="General.NightMode"
+            toggle
+            checked={isDark}
+            onClick={(e) => onToggleMode({ x: e.clientX, y: e.clientY })}
+          />
           {settingsItems.map((it) => (
-            <div
+            <Row
               key={it.label}
-              className={classNames(s.rowClickable, it.label === active ? s.rowActive : '')}
+              icon={<TgIcon name={it.icon} />}
+              label={it.label}
+              className={it.label === active ? s.rowActive : undefined}
+              value={it.value
+                ? t(it.value)
+                : it.label === 'Devices' && authCount ? authCount : undefined}
               onClick={() => {
                 setActive(it.label)
                 // «Устройства» — уже ПОРТИРОВАННАЯ вкладка слайдера, а не
@@ -290,23 +302,15 @@ export default function SettingsView({
                 }
                 if (hasSubScreen(it.label)) setSub(it.label)
               }}
-            >
-              <div className={s.rowIcon}>{it.icon}</div>
-              <Text size={16} color="var(--primary-text-color)" className={s.rowBody}>{t(it.label)}</Text>
-              {it.value && (
-                <Text size={15} color="var(--secondary-text-color)">{t(it.value)}</Text>
-              )}
-              {it.label === 'Devices' && authCount && (
-                <Text size={15} color="var(--secondary-text-color)">{authCount}</Text>
-              )}
-            </div>
+            />
           ))}
+          </div>
         </Section>
 
         {/* Premium / Gift */}
         <Section>
           <Row
-            icon={<TgIcon name="star_filled" size={24} color="var(--primary-color)" />}
+            icon={<TgIcon name="premium_badge" />}
             label="Premium.Boarding.Title"
             sublabel={user?.pFlags?.premium ? t('Premium.Row.Active') : t('Premium.Row.Subtitle')}
             onClick={() => (user?.pFlags?.premium ? setPremiumManageOpen(true) : setPremiumOpen(true))}
@@ -315,13 +319,13 @@ export default function SettingsView({
             icon={
               user?.emoji_status_emoticon
                 ? <span style={{ fontSize: 22, lineHeight: 1 }}>{user.emoji_status_emoticon}</span>
-                : <TgIcon name="smile" size={24} color="var(--secondary-text-color)" />
+                : <TgIcon name="emoji_filled" />
             }
             label="EmojiStatus.Set"
             onClick={() => setEmojiStatusOpen(true)}
           />
           <Row
-            icon={<TgIcon name="gift" size={24} color="var(--secondary-text-color)" />}
+            icon={<TgIcon name="gift_filled" />}
             label="Chat.Menu.SendGift"
             onClick={() => {}}
           />
