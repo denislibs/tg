@@ -25,6 +25,8 @@ const SRC = resolve(process.cwd(), 'src')
  */
 const NO_TRANSLATION: Record<string, string> = {
   'AutoDownloadSettings.Delimeter': 'запятая с пробелом — пунктуация перечисления, а не текст',
+  'Appearance.Color.Hex': 'HEX — название цветовой модели, в переводах Telegram не переводится',
+  'Appearance.Color.RGB': 'RGB — название цветовой модели, в переводах Telegram не переводится',
 }
 
 function* sourceFiles(dir: string): Generator<string> {

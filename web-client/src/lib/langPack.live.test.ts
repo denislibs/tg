@@ -16,7 +16,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import Row from '@components/row'
-import SettingSection from '@components/settingSection'
 import PopupMute from '@components/popups/popupMute'
 import type { AvatarManagers } from '@components/avatar'
 import { i18n } from '@lib/langPack'
@@ -45,21 +44,18 @@ afterEach(async () => {
 })
 
 describe('открытая вкладка переводится на лету', () => {
-  it('заголовок секции и подпись строки меняют язык без перестроения', async() => {
-    const section = new SettingSection({ name: 'SessionsTitle' })
+  it('заголовок и подпись строки меняют язык без перестроения', async() => {
     const row = new Row({ titleLangKey: 'Terminate', subtitleLangKey: 'OtherSessions' })
-    section.content.append(row.container)
-    document.body.append(section.container)
+    document.body.append(row.container)
 
-    const title = section.container.querySelector('.sidebar-left-section-name')!
-    expect(title.textContent).toBe('Active Sessions')
     expect(row.title.textContent).toBe('Terminate')
+    expect(row.subtitle.textContent).toBe('Active sessions')
 
     await switchTo('ru')
 
     // ТЕ ЖЕ узлы, не пересозданные — их и держит вкладка.
-    expect(title.textContent).toBe('Активные сеансы')
     expect(row.title.textContent).toBe('Завершить')
+    expect(row.subtitle.textContent).toBe('Активные сеансы')
     expect(row.container.isConnected).toBe(true)
   })
 

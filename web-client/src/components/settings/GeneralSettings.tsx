@@ -1,5 +1,5 @@
 import type { LangPackKey } from '@/lang'
-import { useState, type CSSProperties } from 'react'
+import type { CSSProperties } from 'react'
 import Text from '../../shared/ui/Text'
 import Slider from '../../shared/ui/Slider'
 import TgIcon from '../TgIcon'
@@ -8,8 +8,8 @@ import { useT } from '../../i18n'
 import { useSettings } from '../../settings'
 import { type ThemeChoice, type ThemePreset } from '../../theme'
 import { SettingsScreen, Section, Row } from './kit'
-import ChatWallpaper from './ChatWallpaper'
-import PowerSaving from './PowerSaving'
+import { getSettingsSliderHost } from '../sidebarLeft/settingsSliderHost'
+import { AppChatBackgroundTab, AppPowerSavingTab } from '../solidJsTabs/tabs'
 import s from './GeneralSettings.module.scss'
 
 const THEME_CARDS: { preset: ThemePreset; emoji: string; colors: [string, string, string, string]; accent: string }[] = [
@@ -56,18 +56,12 @@ function RadioRow({
 
 export default function GeneralSettings({ onBack }: { onBack: () => void }) {
   const t = useT()
-  const { textSize, timeFormat, themeChoice, update } = useSettings()
-  const [dedicated, setDedicated] = useState<'wallpaper' | 'power' | null>(null)
+  const { textSize, timeFormat, themeChoice, liteMode, update } = useSettings()
 
   return (
     <SettingsScreen
       title="Telegram.GeneralSettingsViewController"
       onBack={onBack}
-      sub={
-        dedicated === 'wallpaper' ? <ChatWallpaper onBack={() => setDedicated(null)} /> :
-        dedicated === 'power' ? <PowerSaving onBack={() => setDedicated(null)} /> :
-        null
-      }
     >
       {/* Settings: text size + wallpaper + power saving */}
       <Section caption="Settings">
@@ -80,14 +74,19 @@ export default function GeneralSettings({ onBack }: { onBack: () => void }) {
         </div>
         <Row
           icon={<TgIcon name="appearance_filled" size={24} />}
-          label="ChatBackground.Title"
-          onClick={() => setDedicated('wallpaper')}
+          // вкладка слайдера (план 2D, задача 12), как tweb generalSettings.tsx:65-67:
+          // `Row.Title` ChatBackground, `tab.slider.createTab(AppChatBackgroundTab).open()`
+          label="ChatBackground"
+          onClick={() => void getSettingsSliderHost().openTab(AppChatBackgroundTab)}
         />
         <Row
           icon={<TgIcon name="sputnik_filled" size={24} />}
           label="LiteMode.Title"
-          value={t('Checkbox.Disabled')}
-          onClick={() => setDedicated('power')}
+          // tweb generalSettings.tsx:37-38 — живой статус режима по `liteMode.all`
+          value={t(liteMode.all ? 'Checkbox.Enabled' : 'Checkbox.Disabled')}
+          // вкладка слайдера (план 2D, задача 11), как tweb :89
+          // `tab.slider.createTab(AppPowerSavingTab).open()`
+          onClick={() => void getSettingsSliderHost().openTab(AppPowerSavingTab)}
         />
       </Section>
 

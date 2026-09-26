@@ -3112,9 +3112,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * это буквально поведение оригинала, для остальных — оно же минус
    * персонализация. Обмана в этом нет: на кнопке нарисована та самая реакция,
    * которую отправит клик по ней. Экран «Быстрая реакция» в настройках
-   * (`components/settings/QuickReaction.tsx`) ничего не сохраняет и ни на что не
-   * влияет — расходиться с выбором пользователя тут тоже нечему.
-   * Долг — `backlogs/frontend/quick-reaction-default.md`.
+   * (вкладка `sidebarLeft/tabs/quickReaction.solid.tsx`) выбор никуда не
+   * сохраняет — ручки нет (О-30 плана 2D), расходиться с выбором пользователя
+   * тут тоже нечему. Долг — `backlogs/frontend/quick-reaction-default.md`.
    */
   private onBubblesMouseMove = async(e: MouseEvent) => {
     const target = e.target as HTMLElement

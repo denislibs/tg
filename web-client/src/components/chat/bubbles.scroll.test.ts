@@ -191,7 +191,7 @@ beforeEach(() => {
   // `liteMode.isAvailable('animations')` (tweb bubbles.ts:11540). Побочно это
   // делает мгновенным и `fastSmoothScroll` — что тестам только на руку:
   // доводка скролла здесь проверяется по КОНЕЧНОЙ позиции.
-  useSettingsStore.setState({ reduceMotion: true })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
   interruptHeavyAnimation()
   // Карта сохранённых позиций — синглтон модуля, а `destroy()` в `afterEach`
   // пишет в неё (порт `peer_changing` → `saveChatPosition`). Без сброса

@@ -109,7 +109,7 @@ beforeEach(() => {
   clearChatPositions()
   rootScope.myId = ME
   downloadMediaURL.mockClear()
-  useSettingsStore.setState({ reduceMotion: true })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
   // Байты документа идут прямым fetch'ем (санкционированный путь для
   // не-картинок). Ответ, который НИКОГДА не приходит: проверяется решение
   // «начать качать», а не сама загрузка.
@@ -119,7 +119,7 @@ beforeEach(() => {
 afterEach(() => {
   bubbles?.destroy()
   bubbles = undefined
-  useSettingsStore.setState({ reduceMotion: false })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: false } })
   vi.unstubAllGlobals()
 })
 
@@ -127,7 +127,7 @@ afterEach(() => {
  *  (`wrappers/video.ts:285-291`), поэтому видео-кейсы открываются с ним. Ценой
  *  идёт «лестница» первой загрузки, которая здесь безвредна. */
 async function openFeed(messages: MyMessage[], autoDownload?: ChatAutoDownload, motion = false) {
-  if (motion) useSettingsStore.setState({ reduceMotion: false })
+  if (motion) useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: false } })
   const b = new ChatBubbles(chatContext(autoDownload), managersWith(messages))
   bubbles = b
   await (await b.setPeer())?.promise

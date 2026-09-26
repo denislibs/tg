@@ -1,16 +1,17 @@
 /**
- * Порт tweb `src/components/passwordInputField.ts` (812502980, 67 строк) — поле
- * пароля поверх `InputField`: `type=password`, два «невидимых» поля-обманки
- * вокруг настоящего (чтобы менеджер паролей не цеплялся к полю), глаз
- * `span.toggle-visible` справа переключает видимость. Стили —
- * `.input-field-password`/`.toggle-visible` (`styles/tweb/_input.scss:337-380`),
- * `.stealthy` (`styles/tweb/_bridge.scss:408`). Первый потребитель — вкладка
- * ввода код-пароля (`sidebarLeft/tabs/passcodeLock/enterPasswordTab.solid.tsx`).
+ * Порт tweb `src/components/passwordInputField.ts` (812502980, 65 строк) — поле
+ * пароля поверх класса `InputField` (`plainText`): `type=password`, две
+ * «ловушки» автозаполнения `input.stealthy` до и после поля, «глазок»
+ * `span.toggle-visible` с иконкой `eye1_filled`/`eye2_filled`. Первый потребитель —
+ * мастер 2FA (`sidebarLeft/tabs/2fa/enterPassword.solid.tsx`,
+ * `reEnterPassword.solid.tsx`), затем ввод код-пароля
+ * (`sidebarLeft/tabs/passcodeLock/enterPasswordTab.solid.tsx`); карточка входа `auth/cards/PasswordCard.solid.tsx`
+ * строит ту же разметку своим JSX и этот класс не использует.
  *
- * Отличий от оригинала нет, кроме строгих типов: `toggleVisible` —
- * `!`-поле (присваивается в конструкторе), `onVisibilityClickAdditional` —
- * опциональное, `input.parentElement!` (у поля `InputField` родитель есть всегда
- * — контейнер `div.input-field`).
+ * Отличия от оригинала:
+ *  1. Закомментированная у tweb ветка Safari `readonly` (:28-33) не переносится.
+ *  2. `input.parentElement!` и необязательный `onVisibilityClickAdditional` —
+ *     под наш strict; поведение то же.
  */
 import cancelEvent from '@helpers/dom/cancelEvent'
 import Icon from '@components/icon'
@@ -18,7 +19,7 @@ import InputField, { type InputFieldOptions } from '@components/inputField'
 
 export class PasswordInputHelpers {
   public passwordVisible = false
-  public toggleVisible!: HTMLElement
+  public toggleVisible: HTMLElement
   public onVisibilityClickAdditional?: () => void
 
   constructor(public container: HTMLElement, public input: HTMLInputElement) {

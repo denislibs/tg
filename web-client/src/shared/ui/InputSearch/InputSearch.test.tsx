@@ -30,7 +30,7 @@ afterEach(() => {
   // гейт анимаций (`liteMode.isAvailable('animations')` → настройка «Без анимаций»):
   // при выключенных анимациях setTransition применяет переход синхронно,
   // см. отдельный тест ниже
-  useSettingsStore.setState({ reduceMotion: false })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: false } })
   vi.useRealTimers()
 })
 
@@ -135,7 +135,7 @@ describe('InputSearch.toggleLoading — спиннер вместо лупы (tw
   })
 
   it('при выключенных анимациях спиннер снимается сразу, без таймера', () => {
-    useSettingsStore.setState({ reduceMotion: true })
+    useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
     const { statusRef, root } = renderInput()
     act(() => statusRef.current!.toggleLoading(true))
     expect(root.querySelector('.preloader-container')).toBeTruthy()

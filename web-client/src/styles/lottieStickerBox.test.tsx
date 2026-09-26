@@ -224,8 +224,8 @@ describe('те же габариты у остальных мест показа
     expect([width, height]).toEqual([`${size}px`, `${size}px`])
   })
 
-  // Обезьянка пароля (`PasscodeLockScreen.tsx:56`, `settings/
-  // TwoStepVerification.tsx:72`) — свой контейнер `.media-sticker-wrapper`,
+  // Обезьянка пароля (`PasscodeLockScreen.tsx:56`) — свой контейнер
+  // `.media-sticker-wrapper`,
   // в оригинале он лежит в `MediaHeader.Sticker` (tweb `pages/cards/
   // PasswordCard.tsx:228`), то есть тоже в позиционированном боксе размера
   // стикера.

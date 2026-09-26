@@ -62,7 +62,7 @@ function readTheme() {
 }
 
 export default function ChatBackground({ themeColors }: { themeColors?: string[] }) {
-  const { wallpaper, wallpaperBlur, themeChoice, customWallpaperMediaId, customWallpaperBlur } = useSettings()
+  const { wallpaper, themeChoice, customWallpaperMediaId, customWallpaperBlur } = useSettings()
   const patternRef = useRef<HTMLCanvasElement>(null)
   const gradientRef = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<ChatBackgroundGradientRenderer | null>(null)
@@ -156,8 +156,6 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
               backgroundImage: `url(${overlayImageUrl})`,
               backgroundSize: 'cover',
               backgroundPosition: 'center',
-              filter: wallpaperBlur ? 'blur(10px)' : undefined,
-              transform: wallpaperBlur ? 'scale(1.05)' : undefined,
             }
           : null
 
@@ -310,7 +308,7 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
               width={50}
               height={50}
               className={s.GradientCanvas}
-              style={{ opacity: gradientOpacity, filter: wallpaperBlur ? 'blur(6px)' : undefined }}
+              style={{ opacity: gradientOpacity }}
             />
             {/* верхний слой — дудлы: mask (night) кроет чёрным с дырками; иначе soft-light overlay */}
             <canvas

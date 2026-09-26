@@ -200,11 +200,16 @@ describe('assets/tgs — состав статики не разъехался �
   // `tgsThumbnails.manifest.json`/`tgsThumbnails.freshness.test.ts`) — список
   // здесь расширен теми же 11 именами с расширением `.png`, а не сужен назад
   // до одних json.
-  it('в public/assets/tgs/ лежат все 11 json (Этап 0) и все 11 png (часть 2 фолбэка)', () => {
+  // Двенадцатый ассет — `LoveLetter` (tweb `public/assets/tgs/LoveLetter.json`
+  // дословно): заставка почты восстановления мастера 2FA
+  // (`sidebarLeft/tabs/2fa/email.solid.tsx`, план 2D, задача 19); PNG — тем же
+  // `generate-tgs-thumbnails.mjs`.
+  it('в public/assets/tgs/ лежат все 12 json (Этап 0 + LoveLetter) и все 12 png (часть 2 фолбэка)', () => {
     const files = readdirSync(TGS_DIR).sort()
     const names = [
       'Folders_1',
       'Folders_2',
+      'LoveLetter',
       'Mailbox',
       'TwoFactorSetupMonkeyIdle',
       'TwoFactorSetupMonkeyPeek',

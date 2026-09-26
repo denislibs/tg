@@ -1,9 +1,8 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { useManagers } from './core/hooks/useManagers'
 import { useConnectionStore, pingBackend } from './stores/connectionStore'
-import { useSettingsStore } from './settings'
-import animationIntersector from './components/animationIntersector'
-import liteMode, { type LiteModeKey } from './helpers/liteMode'
+import liteMode from './helpers/liteMode'
+import { watchLiteModeSettings } from './client/liteModeSettings'
 import { dispatchHeavyAnimationEvent } from './core/dom/heavyAnimation'
 import pause from './helpers/schedulers/pause'
 import Sidebar from './components/Sidebar'
@@ -276,10 +275,6 @@ function ThemedApp() {
 export default function App() {
   const managers = useManagers()
   const backendOk = useConnectionStore((s) => s.backendOk)
-  // «Без анимаций» (меню «Ещё») — ниже раздаётся классами на body, как в tweb.
-  const reduceMotion = useSettingsStore((st) => st.reduceMotion)
-  // Зацикливать анимированные стикеры (tweb appSettings.stickers.loop)
-  const loopStickers = useSettingsStore((st) => st.loopStickers)
   // Доступно ли обновление приложения (новая сборка задеплоена — см. versionCheck).
   const updateAvailable = useUpdateStore((st) => st.available)
   useEffect(() => {
@@ -290,31 +285,13 @@ export default function App() {
   useEffect(() => {
     startVersionCheck()
   }, [])
-  // Гейт CSS-анимаций. 1:1 tweb appImManager.ts:2209-2211: классы на body, под
-  // которые уже написаны 233 портированных правила `@include animation-level(2)`.
-  // animation-level-2 стоит статикой в index.html:28 (чтобы не мигало до гидрации),
-  // здесь он снимается/возвращается по настройке «Без анимаций».
-  useLayoutEffect(() => {
-    document.body.classList.toggle('animation-level-0', reduceMotion)
-    document.body.classList.toggle('animation-level-1', false)
-    document.body.classList.toggle('animation-level-2', !reduceMotion)
-  }, [reduceMotion])
+  // Гейт CSS-анимаций (body.animation-level-*), html.no-backdrop и автоплей
+  // стикеров — побочки настройки «Энергосбережение» (tweb appImManager.setSettings
+  // :2738-2757). Подписчик самой настройки: срабатывает, кто бы её ни поменял.
+  // Layout-эффект — до пейнта: animation-level-2 стоит статикой в index.html:28
+  // (чтобы не мигало до гидрации), здесь он снимается по настройке.
+  useLayoutEffect(() => watchLiteModeSettings(), [])
 
-  // Настройки → уже живущие анимации (tweb appImManager.setSettings:2223-2228):
-  // смена «зацикливать стикеры»/«без анимаций» переписывает loop/autoplay у
-  // зарегистрированных плееров и перепроверяет, кому играть.
-  useEffect(() => {
-    const changedLoop = animationIntersector.setLoop(loopStickers)
-    const keys: LiteModeKey[] = ['stickers_chat', 'stickers_panel']
-    const changedAutoplay = keys.filter((key) => animationIntersector.setAutoplay(liteMode.isAvailable(key), key)).length > 0
-    if (changedLoop || changedAutoplay) {
-      animationIntersector.checkAnimations2(false)
-    }
-  }, [loopStickers, reduceMotion])
-
-  // Гасить анимации по настройке отдельным движком не нужно: это делает
-  // body.animation-level-0 из эффекта выше (tweb appImManager.ts:2209-2211) —
-  // под ним у портированных партиалов стоит `transition: none`.
   return (
     <>
       <ThemedApp />

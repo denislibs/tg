@@ -5,8 +5,8 @@
  *
  * Почему вкладка настоящая, а не пустышка: главный вопрос этих тестов — «когда
  * умирает экран настроек, умирает ли ВСЁ, что вкладка успела развесить». Часть
- * этого «всего» лежит ВНЕ колонки: контекстное меню сессии вкладка кладёт в
- * `document.body` и снимает в `onCleanup` своего Solid-острова
+ * этого «всего» лежит ВНЕ колонки: минутный опрос списка сессий вкладка
+ * заводит на монтировании и снимает в `onCleanup` своего Solid-острова
  * (`activeSessions.solid.tsx`). Пустышка про этот путь ничего не скажет, а
  * проверка «узел вкладки исчез из колонки» одинаково зелена и когда вкладку
  * разрушили, и когда просто выкинули поддеревом — ровно на этом в волне 0
@@ -78,8 +78,24 @@ const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 /** Переход (250) + разрушение вкладки (280) + запас. */
 const settle = () => pause(400)
 
-/** Узел, который вкладка кладёт в `document.body` мимо колонки. */
-const tabMenu = () => document.getElementById('active-sessions-contextmenu')
+/**
+ * Опрос списка сессий, который вкладка заводит ВНЕ колонки — минутный
+ * `setInterval` (tweb `activeSessions.tsx:110-111`). Снять его может только
+ * `onCleanup` Solid-острова, то есть фактический `dispose()` из
+ * `onCloseAfterTimeout`. Шпионы — сквозные: таймеры остаются настоящими.
+ */
+function trackPoll() {
+  const set = vi.spyOn(globalThis, 'setInterval')
+  const clear = vi.spyOn(globalThis, 'clearInterval')
+  const pollId = () => {
+    const index = set.mock.calls.findIndex(([, ms]) => ms === 60e3)
+    return index === -1 ? undefined : set.mock.results[index].value
+  }
+  return {
+    started: () => pollId() !== undefined,
+    stopped: () => clear.mock.calls.some(([id]) => id === pollId()),
+  }
+}
 
 let columnEl: HTMLElement
 let hosts: SettingsSliderHost[]
@@ -98,6 +114,8 @@ afterEach(async() => {
 
   await settle()
   document.body.replaceChildren()
+  // шпионы таймеров `trackPoll` — сквозные, но их счёт не должен перетекать в следующий тест
+  vi.restoreAllMocks()
 })
 
 function createHost(managers: Managers) {
@@ -129,12 +147,14 @@ describe('settingsSliderHost — заведение слайдера в леву
   it('размонтирование экрана настроек уничтожает открытые вкладки', async() => {
     const { managers } = makeManagers()
     const host = createHost(managers)
+    const poll = trackPoll()
 
     const tab = await host.openTab(AppActiveSessionsTab, { authorizations: [current, other] })
     const middleware = tab.middlewareHelper.get()
     // Вкладка успела развесить своё ВНЕ колонки — иначе проверка ниже
     // проходила бы и на неразобранном Solid-острове.
-    expect(tabMenu()).not.toBeNull()
+    expect(poll.started()).toBe(true)
+    expect(poll.stopped()).toBe(false)
     expect(middleware()).toBe(true)
 
     host.destroy()
@@ -143,8 +163,8 @@ describe('settingsSliderHost — заведение слайдера в леву
     // Узел вкладки снят ЕЮ САМОЙ (`SliderSuperTab.onCloseAfterTimeout`), а не
     // выброшен вместе с поддеревом: у него нет родителя вовсе.
     expect(tab.container.parentElement).toBeNull()
-    // Solid-остров разобран: `onCleanup` вкладки снял её меню из `document.body`.
-    expect(tabMenu()).toBeNull()
+    // Solid-остров разобран: `onCleanup` вкладки погасил её опрос.
+    expect(poll.stopped()).toBe(true)
     // Миддлварь вкладки погашена — поздний ответ воркера в мёртвую вкладку не пишет.
     expect(middleware()).toBe(false)
     // И сам слой хоста ушёл из колонки: клики снова достаются React-экрану.
@@ -159,6 +179,7 @@ describe('settingsSliderHost — заведение слайдера в леву
     // настройки → «Устройства» → Back до того, как доехал чанк.
     const { managers } = makeManagers()
     const host = createHost(managers)
+    const poll = trackPoll()
 
     // Ждать НЕЛЬЗЯ: весь смысл в том, что экран уходит ВНУТРИ этого промиса.
     const opening = host.openTab(AppActiveSessionsTab, { authorizations: [current, other] })
@@ -167,8 +188,8 @@ describe('settingsSliderHost — заведение слайдера в леву
     const tab = await opening
     await settle()
 
-    // Solid-остров разобран: `onCleanup` снял меню, положенное в `document.body`.
-    expect(tabMenu()).toBeNull()
+    // Solid-остров разобран: если он успел смонтироваться, `onCleanup` погасил опрос.
+    expect(!poll.started() || poll.stopped()).toBe(true)
     expect(tab.container.parentElement).toBeNull()
     expect(columnEl.children).toHaveLength(0)
 
@@ -241,6 +262,27 @@ describe('settingsSliderHost — заведение слайдера в леву
     expect(getSettingsSliderHost()).toBe(second)
   })
 
+  it('onTabsEmpty: зовёт, когда закрыта последняя вкладка, и молчит после отписки', async() => {
+    const { managers } = makeManagers()
+    const host = createHost(managers)
+    const onEmpty = vi.fn()
+    const off = host.onTabsEmpty(onEmpty)
+
+    const tab = await host.openTab(AppActiveSessionsTab, { authorizations: [current, other] })
+    expect(onEmpty).not.toHaveBeenCalled()
+
+    tab.close()
+    await settle()
+    expect(onEmpty).toHaveBeenCalled()
+
+    onEmpty.mockClear()
+    off()
+    const again = await host.openTab(AppActiveSessionsTab, { authorizations: [current, other] })
+    again.close()
+    await settle()
+    expect(onEmpty).not.toHaveBeenCalled()
+  })
+
   it('вне экрана настроек хост не выдумывается — вызов падает, а не молчит', () => {
     const { managers } = makeManagers()
     const host = createHost(managers)
@@ -261,6 +303,6 @@ describe('settingsSliderHost — заведение слайдера в леву
     // вкладка не построила бы даже секцию текущей сессии.
     const sections = columnEl.querySelectorAll('.sidebar-left-section')
     expect(sections).toHaveLength(2)
-    expect(sections[1].querySelector('.row[data-hash="2"]')).not.toBeNull()
+    expect(sections[1].querySelector('.session-row .row-title')!.textContent).toBe('Telegram Android 1.0')
   })
 })

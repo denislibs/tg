@@ -16,13 +16,17 @@
 //
 // Что НЕ портировано из `DialogElement` (и почему):
 //   • `threadId`/`monoforumParentPeerId`/`asAllChats`/`isMainList`/`fromName`/
-//     `onlyFirstName`/`noIcons`/`meAsSaved`/`autoDeletePeriod`/`withStories`/
+//     `onlyFirstName`/`noIcons`/`autoDeletePeriod`/`withStories`/
 //     `loadPromises`/`dontSetActive`/`controlled` — параметры СПИСКА ЧАТОВ
 //     (темы форума, монофорум, «Избранное» как заметки, истории на аватаре,
 //     активный диалог `appImManager.isSamePeer`, `href`), у строк участников
 //     предмета нет; вместе с ними — `is-forum-open`/`setDialogActive`;
 //   • `lazyLoadQueue` в `wrapOptions` — наш `avatarNew` очередь не принимает
 //     (шапка `components/avatar.ts`);
+//   • `meAsSaved` (свой пир — «Избранное», :301, :357, :401) портирован для
+//     селектора пиров (`appSelectPeers.solid.tsx`); по умолчанию — `false`, а не
+//     `true` (:301): прежние потребители строки (участники, группы поиска) его
+//     не передавали, а у оригинала передают `false` (`sortedUserList.ts:84`);
 //   • бейджи (`createPinnedBadge`/`createUnreadBadge`/…, :387-420) — атрибуты
 //     диалога, не участника; сами `dialog-subtitle-badge` в подписи не рисуются;
 //   • `titleWrapOptions`/`textColor`/`iconsColor` — цвета активного диалога.
@@ -136,6 +140,8 @@ export type DialogElementOptions = {
   peerId: PeerId,
   rippleEnabled?: boolean,
   avatarSize?: DialogElementSize,
+  /** свой пир — «Избранное»: аватар `saved` и имя «Избранное» (tweb :301, :357, :401) */
+  meAsSaved?: boolean,
   /** строка НЕ в главном списке чатов: без `href` (tweb `:300-302`) */
   autonomous?: boolean,
   wrapOptions: { middleware?: Middleware },
@@ -152,6 +158,7 @@ export class DialogElement extends Row {
     peerId,
     rippleEnabled = true,
     avatarSize = 'bigger',
+    meAsSaved = false,
     autonomous,
     wrapOptions,
     managers,
@@ -183,6 +190,7 @@ export class DialogElement extends Row {
       middleware,
       size: avatarSizeMap[avatarSize]!,
       peerId,
+      isDialog: !!meAsSaved,
       managers,
     })
     const avatarEl = avatar.node
@@ -198,7 +206,7 @@ export class DialogElement extends Row {
     this.titleRow.classList.add('dialog-title')
 
     // tweb `:306-318` — имя пира узлом `.peer-title`
-    const peerTitle = new PeerTitle({ peerId, middleware, managers })
+    const peerTitle = new PeerTitle({ peerId, dialog: meAsSaved, middleware, managers })
     titleSpanContainer.append(peerTitle.element)
 
     const span = this.subtitle

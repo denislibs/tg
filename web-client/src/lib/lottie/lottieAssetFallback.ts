@@ -2,7 +2,7 @@
 // lottie-no-wasm-fallback.md): без SIMD `lottieLoader.loadAnimationAsAsset`
 // отклоняется с NO_WASM ДО первого кадра (`lottieLoader.ts:215-216`) — канва в
 // DOM не появляется вовсе (`lottiePlayer.ts:1207` — аппендится только на первом
-// реально отрисованном кадре). У 11 встроенных ассетов (`public/assets/tgs/
+// реально отрисованном кадре). У 12 встроенных ассетов (`public/assets/tgs/
 // *.json` — обезьянки, уточки, папки, ключ, конверт) нет и не будет серверного
 // превью, зато первый кадр отрисован ЗАРАНЕЕ, на сборке
 // (`scripts/generate-tgs-thumbnails.mjs`, тем же движком tlottie.wasm) и лежит
@@ -34,7 +34,7 @@ export function makeAssetPngUrl(name: LottieAssetName): string {
  *
  * Не у ВСЕХ 41 имени `LottieAssetName` есть PNG — тип вендорен 1:1 с tweb
  * (docs/superpowers/plans/2026-09-05-lottie-single-engine.md, «41 имя мертво
- * целиком»), собран PNG только для тех 11, что реально используются. Файл не
+ * целиком»), собран PNG только для тех 12, что реально используются. Файл не
  * найден (404) — `onerror` тихо убирает `<img>`: место остаётся пустым, как
  * было бы без этого фолбэка, а не битой иконкой раздора.
  */

@@ -13,9 +13,9 @@
  * строить не надо).
  *
  * Не портирована ветка RTL-отражения (`I18n.getIsRTL() && IconsReverse.has(icon)`
- * → класс `icon-reflect`): предмета нет — RTL-локалей у нас нет и карта
- * `IconsReverse` не портирована (то же отступление задокументировано в
- * `components/rangeSelector.ts`).
+ * → класс `icon-reflect`): карта `IconsReverse` не портирована. Флаг
+ * `I18n.getIsRTL()` есть (его ставит старт только для `ar`, которого нет в
+ * списке языков сервера) — ветка ждёт порта RTL-интерфейса целиком.
  */
 import { glyph, type IconName } from '@core/tgico-icons'
 

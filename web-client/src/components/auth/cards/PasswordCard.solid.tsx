@@ -203,7 +203,7 @@ export default function PasswordCard(props: { spec: Spec }): JSX.Element {
                 lottie-обезьянки вне периметра задачи 4, см. её докблок. */}
             <div class="media-sticker-wrapper" />
           </>)} />
-          <MediaHeader.Title>{i18n('Login.Password.Title')}</MediaHeader.Title>
+          <MediaHeader.Title tag="h1">{i18n('Login.Password.Title')}</MediaHeader.Title>
           {/* без .secondary — в tweb подзаголовок этой карточки белый */}
           <MediaHeader.Subtitle>{i18n('Login.Password.Subtitle')}</MediaHeader.Subtitle>
         </MediaHeader>

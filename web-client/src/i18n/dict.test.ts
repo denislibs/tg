@@ -224,6 +224,90 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `NotificationsPrivateChats` («Private Chats»), у fr — заголовка
 // («Notifications»). ru 1346 → 1350, uk 682 → 686, es 681 → 685,
 // de/fr 681 → 684. `plural` не менялся.
+//
+// Выравнивание корня настроек по tweb (`fix/settings-root-items`): у ВСЕХ пяти
+// словарей снят `General.NightMode` — строки «Ночной режим» в корне у tweb нет
+// (ночной режим — пункт подменю «Ещё» бургера). У русского вдобавок сняты
+// выдумки `Premium.Row.Subtitle`/`Premium.Row.Active` (подзаголовка у строки
+// Premium у оригинала нет) и `DarkMode` (пункт бургера у tweb подписан по теме),
+// а добавлены четыре ключа 1:1 с tweb lang.ts — `EnableDarkMode`,
+// `DisableDarkMode`, `MenuTelegramStars`, `SetAsEmojiStatus`: у русского
+// −4 +4, число то же; у остальных −1 (поверх пилота: ru 1350, uk 685, es 684, de/fr 683).
+//
+// Задача 10 плана 2D (вкладка «Горячие клавиши», порт tweb keyboardShortcuts.tsx):
+// десять ключей tweb lang.ts — `KeyboardShortcuts.Action.{Send,OpenSearch,
+// SavedMessages,ZoomIn,ZoomOut,PlayPauseStory,CloseStories,Undo}`,
+// `KeyboardShortcuts.Section.Formatting.Caption`, `…Section.MediaEditor` — всем пяти
+// словарям (с английским дословно не совпал ни один): +10 каждому. ru 1350 → 1360,
+// uk 686 → 696, es 685 → 695, de/fr 684 → 694. Врезкой той же задачи снесён React-экран
+// `settings/HotkeysSettings.tsx`, а с ним — десять ключей, которые читал только он:
+// самодельные `KeyboardShortcuts.Action.{HistoryStart,HistoryEnd,PlayPause,Exit,LockApp}`,
+// `KeyboardShortcuts.Hint.PasscodeNotSet`, `KeyboardShortcuts.Section.PhotoEditor` и ключи
+// tweb `MediaZoomIn`/`MediaZoomOut`/`Undo` (на вкладке их место заняли ключи
+// `keyboardShortcuts.tsx`): −10 каждому. ru 1360 → 1350, uk 696 → 686, es 695 → 685,
+// de/fr 694 → 684 — числа те же, что до задачи, набор другой (см. `FINGERPRINT`).
+// Поверх корня настроек (снят `General.NightMode`): ru 1350, uk 685, es 684, de/fr 683.
+//
+// Задача 7 плана 2D («Данные и память» и автозагрузка): ключи tweb lang.ts
+// `AutoDownloadContacts/Groups/Channels/Off/Files` (подписи строк Photos/Videos/
+// Files), `AutodownloadContacts/Channels` (строки вкладок автозагрузки),
+// `StorageQuota.Clear/Other/FailedToCalculate` и формы числа `Seconds`/`Minutes`
+// (полная карта разрядов `wrapDuration.ts::DURATION_LANG_KEYS`). У fr нет двух
+// `…Contacts` — совпали с английским дословно. ru 1350 → 1362, uk 686 → 698,
+// es 685 → 697, de 684 → 696, fr 684 → 694; `plural` +2 у всех. Поверх корня настроек
+// (у uk/es/de/fr −1): ru 1362, uk 697, es 696, de 695, fr 693.
+//
+// Задача 11 плана 2D (вкладка «Энергосбережение»): +13 ключей tweb lang.ts —
+// `LiteMode.EnableText`/`Info`/`DisableAlert` и десять `LiteMode.Key.*.Title`
+// дерева ключей — всем пяти словарям: ru 1350 → 1363, uk 686 → 699, es 685 → 698,
+// de/fr 684 → 697. Врезкой сняты четыре ключа снесённого React-экрана, которых у
+// tweb нет или которых больше никто не читает (`LiteMode.Caption`,
+// `LiteMode.Key.background_animation.Title`, `LiteMode.Key.emoji.Title`,
+// `Animations`): −4 каждому словарю.
+// Поверх задач 7 и 10 и корня настроек (+9 каждому): ru 1371, uk 706, es 705, de 704, fr 702.
+//
+// Задачей 14 плана 2D (вкладка «Быстрая реакция») снят самодельный
+// `DoubleTapSettingInfo` — подпись React-экрана, которой у tweb нет, читатель ушёл
+// вместе с экраном: всем пяти по −1 (ru 1349, uk 685, es 684, de/fr 683).
+// Поверх задач 7, 10, 11 и корня настроек (−1 каждому): ru 1370, uk 705, es 704, de 703, fr 701.
+//
+// Задача 9 плана 2D (экран сессии, незавершённые входы): восемь ключей tweb
+// lang.ts:5635-5645 — `AuthSessions.View.{Device,Application,System,Location,
+// LocationInfo,TerminateSession}`, `AuthSessions.IncompleteAttempts(Info)` — всем
+// пяти, кроме совпавшего с английским у fr (`AuthSessions.View.Application` —
+// «Application»). ru 1350 → 1358, uk 686 → 694, es 685 → 693, de 684 → 692,
+// fr 684 → 691. `plural` не менялся.
+// Поверх задач 7, 10, 11, 14 и корня настроек: ru 1378, uk 713, es 712, de 711, fr 708.
+//
+// Задача 12 плана 2D (вкладки «Обои» и «Цвет»): самодельные ключи прежнего
+// React-экрана `ChatBackground.Upload`/`.Reset`/`.Blurred` (после сноса экрана —
+// ни одного читателя) заменены ключами tweb lang.ts `ChatBackground.UploadWallpaper`,
+// `Appearance.Reset`, `ChatBackground.Blur` и добавлен заголовок вкладки
+// `ChatBackground` — всем пяти словарям: −3 +4, у каждого +1 (ru 1350 → 1351,
+// uk 686 → 687, es 685 → 686, de/fr 684 → 685). `Appearance.Color.Hex`/`.RGB`
+// (подписи полей выбора цвета) не переводятся — `NO_TRANSLATION` в
+// `dictCoverage.test.ts`. `plural` не менялся.
+// Поверх задач 7, 9, 10, 11, 14 и корня настроек: ru 1379, uk 714, es 713, de 712, fr 709.
+//
+// Мастер 2FA (план 2D, задача 19): +7 ключей tweb lang.ts
+// (`TwoStepVerificationTitle`, `PleaseEnterCurrentPassword`, `YourEmailSkipWarning`,
+// `YourEmailSkipWarningText`, `TwoStepVerificationEmailSet`,
+// `TwoStepVerificationPasswordSetInfo`, `TwoStepVerificationEmailSetInfo`) всем
+// пяти словарям: ru 1350 → 1357, uk 686 → 693, es 685 → 692, de/fr 684 → 691.
+// `plural` не менялся.
+// Снос React-мастера 2FA (`settings/TwoStepVerification.tsx`) — −6 наших ключей,
+// которых нет у tweb и которые читал только он (`TwoStepAuth.EnterCurrentPassword`/
+// `InvalidPassword`/`PasswordsDontMatch`/`EmailHelp`/`PasswordHelp`/`SetPassword`),
+// у ru ещё −1 (`Common.DoneSuffix` — имя шага того же экрана): ru 1357 → 1350,
+// uk 693 → 687, es 692 → 686, de/fr 691 → 685.
+// Поверх задач 7, 9, 10, 11, 12, 14 и корня настроек: ru 1379, uk 715, es 714, de 713, fr 710.
+//
+// Задача 16 плана 2D (селектор пиров `AppSelectPeers`): ключ tweb lang.ts
+// `RequestJoin.List.SearchEmpty` — подпись пустой выдачи (`appSelectPeers.tsx:1041`),
+// всем пяти словарям: ru 1350 → 1351, uk 686 → 687, es 685 → 686,
+// de/fr 684 → 685. `plural` не менялся.
+// Поверх задач 7, 9, 10, 11, 12, 14, 19 и корня настроек: ru 1380, uk 716, es 715, de 714, fr 711.
+//
 // Задача 18 плана 2D (вкладка «Код-пароль», порт tweb passcodeLock/*): ключи tweb
 // lang.ts `PasscodeLock.Notice`, `PasscodeLock.Next`, `PasscodeLock.Disabled`,
 // `PasscodeLock.EnableLockShortcut`, `PasscodeLock.LockShortcutDescription` и
@@ -233,12 +317,13 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // React-экрана, у которых не осталось читателей, — `PasscodeLock.ForgotNotice`,
 // `PasscodeLock.AutoLock.Caption`, `Unit.Minutes.Abbr` (и у ru `Common.Next`):
 // ru 1356 → 1352, остальные −3 (uk 689, de 687, es 687, fr 686).
+// Поверх задач 7, 9, 10, 11, 12, 14, 16, 19 и корня настроек: ru 1382, uk 719, es 717, de 717, fr 713.
 const COMPOSITION = {
-  ru: { keys: 1352, plural: 36 },
-  uk: { keys: 689, plural: 25 },
-  es: { keys: 687, plural: 24 },
-  de: { keys: 687, plural: 25 },
-  fr: { keys: 686, plural: 24 },
+  ru: { keys: 1382, plural: 38 },
+  uk: { keys: 719, plural: 27 },
+  es: { keys: 717, plural: 26 },
+  de: { keys: 717, plural: 27 },
+  fr: { keys: 713, plural: 26 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -334,13 +419,27 @@ const COMPOSITION = {
 // (разбор — у `COMPOSITION` выше). Портом 72c50bfef — `Notifications.Restricted`.
 // Пилотом 2D — заголовок вкладки уведомлений и три имени секций (разбор — у
 // `COMPOSITION` выше; de и fr расходятся по одному совпавшему ключу).
+// Выравниванием корня настроек по tweb — снят `General.NightMode` у всех пяти,
+// у русского ещё −3 +4 (разбор — у `COMPOSITION` выше).
+// Задачей 10 плана 2D — десять ключей вкладки «Горячие клавиши» всем пяти и снос
+// десяти ключей React-экрана (разбор — у `COMPOSITION` выше).
+// Задачей 7 плана 2D — ключи «Данных и памяти» и `Seconds`/`Minutes` (разбор —
+// у `COMPOSITION` выше).
+// Задачей 11 плана 2D — ключи «Энергосбережения» (разбор — у `COMPOSITION` выше).
+// Задачей 14 плана 2D — минус `DoubleTapSettingInfo` у всех пяти.
+// Задачей 9 плана 2D — восемь ключей экрана сессии (разбор — у `COMPOSITION`).
+// Задачей 12 плана 2D — ключи «Обоев» вместо ключей снесённого React-экрана
+// (разбор — у `COMPOSITION` выше), у всех пяти.
+// Мастером 2FA — +7 ключей tweb, сносом React-мастера — −6 (у ru −7) наших
+// (разбор — у `COMPOSITION` выше).
+// Задачей 16 плана 2D — подпись пустой выдачи селектора пиров (разбор — там же).
 // Задачей 18 плана 2D — ключи вкладки «Код-пароль» (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '876635d3',
-  uk: '647c7a82',
-  es: 'b3143bf1',
-  de: '26802810',
-  fr: '2c14e9eb',
+  ru: '8fe8ded0',
+  uk: 'c0937e10',
+  es: '362b8a05',
+  de: '47fb3534',
+  fr: '065d344b',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
@@ -688,7 +787,6 @@ const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
     'Chat.Poll.Type.Quiz': '«quiz» — заимствование',
     AttachContact: '«contact» — французское слово',
     'SharedMedia.Audio': '«audio» — французское слово',
-    Animations: '«animations» — французское слово',
     Exceptions: '«exceptions» — французское слово',
     'StorageQuota.CacheSizeLimitAuto': '«auto» — сокращение от «automatique»',
     'KeyboardShortcuts.Action.Monospace': '«monospace» — типографский термин',

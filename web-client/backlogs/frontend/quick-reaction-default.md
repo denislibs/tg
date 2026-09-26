@@ -24,9 +24,11 @@
 ## Что у нас
 
 Быстрой реакции нет по всей вертикали: ни поля в конфиге, ни ручки, ни
-хранилища, ни `updateDefaultReaction`. Экран `web-client/src/components/
-settings/QuickReaction.tsx` — пустышка: хардкод-грид эмодзи и локальный
-`useState`, который никуда не сохраняется.
+хранилища, ни `updateDefaultReaction`. Экран — вкладка
+`web-client/src/components/sidebarLeft/tabs/quickReaction.solid.tsx` (порт tweb
+`quickReaction.tsx`, задача 14 плана 2D, открывается строкой «Quick Reaction»
+экрана «Стикеры и эмодзи»): список — настоящий каталог `GET /reactions`, но на
+открытии не отмечено ничего, а выбор только переносит отметку (О-30 плана 2D).
 
 Поэтому `bubbles.ts::onBubblesMouseMove` показывает первую реакцию из
 `getAvailableReactionsForPeer` (`web-client/src/components/chat/reactions.ts`).
@@ -43,8 +45,11 @@ settings/QuickReaction.tsx` — пустышка: хардкод-грид эмо
    `chat/reactions.ts` (флаг `unshiftQuickReaction` у
    `getAvailableReactionsForPeer`, как у оригинала), передача `true` из
    ховер-реакции и панели.
-3. `QuickReaction.tsx` — подключить к этой же ручке вместо локального стейта,
-   каталог брать из `GET /reactions`, а не из хардкода.
+3. Вкладка `quickReaction.solid.tsx` — вернуть `getQuickReaction()` (отметка на
+   открытии, tweb `quickReaction.tsx:22-30`) и `setDefaultReaction` в `onChange`
+   (`:48-51`); строка «Стикеров» — превью выбранной реакции
+   (`ReactionStickerPreview`, tweb `stickersAndEmoji.tsx:30-35,65`) и
+   перезапрос по событию `quick_reaction` (`:108-110`).
 
 **Критерий готовности:** выбранная на экране настроек реакция сохраняется,
 переживает перезагрузку и именно она нарисована на кнопке над баблом в личке и

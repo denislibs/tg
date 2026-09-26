@@ -15,11 +15,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createSignal } from 'solid-js'
 import { render } from 'solid-js/web'
+import I18n from '@lib/langPack'
 import RangeSettingSelector from './rangeSettingSelector.solid'
 
 let dispose: (() => void) | undefined
 
 afterEach(() => {
+  I18n.setRTL(false)
   dispose?.()
   dispose = undefined
   document.body.replaceChildren()
@@ -132,5 +134,27 @@ describe('RangeSettingSelector', () => {
 
     expect(document.querySelector('.range-setting-selector-value')!.textContent).toBe('25%')
     expect((document.querySelector('.progress-line__filled') as HTMLElement).style.width).toBe('25%')
+  })
+
+  it('RTL: скраб по треку даёт зеркальное значение (rangeSelectorTsx tweb :110-112)', () => {
+    const onChange = vi.fn()
+    const { line } = mount({ onChange })
+    stubTrack(line)
+    // грабер читает pageX, а happy-dom не выводит его из clientX
+    const downAt = (pageX: number) => {
+      const e = new MouseEvent('mousedown', { bubbles: true, button: 0 })
+      Object.defineProperty(e, 'pageX', { value: pageX })
+      Object.defineProperty(e, 'pageY', { value: 0 })
+      line.dispatchEvent(e)
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
+    }
+
+    downAt(150)
+    expect(onChange).toHaveBeenLastCalledWith(0.75)
+
+    I18n.setRTL(true)
+    downAt(150)
+    // 150 из 200 зеркалится в 50 → 0.25 (левее половины: −step/10 и округление до 0.01)
+    expect(onChange).toHaveBeenLastCalledWith(0.25)
   })
 })

@@ -36,7 +36,8 @@ npx vite build --outDir ../client-build
 - **Анимации — только CSS-классами tweb**; JS их лишь переключает. **framer-motion убран** — не возвращать
   (как и MUI). Механика: `core/hooks/useSetTransition` (порт `singleTransition.ts` — классы
   `forwards`/`backwards`/`animating`) и `core/hooks/useMountTransition` (роль `AnimatePresence`: узел живёт
-  в DOM, пока играет exit). Гейт — `body.animation-level-0/2`, ставит `App.tsx` по настройке «Без анимаций».
+  в DOM, пока играет exit). Гейт — `body.animation-level-0/2`, ставит подписчик настройки «Энергосбережение»
+  (`client/liteModeSettings.ts`, заводит `App.tsx`).
   Тяжёлые переходы объявлять через `core/dom/heavyAnimation` — на их время `animationIntersector` глушит
   стикеры/видео. **TS strict** — без `any`, неиспользуемые переменные не пройдут сборку.
 - **Ловушка CSS-модулей:** Vite хеширует любое имя в `animation`, включая ссылку на глобальный кейфрейм
@@ -371,7 +372,7 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
 подтверждённый вызов `managers.acknowledged.*`, у нас подтверждений нет вовсе);
 разбор — у самой строки в `setPeer`. Тесты ленты, которые НЕ про первое
 открытие, гасят лестницу тем же гейтом, что оригинал
-(`useSettingsStore.setState({reduceMotion: true})` → `liteMode.isAvailable`),
+(`useSettingsStore.setState({liteMode: {...liteMode, all: true}})` → `liteMode.isAvailable`),
 и сбрасывают карту позиций (`clearChatPositions()`) — иначе соседний тест
 открывал бы чат ВОЗВРАТОМ.
 
@@ -501,7 +502,7 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
   буквальным присваиванием, а через динамическое свойство
   (`this.container[this.scrollPositionProperty] = value` — один класс
   обслуживает и вертикальный, и горизонтальный скролл). **Инстанцирован в
-  ПЯТИ местах, у каждого — свой узел**: `components/chat/bubbles.ts::setScroll`
+  ВОСЬМИ местах, у каждого — свой узел**: `components/chat/bubbles.ts::setScroll`
   (императивная лента, порт tweb `ChatBubbles`), `components/sliderTab.ts`
   (скроллер вкладки слайдера, порт `SliderSuperTab`), `lib/appDialogsManager.ts::FolderList`
   (скроллер `.folders-scrollable` одной папки чатлиста, порт `generateScrollable`
@@ -513,11 +514,16 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
   расхождение 7 в шапке класса) и `components/sidebarLeft/globalSearch.ts::initSearch`
   (скроллер выдачи глобального поиска в `#search-container`, порт tweb
   `sidebarLeft/index.ts:1089`; создаётся на каждое открытие поиска и роняется
-  его `cleanup` — расхождение 3 шапки владельца). У каждого скроллера ОДИН владелец позиции,
+  его `cleanup` — расхождение 3 шапки владельца), `components/settings/kit.tsx`
+  (скроллер React-экрана настроек, до его сноса волной 2D),
+  `components/appSelectPeers.solid.tsx` (скроллер селектора пиров, порт tweb
+  `appSelectPeers.tsx:399`; вкладка может отдать свой — опция `scrollable`) и
+  `components/selectorSearch.solid.tsx` (строка чипов над полем поиска селектора,
+  tweb `selectorSearch.tsx:63`). У каждого скроллера ОДИН владелец позиции,
   конкурирующего писателя на том же узле нет. Прежде у ленты инстансов было два
   (React-лента держала свой в `core/hooks/useChatScroll.ts`), и они жили под
   взаимоисключающим флагом `VITE_VANILLA_FEED`; этап 7 снёс и React-ленту, и
-  флаг. `grep -rn "new Scrollable(" src` держит это число: **пять** вызовов в
+  флаг. `grep -rn "new Scrollable(" src` держит это число: **восемь** вызовов в
   продакшн-коде (плюс тесты и упоминания в комментариях). Рост числа = новый владелец скролла, это
   осознанное решение, а не побочный эффект — правь правило руками.
 

@@ -17,6 +17,29 @@ const passwordTokenTTL = 10 * time.Minute
 // передан (алиас доменной ошибки для читаемости хендлера).
 var ErrPasswordRequired = domain.ErrBadPassword
 
+// errBlankPassword — новый пароль из одних пробельных символов.
+var errBlankPassword = errors.New("password must not be blank")
+
+// checkPassword сверяет введённый облачный пароль с хешем.
+//
+// Пароль не нормализуется (как в Telegram: пробелы значимы), поэтому сначала
+// сверяется ввод как есть. Запасная ветка — совместимость: до фикса
+// SetPassword резал пробелы по краям (strings.TrimSpace), и у тех, кто задал
+// « abc », в базе хеш от «abc». Без неё такие пользователи не смогли бы ни
+// войти, ни сменить/снять пароль. Перехэширование «как есть» после успешной
+// запасной проверки НЕ делаем: по хешу не отличить «задал « abc » до фикса» от
+// «задал abc и случайно ввёл с пробелом» — во втором случае перехэш молча
+// сменил бы пароль и заблокировал бы человека. Цена ветки — у таких (старых и
+// новых без пробелов по краям) паролей принимается ещё и вариант с пробелами
+// по краям; стойкость от этого не падает.
+func checkPassword(hash, input string) bool {
+	if domain.CheckPasswordHash(hash, input) {
+		return true
+	}
+	trimmed := strings.TrimSpace(input)
+	return trimmed != input && domain.CheckPasswordHash(hash, trimmed)
+}
+
 // PasswordState — состояние облачного пароля для экрана Two-Step Verification.
 type PasswordState struct {
 	Enabled bool
@@ -41,7 +64,12 @@ func (i *Interactor) PasswordState(ctx context.Context, userID int64) (PasswordS
 // current обязателен и сверяется. Hint не должен совпадать с паролем (tweb
 // PasswordAsHintError).
 func (i *Interactor) SetPassword(ctx context.Context, userID int64, current, newPassword, hint, email string) error {
-	newPassword = strings.TrimSpace(newPassword)
+	// Пароль сохраняется как есть — без TrimSpace: иначе хеш считается от
+	// другой строки, чем потом сверяется, и « abc » не проходит проверку.
+	// Проверка ниже — валидация «не пустой», а не нормализация.
+	if newPassword != "" && strings.TrimSpace(newPassword) == "" {
+		return errBlankPassword
+	}
 	if hint != "" && hint == newPassword {
 		return errors.New("hint must differ from password")
 	}
@@ -49,7 +77,7 @@ func (i *Interactor) SetPassword(ctx context.Context, userID int64, current, new
 	if err != nil {
 		return err
 	}
-	if hash != nil && !domain.CheckPasswordHash(*hash, current) {
+	if hash != nil && !checkPassword(*hash, current) {
 		return domain.ErrBadPassword
 	}
 	if email == "" {
@@ -77,7 +105,7 @@ func (i *Interactor) VerifyPassword(ctx context.Context, userID int64, password 
 	if err != nil {
 		return err
 	}
-	if hash == nil || !domain.CheckPasswordHash(*hash, password) {
+	if hash == nil || !checkPassword(*hash, password) {
 		return domain.ErrBadPassword
 	}
 	return nil
@@ -92,7 +120,7 @@ func (i *Interactor) RemovePassword(ctx context.Context, userID int64, current s
 	if hash == nil {
 		return nil
 	}
-	if !domain.CheckPasswordHash(*hash, current) {
+	if !checkPassword(*hash, current) {
 		return domain.ErrBadPassword
 	}
 	return i.pw.SetPassword(ctx, userID, nil, "", "")
@@ -121,7 +149,7 @@ func (i *Interactor) CheckPassword(ctx context.Context, rawToken, password, devi
 	if err != nil {
 		return SignInResult{}, err
 	}
-	if hash == nil || !domain.CheckPasswordHash(*hash, password) {
+	if hash == nil || !checkPassword(*hash, password) {
 		// Токен переживает опечатку (не гоняем OTP заново), НО не бесконечно:
 		// после maxPasswordAttempts неудач сжигаем его — иначе перебор облачного
 		// пароля в пределах TTL (в паре с rate-limit роута по реальному IP).

@@ -64,7 +64,7 @@ beforeEach(() => {
   // лента держит шину тяжёлых анимаций и не рисует догруженную страницу
   // (tweb bubbles.ts:10436-10440). Гейт тот же, что в оригинале
   // (`liteMode.isAvailable('animations')`, tweb bubbles.ts:11540).
-  useSettingsStore.setState({ reduceMotion: true })
+  useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
   // `destroy()` в `afterEach` пишет позицию чата в синглтон-карту — без
   // сброса следующий тест открыл бы «тот же чат» ВОЗВРАТОМ, без запроса.
   clearChatPositions()
