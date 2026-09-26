@@ -1,7 +1,7 @@
 /*
  * Порт tweb `src/pages/authFlow.module.scss` — 1:1 по значениям и структуре
- * классов. Шапка карточки (стикер / тайтл / сабтайтл) живёт в соседнем модуле
- * `mediaHeader.module.scss` (порт tweb `src/components/mediaHeader.module.scss`),
+ * классов. Шапка карточки (стикер / тайтл / сабтайтл) живёт в общем модуле
+ * `components/mediaHeader.module.scss` (порт tweb `src/components/mediaHeader.module.scss`),
  * здесь — только оболочка auth-флоу, поверхность карточки и правки под страницы.
  *
  * Имя файла — `AuthFlow.module.scss`, а не `authFlow.module.scss` как в tweb:

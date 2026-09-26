@@ -20,10 +20,9 @@ import { applyLang } from '@/test/lang'
 import Button from './button'
 import { ButtonMenuItem } from './buttonMenu'
 import CheckboxField from './checkboxField'
-import RadioField from './radioField'
 import PopupElement from './popups/popupElement'
 import PopupPeer from './popups/popupPeer'
-import Row from './row'
+import Row, { RadioFormFromValues } from './row'
 import SettingSection from './settingSection'
 import { toastNew, hideToast } from './toast'
 
@@ -80,8 +79,10 @@ describe('ванильные подписи показывают перевод,
     const checkbox = new CheckboxField({ text: 'DeleteMessagesOptionAlso', textArgs: ['Майя'] })
     expect(checkbox.label.querySelector('.checkbox-caption')!.textContent).toBe('Также удалить у Майя')
 
-    const radio = new RadioField({ langKey: 'Checkbox.Enabled', name: 'x' })
-    expect(radio.main.textContent).toBe('Включено')
+    // У радио HEAD подписи нет (`radioField.ts`): ключ переводит заголовок строки.
+    const form = RadioFormFromValues([{ langPackKey: 'Checkbox.Enabled', value: 'x' }], () => {})
+    expect(form.querySelector('.row-title')!.textContent).toBe('Включено')
+    expect(form.querySelector('.radio-field-main')!.textContent).toBe('')
   })
 
   it('всплывашка', () => {

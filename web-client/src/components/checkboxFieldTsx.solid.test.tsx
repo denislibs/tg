@@ -106,3 +106,49 @@ describe('checkboxFieldTsx: связь сигнала и узла', () => {
     expect(label.classList.contains('checkbox-field-toggle')).toBe(true)
   })
 })
+
+// Дельта HEAD 812502980 (tweb `checkboxFieldTsx.tsx:31`, `:37-39`, `:49-51`):
+// `ref`, `lockIcon` и `disabled`. Пины — на узел, а не на «метод позвали».
+describe('checkboxFieldTsx: дельта HEAD — disabled, lockIcon, ref', () => {
+  it('disabled выключает инпут и вешает checkbox-disabled, и снимает обратно', () => {
+    const result = mount(() => {
+      const [disabled, setDisabled] = createSignal(true)
+      const label = CheckboxFieldTsx({ get disabled() { return disabled() } }) as HTMLElement
+      return { label, setDisabled }
+    })
+    const input = result.label.querySelector<HTMLInputElement>('input')!
+
+    expect(input.disabled).toBe(true)
+    expect(result.label.classList.contains('checkbox-disabled')).toBe(true)
+
+    result.setDisabled(false)
+
+    expect(input.disabled).toBe(false)
+    expect(result.label.classList.contains('checkbox-disabled')).toBe(false)
+  })
+
+  it('lockIcon кладёт замок в бегунок тумблера и снимает его, когда иконки нет', () => {
+    const result = mount(() => {
+      const [lockIcon, setLockIcon] = createSignal<'premium_lock' | undefined>('premium_lock')
+      const label = CheckboxFieldTsx({ toggle: true, get lockIcon() { return lockIcon() } }) as HTMLElement
+      return { label, setLockIcon }
+    })
+    const circle = result.label.querySelector('.checkbox-toggle .checkbox-toggle-circle')!
+
+    expect(circle.classList.contains('with-lock')).toBe(true)
+    expect(circle.querySelector('.tgico')).not.toBeNull()
+
+    result.setLockIcon(undefined)
+
+    expect(circle.classList.contains('with-lock')).toBe(false)
+    expect(circle.childElementCount).toBe(0)
+  })
+
+  it('ref получает сам экземпляр CheckboxField, чей label и вернулся', () => {
+    let field: CheckboxField | undefined
+    const label = mount(() => CheckboxFieldTsx({ ref: (f) => { field = f } }) as HTMLElement)
+
+    expect(field).toBeInstanceOf(CheckboxField)
+    expect(field!.label).toBe(label)
+  })
+})

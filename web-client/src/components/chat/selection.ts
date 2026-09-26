@@ -486,10 +486,19 @@ export class AppSelection extends EventListenerBase<{
     return true
   }
 
-  /** tweb :380-383 */
+  /**
+   * tweb HEAD 812502980 :444-452 — поле узнаётся по классам, а не по тегу:
+   * корень `CheckboxField` с ef41b29db — `span`, а не `label` (волна 2D,
+   * задача 2 перевела наш класс на HEAD).
+   */
   protected getCheckboxInputFromElement(element: HTMLElement): HTMLInputElement | undefined {
-    const first = element.firstElementChild
-    return first?.tagName === 'LABEL' ? (first.firstElementChild as HTMLInputElement) : undefined
+    const field = element.firstElementChild
+    const input = field?.firstElementChild
+    if (!field?.classList.contains('checkbox-field') || !input?.classList.contains('checkbox-field-input')) {
+      return
+    }
+
+    return input as HTMLInputElement
   }
 
   /** tweb :385-403 */

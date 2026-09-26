@@ -98,7 +98,7 @@ import blurActiveElement from '@helpers/dom/blurActiveElement'
 import wrapEmojiText from '@lib/richtext/wrapEmojiText'
 import { scaleImageForSend } from '@core/media/scaleImageForSend'
 import AuthCard from '../AuthCard.solid'
-import MediaHeader from '../MediaHeader.solid'
+import MediaHeader from '@components/mediaHeader.solid'
 import InputField from '../InputField.solid'
 import { PreloaderCircular } from '../Preloader.solid'
 import { useAuthFlow, type CardSpec } from '../authFlow.solid'
@@ -229,7 +229,7 @@ export default function SignUpCard(props: { spec: Spec }): JSX.Element {
       class={styles.pageSignUp}
       header={
         <MediaHeader>
-          <MediaHeader.Sticker size={AVATAR_SIZE}>
+          <MediaHeader.Sticker size={AVATAR_SIZE} element={() => (<>
             {/* Размер `.avatar-edit` завязан на `--sticker-size` родителя — как
                 и у React-версии (в самом tweb правило живёт под `.page-chats` и
                 на auth не действует, отчего аватар там схлопнут по высоте). */}
@@ -237,7 +237,7 @@ export default function SignUpCard(props: { spec: Spec }): JSX.Element {
               <canvas ref={canvasEl} id="canvas-avatar" class="avatar-edit-canvas" />
               <IconTsx icon="cameraadd" class="avatar-edit-icon" style={{ 'font-size': '3rem' }} />
             </div>
-          </MediaHeader.Sticker>
+          </>)} />
           <MediaHeader.Title>{titleContent()}</MediaHeader.Title>
           {/* без .secondary — как у tweb на этой карточке */}
           <MediaHeader.Subtitle>{i18n('Login.Register.Subtitle')}</MediaHeader.Subtitle>

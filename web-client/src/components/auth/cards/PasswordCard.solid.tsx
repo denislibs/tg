@@ -47,7 +47,7 @@ import I18n, { i18n, type LangPackKey } from '@lib/langPack'
 import classNames from '@helpers/string/classNames'
 import { confirmationPopup } from '../../popups/popupPeer'
 import AuthCard from '../AuthCard.solid'
-import MediaHeader from '../MediaHeader.solid'
+import MediaHeader from '@components/mediaHeader.solid'
 import { PreloaderCircular } from '../Preloader.solid'
 import { useAuthFlow, type CardSpec } from '../authFlow.solid'
 import styles from '../AuthFlow.module.scss'
@@ -196,13 +196,13 @@ export default function PasswordCard(props: { spec: Spec }): JSX.Element {
       class={styles.pagePassword}
       header={
         <MediaHeader>
-          <MediaHeader.Sticker size={MONKEY_SIZE}>
+          <MediaHeader.Sticker size={MONKEY_SIZE} element={() => (<>
             {/* tweb: `._sticker > monkeyContainer > .media-sticker-wrapper` —
                 PasswordMonkey (lottie, подглядывает при показе пароля) —
                 ЗАГЛУШКА того же контура, что у AuthCodeCard: Solid-порт
                 lottie-обезьянки вне периметра задачи 4, см. её докблок. */}
             <div class="media-sticker-wrapper" />
-          </MediaHeader.Sticker>
+          </>)} />
           <MediaHeader.Title>{i18n('Login.Password.Title')}</MediaHeader.Title>
           {/* без .secondary — в tweb подзаголовок этой карточки белый */}
           <MediaHeader.Subtitle>{i18n('Login.Password.Subtitle')}</MediaHeader.Subtitle>

@@ -1,42 +1,40 @@
 /**
- * Порт tweb `src/components/radioField.ts` — 1:1 по разметке (`label.radio-field`
- * → `input[type=radio]` + `div.radio-field-main`, опционально с иконкой замка).
- * Правки только там, где в репозитории нет нужной инфраструктуры:
- *  • `stateKey`/`valueForState` (двусторонняя привязка к `apiManagerProxy`/
- *    `rootScope.managers.appStateManager`) — не портированы: тот же вычет уже
- *    сделан в `checkboxField.ts` по той же причине (у нас состояние живёт в
- *    zustand-сторах, глобали tweb нет);
- *  (`langKey` строит `_i18n(main, key)` — дословно как оригинал (:68). Раньше
- *  здесь стоял `t(key)` в `main.textContent`: текст, снятый один раз, вместо
- *  живого узла.)
- *  • `simulateEvent(this.input, 'change')` — хелпера `helpers/dom/dispatchEvent`
- *    в репозитории нет (та же причина, что в `checkboxField.ts`); инлайновая
- *    замена — `new Event('change', {bubbles: true, cancelable: true})`,
- *    поведение то же самое, просто без отдельного файла-обёртки на одну строку.
+ * Порт tweb `src/components/radioField.ts` (812502980, 89 строк) — только сам
+ * контрол: `span.radio-field` → `input[type=radio]` + `div.radio-field-main`,
+ * опционально с иконкой замка. Подписи у поля нет (tweb `:8-10`): видимый
+ * текст — в `Row.Title` строки, которая и есть `label` для этого `input`
+ * (472e3e76b: `span`, а не `label`, чтобы в label-строке не было label-в-label
+ * и `row.control === input`).
+ *
+ * Отличия от оригинала:
+ *  1. `stateKey`/`valueForState` (tweb `:20-21`, `:38-48` — двусторонняя
+ *     привязка к `apiManagerProxy`/`appStateManager`) не портированы: тот же
+ *     вычет сделан в `checkboxField.ts` по той же причине — состояние у нас в
+ *     zustand-сторах, глобали tweb нет;
+ *  2. `simulateEvent(this.input, 'change')` (`:63`) — хелпера
+ *     `helpers/dom/dispatchEvent` в репозитории нет (та же причина, что в
+ *     `checkboxField.ts`); замена — `new Event('change', {bubbles: true,
+ *     cancelable: true})`, поведение то же.
  */
 import Icon from '@components/icon'
-import { _i18n, type LangPackKey } from '@lib/langPack'
+import { RADIO_FIELD_RIGHT_CLASS } from '@components/rowFieldClasses'
 
 export default class RadioField {
   public input: HTMLInputElement
-  public label: HTMLLabelElement
+  public container: HTMLSpanElement
   public main: HTMLElement
   public lockIcon?: HTMLElement
 
   constructor(options: {
-    text?: string
-    textElement?: HTMLElement | DocumentFragment
-    /** переводимый ключ — идёт через `t()`, в отличие от `text` (уже готовая строка) */
-    langKey?: LangPackKey
     name: string
     value?: string
     alignRight?: boolean
   }) {
-    const label = this.label = document.createElement('label')
-    label.classList.add('radio-field')
+    const container = this.container = document.createElement('span')
+    container.classList.add('radio-field')
 
     if (options.alignRight) {
-      label.classList.add('radio-field-right')
+      container.classList.add(RADIO_FIELD_RIGHT_CLASS)
     }
 
     const input = this.input = document.createElement('input')
@@ -50,15 +48,7 @@ export default class RadioField {
     const main = this.main = document.createElement('div')
     main.classList.add('radio-field-main')
 
-    if (options.textElement) {
-      main.append(options.textElement)
-    } else if (options.text) {
-      main.textContent = options.text
-    } else if (options.langKey) {
-      _i18n(main, options.langKey) // tweb :68
-    }
-
-    label.append(input, main)
+    container.append(input, main)
   }
 
   get checked() {

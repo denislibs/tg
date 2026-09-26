@@ -46,7 +46,7 @@ import { isWebAuthnSupported, getPasskeyAssertion } from '@core/webauthnBrowser'
 import { placeCaretAtEnd } from '@shared/lib/caret'
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import AuthCard from '../AuthCard.solid'
-import MediaHeader from '../MediaHeader.solid'
+import MediaHeader from '@components/mediaHeader.solid'
 import CountryInput from '../CountryInput.solid'
 import TelInput from '../TelInput.solid'
 import { PreloaderCircular } from '../Preloader.solid'
@@ -212,15 +212,15 @@ export default function SignInCard(_props: { spec: Spec }): JSX.Element {
         <MediaHeader>
           {/* Логотип — как в tweb: плоский svg 120×120 из спрайта #logo
               (fill: var(--primary-color)), без круга и без градиента. */}
-          <MediaHeader.Sticker size={120} class={styles.logoContainer}>
+          <MediaHeader.Sticker size={120} class={styles.logoContainer} element={() => (<>
             <svg class={styles.logo} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
               <use href="#logo" />
             </svg>
-          </MediaHeader.Sticker>
+          </>)} />
           <MediaHeader.Title>
             <span>{i18n('Login.Title')}</span>
           </MediaHeader.Title>
-          <MediaHeader.Subtitle secondary>
+          <MediaHeader.Subtitle color="secondary">
             {/* Ядро само разворачивает \n словаря в <br> — superFormatter
                 (React-версия) здесь не нужен, i18n() уже отдаёт готовый узел. */}
             {i18n('Login.StartText')}

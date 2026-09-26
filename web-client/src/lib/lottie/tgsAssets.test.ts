@@ -23,7 +23,7 @@
 //  2. `<LottieAnimation name="X" .../>` (`components/lottieAnimation.solid.tsx`,
 //     сейчас нет прямых потребителей — MediaHeader передаёт `props.name`,
 //     не литерал, — но проверяется на будущее: тип позволяет);
-//  3. `<MediaHeader.Sticker name="X" .../>` (`components/auth/MediaHeader.solid.tsx`);
+//  3. `<MediaHeader.Sticker name="X" .../>` (`components/mediaHeader.solid.tsx`);
 //  4. литеральный второй аргумент `.loadAnimationAsAsset(params, 'X')`
 //     (обе обезьянки, `PasswordMonkey.tsx`/`TrackingMonkey.solid.tsx`, зовут
 //     `lottieLoader` напрямую, минуя все три обёртки выше).

@@ -1,5 +1,7 @@
 /**
- * Порт tweb `src/components/checkboxField.ts` — В ОБЪЁМЕ ДВУХ ВЫЗЫВАЮЩИХ:
+ * Порт tweb `src/components/checkboxField.ts` (корень и тумблер — по HEAD
+ * 812502980: `span`, `toggleCircle`, замок, `toggleDisability`) — В ОБЪЁМЕ
+ * ТРЁХ ВЫЗЫВАЮЩИХ (третий — Solid-обёртка `checkboxFieldTsx.solid.tsx`):
  *  • `AppSelection.toggleElementCheckbox` строит `new CheckboxField({name,
  *    round: true})` (tweb selection.ts:359-362) и дальше трогает у него ровно
  *    два поля — `label` (кладёт в бабл) и `input` (`input.checked = …`);
@@ -37,8 +39,16 @@
  *    #110 покрывает только `toggle` и `contextMenu`, `withRipple`/`withHover`
  *    в неё не входят — вынесено ведущему финальным ревью волны 2, номер
  *    проставить сюда, как только он появится;
- *  • `color`, `restriction`, `asRadio`, `disabled`, `listenerSetter` — их не
- *    зовёт ни выделение, ни `PopupPeer`;
+ *  • `color`, `restriction`, `asRadio`, `listenerSetter` — их не зовёт ни
+ *    выделение, ни `PopupPeer`, ни Solid-обёртка;
+ *  • (`toggleDisability` и `toggleLockIcon`/`setToggleLockIcon` СНЯТЫ с этого
+ *    списка — портированы с HEAD 812502980 вместе с дельтой `checkboxFieldTsx`
+ *    (волна 2D, задача 2): их зовут её эффекты, tweb `checkboxField.ts:122`,
+ *    `:127`, `:165-174`, `:184-188`.) Опция `disabled` конструктора
+ *    (`:52-54`) не перенесена: Solid-обёртка выключает поле эффектом, а у
+ *    оригинала ветка зовёт `toggleDisability` ДО создания `input` (`:58`) и
+ *    упала бы на `this.input.disabled` — вызывающих у неё нет и там;
+ *    `isDisabled` (`:180-182`) — вызывающего нет;
  *  • сеттер `checked` через `simulateEvent` (tweb :171-179) — хелпера
  *    `helpers/dom/dispatchEvent` в репо нет, оба вызывающих пишут прямо в
  *    `input.checked`, как и сам tweb (selection.ts:367, 490; peer.ts читает
@@ -59,6 +69,8 @@
  * `.checkbox-caption`), символ `#check` — `components/SvgDefs.tsx`.
  */
 
+import Icon from '@components/icon'
+import type { IconName } from '@core/tgico-icons'
 import { _i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
 
 export type CheckboxFieldOptions = {
@@ -75,14 +87,24 @@ export type CheckboxFieldOptions = {
   checked?: boolean
   /** переключатель вместо коробки с галочкой (tweb :17, :117-129) */
   toggle?: boolean
+  /** замок в бегунке тумблера (tweb HEAD :25, :127); только с `toggle` */
+  toggleLockIcon?: IconName
 }
 
 export default class CheckboxField {
   public input: HTMLInputElement
-  public label: HTMLLabelElement
+  /** корень поля; `span`, как у HEAD, — `label` только с подписью, см. конструктор */
+  public label: HTMLElement
+  /** бегунок тумблера (tweb HEAD :33, :122); без `toggle` не создаётся */
+  public toggleCircle?: HTMLElement
 
   constructor(options: CheckboxFieldOptions = {}) {
-    const label = this.label = document.createElement('label')
+    // tweb HEAD `:37` (ef41b29db) — `span`: поле «только контрол», его подпись —
+    // строка, которая сама `label` (label-в-label ломал бы `row.control`,
+    // 472e3e76b). `label` остаётся лишь у поля С ПОДПИСЬЮ — ветки старой базы
+    // для единственного потребителя `PopupPeer` (чекбоксы попапа без строки;
+    // щелчок по подписи обязан переключать поле). Уйдёт с попапами 2C.
+    const label = this.label = document.createElement(options.text ? 'label' : 'span')
     label.classList.add('checkbox-field')
 
     if (options.round) {
@@ -120,10 +142,12 @@ export default class CheckboxField {
 
       const toggle = document.createElement('div')
       toggle.classList.add('checkbox-toggle')
-      const circle = document.createElement('div')
+      const circle = this.toggleCircle = document.createElement('div')
       circle.classList.add('checkbox-toggle-circle')
       toggle.append(circle)
       label.append(toggle)
+
+      this.setToggleLockIcon(options.toggleLockIcon) // tweb HEAD :127
     } else {
       // tweb :127-148 — коробка чекбокса: рамка, заливка (она же анимация
       // «круг растёт») и галочка из общего спрайта
@@ -167,5 +191,23 @@ export default class CheckboxField {
    */
   public setValueSilently(checked: boolean) {
     this.input.checked = checked
+  }
+
+  /** tweb HEAD :165-174 — замок в бегунке тумблера или его снятие. Только для тумблера. */
+  public setToggleLockIcon(icon?: IconName) {
+    const circle = this.toggleCircle
+    if (!circle) {
+      return
+    }
+
+    circle.classList.toggle('with-lock', !!icon)
+    circle.replaceChildren(...(icon ? [Icon(icon)] : []))
+  }
+
+  /** tweb HEAD :184-188 */
+  public toggleDisability(disable: boolean) {
+    this.label.classList.toggle('checkbox-disabled', disable)
+    this.input.disabled = disable
+    return () => this.toggleDisability(!disable)
   }
 }

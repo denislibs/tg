@@ -11,7 +11,7 @@ import RadioField from './radioField'
 // вызов.
 describe('RadioField.setValueSilently', () => {
   it('меняет input.checked немедленно и без события change', () => {
-    const field = new RadioField({ name: 'g', text: 'A', value: 'a' })
+    const field = new RadioField({ name: 'g', value: 'a' })
     const onChange = vi.fn()
     field.input.addEventListener('change', onChange)
 

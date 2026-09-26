@@ -9,10 +9,11 @@ import CheckboxField from './checkboxField'
 // (`main.tsx` → `client/boot.ts`); в прогоне — общий сетап (`src/test/setup.ts`).
 
 describe('CheckboxField', () => {
-  it('label.checkbox-field.checkbox-without-caption > input + .checkbox-box', () => {
+  it('span.checkbox-field.checkbox-without-caption > input + .checkbox-box', () => {
     const field = new CheckboxField()
 
-    expect(field.label.tagName).toBe('LABEL')
+    // tweb HEAD :37 (ef41b29db): поле — только контрол, `span`; подпись ему даёт строка-label
+    expect(field.label.tagName).toBe('SPAN')
     expect(field.label.classList.contains('checkbox-field')).toBe(true)
     expect(field.label.classList.contains('checkbox-without-caption')).toBe(true)
     expect(field.label.classList.contains('checkbox-field-round')).toBe(false)
@@ -56,6 +57,9 @@ describe('CheckboxField', () => {
     const field = new CheckboxField({ text: 'DeleteMessagesOptionAlso', textArgs: ['Maya'] })
 
     expect(field.label.classList.contains('checkbox-without-caption')).toBe(false)
+    // поле С ПОДПИСЬЮ (ветка старой базы для `PopupPeer`) — `label`: щелчок по
+    // подписи обязан переключать поле, строки-label вокруг него нет
+    expect(field.label.tagName).toBe('LABEL')
     const span = field.label.lastElementChild as HTMLElement
     expect(span.tagName).toBe('SPAN')
     expect(span.classList.contains('checkbox-caption')).toBe(true)

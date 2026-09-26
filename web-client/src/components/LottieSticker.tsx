@@ -9,7 +9,7 @@
 // (`lottieLoader.makeAssetUrl`), имя — из вендорного `LottieAssetName`.
 //
 // Solid-компонент `components/lottieAnimation.solid.tsx` — та же точка входа
-// для Solid-дерева (её использует `MediaHeader.solid.tsx::Sticker`); здесь та
+// для Solid-дерева (её использует `mediaHeader.solid.tsx::Sticker`); здесь та
 // же логика вызвана НАПРЯМУЮ (приём — как у `PasswordMonkey.tsx`, Этап 1), а
 // не через Solid-остров: все потребители этого файла — мелкие иконки внутри
 // React-экранов настроек, а `web-client/CLAUDE.md` держит `<SolidIsland>`
@@ -72,8 +72,8 @@ export default function LottieSticker({
   // `position: relative` + `maxWidth/maxHeight: 100%` — 1:1 с классом, который
   // оригинал вешает на этот же узел: tweb `mediaHeader.module.scss:41-46`
   // (`.lottie {width/height: var(--size); max-width/max-height: 100%;
-  // position: relative}`), он же у нас — `auth/mediaHeader.module.scss` для
-  // Solid-ветки (`MediaHeader.solid.tsx::Sticker`). Здесь размер задан
+  // position: relative}`), он же у нас — `components/mediaHeader.module.scss` для
+  // Solid-ветки (`mediaHeader.solid.tsx::Sticker`). Здесь размер задан
   // инлайном (см. докблок файла), а `position` терялся — и канва плеера,
   // которая приезжает `position:absolute; inset:0; 100%×100%` (класс `lottie`,
   // `styles/index.scss` = tweb `base.scss:1214-1226`), считала свои проценты

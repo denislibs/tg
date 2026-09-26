@@ -11,7 +11,7 @@
 // Единственная точка вставки — `lottieLoader.loadAnimationAsAsset` (см. правку
 // там же): все пять мест показа (`PasswordMonkey.tsx`, `TrackingMonkey.solid.
 // tsx`, `LottieSticker.tsx`, `lottieAnimation.solid.tsx` и через него
-// `MediaHeader.solid.tsx`) зовут именно её — один способ деградации на всех
+// `mediaHeader.solid.tsx`) зовут именно её — один способ деградации на всех
 // пятерых, а не пять копий одной и той же логики по вызывающим.
 import type { LottieAssetName } from './lottieLoader'
 
