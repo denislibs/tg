@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 21,
+      "version": 22,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -2144,28 +2144,12 @@
           "value": "Edit last message"
         },
         {
-          "key": "KeyboardShortcuts.Action.Exit",
-          "value": "Exit"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.HistoryEnd",
-          "value": "Go to End of History"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.HistoryStart",
-          "value": "Go to Beginning of History"
-        },
-        {
           "key": "KeyboardShortcuts.Action.Italic",
           "value": "Italic"
         },
         {
           "key": "KeyboardShortcuts.Action.Link",
           "value": "Add Link"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.LockApp",
-          "value": "Lock the App"
         },
         {
           "key": "KeyboardShortcuts.Action.Monospace",
@@ -2190,10 +2174,6 @@
         {
           "key": "KeyboardShortcuts.Action.OpenSearch",
           "value": "Open search"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.PlayPause",
-          "value": "Play/Pause"
         },
         {
           "key": "KeyboardShortcuts.Action.PlayPauseStory",
@@ -2252,10 +2232,6 @@
           "value": "Zoom out"
         },
         {
-          "key": "KeyboardShortcuts.Hint.PasscodeNotSet",
-          "value": "Passcode is configured in Privacy settings"
-        },
-        {
           "key": "KeyboardShortcuts.Hint.WhenInputEmpty",
           "value": "when input is empty"
         },
@@ -2286,10 +2262,6 @@
         {
           "key": "KeyboardShortcuts.Section.Navigation",
           "value": "Navigation"
-        },
-        {
-          "key": "KeyboardShortcuts.Section.PhotoEditor",
-          "value": "Photo Editor"
         },
         {
           "key": "KeyboardShortcuts.Section.Stories",
@@ -2741,14 +2713,6 @@
         {
           "key": "MediaViewer.Context.Download",
           "value": "Download"
-        },
-        {
-          "key": "MediaZoomIn",
-          "value": "Zoom In"
-        },
-        {
-          "key": "MediaZoomOut",
-          "value": "Zoom Out"
         },
         {
           "key": "MegaPrivate",
@@ -5350,10 +5314,6 @@
           "value": "Unblock user"
         },
         {
-          "key": "Undo",
-          "value": "Undo"
-        },
-        {
           "key": "Unit.Bytes",
           "value": "B"
         },
@@ -5594,7 +5554,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 21,
+      "version": 22,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -10247,18 +10207,6 @@
           "value": "Просмотр медиа"
         },
         {
-          "key": "KeyboardShortcuts.Section.PhotoEditor",
-          "value": "Фоторедактор"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.HistoryStart",
-          "value": "Переход к началу истории"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.HistoryEnd",
-          "value": "Переход к концу истории"
-        },
-        {
           "key": "KeyboardShortcuts.Action.EditLast",
           "value": "Изменение последнего сообщения"
         },
@@ -10291,32 +10239,12 @@
           "value": "Предыдущий медиафайл"
         },
         {
-          "key": "MediaZoomIn",
-          "value": "Увеличение масштаба"
-        },
-        {
-          "key": "MediaZoomOut",
-          "value": "Уменьшение масштаба"
-        },
-        {
           "key": "KeyboardShortcuts.Action.NextStory",
           "value": "Следующая история"
         },
         {
           "key": "KeyboardShortcuts.Action.PreviousStory",
           "value": "Предыдущая история"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.PlayPause",
-          "value": "Запуск/пауза"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.Exit",
-          "value": "Выход"
-        },
-        {
-          "key": "Undo",
-          "value": "Отмена"
         },
         {
           "key": "KeyboardShortcuts.Action.Redo",
@@ -10361,14 +10289,6 @@
         {
           "key": "KeyboardShortcuts.Section.MediaEditor",
           "value": "Редактор медиа"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.LockApp",
-          "value": "Блокировка приложения"
-        },
-        {
-          "key": "KeyboardShortcuts.Hint.PasscodeNotSet",
-          "value": "Код-пароль настраивается в разделе «Конфиденциальность»"
         },
         {
           "key": "MarkupTooltip.LinkPlaceholder",
@@ -11217,7 +11137,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 9,
+      "version": 10,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -13744,18 +13664,6 @@
           "value": "Visionneuse de médias"
         },
         {
-          "key": "KeyboardShortcuts.Section.PhotoEditor",
-          "value": "Éditeur de photo"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.HistoryStart",
-          "value": "Aller au début de l’historique"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.HistoryEnd",
-          "value": "Aller à la fin de l’historique"
-        },
-        {
           "key": "KeyboardShortcuts.Action.EditLast",
           "value": "Modifier le dernier message"
         },
@@ -13788,32 +13696,12 @@
           "value": "Média précédent"
         },
         {
-          "key": "MediaZoomIn",
-          "value": "Zoom avant"
-        },
-        {
-          "key": "MediaZoomOut",
-          "value": "Zoom arrière"
-        },
-        {
           "key": "KeyboardShortcuts.Action.NextStory",
           "value": "Story suivante"
         },
         {
           "key": "KeyboardShortcuts.Action.PreviousStory",
           "value": "Story précédente"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.PlayPause",
-          "value": "Lecture/Pause"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.Exit",
-          "value": "Quitter"
-        },
-        {
-          "key": "Undo",
-          "value": "Annuler"
         },
         {
           "key": "KeyboardShortcuts.Action.Redo",
@@ -13858,14 +13746,6 @@
         {
           "key": "KeyboardShortcuts.Section.MediaEditor",
           "value": "Éditeur de médias"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.LockApp",
-          "value": "Verrouiller l’application"
-        },
-        {
-          "key": "KeyboardShortcuts.Hint.PasscodeNotSet",
-          "value": "Le code est configuré dans Confidentialité"
         },
         {
           "key": "MarkupTooltip.LinkPlaceholder",
@@ -14073,7 +13953,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 9,
+      "version": 10,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -16599,18 +16479,6 @@
           "value": "Medienansicht"
         },
         {
-          "key": "KeyboardShortcuts.Section.PhotoEditor",
-          "value": "Fotoeditor"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.HistoryStart",
-          "value": "Zum Anfang des Verlaufs"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.HistoryEnd",
-          "value": "Zum Ende des Verlaufs"
-        },
-        {
           "key": "KeyboardShortcuts.Action.EditLast",
           "value": "Letzte Nachricht bearbeiten"
         },
@@ -16643,32 +16511,12 @@
           "value": "Vorherige Mediendatei"
         },
         {
-          "key": "MediaZoomIn",
-          "value": "Vergrößern"
-        },
-        {
-          "key": "MediaZoomOut",
-          "value": "Verkleinern"
-        },
-        {
           "key": "KeyboardShortcuts.Action.NextStory",
           "value": "Nächste Story"
         },
         {
           "key": "KeyboardShortcuts.Action.PreviousStory",
           "value": "Vorherige Story"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.PlayPause",
-          "value": "Wiedergabe/Pause"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.Exit",
-          "value": "Beenden"
-        },
-        {
-          "key": "Undo",
-          "value": "Rückgängig"
         },
         {
           "key": "KeyboardShortcuts.Action.Redo",
@@ -16713,14 +16561,6 @@
         {
           "key": "KeyboardShortcuts.Section.MediaEditor",
           "value": "Medien-Editor"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.LockApp",
-          "value": "App sperren"
-        },
-        {
-          "key": "KeyboardShortcuts.Hint.PasscodeNotSet",
-          "value": "Der Code wird in den Datenschutz-Einstellungen festgelegt"
         },
         {
           "key": "MarkupTooltip.LinkPlaceholder",
@@ -16928,7 +16768,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 9,
+      "version": 10,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -19459,18 +19299,6 @@
           "value": "Visor multimedia"
         },
         {
-          "key": "KeyboardShortcuts.Section.PhotoEditor",
-          "value": "Editor de fotos"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.HistoryStart",
-          "value": "Ir al inicio del historial"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.HistoryEnd",
-          "value": "Ir al final del historial"
-        },
-        {
           "key": "KeyboardShortcuts.Action.EditLast",
           "value": "Editar el último mensaje"
         },
@@ -19503,32 +19331,12 @@
           "value": "Archivo anterior"
         },
         {
-          "key": "MediaZoomIn",
-          "value": "Acercar"
-        },
-        {
-          "key": "MediaZoomOut",
-          "value": "Alejar"
-        },
-        {
           "key": "KeyboardShortcuts.Action.NextStory",
           "value": "Historia siguiente"
         },
         {
           "key": "KeyboardShortcuts.Action.PreviousStory",
           "value": "Historia anterior"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.PlayPause",
-          "value": "Reproducir/Pausar"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.Exit",
-          "value": "Salir"
-        },
-        {
-          "key": "Undo",
-          "value": "Deshacer"
         },
         {
           "key": "KeyboardShortcuts.Action.Redo",
@@ -19573,14 +19381,6 @@
         {
           "key": "KeyboardShortcuts.Section.MediaEditor",
           "value": "Editor multimedia"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.LockApp",
-          "value": "Bloquear la aplicación"
-        },
-        {
-          "key": "KeyboardShortcuts.Hint.PasscodeNotSet",
-          "value": "El código de acceso se configura en Privacidad"
         },
         {
           "key": "MarkupTooltip.LinkPlaceholder",
@@ -19788,7 +19588,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 9,
+      "version": 10,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -22347,18 +22147,6 @@
           "value": "Перегляд медіа"
         },
         {
-          "key": "KeyboardShortcuts.Section.PhotoEditor",
-          "value": "Фоторедактор"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.HistoryStart",
-          "value": "Перехід до початку історії"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.HistoryEnd",
-          "value": "Перехід до кінця історії"
-        },
-        {
           "key": "KeyboardShortcuts.Action.EditLast",
           "value": "Редагування останнього повідомлення"
         },
@@ -22391,32 +22179,12 @@
           "value": "Попередній медіафайл"
         },
         {
-          "key": "MediaZoomIn",
-          "value": "Збільшення масштабу"
-        },
-        {
-          "key": "MediaZoomOut",
-          "value": "Зменшення масштабу"
-        },
-        {
           "key": "KeyboardShortcuts.Action.NextStory",
           "value": "Наступна історія"
         },
         {
           "key": "KeyboardShortcuts.Action.PreviousStory",
           "value": "Попередня історія"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.PlayPause",
-          "value": "Пуск/пауза"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.Exit",
-          "value": "Вихід"
-        },
-        {
-          "key": "Undo",
-          "value": "Скасувати"
         },
         {
           "key": "KeyboardShortcuts.Action.Redo",
@@ -22461,14 +22229,6 @@
         {
           "key": "KeyboardShortcuts.Section.MediaEditor",
           "value": "Редактор медіа"
-        },
-        {
-          "key": "KeyboardShortcuts.Action.LockApp",
-          "value": "Блокування застосунку"
-        },
-        {
-          "key": "KeyboardShortcuts.Hint.PasscodeNotSet",
-          "value": "Код-пароль налаштовується в розділі «Конфіденційність»"
         },
         {
           "key": "MarkupTooltip.LinkPlaceholder",

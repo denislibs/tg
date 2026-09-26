@@ -26,7 +26,7 @@ import { getUserTitle } from '../core/peers/getPeerTitle'
 import { useSettings } from '../settings'
 import { useManagers } from '../core/hooks/useManagers'
 import { createSettingsSliderHost, getSettingsSliderHost, openActiveSessionsTab } from './sidebarLeft/settingsSliderHost'
-import { AppLanguageTab, AppNotificationsTab } from './solidJsTabs/tabs'
+import { AppKeyboardShortcutsTab, AppLanguageTab, AppNotificationsTab } from './solidJsTabs/tabs'
 import { toastNew } from './toast'
 import { resolvePreset, PRESET_MODE } from '../theme'
 import s from './SettingsView.module.scss'
@@ -305,6 +305,14 @@ export default function SettingsView({
                 // `makeSubTabConfig(…, AppNotificationsTab, tab)`).
                 if (it.label === 'AccountSettings.Notifications') {
                   void getSettingsSliderHost().openTab(AppNotificationsTab)
+                    .catch(() => toastNew({ langPackKey: 'Error.AnError' }))
+                  return
+                }
+                // «Горячие клавиши» — вкладка слайдера (план 2D, задача 10); у
+                // оригинала та же одна строка (`settings.tsx:413`,
+                // `tab.slider.createTab(AppKeyboardShortcutsTab).open()`).
+                if (it.label === 'KeyboardShortcuts.Title') {
+                  void getSettingsSliderHost().openTab(AppKeyboardShortcutsTab)
                     .catch(() => toastNew({ langPackKey: 'Error.AnError' }))
                   return
                 }

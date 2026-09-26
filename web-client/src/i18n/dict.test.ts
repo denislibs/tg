@@ -227,13 +227,19 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // SavedMessages,ZoomIn,ZoomOut,PlayPauseStory,CloseStories,Undo}`,
 // `KeyboardShortcuts.Section.Formatting.Caption`, `…Section.MediaEditor` — всем пяти
 // словарям (с английским дословно не совпал ни один): +10 каждому. ru 1350 → 1360,
-// uk 686 → 696, es 685 → 695, de/fr 684 → 694.
+// uk 686 → 696, es 685 → 695, de/fr 684 → 694. Врезкой той же задачи снесён React-экран
+// `settings/HotkeysSettings.tsx`, а с ним — десять ключей, которые читал только он:
+// самодельные `KeyboardShortcuts.Action.{HistoryStart,HistoryEnd,PlayPause,Exit,LockApp}`,
+// `KeyboardShortcuts.Hint.PasscodeNotSet`, `KeyboardShortcuts.Section.PhotoEditor` и ключи
+// tweb `MediaZoomIn`/`MediaZoomOut`/`Undo` (на вкладке их место заняли ключи
+// `keyboardShortcuts.tsx`): −10 каждому. ru 1360 → 1350, uk 696 → 686, es 695 → 685,
+// de/fr 694 → 684 — числа те же, что до задачи, набор другой (см. `FINGERPRINT`).
 const COMPOSITION = {
-  ru: { keys: 1360, plural: 35 },
-  uk: { keys: 696, plural: 24 },
-  es: { keys: 695, plural: 24 },
-  de: { keys: 694, plural: 24 },
-  fr: { keys: 694, plural: 24 },
+  ru: { keys: 1350, plural: 35 },
+  uk: { keys: 686, plural: 24 },
+  es: { keys: 685, plural: 24 },
+  de: { keys: 684, plural: 24 },
+  fr: { keys: 684, plural: 24 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -329,14 +335,14 @@ const COMPOSITION = {
 // (разбор — у `COMPOSITION` выше). Портом 72c50bfef — `Notifications.Restricted`.
 // Пилотом 2D — заголовок вкладки уведомлений и три имени секций (разбор — у
 // `COMPOSITION` выше; de и fr расходятся по одному совпавшему ключу).
-// Задачей 10 плана 2D — десять ключей вкладки «Горячие клавиши» всем пяти (разбор —
-// у `COMPOSITION` выше).
+// Задачей 10 плана 2D — десять ключей вкладки «Горячие клавиши» всем пяти и снос
+// десяти ключей React-экрана (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '53db9f78',
-  uk: 'fed73e25',
-  es: '2723fdcf',
-  de: 'd752bdf3',
-  fr: 'dcd47bf5',
+  ru: '71fe2516',
+  uk: '77a48e5f',
+  es: 'f1855fdd',
+  de: 'a674b249',
+  fr: '6a6c8a93',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

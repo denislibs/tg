@@ -10,7 +10,6 @@ import ChatFoldersSettings from './folders/ChatFoldersSettings'
 import PrivacySecuritySettings from './settings/PrivacySecuritySettings'
 import DataStorageSettings from './settings/DataStorageSettings'
 import StickersSettings from './settings/StickersSettings'
-import HotkeysSettings from './settings/HotkeysSettings'
 import type { Chat } from '../data'
 
 // Rows that open a dedicated sub-screen instead of being a plain value.
@@ -75,14 +74,15 @@ export function hasSubScreen(title: LangPackKey) {
   // `settings/LanguageSettings.tsx` снесён вместе со своими стилями и тестом.
   // «Уведомлений и звуков» — тоже: вкладка `AppNotificationsTab`
   // (`sidebarLeft/tabs/notifications.solid.tsx`, пилот плана 2D, задача 6).
+  // «Горячих клавиш» — тоже: вкладка `AppKeyboardShortcutsTab`
+  // (`sidebarLeft/tabs/keyboardShortcuts.solid.tsx`, план 2D, задача 10).
   return (
     title in SCREENS ||
     title === 'AccountSettings.SpeakersAndCamera' ||
     title === 'ChatList.Filter.List.Title' ||
     title === 'PrivacySettings' ||
     title === 'DataSettings' ||
-    title === 'StickersName' ||
-    title === 'KeyboardShortcuts.Title'
+    title === 'StickersName'
   )
 }
 
@@ -122,8 +122,6 @@ export default function SettingsSubScreen({ title, onBack, chats }: { title: Lan
   if (title === 'DataSettings') return <DataStorageSettings onBack={onBack} />
   // Stickers and Emoji — реальные стикеры (наборы, зацикливание, поиск)
   if (title === 'StickersName') return <StickersSettings onBack={onBack} />
-  // Keyboard Shortcuts — статичная таблица хоткеев (tweb keyboardShortcuts)
-  if (title === 'KeyboardShortcuts.Title') return <HotkeysSettings onBack={onBack} />
 
   return (
     // Саб-саб-экран уходит ПРОПОМ `sub`, а не детьми: у SettingsScreen он
