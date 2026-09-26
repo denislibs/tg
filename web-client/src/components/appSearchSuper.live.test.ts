@@ -248,6 +248,21 @@ describe('shared media: удаление сообщения', () => {
     expect(after.length).toBeGreaterThan(drawn.length)
   })
 
+  // tweb `sharedMedia.tsx:315-318` (812502980) — `if(idx !== -1) history.splice(idx, 1)`.
+  // В e52b5d931 там стояло `idx === -1`, и удаление сообщения, которого в
+  // списке фильтра нет, срезало его последний элемент (`splice(-1, 1)`).
+  it('удаление сообщения, которого в списке нет, хвост кэша не трогает', async () => {
+    const { searchSuper } = build([photo(3), photo(2), photo(1)])
+    await searchSuper.load(true)
+    await settle()
+
+    deleteDeletedMessages(searchSuper, PEER, [99])
+    await settle()
+
+    expect(searchSuper.historyStorage.inputMessagesFilterPhotoVideo!.map((m) => m.mid)).toEqual([3, 2, 1])
+    expect(mids(searchSuper)).toEqual([3, 2, 1])
+  })
+
   it('удалённое сообщение уходит и из кэша — после возврата к пиру его нет', async () => {
     const { searchSuper } = build([photo(3), photo(2), photo(1)])
     await searchSuper.load(true)
