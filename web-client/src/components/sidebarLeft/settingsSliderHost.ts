@@ -143,9 +143,19 @@ export function createSettingsSliderHost(columnEl: HTMLElement, managers: Manage
   element.append(sliderEl)
   columnEl.append(element)
 
-  // `navigationType` — как у левой колонки оригинала (`sidebarLeft/index.ts`):
-  // именно этим слайдер отбирает СВОИ записи из общей очереди навигации.
-  const slider = new SidebarSlider({ sidebarEl: element, navigationType: 'left', managers })
+  // `navigationType` — СВОЙ, как у второго слайдера оригинала, с которого
+  // списан хост: `SettingsSliderPopup` заводит `navigationType:
+  // 'settings-popup'` (tweb `settingsSliderPopup.ts:39` старой базы, `.tsx:24` в 812502980),
+  // чтобы его записи не путались с записями колоночного слайдера `'left'`.
+  // У нас тип `'left'` уже заняли React-слои корня настроек
+  // (`SettingsView.tsx:130-131`, `useNavLayer(…, 'left')`), и по нему слайдер
+  // отбирает СВОИ записи (`hasTabsInNavigation`, `back(type)`,
+  // `removeByType`): с общим типом признак `withTabs` после закрытия вкладки
+  // видел запись React-корня и оставался взведённым — прозрачный слой хоста
+  // глотал все клики React-экрана (стенд, задача 3 плана 2D; пин —
+  // `settingsTabFrame.solid.test.tsx`). С задачей 28 слайдер переезжает на
+  // колонку и получает `'left'`, как `sidebarLeft/index.ts` оригинала.
+  const slider = new SidebarSlider({ sidebarEl: element, navigationType: 'settings-popup', managers })
 
   slider.onTabsCountChange = () => {
     element.classList.toggle(s.withTabs, slider.hasTabsInNavigation())

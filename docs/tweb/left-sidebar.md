@@ -908,9 +908,15 @@ privacy-исключения, passcode, general, editChat, editContact). Стр�
   затемнения React-корня при первом открытии нет (снимается задачей 28). React-экраны до
   переезда живут как раньше (`SettingsSubScreen`/`sub`, кит): их въезд — свой кейфрейм,
   выход мгновенный (`SettingsView.tsx:337`); это приходит с переездом каждого экрана.
+- **Тип навигации хоста — `'settings-popup'`**, как у второго слайдера оригинала
+  (`settingsSliderPopup`): `'left'` заняли React-слои корня (`SettingsView.tsx:130-131`), и с
+  общим типом признак `withTabs` после закрытия вкладки оставался взведённым — прозрачный слой
+  хоста глотал клики React-экрана. Колоночный слайдер задачи 28 получит `'left'`.
 - **Кит.** `settings/kit.tsx::SettingsScreen` ведёт `scrolled-start` тем же `Scrollable`
   (`attachBorderListeners` на свой `div.scrollable`), а не ставит `scrollable-y-bordered`
-  статически; обёртка саба этого класса не несёт. Пин — `settings/kit.test.tsx`.
+  статически; обёртка саба этого класса не несёт. Строка-тумблер кита отменяет первый клик в
+  фазе захвата — иначе активация label досылала второй `click` полю и тумблер щёлкал дважды.
+  Пины — `settings/kit.test.tsx`.
 - **Не портировано из HEAD-каркаса:** `SliderSuperTab.shown`/`resetShown` (34f417d12 — нужен
   поиску по настройкам и `internalLinkProcessor`, О-26 плана 2D) и
   `updateScrollRegionFocusable` (472e3e76b, a11y-волна).

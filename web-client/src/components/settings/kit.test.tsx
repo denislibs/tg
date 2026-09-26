@@ -234,6 +234,26 @@ describe('Row — разметка tweb', () => {
     expect(onClick.mock.calls[0][0].clientX).toBe(7)
   })
 
+  // Строка-тумблер — `label`, а внутри — `label.checkbox-field > input`. Клик
+  // по тексту строки браузер ДОСЫЛАЕТ полю (активация label): второй `click`
+  // с целью-инпутом всплывает в тот же `onClick`. React между ними успевает
+  // перерисоваться (дискретное событие сбрасывается синхронно), и второй вызов
+  // видит уже новое значение — тумблер щёлкал туда и обратно, настройка не
+  // менялась (стенд: «Сообщение отправлено» на «Уведомлениях и звуках»).
+  it('тумблер: клик по тексту строки зовёт onClick ОДИН раз (без досылки полю)', () => {
+    const onClick = vi.fn()
+    const { container } = render(<Row label="Sent" translate={false} toggle checked={false} onClick={onClick} />)
+    container.querySelector<HTMLElement>('.row-title')!.click()
+    expect(onClick).toHaveBeenCalledTimes(1)
+  })
+
+  it('тумблер: клик прямо по полю тоже зовёт onClick ровно один раз', () => {
+    const onClick = vi.fn()
+    const { container } = render(<Row label="Sent" translate={false} toggle checked={false} onClick={onClick} />)
+    container.querySelector<HTMLInputElement>('input')!.click()
+    expect(onClick).toHaveBeenCalledTimes(1)
+  })
+
   it('className доклеивается к строке', () => {
     const { container } = render(<Row label="A" translate={false} className="is-active" />)
     expect(row(container).classList.contains('is-active')).toBe(true)

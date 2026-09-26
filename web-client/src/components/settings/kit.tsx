@@ -453,6 +453,21 @@ export function Row({
   // раздвигается классом `row-with-padding`.
   const havePadding = !!icon || !!checkbox
   const Tag = toggle || checkbox ? 'label' : 'div'
+  // Строка с полем — `label`, и клик по её тексту браузер досылает полю
+  // (активация label): второй `click` с целью-инпутом всплывал в тот же
+  // `onClick`, а React между ними успевал перерисоваться, — тумблер щёлкал
+  // туда и обратно, и настройка не менялась. Досылку гасим отменой ПЕРВОГО
+  // клика (отменённый клик label не активирует) — в фазе захвата, чтобы
+  // отмена стояла до того, как событие дойдёт до label; клик прямо по полю
+  // (оно накрывает тумблер целиком, `_checkbox.scss:292-297`) проходит как
+  // есть. У tweb такой пары нет: строка с полем слушает `change` самого поля
+  // (`row.ts` + `checkboxField.ts`), а не клик контейнера. Кит — двойник до
+  // переезда экранов на Solid (задача 31 плана 2D).
+  const onLabelClickCapture = onClick && Tag === 'label'
+    ? (e: MouseEvent<HTMLElement>) => {
+      if (!(e.target instanceof HTMLInputElement)) e.preventDefault()
+    }
+    : undefined
   return (
     <Tag
       className={classNames(
@@ -469,6 +484,7 @@ export function Row({
         className ?? '',
       )}
       onClick={onClick}
+      onClickCapture={onLabelClickCapture}
       onPointerDown={onClick ? onPointerDown : undefined}
     >
       {/* `.c-ripple` — ПЕРВЫМ ребёнком (tweb `ripple()` делает prepend) */}

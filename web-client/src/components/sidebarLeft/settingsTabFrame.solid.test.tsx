@@ -28,7 +28,9 @@ import type { Managers } from '@/client/bootstrap'
 import I18n from '@lib/langPack'
 import type SliderSuperTab from '@components/sliderTab'
 import { AppLanguageTab } from '@components/solidJsTabs/tabs'
+import appNavigationController from '@core/navigation/appNavigationController'
 import { createSettingsSliderHost, type SettingsSliderHost } from './settingsSliderHost'
+import hostStyles from './settingsSliderHost.module.scss'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -235,5 +237,32 @@ describe('каркас вкладки настроек — переход (жа�
     expect(outgoing.isConnected).toBe(false)
     expect(sliderEl.children).toHaveLength(1)
     expect(incoming.classList.contains('active')).toBe(true)
+  })
+})
+
+describe('каркас вкладки настроек — слой хоста не глотает клики React-экрана', () => {
+  // React-корень настроек держит СВОИ записи навигации (`SettingsView.tsx`,
+  // `useNavLayer(true, onBack, 'left')` и ещё одну на подэкран). Хост решает
+  // «вкладки есть» по `slider.hasTabsInNavigation()` — по ТИПУ записи. Пока
+  // тип слайдера совпадал с типом React-слоёв, признак после закрытия вкладки
+  // оставался взведённым: прозрачный слой хоста (`z-index: 100`,
+  // `pointer-events: auto`) лежал поверх React-экрана, и клики умирали
+  // (стенд: открыть «Язык», вернуться, открыть «Уведомления и звуки»).
+  it('после закрытия вкладки кнопкой «назад» слой снова пропускает клики, React-слой цел', async() => {
+    let reactBacks = 0
+    const reactLayer = appNavigationController.pushItem({ type: 'left', onPop: () => { ++reactBacks } })
+
+    const tab = await openLanguage()
+    const layer = sliderEl.parentElement!
+    expect(layer.classList.contains(hostStyles.withTabs)).toBe(true)
+    await finishTransition(rootTab(), tab.container)
+
+    tab.closeBtn.click()
+    await finishTransition(tab.container, rootTab())
+
+    expect(tab.container.isConnected).toBe(false)
+    expect(layer.classList.contains(hostStyles.withTabs)).toBe(false)
+    expect(reactBacks).toBe(0)
+    appNavigationController.removeItem(reactLayer)
   })
 })
