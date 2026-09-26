@@ -25,12 +25,14 @@
        animation-level-2 — гейт CSS-анимаций портированных партиалов (миксин
        animation-level), переключение по настройке reduceMotion — фаза 7;
        rounded-sections — из разметки tweb, живой DOM его подтверждает;
-       has-horizontal-folders — папки табами над списком (а не вертикальной
-       колонкой): от него зависит показ .folders-tabs-scrollable;
+       классов режима папок (горизонтальный ряд / вертикальная колонка) здесь
+       нет, как и у tweb: их ставит эффект stores/foldersSidebar.solid.ts
+       (порт tweb stores/foldersSidebar.ts:90-112) — ряд вкладок всегда в DOM,
+       и показ .folders-tabs-scrollable решает только этот класс;
        has-auth-pages — как в tweb стоит статически в HTML; снимается
        AuthFlow/Shell после doubleRaf() (bootstrapIm.ts:60-61), пока не снят —
        глушит transition .main-column (styles/tweb/pages/_chats.scss). -->
-  <body class="rounded-sections animation-level-2 has-horizontal-folders has-auth-pages">
+  <body class="rounded-sections animation-level-2 has-auth-pages">
     <!-- Спрайт хвоста бабла — порт tweb `index.html:45,64-68`: скрытый `<svg>`
          с `<defs>` вне потока (top/left -10000px), внутри — форма-«капля»
          `symbol#message-tail-filled`, на которую ссылается

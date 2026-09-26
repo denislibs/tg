@@ -91,8 +91,10 @@
 //     в названии) не передаётся — сущностей в названии папки нет, отложенная
 //     задача 11.
 // 11. `createFolderContextMenu` (`:814-821`) — задача 7 плана.
-// 12. `setHasFolders(show)` (`:1315-1316`) — стор `foldersSidebar.solid.ts`
-//     заводит задача 8; до неё показ ряда решает только `hide` и `has-filters`.
+// 12. `setHasFolders(show)` (`:1315-1316`) пишет в стор режима
+//     `stores/foldersSidebar.solid.ts` (задача 8), а `destroy()` сбрасывает
+//     его в `false`: `hasFolders` — след владельца на `<body>`
+//     (`has-horizontal-folders`/`has-vertical-folders`), п. 1.
 // 13. `changeFiltersAllChatsKey` (`:1292-1296`, `:1320`) и слушатель `resize`
 //     (`:700-702`) не портированы — мёртвый код форка (поправка 2 плана).
 // 14. `onTabChange` (`:1092-1168`): плашка «N новых чатов» shared-папки
@@ -126,6 +128,7 @@ import FoldersTabs from '@components/foldersTabs.solid'
 import type { ScrollableContextValue } from '@components/scrollable2.solid'
 import { createSolidNodes } from '@shared/solid/mountSolid.solid'
 import useFolders from '@stores/folders.solid'
+import { useHasFolders } from '@stores/foldersSidebar.solid'
 import { useFoldersStore } from '@stores/foldersStore'
 import { ALL_FOLDER_ID } from '@core/folderIds'
 import appNavigationController, { type NavigationItem } from '@core/navigation/appNavigationController'
@@ -430,6 +433,7 @@ export class AppDialogsManager {
     this.folders.container.remove()
     this.host.style.removeProperty('--chatlist-overlay-height')
     this.chatsContainer.classList.remove('has-filters')
+    useHasFolders()[1](false) // расхождение 12
     this._suggestionContainer = undefined
     this.host = undefined
 
@@ -627,7 +631,8 @@ export class AppDialogsManager {
         this.chatsContainer.classList.toggle('has-filters', show)
       }
 
-      // `setHasFolders(show)` (`:1315-1316`) — расхождение 12, задача 8.
+      const [, setHasFolders] = useHasFolders()
+      setHasFolders(show)
 
       this.showFiltersPromise = undefined
     })

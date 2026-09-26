@@ -569,17 +569,28 @@ React-меню `openTabMenu`/`onTabContextMenu` (`useSidebarFolders.tsx:89-121`)
   состояния), `web-client/index.html`
 - Тест: `web-client/src/stores/foldersSidebar.solid.test.ts`
 
-- [ ] **Шаг 1: прочитать** `foldersSidebar.ts` целиком и `Sidebar.tsx:151-190`.
-- [ ] **Шаг 2: падающий тест**: одна папка → ни того, ни другого класса; две папки
+- [x] **Шаг 1: прочитать** `foldersSidebar.ts` целиком и `Sidebar.tsx:151-190`.
+- [x] **Шаг 2: падающий тест**: одна папка → ни того, ни другого класса; две папки
   → `has-horizontal-folders`; включили «папки слева» на широком экране →
   `has-vertical-folders`, горизонтальный снят; сузили экран → снова горизонтальный.
-- [ ] **Шаг 3: убедиться, что тест падает.**
-- [ ] **Шаг 4: реализовать**; из `index.html` класс убрать (комментарий там же
+- [x] **Шаг 3: убедиться, что тест падает.**
+- [x] **Шаг 4: реализовать**; из `index.html` класс убрать (комментарий там же
   обновить).
 
 **Готово когда:** `grep -n has-horizontal-folders web-client/index.html` пуст; на
 стенде переключение «Расположение папок» прячет/показывает ряд без перерендера
 колонки.
+
+**Факт (2026-09-26).** Стор — `stores/foldersSidebar.solid.ts`, пять расхождений в
+шапке: «показана» — сигнал, который пишет колонка (React-колонка рисуется по своему
+условию, класс обязан с ним совпадать), а не `createMemo` от настройки и ширины;
+`body.has-folders-sidebar` не ставится (его правила прячут бургер без `.is-visible`,
+у нас `is-visible` на кнопках внутри — задача 17); «свёрнута» — `collapsed` колонки;
+активный экран — сигнал от `mediaSizes` `changeScreen` (реактивного `useMediaSizes`
+нет); `useHasOpenLeftTabs`/`useIsLeftSearchActive` без читателей. `setFoldersSidebarShown`
+переехал из `Sidebar.tsx` в эффект стора (`:30-34`). Владелец сбрасывает `hasFolders`
+в `destroy()` (расхождение 12 его шапки). Тесты — `foldersSidebar.solid.test.ts`,
+`components/Sidebar.foldersMode.test.tsx`. Стенд — после слияния 7–9.
 
 ---
 

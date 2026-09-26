@@ -1,7 +1,7 @@
 import type { LangPackKey } from '@/lang'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { isUserCollapsedLeft, setFoldersSidebarShown, setOpenTabsLeftSidebar } from '../core/dom/updateColumnWidths'
+import { isUserCollapsedLeft, setOpenTabsLeftSidebar } from '../core/dom/updateColumnWidths'
 import installColumnResize from '../core/dom/installColumnResize'
 import PendingSuggestion from './sidebarLeft/pendingSuggestion'
 import classNames from '../shared/lib/classNames'
@@ -45,6 +45,7 @@ import { useSidebarFolders } from '../core/hooks/useSidebarFolders'
 import { useImperativeIsland } from '../core/hooks/useImperativeIsland'
 import { useFolders } from '../stores/foldersStore'
 import { AppDialogsManager } from '../lib/appDialogsManager'
+import { useFoldersSidebarShown, useIsSidebarCollapsed } from '../stores/foldersSidebar.solid'
 import ConnectionStatusComponent from './connectionStatus'
 import type { InputSearchStatus } from '../shared/ui/InputSearch'
 
@@ -151,9 +152,6 @@ export default function Sidebar({
   const tabsInSidebar = useSettings((st) => st.tabsInSidebar)
   const narrowScreen = useMediaQuery('(max-width:900px)')
   const foldersSidebarShown = tabsInSidebar && folders.length > 0 && !narrowScreen && !fullWidth
-  // tweb stores/foldersSidebar.ts → setFoldersSidebarShown: панель папок резервирует
-  // место, значит правая колонка начинает всплывать раньше, а чат — уже.
-  useEffect(() => { setFoldersSidebarShown(foldersSidebarShown) }, [foldersSidebarShown])
 
   // --- Ресайз левой колонки (tweb sidebarLeft/index.ts:612-635 initSidebarResize) ---
   const columnRef = useRef<HTMLDivElement>(null)
@@ -164,6 +162,23 @@ export default function Sidebar({
   const floatingLeft = useMediaQuery('(max-width:925px)')
   const [collapsedPref, setCollapsedPref] = useState(isUserCollapsedLeft)
   const collapsed = collapsedPref && !floatingLeft && !fullWidth
+  // Режим папок (tweb `stores/foldersSidebar.ts:90-112`): стор решает,
+  // горизонтальный ряд или вертикальная колонка, и ставит `body.has-*-folders`
+  // (он же резервирует место колонке — `setFoldersSidebarShown`). «Показана» и
+  // «свёрнута» сообщает колонка — она их рисует (расхождения 1 и 3 шапки
+  // стора). Слой раскладки: класс должен смениться до кадра, где колонка уже
+  // нарисована, иначе на один кадр видны и ряд, и колонка. Размонтирование
+  // сбрасывает оба факта — колонки на экране больше нет.
+  useLayoutEffect(() => {
+    const [, setShown] = useFoldersSidebarShown()
+    setShown(foldersSidebarShown)
+    return () => { setShown(false) }
+  }, [foldersSidebarShown])
+  useLayoutEffect(() => {
+    const [, setIsSidebarCollapsed] = useIsSidebarCollapsed()
+    setIsSidebarCollapsed(collapsed)
+    return () => { setIsSidebarCollapsed(false) }
+  }, [collapsed])
   // Ручка вешается один раз на живой узел — актуальные значения читаются из рефов.
   const collapsedRef = useRef(collapsed)
   collapsedRef.current = collapsed
