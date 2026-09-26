@@ -55,6 +55,30 @@ describe('PeerSelector — дерево селектора 1:1 с tweb', () => {
     expect(root.classList.contains('selector-left')).toBe(true)
   })
 
+  // tweb 690514225 снял `.selector-square …` из `_selector.scss`: раскладку ведущего
+  // чекбокса и аватара дают классы строки (`_row.scss`), полосу правого
+  // круглого чекбокса — `.selector-row-with-checkbox` (`appSelectPeers.tsx:1181-1196`).
+  it('квадратная строка — row-with-checkbox-and-media, аватар row-selection-media, чекбокс row-selection-checkbox', () => {
+    render(<PeerSelector peers={peers} mode="multi" design="square" side="left" selected={[]} onSelectedChange={() => {}} />)
+
+    const row = document.querySelector<HTMLElement>('.chatlist-chat[data-peer-id="1"]')!
+    expect(row.classList.contains('row-with-checkbox-and-media')).toBe(true)
+    expect(row.classList.contains('selector-row-with-checkbox')).toBe(false)
+    expect(row.querySelector('.dialog-avatar')!.classList.contains('row-selection-media')).toBe(true)
+    expect(row.firstElementChild!.classList.contains('row-selection-checkbox')).toBe(true)
+  })
+
+  it('круглый чекбокс справа — строка держит полосу selector-row-with-checkbox; без мультивыбора — нет', () => {
+    const { unmount } = render(<PeerSelector peers={peers} mode="multi" selected={[]} onSelectedChange={() => {}} />)
+    const row = document.querySelector<HTMLElement>('.chatlist-chat[data-peer-id="1"]')!
+    expect(row.classList.contains('selector-row-with-checkbox')).toBe(true)
+    expect(row.classList.contains('row-with-checkbox-and-media')).toBe(false)
+    unmount()
+
+    render(<PeerSelector peers={peers} />)
+    expect(document.querySelector('.chatlist-chat[data-peer-id="1"]')!.classList.contains('selector-row-with-checkbox')).toBe(false)
+  })
+
   it('скроллер, градиент и секция поиска — классы tweb', () => {
     render(<PeerSelector peers={peers} />)
 
