@@ -863,3 +863,29 @@ describe('ChatContextMenu — панель быстрых реакций (tweb :
     expect(ChatContextMenu.getReactionsMenuPadding()).toEqual({ top: 44, right: 40, left: 56 })
   })
 })
+
+describe('ChatContextMenu — «Выбрать» у служебного сообщения (tweb e9428f2a9)', () => {
+  it('служебное сообщение выделяется, пункт «Выбрать» в меню есть', async() => {
+    putMirrorPage(KEY, [{
+      _: 'messageService',
+      id: 1,
+      pFlags: {},
+      peerId: PEER,
+      fromId: PEER,
+      peer_id: { _: 'peerUser', user_id: PEER },
+      date: 1700000001,
+      action: { _: 'messageActionChatJoinedByLink', inviter_id: PEER },
+    } as unknown as MyMessage])
+    const { bubble, content } = makeBubble(1, { classes: ['service'] })
+    container.append(bubble)
+
+    const selection = new ChatSelection(new FakeBubbles(container), { messages: {} })
+    const menu = new ChatContextMenu(makeChat(), { selection }, makeManagers(), makePopups())
+    menu.attachTo(container)
+
+    rightClick(content)
+    await flush()
+
+    expect(itemTexts()).toContain('Select')
+  })
+})

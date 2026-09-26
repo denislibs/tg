@@ -98,13 +98,22 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 const checkbox = (element: HTMLElement) =>
   element.querySelector<HTMLInputElement>(':scope > label.bubble-select-checkbox > input')
 
-describe('canSelectBubble (tweb selection.ts:999-1006)', () => {
-  const cases = ['service', 'is-outgoing', 'is-error', 'bubble-first', 'avoid-selection']
+describe('canSelectBubble (tweb selection.ts:999-1006; e9428f2a9 — 812502980 :1037-1046)', () => {
+  // `service` из списка ушёл (e9428f2a9): служебное выделяется, дата — нет
+  const cases = ['is-date', 'is-outgoing', 'is-error', 'bubble-first', 'avoid-selection']
 
   it('обычный бабл выделяется', () => {
     const bubble = makeBubble(1)
     const { selection } = setup([bubble])
     expect(selection.canSelectBubble(bubble)).toBe(true)
+  })
+
+  it('служебное сообщение выделяется (его можно удалить, как обычное)', () => {
+    const bubble = makeBubble(1, ['service'])
+    const { selection } = setup([bubble])
+    expect(selection.canSelectBubble(bubble)).toBe(true)
+    selection.toggleByElement(bubble)
+    expect(selection.length()).toBe(1)
   })
 
   for (const className of cases) {
@@ -183,15 +192,17 @@ describe('чекбоксы по всей ленте (tweb :862-885, :346-378)', 
   it('вход в режим досыпает чекбоксы всем отрисованным баблам', () => {
     const b1 = makeBubble(1)
     const b2 = makeBubble(2)
-    const b3 = makeBubble(3, ['service'])
-    const { selection } = setup([b1, b2, b3])
+    const b3 = makeBubble(3, ['service', 'is-date'])
+    const b4 = makeBubble(4, ['service'])
+    const { selection } = setup([b1, b2, b3, b4])
 
     selection.toggleByElement(b1)
 
     expect(checkbox(b1)).not.toBeNull()
     expect(checkbox(b2)).not.toBeNull()
-    // service выделять нельзя — чекбокса нет (tweb :888)
+    // дату выделять нельзя — чекбокса нет (tweb :888); служебное — можно (e9428f2a9)
     expect(checkbox(b3)).toBeNull()
+    expect(checkbox(b4)).not.toBeNull()
     expect(checkbox(b2)!.checked).toBe(false)
   })
 

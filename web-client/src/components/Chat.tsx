@@ -505,6 +505,10 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // оригинале клик по счётчику зовёт `selection.cancelSelection`
   // (tweb selection.ts:1080-1082).
   const [selected, setSelected] = useState<Set<number>>(() => new Set())
+  const selectedHasService = useMemo(
+    () => selected.size > 0 && mirrorMsgs.some((m) => m._ === 'messageService' && selected.has(m.id)),
+    [selected, mirrorMsgs],
+  )
   const [selecting, setSelecting] = useState(false)
   const clearSelection = useEvent(() => { feedApi.current?.cancelSelection() })
   // Вход в режим выделения из меню шапки — порт tweb topbar.ts:560
@@ -1422,7 +1426,10 @@ export default function Chat({ chat, onBack, thread }: Props) {
                 onClear={clearSelection}
                 onForward={() => openForwardFor(numericChatId, [...selected])}
                 onDelete={() => openDeleteFor(numericChatId, [...selected])}
-                canForward={!isSecret}
+                // tweb e9428f2a9: служебное сообщение теперь выделяется, а переслать
+                // его нельзя (`canForward` у messageService ложен) — плашка прячет
+                // «Переслать», как только такое попало в выделение.
+                canForward={!isSecret && !selectedHasService}
               />
             )}
 

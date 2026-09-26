@@ -35,3 +35,15 @@ describe('круговое раскрытие темы (tweb base.scss:1960-1972
     expect(rule('.reverse::view-transition-old(root)')).toMatch(/z-index:\s*2/)
   })
 })
+
+describe('выделение служебных сообщений (tweb e9428f2a9, _chatBubble.scss)', () => {
+  it('пока идёт выделение, контент служебной пилюли не ловит клики — кроме даты', () => {
+    expect(rule('.bubbles.is-selecting .bubble.service:not(.is-date) .bubble-content-wrapper'))
+      .toMatch(/pointer-events:\s*none/)
+  })
+
+  it('смещение чекбокса — одно правило .1875rem, отдельной ветки «рядом с аватаром» нет', () => {
+    expect(rule('.bubble > .bubble-select-checkbox')).toMatch(/bottom:\s*0?\.1875rem/)
+    expect(css).not.toMatch(/\.bubbles-inner\.is-chat \.bubble\.is-group-last\.is-in > \.bubble-select-checkbox/)
+  })
+})

@@ -898,7 +898,8 @@ export default class ChatContextMenu {
       icon: 'select',
       text: 'Message.Context.Select',
       onClick: this.onSelectClick,
-      verify: () => !!this.message && this.message._ !== 'messageService' && !this.isSelected && this.isSelectable,
+      // tweb e9428f2a9: у служебного сообщения «Выбрать» тоже есть
+      verify: () => !!this.message && !this.isSelected && this.isSelectable,
       withSelection: true,
     }, {
       icon: 'select',

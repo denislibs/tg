@@ -31,10 +31,11 @@
  * Остальная дельта базы 812502980 сюда НЕ перенесена — у неё свой предмет:
  * ключ протяжки `getKeyFromElement`/`clearSelection`/`dragThreshold`/
  * `toggleElementSelected`/`ignoreMove` (60a83a6f1, выделение чатов в
- * чатлисте), aria-роли чекбокса (472e3e76b), выделяемые служебные и
- * эфемерные группы в `canSelectBubble` (e9428f2a9, 2117883fd), разметка
+ * чатлисте), aria-роли чекбокса (472e3e76b), эфемерные группы в
+ * `canSelectBubble` (2117883fd), разметка
  * `.bubble-select-checkbox > .checkbox-field-input` (ef41b29db) и
- * `getSelectionElementFromTarget` (3d524908e).
+ * `getSelectionElementFromTarget` (3d524908e). Выделяемые служебные
+ * (e9428f2a9) перенесены позже — волной 1 дельты.
  *
  * ── Границы порта (у каждой — предмет, а не «у нас так») ────────────────────
  *  • ПАНЕЛЬ ДЕЙСТВИЙ (`onToggleSelection` :1008-1136, `onUpdateContainer`
@@ -1093,7 +1094,12 @@ export default class ChatSelection extends AppSelection {
   /** tweb :999-1006 */
   public canSelectBubble(bubble: HTMLElement | null | undefined): boolean {
     return !!bubble &&
-      !bubble.classList.contains('service') &&
+      // * tweb e9428f2a9 (812502980 :1037-1046): a service message IS selectable
+      // * (it can be deleted just like a regular one) — only the bubbles that stand
+      // * for no message at all are not: date separators. Two more exclusions of the
+      // * original have no subject here: the admin log (`ChatType.Logs`) and the
+      // * choose-messages report flow (`isReportSelection`) are not ported.
+      !bubble.classList.contains('is-date') &&
       !bubble.classList.contains('is-outgoing') &&
       !bubble.classList.contains('is-error') &&
       !bubble.classList.contains('bubble-first') &&
