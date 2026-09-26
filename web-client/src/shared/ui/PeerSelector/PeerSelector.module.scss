@@ -17,6 +17,21 @@
   min-height: 360px;
 }
 
+// В теле попапа пересылки (единственный попап с селектором, `ForwardPicker`)
+// хост — аналог tweb `.popup-forward .tabs-container { height: 100% }`
+// (`popups/_forward.scss`) в `.popup-body` без прокрутки (`_popup.scss:192-200`):
+// высоту хосту даёт тело, а прокручивает `.selector-scrollable` — в нём липнут
+// поиск и ряд папок, по нему ряд везёт список к началу
+// (`components/popups/pickUserFolderTabs.ts`). Наше тело само скроллер
+// (`Popup.module.scss`, `.body.body`), и без этого правила хост рос по
+// содержимому — прокручивалось тело. Нижняя граница сайдбара снята: у tweb её
+// держит `.selector-height-container` ВНУТРИ скроллера (`_selector.scss`), а на
+// низком окне хост иначе вылез бы из тела и тело снова стало бы скроллером.
+:global(.popup-forward) :global(.popup-body) > .host {
+  height: 100%;
+  min-height: 0;
+}
+
 // Действия строки участника (restrict / kick / ban / unban). В tweb их нет —
 // там то же самое живёт в контекстном меню участника
 // (`helpers/dom/createParticipantContextMenu`), которое мы не портировали.
