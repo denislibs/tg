@@ -30,12 +30,14 @@
 //  • `options` в оригинале богаче (`dialog`, `onlyFirstName`, `limitSymbols`,
 //    `withIcons`/`withPremiumIcon`, `threadId`, `asAllChats`, …) — у каждого из
 //    них свой предмет (Saved Messages, топики форума, значки премиума/скам,
-//    monoforum), которого у ленты на этом этапе нет. Оставлены три:
+//    monoforum), которого у ленты на этом этапе нет. Оставлены четыре:
 //    `peerId` (обычный автор), `fromName` (имя строкой, когда пира нет —
 //    порт того же поля tweb: скрытый форвард, а у нас send-as, где заголовок
-//    личности приезжает прямо в сообщении) и `onlyFirstName` — автор в превью
+//    личности приезжает прямо в сообщении), `onlyFirstName` — автор в превью
 //    строки чатлиста (`components/dialogRow.ts::setLastMessageN`, tweb
-//    `appDialogsManager.ts:2168-2171`).
+//    `appDialogsManager.ts:2168-2171`) и `dialog` — свой пир как «Избранное»
+//    (peerTitle.ts:140-148; потребитель — чип пира глобального поиска,
+//    `components/selectorEntity.ts`; ветка `meAsNotes` — без предмета).
 //  • Имя идёт через `wrapEmojiText` (`lib/richtext/wrapEmojiText.ts`) — как в
 //    оригинале, где его прогоняет `getPeerTitle` (`wrappers/getPeerTitle.ts:91`,
 //    `plainText` там не передаётся) и ветка `fromName` самого `PeerTitle`
@@ -46,6 +48,9 @@ import { cachedPeer, subscribePeerMirror } from '@core/peerCache'
 import { getPeerTitle } from '@core/peers/getPeerTitle'
 import { HIDDEN_PEER_ID } from '@core/peers/peerId'
 import { wrapEmojiText } from '@lib/richtext'
+import { i18n } from '@lib/langPack'
+import rootScope from '@lib/rootScope'
+import replaceContent from '@helpers/dom/replaceContent'
 
 /** Срез менеджеров, который нужен узлу имени: объявить пробел зеркала. */
 export interface PeerTitleManagers {
@@ -59,6 +64,8 @@ export interface PeerTitleOptions {
   fromName?: string
   /** только имя (tweb `onlyFirstName`) — автор в превью строки чатлиста */
   onlyFirstName?: boolean
+  /** свой пир — «Избранное» (tweb `dialog`, peerTitle.ts:140) */
+  dialog?: boolean
   middleware: Middleware
   managers: PeerTitleManagers
 }
@@ -104,7 +111,7 @@ export default class PeerTitle {
 
   /** Порт tweb `update` в применимом объёме (peerTitle.ts:104-200). */
   public update() {
-    const { fromName, peerId, onlyFirstName, managers, middleware } = this.options
+    const { fromName, peerId, onlyFirstName, dialog, managers, middleware } = this.options
     if (!middleware()) {
       return
     }
@@ -115,6 +122,13 @@ export default class PeerTitle {
     }
 
     if (peerId === undefined) {
+      return
+    }
+
+    // peerTitle.ts:140-148 — «Избранное» узлом ядра: на смену языка его
+    // перепишет само ядро (`applyLangPack`), не подписка на зеркало.
+    if (peerId === rootScope.myId && dialog) {
+      replaceContent(this.element, i18n(onlyFirstName ? 'Saved' : 'SavedMessages'))
       return
     }
 
