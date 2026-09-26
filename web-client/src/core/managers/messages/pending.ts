@@ -788,13 +788,21 @@ export function newPendingMethods(ctx: PendingCtx) {
      *  нашей же отправки, снимаем временный бабл из SSOT воркера. Вставку самого
      *  сообщения делает вызывающий (cacheLive), здесь только уборка временного:
      *  без неё в SSOT осталось бы два объекта, и переоткрытие чата показало бы
-     *  «отправляется…» рядом с отправленным. */
-    checkPendingMessage(clientMsgId: string | undefined): void {
-      if (!clientMsgId) return
+     *  «отправляется…» рядом с отправленным.
+     *
+     *  Возвращает `sequential` снятого бабла — вызывающий кладёт его в `insert`
+     *  финального, ровно как оригинал кладёт `pendingData.sequential` в
+     *  `history_update` (:11946-11953). Эхо финализирует бабл наравне с ack
+     *  (какой кадр придёт первым, не гарантировано), и без признака лента шла
+     *  общим путём: номер сервера первого из двух баблов подряд больше
+     *  временного номера второго, и первый вставал под ещё неотправленный. */
+    checkPendingMessage(clientMsgId: string | undefined): boolean | undefined {
+      if (!clientMsgId) return undefined
       const d = pendingByClientId.get(clientMsgId)
-      if (!d) return
+      if (!d) return undefined
       pendingByClientId.delete(clientMsgId)
       dropTemp(d)
+      return d.sequential
     },
 
     /** Есть ли ещё неотправленные — для тестов и диагностики. */

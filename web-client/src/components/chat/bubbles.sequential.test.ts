@@ -24,10 +24,12 @@ import rootScope from '@lib/rootScope'
 import SlicedArray, { SliceEnd } from '@core/history/slicedArray'
 import { applyOpsToMirror, resetMessagesMirror } from '@core/history/messagesMirror'
 import { newPendingMethods } from '@core/managers/messages/pending'
+import { newMessagesManager } from '@core/managers/messagesManager'
+import type { RestClient } from '@core/net/restClient'
 import { resetPeerMirror } from '@core/peerCache'
-import type { MessageReal, MyMessage } from '@core/models'
+import type { MessageReal, MyMessage, RawMessage } from '@core/models'
 import { generateMessageId } from '@core/history/messageId'
-import { makeMessage } from '@core/messages/testMessage'
+import { makeMessage, makeRawMessage } from '@core/messages/testMessage'
 import type { MessageOp } from '@core/realtime/messageOps'
 import type { HistoryResult } from '@core/managers/messagesManager'
 import ChatBubbles, { makeFullMid, type BubblesManagers } from './bubbles'
@@ -301,5 +303,62 @@ describe('sequential: ветка ленты (порт tweb bubbles.ts:802-819)',
     expect(groupBubbles).toHaveBeenCalledTimes(1)
     expect(Array.from(bubbles.chatInner.querySelectorAll('.bubble:not(.service)')).map((el) => el.getAttribute('data-mid')))
       .toEqual([String(cid(800)), String(cid(900))])
+  })
+})
+
+// Эхо РАНЬШЕ ack — обычное дело на стенде: `new_message` идёт общей воронкой
+// обновлений, `message_ack` — прямым ответом сокета, и порядок между ними не
+// гарантирован. Тогда бабл финализирует не ack, а эхо — порт tweb
+// `checkPendingMessage` (appMessagesManager.ts:11940-11958), и оригинал кладёт
+// в `history_update` тот же `pendingData.sequential`, что и любая другая
+// финализация. Без него лента шла общим путём: номер сервера первого бабла
+// (…12) больше временного номера второго (…11.0002), и первый вставал ПОД
+// ещё неотправленный второй, а ack второго (с признаком) оставлял его на
+// месте — два стикера подряд вставали в обратном порядке (найдено живьём).
+describe('sequential: эхо своей отправки раньше ack (порт checkPendingMessage)', () => {
+  it('две отправки подряд, эхо первой обгоняет её ack — порядок баблов как у отправки', async () => {
+    const rest = {
+      get: async () => ({ messages: [], count: 0 }),
+      post: async () => ({}),
+    } as unknown as RestClient
+    const mgr = newMessagesManager({
+      rest,
+      getMeId: () => ME,
+      broadcast: (_e, p) => applyOpsToMirror((p as { ops: MessageOp[] }).ops),
+      send: () => {},
+    })
+    // Срез окна владельца доведён до низа истории — только в такой встаёт бабл.
+    await mgr.getHistory({ peerId: CHAT, offsetId: 0, addOffset: 0, limit: 40 })
+
+    bubbles = new ChatBubbles({ peerId: CHAT, messagesStorageKey: KEY, container: document.createElement('div'), bubblesViewport: document.createElement('div') }, managers)
+    await openFeed(bubbles)
+
+    const send = (clientMsgId: string) => mgr.sendText({
+      peerId: CHAT, text: clientMsgId, clientMsgId, type: 'text', entities: null,
+      threadId: null, groupedId: undefined, paidMediaPrice: null,
+      optimistic: { senderId: ME },
+    })
+    await send('c1')
+    await send('c2')
+    await settle()
+
+    const createdAt = new Date().toISOString()
+    const echo = (id: number, randomId: string) => applyOpsToMirror(mgr.cacheLive({
+      _: 'updateNewMessage',
+      message: makeRawMessage({ id, peerId: CHAT, fromId: ME, out: true, text: randomId, createdAt, randomId }) as RawMessage,
+    }))
+    const ack = (clientMsgId: string, id: number) =>
+      applyOpsToMirror(mgr.ackPendingMessage({ client_msg_id: clientMsgId, id, created_at: createdAt }))
+
+    echo(900, 'c1') // эхо первой — раньше её ack
+    await settle()
+    ack('c1', 900) // регистрации уже нет — no-op
+    ack('c2', 901)
+    await settle()
+    echo(901, 'c2') // ack-then-echo — дубль номера, no-op
+    await settle()
+
+    expect(Array.from(bubbles.chatInner.querySelectorAll('.bubble:not(.service)')).map((el) => el.getAttribute('data-mid')))
+      .toEqual([String(cid(900)), String(cid(901))])
   })
 })
