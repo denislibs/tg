@@ -27,6 +27,9 @@ vi.mock('@helpers/blur', () => ({
   }),
 }))
 
+/** Что отдаёт `init()` ядра; тест «молчащего рендерера» подменяет на вечный промис. */
+const coreInit: { result: () => boolean | Promise<boolean> } = { result: () => true }
+
 class FakeCore {
   public inited = false
   public lastDrawTime = 0
@@ -34,7 +37,7 @@ class FakeCore {
   public config: unknown
   constructor(public canvas: HTMLCanvasElement, config: unknown) { this.config = config }
   resize(_w: number, _h: number, dpr: number, config: unknown) { this.dpr = dpr; this.config = config }
-  init() { this.inited = true; return true }
+  init() { this.inited = true; return coreInit.result() }
   draw() {}
   destroy() { this.inited = false }
 }
@@ -111,6 +114,7 @@ beforeEach(() => {
 afterEach(() => {
   helpers.splice(0).forEach((h) => h.destroy())
   vi.unstubAllGlobals()
+  coreInit.result = () => true
 })
 
 describe('wrapMediaSpoiler — дерево оригинала', () => {
@@ -156,6 +160,30 @@ describe('wrapMediaSpoiler — дерево оригинала', () => {
       width: 100, height: 50, middleware: helper.get(), animationGroup: 'chat',
     })
     expect(container?.querySelector('canvas.media-spoiler-thumbnail')).toBeTruthy()
+  })
+})
+
+// tweb 293cb4509: канва точек — украшение поверх УЖЕ закрывающего медиа
+// размытого превью. Ждать её вечно нельзя: у вызывающего (лента, альбом, строка
+// чатлиста, сетка shared media) крышка встаёт в DOM только после этого ответа,
+// и молчащий рендерер оставлял медиа под спойлером открытым.
+describe('wrapMediaSpoiler — молчащий рендерер', () => {
+  it('готовность точек, которая не оседает, ждётся не дольше дедлайна', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      coreInit.result = () => new Promise<boolean>(() => {})
+
+      let container: HTMLElement | undefined
+      void makeSpoiler().then((c) => { container = c })
+
+      await vi.advanceTimersByTimeAsync(1999)
+      expect(container).toBeUndefined()
+
+      await vi.advanceTimersByTimeAsync(1)
+      expect(container?.classList.contains('media-spoiler-container')).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

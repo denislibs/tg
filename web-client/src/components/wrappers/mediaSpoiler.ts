@@ -19,12 +19,17 @@
 import cancelEvent from '@helpers/dom/cancelEvent'
 import safePlay from '@helpers/dom/safePlay'
 import type { Middleware } from '@helpers/middleware'
+import withTimeout from '@helpers/schedulers/withTimeout'
 import { setTransition } from '@core/dom/setTransition'
 import { getImageFromStrippedThumb } from '@core/media/getStrippedThumbIfNeeded'
 import { getStrippedThumb, type MyDocument, type MyPhoto } from '@core/media/messageMedia'
 import DotRenderer from '@components/dotRenderer'
 import type { AnimationItemGroup } from '@components/animationIntersector'
 import type { DotRendererConfig } from '@lib/spoiler/dotRendererCore'
+
+// * the dot canvas is decoration on top of an already-covering blurred thumbnail; never let it
+// * hold up the caller for longer than this (tweb 293cb4509)
+const SPOILER_READY_TIMEOUT = 2000
 
 export function toggleMediaSpoiler(options: {
   mediaSpoiler: HTMLElement
@@ -150,7 +155,12 @@ export default async function wrapMediaSpoiler(options: WrapMediaSpoilerOptions)
   const { container, readyResult } = wrapped
 
   if (readyResult instanceof Promise) {
-    await readyResult
+    // tweb 293cb4509: ожидание здесь лишь избавляет от пустого первого кадра
+    // канвы точек — медиа уже закрыто размытым превью под ней. Ждать вечно
+    // нельзя: вызывающий вставляет крышку в DOM только после этого ответа, и
+    // молчащий рендерер оставлял медиа под спойлером открытым. После дедлайна
+    // отдаём контейнер, точки появятся позже, если рендерер проснётся.
+    await withTimeout<unknown>(readyResult, SPOILER_READY_TIMEOUT)
   }
 
   return container

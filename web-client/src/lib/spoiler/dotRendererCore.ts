@@ -110,6 +110,10 @@ const UNIFORMS: Readonly<Record<string, keyof DotRendererConfig>> = {
   noiseMovement: 'noiseMovement',
 }
 
+// tweb 293cb4509: шейдер со своего origin — несколько КБ; всё, что медленнее, —
+// повисший запрос, а не медленный
+const SHADER_FETCH_TIMEOUT = 15000
+
 // 4 атрибута частицы (position vec2, velocity vec2, time float, duration float) —
 // 6 float'ов, 24 байта на частицу.
 const PARTICLE_STRIDE = 24
@@ -188,11 +192,23 @@ export default class DotRendererCore {
     const shader = gl.createShader(type)
     if (!shader) throw new Error('createShader failed')
 
-    const shaderTextResult = (DotRendererCore.shaderTexts[url] ??= fetch(url)
+    // tweb 293cb4509: мемоизация ниже ключуется url и, раз встав (`??=`), не
+    // переписывается — повисший или упавший запрос отдавался бы каждой
+    // следующей попытке навсегда. Запрос ограничен по времени, а упавший
+    // снимается с кэша: следующий спойлер пробует снова, а не наследует
+    // мёртвый промис.
+    const shaderTextResult = (DotRendererCore.shaderTexts[url] ??= fetch(url, { signal: AbortSignal.timeout(SHADER_FETCH_TIMEOUT) })
       .then((response) => response.text())
       // tweb дописывает случайный комментарий: одинаковый исходник два раза —
       // это шанс поймать кэш скомпилированной программы у драйвера
-      .then((text) => (DotRendererCore.shaderTexts[url] = text + '\n//' + Math.random())))
+      .then((text) => (DotRendererCore.shaderTexts[url] = text + '\n//' + Math.random()))
+      .catch((err: unknown) => {
+        if (DotRendererCore.shaderTexts[url] instanceof Promise) {
+          delete DotRendererCore.shaderTexts[url]
+        }
+
+        throw err
+      }))
 
     return callbackify(shaderTextResult, (shaderText) => {
       gl.shaderSource(shader, shaderText)
