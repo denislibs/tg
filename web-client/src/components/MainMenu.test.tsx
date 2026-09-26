@@ -50,14 +50,15 @@ describe('MainMenu — дерево бургер-меню 1:1 с tweb', () => {
     mount()
     const trigger = document.querySelector('.btn-menu-item.submenu-trigger')!
 
-    // Панель, как и в tweb, ВСЕГДА в DOM — показ/скрытие только классом
-    // `.active` (_button.scss:98-212), поэтому до наведения проверяем именно его.
+    // Подменю, как и в tweb, собирается по требованию — `createSubmenuTrigger.ts`
+    // отдаёт `createMenu` в `floatingButtonMenu.ts`, тот вставляет панель на
+    // наведении (:66) и снимает после закрытия (:73). До наведения его нет.
+    expect(document.querySelector('.btn-menu-submenu')).toBeNull()
+
+    act(() => { fireEvent.mouseEnter(trigger) })
     const sub = document.querySelector('.btn-menu-submenu')!
     expect(sub).not.toBeNull()
     expect(sub.classList.contains('sidebar-tools-submenu')).toBe(true)
-    expect(sub.classList.contains('active')).toBe(false)
-
-    act(() => { fireEvent.mouseEnter(trigger) })
     // `.active` вешается кадром позже (requestAnimationFrame в Menu.tsx)
     await act(async () => { await new Promise((r) => requestAnimationFrame(r)) })
 

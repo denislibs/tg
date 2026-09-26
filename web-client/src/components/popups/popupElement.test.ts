@@ -14,6 +14,22 @@ class TestPopup extends PopupElement {
     super(className, options)
     if(buttons) this.setButtons(buttons)
   }
+
+  public replaceButtons(buttons: PopupButton[]): void {
+    this.setButtons(buttons)
+  }
+
+  public get renderMiddlewareHelper() {
+    return this.middlewareHelper
+  }
+
+  public get root(): HTMLElement {
+    return this.element
+  }
+
+  public get buttonsRoot(): HTMLElement | undefined {
+    return this.buttonsEl
+  }
 }
 
 afterEach(() => {
@@ -95,6 +111,51 @@ describe('PopupElement — база (порт tweb popups/index.ts)', () => {
     buttons[1].dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
     expect(onDelete).toHaveBeenCalledTimes(1)
     expect(root.classList.contains('hiding')).toBe(true)
+  })
+
+  // tweb 1a5b40d8b (`popupTeardownOrder.test.ts`). Два срока жизни попапа
+  // разведены: реакция на события кончается на закрытии, а содержимое
+  // (аватар `PopupPeer`, всё, что висит на `middlewareHelper`) живёт, пока
+  // узел ещё доигрывает `.hiding`, и гаснет, только когда его сняли из DOM.
+  it('на закрытии гасит слушатели, а мидлварь — только после снятия узла из DOM (tweb 1a5b40d8b)', () => {
+    vi.useFakeTimers()
+    const popup = new TestPopup('popup-teardown-test', { closable: true, body: true })
+    popup.show()
+    const root = popup.root
+
+    // взят заранее: после clean хелпер выдаёт СВЕЖУЮ мидлварь
+    const middleware = popup.renderMiddlewareHelper.get()
+    const phases: Array<{ name: string, connected: boolean }> = []
+    middleware.onDestroy(() => phases.push({ name: 'render', connected: root.isConnected }))
+    popup.addEventListener('closeAfterTimeout', () => phases.push({ name: 'closeAfterTimeout', connected: root.isConnected }))
+
+    popup.forceHide()
+
+    // события уже не ловим — попап закрыт, хотя ещё гаснет на экране
+    const e = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    window.dispatchEvent(e)
+    expect(e.defaultPrevented).toBe(false)
+    // ...но содержимое ещё живо
+    expect(middleware()).toBe(true)
+    expect(phases).toEqual([])
+
+    vi.advanceTimersByTime(250)
+    expect(phases).toEqual([
+      { name: 'closeAfterTimeout', connected: false },
+      { name: 'render', connected: false },
+    ])
+    expect(middleware()).toBe(false)
+  })
+
+  it('повторный setButtons снимает обработчики прежнего набора кнопок (tweb 1a5b40d8b)', () => {
+    const first = vi.fn()
+    const popup = new TestPopup('popup-rebuttons-test', {}, [{ langKey: 'Cancel', callback: first }])
+    const firstButton = popup.buttonsRoot!.querySelector('button')!
+
+    popup.replaceButtons([{ langKey: 'OK', callback: vi.fn() }])
+
+    firstButton.dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
+    expect(first).not.toHaveBeenCalled()
   })
 
   it('destroy() снимает слушатели: после него Esc никем не перехватывается', () => {

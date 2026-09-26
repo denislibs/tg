@@ -14,7 +14,7 @@
 | S4 | Распаковка TGS без лимита размера (zip-бомба). Долг ещё со старой базы | `web-client/src/core/stickers/tgs.ts:15`, `web-client/src/lib/lottie/lottieLoader.ts:180` | f3733adc2 (есть уже в `e52b5d931`) | S | в работе — там же |
 | S5 | Мост Mini App не проверяет `e.origin` входящих `postMessage` | обработчик моста веб-приложений (уточняется в фиксе) | b59a02302 | S | в работе — там же |
 | S6 | E2E-звонки: нет commitment перед показом эмодзи SAS — сервер-посредник может подобрать совпадающие эмодзи и незаметно встать между собеседниками (MITM) | `web-client/src/core/calls/callEngine.ts` | afb5587c8 (класс атаки) | M | не начато — нужна схема commit-reveal; решение за пользователем |
-| S7 | Неклонируемый payload роняет `invoke` синхронно и оставляет висящую запись в `awaiting` | `web-client/src/rpc/superMessagePort.ts` | 4c5a2373a | S | не начато |
+| S7 | Неклонируемый payload роняет `invoke` синхронно и оставляет висящую запись в `awaiting` | `web-client/src/rpc/superMessagePort.ts` | 4c5a2373a | S | перенесено — ветка `fix/w1-animations-memory`: `post()` реджектит неотправленный invoke `DATA_CLONE_ERROR`, результат заменяет явной ошибкой |
 | S8 | Проверка поддельных доменов в ссылках (punycode) и нормализация протокола в `safeWindowOpen` не портированы; упираются в отсутствие исполнителя `data-anchor-action` и вендорного `convertPunycode` | `web-client/src/lib/richtext/url.ts`, открытие ссылок | 16bf5ed15 → 3501e76c9 | M | не начато — волна 2G |
 | S9 | Средний клик по замаскированной ссылке открывает её без подтверждения «Открыть ссылку?» — у нас обрабатывается только `click` | обработчик замаскированных ссылок | e96e06c37 | S | не начато |
 
@@ -42,18 +42,18 @@
 | B8 | Бесконечная догрузка в профиле: после каждой загрузки снова зовётся `checkForTriggers`, а у вкладки `savedDialogs` флаг `loaded` не ставится никогда (`canLoadMediaTab` всегда true). В Избранном с короткой вкладкой «Чаты» — цикл запросов | `web-client/src/components/appSearchSuper.ts:1921-1932`, `:1622-1642` | fb18166dc (`ScrollableRefiller`) | M |
 | B9 | Вкладка, которой не было при открытии профиля, не появляется до переоткрытия: `setCounter` не трогает `hide`, а `sharedMediaHistories.ts` не считает сообщения для скрытой вкладки | `appSearchSuper.ts:911`, `web-client/src/core/sharedMediaHistories.ts` | ca1416807 | M |
 | B10 | `horizontalMenu.selectTarget` читает `children[prevId]` у пропавшей предыдущей вкладки (удаление последней папки / вкладки) | `web-client/src/components/horizontalMenu.ts:195` | guard из 1ca7cb99e | S |
-| B11 | `animationIntersector`: проверка «элемент вне DOM» стоит ниже выхода по `locked` — видео-аватарки не освобождаются; у нас обходной `releaseVideoAvatars` | `web-client/src/components/animationIntersector.ts:355`, `peerProfileAvatars.ts:1219-1240` | 88ee036f1 → c1c10b8c6 | M |
+| B11 | `animationIntersector`: проверка «элемент вне DOM» стоит ниже выхода по `locked` — видео-аватарки не освобождаются; у нас обходной `releaseVideoAvatars`. **Перенесено** (ветка `fix/w1-animations-memory`): снятие выше `locked`, пауза видео; `releaseVideoAvatars` снят — видео-аватарка профиля живёт на `controlled: middleware` + `clearMediaElementSource`; `z-index` у `.avatar-video` снят. `createAvatarVideo` (лимит трёх повторов) — когда `avatar.ts` научится видео | `web-client/src/components/animationIntersector.ts:355`, `peerProfileAvatars.ts:1219-1240` | 88ee036f1 → c1c10b8c6 | M |
 | B12 | Наше «расхождение 2» в `sharedMediaHistories.ts` в tweb исправлено (`idx !== -1`) — снять пометку и выровнять | `sharedMediaHistories.ts` | (часть 1) | S |
 
 ### Анимации, скролл, память
 
 | # | Что | Где у нас | Коммит tweb | Размер |
 |---|---|---|---|---|
-| B13 | `animationIntersector` обрабатывает только первый item элемента, `unobserve` безусловный, плеер ещё не вставленного элемента отбирается сразу. Проявление: обезьянка на экране входа (`AuthCardsHost mode="outin"` + `TrackingMonkey`) может пропадать | `animationIntersector.ts` | cab52547f | S |
+| B13 | `animationIntersector` обрабатывает только первый item элемента, `unobserve` безусловный, плеер ещё не вставленного элемента отбирается сразу. Проявление: обезьянка на экране входа (`AuthCardsHost mode="outin"` + `TrackingMonkey`) может пропадать. **Перенесено** (ветка `fix/w1-animations-memory`), пин сценария обезьянки — `animationIntersector.test.ts` | `animationIntersector.ts` | cab52547f | S |
 | B14 | Утечка в `Scrollable`: каждый экземпляр вешает свой `window.resize` и подписку на heavy-animation | `web-client/src/components/scrollable.ts:186-211` | ffd925068 (`WeakRefSet` + общий слушатель) | M |
-| B15 | Аватарки держат ресурсы после ухода из DOM | аватарки | e19e8831d | S |
-| B16 | Попап гасит мидлварь до окончания анимации скрытия | попапы | 1a5b40d8b | S |
-| B17 | Нет гарда для mid без сообщения в загрузчике медиавьювера | `web-client/src/components/mediaViewer/listLoader.ts` | c934ddd1e | S |
+| B15 | Аватарки держат ресурсы после ухода из DOM. **Перенесено** (ветка `fix/w1-animations-memory`): реестр `live` на WeakRef + `avatarByElement` + FinalizationRegistry, пин через `gc` — `avatar.registry.test.ts` | `web-client/src/components/avatar.ts` | e19e8831d | S |
+| B16 | Попап гасит мидлварь до окончания анимации скрытия. **Перенесено** (ветка `fix/w1-animations-memory`): `middlewareHelper.destroy()` в 250мс-таймере, `buttonsListenerSetter` | `web-client/src/components/popups/popupElement.ts` | 1a5b40d8b | S |
+| B17 | Нет гарда для mid без сообщения в загрузчике медиавьювера. **Перенесено** (ветка `fix/w1-animations-memory`) ради паритета: у наших источников дыр нет (`Chat.tsx::loadMoreMedia`, `appSearchSuper.ts::loadMoreMedia` берут сообщения из ответа сервера) | `web-client/src/components/mediaViewer/listLoader.ts` | c934ddd1e | S |
 
 ### Чатлист, меню, ссылки
 
@@ -88,6 +88,7 @@
 | K2 | «Удалить только у себя» не выкидывает сообщение из `/chats/{id}/media` | backend | там же |
 | K3 | После перезагрузки страницы шапки цитат подписаны «Удалённый аккаунт», хотя авторы баблов подписаны верно | лента | там же |
 | K4 | Флейк `wsClient.test.ts` «кадры до загрузки кодека»: `vi.waitFor` ждёт 1 с, динамический `import('./tlFrames')` под нагрузкой не укладывается | `web-client/src/core/net/wsClient.test.ts:93` | 2026-09-26 |
+| K5 | В body висели скрытые `.btn-menu` — по одному на каждую строку чатлиста: `shared/ui/Menu` рендерил панель всегда. **Закрыто** (ветка `fix/w1-animations-memory`): панель живёт от открытия до конца закрытия, как tweb `createContextMenu`; пин — `ChatListItem.menu.test.tsx` | `web-client/src/shared/ui/Menu/Menu.tsx` | стенд, 2026-09-26 |
 
 ## Порядок
 

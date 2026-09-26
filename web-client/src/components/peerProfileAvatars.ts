@@ -181,6 +181,7 @@ import SwipeHandler from '@core/dom/swipeHandler'
 import ListenerSetter from '@helpers/listenerSetter'
 import { fastRaf } from '@helpers/schedulers'
 import { renderImageFromUrlPromise } from '@helpers/dom/renderImageFromUrl'
+import clearMediaElementSource from '@helpers/dom/clearMediaElementSource'
 import { attachClickEvent } from '@helpers/dom/clickEvent'
 import cancelEvent from '@helpers/dom/cancelEvent'
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
@@ -593,13 +594,6 @@ export default class PeerProfileAvatars {
     this.middlewareHelper.clean()
 
     if (!threadId) {
-      // НАХОДКА ФИНАЛЬНОГО РЕВЬЮ ВЕТКИ (Important, п.3) — см. докблок
-      // `releaseVideoAvatars()`: ДО того, как `replaceChildren()` ниже
-      // выбросит узлы прежнего пира из DOM, снимаем видео-аватарки с учёта
-      // в `animationIntersector` — иначе залоченный (панель была закрыта)
-      // элемент утёк бы: `cleanup()` (единственное прежнее место вызова)
-      // у нас не зовётся никогда, инстанс переживает смену пира.
-      this.releaseVideoAvatars()
       this.avatars.replaceChildren()
       this.tabs.replaceChildren()
       this.container.classList.remove('is-single')
@@ -958,11 +952,25 @@ export default class PeerProfileAvatars {
           await renderImageFromUrlPromise(video, src)
           if (!middleware()) return
           // tweb регистрирует видео в animationIntersector НЕЯВНО — через
-          // avatarNew/loadAvatarVideoOverlay, которых у нашего avatar.ts нет
-          // (его докблок: «видео-аватарки... предмета нет»). Явную проводку
-          // берём из снесённой самоделки (UserInfoPanel.tsx::AvatarVideo) —
-          // тот же учёт, снятие — в cleanup().
-          animationIntersector.addAnimation({ animation: video, observeElement: video, type: 'video' })
+          // avatarNew/loadAvatarVideoOverlay → `createAvatarVideo`, которых у
+          // нашего avatar.ts нет (его докблок: «видео-аватарки... предмета
+          // нет»). Жизненный цикл — как у tweb `createAvatarVideo.ts:31-58`
+          // (c1c10b8c6): item принадлежит `middleware` (`controlled`), его
+          // `onClean` снимает учёт (сам `addAnimation`) и освобождает декодер.
+          // `middleware` гасится и сменой пира (`setPeer` →
+          // `middlewareHelper.clean()` ДО `replaceChildren()`), и `cleanup()`
+          // (`middlewareHelper.destroy()`), поэтому отдельного обхода
+          // `video.avatar-video` по контейнеру больше нет.
+          animationIntersector.addAnimation({
+            animation: video,
+            observeElement: video,
+            controlled: middleware,
+            type: 'video',
+          })
+          middleware.onClean(() => {
+            clearMediaElementSource(video)
+            video.remove()
+          })
           avatarWrap.append(video)
         } else {
           const img = document.createElement('img')
@@ -1219,44 +1227,16 @@ export default class PeerProfileAvatars {
   }
 
   /**
-   * tweb :963-969 — снятие учёта видео-аватарок в `animationIntersector` +
-   * освобождение декодера (`pause`/`src=''`/`load()`). Оригинал зовёт это
-   * ТОЛЬКО из `cleanup()`, потому что там под КАЖДОГО пира — НОВЫЙ инстанс
-   * класса (докблок `setPeer` выше): смена пира === `cleanup()` прежнего
-   * инстанса целиком. У нас инстанс переживает смену пира, а
-   * `this.avatars.replaceChildren()` (см. `setPeer`) выбрасывает
-   * `<video class="avatar-video">` прежнего пира из DOM БЕЗ снятия учёта —
-   * залоченный элемент (`toggleVideosUnder`, пока правая панель была
-   * закрыта) не снимается с учёта сам по себе при уходе из DOM
-   * (`checkAnimation` игнорирует `locked` ДО проверки `isInDOM`,
-   * `animationIntersector.ts:347-353`), декодер продолжал бы жить и после
-   * того, как узел исчез из дерева.
-   *
-   * НАХОДКА ФИНАЛЬНОГО РЕВЬЮ ВЕТКИ (Important, п.3): раньше это стояло
-   * ТОЛЬКО в `cleanup()`, которую у нас никто не зовёт при смене пира
-   * (панель не размонтирует инстанс) — вынесено в общий метод, зовётся и
-   * отсюда, и из `setPeer` (перед `replaceChildren()`, пока узлы ещё в DOM).
-   */
-  private releaseVideoAvatars(): void {
-    this.container.querySelectorAll<HTMLVideoElement>('video.avatar-video').forEach((video) => {
-      animationIntersector.removeAnimationByPlayer(video)
-      video.pause()
-      video.src = ''
-      video.load()
-    })
-  }
-
-  /**
-   * tweb :957-973. rAF видео-прогресса и `swipeHandler` — задача 3, снимаются
+   * tweb :986-992. rAF видео-прогресса и `swipeHandler` — задача 3, снимаются
    * здесь же (`cancelAnimationFrame`/`swipeHandler.removeListeners()`).
    */
   public cleanup(): void {
-    // tweb :957 — ПЕРВАЯ строка cleanup: гасим rAF-цикл прогресса ДО снятия
-    // видео-регистрации ниже (иначе цикл, всё ещё владеющий middleware этого
-    // же вызова, мог бы отработать ещё один кадр над уже отсоединяемым видео).
+    // tweb :987 — ПЕРВАЯ строка cleanup: гасим rAF-цикл прогресса ДО снятия
+    // видео-регистрации (`middlewareHelper.destroy()` ниже гасит `middleware`
+    // видео-аватарок, их `onClean` снимает учёт и декодер; иначе цикл мог бы
+    // отработать ещё один кадр над уже отсоединяемым видео).
     cancelAnimationFrame(this.videoProgressRAF)
 
-    this.releaseVideoAvatars()
     this.listenerSetter.removeAll()
     this.swipeHandler.removeListeners()
     this.intersectionObserver.disconnect()

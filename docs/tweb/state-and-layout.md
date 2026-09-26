@@ -56,6 +56,7 @@
 | ack/кэшируемые результаты | `:456-467, :524-534` | `invoke(..., ack)` возвращает `AckedResult` — «кэшированный» ответ может прийти синхронно |
 | батчинг | `:372-387` | несколько задач склеиваются в кадр `batch` |
 | `invokeExceptSource` | `:687-696` | разослать всем портам, кроме исходного — основа броадкаста между вкладками |
+| Сбой `postMessage` | `sendTask` `:491` (по `812502980`, 4c5a2373a) | все отправки идут через него: неклонируемый батч повторяется по одной задаче, неклонируемый `result`/`ack` заменяется явной `DATA_CLONE_ERROR`, invoke, не ушедший ни в один порт, реджектится и снимается из `awaiting`; в `awaiting` пишется `тип:имя:метод` |
 
 `MTProtoMessagePort` (`src/lib/mainWorker/mainMessagePort.ts:36-115`) — конкретизация
 SuperMessagePort с типизированной картой сообщений в обе стороны:
@@ -713,6 +714,9 @@ JS — единственный владелец ширин; SCSS только �
 
 - **Воркер + SuperMessagePort**: `client/bootstrap.ts:23-45` — `SharedWorker` (фоллбэк
   dedicated + `?noSharedWorker=1`), наш порт `rpc/superMessagePort.ts` — прямой порт tweb'овского.
+  Сбой `postMessage` — как tweb `sendTask` (4c5a2373a) в объёме одного порта без батчей (`post()`):
+  неклонируемый invoke реджектится `DATA_CLONE_ERROR` вместо синхронного броска, результат — явной
+  `DATA_CLONE_ERROR`, событие только логируется; пины — `rpc/superMessagePort.test.ts`.
 - **Прокси-менеджеры**: `rpc/managersProxy.ts:11-40` — `registerManagers` в воркере
   (`smp.handle('manager', …)`) + `createManagers<T>` на UI (двойной Proxy с мемоизацией) —
   аналог `getProxiedManagers` (без `acknowledged`/`all` и без мульти-аккаунта).
