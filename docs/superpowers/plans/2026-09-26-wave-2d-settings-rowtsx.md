@@ -639,7 +639,7 @@ payload `{authorization, onTerminate?, onSettingsChanged?}`), `core/managers/ses
 **Зависимости:** 0, 1, 5. **Врезка:** `tabs.ts`, `SettingsView.tsx`, `SettingsSubScreen.tsx`; удалить
 `settings/HotkeysSettings.tsx` + `.module.scss` + `.test.tsx`.
 
-### Задача 11: «Энергосбережение»
+### Задача 11: «Энергосбережение» — ✅ сделано (PR feat/w2d-power-saving)
 
 **Порт:** `components/checkboxFields.tsx` (346) → `checkboxFields.solid.tsx`; `powerSaving.tsx`
 (122) → `sidebarLeft/tabs/powerSaving.solid.tsx`; вкладка `AppPowerSavingTab` :241. Две секции в
@@ -651,6 +651,34 @@ payload `{authorization, onTerminate?, onSettingsChanged?}`), `core/managers/ses
 **Мутация:** не инвертировать значения — тест «выключенная анимация = включённый тумблер» краснеет.
 **Зависимости:** 0–4. **Врезка:** `tabs.ts`, `GeneralSettings.tsx` (строка LiteMode →
 `openTab(AppPowerSavingTab)`), `SettingsSubScreen.tsx` (`renderDedicated`); удалить `settings/PowerSaving.tsx`.
+
+**Итог задачи 11 (2026-09-26) — поправки к постановке:**
+- «При `all` — строки `is-fake-disabled`» неточно: строки получают `is-disabled`
+  (`row.toggleDisability`, `pointer-events: none`), а `is-fake-disabled` — само поле
+  (`input`, `powerSaving.tsx:87`); тост ловит секция, потому что строки не принимают клик.
+- Мутация сформулирована наоборот: у tweb выключенная анимация (`liteMode.gif = true`) —
+  СНЯТЫЙ тумблер (`checked: !value`, `:48`); пин — «выключенная анимация — тумблер снят».
+- «Сверить ключи стора» оказалось переездом настройки: у нас был один флаг `reduceMotion`
+  («Без анимаций» меню «Ещё»), а это tweb `liteMode.animations`. Настройка стала объектом
+  `liteMode` формы tweb в zustand (`settings.tsx`, миграция в `load()`), `helpers/liteMode.ts` —
+  формула оригинала `!all && !liteMode[key]`, тесты, гасившие анимации `reduceMotion: true`,
+  переведены на `liteMode.all` (та же семантика «всё выключено»). Меню «Ещё» пишет
+  `liteMode.animations`; пункта «Lite Mode» при `all` (`sidebarLeft/index.ts:946-954`) нет —
+  вкладку из меню колонки открыть нечем до задачи 28.
+- Побочки — подписчик `client/liteModeSettings.ts` (tweb `appImManager.setSettings:2738-2757`:
+  `animation-level-*`, `html.no-backdrop` по `blur`, автоплей стикеров); два React-эффекта
+  `App.tsx` по `reduceMotion` сняты. Стили аккордеона и `html.no-backdrop` перенесены в
+  `styles/index.scss` (tweb `base.scss:1786-1872`, `:403-407`).
+- `CheckboxFields` у tweb ставит `input.disabled` полю группы строкой после `createRoot`, а
+  эффект поля `toggleDisability(!!props.disabled)` во вкладке (строки создаются в `onMount`,
+  эффекты встают в общую очередь) его снимает. У нас — эффектом после эффекта поля
+  (расхождение 5 в шапке `checkboxFields.solid.tsx`). Проверить на стенде щелчок по тумблеру
+  группы (поле выключено и лежит поверх тумблера).
+- Для императивной сборки строк понадобились `helpers/solid/wrapSolidComponent.ts`
+  (`unwrapSolidElement`), `ListenerSetter.addCleanup`, `helpers/dom/dispatchEvent.ts` и пара
+  `get/set checked` у `CheckboxField`.
+- Для задачи 13: статус строки «Общих» уже живой (`liteMode.all` → Enabled/Disabled), читать —
+  `appSettings.liteMode.all`.
 
 ### Задача 12: «Обои» и «Цвет»
 

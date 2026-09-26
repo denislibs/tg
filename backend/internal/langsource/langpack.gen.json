@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 22,
+      "version": 21,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -67,10 +67,6 @@
         {
           "key": "AllReactions",
           "value": "All reactions"
-        },
-        {
-          "key": "Animations",
-          "value": "Animations"
         },
         {
           "key": "AppName",
@@ -2315,10 +2311,6 @@
           "value": "This link is already taken."
         },
         {
-          "key": "LiteMode.Caption",
-          "value": "Disable animations and effects to reduce power usage."
-        },
-        {
           "key": "LiteMode.DisableAlert",
           "value": "Disable Power Saving Mode"
         },
@@ -2333,10 +2325,6 @@
         {
           "key": "LiteMode.Key.animations.Title",
           "value": "Interface Animations"
-        },
-        {
-          "key": "LiteMode.Key.background_animation.Title",
-          "value": "Chat background animation"
         },
         {
           "key": "LiteMode.Key.blur.Title",
@@ -2369,10 +2357,6 @@
         {
           "key": "LiteMode.Key.effects_reactions.Title",
           "value": "Reaction effect"
-        },
-        {
-          "key": "LiteMode.Key.emoji.Title",
-          "value": "Emoji Animations"
         },
         {
           "key": "LiteMode.Key.emoji_appear.Title",
@@ -5606,7 +5590,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 22,
+      "version": 21,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -9068,24 +9052,12 @@
           "value": "Включить анимации"
         },
         {
-          "key": "LiteMode.Caption",
-          "value": "Отключите анимации и эффекты, чтобы снизить расход энергии."
-        },
-        {
-          "key": "Animations",
-          "value": "Анимации"
-        },
-        {
           "key": "LiteMode.Key.gif.Title",
           "value": "Автовоспроизведение GIF"
         },
         {
           "key": "LiteMode.Key.video.Title",
           "value": "Автовоспроизведение видео"
-        },
-        {
-          "key": "LiteMode.Key.emoji.Title",
-          "value": "Анимированные эмодзи"
         },
         {
           "key": "LiteMode.Key.animations.Title",
@@ -9098,10 +9070,6 @@
         {
           "key": "LiteMode.Key.chat_spoilers.Title",
           "value": "Эффекты спойлеров"
-        },
-        {
-          "key": "LiteMode.Key.background_animation.Title",
-          "value": "Анимация фона чата"
         },
         {
           "key": "LiteMode.EnableText",
@@ -11241,7 +11209,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 10,
+      "version": 9,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -12921,24 +12889,12 @@
           "value": "Activer les animations"
         },
         {
-          "key": "LiteMode.Caption",
-          "value": "Désactivez les animations et effets pour réduire la consommation d'énergie."
-        },
-        {
-          "key": "Animations",
-          "value": "Animations"
-        },
-        {
           "key": "LiteMode.Key.gif.Title",
           "value": "Lire les GIF automatiquement"
         },
         {
           "key": "LiteMode.Key.video.Title",
           "value": "Lire les vidéos automatiquement"
-        },
-        {
-          "key": "LiteMode.Key.emoji.Title",
-          "value": "Emojis animés"
         },
         {
           "key": "LiteMode.Key.animations.Title",
@@ -12951,10 +12907,6 @@
         {
           "key": "LiteMode.Key.chat_spoilers.Title",
           "value": "Effets de spoiler"
-        },
-        {
-          "key": "LiteMode.Key.background_animation.Title",
-          "value": "Animation du fond du chat"
         },
         {
           "key": "LiteMode.EnableText",
@@ -14109,7 +14061,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 10,
+      "version": 9,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -15788,24 +15740,12 @@
           "value": "Animationen aktivieren"
         },
         {
-          "key": "LiteMode.Caption",
-          "value": "Deaktiviere Animationen und Effekte, um Energie zu sparen."
-        },
-        {
-          "key": "Animations",
-          "value": "Animationen"
-        },
-        {
           "key": "LiteMode.Key.gif.Title",
           "value": "GIFs automatisch abspielen"
         },
         {
           "key": "LiteMode.Key.video.Title",
           "value": "Videos automatisch abspielen"
-        },
-        {
-          "key": "LiteMode.Key.emoji.Title",
-          "value": "Animierte Emojis"
         },
         {
           "key": "LiteMode.Key.animations.Title",
@@ -15818,10 +15758,6 @@
         {
           "key": "LiteMode.Key.chat_spoilers.Title",
           "value": "Spoiler-Effekte"
-        },
-        {
-          "key": "LiteMode.Key.background_animation.Title",
-          "value": "Chat-Hintergrundanimation"
         },
         {
           "key": "LiteMode.EnableText",
@@ -16976,7 +16912,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 10,
+      "version": 9,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -18660,24 +18596,12 @@
           "value": "Activar animaciones"
         },
         {
-          "key": "LiteMode.Caption",
-          "value": "Desactiva animaciones y efectos para reducir el consumo de energía."
-        },
-        {
-          "key": "Animations",
-          "value": "Animaciones"
-        },
-        {
           "key": "LiteMode.Key.gif.Title",
           "value": "Reproducir GIF automáticamente"
         },
         {
           "key": "LiteMode.Key.video.Title",
           "value": "Reproducir vídeos automáticamente"
-        },
-        {
-          "key": "LiteMode.Key.emoji.Title",
-          "value": "Emojis animados"
         },
         {
           "key": "LiteMode.Key.animations.Title",
@@ -18690,10 +18614,6 @@
         {
           "key": "LiteMode.Key.chat_spoilers.Title",
           "value": "Efectos de spoiler"
-        },
-        {
-          "key": "LiteMode.Key.background_animation.Title",
-          "value": "Animación del fondo del chat"
         },
         {
           "key": "LiteMode.EnableText",
@@ -19848,7 +19768,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 10,
+      "version": 9,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -21550,24 +21470,12 @@
           "value": "Увімкнути анімації"
         },
         {
-          "key": "LiteMode.Caption",
-          "value": "Вимкніть анімації та ефекти, щоб зменшити споживання енергії."
-        },
-        {
-          "key": "Animations",
-          "value": "Анімації"
-        },
-        {
           "key": "LiteMode.Key.gif.Title",
           "value": "Автовідтворення GIF"
         },
         {
           "key": "LiteMode.Key.video.Title",
           "value": "Автовідтворення відео"
-        },
-        {
-          "key": "LiteMode.Key.emoji.Title",
-          "value": "Анімовані емодзі"
         },
         {
           "key": "LiteMode.Key.animations.Title",
@@ -21580,10 +21488,6 @@
         {
           "key": "LiteMode.Key.chat_spoilers.Title",
           "value": "Ефекти спойлерів"
-        },
-        {
-          "key": "LiteMode.Key.background_animation.Title",
-          "value": "Анімація фону чату"
         },
         {
           "key": "LiteMode.EnableText",

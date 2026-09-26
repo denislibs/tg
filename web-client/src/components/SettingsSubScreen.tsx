@@ -3,7 +3,6 @@ import { useState, type ReactNode } from 'react'
 import { useT } from '../i18n'
 import { SettingsScreen, Section, Row } from './settings/kit'
 import QuickReaction from './settings/QuickReaction'
-import PowerSaving from './settings/PowerSaving'
 import GeneralSettings from './settings/GeneralSettings'
 import SpeakersCamera from './settings/SpeakersCamera'
 import ChatFoldersSettings from './folders/ChatFoldersSettings'
@@ -14,11 +13,9 @@ import HotkeysSettings from './settings/HotkeysSettings'
 import type { Chat } from '../data'
 
 // Rows that open a dedicated sub-screen instead of being a plain value.
-const NAV = new Set<string>(['LiteMode.Title', 'DoubleTapSetting'])
+const NAV = new Set<string>(['DoubleTapSetting'])
 function renderDedicated(label: LangPackKey, onBack: () => void): ReactNode {
   switch (label) {
-    case 'LiteMode.Title':
-      return <PowerSaving onBack={onBack} />
     case 'DoubleTapSetting':
       return <QuickReaction onBack={onBack} />
   }

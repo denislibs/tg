@@ -225,13 +225,16 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Задача 11 плана 2D (вкладка «Энергосбережение»): +13 ключей tweb lang.ts —
 // `LiteMode.EnableText`/`Info`/`DisableAlert` и десять `LiteMode.Key.*.Title`
 // дерева ключей — всем пяти словарям: ru 1350 → 1363, uk 686 → 699, es 685 → 698,
-// de/fr 684 → 697.
+// de/fr 684 → 697. Врезкой сняты четыре ключа снесённого React-экрана, которых у
+// tweb нет или которых больше никто не читает (`LiteMode.Caption`,
+// `LiteMode.Key.background_animation.Title`, `LiteMode.Key.emoji.Title`,
+// `Animations`): −4 каждому словарю.
 const COMPOSITION = {
-  ru: { keys: 1363, plural: 35 },
-  uk: { keys: 699, plural: 24 },
-  es: { keys: 698, plural: 24 },
-  de: { keys: 697, plural: 24 },
-  fr: { keys: 697, plural: 24 },
+  ru: { keys: 1359, plural: 35 },
+  uk: { keys: 695, plural: 24 },
+  es: { keys: 694, plural: 24 },
+  de: { keys: 693, plural: 24 },
+  fr: { keys: 693, plural: 24 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -329,11 +332,11 @@ const COMPOSITION = {
 // `COMPOSITION` выше; de и fr расходятся по одному совпавшему ключу).
 // Задачей 11 плана 2D — ключи «Энергосбережения» (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '4efefe14',
-  uk: '0c670ef9',
-  es: 'aaeac037',
-  de: '665c0c1b',
-  fr: 'e88b644d',
+  ru: 'ebe7b931',
+  uk: 'e5d786c0',
+  es: '72f4e408',
+  de: '71e1b490',
+  fr: 'f66de2b2',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
@@ -682,7 +685,6 @@ const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
     'Chat.Poll.Type.Quiz': '«quiz» — заимствование',
     AttachContact: '«contact» — французское слово',
     'SharedMedia.Audio': '«audio» — французское слово',
-    Animations: '«animations» — французское слово',
     Exceptions: '«exceptions» — французское слово',
     'Unit.Minutes.Abbr': '«min» — сокращение от «minute»',
     'StorageQuota.CacheSizeLimitAuto': '«auto» — сокращение от «automatique»',
