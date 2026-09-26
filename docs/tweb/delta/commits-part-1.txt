@@ -1,0 +1,52 @@
+afb5587c8 Authenticate peer g_a before it can drive the call emoji SAS
+8d06fbc9c Stop the service worker stream endpoint from echoing an attacker's Content-Type
+65c6ea8f8 Keep the passcode-derived key out of localStorage
+b2287f1ca Fix arbitrary file read/delete in snapshot-server
+85e5e90cb Cap .tgv gzip decompression
+c437187ae Validate resPQ pq and bound Brent-Pollard factorization
+c28d7dad2 Validate dcId before it reaches a transport URL
+010effed9 Never log a message-port task payload
+31ba61df5 Size the DH secret exponent from a constant, not the server's prime length
+508acd4f5 Add full-size media clipboard copying
+16de60dc5 Add emoji skin tone picker
+10314758c Strengthen agent workflow instructions
+1faad1d59 Fix round video progress ring sizing
+79b9c44c1 Fix album drag multiselection
+2488f2cf0 Add bot reporting
+1d98f721f Fix emoji skin tone in sticker viewer
+41d9adb14 Fix overlapping unread and mention buttons
+7082e1a18 Fix iOS theme transition positioning
+1b1844e6c Trigger PWA scope revalidation in Chrome 150
+b85527091 Fix custom emoji panel flickering
+2117883fd Implement ephemeral messages
+50c02018d Update AGENTS.md for the ESLint → oxlint migration
+15de983de Implement object URL lifecycle, disabled in production for now
+e7aeb0e8b Implement chat automation
+7a52f3631 Fix avatar viewer opening animation
+9173dd8dc Fix incoming star gift attribution
+553143f1e Add photo and video filters to shared media
+eedb2b74e Fix avatar offset for multi-row bot keyboards
+1577b3231 Add configurable main tabs to shared media
+4c678d0ab Add sticky dates to shared media
+d8d9ac8c8 Fix TON transaction row visibility
+72c50bfef Fix notifications settings without Web Notifications API
+a6956b43d Rename TON currency display to Gram
+acf69141f Fix image document orientation in media viewer
+5b1636d61 Fix bot commands button behavior
+6ce2cafba Fix chat padding during tag search
+49842c597 Fix peer profile without Fragment prefixes
+b1f87b5c9 Fix XSS via forged Electron helpers in message links
+c4618cc17 Fix Instant View math never rendering
+4c5a2373a Handle postMessage clone failures in SuperMessagePort
+701e811fc Fix join button label for channels with join requests
+088d69006 Support guard-bot joins through their WebView (layer 228)
+2d2f188e1 Implement Telegram Communities
+6619fdb57 Support guard bots end to end
+62c3ad60a Support stars_spend_topup_invoice_disabled
+d73711ab1 Build
+229ee6194 Support stars_purchase_blocked
+31620b1e9 Fix sticker viewer not looping stickers
+d064fdb85 Fix a drag selection starting inside an album
+4126377c0 Fix an ordinary forum opening as a navigation tab
+85f27ea3c Enable the object URL lifecycle in production
+08d07c2b4 Fix a forum row rendering two '@' badges for one mention
