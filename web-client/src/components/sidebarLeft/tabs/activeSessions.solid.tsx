@@ -47,6 +47,7 @@ import positionMenu from '@helpers/positionMenu'
 import contextMenuController from '@helpers/contextMenuController'
 import { useSuperTab } from '@components/solidJsTabs/superTabProvider.solid'
 import type { AppActiveSessionsTab } from '@components/solidJsTabs/tabs'
+import getSessionPlatformIcon from '@helpers/sessionPlatformIcon'
 
 const ActiveSessions: Component = () => {
   const [tab] = useSuperTab<typeof AppActiveSessionsTab>()
@@ -58,6 +59,9 @@ const ActiveSessions: Component = () => {
 
     const Session = (auth: Authorization.authorization) => {
       const row = new Row({
+        // tweb 944b578e9: у каждой строки — иконка платформы (`Row.Icon`
+        // `getSessionPlatformIcon`), цвет плашки — реестр `rowIconBackground`.
+        icon: getSessionPlatformIcon(auth),
         title: [auth.app_name, auth.app_version].join(' '),
         subtitle: [auth.ip, auth.country].filter(Boolean).join(' - '),
         clickable: true,
