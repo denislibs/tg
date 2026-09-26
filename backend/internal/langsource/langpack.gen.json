@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 22,
+      "version": 23,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -197,8 +197,24 @@
           "value": "Voice messages are tiny, so they're always downloaded automatically."
         },
         {
+          "key": "AutoDownloadChannels",
+          "value": "Channels"
+        },
+        {
+          "key": "AutoDownloadContacts",
+          "value": "Contacts"
+        },
+        {
+          "key": "AutoDownloadFiles",
+          "value": "Files"
+        },
+        {
           "key": "AutoDownloadFilesTitle",
           "value": "Auto-download files and music"
+        },
+        {
+          "key": "AutoDownloadGroups",
+          "value": "Groups"
         },
         {
           "key": "AutoDownloadLargeFilesInfo",
@@ -219,6 +235,10 @@
         {
           "key": "AutoDownloadMobile",
           "value": "When using mobile data"
+        },
+        {
+          "key": "AutoDownloadOff",
+          "value": "Off"
         },
         {
           "key": "AutoDownloadOnAllChats",
@@ -271,6 +291,14 @@
         {
           "key": "AutoDownloadWifi",
           "value": "When connected to Wi-Fi"
+        },
+        {
+          "key": "AutodownloadChannels",
+          "value": "Channels"
+        },
+        {
+          "key": "AutodownloadContacts",
+          "value": "Contacts"
         },
         {
           "key": "AutodownloadGroupChats",
@@ -2821,6 +2849,13 @@
           "value": "Show more"
         },
         {
+          "key": "Minutes",
+          "forms": {
+            "one_value": "%1$d minute",
+            "other_value": "%1$d minutes"
+          }
+        },
+        {
           "key": "Months",
           "forms": {
             "one_value": "%1$d month",
@@ -4381,6 +4416,13 @@
           "value": "Messages"
         },
         {
+          "key": "Seconds",
+          "forms": {
+            "one_value": "%1$d second",
+            "other_value": "%1$d seconds"
+          }
+        },
+        {
           "key": "SecretChat.Accept",
           "value": "Accept"
         },
@@ -4840,6 +4882,10 @@
           "value": "Note that cache required for the app to function properly will not be cleared."
         },
         {
+          "key": "StorageQuota.Clear",
+          "value": "Clear"
+        },
+        {
           "key": "StorageQuota.ClearAll",
           "value": "Clear All"
         },
@@ -4864,8 +4910,16 @@
           "value": "Are you sure you want to clear the cached data?"
         },
         {
+          "key": "StorageQuota.FailedToCalculate",
+          "value": "Failed to calculate"
+        },
+        {
           "key": "StorageQuota.Images",
           "value": "Images"
+        },
+        {
+          "key": "StorageQuota.Other",
+          "value": "Other"
         },
         {
           "key": "StorageQuota.StickersEmoji",
@@ -5554,7 +5608,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 22,
+      "version": 23,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -9425,6 +9479,24 @@
           "value": "Выбрать другой срок"
         },
         {
+          "key": "Seconds",
+          "forms": {
+            "one_value": "%1$d секунда",
+            "few_value": "%1$d секунды",
+            "many_value": "%1$d секунд",
+            "other_value": "%1$d секунды"
+          }
+        },
+        {
+          "key": "Minutes",
+          "forms": {
+            "one_value": "%1$d минута",
+            "few_value": "%1$d минуты",
+            "many_value": "%1$d минут",
+            "other_value": "%1$d минуты"
+          }
+        },
+        {
           "key": "Hours",
           "forms": {
             "one_value": "%1$d час",
@@ -9795,6 +9867,46 @@
         {
           "key": "AutoDownloadPm",
           "value": "Личные чаты"
+        },
+        {
+          "key": "AutoDownloadContacts",
+          "value": "Контакты"
+        },
+        {
+          "key": "AutoDownloadGroups",
+          "value": "Группы"
+        },
+        {
+          "key": "AutoDownloadChannels",
+          "value": "Каналы"
+        },
+        {
+          "key": "AutoDownloadOff",
+          "value": "Выключено"
+        },
+        {
+          "key": "AutoDownloadFiles",
+          "value": "Файлы"
+        },
+        {
+          "key": "AutodownloadContacts",
+          "value": "Контакты"
+        },
+        {
+          "key": "AutodownloadChannels",
+          "value": "Каналы"
+        },
+        {
+          "key": "StorageQuota.Clear",
+          "value": "Очистить"
+        },
+        {
+          "key": "StorageQuota.Other",
+          "value": "Другое"
+        },
+        {
+          "key": "StorageQuota.FailedToCalculate",
+          "value": "Не удалось подсчитать"
         },
         {
           "key": "AutodownloadGroupChats",
@@ -11137,7 +11249,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 10,
+      "version": 11,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -13220,6 +13332,20 @@
           "value": "Choisir un autre délai"
         },
         {
+          "key": "Seconds",
+          "forms": {
+            "one_value": "%1$d seconde",
+            "other_value": "%1$d secondes"
+          }
+        },
+        {
+          "key": "Minutes",
+          "forms": {
+            "one_value": "%1$d minute",
+            "other_value": "%1$d minutes"
+          }
+        },
+        {
           "key": "Hours",
           "forms": {
             "one_value": "%1$d heure",
@@ -13486,6 +13612,38 @@
         {
           "key": "AutoDownloadPm",
           "value": "Chats privés"
+        },
+        {
+          "key": "AutoDownloadGroups",
+          "value": "Groupes"
+        },
+        {
+          "key": "AutoDownloadChannels",
+          "value": "Chaînes"
+        },
+        {
+          "key": "AutoDownloadOff",
+          "value": "Désactivé"
+        },
+        {
+          "key": "AutoDownloadFiles",
+          "value": "Fichiers"
+        },
+        {
+          "key": "AutodownloadChannels",
+          "value": "Chaînes"
+        },
+        {
+          "key": "StorageQuota.Clear",
+          "value": "Effacer"
+        },
+        {
+          "key": "StorageQuota.Other",
+          "value": "Autre"
+        },
+        {
+          "key": "StorageQuota.FailedToCalculate",
+          "value": "Échec du calcul"
         },
         {
           "key": "AutodownloadGroupChats",
@@ -13949,7 +14107,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 10,
+      "version": 11,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -16031,6 +16189,20 @@
           "value": "Andere Zeit festlegen"
         },
         {
+          "key": "Seconds",
+          "forms": {
+            "one_value": "%1$d Sekunde",
+            "other_value": "%1$d Sekunden"
+          }
+        },
+        {
+          "key": "Minutes",
+          "forms": {
+            "one_value": "%1$d Minute",
+            "other_value": "%1$d Minuten"
+          }
+        },
+        {
           "key": "Hours",
           "forms": {
             "one_value": "%1$d Stunde",
@@ -16297,6 +16469,46 @@
         {
           "key": "AutoDownloadPm",
           "value": "Private Chats"
+        },
+        {
+          "key": "AutoDownloadContacts",
+          "value": "Kontakte"
+        },
+        {
+          "key": "AutoDownloadGroups",
+          "value": "Gruppen"
+        },
+        {
+          "key": "AutoDownloadChannels",
+          "value": "Kanäle"
+        },
+        {
+          "key": "AutoDownloadOff",
+          "value": "Aus"
+        },
+        {
+          "key": "AutoDownloadFiles",
+          "value": "Dateien"
+        },
+        {
+          "key": "AutodownloadContacts",
+          "value": "Kontakte"
+        },
+        {
+          "key": "AutodownloadChannels",
+          "value": "Kanäle"
+        },
+        {
+          "key": "StorageQuota.Clear",
+          "value": "Löschen"
+        },
+        {
+          "key": "StorageQuota.Other",
+          "value": "Sonstiges"
+        },
+        {
+          "key": "StorageQuota.FailedToCalculate",
+          "value": "Berechnung fehlgeschlagen"
         },
         {
           "key": "AutodownloadGroupChats",
@@ -16760,7 +16972,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 10,
+      "version": 11,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -18847,6 +19059,20 @@
           "value": "Elegir otro plazo"
         },
         {
+          "key": "Seconds",
+          "forms": {
+            "one_value": "%1$d segundo",
+            "other_value": "%1$d segundos"
+          }
+        },
+        {
+          "key": "Minutes",
+          "forms": {
+            "one_value": "%1$d minuto",
+            "other_value": "%1$d minutos"
+          }
+        },
+        {
           "key": "Hours",
           "forms": {
             "one_value": "%1$d hora",
@@ -19113,6 +19339,46 @@
         {
           "key": "AutoDownloadPm",
           "value": "Chats privados"
+        },
+        {
+          "key": "AutoDownloadContacts",
+          "value": "Contactos"
+        },
+        {
+          "key": "AutoDownloadGroups",
+          "value": "Grupos"
+        },
+        {
+          "key": "AutoDownloadChannels",
+          "value": "Canales"
+        },
+        {
+          "key": "AutoDownloadOff",
+          "value": "Desactivado"
+        },
+        {
+          "key": "AutoDownloadFiles",
+          "value": "Archivos"
+        },
+        {
+          "key": "AutodownloadContacts",
+          "value": "Contactos"
+        },
+        {
+          "key": "AutodownloadChannels",
+          "value": "Canales"
+        },
+        {
+          "key": "StorageQuota.Clear",
+          "value": "Borrar"
+        },
+        {
+          "key": "StorageQuota.Other",
+          "value": "Otros"
+        },
+        {
+          "key": "StorageQuota.FailedToCalculate",
+          "value": "No se pudo calcular"
         },
         {
           "key": "AutodownloadGroupChats",
@@ -19576,7 +19842,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 10,
+      "version": 11,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -21683,6 +21949,24 @@
           "value": "Обрати інший строк"
         },
         {
+          "key": "Seconds",
+          "forms": {
+            "one_value": "%1$d секунда",
+            "few_value": "%1$d секунди",
+            "many_value": "%1$d секунд",
+            "other_value": "%1$d секунди"
+          }
+        },
+        {
+          "key": "Minutes",
+          "forms": {
+            "one_value": "%1$d хвилина",
+            "few_value": "%1$d хвилини",
+            "many_value": "%1$d хвилин",
+            "other_value": "%1$d хвилини"
+          }
+        },
+        {
           "key": "Hours",
           "forms": {
             "one_value": "%1$d година",
@@ -21957,6 +22241,46 @@
         {
           "key": "AutoDownloadPm",
           "value": "Особисті чати"
+        },
+        {
+          "key": "AutoDownloadContacts",
+          "value": "Контакти"
+        },
+        {
+          "key": "AutoDownloadGroups",
+          "value": "Групи"
+        },
+        {
+          "key": "AutoDownloadChannels",
+          "value": "Канали"
+        },
+        {
+          "key": "AutoDownloadOff",
+          "value": "Вимкнено"
+        },
+        {
+          "key": "AutoDownloadFiles",
+          "value": "Файли"
+        },
+        {
+          "key": "AutodownloadContacts",
+          "value": "Контакти"
+        },
+        {
+          "key": "AutodownloadChannels",
+          "value": "Канали"
+        },
+        {
+          "key": "StorageQuota.Clear",
+          "value": "Очистити"
+        },
+        {
+          "key": "StorageQuota.Other",
+          "value": "Інше"
+        },
+        {
+          "key": "StorageQuota.FailedToCalculate",
+          "value": "Не вдалося підрахувати"
         },
         {
           "key": "AutodownloadGroupChats",

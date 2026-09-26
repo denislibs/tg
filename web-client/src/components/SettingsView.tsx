@@ -24,7 +24,7 @@ import { getPeerPhotoId, getPeerPhotoStrippedThumb } from '../core/peers/peer'
 import { getUserTitle } from '../core/peers/getPeerTitle'
 import { useManagers } from '../core/hooks/useManagers'
 import { createSettingsSliderHost, getSettingsSliderHost, openActiveSessionsTab } from './sidebarLeft/settingsSliderHost'
-import { AppKeyboardShortcutsTab, AppLanguageTab, AppNotificationsTab } from './solidJsTabs/tabs'
+import { AppDataAndStorageTab, AppKeyboardShortcutsTab, AppLanguageTab, AppNotificationsTab } from './solidJsTabs/tabs'
 import { toastNew } from './toast'
 import StarsPopup from './stars/StarsPopup'
 import { useStarsBalance } from '../stores/starsStore'
@@ -304,6 +304,13 @@ export default function SettingsView({
                 // `tab.slider.createTab(AppKeyboardShortcutsTab).open()`).
                 if (it.label === 'KeyboardShortcuts.Title') {
                   void getSettingsSliderHost().openTab(AppKeyboardShortcutsTab)
+                    .catch(() => toastNew({ langPackKey: 'Error.AnError' }))
+                  return
+                }
+                // «Данные и память» — вкладка слайдера (план 2D, задача 7); у
+                // оригинала та же одна строка (`settings.tsx`, `makeSubTabConfig`).
+                if (it.label === 'DataSettings') {
+                  void getSettingsSliderHost().openTab(AppDataAndStorageTab)
                     .catch(() => toastNew({ langPackKey: 'Error.AnError' }))
                   return
                 }

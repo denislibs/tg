@@ -562,6 +562,15 @@ const es = {
   'AutoDeleteMessages.SectionCaption':
     'Si lo activas, todos los mensajes nuevos en los chats que inicies se eliminarán automáticamente para todos pasado el tiempo elegido. La autoeliminación en tus chats creados anteriormente se activa por separado.',
   'AutoDeleteMessages.SetOtherTime': 'Elegir otro plazo',
+  // Разряды длительности (`components/wrappers/wrapDuration.ts`, задача 7 плана 2D)
+  Seconds: {
+    one_value: '%1$d segundo',
+    other_value: '%1$d segundos',
+  },
+  Minutes: {
+    one_value: '%1$d minuto',
+    other_value: '%1$d minutos',
+  },
   Hours: {
     one_value: '%1$d hora',
     other_value: '%1$d horas',
@@ -653,6 +662,17 @@ const es = {
   AutoDownloadOnFor: 'Activado para: %1$s',
   AutoDownloadOnUpToFor: 'Hasta %1$s para: %2$s',
   AutoDownloadPm: 'Chats privados',
+  // Данные и память, задача 7 плана 2D (tweb lang.ts, ключи дословно)
+  AutoDownloadContacts: 'Contactos',
+  AutoDownloadGroups: 'Grupos',
+  AutoDownloadChannels: 'Canales',
+  AutoDownloadOff: 'Desactivado',
+  AutoDownloadFiles: 'Archivos',
+  AutodownloadContacts: 'Contactos',
+  AutodownloadChannels: 'Canales',
+  'StorageQuota.Clear': 'Borrar',
+  'StorageQuota.Other': 'Otros',
+  'StorageQuota.FailedToCalculate': 'No se pudo calcular',
   AutodownloadGroupChats: 'Grupos',
   AutoDownloadPhotosTitle: 'Descarga automática de fotos',
   AutoDownloadVideosTitle: 'Descarga automática de vídeos y GIF',

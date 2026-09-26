@@ -245,12 +245,21 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `keyboardShortcuts.tsx`): −10 каждому. ru 1360 → 1350, uk 696 → 686, es 695 → 685,
 // de/fr 694 → 684 — числа те же, что до задачи, набор другой (см. `FINGERPRINT`).
 // Поверх корня настроек (снят `General.NightMode`): ru 1350, uk 685, es 684, de/fr 683.
+//
+// Задача 7 плана 2D («Данные и память» и автозагрузка): ключи tweb lang.ts
+// `AutoDownloadContacts/Groups/Channels/Off/Files` (подписи строк Photos/Videos/
+// Files), `AutodownloadContacts/Channels` (строки вкладок автозагрузки),
+// `StorageQuota.Clear/Other/FailedToCalculate` и формы числа `Seconds`/`Minutes`
+// (полная карта разрядов `wrapDuration.ts::DURATION_LANG_KEYS`). У fr нет двух
+// `…Contacts` — совпали с английским дословно. ru 1350 → 1362, uk 686 → 698,
+// es 685 → 697, de 684 → 696, fr 684 → 694; `plural` +2 у всех. Поверх корня настроек
+// (у uk/es/de/fr −1): ru 1362, uk 697, es 696, de 695, fr 693.
 const COMPOSITION = {
-  ru: { keys: 1350, plural: 35 },
-  uk: { keys: 685, plural: 24 },
-  es: { keys: 684, plural: 24 },
-  de: { keys: 683, plural: 24 },
-  fr: { keys: 683, plural: 24 },
+  ru: { keys: 1362, plural: 37 },
+  uk: { keys: 697, plural: 26 },
+  es: { keys: 696, plural: 26 },
+  de: { keys: 695, plural: 26 },
+  fr: { keys: 693, plural: 26 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -350,12 +359,14 @@ const COMPOSITION = {
 // у русского ещё −3 +4 (разбор — у `COMPOSITION` выше).
 // Задачей 10 плана 2D — десять ключей вкладки «Горячие клавиши» всем пяти и снос
 // десяти ключей React-экрана (разбор — у `COMPOSITION` выше).
+// Задачей 7 плана 2D — ключи «Данных и памяти» и `Seconds`/`Minutes` (разбор —
+// у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: 'dd701aee',
-  uk: '44293b5e',
-  es: '91a9ea04',
-  de: 'ae32e56c',
-  fr: '718c6586',
+  ru: '92b5a04b',
+  uk: 'fdfaff85',
+  es: '42ceb6dd',
+  de: 'd7beb575',
+  fr: '15d8848b',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

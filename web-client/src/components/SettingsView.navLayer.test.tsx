@@ -76,10 +76,10 @@ describe('SettingsView — слой навигации', () => {
 
     render(<SettingsView onBack={onBack} />, { wrapper })
 
-    // Строка списка, у которой ещё есть React-под-экран (ключ `DataSettings`;
-    // язык прогона — английский источник). «Уведомления» под-экраном больше
-    // не служат: это вкладка слайдера (`AppNotificationsTab`).
-    fireEvent.click(screen.getByText(lang.DataSettings))
+    // Строка списка, у которой ещё есть React-под-экран (ключ `ChatList.Filter.List.Title`;
+    // язык прогона — английский источник). «Уведомления» и «Данные и память»
+    // под-экранами больше не служат: это вкладки слайдера.
+    fireEvent.click(screen.getByText(lang['ChatList.Filter.List.Title']))
 
     pressBack()
 

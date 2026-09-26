@@ -562,6 +562,15 @@ const fr = {
   'AutoDeleteMessages.SectionCaption':
     'Si activé, tous les nouveaux messages dans les discussions que vous commencez seront automatiquement supprimés pour tout le monde après le délai choisi. La suppression automatique dans vos discussions créées auparavant s\'active séparément.',
   'AutoDeleteMessages.SetOtherTime': 'Choisir un autre délai',
+  // Разряды длительности (`components/wrappers/wrapDuration.ts`, задача 7 плана 2D)
+  Seconds: {
+    one_value: '%1$d seconde',
+    other_value: '%1$d secondes',
+  },
+  Minutes: {
+    one_value: '%1$d minute',
+    other_value: '%1$d minutes',
+  },
   Hours: {
     one_value: '%1$d heure',
     other_value: '%1$d heures',
@@ -653,6 +662,15 @@ const fr = {
   AutoDownloadOnFor: 'Activé pour : %1$s',
   AutoDownloadOnUpToFor: 'Jusqu\'à %1$s pour : %2$s',
   AutoDownloadPm: 'Chats privés',
+  // Данные и память, задача 7 плана 2D (tweb lang.ts, ключи дословно)
+  AutoDownloadGroups: 'Groupes',
+  AutoDownloadChannels: 'Chaînes',
+  AutoDownloadOff: 'Désactivé',
+  AutoDownloadFiles: 'Fichiers',
+  AutodownloadChannels: 'Chaînes',
+  'StorageQuota.Clear': 'Effacer',
+  'StorageQuota.Other': 'Autre',
+  'StorageQuota.FailedToCalculate': 'Échec du calcul',
   AutodownloadGroupChats: 'Groupes',
   AutoDownloadPhotosTitle: 'Téléchargement auto des photos',
   AutoDownloadVideosTitle: 'Téléchargement auto des vidéos et GIF',

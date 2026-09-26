@@ -154,6 +154,20 @@ const legacyToPreset: Record<string, ThemeChoice> = {
   dark: 'night',
 }
 
+// Срок медиакэша, сохранённый прежним React-экраном «Данных и памяти»: его шкала
+// считала месяц 30 днями (1–6 «месяцев» = 30·k дней), у tweb месяц — 31 день
+// (`lib/constants.ts:23`, `storageQuota.tsx:158-163`). Без перевода вкладка
+// (`sidebarLeft/tabs/dataAndStorage/storageQuota.solid.tsx`) показала бы такое
+// значение ближайшим шагом снизу — «3 недели» вместо «1 месяц» — и молча
+// записала бы его на закрытии. Переводим на чтении: те же «k месяцев» в мере
+// tweb. Записывается нормализованное значение вместе со следующим `update`
+// (он пишет весь объект) — отдельной записи не нужно, смысл выбора тот же.
+const DAY = 86400
+function migrateCacheTTL(ttl: number): number {
+  const months = ttl / (30 * DAY)
+  return Number.isInteger(months) && months >= 1 && months <= 6 ? months * 31 * DAY : ttl
+}
+
 export function load(): Settings {
   try {
     const raw = localStorage.getItem(KEY)
@@ -165,6 +179,7 @@ export function load(): Settings {
       return DEFAULTS
     }
     const s = { ...DEFAULTS, ...(JSON.parse(raw) as Partial<Settings>) }
+    s.cacheTTL = migrateCacheTTL(s.cacheTTL)
     const mapped = legacyToPreset[s.themeChoice as string]
     return mapped ? { ...s, themeChoice: mapped } : s
   } catch {

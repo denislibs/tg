@@ -60,3 +60,31 @@ export const AppKeyboardShortcutsTab =
     title: 'KeyboardShortcuts.Title',
     getComponentModule: () => import('../sidebarLeft/tabs/keyboardShortcuts.solid'),
   })
+
+// tweb :419-443 — «Данные и память» и её вкладки автозагрузки, все eventable:
+// корень пишет квоту кэша на своём `destroy` (`dataAndStorage/index.tsx:83-87`).
+// Открывает корень строка `DataSettings` корня настроек (tweb `settings.tsx`,
+// `makeSubTabConfig`), вкладки автозагрузки — строки Photos/Videos/Files.
+export const AppAutoDownloadPhotoTab =
+  scaffoldSolidJSTabEventable({
+    title: 'AutoDownloadPhotos',
+    getComponentModule: () => import('../sidebarLeft/tabs/autoDownload/photo.solid'),
+  })
+
+export const AppAutoDownloadVideoTab =
+  scaffoldSolidJSTabEventable({
+    title: 'AutoDownloadVideos',
+    getComponentModule: () => import('../sidebarLeft/tabs/autoDownload/video.solid'),
+  })
+
+export const AppAutoDownloadFileTab =
+  scaffoldSolidJSTabEventable({
+    title: 'AutoDownloadFiles',
+    getComponentModule: () => import('../sidebarLeft/tabs/autoDownload/file.solid'),
+  })
+
+export const AppDataAndStorageTab =
+  scaffoldSolidJSTabEventable({
+    title: 'DataSettings',
+    getComponentModule: () => import('../sidebarLeft/tabs/dataAndStorage/index.solid'),
+  })
