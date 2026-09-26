@@ -50,7 +50,7 @@ import { createSignal, onMount, type JSX } from 'solid-js'
 import { IconTsx } from '@components/iconTsx.solid'
 import I18n, { i18n, type LangPackKey } from '@lib/langPack'
 import AuthCard from '../AuthCard.solid'
-import MediaHeader from '../MediaHeader.solid'
+import MediaHeader from '@components/mediaHeader.solid'
 import CodeInput from '../CodeInput.solid'
 import TrackingMonkey from '../TrackingMonkey.solid'
 import { useAuthFlow, type CardSpec } from '../authFlow.solid'
@@ -138,7 +138,7 @@ export default function AuthCodeCard(props: { spec: Spec }): JSX.Element {
       inputWrapper={false}
       header={
         <MediaHeader>
-          <MediaHeader.Sticker size={STICKER_SIZE}>
+          <MediaHeader.Sticker size={STICKER_SIZE} element={() => (<>
             {/* tweb: `._sticker > stickerHost > .media-sticker-wrapper` — см.
                 докблок файла и `../TrackingMonkey.solid.tsx` про устройство. */}
             <TrackingMonkey
@@ -148,7 +148,7 @@ export default function AuthCodeCard(props: { spec: Spec }): JSX.Element {
               typedValue={typedValue}
               focused={focused}
             />
-          </MediaHeader.Sticker>
+          </>)} />
           <MediaHeader.Title>
             <div class={styles.phoneWrapper}>
               <h4 class={styles.phone}>{phone()}</h4>
@@ -163,7 +163,7 @@ export default function AuthCodeCard(props: { spec: Spec }): JSX.Element {
               </span>
             </div>
           </MediaHeader.Title>
-          <MediaHeader.Subtitle secondary>{i18n('Login.Code.SentSms')}</MediaHeader.Subtitle>
+          <MediaHeader.Subtitle color="secondary">{i18n('Login.Code.SentSms')}</MediaHeader.Subtitle>
         </MediaHeader>
       }
     >

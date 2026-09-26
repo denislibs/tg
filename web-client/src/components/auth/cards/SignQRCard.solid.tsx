@@ -51,7 +51,7 @@ import { toastNew } from '@components/toast'
 import { i18n } from '@lib/langPack'
 import { isWebAuthnSupported, getPasskeyAssertion } from '@core/webauthnBrowser'
 import AuthCard from '../AuthCard.solid'
-import MediaHeader from '../MediaHeader.solid'
+import MediaHeader from '@components/mediaHeader.solid'
 import Preloader from '../Preloader.solid'
 import QrCode from '../QrCode.solid'
 import { reportPasskeyLoginError } from '../passkeyLoginError'
@@ -170,7 +170,7 @@ export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
         <MediaHeader>
           {/* Подложка QR — тематическая (`--light-filled-primary-color`), radius 16;
               логотип вшит в саму матрицу, оверлея поверх QR в tweb нет. */}
-          <MediaHeader.Sticker size={QR_SIZE} class={styles.qrContainer}>
+          <MediaHeader.Sticker size={QR_SIZE} class={styles.qrContainer} element={() => (<>
             {/* tweb: `putPreloader(stickerHost, true)` до первой отрисовки, затем
                 прелоадер уезжает `hide-icon .4s forwards`, а канва въезжает
                 `grow-icon .4s forwards`. */}
@@ -183,9 +183,9 @@ export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
             <Show when={qrUrl()}>
               <QrCode class={styles.qrCanvas} data={qrUrl()} size={QR_SIZE} onPainted={() => setPainted(true)} />
             </Show>
-          </MediaHeader.Sticker>
+          </>)} />
           <MediaHeader.Title>{i18n('Login.QR.Title')}</MediaHeader.Title>
-          <MediaHeader.Subtitle secondary>
+          <MediaHeader.Subtitle color="secondary">
             {i18n(failed() ? 'Login.Error.Generic' : 'Login.QR.Subtitle')}
           </MediaHeader.Subtitle>
         </MediaHeader>
