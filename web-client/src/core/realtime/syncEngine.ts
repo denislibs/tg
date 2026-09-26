@@ -1,6 +1,7 @@
 // src/core/realtime/syncEngine.ts
 import type { RestClient } from '../net/restClient'
 import type { Cursor } from './cursor'
+import type { SyncState } from './syncWait'
 
 interface SyncResp { new_messages: SyncItem[]; other_updates: SyncItem[]; state: { pts: number; date: number }; slice: boolean; too_long?: boolean }
 // Каждый элемент /sync — конверт {t, pts, d} (SyncUpdate бэка). new_messages и
@@ -32,12 +33,16 @@ export interface SyncDeps {
 
 export function newSyncEngine({ rest, cursor, onUpdate, onResync, onSyncStart, onSyncEnd }: SyncDeps) {
   let running: Promise<void> | null = null
+  // tweb 1dc32d889 `syncProgressTime` — признак жизни догона: старт и каждая
+  // страница. По нему `syncWait` решает, не замолчал ли difference.
+  let progressTime = 0
 
   async function run(): Promise<void> {
     await cursor.ready() // гейт гидратации: не синкаем со stale-курсором (0)
     for (;;) {
       const { pts, date } = cursor.get()
       const r = await rest.get<SyncResp>('/sync', { pts, date })
+      progressTime = Date.now()
       if (r.too_long) {
         // Слишком далеко позади: полный ресинк снапшотов. Курсор ставим на текущий
         // серверный pts, иначе каждый последующий live-кадр видел бы дыру → бесконечный
@@ -61,6 +66,7 @@ export function newSyncEngine({ rest, cursor, onUpdate, onResync, onSyncStart, o
     // serialize concurrent calls; a reconnect mid-sync just awaits the in-flight run
     catchUp(): Promise<void> {
       if (running) return running
+      progressTime = Date.now()
       onSyncStart?.()
       // .finally запускает onSyncEnd И при резолве, И при реджекте run() — пара
       // start/end не залипает даже на упавшем catch-up (см. докблок onSyncEnd).
@@ -69,6 +75,8 @@ export function newSyncEngine({ rest, cursor, onUpdate, onResync, onSyncStart, o
     },
     /** Идёт ли catch-up прямо сейчас — live-кадры с pts гейтятся, пока true. */
     isSyncing(): boolean { return running != null },
+    /** Состояние догона для `syncWait` (tweb `updatesState.syncLoading`/`syncProgressTime`). */
+    syncState(): SyncState { return { loading: running, progressTime } },
   }
 }
 

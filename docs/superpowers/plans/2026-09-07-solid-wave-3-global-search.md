@@ -661,25 +661,39 @@ backBtn, managers, onSearchActive(boolean), openPeer, onFound}`. Внутри �
 - Удалить: перечисленное в п. 4
 - Тесты: пины на шов
 
-- [ ] **Шаг 1: падающий тест на шов**: `#search-container` есть в DOM до фокуса
+- [x] **Шаг 1: падающий тест на шов**: `#search-container` есть в DOM до фокуса
   и пуст; после фокуса — дети владельца; после закрытия — пуст, узел на месте
   (DoD 5); размонтирование колонки не оставляет узлов класса.
-- [ ] **Шаг 2: падающий тест на переход в обе стороны** (пин дефекта, ради
+- [x] **Шаг 2: падающий тест на переход в обе стороны** (пин дефекта, ради
   которого программа): открытие — `#search-container.active.to`, `#chatlist-container.active.from`,
   `.sidebar-content.animating`; закрытие — `.animating.backwards`; классы сняты по
   `transitionend`; React-рендер во время перехода их не трогает. Мутация: вернуть
   условный рендер `#search-container` — тест обязан покраснеть.
-- [ ] **Шаг 3: падающий тест на бургер**: `SidebarMenuButton` получает `searching`
+- [x] **Шаг 3: падающий тест на бургер**: `SidebarMenuButton` получает `searching`
   от владельца (`state-back` появляется на `onSearchActive(true)`, снимается на
   `false`), а не от фокуса поля напрямую.
-- [ ] **Шаг 4: убедиться, что тесты падают.**
-- [ ] **Шаг 5: реализовать переключение и удалить React-версию.**
-- [ ] **Шаг 6: живая проверка на стенде** (DoD 10) — прощёлкать пункты 1-11
+- [x] **Шаг 4: убедиться, что тесты падают.**
+- [x] **Шаг 5: реализовать переключение и удалить React-версию.**
+- [x] **Шаг 6: живая проверка на стенде** (DoD 10) — прощёлкать пункты 1-11
   чеклиста `docs/tweb/global-search.md` § «Проверка после порта» (п. 5-7 — если
   задачи 2-3, 10-11 в объёме), числа положить в тело коммита; `dom-parity.mjs`
   по дампам из п. 11.
-- [ ] **Шаг 7: посчитать** число `.tsx` с импортом `react` до и после (DoD 14;
+- [x] **Шаг 7: посчитать** число `.tsx` с импортом `react` до и после (DoD 14;
   на момент плана — 228), цифры — в тело коммита.
+
+**Статус (2026-09-26, ветка `feat/search-seam`): СДЕЛАНО.** Шов — `core/hooks/useGlobalSearch.ts`
+(остров на постоянном `#search-container`, `openUrl` и deep-open — расхождения 1-2 шапки);
+поле — режим ручки `InputSearch` (`shared/ui/InputSearch/inputSearchHandle.ts`, debounce 300 мс,
+`value = ''` не возвращается ре-рендером); стрелка «назад» — стабильный узел владельца
+(`SidebarMenuButton.backBtnRef`, бургер в DOM всегда); `className` у `#chatlist-container`,
+`.item-main`, `.sidebar-content` постоянный. Удалены `SearchView.tsx`/`.module.scss`,
+`useSidebarSearch.ts`, прежний `useGlobalSearch.ts` (+тест), `searchNotVirtualized.test.ts`,
+`MediaGridThumb.tsx`, `core/format/sharedMediaFmt.ts` и `shared/ui/Tabs/*` целиком — у
+`TabSlide`/`Tabs` потребителей не осталось (программа папок сняла `ChatList`/`FolderTabs`
+раньше), отложенная 21 закрыта в части `Tabs`; `useTransitionSlider.ts` остаётся
+(`UserInfoPanel.tsx`). React-`.tsx` 227 → 224 (без тестов 189 → 186). Пины —
+`Sidebar.globalSearch.test.tsx`, `InputSearch.test.tsx` (режим ручки), числа стенда — в
+коммите. Попутно — полночь чипов дат без мс (`helpers/date.ts`, расхождение 4).
 
 **Готово когда:** `git grep -n "SearchView\|useSidebarSearch"` пуст; число
 React-файлов уменьшилось; у `shared/ui/Tabs/TabSlide.tsx` остался один

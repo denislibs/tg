@@ -544,16 +544,16 @@ describe('PeerProfileAvatars.setPeer() — лента данных (задача
     expect(tabsEl.children.length).toBe(1)
   })
 
-  // НАХОДКА ФИНАЛЬНОГО РЕВЬЮ ВЕТКИ (Important, п.3): `avatars.replaceChildren()`
-  // выше выбрасывает `<video class="avatar-video">` прежнего пира из DOM, а
-  // снятие с учёта (`removeAnimationByPlayer`/`pause`/`src=''`/`load()`) было
-  // ТОЛЬКО в `cleanup()`, которую панель не зовёт при смене пира (инстанс
-  // переживает смену пира, докблок `setPeer`). Залоченный `animationIntersector`-
-  // ом элемент (пока панель была закрыта) не снимается с учёта сам при уходе
-  // из DOM — утёк бы. Тест — то же наблюдение, что и в
+  // `avatars.replaceChildren()` выбрасывает `<video class="avatar-video">`
+  // прежнего пира из DOM, а панель при смене пира `cleanup()` не зовёт
+  // (инстанс переживает смену пира, докблок `setPeer`). Учёт и декодер видео
+  // принадлежат `middleware` вызова — как у tweb `createAvatarVideo.ts`
+  // (c1c10b8c6): `setPeer` гасит его (`middlewareHelper.clean()`) ДО
+  // `replaceChildren()`, `onClean` снимает item и освобождает источник
+  // (`clearMediaElementSource`). Тест — то же наблюдение, что и в
   // `PeerProfileAvatars.cleanup() — лента данных`, describe ниже, но
   // триггером служит ВТОРОЙ `setPeer`, а не `cleanup()`.
-  it('setPeer снимает регистрацию видео ПРЕЖНЕГО пира перед replaceChildren (находка ревью, п.3)', async () => {
+  it('setPeer снимает регистрацию видео ПРЕЖНЕГО пира и освобождает декодер (tweb createAvatarVideo, c1c10b8c6)', async () => {
     const mgrs = makeManagers({ [ALICE]: [photo(1), photo(2, 999)], [GHOST]: [] })
     const { instance } = make(mgrs)
     const avatarsEl = instance.container.querySelector('.profile-avatars-avatars')!
@@ -571,11 +571,12 @@ describe('PeerProfileAvatars.setPeer() — лента данных (задача
     await instance.setPeer(GHOST) // смена пира — БЕЗ cleanup()
 
     expect(removeSpy).toHaveBeenCalledWith(video)
+    expect(animationIntersector.getAnimations(video)).toHaveLength(0)
     expect(pauseSpy).toHaveBeenCalled()
     // `video.src` (свойство) резолвится happy-dom в абсолютный URL страницы
-    // даже для пустой строки — проверяем АТРИБУТ напрямую, как он реально
-    // выставлен (`video.src = ''`).
-    expect(video.getAttribute('src')).toBe('')
+    // даже для пустой строки — проверяем АТРИБУТ: `clearMediaElementSource`
+    // снимает его совсем.
+    expect(video.hasAttribute('src')).toBe(false)
   })
 
   it('группа/канал — listPhotos не зовётся вовсе, в ленте одно текущее фото без карусели (tweb :443-499, долг backlogs/frontend/profile-chat-photo-history.md)', async () => {
@@ -739,7 +740,7 @@ describe('PeerProfileAvatars.setPeer() — лента данных (задача
   })
 })
 
-describe('PeerProfileAvatars.cleanup() — лента данных (задача 2, tweb :957-973)', () => {
+describe('PeerProfileAvatars.cleanup() — лента данных (задача 2, tweb :986-992)', () => {
   it('снимает регистрацию видео в animationIntersector и отключает IntersectionObserver', async () => {
     // 5 фото > LOAD_NEAREST(3) — idx 3/4 остаются ленивыми и ПОПАДАЮТ под
     // наблюдение (иначе `observed` пуст ещё ДО cleanup, и снятие наблюдения

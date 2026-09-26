@@ -455,31 +455,20 @@ namespace I18n {
    * языку переживает перезагрузку и уводит с него уже применённый язык.
    */
   export function getLangPackAndApply(langCode: string): Promise<LangPackDifference | undefined> {
+    const previousLangCode = lastRequestedLangCode
     setLangCode(langCode)
     return loadLangPackAndApply(langCode).then((applied) => {
-      if (applied) storeLangCode(langCode)
+      if (applied) {
+        storeLangCode(langCode)
+      } else if (previousLangCode && lastRequestedLangCode === langCode) {
+        // tweb 00c1e1a86 — откат, чтобы форматтеры дат не строились по языку,
+        // который так и не применили. У оригинала ветка стоит в `catch`
+        // загрузки; у нас отказ приезжает `undefined` (см. `loadLangPackAndApply`).
+        // Опоздавший отказ более поздний выбор не затирает.
+        setLangCode(previousLangCode)
+      }
       return applied
     })
-  }
-
-  // tweb :130-147
-  function updateAmPm() {
-    if (timeFormat === 'h12') {
-      try {
-        const dateTimeFormat = getDateTimeFormat({ hour: 'numeric', minute: 'numeric', hour12: true })
-        const date = new Date()
-        date.setHours(0)
-        const amText = dateTimeFormat.format(date)
-        amPmCache.am = amText.split(/\s/)[1]
-        date.setHours(12)
-        const pmText = dateTimeFormat.format(date)
-        amPmCache.pm = pmText.split(/\s/)[1]
-      } catch (err) {
-        console.error('cannot get am/pm', err)
-        amPmCache.am = 'AM'
-        amPmCache.pm = 'PM'
-      }
-    }
   }
 
   // tweb :149-168. Терм `!!timeFormat` оригинала здесь снят как мёртвый: у tweb
@@ -488,12 +477,15 @@ namespace I18n {
   // он молча менял бы смысл: первая же установка обходила бы все `.i18n`, чего у
   // оригинала на первой установке не бывает.
   export function setTimeFormat(format: TimeFormat, haveToUpdate = timeFormat !== format) {
+    if (timeFormat !== format) {
+      // tweb 00c1e1a86 — сброс вынесен из ветки `haveToUpdate`: форматтер,
+      // собранный до этого вызова, иначе пережил бы его со старым `-u-hc-`.
+      cachedDateTimeFormats.clear()
+    }
+
     timeFormat = format
 
-    updateAmPm()
-
     if (haveToUpdate) {
-      cachedDateTimeFormats.clear()
       const elements = Array.from(document.querySelectorAll('.i18n')) as HTMLElement[]
       elements.forEach((element) => {
         const instance = weakMap.get(element)
@@ -557,7 +549,6 @@ namespace I18n {
     if (lastAppliedLangCode !== currentLangCode) {
       lastAppliedLangCode = currentLangCode
       cachedDateTimeFormats.clear()
-      updateAmPm()
       // tweb :325 — ЯЗЫК СМЕНИЛСЯ (а не «пакет переприменился»), поэтому событие
       // широковещательное: соседние вкладки узнают о выборе только отсюда.
       // Условие то же, что у оригинала, — внутри ветки «применённый язык другой»:
@@ -859,7 +850,67 @@ namespace I18n {
     return dateTimeFormat
   }
 
-  export const amPmCache = { am: 'AM', pm: 'PM' }
+  // tweb 00c1e1a86 — `format()` даже на закэшированном форматтере в ~20 раз
+  // дороже склейки строк, а времена в ленте повторяются: мемо по минуте суток
+  // (не больше 1440 записей). Ключ — сам форматтер, поэтому мемо умирает вместе
+  // с ним на смене языка или цикла.
+  const timeStringsCache: WeakMap<Intl.DateTimeFormat, Map<number, string>> = new WeakMap()
+  const TIME_STRING_OPTIONS: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' }
+  const TIME_STRING_OPTIONS_JSON = JSON.stringify(TIME_STRING_OPTIONS)
+  function warmTimeStrings(dateTimeFormat: Intl.DateTimeFormat, timeStrings: Map<number, string>) {
+    // Смена языка/цикла осиротила это поколение — остаток работы не нужен.
+    if (cachedDateTimeFormats.get(TIME_STRING_OPTIONS_JSON) !== dateTimeFormat) {
+      return
+    }
+
+    const date = new Date()
+    let budget = 240 // ~0.2 мс на порцию, остальное — со следующего простоя
+    for (let minutesKey = 0; minutesKey < 1440; ++minutesKey) {
+      if (timeStrings.has(minutesKey)) {
+        continue
+      }
+
+      if (--budget < 0) {
+        scheduleWarmTimeStrings(dateTimeFormat, timeStrings)
+        return
+      }
+
+      const hours = (minutesKey / 60) | 0, minutes = minutesKey % 60
+      date.setHours(hours, minutes, 0, 0)
+      // Дыра перехода на летнее время сдвинула бы синтетическую дату на другое
+      // настенное время — такие ключи остаются ленивому пути.
+      if (date.getHours() === hours && date.getMinutes() === minutes) {
+        timeStrings.set(minutesKey, dateTimeFormat.format(date))
+      }
+    }
+  }
+
+  function scheduleWarmTimeStrings(dateTimeFormat: Intl.DateTimeFormat, timeStrings: Map<number, string>) {
+    const warm = () => warmTimeStrings(dateTimeFormat, timeStrings)
+    if (typeof self.requestIdleCallback === 'function') self.requestIdleCallback(warm)
+    else setTimeout(warm, 100)
+  }
+
+  function formatTimeString(date: Date) {
+    // Мимо `JSON.stringify` из `getDateTimeFormat` — это горячий путь.
+    const dateTimeFormat = cachedDateTimeFormats.get(TIME_STRING_OPTIONS_JSON) || getDateTimeFormat(TIME_STRING_OPTIONS)
+    let timeStrings = timeStringsCache.get(dateTimeFormat)
+    if (!timeStrings) {
+      timeStringsCache.set(dateTimeFormat, timeStrings = new Map())
+      // Весь день пререндерится вне критического пути, чтобы пачка разных
+      // времён не платила за `Intl`.
+      scheduleWarmTimeStrings(dateTimeFormat, timeStrings)
+    }
+
+    const minutesKey = date.getHours() * 60 + date.getMinutes()
+    let text = timeStrings.get(minutesKey)
+    if (text === undefined) {
+      timeStrings.set(minutesKey, text = dateTimeFormat.format(date))
+    }
+
+    return text
+  }
+
   export type IntlDateElementOptions = IntlElementBaseOptions & {
     date?: Date,
     options: Intl.DateTimeFormatOptions
@@ -893,14 +944,11 @@ namespace I18n {
 
       let text: string
       if (this.options.hour && this.options.minute && Object.keys(this.options).length === 2) {
-        // Часы и минуты собираются РУКАМИ, мимо `Intl`: только так уважается
-        // пользовательская настройка 12/24 часа, у `Intl` её взять неоткуда.
-        const hours = date.getHours()
-        text = ('0' + (timeFormat === 'h12' ? (hours % 12) || 12 : hours)).slice(-2) + ':' + ('0' + date.getMinutes()).slice(-2)
-
-        if (timeFormat === 'h12') {
-          text += ' ' + (hours < 12 ? amPmCache.am : amPmCache.pm)
-        }
+        // tweb d3bf83c2b → 00c1e1a86 — строку целиком отдаёт `Intl`: настройку
+        // 12/24 часа он получает через `-u-hc-` в локали (`getDateTimeFormat`), и
+        // период стоит там, где его ставит язык («上午12:05», «de. 12:05»), а не
+        // приклеен в конец. Без `capitalizeFirstLetter`: «de.» не должно стать «De.».
+        text = formatTimeString(date)
       } else {
         const dateTimeFormat = getDateTimeFormat(this.options)
         text = capitalizeFirstLetter(dateTimeFormat.format(date))

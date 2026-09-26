@@ -1182,3 +1182,39 @@ describe('dialogsManager.hasDialog', () => {
     expect(await mgr.hasDialog(-77)).toBe(false)
   })
 })
+
+// tweb 79d6a8f95 — лента спрашивает КУРСОР прочтения сам, а не
+// `getReadMaxSeqIfUnread`, который в полностью прочитанном чате схлопывается
+// в 0 (и тогда «непрочитанным» выглядел каждый бабл). Счётчик непрочитанных
+// едет тем же ответом: по нему кнопка «вниз» решает, вести ли к первому
+// непрочитанному (tweb ce37ebeb3, `dialog.unread_count !== 1`).
+describe('dialogsManager.getDialogReadState', () => {
+  const manager = (dialogs: Dialog[]) => newDialogsManager({
+    rest: restStub([]) as never,
+    onDialogOps: () => {},
+    loadCache: async () => dialogs,
+    loadState: async () => ({ pinnedOrders: {} }),
+  })
+
+  it('полностью прочитанный чат отдаёт свой курсор, а не 0', async () => {
+    const mgr = manager([makeDialog({ peerId: 5, topMessage: 40, readInboxMaxId: 40, unread: 0 })])
+    await mgr.fillMirror()
+
+    expect(mgr.getReadMaxSeqIfUnread(5)).toBe(0)
+    expect(mgr.getDialogReadState(5)).toEqual({ readInboxMaxSeq: 40, unreadCount: 0 })
+  })
+
+  it('чат с непрочитанными — курсор ниже них и счётчик', async () => {
+    const mgr = manager([makeDialog({ peerId: 5, topMessage: 42, readInboxMaxId: 40, unread: 2 })])
+    await mgr.fillMirror()
+
+    expect(mgr.getDialogReadState(5)).toEqual({ readInboxMaxSeq: 40, unreadCount: 2 })
+  })
+
+  it('диалога нет — курсор неизвестен (undefined), а не 0', async () => {
+    const mgr = manager([])
+    await mgr.fillMirror()
+
+    expect(mgr.getDialogReadState(5)).toBeUndefined()
+  })
+})

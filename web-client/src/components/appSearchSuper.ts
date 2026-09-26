@@ -196,8 +196,9 @@
 //     `stargifts_count` в полной карточке на бэкенде (DoD 2a), не кэш в
 //     клиенте.
 // 30. `updateContainerHidden` (`tweb:2520-2529`) — `public`, а не `private`:
-//     вызывающий в классе один (`onCountChange` подарков, `:2151-2154`,
-//     задача 12), а пересчёт видимости пинуется напрямую —
+//     вызывающих в классе два (`onCountChange` подарков, `:2151-2154`,
+//     задача 12, и `updateMediaTabVisibility`, ca1416807), а пересчёт
+//     видимости пинуется напрямую —
 //     `appSearchSuper.firstTime.test.ts` зовёт метод сам.
 // 31. `loadMembers` (`tweb:1525-1758`) портирован ОДНОЙ веткой — канала
 //     (`:1718-1739`, `getChannelParticipants` → наш `groups.channelParticipants`).
@@ -317,7 +318,62 @@
 //     (`docs/tweb/global-search.md` часть 3). Второго нет в ответе шва: края
 //     слайса выводит кэш истории менеджера оригинала, а у поисковых ручек его
 //     нет — конец выдачи говорят длина страницы и отсутствие `nextRate`.
+// 44. Источники `loadChats`/`loadChannels`/`renderPeerDialogs` (задача 9 плана
+//     поиска). Шов менеджеров расширен тремя ручками: `contacts.getContactsPeerIds`,
+//     `channels.search` (роль `appUsersManager.searchContacts`) и
+//     `dialogs.getDialogs`. `channels.search` отдаёт `contacts.found` как есть —
+//     ССЫЛКИ `Peer` и тела (так их читал снесённый задачей 13 React-экран поиска), поэтому
+//     перевод в ключи и дедуп `my_results` (`appUsersManager.ts:1089`) сделаны
+//     здесь, а не в менеджере; тела менеджер отдаёт владельцу карточек до
+//     ответа, как `saveApiUsers`/`saveApiChats` (`:1085-1086`). Карточка
+//     (`getPeer`, `getPeerUsername`, `getUser`, `isBroadcast` — RPC у
+//     оригинала) читается из зеркала после объявления пробела `peers.fillMirror`
+//     (метод `getPeer`, как в расхождении 34); `getPeerActiveUsernames` — одно
+//     `username`, вектора `usernames` у модели нет. `getCachedDialogs()`
+//     (`:1995`) — зеркало диалогов `useChatsStore` в порядке `REAL_FOLDERS`
+//     (основная папка, затем архив). `useAppState()` (`:1451`) — zustand-стор
+//     State: ключ `recentSearch` переведён в сигнал, по которому работает
+//     `For` оригинала. Подписи — наши порты тех же функций:
+//     `getChatMembersString` отдаёт строку по форматтеру языка,
+//     `getUserStatusString` → `userStatusLabel` (`core/presence.ts`),
+//     `formatPhoneNumber` → `formatUserPhone` (`core/format/phone.ts`).
+// 45. Кнопка «show more» группы «Global search» прошлого запроса снимается
+//     сигналом группы (`needShowMoreButton('')`), а не удалением узла из
+//     заголовка (`:1432-1434`). Удаление узла — пережиток группы до Solid, где
+//     кнопку дописывали в `nameEl` руками; поверх Solid-группы оно снимает узел,
+//     которым владеет мемо, а повторный `needShowMoreButton('is-short')` того
+//     же значения мемо не будит — у оригинала второй запрос с >3 глобальными
+//     результатами остаётся без кнопки. Сброс стоит ДО ручного `is-short`:
+//     пересчёт класса группы затирает добавленное руками.
+// 46. Не портировано из `loadChats`/`loadChannels`/`renderPeerDialogs`:
+//     реклама в «Global search» (`getSponsoredPeers`, `:1373-1421`) — вне
+//     продукта (`roadmap.md`, «Что в план НЕ входит»); лента «люди»
+//     (`createTopPeersList`, `:1503-1517`) — ручки топа собеседников нет, группа
+//     `people` у владельца остаётся скрытой (задача 14 плана поиска); группа
+//     «SimilarChannels» (`:2009-2018`) — глобальных рекомендаций каналов у
+//     бэкенда нет (задача 15); ветки ботов `renderPeerDialogs`
+//     (`bot_active_users`, `UnknownBotUsers`, `:1961-1966`) вместе с параметром
+//     `type` — их зовёт только вкладка `apps` (задача 16), а поля
+//     `bot_active_users` у модели нет; опции строки `withStories`/`meAsSaved`
+//     (`:1345`, `:1469`, `:1475`) — у `DialogElement` их нет (расхождение 42), поэтому
+//     «Избранное» в «Recent» подписано именем; параметр `showMembersCount`
+//     (`:1329`) не читается и у оригинала.
+// 47. Две проверки жизни, которых у оригинала нет. `loadChannels` после ответа
+//     `contacts.search` сверяет `middleware`: без неё ответ прошлого запроса лёг
+//     бы в вкладку нового и выставил бы ей `loaded` (`cleanup` к этому моменту
+//     уже обнулил его), и новый запрос каналов не ушёл бы. Строка «Recent» гасит
+//     свой хелпер (`onCleanup`), когда `For` её снимает, — у оригинала хелпер
+//     строки не гасится никогда, и её аватар с именем слушают зеркало вечно.
+// 56. `ScrollableRefiller` (tweb fb18166dc, B8) портирован без двух
+//     `refiller.reset('media')` оригинала (812502980 `:1053`, `:1120`): они
+//     стоят в переключении фильтра вкладки «Медиа» фото/видео (553143f1e),
+//     которого у нас нет — нет ни меню шапки, ни фильтров `photos`/`videos` на
+//     бэкенде (BLOCKED, `docs/tweb/delta/README.md`). Приедет фильтр — сброс
+//     встанет в оба места. E2E-спека `profileSidebarIdle.spec.ts` (нужен
+//     вошедший клиент) заменена шовным пином `appSearchSuper.refill.test.ts`:
+//     живой `Scrollable` в неполном окне, счёт вызовов `load`.
 import Scrollable, { ScrollableX } from '@components/scrollable'
+import ScrollableRefiller from '@components/scrollableRefiller'
 import { horizontalMenu } from '@components/horizontalMenu'
 import type { SelectTab } from '@components/horizontalMenu'
 import { createLazyLoadQueue, type LazyLoadQueue } from '@core/lazyLoadQueue'
@@ -325,7 +381,7 @@ import { putPreloader } from '@components/putPreloader'
 import ripple from '@components/ripple'
 import Section from '@components/section.solid'
 import Tabs from '@components/tabs.solid'
-import { i18n, type LangPackKey } from '@lib/langPack'
+import { i18n, join, type LangPackKey } from '@lib/langPack'
 import findUpClassName from '@helpers/dom/findUpClassName'
 import { getMiddleware } from '@helpers/middleware'
 import ListenerSetter from '@helpers/listenerSetter'
@@ -338,7 +394,7 @@ import type { ScrollStartCallbackDimensions } from '@helpers/fastSmoothScroll'
 import { createRoot } from 'solid-js'
 import type { Middleware } from '@helpers/middleware'
 import type { Managers } from '@/client/bootstrap'
-import type { MyMessage } from '@core/models'
+import { isDialogArchived, type MyMessage } from '@core/models'
 import { getMessageKind } from '@core/messages/messageKind'
 import { getSharedMediaMessage, saveSharedMediaMessages } from '@components/sharedMediaHistories'
 import { getHeavyAnimationPromise } from '@core/dom/heavyAnimation'
@@ -353,7 +409,7 @@ import { messageToViewerItem, type LightboxCtx } from '@components/mediaViewer/c
 import type { ViewerItem } from '@components/mediaViewer/appMediaViewer'
 import { createMediaNeighboursLoader } from '@components/mediaViewer/mediaNeighbours'
 import rootScope from '@lib/rootScope'
-import { cachedPeer, hasRightsPeer, isBroadcastPeer, isForumPeer } from '@core/peerCache'
+import { cachedChat, cachedPeer, hasRightsPeer, isBroadcastPeer, isForumPeer } from '@core/peerCache'
 import { useI18nStore } from '@/i18n'
 import wrapDocument from '@components/wrappers/document'
 import { getDocumentFromMessage, type MyDocument } from '@core/media/messageMedia'
@@ -368,7 +424,7 @@ import { ANCHOR_ACTION_ATTRIBUTE, matchUrl, setBlankToAnchor } from '@lib/richte
 import setInnerHTML from '@helpers/dom/setInnerHTML'
 import SortedUserList from '@components/sortedUserList'
 import createParticipantContextMenu, { type Participant } from '@helpers/dom/createParticipantContextMenu'
-import { addDialogNew, DIALOG_LIST_ELEMENT_TAG, setLastMessageN } from '@components/dialogRow'
+import { addDialogNew, DIALOG_LIST_ELEMENT_TAG, setLastMessageN, type DialogDom } from '@components/dialogRow'
 import { createSearchGroup, type SearchGroup, type SearchGroupType } from '@components/searchGroup.solid'
 import wrapSenderToPeer from '@components/wrappers/senderToPeer'
 import { setTransition } from '@core/dom/setTransition'
@@ -383,13 +439,18 @@ import type { MiddlewareHelper } from '@helpers/middleware'
 import { getParticipantPeerId, getParticipantRank } from '@core/peers/participant'
 import { getPeerId, isAnyChat, isUser, toChatId } from '@core/peers/peerId'
 import { RT, type ChatUpdateEvt } from '@core/realtime/events'
-import { createEffect, on } from 'solid-js'
+import { children, createEffect, createSignal, For, on, onCleanup } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 import { mountSolid } from '@shared/solid/mountSolid.solid'
 import { StarGiftsProfileTab, type StarGiftsProfileTabProps } from '@components/stargifts/profileList.solid'
 import type { StarGiftsProfileActions, StarGiftsProfileStore } from '@components/stargifts/profileStore.solid'
 import SavedDialogsTab, { type SavedDialogsTabProps } from '@components/sidebarRight/savedDialogsTab.solid'
 import type { SavedStarGift } from '@core/managers/starsManager'
+import { formatUserPhone } from '@core/format/phone'
+import { userStatusLabel } from '@core/presence'
+import { getChatMembersString } from '@components/wrappers/getChatMembersString'
+import { useAppStateStore } from '@stores/appState'
+import { useChatsStore } from '@stores/chatsStore'
 import { SearchSelection } from '@components/chat/selection'
 import { ButtonMenuSync, type ButtonMenuItemOptions } from '@components/buttonMenu'
 import ChatContextMenu from '@components/chat/contextMenu'
@@ -442,6 +503,14 @@ export type SearchSuperMediaTab = {
   menuTabName?: HTMLElement
   scroll?: { scrollTop: number, scrollHeight: number }
   hideOn?: HTMLElement
+}
+
+/**
+ * tweb ca1416807 (812502980 `:154-157`).
+ * * a tab whose visibility follows its message counter — an empty one is hidden (see loadFirstTime)
+ */
+export function isCounterDrivenMediaTab(mediaTab: SearchSuperMediaTab) {
+  return !!mediaTab.inputFilter && mediaTab.inputFilter !== 'inputMessagesFilterEmpty'
 }
 
 /**
@@ -732,10 +801,11 @@ type SearchSuperItem = { element: HTMLElement, message: MyMessage }
 
 /**
  * Ручки менеджеров, которыми пользуется подсистема — расхождения 6, 20, 29,
- * 34 и 36-40 в шапке. `groups` — участники (задача 11); `stories`/`chats`/
+ * 34, 36-40 и 44 в шапке. `groups` — участники (задача 11); `stories`/`chats`/
  * `stars` — предикаты первого показа (задача 10) и вкладки «Чаты»/«Подарки»
  * (задача 12); `presence` — присутствие пира для черновика
- * (`core/navigation/openPeer.ts`).
+ * (`core/navigation/openPeer.ts`); `contacts`/`channels`/`dialogs` — группы
+ * контактов левой колонки и вкладка «Каналы» (задача 9 плана поиска).
  */
 export type SearchSuperManagers = {
   messages: Pick<Managers['messages'], 'searchHistory' | 'searchCounters'>
@@ -746,6 +816,12 @@ export type SearchSuperManagers = {
   chats: Pick<Managers['chats'], 'savedDialogs'>
   stars: Pick<Managers['stars'], 'profileGifts'>
   presence: SavedDialogsTabProps['managers']['presence']
+  // `appUsersManager.getContactsPeerIds` (tweb `:1365`)
+  contacts: Pick<Managers['contacts'], 'getContactsPeerIds'>
+  // `appUsersManager.searchContacts` — `contacts.search` (`:1423`, `:1978`)
+  channels: Pick<Managers['channels'], 'search'>
+  // `dialogsStorage.getDialogs({query})` — локальный индекс диалогов (`:1442`)
+  dialogs: Pick<Managers['dialogs'], 'getDialogs'>
 }
 
 /**
@@ -754,6 +830,14 @@ export type SearchSuperManagers = {
  * через шов `messages.searchHistory`, как оригинал (`tweb:2284`).
  */
 const WIRE_FILTER: Partial<Record<SearchSuperType, MessagesWireFilter>> = INPUT_FILTER_WIRE
+
+/**
+ * tweb `appPeersManager.getPeerUsername` (`:79-81`) — первое активное имя из
+ * `getPeerActiveUsernames`. Вектора `usernames` у нашей модели нет, публичное
+ * имя одно — `username`.
+ */
+const getPeerUsername = (peer: ReturnType<typeof cachedPeer>) =>
+  (peer && 'username' in peer && peer.username) || ''
 
 /**
  * Виды сообщений, которые проходят фильтр (порт таблицы
@@ -838,6 +922,11 @@ export default class AppSearchSuper {
   /** tweb `:379-380` — «этот тип уже грузится» и «этот тип дочитан до конца». */
   private loadPromises: Partial<Record<SearchSuperMediaType, Promise<unknown> | null>> = {}
   private loaded: Partial<Record<SearchSuperMediaType, boolean>> = {}
+  /** tweb fb18166dc — повторная проверка триггеров после загрузки, пока растёт прогресс вкладки. */
+  private refiller: ScrollableRefiller<SearchSuperMediaType>
+  /** tweb `:381` — группы контактов вкладки `chats` уже нарисованы на этот
+   *  запрос (`loadChats` зовётся один раз, `:2232-2235`); сброс — `cleanup`. */
+  private loadedChats = false
   /** tweb `:378` — курсор следующей страницы по типу: `nextRate` глобальной
    *  выдачи (`:2288`, `:2321`) и смещение участников (расхождение 35). */
   private nextRates: Partial<Record<SearchSuperMediaType, number | undefined>> = {}
@@ -924,6 +1013,12 @@ export default class AppSearchSuper {
 
   constructor(options: AppSearchSuperOptions) {
     safeAssign(this, options)
+
+    // tweb fb18166dc
+    this.refiller = new ScrollableRefiller({
+      scrollable: this.scrollable,
+      getProgress: (type) => this.getMediaTabProgress(type),
+    })
 
     this.container = document.createElement('div')
     this.container.classList.add('search-super')
@@ -1231,10 +1326,55 @@ export default class AppSearchSuper {
     this.container.classList.remove('sliding')
   }
 
-  /** tweb `:817-820` — «во вкладке стало N». */
+  /** tweb `:817-820` — «во вкладке стало N»; видимость вкладки — за счётчиком (ca1416807). */
   public setCounter(type: SearchSuperMediaType, count: number) {
     this.counters[type] = count
+    this.updateMediaTabVisibility(type)
     this.onLengthChange?.(type, count)
+  }
+
+  /**
+   * tweb ca1416807 (812502980 `:923-961`), B9.
+   * * counter-driven tabs are hidden while empty (see loadFirstTime), so they have to appear
+   * * (and disappear) on the fly when their counter crosses zero
+   */
+  private updateMediaTabVisibility(type: SearchSuperMediaType) {
+    if(!this.hideEmptyTabs || this.firstLoad) {
+      return
+    }
+
+    const mediaTab = this.mediaTabsMap.get(type)
+    if(!mediaTab || !isCounterDrivenMediaTab(mediaTab)) {
+      return
+    }
+
+    const menuTab = mediaTab.menuTab!
+    const hide = !this.counters[type]
+    if(menuTab.classList.contains('hide') === hide) {
+      return
+    }
+
+    menuTab.classList.toggle('hide', hide)
+
+    let needChangeActive: boolean
+    if(hide) {
+      needChangeActive = menuTab.classList.contains('active')
+      menuTab.classList.remove('active')
+    } else {
+      // * there was nothing to select when every tab was empty
+      needChangeActive = !this.mediaTabs.some((tab) => tab.menuTab!.classList.contains('active'))
+    }
+
+    this.updateContainerHidden(needChangeActive)
+
+    if(
+      needChangeActive &&
+      this.mediaTab &&
+      !this.mediaTab.menuTab!.classList.contains('hide') &&
+      this.canLoadMediaTab(this.mediaTab)
+    ) {
+      void this.load(true)
+    }
   }
 
   /**
@@ -1858,6 +1998,229 @@ export default class AppSearchSuper {
   }
 
   /**
+   * tweb `:1285-1523` — группы контактов вкладки `chats` левой колонки.
+   * Зовётся ОДИН раз на запрос из `loadType` (`loadedChats`, `:2232-2235`):
+   * все группы очищаются и ложатся в узел вкладки (`:1289-1292`), затем одна
+   * из трёх веток —
+   *  • С ЗАПРОСОМ (`:1295-1449`): книга контактов (лимит 10), `contacts.search`
+   *    (`my_results` → «Chats», `results` → «Global search» с обрезкой до трёх
+   *    и «show more») и локальный индекс диалогов, параллельно; пир рисуется
+   *    один раз на всю выдачу (`renderedPeerIds`), подпись — `addDialogSubtitle`;
+   *  • БЕЗ ЗАПРОСА, пира и даты (`:1450-1519`): группа «Recent» реактивно из
+   *    `recentSearch`;
+   *  • иначе (выбран чип пира или даты) — ничего: сообщения приедут обычной
+   *    веткой `loadType` (`:1522`).
+   * Не портировано: реклама (`getSponsoredPeers`, `:1373-1421`) и лента «люди»
+   * (`createTopPeersList`, `:1503-1517`) — расхождение 46. Источники данных —
+   * расхождение 44, «show more» группы «Global search» — 45.
+   */
+  private loadChats(): Promise<unknown> {
+    const renderedPeerIds: Set<PeerId> = new Set()
+    const middleware = this.middleware.get()
+    // группы есть только у левой колонки, а вкладка `chats` — только у неё
+    const searchGroups = this.searchGroups!
+
+    for(const i in searchGroups) {
+      const group = searchGroups[i as SearchGroupType]
+      group.clear()
+      this.tabs.inputMessagesFilterEmpty!.append(group.container)
+    }
+
+    const query = this.searchContext.query
+    if(query && !this.searchContext.peerId) {
+      const addDialogSubtitle = async(dom: DialogDom, peerId: PeerId) => {
+        const peer = await this.getPeer(peerId)
+        if(peerId === rootScope.myId) {
+          dom.lastMessageSpan.append(i18n('Presence.YourChat'))
+        } else {
+          let username = getPeerUsername(peer)
+          if(!username) {
+            if(peer?._ === 'user' && peer.phone) {
+              username = formatUserPhone(peer.phone)
+            }
+          } else {
+            username = '@' + username
+          }
+
+          const toJoin: (Node | string)[] = [
+            username,
+          ]
+
+          // `participants_count || participants` (`:1321`) — вектора
+          // `participants` у нашей модели чата нет
+          if(peer && 'participants_count' in peer && peer.participants_count) {
+            toJoin.push(getChatMembersString(cachedChat(peerId), useI18nStore.getState().tArgs))
+          }
+
+          dom.lastMessageSpan.append(...join(toJoin.filter(Boolean), false))
+        }
+      }
+
+      // Третий параметр оригинала (`showMembersCount`) не читается и там —
+      // его проверка закомментирована (`:1321`).
+      const setResults = (results: PeerId[], group: SearchGroup) => {
+        results.flatMap((peerId) => {
+          if(renderedPeerIds.has(peerId)) {
+            return []
+          }
+
+          renderedPeerIds.add(peerId)
+
+          const { dom } = addDialogNew({
+            peerId,
+            container: group.list,
+            avatarSize: 'abitbigger',
+            autonomous: group.autonomous,
+            wrapOptions: {
+              middleware,
+            },
+            managers: this.managers,
+          })
+
+          return [{ dom, peerId }]
+        }).forEach(({ dom, peerId }) => void addDialogSubtitle(dom, peerId))
+
+        group.toggle()
+      }
+
+      const onLoad = <T>(arg: T) => {
+        if(!middleware()) {
+          return
+        }
+
+        return arg
+      }
+
+      return Promise.all([
+        this.managers.contacts.getContactsPeerIds(query, true, undefined, 10)
+        .then(onLoad)
+        .then((contacts) => {
+          if(contacts) {
+            setResults(contacts, searchGroups.contacts)
+          }
+        }),
+
+        // `getSponsoredPeers` (`:1373-1421`) — расхождение 46
+
+        this.managers.channels.search(query, 20)
+        .then(onLoad)
+        .then((contacts) => {
+          if(contacts) {
+            const globalContacts = searchGroups.globalContacts
+            // `contacts.search` отдаёт повторы в `my_results` — дедуп у
+            // оригинала в менеджере (`appUsersManager.ts:1089`), расхождение 44
+            setResults([...new Set(contacts.my_results.map(getPeerId))], searchGroups.contacts)
+            setResults(contacts.results.map(getPeerId), globalContacts)
+
+            // Кнопка прошлого запроса снимается сигналом, а не из DOM
+            // (`:1432-1434`) — расхождение 45; снять её надо ДО класса-обрезки:
+            // пересчёт класса группы затирает добавленное руками.
+            globalContacts.needShowMoreButton('')
+            globalContacts.container.classList.add('is-short')
+
+            if(globalContacts.list.childElementCount > 3) {
+              globalContacts.needShowMoreButton('is-short')
+            }
+          }
+        }),
+
+        this.managers.dialogs.getDialogs({ query, offsetIndex: 0, limit: 20, filterId: 0 })
+        .then(onLoad)
+        .then((value) => {
+          if(value) {
+            setResults(value.dialogs.map((d) => d.peerId), searchGroups.contacts)
+          }
+        }),
+      ])
+    } else if(!this.searchContext.peerId && !this.searchContext.minDate) {
+      const recent = searchGroups.recent
+      const renderRecentSearch = (setActive = true) => {
+        if(!middleware()) {
+          return
+        }
+
+        recent.list.replaceChildren()
+
+        createRoot((dispose) => {
+          middleware.onClean(dispose)
+
+          // `useAppState()` (`:1451`) — у нас State в zustand: ключ
+          // переводится в сигнал, и `For` ниже реагирует на него так же, как
+          // на стор оригинала (расхождение 44)
+          const [recentSearch, setRecentSearch] = createSignal(useAppStateStore.getState().recentSearch)
+          onCleanup(useAppStateStore.subscribe((state) => setRecentSearch(state.recentSearch)))
+
+          const arr = For({
+            get each() {
+              return recentSearch()
+            },
+            children: (key) => {
+              // ключ пира в State — строка (`core/state/state.ts:22`)
+              const peerId: PeerId = +key
+              const middlewareHelper = getMiddleware()
+              // строка ушла из списка — её аватар и имя больше не слушаются
+              // (у оригинала хелпер строки не гасится) — расхождение 47
+              onCleanup(() => middlewareHelper.destroy())
+              const { dom } = addDialogNew({
+                peerId,
+                container: false,
+                avatarSize: 'abitbigger',
+                autonomous: true,
+                wrapOptions: {
+                  middleware: middlewareHelper.get(),
+                },
+                managers: this.managers,
+              })
+
+              void (async() => {
+                const peer = await this.getPeer(peerId)
+                dom.lastMessageSpan.append(isUser(peerId) ?
+                  userStatusLabel(peer?._ === 'user' ? peer.status : undefined) :
+                  getChatMembersString(cachedChat(peerId), useI18nStore.getState().tArgs))
+              })()
+
+              return dom.containerEl
+            },
+          })
+
+          const elements = children(() => arr)
+          createEffect(() => {
+            recent.list.replaceChildren(...(elements.toArray() as HTMLElement[]))
+          })
+
+          createEffect(() => {
+            if(!recentSearch().length) {
+              recent.clear()
+            } else if(setActive) {
+              recent.setActive()
+            }
+          })
+        })
+      }
+
+      // У оригинала — `Promise.all` с обещанием ленты «люди»
+      // (`createTopPeersList`, `:1503-1517`, расхождение 46); сама отрисовка
+      // недавних синхронна и обещания не даёт.
+      renderRecentSearch()
+      return Promise.resolve()
+    } else return Promise.resolve()
+  }
+
+  /**
+   * `appPeersManager.getPeer` (RPC у оригинала) — карточка из зеркала; пробел
+   * объявляется владельцу (`peers.fillMirror`), как в расхождении 34.
+   */
+  private async getPeer(peerId: PeerId) {
+    let peer = cachedPeer(peerId)
+    if(!peer) {
+      await this.managers.peers.fillMirror([peerId])
+      peer = cachedPeer(peerId)
+    }
+
+    return peer
+  }
+
+  /**
    * tweb `:1525-1758` — вкладка «Участники». `SortedUserList` создаётся ЛЕНИВО
    * ОДИН РАЗ (`:1543-1574`) и живёт до `cleanup()`; каждая страница лишь
    * доливает в него строки, первая партия — 50, дальше по 200 (`:1719`).
@@ -2077,6 +2440,102 @@ export default class AppSearchSuper {
   }
 
   /**
+   * tweb `:1943-1969` — строки пиров группы вкладки «Каналы»: подпись — число
+   * участников у чата, иначе `@username`. Строки идут по одной, каждая ждёт
+   * свою карточку, как у оригинала. Ветки ботов (`bot_active_users`,
+   * `type === 'bots'`, `:1961-1966`) и сам параметр `type` — вкладки `apps`
+   * (задача 16), расхождение 46.
+   */
+  private async renderPeerDialogs(peerIds: PeerId[], group: SearchGroup, middleware: Middleware) {
+    if(!middleware()) return
+
+    for(const peerId of peerIds) {
+      const { dom } = addDialogNew({
+        peerId,
+        container: group.list,
+        avatarSize: 'abitbigger',
+        wrapOptions: {
+          middleware,
+        },
+        managers: this.managers,
+      })
+
+      const peer = await this.getPeer(peerId)
+      const username = getPeerUsername(peer)
+
+      if(peer && 'participants_count' in peer) {
+        dom.lastMessageSpan.append(getChatMembersString(cachedChat(peerId), useI18nStore.getState().tArgs))
+      } else if(username) {
+        dom.lastMessageSpan.append('@' + username)
+      }
+    }
+  }
+
+  /**
+   * tweb `:1971-2022` — вкладка «Каналы» левой колонки. С запросом —
+   * `contacts.search` с запасом (200), из выдачи остаются вещательные каналы,
+   * группа без заголовка; без запроса — «Channels you joined» из закэшированных
+   * диалогов (обрезка до пяти и «show more»). Группа «SimilarChannels»
+   * (`:2009-2018`) — задача 15 плана поиска, расхождение 46; источники данных —
+   * 44; проверка актуальности после ответа — 47.
+   */
+  private async loadChannels({ mediaTab, middleware }: SearchSuperLoadTypeOptions) {
+    if(this.searchContext.query) {
+      const group = createSearchGroup({ name: 'Channels', type: 'channels', middleware, managers: this.managers })
+      group.setActive()
+      group.nameEl.style.display = 'none'
+
+      const SEARCH_LIMIT = 200 // will get filtered anyway
+      const { results: globalResults } = await this.managers.channels.search(this.searchContext.query, SEARCH_LIMIT)
+      const filteredResultsWithUndefined = await Promise.all(
+        globalResults.map(async(peer) => {
+          // `appPeersManager.isBroadcast(user)` — вопрос зеркалу после
+          // объявления пробела (расхождение 44)
+          const peerId = getPeerId(peer)
+          await this.getPeer(peerId)
+          return isBroadcastPeer(peerId) ? peerId : undefined
+        }),
+      )
+      const filteredResults = filteredResultsWithUndefined.filter((peerId): peerId is PeerId => peerId !== undefined)
+
+      if(!middleware()) return
+
+      void this.renderPeerDialogs(filteredResults, group, middleware)
+
+      if(filteredResults.length) {
+        mediaTab.itemsTab!.append(group.container)
+      }
+      this.afterPerforming(filteredResults.length, mediaTab)
+
+      this.loaded[mediaTab.type] = true
+      return
+    }
+
+    // `dialogsStorage.getCachedDialogs()` — диалоги реальных папок по порядку
+    // `REAL_FOLDERS` (основная, затем архив; `dialogs.ts:491-494`), у нас —
+    // из зеркала диалогов (расхождение 44)
+    const dialogs = useChatsStore.getState().dialogs
+    const cachedDialogs = [...dialogs.filter((dialog) => !isDialogArchived(dialog)), ...dialogs.filter(isDialogArchived)]
+    const channelDialogs = cachedDialogs.filter((dialog) => isBroadcastPeer(dialog.peerId))
+
+    if(channelDialogs.length) {
+      const group = createSearchGroup({ name: 'Chat.Search.JoinedChannels', type: 'channels', middleware, managers: this.managers })
+      group.setActive()
+      mediaTab.itemsTab!.append(group.container)
+
+      const SHOW_MORE_LIMIT = 5
+      if(channelDialogs.length > SHOW_MORE_LIMIT) group.needShowMoreButton()
+
+      void this.renderPeerDialogs(channelDialogs.map((dialog) => dialog.peerId), group, middleware)
+    }
+
+    // `getChannelRecommendations()` → группа «SimilarChannels» (`:2009-2018`) — расхождение 46
+
+    this.afterPerforming(1, mediaTab)
+    this.loaded[mediaTab.type] = true
+  }
+
+  /**
    * tweb `:2130-2179` — вкладка «Подарки». Первый вызов монтирует Solid-витрину
    * (расхождение 36) и отдаёт ей счётчик: ноль подарков прячет строку ряда, а
    * если витрина была активной — уступает первой видимой вкладке
@@ -2135,6 +2594,29 @@ export default class AppSearchSuper {
     return this.stargiftsActions!.loadNext()
   }
 
+  /**
+   * tweb fb18166dc — How far a tab has got, for `ScrollableRefiller`: fetched
+   * messages plus the ones already rendered out of them. Both only ever grow
+   * within a peer (and `cleanup` resets the refiller along with them), which is
+   * what makes the refill chain terminate.
+   *
+   * This is the exact state behind `canLoadMediaTab`'s second clause: the
+   * `justLoad` preload grows `historyStorage` WITHOUT rendering, and the only
+   * thing that renders the remainder into a list too short to scroll is the
+   * chain. A tab with no `inputFilter` — saved dialogs, stories, gifts, apps,
+   * posts — has no such state and no cache to drain, so it reports a flat 0 and
+   * gets the one check after a load that asks "is the viewport full yet"; its
+   * list owns whatever paging comes after that.
+   */
+  private getMediaTabProgress(type: SearchSuperMediaType) {
+    const inputFilter = this.mediaTabsMap.get(type)?.inputFilter
+    if(!inputFilter) {
+      return 0
+    }
+
+    return Math.max(0, this.usedFromHistory[inputFilter] ?? 0) + (this.historyStorage[inputFilter]?.length ?? 0)
+  }
+
   /** tweb `:2362-2369`. */
   private canLoadMediaTab(mediaTab: SearchSuperMediaTab) {
     if(mediaTab.type === 'gifts') {
@@ -2167,7 +2649,7 @@ export default class AppSearchSuper {
       return
     }
 
-    const mediaTabs = this.mediaTabs.filter((mediaTab) => mediaTab.inputFilter && mediaTab.inputFilter !== 'inputMessagesFilterEmpty')
+    const mediaTabs = this.mediaTabs.filter(isCounterDrivenMediaTab)
     const filters = mediaTabs.map((mediaTab) => mediaTab.inputFilter!)
 
     const [
@@ -2301,9 +2783,10 @@ export default class AppSearchSuper {
   /**
    * tweb `:2520-2529` — пересчёт по ФАКТИЧЕСКИ видимым строкам ряда: когда
    * вкладка обнулилась живым апдейтом. `changeActive` — среди пропавших была
-   * активная, переключиться на первую видимую. Единственный вызывающий у
-   * оригинала — счётчик подарков (`:2151-2154`), он приезжает задачей 12;
-   * `public` вместо `private` — расхождение 30 в шапке.
+   * активная, переключиться на первую видимую. Вызывающих у оригинала два:
+   * счётчик подарков (`:2151-2154`) и видимость вкладки по счётчику
+   * (`updateMediaTabVisibility`, ca1416807); `public` вместо `private` —
+   * расхождение 30 в шапке.
    */
   public updateContainerHidden(changeActive = false) {
     const visibleTabs = this.mediaTabs.filter((tab) => !tab.menuTab!.classList.contains('hide'))
@@ -2337,14 +2820,17 @@ export default class AppSearchSuper {
     }
 
     // tweb `:2197-2227` — развилка типов без фильтра сообщений: участники
-    // (`groups` — расхождение 31), сохранённые и подарки (задача 12); истории/
-    // похожие каналы/приложения/посты — не вкладки правой колонки у нас
-    // (`docs/tweb/shared-media.md` § 2.1).
+    // (`groups` — расхождение 31), сохранённые и подарки (задача 12), каналы
+    // левой колонки (задача 9 плана поиска); истории/похожие каналы — не
+    // вкладки правой колонки у нас (`docs/tweb/shared-media.md` § 2.1),
+    // приложения/посты — не вкладки левой (задачи 16-17 плана поиска).
     let special: Promise<unknown> | undefined
     if(type === 'members') {
       special = this.loadMembers(options)
     } else if(type === 'savedDialogs') {
       special = this.loadSavedDialogs(options)
+    } else if(type === 'channels') {
+      special = this.loadChannels(options)
     } else if(type === 'gifts') {
       special = this.loadGifts()
     }
@@ -2357,26 +2843,33 @@ export default class AppSearchSuper {
 
         this.loadPromises[type] = null
 
-        // докрутить, если содержимого не хватило на экран (`:2222-2224`)
-        setTimeout(() => {
-          this.scrollable.checkForTriggers?.()
-        }, 0)
+        // докрутить, если содержимого не хватило на экран (`:2222-2224`) —
+        // только пока вкладка растёт (tweb fb18166dc, B8): у `savedDialogs`
+        // `loaded` не ставится никогда, и безусловный повтор крутился вечно
+        this.refiller.schedule(type, middleware)
       })
     }
 
     // Вкладки без фильтра сообщений, у которых нет и своего загрузчика
-    // (`stories`/`similar`/`channels`/`apps`/`posts`, выше), у нас не
-    // объявляются; у оригинала сюда не доходит ни одна.
+    // (`stories`/`similar`/`apps`/`posts`, выше), у нас не объявляются; у
+    // оригинала сюда не доходит ни одна.
     if(!inputFilter) {
       return Promise.resolve()
     }
 
     const history = this.historyStorage[inputFilter] ??= []
 
-    // tweb `:2231-2240` — вкладка `chats`: пустой запрос без пира и даты
-    // выдачи сообщений не просит вовсе, её содержимое — группы. Сами группы
-    // (`loadChats()` + `loadedChats`, `:2232-2235`) рисует задача 9.
+    // tweb `:2231-2240` — вкладка `chats`: группы контактов рисуются ОДИН раз
+    // на запрос (`loadedChats`), а пустой запрос без пира и даты выдачи
+    // сообщений не просит вовсе — его содержимое только группы. Условие
+    // `type !== 'saved'` (`:2231`) не переносится: вкладки `saved` нет
+    // (расхождение 26), а другой вкладки с пустым фильтром у класса нет.
     if(inputFilter === 'inputMessagesFilterEmpty' && !history.length) {
+      if(!this.loadedChats) {
+        void this.loadChats()
+        this.loadedChats = true
+      }
+
       if(!this.searchContext.query!.trim() && !this.searchContext.peerId && !this.searchContext.minDate) {
         this.loaded[type] = true
         return Promise.resolve()
@@ -2403,9 +2896,7 @@ export default class AppSearchSuper {
 
         this.usedFromHistory[inputFilter] = used
         return this.performSearchResult({ messages, mediaTab }).finally(() => {
-          setTimeout(() => {
-            this.scrollable.checkForTriggers?.()
-          }, 0)
+          this.refiller.schedule(type, middleware) // tweb fb18166dc
         })
       }
 
@@ -2462,9 +2953,7 @@ export default class AppSearchSuper {
             if(this.mediaTab === mediaTab) {
               void this.load(true, true).then(() => {
                 if(!middleware()) return
-                setTimeout(() => {
-                  this.scrollable.checkForTriggers?.()
-                }, 0)
+                this.refiller.schedule(type, middleware) // tweb fb18166dc
               })
             }
           }, 0)
@@ -2683,13 +3172,12 @@ export default class AppSearchSuper {
    * СООБЩЕНИЙ НЕ ТРЁТ: `usedFromHistory[filter] = -1` значит «из кэша ничего не
    * отрисовано», а не «кэша нет» — вернувшись к тому же пиру, вкладки
    * нарисуются без сети (`tweb:2239-2276`).
-   *
-   * Не портировано (нечего сбрасывать до своих задач):
-   * `loadedChats` — задача 9 плана глобального поиска.
    */
   public cleanup() {
     this.loadPromises = {}
     this.loaded = {}
+    this.refiller.reset() // tweb fb18166dc
+    this.loadedChats = false
     this.firstLoad = true
     this.nextRates = {}
     this.prevTabId = -1

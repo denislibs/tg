@@ -31,9 +31,9 @@ import { useI18nStore } from '../../i18n'
  *
  * Возвращает УЗЕЛ, а не строку, и это здесь главное: `formatTime` отдаёт
  * `IntlDateElement`, который кладёт себя в `I18n.weakMap`, а дальше его ведёт
- * ядро — ветка `hour+minute` собирает часы и минуты РУКАМИ, мимо `Intl`
- * (`lib/langPack.ts:624-633`), потому что 12/24 часа берётся из настройки
- * пользователя, а `Intl` выбирает цикл по локали и спросить его неоткуда.
+ * ядро — ветка `hour+minute` форматирует через `Intl` (`lib/langPack.ts`,
+ * `formatTimeString`, tweb 00c1e1a86), а 12/24 часа передаёт ему через `-u-hc-`
+ * в локали из настройки пользователя; `I18n.setTimeFormat` перерисовывает узел.
  * Прежняя сборка через `padStart` настройку не читала вовсе: `I18n.setTimeFormat`
  * переписывает `.i18n`-узлы, а строка в `textContent` остаётся на 24 часах
  * навсегда — это и была задача #124.
@@ -155,8 +155,9 @@ export type SendingStatus = 'sending' | 'error' | 'sent' | 'read'
  * должны обе. Оригинал ищет их запросом `bubble.querySelectorAll('.time,
  * .time-inner')`, и здесь то же самое.
  *
- * ЗАМЕНА, А НЕ ДОБАВЛЕНИЕ: если значок уже стоит первым, он заменяется
- * (:6402-6406). Иначе смена «отправляется» → «доставлено» оставила бы оба.
+ * ЗАМЕНА, А НЕ ДОБАВЛЕНИЕ: прежний значок (прямой ребёнок узла, где бы он ни
+ * стоял) заменяется новым (tweb 127188295). Иначе смена «отправляется» →
+ * «доставлено» оставила бы оба.
  *
  * Классы бабла (`is-sending`/`is-sent`/`is-read`/`is-error`) здесь НЕ ставятся:
  * их считает общий с React-лентой `bubbleClasses` по тому же правилу
@@ -168,16 +169,19 @@ export function setSendingStatus(timeSpan: HTMLElement, status: SendingStatus | 
   if (inner) targets.push(inner)
 
   for (const target of targets) {
-    const existing = target.querySelector('.time-sending-status')
-    const isReplacingFirst = !!existing && target.firstElementChild === existing
+    // tweb 127188295: значок не обязан стоять первым — счётчик ответов
+    // (`setRepliesCount`) встаёт перед ним. Ищем сам прежний значок среди
+    // СВОИХ детей (`:scope >`), а не судим по позиции: иначе новый значок
+    // заменял чужой узел, а старый оставался — две галочки на сообщении.
+    const previous = target.querySelector(':scope > .time-sending-status')
 
     if (!status) {
-      if (isReplacingFirst) existing.remove()
+      previous?.remove()
       continue
     }
 
     const icon = Icon(statusIcon(status), 'time-sending-status')
-    if (isReplacingFirst) existing.replaceWith(icon)
+    if (previous) previous.replaceWith(icon)
     else target.prepend(icon)
   }
 }
@@ -201,7 +205,10 @@ export function setSendingStatus(timeSpan: HTMLElement, status: SendingStatus | 
  */
 export function setRepliesCount(bubble: HTMLElement, count: number): void {
   for (const element of bubble.querySelectorAll<HTMLElement>('.time, .time-inner')) {
-    const previous = element.querySelector<HTMLElement>('.time-replies')
+    // tweb 127188295: только СВОЙ ребёнок. Запрос-потомок из `.time` находил
+    // копию в `.time-inner`, решал, что счётчик уже стоит, и пропавший в
+    // `.time` не возвращал.
+    const previous = element.querySelector<HTMLElement>(':scope > .time-replies')
     if (!count) {
       previous?.remove()
       continue

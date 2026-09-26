@@ -34,6 +34,18 @@ describe('confirmationPopup — порт tweb popups/peer.ts + simpleConfirmatio
     expect(root.querySelector('.popup-description')?.textContent).toBe('Are you sure you want to delete this message?')
   })
 
+  it('без titleLangKey заголовок — имя приложения (peer.ts:58, `AppName`)', () => {
+    // так зовёт очистку недавних владелец глобального поиска (`sidebarLeft/index.ts:1506-1512`)
+    void confirmationPopup({
+      descriptionLangKey: 'Search.Confirm.ClearHistory',
+      button: { langKey: 'ClearButton', isDanger: true },
+    }).catch(() => {})
+
+    const root = document.querySelector('.popup-confirmation') as HTMLElement
+    expect(root.querySelector('.popup-title')?.textContent).toBe('Telegram')
+    expect(root.querySelector('.popup-button.danger')?.textContent).toBe('Clear')
+  })
+
   it('клик по кнопке подтверждения резолвит промис, попап закрывается после исхода', async() => {
     vi.useFakeTimers()
 
@@ -104,7 +116,8 @@ describe('confirmationPopup — порт tweb popups/peer.ts + simpleConfirmatio
 })
 
 describe('PopupPeer — аватар пира (peerId), раунд правок 1', () => {
-  it('destroy() снимает подписку аватара на зеркало пиров: обновление карточки не трогает оторванный узел', () => {
+  it('destroy() снимает подписку аватара на зеркало пиров — после снятия узла из DOM (tweb 1a5b40d8b): обновление карточки не трогает оторванный узел', () => {
+    vi.useFakeTimers()
     const ALICE = 90001
     const fillMirror = vi.fn(async() => {})
     const managers: AvatarManagers = { peers: { fillMirror } }
@@ -124,7 +137,8 @@ describe('PopupPeer — аватар пира (peerId), раунд правок 
     expect(avatarNode.dataset.color).toBeUndefined()
     expect(avatarNode.childNodes.length).toBe(0)
 
-    popup.forceHide() // destroy() сразу — включая middlewareHelper.destroy() (popupElement.ts, раунд правок 1)
+    popup.forceHide() // destroy() сразу; middlewareHelper гаснет в его 250мс-таймере (tweb 1a5b40d8b)
+    vi.advanceTimersByTime(250)
 
     applyPeerOps([{ op: 'upsert', peers: [{ _: 'user', id: ALICE, first_name: 'Алиса', pFlags: {} }] }])
 

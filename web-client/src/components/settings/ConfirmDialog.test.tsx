@@ -2,9 +2,8 @@
 // solid-wave-1, см. докблок ConfirmDialog.tsx). Проверяем ИМЕННО мост:
 // монтирование открывает vanilla-попап с переданными title/text/action/zIndex,
 // а исход промиса транслируется в пропы onConfirm/onClose — контракт, на
-// который завязаны 9 непортированных вызывающих (SearchView,
-// DataStorageSettings, PrivacySecuritySettings, InviteLinkScreens,
-// DiscussionScreen, PinnedMessagesScreen, useChatPopups, MediaEditor).
+// который завязаны 7 непортированных вызывающих (DataStorageSettings,
+// PrivacySecuritySettings, InviteLinkScreens, DiscussionScreen, PinnedMessagesScreen, useChatPopups, MediaEditor).
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, waitFor } from '@testing-library/react'
 import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'

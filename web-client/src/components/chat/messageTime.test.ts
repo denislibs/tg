@@ -10,7 +10,7 @@ import { glyph } from '@core/tgico-icons'
 import type { MyMessage } from '@core/models'
 import I18n from '@lib/langPack'
 import '../../test/lang'
-import { createMessageTime } from './messageTime'
+import { createMessageTime, setRepliesCount, setSendingStatus } from './messageTime'
 import { renderReactionsElement } from './reactions'
 
 const at = (iso: string, over: Partial<{ editedAt: string; views: number }> = {}): MyMessage => {
@@ -202,5 +202,64 @@ describe('createMessageTime', () => {
     expect(Array.from(el.querySelectorAll('.i18n'))).toEqual([inFlow, inInner])
     expect(inFlow.textContent).toBe('12:34 PM')
     expect(inInner.textContent).toBe('12:34 PM')
+  })
+})
+
+// tweb 127188295 — «две галочки на одном сообщении». Счётчик ответов
+// (`setRepliesCount`) встаёт ПЕРВЫМ ребёнком, то есть ПЕРЕД уже стоящим
+// значком отправки; следующая смена статуса (прочтение) искала значок
+// запросом-потомком, а заменяла только `firstElementChild` — и вставляла
+// второй значок рядом со старым.
+describe('значок отправки и счётчик ответов в одном времени', () => {
+  /** Бабл с временем: `setRepliesCount` ищет узлы времени от бабла. */
+  const bubbleWithTime = () => {
+    const timeSpan = createMessageTime(at('2026-08-15T12:34:00'))
+    const bubble = document.createElement('div')
+    bubble.append(timeSpan)
+    const inner = timeSpan.querySelector<HTMLElement>('.time-inner')!
+    return { bubble, timeSpan, inner }
+  }
+
+  /** Прямые дети узла времени с данным классом (без копии в `.time-inner`). */
+  const own = (el: HTMLElement, cls: string) => el.querySelectorAll(`:scope > .${cls}`)
+
+  it('прочтение после появления счётчика ответов оставляет ОДИН значок и не съедает счётчик', () => {
+    const { bubble, timeSpan, inner } = bubbleWithTime()
+
+    setSendingStatus(timeSpan, 'sent')
+    setRepliesCount(bubble, 3)
+    setSendingStatus(timeSpan, 'read')
+
+    for (const el of [timeSpan, inner]) {
+      expect(own(el, 'time-sending-status')).toHaveLength(1)
+      expect(own(el, 'time-sending-status')[0].textContent).toBe(glyph('checks'))
+      expect(own(el, 'time-replies')).toHaveLength(1)
+    }
+  })
+
+  it('снятие статуса снимает сам значок, а не стоящий первым счётчик', () => {
+    const { bubble, timeSpan, inner } = bubbleWithTime()
+
+    setSendingStatus(timeSpan, 'sent')
+    setRepliesCount(bubble, 3)
+    setSendingStatus(timeSpan, undefined)
+
+    for (const el of [timeSpan, inner]) {
+      expect(own(el, 'time-sending-status')).toHaveLength(0)
+      expect(own(el, 'time-replies')).toHaveLength(1)
+    }
+  })
+
+  it('счётчик ответов ищется среди СВОИХ детей: копия в `.time-inner` не заслоняет пропажу в `.time`', () => {
+    const { bubble, timeSpan, inner } = bubbleWithTime()
+
+    setRepliesCount(bubble, 3)
+    own(timeSpan, 'time-replies')[0].remove()
+    setRepliesCount(bubble, 4)
+
+    for (const el of [timeSpan, inner]) {
+      expect(own(el, 'time-replies')).toHaveLength(1)
+      expect(own(el, 'time-replies')[0].textContent).toContain('4')
+    }
   })
 })

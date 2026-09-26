@@ -355,8 +355,9 @@ describe('Sidebar — следы владельца на узлах React', () =
     expect(chatlistContainer().classList.contains('active')).toBe(true)
 
     await act(async () => { fireEvent.focus(screen.getByRole('textbox')) })
-    // Поиск открыт: `active` уехал на #search-container, `has-filters` на месте.
-    expect(chatlistContainer().classList.contains('active')).toBe(false)
+    // Поиск открыт: переход владельца поиска увёл чатлист в `from` (классы
+    // перехода и их пины — `Sidebar.globalSearch.test.tsx`), `has-filters` на месте.
+    expect(chatlistContainer().classList.contains('from')).toBe(true)
     expect(chatlistContainer().classList.contains('has-filters')).toBe(true)
 
     await act(async () => { fireEvent.click(document.querySelector('.sidebar-back-button')!) })
@@ -383,10 +384,11 @@ describe('Sidebar — следы владельца на узлах React', () =
   it('deep-open с префиллом поиска: стартовый показ «Всех чатов» поиск не закрывает', async () => {
     await renderSidebar({ initialQuery: 'durov' })
 
-    // Мутация: отдать владельцу `closeEverythingInsideNaturally` без стартового
-    // гейта — его первый `onClick(0, false)` закроет открытый поиск.
-    expect(document.getElementById('search-container')).not.toBe(null)
-    expect(chatlistContainer().classList.contains('active')).toBe(false)
+    // Поиск открыт владельцем поиска и не закрыт первым `onClick(0, false)`
+    // владельца папок: выдача — приходящий узел перехода, стрелки «назад» не
+    // нажимали (обратного перехода нет).
+    expect(document.getElementById('search-container')!.classList.contains('active')).toBe(true)
+    expect(document.querySelector('.sidebar-content')!.classList.contains('backwards')).toBe(false)
   })
 })
 

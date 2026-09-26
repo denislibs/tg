@@ -6,17 +6,18 @@
  * (или фрагмент из таких узлов) — ровно как оригинал. Узел кладёт себя в
  * `I18n.weakMap`, и дальше его обновляет ЯДРО: `applyLangPack` обходит `.i18n`
  * на смену языка (`lib/langPack.ts:568-572`, tweb `langPack.ts:328-335`), а
- * `I18n.setTimeFormat` — на смену настройки 12/24 часа (`:490`). Строка так не
+ * `I18n.setTimeFormat` — на смену настройки 12/24 часа. Строка так не
  * умеет: отформатированная один раз, она застывает в языке, который был в
  * момент форматирования, и никакая перерисовка её не чинит — это и был дефект
  * задачи #121 (дата в списке чатов оставалась «30 авг.» при английском
  * интерфейсе, потому что проекция `dialogToChat` форматировала её строкой).
  *
- * Часы и минуты `IntlDateElement` собирает РУКАМИ, минуя `Intl`
- * (`langPack.ts:624-633`): только так уважается пользовательская настройка
- * 12/24 часа — у `Intl` её взять неоткуда, он выбирает цикл по ЛОКАЛИ. Связь
- * настройки с `I18n.setTimeFormat` заведена в `settings.tsx`. Заглавную букву
- * («пн», «авг.») ставит тоже ядро (`capitalizeFirstLetter`, `langPack.ts:637`).
+ * Часы и минуты `IntlDateElement` форматирует через `Intl` с `-u-hc-` из
+ * пользовательской настройки 12/24 часа и мемо по минуте суток
+ * (`langPack.ts::formatTimeString`, tweb 00c1e1a86): период стоит там, где его
+ * ставит язык («上午12:05», «de. 12:05»). Связь настройки с `I18n.setTimeFormat`
+ * заведена в `settings.tsx`. Заглавную букву («пн», «авг.») ставит тоже ядро
+ * (`capitalizeFirstLetter`) — во всех ветках, кроме «ЧЧ:ММ».
  *
  * ── Что портировано ────────────────────────────────────────────────────────
  * `ONE_DAY` (:9), `getWeekNumber` (:59-67), `formatDate` (:75-105),
@@ -43,6 +44,13 @@
  *    сдвигались на одно. Пины обоих — `date.test.ts`, `fillLocalizedDates`.
  * 3. `MOUNT_CLASS_TO.fillTipDates` (:594) — отладочная выкладка в `window`, не
  *    портирована.
+ * 4. Полночь в `fillTipDates` — `setHours(0, 0, 0, 0)`. У оригинала везде
+ *    `setHours(0, 0, 0)` (:258, :262, :279, … :516): миллисекунды текущего
+ *    момента остаются на обеих границах, и `maxDate` на проводе
+ *    (`maxDate / 1000 | 0`, `appMessagesManager.ts:9997-9999`, у нас
+ *    `messagesManager.ts`) с вероятностью 999/1000 захватывает первую секунду
+ *    следующих суток — граница плавает от момента ввода. Пин — `date.test.ts`,
+ *    «границы — ровно полночь при любых миллисекундах».
  *
  * Названия месяцев и дней берутся из `Intl` на языке ПАКЕТА
  * (`I18n.getDateTimeFormat`), а не ключами словаря — как у оригинала; поэтому
@@ -292,9 +300,9 @@ export const getFullDate = (date: Date, options: Partial<{
 // Потребитель — владелец поиска (`sidebarLeft/index.ts:1351-1359`): чип
 // `date_<minDate>_<maxDate>`, выбранный — в `setQuery({minDate, maxDate})`.
 //
-// Разбор дословный, вместе с его особенностями: `setHours(0, 0, 0)` без
-// миллисекунд оставляет миллисекунды текущего момента; «год месяц» не выходит
-// из разбора и добирает чипы шаблонами месяца и года (:404-419 без `return`).
+// Разбор дословный, вместе с его особенностями: «год месяц» не выходит из
+// разбора и добирает чипы шаблонами месяца и года (:404-419 без `return`).
+// Исключение одно — полночь с миллисекундами, расхождение 4 шапки.
 const minYear = 2013
 const yearPattern = new RegExp('20[0-9]{1,2}')
 const anyLetterRegExp = '\\p{L}'
@@ -326,11 +334,11 @@ export function fillTipDates(query: string, dates: DateData[]) {
     const month = date.getMonth()
     const day = date.getDate()
     date.setFullYear(year, month, day)
-    date.setHours(0, 0, 0)
+    date.setHours(0, 0, 0, 0)
 
     const minDate = date.getTime()
     date.setFullYear(year, month, day + 1)
-    date.setHours(0, 0, 0)
+    date.setHours(0, 0, 0, 0)
 
     const maxDate = date.getTime() - 1
     dates.push({
@@ -347,11 +355,11 @@ export function fillTipDates(query: string, dates: DateData[]) {
     const month = date.getMonth()
     const day = date.getDate()
     date.setFullYear(year, month, day)
-    date.setHours(0, 0, 0)
+    date.setHours(0, 0, 0, 0)
 
     const minDate = date.getTime() - 86400000
     date.setFullYear(year, month, day + 1)
-    date.setHours(0, 0, 0)
+    date.setHours(0, 0, 0, 0)
 
     const maxDate = date.getTime() - 86400001
     dates.push({
@@ -376,11 +384,11 @@ export function fillTipDates(query: string, dates: DateData[]) {
     const month = date.getMonth()
     const day = date.getDate()
     date.setFullYear(year, month, day)
-    date.setHours(0, 0, 0)
+    date.setHours(0, 0, 0, 0)
 
     const minDate = date.getTime()
     date.setFullYear(year, month, day + 1)
-    date.setHours(0, 0, 0)
+    date.setHours(0, 0, 0, 0)
 
     const maxDate = date.getTime() - 1
     dates.push({
@@ -436,11 +444,11 @@ export function fillTipDates(query: string, dates: DateData[]) {
     if(validDateForMonth(day - 1, month) && year >= minYear && year <= currentYear) {
       const date = new Date()
       date.setFullYear(year, month, day)
-      date.setHours(0, 0, 0)
+      date.setHours(0, 0, 0, 0)
 
       const minDate = date.getTime()
       date.setFullYear(year, month, day + 1)
-      date.setHours(0, 0, 0)
+      date.setHours(0, 0, 0, 0)
 
       const maxDate = date.getTime() - 1
       dates.push({
@@ -508,11 +516,11 @@ export function fillTipDates(query: string, dates: DateData[]) {
       for(let i = currentYear; i >= selectedYear; i--) {
         const date = new Date()
         date.setFullYear(i, 0, 1)
-        date.setHours(0, 0, 0)
+        date.setHours(0, 0, 0, 0)
 
         const minDate = date.getTime()
         date.setFullYear(i + 1, 0, 1)
-        date.setHours(0, 0, 0)
+        date.setHours(0, 0, 0, 0)
 
         const maxDate = date.getTime() - 1
         dates.push({
@@ -524,11 +532,11 @@ export function fillTipDates(query: string, dates: DateData[]) {
     } else if(selectedYear <= currentYear) {
       const date = new Date()
       date.setFullYear(selectedYear, 0, 1)
-      date.setHours(0, 0, 0)
+      date.setHours(0, 0, 0, 0)
 
       const minDate = date.getTime()
       date.setFullYear(selectedYear + 1, 0, 1)
-      date.setHours(0, 0, 0)
+      date.setHours(0, 0, 0, 0)
 
       const maxDate = date.getTime() - 1
       dates.push({
@@ -549,7 +557,7 @@ function createForMonthYear(dates: DateData[], month: number, selectedYear: numb
   if(selectedYear >= minYear && selectedYear <= currentYear) {
     const date = new Date()
     date.setFullYear(selectedYear, month, 1)
-    date.setHours(0, 0, 0)
+    date.setHours(0, 0, 0, 0)
     const minDate = date.getTime()
     if(minDate > today) {
       return
@@ -578,7 +586,7 @@ function createForDayMonth(dates: DateData[], day: number, month: number) {
 
       const date = new Date()
       date.setFullYear(i, month, day + 1)
-      date.setHours(0, 0, 0)
+      date.setHours(0, 0, 0, 0)
 
       const minDate = date.getTime()
       if(minDate > today) {
@@ -586,7 +594,7 @@ function createForDayMonth(dates: DateData[], day: number, month: number) {
       }
 
       date.setFullYear(i, month, day + 2)
-      date.setHours(0, 0, 0)
+      date.setHours(0, 0, 0, 0)
       const maxDate = date.getTime() - 1
       if(i === currentYear) {
         dates.push({

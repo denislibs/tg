@@ -275,3 +275,35 @@ describe('ListLoader.goUnsafe', () => {
     expect(loader.goUnsafe(3)).toEqual({ item: undefined, leftLength: 2 })
   })
 })
+
+// Порт tweb c934ddd1e (`src/tests/listLoader.test.ts`): дыра — mid, за
+// которым нет сообщения, — не доходит до processItem и не попадает в списки.
+describe('ListLoader.load — дыры в выдаче (tweb c934ddd1e)', () => {
+  test('пропускает дыры, не отдавая их processItem', async () => {
+    const processed: number[] = []
+    const loader = new ListLoader<Item, Item>({
+      loadCount: 10,
+      loadMore: async () => ({ count: 3, items: [item(1), undefined, item(3)] }),
+      processItem: (it) => {
+        processed.push(it.id)
+        return it
+      },
+    })
+
+    await loader.load(true)
+
+    expect(processed).toEqual([1, 3])
+    expect(ids(loader.next)).toEqual([1, 3])
+  })
+
+  test('пропускает дыры и без processItem', async () => {
+    const loader = new ListLoader<Item, Item>({
+      loadCount: 10,
+      loadMore: async () => ({ count: 2, items: [undefined, item(2)] }),
+    })
+
+    await loader.load(true)
+
+    expect(ids(loader.next)).toEqual([2])
+  })
+})

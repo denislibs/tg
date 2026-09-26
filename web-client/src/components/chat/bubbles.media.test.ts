@@ -44,7 +44,7 @@ const managersWith = (messages: MyMessage[]): BubblesManagers => ({
     messageByDate: vi.fn(async () => null),
   },
   peers: { fillMirror: vi.fn(async () => {}) },
-  dialogs: { getReadMaxSeqIfUnread: vi.fn(async () => 0), getHistoryMaxSeq: vi.fn(async () => 0) },
+  dialogs: { getReadMaxSeqIfUnread: vi.fn(async () => 0), getHistoryMaxSeq: vi.fn(async () => 0), getDialogReadState: vi.fn(async () => undefined) },
   // Ручка отметки прочтения: наблюдатель непрочитанных живёт в самой ленте
   // (порт tweb bubbles.ts:2941-3012), поэтому она обязательна у КАЖДОГО стенда.
   realtime: { markRead: vi.fn(async () => ({ ok: true })) },

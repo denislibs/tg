@@ -835,3 +835,49 @@ describe('wrapVideo: бокс узкого видео — гейт USE_VIDEO_OBS
     expect(res.video!.disablePictureInPicture).toBe(true)
   })
 })
+
+// tweb 173f3c6dc — «кружок играет во время аплоада». Автоплей гасился на время
+// отгрузки у ЛЮБОГО видео, а возвращался (`play()` по концу отгрузки) у всех,
+// кроме кружка: его немое превью внутри круга так и стояло на паузе до
+// перерисовки бабла. Кружок теперь автоплей сохраняет (как официальные
+// клиенты); обычное видео по-прежнему ждёт, но по концу отгрузки получает
+// АТРИБУТ обратно, а не голый `play()` — иначе `animationIntersector`,
+// который будит только плееры с `autoplay`, не запустил бы его после
+// прокрутки туда и обратно.
+describe('wrapVideo: отгрузка (tweb 173f3c6dc)', () => {
+  it('кружок: немое превью в круге играет, пока файл отгружается', async () => {
+    const { default: deferredPromise } = await import('@helpers/cancellablePromise')
+    mediaUrl.applyMediaToken(TOKEN('T1'))
+    const container = box()
+
+    const res = await wrapVideo({
+      doc: videoDoc({ round: true, w: 240, h: 240, duration: 8, serverThumb: false }), container,
+      message: { mid: -1, peerId: -42, isOutgoing: true },
+      ...REGULAR, middleware: getMiddleware().get(), uploadPromise: deferredPromise<unknown>(),
+    })
+    await flush()
+
+    expect(res.video!.autoplay).toBe(true)
+  })
+
+  it('обычное видео: под кольцом отгрузки не играет, по её концу получает атрибут автоплея', async () => {
+    const { default: deferredPromise } = await import('@helpers/cancellablePromise')
+    mediaUrl.applyMediaToken(TOKEN('T1'))
+    const container = box()
+    const upload = deferredPromise<unknown>()
+
+    const res = await wrapVideo({
+      doc: videoDoc(), container, message: { mid: -1, peerId: -42, isOutgoing: true },
+      ...REGULAR, middleware: getMiddleware().get(), uploadPromise: upload,
+    })
+    await flush()
+
+    expect(res.video!.autoplay).toBe(false)
+
+    upload.resolve!(undefined)
+    await flush()
+
+    expect(res.video!.autoplay).toBe(true)
+    expect(res.video!.paused).toBe(false)
+  })
+})

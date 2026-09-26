@@ -56,6 +56,7 @@
 | ack/кэшируемые результаты | `:456-467, :524-534` | `invoke(..., ack)` возвращает `AckedResult` — «кэшированный» ответ может прийти синхронно |
 | батчинг | `:372-387` | несколько задач склеиваются в кадр `batch` |
 | `invokeExceptSource` | `:687-696` | разослать всем портам, кроме исходного — основа броадкаста между вкладками |
+| Сбой `postMessage` | `sendTask` `:491` (по `812502980`, 4c5a2373a) | все отправки идут через него: неклонируемый батч повторяется по одной задаче, неклонируемый `result`/`ack` заменяется явной `DATA_CLONE_ERROR`, invoke, не ушедший ни в один порт, реджектится и снимается из `awaiting`; в `awaiting` пишется `тип:имя:метод` |
 
 `MTProtoMessagePort` (`src/lib/mainWorker/mainMessagePort.ts:36-115`) — конкретизация
 SuperMessagePort с типизированной картой сообщений в обе стороны:
@@ -403,6 +404,31 @@ accountNumber})`; новой вкладке при коннекте зеркал
 например, после `sendMessage` менеджер сам порождает `updateNewMessage`
 (`appMessagesManager.ts:1457, :8497`), поэтому UI-путь един для своих и чужих сообщений.
 
+### 4.1 Уведомления ждут difference (812502980, коммит 1dc32d889)
+
+`appMessagesManager.handleNotifications` придерживает уведомление, пока идёт difference,
+который ещё может его отменить (прочтение, удаление, заглушение — в следующем
+`updates.differenceSlice` или в difference канала): `apiUpdatesManager.shouldWaitForSync(peerId)` →
+`handleNotificationsAfterSync` → `waitForSync(peerId)` → повторный `handleNotifications`. Ждут
+идущий difference И тот, что пошёл следом; бюджет — `SYNC_MAX_SILENCE` (10 с) ТИШИНЫ: каждая
+страница (`syncProgressTime`) его продлевает, повисший запрос его исчерпывает. После ожидания
+действует обычный гейт (`muted && !mentioned`, `!pFlags.unread`). Первый difference после старта
+(`isInitialSync`, конец — `Promise.resolve(syncLoading)` в `attach`) особый:
+`appNotificationsManager.routeNotification` бросает его уведомления, если сидят в той самой
+вкладке (не idle), и показывает при простаивающей. Истории идут через тот же гейт.
+
+**У нас** (`fix/w1-lang-time-notify`): состояние догона — в воркере (`core/realtime/syncWait.ts`
+поверх `syncEngine.syncState()` и `channelFunnel.syncState(peerId)`), а уведомление строит
+вкладка (`client/realtime/notificationSubscriber.ts`) — поэтому ожидание идёт RPC
+`managers.realtime.waitForSync({peerId})`, а признак начальной синхронизации воркер ставит на
+кадр в момент рассылки (`EventMeta.initialSync`, `workerCore.ts::routeNewMessage`); точка
+`attach` — первый hello. «Прочитано, пока ждали» спрашивается у горизонта диалога
+(`read_inbox_max_id`), а не у флага сообщения. «Idle» — `document.hidden`, как во всём
+`uiNotifications`. Живые кадры с pts во время общего догона воркер и так отбрасывает (их
+переотдаёт difference). Не перенесено: `shouldWaitForSync` (синхронной проверки через границу
+контекстов нет — `waitForSync` без догона отпускает сразу), маршрутизация в одну вкладку
+(`getNotificationTab`) и гейт историй — у нас нет уведомлений об историях.
+
 ---
 
 # 5. Навигация
@@ -713,6 +739,9 @@ JS — единственный владелец ширин; SCSS только �
 
 - **Воркер + SuperMessagePort**: `client/bootstrap.ts:23-45` — `SharedWorker` (фоллбэк
   dedicated + `?noSharedWorker=1`), наш порт `rpc/superMessagePort.ts` — прямой порт tweb'овского.
+  Сбой `postMessage` — как tweb `sendTask` (4c5a2373a) в объёме одного порта без батчей (`post()`):
+  неклонируемый invoke реджектится `DATA_CLONE_ERROR` вместо синхронного броска, результат — явной
+  `DATA_CLONE_ERROR`, событие только логируется; пины — `rpc/superMessagePort.test.ts`.
 - **Прокси-менеджеры**: `rpc/managersProxy.ts:11-40` — `registerManagers` в воркере
   (`smp.handle('manager', …)`) + `createManagers<T>` на UI (двойной Proxy с мемоизацией) —
   аналог `getProxiedManagers` (без `acknowledged`/`all` и без мульти-аккаунта).

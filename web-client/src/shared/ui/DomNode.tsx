@@ -24,7 +24,7 @@ function childrenOf(node: Node): Node[] {
  * `I18n.IntlDateElement` кладут созданный `span.i18n` в `I18n.weakMap`, и
  * дальше ядро само переписывает его текст — на смену языка (`applyLangPack`
  * обходит все `.i18n`, `lib/langPack.ts:568-572`) и на смену настройки 12/24
- * часа (`I18n.setTimeFormat`, `:490`). JSX такой узел выразить не может:
+ * часа (`I18n.setTimeFormat`). JSX такой узел выразить не может:
  * `{node}` React отрендерить не умеет, а `String(node)` даёт
  * `[object HTMLSpanElement]`.
  *

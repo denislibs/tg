@@ -324,6 +324,21 @@ describe('fillTipDates', () => {
     expect(tips('31.02.2024')).toEqual([])
   })
 
+  // Пин расхождения 4 шапки `date.ts`: у оригинала `setHours(0, 0, 0)` без
+  // миллисекунд — к границам прилипают мс текущего момента, и `maxDate` на
+  // проводе (`maxDate / 1000 | 0`) захватывает первую секунду следующих суток.
+  it('границы — ровно полночь при любых миллисекундах «сейчас»', () => {
+    vi.setSystemTime(new Date(2026, 8, 26, 15, 30, 0, 456))
+    expect(tips('today')).toEqual([{ title: 'Today', minDate: day(2026, 9, 26), maxDate: day(2026, 9, 27) - 1 }])
+    expect(tips('yest')).toEqual([{ title: 'Yesterday', minDate: day(2026, 9, 25), maxDate: day(2026, 9, 26) - 1 }])
+    expect(tips('monday')[0]).toMatchObject({ minDate: day(2026, 9, 21), maxDate: day(2026, 9, 22) - 1 })
+    expect(tips('12.05')[0]).toMatchObject({ minDate: day(2026, 5, 12), maxDate: day(2026, 5, 13) - 1 })
+    expect(tips('05.2024')[0]).toMatchObject({ minDate: day(2024, 5, 1), maxDate: day(2024, 6, 1) - 1 })
+    expect(tips('2024')[0]).toMatchObject({ minDate: day(2024, 1, 1), maxDate: day(2025, 1, 1) - 1 })
+    expect(tips('12.05.2024')[0]).toMatchObject({ minDate: day(2024, 5, 12), maxDate: day(2024, 5, 13) - 1 })
+    expect(tips('may 2024')[0]).toMatchObject({ minDate: day(2024, 5, 1), maxDate: day(2024, 6, 1) - 1 })
+  })
+
   // Порт теста оригинала `src/tests/fillTipDates.test.ts` целиком.
   it('разделители полной даты обязаны совпадать (тест оригинала)', () => {
     expect(tips('01.02.2020')).toHaveLength(1)

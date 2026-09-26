@@ -446,6 +446,31 @@ describe('полоса вкладок: переезд подчёркивания
     expect(changes.length).toBe(before)
     expect(indicatorOf(items(tabs)[1]).style.transform).toBe('')
   })
+
+  // tweb 1ca7cb99e (B10): полоска едет кадром позже, а к этому кадру прежней
+  // вкладки уже может не быть (удалили последнюю папку). Раньше
+  // `children[prevId]` давал `undefined` и кадр падал — вместе с ним не
+  // исполнялся и следующий колбэк очереди, который ставит `active` новой вкладке.
+  it('прежняя вкладка пропала до кадра переезда: полоска не едет, выбор доходит', () => {
+    const { tabs, content } = buildIndicators()
+    const { create } = createSlider()
+    const selectTab = horizontalMenu({ tabs, content, createSelectTab: create })
+
+    selectTab(2)
+    flushFrame()
+    flushFrame()
+
+    selectTab(0)
+    items(tabs)[2].remove()
+
+    expect(() => flushFrame()).not.toThrow()
+    flushFrame()
+
+    expect(activeIndex(tabs)).toBe(0)
+    const to = indicatorOf(items(tabs)[0])
+    expect(to.style.transform).toBe('')
+    expect(to.style.width).toBe('')
+  })
 })
 
 /**

@@ -5,7 +5,7 @@
 // Строки берутся из настоящего `lang.ts` через `formatLocalStrings` — тем же
 // путём, каким они попадут в ядро в бою (задача 5), а не выдуманным фикстурным
 // словарём: иначе тест проверял бы фикстуру.
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { LangPackString } from '@layer'
 import lang, { type LangPackKey } from '@/lang'
@@ -182,10 +182,9 @@ describe('применение языка к живым узлам', () => {
   })
 })
 
-// `IntlDateElement` сегодня без вызывающих: его позовёт `helpers/date.ts` задачей 7.
-// Тесты тут не «на будущее»: в 12-часовой ветке живёт арифметика (`(hours % 12) || 12`,
-// ведущий ноль, выбор am/pm по `hours < 12`), и полночь с полднем — ровно то место,
-// где ошибаются на единицу. Без этих проверок ветка отработала бы в бою впервые.
+// Ветка «ЧЧ:ММ» отдаёт строку `Intl` с `-u-hc-` (tweb 00c1e1a86): полночь и
+// полдень — ровно то место, где цикл часов ошибается на единицу, а период у
+// части языков стоит не в конце.
 describe('IntlDateElement', () => {
   const HHMM: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' }
   // 31 августа 2026 — понедельник. Дата локальная, как и `getHours()` внутри.
@@ -232,6 +231,57 @@ describe('IntlDateElement', () => {
 
     // Тот же САМЫЙ текстовый узел: `textContent` при перерисовке создал бы новый.
     expect(el.firstChild).toBe(before)
+  })
+
+  // tweb d3bf83c2b → f252a5e53 → 00c1e1a86. Прежняя ветка `hour+minute` клеила
+  // «ЧЧ:ММ» руками и дописывала период В КОНЕЦ, вынимая его из `Intl` по
+  // `split(/\s/)[1]`. Для языков, где период стоит впереди или без пробела,
+  // это давало мусор: zh/ja — «12:05 undefined», ko/tr/hu — «12:05 12:48»
+  // (вторым словом там само время пробы, а не период), es — «12:05 a.».
+  // Теперь строку целиком отдаёт `Intl` с `-u-hc-`.
+  it.each([
+    ['zh', '上午12:05', '下午01:05'],
+    ['ja', '午前12:05', '午後01:05'],
+    ['ko', '오전 12:05', '오후 01:05'],
+    ['tr', 'ÖÖ 12:05', 'ÖS 01:05'],
+    // Между «a.» и «m.» — неразрывный пробел, так его ставит сам `Intl`.
+    ['es', '12:05 a.\u00a0m.', '01:05 p.\u00a0m.'],
+    // Заглавной нет и быть не должно: «de.» — не начало предложения (tweb 00c1e1a86).
+    ['hu', 'de. 12:05', 'du. 01:05'],
+  ])('12-часовой формат ставит период там, где его ставит язык: %s', (langCode, midnight, afternoon) => {
+    apply(langCode)
+    I18n.setTimeFormat('h12')
+
+    expect(time(at(0, 5))).toBe(midnight)
+    expect(time(at(13, 5))).toBe(afternoon)
+  })
+
+  it('смена цикла сбрасывает кэш форматтеров и без перерисовки узлов', () => {
+    // tweb 00c1e1a86: сброс вынесен из ветки `haveToUpdate` — иначе форматтер,
+    // собранный до установки цикла, переживал бы её со старым `-u-hc-`.
+    const hour = () => I18n.getDateTimeFormat({ hour: 'numeric' }).format(at(13, 5))
+    expect(hour()).toBe('13')
+
+    I18n.setTimeFormat('h12', false)
+
+    expect(hour()).toBe('1 PM')
+  })
+
+  it('время одной и той же минуты форматируется через Intl один раз', () => {
+    // tweb 00c1e1a86: `format()` дорог, а времена в ленте повторяются — мемо по
+    // минуте суток, ключ — сам форматтер (уходит вместе с ним на смене языка).
+    // `format` у `Intl.DateTimeFormat` — аксессор, поэтому считается геттер
+    // (в типах lib он объявлен методом — отсюда приведение).
+    const format = vi.spyOn(Intl.DateTimeFormat.prototype as unknown as { format: object }, 'format', 'get')
+    try {
+      expect(time(at(13, 5))).toBe('13:05')
+      expect(time(at(13, 5))).toBe('13:05')
+      expect(time(at(14, 5))).toBe('14:05')
+
+      expect(format).toHaveBeenCalledTimes(2)
+    } finally {
+      format.mockRestore()
+    }
   })
 
   it('прочие наборы опций идут через Intl, с заглавной буквы и на языке пакета', () => {

@@ -52,7 +52,7 @@ function managersFor(first: HistoryResult, older = page([], true, false)) {
   const managers: BubblesManagers = {
     messages: { getHistory, getAround, messageByDate: vi.fn(async () => null) },
     peers: { fillMirror: vi.fn(async () => {}) },
-    dialogs: { getReadMaxSeqIfUnread: vi.fn(async () => 0), getHistoryMaxSeq },
+    dialogs: { getReadMaxSeqIfUnread: vi.fn(async () => 0), getHistoryMaxSeq, getDialogReadState: vi.fn(async () => undefined) },
     realtime: { markRead: vi.fn(async () => ({ ok: true })) },
   }
   return Object.assign(managers, { getHistory, getAround, getHistoryMaxSeq })

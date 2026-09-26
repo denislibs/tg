@@ -382,17 +382,18 @@ export default TransitionSlider
 // первого снимет `animating`/`backwards` с контейнера посреди второго.
 //
 // ДОЛГ-3. Императивный вкладочник в репозитории теперь один, но React-слой
-// держит СВОИ переписи того же оригинала: `shared/ui/Tabs/TabSlide.tsx` —
-// ветка `slideTabs`, потребитель `SearchView.tsx` (шаред-медиа профиля с задачи
-// 13 плана `docs/superpowers/plans/2026-09-07-solid-wave-3-shared-media.md` и
-// папки чатлиста с задачи 6 плана `…-folders-tabs.md` ходят через этот файл —
-// `AppSearchSuper`/`lib/appDialogsManager.ts` → `horizontalMenu`);
-// `core/hooks/useTransitionSlider.ts` (60) — ветка
-// БЕЗ `animationFunction` (`fade`/`slide-fade`/`zoom-fade`, у нас её играют
-// кейфреймы `styles/tweb/_transition.scss`), потребитель `UserInfoPanel.tsx`.
-// Перевести их на этот файл нельзя, не переписав хосты: там вкладки —
-// JSX-дети, а не заранее лежащие в DOM узлы, адресуемые индексом. Обе копии
-// уходят вместе со своими React-экранами.
+// держит СВОЮ перепись того же оригинала: `core/hooks/useTransitionSlider.ts`
+// (60) — ветка БЕЗ `animationFunction` (`fade`/`slide-fade`/`zoom-fade`, у нас
+// её играют кейфреймы `styles/tweb/_transition.scss`), потребитель
+// `UserInfoPanel.tsx`. Перевести её на этот файл нельзя, не переписав хост:
+// там кадры — JSX-дети, а не заранее лежащие в DOM узлы, адресуемые индексом.
+// Копия уходит вместе со своим React-экраном. Вторая перепись —
+// `shared/ui/Tabs/TabSlide.tsx` (ветка `slideTabs`) — снесена задачей 13 плана
+// `docs/superpowers/plans/2026-09-07-solid-wave-3-global-search.md` вместе с
+// последним потребителем (React-экраном поиска): шаред-медиа профиля, папки
+// чатлиста и выдача глобального поиска ходят через этот файл
+// (`AppSearchSuper`/`lib/appDialogsManager.ts` → `horizontalMenu`, `zoom-fade`
+// владельца поиска `components/sidebarLeft/globalSearch.ts`).
 
 /**
  * Снять с узла таймер уборки от ПРЕДЫДУЩЕГО перехода (`transition.ts:326-329`).

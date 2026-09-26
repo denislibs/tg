@@ -40,10 +40,19 @@ interface MenuProps {
   children: ReactNode
 }
 
-// Плашка меню — механизм tweb 1:1 (_button.scss:98-212): панель ВСЕГДА в DOM,
-// показ/скрытие — только классом `.active`, который переключает
+// Плашка меню — механизм tweb 1:1 (_button.scss:98-212): показ/скрытие —
+// только классом `.active`, который переключает
 // visibility/opacity/transform: scale(.8)→scale3d(1,1,1) по CSS-переходу
 // `--btn-menu-transition`. Никакого JS-анимирования (framer-motion убран).
+//
+// Панель живёт в DOM только от открытия до конца закрытия — как у tweb, где
+// меню собирается на открытии и снимается после него
+// (`helpers/dom/createContextMenu.ts::init` → `ButtonMenu` + `append`, закрытие
+// — `destroy()` → `_element.remove()` через 300 мс, :143-147;
+// `buttonMenuToggle.ts:171-220` — то же для меню по кнопке). Раньше панель
+// рендерилась всегда, и каждый владелец, держащий `<Menu>` смонтированным
+// (строка чатлиста — по одной на КАЖДУЮ строку), оставлял в body скрытый
+// `.btn-menu`.
 //
 // Отступление: позиционирование. tweb держит меню абсолютом внутри
 // `.btn-menu-toggle`-хоста, и класс-угол там делает две вещи разом — задаёт
@@ -74,6 +83,10 @@ export default function Menu({ open, onClose, onExitComplete, corner, style, cla
   const exitRef = useRef(onExitComplete)
   exitRef.current = onExitComplete
 
+  // Панель в DOM: с открытия и до конца анимации закрытия (см. шапку).
+  const [present, setPresent] = useState(open)
+  if (open && !present) setPresent(true)
+
   // `.active` вешаем НА КАДР ПОЗЖЕ появления узла. У tweb меню всегда в DOM,
   // поэтому переход запускается сам; у нас владелец нередко создаёт <Menu>
   // уже открытым — узел рождается сразу с `.active`, браузеру не от чего
@@ -90,8 +103,11 @@ export default function Menu({ open, onClose, onExitComplete, corner, style, cla
   // оставляет панель в scale3d(1,1,1) при закрытии — уходят только opacity и
   // visibility, зума наружу нет. До первого открытия класса нет, поэтому вход
   // по-прежнему играет от scale(.8).
+  // Новая панель на каждое открытие (как новый элемент у tweb) — класс
+  // сбрасывается вместе с ней.
   const everActive = useRef(false)
   if (active) everActive.current = true
+  else if (!present) everActive.current = false
 
   // Конец закрытия ловим по transitionend самой панели (как tweb ловит конец
   // своего перехода); фолбэк по таймеру — на случай animation-level-0, где
@@ -107,6 +123,7 @@ export default function Menu({ open, onClose, onExitComplete, corner, style, cla
       if (done) return
       done = true
       el?.removeEventListener('transitionend', onEnd)
+      setPresent(false)
       exitRef.current?.()
     }
     // Конец ловим и по переходу самой панели, и по переходу её анимируемого
@@ -139,13 +156,15 @@ export default function Menu({ open, onClose, onExitComplete, corner, style, cla
           }}
         />
       )}
-      <div
-        ref={panelRef}
-        className={classNames('btn-menu', corner ?? '', active ? 'active' : '', everActive.current ? 'was-open' : '', className ?? '')}
-        style={{ position: 'fixed', zIndex: zIndex != null ? zIndex + 1 : 2001, ...style }}
-      >
-        {children}
-      </div>
+      {present && (
+        <div
+          ref={panelRef}
+          className={classNames('btn-menu', corner ?? '', active ? 'active' : '', everActive.current ? 'was-open' : '', className ?? '')}
+          style={{ position: 'fixed', zIndex: zIndex != null ? zIndex + 1 : 2001, ...style }}
+        >
+          {children}
+        </div>
+      )}
     </>,
     container,
   )

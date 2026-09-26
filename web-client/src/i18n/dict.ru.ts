@@ -922,6 +922,15 @@ const ru = {
   PinFolderLimitReached: 'К сожалению, закрепить больше чатов нельзя.',
   Recent: 'Недавние',
   'Search.MyChannels': 'Мои каналы',
+  // ── Группы глобального поиска (tweb appSearchSuper.ts:1300, :1974, :1999) ──
+  'Presence.YourChat': 'чат с самим собой',
+  'Chat.Search.JoinedChannels': 'Каналы, на которые вы подписаны',
+  Channels: {
+    one_value: '%1$d канал',
+    few_value: '%1$d канала',
+    many_value: '%1$d каналов',
+    other_value: '%1$d канала',
+  },
   SimilarChannels: 'Похожие каналы',
   MoreSimilar: 'Ещё каналы',
   NoResult: 'Нет результатов',
@@ -1712,6 +1721,13 @@ const ru = {
   // ── Уведомления запрещены / недоступны в браузере (tweb
   //    `sidebarLeft/tabs/notifications.tsx:390`, 72c50bfef) ──
   'Notifications.Restricted': 'Вы запретили уведомления. Сбросьте разрешение в настройках браузера и попробуйте снова.',
+  // ── Владелец глобального поиска (tweb `sidebarLeft/index.ts:1096`, :1130,
+  //    :1504-1517; заголовок попапа без `titleLangKey` — `popups/peer.ts:58`) ──
+  AppName: 'Telegram',
+  SearchAllChatsShort: 'Чаты',
+  ChannelsTab: 'Каналы',
+  ClearRecentSearch: 'очистить',
+  ClearButton: 'Очистить',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)

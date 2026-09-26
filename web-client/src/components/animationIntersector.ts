@@ -56,7 +56,13 @@ export interface AnimationItem {
   liteModeKey?: LiteModeKey,
   controlled?: boolean | Middleware,
   type: AnimationItemType,
-  locked?: boolean
+  locked?: boolean,
+  // tweb cab52547f — состояние снятия «вне DOM» (см. checkAnimation): item,
+  // зарегистрированный до вставки своего узла, не снимается по первому же
+  // «не пересекается» от наблюдателя.
+  wasInDOM?: boolean,
+  neverShownExpired?: boolean,
+  staleTimer?: ReturnType<typeof setTimeout>
 }
 
 /** tweb `helpers/array/forEachReverse` — обход с конца, чтобы splice по ходу не сбивал индексы */
@@ -77,6 +83,11 @@ function safePlay(media: {play: () => unknown}) {
     console.error(e);
   }
 }
+
+// tweb cab52547f — сколько держать анимацию, чей узел ни разу не вставлялся в
+// DOM, прежде чем снятие «вне DOM» заберёт её: ограничивает утечку поддерева,
+// которое собрали и выбросили, так и не показав.
+const NEVER_SHOWN_RECLAIM_TIMEOUT = 60000;
 
 export class AnimationIntersector {
   private observer: IntersectionObserver | undefined;
@@ -117,25 +128,30 @@ export class AnimationIntersector {
           continue;
         }
 
-        // Та же семантика, что у прежнего скана по группам: действуем на первом
-        // item'е, чья группа не заблокирована по пересечению, и выходим.
-        const animation = items.find((p) => !this.intersectionLockedGroups[p.group]);
-        if(!animation) {
-          continue;
-        }
-
-        if(entry.isIntersecting) {
-          this.visible.add(animation);
-          this.checkAnimation(animation, false);
-        } else {
-          this.visible.delete(animation);
-          this.checkAnimation(animation, true);
-
-          const _animation = animation.animation;
-          if(animation.type === 'lottie' && (_animation as LottiePlayer).paused) {
-            (_animation as LottiePlayer).clearCacheWhenSafe();
+        // tweb cab52547f — КАЖДЫЙ item элемента, а не только первый: несколько
+        // плееров могут делить один наблюдаемый узел (обезьянка входа кладёт
+        // idle- и tracking-плеер в один `.media-sticker-wrapper`), и при
+        // обработке первого остальные не играли, не вставали на паузу и не
+        // снимались. С конца — checkAnimation может снять item и вырезать его
+        // из этого же массива.
+        forEachReverse(items, (animation) => {
+          if(this.intersectionLockedGroups[animation.group]) {
+            return;
           }
-        }
+
+          if(entry.isIntersecting) {
+            this.visible.add(animation);
+            this.checkAnimation(animation, false);
+          } else {
+            this.visible.delete(animation);
+            this.checkAnimation(animation, true);
+
+            const _animation = animation.animation;
+            if(animation.type === 'lottie' && (_animation as LottiePlayer).paused) {
+              (_animation as LottiePlayer).clearCacheWhenSafe();
+            }
+          }
+        });
       }
     };
 
@@ -245,12 +261,17 @@ export class AnimationIntersector {
     const elementItems = this.byElement.get(el);
     if(elementItems) {
       indexOfAndSplice(elementItems, player);
-      if(!elementItems.length) {
-        this.byElement.delete(el);
-      }
     }
 
-    this.observer?.unobserve(el);
+    // tweb cab52547f — на одном узле бывает несколько item'ов (обезьянка
+    // входа): наблюдение держим, пока не снят последний, иначе оставшиеся
+    // перестают получать колбэки вовсе.
+    if(!elementItems?.length) {
+      this.byElement.delete(el);
+      this.observer?.unobserve(el);
+    }
+
+    clearTimeout(player.staleTimer);
     this.visible.delete(player);
     this.byPlayer.delete(animation);
   }
@@ -288,7 +309,8 @@ export class AnimationIntersector {
       controlled,
       liteModeKey,
       type,
-      locked
+      locked,
+      wasInDOM: isInDOM(observeElement)
     };
 
     if(controlled && typeof(controlled) !== 'boolean') {
@@ -354,15 +376,54 @@ export class AnimationIntersector {
 
   public checkAnimation(player: AnimationItem, blurred?: boolean, destroy?: boolean) {
     const {el, animation, group, locked} = player;
-    if(locked) {
-      return;
+
+    // tweb 88ee036f1 — снятие ДО выхода по `locked`. Флаг значит «воспроизведением
+    // сейчас рулят руками» (hover-to-play ленты лочит видео, которое перестал
+    // вести; видео со звуком регистрируются залоченными), а не «держать вечно».
+    // Раньше выход стоял выше этой ветки, и залоченный item не снимался никогда:
+    // элемент ушёл из DOM вместе с баблом, а реестр держал всё поддерево. У узла
+    // вне DOM управлять нечем; то, что владелец сохраняет для повторной вставки,
+    // по-прежнему защищает `controlled`.
+    //
+    // tweb cab52547f — анимацию могут зарегистрировать ДО вставки её узла:
+    // `<Transition mode="outin">` карточек входа (`auth/AuthCardsHost.solid.tsx`)
+    // монтирует входящую карточку, пока уходящая доигрывает, и плеер грузится
+    // в отсоединённое поддерево. Наблюдатель сразу сообщает «не пересекается»,
+    // и снятие здесь уничтожало стикер до показа (обезьянка пропадала до
+    // перезагрузки). Снимаем только узел, побывавший в DOM; не попавший туда
+    // снимается по своему сроку NEVER_SHOWN_RECLAIM_TIMEOUT ниже.
+    const inDOM = isInDOM(el);
+    if(inDOM) {
+      player.wasInDOM = true;
     }
 
-    if(destroy || (!this.lockedGroups[group] && !isInDOM(el))) {
+    const canReclaim = player.wasInDOM || player.neverShownExpired;
+    if(!inDOM && !canReclaim && player.staleTimer === undefined) {
+      // отсоединённый узел наблюдатель сообщает один раз и замолкает, поэтому
+      // сроку нужен свой таймер — иначе так и не вставленное поддерево
+      // пролежало бы здесь до следующего обхода
+      player.staleTimer = setTimeout(() => {
+        player.staleTimer = undefined;
+        player.neverShownExpired = true;
+        this.checkAnimation(player);
+      }, NEVER_SHOWN_RECLAIM_TIMEOUT);
+    }
+
+    if(destroy || (!this.lockedGroups[group] && !inDOM && canReclaim)) {
+      // tweb c1c10b8c6 — декодер ушедшего видео останавливаем, даже если item
+      // остаётся за владельцем (`controlled`).
+      if(player.type === 'video') {
+        animation.pause();
+      }
+
       if(!player.controlled || destroy) {
         this.removeAnimation(player);
       }
 
+      return;
+    }
+
+    if(locked) {
       return;
     }
 

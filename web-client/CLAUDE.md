@@ -225,10 +225,14 @@ npx vite build --outDir ../client-build
 - Ре-эмитить принятое из воркера событие через `dispatchEvent` — только
   `dispatchEventSingle` (иначе событие уйдёт обратно в воркер и закольцуется;
   инвариант tweb: `apiManagerProxy` ре-эмитит принятое строго локально).
-- Сочинять `meta` события вне funnel'а воркера. Происхождение кадра
-  (`pts`, `catchUp`) знает только он; подписчику, которому важно отличать живой
-  кадр от catch-up (звук, нотификации), читать `meta.catchUp`, а не полагаться
-  на побочный эффект дедупа по pts.
+- Сочинять `meta` события вне воркера. Происхождение кадра (`pts`, `catchUp`)
+  знает только funnel; подписчику, которому важно отличать живой кадр от
+  catch-up (звук), читать `meta.catchUp`, а не полагаться на побочный эффект
+  дедупа по pts. Третье поле — `initialSync` («кадр пришёл первым difference
+  после старта», tweb 1dc32d889) — ставит рассылка `rt:new_message`
+  (`workerCore.ts::routeNewMessage`) по `core/realtime/syncWait.ts`. Уведомления
+  catch-up не глушат, а ПРИДЕРЖИВАЮТ до конца догона (RPC
+  `realtime.waitForSync`) — `client/realtime/notificationSubscriber.ts`.
 - Читать персист (`core/store/persist`) из `stores/`, `components/`, `core/hooks/`. Модель tweb: одно
   батч-чтение `State` до первого рендера (`client/boot.ts` → `loadStateOnce`), дальше только
   синхронные чтения из `stores/appState` и write-through записи через `setAppState`. Асинхронное
@@ -497,7 +501,7 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
   буквальным присваиванием, а через динамическое свойство
   (`this.container[this.scrollPositionProperty] = value` — один класс
   обслуживает и вертикальный, и горизонтальный скролл). **Инстанцирован в
-  ЧЕТЫРЁХ местах, у каждого — свой узел**: `components/chat/bubbles.ts::setScroll`
+  ПЯТИ местах, у каждого — свой узел**: `components/chat/bubbles.ts::setScroll`
   (императивная лента, порт tweb `ChatBubbles`), `components/sliderTab.ts`
   (скроллер вкладки слайдера, порт `SliderSuperTab`), `lib/appDialogsManager.ts::FolderList`
   (скроллер `.folders-scrollable` одной папки чатлиста, порт `generateScrollable`
@@ -506,12 +510,15 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
   `core/hooks/useSearchSuper.ts` (скроллер панели профиля поверх её `bodyRef`
   — та же роль `SliderSuperTab` для React-панели; общий для шапки панели,
   класса `AppSearchSuper` и `PeerProfileAvatars`, роняет его только хук —
-  расхождение 7 в шапке класса). У каждого скроллера ОДИН владелец позиции,
+  расхождение 7 в шапке класса) и `components/sidebarLeft/globalSearch.ts::initSearch`
+  (скроллер выдачи глобального поиска в `#search-container`, порт tweb
+  `sidebarLeft/index.ts:1089`; создаётся на каждое открытие поиска и роняется
+  его `cleanup` — расхождение 3 шапки владельца). У каждого скроллера ОДИН владелец позиции,
   конкурирующего писателя на том же узле нет. Прежде у ленты инстансов было два
   (React-лента держала свой в `core/hooks/useChatScroll.ts`), и они жили под
   взаимоисключающим флагом `VITE_VANILLA_FEED`; этап 7 снёс и React-ленту, и
-  флаг. `grep -rn "new Scrollable(" src` держит это число: **четыре** вхождения в
-  продакшн-коде (плюс тесты). Рост числа = новый владелец скролла, это
+  флаг. `grep -rn "new Scrollable(" src` держит это число: **пять** вызовов в
+  продакшн-коде (плюс тесты и упоминания в комментариях). Рост числа = новый владелец скролла, это
   осознанное решение, а не побочный эффект — правь правило руками.
 
   `MessageInput.tsx` несёт

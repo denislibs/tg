@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 20,
+      "version": 19,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -71,6 +71,10 @@
         {
           "key": "Animations",
           "value": "Animations"
+        },
+        {
+          "key": "AppName",
+          "value": "Telegram"
         },
         {
           "key": "ApproveNewMembers",
@@ -675,7 +679,18 @@
           "value": "Channel Type"
         },
         {
+          "key": "Channels",
+          "forms": {
+            "one_value": "%1$d channel",
+            "other_value": "%1$d channels"
+          }
+        },
+        {
           "key": "ChannelsOnly",
+          "value": "Channels"
+        },
+        {
+          "key": "ChannelsTab",
           "value": "Channels"
         },
         {
@@ -915,6 +930,10 @@
             "one_value": "%d member answered",
             "other_value": "%d members answered"
           }
+        },
+        {
+          "key": "Chat.Search.JoinedChannels",
+          "value": "Channels you joined"
         },
         {
           "key": "Chat.Search.NothingFound",
@@ -1165,8 +1184,16 @@
           "value": "Clear"
         },
         {
+          "key": "ClearButton",
+          "value": "Clear"
+        },
+        {
           "key": "ClearOtherSessionsHelp",
           "value": "Logs out all devices except for this one."
+        },
+        {
+          "key": "ClearRecentSearch",
+          "value": "clear"
         },
         {
           "key": "ClearRecentStickersAlertTitle",
@@ -3685,6 +3712,10 @@
           "value": "Monthly"
         },
         {
+          "key": "Presence.YourChat",
+          "value": "chat with yourself"
+        },
+        {
           "key": "PreviewSender.CaptionPlaceholder",
           "value": "Add a caption..."
         },
@@ -4312,6 +4343,10 @@
         {
           "key": "Search.MyChannels",
           "value": "My Channels"
+        },
+        {
+          "key": "SearchAllChatsShort",
+          "value": "Chats"
         },
         {
           "key": "SearchEmoji",
@@ -5503,7 +5538,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 20,
+      "version": 19,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -8607,6 +8642,23 @@
           "value": "Мои каналы"
         },
         {
+          "key": "Presence.YourChat",
+          "value": "чат с самим собой"
+        },
+        {
+          "key": "Chat.Search.JoinedChannels",
+          "value": "Каналы, на которые вы подписаны"
+        },
+        {
+          "key": "Channels",
+          "forms": {
+            "one_value": "%1$d канал",
+            "few_value": "%1$d канала",
+            "many_value": "%1$d каналов",
+            "other_value": "%1$d канала"
+          }
+        },
+        {
           "key": "SimilarChannels",
           "value": "Похожие каналы"
         },
@@ -11023,6 +11075,26 @@
         {
           "key": "Notifications.Restricted",
           "value": "Вы запретили уведомления. Сбросьте разрешение в настройках браузера и попробуйте снова."
+        },
+        {
+          "key": "AppName",
+          "value": "Telegram"
+        },
+        {
+          "key": "SearchAllChatsShort",
+          "value": "Чаты"
+        },
+        {
+          "key": "ChannelsTab",
+          "value": "Каналы"
+        },
+        {
+          "key": "ClearRecentSearch",
+          "value": "очистить"
+        },
+        {
+          "key": "ClearButton",
+          "value": "Очистить"
         }
       ]
     },

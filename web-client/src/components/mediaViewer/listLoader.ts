@@ -11,8 +11,9 @@
 //     TS2445); `current`/`count` честно `| undefined` (tweb пишет в них
 //     `undefined` в `reset()`/до первой загрузки), loadPromise — `| null`;
 //     `loadMore` помечен `!` (всегда задан после safeAssign в конструкторе)
-//   • `ListLoaderResult.items` типизирован `P[]` (в tweb — `any[]`; элементы
-//     реально идут в `processItem(item: P)`, рантайм тот же)
+//   • `ListLoaderResult.items` типизирован `(P | undefined)[]` (в tweb —
+//     `any[]`): элементы идут в `processItem(item: P)`, а `undefined` — дыра,
+//     которую `load()` пропускает (tweb c934ddd1e)
 //   • закомментированный в tweb метод `filter` (строки 48-57) не перенесён —
 //     мёртвый код
 import forEachReverse from '@helpers/array/forEachReverse'
@@ -27,7 +28,7 @@ export type ListLoaderOptions<T extends object, P extends object> = {
   onLoadedMore?: () => void,
 }
 
-export type ListLoaderResult<P extends object> = { count: number, items: P[] }
+export type ListLoaderResult<P extends object> = { count: number, items: (P | undefined)[] }
 export default class ListLoader<T extends object, P extends object> {
   public current: T | undefined
   public previous: T[] = []
@@ -171,7 +172,13 @@ export default class ListLoader<T extends object, P extends object> {
 
       const processedArr: Promise<T>[] = []
       const method = older && !this.reverse ? result.items.forEach.bind(result.items) : forEachReverse.bind(null, result.items)
-      method((item: P) => {
+      method((item: P | undefined) => {
+        // tweb c934ddd1e — загрузчик может вернуть дыру (mid, за которым нет
+        // сообщения); processItem её не получает. У наших источников дыр сегодня
+        // нет: `Chat.tsx::loadMoreMedia` и `appSearchSuper.ts::loadMoreMedia`
+        // отдают сообщения из ответа сервера, а не резолвят mid через кэш.
+        if (!item) return
+
         const processed = this.processItem ? this.processItem(item) : (item as unknown as T) // без processItem tweb кладёт сырой P как T (в tweb — any)
 
         if (!processed) return
