@@ -7,8 +7,9 @@
 // Класс собирается так, как его собирает левая колонка оригинала
 // (`sidebarLeft/index.ts:1128-1170`): `searchGroups`, `hideEmptyTabs: false`,
 // `showSender: true`, контекст `setQuery({peerId: 0, folderId: 0, query})`
-// (`:1192`, `:1368`). Группу «Messages» в узел вкладки у оригинала кладёт
-// `loadChats` (`:1289-1292`, задача 9) — здесь её кладёт тест.
+// (`:1192`, `:1368`). Группы в узел вкладки кладёт `loadChats` (`:1289-1292`);
+// его собственные пины — `appSearchSuper.loadChats.test.ts`, здесь книга,
+// `/search` и диалоги пусты.
 //
 // Фейковый бэкенд — шов `messages.searchHistory` (задача 6) с поведением
 // настоящих ручек: глобальная выдача листается курсором `nextRate` (номер
@@ -63,6 +64,10 @@ function fakeBackend(all: MyMessage[]) {
     },
     peers: { fillMirror: async () => {} },
     presence: { get: async () => [] },
+    // группы контактов (`loadChats`) — пусто
+    contacts: { getContactsPeerIds: async () => [] },
+    channels: { search: async () => ({ _: 'contacts.found', my_results: [], results: [], chats: [], users: [] }) },
+    dialogs: { getDialogs: async () => ({ dialogs: [], count: 0, isEnd: true }) },
   } as unknown as SearchSuperManagers
   return { managers, calls }
 }
@@ -79,10 +84,10 @@ function build(managers: SearchSuperManagers, { createPlaceholder }: { createPla
   document.body.append(scrollableEl)
   const scrollable = new Scrollable(scrollableEl)
 
-  // все три именованные группы, как у владельца (`sidebarLeft/index.ts:1095-1103`);
-  // класс этой задачи читает только `messages`
-  const group = (name: string, type: string) => createSearchGroup({
-    name: name as LangPackKey, type, managers, middleware: groupsMiddleware.get(),
+  // пять групп, как у владельца (`sidebarLeft/index.ts:1095-1103`); здесь
+  // проверяется только `messages`
+  const group = (name: string | false, type: string, className?: string) => createSearchGroup({
+    name: name as LangPackKey | false, type, className, managers, middleware: groupsMiddleware.get(),
   })
   const messages = group('SearchMessages', 'messages')
   messages.createPlaceholder = createPlaceholder
@@ -95,13 +100,13 @@ function build(managers: SearchSuperManagers, { createPlaceholder }: { createPla
       contacts: group('SearchAllChatsShort', 'contacts'),
       globalContacts: group('GlobalSearch', 'globalContacts'),
       messages,
+      people: group(false, 'contacts', 'search-group-people'),
+      recent: group('Recent', 'contacts', 'search-group-recent'),
     },
     hideEmptyTabs: false,
     showSender: true,
   })
   scrollable.container.append(searchSuper.container)
-  // у оригинала — `loadChats` (`:1289-1292`), задача 9
-  searchSuper.tabs.inputMessagesFilterEmpty!.append(messages.container)
   return { searchSuper, messages }
 }
 

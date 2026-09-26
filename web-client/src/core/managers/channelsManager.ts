@@ -219,6 +219,11 @@ export function newChannelsManager({ rest, beforeSending, peers, cacheViews }: {
       if (!query) return empty
       // Маппера нет: ответ И ЕСТЬ модель — конструктор схемы приходит в корне.
       const r = await rest.get<ContactsFound>('/search', { q: query, limit })
+      // Тела — владельцу карточек ДО ответа (`saveApiUsers` + `saveApiChats`,
+      // appUsersManager.ts:1085-1086): строки групп поиска рисуют имя и аватар
+      // по ключу из зеркала, а карточку чужого публичного канала больше взять
+      // неоткуда — батчевой ручки за чатами нет (`peersManager.resolve`).
+      peers.saveApiPeers(r)
       return { ...empty, ...r }
     },
   }

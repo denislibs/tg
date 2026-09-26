@@ -259,3 +259,29 @@ describe('InputSearch — декларативный проп placeholder', () =
     expect(placeholders(root).map((n) => n.textContent)).toEqual(['Search'])
   })
 })
+
+describe('InputSearch.onEnter — Enter в поле (tweb inputSearch.ts:26, :238-243)', () => {
+  const enter = (key = 'Enter') => {
+    const input = document.querySelector<HTMLInputElement>('.input-search-input')!
+    act(() => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+    })
+  }
+
+  it('Enter с непустым значением зовёт onEnter(value)', () => {
+    const onEnter = vi.fn()
+    renderInput({ value: 't.me/durov', onEnter })
+    enter()
+    expect(onEnter).toHaveBeenCalledWith('t.me/durov')
+  })
+
+  it('пустое значение и другая клавиша — не зовут (tweb :240-241)', () => {
+    const onEnter = vi.fn()
+    renderInput({ value: '', onEnter })
+    enter()
+    cleanup()
+    renderInput({ value: 'abc', onEnter })
+    enter('a')
+    expect(onEnter).not.toHaveBeenCalled()
+  })
+})
