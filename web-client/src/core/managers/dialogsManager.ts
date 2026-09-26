@@ -26,6 +26,8 @@ import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '../folderIds'
 import { WIRE_FOLDER_ARCHIVE } from '../models'
 import type { Folder } from './foldersManager'
 import type { PeersManager } from './peersManager'
+import SearchIndex from '@lib/searchIndex'
+import { getPeerSearchText } from '../peers/peerSearchText'
 import type { MessagesManager } from './messagesManager'
 
 /** Размер страницы по умолчанию — как в tweb (`limit = 20`, dialogs.ts:1614). */
@@ -247,6 +249,27 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
    */
   let sessionGen = 0
 
+  /**
+   * Локальный индекс имён диалогов — порт tweb `dialogsIndex`
+   * (storages/dialogs.ts:84, опции — `createSearchIndex` :341-348). Ведётся
+   * там же, где у оригинала: диалог индексируется при КАЖДОМ сохранении
+   * (`saveDialog` :1400-1403 — у нас `setAll`/`mergePage`) и снимается при
+   * выбрасывании (`dropDialog` :1104 — у нас `applyRemoved`). Текст — имя
+   * пира из хранилища карточек (`getPeerSearchText`), поэтому он обязан
+   * лечь в индекс ПОСЛЕ `saveApiPeers` контейнера — так и идут оба пути.
+   * Читает его ветка `query` у `getDialogs`.
+   */
+  const createSearchIndex = () => new SearchIndex<PeerId>({
+    clearBadChars: true,
+    ignoreCase: true,
+    latinize: true,
+    includeTag: true,
+  })
+  let dialogsIndex = createSearchIndex()
+  const indexDialog = (peerId: PeerId) => {
+    dialogsIndex.indexObject(peerId, getPeerSearchText(peerId, peers?.cachedPeer(peerId)))
+  }
+
   /** Схлопнуть серию публикаций в одну запись на диск (см. докблок `saveCache`
    * в DialogsDeps). Каждый publish() двигает окно — итоговая запись случится
    * один раз, через PERSIST_DEBOUNCE_MS ПОСЛЕ ПОСЛЕДНЕЙ операции серии,
@@ -442,6 +465,12 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
    */
   const setAll = (dialogs: Dialog[]): DialogOp | null => {
     const prev = items
+    // Весь набор заменяется целиком — индекс тоже: не вошедшие в новый набор
+    // выброшены, вошедшие переиндексированы (у оригинала `saveDialog` зовётся
+    // на каждое сохранение, и переименованный пир находится по новому имени,
+    // даже если сама строка списка не изменилась — поэтому ДО `sameItems`).
+    dialogsIndex = createSearchIndex()
+    for (const dialog of dialogs) indexDialog(dialog.peerId)
     items = sort(dialogs)
     // Пересортировать НАДО ЖЕ засеянным pinnedOrder — см. докблок syncPinnedOrder.
     if (syncPinnedOrder(items)) items = sort(dialogs)
@@ -701,6 +730,8 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     const changed: DialogItem[] = []
     let added = 0
     for (const dialog of dialogs) {
+      // Индекс — на каждое сохранение, как `saveDialog` (см. `setAll`).
+      indexDialog(dialog.peerId)
       const prev = byId.get(dialog.peerId)?.dialog
       if (!prev) added++
       else if (equal(prev, dialog)) continue // тот же диалог теми же значениями — не операция
@@ -963,6 +994,36 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     }
   }
 
+  /**
+   * Ветка `query` у `getDialogs` — порт dialogs.ts:1660-1686 + :1702-1709.
+   * Отвечает ТОЛЬКО из кэша: с запросом оригинал в сеть не ходит вовсе
+   * (`(isServerSearchSupported ? false : query) || …` — серверный поиск там
+   * только у форумов), ищутся лишь загруженные диалоги.
+   *
+   * Папка — условие `dialog.folder_id === filterId` (:1676): реальных папок
+   * две, «все чаты» и архив (у нас `forFilter` их и отдаёт — в порядке
+   * списка, то есть уже отсортированными `getDialogIndex` по убыванию, :1681);
+   * у пользовательской папки `folder_id` не совпадает никогда, выдача пуста.
+   *
+   * Расхождение: `cachedResults` (мемо выдачи на пагинацию тем же запросом,
+   * :1661-1684) не перенесён — выдача пересчитывается на каждую страницу;
+   * потребителей, листающих локальную выдачу, у нас нет, а индекс и так
+   * живёт готовым.
+   */
+  function searchDialogs(query: string, offsetIndex: number, limit: number, filterId: number): DialogsPage {
+    const scope = scopeFor(filterId)
+    const results = dialogsIndex.search(query)
+    const found = (scope === 'global' ? [] : (forFilter(filterId) ?? []))
+      .filter((i) => results.has(i.dialog.peerId))
+    const offset = offsetFor(found, offsetIndex)
+    return {
+      dialogs: found.slice(offset, offset + limit).map((i) => i.dialog),
+      // `loadedAll ? curDialogStorage.length : getFolder(filterId).count` (:1706)
+      count: countFor(filterId, found),
+      isEnd: offset + limit >= found.length,
+    }
+  }
+
   function hydrate(): Promise<void> {
     if (hydrated) return Promise.resolve()
     // `hydrating === p` в finally (а не безусловное обнуление): `resetForLogout()`
@@ -1014,8 +1075,9 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
 
     /**
      * Страница списка — порт tweb `dialogsStorage.getDialogs`
-     * (lib/storages/dialogs.ts:1691-1753; поиск/форумы/`skipMigrated` у нас
-     * отсутствуют как явления, поэтому портирована только ветка списка).
+     * (lib/storages/dialogs.ts:1691-1753; форумы/`skipMigrated` у нас
+     * отсутствуют как явления, поэтому портированы ветка списка и ветка
+     * локального поиска `query`, см. `searchDialogs`).
      *
      * Три шага оригинала: (1) отфильтровать кэш папкой, (2) найти курсор
      * линейным поиском по ЗНАЧЕНИЮ индекса, (3) хватает кэша — нарезать
@@ -1030,12 +1092,14 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
      * выпустят два запроса. Так же и в tweb — очередь держит потребитель
      * (`helpers/sequentialCursorFetcher.ts`, этап 3), а не хранилище.
      */
-    async getDialogs(options: { offsetIndex?: number; limit?: number; filterId?: number } = {}): Promise<DialogsPage> {
-      const { offsetIndex = 0, limit = DEFAULT_LIMIT, filterId = ALL_FOLDER_ID } = options
+    async getDialogs(options: { query?: string; offsetIndex?: number; limit?: number; filterId?: number } = {}): Promise<DialogsPage> {
+      const { query = '', offsetIndex = 0, limit = DEFAULT_LIMIT, filterId = ALL_FOLDER_ID } = options
       const gen = sessionGen
       await hydrate()
       // Сессия сменилась, пока читали диск (Minor #4) — отдаём честно пустую страницу.
       if (gen !== sessionGen) return { dialogs: [], count: 0, isEnd: false }
+
+      if (query) return searchDialogs(query, offsetIndex, limit, filterId)
 
       const cached = forFilter(filterId)
       // Считать папку пока нечем (определения или контакты не приехали) — см. forFilter.
@@ -1222,6 +1286,7 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       // см. докблок sessionGen.
       sessionGen++
       items = []
+      dialogsIndex = createSearchIndex()
       pinnedOrders = {}
       pinnedOrder = []
       // Этап 2: папки и признаки загруженности — тоже про ПРОШЛЫЙ аккаунт.
@@ -1356,6 +1421,7 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     applyRemoved(peerId: number): void {
       const idx = items.findIndex((i) => i.dialog.peerId === peerId)
       if (idx === -1) return // не было в кэше — нечего убирать
+      dialogsIndex.indexObject(peerId, '') // tweb dropDialog (dialogs.ts:1104)
       items = items.filter((i) => i.dialog.peerId !== peerId)
       publish([{ op: 'remove', peerId }])
     },
