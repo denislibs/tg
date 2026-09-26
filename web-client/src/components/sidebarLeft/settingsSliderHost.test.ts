@@ -241,6 +241,27 @@ describe('settingsSliderHost — заведение слайдера в леву
     expect(getSettingsSliderHost()).toBe(second)
   })
 
+  it('onTabsEmpty: зовёт, когда закрыта последняя вкладка, и молчит после отписки', async() => {
+    const { managers } = makeManagers()
+    const host = createHost(managers)
+    const onEmpty = vi.fn()
+    const off = host.onTabsEmpty(onEmpty)
+
+    const tab = await host.openTab(AppActiveSessionsTab, { authorizations: [current, other] })
+    expect(onEmpty).not.toHaveBeenCalled()
+
+    tab.close()
+    await settle()
+    expect(onEmpty).toHaveBeenCalled()
+
+    onEmpty.mockClear()
+    off()
+    const again = await host.openTab(AppActiveSessionsTab, { authorizations: [current, other] })
+    again.close()
+    await settle()
+    expect(onEmpty).not.toHaveBeenCalled()
+  })
+
   it('вне экрана настроек хост не выдумывается — вызов падает, а не молчит', () => {
     const { managers } = makeManagers()
     const host = createHost(managers)

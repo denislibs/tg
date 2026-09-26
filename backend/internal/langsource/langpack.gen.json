@@ -1239,10 +1239,6 @@
           "value": "Creating…"
         },
         {
-          "key": "Common.DoneSuffix",
-          "value": "done"
-        },
-        {
           "key": "Common.Menu",
           "value": "Menu"
         },
@@ -5210,32 +5206,12 @@
           "value": "Create a password to protect your account."
         },
         {
-          "key": "TwoStepAuth.EmailHelp",
-          "value": "Add a recovery email to restore access if you forget your password."
-        },
-        {
-          "key": "TwoStepAuth.EnterCurrentPassword",
-          "value": "Please enter your current password"
-        },
-        {
           "key": "TwoStepAuth.GenericHelp",
           "value": "You have enabled Two-Step verification.\nYou'll need the password you set up here to log in to your Telegram account."
         },
         {
           "key": "TwoStepAuth.HintCaption",
           "value": "You can create an optional hint for your password."
-        },
-        {
-          "key": "TwoStepAuth.InvalidPassword",
-          "value": "Invalid password"
-        },
-        {
-          "key": "TwoStepAuth.PasswordHelp",
-          "value": "This password will be required when you log in on a new device in addition to the code you get via SMS."
-        },
-        {
-          "key": "TwoStepAuth.PasswordsDontMatch",
-          "value": "Passwords don’t match."
         },
         {
           "key": "TwoStepAuth.ReEnterPassword",
@@ -5248,10 +5224,6 @@
         {
           "key": "TwoStepAuth.RemovePassword",
           "value": "Disable Password"
-        },
-        {
-          "key": "TwoStepAuth.SetPassword",
-          "value": "Set a Password"
         },
         {
           "key": "TwoStepAuth.SetPasswordCaption",
@@ -8638,10 +8610,6 @@
           "value": "из"
         },
         {
-          "key": "Common.DoneSuffix",
-          "value": "выполнено"
-        },
-        {
           "key": "UnreadMessages",
           "value": "Непрочитанные сообщения"
         },
@@ -8920,10 +8888,6 @@
           "value": "Задать пароль"
         },
         {
-          "key": "TwoStepAuth.SetPassword",
-          "value": "Задайте пароль"
-        },
-        {
           "key": "TwoStepAuth.CreateCaption",
           "value": "Создайте пароль для защиты аккаунта."
         },
@@ -8956,10 +8920,6 @@
           "value": "Введите пароль ещё раз"
         },
         {
-          "key": "TwoStepAuth.PasswordsDontMatch",
-          "value": "Пароли не совпадают."
-        },
-        {
           "key": "TwoStepAuth.SetupHintTitle",
           "value": "Подсказка к паролю"
         },
@@ -8974,10 +8934,6 @@
         {
           "key": "RecoveryEmailTitle",
           "value": "Резервный email"
-        },
-        {
-          "key": "TwoStepAuth.EmailHelp",
-          "value": "Добавьте резервный email, чтобы восстановить доступ, если забудете пароль."
         },
         {
           "key": "TwoStepAuth.RecoveryEmailPlaceholder",
@@ -9373,20 +9329,12 @@
           "value": "Введите пароль"
         },
         {
-          "key": "TwoStepAuth.InvalidPassword",
-          "value": "Неверный пароль"
-        },
-        {
           "key": "LoginPassword",
           "value": "Пароль"
         },
         {
           "key": "TwoStepAuth.SetPasswordHelp",
           "value": "Вы можете установить пароль, который будет использоваться для входа с новых устройств в дополнение к проверочному коду из SMS."
-        },
-        {
-          "key": "TwoStepAuth.EnterCurrentPassword",
-          "value": "Введите текущий пароль"
         },
         {
           "key": "TwoStepAuth.GenericHelp",
@@ -9427,10 +9375,6 @@
         {
           "key": "TwoStepVerificationPasswordSet",
           "value": "Пароль установлен!"
-        },
-        {
-          "key": "TwoStepAuth.PasswordHelp",
-          "value": "Этот пароль будет запрашиваться при входе с нового устройства в дополнение к коду из SMS."
         },
         {
           "key": "TwoStepVerificationPasswordReturnSettings",
@@ -12757,10 +12701,6 @@
           "value": "Définir le mot de passe"
         },
         {
-          "key": "TwoStepAuth.SetPassword",
-          "value": "Définir un mot de passe"
-        },
-        {
           "key": "TwoStepAuth.CreateCaption",
           "value": "Créez un mot de passe pour protéger votre compte."
         },
@@ -12785,10 +12725,6 @@
           "value": "Saisissez à nouveau votre mot de passe"
         },
         {
-          "key": "TwoStepAuth.PasswordsDontMatch",
-          "value": "Les mots de passe ne correspondent pas."
-        },
-        {
           "key": "TwoStepAuth.SetupHintTitle",
           "value": "Indice de mot de passe"
         },
@@ -12803,10 +12739,6 @@
         {
           "key": "RecoveryEmailTitle",
           "value": "E-mail de récupération"
-        },
-        {
-          "key": "TwoStepAuth.EmailHelp",
-          "value": "Ajoutez un e-mail de récupération pour restaurer l'accès si vous oubliez votre mot de passe."
         },
         {
           "key": "TwoStepAuth.RecoveryEmailPlaceholder",
@@ -13196,20 +13128,12 @@
           "value": "Saisissez votre mot de passe"
         },
         {
-          "key": "TwoStepAuth.InvalidPassword",
-          "value": "Mot de passe incorrect"
-        },
-        {
           "key": "LoginPassword",
           "value": "Mot de passe"
         },
         {
           "key": "TwoStepAuth.SetPasswordHelp",
           "value": "Vous pouvez définir un mot de passe qui sera demandé lors de la connexion sur un nouvel appareil, en plus du code reçu par SMS."
-        },
-        {
-          "key": "TwoStepAuth.EnterCurrentPassword",
-          "value": "Saisissez votre mot de passe actuel"
         },
         {
           "key": "TwoStepAuth.GenericHelp",
@@ -13250,10 +13174,6 @@
         {
           "key": "TwoStepVerificationPasswordSet",
           "value": "Mot de passe défini !"
-        },
-        {
-          "key": "TwoStepAuth.PasswordHelp",
-          "value": "Ce mot de passe sera demandé lors de la connexion sur un nouvel appareil, en plus du code reçu par SMS."
         },
         {
           "key": "TwoStepVerificationPasswordReturnSettings",
@@ -15600,10 +15520,6 @@
           "value": "Passwort festlegen"
         },
         {
-          "key": "TwoStepAuth.SetPassword",
-          "value": "Passwort festlegen"
-        },
-        {
           "key": "TwoStepAuth.CreateCaption",
           "value": "Erstelle ein Passwort zum Schutz deines Kontos."
         },
@@ -15628,10 +15544,6 @@
           "value": "Passwort erneut eingeben"
         },
         {
-          "key": "TwoStepAuth.PasswordsDontMatch",
-          "value": "Passwörter stimmen nicht überein."
-        },
-        {
           "key": "TwoStepAuth.SetupHintTitle",
           "value": "Passwort-Hinweis"
         },
@@ -15646,10 +15558,6 @@
         {
           "key": "RecoveryEmailTitle",
           "value": "Wiederherstellungs-E-Mail"
-        },
-        {
-          "key": "TwoStepAuth.EmailHelp",
-          "value": "Füge eine Wiederherstellungs-E-Mail hinzu, um den Zugriff bei vergessenem Passwort wiederherzustellen."
         },
         {
           "key": "TwoStepAuth.RecoveryEmailPlaceholder",
@@ -16039,20 +15947,12 @@
           "value": "Gib dein Passwort ein"
         },
         {
-          "key": "TwoStepAuth.InvalidPassword",
-          "value": "Falsches Passwort"
-        },
-        {
           "key": "LoginPassword",
           "value": "Passwort"
         },
         {
           "key": "TwoStepAuth.SetPasswordHelp",
           "value": "Du kannst ein Passwort festlegen, das zusätzlich zum Code aus der SMS benötigt wird, wenn du dich auf einem neuen Gerät anmeldest."
-        },
-        {
-          "key": "TwoStepAuth.EnterCurrentPassword",
-          "value": "Gib dein aktuelles Passwort ein"
         },
         {
           "key": "TwoStepAuth.GenericHelp",
@@ -16093,10 +15993,6 @@
         {
           "key": "TwoStepVerificationPasswordSet",
           "value": "Passwort festgelegt!"
-        },
-        {
-          "key": "TwoStepAuth.PasswordHelp",
-          "value": "Dieses Passwort wird zusätzlich zum Code aus der SMS benötigt, wenn du dich auf einem neuen Gerät anmeldest."
         },
         {
           "key": "TwoStepVerificationPasswordReturnSettings",
@@ -18448,10 +18344,6 @@
           "value": "Establecer contraseña"
         },
         {
-          "key": "TwoStepAuth.SetPassword",
-          "value": "Establece una contraseña"
-        },
-        {
           "key": "TwoStepAuth.CreateCaption",
           "value": "Crea una contraseña para proteger tu cuenta."
         },
@@ -18476,10 +18368,6 @@
           "value": "Vuelve a introducir tu contraseña"
         },
         {
-          "key": "TwoStepAuth.PasswordsDontMatch",
-          "value": "Las contraseñas no coinciden."
-        },
-        {
           "key": "TwoStepAuth.SetupHintTitle",
           "value": "Pista de contraseña"
         },
@@ -18494,10 +18382,6 @@
         {
           "key": "RecoveryEmailTitle",
           "value": "Correo de recuperación"
-        },
-        {
-          "key": "TwoStepAuth.EmailHelp",
-          "value": "Añade un correo de recuperación para restaurar el acceso si olvidas tu contraseña."
         },
         {
           "key": "TwoStepAuth.RecoveryEmailPlaceholder",
@@ -18887,20 +18771,12 @@
           "value": "Introduce tu contraseña"
         },
         {
-          "key": "TwoStepAuth.InvalidPassword",
-          "value": "Contraseña incorrecta"
-        },
-        {
           "key": "LoginPassword",
           "value": "Contraseña"
         },
         {
           "key": "TwoStepAuth.SetPasswordHelp",
           "value": "Puedes establecer una contraseña que se pedirá al iniciar sesión en un nuevo dispositivo, además del código que recibes por SMS."
-        },
-        {
-          "key": "TwoStepAuth.EnterCurrentPassword",
-          "value": "Introduce tu contraseña actual"
         },
         {
           "key": "TwoStepAuth.GenericHelp",
@@ -18941,10 +18817,6 @@
         {
           "key": "TwoStepVerificationPasswordSet",
           "value": "¡Contraseña establecida!"
-        },
-        {
-          "key": "TwoStepAuth.PasswordHelp",
-          "value": "Esta contraseña se pedirá al iniciar sesión en un nuevo dispositivo, además del código que recibes por SMS."
         },
         {
           "key": "TwoStepVerificationPasswordReturnSettings",
@@ -21314,10 +21186,6 @@
           "value": "Встановити пароль"
         },
         {
-          "key": "TwoStepAuth.SetPassword",
-          "value": "Встановіть пароль"
-        },
-        {
           "key": "TwoStepAuth.CreateCaption",
           "value": "Створіть пароль для захисту акаунту."
         },
@@ -21342,10 +21210,6 @@
           "value": "Введіть пароль ще раз"
         },
         {
-          "key": "TwoStepAuth.PasswordsDontMatch",
-          "value": "Паролі не збігаються."
-        },
-        {
           "key": "TwoStepAuth.SetupHintTitle",
           "value": "Підказка до пароля"
         },
@@ -21360,10 +21224,6 @@
         {
           "key": "RecoveryEmailTitle",
           "value": "Резервний email"
-        },
-        {
-          "key": "TwoStepAuth.EmailHelp",
-          "value": "Додайте резервний email, щоб відновити доступ, якщо забудете пароль."
         },
         {
           "key": "TwoStepAuth.RecoveryEmailPlaceholder",
@@ -21755,20 +21615,12 @@
           "value": "Введіть пароль"
         },
         {
-          "key": "TwoStepAuth.InvalidPassword",
-          "value": "Невірний пароль"
-        },
-        {
           "key": "LoginPassword",
           "value": "Пароль"
         },
         {
           "key": "TwoStepAuth.SetPasswordHelp",
           "value": "Ви можете встановити пароль, який використовуватиметься для входу з нових пристроїв на додаток до перевірочного коду з SMS."
-        },
-        {
-          "key": "TwoStepAuth.EnterCurrentPassword",
-          "value": "Введіть поточний пароль"
         },
         {
           "key": "TwoStepAuth.GenericHelp",
@@ -21809,10 +21661,6 @@
         {
           "key": "TwoStepVerificationPasswordSet",
           "value": "Пароль встановлено!"
-        },
-        {
-          "key": "TwoStepAuth.PasswordHelp",
-          "value": "Цей пароль запитуватиметься під час входу з нового пристрою на додаток до коду з SMS."
         },
         {
           "key": "TwoStepVerificationPasswordReturnSettings",
