@@ -125,6 +125,19 @@ html.no-backdrop {
   }
 }
 
+/* tweb base.scss:1869-1877 — строку, которую нельзя выбрать в селекторе пиров, выдаёт
+   пунктирная рамка чекбокса (`AppSelectPeers` вкладки ссылки папки,
+   `sidebarLeft/tabs/sharedFolder.solid.tsx`, класс `cant-select` на строке). */
+.cant-select {
+  .checkbox {
+    &-box {
+      &-border {
+        border-style: dotted;
+      }
+    }
+  }
+}
+
 /* Ширины колонок (--default-column-width, --left-column-*, --right-column-width,
    --middle-column-width, --chat-width, --page-chats-padding, --folders-sidebar-*)
    пишет JS — core/dom/updateColumnWidths.ts (порт tweb helpers/updateColumnWidths.ts).

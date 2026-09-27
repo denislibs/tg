@@ -68,7 +68,7 @@ import { useAppStateStore } from './appState'
 import { useFoldersStore } from './foldersStore'
 import { useChatsStore } from './chatsStore'
 import { useNotifyStore } from './notifyStore'
-import { cachedChat, subscribePeerMirror } from '../core/peerCache'
+import { cachedPeer, subscribePeerMirror } from '../core/peerCache'
 import { ALL_FOLDER_ID } from '../core/folderIds'
 import { folderUnreadCounts, type FolderNotifications } from '../core/folders/folderUnreadCounts'
 import type { Folder } from '../core/managers/foldersManager'
@@ -114,7 +114,7 @@ function project(): void {
     folders,
     useFoldersStore.getState().contactIds,
     useNotifyStore.getState().settings,
-    cachedChat,
+    cachedPeer,
   )
   const items: StoredFolder[] = [
     { id: ALL_FOLDER_ID, notifications: counts[ALL_FOLDER_ID], filter: ALL_CHATS_FILTER },
@@ -138,8 +138,8 @@ function hydrate(): void {
     useChatsStore.subscribe((s, prev) => { if (s.dialogs !== prev.dialogs) project() }),
     useFoldersStore.subscribe((s, prev) => { if (s.contactIds !== prev.contactIds) project() }),
     useNotifyStore.subscribe((s, prev) => { if (s.settings !== prev.settings) project() }),
-    // Карточка чата решает «канал или группа» — и правило типов папки, и мьют
-    // типа (`folderUnreadCounts`, параметр `chatOf`); доехала позже — пересчёт.
+    // Карточка пира решает «канал, группа или бот» — и правило типов папки, и
+    // мьют типа (`folderUnreadCounts`, параметр `peerOf`); доехала позже — пересчёт.
     subscribePeerMirror(project),
   ]
 }

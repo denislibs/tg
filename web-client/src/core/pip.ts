@@ -1,4 +1,7 @@
 import { create } from 'zustand'
+import { flushSync } from 'react-dom'
+import { delegateEvents } from 'solid-js/web'
+import { setAppWindow } from '@helpers/appWindow'
 
 // Картинка в картинке.
 // 1) Видеоплеер просмотрщика уходит в PiP через video.requestPictureInPicture
@@ -49,6 +52,14 @@ let appPipActive = false
 
 // Вынести приложение (#root) в окно Document PiP; во вкладке показать заглушку
 // с кнопкой «Назад во вкладку». Возврат — по закрытию окна или кнопке.
+//
+// Активное окно приложения (`helpers/appWindow.ts`) пишет ТОЛЬКО этот модуль —
+// как у tweb, где `setAppWindow` зовёт только вынос клиента
+// (`components/clientPip.tsx:62`, `:118`, 812502980). Факт «активное окно» живёт
+// в двух читательских формах: `usePipStore.win` — для React-порталов
+// (`usePortalContainer`), `setAppWindow` — для vanilla/Solid (`getOverlayRoot`,
+// `bindActiveWindowListener`). Обе пишутся здесь же, соседними строками, и
+// только вместе; вторая форма уходит с последним React-порталом (О-17 2C).
 export async function enterAppPip(labels: { title: string; hint: string; back: string }): Promise<boolean> {
   const dp = docPip()
   const root = document.getElementById('root')
@@ -60,7 +71,11 @@ export async function enterAppPip(labels: { title: string; hint: string; back: s
     return false
   }
   appPipActive = true
+  // Окно — ДО переноса узлов, как у tweb (`clientPip.tsx:60-62`): подписчики
+  // смены окна (ловушка фокуса, `helpers/dom/focusTrap.ts`) рассчитывают, что
+  // DOM ещё в прежнем окне.
   usePipStore.setState({ active: true, win: pip })
+  setAppWindow(pip)
 
   // Перенести стили (link/style) в окно PiP.
   for (const node of document.head.querySelectorAll('style, link[rel="stylesheet"]')) {
@@ -76,6 +91,14 @@ export async function enterAppPip(labels: { title: string; hint: string; back: s
   const placeholder = document.createElement('div')
   root.replaceWith(placeholder)
   pip.document.body.appendChild(root)
+
+  // tweb `clientPip.tsx:76-83`: Solid делегирует onClick/onInput/… одному
+  // обработчику на ГЛАВНОМ документе (`delegateEvents` по умолчанию —
+  // `window.document`), а события перенесённых узлов всплывают до документа
+  // PiP. Без тех же делегатов там все Solid-`onClick` (острова, попапы на
+  // `getOverlayRoot()`) в выносе мертвы.
+  const delegated = (document as Document & { _$DX_DELEGATE?: Set<string> })._$DX_DELEGATE
+  if (delegated?.size) delegateEvents([...delegated], pip.document)
 
   // Заглушка во вкладке.
   const stub = document.createElement('div')
@@ -99,8 +122,18 @@ export async function enterAppPip(labels: { title: string; hint: string; back: s
   const restore = () => {
     if (!appPipActive) return
     appPipActive = false
-    usePipStore.setState({ active: false, win: null })
+    // tweb `clientPip.tsx:104-111`, `:120`: корни, открытые уже в выносе (попапы,
+    // меню, тултипы в `getOverlayRoot()`), в перенос не входили — их тоже
+    // возвращаем, а не бросаем в закрывающемся окне. Расхождение: React-порталы
+    // (`usePortalContainer`) перенацеливает сам React по `usePipStore.win`, поэтому
+    // сброс стора коммитится синхронно (`flushSync`) ДО сбора остатка — иначе
+    // портал уехал бы дважды и React снимал бы узел не у того родителя.
+    flushSync(() => usePipStore.setState({ active: false, win: null }))
+    const transientNodes = Array.from(pip.document.body.children).filter((node) => node !== root)
+    // Окно — до переноса, как у tweb (`clientPip.tsx:118`).
+    setAppWindow(window)
     stub.replaceWith(root)
+    transientNodes.forEach((node) => document.body.append(node))
   }
   pip.addEventListener('pagehide', restore)
   return true

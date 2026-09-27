@@ -257,7 +257,10 @@ export default function PremiumModal({ open, onClose, onExitComplete }: { open: 
           >
             <div className={classNames('popup-header', notTop ? 'not-top' : '', isVisible ? 'is-visible' : '')}>
               <div className="popup-header-background" />
-              <IconButton className="popup-close" onClick={onClose} color="var(--secondary-text-color)">
+              {/* Цвет — общий у `.btn-icon` (`--primary-text-color`, tweb 69a759cbc):
+                  инлайн `--secondary-text-color` давал основной цвет лишь через подмену
+                  переменной в `.popup:not(.old) .popup-close`, снятую тем же коммитом. */}
+              <IconButton className="popup-close" onClick={onClose}>
                 <TgIcon name="close" size={22} />
               </IconButton>
               <div className={classNames('popup-title')}>{t('Premium.Boarding.Title')}</div>

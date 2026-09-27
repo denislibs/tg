@@ -143,7 +143,10 @@ export default function Popup({
     >
       <div className={classNames('popup-container', 'z-depth-1', s.container)} onClick={(e) => e.stopPropagation()}>
         <div className="popup-header">
-          <IconButton className="popup-close" onClick={onClose} color="var(--secondary-text-color)">
+          {/* Цвет — общий у `.btn-icon` (`--primary-text-color`, tweb 69a759cbc):
+              инлайн `--secondary-text-color` давал основной цвет лишь через подмену
+              переменной в `.popup:not(.old) .popup-close`, снятую тем же коммитом. */}
+          <IconButton className="popup-close" onClick={onClose}>
             <TgIcon name="close" size={22} />
           </IconButton>
           <div className="popup-title">{title}</div>

@@ -950,6 +950,26 @@ const uk = {
   'SharedFolder.Toast.NeedName': 'Задайте назву теки, щоб поділитися нею.',
   'SharedFolder.Toast.NoExcluded': 'Виключені чати не підтримуються у спільних теках.',
   'SharedFolder.Toast.NoTypes': 'Типи чатів не підтримуються у спільних теках.',
+  // ── Посилання теки «Поділитися текою» (tweb `sidebarLeft/tabs/sharedFolder.tsx`,
+  //    `inviteLink.ts`; задача 25 плану 2D) ──
+  ChatsSelected: {
+    one_value: 'вибрано %d чат',
+    few_value: 'вибрано %d чати',
+    many_value: 'вибрано %d чатів',
+    other_value: 'вибрано %d чату',
+  },
+  DeleteLink: 'Видалити посилання',
+  'SharedFolder.Cant.Share': 'ви не можете запрошувати сюди інших',
+  'SharedFolder.Cant.ShareBots': 'не можна ділитися чатами з ботами',
+  'SharedFolder.Cant.ShareUsers': 'не можна ділитися чатами з користувачами',
+  'SharedFolder.Edit.Description': 'Будь-хто з цим посиланням може додати теку **%s** і %s, вибрані нижче',
+  'SharedFolder.Edit.Subtitle': 'Ділитися можна лише групами й каналами, у яких вам дозволено створювати посилання-запрошення.',
+  'SharedFolder.Edit.Title': 'Поділитися текою',
+  'SharedFolder.NoChats': 'У цій теці немає чатів, якими можна поділитися з іншими.',
+  'SharedFolder.NoChats.Title': 'Цими чатами не можна поділитися',
+  'SharedFolder.Toast.NoAdminChannel': 'У вас немає прав адміністратора, щоб ділитися посиланнями-запрошеннями в цей канал.',
+  'SharedFolder.Toast.NoAdminGroup': 'У вас немає прав адміністратора, щоб ділитися посиланнями-запрошеннями в цю групу.',
+  'SharedFolder.Toast.NoPrivate': 'Особистими чатами ділитися не можна.',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(uk)

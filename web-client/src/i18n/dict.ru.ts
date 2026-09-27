@@ -1622,7 +1622,6 @@ const ru = {
   'Folder.Invite.Invalid': 'Ссылка недействительна или устарела.',
   'Folder.Invite.Question': 'Добавить «%1$s» и вступить в её чаты?',
   'Folder.Invite.Question.Folder': 'Добавить папку «%1$s»?',
-  'Folder.Share.Empty': 'В этой папке нет чатов, которыми можно поделиться.',
   'Group.RestrictedBadge': 'ограничен',
   'InviteLinks.Description.Additional': 'Вы можете создать дополнительные ссылки-приглашения с ограничением по времени, числу пользователей или платной подпиской.',
   'InviteLinks.Expires': 'Истекает',
@@ -1817,6 +1816,26 @@ const ru = {
   'SharedFolder.Toast.NeedName': 'Задайте название папки, чтобы поделиться ею.',
   'SharedFolder.Toast.NoExcluded': 'Исключённые чаты не поддерживаются в общих папках.',
   'SharedFolder.Toast.NoTypes': 'Типы чатов не поддерживаются в общих папках.',
+  // ── Ссылка папки «Поделиться папкой» (tweb `sidebarLeft/tabs/sharedFolder.tsx`,
+  //    `inviteLink.ts`; задача 25 плана 2D) ──
+  ChatsSelected: {
+    one_value: 'выбран %d чат',
+    few_value: 'выбрано %d чата',
+    many_value: 'выбрано %d чатов',
+    other_value: 'выбрано %d чата',
+  },
+  DeleteLink: 'Удалить ссылку',
+  'SharedFolder.Cant.Share': 'вы не можете приглашать сюда других',
+  'SharedFolder.Cant.ShareBots': 'нельзя делиться чатами с ботами',
+  'SharedFolder.Cant.ShareUsers': 'нельзя делиться чатами с пользователями',
+  'SharedFolder.Edit.Description': 'Любой, у кого есть эта ссылка, может добавить папку **%s** и %s, выбранные ниже',
+  'SharedFolder.Edit.Subtitle': 'Делиться можно только группами и каналами, в которых вам разрешено создавать ссылки-приглашения.',
+  'SharedFolder.Edit.Title': 'Поделиться папкой',
+  'SharedFolder.NoChats': 'В этой папке нет чатов, которыми можно поделиться с другими.',
+  'SharedFolder.NoChats.Title': 'Этими чатами нельзя поделиться',
+  'SharedFolder.Toast.NoAdminChannel': 'У вас нет прав администратора, чтобы делиться ссылками-приглашениями в этот канал.',
+  'SharedFolder.Toast.NoAdminGroup': 'У вас нет прав администратора, чтобы делиться ссылками-приглашениями в эту группу.',
+  'SharedFolder.Toast.NoPrivate': 'Личными чатами делиться нельзя.',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)

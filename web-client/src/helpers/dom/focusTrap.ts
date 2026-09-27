@@ -1,13 +1,15 @@
-/*
- * https://github.com/morethanwords/tweb
- * Copyright (C) 2019-2021 Eduard Kuzmenko
- * https://github.com/morethanwords/tweb/blob/master/LICENSE
+/**
+ * Порт tweb/src/helpers/dom/focusTrap.ts:1-184 (812502980, пришёл в 472e3e76b).
+ * Потребитель — оболочка попапов (`popups/indexTsx.tsx:228-234`, `:279`, волна 2C
+ * задача 5): Tab/Shift+Tab ходят по кругу внутри верхнего попапа, после закрытия
+ * фокус возвращается туда, откуда открыли; ловушки стопкой — по документу.
+ *
+ * Расхождения:
+ *  1. `strictNullChecks` у нас включён (у tweb `strict` выключен): `activeDocument`
+ *     объявлен `Document | undefined`, чтения стека после проверки индекса — с `!`,
+ *     `contains(scope.restoreTo ?? null)` — DOM-тип не принимает `undefined`.
  */
-
-// Порт tweb `src/helpers/dom/focusTrap.ts` (812502980). Отличие одно: у tweb
-// ловушка переезжает вслед за окном приложения (`onAppWindowChange` — вынос
-// клиента в Document Picture-in-Picture); выноса у нас нет
-// (`helpers/appWindow.ts`), и документ ловушки — всегда документ её элемента.
+import { onAppWindowChange } from '@helpers/appWindow'
 
 const FOCUSABLE_SELECTOR = [
   'a[href]',
@@ -62,7 +64,8 @@ const documentTraps = new WeakMap<Document, FocusScope[]>()
  * keep only the topmost trap live. `deactivate` restores the prior focus.
  */
 export default function createFocusTrap(element: HTMLElement, isActive: () => boolean = () => true) {
-  let activeDocument: Document | undefined
+  let activeDocument: Document | undefined // расхождение 1
+  let stopFollowingWindow: (() => void) | undefined
   const token: FocusScope = { element }
   const isTopmost = () => {
     const stack = activeDocument && documentTraps.get(activeDocument)
@@ -70,8 +73,8 @@ export default function createFocusTrap(element: HTMLElement, isActive: () => bo
   }
 
   const focusInside = () => {
-    if(!element.hasAttribute('tabindex')) element.tabIndex = -1
-    ;(getFocusableElements(element)[0] || element).focus()
+    if(!element.hasAttribute('tabindex')) element.tabIndex = -1;
+    (getFocusableElements(element)[0] || element).focus()
   }
 
   const onFocusIn = (event: FocusEvent) => {
@@ -106,48 +109,67 @@ export default function createFocusTrap(element: HTMLElement, isActive: () => bo
   }
 
   const bindDocument = (doc: Document) => {
+    if(activeDocument === doc) return
+    const focused = activeDocument?.activeElement as HTMLElement | undefined
+    const oldStack = activeDocument && documentTraps.get(activeDocument)
+    const index = oldStack?.indexOf(token) ?? -1
+    if(index !== -1) oldStack!.splice(index, 1)
+    activeDocument?.removeEventListener('keydown', onKeyDown, true)
+    activeDocument?.removeEventListener('focusin', onFocusIn)
     activeDocument = doc
     const stack = documentTraps.get(doc) || []
     stack.push(token)
     documentTraps.set(doc, stack)
     doc.addEventListener('keydown', onKeyDown, true)
     doc.addEventListener('focusin', onFocusIn)
+    // setAppWindow runs before the synchronous DOM adoption. Restore after the
+    // move, keeping the same control when the entire open dialog changes realm.
+    if(focused) queueMicrotask(() => {
+      if(activeDocument !== doc || !isTopmost() || element.ownerDocument !== doc) return
+      if(element.contains(focused)) focused.focus()
+      else if(!element.contains(doc.activeElement)) focusInside()
+    })
   }
 
   const trap = {
-    activate(restoreTo?: HTMLElement, initialFocus?: HTMLElement | null) {
+    activate(restoreTo?: HTMLElement, initialFocus?: HTMLElement) {
       if(activeDocument) trap.deactivate(false)
       const doc = element.ownerDocument || document
       token.restoreTo = restoreTo || doc.activeElement as HTMLElement
       bindDocument(doc)
+      stopFollowingWindow = onAppWindowChange((win, prev) => {
+        if(activeDocument === prev.document) bindDocument(win.document)
+      })
       if(!element.hasAttribute('tabindex')) element.tabIndex = -1
 
-      if(!element.contains(doc.activeElement)) {
+      if(!element.contains(activeDocument!.activeElement)) {
         if(initialFocus) initialFocus.focus()
         else focusInside()
       }
     },
     deactivate(restoreFocus = true) {
-      const doc = activeDocument
-      const stack = doc && documentTraps.get(doc)
+      stopFollowingWindow?.()
+      stopFollowingWindow = undefined
+      const stack = activeDocument && documentTraps.get(activeDocument)
       const wasTopmost = stack?.[stack.length - 1] === token
       const index = stack?.indexOf(token) ?? -1
-      if(stack && index !== -1 && restoreFocus) {
+      if(index !== -1 && restoreFocus) {
         // A menu action can close its parent dialog before closing the menu.
         // Forward restoration past that disappearing dialog instead of focusing
         // a button in its closing animation.
-        stack.slice(index + 1).forEach((scope) => {
-          if(scope.restoreTo && element.contains(scope.restoreTo)) scope.restoreTo = token.restoreTo
+        stack!.slice(index + 1).forEach((scope) => {
+          if(element.contains(scope.restoreTo ?? null)) scope.restoreTo = token.restoreTo
         })
       }
-      if(stack && index !== -1) stack.splice(index, 1)
-      doc?.removeEventListener('keydown', onKeyDown, true)
-      doc?.removeEventListener('focusin', onFocusIn)
+      if(index !== -1) stack!.splice(index, 1)
+      activeDocument?.removeEventListener('keydown', onKeyDown, true)
+      activeDocument?.removeEventListener('focusin', onFocusIn)
       if(restoreFocus && wasTopmost && token.restoreTo?.isConnected && token.restoreTo.focus) {
         token.restoreTo.focus()
       }
       const parent = stack?.[stack.length - 1]?.element
-      if(doc && restoreFocus && wasTopmost && parent) {
+      if(restoreFocus && wasTopmost && parent) {
+        const doc = activeDocument!
         const restoreParentFocus = () => {
           const scopes = documentTraps.get(doc)
           if(scopes?.[scopes.length - 1]?.element === parent && !parent.contains(doc.activeElement)) {

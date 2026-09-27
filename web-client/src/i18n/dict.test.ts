@@ -348,18 +348,29 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // (uk 735, es/de 732, fr 727).
 // Поверх задачи 17: ru 1394, uk 733, es/de 730, fr 725.
 //
+// Задача 25 плана 2D (вкладка ссылки папки, порт tweb sharedFolder/inviteLink): +13
+// ключей tweb lang.ts всем пяти — `SharedFolder.Edit.{Title,Description,Subtitle}`,
+// `SharedFolder.NoChats`, `SharedFolder.NoChats.Title`,
+// `SharedFolder.Cant.{Share,ShareBots,ShareUsers}`,
+// `SharedFolder.Toast.{NoPrivate,NoAdminChannel,NoAdminGroup}`, `DeleteLink` и
+// числовой `ChatsSelected` (plural +1 у всех). У ru снят наш `Folder.Share.Empty` —
+// тост «нечем делиться» прежнего редактора заменён вкладкой ссылки без ссылки
+// (`openChatlistInvite()`, как у оригинала): ru 1394 → 1406, uk 733 → 746,
+// es/de 730 → 743, fr 725 → 738.
+//
 // Порт экрана блокировки код-паролем (tweb `components/passcodeLock/*`): ключи
 // снесённого React-экрана `PasscodeLock.WrongPasscodeShort`,
 // `PasscodeLock.ForgotPasscode.Text`, `PasscodeLock.Logout.Text` заменены ключами
 // tweb `PasscodeLock.WrongPasscode`, `PasscodeLock.ForgotPasscode.OneAccount`/
 // `.MultipleAccounts`, `PasscodeLock.LogoutPopup.Description` и `LogOut` у всех пяти:
 // −3 +5 (plural без изменений) — ru 1396, uk 735, es/de 732, fr 727.
+// Поверх задачи 25 (+2 каждому): ru 1408, uk 748, es/de 745, fr 740.
 const COMPOSITION = {
-  ru: { keys: 1396, plural: 41 },
-  uk: { keys: 735, plural: 30 },
-  es: { keys: 732, plural: 29 },
-  de: { keys: 732, plural: 30 },
-  fr: { keys: 727, plural: 29 },
+  ru: { keys: 1408, plural: 42 },
+  uk: { keys: 748, plural: 31 },
+  es: { keys: 745, plural: 30 },
+  de: { keys: 745, plural: 31 },
+  fr: { keys: 740, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -480,11 +491,11 @@ const COMPOSITION = {
 // Портом экрана блокировки — ключи tweb вместо ключей React-экрана (разбор — у
 // `COMPOSITION` выше), у всех пяти.
 const FINGERPRINT = {
-  ru: '4c388f0a',
-  uk: '44000058',
-  es: 'b6dcd00b',
-  de: '422d12d2',
-  fr: 'f72b4b5c',
+  ru: '1b28e8d6',
+  uk: '96241f78',
+  es: 'fe3f5de3',
+  de: '5c0f800e',
+  fr: 'e4a36120',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

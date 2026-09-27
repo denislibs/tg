@@ -51,10 +51,6 @@
  * `pendingBacks` + предохранитель на 500мс, см. `legacySettleForBack`).
  *
  * ── Прочие адаптации под наш стек ──────────────────────────────────────────
- *  • `bindActiveWindowListener` (`helpers/appWindow.ts` — поддержка Document
- *    PiP у оригинала) → обычный `window.addEventListener`: подсистемы PiP у нас
- *    нет, тот же вычет уже сделан в `components/chat/contextMenu.ts:909`
- *    (`getOverlayRoot()` → `document.body`);
  *  • `reload`/`close`/`focus`/`navigateToUrl` (`:481-520`) НЕ портированы —
  *    вызывающих нет ни одного: перезагрузку после логаута у нас делает
  *    `client/boot.ts` напрямую, а `window.close()`/`focus()` не зовёт никто;
@@ -64,6 +60,7 @@
 import { MOUNT_CLASS_TO } from '@config/debug'
 import { IS_FIREFOX, IS_MOBILE_SAFARI } from '@environment/userAgent'
 import { logger } from '@lib/logger'
+import { bindActiveWindowListener } from '@helpers/appWindow'
 import blurActiveElement from '@helpers/dom/blurActiveElement'
 import cancelEvent from '@helpers/dom/cancelEvent'
 import isSwipingBackSafari from '@helpers/dom/isSwipingBackSafari'
@@ -97,8 +94,11 @@ export type NavigationItem = {
    * система уже играет свою анимацию, наша поверх неё лишняя.
    */
   onPop: (canAnimate: boolean | undefined) => boolean | void
-  /** Вето именно на Esc (Back по этой записи всё равно сработает). */
-  onEscape?: () => boolean
+  /**
+   * Вето именно на Esc (Back по этой записи всё равно сработает). Получает само
+   * событие (tweb 472e3e76b, `:17`) — чтобы запись могла решить по цели нажатия.
+   */
+  onEscape?: (event: KeyboardEvent) => boolean
   /** Запись без своей записи истории: Esc её закрывает, Back — нет. */
   noHistory?: boolean
   /** Не снимать фокус с активного элемента при закрытии. */
@@ -161,7 +161,9 @@ export class AppNavigationController {
       this.pushState() // * push init state
     }
 
-    window.addEventListener('keydown', this.onKeyDown, { capture: true, passive: false })
+    // tweb :77-79: слушатель следует за активным окном — в выносе клиента в
+    // Document PiP (`core/pip.ts`) нажатия приходят в окно PiP, а не во вкладку.
+    bindActiveWindowListener((w) => w, 'keydown', this.onKeyDown, { capture: true, passive: false })
 
     if(IS_MOBILE_SAFARI) {
       window.addEventListener('touchstart', this.onTouchStart, { passive: true })
@@ -294,7 +296,8 @@ export class AppNavigationController {
   private onKeyDown = (e: KeyboardEvent) => {
     const item = this.navigations[this.navigations.length - 1]
     if(!item) return
-    if(e.key === 'Escape' && this.canCloseOnEscape() && (item.onEscape ? item.onEscape() : true)) {
+    // tweb 472e3e76b (`:219`): Esc, уже обработанный раньше (`defaultPrevented`), слой не снимает.
+    if(e.key === 'Escape' && !e.defaultPrevented && this.canCloseOnEscape() && (item.onEscape ? item.onEscape(e) : true)) {
       cancelEvent(e)
       this.back(item.type)
     }

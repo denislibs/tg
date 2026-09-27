@@ -618,18 +618,13 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
    * Правило папки для строки списка. Вид чата больше не приезжает строкой
    * (решение Р8): «любая группа» и «вещательный канал» — предикаты над
    * конструктором `Chat` из кэша пиров (`core/peers/predicates.ts`), ровно как
-   * их задаёт `appPeersManager.isAnyGroup`/`isBroadcast`. Карточки чата ещё нет
-   * — предикаты отвечают тем же фолбэком, что и у оригинала: чат, про который
-   * ничего не известно, вещательным не считается.
+   * их задаёт `appPeersManager.isAnyGroup`/`isBroadcast`; «бот» — `pFlags.bot`
+   * карточки пользователя оттуда же (`appUsersManager.isBot`). Карточки ещё нет
+   * — предикаты отвечают тем же фолбэком, что и у оригинала: пир, про который
+   * ничего не известно, ни вещательным каналом, ни ботом не считается.
    */
   const matchesThisFolder = (dialog: Dialog, folder: Folder): boolean =>
-    dialogMatchesFolder(dialog, cachedChatOf(dialog.peerId), folder, contactIds)
-
-  /** Карточка ЧАТА по ключу пира; у приватного диалога её нет по построению. */
-  const cachedChatOf = (peerId: PeerId): Chat | undefined => {
-    const peer = peers?.cachedPeer(peerId)
-    return peer && peer._ !== 'user' && peer._ !== 'userEmpty' ? peer : undefined
-  }
+    dialogMatchesFolder(dialog, peers?.cachedPeer(dialog.peerId), folder, contactIds)
 
   /**
    * Элементы кэша, прошедшие фильтр папки, в текущем порядке — порт tweb
