@@ -57,7 +57,7 @@ TL, `settings.themes[]`, `appThemesManager`, `themeController`, вкладки, 
 
 | № | Вопрос | Рекомендация | Почему |
 |---|---|---|---|
-| **Р1** | Откуда узоры каталога обоев | **Один узор — `pattern.svg` из ассетов tweb** (`public/assets/img/pattern.svg`, у нас уже `web-client/src/assets/pattern.svg`), упакованный в `.tgv`; разнообразие — цветами. Цвета — только из кода клиентов: `DEFAULT_THEME` (`config/state.ts:305-429`), обои пресетов акцента (`config/themePresets.ts:33-62`, `:91-103`, порт `ThemeColorPresets.swift` iOS) и наши `WALLPAPER_PRESETS` (`wallpapers.ts:33-46`). Фото-обоев нет (О-8) | каталог сервера Telegram не копируется; узор уже распространяется с клиентом под той же лицензией, что весь порт (GPL-3.0 tweb), новых чужих файлов в репозитории не появляется. Альтернатива — свои узоры (нужен художник, SVG ≤ 8 МиБ после распаковки) — меняет только ассет, не код |
+| **Р1** | Откуда узоры каталога обоев | **Решено пользователем 2026-09-27: засев — ИМПОРТОМ ИЗ ПАПКИ, код не зависит от источника.** `seed-wallpapers --root <каталог>` читает `<root>/wallpapers/meta.json` + файлы и `<root>/themes/meta.json` (формат — задача 6). Два источника одной раскладки: (а) в репозитории `backend/assets/` — узор `pattern.svg` из ассетов tweb и цвета из кода клиентов (`DEFAULT_THEME` `config/state.ts:305-429`, пресеты `config/themePresets.ts:33-62`, `:91-103`, наши `WALLPAPER_PRESETS`); (б) официальный каталог Telegram — выгружает сам пользователь своим аккаунтом `tools/fetch_wallpapers.py` (`account.getWallPapers`, `account.getThemes(format: macos)`, `account.getChatThemes`) в `backend/assets/telegram/` — каталог в `.gitignore`, в репозиторий официальные обои не попадают (как выгрузка стикеров `tools/fetch_stickers.py`) | источник — решение владельца стенда, не кода; файлы Telegram — работы художников, их распространение вне Telegram — на его ответственности. Фото-обои — только из (б) |
 | **Р2** | Откуда облачные темы | **Наши 8 тем из `chatThemes.ts`** переезжают в засев сервера как `theme` с `emoticon`, двумя базами (`baseThemeClassic` ← `light`, `baseThemeNight` ← `dark`) и `pFlags.default`; `tinted` клиент смешивает сам (`chatThemesPicker.tsx:209-220`, `applyNewTheme` `:688-690`) | данные уже наши и уже у пользователей; тема чата продолжит работать тем же эмодзи |
 | **Р3** | Хэш каталогов | в теле, по схеме (поправка 4) | порт менеджера без переходника |
 | **Р4** | Наш попап темы ОДНОГО чата (`ChatThemesPicker.tsx`, пары в tweb нет) | **оставить** как объявленное отступление, но список — из `getThemes`, запись — эмодзи (задача 20) | функция есть на бэкенде и у пользователей; снос — отдельное решение |
@@ -293,31 +293,50 @@ Wiring — `app/server.go` (репо → usecase → хендлер), парам
 
 **Готово когда:** ручки живые на стенде (`curl` с токеном — в коммите), провод TL разбирается.
 
-### Задача 6: `cmd/seed-wallpapers` и ассеты (Р1, Р2)
+### Задача 6: `cmd/seed-wallpapers` — импорт из папки (Р1, Р2)
 
-**Порт (образец — `cmd/seed-stickers`):** `backend/cmd/seed-wallpapers/main.go` — идемпотентный засев
-каталога обоев и тем из `backend/assets/wallpapers/` и `backend/assets/themes/`:
+**Порт (образец — `cmd/seed-stickers`):** `backend/cmd/seed-wallpapers/main.go --root <каталог>` —
+идемпотентный засев каталога обоев и тем из папки. Код не знает, откуда взялись файлы (Р1): по
+умолчанию `--root backend/assets` (в репозитории), выгрузка пользователя — `--root backend/assets/telegram`
+(`tools/fetch_wallpapers.py`, каталог в `.gitignore`).
 
-- `assets/wallpapers/pattern.svg` — копия узора tweb (`public/assets/img/pattern.svg`, Р1); засев
-  сжимает его gzip → `.tgv`, заливает ОДИН раз медиа от `domain.ServiceUserID` (`CreateUpload` +
-  `PutContent`, `main.go:86-105` стикеров), mime `application/x-tgwallpattern`;
-- `assets/wallpapers/meta.json` — список `{slug, pattern: bool, dark: bool, settings: {intensity,
-  background_color, second_…, third_…, fourth_…}}` в порядке показа. Состав (Р1): 4 обоев
-  `DEFAULT_THEME` (`config/state.ts:315-423`), кураторские пресеты с обоями (`themePresets.ts:33-42`,
-  `:53-62`), 9 `TINTED_BASE_WALLPAPERS` (`:91-103`, тёмные, `intensity` со знаком минус), наши 12
-  `WALLPAPER_PRESETS` (`wallpapers.ts:33-46`, светлые, `intensity 50`); повторы цветов снимаются;
-  slug — наш (`pattern-<имя>`), НЕ `pattern` (это встроенный узор клиента, `config/app.ts:12`);
-- `assets/themes/meta.json` — 8 тем из `chatThemes.ts` (Р2): `{emoticon, title, settings: [{base_theme:
-  'baseThemeClassic', accent_color, message_colors, wallpaper: {colors, intensity: 50}}, {base_theme:
-  'baseThemeNight', …, intensity: -50, dark: true}]}`; обои тем создаются с `in_catalog = false`.
+Раскладка (её же пишет `tools/fetch_wallpapers.py`):
 
-Идемпотентность — по `slug` обоев и `emoticon` темы: существующее обновляется (цвета, порядок,
-`updated_at` — хэш меняется), новое добавляется, пропавшее из `meta.json` не удаляется (своих обоев оно
-не касается). Запуск — как у стикеров (`backend/README.md:221-222`).
+- `<root>/wallpapers/meta.json` — каталог в порядке показа: `{"wallpapers": [{key, slug, source_id?,
+  pattern, dark, default, file: "files/<slug>.tgv|.svg|.jpg|.png" | null, mime, settings: {background_color,
+  second_…, third_…, fourth_…, intensity, rotation, blur?, motion?, emoticon?}}]}`; поля `settings` — 1:1
+  `WallPaperSettings`. **Один узор идёт в каталоге несколько раз с разными цветами и `dark`** (выгрузка:
+  76 записей на 69 разных сочетаний, у одного slug — до трёх вариантов; tweb `appThemesManager.ts:32-35`
+  «server returns same id for different wallpapers»), поэтому запись различает `key` (slug + отпечаток
+  настроек), а `slug` — только файл. `file: null` — `wallPaperNoFile` (только цвет). `.svg` засев сжимает
+  gzip → `.tgv` (узор tweb), `.tgv`/фото заливаются как есть; медиа — от `domain.ServiceUserID`
+  (`CreateUpload` + `PutContent`, `main.go:86-105` стикеров), mime узора `application/x-tgwallpattern`.
+  Один файл (slug) заливается ОДИН раз и переиспользуется всеми вариантами и темами.
+- `<root>/themes/meta.json` — `{"themes": [{slug, title, emoticon?, for_chat, settings: [{base_theme:
+  'baseThemeClassic'|'baseThemeDay'|'baseThemeNight'|'baseThemeTinted'|'baseThemeArctic', accent_color,
+  outbox_accent_color?, message_colors?, message_colors_animated?, wallpaper?: {slug, pattern, dark, file,
+  mime, settings}}]}]}` — обои темы ЦЕЛИКОМ (у каждой базы свои цвета поверх того же узора), в сетку
+  «Обоев» не попадают. `for_chat: true` — темы чатов (`account.getChatThemes`, Р4).
+
+Состав `backend/assets/` (репозиторий, Р1-а): `wallpapers/files/pattern.svg` — копия узора tweb
+(`public/assets/img/pattern.svg`); `wallpapers/meta.json` — 4 обоев `DEFAULT_THEME`
+(`config/state.ts:315-423`), кураторские пресеты с обоями (`themePresets.ts:33-42`, `:53-62`),
+9 `TINTED_BASE_WALLPAPERS` (`:91-103`, тёмные, `intensity` со знаком минус), наши 12 `WALLPAPER_PRESETS`
+(`wallpapers.ts:33-46`, светлые, `intensity 50`), повторы цветов сняты; slug — наш (`pattern-<имя>`), НЕ
+`pattern` (встроенный узор клиента, `config/app.ts:12`); `themes/meta.json` — 8 тем из `chatThemes.ts`
+(Р2): светлый вариант — `baseThemeClassic`, тёмный — `baseThemeNight` (`intensity: -50, dark: true`).
+
+Идемпотентность — по `key` обоев и `slug` темы: существующее обновляется (цвета, порядок, файл —
+`updated_at`, хэш каталога меняется), новое добавляется, пропавшее из `meta.json` не удаляется (своих
+обоев пользователей не касается). Засевы из разных `--root` складываются (ключи не пересекаются: у
+Telegram — их base64-slug, у нас — `pattern-*`). Запуск — как у стикеров (`backend/README.md:221-222`).
 
 - [ ] **Шаг 2: падающие тесты** (`main_test.go` на фейках, как у стикеров): узор заливается один раз на
-  два прогона; второй прогон без изменений не трогает `updated_at`; смена цвета в `meta.json` — трогает;
-  темы — по одной записи на базу.
+  два прогона и один на несколько обоев с тем же файлом; `.svg` уходит gzip'нутым `.tgv`; второй прогон
+  без изменений не трогает `updated_at`; смена цвета в `meta.json` — трогает; `file: null` — обои без
+  документа; два варианта одного slug — две записи каталога и один файл; обои темы — вне каталога;
+  темы — по одной записи на базу;
+  образец выгрузки `tools/fetch_wallpapers.py` (фикстура с двумя обоями и темой) читается без правок.
 - [ ] **Шаг 3:** **мутация:** заливать узор на каждый slug — тест «один раз» краснеет.
 
 **Готово когда:** на стенде `GET /wallpapers` отдаёт каталог, `GET /themes` — 8 тем; узор скачивается
