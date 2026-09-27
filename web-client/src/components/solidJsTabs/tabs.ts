@@ -304,6 +304,85 @@ export const AppAddMembersTab =
   })
 ;(AppAddMembersTab as unknown as { noSame: boolean }).noSame = true
 
+// ── Вкладки правил приватности (tweb :59-63, :301-367; задача 17 плана 2D) ────
+// Все eventable: `PrivacySection` пишет правило на `destroy` вкладки
+// (`privacySection.tsx:271`). Открывают их строки раздела «Конфиденциальность»
+// (tweb `privacyAndSecurity.tsx:416-466`; до задачи 23 — React-экран через
+// `getSettingsSliderHost`). Расхождения с оригиналом:
+//  • полезной нагрузки нет ни у одной: у tweb «Был в сети» и «Подарки» получают
+//    `GlobalPrivacySettings` и шлют событие `privacy` (:355-365), «Сообщения» —
+//    `onSaved` (:55-63); `globalPrivacySettings` у нас нет (О-18), «Сообщения» —
+//    обычное правило (шапка `privacy/messages/tab.solid.tsx`), поэтому и форма
+//    у неё eventable, а не обычная, как у tweb;
+//  • «Подарки» и «Сохранённая музыка» (:337-341, :362-366) не заведены — ключей
+//    нет (О-16);
+//  • «Время прочтения» — НАША вкладка: своё правило `read_time` на месте флага
+//    `hide_read_marks` (шапка `privacy/readTime.solid.tsx`).
+export const AppPrivacyAboutTab =
+  scaffoldSolidJSTabEventable({
+    title: 'UserBio',
+    getComponentModule: () => import('../sidebarLeft/tabs/privacy/about.solid'),
+  })
+
+export const AppPrivacyCallsTab =
+  scaffoldSolidJSTabEventable({
+    title: 'PrivacySettings.VoiceCalls',
+    getComponentModule: () => import('../sidebarLeft/tabs/privacy/calls.solid'),
+  })
+
+export const AppPrivacyVoicesTab =
+  scaffoldSolidJSTabEventable({
+    title: 'PrivacyVoiceMessages',
+    getComponentModule: () => import('../sidebarLeft/tabs/privacy/voices.solid'),
+  })
+
+export const AppPrivacyAddToGroupsTab =
+  scaffoldSolidJSTabEventable({
+    title: 'PrivacySettings.Groups',
+    getComponentModule: () => import('../sidebarLeft/tabs/privacy/addToGroups.solid'),
+  })
+
+export const AppPrivacyBirthdayTab =
+  scaffoldSolidJSTabEventable({
+    title: 'Birthday',
+    getComponentModule: () => import('../sidebarLeft/tabs/privacy/birthday.solid'),
+  })
+
+export const AppPrivacyForwardMessagesTab =
+  scaffoldSolidJSTabEventable({
+    title: 'PrivacySettings.Forwards',
+    getComponentModule: () => import('../sidebarLeft/tabs/privacy/forwardMessages.solid'),
+  })
+
+export const AppPrivacyProfilePhotoTab =
+  scaffoldSolidJSTabEventable({
+    title: 'PrivacyProfilePhoto',
+    getComponentModule: () => import('../sidebarLeft/tabs/privacy/profilePhoto.solid'),
+  })
+
+export const AppPrivacyPhoneNumberTab =
+  scaffoldSolidJSTabEventable({
+    title: 'PrivacyPhone',
+    getComponentModule: () => import('../sidebarLeft/tabs/privacy/phoneNumber.solid'),
+  })
+
+export const AppPrivacyLastSeenTab =
+  scaffoldSolidJSTabEventable({
+    title: 'PrivacyLastSeen',
+    getComponentModule: () => import('../sidebarLeft/tabs/privacy/lastSeen.solid'),
+  })
+
+export const AppPrivacyMessagesTab =
+  scaffoldSolidJSTabEventable({
+    title: 'PrivacyMessages',
+    getComponentModule: () => import('../sidebarLeft/tabs/privacy/messages/tab.solid'),
+  })
+
+export const AppPrivacyReadTimeTab =
+  scaffoldSolidJSTabEventable({
+    title: 'PrivacyReadTime',
+    getComponentModule: () => import('../sidebarLeft/tabs/privacy/readTime.solid'),
+  })
 // ── Папки (tweb :609-619, :804-845) — задача 24 плана 2D ─────────────────────
 // Список (`chatFolders.solid.tsx`), редактор (`editFolder.solid.tsx`) и выбор
 // чатов папки (`includedChats.solid.tsx` — кусок задачи 25, без него редактор не

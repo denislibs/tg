@@ -319,6 +319,19 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // ru 1356 → 1352, остальные −3 (uk 689, de 687, es 687, fr 686).
 // Поверх задач 7, 9, 10, 11, 12, 14, 16, 19 и корня настроек: ru 1382, uk 719, es 717, de 717, fr 713.
 //
+// Задача 17 плана 2D (вкладки правил приватности, порт tweb privacySection/privacy/*):
+// +11 ключей tweb lang.ts — `PrivacyExceptions`, `PrivacyMessages`, `Privacy.Bio`,
+// `WhoCanAddMe`, `Privacy.Birthday`, `Privacy.BirthdayCaption`,
+// `PrivacySettingsController.{Forwards.CustomHelp,LastSeenDescription,ProfilePhoto.CustomHelp}`,
+// `PrivacyVoiceMessagesInfo` и числовой `Users` (у fr `PrivacyExceptions`/`PrivacyMessages`
+// совпали с английским — в `SAME_AS_ENGLISH`, вместо снятого `Exceptions`). Сняты 13
+// ключей без читателей: подписи и счётчик снесённого `settings/PrivacyRule.tsx`
+// (`Exceptions`, `PrivacySettingsController.UserCount`, `Privacy.{LastSeen,ProfilePhoto}Caption`,
+// `Privacy.VoiceCustomHelp`, `Privacy.BirthdayChoose`, `PrivacyForwardsInfo`) и давно
+// мёртвые подписи того же экрана (`PrivacyPhoneInfo2`, `Privacy.LastSeenShortCaption`,
+// `Privacy.{ProfilePhoto,Calls,Forwards}Choose`, `Privacy.NeverShareCaption`). Итого −2 у
+// всех пяти (plural без изменений: `UserCount` → `Users`): ru 1380, uk 717, es 715, de 715, fr 711.
+//
 // Задача 24 плана 2D (вкладки «Папки», порт tweb chatFolders/editFolder/includedChats):
 // ключи tweb lang.ts `FilterAll{Contacts,NonContacts,Groups,Channels,Bots}`,
 // `FilterMenuDelete`, `FilterAlwaysShow`/`FilterNeverShow`, `EditFolder.EmojiAsIconTip`,
@@ -333,12 +346,13 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `MiniApps.AppsMore` и у ru ещё `SharedFolder.Edit.Title`/`SharedFolder.Link.Caption`
 // (секция «Поделиться» прежнего редактора): ru 1404 → 1396, остальные −6
 // (uk 735, es/de 732, fr 727).
+// Поверх задачи 17: ru 1394, uk 733, es/de 730, fr 725.
 const COMPOSITION = {
-  ru: { keys: 1396, plural: 41 },
-  uk: { keys: 735, plural: 30 },
-  es: { keys: 732, plural: 29 },
-  de: { keys: 732, plural: 30 },
-  fr: { keys: 727, plural: 29 },
+  ru: { keys: 1394, plural: 41 },
+  uk: { keys: 733, plural: 30 },
+  es: { keys: 730, plural: 29 },
+  de: { keys: 730, plural: 30 },
+  fr: { keys: 725, plural: 29 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -449,12 +463,16 @@ const COMPOSITION = {
 // (разбор — у `COMPOSITION` выше).
 // Задачей 16 плана 2D — подпись пустой выдачи селектора пиров (разбор — там же).
 // Задачей 18 плана 2D — ключи вкладки «Код-пароль» (разбор — у `COMPOSITION` выше).
+// Задачей 17 плана 2D — ключи вкладок правил приватности вместо ключей снесённого
+// React-экрана правила (разбор — у `COMPOSITION` выше).
+// Задачей 24 плана 2D — ключи вкладок «Папки» вместо ключей снесённых React-экранов
+// папок (разбор — там же).
 const FINGERPRINT = {
-  ru: 'c3ded982',
-  uk: '98699610',
-  es: 'c86094db',
-  de: '3ffd8916',
-  fr: '39977932',
+  ru: 'c54afa84',
+  uk: '927c2ad0',
+  es: '1fcb6527',
+  de: '2833812a',
+  fr: '41c114ec',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
@@ -801,7 +819,8 @@ const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
     'Chat.Poll.Type.Quiz': '«quiz» — заимствование',
     AttachContact: '«contact» — французское слово',
     'SharedMedia.Audio': '«audio» — французское слово',
-    Exceptions: '«exceptions» — французское слово',
+    PrivacyExceptions: '«exceptions» — французское слово',
+    PrivacyMessages: '«messages» — французское слово',
     'StorageQuota.CacheSizeLimitAuto': '«auto» — сокращение от «automatique»',
     'KeyboardShortcuts.Action.Monospace': '«monospace» — типографский термин',
     'KeyboardShortcuts.Action.Spoiler': '«spoiler» — заимствование',
