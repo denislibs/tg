@@ -95,6 +95,28 @@ describe('useMessageActions — удаление (`openDeleteFor`)', () => {
   })
 })
 
+// Что получатель пересылки должен мочь — порт `resolveChatRightsActions`
+// (tweb `popups/forward.tsx:20-102`): по самим пересылаемым сообщениям, а без
+// них — текст. Селектор (`ForwardPicker`) по этим правам и отсекает чаты.
+describe('useMessageActions — права получателя пересылки (`forwardRights`)', () => {
+  it('текст из окна — send_messages; вложение — send_media; чужой пир — текст по умолчанию', () => {
+    const managers = mockManagers()
+    const view = renderActions(managers)
+
+    act(() => view.result.current.openForwardFor(CHAT, [MID]))
+    expect(view.result.current.forwardRights).toEqual(['send_messages'])
+
+    putMirrorPage(winKey(CHAT), [makeMessage({ id: MID, peerId: CHAT, fromId: 2, media: { _: 'messageMediaGeo', geo: { _: 'geoPoint', long: 0, lat: 0 } } })])
+    view.rerender()
+    act(() => view.result.current.openForwardFor(CHAT, [MID]))
+    expect(view.result.current.forwardRights).toEqual(['send_media'])
+
+    // Номер из ДРУГОГО пира (медиавьювер) окно этого чата не адресует.
+    act(() => view.result.current.openForwardFor(CHAT + 1, [MID]))
+    expect(view.result.current.forwardRights).toEqual(['send_messages'])
+  })
+})
+
 describe('useMessageActions — жалоба (`openReportFor`)', () => {
   it('прямой вызов адресует попап парой «пир + номер»', () => {
     const view = renderActions(mockManagers())

@@ -77,6 +77,8 @@ import { renderImageFromUrlPromise } from '@helpers/dom/renderImageFromUrl'
 import liteMode from '@helpers/liteMode'
 import type { Middleware, MiddlewareHelper } from '@helpers/middleware'
 import { cachedMediaUrl } from '@core/mediaCache'
+import type { MyPhoto } from '@core/media/messageMedia'
+import wrapPhoto from '@components/wrappers/photo'
 import { ensureMediaUrl } from '@core/media/ensureMediaUrl'
 import { getPreviewURLFromStrippedThumb } from '@core/media/getStrippedThumbIfNeeded'
 import { cachedPeer, subscribePeerMirror } from '@core/peerCache'
@@ -458,6 +460,48 @@ class Avatar {
     // :1003 — подложка и фотография стакаются только когда обе в дереве.
     this.node.classList.toggle('avatar-relative', !!this.thumb)
   }
+}
+
+/**
+ * Порт `wrapPhotoToAvatar` (avatarNew.tsx:223-268): отдельное ФОТО (не
+ * аватарка пира) в узел аватарки — `wrapPhoto` в круге. Нужен служебному
+ * баблу смены фото чата (`chat/serviceMediaBubble.ts`): у действия своё фото,
+ * а не текущая аватарка группы.
+ *
+ * Классы медиа меняются на классы аватарки так же, как у оригинала:
+ * `media-container` → `avatar-relative`, `media-photo` → `avatar-photo`,
+ * подложка — ещё и `avatar-photo-thumbnail`; размеры, которые выставил
+ * `wrapPhoto`, снимаются — круг задаёт класс `avatar-{size}`.
+ *
+ * Отличия: мидлварь приходит параметром (у оригинала — `avatarElem.
+ * getMiddleware()`, у нашей фабрики поколения наружу нет); видео-вариант
+ * (`video_sizes`, :260-264) не портирован — в нашей модели фото его нет (см.
+ * шапку файла).
+ */
+export function wrapPhotoToAvatar(
+  avatarElem: { node: HTMLDivElement },
+  photo: MyPhoto,
+  boxSize: number,
+  middleware: Middleware,
+): Promise<unknown> {
+  return wrapPhoto({
+    container: avatarElem.node,
+    photo,
+    boxHeight: boxSize,
+    boxWidth: boxSize,
+    withoutPreloader: true,
+    // :230-234 — фото уже на руках: проявление не проигрываем.
+    noFadeIn: cachedMediaUrl(photo.id) !== undefined,
+    middleware,
+  }).then((result) => {
+    avatarElem.node.classList.replace('media-container', 'avatar-relative')
+    avatarElem.node.style.width = avatarElem.node.style.height = ''
+    for (const image of [result.images.thumb, result.images.full]) {
+      image?.classList.replace('media-photo', 'avatar-photo')
+    }
+    result.images.thumb?.classList.add('avatar-photo-thumbnail')
+    return result.loadPromises.thumb
+  })
 }
 
 /**

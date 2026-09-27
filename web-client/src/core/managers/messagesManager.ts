@@ -196,9 +196,15 @@ export interface MessagesDeps {
   sendTyping?: (peerId: number, action: SendMessageAction) => void
   /** Прогресс аплоада вкладкам (media:upload_progress). */
   uploadProgress?: (id: string, loaded: number, total: number, done?: boolean) => void
+  /** Сообщения, УДАЛЁННЫЕ из SSOT, — снимком до эвикции. Порт связки tweb
+   *  `handleDeletedMessages` → `onUpdateDeleteMessages` (appMessagesManager.ts
+   *  :14082-14085, :11546-11548): владелец диалогов вычитает из счётчика
+   *  удалённые непрочитанные входящие. Спросить «было ли оно непрочитанным»
+   *  можно только ДО эвикции, поэтому уведомляет владелец окна, а не кадр. */
+  onMessagesDeleted?: (peerId: number, deleted: MyMessage[]) => void
 }
 
-export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium, meReady, isBroadcastChat, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress, peers }: MessagesDeps) {
+export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium, meReady, isBroadcastChat, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress, peers, onMessagesDeleted }: MessagesDeps) {
   // ── Граница маппинга ────────────────────────────────────────────────────────
   // `pFlags.out` производит СЕРВЕР (решение Р7 разбора отменено): после порта у
   // сообщения от лица канала автором на проводе становится сам канал, и прежней
@@ -342,7 +348,9 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
   // evictMsg напрямую и терял ops для остальных вкладок).
   const evictAndBuildRemoveOps = (peerId: number, msgId: number): MessageOp[] => {
     const keys = opWindowsFor(peerId, msgId)
+    const known = msgsByChat.get(peerId)?.get(msgId)
     evictMsg(peerId, msgId)
+    if (known) onMessagesDeleted?.(peerId, [known])
     return keys.map((key): MessageOp => ({ op: 'remove', key, msgId }))
   }
 

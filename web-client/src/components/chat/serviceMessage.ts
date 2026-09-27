@@ -27,16 +27,17 @@
 //    tweb тоже не вешает их на эти узлы — он делегирует клик с контейнера ленты,
 //    читая `data-peer-id` / `data-saved-from` (`bubbles.ts:3360-3395`); мы держим
 //    ту же схему (как `lib/richtext/url.ts` держит её для `data-anchor-action`).
-//  • Медиа сервисного бабла (`wrapServiceMediaBubble`: аватар-кружок нового фото
-//    чата, кнопка «Установить фото» у `suggest_photo`) и solid-компоненты
-//    (подарки, giveaway, NoForwardsRequest) НЕ портированы — это отдельные
-//    подсистемы, здесь была бы заглушка.
+//  • Медиа сервисного бабла — только смена фото чата (`wrapServiceMediaBubble`,
+//    `chat/serviceMediaBubble.ts`). Кнопка «Установить фото» у `suggest_photo`
+//    и solid-компоненты (подарки, giveaway, NoForwardsRequest) НЕ портированы —
+//    это отдельные подсистемы, здесь была бы заглушка.
 //  • `is-group-first`/`is-group-last` на бабл не вешаются: как и в tweb, их
 //    владелец — группировка (`components/chat/bubbleGroups.ts`).
 import { wrapEmojiText } from '@lib/richtext'
 import { serviceMsgSegs, type ServiceSeg } from '@core/serviceMsg'
 import type { MessageService } from '@core/models'
 import PeerTitle, { type PeerTitleOptions } from './peerTitle'
+import wrapServiceMediaBubble from './serviceMediaBubble'
 
 /** Порт tweb `helpers/dom/setInnerHTML.ts::setDirection` (тот же приём, что в
  *  `lib/richtext/wrapRichText.ts` у цитаты). */
@@ -164,7 +165,16 @@ export function createServiceBubble({ message, pinnedPreview, peerId, mid, times
 
   const serviceMsg = document.createElement('div')
   serviceMsg.classList.add('service-msg')
-  serviceMsg.append(wrapMessageActionText({ message, pinnedPreview, peerId, middleware, managers }))
+  const text = wrapMessageActionText({ message, pinnedPreview, peerId, middleware, managers })
+  // tweb bubbles.ts:8215-8263 (`PHOTO_BUBBLE_ACTIONS`): у смены фото чата фото
+  // едет ВНУТРИ действия, и тело пилюли — круг с ним, фраза встаёт подписью.
+  // Гейт — наличие самого фото (`photo?._ === 'photo'`), как у оригинала.
+  const action = message.action
+  if (action._ === 'messageActionChatEditPhoto' && action.photo?._ === 'photo') {
+    wrapServiceMediaBubble({ container: serviceMsg, middleware, managers, photo: action.photo, caption: text })
+  } else {
+    serviceMsg.append(text)
+  }
 
   bubbleContainer.append(serviceMsg)
   contentWrapper.append(bubbleContainer)

@@ -353,3 +353,61 @@ describe('PeersManager.resolveUsername', () => {
     expect(await mgr.resolveUsername('@petya')).toEqual(petya)
   })
 })
+
+// Порт `appChatsManager.saveApiChat` (tweb :229-244, :163-177): пришедший
+// `channel` не затирает то, чего в нём нет. Живой сценарий — смена фото
+// группы: кадр `chat_update` несёт снимок БЕЗ зрителя (`pFlags.min`), и без
+// слияния создатель терял `creator`/`admin_rights`, а шапка — число участников.
+describe('PeersManager: слияние карточки чата (saveApiChat)', () => {
+  const full: Chat = {
+    _: 'channel', id: 6, title: 'Команда', photo: { _: 'chatPhotoEmpty' }, date: 1_700_000_000,
+    pFlags: { megagroup: true, creator: true },
+    admin_rights: { _: 'chatAdminRights', pFlags: { change_info: true } },
+    default_banned_rights: { _: 'chatBannedRights', pFlags: {}, until_date: 0 },
+    participants_count: 6,
+  }
+  const cached = (mgr: ReturnType<typeof newPeersManager>) => mgr.cachedPeer(-6)
+
+  it('min-снимок: общее — из пришедшего, членство зрителя — из лежащего', () => {
+    const mgr = newPeersManager({ rest: fakeRest([]).rest })
+    mgr.saveApiPeers({ chats: [full] })
+    mgr.saveApiPeers({ chats: [{
+      _: 'channel', id: 6, title: 'Команда 2', photo: { _: 'chatPhoto', photo_id: 14290 }, date: 0,
+      pFlags: { min: true, megagroup: true, slowmode_enabled: true },
+      default_banned_rights: { _: 'chatBannedRights', pFlags: { send_media: true }, until_date: 0 },
+      participants_count: 7,
+    }] })
+    expect(cached(mgr)).toEqual({
+      _: 'channel', id: 6, title: 'Команда 2', photo: { _: 'chatPhoto', photo_id: 14290 }, date: 1_700_000_000,
+      pFlags: { megagroup: true, slowmode_enabled: true, creator: true },
+      admin_rights: { _: 'chatAdminRights', pFlags: { change_info: true } },
+      default_banned_rights: { _: 'chatBannedRights', pFlags: { send_media: true }, until_date: 0 },
+      participants_count: 7,
+    })
+  })
+
+  it('полный channel заменяет карточку целиком — включая снятые права', () => {
+    const mgr = newPeersManager({ rest: fakeRest([]).rest })
+    mgr.saveApiPeers({ chats: [full] })
+    const demoted: Chat = { ...full, pFlags: { megagroup: true }, admin_rights: undefined }
+    delete (demoted as { admin_rights?: unknown }).admin_rights
+    mgr.saveApiPeers({ chats: [demoted] })
+    expect(cached(mgr)).toEqual(demoted)
+  })
+
+  it('participants_count не приехал — остаётся прежний (tweb :239-244)', () => {
+    const mgr = newPeersManager({ rest: fakeRest([]).rest })
+    mgr.saveApiPeers({ chats: [full] })
+    const { participants_count: _n, ...noCount } = full as Extract<Chat, { _: 'channel' }>
+    mgr.saveApiPeers({ chats: [noCount] })
+    expect(cached(mgr)).toMatchObject({ participants_count: 6 })
+  })
+
+  it('min без лежащей карточки кладётся как есть', () => {
+    const mgr = newPeersManager({ rest: fakeRest([]).rest })
+    const min: Chat = { ...full, pFlags: { min: true, megagroup: true } }
+    delete (min as { admin_rights?: unknown }).admin_rights
+    mgr.saveApiPeers({ chats: [min] })
+    expect(cached(mgr)).toEqual(min)
+  })
+})

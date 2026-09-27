@@ -93,7 +93,6 @@ export function useChatPopups(d: ChatPopupDeps) {
   const meId = useChatsStore((s) => s.meId)
   // Имя собирает клиент: `display_name` с провода убран.
   const meName = useChatsStore((s) => (s.me ? getUserTitle(s.me.user) : undefined))
-  const allDialogs = useChatsStore((s) => s.dialogs)
   const { chat, numericChatId, isRealChat, isChannel } = d
 
   const openGift = () => {
@@ -246,7 +245,6 @@ export function useChatPopups(d: ChatPopupDeps) {
 
   const openContactPicker = () => openPopup((p) => (
     <ContactPicker
-      dialogs={allDialogs}
       onPick={(userId, name) => { p.destroy(); d.sendContact(userId, name) }}
       onClose={p.destroy}
     />

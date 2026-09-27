@@ -75,6 +75,14 @@ func TestChatRecord_ViewerlessSnapshotHasNoMembershipFlags(t *testing.T) {
 	if !c.Megagroup() {
 		t.Error("вид чата потерян: группа обязана быть megagroup")
 	}
+	// Отсутствие членства обязано быть ВИДНО клиенту: без pFlags.min он
+	// принимает снимок за полный `channel` зрителя и снимает с создателя права.
+	if !c.PFlags["min"] {
+		t.Errorf("снимок без зрителя не помечен min: %+v", c.PFlags)
+	}
+	if (ChatRecord{ID: 8, Type: ChatTypeGroup, ViewerID: 7, MyRole: RoleMember}).ToChannel().PFlags["min"] {
+		t.Error("карточка зрителя помечена min — клиент не поверит её членству")
+	}
 
 	viewer := ChatRecord{ID: 8, Type: ChatTypeGroup, ViewerID: 7} // не состоит
 	if !viewer.ToChannel().Left() {

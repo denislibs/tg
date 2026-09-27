@@ -158,3 +158,81 @@ func TestDialogRecord_ToChannelCarriesJoinDate(t *testing.T) {
 		t.Errorf("date = %d; want %d (дата вступления)", ch.Date, joined.Unix())
 	}
 }
+
+// Строка списка чатов — ПОЛНЫЙ `channel` зрителя, а не выжимка «имя + фото».
+// Клиент оригинала заменяет им лежащую карточку целиком (tweb
+// appChatsManager.saveApiChat → safeReplaceObject), поэтому каждое поле,
+// которого здесь нет, после перечитывания списка для клиента ОБНУЛЯЕТСЯ:
+// «1 участник» в шапке вместо числа, «запрещено отправлять сообщения» вместо
+// композера (hasRights без default_banned_rights отвечает «нельзя»), создатель
+// без своих прав. Поля должны совпадать с карточкой того же зрителя.
+func TestDialogRecord_ToChannelMatchesCard(t *testing.T) {
+	joined := time.Unix(1_700_000_100, 0)
+	settings := ChatSettings{DefaultPerms: AllMemberPerms &^ PermSendMedia, SlowmodeSeconds: 30, ChargeStars: 5}
+	d := DialogRecord{
+		ChatID: 6, Type: ChatTypeGroup, Title: "Команда", JoinedAt: joined,
+		MemberCount: 6, MyRole: RoleCreator, MyRights: AllRights,
+		Signatures: true, DiscussionChatID: 9, Settings: settings,
+	}
+	card := ChatRecord{
+		ID: 6, Type: ChatTypeGroup, Title: "Команда", ViewerID: 777001, MyJoinedAt: joined,
+		MemberCount: 6, MyRole: RoleCreator, MyRights: AllRights,
+		Signatures: true, DiscussionChatID: 9, Settings: settings,
+	}
+	got, want := mustJSON(t, d.ToChannel()), mustJSON(t, card.ToChannel())
+	if got != want {
+		t.Fatalf("строка списка разошлась с карточкой:\n got  %s\n want %s", got, want)
+	}
+
+	member := DialogRecord{ChatID: 6, Type: ChatTypeGroup, MemberCount: 6, MyRole: RoleMember, Settings: ChatSettings{DefaultPerms: AllMemberPerms}}.ToChannel()
+	if member.Creator() || member.AdminRights != nil {
+		t.Errorf("обычный участник получил права: creator=%v admin_rights=%v", member.Creator(), member.AdminRights)
+	}
+	if member.DefaultBanned == nil || member.DefaultBanned.Denies("send_messages") {
+		t.Errorf("default_banned_rights = %+v; want собраны и отправку не запрещают", member.DefaultBanned)
+	}
+	if member.ParticipantsCount != 6 {
+		t.Errorf("participants_count = %d; want 6", member.ParticipantsCount)
+	}
+}
+
+func mustJSON(t *testing.T, v any) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// Права ЗРИТЕЛЯ едут на краткой форме чата из списка диалогов — ровно теми же
+// полями, что у карточки (ChatRecord.ToChannel): `creator`, `admin_rights`,
+// `default_banned_rights`. Без них клиент не может ответить, можно ли писать
+// в чат (tweb `hasRights(chat, 'send_plain')`), и селектор пересылки
+// показывал каналы, где зритель — простой подписчик. Хуже того, вектор chats
+// списка ЗАМЕНЯЕТ карточку в зеркале пиров целиком, и права, приехавшие с
+// карточкой, стирались следующей страницей списка.
+func TestDialogRecord_ToChannelCarriesViewerRights(t *testing.T) {
+	sub := DialogRecord{ChatID: 9, Type: ChatTypeChannel, MyRole: RoleSubscriber, Settings: ChatSettings{DefaultPerms: AllMemberPerms}}.ToChannel()
+	if sub.PFlags["creator"] || sub.AdminRights != nil {
+		t.Errorf("подписчик получил права владельца/админа: %+v", sub)
+	}
+	if sub.DefaultBanned == nil {
+		t.Fatal("default_banned_rights не доехали")
+	}
+
+	owner := DialogRecord{ChatID: 9, Type: ChatTypeChannel, MyRole: RoleCreator, MyRights: Rights(255), Settings: ChatSettings{DefaultPerms: AllMemberPerms}}.ToChannel()
+	if !owner.PFlags["creator"] {
+		t.Error("creator потерян")
+	}
+	if owner.AdminRights == nil || !owner.AdminRights.PFlags["post_messages"] {
+		t.Errorf("admin_rights владельца = %+v; want с post_messages", owner.AdminRights)
+	}
+
+	// Запрет писать в группе — ВЫСТАВЛЕННЫЙ флаг send_messages (инверсия
+	// MemberPerms → chatBannedRights).
+	muted := DialogRecord{ChatID: 8, Type: ChatTypeGroup, MyRole: RoleMember, Settings: ChatSettings{DefaultPerms: AllMemberPerms &^ PermSendMessages}}.ToChannel()
+	if muted.DefaultBanned == nil || !muted.DefaultBanned.PFlags["send_messages"] {
+		t.Errorf("запрет писать потерян: %+v", muted.DefaultBanned)
+	}
+}

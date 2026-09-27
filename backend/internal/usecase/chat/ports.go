@@ -46,6 +46,11 @@ type ChatRepo interface {
 	// IncUnreadBulk — batched IncUnread for many members (one query). Returns the
 	// new unread_count per user.
 	IncUnreadBulk(ctx context.Context, chatID int64, userIDs []int64) (map[int64]int64, error)
+	// ForgetUnread снимает удалённое «у всех» сообщение (номер seq, автор
+	// senderID) со счётчика непрочитанного у тех, для кого оно ещё было
+	// непрочитанным: не автор, горизонт прочтения и очистки истории ниже seq.
+	// Обратная операция к IncUnreadBulk на приходе.
+	ForgetUnread(ctx context.Context, chatID, senderID, seq int64) error
 	CurrentReadSeq(ctx context.Context, chatID, userID int64) (int64, error)
 	SetRead(ctx context.Context, chatID, userID, seq int64, unread int) error
 	// LastReadAt — когда участник в последний раз продвинул read-горизонт

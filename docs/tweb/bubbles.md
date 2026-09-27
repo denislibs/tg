@@ -549,6 +549,14 @@ bubble-content > div.service-msg` с текстом от `wrapMessageActionTextN
 | Channel joined → similar channels [Ф] | `is-similar-channels`, разворачиваемый `div.bubble-similar-channels` (7028–7122) |
 | `pFlags.is_single` | + `is-group-last` (7272–7274) |
 
+**У нас (смена фото чата):** `components/chat/serviceMediaBubble.ts` — порт
+`wrapServiceMediaBubble` + `wrapPhotoToAvatar` (`components/avatar.ts`), зовётся из
+`serviceMessage.ts::createServiceBubble` для `messageActionChatEditPhoto` с
+`photo._ === 'photo'`. Фото действия бэкенд собирает фотографией, хотя тип строки
+`service` (`usecase/chat/mediamodel.go`, `domain.ActionCarriesPhoto`); раньше оно
+уезжало документом и `action.photo` был `null`. Не портированы клик → медиавьювер
+(`inputMessagesFilterChatPhotos` у нас нет) и кнопка у `suggest_photo`.
+
 **Дата-пилюля** (`createDateBubble`, 4780–4813): `div.bubble.service.is-date >
 div.bubble-content > div.service-msg > (i18n-дата)`. Заметь: у даты НЕТ
 `bubble-content-wrapper`. В каждой date-группе их две — sticky + `is-fake`.

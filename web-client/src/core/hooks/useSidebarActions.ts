@@ -2,14 +2,13 @@ import { useI18nStore } from '../../i18n'
 import type { LangPackKey } from '../../lang'
 import { useSecretChatStore } from '../../stores/secretChatStore'
 import { useManagers } from './useManagers'
-import type { Chat } from '../../data'
 import type { GroupPhoto } from '../../components/NewGroupFlow'
 
 // Команды создания чатов из compose-меню сайдбара (порт tweb createChat/createChannel
 // + наш secret-handshake). Read/command-путь через managers — по инварианту слоёв
 // (вниз: View → хук → managers → сервер). Открытие созданного чата — через
 // onChatCreated (навигация живёт в родителе/navigationStore, не тут).
-export function useSidebarActions(chats: Chat[], onChatCreated?: (peerId: PeerId) => void) {
+export function useSidebarActions(onChatCreated?: (peerId: PeerId) => void) {
   const managers = useManagers()
   // Название по умолчанию уезжает НА СЕРВЕР данными, а не рисуется: сюда нужен ТЕКСТ
   // на языке пользователя, а не символический ключ (иначе группа так и называется
@@ -40,13 +39,11 @@ export function useSidebarActions(chats: Chat[], onChatCreated?: (peerId: PeerId
   }
 
   // «Секретный чат» (наша фича): выбор контакта → E2E-handshake managers.secret.start,
-  // затем открыть созданный чат в статусе «ожидание».
-  const startSecret = async (id: string) => {
-    // Ключ пира И ЕСТЬ id строки списка (`Chat.id` — знаковый ключ строкой):
-    // отдельного поля «собеседник» рядом больше нет.
-    const target = chats.find((c) => c.id === id)
-    if (!target) return
-    const { peerId } = await managers.secret.start(Number(target.id))
+  // затем открыть созданный чат в статусе «ожидание». Контакт берётся из
+  // адресной книги (`NewPrivateChat`), и личного диалога с ним может не быть —
+  // поэтому собеседник адресуется ключом пользователя, а не строкой списка.
+  const startSecret = async (userId: PeerId) => {
+    const { peerId } = await managers.secret.start(userId)
     useSecretChatStore.getState().setStatus(peerId, 'awaiting')
     onChatCreated?.(peerId)
   }

@@ -38,10 +38,23 @@ const fakeManagers = { media: { downloadMediaURL: vi.fn(async () => '') } } as u
 
 afterEach(cleanup)
 
-const dialogs = [
-  { id: 1, type: 'private', peer: { id: 11, displayName: 'Денис' }, unread: 0 },
-  { id: 2, type: 'group', title: 'Группа', unread: 0 },
-] as unknown as Dialog[]
+// Строки — настоящие диалоги: личка и группа, в которую можно писать
+// (фильтр прав селектора, `filterByRights`, читает карточки из зеркала).
+const dialogs: Dialog[] = [makeDialog({ peerId: 11 }), makeDialog({ peerId: -2 })]
+
+beforeEach(() => {
+  resetPeerMirror()
+  applyPeerOps([{
+    op: 'upsert',
+    peers: [
+      { _: 'user', id: 11, first_name: 'Денис', pFlags: {} },
+      {
+        _: 'channel', id: 2, title: 'Группа', photo: { _: 'chatPhotoEmpty' }, date: 0,
+        pFlags: { megagroup: true }, default_banned_rights: { _: 'chatBannedRights', until_date: 0 },
+      },
+    ],
+  }])
+})
 
 function mount() {
   return render(
@@ -282,5 +295,101 @@ describe('ForwardPicker — ряд папок: порт pickUser.createFolderTab
 
     expect(container().classList.contains('is-collapsed')).toBe(false)
     expect(rows()).toEqual([1])
+  })
+})
+
+// ── Кто может быть получателем (жалоба: «каналы чужие, всё подряд») ─────────
+//
+// У tweb попап пересылки зовёт селектор с `chatRightsActions` — по умолчанию
+// `['send_plain']` (`popups/forward.tsx:99-102`), — и `filterByRights`
+// (`appSelectPeers.tsx:782-787`, `:827-834`) отсекает чаты, куда писать нельзя:
+// канал — без `post_messages`, группу — с запретом писать. «Избранное» стоит
+// первым (`renderSaved`, `:725-735`), ряд «недавних» — собеседники со «своим»
+// первым (`pickUser.tsx:517-528`, `getTopPeers('correspondents')`).
+describe('ForwardPicker — фильтр прав получателя', () => {
+  const OPEN = { _: 'chatBannedRights' as const, until_date: 0 }
+  const NO_TEXT = { _: 'chatBannedRights' as const, pFlags: { send_messages: true as const }, until_date: 0 }
+  const ME = 100
+
+  beforeEach(() => {
+    resetPeerMirror()
+    useChatsStore.setState({ meId: ME })
+    applyPeerOps([{
+      op: 'upsert',
+      peers: [
+        { _: 'user', id: 11, first_name: 'Денис', pFlags: {} },
+        { _: 'user', id: ME, first_name: 'Я', pFlags: { self: true } },
+        { _: 'channel', id: 1, title: 'Чужой канал', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { broadcast: true }, default_banned_rights: OPEN },
+        { _: 'channel', id: 2, title: 'Свой канал', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { broadcast: true, creator: true }, default_banned_rights: OPEN },
+        { _: 'channel', id: 3, title: 'Немая группа', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true }, default_banned_rights: NO_TEXT },
+        { _: 'channel', id: 4, title: 'Своя группа', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true, creator: true }, default_banned_rights: NO_TEXT },
+        { _: 'channel', id: 5, title: 'Группа', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true }, default_banned_rights: OPEN },
+      ],
+    }])
+  })
+
+  afterEach(() => useChatsStore.setState({ meId: null }))
+
+  const all = [11, -1, -2, -3, ME, -4, -5].map((peerId) => makeDialog({ peerId }))
+  const rows = () => Array.from(
+    document.querySelectorAll<HTMLElement>('.popup-forward .selector-list-section-container a.chatlist-chat'),
+  ).map((row) => Number(row.dataset.peerId))
+  const recents = () => Array.from(
+    document.querySelectorAll<HTMLElement>('.popup-forward .popup-forward-top-peers .chatlist > *'),
+  ).map((el) => el.lastElementChild?.textContent)
+
+  function mountWith(extra: Partial<Parameters<typeof ForwardPicker>[0]> = {}) {
+    return render(
+      <ManagersProvider managers={fakeManagers}>
+        <ForwardPicker dialogs={all} onPick={() => {}} onClose={() => {}} {...extra} />
+      </ManagersProvider>,
+    )
+  }
+
+  it('канал без права постить и группа с запретом писать не видны; личка, свои канал и группа — видны', () => {
+    mountWith()
+
+    expect(rows()).not.toContain(-1)
+    expect(rows()).not.toContain(-3)
+    expect(rows()).toEqual(expect.arrayContaining([11, -2, -4, -5]))
+  })
+
+  it('«Избранное» — первой строкой (renderSaved)', () => {
+    mountWith()
+
+    expect(rows()[0]).toBe(ME)
+    expect(rows()).toEqual([ME, 11, -2, -4, -5])
+  })
+
+  it('ряд «недавних» — собеседники, «своё» первым, без каналов и групп', () => {
+    mountWith()
+
+    expect(recents()).toEqual(['Избранное', 'Денис'])
+  })
+
+  it('строка «Избранного» — с иконкой закладки, а не буквой (addDialogNew c meAsSaved)', () => {
+    mountWith()
+    const row = document.querySelector(`.popup-forward .selector-list-section-container a.chatlist-chat[data-peer-id="${ME}"]`)!
+
+    expect(row.querySelector('.avatar-icon-saved_filled')).not.toBeNull()
+    expect(row.querySelector('.peer-title')!.textContent).toBe('Избранное')
+  })
+
+  it('«Избранное» первым, даже когда диалога с собой ещё нет (renderSaved рисует rootScope.myId)', () => {
+    render(
+      <ManagersProvider managers={fakeManagers}>
+        <ForwardPicker dialogs={all.filter((d) => d.peerId !== ME)} onPick={() => {}} onClose={() => {}} />
+      </ManagersProvider>,
+    )
+
+    expect(rows()[0]).toBe(ME)
+    expect(recents()[0]).toBe('Избранное')
+  })
+
+  it('медиа проверяет запрет медиа: группа с запретом только текста видна (история — send_media)', () => {
+    mountWith({ chatRightsActions: ['send_media'] })
+
+    expect(rows()).toContain(-3)
+    expect(rows()).not.toContain(-1)
   })
 })

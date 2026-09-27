@@ -115,6 +115,18 @@ func (m Message) wireAction() MessageAction {
 	return nil
 }
 
+// ActionCarriesPhoto — действие несёт фото конструктором photo (смена
+// аватарки чата, предложенное фото профиля). Строка хранит его обычным медиа
+// сообщения, поэтому собирать это медиа надо ФОТОГРАФИЕЙ, а не по типу
+// строки ('service').
+func ActionCarriesPhoto(a MessageAction) bool {
+	switch a.(type) {
+	case MessageActionChatEditPhoto, MessageActionSuggestProfilePhoto:
+		return true
+	}
+	return false
+}
+
 func (m Message) toService(ctx MessageContext, action MessageAction) MessageService {
 	s := NewMessageService(m.Seq, ctx.Peer, m.CreatedAt, action, ctx.Post)
 	setPFlag(&s.PFlags, "out", ctx.Out)

@@ -1950,9 +1950,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * (`bubbleGroups.ts:489` по `isServicePill`), а классы краёв ставит
    * `BubbleGroup.updateClassNames` — одиночной серии оба.
    *
-   * Не портированы `wrapServiceMediaBubble` (аватар нового фото чата, кнопка
-   * «Установить фото» у `suggest_photo`) и solid-компоненты подарков/розыгрышей
-   * — см. шапку `serviceMessage.ts`.
+   * Из медиа сервисного бабла портирована смена фото чата
+   * (`wrapServiceMediaBubble`); кнопка «Установить фото» у `suggest_photo` и
+   * solid-компоненты подарков/розыгрышей — нет, см. шапку `serviceMessage.ts`.
    */
   private renderServiceMessage(message: MessageService): HTMLElement {
     const pinnedToMid = message.action._ === 'messageActionPinMessage'
