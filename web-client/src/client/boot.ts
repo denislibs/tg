@@ -17,6 +17,7 @@ import { migrateRecentSearchFromLocalStorage } from '../core/state/migrateRecent
 import PasscodeLockScreenController from '../components/passcodeLock/passcodeLockScreenController.solid'
 import { setThemeListener } from '../core/theme/themeController'
 import { useSettingsStore } from '../settings'
+import PopupElement from '@components/popups/indexTsx.solid'
 import { installPasscodeListener } from './passcodeClient'
 import { listenServiceWorkerHello, sendPasscodeStateToServiceWorker } from './passcodeServiceWorker'
 import { preventCrossTabDynamicImportDeadlock } from '../core/preventDeadlock'
@@ -112,6 +113,10 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   listenForMaskedAnchorClicks()
 
   const { managers, ep, smp } = startClient()
+  // Менеджеры оболочки попапов по умолчанию — у tweb `PopupElementTsx.MANAGERS =
+  // rootScope.managers = managers` (appDialogsManager.ts:980); попап без пропа
+  // `managers` берёт их отсюда (`popups/indexTsx.solid.tsx`, расхождение 2).
+  PopupElement.MANAGERS = managers
   // DNP-ON: раздаём мост SW↔SharedWorker (self-gated; инертно при DNP-off).
   installBridgeHandoff(ep)
 

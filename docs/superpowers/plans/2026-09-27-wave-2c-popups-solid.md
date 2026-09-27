@@ -408,7 +408,7 @@ React-`IconButton` с инлайн `--secondary-text-color` (~20 мест, `AddC
 
 ---
 
-### Задача 5: оболочка — `components/popups/indexTsx.solid.tsx`
+### Задача 5: оболочка — `components/popups/indexTsx.solid.tsx` ✅
 
 **Что делаем.** Дословный порт `tweb/src/components/popups/indexTsx.tsx` (885): `PopupElement`
 (`:133-465`) со всеми пропами (`popups-solid.md` § 2.1), контекстом (`:57-98`), жизненным циклом
@@ -470,6 +470,22 @@ React-`IconButton` с инлайн `--secondary-text-color` (~20 мест, `AddC
 
 **Готово когда:** все 12 пинов зелёные и три мутации красят свои; `diff` с оригиналом — только
 расхождения 1–5.
+
+**Итог (PR ветки `feat/w2c-popup-shell`).** `indexTsx.solid.tsx` — порт `:1-844`; нормализованный `diff`
+с оригиналом — расхождения 1–5 шапки, типы под `strictNullChecks` (`!`, `| undefined`, `Promise<unknown>`,
+`IconName`, `FormatterArguments`) и `void` у брошенных промисов (линт). Поправки к постановке:
+(а) расхождение 1 шире, чем «ErrorBoundary + onCleanup корня»: граница снимает попап, МИНУЯ `destroy()`,
+поэтому второй `onCleanup` компонента (рядом со стеком) снимает запись навигации, счётчик, ловушку,
+Enter и гасит `destroyed` — иначе отложенный `doubleRaf`-показ ожил бы на мёртвом попапе и поставил
+запись/счётчик навсегда; корень упавшего снимает `fallback` (`queueMicrotask(dispose)`) — без этого его
+`setErrored` навсегда остаётся в модульном `Errors` стока Solid; (б) `MANAGERS` ставится в
+`client/boot.ts` сразу за `startClient()`, а не после входа, как `appDialogsManager.ts:980`: попапы
+зовут и до входа (карточка пароля авторизации `PasswordCard` — `confirmationPopup`). Пины — 17 (12 плана + окно выноса
+`capturedRoot`, `zIndex`, плавающий футер, падение на первом рендере) + `boot.popupManagers.test.ts`.
+Мутации красят свои (вывод — в коммите): три плана, снятие второго `onCleanup`, `ErrorBoundary`,
+`setDestroyed` в нём, `queueMicrotask(dispose)`, `getOverlayRoot()` → `document.body`, `z-index`,
+присвоение `MANAGERS`. Пин «корень снят» — через обёртку `createRoot` в тесте (`liveRoots`).
+Потребителей в продукте нет до задачи 6.
 
 ---
 
