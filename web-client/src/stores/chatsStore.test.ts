@@ -4,6 +4,7 @@ import {
   useChatsStore, loadChats,
   degradeExpiredPresence, startPresenceDegradation, PRESENCE_DEGRADE_INTERVAL_MS,
 } from './chatsStore'
+import rootScope from '@lib/rootScope'
 
 const ME = {
   user: { _: 'user' as const, pFlags: { self: true as const }, id: 7, phone: '+1', first_name: 'Me' },
@@ -34,6 +35,26 @@ describe('chatsStore', () => {
     const s = useChatsStore.getState()
     expect(s.meId).toBe(7)
     expect(s.me).toEqual(ME)
+  })
+
+  // Два зеркала одного факта — `meId` для React-витрины и `rootScope.myId`
+  // для ленты (`chat/bubbles.ts` решает по нему `needName`/`isOurMessage`) —
+  // обязаны совпадать ВСЕГДА, в том числе когда `me` пришёл не кадром rt:me,
+  // а ответом RPC холодного старта/входа. Кадр до вкладки может не доехать
+  // вовсе: `SuperMessagePort` не буферизует, а насос поднимается ПОСЛЕ
+  // первого рендера. Тогда лента видела `myId === 0`, и каждое своё
+  // сообщение в группе считалось «от кого-то другого» — с именем автора.
+  it('loadChats выставляет и rootScope.myId — зеркала не расходятся', async () => {
+    rootScope.myId = 0
+    await loadChats(fakeManagers() as never)
+    expect(rootScope.myId).toBe(7)
+  })
+
+  it('setMe(null) гасит оба зеркала', () => {
+    useChatsStore.getState().setMe(ME as never)
+    useChatsStore.getState().setMe(null)
+    expect(useChatsStore.getState().meId).toBeNull()
+    expect(rootScope.myId).toBe(0)
   })
 })
 

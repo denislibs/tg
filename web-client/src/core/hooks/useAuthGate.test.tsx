@@ -309,6 +309,25 @@ describe('useAuthGate: переход активной сессии (rt:logging_
       expect(result.current.authed).toBe(true)
       expect(bootPrefetch()).toBeNull()
     })
+
+    // Самый частый вход в тот же дефект — и единственный, где кадров нет
+    // вовсе: вкладку открыли без сессии и вошли В НЕЙ ЖЕ. Экран входа
+    // насоса событий не держит (`startRealtime()` поднимает только Shell,
+    // useAppBootstrap.ts), поэтому ни rt:me, ни rt:logged_in от собственного
+    // входа сюда не доезжают — переход объявляет сам `login()`. Без этого
+    // Shell брал префетч «нет сессии» (`me === null` с загрузки страницы), и
+    // до F5 было пусто всё, что читает своё «я»: карточка профиля в
+    // настройках, «Избранное», имя автора на своих баблах в группе.
+    it('локальный вход (login()) на вкладке, открытой на экране входа', () => {
+      setBootData({ ...prefetch, hasToken: false })
+      const { result } = renderHook(() => useAuthGate(), { wrapper: withManagers(testManagers()) })
+      expect(bootPrefetch()).not.toBeNull() // до входа префетч ещё свой
+
+      act(() => { result.current.login() })
+
+      expect(result.current.authed).toBe(true)
+      expect(bootPrefetch()).toBeNull() // useAppBootstrap спросит `me` у владельца заново
+    })
   })
 
   // Important: успешный логаут без остающихся аккаунтов обязан обойтись БЕЗ

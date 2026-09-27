@@ -44,13 +44,13 @@ const APPLY: Projector = {
   // выводится из me внутри него же); прямые вызовы из компонентов вне этого
   // проектора допустимы только как allow-listed оптимистичное исключение (см.
   // stores/noDuplicateMe.test.ts).
-  // Два зеркала одного факта — ОДИН писатель (как [RT.messageOp] ниже пишет и
-  // стор, и messagesMirror): `chatsStore.meId` для React-витрины и
-  // `rootScope.myId` для императивного кода (лента `chat/bubbles.ts`, порт tweb,
-  // читает его синхронно на рендере бабла). В tweb `myId` пишет сам rootScope из
-  // подписки на `user_auth` — у нас это был бы второй писатель факта `me` мимо
-  // проектора; расхождение сознательное, разбор — в докблоке поля (lib/rootScope.ts).
-  [RT.me]: (u) => { useChatsStore.getState().setMe(u); rootScope.myId = u?.user.id ?? 0 },
+  // Оба зеркала одного факта — `chatsStore.meId` для React-витрины и
+  // `rootScope.myId` для императивного кода (лента `chat/bubbles.ts`) — пишет
+  // ОДИН вызов `setMe`: второе зеркало выставляет сам стор (докблок у setMe),
+  // чтобы они не расходились и тогда, когда `me` пришёл не этим кадром, а
+  // ответом RPC (`loadChats`). В tweb `myId` пишет сам rootScope из подписки
+  // на `user_auth` — разбор расхождения в докблоке поля (lib/rootScope.ts).
+  [RT.me]: (u) => { useChatsStore.getState().setMe(u) },
   // Stage 1C.2 (Task 3): медиа-токен — воркер единственный владелец
   // (mediaManager::fetchToken публикует при получении и при каждом плановом
   // обновлении). core/mediaUrl.ts — зеркало: applyMediaToken кладёт снимок и

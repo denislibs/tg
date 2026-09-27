@@ -500,3 +500,28 @@ describe('ChatBubbles — медиа в бабле', () => {
     })
   })
 })
+
+// Кружок — standalone-медиа (tweb bubbles.ts:9920-9922 `isStandaloneMedia =
+// true`), имени автора у него нет и в группе: `needName && !isStandaloneMedia`
+// (placeEphemeralBadge.ts:6, вызов :10885-10889), бабл уходит в `hide-name`.
+// Обычное видео standalone не является — гейт стоит ровно на кружке.
+describe('ChatBubbles — имя автора у кружка в группе', () => {
+  const groupContext = (): ChatContext => ({ ...chatContext(), isLikeGroup: true, isMegagroup: true })
+  const round = docMedia({
+    mime: 'video/mp4',
+    attributes: [{ _: 'documentAttributeVideo', duration: 3, w: 384, h: 384, pFlags: { round_message: true } }],
+  })
+
+  beforeEach(() => { rootScope.myId = 999 })
+
+  it('входящий кружок: имени нет, бабл hide-name', async () => {
+    bubbles = new ChatBubbles(groupContext(), managersWith([withDoc(1, round)]))
+    await openFeed(bubbles)
+    await settle()
+
+    const bubble = bubbleOf(bubbles, 1)
+    expect(bubble.classList.contains('round')).toBe(true)
+    expect(bubble.querySelector('.name')).toBeNull()
+    expect(bubble.classList.contains('hide-name')).toBe(true)
+  })
+})
