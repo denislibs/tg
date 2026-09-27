@@ -333,12 +333,11 @@ SCSS HEAD (`_popup.scss`), которых нет у нас:
 | `settings/PasskeyIntroPopup.tsx` (116) | PT | `PrivacySecuritySettings.tsx:264` | `showPasskeyPopup` |
 | `settings/SpeakersCamera.tsx:177` `DevicePicker` | RP | `:159` | `showOutputDevicePopup` |
 | `settings/BirthdayModal.tsx` (87) | PT, без портала | `EditContactView.tsx:173`, `settings/EditProfile.tsx:288` | `showBirthdayPopup` |
-| `messages/ChatDialogs.tsx:304` `ContactPicker` | RP+PS | `useChatPopups.tsx:248` | `showContactPickerPopup` |
+| `messages/ChatDialogs.tsx` `ContactPicker` | RP+PS | `useChatPopups.tsx:248` | `showContactPickerPopup` — строки из адресной книги (`useContactPeerIds`, `peerType: ['contacts']`), не из личных диалогов |
 | `settings/PrivacyUserPicker.tsx` (99) | экран, не попап | `BlockedUsers.tsx:61`, `PrivacyRule.tsx:127` | `showPickUserPopup` (`blockedUsers.tsx:68`); в правилах — `AppAddMembersTab` (2D-16/17) |
-| `messages/ChatDialogs.tsx:169` `ForwardPicker` (+ `pickUserFolderTabs.ts`) | RP | `ChatMsgActionPopups.tsx:93`, `StoryViewer.tsx:607` | `showForwardPopup` |
+| `messages/ChatDialogs.tsx` `ForwardPicker` (+ `pickUserFolderTabs.ts`) | RP | `ChatMsgActionPopups.tsx:93`, `StoryViewer.tsx:607` | `showForwardPopup` — фильтр прав `chatRightsActions` (`core/peers/filterByRights.ts`: по пересылаемым сообщениям, у истории `send_media`), «Избранное» первым, «недавние» — только собеседники. Не портировано: контакты без диалога в хвосте списка (`peerType: ['dialogs', 'contacts']`), рейтинг `getTopPeers('correspondents')`, звёзды/премиум-замок (О-31) |
 | `messages/ChatDialogs.tsx:64` `openDeleteMessageDialog` | V | `ChatMsgActionPopups.tsx:49` | `showDeleteMessagesPopup` |
 | `ChatDialogs.tsx:438` `ReactedUsersPopup` | own | `ChatMsgActionPopups.tsx:88` | `showReactedListPopup` |
-| `ChatDialogs.tsx:355` `ChatPicker` | RP | **никто** (мёртвый) | — |
 | mute | V `PopupMute` | `useChatPopups.tsx:129`, `ChatListItem.tsx:84` | `showMutePopup` |
 | `QrModal.tsx` (388) | PT | `SettingsView.tsx:372`, `UserInfoPanel.tsx:743` | `showMyQrCodePopup` |
 | `folders/FolderInvitePopup.tsx` (122) | RP | `GlobalOverlays.tsx:121` | `showSharedFolderInvitePopup` |

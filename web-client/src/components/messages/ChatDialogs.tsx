@@ -22,13 +22,17 @@ import type { AvatarManagers } from '../avatar'
 import { peerColor } from '../peerColor'
 import UserAvatar from '../UserAvatar'
 import { useMediaUrl } from '../../core/hooks/useMediaUrl'
-import { dialogChatType, dialogToChat } from '../../core/dialogToChat'
+import { dialogToChat, SAVED_GRADIENT } from '../../core/dialogToChat'
 import { chatMatchesFolder } from '../../core/folderFilter'
 import { PeerStatus } from '../../shared/ui/peerStatus'
 import type { UserStatus } from '../../core/peers/peer'
 import { useChatsStore } from '../../stores/chatsStore'
-import { cachedChat, peerTitle } from '../../core/peerCache'
 import { isUser } from '../../core/peers/peerId'
+import { filterByRights } from '../../core/peers/filterByRights'
+import type { ChatRights } from '../../core/peers/rights'
+import { usePeers } from '../../core/hooks/usePeers'
+import { useContactPeerIds } from '../../core/hooks/useContactPeerIds'
+import { getUserTitle, SAVED_MESSAGES_TITLE } from '../../core/peers/getPeerTitle'
 import { useFolders, useFoldersStore } from '../../stores/foldersStore'
 import { ALL_FOLDER_ID } from '../../core/folderIds'
 import { useImperativeIsland } from '../../core/hooks/useImperativeIsland'
@@ -162,16 +166,27 @@ function RecentChip({ chat, selected, onToggle }: { chat: Chat; selected: boolea
   )
 }
 
+/** tweb `showForwardPopup`: `chatRightsActions.push('send_plain')`, когда
+ *  из сообщений ничего не вывелось (`popups/forward.tsx:99-102`). */
+const DEFAULT_FORWARD_RIGHTS: readonly ChatRights[] = ['send_messages']
+
 // Forward target picker («Поделиться»): порт tweb popupForward — поиск, ряд
 // недавних, табы папок (липкие при скролле, порт `pickUser.tsx:325-424` —
 // `popups/pickUserFolderTabs.ts`) и список чатов с аватарами/подписями.
 // Мультивыбор; аккордная кнопка «Переслать (N)» шлёт во все выбранные чаты сразу.
-export function ForwardPicker({ dialogs, onPick, onClose }: {
+export function ForwardPicker({ dialogs, onPick, onClose, chatRightsActions = DEFAULT_FORWARD_RIGHTS }: {
   dialogs: Dialog[]
   // Один чат → tweb-флоу: открыть чат и показать плашку форварда в композере
   // (опции show/hide sender/caption живут в меню плашки). Несколько → отправить сразу.
   onPick: (peerIds: number[]) => void
   onClose: () => void
+  /**
+   * Что получатель должен мочь — tweb `chatRightsActions` селектора. Пересылка
+   * выводит их из пересылаемых сообщений (`resolveChatRightsActions`,
+   * `popups/forward.tsx:20-91`), по умолчанию — текст (`:99-102`); история —
+   * `send_media` (`stories/share.ts:34`). Наши имена — `core/peers/filterByRights.ts`.
+   */
+  chatRightsActions?: readonly ChatRights[]
 }) {
   const t = useT()
   const [lang] = useLang()
@@ -199,13 +214,32 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
     if (selected.size) { confirmed.current = [...selected]; setOpen(false) }
   }
 
+  // Карточки пиров — из зеркала (права чата живут на конструкторе `channel`);
+  // хук ещё и объявляет пробел, если карточки нет.
+  const peerCards = usePeers(dialogs.map((d) => d.peerId))
   // Секретные чаты — не цель пересылки (E2E). Маппим в Chat для аватаров/имён.
   const chats = useMemo<Chat[]>(
-    // Секретный чат — НАШ параметр строки диалога (решение Р9), а не строка
-    // `type`: подсистема вне периметра порта, но гейт живой.
-    () => dialogs.filter((d) => !d.secret).map((d) => dialogToChat(d, meId)),
-    [dialogs, meId],
+    () => {
+      // Секретный чат — НАШ параметр строки диалога (решение Р9), а не строка
+      // `type`: подсистема вне периметра порта, но гейт живой. Остальное —
+      // `filterByRights` (`appSelectPeers.tsx:782-787`): куда писать нельзя,
+      // того в списке нет.
+      return dialogs
+        .filter((d) => !d.secret && filterByRights(d.peerId, peerCards.get(d.peerId), chatRightsActions))
+        .map((d) => dialogToChat(d, meId))
+    },
+    [dialogs, meId, peerCards, chatRightsActions],
   )
+  // `renderSaved` (`appSelectPeers.tsx:725-735`): в «Все чаты» первой строкой
+  // стоит сам зритель (`rootScope.myId`) — «Избранное», есть ли с собой
+  // диалог или нет. Строку диалога, если он есть, берём как есть; нет —
+  // собираем ту же (имя, фон, иконка закладки — как у `dialogToChat`).
+  const savedChat = useMemo<Chat | undefined>(() => {
+    if (meId == null) return undefined
+    return chats.find((c) => c.type === 'saved') ?? {
+      id: String(meId), name: SAVED_MESSAGES_TITLE, avatar: SAVED_GRADIENT, avatarEmoji: 'saved', preview: '', type: 'saved',
+    }
+  }, [chats, meId])
   const query = q.trim().toLowerCase()
   // tweb `_setFolderId(value)` (`appSelectPeers.ts:631-633`, зов `:644-647`):
   // пока в поле запрос, скоуп — «Все чаты», выбранная папка лишь помнится и
@@ -216,10 +250,18 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
   const activeFolder = scopeFolderId !== ALL_FOLDER_ID ? folders.find((f) => f.id === scopeFolderId) : undefined
   const list = useMemo(() => {
     let out = chats
-    if (activeFolder) out = out.filter((c) => chatMatchesFolder(c, activeFolder, contactIds))
+    if (activeFolder) {
+      // Скоуп папки — её диалоги (`getDialogs({filterId})`); `renderSaved` —
+      // только для «Все чаты».
+      out = out.filter((c) => chatMatchesFolder(c, activeFolder, contactIds))
+    } else if (savedChat) {
+      out = [savedChat, ...out.filter((c) => c !== savedChat)]
+    }
+    // Запрос у оригинала для «Избранного» — `testSelfSearch` (своё имя,
+    // username, «Saved Messages»); здесь, как и у остальных строк, — по имени.
     if (query) out = out.filter((c) => c.name.toLowerCase().includes(query))
     return out
-  }, [chats, activeFolder, contactIds, query])
+  }, [chats, savedChat, activeFolder, contactIds, query])
   // Строки для общего селектора: id/имя/аватар/подпись (tweb wrapSubtitle).
   const peers = useMemo(
     () => list.map((c) => ({
@@ -227,11 +269,17 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
       name: c.name,
       photoId: c.photoId,
       subtitle: shareSub(c, presence, t),
+      avatar: c.type === 'saved' ? { background: c.avatar, emoji: c.avatarEmoji } : undefined,
     })),
     [list, presence, lang, t],
   )
-  // Недавние — первые 8 чатов (лента отсортирована по свежести); прячем при поиске.
-  const recents = query ? [] : chats.slice(0, 8)
+  // Недавние — ряд `createTopPeersList` (`pickUser.tsx:517-528`): собеседники
+  // (`getTopPeers('correspondents')`) и «своё» первым. Рейтинга собеседников
+  // (`contacts.getTopPeers`) у нас нет — берём первые 8 личных чатов по
+  // свежести; прячем при поиске.
+  const recents = query
+    ? []
+    : [...(savedChat ? [savedChat] : []), ...chats.filter((c) => c !== savedChat && isUser(Number(c.id)))].slice(0, 8)
   const searching = query.length > 0
 
   return (
@@ -299,10 +347,11 @@ export function ForwardPicker({ dialogs, onPick, onClose }: {
   )
 }
 
-// Пикер контакта для attach-меню: список собеседников приватных чатов;
-// выбор — отправить сообщение-контакт (та же карточка, что и ForwardPicker).
-export function ContactPicker({ dialogs, onPick, onClose }: {
-  dialogs: Dialog[]
+// Пикер контакта для attach-меню — порт `showContactPickerPopup`
+// (tweb `popups/pickUser.tsx:838-856`: `peerType: ['contacts']`): строки —
+// АДРЕСНАЯ КНИГА (`useContactPeerIds`), без себя, служебного «Telegram» и
+// собеседников вне книги. Выбор — отправить сообщение-контакт.
+export function ContactPicker({ onPick, onClose }: {
   onPick: (userId: number, name: string) => void
   onClose: () => void
 }) {
@@ -311,13 +360,12 @@ export function ContactPicker({ dialogs, onPick, onClose }: {
   const [open, setOpen] = useState(true)
   const picked = useRef<{ userId: number; name: string } | null>(null)
   const pick = (userId: number, name: string) => { picked.current = { userId, name }; setOpen(false) }
-  const query = q.trim().toLowerCase()
-  // Собеседник живёт в зеркале пиров (вектор `users` контейнера `/chats`), а
-  // не внутри строки диалога; «приватный» — это ключ пользователя.
-  const rows = dialogs
-    .filter((d) => isUser(d.peerId))
-    .map((d) => ({ userId: d.peerId, name: peerTitle(d.peerId) }))
-    .filter((r) => !!r.name && (!query || r.name.toLowerCase().includes(query)))
+  const contactIds = useContactPeerIds(q)
+  const cards = usePeers(contactIds ?? [])
+  const rows = (contactIds ?? []).flatMap((userId) => {
+    const user = cards.get(userId)
+    return user?._ === 'user' ? [{ userId, name: getUserTitle(user) }] : []
+  })
   return (
     <Popup
       open={open}
@@ -338,72 +386,10 @@ export function ContactPicker({ dialogs, onPick, onClose }: {
       </div>
       <div className={s.pickerList}>
         {rows.map((r) => (
-          <div key={r.userId} className={s.listRow} onClick={() => pick(r.userId, r.name)}>
+          <div key={r.userId} className={s.listRow} data-peer-id={r.userId} onClick={() => pick(r.userId, r.name)}>
             <Avatar background={peerColor(r.name)} text={r.name[0] ?? '?'} size="md" />
             <div className={s.pickerBody}>
               <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">{r.name}</Text>
-            </div>
-          </div>
-        ))}
-      </div>
-    </Popup>
-  )
-}
-
-// Single-select chat picker (tweb ReplyToAnotherChat): выбор ОДНОГО чата, куда
-// перенести ответ. Та же карточка с поиском, что ForwardPicker/ContactPicker.
-export function ChatPicker({ dialogs, title, onPick, onClose }: {
-  dialogs: Dialog[]
-  title: string
-  onPick: (peerId: number) => void
-  onClose: () => void
-}) {
-  const t = useT()
-  const meId = useChatsStore((st) => st.meId)
-  const [q, setQ] = useState('')
-  const [open, setOpen] = useState(true)
-  const picked = useRef<number | null>(null)
-  const pick = (peerId: number) => { picked.current = peerId; setOpen(false) }
-  const query = q.trim().toLowerCase()
-  const rows = dialogs
-    // Секретный чат не может быть целью пересылки/ответа (E2E: сервер отправит plaintext).
-    .filter((d) => !d.secret)
-    .map((d) => {
-      // Вид чата ВЫВОДИТСЯ из конструктора пира и флагов — той же функцией, что
-      // и в списке чатов (решение Р8: место вывода одно).
-      const type = dialogChatType(d, cachedChat(d.peerId), meId)
-      return {
-        peerId: d.peerId,
-        title: peerTitle(d.peerId) || `Чат ${d.peerId}`,
-        sub: type === 'channel' ? t('Channel') : type === 'group' ? t('Group') : t('PrivateChat'),
-      }
-    })
-    .filter((r) => !query || r.title.toLowerCase().includes(query))
-  return (
-    <Popup
-      open={open}
-      title={title}
-      onClose={() => setOpen(false)}
-      onExitComplete={() => { const c = picked.current; if (c != null) onPick(c); else onClose() }}
-      width={440}
-    >
-      <div className={s.pickerSearch}>
-        <TgIcon name="search" size={20} color="var(--secondary-text-color)" />
-        <input
-          className={s.pickerSearchInput}
-          autoFocus
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={t('Search')}
-        />
-      </div>
-      <div className={s.pickerList}>
-        {rows.map((r) => (
-          <div key={r.peerId} className={s.listRow} onClick={() => pick(r.peerId)}>
-            <Avatar background={peerColor(r.title)} text={r.title[0] ?? '?'} size="md" />
-            <div className={s.pickerBody}>
-              <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">{r.title}</Text>
-              <Text noWrap size={13.5} color="var(--secondary-text-color)">{r.sub}</Text>
             </div>
           </div>
         ))}

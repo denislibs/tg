@@ -674,7 +674,8 @@ featuresCarousel,limitsFeature,premiumStickersCarousel,upgradedStoriesFeature}` 
 ### Задача 22: снос мёртвых попапов
 
 `stars/GiftInfoPopup.tsx` (131) — открывателя нет (единственный импорт — `dateLabels.form.test.tsx:31`;
-кейс теста — снять вместе); `ChatPicker` (`messages/ChatDialogs.tsx:355`) — 0 вызовов. Перед
+кейс теста — снять вместе); `ChatPicker` (`messages/ChatDialogs.tsx:355`) — 0 вызовов (**снят** в
+`fix/contacts-share-pickers` вместе с переводом `ContactPicker` на адресную книгу). Перед
 удалением — `git grep` ещё раз. Упоминания в докблоках `shared/ui/DomNode.tsx:53`,
 `DomNode.test.tsx:9` — поправить. **Зависимости:** нет.
 

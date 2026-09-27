@@ -63,6 +63,9 @@ export interface SelectorPeer {
   checked?: boolean
   /** действия справа — наш заменитель контекстного меню участника из tweb */
   actions?: ReactNode
+  /** аватар не по фото пира: «Избранное» — иконка закладки на своём фоне
+   *  (tweb `addDialogNew` c `meAsSaved`) */
+  avatar?: { background: string; emoji?: string }
 }
 
 interface PeerSelectorProps {
@@ -117,7 +120,7 @@ function SelectorUserChip({ peer, isLast, onClick }: {
       onAnimationEnd={(e) => { if (e.target === e.currentTarget) setScaleIn(false) }}
     >
       <div className="selector-user-avatar-container">
-        <UserAvatar id={peer.id} name={peer.name} photoId={peer.photoId} size={30} className="selector-user-avatar" />
+        <UserAvatar id={peer.id} name={peer.name} photoId={peer.photoId} size={30} className="selector-user-avatar" background={peer.avatar?.background} emoji={peer.avatar?.emoji} />
         <div className="selector-user-avatar-close">
           <TgIcon name="close" />
         </div>
@@ -191,6 +194,8 @@ export function PeerRow({ peer, design = 'round', side = 'right', multi = false,
         photoId={peer.photoId}
         size="md"
         className={classNames('dialog-avatar', 'row-media', 'row-media-abitbigger', design === 'square' ? ROW_SELECTION_MEDIA_CLASS : '')}
+        background={peer.avatar?.background}
+        emoji={peer.avatar?.emoji}
       />
       {side === 'right' ? checkbox : null}
       {peer.actions && (

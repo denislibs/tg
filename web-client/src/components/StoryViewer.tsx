@@ -17,6 +17,7 @@ import StealthModePopup from './StealthModePopup'
 import StoryMediaAreas from './StoryMediaAreas'
 import RepostStorySheet from './RepostStorySheet'
 import { ForwardPicker } from './messages/ChatDialogs'
+import type { ChatRights } from '../core/peers/rights'
 import { useChatsStore } from '../stores/chatsStore'
 import { useStoriesStore } from '../stores/storiesStore'
 import { useManagers } from '../core/hooks/useManagers'
@@ -45,6 +46,8 @@ const STORIES_PRESERVE = 2 // :110 — сколько соседей ВИДНО 
 const STORIES_PRESERVE_HIDDEN = 2 // :111 — сколько ещё смонтировано (предзагрузка)
 const MARGIN = 40 // :1743 — зазор между соседними сторями в карусели
 const JOINER = ' • ' // :534
+/** tweb `stories/share.ts:34`: история уходит в чат вложением. */
+const STORY_SHARE_RIGHTS: readonly ChatRights[] = ['send_media']
 
 // Размер стори под вьюпорт (tweb store.tsx:523-535):
 //   height = windowHeight − 48 − 8 − 8*2 − 8 = windowHeight − 80
@@ -602,10 +605,13 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
       {/* Stealth Mode popup (Hide My View из меню чужой истории) */}
       {stealthOpen && <StealthModePopup onClose={() => setStealthOpen(false)} />}
 
-      {/* 4d: share истории в чаты (tweb share, переиспользуем ForwardPicker) */}
+      {/* 4d: share истории в чаты (tweb share, переиспользуем ForwardPicker).
+          История уходит вложением — `chatRightsActions: ['send_media']`
+          (tweb `stories/share.ts:34`). */}
       {shareOpen && (
         <ForwardPicker
           dialogs={dialogs}
+          chatRightsActions={STORY_SHARE_RIGHTS}
           onClose={() => setShareOpen(false)}
           onPick={(chatIds) => {
             setShareOpen(false)
