@@ -9,7 +9,7 @@
 // пин на DOM этого не видели: до экрана такие строки не доезжают вовсе.
 //
 // Проверка двухчастная:
-//  • РАНТАЙМ — по настоящим таблицам (коды стран, склонения подписи папки): переживает
+//  • РАНТАЙМ — по настоящим таблицам (коды стран): переживает
 //    переименование файла и ловит порчу любым способом, не только кодмодом;
 //  • ИСХОДНИКИ — по ПОЗИЦИЯМ, в которых строка заведомо не перевод (имя глифа, код
 //    страны, чип клавиши, бейдж, аргумент вызова менеджера). Список позиций растёт
@@ -22,7 +22,6 @@ import { describe, expect, it } from 'vitest'
 import lang from '../lang'
 import Icons from '../core/tgico-icons'
 import { COUNTRIES } from '../components/auth/countries'
-import { folderSubtitle } from '../components/folders/labels'
 
 const SRC = resolve(process.cwd(), 'src')
 const isKey = (value: string) => value in lang
@@ -110,19 +109,6 @@ describe('данные — не ключи перевода', () => {
     // Иначе «плохих кодов нет» означало бы «списка нет».
     const iso2 = new Set(COUNTRIES.map((c) => c.iso2))
     expect([iso2.has('PM'), iso2.has('GB')]).toEqual([true, true])
-  })
-
-  // Формы слова в подписи папки — ДАННЫЕ таблицы `labels.ts`, а не ключи: их печатают
-  // как есть, и ключ там читался бы пользователем («3 FilterChats» у немца).
-  it('склонения в подписи папки не стали ключами', () => {
-    const bad: string[] = []
-    for (const lng of ['ru', 'uk', 'en', 'es', 'de', 'fr']) {
-      for (const n of [1, 2, 5]) {
-        const text = folderSubtitle({ chats: n, groups: n, channels: n }, lng)
-        for (const word of text.split(/[\s,]+/)) if (word && isKey(word)) bad.push(`${lng}/${n}: ${word}`)
-      }
-    }
-    expect(bad).toEqual([])
   })
 
   // ── исходники ──

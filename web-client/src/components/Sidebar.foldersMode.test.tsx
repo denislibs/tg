@@ -27,7 +27,7 @@ vi.mock('./StoriesRow', () => ({ default: () => null }))
 const FOLDER = {
   id: 7, title: 'Работа', pos: 0,
   contacts: false, nonContacts: true, groups: false, broadcasts: false,
-  excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [],
+  bots: false, excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [],
 }
 
 // Слой менеджеров — рекурсивный Proxy (приём `Sidebar.chatlist.test.tsx`).

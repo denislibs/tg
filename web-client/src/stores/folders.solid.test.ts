@@ -26,7 +26,7 @@ const SETTINGS = {
 const raw = (id: number, pos: number, over: Partial<RawFolder> = {}): RawFolder => ({
   id, title: `F${id}`, pos,
   contacts: false, non_contacts: true, groups: false, broadcasts: false, bots: false,
-  exclude_muted: false, exclude_read: false, include_chats: [], exclude_chats: [],
+  exclude_muted: false, exclude_read: false, include_peers: [], exclude_peers: [],
   ...over,
 })
 
@@ -116,7 +116,7 @@ describe('folders.solid — проекция appState.folders', () => {
 
     const f: Folder = {
       id: 9, title: 'x', pos: 0, contacts: false, nonContacts: true, groups: false, broadcasts: false,
-      excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [],
+      bots: false, excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [],
     }
     setAppState('folders', [f])
     setDialogs([makeDialog({ peerId: 1, unread: 1 })])

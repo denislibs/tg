@@ -147,6 +147,9 @@ const APP_SETTINGS_KEYS = {
     (format): 'h12' | 'h23' => format === '12h' ? 'h12' : 'h23',
     (format: 'h12' | 'h23') => format === 'h12' ? '12h' : '24h',
   ),
+  // tweb `config/state.ts` (`settings.tabsInSidebar`) — «Расположение папок»
+  // вкладки «Папки» (задача 24)
+  tabsInSidebar: 'tabsInSidebar',
 } as const satisfies KeyTable
 
 type Table = typeof APP_SETTINGS_KEYS

@@ -142,7 +142,6 @@ const fr = {
   'ChatList.Filter.Confirm.Remove.Text':
     'Supprimer ce dossier ? Vos discussions ne seront pas supprimées.',
   Filters: 'Dossiers',
-  FilterRecommended: 'Dossiers recommandés',
   FiltersView: 'Position des dossiers',
   FiltersOnLeft: 'À gauche des discussions',
   FiltersOnTop: 'Au-dessus des discussions',
@@ -159,13 +158,9 @@ const fr = {
     'Choisissez les discussions ou types de discussions à ne pas afficher dans ce dossier.',
   'ChatList.Filter.NonContacts': 'Non-contacts',
   'ChatList.Filter.MutedChats': 'En sourdine',
-  'Chat.ContextMenu.Read': 'Lues',
   FilterChatTypes: 'Types de discussions',
-  'MiniApps.AppsMore': 'Afficher plus',
   'Error.SomethingWentWrong': 'Une erreur est survenue',
   New: 'Nouveaux',
-  FilterUnreadDescription: 'Discussions avec de nouveaux messages.',
-  FilterPersonalDescription: 'Messages des discussions privées.',
   'EditFolder.Toast.ChooseChat':
     'Choisissez au moins une discussion pour ce dossier.',
   'QRCode.Title': 'Code QR',
@@ -173,7 +168,6 @@ const fr = {
   'QRCode.Copied': 'Code QR copié dans le presse-papiers',
   'QRCode.CopiedLink': 'Lien du profil copié',
   FilterAllChats: 'Toutes les discussions',
-  FilterPersonal: 'Personnel',
   'Stickers.SuggestStickers': 'Suggérer des stickers par émoji',
   FilterAllChatsShort: 'Tous',
   'InstalledStickers.LoopAnimated': 'Boucler les stickers animés',
@@ -849,6 +843,37 @@ const fr = {
   // Самоназвание языка — им подписана строка «Язык» в настройках (tweb
   // `settings.tsx:254`, `i18n('LanguageName')`).
   LanguageName: 'Français',
+  // ── Папки: список, редактор, выбор чатов (tweb `sidebarLeft/tabs/chatFolders.tsx`,
+  //    `editFolder.tsx`, `includedChats.tsx`; задача 24 плана 2D) ──
+  'ChatList.Filter.ReadChats': 'Lues',
+  Chats: {
+    one_value: '%1$d discussion',
+    other_value: '%1$d discussions',
+  },
+  'EditFolder.EmojiAsIconTip': 'Si vous placez un seul emoji au début (ou à la fin), il s’affichera comme icône dans la barre latérale des dossiers',
+  FilterAllBots: 'Tous les bots',
+  FilterAllChannels: 'Tous les canaux',
+  FilterAllContacts: 'Tous les contacts',
+  FilterAllGroups: 'Tous les groupes',
+  FilterAllNonContacts: 'Tous les non-contacts',
+  FilterAlwaysShow: 'Inclure des discussions',
+  FilterMenuDelete: 'Supprimer le dossier',
+  FilterNeverShow: 'Exclure des discussions',
+  FilterShowMoreChats: {
+    one_value: 'Afficher %1$d discussion de plus',
+    other_value: 'Afficher %1$d discussions de plus',
+  },
+  Groups: {
+    one_value: '%1$d groupe',
+    other_value: '%1$d groupes',
+  },
+  LimitReached: 'Limite atteinte',
+  'SharedFolder.CreateLink': 'Créer un nouveau lien',
+  'SharedFolder.Description': 'Donnez à vos amis et collègues l’accès à tout le dossier, y compris tous ses groupes et canaux où vous avez les droits nécessaires.',
+  'SharedFolder.Includes': 'Contient %s',
+  'SharedFolder.Toast.NeedName': 'Donnez un nom à ce dossier pour le partager.',
+  'SharedFolder.Toast.NoExcluded': 'Les discussions exclues ne sont pas prises en charge dans les dossiers partagés.',
+  'SharedFolder.Toast.NoTypes': 'Les types de discussion ne sont pas pris en charge dans les dossiers partagés.',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(fr)

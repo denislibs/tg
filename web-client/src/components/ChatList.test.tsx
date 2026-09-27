@@ -322,7 +322,7 @@ describe('ChatList — ul виртуального списка', () => {
   it('папка, которую ещё не показывали, страницу не просит; показ — первая загрузка', async () => {
     seedDialogs(3)
     useAppStateStore.setState({
-      folders: [{ id: 7, title: 'Папка', pos: 0, contacts: false, nonContacts: false, groups: false, broadcasts: false, excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [] }],
+      folders: [{ id: 7, title: 'Папка', pos: 0, contacts: false, nonContacts: false, groups: false, broadcasts: false, bots: false, excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [] }],
     })
     // Папка 7 у владельца пуста — иначе её `count` породил бы «дырки», и каждая
     // из них попросила бы свою страницу сверх запроса самой смены папки.
@@ -541,7 +541,7 @@ describe('ChatList — свой ul на каждую папку в контей�
   const WORK = {
     id: 7, title: 'Работа', pos: 0,
     contacts: false, nonContacts: true, groups: false, broadcasts: false,
-    excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [],
+    bots: false, excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [],
   }
 
   const listIn = (host: HTMLElement) => host.querySelector<HTMLElement>('ul.chatlist') as HTMLElement

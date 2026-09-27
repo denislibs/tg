@@ -113,7 +113,7 @@ describe('FoldersSidebar — зеркало градиента обоев', () =
 const raw = (id: number, pos: number, title: string): RawFolder => ({
   id, title, pos,
   contacts: false, non_contacts: false, groups: false, broadcasts: false, bots: false,
-  exclude_muted: false, exclude_read: false, include_chats: [], exclude_chats: [],
+  exclude_muted: false, exclude_read: false, include_peers: [], exclude_peers: [],
 })
 
 const settle = async () => {

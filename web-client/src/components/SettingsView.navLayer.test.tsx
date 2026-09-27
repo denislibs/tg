@@ -30,6 +30,8 @@ const makeManagers = (sessions: unknown[] = []) => ({
   peers: { fillMirror: async () => {} },
   media: { downloadMediaURL: async () => undefined },
   sessions: { list: async () => sessions },
+  // под-экран «Стикеры и эмодзи» на монтировании читает свои наборы
+  stickers: { mySets: async () => [] },
 } as unknown as Managers)
 
 const managers = makeManagers()
@@ -76,10 +78,10 @@ describe('SettingsView — слой навигации', () => {
 
     render(<SettingsView onBack={onBack} />, { wrapper })
 
-    // Строка списка, у которой ещё есть React-под-экран (ключ `ChatList.Filter.List.Title`;
-    // язык прогона — английский источник). «Уведомления» и «Данные и память»
-    // под-экранами больше не служат: это вкладки слайдера.
-    fireEvent.click(screen.getByText(lang['ChatList.Filter.List.Title']))
+    // Строка списка, у которой ещё есть React-под-экран (ключ `StickersName`;
+    // язык прогона — английский источник). «Уведомления», «Данные и память» и
+    // «Папки» под-экранами больше не служат: это вкладки слайдера.
+    fireEvent.click(screen.getByText(lang.StickersName))
 
     pressBack()
 

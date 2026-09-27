@@ -41,7 +41,7 @@ const dialog = (peerId: PeerId, over: Over = {}): Dialog => {
 const folder = (over: Partial<Folder> = {}): Folder => ({
   id: 7, title: 'Папка', pos: 0,
   contacts: false, nonContacts: false, groups: false, broadcasts: false,
-  excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [], ...over,
+  bots: false, excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [], ...over,
 })
 
 const page = (dialogs: Dialog[], over: Partial<DialogsPage> = {}): DialogsPage =>

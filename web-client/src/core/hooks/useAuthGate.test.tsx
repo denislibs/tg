@@ -63,7 +63,7 @@ function withManagers(managers: Managers) {
 
 const folder = {
   id: 7, title: 'чужая папка', pos: 0, contacts: false, nonContacts: false, groups: true,
-  broadcasts: false, excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [],
+  broadcasts: false, bots: false, excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [],
 }
 
 describe('useAuthGate: переход активной сессии (rt:logging_out)', () => {

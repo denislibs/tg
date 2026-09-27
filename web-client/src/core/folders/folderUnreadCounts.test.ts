@@ -18,7 +18,7 @@ const SETTINGS: NotifySettings = {
 const folder = (id: number, over: Partial<Folder> = {}): Folder => ({
   id, title: `F${id}`, pos: id,
   contacts: false, nonContacts: false, groups: false, broadcasts: false,
-  excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [],
+  bots: false, excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [],
   ...over,
 })
 

@@ -331,12 +331,28 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // мёртвые подписи того же экрана (`PrivacyPhoneInfo2`, `Privacy.LastSeenShortCaption`,
 // `Privacy.{ProfilePhoto,Calls,Forwards}Choose`, `Privacy.NeverShareCaption`). Итого −2 у
 // всех пяти (plural без изменений: `UserCount` → `Users`): ru 1380, uk 717, es 715, de 715, fr 711.
+//
+// Задача 24 плана 2D (вкладки «Папки», порт tweb chatFolders/editFolder/includedChats):
+// ключи tweb lang.ts `FilterAll{Contacts,NonContacts,Groups,Channels,Bots}`,
+// `FilterMenuDelete`, `FilterAlwaysShow`/`FilterNeverShow`, `EditFolder.EmojiAsIconTip`,
+// `ChatList.Filter.{Contacts,Bots,ReadChats}`, `SharedFolder.{CreateLink,Description,
+// Includes}`, `SharedFolder.Toast.{NeedName,NoTypes,NoExcluded}`, `LimitReached` и
+// числовые `Chats`, `Groups`, `FilterShowMoreChats` (plural +3 у всех). У es/de/fr нет
+// `ChatList.Filter.Bots` («Bots» совпал с английским), у fr — и `ChatList.Filter.Contacts`:
+// ru 1382 → 1404, uk 719 → 741, es/de 717 → 738, fr 713 → 733. Врезкой той же
+// задачи сняты ключи снесённых React-экранов папок без других читателей —
+// `FilterRecommended` (секции нет, О-20), `FilterPersonal`/`FilterPersonalDescription`/
+// `FilterUnreadDescription` (выдуманные пресеты рекомендованных), `Chat.ContextMenu.Read`,
+// `MiniApps.AppsMore` и у ru ещё `SharedFolder.Edit.Title`/`SharedFolder.Link.Caption`
+// (секция «Поделиться» прежнего редактора): ru 1404 → 1396, остальные −6
+// (uk 735, es/de 732, fr 727).
+// Поверх задачи 17: ru 1394, uk 733, es/de 730, fr 725.
 const COMPOSITION = {
-  ru: { keys: 1380, plural: 38 },
-  uk: { keys: 717, plural: 27 },
-  es: { keys: 715, plural: 26 },
-  de: { keys: 715, plural: 27 },
-  fr: { keys: 711, plural: 26 },
+  ru: { keys: 1394, plural: 41 },
+  uk: { keys: 733, plural: 30 },
+  es: { keys: 730, plural: 29 },
+  de: { keys: 730, plural: 30 },
+  fr: { keys: 725, plural: 29 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -452,12 +468,14 @@ const COMPOSITION = {
 // Задачей 13 плана 2D — самодельные `Theme.Light`/`Theme.System`/`Theme.Tinted`
 // снесённого React-экрана «Общих» заменены ключами tweb `ThemeDay`/`ThemeTinted`/
 // `AutoNightSystemDefault` у всех пяти: −3 +3, число строк то же.
+// Задачей 24 плана 2D — ключи вкладок «Папки» вместо ключей снесённых React-экранов
+// папок (разбор — там же).
 const FINGERPRINT = {
-  ru: '6540b141',
-  uk: '8be7a2db',
-  es: 'a09e1ca8',
-  de: '6becf26d',
-  fr: '6e733d68',
+  ru: '1b852559',
+  uk: 'b0d28111',
+  es: 'd3e54766',
+  de: 'ed8566cb',
+  fr: '11078b1f',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
@@ -734,7 +752,6 @@ const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
   es: {
     'Premium.Boarding.Title': 'nombre del producto — «Telegram Premium» не переводится',
     AutoDownloadVideos: '«videos» — допустимое испанское написание (лат.-амер. норма)',
-    FilterPersonal: '«personal» — испанское слово, пишется так же',
     ReportChatSpam: '«spam» — заимствование, в испанском Telegram так же',
     FilterChats: '«chats» — заимствование с испанским множественным',
     'SharedMedia.Audio': '«audio» — латинское слово, совпадает',

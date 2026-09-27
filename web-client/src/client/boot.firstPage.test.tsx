@@ -72,7 +72,7 @@ const FOLDER_CHAT_ID = TOTAL - 1
 const FOLDER: Folder = {
   id: 7, title: 'Работа', pos: 0,
   contacts: false, nonContacts: false, groups: false, broadcasts: false,
-  excludeMuted: false, excludeRead: false, includeChats: [FOLDER_CHAT_ID], excludeChats: [],
+  bots: false, excludeMuted: false, excludeRead: false, includeChats: [FOLDER_CHAT_ID], excludeChats: [],
 }
 
 /** Порядок в ответе — по времени последнего сообщения (его же считает

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { chatMatchesFolder, dialogMatchesFolder, folderCounts, matchesFolder, type FolderMatchable } from './folderFilter'
+import { chatMatchesFolder, dialogMatchesFolder, matchesFolder, type FolderMatchable } from './folderFilter'
 import type { Folder } from './managers/foldersManager'
 import { makeDialog } from './dialogs/testDialog'
 import type { Chat as PeerChat } from './peers/peer'
@@ -11,7 +11,7 @@ const folder = (over: Partial<Folder>): Folder => ({
   id: 1, title: 'F', pos: 0,
   includeChats: [], excludeChats: [],
   contacts: false, nonContacts: false, groups: false, broadcasts: false,
-  excludeRead: false, excludeMuted: false,
+  excludeRead: false, bots: false, excludeMuted: false,
   ...over,
 })
 
@@ -118,22 +118,6 @@ describe('dialogMatchesFolder: адаптер Dialog, контактность �
     const now = 1_700_000_000
     const expired = makeDialog({ peerId: -5, unread: 1, muteUntil: now - 1 })
     expect(dialogMatchesFolder(expired, megagroup, folder({ groups: true, excludeMuted: true }), contacts, false)).toBe(true)
-  })
-})
-
-// folderCounts (подзаголовок таба папки) — тонкая свёртка chatMatchesFolder,
-// но сама свёртка (группировка по типу) больше нигде не проверяется.
-describe('folderCounts', () => {
-  it('считает чаты/каналы/группы, попавшие в папку, раздельно', () => {
-    const f = folder({ groups: true, broadcasts: true, contacts: true })
-    const contacts = new Set([7])
-    const chats = [
-      chat({ id: '1', type: 'group' }),
-      chat({ id: '2', type: 'channel' }),
-      chat({ id: '7', type: 'private' }),
-      chat({ id: 'draft-x', type: 'group' }), // draft — не считается
-    ]
-    expect(folderCounts(chats, f, contacts)).toEqual({ chats: 1, channels: 1, groups: 1 })
   })
 })
 

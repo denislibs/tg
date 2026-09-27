@@ -28,12 +28,12 @@ import { makeDialog, makeLastMessage } from './dialogs/testDialog'
 
 const dialog = (peerId: number, at: string): Dialog => makeDialog({ peerId, lastMessage: makeLastMessage({ peerId, id: 1, fromId: 1, text: 'x', createdAt: at }) })
 
-// Папка, собранная одним `include_chats`: правило срабатывает до флагов типов
+// Папка, собранная одним `include_peers`: правило срабатывает до флагов типов
 // (`core/folderFilter.ts`), поэтому карточек пиров и контактов ей не нужно.
 const FOLDER: Folder = {
   id: 7, title: 'Работа', pos: 0,
   contacts: false, nonContacts: false, groups: false, broadcasts: false,
-  excludeMuted: false, excludeRead: false, includeChats: [2], excludeChats: [],
+  bots: false, excludeMuted: false, excludeRead: false, includeChats: [2], excludeChats: [],
 }
 
 // Папка, которую владелец не знает, отдаёт ПУСТУЮ страницу (`forFilter` → null),

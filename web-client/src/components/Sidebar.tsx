@@ -1,4 +1,3 @@
-import type { LangPackKey } from '@/lang'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { isUserCollapsedLeft, setOpenTabsLeftSidebar } from '../core/dom/updateColumnWidths'
@@ -17,9 +16,12 @@ import { useDialogListSource } from '../core/hooks/useDialogListSource'
 import { useEvent } from '../core/hooks/useEvent'
 import type { Chat } from '../data'
 import FoldersSidebar, { type MainMenuHandlers } from './folders/FoldersSidebar'
-import FolderEditor from './folders/FolderEditor'
-import type { Folder } from '../core/managers/foldersManager'
 import type { FolderContextMenuSidebar } from '../helpers/dom/createFolderContextMenu'
+import { createSettingsSliderHost, type SettingsSliderHost } from './sidebarLeft/settingsSliderHost'
+import { AppChatFoldersTab, AppEditFolderTab } from './solidJsTabs/tabs'
+import type { SliderSuperTabConstructable } from './sliderTab'
+import type SliderSuperTab from './sliderTab'
+import { toastNew } from './toast'
 import pause from '../helpers/schedulers/pause'
 import { useSettings, useSettingsStore } from '../settings'
 import useMediaQuery from '../shared/lib/useMediaQuery'
@@ -131,8 +133,6 @@ export default function Sidebar({
   // Экраны левой колонки взаимоисключающие — один стейт-энум (см. <SidebarScreens>).
   const [screen, setScreen] = useState<SidebarScreen>(null)
   const closeScreen = () => setScreen(null)
-  // deep-open настроек на подэкран (контекстное меню «Настроить папки»)
-  const [settingsSub, setSettingsSub] = useState<LangPackKey | null>(null)
   const [archiveOpen, setArchiveOpen] = useState(false)
 
   // Поле поиска шапки: `inputRef` — сам `<input>` (сворачивание ряда историй),
@@ -159,15 +159,27 @@ export default function Sidebar({
     initialQuery,
   })
 
-  const openFolderSettings = () => {
-    setSettingsSub('ChatList.Filter.List.Title')
-    setScreen('settings')
-  }
   const folders = useFolders()
-  // Редактор папки — экран колонки, то есть вкладка слайдера сайдбара (tweb
-  // `AppEditFolderTab`, `SidebarSlider.createTab`); вход/уход ведёт сам экран
-  // (`components/settings/kit.tsx` → SettingsScreen). Открывает его меню папки.
-  const [editingFolder, setEditingFolder] = useState<Folder | null>(null)
+  // Вкладки папок поверх списка чатов — «Папки» и редактор папки (tweb
+  // `appSidebarLeft.createTab(AppChatFoldersTab | AppEditFolderTab).open(…)`,
+  // `createFolderContextMenu.ts:27-49`, `foldersSidebarContent/index.tsx:207-215`).
+  // Колоночного слайдера у нас ещё нет (шов, задача 28 плана 2D), поэтому
+  // открытие заводит хост слайдера над колонкой (`settingsSliderHost.ts` — тот же
+  // слой, что у вкладок настроек) и открывает вкладку в нём: закрытие последней
+  // вкладки возвращает к списку чатов, как у оригинала. Хост один на колонку:
+  // новое открытие снимает прежний (уже пустой) хост, экран настроек — тоже.
+  const columnTabsHostRef = useRef<SettingsSliderHost | null>(null)
+  // `has-open-tabs`, пока вкладка открыта (tweb `onTabsCountChange` →
+  // `onSomethingOpenInsideChange`, `sidebarLeft/index.ts:547-569`)
+  const [columnTabsOpen, setColumnTabsOpen] = useState(false)
+  const openColumnTab = <T extends SliderSuperTab>(ctor: SliderSuperTabConstructable<T>, ...args: Parameters<T['init']>) => {
+    const host = createSettingsSliderHost(columnRef.current!, managers)
+    columnTabsHostRef.current = host
+    setColumnTabsOpen(true)
+    host.onTabsEmpty(() => setColumnTabsOpen(false))
+    void host.openTab(ctor, ...args).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
+  }
+  useEffect(() => () => columnTabsHostRef.current?.destroy(), [])
 
   // Мемоизировано, чтобы <ChatList> получал стабильный проп — ре-рендер
   // сайдбара под тогл оверлея не пересоздаёт массив и не бьёт его memo.
@@ -187,7 +199,7 @@ export default function Sidebar({
   // --- Ресайз левой колонки (tweb sidebarLeft/index.ts:612-635 initSidebarResize) ---
   const columnRef = useRef<HTMLDivElement>(null)
   // tweb hasSomethingOpenInside(): открытые вкладки | активный поиск | форум-таб.
-  const somethingOpenInside = searching || screen !== null || archiveOpen || !!forumChat
+  const somethingOpenInside = searching || screen !== null || archiveOpen || columnTabsOpen || !!forumChat
   // tweb isCollapsed(): в floating-диапазоне (<=925) колонка всегда развёрнута,
   // предпочтение просто помнится для широких вьюпортов.
   const floatingLeft = useMediaQuery('(max-width:925px)')
@@ -238,11 +250,12 @@ export default function Sidebar({
   // закрывать.
   const closeAllTabsRef = useRef<() => boolean>(() => false)
   closeAllTabsRef.current = () => {
-    const hadTabs = screen !== null || archiveOpen || editingFolder !== null
+    const hadTabs = screen !== null || archiveOpen || columnTabsOpen
     setScreen(null)
-    setSettingsSub(null)
     setArchiveOpen(false)
-    setEditingFolder(null)
+    columnTabsHostRef.current?.destroy()
+    columnTabsHostRef.current = null
+    setColumnTabsOpen(false)
     return hadTabs
   }
   // `appSidebarLeft.closeEverythingInside()` (tweb `sidebarLeft/index.ts:494-499`):
@@ -268,9 +281,16 @@ export default function Sidebar({
       if (closeEverythingInsideRef.current()) await pause(200)
       clb()
     },
-    openEditFolderTab: (filter) => setEditingFolder(filter),
-    openChatFoldersTab: () => openFolderSettings(),
+    openEditFolderTab: (filter) => openColumnTab(AppEditFolderTab, { ...AppEditFolderTab.getInitArgs(), initFilter: filter }),
+    openChatFoldersTab: () => openColumnTab(AppChatFoldersTab, AppChatFoldersTab.getInitArgs()),
   }))
+  // Кнопка настроек вертикальной колонки папок (tweb
+  // `foldersSidebarContent/index.tsx:203-216`: `closeTabsBefore` → `AppChatFoldersTab`).
+  // Флаг `openingChatFolders` оригинала не нужен: `closeTabsBefore` и так
+  // закрывает открытую вкладку папок до новой.
+  const openFolderSettings = () => {
+    appSidebarLeft.closeTabsBefore(() => appSidebarLeft.openChatFoldersTab())
+  }
   const forumOpenRef = useRef(false)
   forumOpenRef.current = !!forumChat
   // Плашка-подсказка рисуется порталом в узел владельца (tweb `:1079-1082`);
@@ -499,16 +519,11 @@ export default function Sidebar({
       </div>
       </div>
 
-      {editingFolder && (
-        <FolderEditor folder={editingFolder} chats={chats} onClose={() => setEditingFolder(null)} />
-      )}
-
       <SidebarScreens
         screen={screen}
         close={closeScreen}
         chats={chats}
-        settingsSub={settingsSub}
-        onSettingsBack={() => { closeScreen(); setSettingsSub(null) }}
+        onSettingsBack={closeScreen}
         onSelect={onSelect}
         onChatCreated={onChatCreated}
         onCreateGroup={actions.createGroup}

@@ -1046,7 +1046,7 @@ NewChats/Sensitive/Payments. Наши лишние строки «Сессии»
 удалить `settings/PrivacySecuritySettings.tsx`, `settings/ConfirmDialog.tsx` — если потребителей
 вне настроек не осталось (см. задачу 30).
 
-### Задача 24: «Папки» — список и редактор
+### Задача 24: «Папки» — список и редактор — ✅ сделано (PR feat/w2d-folders)
 
 **Порт:** `chatFolders.tsx` (433) → `sidebarLeft/tabs/chatFolders.solid.tsx`; `editFolder.tsx`
 (733) + `editFolderInput/*` → `editFolder.solid.tsx`; вкладки :815, :833 (`getInitArgs`, lottie
@@ -1061,6 +1061,33 @@ NewChats/Sensitive/Payments. Наши лишние строки «Сессии»
 **Зависимости:** 5. **Врезка:** `tabs.ts`, `SettingsView.tsx`, `SettingsSubScreen.tsx`,
 `Sidebar.tsx` (колбэки меню папки → `openTab`); удалить `folders/ChatFoldersSettings.tsx`,
 `FolderEditor.tsx`.
+
+**Итог (2026-09-27):** `chatFolders.solid.tsx`, `editFolder.solid.tsx` (+ `editFolderInput` —
+поле `InputFieldTsx` без `InputFieldEmoji`, О-28), `editFolderShared.ts` (+ `getEditFolderInitArgs`,
+`FOLDER_PFLAGS`), вкладки `AppChatFoldersTab`/`AppEditFolderTab`/`AppIncludedChatsTab` одним блоком
+в конце `tabs.ts`. Поправки к постановке:
+- **Выбор чатов (`includedChats`) взят из задачи 25**: без него «Add Chats»/«Remove Chats»
+  мертвы (Solid-вкладка не открывает React-`FolderChatsPicker`). В 25 остаётся `sharedFolder` +
+  `inviteLink`; `FolderChatsPicker.tsx` снесён здесь.
+- Бэкенд сверен: О-19 (нет ручки порядка — нет `Sortable`, ручки строки и строки «Все чаты»),
+  О-20, О-21 (нет `exclude_archived` — нет кнопок Archived в редакторе и выборе), О-22 (лимиты не
+  отдаются; отказ сервера `folders limit reached` — существующий тост с ключом tweb `LimitReached`
+  вместо `showLimitPopup`, попап 2C не трогался). `bots` на бэкенде есть — категория портирована.
+- `foldersManager.ts` чинился шире плана: кроме `bots` провод слал/читал `include_chats`/
+  `exclude_chats`, а бэкенд с 8c84b326 — `include_peers`/`exclude_peers`: списки чатов папок не
+  сохранялись и приходили пустыми. Пины — `foldersManager.test.ts`.
+- Меню папки и кнопка колонки папок открывают вкладки хостом слайдера НАД КОЛОНКОЙ
+  (`Sidebar.tsx::openColumnTab`), а не через экран настроек: у tweb это `appSidebarLeft.createTab`,
+  «назад» возвращает к чатам. Deep-open настроек (`settingsSub`/`initialSub`) снят как мёртвый.
+- Ссылки: список/создание/копирование/удаление есть; клик по строке и отказ «нечем делиться» —
+  до `AppSharedFolderTab` задачи 25 (последний — тостом нашего `Folder.Share.Empty`).
+- Порт партиала `_usernames.scss` (строки ссылок); `mountSolidComponent` в `wrapSolidComponent.ts`.
+- Заставки папок — `div.sticker-container` с `loadAnimationFromURLManually`; отказ загрузки не
+  валит открытие вкладки (статичный кадр). React-пин `Folders_1` в `lottieStickerBox.test.tsx` снят.
+- `SettingsView.navLayer.test.tsx` переведён на под-экран «Стикеры и эмодзи» (задача 15, 2C) —
+  при её переезде перевести снова.
+- Не сделано (вне объёма, отмечено): правило папки для `bots` в `core/folderFilter.ts::matchesFolder`
+  (у нашей `FolderMatchable` нет `isBot`) — папка «только боты» сохраняется, но список её пуст.
 
 ### Задача 25: «Папки» — выбор чатов и ссылка
 
@@ -1217,7 +1244,7 @@ RowTsxController` + `attachRowController(this, {…, middleware})`, `destroy()` 
 | О-19 | Порядок папок (`updateDialogFiltersOrder`) | поле `pos` есть, ручки перестановки нет | перетаскивание папок |
 | О-20 | Рекомендованные папки | нет `getSuggestedDialogFilters` | секция FilterRecommended |
 | О-21 | `exclude_archived`, закреплённые в папке | нет на проводе | категории редактора 1:1 |
-| О-22 | Лимиты `folders`/`folderPeers`/`chatlistInvites` + `PopupLimit` | бэкенд не отдаёт лимиты (`MaxFoldersPerUser = 10` зашит, `domain/folder.go:12`); попап — 2C | апселл лимитов |
+| О-22 | Лимиты `folders`/`folderPeers`/`chatlistInvites` + `PopupLimit` | бэкенд не отдаёт лимиты (`MaxFoldersPerUser = 10` зашит, `domain/folder.go:12`); попап — 2C. До них отказ сервера по числу папок — тост `LimitReached` (задача 24) | апселл лимитов |
 | О-23 | Выбор чатов ссылки папки (`editExportedInvite`) | нет ручки | shared folder 1:1 |
 | О-24 | Видео-аватар и крошилка через медиаредактор | редактор — React (`MediaEditor.tsx`), волна 4 | `AvatarEdit` 1:1 |
 | О-25 | Личный канал в профиле | выяснить в задаче 27 (`updatePersonalChannel`) | секция PersonalChannel |

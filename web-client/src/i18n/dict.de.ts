@@ -142,7 +142,6 @@ const de = {
   'ChatList.Filter.Confirm.Remove.Text':
     'Diesen Ordner löschen? Deine Chats werden nicht gelöscht.',
   Filters: 'Ordner',
-  FilterRecommended: 'Empfohlene Ordner',
   FiltersView: 'Position der Ordner',
   FiltersOnLeft: 'Links neben den Chats',
   FiltersOnTop: 'Über den Chats',
@@ -159,13 +158,9 @@ const de = {
     'Wähle Chats oder Chat-Typen, die nicht in diesem Ordner erscheinen.',
   'ChatList.Filter.NonContacts': 'Nicht-Kontakte',
   'ChatList.Filter.MutedChats': 'Stummgeschaltet',
-  'Chat.ContextMenu.Read': 'Gelesen',
   FilterChatTypes: 'Chat-Typen',
-  'MiniApps.AppsMore': 'Mehr anzeigen',
   'Error.SomethingWentWrong': 'Etwas ist schiefgelaufen',
   New: 'Neu',
-  FilterUnreadDescription: 'Chats mit neuen Nachrichten.',
-  FilterPersonalDescription: 'Nachrichten aus privaten Chats.',
   'EditFolder.Toast.ChooseChat':
     'Wähle mindestens einen Chat für diesen Ordner.',
   'QRCode.Title': 'QR-Code',
@@ -173,7 +168,6 @@ const de = {
   'QRCode.Copied': 'QR-Code in die Zwischenablage kopiert',
   'QRCode.CopiedLink': 'Profil-Link kopiert',
   FilterAllChats: 'Alle Chats',
-  FilterPersonal: 'Persönlich',
   'Stickers.SuggestStickers': 'Sticker per Emoji vorschlagen',
   FilterAllChatsShort: 'Alle',
   'InstalledStickers.LoopAnimated': 'Animierte Sticker wiederholen',
@@ -856,6 +850,38 @@ const de = {
   // Самоназвание языка — им подписана строка «Язык» в настройках (tweb
   // `settings.tsx:254`, `i18n('LanguageName')`).
   LanguageName: 'Deutsch',
+  // ── Папки: список, редактор, выбор чатов (tweb `sidebarLeft/tabs/chatFolders.tsx`,
+  //    `editFolder.tsx`, `includedChats.tsx`; задача 24 плана 2D) ──
+  'ChatList.Filter.Contacts': 'Kontakte',
+  'ChatList.Filter.ReadChats': 'Gelesen',
+  Chats: {
+    one_value: '%1$d Chat',
+    other_value: '%1$d Chats',
+  },
+  'EditFolder.EmojiAsIconTip': 'Wenn du nur ein Emoji an den Anfang (oder ans Ende) setzt, wird es in der Ordner-Seitenleiste als Symbol angezeigt',
+  FilterAllBots: 'Alle Bots',
+  FilterAllChannels: 'Alle Kanäle',
+  FilterAllContacts: 'Alle Kontakte',
+  FilterAllGroups: 'Alle Gruppen',
+  FilterAllNonContacts: 'Alle Nicht-Kontakte',
+  FilterAlwaysShow: 'Chats hinzufügen',
+  FilterMenuDelete: 'Ordner löschen',
+  FilterNeverShow: 'Chats ausschließen',
+  FilterShowMoreChats: {
+    one_value: '%1$d weiteren Chat anzeigen',
+    other_value: '%1$d weitere Chats anzeigen',
+  },
+  Groups: {
+    one_value: '%1$d Gruppe',
+    other_value: '%1$d Gruppen',
+  },
+  LimitReached: 'Limit erreicht',
+  'SharedFolder.CreateLink': 'Neuen Link erstellen',
+  'SharedFolder.Description': 'Gib Freunden und Kollegen Zugriff auf den ganzen Ordner mit allen Gruppen und Kanälen, in denen du die nötigen Rechte hast.',
+  'SharedFolder.Includes': 'Enthält %s',
+  'SharedFolder.Toast.NeedName': 'Gib diesem Ordner einen Namen, um ihn zu teilen.',
+  'SharedFolder.Toast.NoExcluded': 'Ausgeschlossene Chats werden in geteilten Ordnern nicht unterstützt.',
+  'SharedFolder.Toast.NoTypes': 'Chat-Typen werden in geteilten Ordnern nicht unterstützt.',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(de)

@@ -151,7 +151,6 @@ const uk = {
   'ChatList.Filter.Confirm.Remove.Text':
     'Видалити цю папку? Ваші чати не буде видалено.',
   Filters: 'Папки',
-  FilterRecommended: 'Рекомендовані папки',
   FiltersView: 'Розташування папок',
   FiltersOnLeft: 'Ліворуч від чатів',
   FiltersOnTop: 'Над чатами',
@@ -168,13 +167,9 @@ const uk = {
     'Виберіть чати або типи чатів, які не потрібно показувати в цій папці.',
   'ChatList.Filter.NonContacts': 'Не з контактів',
   'ChatList.Filter.MutedChats': 'Без звуку',
-  'Chat.ContextMenu.Read': 'Прочитані',
   FilterChatTypes: 'Типи чатів',
-  'MiniApps.AppsMore': 'Показати ще',
   'Error.SomethingWentWrong': 'Щось пішло не так',
   New: 'Нові',
-  FilterUnreadDescription: 'Чати з новими повідомленнями.',
-  FilterPersonalDescription: 'Повідомлення з особистих чатів.',
   'EditFolder.Toast.ChooseChat':
     'Виберіть хоча б один чат для цієї папки.',
   'QRCode.Title': 'QR-код',
@@ -182,7 +177,6 @@ const uk = {
   'QRCode.Copied': 'QR-код скопійовано в буфер обміну',
   'QRCode.CopiedLink': 'Посилання на профіль скопійовано',
   FilterAllChats: 'Усі чати',
-  FilterPersonal: 'Особисті',
   'Stickers.SuggestStickers': 'Стікери за емодзі',
   FilterAllChatsShort: 'Усі',
   'InstalledStickers.LoopAnimated': 'Циклічні анімовані стікери',
@@ -916,6 +910,45 @@ const uk = {
   // Самоназвание языка — им подписана строка «Язык» в настройках (tweb
   // `settings.tsx:254`, `i18n('LanguageName')`).
   LanguageName: 'Українська',
+  // ── Папки: список, редактор, выбор чатов (tweb `sidebarLeft/tabs/chatFolders.tsx`,
+  //    `editFolder.tsx`, `includedChats.tsx`; задача 24 плана 2D) ──
+  'ChatList.Filter.Bots': 'Боти',
+  'ChatList.Filter.Contacts': 'Контакти',
+  'ChatList.Filter.ReadChats': 'Прочитані',
+  Chats: {
+    one_value: '%1$d чат',
+    few_value: '%1$d чати',
+    many_value: '%1$d чатів',
+    other_value: '%1$d чату',
+  },
+  'EditFolder.EmojiAsIconTip': 'Якщо поставити один емодзі на початку (або в кінці) назви, він стане значком теки на бічній панелі тек',
+  FilterAllBots: 'Усі боти',
+  FilterAllChannels: 'Усі канали',
+  FilterAllContacts: 'Усі контакти',
+  FilterAllGroups: 'Усі групи',
+  FilterAllNonContacts: 'Усі не з контактів',
+  FilterAlwaysShow: 'Додати чати',
+  FilterMenuDelete: 'Видалити теку',
+  FilterNeverShow: 'Виключити чати',
+  FilterShowMoreChats: {
+    one_value: 'Показати ще %1$d чат',
+    few_value: 'Показати ще %1$d чати',
+    many_value: 'Показати ще %1$d чатів',
+    other_value: 'Показати ще %1$d чату',
+  },
+  Groups: {
+    one_value: '%1$d група',
+    few_value: '%1$d групи',
+    many_value: '%1$d груп',
+    other_value: '%1$d групи',
+  },
+  LimitReached: 'Досягнуто ліміту',
+  'SharedFolder.CreateLink': 'Створити нове посилання',
+  'SharedFolder.Description': 'Надайте друзям і колегам доступ до всієї теки, зокрема до всіх її груп і каналів, у яких у вас є потрібні права.',
+  'SharedFolder.Includes': 'Містить %s',
+  'SharedFolder.Toast.NeedName': 'Задайте назву теки, щоб поділитися нею.',
+  'SharedFolder.Toast.NoExcluded': 'Виключені чати не підтримуються у спільних теках.',
+  'SharedFolder.Toast.NoTypes': 'Типи чатів не підтримуються у спільних теках.',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(uk)

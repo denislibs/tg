@@ -94,16 +94,3 @@ export function dialogMatchesFolder(
     folder, contactIds,
   )
 }
-
-// Счётчики для подзаголовка строки папки (tweb chatFolders.tsx:60-88):
-// «N чатов», «N каналов», «N групп», соединённые « и ».
-export function folderCounts(chats: ChatVM[], folder: Folder, contactIds: ReadonlySet<number>): { chats: number; channels: number; groups: number } {
-  let c = 0, ch = 0, g = 0
-  for (const chat of chats) {
-    if (!chatMatchesFolder(chat, folder, contactIds)) continue
-    if (chat.type === 'channel') ch++
-    else if (chat.type === 'group') g++
-    else c++
-  }
-  return { chats: c, channels: ch, groups: g }
-}

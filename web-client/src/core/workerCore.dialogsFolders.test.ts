@@ -32,7 +32,7 @@ const dialog = (peerId: number): Dialog => makeDialog({
 const contactsFolder: Folder = {
   id: 7, title: 'Контакты', pos: 0,
   contacts: true, nonContacts: false, groups: false, broadcasts: false,
-  excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [],
+  bots: false, excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [],
 }
 
 // Ключ приватного диалога И ЕСТЬ id собеседника, а сам собеседник живёт в

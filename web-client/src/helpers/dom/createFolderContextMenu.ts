@@ -15,8 +15,8 @@
 //     (`:10-12`, `:28-30`, `:46-48`) → объект колонки `FolderContextMenuSidebar`:
 //     `closeTabsBefore` — тот же метод (`sidebarLeft/index.ts:1613-1616`), а
 //     `createTab(X).open(...)` — `openEditFolderTab(filter)`/`openChatFoldersTab()`:
-//     экраны колонки у нас React (`FolderEditor`, `SettingsView` на подэкране
-//     папок), вкладок-классов `SliderSuperTab` для них нет;
+//     колоночного слайдера у нас ещё нет (шов, задача 28 плана 2D), вкладки
+//     открывает колонка (`Sidebar.tsx::openColumnTab` — хост слайдера над ней);
 //   • `managers.filtersStorage.getFilter(id)` (`:26`, RPC в воркер) →
 //     синхронное чтение `appState.folders`: папки у нас живут на главном потоке;
 //     папки нет (успела уйти пушем) — нет и экрана (у tweb редактор открылся бы
