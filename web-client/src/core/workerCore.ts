@@ -226,6 +226,12 @@ export function createWorkerCore() {
     // messages.Messages), — тем же приёмником, что у диалогов и звонков.
     // Стрелка ленивая: `peers` объявлен ниже по файлу.
     peers: { saveApiPeers: (o) => peers.saveApiPeers(o) },
+    // Удалённое из окна — владельцу диалогов: он вычитает удалённые
+    // непрочитанные входящие из счётчика (tweb onUpdateDeleteMessages). Оба
+    // пути удаления (кадр и своя ручка) проходят через эвикцию, поэтому
+    // вычитание одно и повториться не может. `dialogs` объявлен ниже —
+    // стрелка ленивая.
+    onMessagesDeleted: (peerId, deleted) => dialogs.applyDeletedMessages(peerId, deleted),
   })
   // Временный («неотправленный») бабл заводит владелец окна — messages (порт tweb
   // beforeMessageSending), наружу это обычные операции над окном (публикует их

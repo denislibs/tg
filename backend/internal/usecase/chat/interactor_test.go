@@ -357,6 +357,48 @@ func TestDeleteMessage_ForEveryone(t *testing.T) {
 	}
 }
 
+// Удаление «у всех» НЕПРОЧИТАННОГО сообщения снимает его со счётчика
+// непрочитанного у тех, кто его ещё не прочёл. Счётчик у нас хранимый
+// (IncUnreadBulk на приходе), и без пересчёта удалённое сообщение висело в
+// бейдже вечно — до следующего прочтения. У оригинала сервер счётчик
+// пересчитывает сам, а клиент на кадре удаления вычитает удалённые
+// непрочитанные входящие (tweb appMessagesManager.handleDeletedMessages,
+// :14082-14085 → onUpdateDeleteMessages, :11546-11548). Автору его же
+// сообщение непрочитанным не было — у него ничего не меняется.
+func TestDeleteMessage_RevokeForgetsUnread(t *testing.T) {
+	in, st := newInteractor()
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	first, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "one"})
+	second, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "two"})
+	if got := st.members[chatID][b].unread; got != 2 {
+		t.Fatalf("до удаления unread(b) = %d; want 2", got)
+	}
+
+	if err := in.DeleteMessage(ctx, chatID, second.ID, a, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := st.members[chatID][b].unread; got != 1 {
+		t.Errorf("после удаления непрочитанного unread(b) = %d; want 1", got)
+	}
+	if got := st.members[chatID][a].unread; got != 0 {
+		t.Errorf("автор: unread(a) = %d; want 0 — своё сообщение непрочитанным не бывает", got)
+	}
+
+	// Прочитанное удаление счётчик не трогает.
+	if err := in.MarkRead(ctx, chatID, b, first.Seq); err != nil {
+		t.Fatal(err)
+	}
+	third, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "three"})
+	if err := in.DeleteMessage(ctx, chatID, first.ID, a, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := st.members[chatID][b].unread; got != 1 {
+		t.Errorf("удаление прочитанного сняло непрочитанное: unread(b) = %d; want 1 (осталось %d)", got, third.Seq)
+	}
+}
+
 func TestDeleteMessage_ForMe(t *testing.T) {
 	in, _ := newInteractor()
 	ctx := context.Background()

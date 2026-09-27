@@ -800,6 +800,7 @@ func (c groupChats) IncUnread(context.Context, int64, int64) (int, error)     { 
 func (c groupChats) IncUnreadBulk(context.Context, int64, []int64) (map[int64]int64, error) {
 	return nil, nil
 }
+func (c groupChats) ForgetUnread(context.Context, int64, int64, int64) error       { return nil }
 func (c groupChats) IncUnreadReactions(context.Context, int64, int64) (int, error) { return 0, nil }
 func (c groupChats) ClearUnreadReactions(context.Context, int64, int64) error      { return nil }
 func (c groupChats) CurrentReadSeq(context.Context, int64, int64) (int64, error)   { return 0, nil }
