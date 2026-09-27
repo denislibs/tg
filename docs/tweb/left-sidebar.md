@@ -512,7 +512,7 @@ transitionTime: 150})`; дети — `#chatlist-container` (id 0) и `#search-co
 | Класс | Файл:строки | Ответственность |
 |---|---|---|
 | `AppDialogsManager` (singleton) | `src/lib/appDialogsManager.ts:512-2690` | оркестратор: папки (`xds`), клики, контекстные меню, `setLastMessage*`/`setUnreadMessages*`, плейсхолдеры, сторис, forum-табы |
-| `DialogElement extends Row` | `appDialogsManager.ts:207-475` | одна строка: DOM, `dom: DialogDom`, бейджи |
+| `DialogElement` + `attachRowController` (HEAD 812502980; в старой базе — `extends Row`) | `appDialogsManager.ts:288-506` (HEAD) | одна строка: DOM, `dom: DialogDom`, бейджи; у нас — `components/dialogRow.ts` на `rowTsxController.solid.tsx` (задача 29 плана 2D) |
 | `SortedDialogList` | `src/components/sortedDialogList.ts:16-278` | «ключ → DialogElement» поверх виртуального списка; индексы, add/update/delete/pinned |
 | `CustomPinnedDialog` | `sortedDialogList.ts:284-290` | псевдо-диалог с произвольным `render()` (строка «Архив») |
 | `AutonomousDialogListBase<T>` | `src/components/autonomousDialogList/base.ts:39-381` | загрузка/пагинация/плейсхолдер/typing (бывш. `Some`) |
@@ -863,8 +863,8 @@ DOM-паритет первого таба выдержан сознательн
 tweb 2197fee9c перевёл иконки всех строк на цветные плашки: `span.row-icon.row-icon-colored`
 (30×30, скругление .625rem, `.75rem` от края, белый глиф) с градиентом inline из
 `helpers/rowIconBackground.ts` (реестр «иконка → цвет» + FNV-хэш по палитре для прочих),
-глиф — `span.tgico.row-icon-icon` внутри. **У нас** так рисуют все три строки: ванильный
-`components/row.ts`, Solid `rowTsx.solid.tsx` и React `settings/kit.tsx` (для `<TgIcon>`;
+глиф — `span.tgico.row-icon-icon` внутри. **У нас** так рисуют обе строки: Solid
+`rowTsx.solid.tsx` (ванильный `row.ts` снят задачей 29 плана 2D) и React `settings/kit.tsx` (для `<TgIcon>`;
 у строк `accent`/`danger` — у tweb это `Button btn-primary btn-transparent` — и у не-глифов
 плашки нет). Корень настроек (`SettingsView.tsx`) — строки `.row` в `div.profile-buttons`
 (дамп 14-left-13) с иконками tweb `settings.tsx`: bell_filled (красная), data_filled

@@ -1089,7 +1089,7 @@ React, вкладками — слайдер; правило шва § 7 спе�
 **Зависимости:** 7–27, 2C. **Готово когда:** `git grep -n "SettingsView\|SettingsSubScreen" web-client/src` пуст;
 корень на стенде: въезд из колонки, «назад» в чатлист с переходом, Esc; числа в коммит.
 
-### Задача 29: `DialogElement` на `attachRowController`, строка ссылок — `renderSearchWebPageRow`
+### Задача 29: `DialogElement` на `attachRowController`, строка ссылок — `renderSearchWebPageRow` — ✅ сделано (PR feat/w2d-dialog-row)
 
 **Порт:** `rowTsxController.tsx` (398) → `components/rowTsxController.solid.tsx`
 (`attachRowController`, `createRowSortableIcon`); `components/dialogRow.ts:145` — `class
@@ -1100,6 +1100,24 @@ DialogElement` перестаёт наследовать `Row` и вызывае
 media; брать задачу, когда в них нет открытых веток (сверить `git log`), и прогнать их тесты целиком.
 **Мутация:** не ставить дескрипторы на прототип — `DialogElement.title` `undefined`, тесты
 `dialogRow.test.ts` краснеют. **Зависимости:** 0.
+
+**Итог (2026-09-27):** `components/rowTsxController.solid.tsx` — порт в объёме `DialogElement`
+(опции и части, которые читает строка и её потребители `sortedUserList.ts`/`appSelectPeers.solid.tsx`;
+непортированное перечислено в шапке: `icon`, `*LangKey`, поля-чекбоксы, `navigationTab`,
+`buttonRight`/`rightContent`, `contextMenu`, `ensure*`, `toggleDisability`, `makeSortable`,
+`createRowSortableIcon` — у tweb их тоже никто, кроме `DialogElement`, не передаёт, а сортируемая
+иконка нужна только главному списку, который у нас React). `DialogElement` — `interface … extends
+RowTsxController` + `attachRowController(this, {…, middleware})`, `destroy()` зовёт `dispose()`
+(HEAD `:493-497`). Порядок детей строки теперь HEAD (`rowTsx.tsx:247-257`: заголовок → подпись →
+медиа, `no-wrap` на обеих частях строки заголовка) — дампы `15-right-*` сняты со старой базы; вид
+держит `_row.scss` (`order`/грид). `searchWebPageRow.solid.tsx` — дословно, `onclick` →
+`data-anchor-action` (расхождение 23 `appSearchSuper.ts`). **`row.ts` удалён целиком** (+ `row.test.ts`,
+осиротевший `setRowIconBackground`); тесты i18n (`i18nContract`, `langPack.live`) переведены на
+`attachRowController`/`Button`; предусловие задачи 31 по `row.ts` закрыто. Граница «контроллер
+импортирует только `dialogRow.ts`» — пин (порт tweb `rowTsxSafeMigrations.test.ts`). Главный список
+чатов (`ChatListItem.tsx`, виртуальный список) строку не использует — его не задевает; создание
+строки поиска/участников в happy-dom: 300 строк ≈ 59 → 146 мс (один `createRoot` + `Row` на строку,
+как у tweb).
 
 ### Задача 30: потребители кита и общих React-файлов `settings/` вне настроек (развилка)
 
