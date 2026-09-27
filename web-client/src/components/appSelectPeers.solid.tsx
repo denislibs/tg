@@ -42,13 +42,16 @@
  *     потребитель у оригинала — правая колонка (`participantsSelector.ts`,
  *     `chatInviteLink.tsx`), в волне 2D его нет, а наши экраны участников группы
  *     строят список `SortedUserList` (`components/sortedUserList.ts`).
- *  2. Права отправки (`chatRightsActions`, `filterByRights`, :321-365, :782-787,
- *     :827-834, :878-883) и то, что из них следует, — звёзды за сообщение
- *     (`starsAmountByPeer`, `onStarsAmountUpdate`, бейдж `dialog-stars-badge`),
- *     замок премиума (`is-premium-locked`, тост `OnlyPremiumCanMessage`,
- *     :443-457) — потребитель у оригинала один: попап пересылки (сейчас React
- *     `ForwardPicker`, переезжает с 2C). У нас нет ни
- *     `getRequirementToContact`, ни платы звёздами за личное сообщение — О-31.
+ *  2. Права отправки: `chatRightsActions` + `filterByRights` (:782-787,
+ *     :827-834, :878-883) портированы — сам фильтр живёт в
+ *     `core/peers/filterByRights.ts` (его же зовёт React-`ForwardPicker`),
+ *     карточка пира берётся у владельца (`peers.getPeers`, как в расхождении 9),
+ *     а имена действий — наши (`send_messages` вместо `send_plain`, шапка
+ *     модуля). НЕ портировано то, что из прав следует дальше (:321-365,
+ *     :443-457): звёзды за сообщение (`starsAmountByPeer`,
+ *     `onStarsAmountUpdate`, бейдж `dialog-stars-badge`) и замок премиума
+ *     (`is-premium-locked`, тост `OnlyPremiumCanMessage`) — у нас нет ни
+ *     `getRequirementToContact`, ни платы звёздами за личное сообщение (О-31).
  *  3. Монофорумы и бот-форумы (`excludeMonoforums`/`excludeBotforums`, :265-270)
  *     — предмета нет: таких чатов у нас не бывает. Истории на аватаре
  *     (`withStories`) — наша строка их не рисует (шапка `dialogRow.ts`).
@@ -135,6 +138,8 @@ import type { IconName } from '@core/tgico-icons'
 import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '@core/folderIds'
 import { getPeerId, isAnyChat, isPeerId, isUser } from '@core/peers/peerId'
 import { isAnyGroup } from '@core/peers/predicates'
+import { filterByRights } from '@core/peers/filterByRights'
+import type { ChatRights } from '@core/peers/rights'
 import { peerKey, type Chat, type User } from '@core/peers/peer'
 import { userStatusLabel } from '@core/presence'
 import { useChatsStore } from '@stores/chatsStore'
@@ -203,6 +208,7 @@ export default class AppSelectPeers {
   private avatarSize: DialogElementSize = 'abitbigger'
   private exceptSelf: boolean
   private filterPeerTypeBy?: IsPeerType[]
+  private chatRightsActions?: readonly ChatRights[]
   private meAsSaved: boolean
   private onSelect?: (peerId: PeerId | string, adding: boolean, e: MouseEvent) => MaybePromise<void | boolean>
 
@@ -263,6 +269,8 @@ export default class AppSelectPeers {
     selfPresence?: LangPackKey,
     exceptSelf?: boolean,
     filterPeerTypeBy?: IsPeerType[],
+    /** расхождение 2 */
+    chatRightsActions?: readonly ChatRights[],
     sectionNameLangPackKey?: SectionOptions['name'],
     sectionCaption?: SectionOptions['caption'],
     design?: 'round' | 'square',
@@ -287,6 +295,7 @@ export default class AppSelectPeers {
     if(options.avatarSize) this.avatarSize = options.avatarSize
     if(options.selfPresence) this.selfPresence = options.selfPresence
     this.filterPeerTypeBy = options.filterPeerTypeBy
+    this.chatRightsActions = options.chatRightsActions
     this.sectionNameLangPackKey = options.sectionNameLangPackKey
     this.sectionCaption = options.sectionCaption
     if(options.design) this.design = options.design
@@ -322,7 +331,7 @@ export default class AppSelectPeers {
       'selector-' + this.checkboxSide,
     )
 
-    // :253-366 (без прав отправки — расхождение 2)
+    // :253-366 (без звёзд за сообщение и замка премиума по правам — расхождение 2)
     const f = (options.renderResultsFunc || this.renderResults).bind(this)
     this.renderResultsFunc = async(peerIds, append?: boolean) => {
       const middleware = this.middlewareHelperLoader.get()
@@ -646,12 +655,20 @@ export default class AppSelectPeers {
       return
     }
 
-    const dialogs = value.dialogs
+    let dialogs = value.dialogs
     let cursorMoved = true
     if(dialogs.length) {
       // Расхождение 7 — курсор из зеркала.
       const newOffsetIndex = useChatsStore.getState().dialogIndexById[dialogs[dialogs.length - 1].peerId] || 0
       cursorMoved = !!newOffsetIndex && newOffsetIndex !== this.offsetIndex
+
+      // :782-787
+      if(this.chatRightsActions) {
+        dialogs = await this.filterByRights(dialogs)
+        if(!middleware()) {
+          return
+        }
+      }
 
       await this.renderSaved()
       if(!middleware()) {
@@ -689,6 +706,13 @@ export default class AppSelectPeers {
     } else if(this.renderedPeerIds.size < pageCount) {
       return this.getMoreDialogs()
     }
+  }
+
+  /** :827-834 — пачкой: карточки спрашиваются у владельца одним вызовом (расхождение 2). */
+  private async filterByRights<T extends { peerId: PeerId }>(items: T[]): Promise<T[]> {
+    const peers = await this.managers.peers.getPeers(items.map(({ peerId }) => peerId))
+    const byId = new Map(peers.map((peer) => [peerKey(peer), peer]))
+    return items.filter(({ peerId }) => filterByRights(peerId, byId.get(peerId), this.chatRightsActions!))
   }
 
   // :836-838
@@ -729,6 +753,14 @@ export default class AppSelectPeers {
         let resultPeerIds = (isGlobalSearch ?
           searchResult.my_results.concat(searchResult.results) :
           searchResult.my_results).map((peer) => getPeerId(peer))
+
+        // :878-883
+        if(this.chatRightsActions) {
+          resultPeerIds = (await this.filterByRights(resultPeerIds.map((peerId) => ({ peerId })))).map(({ peerId }) => peerId)
+          if(!middleware()) {
+            return
+          }
+        }
 
         if(!this.peerType.includes('dialogs')) {
           resultPeerIds = resultPeerIds.filter((peerId) => isUser(peerId))

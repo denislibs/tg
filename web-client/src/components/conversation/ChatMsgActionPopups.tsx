@@ -90,7 +90,7 @@ export default function ChatMsgActionPopups({ msgActions, numericChatId }: {
 
       {/* Forward target picker */}
       {m.forwardIds != null && (
-        <ForwardPicker dialogs={allDialogs} onPick={m.doForward} onClose={m.closeForward} />
+        <ForwardPicker dialogs={allDialogs} chatRightsActions={m.forwardRights} onPick={m.doForward} onClose={m.closeForward} />
       )}
     </>
   )

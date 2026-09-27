@@ -100,7 +100,6 @@ const DEBT: Record<string, number> = {
   'src/components/composer/helpers.ts': 12,
   'src/components/group/GroupEditFlow.tsx': 3,
   'src/components/mediaViewer/collectLightboxItems.ts': 1,
-  'src/components/messages/ChatDialogs.tsx': 1,
   'src/components/messages/SendMediaPopup.tsx': 3,
   'src/components/peerProfile.solid.tsx': 3,
   'src/components/settings/BirthdayModal.tsx': 6,

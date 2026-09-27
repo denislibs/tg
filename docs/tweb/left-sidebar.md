@@ -819,6 +819,16 @@ DOM-паритет первого таба выдержан сознательн
    статус — юникод-эмодзи, а не документ (`wrapStatus`/`fireAroundAnimation` не портированы), выбор —
    наш попап `EmojiStatusPicker`, а не `EmoticonsDropdown` у кнопки; клик по своему статусу в профиле
    (`clickableEmojiStatus`) ждёт `PeerProfile` в корне настроек (задача 28 волны 2D).
+6а. **Контакты и «Новое сообщение» — адресная книга.** tweb: `AppContactsTab` → `ContactsList`
+   (`getContactsPeerIds(query, false, …)`, без себя) — и для пункта меню, и для кнопки `newprivate`
+   (`sidebarLeft/index.ts:661`, `:1039`). У нас оба экрана (`ContactsView.tsx`, `NewPrivateChat.tsx`)
+   и выбор контакта для отправки (`ContactPicker`) читают книгу через `core/hooks/useContactPeerIds.ts`
+   (ветка `fix/contacts-share-pickers`; прежде собирали «контакты» из личных диалогов — туда попадали
+   «Избранное», служебный «Telegram» 777000 и любой собеседник). Остаток: сам `ContactsList` не
+   портирован — виртуальный список, сортировка «по времени в сети»/по имени с кнопкой в шапке,
+   `SectionIndex`, выделение контактов (`ContactsSelection`), меню контакта; у нас прежняя разметка
+   с группами по букве, порядок по имени задаёт книга; «Новое сообщение» — отдельный экран, а не
+   `AppContactsTab`.
 7. **Контекстное меню диалога и contact-list-заглушка** — у tweb богатое меню
    (`dialogsContextMenu.ts`, 13 пунктов) и секция Contacts при <10 чатах; у нас этих подсистем нет
    (меню ПАПКИ — не оно: порт `createFolderContextMenu` на оба ряда, задача 7 плана папок).

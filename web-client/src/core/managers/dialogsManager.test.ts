@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { newDialogsManager } from './dialogsManager'
 import { newGroupsManager } from './groupsManager'
 import { isDialogArchived, mapMyMessage, WIRE_FOLDER_ARCHIVE, type Dialog, type MyMessage, type RawDialog, type RawMyMessage } from '../models'
-import { makeRawMessage } from '../messages/testMessage'
+import { makeMessage, makeRawMessage } from '../messages/testMessage'
 import { generateMessageId, getServerMessageId } from '../history/messageId'
 import { makeDialog, makeLastMessage } from '../dialogs/testDialog'
 import { isPeerMuted, MUTE_UNTIL_FOREVER } from '../dialogs/notifySettings'
@@ -1216,5 +1216,44 @@ describe('dialogsManager.getDialogReadState', () => {
     await mgr.fillMirror()
 
     expect(mgr.getDialogReadState(5)).toBeUndefined()
+  })
+})
+
+// Порт tweb `onUpdateDeleteMessages` (:11546-11548) с подсчётом
+// `handleDeletedMessages` (:14082-14085): удалённое непрочитанное ВХОДЯЩЕЕ
+// снимается со счётчика; своё исходящее и уже прочитанное — нет.
+describe('dialogsManager.applyDeletedMessages', () => {
+  const setup = async () => {
+    const ops: DialogOp[] = []
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: (o) => ops.push(...o),
+      loadCache: async () => [makeDialog({ peerId: -6, readInboxMaxId: 10, unread: 3 })],
+      loadState: async () => ({ pinnedOrders: {} }),
+      getMeId: () => 7,
+    })
+    await mgr.fillMirror()
+    ops.length = 0
+    return { mgr, ops }
+  }
+  const msg = (id: number, out = false) => makeMessage({ id, peerId: -6, fromId: out ? 7 : 9, out })
+  const unreadOf = (ops: DialogOp[]) => (ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread_count
+
+  it('непрочитанное входящее — минус один', async () => {
+    const { mgr, ops } = await setup()
+    mgr.applyDeletedMessages(-6, [msg(12)])
+    expect(unreadOf(ops)).toBe(2)
+  })
+
+  it('своё исходящее и прочитанное входящее счётчик не трогают', async () => {
+    const { mgr, ops } = await setup()
+    mgr.applyDeletedMessages(-6, [msg(12, true), msg(9)])
+    expect(ops).toEqual([])
+  })
+
+  it('ниже нуля не уходит', async () => {
+    const { mgr, ops } = await setup()
+    mgr.applyDeletedMessages(-6, [msg(11), msg(12), msg(13), msg(14)])
+    expect(unreadOf(ops)).toBe(0)
   })
 })

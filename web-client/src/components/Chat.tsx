@@ -72,6 +72,7 @@ import { TopicIcon } from './TopicsPanel'
 import PinnedBar from './conversation/PinnedBar'
 import SavedTagsPanel from './conversation/SavedTagsPanel'
 import ScrollDownFab from './conversation/ScrollDownFab'
+import { goDownUnreadCount } from './conversation/goDownUnreadCount'
 import CornerButton from './conversation/CornerButton'
 import ChatInputControl, { isControlNeeded, type ControlFlags } from './conversation/ChatInputControl'
 import { useChatInputCenter } from './conversation/useChatInputCenter'
@@ -479,17 +480,11 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // Скролл-контейнер ленты — им владеет лента, наружу отдаётся тем же способом,
   // что React отдаёт свои узлы.
   const feedScrollRef = useRef<HTMLElement | null>(null)
-  // Значок «непрочитано ниже» на кнопке «вниз» (tweb .bubbles-go-down count):
-  // ВЫВОДИТСЯ из стора, а не накапливается из потока событий. newestSeq (последнее
-  // сообщение диалога) минус lastReadSeq (горизонт чтения зрителя) — это и есть
-  // число сообщений ниже точки прочтения. Store-derived ⇒ переживает
-  // ремаунт/ресинк без дрейфа. Саму кнопку показывает лента классом
-  // `is-go-down-visible` на колонке чата (`bubbles.updateGoDownVisibility`).
-  const unreadBelow = useChatsStore((s) => {
-    const d = s.dialogs.find((x) => x.peerId === numericChatId)
-    if (!d) return 0
-    return Math.max(0, (d.lastMessage?.id ?? 0) - d.read_inbox_max_id)
-  })
+  // Значок на кнопке «вниз» — `dialog.unread_count` (порт tweb
+  // `input.ts::setUnreadCount`, см. `goDownUnreadCount`). Саму кнопку
+  // показывает лента классом `is-go-down-visible` на колонке чата
+  // (`bubbles.updateGoDownVisibility`).
+  const unreadBelow = useChatsStore((s) => goDownUnreadCount(s.dialogs.find((x) => x.peerId === numericChatId)))
   // Pinned messages in this chat (newest pin first) + индекс показанного пина
   // (tweb pinnedMessage: перелистывание кликом + выбор по скроллу ленты).
   const { pins, index: pinIndex, follow: followPin } = usePinnedBar(numericChatId, isRealChat, feedScrollRef)

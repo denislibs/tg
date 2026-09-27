@@ -41,6 +41,8 @@ import { getPeerTitle, getUserTitle } from '../peers/getPeerTitle'
 import { canViewReactionsList } from '../reactions/messageReactions'
 import type { ReactionUser } from '../managers/messages/reactionMethods'
 import { getPeerPhotoId } from '../peers/peer'
+import { resolveChatRightsActions } from '../peers/filterByRights'
+import type { ChatRights } from '../peers/rights'
 
 // peerId — адресат удаления: действие приходит парой «пир + номера» (её же
 // передаёт ванильное меню, tweb contextMenu.ts:2056 `PopupDeleteMessages(
@@ -84,6 +86,9 @@ export function useMessageActions({
   const [factCheckEdit, setFactCheckEdit] = useState<{ msgId: number; initial?: FactCheck } | null>(null)
   const [delIds, setDelIds] = useState<DelState | null>(null)
   const [forwardIds, setForwardIds] = useState<number[] | null>(null)
+  // Что получатель должен мочь — `resolveChatRightsActions` оригинала
+  // (`popups/forward.tsx:99-102`) по самим пересылаемым сообщениям.
+  const [forwardRights, setForwardRights] = useState<ChatRights[]>(['send_messages'])
   // Источник пересылаемых сообщений (null = текущий чат). Для «Переслать в другой
   // чат» из плашки форварда источник — исходный чат, а не открытый сейчас.
   const forwardSourceRef = useRef<number | null>(null)
@@ -143,6 +148,13 @@ export function useMessageActions({
   const openForwardFor = (peerId: number, ids: number[]) => {
     forwardSourceRef.current = peerId
     forwardPreviewRef.current = null
+    // Номера сообщений — в пространстве пира-источника: окно спрашиваем только
+    // о своих (медиавьювер зовёт с источником другого чата). Не нашли —
+    // `resolveChatRightsActions` вернёт текст, как `showForwardPopup` без сообщений.
+    const picked = peerId === numericChatId
+      ? ids.map((id) => winMsgs.find((m) => m.id === id)).filter((m): m is MyMessage => !!m)
+      : []
+    setForwardRights(resolveChatRightsActions(picked))
     setForwardIds(ids)
   }
   // «Переслать в другой чат» из плашки форварда: источник и превью переносим явно
@@ -150,6 +162,7 @@ export function useMessageActions({
   const openForwardFrom = (sourceChatId: number, ids: number[], preview: { count: number; text: string; hasCaption: boolean }) => {
     forwardSourceRef.current = sourceChatId
     forwardPreviewRef.current = preview
+    setForwardRights(resolveChatRightsActions([]))
     setForwardIds(ids)
   }
   // Метка отправителя для превью плашки форварда — порт `initMessagesForward`
@@ -338,7 +351,7 @@ export function useMessageActions({
     postStats, closePostStats: () => setPostStats(null),
     factCheckEdit, submitFactCheck, closeFactCheckEditor: () => setFactCheckEdit(null),
     delIds, doDelete, closeDelete: () => setDelIds(null), openDeleteFor, canRevokeAll,
-    forwardIds, doForward, closeForward: () => setForwardIds(null), openForwardFor, openForwardFrom,
+    forwardIds, forwardRights, doForward, closeForward: () => setForwardIds(null), openForwardFor, openForwardFrom,
     // Действия с ЯВНЫМ адресом — их зовёт ванильное меню (см. шапку файла).
     pinMessage, openReportFor, openPostStatsFor, openFactCheckEditorFor, startEditFor, downloadMedia,
     reacted, closeReacted: () => setReacted(null),

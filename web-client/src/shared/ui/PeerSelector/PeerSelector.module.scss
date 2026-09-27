@@ -17,6 +17,27 @@
   min-height: 360px;
 }
 
+// Вне попапа хост стоит в ПРОКРУЧИВАЕМОМ теле экрана правой колонки, после других
+// секций («Добавить участников» и т.п.), и его высота — только `min-height`:
+// процентная высота `.selector` (партиал tweb, `height: 100%`) схлопывалась в ноль,
+// а его скроллер (`.scrollable` — `position: absolute; inset: 0`, `_scrollable.scss`)
+// сжимался до полосы — экран обрывался под первой секцией. У tweb у такого
+// селектора всегда есть контейнер с определённой высотой (`.sidebar-content`
+// вкладки, тело попапа); у наших экранов его нет, поэтому здесь селектор идёт в
+// потоке: растёт по содержимому, прокручивает тело экрана. Попап пересылки ниже
+// возвращает раскладку tweb. Пин — `PeerSelector.inlineHeight.test.ts`.
+.host > :global(.selector) {
+  height: auto;
+}
+
+.host > :global(.selector) > :global(.selector-scrollable) {
+  position: relative;
+  inset: auto;
+  height: auto;
+  max-height: none;
+  overflow: visible;
+}
+
 // В теле попапа пересылки (единственный попап с селектором, `ForwardPicker`)
 // хост — аналог tweb `.popup-forward .tabs-container { height: 100% }`
 // (`popups/_forward.scss`) в `.popup-body` без прокрутки (`_popup.scss:192-200`):
@@ -30,6 +51,19 @@
 :global(.popup-forward) :global(.popup-body) > .host {
   height: 100%;
   min-height: 0;
+}
+
+:global(.popup-forward) :global(.popup-body) > .host > :global(.selector) {
+  height: 100%;
+}
+
+:global(.popup-forward) :global(.popup-body) > .host > :global(.selector) > :global(.selector-scrollable) {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  max-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 // Действия строки участника (restrict / kick / ban / unban). В tweb их нет —

@@ -316,6 +316,18 @@ func (r *ChatsRepo) IncUnread(ctx context.Context, chatID, userID int64) (int, e
 	return n, err
 }
 
+// ForgetUnread — см. ChatRepo.ForgetUnread. Условие «ещё непрочитано» то же,
+// что у пересчёта при прочтении (MessagesRepo.CountUnread: не автор, seq выше
+// горизонта), плюс очистка истории: сообщение за cleared_max_seq зритель не
+// видит и в счётчик оно не входило.
+func (r *ChatsRepo) ForgetUnread(ctx context.Context, chatID, senderID, seq int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE chat_members SET unread_count = unread_count - 1
+		  WHERE chat_id=$1 AND user_id<>$2 AND last_read_seq < $3 AND cleared_max_seq < $3
+		    AND unread_count > 0`, chatID, senderID, seq)
+	return err
+}
+
 // IncUnreadReactions bumps a member's unread-reactions counter by one (someone
 // reacted to their message — Telegram unread_reactions_count) and returns the new value.
 // IncUnreadBulk bumps unread_count by one for many members of a chat in a single

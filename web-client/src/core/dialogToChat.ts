@@ -50,6 +50,8 @@ export function gradientFor(id: number): string {
 // Reserved id of the official "Telegram" service account (mirrors the backend's
 // domain.ServiceUserID). Rendered with the Telegram-plane avatar, not initials.
 export const SERVICE_USER_ID = 777000
+/** «Избранное»: голубой градиент под иконкой закладки (tweb Saved Messages blue). */
+export const SAVED_GRADIENT = 'linear-gradient(#69BFFA,#3D9DE0)'
 // Telegram-сервис: фирменный голубой градиент плашки (tweb telegram blue).
 const SERVICE_GRADIENT = 'linear-gradient(#72D5FD,#2A9EF1)'
 
@@ -192,7 +194,7 @@ export function dialogToChat(
     // blue gradient + the Telegram-plane logo. Otherwise the peer's photo or a
     // per-id gradient with initials.
     avatar: isSaved
-      ? 'linear-gradient(#69BFFA,#3D9DE0)' // tweb Saved Messages blue
+      ? SAVED_GRADIENT
       : isService
         ? SERVICE_GRADIENT
         : gradientFor(d.peerId),
