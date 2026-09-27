@@ -2539,6 +2539,10 @@
           "value": "Loading..."
         },
         {
+          "key": "LogOut",
+          "value": "Log out"
+        },
+        {
           "key": "Login.Code.Expired",
           "value": "Code expired. Please request a new one."
         },
@@ -3359,8 +3363,12 @@
           "value": "Enter your passcode"
         },
         {
-          "key": "PasscodeLock.ForgotPasscode.Text",
-          "value": "If you forgot your passcode, you need to log out and log in again."
+          "key": "PasscodeLock.ForgotPasscode.MultipleAccounts",
+          "value": "Note: if you forget your passcode, you'll need to [log out]() from all your current accounts."
+        },
+        {
+          "key": "PasscodeLock.ForgotPasscode.OneAccount",
+          "value": "Note: if you forget your passcode, you'll need to [log out]()."
         },
         {
           "key": "PasscodeLock.Item.Title",
@@ -3375,8 +3383,8 @@
           "value": "Play around to find the perfect shortcut to work for your browser."
         },
         {
-          "key": "PasscodeLock.Logout.Text",
-          "value": "Are you sure you want to log out? You will need to sign in again."
+          "key": "PasscodeLock.LogoutPopup.Description",
+          "value": "Are you sure you want to log out?"
         },
         {
           "key": "PasscodeLock.Next",
@@ -3439,8 +3447,8 @@
           "value": "Turn Passcode On"
         },
         {
-          "key": "PasscodeLock.WrongPasscodeShort",
-          "value": "Wrong passcode"
+          "key": "PasscodeLock.WrongPasscode",
+          "value": "Wrong passcode. Please try again."
         },
         {
           "key": "Passkey.CreateError",
@@ -9808,8 +9816,8 @@
           "value": "Автоблокировка"
         },
         {
-          "key": "PasscodeLock.WrongPasscodeShort",
-          "value": "Неверный код-пароль"
+          "key": "PasscodeLock.WrongPasscode",
+          "value": "Неверный код-пароль. Попробуйте ещё раз."
         },
         {
           "key": "PasscodeLock.TooManyAttempts",
@@ -9820,16 +9828,24 @@
           "value": "Продолжить"
         },
         {
-          "key": "PasscodeLock.ForgotPasscode.Text",
-          "value": "Если Вы забыли код-пароль, нужно выйти и заново авторизоваться."
+          "key": "PasscodeLock.ForgotPasscode.OneAccount",
+          "value": "Примечание: если Вы забудете код-пароль, придётся [выйти из аккаунта]()."
+        },
+        {
+          "key": "PasscodeLock.ForgotPasscode.MultipleAccounts",
+          "value": "Примечание: если Вы забудете код-пароль, придётся [выйти]() из всех текущих аккаунтов."
         },
         {
           "key": "EditAccount.Logout",
           "value": "Выйти"
         },
         {
-          "key": "PasscodeLock.Logout.Text",
-          "value": "Вы уверены, что хотите выйти? Придётся авторизоваться заново."
+          "key": "LogOut",
+          "value": "Выйти"
+        },
+        {
+          "key": "PasscodeLock.LogoutPopup.Description",
+          "value": "Вы уверены, что хотите выйти?"
         },
         {
           "key": "PasscodeLock.LockNow",
@@ -13882,8 +13898,8 @@
           "value": "Verrouillage automatique"
         },
         {
-          "key": "PasscodeLock.WrongPasscodeShort",
-          "value": "Code d'accès incorrect"
+          "key": "PasscodeLock.WrongPasscode",
+          "value": "Code d'accès incorrect. Veuillez réessayer."
         },
         {
           "key": "PasscodeLock.TooManyAttempts",
@@ -13894,16 +13910,24 @@
           "value": "Continuer"
         },
         {
-          "key": "PasscodeLock.ForgotPasscode.Text",
-          "value": "Si vous avez oublié votre code d'accès, vous devez vous déconnecter puis vous reconnecter."
+          "key": "PasscodeLock.ForgotPasscode.OneAccount",
+          "value": "Remarque : si vous oubliez votre code d'accès, vous devrez [vous déconnecter]()."
+        },
+        {
+          "key": "PasscodeLock.ForgotPasscode.MultipleAccounts",
+          "value": "Remarque : si vous oubliez votre code d'accès, vous devrez [vous déconnecter]() de tous vos comptes actuels."
         },
         {
           "key": "EditAccount.Logout",
           "value": "Se déconnecter"
         },
         {
-          "key": "PasscodeLock.Logout.Text",
-          "value": "Voulez-vous vraiment vous déconnecter ? Vous devrez vous reconnecter."
+          "key": "LogOut",
+          "value": "Se déconnecter"
+        },
+        {
+          "key": "PasscodeLock.LogoutPopup.Description",
+          "value": "Voulez-vous vraiment vous déconnecter ?"
         },
         {
           "key": "PasscodeLock.LockNow",
@@ -16935,8 +16959,8 @@
           "value": "Automatische Sperre"
         },
         {
-          "key": "PasscodeLock.WrongPasscodeShort",
-          "value": "Falscher Code"
+          "key": "PasscodeLock.WrongPasscode",
+          "value": "Falscher Code. Bitte versuche es erneut."
         },
         {
           "key": "PasscodeLock.TooManyAttempts",
@@ -16947,16 +16971,24 @@
           "value": "Fortfahren"
         },
         {
-          "key": "PasscodeLock.ForgotPasscode.Text",
-          "value": "Wenn du deinen Code vergessen hast, musst du dich ab- und wieder anmelden."
+          "key": "PasscodeLock.ForgotPasscode.OneAccount",
+          "value": "Hinweis: Wenn du deinen Code vergisst, musst du dich [abmelden]()."
+        },
+        {
+          "key": "PasscodeLock.ForgotPasscode.MultipleAccounts",
+          "value": "Hinweis: Wenn du deinen Code vergisst, musst du dich von allen aktuellen Konten [abmelden]()."
         },
         {
           "key": "EditAccount.Logout",
           "value": "Abmelden"
         },
         {
-          "key": "PasscodeLock.Logout.Text",
-          "value": "Möchtest du dich wirklich abmelden? Du musst dich erneut anmelden."
+          "key": "LogOut",
+          "value": "Abmelden"
+        },
+        {
+          "key": "PasscodeLock.LogoutPopup.Description",
+          "value": "Möchtest du dich wirklich abmelden?"
         },
         {
           "key": "PasscodeLock.LockNow",
@@ -20012,8 +20044,8 @@
           "value": "Bloqueo automático"
         },
         {
-          "key": "PasscodeLock.WrongPasscodeShort",
-          "value": "Código incorrecto"
+          "key": "PasscodeLock.WrongPasscode",
+          "value": "Código incorrecto. Inténtalo de nuevo."
         },
         {
           "key": "PasscodeLock.TooManyAttempts",
@@ -20024,16 +20056,24 @@
           "value": "Continuar"
         },
         {
-          "key": "PasscodeLock.ForgotPasscode.Text",
-          "value": "Si olvidaste tu código de acceso, debes cerrar sesión e iniciarla de nuevo."
+          "key": "PasscodeLock.ForgotPasscode.OneAccount",
+          "value": "Nota: si olvidas tu código de acceso, tendrás que [cerrar sesión]()."
+        },
+        {
+          "key": "PasscodeLock.ForgotPasscode.MultipleAccounts",
+          "value": "Nota: si olvidas tu código de acceso, tendrás que [cerrar sesión]() en todas tus cuentas actuales."
         },
         {
           "key": "EditAccount.Logout",
           "value": "Cerrar sesión"
         },
         {
-          "key": "PasscodeLock.Logout.Text",
-          "value": "¿Seguro que quieres cerrar sesión? Tendrás que iniciarla de nuevo."
+          "key": "LogOut",
+          "value": "Cerrar sesión"
+        },
+        {
+          "key": "PasscodeLock.LogoutPopup.Description",
+          "value": "¿Seguro que quieres cerrar sesión?"
         },
         {
           "key": "PasscodeLock.LockNow",
@@ -23114,8 +23154,8 @@
           "value": "Автоблокування"
         },
         {
-          "key": "PasscodeLock.WrongPasscodeShort",
-          "value": "Невірний код-пароль"
+          "key": "PasscodeLock.WrongPasscode",
+          "value": "Невірний код-пароль. Спробуйте ще раз."
         },
         {
           "key": "PasscodeLock.TooManyAttempts",
@@ -23126,16 +23166,24 @@
           "value": "Продовжити"
         },
         {
-          "key": "PasscodeLock.ForgotPasscode.Text",
-          "value": "Якщо Ви забули код-пароль, потрібно вийти та знову авторизуватися."
+          "key": "PasscodeLock.ForgotPasscode.OneAccount",
+          "value": "Важливо: якщо Ви забудете код-пароль, доведеться [вийти з акаунта]()."
+        },
+        {
+          "key": "PasscodeLock.ForgotPasscode.MultipleAccounts",
+          "value": "Важливо: якщо Ви забудете код-пароль, доведеться [вийти]() з усіх поточних акаунтів."
         },
         {
           "key": "EditAccount.Logout",
           "value": "Вийти"
         },
         {
-          "key": "PasscodeLock.Logout.Text",
-          "value": "Ви впевнені, що хочете вийти? Доведеться авторизуватися знову."
+          "key": "LogOut",
+          "value": "Вийти"
+        },
+        {
+          "key": "PasscodeLock.LogoutPopup.Description",
+          "value": "Ви впевнені, що хочете вийти?"
         },
         {
           "key": "PasscodeLock.LockNow",

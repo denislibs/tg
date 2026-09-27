@@ -18,7 +18,7 @@
 // — обезьянка едет в `MediaHeader.Sticker element={monkeyContainer}`).
 //
 // ЗАЧЕМ ОТДЕЛЬНЫЙ СТИЛЕВОЙ ПИН. Пины разметки (`components/LottieSticker.
-// test.tsx`, `components/PasswordMonkey.test.tsx`) сверяют проводку —
+// test.tsx`, `components/passcodeLock/passcodeLockScreen.solid.test.tsx`) сверяют проводку —
 // «позвали `loadAnimationAsAsset` с width/height: size» — и остаются
 // зелёными при любом размере на экране: размер канвы в опциях плеера это
 // разрешение отрисовки, а не CSS-габарит. Именно так и вышел дефект: у
@@ -27,7 +27,7 @@
 // заголовок, три ряда и кнопки; на экране пасскода обезьянка растягивалась на
 // весь `position:fixed` оверлей. Поэтому здесь — НАСТОЯЩИЙ скомпилированный
 // `styles/index.scss` поверх НАСТОЯЩЕЙ разметки (`PasskeyIntroPopup`,
-// `LottieSticker`, `PasswordMonkey`), тем же способом, что
+// `LottieSticker`, `PasswordMonkeyTsx`), тем же способом, что
 // `styles/pollClickableArea.test.ts` и `styles/spoilerPlate.test.ts`.
 //
 // Оба режима показа меряются ОДНОЙ мерой: канва (SIMD есть) и статичный PNG
@@ -39,7 +39,7 @@ import * as sass from 'sass'
 import { render, cleanup } from '@testing-library/react'
 
 const { loadAnimationAsAsset } = vi.hoisted(() => ({ loadAnimationAsAsset: vi.fn() }))
-vi.mock('@lib/lottie/lottieLoader', () => ({ default: { loadAnimationAsAsset } }))
+vi.mock('@lib/lottie/lottieLoader', () => ({ default: { loadAnimationAsAsset, waitForFirstFrame: async() => {} } }))
 
 import type { LottieAssetName } from '@lib/lottie/lottieLoader'
 import { renderStaticAssetFallback } from '@lib/lottie/lottieAssetFallback'
@@ -47,7 +47,13 @@ import { ManagersProvider } from '@core/hooks/useManagers'
 import type { Managers } from '@/client/bootstrap'
 import PasskeyIntroPopup from '@components/settings/PasskeyIntroPopup'
 import LottieSticker from '@components/LottieSticker'
-import PasswordMonkey from '@components/PasswordMonkey'
+// Обезьянка экрана блокировки — Solid-компонент (порт tweb `passwordMonkeyTsx.tsx`):
+// монтируется своим корнем, без JSX — этот файл собирает React-рантайм.
+import { createComponent } from 'solid-js'
+import { render as renderSolid } from 'solid-js/web'
+import PasswordMonkeyTsx from '@components/passcodeLock/passwordMonkeyTsx.solid'
+import monkeyStyles from '@components/passcodeLock/passwordMonkeyTsx.module.scss'
+import type PasswordInputField from '@components/passwordInputField'
 import '../test/lang'
 
 let css: string
@@ -85,7 +91,7 @@ function playerAppendsCanvas() {
     const canvas = document.createElement('canvas')
     canvas.classList.add('lottie')
     params.container.append(canvas)
-    return Promise.resolve({ remove: () => {}, playOrRestart: () => {} })
+    return Promise.resolve({ remove: () => {}, playOrRestart: () => {}, addEventListener: () => {} })
   })
 }
 
@@ -111,7 +117,7 @@ function loaderFallsBackToPng() {
  */
 function positionedAncestor(el: HTMLElement): HTMLElement | null {
   for (let p = el.parentElement; p; p = p.parentElement) {
-    const {position} = getComputedStyle(p)
+    const { position } = getComputedStyle(p)
     if (position && position !== 'static') return p
   }
   return null
@@ -223,26 +229,38 @@ describe('те же габариты у остальных мест показа
     expect([width, height]).toEqual([`${size}px`, `${size}px`])
   })
 
-  // Обезьянка пароля (`PasscodeLockScreen.tsx:56`) — свой контейнер
-  // `.media-sticker-wrapper`,
-  // в оригинале он лежит в `MediaHeader.Sticker` (tweb `pages/cards/
-  // PasswordCard.tsx:228`), то есть тоже в позиционированном боксе размера
-  // стикера.
-  it('PasswordMonkey ограничен 140×140, а не полноэкранным оверлеем блокировки', async () => {
+  // Обезьянка экрана блокировки (`passcodeLock/passwordMonkeyTsx.solid.tsx`,
+  // tweb `passwordMonkeyTsx.tsx`) — позиционированный бокс `--size` (100px по
+  // умолчанию, `.PasswordMonkey` в `passwordMonkeyTsx.module.scss`) с
+  // `.media-sticker-wrapper` класса `monkeys/password.ts` внутри.
+  it('обезьянка экрана блокировки ограничена 100×100, а не полноэкранным оверлеем', async () => {
     playerAppendsCanvas()
     mountStyles()
-    render(
-      <div style={{ position: 'fixed', inset: 0 }}>
-        <PasswordMonkey peeking={false} size={140} />
-      </div>,
-    )
-    const canvas = await vi.waitFor(() => {
-      const el = document.querySelector<HTMLElement>('canvas.lottie')
-      expect(el).not.toBeNull()
-      return el!
-    })
+    // CSS-модуль прогон не встраивает: компилируем его тем же sass и
+    // переписываем локальные имена на те, что модуль отдал компоненту.
+    const moduleStyle = document.createElement('style')
+    moduleStyle.textContent = sass
+      .compile(join(__dirname, '..', 'components', 'passcodeLock', 'passwordMonkeyTsx.module.scss'))
+      .css.replace(/\.(PasswordMonkey|MonkeyImage|hidden)\b/g, (_, name: keyof typeof monkeyStyles) => `.${monkeyStyles[name]}`)
+    document.head.append(moduleStyle)
+    const overlay = document.createElement('div')
+    overlay.className = 'passcode-lock-screen'
+    document.body.append(overlay)
+    const passwordInputField = { helpers: {} } as PasswordInputField
+    const dispose = renderSolid(() => createComponent(PasswordMonkeyTsx, { passwordInputField }), overlay)
+    try {
+      const canvas = await vi.waitFor(() => {
+        const el = document.querySelector<HTMLElement>('canvas.lottie')
+        expect(el).not.toBeNull()
+        return el!
+      })
 
-    const { width, height } = illustrationBox(canvas)
-    expect([width, height]).toEqual(['140px', '140px'])
+      const { width, height } = illustrationBox(canvas)
+      expect([width, height]).toEqual(['100px', '100px'])
+    } finally {
+      dispose()
+      overlay.remove()
+      moduleStyle.remove()
+    }
   })
 })

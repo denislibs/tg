@@ -620,14 +620,15 @@ const fr = {
   'PasscodeLock.PasscodeHasBeenChanged': 'Votre code d\'accès a été modifié.',
   'PasscodeLock.PasscodeHasBeenDisabled': 'Le code d\'accès a été désactivé.',
   'PasscodeLock.AutoLock': 'Verrouillage automatique',
-  'PasscodeLock.WrongPasscodeShort': 'Code d\'accès incorrect',
+  'PasscodeLock.WrongPasscode': 'Code d\'accès incorrect. Veuillez réessayer.',
   'PasscodeLock.TooManyAttempts': 'Trop de tentatives, veuillez réessayer plus tard',
   'PasscodeLock.Proceed': 'Continuer',
-  'PasscodeLock.ForgotPasscode.Text':
-    'Si vous avez oublié votre code d\'accès, vous devez vous déconnecter puis vous reconnecter.',
+  'PasscodeLock.ForgotPasscode.OneAccount': 'Remarque : si vous oubliez votre code d\'accès, vous devrez [vous déconnecter]().',
+  'PasscodeLock.ForgotPasscode.MultipleAccounts':
+    'Remarque : si vous oubliez votre code d\'accès, vous devrez [vous déconnecter]() de tous vos comptes actuels.',
   'EditAccount.Logout': 'Se déconnecter',
-  'PasscodeLock.Logout.Text':
-    'Voulez-vous vraiment vous déconnecter ? Vous devrez vous reconnecter.',
+  LogOut: 'Se déconnecter',
+  'PasscodeLock.LogoutPopup.Description': 'Voulez-vous vraiment vous déconnecter ?',
   'PasscodeLock.LockNow': 'Verrouiller l\'application',
   // вкладка «Код-пароль» (порт tweb passcodeLock/*, план 2D, задача 18)
   'PasscodeLock.Notice': 'Remarque : si vous oubliez votre code d\'accès, vous devrez vous déconnecter.',

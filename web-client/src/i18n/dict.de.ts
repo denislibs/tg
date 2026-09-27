@@ -621,14 +621,15 @@ const de = {
   'PasscodeLock.PasscodeHasBeenChanged': 'Dein Code wurde geändert.',
   'PasscodeLock.PasscodeHasBeenDisabled': 'Der Code wurde deaktiviert.',
   'PasscodeLock.AutoLock': 'Automatische Sperre',
-  'PasscodeLock.WrongPasscodeShort': 'Falscher Code',
+  'PasscodeLock.WrongPasscode': 'Falscher Code. Bitte versuche es erneut.',
   'PasscodeLock.TooManyAttempts': 'Zu viele Versuche, bitte versuche es später erneut',
   'PasscodeLock.Proceed': 'Fortfahren',
-  'PasscodeLock.ForgotPasscode.Text':
-    'Wenn du deinen Code vergessen hast, musst du dich ab- und wieder anmelden.',
+  'PasscodeLock.ForgotPasscode.OneAccount': 'Hinweis: Wenn du deinen Code vergisst, musst du dich [abmelden]().',
+  'PasscodeLock.ForgotPasscode.MultipleAccounts':
+    'Hinweis: Wenn du deinen Code vergisst, musst du dich von allen aktuellen Konten [abmelden]().',
   'EditAccount.Logout': 'Abmelden',
-  'PasscodeLock.Logout.Text':
-    'Möchtest du dich wirklich abmelden? Du musst dich erneut anmelden.',
+  LogOut: 'Abmelden',
+  'PasscodeLock.LogoutPopup.Description': 'Möchtest du dich wirklich abmelden?',
   'PasscodeLock.LockNow': 'App sperren',
   // вкладка «Код-пароль» (порт tweb passcodeLock/*, план 2D, задача 18)
   'PasscodeLock.Notice': 'Hinweis: Wenn du deinen Code vergisst, musst du dich abmelden.',

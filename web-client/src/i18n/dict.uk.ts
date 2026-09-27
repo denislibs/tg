@@ -655,14 +655,15 @@ const uk = {
   'PasscodeLock.PasscodeHasBeenChanged': 'Код-пароль змінено.',
   'PasscodeLock.PasscodeHasBeenDisabled': 'Код-пароль вимкнено.',
   'PasscodeLock.AutoLock': 'Автоблокування',
-  'PasscodeLock.WrongPasscodeShort': 'Невірний код-пароль',
+  'PasscodeLock.WrongPasscode': 'Невірний код-пароль. Спробуйте ще раз.',
   'PasscodeLock.TooManyAttempts': 'Забагато спроб, спробуйте пізніше',
   'PasscodeLock.Proceed': 'Продовжити',
-  'PasscodeLock.ForgotPasscode.Text':
-    'Якщо Ви забули код-пароль, потрібно вийти та знову авторизуватися.',
+  'PasscodeLock.ForgotPasscode.OneAccount': 'Важливо: якщо Ви забудете код-пароль, доведеться [вийти з акаунта]().',
+  'PasscodeLock.ForgotPasscode.MultipleAccounts':
+    'Важливо: якщо Ви забудете код-пароль, доведеться [вийти]() з усіх поточних акаунтів.',
   'EditAccount.Logout': 'Вийти',
-  'PasscodeLock.Logout.Text':
-    'Ви впевнені, що хочете вийти? Доведеться авторизуватися знову.',
+  LogOut: 'Вийти',
+  'PasscodeLock.LogoutPopup.Description': 'Ви впевнені, що хочете вийти?',
   'PasscodeLock.LockNow': 'Заблокувати застосунок',
   // вкладка «Код-пароль» (порт tweb passcodeLock/*, план 2D, задача 18)
   'PasscodeLock.Notice': 'Важливо: якщо Ви забудете код-пароль, доведеться вийти з акаунта.',

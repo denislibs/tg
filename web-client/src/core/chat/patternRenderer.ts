@@ -10,6 +10,26 @@
 //  • overlay/normal (day/light/tinted): дудлы рисуются поверх (source-over) с
 //    mix-blend soft-light; приглушение — через opacity паттерна (|i|).
 
+export type PatternMode = { intensity: number; mask: boolean; invert: boolean }
+
+/**
+ * Параметры рендера обоев по теме (`data-theme` на `<html>`): 1:1 tweb
+ * `state.ts` DEFAULT_THEME intensity + стратегии `chatBackground.tsx`.
+ * intensity — «сырое» tweb-значение (-50..50). Общий для фона чата
+ * (`components/ChatBackground.tsx`) и фона экрана блокировки
+ * (`components/passcodeLock/background.solid.tsx`).
+ */
+export function patternModeFor(dataTheme: string | null): PatternMode {
+  switch (dataTheme) {
+    case 'night':
+      return { intensity: -50, mask: true, invert: false }
+    case 'tinted':
+      return { intensity: -38, mask: false, invert: true } // overlay Dark Blue
+    default: // day / light
+      return { intensity: 50, mask: false, invert: false }
+  }
+}
+
 /**
  * Максимальная непрозрачность приглушаемого слоя из интенсивности обоев.
  * intensity — «сырое» tweb-значение (-50..50, tweb делит на 100).

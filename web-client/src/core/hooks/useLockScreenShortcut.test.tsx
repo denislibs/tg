@@ -10,12 +10,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { useSettingsStore } from '@/settings'
 import { useLockStore } from '@/stores/lockStore'
-import PasscodeLockScreenController from '@components/passcodeLockScreenController'
+import PasscodeLockScreenController from '@components/passcodeLock/passcodeLockScreenController.solid'
 import { useLockScreenShortcut } from './useLockScreenShortcut'
 
 const lockAndReload = vi.hoisted(() => vi.fn())
 vi.mock('@/client/passcodeClient', () => ({ lockAndReload, invokePasscode: vi.fn(async() => undefined) }))
-vi.mock('@components/PasscodeLockScreen', () => ({ default: () => null }))
+vi.mock('@components/passcodeLock/passcodeLockScreen.solid', () => ({ default: () => null }))
 
 const press = (init: KeyboardEventInit, target: EventTarget = window) => {
   const event = new KeyboardEvent('keydown', { code: 'KeyL', key: 'l', bubbles: true, cancelable: true, ...init })

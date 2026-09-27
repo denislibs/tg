@@ -1202,14 +1202,15 @@ const ru = {
   'PasscodeLock.PasscodeHasBeenChanged': 'Код-пароль изменён.',
   'PasscodeLock.PasscodeHasBeenDisabled': 'Код-пароль отключён.',
   'PasscodeLock.AutoLock': 'Автоблокировка',
-  'PasscodeLock.WrongPasscodeShort': 'Неверный код-пароль',
+  'PasscodeLock.WrongPasscode': 'Неверный код-пароль. Попробуйте ещё раз.',
   'PasscodeLock.TooManyAttempts': 'Слишком много попыток, попробуйте позже',
   'PasscodeLock.Proceed': 'Продолжить',
-  'PasscodeLock.ForgotPasscode.Text':
-    'Если Вы забыли код-пароль, нужно выйти и заново авторизоваться.',
+  'PasscodeLock.ForgotPasscode.OneAccount': 'Примечание: если Вы забудете код-пароль, придётся [выйти из аккаунта]().',
+  'PasscodeLock.ForgotPasscode.MultipleAccounts':
+    'Примечание: если Вы забудете код-пароль, придётся [выйти]() из всех текущих аккаунтов.',
   'EditAccount.Logout': 'Выйти',
-  'PasscodeLock.Logout.Text':
-    'Вы уверены, что хотите выйти? Придётся авторизоваться заново.',
+  LogOut: 'Выйти',
+  'PasscodeLock.LogoutPopup.Description': 'Вы уверены, что хотите выйти?',
   'PasscodeLock.LockNow': 'Заблокировать приложение',
   // вкладка «Код-пароль» (порт tweb passcodeLock/*, план 2D, задача 18)
   'PasscodeLock.Notice': 'Примечание: если Вы забудете код-пароль, придётся выйти из аккаунта.',

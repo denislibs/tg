@@ -621,14 +621,15 @@ const es = {
   'PasscodeLock.PasscodeHasBeenChanged': 'Tu código de acceso ha sido cambiado.',
   'PasscodeLock.PasscodeHasBeenDisabled': 'El código de acceso ha sido desactivado.',
   'PasscodeLock.AutoLock': 'Bloqueo automático',
-  'PasscodeLock.WrongPasscodeShort': 'Código incorrecto',
+  'PasscodeLock.WrongPasscode': 'Código incorrecto. Inténtalo de nuevo.',
   'PasscodeLock.TooManyAttempts': 'Demasiados intentos, inténtalo más tarde',
   'PasscodeLock.Proceed': 'Continuar',
-  'PasscodeLock.ForgotPasscode.Text':
-    'Si olvidaste tu código de acceso, debes cerrar sesión e iniciarla de nuevo.',
+  'PasscodeLock.ForgotPasscode.OneAccount': 'Nota: si olvidas tu código de acceso, tendrás que [cerrar sesión]().',
+  'PasscodeLock.ForgotPasscode.MultipleAccounts':
+    'Nota: si olvidas tu código de acceso, tendrás que [cerrar sesión]() en todas tus cuentas actuales.',
   'EditAccount.Logout': 'Cerrar sesión',
-  'PasscodeLock.Logout.Text':
-    '¿Seguro que quieres cerrar sesión? Tendrás que iniciarla de nuevo.',
+  LogOut: 'Cerrar sesión',
+  'PasscodeLock.LogoutPopup.Description': '¿Seguro que quieres cerrar sesión?',
   'PasscodeLock.LockNow': 'Bloquear la aplicación',
   // вкладка «Код-пароль» (порт tweb passcodeLock/*, план 2D, задача 18)
   'PasscodeLock.Notice': 'Nota: si olvidas tu código de acceso, tendrás que cerrar sesión.',

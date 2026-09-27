@@ -4,7 +4,7 @@ import patternUrl from '../assets/pattern.svg'
 import { useSettings } from '../settings'
 import { activeBackground } from '../wallpapers'
 import { useMediaUrl } from '../core/hooks/useMediaUrl'
-import { renderPattern, patternOpacity } from '../core/chat/patternRenderer'
+import { renderPattern, patternOpacity, patternModeFor } from '../core/chat/patternRenderer'
 import ChatBackgroundGradientRenderer from '../core/chat/gradientRenderer'
 import { setActiveGradientRenderer } from '../core/chat/activeGradient'
 import { getAverageColor, hexToRgb, type ColorRgb } from '../shared/lib/color'
@@ -34,21 +34,6 @@ import s from './ChatBackground.module.scss'
  * иначе fade .2s (resolveTransition, tweb chatBackground.tsx:349-359); повторные
  * активации (смена темы чата) всегда instant — hadPreviousRef.
  */
-
-type PatternMode = { intensity: number; mask: boolean; invert: boolean }
-
-// Параметры рендера per-тема (1:1 tweb state.ts DEFAULT_THEME intensity +
-// chatBackground.tsx стратегии). intensity — «сырое» tweb-значение (-50..50).
-function modeFor(dataTheme: string | null): PatternMode {
-  switch (dataTheme) {
-    case 'night':
-      return { intensity: -50, mask: true, invert: false }
-    case 'tinted':
-      return { intensity: -38, mask: false, invert: true } // overlay Dark Blue
-    default: // day / light
-      return { intensity: 50, mask: false, invert: false }
-  }
-}
 
 function readTheme() {
   const cs = getComputedStyle(document.documentElement)
@@ -125,7 +110,7 @@ export default function ChatBackground({ themeColors }: { themeColors?: string[]
   }, [])
 
   const th = readTheme()
-  const mode = modeFor(th.dataTheme)
+  const mode = patternModeFor(th.dataTheme)
   // Тема активного чата перекрывает глобальные обои; иначе пресет, затем дефолт темы.
   const colors = themeColors ?? (wallpaper.kind === 'preset' ? wallpaper.colors : th.grad)
   const ab = activeBackground({ customWallpaperMediaId, customWallpaperBlur, wallpaper })

@@ -30,8 +30,17 @@ import es from './dict.es'
 import de from './dict.de'
 import fr from './dict.fr'
 
-/** Та же форма, что читает `superFormatter`: `[…](…)`. */
-const ANCHOR = /\[.+?\]\(.*?\)/
+/**
+ * Форма `[…](url)` с НЕПУСТЫМ адресом — та ветка `superFormatter`, что строит `<a>`
+ * сама (`lib/langPack.ts`, `url && matchUrlProtocol(url)`).
+ *
+ * Пустой адрес — `[…]()` — ДРУГАЯ ветка: узел берётся из аргументов вызова
+ * (`args[indexHolder.i++]`), и обработчик клика приезжает вместе с ним, как у
+ * tweb. Мёртвого клика там нет по построению; первые такие строки — ключи tweb
+ * экрана блокировки `PasscodeLock.ForgotPasscode.OneAccount/MultipleAccounts`
+ * (кнопка «выйти» — аргумент, `passcodeLock/passcodeLockScreen.solid.tsx`).
+ */
+const ANCHOR = /\[.+?\]\(.+?\)/
 
 /** Корень исходников — от МЕСТА ЭТОГО ФАЙЛА: `process.cwd()` зависит от того, откуда
  *  запустили прогон, и молча уводит скан в пустоту при запуске из корня монорепо. */
@@ -74,7 +83,7 @@ function* allStrings(): Generator<{ where: string; key: string; text: string }> 
 }
 
 describe('в словаре нет ссылочной разметки, пока клик по ней некому исполнить', () => {
-  it('ни одна строка не несёт `[текст](url)`', () => {
+  it('ни одна строка не несёт `[текст](url)` с адресом', () => {
     const offenders: string[] = []
     let seen = 0
     for (const { where, key, text } of allStrings()) {
