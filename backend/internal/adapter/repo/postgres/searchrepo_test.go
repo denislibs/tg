@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -359,5 +360,58 @@ func TestSearchRepo_OwnPeers(t *testing.T) {
 	chats, users, err = NewSearchRepo(pool).OwnPeers(ctx, me, nil, nil)
 	if err != nil || len(chats) != 0 || len(users) != 0 {
 		t.Fatalf("пустая выдача: %v %v %v", chats, users, err)
+	}
+}
+
+// Строка списка чатов и карточка чата отдают ОДИН И ТОТ ЖЕ `channel` зрителя.
+// Клиент заменяет им лежащую карточку целиком (tweb saveApiChat →
+// safeReplaceObject), поэтому урезанная строка списка после каждого
+// перечитывания обнуляла у клиента число участников, права создателя и
+// default_banned_rights: шапка «1 участник», композер — «запрещено отправлять».
+func TestListDialogs_ChannelMatchesCard(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+7370")
+	member := seedUser(t, pool, "+7371")
+
+	g := NewGroupRepo(pool)
+	chatID, err := g.CreateMultiMember(ctx, "group", "Команда", "", "", false, owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.AddMember(ctx, chatID, owner, domain.RoleCreator, domain.AllRights); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.AddMember(ctx, chatID, member, domain.RoleMember, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.SetPermissions(ctx, chatID, domain.AllMemberPerms&^domain.PermSendMedia, 30); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, viewer := range []int64{owner, member} {
+		dialogs, err := NewChatsRepo(pool).ListDialogs(ctx, viewer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		card, err := g.Card(ctx, chatID, viewer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, _ := json.Marshal(card.ToChannel())
+		var found bool
+		for _, d := range dialogs {
+			if d.ChatID != chatID {
+				continue
+			}
+			found = true
+			got, _ := json.Marshal(d.ToChannel())
+			if string(got) != string(want) {
+				t.Errorf("зритель %d: строка списка разошлась с карточкой:\n got  %s\n want %s", viewer, got, want)
+			}
+		}
+		if !found {
+			t.Fatalf("зритель %d: группы нет в списке чатов", viewer)
+		}
 	}
 }
