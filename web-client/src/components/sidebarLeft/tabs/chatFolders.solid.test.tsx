@@ -3,7 +3,8 @@
  * Тесты вкладок «Папки» (задача 24 плана 2D): список `chatFolders.solid.tsx`,
  * редактор `editFolder.solid.tsx`, выбор чатов `includedChats.solid.tsx` —
  * порты tweb `sidebarLeft/tabs/{chatFolders,editFolder,includedChats}.tsx`
- * (812502980).
+ * (812502980). Вход редактора во вкладку ссылки «Share Folder» (`openChatlistInvite`) —
+ * задача 25; сама вкладка — `sharedFolder.solid.test.tsx`.
  *
  * Вкладки НАСТОЯЩИЕ (`solidJsTabs/tabs.ts`), открытые через хост слайдера
  * (`settingsSliderHost.ts`) тем же путём, что их открывает строка корня
@@ -23,7 +24,7 @@ import { useAppStateStore } from '@stores/appState'
 import { useChatsStore } from '@stores/chatsStore'
 import { useFoldersStore } from '@stores/foldersStore'
 import { useSettingsStore } from '@/settings'
-import { resetPeerMirror } from '@core/peerCache'
+import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import { initialState } from '@core/state/state'
 import contextMenuController from '@helpers/contextMenuController'
 import type SliderSuperTab from '@components/sliderTab'
@@ -201,6 +202,18 @@ describe('вкладка «Папки» — разметка HEAD', () => {
     expect(rows.every((row) => !row.classList.contains('row-sortable'))).toBe(true)
     expect(section.querySelector('.row-sortable-icon')).toBeNull()
     expect(rows.map((row) => row.querySelector('.row-subtitle')?.textContent)).toEqual(['1 chat and 1 group', 'All Bots'])
+  })
+
+  // Счёт чатов — тем же правилом, что список папки: бот попадает по флагу
+  // bots (`pFlags.bot` карточки из зеркала пиров) и считается чатом
+  // (tweb chatFolders.tsx:92-96), человек в такую папку не попадает.
+  it('подпись папки «Боты + группы» считает личку с ботом и не считает людей', async() => {
+    applyPeerOps([{ op: 'upsert', peers: [{ _: 'user', id: 7, first_name: 'Bot', pFlags: { bot: true } }, PEERS.get(2)!] }])
+    useChatsStore.setState({ dialogs: [dialog(2), dialog(7), dialog(-10)], dialogIndexById: { 2: 900, 7: 850, [-10]: 800 } })
+    useAppStateStore.setState({ folders: [folder({ id: 5, title: 'Боты', bots: true, groups: true })] })
+    const tab = await openList()
+    const row = tab.scrollable.container.querySelector<HTMLElement>('.sidebar-left-section-container .row')!
+    expect(row.querySelector('.row-subtitle')?.textContent).toBe('1 chat and 1 group')
   })
 
   it('без папок секция Filters спрятана', async() => {
@@ -431,7 +444,7 @@ describe('редактор папки — ссылки-приглашения', 
     expect(row.isConnected).toBe(false)
   })
 
-  it('«Create a New Link» у папки с типами — тост NoTypes; у папки только с чатами — сохранение и новая строка', async() => {
+  it('«Create a New Link» у папки с типами — тост NoTypes; у папки только с чатами — сохранение, вкладка ссылки, затем новая строка', async() => {
     let tab = await openEditor(BOTS)
     await settle()
     click(tab.scrollable.container.querySelector('.folder-list-links .folder-categories > .btn')!)
@@ -447,7 +460,60 @@ describe('редактор папки — ссылки-приглашения', 
     await settle()
     expect(folders.update).toHaveBeenCalledTimes(1)
     expect(folders.createInvite).toHaveBeenCalledWith(3)
-    expect(tab.scrollable.container.querySelectorAll('.folder-list-links .usernames-username')).toHaveLength(1)
+    // tweb `openChatlistInvite(invite).finally(() => wrapLink(invite))` (:672-674)
+    const shared = await waitTab('shared-folder-container')
+    expect(shared.querySelector('.invite-link-text')!.textContent).toBe(location.host + '/addlist/new')
+    await vi.waitFor(() => {
+      expect(tab.scrollable.container.querySelectorAll('.folder-list-links .usernames-username')).toHaveLength(1)
+    })
+  })
+})
+
+describe('редактор папки → вкладка ссылки «Share Folder» (задача 25)', () => {
+  const INVITE: FolderInvite = { slug: 'abc', url: '/addlist/abc', title: '', peerIds: [-10] }
+
+  it('клик по строке ссылки открывает вкладку ссылки с её адресом', async() => {
+    folders.listInvites.mockResolvedValue([INVITE])
+    const tab = await openEditor(WORK)
+    await settle()
+    click(tab.scrollable.container.querySelector('.folder-list-links .usernames-username .row-title')!)
+
+    const shared = await waitTab('shared-folder-container')
+    expect(shared.querySelector('.sidebar-header__title')!.textContent).toBe('Share Folder')
+    expect(shared.querySelector('.invite-link-text')!.textContent).toBe(location.host + '/addlist/abc')
+  })
+
+  it('удаление ссылки во вкладке снимает её строку в редакторе', async() => {
+    folders.listInvites.mockResolvedValue([INVITE])
+    const tab = await openEditor(WORK)
+    await settle()
+    const row = tab.scrollable.container.querySelector<HTMLElement>('.folder-list-links .usernames-username')!
+    click(row)
+    const shared = await waitTab('shared-folder-container')
+    await settle()
+
+    click(shared.querySelector('.invite-link-menu')!)
+    await settle()
+    click([...document.querySelectorAll<HTMLElement>('.btn-menu-item')].find((el) => text(el) === 'Delete Link')!)
+    await settle()
+
+    expect(folders.revokeInvite).toHaveBeenCalledWith('abc')
+    expect(row.isConnected).toBe(false)
+  })
+
+  it('отказ «нечем делиться» открывает вкладку без ссылки (NoChats), а не тост; строки ссылки нет', async() => {
+    folders.createInvite.mockRejectedValueOnce(new HttpError(400, 'x', 'folder has no shareable public group/channel chats'))
+    const tab = await openEditor(WORK)
+    await settle()
+    click(tab.scrollable.container.querySelector('.folder-list-links .folder-categories > .btn')!)
+
+    const shared = await waitTab('shared-folder-container')
+    await settle()
+    expect(shared.querySelector('.selector-scrollable > .caption')!.textContent)
+      .toBe('There are no chats in this folder that you can share with others.')
+    expect(shared.querySelector('.invite-link-container')).toBeNull()
+    expect(toastNew).not.toHaveBeenCalled()
+    expect(tab.scrollable.container.querySelectorAll('.folder-list-links .usernames-username')).toHaveLength(0)
   })
 })
 
@@ -464,6 +530,19 @@ describe('выбор чатов папки (includedChats)', () => {
     const categories = [...picker.querySelectorAll<HTMLElement>('.folder-categories button.folder-category-button')]
     expect(categories.map((el) => el.dataset.peerId)).toEqual(['contacts', 'non_contacts', 'groups', 'broadcasts', 'bots'])
     expect(categories.map((el) => el.querySelector<HTMLInputElement>('input')!.checked)).toEqual([false, false, false, false, true])
+  })
+
+  it('подпись строки — папки чата тем же правилом, что список: бот числится в папке «Боты»', async() => {
+    applyPeerOps([{ op: 'upsert', peers: [{ _: 'user', id: 2, first_name: 'Two', pFlags: { bot: true } }] }])
+    const editor = await openEditor(WORK)
+    await settle()
+    click(editor.scrollable.container.querySelector('.folder-list-included .folder-categories > .btn')!)
+    await settle()
+
+    const picker = await waitTab('included-chatlist-container')
+    const subtitle = () => picker.querySelector('ul.chatlist > .row[data-peer-id="2"] .row-subtitle')?.textContent
+    await vi.waitFor(() => expect(subtitle()).toContain('Работа'))
+    expect(subtitle()).toContain('Боты')
   })
 
   it('«Remove Chats» → Exclude Chats: Muted и Read, без Archived (О-21)', async() => {

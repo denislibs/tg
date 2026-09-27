@@ -18,7 +18,7 @@ import { useFoldersStore } from '../../stores/foldersStore'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useNotifyStore } from '../../stores/notifyStore'
 import { folderUnreadCounts } from '../../core/folders/folderUnreadCounts'
-import { cachedChat, peerMirrorVersion, subscribePeerMirror } from '../../core/peerCache'
+import { cachedPeer, peerMirrorVersion, subscribePeerMirror } from '../../core/peerCache'
 import useFoldersProjection from '../../stores/folders.solid'
 import { useImperativeIsland } from '../../core/hooks/useImperativeIsland'
 import createFolderContextMenu, {
@@ -256,9 +256,9 @@ function useFolderUnreadCounts(folders: Folder[]): Record<number, number> {
   const peersVersion = useSyncExternalStore(subscribePeerMirror, peerMirrorVersion)
   return useMemo(() => {
     const counts: Record<number, number> = {}
-    const all = folderUnreadCounts(dialogs, folders, contactIds, notifySettings, cachedChat)
+    const all = folderUnreadCounts(dialogs, folders, contactIds, notifySettings, cachedPeer)
     for (const id in all) counts[id] = all[id].count
     return counts
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- peersVersion: движение зеркала пиров, читаемого через cachedChat
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- peersVersion: движение зеркала пиров, читаемого через cachedPeer
   }, [dialogs, folders, contactIds, notifySettings, peersVersion])
 }

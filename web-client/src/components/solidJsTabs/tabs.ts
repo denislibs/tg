@@ -454,3 +454,24 @@ export const AppEditFolderTab = Object.assign(
     deleteFolder,
   },
 )
+
+// ── Ссылка папки (tweb :621-635) — задача 25 плана 2D ────────────────────────
+// Вкладка «Share Folder» (`sharedFolder.solid.tsx`); открывает её редактор папки
+// (`openChatlistInvite`). Событие `edit` оригинала не объявлено: его шлёт только
+// галка выбора чатов ссылки, а у бэкенда нет `editExportedInvite` (О-23).
+// `chatlistInvite` необязателен, как у оригинала на деле (`openChatlistInvite()`
+// без ссылки — «нечем делиться»). Хук заставки — `folderTabOpenAfterTimeout`
+// из блока папок выше.
+type AppSharedFolderTabPayload = {
+  filter: import('@core/managers/foldersManager').Folder
+  chatlistInvite?: import('@core/managers/foldersManager').FolderInvite
+}
+
+export const AppSharedFolderTab =
+  scaffoldSolidJSTabEventable<AppSharedFolderTabPayload, {
+    delete: () => void
+  }>({
+    title: 'SharedFolder.Edit.Title',
+    getComponentModule: () => import('../sidebarLeft/tabs/sharedFolder.solid'),
+    onOpenAfterTimeout: folderTabOpenAfterTimeout,
+  })

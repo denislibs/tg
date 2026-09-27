@@ -48,13 +48,13 @@
  *  6. Ссылки: `managers.folders.listInvites/createInvite/revokeInvite` вместо
  *     `getExportedInvites`/`exportChatlistInvite`/`deleteExportedInvite`. У нашей
  *     ссылки путь относительный (`/addlist/<slug>`) — строка показывает его
- *     с хостом, копируется полный адрес. Вкладки «Share Folder»
- *     (`AppSharedFolderTab`, `openChatlistInvite`, `:702-724`) нет — это задача 25
- *     плана, и выбор чатов ссылки заблокирован бэкендом (О-23): клик по строке
- *     ссылки ничего не открывает, созданная ссылка сразу встаёт строкой
- *     (`wrapLink` без `openChatlistInvite`), а отказ «нечем делиться» (наш
- *     `ErrNoShareable`, у tweb `PEERS_LIST_EMPTY` → `openChatlistInvite()`) —
- *     тостом нашего ключа `Folder.Share.Empty` до задачи 25.
+ *     с хостом, копируется полный адрес (`inviteUrl`, `editFolderShared.ts`).
+ *     Вкладка «Share Folder» (`AppSharedFolderTab`, `openChatlistInvite`,
+ *     `:702-724`) — `sharedFolder.solid.tsx`; её событие `edit` не слушается:
+ *     выбор чатов ссылки заблокирован бэкендом (нет `editExportedInvite`, О-23).
+ *     Отказ «нечем делиться» — наш `ErrNoShareable` (у tweb `PEERS_LIST_EMPTY`/
+ *     `CHAT_ADMIN_REQUIRED`, `:686-689`): приватный чат сервер отбрасывает сам,
+ *     отдельного отказа по правам у нас нет.
  *  7. `toggleDisability` (`:662`) снят у нас задачей 9 — кнопка выключается
  *     атрибутом `disabled`, как его и ставит `toggleDisability`.
  *  8. Флаг `deleting` (`:275-290`) у tweb никогда не взводится — защита от
@@ -84,10 +84,10 @@ import Section, { appendSectionContent } from '@components/section.solid'
 import RowTsx from '@components/rowTsx.solid'
 import { addDialogNew, createChatList } from '@components/dialogRow'
 import type SidebarSlider from '@components/slider'
-import { AppIncludedChatsTab, type AppEditFolderTab } from '@components/solidJsTabs/tabs'
+import { AppIncludedChatsTab, AppSharedFolderTab, type AppEditFolderTab } from '@components/solidJsTabs/tabs'
 import { useSuperTab } from '@components/solidJsTabs/superTabProvider.solid'
 import { usePromiseCollector } from '@components/solidJsTabs/promiseCollector.solid'
-import { deleteFolder, FOLDER_PFLAGS, type FolderPFlag } from '@components/sidebarLeft/tabs/editFolderShared'
+import { deleteFolder, FOLDER_PFLAGS, inviteUrl, type FolderPFlag } from '@components/sidebarLeft/tabs/editFolderShared'
 import copy from '@helpers/object/copy'
 import deepEqual from '@helpers/object/deepEqual'
 import filterAsync from '@helpers/array/filterAsync'
@@ -124,8 +124,6 @@ const FOLDERS_TOO_MUCH = 'folders limit reached'
 const NO_SHAREABLE = 'folder has no shareable public group/channel chats'
 
 const hasFlag = (filter: Folder, flag: FolderPFlag) => !!filter[FOLDER_PFLAGS[flag]]
-
-const inviteUrl = (invite: FolderInvite) => location.origin + invite.url
 
 const EditFolder = () => {
   const [tab] = useSuperTab<typeof AppEditFolderTab>()
@@ -722,14 +720,14 @@ const EditFolder = () => {
 
         managers.folders.createInvite(f.id).then((exportedChatlistInvite) => {
           toggle()
-          // `openChatlistInvite(…).finally(() => wrapLink(…))` — вкладки
-          // «Share Folder» нет (задача 25, расхождение 6)
-          wrapLink(exportedChatlistInvite)
+          void openChatlistInvite(exportedChatlistInvite).finally(() => {
+            wrapLink(exportedChatlistInvite)
+          })
         }, (err: unknown) => {
           toggle()
           if(err instanceof HttpError && err.type === NO_SHAREABLE) {
-            // у tweb `PEERS_LIST_EMPTY` → `openChatlistInvite()` (задача 25)
-            toastNew({ langPackKey: 'Folder.Share.Empty' })
+            // у tweb `PEERS_LIST_EMPTY`/`CHAT_ADMIN_REQUIRED` (расхождение 6)
+            void openChatlistInvite()
             return
           }
 
@@ -737,8 +735,26 @@ const EditFolder = () => {
         })
       }, { listenerSetter: tab.listenerSetter })
 
-      // клик по строке ссылки → `openChatlistInvite` (:716-724) — задача 25,
-      // расхождение 6
+      // :702-714 — событие `edit` не слушается (О-23, расхождение 6)
+      const openChatlistInvite = (chatlistInvite?: FolderInvite) => {
+        const sharedTab = (tab.slider as SidebarSlider).createTab(AppSharedFolderTab)
+        sharedTab.eventListener.addEventListener('delete', () => {
+          if(chatlistInvite) onLinkDeletion(chatlistInvite)
+        })
+
+        return sharedTab.open({ filter, chatlistInvite })
+      }
+
+      // :716-724
+      attachClickEvent(content, (e) => {
+        const target = findUpClassName(e.target!, 'row')
+        const chatlistInvite = map.get(target as HTMLElement)
+        if(!chatlistInvite) {
+          return
+        }
+
+        void openChatlistInvite(chatlistInvite)
+      }, { listenerSetter: tab.listenerSetter })
 
       chatlistInvites.forEach(wrapLink)
     })

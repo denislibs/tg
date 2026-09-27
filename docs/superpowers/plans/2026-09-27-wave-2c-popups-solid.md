@@ -215,7 +215,7 @@
 
 ## Пакет 0 — база
 
-### Задача 1: `scrollable2.solid.tsx` → HEAD
+### Задача 1: `scrollable2.solid.tsx` → HEAD — ✅ сделано (PR feat/w2c-scrollable-a11y)
 
 **Что делаем.** Доводим наш Solid-скролл до `tweb/src/components/scrollable2.tsx` HEAD (393) — три
 правки, которые нужны оболочке:
@@ -241,9 +241,20 @@
 
 **Готово когда:** `diff` пропов и контекста с HEAD — только объявленные расхождения шапки файла.
 
+**Итог (2026-09-27):** перенесены все три коммита tweb, а не два, — у `scrollable2.tsx` между
+3eb7a9020 и 472e3e76b есть ещё 2556fc949 (`tracksEnds`/`checkEndsIfTracked` `:275-282`, пересчёт
+концов в `onSizeChange` `:285` и `createEffect(checkEndsIfTracked)` `:298`): без него футер, который
+регистрируется после монтирования, не узнал бы, что скролл уже не у низа (этого ждёт оболочка,
+`indexTsx.tsx:394-401`). Пины: `trackEnds` без рамки, «без слежения концы не считаются»,
+`onSizeChange` пересчитывает, включение слежения после монтирования пересчитывает, `tabIndex`.
+Мутации красят свои: `props.trackEnds` из `onScrollCallbacks`, `checkEndsIfTracked()` из
+`onSizeChange`, `createEffect(checkEndsIfTracked)`. Потребители (`AuthCardsHost`, `searchGroup`,
+`tabs`, `foldersTabs`, `appDialogsManager`, `pickUserFolderTabs`) зелёные без правок; `withBorders`
+в проде не использует никто.
+
 ---
 
-### Задача 2: a11y-примитивы — `focusTrap`, `scrollRegion`, `isKeyboardControl`; навигация Δ 472e3e76b
+### Задача 2: a11y-примитивы — `focusTrap`, `scrollRegion`, `isKeyboardControl`; навигация Δ 472e3e76b — ✅ сделано (PR feat/w2c-scrollable-a11y)
 
 **Что делаем.**
 
@@ -278,6 +289,26 @@
 
 **Готово когда:** три файла совпадают с оригиналом с точностью до объявленных расхождений
 (`diff` в теле коммита); существующие тесты навигации зелёные.
+
+**Итог (2026-09-27):**
+- `focusTrap.ts` — дословно, кроме подписки `onAppWindowChange` (`:135-137`, `:146-147`):
+  `helpers/appWindow.ts` без неё до влития задачи 3. `bindDocument` перенесён целиком, его ветка
+  переезда помечена у строки. **Кто вливается вторым из 2 и 3 — возвращает две пары строк
+  оригинала и пин «ловушка переехала с окном»** (`setAppWindow(fakeWin)` → Tab кружит в
+  документе нового окна, в старом ловушки нет).
+- `isKeyboardControl.ts` — только `isKeyboardControl`: у `shouldPreserveKeyboardFocus` потребителей
+  в волне нет (`appImManager`, `stories/viewer`, `newMedia` О-15, `mediaEditor`), вместе с ним не
+  нужен и `isTargetAnInput` — у нас его нет, не заводится.
+- `scrollRegion.ts` — дословно.
+- Навигация — ровно две строки дельты (`onEscape(event)`, `!e.defaultPrevented`).
+- Мутации красят свои: `wasTopmost &&` у возврата на `restoreTo` и у возврата в родителя
+  (второй — пином «сверху попап без ловушки», форма `isActive` оболочки), пересылка
+  восстановления мимо закрывающегося попапа, `!e.defaultPrevented`, `onEscape(e)` → `onEscape()`.
+- **Замечено вне объёма** (не правилось — не дельта 472e3e76b): у tweb `onKeyDown` навигации висит
+  через `bindActiveWindowListener((w) => w, 'keydown', …)` (`appNavigationController.ts:79`),
+  у нас — `window.addEventListener` с докблоком «подсистемы PiP у нас нет» (неверен, поправка 3).
+  После задачи 3 Esc в окне выноса до контроллера не дойдёт. Словарь типов записи отстал на
+  `'settings-search'` (34f417d12) при докблоке «дословный … целиком».
 
 ---
 

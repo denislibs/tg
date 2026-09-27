@@ -311,11 +311,12 @@ SCSS HEAD (`_popup.scss`), которых не было у нас (**перен�
 
 | Путь | Состояние |
 |---|---|
-| `core/navigation/appNavigationController.ts` (611) | порт; `onEscape?: () => boolean` (:101), в `onKeyDown` нет `!e.defaultPrevented` (:297) — дельта 472e3e76b не перенесена |
+| `core/navigation/appNavigationController.ts` (615) | порт; дельта 472e3e76b перенесена (2C-2): `onEscape?: (event: KeyboardEvent) => boolean`, в `onKeyDown` — `!e.defaultPrevented`. Не перенесено вне этой дельты: `bindActiveWindowListener` для `keydown` (`:79`, у нас `window.addEventListener` — Esc в окне выноса не дойдёт до контроллера после задачи 3) и тип `'settings-search'` (34f417d12) |
 | `helpers/overlayCounter.ts` (41) | порт 1:1; `isOverlayActive` пишет только `popupElement.ts`; React-попапы счётчик не трогают |
 | `helpers/appWindow.ts` (106) | **2C-3 ✅** порт HEAD `:18-122`: `getOverlayRoot`, `setAppWindow`, `onAppWindowChange`, `bindActiveWindowListener`; `getAppWindow`/`onBeforeAppWindowChange` — нет читателя (метрики в выносе окно не меняют), расхождение 1 в шапке. Писатель один — `core/pip.ts` `enterAppPip` (окно ДО переноса `#root`, как `clientPip.tsx:62`/`:118`) рядом с `usePipStore.win` (вторая читательская форма — для React-порталов, до О-17); там же, по `clientPip.tsx:76-83` и `:104-120`, делегаты Solid на документ PiP и возврат временных корней во вкладку (React-порталы — `flushSync` стора до сбора). Esc навигации следует за окном (`appNavigationController.ts` — `bindActiveWindowListener`, tweb `:79`). Не переведены на активное окно (у tweb — через `appWindow`): `focusTrap.ts` (переезд ловушки, tweb `:135-137`, `:146-147` — после влития #313), `mediaViewer/base.ts:1351` (свой `document.body`), `clickEvent.ts`, `contextMenu.ts`, `overlayClickHandler.ts` и др. — их шапки ещё пишут «выноса нет» |
-| `components/scrollable2.solid.tsx` (411) | порт до 3eb7a9020: нет `trackEnds`, `isScrolledToStart/End` в `ScrollableContextValue` (:81-91), `tabIndex` |
-| `helpers/dom/focusTrap.ts`, `scrollRegion.ts`, `isKeyboardControl.ts`, `isSendShortcutPressed.ts` | **нет** (`sendShortcut` в настройках тоже нет — `keyboardShortcuts.solid.tsx:20-23`) |
+| `components/scrollable2.solid.tsx` | порт HEAD (2C-1): `trackEnds`, `isScrolledToStart/End` в `ScrollableContextValue`, пересчёт концов в `onSizeChange` и по включению слежения (2556fc949), `tabIndex` |
+| `helpers/dom/focusTrap.ts`, `scrollRegion.ts`, `isKeyboardControl.ts` | порт (2C-2). `focusTrap` — с переездом в окно выноса (`onAppWindowChange`, `:135-137`, `:146-147`, дописан при слиянии 2C-2 и 2C-3); `isKeyboardControl` — без `shouldPreserveKeyboardFocus` (потребителей в 2C нет) |
+| `helpers/dom/isSendShortcutPressed.ts`, `isTargetAnInput.ts` | **нет** (`sendShortcut` в настройках тоже нет — `keyboardShortcuts.solid.tsx:20-23`, О-1) |
 | `components/MarkupTooltip.tsx` | React, синглтона `getInstance().hide()` нет |
 | `components/buttonTsx.solid.tsx`, `iconTsx.solid.tsx`, `rowTsx.solid.tsx` (`Row.Icon noBackground` :452), `section.solid.tsx`, `radioFieldTsx.solid.tsx`, `checkboxFieldTsx.solid.tsx`, `mediaHeader.solid.tsx` (`Sticker onReady` :91), `appSelectPeers.solid.tsx`, `putPreloader.ts`, `animationIntersector.ts` (`checkAnimations2(blurred, exceptGroup)` :373) | есть — строительный материал оболочки и попапов |
 | `styles/tweb/popups/` | `_popup` (429) и `_popupVariables` (9) — **HEAD 1:1 (2C-4)**, вместе с 69a759cbc (`.btn-icon` — `--primary-text-color`, `_button`/`_animatedIcon`/`_chat`/`_profile`; крестики React-`Popup`/`PremiumModal` без инлайн-цвета); остальные партиалы: `_peer`, `_confirmation`, `_forward`, `_stickers`, `_datePicker`, `_premium` (`_index.scss:83-89`); нет `_mute`, `_limit`, `_stars`, `_reactedList`, `_webApp`, `_payment*`, `_boost*`, `_createContact`, `_chatlistInvite`, … |
@@ -369,8 +370,9 @@ SCSS HEAD (`_popup.scss`), которых не было у нас (**перен�
 2. **Четыре механики вместо одной**: vanilla-класс, `shared/ui/Popup`, `usePopupTransition`, свои
    порталы. Esc/Back закрывают только первые две; `overlayCounter` видит только первую; анимации
    под PT/own-попапами не глушатся.
-3. **Нет a11y оболочки** (§ 5): ни `role="dialog"`, ни `focusTrap`, ни возврата фокуса.
-4. **Нет стыков скролла и футера** (§ 4): SCSS `:211-273` перенесён (2C-4), `scrollable2` — задача 1;
+3. **Нет a11y оболочки** (§ 5): ни `role="dialog"`, ни возврата фокуса. Примитивы (`focusTrap`,
+   `scrollRegion`, `isKeyboardControl`, Esc с `defaultPrevented`) портированы (2C-2), ждут оболочку (2C-5).
+4. **Нет стыков скролла и футера** (§ 4): SCSS `:211-273` перенесён (2C-4), `scrollable2` уже HEAD (2C-1);
    рисовать стыки некому, пока нет оболочки (задача 5).
 5. **`z-index: 4090` у `shared/ui/Popup`** против `4` у tweb (`_popup.scss:34`): порядок решает DOM.
 6. ~~**Корень оверлеев не следует за окном PiP**~~ — снято 2C-3: `getOverlayRoot()` следует за

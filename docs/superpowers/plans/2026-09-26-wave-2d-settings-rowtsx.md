@@ -1086,10 +1086,12 @@ NewChats/Sensitive/Payments. Наши лишние строки «Сессии»
   валит открытие вкладки (статичный кадр). React-пин `Folders_1` в `lottieStickerBox.test.tsx` снят.
 - `SettingsView.navLayer.test.tsx` переведён на под-экран «Стикеры и эмодзи» (задача 15, 2C) —
   при её переезде перевести снова.
-- Не сделано (вне объёма, отмечено): правило папки для `bots` в `core/folderFilter.ts::matchesFolder`
-  (у нашей `FolderMatchable` нет `isBot`) — папка «только боты» сохраняется, но список её пуст.
+- ~~Не сделано (вне объёма, отмечено): правило папки для `bots` в `core/folderFilter.ts::matchesFolder`
+  (у нашей `FolderMatchable` нет `isBot`) — папка «только боты» сохраняется, но список её пуст.~~
+  Закрыто веткой `fix/folder-filter-bots`: `FolderMatchable.isBot` из `pFlags.bot` карточки пира
+  (tweb `filters.ts:258-261`), заодно исключение упоминаний в `excludeMuted` (`:240`).
 
-### Задача 25: «Папки» — выбор чатов и ссылка
+### Задача 25: «Папки» — выбор чатов и ссылка — ✅ сделано (PR feat/w2d-shared-folder)
 
 **Порт:** `includedChats.tsx` (252) → `includedChats.solid.tsx` (вкладка :615, заголовок по `type`)
 на `AppSelectPeers`; `sharedFolder.tsx` (306) + `inviteLink.ts` → `sharedFolder.solid.tsx`,
@@ -1097,6 +1099,25 @@ NewChats/Sensitive/Payments. Наши лишние строки «Сессии»
 (BLOCKED, О-23): до ручки вкладка ссылки только показывает/копирует/удаляет ссылку.
 **Зависимости:** 16, 24. **Врезка:** `tabs.ts`, `editFolder.solid.tsx`; удалить
 `folders/FolderChatsPicker.tsx`. (`FolderInvitePopup.tsx` — попап, 2C.)
+
+**Итог (2026-09-27):** выбор чатов папки и снос `FolderChatsPicker.tsx` ушли в задачу 24; здесь —
+`sidebarLeft/tabs/sharedFolder.solid.tsx`, `inviteLink.ts` (класс-виджет), `helpers/dom/shake.ts`,
+вкладка `AppSharedFolderTab` (Eventable, событие `delete`) одним блоком в конце `tabs.ts`, партиал
+`_inviteLink.scss` и `.cant-select` (tweb `base.scss:1869`), ассет `Folders_Shared.json` (tweb
+дословно) + PNG-фолбэк генератором `generate-tgs-thumbnails.mjs`. Поправки к постановке:
+- Бэкенд сверен: у ссылок папки есть `POST/GET /me/folders/{id}/invites`, `DELETE
+  /me/folder_invites/{slug}`, превью и вступление — ручки правки (`editExportedInvite`) нет, О-23
+  в силе. Список чатов вкладка рисует, как оригинал (выбранные — чаты ссылки), но выбор не
+  меняется: строки выбора «трясутся» (`shake`), галки «Save», события `edit` и подтверждения на
+  закрытии нет. Расшариваемы только публичные группы/каналы (`usecase/folders.shareableChats`) —
+  `canSelectPeer` = `isPublic`, права `invite_links` не учитываются.
+- Редактор папки (`editFolder.solid.tsx`) открывает вкладку, как tweb `openChatlistInvite`: клик
+  по строке ссылки, новая ссылка (`.finally` → строка), отказ `ErrNoShareable` — вкладка без
+  ссылки (`SharedFolder.NoChats`). Наш тост `Folder.Share.Empty` снят вместе с ключом;
+  `inviteUrl` переехал в `editFolderShared.ts`.
+- Кнопки «Share Link» под ссылкой нет: `shareUrlToPeers` — попап над `pickUser`/`forward` (2C,
+  задачи 16/24 плана 2C); ветка по умолчанию `InviteLink` не портирована (расхождение 1 в шапке).
+- Ключи tweb +13 всем пяти словарям; `langpack.gen.json` пересчитан (версия 20).
 
 ### Задача 26: «Динамики и камера» (2C)
 
@@ -1245,7 +1266,7 @@ RowTsxController` + `attachRowController(this, {…, middleware})`, `destroy()` 
 | О-20 | Рекомендованные папки | нет `getSuggestedDialogFilters` | секция FilterRecommended |
 | О-21 | `exclude_archived`, закреплённые в папке | нет на проводе | категории редактора 1:1 |
 | О-22 | Лимиты `folders`/`folderPeers`/`chatlistInvites` + `PopupLimit` | бэкенд не отдаёт лимиты (`MaxFoldersPerUser = 10` зашит, `domain/folder.go:12`); попап — 2C. До них отказ сервера по числу папок — тост `LimitReached` (задача 24) | апселл лимитов |
-| О-23 | Выбор чатов ссылки папки (`editExportedInvite`) | нет ручки | shared folder 1:1 |
+| О-23 | Выбор чатов ссылки папки (`editExportedInvite`): галка «Save», событие `edit`, подтверждение на закрытии (`sharedFolder.tsx:86-89`, `:103-112`, `:258-272`) | нет ручки правки ссылки (есть создание/список/отзыв — `router.go`, `/me/folders/{id}/invites`); вкладка ссылки рисует чаты ссылки, выбор «трясётся» (задача 25) | shared folder 1:1 |
 | О-24 | Видео-аватар и крошилка через медиаредактор | редактор — React (`MediaEditor.tsx`), волна 4 | `AvatarEdit` 1:1 |
 | О-25 | Личный канал в профиле | выяснить в задаче 27 (`updatePersonalChannel`) | секция PersonalChannel |
 | О-26 | Поиск по настройкам и меню шапки из 34f417d12 (`SliderSuperTab.shown`, NavigationItem `settings-search`, `tg://settings/…`) | волна 4 дельты; нужен индекс вкладок, который строится после переезда всех вкладок | поиск по настройкам |
