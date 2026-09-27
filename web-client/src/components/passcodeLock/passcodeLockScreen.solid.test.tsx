@@ -51,7 +51,9 @@ vi.mock('@lib/lottie/lottieLoader', () => ({
 // Фон — настоящий `<ChatBackground>` поверх поддельного 2D-контекста; ввод
 // сдвигает его градиент (`passcodeLockScreen.tsx:113-122`) — шпион на методе.
 let fakeCanvas: ReturnType<typeof installFakeCanvas>
-const toNextPosition = vi.spyOn(ChatBackgroundGradientRenderer.prototype, 'toNextPosition').mockImplementation(() => {})
+// Шпион ставится в beforeEach: afterEach зовёт vi.restoreAllMocks() (шпионы окна
+// выноса), и шпион уровня модуля снимался бы после первого же теста.
+let toNextPosition: ReturnType<typeof vi.spyOn>
 
 // мост настроек — настоящий, запись под шпионом: срок попытки идёт путём tweb
 const bridge = vi.hoisted(() => ({ setAppSettings: undefined as unknown as ReturnType<typeof vi.fn> }))
@@ -108,7 +110,7 @@ beforeEach(() => {
   invokePasscode.mockClear()
   actions.isMyPasscode.mockClear()
   actions.unlockWithPasscode.mockClear()
-  toNextPosition.mockClear()
+  toNextPosition = vi.spyOn(ChatBackgroundGradientRenderer.prototype, 'toNextPosition').mockImplementation(() => {})
   bridge.setAppSettings.mockClear()
   fakeCanvas = installFakeCanvas()
   useSettingsStore.setState({ passcodeCanAttemptAgainOn: null })
