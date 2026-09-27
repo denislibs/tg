@@ -11,7 +11,7 @@ const folder = (over: Partial<Folder>): Folder => ({
   id: 1, title: 'F', pos: 0,
   includeChats: [], excludeChats: [],
   contacts: false, nonContacts: false, groups: false, broadcasts: false,
-  excludeRead: false, excludeMuted: false,
+  excludeRead: false, bots: false, excludeMuted: false,
   ...over,
 })
 

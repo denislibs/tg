@@ -51,7 +51,7 @@ const DIALOGS = 500
 const FOLDER = {
   id: 7, title: 'Работа', pos: 0,
   contacts: false, nonContacts: true, groups: false, broadcasts: false,
-  excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [],
+  bots: false, excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [],
 }
 
 // Весь слой менеджеров — рекурсивный Proxy (приём `Sidebar.connectionStatus.test.tsx`);

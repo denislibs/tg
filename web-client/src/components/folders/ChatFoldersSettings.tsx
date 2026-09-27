@@ -26,7 +26,7 @@ const SUGGESTED: { title: LangPackKey; desc: LangPackKey; input: Omit<FolderInpu
     title: 'New',
     desc: 'FilterUnreadDescription',
     input: {
-      contacts: true, nonContacts: true, groups: true, broadcasts: true,
+      contacts: true, nonContacts: true, groups: true, broadcasts: true, bots: false,
       excludeMuted: false, excludeRead: true, includeChats: [], excludeChats: [],
     },
   },
@@ -34,7 +34,7 @@ const SUGGESTED: { title: LangPackKey; desc: LangPackKey; input: Omit<FolderInpu
     title: 'FilterPersonal',
     desc: 'FilterPersonalDescription',
     input: {
-      contacts: true, nonContacts: true, groups: false, broadcasts: false,
+      contacts: true, nonContacts: true, groups: false, broadcasts: false, bots: false,
       excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [],
     },
   },

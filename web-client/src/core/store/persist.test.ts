@@ -48,7 +48,7 @@ describe('persist (normalized offline store)', () => {
   })
 
   it('round-trips folders', async () => {
-    const folder: Folder = { id: 1, title: 'Work', pos: 0, contacts: false, nonContacts: false, groups: true, broadcasts: false, excludeMuted: false, excludeRead: false, includeChats: [5], excludeChats: [] }
+    const folder: Folder = { id: 1, title: 'Work', pos: 0, contacts: false, nonContacts: false, groups: true, broadcasts: false, bots: false, excludeMuted: false, excludeRead: false, includeChats: [5], excludeChats: [] }
     await saveFolders([folder])
     expect((await loadFolders()).map((f) => f.title)).toEqual(['Work'])
   })
@@ -62,7 +62,7 @@ describe('persist (normalized offline store)', () => {
 
   it('clears folders on account switch', async () => {
     await persistScope('A')
-    await saveFolders([{ id: 1, title: 'X', pos: 0, contacts: false, nonContacts: false, groups: true, broadcasts: false, excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [] }])
+    await saveFolders([{ id: 1, title: 'X', pos: 0, contacts: false, nonContacts: false, groups: true, broadcasts: false, bots: false, excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [] }])
     await persistScope('B') // смена аккаунта
     expect(await loadFolders()).toEqual([])
   })

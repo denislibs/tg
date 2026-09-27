@@ -97,7 +97,7 @@ const ALL_CHATS_FILTER: Folder = {
   nonContacts: false,
   groups: false,
   broadcasts: false,
-  excludeMuted: false,
+  bots: false, excludeMuted: false,
   excludeRead: false,
   includeChats: [],
   excludeChats: [],

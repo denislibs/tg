@@ -14,7 +14,7 @@ const stateKey = vi.fn().mockResolvedValue(undefined)
 const mkFolder = (id: number, title: string, pos = id): Folder => ({
   id, title, pos,
   contacts: false, nonContacts: false, groups: true, broadcasts: false,
-  excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [],
+  bots: false, excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [],
 })
 const work = mkFolder(7, 'Работа')
 const fun = mkFolder(8, 'Отдых')
@@ -24,9 +24,9 @@ const fun = mkFolder(8, 'Отдых')
 const snapshot = (f: Folder) => ({
   id: f.id, title: f.title, pos: f.pos,
   contacts: f.contacts, non_contacts: f.nonContacts,
-  groups: f.groups, broadcasts: f.broadcasts, bots: false,
+  groups: f.groups, broadcasts: f.broadcasts, bots: f.bots,
   exclude_muted: f.excludeMuted, exclude_read: f.excludeRead,
-  include_chats: f.includeChats, exclude_chats: f.excludeChats,
+  include_peers: f.includeChats, exclude_peers: f.excludeChats,
 })
 
 function managersWith(list: Folder[], contacts: number[] = []) {
@@ -225,13 +225,13 @@ describe('applyFolderUpdate: снимок папки из realtime', () => {
         id: 5, title: 'Смесь', pos: 3,
         contacts: true, non_contacts: true, groups: false, broadcasts: true, bots: true,
         exclude_muted: true, exclude_read: true,
-        include_chats: [11, 12], exclude_chats: [13],
+        include_peers: [11, 12], exclude_peers: [13],
       },
     })
 
     expect(useAppStateStore.getState().folders).toEqual([{
       id: 5, title: 'Смесь', pos: 3,
-      contacts: true, nonContacts: true, groups: false, broadcasts: true,
+      contacts: true, nonContacts: true, groups: false, broadcasts: true, bots: true,
       excludeMuted: true, excludeRead: true,
       includeChats: [11, 12], excludeChats: [13],
     }])

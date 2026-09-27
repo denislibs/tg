@@ -69,7 +69,7 @@ const SETTINGS = {
 const raw = (id: number, pos: number, title: string, include: number[]): RawFolder => ({
   id, title, pos,
   contacts: false, non_contacts: false, groups: false, broadcasts: false, bots: false,
-  exclude_muted: false, exclude_read: false, include_chats: include, exclude_chats: [],
+  exclude_muted: false, exclude_read: false, include_peers: include, exclude_peers: [],
 })
 
 const setDialogs = (dialogs: Dialog[]) => {

@@ -10,6 +10,8 @@ export interface Folder {
   nonContacts: boolean
   groups: boolean
   broadcasts: boolean
+  /** tweb `pFlags.bots` — категория «Боты» редактора (`editFolder.tsx:382-386`) */
+  bots: boolean
   excludeMuted: boolean
   excludeRead: boolean
   includeChats: number[]
@@ -35,8 +37,11 @@ export interface RawFolder {
   bots: boolean
   exclude_muted: boolean
   exclude_read: boolean
-  include_chats: number[]
-  exclude_chats: number[]
+  // Ключи пиров (`PeerId`), как `folderBody`/`folderJSON` бэкенда с перевода
+  // адресации на знаковый `PeerId` (8c84b326); прежние `include_chats`/
+  // `exclude_chats` бэкенд не читает и не отдаёт.
+  include_peers: number[]
+  exclude_peers: number[]
 }
 
 export const mapFolder = (r: RawFolder): Folder => ({
@@ -47,10 +52,11 @@ export const mapFolder = (r: RawFolder): Folder => ({
   nonContacts: r.non_contacts,
   groups: r.groups,
   broadcasts: r.broadcasts,
+  bots: !!r.bots,
   excludeMuted: r.exclude_muted,
   excludeRead: r.exclude_read,
-  includeChats: r.include_chats ?? [],
-  excludeChats: r.exclude_chats ?? [],
+  includeChats: r.include_peers ?? [],
+  excludeChats: r.exclude_peers ?? [],
 })
 
 const toRaw = (f: FolderInput) => ({
@@ -59,11 +65,11 @@ const toRaw = (f: FolderInput) => ({
   non_contacts: f.nonContacts,
   groups: f.groups,
   broadcasts: f.broadcasts,
-  bots: false,
+  bots: f.bots,
   exclude_muted: f.excludeMuted,
   exclude_read: f.excludeRead,
-  include_chats: f.includeChats,
-  exclude_chats: f.excludeChats,
+  include_peers: f.includeChats,
+  exclude_peers: f.excludeChats,
 })
 
 // Ссылка-приглашение в папку (Telegram chatlist invite): по slug другой юзер

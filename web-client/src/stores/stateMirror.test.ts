@@ -13,7 +13,7 @@ const stateKey = vi.fn().mockResolvedValue(undefined)
 const folder = {
   id: 7, title: 'Из соседней вкладки', pos: 0,
   contacts: false, nonContacts: false, groups: true, broadcasts: false,
-  excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [],
+  bots: false, excludeMuted: false, excludeRead: false, includeChats: [], excludeChats: [],
 }
 
 beforeEach(() => {

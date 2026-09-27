@@ -200,6 +200,7 @@ export default function FolderEditor({
       nonContacts: flags.nonContacts,
       groups: flags.groups,
       broadcasts: flags.broadcasts,
+      bots: !!folder?.bots,
       excludeMuted: flags.excludeMuted,
       excludeRead: flags.excludeRead,
       includeChats,
