@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 30,
+      "version": 31,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -838,10 +838,6 @@
           "value": "Search Selected"
         },
         {
-          "key": "Chat.ContextMenu.Read",
-          "value": "Read"
-        },
-        {
           "key": "Chat.CopySelectedText",
           "value": "Copy Selected Text"
         },
@@ -1108,6 +1104,10 @@
           "value": "Unpin"
         },
         {
+          "key": "ChatList.Filter.Bots",
+          "value": "Bots"
+        },
+        {
           "key": "ChatList.Filter.Channels",
           "value": "Channels"
         },
@@ -1118,6 +1118,10 @@
         {
           "key": "ChatList.Filter.Confirm.Remove.Text",
           "value": "Are you sure you want to remove this folder? Your chats will not be deleted."
+        },
+        {
+          "key": "ChatList.Filter.Contacts",
+          "value": "Contacts"
         },
         {
           "key": "ChatList.Filter.Groups",
@@ -1146,6 +1150,10 @@
         {
           "key": "ChatList.Filter.NonContacts",
           "value": "Non-Contacts"
+        },
+        {
+          "key": "ChatList.Filter.ReadChats",
+          "value": "Read"
         },
         {
           "key": "ChatList.Mute.1Day",
@@ -1202,6 +1210,13 @@
         {
           "key": "ChatYourSelfTitle",
           "value": "Your cloud storage"
+        },
+        {
+          "key": "Chats",
+          "forms": {
+            "one_value": "%1$d chat",
+            "other_value": "%1$d chats"
+          }
         },
         {
           "key": "Checkbox.Disabled",
@@ -1633,6 +1648,10 @@
           "value": "Edit Fact Check"
         },
         {
+          "key": "EditFolder.EmojiAsIconTip",
+          "value": "If you put only one emoji at the beginning (or at the end), it will be displayed as the icon in the folders sidebar"
+        },
+        {
           "key": "EditFolder.Toast.ChooseChat",
           "value": "Please choose at least one chat for this folder."
         },
@@ -1793,12 +1812,36 @@
           "value": "Favorites"
         },
         {
+          "key": "FilterAllBots",
+          "value": "All Bots"
+        },
+        {
+          "key": "FilterAllChannels",
+          "value": "All Channels"
+        },
+        {
           "key": "FilterAllChats",
           "value": "All Chats"
         },
         {
           "key": "FilterAllChatsShort",
           "value": "All"
+        },
+        {
+          "key": "FilterAllContacts",
+          "value": "All Contacts"
+        },
+        {
+          "key": "FilterAllGroups",
+          "value": "All Groups"
+        },
+        {
+          "key": "FilterAllNonContacts",
+          "value": "All Non-Contacts"
+        },
+        {
+          "key": "FilterAlwaysShow",
+          "value": "Include Chats"
         },
         {
           "key": "FilterChatTypes",
@@ -1841,32 +1884,31 @@
           "value": "Choose chats or types of chats that will appear in this folder."
         },
         {
+          "key": "FilterMenuDelete",
+          "value": "Delete Folder"
+        },
+        {
           "key": "FilterNameHint",
           "value": "Folder name"
+        },
+        {
+          "key": "FilterNeverShow",
+          "value": "Exclude Chats"
         },
         {
           "key": "FilterNew",
           "value": "New Folder"
         },
         {
-          "key": "FilterPersonal",
-          "value": "Personal"
-        },
-        {
-          "key": "FilterPersonalDescription",
-          "value": "Messages from private chats."
-        },
-        {
-          "key": "FilterRecommended",
-          "value": "Recommended Folders"
-        },
-        {
           "key": "FilterRemoveChats",
           "value": "Remove Chats"
         },
         {
-          "key": "FilterUnreadDescription",
-          "value": "Chats with new messages."
+          "key": "FilterShowMoreChats",
+          "forms": {
+            "one_value": "Show %1$d More Chat",
+            "other_value": "Show %1$d More Chats"
+          }
         },
         {
           "key": "Filters",
@@ -2083,6 +2125,13 @@
         {
           "key": "GroupType",
           "value": "Group Type"
+        },
+        {
+          "key": "Groups",
+          "forms": {
+            "one_value": "%1$d group",
+            "other_value": "%1$d groups"
+          }
         },
         {
           "key": "GroupsOnly",
@@ -2361,6 +2410,10 @@
         {
           "key": "LeaveAComment",
           "value": "Leave a comment"
+        },
+        {
+          "key": "LimitReached",
+          "value": "Limit Reached"
         },
         {
           "key": "LinkCopied",
@@ -2911,10 +2964,6 @@
             "one_value": "Seen",
             "other_value": "%1$d Seen"
           }
-        },
-        {
-          "key": "MiniApps.AppsMore",
-          "value": "Show more"
         },
         {
           "key": "Minutes",
@@ -4634,16 +4683,32 @@
           "value": "Files"
         },
         {
-          "key": "SharedFolder.Edit.Title",
-          "value": "Share Folder"
+          "key": "SharedFolder.CreateLink",
+          "value": "Create a New Link"
         },
         {
-          "key": "SharedFolder.Link.Caption",
-          "value": "Create an invite link so others can join the group chats in this folder."
+          "key": "SharedFolder.Description",
+          "value": "Give your friends and colleagues access to the entire folder including all of its groups and channels where you have the necessary rights."
+        },
+        {
+          "key": "SharedFolder.Includes",
+          "value": "Includes %s"
         },
         {
           "key": "SharedFolder.Link.Title",
           "value": "Add Folder"
+        },
+        {
+          "key": "SharedFolder.Toast.NeedName",
+          "value": "Add a name for this folder to share it."
+        },
+        {
+          "key": "SharedFolder.Toast.NoExcluded",
+          "value": "Excluded chats are not supported in shared folders."
+        },
+        {
+          "key": "SharedFolder.Toast.NoTypes",
+          "value": "Chat types are not supported in shared folders."
         },
         {
           "key": "SharedLinksTab2",
@@ -5699,7 +5764,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 30,
+      "version": 31,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -6936,10 +7001,6 @@
           "value": "Папки"
         },
         {
-          "key": "FilterRecommended",
-          "value": "Рекомендованные папки"
-        },
-        {
           "key": "FiltersView",
           "value": "Расположение папок"
         },
@@ -6992,16 +7053,8 @@
           "value": "Без звука"
         },
         {
-          "key": "Chat.ContextMenu.Read",
-          "value": "Прочитанные"
-        },
-        {
           "key": "FilterChatTypes",
           "value": "Типы чатов"
-        },
-        {
-          "key": "MiniApps.AppsMore",
-          "value": "Показать ещё"
         },
         {
           "key": "Error.SomethingWentWrong",
@@ -7010,14 +7063,6 @@
         {
           "key": "New",
           "value": "Новые"
-        },
-        {
-          "key": "FilterUnreadDescription",
-          "value": "Чаты с новыми сообщениями."
-        },
-        {
-          "key": "FilterPersonalDescription",
-          "value": "Сообщения из личных чатов."
         },
         {
           "key": "EditFolder.Toast.ChooseChat",
@@ -7042,10 +7087,6 @@
         {
           "key": "FilterAllChats",
           "value": "Все чаты"
-        },
-        {
-          "key": "FilterPersonal",
-          "value": "Личные"
         },
         {
           "key": "Stickers.SuggestStickers",
@@ -11135,14 +11176,6 @@
           "value": "Поделиться"
         },
         {
-          "key": "SharedFolder.Edit.Title",
-          "value": "Поделиться папкой"
-        },
-        {
-          "key": "SharedFolder.Link.Caption",
-          "value": "Создайте ссылку-приглашение, чтобы другие могли вступить в групповые чаты этой папки."
-        },
-        {
           "key": "SharedFolder.Link.Title",
           "value": "Добавить папку"
         },
@@ -11415,6 +11448,109 @@
         {
           "key": "ClearButton",
           "value": "Очистить"
+        },
+        {
+          "key": "ChatList.Filter.Bots",
+          "value": "Боты"
+        },
+        {
+          "key": "ChatList.Filter.Contacts",
+          "value": "Контакты"
+        },
+        {
+          "key": "ChatList.Filter.ReadChats",
+          "value": "Прочитанные"
+        },
+        {
+          "key": "Chats",
+          "forms": {
+            "one_value": "%1$d чат",
+            "few_value": "%1$d чата",
+            "many_value": "%1$d чатов",
+            "other_value": "%1$d чата"
+          }
+        },
+        {
+          "key": "EditFolder.EmojiAsIconTip",
+          "value": "Если поставить один эмодзи в начале (или в конце) названия, он станет значком папки в боковой панели папок"
+        },
+        {
+          "key": "FilterAllBots",
+          "value": "Все боты"
+        },
+        {
+          "key": "FilterAllChannels",
+          "value": "Все каналы"
+        },
+        {
+          "key": "FilterAllContacts",
+          "value": "Все контакты"
+        },
+        {
+          "key": "FilterAllGroups",
+          "value": "Все группы"
+        },
+        {
+          "key": "FilterAllNonContacts",
+          "value": "Все не из контактов"
+        },
+        {
+          "key": "FilterAlwaysShow",
+          "value": "Добавить чаты"
+        },
+        {
+          "key": "FilterMenuDelete",
+          "value": "Удалить папку"
+        },
+        {
+          "key": "FilterNeverShow",
+          "value": "Исключить чаты"
+        },
+        {
+          "key": "FilterShowMoreChats",
+          "forms": {
+            "one_value": "Показать ещё %1$d чат",
+            "few_value": "Показать ещё %1$d чата",
+            "many_value": "Показать ещё %1$d чатов",
+            "other_value": "Показать ещё %1$d чата"
+          }
+        },
+        {
+          "key": "Groups",
+          "forms": {
+            "one_value": "%1$d группа",
+            "few_value": "%1$d группы",
+            "many_value": "%1$d групп",
+            "other_value": "%1$d группы"
+          }
+        },
+        {
+          "key": "LimitReached",
+          "value": "Достигнут лимит"
+        },
+        {
+          "key": "SharedFolder.CreateLink",
+          "value": "Создать новую ссылку"
+        },
+        {
+          "key": "SharedFolder.Description",
+          "value": "Дайте друзьям и коллегам доступ ко всей папке, включая все её группы и каналы, в которых у вас есть нужные права."
+        },
+        {
+          "key": "SharedFolder.Includes",
+          "value": "Включает %s"
+        },
+        {
+          "key": "SharedFolder.Toast.NeedName",
+          "value": "Задайте название папки, чтобы поделиться ею."
+        },
+        {
+          "key": "SharedFolder.Toast.NoExcluded",
+          "value": "Исключённые чаты не поддерживаются в общих папках."
+        },
+        {
+          "key": "SharedFolder.Toast.NoTypes",
+          "value": "Типы чатов не поддерживаются в общих папках."
         }
       ]
     },
@@ -11425,7 +11561,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 18,
+      "version": 19,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -11888,10 +12024,6 @@
           "value": "Dossiers"
         },
         {
-          "key": "FilterRecommended",
-          "value": "Dossiers recommandés"
-        },
-        {
           "key": "FiltersView",
           "value": "Position des dossiers"
         },
@@ -11944,16 +12076,8 @@
           "value": "En sourdine"
         },
         {
-          "key": "Chat.ContextMenu.Read",
-          "value": "Lues"
-        },
-        {
           "key": "FilterChatTypes",
           "value": "Types de discussions"
-        },
-        {
-          "key": "MiniApps.AppsMore",
-          "value": "Afficher plus"
         },
         {
           "key": "Error.SomethingWentWrong",
@@ -11962,14 +12086,6 @@
         {
           "key": "New",
           "value": "Nouveaux"
-        },
-        {
-          "key": "FilterUnreadDescription",
-          "value": "Discussions avec de nouveaux messages."
-        },
-        {
-          "key": "FilterPersonalDescription",
-          "value": "Messages des discussions privées."
         },
         {
           "key": "EditFolder.Toast.ChooseChat",
@@ -11994,10 +12110,6 @@
         {
           "key": "FilterAllChats",
           "value": "Toutes les discussions"
-        },
-        {
-          "key": "FilterPersonal",
-          "value": "Personnel"
         },
         {
           "key": "Stickers.SuggestStickers",
@@ -14353,6 +14465,95 @@
         {
           "key": "LanguageName",
           "value": "Français"
+        },
+        {
+          "key": "ChatList.Filter.ReadChats",
+          "value": "Lues"
+        },
+        {
+          "key": "Chats",
+          "forms": {
+            "one_value": "%1$d discussion",
+            "other_value": "%1$d discussions"
+          }
+        },
+        {
+          "key": "EditFolder.EmojiAsIconTip",
+          "value": "Si vous placez un seul emoji au début (ou à la fin), il s’affichera comme icône dans la barre latérale des dossiers"
+        },
+        {
+          "key": "FilterAllBots",
+          "value": "Tous les bots"
+        },
+        {
+          "key": "FilterAllChannels",
+          "value": "Tous les canaux"
+        },
+        {
+          "key": "FilterAllContacts",
+          "value": "Tous les contacts"
+        },
+        {
+          "key": "FilterAllGroups",
+          "value": "Tous les groupes"
+        },
+        {
+          "key": "FilterAllNonContacts",
+          "value": "Tous les non-contacts"
+        },
+        {
+          "key": "FilterAlwaysShow",
+          "value": "Inclure des discussions"
+        },
+        {
+          "key": "FilterMenuDelete",
+          "value": "Supprimer le dossier"
+        },
+        {
+          "key": "FilterNeverShow",
+          "value": "Exclure des discussions"
+        },
+        {
+          "key": "FilterShowMoreChats",
+          "forms": {
+            "one_value": "Afficher %1$d discussion de plus",
+            "other_value": "Afficher %1$d discussions de plus"
+          }
+        },
+        {
+          "key": "Groups",
+          "forms": {
+            "one_value": "%1$d groupe",
+            "other_value": "%1$d groupes"
+          }
+        },
+        {
+          "key": "LimitReached",
+          "value": "Limite atteinte"
+        },
+        {
+          "key": "SharedFolder.CreateLink",
+          "value": "Créer un nouveau lien"
+        },
+        {
+          "key": "SharedFolder.Description",
+          "value": "Donnez à vos amis et collègues l’accès à tout le dossier, y compris tous ses groupes et canaux où vous avez les droits nécessaires."
+        },
+        {
+          "key": "SharedFolder.Includes",
+          "value": "Contient %s"
+        },
+        {
+          "key": "SharedFolder.Toast.NeedName",
+          "value": "Donnez un nom à ce dossier pour le partager."
+        },
+        {
+          "key": "SharedFolder.Toast.NoExcluded",
+          "value": "Les discussions exclues ne sont pas prises en charge dans les dossiers partagés."
+        },
+        {
+          "key": "SharedFolder.Toast.NoTypes",
+          "value": "Les types de discussion ne sont pas pris en charge dans les dossiers partagés."
         }
       ]
     },
@@ -14363,7 +14564,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 18,
+      "version": 19,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -14825,10 +15026,6 @@
           "value": "Ordner"
         },
         {
-          "key": "FilterRecommended",
-          "value": "Empfohlene Ordner"
-        },
-        {
           "key": "FiltersView",
           "value": "Position der Ordner"
         },
@@ -14881,16 +15078,8 @@
           "value": "Stummgeschaltet"
         },
         {
-          "key": "Chat.ContextMenu.Read",
-          "value": "Gelesen"
-        },
-        {
           "key": "FilterChatTypes",
           "value": "Chat-Typen"
-        },
-        {
-          "key": "MiniApps.AppsMore",
-          "value": "Mehr anzeigen"
         },
         {
           "key": "Error.SomethingWentWrong",
@@ -14899,14 +15088,6 @@
         {
           "key": "New",
           "value": "Neu"
-        },
-        {
-          "key": "FilterUnreadDescription",
-          "value": "Chats mit neuen Nachrichten."
-        },
-        {
-          "key": "FilterPersonalDescription",
-          "value": "Nachrichten aus privaten Chats."
         },
         {
           "key": "EditFolder.Toast.ChooseChat",
@@ -14931,10 +15112,6 @@
         {
           "key": "FilterAllChats",
           "value": "Alle Chats"
-        },
-        {
-          "key": "FilterPersonal",
-          "value": "Persönlich"
         },
         {
           "key": "Stickers.SuggestStickers",
@@ -17309,6 +17486,99 @@
         {
           "key": "LanguageName",
           "value": "Deutsch"
+        },
+        {
+          "key": "ChatList.Filter.Contacts",
+          "value": "Kontakte"
+        },
+        {
+          "key": "ChatList.Filter.ReadChats",
+          "value": "Gelesen"
+        },
+        {
+          "key": "Chats",
+          "forms": {
+            "one_value": "%1$d Chat",
+            "other_value": "%1$d Chats"
+          }
+        },
+        {
+          "key": "EditFolder.EmojiAsIconTip",
+          "value": "Wenn du nur ein Emoji an den Anfang (oder ans Ende) setzt, wird es in der Ordner-Seitenleiste als Symbol angezeigt"
+        },
+        {
+          "key": "FilterAllBots",
+          "value": "Alle Bots"
+        },
+        {
+          "key": "FilterAllChannels",
+          "value": "Alle Kanäle"
+        },
+        {
+          "key": "FilterAllContacts",
+          "value": "Alle Kontakte"
+        },
+        {
+          "key": "FilterAllGroups",
+          "value": "Alle Gruppen"
+        },
+        {
+          "key": "FilterAllNonContacts",
+          "value": "Alle Nicht-Kontakte"
+        },
+        {
+          "key": "FilterAlwaysShow",
+          "value": "Chats hinzufügen"
+        },
+        {
+          "key": "FilterMenuDelete",
+          "value": "Ordner löschen"
+        },
+        {
+          "key": "FilterNeverShow",
+          "value": "Chats ausschließen"
+        },
+        {
+          "key": "FilterShowMoreChats",
+          "forms": {
+            "one_value": "%1$d weiteren Chat anzeigen",
+            "other_value": "%1$d weitere Chats anzeigen"
+          }
+        },
+        {
+          "key": "Groups",
+          "forms": {
+            "one_value": "%1$d Gruppe",
+            "other_value": "%1$d Gruppen"
+          }
+        },
+        {
+          "key": "LimitReached",
+          "value": "Limit erreicht"
+        },
+        {
+          "key": "SharedFolder.CreateLink",
+          "value": "Neuen Link erstellen"
+        },
+        {
+          "key": "SharedFolder.Description",
+          "value": "Gib Freunden und Kollegen Zugriff auf den ganzen Ordner mit allen Gruppen und Kanälen, in denen du die nötigen Rechte hast."
+        },
+        {
+          "key": "SharedFolder.Includes",
+          "value": "Enthält %s"
+        },
+        {
+          "key": "SharedFolder.Toast.NeedName",
+          "value": "Gib diesem Ordner einen Namen, um ihn zu teilen."
+        },
+        {
+          "key": "SharedFolder.Toast.NoExcluded",
+          "value": "Ausgeschlossene Chats werden in geteilten Ordnern nicht unterstützt."
+        },
+        {
+          "key": "SharedFolder.Toast.NoTypes",
+          "value": "Chat-Typen werden in geteilten Ordnern nicht unterstützt."
         }
       ]
     },
@@ -17319,7 +17589,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 18,
+      "version": 19,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -17786,10 +18056,6 @@
           "value": "Carpetas"
         },
         {
-          "key": "FilterRecommended",
-          "value": "Carpetas recomendadas"
-        },
-        {
           "key": "FiltersView",
           "value": "Posición de las carpetas"
         },
@@ -17842,16 +18108,8 @@
           "value": "Silenciados"
         },
         {
-          "key": "Chat.ContextMenu.Read",
-          "value": "Leídos"
-        },
-        {
           "key": "FilterChatTypes",
           "value": "Tipos de chats"
-        },
-        {
-          "key": "MiniApps.AppsMore",
-          "value": "Mostrar más"
         },
         {
           "key": "Error.SomethingWentWrong",
@@ -17860,14 +18118,6 @@
         {
           "key": "New",
           "value": "Nuevos"
-        },
-        {
-          "key": "FilterUnreadDescription",
-          "value": "Chats con mensajes nuevos."
-        },
-        {
-          "key": "FilterPersonalDescription",
-          "value": "Mensajes de chats privados."
         },
         {
           "key": "EditFolder.Toast.ChooseChat",
@@ -17892,10 +18142,6 @@
         {
           "key": "FilterAllChats",
           "value": "Todos los chats"
-        },
-        {
-          "key": "FilterPersonal",
-          "value": "Personal"
         },
         {
           "key": "Stickers.SuggestStickers",
@@ -20263,6 +20509,99 @@
         {
           "key": "LanguageName",
           "value": "Español"
+        },
+        {
+          "key": "ChatList.Filter.Contacts",
+          "value": "Contactos"
+        },
+        {
+          "key": "ChatList.Filter.ReadChats",
+          "value": "Leídos"
+        },
+        {
+          "key": "Chats",
+          "forms": {
+            "one_value": "%1$d chat",
+            "other_value": "%1$d chats"
+          }
+        },
+        {
+          "key": "EditFolder.EmojiAsIconTip",
+          "value": "Si pones un solo emoji al principio (o al final), se mostrará como el icono en la barra lateral de carpetas"
+        },
+        {
+          "key": "FilterAllBots",
+          "value": "Todos los bots"
+        },
+        {
+          "key": "FilterAllChannels",
+          "value": "Todos los canales"
+        },
+        {
+          "key": "FilterAllContacts",
+          "value": "Todos los contactos"
+        },
+        {
+          "key": "FilterAllGroups",
+          "value": "Todos los grupos"
+        },
+        {
+          "key": "FilterAllNonContacts",
+          "value": "Todos los no contactos"
+        },
+        {
+          "key": "FilterAlwaysShow",
+          "value": "Incluir chats"
+        },
+        {
+          "key": "FilterMenuDelete",
+          "value": "Eliminar carpeta"
+        },
+        {
+          "key": "FilterNeverShow",
+          "value": "Excluir chats"
+        },
+        {
+          "key": "FilterShowMoreChats",
+          "forms": {
+            "one_value": "Mostrar %1$d chat más",
+            "other_value": "Mostrar %1$d chats más"
+          }
+        },
+        {
+          "key": "Groups",
+          "forms": {
+            "one_value": "%1$d grupo",
+            "other_value": "%1$d grupos"
+          }
+        },
+        {
+          "key": "LimitReached",
+          "value": "Límite alcanzado"
+        },
+        {
+          "key": "SharedFolder.CreateLink",
+          "value": "Crear un nuevo enlace"
+        },
+        {
+          "key": "SharedFolder.Description",
+          "value": "Da a tus amigos y colegas acceso a toda la carpeta, incluidos todos sus grupos y canales en los que tienes los permisos necesarios."
+        },
+        {
+          "key": "SharedFolder.Includes",
+          "value": "Incluye %s"
+        },
+        {
+          "key": "SharedFolder.Toast.NeedName",
+          "value": "Ponle un nombre a esta carpeta para compartirla."
+        },
+        {
+          "key": "SharedFolder.Toast.NoExcluded",
+          "value": "Los chats excluidos no se admiten en carpetas compartidas."
+        },
+        {
+          "key": "SharedFolder.Toast.NoTypes",
+          "value": "Los tipos de chat no se admiten en carpetas compartidas."
         }
       ]
     },
@@ -20273,7 +20612,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 18,
+      "version": 19,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -20741,10 +21080,6 @@
           "value": "Папки"
         },
         {
-          "key": "FilterRecommended",
-          "value": "Рекомендовані папки"
-        },
-        {
           "key": "FiltersView",
           "value": "Розташування папок"
         },
@@ -20797,16 +21132,8 @@
           "value": "Без звуку"
         },
         {
-          "key": "Chat.ContextMenu.Read",
-          "value": "Прочитані"
-        },
-        {
           "key": "FilterChatTypes",
           "value": "Типи чатів"
-        },
-        {
-          "key": "MiniApps.AppsMore",
-          "value": "Показати ще"
         },
         {
           "key": "Error.SomethingWentWrong",
@@ -20815,14 +21142,6 @@
         {
           "key": "New",
           "value": "Нові"
-        },
-        {
-          "key": "FilterUnreadDescription",
-          "value": "Чати з новими повідомленнями."
-        },
-        {
-          "key": "FilterPersonalDescription",
-          "value": "Повідомлення з особистих чатів."
         },
         {
           "key": "EditFolder.Toast.ChooseChat",
@@ -20847,10 +21166,6 @@
         {
           "key": "FilterAllChats",
           "value": "Усі чати"
-        },
-        {
-          "key": "FilterPersonal",
-          "value": "Особисті"
         },
         {
           "key": "Stickers.SuggestStickers",
@@ -23282,6 +23597,109 @@
         {
           "key": "LanguageName",
           "value": "Українська"
+        },
+        {
+          "key": "ChatList.Filter.Bots",
+          "value": "Боти"
+        },
+        {
+          "key": "ChatList.Filter.Contacts",
+          "value": "Контакти"
+        },
+        {
+          "key": "ChatList.Filter.ReadChats",
+          "value": "Прочитані"
+        },
+        {
+          "key": "Chats",
+          "forms": {
+            "one_value": "%1$d чат",
+            "few_value": "%1$d чати",
+            "many_value": "%1$d чатів",
+            "other_value": "%1$d чату"
+          }
+        },
+        {
+          "key": "EditFolder.EmojiAsIconTip",
+          "value": "Якщо поставити один емодзі на початку (або в кінці) назви, він стане значком теки на бічній панелі тек"
+        },
+        {
+          "key": "FilterAllBots",
+          "value": "Усі боти"
+        },
+        {
+          "key": "FilterAllChannels",
+          "value": "Усі канали"
+        },
+        {
+          "key": "FilterAllContacts",
+          "value": "Усі контакти"
+        },
+        {
+          "key": "FilterAllGroups",
+          "value": "Усі групи"
+        },
+        {
+          "key": "FilterAllNonContacts",
+          "value": "Усі не з контактів"
+        },
+        {
+          "key": "FilterAlwaysShow",
+          "value": "Додати чати"
+        },
+        {
+          "key": "FilterMenuDelete",
+          "value": "Видалити теку"
+        },
+        {
+          "key": "FilterNeverShow",
+          "value": "Виключити чати"
+        },
+        {
+          "key": "FilterShowMoreChats",
+          "forms": {
+            "one_value": "Показати ще %1$d чат",
+            "few_value": "Показати ще %1$d чати",
+            "many_value": "Показати ще %1$d чатів",
+            "other_value": "Показати ще %1$d чату"
+          }
+        },
+        {
+          "key": "Groups",
+          "forms": {
+            "one_value": "%1$d група",
+            "few_value": "%1$d групи",
+            "many_value": "%1$d груп",
+            "other_value": "%1$d групи"
+          }
+        },
+        {
+          "key": "LimitReached",
+          "value": "Досягнуто ліміту"
+        },
+        {
+          "key": "SharedFolder.CreateLink",
+          "value": "Створити нове посилання"
+        },
+        {
+          "key": "SharedFolder.Description",
+          "value": "Надайте друзям і колегам доступ до всієї теки, зокрема до всіх її груп і каналів, у яких у вас є потрібні права."
+        },
+        {
+          "key": "SharedFolder.Includes",
+          "value": "Містить %s"
+        },
+        {
+          "key": "SharedFolder.Toast.NeedName",
+          "value": "Задайте назву теки, щоб поділитися нею."
+        },
+        {
+          "key": "SharedFolder.Toast.NoExcluded",
+          "value": "Виключені чати не підтримуються у спільних теках."
+        },
+        {
+          "key": "SharedFolder.Toast.NoTypes",
+          "value": "Типи чатів не підтримуються у спільних теках."
         }
       ]
     }

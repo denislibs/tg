@@ -1,4 +1,3 @@
-import type { LangPackKey } from '@/lang'
 import { lazy, Suspense } from 'react'
 import ContactsView from './ContactsView'
 import NewGroupFlow, { type GroupPhoto } from './NewGroupFlow'
@@ -29,8 +28,6 @@ interface SidebarScreensProps {
   /** снять текущий экран (null) */
   close: () => void
   chats: Chat[]
-  /** deep-open настроек на подэкран (контекстное меню «Настроить папки») */
-  settingsSub: LangPackKey | null
   onSettingsBack: () => void
   onSelect: (id: string) => void
   onChatCreated?: (chatId: number) => void
@@ -43,7 +40,6 @@ export default function SidebarScreens({
   screen,
   close,
   chats,
-  settingsSub,
   onSettingsBack,
   onSelect,
   onChatCreated,
@@ -55,7 +51,7 @@ export default function SidebarScreens({
     <>
       <Suspense fallback={null}>
         {screen === 'settings' && (
-          <SettingsView onBack={onSettingsBack} chats={chats} initialSub={settingsSub ?? undefined} />
+          <SettingsView onBack={onSettingsBack} />
         )}
       </Suspense>
       <Suspense fallback={null}>

@@ -197,10 +197,9 @@ describe('попап passkey: иллюстрация-ключ', () => {
 })
 
 describe('те же габариты у остальных мест показа встроенных ассетов', () => {
-  // Папки (`ChatFoldersSettings.tsx:84`/`FolderEditor.tsx:231` — 86px) и
-  // конверт/уточки настроек ходят через тот же `LottieSticker`.
+  // Конверт/уточки настроек ходят через тот же `LottieSticker` (заставки папок
+  // с задачи 24 плана 2D — `div.sticker-container` Solid-вкладок, не он).
   it.each([
-    ['Folders_1' as LottieAssetName, 86],
     ['UtyanDisappear' as LottieAssetName, 120],
     ['UtyanSearch' as LottieAssetName, 140],
   ])('LottieSticker %s ограничен %dpx даже внутри позиционированного предка', async (name, size) => {

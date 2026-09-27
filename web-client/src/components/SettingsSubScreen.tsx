@@ -1,10 +1,8 @@
 import type { LangPackKey } from '@/lang'
 import GeneralSettings from './settings/GeneralSettings'
 import SpeakersCamera from './settings/SpeakersCamera'
-import ChatFoldersSettings from './folders/ChatFoldersSettings'
 import PrivacySecuritySettings from './settings/PrivacySecuritySettings'
 import StickersSettings from './settings/StickersSettings'
-import type { Chat } from '../data'
 
 // Мок-экранов (`SCREENS`) и их саб-экранов (`renderDedicated`: «Быстрая реакция»,
 // «Энергосбережение») здесь больше нет: единственный мок «Общих» перехватывала
@@ -24,22 +22,21 @@ export function hasSubScreen(title: LangPackKey) {
   // (`sidebarLeft/tabs/keyboardShortcuts.solid.tsx`, план 2D, задача 10).
   // «Данных и памяти» — тоже: вкладка `AppDataAndStorageTab`
   // (`sidebarLeft/tabs/dataAndStorage/index.solid.tsx`, план 2D, задача 7).
+  // «Папок» — тоже: вкладка `AppChatFoldersTab`
+  // (`sidebarLeft/tabs/chatFolders.solid.tsx`, план 2D, задача 24).
   return (
     title === 'Telegram.GeneralSettingsViewController' ||
     title === 'AccountSettings.SpeakersAndCamera' ||
-    title === 'ChatList.Filter.List.Title' ||
     title === 'PrivacySettings' ||
     title === 'StickersName'
   )
 }
 
-export default function SettingsSubScreen({ title, onBack, chats }: { title: LangPackKey; onBack: () => void; chats?: Chat[] }) {
+export default function SettingsSubScreen({ title, onBack }: { title: LangPackKey; onBack: () => void }) {
   // General Settings is a fully functional screen (text size, wallpaper, theme, time)
   if (title === 'Telegram.GeneralSettingsViewController') return <GeneralSettings onBack={onBack} />
   // Speakers and Camera — реальные устройства (enumerateDevices/getUserMedia)
   if (title === 'AccountSettings.SpeakersAndCamera') return <SpeakersCamera onBack={onBack} />
-  // Chat Folders — реальные папки чатов (tweb chatFolders)
-  if (title === 'ChatList.Filter.List.Title') return <ChatFoldersSettings onBack={onBack} chats={chats} />
   // Privacy and Security — реальный раздел конфиденциальности (tweb privacyAndSecurity)
   if (title === 'PrivacySettings') return <PrivacySecuritySettings onBack={onBack} />
   // Stickers and Emoji — реальные стикеры (наборы, зацикливание, поиск)

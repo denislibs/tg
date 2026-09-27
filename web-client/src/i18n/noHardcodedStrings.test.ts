@@ -98,7 +98,6 @@ const DEBT: Record<string, number> = {
   'src/components/StoryViewer.tsx': 4,
   'src/components/auth/cards/SignUpCard.solid.tsx': 1,
   'src/components/composer/helpers.ts': 12,
-  'src/components/folders/labels.ts': 20,
   'src/components/group/GroupEditFlow.tsx': 3,
   'src/components/mediaViewer/collectLightboxItems.ts': 1,
   'src/components/messages/ChatDialogs.tsx': 1,

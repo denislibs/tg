@@ -24,7 +24,7 @@ import { getPeerPhotoId, getPeerPhotoStrippedThumb } from '../core/peers/peer'
 import { getUserTitle } from '../core/peers/getPeerTitle'
 import { useManagers } from '../core/hooks/useManagers'
 import { createSettingsSliderHost, getSettingsSliderHost, openActiveSessionsTab } from './sidebarLeft/settingsSliderHost'
-import { AppDataAndStorageTab, AppKeyboardShortcutsTab, AppLanguageTab, AppNotificationsTab } from './solidJsTabs/tabs'
+import { AppChatFoldersTab, AppDataAndStorageTab, AppKeyboardShortcutsTab, AppLanguageTab, AppNotificationsTab } from './solidJsTabs/tabs'
 import { toastNew } from './toast'
 import StarsPopup from './stars/StarsPopup'
 import { useStarsBalance } from '../stores/starsStore'
@@ -71,19 +71,13 @@ export const settingsItems: { icon: IconName; label: LangPackKey; value?: LangPa
 
 export default function SettingsView({
   onBack,
-  chats,
-  initialSub,
 }: {
   onBack: () => void
-  /** список чатов — нужен экранам папок (счётчики, выбор чатов) */
-  chats?: import('../data').Chat[]
-  /** сразу открыть под-экран (deep-open из контекстного меню папок) */
-  initialSub?: LangPackKey
 }) {
   const t = useT()
   const managers = useManagers()
-  const [active, setActive] = useState(initialSub ?? 'AccountSettings.Notifications')
-  const [sub, setSub] = useState<LangPackKey | null>(initialSub ?? null)
+  const [active, setActive] = useState<LangPackKey>('AccountSettings.Notifications')
+  const [sub, setSub] = useState<LangPackKey | null>(null)
   const [editProfile, setEditProfile] = useState(false)
   const [premiumOpen, setPremiumOpen] = useState(false)
   const [premiumManageOpen, setPremiumManageOpen] = useState(false)
@@ -314,6 +308,14 @@ export default function SettingsView({
                     .catch(() => toastNew({ langPackKey: 'Error.AnError' }))
                   return
                 }
+                // «Папки» — вкладка слайдера (план 2D, задача 24); у оригинала
+                // та же одна строка (`settings.tsx:256`, `makeSubTabConfig(…,
+                // AppChatFoldersTab, tab)` → `open(AppChatFoldersTab.getInitArgs())`).
+                if (it.label === 'ChatList.Filter.List.Title') {
+                  void getSettingsSliderHost().openTab(AppChatFoldersTab, AppChatFoldersTab.getInitArgs())
+                    .catch(() => toastNew({ langPackKey: 'Error.AnError' }))
+                  return
+                }
                 if (hasSubScreen(it.label)) setSub(it.label)
               }}
             />
@@ -354,7 +356,7 @@ export default function SettingsView({
 
       {/* Оверлеи-подэкраны: въезд справа играет CSS самого экрана (кейфрейм на
           вставке узла), обёртки-презенсы не нужны. */}
-      {sub && <SettingsSubScreen title={sub} onBack={() => setSub(null)} chats={chats} />}
+      {sub && <SettingsSubScreen title={sub} onBack={() => setSub(null)} />}
 
       {editProfile && <EditProfile onBack={() => setEditProfile(false)} />}
 

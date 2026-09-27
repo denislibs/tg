@@ -29,6 +29,7 @@ import type { Dialog } from '../core/models'
 import { makeDialog } from '../core/dialogs/testDialog'
 import { FakeResizeObserver } from '../lib/appDialogsManager.testkit'
 import useFolders from '../stores/folders.solid'
+import lottieLoader from '../lib/lottie/lottieLoader'
 
 // Ряд историй — внешний потребитель скроллера АКТИВНОЙ папки (`getScrollable`,
 // порт `useCollapsable.ts:124`): протоколируем его пропы, остальное — настоящее.
@@ -63,6 +64,8 @@ function fakeManagers() {
       get: (_t, method: string) => {
         if (ns === 'realtime' && method === 'getStatus') return async () => ({ state: 'ready', retryAt: undefined, syncing: false })
         if (ns === 'dialogs' && method === 'getDialogs') return getDialogs
+        // ссылки папки — их список читает вкладка редактора (задача 24 плана 2D)
+        if (ns === 'folders' && method === 'listInvites') return async () => []
         return async () => undefined
       },
     }),
@@ -307,8 +310,16 @@ describe('Sidebar — переключение папки: список с на�
 // его ДАЛА обоим и что он открывает её экран (пункты и `verify` запинены в
 // `helpers/dom/createFolderContextMenu.test.ts`).
 describe('Sidebar — меню папки на обоих рядах', () => {
+  // Заставка редактора: загрузку лотти (`fetch` ассета) тест не ведёт — отказ, и
+  // вкладка ставит статичный кадр, как без WASM SIMD.
+  beforeEach(() => {
+    vi.spyOn(lottieLoader, 'loadAnimationFromURLManually').mockRejectedValue(new Error('NO_WASM'))
+  })
+
+  // Редактор — вкладка `AppEditFolderTab` поверх колонки (задача 24 плана 2D):
+  // имя папки — в поле вкладки `.edit-folder-container`.
   const editorWith = (title: string) =>
-    [...document.querySelectorAll<HTMLInputElement>('input')].find((el) => el.value === title)
+    [...document.querySelectorAll<HTMLElement>('.edit-folder-container .input-field-input')].find((el) => el.textContent === title)
 
   async function editVia(target: HTMLElement) {
     await act(async () => {
@@ -329,7 +340,24 @@ describe('Sidebar — меню папки на обоих рядах', () => {
       .find((el) => el.textContent?.includes('Работа'))!
     await editVia(tab)
 
-    expect(editorWith('Работа')).toBeDefined()
+    await vi.waitFor(() => expect(editorWith('Работа')).toBeDefined(), { timeout: 5000 })
+  })
+
+  it('редактор — вкладка поверх списка: колонка has-open-tabs, «назад» возвращает к чатам', async () => {
+    await renderSidebar()
+    const column = document.getElementById('column-left')!
+    const tab = [...document.querySelectorAll<HTMLElement>('#folders-tabs .menu-horizontal-div-item')]
+      .find((el) => el.textContent?.includes('Работа'))!
+    await editVia(tab)
+    await vi.waitFor(() => expect(editorWith('Работа')).toBeDefined(), { timeout: 5000 })
+    expect(column.classList.contains('has-open-tabs')).toBe(true)
+
+    const editor = document.querySelector<HTMLElement>('.edit-folder-container')!
+    await act(async () => { editor.querySelector<HTMLElement>('.sidebar-close-button')!.click() })
+    await act(async () => { await settle(400) })
+
+    expect(document.querySelector('.edit-folder-container')).toBeNull()
+    expect(column.classList.contains('has-open-tabs')).toBe(false)
   })
 
   it('вертикальная колонка: «Edit folder» на строке «Работа» открывает её редактор', async () => {
@@ -341,7 +369,7 @@ describe('Sidebar — меню папки на обоих рядах', () => {
       await renderSidebar()
       await editVia(document.querySelector<HTMLElement>(`#folders-sidebar .folders-sidebar__folder-item[data-filter-id="${FOLDER.id}"]`)!)
 
-      expect(editorWith('Работа')).toBeDefined()
+      await vi.waitFor(() => expect(editorWith('Работа')).toBeDefined(), { timeout: 5000 })
     } finally {
       main.remove()
     }

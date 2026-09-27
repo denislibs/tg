@@ -326,13 +326,19 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Includes}`, `SharedFolder.Toast.{NeedName,NoTypes,NoExcluded}`, `LimitReached` и
 // числовые `Chats`, `Groups`, `FilterShowMoreChats` (plural +3 у всех). У es/de/fr нет
 // `ChatList.Filter.Bots` («Bots» совпал с английским), у fr — и `ChatList.Filter.Contacts`:
-// ru 1382 → 1404, uk 719 → 741, es/de 717 → 738, fr 713 → 733.
+// ru 1382 → 1404, uk 719 → 741, es/de 717 → 738, fr 713 → 733. Врезкой той же
+// задачи сняты ключи снесённых React-экранов папок без других читателей —
+// `FilterRecommended` (секции нет, О-20), `FilterPersonal`/`FilterPersonalDescription`/
+// `FilterUnreadDescription` (выдуманные пресеты рекомендованных), `Chat.ContextMenu.Read`,
+// `MiniApps.AppsMore` и у ru ещё `SharedFolder.Edit.Title`/`SharedFolder.Link.Caption`
+// (секция «Поделиться» прежнего редактора): ru 1404 → 1396, остальные −6
+// (uk 735, es/de 732, fr 727).
 const COMPOSITION = {
-  ru: { keys: 1404, plural: 41 },
-  uk: { keys: 741, plural: 30 },
-  es: { keys: 738, plural: 29 },
-  de: { keys: 738, plural: 30 },
-  fr: { keys: 733, plural: 29 },
+  ru: { keys: 1396, plural: 41 },
+  uk: { keys: 735, plural: 30 },
+  es: { keys: 732, plural: 29 },
+  de: { keys: 732, plural: 30 },
+  fr: { keys: 727, plural: 29 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -444,11 +450,11 @@ const COMPOSITION = {
 // Задачей 16 плана 2D — подпись пустой выдачи селектора пиров (разбор — там же).
 // Задачей 18 плана 2D — ключи вкладки «Код-пароль» (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '6656204c',
-  uk: 'ec1da6fc',
-  es: '5b974fbf',
-  de: '49107eb2',
-  fr: '6c7323a0',
+  ru: 'c3ded982',
+  uk: '98699610',
+  es: 'c86094db',
+  de: '3ffd8916',
+  fr: '39977932',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
@@ -725,7 +731,6 @@ const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
   es: {
     'Premium.Boarding.Title': 'nombre del producto — «Telegram Premium» не переводится',
     AutoDownloadVideos: '«videos» — допустимое испанское написание (лат.-амер. норма)',
-    FilterPersonal: '«personal» — испанское слово, пишется так же',
     ReportChatSpam: '«spam» — заимствование, в испанском Telegram так же',
     FilterChats: '«chats» — заимствование с испанским множественным',
     'SharedMedia.Audio': '«audio» — латинское слово, совпадает',
