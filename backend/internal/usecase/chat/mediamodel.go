@@ -17,5 +17,14 @@ func buildMedia(m domain.Message, src domain.MediaSource) domain.MessageMedia {
 	}
 	src.Spoiler = m.MediaSpoiler
 	src.Kind = m.Type
+	// У служебного сообщения тип строки — 'service', а не вид файла. Фото
+	// действия (новая аватарка чата, предложенное фото) при этом ФОТОГРАФИЯ:
+	// на границе оно встаёт в action.photo (Message.toService), и собранное
+	// документом оно туда не попадало вовсе — action.photo уезжал null и в
+	// живом кадре, и в истории, а пилюле «обновил(а) фото группы» нечего было
+	// нарисовать (tweb wrapServiceMediaBubble ждёт photo._ === 'photo').
+	if domain.ActionCarriesPhoto(m.Action) {
+		src.Kind = "photo"
+	}
 	return domain.BuildMessageMedia(src)
 }

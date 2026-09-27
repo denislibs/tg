@@ -151,6 +151,13 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 			if e := i.msgs.SoftDelete(ctx, msgID); e != nil {
 				return e
 			}
+			// Кто ещё не прочёл удалённое, тому оно больше не непрочитанное.
+			// Без этого хранимый счётчик держал удалённое в бейдже до
+			// следующего прочтения (tweb: сервер пересчитывает unread_count
+			// сам, клиент вычитает на кадре удаления — handleDeletedMessages).
+			if e := i.chats.ForgetUnread(ctx, chatID, cur.SenderID, cur.Seq); e != nil {
+				return e
+			}
 			mem, e := i.chats.MemberIDs(ctx, chatID)
 			if e != nil {
 				return e

@@ -37,3 +37,8 @@ tools/.tg.env
 backend/assets/stickers/*
 !backend/assets/stickers/duck/
 !backend/assets/stickers/animated_emoji/
+
+# Официальный каталог обоев и тем Telegram качает tools/fetch_wallpapers.py
+# своим аккаунтом пользователя — работы художников Telegram в репозиторий не
+# попадают; засев из него: seed-wallpapers --root backend/assets/telegram.
+backend/assets/telegram/

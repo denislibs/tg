@@ -13,7 +13,7 @@ import { useT } from '../../i18n'
 import { ALL_FOLDER_ID } from '../../core/folderIds'
 import type { Folder } from '../../core/managers/foldersManager'
 import { extractFolderEmoji } from './labels'
-import { onActiveGradientRendererChange } from '../../core/chat/activeGradient'
+import appChatBackground from '../chat/bubbles/chatBackground.solid'
 import { useFoldersStore } from '../../stores/foldersStore'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useNotifyStore } from '../../stores/notifyStore'
@@ -129,7 +129,7 @@ export default function FoldersSidebar({
   // блюра над этой областью математически близок к самому градиенту.
   useEffect(() => {
     let detachMirror: (() => void) | undefined
-    const unsubscribe = onActiveGradientRendererChange((renderer, meta) => {
+    const unsubscribe = appChatBackground.onActiveGradientRendererChange((renderer, meta) => {
       detachMirror?.()
       detachMirror = undefined
       const canvas = backgroundCanvasRef.current

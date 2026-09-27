@@ -3,9 +3,12 @@
 // getRgbColorFromTelegramColor, hexToRgb, hslaStringToHex, hslaStringToRgba,
 // hslaToRgba, hsvToRgb, mixColors, rgbaToHexa, rgbaToHsla, rgbToHsv) + их
 // приватные зависимости (hexaToRgba, computePerceivedBrightness, changeBrightness,
-// getHexColorFromTelegramColor, hslaStringToHexa) и `hexaToHsla` выбора цвета
-// (`components/colorPicker.ts`). Формулы не менять — источник
-// истины: /Users/denisurevic/Documents/tweb/src/helpers/color.ts.
+// getHexColorFromTelegramColor, hslaStringToHexa), `hexaToHsla` выбора цвета
+// (`components/colorPicker.ts`) и цвета обоев `getWallPaperColors`/
+// `getColorsFromWallPaper` (фон чата, `chat/bubbles/chatBackground.solid.tsx`).
+// Формулы не менять — источник истины: /Users/denisurevic/Documents/tweb/src/helpers/color.ts.
+
+import type { WallPaper } from '@layer'
 
 export type ColorHsla = {
   h: number
@@ -345,6 +348,28 @@ export function getHexColorFromTelegramColor(color: number): string {
 
 export function getRgbColorFromTelegramColor(color: number): ColorRgb {
   return hexToRgb(getHexColorFromTelegramColor(color))
+}
+
+// tweb :280-300 — цвета обоев из `WallPaperSettings` (до четырёх). Нули после
+// первого отбрасываются: у сплошного белого (`wallPaperNoFile` без узора и
+// интенсивности) сервер шлёт 0 во втором слоте, и с ним вышел бы градиент
+// «белый → чёрный» вместо заливки.
+export function getWallPaperColors(wallPaper: WallPaper | undefined): string[] {
+  const settings = wallPaper?.settings
+  if(!settings) return []
+  return [
+    settings.background_color,
+    settings.second_background_color,
+    settings.third_background_color,
+    settings.fourth_background_color,
+  ]
+  .filter((color, index): color is number => color != null && (index === 0 || color !== 0))
+  .map(getHexColorFromTelegramColor)
+}
+
+// tweb :302-304
+export function getColorsFromWallPaper(wallPaper: WallPaper | undefined): string {
+  return getWallPaperColors(wallPaper).join(',')
 }
 
 /**

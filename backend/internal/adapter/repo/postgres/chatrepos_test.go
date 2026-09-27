@@ -299,6 +299,77 @@ func TestChatsRepo_ReadState(t *testing.T) {
 	}
 }
 
+// ForgetUnread — обратная к IncUnread операция для удалённого «у всех»:
+// минус один только тем, для кого сообщение ещё непрочитанное. Автор, уже
+// прочитавший и очистивший историю — не трогаются; ниже нуля не уходит.
+func TestChatsRepo_ForgetUnread(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewChatsRepo(pool)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+790")
+	b := seedUser(t, pool, "+791")
+	chatID := createPrivate(t, pool, a, b)
+	unread := func(uid int64) int {
+		var n int
+		if err := pool.QueryRow(ctx, `SELECT unread_count FROM chat_members WHERE chat_id=$1 AND user_id=$2`, chatID, uid).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := repo.IncUnread(ctx, chatID, b); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// seq 2 от a: b его не читал — минус один; у автора нуль и остаётся.
+	if err := repo.ForgetUnread(ctx, chatID, a, 2); err != nil {
+		t.Fatal(err)
+	}
+	if got := unread(b); got != 1 {
+		t.Errorf("unread(b) = %d; want 1", got)
+	}
+	if got := unread(a); got != 0 {
+		t.Errorf("unread(a) = %d; want 0", got)
+	}
+
+	// Горизонт b выше удалённого — прочитанное со счётчика не снимается.
+	if err := repo.SetRead(ctx, chatID, b, 5, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.ForgetUnread(ctx, chatID, a, 4); err != nil {
+		t.Fatal(err)
+	}
+	if got := unread(b); got != 1 {
+		t.Errorf("удаление прочитанного: unread(b) = %d; want 1", got)
+	}
+
+	// История очищена выше удалённого — оно в счётчик не входило.
+	if _, err := pool.Exec(ctx, `UPDATE chat_members SET cleared_max_seq=9, last_read_seq=0 WHERE chat_id=$1 AND user_id=$2`, chatID, b); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.ForgetUnread(ctx, chatID, a, 7); err != nil {
+		t.Fatal(err)
+	}
+	if got := unread(b); got != 1 {
+		t.Errorf("удаление за горизонтом очистки: unread(b) = %d; want 1", got)
+	}
+
+	// Ниже нуля не уходит.
+	if err := repo.SetRead(ctx, chatID, b, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE chat_members SET cleared_max_seq=0 WHERE chat_id=$1`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.ForgetUnread(ctx, chatID, a, 10); err != nil {
+		t.Fatal(err)
+	}
+	if got := unread(b); got != 0 {
+		t.Errorf("ниже нуля: unread(b) = %d; want 0", got)
+	}
+}
+
 // История горизонта чтения: разные продвижения дают разное время, и для seq
 // берётся ближайшая СВЕРХУ отметка (иначе «Прочитано в HH:MM» было бы одинаковым
 // у всех сообщений — см. usecase OutboxReadDate).
@@ -852,5 +923,62 @@ func TestTxManager_RollbackOnError(t *testing.T) {
 	// The chat must not exist after rollback.
 	if _, err := chats.FindPrivate(ctx, a, b); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("expected no chat after rollback, got %v", err)
+	}
+}
+
+// Строка списка чатов несёт роль, права админа зрителя и права участника по
+// умолчанию: из них собирается краткая форма чата с `creator`/`admin_rights`/
+// `default_banned_rights` (DialogRecord.ToChannel). Без них клиент не знает,
+// можно ли писать в канал или группу из списка — селектор пересылки
+// показывал каналы, где зритель простой подписчик.
+func TestChatsRepo_ListDialogs_ViewerRights(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewChatsRepo(pool)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+720")
+	sub := seedUser(t, pool, "+721")
+
+	var channelID, groupID int64
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO chats (type, title, creator_id) VALUES ('channel','Канал',$1) RETURNING id`, owner).Scan(&channelID); err != nil {
+		t.Fatalf("channel: %v", err)
+	}
+	// В группе обычным участникам запрещено писать: снят бит send_messages.
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO chats (type, title, creator_id, default_permissions) VALUES ('group','Группа',$1,$2) RETURNING id`,
+		owner, int(domain.AllMemberPerms&^domain.PermSendMessages)).Scan(&groupID); err != nil {
+		t.Fatalf("group: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO chat_members (chat_id, user_id, role, rights) VALUES
+		   ($1,$3,'creator',255), ($1,$4,'subscriber',0),
+		   ($2,$3,'creator',255), ($2,$4,'member',0)`,
+		channelID, groupID, owner, sub); err != nil {
+		t.Fatalf("members: %v", err)
+	}
+
+	byChat := func(userID int64) map[int64]domain.DialogRecord {
+		t.Helper()
+		list, err := repo.ListDialogs(ctx, userID)
+		if err != nil {
+			t.Fatalf("ListDialogs: %v", err)
+		}
+		out := map[int64]domain.DialogRecord{}
+		for _, d := range list {
+			out[d.ChatID] = d
+		}
+		return out
+	}
+
+	mine := byChat(owner)
+	if d := mine[channelID]; d.MyRole != domain.RoleCreator || d.MyRights != 255 {
+		t.Errorf("владелец канала: role=%q rights=%d; want creator/255", d.MyRole, d.MyRights)
+	}
+	theirs := byChat(sub)
+	if d := theirs[channelID]; d.MyRole != domain.RoleSubscriber || d.MyRights != 0 {
+		t.Errorf("подписчик: role=%q rights=%d; want subscriber/0", d.MyRole, d.MyRights)
+	}
+	if d := theirs[groupID]; d.Settings.DefaultPerms&domain.PermSendMessages != 0 || d.Settings.DefaultPerms&domain.PermSendMedia == 0 {
+		t.Errorf("default_permissions группы = %b; want без send_messages, с send_media", d.Settings.DefaultPerms)
 	}
 }

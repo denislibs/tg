@@ -236,6 +236,12 @@ export type BroadcastEvents = {
   // Payload — код языка.
   'language_apply': [void]
   'language_change': [string]
+
+  // ── тема (порт tweb rootScope.ts:188, отправитель — themeController.ts:350) ──
+  // Местное (`dispatchEventSingle`): тему применила эта вкладка
+  // (`core/theme/themeController.ts::setTheme`). Подписчик — фон чата
+  // (`components/chat/bubbles/chatBackground.solid.tsx`).
+  'theme_changed': [void]
 }
 
 export type BroadcastEventsListeners = {
@@ -281,9 +287,9 @@ export class RootScope extends EventListenerBase<BroadcastEventsListeners> {
    *  своей подписки на `user_auth` (rootScope.ts:265-267). У нас так нельзя:
    *  это завело бы ВТОРОГО писателя факта `me` мимо проектора, вопреки таблице
    *  владения фактами (web-client/CLAUDE.md). Пишет ровно та же единственная
-   *  точка, что пишет `chatsStore.meId` — проектор на событие `rt:me`
-   *  (`client/realtime/storeProjection.ts`): один писатель на два зеркала, как
-   *  `[RT.messageOp]` там же пишет и стор, и `messagesMirror`. Держит пин
+   *  точка, что пишет `chatsStore.meId`, — `chatsStore.setMe`: один вызов на
+   *  два зеркала, поэтому они совпадают при ЛЮБОМ входе значения (кадр rt:me
+   *  через проектор или ответ RPC в `loadChats`). Держит пин
    *  `stores/noDuplicateMe.test.ts` (скан `.myId = `). */
   public myId: number
 

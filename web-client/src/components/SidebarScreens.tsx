@@ -3,7 +3,7 @@ import ContactsView from './ContactsView'
 import NewGroupFlow, { type GroupPhoto } from './NewGroupFlow'
 import NewChannelFlow from './NewChannelFlow'
 import NewPrivateChat from './NewPrivateChat'
-import type { Chat } from '../data'
+import type { OpenPeer } from '../data'
 
 // Экран настроек со всеми под-экранами (Privacy/Notifications/Language/…) — большое
 // поддерево JS+CSS, не нужное до первого кадра. Открывается из меню → грузим лениво.
@@ -27,21 +27,22 @@ interface SidebarScreensProps {
   screen: SidebarScreen
   /** снять текущий экран (null) */
   close: () => void
-  chats: Chat[]
   onSettingsBack: () => void
   onSelect: (id: string) => void
+  /** открыть пира (есть диалог — выбрать, нет — черновик): `core/navigation/openPeer.ts` */
+  onOpenPeer: (peer: OpenPeer) => void
   onChatCreated?: (chatId: number) => void
   onCreateGroup: (name: string, memberIds: number[], photo: GroupPhoto | null) => void
   onCreateChannel: (name: string, description: string) => void
-  onStartSecret: (id: string) => void
+  onStartSecret: (userId: PeerId) => void
 }
 
 export default function SidebarScreens({
   screen,
   close,
-  chats,
   onSettingsBack,
   onSelect,
+  onOpenPeer,
   onChatCreated,
   onCreateGroup,
   onCreateChannel,
@@ -64,8 +65,7 @@ export default function SidebarScreens({
       </Suspense>
       {screen === 'contacts' && (
         <ContactsView
-          chats={chats}
-          onSelect={(id) => { close(); onSelect(id) }}
+          onOpenPeer={(peer) => { close(); onOpenPeer(peer) }}
           onBack={close}
           onOpenChat={(chatId) => { close(); onChatCreated?.(chatId) }}
         />
@@ -77,10 +77,10 @@ export default function SidebarScreens({
         <NewChannelFlow onClose={close} onCreate={(name, description) => { onCreateChannel(name, description); close() }} />
       )}
       {screen === 'newPrivate' && (
-        <NewPrivateChat chats={chats} onClose={close} onSelect={onSelect} />
+        <NewPrivateChat onClose={close} onPick={onOpenPeer} />
       )}
       {screen === 'newSecret' && (
-        <NewPrivateChat chats={chats} title="SecretChat.New" excludeBots onClose={close} onSelect={(id) => onStartSecret(id)} />
+        <NewPrivateChat title="SecretChat.New" onClose={close} onPick={(peer) => onStartSecret(peer.id)} />
       )}
     </>
   )

@@ -1,7 +1,7 @@
 // src/core/managers/peersManager.ts
 import { HttpError, type RestClient } from '../net/restClient'
 import { saveUsers as persistUsers, loadUsers, saveChats as persistChats, loadChats } from '../store/persist'
-import { peerKey, type Chat, type User, type UserReal } from '../peers/peer'
+import { peerKey, type Channel, type Chat, type User, type UserReal } from '../peers/peer'
 import { isUser, toUserId } from '../peers/peerId'
 
 // Карточка пира — КОНСТРУКТОР схемы (`user` / `channel` / …), а не плоская
@@ -101,6 +101,45 @@ export function newPeersManager({ rest, onPeerOps }: { rest: Pick<RestClient, 'g
   }
 
   /**
+   * Порт `appChatsManager.saveApiChat` в части слияния с лежащей карточкой
+   * (tweb `appChatsManager.ts:229-244`, `:163-177`): что из пришедшего
+   * `channel` НЕ затирает известное.
+   *
+   *  • `participants_count` не приехал — остаётся прежний (`:239-244`).
+   *  • `min`-конструктор (`:229-231`, форма слияния — `:163-177`). У
+   *    оригинала `min`-канал поверх известного отбрасывается целиком: в
+   *    MTProto это устаревшая выжимка, а полный канал зрителя сервер шлёт
+   *    сам. У нас `min` — это снимок `chat_update` (backend
+   *    `ChatRecord.ToChannel`, `ViewerID == 0`): он ЕДИНСТВЕННЫЙ носитель
+   *    смены названия/фото/настроек в реальном времени, поэтому отбросить
+   *    его нельзя. Сливаем по образцу min-ветки того же `saveApiChat`
+   *    (`:165-176`): общее — из пришедшего, а пер-зрительское (членство
+   *    `creator`/`left`, `admin_rights`, личные `banned_rights`, дата
+   *    вступления `date`) — из лежащего. Без этого создатель после смены
+   *    фото группы оставался без своих прав.
+   *
+   * Слитая карточка уже полная — `min` с неё снимается.
+   */
+  function mergeApiChat(prev: User | Chat, next: User | Chat): User | Chat {
+    if (next._ !== 'channel' || prev._ !== 'channel') return next
+    let out: Channel = next
+    if (out.participants_count === undefined && prev.participants_count) {
+      out = { ...out, participants_count: prev.participants_count }
+    }
+    if (!out.pFlags?.min) return out
+    const { min: _min, creator: _creator, left: _left, ...shared } = out.pFlags
+    const pFlags: NonNullable<Channel['pFlags']> = { ...shared }
+    if (prev.pFlags?.creator) pFlags.creator = true
+    if (prev.pFlags?.left) pFlags.left = true
+    const merged: Channel = { ...out, pFlags, date: prev.date }
+    delete merged.admin_rights
+    delete merged.banned_rights
+    if (prev.admin_rights) merged.admin_rights = prev.admin_rights
+    if (prev.banned_rights) merged.banned_rights = prev.banned_rights
+    return merged
+  }
+
+  /**
    * Положить карточки в кэш. Возвращает подмножество `changed` — те, что
    * ЗАМЕНИЛИ уже лежавшие. Только на них зеркало и может разъехаться с
    * владельцем, поэтому объявлять надо ровно их.
@@ -121,9 +160,10 @@ export function newPeersManager({ rest, onPeerOps }: { rest: Pick<RestClient, 'g
     // офлайн-копии холодный старт БЕЗ СЕТИ показал бы группы без имён — то, что
     // раньше давал сам персист диалогов.
     const persistChatCards: Chat[] = []
-    for (const peer of peers) {
-      const key = peerKey(peer)
+    for (const incoming of peers) {
+      const key = peerKey(incoming)
       const prev = cache.get(key)
+      const peer = prev ? mergeApiChat(prev, incoming) : incoming
       if (prev && same(prev, peer)) continue
       cache.set(key, peer)
       indexUsername(peer, prev)

@@ -1,40 +1,51 @@
 import type { LangPackKey } from '@/lang'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import IconButton from '../shared/ui/IconButton'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
-import Avatar from '../shared/ui/Avatar'
-import { useMediaUrl } from '../core/hooks/useMediaUrl'
-import type { Chat } from '../data'
+import UserAvatar from './UserAvatar'
+import { PeerStatus } from '../shared/ui/peerStatus'
+import { useContactPeerIds } from '../core/hooks/useContactPeerIds'
+import { usePeers } from '../core/hooks/usePeers'
+import { useChatsStore } from '../stores/chatsStore'
+import { getUserTitle } from '../core/peers/getPeerTitle'
+import { getPeerPhotoId, type UserReal } from '../core/peers/peer'
+import type { OpenPeer } from '../data'
 import { useT } from '../i18n'
 import s from './NewPrivateChat.module.scss'
 
-// Строка контакта: id медиа фото → objectURL воркерного конвейера (иначе
-// <img> ловит 401 и аватар «пропадает»), фолбэк — градиент+инициал.
-function ContactRow({ c, onPick }: { c: Chat; onPick: () => void }) {
-  const src = useMediaUrl(c.photoId ?? null)
+// Строка контакта: аватарка — конвейером воркера (`UserAvatar` → useMediaUrl),
+// фолбэк — градиент+инициал.
+function ContactRow({ user, name, onPick }: { user: UserReal; name: string; onPick: () => void }) {
+  const presence = useChatsStore((st) => st.presence[user.id])
   return (
-    <div className={s.row} onClick={onPick}>
-      <Avatar background={c.avatar} text={c.avatarText} emoji={c.avatarEmoji} src={src || undefined} preview={c.avatarPreview} size="lg" />
+    <div className={s.row} data-peer-id={user.id} onClick={onPick}>
+      <UserAvatar id={user.id} name={name} photoId={getPeerPhotoId(user.photo) || undefined} size="lg" />
       <div className={s.rowText}>
-        <Text noWrap size={16} weight={500} color="var(--primary-text-color)">{c.name}</Text>
-        <Text noWrap size={14} color="var(--secondary-text-color)">{c.status}</Text>
+        <Text noWrap size={16} weight={500} color="var(--primary-text-color)">{name}</Text>
+        <Text noWrap size={14} color="var(--secondary-text-color)"><PeerStatus status={presence ?? user.status} /></Text>
       </div>
     </div>
   )
 }
 
 interface Props {
-  chats: Chat[]
   onClose: () => void
-  onSelect: (id: string) => void
+  onPick: (peer: OpenPeer) => void
   /** заголовок экрана (по умолчанию «New Message»); секретный чат переиспользует пикер */
   title?: LangPackKey
-  /** секретный чат: боты недоступны (у ботов нет E2E-секретов), скрываем их */
-  excludeBots?: boolean
 }
 
-export default function NewPrivateChat({ chats, onClose, onSelect, title = 'Compose.NewMessage', excludeBots }: Props) {
+/**
+ * «Новое сообщение» (и «Новый секретный чат») — выбор собеседника из АДРЕСНОЙ
+ * КНИГИ. У tweb кнопка `newprivate` открывает `AppContactsTab`
+ * (`sidebarLeft/index.ts:1039`), то есть тот же список контактов, что и пункт
+ * «Контакты»: `getContactsPeerIds(query, false)`, без себя, без служебного
+ * «Telegram» и без собеседников вне книги. Ботов в книге не бывает (сервер их
+ * туда не пускает, `usecase/contacts::ErrCannotAddBot`), поэтому отдельный
+ * фильтр ботов для секретного чата больше не нужен.
+ */
+export default function NewPrivateChat({ onClose, onPick, title = 'Compose.NewMessage' }: Props) {
   const t = useT()
   const [query, setQuery] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
@@ -45,11 +56,14 @@ export default function NewPrivateChat({ chats, onClose, onSelect, title = 'Comp
     return () => window.clearTimeout(id)
   }, [])
 
-  const people = chats.filter(
-    (c) =>
-      (c.type === 'private' || c.type === 'bot') &&
-      !(excludeBots && (c.isBot || c.type === 'bot')) &&
-      c.name.toLowerCase().includes(query.toLowerCase()),
+  const contactIds = useContactPeerIds(query)
+  const cards = usePeers(contactIds ?? [])
+  const people = useMemo(
+    () => (contactIds ?? []).flatMap((id) => {
+      const user = cards.get(id)
+      return user?._ === 'user' ? [{ user, name: getUserTitle(user) }] : []
+    }),
+    [contactIds, cards],
   )
 
   return (
@@ -87,8 +101,16 @@ export default function NewPrivateChat({ chats, onClose, onSelect, title = 'Comp
             <Text size={15} color="var(--secondary-text-color)">{t('Search.EmptyQuery')}</Text>
           </div>
         ) : (
-          people.map((c) => (
-            <ContactRow key={c.id} c={c} onPick={() => { onSelect(c.id); onClose() }} />
+          people.map(({ user, name }) => (
+            <ContactRow
+              key={user.id}
+              user={user}
+              name={name}
+              onPick={() => {
+                onPick({ id: user.id, title: name, username: user.username, photoId: getPeerPhotoId(user.photo) || undefined })
+                onClose()
+              }}
+            />
           ))
         )}
       </div>

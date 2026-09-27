@@ -549,6 +549,14 @@ bubble-content > div.service-msg` с текстом от `wrapMessageActionTextN
 | Channel joined → similar channels [Ф] | `is-similar-channels`, разворачиваемый `div.bubble-similar-channels` (7028–7122) |
 | `pFlags.is_single` | + `is-group-last` (7272–7274) |
 
+**У нас (смена фото чата):** `components/chat/serviceMediaBubble.ts` — порт
+`wrapServiceMediaBubble` + `wrapPhotoToAvatar` (`components/avatar.ts`), зовётся из
+`serviceMessage.ts::createServiceBubble` для `messageActionChatEditPhoto` с
+`photo._ === 'photo'`. Фото действия бэкенд собирает фотографией, хотя тип строки
+`service` (`usecase/chat/mediamodel.go`, `domain.ActionCarriesPhoto`); раньше оно
+уезжало документом и `action.photo` был `null`. Не портированы клик → медиавьювер
+(`inputMessagesFilterChatPhotos` у нас нет) и кнопка у `suggest_photo`.
+
 **Дата-пилюля** (`createDateBubble`, 4780–4813): `div.bubble.service.is-date >
 div.bubble-content > div.service-msg > (i18n-дата)`. Заметь: у даты НЕТ
 `bubble-content-wrapper`. В каждой date-группе их две — sticky + `is-fake`.
@@ -618,6 +626,15 @@ div.reply.quote-like.quote-like-hoverable.quote-like-border[.quote-like-icon.rep
 
 - `needName` (9331–9335): `(fromId !== myId || !isOut) && chat.isLikeGroup`, либо viaBot,
   story-форвард и пр. Если ничего не нужно → `hide-name`.
+- Узел имени у НЕ-пересылки рисуется только при `needName && (!isStandaloneMedia ||
+  isEphemeral)` — `shouldRenderSenderNameWithEphemeralBadge` (tweb 812502980:
+  `placeEphemeralBadge.ts:1-7`, вызов `bubbles.ts:10885-10889`; до эфемерных сообщений —
+  буквально `!context.isStandaloneMedia && needName`). Иначе → `hide-name` (:10908-10910).
+  Standalone-медиа — ровно стикер (`wrapSticker`, :7012), кружок (:9920-9922) и большое
+  эмодзи (:8875): у них имени автора нет и в группе, автора называет аватарка серии.
+  Обёртка `div.name-with-reply.floating-part` (:10956-10961) строится, только когда имя у
+  standalone-медиа всё же есть (эфемерное сообщение); без имени плавающей плашкой
+  становится сам ответ — `reply.floating-part` (:10974-10976).
 - Обычное имя: `div.name.floating-part[.colored-name] data-peer-id > span.peer-title`
   (+ scam/fake иконка); `colored-name` — только для чужих (9498–9514).
 - **Forwarded**: `div.name >` `span.bubble-name-forwarded` = i18n «Forwarded from %1»
@@ -627,6 +644,32 @@ div.reply.quote-like.quote-like-hoverable.quote-like-border[.quote-like-icon.rep
   `div.name-first-line` (9476–9495).
 - **via-бот**: `span.is-via > i18n(ViaBot) + span.peer-title(@username)` аппендится в name
   (9520–9532).
+
+**У нас (имя автора, `components/chat/bubbles.ts`: `needName` → `showName` → `renderMessage`):**
+`needName` — порт :9325-9335 (первое слагаемое; у остальных нет предмета), `showName` —
+порт `shouldRenderSenderNameWithEphemeralBadge` без `isEphemeral` (эфемерных сообщений в
+модели нет), `isStandaloneMedia` — стикер и кружок (большого эмодзи в ванильной ленте нет:
+такие сообщения рисуются обычным текстом). `showName` решает и узел, и класс `hide-name`
+(через `bubbleClasses`); у standalone-бабла без имени ответ получает `floating-part`.
+`name-with-reply` не портирован — у него нет пути без эфемерных сообщений. Раньше узел
+имени вставлялся и стикеру/кружку, и `.floating-part` у `just-media` становился
+абсолютной плашкой в стороне от стикера. Пины — `chat/bubbles.stickers.test.ts`,
+`chat/bubbles.media.test.ts` (describe «имя автора у стикера/кружка в группе»).
+
+Своё исходящее в группе имени не получает при ИЗВЕСТНОМ `rootScope.myId` — у tweb
+`iPostedAsSomeoneElse` сравнивает автора с `rootScope.myId`, и при пустом id любое своё
+сообщение выглядит «от другого». У нас так и было сразу после входа без перезагрузки:
+`myId` писал только проектор кадра `rt:me`, а этот кадр вкладка на экране входа не
+принимает (насос поднимает Shell), `useAuthGate.login()` не обесценивал префетч старта
+(`me === null` с загрузки страницы). Теперь `login()` зовёт `invalidateBootPrefetch()`, а
+оба зеркала (`chatsStore.meId` и `rootScope.myId`) пишет один `chatsStore.setMe` — пины
+`core/hooks/useAuthGate.test.tsx`, `stores/chatsStore.test.ts`, `stores/noDuplicateMe.test.ts`.
+
+**Остаток (найден по ходу, не портирован):** по коду tweb у фото/видео/`single-media` ставится
+`hide-name` по `canHideNameIfMedia` (:9183-9188, :9284-9286, :9930-9932, :10238-10240), а
+узел имени вставляется только без него (:10946) — то есть у входящего медиа в группе имени
+тоже нет (сверить на живом tweb перед портом). У нас `bubbleClasses` этого гейта не
+знает, и входящее фото в группе несёт имя.
 - Ранг админа/подпись: `wrapTitleAndRank` добавляет справа от имени (9600–9633).
 - topic-кнопка (форумы): `div.topic-name-button-container` в name либо floating над медиа
   (7647–7669, 9553–9565).
@@ -897,6 +940,7 @@ grid в его `::before` (`$reply-markup-margin-top` + ряды по `$reply-ma
 | `src/components/messages/MessageContent.tsx` | выбор контента по `m.type` (один каскад тернарников ~15 типов) |
 | `src/components/messages/bubbleParts/*` | `Time.tsx` (порт setTime, 6 режимов), `primitives.tsx` (радиусы, BubbleTail), `mediaBubbles/richBubbles` |
 | отдельные типы | `RealMediaBubble`, `AlbumGrid`, `VoiceMessage`, `PollBubble`, `ChecklistBubble`, `GiftBubble`, `GiveawayBubble`, `MessageReactions`, `InlineKeyboard`, `CommentsBar` |
+| `src/components/chat/bubbles/chatBackground.solid.tsx` (+ `.module.scss` дословно) | фон под лентой — порт `bubbles/chatBackground.tsx` на Solid (слои, узор, градиент — `chat-feed.md` §9.1); он же пишет `--message-highlighting-color` в `:root` из среднего цвета обоев (`:363-367`, `:623`), её читают `is-highlighted`/сервис-баблы (§7.2). В контейнер чата цвет не пишется (у tweb — `chat.ts:421-433`, О-39) |
 | стили | глобальный порт `src/styles/tweb/_chatBubble.scss` (4236 строк) + `_quote/_reaction/_audio/_document/_spoiler`; остатки SCSS-модулей `MessageRow.module.scss` и др. |
 
 DOM бабла у нас уже близок к tweb: `div.bubble.is-in|is-out…` → `bubble-content-wrapper` →

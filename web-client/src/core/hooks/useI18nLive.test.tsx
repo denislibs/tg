@@ -67,7 +67,7 @@ afterEach(async () => {
 
 describe('useSidebarActions: название по умолчанию — на языке МОМЕНТА ВЫЗОВА', () => {
   it('язык сменили при открытом сайдбаре — на сервер уезжает новое название', async () => {
-    const { result } = renderHook(() => useSidebarActions([]), { wrapper })
+    const { result } = renderHook(() => useSidebarActions(), { wrapper })
 
     await switchTo('ru')
     await act(async () => { await result.current.createGroup('', [], null) })

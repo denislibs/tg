@@ -171,6 +171,12 @@ func (c ChatForbidden) PeerID() PeerID { return ToPeerID(c.ID, true) }
 // autotranslation, stories_*) предмета у нас не имеют — ни колонки, ни механики
 // за ними нет, поэтому они не объявляются, а не выставляются наугад.
 type ChannelFlags struct {
+	// Min — конструктор БЕЗ зрителя (schema min:flags.12): членство
+	// (creator/left, admin_rights, banned_rights) и date в нём не заполнены,
+	// потому что их не спрашивали. Клиент такой объект не кладёт поверх
+	// известной карточки целиком, а сохраняет её пер-зрительские поля
+	// (web-client core/managers/peersManager.ts, порт saveApiChat).
+	Min               bool
 	Creator           bool
 	Left              bool
 	Broadcast         bool
@@ -185,7 +191,7 @@ type ChannelFlags struct {
 // channelFlagNames — что keepPFlags пропускает в модель на разборе.
 var channelFlagNames = []string{
 	"creator", "left", "broadcast", "megagroup", "signatures",
-	"signature_profiles", "slowmode_enabled", "forum", "has_link",
+	"signature_profiles", "slowmode_enabled", "forum", "has_link", "min",
 }
 
 // channel#1c32b11c flags:# creator:flags.0?true left:flags.2?true
@@ -254,6 +260,7 @@ func NewChannel(id int64, title string, photo ChatPhoto, date time.Time, f Chann
 		photo = NewChatPhotoEmpty()
 	}
 	c := Channel{Underscore: ChannelTag, ID: id, Title: title, Photo: photo, Date: unixSeconds(date)}
+	setPFlag(&c.PFlags, "min", f.Min)
 	setPFlag(&c.PFlags, "creator", f.Creator)
 	setPFlag(&c.PFlags, "left", f.Left)
 	setPFlag(&c.PFlags, "broadcast", f.Broadcast)

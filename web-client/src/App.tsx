@@ -10,7 +10,8 @@ import Chat from './components/Chat'
 import ChatsContainer from './components/chat/ChatsContainer'
 import type { ChatInstanceDesc } from './stores/chatStackStore'
 import PopupHost from './components/PopupHost'
-import ChatBackground from './components/ChatBackground'
+import appChatBackground from './components/chat/bubbles/chatBackground.solid'
+import { getChatThemeBackground } from './wallpapers'
 import SvgDefs from './components/SvgDefs'
 import GlobalOverlays from './components/shell/GlobalOverlays'
 import { mountAuthFlow } from './components/auth/mountAuthFlow.solid'
@@ -229,7 +230,20 @@ function ThemedApp() {
   const { authed, login, logout } = useAuthGate()
   const managers = useManagers()
   const toggleMode = useThemeToggle()
-  const { shellThemeVariant } = useShellTheme()
+  const { shellChatTheme } = useShellTheme()
+
+  // Фон страницы в теме активного чата — роль tweb `Chat.publishBackground`
+  // (`chat.ts:380-433`, звучит из `update()` на смене пира/темы, :500-547).
+  // Публикует оболочка, а не инстанс чата (О-39 в шапке
+  // `components/chat/bubbles/chatBackground.solid.tsx`): активный чат знает
+  // навигация, а не колонка. Без темы — обои приложения (`theme: undefined`).
+  // Смену дня/ночи для темы чата синглтон переигрывает сам (`theme_changed`,
+  // объект темы стабилен).
+  useLayoutEffect(() => {
+    void appChatBackground.setBackground({
+      theme: shellChatTheme && getChatThemeBackground(shellChatTheme),
+    })
+  }, [shellChatTheme])
 
   // Точка монтирования экрана входа — Solid, порт tweb `mountAuthFlow`
   // (устройство — components/auth/mountAuthFlow.solid.tsx). DOM auth-хоста
@@ -241,10 +255,10 @@ function ThemedApp() {
   // (не мемоизирована), но остров ловит её ОДНАЖДЫ, на монтирование: она не
   // из зависимостей эффекта намеренно, ровно как `props` у `SolidIsland` —
   // повторный маунт при каждом ре-рендере ThemedApp разрушил бы состояние
-  // экрана входа. Это безопасно: `login()` лишь чистит localStorage и зовёт
-  // `setAuthed(true)`, а сам `setAuthed` — стабильный сеттер `useState`,
-  // поэтому любой снимок `login` ведёт себя одинаково независимо от рендера,
-  // на котором он был захвачен.
+  // экрана входа. Это безопасно: `login()` лишь обесценивает префетч старта,
+  // чистит localStorage и зовёт `setAuthed(true)`, а сам `setAuthed` —
+  // стабильный сеттер `useState`, поэтому любой снимок `login` ведёт себя
+  // одинаково независимо от рендера, на котором он был захвачен.
   useLayoutEffect(() => {
     if (authed) return
     return mountAuthFlow({ managers, onComplete: login })
@@ -259,14 +273,6 @@ function ThemedApp() {
   return (
     <>
       <SvgDefs />
-      {/* Анимированный 4-точечный градиент + узор. Как в tweb, слой монтируется
-          ДО ветвления по authState (index.ts:544 `appChatBackground.attach()`
-          стоит раньше разбора authState на :549) — поэтому обои видны и за
-          карточкой входа: её хост прозрачен, непрозрачна только сама карточка.
-          Обои темы активного чата поднимаются сюда, чтобы весь shell был в теме
-          (осознанное отклонение от tweb-скоупа для цветов — см. useShellTheme);
-          цвета темы чата при этом остаются локально в колонке (Chat). */}
-      <ChatBackground themeColors={shellThemeVariant?.gradient} />
       {authed && <Shell onToggleMode={toggleMode} onLogout={logout} />}
     </>
   )

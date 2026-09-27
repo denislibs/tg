@@ -14,15 +14,18 @@
  *
  * Стабы — только границы: канал к воркеру (`invokePasscode`), сверка/разблокировка
  * (`lib/passcode/actions.ts` — PBKDF2 и ключ проверены своими тестами), число
- * аккаунтов из открытого слоя, лотти обезьянки и холсты фона (у happy-dom нет 2D).
+ * аккаунтов из открытого слоя, лотти обезьянки; фону — поддельный 2D-контекст (у happy-dom его нет).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'solid-js/web'
 import { setAppWindow } from '@helpers/appWindow'
 import { useSettingsStore } from '@/settings'
+import { installFakeCanvas } from '@/test/fakeCanvas'
+import ChatBackgroundGradientRenderer from '@core/chat/gradientRenderer'
 import PasscodeLockScreen from './passcodeLockScreen.solid'
 import styles from './passcodeLockScreen.module.scss'
 import monkeyStyles from './passwordMonkeyTsx.module.scss'
+import backgroundStyles from '@components/chat/bubbles/chatBackground.module.scss'
 
 const invokePasscode = vi.hoisted(() => vi.fn(async(_task: { method: string }) => undefined))
 vi.mock('@/client/passcodeClient', () => ({ invokePasscode }))
@@ -45,18 +48,10 @@ vi.mock('@lib/lottie/lottieLoader', () => ({
   },
 }))
 
-const toNextPosition = vi.hoisted(() => vi.fn())
-vi.mock('@core/chat/gradientRenderer', () => ({
-  default: class {
-    init() {}
-    toNextPosition = toNextPosition
-    static createCanvas() { return document.createElement('canvas') }
-  },
-}))
-vi.mock('@core/chat/patternRenderer', async(importOriginal) => ({
-  ...(await importOriginal<object>()),
-  renderPattern: vi.fn(),
-}))
+// Фон — настоящий `<ChatBackground>` поверх поддельного 2D-контекста; ввод
+// сдвигает его градиент (`passcodeLockScreen.tsx:113-122`) — шпион на методе.
+let fakeCanvas: ReturnType<typeof installFakeCanvas>
+const toNextPosition = vi.spyOn(ChatBackgroundGradientRenderer.prototype, 'toNextPosition').mockImplementation(() => {})
 
 // мост настроек — настоящий, запись под шпионом: срок попытки идёт путём tweb
 const bridge = vi.hoisted(() => ({ setAppSettings: undefined as unknown as ReturnType<typeof vi.fn> }))
@@ -115,6 +110,7 @@ beforeEach(() => {
   actions.unlockWithPasscode.mockClear()
   toNextPosition.mockClear()
   bridge.setAppSettings.mockClear()
+  fakeCanvas = installFakeCanvas()
   useSettingsStore.setState({ passcodeCanAttemptAgainOn: null })
 })
 
@@ -124,6 +120,7 @@ afterEach(() => {
   setAppWindow(window)
   vi.restoreAllMocks()
   document.body.replaceChildren()
+  fakeCanvas.restore()
 })
 
 describe('PasscodeLockScreen — разметка tweb', () => {
@@ -137,7 +134,11 @@ describe('PasscodeLockScreen — разметка tweb', () => {
     // (не на мобильном — там `<Show>` его не рисует)
     const card = container.querySelector(`:scope > .${styles.Card}`) as HTMLElement
     expect(card).not.toBeNull()
-    expect(container.firstElementChild).not.toBe(card)
+    // …и это тот же `<ChatBackground>`, что рисует фон страницы: слой с двумя слотами
+    const layer = container.firstElementChild as HTMLElement
+    expect(layer.classList.contains(backgroundStyles.Layer)).toBe(true)
+    expect([...layer.children].every((slot) => slot.classList.contains(backgroundStyles.Slot))).toBe(true)
+    expect(layer.children).toHaveLength(2)
 
     const [monkey, space1, form, space2, description] = Array.from(card.children) as HTMLElement[]
     expect(monkey.classList.contains(monkeyStyles.PasswordMonkey)).toBe(true)

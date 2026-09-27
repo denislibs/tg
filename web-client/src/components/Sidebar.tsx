@@ -127,7 +127,7 @@ export default function Sidebar({
     return open?.thread.kind === 'topic' ? open.thread.rootMsgId : null
   })
   const onSelect = useNavigationStore((st) => st.selectChat)
-  const { openTopicThread: onOpenTopic, onChatCreated } = useNavigationActions()
+  const { openTopicThread: onOpenTopic, onChatCreated, openPeer: onOpenPeer } = useNavigationActions()
 
   // Экраны левой колонки взаимоисключающие — один стейт-энум (см. <SidebarScreens>).
   const [screen, setScreen] = useState<SidebarScreen>(null)
@@ -146,7 +146,7 @@ export default function Sidebar({
   // замок, `has-open-tabs`. Классы перехода React не ставит — см. разметку.
   const [searching, setSearching] = useState(false)
   const stories = useSidebarStories()
-  const actions = useSidebarActions(chats, onChatCreated)
+  const actions = useSidebarActions(onChatCreated)
   const { handleSelect, forumChat, closeForum, panel: forumPanel } = useForumPanel({ chats, onSelect, activeTopicId, onOpenTopic })
   // Владелец поиска (порт `initSearch`, `components/sidebarLeft/globalSearch.ts`);
   // шов и расхождения — шапка `core/hooks/useGlobalSearch.ts`.
@@ -522,9 +522,9 @@ export default function Sidebar({
       <SidebarScreens
         screen={screen}
         close={closeScreen}
-        chats={chats}
         onSettingsBack={closeScreen}
         onSelect={onSelect}
+        onOpenPeer={onOpenPeer}
         onChatCreated={onChatCreated}
         onCreateGroup={actions.createGroup}
         onCreateChannel={actions.createChannel}

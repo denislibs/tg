@@ -32,7 +32,6 @@ import {
   getAccentColor,
   getAverageColor,
   hexToRgb,
-  highlightingColor,
   hslaStringToHex,
   hslaStringToRgba,
   hslaToRgba,
@@ -43,6 +42,7 @@ import {
 } from '../../shared/lib/color'
 import type { ColorRgb } from '../../shared/lib/color'
 import { resolvePreset, type ThemeChoice } from '../../theme'
+import rootScope from '@lib/rootScope'
 
 // tweb scss/variables.scss:6 `$hover-alpha: .08;` = дефолт `lightenAlpha` в
 // сигнатуре `applyAppColor` (themeController.ts:540); `darkenAlpha = lightenAlpha`
@@ -284,13 +284,18 @@ export function setTheme(preset: ThemePresetName): void {
   getOrCreateStyleEl().textContent = `${css}.night{${mirror}}`
 
   applyHighlightingColor(preset)
+
+  // tweb :350 `rootScope.dispatchEventSingle('theme_changed')` — местное: тема
+  // применена у этой вкладки; подписчик — фон чата (перерисовка обоев темы).
+  rootScope.dispatchEventSingle('theme_changed')
 }
 
 // Порт `applyHighlightingColor` (tweb helpers/themeController.ts:293-316) —
 // пишет три инлайн-переменные подсветки (сервис-баблы/date-пилюли/hover) на
-// element. По умолчанию — на documentElement (глобальная тема), для per-чата
-// вызывается с element (см. applyChatTheme ниже, tweb chat.ts:564-566).
-function applyHighlightingColorHsla(hsla: string, element: HTMLElement): void {
+// element, по умолчанию — на documentElement. Готовый hsla приходит от фона
+// чата (средний цвет обоев, `chat/bubbles/chatBackground.solid.tsx`, tweb
+// chatBackground.tsx:623) или из умолчаний пресета (`applyHighlightingColor`).
+export function applyHighlightingColorHsla(hsla: string, element: HTMLElement = document.documentElement): void {
   const rgba = hslaStringToRgba(hsla)
   element.style.setProperty('--message-highlighting-color', hsla)
   element.style.setProperty('--message-highlighting-color-rgb', rgba.slice(0, 3).join(','))
@@ -309,15 +314,6 @@ export function applyHighlightingColor(
   element: HTMLElement = document.documentElement,
 ): void {
   applyHighlightingColorHsla(DEFAULT_HIGHLIGHTING_COLORS[preset], element)
-}
-
-// Для узла 3 (средний цвет обоев) — highlightingColor() из среднего RGB обоев,
-// а не из статичного пресетного hsla.
-export function applyHighlightingColorFromRgb(
-  rgb: [number, number, number],
-  element: HTMLElement = document.documentElement,
-): void {
-  applyHighlightingColorHsla(highlightingColor(rgb), element)
 }
 
 export function getCurrentPreset(): ThemePresetName | null {
@@ -458,8 +454,8 @@ export function applyChatTheme(
     element.style.setProperty(name, value)
   }
   // highlighting-переменные НЕ пишем на per-чатовый контейнер: они глобальны и
-  // выводятся из среднего цвета активных обоев в ChatBackground
-  // (applyHighlightingColorFromRgb на documentElement, 1:1 tweb chatBackground.tsx:365).
+  // выводятся из среднего цвета активных обоев фоном чата
+  // (`applyHighlightingColorHsla` на documentElement, tweb chatBackground.tsx:623).
   // Инлайн на колонке затирал бы этот wallpaper-derived цвет.
 }
 

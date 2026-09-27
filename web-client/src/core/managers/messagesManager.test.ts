@@ -753,6 +753,18 @@ describe('MessagesManager.cacheDelete', () => {
     expect(ops).toEqual([])
   })
 
+  // Владелец диалогов вычитает удалённые непрочитанные входящие (tweb
+  // onUpdateDeleteMessages) — а «было ли оно входящим» знает только снимок ДО
+  // эвикции. Неизвестное SSOT сообщение не сообщается вовсе: спросить не о чем.
+  it('отдаёт удалённое сообщение снимком до эвикции (onMessagesDeleted)', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    const deleted: { peerId: number; ids: number[] }[] = []
+    const mgr = newMessagesManager({ rest, onMessagesDeleted: (peerId, list) => deleted.push({ peerId, ids: list.map((m) => m.id) }) })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    mgr.cacheDelete({ _: 'updateDeletePeerMessages', peer: { _: 'peerUser', user_id: 1 }, messages: [2, 999] })
+    expect(deleted).toEqual([{ peerId: 1, ids: [cid(2)] }])
+  })
+
   // Многооконность для remove: ключи окон обязаны вычисляться ДО evictMsg — после
   // удаления seq уже выкинут из всех срезов, и второй проход не нашёл бы ни
   // основное окно, ни окно треда (регресс, который эта проверка ловит).

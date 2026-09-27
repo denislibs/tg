@@ -80,9 +80,9 @@ export function bootPrefetch(): { me: Promise<PeerProfile | null>; dialogsReady:
 
 /**
  * Активная сессия сменилась — префетч прошлой жизни страницы больше не
- * действителен. Зовут обработчики переходов (`useAuthGate`): и уход
- * (`rt:logging_out`), и вход (`rt:logged_in`) одинаково означают, что токен под
- * страницей уже не тот, при котором префетч поднимали.
+ * действителен. Зовут переходы в `useAuthGate`: уход (`rt:logging_out`), вход
+ * в соседней вкладке (`rt:logged_in`) и вход в этой же (`login()`) одинаково
+ * означают, что токен под страницей уже не тот, при котором префетч поднимали.
  */
 export function invalidateBootPrefetch(): void {
   prefetchValid = false

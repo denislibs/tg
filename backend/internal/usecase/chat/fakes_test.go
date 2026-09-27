@@ -304,6 +304,17 @@ func (r fakeChats) IncUnreadBulk(_ context.Context, chatID int64, userIDs []int6
 	return out, nil
 }
 
+func (r fakeChats) ForgetUnread(_ context.Context, chatID, senderID, seq int64) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for uid, m := range r.s.members[chatID] {
+		if uid != senderID && m.lastReadSeq < seq && m.clearedSeq < seq && m.unread > 0 {
+			m.unread--
+		}
+	}
+	return nil
+}
+
 func (r fakeChats) IncUnreadReactions(_ context.Context, chatID, userID int64) (int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

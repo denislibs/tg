@@ -293,6 +293,24 @@ describe('AppSelectPeers — подгрузка', () => {
     expect(rowIds(selector)).toEqual([2, -10])
   })
 
+  // О-31: `chatRightsActions` + `filterByRights` (`appSelectPeers.tsx:782-787`,
+  // `:827-834`, `:878-883`) — куда писать нельзя, того в списке нет.
+  it('chatRightsActions [send_messages]: канал без права постить и немая группа отсеяны; личка, свой канал и группа видны', async() => {
+    const OPEN = { _: 'chatBannedRights', until_date: 0 }
+    PEERS.set(-30, { _: 'channel', id: 30, title: 'Своя', date: 0, photo: { _: 'chatPhotoEmpty' }, pFlags: { broadcast: true, creator: true }, default_banned_rights: OPEN } as Chat)
+    PEERS.set(-40, { _: 'channel', id: 40, title: 'Немая', date: 0, photo: { _: 'chatPhotoEmpty' }, pFlags: { megagroup: true }, default_banned_rights: { ...OPEN, pFlags: { send_messages: true } } } as Chat)
+    PEERS.set(-50, { _: 'channel', id: 50, title: 'Группа', date: 0, photo: { _: 'chatPhotoEmpty' }, pFlags: { megagroup: true }, default_banned_rights: OPEN } as Chat)
+    useChatsStore.setState({ dialogIndexById: { 2: 900, [-20]: 800, [-30]: 700, [-40]: 600, [-50]: 500 } })
+    getDialogs.mockImplementation(async({ filterId }: { filterId: number }) => page(filterId === 0 ? [2, -20, -30, -40, -50] : []))
+    try {
+      const selector = build({ chatRightsActions: ['send_messages'], exceptSelf: true })
+      await settle()
+      expect(rowIds(selector)).toEqual([2, -30, -50])
+    } finally {
+      for(const id of [-30, -40, -50]) PEERS.delete(id)
+    }
+  })
+
   it('страница не последняя: курсор — индекс последнего из зеркала, следующая — по прокрутке к низу', async() => {
     getDialogs.mockImplementation(async({ offsetIndex, filterId }: { offsetIndex: number, filterId: number }) => {
       if(filterId !== 0) return page([])
@@ -397,6 +415,22 @@ describe('AppSelectPeers — поиск', () => {
     await type(selector, 'u')
     expect(search).toHaveBeenCalledWith('u')
     expect(rowIds(selector)).toEqual([2, 4, 3])
+  })
+
+  it('chatRightsActions: выдача глобального поиска тоже фильтруется правами', async() => {
+    search.mockResolvedValue({
+      _: 'contacts.found',
+      my_results: [],
+      results: [{ _: 'peerUser', user_id: 3 }, { _: 'peerChannel', channel_id: 20 }],
+      chats: [], users: [],
+    })
+    getContactsPeerIds.mockImplementation(async() => [])
+    getDialogs.mockImplementation(async() => page([]))
+    const selector = build({ peerType: ['dialogs', 'contacts'], chatRightsActions: ['send_messages'], exceptSelf: true })
+    await settle()
+
+    await type(selector, 'u')
+    expect(rowIds(selector)).toEqual([3])
   })
 
   it('выбор при непустом запросе очищает поле', async() => {

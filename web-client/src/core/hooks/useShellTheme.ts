@@ -1,27 +1,28 @@
-// Тема активного чата (только её вариант — акцент/градиент обоев), нужная
-// глобальному ChatBackground (App), чтобы обои темы чата были видны за
-// колонками (tweb рисует обои per-peer, а не только в колонке). Цветовые
-// CSS-переменные (--primary-color и производные) больше НЕ поднимаются на
-// шелл — tweb применяет тему чата только на контейнере колонки чата
+// Тема активного чата — её публикует в фон страницы оболочка (`App.tsx` →
+// `appChatBackground.setBackground({theme})`, роль tweb `Chat.publishBackground`,
+// chat.ts:380-433; tweb рисует обои per-peer на фоне всей страницы, а не только в
+// колонке). Цветовые CSS-переменные (--primary-color и производные) на шелл НЕ
+// поднимаются — tweb применяет тему чата только на контейнере колонки чата
 // (chat.ts applyContainerTheme → applyTheme(theme, this.container)), боковые
 // колонки остаются на глобальной теме. Скоуп цвета — в Chat
 // (applyChatTheme/clearChatTheme на .root).
 //
-// Хук читает всё из сторов и не принимает аргументов: обои монтируются выше
-// ветвления authed (как `appChatBackground.attach()` в tweb index.ts:544 — до
-// разбора authState), то есть в точке, где Shell со своим `selected`/`threadChat`
-// ещё не существует. На экране входа выбора нет, вариант выходит undefined и
-// обои рисуются дефолтной темой — как в tweb.
+// Хук отдаёт саму тему, а не её вариант дня/ночи: вариант выбирает фон при
+// разрешении по текущей теме (`wallpapers.ts::getThemeWallPaper`), как tweb —
+// базу облачной темы (`themeController.getThemeSettings`).
+//
+// Хук читает всё из сторов и не принимает аргументов: публикация стоит выше
+// ветвления authed, в точке, где Shell со своим `selected`/`threadChat` ещё не
+// существует. На экране входа выбора нет, тема выходит undefined и фон рисует
+// обои приложения — как в tweb.
 import { useSyncExternalStore } from 'react'
-import { chatThemeVariant, type ChatThemeVariant } from '../../chatThemes'
+import { chatThemeById, type ChatTheme } from '../../chatThemes'
 import { cachedPeerTheme, chatFullMirrorVersion, subscribeChatFullMirror } from '../chatFullCache'
-import { resolvePreset, PRESET_MODE } from '../../theme'
-import { useSettingsStore } from '../../settings'
 import { useNavigationStore } from '../../stores/navigationStore'
 import { useChatStackStore, selectOpenThreadDesc } from '../../stores/chatStackStore'
 
 export interface ShellTheme {
-  shellThemeVariant: ChatThemeVariant | undefined
+  shellChatTheme: ChatTheme | undefined
 }
 
 export function useShellTheme(): ShellTheme {
@@ -38,8 +39,5 @@ export function useShellTheme(): ShellTheme {
     : (selectedId && /^\d+$/.test(selectedId) ? Number(selectedId) : null)
   useSyncExternalStore(subscribeChatFullMirror, chatFullMirrorVersion)
   const activeDialogThemeId = activeChatNumId == null ? undefined : cachedPeerTheme(activeChatNumId)
-  const shellThemeChoice = useSettingsStore((st) => st.themeChoice)
-  const shellThemeMode = PRESET_MODE[resolvePreset(shellThemeChoice)]
-  const shellThemeVariant = chatThemeVariant(activeDialogThemeId, shellThemeMode)
-  return { shellThemeVariant }
+  return { shellChatTheme: chatThemeById(activeDialogThemeId) }
 }

@@ -16,10 +16,12 @@
  * `setWallpaperForCurrentTheme` + `appImManager.applyCurrentTheme`. У нас обои —
  * одна настройка на все темы в zustand (`settings.tsx`): `wallpaper` (умолчание
  * темы / пресет-градиент / сплошной цвет) и поверх неё своё фото
- * `customWallpaperMediaId` + `customWallpaperBlur`; рисует их React
- * `ChatBackground.tsx`. Вкладка пишет ровно эти ключи — второй копии нет.
- * Соответствие: `wallPaper` с узором (pattern) ↔ наш пресет, загруженный
- * `wallPaper` без узора ↔ своё фото, `wallPaperNoFile` ↔ сплошной цвет.
+ * `customWallpaperMediaId` + `customWallpaperBlur`; фон перерисовывается
+ * подпиской на эти ключи (`chat/bubbles/chatBackground.solid.tsx::
+ * watchWallPaperSettings`). Вкладка пишет ровно эти ключи — второй копии нет.
+ * Соответствие (адаптер `wallpapers.ts`): `wallPaper` с узором (pattern) ↔ наш
+ * пресет, загруженный `wallPaper` без узора ↔ своё фото, `wallPaperNoFile` ↔
+ * сплошной цвет.
  *
  * Расхождения с оригиналом:
  *  1. (О-11) Сетка — наши пресеты `WALLPAPER_PRESETS` (`wallpapers.ts`), а не
@@ -40,15 +42,11 @@
  *     перенесено: его требует `account.uploadWallPaper`, наша ручка PNG
  *     принимает. Размеры картинки меряются `createImageBitmap`, как делал
  *     прежний экран: их просит наш `finalize`, у tweb их нет в запросе.
- *  4. Плитка: у tweb в `media` монтируется Solid `<ChatBackground>` с темой
- *     `day` (`:105-127`). Наш фон — React, Solid-слоя нет; плитку рисует
- *     `mountWallPaperThumb` тем же способом, что наш `ChatBackground.tsx` в дневной
- *     теме: сетчатый градиент (`ChatBackgroundGradientRenderer`) и узор
- *     (`renderPattern`) поверх в `soft-light` с непрозрачностью интенсивности 50;
- *     классы — из порта `chatBackground.module.scss`. Своё фото — `img`
- *     (у tweb — тоже `img`, `buildContent`), без размытия на плитке. Холст
- *     градиента без растяжки `150%` tweb (`.GradientCanvas`): наш одноимённый
- *     класс её не несёт. `LazyLoadQueue` (`:349`) не нужен: плиток 12, а не ~70.
+ *  4. Плитка — тот же Solid-`<ChatBackground>`, что рисует фон чата, с темой
+ *     `day` и размером плитки (`:105-127`); наш аналог `WallPaper` сетки
+ *     переводит в `WallPaper` фона адаптер `wallpapers.ts`. `LazyLoadQueue`
+ *     (`:349`) не нужен: плиток 12, а не ~70, — монтируются сразу, как у выбора
+ *     темы tweb; поэтому нет и `loadPromise`/`onReady`.
  *  5. Клик по плитке пресета применяет обои сразу: скачивать нечего, поэтому
  *     прелоадера и защиты от повторного клика `clicked` (`:494-523`) у плиток
  *     нет. `clicked` остаётся только у загрузки (`:433`, `:451`).
@@ -59,9 +57,9 @@
  *     умолчания размывать нечего — строка `disabled` (`:296-299`), значение —
  *     «выкл» (флага у них у нас нет). Повтор применения через 100 мс
  *     (`:470-481`) не нужен: фон перерисовывается от записи в стор.
- *  8. `highlightingColor` для выбранного фото (`:187-213`) не считается: у нас
- *     цвет подсветки из обоев считает `ChatBackground.tsx` (только для
- *     градиента), это его предмет.
+ *  8. `highlightingColor` для выбранного фото (`:187-213`) не считается и не
+ *     сохраняется в тему: `settings.themes[]` нет (О-38), цвет подсветки из
+ *     показанных обоев выводит сам фон (`chatBackground.tsx:515-516`, `:623`).
  *  9. Кольцо фокуса плитки (`:focus-visible` в `_leftSidebar.scss`) — часть
  *     a11y-коммита 472e3e76b, у нас не портированного вместе с токенами
  *     `--focus-ring-*`; роль, `tabindex`, подпись и Enter/Space перенесены.
@@ -78,14 +76,22 @@ import requestFile from '@helpers/files/requestFile'
 import ListenerSetter from '@helpers/listenerSetter'
 import { subscribeExternal } from '@helpers/solid/subscribeExternal'
 import { subscribeOn } from '@helpers/solid/subscribeOn'
-import ChatBackgroundGradientRenderer from '@core/chat/gradientRenderer'
-import { patternOpacity, renderPattern } from '@core/chat/patternRenderer'
-import { cachedMediaUrl } from '@core/mediaCache'
-import { ensureMediaUrl } from '@core/media/ensureMediaUrl'
+import { render } from 'solid-js/web'
+import ChatBackgroundStore from '@core/chat/chatBackgroundStore'
+import { getColorsFromWallPaper } from '@shared/lib/color'
 import { DEFAULTS, useSettingsStore, type Settings } from '@/settings'
-import { WALLPAPER_PRESETS } from '@/wallpapers'
-import patternUrl from '@/assets/pattern.svg'
-import styles from '@components/ChatBackground.module.scss'
+import {
+  DEFAULT_WALLPAPERS,
+  getAppTheme,
+  getMediaWallPaperSlug,
+  getUploadWallPaperSlug,
+  makeImageWallPaper,
+  makePresetWallPaper,
+  WALLPAPER_PRESETS,
+} from '@/wallpapers'
+import { getCurrentPreset } from '@core/theme/themeController'
+import { resolvePreset } from '@/theme'
+import { ChatBackground as ChatBackgroundLayer } from '@components/chat/bubbles/chatBackground.solid'
 import Section from '@components/section.solid'
 import Row from '@components/rowTsx.solid'
 import Button from '@components/buttonTsx.solid'
@@ -98,7 +104,7 @@ import { useSuperTab } from '@components/solidJsTabs/superTabProvider.solid'
 /** Наш аналог `WallPaper` сетки (см. «Модель обоев» в шапке). */
 type WallPaper =
   | { _: 'preset', id: string, colors: readonly string[] }
-  | { _: 'custom', mediaId?: number, uploadId?: number, url?: string }
+  | { _: 'custom', mediaId?: number, uploadId?: number }
 
 type WallPaperState = Pick<Settings, 'wallpaper' | 'customWallpaperMediaId' | 'customWallpaperBlur'>
 
@@ -109,10 +115,10 @@ const getWallPaperKey = (wallPaper: WallPaper) => wallPaper._ === 'preset' ?
 const sameColors = (a: readonly string[], b: readonly string[]) =>
   a.length === b.length && a.every((color, i) => color.toLowerCase() === b[i].toLowerCase())
 
-/** Цвета умолчания текущей темы — те же переменные, из которых их берёт `ChatBackground.tsx`. */
+/** Цвета обоев умолчания текущей темы (`wallpapers.ts::DEFAULT_WALLPAPERS`). */
 const getThemeGradient = () => {
-  const style = getComputedStyle(document.documentElement)
-  return [0, 1, 2, 3].map((i) => style.getPropertyValue('--tg-bgGrad' + i).trim()).filter(Boolean)
+  const themeName = getCurrentPreset() ?? resolvePreset(useSettingsStore.getState().themeChoice)
+  return getColorsFromWallPaper(DEFAULT_WALLPAPERS[themeName]).split(',')
 }
 
 /** tweb `getWallPaperKeyFromTheme` (`:47`) — ключ плитки, которую сейчас рисует фон. */
@@ -129,58 +135,12 @@ const getBlurDisabled = (state: WallPaperState) => state.customWallpaperMediaId 
 // tweb `needBlur(wallPaper, false)` (`:41-44`, `:300`).
 const getBlur = (state: WallPaperState) => !getBlurDisabled(state) && !!state.customWallpaperBlur
 
-let patternImagePromise: Promise<HTMLImageElement> | undefined
-const loadPatternImage = () => patternImagePromise ??= new Promise((resolve, reject) => {
-  const img = new Image()
-  img.onload = () => resolve(img)
-  img.onerror = reject
-  img.src = patternUrl
-})
-
-// Интенсивность дневной темы — та же, что у нашего фона чата (`ChatBackground.tsx::modeFor`).
-const DAY_INTENSITY = 50
-
-/** Содержимое плитки (расхождение 4 шапки) — слой и слот, как у `<ChatBackground>`. */
-function mountWallPaperThumb(wallPaper: WallPaper, media: HTMLElement, size: { width: number, height: number }) {
-  const layer = document.createElement('div')
-  layer.classList.add(styles.Layer)
-  const slot = document.createElement('div')
-  slot.classList.add(styles.Slot, styles.SlotActive)
-  layer.append(slot)
-
-  let disposed = false
-  if(wallPaper._ === 'preset') {
-    slot.classList.add(styles.IsPattern)
-    const { canvas: gradientCanvas } = ChatBackgroundGradientRenderer.create(wallPaper.colors.join(','))
-    gradientCanvas.classList.add(styles.CanvasCommon)
-
-    const patternCanvas = document.createElement('canvas')
-    patternCanvas.classList.add(styles.CanvasCommon, styles.Blend)
-    patternCanvas.style.setProperty('--opacity-max', '' + patternOpacity(DAY_INTENSITY, false))
-    const dpr = window.devicePixelRatio || 1
-    patternCanvas.width = size.width * dpr
-    patternCanvas.height = size.height * dpr
-    void loadPatternImage().then((img) => {
-      if(disposed) return
-      renderPattern(patternCanvas, img, { mask: false, viewportHeight: window.innerHeight, dpr })
-    }, () => {})
-
-    slot.append(gradientCanvas, patternCanvas)
-  } else {
-    slot.classList.add(styles.IsImage)
-    const image = document.createElement('img')
-    image.alt = ''
-    image.classList.add('media-photo', styles.CanvasCommon)
-    if(wallPaper.url) image.src = wallPaper.url
-    slot.append(image)
-  }
-
-  media.append(layer)
-  return () => {
-    disposed = true
-    layer.remove()
-  }
-}
+/** Наш `WallPaper` сетки → `WallPaper` фона (расхождение 4). */
+const toLayerWallPaper = (wallPaper: WallPaper) => wallPaper._ === 'preset' ?
+  makePresetWallPaper(wallPaper.colors, 'day') :
+  makeImageWallPaper(wallPaper.mediaId !== undefined ?
+    getMediaWallPaperSlug(wallPaper.mediaId) :
+    getUploadWallPaperSlug(wallPaper.uploadId!))
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Статическая часть — на `AppBackgroundTab`, как у оригинала (`:55-270`): её
@@ -191,7 +151,7 @@ export class AppBackgroundTab {
   public static tempId = 0
 
   // tweb `:76-147`. Плитка — синхронно (квадрат задаёт CSS), содержимое —
-  // `mountWallPaperThumb` (расхождение 4).
+  // `<ChatBackground>` в `media` (расхождение 4).
   public static addWallPaper(
     wallPaper: WallPaper,
     container = document.createElement('div'),
@@ -209,7 +169,19 @@ export class AppBackgroundTab {
       '#000'
     container.append(media)
 
-    const dispose = mountWallPaperThumb(wallPaper, media, size)
+    // tweb `:104-108`, `:115-127`: синтетическая тема `day` — плитка сетки
+    // всегда в дневной отрисовке.
+    const theme = getAppTheme('day')
+    const layerWallPaper = toLayerWallPaper(wallPaper)
+    const dispose = render(() => (
+      <ChatBackgroundLayer
+        theme={theme}
+        wallPaper={layerWallPaper}
+        transition="instant"
+        width={size.width}
+        height={size.height}
+      />
+    ), media)
 
     return {
       container,
@@ -219,7 +191,7 @@ export class AppBackgroundTab {
   }
 
   // tweb `:149-269` — применить обои. У нас это запись в zustand (шапка,
-  // «Модель обоев»); фон перерисовывает `ChatBackground.tsx`.
+  // «Модель обоев»); фон перерисовывает подписка на неё (`watchWallPaperSettings`).
   public static setBackgroundDocument(wallPaper: WallPaper, blur?: boolean) {
     const { update } = useSettingsStore.getState()
     if(wallPaper._ === 'preset') {
@@ -300,7 +272,7 @@ const ChatBackground = () => {
     return result
   }
 
-  // Локальные файлы загрузок (tweb `:405-415` сеет ими кэш превью) живут, пока
+  // Локальные файлы загрузок (tweb `:405-415` сеет ими кэш фона) живут, пока
   // их показывает плитка, — до уборки вкладки.
   const uploadUrls: string[] = []
 
@@ -321,10 +293,13 @@ const ChatBackground = () => {
     void requestFile('image/x-png,image/png,image/jpeg').then(async(file) => {
       const uploadId = ++AppBackgroundTab.tempId
       const progressId = 'wallpaper-upload-' + uploadId
-      // tweb `:405-415` — плитка показывает локальный файл, пока идёт отгрузка.
+      // tweb `:405-415` — плитка (её `<ChatBackground>` берёт файл у
+      // `ChatBackgroundStore`) показывает локальный файл, пока идёт отгрузка.
       const url = URL.createObjectURL(file)
       uploadUrls.push(url)
-      const wallPaper: WallPaper = { _: 'custom', uploadId, url }
+      const uploadSlug = getUploadWallPaperSlug(uploadId)
+      ChatBackgroundStore.setBackgroundUrlToCache({ slug: uploadSlug, url })
+      const wallPaper: WallPaper = { _: 'custom', uploadId }
       const key = getWallPaperKey(wallPaper)
 
       const deferred = deferredPromise<void>()
@@ -341,7 +316,11 @@ const ChatBackground = () => {
       })
       preloader.attach(container, false, deferred)
 
-      const release = () => { uploadProgress.delete(progressId) }
+      // tweb `:434-439` `releaseUploadPreview`.
+      const release = () => {
+        uploadProgress.delete(progressId)
+        ChatBackgroundStore.deleteBackgroundUrlFromCache({ slug: uploadSlug })
+      }
       deferred.then(release, release)
       deferred.catch(() => {
         container.remove()
@@ -361,7 +340,7 @@ const ChatBackground = () => {
       managers.media.upload({ blob: file, mime: file.type || 'image/jpeg', size: file.size, width, height, progressId }).then((mediaId) => {
         clicked.delete(key)
         elementsByKey.delete(key)
-        const uploaded: WallPaper = { _: 'custom', mediaId, url }
+        const uploaded: WallPaper = { _: 'custom', mediaId }
         wallPapersByElement.set(container, uploaded)
         const newKey = getWallPaperKey(uploaded)
         container.dataset.id = newKey
@@ -397,22 +376,13 @@ const ChatBackground = () => {
     setBackgroundDocument(wallPaper)
   }
 
-  // Своё фото — плитка первой (расхождение 1). URL — из зеркала медиа, на
-  // промахе — ванильной точкой входа к владельцу (`web-client/CLAUDE.md`, «Медиа»).
-  const addCustomWallPaper = (mediaId: number) => {
-    const cached = cachedMediaUrl(mediaId)
-    const { media } = addWallPaper({ _: 'custom', mediaId, url: cached }, false)
-    if(cached !== undefined) return
-    ensureMediaUrl(mediaId, { middleware: tab.middlewareHelper.get() }).then((url) => {
-      media.querySelector('img')?.setAttribute('src', url)
-    }, () => {})
-  }
-
   // tweb `:529-534`.
   const buildGrid = () => {
     WALLPAPER_PRESETS.forEach((preset) => addWallPaper({ _: 'preset', id: preset.id, colors: preset.colors }))
     const mediaId = state().customWallpaperMediaId
-    if(mediaId != null) addCustomWallPaper(mediaId)
+    // Своё фото — плитка первой (расхождение 1); файл плитке отдаёт
+    // `ChatBackgroundStore` (медиа-конвейер).
+    if(mediaId != null) addWallPaper({ _: 'custom', mediaId }, false)
     markGridCornerItem(grid, grid.querySelector('.active'))
   }
   buildGrid()

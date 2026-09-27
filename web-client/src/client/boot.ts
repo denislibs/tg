@@ -16,7 +16,9 @@ import { setAppState, setAppStateSilent, setStateWriter } from '../stores/appSta
 import { migrateRecentSearchFromLocalStorage } from '../core/state/migrateRecentSearch'
 import PasscodeLockScreenController from '../components/passcodeLock/passcodeLockScreenController.solid'
 import { setThemeListener } from '../core/theme/themeController'
+import appChatBackground, { watchWallPaperSettings } from '../components/chat/bubbles/chatBackground.solid'
 import { useSettingsStore } from '../settings'
+import PopupElement from '@components/popups/indexTsx.solid'
 import { installPasscodeListener } from './passcodeClient'
 import { listenServiceWorkerHello, sendPasscodeStateToServiceWorker } from './passcodeServiceWorker'
 import { preventCrossTabDynamicImportDeadlock } from '../core/preventDeadlock'
@@ -112,6 +114,10 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   listenForMaskedAnchorClicks()
 
   const { managers, ep, smp } = startClient()
+  // Менеджеры оболочки попапов по умолчанию — у tweb `PopupElementTsx.MANAGERS =
+  // rootScope.managers = managers` (appDialogsManager.ts:980); попап без пропа
+  // `managers` берёт их отсюда (`popups/indexTsx.solid.tsx`, расхождение 2).
+  PopupElement.MANAGERS = managers
   // DNP-ON: раздаём мост SW↔SharedWorker (self-gated; инертно при DNP-off).
   installBridgeHandoff(ep)
 
@@ -133,6 +139,11 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
     // открытого `tg-settings` (не секрет — у tweb `settings` тоже в открытом
     // `commonStateStorage`).
     setThemeListener(() => useSettingsStore.getState().themeChoice)
+    // tweb index.ts:458-459 — фон приложения ставится до экрана блокировки:
+    // экран лишь накрывает его своей карточкой (и своим `<ChatBackground>` на
+    // десктопе, `passcodeLock/background.solid.tsx`).
+    appChatBackground.attach()
+    void appChatBackground.setBackground({ transition: 'instant' })
     // экрану блокировки нужны строки — язык из кэша владельца, без сети
     // (tweb index.ts:461-462)
     setDocumentLangPackProperties(await I18n.getCacheLangPackAndApply())
@@ -205,6 +216,15 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   // tweb index.ts:534 — тема и слежение за системной на обычном старте (под
   // замком подписка уже стоит, повторный вызов лишь применяет тему).
   setThemeListener(() => useSettingsStore.getState().themeChoice)
+  // tweb index.ts:567-568 — фон приложения до ветвления по authState: обои
+  // видны и за экраном входа (его хост прозрачен, непрозрачна только карточка).
+  // Повторный `attach` идемпотентен, `setBackground` с тем же фоном —
+  // пустой ход (`chatBackground.tsx:690`).
+  appChatBackground.attach()
+  void appChatBackground.setBackground({ transition: 'instant' })
+  // Смена обоев в настройках перерисовывает фон (О-11: у tweb перерисовку
+  // зовёт сама вкладка «Обои», у нас обои — ключи стора).
+  watchWallPaperSettings()
   // Гидрация — SILENT: прочитанное с диска не должно поехать обратно на диск.
   setAppStateSilent(state)
   // Схема была чужой версии (или базы не было) — фиксируем текущую, чтобы
