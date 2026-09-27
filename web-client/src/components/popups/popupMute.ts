@@ -7,7 +7,7 @@
 // Расхождения с оригиналом, каждое обосновано по месту:
 //  • Радио-список — «наша реализация» (`TgIcon radioon/radiooff` +
 //    `role="radio"`/`aria-checked`), а НЕ порт tweb `RadioFormFromValues`/
-//    `RadioField` (`components/row.ts`/`components/radioField.ts`). Это
+//    `RadioField` (tweb `components/row.ts`/`components/radioField.ts`). Это
 //    решение принято ДО этой волны — в снесённой этим портом React-версии
 //    (`components/MutePopup.tsx`, комментарий там же: «Радио — наша
 //    реализация»), здесь оно лишь переведено в vanilla DOM, а не выдумано
