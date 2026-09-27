@@ -47,7 +47,7 @@ import { attachClickEvent, simulateClickEvent } from '@helpers/dom/clickEvent'
 import { unwrapSolidElement } from '@helpers/solid/wrapSolidComponent'
 import { isDialogArchived } from '@core/models'
 import { dialogMatchesFolder } from '@core/folderFilter'
-import { cachedChat } from '@core/peerCache'
+import { cachedChat, cachedPeer } from '@core/peerCache'
 import type { IconName } from '@core/tgico-icons'
 import { useAppStateStore } from '@stores/appState'
 import { useChatsStore } from '@stores/chatsStore'
@@ -75,7 +75,7 @@ const IncludedChats = () => {
       const contactIds = useFoldersStore.getState().contactIds
       const muted = isDialogMuted(dialog, chat, useNotifyStore.getState().settings)
       for(const folder of useAppStateStore.getState().folders) {
-        if(!dialogMatchesFolder(dialog, chat, folder, contactIds, muted)) continue
+        if(!dialogMatchesFolder(dialog, cachedPeer(peerId), folder, contactIds, muted)) continue
         const span = document.createElement('span')
         span.append(folder.title)
         titles.push(span)

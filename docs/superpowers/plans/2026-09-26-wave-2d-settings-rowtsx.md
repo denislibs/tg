@@ -1086,8 +1086,10 @@ NewChats/Sensitive/Payments. Наши лишние строки «Сессии»
   валит открытие вкладки (статичный кадр). React-пин `Folders_1` в `lottieStickerBox.test.tsx` снят.
 - `SettingsView.navLayer.test.tsx` переведён на под-экран «Стикеры и эмодзи» (задача 15, 2C) —
   при её переезде перевести снова.
-- Не сделано (вне объёма, отмечено): правило папки для `bots` в `core/folderFilter.ts::matchesFolder`
-  (у нашей `FolderMatchable` нет `isBot`) — папка «только боты» сохраняется, но список её пуст.
+- ~~Не сделано (вне объёма, отмечено): правило папки для `bots` в `core/folderFilter.ts::matchesFolder`
+  (у нашей `FolderMatchable` нет `isBot`) — папка «только боты» сохраняется, но список её пуст.~~
+  Закрыто веткой `fix/folder-filter-bots`: `FolderMatchable.isBot` из `pFlags.bot` карточки пира
+  (tweb `filters.ts:258-261`), заодно исключение упоминаний в `excludeMuted` (`:240`).
 
 ### Задача 25: «Папки» — выбор чатов и ссылка
 

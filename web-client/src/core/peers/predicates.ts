@@ -19,7 +19,7 @@
 // убирает. Варианты «по ключу пира» лежат рядом с хранилищем: `cachedChat`
 // в `core/peerCache.ts`.
 
-import type { Chat } from './peer'
+import type { Chat, User } from './peer'
 import { isUser } from './peerId'
 
 /**
@@ -56,6 +56,15 @@ export function isBroadcast(chat: Chat | undefined): boolean {
  */
 export function isAnyGroup(peerId: PeerId, chat: Chat | undefined): boolean {
   return !isUser(peerId) && !isBroadcast(chat)
+}
+
+/**
+ * Порт `appUsersManager.isBot` (`appUsersManager.ts:881-883`) — пир это бот:
+ * флаг `pFlags.bot` конструктора `user`. Принимает карточку ЛЮБОГО пира (как
+ * её отдают кэши `cachedPeer`), у чата ответ — `false`.
+ */
+export function isBot(peer: User | Chat | undefined): boolean {
+  return peer?._ === 'user' && !!peer.pFlags?.bot
 }
 
 /**

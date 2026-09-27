@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { chatMatchesFolder, dialogMatchesFolder, matchesFolder, type FolderMatchable } from './folderFilter'
 import type { Folder } from './managers/foldersManager'
 import { makeDialog } from './dialogs/testDialog'
-import type { Chat as PeerChat } from './peers/peer'
+import type { Chat as PeerChat, UserReal } from './peers/peer'
 import type { Chat } from '../data'
 
 const folder = (over: Partial<Folder>): Folder => ({
@@ -37,6 +37,14 @@ describe('matchesFolder: один ответ для Chat и Dialog', () => {
     { name: 'не-контакт', item: { peerId: 9, isGroup: false, isBroadcast: false }, f: folder({ nonContacts: true }), want: true },
     { name: 'excludeRead отсекает прочитанные', item: { peerId: 5, isGroup: true, isBroadcast: false, unread: 0 }, f: folder({ groups: true, excludeRead: true }), want: false },
     { name: 'excludeMuted отсекает заглушённые', item: { peerId: 5, isGroup: true, isBroadcast: false, muted: true }, f: folder({ groups: true, excludeMuted: true }), want: false },
+    // tweb filters.ts:258-261: бот решается ТОЛЬКО флагом bots — ни contacts, ни non_contacts его не берут.
+    { name: 'бот в папке «Боты»', item: { peerId: 8, isGroup: false, isBroadcast: false, isBot: true }, f: folder({ bots: true }), want: true },
+    { name: 'человек в папке «Боты» — не попадает', item: { peerId: 9, isGroup: false, isBroadcast: false, isBot: false }, f: folder({ bots: true }), want: false },
+    { name: 'бот не попадает в «Не контакты»', item: { peerId: 8, isGroup: false, isBroadcast: false, isBot: true }, f: folder({ nonContacts: true }), want: false },
+    { name: 'бот из контактов не попадает в «Контакты»', item: { peerId: 7, isGroup: false, isBroadcast: false, isBot: true }, f: folder({ contacts: true }), want: false },
+    // tweb filters.ts:240: заглушённый с непрочитанным упоминанием excludeMuted не отсекает.
+    { name: 'excludeMuted пропускает заглушённый с непрочитанным упоминанием', item: { peerId: 5, isGroup: true, isBroadcast: false, muted: true, unread: 2, unreadMentions: 1 }, f: folder({ groups: true, excludeMuted: true }), want: true },
+    { name: 'excludeMuted: упоминание без непрочитанных не спасает', item: { peerId: 5, isGroup: true, isBroadcast: false, muted: true, unread: 0, unreadMentions: 1 }, f: folder({ groups: true, excludeMuted: true }), want: false },
   ]
   const contacts = new Set([7])
   for (const c of cases) {
@@ -62,6 +70,12 @@ describe('chatMatchesFolder: адаптер Chat, draft-чаты отсекаю�
     const c = chat({ id: '5', type: 'group' })
     const f = folder({ groups: true })
     expect(chatMatchesFolder(c, f, contacts)).toBe(true)
+  })
+
+  it('признак бота витрины (`Chat.isBot`) доходит до правила bots', () => {
+    const f = folder({ bots: true })
+    expect(chatMatchesFolder(chat({ id: '8', type: 'private', isBot: true }), f, contacts)).toBe(true)
+    expect(chatMatchesFolder(chat({ id: '9', type: 'private' }), f, contacts)).toBe(false)
   })
 })
 
@@ -93,6 +107,22 @@ describe('dialogMatchesFolder: адаптер Dialog, контактность �
     const d = makeDialog({ peerId: 9 })
     expect(dialogMatchesFolder(d, undefined, folder({ nonContacts: true }), contacts)).toBe(true)
     expect(dialogMatchesFolder(d, undefined, folder({ contacts: true }), contacts)).toBe(false)
+  })
+
+  it('папка «Боты» показывает личку с ботом и не показывает людей', () => {
+    const bot: UserReal = { _: 'user', id: 8, pFlags: { bot: true } }
+    const human: UserReal = { _: 'user', id: 9 }
+    const friend: UserReal = { _: 'user', id: 7 }
+    const f = folder({ bots: true })
+    expect(dialogMatchesFolder(makeDialog({ peerId: 8 }), bot, f, contacts)).toBe(true)
+    expect(dialogMatchesFolder(makeDialog({ peerId: 9 }), human, f, contacts)).toBe(false)
+    expect(dialogMatchesFolder(makeDialog({ peerId: 7 }), friend, f, contacts)).toBe(false)
+  })
+
+  it('непрочитанные упоминания проксируются в правило excludeMuted', () => {
+    const now = Math.floor(Date.now() / 1000)
+    const g = makeDialog({ peerId: -5, unread: 3, unreadMentions: 1, muteUntil: now + 60 })
+    expect(dialogMatchesFolder(g, megagroup, folder({ groups: true, excludeMuted: true }), contacts)).toBe(true)
   })
 
   it('вид чата выводится из КАРТОЧКИ, а не из снятой строки type', () => {

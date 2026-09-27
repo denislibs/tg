@@ -24,7 +24,7 @@ import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '../folderIds'
 import { dialogMatchesFolder } from '../folderFilter'
 import type { Folder } from '../managers/foldersManager'
 import { isDialogArchived, type Dialog } from '../models'
-import { cachedChat } from '../peerCache'
+import { cachedChat, cachedPeer } from '../peerCache'
 import type { Chat } from '../../data'
 
 /**
@@ -141,10 +141,10 @@ export function useDialogListSource(filterId: number, chats: Chat[]): DialogList
     if (!folderKnown) return false
     if (filterId === ARCHIVE_FOLDER_ID ? !isDialogArchived(d) : isDialogArchived(d)) return false
     if (!folder) return true
-    // Карточка пира нужна дважды: правилу типов чатов (группа/канал) и правилу
+    // Карточка пира нужна дважды: правилу типов (группа/канал/бот) и правилу
     // «заглушён» (настройки типа поверх собственного срока диалога).
-    const chat = cachedChat(d.peerId)
-    return dialogMatchesFolder(d, chat, folder, contactIds, isDialogMuted(d, chat, notifySettings))
+    const muted = isDialogMuted(d, cachedChat(d.peerId), notifySettings)
+    return dialogMatchesFolder(d, cachedPeer(d.peerId), folder, contactIds, muted)
   }, [folderKnown, folder, filterId, contactIds, notifySettings])
 
   /**
