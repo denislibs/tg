@@ -1,7 +1,13 @@
 /** @jsxImportSource solid-js */
 /**
- * Порт tweb `src/components/scrollable2.tsx` — Solid-обёртка скролла;
- * потребитель у оригинала — `pages/AuthCardsHost.tsx` (карточки авторизации).
+ * Порт tweb `src/components/scrollable2.tsx` (812502980) — Solid-обёртка скролла;
+ * потребитель у оригинала — `pages/AuthCardsHost.tsx` (карточки авторизации),
+ * с 2556fc949 — ещё и оболочка попапов `popups/indexTsx.tsx` (стыки скролла
+ * с шапкой и футером). Доведён до HEAD тремя коммитами tweb: 3eb7a9020
+ * (`trackEnds` `:53-58`, `:228-231`; `isScrolledToStart/End` в контексте
+ * `:36-37`, `:320-325`), 2556fc949 (`tracksEnds`/`checkEndsIfTracked` и
+ * пересчёт концов в `onSizeChange` и на монтировании, `:275-298`), 472e3e76b
+ * (`tabIndex` `:48`, `:345`).
  *
  * ── Почему это ВТОРОЙ Scrollable, и почему так и надо ──────────────────────
  * У нас уже есть императивный `components/scrollable.ts` (`Scrollable`/
@@ -29,11 +35,15 @@
  *    Сигнатура идентична: `(onStart, onEnd) => () => void`;
  *  • `strictNullChecks` у нас включён (в tweb `strict` выключен) — `ref`/
  *    `thumbRef` объявлены `let ref: HTMLDivElement, thumbRef: HTMLDivElement`
- *    без начального значения ровно как в оригинале (`:305`), TS видит их
+ *    без начального значения ровно как в оригинале (`:342`), TS видит их
  *    used-before-assigned внутри замыканий, но не в момент чтения (оба
  *    читаются только из колбэков, вызываемых после монтирования — тот же
  *    порядок инициализации, что у оригинала), поэтому подавляется через `!`
  *    у объявления (`declare`-стиль был бы избыточен для двух простых полей);
+ *  • типы там же, где у tweb `any`/нестрогость: `.filter(Boolean)` у
+ *    `onScrollCallbacks` — с предикатом `cb is () => void`; `onScroll` узла —
+ *    `(… && onScroll) || undefined` (Solid-тип не принимает `false`); неиспользуемый
+ *    аргумент `onThumbMouseUp` — `_e`. Поведение то же;
  *  • комментарии оригинала (English, включая закомментированные черновики
  *    `this.debug`/`lastScrollDirection check is useless`) сохранены как есть
  *    — как и в `scrollable.ts`, дословность важнее перевода.
@@ -88,6 +98,8 @@ export type ScrollableContextValue = {
   onSizeChange: () => void
   setScrollPositionSilently: (value: number) => void
   checkForTriggers: () => void
+  isScrolledToStart: boolean
+  isScrolledToEnd: boolean
 }
 
 export const ScrollableContext = createContext<ScrollableContextValue>()
@@ -98,10 +110,17 @@ export default function Scrollable(props: {
   thumbRef?: (el: HTMLDivElement) => void
   contextRef?: (ctx: ScrollableContextValue) => void
   class?: string
+  tabIndex?: number
   classList?: JSX.HTMLAttributes<HTMLDivElement>['classList']
   style?: JSX.CSSProperties
   axis?: 'x' | 'y'
   withBorders?: 'both' | 'top' | 'bottom' | 'manual'
+  /**
+   * Keep `isScrolledToStart` / `isScrolledToEnd` up to date without drawing the borders.
+   * `withBorders` implies it; this is for a consumer that only reads the state off the context
+   * (a floating popup header, say) and doesn't want a border on the scrollable itself.
+   */
+  trackEnds?: boolean
   onScrolledTop?: () => void
   onScrolledBottom?: () => void
   onScroll?: () => void
@@ -271,8 +290,10 @@ export default function Scrollable(props: {
     }, { capture: true, passive: false, once: true })
   }
 
-  const onScrollCallbacks = createMemo(() => [props.onScroll, props.withBorders && checkEnds]
-    .filter((cb): cb is () => void => Boolean(cb)))
+  const onScrollCallbacks = createMemo(() => [
+    props.onScroll,
+    (props.withBorders || props.trackEnds) && checkEnds,
+  ].filter((cb): cb is () => void => Boolean(cb)))
 
   const onThumbMouseMove = (e: MouseEvent) => {
     cancelEvent(e)
@@ -316,11 +337,30 @@ export default function Scrollable(props: {
     }
   }
 
+  const tracksEnds = () => !!(props.withBorders || props.trackEnds)
+
+  // which end the content sits at costs a layout read, so it is kept only where it is drawn
+  const checkEndsIfTracked = () => {
+    if (tracksEnds()) {
+      checkEnds()
+    }
+  }
+
   const onSizeChange = () => {
+    checkEndsIfTracked()
+
     if (!IS_OVERLAY_SCROLL_SUPPORTED() && thumbRef) {
       onScroll()
     }
   }
+
+  /**
+   * Which end the content sits at cannot be known before it is laid out — and whether it
+   * matters at all can turn true after mount, since a footer registers itself with the popup
+   * only once the whole body has rendered. Content that grows later says so through
+   * `onSizeChange`.
+   */
+  createEffect(checkEndsIfTracked)
 
   const value: ScrollableContextValue = {
     get scrollPosition() {
@@ -342,6 +382,12 @@ export default function Scrollable(props: {
     onSizeChange,
     setScrollPositionSilently,
     checkForTriggers,
+    get isScrolledToStart() {
+      return isScrolledToStart()
+    },
+    get isScrolledToEnd() {
+      return isScrolledToEnd()
+    },
   }
 
   if (props.contextRef) {
@@ -361,6 +407,7 @@ export default function Scrollable(props: {
   let ref!: HTMLDivElement, thumbRef!: HTMLDivElement
   return (
     <div
+      tabIndex={props.tabIndex}
       ref={(_ref) => {
         ref = _ref
         ;(props.ref as ((el: HTMLDivElement) => void) | undefined)?.(_ref)

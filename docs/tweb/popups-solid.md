@@ -314,7 +314,7 @@ SCSS HEAD (`_popup.scss`), которых нет у нас:
 | `core/navigation/appNavigationController.ts` (611) | порт; `onEscape?: () => boolean` (:101), в `onKeyDown` нет `!e.defaultPrevented` (:297) — дельта 472e3e76b не перенесена |
 | `helpers/overlayCounter.ts` (41) | порт 1:1; `isOverlayActive` пишет только `popupElement.ts`; React-попапы счётчик не трогают |
 | `helpers/appWindow.ts` (27) | только `getOverlayRoot()` = `window.document.body`. **Докблок (`:5-13`) неверен**: вынос всего клиента в Document PiP у нас ЕСТЬ — `core/pip.ts:49-106` (`enterAppPip`: `#root` переезжает в окно PiP), и React-попапы уже порталят туда (`usePortalContainer`). Оболочка на `getOverlayRoot()` без `setAppWindow` открывала бы попап в фоновой вкладке |
-| `components/scrollable2.solid.tsx` (411) | порт до 3eb7a9020: нет `trackEnds`, `isScrolledToStart/End` в `ScrollableContextValue` (:81-91), `tabIndex` |
+| `components/scrollable2.solid.tsx` | порт HEAD (2C-1): `trackEnds`, `isScrolledToStart/End` в `ScrollableContextValue`, пересчёт концов в `onSizeChange` и по включению слежения (2556fc949), `tabIndex` |
 | `helpers/dom/focusTrap.ts`, `scrollRegion.ts`, `isKeyboardControl.ts`, `isSendShortcutPressed.ts` | **нет** (`sendShortcut` в настройках тоже нет — `keyboardShortcuts.solid.tsx:20-23`) |
 | `components/MarkupTooltip.tsx` | React, синглтона `getInstance().hide()` нет |
 | `components/buttonTsx.solid.tsx`, `iconTsx.solid.tsx`, `rowTsx.solid.tsx` (`Row.Icon noBackground` :452), `section.solid.tsx`, `radioFieldTsx.solid.tsx`, `checkboxFieldTsx.solid.tsx`, `mediaHeader.solid.tsx` (`Sticker onReady` :91), `appSelectPeers.solid.tsx`, `putPreloader.ts`, `animationIntersector.ts` (`checkAnimations2(blurred, exceptGroup)` :373) | есть — строительный материал оболочки и попапов |
@@ -370,8 +370,8 @@ SCSS HEAD (`_popup.scss`), которых нет у нас:
    порталы. Esc/Back закрывают только первые две; `overlayCounter` видит только первую; анимации
    под PT/own-попапами не глушатся.
 3. **Нет a11y оболочки** (§ 5): ни `role="dialog"`, ни `focusTrap`, ни возврата фокуса.
-4. **Нет стыков скролла и футера** (§ 4): `_popup.scss` без блоков `:211-273`; `scrollable2` без
-   `trackEnds`.
+4. **Нет стыков скролла и футера** (§ 4): `_popup.scss` без блоков `:211-273`; `scrollable2` уже
+   HEAD (2C-1).
 5. **`z-index: 4090` у `shared/ui/Popup`** против `4` у tweb (`_popup.scss:34`): порядок решает DOM.
 6. **Корень оверлеев не следует за окном PiP** (`appWindow.ts` без `setAppWindow`), хотя вынос
    клиента в PiP есть (`core/pip.ts`).

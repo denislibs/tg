@@ -215,7 +215,7 @@
 
 ## Пакет 0 — база
 
-### Задача 1: `scrollable2.solid.tsx` → HEAD
+### Задача 1: `scrollable2.solid.tsx` → HEAD — ✅ сделано (PR feat/w2c-scrollable-a11y)
 
 **Что делаем.** Доводим наш Solid-скролл до `tweb/src/components/scrollable2.tsx` HEAD (393) — три
 правки, которые нужны оболочке:
@@ -240,6 +240,17 @@
 - [ ] **Шаг 5:** полный прогон; потребители `scrollable2` (`git grep -n "scrollable2" web-client/src`) зелёные без правок.
 
 **Готово когда:** `diff` пропов и контекста с HEAD — только объявленные расхождения шапки файла.
+
+**Итог (2026-09-27):** перенесены все три коммита tweb, а не два, — у `scrollable2.tsx` между
+3eb7a9020 и 472e3e76b есть ещё 2556fc949 (`tracksEnds`/`checkEndsIfTracked` `:275-282`, пересчёт
+концов в `onSizeChange` `:285` и `createEffect(checkEndsIfTracked)` `:298`): без него футер, который
+регистрируется после монтирования, не узнал бы, что скролл уже не у низа (этого ждёт оболочка,
+`indexTsx.tsx:394-401`). Пины: `trackEnds` без рамки, «без слежения концы не считаются»,
+`onSizeChange` пересчитывает, включение слежения после монтирования пересчитывает, `tabIndex`.
+Мутации красят свои: `props.trackEnds` из `onScrollCallbacks`, `checkEndsIfTracked()` из
+`onSizeChange`, `createEffect(checkEndsIfTracked)`. Потребители (`AuthCardsHost`, `searchGroup`,
+`tabs`, `foldersTabs`, `appDialogsManager`, `pickUserFolderTabs`) зелёные без правок; `withBorders`
+в проде не использует никто.
 
 ---
 
