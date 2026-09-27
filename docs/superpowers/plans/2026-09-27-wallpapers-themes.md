@@ -302,18 +302,21 @@ Wiring — `app/server.go` (репо → usecase → хендлер), парам
 
 Раскладка (её же пишет `tools/fetch_wallpapers.py`):
 
-- `<root>/wallpapers/meta.json` — `{"wallpapers": [{slug, source_id?, pattern, dark, default, in_catalog,
-  file: "files/<slug>.tgv|.svg|.jpg|.png" | null, mime, settings: {background_color, second_…, third_…,
-  fourth_…, intensity, rotation, blur?, motion?, emoticon?}}]}` в порядке показа; поля `settings` — 1:1
-  `WallPaperSettings`. `file: null` — `wallPaperNoFile` (только цвет). `.svg` засев сжимает gzip → `.tgv`
-  (узор tweb), `.tgv`/фото заливаются как есть; медиа — от `domain.ServiceUserID` (`CreateUpload` +
-  `PutContent`, `main.go:86-105` стикеров), mime узора `application/x-tgwallpattern`. Одинаковый файл
-  (sha256) заливается ОДИН раз и переиспользуется всеми обоями с ним. `in_catalog: false` — обои тем,
-  в сетку «Обоев» не попадают.
+- `<root>/wallpapers/meta.json` — каталог в порядке показа: `{"wallpapers": [{key, slug, source_id?,
+  pattern, dark, default, file: "files/<slug>.tgv|.svg|.jpg|.png" | null, mime, settings: {background_color,
+  second_…, third_…, fourth_…, intensity, rotation, blur?, motion?, emoticon?}}]}`; поля `settings` — 1:1
+  `WallPaperSettings`. **Один узор идёт в каталоге несколько раз с разными цветами и `dark`** (выгрузка:
+  76 записей на 69 разных сочетаний, у одного slug — до трёх вариантов; tweb `appThemesManager.ts:32-35`
+  «server returns same id for different wallpapers»), поэтому запись различает `key` (slug + отпечаток
+  настроек), а `slug` — только файл. `file: null` — `wallPaperNoFile` (только цвет). `.svg` засев сжимает
+  gzip → `.tgv` (узор tweb), `.tgv`/фото заливаются как есть; медиа — от `domain.ServiceUserID`
+  (`CreateUpload` + `PutContent`, `main.go:86-105` стикеров), mime узора `application/x-tgwallpattern`.
+  Один файл (slug) заливается ОДИН раз и переиспользуется всеми вариантами и темами.
 - `<root>/themes/meta.json` — `{"themes": [{slug, title, emoticon?, for_chat, settings: [{base_theme:
   'baseThemeClassic'|'baseThemeDay'|'baseThemeNight'|'baseThemeTinted'|'baseThemeArctic', accent_color,
-  outbox_accent_color?, message_colors?, message_colors_animated?, wallpaper_slug?}]}]}` — обои темы
-  ссылкой на `slug` из `wallpapers/meta.json`; ссылка на отсутствующий slug — ошибка засева.
+  outbox_accent_color?, message_colors?, message_colors_animated?, wallpaper?: {slug, pattern, dark, file,
+  mime, settings}}]}]}` — обои темы ЦЕЛИКОМ (у каждой базы свои цвета поверх того же узора), в сетку
+  «Обоев» не попадают. `for_chat: true` — темы чатов (`account.getChatThemes`, Р4).
 
 Состав `backend/assets/` (репозиторий, Р1-а): `wallpapers/files/pattern.svg` — копия узора tweb
 (`public/assets/img/pattern.svg`); `wallpapers/meta.json` — 4 обоев `DEFAULT_THEME`
@@ -323,15 +326,16 @@ Wiring — `app/server.go` (репо → usecase → хендлер), парам
 `pattern` (встроенный узор клиента, `config/app.ts:12`); `themes/meta.json` — 8 тем из `chatThemes.ts`
 (Р2): светлый вариант — `baseThemeClassic`, тёмный — `baseThemeNight` (`intensity: -50, dark: true`).
 
-Идемпотентность — по `slug` обоев и `slug` темы: существующее обновляется (цвета, порядок, файл —
+Идемпотентность — по `key` обоев и `slug` темы: существующее обновляется (цвета, порядок, файл —
 `updated_at`, хэш каталога меняется), новое добавляется, пропавшее из `meta.json` не удаляется (своих
-обоев пользователей не касается). Засевы из разных `--root` складываются (slug-и не пересекаются: у
+обоев пользователей не касается). Засевы из разных `--root` складываются (ключи не пересекаются: у
 Telegram — их base64-slug, у нас — `pattern-*`). Запуск — как у стикеров (`backend/README.md:221-222`).
 
 - [ ] **Шаг 2: падающие тесты** (`main_test.go` на фейках, как у стикеров): узор заливается один раз на
   два прогона и один на несколько обоев с тем же файлом; `.svg` уходит gzip'нутым `.tgv`; второй прогон
   без изменений не трогает `updated_at`; смена цвета в `meta.json` — трогает; `file: null` — обои без
-  документа; `wallpaper_slug` темы на отсутствующий slug — ошибка; темы — по одной записи на базу;
+  документа; два варианта одного slug — две записи каталога и один файл; обои темы — вне каталога;
+  темы — по одной записи на базу;
   образец выгрузки `tools/fetch_wallpapers.py` (фикстура с двумя обоями и темой) читается без правок.
 - [ ] **Шаг 3:** **мутация:** заливать узор на каждый slug — тест «один раз» краснеет.
 

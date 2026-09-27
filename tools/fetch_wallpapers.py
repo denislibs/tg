@@ -11,16 +11,21 @@ chatThemesPicker.tsx:166), account.getChatThemes — темы чатов с эм
 заводит задача 6 плана docs/superpowers/plans/2026-09-27-wallpapers-themes.md; формат
 meta.json описан там же):
 
-    <out>/wallpapers/meta.json  {"wallpapers": [{slug, source_id, pattern, dark, default,
-                                  in_catalog, file, mime, settings: {...}}]}
+    <out>/wallpapers/meta.json  {"wallpapers": [{key, slug, source_id, pattern, dark, default,
+                                  file, mime, settings: {...}}]}   — каталог, в порядке показа
     <out>/wallpapers/files/<slug>.tgv | .jpg | .png
     <out>/themes/meta.json      {"themes": [{slug, title, emoticon, for_chat,
                                   settings: [{base_theme, accent_color, outbox_accent_color,
-                                              message_colors, wallpaper_slug}]}]}
+                                              message_colors, wallpaper: {slug, pattern, dark,
+                                              file, mime, settings}}]}]}
 
-Обои, на которые ссылаются темы, но которых нет в каталоге, выгружаются тоже —
-с in_catalog: false (так их хранит план: обои темы вне сетки «Обоев»). Файлы
-кладутся как есть: .tgv остаётся gzip'нутым SVG, распаковывает клиент.
+Один узор (slug) в каталоге Telegram встречается НЕСКОЛЬКО раз — с разными цветами
+и флагом dark (tweb appThemesManager.ts:32-35: «server returns same id for different
+wallpapers»), поэтому запись каталога различает `key` (slug + отпечаток настроек),
+а `slug` — только файл. Обои темы — у каждой базы свои цвета поверх того же узора —
+пишутся прямо в тему, а не ссылкой на каталог.
+
+Файлы (и узоров тем) кладутся как есть: .tgv остаётся gzip'нутым SVG, распаковывает клиент.
 meta.json пишутся последними; уже скачанный файл повторно не качается.
 
 По умолчанию выгрузка идёт в backend/assets/telegram/ — каталог в .gitignore:
@@ -40,6 +45,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -129,25 +135,33 @@ def settings_json(s: types.WallPaperSettings | None) -> dict:
 
 
 def wallpaper_slug(wp) -> str:
-    """Slug обоев. У wallPaperNoFile slug нет — свой по id, чтобы темы могли сослаться."""
+    """Slug обоев = имя файла. У wallPaperNoFile slug нет — свой по id."""
     if isinstance(wp, types.WallPaper) and wp.slug:
         return safe_slug(wp.slug)
     return f"nofile-{wp.id}"
 
 
-async def export_wallpaper(client: TelegramClient, wp, files_dir: Path, in_catalog: bool) -> dict:
-    """Одни обои → запись meta.json; документ качается, если его ещё нет на диске."""
+def wallpaper_key(slug: str, dark: bool, settings: dict) -> str:
+    """Ключ варианта: один узор идёт в каталоге с разными цветами (см. шапку)."""
+    digest = hashlib.sha1(json.dumps([dark, settings], sort_keys=True).encode()).hexdigest()[:8]
+    return f"{slug}~{digest}"
+
+
+async def export_wallpaper(client: TelegramClient, wp, files_dir: Path) -> dict:
+    """Одни обои → запись; документ качается, если его ещё нет на диске."""
     slug = wallpaper_slug(wp)
+    settings = settings_json(getattr(wp, "settings", None))
+    dark = bool(getattr(wp, "dark", False))
     entry: dict = {
+        "key": wallpaper_key(slug, dark, settings),
         "slug": slug,
         "source_id": wp.id,
         "pattern": bool(getattr(wp, "pattern", False)),
-        "dark": bool(getattr(wp, "dark", False)),
+        "dark": dark,
         "default": bool(getattr(wp, "default", False)),
-        "in_catalog": in_catalog,
         "file": None,
         "mime": None,
-        "settings": settings_json(getattr(wp, "settings", None)),
+        "settings": settings,
     }
     document = getattr(wp, "document", None)
     if isinstance(document, types.Document):
@@ -163,8 +177,8 @@ async def export_wallpaper(client: TelegramClient, wp, files_dir: Path, in_catal
     return entry
 
 
-def theme_settings_json(ts: types.ThemeSettings, wallpaper_slug_of) -> dict:
-    """ThemeSettings → запись; обои темы — ссылкой на slug в wallpapers/meta.json."""
+async def theme_settings_json(client: TelegramClient, ts: types.ThemeSettings, files_dir: Path) -> dict:
+    """ThemeSettings → запись; обои темы — целиком, со своими цветами (файл — в каталоге файлов)."""
     out: dict = {
         "base_theme": BASE_THEME_NAME.get(type(ts.base_theme), type(ts.base_theme).__name__),
         "accent_color": ts.accent_color,
@@ -176,7 +190,10 @@ def theme_settings_json(ts: types.ThemeSettings, wallpaper_slug_of) -> dict:
     if getattr(ts, "message_colors_animated", False):
         out["message_colors_animated"] = True
     if getattr(ts, "wallpaper", None) is not None:
-        out["wallpaper_slug"] = wallpaper_slug_of(ts.wallpaper)
+        wallpaper = await export_wallpaper(client, ts.wallpaper, files_dir)
+        wallpaper.pop("key", None)
+        wallpaper.pop("default", None)
+        out["wallpaper"] = wallpaper
     return out
 
 
@@ -200,7 +217,7 @@ async def main() -> None:
     client = TelegramClient(str(SESSION), api_id, api_hash, flood_sleep_threshold=0)
     await client.start()
 
-    entries: dict[str, dict] = {}
+    entries: list[dict] = []
     failed: list[tuple[str, str]] = []
 
     result = await call(client, functions.account.GetWallPapersRequest(hash=0))
@@ -211,7 +228,7 @@ async def main() -> None:
     for i, wp in enumerate(catalog, start=1):
         slug = wallpaper_slug(wp)
         try:
-            entries[slug] = await export_wallpaper(client, wp, files_dir, in_catalog=True)
+            entries.append(await export_wallpaper(client, wp, files_dir))
             print(f"  [{i}/{len(catalog)}] {slug}", flush=True)
         except RPCError as e:
             print(f"  ! {slug}: {e.__class__.__name__} {e}", flush=True)
@@ -226,22 +243,7 @@ async def main() -> None:
         chat_themes = list(getattr(chat, "themes", []) or [])
         seen = {t.id for t in themes}
         themes += [t for t in chat_themes if t.id not in seen]
-        print(f"темы: облачных {len(themes) - len(chat_themes)}+, чатов {len(chat_themes)}", flush=True)
-
-        # Обои тем, которых нет в каталоге, — отдельными записями вне сетки.
-        for theme in themes:
-            for ts in theme.settings or []:
-                wp = getattr(ts, "wallpaper", None)
-                if wp is None:
-                    continue
-                slug = wallpaper_slug(wp)
-                if slug in entries:
-                    continue
-                try:
-                    entries[slug] = await export_wallpaper(client, wp, files_dir, in_catalog=False)
-                except RPCError as e:
-                    print(f"  ! обои темы {slug}: {e.__class__.__name__} {e}", flush=True)
-                    failed.append((slug, str(e)))
+        print(f"темы: облачных {len(themes) - len(chat_themes)}, чатов {len(chat_themes)}", flush=True)
 
         for theme in themes:
             themes_out.append(
@@ -250,13 +252,13 @@ async def main() -> None:
                     "title": theme.title,
                     "emoticon": getattr(theme, "emoticon", None),
                     "for_chat": bool(getattr(theme, "for_chat", False)),
-                    "settings": [theme_settings_json(ts, wallpaper_slug) for ts in (theme.settings or [])],
+                    "settings": [await theme_settings_json(client, ts, files_dir) for ts in (theme.settings or [])],
                 }
             )
 
     # meta.json — последними: прерванный прогон не оставит ссылок на недокачанное.
     (wp_dir / "meta.json").write_text(
-        json.dumps({"wallpapers": list(entries.values())}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        json.dumps({"wallpapers": entries}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     if not args.skip_themes:
         (themes_dir / "meta.json").write_text(
@@ -264,7 +266,7 @@ async def main() -> None:
         )
 
     await client.disconnect()
-    print(f"\nобоев: {len(entries)}, тем: {len(themes_out)} → {out}", flush=True)
+    print(f"\nобоев в каталоге: {len(entries)}, тем: {len(themes_out)} → {out}", flush=True)
     if failed:
         print(f"не выгружено: {len(failed)}", flush=True)
         for slug, err in failed:
