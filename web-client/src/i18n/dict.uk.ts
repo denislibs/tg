@@ -664,7 +664,6 @@ const uk = {
   'EditAccount.Logout': 'Вийти',
   LogOut: 'Вийти',
   'PasscodeLock.LogoutPopup.Description': 'Ви впевнені, що хочете вийти?',
-  'PasscodeLock.LockNow': 'Заблокувати застосунок',
   // вкладка «Код-пароль» (порт tweb passcodeLock/*, план 2D, задача 18)
   'PasscodeLock.Notice': 'Важливо: якщо Ви забудете код-пароль, доведеться вийти з акаунта.',
   'PasscodeLock.Next': 'Далі',
@@ -677,6 +676,7 @@ const uk = {
   },
   'PasscodeLock.EnableLockShortcut': 'Сполучення клавіш для блокування',
   'PasscodeLock.LockShortcutDescription': 'Підберіть сполучення, яке спрацює у Вашому браузері.',
+  'PasscodeLock.TapToLock': 'Натисніть, щоб заблокувати Telegram.',
   // Passkeys
   'Passkeys.Caption':
     'Ключі доступу дозволяють входити без пароля — за відбитком пальця, обличчям або PIN-кодом пристрою.',

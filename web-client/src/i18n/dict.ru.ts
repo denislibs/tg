@@ -1211,7 +1211,6 @@ const ru = {
   'EditAccount.Logout': 'Выйти',
   LogOut: 'Выйти',
   'PasscodeLock.LogoutPopup.Description': 'Вы уверены, что хотите выйти?',
-  'PasscodeLock.LockNow': 'Заблокировать приложение',
   // вкладка «Код-пароль» (порт tweb passcodeLock/*, план 2D, задача 18)
   'PasscodeLock.Notice': 'Примечание: если Вы забудете код-пароль, придётся выйти из аккаунта.',
   'PasscodeLock.Next': 'Далее',
@@ -1224,6 +1223,7 @@ const ru = {
   },
   'PasscodeLock.EnableLockShortcut': 'Сочетание клавиш для блокировки',
   'PasscodeLock.LockShortcutDescription': 'Подберите сочетание, которое сработает в Вашем браузере.',
+  'PasscodeLock.TapToLock': 'Нажмите, чтобы заблокировать Telegram.',
   // Passkeys
   'Passkeys.Caption':
     'Ключи доступа позволяют входить без пароля — по отпечатку пальца, лицу или ПИН-коду устройства.',

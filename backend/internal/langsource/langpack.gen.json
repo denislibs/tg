@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 32,
+      "version": 33,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -3375,10 +3375,6 @@
           "value": "Passcode Lock"
         },
         {
-          "key": "PasscodeLock.LockNow",
-          "value": "Lock the app"
-        },
-        {
           "key": "PasscodeLock.LockShortcutDescription",
           "value": "Play around to find the perfect shortcut to work for your browser."
         },
@@ -3421,6 +3417,10 @@
         {
           "key": "PasscodeLock.SetPasscode",
           "value": "Set passcode"
+        },
+        {
+          "key": "PasscodeLock.TapToLock",
+          "value": "Tap to lock Telegram."
         },
         {
           "key": "PasscodeLock.Title",
@@ -5815,7 +5815,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 32,
+      "version": 33,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -9848,10 +9848,6 @@
           "value": "Вы уверены, что хотите выйти?"
         },
         {
-          "key": "PasscodeLock.LockNow",
-          "value": "Заблокировать приложение"
-        },
-        {
           "key": "PasscodeLock.Notice",
           "value": "Примечание: если Вы забудете код-пароль, придётся выйти из аккаунта."
         },
@@ -9879,6 +9875,10 @@
         {
           "key": "PasscodeLock.LockShortcutDescription",
           "value": "Подберите сочетание, которое сработает в Вашем браузере."
+        },
+        {
+          "key": "PasscodeLock.TapToLock",
+          "value": "Нажмите, чтобы заблокировать Telegram."
         },
         {
           "key": "Passkeys.Caption",
@@ -11665,7 +11665,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 20,
+      "version": 21,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -13930,10 +13930,6 @@
           "value": "Voulez-vous vraiment vous déconnecter ?"
         },
         {
-          "key": "PasscodeLock.LockNow",
-          "value": "Verrouiller l'application"
-        },
-        {
           "key": "PasscodeLock.Notice",
           "value": "Remarque : si vous oubliez votre code d'accès, vous devrez vous déconnecter."
         },
@@ -13952,6 +13948,10 @@
         {
           "key": "PasscodeLock.LockShortcutDescription",
           "value": "Essayez plusieurs combinaisons pour trouver le raccourci qui fonctionne dans votre navigateur."
+        },
+        {
+          "key": "PasscodeLock.TapToLock",
+          "value": "Appuyez pour verrouiller Telegram."
         },
         {
           "key": "Passkeys.Caption",
@@ -14723,7 +14723,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 20,
+      "version": 21,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -16991,10 +16991,6 @@
           "value": "Möchtest du dich wirklich abmelden?"
         },
         {
-          "key": "PasscodeLock.LockNow",
-          "value": "App sperren"
-        },
-        {
           "key": "PasscodeLock.Notice",
           "value": "Hinweis: Wenn du deinen Code vergisst, musst du dich abmelden."
         },
@@ -17020,6 +17016,10 @@
         {
           "key": "PasscodeLock.LockShortcutDescription",
           "value": "Probiere aus, welches Tastenkürzel in deinem Browser funktioniert."
+        },
+        {
+          "key": "PasscodeLock.TapToLock",
+          "value": "Tippe, um Telegram zu sperren."
         },
         {
           "key": "Passkeys.Caption",
@@ -17803,7 +17803,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 20,
+      "version": 21,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -20076,10 +20076,6 @@
           "value": "¿Seguro que quieres cerrar sesión?"
         },
         {
-          "key": "PasscodeLock.LockNow",
-          "value": "Bloquear la aplicación"
-        },
-        {
           "key": "PasscodeLock.Notice",
           "value": "Nota: si olvidas tu código de acceso, tendrás que cerrar sesión."
         },
@@ -20098,6 +20094,10 @@
         {
           "key": "PasscodeLock.LockShortcutDescription",
           "value": "Prueba combinaciones hasta dar con el atajo que funcione en tu navegador."
+        },
+        {
+          "key": "PasscodeLock.TapToLock",
+          "value": "Toca para bloquear Telegram."
         },
         {
           "key": "Passkeys.Caption",
@@ -20881,7 +20881,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 20,
+      "version": 21,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -23186,10 +23186,6 @@
           "value": "Ви впевнені, що хочете вийти?"
         },
         {
-          "key": "PasscodeLock.LockNow",
-          "value": "Заблокувати застосунок"
-        },
-        {
           "key": "PasscodeLock.Notice",
           "value": "Важливо: якщо Ви забудете код-пароль, доведеться вийти з акаунта."
         },
@@ -23217,6 +23213,10 @@
         {
           "key": "PasscodeLock.LockShortcutDescription",
           "value": "Підберіть сполучення, яке спрацює у Вашому браузері."
+        },
+        {
+          "key": "PasscodeLock.TapToLock",
+          "value": "Натисніть, щоб заблокувати Telegram."
         },
         {
           "key": "Passkeys.Caption",

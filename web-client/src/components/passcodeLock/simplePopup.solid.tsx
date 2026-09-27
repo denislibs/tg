@@ -7,18 +7,20 @@
  * закрывают. Базовый `PopupElement` здесь не годится и у оригинала: экран живёт
  * до старта приложения, без навигационного стека.
  *
+ * Портал — в `getOverlayRoot()`, Esc — `bindActiveWindowListener` на документ
+ * активного окна: в выносе клиента (Document PiP, `core/pip.ts`) попап и его
+ * клавиша живут в окне выноса и переезжают вместе с ним.
+ *
  * Расхождения с tweb:
- *  1. Esc слушается на `document`, а не `bindActiveWindowListener` (у tweb —
- *     следование за окном выноса клиента в PiP; выноса у нас нет, `helpers/appWindow.ts`).
- *  2. `Transition` — вендор `@vendor/solid-transition-group`, асинхронные
+ *  1. `Transition` — вендор `@vendor/solid-transition-group`, асинхронные
  *     `onEnter`/`onExit` отданы ему через `void` (как `inlineSelect.solid.tsx`).
- *  3. `keepMe(ripple)` → `void ripple`.
+ *  2. `keepMe(ripple)` → `void ripple`.
  */
 import { type Component, createEffect, createSignal, createUniqueId, type JSX, onCleanup } from 'solid-js'
 import { Portal } from 'solid-js/web'
 import { Transition } from '@vendor/solid-transition-group'
 import pause from '@helpers/schedulers/pause'
-import { getOverlayRoot } from '@helpers/appWindow'
+import { bindActiveWindowListener, getOverlayRoot } from '@helpers/appWindow'
 import createFocusTrap from '@helpers/dom/focusTrap'
 import { i18n } from '@lib/langPack'
 import ripple from '@components/ripple'
@@ -51,11 +53,10 @@ const SimplePopup: Component<{
         props.onClose?.()
       }
     }
-    const doc = root.ownerDocument
-    doc.addEventListener('keydown', listener)
+    const detach = bindActiveWindowListener((win) => win.document, 'keydown', listener)
 
     onCleanup(() => {
-      doc.removeEventListener('keydown', listener)
+      detach()
       trap.deactivate()
     })
   })

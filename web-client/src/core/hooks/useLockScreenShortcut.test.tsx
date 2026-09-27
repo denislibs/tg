@@ -3,7 +3,8 @@
 // блокирует ли настоящее `keydown` приложение (`useLockStore.locked`) при
 // разных настройках. Настройки, стор и контроллер экрана блокировки — настоящие;
 // сам экран — заглушка, а `lockAndReload` (tweb `apiManagerProxy.lock()`:
-// воркер завершается вместе с ключом, вкладки перезагружаются) — шпион.
+// воркер завершается вместе с ключом, вкладки перезагружаются) — шпион. Его
+// зовёт `onAnimationEnd` контроллера — после проявления экрана (tweb `:70-72`).
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -33,18 +34,22 @@ beforeEach(() => {
   })
 })
 
-afterEach(() => {
+afterEach(async() => {
+  // запертый тест доживает до `onAnimationEnd`, чтобы тот не выстрелил в следующем
+  if(useLockStore.getState().locked) await vi.waitFor(() => expect(lockAndReload).toHaveBeenCalled())
   cleanup()
   document.body.replaceChildren()
 })
 
 describe('useLockScreenShortcut', () => {
-  it('Alt+L (по event.code, не по раскладке) блокирует и гасит событие', () => {
+  it('Alt+L (по event.code, не по раскладке) блокирует и гасит событие; воркер — после проявления экрана', async() => {
     renderHook(() => useLockScreenShortcut())
     const event = press({ altKey: true, key: 'д' })
     expect(useLockStore.getState().locked).toBe(true)
-    expect(lockAndReload).toHaveBeenCalledTimes(1)
     expect(event.defaultPrevented).toBe(true)
+    // tweb `lock(true, () => apiManagerProxy.lock())`: не сразу, а в `onAnimationEnd`
+    expect(lockAndReload).not.toHaveBeenCalled()
+    await vi.waitFor(() => expect(lockAndReload).toHaveBeenCalledTimes(1))
   })
 
   it('без модификатора, без кода или с выключенным сочетанием — не блокирует', () => {

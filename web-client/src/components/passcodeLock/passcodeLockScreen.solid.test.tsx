@@ -6,8 +6,11 @@
  *
  * Пины — на разметку и классы оригинала (баг со стенда: прежний React-экран был
  * самодельным и под замком рисовался «голым HTML»), строки — ключи tweb, и на
- * поведение: 5 попыток, на шестой — таймаут в настройках; «забыли код» — попап
- * подтверждения с `forceLogout`, текст по числу аккаунтов.
+ * поведение: 5 попыток, на шестой — таймаут в настройках (через мост
+ * `useAppSettings`, путь tweb `passcode.canAttemptAgainOn`); «забыли код» — попап
+ * подтверждения с `forceLogout`, текст по числу аккаунтов; запирание кнопкой
+ * замка — клон иконки едет к обезьянке и растворяется; попап и его Esc следуют
+ * за окном выноса клиента.
  *
  * Стабы — только границы: канал к воркеру (`invokePasscode`), сверка/разблокировка
  * (`lib/passcode/actions.ts` — PBKDF2 и ключ проверены своими тестами), число
@@ -15,6 +18,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'solid-js/web'
+import { setAppWindow } from '@helpers/appWindow'
 import { useSettingsStore } from '@/settings'
 import { installFakeCanvas } from '@/test/fakeCanvas'
 import ChatBackgroundGradientRenderer from '@core/chat/gradientRenderer'
@@ -47,7 +51,17 @@ vi.mock('@lib/lottie/lottieLoader', () => ({
 // Фон — настоящий `<ChatBackground>` поверх поддельного 2D-контекста; ввод
 // сдвигает его градиент (`passcodeLockScreen.tsx:113-122`) — шпион на методе.
 let fakeCanvas: ReturnType<typeof installFakeCanvas>
-const toNextPosition = vi.spyOn(ChatBackgroundGradientRenderer.prototype, 'toNextPosition').mockImplementation(() => {})
+// Шпион ставится в beforeEach: afterEach зовёт vi.restoreAllMocks() (шпионы окна
+// выноса), и шпион уровня модуля снимался бы после первого же теста.
+let toNextPosition: ReturnType<typeof vi.spyOn>
+
+// мост настроек — настоящий, запись под шпионом: срок попытки идёт путём tweb
+const bridge = vi.hoisted(() => ({ setAppSettings: undefined as unknown as ReturnType<typeof vi.fn> }))
+vi.mock('@stores/appSettings.solid', async(importOriginal) => {
+  const original = await importOriginal<typeof import('@stores/appSettings.solid')>()
+  bridge.setAppSettings = vi.fn(original.setAppSettings)
+  return { ...original, useAppSettings: () => [original.appSettings, bridge.setAppSettings] }
+})
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -64,12 +78,13 @@ async function waitFor<T>(get: () => T | null | undefined | false, timeout = 200
 let dispose: (() => void) | undefined
 let onUnlock: ReturnType<typeof vi.fn<() => void>>
 
-function mount() {
+function mount(lock?: { fromLockIcon: HTMLElement, onAnimationEnd: () => void }) {
   const host = document.createElement('div')
   host.classList.add('passcode-lock-screen')
+  if(lock) host.append(lock.fromLockIcon)
   document.body.append(host)
   onUnlock = vi.fn<() => void>()
-  dispose = render(() => <PasscodeLockScreen onUnlock={onUnlock} />, host)
+  dispose = render(() => <PasscodeLockScreen onUnlock={onUnlock} {...lock} />, host)
   return host
 }
 
@@ -95,7 +110,8 @@ beforeEach(() => {
   invokePasscode.mockClear()
   actions.isMyPasscode.mockClear()
   actions.unlockWithPasscode.mockClear()
-  toNextPosition.mockClear()
+  toNextPosition = vi.spyOn(ChatBackgroundGradientRenderer.prototype, 'toNextPosition').mockImplementation(() => {})
+  bridge.setAppSettings.mockClear()
   fakeCanvas = installFakeCanvas()
   useSettingsStore.setState({ passcodeCanAttemptAgainOn: null })
 })
@@ -103,6 +119,8 @@ beforeEach(() => {
 afterEach(() => {
   dispose?.()
   dispose = undefined
+  setAppWindow(window)
+  vi.restoreAllMocks()
   document.body.replaceChildren()
   fakeCanvas.restore()
 })
@@ -216,11 +234,16 @@ describe('PasscodeLockScreen — поведение tweb', () => {
     }
     await waitFor(() => errorLabel() === 'Wrong passcode. Please try again.')
     expect(useSettingsStore.getState().passcodeCanAttemptAgainOn).toBeNull()
+    expect(bridge.setAppSettings).not.toHaveBeenCalled()
 
     type('0005')
     await send()
     await waitFor(() => errorLabel() === 'Too many attempts, try again later')
-    const until = useSettingsStore.getState().passcodeCanAttemptAgainOn!
+    // запись — мостом, путём tweb `settings.passcode.canAttemptAgainOn`
+    expect(bridge.setAppSettings).toHaveBeenCalledTimes(1)
+    const [section, field, until] = bridge.setAppSettings.mock.calls[0] as [string, string, number]
+    expect([section, field]).toEqual(['passcode', 'canAttemptAgainOn'])
+    expect(useSettingsStore.getState().passcodeCanAttemptAgainOn).toBe(until)
     expect(until - Date.now()).toBeGreaterThan(55_000)
     expect(until - Date.now()).toBeLessThanOrEqual(60_000)
 
@@ -230,6 +253,25 @@ describe('PasscodeLockScreen — поведение tweb', () => {
     await waitFor(() => errorLabel() === 'Too many attempts, try again later')
     expect(actions.isMyPasscode).not.toHaveBeenCalled()
     expect(onUnlock).not.toHaveBeenCalled()
+  })
+
+  it('истёкший срок — сверка снова идёт, срок снимается мостом (null)', async() => {
+    useSettingsStore.setState({ passcodeCanAttemptAgainOn: Date.now() - 1 })
+    mount()
+    type('1234')
+    await send()
+    await waitFor(() => onUnlock.mock.calls.length > 0)
+    expect(bridge.setAppSettings).toHaveBeenCalledWith('passcode', 'canAttemptAgainOn', null)
+    expect(useSettingsStore.getState().passcodeCanAttemptAgainOn).toBeNull()
+  })
+
+  it('срок, записанный в настройки снаружи (соседняя вкладка), читается мостом — код не сверяется', async() => {
+    mount()
+    useSettingsStore.getState().update({ passcodeCanAttemptAgainOn: Date.now() + 60_000 })
+    type('1234')
+    await send()
+    await waitFor(() => errorLabel() === 'Too many attempts, try again later')
+    expect(actions.isMyPasscode).not.toHaveBeenCalled()
   })
 
   it('«log out» → попап подтверждения tweb; «Log out» зовёт `forceLogout`, «Cancel» и Esc закрывают', async() => {
@@ -263,5 +305,64 @@ describe('PasscodeLockScreen — поведение tweb', () => {
     const again = await waitFor(() => $('.popup-confirmation.active'))
     ;(again.querySelector('.popup-button.danger') as HTMLButtonElement).click()
     expect(invokePasscode).toHaveBeenCalledWith({ method: 'forceLogout' })
+  })
+})
+
+const rect = (left: number, top: number, width: number, height: number) =>
+  ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top }) as DOMRect
+
+describe('PasscodeLockScreen — запирание кнопкой замка (tweb `passcodeLockScreen.tsx:73-91`)', () => {
+  it('клон иконки едет к центру обезьянки со своим масштабом, растворяется; обезьянка — после; в конце onAnimationEnd', async() => {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function(this: Element) {
+      return this.classList.contains(monkeyStyles.PasswordMonkey) ? rect(100, 200, 100, 100) : rect(300, 20, 24, 24)
+    })
+    const fromLockIcon = document.createElement('span')
+    fromLockIcon.className = 'sidebar-lock-button-icon passcode-lock-screen__animated-lock-icon'
+    const onAnimationEnd = vi.fn()
+
+    mount({ fromLockIcon, onAnimationEnd })
+
+    const monkey = $(`.${monkeyStyles.PasswordMonkey}`)!
+    // пока клон в пути, обезьянка скрыта
+    expect(monkey.classList.contains(monkeyStyles.hidden)).toBe(true)
+    expect(fromLockIcon.style.getPropertyValue('--x')).toBe('150px')
+    expect(fromLockIcon.style.getPropertyValue('--y')).toBe('250px')
+    expect(Number(fromLockIcon.style.getPropertyValue('--scale'))).toBeCloseTo(100 / 24)
+    expect(fromLockIcon.classList.contains('passcode-lock-screen__animated-lock-icon--shift-body')).toBe(true)
+    expect(fromLockIcon.classList.contains('passcode-lock-screen__animated-lock-icon--disappear')).toBe(false)
+
+    await waitFor(() => fromLockIcon.classList.contains('passcode-lock-screen__animated-lock-icon--disappear'))
+    expect(monkey.classList.contains(monkeyStyles.hidden)).toBe(false)
+    expect(fromLockIcon.isConnected).toBe(true)
+    expect(onAnimationEnd).not.toHaveBeenCalled()
+
+    await waitFor(() => onAnimationEnd.mock.calls.length > 0)
+    expect(fromLockIcon.isConnected).toBe(false)
+  })
+
+  it('без иконки (старт под замком) обезьянка видна сразу', () => {
+    mount()
+    expect($(`.${monkeyStyles.PasswordMonkey}`)!.classList.contains(monkeyStyles.hidden)).toBe(false)
+  })
+})
+
+// tweb `tests/simplePopupWindow.test.tsx`: клиент вынесен в окно Document PiP —
+// портал попапа переехал туда, и Esc приходит в документ окна выноса.
+describe('SimplePopup — Esc в документе окна выноса (tweb bindActiveWindowListener)', () => {
+  it('после setAppWindow Esc из перенесённого попапа закрывает его', async() => {
+    const iframe = document.createElement('iframe')
+    document.body.append(iframe)
+    mount()
+    const logout = await waitFor(() => $<HTMLButtonElement>(`button.${styles.LogoutButton}`))
+    logout.click()
+    const popup = await waitFor(() => $('.popup-confirmation.active'))
+
+    const portal = popup.parentElement!
+    setAppWindow(iframe.contentWindow!)
+    iframe.contentDocument!.body.append(portal)
+    await pause(0)
+
+    popup.querySelector('button')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+    await waitFor(() => !iframe.contentDocument!.querySelector('.popup-confirmation'))
   })
 })

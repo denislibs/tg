@@ -28,8 +28,7 @@ import useMediaQuery from '../shared/lib/useMediaQuery'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import IconButton from '../shared/ui/IconButton'
-import PasscodeLockScreenController from './passcodeLock/passcodeLockScreenController.solid'
-import { lockAndReload } from '../client/passcodeClient'
+import createLockButton from './sidebarLeft/lockButton.solid'
 import SidebarMenuButton from './SidebarMenuButton'
 import SidebarEmojiStatusButton from './SidebarEmojiStatusButton'
 import ComposeFab from './ComposeFab'
@@ -324,6 +323,20 @@ export default function Sidebar({
     return () => dialogsManager.destroy()
   }, [], { host: bottomPartRef })
 
+  // Кнопка замка (tweb `toggleRightButtons`, `sidebarLeft/index.ts:345-352`) —
+  // ванильный узел порта `sidebarLeft/lockButton.solid.tsx`: при включённом коде
+  // шапка дописывает его последним, после кнопки статуса, и снимает при
+  // выключении. Смена Premium пересобирает замок, чтобы он остался последним.
+  const lockButtonHostRef = useImperativeIsland((header) => {
+    if (!passcodeEnabled) return
+    const lockButton = createLockButton()
+    header.append(lockButton.element)
+    return () => {
+      lockButton.element.remove()
+      lockButton.dispose()
+    }
+  }, [passcodeEnabled, isPremium])
+
   // Свёрнутая колонка аватаров при открытом форуме — клиренс под FAB у
   // скроллеров папок снимает владелец (его узлы, расхождение 19).
   useLayoutEffect(() => {
@@ -380,7 +393,7 @@ export default function Sidebar({
       <div className={classNames('tabs-tab', 'sidebar-slider-item', 'item-main', 'active', s.sliderItem)}>
       {/* `is-input-the-last-child` — tweb `toggleRightButtons`: поле поиска
           последнее, когда справа нет ни кнопки статуса, ни замка. */}
-      <div className={classNames('sidebar-header', 'main-search-sidebar-header', 'can-have-forum', !isPremium && !passcodeEnabled ? 'is-input-the-last-child' : '', s.header)}>
+      <div ref={lockButtonHostRef} className={classNames('sidebar-header', 'main-search-sidebar-header', 'can-have-forum', !isPremium && !passcodeEnabled ? 'is-input-the-last-child' : '', s.header)}>
         {/* Бургер в DOM всегда (tweb `index.html:93-96`): в нём стрелка
             «назад» — узел владельца поиска, ссылку на него владелец держит с
             монтирования колонки. При показанной колонке папок бургер прячется
@@ -398,19 +411,6 @@ export default function Sidebar({
           focused={searching}
         />
         {isPremium && <SidebarEmojiStatusButton emoji={emojiStatus} />}
-        {/* Замок над списком чатов при включённом код-пароле (tweb sidebar-lock-button). */}
-        {passcodeEnabled && !searching && (
-          <IconButton
-            // tweb lockButton.tsx:53-54: экран, затем воркер завершается вместе
-            // с ключом и все вкладки перезагружаются на экран блокировки
-            onClick={() => { void PasscodeLockScreenController.lock(); lockAndReload() }}
-            color="var(--secondary-text-color)"
-            aria-label={t('PasscodeLock.LockNow')}
-            title={t('PasscodeLock.LockNow')}
-          >
-            <TgIcon name="lock" size={24} />
-          </IconButton>
-        )}
       </div>
       {/* tweb: ряд историй ВСЕГДА в дереве (высотой 0), гаснет через
           .is-search-active на .item-main; свёрнут/развёрнут — useCollapsable */}
