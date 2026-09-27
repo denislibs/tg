@@ -854,3 +854,60 @@ func TestTxManager_RollbackOnError(t *testing.T) {
 		t.Fatalf("expected no chat after rollback, got %v", err)
 	}
 }
+
+// Строка списка чатов несёт роль, права админа зрителя и права участника по
+// умолчанию: из них собирается краткая форма чата с `creator`/`admin_rights`/
+// `default_banned_rights` (DialogRecord.ToChannel). Без них клиент не знает,
+// можно ли писать в канал или группу из списка — селектор пересылки
+// показывал каналы, где зритель простой подписчик.
+func TestChatsRepo_ListDialogs_ViewerRights(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewChatsRepo(pool)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+720")
+	sub := seedUser(t, pool, "+721")
+
+	var channelID, groupID int64
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO chats (type, title, creator_id) VALUES ('channel','Канал',$1) RETURNING id`, owner).Scan(&channelID); err != nil {
+		t.Fatalf("channel: %v", err)
+	}
+	// В группе обычным участникам запрещено писать: снят бит send_messages.
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO chats (type, title, creator_id, default_permissions) VALUES ('group','Группа',$1,$2) RETURNING id`,
+		owner, int(domain.AllMemberPerms&^domain.PermSendMessages)).Scan(&groupID); err != nil {
+		t.Fatalf("group: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO chat_members (chat_id, user_id, role, rights) VALUES
+		   ($1,$3,'creator',255), ($1,$4,'subscriber',0),
+		   ($2,$3,'creator',255), ($2,$4,'member',0)`,
+		channelID, groupID, owner, sub); err != nil {
+		t.Fatalf("members: %v", err)
+	}
+
+	byChat := func(userID int64) map[int64]domain.DialogRecord {
+		t.Helper()
+		list, err := repo.ListDialogs(ctx, userID)
+		if err != nil {
+			t.Fatalf("ListDialogs: %v", err)
+		}
+		out := map[int64]domain.DialogRecord{}
+		for _, d := range list {
+			out[d.ChatID] = d
+		}
+		return out
+	}
+
+	mine := byChat(owner)
+	if d := mine[channelID]; d.MyRole != domain.RoleCreator || d.MyRights != 255 {
+		t.Errorf("владелец канала: role=%q rights=%d; want creator/255", d.MyRole, d.MyRights)
+	}
+	theirs := byChat(sub)
+	if d := theirs[channelID]; d.MyRole != domain.RoleSubscriber || d.MyRights != 0 {
+		t.Errorf("подписчик: role=%q rights=%d; want subscriber/0", d.MyRole, d.MyRights)
+	}
+	if d := theirs[groupID]; d.DefaultPerms&domain.PermSendMessages != 0 || d.DefaultPerms&domain.PermSendMedia == 0 {
+		t.Errorf("default_permissions группы = %b; want без send_messages, с send_media", d.DefaultPerms)
+	}
+}

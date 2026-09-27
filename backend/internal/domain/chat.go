@@ -132,6 +132,15 @@ type DialogRecord struct {
 	// список диалогов строится ОТ членства (ListDialogs идёт по chat_members
 	// зрителя), поэтому в каждой его строке зритель — участник по построению.
 	JoinedAt time.Time
+	// MyRole/MyRights — строка членства ЗРИТЕЛЯ (chat_members.role/rights),
+	// DefaultPerms — что МОЖНО обычному участнику (chats.default_permissions).
+	// Из них ToChannel собирает `creator`/`admin_rights`/`default_banned_rights`
+	// теми же правилами, что ChatRecord.ToChannel: краткая форма из списка
+	// ЗАМЕНЯЕТ в зеркале клиента карточку целиком, и без прав она стирала
+	// права, приехавшие с карточкой.
+	MyRole       string
+	MyRights     Rights
+	DefaultPerms MemberPerms
 }
 
 // ToDialog — конструктор `dialog` из строки витрины. Пир и seq последнего
@@ -159,11 +168,13 @@ func (d DialogRecord) ToDialog(peer Peer, topMessage int64) DialogReal {
 // ChatRecord.ChannelDate — там же и цена ошибки.
 func (d DialogRecord) ToChannel() Channel {
 	out := NewChannel(d.ChatID, d.Title, d.ChatPhoto(), d.JoinedAt, ChannelFlags{
+		Creator:   d.MyRole == RoleCreator,
 		Broadcast: d.Type == ChatTypeChannel,
 		Megagroup: d.Type == ChatTypeGroup,
 		Forum:     d.IsForum,
 	})
 	out.Username = d.Username
+	out.setViewerRights(d.MyRights, d.DefaultPerms)
 	return out
 }
 
@@ -389,17 +400,31 @@ func (c ChatRecord) ToChannel() Channel {
 	out.Username = c.Username
 	out.ParticipantsCount = c.MemberCount
 	out.SendPaidMessagesStars = int64(c.Settings.ChargeStars)
-	if c.ViewerID != 0 && c.MyRights != 0 {
-		ar := NewChatAdminRights(c.MyRights)
-		out.AdminRights = &ar
+	var myRights Rights
+	if c.ViewerID != 0 {
+		myRights = c.MyRights
 	}
-	// ChatSettings.DefaultPerms — что участнику МОЖНО, а chatBannedRights —
-	// что НЕЛЬЗЯ: NewChatBannedRights инвертирует. Ловушка выписана в его
-	// докблоке; персональные ограничения (MemberRestriction.DeniedRights) —
-	// уже готовые запреты и инверсии НЕ требуют.
-	db := NewChatBannedRights(c.Settings.DefaultPerms, time.Time{})
-	out.DefaultBanned = &db
+	out.setViewerRights(myRights, c.Settings.DefaultPerms)
 	return out
+}
+
+// setViewerRights кладёт на краткую форму права зрителя: `admin_rights` —
+// когда у него есть хоть одно право админа, `default_banned_rights` — всегда.
+// Одно место на обе витрины (карточка чата и строка списка диалогов): клиент
+// заменяет карточку в зеркале целиком, и две разные сборки прав давали бы
+// разный ответ `hasRights` в зависимости от того, какой ответ пришёл последним.
+//
+// DefaultPerms — что участнику МОЖНО, а chatBannedRights — что НЕЛЬЗЯ:
+// NewChatBannedRights инвертирует. Ловушка выписана в его докблоке;
+// персональные ограничения (MemberRestriction.DeniedRights) — уже готовые
+// запреты и инверсии НЕ требуют.
+func (c *Channel) setViewerRights(myRights Rights, defaultPerms MemberPerms) {
+	if myRights != 0 {
+		ar := NewChatAdminRights(myRights)
+		c.AdminRights = &ar
+	}
+	db := NewChatBannedRights(defaultPerms, time.Time{})
+	c.DefaultBanned = &db
 }
 
 // ToChannelFull — полный конструктор `channelFull`: экран информации.
