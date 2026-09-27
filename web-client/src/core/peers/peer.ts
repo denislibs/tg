@@ -371,6 +371,10 @@ export interface ChatForbidden { _: 'chatForbidden'; id: number; title: string }
 export interface Channel {
   _: 'channel'
   pFlags?: Partial<{
+    /** Конструктор БЕЗ зрителя (min:flags.12): членства и `date` в нём нет,
+     *  их не спрашивали. Поверх известной карточки кладётся слиянием —
+     *  `peersManager.ts::mergeApiChat`. */
+    min: true
     creator: true
     left: true
     broadcast: true

@@ -224,9 +224,11 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		        -- формы (DialogRecord.ToChannel). Выборка идёт ОТ его строки
 		        -- членства, так что она здесь есть всегда.
 		        m.joined_at,
-		        -- Права зрителя для краткой формы чата (creator/admin_rights/
-		        -- default_banned_rights) — из той же строки членства.
-		        m.role, m.rights, c.default_permissions
+		        -- Поля полного channel зрителя (DialogRecord.ToChannel): без них
+		        -- строка списка затирала на клиенте карточку чата.
+		        c.member_count, m.role, m.rights, c.signatures, c.signature_profiles,
+		        COALESCE(c.discussion_chat_id,0), c.default_permissions,
+		        c.slowmode_seconds, c.charge_stars
 		 FROM chat_members m
 		 JOIN chats c ON c.id = m.chat_id
 		 -- stripped-превью фото группы/канала — из media по photo_media_id
@@ -273,18 +275,20 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		var topMessageID *int64
 		var peerID *int64
 		var peer userRealScan
-		var myRights, defaultPerms int
+		var rights, perms int
 		if err := rows.Scan(&d.ChatID, &d.Type, &d.Title, &d.Username, &d.PhotoID, &d.PhotoPreview,
 			&d.LastReadSeq, &d.UnreadCount, &d.UnreadMentionsCount, &d.UnreadReactionsCount,
 			&muteUntil, &d.Pinned, &archived, &d.IsForum, &notifyPreview, &notifySound, &d.PeerReadSeq,
 			&topMessageID, &d.TopMessageSeq,
 			&peerID, &peer.firstName, &peer.lastName, &peer.username, &peer.photoID, &peer.photoPreview,
 			&peer.isBot, &peer.isVerified, &peer.isPremium, &peer.emojiStatus, &peer.deleted,
-			&d.TTLPeriod, &d.JoinedAt, &d.MyRole, &myRights, &defaultPerms); err != nil {
+			&d.TTLPeriod, &d.JoinedAt,
+			&d.MemberCount, &d.MyRole, &rights, &d.Signatures, &d.SignatureProfiles,
+			&d.DiscussionChatID, &perms, &d.Settings.SlowmodeSeconds, &d.Settings.ChargeStars); err != nil {
 			return nil, err
 		}
-		d.MyRights = domain.Rights(myRights)
-		d.DefaultPerms = domain.MemberPerms(defaultPerms)
+		d.MyRights = domain.Rights(rights)
+		d.Settings.DefaultPerms = domain.MemberPerms(perms)
 		if archived {
 			d.Folder = domain.FolderArchive
 		}

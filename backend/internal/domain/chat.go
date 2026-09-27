@@ -132,15 +132,19 @@ type DialogRecord struct {
 	// список диалогов строится ОТ членства (ListDialogs идёт по chat_members
 	// зрителя), поэтому в каждой его строке зритель — участник по построению.
 	JoinedAt time.Time
-	// MyRole/MyRights — строка членства ЗРИТЕЛЯ (chat_members.role/rights),
-	// DefaultPerms — что МОЖНО обычному участнику (chats.default_permissions).
-	// Из них ToChannel собирает `creator`/`admin_rights`/`default_banned_rights`
-	// теми же правилами, что ChatRecord.ToChannel: краткая форма из списка
-	// ЗАМЕНЯЕТ в зеркале клиента карточку целиком, и без прав она стирала
-	// права, приехавшие с карточкой.
-	MyRole       string
-	MyRights     Rights
-	DefaultPerms MemberPerms
+	// Поля полного `channel` (см. ToChannel): число участников, членство
+	// ЗРИТЕЛЯ (роль и права его строки chat_members) и настройки группы, из
+	// которых собираются флаги и default_banned_rights. Зритель здесь участник
+	// по построению — та же оговорка, что у JoinedAt.
+	MemberCount       int
+	MyRole            string
+	MyRights          Rights
+	Signatures        bool
+	SignatureProfiles bool
+	DiscussionChatID  int64
+	// Settings — только то, что едет в краткую форму: DefaultPerms,
+	// SlowmodeSeconds, ChargeStars.
+	Settings ChatSettings
 }
 
 // ToDialog — конструктор `dialog` из строки витрины. Пир и seq последнего
@@ -159,22 +163,38 @@ func (d DialogRecord) ToDialog(peer Peer, topMessage int64) DialogReal {
 	return out
 }
 
-// ToChannel — краткий конструктор `channel` для вектора chats контейнера:
+// ToChannel — конструктор `channel` для вектора chats контейнера:
 // группа и канал различаются флагами, а не строкой (решение №2 разбора пиров).
 // У приватного чата и «Избранного» тела чата нет вовсе — там пир это
 // собеседник, поэтому вызывать имеет смысл только для многочленных чатов.
 //
 // date едет ДАТОЙ ВСТУПЛЕНИЯ зрителя (JoinedAt), а не датой создания чата: см.
 // ChatRecord.ChannelDate — там же и цена ошибки.
+//
+// Это ПОЛНЫЙ `channel` зрителя, тот же, что собирает карточка
+// (ChatRecord.ToChannel): число участников, членство зрителя и ограничения
+// обычного участника. Клиент оригинала заменяет им лежащую карточку целиком
+// (tweb appChatsManager.saveApiChat → safeReplaceObject, :268), поэтому
+// урезанная строка списка затирала карточку: после каждого перечитывания
+// списка шапка группы показывала «1 участник», а композер — «запрещено
+// отправлять сообщения» (hasRights без default_banned_rights отвечает «нельзя»).
 func (d DialogRecord) ToChannel() Channel {
 	out := NewChannel(d.ChatID, d.Title, d.ChatPhoto(), d.JoinedAt, ChannelFlags{
-		Creator:   d.MyRole == RoleCreator,
-		Broadcast: d.Type == ChatTypeChannel,
-		Megagroup: d.Type == ChatTypeGroup,
-		Forum:     d.IsForum,
+		Broadcast:         d.Type == ChatTypeChannel,
+		Megagroup:         d.Type == ChatTypeGroup,
+		Signatures:        d.Signatures,
+		SignatureProfiles: d.SignatureProfiles,
+		SlowmodeEnabled:   d.Settings.SlowmodeSeconds > 0,
+		Forum:             d.IsForum,
+		HasLink:           d.DiscussionChatID != 0,
 	})
 	out.Username = d.Username
-	out.setViewerRights(d.MyRights, d.DefaultPerms)
+	out.ParticipantsCount = d.MemberCount
+	out.SendPaidMessagesStars = int64(d.Settings.ChargeStars)
+	out.SetViewerMembership(d.MyRole, d.MyRights)
+	// Та же инверсия «можно → нельзя», что у карточки (см. ChatRecord.ToChannel).
+	db := NewChatBannedRights(d.Settings.DefaultPerms, time.Time{})
+	out.DefaultBanned = &db
 	return out
 }
 
@@ -387,7 +407,12 @@ func (c ChatRecord) ChannelDate() time.Time {
 // (default_banned_rights) — часть краткой формы по схеме.
 func (c ChatRecord) ToChannel() Channel {
 	out := NewChannel(c.ID, c.Title, c.ChatPhoto(), c.ChannelDate(), ChannelFlags{
-		Creator:           c.ViewerID != 0 && c.MyRole == RoleCreator,
+		// Снимок без зрителя (chat_update, один на всех участников) — это и
+		// есть min-конструктор схемы: членства в нём нет, потому что его не
+		// спрашивали. Без флага клиент принимал его за полный `channel`
+		// зрителя и затирал им карточку: создатель после смены фото группы
+		// оставался без pFlags.creator и admin_rights.
+		Min:               c.ViewerID == 0,
 		Left:              c.ViewerID != 0 && c.MyRole == "",
 		Broadcast:         c.Type == ChatTypeChannel,
 		Megagroup:         c.Type == ChatTypeGroup,
@@ -400,31 +425,34 @@ func (c ChatRecord) ToChannel() Channel {
 	out.Username = c.Username
 	out.ParticipantsCount = c.MemberCount
 	out.SendPaidMessagesStars = int64(c.Settings.ChargeStars)
-	var myRights Rights
 	if c.ViewerID != 0 {
-		myRights = c.MyRights
+		out.SetViewerMembership(c.MyRole, c.MyRights)
 	}
-	out.setViewerRights(myRights, c.Settings.DefaultPerms)
+	// ChatSettings.DefaultPerms — что участнику МОЖНО, а chatBannedRights —
+	// что НЕЛЬЗЯ: NewChatBannedRights инвертирует. Ловушка выписана в его
+	// докблоке; персональные ограничения (MemberRestriction.DeniedRights) —
+	// уже готовые запреты и инверсии НЕ требуют.
+	db := NewChatBannedRights(c.Settings.DefaultPerms, time.Time{})
+	out.DefaultBanned = &db
 	return out
 }
 
-// setViewerRights кладёт на краткую форму права зрителя: `admin_rights` —
-// когда у него есть хоть одно право админа, `default_banned_rights` — всегда.
-// Одно место на обе витрины (карточка чата и строка списка диалогов): клиент
-// заменяет карточку в зеркале целиком, и две разные сборки прав давали бы
-// разный ответ `hasRights` в зависимости от того, какой ответ пришёл последним.
+// SetViewerMembership — членство ЗРИТЕЛЯ в краткой форме: pFlags.creator и
+// admin_rights. Одно место на все сборки `channel`, у которых зритель известен
+// (карточка, строка списка чатов, пер-зрительский снимок chat_update).
 //
-// DefaultPerms — что участнику МОЖНО, а chatBannedRights — что НЕЛЬЗЯ:
-// NewChatBannedRights инвертирует. Ловушка выписана в его докблоке;
-// персональные ограничения (MemberRestriction.DeniedRights) — уже готовые
-// запреты и инверсии НЕ требуют.
-func (c *Channel) setViewerRights(myRights Rights, defaultPerms MemberPerms) {
-	if myRights != 0 {
-		ar := NewChatAdminRights(myRights)
+// Зачем отдельно: `channel` — объект ГЛАЗАМИ ЗРИТЕЛЯ, и клиент оригинала
+// заменяет им лежащую карточку целиком (tweb appChatsManager.saveApiChat →
+// safeReplaceObject). Конструктор, собранный без этих полей, для клиента
+// значит «я не создатель и не админ» — а не «не спрашивали». Так строка
+// списка чатов снимала с создателя его права сразу после смены фото группы.
+func (c *Channel) SetViewerMembership(role string, rights Rights) {
+	setPFlag(&c.PFlags, "creator", role == RoleCreator)
+	c.AdminRights = nil
+	if rights != 0 {
+		ar := NewChatAdminRights(rights)
 		c.AdminRights = &ar
 	}
-	db := NewChatBannedRights(defaultPerms, time.Time{})
-	c.DefaultBanned = &db
 }
 
 // ToChannelFull — полный конструктор `channelFull`: экран информации.

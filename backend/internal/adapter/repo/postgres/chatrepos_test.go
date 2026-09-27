@@ -978,7 +978,7 @@ func TestChatsRepo_ListDialogs_ViewerRights(t *testing.T) {
 	if d := theirs[channelID]; d.MyRole != domain.RoleSubscriber || d.MyRights != 0 {
 		t.Errorf("подписчик: role=%q rights=%d; want subscriber/0", d.MyRole, d.MyRights)
 	}
-	if d := theirs[groupID]; d.DefaultPerms&domain.PermSendMessages != 0 || d.DefaultPerms&domain.PermSendMedia == 0 {
-		t.Errorf("default_permissions группы = %b; want без send_messages, с send_media", d.DefaultPerms)
+	if d := theirs[groupID]; d.Settings.DefaultPerms&domain.PermSendMessages != 0 || d.Settings.DefaultPerms&domain.PermSendMedia == 0 {
+		t.Errorf("default_permissions группы = %b; want без send_messages, с send_media", d.Settings.DefaultPerms)
 	}
 }
