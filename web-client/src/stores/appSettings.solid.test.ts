@@ -204,3 +204,24 @@ describe('нет второго стора настроек (скан исход
     expect(writers).toEqual(['settings.tsx'])
   })
 })
+
+describe('useAppSettings — пути «Общих» (задача 13)', () => {
+  const before = { textSize: initial.textSize, themeChoice: initial.themeChoice, timeFormat: initial.timeFormat }
+  afterEach(() => { useSettingsStore.getState().update(before) })
+
+  it('timeFormat: h12/h23 tweb ↔ наш 12h/24h в обе стороны', async() => {
+    useSettingsStore.getState().update({ timeFormat: '24h' })
+    expect(appSettings.timeFormat).toBe('h23')
+
+    await setAppSettings('timeFormat', 'h12')
+    expect(useSettingsStore.getState().timeFormat).toBe('12h')
+    expect(appSettings.timeFormat).toBe('h12')
+  })
+
+  it('messagesTextSize и theme пишут textSize и themeChoice', async() => {
+    await setAppSettings('messagesTextSize', 18)
+    await setAppSettings('theme', 'tinted')
+    expect(useSettingsStore.getState().textSize).toBe(18)
+    expect(useSettingsStore.getState().themeChoice).toBe('tinted')
+  })
+})

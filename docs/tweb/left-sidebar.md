@@ -182,7 +182,7 @@ div#column-left.tabs-tab.chatlist-container.sidebar.sidebar-left.main-column.sid
 | Файл (`tabs/…`) | Конструктор (`solidJsTabs/tabs.ts`) | Назначение | Кто открывает |
 |---|---|---|---|
 | `settings.tsx` (комп. :82) | `AppSettingsTab` = `scaffoldSolidJSTab` :169-173 | корневой экран настроек | `sidebarLeft/index.ts:722` (меню), `:797` (клик по своему аккаунту), `lib/internalLinkProcessor.ts:723`; `sliceTabsUntilTab(AppSettingsTab)` из 2fa/email-флоу (`2fa/index.tsx:34`, `2fa/passwordSet.tsx:23`, `2fa/emailConfirmation.tsx:44`, `2fa/forgotPasswordLink.ts:108`, `changeLoginEmail.tsx:30`) |
-| `generalSettings.tsx` :355 | `AppGeneralSettingsTab` :141-145 | размер текста, фон, тема, lite mode | `settings.tsx:129→137` |
+| `generalSettings.tsx` :359 (812502980) | `AppGeneralSettingsTab` :160-164 (812502980) | размер текста, фон, тема, lite mode | `settings.tsx:255` (812502980); у нас — `sidebarLeft/tabs/generalSettings.solid.tsx` (задача 13 плана 2D) |
 | `notifications.tsx` :543 (812502980) | `AppNotificationsTab` :77-81 (812502980) | уведомления | `settings.tsx:252` (812502980) |
 | `privacyAndSecurity.tsx` :760 | `AppPrivacyAndSecurityTab` = Eventable :533-537 (+`getInitArgs` :541) | хаб приватности | `settings.tsx:128→137`; `sliceTabsUntilTab` из `2fa/forgotPasswordLink.ts:103`, `tabs.ts:27-30` |
 | `dataAndStorage/index.tsx` :52 (812502980) | `AppDataAndStorageTab` = Eventable :439-443 (812502980) | данные и хранилище | `settings.tsx:127→137` |

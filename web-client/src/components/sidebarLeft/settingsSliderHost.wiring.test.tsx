@@ -292,3 +292,22 @@ describe('шов React → слайдер: проводка вкладок «К�
     host.destroy()
   })
 })
+
+// Строка «General Settings» корня настроек (план 2D, задача 13) — единственный
+// вход во вкладку «Общие», пока корень React'овый (tweb `settings.tsx:255`).
+describe('шов React → слайдер: проводка вкладки «Общие»', () => {
+  it('строка «General Settings» в корне настроек открывает вкладку «Общие»', async() => {
+    const { managers } = makeManagers()
+    const { getByText } = mountSettings(managers)
+    expect(openedTab()).toBeNull()
+
+    await act(async() => { fireEvent.click(getByText('General Settings')) })
+    await flush(() => !!openedTab()?.querySelector('.range-setting-selector'))
+
+    const tab = openedTab()
+    expect(tab).not.toBeNull()
+    expect(tab!.querySelector('.sidebar-header__title')!.textContent).toBe('General Settings')
+    // React-подэкрана «Общих» больше нет — ни второго экрана, ни его шапки.
+    expect(columnEl.querySelectorAll('.range-setting-selector')).toHaveLength(1)
+  })
+})

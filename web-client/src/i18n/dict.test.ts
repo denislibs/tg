@@ -449,12 +449,15 @@ const COMPOSITION = {
 // Задачей 18 плана 2D — ключи вкладки «Код-пароль» (разбор — у `COMPOSITION` выше).
 // Задачей 17 плана 2D — ключи вкладок правил приватности вместо ключей снесённого
 // React-экрана правила (разбор — у `COMPOSITION` выше).
+// Задачей 13 плана 2D — самодельные `Theme.Light`/`Theme.System`/`Theme.Tinted`
+// снесённого React-экрана «Общих» заменены ключами tweb `ThemeDay`/`ThemeTinted`/
+// `AutoNightSystemDefault` у всех пяти: −3 +3, число строк то же.
 const FINGERPRINT = {
-  ru: '775f6be0',
-  uk: '342e65fa',
-  es: '14211f4b',
-  de: '1964f9e6',
-  fr: 'ac4f74e1',
+  ru: '6540b141',
+  uk: '8be7a2db',
+  es: 'a09e1ca8',
+  de: '6becf26d',
+  fr: '6e733d68',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
@@ -746,7 +749,6 @@ const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
     AttachSticker: '«sticker» — заимствование, в испанском Telegram так же',
   },
   de: {
-    'Theme.System': '«System» — немецкое слово, пишется так же',
     Stories: '«Stories» — заимствование, в немецком Telegram так же',
     'KeyboardShortcuts.Section.Stories': '«Stories» — то же заимствование, что и у ключа Stories',
     Online: '«online» — заимствование',
