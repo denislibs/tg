@@ -336,7 +336,13 @@ export function createWorkerCore() {
   // Объявлен ДО `groups`: карточка чата (`groups.card`) — единственный источник
   // конструктора `channel` на клиенте, и она отдаёт его владельцу пиров
   // (`saveApiPeers`) прежде, чем ответить вызывающему.
-  const peers = newPeersManager({ rest, onPeerOps: (ops) => broadcast(RT.peerOp, { ops }) })
+  // Статус из карточки — тем же кадром `updateUserStatus`, каким присутствие
+  // приходит с сервера (порт `saveUserStatus`, докблок `newPeersManager`).
+  const peers = newPeersManager({
+    rest,
+    onPeerOps: (ops) => broadcast(RT.peerOp, { ops }),
+    onUserStatus: (evt) => broadcast(RT.presence, evt),
+  })
   // Task 4 (действия без оптимистики): mute/pin/archive идут сеть-сначала (порт
   // tweb toggleDialogPin/updateNotifySettings) — локальный апдейт зовёт владелец
   // ПОСЛЕ успешного REST-ответа, см. groupsManager.ts::setMute/setPin/setArchive.
@@ -368,7 +374,7 @@ export function createWorkerCore() {
     getMe: () => me?.user ?? null,
     state: { getState, pushToState: (key, value) => persist.stateKey(key, value) },
   })
-  const privacy = newPrivacyManager({ rest })
+  const privacy = newPrivacyManager({ rest, peers })
   const drafts = newDraftsManager({ rest })
   // Тема оформления чата: только REST. Её место в схеме — полная карточка
   // (решение Р7), поэтому применяет её читатель карточки на главном потоке.

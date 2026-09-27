@@ -68,4 +68,19 @@ describe('privacyManager', () => {
       '/me/privacy/privacyKeyReadTime',
     ])
   })
+
+  // Порт `appProfileManager.getProfile` (tweb): ответ `users.getFullUser` несёт
+  // вектор `users`, и оригинал сохраняет его (`saveApiUsers`) — вместе с
+  // карточкой приезжает статус собеседника. Прежде вектор отбрасывался.
+  it('чужой профиль сохраняет вектор users владельцу карточек', async () => {
+    const bob = { _: 'user', id: 2, first_name: 'Боб', status: { _: 'userStatusOnline', expires: 100 } }
+    const get = vi.fn(async () => ({ _: 'users.userFull', full_user: { _: 'userFull', id: 2 }, chats: [], users: [bob], can_message: true }))
+    const saveApiPeers = vi.fn()
+    const mgr = newPrivacyManager({ rest: { get } as unknown as RestClient, peers: { saveApiPeers } })
+
+    const profile = await mgr.profile(2)
+
+    expect(saveApiPeers).toHaveBeenCalledWith({ chats: [], users: [bob] })
+    expect(profile.user).toEqual(bob)
+  })
 })

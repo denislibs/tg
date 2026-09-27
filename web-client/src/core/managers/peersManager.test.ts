@@ -410,4 +410,27 @@ describe('PeersManager: слияние карточки чата (saveApiChat)',
     mgr.saveApiPeers({ chats: [min] })
     expect(cached(mgr)).toEqual(min)
   })
+
+  // Порт `appUsersManager.saveApiUser → saveUserStatus` (tweb
+  // `appUsersManager.ts:700`): статус пользователя едет ВНУТРИ его карточки, и
+  // приёмник карточек — единственное место, где он становится известен
+  // клиенту. У нас статус живёт отдельным стором присутствия, поэтому владелец
+  // карточек обязан отдать его туда тем же кадром, что и сервер
+  // (`updateUserStatus`). Без этого собеседник, чей диалог появился уже ПОСЛЕ
+  // сида присутствия (новый человек написал первым), навсегда оставался «без
+  // статуса» — шапка чата пустая, профиль «был(а) давно».
+  it('saveApiPeers: статус из карточки уходит в присутствие кадром updateUserStatus', () => {
+    const { rest } = fakeRest([])
+    const statuses: unknown[] = []
+    const mgr = newPeersManager({ rest, onUserStatus: (e) => statuses.push(e) })
+
+    const status = { _: 'userStatusOnline', expires: 1790503807 } as const
+    mgr.saveApiPeers({ users: [user(2, { status }), user(3)] })
+    expect(statuses).toEqual([{ _: 'updateUserStatus', user_id: 2, status }])
+
+    // Та же карточка второй раз — это СВЕЖИЙ снимок сервера, а не повтор:
+    // присутствие между ними могло смениться кадром, и снимок его поправит.
+    mgr.saveApiPeers({ users: [user(2, { status })] })
+    expect(statuses).toHaveLength(2)
+  })
 })
