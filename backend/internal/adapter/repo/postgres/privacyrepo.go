@@ -214,11 +214,11 @@ func (r *PrivacyRepo) GetUser(ctx context.Context, id int64) (domain.UserRecord,
 	err := querier(ctx, r.pool).QueryRow(ctx,
 		`SELECT id, COALESCE(phone,''), username, COALESCE(first_name,''), COALESCE(last_name,''),
 		        COALESCE(bio,''), birthday, avatar_media_id, avatar_preview,
-		        is_premium, is_verified, is_bot, deleted_at IS NOT NULL, COALESCE(emoji_status,'')
+		        is_premium, is_verified, is_bot, deleted_at IS NOT NULL, COALESCE(emoji_status,''), is_service
 		   FROM users WHERE id=$1`, id).
 		Scan(&u.ID, &u.Phone, &u.Username, &u.FirstName, &u.LastName,
 			&u.Bio, &u.Birthday, &u.PhotoID, &u.PhotoPreview,
-			&u.IsPremium, &u.IsVerified, &u.IsBot, &u.Deleted, &u.EmojiStatus)
+			&u.IsPremium, &u.IsVerified, &u.IsBot, &u.Deleted, &u.EmojiStatus, &u.IsService)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.UserRecord{}, domain.ErrNotFound
 	}

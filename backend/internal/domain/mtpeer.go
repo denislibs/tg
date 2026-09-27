@@ -271,10 +271,16 @@ func NewUserEmpty(id int64) UserEmpty {
 //	Deleted        — users.deleted_at не пуст
 //	Bot            — users.is_bot
 //	Verified       — users.is_verified (defect 5 разбора: в батче терялся)
+//	Support        — users.is_service: служебный аккаунт Telegram (777000).
+//	                 Клиент tweb читает его как «не человек»: подпись статуса
+//	                 (`getUserStatusString.ts:34-37`), отказ от «в сети»/typing
+//	                 в шапке (`appImManager.ts:3725`), `isRegularUser`
+//	                 (`appUsersManager.ts:903`), принудительный онлайн
+//	                 (`:1028`), жалоба на бота (`canReportBot.ts:7`)
 //	Premium        — users.is_premium
 //	CloseFriend    — есть строка close_friends(owner=зритель, user=этот)
 //
-// Остальные булевы флаги схемы (support, scam, fake, bot_chat_history,
+// Остальные булевы флаги схемы (scam, fake, bot_chat_history,
 // bot_nochats, bot_inline_geo, apply_min_photo, attach_menu_enabled,
 // stories_*, contact_require_premium, bot_*) предмета у нас не имеют: ни
 // колонки, ни механики за ними нет. Они не объявляются вовсе, а не
@@ -292,6 +298,7 @@ type UserFlags struct {
 	Deleted       bool
 	Bot           bool
 	Verified      bool
+	Support       bool
 	Premium       bool
 	// CloseFriend — зависит от ЗРИТЕЛЯ, как self/contact: «этот человек в моём
 	// списке близких», а не свойство самого пользователя.
@@ -300,11 +307,11 @@ type UserFlags struct {
 
 // userFlagNames — что keepPFlags пропускает в модель на разборе. Флаг, которого
 // здесь нет, из чужого кадра в модель не попадёт.
-var userFlagNames = []string{"self", "contact", "mutual_contact", "deleted", "bot", "verified", "premium", "close_friend"}
+var userFlagNames = []string{"self", "contact", "mutual_contact", "deleted", "bot", "verified", "support", "premium", "close_friend"}
 
 // user#31774388 flags:# self:flags.10?true contact:flags.11?true
 // mutual_contact:flags.12?true deleted:flags.13?true bot:flags.14?true
-// verified:flags.17?true premium:flags.28?true … id:long
+// verified:flags.17?true support:flags.23?true premium:flags.28?true … id:long
 // access_hash:flags.0?long first_name:flags.1?string last_name:flags.2?string
 // username:flags.3?string phone:flags.4?string photo:flags.5?UserProfilePhoto
 // status:flags.6?UserStatus emoji_status:flags.30?EmojiStatus … = User;
@@ -359,6 +366,7 @@ func (u UserReal) MutualContact() bool { return u.PFlags["mutual_contact"] }
 func (u UserReal) Deleted() bool       { return u.PFlags["deleted"] }
 func (u UserReal) Bot() bool           { return u.PFlags["bot"] }
 func (u UserReal) Verified() bool      { return u.PFlags["verified"] }
+func (u UserReal) Support() bool       { return u.PFlags["support"] }
 func (u UserReal) Premium() bool       { return u.PFlags["premium"] }
 
 // Title — «Имя Фамилия» одной строкой. НА ПРОВОД НЕ ИДЁТ: имя пира собирает
@@ -390,6 +398,7 @@ func NewUser(id int64, f UserFlags) UserReal {
 	setPFlag(&u.PFlags, "deleted", f.Deleted)
 	setPFlag(&u.PFlags, "bot", f.Bot)
 	setPFlag(&u.PFlags, "verified", f.Verified)
+	setPFlag(&u.PFlags, "support", f.Support)
 	setPFlag(&u.PFlags, "premium", f.Premium)
 	setPFlag(&u.PFlags, "close_friend", f.CloseFriend)
 	return u

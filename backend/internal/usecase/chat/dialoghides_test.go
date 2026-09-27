@@ -115,3 +115,44 @@ func TestHiddenForMe_ExcludedFromMediaCountersAndSearch(t *testing.T) {
 		}
 	}
 }
+
+// `count` истории — то, что видит зритель: «удалённое у себя» и очищенное в
+// него не входит (шапка «Избранного» показывает его как «N messages», tweb
+// topbar.ts `messagesCounter`). Юзкейс обязан донести до хранилища зрителя и
+// его горизонт очистки — иначе счётчик считает всю таблицу.
+func TestHistoryCount_IsViewerVisible(t *testing.T) {
+	in, _ := newInteractor()
+	in.SetPublisher(&fakePublisher{})
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	var sent []domain.Message
+	for i := 0; i < 3; i++ {
+		m, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: b, Text: "м"})
+		if err != nil {
+			t.Fatalf("Send: %v", err)
+		}
+		sent = append(sent, m)
+	}
+	if err := in.DeleteMessage(ctx, chatID, sent[2].ID, a, false); err != nil {
+		t.Fatalf("DeleteMessage(for me): %v", err)
+	}
+	for _, tc := range []struct {
+		viewer int64
+		want   int
+	}{{a, 2}, {b, 3}} {
+		h, err := in.GetHistory(ctx, chatID, tc.viewer, 0, 0, 40, nil, "")
+		if err != nil {
+			t.Fatalf("GetHistory(%d): %v", tc.viewer, err)
+		}
+		if h.Count != tc.want {
+			t.Errorf("count истории у %d = %d; want %d", tc.viewer, h.Count, tc.want)
+		}
+	}
+	if err := in.ClearHistory(ctx, chatID, a); err != nil {
+		t.Fatalf("ClearHistory: %v", err)
+	}
+	if h, _ := in.GetHistory(ctx, chatID, a, 0, 0, 40, nil, ""); h.Count != 0 {
+		t.Errorf("count после очистки у a = %d; want 0", h.Count)
+	}
+}

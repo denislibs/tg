@@ -1475,10 +1475,17 @@ func (r fakeMsgs) ThreadReplyCounts(_ context.Context, chatID int64, rootIDs []i
 	return out, nil
 }
 
-func (r fakeMsgs) CountMessages(_ context.Context, chatID int64) (int, error) {
+func (r fakeMsgs) CountMessages(_ context.Context, chatID, userID, clearedSeq int64) (int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
-	return len(r.s.messages[chatID]), nil
+	n := 0
+	for _, m := range r.s.messages[chatID] {
+		if m.Deleted || m.Seq <= clearedSeq || (r.s.hidden != nil && r.s.hidden[userID] != nil && r.s.hidden[userID][m.ID]) {
+			continue
+		}
+		n++
+	}
+	return n, nil
 }
 
 func (r fakeMsgs) CountUnread(_ context.Context, chatID, userID, afterSeq int64) (int, error) {

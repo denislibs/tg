@@ -261,3 +261,21 @@ func TestUserStatus_OnlineCarriesExpiry(t *testing.T) {
 		t.Errorf("собрано %s", raw)
 	}
 }
+
+// `support` (user#… support:flags.23?true) переживает разбор кадра: флаг,
+// которого нет в userFlagNames, keepPFlags молча выбрасывает, и карточка
+// служебного аккаунта, прошедшая через JSON (кэш, фан-аут), теряла бы его.
+func TestUserReal_SupportFlagRoundTrip(t *testing.T) {
+	src := NewUser(ServiceUserID, UserFlags{Verified: true, Support: true})
+	b, err := json.Marshal(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got UserReal
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.Support() || !got.Verified() {
+		t.Fatalf("после разбора pFlags = %v; want support+verified", got.PFlags)
+	}
+}

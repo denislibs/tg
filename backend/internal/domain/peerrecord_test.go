@@ -108,14 +108,14 @@ func TestUserRecord_PhotoIsAState(t *testing.T) {
 
 	// Флаги строки складываются с флагами зрителя, а не затирают их: verified
 	// терялся в батче именно потому, что витрина собирала карточку сама.
-	rec := UserRecord{ID: 43, IsVerified: true, IsPremium: true, IsBot: true, Deleted: true}
+	rec := UserRecord{ID: 43, IsVerified: true, IsPremium: true, IsBot: true, IsService: true, Deleted: true}
 	got := rec.ToUser(UserFlags{Self: true}, nil, true)
 	for _, f := range []struct {
 		name string
 		on   bool
 	}{
 		{"self", got.Self()}, {"verified", got.Verified()}, {"premium", got.Premium()},
-		{"bot", got.Bot()}, {"deleted", got.Deleted()},
+		{"bot", got.Bot()}, {"support", got.Support()}, {"deleted", got.Deleted()},
 	} {
 		if !f.on {
 			t.Errorf("флаг %q потерян в краткой карточке", f.name)
