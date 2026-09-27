@@ -23,13 +23,3 @@
   border-color: var(--avatar-ring, var(--surface-color));
 }
 
-// Глиф в центре аватарки. «Избранное» — иконка шрифта `.avatar-icon`, как в
-// tweb; сервисный аккаунт пока рисуется inline-svg (см. комментарий в Avatar.tsx).
-// Центруем абсолютом: у `.avatar-like` центрирование идёт через line-height, а к
-// inline-svg оно не применимо.
-.glyph {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-}

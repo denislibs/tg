@@ -290,8 +290,10 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
           preview={chat.avatarPreview}
           size="dialog"
           // В свёрнутой колонке (форум открыт) онлайн-точку не рисуем — нижний
-          // правый угол занимает бейдж непрочитанного (как в Telegram).
-          online={collapsed ? false : chat.online || isUserStatusOnline(presence, Math.floor(Date.now() / 1000))}
+          // правый угол занимает бейдж непрочитанного (как в Telegram). У
+          // «Избранного» точки нет вовсе: оригинал спрашивает статус только
+          // при `peerId !== rootScope.myId` (appDialogsManager.ts:2945).
+          online={collapsed || chat.type === 'saved' ? false : chat.online || isUserStatusOnline(presence, Math.floor(Date.now() / 1000))}
           className={classNames('dialog-avatar', 'row-media', 'row-media-bigger')}
         />
 

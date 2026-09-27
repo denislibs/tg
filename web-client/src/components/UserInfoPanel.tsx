@@ -78,6 +78,13 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
     animationIntersector.toggleVideosUnder(columnRef.current, !open)
   }, [open])
   const isSaved = chat.type === 'saved'
+  // «Избранное» — панель БЕЗ профиля (tweb sharedMediaTab.tsx:73
+  // `noProfile ??= peerId === rootScope.myId`): ни карусели аватарок, ни имени,
+  // ни строк — сразу вкладки shared media в пустом `.profile-content`
+  // (sharedMedia.tsx:176-200, «keep same layout»), шапка — сразу в режиме
+  // «имя + счётчик вкладки» (`transition(tab.noProfile ? Media : Profile)`,
+  // :647) с «назад», которое закрывает панель (:659-670).
+  const noProfile = isSaved
   // «Ключ шифрования» (tweb chatEncryptionKey, Task 5 плана «карточка профиля
   // на Solid» — секции без аналога в оригинале) — только для секретного чата.
   // Объявлено выше прежнего места (было — рядом с `keyPopupOpen`) ради
@@ -240,8 +247,11 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   // Смена пира — тот же инстанс класса просто перегружает ленту (докблок
   // `setPeer`); topicId у единственного вызывающего нет вовсе.
   useEffect(() => {
+    // Без профиля карусели нет вовсе (tweb не создаёт `PeerProfile.AutoAvatar`
+    // при `noProfile`) — грузить в неё фото зрителя незачем.
+    if (noProfile) return
     void avatarsRef.current?.setPeer(peerId)
-  }, [peerId])
+  }, [peerId, noProfile])
 
   // tweb :340-348 (createEffect), портирован ЦЕЛИКОМ — не только
   // `setCollapsed(folded)`, но и гейт «нет фото → держать свёрнутым»
@@ -500,6 +510,16 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   useLayoutEffect(() => {
     const host = profileContentHostRef.current
     if (!host || !searchSuper || !avatars) return
+    if (noProfile) {
+      // tweb sharedMedia.tsx:192-199 — «keep same layout»: пустой
+      // `.profile-content` с узлом класса внутри, профиль не рендерится.
+      const content = document.createElement('div')
+      content.classList.add('profile-content')
+      content.append(searchSuper.container)
+      host.append(content)
+      profileUpdateRef.current = null
+      return () => { content.remove() }
+    }
     // Дженерик — ЯВНО `PeerProfileProps`, не по умолчанию (inference из
     // литерала пропов ниже даёт УЖЕ конкретные типы полей — например,
     // `onEnableDiscussion: () => undefined` вместо объявленного в
@@ -522,7 +542,16 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
       dispose()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [peerId, searchSuper, avatars])
+  }, [peerId, searchSuper, avatars, noProfile])
+
+  // tweb sharedMedia.tsx:647 — без профиля шапка СРАЗУ в режиме shared media:
+  // ряд вкладок стоит вверху, и первый же `onAdditionalScroll` оригинала
+  // (`setIsSharedMedia(true)`, :487-493) взводит «назад», `hide-border` и
+  // `header-filled`. У нас доезд меряется только на скролле — поэтому
+  // выставляем то же состояние явно на смене пира.
+  useLayoutEffect(() => {
+    if (noProfile && searchSuper) setIsSharedMediaRef.current(true)
+  }, [noProfile, searchSuper, peerId])
 
   // Гейты/данные Task 5 — НЕ производные от `peerId`/`searchSuper`/
   // `avatars` (deps эффекта выше): `useGroupInfo` грузит их асинхронно
@@ -636,7 +665,9 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
           <button
             type="button"
             className="btn-icon sidebar-close-button"
-            onClick={filled ? scrollBackToProfile : onClose}
+            // Без профиля «назад» закрывает панель (tweb :659-670:
+            // `transition.prevId() && !tab.noProfile` ложно → `onCloseBtnClick`).
+            onClick={filled && !noProfile ? scrollBackToProfile : onClose}
             aria-label={t(filled ? 'Common.Back' : 'Close')}
           >
             <div className={classNames('animated-close-icon', filled ? 'state-back' : '')} />

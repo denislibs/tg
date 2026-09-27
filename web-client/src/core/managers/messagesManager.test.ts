@@ -544,7 +544,7 @@ describe('MessagesManager.setFactCheck (оптимистика)', () => {
   it('объявляет patch {factcheck} ДО ответа сервера', async () => {
     const { rest, release } = pendingPostRest()
     const ops: MessageOp[] = []
-    const mgr = newMessagesManager({ rest, broadcast: (_e, p) => { ops.push(...(p as { ops: MessageOp[] }).ops) } })
+    const mgr = newMessagesManager({ rest, broadcast: (e, p) => { if (e === RT.messageOp) ops.push(...(p as { ops: MessageOp[] }).ops) } })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
 
     const promise = mgr.setFactCheck(1, cid(2), 'проверено', [], 'RU')
@@ -561,7 +561,7 @@ describe('MessagesManager.setFactCheck (оптимистика)', () => {
   it('на упавшей сети откатывает объявленное предыдущим значением', async () => {
     const { rest, reject } = pendingPostRest()
     const ops: MessageOp[] = []
-    const mgr = newMessagesManager({ rest, broadcast: (_e, p) => { ops.push(...(p as { ops: MessageOp[] }).ops) } })
+    const mgr = newMessagesManager({ rest, broadcast: (e, p) => { if (e === RT.messageOp) ops.push(...(p as { ops: MessageOp[] }).ops) } })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
 
     const promise = mgr.setFactCheck(1, cid(2), 'проверено', [], 'RU')
@@ -791,8 +791,10 @@ describe('MessagesManager.deleteMessage (RPC path)', () => {
   it('broadcasts one remove op per window where the message was visible, computed BEFORE eviction', async () => {
     const overlap = restWithThreadOverlap() as unknown as { get: RestClient['get']; post: RestClient['post'] }
     const rest = { ...overlap, del: async () => ({ ok: true }) } as unknown as RestClient
+    // Только операции окна: счёт истории (`rt:history_count`) — свой канал.
+    const all = vi.fn()
     const broadcast = vi.fn()
-    const mgr = newMessagesManager({ rest, broadcast })
+    const mgr = newMessagesManager({ rest, broadcast: (e, p) => { all(e, p); if (e === RT.messageOp) broadcast(e, p) } })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40, threadRoot: cid(100) })
 
@@ -809,8 +811,10 @@ describe('MessagesManager.deleteMessage (RPC path)', () => {
   it('does not broadcast when the message is absent from every window', async () => {
     const { rest: base } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
     const rest = { ...(base as unknown as { get: RestClient['get']; post: RestClient['post'] }), del: async () => ({ ok: true }) } as unknown as RestClient
+    // Только операции окна: счёт истории (`rt:history_count`) — свой канал.
+    const all = vi.fn()
     const broadcast = vi.fn()
-    const mgr = newMessagesManager({ rest, broadcast })
+    const mgr = newMessagesManager({ rest, broadcast: (e, p) => { all(e, p); if (e === RT.messageOp) broadcast(e, p) } })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
 
     await mgr.deleteMessage(1, cid(999), false)
@@ -1109,7 +1113,7 @@ describe('MessagesManager: вид чата доходит до временно�
     const mgr = newMessagesManager({
       rest,
       isBroadcastChat,
-      broadcast: (_e, p) => { ops.push(...(p as { ops: MessageOp[] }).ops) },
+      broadcast: (e, p) => { if (e === RT.messageOp) ops.push(...(p as { ops: MessageOp[] }).ops) },
     })
     // Бабл вставляется только в окно, доведённое до НИЗА истории.
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
@@ -1313,5 +1317,59 @@ describe('MessagesManager.fetchMessageReplyTo', () => {
 
     await mgr.fetchMessageReplyTo(CHAT, cid(20))
     expect(idsCalls).toEqual([`/chats/${OTHER}/messages?ids=5`])
+  })
+})
+
+// Счёт истории окна — порт `historyStorage.count` (tweb appMessagesManager.ts):
+// ставит ответ истории (:13088), растит новое сообщение (:10430-10432),
+// уменьшает удаление (:11523-11525). Владелец — менеджер, наружу — значение
+// `rt:history_count`; читает шапка «Избранного» («N messages»).
+describe('MessagesManager: счёт истории (historyStorage.count)', () => {
+  const setup = (page = { ...rawPage([3, 2, 1]), count: 10 }) => {
+    const { rest: base } = countingRest({ '0:0:40': page })
+    const rest = { ...(base as unknown as { get: RestClient['get']; post: RestClient['post'] }), del: async () => ({ ok: true }) } as unknown as RestClient
+    const counts: { key: string; count: number }[] = []
+    const mgr = newMessagesManager({ rest, broadcast: (e, p) => { if (e === RT.historyCount) counts.push(p as { key: string; count: number }) } })
+    return { mgr, counts, last: () => counts[counts.length - 1] }
+  }
+
+  it('ответ истории ставит счёт из `count` страницы и объявляет его', async () => {
+    const { mgr, last } = setup()
+    const r = await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    expect(r.count).toBe(10)
+    expect(last()).toEqual({ key: '1', count: 10 })
+  })
+
+  it('попадание в кэш объявляет известный счёт заново (поздняя вкладка) и отдаёт его, а не длину окна', async () => {
+    const { mgr, counts } = setup()
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    counts.length = 0
+    const r = await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    expect(r.cached).toBe(true)
+    expect(r.count).toBe(10)
+    expect(counts).toEqual([{ key: '1', count: 10 }])
+  })
+
+  it('новое сообщение в низ истории растит счёт; повтор того же — нет', async () => {
+    const { mgr, last } = setup()
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    const live = makeRawMessage({ id: 4, peerId: 1, fromId: 1, text: 'hi', createdAt: '2026-06-24T10:00:00Z' })
+    mgr.cacheLive(liveEvt(live))
+    expect(last()).toEqual({ key: '1', count: 11 })
+    mgr.cacheLive(liveEvt(live))
+    expect(last()).toEqual({ key: '1', count: 11 })
+  })
+
+  it('удаление известного сообщения уменьшает счёт', async () => {
+    const { mgr, last } = setup()
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    mgr.cacheDelete({ _: 'updateDeletePeerMessages', peer: { _: 'peerUser', user_id: 1 }, messages: [2] })
+    expect(last()).toEqual({ key: '1', count: 9 })
+  })
+
+  it('пока история не грузилась — счёт неизвестен и не объявляется', () => {
+    const { mgr, counts } = setup()
+    mgr.cacheLive(liveEvt(makeRawMessage({ id: 4, peerId: 1, fromId: 1, text: 'hi', createdAt: '2026-06-24T10:00:00Z' })))
+    expect(counts).toEqual([])
   })
 })

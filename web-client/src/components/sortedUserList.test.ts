@@ -6,6 +6,7 @@
 // слотом заголовка, снятие строки на `delete`.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { getMiddleware } from '@helpers/middleware'
+import rootScope from '@lib/rootScope'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import type { UserStatus } from '@core/peers/peer'
 import SortedUserList from './sortedUserList'
@@ -132,5 +133,22 @@ describe('SortedUserList', () => {
     list.delete(1)
     await settle()
     expect(calls).toBe(2)
+  })
+})
+
+// Участники: зритель в списке — он сам, а не «Избранное» (tweb
+// sortedUserList.ts:80 `meAsSaved: false`); бот подписан «bot» по карточке
+// (`getUserStatusString` :23-27), а не присутствием.
+describe('SortedUserList — особые строки', () => {
+  it('зритель — своим именем; бот — «bot»', async () => {
+    rootScope.myId = 1
+    applyPeerOps([{ op: 'upsert', peers: [{ _: 'user', id: 4, first_name: 'Бот', pFlags: { bot: true } }] }])
+    const list = build()
+    void list.add(1)
+    void list.add(4)
+    await settle()
+    const row = (id: number) => list.list.querySelector<HTMLElement>(`[data-peer-id="${id}"]`)!
+    expect(row(1).querySelector('.peer-title')!.textContent).toBe('Оффлайн')
+    expect(row(4).querySelector('.row-subtitle')!.textContent).toBe('bot')
   })
 })

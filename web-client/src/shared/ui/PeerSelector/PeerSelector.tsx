@@ -44,6 +44,7 @@ import Checkbox from '../Checkbox'
 import InputSearch from '../InputSearch'
 import TgIcon from '../../../components/TgIcon'
 import UserAvatar from '../../../components/UserAvatar'
+import VerifiedBadge from '../../../components/VerifiedBadge'
 import LottieSticker from '../../../components/LottieSticker'
 import { useT } from '../../../i18n'
 import s from './PeerSelector.module.scss'
@@ -66,6 +67,9 @@ export interface SelectorPeer {
   /** аватар не по фото пира: «Избранное» — иконка закладки на своём фоне
    *  (tweb `addDialogNew` c `meAsSaved`) */
   avatar?: { background: string; emoji?: string }
+  /** галочка официального пира у имени — как у строки списка чатов (tweb
+   *  `addDialogNew` → `PeerTitle` с `withIcons` → `generateTitleIcons`) */
+  verified?: boolean
 }
 
 interface PeerSelectorProps {
@@ -186,6 +190,7 @@ export function PeerRow({ peer, design = 'round', side = 'right', multi = false,
       <div className={classNames('row-row', 'row-title-row', 'dialog-title')}>
         <div className={classNames('row-title', 'no-wrap', 'user-title')}>
           <span className="peer-title">{peer.name}</span>
+          {peer.verified && <VerifiedBadge size={20} className="verified-icon" />}
         </div>
       </div>
       <UserAvatar

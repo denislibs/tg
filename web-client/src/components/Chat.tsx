@@ -23,11 +23,12 @@ import type { Chat } from '../data'
 import { useT, useLang, useTArgs } from '../i18n'
 import { useTypingLabel } from '../core/hooks/useTypingLabel'
 import { PeerStatus } from '../shared/ui/peerStatus'
+import { userHasPresence } from '../core/presence'
 import { useManagers } from '../core/hooks/useManagers'
 import { useNavigationActions } from '../core/hooks/useNavigationActions'
 import { useChatStackStore } from '../stores/chatStackStore'
 import { backChatLevel, closeChatLevel } from '../core/navigation/chatHistory'
-import { useMirrorWindow } from '../core/hooks/useMirrorWindow'
+import { useMirrorHistoryCount, useMirrorWindow } from '../core/hooks/useMirrorWindow'
 import { replaceMirrorWindow, winKey } from '../core/history/messagesMirror'
 import { useEvent } from '../core/hooks/useEvent'
 import { useFeedPageHotkeys } from '../core/hooks/useFeedPageHotkeys'
@@ -316,6 +317,8 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // флага `VITE_VANILLA_FEED` композер и лента говорят об ОДНОМ окне; zustand-
   // копия остаётся только у самой React-ленты и уходит вместе с ней (этап 7).
   const mirrorMsgs = useMirrorWindow(isRealChat ? winKey(numericChatId, threadRootId) : null)
+  // Счёт истории «Избранного» — подпись шапки (tweb topbar.ts `messagesCounter`).
+  const savedCount = useMirrorHistoryCount(isRealChat && isSaved && !thread ? winKey(numericChatId) : null)
   // Плашка ответа по НОМЕРУ сообщения — общий путь для черновика, жеста ленты и
   // Ctrl/Cmd+↑ (в tweb это тоже одно место — `chat.input.
   // getChatInputReplyToFromMessage`).
@@ -896,24 +899,6 @@ export default function Chat({ chat, onBack, thread }: Props) {
     return null
   })()
 
-  // Header status line: typing/recording wins; then group member counts; then
-  // private online / last-seen; then any static status.
-  const headerTypingActive = typingLabel.active
-  const headerTypingText = typingLabel.label
-  const headerTypingKind = typingLabel.kind
-  // Подпись присутствия — ЖИВОЙ узел ядра (`shared/ui/peerStatus`, порт tweb
-  // `wrappers/getUserStatusString.ts`). Ветку «онлайн» решает он же по
-  // конструктору статуса, как оригинал (:80-82), — прежняя проверка
-  // `isUserStatusOnline(..., nowSeconds())` была ВТОРЫМ читателем срока
-  // годности: истёкший онлайн гасит владелец (`degradeExpiredPresence`), и
-  // читать `expires` в двух местах значит расходиться с ним на длину задержки.
-  // Точку-индикатор рядом (`peerOnline`/`headerOnline`) она по-прежнему ведёт —
-  // это другой вопрос и другой потребитель.
-  const presenceLabel =
-    chat.type === 'private' && peerPresence ? <PeerStatus status={peerPresence} /> : null
-  const headerStatus = realSubtitle ?? presenceLabel ?? (chat.status ? t(chat.status as LangPackKey) : '')
-  const headerOnline = isUserStatusOnline(peerPresence, nowSeconds()) || chat.status === 'online'
-
   // Бот-собеседник (для кнопки «Начать», reply-клавиатуры и кнопки-меню).
   // `pFlags.bot` — из зеркала пиров, не отдельным походом в `/users/{id}`:
   // `usePeers` внутри `useChatInfoCard` (выше) уже объявляет пробел ровно за
@@ -922,6 +907,34 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // писателей `stores/fullPeers.solid.ts`).
   const privatePeer = chat.type === 'private' && isRealChat ? cachedUser(numericChatId) : undefined
   const isBotChat = privatePeer?._ === 'user' && !!privatePeer.pFlags?.bot
+  // «Не человек» — бот или служебный аккаунт (`pFlags.support`, 777000): у
+  // оригинала им не показывают ни typing, ни «в сети» — только подпись по
+  // пиру (tweb `appImManager.getUserStatus`, :3725 `!bot && !support`).
+  const isHumanPeer = userHasPresence(privatePeer)
+
+  // Header status line: typing/recording wins; then group member counts; then
+  // private online / last-seen; then any static status.
+  const headerTypingActive = typingLabel.active && (chat.type !== 'private' || isHumanPeer)
+  const headerTypingText = typingLabel.label
+  const headerTypingKind = typingLabel.kind
+  // Подпись собеседника — ЖИВОЙ узел ядра (`shared/ui/peerStatus`, порт tweb
+  // `wrappers/getUserStatusString.ts`): ветки служебного аккаунта/бота/
+  // поддержки решает КАРТОЧКА пира, остальное — присутствие. Ветку «онлайн»
+  // решает он же по конструктору статуса, как оригинал (:80-82), — прежняя
+  // проверка `isUserStatusOnline(..., nowSeconds())` была ВТОРЫМ читателем
+  // срока годности: истёкший онлайн гасит владелец (`degradeExpiredPresence`).
+  // Подсветку «онлайн» (`headerOnline`) ведёт отдельный вопрос ниже.
+  const presenceLabel =
+    chat.type === 'private' && (privatePeer || peerPresence) ? <PeerStatus user={privatePeer} status={peerPresence} /> : null
+  // «Избранное»: подпись — число сообщений истории (tweb topbar.ts
+  // `createStatus`, ветка `peerId === rootScope.myId` → `messagesCounter`
+  // с ключом `messages`; до первой страницы истории — `Loading`).
+  const savedStatus = chat.type === 'saved' && !thread
+    ? (savedCount == null ? t('Loading') : tArgs('messages', [savedCount]))
+    : null
+  const headerStatus = savedStatus ?? realSubtitle ?? presenceLabel ?? (chat.status ? t(chat.status as LangPackKey) : '')
+  const headerOnline = (chat.type === 'private' && isHumanPeer && isUserStatusOnline(peerPresence, nowSeconds())) || chat.status === 'online'
+
   const [botMenu, setBotMenu] = useState<{ text: string; url: string } | null>(null)
   useEffect(() => {
     if (!isBotChat) { setBotMenu(null); return }
@@ -1300,7 +1313,6 @@ export default function Chat({ chat, onBack, thread }: Props) {
         <ChatHeader
           chat={chat}
           avatarSrc={headerAvatarSrc}
-          peerOnline={isUserStatusOnline(peerPresence, nowSeconds())}
           typingActive={headerTypingActive}
           typingText={headerTypingText}
           typingKind={headerTypingKind}

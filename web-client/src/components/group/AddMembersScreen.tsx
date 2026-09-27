@@ -16,6 +16,7 @@ import { useManagers } from '../../core/hooks/useManagers'
 import { useGroupCandidates } from '../../core/hooks/useGroupCandidates'
 import { useChatsStore } from '../../stores/chatsStore'
 import { PeerStatus } from '../../shared/ui/peerStatus'
+import { cachedUser } from '../../core/peerCache'
 import { getPeerPhotoId, peerKey } from '../../core/peers/peer'
 import { getUserTitle } from '../../core/peers/getPeerTitle'
 
@@ -86,7 +87,7 @@ export default function AddMembersScreen({
         id: c.id,
         name: c.name,
         photoId: c.photoId,
-        subtitle: <PeerStatus status={p} />,
+        subtitle: <PeerStatus user={cachedUser(c.id)} status={p} />,
         // уже участник: галочка стоит, снять нельзя, чипа не даёт
         disabled: existing.has(c.id),
         checked: existing.has(c.id),

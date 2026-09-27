@@ -13,6 +13,11 @@ export const RT = {
   // ТОЛЬКО воркер (cacheLive), рассылается в ДОПОЛНЕНИЕ к rt:new_message. Проектор
   // переигрывает их поверх стора вместо разбора сырого кадра (Task 4).
   messageOp: 'rt:message_op',
+  // Счёт истории окна (`historyStorage.count` оригинала) — ЗНАЧЕНИЕ от
+  // владельца `messagesManager` (ответ истории / новое / удалённое), зеркало —
+  // `core/history/messagesMirror.ts::mirrorHistoryCount`. Читает шапка
+  // «Избранного» («N messages», tweb topbar.ts `messagesCounter`).
+  historyCount: 'rt:history_count',
   editMessage: 'rt:edit_message',
   deleteMessage: 'rt:delete_message',
   pinMessage: 'rt:pin_message',
@@ -564,6 +569,12 @@ export interface ViewsUpdateEvt {
  * оригинала (`setBubbleRepliesCount(bubble, message.replies.replies)`,
  * tweb bubbles.ts:1141).
  */
+/** Значение `rt:history_count`: окно (`winKey`) и его счёт. */
+export interface HistoryCountEvt {
+  key: string
+  count: number
+}
+
 export interface RepliesUpdateEvt {
   _: 'updateChannelMessageReplies'
   channel_id: number

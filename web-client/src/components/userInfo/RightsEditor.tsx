@@ -22,6 +22,7 @@ import { Row } from '../settings/kit'
 import { RIGHTS, type RealMember } from '../../core/hooks/useGroupInfo'
 import {useT} from '../../i18n'
 import { PeerStatus } from '../../shared/ui/peerStatus'
+import { cachedUser } from '../../core/peerCache'
 import { isUserStatusOnline } from '../../core/peers/peer'
 
 export default function RightsEditor({
@@ -77,7 +78,7 @@ export default function RightsEditor({
                   <ul className="chatlist chatlist-new">
                     <a className="row no-wrap row-with-padding row-clickable hover-effect chatlist-chat chatlist-chat-abitbigger" data-peer-id={member.userId}>
                       <div className="row-row row-subtitle-row dialog-subtitle">
-                        <div className="row-subtitle no-wrap"><PeerStatus status={member.status} /></div>
+                        <div className="row-subtitle no-wrap"><PeerStatus user={cachedUser(member.userId)} status={member.status} /></div>
                       </div>
                       <div className="row-row row-title-row dialog-title">
                         <div className="row-title no-wrap user-title">

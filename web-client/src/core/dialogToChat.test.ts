@@ -121,3 +121,33 @@ describe('dialogToChat', () => {
     expect(GRADIENTS).toContain(a.avatar)
   })
 })
+
+// Особые пиры (порт tweb avatarNew.tsx / peerTitle.ts):
+//  • служебный «Telegram» (777000) — ОБЫЧНЫЙ пир с фотографией от сервера:
+//    у оригинала для него нет ни глифа, ни своего градиента;
+//  • «Избранное» — иконка закладки и строка `SavedMessages` БЕЗ значков у
+//    имени (`peerTitle.ts:139-147` не зовёт `generateTitleIcons`).
+describe('dialogToChat — особые пиры', () => {
+  it('777000 — фото пира и галочка, никакого клиентского логотипа', () => {
+    const c = dialogToChat(makeDialog({ peerId: 777000 }), 1, lookup({
+      777000: {
+        _: 'user', id: 777000, first_name: 'Telegram', pFlags: { verified: true, support: true },
+        photo: { _: 'userProfilePhoto', photo_id: 55 },
+      },
+    }))
+    expect(c.photoId).toBe(55)
+    expect(c.avatarEmoji).toBeUndefined()
+    expect(c.avatar).toBe(GRADIENTS[777000 % GRADIENTS.length])
+    expect(c.verified).toBe(true)
+  })
+
+  it('«Избранное» не носит значков самого зрителя', () => {
+    const c = dialogToChat(makeDialog({ peerId: 5 }), 5, lookup({
+      5: { _: 'user', id: 5, first_name: 'Me', pFlags: { self: true, verified: true, premium: true }, emoji_status_emoticon: '🔥' },
+    }))
+    expect(c.avatarEmoji).toBe('saved')
+    expect(c.verified).toBeUndefined()
+    expect(c.premium).toBeUndefined()
+    expect(c.emojiStatus).toBeUndefined()
+  })
+})

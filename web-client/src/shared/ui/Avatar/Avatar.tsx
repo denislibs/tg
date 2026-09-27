@@ -202,14 +202,6 @@ export default function Avatar({
     >
       {src ? (
         <AvatarPhoto src={src} preview={preview} onThumbVisible={setThumbShown} />
-      ) : emoji === 'tg-logo' ? (
-        // отступление от tweb: в оригинале у сервисного аккаунта (id 777000)
-        // обычная фотография пира — `img.avatar-photo`, никакого отдельного
-        // глифа/иконки для него нет. У нас фото этого пира не приходит, поэтому
-        // рисуем логотип сами; убрать вместе с появлением аватарки сервисного бота.
-        <svg className={s.glyph} width={px * 0.62} height={px * 0.62} viewBox="0 0 24 24" fill="#fff" aria-label="Telegram">
-          <path d="M21.8 3.1 1.9 10.8c-1 .4-1 1.8 0 2.1l5 1.6 1.9 6c.3.9 1.4 1.1 2 .4l2.7-2.7 5 3.7c.7.5 1.7.1 1.9-.7l3.4-16c.2-1-.7-1.8-1.6-1.4zM9.5 14.3l8.6-5.3c.2-.1.4.2.2.3l-7 6.6c-.2.2-.3.5-.3.8l-.2 2.4-1.3-4.1c-.1-.3 0-.6.2-.7z" />
-        </svg>
       ) : emoji === 'saved' ? (
         // tweb avatarNew.tsx ставит `icon: 'saved_filled'` (tweb 2197fee9c:
         // `saved` → `saved_filled`) и рендерит его глифом шрифта —

@@ -84,12 +84,12 @@
  *     (роль `appUsersManager.searchContacts`, шапка `channelsManager.ts`), ответ
  *     несёт `Peer`, а не номер, — номер берётся `getPeerId`.
  * 11. `isNonContactUser` (:1139-1143) — по карточке владельца (`pFlags.contact`,
- *     `bot`, `deleted`), без `support`: такого флага в нашей карточке нет.
+ *     `bot`, `deleted`), без `support` (флаг в карточке есть с задачи «особые
+ *     чаты», но служебный аккаунт — не контакт и так).
  * 12. Подпись строки (`wrapSubtitle`, :1250-1261): чат — `getChatMembersString`
  *     строкой (`components/wrappers/getChatMembersString.ts`, у оригинала — узел
- *     `i18n`), пользователь — `userStatusLabel` (`core/presence.ts`, порт
- *     `getUserStatusString` в объёме ветки по статусу — ЗАДАЧА #130: боты и
- *     служебные аккаунты подписи «бот»/«служебные уведомления» не получают).
+ *     `i18n`), пользователь — `getUserStatusString` (`core/presence.ts`, порт
+ *     1:1: служебный аккаунт — «служебные уведомления», бот — «бот»).
  * 13. `checkbox(selected, color, label)` — без `color`: наш `CheckboxField`
  *     цвета не принимает, а `'secondary'` по умолчанию класса не ставит и у
  *     оригинала (`checkboxField.ts:48-49`).
@@ -141,7 +141,7 @@ import { isAnyGroup } from '@core/peers/predicates'
 import { filterByRights } from '@core/peers/filterByRights'
 import type { ChatRights } from '@core/peers/rights'
 import { peerKey, type Chat, type User } from '@core/peers/peer'
-import { userStatusLabel } from '@core/presence'
+import { getUserStatusString } from '@core/presence'
 import { useChatsStore } from '@stores/chatsStore'
 import { useI18nStore } from '@/i18n'
 
@@ -1028,7 +1028,7 @@ export default class AppSelectPeers {
       return i18n(this.selfPresence)
     } else {
       const [user] = await this.managers.peers.getPeers([peerId])
-      return userStatusLabel(user?._ === 'user' ? user.status : undefined)
+      return getUserStatusString(user?._ === 'user' ? user : undefined)
     }
   }
 

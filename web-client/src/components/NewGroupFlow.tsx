@@ -15,6 +15,7 @@ import {useT} from '../i18n'
 import { useGroupCandidates, type GroupCandidate } from '../core/hooks/useGroupCandidates'
 import { useChatsStore } from '../stores/chatsStore'
 import { PeerStatus } from '../shared/ui/peerStatus'
+import { cachedUser } from '../core/peerCache'
 import { isUserStatusOnline } from '../core/peers/peer'
 import s from './NewGroupFlow.module.scss'
 
@@ -61,7 +62,7 @@ export default function NewGroupFlow({ onClose, onCreate }: Props) {
   const back = () => (step === 'members' ? onClose() : setStep('members'))
   const canNext = step === 'members' || name.trim().length > 0
 
-  const statusOf = (id: number) => <PeerStatus status={presence[id]} />
+  const statusOf = (id: number) => <PeerStatus user={cachedUser(id)} status={presence[id]} />
   const isOnline = (id: number) => isUserStatusOnline(presence[id], Date.now() / 1000)
   const renderAvatar = (c: GroupCandidate, size: 'md' | number) => (
     <UserAvatar id={c.id} name={c.name} photoId={c.photoId} size={size} />
