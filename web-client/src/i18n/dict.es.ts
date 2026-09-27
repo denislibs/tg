@@ -853,6 +853,38 @@ const es = {
   // Самоназвание языка — им подписана строка «Язык» в настройках (tweb
   // `settings.tsx:254`, `i18n('LanguageName')`).
   LanguageName: 'Español',
+  // ── Папки: список, редактор, выбор чатов (tweb `sidebarLeft/tabs/chatFolders.tsx`,
+  //    `editFolder.tsx`, `includedChats.tsx`; задача 24 плана 2D) ──
+  'ChatList.Filter.Contacts': 'Contactos',
+  'ChatList.Filter.ReadChats': 'Leídos',
+  Chats: {
+    one_value: '%1$d chat',
+    other_value: '%1$d chats',
+  },
+  'EditFolder.EmojiAsIconTip': 'Si pones un solo emoji al principio (o al final), se mostrará como el icono en la barra lateral de carpetas',
+  FilterAllBots: 'Todos los bots',
+  FilterAllChannels: 'Todos los canales',
+  FilterAllContacts: 'Todos los contactos',
+  FilterAllGroups: 'Todos los grupos',
+  FilterAllNonContacts: 'Todos los no contactos',
+  FilterAlwaysShow: 'Incluir chats',
+  FilterMenuDelete: 'Eliminar carpeta',
+  FilterNeverShow: 'Excluir chats',
+  FilterShowMoreChats: {
+    one_value: 'Mostrar %1$d chat más',
+    other_value: 'Mostrar %1$d chats más',
+  },
+  Groups: {
+    one_value: '%1$d grupo',
+    other_value: '%1$d grupos',
+  },
+  LimitReached: 'Límite alcanzado',
+  'SharedFolder.CreateLink': 'Crear un nuevo enlace',
+  'SharedFolder.Description': 'Da a tus amigos y colegas acceso a toda la carpeta, incluidos todos sus grupos y canales en los que tienes los permisos necesarios.',
+  'SharedFolder.Includes': 'Incluye %s',
+  'SharedFolder.Toast.NeedName': 'Ponle un nombre a esta carpeta para compartirla.',
+  'SharedFolder.Toast.NoExcluded': 'Los chats excluidos no se admiten en carpetas compartidas.',
+  'SharedFolder.Toast.NoTypes': 'Los tipos de chat no se admiten en carpetas compartidas.',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(es)

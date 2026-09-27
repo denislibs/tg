@@ -303,3 +303,64 @@ export const AppAddMembersTab =
     getComponentModule: () => import('../sidebarLeft/tabs/addMembers.solid'),
   })
 ;(AppAddMembersTab as unknown as { noSame: boolean }).noSame = true
+
+// ── Папки (tweb :609-619, :804-845) — задача 24 плана 2D ─────────────────────
+// Список (`chatFolders.solid.tsx`), редактор (`editFolder.solid.tsx`) и выбор
+// чатов папки (`includedChats.solid.tsx` — кусок задачи 25, без него редактор не
+// собрать). Формы обычные, как у оригинала; `getInitArgs` (предзагрузка
+// заставки) и `deleteFolder` висят на конструкторе (`Object.assign`), их зовут
+// корень настроек, меню папки (`helpers/dom/createFolderContextMenu.ts`) и сам
+// список. `_onOpenAfterTimeout` — крючок содержимого: заставка играет после
+// въезда. У `getChatFoldersInitArgs` нет `filters` (`:807`): список вкладка
+// берёт из `appState.folders` сама. Типы — встроенным `import()`: блок
+// дописывается в конец файла одним куском.
+import { deleteFolder, getEditFolderInitArgs, preloadFolderAnimation } from '../sidebarLeft/tabs/editFolderShared'
+
+type FolderTabHooks = { _onOpenAfterTimeout?: () => void }
+
+function folderTabOpenAfterTimeout(this: SliderSuperTab) {
+  (this as SliderSuperTab & FolderTabHooks)._onOpenAfterTimeout?.()
+}
+
+type AppIncludedChatsTabPayload = {
+  filter: import('@core/managers/foldersManager').Folder
+  type: 'included' | 'excluded'
+  onSetFilter: (filter: import('@core/managers/foldersManager').Folder) => void
+}
+
+export const AppIncludedChatsTab =
+  scaffoldSolidJSTab<AppIncludedChatsTabPayload>({
+    title: (p) => p.type === 'included' ? 'FilterAlwaysShow' : 'FilterNeverShow',
+    getComponentModule: () => import('../sidebarLeft/tabs/includedChats.solid'),
+  })
+
+function getChatFoldersInitArgs() {
+  return {
+    animationData: preloadFolderAnimation('Folders_1'),
+  }
+}
+
+export const AppChatFoldersTab = Object.assign(
+  scaffoldSolidJSTab<ReturnType<typeof getChatFoldersInitArgs>>({
+    title: 'ChatList.Filter.List.Title',
+    getComponentModule: () => import('../sidebarLeft/tabs/chatFolders.solid'),
+    onOpenAfterTimeout: folderTabOpenAfterTimeout,
+  }),
+  { getInitArgs: getChatFoldersInitArgs },
+)
+
+type AppEditFolderTabPayload = ReturnType<typeof getEditFolderInitArgs> & {
+  initFilter?: import('@core/managers/foldersManager').Folder
+}
+
+export const AppEditFolderTab = Object.assign(
+  scaffoldSolidJSTab<AppEditFolderTabPayload>({
+    title: 'FilterHeaderEdit',
+    getComponentModule: () => import('../sidebarLeft/tabs/editFolder.solid'),
+    onOpenAfterTimeout: folderTabOpenAfterTimeout,
+  }),
+  {
+    getInitArgs: getEditFolderInitArgs,
+    deleteFolder,
+  },
+)

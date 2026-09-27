@@ -318,12 +318,21 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `PasscodeLock.AutoLock.Caption`, `Unit.Minutes.Abbr` (и у ru `Common.Next`):
 // ru 1356 → 1352, остальные −3 (uk 689, de 687, es 687, fr 686).
 // Поверх задач 7, 9, 10, 11, 12, 14, 16, 19 и корня настроек: ru 1382, uk 719, es 717, de 717, fr 713.
+//
+// Задача 24 плана 2D (вкладки «Папки», порт tweb chatFolders/editFolder/includedChats):
+// ключи tweb lang.ts `FilterAll{Contacts,NonContacts,Groups,Channels,Bots}`,
+// `FilterMenuDelete`, `FilterAlwaysShow`/`FilterNeverShow`, `EditFolder.EmojiAsIconTip`,
+// `ChatList.Filter.{Contacts,Bots,ReadChats}`, `SharedFolder.{CreateLink,Description,
+// Includes}`, `SharedFolder.Toast.{NeedName,NoTypes,NoExcluded}`, `LimitReached` и
+// числовые `Chats`, `Groups`, `FilterShowMoreChats` (plural +3 у всех). У es/de/fr нет
+// `ChatList.Filter.Bots` («Bots» совпал с английским), у fr — и `ChatList.Filter.Contacts`:
+// ru 1382 → 1404, uk 719 → 741, es/de 717 → 738, fr 713 → 733.
 const COMPOSITION = {
-  ru: { keys: 1382, plural: 38 },
-  uk: { keys: 719, plural: 27 },
-  es: { keys: 717, plural: 26 },
-  de: { keys: 717, plural: 27 },
-  fr: { keys: 713, plural: 26 },
+  ru: { keys: 1404, plural: 41 },
+  uk: { keys: 741, plural: 30 },
+  es: { keys: 738, plural: 29 },
+  de: { keys: 738, plural: 30 },
+  fr: { keys: 733, plural: 29 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -435,11 +444,11 @@ const COMPOSITION = {
 // Задачей 16 плана 2D — подпись пустой выдачи селектора пиров (разбор — там же).
 // Задачей 18 плана 2D — ключи вкладки «Код-пароль» (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '8fe8ded0',
-  uk: 'c0937e10',
-  es: '362b8a05',
-  de: '47fb3534',
-  fr: '065d344b',
+  ru: '6656204c',
+  uk: 'ec1da6fc',
+  es: '5b974fbf',
+  de: '49107eb2',
+  fr: '6c7323a0',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

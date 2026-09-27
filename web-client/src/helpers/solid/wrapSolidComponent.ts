@@ -6,9 +6,9 @@
  * функцией-аксессором (обёртка разработки — у нас так в vitest), а императивному
  * вызывающему нужен сам узел.
  *
- * `mountSolidComponent` (`:24-50`) не портирован: потребителя у нас нет
- * (вызывающие `wrapSolidComponent` — вкладки автозагрузки и селектор пиров: секция,
- * поле поиска; корень гаснет вместе с классом-владельцем).
+ * `mountSolidComponent` (`:24-50`) — корень со своей дочерней миддлварью и
+ * `dispose` на случай, когда узел снимают раньше владельца (строки ссылок
+ * редактора папки, `sidebarLeft/tabs/editFolder.solid.tsx`).
  */
 import { createRoot, type JSX } from 'solid-js'
 import type { Middleware } from '@helpers/middleware'
@@ -31,4 +31,32 @@ export function wrapSolidComponent(component: () => JSX.Element, middleware: Mid
   middleware.onClean(dispose)
 
   return el as HTMLElement
+}
+
+export function mountSolidComponent(
+  component: (middleware: Middleware) => JSX.Element,
+  parentMiddleware: Middleware,
+): { element: HTMLElement, dispose: VoidFunction, middleware: Middleware } {
+  const middlewareHelper = parentMiddleware.create()
+  const middleware = middlewareHelper.get()
+  let disposed = false
+  const dispose = () => {
+    if(disposed) {
+      return
+    }
+
+    disposed = true
+    middlewareHelper.destroy()
+  }
+
+  try {
+    return {
+      element: wrapSolidComponent(() => component(middleware), middleware),
+      dispose,
+      middleware,
+    }
+  } catch(err) {
+    dispose()
+    throw err
+  }
 }

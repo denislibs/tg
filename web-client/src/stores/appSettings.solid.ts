@@ -136,6 +136,9 @@ const APP_SETTINGS_KEYS = {
   // tweb `config/state.ts:159-160`
   cacheTTL: 'cacheTTL',
   cacheSize: 'cacheSize',
+  // tweb `config/state.ts` (`settings.tabsInSidebar`) — «Расположение папок»
+  // вкладки «Папки» (задача 24)
+  tabsInSidebar: 'tabsInSidebar',
 } as const satisfies KeyTable
 
 type Table = typeof APP_SETTINGS_KEYS

@@ -850,6 +850,37 @@ const fr = {
   // Самоназвание языка — им подписана строка «Язык» в настройках (tweb
   // `settings.tsx:254`, `i18n('LanguageName')`).
   LanguageName: 'Français',
+  // ── Папки: список, редактор, выбор чатов (tweb `sidebarLeft/tabs/chatFolders.tsx`,
+  //    `editFolder.tsx`, `includedChats.tsx`; задача 24 плана 2D) ──
+  'ChatList.Filter.ReadChats': 'Lues',
+  Chats: {
+    one_value: '%1$d discussion',
+    other_value: '%1$d discussions',
+  },
+  'EditFolder.EmojiAsIconTip': 'Si vous placez un seul emoji au début (ou à la fin), il s’affichera comme icône dans la barre latérale des dossiers',
+  FilterAllBots: 'Tous les bots',
+  FilterAllChannels: 'Tous les canaux',
+  FilterAllContacts: 'Tous les contacts',
+  FilterAllGroups: 'Tous les groupes',
+  FilterAllNonContacts: 'Tous les non-contacts',
+  FilterAlwaysShow: 'Inclure des discussions',
+  FilterMenuDelete: 'Supprimer le dossier',
+  FilterNeverShow: 'Exclure des discussions',
+  FilterShowMoreChats: {
+    one_value: 'Afficher %1$d discussion de plus',
+    other_value: 'Afficher %1$d discussions de plus',
+  },
+  Groups: {
+    one_value: '%1$d groupe',
+    other_value: '%1$d groupes',
+  },
+  LimitReached: 'Limite atteinte',
+  'SharedFolder.CreateLink': 'Créer un nouveau lien',
+  'SharedFolder.Description': 'Donnez à vos amis et collègues l’accès à tout le dossier, y compris tous ses groupes et canaux où vous avez les droits nécessaires.',
+  'SharedFolder.Includes': 'Contient %s',
+  'SharedFolder.Toast.NeedName': 'Donnez un nom à ce dossier pour le partager.',
+  'SharedFolder.Toast.NoExcluded': 'Les discussions exclues ne sont pas prises en charge dans les dossiers partagés.',
+  'SharedFolder.Toast.NoTypes': 'Les types de discussion ne sont pas pris en charge dans les dossiers partagés.',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(fr)
