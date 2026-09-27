@@ -9,7 +9,10 @@
 // Сверх оригинала здесь же — `FOLDER_PFLAGS`: соответствие имён флагов tweb
 // (`DialogFilter.pFlags`) полям нашей `Folder` (`core/managers/foldersManager.ts`).
 // Имена tweb ключуют кнопки категорий и в редакторе, и в выборе чатов
-// (`includedChats.tsx:57-72`, `data-peer-id`), а поле — плоское у нас.
+// (`includedChats.tsx:57-72`, `data-peer-id`), а поле — плоское у нас. И
+// `inviteUrl`: полный адрес ссылки-приглашения — у tweb `chatlistInvite.url`
+// уже полный, у нас сервер отдаёт путь (`/addlist/<slug>`); нужен редактору и
+// вкладке ссылки (`sharedFolder.solid.tsx`).
 //
 // Адаптации (каждая — из-за отсутствующей у нас подсистемы):
 //   • ветка shared-папки (`:16-23`: `dialogFilterChatlist` без своих ссылок →
@@ -36,8 +39,11 @@ import { confirmationPopup } from '@components/popups/popupPeer'
 import { useFoldersStore } from '@stores/foldersStore'
 import lottieLoader, { type LottieAssetName } from '@lib/lottie/lottieLoader'
 import noop from '@helpers/noop'
-import type { Folder } from '@core/managers/foldersManager'
+import type { Folder, FolderInvite } from '@core/managers/foldersManager'
 import type { Managers } from '@/client/bootstrap'
+
+/** Полный адрес ссылки-приглашения в папку (сервер отдаёт путь от корня SPA). */
+export const inviteUrl = (invite: FolderInvite) => location.origin + invite.url
 
 /** Ручки, которыми удаляется папка. */
 export type EditFolderManagers = {
