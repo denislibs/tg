@@ -1,7 +1,7 @@
 // Отмена предыдущего rAF-цикла градиента (порт tweb `animateSingle(cb, this)` —
 // ключ инстанса, `createAnimationInstance` начинает с `cancelAnimationByKey`).
 //
-// Живой сценарий: `core/chat/activeGradient.ts` зовёт `toNextPosition(getProgress)`
+// Живой сценарий: лента (`chat/bubbles.ts::scrollToBubble`) зовёт `toNextPosition(getProgress)`
 // на каждой отправке с прокруткой к низу, а `getProgress` живёт до 1000 мс. Две
 // отправки подряд быстрее секунды дают ДВА цикла на одном рендерере: они дерутся
 // за общие `_nextPositionTail`/`_frames`, и фон рвёт на целую фазу.

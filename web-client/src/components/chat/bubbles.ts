@@ -162,7 +162,7 @@ import liteMode from '@helpers/liteMode'
 import deferredPromise, { type CancellablePromise } from '@helpers/cancellablePromise'
 import { animateLadderLists, type LadderStep } from '@core/dom/ladder'
 import { deleteChatPosition, getChatPosition, saveChatPosition, type ChatPosition } from '@core/chat/chatPositions'
-import { getActiveGradientRenderer } from '@core/chat/activeGradient'
+import appChatBackground from '@components/chat/bubbles/chatBackground.solid'
 import type { ChatAutoDownload } from '@core/hooks/useChatAutoDownload'
 import I18n, { i18n } from '@lib/langPack'
 import { useI18nStore } from '../../i18n'
@@ -5332,18 +5332,15 @@ export default class ChatBubbles implements BubbleGroupsHost {
       startCallback: (dimensions) => {
         this.onScroll(true, dimensions)
 
-        // Порт tweb bubbles.ts:4710-4714 дословно. Роль `this.chat
-        // .gradientRenderer` (геттер к `appChatBackground
-        // .getActiveGradientRenderer()`, chat.ts:270-272) исполняет модуль
-        // `core/chat/activeGradient`: обои у нас живут в порталe
-        // (`components/ChatBackground.tsx`), общего родителя-владельца с лентой
-        // нет — реестр активного рендерера вынесен туда.
+        // Порт tweb bubbles.ts:4710-4714 дословно; `this.chat.gradientRenderer`
+        // у tweb — геттер к `appChatBackground.getActiveGradientRenderer()`
+        // (chat.ts:275-277), инстанса `Chat` у ленты нет — зовём синглтон сами.
         //
         // Аргумент `getProgress` ОБЯЗАТЕЛЕН: без него `toNextPosition` уходит в
         // ветку самоанимации (`gradientRenderer.ts:258-288`) и фон едет сам по
         // себе, а не вместе с прокруткой.
         if (this.updateGradient) {
-          getActiveGradientRenderer()?.toNextPosition(dimensions.getProgress)
+          appChatBackground.getActiveGradientRenderer()?.toNextPosition(dimensions.getProgress)
           this.updateGradient = undefined
         }
       },

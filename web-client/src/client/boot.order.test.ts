@@ -20,6 +20,11 @@
 // строк — это и есть поведение, и никакой юнит fillDialogsMirror/
 // applyDialogsMirror (см. boot.dialogs.test.ts) его не выражает.
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { installFakeCanvas } from '@/test/fakeCanvas'
+
+// Старт ставит фон страницы (`appChatBackground`, tweb index.ts:458, :567) — он
+// рисует холсты по-настоящему, а в happy-dom нет 2D-контекста.
+installFakeCanvas()
 
 const calls: string[] = []
 
@@ -70,6 +75,8 @@ vi.mock('../core/state/loadState', async () => {
 })
 
 import { bootstrap } from './boot'
+import { useSettingsStore } from '../settings'
+import backgroundStyles from '../components/chat/bubbles/chatBackground.module.scss'
 import { useNavigationStore } from '../stores/navigationStore'
 import { resetHashBootstrap } from '../core/hooks/useUrlSync'
 
@@ -98,6 +105,24 @@ describe('boot: гидрация владельца диалогов упоря�
     await bootstrap()
 
     expect(calls.indexOf('dialogs.fillMirror')).toBeLessThan(calls.indexOf('loadStateOnce'))
+  })
+})
+
+// ── Фон страницы (tweb index.ts:567-568) ────────────────────────────────────
+// Старт ставит `appChatBackground` до ветвления по authState и заводит
+// перерисовку по смене обоев в настройках (`watchWallPaperSettings`, О-11).
+describe('boot: фон страницы', () => {
+  it('первым потомком body; смена обоев в сторе перерисовывает его', async () => {
+    await bootstrap()
+    const background = document.body.firstElementChild as HTMLElement
+    expect(background.getAttribute('aria-hidden')).toBe('true')
+    const shownColors = () => (background.querySelector(`.${backgroundStyles.SlotActive} canvas`) as HTMLCanvasElement | null)?.dataset.colors
+    await vi.waitFor(() => expect(shownColors()).toBeDefined())
+
+    const colors = ['#aac8ea', '#cfe0f2', '#c2d9ee', '#b3d0ea']
+    useSettingsStore.getState().update({ wallpaper: { kind: 'preset', colors } })
+    await vi.waitFor(() => expect(shownColors()).toBe(colors.join(',')))
+    useSettingsStore.getState().update({ wallpaper: { kind: 'default' } })
   })
 })
 

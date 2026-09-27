@@ -22,13 +22,38 @@ import { resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
 import { clearChatPositions } from '@core/chat/chatPositions'
 import { useSettingsStore } from '@/settings'
-import { setActiveGradientRenderer } from '@core/chat/activeGradient'
 import type ChatBackgroundGradientRenderer from '@core/chat/gradientRenderer'
 import { makeMessage } from '@core/messages/testMessage'
 import type { MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
 import type { ScrollStartCallbackDimensions } from '@helpers/fastSmoothScroll'
 import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+
+// Фон страницы — синглтон `appChatBackground` (порт tweb
+// `chat/bubbles/chatBackground.tsx:759-777`); здесь от него нужна только ручка к
+// активному рендереру градиента, её и подменяем реестром теста.
+const background = vi.hoisted(() => {
+  type Listener = (renderer: unknown, meta?: { isDarkMaskPattern: boolean }) => void
+  let active: unknown
+  let activeMeta: { isDarkMaskPattern: boolean } | undefined
+  const listeners = new Set<Listener>()
+  return {
+    set(renderer: unknown, meta?: { isDarkMaskPattern: boolean }) {
+      active = renderer
+      activeMeta = meta
+      for(const listener of listeners) listener(active, activeMeta)
+    },
+    api: {
+      getActiveGradientRenderer: () => active,
+      onActiveGradientRendererChange(listener: Listener) {
+        listeners.add(listener)
+        listener(active, activeMeta)
+        return () => { listeners.delete(listener) }
+      },
+    },
+  }
+})
+vi.mock('@components/chat/bubbles/chatBackground.solid', () => ({ default: background.api }))
 
 const CHAT = 60
 const ME = 1
@@ -88,7 +113,7 @@ beforeEach(() => {
   clearChatPositions()
   rootScope.myId = ME
   toNextPosition.mockClear()
-  setActiveGradientRenderer({ toNextPosition } as unknown as ChatBackgroundGradientRenderer)
+  background.set({ toNextPosition } as unknown as ChatBackgroundGradientRenderer)
   // Открытие чата — БЕЗ «лестницы»: она тут не проверяется, а объявляет себя
   // тяжёлой анимацией на всю длительность. Гейт градиента поднимаем обратно
   // сразу после открытия, в самих кейсах.
@@ -98,7 +123,7 @@ beforeEach(() => {
 afterEach(() => {
   bubbles?.destroy()
   bubbles = undefined
-  setActiveGradientRenderer(undefined)
+  background.set(undefined)
   useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: false } })
 })
 
@@ -172,7 +197,7 @@ describe('ChatBubbles — сдвиг градиента обоев (tweb updateG
 
   it('обои без градиента (своё фото/цвет): отправка не падает, двигать нечего', async () => {
     const b = await openFeed([msg(1, 2), msg(2, ME)])
-    setActiveGradientRenderer(undefined)
+    background.set(undefined)
     catchStartCallback(b)
 
     append(3, ME)

@@ -5,6 +5,11 @@
 //
 // Окружение — то же фейковое, что у `boot.order.test.ts` (настоящая bootstrap()).
 import { describe, expect, it, vi } from 'vitest'
+import { installFakeCanvas } from '@/test/fakeCanvas'
+
+// Старт ставит фон страницы (`appChatBackground`, tweb index.ts:458, :567) — он
+// рисует холсты по-настоящему, а в happy-dom нет 2D-контекста.
+installFakeCanvas()
 
 const calls: string[] = []
 
@@ -52,6 +57,7 @@ vi.mock('../core/state/loadState', async () => {
 })
 
 import { bootstrap } from './boot'
+import backgroundStyles from '../components/chat/bubbles/chatBackground.module.scss'
 import { useNavigationStore } from '../stores/navigationStore'
 import { useSettingsStore } from '../settings'
 
@@ -79,6 +85,16 @@ describe('boot: под код-паролем старт ждёт разблок�
     expect(themeCss).toMatch(/--background-color:#/)
     expect(themeCss).toMatch(/--surface-color:#/)
     expect(themeCss).toMatch(/--primary-color:#/)
+
+    // П-11 снят: фон страницы стоит ДО экрана блокировки, первым потомком body
+    // (tweb index.ts:458-459 — `appChatBackground.attach()` + `setBackground` в
+    // колбэке «заперто»).
+    const background = document.body.firstElementChild as HTMLElement
+    expect(background.getAttribute('aria-hidden')).toBe('true')
+    expect(background.firstElementChild!.classList.contains(backgroundStyles.Layer)).toBe(true)
+    await vi.waitFor(() => {
+      expect(background.querySelector(`.${backgroundStyles.SlotActive} canvas`)).not.toBeNull()
+    })
 
     expect(passcodeInvoke).toHaveBeenCalledWith('passcode', { method: 'isLocked' })
     expect(me).not.toHaveBeenCalled()

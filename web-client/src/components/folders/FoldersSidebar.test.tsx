@@ -12,9 +12,34 @@ import { applyFolderUpdate } from '../../stores/foldersStore'
 import { useAppStateStore } from '../../stores/appState'
 import { initialState } from '../../core/state/state'
 import type { Folder, RawFolder } from '../../core/managers/foldersManager'
-import { setActiveGradientRenderer } from '../../core/chat/activeGradient'
 import type ChatBackgroundGradientRenderer from '../../core/chat/gradientRenderer'
 import s from './FoldersSidebar.module.scss'
+
+// Фон страницы — синглтон `appChatBackground` (порт tweb
+// `chat/bubbles/chatBackground.tsx:759-777`); здесь от него нужна только ручка к
+// активному рендереру градиента, её и подменяем реестром теста.
+const background = vi.hoisted(() => {
+  type Listener = (renderer: unknown, meta?: { isDarkMaskPattern: boolean }) => void
+  let active: unknown
+  let activeMeta: { isDarkMaskPattern: boolean } | undefined
+  const listeners = new Set<Listener>()
+  return {
+    set(renderer: unknown, meta?: { isDarkMaskPattern: boolean }) {
+      active = renderer
+      activeMeta = meta
+      for(const listener of listeners) listener(active, activeMeta)
+    },
+    api: {
+      getActiveGradientRenderer: () => active,
+      onActiveGradientRendererChange(listener: Listener) {
+        listeners.add(listener)
+        listener(active, activeMeta)
+        return () => { listeners.delete(listener) }
+      },
+    },
+  }
+})
+vi.mock('../chat/bubbles/chatBackground.solid', () => ({ default: background.api }))
 
 // Главное меню тянет менеджеры воркера (useManagers) — к зеркалу градиента
 // отношения не имеет, подменяем заглушкой.
@@ -59,7 +84,7 @@ function renderSidebar(folders: Folder[] = []) {
 
 afterEach(() => {
   contextMenuController.close()
-  act(() => setActiveGradientRenderer(undefined))
+  act(() => background.set(undefined))
   cleanup()
   document.body.replaceChildren()
   useAppStateStore.setState(initialState(), true)
@@ -69,7 +94,7 @@ describe('FoldersSidebar — зеркало градиента обоев', () =
   it('активные обои с градиентом → холст колонки цепляется зеркалом', () => {
     const detach = vi.fn()
     const attachMirror = vi.fn(() => detach)
-    act(() => setActiveGradientRenderer(
+    act(() => background.set(
       { attachMirror } as unknown as ChatBackgroundGradientRenderer,
       { isDarkMaskPattern: false },
     ))
@@ -84,7 +109,7 @@ describe('FoldersSidebar — зеркало градиента обоев', () =
   })
 
   it('обои без градиента (картинка/цвет) — падаем обратно на backdrop-filter', () => {
-    act(() => setActiveGradientRenderer(undefined))
+    act(() => background.set(undefined))
     const { host } = renderSidebar()
 
     expect(host.querySelector(`.${s.backgroundNoGradient}`)).not.toBeNull()
@@ -93,11 +118,11 @@ describe('FoldersSidebar — зеркало градиента обоев', () =
   it('смена обоев отцепляет прошлое зеркало и цепляет новое; тёмный узор дотемняет тинт', () => {
     const detach = vi.fn()
     const first = { attachMirror: vi.fn(() => detach) } as unknown as ChatBackgroundGradientRenderer
-    act(() => setActiveGradientRenderer(first, { isDarkMaskPattern: false }))
+    act(() => background.set(first, { isDarkMaskPattern: false }))
     const { host } = renderSidebar()
 
     const second = { attachMirror: vi.fn(() => vi.fn()) } as unknown as ChatBackgroundGradientRenderer
-    act(() => setActiveGradientRenderer(second, { isDarkMaskPattern: true }))
+    act(() => background.set(second, { isDarkMaskPattern: true }))
 
     expect(detach).toHaveBeenCalledTimes(1)
     expect(second.attachMirror).toHaveBeenCalledWith(host.querySelector('canvas'))
