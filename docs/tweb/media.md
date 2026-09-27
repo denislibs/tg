@@ -1358,6 +1358,7 @@ c1c10b8c6 + cab52547f (пины в `animationIntersector.test.ts`, в том ч�
 | Скачивание на диск | SW-стрим `d/{id}` + iframe, фолбэк anchor | blob + anchor (`useMessageActions`) | стрим-скачивание больших файлов не портировано |
 | Вьювер | `appMediaViewerBase` + avatar-вьювер | порт 1:1 (mover/zoom/video) | avatar-вьювер и sharing таргетов между источниками — сверить с §8 |
 | Аватарки | stripped+blur | без блюра | осознанное решение (2026-08-12) |
+| Обои чата | `ChatBackgroundStore` (`lib/chatBackgroundStore.ts`): файл серверных обоев по slug → корзина `cachedBackgrounds` + общие object URL, размытая копия `blur(url, 12, 4)` | `core/chat/chatBackgroundStore.ts`: своё фото — обычное медиа (`cachedMediaUrl`/`ensureMediaUrl`, корзина `cachedFiles` владельца), размытая копия тем же `blurWallPaperImage`, засев локальным файлом на время отгрузки; память вкладки, своей корзины нет. Потребитель — фон чата `components/chat/bubbles/chatBackground.solid.tsx` | серверных обоев нет (О-11) — `cachedBackgrounds` и SW-скоуп `backgrounds` не нужны (О-40) |
 
 Смежные наши доки: `2026-08-08-tweb-deep-structural-audit.md`, `bubbles.md`
 (медиа-баблы), `right-sidebar.md` (§4 shared media),

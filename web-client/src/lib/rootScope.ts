@@ -236,6 +236,12 @@ export type BroadcastEvents = {
   // Payload — код языка.
   'language_apply': [void]
   'language_change': [string]
+
+  // ── тема (порт tweb rootScope.ts:188, отправитель — themeController.ts:350) ──
+  // Местное (`dispatchEventSingle`): тему применила эта вкладка
+  // (`core/theme/themeController.ts::setTheme`). Подписчик — фон чата
+  // (`components/chat/bubbles/chatBackground.solid.tsx`).
+  'theme_changed': [void]
 }
 
 export type BroadcastEventsListeners = {

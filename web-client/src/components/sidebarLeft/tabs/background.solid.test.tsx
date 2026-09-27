@@ -6,7 +6,7 @@
  * Вкладка гоняется НАСТОЯЩАЯ — `AppChatBackgroundTab` из `solidJsTabs/tabs.ts`,
  * открытая через хост (`settingsSliderHost.ts`) тем же путём, что строка «Общих».
  * Стабы — только границы: выбор файла (`requestFile`), воркер (`managers.media`),
- * холсты фона (в happy-dom нет 2D-контекста) и геометрия.
+ * 2D-контекст холстов фона (в happy-dom его нет — поддельный) и геометрия.
  *
  * Предмет — видимое в DOM и записанное в настройки:
  *  • три кнопки `btn-primary btn-transparent` и строка-тумблер размытия в одной
@@ -27,19 +27,12 @@ import { getIconContent } from '@components/icon'
 import { AppChatBackgroundTab } from '@components/solidJsTabs/tabs'
 import { createSettingsSliderHost, type SettingsSliderHost } from '../settingsSliderHost'
 import { installSpecLabelActivation } from '@/test/specLabelActivation'
+import { installFakeCanvas } from '@/test/fakeCanvas'
+import backgroundStyles from '@components/chat/bubbles/chatBackground.module.scss'
 
-// Холсты фона плитки: в happy-dom нет 2D-контекста (как в `ChatBackground.test.tsx`).
-vi.mock('@core/chat/gradientRenderer', () => ({
-  default: class {
-    static createCanvas() { return document.createElement('canvas') }
-    static create() { return { gradientRenderer: {}, canvas: document.createElement('canvas') } }
-    init() {}
-  },
-}))
-vi.mock('@core/chat/patternRenderer', async(importOriginal) => ({
-  ...(await importOriginal<object>()),
-  renderPattern: () => {},
-}))
+// Плитка — настоящий `<ChatBackground>`; холстам — поддельный 2D-контекст
+// (в happy-dom его нет, `test/fakeCanvas.ts`).
+let fakeCanvas: ReturnType<typeof installFakeCanvas>
 
 const requestFile = vi.hoisted(() => vi.fn())
 vi.mock('@helpers/files/requestFile', () => ({ default: requestFile }))
@@ -55,6 +48,7 @@ let uninstallLabelActivation: () => void
 let upload: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
+  fakeCanvas = installFakeCanvas()
   uninstallLabelActivation = installSpecLabelActivation()
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width: 420 } as DOMRect)
   useSettingsStore.getState().update({
@@ -79,6 +73,7 @@ afterEach(async() => {
   document.body.replaceChildren()
   ensureMediaUrl.mockClear()
   vi.restoreAllMocks()
+  fakeCanvas.restore()
   requestFile.mockReset()
 })
 
@@ -130,6 +125,24 @@ describe('вкладка «Обои» — разметка', () => {
     expect(first.getAttribute('tabindex')).toBe('0')
     const media = first.querySelector<HTMLElement>('.background-item-media.grid-item-media')!
     expect(media.style.background).toContain('linear-gradient(135deg')
+  })
+
+  it('плитка — тот же `<ChatBackground>` в дневной отрисовке (tweb `:104-127`): градиент пресета и узор soft-light', async() => {
+    const tab = await open()
+    await pause(0)
+    const media = tiles(tab)[1].querySelector<HTMLElement>('.background-item-media')!
+    const layer = media.querySelector<HTMLElement>(`.${backgroundStyles.Layer}`)!
+    expect(layer).not.toBeNull()
+    const slot = layer.querySelector<HTMLElement>(`.${backgroundStyles.SlotActive}`)!
+    expect(slot.classList.contains(backgroundStyles.IsPattern)).toBe(true)
+    const [gradient, pattern] = [...slot.children] as HTMLCanvasElement[]
+    expect(gradient.dataset.colors).toBe(WALLPAPER_PRESETS[1].colors.join(','))
+    expect(pattern.classList.contains(backgroundStyles.Blend)).toBe(true)
+    // не tinted-отрисовка (у tweb она включается только темой `tinted`)
+    expect(slot.classList.contains(backgroundStyles.IsTinted)).toBe(false)
+    expect(pattern.classList.contains(backgroundStyles.DarkPatternInvert)).toBe(false)
+    // холст узора — под размер плитки 72×96, а не окна
+    expect([pattern.width, pattern.height]).toEqual([72, 96])
   })
 })
 
@@ -209,8 +222,9 @@ describe('вкладка «Обои» — выбор и сброс', () => {
     const first = tiles(tab)[0]
     expect(first.dataset.id).toBe('custom-5')
     expect(first.classList.contains('active')).toBe(true)
-    expect(ensureMediaUrl).toHaveBeenCalledWith(5, expect.anything())
-    expect(first.querySelector('img')!.getAttribute('src')).toBe('blob:media-5')
+    // адрес — от медиа-конвейера (`ensureMediaUrl`); `ChatBackgroundStore` держит
+    // его в памяти вкладки, поэтому повторный вызов может и не понадобиться
+    await vi.waitFor(() => expect(first.querySelector('img')?.getAttribute('src')).toBe('blob:media-5'))
   })
 })
 

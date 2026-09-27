@@ -194,8 +194,8 @@ nobody had opened when the passcode was enabled». UI экрана блокир�
 | П-7 | `?noSharedWorker=1`: включение кода в одной вкладке не доходит до выделенных воркеров других вкладок, пока те не перезагрузятся (замок/`lockAndReload` их перезагружает) | у tweb то же — каждый выделенный воркер держит своё состояние |
 | П-8 | Вне периметра S10 остались открытыми: ключи секретных чатов (E2E, `core/secret/*`), курсоры `chpts:*`/`updates`, языковой пакет | у tweb секретных чатов нет; курсоры и язык tweb тоже не шифрует |
 | П-9 | Экран без анимации замка из шапки (`fromLockIcon`/`onAnimationEnd`, `cloneLockIcon`, `__animated-lock-icon` партиала): обезьянка видна сразу | наша кнопка замка — React-`IconButton` в `Sidebar.tsx`, не порт `lockButton.tsx` (`LockIcon` со скобой), иконку экрану не передаёт; порт — вместе с кнопкой |
-| П-10 | Фон за экраном — не Solid-`<ChatBackground>` tweb, а его слои из наших частей (`ChatBackgroundGradientRenderer`, `renderPattern`, `patternModeFor`, классы `ChatBackground.module.scss`); своё фото обоев под замком не рисуется (градиент темы) | фон чата у нас React (`components/ChatBackground.tsx`, портал), в Solid-дерево не вставить; медиа-конвейер без ключа недоступен |
-| П-11 | До экрана не ставится глобальный фон приложения (`appChatBackground.attach()` + `setBackground`, `index.ts:458-459`) | его роль у нас — React-`ChatBackground` в `App.tsx`, монтируется после разблокировки; под замком его целиком закрывает экран |
+| П-10 | ~~Фон за экраном — слои нашего React-фона~~ — снято портом фона на Solid: внутри `passcodeLock/background.solid.tsx` тот же `<ChatBackground>` tweb (`components/chat/bubbles/chatBackground.solid.tsx`). Остаток: своё фото обоев без готового адреса в зеркале медиа под замком рисуется обоями темы (О-40 в шапке фона) | медиа-конвейер без ключа недоступен |
+| П-11 | ~~До экрана не ставится глобальный фон приложения~~ — снято: `client/boot.ts` ставит `appChatBackground.attach()` + `setBackground({transition: 'instant'})` в колбэке «заперто» и после подъёма состояния (tweb `index.ts:458-459`, `:567-568`) | — |
 | П-12 | `useLockScreenHotReloadGuard`/`LockScreenHotReloadGuardProvider` не перенесены — зависимости импортом; `forceLogout` — каналом `invokePasscode`; ловушка фокуса и Esc попапа не следуют за окном выноса (`onAppWindowChange`/`bindActiveWindowListener`) | HMR-подмена модулей tweb нам не нужна; выноса клиента в PiP у нас нет (`helpers/appWindow.ts`) |
 | П-13 | Срок следующей попытки — `settings.passcodeCanAttemptAgainOn` в сторе `settings.tsx` (соседние вкладки — событием `storage`), у tweb — `settings.passcode.canAttemptAgainOn` из `commonStateStorage` без кэша | наши настройки — localStorage-стор |
 
@@ -216,7 +216,9 @@ nobody had opened when the passcode was enabled». UI экрана блокир�
 10. «Забыли код» → выход из всех аккаунтов, кода нет, `cachedFiles` пуст.
 11. Экран блокировки в дневной, ночной и «как в системе» (обе системные): фон темы, карточка
     320px по центру с радиусом 20px, поле с рамкой, «Proceed» цвета `--primary-color`; за карточкой
-    — обои чата (не на мобильном); смена системной темы под открытым экраном перекрашивает его.
+    — обои чата (не на мобильном; на мобильном видны обои страницы, `appChatBackground`); смена
+    системной темы под открытым экраном перекрашивает карточку и обои страницы, а обои за карточкой
+    на десктопе остаются прежними — как у tweb: `<ChatBackground>` без темы в пропах её не отслеживает.
 12. Подпись «забыли код»: один аккаунт — «…you'll need to log out.», два и больше — «…from all your
     current accounts.»; «log out» → попап «Log out» над экраном, Esc/«Cancel» закрывают.
 13. Неверный код — ошибка поля «Wrong passcode. Please try again.»; шесть неверных подряд —

@@ -334,10 +334,6 @@
   --backdrop-opacity: 0.85;
   --tg-accentGradient: linear-gradient(135deg, #3390ec 0%, #58a6f5 100%);
   --tg-composeShadow: 0 6px 22px rgba(51, 144, 236, 0.4);
-  --tg-bgGrad0: #dbddbb;
-  --tg-bgGrad1: #6ba587;
-  --tg-bgGrad2: #d5d88d;
-  --tg-bgGrad3: #88b884;
   // поисковая карточка в шапке чата (единая поверхность инпут + результаты)
   --tg-searchCardBg: #ffffff;
   --tg-searchCardShadow: 0 6px 28px -6px rgba(0, 0, 0, 0.22);
@@ -373,10 +369,6 @@
   --backdrop-opacity: 0.75;
   --tg-accentGradient: linear-gradient(135deg, #8774e1 0%, #9a86ec 100%);
   --tg-composeShadow: 0 6px 22px rgba(135, 116, 225, 0.5);
-  --tg-bgGrad0: #fec496;
-  --tg-bgGrad1: #dd6cb9;
-  --tg-bgGrad2: #962fbf;
-  --tg-bgGrad3: #4f5bd5;
   --tg-searchCardBg: #2c2c2e;
   --tg-searchCardShadow: 0 6px 28px -4px rgba(0, 0, 0, 0.6);
   --tg-plateShadow: 0 1px 8px rgba(0, 0, 0, 0.45);
@@ -415,14 +407,4 @@
   --section-box-shadow-color: rgba(0, 0, 0, 0.12);
   --section-box-shadow-big-color: rgba(0, 0, 0, 0.24);
   --column-box-shadow-color: rgba(0, 0, 0, 0.24);
-}
-
-// tinted («Dark Blue») — свой тёмно-синий градиент обоев (1:1 tweb state.ts:349-352),
-// НЕ яркий night-«sunset». Overlay-путь (soft-light+invert) делает дудлы светлыми
-// поверх тёмно-синего; яркий night-градиент тут пересвечивал бы (см. ChatBackground).
-[data-theme='tinted'] {
-  --tg-bgGrad0: #1e3557;
-  --tg-bgGrad1: #182036;
-  --tg-bgGrad2: #1c4352;
-  --tg-bgGrad3: #16263a;
 }

@@ -16,12 +16,12 @@
 //    `startViewTransition` (дефолтный кроссфейд, :413-419); у нас смена тогда
 //    мгновенная — прежнее поведение обоих переключателей, вне предмета порта;
 //  • гейт анимаций — `prefers-reduced-motion`, у tweb `liteMode`
-//    (`animations`, :357) — прежний гейт наших переключателей;
-//  • ожидание обоев внутри колбэка (:386-395) — `appChatBackground` у нас
-//    не синглтон, `apply` синхронный (:386-395 → у нас нет).
+//    (`animations`, :357) — прежний гейт наших переключателей.
 import { getTransition } from '@config/transitions'
 import { dispatchHeavyAnimationEvent } from '../dom/heavyAnimation'
 import noop from '@helpers/noop'
+import pause from '@helpers/schedulers/pause'
+import appChatBackground from '@components/chat/bubbles/chatBackground.solid'
 
 // tweb :27 — сколько стоит пауза тяжёлого рендера и через сколько зависший
 // переход принудительно завершается.
@@ -39,7 +39,7 @@ export function switchThemeWithTransition(
   isNight: boolean,
 ): void {
   const start = (document as Document & {
-    startViewTransition?: (cb: () => void) => ViewTransitionLike
+    startViewTransition?: (cb: () => void | Promise<void>) => ViewTransitionLike
   }).startViewTransition
   const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
   if (!start || !coordinates || reduce) {
@@ -55,7 +55,14 @@ export function switchThemeWithTransition(
   root.classList.toggle('reverse', reverse)
   void root.offsetLeft // reflow
 
-  const transition = start.call(document, apply)
+  const transition = start.call(document, async() => {
+    apply()
+    // tweb :386-395: `apply` разослал `theme_changed`, и фон чата перерисовывает
+    // обои асинхронно (`instant`). Снимок нового состояния ждёт их, чтобы обои
+    // раскрылись вместе с цветами; 500 мс — потолок, чтобы медленная картинка
+    // не заморозила переключение.
+    await Promise.race([appChatBackground.getReadyPromise(), pause(500)])
+  })
 
   // tweb :397-401: пауза тяжёлого рендера на время раскрытия; `.catch` — чтобы
   // реджект `finished` не заклинил паузу до таймаута.

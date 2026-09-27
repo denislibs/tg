@@ -897,6 +897,7 @@ grid в его `::before` (`$reply-markup-margin-top` + ряды по `$reply-ma
 | `src/components/messages/MessageContent.tsx` | выбор контента по `m.type` (один каскад тернарников ~15 типов) |
 | `src/components/messages/bubbleParts/*` | `Time.tsx` (порт setTime, 6 режимов), `primitives.tsx` (радиусы, BubbleTail), `mediaBubbles/richBubbles` |
 | отдельные типы | `RealMediaBubble`, `AlbumGrid`, `VoiceMessage`, `PollBubble`, `ChecklistBubble`, `GiftBubble`, `GiveawayBubble`, `MessageReactions`, `InlineKeyboard`, `CommentsBar` |
+| `src/components/chat/bubbles/chatBackground.solid.tsx` (+ `.module.scss` дословно) | фон под лентой — порт `bubbles/chatBackground.tsx` на Solid (слои, узор, градиент — `chat-feed.md` §9.1); он же пишет `--message-highlighting-color` в `:root` из среднего цвета обоев (`:363-367`, `:623`), её читают `is-highlighted`/сервис-баблы (§7.2). В контейнер чата цвет не пишется (у tweb — `chat.ts:421-433`, О-39) |
 | стили | глобальный порт `src/styles/tweb/_chatBubble.scss` (4236 строк) + `_quote/_reaction/_audio/_document/_spoiler`; остатки SCSS-модулей `MessageRow.module.scss` и др. |
 
 DOM бабла у нас уже близок к tweb: `div.bubble.is-in|is-out…` → `bubble-content-wrapper` →

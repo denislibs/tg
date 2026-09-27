@@ -28,20 +28,11 @@ import { getIconContent } from '@components/icon'
 import { AppGeneralSettingsTab } from '@components/solidJsTabs/tabs'
 import { createSettingsSliderHost, type SettingsSliderHost } from '../settingsSliderHost'
 import { installSpecLabelActivation } from '@/test/specLabelActivation'
+import { installFakeCanvas } from '@/test/fakeCanvas'
 
 // Вкладка «Обои», которую открывает строка: плитки рисуют холсты, а в happy-dom
-// нет 2D-контекста (как в `background.solid.test.tsx`).
-vi.mock('@core/chat/gradientRenderer', () => ({
-  default: class {
-    static createCanvas() { return document.createElement('canvas') }
-    static create() { return { gradientRenderer: {}, canvas: document.createElement('canvas') } }
-    init() {}
-  },
-}))
-vi.mock('@core/chat/patternRenderer', async(importOriginal) => ({
-  ...(await importOriginal<object>()),
-  renderPattern: () => {},
-}))
+// нет 2D-контекста — поддельный (`test/fakeCanvas.ts`, как в `background.solid.test.tsx`).
+let fakeCanvas: ReturnType<typeof installFakeCanvas>
 
 // Минутный таймер подписей формата времени — настоящий, но его отмена видна
 // тесту: «остров снят» включает и таймер (tweb `onCleanup(cancel)`, `:325`).
@@ -72,6 +63,7 @@ const resetSettings = () => useSettingsStore.getState().update({
 })
 
 beforeEach(() => {
+  fakeCanvas = installFakeCanvas()
   uninstallLabelActivation = installSpecLabelActivation()
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width: 420 } as DOMRect)
   resetSettings()
@@ -87,6 +79,7 @@ afterEach(async() => {
   host.destroy()
   await pause(400)
   document.body.replaceChildren()
+  fakeCanvas.restore()
   vi.restoreAllMocks()
   vi.useRealTimers()
   cancelMinute.mockClear()
