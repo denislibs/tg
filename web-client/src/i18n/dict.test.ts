@@ -365,8 +365,13 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `.MultipleAccounts`, `PasscodeLock.LogoutPopup.Description` и `LogOut` у всех пяти:
 // −3 +5 (plural без изменений) — ru 1396, uk 735, es/de 732, fr 727.
 // Поверх задачи 25 (+2 каждому): ru 1408, uk 748, es/de 745, fr 740.
+//
+// Особые чаты («Telegram» 777000 и «Избранное»): у ru +4 ключа tweb lang.ts —
+// `Peer.ServiceNotifications` (подпись служебного аккаунта, getUserStatusString
+// :19-21) и `Verified.Bot`/`Verified.Channel`/`Verified.Group` (строка
+// официальной верификации профиля, peerProfile.tsx BotVerification): ru 1412.
 const COMPOSITION = {
-  ru: { keys: 1408, plural: 42 },
+  ru: { keys: 1412, plural: 42 },
   uk: { keys: 748, plural: 31 },
   es: { keys: 745, plural: 30 },
   de: { keys: 745, plural: 31 },
@@ -492,8 +497,9 @@ const COMPOSITION = {
 // `COMPOSITION` выше), у всех пяти.
 // Портом кнопки замка (`sidebarLeft/lockButton.solid.tsx`) — наш `PasscodeLock.LockNow`
 // заменён ключом tweb `PasscodeLock.TapToLock` у всех пяти: −1 +1, число строк то же.
+// Особыми чатами — у ru +4 ключа tweb (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '7c42769e',
+  ru: '75169aa2',
   uk: '4c8d1a40',
   es: 'e878cf4f',
   de: '1e1c8f3e',

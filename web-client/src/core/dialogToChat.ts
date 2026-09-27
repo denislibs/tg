@@ -48,12 +48,11 @@ export function gradientFor(id: number): string {
 }
 
 // Reserved id of the official "Telegram" service account (mirrors the backend's
-// domain.ServiceUserID). Rendered with the Telegram-plane avatar, not initials.
+// domain.ServiceUserID). Аватарка у него — обычная фотография пира от сервера,
+// как у оригинала (в tweb avatarNew.tsx веток по SERVICE_PEER_ID нет).
 export const SERVICE_USER_ID = 777000
 /** «Избранное»: голубой градиент под иконкой закладки (tweb Saved Messages blue). */
 export const SAVED_GRADIENT = 'linear-gradient(#69BFFA,#3D9DE0)'
-// Telegram-сервис: фирменный голубой градиент плашки (tweb telegram blue).
-const SERVICE_GRADIENT = 'linear-gradient(#72D5FD,#2A9EF1)'
 
 // A human label for a media message with no caption (tweb wrapMessageForReply:
 // grey type label). Возвращает КЛЮЧ, а не текст: до задачи 6 здесь лежали русские
@@ -155,7 +154,6 @@ export function dialogToChat(
   const user = isUser(d.peerId) && peer && peer._ === 'user' ? peer : undefined
   const type = dialogChatType(d, chatPeer, meId)
   const isSaved = type === 'saved'
-  const isService = d.peerId === SERVICE_USER_ID
   // Имя собирает КЛИЕНТ (`display_name` и `title` строки диалога с провода
   // убраны): у приватного — из конструктора `user` с фолбэками «Удалённый
   // аккаунт»/username, у группы/канала — `title` конструктора `channel`. Оба
@@ -190,25 +188,26 @@ export function dialogToChat(
   return {
     id: String(d.peerId),
     name,
-    // Saved Messages: blue gradient + bookmark icon. Telegram service account:
-    // blue gradient + the Telegram-plane logo. Otherwise the peer's photo or a
-    // per-id gradient with initials.
-    avatar: isSaved
-      ? SAVED_GRADIENT
-      : isService
-        ? SERVICE_GRADIENT
-        : gradientFor(d.peerId),
+    // «Избранное» — голубая подложка и иконка закладки (tweb avatarNew.tsx:735-738,
+    // `peerId === myId && isDialog`). Остальные — фотография пира или градиент
+    // по id с инициалами; служебный «Telegram» (777000) — такой же пир с
+    // фотографией от сервера.
+    avatar: isSaved ? SAVED_GRADIENT : gradientFor(d.peerId),
     avatarText: name.charAt(0).toUpperCase() || '?',
-    avatarEmoji: isSaved ? 'saved' : isService ? 'tg-logo' : undefined,
+    avatarEmoji: isSaved ? 'saved' : undefined,
     // Одно поле вместо пяти: аватарка живёт в карточке пира и несёт готовый
     // `photo_id`. Регулярки по собственной строке `/media/N/content` больше нет.
-    photoId: isSaved || isService ? undefined : getPeerPhotoId(photo) || undefined,
+    photoId: isSaved ? undefined : getPeerPhotoId(photo) || undefined,
     // Превью — тем же правилом, что и сам id: `stripped_thumb` того же `photo`.
-    avatarPreview: isSaved || isService ? undefined : getPeerPhotoStrippedThumb(photo) || undefined,
+    avatarPreview: isSaved ? undefined : getPeerPhotoStrippedThumb(photo) || undefined,
     isBot: user?.pFlags?.bot || undefined,
-    verified: user?.pFlags?.verified || undefined,
-    premium: user?.pFlags?.premium || undefined,
-    emojiStatus: user?.emoji_status_emoticon || undefined,
+    // Значки у имени (галочка, премиум, эмодзи-статус) — не у «Избранного»:
+    // у оригинала ветка `peerId === myId && dialog` PeerTitle ставит строку
+    // `SavedMessages` и `generateTitleIcons` не зовёт (peerTitle.ts:139-147) —
+    // иначе «Избранное» носило бы значки самого зрителя.
+    verified: (!isSaved && user?.pFlags?.verified) || undefined,
+    premium: (!isSaved && user?.pFlags?.premium) || undefined,
+    emojiStatus: (!isSaved && user?.emoji_status_emoticon) || undefined,
     // Секунды эпохи у обоих (`date:int` схемы): черновик приезжает
     // конструктором draftMessage со своим `date`, и сравниваем мы числа. Здесь
     // ВЫБОР ЧИСЛА и только он — ровно как у оригинала

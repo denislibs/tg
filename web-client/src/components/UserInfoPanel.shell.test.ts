@@ -345,3 +345,26 @@ describe('UserInfoPanel — шов монтирования PeerProfile (Solid, 
     expect(panel).not.toMatch(/if \(open\) seam\?\.scrollable\.onScroll\(\)/)
   })
 })
+
+// «Избранное» — панель без профиля (tweb sharedMediaTab.tsx:73 `noProfile ??=
+// peerId === myId`, sharedMedia.tsx:176-200 и :647/:659-670): вместо корня
+// профиля — пустой `.profile-content` с узлом `AppSearchSuper`, карусель не
+// грузится, шапка сразу в режиме shared media, «назад» закрывает панель.
+describe('UserInfoPanel — «Избранное» без профиля (noProfile)', () => {
+  it('noProfile — это «Избранное»', () => {
+    expect(panel).toMatch(/const noProfile = isSaved\n/)
+  })
+
+  it('вместо корня профиля — .profile-content с узлом класса (keep same layout)', () => {
+    expect(panel).toMatch(/if \(noProfile\) \{\n[^}]*content\.classList\.add\('profile-content'\)\n\s*content\.append\(searchSuper\.container\)\n\s*host\.append\(content\)/)
+  })
+
+  it('карусель аватарок для «Избранного» не грузится', () => {
+    expect(panel).toMatch(/if \(noProfile\) return\n\s*void avatarsRef\.current\?\.setPeer\(peerId\)/)
+  })
+
+  it('шапка сразу в режиме shared media; «назад» без профиля закрывает панель', () => {
+    expect(panel).toMatch(/if \(noProfile && searchSuper\) setIsSharedMediaRef\.current\(true\)/)
+    expect(panel).toMatch(/onClick=\{filled && !noProfile \? scrollBackToProfile : onClose\}/)
+  })
+})

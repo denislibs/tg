@@ -30,10 +30,11 @@
 //     предмета нет; вместе с ними — `is-forum-open`/`setDialogActive`;
 //   • `lazyLoadQueue` в `wrapOptions` — наш `avatarNew` очередь не принимает
 //     (шапка `components/avatar.ts`);
-//   • `meAsSaved` (свой пир — «Избранное», :301, :357, :401) портирован для
-//     селектора пиров (`appSelectPeers.solid.tsx`); по умолчанию — `false`, а не
-//     `true` (:301): прежние потребители строки (участники, группы поиска) его
-//     не передавали, а у оригинала передают `false` (`sortedUserList.ts:84`);
+//   • `meAsSaved` (свой пир — «Избранное», :301, :357, :401) портирован; по
+//     умолчанию — `true`, как у оригинала (:301): строки глобального поиска
+//     (группы людей, «Recent», сообщения) показывают себя «Избранным». Кому
+//     нужен сам зритель — список участников — передаёт `false`, как
+//     `sortedUserList.ts:80` оригинала;
 //   • бейджи (`createPinnedBadge`/`createUnreadBadge`/…, :387-420) — атрибуты
 //     диалога, не участника; сами `dialog-subtitle-badge` в подписи не рисуются;
 //   • `titleWrapOptions`/`textColor`/`iconsColor` — цвета активного диалога.
@@ -172,7 +173,7 @@ export class DialogElement {
     peerId,
     rippleEnabled = true,
     avatarSize = 'bigger',
-    meAsSaved = false,
+    meAsSaved = true,
     autonomous,
     wrapOptions,
     managers,

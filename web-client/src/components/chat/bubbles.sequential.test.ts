@@ -25,6 +25,7 @@ import SlicedArray, { SliceEnd } from '@core/history/slicedArray'
 import { applyOpsToMirror, resetMessagesMirror } from '@core/history/messagesMirror'
 import { newPendingMethods } from '@core/managers/messages/pending'
 import { newMessagesManager } from '@core/managers/messagesManager'
+import { RT } from '@core/realtime/events'
 import type { RestClient } from '@core/net/restClient'
 import { resetPeerMirror } from '@core/peerCache'
 import type { MessageReal, MyMessage, RawMessage } from '@core/models'
@@ -77,6 +78,7 @@ function owner() {
     hkey: (chatId: number, threadRoot?: number | null) => (threadRoot ? `${chatId}:${threadRoot}` : String(chatId)),
     slices,
     msgsFor,
+    appendNewest: (_key, sa, id) => { if (!sa.findSlice(id)) sa.unshift(id) },
     getMeId: () => ME,
     isBroadcastChat: () => false,
     emit,
@@ -324,7 +326,7 @@ describe('sequential: эхо своей отправки раньше ack (по�
     const mgr = newMessagesManager({
       rest,
       getMeId: () => ME,
-      broadcast: (_e, p) => applyOpsToMirror((p as { ops: MessageOp[] }).ops),
+      broadcast: (e, p) => { if (e === RT.messageOp) applyOpsToMirror((p as { ops: MessageOp[] }).ops) },
       send: () => {},
     })
     // Срез окна владельца доведён до низа истории — только в такой встаёт бабл.

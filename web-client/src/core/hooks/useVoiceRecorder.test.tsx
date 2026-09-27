@@ -229,6 +229,7 @@ async function optimisticDocument(blob: Blob, mime: string): Promise<{ doc: MyDo
       if (!c) { c = new Map(); msgsByChat.set(peerId, c) }
       return c
     },
+    appendNewest: (_key, sa, id) => { if (!sa.findSlice(id)) sa.unshift(id) },
     getMeId: () => 42,
     isBroadcastChat: () => false,
     emit: (ops: MessageOp[]) => { if (ops.length) emitted.push(ops) },

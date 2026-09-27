@@ -846,6 +846,10 @@ const ru = {
   WithinAMonth: 'был(а) в этом месяце',
   ALongTimeAgo: 'был(а) давно',
   SupportStatus: 'поддержка',
+  'Peer.ServiceNotifications': 'служебные уведомления',
+  'Verified.Bot': 'Этот бот верифицирован как официальный представителями Telegram.',
+  'Verified.Channel': 'Этот канал верифицирован Telegram.',
+  'Verified.Group': 'Эта группа верифицирована Telegram.',
   'Peer.Status.justNow': 'был(а) в сети только что',
   'Peer.Status.minAgo': {
     one_value: 'был(а) в сети %d минуту назад',

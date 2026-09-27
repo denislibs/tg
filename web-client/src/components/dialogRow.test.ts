@@ -12,6 +12,7 @@
 // на обе части строки заголовка (`RowPart`). Классы и вложенность — как в дампах.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getMiddleware } from '@helpers/middleware'
+import rootScope from '@lib/rootScope'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import { makeMessage } from '@core/messages/testMessage'
 import { saveDocument, THUMB_TYPE_FULL, type MessageMedia } from '@core/media/messageMedia'
@@ -342,5 +343,34 @@ describe('dialogRow: setLastMessageN — превью найденного со�
     expect(media.querySelector('.tgico.dialog-subtitle-media-play')).not.toBeNull()
     expect(d.dom.lastMessageSpan.textContent).not.toContain('Video')
     expect(d.dom.lastMessageSpan.lastElementChild!.textContent).toBe('подпись')
+  })
+})
+
+// `meAsSaved = true` по умолчанию (tweb appDialogsManager.ts:301): строка
+// своего пира в выдаче поиска/Recent — «Избранное» с иконкой закладки, а не
+// имя и фото зрителя. Список участников передаёт `false` (sortedUserList.ts:80).
+describe('dialogRow: свой пир', () => {
+  const row = (meAsSaved?: boolean) => {
+    rootScope.myId = ME
+    applyPeerOps([{ op: 'upsert', peers: [{ _: 'user', id: ME, first_name: 'Я', pFlags: { self: true } }] }])
+    const dialogElement = addDialogNew({
+      peerId: ME, container: false, autonomous: true,
+      wrapOptions: { middleware: getMiddleware().get() }, managers,
+      ...(meAsSaved === undefined ? {} : { meAsSaved }),
+    })
+    document.body.append(dialogElement.container)
+    return dialogElement.container
+  }
+
+  it('по умолчанию — «Saved Messages» с иконкой saved_filled', () => {
+    const li = row()
+    expect(li.querySelector('.peer-title')!.textContent).toBe('Saved Messages')
+    expect(li.querySelector('.avatar .avatar-icon-saved_filled')).not.toBeNull()
+  })
+
+  it('meAsSaved: false — сам зритель', () => {
+    const li = row(false)
+    expect(li.querySelector('.peer-title')!.textContent).toBe('Я')
+    expect(li.querySelector('.avatar-icon-saved_filled')).toBeNull()
   })
 })

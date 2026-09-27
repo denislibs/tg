@@ -27,7 +27,6 @@ import s from './ChatHeader.module.scss'
 export interface ChatHeaderProps {
   chat: Chat
   avatarSrc?: string
-  peerOnline?: boolean
   typingActive: boolean
   typingText: string
   typingKind: TypingKind
@@ -53,7 +52,7 @@ export interface ChatHeaderProps {
 }
 
 function ChatHeader({
-  chat, avatarSrc, peerOnline, typingActive, typingText, typingKind, status, online,
+  chat, avatarSrc, typingActive, typingText, typingKind, status, online,
   isBot, plates, platesCount = 0, platesRef, onJumpToSeq, onBack, onToggleInfo, onOpenMenu,
 }: ChatHeaderProps) {
   const { start: startCall } = useCall()
@@ -134,8 +133,6 @@ function ChatHeader({
                   src={avatarSrc}
                   preview={chat.avatarPreview}
                   size="sm"
-                  online={chat.online || peerOnline}
-                  ringColor="var(--surface-color)"
                   className="person-avatar"
                 />
                 <div className="content">

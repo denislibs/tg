@@ -19,7 +19,7 @@
 // пересобирает на каждой операции.
 import { useMemo, useSyncExternalStore } from 'react'
 import type { MyMessage } from '../models'
-import { mirrorVersion, mirrorWindow, subscribeMirror } from '../history/messagesMirror'
+import { mirrorHistoryCount, mirrorVersion, mirrorWindow, subscribeMirror } from '../history/messagesMirror'
 
 // Одна и та же ссылка на «окна нет» — иначе каждый рендер отдавал бы новый
 // массив и мемоизация у потребителя рвалась бы вхолостую.
@@ -38,4 +38,15 @@ export function useMirrorWindow(key: string | null): readonly MyMessage[] {
   // `usePeers` над зеркалом пиров.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   return useMemo(() => (key == null ? EMPTY : mirrorWindow(key) ?? EMPTY), [key, version])
+}
+
+/**
+ * Счёт истории окна (зеркало `historyStorage.count`, пишет проектор
+ * `rt:history_count`) с перерисовкой на изменение. `undefined` — владелец
+ * счёт ещё не объявил (первая страница истории не доехала) или `key === null`.
+ */
+export function useMirrorHistoryCount(key: string | null): number | undefined {
+  const version = useSyncExternalStore(subscribeMirror, mirrorVersion)
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- ключ инвалидации, см. useMirrorWindow
+  return useMemo(() => (key == null ? undefined : mirrorHistoryCount(key)), [key, version])
 }

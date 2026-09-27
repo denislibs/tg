@@ -17,7 +17,7 @@ import type {
   GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, StoryUpdateEvt,
   SentStoryReactionEvt, ReadStoriesEvt, ConnState, UserUpdateEvt, DialogPinEvt, DialogArchiveEvt, DialogMuteEvt,
   PollUpdateEvt, ChecklistUpdateEvt, GiveawayUpdateEvt, BoostUpdateEvt, BalanceUpdateEvt,
-  ViewsUpdateEvt, RepliesUpdateEvt,
+  ViewsUpdateEvt, RepliesUpdateEvt, HistoryCountEvt,
 } from '@core/realtime/events'
 import type { MyMessage } from '@core/models'
 import type { GroupCallFrame } from '@core/calls/groupCallEngine'
@@ -44,6 +44,9 @@ export type BroadcastEvents = {
   // Операции над окнами сообщений (Stage 1B.2, Task 3) — летит РЯДОМ с
   // RT.newMessage, тем же meta (та же точка funnel'а курсора).
   [RT.messageOp]: [{ ops: MessageOp[] }, EventMeta?]
+  // Счёт истории окна — значение владельца, без `pts` (выводится из уже
+  // применённых фактов, а не приходит кадром).
+  [RT.historyCount]: [HistoryCountEvt]
   [RT.editMessage]: [EditMessageEvt, EventMeta?]
   [RT.deleteMessage]: [DeleteMessageEvt, EventMeta?]
   [RT.pinMessage]: [PinMessageEvt, EventMeta?]

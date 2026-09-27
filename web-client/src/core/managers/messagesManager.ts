@@ -328,8 +328,36 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
   const evictMsg = (peerId: number, msgId: number): void => {
     const c = msgsByChat.get(peerId)
     if (!c?.delete(msgId)) return
-    for (const k of winKeysOf(peerId)) slices.get(k)?.delete(msgId)
+    for (const k of winKeysOf(peerId)) {
+      const sa = slices.get(k)
+      if (sa?.findSlice(msgId)) { sa.delete(msgId); countDelta(k, -1) }
+    }
     void deletePersistedMessage(peerId, msgId)
+  }
+  // ── Счётчик истории окна — порт `historyStorage.count` (tweb
+  // appMessagesManager.ts): ставит ответ истории (`messagesSlice.count`,
+  // :13088), растит новое сообщение, которого в истории ещё не было
+  // (:10430-10432 — `++historyStorage.count`, если счёт известен), уменьшает
+  // удаление известных (:11523-11525). Владелец — этот менеджер; наружу
+  // объявляется ЗНАЧЕНИЕМ (`rt:history_count`), зеркало вкладки —
+  // `core/history/messagesMirror.ts::mirrorHistoryCount`. Потребитель — шапка
+  // «Избранного» («N messages», tweb topbar.ts `messagesCounter`).
+  const historyCounts = new Map<string, number>()
+  const declareCount = (key: string): void => {
+    const count = historyCounts.get(key)
+    if (count != null) broadcast?.(RT.historyCount, { key, count })
+  }
+  const countDelta = (key: string, delta: number): void => {
+    const count = historyCounts.get(key)
+    if (count == null) return
+    historyCounts.set(key, Math.max(0, count + delta))
+    declareCount(key)
+  }
+  /** Серверное сообщение впервые встаёт в НИЖНИЙ конец окна — счёт растёт. */
+  const appendNewest = (key: string, sa: SlicedArray<number>, id: number): void => {
+    if (sa.findSlice(id)) return
+    sa.unshift(id)
+    countDelta(key, 1)
   }
   // Ключи ВСЕХ окон чата (основное + треды), где сообщение сейчас видно (его
   // номер есть в срезе) — нужно операциям patch/remove (Stage 1B.3, Task 3).
@@ -390,7 +418,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
   // Локальной ссылкой (а не только спредом ниже) — её зовёт cacheLive, чтобы эхо
   // своей отправки убирало временный бабл из SSOT (порт tweb checkPendingMessage).
   const pending = newPendingMethods({
-    hkey, slices, msgsFor,
+    hkey, slices, msgsFor, appendNewest,
     getMeId: () => getMeId?.() ?? null,
     isBroadcastChat: (peerId) => isBroadcastChat?.(peerId) ?? false,
     emit: emitOps,
@@ -738,9 +766,13 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
         // (which only means the requested page had enough cached rows). Using
         // `fulfilled` here made a re-opened chat report reachedTop=true whenever
         // ≥limit messages were cached, which disabled scroll-up paging.
+        // Счёт окна объявляется и на попадании в кэш: вкладка, открывшая чат
+        // позже, стартовую рассылку пропустила, а спрашивает она именно
+        // историю (пробел объявляет тот, кто его переживает).
+        declareCount(key)
         return {
           messages: asc,
-          count: asc.length,
+          count: historyCounts.get(key) ?? asc.length,
           reachedTop: have.slice.isEnd(SliceEnd.Top),
           reachedBottom: have.slice.isEnd(SliceEnd.Bottom),
           cached: true,
@@ -819,7 +851,10 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
 
       // `count` есть только у страницы (messages.messagesSlice). Пришёл полный
       // набор — считать нечего: его размер и есть длина вектора.
-      return { messages: asc, count: r.count ?? fetched.length, reachedTop, reachedBottom, cached: false }
+      const count = r.count ?? fetched.length
+      historyCounts.set(key, count)
+      declareCount(key)
+      return { messages: asc, count, reachedTop, reachedBottom, cached: false }
     },
 
     async sendMessage(args: SendArgs): Promise<MyMessage> {
@@ -841,7 +876,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
         put(key, [m])
         const sa = sliceFor(key)
         // a sent message is the newest — push to the bottom end if we hold it
-        if (sa.first.isEnd(SliceEnd.Bottom) && !sa.findSlice(m.id)) sa.unshift(m.id)
+        if (sa.first.isEnd(SliceEnd.Bottom)) appendNewest(key, sa, m.id)
       }
       return m
     },
@@ -1156,7 +1191,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
         const sa = slices.get(key)
         if (!sa || !sa.first.isEnd(SliceEnd.Bottom)) continue
         put(key, [m])
-        if (!sa.findSlice(m.id)) sa.unshift(m.id)
+        appendNewest(key, sa, m.id)
         ops.push(sequential ? { op: 'insert', key, msg: m, sequential } : { op: 'insert', key, msg: m })
       }
       return ops
@@ -1396,7 +1431,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       const m = await mapNet(created)
       put(hkey(peerId), [m])
       const sa = sliceFor(hkey(peerId))
-      if (sa.first.isEnd(SliceEnd.Bottom) && !sa.findSlice(m.id)) sa.unshift(m.id)
+      if (sa.first.isEnd(SliceEnd.Bottom)) appendNewest(hkey(peerId), sa, m.id)
       return m
     },
 

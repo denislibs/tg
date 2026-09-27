@@ -25,6 +25,7 @@ import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import { dialogToChat, SAVED_GRADIENT } from '../../core/dialogToChat'
 import { chatMatchesFolder } from '../../core/folderFilter'
 import { PeerStatus } from '../../shared/ui/peerStatus'
+import { cachedUser } from '../../core/peerCache'
 import type { UserStatus } from '../../core/peers/peer'
 import { useChatsStore } from '../../stores/chatsStore'
 import { isUser } from '../../core/peers/peerId'
@@ -149,7 +150,7 @@ function shareSub(chat: Chat, presence: Record<number, UserStatus>, t: (key: Lan
   if (chat.type === 'channel') return t('Channel')
   if (chat.type === 'group') return t('Group')
   if (chat.isBot) return t('Bot')
-  return <PeerStatus status={presence[Number(chat.id)]} />
+  return <PeerStatus user={cachedUser(Number(chat.id))} status={presence[Number(chat.id)]} />
 }
 
 // Недавний контакт в горизонтальном ряду: круглый аватар + имя, галочка при выборе.
@@ -270,6 +271,7 @@ export function ForwardPicker({ dialogs, onPick, onClose, chatRightsActions = DE
       photoId: c.photoId,
       subtitle: shareSub(c, presence, t),
       avatar: c.type === 'saved' ? { background: c.avatar, emoji: c.avatarEmoji } : undefined,
+      verified: c.verified,
     })),
     [list, presence, lang, t],
   )

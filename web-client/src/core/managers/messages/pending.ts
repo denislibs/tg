@@ -175,6 +175,10 @@ export interface PendingCtx {
   hkey: (peerId: number, threadRoot?: number | null) => string
   slices: Map<string, SlicedArray<number>>
   msgsFor: (peerId: number) => Map<number, MyMessage>
+  /** Серверное сообщение впервые встаёт в низ окна — владелец счёта истории
+   *  растит его (`messagesManager.ts::appendNewest`, порт
+   *  `++historyStorage.count`). Временный бабл сюда НЕ ходит: он не история. */
+  appendNewest: (key: string, sa: SlicedArray<number>, id: number) => void
   /** id текущего пользователя. Временному баблу он больше НЕ нужен для `out`
    *  (флаг производит сервер, а у бабла он исходящий по определению) — нужен
    *  границе разбора, которая уточняет служебное действие. Геттер, а не
@@ -354,7 +358,7 @@ function makeContactMedia(contact: NonNullable<PendingNewEvt['contact']>): Messa
 }
 
 export function newPendingMethods(ctx: PendingCtx) {
-  const { hkey, slices, msgsFor, emit } = ctx
+  const { hkey, slices, msgsFor, appendNewest, emit } = ctx
   const pendingByClientId = new Map<string, PendingDetails>()
 
   /** Окна чата, готовые принять вставку: срез должен держать НИЗ истории, иначе
@@ -416,7 +420,7 @@ export function newPendingMethods(ctx: PendingCtx) {
     c.set(final.id, final)
     for (const key of d.keys) {
       const sa = slices.get(key)
-      if (sa && !sa.findSlice(final.id)) sa.unshift(final.id)
+      if (sa) appendNewest(key, sa, final.id)
     }
     // `sequential` объявляется вместе с финальным сообщением — ровно как в tweb,
     // где `checkPendingMessage` кладёт `pendingData.sequential` в `history_update`

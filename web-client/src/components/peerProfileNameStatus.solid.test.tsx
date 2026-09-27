@@ -8,7 +8,7 @@
  * Отдельный файл от `peerProfile.solid.test.tsx` (Task 2, каркас) — у этого
  * набора СВОЙ, более богатый мок `stores/chatsStore` (нужны `subscribe` +
  * управляемые `presence`/`typing`, которых у мока Task 2 нет), и свой мок
- * `core/presence` (счётчик вызовов `userStatusLabel` — так проверяется
+ * `core/presence` (счётчик вызовов `getUserStatusString` — так проверяется
  * периодический пересчёт без реального изменения presence, tweb `:401`).
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -44,12 +44,15 @@ vi.mock('../stores/chatsStore', () => ({
   },
 }))
 
-const userStatusLabelSpy = vi.fn((status: unknown) => {
+const getUserStatusStringSpy = vi.fn((_user: unknown, status: unknown) => {
   const span = document.createElement('span')
   span.textContent = status ? 'ONLINE_LABEL' : 'OFFLINE_LABEL'
   return span
 })
-vi.mock('../core/presence', () => ({ userStatusLabel: (s: unknown) => userStatusLabelSpy(s) }))
+vi.mock('../core/presence', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../core/presence')>()),
+  getUserStatusString: (u: unknown, s: unknown) => getUserStatusStringSpy(u, s),
+}))
 
 const { default: PeerProfile } = await import('./peerProfile.solid')
 
@@ -72,7 +75,7 @@ afterEach(() => {
   subs.clear()
   peerSignal[1](undefined)
   fullPeerSignal[1](undefined)
-  userStatusLabelSpy.mockClear()
+  getUserStatusStringSpy.mockClear()
   vi.useRealTimers()
 })
 
@@ -189,9 +192,9 @@ describe('Subtitle: пересчёт по typing/presence/таймеру', () =>
     const info = document.createElement('div')
     mount({ peerId: 7, scrollable: el(), setCollapsedOn: el(), avatarsInfo: info })
 
-    const callsBefore = userStatusLabelSpy.mock.calls.length
+    const callsBefore = getUserStatusStringSpy.mock.calls.length
     vi.advanceTimersByTime(60_000)
-    expect(userStatusLabelSpy.mock.calls.length).toBeGreaterThan(callsBefore) // МУТАЦИЯ: убери таймер — не подрастёт
+    expect(getUserStatusStringSpy.mock.calls.length).toBeGreaterThan(callsBefore) // МУТАЦИЯ: убери таймер — не подрастёт
   })
 })
 
@@ -247,5 +250,62 @@ describe('Subtitle: группа/канал — счётчик участник�
     const info = document.createElement('div')
     mount({ peerId: -7, scrollable: el(), setCollapsedOn: el(), avatarsInfo: info })
     expect(info.querySelector('.profile-subtitle-text')!.textContent).toContain('3 участника')
+  })
+})
+
+// Служебный «Telegram» (777000) и боты — не люди: подпись решает КАРТОЧКА
+// (`getUserStatusString` получает пира, а не только присутствие), typing им не
+// показывают (tweb appImManager.getUserStatus :3725 `!bot && !support`).
+describe('Subtitle: служебный аккаунт и бот', () => {
+  it('подпись получает карточку пира — ветки по id/pFlags решаются по ней', () => {
+    const tg = { _: 'user', id: 777000, first_name: 'Telegram', pFlags: { verified: true, support: true } }
+    peerSignal[1](tg)
+    mount({ peerId: 777000, scrollable: el(), setCollapsedOn: el(), avatarsInfo: el() })
+    expect(getUserStatusStringSpy).toHaveBeenCalledWith(tg, undefined)
+  })
+
+  it.each([
+    ['support', { support: true }],
+    ['bot', { bot: true }],
+  ])('typing у «%s» не показывается', (_name, pFlags) => {
+    peerSignal[1]({ _: 'user', id: 7, pFlags })
+    const info = document.createElement('div')
+    mount({ peerId: 7, scrollable: el(), setCollapsedOn: el(), avatarsInfo: info })
+    setStoreState({ typing: { 7: { 7: { action: { _: 'sendMessageTypingAction' }, at: Date.now() } } } })
+    expect(info.querySelector('.peer-typing-container')).toBeNull()
+  })
+})
+
+// `PeerProfile.BotVerification` (tweb :1250-1289), ветка официальной
+// верификации — строка под секцией: «This bot is verified as official…» у
+// ЛЮБОГО пользователя с `pFlags.verified` (так у оригинала выглядит 777000),
+// «This channel/group was verified…» у чатов.
+describe('BotVerification: строка официальной верификации', () => {
+  const row = (host: HTMLElement) => host.querySelector('.profile-content > .profile-bot-verification')
+
+  it('пользователь с verified — Verified.Bot со значком из спрайта', () => {
+    peerSignal[1]({ _: 'user', id: 777000, first_name: 'Telegram', pFlags: { verified: true, support: true } })
+    const host = mount({ peerId: 777000, scrollable: el(), setCollapsedOn: el(), avatarsInfo: el() })
+    const r = row(host)
+    expect(r).not.toBeNull()
+    expect(r!.querySelector('.verified-icon > svg.verified-icon-svg use[href="#verified-icon-background"]')).not.toBeNull()
+    expect(r!.querySelector('.profile-bot-verification-content')!.textContent).toBe('This bot is verified as official by the representatives of Telegram.')
+  })
+
+  it('канал с verified — Verified.Channel, группа — Verified.Group', () => {
+    peerSignal[1]({ _: 'channel', id: 5, title: 'C', pFlags: { verified: true, broadcast: true } })
+    let host = mount({ peerId: -5, scrollable: el(), setCollapsedOn: el(), avatarsInfo: el() })
+    expect(row(host)!.textContent).toBe('This channel was verified by Telegram.')
+    dispose!(); dispose = undefined
+
+    peerSignal[1]({ _: 'channel', id: 6, title: 'G', pFlags: { verified: true, megagroup: true } })
+    host = mount({ peerId: -6, scrollable: el(), setCollapsedOn: el(), avatarsInfo: el() })
+    expect(row(host)!.textContent).toBe('This group was verified by Telegram.')
+  })
+
+  it('без verified строки нет', () => {
+    peerSignal[1]({ _: 'user', id: 7, first_name: 'Alice' })
+    const host = mount({ peerId: 7, scrollable: el(), setCollapsedOn: el(), avatarsInfo: el() })
+    expect(row(host)).toBeNull()
   })
 })

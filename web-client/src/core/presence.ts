@@ -1,6 +1,6 @@
 // Подпись присутствия собеседника — порт tweb
-// `components/wrappers/getUserStatusString.ts` в объёме ветки
-// `switch(user.status?._)` (:39-89).
+// `components/wrappers/getUserStatusString.ts` целиком (`getUserStatusString`
+// ниже).
 //
 // ── Что здесь было до задачи #126 ───────────────────────────────────────────
 // Строки собирались РУКАМИ по тернарнику `lang === 'ru'`: пять пар для веток
@@ -13,22 +13,30 @@
 //  • подпись была СТРОКОЙ и застывала в языке момента сборки: `applyLangPack`
 //    переписывает только инстансы из `weakMap` (`lib/langPack.ts:568-572`).
 //
-// Шапка файла при этом утверждала «подсистемы переводов у нас нет» — с задачи
-// #109 она есть, и утверждение стало ложным раньше, чем код.
+// ── Что было до задачи «особые чаты» (бывшая #130) ─────────────────────────
+// Функция называлась `userStatusLabel(status)` и принимала ТОЛЬКО статус, а
+// оригинал принимает ПОЛЬЗОВАТЕЛЯ: до `switch` по статусу он проходит ветки по
+// id (`Peer.ServiceNotifications`, :15-21), `pFlags.bot` (:23-32) и
+// `pFlags.support` (:34-37). Без них служебный «Telegram» (777000) и боты
+// подписывались как люди — «был(а) давно». Теперь ветки портированы.
 //
-// ── Что не портировано (и почему) ──────────────────────────────────────────
-// Оригинал принимает ПОЛЬЗОВАТЕЛЯ и до `switch` по статусу проходит ветки,
-// которым нужен сам объект: `Peer.RepliesNotifications`/`Peer.ServiceNotifications`
-// по id (:15-21), `Bot`/`BotUsers` по `pFlags.bot` (:23-32) и `SupportStatus`
-// по `pFlags.support` (:34-37). Наши вызывающие передают ТОЛЬКО статус, поэтому
-// бот сегодня подписан как обычный пользователь («был(а) давно»). Расхождение
-// названо ЗАДАЧЕЙ #130; ключ `SupportStatus` заведён вместе с остальными, чтобы
-// её не пришлось начинать со словаря.
+// ── Два отступления, оба от формы наших данных ─────────────────────────────
+//  • статус — ВТОРЫМ параметром (по умолчанию `user.status`): присутствие у нас
+//    живёт отдельным зеркалом (`chatsStore.presence`, пишет `rt:presence`), а не
+//    полем карточки, как `user.status` у оригинала. Экран, у которого живое
+//    присутствие есть, передаёт его сюда; решение по веткам пира — всё равно по
+//    карточке;
+//  • `Peer.RepliesNotifications` (REPLIES_PEER_ID) и `BotUsers`
+//    (`bot_active_users`) — предметов нет: служебного пира «Replies» у нас нет,
+//    числа активных пользователей бота бэкенд не отдаёт. Ветка бота поэтому
+//    всегда `Bot` — ровно так оригинал поступает при `bot_active_users ===
+//    undefined` (:24-27).
 import { i18n, type FormatterArguments } from '@lib/langPack'
 import type { LangPackKey } from '@/lang'
 
-import type { UserStatus } from './peers/peer'
+import type { User, UserStatus } from './peers/peer'
 import { userStatusWasOnline } from './peers/peer'
+import { SERVICE_PEER_ID } from './peers/peerId'
 import { formatFullSentTimeRaw } from '@helpers/date'
 
 /**
@@ -70,13 +78,37 @@ export function lastSeenLabel(wasOnline: number): HTMLElement {
 }
 
 /**
- * Подпись статуса — порт `switch(user.status?._)` (:39-89).
+ * «У пира есть присутствие» — гейт оригинала вокруг typing и подсветки «в
+ * сети» в шапке (tweb `appImManager.getUserStatus`, :3725
+ * `!user.pFlags.bot && !user.pFlags.support`): боту и служебному аккаунту
+ * показывают только подпись по пиру. Карточки нет — считаем человеком.
+ */
+export function userHasPresence(user: User | undefined): boolean {
+  return !(user?._ === 'user' && (user.pFlags?.bot || user.pFlags?.support))
+}
+
+/**
+ * Подпись пользователя под именем — порт `getUserStatusString` (:7-94).
+ *
+ * Порядок веток — оригинала: служебный аккаунт по id → бот → поддержка →
+ * статус присутствия. Карточки нет (ещё не доехала) — сразу статус, как у
+ * оригинала пустой `span` для `!user` заменён тем, что у нас есть: живое
+ * присутствие из зеркала.
  *
  * Проверки `expires` здесь НЕТ намеренно: истёкший онлайн гасит владелец
  * статуса (`degradeExpiredPresence`, порт `updateUsersStatuses`), ровно как в
  * оригинале, — иначе срок годности читался бы в двух местах по-разному.
  */
-export function userStatusLabel(status: UserStatus | undefined): HTMLElement {
+export function getUserStatusString(
+  user: User | undefined,
+  status: UserStatus | undefined = user?._ === 'user' ? user.status : undefined,
+): HTMLElement {
+  if (user?._ === 'user') {
+    if (user.id === SERVICE_PEER_ID) return i18n('Peer.ServiceNotifications') // :19-21
+    if (user.pFlags?.bot) return i18n('Bot') // :23-27
+    if (user.pFlags?.support) return i18n('SupportStatus') // :34-37
+  }
+
   switch (status?._) {
     case 'userStatusOnline':
       return i18n('Online')

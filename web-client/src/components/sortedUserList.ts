@@ -6,21 +6,21 @@
 // (`getUserStatusForSort`, у чатов 0 — они не сортируются) и убывающим
 // порядком — онлайн первыми; строка — `addDialogNew` (`components/dialogRow.ts`,
 // порт `appDialogsManager.addDialogNew`); подпись — статус пользователя
-// (`userStatusLabel`) либо «N участников» у чата; ранг — правым слотом
+// (`getUserStatusString`) либо «N участников» у чата; ранг — правым слотом
 // заголовка (`wrapParticipantRank`). Раз в `SORT_INTERVAL` (30 с) список
 // пересортировывается — но только когда в нём есть пользователи, он в DOM и
 // экран не занят тяжёлой анимацией (`updateListWith`, tweb :97-113).
 //
 // Расхождения с оригиналом:
-//   • `lazyLoadQueue`, `withStories`, `meAsSaved` в `addDialogNew` (tweb :75-87)
-//     — не передаются: у нашей строки этих опций нет (шапка `dialogRow.ts`);
+//   • `lazyLoadQueue`, `withStories` в `addDialogNew` (tweb :75-87) — не
+//     передаются: у нашей строки этих опций нет (шапка `dialogRow.ts`);
 //   • статус пользователя берётся из ЗЕРКАЛА карточек (`cachedUser`), а не
 //     запросом к менеджеру (`appUsersManager.getUser`, :59): карточки участников
 //     едут вектором `users` того же контейнера, и владелец публикует их в
 //     зеркало до того, как ответ доедет до списка;
-//   • подпись пользователя — `userStatusLabel(status)` (`core/presence.ts`,
-//     порт `getUserStatusString` в объёме ветки по статусу) — ветки по самой
-//     карточке (бот/поддержка/служебные) там не портированы, ЗАДАЧА #130;
+//   • подпись пользователя — `getUserStatusString(user, status)`
+//     (`core/presence.ts`): статус — из зеркала присутствия, а не
+//     `user.status` (присутствие у нас живёт отдельно от карточки);
 //   • `createChatListOptions` (:31, :119) не портированы: `createChatList` у
 //     нас без опций (`dialogRow.ts`).
 // Правки под строгий tsconfig: `safeAssign(this, options)` (:117) выписан по
@@ -39,7 +39,7 @@ import wrapParticipantRank from '@components/wrappers/participantRank'
 import type { getParticipantRank } from '@core/peers/participant'
 import { cachedChat, cachedUser } from '@core/peerCache'
 import { isAnyChat, isUser } from '@core/peers/peerId'
-import { getUserStatusForSort, userStatusLabel } from '@core/presence'
+import { getUserStatusForSort, getUserStatusString } from '@core/presence'
 import { useI18nStore } from '@/i18n'
 
 /** Статус — только у настоящей карточки (`userEmpty` его не несёт). */
@@ -88,7 +88,7 @@ export default class SortedUserList extends SortedList<SortedUser, PeerId> {
           const status = getChatMembersString(cachedChat(element.id), useI18nStore.getState().tArgs)
           replaceContent(element.dom.lastMessageSpan, status)
         } else {
-          const status = userStatusLabel(userStatus(element.id))
+          const status = getUserStatusString(cachedUser(element.id), userStatus(element.id))
           replaceContent(element.dom.lastMessageSpan, status)
 
           const rank = this.ranks.get(element.id)
@@ -110,6 +110,9 @@ export default class SortedUserList extends SortedList<SortedUser, PeerId> {
           avatarSize: this.avatarSize,
           autonomous: this.autonomous,
           rippleEnabled: this.rippleEnabled,
+          // tweb sortedUserList.ts:80 — в списке участников зритель — он сам,
+          // а не «Избранное».
+          meAsSaved: false,
           wrapOptions: {
             middleware: this.middlewareHelper.get(),
           },
