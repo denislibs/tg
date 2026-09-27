@@ -5,7 +5,11 @@
 // (строка участника с полной глубиной) и `15-right-11-group-profile.json`
 // (тот же `a.chatlist-chat` во вкладке «Участники» shared media: без `rp` —
 // список создаётся с `rippleEnabled: false`, `appSearchSuper.ts:1548`).
-// Порядок детей — как в оригинале: подпись, заголовок, аватар.
+// Дампы сняты со СТАРОЙ базы tweb (императивный `row.ts`: подпись, заголовок,
+// аватар). Строка HEAD 812502980 — Solid `Row` через `attachRowController`
+// (`appDialogsManager.ts:321`), и порядок детей задаёт уже он
+// (`rowTsx.tsx:247-257`): заголовок, подпись, аватар; `no-wrap` у `Row` ставится
+// на обе части строки заголовка (`RowPart`). Классы и вложенность — как в дампах.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getMiddleware } from '@helpers/middleware'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
@@ -82,7 +86,8 @@ describe('dialogRow: разметка строки участника', () => {
     // автономная строка не получает `href`
     expect((li as HTMLAnchorElement).getAttribute('href')).toBeNull()
 
-    const [subtitleRow, titleRow, avatar] = Array.from(li.children) as HTMLElement[]
+    // HEAD `rowTsx.tsx:247-257`: заголовок → подпись → медиа (см. шапку файла)
+    const [titleRow, subtitleRow, avatar] = Array.from(li.children) as HTMLElement[]
     expect(li.children.length).toBe(3)
 
     // 15-right-14: `div.row-row.row-subtitle-row.dialog-subtitle.has-multiple-badges > div.row-subtitle.no-wrap`
@@ -102,7 +107,9 @@ describe('dialogRow: разметка строки участника', () => {
     expect(peerTitle.classList.contains('peer-title')).toBe(true)
     expect(peerTitle.dataset.peerId).toBe(String(ALICE))
     expect(peerTitle.textContent).toBe('Алиса Иванова')
-    expect(titleRight.className).toBe('row-title row-title-right row-title-right-secondary dialog-title-details')
+    for(const cls of ['row-title', 'row-title-right', 'row-title-right-secondary', 'no-wrap', 'dialog-title-details']) {
+      expect(titleRight.classList.contains(cls), cls).toBe(true)
+    }
     expect(Array.from(titleRight.children).map((c) => c.className)).toEqual(['message-status sending-status', 'message-time'])
 
     // 15-right-14: `div.avatar.avatar-like.avatar-42.avatar-gradient.dialog-avatar.row-media.row-media-abitbigger[data-peer-id]`
@@ -115,6 +122,33 @@ describe('dialogRow: разметка строки участника', () => {
     expect(dialogElement.dom.listEl).toBe(li)
     expect(dialogElement.dom.lastMessageSpan).toBe(subtitleRow.firstElementChild)
     expect(dialogElement.titleRight).toBe(titleRight)
+    // части строки — геттеры контроллера на ПРОТОТИПЕ (`rowTsxController.tsx:361-388`),
+    // своих полей у экземпляра нет
+    expect(Object.prototype.hasOwnProperty.call(dialogElement, 'container')).toBe(false)
+    expect(dialogElement.title).toBe(title)
+    expect(dialogElement.media).toBe(avatar)
+  })
+
+  it('строка — Solid `Row`: снятие middleware разбирает её корень (`rowTsxController.tsx:338-346`)', () => {
+    const helper = getMiddleware()
+    const dialogElement = addDialogNew({
+      peerId: ALICE,
+      container: false,
+      avatarSize: 'abitbigger',
+      autonomous: true,
+      wrapOptions: { middleware: helper.get() },
+      managers,
+    })
+    const media = document.createElement('div')
+    dialogElement.applyMediaElement(media)
+    expect(media.parentElement).toBe(dialogElement.container)
+
+    // tweb: `this.middlewareHelper = wrapOptions.middleware.create()` — дочерняя
+    // зона строки гаснет вместе с родительской, а с ней и Solid-корень
+    helper.destroy()
+    const late = document.createElement('div')
+    dialogElement.applyMediaElement(late)
+    expect(late.parentElement).toBeNull()
   })
 
   it('с ripple строка получает `rp` и `.c-ripple` (дамп 15-right-14)', () => {

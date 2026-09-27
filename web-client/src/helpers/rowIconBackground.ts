@@ -6,9 +6,9 @@
  * `background-image`: градиент считается здесь, CSS даёт только геометрию и
  * белый глиф (`.row-icon-colored` в `_row.scss`).
  *
- * `setRowIconBackground` — из 2197fee9c: им пользовался ванильный `row.ts`, и у
- * tweb он ушёл вместе с `row.ts` (ef41b29db). Наш `components/row.ts` жив до
- * блока 2D (строки на RowTsx), поэтому хелпер оставлен.
+ * `setRowIconBackground` из 2197fee9c (им пользовался ванильный `row.ts`) не
+ * портируется: у tweb он ушёл вместе с `row.ts` в ef41b29db, наш `row.ts` снят
+ * задачей 29 плана 2D.
  */
 import {
   type ColorRgb,
@@ -186,10 +186,4 @@ export function getRowIconBackgroundImage(icon: IconName): string {
   }
 
   return getRowIconBackground(getRowIconBackgroundColor(icon))
-}
-
-/** tweb 2197fee9c `helpers/rowIconBackground.ts` — для ванильного `row.ts`. */
-export function setRowIconBackground(element: HTMLElement, icon: IconName): void {
-  element.classList.add('row-icon-colored')
-  element.style.backgroundImage = getRowIconBackgroundImage(icon)
 }

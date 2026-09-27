@@ -1,5 +1,5 @@
 // Порт tweb `helpers/dom/setInnerHTML.ts` в объёме потребителей (`components/buttonMenu.ts`,
-// опция `regularText`; `components/row.ts` — `createTitle`/`createSubtitle` через
+// опция `regularText`; `components/inputField.ts` и `lib/langPack.ts` — через
 // экспортированный `setDirection`). Правки:
 //   • вход честно допускает `undefined` (tweb сам сравнивает `html === undefined`,
 //     но в его сигнатуре этого варианта нет — `strict` там выключен)

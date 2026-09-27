@@ -413,14 +413,14 @@ import { cachedChat, cachedPeer, hasRightsPeer, isBroadcastPeer, isForumPeer } f
 import { useI18nStore } from '@/i18n'
 import wrapDocument from '@components/wrappers/document'
 import { getDocumentFromMessage, type MyDocument } from '@core/media/messageMedia'
-import Row from '@components/row'
+import { renderSearchWebPageRow } from '@components/searchWebPageRow.solid'
 import wrapWebPageTitle from '@components/wrappers/webPageTitle'
 import wrapWebPageDescription from '@components/wrappers/webPageDescription'
 import wrapSentTime from '@components/wrappers/sentTime'
 import type { WebPage } from '@core/media/messageMedia'
 import { wrapAbbreviation } from '@lib/richtext/abbreviation'
 import wrapRichText from '@lib/richtext/wrapRichText'
-import { ANCHOR_ACTION_ATTRIBUTE, matchUrl, setBlankToAnchor } from '@lib/richtext/url'
+import { ANCHOR_ACTION_ATTRIBUTE, matchUrl } from '@lib/richtext/url'
 import setInnerHTML from '@helpers/dom/setInnerHTML'
 import SortedUserList from '@components/sortedUserList'
 import createParticipantContextMenu, { type Participant } from '@helpers/dom/createParticipantContextMenu'
@@ -1529,32 +1529,24 @@ export default class AppSearchSuper {
       title.append(webPage.display_url.split('/', 1)[0])
     }
 
-    const row = new Row({
+    // tweb 812502980 `:1398-1413` — строка на Solid `Row` (`searchWebPageRow.solid.tsx`),
+    // её корень снимается с middleware отрисовки; расхождение 23: вместо inline
+    // `onclick` — атрибут действия
+    const row = renderSearchWebPageRow({
       title,
       titleRight: wrapSentTime(message),
       subtitle: subtitleFragment,
-      havePadding: true,
-      clickable: true,
-      noRipple: true,
-      asLink: aIsAnchor,
+      media: previewDiv,
+      link: aIsAnchor ? {
+        href: a.href,
+        action: a.getAttribute(ANCHOR_ACTION_ATTRIBUTE) ?? undefined,
+        targetBlank: a.target === '_blank',
+      } : undefined,
+      middleware,
     })
 
-    if(aIsAnchor) {
-      (row.container as HTMLAnchorElement).href = a.href
-      // расхождение 23: вместо inline `onclick` (`:1080-1081`) — атрибут действия
-      const action = a.getAttribute(ANCHOR_ACTION_ATTRIBUTE)
-      if(action) {
-        row.container.setAttribute(ANCHOR_ACTION_ATTRIBUTE, action)
-      }
-      if(a.target === '_blank') {
-        setBlankToAnchor(row.container as HTMLAnchorElement)
-      }
-    }
-
-    row.applyMediaElement(previewDiv, 'big')
-
-    if(row.container.innerText.trim().length) {
-      return row.container
+    if(row.innerText.trim().length) {
+      return row
     }
   }
 

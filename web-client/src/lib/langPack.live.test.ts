@@ -15,7 +15,7 @@
 // которого в прогоне нет.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import Row from '@components/row'
+import { attachRowController } from '@components/rowTsxController.solid'
 import PopupMute from '@components/popups/popupMute'
 import type { AvatarManagers } from '@components/avatar'
 import { i18n } from '@lib/langPack'
@@ -45,7 +45,9 @@ afterEach(async () => {
 
 describe('открытая вкладка переводится на лету', () => {
   it('заголовок и подпись строки меняют язык без перестроения', async() => {
-    const row = new Row({ titleLangKey: 'Terminate', subtitleLangKey: 'OtherSessions' })
+    // строка — Solid `Row` (через императивный фасад строки чатлиста), подписи —
+    // узлы `i18n()`, как их кладут вкладки
+    const row = attachRowController({}, { title: i18n('Terminate'), subtitle: i18n('OtherSessions') })
     document.body.append(row.container)
 
     expect(row.title.textContent).toBe('Terminate')
@@ -60,7 +62,7 @@ describe('открытая вкладка переводится на лету',
   })
 
   it('вернуться на прежний язык — тот же узел возвращается к прежнему тексту', async() => {
-    const row = new Row({ titleLangKey: 'Terminate' })
+    const row = attachRowController({}, { title: i18n('Terminate') })
     document.body.append(row.container)
 
     await switchTo('ru')

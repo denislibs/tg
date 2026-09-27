@@ -37,9 +37,10 @@
  * `rightTextContent`, `checkboxKeys`, `:90-92`, `:98`) не переносятся: они и
  * там не код.
  *
- * У tweb ДВА самостоятельных порта строки — императивный `row.ts` и этот
- * компонент; с ef41b29db `row.ts` у tweb удалён, у нас он живёт до задачи 31
- * плана 2D (`docs/superpowers/plans/2026-09-26-wave-2d-settings-rowtsx.md`).
+ * С ef41b29db у tweb один порт строки — этот компонент; императивному коду
+ * строки чатлиста он отдан фасадом `rowTsxController.solid.tsx`. Наш ванильный
+ * `row.ts` снят задачей 29 плана 2D
+ * (`docs/superpowers/plans/2026-09-26-wave-2d-settings-rowtsx.md`).
  * React-двойник (`components/settings/kit.tsx`) сводится сюда и умрёт с
  * последним React-экраном настроек.
  */

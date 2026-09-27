@@ -17,7 +17,7 @@
 //    (`savedStarGift`/`starGift` в `core/managers/starsManager.ts`).
 //  • Контекстное меню (`createContextMenu`, `:170-176`; пункты share/pin/copy/
 //    transfer/collections/wear/hide) — `createContextMenu` не портирован
-//    (шапка `components/row.ts`); единственный пункт с предметом у нас —
+//    для сетки подарков; единственный пункт с предметом у нас —
 //    «Hide»/«Show» (`stars.setHidden`) — приедет вместе с ним.
 //  • Выделение (`hasSelection`/`CheckboxFieldTsx`) — режим попапа выбора
 //    подарков в коллекцию, коллекций нет.
