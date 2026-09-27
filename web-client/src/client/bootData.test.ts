@@ -25,7 +25,7 @@ const me = Promise.resolve(null as PeerProfile | null)
 const dialogsReady = Promise.resolve()
 
 beforeEach(() => {
-  setBootData({ me, dialogsReady, hasToken: true, locked: false })
+  setBootData({ me, dialogsReady, hasToken: true })
 })
 
 describe('bootPrefetch', () => {
@@ -44,14 +44,9 @@ describe('bootPrefetch', () => {
     expect(bootPrefetch()).toBeNull()
   })
 
-  it('под пасскодом — null: там префетча не делали, в bootData пустышки', () => {
-    setBootData({ me, dialogsReady, hasToken: true, locked: true })
-    expect(bootPrefetch()).toBeNull()
-  })
-
   it('новый boot возвращает действительность: перезагрузка подняла свежий префетч', () => {
     invalidateBootPrefetch()
-    setBootData({ me, dialogsReady, hasToken: true, locked: false })
+    setBootData({ me, dialogsReady, hasToken: true })
     expect(bootPrefetch()?.dialogsReady).toBe(dialogsReady)
   })
 })

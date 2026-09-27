@@ -45,7 +45,7 @@ export interface Settings {
   // folders-sidebar, false — горизонтальные табы над списком.
   tabsInSidebar: boolean
   // Код-пароль (tweb settings.passcode): включён ли; автолок в минутах
-  // (0 — выключен). Хеш и соль лежат в IndexedDB (core/passcode.ts).
+  // (0 — выключен). Запись кода — в IndexedDB (lib/passcode/actions.ts).
   passcodeEnabled: boolean
   passcodeAutoLockMins: number
   // Сочетание блокировки (tweb settings.passcode.lockShortcutEnabled/lockShortcut,

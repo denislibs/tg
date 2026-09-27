@@ -24,13 +24,12 @@
 // тестовый периметр — см. web-client/CLAUDE.md, раздел «Тесты», статус по
 // файлам: остальные части эффекта продолжают жить без отдельного покрытия).
 import type { ReactNode } from 'react'
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+import { describe, expect, it, vi, afterEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { useAppBootstrap } from './useAppBootstrap'
 import { ManagersProvider } from './useManagers'
 import { setBootData, invalidateBootPrefetch } from '../../client/bootData'
 import { loadPresence } from '../../stores/chatsStore'
-import { useLockStore } from '../../stores/lockStore'
 import type { Managers } from '../../client/bootstrap'
 
 // chatsStore замокан целиком: хук берёт отсюда `loadChats`/`loadPresence`, и
@@ -68,17 +67,13 @@ function fakeManagers(refresh: ReturnType<typeof vi.fn>): Managers {
   } as unknown as Managers
 }
 
-beforeEach(() => {
-  useLockStore.setState({ locked: false, attempts: 0, retryAt: 0 })
-})
-
 afterEach(() => {
   vi.clearAllMocks()
 })
 
 describe('useAppBootstrap: тёплый релогин без reload — gate на managers.dialogs.refresh()', () => {
   it('bootPrefetch инвалидирован (тёплый вход без reload) — refresh() зовётся', () => {
-    setBootData({ me: Promise.resolve(null), dialogsReady: Promise.resolve(), hasToken: true, locked: false })
+    setBootData({ me: Promise.resolve(null), dialogsReady: Promise.resolve(), hasToken: true })
     invalidateBootPrefetch() // ровно то, что делают useAuthGate.ts::onLoggingOut/onLoggedIn
 
     const refresh = vi.fn(async () => {})
@@ -88,7 +83,7 @@ describe('useAppBootstrap: тёплый релогин без reload — gate н
   })
 
   it('bootPrefetch действителен (холодный старт) — refresh() НЕ зовётся (диалоги уже применены boot.ts::applyDialogsMirror)', () => {
-    setBootData({ me: Promise.resolve(null), dialogsReady: Promise.resolve(), hasToken: true, locked: false })
+    setBootData({ me: Promise.resolve(null), dialogsReady: Promise.resolve(), hasToken: true })
 
     const refresh = vi.fn(async () => {})
     renderHook(() => useAppBootstrap(), { wrapper: wrapper(fakeManagers(refresh)) })
@@ -109,7 +104,7 @@ describe('useAppBootstrap: презенс сеется после сетевог
   it('холодный старт — loadPresence ждёт bootData.dialogsReady', async () => {
     let arrive!: () => void
     const dialogsReady = new Promise<void>((res) => { arrive = res })
-    setBootData({ me: Promise.resolve(null), dialogsReady, hasToken: true, locked: false })
+    setBootData({ me: Promise.resolve(null), dialogsReady, hasToken: true })
 
     renderHook(() => useAppBootstrap(), { wrapper: wrapper(fakeManagers(vi.fn(async () => {}))) })
     // Микротаски прокручены: если бы гейт отдавал Promise.resolve() (прежний
@@ -123,7 +118,7 @@ describe('useAppBootstrap: презенс сеется после сетевог
   })
 
   it('тёплый вход без reload — loadPresence ждёт свой же refresh()', async () => {
-    setBootData({ me: Promise.resolve(null), dialogsReady: Promise.resolve(), hasToken: true, locked: false })
+    setBootData({ me: Promise.resolve(null), dialogsReady: Promise.resolve(), hasToken: true })
     invalidateBootPrefetch()
     let arrive!: () => void
     const refresh = vi.fn(() => new Promise<void>((res) => { arrive = res }))
@@ -141,7 +136,7 @@ describe('useAppBootstrap: презенс сеется после сетевог
   // Презенс всё равно обязан посеяться по тому, что уже есть в зеркале, и
   // отклонение не должно стать unhandled rejection.
   it('refresh() упал — презенс всё равно сеется, промис не отклоняется наружу', async () => {
-    setBootData({ me: Promise.resolve(null), dialogsReady: Promise.resolve(), hasToken: true, locked: false })
+    setBootData({ me: Promise.resolve(null), dialogsReady: Promise.resolve(), hasToken: true })
     invalidateBootPrefetch()
     const refresh = vi.fn(async () => { throw new Error('401') })
 

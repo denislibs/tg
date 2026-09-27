@@ -10,16 +10,16 @@ import TgIcon from './TgIcon'
 import PasswordMonkey from './PasswordMonkey'
 import Popup from '../shared/ui/Popup'
 import { useT } from '../i18n'
-import { useManagers } from '../core/hooks/useManagers'
-import { commandThenReload } from '../core/accountTransition'
 import { useLockStore } from '../stores/lockStore'
-import { isMyPasscode, MAX_ATTEMPTS, ATTEMPTS_TIMEOUT_MS } from '../core/passcode'
+import { isMyPasscode, unlockWithPasscode } from '@lib/passcode/actions'
+import { invokePasscode } from '../client/passcodeClient'
 import s from './PasscodeLockScreen.module.scss'
 
-export default function PasscodeLockScreen() {
+const MAX_ATTEMPTS = 5 // tweb passcodeLockScreen.tsx MAX_ATTEMPTS
+const ATTEMPTS_TIMEOUT_MS = 60_000 // tweb MAX_ATTEMPTS_TIMEOUT_SEC
+
+export default function PasscodeLockScreen({ onUnlock }: { onUnlock: () => void }) {
   const t = useT()
-  const managers = useManagers()
-  const unlock = useLockStore((st) => st.unlock)
   const failedAttempt = useLockStore((st) => st.failedAttempt)
   const retryAt = useLockStore((st) => st.retryAt)
   const [value, setValue] = useState('')
@@ -40,14 +40,21 @@ export default function PasscodeLockScreen() {
   const proceed = async () => {
     if (busy || !value || waitLeft > 0) return
     setBusy(true)
-    if (await isMyPasscode(value)) {
-      unlock()
-    } else {
-      failedAttempt(MAX_ATTEMPTS, ATTEMPTS_TIMEOUT_MS)
+    try {
+      if (await isMyPasscode(value)) {
+        await unlockWithPasscode(value)
+        onUnlock()
+      } else {
+        failedAttempt(MAX_ATTEMPTS, ATTEMPTS_TIMEOUT_MS)
+        setError(t('PasscodeLock.WrongPasscodeShort'))
+        setValue('')
+      }
+    } catch {
+      // tweb `catch{ store.isError = true }` (passcodeLockScreen.tsx:172-174)
       setError(t('PasscodeLock.WrongPasscodeShort'))
-      setValue('')
+    } finally {
+      setBusy(false)
     }
-    setBusy(false)
   }
 
   return (
@@ -97,14 +104,9 @@ export default function PasscodeLockScreen() {
         action={{
           label: t('EditAccount.Logout'),
           onClick: () => {
-            // Четвёртый инициатор перехода — и единственный, кому кадр
-            // rt:logging_out не поможет: под локом насос `smp.on`
-            // (`realtimeBridge.startRealtime`) не зарегистрирован, он гейтится
-            // `runWhenUnlocked`, так что событие сюда не долетает по
-            // построению. Перезагрузку делаем сами, при любом исходе команды
-            // (см. докблок commandThenReload): при отказе `.then` не
-            // исполнялся и пользователь оставался запертым на экране пасскода.
-            void commandThenReload(managers.auth.logout())
+            // tweb `invokeVoid('forceLogout')`: воркер стирает хранилища и сам
+            // рассылает `reload` (client/passcodeClient.ts).
+            invokePasscode({ method: 'forceLogout' }).catch(() => {})
           },
         }}
       >

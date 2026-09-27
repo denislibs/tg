@@ -17,7 +17,7 @@ import { useChatsStore } from '../../stores/chatsStore'
 import { useChatStackStore } from '../../stores/chatStackStore'
 import { clearChatPositions } from '../chat/chatPositions'
 import { resetChatCardCache } from './useChatInfoCard'
-import { runWhenUnlocked } from '../../stores/lockStore'
+import { saveEncryptionKeyForHandoff } from '@lib/passcode/keyHandoff'
 import rootScope from '@lib/rootScope'
 import { RT } from '../realtime/events'
 
@@ -78,9 +78,9 @@ export function useAuthGate(): AuthGate {
   authedRef.current = authed
 
   useEffect(() => {
-    // Под passcode-локом сетевой me() НЕ шлём (RPC не летят до разблокировки):
-    // подтверждаем сессию сразу после unlock. Префетч bootData.me переиспользуем
-    // только если старт был не под локом — иначе это пустышка, тянем свежий me().
+    // Под код-паролем сюда не доходим до разблокировки (`client/boot.ts` ждёт её
+    // до монтирования). Префетч bootData.me переиспользуем, пока он действителен
+    // (см. bootPrefetch), иначе тянем свежий me().
     const confirm = () => {
       ;(bootPrefetch()?.me ?? managers.auth.me())
         .then((u) => {
@@ -93,7 +93,7 @@ export function useAuthGate(): AuthGate {
           if (!bootData?.hasToken) setAuthed(false)
         })
     }
-    const cleanupConfirm = runWhenUnlocked(confirm)
+    confirm()
 
     // Переход активной сессии (Stage 1C.2, Task 1, раунд 4). Слушаем
     // НАМЕРЕНИЕ (rt:logging_out — порт tweb `logging_out`, публикует
@@ -134,7 +134,9 @@ export function useAuthGate(): AuthGate {
       // Активный токен под страницей уже не тот, при котором поднимали префетч
       // старта, — обесценить его ДО любой реакции (см. докблок bootPrefetch).
       invalidateBootPrefetch()
-      if (migrateTo !== null) { location.reload(); return }
+      // Перезагрузка перехода под код-паролем не спрашивает код заново: ключ
+      // переезжает через `window.sessionStorage` вкладки (tweb 65c6ea8f8).
+      if (migrateTo !== null) { void saveEncryptionKeyForHandoff().finally(() => location.reload()); return }
       void managers.persist.clearAll()
       resetAccountStateInMemory()
       setAuthed(false)
@@ -166,27 +168,16 @@ export function useAuthGate(): AuthGate {
       // перезагрузки, то есть useAppBootstrap отработает повторно в той же жизни
       // страницы и без этой строки взял бы префетч ПРОШЛОГО аккаунта.
       invalidateBootPrefetch()
-      if (authedRef.current) { location.reload(); return }
+      if (authedRef.current) { void saveEncryptionKeyForHandoff().finally(() => location.reload()); return }
       setAuthed(true)
     }
-    // Подписку НЕ гейтим runWhenUnlocked (в отличие от confirm() выше) — не
-    // потому что воркер/RPC не подняты под локом (это не так: `client/
-    // boot.ts` зовёт `startClient()` безусловно, ДО решения о локе, и
-    // `workerCore.ts`'s `tokens.ready().then(() => auth.me())` идёт в /me
-    // независимо от пасскода). Настоящая причина — насос `smp.on(...)`
-    // (`realtimeBridge.ts`), который вообще доставляет кадры от воркера в
-    // rootScope, регистрируется только в `startRealtime()`, а тот сам
-    // гейтится `runWhenUnlocked` (`useAppBootstrap.ts`); `SuperMessagePort`
-    // без слушателя на конкретное событие молча его роняет
-    // (`superMessagePort.ts`: `for (const cb of this.listeners.get(...) ?? [])`
-    // — пустой массив, тела цикла не будет). Под локом кадр до rootScope
-    // просто не долетит, кем бы его ни встречала эта подписка — регистрировать
-    // её здесь синхронно дёшево и безопасно.
+    // Подписку регистрируем синхронно: до монтирования Shell вкладка уже
+    // разблокирована (`client/boot.ts`), а насос `smp.on(...)`, доставляющий
+    // кадры в rootScope, поднимает `startRealtime()` (useAppBootstrap.ts).
     rootScope.addEventListener(RT.loggingOut, onLoggingOut)
     rootScope.addEventListener(RT.loggedIn, onLoggedIn)
 
     return () => {
-      cleanupConfirm()
       rootScope.removeEventListener(RT.loggingOut, onLoggingOut)
       rootScope.removeEventListener(RT.loggedIn, onLoggedIn)
     }

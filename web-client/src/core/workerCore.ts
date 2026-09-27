@@ -59,7 +59,10 @@ import { getPeerId, toPeerId } from './peers/peerId'
 import { LOGGED_WITHOUT_CONSTRUCTOR, PASS_THROUGH } from './realtime/transportFrames'
 import { CHANNEL_CURSOR, UPDATE_RT, channelPeerId, frameKey, updatePredicate } from './realtime/updateCatalog'
 import { idbGet, idbSet } from './store/idbKv'
-import { persistScope, loadDialogs, loadStateAll, saveStateKey, saveDialogs, saveMe, loadMe } from './store/persist'
+import { sessionKv } from './store/sessionKv'
+import { newPasscodeWorker } from './passcode/passcodeWorker'
+import { PASSCODE_CHANNEL, type PasscodeTask } from './passcode/protocol'
+import { persistClearAll, persistScope, loadDialogs, loadStateAll, saveStateKey, saveDialogs, saveMe, loadMe } from './store/persist'
 import { STATE_VERSION, initialState } from './state/state'
 import { newWorkerScope } from './realtime/workerScope'
 import indexOfAndSplice from '../helpers/array/indexOfAndSplice'
@@ -393,6 +396,9 @@ export function createWorkerCore() {
     // Task 1: порядок диалогов зависит от State-ключа pinnedOrders —
     // dialogsManager узнаёт об изменении и публикует reindex (см. setStateKey).
     (key, value) => dialogs.setStateKey(key, value),
+    // S10: скоуп офлайн-стора по токену — здесь, у владельца токена; вкладка
+    // токен не читает (под код-паролем он зашифрован), см. scopeToSession.
+    tokens,
   )
 
   // every connected tab's port — events broadcast to all
@@ -408,6 +414,13 @@ export function createWorkerCore() {
   // строках 81,86,97,121) — порядок инициализации сохранён, стрелки теперь дёргают
   // workerScope.broadcast через тонкую обёртку broadcast ниже.
   const workerScope = newWorkerScope({ ports })
+  // Код-пароль (порт хендлеров tweb index.worker.ts:246-333): свой канал на
+  // каждом порту — хендлеру нужен источник вызова, см. core/passcode/passcodeWorker.ts.
+  const passcode = newPasscodeWorker({
+    ports,
+    clearPersist: persistClearAll,
+    selfTerminate: () => { (self as unknown as { close(): void }).close() },
+  })
   const broadcast = (event: string, payload: unknown, meta?: EventMeta) => workerScope.broadcast(event, payload, meta)
 
   // ── Wave 3 funnel ────────────────────────────────────────────────────────────
@@ -636,10 +649,12 @@ export function createWorkerCore() {
     // Unacked sends persist in IndexedDB: a reload doesn't lose queued messages —
     // they're restored into the outbox and resent on the next connect.
     outboxStore: {
-      load: () => idbGet<import('./realtime/connectionManager').SendArgs[]>('outbox'),
+      // Под код-паролем outbox — в зашифрованном слое (`store/sessionKv.ts`):
+      // неотправленный текст сообщения не лежит на диске открытым.
+      load: () => sessionKv.get<import('./realtime/connectionManager').SendArgs[]>('outbox'),
       // Отказ IDB глотаем: outbox переживает перезагрузку как удобство, а не как
       // гарантию, — in-memory копия (та же Map) резендом на реконнекте не зависит от диска.
-      save: (list) => { void idbSet('outbox', list).catch(() => {}) },
+      save: (list) => { void sessionKv.set('outbox', list).catch(() => {}) },
     },
     // onReady: гарантируем гидратацию курсора из IDB (гейт первого apply). Сам
     // catch-up на (ре)коннекте инициирует hello-кадр (fast-reconnect без REST,
@@ -842,6 +857,9 @@ export function createWorkerCore() {
     // workerCore.test.ts зовёт настоящий bind() и invoke()-ит менеджер через фейковый
     // порт, проверяя, что ответ реально доезжает.
     registerManagers(smp, registry)
+    // Канал код-пароля (isLocked/разблокировка/включение…) — с источником вызова:
+    // рассылка «всем, кроме источника», ключ на isLocked — только спросившему.
+    smp.handle(PASSCODE_CHANNEL, (task) => passcode.handle(smp, task as PasscodeTask))
     // Задача 2 (worker-rootscope): вкладка закрылась (Web Lock освободился, либо
     // фолбэк beforeunload) — снять мёртвый порт из ports[], иначе он копится там
     // до конца жизни воркера и получает все broadcast/receiveFrom вечно. Сам лок
