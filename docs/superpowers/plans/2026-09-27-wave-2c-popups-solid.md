@@ -281,7 +281,7 @@
 
 ---
 
-### Задача 3: активное окно — `helpers/appWindow.ts` → HEAD и писатель в `core/pip.ts`
+### Задача 3: активное окно — `helpers/appWindow.ts` → HEAD и писатель в `core/pip.ts` ✅
 
 **Что делаем.** Поправка 3: вынос клиента в PiP у нас есть, значит нужен и писатель активного окна.
 
@@ -291,8 +291,9 @@
    `getAppWindow` (`:23-25`) и `onBeforeAppWindowChange` (`:66-69`) — только если найдётся
    потребитель (у tweb их читают метрики и снимок скролла чата; у нас — выяснить `git grep`);
    нет — не портировать, записать в шапку. Докблок `:1-14` переписать по факту.
-2. `core/pip.ts`: `enterAppPip` зовёт `setAppWindow(pip)` сразу после переноса `#root` (`:78-80`),
-   `restore` — `setAppWindow(window)` (`:98-103`). Писатель один — модуль PiP, как у tweb
+2. `core/pip.ts`: `enterAppPip` зовёт `setAppWindow(pip)` рядом с `usePipStore.setState` — ДО переноса
+   `#root`, как tweb `clientPip.tsx:62` (исправлено при исполнении: было «сразу после»),
+   `restore` — `setAppWindow(window)` тоже до переноса (`clientPip.tsx:118`). Писатель один — модуль PiP, как у tweb
    (`setAppWindow` зовёт только вынос клиента).
 3. Факт «активное окно» не должен жить дважды: `usePipStore.win` читают React-порталы
    (`usePortalContainer`), `activeWindow` — vanilla/Solid. Оба пишет один и тот же код
@@ -302,19 +303,33 @@
 **Файлы:** изменить `web-client/src/helpers/appWindow.ts`, `helpers/appWindow.test.ts`, `core/pip.ts`;
 тест `core/pip.test.ts` (создать, если нет).
 
-- [ ] **Шаг 1: прочитать** tweb `helpers/appWindow.ts` целиком, наш `core/pip.ts`, потребителей
+- [x] **Шаг 1: прочитать** tweb `helpers/appWindow.ts` целиком, наш `core/pip.ts`, потребителей
   `getOverlayRoot` (`git grep -n "getOverlayRoot" web-client/src`: `helpers/dom/sortable.ts:20`,
   свой метод в `mediaViewer/base.ts`).
-- [ ] **Шаг 2: падающие тесты:** `setAppWindow(fakeWin)` → `getOverlayRoot() === fakeWin.document.body`;
+- [x] **Шаг 2: падающие тесты:** `setAppWindow(fakeWin)` → `getOverlayRoot() === fakeWin.document.body`;
   `onAppWindowChange` получает `(next, prev)`; `bindActiveWindowListener(w => w.document.body,
   'keydown', fn)` — после `setAppWindow` слушатель переехал (событие на старом body не доходит, на
   новом — доходит), диспоузер снимает; повторный `setAppWindow` тем же окном — слушатели не зовутся.
   PiP: `enterAppPip` со стабом `documentPictureInPicture.requestWindow` → `getOverlayRoot()` — body
   окна PiP; событие `pagehide` → снова `document.body`.
-- [ ] **Шаг 3:** падают. **Мутация:** убрать `setAppWindow(window)` из `restore` — тест возврата краснеет.
-- [ ] **Шаг 4:** реализовать.
+- [x] **Шаг 3:** падают. **Мутация:** убрать `setAppWindow(window)` из `restore` — тест возврата краснеет.
+- [x] **Шаг 4:** реализовать.
 
 **Готово когда:** `getOverlayRoot()` следует за PiP; докблок `appWindow.ts` не утверждает, что выноса нет.
+
+**Итог (PR ветки `feat/w2c-appwindow-styles`).** `appWindow.ts` — порт `:18-122` без `getAppWindow` и
+`onBeforeAppWindowChange` (читателей нет — расхождение 1 в шапке). Поправки к шагу 2 по исходнику
+(`clientPip.tsx`): (а) `setAppWindow` зовётся **до** переноса `#root`, а не после — tweb `:60-62`, `:118`,
+на этот порядок рассчитывает `focusTrap.ts:120`; (б) писатель перенесён вместе с двумя соседними
+обязанностями выноса, без которых попап в PiP открывается, но не живёт: делегаты Solid на документ PiP
+(`:76-83` — иначе `onClick` оболочки мёртв) и возврат временных корней во вкладку при закрытии окна
+(`:104-111`, `:120` — иначе открытый в PiP попап гибнет с окном, оставляя запись навигации и
+`overlayCounter`). Расхождение: React-порталы `usePortalContainer` перенацеливает сам React, поэтому
+сброс `usePipStore` коммитится `flushSync` до сбора остатка (без него — `removeChild` React падает).
+Тесты: `helpers/appWindow.test.ts` (9), `core/pip.test.ts` (7); 10 мутаций красят (вывод — в коммите).
+Остаток для оболочки и следующих задач: Esc в PiP (`appNavigationController.ts:164` слушает `window`,
+у tweb `:79` — `bindActiveWindowListener`) — задача 2/5; прочие потребители `appWindow` у tweb
+(`mediaViewer/base.ts`, `clickEvent.ts`, `contextMenu.ts`, …) — § 9.1 референса.
 
 ---
 

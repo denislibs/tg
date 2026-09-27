@@ -313,7 +313,7 @@ SCSS HEAD (`_popup.scss`), которых нет у нас:
 |---|---|
 | `core/navigation/appNavigationController.ts` (611) | порт; `onEscape?: () => boolean` (:101), в `onKeyDown` нет `!e.defaultPrevented` (:297) — дельта 472e3e76b не перенесена |
 | `helpers/overlayCounter.ts` (41) | порт 1:1; `isOverlayActive` пишет только `popupElement.ts`; React-попапы счётчик не трогают |
-| `helpers/appWindow.ts` (27) | только `getOverlayRoot()` = `window.document.body`. **Докблок (`:5-13`) неверен**: вынос всего клиента в Document PiP у нас ЕСТЬ — `core/pip.ts:49-106` (`enterAppPip`: `#root` переезжает в окно PiP), и React-попапы уже порталят туда (`usePortalContainer`). Оболочка на `getOverlayRoot()` без `setAppWindow` открывала бы попап в фоновой вкладке |
+| `helpers/appWindow.ts` (106) | **2C-3 ✅** порт HEAD `:18-122`: `getOverlayRoot`, `setAppWindow`, `onAppWindowChange`, `bindActiveWindowListener`; `getAppWindow`/`onBeforeAppWindowChange` — нет читателя (метрики в выносе окно не меняют), расхождение 1 в шапке. Писатель один — `core/pip.ts` `enterAppPip` (окно ДО переноса `#root`, как `clientPip.tsx:62`/`:118`) рядом с `usePipStore.win` (вторая читательская форма — для React-порталов, до О-17); там же, по `clientPip.tsx:76-83` и `:104-120`, делегаты Solid на документ PiP и возврат временных корней во вкладку (React-порталы — `flushSync` стора до сбора). Не переведены на активное окно (у tweb — через `appWindow`): `appNavigationController.ts:164` (`keydown` на `window`, tweb `:79` — `bindActiveWindowListener`: Esc в PiP мёртв), `mediaViewer/base.ts:1351` (свой `document.body`), `clickEvent.ts`, `contextMenu.ts`, `overlayClickHandler.ts` и др. — их шапки ещё пишут «выноса нет» |
 | `components/scrollable2.solid.tsx` (411) | порт до 3eb7a9020: нет `trackEnds`, `isScrolledToStart/End` в `ScrollableContextValue` (:81-91), `tabIndex` |
 | `helpers/dom/focusTrap.ts`, `scrollRegion.ts`, `isKeyboardControl.ts`, `isSendShortcutPressed.ts` | **нет** (`sendShortcut` в настройках тоже нет — `keyboardShortcuts.solid.tsx:20-23`) |
 | `components/MarkupTooltip.tsx` | React, синглтона `getInstance().hide()` нет |
@@ -373,8 +373,8 @@ SCSS HEAD (`_popup.scss`), которых нет у нас:
 4. **Нет стыков скролла и футера** (§ 4): `_popup.scss` без блоков `:211-273`; `scrollable2` без
    `trackEnds`.
 5. **`z-index: 4090` у `shared/ui/Popup`** против `4` у tweb (`_popup.scss:34`): порядок решает DOM.
-6. **Корень оверлеев не следует за окном PiP** (`appWindow.ts` без `setAppWindow`), хотя вынос
-   клиента в PiP есть (`core/pip.ts`).
+6. ~~**Корень оверлеев не следует за окном PiP**~~ — снято 2C-3: `getOverlayRoot()` следует за
+   `enterAppPip`. Остаток — потребители, ещё не переведённые на активное окно (§ 9.1, строка `appWindow.ts`).
 7. **`PopupPeer` — класс с `checkboxField.label`**, у tweb — `RowTsx`-строки чекбоксов (ef41b29db).
 
 ## Проверка после порта
