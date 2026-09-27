@@ -327,9 +327,11 @@
 `overlayCounter`). Расхождение: React-порталы `usePortalContainer` перенацеливает сам React, поэтому
 сброс `usePipStore` коммитится `flushSync` до сбора остатка (без него — `removeChild` React падает).
 Тесты: `helpers/appWindow.test.ts` (9), `core/pip.test.ts` (7); 10 мутаций красят (вывод — в коммите).
-Остаток для оболочки и следующих задач: Esc в PiP (`appNavigationController.ts:164` слушает `window`,
-у tweb `:79` — `bindActiveWindowListener`) — задача 2/5; прочие потребители `appWindow` у tweb
-(`mediaViewer/base.ts`, `clickEvent.ts`, `contextMenu.ts`, …) — § 9.1 референса.
+Там же — Esc навигации следует за окном (`appNavigationController.ts`: `bindActiveWindowListener((w) => w,
+'keydown', …)`, tweb `:77-79`; тест `appNavigationController.appWindow.test.ts`). Остаток: переезд
+ловушки фокуса за окном (`focusTrap.ts`, tweb `:135-137`, `:146-147`) — после влития задачи 2 (#313);
+прочие потребители `appWindow` у tweb (`mediaViewer/base.ts`, `clickEvent.ts`, `contextMenu.ts`, …) —
+§ 9.1 референса.
 
 ---
 
