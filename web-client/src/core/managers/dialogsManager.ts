@@ -8,7 +8,7 @@
 // docs/superpowers/specs/2026-08-12-dialogs-ownership-and-virtual-list-design.md.
 import type { RestClient } from '../net/restClient'
 import { HttpError } from '../net/restClient'
-import { mapMessage, isDialogArchived, type Dialog, type DraftMessage, type RawDialog, type RawMyMessage } from '../models'
+import { mapMessage, isDialogArchived, type Dialog, type DraftMessage, type MyMessage, type RawDialog, type RawMyMessage } from '../models'
 import { generateMessageId } from '../history/messageId'
 import { getPeerId } from '../peers/peerId'
 import { MUTE_UNTIL_FOREVER, type PeerNotifySettings } from '../dialogs/notifySettings'
@@ -1429,6 +1429,26 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       // unread у new_message/read; локальный +1 — fallback, если поля нет.
       const value = typeof count === 'number' ? count : cur.unread_reactions_count + 1
       patchDialog(peerId, { unread_reactions_count: value })
+    },
+
+    /**
+     * Удалённые сообщения снимаются со счётчика непрочитанного — порт tweb
+     * `onUpdateDeleteMessages` (appMessagesManager.ts:11546-11548) с подсчётом
+     * из `handleDeletedMessages` (:14082-14085): непрочитанное — ВХОДЯЩЕЕ
+     * (`!pFlags.out`), которое ещё не покрыл горизонт прочтения. Флага
+     * `unread` на сообщении у нас нет (`core/models.ts`), поэтому
+     * «непрочитано» — сравнение с `read_inbox_max_id`, как у ленты
+     * (`bubbles.ts::isUnreadByReadCursor`).
+     *
+     * Авторитет по-прежнему приезжает строкой диалога — сервер снимает
+     * удалённое со счётчика сам (`ChatsRepo.ForgetUnread`).
+     */
+    applyDeletedMessages(peerId: number, deleted: readonly MyMessage[]): void {
+      const cur = findDialog(peerId)
+      if (!cur || !cur.unread_count) return
+      const unread = deleted.filter((m) => !m.pFlags?.out && m.id > cur.read_inbox_max_id).length
+      if (!unread) return
+      patchDialog(peerId, { unread_count: Math.max(0, cur.unread_count - unread) })
     },
 
     // Меня удалили из группы / вышел сам (chat_removed) — диалог исчезает из списка.

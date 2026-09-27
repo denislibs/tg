@@ -299,6 +299,77 @@ func TestChatsRepo_ReadState(t *testing.T) {
 	}
 }
 
+// ForgetUnread — обратная к IncUnread операция для удалённого «у всех»:
+// минус один только тем, для кого сообщение ещё непрочитанное. Автор, уже
+// прочитавший и очистивший историю — не трогаются; ниже нуля не уходит.
+func TestChatsRepo_ForgetUnread(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewChatsRepo(pool)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+790")
+	b := seedUser(t, pool, "+791")
+	chatID := createPrivate(t, pool, a, b)
+	unread := func(uid int64) int {
+		var n int
+		if err := pool.QueryRow(ctx, `SELECT unread_count FROM chat_members WHERE chat_id=$1 AND user_id=$2`, chatID, uid).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := repo.IncUnread(ctx, chatID, b); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// seq 2 от a: b его не читал — минус один; у автора нуль и остаётся.
+	if err := repo.ForgetUnread(ctx, chatID, a, 2); err != nil {
+		t.Fatal(err)
+	}
+	if got := unread(b); got != 1 {
+		t.Errorf("unread(b) = %d; want 1", got)
+	}
+	if got := unread(a); got != 0 {
+		t.Errorf("unread(a) = %d; want 0", got)
+	}
+
+	// Горизонт b выше удалённого — прочитанное со счётчика не снимается.
+	if err := repo.SetRead(ctx, chatID, b, 5, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.ForgetUnread(ctx, chatID, a, 4); err != nil {
+		t.Fatal(err)
+	}
+	if got := unread(b); got != 1 {
+		t.Errorf("удаление прочитанного: unread(b) = %d; want 1", got)
+	}
+
+	// История очищена выше удалённого — оно в счётчик не входило.
+	if _, err := pool.Exec(ctx, `UPDATE chat_members SET cleared_max_seq=9, last_read_seq=0 WHERE chat_id=$1 AND user_id=$2`, chatID, b); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.ForgetUnread(ctx, chatID, a, 7); err != nil {
+		t.Fatal(err)
+	}
+	if got := unread(b); got != 1 {
+		t.Errorf("удаление за горизонтом очистки: unread(b) = %d; want 1", got)
+	}
+
+	// Ниже нуля не уходит.
+	if err := repo.SetRead(ctx, chatID, b, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE chat_members SET cleared_max_seq=0 WHERE chat_id=$1`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.ForgetUnread(ctx, chatID, a, 10); err != nil {
+		t.Fatal(err)
+	}
+	if got := unread(b); got != 0 {
+		t.Errorf("ниже нуля: unread(b) = %d; want 0", got)
+	}
+}
+
 // История горизонта чтения: разные продвижения дают разное время, и для seq
 // берётся ближайшая СВЕРХУ отметка (иначе «Прочитано в HH:MM» было бы одинаковым
 // у всех сообщений — см. usecase OutboxReadDate).

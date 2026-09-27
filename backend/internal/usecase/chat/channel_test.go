@@ -260,6 +260,7 @@ func (c groupMembershipChats) IncUnread(context.Context, int64, int64) (int, err
 func (c groupMembershipChats) IncUnreadBulk(context.Context, int64, []int64) (map[int64]int64, error) {
 	return nil, nil
 }
+func (c groupMembershipChats) ForgetUnread(context.Context, int64, int64, int64) error { return nil }
 func (c groupMembershipChats) IncUnreadReactions(context.Context, int64, int64) (int, error) {
 	return 0, nil
 }
