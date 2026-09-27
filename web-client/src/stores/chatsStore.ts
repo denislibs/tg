@@ -7,6 +7,7 @@ import { reconcileById } from '../core/store/reconcile'
 import type { DialogOp } from '../core/dialogs/dialogOps'
 import type { UserStatus } from '../core/peers/peer'
 import { isUser } from '../core/peers/peerId'
+import rootScope from '@lib/rootScope'
 
 // Per-chat typing state: peerId -> userId -> {action, at}. `at` is the event
 // timestamp (ms) so stale entries can be ignored; entries are also actively
@@ -45,7 +46,7 @@ interface ChatsState {
    */
   applyDialogOps: (ops: DialogOp[]) => void
   /** meId выводится из me (единый писатель) — отдельного setMeId нет, чтобы id и
-   * профиль не расходились. Сам факт `me` вычисляет ТОЛЬКО воркер
+   * профиль не расходились; тем же вызовом пишется и `rootScope.myId`. Сам факт `me` вычисляет ТОЛЬКО воркер
    * (workerCore.ts::setMe → rt:me, Stage 1C.2 Task 1); канонический вызывающий —
    * storeProjection (APPLY[RT.me]). Прямые вызовы из витрины — allow-listed
    * исключения (оптимистика/гидратация), см. stores/noDuplicateMe.test.ts. */
@@ -146,7 +147,18 @@ export const useChatsStore = create<ChatsState>((set) => ({
       }
       return { dialogs, dialogIndexById: indexById, loaded: true }
     }),
-  setMe: (me) => set({ me, meId: me?.user.id ?? null }),
+  // Второе зеркало того же факта — `rootScope.myId` (порт tweb rootScope.ts:253),
+  // его синхронно читает лента (`chat/bubbles.ts`: `needName`, `isOurMessage`).
+  // Пишется ЗДЕСЬ, а не у одного из вызывающих: зеркала обязаны совпадать при
+  // любом входе значения. Прежде `myId` писал только проектор rt:me, а `me`,
+  // пришедший ответом RPC (`loadChats` на холодном старте и после входа),
+  // доезжал до стора, но не до ленты — кадр rt:me вкладка до подъёма насоса
+  // пропускает (SuperMessagePort не буферизует). Лента видела `myId === 0` и
+  // подписывала именем автора каждое своё сообщение в группе.
+  setMe: (me) => {
+    rootScope.myId = me?.user.id ?? 0
+    set({ me, meId: me?.user.id ?? null })
+  },
   setActiveChat: (activePeerId) => set({ activePeerId }),
   // Task 3 (перенос владения диалогами): removeDialog/applyChatMeta ушли
   // отсюда — их тела переехали в core/managers/dialogsManager.ts
@@ -203,7 +215,7 @@ export async function loadChats(
   // альтернативный путь ЗАПРОСА уже посчитанного значения, устойчивый к
   // порядку подписки. `loadChats` тестируется в изоляции без воркера/rootScope
   // (chatsStore.test.ts: «loadChats populates me/meId») — не выпиливать.
-  useChatsStore.getState().setMe(me) // meId выводится из me внутри setMe
+  useChatsStore.getState().setMe(me) // meId и rootScope.myId выводятся из me внутри setMe
 }
 
 /**
