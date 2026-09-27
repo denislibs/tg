@@ -5,6 +5,11 @@
 // «Делегирующий вызов — тоже строка проводки»). Окружение — то же фейковое, что у
 // `boot.maskedAnchor.test.ts`.
 import { describe, expect, it, vi } from 'vitest'
+import { installFakeCanvas } from '@/test/fakeCanvas'
+
+// Старт ставит фон страницы (`appChatBackground`, tweb index.ts:567) — он
+// рисует холсты по-настоящему, а в happy-dom нет 2D-контекста.
+installFakeCanvas()
 
 const managers = {
   auth: { me: vi.fn(async () => null) },
