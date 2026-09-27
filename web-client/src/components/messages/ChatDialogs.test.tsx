@@ -76,7 +76,13 @@ describe('ChatDialogs — модификаторы попапов (React-ком�
   afterEach(cleanup)
 
   it('ForwardPicker — popup-forward', () => {
-    render(<ForwardPicker dialogs={[]} onPick={noop} onClose={noop} />)
+    // Карточки получателей селектор берёт из зеркала пиров (`usePeers`) — ему
+    // нужен контекст менеджеров.
+    render(
+      <ManagersProvider managers={{ peers: { fillMirror: async () => {} } } as never}>
+        <ForwardPicker dialogs={[]} onPick={noop} onClose={noop} />
+      </ManagersProvider>,
+    )
     expect(document.querySelector('.popup')!.classList.contains('popup-forward')).toBe(true)
   })
 })

@@ -2,21 +2,37 @@ import { useMemo, useState } from 'react'
 import Text from '../shared/ui/Text'
 import IconButton from '../shared/ui/IconButton'
 import TgIcon from './TgIcon'
-import Avatar from '../shared/ui/Avatar'
+import UserAvatar from './UserAvatar'
+import { PeerStatus } from '../shared/ui/peerStatus'
 import { useNavLayer } from '../core/hooks/useNavLayer'
+import { useContactPeerIds } from '../core/hooks/useContactPeerIds'
+import { usePeers } from '../core/hooks/usePeers'
+import { useChatsStore } from '../stores/chatsStore'
+import { getUserTitle } from '../core/peers/getPeerTitle'
+import { getPeerPhotoId, isUserStatusOnline, type UserReal } from '../core/peers/peer'
 import { useT } from '../i18n'
-import type { Chat } from '../data'
+import type { OpenPeer } from '../data'
 import NewContactPopup from './NewContactPopup'
 import s from './ContactsView.module.scss'
 
+/**
+ * Экран «Контакты» — адресная книга зрителя (tweb `AppContactsTab` →
+ * `ContactsList`, `sidebarLeft/contactsList.tsx`): строки — контакты книги
+ * (`useContactPeerIds`), а не личные диалоги. Поиск — индексом книги
+ * (`getContactsPeerIds(query)`), клик — `setPeer` пира
+ * (`appDialogsManager.setListClickListener`), у нас `openPeer`.
+ *
+ * Сам список ещё НЕ порт `ContactsList` (виртуальный список, сортировка по
+ * «был(а) в сети»/имени с кнопкой в шапке, `SectionIndex` сбоку): это наша
+ * прежняя разметка с группами по букве — порядок по имени задаёт книга
+ * (`contactsManager.getContacts`, `sortBy: 'name'`).
+ */
 export default function ContactsView({
-  chats,
-  onSelect,
+  onOpenPeer,
   onBack,
   onOpenChat,
 }: {
-  chats: Chat[]
-  onSelect: (id: string) => void
+  onOpenPeer: (peer: OpenPeer) => void
   onBack: () => void
   /** открыть (только что созданный) приватный чат по id — после добавления контакта */
   onOpenChat?: (chatId: number) => void
@@ -25,20 +41,21 @@ export default function ContactsView({
   useNavLayer(true, onBack, 'left') // Back закрывает экран «Контакты»
   const [query, setQuery] = useState('')
   const [newOpen, setNewOpen] = useState(false)
+  const presence = useChatsStore((st) => st.presence)
 
+  const contactIds = useContactPeerIds(query)
+  const cards = usePeers(contactIds ?? [])
   const contacts = useMemo(
-    () =>
-      chats
-        // Боты не входят в адресную книгу (Telegram) — не показываем в контактах.
-        .filter((c) => c.type === 'private' && !c.isBot)
-        .filter((c) => c.name.toLowerCase().includes(query.trim().toLowerCase()))
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    [chats, query],
+    () => (contactIds ?? []).flatMap((id) => {
+      const user = cards.get(id)
+      return user?._ === 'user' ? [{ user, name: getUserTitle(user) }] : []
+    }),
+    [contactIds, cards],
   )
 
   // group by first letter
   const groups = useMemo(() => {
-    const map = new Map<string, Chat[]>()
+    const map = new Map<string, { user: UserReal; name: string }[]>()
     for (const c of contacts) {
       const k = c.name[0]?.toUpperCase() ?? '#'
       if (!map.has(k)) map.set(k, [])
@@ -77,7 +94,7 @@ export default function ContactsView({
 
       {/* List */}
       <div className={s.list}>
-        {groups.length === 0 && (
+        {contactIds !== undefined && groups.length === 0 && (
           <Text size={14} color="var(--secondary-text-color)" className={s.emptyHint}>
             {t('Contacts.NotFound')}
           </Text>
@@ -87,25 +104,29 @@ export default function ContactsView({
             <Text size={13} weight={600} color="var(--primary-color)" className={s.groupLetter}>
               {letter}
             </Text>
-            {list.map((c) => (
-              <div key={c.id} className={s.row} onClick={() => onSelect(c.id)}>
-                <Avatar
-                  background={c.avatar}
-                  text={c.avatarText}
-                  emoji={c.avatarEmoji}
-                  size={46}
-                  online={c.online}
-                />
-                <div className={s.rowText}>
-                  <Text noWrap size={16} color="var(--primary-text-color)">
-                    {c.name}
-                  </Text>
-                  <Text noWrap size={13.5} color={c.online ? 'var(--primary-color)' : 'var(--secondary-text-color)'}>
-                    {c.online ? t('Online') : c.status || t('Lately')}
-                  </Text>
+            {list.map(({ user, name }) => {
+              const photoId = getPeerPhotoId(user.photo) || undefined
+              const status = presence[user.id] ?? user.status
+              const online = isUserStatusOnline(status, Date.now() / 1000)
+              return (
+                <div
+                  key={user.id}
+                  className={s.row}
+                  data-peer-id={user.id}
+                  onClick={() => onOpenPeer({ id: user.id, title: name, username: user.username, photoId })}
+                >
+                  <UserAvatar id={user.id} name={name} photoId={photoId} size={46} online={online} />
+                  <div className={s.rowText}>
+                    <Text noWrap size={16} color="var(--primary-text-color)">
+                      {name}
+                    </Text>
+                    <Text noWrap size={13.5} color={online ? 'var(--primary-color)' : 'var(--secondary-text-color)'}>
+                      <PeerStatus status={status} />
+                    </Text>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         ))}
       </div>

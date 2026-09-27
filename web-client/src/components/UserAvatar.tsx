@@ -19,6 +19,8 @@ export default function UserAvatar({
   size = 'md',
   online,
   className,
+  background,
+  emoji,
 }: {
   id?: number
   name: string
@@ -28,14 +30,19 @@ export default function UserAvatar({
   online?: boolean
   /** классы-модификаторы слота tweb (`dialog-avatar row-media`, `selector-user-avatar`) */
   className?: string
+  /** фон вместо градиента по id — у «Избранного» свой (`SAVED_GRADIENT`) */
+  background?: string
+  /** глиф вместо инициала (`Avatar.emoji`: `saved` — иконка закладки «Избранного») */
+  emoji?: string
 }) {
   const src = useMediaUrl(photoId || null)
   return (
     <Avatar
       size={size}
-      background={id != null ? gradientFor(id) : peerColor(name)}
+      background={background ?? (id != null ? gradientFor(id) : peerColor(name))}
       src={src || undefined}
       text={name.charAt(0).toUpperCase() || '?'}
+      emoji={emoji}
       online={online}
       className={className}
     />

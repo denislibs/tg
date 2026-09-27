@@ -14,6 +14,9 @@ import { render } from '@testing-library/react'
 import { ManagersProvider } from '../../core/hooks/useManagers'
 import ChatMsgActionPopups from './ChatMsgActionPopups'
 import type { useMessageActions } from '../../core/hooks/useMessageActions'
+import { useChatsStore } from '../../stores/chatsStore'
+import { applyPeerOps, resetPeerMirror } from '../../core/peerCache'
+import { makeDialog } from '../../core/dialogs/testDialog'
 
 type MsgActions = ReturnType<typeof useMessageActions>
 
@@ -95,5 +98,37 @@ describe('ChatMsgActionPopups — delete-конфирм снимается вс�
       </ManagersProvider>,
     )
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+})
+
+// Пикер пересылки получает права, выведенные из пересылаемых сообщений
+// (`useMessageActions.forwardRights`, порт `resolveChatRightsActions`): без
+// них он отсекал бы по праву текста, и вложение нельзя было бы переслать в
+// группу, где запрещён только текст.
+describe('ChatMsgActionPopups — права получателя доходят до пикера пересылки', () => {
+  afterEach(() => {
+    useChatsStore.setState({ dialogs: [] })
+    resetPeerMirror()
+  })
+
+  it('forwardRights [send_media]: группа с запретом только текста — в списке', () => {
+    resetPeerMirror()
+    applyPeerOps([{
+      op: 'upsert',
+      peers: [{
+        _: 'channel', id: 3, title: 'Немая', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true },
+        default_banned_rights: { _: 'chatBannedRights', pFlags: { send_messages: true }, until_date: 0 },
+      }],
+    }])
+    useChatsStore.setState({ dialogs: [makeDialog({ peerId: -3 })] })
+    render(
+      <ManagersProvider managers={mkManagers() as never}>
+        <ChatMsgActionPopups msgActions={mkMsgActions({ forwardIds: [5], forwardRights: ['send_media'] })} numericChatId={1} />
+      </ManagersProvider>,
+    )
+
+    const ids = Array.from(document.querySelectorAll<HTMLElement>('.popup-forward .selector-list-section-container a.chatlist-chat'))
+      .map((row) => Number(row.dataset.peerId))
+    expect(ids).toEqual([-3])
   })
 })

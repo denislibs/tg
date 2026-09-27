@@ -158,3 +158,35 @@ func TestDialogRecord_ToChannelCarriesJoinDate(t *testing.T) {
 		t.Errorf("date = %d; want %d (дата вступления)", ch.Date, joined.Unix())
 	}
 }
+
+// Права ЗРИТЕЛЯ едут на краткой форме чата из списка диалогов — ровно теми же
+// полями, что у карточки (ChatRecord.ToChannel): `creator`, `admin_rights`,
+// `default_banned_rights`. Без них клиент не может ответить, можно ли писать
+// в чат (tweb `hasRights(chat, 'send_plain')`), и селектор пересылки
+// показывал каналы, где зритель — простой подписчик. Хуже того, вектор chats
+// списка ЗАМЕНЯЕТ карточку в зеркале пиров целиком, и права, приехавшие с
+// карточкой, стирались следующей страницей списка.
+func TestDialogRecord_ToChannelCarriesViewerRights(t *testing.T) {
+	sub := DialogRecord{ChatID: 9, Type: ChatTypeChannel, MyRole: RoleSubscriber, DefaultPerms: AllMemberPerms}.ToChannel()
+	if sub.PFlags["creator"] || sub.AdminRights != nil {
+		t.Errorf("подписчик получил права владельца/админа: %+v", sub)
+	}
+	if sub.DefaultBanned == nil {
+		t.Fatal("default_banned_rights не доехали")
+	}
+
+	owner := DialogRecord{ChatID: 9, Type: ChatTypeChannel, MyRole: RoleCreator, MyRights: Rights(255), DefaultPerms: AllMemberPerms}.ToChannel()
+	if !owner.PFlags["creator"] {
+		t.Error("creator потерян")
+	}
+	if owner.AdminRights == nil || !owner.AdminRights.PFlags["post_messages"] {
+		t.Errorf("admin_rights владельца = %+v; want с post_messages", owner.AdminRights)
+	}
+
+	// Запрет писать в группе — ВЫСТАВЛЕННЫЙ флаг send_messages (инверсия
+	// MemberPerms → chatBannedRights).
+	muted := DialogRecord{ChatID: 8, Type: ChatTypeGroup, MyRole: RoleMember, DefaultPerms: AllMemberPerms &^ PermSendMessages}.ToChannel()
+	if muted.DefaultBanned == nil || !muted.DefaultBanned.PFlags["send_messages"] {
+		t.Errorf("запрет писать потерян: %+v", muted.DefaultBanned)
+	}
+}
