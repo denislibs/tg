@@ -204,11 +204,15 @@ describe('assets/tgs — состав статики не разъехался �
   // дословно): заставка почты восстановления мастера 2FA
   // (`sidebarLeft/tabs/2fa/email.solid.tsx`, план 2D, задача 19); PNG — тем же
   // `generate-tgs-thumbnails.mjs`.
-  it('в public/assets/tgs/ лежат все 12 json (Этап 0 + LoveLetter) и все 12 png (часть 2 фолбэка)', () => {
+  // Тринадцатый — `Folders_Shared` (tweb `public/assets/tgs/Folders_Shared.json`
+  // дословно): заставка вкладки ссылки папки (`sidebarLeft/tabs/sharedFolder.solid.tsx`,
+  // план 2D, задача 25); PNG — тем же генератором.
+  it('в public/assets/tgs/ лежат все 13 json (Этап 0 + LoveLetter + Folders_Shared) и все 13 png (часть 2 фолбэка)', () => {
     const files = readdirSync(TGS_DIR).sort()
     const names = [
       'Folders_1',
       'Folders_2',
+      'Folders_Shared',
       'LoveLetter',
       'Mailbox',
       'TwoFactorSetupMonkeyIdle',

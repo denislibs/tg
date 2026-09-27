@@ -1,6 +1,6 @@
 {
   "meta": {
-    "generatedAt": "2026-09-26",
+    "generatedAt": "2026-09-27",
     "twebDir": "/Users/denisurevic/Documents/tweb-e52b5d931",
     "twebCommit": "e52b5d931"
   },
@@ -88,36 +88,36 @@
       "files": [
         "src/scss/base.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "accordion-counter": {
       "files": [
         "src/scss/base.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "accordion-icon": {
       "files": [
         "src/scss/base.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "accordion-right-button": {
       "files": [
         "src/scss/base.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "accordion-row": {
       "files": [
         "src/scss/base.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "accordion-toggler": {
       "files": [
@@ -125,14 +125,14 @@
         "src/scss/partials/_row.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "accordion-toggler-expanded": {
       "files": [
         "src/scss/base.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "accordion-toggler-round": {
       "files": [
@@ -306,8 +306,8 @@
       "files": [
         "src/scss/partials/_leftSidebar.scss"
       ],
-      "inOurScss": true,
-      "inOurCode": true
+      "inOurScss": false,
+      "inOurCode": false
     },
     "addCollection": {
       "files": [
@@ -328,8 +328,8 @@
       "files": [
         "src/components/sidebarLeft/tabs/passcodeLock/common.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "addon": {
       "files": [
@@ -1568,7 +1568,7 @@
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "background-gradient-archive": {
       "files": [
@@ -1597,14 +1597,14 @@
         "src/scss/partials/_themes.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "background-item-media": {
       "files": [
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "backwards": {
       "files": [
@@ -1735,7 +1735,7 @@
       "files": [
         "src/components/chat/bubbles/chatBackground.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "Block": {
@@ -2269,7 +2269,7 @@
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "btn-control-small": {
       "files": [
@@ -2278,7 +2278,7 @@
         "src/scss/partials/_ripple.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "btn-corner": {
       "files": [
@@ -3518,7 +3518,7 @@
         "src/components/sidebarRight/tabs/adminRecentActions/filters/flagFilters.module.scss",
         "src/components/sidebarRight/tabs/adminRecentActions/previewMessageButtons.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "button-icon": {
@@ -3893,8 +3893,8 @@
       "files": [
         "src/components/chat/bubbles/chatBackground.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "caption": {
       "files": [
@@ -3970,7 +3970,7 @@
         "src/components/passcodeLock/passcodeLockScreen.module.scss",
         "src/components/sidebarRight/tabs/adminRecentActions/filters/styles.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "cardEnter": {
@@ -4124,7 +4124,7 @@
       "files": [
         "src/components/table.module.scss"
       ],
-      "inOurScss": true,
+      "inOurScss": false,
       "inOurCode": true
     },
     "cellAlignCenter": {
@@ -4232,7 +4232,7 @@
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "chat-info": {
       "files": [
@@ -4864,7 +4864,7 @@
         "src/scss/partials/_checkbox.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "checkbox-toggle": {
       "files": [
@@ -5170,43 +5170,43 @@
       "files": [
         "src/scss/partials/_colorPicker.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "color-picker-box": {
       "files": [
         "src/scss/partials/_colorPicker.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "color-picker-color-slider": {
       "files": [
         "src/scss/partials/_colorPicker.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": false
     },
     "color-picker-dragger": {
       "files": [
         "src/scss/partials/_colorPicker.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": false
     },
     "color-picker-inputs": {
       "files": [
         "src/scss/partials/_colorPicker.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "color-picker-sliders": {
       "files": [
         "src/scss/partials/_colorPicker.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "color-premium": {
       "files": [
@@ -5794,7 +5794,7 @@
         "src/scss/partials/_customEmoji.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "custom-emoji-renderer": {
       "files": [
@@ -6070,7 +6070,7 @@
         "src/components/sidebarLeft/newAuthorization.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": true
+      "inOurCode": false
     },
     "description": {
       "files": [
@@ -6089,7 +6089,7 @@
         "src/components/chat/bubbleParts/suggestedPostAcceptWithTimePopup/styles.module.scss",
         "src/components/passcodeLock/passcodeLockScreen.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "Details": {
@@ -6097,7 +6097,7 @@
         "src/components/instantView.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "DetailsContent": {
       "files": [
@@ -6205,7 +6205,7 @@
         "src/scss/partials/_starsBadge.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "dialog-subtitle": {
       "files": [
@@ -6629,7 +6629,7 @@
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "edit-peer-container": {
       "files": [
@@ -7639,8 +7639,8 @@
       "files": [
         "src/components/sidebarLeft/tabs/passcodeLock/mainTab.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "fixedHeight": {
       "files": [
@@ -7921,7 +7921,7 @@
         "src/scss/partials/_input.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "force-hide-large-content": {
       "files": [
@@ -8136,7 +8136,7 @@
         "src/scss/partials/_section.scss"
       ],
       "inOurScss": true,
-      "inOurCode": true
+      "inOurCode": false
     },
     "genericCell": {
       "files": [
@@ -9067,8 +9067,8 @@
       "files": [
         "src/scss/partials/_quizHint.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "has-service-before": {
       "files": [
@@ -9111,8 +9111,8 @@
       "files": [
         "src/scss/partials/_quizHint.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "has-two-buttons": {
       "files": [
@@ -9454,7 +9454,7 @@
       "files": [
         "src/components/sidebarLeft/tabs/passcodeLock/mainTab.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "hintIcon": {
@@ -9525,7 +9525,7 @@
         "src/scss/base.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "hover-effect": {
       "files": [
@@ -9669,7 +9669,7 @@
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "info": {
       "files": [
@@ -9809,7 +9809,7 @@
         "src/components/passcodeLock/passcodeLockScreen.module.scss",
         "src/components/simpleFormField/styles.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "input-clear": {
@@ -10361,28 +10361,28 @@
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-corner-br": {
       "files": [
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-corner-tl": {
       "files": [
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-corner-tr": {
       "files": [
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-correct": {
       "files": [
@@ -10479,7 +10479,7 @@
         "src/scss/partials/popups/_deleteMegagroupMessages.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-expired": {
       "files": [
@@ -10605,7 +10605,7 @@
         "src/scss/partials/_selector.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-full-screen": {
       "files": [
@@ -11059,7 +11059,7 @@
         "src/scss/partials/_row.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-reply": {
       "files": [
@@ -11109,7 +11109,7 @@
         "src/scss/partials/_emojiDropdown.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "is-rtmp": {
       "files": [
@@ -11551,8 +11551,8 @@
       "files": [
         "src/components/chat/bubbles/chatBackground.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "isIncoming": {
       "files": [
@@ -11594,8 +11594,8 @@
       "files": [
         "src/components/chat/bubbles/chatBackground.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "isReacted": {
       "files": [
@@ -11927,22 +11927,22 @@
       "files": [
         "src/components/sidebarLeft/tabs/passcodeLock/shortcutBuilder.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "KeyButtonFirst": {
       "files": [
         "src/components/sidebarLeft/tabs/passcodeLock/shortcutBuilder.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "KeyButtonLast": {
       "files": [
         "src/components/sidebarLeft/tabs/passcodeLock/shortcutBuilder.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "keys": {
       "files": [
@@ -11955,8 +11955,8 @@
       "files": [
         "src/components/sidebarLeft/tabs/passcodeLock/shortcutBuilder.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "Kicker": {
       "files": [
@@ -12456,8 +12456,8 @@
       "files": [
         "src/components/passcodeLock/passcodeLockScreen.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "lottie": {
       "files": [
@@ -12562,8 +12562,8 @@
       "files": [
         "src/components/sidebarLeft/tabs/passcodeLock/mainTab.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "mainHeader": {
       "files": [
@@ -14345,8 +14345,8 @@
       "files": [
         "src/components/passcodeLock/passwordMonkeyTsx.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "monospace-text": {
       "files": [
@@ -14728,7 +14728,7 @@
       "files": [
         "src/scss/base.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "no-background": {
@@ -15126,14 +15126,14 @@
         "src/components/sidebarLeft/tabs/passcodeLock/inlineSelect.module.scss",
         "src/components/verticalOptionWheel.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "or": {
       "files": [
         "src/components/sidebarLeft/tabs/keyboardShortcuts.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "originalArrow": {
@@ -15233,8 +15233,8 @@
         "src/components/sidebarRight/tabs/adminRecentActions/filters/styles.module.scss",
         "src/components/sidebarRight/tabs/adminRecentActions/noActionsPlaceholder.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "overlay-scroll": {
       "files": [
@@ -15354,8 +15354,8 @@
       "files": [
         "src/scss/partials/_passcodeLockScreen.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "passcode-lock-screen__animated-lock-icon": {
       "files": [
@@ -15382,14 +15382,14 @@
       "files": [
         "src/scss/partials/_passcodeLockScreen.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "PasswordMonkey": {
       "files": [
         "src/components/passcodeLock/passwordMonkeyTsx.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "pathDot": {
@@ -16297,8 +16297,8 @@
       "files": [
         "src/components/sidebarLeft/tabs/passcodeLock/shortcutBuilder.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "pointerDisabled": {
       "files": [
@@ -16684,7 +16684,7 @@
         "src/components/iconLibrary/iconLibrary.module.scss",
         "src/components/passcodeLock/simplePopup.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "popup-add-members": {
@@ -17201,8 +17201,8 @@
       "files": [
         "src/scss/base.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "popup-footer": {
       "files": [
@@ -17830,8 +17830,8 @@
       "files": [
         "src/scss/base.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "popup-sponsored": {
       "files": [
@@ -19281,7 +19281,7 @@
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "privacyInfo": {
       "files": [
@@ -19764,37 +19764,37 @@
         "src/scss/base.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "quiz-hint": {
       "files": [
         "src/components/stories/viewer.module.scss",
         "src/scss/partials/_quizHint.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "quiz-hint-container": {
       "files": [
         "src/components/sidebarLeft/tabs/passcodeLock/mainTab.module.scss",
         "src/scss/partials/_quizHint.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "quiz-hint-icon": {
       "files": [
         "src/scss/partials/_quizHint.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "quiz-hint-title": {
       "files": [
         "src/scss/partials/_quizHint.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "quote": {
       "files": [
@@ -19925,14 +19925,14 @@
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "range-setting-selector-name": {
       "files": [
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "range-setting-selector-option": {
       "files": [
@@ -19955,7 +19955,7 @@
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "range-start": {
       "files": [
@@ -20574,7 +20574,7 @@
         "src/scss/partials/_chatPinned.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "reply-subtitle": {
       "files": [
@@ -20862,7 +20862,7 @@
         "src/components/sidebarLeft/tabs/privacy/messages/starsRangeInput.module.scss",
         "src/components/sidebarRight/tabs/adminRecentActions/filters/expandableFilterGroup.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "row-big": {
@@ -21856,7 +21856,7 @@
         "src/components/instantView.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "sectionTitle": {
       "files": [
@@ -21884,7 +21884,7 @@
       "files": [
         "src/components/sidebarLeft/tabs/passcodeLock/inlineSelect.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "select-wrapper": {
@@ -21899,8 +21899,8 @@
       "files": [
         "src/components/sidebarLeft/tabs/passcodeLock/inlineSelect.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "selected": {
       "files": [
@@ -22106,7 +22106,7 @@
       "files": [
         "src/scss/partials/_selector.scss"
       ],
-      "inOurScss": true,
+      "inOurScss": false,
       "inOurCode": true
     },
     "selector-user": {
@@ -22339,15 +22339,15 @@
       "files": [
         "src/components/sidebarLeft/tabs/passcodeLock/mainTab.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "ShortcutBuilderRowChild": {
       "files": [
         "src/components/sidebarLeft/tabs/passcodeLock/mainTab.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "show": {
       "files": [
@@ -22425,7 +22425,7 @@
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "sidebar-emoji-status-emoji": {
       "files": [
@@ -22433,7 +22433,7 @@
         "src/scss/partials/_sidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "sidebar-header": {
       "files": [
@@ -23795,8 +23795,8 @@
       "files": [
         "src/components/passcodeLock/passcodeLockScreen.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "subtitle": {
       "files": [
@@ -24081,7 +24081,7 @@
         "src/components/instantView.module.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "tableKeyCell": {
       "files": [
@@ -24166,8 +24166,8 @@
       "files": [
         "src/components/sidebarLeft/tabs/passcodeLock/shortcutBuilder.module.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "TaskCheckbox": {
       "files": [
@@ -24439,7 +24439,7 @@
         "src/scss/base.scss"
       ],
       "inOurScss": false,
-      "inOurCode": false
+      "inOurCode": true
     },
     "text-overflow-wrap": {
       "files": [
@@ -25474,21 +25474,21 @@
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "two-step-verification-email": {
       "files": [
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "two-step-verification-enter-password": {
       "files": [
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "two-step-verification-forgot": {
       "files": [
@@ -25509,21 +25509,21 @@
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "two-step-verification-main": {
       "files": [
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "two-step-verification-set": {
       "files": [
         "src/scss/partials/_leftSidebar.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "uniqueGiftInfo": {
       "files": [
@@ -25737,42 +25737,42 @@
       "files": [
         "src/scss/partials/_usernames.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "usernames-username": {
       "files": [
         "src/scss/partials/_usernames.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "usernames-username-icon": {
       "files": [
         "src/scss/partials/_usernames.scss"
       ],
-      "inOurScss": false,
-      "inOurCode": false
+      "inOurScss": true,
+      "inOurCode": true
     },
     "usernames-username-icon-circle": {
       "files": [
         "src/scss/partials/_usernames.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": false
     },
     "usernames-username-icon-svg": {
       "files": [
         "src/scss/partials/_usernames.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": false
     },
     "usernames-username-status": {
       "files": [
         "src/scss/partials/_usernames.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": false
     },
     "valid": {
@@ -25796,7 +25796,7 @@
         "src/components/sidebarLeft/tabs/privacy/messages/starsRangeInput.module.scss",
         "src/components/sidebarRight/tabs/adminRecentActions/keyValuePair.module.scss"
       ],
-      "inOurScss": false,
+      "inOurScss": true,
       "inOurCode": true
     },
     "verified-icon": {
@@ -26790,7 +26790,7 @@
         "src/scss/partials/_topbarSearch.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "with-beside-button": {
       "files": [
@@ -26818,7 +26818,7 @@
         "src/scss/partials/_row.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "with-focus-effect": {
       "files": [
@@ -26854,7 +26854,7 @@
         "src/scss/partials/_checkbox.scss"
       ],
       "inOurScss": true,
-      "inOurCode": false
+      "inOurCode": true
     },
     "with-margin": {
       "files": [

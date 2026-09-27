@@ -620,14 +620,15 @@ const fr = {
   'PasscodeLock.PasscodeHasBeenChanged': 'Votre code d\'accès a été modifié.',
   'PasscodeLock.PasscodeHasBeenDisabled': 'Le code d\'accès a été désactivé.',
   'PasscodeLock.AutoLock': 'Verrouillage automatique',
-  'PasscodeLock.WrongPasscodeShort': 'Code d\'accès incorrect',
+  'PasscodeLock.WrongPasscode': 'Code d\'accès incorrect. Veuillez réessayer.',
   'PasscodeLock.TooManyAttempts': 'Trop de tentatives, veuillez réessayer plus tard',
   'PasscodeLock.Proceed': 'Continuer',
-  'PasscodeLock.ForgotPasscode.Text':
-    'Si vous avez oublié votre code d\'accès, vous devez vous déconnecter puis vous reconnecter.',
+  'PasscodeLock.ForgotPasscode.OneAccount': 'Remarque : si vous oubliez votre code d\'accès, vous devrez [vous déconnecter]().',
+  'PasscodeLock.ForgotPasscode.MultipleAccounts':
+    'Remarque : si vous oubliez votre code d\'accès, vous devrez [vous déconnecter]() de tous vos comptes actuels.',
   'EditAccount.Logout': 'Se déconnecter',
-  'PasscodeLock.Logout.Text':
-    'Voulez-vous vraiment vous déconnecter ? Vous devrez vous reconnecter.',
+  LogOut: 'Se déconnecter',
+  'PasscodeLock.LogoutPopup.Description': 'Voulez-vous vraiment vous déconnecter ?',
   'PasscodeLock.LockNow': 'Verrouiller l\'application',
   // вкладка «Код-пароль» (порт tweb passcodeLock/*, план 2D, задача 18)
   'PasscodeLock.Notice': 'Remarque : si vous oubliez votre code d\'accès, vous devrez vous déconnecter.',
@@ -874,6 +875,24 @@ const fr = {
   'SharedFolder.Toast.NeedName': 'Donnez un nom à ce dossier pour le partager.',
   'SharedFolder.Toast.NoExcluded': 'Les discussions exclues ne sont pas prises en charge dans les dossiers partagés.',
   'SharedFolder.Toast.NoTypes': 'Les types de discussion ne sont pas pris en charge dans les dossiers partagés.',
+  // ── Lien de dossier « Partager le dossier » (tweb `sidebarLeft/tabs/sharedFolder.tsx`,
+  //    `inviteLink.ts`; задача 25 плана 2D) ──
+  ChatsSelected: {
+    one_value: '%d discussion sélectionnée',
+    other_value: '%d discussions sélectionnées',
+  },
+  DeleteLink: 'Supprimer le lien',
+  'SharedFolder.Cant.Share': 'vous ne pouvez pas inviter d’autres personnes ici',
+  'SharedFolder.Cant.ShareBots': 'impossible de partager des discussions avec des bots',
+  'SharedFolder.Cant.ShareUsers': 'impossible de partager des discussions avec des utilisateurs',
+  'SharedFolder.Edit.Description': 'Toute personne disposant de ce lien peut ajouter le dossier **%s** et les %s sélectionnées ci-dessous',
+  'SharedFolder.Edit.Subtitle': 'Vous ne pouvez partager que les groupes et canaux dans lesquels vous êtes autorisé à créer des liens d’invitation.',
+  'SharedFolder.Edit.Title': 'Partager le dossier',
+  'SharedFolder.NoChats': 'Ce dossier ne contient aucune discussion que vous pouvez partager avec d’autres.',
+  'SharedFolder.NoChats.Title': 'Ces discussions ne peuvent pas être partagées',
+  'SharedFolder.Toast.NoAdminChannel': 'Vous n’avez pas les droits d’administrateur pour partager des liens d’invitation vers ce canal.',
+  'SharedFolder.Toast.NoAdminGroup': 'Vous n’avez pas les droits d’administrateur pour partager des liens d’invitation vers ce groupe.',
+  'SharedFolder.Toast.NoPrivate': 'Vous ne pouvez pas partager de discussions privées.',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(fr)

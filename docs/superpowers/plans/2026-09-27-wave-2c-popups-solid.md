@@ -312,7 +312,7 @@
 
 ---
 
-### Задача 3: активное окно — `helpers/appWindow.ts` → HEAD и писатель в `core/pip.ts`
+### Задача 3: активное окно — `helpers/appWindow.ts` → HEAD и писатель в `core/pip.ts` ✅
 
 **Что делаем.** Поправка 3: вынос клиента в PiP у нас есть, значит нужен и писатель активного окна.
 
@@ -322,8 +322,9 @@
    `getAppWindow` (`:23-25`) и `onBeforeAppWindowChange` (`:66-69`) — только если найдётся
    потребитель (у tweb их читают метрики и снимок скролла чата; у нас — выяснить `git grep`);
    нет — не портировать, записать в шапку. Докблок `:1-14` переписать по факту.
-2. `core/pip.ts`: `enterAppPip` зовёт `setAppWindow(pip)` сразу после переноса `#root` (`:78-80`),
-   `restore` — `setAppWindow(window)` (`:98-103`). Писатель один — модуль PiP, как у tweb
+2. `core/pip.ts`: `enterAppPip` зовёт `setAppWindow(pip)` рядом с `usePipStore.setState` — ДО переноса
+   `#root`, как tweb `clientPip.tsx:62` (исправлено при исполнении: было «сразу после»),
+   `restore` — `setAppWindow(window)` тоже до переноса (`clientPip.tsx:118`). Писатель один — модуль PiP, как у tweb
    (`setAppWindow` зовёт только вынос клиента).
 3. Факт «активное окно» не должен жить дважды: `usePipStore.win` читают React-порталы
    (`usePortalContainer`), `activeWindow` — vanilla/Solid. Оба пишет один и тот же код
@@ -333,23 +334,39 @@
 **Файлы:** изменить `web-client/src/helpers/appWindow.ts`, `helpers/appWindow.test.ts`, `core/pip.ts`;
 тест `core/pip.test.ts` (создать, если нет).
 
-- [ ] **Шаг 1: прочитать** tweb `helpers/appWindow.ts` целиком, наш `core/pip.ts`, потребителей
+- [x] **Шаг 1: прочитать** tweb `helpers/appWindow.ts` целиком, наш `core/pip.ts`, потребителей
   `getOverlayRoot` (`git grep -n "getOverlayRoot" web-client/src`: `helpers/dom/sortable.ts:20`,
   свой метод в `mediaViewer/base.ts`).
-- [ ] **Шаг 2: падающие тесты:** `setAppWindow(fakeWin)` → `getOverlayRoot() === fakeWin.document.body`;
+- [x] **Шаг 2: падающие тесты:** `setAppWindow(fakeWin)` → `getOverlayRoot() === fakeWin.document.body`;
   `onAppWindowChange` получает `(next, prev)`; `bindActiveWindowListener(w => w.document.body,
   'keydown', fn)` — после `setAppWindow` слушатель переехал (событие на старом body не доходит, на
   новом — доходит), диспоузер снимает; повторный `setAppWindow` тем же окном — слушатели не зовутся.
   PiP: `enterAppPip` со стабом `documentPictureInPicture.requestWindow` → `getOverlayRoot()` — body
   окна PiP; событие `pagehide` → снова `document.body`.
-- [ ] **Шаг 3:** падают. **Мутация:** убрать `setAppWindow(window)` из `restore` — тест возврата краснеет.
-- [ ] **Шаг 4:** реализовать.
+- [x] **Шаг 3:** падают. **Мутация:** убрать `setAppWindow(window)` из `restore` — тест возврата краснеет.
+- [x] **Шаг 4:** реализовать.
 
 **Готово когда:** `getOverlayRoot()` следует за PiP; докблок `appWindow.ts` не утверждает, что выноса нет.
 
+**Итог (PR ветки `feat/w2c-appwindow-styles`).** `appWindow.ts` — порт `:18-122` без `getAppWindow` и
+`onBeforeAppWindowChange` (читателей нет — расхождение 1 в шапке). Поправки к шагу 2 по исходнику
+(`clientPip.tsx`): (а) `setAppWindow` зовётся **до** переноса `#root`, а не после — tweb `:60-62`, `:118`,
+на этот порядок рассчитывает `focusTrap.ts:120`; (б) писатель перенесён вместе с двумя соседними
+обязанностями выноса, без которых попап в PiP открывается, но не живёт: делегаты Solid на документ PiP
+(`:76-83` — иначе `onClick` оболочки мёртв) и возврат временных корней во вкладку при закрытии окна
+(`:104-111`, `:120` — иначе открытый в PiP попап гибнет с окном, оставляя запись навигации и
+`overlayCounter`). Расхождение: React-порталы `usePortalContainer` перенацеливает сам React, поэтому
+сброс `usePipStore` коммитится `flushSync` до сбора остатка (без него — `removeChild` React падает).
+Тесты: `helpers/appWindow.test.ts` (9), `core/pip.test.ts` (7); 10 мутаций красят (вывод — в коммите).
+Там же — Esc навигации следует за окном (`appNavigationController.ts`: `bindActiveWindowListener((w) => w,
+'keydown', …)`, tweb `:77-79`; тест `appNavigationController.appWindow.test.ts`). Остаток: переезд
+ловушки фокуса за окном (`focusTrap.ts`, tweb `:135-137`, `:146-147`) — после влития задачи 2 (#313);
+прочие потребители `appWindow` у tweb (`mediaViewer/base.ts`, `clickEvent.ts`, `contextMenu.ts`, …) —
+§ 9.1 референса.
+
 ---
 
-### Задача 4: `_popup.scss` и `_popupVariables.scss` → HEAD
+### Задача 4: `_popup.scss` и `_popupVariables.scss` → HEAD ✅
 
 **Что делаем.** Дословно с HEAD (`popups-solid.md` § 4):
 
@@ -366,18 +383,32 @@
 **Файлы:** изменить `web-client/src/styles/tweb/popups/_popup.scss`, `_popupVariables.scss`,
 при необходимости `styles/tweb/_button.scss`.
 
-- [ ] **Шаг 1:** `diff /Users/denisurevic/Documents/tweb/src/scss/partials/popups/_popup.scss web-client/src/styles/tweb/popups/_popup.scss`
+- [x] **Шаг 1:** `diff /Users/denisurevic/Documents/tweb/src/scss/partials/popups/_popup.scss web-client/src/styles/tweb/popups/_popup.scss`
   (у `scss-parity.mjs` слепое пятно: блоки с `:has(…)` он не видит — сейчас печатает «0 нет у нас»).
-- [ ] **Шаг 2:** перенести; единственное законное отличие — `@use "../../foundation"` вместо `"../../shared"`.
-- [ ] **Шаг 3:** `diff` → только строка `@use`; `node tools/tweb-parity/scss-parity.mjs _popup.scss` → 0/0.
-- [ ] **Шаг 4: стенд:** подтверждение «Завершить сеанс» (`activeSessions`), mute-попап чата,
+- [x] **Шаг 2:** перенести; единственное законное отличие — `@use "../../foundation"` вместо `"../../shared"`.
+- [x] **Шаг 3:** `diff` → только строка `@use`; `node tools/tweb-parity/scss-parity.mjs _popup.scss` → 0/0.
+- [x] **Шаг 4: стенд:** подтверждение «Завершить сеанс» (`activeSessions`), mute-попап чата,
   удаление сообщения — крестик и кнопки того же цвета, что до правки (computed `color` — в коммит).
 
 **Готово когда:** `diff` с HEAD — одна строка `@use`.
 
+**Итог (PR ветки `feat/w2c-appwindow-styles`).** `_popup.scss`/`_popupVariables.scss` — копия HEAD, `diff` —
+только `@use "../../foundation"`; `scss-parity` — 55/55, «0 нет у нас / 0 только у нас». Хунка 69a759cbc в
+`_button.scss` у нас не было — перенесён весь коммит (`_button`, `_animatedIcon`, `_chat`, `_profile`,
+`_popup`), `git apply` лёг без правок. Поправка к шагу 4 (стенд не трогали — офлайн-рендер снимков
+happy-dom в headless Chrome, CSS до/после): у vanilla-попапов (подтверждение, mute) ни одного отличия;
+у React-`Popup` и `PremiumModal` крестик серел (`rgb(17,17,17)` → `rgb(112,117,121)`): их инлайн
+`color: var(--secondary-text-color)` давал основной цвет только через снятую подмену
+`.popup:not(.old) .popup-close` — инлайн снят, цвет снова основной. Второе и последнее отличие —
+законное (хвост 2D): в «Поделиться» с выбранным чатом у последней секции перед футером
+`padding-bottom` 16px → 0. Пины — `styles/twebDeltaW2c.test.ts` (12), `Popup.test.tsx`, `PremiumModal.test.tsx`.
+Шире попапов (стенд): все `.btn-icon` без своего цвета — основным цветом текста (шапки, композер, бургер);
+React-`IconButton` с инлайн `--secondary-text-color` (~20 мест, `AddContactView`, `ContactsView`, `Chat.tsx:1267`, …)
+остались серыми — расхождение с 69a759cbc вне попапов, не 2C.
+
 ---
 
-### Задача 5: оболочка — `components/popups/indexTsx.solid.tsx`
+### Задача 5: оболочка — `components/popups/indexTsx.solid.tsx` ✅
 
 **Что делаем.** Дословный порт `tweb/src/components/popups/indexTsx.tsx` (885): `PopupElement`
 (`:133-465`) со всеми пропами (`popups-solid.md` § 2.1), контекстом (`:57-98`), жизненным циклом
@@ -439,6 +470,22 @@
 
 **Готово когда:** все 12 пинов зелёные и три мутации красят свои; `diff` с оригиналом — только
 расхождения 1–5.
+
+**Итог (PR ветки `feat/w2c-popup-shell`).** `indexTsx.solid.tsx` — порт `:1-844`; нормализованный `diff`
+с оригиналом — расхождения 1–5 шапки, типы под `strictNullChecks` (`!`, `| undefined`, `Promise<unknown>`,
+`IconName`, `FormatterArguments`) и `void` у брошенных промисов (линт). Поправки к постановке:
+(а) расхождение 1 шире, чем «ErrorBoundary + onCleanup корня»: граница снимает попап, МИНУЯ `destroy()`,
+поэтому второй `onCleanup` компонента (рядом со стеком) снимает запись навигации, счётчик, ловушку,
+Enter и гасит `destroyed` — иначе отложенный `doubleRaf`-показ ожил бы на мёртвом попапе и поставил
+запись/счётчик навсегда; корень упавшего снимает `fallback` (`queueMicrotask(dispose)`) — без этого его
+`setErrored` навсегда остаётся в модульном `Errors` стока Solid; (б) `MANAGERS` ставится в
+`client/boot.ts` сразу за `startClient()`, а не после входа, как `appDialogsManager.ts:980`: попапы
+зовут и до входа (карточка пароля авторизации `PasswordCard` — `confirmationPopup`). Пины — 17 (12 плана + окно выноса
+`capturedRoot`, `zIndex`, плавающий футер, падение на первом рендере) + `boot.popupManagers.test.ts`.
+Мутации красят свои (вывод — в коммите): три плана, снятие второго `onCleanup`, `ErrorBoundary`,
+`setDestroyed` в нём, `queueMicrotask(dispose)`, `getOverlayRoot()` → `document.body`, `z-index`,
+присвоение `MANAGERS`. Пин «корень снят» — через обёртку `createRoot` в тесте (`liveRoots`).
+Потребителей в продукте нет до задачи 6.
 
 ---
 

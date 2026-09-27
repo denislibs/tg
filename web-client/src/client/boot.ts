@@ -14,7 +14,10 @@ import { loadStateOnce, resetStateCache, stateWasResetToDefaults } from '../core
 import { STATE_VERSION } from '../core/state/state'
 import { setAppState, setAppStateSilent, setStateWriter } from '../stores/appState'
 import { migrateRecentSearchFromLocalStorage } from '../core/state/migrateRecentSearch'
-import PasscodeLockScreenController from '../components/passcodeLockScreenController'
+import PasscodeLockScreenController from '../components/passcodeLock/passcodeLockScreenController.solid'
+import { setThemeListener } from '../core/theme/themeController'
+import { useSettingsStore } from '../settings'
+import PopupElement from '@components/popups/indexTsx.solid'
 import { installPasscodeListener } from './passcodeClient'
 import { listenServiceWorkerHello, sendPasscodeStateToServiceWorker } from './passcodeServiceWorker'
 import { preventCrossTabDynamicImportDeadlock } from '../core/preventDeadlock'
@@ -110,6 +113,10 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   listenForMaskedAnchorClicks()
 
   const { managers, ep, smp } = startClient()
+  // Менеджеры оболочки попапов по умолчанию — у tweb `PopupElementTsx.MANAGERS =
+  // rootScope.managers = managers` (appDialogsManager.ts:980); попап без пропа
+  // `managers` берёт их отсюда (`popups/indexTsx.solid.tsx`, расхождение 2).
+  PopupElement.MANAGERS = managers
   // DNP-ON: раздаём мост SW↔SharedWorker (self-gated; инертно при DNP-off).
   installBridgeHandoff(ep)
 
@@ -124,6 +131,13 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   })
   listenServiceWorkerHello()
   await PasscodeLockScreenController.waitForUnlock(async () => {
+    // Экран блокировки рисуется ДО приложения, а тему ставило только оно
+    // (React-эффект `useThemeToggle`) — под замком выходил голый белый экран без
+    // переменных. tweb применяет тему здесь же (index.ts:454-456: настройки +
+    // `themeController.setThemeListener()`); наши настройки уже подняты стором из
+    // открытого `tg-settings` (не секрет — у tweb `settings` тоже в открытом
+    // `commonStateStorage`).
+    setThemeListener(() => useSettingsStore.getState().themeChoice)
     // экрану блокировки нужны строки — язык из кэша владельца, без сети
     // (tweb index.ts:461-462)
     setDocumentLangPackProperties(await I18n.getCacheLangPackAndApply())
@@ -193,6 +207,9 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   // оригинал обновляет там же, у нас пишет лента (`Chat.tsx`).
   fillLocalizedDates()
   rootScope.addEventListener('language_apply', fillLocalizedDates)
+  // tweb index.ts:534 — тема и слежение за системной на обычном старте (под
+  // замком подписка уже стоит, повторный вызов лишь применяет тему).
+  setThemeListener(() => useSettingsStore.getState().themeChoice)
   // Гидрация — SILENT: прочитанное с диска не должно поехать обратно на диск.
   setAppStateSilent(state)
   // Схема была чужой версии (или базы не было) — фиксируем текущую, чтобы

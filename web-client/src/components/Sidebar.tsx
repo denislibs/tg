@@ -28,7 +28,7 @@ import useMediaQuery from '../shared/lib/useMediaQuery'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import IconButton from '../shared/ui/IconButton'
-import PasscodeLockScreenController from './passcodeLockScreenController'
+import PasscodeLockScreenController from './passcodeLock/passcodeLockScreenController.solid'
 import { lockAndReload } from '../client/passcodeClient'
 import SidebarMenuButton from './SidebarMenuButton'
 import SidebarEmojiStatusButton from './SidebarEmojiStatusButton'
@@ -403,7 +403,7 @@ export default function Sidebar({
           <IconButton
             // tweb lockButton.tsx:53-54: экран, затем воркер завершается вместе
             // с ключом и все вкладки перезагружаются на экран блокировки
-            onClick={() => { PasscodeLockScreenController.lock(); lockAndReload() }}
+            onClick={() => { void PasscodeLockScreenController.lock(); lockAndReload() }}
             color="var(--secondary-text-color)"
             aria-label={t('PasscodeLock.LockNow')}
             title={t('PasscodeLock.LockNow')}

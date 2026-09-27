@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const invoke = vi.hoisted(() => vi.fn(async(_type: string, _task: { method: string, payload?: unknown }): Promise<unknown> => undefined))
 vi.mock('./bootstrap', () => ({ startClient: () => ({ smp: { invoke } }) }))
 vi.mock('./passcodeServiceWorker', () => ({ sendPasscodeStateToServiceWorker: vi.fn(async() => {}) }))
-vi.mock('@components/PasscodeLockScreen', () => ({ default: () => null }))
+vi.mock('@components/passcodeLock/passcodeLockScreen.solid', () => ({ default: () => null }))
 
 beforeEach(() => {
   vi.resetModules()
@@ -93,7 +93,7 @@ describe('старт: ключ из передачи через перезагр
     invoke.mockImplementation(async(_type, task) =>
       (task.method === 'isLocked' ? { isUsingPasscode: true, isLocked: false } : undefined))
 
-    const Controller = (await import('@components/passcodeLockScreenController')).default
+    const Controller = (await import('@components/passcodeLock/passcodeLockScreenController.solid')).default
     const EncryptionKeyStore = (await import('@lib/passcode/keyStore')).default
     const onLocked = vi.fn(async() => {})
     await Controller.waitForUnlock(onLocked)
@@ -113,7 +113,7 @@ describe('старт: ключ из передачи через перезагр
     const { useSettingsStore } = await import('@/settings')
     useSettingsStore.getState().update({ passcodeEnabled: false })
 
-    const Controller = (await import('@components/passcodeLockScreenController')).default
+    const Controller = (await import('@components/passcodeLock/passcodeLockScreenController.solid')).default
     const onLocked = vi.fn(async() => {})
     let started = false
     void Controller.waitForUnlock(onLocked).then(() => { started = true })
@@ -125,6 +125,7 @@ describe('старт: ключ из передачи через перезагр
 
     Controller.unlock()
     await vi.waitFor(() => { expect(started).toBe(true) })
-    expect(document.querySelector('.passcode-lock-screen')).toBeNull()
+    // tweb `unlock()`: экран гаснет `--hidden` и уходит после пауз 120 + 250 + 120 мс
+    await vi.waitFor(() => { expect(document.querySelector('.passcode-lock-screen')).toBeNull() }, { timeout: 2000 })
   })
 })

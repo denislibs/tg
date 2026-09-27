@@ -621,14 +621,15 @@ const de = {
   'PasscodeLock.PasscodeHasBeenChanged': 'Dein Code wurde geändert.',
   'PasscodeLock.PasscodeHasBeenDisabled': 'Der Code wurde deaktiviert.',
   'PasscodeLock.AutoLock': 'Automatische Sperre',
-  'PasscodeLock.WrongPasscodeShort': 'Falscher Code',
+  'PasscodeLock.WrongPasscode': 'Falscher Code. Bitte versuche es erneut.',
   'PasscodeLock.TooManyAttempts': 'Zu viele Versuche, bitte versuche es später erneut',
   'PasscodeLock.Proceed': 'Fortfahren',
-  'PasscodeLock.ForgotPasscode.Text':
-    'Wenn du deinen Code vergessen hast, musst du dich ab- und wieder anmelden.',
+  'PasscodeLock.ForgotPasscode.OneAccount': 'Hinweis: Wenn du deinen Code vergisst, musst du dich [abmelden]().',
+  'PasscodeLock.ForgotPasscode.MultipleAccounts':
+    'Hinweis: Wenn du deinen Code vergisst, musst du dich von allen aktuellen Konten [abmelden]().',
   'EditAccount.Logout': 'Abmelden',
-  'PasscodeLock.Logout.Text':
-    'Möchtest du dich wirklich abmelden? Du musst dich erneut anmelden.',
+  LogOut: 'Abmelden',
+  'PasscodeLock.LogoutPopup.Description': 'Möchtest du dich wirklich abmelden?',
   'PasscodeLock.LockNow': 'App sperren',
   // вкладка «Код-пароль» (порт tweb passcodeLock/*, план 2D, задача 18)
   'PasscodeLock.Notice': 'Hinweis: Wenn du deinen Code vergisst, musst du dich abmelden.',
@@ -882,6 +883,24 @@ const de = {
   'SharedFolder.Toast.NeedName': 'Gib diesem Ordner einen Namen, um ihn zu teilen.',
   'SharedFolder.Toast.NoExcluded': 'Ausgeschlossene Chats werden in geteilten Ordnern nicht unterstützt.',
   'SharedFolder.Toast.NoTypes': 'Chat-Typen werden in geteilten Ordnern nicht unterstützt.',
+  // ── Ordner-Link „Ordner teilen“ (tweb `sidebarLeft/tabs/sharedFolder.tsx`,
+  //    `inviteLink.ts`; задача 25 плана 2D) ──
+  ChatsSelected: {
+    one_value: '%d Chat ausgewählt',
+    other_value: '%d Chats ausgewählt',
+  },
+  DeleteLink: 'Link löschen',
+  'SharedFolder.Cant.Share': 'du kannst hier niemanden einladen',
+  'SharedFolder.Cant.ShareBots': 'Chats mit Bots können nicht geteilt werden',
+  'SharedFolder.Cant.ShareUsers': 'Chats mit Nutzern können nicht geteilt werden',
+  'SharedFolder.Edit.Description': 'Jeder mit diesem Link kann den Ordner **%s** und die unten ausgewählten %s hinzufügen',
+  'SharedFolder.Edit.Subtitle': 'Du kannst nur Gruppen und Kanäle teilen, in denen du Einladungslinks erstellen darfst.',
+  'SharedFolder.Edit.Title': 'Ordner teilen',
+  'SharedFolder.NoChats': 'In diesem Ordner gibt es keine Chats, die du mit anderen teilen kannst.',
+  'SharedFolder.NoChats.Title': 'Diese Chats können nicht geteilt werden',
+  'SharedFolder.Toast.NoAdminChannel': 'Du hast keine Adminrechte, um Einladungslinks zu diesem Kanal zu teilen.',
+  'SharedFolder.Toast.NoAdminGroup': 'Du hast keine Adminrechte, um Einladungslinks zu dieser Gruppe zu teilen.',
+  'SharedFolder.Toast.NoPrivate': 'Private Chats können nicht geteilt werden.',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(de)

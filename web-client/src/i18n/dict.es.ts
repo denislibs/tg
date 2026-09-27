@@ -621,14 +621,15 @@ const es = {
   'PasscodeLock.PasscodeHasBeenChanged': 'Tu código de acceso ha sido cambiado.',
   'PasscodeLock.PasscodeHasBeenDisabled': 'El código de acceso ha sido desactivado.',
   'PasscodeLock.AutoLock': 'Bloqueo automático',
-  'PasscodeLock.WrongPasscodeShort': 'Código incorrecto',
+  'PasscodeLock.WrongPasscode': 'Código incorrecto. Inténtalo de nuevo.',
   'PasscodeLock.TooManyAttempts': 'Demasiados intentos, inténtalo más tarde',
   'PasscodeLock.Proceed': 'Continuar',
-  'PasscodeLock.ForgotPasscode.Text':
-    'Si olvidaste tu código de acceso, debes cerrar sesión e iniciarla de nuevo.',
+  'PasscodeLock.ForgotPasscode.OneAccount': 'Nota: si olvidas tu código de acceso, tendrás que [cerrar sesión]().',
+  'PasscodeLock.ForgotPasscode.MultipleAccounts':
+    'Nota: si olvidas tu código de acceso, tendrás que [cerrar sesión]() en todas tus cuentas actuales.',
   'EditAccount.Logout': 'Cerrar sesión',
-  'PasscodeLock.Logout.Text':
-    '¿Seguro que quieres cerrar sesión? Tendrás que iniciarla de nuevo.',
+  LogOut: 'Cerrar sesión',
+  'PasscodeLock.LogoutPopup.Description': '¿Seguro que quieres cerrar sesión?',
   'PasscodeLock.LockNow': 'Bloquear la aplicación',
   // вкладка «Код-пароль» (порт tweb passcodeLock/*, план 2D, задача 18)
   'PasscodeLock.Notice': 'Nota: si olvidas tu código de acceso, tendrás que cerrar sesión.',
@@ -878,6 +879,24 @@ const es = {
   'SharedFolder.Toast.NeedName': 'Ponle un nombre a esta carpeta para compartirla.',
   'SharedFolder.Toast.NoExcluded': 'Los chats excluidos no se admiten en carpetas compartidas.',
   'SharedFolder.Toast.NoTypes': 'Los tipos de chat no se admiten en carpetas compartidas.',
+  // ── Enlace de carpeta «Compartir carpeta» (tweb `sidebarLeft/tabs/sharedFolder.tsx`,
+  //    `inviteLink.ts`; задача 25 плана 2D) ──
+  ChatsSelected: {
+    one_value: '%d chat seleccionado',
+    other_value: '%d chats seleccionados',
+  },
+  DeleteLink: 'Eliminar enlace',
+  'SharedFolder.Cant.Share': 'no puedes invitar a otros aquí',
+  'SharedFolder.Cant.ShareBots': 'no puedes compartir chats con bots',
+  'SharedFolder.Cant.ShareUsers': 'no puedes compartir chats con usuarios',
+  'SharedFolder.Edit.Description': 'Cualquiera con este enlace puede añadir la carpeta **%s** y los %s seleccionados abajo',
+  'SharedFolder.Edit.Subtitle': 'Solo puedes compartir grupos y canales en los que tengas permiso para crear enlaces de invitación.',
+  'SharedFolder.Edit.Title': 'Compartir carpeta',
+  'SharedFolder.NoChats': 'No hay chats en esta carpeta que puedas compartir con otros.',
+  'SharedFolder.NoChats.Title': 'Estos chats no se pueden compartir',
+  'SharedFolder.Toast.NoAdminChannel': 'No tienes permisos de administrador para compartir enlaces de invitación a este canal.',
+  'SharedFolder.Toast.NoAdminGroup': 'No tienes permisos de administrador para compartir enlaces de invitación a este grupo.',
+  'SharedFolder.Toast.NoPrivate': 'No puedes compartir chats privados.',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(es)

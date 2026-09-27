@@ -2,14 +2,14 @@
 
 <!-- Файл генерируется: node tools/tweb-parity/inventory.mjs. Руками не править. -->
 
-Снято: 2026-09-26. Источник: `/Users/denisurevic/Documents/tweb-e52b5d931` @ `e52b5d931`.
+Снято: 2026-09-27. Источник: `/Users/denisurevic/Documents/tweb-e52b5d931` @ `e52b5d931`.
 
 | Срез | Значение |
 |---|---|
 | Общих партиалов `src/scss` в tweb (в скоупе) | 129 |
-| Из них есть файлом у нас | 71 |
+| Из них есть файлом у нас | 74 |
 | CSS-классов в tweb | 3638 |
-| Из них встречаются у нас | 2307 (63%) |
+| Из них встречаются у нас | 2359 (65%) |
 | Попапов в tweb | 84 |
 | Из них нашлись у нас по имени | 8 точно, 3 предположительно |
 | Локальных `*.module.scss` компонентов форка | 138 (отдельный слой, см. ниже) |
@@ -29,7 +29,7 @@
 
 | Файл | Классов | Нет у нас | Док |
 |---|---|---|---|
-| `base.scss` | 241 | 82 | — |
+| `base.scss` | 241 | 71 | — |
 | `_stars.scss` | 73 | 47 | right-sidebar.md |
 | `_starGiftInfo.scss` | 49 | 38 | right-sidebar.md |
 | `_poll.scss` | 34 | 22 | bubbles.md |
@@ -48,14 +48,11 @@
 | `_reportAd.scss` | 13 | 8 | popups.md |
 | `_topics.scss` | 31 | 7 | left-sidebar.md |
 | `_deleteMegagroupMessages.scss` | 10 | 7 | popups.md |
-| `_colorPicker.scss` | 7 | 6 | — |
 | `_inviteLink.scss` | 7 | 6 | popups.md |
-| `_quizHint.scss` | 10 | 6 | popups.md |
 | `_chatlistInvite.scss` | 19 | 6 | left-sidebar.md |
 | `_toggleReadDate.scss` | 8 | 6 | right-sidebar.md |
 | `_chatToast.scss` | 9 | 5 | chat-feed.md |
 | `_crop.scss` | 9 | 5 | media.md |
-| `_usernames.scss` | 9 | 5 | right-sidebar.md |
 | `_chatPreview.scss` | 19 | 5 | — |
 | `tonePopupShell.module.scss` | 6 | 4 | — |
 | `_joinChatInvite.scss` | 6 | 4 | popups.md |
@@ -70,7 +67,6 @@
 | `inlineRippleLink.module.scss` | 1 | 1 | — |
 | `_sparkles.scss` | 2 | 1 | — |
 | `_starGift.scss` | 1 | 1 | right-sidebar.md |
-| `_starsBadge.scss` | 5 | 1 | right-sidebar.md |
 | `_limit.scss` | 4 | 1 | popups.md |
 | `_reactedList.scss` | 10 | 1 | popups.md |
 | `_sponsored.scss` | 5 | 1 | channels.md |
@@ -81,6 +77,7 @@
 | `functions.scss` | 0 | 0 | — |
 | `mixins.scss` | 0 | 0 | — |
 | `_customEmoji.scss` | 7 | 0 | media.md |
+| `_starsBadge.scss` | 5 | 0 | right-sidebar.md |
 | `_mute.scss` | 2 | 0 | popups.md |
 | `shared.scss` | 0 | 0 | — |
 | `style.scss` | 0 | 0 | — |
@@ -92,7 +89,7 @@
 
 | Файл | Классов в tweb | Есть у нас | Покрытие | Док |
 |---|---|---|---|---|
-| `_checkbox.scss` | 27 | 26 | 96% | — |
+| `_leftSidebar.scss` | 175 | 174 | 99% | left-sidebar.md |
 
 Полные списки недостающих классов — в `styles.json`, поле `missingClasses`.
 

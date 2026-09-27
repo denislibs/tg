@@ -75,6 +75,7 @@
 @use "stackedAvatars"; // :59
 @use "usernames"; // :62 (строки ссылок редактора папки, задача 24 плана 2D)
 @use "shimmer"; // :67
+@use "inviteLink"; // :68 (виджет ссылки вкладки «Share Folder», задача 25 плана 2D)
 @use "markup"; // :69
 @use "quote"; // :70
 @use "topbarSearch"; // :74
@@ -98,3 +99,4 @@
 @use "toast"; // выдержка `.toast`/`.toasts-container` из base.scss:740-780
 @use "pages/pages"; // :124
 @use "pages/chats"; // :125
+@use "passcodeLockScreen"; // :127

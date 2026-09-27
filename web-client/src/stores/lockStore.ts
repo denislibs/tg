@@ -1,27 +1,18 @@
 // Состояние блокировки приложения код-паролем (tweb
 // PasscodeLockScreenController.isLocked): экраном владеет
-// `components/passcodeLockScreenController.tsx`, он же переключает `locked`;
-// попытки и таймаут — как в tweb (5 попыток, затем 60 секунд ожидания).
+// `components/passcodeLock/passcodeLockScreenController.solid.tsx`, он же
+// переключает `locked`. Попытки ввода считает сам экран, срок следующей попытки —
+// `settings.passcodeCanAttemptAgainOn` (как у tweb `settings.passcode.canAttemptAgainOn`).
 import { create } from 'zustand'
 
 interface LockState {
   locked: boolean
-  attempts: number
-  retryAt: number // ms-таймштамп, до которого ввод заблокирован (0 — нет)
   lock: () => void
   unlock: () => void
-  failedAttempt: (max: number, timeoutMs: number) => void
 }
 
-export const useLockStore = create<LockState>((set, get) => ({
+export const useLockStore = create<LockState>((set) => ({
   locked: false,
-  attempts: 0,
-  retryAt: 0,
-  lock: () => set({ locked: true, attempts: 0, retryAt: 0 }),
-  unlock: () => set({ locked: false, attempts: 0, retryAt: 0 }),
-  failedAttempt: (max, timeoutMs) => {
-    const n = get().attempts + 1
-    if (n >= max) set({ attempts: 0, retryAt: Date.now() + timeoutMs })
-    else set({ attempts: n })
-  },
+  lock: () => set({ locked: true }),
+  unlock: () => set({ locked: false }),
 }))

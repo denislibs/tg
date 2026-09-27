@@ -53,6 +53,9 @@ export interface Settings {
   // `core/hooks/useLockScreenShortcut.ts`.
   passcodeLockShortcutEnabled: boolean
   passcodeLockShortcut: PasscodeLockShortcutKey[]
+  // tweb settings.passcode.canAttemptAgainOn (`passcodeLockScreen.tsx:136-149`):
+  // до какого момента экран блокировки не сверяет код после шести неудач.
+  passcodeCanAttemptAgainOn: number | null
   // Автозагрузка медиа (tweb autoDownload/autoDownloadNew): общий выключатель,
   // по типам чатов для фото/видео/файлов, лимит размера файла (байты).
   autoDownloadEnabled: boolean
@@ -136,6 +139,7 @@ export const DEFAULTS: Settings = {
   passcodeAutoLockMins: 0,
   passcodeLockShortcutEnabled: false, // tweb SETTINGS_INIT.passcode (`config/state.ts:580-581`)
   passcodeLockShortcut: ['Alt'],
+  passcodeCanAttemptAgainOn: null,
   autoDownloadEnabled: true,
   autoDownloadPhoto: { ...AUTO_DOWNLOAD_ALL },
   autoDownloadVideo: { ...AUTO_DOWNLOAD_ALL },
@@ -270,6 +274,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       passcodeAutoLockMins: s.passcodeAutoLockMins,
       passcodeLockShortcutEnabled: s.passcodeLockShortcutEnabled,
       passcodeLockShortcut: s.passcodeLockShortcut,
+      passcodeCanAttemptAgainOn: s.passcodeCanAttemptAgainOn,
       autoDownloadEnabled: s.autoDownloadEnabled,
       autoDownloadPhoto: s.autoDownloadPhoto,
       autoDownloadVideo: s.autoDownloadVideo,

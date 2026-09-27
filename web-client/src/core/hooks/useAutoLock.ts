@@ -10,7 +10,7 @@
 // выбросила бы соседнюю активную. Ключ остаётся в памяти до ввода кода.
 import { useEffect } from 'react'
 import { useSettingsStore } from '../../settings'
-import PasscodeLockScreenController from '../../components/passcodeLockScreenController'
+import PasscodeLockScreenController from '../../components/passcodeLock/passcodeLockScreenController.solid'
 
 export function useAutoLock(): void {
   useEffect(() => {
@@ -19,7 +19,7 @@ export function useAutoLock(): void {
       if (timer) clearTimeout(timer)
       const { passcodeEnabled, passcodeAutoLockMins } = useSettingsStore.getState()
       if (!passcodeEnabled || !passcodeAutoLockMins) return
-      timer = setTimeout(() => PasscodeLockScreenController.lock(), passcodeAutoLockMins * 60_000)
+      timer = setTimeout(() => void PasscodeLockScreenController.lock(), passcodeAutoLockMins * 60_000)
     }
     const events: (keyof WindowEventMap)[] = ['mousemove', 'keydown', 'pointerdown']
     events.forEach((e) => window.addEventListener(e, arm))

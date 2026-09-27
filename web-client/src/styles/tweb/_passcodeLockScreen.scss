@@ -1,0 +1,27 @@
+// Порт tweb `scss/partials/_passcodeLockScreen.scss` (812502980): корень экрана
+// блокировки (`passcodeLockScreenController.solid.tsx`) — во весь экран поверх
+// всего, фон темы на случай, пока грузится ленивый модуль экрана, и гашение
+// `--hidden` при разблокировке.
+//
+// Не перенесено: `&__animated-lock-icon` (+ `--shift-body`/`--disappear`) —
+// анимация замка из шапки; наша кнопка замка иконку экрану не передаёт (см. шапку
+// контроллера), и правилам не было бы потребителя.
+.passcode-lock-screen {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+
+  /* Just in case, as the passcode module is dynamically imported */
+  background-color: var(--surface-color);
+
+  z-index: var(--passcode-lock-screen-z-index, 100000);
+
+  transition: opacity 0.4s;
+  opacity: 1;
+
+  &--hidden {
+    opacity: 0;
+  }
+}

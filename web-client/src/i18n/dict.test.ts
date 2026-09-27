@@ -347,12 +347,30 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // (секция «Поделиться» прежнего редактора): ru 1404 → 1396, остальные −6
 // (uk 735, es/de 732, fr 727).
 // Поверх задачи 17: ru 1394, uk 733, es/de 730, fr 725.
+//
+// Задача 25 плана 2D (вкладка ссылки папки, порт tweb sharedFolder/inviteLink): +13
+// ключей tweb lang.ts всем пяти — `SharedFolder.Edit.{Title,Description,Subtitle}`,
+// `SharedFolder.NoChats`, `SharedFolder.NoChats.Title`,
+// `SharedFolder.Cant.{Share,ShareBots,ShareUsers}`,
+// `SharedFolder.Toast.{NoPrivate,NoAdminChannel,NoAdminGroup}`, `DeleteLink` и
+// числовой `ChatsSelected` (plural +1 у всех). У ru снят наш `Folder.Share.Empty` —
+// тост «нечем делиться» прежнего редактора заменён вкладкой ссылки без ссылки
+// (`openChatlistInvite()`, как у оригинала): ru 1394 → 1406, uk 733 → 746,
+// es/de 730 → 743, fr 725 → 738.
+//
+// Порт экрана блокировки код-паролем (tweb `components/passcodeLock/*`): ключи
+// снесённого React-экрана `PasscodeLock.WrongPasscodeShort`,
+// `PasscodeLock.ForgotPasscode.Text`, `PasscodeLock.Logout.Text` заменены ключами
+// tweb `PasscodeLock.WrongPasscode`, `PasscodeLock.ForgotPasscode.OneAccount`/
+// `.MultipleAccounts`, `PasscodeLock.LogoutPopup.Description` и `LogOut` у всех пяти:
+// −3 +5 (plural без изменений) — ru 1396, uk 735, es/de 732, fr 727.
+// Поверх задачи 25 (+2 каждому): ru 1408, uk 748, es/de 745, fr 740.
 const COMPOSITION = {
-  ru: { keys: 1394, plural: 41 },
-  uk: { keys: 733, plural: 30 },
-  es: { keys: 730, plural: 29 },
-  de: { keys: 730, plural: 30 },
-  fr: { keys: 725, plural: 29 },
+  ru: { keys: 1408, plural: 42 },
+  uk: { keys: 748, plural: 31 },
+  es: { keys: 745, plural: 30 },
+  de: { keys: 745, plural: 31 },
+  fr: { keys: 740, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -470,12 +488,14 @@ const COMPOSITION = {
 // `AutoNightSystemDefault` у всех пяти: −3 +3, число строк то же.
 // Задачей 24 плана 2D — ключи вкладок «Папки» вместо ключей снесённых React-экранов
 // папок (разбор — там же).
+// Портом экрана блокировки — ключи tweb вместо ключей React-экрана (разбор — у
+// `COMPOSITION` выше), у всех пяти.
 const FINGERPRINT = {
-  ru: '1b852559',
-  uk: 'b0d28111',
-  es: 'd3e54766',
-  de: 'ed8566cb',
-  fr: '11078b1f',
+  ru: '1b28e8d6',
+  uk: '96241f78',
+  es: 'fe3f5de3',
+  de: '5c0f800e',
+  fr: 'e4a36120',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
@@ -697,7 +717,17 @@ describe('нижний английский слой держит неперев
   const flatten = (pieces: ReturnType<typeof I18n.superFormatter>) => pieces
     .map((piece) => (piece instanceof HTMLBRElement ? '\n' : piece instanceof Node ? piece.textContent : String(piece)))
     .join('')
-  const english = new Map(EXPRESSIVE.map((key) => [key, flatten(I18n.superFormatter(lang[key] as string))]))
+  // Ссылка без адреса — `[текст]()` (ключи tweb `PasscodeLock.ForgotPasscode.*`) —
+  // берёт узел из аргументов вызова (`superFormatter`, ветка без url), как у tweb;
+  // без аргумента разбор падает. Эталону дают пустой узел на каждую такую ссылку —
+  // текст ссылки ляжет в него.
+  // Остальным ключам аргументов не дают вовсе: пустой массив превратил бы
+  // плейсхолдеры в «undefined».
+  const anchorArgs = (text: string) => {
+    const args = Array.from(text.matchAll(/\[.+?\]\(\)/g), () => document.createElement('span'))
+    return args.length ? args : undefined
+  }
+  const english = new Map(EXPRESSIVE.map((key) => [key, flatten(I18n.superFormatter(lang[key] as string, anchorArgs(lang[key] as string)))]))
 
   it('сам набор проверяемых ключей не выродился', () => {
     // Иначе «нарушителей нет» означало бы «проверять было нечего».
