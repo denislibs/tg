@@ -114,6 +114,26 @@ nobody had opened when the passcode was enabled». UI экрана блокир�
 | `stores/lockStore.ts`, `components/PasscodeLockScreen.tsx` | блокировка только интерфейса одной вкладки; воркер продолжал работать с токеном |
 | `core/workerCore.ts::start` | `tokens.ready().then(auth.me)` — сеть с токеном на старте воркера и под локом |
 
+### Карта файлов (после порта, S10)
+
+| Наше | tweb | Что |
+|---|---|---|
+| `lib/passcode/{constants,utils,keyStore,deferredIsUsingPasscode,keyHandoff,actions}.ts` | `lib/passcode/*` | 1:1; `actions.ts` заменил `core/passcode.ts` |
+| `lib/crypto/aesLocal.ts` | `lib/crypto/utils/aesLocal.ts` | AES-GCM `iv ‖ ct`, без крипто-воркера |
+| `lib/encryptedStorageLayer.ts` | `lib/encryptedStorageLayer.ts` | один блоб `kv__encrypted` в `msgr/kv` |
+| `core/store/sessionKv.ts` | `lib/localStorage.ts` + `lib/sessionStorage.ts:67-75` + `storage.ts:134-153` | encryptable `session_token`/`accounts`/`outbox`; `encryptLeftovers`; флаг кода — по записи `passcode` |
+| `core/auth/tokenStore.ts`, `core/auth/accounts.ts`, outbox в `core/workerCore.ts` | `AccountController` | через `sessionKv` |
+| `core/passcode/{protocol,passcodeWorker}.ts` | `mainWorker/index.worker.ts:246-333`, `mainMessagePort.ts:60-99` | канал `passcode` на каждом порту (`bind()`), рассылка «кроме источника» |
+| `client/passcodeClient.ts` | `apiManagerProxy.ts:517-536`, `:1466-1470` | слушатель вкладки, `lockAndReload` (terminate + BroadcastChannel reload) |
+| `client/passcodeServiceWorker.ts`, `public/sw.js` (`handleMedia`) | `apiManagerProxy.ts:774-781`, `index.service.ts:143-162` | состояние кода для SW, `sw-hello` после перезапуска, шифрование корзины |
+| `components/passcodeLockScreenController.tsx` | `passcodeLockScreenController.tsx` | `waitForUnlock` в `client/boot.ts` до токена/State; экран — свой React-корень |
+| `core/files/cacheStorage.ts` | `files/cacheStorage.ts` | `encryptable`, шифрование `get`/`save`, пауза, очистка/сброс |
+| `core/managers/persistManager.ts::scopeToSession`, `core/store/persist.ts::persistScope` | — | вкладка токен не читает; под кодом `meta.token` не пишется |
+
+Снято как мёртвое: `runWhenUnlocked` (`stores/lockStore.ts`), `bootData.locked`/`bootWasLocked`,
+ветки `locked` в `boot.ts::fillDialogsMirror/applyDialogsMirror` и `useAppBootstrap` — под кодом
+приложение до разблокировки больше не монтируется.
+
 ### План порта (S10)
 
 1. `lib/passcode/{constants,utils,keyStore,deferredIsUsingPasscode,keyHandoff}.ts` +
@@ -151,6 +171,8 @@ nobody had opened when the passcode was enabled». UI экрана блокир�
 | П-4 | Передачу ключа пишет каждая перезагружающаяся вкладка, не только единственная | у нас активный аккаунт один на все вкладки, переход перезагружает все, и SharedWorker может не пережить |
 | П-5 | «Забыли код» — прежние тексты экрана (`PasscodeLock.ForgotPasscode.Text`), а выход — уже всех аккаунтов (`forceLogout`) | порт экрана блокировки — отдельная UI-задача (ключи tweb `ForgotPasscode.OneAccount/MultipleAccounts`) |
 | П-6 | Шифрование в своём реалме через WebCrypto, без крипто-воркера | у нас нет `cryptoMessagePort` |
+| П-7 | `?noSharedWorker=1`: включение кода в одной вкладке не доходит до выделенных воркеров других вкладок, пока те не перезагрузятся (замок/`lockAndReload` их перезагружает) | у tweb то же — каждый выделенный воркер держит своё состояние |
+| П-8 | Вне периметра S10 остались открытыми: ключи секретных чатов (E2E, `core/secret/*`), курсоры `chpts:*`/`updates`, языковой пакет | у tweb секретных чатов нет; курсоры и язык tweb тоже не шифрует |
 
 ### Проверка после порта (стенд)
 
