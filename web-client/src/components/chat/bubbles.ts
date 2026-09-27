@@ -1196,7 +1196,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     const conv = messageToConvMsg(message as MyMessage, rootScope.myId, { isMegagroup: this.chat.isMegagroup })
     // tweb bubbles.ts:7613 → :9669 — сторона бабла это `isOutMessage`,
     // а не `isOurMessage`: пересылка в «Избранное» рисуется СЛЕВА.
-    return bubbleClasses(conv, { ...STUB_CTX, out: this.isOutMessage(message), showName: this.needName(message) })
+    return bubbleClasses(conv, { ...STUB_CTX, out: this.isOutMessage(message), showName: this.showName(message) })
   }
 
   /**
@@ -1227,6 +1227,34 @@ export default class ChatBubbles implements BubbleGroupsHost {
     const iPostedAsSomeoneElse = this.bubbleGroups.getMessageFromId(message) !== rootScope.myId
     // tweb :9331 берёт здесь `isOut` (сторону бабла), а не `our`
     return (iPostedAsSomeoneElse || !this.isOutMessage(message)) && !!this.chat.isLikeGroup
+  }
+
+  /**
+   * Рисуется ли узел имени — порт `shouldRenderSenderNameWithEphemeralBadge`
+   * (tweb placeEphemeralBadge.ts:1-7, вызов bubbles.ts:10885-10889):
+   *
+   *   needName && (!isStandaloneMedia || isEphemeral)
+   *
+   * До эфемерных сообщений условие стояло буквально `!context.isStandaloneMedia
+   * && needName`; эфемерных у нас нет, поэтому слагаемое `isEphemeral` пустое.
+   * Не прошло — бабл получает `hide-name` (:10908-10910): у стикера и кружка
+   * имени автора нет и в группе, автора называет аватарка серии.
+   */
+  private showName(message: MyMessage): boolean {
+    return this.needName(message) && !this.isStandaloneMedia(message)
+  }
+
+  /**
+   * Порт `context.isStandaloneMedia` (tweb bubbles.ts:8852) — медиа без
+   * подложки бабла. Взводят его ровно три ветки оригинала: стикер
+   * (`wrapSticker`, :7012), кружок (:9920-9922) и большое эмодзи (:8875).
+   * Третьей здесь нет: сообщения из одних эмодзи ванильная лента рисует
+   * обычным текстом (см. `STUB_CTX.bigEmojiCount`).
+   */
+  private isStandaloneMedia(message: MyMessage): boolean {
+    if (message._ !== 'message' || message.media?._ !== 'messageMediaDocument') return false
+    const doc = message.media.document
+    return !!doc && (!!doc.sticker || doc.type === 'round')
   }
 
   /** Порт tweb `createTitle` (bubbles.ts:9984). Цвет пира
@@ -1499,7 +1527,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     message: MyMessage,
     bubbleContainer: HTMLElement,
     messageDiv: HTMLElement,
-  ): void {
+  ): HTMLElement | undefined {
     if (message._ !== 'message') return
 
     const replyTo = message.reply_to
@@ -1527,6 +1555,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     const attachment = bubbleContainer.querySelector<HTMLElement>('.attachment')
     if (!attachment && messageDiv.textContent) container.classList.add('mb-shorter')
     attachment?.classList.add('no-brt')
+    return container
   }
 
   /**
@@ -2104,7 +2133,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
       this.renderCall(message.action, this.isOutMessage(message), bubble, messageDiv)
     }
 
-    this.renderReply(message, bubbleContainer, messageDiv)
+    const replyContainer = this.renderReply(message, bubbleContainer, messageDiv)
 
     this.renderMessageMeta(message, bubble, bubbleContainer, messageDiv, setUnreadObserver)
 
@@ -2119,7 +2148,13 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // langPack-ключи `ForwardedFrom*`); классы `forwarded`/`must-have-name`
     // при этом уже ставит `bubbleClasses`, так что шапка форварда приедет
     // сюда же вместе с самим форвардом — отдельной работой, как и медиа.
-    if (this.needName(message)) {
+    //
+    // Узел имени рисуется только у НЕ standalone-медиа (`showName`), поэтому
+    // обёртки `name-with-reply` (:10956-10961, «имя + ответ одной плашкой над
+    // стикером») здесь нет: её строит лишь эфемерное сообщение, которого в
+    // нашей модели нет. Standalone-бабл без имени делает плавающей плашкой сам
+    // ответ (:10974-10976).
+    if (this.showName(message)) {
       const fromId = this.bubbleGroups.getMessageFromId(message)
       const nameDiv = document.createElement('div')
       nameDiv.append(this.createTitle(fromId).element)
@@ -2141,6 +2176,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
       if (nameDiv.nextElementSibling === messageDiv) {
         nameDiv.classList.add('next-is-message')
       }
+    } else if (replyContainer && this.isStandaloneMedia(message)) {
+      replyContainer.classList.add('floating-part')
     }
 
     // Хвост бабла — порт tweb :9707-9712. `canHaveTail` уже посчитан в

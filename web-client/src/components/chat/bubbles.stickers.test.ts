@@ -179,3 +179,74 @@ describe('ChatBubbles — стикер в ленте', () => {
     expect(sticker.dataset.stickerEmoji).toBeUndefined()
   })
 })
+
+// Имя автора у стикера. tweb рисует имя только НЕ у standalone-медиа
+// (`shouldRenderSenderNameWithEphemeralBadge` = `needName && (!isStandaloneMedia
+// || isEphemeral)`, placeEphemeralBadge.ts:1-7, вызов — bubbles.ts:10885-10889;
+// до эфемерных сообщений то же условие стояло буквально: `!context.isStandaloneMedia
+// && needName`). Иначе бабл получает `hide-name` (:10908-10910), а ответ,
+// оставшийся без имени, сам становится плавающей плашкой (:10974-10976).
+// Стикер — standalone (`wrapSticker`, :7012). Прежде у нас имя вставлялось и
+// сюда: `.floating-part` у `just-media` — абсолютная плашка, которая «болталась»
+// в стороне от стикера.
+describe('ChatBubbles — имя автора у стикера в группе', () => {
+  const groupContext = (over: Partial<ChatContext> = {}): ChatContext =>
+    chatContext({ isLikeGroup: true, isMegagroup: true, ...over })
+  const bubbleOf = (b: ChatBubbles, mid: number) =>
+    b.chatInner.querySelector<HTMLElement>(`.bubble[data-mid="${mid}"]`)!
+
+  beforeEach(() => {
+    vi.spyOn(lottieLoader, 'loadAnimationWorker').mockImplementation(async () => stubPlayer())
+  })
+
+  it('входящий стикер: имени нет, бабл hide-name', async () => {
+    bubbles = new ChatBubbles(groupContext(), managersWith([withSticker(1, stickerDoc(22, SET))]))
+    await (await bubbles.setPeer())?.promise
+    await settle()
+
+    const bubble = bubbleOf(bubbles, 1)
+    expect(bubble.classList.contains('just-media')).toBe(true)
+    expect(bubble.querySelector('.name')).toBeNull()
+    expect(bubble.classList.contains('hide-name')).toBe(true)
+  })
+
+  it('свой стикер при известном myId: имени нет', async () => {
+    const own = makeMessage({
+      peerId: CHAT, fromId: ME, out: true, id: 1, text: '',
+      createdAt: '2026-08-15T12:00:00Z', media: stickerMedia(stickerDoc(22, SET)),
+    })
+    bubbles = new ChatBubbles(groupContext(), managersWith([own]))
+    await (await bubbles.setPeer())?.promise
+    await settle()
+
+    const bubble = bubbleOf(bubbles, 1)
+    expect(bubble.classList.contains('is-out')).toBe(true)
+    expect(bubble.querySelector('.name')).toBeNull()
+    expect(bubble.classList.contains('hide-name')).toBe(true)
+  })
+
+  it('ответ стикером без имени — сам плавающая плашка (.reply.floating-part)', async () => {
+    const original = makeMessage({ peerId: CHAT, fromId: FRIEND, id: 1, text: 'вопрос', createdAt: '2026-08-15T11:59:00Z' })
+    const reply = makeMessage({
+      peerId: CHAT, fromId: 2, id: 2, text: '', replyToMsgId: 1,
+      createdAt: '2026-08-15T12:00:00Z', media: stickerMedia(stickerDoc(22, SET)),
+    })
+    bubbles = new ChatBubbles(groupContext(), managersWith([original, reply]))
+    await (await bubbles.setPeer())?.promise
+    await settle()
+
+    const replyNode = bubbleOf(bubbles, 2).querySelector<HTMLElement>('.reply')!
+    expect(replyNode.classList.contains('floating-part')).toBe(true)
+  })
+
+  // Обычный (не standalone) бабл той же группы имя по-прежнему несёт —
+  // гейт стоит на виде медиа, а не на группе.
+  it('входящий текст рядом — имя на месте', async () => {
+    const text = makeMessage({ peerId: CHAT, fromId: 2, id: 1, text: 'привет', createdAt: '2026-08-15T12:00:00Z' })
+    bubbles = new ChatBubbles(groupContext(), managersWith([text]))
+    await (await bubbles.setPeer())?.promise
+    await settle()
+
+    expect(bubbleOf(bubbles, 1).querySelector('.name')).not.toBeNull()
+  })
+})
