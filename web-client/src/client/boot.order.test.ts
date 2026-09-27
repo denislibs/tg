@@ -30,12 +30,27 @@ const dialogs = {
   refresh: vi.fn(async () => { calls.push('dialogs.refresh'); return null }),
 }
 
+// Скоуп по токену делает воркер (`persist.scopeToSession`, S10): вкладка токен
+// не читает. Ответ — «сессия есть».
+const scopeToSession = vi.fn(async () => { calls.push('scopeToSession'); return true })
+const me = vi.fn(async () => { calls.push('auth.me'); return null })
+// Канал код-пароля (`client/passcodeClient.ts` → smp.invoke('passcode', …)).
+const passcodeInvoke = vi.fn(async (_type: string, _task: { method: string }) => ({ isUsingPasscode: false, isLocked: false }))
+const passcodeListeners: ((e: unknown) => void)[] = []
+const smp = {
+  on: vi.fn((_event: string, cb: (e: unknown) => void) => { passcodeListeners.push(cb) }),
+  invoke: passcodeInvoke,
+}
+
 vi.mock('./bootstrap', () => ({
   startClient: () => ({
-    managers: { auth: { me: vi.fn(async () => null) }, persist: { stateKey: vi.fn(async () => {}) }, dialogs },
+    managers: { auth: { me }, persist: { stateKey: vi.fn(async () => {}), scopeToSession }, dialogs },
     ep: {},
+    smp,
   }),
 }))
+// Экран блокировки в этом шве — заглушка: предмет теста — что старт ЖДЁТ, а не разметка.
+vi.mock('../components/PasscodeLockScreen', () => ({ default: () => null }))
 vi.mock('./dnpBridgeHandoff', () => ({ installBridgeHandoff: vi.fn() }))
 vi.mock('../core/pwa', () => ({ initPwaInstall: vi.fn() }))
 vi.mock('../core/preventDeadlock', () => ({ preventCrossTabDynamicImportDeadlock: vi.fn(async () => {}) }))
@@ -45,10 +60,6 @@ vi.mock('../core/preventDeadlock', () => ({ preventCrossTabDynamicImportDeadlock
 // нужно шву: настоящий `await` в том же `Promise.all`, никакой сети. Сам старт
 // языка пинит `boot.lang.test.ts`.
 vi.mock('../core/state/migrateRecentSearch', () => ({ migrateRecentSearchFromLocalStorage: vi.fn() }))
-vi.mock('../core/store/idbKv', () => ({ idbGet: vi.fn(async () => 'TOKEN-НОВОГО-АККАУНТА') }))
-vi.mock('../core/store/persist', () => ({
-  persistScope: vi.fn(async () => { calls.push('persistScope') }),
-}))
 vi.mock('../core/state/loadState', async () => {
   const { initialState } = await import('../core/state/state')
   return {
@@ -59,7 +70,6 @@ vi.mock('../core/state/loadState', async () => {
 })
 
 import { bootstrap } from './boot'
-import { persistScope } from '../core/store/persist'
 import { useNavigationStore } from '../stores/navigationStore'
 import { resetHashBootstrap } from '../core/hooks/useUrlSync'
 
@@ -74,12 +84,12 @@ beforeEach(() => {
 })
 
 describe('boot: гидрация владельца диалогов упорядочена относительно persistScope', () => {
-  it('fillMirror() владельца стартует ПОСЛЕ await persistScope(token)', async () => {
+  it('fillMirror() владельца стартует ПОСЛЕ await scopeToSession() (persistScope в воркере)', async () => {
     await bootstrap()
 
-    expect(persistScope).toHaveBeenCalledWith('TOKEN-НОВОГО-АККАУНТА')
-    expect(calls.indexOf('persistScope')).toBeGreaterThanOrEqual(0)
-    expect(calls.indexOf('dialogs.fillMirror')).toBeGreaterThan(calls.indexOf('persistScope'))
+    expect(scopeToSession).toHaveBeenCalledTimes(1)
+    expect(calls.indexOf('scopeToSession')).toBeGreaterThanOrEqual(0)
+    expect(calls.indexOf('dialogs.fillMirror')).toBeGreaterThan(calls.indexOf('scopeToSession'))
   })
 
   // Параллельность, ради которой RPC вообще стартует до `await` чтения State,
@@ -128,25 +138,11 @@ describe('boot: хэш применяется до загрузки списка
   // (tweb `index.ts:628`/`:641`). Открывать по хэшу чат на экране входа значило
   // бы получить 401 и тост поверх формы логина.
   it('без токена boot хэш НЕ применяет — это делает монтирование Shell', async () => {
-    const { idbGet } = await import('../core/store/idbKv')
-    vi.mocked(idbGet).mockResolvedValueOnce(undefined as never)
+    scopeToSession.mockResolvedValueOnce(false)
     location.hash = '#-42'
 
     await bootstrap()
 
     expect(useNavigationStore.getState().selectedId).toBeNull()
-  })
-
-  it('под passcode-локом хэш не применяется — RPC под локом не летят', async () => {
-    const { useSettingsStore } = await import('../settings')
-    const before = useSettingsStore.getState().passcodeEnabled
-    useSettingsStore.setState({ passcodeEnabled: true })
-    location.hash = '#-42'
-    try {
-      await bootstrap()
-      expect(useNavigationStore.getState().selectedId).toBeNull()
-    } finally {
-      useSettingsStore.setState({ passcodeEnabled: before })
-    }
   })
 })

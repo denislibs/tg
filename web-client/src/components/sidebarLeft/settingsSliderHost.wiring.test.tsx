@@ -28,10 +28,12 @@ import SettingsView from '../SettingsView'
 import PrivacySecuritySettings from '../settings/PrivacySecuritySettings'
 import { createSettingsSliderHost } from './settingsSliderHost'
 import { useSettingsStore } from '@/settings'
-import { enablePasscode } from '@core/passcode'
+import { enablePasscode } from '@lib/passcode/actions'
 
 // Для «Код-пароля»: IndexedDB — словарь в памяти (хеш кода кладёт настоящий
-// `core/passcode.ts`), лотти-заставка — заглушка.
+// `lib/passcode/actions.ts`), канал к воркеру (шифрует хранилища) — заглушка,
+// лотти-заставка — заглушка.
+vi.mock('@/client/passcodeClient', () => ({ invokePasscode: vi.fn(async() => undefined) }))
 const idb = vi.hoisted(() => new Map<string, unknown>())
 vi.mock('@core/store/idbKv', () => ({
   idbGet: async(key: string) => idb.get(key),

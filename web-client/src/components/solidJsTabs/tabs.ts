@@ -23,7 +23,7 @@ import type SliderSuperTab from '@components/sliderTab'
 import { scaffoldSolidJSTab, scaffoldSolidJSTabEventable } from './scaffoldSolidJSTab.solid'
 import type { LangPackKey } from '@/lang'
 import type { MaybePromise } from '@types'
-import type { PasscodeActions } from '@core/passcode'
+import type { PasscodeActions } from '@lib/passcode/actions'
 import type SidebarSlider from '@components/slider'
 
 // tweb :327-329 — вкладка получает УЖЕ загруженный список сессий, а не ходит

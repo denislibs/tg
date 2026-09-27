@@ -173,10 +173,27 @@ self.addEventListener('fetch', (event) => {
 })
 
 async function handleMedia(req) {
+  // Пауза корзины на время включения/смены/выключения кода (tweb
+  // `CacheStorageController.waitToEnable`, cacheStorage.ts:152-159).
+  while (cacheDisabled) await cacheDisabled.promise
+  const passcode = await getPasscodeState()
+  // Код включён, а ключа у SW нет (вкладка под замком или SW перезапущен) —
+  // корзину не читаем и не пишем: открытого байта на диск не кладём (fail closed).
+  if (passcode.on && !passcode.key) return fetch(req)
+
   const cache = await caches.open(CACHED_FILES)
   const key = mediaCacheKey(req.url)
   const hit = await cache.match(key)
-  if (hit) return hit
+  if (hit) {
+    if (!passcode.on) return hit
+    try {
+      const plain = await decryptLocal(passcode.key, new Uint8Array(await hit.arrayBuffer()))
+      return new Response(plain, { status: 200, headers: hit.headers })
+    } catch (_e) {
+      // запись чужим ключом (до смены кода) — не отдаём, идём в сеть
+      await cache.delete(key)
+    }
+  }
   const res = await fetch(req)
   if (res.status === 200) {
     try {
@@ -186,11 +203,96 @@ async function handleMedia(req) {
       if (ct) headers.set('Content-Type', ct)
       headers.set('Content-Length', String(blob.size))
       headers.set('Time-Cached', String(Math.floor(Date.now() / 1000)))
-      await cache.put(key, new Response(blob, { status: 200, headers }))
+      // под кодом тело — AES-GCM (tweb cacheStorage.ts:250-259), заголовки исходника
+      const body = passcode.on
+        ? await encryptLocal(passcode.key, new Uint8Array(await blob.arrayBuffer()))
+        : blob
+      await cache.put(key, new Response(body, { status: 200, headers }))
     } catch (_e) { /* quota — не мешаем ответу */ }
   }
   return res
 }
+
+/* ---- Код-пароль: шифрование корзины cachedFiles (S10) ------------------------
+ * Порт tweb `serviceWorker/index.service.ts:143-162` + шифрования
+ * `files/cacheStorage.ts`: SW держит флаг кода и ключ ТОЛЬКО в памяти. Флаг на
+ * старте SW берётся из записи `passcode` в IndexedDB `msgr/kv` (у tweb — из
+ * сообщения вкладки; у нас SW сам знает, что код включён, и без ключа идёт мимо
+ * корзины), ключ присылает разблокированная вкладка (`client/passcodeServiceWorker.ts`)
+ * — и после каждого перезапуска SW, по `sw-hello` (tweb eff3c59fa). Формат тела —
+ * `iv(12) ‖ ciphertext`, как `lib/crypto/aesLocal.ts`. */
+let passcodeState = null // { on, key } — null, пока не прочитали запись
+let passcodeStatePromise = null
+let cacheDisabled = null // { promise, resolve } — пауза корзины
+
+function readPasscodeFlag() {
+  return new Promise((resolve) => {
+    let req
+    try {
+      // та же версия и тот же апгрейд, что у `core/store/idbKv.ts`: открытие без
+      // версии создало бы пустую БД v1 без стора и сломало бы приложение
+      req = indexedDB.open('msgr', 1)
+    } catch (_e) { resolve(false); return }
+    req.onupgradeneeded = () => req.result.createObjectStore('kv')
+    req.onerror = () => resolve(false)
+    req.onsuccess = () => {
+      const db = req.result
+      try {
+        const get = db.transaction('kv', 'readonly').objectStore('kv').get('passcode')
+        get.onsuccess = () => { db.close(); resolve(!!get.result) }
+        get.onerror = () => { db.close(); resolve(false) }
+      } catch (_e) { db.close(); resolve(false) }
+    }
+  })
+}
+
+function getPasscodeState() {
+  if (passcodeState) return Promise.resolve(passcodeState)
+  return passcodeStatePromise ??= readPasscodeFlag().then((on) => {
+    passcodeState ??= { on, key: null }
+    return passcodeState
+  })
+}
+
+async function encryptLocal(key, data) {
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data)
+  const combined = new Uint8Array(iv.length + encrypted.byteLength)
+  combined.set(iv, 0)
+  combined.set(new Uint8Array(encrypted), iv.length)
+  return combined
+}
+
+async function decryptLocal(key, data) {
+  return crypto.subtle.decrypt({ name: 'AES-GCM', iv: data.slice(0, 12) }, key, data.slice(12))
+}
+
+function onPasscodeMessage(d) {
+  if (d.type === 'passcode-state') {
+    passcodeState = { on: !!d.isUsingPasscode, key: d.isUsingPasscode ? (d.encryptionKey || null) : null }
+    return true
+  }
+  if (d.type === 'passcode-toggle-cache') {
+    if (d.enabled) {
+      if (cacheDisabled) cacheDisabled.resolve()
+      cacheDisabled = null
+    } else if (!cacheDisabled) {
+      let resolve
+      const promise = new Promise((r) => { resolve = r })
+      cacheDisabled = { promise, resolve }
+    }
+    return true
+  }
+  return false
+}
+
+// Старт SW (в т.ч. перезапуск): ключ в памяти потерян — попросить вкладки
+// прислать состояние заново (tweb `hello`).
+try {
+  self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (cs) {
+    cs.forEach(function (c) { c.postMessage({ type: 'sw-hello' }) })
+  }).catch(function () { /* matchAll может отклониться — не роняем SW */ })
+} catch (_e) { /* нет clients (тестовое окружение) */ }
 
 /* Гейт кэширования — РОВНО 200, а не любой `ok` (эталон tweb
  * `serviceWorker/cache.ts:6-8` — `isCorrectResponse`). Разница не косметическая:
@@ -268,6 +370,11 @@ async function trimShell(cache) {
  * (localStorage в SW недоступен). */
 self.addEventListener('message', (event) => {
   const d = event.data
+  if (d && onPasscodeMessage(d)) {
+    // подтверждение вкладке — она ждёт его перед очисткой корзины
+    if (event.ports && event.ports[0]) event.ports[0].postMessage(true)
+    return
+  }
   if (d && d.type === 'cache-settings') {
     event.waitUntil(clearOldCache(d.cacheTTL | 0, d.cacheSize || 0))
   }

@@ -45,25 +45,16 @@ describe('boot: холодный старт диалогов — зеркало 
   beforeEach(() => { useChatsStore.setState({ dialogs: [], dialogIndexById: {}, loaded: false }) })
 
   describe('fillDialogsMirror', () => {
-    it('не под локом — зовёт managers.dialogs.fillMirror()', async () => {
+    it('зовёт managers.dialogs.fillMirror()', async () => {
       const op: DialogOp = { op: 'reset', items: [{ dialog: dialog(1), index: 10 }] }
       const { managers, fillMirror } = fakeManagers(op)
 
-      const result = await fillDialogsMirror(managers, false)
+      const result = await fillDialogsMirror(managers)
 
       expect(fillMirror).toHaveBeenCalledTimes(1)
       expect(result).toEqual(op)
     })
 
-    it('под локом — НЕ зовёт fillMirror(), отдаёт null', async () => {
-      const op: DialogOp = { op: 'reset', items: [{ dialog: dialog(1), index: 10 }] }
-      const { managers, fillMirror } = fakeManagers(op)
-
-      const result = await fillDialogsMirror(managers, true)
-
-      expect(fillMirror).not.toHaveBeenCalled()
-      expect(result).toBeNull()
-    })
   })
 
   describe('applyDialogsMirror', () => {
@@ -71,19 +62,10 @@ describe('boot: холодный старт диалогов — зеркало 
       const op: DialogOp = { op: 'reset', items: [{ dialog: dialog(1), index: 10 }, { dialog: dialog(2), index: 20 }] }
       const { managers } = fakeManagers(op)
 
-      await applyDialogsMirror(op, managers, false)
+      await applyDialogsMirror(op, managers)
 
       expect(useChatsStore.getState().dialogs.map((d) => d.peerId)).toEqual([2, 1])
       expect(useChatsStore.getState().loaded).toBe(true)
-    })
-
-    it('op null (лок) — витрину не трогает', async () => {
-      const op: DialogOp = { op: 'reset', items: [{ dialog: dialog(1), index: 10 }] }
-      const { managers } = fakeManagers(op)
-
-      await applyDialogsMirror(null, managers, true)
-
-      expect(useChatsStore.getState().dialogs).toEqual([])
     })
 
     // Fix (финальное ревью, Important #2): единственным каналом доставки reset'а
@@ -97,7 +79,7 @@ describe('boot: холодный старт диалогов — зеркало 
       const netOp: DialogOp = { op: 'reset', items: [{ dialog: dialog(1), index: 10 }, { dialog: dialog(2), index: 30 }] }
       const { managers } = fakeManagers(cacheOp, netOp)
 
-      await applyDialogsMirror(cacheOp, managers, false)
+      await applyDialogsMirror(cacheOp, managers)
 
       expect(useChatsStore.getState().dialogs.map((d) => d.peerId)).toEqual([2, 1])
     })
@@ -106,7 +88,7 @@ describe('boot: холодный старт диалогов — зеркало 
       const cacheOp: DialogOp = { op: 'reset', items: [{ dialog: dialog(1), index: 10 }] }
       const { managers } = fakeManagers(cacheOp, null)
 
-      await applyDialogsMirror(cacheOp, managers, false)
+      await applyDialogsMirror(cacheOp, managers)
 
       expect(useChatsStore.getState().dialogs.map((d) => d.peerId)).toEqual([1])
     })
@@ -118,7 +100,7 @@ describe('boot: холодный старт диалогов — зеркало 
       const { managers, refresh } = fakeManagers(cacheOp)
       ;(refresh as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('401'))
 
-      await expect(applyDialogsMirror(cacheOp, managers, false)).resolves.toBeUndefined()
+      await expect(applyDialogsMirror(cacheOp, managers)).resolves.toBeUndefined()
       expect(useChatsStore.getState().dialogs.map((d) => d.peerId)).toEqual([1])
     })
   })
@@ -127,28 +109,17 @@ describe('boot: холодный старт диалогов — зеркало 
   // страницы boot не просит: второй размер первого окна на витрине разошёлся бы
   // с владельцем при первой же правке одного из них.
   describe('applyDialogsMirror: догон идёт через refresh(), а не своей страницей', () => {
-    it('не под локом — зовёт refresh() и ни одной страницы getDialogs', async () => {
+    it('зовёт refresh() и ни одной страницы getDialogs', async () => {
       const op: DialogOp = { op: 'reset', items: [] }
       const { managers, refresh, getDialogs } = fakeManagers(op)
 
-      await applyDialogsMirror(op, managers, false)
+      await applyDialogsMirror(op, managers)
 
       // Мутация: вернуть `getDialogs({limit: guessLoadCount()})` вместо
       // `refresh()` — оба ассерта краснеют.
       expect(refresh).toHaveBeenCalledTimes(1)
       expect(refresh).toHaveBeenCalledWith() // окно выбирает владелец, а не boot
       expect(getDialogs).not.toHaveBeenCalled()
-    })
-
-    it('под локом — сети нет вовсе: ни refresh, ни getDialogs, ни fillMirror', async () => {
-      const op: DialogOp = { op: 'reset', items: [] }
-      const { managers, getDialogs, fillMirror, refresh } = fakeManagers(op)
-
-      await applyDialogsMirror(null, managers, true)
-
-      expect(refresh).not.toHaveBeenCalled()
-      expect(getDialogs).not.toHaveBeenCalled()
-      expect(fillMirror).not.toHaveBeenCalled()
     })
   })
 })

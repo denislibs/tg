@@ -1,22 +1,28 @@
 // Порт tweb `src/lib/files/cacheStorage.ts` (CacheStorageController) — 1:1 по
 // логике в нашем объёме: корзины CacheStorage с ключами `'/' + entryName`,
 // `getFile`/`saveFile` (заголовки `Time-Cached` в секундах + `Content-Length`/
-// `Content-Type` при записи, tweb cacheStorage.ts:226-231,247), `has`/`delete`,
-// `deleteAll` через `caches.delete(dbName)` (tweb :158-161), операции под
-// таймаутом `defaultOperationTimeout = 15e3` (tweb :282-313) с флагом
+// `Content-Type` при записи, tweb cacheStorage.ts:235-262), `has`/`delete`,
+// `deleteAll` через `caches.delete(dbName)` (tweb :172-175), операции под
+// таймаутом `defaultOperationTimeout = 15e3` (tweb :299-338) с флагом
 // `useStorage`: выключен — мгновенный reject STORAGE_OFFLINE, falsy результат
-// `caches.open` (Cache API недоступен) выключает хранилище перманентно
-// (tweb :283-301). Статики `toggleStorage`/`deleteAllStorages`.
+// `caches.open` (Cache API недоступен) выключает хранилище перманентно.
+//
+// Шифрование под код-паролем (tweb :17-47, :108-159, :215-262, :370-430):
+// корзина с `encryptable: true` при включённом коде шифрует тело AES-GCM
+// ключом из `EncryptionKeyStore` (заголовки, в т.ч. исходный `Content-Length`,
+// остаются — по ним считает объём экран «Данные и память»); `temporarilyToggle`
+// ставит паузу, которую ждут `get`/`save`, пока идёт включение/смена/выключение
+// кода; `clearEncryptableStorages` сносит шифруемые корзины, а
+// `resetOpenEncryptableCacheStorages` сбрасывает открытые экземпляры.
 //
 // Адаптации (поведение не менялось):
-//   • passcode-шифрование содержимого (encrypt/decrypt, DeferredIsUsingPasscode,
-//     waitToEnable/temporarilyToggle*) не портировано — у нас нет пасскода с
-//     шифрованием кэша; поэтому от конфига корзин tweb (флаг `encryptable`)
-//     остаются только имена — `cacheStorageDbNames`. Будущая корзина
-//     (например, стрим-чанки) добавляется туда без переделки класса
+//   • корзина у нас одна — `cachedFiles` (стрим-чанков и HLS нет);
+//   • шифрование — WebCrypto в своём реалме (`lib/crypto/aesLocal.ts`), без
+//     крипто-воркера; флаг «код включён» воркер разрешает сам
+//     (`ensureIsUsingPasscode`, см. `core/store/sessionKv.ts`);
 //   • `minimalBlockingIterateResponses`, `prepareWriting` (MemoryWriter),
-//     `forget`/`reset` и вариант `_test`-имени корзины (Modes.test) — не
-//     портированы: у их потребителей (HLS, passcode-очистка, MTProto-тесты)
+//     `temporarilyToggleByName(s)`, `getStats` и вариант `_test`-имени корзины
+//     (Modes.test) — не портированы: у их потребителей (HLS, MTProto-тесты)
 //     нет аналогов у нас
 //   • `HTTPHeaderNames` — в tweb живёт в `lib/constants.ts`; других
 //     потребителей у нас нет, константа локальная
@@ -26,6 +32,11 @@
 //     `void` (fire-and-forget прогрев, как в tweb)
 import blobConstruct from '@helpers/blob/blobConstruct'
 import makeError from '@helpers/makeError'
+import deferredPromise, { type CancellablePromise } from '@helpers/cancellablePromise'
+import { decryptLocalData, encryptLocalData } from '@lib/crypto/aesLocal'
+import EncryptionKeyStore from '@lib/passcode/keyStore'
+import DeferredIsUsingPasscode from '@lib/passcode/deferredIsUsingPasscode'
+import { ensureIsUsingPasscode } from '../store/sessionKv'
 
 const HTTPHeaderNames = {
   cachedTime: 'Time-Cached',
@@ -33,11 +44,17 @@ const HTTPHeaderNames = {
   contentType: 'Content-Type',
 }
 
-// Имена корзин CacheStorage (см. шапку: от конфига tweb без шифрования
-// остаются только имена)
-const cacheStorageDbNames = ['cachedFiles'] as const
+type CacheStorageDbConfigEntry = {
+  encryptable: boolean
+}
 
-export type CacheStorageDbName = typeof cacheStorageDbNames[number]
+const cacheStorageDbConfig = {
+  cachedFiles: {
+    encryptable: true,
+  },
+} satisfies Record<string, CacheStorageDbConfigEntry>
+
+export type CacheStorageDbName = keyof typeof cacheStorageDbConfig
 
 const defaultOperationTimeout = 15e3
 
@@ -53,16 +70,62 @@ type GetFileResult = { blob: Blob, json: unknown, text: string }
 export default class CacheStorageController {
   private static STORAGES: CacheStorageController[] = []
   private openDbPromise?: Promise<Cache>
+  private config: CacheStorageDbConfigEntry
 
   private useStorage = true
+
+  private static disabledPromise: CancellablePromise<void> | undefined
 
   constructor(private dbName: CacheStorageDbName) {
     if(CacheStorageController.STORAGES.length) {
       this.useStorage = CacheStorageController.STORAGES[0].useStorage
     }
 
+    this.config = cacheStorageDbConfig[dbName]
+
     void this.openDatabase()
     CacheStorageController.STORAGES.push(this)
+  }
+
+  public forget() {
+    CacheStorageController.STORAGES = CacheStorageController.STORAGES.filter((storage) => storage !== this)
+  }
+
+  get isEncryptable() {
+    return this.config?.encryptable
+  }
+
+  private async isEncrypted() {
+    if(!this.config?.encryptable) return false
+    await ensureIsUsingPasscode()
+    return DeferredIsUsingPasscode.isUsingPasscode()
+  }
+
+  private static async encrypt(blob: Blob) {
+    const key = await EncryptionKeyStore.get()
+    if(!key) throw new Error('NO_ENCRYPTION_KEY')
+    const dataAsBuffer = new Uint8Array(await blob.arrayBuffer())
+
+    const result = await encryptLocalData({ key, data: dataAsBuffer })
+
+    return new Blob([result as BlobPart], { type: blob.type })
+  }
+
+  private static async decrypt(blob: Blob) {
+    const key = await EncryptionKeyStore.get()
+    if(!key) throw new Error('NO_ENCRYPTION_KEY')
+    const dataAsBuffer = new Uint8Array(await blob.arrayBuffer())
+
+    const result = await decryptLocalData({ key, encryptedData: dataAsBuffer })
+
+    return new Blob([result as BlobPart], { type: blob.type })
+  }
+
+  private async waitToEnable() {
+    // Note: even if initially there was one disabled promise, another one could be added while we are waiting
+    while(CacheStorageController.disabledPromise) {
+      await CacheStorageController.disabledPromise
+    }
   }
 
   private openDatabase(): Promise<Cache> {
@@ -88,13 +151,35 @@ export default class CacheStorageController {
     return !!response
   }
 
-  public get(entryName: string) {
-    return this.timeoutOperation((cache) => cache.match('/' + entryName))
+  public reset() {
+    this.openDbPromise = undefined
+  }
+
+  public async get(entryName: string) {
+    await this.waitToEnable()
+
+    const response = await this.timeoutOperation((cache) => cache.match('/' + entryName))
+    if(!response) return undefined
+
+    if(await this.isEncrypted()) {
+      return new Response(
+        await CacheStorageController.decrypt(await response.blob()),
+        {
+          headers: response.headers,
+          status: response.status,
+          statusText: response.statusText,
+        },
+      )
+    }
+
+    return response
   }
 
   public async save({ entryName, response, size, contentType }: SaveArgs) {
+    await this.waitToEnable()
+
     // Не мутируем read-only заголовки (например, у ответа, вернувшегося из `fetch`)
-    const result = new Response(response.body, {
+    let result = new Response(response.body, {
       headers: {
         ...Object.fromEntries(response.headers),
         [HTTPHeaderNames.cachedTime]: Math.floor(Date.now() / 1000 | 0).toString(),
@@ -104,6 +189,17 @@ export default class CacheStorageController {
       status: response.status,
       statusText: response.statusText,
     })
+
+    if(await this.isEncrypted()) {
+      result = new Response(
+        await CacheStorageController.encrypt(await result.blob()),
+        {
+          headers: result.headers,
+          status: result.status,
+          statusText: result.statusText,
+        },
+      )
+    }
 
     return this.timeoutOperation((cache) => cache.put('/' + entryName, result))
   }
@@ -177,9 +273,43 @@ export default class CacheStorageController {
   }
 
   public static async deleteAllStorages() {
-    await Promise.all(cacheStorageDbNames.map(async(storageName) => {
+    const storageNames = Object.keys(cacheStorageDbConfig) as CacheStorageDbName[]
+
+    await Promise.all(storageNames.map(async(storageName) => {
       const storage = new CacheStorageController(storageName)
       await storage.deleteAll()
     }))
+  }
+
+  public static temporarilyToggle(enabled: boolean) {
+    if(enabled) {
+      this.disabledPromise?.resolve!()
+      this.disabledPromise = undefined
+    } else if(!this.disabledPromise) {
+      this.disabledPromise = deferredPromise<void>()
+    }
+  }
+
+  public static async clearEncryptableStorages() {
+    const encryptableStorageNames = Object.entries(cacheStorageDbConfig)
+    .filter(([, { encryptable }]) => encryptable)
+    .map(([name]) => name) as CacheStorageDbName[]
+
+    await Promise.all(encryptableStorageNames.map(async(storageName) => {
+      // Make sure we have all storages in current thread, can't get from .STORAGES
+      const storage = new CacheStorageController(storageName)
+
+      try {
+        await storage.deleteAll()
+      } catch(e) {
+        console.error(e)
+      } finally {
+        storage.forget()
+      }
+    }))
+  }
+
+  public static resetOpenEncryptableCacheStorages() {
+    this.STORAGES.filter((storage) => storage.isEncryptable).forEach((storage) => storage.reset())
   }
 }

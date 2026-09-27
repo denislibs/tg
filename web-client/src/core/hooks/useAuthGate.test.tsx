@@ -172,14 +172,15 @@ describe('useAuthGate: переход активной сессии (rt:logging_
   // ушла бы на AuthFlow, если бы обработчик наивно ставил authed=false для
   // ЛЮБОГО не-своего id) при живой сессии другого аккаунта — вернуть можно
   // было бы только ручной перезагрузкой.
-  it('migrateTo: id — переезд на другой аккаунт: reload, authed не трогает', () => {
+  it('migrateTo: id — переезд на другой аккаунт: reload, authed не трогает', async () => {
     const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {})
     const { result } = renderHook(() => useAuthGate(), { wrapper: withManagers(testManagers()) })
 
     act(() => { result.current.login() })
     act(() => { rootScope.dispatchEventSingle(RT.loggingOut, { migrateTo: OTHER.user.id }) })
 
-    expect(reload).toHaveBeenCalledTimes(1)
+    // reload — после передачи ключа кода в window.sessionStorage (асинхронно)
+    await vi.waitFor(() => { expect(reload).toHaveBeenCalledTimes(1) })
     expect(result.current.authed).toBe(true) // не сброшен — сессия жива, просто другая
   })
 
@@ -228,14 +229,14 @@ describe('useAuthGate: переход активной сессии (rt:logging_
   // при чужом входе получает НОВЫЙ активный токен под собой. Без реакции она
   // осталась бы в интерфейсе прежнего аккаунта, отправляя запросы с чужим
   // токеном, а её `me` тем временем перезаписал бы rt:me чужой личностью.
-  it('rt:logged_in вкладке с живой сессией — reload (под ней сменился активный токен)', () => {
+  it('rt:logged_in вкладке с живой сессией — reload (под ней сменился активный токен)', async () => {
     const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {})
     const { result } = renderHook(() => useAuthGate(), { wrapper: withManagers(testManagers()) })
 
     act(() => { result.current.login() }) // вкладка в Shell
     act(() => { rootScope.dispatchEventSingle(RT.loggedIn, { userId: OTHER.user.id }) })
 
-    expect(reload).toHaveBeenCalledTimes(1)
+    await vi.waitFor(() => { expect(reload).toHaveBeenCalledTimes(1) })
   })
 
   // Отказ команды логаута (сбой IndexedDB при работе с реестром аккаунтов):
@@ -265,7 +266,7 @@ describe('useAuthGate: переход активной сессии (rt:logging_
   // приехавшего rt:me нового.
   describe('префетч старта не переживает смену сессии', () => {
     const prefetch = { me: Promise.resolve(null), dialogsReady: Promise.resolve() }
-    const boot = () => setBootData({ ...prefetch, hasToken: true, locked: false })
+    const boot = () => setBootData({ ...prefetch, hasToken: true })
 
     it('кросс-табовый: «добавить аккаунт» в соседней вкладке, затем вход там же', () => {
       boot()
@@ -299,7 +300,7 @@ describe('useAuthGate: переход активной сессии (rt:logging_
     // другой вкладке. Префетч тут разрешён пустышкой «нет сессии» — повторный
     // loadChats записал бы me=null поверх приехавшего rt:me.
     it('вкладка, открытая уже на экране входа: вход в соседней (кадра ухода не было)', () => {
-      setBootData({ ...prefetch, hasToken: false, locked: false })
+      setBootData({ ...prefetch, hasToken: false })
       const { result } = renderHook(() => useAuthGate(), { wrapper: withManagers(testManagers()) })
       expect(result.current.authed).toBe(false) // boot без токена
 

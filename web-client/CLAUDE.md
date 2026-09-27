@@ -222,7 +222,10 @@ npx vite build --outDir ../client-build
   (`width`/`height`/`duration` в `SendFileArgs`).
 - Подписываться на сокет (`smp.on`) где-либо, кроме насоса в `realtimeBridge`. Нужны realtime-события
   в новом модуле — подписывайся на `rootScope.addEventListener`, а не на `smp`. Компоненты/хуки
-  **читают из стора**.
+  **читают из стора**. Единственное исключение — канал код-пароля `passcode`
+  (`client/passcodeClient.ts::installPasscodeListener`): он нужен ДО разблокировки, когда
+  насос ещё не поднят (старт ждёт кода, `client/boot.ts`), и несёт не данные, а ключ и
+  команды замка (tweb `apiManagerProxy.ts:517-536`).
 - Ре-эмитить принятое из воркера событие через `dispatchEvent` — только
   `dispatchEventSingle` (иначе событие уйдёт обратно в воркер и закольцуется;
   инвариант tweb: `apiManagerProxy` ре-эмитит принятое строго локально).

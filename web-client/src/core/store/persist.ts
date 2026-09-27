@@ -286,6 +286,12 @@ export async function persistGetToken(): Promise<string | null> {
 // no-op); безопасно звать и из воркера, и из main-thread на старте.
 export async function persistScope(token: string | null): Promise<void> {
   try {
+    // Под код-паролем стор не пишется (гард locked()) — и токен-скоуп тоже: это
+    // была бы открытая копия `session_token` рядом с зашифрованной (S10).
+    if (await locked()) {
+      await enqueue(S_META, { kind: 'delete', key: 'token' })
+      return
+    }
     const prev = await persistGetToken()
     if (prev === token) return
     const writes: Promise<void>[] = []

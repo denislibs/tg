@@ -1,14 +1,21 @@
 // Сочетание блокировки код-паролем (`useLockScreenShortcut.ts`, порт tweb
 // `lib/appManagers/utils/useLockScreenShortcut.ts`, 812502980): предмет —
 // блокирует ли настоящее `keydown` приложение (`useLockStore.locked`) при
-// разных настройках. Настройки и стор блокировки — настоящие.
+// разных настройках. Настройки, стор и контроллер экрана блокировки — настоящие;
+// сам экран — заглушка, а `lockAndReload` (tweb `apiManagerProxy.lock()`:
+// воркер завершается вместе с ключом, вкладки перезагружаются) — шпион.
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { useSettingsStore } from '@/settings'
 import { useLockStore } from '@/stores/lockStore'
+import PasscodeLockScreenController from '@components/passcodeLockScreenController'
 import { useLockScreenShortcut } from './useLockScreenShortcut'
+
+const lockAndReload = vi.hoisted(() => vi.fn())
+vi.mock('@/client/passcodeClient', () => ({ lockAndReload, invokePasscode: vi.fn(async() => undefined) }))
+vi.mock('@components/PasscodeLockScreen', () => ({ default: () => null }))
 
 const press = (init: KeyboardEventInit, target: EventTarget = window) => {
   const event = new KeyboardEvent('keydown', { code: 'KeyL', key: 'l', bubbles: true, cancelable: true, ...init })
@@ -17,7 +24,8 @@ const press = (init: KeyboardEventInit, target: EventTarget = window) => {
 }
 
 beforeEach(() => {
-  useLockStore.getState().unlock()
+  act(() => { PasscodeLockScreenController.unlock() })
+  lockAndReload.mockClear()
   useSettingsStore.getState().update({
     passcodeEnabled: true,
     passcodeLockShortcutEnabled: true,
@@ -35,6 +43,7 @@ describe('useLockScreenShortcut', () => {
     renderHook(() => useLockScreenShortcut())
     const event = press({ altKey: true, key: 'д' })
     expect(useLockStore.getState().locked).toBe(true)
+    expect(lockAndReload).toHaveBeenCalledTimes(1)
     expect(event.defaultPrevented).toBe(true)
   })
 
@@ -42,6 +51,7 @@ describe('useLockScreenShortcut', () => {
     renderHook(() => useLockScreenShortcut())
     press({})
     expect(useLockStore.getState().locked).toBe(false)
+    expect(lockAndReload).not.toHaveBeenCalled()
 
     act(() => useSettingsStore.getState().update({ passcodeLockShortcutEnabled: false }))
     press({ altKey: true })

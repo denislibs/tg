@@ -18,7 +18,6 @@ import { useAppBootstrap } from './useAppBootstrap'
 import { ManagersProvider } from './useManagers'
 import { setBootData } from '../../client/bootData'
 import { preloadReactionAssets } from '../../components/chat/reactions'
-import { useLockStore } from '../../stores/lockStore'
 import type { Managers } from '../../client/bootstrap'
 
 vi.mock('../../components/chat/reactions', () => ({ preloadReactionAssets: vi.fn(async () => {}) }))
@@ -49,8 +48,7 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 beforeEach(() => {
-  useLockStore.setState({ locked: false, attempts: 0, retryAt: 0 })
-  setBootData({ me: Promise.resolve(null), dialogsReady: Promise.resolve(), hasToken: true, locked: false })
+  setBootData({ me: Promise.resolve(null), dialogsReady: Promise.resolve(), hasToken: true })
   vi.useFakeTimers()
 })
 

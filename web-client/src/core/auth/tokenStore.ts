@@ -1,9 +1,11 @@
-import { idbGet, idbSet, idbDel } from '../store/idbKv'
+import { sessionKv } from '../store/sessionKv'
 
 const KEY = 'session_token'
 
 // Holds the session token in memory (for synchronous RestClient reads) and
-// persists it to IndexedDB so it survives reload.
+// persists it to IndexedDB so it survives reload. Под код-паролем — только в
+// зашифрованном слое (`sessionKv`): `load()` ждёт ключ, то есть до разблокировки
+// токена в памяти нет, и `RestClient` (гейт `ready()`) не шлёт ни одного запроса.
 export class TokenStore {
   private token: string | null = null
   private loadPromise: Promise<void> | null = null
@@ -20,7 +22,7 @@ export class TokenStore {
   }
 
   private async _load(): Promise<void> {
-    this.token = (await idbGet<string>(KEY)) ?? null
+    this.token = (await sessionKv.get<string>(KEY)) ?? null
   }
 
   get(): string | null {
@@ -29,11 +31,11 @@ export class TokenStore {
 
   async set(token: string): Promise<void> {
     this.token = token
-    await idbSet(KEY, token)
+    await sessionKv.set(KEY, token)
   }
 
   async clear(): Promise<void> {
     this.token = null
-    await idbDel(KEY)
+    await sessionKv.delete(KEY)
   }
 }

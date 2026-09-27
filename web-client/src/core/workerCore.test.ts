@@ -165,6 +165,22 @@ describe('createWorkerCore().bind — проводка портов (замен�
       tab.invoke('manager', { name: 'langPack', method: 'cachedPack', args: [] }),
     ).resolves.toBeNull()
   })
+
+  // S10: канал код-пароля — отдельный хендлер `passcode` на КАЖДОМ порту (ему
+  // нужен источник вызова, см. core/passcode/passcodeWorker.ts). Без строки
+  // `smp.handle(PASSCODE_CHANNEL, …)` в bind() вкладка не узнала бы даже
+  // «заперто ли», и старт повис бы на `waitForUnlock`; сам хендлер пинит
+  // passcodeWorker.test.ts, здесь — факт регистрации и что ответ доезжает.
+  it('bind(ep) регистрирует канал «passcode» — isLocked с вкладки доезжает до воркера и обратно', async () => {
+    const core = createWorkerCore()
+    const [epWorker, epTab] = pair()
+    core.bind(epWorker)
+    const tab = new SuperMessagePort(epTab)
+
+    await expect(
+      tab.invoke('passcode', { method: 'isLocked' }),
+    ).resolves.toEqual({ isUsingPasscode: false, isLocked: false })
+  })
 })
 
 // C-1 (ревью worker-importable): start() — единственная строка, которая реально

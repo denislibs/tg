@@ -5,8 +5,9 @@
  *
  * Вкладки гоняются НАСТОЯЩИЕ — `AppPasscodeLockTab`/`AppPasscodeEnterPasswordTab`
  * из `solidJsTabs/tabs.ts` через хост (`settingsSliderHost.ts`), логика кода —
- * настоящая (`core/passcode.ts`: PBKDF2 и сравнение хеша). Стабы — только
- * границы: IndexedDB (`idbKv` — словарь в памяти), writer офлайн-стора
+ * настоящая (`lib/passcode/actions.ts`: PBKDF2, соли, ключ). Стабы — только
+ * границы: IndexedDB (`idbKv` — словарь в памяти), канал к воркеру
+ * (`invokePasscode` — шифрует хранилища там), writer офлайн-стора
  * (`managers.persist.clearAll`), лотти-заставка, попап подтверждения,
  * Web Animations (у happy-dom их нет) и геометрия.
  *
@@ -42,6 +43,9 @@ vi.mock('@core/store/idbKv', () => ({
   idbDel: async(key: string) => { idb.delete(key) },
 }))
 
+const invokePasscode = vi.hoisted(() => vi.fn(async(_task: { method: string, payload?: unknown }) => undefined))
+vi.mock('@/client/passcodeClient', () => ({ invokePasscode }))
+
 vi.mock('@lib/lottie/lottieLoader', () => ({
   default: { loadAnimationAsAsset: vi.fn(async() => ({ playOrRestart() {}, remove() {} })) },
 }))
@@ -74,6 +78,7 @@ beforeEach(() => {
   Element.prototype.animate = vi.fn(() => ({ finished: Promise.resolve() }) as unknown as Animation)
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width: 420 } as DOMRect)
   idb.clear()
+  invokePasscode.mockClear()
   useLockStore.getState().unlock()
   useSettingsStore.getState().update({
     passcodeEnabled: false,
@@ -169,6 +174,12 @@ describe('вкладка «Код-пароль» — код не задан', ()
     await typeAndSubmit(second, '1234')
     await waitFor(() => useSettingsStore.getState().passcodeEnabled)
     expect(clearAll).toHaveBeenCalledTimes(1)
+    // S10: на диске — соли и хеш, ключ уходит воркеру, который шифрует токены
+    const stored = idb.get('passcode') as Record<string, unknown>
+    expect(Object.keys(stored).sort()).toEqual(['encryptionSalt', 'verificationHash', 'verificationSalt'])
+    await waitFor(() => invokePasscode.mock.calls.some(([t]) => t.method === 'toggleUsingPasscode'))
+    const toggle = invokePasscode.mock.calls.find(([t]) => t.method === 'toggleUsingPasscode')![0]
+    expect(toggle.payload).toEqual({ isUsingPasscode: true, encryptionKey: expect.any(CryptoKey) })
 
     const hint = await waitFor(() => main.scrollable.container.querySelector<HTMLElement>('.quiz-hint'))
     expect(hint.classList.contains(styles.Hint)).toBe(true)
@@ -297,8 +308,13 @@ describe('вкладка «Код-пароль» — код задан', () => {
 
     const hint = await waitFor(() => main.scrollable.container.querySelector<HTMLElement>('.quiz-hint'))
     expect(hint.querySelector('.quiz-hint-text')?.textContent).toBe(lang['PasscodeLock.PasscodeHasBeenChanged'])
-    expect(idb.has('passcode')).toBe(true)
-    expect(clearAll).toHaveBeenCalledTimes(1)
+    // S10: новую запись и перешифровку делает воркер (tweb index.worker.ts:276-293);
+    // офлайн-стор смена не трогает — как у tweb
+    const change = invokePasscode.mock.calls.find(([t]) => t.method === 'changePasscode')![0]
+    const payload = change.payload as { toStore: Record<string, unknown>, encryptionKey: CryptoKey }
+    expect(Object.keys(payload.toStore).sort()).toEqual(['encryptionSalt', 'verificationHash', 'verificationSalt'])
+    expect(payload.encryptionKey).toBeInstanceOf(CryptoKey)
+    expect(clearAll).not.toHaveBeenCalled()
   })
 
   it('DoD 5: закрытая вкладка снимает свой Solid-остров', async() => {

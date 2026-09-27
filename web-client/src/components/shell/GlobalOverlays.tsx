@@ -8,12 +8,10 @@ import { useT } from '../../i18n'
 import type { Chat } from '../../data'
 import { useGroupCallStore } from '../../stores/groupCallStore'
 import { useLivestreamStore } from '../../stores/livestreamStore'
-import { useLockStore } from '../../stores/lockStore'
 import GroupCallScreen from '../GroupCallScreen'
 import LivestreamScreen from '../LivestreamScreen'
 import CallOverlay from '../call/CallOverlay'
 import WebAppModal from '../webapp/WebAppModal'
-import PasscodeLockScreen from '../PasscodeLockScreen'
 import FolderInvitePopup from '../folders/FolderInvitePopup'
 import ReportPopup from '../ReportPopup'
 import s from '../../App.module.scss'
@@ -43,7 +41,6 @@ export default function GlobalOverlays({
   const t = useT()
   const groupCallChatId = useGroupCallStore((st) => st.peerId)
   const livestreamChatId = useLivestreamStore((st) => st.watchingPeerId)
-  const locked = useLockStore((st) => st.locked)
 
   // Тост — контракт tweb `components/toast.ts`: узел сперва попадает в DOM без
   // `.is-visible` (там это `toastsContainer.append(toastEl)` + reflow
@@ -129,9 +126,6 @@ export default function GlobalOverlays({
 
       {/* Жалобы (tweb reportMessages): один глобальный попап */}
       <ReportPopup />
-
-      {/* Блокировка код-паролем поверх всего (tweb passcodeLockScreen) */}
-      {locked && <PasscodeLockScreen />}
     </>
   )
 }
