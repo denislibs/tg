@@ -16,6 +16,7 @@ import { makeDialog } from '../dialogs/testDialog'
 import { makeRawMessage } from '../messages/testMessage'
 import type { DialogOp } from '../dialogs/dialogOps'
 import type { Folder } from './foldersManager'
+import type { UserReal } from '../peers/peer'
 
 const at = (day: number) => `2026-08-${String(day).padStart(2, '0')}T00:00:00Z`
 
@@ -489,6 +490,30 @@ describe('dialogsManager.getDialogs: фильтр папки', () => {
     const page = await mgr.getDialogs({ filterId: 7, limit: 10 })
 
     expect(page.dialogs.map((d) => d.peerId)).toEqual([1])
+  })
+
+  // Признак бота — `pFlags.bot` КАРТОЧКИ пользователя из кэша пиров воркера
+  // (порт `appUsersManager.isBot`, filters.ts:258-261): у строки диалога его нет.
+  it('папка «Боты» показывает личку с ботом и не показывает людей', async () => {
+    const bot: UserReal = { _: 'user', id: 2, pFlags: { bot: true } }
+    const human: UserReal = { _: 'user', id: 1 }
+    const mgr = newDialogsManager({
+      messages: fakeMessages(),
+      rest: restStub({ chats: [] }) as never,
+      onDialogOps: () => {},
+      loadCache: async () => [contactDialog, strangerDialog],
+      loadState: async () => ({ pinnedOrders: {}, folders: [folder({ id: 7, bots: true })] }),
+      peers: {
+        saveApiPeers: () => {},
+        hydrateFromDisk: async () => {},
+        cachedPeer: (peerId: PeerId) => (peerId === 2 ? bot : peerId === 1 ? human : undefined),
+      },
+    })
+    mgr.setContactIds([1])
+
+    const page = await mgr.getDialogs({ filterId: 7, limit: 10 })
+
+    expect(page.dialogs.map((d) => d.peerId)).toEqual([2])
   })
 
   // Прежде здесь стояла ловушка: у `Dialog` не было плоского ключа собеседника

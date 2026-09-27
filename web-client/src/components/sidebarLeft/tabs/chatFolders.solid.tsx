@@ -72,7 +72,7 @@ import { useAppStateStore } from '@stores/appState'
 import { useChatsStore } from '@stores/chatsStore'
 import { useFoldersStore } from '@stores/foldersStore'
 import { isDialogMuted, useNotifyStore } from '@stores/notifyStore'
-import { cachedChat } from '@core/peerCache'
+import { cachedChat, cachedPeer } from '@core/peerCache'
 import { isDialogArchived } from '@core/models'
 import { dialogMatchesFolder } from '@core/folderFilter'
 import { isAnyGroup, isBroadcast } from '@core/peers/predicates'
@@ -108,7 +108,7 @@ export function getFolderSubtitle(filter: Folder): (string | Node)[] | undefined
       if(isDialogArchived(dialog)) continue
       const chat = cachedChat(dialog.peerId)
       const muted = isDialogMuted(dialog, chat, notifySettings)
-      if(!dialogMatchesFolder(dialog, chat, filter, contactIds, muted)) continue
+      if(!dialogMatchesFolder(dialog, cachedPeer(dialog.peerId), filter, contactIds, muted)) continue
       if(isAnyGroup(dialog.peerId, chat)) ++groups
       else if(isBroadcast(chat)) ++channels
       else ++chats

@@ -6,7 +6,7 @@ import { folderUnreadCounts } from './folderUnreadCounts'
 import { makeDialog } from '../dialogs/testDialog'
 import type { Folder } from '../managers/foldersManager'
 import type { NotifySettings } from '../managers/notifyManager'
-import type { Chat } from '../peers/peer'
+import type { Chat, UserReal } from '../peers/peer'
 import { ALL_FOLDER_ID } from '../folderIds'
 
 const SETTINGS: NotifySettings = {
@@ -126,6 +126,21 @@ describe('folderUnreadCounts — muted (`folders.ts:28`)', () => {
     const counts = folderUnreadCounts([
       makeDialog({ peerId: 1, unread: 2, unreadMentions: 1, muteUntil: true }),
     ], [work], NO_CONTACTS, SETTINGS, noChat)
+
+    expect(counts[7]).toEqual({ count: 1, muted: false })
+  })
+})
+
+describe('folderUnreadCounts — папка «Боты»', () => {
+  // Бейдж считает то же правило, что и список: признак бота — `pFlags.bot`
+  // карточки пользователя из зеркала пиров (`peerOf`).
+  it('считает непрочитанное лички с ботом и не считает людей', () => {
+    const BOT: UserReal = { _: 'user', id: 8, pFlags: { bot: true } }
+    const HUMAN: UserReal = { _: 'user', id: 9 }
+    const counts = folderUnreadCounts([
+      makeDialog({ peerId: 8, unread: 2 }),
+      makeDialog({ peerId: 9, unread: 5 }),
+    ], [folder(7, { bots: true })], NO_CONTACTS, SETTINGS, (id) => (id === 8 ? BOT : id === 9 ? HUMAN : undefined))
 
     expect(counts[7]).toEqual({ count: 1, muted: false })
   })

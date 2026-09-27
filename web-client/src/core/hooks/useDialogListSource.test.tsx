@@ -189,6 +189,25 @@ describe('useDialogListSource: items — производная от зерка�
     expect(result.current.items.map((i) => i.id)).toEqual([-1])
   })
 
+  // Признак бота — `pFlags.bot` карточки ПОЛЬЗОВАТЕЛЯ из зеркала пиров:
+  // правилу папки хук отдаёт карточку пира, а не только карточку чата.
+  it('папка «Боты» показывает личку с ботом и не показывает людей', () => {
+    applyPeerOps([{ op: 'upsert', peers: [
+      { _: 'user', id: 2, first_name: 'Bot', pFlags: { bot: true } },
+      { _: 'user', id: 3, first_name: 'Human' },
+    ] }])
+    seedMirror([
+      { dialog: dialog(2), index: 30 },
+      { dialog: dialog(3), index: 20 },
+    ])
+    useAppStateStore.setState({ folders: [folder({ id: 7, bots: true })] })
+    const { managers } = fakeManagers()
+
+    const { result } = renderSource(managers, 7)
+
+    expect(result.current.items.map((i) => i.id)).toEqual([2])
+  })
+
   it('определения папки ещё нет — список пуст (а не «показать всё»)', () => {
     seedMirror([{ dialog: dialog(1), index: 30 }])
     const { managers } = fakeManagers()

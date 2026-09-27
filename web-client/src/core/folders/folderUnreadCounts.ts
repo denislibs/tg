@@ -39,7 +39,7 @@
 import { isDialogArchived, type Dialog } from '../models'
 import type { Folder } from '../managers/foldersManager'
 import type { NotifySettings } from '../managers/notifyManager'
-import type { Chat } from '../peers/peer'
+import type { Chat, User } from '../peers/peer'
 import { dialogMatchesFolder } from '../folderFilter'
 import { isDialogMuted } from '../../stores/notifyStore'
 import { ALL_FOLDER_ID } from '../folderIds'
@@ -63,8 +63,8 @@ interface FolderUnread {
  *                   всегда, отдельной записью под `ALL_FOLDER_ID`
  * @param contactIds контакты — правилам `contacts`/`non_contacts`
  * @param notifySettings глобальные настройки по типам — правилу «замьючен»
- * @param chatOf     карточка чата из зеркала пиров (`core/peerCache.ts::cachedChat`):
- *                   нужна правилу типов папки и правилу мьюта типа
+ * @param peerOf     карточка пира из зеркала пиров (`core/peerCache.ts::cachedPeer`):
+ *                   нужна правилу типов папки (группа/канал/бот) и правилу мьюта типа
  * @returns запись на «Все чаты» и на каждую папку, в том числе с нулём
  */
 export function folderUnreadCounts(
@@ -72,7 +72,7 @@ export function folderUnreadCounts(
   folders: readonly Folder[],
   contactIds: ReadonlySet<number>,
   notifySettings: NotifySettings,
-  chatOf: (peerId: PeerId) => Chat | undefined,
+  peerOf: (peerId: PeerId) => User | Chat | undefined,
   now = Math.floor(Date.now() / 1000),
 ): Record<number, FolderNotifications> {
   const acc = new Map<number, FolderUnread>()
@@ -82,7 +82,8 @@ export function folderUnreadCounts(
 
   for (const dialog of dialogs) {
     if (!(dialog.unread_count > 0) || isDialogArchived(dialog)) continue
-    const chat = chatOf(dialog.peerId)
+    const peer = peerOf(dialog.peerId)
+    const chat = peer && peer._ !== 'user' && peer._ !== 'userEmpty' ? peer : undefined
     const muted = isDialogMuted(dialog, chat, notifySettings, now)
     const mention = dialog.unread_mentions_count > 0
     const add = (id: number) => {
@@ -94,7 +95,7 @@ export function folderUnreadCounts(
 
     add(ALL_FOLDER_ID)
     for (const folder of folders) {
-      if (dialogMatchesFolder(dialog, chat, folder, contactIds, muted)) add(folder.id)
+      if (dialogMatchesFolder(dialog, peer, folder, contactIds, muted)) add(folder.id)
     }
   }
 
