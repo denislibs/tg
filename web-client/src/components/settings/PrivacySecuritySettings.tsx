@@ -9,7 +9,6 @@ import { SettingsScreen, Section, Row } from './kit'
 import BlockedUsers from './BlockedUsers'
 import Passkeys from './Passkeys'
 import PasskeyIntroPopup from './PasskeyIntroPopup'
-import PrivacyRule, { RULE_META } from './PrivacyRule'
 import AutoDeleteMessages, { autoDeleteLabel } from './AutoDeleteMessages'
 import ConfirmDialog from './ConfirmDialog'
 import { useSettingsStore } from '../../settings'
@@ -19,6 +18,17 @@ import { getSettingsSliderHost, openActiveSessionsTab } from '../sidebarLeft/set
 import {
   AppPasscodeEnterPasswordTab,
   AppPasscodeLockTab,
+  AppPrivacyAboutTab,
+  AppPrivacyAddToGroupsTab,
+  AppPrivacyBirthdayTab,
+  AppPrivacyCallsTab,
+  AppPrivacyForwardMessagesTab,
+  AppPrivacyLastSeenTab,
+  AppPrivacyMessagesTab,
+  AppPrivacyPhoneNumberTab,
+  AppPrivacyProfilePhotoTab,
+  AppPrivacyReadTimeTab,
+  AppPrivacyVoicesTab,
   AppTwoStepVerificationEnterPasswordTab,
   AppTwoStepVerificationTab,
 } from '../solidJsTabs/tabs'
@@ -26,7 +36,7 @@ import type SidebarSlider from '../slider'
 import type { PasswordState } from '../../core/managers/authManager'
 import { toastNew } from '../toast'
 import { usePrivacyStore } from '../../stores/privacyStore'
-import type { PrivacyRule as Rule } from '../../core/managers/privacyManager'
+import type { PrivacyKey, PrivacyRule as Rule } from '../../core/managers/privacyManager'
 
 const VALUE_LABEL: Record<string, LangPackKey> = {
   everybody: 'PrivacySettingsController.Everbody',
@@ -44,19 +54,22 @@ function ruleSubtitle(rule: Rule, t: (key: LangPackKey) => string): string {
   return label
 }
 
-// Порядок секции Privacy (tweb privacyAndSecurity.tsx, без premium/gifts).
-const RULE_ROWS: LangPackKey[] = [
-  'PrivacyPhone',
-  'PrivacyLastSeen',
-  'PrivacyProfilePhoto',
-  'UserBio',
-  'PrivacySettings.VoiceCalls',
-  'PrivacySettings.Forwards',
-  'PrivacySettings.Groups',
-  'PrivacyVoiceMessages',
-  'SearchMessages',
-  'Birthday',
-  'PrivacyReadTime',
+// Порядок секции Privacy (tweb privacyAndSecurity.tsx:416-466, без gifts/saved
+// music — О-16). Строка открывает вкладку правила (`sidebarLeft/tabs/privacy/*`,
+// задача 17 плана 2D) через хост, как tweb `tab.slider.createTab(…).open()`;
+// заголовки строк и значения — предмет задачи 23 (хаб станет вкладкой).
+const RULE_ROWS: { key: PrivacyKey; title: LangPackKey; tab: typeof AppPrivacyAboutTab }[] = [
+  { key: 'phone_number', title: 'PrivacyPhoneTitle', tab: AppPrivacyPhoneNumberTab },
+  { key: 'last_seen', title: 'LastSeenTitle', tab: AppPrivacyLastSeenTab },
+  { key: 'profile_photo', title: 'PrivacyProfilePhotoTitle', tab: AppPrivacyProfilePhotoTab },
+  { key: 'about', title: 'Privacy.BioRow', tab: AppPrivacyAboutTab },
+  { key: 'calls', title: 'WhoCanCallMe', tab: AppPrivacyCallsTab },
+  { key: 'forwards', title: 'PrivacyForwardsTitle', tab: AppPrivacyForwardMessagesTab },
+  { key: 'chat_invite', title: 'PrivacyGroupsTitle', tab: AppPrivacyAddToGroupsTab },
+  { key: 'voice_messages', title: 'PrivacyVoiceMessagesTitle', tab: AppPrivacyVoicesTab },
+  { key: 'messages', title: 'PrivacyMessagesTitle', tab: AppPrivacyMessagesTab },
+  { key: 'birthday', title: 'Privacy.BirthdayRow', tab: AppPrivacyBirthdayTab },
+  { key: 'read_time', title: 'PrivacyReadTimeTitle', tab: AppPrivacyReadTimeTab },
 ]
 
 export default function PrivacySecuritySettings({ onBack }: { onBack: () => void }) {
@@ -95,7 +108,6 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
   const renderSub = (): ReactNode => {
     if (!sub) return null
     const back = () => setSub(null)
-    if (sub in RULE_META) return <PrivacyRule title={sub as LangPackKey} onBack={back} />
     switch (sub) {
       case 'BlockedUsers':
         return <BlockedUsers onBack={back} />
@@ -203,12 +215,14 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
       </Section>
 
       <Section caption="PrivacyTitle" footer="Privacy.MessagesCaption">
-        {RULE_ROWS.map((label) => (
+        {RULE_ROWS.map((r) => (
           <Row
-            key={label}
-            label={RULE_META[label].title}
-            sublabel={ruleSubtitle(rules[RULE_META[label].key], t)}
-            onClick={() => setSub(label)}
+            key={r.key}
+            label={r.title}
+            sublabel={ruleSubtitle(rules[r.key], t)}
+            onClick={() => {
+              getSettingsSliderHost().openTab(r.tab).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
+            }}
           />
         ))}
       </Section>

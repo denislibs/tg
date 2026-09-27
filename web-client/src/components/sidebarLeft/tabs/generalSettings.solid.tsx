@@ -20,11 +20,11 @@
  * | темы чата (`account.getThemes`, `pFlags.default`) | `chatThemes.ts::CHAT_THEMES` — клиентский набор для `messages.setChatTheme` ОДНОГО чата (попап `components/ChatThemesPicker.tsx`), глобально не применяется |
  * | `settings.messagesTextSize` 12–20              | zustand `textSize` (прежний React-экран пускал до 24 — значения выше 20 прижимаются на чтении, `settings.tsx::load`) |
  * | `settings.timeFormat` 'h12' / 'h23'            | zustand `timeFormat` '12h' / '24h' (`codec` моста) |
- * | `settings.increaseContrast`                    | НЕТ (О-34) |
+ * | `settings.increaseContrast`                    | НЕТ (О-37) |
  * | `settings.distanceUnit`                        | НЕТ, и не нужен: секция не рисуется и у tweb |
  *
  * Расхождения с оригиналом:
- *  1. (О-35) Карусели тем `ChatThemesPicker` (`:158-163`, `components/chatThemesPicker.tsx`)
+ *  1. (О-38) Карусели тем `ChatThemesPicker` (`:158-163`, `components/chatThemesPicker.tsx`)
  *     и ряда акцентов `AccentPickerRow` под `GrowHeightReveal` (`:174-176`, `:194-267`)
  *     нет. Выбор плитки у tweb — `themeController.applyNewTheme`: запись облачной
  *     темы в `settings.themes[]` для текущей базы (акцент, цвета исходящих, обои
@@ -39,7 +39,7 @@
  *  2. Отступ формы радио (`style={{'margin-top': '.5rem'}}`, `:164`) снят: он
  *     отделяет форму от карусели (п. 1), без карусели это пустая полоса над
  *     первой строкой. Вернуть вместе с каруселью.
- *  3. (О-34) Тумблера «Increase Contrast» (`:69-75`) нет: настройка
+ *  3. (О-37) Тумблера «Increase Contrast» (`:69-75`) нет: настройка
  *     `increaseContrast` у tweb — часть a11y-коммита 472e3e76b
  *     (`themeController.ts:228-231`, `:332` — класс `html.high-contrast`,
  *     `:576-599` — прижатие контраста `primary`/`secondary-text`/`danger`/`link`/
@@ -95,7 +95,7 @@ const SettingsSection = () => {
     liteModeStatusEl.compareAndUpdate({ key: liteModeStatus() })
   })
 
-  // О-34: тумблер Increase Contrast (tweb :69-75) — расхождение 3 шапки.
+  // О-37: тумблер Increase Contrast (tweb :69-75) — расхождение 3 шапки.
   return (
     <Section name="Settings">
       <RangeSettingSelector
@@ -136,7 +136,7 @@ const THEME_VARIANTS: [ThemeChoice, LangPackKey][] = [
 const ThemeSection = () => {
   const [appSettings, setAppSettings] = useAppSettings()
 
-  // О-35: карусель тем и ряд акцентов (tweb :158-163, :174-176) — расхождение 1.
+  // О-38: карусель тем и ряд акцентов (tweb :158-163, :174-176) — расхождение 1.
   return (
     <Section name="ColorTheme">
       <form>

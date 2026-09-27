@@ -1761,10 +1761,6 @@
           "value": "Something went wrong"
         },
         {
-          "key": "Exceptions",
-          "value": "Exceptions"
-        },
-        {
           "key": "ExportedInvitation.Status.Expired",
           "value": "expired"
         },
@@ -3894,6 +3890,10 @@
           "value": "These users will always see this, regardless of the setting above."
         },
         {
+          "key": "Privacy.Bio",
+          "value": "Who can see my bio"
+        },
+        {
           "key": "Privacy.BioCaption",
           "value": "You can restrict who can see the bio on your profile with granular precision."
         },
@@ -3902,32 +3902,20 @@
           "value": "Who can see my bio?"
         },
         {
-          "key": "Privacy.BirthdayChoose",
-          "value": "Choose who can see your birthday on your profile."
+          "key": "Privacy.Birthday",
+          "value": "Who can see my birthday"
+        },
+        {
+          "key": "Privacy.BirthdayCaption",
+          "value": "You can restrict who can see your birthday with granular precision."
         },
         {
           "key": "Privacy.BirthdayRow",
           "value": "Who can see my birthday?"
         },
         {
-          "key": "Privacy.CallsChoose",
-          "value": "Choose who can call you."
-        },
-        {
-          "key": "Privacy.ForwardsChoose",
-          "value": "Choose who can add a link to your account when forwarding your messages."
-        },
-        {
           "key": "Privacy.GroupsChoose",
           "value": "Choose who can add you to groups and channels."
-        },
-        {
-          "key": "Privacy.LastSeenCaption",
-          "value": "You won't see Last Seen and Online statuses for people with whom you don't share yours. Approximate times will be shown instead (recently, within a week, within a month)."
-        },
-        {
-          "key": "Privacy.LastSeenShortCaption",
-          "value": "You won’t see Last Seen times for people you don’t share yours with."
         },
         {
           "key": "Privacy.MessagesCaption",
@@ -3938,10 +3926,6 @@
           "value": "You can restrict who can send you messages with granular precision."
         },
         {
-          "key": "Privacy.NeverShareCaption",
-          "value": "These users will never see this, regardless of the setting above."
-        },
-        {
           "key": "Privacy.Passkey.Create",
           "value": "Create Passkey"
         },
@@ -3950,20 +3934,8 @@
           "value": "Passkeys"
         },
         {
-          "key": "Privacy.ProfilePhotoCaption",
-          "value": "You can restrict who can see your profile photos and videos with granular precision."
-        },
-        {
-          "key": "Privacy.ProfilePhotoChoose",
-          "value": "Choose who can see your profile photo."
-        },
-        {
           "key": "Privacy.ReadTimeCaption",
           "value": "You won't see when people read your messages if you don't share when you read theirs. This setting does not affect group chats."
-        },
-        {
-          "key": "Privacy.VoiceCustomHelp",
-          "value": "You can restrict who can send you voice messages with granular precision."
         },
         {
           "key": "Privacy.WhoCanSeeThis",
@@ -3978,8 +3950,8 @@
           "value": "Delete All Cloud Drafts"
         },
         {
-          "key": "PrivacyForwardsInfo",
-          "value": "When forwarded to other chats, messages you send will not link back to your account."
+          "key": "PrivacyExceptions",
+          "value": "Exceptions"
         },
         {
           "key": "PrivacyForwardsTitle",
@@ -3992,6 +3964,10 @@
         {
           "key": "PrivacyLastSeen",
           "value": "Last Seen \u0026 Online"
+        },
+        {
+          "key": "PrivacyMessages",
+          "value": "Messages"
         },
         {
           "key": "PrivacyMessagesTitle",
@@ -4008,10 +3984,6 @@
         {
           "key": "PrivacyPhoneInfo",
           "value": "Users who have your number saved in their contacts will also see it on Telegram."
-        },
-        {
-          "key": "PrivacyPhoneInfo2",
-          "value": "Users who add your number will see it only if it is allowed here."
         },
         {
           "key": "PrivacyPhoneInfo3",
@@ -4074,8 +4046,16 @@
           "value": "Everybody"
         },
         {
+          "key": "PrivacySettingsController.Forwards.CustomHelp",
+          "value": "You can restrict who can add a link to your account when forwarding your messages."
+        },
+        {
           "key": "PrivacySettingsController.GroupDescription",
           "value": "You can restrict who can add you to groups and channels with granular precision."
+        },
+        {
+          "key": "PrivacySettingsController.LastSeenDescription",
+          "value": "Unless you are a Premium user, you won't see Last Seen or Online statuses for people with whom you don't share yours. Approximate times will be shown instead (recently, within a week, within a month)."
         },
         {
           "key": "PrivacySettingsController.MyContacts",
@@ -4106,11 +4086,8 @@
           "value": "You can restrict who can call you with granular precision."
         },
         {
-          "key": "PrivacySettingsController.UserCount",
-          "forms": {
-            "one_value": "%d user",
-            "other_value": "%d users"
-          }
+          "key": "PrivacySettingsController.ProfilePhoto.CustomHelp",
+          "value": "You can restrict who can see your profile photo with granular precision."
         },
         {
           "key": "PrivacyTitle",
@@ -4119,6 +4096,10 @@
         {
           "key": "PrivacyVoiceMessages",
           "value": "Voice Messages"
+        },
+        {
+          "key": "PrivacyVoiceMessagesInfo",
+          "value": "You can restrict who can send you voice or video messages with granular precision."
         },
         {
           "key": "PrivacyVoiceMessagesTitle",
@@ -5563,6 +5544,13 @@
           "value": "Username copied to clipboard."
         },
         {
+          "key": "Users",
+          "forms": {
+            "one_value": "%1$d user",
+            "other_value": "%1$d users"
+          }
+        },
+        {
           "key": "UsersOnly",
           "value": "Private Chats"
         },
@@ -5643,6 +5631,10 @@
             "one_value": "%1$d week",
             "other_value": "%1$d weeks"
           }
+        },
+        {
+          "key": "WhoCanAddMe",
+          "value": "Who can add me?"
         },
         {
           "key": "WhoCanCallMe",
@@ -6870,6 +6862,55 @@
         {
           "key": "PrivacySettings.Groups",
           "value": "Группы и каналы"
+        },
+        {
+          "key": "PrivacyExceptions",
+          "value": "Исключения"
+        },
+        {
+          "key": "PrivacyMessages",
+          "value": "Сообщения"
+        },
+        {
+          "key": "Privacy.Bio",
+          "value": "Кто видит раздел «О себе»"
+        },
+        {
+          "key": "WhoCanAddMe",
+          "value": "Кто может приглашать меня?"
+        },
+        {
+          "key": "Privacy.Birthday",
+          "value": "Кто видит мой день рождения"
+        },
+        {
+          "key": "Privacy.BirthdayCaption",
+          "value": "Вы можете точно настроить, кто видит Ваш день рождения."
+        },
+        {
+          "key": "PrivacySettingsController.Forwards.CustomHelp",
+          "value": "Вы можете ограничить, кто может добавлять ссылку на Ваш аккаунт при пересылке Ваших сообщений."
+        },
+        {
+          "key": "PrivacySettingsController.LastSeenDescription",
+          "value": "Если у Вас нет Telegram Premium, Вы не будете видеть время захода и статус «в сети» тех, кому не показываете своё. Вместо этого будет показано приблизительное время (недавно, на этой неделе, в этом месяце)."
+        },
+        {
+          "key": "PrivacyVoiceMessagesInfo",
+          "value": "Вы можете точно настроить, кто может отправлять Вам голосовые и видеосообщения."
+        },
+        {
+          "key": "PrivacySettingsController.ProfilePhoto.CustomHelp",
+          "value": "Вы можете точно настроить, кто видит фото Вашего профиля."
+        },
+        {
+          "key": "Users",
+          "forms": {
+            "one_value": "%1$d пользователь",
+            "few_value": "%1$d пользователя",
+            "many_value": "%1$d пользователей",
+            "other_value": "%1$d пользователя"
+          }
         },
         {
           "key": "General.TextSize",
@@ -9241,36 +9282,12 @@
           "value": "Изменить email для входа"
         },
         {
-          "key": "PrivacyPhoneInfo2",
-          "value": "Пользователи, добавившие ваш номер, увидят его, только если это разрешено здесь."
-        },
-        {
-          "key": "Privacy.LastSeenShortCaption",
-          "value": "Вы не будете видеть время захода тех, кому не показываете своё."
-        },
-        {
-          "key": "Privacy.ProfilePhotoChoose",
-          "value": "Выберите, кто может видеть ваше фото профиля."
-        },
-        {
-          "key": "Privacy.CallsChoose",
-          "value": "Выберите, кто может вам звонить."
-        },
-        {
-          "key": "Privacy.ForwardsChoose",
-          "value": "Выберите, кто может добавлять ссылку на ваш аккаунт при пересылке ваших сообщений."
-        },
-        {
           "key": "Privacy.GroupsChoose",
           "value": "Выберите, кто может добавлять вас в группы и каналы."
         },
         {
           "key": "Privacy.AlwaysShareCaption",
           "value": "Эти пользователи всегда будут это видеть, независимо от настройки выше."
-        },
-        {
-          "key": "Privacy.NeverShareCaption",
-          "value": "Эти пользователи никогда не будут это видеть, независимо от настройки выше."
         },
         {
           "key": "Contacts.NotFound",
@@ -9413,14 +9430,6 @@
           "value": "Пользователи, которые сохранили Ваш номер в телефонную книгу, будут видеть его в Telegram, только если Вы добавили их в контакты."
         },
         {
-          "key": "Privacy.LastSeenCaption",
-          "value": "Вы не будете видеть время последнего захода тех, кому не показываете своё. Вместо этого будет показано приблизительное время (недавно, на этой неделе, в этом месяце)."
-        },
-        {
-          "key": "Privacy.ProfilePhotoCaption",
-          "value": "Вы можете точно настроить, кто видит фото и видео Вашего профиля."
-        },
-        {
           "key": "Privacy.BioCaption",
           "value": "Вы можете точно настроить, кто видит раздел «О себе» в Вашем профиле."
         },
@@ -9429,28 +9438,12 @@
           "value": "Вы можете точно настроить, кто может Вам звонить."
         },
         {
-          "key": "PrivacyForwardsInfo",
-          "value": "При пересылке в другие чаты Ваши сообщения не будут ссылаться на Ваш аккаунт."
-        },
-        {
           "key": "PrivacySettingsController.GroupDescription",
           "value": "Вы можете точно настроить, кто может приглашать Вас в группы и каналы."
         },
         {
-          "key": "Privacy.VoiceCustomHelp",
-          "value": "Вы можете точно настроить, кто может отправлять Вам голосовые сообщения."
-        },
-        {
           "key": "Privacy.MessagesCustomHelp",
           "value": "Вы можете точно настроить, кто может отправлять Вам сообщения."
-        },
-        {
-          "key": "Privacy.BirthdayChoose",
-          "value": "Выберите, кто видит Ваш день рождения в профиле."
-        },
-        {
-          "key": "Exceptions",
-          "value": "Исключения"
         },
         {
           "key": "PrivacySettingsController.PeerInfo",
@@ -9479,15 +9472,6 @@
         {
           "key": "Peer.Type.User",
           "value": "пользователь"
-        },
-        {
-          "key": "PrivacySettingsController.UserCount",
-          "forms": {
-            "one_value": "%d пользователь",
-            "few_value": "%d пользователя",
-            "many_value": "%d пользователей",
-            "other_value": "%d пользователя"
-          }
         },
         {
           "key": "BlockModal.Search.Placeholder",
@@ -11824,6 +11808,53 @@
           "value": "Groupes et canaux"
         },
         {
+          "key": "PrivacyExceptions",
+          "value": "Exceptions"
+        },
+        {
+          "key": "PrivacyMessages",
+          "value": "Messages"
+        },
+        {
+          "key": "Privacy.Bio",
+          "value": "Qui peut voir ma bio"
+        },
+        {
+          "key": "WhoCanAddMe",
+          "value": "Qui peut m'ajouter ?"
+        },
+        {
+          "key": "Privacy.Birthday",
+          "value": "Qui peut voir mon anniversaire"
+        },
+        {
+          "key": "Privacy.BirthdayCaption",
+          "value": "Vous pouvez choisir précisément qui peut voir votre anniversaire."
+        },
+        {
+          "key": "PrivacySettingsController.Forwards.CustomHelp",
+          "value": "Vous pouvez restreindre qui peut ajouter un lien vers votre compte lorsque vos messages sont transférés."
+        },
+        {
+          "key": "PrivacySettingsController.LastSeenDescription",
+          "value": "Sauf si vous êtes utilisateur Premium, vous ne verrez pas la dernière connexion ni le statut en ligne des personnes avec qui vous ne partagez pas les vôtres. Des durées approximatives seront affichées à la place (récemment, dans la semaine, dans le mois)."
+        },
+        {
+          "key": "PrivacyVoiceMessagesInfo",
+          "value": "Vous pouvez choisir précisément qui peut vous envoyer des messages vocaux ou vidéo."
+        },
+        {
+          "key": "PrivacySettingsController.ProfilePhoto.CustomHelp",
+          "value": "Vous pouvez choisir précisément qui peut voir votre photo de profil."
+        },
+        {
+          "key": "Users",
+          "forms": {
+            "one_value": "%1$d utilisateur",
+            "other_value": "%1$d utilisateurs"
+          }
+        },
+        {
           "key": "General.TextSize",
           "value": "Taille du texte"
         },
@@ -13217,36 +13248,12 @@
           "value": "Modifier l'e-mail de connexion"
         },
         {
-          "key": "PrivacyPhoneInfo2",
-          "value": "Les utilisateurs qui ajoutent votre numéro ne le verront que si c'est autorisé ici."
-        },
-        {
-          "key": "Privacy.LastSeenShortCaption",
-          "value": "Vous ne verrez pas la dernière connexion des personnes avec qui vous ne partagez pas la vôtre."
-        },
-        {
-          "key": "Privacy.ProfilePhotoChoose",
-          "value": "Choisissez qui peut voir votre photo de profil."
-        },
-        {
-          "key": "Privacy.CallsChoose",
-          "value": "Choisissez qui peut vous appeler."
-        },
-        {
-          "key": "Privacy.ForwardsChoose",
-          "value": "Choisissez qui peut ajouter un lien vers votre compte lors du transfert de vos messages."
-        },
-        {
           "key": "Privacy.GroupsChoose",
           "value": "Choisissez qui peut vous ajouter à des groupes et des canaux."
         },
         {
           "key": "Privacy.AlwaysShareCaption",
           "value": "Ces utilisateurs verront toujours ceci, quel que soit le réglage ci-dessus."
-        },
-        {
-          "key": "Privacy.NeverShareCaption",
-          "value": "Ces utilisateurs ne verront jamais ceci, quel que soit le réglage ci-dessus."
         },
         {
           "key": "Contacts.NotFound",
@@ -13377,14 +13384,6 @@
           "value": "Les utilisateurs qui ont enregistré votre numéro dans leurs contacts ne le verront sur Telegram que si vous les avez ajoutés à vos contacts."
         },
         {
-          "key": "Privacy.LastSeenCaption",
-          "value": "Vous ne verrez pas la dernière connexion ni le statut en ligne des personnes avec qui vous ne partagez pas les vôtres. Des heures approximatives seront affichées à la place (récemment, cette semaine, ce mois-ci)."
-        },
-        {
-          "key": "Privacy.ProfilePhotoCaption",
-          "value": "Vous pouvez définir précisément qui peut voir les photos et vidéos de votre profil."
-        },
-        {
           "key": "Privacy.BioCaption",
           "value": "Vous pouvez définir précisément qui peut voir la bio de votre profil."
         },
@@ -13393,28 +13392,12 @@
           "value": "Vous pouvez définir précisément qui peut vous appeler."
         },
         {
-          "key": "PrivacyForwardsInfo",
-          "value": "Lorsqu'ils sont transférés vers d'autres discussions, vos messages ne renvoient pas vers votre compte."
-        },
-        {
           "key": "PrivacySettingsController.GroupDescription",
           "value": "Vous pouvez définir précisément qui peut vous ajouter à des groupes et canaux."
         },
         {
-          "key": "Privacy.VoiceCustomHelp",
-          "value": "Vous pouvez définir précisément qui peut vous envoyer des messages vocaux."
-        },
-        {
           "key": "Privacy.MessagesCustomHelp",
           "value": "Vous pouvez définir précisément qui peut vous envoyer des messages."
-        },
-        {
-          "key": "Privacy.BirthdayChoose",
-          "value": "Choisissez qui peut voir votre anniversaire sur votre profil."
-        },
-        {
-          "key": "Exceptions",
-          "value": "Exceptions"
         },
         {
           "key": "PrivacySettingsController.PeerInfo",
@@ -13443,13 +13426,6 @@
         {
           "key": "Peer.Type.User",
           "value": "utilisateur"
-        },
-        {
-          "key": "PrivacySettingsController.UserCount",
-          "forms": {
-            "one_value": "%d utilisateur",
-            "other_value": "%d utilisateurs"
-          }
         },
         {
           "key": "BlockModal.Search.Placeholder",
@@ -14759,6 +14735,53 @@
         {
           "key": "PrivacySettings.Groups",
           "value": "Gruppen \u0026 Kanäle"
+        },
+        {
+          "key": "PrivacyExceptions",
+          "value": "Ausnahmen"
+        },
+        {
+          "key": "PrivacyMessages",
+          "value": "Nachrichten"
+        },
+        {
+          "key": "Privacy.Bio",
+          "value": "Wer kann meine Bio sehen"
+        },
+        {
+          "key": "WhoCanAddMe",
+          "value": "Wer darf mich hinzufügen?"
+        },
+        {
+          "key": "Privacy.Birthday",
+          "value": "Wer kann meinen Geburtstag sehen"
+        },
+        {
+          "key": "Privacy.BirthdayCaption",
+          "value": "Du kannst genau festlegen, wer deinen Geburtstag sehen kann."
+        },
+        {
+          "key": "PrivacySettingsController.Forwards.CustomHelp",
+          "value": "Du kannst einschränken, wer beim Weiterleiten deiner Nachrichten einen Link zu deinem Konto hinzufügen kann."
+        },
+        {
+          "key": "PrivacySettingsController.LastSeenDescription",
+          "value": "Sofern du kein Premium-Nutzer bist, siehst du „Zuletzt online“ und „Online“ von Personen nicht, mit denen du deinen Status nicht teilst. Stattdessen werden ungefähre Zeiten angezeigt (kürzlich, innerhalb einer Woche, innerhalb eines Monats)."
+        },
+        {
+          "key": "PrivacyVoiceMessagesInfo",
+          "value": "Du kannst genau festlegen, wer dir Sprach- oder Videonachrichten senden kann."
+        },
+        {
+          "key": "PrivacySettingsController.ProfilePhoto.CustomHelp",
+          "value": "Du kannst genau festlegen, wer dein Profilbild sehen kann."
+        },
+        {
+          "key": "Users",
+          "forms": {
+            "one_value": "%1$d Nutzer",
+            "other_value": "%1$d Nutzer"
+          }
         },
         {
           "key": "General.TextSize",
@@ -16158,36 +16181,12 @@
           "value": "Login-E-Mail ändern"
         },
         {
-          "key": "PrivacyPhoneInfo2",
-          "value": "Nutzer, die deine Nummer hinzufügen, sehen sie nur, wenn es hier erlaubt ist."
-        },
-        {
-          "key": "Privacy.LastSeenShortCaption",
-          "value": "Du siehst den Zuletzt-gesehen-Status von Personen nicht, mit denen du deinen nicht teilst."
-        },
-        {
-          "key": "Privacy.ProfilePhotoChoose",
-          "value": "Wähle, wer dein Profilbild sehen kann."
-        },
-        {
-          "key": "Privacy.CallsChoose",
-          "value": "Wähle, wer dich anrufen kann."
-        },
-        {
-          "key": "Privacy.ForwardsChoose",
-          "value": "Wähle, wer beim Weiterleiten deiner Nachrichten einen Link zu deinem Konto hinzufügen kann."
-        },
-        {
           "key": "Privacy.GroupsChoose",
           "value": "Wähle, wer dich zu Gruppen und Kanälen hinzufügen kann."
         },
         {
           "key": "Privacy.AlwaysShareCaption",
           "value": "Diese Nutzer sehen dies immer, unabhängig von der Einstellung oben."
-        },
-        {
-          "key": "Privacy.NeverShareCaption",
-          "value": "Diese Nutzer sehen dies nie, unabhängig von der Einstellung oben."
         },
         {
           "key": "Contacts.NotFound",
@@ -16318,14 +16317,6 @@
           "value": "Nutzer, die deine Nummer in ihren Kontakten gespeichert haben, sehen sie auf Telegram nur, wenn du sie zu deinen Kontakten hinzugefügt hast."
         },
         {
-          "key": "Privacy.LastSeenCaption",
-          "value": "Du siehst den „Zuletzt online“- und Online-Status nicht bei Personen, mit denen du deinen nicht teilst. Stattdessen werden ungefähre Zeiten angezeigt (kürzlich, innerhalb einer Woche, innerhalb eines Monats)."
-        },
-        {
-          "key": "Privacy.ProfilePhotoCaption",
-          "value": "Du kannst genau festlegen, wer deine Profilfotos und -videos sehen kann."
-        },
-        {
           "key": "Privacy.BioCaption",
           "value": "Du kannst genau festlegen, wer die Bio in deinem Profil sehen kann."
         },
@@ -16334,28 +16325,12 @@
           "value": "Du kannst genau festlegen, wer dich anrufen kann."
         },
         {
-          "key": "PrivacyForwardsInfo",
-          "value": "Beim Weiterleiten in andere Chats verlinken deine Nachrichten nicht auf dein Konto."
-        },
-        {
           "key": "PrivacySettingsController.GroupDescription",
           "value": "Du kannst genau festlegen, wer dich zu Gruppen und Kanälen hinzufügen kann."
         },
         {
-          "key": "Privacy.VoiceCustomHelp",
-          "value": "Du kannst genau festlegen, wer dir Sprachnachrichten senden kann."
-        },
-        {
           "key": "Privacy.MessagesCustomHelp",
           "value": "Du kannst genau festlegen, wer dir Nachrichten senden kann."
-        },
-        {
-          "key": "Privacy.BirthdayChoose",
-          "value": "Lege fest, wer deinen Geburtstag in deinem Profil sehen kann."
-        },
-        {
-          "key": "Exceptions",
-          "value": "Ausnahmen"
         },
         {
           "key": "PrivacySettingsController.PeerInfo",
@@ -16384,13 +16359,6 @@
         {
           "key": "Peer.Type.User",
           "value": "Nutzer"
-        },
-        {
-          "key": "PrivacySettingsController.UserCount",
-          "forms": {
-            "one_value": "%d Nutzer",
-            "other_value": "%d Nutzer"
-          }
         },
         {
           "key": "BlockModal.Search.Placeholder",
@@ -17720,6 +17688,53 @@
         {
           "key": "PrivacySettings.Groups",
           "value": "Grupos y canales"
+        },
+        {
+          "key": "PrivacyExceptions",
+          "value": "Excepciones"
+        },
+        {
+          "key": "PrivacyMessages",
+          "value": "Mensajes"
+        },
+        {
+          "key": "Privacy.Bio",
+          "value": "Quién puede ver mi biografía"
+        },
+        {
+          "key": "WhoCanAddMe",
+          "value": "¿Quién puede añadirme?"
+        },
+        {
+          "key": "Privacy.Birthday",
+          "value": "Quién puede ver mi cumpleaños"
+        },
+        {
+          "key": "Privacy.BirthdayCaption",
+          "value": "Puedes restringir con precisión quién puede ver tu cumpleaños."
+        },
+        {
+          "key": "PrivacySettingsController.Forwards.CustomHelp",
+          "value": "Puedes restringir quién puede añadir un enlace a tu cuenta al reenviar tus mensajes."
+        },
+        {
+          "key": "PrivacySettingsController.LastSeenDescription",
+          "value": "Salvo que seas usuario Premium, no verás la última conexión ni el estado en línea de las personas con quienes no compartes los tuyos. En su lugar se mostrarán tiempos aproximados (recientemente, en la última semana, en el último mes)."
+        },
+        {
+          "key": "PrivacyVoiceMessagesInfo",
+          "value": "Puedes restringir con precisión quién puede enviarte mensajes de voz o de video."
+        },
+        {
+          "key": "PrivacySettingsController.ProfilePhoto.CustomHelp",
+          "value": "Puedes restringir con precisión quién puede ver tu foto de perfil."
+        },
+        {
+          "key": "Users",
+          "forms": {
+            "one_value": "%1$d usuario",
+            "other_value": "%1$d usuarios"
+          }
         },
         {
           "key": "General.TextSize",
@@ -19119,36 +19134,12 @@
           "value": "Cambiar correo de inicio de sesión"
         },
         {
-          "key": "PrivacyPhoneInfo2",
-          "value": "Los usuarios que añadan tu número solo lo verán si se permite aquí."
-        },
-        {
-          "key": "Privacy.LastSeenShortCaption",
-          "value": "No verás la última conexión de las personas con quienes no compartes la tuya."
-        },
-        {
-          "key": "Privacy.ProfilePhotoChoose",
-          "value": "Elige quién puede ver tu foto de perfil."
-        },
-        {
-          "key": "Privacy.CallsChoose",
-          "value": "Elige quién puede llamarte."
-        },
-        {
-          "key": "Privacy.ForwardsChoose",
-          "value": "Elige quién puede añadir un enlace a tu cuenta al reenviar tus mensajes."
-        },
-        {
           "key": "Privacy.GroupsChoose",
           "value": "Elige quién puede añadirte a grupos y canales."
         },
         {
           "key": "Privacy.AlwaysShareCaption",
           "value": "Estos usuarios siempre verán esto, sin importar el ajuste anterior."
-        },
-        {
-          "key": "Privacy.NeverShareCaption",
-          "value": "Estos usuarios nunca verán esto, sin importar el ajuste anterior."
         },
         {
           "key": "Contacts.NotFound",
@@ -19279,14 +19270,6 @@
           "value": "Los usuarios que tengan tu número guardado en sus contactos lo verán en Telegram solo si los añadiste a tus contactos."
         },
         {
-          "key": "Privacy.LastSeenCaption",
-          "value": "No verás la última conexión ni el estado en línea de las personas con las que no compartes los tuyos. En su lugar, se mostrarán horas aproximadas (recientemente, esta semana, este mes)."
-        },
-        {
-          "key": "Privacy.ProfilePhotoCaption",
-          "value": "Puedes restringir con precisión quién puede ver las fotos y los vídeos de tu perfil."
-        },
-        {
           "key": "Privacy.BioCaption",
           "value": "Puedes restringir con precisión quién puede ver la biografía de tu perfil."
         },
@@ -19295,28 +19278,12 @@
           "value": "Puedes restringir con precisión quién puede llamarte."
         },
         {
-          "key": "PrivacyForwardsInfo",
-          "value": "Al reenviarse a otros chats, los mensajes que envíes no enlazarán a tu cuenta."
-        },
-        {
           "key": "PrivacySettingsController.GroupDescription",
           "value": "Puedes restringir con precisión quién puede añadirte a grupos y canales."
         },
         {
-          "key": "Privacy.VoiceCustomHelp",
-          "value": "Puedes restringir con precisión quién puede enviarte mensajes de voz."
-        },
-        {
           "key": "Privacy.MessagesCustomHelp",
           "value": "Puedes restringir con precisión quién puede enviarte mensajes."
-        },
-        {
-          "key": "Privacy.BirthdayChoose",
-          "value": "Elige quién puede ver tu cumpleaños en tu perfil."
-        },
-        {
-          "key": "Exceptions",
-          "value": "Excepciones"
         },
         {
           "key": "PrivacySettingsController.PeerInfo",
@@ -19345,13 +19312,6 @@
         {
           "key": "Peer.Type.User",
           "value": "usuario"
-        },
-        {
-          "key": "PrivacySettingsController.UserCount",
-          "forms": {
-            "one_value": "%d usuario",
-            "other_value": "%d usuarios"
-          }
         },
         {
           "key": "BlockModal.Search.Placeholder",
@@ -20675,6 +20635,55 @@
         {
           "key": "PrivacySettings.Groups",
           "value": "Групи та канали"
+        },
+        {
+          "key": "PrivacyExceptions",
+          "value": "Винятки"
+        },
+        {
+          "key": "PrivacyMessages",
+          "value": "Повідомлення"
+        },
+        {
+          "key": "Privacy.Bio",
+          "value": "Хто бачить розділ «Про себе»"
+        },
+        {
+          "key": "WhoCanAddMe",
+          "value": "Хто може запрошувати мене?"
+        },
+        {
+          "key": "Privacy.Birthday",
+          "value": "Хто бачить мій день народження"
+        },
+        {
+          "key": "Privacy.BirthdayCaption",
+          "value": "Ви можете точно налаштувати, хто бачить ваш день народження."
+        },
+        {
+          "key": "PrivacySettingsController.Forwards.CustomHelp",
+          "value": "Ви можете обмежити, хто може додавати посилання на ваш акаунт під час пересилання ваших повідомлень."
+        },
+        {
+          "key": "PrivacySettingsController.LastSeenDescription",
+          "value": "Якщо у вас немає Telegram Premium, ви не бачитимете час останнього візиту та статус «в мережі» тих, кому не показуєте свій. Натомість буде показано приблизний час (нещодавно, цього тижня, цього місяця)."
+        },
+        {
+          "key": "PrivacyVoiceMessagesInfo",
+          "value": "Ви можете точно налаштувати, хто може надсилати вам голосові та відеоповідомлення."
+        },
+        {
+          "key": "PrivacySettingsController.ProfilePhoto.CustomHelp",
+          "value": "Ви можете точно налаштувати, хто бачить фото вашого профілю."
+        },
+        {
+          "key": "Users",
+          "forms": {
+            "one_value": "%1$d користувач",
+            "few_value": "%1$d користувачі",
+            "many_value": "%1$d користувачів",
+            "other_value": "%1$d користувача"
+          }
         },
         {
           "key": "General.TextSize",
@@ -22091,36 +22100,12 @@
           "value": "Змінити email для входу"
         },
         {
-          "key": "PrivacyPhoneInfo2",
-          "value": "Користувачі, які додали ваш номер, побачать його, лише якщо це дозволено тут."
-        },
-        {
-          "key": "Privacy.LastSeenShortCaption",
-          "value": "Ви не бачитимете час входу тих, кому не показуєте свій."
-        },
-        {
-          "key": "Privacy.ProfilePhotoChoose",
-          "value": "Оберіть, хто може бачити ваше фото профілю."
-        },
-        {
-          "key": "Privacy.CallsChoose",
-          "value": "Оберіть, хто може вам телефонувати."
-        },
-        {
-          "key": "Privacy.ForwardsChoose",
-          "value": "Оберіть, хто може додавати посилання на ваш акаунт під час пересилання ваших повідомлень."
-        },
-        {
           "key": "Privacy.GroupsChoose",
           "value": "Оберіть, хто може додавати вас до груп і каналів."
         },
         {
           "key": "Privacy.AlwaysShareCaption",
           "value": "Ці користувачі завжди це бачитимуть, незалежно від налаштування вище."
-        },
-        {
-          "key": "Privacy.NeverShareCaption",
-          "value": "Ці користувачі ніколи це не бачитимуть, незалежно від налаштування вище."
         },
         {
           "key": "Contacts.NotFound",
@@ -22251,14 +22236,6 @@
           "value": "Користувачі, які зберегли Ваш номер у телефонній книзі, бачитимуть його в Telegram, лише якщо Ви додали їх у свої контакти."
         },
         {
-          "key": "Privacy.LastSeenCaption",
-          "value": "Ви не бачитимете час останнього входу тих, кому не показуєте свій. Замість цього відображатиметься приблизний час (нещодавно, цього тижня, цього місяця)."
-        },
-        {
-          "key": "Privacy.ProfilePhotoCaption",
-          "value": "Ви можете точно налаштувати, хто бачить фото та відео Вашого профілю."
-        },
-        {
           "key": "Privacy.BioCaption",
           "value": "Ви можете точно налаштувати, хто бачить розділ «Про себе» у Вашому профілі."
         },
@@ -22267,28 +22244,12 @@
           "value": "Ви можете точно налаштувати, хто може Вам телефонувати."
         },
         {
-          "key": "PrivacyForwardsInfo",
-          "value": "Під час пересилання в інші чати Ваші повідомлення не посилатимуться на Ваш акаунт."
-        },
-        {
           "key": "PrivacySettingsController.GroupDescription",
           "value": "Ви можете точно налаштувати, хто може запрошувати Вас у групи та канали."
         },
         {
-          "key": "Privacy.VoiceCustomHelp",
-          "value": "Ви можете точно налаштувати, хто може надсилати Вам голосові повідомлення."
-        },
-        {
           "key": "Privacy.MessagesCustomHelp",
           "value": "Ви можете точно налаштувати, хто може надсилати Вам повідомлення."
-        },
-        {
-          "key": "Privacy.BirthdayChoose",
-          "value": "Виберіть, хто бачить Ваш день народження у профілі."
-        },
-        {
-          "key": "Exceptions",
-          "value": "Винятки"
         },
         {
           "key": "PrivacySettingsController.PeerInfo",
@@ -22317,15 +22278,6 @@
         {
           "key": "Peer.Type.User",
           "value": "користувач"
-        },
-        {
-          "key": "PrivacySettingsController.UserCount",
-          "forms": {
-            "one_value": "%d користувач",
-            "few_value": "%d користувачі",
-            "many_value": "%d користувачів",
-            "other_value": "%d користувача"
-          }
         },
         {
           "key": "BlockModal.Search.Placeholder",

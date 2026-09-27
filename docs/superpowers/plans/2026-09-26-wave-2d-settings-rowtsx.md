@@ -942,11 +942,11 @@ React-«Конфиденциальности» по состоянию паро�
 «Энергосбережения» — эффект по `liteMode.all`; хелперы tweb `eachMinute`/`eachTimeout`; ключи tweb
 `ThemeDay`/`ThemeTinted`/`AutoNightSystemDefault` вместо самодельных `Theme.Light/System/Tinted` (у
 React-экрана `ThemeLight` стоял на `day`, а у tweb `light` = «Day»). **`chatThemesPicker.solid.tsx` НЕ
-заведён — О-35:** плитка у tweb пишет облачную тему в `settings.themes[]` текущей базы
+заведён — О-38:** плитка у tweb пишет облачную тему в `settings.themes[]` текущей базы
 (`applyNewTheme`: акцент, цвета исходящих, обои темы), у нас нет ни `account.getThemes`, ни этой модели
 (тема = пресет + одни обои, О-11), ни глобальной акцент-деривации, ни пресетов акцента — выбору некуда
 писать; четыре карточки React-экрана (по пресету) были нашей выдумкой и не перенесены. Increase Contrast —
-О-34 (a11y 472e3e76b не портирован). `DistanceUnitsSection` не портирован: у tweb
+О-37 (a11y 472e3e76b не портирован). `DistanceUnitsSection` не портирован: у tweb
 `IS_GEOLOCATION_SUPPORTED = … && false`. Наш React `components/ChatThemesPicker.tsx` остаётся — это попап
 темы одного чата (`useChatPopups`), к порту не относится. Сверх плана: прижатие `textSize` > 20 на чтении
 (`settings.tsx::load`, React пускал до 24); подпись времени — `Intl.DateTimeFormat` (скан
@@ -963,7 +963,7 @@ React-экрана `ThemeLight` стоял на `day`, а у tweb `light` = «Da
 **Зависимости:** 5, 14, 2C. **Врезка:** `tabs.ts`, `SettingsView.tsx`, `SettingsSubScreen.tsx`;
 удалить `settings/StickersSettings.tsx`.
 
-### Задача 17: `PrivacySection` + вкладки правил приватности
+### Задача 17: `PrivacySection` + вкладки правил приватности — ✅ сделано (PR feat/w2d-privacy-rules)
 
 **Порт:** `components/privacySection.tsx` (393) → `privacySection.solid.tsx`; `privacy/*.tsx` →
 `sidebarLeft/tabs/privacy/*.solid.tsx` для наших 12 ключей (`privacyManager.ts:8-20`); вкладки
@@ -980,6 +980,29 @@ React-экрана `ThemeLight` стоял на `day`, а у tweb `light` = «Da
 краснеет; сохранение на `onChange` — тест «запись на destroy» краснеет.
 **Зависимости:** 16. **Врезка:** `tabs.ts`, `PrivacySecuritySettings.tsx`; удалить
 `settings/PrivacyRule.tsx`, `PrivacyUserPicker.tsx` (если у `BlockedUsers` его уже нет — иначе в 22).
+
+**Итог (2026-09-27):** `components/privacySection.solid.tsx` — класс, как у tweb (секции через
+`wrapSolidComponent`, запись на `destroy`); вкладки `sidebarLeft/tabs/privacy/{privacyTab,about,
+addToGroups,birthday,calls,forwardMessages,lastSeen,phoneNumber,profilePhoto,voices,readTime}.solid.tsx`
+и `messages/tab.solid.tsx`; объявления — один блок в конце `tabs.ts`, все eventable. «Н..» снято:
+счётчик — `Row.Subtitle` (`generateStr` → `Users`). Исключения — `AppAddMembersTab` `type: 'privacy'`
+с `filterPeerTypeBy: ['isUser']` (О-17); tweb не делает списки взаимоисключающими — наш React делал,
+в порт не перенесено (сервер: Deny перекрывает Allow). Правило пишется на закрытии БЕЗУСЛОВНО, как
+tweb. Кэш правил — `stores/privacyStore.ts` (роль кэша `appPrivacyManager`), запись — `managers.privacy.
+setRule` + зеркало ответа в стор (хаб перерисовывается), при ошибке — `loadPrivacy`. Поправки к
+постановке: (1) `AppPrivacyMessagesTab` «в объёме бэкенда» — не `messages/*`: наш `messages` — обычное
+правило из трёх значений с исключениями, поэтому вкладка — `PrivacySection`, форма eventable (у tweb
+обычная), подпись — наш `Privacy.MessagesCustomHelp`; (2) ключ `read_time` своей вкладки у tweb не
+имеет (у оригинала — тумблер `hide_read_marks` на «Был в сети») — заведена НАША `AppPrivacyReadTimeTab`,
+чтобы не терять серверное правило; судьба строки — задача 23; (3) новые «Отложено»: О-34 (премиум-гейты),
+О-35 («публичное фото»), О-36 (ссылка `t.me/+номер` в подписи) — сверить номера с параллельными PR.
+Врезка: строки правил React-«Конфиденциальности» → `getSettingsSliderHost().openTab(AppPrivacy…Tab)`
+(заголовки и значения строк не трогались — зона задачи 23), `settings/PrivacyRule.tsx` (+ тест) удалён;
+`PrivacyUserPicker.tsx` ОСТАЛСЯ — его импортирует `BlockedUsers.tsx`, снос в задаче 22. Ключи: +11 tweb
+(`PrivacyExceptions`, `PrivacyMessages`, `Privacy.Bio`, `WhoCanAddMe`, `Privacy.Birthday(Caption)`,
+`PrivacySettingsController.{Forwards.CustomHelp,LastSeenDescription,ProfilePhoto.CustomHelp}`,
+`PrivacyVoiceMessagesInfo`, `Users`), сняты 13 без читателей (подписи прежнего экрана и давно мёртвые
+`Privacy.*Choose`/`PrivacyPhoneInfo2`/…). Стенд не трогался.
 
 ### Задача 20: «Автоудаление» (2C)
 
@@ -1187,8 +1210,11 @@ media; брать задачу, когда в них нет открытых в�
 | О-31 | Права отправки в селекторе пиров: `chatRightsActions`/`filterByRights`, звёзды за сообщение (`starsAmountByPeer`, бейдж), замок премиума (`OnlyPremiumCanMessage`), `appSelectPeers.tsx:321-365`, `:443-457` | нет `getRequirementToContact` и платы звёздами за личное сообщение; единственный потребитель у tweb — попап пересылки (у нас React `ForwardPicker`) | пересылка на `AppSelectPeers` 1:1 |
 | О-32 | `AppSelectPeers.convertPeerTypes` и типы `isBot`/`isRegularUser`/`isBroadcast` (`appSelectPeers.tsx:606-618`) | зовёт только `requestPeer` ботов (`keyboardButtonRequestPeer`) — кнопок ботов нет | выбор пира по кнопке бота |
 | О-33 | Категории в выборе участников (`extraCategories`, «мини-приложения» в исключениях приватности, `addMembers.tsx:98-136`, `privacySection.tsx:204-209`) | нет мини-приложений и такого правила приватности | исключение «мини-приложения» |
-| О-34 | Increase Contrast в «Общих» (`generalSettings.tsx:69-75`): настройка `increaseContrast`, класс `html.high-contrast`, прижатие контраста цветов и `*-button-color` (`themeController.ts:228-231`, `:332`, `:576-599`), `scss/partials/_accessibility.scss` | часть a11y-коммита 472e3e76b, у нас не портирована деривация контраста — тумблер ничего бы не менял (сверить номер с параллельными ветками) | режим повышенного контраста |
-| О-35 | Карусель облачных тем `ChatThemesPicker` и ряд акцентов `AccentPickerRow` в «Общих» (`generalSettings.tsx:158-176`, `:194-267`, `components/chatThemesPicker.tsx`) | нет `account.getThemes` на бэкенде и модели `settings.themes[]` (облачная тема/акцент-пресет на базу: `accent_color`, `message_colors`, обои — `applyNewTheme`/`applyAccentPreset`/`resetActiveTheme`); глобальной акцент-деривации нет (`deriveChatThemeVars` — только колонка чата с темой), пресетов акцента `getAccentPresetsForBase` нет (сверить номер с параллельными ветками) | тема приложения из облачных тем и акцентов, обои по темам (вместе с О-11) |
+| О-34 | Премиум-гейты правил приватности: замок голосовых (`premiumOnly`/`premiumCaption`/`premiumError`, `privacy/voices.tsx:18-22`, `privacySection.tsx:112-132`, `:254-282`), кнопка «Premium: last seen» (`privacy/lastSeen.tsx:75-84`), «Контакты и Premium» и замки в «Сообщениях» (`privacy/messages/optionsSection.tsx`) | сервер не требует премиум ни для одного правила и не пропускает Premium при «Мои контакты»; попап премиума — React (2C) | премиум-проверки правил на сервере + Solid `showPremiumPopup` |
+| О-35 | «Публичное фото» профиля (`privacy/profilePhoto.tsx:19-156`) | нет `fallback_photo` в модели и на проводе, нет загрузки/снятия запасного фото | секция PublicPhoto |
+| О-36 | Ссылка `t.me/+<номер>` в подписи «Номера телефона» (`privacy/phoneNumber.tsx:19-30`, `PrivacyPhoneInfo4`, `anchorCopy`) | публичной ссылки на чат по номеру у нас нет | подпись номера 1:1 |
+| О-37 | Increase Contrast в «Общих» (`generalSettings.tsx:69-75`): настройка `increaseContrast`, класс `html.high-contrast`, прижатие контраста цветов и `*-button-color` (`themeController.ts:228-231`, `:332`, `:576-599`), `scss/partials/_accessibility.scss` | часть a11y-коммита 472e3e76b, у нас не портирована деривация контраста — тумблер ничего бы не менял (сверить номер с параллельными ветками) | режим повышенного контраста |
+| О-38 | Карусель облачных тем `ChatThemesPicker` и ряд акцентов `AccentPickerRow` в «Общих» (`generalSettings.tsx:158-176`, `:194-267`, `components/chatThemesPicker.tsx`) | нет `account.getThemes` на бэкенде и модели `settings.themes[]` (облачная тема/акцент-пресет на базу: `accent_color`, `message_colors`, обои — `applyNewTheme`/`applyAccentPreset`/`resetActiveTheme`); глобальной акцент-деривации нет (`deriveChatThemeVars` — только колонка чата с темой), пресетов акцента `getAccentPresetsForBase` нет (сверить номер с параллельными ветками) | тема приложения из облачных тем и акцентов, обои по темам (вместе с О-11) |
 
 ## Оценка объёма
 

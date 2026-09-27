@@ -318,12 +318,25 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `PasscodeLock.AutoLock.Caption`, `Unit.Minutes.Abbr` (и у ru `Common.Next`):
 // ru 1356 → 1352, остальные −3 (uk 689, de 687, es 687, fr 686).
 // Поверх задач 7, 9, 10, 11, 12, 14, 16, 19 и корня настроек: ru 1382, uk 719, es 717, de 717, fr 713.
+//
+// Задача 17 плана 2D (вкладки правил приватности, порт tweb privacySection/privacy/*):
+// +11 ключей tweb lang.ts — `PrivacyExceptions`, `PrivacyMessages`, `Privacy.Bio`,
+// `WhoCanAddMe`, `Privacy.Birthday`, `Privacy.BirthdayCaption`,
+// `PrivacySettingsController.{Forwards.CustomHelp,LastSeenDescription,ProfilePhoto.CustomHelp}`,
+// `PrivacyVoiceMessagesInfo` и числовой `Users` (у fr `PrivacyExceptions`/`PrivacyMessages`
+// совпали с английским — в `SAME_AS_ENGLISH`, вместо снятого `Exceptions`). Сняты 13
+// ключей без читателей: подписи и счётчик снесённого `settings/PrivacyRule.tsx`
+// (`Exceptions`, `PrivacySettingsController.UserCount`, `Privacy.{LastSeen,ProfilePhoto}Caption`,
+// `Privacy.VoiceCustomHelp`, `Privacy.BirthdayChoose`, `PrivacyForwardsInfo`) и давно
+// мёртвые подписи того же экрана (`PrivacyPhoneInfo2`, `Privacy.LastSeenShortCaption`,
+// `Privacy.{ProfilePhoto,Calls,Forwards}Choose`, `Privacy.NeverShareCaption`). Итого −2 у
+// всех пяти (plural без изменений: `UserCount` → `Users`): ru 1380, uk 717, es 715, de 715, fr 711.
 const COMPOSITION = {
-  ru: { keys: 1382, plural: 38 },
-  uk: { keys: 719, plural: 27 },
-  es: { keys: 717, plural: 26 },
-  de: { keys: 717, plural: 27 },
-  fr: { keys: 713, plural: 26 },
+  ru: { keys: 1380, plural: 38 },
+  uk: { keys: 717, plural: 27 },
+  es: { keys: 715, plural: 26 },
+  de: { keys: 715, plural: 27 },
+  fr: { keys: 711, plural: 26 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -434,15 +447,17 @@ const COMPOSITION = {
 // (разбор — у `COMPOSITION` выше).
 // Задачей 16 плана 2D — подпись пустой выдачи селектора пиров (разбор — там же).
 // Задачей 18 плана 2D — ключи вкладки «Код-пароль» (разбор — у `COMPOSITION` выше).
+// Задачей 17 плана 2D — ключи вкладок правил приватности вместо ключей снесённого
+// React-экрана правила (разбор — у `COMPOSITION` выше).
 // Задачей 13 плана 2D — самодельные `Theme.Light`/`Theme.System`/`Theme.Tinted`
 // снесённого React-экрана «Общих» заменены ключами tweb `ThemeDay`/`ThemeTinted`/
 // `AutoNightSystemDefault` у всех пяти: −3 +3, число строк то же.
 const FINGERPRINT = {
-  ru: '0eb68931',
-  uk: '164bcb21',
-  es: '23084e06',
-  de: '195e451f',
-  fr: '3830d04a',
+  ru: '6540b141',
+  uk: '8be7a2db',
+  es: 'a09e1ca8',
+  de: '6becf26d',
+  fr: '6e733d68',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
@@ -789,7 +804,8 @@ const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
     'Chat.Poll.Type.Quiz': '«quiz» — заимствование',
     AttachContact: '«contact» — французское слово',
     'SharedMedia.Audio': '«audio» — французское слово',
-    Exceptions: '«exceptions» — французское слово',
+    PrivacyExceptions: '«exceptions» — французское слово',
+    PrivacyMessages: '«messages» — французское слово',
     'StorageQuota.CacheSizeLimitAuto': '«auto» — сокращение от «automatique»',
     'KeyboardShortcuts.Action.Monospace': '«monospace» — типографский термин',
     'KeyboardShortcuts.Action.Spoiler': '«spoiler» — заимствование',
