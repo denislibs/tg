@@ -9,14 +9,16 @@
  *
  * Расхождения с оригиналом:
  *  1. `usePasscodeActions()` → `passcodeActions(tab.managers.persist)`
- *     (`core/passcode.ts`): у нас действиям нужен только writer офлайн-стора.
+ *     (`lib/passcode/actions.ts`): не хук — канал к воркеру у нас синглтон,
+ *     а включению нужен writer офлайн-стора.
  *  2. `keepMe(ripple)` → `void ripple` (как у `inlineSelect.solid.tsx`).
  *  3. Строгие типы: `inputField!` (присваивается `instanceRef` при создании
  *     поля), `.input` приводится к `HTMLInputElement` один раз.
  */
 import { createEffect, createSignal, onCleanup } from 'solid-js'
 import { i18n } from '@lib/langPack'
-import { MAX_PASSCODE_LENGTH, passcodeActions } from '@core/passcode'
+import { MAX_PASSCODE_LENGTH } from '@lib/passcode/constants'
+import { passcodeActions } from '@lib/passcode/actions'
 import SettingsTabLottieAnimation from '@components/settingsTabLottieAnimation.solid'
 import { InputFieldTsx } from '@components/inputFieldTsx.solid'
 import PasswordInputField from '@components/passwordInputField'

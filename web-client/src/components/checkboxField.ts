@@ -20,10 +20,9 @@
  *    настроек, у которой он появился вызывающим: `checkboxFieldTsx.solid.ts`
  *    → `sidebarLeft/tabs/language.solid.tsx`. Разметка дословная, tweb
  *    :117-129. Подветка `restriction` внутри неё (`:120-122`) не перенесена
- *    вместе с самим `restriction` — см. ниже. Toggle-ветка `row.ts`
- *    (`checkboxFieldOptions.toggle`) от этого достижимой НЕ становится: её
- *    держит не `CheckboxField`, а отсутствие вызывающего у самого `row.ts`, —
- *    остаток #110);
+ *    вместе с самим `restriction` — см. ниже. Ванильный `row.ts` с его
+ *    toggle-веткой (`checkboxFieldOptions.toggle`) снят задачей 29 плана 2D;
+ *    строки кладут поле через `Row.CheckboxFieldToggle` (`rowTsx.solid.tsx`));
  *  • `stateKey`/`stateValues`/`stateValueReverse` — двусторонняя привязка к
  *    `appStateManager` (tweb `rootScope.managers`/`apiManagerProxy`); у нас
  *    состояние живёт в zustand-сторах, а у обоих вызывающих его нет вовсе;

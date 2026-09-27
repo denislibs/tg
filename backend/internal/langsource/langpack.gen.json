@@ -333,6 +333,10 @@
           "value": "When connected to Wi-Fi"
         },
         {
+          "key": "AutoNightSystemDefault",
+          "value": "System Default"
+        },
+        {
           "key": "AutodownloadChannels",
           "value": "Channels"
         },
@@ -5310,16 +5314,8 @@
           "value": "Message Text Size"
         },
         {
-          "key": "Theme.Light",
-          "value": "Light"
-        },
-        {
-          "key": "Theme.System",
-          "value": "System"
-        },
-        {
-          "key": "Theme.Tinted",
-          "value": "Tinted"
+          "key": "ThemeDay",
+          "value": "Classic"
         },
         {
           "key": "ThemeLight",
@@ -5328,6 +5324,10 @@
         {
           "key": "ThemeNight",
           "value": "Night"
+        },
+        {
+          "key": "ThemeTinted",
+          "value": "Dark"
         },
         {
           "key": "Topics",
@@ -6159,16 +6159,16 @@
           "value": "Дневная"
         },
         {
-          "key": "Theme.Light",
-          "value": "Светлая"
+          "key": "ThemeDay",
+          "value": "Классическая"
         },
         {
-          "key": "Theme.Tinted",
+          "key": "ThemeTinted",
           "value": "Тёмная"
         },
         {
-          "key": "Theme.System",
-          "value": "По умолчанию"
+          "key": "AutoNightSystemDefault",
+          "value": "Как в системе"
         },
         {
           "key": "ChatBackground",
@@ -11572,16 +11572,16 @@
           "value": "Jour"
         },
         {
-          "key": "Theme.Light",
-          "value": "Clair"
+          "key": "ThemeDay",
+          "value": "Classique"
         },
         {
-          "key": "Theme.Tinted",
-          "value": "Teinté"
+          "key": "ThemeTinted",
+          "value": "Sombre"
         },
         {
-          "key": "Theme.System",
-          "value": "Système"
+          "key": "AutoNightSystemDefault",
+          "value": "Par défaut du système"
         },
         {
           "key": "ChatBackground",
@@ -14567,16 +14567,16 @@
           "value": "Tag"
         },
         {
-          "key": "Theme.Light",
-          "value": "Hell"
+          "key": "ThemeDay",
+          "value": "Klassisch"
         },
         {
-          "key": "Theme.Tinted",
-          "value": "Getönt"
+          "key": "ThemeTinted",
+          "value": "Dunkel"
         },
         {
-          "key": "Theme.System",
-          "value": "System"
+          "key": "AutoNightSystemDefault",
+          "value": "Systemstandard"
         },
         {
           "key": "ChatBackground",
@@ -17584,16 +17584,16 @@
           "value": "Día"
         },
         {
-          "key": "Theme.Light",
-          "value": "Claro"
+          "key": "ThemeDay",
+          "value": "Clásico"
         },
         {
-          "key": "Theme.Tinted",
+          "key": "ThemeTinted",
           "value": "Oscuro"
         },
         {
-          "key": "Theme.System",
-          "value": "Sistema"
+          "key": "AutoNightSystemDefault",
+          "value": "Predeterminado del sistema"
         },
         {
           "key": "ChatBackground",
@@ -20599,16 +20599,16 @@
           "value": "Денна"
         },
         {
-          "key": "Theme.Light",
-          "value": "Світла"
+          "key": "ThemeDay",
+          "value": "Класична"
         },
         {
-          "key": "Theme.Tinted",
+          "key": "ThemeTinted",
           "value": "Темна"
         },
         {
-          "key": "Theme.System",
-          "value": "За замовчуванням"
+          "key": "AutoNightSystemDefault",
+          "value": "Як у системі"
         },
         {
           "key": "ChatBackground",

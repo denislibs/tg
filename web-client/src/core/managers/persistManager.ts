@@ -16,7 +16,7 @@
 // подставлен как `saveCache` в workerCore.ts), `me` — в `workerCore.ts::setMe`
 // (write-through, тот же приём, что и `stateKey` ниже — «блоб маленький,
 // дебаунс не нужен»). Второго RPC-пути этих же двух записей больше нет.
-import { saveStateKey, persistClearAll } from '../store/persist'
+import { saveStateKey, persistClearAll, persistScope } from '../store/persist'
 import type { AppState } from '../state/state'
 
 /**
@@ -28,12 +28,30 @@ import type { AppState } from '../state/state'
  * @param onStateKey Task 1 (владение диалогами): dialogsManager обязан узнать
  *   про смену ключей, от которых зависит порядок (`pinnedOrders`/`drafts`), —
  *   он сам в стор не ходит, а держит их копией в памяти (см. setStateKey).
+ * @param tokens владелец активного токена (`TokenStore` воркера) — для
+ *   `scopeToSession`; опционален ради юнит-тестов State.
  */
 export function newPersistManager(
   mirrorStateKey?: (key: string, value: unknown) => void,
   onStateKey?: (key: string, value: unknown) => void,
+  tokens?: { ready(): Promise<void>, get(): string | null },
 ) {
   return {
+    // S10: скоуп офлайн-стора по активному токену (persistScope) ДО чтения State
+    // на холодном старте вкладки. Раньше вкладка читала `session_token` из
+    // `msgr/kv` сама и звала persistScope у себя; под код-паролем токен лежит
+    // только в зашифрованном слое воркера, и наружу он теперь не выходит вовсе —
+    // вкладка получает лишь «сессия есть». Зовётся на КАЖДОМ старте вкладки:
+    // воркерный вызов в `start()` один на жизнь воркера, а SharedWorker
+    // переживает перезагрузку при переключении аккаунта (см. boot.order.test.ts).
+    // До разблокировки не завершится: `tokens.ready()` ждёт ключ.
+    scopeToSession: async (): Promise<boolean> => {
+      if (!tokens) return false
+      await tokens.ready()
+      const token = tokens.get()
+      await persistScope(token)
+      return !!token
+    },
     // Один ключ State (порт tweb appStateManager.setByKey). Пишется write-through
     // из stores/appState на каждое изменение — блоб маленький, дебаунс не нужен.
     // Через RPC-границу идут сериализуемые значения, поэтому ключ здесь строка;

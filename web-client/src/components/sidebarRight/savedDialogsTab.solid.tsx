@@ -32,7 +32,7 @@
 //    `isOutMessage`); правило открытия — общее `core/navigation/openPeer.ts`.
 //    Строка «Мои заметки» (источник — сам зритель) не открывает ничего.
 //  • Контекстное меню строки (`withContext: true`, `:1913`) — `createContextMenu`
-//    у нас не портирован (шапка `components/row.ts`).
+//    строке не передаётся (пунктов с предметом нет).
 import { createSignal, createMemo, onMount, onCleanup, type Component } from 'solid-js'
 import type { Managers } from '@/client/bootstrap'
 import type { SavedDialog } from '@core/managers/chatsManager'

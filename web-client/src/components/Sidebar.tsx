@@ -28,7 +28,8 @@ import useMediaQuery from '../shared/lib/useMediaQuery'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import IconButton from '../shared/ui/IconButton'
-import { useLockStore } from '../stores/lockStore'
+import PasscodeLockScreenController from './passcodeLockScreenController'
+import { lockAndReload } from '../client/passcodeClient'
 import SidebarMenuButton from './SidebarMenuButton'
 import SidebarEmojiStatusButton from './SidebarEmojiStatusButton'
 import ComposeFab from './ComposeFab'
@@ -400,7 +401,9 @@ export default function Sidebar({
         {/* Замок над списком чатов при включённом код-пароле (tweb sidebar-lock-button). */}
         {passcodeEnabled && !searching && (
           <IconButton
-            onClick={() => useLockStore.getState().lock()}
+            // tweb lockButton.tsx:53-54: экран, затем воркер завершается вместе
+            // с ключом и все вкладки перезагружаются на экран блокировки
+            onClick={() => { PasscodeLockScreenController.lock(); lockAndReload() }}
             color="var(--secondary-text-color)"
             aria-label={t('PasscodeLock.LockNow')}
             title={t('PasscodeLock.LockNow')}

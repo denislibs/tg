@@ -1,6 +1,4 @@
-// Порт tweb `src/tests/rowIconBackground.test.ts` (tweb 2197fee9c → HEAD 812502980)
-// + `setRowIconBackground` — хелпер ванильной строки из 2197fee9c (у tweb он ушёл
-// вместе с `row.ts` в ef41b29db; наш `components/row.ts` жив, хелпер — с ним).
+// Порт tweb `src/tests/rowIconBackground.test.ts` (tweb 2197fee9c → HEAD 812502980).
 import { describe, expect, test } from 'vitest'
 import {
   getRowIconBackground,
@@ -8,7 +6,6 @@ import {
   getRowIconBackgroundImage,
   ROW_ICON_COLOR_BY_NAME,
   ROW_ICON_COLORS,
-  setRowIconBackground,
 } from '@helpers/rowIconBackground'
 
 describe('getRowIconBackground', () => {
@@ -87,14 +84,5 @@ describe('getRowIconBackgroundImage', () => {
   test('reuses the global premium gradient for the premium icon', () => {
     expect(ROW_ICON_COLOR_BY_NAME.premium_badge).toBeUndefined()
     expect(getRowIconBackgroundImage('premium_badge')).toBe('var(--premium-gradient)')
-  })
-})
-
-describe('setRowIconBackground (tweb 2197fee9c, row.ts)', () => {
-  test('помечает контейнер `row-icon-colored` и кладёт градиент в inline background-image', () => {
-    const el = document.createElement('span')
-    setRowIconBackground(el, 'bell_filled')
-    expect(el.classList.contains('row-icon-colored')).toBe(true)
-    expect(el.style.backgroundImage).toBe(getRowIconBackground(ROW_ICON_COLORS.red))
   })
 })

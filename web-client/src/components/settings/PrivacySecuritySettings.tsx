@@ -14,6 +14,7 @@ import ConfirmDialog from './ConfirmDialog'
 import { useSettingsStore } from '../../settings'
 import { useT, useTArgs } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
+import { commandThenReload } from '../../core/accountTransition'
 import { getSettingsSliderHost, openActiveSessionsTab } from '../sidebarLeft/settingsSliderHost'
 import {
   AppPasscodeEnterPasswordTab,
@@ -269,7 +270,7 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
           onConfirm={() => {
             // сервер отзывает все сессии; после перезагрузки me()→null → экран входа
             // (или переключение на оставшийся аккаунт, как при logout).
-            void managers.auth.deleteAccount().finally(() => location.reload())
+            void commandThenReload(managers.auth.deleteAccount())
           }}
           onClose={() => setDeleteAccount(false)}
         />

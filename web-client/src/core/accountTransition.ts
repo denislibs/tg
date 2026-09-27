@@ -8,6 +8,7 @@
 //   (translateY(18px) scale(1.01) + fade, 200мс).
 // Флаги — в localStorage (tweb: sessionStorage should_animate_auth/main).
 import { doubleRaf } from '@helpers/schedulers'
+import { saveEncryptionKeyForHandoff } from '@lib/passcode/keyHandoff'
 
 export const ANIMATE_AUTH_KEY = 'msgr_animate_auth'
 export const ANIMATE_MAIN_KEY = 'msgr_animate_main'
@@ -19,22 +20,25 @@ export const pause = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 /**
  * Команда перехода воркеру + перезагрузка ПОСЛЕ неё, чем бы команда ни
  * кончилась. Общая точка для всех вкладок-инициаторов (меню аккаунтов,
- * «добавить аккаунт», возврат к прежнему аккаунту, логаут с экрана пасскода).
+ * «добавить аккаунт», возврат к прежнему аккаунту, удаление аккаунта).
  *
  * Отказ глотаем сознательно: команды перехода больше не реджектятся из-за
  * сети (`authManager.fetchMe(rederive)` не бросает наружу), остаётся сбой
  * IndexedDB при работе с реестром аккаунтов. Его исход неизвестен — токен мог
  * смениться, а мог и нет. Без перезагрузки вкладка застревала бы в интерфейсе
- * покинутого аккаунта (а на экране пасскода — прямо на нём, там кадр
- * rt:logging_out до неё не долетает: насос `smp.on` регистрируется в
- * `startRealtime()`, а тот гейтится `runWhenUnlocked`); reload же выводит
- * состояние с диска заново и потому верен при любом исходе. Тот же приём, что
- * у tweb `logOut()`: `.catch(error => error.handled = true).finally(clear)`
+ * покинутого аккаунта; reload же выводит состояние с диска заново и потому
+ * верен при любом исходе. Тот же приём, что у tweb `logOut()`:
+ * `.catch(error => error.handled = true).finally(clear)`
  * (`lib/appManagers/apiManager.ts:341-345`) — очистка доводится до конца, а
  * ошибка наружу не идёт.
+ *
+ * Под код-паролем ключ перед перезагрузкой кладётся в `window.sessionStorage`
+ * вкладки (tweb 65c6ea8f8, `lib/passcode/keyHandoff.ts`): переход не спрашивает
+ * код заново, а на диск ключ не попадает.
  */
 export async function commandThenReload(command: Promise<unknown>): Promise<void> {
   try { await command } catch { /* исход неизвестен — см. докблок */ }
+  try { await saveEncryptionKeyForHandoff() } catch { /* без ключа — экран кода после reload */ }
   location.reload()
 }
 

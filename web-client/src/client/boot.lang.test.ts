@@ -30,19 +30,19 @@ vi.mock('./bootstrap', () => ({
   startClient: () => ({
     managers: {
       auth: { me: vi.fn(async () => null) },
-      persist: { stateKey: vi.fn(async () => {}) },
+      persist: { stateKey: vi.fn(async () => {}), scopeToSession: vi.fn(async () => true) },
       dialogs: { fillMirror: vi.fn(async () => null), refresh: vi.fn(async () => null) },
       langPack,
     },
     ep: {},
+    // канал код-пароля: кода нет — старт не ждёт разблокировки
+    smp: { on: vi.fn(), invoke: vi.fn(async () => ({ isUsingPasscode: false, isLocked: false })) },
   }),
 }))
 vi.mock('./dnpBridgeHandoff', () => ({ installBridgeHandoff: vi.fn() }))
 vi.mock('../core/pwa', () => ({ initPwaInstall: vi.fn() }))
 vi.mock('../core/preventDeadlock', () => ({ preventCrossTabDynamicImportDeadlock: vi.fn(async () => {}) }))
 vi.mock('../core/state/migrateRecentSearch', () => ({ migrateRecentSearchFromLocalStorage: vi.fn() }))
-vi.mock('../core/store/idbKv', () => ({ idbGet: vi.fn(async () => 'TOKEN') }))
-vi.mock('../core/store/persist', () => ({ persistScope: vi.fn(async () => {}) }))
 vi.mock('../core/state/loadState', async () => {
   const { initialState } = await import('../core/state/state')
   return {

@@ -28,10 +28,12 @@ import SettingsView from '../SettingsView'
 import PrivacySecuritySettings from '../settings/PrivacySecuritySettings'
 import { createSettingsSliderHost } from './settingsSliderHost'
 import { useSettingsStore } from '@/settings'
-import { enablePasscode } from '@core/passcode'
+import { enablePasscode } from '@lib/passcode/actions'
 
 // Для «Код-пароля»: IndexedDB — словарь в памяти (хеш кода кладёт настоящий
-// `core/passcode.ts`), лотти-заставка — заглушка.
+// `lib/passcode/actions.ts`), канал к воркеру (шифрует хранилища) — заглушка,
+// лотти-заставка — заглушка.
+vi.mock('@/client/passcodeClient', () => ({ invokePasscode: vi.fn(async() => undefined) }))
 const idb = vi.hoisted(() => new Map<string, unknown>())
 vi.mock('@core/store/idbKv', () => ({
   idbGet: async(key: string) => idb.get(key),
@@ -290,5 +292,24 @@ describe('шов React → слайдер: проводка вкладок «К�
     expect(tabs()[0].textContent).toContain('Turn Passcode Off')
 
     host.destroy()
+  })
+})
+
+// Строка «General Settings» корня настроек (план 2D, задача 13) — единственный
+// вход во вкладку «Общие», пока корень React'овый (tweb `settings.tsx:255`).
+describe('шов React → слайдер: проводка вкладки «Общие»', () => {
+  it('строка «General Settings» в корне настроек открывает вкладку «Общие»', async() => {
+    const { managers } = makeManagers()
+    const { getByText } = mountSettings(managers)
+    expect(openedTab()).toBeNull()
+
+    await act(async() => { fireEvent.click(getByText('General Settings')) })
+    await flush(() => !!openedTab()?.querySelector('.range-setting-selector'))
+
+    const tab = openedTab()
+    expect(tab).not.toBeNull()
+    expect(tab!.querySelector('.sidebar-header__title')!.textContent).toBe('General Settings')
+    // React-подэкрана «Общих» больше нет — ни второго экрана, ни его шапки.
+    expect(columnEl.querySelectorAll('.range-setting-selector')).toHaveLength(1)
   })
 })

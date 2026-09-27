@@ -136,6 +136,17 @@ const APP_SETTINGS_KEYS = {
   // tweb `config/state.ts:159-160`
   cacheTTL: 'cacheTTL',
   cacheSize: 'cacheSize',
+  // tweb `config/state.ts` — «Общие» (задача 13): `messagesTextSize`, `theme`
+  // (значения совпадают с нашим `ThemeChoice` один в один: day = Classic,
+  // light = Day, night, tinted = Dark, system), `timeFormat` ('h12' | 'h23' ↔
+  // наш '12h' | '24h' — его читают `settings.tsx::hourCycle` и `localStorage`).
+  messagesTextSize: 'textSize',
+  theme: 'themeChoice',
+  timeFormat: codec(
+    'timeFormat',
+    (format): 'h12' | 'h23' => format === '12h' ? 'h12' : 'h23',
+    (format: 'h12' | 'h23') => format === 'h12' ? '12h' : '24h',
+  ),
   // tweb `config/state.ts` (`settings.tabsInSidebar`) — «Расположение папок»
   // вкладки «Папки» (задача 24)
   tabsInSidebar: 'tabsInSidebar',

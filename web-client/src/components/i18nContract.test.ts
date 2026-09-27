@@ -1,7 +1,8 @@
 // ── КОНТРАКТ ПОДПИСИ: ключ на входе, ПЕРЕВОД на экране ────────────────────────────
 //
 // Задача 7 сняла раскол: до неё часть ванильных компонентов брала ключ и переводила
-// сама (`Button`, `Row`, `SettingSection` — снят задачей 9 плана 2D, `toastNew`), а часть ждала уже переведённую
+// сама (`Button`, `Row` — снят задачей 29 плана 2D вместе с `row.ts`, `SettingSection` — снят задачей 9,
+// `toastNew`), а часть ждала уже переведённую
 // строку (`ButtonMenuItem.text`, `PopupButton.text`) — и по сигнатуре `text?: string`
 // одно от другого не отличалось. Волна 2 на этом показала пользователю сырой ключ
 // «Terminate» в контекстном меню, задача 6 — сырую надпись на кнопке подтверждения во
@@ -22,7 +23,6 @@ import { ButtonMenuItem } from './buttonMenu'
 import CheckboxField from './checkboxField'
 import PopupElement from './popups/popupElement'
 import PopupPeer from './popups/popupPeer'
-import Row from './row'
 import { toastNew, hideToast } from './toast'
 
 beforeAll(async () => {
@@ -33,12 +33,6 @@ beforeAll(async () => {
 describe('ванильные подписи показывают перевод, а не ключ', () => {
   it('кнопка', () => {
     expect(Button('btn', { text: 'Cancel' }).textContent).toBe('Отмена')
-  })
-
-  it('строка настроек — заголовок и подзаголовок', () => {
-    const row = new Row({ titleLangKey: 'CurrentSession', subtitleLangKey: 'ClearOtherSessionsHelp' })
-    expect(row.title.textContent).toBe('Это устройство')
-    expect(row.subtitle.textContent).toBe('Завершает сеансы на всех устройствах, кроме этого.')
   })
 
   // Две стороны, ради которых задача 7 и делалась: ДО неё обе ждали ГОТОВУЮ строку,
@@ -86,8 +80,7 @@ describe('ванильные подписи показывают перевод,
 // раскол, только с другой стороны.
 describe('аргументы подставляются внутри компонента, а не вызывающим', () => {
   it('форму числа выбирает язык, а не вызывающий', () => {
-    const row = new Row({ titleLangKey: 'Notifications.Count', titleLangArgs: [2] })
-    expect(row.title.textContent).toBe('2 уведомления')
+    expect(Button('btn', { text: 'Notifications.Count', textArgs: [2] }).textContent).toBe('2 уведомления')
   })
 
   it('узел-аргумент остаётся узлом, а не «[object HTMLElement]»', () => {

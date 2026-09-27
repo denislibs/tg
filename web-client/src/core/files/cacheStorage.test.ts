@@ -3,6 +3,8 @@
 // Map-бэкендом (match/put/delete + open/delete на уровне CacheStorage).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import CacheStorageController from './cacheStorage'
+import DeferredIsUsingPasscode from '@lib/passcode/deferredIsUsingPasscode'
+import EncryptionKeyStore from '@lib/passcode/keyStore'
 
 class FakeCache {
   public store = new Map<string, Response>()
@@ -36,6 +38,9 @@ describe('CacheStorageController', () => {
     // STORAGES — статический реестр, живёт на модуль: возвращаем всем
     // инстансам useStorage=true после тестов выключения
     await CacheStorageController.toggleStorage(true, false)
+    // без кода-пароля (шифрование — отдельный describe ниже)
+    DeferredIsUsingPasscode.resolveDeferred(false)
+    EncryptionKeyStore.save(null)
   })
 
   afterEach(() => {
@@ -129,5 +134,63 @@ describe('CacheStorageController', () => {
     const opens = fake.open.mock.calls.length
     await expect(storage.getFile('media_1')).rejects.toMatchObject({ type: 'STORAGE_OFFLINE' })
     expect(fake.open.mock.calls.length).toBe(opens)
+  })
+})
+
+// S10 — шифрование корзины под код-паролем (tweb cacheStorage.ts:17-47, :108-146,
+// :215-262, :370-430): тело на диске — AES-GCM, заголовки (исходный
+// Content-Length — по нему считает объём «Данные и память») — открыто.
+describe('CacheStorageController: под код-паролем', () => {
+  let fake: FakeCacheStorage
+  let key: CryptoKey
+
+  beforeEach(async() => {
+    fake = new FakeCacheStorage()
+    vi.stubGlobal('caches', fake)
+    await CacheStorageController.toggleStorage(true, false)
+    key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt'])
+    DeferredIsUsingPasscode.resolveDeferred(true)
+    EncryptionKeyStore.save(key)
+  })
+
+  afterEach(() => {
+    CacheStorageController.temporarilyToggle(true)
+    DeferredIsUsingPasscode.resolveDeferred(false)
+    EncryptionKeyStore.save(null)
+    vi.unstubAllGlobals()
+  })
+
+  it('на диске — шифртекст (iv ‖ ct), заголовки исходника; getFile отдаёт открытое', async() => {
+    const storage = new CacheStorageController('cachedFiles')
+    const plain = 'PLAINTEXT media bytes 1234567890'
+    await storage.saveFile('media_1', new Blob([plain], { type: 'image/jpeg' }))
+
+    const stored = fake.buckets.get('cachedFiles')!.store.get('/media_1')!
+    const onDisk = new Uint8Array(await stored.clone().arrayBuffer())
+    expect(new TextDecoder().decode(onDisk)).not.toContain('PLAINTEXT')
+    expect(onDisk.length).toBe(12 + plain.length + 16) // IV + текст + тег GCM
+    expect(stored.headers.get('Content-Length')).toBe(String(plain.length))
+
+    const got = await storage.getFile('media_1', 'blob')
+    expect(await got.text()).toBe(plain)
+  })
+
+  it('пауза temporarilyToggle(false): get/save ждут снятия (идёт включение/смена кода)', async() => {
+    const storage = new CacheStorageController('cachedFiles')
+    CacheStorageController.temporarilyToggle(false)
+    let saved = false
+    const saving = storage.saveFile('media_2', new Blob(['x'])).then(() => { saved = true })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(saved).toBe(false)
+    expect(fake.buckets.get('cachedFiles')?.put ?? vi.fn()).not.toHaveBeenCalled()
+
+    CacheStorageController.temporarilyToggle(true)
+    await saving
+    expect(saved).toBe(true)
+  })
+
+  it('clearEncryptableStorages сносит шифруемую корзину целиком', async() => {
+    await CacheStorageController.clearEncryptableStorages()
+    expect(fake.delete).toHaveBeenCalledWith('cachedFiles')
   })
 })

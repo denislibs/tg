@@ -1,6 +1,7 @@
-// Состояние блокировки приложения код-паролем (tweb PasscodeLockScreenController):
-// locked показывает полноэкранный PasscodeLockScreen; попытки и таймаут —
-// как в tweb (5 попыток, затем 60 секунд ожидания).
+// Состояние блокировки приложения код-паролем (tweb
+// PasscodeLockScreenController.isLocked): экраном владеет
+// `components/passcodeLockScreenController.tsx`, он же переключает `locked`;
+// попытки и таймаут — как в tweb (5 попыток, затем 60 секунд ожидания).
 import { create } from 'zustand'
 
 interface LockState {
@@ -24,21 +25,3 @@ export const useLockStore = create<LockState>((set, get) => ({
     else set({ attempts: n })
   },
 }))
-
-// Выполнить fn сразу, если приложение не под локом; иначе — один раз, когда
-// код-пароль снимут. Возвращает отписку (для cleanup эффекта). Так загрузка
-// данных и коннект realtime не стартуют под экраном блокировки, а поднимаются
-// сразу после разблокировки.
-export function runWhenUnlocked(fn: () => void): () => void {
-  if (!useLockStore.getState().locked) {
-    fn()
-    return () => {}
-  }
-  const unsub = useLockStore.subscribe((s, prev) => {
-    if (prev.locked && !s.locked) {
-      unsub()
-      fn()
-    }
-  })
-  return unsub
-}

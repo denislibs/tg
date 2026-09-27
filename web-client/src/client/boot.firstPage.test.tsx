@@ -160,8 +160,8 @@ async function coldStart() {
     messages: fakeMessagesOwner(),
   })
   const managers = { dialogs } as unknown as Managers
-  const op = await fillDialogsMirror(managers, false)
-  await applyDialogsMirror(op, managers, false)
+  const op = await fillDialogsMirror(managers)
+  await applyDialogsMirror(op, managers)
   return { dialogs, requests }
 }
 

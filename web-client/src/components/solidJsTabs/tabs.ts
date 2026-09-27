@@ -23,7 +23,7 @@ import type SliderSuperTab from '@components/sliderTab'
 import { scaffoldSolidJSTab, scaffoldSolidJSTabEventable } from './scaffoldSolidJSTab.solid'
 import type { LangPackKey } from '@/lang'
 import type { MaybePromise } from '@types'
-import type { PasscodeActions } from '@core/passcode'
+import type { PasscodeActions } from '@lib/passcode/actions'
 import type SidebarSlider from '@components/slider'
 
 // tweb :327-329 — вкладка получает УЖЕ загруженный список сессий, а не ходит
@@ -383,6 +383,17 @@ export const AppPrivacyReadTimeTab =
     title: 'PrivacyReadTime',
     getComponentModule: () => import('../sidebarLeft/tabs/privacy/readTime.solid'),
   })
+
+// tweb :160-164. Форма обычная, без полезной нагрузки: настройки вкладка читает
+// сама (мост `useAppSettings`). Открывает её строка корня настроек
+// `Telegram.GeneralSettingsViewController` (tweb `settings.tsx:255`,
+// `makeSubTabConfig`); она сама открывает «Обои» и «Энергосбережение».
+export const AppGeneralSettingsTab =
+  scaffoldSolidJSTab({
+    title: 'Telegram.GeneralSettingsViewController',
+    getComponentModule: () => import('../sidebarLeft/tabs/generalSettings.solid'),
+  })
+
 // ── Папки (tweb :609-619, :804-845) — задача 24 плана 2D ─────────────────────
 // Список (`chatFolders.solid.tsx`), редактор (`editFolder.solid.tsx`) и выбор
 // чатов папки (`includedChats.solid.tsx` — кусок задачи 25, без него редактор не

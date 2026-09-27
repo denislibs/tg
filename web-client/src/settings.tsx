@@ -45,7 +45,7 @@ export interface Settings {
   // folders-sidebar, false — горизонтальные табы над списком.
   tabsInSidebar: boolean
   // Код-пароль (tweb settings.passcode): включён ли; автолок в минутах
-  // (0 — выключен). Хеш и соль лежат в IndexedDB (core/passcode.ts).
+  // (0 — выключен). Запись кода — в IndexedDB (lib/passcode/actions.ts).
   passcodeEnabled: boolean
   passcodeAutoLockMins: number
   // Сочетание блокировки (tweb settings.passcode.lockShortcutEnabled/lockShortcut,
@@ -226,6 +226,10 @@ export function load(): Settings {
       },
     }
     s.cacheTTL = migrateCacheTTL(s.cacheTTL)
+    // Прежний React-экран «Общих» пускал размер текста до 24; у tweb ползунок —
+    // 12–20 (`generalSettings.tsx:61-62`), и вкладка задачи 13 плана 2D выше не
+    // выберет. Прижимаем на чтении — как срок кэша выше.
+    s.textSize = Math.min(s.textSize, 20)
     const mapped = legacyToPreset[s.themeChoice as string]
     return mapped ? { ...s, themeChoice: mapped } : s
   } catch {
@@ -298,7 +302,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
  * Все метки времени рисует `I18n.IntlDateElement` (`helpers/date.ts`), и часовой
  * цикл он берёт у себя — `I18n.getTimeFormat()`, потому что у `Intl` этой
  * настройки взять неоткуда: он выбирает цикл по ЛОКАЛИ. Настройка у нас есть, у
- * неё есть живой переключатель (`settings/GeneralSettings.tsx`), — но до задачи 7
+ * неё есть живой переключатель (`sidebarLeft/tabs/generalSettings.solid.tsx`), — но до задачи 7
  * она СЮДА НЕ ПРИХОДИЛА, и метки времени выбор пользователя игнорировали (дефект
  * был помечен в докблоке `helpers/date.ts`).
  *

@@ -113,7 +113,7 @@
  * локальный английский ПОД серверный пакет — см. `applyServerLangPack`.
  *
  * Читают карту тоже одним способом: `format()`. На нём стоит и ванильный слой
- * (`i18n()`/`IntlElement` — подписи `button.ts`, `row.ts`, `buttonMenu.ts`,
+ * (`i18n()`/`IntlElement` — подписи `button.ts`, `buttonMenu.ts`,
  * `sliderTab.ts`, `toast.ts`, попапов; `IntlDateElement` —
  * метки времени `helpers/date.ts`), и React: его `t()` (`i18n/index.tsx`) —
  * тонкая обёртка над `format(key, true, args)`.

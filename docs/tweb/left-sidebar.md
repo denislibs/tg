@@ -182,7 +182,7 @@ div#column-left.tabs-tab.chatlist-container.sidebar.sidebar-left.main-column.sid
 | Файл (`tabs/…`) | Конструктор (`solidJsTabs/tabs.ts`) | Назначение | Кто открывает |
 |---|---|---|---|
 | `settings.tsx` (комп. :82) | `AppSettingsTab` = `scaffoldSolidJSTab` :169-173 | корневой экран настроек | `sidebarLeft/index.ts:722` (меню), `:797` (клик по своему аккаунту), `lib/internalLinkProcessor.ts:723`; `sliceTabsUntilTab(AppSettingsTab)` из 2fa/email-флоу (`2fa/index.tsx:34`, `2fa/passwordSet.tsx:23`, `2fa/emailConfirmation.tsx:44`, `2fa/forgotPasswordLink.ts:108`, `changeLoginEmail.tsx:30`) |
-| `generalSettings.tsx` :355 | `AppGeneralSettingsTab` :141-145 | размер текста, фон, тема, lite mode | `settings.tsx:129→137` |
+| `generalSettings.tsx` :359 (812502980) | `AppGeneralSettingsTab` :160-164 (812502980) | размер текста, фон, тема, lite mode | `settings.tsx:255` (812502980); у нас — `sidebarLeft/tabs/generalSettings.solid.tsx` (задача 13 плана 2D) |
 | `notifications.tsx` :543 (812502980) | `AppNotificationsTab` :77-81 (812502980) | уведомления | `settings.tsx:252` (812502980) |
 | `privacyAndSecurity.tsx` :760 | `AppPrivacyAndSecurityTab` = Eventable :533-537 (+`getInitArgs` :541) | хаб приватности | `settings.tsx:128→137`; `sliceTabsUntilTab` из `2fa/forgotPasswordLink.ts:103`, `tabs.ts:27-30` |
 | `dataAndStorage/index.tsx` :52 (812502980) | `AppDataAndStorageTab` = Eventable :439-443 (812502980) | данные и хранилище | `settings.tsx:127→137` |
@@ -516,7 +516,7 @@ transitionTime: 150})`; дети — `#chatlist-container` (id 0) и `#search-co
 | Класс | Файл:строки | Ответственность |
 |---|---|---|
 | `AppDialogsManager` (singleton) | `src/lib/appDialogsManager.ts:512-2690` | оркестратор: папки (`xds`), клики, контекстные меню, `setLastMessage*`/`setUnreadMessages*`, плейсхолдеры, сторис, forum-табы |
-| `DialogElement extends Row` | `appDialogsManager.ts:207-475` | одна строка: DOM, `dom: DialogDom`, бейджи |
+| `DialogElement` + `attachRowController` (HEAD 812502980; в старой базе — `extends Row`) | `appDialogsManager.ts:288-506` (HEAD) | одна строка: DOM, `dom: DialogDom`, бейджи; у нас — `components/dialogRow.ts` на `rowTsxController.solid.tsx` (задача 29 плана 2D) |
 | `SortedDialogList` | `src/components/sortedDialogList.ts:16-278` | «ключ → DialogElement» поверх виртуального списка; индексы, add/update/delete/pinned |
 | `CustomPinnedDialog` | `sortedDialogList.ts:284-290` | псевдо-диалог с произвольным `render()` (строка «Архив») |
 | `AutonomousDialogListBase<T>` | `src/components/autonomousDialogList/base.ts:39-381` | загрузка/пагинация/плейсхолдер/typing (бывш. `Some`) |
@@ -867,8 +867,8 @@ DOM-паритет первого таба выдержан сознательн
 tweb 2197fee9c перевёл иконки всех строк на цветные плашки: `span.row-icon.row-icon-colored`
 (30×30, скругление .625rem, `.75rem` от края, белый глиф) с градиентом inline из
 `helpers/rowIconBackground.ts` (реестр «иконка → цвет» + FNV-хэш по палитре для прочих),
-глиф — `span.tgico.row-icon-icon` внутри. **У нас** так рисуют все три строки: ванильный
-`components/row.ts`, Solid `rowTsx.solid.tsx` и React `settings/kit.tsx` (для `<TgIcon>`;
+глиф — `span.tgico.row-icon-icon` внутри. **У нас** так рисуют обе строки: Solid
+`rowTsx.solid.tsx` (ванильный `row.ts` снят задачей 29 плана 2D) и React `settings/kit.tsx` (для `<TgIcon>`;
 у строк `accent`/`danger` — у tweb это `Button btn-primary btn-transparent` — и у не-глифов
 плашки нет). Корень настроек (`SettingsView.tsx`) — строки `.row` в `div.profile-buttons`
 (дамп 14-left-13) с иконками tweb `settings.tsx`: bell_filled (красная), data_filled

@@ -7,12 +7,19 @@
 // (`components/sortedUserList.ts`), группам глобального поиска
 // (`components/searchGroup.solid.tsx`) и, дальше, «общим группам».
 //
+// Строка — Solid `Row` за императивным фасадом: `DialogElement` не наследует
+// класс строки, а зовёт `attachRowController(this, {…})`, как tweb 812502980
+// (`appDialogsManager.ts:317-332`, `components/rowTsxController.solid.tsx`);
+// `this.title`/`this.container`/… — геттеры контроллера на прототипе класса.
+//
 // Эталон разметки — живой дамп `docs/tweb/dom/dumps/15-right-14-group-members.json`
 // (строка с полной глубиной) и `15-right-11-group-profile.json` (та же строка во
 // вкладке «Участники»): `a.row.no-wrap.row-with-padding.row-clickable.hover-effect
-// .chatlist-chat.chatlist-chat-abitbigger[data-peer-id]` с детьми в порядке
-// подпись → заголовок → аватар. Порядок задаёт `Row`: подпись создаётся раньше
-// заголовка (`row.ts`), аватар — `applyMediaElement` в конце.
+// .chatlist-chat.chatlist-chat-abitbigger[data-peer-id]`. Дампы — со старой базы
+// (императивный `row.ts`, дети подпись → заголовок → аватар); у HEAD порядок
+// задаёт Solid `Row` (`rowTsx.tsx:247-257`): заголовок → подпись → аватар, и
+// `no-wrap` стоит на обеих частях строки заголовка. Вид не меняется: места
+// частей раскладывает `_row.scss` (`order`/грид), а не порядок узлов.
 //
 // Что НЕ портировано из `DialogElement` (и почему):
 //   • `threadId`/`monoforumParentPeerId`/`asAllChats`/`isMainList`/`fromName`/
@@ -73,7 +80,7 @@
 // Имя строится `PeerTitle` (`components/chat/peerTitle.ts`), аватар —
 // `avatarNew` (`components/avatar.ts`): оба читают зеркало карточек и
 // объявляют пробел владельцу через `managers.peers.fillMirror`, как оригинал.
-import Row, { type RowMediaSizeType } from '@components/row'
+import { attachRowController, type RowMediaSizeType, type RowTsxController } from '@components/rowTsxController.solid'
 import { avatarNew, type AvatarManagers } from '@components/avatar'
 import PeerTitle from '@components/chat/peerTitle'
 import Icon from '@components/icon'
@@ -148,9 +155,16 @@ export type DialogElementOptions = {
   managers: DialogRowManagers,
 }
 
-export class DialogElement extends Row {
+// tweb `:288` — части строки приходят объявлением: их ставит на прототип
+// `attachRowController`, своих полей у класса под них нет (иначе поле экземпляра
+// заслонило бы геттер прототипа)
+// eslint-disable-next-line typescript/no-unsafe-declaration-merging -- форма tweb `:288-290`
+export interface DialogElement extends RowTsxController {}
+
+// eslint-disable-next-line typescript/no-unsafe-declaration-merging -- форма tweb `:288-290`
+export class DialogElement {
   public dom: DialogDom
-  public middlewareHelper?: MiddlewareHelper
+  public middlewareHelper: MiddlewareHelper
   /** менеджеры строки: ими же `setLastMessageN` строит имя автора (у оригинала — синглтон) */
   public readonly managers: DialogRowManagers
 
@@ -163,7 +177,14 @@ export class DialogElement extends Row {
     wrapOptions,
     managers,
   }: DialogElementOptions) {
-    super({
+    // tweb `:318-319` — дочерний scope от переданного middleware; без него
+    // (`controlled` не портирован) — свой корень, чтобы `destroy()` было что
+    // гасить у аватара, имени и Solid-корня строки.
+    this.middlewareHelper = wrapOptions.middleware ? wrapOptions.middleware.create() : getMiddleware()
+    const middleware = this.middlewareHelper.get()
+
+    // tweb `:321-332`; `havePadding` безусловный — тем форума и `asAllChats` нет (шапка)
+    attachRowController(this, {
       clickable: true,
       noRipple: !rippleEnabled,
       havePadding: true,
@@ -173,19 +194,14 @@ export class DialogElement extends Row {
       subtitleRight: true,
       noWrap: true,
       asLink: true,
+      middleware,
     })
 
-    // tweb `:243` — правый слот подписи создаётся `Row` и тут же снимается.
+    // tweb `:335` — правый слот подписи создаётся `Row` и тут же снимается.
     this.subtitleRight.remove()
     this.managers = managers
 
-    // tweb `:246` — дочерний scope от переданного middleware; без него
-    // (`controlled` не портирован) — свой корень, чтобы `destroy()` было что
-    // гасить у аватара и имени.
-    this.middlewareHelper = wrapOptions.middleware ? wrapOptions.middleware.create() : getMiddleware()
-    const middleware = this.middlewareHelper.get()
-
-    // tweb `:262-283`
+    // tweb `:350-374`
     const avatar = avatarNew({
       middleware,
       size: avatarSizeMap[avatarSize]!,
@@ -199,19 +215,19 @@ export class DialogElement extends Row {
 
     const captionDiv = this.container
 
-    // tweb `:287-290`
+    // tweb `:378-381`
     const titleSpanContainer = this.title
     titleSpanContainer.classList.add('user-title')
 
     this.titleRow.classList.add('dialog-title')
 
-    // tweb `:306-318` — имя пира узлом `.peer-title`
+    // tweb `:397-411` — имя пира узлом `.peer-title`
     const peerTitle = new PeerTitle({ peerId, dialog: meAsSaved, middleware, managers })
     titleSpanContainer.append(peerTitle.element)
 
     const span = this.subtitle
 
-    // tweb `:340-355`
+    // tweb `:426-441`
     const li = this.container
     li.classList.add('chatlist-chat', 'chatlist-chat-' + avatarSize)
     if(!autonomous) {
@@ -226,7 +242,7 @@ export class DialogElement extends Row {
 
     li.dataset.peerId = '' + peerId
 
-    // tweb `:363-373`
+    // tweb `:448-458`
     const statusSpan = document.createElement('span')
     statusSpan.classList.add('message-status', 'sending-status')
 
@@ -239,7 +255,7 @@ export class DialogElement extends Row {
 
     this.subtitleRow.classList.add('dialog-subtitle', 'has-multiple-badges')
 
-    // tweb `:380-392`
+    // tweb `:465-477`
     this.dom = {
       avatarEl: avatar,
       captionDiv,
@@ -254,12 +270,18 @@ export class DialogElement extends Row {
     }
   }
 
-  /** tweb `:408-410` */
+  /**
+   * tweb `:493-497`. У нас зона строки есть всегда, и корень снимет и её
+   * `onDestroy` (`rowTsxController.solid.tsx`); `dispose()` идемпотентен и
+   * оставлен дословно. `disposeTextHighlight` — подсветка поиска у нас не отдельный узел
+   * (`wrapMessageForReply({highlightWord})`), разбирать нечего.
+   */
   public destroy() {
-    this.middlewareHelper?.destroy()
+    this.dispose()
+    this.middlewareHelper.destroy()
   }
 
-  /** tweb `:412-415` */
+  /** tweb `:503-506` */
   public remove() {
     this.destroy()
     this.dom.listEl.remove()

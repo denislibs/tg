@@ -16,8 +16,9 @@
  *     `Show when={… .state === 'ready'}` (`:66`, `:278`) и `usePromiseCollector`
  *     для флага (`:47-53`): значение синхронно.
  *  2. `usePasscodeActions()` → `passcodeActions(tab.managers.persist)`
- *     (`core/passcode.ts`). Наш код-пароль не шифрует хранилища, а стирает
- *     офлайн-стор и запрещает в него писать; действия те же по смыслу.
+ *     (`lib/passcode/actions.ts`): не хук — канал к воркеру у нас синглтон,
+ *     а включению нужен writer офлайн-стора (его под кодом не шифруют, а
+ *     стирают, docs/tweb/passcode-encryption.md П-1).
  *  3. (О-12) Подсказка после выключения — у tweb в скроллере вкладки
  *     `AppPrivacyAndSecurityTab` (`:236-238`); хаб станет вкладкой задачей 23,
  *     до неё подсказка кладётся в слой хоста слайдера (`tab.slider.sidebarEl`),
@@ -36,7 +37,7 @@
 import { type Component, createSignal, type JSX, Show } from 'solid-js'
 import { IS_MOBILE } from '@environment/userAgent'
 import { i18n, type LangPackKey } from '@lib/langPack'
-import { passcodeActions } from '@core/passcode'
+import { passcodeActions } from '@lib/passcode/actions'
 import { useAppSettings } from '@stores/appSettings.solid'
 import SettingsTabLottieAnimation from '@components/settingsTabLottieAnimation.solid'
 import ripple from '@components/ripple'

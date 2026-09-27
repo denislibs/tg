@@ -11,13 +11,12 @@ import rootScope from '@lib/rootScope'
 import { fillLocalizedDates } from '@helpers/date'
 import { setBootData } from './bootData'
 import { loadStateOnce, resetStateCache, stateWasResetToDefaults } from '../core/state/loadState'
-import { initialState, STATE_VERSION } from '../core/state/state'
+import { STATE_VERSION } from '../core/state/state'
 import { setAppState, setAppStateSilent, setStateWriter } from '../stores/appState'
 import { migrateRecentSearchFromLocalStorage } from '../core/state/migrateRecentSearch'
-import { persistScope } from '../core/store/persist'
-import { idbGet } from '../core/store/idbKv'
-import { useSettingsStore } from '../settings'
-import { useLockStore } from '../stores/lockStore'
+import PasscodeLockScreenController from '../components/passcodeLockScreenController'
+import { installPasscodeListener } from './passcodeClient'
+import { listenServiceWorkerHello, sendPasscodeStateToServiceWorker } from './passcodeServiceWorker'
 import { preventCrossTabDynamicImportDeadlock } from '../core/preventDeadlock'
 import { useChatsStore } from '../stores/chatsStore'
 import type { DialogOp } from '../core/dialogs/dialogOps'
@@ -25,21 +24,18 @@ import type { PeerProfile } from '../core/managers/authManager'
 import { bootstrapHash } from '../core/hooks/useUrlSync'
 import type { LangPackDifference } from '@layer'
 
-const TOKEN_KEY = 'session_token' // тот же ключ, что у TokenStore
-
 /**
  * Task 2 (перенос владения диалогами): пробел зеркала на холодном старте.
  * Владелец (воркерный dialogsManager) сам поднимает кэш прошлой сессии и
- * отвечает reset'ом на fillMirror() — тут только решение, звать ли RPC (под
- * passcode-локом RPC не летят вовсе, см. #0 в bootstrap()).
+ * отвечает reset'ом на fillMirror().
  *
  * Вынесена отдельно от bootstrap() ради теста (boot.dialogs.test.ts):
  * bootstrap() — реальная точка входа (как core/worker.ts), конструирует
  * настоящий SharedWorker/Worker через startClient(), и managers.dialogs —
  * RPC-прокси к нему; без настоящего воркера на другом конце вызов зависнет.
  */
-export function fillDialogsMirror(managers: Pick<Managers, 'dialogs'>, locked: boolean): Promise<DialogOp | null> {
-  return locked ? Promise.resolve(null) : managers.dialogs.fillMirror()
+export function fillDialogsMirror(managers: Pick<Managers, 'dialogs'>): Promise<DialogOp | null> {
+  return managers.dialogs.fillMirror()
 }
 
 /**
@@ -70,9 +66,8 @@ export function fillDialogsMirror(managers: Pick<Managers, 'dialogs'>, locked: b
  * догружает сам сайдбар через `getDialogs` + `helpers/sequentialCursorFetcher`,
  * опираясь на размер набора своей выборки (`countFor`).
  */
-export function applyDialogsMirror(op: DialogOp | null, managers: Pick<Managers, 'dialogs'>, locked: boolean): Promise<void> {
+export function applyDialogsMirror(op: DialogOp | null, managers: Pick<Managers, 'dialogs'>): Promise<void> {
   if (op) useChatsStore.getState().applyDialogOps([op])
-  if (locked) return Promise.resolve()
   return managers.dialogs.refresh().then(
     (netOp) => { if (netOp) useChatsStore.getState().applyDialogOps([netOp]) },
     () => { /* офлайн/401 — витрина остаётся на кэше владельца */ },
@@ -114,21 +109,33 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   // кнопке (tweb e96e06c37; у оригинала — `InternalLinkProcessor.construct`).
   listenForMaskedAnchorClicks()
 
-  const { managers, ep } = startClient()
+  const { managers, ep, smp } = startClient()
   // DNP-ON: раздаём мост SW↔SharedWorker (self-gated; инертно при DNP-off).
   installBridgeHandoff(ep)
 
-  // #0 — решение о passcode-локе ДО любых RPC/коннекта. passcodeEnabled лежит в
-  // localStorage (tg-settings, читается синхронно на создании стора), поэтому лок
-  // ставится до первого кадра. Под локом НЕ префетчим me/dialogs и не гидрируем —
-  // WS/RPC поднимет useAppBootstrap/useAuthGate уже после разблокировки.
-  const locked = useSettingsStore.getState().passcodeEnabled
-  if (locked) useLockStore.getState().lock()
+  // #0 — код-пароль ДО любых RPC с токеном и до чтения State (порт tweb
+  // index.ts:453, `PasscodeLockScreenController.waitForUnlock`). Слушатель канала
+  // ставится первым: разблокировка в соседней вкладке снимает экран и здесь.
+  // Под замком токен лежит только в зашифрованном слое воркера и без ключа
+  // недоступен — дальше этой строки старт не идёт, пока код не введён.
+  installPasscodeListener(smp, {
+    lock: () => PasscodeLockScreenController.lock(),
+    unlock: () => PasscodeLockScreenController.unlock(),
+  })
+  listenServiceWorkerHello()
+  await PasscodeLockScreenController.waitForUnlock(async () => {
+    // экрану блокировки нужны строки — язык из кэша владельца, без сети
+    // (tweb index.ts:461-462)
+    setDocumentLangPackProperties(await I18n.getCacheLangPackAndApply())
+  })
+  // SW держит состояние кода только в памяти — сообщаем его на каждом старте
+  // (tweb apiManagerProxy.ts:767 `sendPasscodeStateToServiceWorker`).
+  void sendPasscodeStateToServiceWorker()
 
   // #1 — критические запросы стартуют до рендера: к моменту mount ответ уже летит.
   // me переиспользуется в useAuthGate (через bootData) — без второго round-trip
-  // me(). Под локом — пустышка (см. bootData.locked): RPC не летят вовсе.
-  const me: Promise<PeerProfile | null> = locked ? Promise.resolve(null) : managers.auth.me()
+  // me().
+  const me: Promise<PeerProfile | null> = managers.auth.me()
 
   // #2 — offline-first State + словарь языка + наличие токена: всё до первого
   // кадра, чтобы сразу показать последний известный UI без мигания и решить
@@ -141,8 +148,11 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   // (index.ts:455). Диалоги — свой стор: в tweb они тоже вне State.
   // resetStateCache перед чтением: persistScope мог стереть данные прошлого
   // аккаунта, и мемоизированный промис прошлого входа отдал бы чужой State.
-  const token = await idbGet<string>(TOKEN_KEY)
-  await persistScope(token ?? null)
+  //
+  // Скоуп по токену делает воркер (`persist.scopeToSession`): токен — его факт и
+  // под код-паролем лежит только в зашифрованном слое, вкладке он не отдаётся;
+  // ответ — лишь «сессия есть».
+  const hasToken = await managers.persist.scopeToSession()
   setStateWriter(managers.persist)
   resetStateCache()
   // Диалоги (Task 2, перенос владения в воркер): владелец сам поднимает кэш
@@ -151,18 +161,18 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   // с диска) больше не нужен, воркер делает и то, и другое за одним RPC.
   //
   // Fix (финальное ревью, Important #1): RPC стартует СТРОГО ПОСЛЕ
-  // `await persistScope(token)` — по той же причине, по которой после него стоит
-  // чтение State. Воркерный `hydrate()` scope-гейта не имеет (воркерный
-  // persistScope зовётся один раз за жизнь воркера, `workerCore.ts::start`, и на
-  // переключении аккаунта не переигрывается), поэтому запущенный раньше
+  // `await scopeToSession()` — по той же причине, по которой после него стоит
+  // чтение State. Воркерный `hydrate()` scope-гейта не имеет (persistScope в
+  // `workerCore.ts::start` — один раз за жизнь воркера, на переключении аккаунта
+  // его переигрывает только `scopeToSession` вкладки), поэтому запущенный раньше
   // `fillMirror()` гонялся бы с транзакцией очистки: выиграв гонку, он поднял бы
   // список ПРОШЛОГО аккаунта, boot применил бы его к зеркалу до первого рендера,
   // а дебаунс владельца уехал бы этим списком обратно на диск — уже под скоупом
   // нового. Параллельность при этом сохранена: RPC летит одновременно с чтением
   // State и словаря (оба ниже, в Promise.all).
-  const dialogsOp: Promise<DialogOp | null> = fillDialogsMirror(managers, locked)
+  const dialogsOp: Promise<DialogOp | null> = fillDialogsMirror(managers)
   const [state, langPack] = await Promise.all([
-    locked ? Promise.resolve(initialState()) : loadStateOnce(),
+    loadStateOnce(),
     // Язык — С СЕРВЕРА (задача 9), путём холодного старта оригинала (tweb
     // index.ts:487): взять пакет из КЭША владельца и применить. Кэша нет или он
     // от другого языка — под пакетом всегда лежит локальный английский
@@ -190,8 +200,8 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   // Спрашиваем именно ридер: в `state` версия уже подставлена из дефолтов, и по
   // ней «сошлось» неотличимо от «сбросили» — без этого ключ не писался бы никогда,
   // а State сбрасывался бы к дефолтам на КАЖДОМ старте.
-  if (!locked && stateWasResetToDefaults()) setAppState('version', STATE_VERSION)
-  if (!locked) migrateRecentSearchFromLocalStorage()
+  if (stateWasResetToDefaults()) setAppState('version', STATE_VERSION)
+  migrateRecentSearchFromLocalStorage()
 
   // ── Открытие по ссылке — ЗДЕСЬ, до списка диалогов ──────────────────────────
   // Порт порядка холодного старта оригинала: `appImManager.construct` зовёт
@@ -211,13 +221,12 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   // его нельзя ни в коем случае — в ветке «канал, в котором мы не состоим» он
   // ходит в сеть за вступлением, и первый кадр повис бы на этой сети.
   //
-  // Под passcode-локом — не применяем вовсе: RPC под локом не летят (#0 выше).
-  // Без токена — тоже: у оригинала `bootstrapIm()` (а с ним и `onHashChange`)
+  // Без токена — не применяем: у оригинала `bootstrapIm()` (а с ним и `onHashChange`)
   // вызывается ТОЛЬКО под авторизацией (tweb `index.ts:628`/`:641`), а у нас
   // без токена не поднят даже Shell. Этот случай (открыли ссылку, вошли по
   // OTP — `useAuthGate.login()` перезагрузки не делает) закрывает вторая точка
   // той же защёлки — монтирование `Shell`, см. `bootstrapHash`.
-  if (!locked && token) bootstrapHash(managers)
+  if (hasToken) bootstrapHash(managers)
 
   // Ответ владельца применяем к витрине ДО первого рендера (см. докблок
   // applyDialogsMirror); dialogsOp был запущен выше, ещё до чтения State —
@@ -234,8 +243,8 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   // в bootData уезжает промис СЕТЕВОГО догона — на нём висит сид презенса в
   // `useAppBootstrap`, см. докблок `applyDialogsMirror`. Сам догон НЕ ждём:
   // рендер не должен упираться в сеть.
-  const dialogsReady = applyDialogsMirror(op, managers, locked)
-  setBootData({ me, dialogsReady, hasToken: !!token, locked })
+  const dialogsReady = applyDialogsMirror(op, managers)
+  setBootData({ me, dialogsReady, hasToken })
 
   // Смена языка в СОСЕДНЕЙ вкладке (порт tweb index.ts:519-521). Выбор делают в
   // одной вкладке, а `localStorage` соседи перечитывают только на перезагрузке —

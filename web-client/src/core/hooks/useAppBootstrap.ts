@@ -11,14 +11,12 @@ import { loadNotifySettings } from '../../stores/notifyStore'
 import { loadFolders } from '../../stores/foldersStore'
 import { loadPrivacy } from '../../stores/privacyStore'
 import { loadStars } from '../../stores/starsStore'
-import { runWhenUnlocked } from '../../stores/lockStore'
 import { primeMediaToken } from '../mediaUrl'
 import { watchCacheSettings } from '../mediaCache'
 import { startRealtime } from '../../client/realtimeBridge'
 import { watchPushConditions } from '../../client/pushSetup'
 import { initAppBadge } from '../../client/appBadge'
-import { bootPrefetch, bootWasLocked } from '../../client/bootData'
-import { fillDialogsMirror, applyDialogsMirror } from '../../client/boot'
+import { bootPrefetch } from '../../client/bootData'
 import { preloadReactionAssets } from '../../components/chat/reactions'
 
 /** tweb appReactionsManager.ts:94-96 — предзагрузка ассетов реакций заводится
@@ -33,9 +31,9 @@ export function useAppBootstrap(): void {
     let stopPushConditions: (() => void) | undefined
     let stopCacheSettings: (() => void) | undefined
     let reactionsPreload: ReturnType<typeof setTimeout> | undefined
-    // Под passcode-локом (решён в boot.ts до рендера) НИЧЕГО не грузим и не
-    // коннектим — вся первичная загрузка + realtime стартуют один раз после
-    // разблокировки. Не под локом — сразу (runWhenUnlocked дергает fn синхронно).
+    // Под код-паролем сюда не доходим до разблокировки: `client/boot.ts` ждёт её
+    // ДО чтения State и монтирования (порт tweb `index.ts:453`, `waitForUnlock`),
+    // поэтому первичная загрузка + realtime стартуют сразу.
     const run = () => {
       // Префетч (`me` из main.tsx) берём ТОЛЬКО через bootPrefetch(): он
       // одноразовый по смыслу (данные аккаунта, под которым страница
@@ -62,25 +60,7 @@ export function useAppBootstrap(): void {
       // получал пустой список и молча выходил — весь сеанс без онлайн-точек и
       // «был(а) в сети». Массового сида презенса больше нигде нет (второй вызов
       // в useNavigationActions.ts — точечный, на одного пира).
-      //
-      // Fix (повторное ревью финальной волны, находка A): boot под passcode-
-      // локом пропускает `fillMirror()` целиком (`client/boot.ts`, `locked`) —
-      // зеркало ЭТОЙ вкладки ни разу не гидрировано владельцем. Обычный
-      // `refresh()` тут не гарантия: он публикует операцию, только если сеть
-      // разошлась с памятью владельца, а на аккаунте с нулём диалогов пустой
-      // ответ сети совпадает с ещё не гидрированным пустым кэшем — операции
-      // нет, `chatsStore.loaded` остаётся `false` навсегда (скелетон висит
-      // вечно, см. `ChatList.tsx`). Досюда (`run()` уже прошёл `runWhenUnlocked`)
-      // лок точно снят, поэтому явно закрываем пробел тем же приёмом, что
-      // холодный старт: `fillDialogsMirror(managers, false)` — гарантированный
-      // `reset` (см. докблок `dialogsManager.fillMirror` — announce
-      // безусловный) — и `applyDialogsMirror` для применения и сетевого
-      // догона поверх, БЕЗ повторного `refresh()` из ветки ниже.
-      const dialogsReady = prefetch
-        ? prefetch.dialogsReady
-        : bootWasLocked()
-          ? fillDialogsMirror(managers, false).then((op) => applyDialogsMirror(op, managers, false))
-          : managers.dialogs.refresh()
+      const dialogsReady = prefetch ? prefetch.dialogsReady : managers.dialogs.refresh()
       // `.catch` до loadPresence (Minor #3): refresh() пробрасывает HttpError, а
       // тут он идёт `void`-ом — 401/5xx не должны стать unhandled rejection и не
       // должны отменять сид презенса по тому, что уже есть в зеркале.
@@ -115,9 +95,8 @@ export function useAppBootstrap(): void {
       // монтирование Shell второй предзагрузки не даёт.
       reactionsPreload = setTimeout(() => { void preloadReactionAssets(managers) }, REACTIONS_PRELOAD_DELAY)
     }
-    const stopWhenUnlocked = runWhenUnlocked(run)
+    run()
     return () => {
-      stopWhenUnlocked()
       stopPresenceDegradation?.()
       stopPresenceDegradation = undefined
       stopPushConditions?.()

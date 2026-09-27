@@ -1,0 +1,50 @@
+// Порт tweb `lib/passcode/utils.ts` — 1:1: PBKDF2-SHA-256, 100 000 итераций.
+// Две независимые соли: `verificationSalt` — для хеша сверки кода,
+// `encryptionSalt` — для AES-GCM-ключа хранилищ. Ключ extractable: его raw-байты
+// передаются через `window.sessionStorage` на время перезагрузки
+// (`keyHandoff.ts`).
+import { SALT_LENGTH } from '@lib/passcode/constants'
+
+const ITERATIONS = 100000
+
+export async function hashPasscode(passcode: string, salt: Uint8Array) {
+  const encoder = new TextEncoder()
+  const passcodeBytes = encoder.encode(passcode)
+  passcode = ''
+
+  const importedKey = await crypto.subtle.importKey('raw', passcodeBytes, { name: 'PBKDF2' }, false, ['deriveBits'])
+
+  const derivedBits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: salt as BufferSource, iterations: ITERATIONS, hash: 'SHA-256' },
+    importedKey,
+    256,
+  )
+
+  return new Uint8Array(derivedBits)
+}
+
+export async function deriveEncryptionKey(passcode: string, salt: Uint8Array): Promise<CryptoKey> {
+  const encoder = new TextEncoder()
+  const passcodeBytes = encoder.encode(passcode)
+  passcode = ''
+
+  const importedKey = await crypto.subtle.importKey(
+    'raw', passcodeBytes, { name: 'PBKDF2' }, false, ['deriveKey'],
+  )
+
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: salt as BufferSource, iterations: ITERATIONS, hash: 'SHA-256' },
+    importedKey, { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt'],
+  )
+}
+
+export async function createEncryptionArtifactsForPasscode(passcode: string) {
+  const encryptionSalt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH))
+  const verificationSalt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH))
+
+  const encryptionKey = await deriveEncryptionKey(passcode, encryptionSalt)
+  const verificationHash = await hashPasscode(passcode, verificationSalt)
+  passcode = ''
+
+  return { verificationHash, verificationSalt, encryptionSalt, encryptionKey }
+}
