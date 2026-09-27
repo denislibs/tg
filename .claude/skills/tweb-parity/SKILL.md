@@ -62,6 +62,7 @@ description: Использовать при любой работе над UI w
 | Пост канала, шапка канала, права, статистика | `channels.md` |
 | Комментарии и треды | `comments.md` |
 | Тема, переменные, брейкпоинты, три колонки | `state-and-layout.md` |
+| Обои, фон чата, облачные темы, акцент, «Обои»/«Цвет»/карусель тем | `wallpapers-themes.md` |
 
 ## Подсистема → док
 
@@ -74,6 +75,7 @@ description: Использовать при любой работе над UI w
 | Медиа: wrappers, превью, загрузка, SW/кэш, видео, аудио-плеер, медиавьювер, стикеры/lottie | `media.md` |
 | Правая колонка: слайдер, профиль user/group/channel, shared media, скролл шапки | `right-sidebar.md` |
 | Левая колонка: слайдер, настройки, бургер, поиск, чатлист, фолдеры | `left-sidebar.md` |
+| Обои и облачные темы: `settings.themes[]`, `appThemesManager`, `themeController.applyTheme`, `chatThemesPicker`, `<ChatBackground>` | `wallpapers-themes.md` |
 | Попапы и меню: `PopupElement`, каталог попапов, `ButtonMenu`, позиционирование, тосты, тултипы | `popups.md` |
 | Композер: DOM, морф кнопки, плашки reply/edit, запись голоса, эмодзи | `composer.md` |
 | Каналы: посты, композер канала, шапка, редактирование, права | `channels.md` |
