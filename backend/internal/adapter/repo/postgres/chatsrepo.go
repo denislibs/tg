@@ -218,7 +218,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		        peer.username, peer.avatar_media_id, peer.avatar_preview,
 		        COALESCE(peer.is_bot,false), COALESCE(peer.is_verified,false),
 		        COALESCE(peer.is_premium,false), COALESCE(peer.emoji_status,''),
-		        COALESCE(peer.deleted,false),
+		        COALESCE(peer.deleted,false), COALESCE(peer.is_service,false),
 		        c.auto_delete_period,
 		        -- Дата ВСТУПЛЕНИЯ зрителя — обязательный channel.date краткой
 		        -- формы (DialogRecord.ToChannel). Выборка идёт ОТ его строки
@@ -247,7 +247,8 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		 ) lm ON true
 		 LEFT JOIN LATERAL (
 		   SELECT u.id, u.first_name, u.last_name, u.username, u.avatar_media_id, u.avatar_preview,
-		          u.is_bot, u.is_verified, u.is_premium, u.emoji_status, u.deleted_at IS NOT NULL AS deleted
+		          u.is_bot, u.is_verified, u.is_premium, u.emoji_status, u.deleted_at IS NOT NULL AS deleted,
+		          u.is_service
 		   FROM chat_members om JOIN users u ON u.id = om.user_id
 		   WHERE om.chat_id = c.id AND om.user_id <> $1
 		   LIMIT 1
@@ -281,7 +282,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 			&muteUntil, &d.Pinned, &archived, &d.IsForum, &notifyPreview, &notifySound, &d.PeerReadSeq,
 			&topMessageID, &d.TopMessageSeq,
 			&peerID, &peer.firstName, &peer.lastName, &peer.username, &peer.photoID, &peer.photoPreview,
-			&peer.isBot, &peer.isVerified, &peer.isPremium, &peer.emojiStatus, &peer.deleted,
+			&peer.isBot, &peer.isVerified, &peer.isPremium, &peer.emojiStatus, &peer.deleted, &peer.isService,
 			&d.TTLPeriod, &d.JoinedAt,
 			&d.MemberCount, &d.MyRole, &rights, &d.Signatures, &d.SignatureProfiles,
 			&d.DiscussionChatID, &perms, &d.Settings.SlowmodeSeconds, &d.Settings.ChargeStars); err != nil {

@@ -971,10 +971,7 @@ func (r *MessagesRepo) GetHistory(ctx context.Context, chatID, userID, offsetSeq
 	q := querier(ctx, r.pool)
 	// Skip deleted (never shown) and rows this user hid for themselves. Placeholder
 	// differs per query shape.
-	// exclN also enforces hidden history (chats.history_for_new=false): a plain
-	// member sees only messages sent after they joined; admins/creator see all.
-	// The %[2]d placeholder is the per-member cleared horizon (seq>clearedSeq).
-	const exclN = ` AND deleted_at IS NULL AND seq>$%[2]d AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id=messages.id AND h.user_id=$%[1]d) AND ((SELECT history_for_new FROM chats WHERE id=$1) OR messages.created_at >= COALESCE((SELECT cm.joined_at FROM chat_members cm WHERE cm.chat_id=$1 AND cm.user_id=$%[1]d AND cm.role='member'), 'epoch'::timestamptz))`
+	const exclN = historyVisibleN
 	const thrN = ` AND ($%d::bigint IS NULL OR thread_root_id=$%[1]d OR id=$%[1]d)`
 	// tagN (Избранное): оставляем только сообщения, помеченные зрителем реакцией
 	// $%[2]d (эмодзи/id кастом-эмодзи). Пустой тег ($%[2]d='') снимает фильтр.
@@ -1317,11 +1314,23 @@ func (r *MessagesRepo) RecentThreadRepliers(ctx context.Context, chatID int64, r
 	return out, rows.Err()
 }
 
-// CountMessages returns the total number of messages in a chat.
-func (r *MessagesRepo) CountMessages(ctx context.Context, chatID int64) (int, error) {
+// historyVisibleN — что из истории чата $1 видит зритель: не удалено, не
+// скрыто им для себя (message_hides), выше его горизонта «очистки истории»
+// и — при скрытой истории (chats.history_for_new=false) — отправлено после
+// его вступления (админы/создатель видят всё). %[1]d — плейсхолдер id
+// зрителя, %[2]d — горизонта очистки. Одно условие на окно истории и на её
+// счётчик: иначе они расходятся.
+const historyVisibleN = ` AND deleted_at IS NULL AND seq>$%[2]d AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id=messages.id AND h.user_id=$%[1]d) AND ((SELECT history_for_new FROM chats WHERE id=$1) OR messages.created_at >= COALESCE((SELECT cm.joined_at FROM chat_members cm WHERE cm.chat_id=$1 AND cm.user_id=$%[1]d AND cm.role='member'), 'epoch'::timestamptz))`
+
+// CountMessages — сколько сообщений истории видит зритель (`count`
+// messages.messagesSlice). Условие — то же, что у окна GetHistory: клиент
+// показывает это число как есть (tweb topbar.ts `messagesCounter` —
+// «N messages» в шапке «Избранного» из historyStorage.count), и счёт, в
+// который входят очищенные и скрытые зрителем сообщения, врал бы.
+func (r *MessagesRepo) CountMessages(ctx context.Context, chatID, userID, clearedSeq int64) (int, error) {
 	q := querier(ctx, r.pool)
 	var n int
-	err := q.QueryRow(ctx, `SELECT count(*) FROM messages WHERE chat_id=$1 AND deleted_at IS NULL`, chatID).Scan(&n)
+	err := q.QueryRow(ctx, `SELECT count(*) FROM messages WHERE chat_id=$1`+fmt.Sprintf(historyVisibleN, 2, 3), chatID, userID, clearedSeq).Scan(&n)
 	return n, err
 }
 

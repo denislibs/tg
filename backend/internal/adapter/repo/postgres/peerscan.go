@@ -23,7 +23,7 @@ func userRealCols(prefix string) string {
 	return prefix + "id, " + prefix + "first_name, " + prefix + "last_name, " +
 		prefix + "username, " + prefix + "avatar_media_id, " + prefix + "avatar_preview, " +
 		prefix + "is_bot, " + prefix + "is_verified, " + prefix + "is_premium, " +
-		prefix + "emoji_status, " + prefix + "deleted_at IS NOT NULL"
+		prefix + "emoji_status, " + prefix + "deleted_at IS NOT NULL, " + prefix + "is_service"
 }
 
 // userRealScan — приёмники под userRealCols. Промежуточная структура нужна
@@ -41,11 +41,12 @@ type userRealScan struct {
 	isPremium    bool
 	emojiStatus  string
 	deleted      bool
+	isService    bool
 }
 
 func (s *userRealScan) dest() []any {
 	return []any{&s.id, &s.firstName, &s.lastName, &s.username, &s.photoID, &s.photoPreview,
-		&s.isBot, &s.isVerified, &s.isPremium, &s.emojiStatus, &s.deleted}
+		&s.isBot, &s.isVerified, &s.isPremium, &s.emojiStatus, &s.deleted, &s.isService}
 }
 
 // user собирает конструктор из просканированной строки. showPhoto=false —
@@ -55,7 +56,7 @@ func (s *userRealScan) user(showPhoto bool) domain.UserReal {
 		ID: s.id, FirstName: s.firstName, LastName: s.lastName,
 		Username: s.username, PhotoID: s.photoID, PhotoPreview: s.photoPreview,
 		IsBot: s.isBot, IsVerified: s.isVerified, IsPremium: s.isPremium,
-		Deleted: s.deleted, EmojiStatus: s.emojiStatus,
+		IsService: s.isService, Deleted: s.deleted, EmojiStatus: s.emojiStatus,
 	}
 	return rec.ToUser(domain.UserFlags{}, nil, showPhoto)
 }

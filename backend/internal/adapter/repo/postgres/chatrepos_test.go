@@ -493,7 +493,7 @@ func TestMessagesRepo_SeqAndInsertAndHistory(t *testing.T) {
 		}
 	}
 
-	n, _ := msgs.CountMessages(ctx, chatID)
+	n, _ := msgs.CountMessages(ctx, chatID, a, 0)
 	if n != 3 {
 		t.Fatalf("CountMessages = %d, want 3", n)
 	}

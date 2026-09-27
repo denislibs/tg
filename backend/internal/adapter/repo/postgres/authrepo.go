@@ -17,7 +17,7 @@ import (
 
 // userCols is the canonical user column list / scan order, shared by every
 // query that returns a full domain.UserRecord.
-const userCols = `id, phone, username, first_name, last_name, bio, birthday, avatar_media_id, avatar_preview, is_premium, is_verified, is_bot, deleted_at IS NOT NULL, emoji_status, auto_delete_period`
+const userCols = `id, phone, username, first_name, last_name, bio, birthday, avatar_media_id, avatar_preview, is_premium, is_verified, is_bot, deleted_at IS NOT NULL, emoji_status, auto_delete_period, is_service`
 
 // scanUser scans a row selected with userCols into a domain.UserRecord. Phone is
 // nullable (freed on account deletion), so it is scanned via a pointer and left
@@ -27,7 +27,7 @@ func scanUser(row pgx.Row) (domain.UserRecord, error) {
 	var phone *string
 	err := row.Scan(&u.ID, &phone, &u.Username, &u.FirstName, &u.LastName,
 		&u.Bio, &u.Birthday, &u.PhotoID, &u.PhotoPreview,
-		&u.IsPremium, &u.IsVerified, &u.IsBot, &u.Deleted, &u.EmojiStatus, &u.AutoDeletePeriod)
+		&u.IsPremium, &u.IsVerified, &u.IsBot, &u.Deleted, &u.EmojiStatus, &u.AutoDeletePeriod, &u.IsService)
 	if phone != nil {
 		u.Phone = *phone
 	}
@@ -375,11 +375,11 @@ func (r *AuthRepo) SessionByTokenHash(ctx context.Context, tokenHash, appVersion
 	err := r.pool.QueryRow(ctx,
 		`SELECT u.id, u.phone, u.username, u.first_name, u.last_name,
 		        u.bio, u.birthday, u.avatar_media_id, u.avatar_preview, u.is_premium,
-		        u.is_verified, u.is_bot, u.deleted_at IS NOT NULL, u.emoji_status, u.auto_delete_period, d.id
+		        u.is_verified, u.is_bot, u.deleted_at IS NOT NULL, u.emoji_status, u.auto_delete_period, u.is_service, d.id
 		 FROM users u JOIN devices d ON d.user_id=u.id WHERE d.token_hash=$1`,
 		tokenHash).Scan(&u.ID, &phone, &u.Username, &u.FirstName, &u.LastName,
 		&u.Bio, &u.Birthday, &u.PhotoID, &u.PhotoPreview, &u.IsPremium,
-		&u.IsVerified, &u.IsBot, &u.Deleted, &u.EmojiStatus, &u.AutoDeletePeriod, &deviceID)
+		&u.IsVerified, &u.IsBot, &u.Deleted, &u.EmojiStatus, &u.AutoDeletePeriod, &u.IsService, &deviceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.UserRecord{}, 0, domain.ErrNotFound
 	}
