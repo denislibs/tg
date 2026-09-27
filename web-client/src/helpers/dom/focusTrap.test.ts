@@ -7,7 +7,8 @@
  * так что видимость тут проверяется только через `[hidden]`/`[inert]`/`aria-hidden`
  * и `disabled` — ветку `display: none` предка движок не отличает.
  */
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { setAppWindow } from '@helpers/appWindow'
 import createFocusTrap, { getFocusableElements, type FocusTrap } from './focusTrap'
 
 const traps: FocusTrap[] = []
@@ -270,5 +271,32 @@ describe('getFocusableElements', () => {
     document.body.append(container)
 
     expect(getFocusableElements(container).map((el) => el.id)).toEqual(['third', 'second', 'first'])
+  })
+})
+
+// tweb focusTrap.ts:135-137, :146-147 — ловушка следует за активным окном: вынос
+// клиента в Document PiP переносит попап в другой документ, и Tab должен ходить
+// по кругу уже там, а не в брошенной вкладке.
+describe('ловушка переезжает вместе с активным окном', () => {
+  afterEach(() => setAppWindow(window))
+
+  it('после setAppWindow слушатели и стек — в документе выноса; после deactivate подписка снята', () => {
+    const pipDoc = document.implementation.createHTMLDocument('pip')
+    const pip = { document: pipDoc } as unknown as Window
+    const { container } = box('a', 'b')
+    document.body.append(container)
+    const trap = trapOf(container)
+    trap.activate()
+
+    const tabAdd = vi.spyOn(pipDoc, 'addEventListener')
+    const tabRemove = vi.spyOn(document, 'removeEventListener')
+    setAppWindow(pip)
+    expect(tabAdd).toHaveBeenCalledWith('keydown', expect.any(Function), true)
+    expect(tabRemove).toHaveBeenCalledWith('keydown', expect.any(Function), true)
+
+    trap.deactivate(false)
+    const backAdd = vi.spyOn(document, 'addEventListener')
+    setAppWindow(window)
+    expect(backAdd).not.toHaveBeenCalledWith('keydown', expect.any(Function), true)
   })
 })

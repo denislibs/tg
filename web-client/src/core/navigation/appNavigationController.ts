@@ -51,10 +51,6 @@
  * `pendingBacks` + предохранитель на 500мс, см. `legacySettleForBack`).
  *
  * ── Прочие адаптации под наш стек ──────────────────────────────────────────
- *  • `bindActiveWindowListener` (`helpers/appWindow.ts` — поддержка Document
- *    PiP у оригинала) → обычный `window.addEventListener`: подсистемы PiP у нас
- *    нет, тот же вычет уже сделан в `components/chat/contextMenu.ts:909`
- *    (`getOverlayRoot()` → `document.body`);
  *  • `reload`/`close`/`focus`/`navigateToUrl` (`:481-520`) НЕ портированы —
  *    вызывающих нет ни одного: перезагрузку после логаута у нас делает
  *    `client/boot.ts` напрямую, а `window.close()`/`focus()` не зовёт никто;
@@ -64,6 +60,7 @@
 import { MOUNT_CLASS_TO } from '@config/debug'
 import { IS_FIREFOX, IS_MOBILE_SAFARI } from '@environment/userAgent'
 import { logger } from '@lib/logger'
+import { bindActiveWindowListener } from '@helpers/appWindow'
 import blurActiveElement from '@helpers/dom/blurActiveElement'
 import cancelEvent from '@helpers/dom/cancelEvent'
 import isSwipingBackSafari from '@helpers/dom/isSwipingBackSafari'
@@ -164,7 +161,9 @@ export class AppNavigationController {
       this.pushState() // * push init state
     }
 
-    window.addEventListener('keydown', this.onKeyDown, { capture: true, passive: false })
+    // tweb :77-79: слушатель следует за активным окном — в выносе клиента в
+    // Document PiP (`core/pip.ts`) нажатия приходят в окно PiP, а не во вкладку.
+    bindActiveWindowListener((w) => w, 'keydown', this.onKeyDown, { capture: true, passive: false })
 
     if(IS_MOBILE_SAFARI) {
       window.addEventListener('touchstart', this.onTouchStart, { passive: true })

@@ -15,7 +15,12 @@ vi.mock('@environment/touchSupport', () => ({ default: false }))
 // и глотание клика после перестановки обязаны уйти в `getOverlayRoot()`
 // (tweb sortable.ts:98, :252), а не в `document.body` напрямую.
 const overlay = vi.hoisted(() => ({ root: undefined as HTMLElement | undefined }))
-vi.mock('@helpers/appWindow', () => ({ getOverlayRoot: () => overlay.root ?? document.body }))
+// Подменяется только корень: остальное (`bindActiveWindowListener` — им навигация
+// вешает Esc при импорте) — настоящее.
+vi.mock('@helpers/appWindow', async(importOriginal) => ({
+  ...await importOriginal<typeof import('@helpers/appWindow')>(),
+  getOverlayRoot: () => overlay.root ?? document.body,
+}))
 
 import { useSettingsStore } from '@/settings'
 import { getMiddleware } from '@helpers/middleware'

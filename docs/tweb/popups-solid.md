@@ -166,7 +166,7 @@ div.popup.<class>[.night][.no-overlay][.active][.hiding][.old]      ← onMouseD
 После показа оболочка пересчитывает концы (`onSizeChange` через `doubleRaf`, `:394-401`): попап
 раскладывается скрытым, и без пересчёта линия футера ошибается на пару пикселей.
 
-SCSS HEAD (`_popup.scss`), которых нет у нас:
+SCSS HEAD (`_popup.scss`), которых не было у нас (**перенесены 2C-4**: `diff` с HEAD — одна строка `@use`):
 
 - `:211-216` — `.popup-container > .popup-scrollable` — `position: relative; flex: 1 1 auto; min-height: 0`;
 - `:221-227` — тело внутри скролла заполняет скролл и ничего не режет;
@@ -313,13 +313,13 @@ SCSS HEAD (`_popup.scss`), которых нет у нас:
 |---|---|
 | `core/navigation/appNavigationController.ts` (615) | порт; дельта 472e3e76b перенесена (2C-2): `onEscape?: (event: KeyboardEvent) => boolean`, в `onKeyDown` — `!e.defaultPrevented`. Не перенесено вне этой дельты: `bindActiveWindowListener` для `keydown` (`:79`, у нас `window.addEventListener` — Esc в окне выноса не дойдёт до контроллера после задачи 3) и тип `'settings-search'` (34f417d12) |
 | `helpers/overlayCounter.ts` (41) | порт 1:1; `isOverlayActive` пишет только `popupElement.ts`; React-попапы счётчик не трогают |
-| `helpers/appWindow.ts` (27) | только `getOverlayRoot()` = `window.document.body`. **Докблок (`:5-13`) неверен**: вынос всего клиента в Document PiP у нас ЕСТЬ — `core/pip.ts:49-106` (`enterAppPip`: `#root` переезжает в окно PiP), и React-попапы уже порталят туда (`usePortalContainer`). Оболочка на `getOverlayRoot()` без `setAppWindow` открывала бы попап в фоновой вкладке |
+| `helpers/appWindow.ts` (106) | **2C-3 ✅** порт HEAD `:18-122`: `getOverlayRoot`, `setAppWindow`, `onAppWindowChange`, `bindActiveWindowListener`; `getAppWindow`/`onBeforeAppWindowChange` — нет читателя (метрики в выносе окно не меняют), расхождение 1 в шапке. Писатель один — `core/pip.ts` `enterAppPip` (окно ДО переноса `#root`, как `clientPip.tsx:62`/`:118`) рядом с `usePipStore.win` (вторая читательская форма — для React-порталов, до О-17); там же, по `clientPip.tsx:76-83` и `:104-120`, делегаты Solid на документ PiP и возврат временных корней во вкладку (React-порталы — `flushSync` стора до сбора). Esc навигации следует за окном (`appNavigationController.ts` — `bindActiveWindowListener`, tweb `:79`). Не переведены на активное окно (у tweb — через `appWindow`): `focusTrap.ts` (переезд ловушки, tweb `:135-137`, `:146-147` — после влития #313), `mediaViewer/base.ts:1351` (свой `document.body`), `clickEvent.ts`, `contextMenu.ts`, `overlayClickHandler.ts` и др. — их шапки ещё пишут «выноса нет» |
 | `components/scrollable2.solid.tsx` | порт HEAD (2C-1): `trackEnds`, `isScrolledToStart/End` в `ScrollableContextValue`, пересчёт концов в `onSizeChange` и по включению слежения (2556fc949), `tabIndex` |
-| `helpers/dom/focusTrap.ts`, `scrollRegion.ts`, `isKeyboardControl.ts` | порт (2C-2). `focusTrap` — без переезда в окно выноса (`onAppWindowChange`, `:135-137`, `:146-147`) до задачи 3; `isKeyboardControl` — без `shouldPreserveKeyboardFocus` (потребителей в 2C нет) |
+| `helpers/dom/focusTrap.ts`, `scrollRegion.ts`, `isKeyboardControl.ts` | порт (2C-2). `focusTrap` — с переездом в окно выноса (`onAppWindowChange`, `:135-137`, `:146-147`, дописан при слиянии 2C-2 и 2C-3); `isKeyboardControl` — без `shouldPreserveKeyboardFocus` (потребителей в 2C нет) |
 | `helpers/dom/isSendShortcutPressed.ts`, `isTargetAnInput.ts` | **нет** (`sendShortcut` в настройках тоже нет — `keyboardShortcuts.solid.tsx:20-23`, О-1) |
 | `components/MarkupTooltip.tsx` | React, синглтона `getInstance().hide()` нет |
 | `components/buttonTsx.solid.tsx`, `iconTsx.solid.tsx`, `rowTsx.solid.tsx` (`Row.Icon noBackground` :452), `section.solid.tsx`, `radioFieldTsx.solid.tsx`, `checkboxFieldTsx.solid.tsx`, `mediaHeader.solid.tsx` (`Sticker onReady` :91), `appSelectPeers.solid.tsx`, `putPreloader.ts`, `animationIntersector.ts` (`checkAnimations2(blurred, exceptGroup)` :373) | есть — строительный материал оболочки и попапов |
-| `styles/tweb/popups/` | `_popup` (369), `_popupVariables` (4), `_peer`, `_confirmation`, `_forward`, `_stickers`, `_datePicker`, `_premium` (`_index.scss:83-89`); нет `_mute`, `_limit`, `_stars`, `_reactedList`, `_webApp`, `_payment*`, `_boost*`, `_createContact`, `_chatlistInvite`, … |
+| `styles/tweb/popups/` | `_popup` (429) и `_popupVariables` (9) — **HEAD 1:1 (2C-4)**, вместе с 69a759cbc (`.btn-icon` — `--primary-text-color`, `_button`/`_animatedIcon`/`_chat`/`_profile`; крестики React-`Popup`/`PremiumModal` без инлайн-цвета); остальные партиалы: `_peer`, `_confirmation`, `_forward`, `_stickers`, `_datePicker`, `_premium` (`_index.scss:83-89`); нет `_mute`, `_limit`, `_stars`, `_reactedList`, `_webApp`, `_payment*`, `_boost*`, `_createContact`, `_chatlistInvite`, … |
 
 ### 9.2 React-попапы и их пара в tweb
 
@@ -372,11 +372,11 @@ SCSS HEAD (`_popup.scss`), которых нет у нас:
    под PT/own-попапами не глушатся.
 3. **Нет a11y оболочки** (§ 5): ни `role="dialog"`, ни возврата фокуса. Примитивы (`focusTrap`,
    `scrollRegion`, `isKeyboardControl`, Esc с `defaultPrevented`) портированы (2C-2), ждут оболочку (2C-5).
-4. **Нет стыков скролла и футера** (§ 4): `_popup.scss` без блоков `:211-273`; `scrollable2` уже
-   HEAD (2C-1).
+4. **Нет стыков скролла и футера** (§ 4): SCSS `:211-273` перенесён (2C-4), `scrollable2` уже HEAD (2C-1);
+   рисовать стыки некому, пока нет оболочки (задача 5).
 5. **`z-index: 4090` у `shared/ui/Popup`** против `4` у tweb (`_popup.scss:34`): порядок решает DOM.
-6. **Корень оверлеев не следует за окном PiP** (`appWindow.ts` без `setAppWindow`), хотя вынос
-   клиента в PiP есть (`core/pip.ts`).
+6. ~~**Корень оверлеев не следует за окном PiP**~~ — снято 2C-3: `getOverlayRoot()` следует за
+   `enterAppPip`. Остаток — потребители, ещё не переведённые на активное окно (§ 9.1, строка `appWindow.ts`).
 7. **`PopupPeer` — класс с `checkboxField.label`**, у tweb — `RowTsx`-строки чекбоксов (ef41b29db).
 
 ## Проверка после порта
@@ -403,5 +403,5 @@ SCSS HEAD (`_popup.scss`), которых нет у нас:
 Машинная сверка разметки: `tools/tweb-parity/snapshot-dom.js` → `node tools/tweb-parity/dom-parity.mjs <дамп> ours.txt`.
 Дампы: `06-delete-popup`, `06-forward-popup`, `17-popup-01-forward-share`, `17-popup-03-delete-message`,
 `17-popup-06-date-picker`, `14-left-24-premium-popup`, `14-left-33-auto-delete`,
-`14-left-35-passkeys-popup`. Стили — `node tools/tweb-parity/scss-parity.mjs _popup.scss` (сейчас
-«0 нет у нас / 3 только у нас»: скрипт не видит `:has(…)`-блоков — их сверять `diff`'ом файла).
+`14-left-35-passkeys-popup`. Стили — `node tools/tweb-parity/scss-parity.mjs _popup.scss` (после 2C-4 — «0 / 0»; скрипт не видит
+`:has(…)`-блоков — их сверять `diff`'ом файла: отличие от HEAD — только `@use`).
