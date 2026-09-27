@@ -67,7 +67,7 @@
 |---|---|---|---|
 | 2A **Иконки и строки** (видно во всём приложении) — **сделано** (`feat/w2a-icons-rows`) | 2197fee9c (шрифт tgico с HEAD, карта, переименования `*_filled`) → dae12932f → 12eeb9b1c → 944b578e9; стили `_row.scss`/`_checkbox.scss` из ef41b29db и 803f9599d. Сделано: шрифт/карта/переименования (B26), quote/blockquote, цветные плашки иконок строк во всех трёх строках (vanilla/Solid/React kit) + иконки настроек и профиля по tweb, тумблер и классы `row-*-field`, иконки платформ сессий. Не делалось: RowTsx-миграция (2D), аудио-строка, экран сессии | M | — |
 | 2B **Примитивы `Tabs`** | 7d50b5dfe (`MenuShell`/`MenuInner`/`MenuIconTab`, `MenuTab.ripple`, ряд `AppSearchSuper` на `Tabs.MenuScrollable`, `nav` → `div`) → `attachTabList` из 472e3e76b | M | после шва папок |
-| 2C **Оболочка попапов на Solid** | 2556fc949 (класс `PopupElement` удалён, `showXxxPopup()`) → 6c3803343 → a11y попапов из 472e3e76b | L | программа Solid; наш `popupElement.ts` — порт удалённого класса |
+| 2C **Оболочка попапов на Solid** — референс [`../popups-solid.md`](../popups-solid.md), план `docs/superpowers/plans/2026-09-27-wave-2c-popups-solid.md` | 2556fc949 (класс `PopupElement` удалён, `showXxxPopup()`) → 6c3803343 → a11y попапов из 472e3e76b | L | программа Solid; наш `popupElement.ts` — порт удалённого класса |
 | 2D **Строки на `RowTsx`** | ef41b29db (`row.ts` → `rowTsxController`) | L | шаг программы Solid, после 2A |
 | 2E **Жизненный цикл object URL** | 15de983de + 85f27ea3c | L | медиа-модель |
 | 2F **Подсветка найденного и прыжок** | f57dbcec3 (`textHighlight.ts`, `::highlight`) → 5db7cfb6f → 0138e970d; рядом 3f974c341 (`dialog-subtitle-parts`) | L | задевает задачу 7 поиска |
