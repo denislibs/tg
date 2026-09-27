@@ -261,11 +261,15 @@ useStateStore и т.д.) — внутренние Solid-компоненты/х�
 
 Строки исключений всех этих табов собирает общий `PrivacySection` (`components/privacySection.tsx:171-218`):
 `Row.Icon` (person_crossed_filled / adduser) + `Row.Title` (Never/Always Allow|Share) +
-`Row.Subtitle` (число пользователей или «Add Users»). **У нас** — React-экран
-`components/settings/PrivacyRule.tsx` на `settings/kit.tsx::Row`: число пользователей — `sublabel`
-(`.row-subtitle` под заголовком), как у tweb. Раньше оно шло в `value` → `.row-title-right`, а тот
-не сжимается (`flex: 0 0 auto !important`, `_row.scss:230-234`) — заголовок выдавливало до «Н…».
-Пин — `PrivacyRule.test.tsx`. Перевод экрана на RowTsx — блок 2D.
+`Row.Subtitle` (число пользователей или «Add Users»). **У нас** (план 2D, задача 17) — тот же класс
+`components/privacySection.solid.tsx` и вкладки `sidebarLeft/tabs/privacy/*.solid.tsx` (объявления —
+блок в конце `solidJsTabs/tabs.ts`, все eventable, запись на `destroy`); открывают их строки React-экрана
+`settings/PrivacySecuritySettings.tsx` через `getSettingsSliderHost().openTab` до задачи 23. Исключения —
+`AppAddMembersTab` (`type: 'privacy'`, только пользователи — О-17). Нет вкладок Gifts/SavedMusic и секции
+P2P (О-16), премиум-замка голосовых (О-34), «публичного фото» (О-35); «Сообщения» — `PrivacySection` по
+нашему правилу `messages` вместо `messages/*` (О-15, О-34); своя вкладка `readTime.solid.tsx` на месте
+флага `hide_read_marks` (О-18). React `settings/PrivacyRule.tsx` снесён; пины —
+`sidebarLeft/tabs/privacy/privacy.solid.test.tsx` («Н…» — счётчик в `Row.Subtitle`, не в `titleRight`).
 
 ### `passcodeLock/`
 
