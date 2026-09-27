@@ -4,28 +4,31 @@
  * блокировки код-паролем: фон чата, карточка с обезьянкой, поле пароля,
  * «Proceed» и подпись «забыли код → выйти» с попапом подтверждения. Ввод сдвигает
  * градиент фона; неверный код — ошибка поля; после шести неудач — «слишком много
- * попыток» и срок следующей попытки в настройках (60 с). Клавиша, нажатая вне поля,
- * переводит в него фокус; фокус заперт в экране.
+ * попыток» и срок следующей попытки в настройках (`passcode.canAttemptAgainOn`,
+ * 60 с). Клавиша, нажатая вне поля, переводит в него фокус; фокус заперт в экране.
+ * Заперли кнопкой замка (`fromLockIcon`) — клон её иконки едет к обезьянке и
+ * растворяется, обезьянка до того скрыта; в конце — `onAnimationEnd`.
  *
  * Расхождения с tweb:
- *  1. Без анимации замка из шапки (`fromLockIcon`/`onAnimationEnd`) — см. шапку
- *     `passcodeLockScreenController.solid.tsx`; обезьянка видна сразу.
- *  2. Зависимости — импортом, а не `useLockScreenHotReloadGuard()` (HMR-подмена
- *     модулей tweb); `usePasscodeActions()` → функции `lib/passcode/actions.ts`;
- *     `forceLogout` — через канал код-пароля (`invokePasscode`), а не
- *     `apiManagerProxy.invokeVoid`.
- *  3. Настройки: tweb читает `settings` из `commonStateStorage` без кэша
- *     (`get('settings', false)`), у нас — стор `settings.tsx` (его соседние вкладки
- *     держат в синхроне событием `storage`); поле — `passcodeCanAttemptAgainOn`.
- *  4. Число аккаунтов — `getUnencryptedTotalAccounts` (`core/auth/numberOfAccounts.ts`),
+ *  1. Зависимости — импортом, а не `useLockScreenHotReloadGuard()` (провайдер
+ *     tweb — см. расхождение 3 шапки `passcodeLockScreenController.solid.tsx`);
+ *     `usePasscodeActions()` → функции `lib/passcode/actions.ts`; `forceLogout` —
+ *     через канал код-пароля (`invokePasscode`), а не `apiManagerProxy.invokeVoid`.
+ *  2. Срок попытки — через мост `useAppSettings()` (`stores/appSettings.solid.ts`,
+ *     путь tweb `passcode.canAttemptAgainOn`); tweb читает и пишет
+ *     `commonStateStorage.get('settings', false)` без кэша. Под мостом — zustand
+ *     `settings.tsx` (ключ `passcodeCanAttemptAgainOn`, соседние вкладки — событием
+ *     `storage`) до переезда стора настроек на Solid (спека Solid-миграции § 5).
+ *  3. Число аккаунтов — `getUnencryptedTotalAccounts` (`core/auth/numberOfAccounts.ts`),
  *     порт одноимённого метода `AccountController`.
- *  5. `keepMe(ripple)` → `void ripple`.
+ *  4. `keepMe(ripple)` → `void ripple`.
  */
 import { type Component, createEffect, createResource, on, onCleanup, onMount } from 'solid-js'
 import { createMutable } from 'solid-js/store'
 import { animateValue } from '@helpers/animateValue'
 import focusInput from '@helpers/dom/focusInput'
 import createFocusTrap from '@helpers/dom/focusTrap'
+import pause from '@helpers/schedulers/pause'
 import throttle from '@helpers/schedulers/throttle'
 import I18n, { i18n } from '@lib/langPack'
 import { isMyPasscode, unlockWithPasscode } from '@lib/passcode/actions'
@@ -33,7 +36,7 @@ import { MAX_PASSCODE_LENGTH } from '@lib/passcode/constants'
 import { getUnencryptedTotalAccounts } from '@core/auth/numberOfAccounts'
 import type ChatBackgroundGradientRenderer from '@core/chat/gradientRenderer'
 import { invokePasscode } from '@/client/passcodeClient'
-import { useSettingsStore } from '@/settings'
+import { useAppSettings } from '@stores/appSettings.solid'
 import { InputFieldTsx } from '@components/inputFieldTsx.solid'
 import PasswordInputField from '@components/passwordInputField'
 import ripple from '@components/ripple'
@@ -59,19 +62,24 @@ const MAX_ATTEMPTS_TIMEOUT_SEC = 60
 
 const PasscodeLockScreen: Component<{
   onUnlock: () => void
+  fromLockIcon?: HTMLElement
+  onAnimationEnd?: () => void
 }> = (props) => {
   let container!: HTMLDivElement
   let passwordInputField!: PasswordInputField
+  let passwordMonkeyContainer!: HTMLDivElement
 
   let attempts = 0
 
   const store = createMutable<StateStore>({
-    isMonkeyHidden: false,
+    isMonkeyHidden: !!props.fromLockIcon,
     isError: false,
     tooManyAttempts: false,
     passcode: '',
     isLogoutPopupOpen: false,
   })
+
+  const [appSettings, setAppSettings] = useAppSettings()
 
   const [totalAccounts] = createResource(() => getUnencryptedTotalAccounts())
 
@@ -81,6 +89,26 @@ const PasscodeLockScreen: Component<{
     const trap = createFocusTrap(container)
     trap.activate()
     onCleanup(() => trap.deactivate())
+
+    const lockIcon = props.fromLockIcon
+    if(lockIcon) void (async() => {
+      const lockIconRect = lockIcon.getBoundingClientRect()
+      const rect = passwordMonkeyContainer.getBoundingClientRect()
+
+      lockIcon.style.setProperty('--x', (rect.left + (rect.width / 2)) + 'px')
+      lockIcon.style.setProperty('--y', (rect.top + (rect.height / 2)) + 'px')
+      lockIcon.style.setProperty('--scale', (rect.width / lockIconRect.width) + '')
+      lockIcon.classList.add('passcode-lock-screen__animated-lock-icon--shift-body')
+
+      await pause(500)
+
+      lockIcon.classList.add('passcode-lock-screen__animated-lock-icon--disappear')
+      store.isMonkeyHidden = false
+
+      await pause(400)
+      lockIcon.remove()
+      props.onAnimationEnd?.()
+    })()
 
     const listener = (e: KeyboardEvent) => {
       if(e.defaultPrevented || store.isLogoutPopupOpen ||
@@ -121,15 +149,15 @@ const PasscodeLockScreen: Component<{
 
   const canSubmit = () => !!store.passcode && store.passcode.length <= MAX_PASSCODE_LENGTH
 
-  const canAttempt = () => {
-    const canAttemptAgainOn = useSettingsStore.getState().passcodeCanAttemptAgainOn
+  const canAttempt = async() => {
+    const canAttemptAgainOn = appSettings.passcode.canAttemptAgainOn
     if(!canAttemptAgainOn) return true
 
     if(canAttemptAgainOn > Date.now()) return false
 
     store.tooManyAttempts = false
     attempts = 0
-    useSettingsStore.getState().update({ passcodeCanAttemptAgainOn: null })
+    void setAppSettings('passcode', 'canAttemptAgainOn', null)
     return true
   }
 
@@ -141,7 +169,7 @@ const PasscodeLockScreen: Component<{
     isSubmiting = true
 
     try {
-      if(!canAttempt()) {
+      if(!(await canAttempt())) {
         store.tooManyAttempts = true
       } else if(canSubmit() && await isMyPasscode(store.passcode)) {
         await unlockWithPasscode(store.passcode)
@@ -151,9 +179,7 @@ const PasscodeLockScreen: Component<{
         store.isError = true
         if(attempts > MAX_ATTEMPTS) {
           store.tooManyAttempts = true
-          useSettingsStore.getState().update({
-            passcodeCanAttemptAgainOn: Date.now() + MAX_ATTEMPTS_TIMEOUT_SEC * 1000,
-          })
+          await setAppSettings('passcode', 'canAttemptAgainOn', Date.now() + MAX_ATTEMPTS_TIMEOUT_SEC * 1000)
         }
       }
     } catch{
@@ -188,6 +214,7 @@ const PasscodeLockScreen: Component<{
       <div class={styles.Card}>
         <PasswordMonkeyTsx
           hidden={store.isMonkeyHidden}
+          ref={passwordMonkeyContainer}
           passwordInputField={passwordInputField}
         />
         <Space amount="1.125rem" />

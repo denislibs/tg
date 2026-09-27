@@ -5,8 +5,9 @@
  * «подглядывает», когда глазок поля показывает код; до загрузки лотти — картинка
  * закрытой обезьянки, чтобы не мигала на перезагрузке.
  *
- * Отличие одно: классы берутся импортом, а не из `useLockScreenHotReloadGuard()`
- * (HMR-подмена модулей tweb) — поведение то же.
+ * Отличие одно: класс обезьянки берётся импортом, а не из
+ * `useLockScreenHotReloadGuard()` (провайдер tweb — расхождение 3 шапки
+ * `passcodeLockScreenController.solid.tsx`) — поведение то же.
  */
 import { type Component, createRenderEffect, createSignal, mergeProps, onCleanup, type Ref, Show } from 'solid-js'
 import PasswordMonkey from '@components/monkeys/password'

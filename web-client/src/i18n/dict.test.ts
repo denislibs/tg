@@ -490,12 +490,14 @@ const COMPOSITION = {
 // папок (разбор — там же).
 // Портом экрана блокировки — ключи tweb вместо ключей React-экрана (разбор — у
 // `COMPOSITION` выше), у всех пяти.
+// Портом кнопки замка (`sidebarLeft/lockButton.solid.tsx`) — наш `PasscodeLock.LockNow`
+// заменён ключом tweb `PasscodeLock.TapToLock` у всех пяти: −1 +1, число строк то же.
 const FINGERPRINT = {
-  ru: '1b28e8d6',
-  uk: '96241f78',
-  es: 'fe3f5de3',
-  de: '5c0f800e',
-  fr: 'e4a36120',
+  ru: '7c42769e',
+  uk: '4c8d1a40',
+  es: 'e878cf4f',
+  de: '1e1c8f3e',
+  fr: '342d3f40',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

@@ -125,13 +125,15 @@ const APP_SETTINGS_KEYS = {
   },
   // tweb `config/state.ts:127` — объект галочек «Энергосбережения» (задача 11)
   liteMode: 'liteMode',
-  // tweb `config/state.ts:148-154` (`passcode`) — вкладка «Код-пароль» (задача 18).
-  // `canAttemptAgainOn` не заведён: его читает экран блокировки, не вкладка.
+  // tweb `config/state.ts:148-154` (`passcode`) — вкладка «Код-пароль» (задача 18)
+  // и экран блокировки (`canAttemptAgainOn` — срок следующей попытки,
+  // `passcodeLock/passcodeLockScreen.solid.tsx`).
   passcode: {
     enabled: 'passcodeEnabled',
     autoLockTimeoutMins: 'passcodeAutoLockMins',
     lockShortcutEnabled: 'passcodeLockShortcutEnabled',
     lockShortcut: 'passcodeLockShortcut',
+    canAttemptAgainOn: 'passcodeCanAttemptAgainOn',
   },
   // tweb `config/state.ts:159-160`
   cacheTTL: 'cacheTTL',

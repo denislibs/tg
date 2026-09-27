@@ -8,26 +8,38 @@
  * `checkLockState`: сперва ключ из передачи через перезагрузку
  * (`takeEncryptionKeyHandoff`, 65c6ea8f8), затем `isLocked` у воркера; заперто —
  * колбэк (тема и язык, `boot.ts`) и экран. Экран — Solid-корень в
- * `getOverlayRoot()`, модуль экрана — ленивый чанк (`Promise.race` с паузой 100 мс,
- * как у оригинала), снятие — через `--hidden` и паузы 120 + 250 + 120 мс под
- * `startViewTransition`.
+ * `getOverlayRoot()` на момент `lock()`: запертый в выносе клиента (Document PiP)
+ * встаёт в body окна выноса, а при возврате его вместе с прочими временными
+ * корнями переносит `core/pip.ts` (tweb `clientPip.tsx:106-120`). Модуль экрана —
+ * ленивый чанк (`Promise.race` с паузой 100 мс, как у оригинала), снятие — через
+ * `--hidden` и паузы 120 + 250 + 120 мс под `startViewTransition`.
+ *
+ * Запирание с анимацией (`lock(fromLockIcon, onAnimationEnd)`): кнопка замка шапки
+ * (`sidebarLeft/lockButton.solid.tsx`) отдаёт обёртку иконки — её клон
+ * (`__animated-lock-icon`, `--x`/`--y` по центру иконки) едет к обезьянке, экран
+ * проявляется из `--hidden` через `doubleRaf`; сочетание (`true`) — только
+ * проявление и `onAnimationEnd` через 200 мс. Воркер и перезагрузка — в
+ * `onAnimationEnd`, после анимации.
  *
  * Расхождения с tweb:
- *  1. Без анимации замка из шапки (`fromLockIcon`/`onAnimationEnd`, `cloneLockIcon`):
- *     наша кнопка замка — React-`IconButton` в `Sidebar.tsx`, не порт
- *     `lockButton.tsx`, и иконку не передаёт; ветки без вызывающего не заводим.
- *  2. `isLocked` сразу разрешает флаг «код включён» вкладки и сверяет с ним
+ *  1. `isLocked` сразу разрешает флаг «код включён» вкладки и сверяет с ним
  *     настройку `passcodeEnabled` (localStorage) — истина у записи в `msgr/kv`;
  *     `getIsLocked()` — стор `useLockStore` (его читает сочетание блокировки).
- *  3. Хэш адреса не прячется на время замка (`savedHash`): у нас его применяет
+ *  2. Хэш адреса не прячется на время замка (`savedHash`): у нас его применяет
  *     `boot.ts` уже после разблокировки.
- *  4. `LockScreenHotReloadGuardProvider` (подмена модулей под HMR у tweb) не нужен:
- *     экран импортирует зависимости напрямую.
- *  5. Воркер не ответил на `isLocked` — старт не вешаем (данные всё равно за ключом).
+ *  3. Без `LockScreenHotReloadGuardProvider` (tweb `lib/solidjs/
+ *     lockScreenHotReloadGuardProvider.tsx`): экран и обезьянка импортируют
+ *     `InputFieldTsx`, `PasswordInputField`, `PasswordMonkey` и канал к воркеру
+ *     сами. Провайдер живёт в контроллере, а контроллер у нас — в стартовом чанке
+ *     (`client/boot.ts`): он вытащил бы поле пароля и лотти обезьянки из ленивого
+ *     чанка экрана в старт каждой вкладки. HMR-подмены модулей tweb
+ *     (`useHotReloadGuard`) в проекте нет нигде.
+ *  4. Воркер не ответил на `isLocked` — старт не вешаем (данные всё равно за ключом).
  */
 import { render } from 'solid-js/web'
 import deferredPromise, { type CancellablePromise } from '@helpers/cancellablePromise'
 import { getOverlayRoot } from '@helpers/appWindow'
+import { doubleRaf } from '@helpers/schedulers'
 import pause from '@helpers/schedulers/pause'
 import DeferredIsUsingPasscode from '@lib/passcode/deferredIsUsingPasscode'
 import EncryptionKeyStore from '@lib/passcode/keyStore'
@@ -90,15 +102,24 @@ export default class PasscodeLockScreenController {
     await this.appStartupDeferred
   }
 
-  public static async lock() {
+  public static async lock(fromLockIcon?: HTMLElement | boolean, onAnimationEnd?: () => void) {
     if(this.mountedElement) return
 
     useLockStore.getState().lock()
+
+    const shouldAnimateIn = !!fromLockIcon
 
     await Promise.race([pause(100), importPasscodeLockScreen()])
 
     const element = this.mountedElement = document.createElement('div')
     element.classList.add('passcode-lock-screen')
+
+    const clonedLockIcon = fromLockIcon instanceof HTMLElement ? this.cloneLockIcon(fromLockIcon) : undefined
+    if(clonedLockIcon) element.append(clonedLockIcon)
+
+    if(shouldAnimateIn) {
+      element.classList.add('passcode-lock-screen--hidden')
+    }
     getOverlayRoot().append(element)
 
     const { default: PasscodeLockScreen } = await importPasscodeLockScreen()
@@ -106,8 +127,34 @@ export default class PasscodeLockScreenController {
     if(this.mountedElement !== element) return
 
     this.dispose = render(() => (
-      <PasscodeLockScreen onUnlock={() => this.unlock()} />
+      <PasscodeLockScreen
+        onUnlock={() => this.unlock()}
+        fromLockIcon={clonedLockIcon}
+        onAnimationEnd={onAnimationEnd}
+      />
     ), element)
+
+    if(shouldAnimateIn) {
+      void doubleRaf().then(async() => {
+        element.classList.remove('passcode-lock-screen--hidden')
+
+        if(!clonedLockIcon) void pause(200).then(() => {
+          onAnimationEnd?.()
+        })
+      })
+    }
+  }
+
+  private static cloneLockIcon(icon: HTMLElement) {
+    const clonedLockIcon = icon.cloneNode(true) as HTMLElement
+    clonedLockIcon.classList.add('passcode-lock-screen__animated-lock-icon')
+
+    const rect = icon.getBoundingClientRect()
+
+    clonedLockIcon.style.setProperty('--x', (rect.left + rect.width / 2) + 'px')
+    clonedLockIcon.style.setProperty('--y', (rect.top + rect.height / 2) + 'px')
+
+    return clonedLockIcon
   }
 
   public static unlock() {

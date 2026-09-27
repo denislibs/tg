@@ -630,13 +630,13 @@ const es = {
   'EditAccount.Logout': 'Cerrar sesión',
   LogOut: 'Cerrar sesión',
   'PasscodeLock.LogoutPopup.Description': '¿Seguro que quieres cerrar sesión?',
-  'PasscodeLock.LockNow': 'Bloquear la aplicación',
   // вкладка «Код-пароль» (порт tweb passcodeLock/*, план 2D, задача 18)
   'PasscodeLock.Notice': 'Nota: si olvidas tu código de acceso, tendrás que cerrar sesión.',
   'PasscodeLock.Next': 'Siguiente',
   'PasscodeLock.Disabled': 'Desactivado',
   'PasscodeLock.EnableLockShortcut': 'Atajo de bloqueo',
   'PasscodeLock.LockShortcutDescription': 'Prueba combinaciones hasta dar con el atajo que funcione en tu navegador.',
+  'PasscodeLock.TapToLock': 'Toca para bloquear Telegram.',
   // Passkeys
   'Passkeys.Caption':
     'Las llaves de acceso te permiten iniciar sesión sin contraseña, con tu huella, tu rostro o el PIN del dispositivo.',

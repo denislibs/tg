@@ -630,7 +630,6 @@ const de = {
   'EditAccount.Logout': 'Abmelden',
   LogOut: 'Abmelden',
   'PasscodeLock.LogoutPopup.Description': 'Möchtest du dich wirklich abmelden?',
-  'PasscodeLock.LockNow': 'App sperren',
   // вкладка «Код-пароль» (порт tweb passcodeLock/*, план 2D, задача 18)
   'PasscodeLock.Notice': 'Hinweis: Wenn du deinen Code vergisst, musst du dich abmelden.',
   'PasscodeLock.Next': 'Weiter',
@@ -641,6 +640,7 @@ const de = {
   },
   'PasscodeLock.EnableLockShortcut': 'Tastenkürzel zum Sperren',
   'PasscodeLock.LockShortcutDescription': 'Probiere aus, welches Tastenkürzel in deinem Browser funktioniert.',
+  'PasscodeLock.TapToLock': 'Tippe, um Telegram zu sperren.',
   // Passkeys
   'Passkeys.Caption':
     'Mit Passkeys meldest du dich ohne Passwort an – per Fingerabdruck, Gesicht oder Geräte-PIN.',

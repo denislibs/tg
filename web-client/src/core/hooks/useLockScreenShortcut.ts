@@ -10,9 +10,9 @@
 //     приложения у нас React. Три `createResource` + `settings_updated` —
 //     подписка на zustand `useSettingsStore` (единственный владелец настроек),
 //     `PasscodeLockScreenController.getIsLocked()` — `useLockStore`.
-//  2. `PasscodeLockScreenController.lock(true, () => apiManagerProxy.lock())` —
-//     без анимации: экран сразу, затем `lockAndReload()` (воркер завершается
-//     вместе с ключом, все вкладки перезагружаются на экран блокировки).
+//  2. `apiManagerProxy.lock()` → `lockAndReload()` (воркер завершается вместе
+//     с ключом, все вкладки перезагружаются на экран блокировки) — в
+//     `onAnimationEnd`, после проявления экрана, как у оригинала (`:70-72`).
 //  3. Флага `appImManager.isShiftLockShortcut` нет: его единственный читатель —
 //     «печать уводит фокус в композер» (`appImManager.ts:1733`), такого
 //     обработчика у нас нет. Ввод в поле при сочетании Shift+L по-прежнему не
@@ -53,8 +53,9 @@ export function useLockScreenShortcut(): void {
 
         event.preventDefault()
 
-        void PasscodeLockScreenController.lock()
-        lockAndReload()
+        void PasscodeLockScreenController.lock(true, () => {
+          lockAndReload()
+        })
       }, false)
     }
 
