@@ -347,12 +347,22 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // (секция «Поделиться» прежнего редактора): ru 1404 → 1396, остальные −6
 // (uk 735, es/de 732, fr 727).
 // Поверх задачи 17: ru 1394, uk 733, es/de 730, fr 725.
+//
+// Задача 25 плана 2D (вкладка ссылки папки, порт tweb sharedFolder/inviteLink): +13
+// ключей tweb lang.ts всем пяти — `SharedFolder.Edit.{Title,Description,Subtitle}`,
+// `SharedFolder.NoChats`, `SharedFolder.NoChats.Title`,
+// `SharedFolder.Cant.{Share,ShareBots,ShareUsers}`,
+// `SharedFolder.Toast.{NoPrivate,NoAdminChannel,NoAdminGroup}`, `DeleteLink` и
+// числовой `ChatsSelected` (plural +1 у всех). У ru снят наш `Folder.Share.Empty` —
+// тост «нечем делиться» прежнего редактора заменён вкладкой ссылки без ссылки
+// (`openChatlistInvite()`, как у оригинала): ru 1394 → 1406, uk 733 → 746,
+// es/de 730 → 743, fr 725 → 738.
 const COMPOSITION = {
-  ru: { keys: 1394, plural: 41 },
-  uk: { keys: 733, plural: 30 },
-  es: { keys: 730, plural: 29 },
-  de: { keys: 730, plural: 30 },
-  fr: { keys: 725, plural: 29 },
+  ru: { keys: 1406, plural: 42 },
+  uk: { keys: 746, plural: 31 },
+  es: { keys: 743, plural: 30 },
+  de: { keys: 743, plural: 31 },
+  fr: { keys: 738, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -471,11 +481,11 @@ const COMPOSITION = {
 // Задачей 24 плана 2D — ключи вкладок «Папки» вместо ключей снесённых React-экранов
 // папок (разбор — там же).
 const FINGERPRINT = {
-  ru: '1b852559',
-  uk: 'b0d28111',
-  es: 'd3e54766',
-  de: 'ed8566cb',
-  fr: '11078b1f',
+  ru: 'af264721',
+  uk: '0e95d3b1',
+  es: '92c8325a',
+  de: 'eb37a1b7',
+  fr: '30ba98e3',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

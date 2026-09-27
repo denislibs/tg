@@ -3,7 +3,8 @@
  * Тесты вкладок «Папки» (задача 24 плана 2D): список `chatFolders.solid.tsx`,
  * редактор `editFolder.solid.tsx`, выбор чатов `includedChats.solid.tsx` —
  * порты tweb `sidebarLeft/tabs/{chatFolders,editFolder,includedChats}.tsx`
- * (812502980).
+ * (812502980). Вход редактора во вкладку ссылки «Share Folder» (`openChatlistInvite`) —
+ * задача 25; сама вкладка — `sharedFolder.solid.test.tsx`.
  *
  * Вкладки НАСТОЯЩИЕ (`solidJsTabs/tabs.ts`), открытые через хост слайдера
  * (`settingsSliderHost.ts`) тем же путём, что их открывает строка корня
@@ -443,7 +444,7 @@ describe('редактор папки — ссылки-приглашения', 
     expect(row.isConnected).toBe(false)
   })
 
-  it('«Create a New Link» у папки с типами — тост NoTypes; у папки только с чатами — сохранение и новая строка', async() => {
+  it('«Create a New Link» у папки с типами — тост NoTypes; у папки только с чатами — сохранение, вкладка ссылки, затем новая строка', async() => {
     let tab = await openEditor(BOTS)
     await settle()
     click(tab.scrollable.container.querySelector('.folder-list-links .folder-categories > .btn')!)
@@ -459,7 +460,60 @@ describe('редактор папки — ссылки-приглашения', 
     await settle()
     expect(folders.update).toHaveBeenCalledTimes(1)
     expect(folders.createInvite).toHaveBeenCalledWith(3)
-    expect(tab.scrollable.container.querySelectorAll('.folder-list-links .usernames-username')).toHaveLength(1)
+    // tweb `openChatlistInvite(invite).finally(() => wrapLink(invite))` (:672-674)
+    const shared = await waitTab('shared-folder-container')
+    expect(shared.querySelector('.invite-link-text')!.textContent).toBe(location.host + '/addlist/new')
+    await vi.waitFor(() => {
+      expect(tab.scrollable.container.querySelectorAll('.folder-list-links .usernames-username')).toHaveLength(1)
+    })
+  })
+})
+
+describe('редактор папки → вкладка ссылки «Share Folder» (задача 25)', () => {
+  const INVITE: FolderInvite = { slug: 'abc', url: '/addlist/abc', title: '', peerIds: [-10] }
+
+  it('клик по строке ссылки открывает вкладку ссылки с её адресом', async() => {
+    folders.listInvites.mockResolvedValue([INVITE])
+    const tab = await openEditor(WORK)
+    await settle()
+    click(tab.scrollable.container.querySelector('.folder-list-links .usernames-username .row-title')!)
+
+    const shared = await waitTab('shared-folder-container')
+    expect(shared.querySelector('.sidebar-header__title')!.textContent).toBe('Share Folder')
+    expect(shared.querySelector('.invite-link-text')!.textContent).toBe(location.host + '/addlist/abc')
+  })
+
+  it('удаление ссылки во вкладке снимает её строку в редакторе', async() => {
+    folders.listInvites.mockResolvedValue([INVITE])
+    const tab = await openEditor(WORK)
+    await settle()
+    const row = tab.scrollable.container.querySelector<HTMLElement>('.folder-list-links .usernames-username')!
+    click(row)
+    const shared = await waitTab('shared-folder-container')
+    await settle()
+
+    click(shared.querySelector('.invite-link-menu')!)
+    await settle()
+    click([...document.querySelectorAll<HTMLElement>('.btn-menu-item')].find((el) => text(el) === 'Delete Link')!)
+    await settle()
+
+    expect(folders.revokeInvite).toHaveBeenCalledWith('abc')
+    expect(row.isConnected).toBe(false)
+  })
+
+  it('отказ «нечем делиться» открывает вкладку без ссылки (NoChats), а не тост; строки ссылки нет', async() => {
+    folders.createInvite.mockRejectedValueOnce(new HttpError(400, 'x', 'folder has no shareable public group/channel chats'))
+    const tab = await openEditor(WORK)
+    await settle()
+    click(tab.scrollable.container.querySelector('.folder-list-links .folder-categories > .btn')!)
+
+    const shared = await waitTab('shared-folder-container')
+    await settle()
+    expect(shared.querySelector('.selector-scrollable > .caption')!.textContent)
+      .toBe('There are no chats in this folder that you can share with others.')
+    expect(shared.querySelector('.invite-link-container')).toBeNull()
+    expect(toastNew).not.toHaveBeenCalled()
+    expect(tab.scrollable.container.querySelectorAll('.folder-list-links .usernames-username')).toHaveLength(0)
   })
 })
 

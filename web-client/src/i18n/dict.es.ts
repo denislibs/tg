@@ -878,6 +878,24 @@ const es = {
   'SharedFolder.Toast.NeedName': 'Ponle un nombre a esta carpeta para compartirla.',
   'SharedFolder.Toast.NoExcluded': 'Los chats excluidos no se admiten en carpetas compartidas.',
   'SharedFolder.Toast.NoTypes': 'Los tipos de chat no se admiten en carpetas compartidas.',
+  // ── Enlace de carpeta «Compartir carpeta» (tweb `sidebarLeft/tabs/sharedFolder.tsx`,
+  //    `inviteLink.ts`; задача 25 плана 2D) ──
+  ChatsSelected: {
+    one_value: '%d chat seleccionado',
+    other_value: '%d chats seleccionados',
+  },
+  DeleteLink: 'Eliminar enlace',
+  'SharedFolder.Cant.Share': 'no puedes invitar a otros aquí',
+  'SharedFolder.Cant.ShareBots': 'no puedes compartir chats con bots',
+  'SharedFolder.Cant.ShareUsers': 'no puedes compartir chats con usuarios',
+  'SharedFolder.Edit.Description': 'Cualquiera con este enlace puede añadir la carpeta **%s** y los %s seleccionados abajo',
+  'SharedFolder.Edit.Subtitle': 'Solo puedes compartir grupos y canales en los que tengas permiso para crear enlaces de invitación.',
+  'SharedFolder.Edit.Title': 'Compartir carpeta',
+  'SharedFolder.NoChats': 'No hay chats en esta carpeta que puedas compartir con otros.',
+  'SharedFolder.NoChats.Title': 'Estos chats no se pueden compartir',
+  'SharedFolder.Toast.NoAdminChannel': 'No tienes permisos de administrador para compartir enlaces de invitación a este canal.',
+  'SharedFolder.Toast.NoAdminGroup': 'No tienes permisos de administrador para compartir enlaces de invitación a este grupo.',
+  'SharedFolder.Toast.NoPrivate': 'No puedes compartir chats privados.',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(es)

@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 31,
+      "version": 32,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -1223,6 +1223,13 @@
           }
         },
         {
+          "key": "ChatsSelected",
+          "forms": {
+            "one_value": "%d chat selected",
+            "other_value": "%d chats selected"
+          }
+        },
+        {
           "key": "Checkbox.Disabled",
           "value": "Disabled"
         },
@@ -1487,6 +1494,10 @@
         {
           "key": "DeleteForMe",
           "value": "Delete for me"
+        },
+        {
+          "key": "DeleteLink",
+          "value": "Delete Link"
         },
         {
           "key": "DeleteMega",
@@ -1949,10 +1960,6 @@
         {
           "key": "Folder.Invite.Question.Folder",
           "value": "Do you want to add the folder «%1$s»?"
-        },
-        {
-          "key": "Folder.Share.Empty",
-          "value": "This folder has no chats to share."
         },
         {
           "key": "ForumTopic.Closed",
@@ -4668,12 +4675,36 @@
           "value": "Files"
         },
         {
+          "key": "SharedFolder.Cant.Share",
+          "value": "you can't invite others here"
+        },
+        {
+          "key": "SharedFolder.Cant.ShareBots",
+          "value": "you can't share chats with bots"
+        },
+        {
+          "key": "SharedFolder.Cant.ShareUsers",
+          "value": "you can't share chats with users"
+        },
+        {
           "key": "SharedFolder.CreateLink",
           "value": "Create a New Link"
         },
         {
           "key": "SharedFolder.Description",
           "value": "Give your friends and colleagues access to the entire folder including all of its groups and channels where you have the necessary rights."
+        },
+        {
+          "key": "SharedFolder.Edit.Description",
+          "value": "Anyone with this link can add **%s** folder and the %s selected below"
+        },
+        {
+          "key": "SharedFolder.Edit.Subtitle",
+          "value": "You can only share groups and channels in which you are allowed to create invite links."
+        },
+        {
+          "key": "SharedFolder.Edit.Title",
+          "value": "Share Folder"
         },
         {
           "key": "SharedFolder.Includes",
@@ -4684,12 +4715,32 @@
           "value": "Add Folder"
         },
         {
+          "key": "SharedFolder.NoChats",
+          "value": "There are no chats in this folder that you can share with others."
+        },
+        {
+          "key": "SharedFolder.NoChats.Title",
+          "value": "These chats cannot be shared"
+        },
+        {
           "key": "SharedFolder.Toast.NeedName",
           "value": "Add a name for this folder to share it."
         },
         {
+          "key": "SharedFolder.Toast.NoAdminChannel",
+          "value": "You don't have the admin rights to share invite links to this channel."
+        },
+        {
+          "key": "SharedFolder.Toast.NoAdminGroup",
+          "value": "You don't have the admin rights to share invite links to this group chat."
+        },
+        {
           "key": "SharedFolder.Toast.NoExcluded",
           "value": "Excluded chats are not supported in shared folders."
+        },
+        {
+          "key": "SharedFolder.Toast.NoPrivate",
+          "value": "You can't share private chats."
         },
         {
           "key": "SharedFolder.Toast.NoTypes",
@@ -5756,7 +5807,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 31,
+      "version": 32,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -11024,10 +11075,6 @@
           "value": "Добавить папку «%1$s»?"
         },
         {
-          "key": "Folder.Share.Empty",
-          "value": "В этой папке нет чатов, которыми можно поделиться."
-        },
-        {
           "key": "Group.RestrictedBadge",
           "value": "ограничен"
         },
@@ -11535,6 +11582,63 @@
         {
           "key": "SharedFolder.Toast.NoTypes",
           "value": "Типы чатов не поддерживаются в общих папках."
+        },
+        {
+          "key": "ChatsSelected",
+          "forms": {
+            "one_value": "выбран %d чат",
+            "few_value": "выбрано %d чата",
+            "many_value": "выбрано %d чатов",
+            "other_value": "выбрано %d чата"
+          }
+        },
+        {
+          "key": "DeleteLink",
+          "value": "Удалить ссылку"
+        },
+        {
+          "key": "SharedFolder.Cant.Share",
+          "value": "вы не можете приглашать сюда других"
+        },
+        {
+          "key": "SharedFolder.Cant.ShareBots",
+          "value": "нельзя делиться чатами с ботами"
+        },
+        {
+          "key": "SharedFolder.Cant.ShareUsers",
+          "value": "нельзя делиться чатами с пользователями"
+        },
+        {
+          "key": "SharedFolder.Edit.Description",
+          "value": "Любой, у кого есть эта ссылка, может добавить папку **%s** и %s, выбранные ниже"
+        },
+        {
+          "key": "SharedFolder.Edit.Subtitle",
+          "value": "Делиться можно только группами и каналами, в которых вам разрешено создавать ссылки-приглашения."
+        },
+        {
+          "key": "SharedFolder.Edit.Title",
+          "value": "Поделиться папкой"
+        },
+        {
+          "key": "SharedFolder.NoChats",
+          "value": "В этой папке нет чатов, которыми можно поделиться с другими."
+        },
+        {
+          "key": "SharedFolder.NoChats.Title",
+          "value": "Этими чатами нельзя поделиться"
+        },
+        {
+          "key": "SharedFolder.Toast.NoAdminChannel",
+          "value": "У вас нет прав администратора, чтобы делиться ссылками-приглашениями в этот канал."
+        },
+        {
+          "key": "SharedFolder.Toast.NoAdminGroup",
+          "value": "У вас нет прав администратора, чтобы делиться ссылками-приглашениями в эту группу."
+        },
+        {
+          "key": "SharedFolder.Toast.NoPrivate",
+          "value": "Личными чатами делиться нельзя."
         }
       ]
     },
@@ -11545,7 +11649,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 19,
+      "version": 20,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -14530,6 +14634,61 @@
         {
           "key": "SharedFolder.Toast.NoTypes",
           "value": "Les types de discussion ne sont pas pris en charge dans les dossiers partagés."
+        },
+        {
+          "key": "ChatsSelected",
+          "forms": {
+            "one_value": "%d discussion sélectionnée",
+            "other_value": "%d discussions sélectionnées"
+          }
+        },
+        {
+          "key": "DeleteLink",
+          "value": "Supprimer le lien"
+        },
+        {
+          "key": "SharedFolder.Cant.Share",
+          "value": "vous ne pouvez pas inviter d’autres personnes ici"
+        },
+        {
+          "key": "SharedFolder.Cant.ShareBots",
+          "value": "impossible de partager des discussions avec des bots"
+        },
+        {
+          "key": "SharedFolder.Cant.ShareUsers",
+          "value": "impossible de partager des discussions avec des utilisateurs"
+        },
+        {
+          "key": "SharedFolder.Edit.Description",
+          "value": "Toute personne disposant de ce lien peut ajouter le dossier **%s** et les %s sélectionnées ci-dessous"
+        },
+        {
+          "key": "SharedFolder.Edit.Subtitle",
+          "value": "Vous ne pouvez partager que les groupes et canaux dans lesquels vous êtes autorisé à créer des liens d’invitation."
+        },
+        {
+          "key": "SharedFolder.Edit.Title",
+          "value": "Partager le dossier"
+        },
+        {
+          "key": "SharedFolder.NoChats",
+          "value": "Ce dossier ne contient aucune discussion que vous pouvez partager avec d’autres."
+        },
+        {
+          "key": "SharedFolder.NoChats.Title",
+          "value": "Ces discussions ne peuvent pas être partagées"
+        },
+        {
+          "key": "SharedFolder.Toast.NoAdminChannel",
+          "value": "Vous n’avez pas les droits d’administrateur pour partager des liens d’invitation vers ce canal."
+        },
+        {
+          "key": "SharedFolder.Toast.NoAdminGroup",
+          "value": "Vous n’avez pas les droits d’administrateur pour partager des liens d’invitation vers ce groupe."
+        },
+        {
+          "key": "SharedFolder.Toast.NoPrivate",
+          "value": "Vous ne pouvez pas partager de discussions privées."
         }
       ]
     },
@@ -14540,7 +14699,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 19,
+      "version": 20,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -17547,6 +17706,61 @@
         {
           "key": "SharedFolder.Toast.NoTypes",
           "value": "Chat-Typen werden in geteilten Ordnern nicht unterstützt."
+        },
+        {
+          "key": "ChatsSelected",
+          "forms": {
+            "one_value": "%d Chat ausgewählt",
+            "other_value": "%d Chats ausgewählt"
+          }
+        },
+        {
+          "key": "DeleteLink",
+          "value": "Link löschen"
+        },
+        {
+          "key": "SharedFolder.Cant.Share",
+          "value": "du kannst hier niemanden einladen"
+        },
+        {
+          "key": "SharedFolder.Cant.ShareBots",
+          "value": "Chats mit Bots können nicht geteilt werden"
+        },
+        {
+          "key": "SharedFolder.Cant.ShareUsers",
+          "value": "Chats mit Nutzern können nicht geteilt werden"
+        },
+        {
+          "key": "SharedFolder.Edit.Description",
+          "value": "Jeder mit diesem Link kann den Ordner **%s** und die unten ausgewählten %s hinzufügen"
+        },
+        {
+          "key": "SharedFolder.Edit.Subtitle",
+          "value": "Du kannst nur Gruppen und Kanäle teilen, in denen du Einladungslinks erstellen darfst."
+        },
+        {
+          "key": "SharedFolder.Edit.Title",
+          "value": "Ordner teilen"
+        },
+        {
+          "key": "SharedFolder.NoChats",
+          "value": "In diesem Ordner gibt es keine Chats, die du mit anderen teilen kannst."
+        },
+        {
+          "key": "SharedFolder.NoChats.Title",
+          "value": "Diese Chats können nicht geteilt werden"
+        },
+        {
+          "key": "SharedFolder.Toast.NoAdminChannel",
+          "value": "Du hast keine Adminrechte, um Einladungslinks zu diesem Kanal zu teilen."
+        },
+        {
+          "key": "SharedFolder.Toast.NoAdminGroup",
+          "value": "Du hast keine Adminrechte, um Einladungslinks zu dieser Gruppe zu teilen."
+        },
+        {
+          "key": "SharedFolder.Toast.NoPrivate",
+          "value": "Private Chats können nicht geteilt werden."
         }
       ]
     },
@@ -17557,7 +17771,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 19,
+      "version": 20,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -20562,6 +20776,61 @@
         {
           "key": "SharedFolder.Toast.NoTypes",
           "value": "Los tipos de chat no se admiten en carpetas compartidas."
+        },
+        {
+          "key": "ChatsSelected",
+          "forms": {
+            "one_value": "%d chat seleccionado",
+            "other_value": "%d chats seleccionados"
+          }
+        },
+        {
+          "key": "DeleteLink",
+          "value": "Eliminar enlace"
+        },
+        {
+          "key": "SharedFolder.Cant.Share",
+          "value": "no puedes invitar a otros aquí"
+        },
+        {
+          "key": "SharedFolder.Cant.ShareBots",
+          "value": "no puedes compartir chats con bots"
+        },
+        {
+          "key": "SharedFolder.Cant.ShareUsers",
+          "value": "no puedes compartir chats con usuarios"
+        },
+        {
+          "key": "SharedFolder.Edit.Description",
+          "value": "Cualquiera con este enlace puede añadir la carpeta **%s** y los %s seleccionados abajo"
+        },
+        {
+          "key": "SharedFolder.Edit.Subtitle",
+          "value": "Solo puedes compartir grupos y canales en los que tengas permiso para crear enlaces de invitación."
+        },
+        {
+          "key": "SharedFolder.Edit.Title",
+          "value": "Compartir carpeta"
+        },
+        {
+          "key": "SharedFolder.NoChats",
+          "value": "No hay chats en esta carpeta que puedas compartir con otros."
+        },
+        {
+          "key": "SharedFolder.NoChats.Title",
+          "value": "Estos chats no se pueden compartir"
+        },
+        {
+          "key": "SharedFolder.Toast.NoAdminChannel",
+          "value": "No tienes permisos de administrador para compartir enlaces de invitación a este canal."
+        },
+        {
+          "key": "SharedFolder.Toast.NoAdminGroup",
+          "value": "No tienes permisos de administrador para compartir enlaces de invitación a este grupo."
+        },
+        {
+          "key": "SharedFolder.Toast.NoPrivate",
+          "value": "No puedes compartir chats privados."
         }
       ]
     },
@@ -20572,7 +20841,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 19,
+      "version": 20,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -23652,6 +23921,63 @@
         {
           "key": "SharedFolder.Toast.NoTypes",
           "value": "Типи чатів не підтримуються у спільних теках."
+        },
+        {
+          "key": "ChatsSelected",
+          "forms": {
+            "one_value": "вибрано %d чат",
+            "few_value": "вибрано %d чати",
+            "many_value": "вибрано %d чатів",
+            "other_value": "вибрано %d чату"
+          }
+        },
+        {
+          "key": "DeleteLink",
+          "value": "Видалити посилання"
+        },
+        {
+          "key": "SharedFolder.Cant.Share",
+          "value": "ви не можете запрошувати сюди інших"
+        },
+        {
+          "key": "SharedFolder.Cant.ShareBots",
+          "value": "не можна ділитися чатами з ботами"
+        },
+        {
+          "key": "SharedFolder.Cant.ShareUsers",
+          "value": "не можна ділитися чатами з користувачами"
+        },
+        {
+          "key": "SharedFolder.Edit.Description",
+          "value": "Будь-хто з цим посиланням може додати теку **%s** і %s, вибрані нижче"
+        },
+        {
+          "key": "SharedFolder.Edit.Subtitle",
+          "value": "Ділитися можна лише групами й каналами, у яких вам дозволено створювати посилання-запрошення."
+        },
+        {
+          "key": "SharedFolder.Edit.Title",
+          "value": "Поділитися текою"
+        },
+        {
+          "key": "SharedFolder.NoChats",
+          "value": "У цій теці немає чатів, якими можна поділитися з іншими."
+        },
+        {
+          "key": "SharedFolder.NoChats.Title",
+          "value": "Цими чатами не можна поділитися"
+        },
+        {
+          "key": "SharedFolder.Toast.NoAdminChannel",
+          "value": "У вас немає прав адміністратора, щоб ділитися посиланнями-запрошеннями в цей канал."
+        },
+        {
+          "key": "SharedFolder.Toast.NoAdminGroup",
+          "value": "У вас немає прав адміністратора, щоб ділитися посиланнями-запрошеннями в цю групу."
+        },
+        {
+          "key": "SharedFolder.Toast.NoPrivate",
+          "value": "Особистими чатами ділитися не можна."
         }
       ]
     }
