@@ -97,8 +97,11 @@ export type NavigationItem = {
    * система уже играет свою анимацию, наша поверх неё лишняя.
    */
   onPop: (canAnimate: boolean | undefined) => boolean | void
-  /** Вето именно на Esc (Back по этой записи всё равно сработает). */
-  onEscape?: () => boolean
+  /**
+   * Вето именно на Esc (Back по этой записи всё равно сработает). Получает само
+   * событие (tweb 472e3e76b, `:17`) — чтобы запись могла решить по цели нажатия.
+   */
+  onEscape?: (event: KeyboardEvent) => boolean
   /** Запись без своей записи истории: Esc её закрывает, Back — нет. */
   noHistory?: boolean
   /** Не снимать фокус с активного элемента при закрытии. */
@@ -294,7 +297,8 @@ export class AppNavigationController {
   private onKeyDown = (e: KeyboardEvent) => {
     const item = this.navigations[this.navigations.length - 1]
     if(!item) return
-    if(e.key === 'Escape' && this.canCloseOnEscape() && (item.onEscape ? item.onEscape() : true)) {
+    // tweb 472e3e76b (`:219`): Esc, уже обработанный раньше (`defaultPrevented`), слой не снимает.
+    if(e.key === 'Escape' && !e.defaultPrevented && this.canCloseOnEscape() && (item.onEscape ? item.onEscape(e) : true)) {
       cancelEvent(e)
       this.back(item.type)
     }

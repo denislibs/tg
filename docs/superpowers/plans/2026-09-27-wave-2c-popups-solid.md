@@ -254,7 +254,7 @@
 
 ---
 
-### Задача 2: a11y-примитивы — `focusTrap`, `scrollRegion`, `isKeyboardControl`; навигация Δ 472e3e76b
+### Задача 2: a11y-примитивы — `focusTrap`, `scrollRegion`, `isKeyboardControl`; навигация Δ 472e3e76b — ✅ сделано (PR feat/w2c-scrollable-a11y)
 
 **Что делаем.**
 
@@ -289,6 +289,26 @@
 
 **Готово когда:** три файла совпадают с оригиналом с точностью до объявленных расхождений
 (`diff` в теле коммита); существующие тесты навигации зелёные.
+
+**Итог (2026-09-27):**
+- `focusTrap.ts` — дословно, кроме подписки `onAppWindowChange` (`:135-137`, `:146-147`):
+  `helpers/appWindow.ts` без неё до влития задачи 3. `bindDocument` перенесён целиком, его ветка
+  переезда помечена у строки. **Кто вливается вторым из 2 и 3 — возвращает две пары строк
+  оригинала и пин «ловушка переехала с окном»** (`setAppWindow(fakeWin)` → Tab кружит в
+  документе нового окна, в старом ловушки нет).
+- `isKeyboardControl.ts` — только `isKeyboardControl`: у `shouldPreserveKeyboardFocus` потребителей
+  в волне нет (`appImManager`, `stories/viewer`, `newMedia` О-15, `mediaEditor`), вместе с ним не
+  нужен и `isTargetAnInput` — у нас его нет, не заводится.
+- `scrollRegion.ts` — дословно.
+- Навигация — ровно две строки дельты (`onEscape(event)`, `!e.defaultPrevented`).
+- Мутации красят свои: `wasTopmost &&` у возврата на `restoreTo` и у возврата в родителя
+  (второй — пином «сверху попап без ловушки», форма `isActive` оболочки), пересылка
+  восстановления мимо закрывающегося попапа, `!e.defaultPrevented`, `onEscape(e)` → `onEscape()`.
+- **Замечено вне объёма** (не правилось — не дельта 472e3e76b): у tweb `onKeyDown` навигации висит
+  через `bindActiveWindowListener((w) => w, 'keydown', …)` (`appNavigationController.ts:79`),
+  у нас — `window.addEventListener` с докблоком «подсистемы PiP у нас нет» (неверен, поправка 3).
+  После задачи 3 Esc в окне выноса до контроллера не дойдёт. Словарь типов записи отстал на
+  `'settings-search'` (34f417d12) при докблоке «дословный … целиком».
 
 ---
 

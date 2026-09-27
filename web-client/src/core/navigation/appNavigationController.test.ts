@@ -183,6 +183,38 @@ describe('appNavigationController — Esc и Back это ОДИН список',
     expect(onPop).toHaveBeenCalledTimes(1)
   })
 
+  // tweb 472e3e76b (`appNavigationController.ts:17`, `:219`): Esc, который уже
+  // обработал кто-то раньше (раскрытый комбобокс, поле с IME, меню внутри попапа),
+  // не должен снимать ещё и верхний слой.
+  it('Esc с preventDefault() до контроллера: запись НЕ снимается, событие не трогаем', async() => {
+    const onPop = vi.fn()
+    const onEscape = vi.fn(() => true)
+    ctrl.pushItem(item({ onPop, onEscape }))
+    await flush()
+
+    const e = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    e.preventDefault()
+    window.dispatchEvent(e)
+
+    expect(onEscape).not.toHaveBeenCalled()
+    expect(onPop).not.toHaveBeenCalled()
+
+    esc()
+    expect(onPop).toHaveBeenCalledTimes(1)
+  })
+
+  it('onEscape получает само событие keydown', async() => {
+    const onEscape = vi.fn((_e: KeyboardEvent) => false)
+    ctrl.pushItem(item({ onEscape }))
+    await flush()
+
+    const e = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    window.dispatchEvent(e)
+
+    expect(onEscape).toHaveBeenCalledTimes(1)
+    expect(onEscape.mock.calls[0][0]).toBe(e)
+  })
+
   it('registerEscapeHandler — глобальное вето на Esc, снимается возвращённой функцией', async() => {
     const onPop = vi.fn()
     ctrl.pushItem(item({ onPop }))
