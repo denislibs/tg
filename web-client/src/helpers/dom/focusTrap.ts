@@ -5,17 +5,11 @@
  * фокус возвращается туда, откуда открыли; ловушки стопкой — по документу.
  *
  * Расхождения:
- *  1. Переезд ловушки в окно выноса (`:135-137` — подписка `onAppWindowChange`,
- *     `:146-147` — её снятие) не перенесён до влития задачи 3 волны 2C: у нас
- *     `helpers/appWindow.ts` пока без `onAppWindowChange` (его заводит задача 3
- *     вместе с писателем активного окна в `core/pip.ts`). `bindDocument` перенесён
- *     целиком: его ветка переезда (`:107-113`, `:120-126`) оживает ровно этой
- *     подпиской. Тот, кто вливается вторым из задач 2 и 3, возвращает две пары
- *     строк оригинала и пин «ловушка переехала с окном».
- *  2. `strictNullChecks` у нас включён (у tweb `strict` выключен): `activeDocument`
+ *  1. `strictNullChecks` у нас включён (у tweb `strict` выключен): `activeDocument`
  *     объявлен `Document | undefined`, чтения стека после проверки индекса — с `!`,
  *     `contains(scope.restoreTo ?? null)` — DOM-тип не принимает `undefined`.
  */
+import { onAppWindowChange } from '@helpers/appWindow'
 
 const FOCUSABLE_SELECTOR = [
   'a[href]',
@@ -70,7 +64,8 @@ const documentTraps = new WeakMap<Document, FocusScope[]>()
  * keep only the topmost trap live. `deactivate` restores the prior focus.
  */
 export default function createFocusTrap(element: HTMLElement, isActive: () => boolean = () => true) {
-  let activeDocument: Document | undefined // расхождение 2
+  let activeDocument: Document | undefined // расхождение 1
+  let stopFollowingWindow: (() => void) | undefined
   const token: FocusScope = { element }
   const isTopmost = () => {
     const stack = activeDocument && documentTraps.get(activeDocument)
@@ -115,9 +110,6 @@ export default function createFocusTrap(element: HTMLElement, isActive: () => bo
 
   const bindDocument = (doc: Document) => {
     if(activeDocument === doc) return
-    // Ветка переезда (до `activeDocument = doc` и микрозадача ниже) — живая только
-    // с подпиской `onAppWindowChange`, расхождение 1: до неё `activate` приходит
-    // сюда уже после `deactivate`, и `activeDocument` здесь всегда пуст.
     const focused = activeDocument?.activeElement as HTMLElement | undefined
     const oldStack = activeDocument && documentTraps.get(activeDocument)
     const index = oldStack?.indexOf(token) ?? -1
@@ -145,7 +137,9 @@ export default function createFocusTrap(element: HTMLElement, isActive: () => bo
       const doc = element.ownerDocument || document
       token.restoreTo = restoreTo || doc.activeElement as HTMLElement
       bindDocument(doc)
-      // tweb :135-137 — `stopFollowingWindow = onAppWindowChange(...)`: расхождение 1.
+      stopFollowingWindow = onAppWindowChange((win, prev) => {
+        if(activeDocument === prev.document) bindDocument(win.document)
+      })
       if(!element.hasAttribute('tabindex')) element.tabIndex = -1
 
       if(!element.contains(activeDocument!.activeElement)) {
@@ -154,7 +148,8 @@ export default function createFocusTrap(element: HTMLElement, isActive: () => bo
       }
     },
     deactivate(restoreFocus = true) {
-      // tweb :146-147 — снятие `stopFollowingWindow`: расхождение 1.
+      stopFollowingWindow?.()
+      stopFollowingWindow = undefined
       const stack = activeDocument && documentTraps.get(activeDocument)
       const wasTopmost = stack?.[stack.length - 1] === token
       const index = stack?.indexOf(token) ?? -1
