@@ -32,6 +32,15 @@ describe('Popup — разметка tweb', () => {
     expect(header.querySelector('.popup-title')!.textContent).toBe('Share with')
   })
 
+  it('крестик без своего цвета — цвет даёт общий .btn-icon (tweb 69a759cbc)', () => {
+    // Инлайн `--secondary-text-color` давал основной цвет лишь через подмену
+    // переменной в `.popup:not(.old) .popup-close` — 69a759cbc её снял, и с
+    // инлайном крестик посерел бы (замер офлайн-рендером: rgb(17,17,17) → серый).
+    render(<Popup open title="T" onClose={noop}>b</Popup>)
+    const close = document.querySelector<HTMLElement>('.popup-header > .popup-close')!
+    expect(close.style.color).toBe('')
+  })
+
   it('тело — глобальный popup-body (tweb popups/index.ts:208)', () => {
     render(<Popup open title="T" onClose={noop}>содержимое</Popup>)
 

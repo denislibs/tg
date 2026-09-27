@@ -166,7 +166,7 @@ div.popup.<class>[.night][.no-overlay][.active][.hiding][.old]      ← onMouseD
 После показа оболочка пересчитывает концы (`onSizeChange` через `doubleRaf`, `:394-401`): попап
 раскладывается скрытым, и без пересчёта линия футера ошибается на пару пикселей.
 
-SCSS HEAD (`_popup.scss`), которых нет у нас:
+SCSS HEAD (`_popup.scss`), которых не было у нас (**перенесены 2C-4**: `diff` с HEAD — одна строка `@use`):
 
 - `:211-216` — `.popup-container > .popup-scrollable` — `position: relative; flex: 1 1 auto; min-height: 0`;
 - `:221-227` — тело внутри скролла заполняет скролл и ничего не режет;
@@ -318,7 +318,7 @@ SCSS HEAD (`_popup.scss`), которых нет у нас:
 | `helpers/dom/focusTrap.ts`, `scrollRegion.ts`, `isKeyboardControl.ts`, `isSendShortcutPressed.ts` | **нет** (`sendShortcut` в настройках тоже нет — `keyboardShortcuts.solid.tsx:20-23`) |
 | `components/MarkupTooltip.tsx` | React, синглтона `getInstance().hide()` нет |
 | `components/buttonTsx.solid.tsx`, `iconTsx.solid.tsx`, `rowTsx.solid.tsx` (`Row.Icon noBackground` :452), `section.solid.tsx`, `radioFieldTsx.solid.tsx`, `checkboxFieldTsx.solid.tsx`, `mediaHeader.solid.tsx` (`Sticker onReady` :91), `appSelectPeers.solid.tsx`, `putPreloader.ts`, `animationIntersector.ts` (`checkAnimations2(blurred, exceptGroup)` :373) | есть — строительный материал оболочки и попапов |
-| `styles/tweb/popups/` | `_popup` (369), `_popupVariables` (4), `_peer`, `_confirmation`, `_forward`, `_stickers`, `_datePicker`, `_premium` (`_index.scss:83-89`); нет `_mute`, `_limit`, `_stars`, `_reactedList`, `_webApp`, `_payment*`, `_boost*`, `_createContact`, `_chatlistInvite`, … |
+| `styles/tweb/popups/` | `_popup` (429) и `_popupVariables` (9) — **HEAD 1:1 (2C-4)**, вместе с 69a759cbc (`.btn-icon` — `--primary-text-color`, `_button`/`_animatedIcon`/`_chat`/`_profile`; крестики React-`Popup`/`PremiumModal` без инлайн-цвета); остальные партиалы: `_peer`, `_confirmation`, `_forward`, `_stickers`, `_datePicker`, `_premium` (`_index.scss:83-89`); нет `_mute`, `_limit`, `_stars`, `_reactedList`, `_webApp`, `_payment*`, `_boost*`, `_createContact`, `_chatlistInvite`, … |
 
 ### 9.2 React-попапы и их пара в tweb
 
@@ -370,8 +370,8 @@ SCSS HEAD (`_popup.scss`), которых нет у нас:
    порталы. Esc/Back закрывают только первые две; `overlayCounter` видит только первую; анимации
    под PT/own-попапами не глушатся.
 3. **Нет a11y оболочки** (§ 5): ни `role="dialog"`, ни `focusTrap`, ни возврата фокуса.
-4. **Нет стыков скролла и футера** (§ 4): `_popup.scss` без блоков `:211-273`; `scrollable2` без
-   `trackEnds`.
+4. **Нет стыков скролла и футера** (§ 4): SCSS `:211-273` перенесён (2C-4), `scrollable2` — задача 1;
+   рисовать стыки некому, пока нет оболочки (задача 5).
 5. **`z-index: 4090` у `shared/ui/Popup`** против `4` у tweb (`_popup.scss:34`): порядок решает DOM.
 6. ~~**Корень оверлеев не следует за окном PiP**~~ — снято 2C-3: `getOverlayRoot()` следует за
    `enterAppPip`. Остаток — потребители, ещё не переведённые на активное окно (§ 9.1, строка `appWindow.ts`).
@@ -401,5 +401,5 @@ SCSS HEAD (`_popup.scss`), которых нет у нас:
 Машинная сверка разметки: `tools/tweb-parity/snapshot-dom.js` → `node tools/tweb-parity/dom-parity.mjs <дамп> ours.txt`.
 Дампы: `06-delete-popup`, `06-forward-popup`, `17-popup-01-forward-share`, `17-popup-03-delete-message`,
 `17-popup-06-date-picker`, `14-left-24-premium-popup`, `14-left-33-auto-delete`,
-`14-left-35-passkeys-popup`. Стили — `node tools/tweb-parity/scss-parity.mjs _popup.scss` (сейчас
-«0 нет у нас / 3 только у нас»: скрипт не видит `:has(…)`-блоков — их сверять `diff`'ом файла).
+`14-left-35-passkeys-popup`. Стили — `node tools/tweb-parity/scss-parity.mjs _popup.scss` (после 2C-4 — «0 / 0»; скрипт не видит
+`:has(…)`-блоков — их сверять `diff`'ом файла: отличие от HEAD — только `@use`).

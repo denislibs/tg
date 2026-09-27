@@ -335,7 +335,7 @@
 
 ---
 
-### Задача 4: `_popup.scss` и `_popupVariables.scss` → HEAD
+### Задача 4: `_popup.scss` и `_popupVariables.scss` → HEAD ✅
 
 **Что делаем.** Дословно с HEAD (`popups-solid.md` § 4):
 
@@ -352,14 +352,28 @@
 **Файлы:** изменить `web-client/src/styles/tweb/popups/_popup.scss`, `_popupVariables.scss`,
 при необходимости `styles/tweb/_button.scss`.
 
-- [ ] **Шаг 1:** `diff /Users/denisurevic/Documents/tweb/src/scss/partials/popups/_popup.scss web-client/src/styles/tweb/popups/_popup.scss`
+- [x] **Шаг 1:** `diff /Users/denisurevic/Documents/tweb/src/scss/partials/popups/_popup.scss web-client/src/styles/tweb/popups/_popup.scss`
   (у `scss-parity.mjs` слепое пятно: блоки с `:has(…)` он не видит — сейчас печатает «0 нет у нас»).
-- [ ] **Шаг 2:** перенести; единственное законное отличие — `@use "../../foundation"` вместо `"../../shared"`.
-- [ ] **Шаг 3:** `diff` → только строка `@use`; `node tools/tweb-parity/scss-parity.mjs _popup.scss` → 0/0.
-- [ ] **Шаг 4: стенд:** подтверждение «Завершить сеанс» (`activeSessions`), mute-попап чата,
+- [x] **Шаг 2:** перенести; единственное законное отличие — `@use "../../foundation"` вместо `"../../shared"`.
+- [x] **Шаг 3:** `diff` → только строка `@use`; `node tools/tweb-parity/scss-parity.mjs _popup.scss` → 0/0.
+- [x] **Шаг 4: стенд:** подтверждение «Завершить сеанс» (`activeSessions`), mute-попап чата,
   удаление сообщения — крестик и кнопки того же цвета, что до правки (computed `color` — в коммит).
 
 **Готово когда:** `diff` с HEAD — одна строка `@use`.
+
+**Итог (PR ветки `feat/w2c-appwindow-styles`).** `_popup.scss`/`_popupVariables.scss` — копия HEAD, `diff` —
+только `@use "../../foundation"`; `scss-parity` — 55/55, «0 нет у нас / 0 только у нас». Хунка 69a759cbc в
+`_button.scss` у нас не было — перенесён весь коммит (`_button`, `_animatedIcon`, `_chat`, `_profile`,
+`_popup`), `git apply` лёг без правок. Поправка к шагу 4 (стенд не трогали — офлайн-рендер снимков
+happy-dom в headless Chrome, CSS до/после): у vanilla-попапов (подтверждение, mute) ни одного отличия;
+у React-`Popup` и `PremiumModal` крестик серел (`rgb(17,17,17)` → `rgb(112,117,121)`): их инлайн
+`color: var(--secondary-text-color)` давал основной цвет только через снятую подмену
+`.popup:not(.old) .popup-close` — инлайн снят, цвет снова основной. Второе и последнее отличие —
+законное (хвост 2D): в «Поделиться» с выбранным чатом у последней секции перед футером
+`padding-bottom` 16px → 0. Пины — `styles/twebDeltaW2c.test.ts` (12), `Popup.test.tsx`, `PremiumModal.test.tsx`.
+Шире попапов (стенд): все `.btn-icon` без своего цвета — основным цветом текста (шапки, композер, бургер);
+React-`IconButton` с инлайн `--secondary-text-color` (~20 мест, `AddContactView`, `ContactsView`, `Chat.tsx:1267`, …)
+остались серыми — расхождение с 69a759cbc вне попапов, не 2C.
 
 ---
 

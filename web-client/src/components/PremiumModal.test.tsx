@@ -74,6 +74,8 @@ describe('PremiumModal — тело попапа 1:1 с tweb', () => {
     const close = header.querySelector(':scope > .btn-icon.popup-close')!
     expect(close.tagName).toBe('BUTTON')
     expect(close.querySelector(':scope > .tgico')).not.toBeNull()
+    // цвет — общий у .btn-icon (tweb 69a759cbc), своего инлайна нет — см. Popup.test.tsx
+    expect((close as HTMLElement).style.color).toBe('')
 
     const title = header.querySelector(':scope > .popup-title')!
     expect(title.textContent).toBe('Telegram Premium')
