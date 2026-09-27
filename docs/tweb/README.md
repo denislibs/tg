@@ -55,6 +55,7 @@
 | **Глобальный поиск**: `initSearch` + `AppSearchSuper` вторым потребителем — группы результатов, чипы пира/даты, `ChatTypeMenu`, recent, курсор `next_rate`, переход `zoom-fade`, что блокировано бэкендом | [global-search.md](global-search.md) |
 | **Код-пароль: шифрование хранилищ**: вывод ключа, `EncryptionKeyStore`, что шифруется/чистится при включении-выключении-смене, воркер (`isLocked`/`toggleUsingPasscode`), старт под замком, передача ключа через `window.sessionStorage`, корзины кэша и SW | [passcode-encryption.md](passcode-encryption.md) |
 | **Попапы и меню**: `PopupElement`, каталог всех попапов, `PopupPeer`/confirm, `ButtonMenu`/контекст-меню, позиционирование, тосты, тултипы | [popups.md](popups.md) |
+| **Оболочка попапов на Solid** (`812502980`, волна 2C): `<PopupElement>` и слоты `indexTsx.tsx`, `createPopup`/`showXxxPopup`, стыки скролла и футера, a11y (`focusTrap`, `role=dialog`), `showPeerPopup`/`confirmationPopup`, каталог нужных нам попапов, карта наших четырёх механик | [popups-solid.md](popups-solid.md) |
 | **Композер**: DOM-дерево, морф кнопки отправки, плашка reply/edit, запись голоса, эмодзи-дропдаун, тайминги | [composer.md](composer.md) |
 | **Каналы**: бабл поста, композер канала, шапка, редактирование, права, буст/статистика | [channels.md](channels.md) |
 | **Комментарии и треды** | [comments.md](comments.md) |
