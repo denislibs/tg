@@ -42,6 +42,7 @@ import {
   rgbToHsv,
 } from '../../shared/lib/color'
 import type { ColorRgb } from '../../shared/lib/color'
+import { resolvePreset, type ThemeChoice } from '../../theme'
 
 // tweb scss/variables.scss:6 `$hover-alpha: .08;` = дефолт `lightenAlpha` в
 // сигнатуре `applyAppColor` (themeController.ts:540); `darkenAlpha = lightenAlpha`
@@ -321,6 +322,45 @@ export function applyHighlightingColorFromRgb(
 
 export function getCurrentPreset(): ThemePresetName | null {
   return currentPreset
+}
+
+let getThemeChoice: (() => ThemeChoice) | undefined
+let isListeningToSystemTheme = false
+
+/**
+ * Порт tweb `setThemeListener` (helpers/themeController.ts:271-292): применить
+ * выбранную тему СЕЙЧАС и дальше следовать за системной (`prefers-color-scheme`),
+ * когда выбрано «как в системе». Зовёт его старт (`client/boot.ts`) — как у
+ * оригинала, в колбэке «заперто» ДО экрана блокировки (`index.ts:456`) и ещё раз
+ * после подъёма состояния (`index.ts:534`): под замком приложение, а с ним
+ * React-эффект `useThemeToggle`, не монтируется вовсе, и без этого вызова экран
+ * рисовался на голом белом фоне без переменных темы.
+ *
+ * Расхождения с tweb:
+ *  1. Выбор темы — аргументом-геттером: у оригинала контроллер сам читает
+ *     `rootScope.settings`, наши настройки — стор `settings.tsx`, и тянуть его в
+ *     контроллер темы (его читают и Solid-острова) незачем.
+ *  2. Подписка на `matchMedia` — одна на жизнь страницы: tweb зовёт метод дважды
+ *     и дважды подписывается (вторая подписка у него лишь повторяет `setTheme`);
+ *     повторный вызов здесь только меняет геттер и применяет тему.
+ *  3. При `rootScope.myId` оригинал шлёт `theme_change` (его ловит
+ *     `appImManager.applyCurrentTheme` → тот же `setTheme`); у нас подписчика на
+ *     это событие нет, и `setTheme` зовётся напрямую — итог тот же.
+ */
+export function setThemeListener(getChoice: () => ThemeChoice): void {
+  getThemeChoice = getChoice
+  const apply = () => setTheme(resolvePreset(getThemeChoice!()))
+
+  try {
+    if(!isListeningToSystemTheme) {
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', apply)
+      isListeningToSystemTheme = true
+    }
+  } catch{
+    // нет matchMedia — остаётся явный выбор, `resolvePreset` сам даст «день»
+  }
+
+  apply()
 }
 
 // Порт accent-пути tweb `applyTheme` (themeController.ts:739-898) для темы

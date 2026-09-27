@@ -248,6 +248,8 @@
   // 80px на десктопе, 68px на handhelds (см. переопределение ниже).
   --popup-sticker-size: 80px;
   --chat-bubbles-padding: 0.5rem;
+  // tweb base.scss:226 — слой экрана блокировки и его попапа (`simplePopup`).
+  --passcode-lock-screen-z-index: 100000;
   --star-golden-color: #fecf16;
   --gc-blue-text-color: #3390ec;
   // tweb base.scss:277 — верный ответ викторины (полоска и галочка варианта).

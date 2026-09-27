@@ -50,7 +50,7 @@ vi.mock('./bootstrap', () => ({
   }),
 }))
 // Экран блокировки в этом шве — заглушка: предмет теста — что старт ЖДЁТ, а не разметка.
-vi.mock('../components/PasscodeLockScreen', () => ({ default: () => null }))
+vi.mock('../components/passcodeLock/passcodeLockScreen.solid', () => ({ default: () => null }))
 vi.mock('./dnpBridgeHandoff', () => ({ installBridgeHandoff: vi.fn() }))
 vi.mock('../core/pwa', () => ({ initPwaInstall: vi.fn() }))
 vi.mock('../core/preventDeadlock', () => ({ preventCrossTabDynamicImportDeadlock: vi.fn(async () => {}) }))

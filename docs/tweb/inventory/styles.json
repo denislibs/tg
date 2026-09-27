@@ -1,6 +1,6 @@
 {
   "meta": {
-    "generatedAt": "2026-09-26",
+    "generatedAt": "2026-09-27",
     "twebDir": "/Users/denisurevic/Documents/tweb-e52b5d931",
     "twebCommit": "e52b5d931"
   },
@@ -165,15 +165,9 @@
       "twebSelectors": 323,
       "twebDynamicSelectors": 0,
       "twebClasses": 241,
-      "classesPresent": 159,
-      "coverage": 0.66,
+      "classesPresent": 170,
+      "coverage": 0.705,
       "missingClasses": [
-        "accordion",
-        "accordion-counter",
-        "accordion-icon",
-        "accordion-right-button",
-        "accordion-row",
-        "accordion-toggler-expanded",
         "accordion-toggler-round",
         "appear-zoom--active",
         "auto-delete-icon",
@@ -193,7 +187,6 @@
         "delimiter-with-text-stripe",
         "extended-media-buy-icon",
         "fade-in-transition",
-        "hover-danger-effect",
         "inner-shadow",
         "inner-shadow-inset",
         "input-selectable",
@@ -215,8 +208,6 @@
         "popup-add-members-premium-header",
         "popup-add-members-premium-subtitle",
         "popup-add-members-subtitle",
-        "popup-disable-password",
-        "popup-skip-email",
         "privacy-bg",
         "privacy-bg-close",
         "privacy-bg-contacts",
@@ -224,7 +215,6 @@
         "privacy-bg-selected",
         "privacy-premium-icon",
         "quick-reaction-sticker",
-        "quick-reaction-title",
         "reacted-list",
         "reacted-list-checks",
         "reacted-list-reaction-icon",
@@ -243,7 +233,6 @@
         "tchart--wrapper",
         "tchart--zoom",
         "text-loading",
-        "text-overflow-no-wrap",
         "ton-amount",
         "ton-amount-icon",
         "username-purchase-help",
@@ -263,8 +252,8 @@
       "twebSelectors": 97,
       "twebDynamicSelectors": 0,
       "twebClasses": 82,
-      "classesPresent": 21,
-      "coverage": 0.256,
+      "classesPresent": 24,
+      "coverage": 0.293,
       "missingClasses": [
         "AuthorDate",
         "BlockContainer",
@@ -277,7 +266,6 @@
         "CaptionText",
         "Collage",
         "CollageItem",
-        "Details",
         "DetailsContent",
         "DetailsContentInner",
         "DetailsContentOpen",
@@ -318,10 +306,8 @@
         "RelatedArticleTitle",
         "RichMessageMore",
         "RichMessageWrapper",
-        "SectionName",
         "Slideshow",
         "Subheader",
-        "Table",
         "TableName",
         "TableWrapper",
         "TaskCheckbox",
@@ -716,8 +702,8 @@
       "twebSelectors": 132,
       "twebDynamicSelectors": 0,
       "twebClasses": 99,
-      "classesPresent": 72,
-      "coverage": 0.727,
+      "classesPresent": 73,
+      "coverage": 0.737,
       "missingClasses": [
         "ViewerStoryCaption",
         "ViewerStoryCaptionText",
@@ -744,7 +730,6 @@
         "is-private",
         "isChangelog",
         "isReacted",
-        "quiz-hint",
         "record-ripple"
       ]
     },
@@ -1703,31 +1688,6 @@
       ]
     },
     {
-      "file": "src/components/sidebarRight/tabs/adminRecentActions/filters/styles.module.scss",
-      "base": "styles.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 15,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 15,
-      "classesPresent": 6,
-      "coverage": 0.4,
-      "missingClasses": [
-        "ContainerBackdrop",
-        "ContainerBackdropExtension",
-        "ContainerBackdropFill",
-        "ContainerEnter",
-        "ContainerEnterActive",
-        "ContainerExitActive",
-        "ContainerExitTo",
-        "Overlay",
-        "TopLevelCheckbox"
-      ]
-    },
-    {
       "file": "src/scss/partials/_limitLine.scss",
       "base": "_limitLine.scss",
       "kind": "global",
@@ -1898,6 +1858,30 @@
       ]
     },
     {
+      "file": "src/components/sidebarRight/tabs/adminRecentActions/filters/styles.module.scss",
+      "base": "styles.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 15,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 15,
+      "classesPresent": 7,
+      "coverage": 0.467,
+      "missingClasses": [
+        "ContainerBackdrop",
+        "ContainerBackdropExtension",
+        "ContainerBackdropFill",
+        "ContainerEnter",
+        "ContainerEnterActive",
+        "ContainerExitActive",
+        "ContainerExitTo",
+        "TopLevelCheckbox"
+      ]
+    },
+    {
       "file": "src/components/sidebarRight/tabs/adminRecentActions/logEntry.module.scss",
       "base": "logEntry.module.scss",
       "kind": "module",
@@ -1966,29 +1950,6 @@
         "speakers-and-camera-meter-wrap",
         "speakers-and-camera-preview",
         "speakers-and-camera-preview-video"
-      ]
-    },
-    {
-      "file": "src/components/chat/bubbles/chatBackground.module.scss",
-      "base": "chatBackground.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 14,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 14,
-      "classesPresent": 7,
-      "coverage": 0.5,
-      "missingClasses": [
-        "CanvasCommon",
-        "DarkPatternInvert",
-        "IsImage",
-        "IsPattern",
-        "IsTinted",
-        "SlotCrossfadeBackwards",
-        "SlotCrossfadeForwards"
       ]
     },
     {
@@ -2152,28 +2113,6 @@
       ]
     },
     {
-      "file": "src/components/sidebarLeft/tabs/passcodeLock/shortcutBuilder.module.scss",
-      "base": "shortcutBuilder.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 16,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 10,
-      "classesPresent": 4,
-      "coverage": 0.4,
-      "missingClasses": [
-        "KeyButton",
-        "KeyButtonFirst",
-        "KeyButtonLast",
-        "KeysContainer",
-        "PlusIcon",
-        "TargetKey"
-      ]
-    },
-    {
       "file": "src/components/sidebarRight/tabs/adminRecentActions/logDiff.module.scss",
       "base": "logDiff.module.scss",
       "kind": "module",
@@ -2196,28 +2135,6 @@
       ]
     },
     {
-      "file": "src/scss/partials/_colorPicker.scss",
-      "base": "_colorPicker.scss",
-      "kind": "global",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 7,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 7,
-      "classesPresent": 1,
-      "coverage": 0.143,
-      "missingClasses": [
-        "color-picker",
-        "color-picker-box",
-        "color-picker-color-slider",
-        "color-picker-dragger",
-        "color-picker-inputs",
-        "color-picker-sliders"
-      ]
-    },
-    {
       "file": "src/scss/partials/_inviteLink.scss",
       "base": "_inviteLink.scss",
       "kind": "global",
@@ -2237,50 +2154,6 @@
         "invite-link-menu",
         "invite-link-subtitle",
         "invite-link-text"
-      ]
-    },
-    {
-      "file": "src/scss/partials/_passcodeLockScreen.scss",
-      "base": "_passcodeLockScreen.scss",
-      "kind": "global",
-      "doc": null,
-      "outOfScope": true,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 9,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 7,
-      "classesPresent": 1,
-      "coverage": 0.143,
-      "missingClasses": [
-        "lock-icon-shackle",
-        "passcode-lock-screen",
-        "passcode-lock-screen--hidden",
-        "passcode-lock-screen__animated-lock-icon",
-        "passcode-lock-screen__animated-lock-icon--disappear",
-        "passcode-lock-screen__animated-lock-icon--shift-body"
-      ]
-    },
-    {
-      "file": "src/scss/partials/_quizHint.scss",
-      "base": "_quizHint.scss",
-      "kind": "global",
-      "doc": "popups.md",
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 11,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 10,
-      "classesPresent": 4,
-      "coverage": 0.4,
-      "missingClasses": [
-        "has-right-text",
-        "has-title",
-        "quiz-hint",
-        "quiz-hint-container",
-        "quiz-hint-icon",
-        "quiz-hint-title"
       ]
     },
     {
@@ -2391,27 +2264,6 @@
       ]
     },
     {
-      "file": "src/components/sidebarLeft/tabs/passcodeLock/mainTab.module.scss",
-      "base": "mainTab.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 10,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 10,
-      "classesPresent": 5,
-      "coverage": 0.5,
-      "missingClasses": [
-        "FirstSection",
-        "MainDescription",
-        "ShortcutBuilderRow",
-        "ShortcutBuilderRowChild",
-        "quiz-hint-container"
-      ]
-    },
-    {
       "file": "src/scss/partials/_chatToast.scss",
       "base": "_chatToast.scss",
       "kind": "global",
@@ -2454,27 +2306,6 @@
       ]
     },
     {
-      "file": "src/scss/partials/_usernames.scss",
-      "base": "_usernames.scss",
-      "kind": "global",
-      "doc": "right-sidebar.md",
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 10,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 9,
-      "classesPresent": 4,
-      "coverage": 0.444,
-      "missingClasses": [
-        "usernames-username",
-        "usernames-username-icon",
-        "usernames-username-icon-circle",
-        "usernames-username-icon-svg",
-        "usernames-username-status"
-      ]
-    },
-    {
       "file": "src/scss/partials/popups/_chatPreview.scss",
       "base": "_chatPreview.scss",
       "kind": "global",
@@ -2513,6 +2344,26 @@
         "SeparatorLeft",
         "SeparatorRight",
         "ServiceMsg"
+      ]
+    },
+    {
+      "file": "src/components/chat/bubbles/chatBackground.module.scss",
+      "base": "chatBackground.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 14,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 14,
+      "classesPresent": 10,
+      "coverage": 0.714,
+      "missingClasses": [
+        "DarkPatternInvert",
+        "IsTinted",
+        "SlotCrossfadeBackwards",
+        "SlotCrossfadeForwards"
       ]
     },
     {
@@ -2613,6 +2464,26 @@
         "popupContainer",
         "popupFooter",
         "popupHeader"
+      ]
+    },
+    {
+      "file": "src/scss/partials/_passcodeLockScreen.scss",
+      "base": "_passcodeLockScreen.scss",
+      "kind": "global",
+      "doc": null,
+      "outOfScope": true,
+      "ported": true,
+      "ours": "styles/tweb/_passcodeLockScreen.scss",
+      "twebSelectors": 9,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 7,
+      "classesPresent": 3,
+      "coverage": 0.429,
+      "missingClasses": [
+        "lock-icon-shackle",
+        "passcode-lock-screen__animated-lock-icon",
+        "passcode-lock-screen__animated-lock-icon--disappear",
+        "passcode-lock-screen__animated-lock-icon--shift-body"
       ]
     },
     {
@@ -2748,6 +2619,25 @@
         "buttonPaidSearch",
         "remainingUntilReset",
         "searchQuery"
+      ]
+    },
+    {
+      "file": "src/components/sidebarLeft/newAuthorization.module.scss",
+      "base": "newAuthorization.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 16,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 15,
+      "classesPresent": 12,
+      "coverage": 0.8,
+      "missingClasses": [
+        "deny",
+        "noticeContainer",
+        "popupBody"
       ]
     },
     {
@@ -2954,24 +2844,6 @@
       ]
     },
     {
-      "file": "src/components/passcodeLock/passcodeLockScreen.module.scss",
-      "base": "passcodeLockScreen.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 8,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 7,
-      "classesPresent": 5,
-      "coverage": 0.714,
-      "missingClasses": [
-        "LogoutButton",
-        "SubmitButton"
-      ]
-    },
-    {
       "file": "src/components/popups/floatingStarsBalance.module.scss",
       "base": "floatingStarsBalance.module.scss",
       "kind": "module",
@@ -3023,42 +2895,6 @@
       "missingClasses": [
         "chipSticker",
         "forOffline"
-      ]
-    },
-    {
-      "file": "src/components/sidebarLeft/newAuthorization.module.scss",
-      "base": "newAuthorization.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 16,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 15,
-      "classesPresent": 13,
-      "coverage": 0.867,
-      "missingClasses": [
-        "noticeContainer",
-        "popupBody"
-      ]
-    },
-    {
-      "file": "src/components/sidebarLeft/tabs/passcodeLock/inlineSelect.module.scss",
-      "base": "inlineSelect.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 6,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 6,
-      "classesPresent": 4,
-      "coverage": 0.667,
-      "missingClasses": [
-        "Overlay",
-        "SelectClip"
       ]
     },
     {
@@ -3292,23 +3128,6 @@
       ]
     },
     {
-      "file": "src/components/passcodeLock/passwordMonkeyTsx.module.scss",
-      "base": "passwordMonkeyTsx.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 3,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 3,
-      "classesPresent": 2,
-      "coverage": 0.667,
-      "missingClasses": [
-        "MonkeyImage"
-      ]
-    },
-    {
       "file": "src/components/popups/buyResaleGift.module.scss",
       "base": "buyResaleGift.module.scss",
       "kind": "module",
@@ -3394,23 +3213,6 @@
       ]
     },
     {
-      "file": "src/components/sidebarLeft/tabs/passcodeLock/common.module.scss",
-      "base": "common.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 2,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 2,
-      "classesPresent": 1,
-      "coverage": 0.5,
-      "missingClasses": [
-        "AdditionalPadding"
-      ]
-    },
-    {
       "file": "src/components/sidebarRight/tabs/adminRecentActions/keyValuePair.module.scss",
       "base": "keyValuePair.module.scss",
       "kind": "module",
@@ -3425,23 +3227,6 @@
       "coverage": 0.75,
       "missingClasses": [
         "hoverable"
-      ]
-    },
-    {
-      "file": "src/components/sidebarRight/tabs/adminRecentActions/noActionsPlaceholder.module.scss",
-      "base": "noActionsPlaceholder.module.scss",
-      "kind": "module",
-      "doc": null,
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 4,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 4,
-      "classesPresent": 3,
-      "coverage": 0.75,
-      "missingClasses": [
-        "Overlay"
       ]
     },
     {
@@ -3547,20 +3332,20 @@
       ]
     },
     {
-      "file": "src/scss/partials/_checkbox.scss",
-      "base": "_checkbox.scss",
+      "file": "src/scss/partials/_leftSidebar.scss",
+      "base": "_leftSidebar.scss",
       "kind": "global",
-      "doc": null,
+      "doc": "left-sidebar.md",
       "outOfScope": false,
       "ported": true,
-      "ours": "styles/tweb/_checkbox.scss",
-      "twebSelectors": 73,
+      "ours": "styles/tweb/_leftSidebar.scss",
+      "twebSelectors": 287,
       "twebDynamicSelectors": 0,
-      "twebClasses": 27,
-      "classesPresent": 26,
-      "coverage": 0.963,
+      "twebClasses": 175,
+      "classesPresent": 174,
+      "coverage": 0.994,
       "missingClasses": [
-        "checkbox-ripple"
+        "active-sessions-container"
       ]
     },
     {
@@ -3612,23 +3397,6 @@
       "coverage": 0,
       "missingClasses": [
         "bubble-star-gift-container"
-      ]
-    },
-    {
-      "file": "src/scss/partials/_starsBadge.scss",
-      "base": "_starsBadge.scss",
-      "kind": "global",
-      "doc": "right-sidebar.md",
-      "outOfScope": false,
-      "ported": false,
-      "ours": null,
-      "twebSelectors": 6,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 5,
-      "classesPresent": 4,
-      "coverage": 0.8,
-      "missingClasses": [
-        "dialog-stars-badge"
       ]
     },
     {
@@ -4074,7 +3842,7 @@
       "doc": null,
       "outOfScope": false,
       "ported": true,
-      "ours": "components/auth/mediaHeader.module.scss",
+      "ours": "components/mediaHeader.module.scss",
       "twebSelectors": 5,
       "twebDynamicSelectors": 0,
       "twebClasses": 5,
@@ -4098,13 +3866,43 @@
       "missingClasses": []
     },
     {
+      "file": "src/components/passcodeLock/passcodeLockScreen.module.scss",
+      "base": "passcodeLockScreen.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": true,
+      "ours": "components/passcodeLock/passcodeLockScreen.module.scss",
+      "twebSelectors": 8,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 7,
+      "classesPresent": 7,
+      "coverage": 1,
+      "missingClasses": []
+    },
+    {
+      "file": "src/components/passcodeLock/passwordMonkeyTsx.module.scss",
+      "base": "passwordMonkeyTsx.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": true,
+      "ours": "components/passcodeLock/passwordMonkeyTsx.module.scss",
+      "twebSelectors": 3,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 3,
+      "classesPresent": 3,
+      "coverage": 1,
+      "missingClasses": []
+    },
+    {
       "file": "src/components/passcodeLock/simplePopup.module.scss",
       "base": "simplePopup.module.scss",
       "kind": "module",
       "doc": null,
       "outOfScope": false,
-      "ported": false,
-      "ours": null,
+      "ported": true,
+      "ours": "components/passcodeLock/simplePopup.module.scss",
       "twebSelectors": 1,
       "twebDynamicSelectors": 0,
       "twebClasses": 1,
@@ -4238,8 +4036,8 @@
       "kind": "module",
       "doc": null,
       "outOfScope": false,
-      "ported": false,
-      "ours": null,
+      "ported": true,
+      "ours": "components/settingsTabLottieAnimation.module.scss",
       "twebSelectors": 1,
       "twebDynamicSelectors": 0,
       "twebClasses": 1,
@@ -4313,8 +4111,8 @@
       "kind": "module",
       "doc": null,
       "outOfScope": false,
-      "ported": false,
-      "ours": null,
+      "ported": true,
+      "ours": "components/sidebarLeft/tabs/dataAndStorage/storageQuota.module.scss",
       "twebSelectors": 1,
       "twebDynamicSelectors": 0,
       "twebClasses": 1,
@@ -4328,12 +4126,72 @@
       "kind": "module",
       "doc": null,
       "outOfScope": false,
-      "ported": false,
-      "ours": null,
+      "ported": true,
+      "ours": "components/sidebarLeft/tabs/keyboardShortcuts.module.scss",
       "twebSelectors": 4,
       "twebDynamicSelectors": 0,
       "twebClasses": 4,
       "classesPresent": 4,
+      "coverage": 1,
+      "missingClasses": []
+    },
+    {
+      "file": "src/components/sidebarLeft/tabs/passcodeLock/common.module.scss",
+      "base": "common.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": true,
+      "ours": "components/sidebarLeft/tabs/passcodeLock/common.module.scss",
+      "twebSelectors": 2,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 2,
+      "classesPresent": 2,
+      "coverage": 1,
+      "missingClasses": []
+    },
+    {
+      "file": "src/components/sidebarLeft/tabs/passcodeLock/inlineSelect.module.scss",
+      "base": "inlineSelect.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": true,
+      "ours": "components/sidebarLeft/tabs/passcodeLock/inlineSelect.module.scss",
+      "twebSelectors": 6,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 6,
+      "classesPresent": 6,
+      "coverage": 1,
+      "missingClasses": []
+    },
+    {
+      "file": "src/components/sidebarLeft/tabs/passcodeLock/mainTab.module.scss",
+      "base": "mainTab.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": true,
+      "ours": "components/sidebarLeft/tabs/passcodeLock/mainTab.module.scss",
+      "twebSelectors": 10,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 10,
+      "classesPresent": 10,
+      "coverage": 1,
+      "missingClasses": []
+    },
+    {
+      "file": "src/components/sidebarLeft/tabs/passcodeLock/shortcutBuilder.module.scss",
+      "base": "shortcutBuilder.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": true,
+      "ours": "components/sidebarLeft/tabs/passcodeLock/shortcutBuilder.module.scss",
+      "twebSelectors": 16,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 10,
+      "classesPresent": 10,
       "coverage": 1,
       "missingClasses": []
     },
@@ -4394,6 +4252,21 @@
       "twebDynamicSelectors": 0,
       "twebClasses": 5,
       "classesPresent": 5,
+      "coverage": 1,
+      "missingClasses": []
+    },
+    {
+      "file": "src/components/sidebarRight/tabs/adminRecentActions/noActionsPlaceholder.module.scss",
+      "base": "noActionsPlaceholder.module.scss",
+      "kind": "module",
+      "doc": null,
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 4,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 4,
+      "classesPresent": 4,
       "coverage": 1,
       "missingClasses": []
     },
@@ -5103,6 +4976,21 @@
       "missingClasses": []
     },
     {
+      "file": "src/scss/partials/_checkbox.scss",
+      "base": "_checkbox.scss",
+      "kind": "global",
+      "doc": null,
+      "outOfScope": false,
+      "ported": true,
+      "ours": "styles/tweb/_checkbox.scss",
+      "twebSelectors": 73,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 27,
+      "classesPresent": 27,
+      "coverage": 1,
+      "missingClasses": []
+    },
+    {
       "file": "src/scss/partials/_ckin.scss",
       "base": "_ckin.scss",
       "kind": "global",
@@ -5114,6 +5002,21 @@
       "twebDynamicSelectors": 0,
       "twebClasses": 43,
       "classesPresent": 43,
+      "coverage": 1,
+      "missingClasses": []
+    },
+    {
+      "file": "src/scss/partials/_colorPicker.scss",
+      "base": "_colorPicker.scss",
+      "kind": "global",
+      "doc": null,
+      "outOfScope": false,
+      "ported": true,
+      "ours": "styles/tweb/_colorPicker.scss",
+      "twebSelectors": 7,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 7,
+      "classesPresent": 7,
       "coverage": 1,
       "missingClasses": []
     },
@@ -5223,21 +5126,6 @@
       "missingClasses": []
     },
     {
-      "file": "src/scss/partials/_leftSidebar.scss",
-      "base": "_leftSidebar.scss",
-      "kind": "global",
-      "doc": "left-sidebar.md",
-      "outOfScope": false,
-      "ported": true,
-      "ours": "styles/tweb/_leftSidebar.scss",
-      "twebSelectors": 287,
-      "twebDynamicSelectors": 0,
-      "twebClasses": 175,
-      "classesPresent": 175,
-      "coverage": 1,
-      "missingClasses": []
-    },
-    {
       "file": "src/scss/partials/_markup.scss",
       "base": "_markup.scss",
       "kind": "global",
@@ -5294,6 +5182,21 @@
       "twebDynamicSelectors": 0,
       "twebClasses": 109,
       "classesPresent": 109,
+      "coverage": 1,
+      "missingClasses": []
+    },
+    {
+      "file": "src/scss/partials/_quizHint.scss",
+      "base": "_quizHint.scss",
+      "kind": "global",
+      "doc": "popups.md",
+      "outOfScope": false,
+      "ported": true,
+      "ours": "styles/tweb/_quizHint.scss",
+      "twebSelectors": 11,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 10,
+      "classesPresent": 10,
       "coverage": 1,
       "missingClasses": []
     },
@@ -5538,6 +5441,21 @@
       "missingClasses": []
     },
     {
+      "file": "src/scss/partials/_starsBadge.scss",
+      "base": "_starsBadge.scss",
+      "kind": "global",
+      "doc": "right-sidebar.md",
+      "outOfScope": false,
+      "ported": false,
+      "ours": null,
+      "twebSelectors": 6,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 5,
+      "classesPresent": 5,
+      "coverage": 1,
+      "missingClasses": []
+    },
+    {
       "file": "src/scss/partials/_topbarSearch.scss",
       "base": "_topbarSearch.scss",
       "kind": "global",
@@ -5564,6 +5482,21 @@
       "twebDynamicSelectors": 0,
       "twebClasses": 32,
       "classesPresent": 32,
+      "coverage": 1,
+      "missingClasses": []
+    },
+    {
+      "file": "src/scss/partials/_usernames.scss",
+      "base": "_usernames.scss",
+      "kind": "global",
+      "doc": "right-sidebar.md",
+      "outOfScope": false,
+      "ported": true,
+      "ours": "styles/tweb/_usernames.scss",
+      "twebSelectors": 10,
+      "twebDynamicSelectors": 0,
+      "twebClasses": 9,
+      "classesPresent": 9,
       "coverage": 1,
       "missingClasses": []
     },

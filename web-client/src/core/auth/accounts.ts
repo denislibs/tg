@@ -5,6 +5,7 @@
 // Переключение = смена активного session_token + перезагрузка страницы (воркер
 // мемоизирует токен, reload переинициализирует WS/сторы/sync с нуля).
 import { sessionKv } from '../store/sessionKv'
+import { setUnencryptedTotalAccounts } from './numberOfAccounts'
 
 const KEY = 'accounts'
 export const MAX_ACCOUNTS = 4
@@ -38,12 +39,16 @@ export async function upsertAccount(a: Account): Promise<void> {
     if (idx >= 0) list[idx] = a
     else list.push(a)
     await sessionKv.set(KEY, list)
+    await setUnencryptedTotalAccounts(list.length) // tweb accountController.ts:90-94
   } catch { /* idb недоступен */ }
 }
 
 export async function removeAccount(id: number): Promise<Account[]> {
   const list = (await listAccounts()).filter((x) => x.id !== id)
-  try { await sessionKv.set(KEY, list) } catch { /* idb недоступен */ }
+  try {
+    await sessionKv.set(KEY, list)
+    await setUnencryptedTotalAccounts(list.length) // tweb accountController.ts:90-94
+  } catch { /* idb недоступен */ }
   return list
 }
 

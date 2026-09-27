@@ -11,10 +11,11 @@
 // Вместе с этим перенесено то, что шло в оригинале рядом и чего у нас не было:
 // направление (`reverse`: при уходе в ночь сжимается СТАРЫЙ снапшот, при уходе
 // в день растёт новый) и длительность из `getTransition('standard')`, ×2.
-import { renderHook } from '@testing-library/react'
+import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useSettingsStore } from '../../settings'
+import { getCurrentPreset, setTheme } from '../theme/themeController'
 import { useThemeToggle } from './useThemeToggle'
 
 type Animate = (keyframes: Keyframe[], options: KeyframeAnimationOptions) => Animation
@@ -102,5 +103,30 @@ describe('useThemeToggle — круговое раскрытие (tweb themeCont
     await flush()
     expect(document.documentElement.classList.contains('no-view-transition')).toBe(false)
     expect(document.documentElement.classList.contains('reverse')).toBe(false)
+  })
+})
+
+// За системной темой при «как в системе» следит `setThemeListener` (`client/boot.ts`,
+// порт tweb `themeController.setThemeListener`) — МИМО React: `preset` рендера
+// остаётся прежним. Хук обязан считаться с применённой темой, а не с темой рендера.
+describe('useThemeToggle — системную тему сменил слушатель мимо React', () => {
+  it('выбор темы, совпавшей по имени с темой рендера, всё равно применяется', () => {
+    useSettingsStore.getState().update({ themeChoice: 'system' }) // happy-dom: система светлая
+    renderHook(() => useThemeToggle())
+    expect(getCurrentPreset()).toBe('day')
+
+    setTheme('night') // система потемнела — слушатель применил ночь
+    act(() => { useSettingsStore.getState().update({ themeChoice: 'day' }) })
+    expect(getCurrentPreset()).toBe('day')
+    expect(document.documentElement.classList.contains('night')).toBe(false)
+  })
+
+  it('переключатель уходит от применённой темы: система ночная — следующей будет день', () => {
+    useSettingsStore.getState().update({ themeChoice: 'system' })
+    const { result } = renderHook(() => useThemeToggle())
+    setTheme('night')
+
+    result.current({ x: 250, y: 100 })
+    expect(useSettingsStore.getState().themeChoice).toBe('day')
   })
 })

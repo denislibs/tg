@@ -347,12 +347,19 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // (секция «Поделиться» прежнего редактора): ru 1404 → 1396, остальные −6
 // (uk 735, es/de 732, fr 727).
 // Поверх задачи 17: ru 1394, uk 733, es/de 730, fr 725.
+//
+// Порт экрана блокировки код-паролем (tweb `components/passcodeLock/*`): ключи
+// снесённого React-экрана `PasscodeLock.WrongPasscodeShort`,
+// `PasscodeLock.ForgotPasscode.Text`, `PasscodeLock.Logout.Text` заменены ключами
+// tweb `PasscodeLock.WrongPasscode`, `PasscodeLock.ForgotPasscode.OneAccount`/
+// `.MultipleAccounts`, `PasscodeLock.LogoutPopup.Description` и `LogOut` у всех пяти:
+// −3 +5 (plural без изменений) — ru 1396, uk 735, es/de 732, fr 727.
 const COMPOSITION = {
-  ru: { keys: 1394, plural: 41 },
-  uk: { keys: 733, plural: 30 },
-  es: { keys: 730, plural: 29 },
-  de: { keys: 730, plural: 30 },
-  fr: { keys: 725, plural: 29 },
+  ru: { keys: 1396, plural: 41 },
+  uk: { keys: 735, plural: 30 },
+  es: { keys: 732, plural: 29 },
+  de: { keys: 732, plural: 30 },
+  fr: { keys: 727, plural: 29 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -470,12 +477,14 @@ const COMPOSITION = {
 // `AutoNightSystemDefault` у всех пяти: −3 +3, число строк то же.
 // Задачей 24 плана 2D — ключи вкладок «Папки» вместо ключей снесённых React-экранов
 // папок (разбор — там же).
+// Портом экрана блокировки — ключи tweb вместо ключей React-экрана (разбор — у
+// `COMPOSITION` выше), у всех пяти.
 const FINGERPRINT = {
-  ru: '1b852559',
-  uk: 'b0d28111',
-  es: 'd3e54766',
-  de: 'ed8566cb',
-  fr: '11078b1f',
+  ru: '4c388f0a',
+  uk: '44000058',
+  es: 'b6dcd00b',
+  de: '422d12d2',
+  fr: 'f72b4b5c',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
@@ -697,7 +706,17 @@ describe('нижний английский слой держит неперев
   const flatten = (pieces: ReturnType<typeof I18n.superFormatter>) => pieces
     .map((piece) => (piece instanceof HTMLBRElement ? '\n' : piece instanceof Node ? piece.textContent : String(piece)))
     .join('')
-  const english = new Map(EXPRESSIVE.map((key) => [key, flatten(I18n.superFormatter(lang[key] as string))]))
+  // Ссылка без адреса — `[текст]()` (ключи tweb `PasscodeLock.ForgotPasscode.*`) —
+  // берёт узел из аргументов вызова (`superFormatter`, ветка без url), как у tweb;
+  // без аргумента разбор падает. Эталону дают пустой узел на каждую такую ссылку —
+  // текст ссылки ляжет в него.
+  // Остальным ключам аргументов не дают вовсе: пустой массив превратил бы
+  // плейсхолдеры в «undefined».
+  const anchorArgs = (text: string) => {
+    const args = Array.from(text.matchAll(/\[.+?\]\(\)/g), () => document.createElement('span'))
+    return args.length ? args : undefined
+  }
+  const english = new Map(EXPRESSIVE.map((key) => [key, flatten(I18n.superFormatter(lang[key] as string, anchorArgs(lang[key] as string)))]))
 
   it('сам набор проверяемых ключей не выродился', () => {
     // Иначе «нарушителей нет» означало бы «проверять было нечего».

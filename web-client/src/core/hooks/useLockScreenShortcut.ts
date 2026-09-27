@@ -20,7 +20,7 @@
 import { useEffect } from 'react'
 import { useSettingsStore } from '../../settings'
 import { useLockStore } from '../../stores/lockStore'
-import PasscodeLockScreenController from '../../components/passcodeLockScreenController'
+import PasscodeLockScreenController from '../../components/passcodeLock/passcodeLockScreenController.solid'
 import { lockAndReload } from '../../client/passcodeClient'
 import { addShortcutListener } from '@helpers/shortcutListener'
 
@@ -53,7 +53,7 @@ export function useLockScreenShortcut(): void {
 
         event.preventDefault()
 
-        PasscodeLockScreenController.lock()
+        void PasscodeLockScreenController.lock()
         lockAndReload()
       }, false)
     }

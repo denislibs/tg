@@ -34,8 +34,10 @@ vi.mock('./bootstrap', () => ({
     smp,
   }),
 }))
-// Экран блокировки в этом шве — заглушка: предмет теста — что старт ЖДЁТ, а не разметка.
-vi.mock('../components/PasscodeLockScreen', () => ({ default: () => null }))
+// Экран блокировки в этом шве — заглушка: предмет теста — что старт ЖДЁТ и что
+// под замком уже стоит тема, а не разметка экрана (её держит
+// `components/passcodeLock/passcodeLockScreen.solid.test.tsx`).
+vi.mock('../components/passcodeLock/passcodeLockScreen.solid', () => ({ default: () => null }))
 vi.mock('./dnpBridgeHandoff', () => ({ installBridgeHandoff: vi.fn() }))
 vi.mock('../core/pwa', () => ({ initPwaInstall: vi.fn() }))
 vi.mock('../core/preventDeadlock', () => ({ preventCrossTabDynamicImportDeadlock: vi.fn(async () => {}) }))
@@ -51,6 +53,7 @@ vi.mock('../core/state/loadState', async () => {
 
 import { bootstrap } from './boot'
 import { useNavigationStore } from '../stores/navigationStore'
+import { useSettingsStore } from '../settings'
 
 // ── Старт под код-паролем (S10, порт tweb index.ts:453 `waitForUnlock`) ───────
 // Под замком токен лежит только в зашифрованном слое воркера; вкладка не должна
@@ -61,8 +64,21 @@ describe('boot: под код-паролем старт ждёт разблок�
     passcodeInvoke.mockImplementation(async (_type, task) =>
       (task.method === 'isLocked' ? { isUsingPasscode: true, isLocked: true } : undefined))
     location.hash = '#-42'
+    // выбор темы лежит открытым в `tg-settings` — его можно читать до разблокировки
+    useSettingsStore.setState({ themeChoice: 'night' })
     const booted = bootstrap()
     await vi.waitFor(() => { expect(document.querySelector('.passcode-lock-screen')).not.toBeNull() })
+
+    // Белый экран со стенда: тему ставил только React (`useThemeToggle`), а он под
+    // замком не монтируется. У tweb тема применяется в колбэке «заперто» ДО экрана
+    // (`index.ts:454-456` — настройки + `themeController.setThemeListener()`).
+    const html = document.documentElement
+    expect(html.getAttribute('data-theme')).toBe('night')
+    expect(html.classList.contains('night')).toBe(true)
+    const themeCss = document.getElementById('theme')?.textContent ?? ''
+    expect(themeCss).toMatch(/--background-color:#/)
+    expect(themeCss).toMatch(/--surface-color:#/)
+    expect(themeCss).toMatch(/--primary-color:#/)
 
     expect(passcodeInvoke).toHaveBeenCalledWith('passcode', { method: 'isLocked' })
     expect(me).not.toHaveBeenCalled()
@@ -74,7 +90,9 @@ describe('boot: под код-паролем старт ждёт разблок�
     passcodeListeners[passcodeListeners.length - 1]({ method: 'toggleLock', payload: false })
     await booted
 
-    expect(document.querySelector('.passcode-lock-screen')).toBeNull()
+    // tweb `unlock()` (:147-170): экран гаснет классом `--hidden` и уходит из DOM
+    // после пауз 120 + 250 + 120 мс — старт при этом уже идёт.
+    await vi.waitFor(() => { expect(document.querySelector('.passcode-lock-screen')).toBeNull() }, { timeout: 2000 })
     expect(me).toHaveBeenCalledTimes(1)
     expect(calls.indexOf('dialogs.fillMirror')).toBeGreaterThan(calls.indexOf('scopeToSession'))
   })

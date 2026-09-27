@@ -111,7 +111,7 @@ nobody had opened when the passcode was enabled». UI экрана блокир�
 | `client/boot.ts` | главный поток сам читал `session_token` из `msgr/kv`; «под локом» рисовал приложение с экраном поверх |
 | `core/store/persist.ts` | офлайн-стор `msgr-store` под кодом не пишется (гард `locked()`), но `meta.token` писался открытым текстом |
 | `core/files/cacheStorage.ts`, `public/sw.js` | `cachedFiles` под кодом не чистилась и писалась открытым текстом (воркер и SW) |
-| `stores/lockStore.ts`, `components/PasscodeLockScreen.tsx` | блокировка только интерфейса одной вкладки; воркер продолжал работать с токеном |
+| `stores/lockStore.ts`, `components/PasscodeLockScreen.tsx` | блокировка только интерфейса одной вкладки; воркер продолжал работать с токеном; экран — самодельный React (не порт) |
 | `core/workerCore.ts::start` | `tokens.ready().then(auth.me)` — сеть с токеном на старте воркера и под локом |
 
 ### Карта файлов (после порта, S10)
@@ -126,13 +126,33 @@ nobody had opened when the passcode was enabled». UI экрана блокир�
 | `core/passcode/{protocol,passcodeWorker}.ts` | `mainWorker/index.worker.ts:246-333`, `mainMessagePort.ts:60-99` | канал `passcode` на каждом порту (`bind()`), рассылка «кроме источника» |
 | `client/passcodeClient.ts` | `apiManagerProxy.ts:517-536`, `:1466-1470` | слушатель вкладки, `lockAndReload` (terminate + BroadcastChannel reload) |
 | `client/passcodeServiceWorker.ts`, `public/sw.js` (`handleMedia`) | `apiManagerProxy.ts:774-781`, `index.service.ts:143-162` | состояние кода для SW, `sw-hello` после перезапуска, шифрование корзины |
-| `components/passcodeLockScreenController.tsx` | `passcodeLockScreenController.tsx` | `waitForUnlock` в `client/boot.ts` до токена/State; экран — свой React-корень |
+| `components/passcodeLock/passcodeLockScreenController.solid.tsx` | `passcodeLockScreenController.tsx` | `waitForUnlock` в `client/boot.ts` до токена/State; экран — Solid-корень в `getOverlayRoot()`, модуль экрана — ленивый чанк (`Promise.race` с `pause(100)`), снятие — `--hidden` + паузы 120/250/120 мс под `startViewTransition` |
+| `components/passcodeLock/{passcodeLockScreen,passwordMonkeyTsx,simplePopup,background}.solid.tsx` + `.module.scss`, `styles/tweb/_passcodeLockScreen.scss` | `components/passcodeLock/*`, `scss/partials/_passcodeLockScreen.scss` | экран 1:1 (разметка, классы, строки tweb): обезьянка, `PasswordInputField`, «Proceed», 5 попыток → на шестой срок в `settings.passcodeCanAttemptAgainOn` (60 с), «забыли код» → попап подтверждения → `forceLogout`; ввод сдвигает градиент фона |
+| `core/theme/themeController.ts::setThemeListener`, `client/boot.ts` | `helpers/themeController.ts:271-292`, `index.ts:454-456`, `:534` | тема и слежение за системной — в колбэке «заперто» ДО экрана и на обычном старте |
+| `core/auth/numberOfAccounts.ts` (пишет `core/auth/accounts.ts`) | `AccountController.getUnencryptedTotalAccounts`, `accountController.ts:90-94` | число аккаунтов в открытом `number_of_accounts` — экрану до ключа («выйти» / «выйти из всех») |
+| `helpers/dom/focusTrap.ts`, `helpers/dom/focusInput.ts` | `helpers/dom/focusTrap.ts`, `focusInput.ts` | ловушка фокуса экрана и попапа, фокус в поле по нажатию вне него |
 | `core/files/cacheStorage.ts` | `files/cacheStorage.ts` | `encryptable`, шифрование `get`/`save`, пауза, очистка/сброс |
 | `core/managers/persistManager.ts::scopeToSession`, `core/store/persist.ts::persistScope` | — | вкладка токен не читает; под кодом `meta.token` не пишется |
 
 Снято как мёртвое: `runWhenUnlocked` (`stores/lockStore.ts`), `bootData.locked`/`bootWasLocked`,
 ветки `locked` в `boot.ts::fillDialogsMirror/applyDialogsMirror` и `useAppBootstrap` — под кодом
 приложение до разблокировки больше не монтируется.
+
+Портом экрана (после S10) сняты React-экран `components/PasscodeLockScreen.tsx` (+ `.module.scss`),
+его обезьянка `components/PasswordMonkey.tsx` (+ тест; её заменили класс `monkeys/password.ts`
+и `passwordMonkeyTsx.solid.tsx`), счётчик попыток `lockStore.attempts/retryAt/failedAttempt` и ключи
+`PasscodeLock.WrongPasscodeShort`/`ForgotPasscode.Text`/`Logout.Text` (вместо них — ключи tweb
+`PasscodeLock.WrongPasscode`, `ForgotPasscode.OneAccount/MultipleAccounts`, `LogoutPopup.Description`, `LogOut`).
+
+**Белый экран под замком (баг со стенда, исправлен).** Тему (`<style id="theme">`, `data-theme`,
+`.night`) ставил только React-эффект `useThemeToggle` — а под замком приложение не монтируется, и
+экран рисовался без единой переменной: белый фон, поле без рамки, невидимая кнопка. tweb применяет
+тему в колбэке «заперто» до экрана (`index.ts:454-456`: настройки + `themeController.setThemeListener()`);
+у нас так же — `setThemeListener(() => useSettingsStore.getState().themeChoice)` в колбэке
+`waitForUnlock` (настройки лежат открытыми в `tg-settings`) и второй раз на обычном старте
+(`index.ts:534`). Подписка на `prefers-color-scheme` одна на страницу: при «как в системе» тема
+следует за системой и под замком, и в приложении (`useThemeToggle` поэтому зависит и от выбора, и
+переключатель уходит от применённой темы, а не от темы рендера).
 
 ### План порта (S10)
 
@@ -169,10 +189,15 @@ nobody had opened when the passcode was enabled». UI экрана блокир�
 | П-2 | Флаг «код включён» для воркера и SW — наличие записи `passcode` в `msgr/kv`, а не `settings.passcode.enabled` | наши настройки в localStorage, воркеру и SW недоступном |
 | П-3 | Автоблокировка — в окне (UI-замок одной вкладки, ключ остаётся в памяти); у tweb — в воркере по простою всех вкладок с `terminate` | перенос требует учёта простоя вкладок в воркере; открытый вопрос |
 | П-4 | Передачу ключа пишет каждая перезагружающаяся вкладка, не только единственная | у нас активный аккаунт один на все вкладки, переход перезагружает все, и SharedWorker может не пережить |
-| П-5 | «Забыли код» — прежние тексты экрана (`PasscodeLock.ForgotPasscode.Text`), а выход — уже всех аккаунтов (`forceLogout`) | порт экрана блокировки — отдельная UI-задача (ключи tweb `ForgotPasscode.OneAccount/MultipleAccounts`) |
+| П-5 | ~~«Забыли код» — прежние тексты экрана~~ — снято портом экрана: ключи tweb `ForgotPasscode.OneAccount/MultipleAccounts` по открытому `number_of_accounts` | — |
 | П-6 | Шифрование в своём реалме через WebCrypto, без крипто-воркера | у нас нет `cryptoMessagePort` |
 | П-7 | `?noSharedWorker=1`: включение кода в одной вкладке не доходит до выделенных воркеров других вкладок, пока те не перезагрузятся (замок/`lockAndReload` их перезагружает) | у tweb то же — каждый выделенный воркер держит своё состояние |
 | П-8 | Вне периметра S10 остались открытыми: ключи секретных чатов (E2E, `core/secret/*`), курсоры `chpts:*`/`updates`, языковой пакет | у tweb секретных чатов нет; курсоры и язык tweb тоже не шифрует |
+| П-9 | Экран без анимации замка из шапки (`fromLockIcon`/`onAnimationEnd`, `cloneLockIcon`, `__animated-lock-icon` партиала): обезьянка видна сразу | наша кнопка замка — React-`IconButton` в `Sidebar.tsx`, не порт `lockButton.tsx` (`LockIcon` со скобой), иконку экрану не передаёт; порт — вместе с кнопкой |
+| П-10 | Фон за экраном — не Solid-`<ChatBackground>` tweb, а его слои из наших частей (`ChatBackgroundGradientRenderer`, `renderPattern`, `patternModeFor`, классы `ChatBackground.module.scss`); своё фото обоев под замком не рисуется (градиент темы) | фон чата у нас React (`components/ChatBackground.tsx`, портал), в Solid-дерево не вставить; медиа-конвейер без ключа недоступен |
+| П-11 | До экрана не ставится глобальный фон приложения (`appChatBackground.attach()` + `setBackground`, `index.ts:458-459`) | его роль у нас — React-`ChatBackground` в `App.tsx`, монтируется после разблокировки; под замком его целиком закрывает экран |
+| П-12 | `useLockScreenHotReloadGuard`/`LockScreenHotReloadGuardProvider` не перенесены — зависимости импортом; `forceLogout` — каналом `invokePasscode`; ловушка фокуса и Esc попапа не следуют за окном выноса (`onAppWindowChange`/`bindActiveWindowListener`) | HMR-подмена модулей tweb нам не нужна; выноса клиента в PiP у нас нет (`helpers/appWindow.ts`) |
+| П-13 | Срок следующей попытки — `settings.passcodeCanAttemptAgainOn` в сторе `settings.tsx` (соседние вкладки — событием `storage`), у tweb — `settings.passcode.canAttemptAgainOn` из `commonStateStorage` без кэша | наши настройки — localStorage-стор |
 
 ### Проверка после порта (стенд)
 
@@ -189,3 +214,10 @@ nobody had opened when the passcode was enabled». UI экрана блокир�
 8. Выключение → `session_token`/`accounts` снова открытым текстом, `kv__encrypted` нет.
 9. Переключение аккаунта под кодом → без повторного ввода; после — `sessionStorage` вкладки пуст.
 10. «Забыли код» → выход из всех аккаунтов, кода нет, `cachedFiles` пуст.
+11. Экран блокировки в дневной, ночной и «как в системе» (обе системные): фон темы, карточка
+    320px по центру с радиусом 20px, поле с рамкой, «Proceed» цвета `--primary-color`; за карточкой
+    — обои чата (не на мобильном); смена системной темы под открытым экраном перекрашивает его.
+12. Подпись «забыли код»: один аккаунт — «…you'll need to log out.», два и больше — «…from all your
+    current accounts.»; «log out» → попап «Log out» над экраном, Esc/«Cancel» закрывают.
+13. Неверный код — ошибка поля «Wrong passcode. Please try again.»; шесть неверных подряд —
+    «Too many attempts, try again later», код не сверяется минуту (и после F5).
