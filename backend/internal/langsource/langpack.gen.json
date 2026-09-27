@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 30,
+      "version": 31,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -331,6 +331,10 @@
         {
           "key": "AutoDownloadWifi",
           "value": "When connected to Wi-Fi"
+        },
+        {
+          "key": "AutoNightSystemDefault",
+          "value": "System Default"
         },
         {
           "key": "AutodownloadChannels",
@@ -5264,16 +5268,8 @@
           "value": "Message Text Size"
         },
         {
-          "key": "Theme.Light",
-          "value": "Light"
-        },
-        {
-          "key": "Theme.System",
-          "value": "System"
-        },
-        {
-          "key": "Theme.Tinted",
-          "value": "Tinted"
+          "key": "ThemeDay",
+          "value": "Classic"
         },
         {
           "key": "ThemeLight",
@@ -5282,6 +5278,10 @@
         {
           "key": "ThemeNight",
           "value": "Night"
+        },
+        {
+          "key": "ThemeTinted",
+          "value": "Dark"
         },
         {
           "key": "Topics",
@@ -5699,7 +5699,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 30,
+      "version": 31,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -6102,16 +6102,16 @@
           "value": "Дневная"
         },
         {
-          "key": "Theme.Light",
-          "value": "Светлая"
+          "key": "ThemeDay",
+          "value": "Классическая"
         },
         {
-          "key": "Theme.Tinted",
+          "key": "ThemeTinted",
           "value": "Тёмная"
         },
         {
-          "key": "Theme.System",
-          "value": "По умолчанию"
+          "key": "AutoNightSystemDefault",
+          "value": "Как в системе"
         },
         {
           "key": "ChatBackground",
@@ -11425,7 +11425,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 18,
+      "version": 19,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -11452,16 +11452,16 @@
           "value": "Jour"
         },
         {
-          "key": "Theme.Light",
-          "value": "Clair"
+          "key": "ThemeDay",
+          "value": "Classique"
         },
         {
-          "key": "Theme.Tinted",
-          "value": "Teinté"
+          "key": "ThemeTinted",
+          "value": "Sombre"
         },
         {
-          "key": "Theme.System",
-          "value": "Système"
+          "key": "AutoNightSystemDefault",
+          "value": "Par défaut du système"
         },
         {
           "key": "ChatBackground",
@@ -14363,7 +14363,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 18,
+      "version": 19,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -14390,16 +14390,16 @@
           "value": "Tag"
         },
         {
-          "key": "Theme.Light",
-          "value": "Hell"
+          "key": "ThemeDay",
+          "value": "Klassisch"
         },
         {
-          "key": "Theme.Tinted",
-          "value": "Getönt"
+          "key": "ThemeTinted",
+          "value": "Dunkel"
         },
         {
-          "key": "Theme.System",
-          "value": "System"
+          "key": "AutoNightSystemDefault",
+          "value": "Systemstandard"
         },
         {
           "key": "ChatBackground",
@@ -17319,7 +17319,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 18,
+      "version": 19,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -17346,16 +17346,16 @@
           "value": "Día"
         },
         {
-          "key": "Theme.Light",
-          "value": "Claro"
+          "key": "ThemeDay",
+          "value": "Clásico"
         },
         {
-          "key": "Theme.Tinted",
+          "key": "ThemeTinted",
           "value": "Oscuro"
         },
         {
-          "key": "Theme.System",
-          "value": "Sistema"
+          "key": "AutoNightSystemDefault",
+          "value": "Predeterminado del sistema"
         },
         {
           "key": "ChatBackground",
@@ -20273,7 +20273,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 18,
+      "version": 19,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -20300,16 +20300,16 @@
           "value": "Денна"
         },
         {
-          "key": "Theme.Light",
-          "value": "Світла"
+          "key": "ThemeDay",
+          "value": "Класична"
         },
         {
-          "key": "Theme.Tinted",
+          "key": "ThemeTinted",
           "value": "Темна"
         },
         {
-          "key": "Theme.System",
-          "value": "За замовчуванням"
+          "key": "AutoNightSystemDefault",
+          "value": "Як у системі"
         },
         {
           "key": "ChatBackground",

@@ -924,7 +924,7 @@ React-«Конфиденциальности» по состоянию паро�
 
 ## Пакет B — родители и экраны с 2C
 
-### Задача 13: «Общие»
+### Задача 13: «Общие» — ✅ сделано (PR feat/w2d-general)
 
 **Порт:** `generalSettings.tsx` (359) → `sidebarLeft/tabs/generalSettings.solid.tsx`;
 `components/chatThemesPicker.tsx` (356) → `chatThemesPicker.solid.tsx` (наш React
@@ -935,6 +935,23 @@ React-«Конфиденциальности» по состоянию паро�
 (условие оригинала), `General.TimeFormat` (подпись — живое время `eachMinute`).
 **Мутация:** max 24 вместо 20 — тест краснеет. **Зависимости:** 11, 12.
 **Врезка:** `tabs.ts`, `SettingsView.tsx`, `SettingsSubScreen.tsx`; удалить `settings/GeneralSettings.tsx` + `.module.scss`.
+
+**Итог (2026-09-27):** `sidebarLeft/tabs/generalSettings.solid.tsx` — секции `Settings`/`ColorTheme`/
+`General.TimeFormat` дословно по tweb; настройки через мост (`messagesTextSize` → `textSize`, `theme` →
+`themeChoice` — значения совпадают один в один, `timeFormat` — `codec` h12/h23 ↔ 12h/24h); статус
+«Энергосбережения» — эффект по `liteMode.all`; хелперы tweb `eachMinute`/`eachTimeout`; ключи tweb
+`ThemeDay`/`ThemeTinted`/`AutoNightSystemDefault` вместо самодельных `Theme.Light/System/Tinted` (у
+React-экрана `ThemeLight` стоял на `day`, а у tweb `light` = «Day»). **`chatThemesPicker.solid.tsx` НЕ
+заведён — О-35:** плитка у tweb пишет облачную тему в `settings.themes[]` текущей базы
+(`applyNewTheme`: акцент, цвета исходящих, обои темы), у нас нет ни `account.getThemes`, ни этой модели
+(тема = пресет + одни обои, О-11), ни глобальной акцент-деривации, ни пресетов акцента — выбору некуда
+писать; четыре карточки React-экрана (по пресету) были нашей выдумкой и не перенесены. Increase Contrast —
+О-34 (a11y 472e3e76b не портирован). `DistanceUnitsSection` не портирован: у tweb
+`IS_GEOLOCATION_SUPPORTED = … && false`. Наш React `components/ChatThemesPicker.tsx` остаётся — это попап
+темы одного чата (`useChatPopups`), к порту не относится. Сверх плана: прижатие `textSize` > 20 на чтении
+(`settings.tsx::load`, React пускал до 24); подпись времени — `Intl.DateTimeFormat` (скан
+`noBrowserLocaleDates` запрещает `toLocale*String`). Порог выделенных подэкранов в
+`settingsSubScreen.reachable.test.ts` 5 → 4, веток корня 4 → 5.
 
 ### Задача 15: «Стикеры и эмодзи» (2C)
 
@@ -1170,6 +1187,8 @@ media; брать задачу, когда в них нет открытых в�
 | О-31 | Права отправки в селекторе пиров: `chatRightsActions`/`filterByRights`, звёзды за сообщение (`starsAmountByPeer`, бейдж), замок премиума (`OnlyPremiumCanMessage`), `appSelectPeers.tsx:321-365`, `:443-457` | нет `getRequirementToContact` и платы звёздами за личное сообщение; единственный потребитель у tweb — попап пересылки (у нас React `ForwardPicker`) | пересылка на `AppSelectPeers` 1:1 |
 | О-32 | `AppSelectPeers.convertPeerTypes` и типы `isBot`/`isRegularUser`/`isBroadcast` (`appSelectPeers.tsx:606-618`) | зовёт только `requestPeer` ботов (`keyboardButtonRequestPeer`) — кнопок ботов нет | выбор пира по кнопке бота |
 | О-33 | Категории в выборе участников (`extraCategories`, «мини-приложения» в исключениях приватности, `addMembers.tsx:98-136`, `privacySection.tsx:204-209`) | нет мини-приложений и такого правила приватности | исключение «мини-приложения» |
+| О-34 | Increase Contrast в «Общих» (`generalSettings.tsx:69-75`): настройка `increaseContrast`, класс `html.high-contrast`, прижатие контраста цветов и `*-button-color` (`themeController.ts:228-231`, `:332`, `:576-599`), `scss/partials/_accessibility.scss` | часть a11y-коммита 472e3e76b, у нас не портирована деривация контраста — тумблер ничего бы не менял (сверить номер с параллельными ветками) | режим повышенного контраста |
+| О-35 | Карусель облачных тем `ChatThemesPicker` и ряд акцентов `AccentPickerRow` в «Общих» (`generalSettings.tsx:158-176`, `:194-267`, `components/chatThemesPicker.tsx`) | нет `account.getThemes` на бэкенде и модели `settings.themes[]` (облачная тема/акцент-пресет на базу: `accent_color`, `message_colors`, обои — `applyNewTheme`/`applyAccentPreset`/`resetActiveTheme`); глобальной акцент-деривации нет (`deriveChatThemeVars` — только колонка чата с темой), пресетов акцента `getAccentPresetsForBase` нет (сверить номер с параллельными ветками) | тема приложения из облачных тем и акцентов, обои по темам (вместе с О-11) |
 
 ## Оценка объёма
 

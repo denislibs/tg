@@ -1,5 +1,4 @@
 import type { LangPackKey } from '@/lang'
-import GeneralSettings from './settings/GeneralSettings'
 import SpeakersCamera from './settings/SpeakersCamera'
 import ChatFoldersSettings from './folders/ChatFoldersSettings'
 import PrivacySecuritySettings from './settings/PrivacySecuritySettings'
@@ -8,8 +7,8 @@ import type { Chat } from '../data'
 
 // Мок-экранов (`SCREENS`) и их саб-экранов (`renderDedicated`: «Быстрая реакция»,
 // «Энергосбережение») здесь больше нет: единственный мок «Общих» перехватывала
-// ветка `GeneralSettings` ниже, и мок-ветка рендера была недостижима (задача 14
-// плана 2D, поправка 10). «Быструю реакцию» открывает строка экрана «Стикеры и
+// ветка `GeneralSettings` (её снесла задача 13 вместе с экраном), и мок-ветка
+// рендера была недостижима (задача 14 плана 2D, поправка 10). «Быструю реакцию» открывает строка экрана «Стикеры и
 // эмодзи» (вкладка `AppQuickReactionTab`, как tweb `stickersAndEmoji.tsx:60-66`).
 
 export function hasSubScreen(title: LangPackKey) {
@@ -24,8 +23,9 @@ export function hasSubScreen(title: LangPackKey) {
   // (`sidebarLeft/tabs/keyboardShortcuts.solid.tsx`, план 2D, задача 10).
   // «Данных и памяти» — тоже: вкладка `AppDataAndStorageTab`
   // (`sidebarLeft/tabs/dataAndStorage/index.solid.tsx`, план 2D, задача 7).
+  // «Общих» — тоже: вкладка `AppGeneralSettingsTab`
+  // (`sidebarLeft/tabs/generalSettings.solid.tsx`, план 2D, задача 13).
   return (
-    title === 'Telegram.GeneralSettingsViewController' ||
     title === 'AccountSettings.SpeakersAndCamera' ||
     title === 'ChatList.Filter.List.Title' ||
     title === 'PrivacySettings' ||
@@ -34,8 +34,6 @@ export function hasSubScreen(title: LangPackKey) {
 }
 
 export default function SettingsSubScreen({ title, onBack, chats }: { title: LangPackKey; onBack: () => void; chats?: Chat[] }) {
-  // General Settings is a fully functional screen (text size, wallpaper, theme, time)
-  if (title === 'Telegram.GeneralSettingsViewController') return <GeneralSettings onBack={onBack} />
   // Speakers and Camera — реальные устройства (enumerateDevices/getUserMedia)
   if (title === 'AccountSettings.SpeakersAndCamera') return <SpeakersCamera onBack={onBack} />
   // Chat Folders — реальные папки чатов (tweb chatFolders)

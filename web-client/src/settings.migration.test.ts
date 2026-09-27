@@ -94,3 +94,24 @@ describe('settings.load() — срок медиакэша прежнего эк�
     }
   })
 })
+
+// Прежний React-экран «Общих» пускал размер текста до 24, у tweb ползунок —
+// 12–20 (`generalSettings.tsx:61-62`, задача 13 плана 2D). Значение за пределами
+// вкладка показала бы числом при ползунке, упёртом в край, а лента рисовала бы
+// шрифт, которого из настроек не выбрать. Прижимаем на чтении.
+describe('settings.load() — размер текста прежнего экрана', () => {
+  beforeEach(() => localStorage.clear())
+
+  const withSize = (textSize: number) => {
+    localStorage.setItem('tg-settings', JSON.stringify({ textSize }))
+    return load().textSize
+  }
+
+  it('21…24 → 20', () => {
+    for(const size of [21, 22, 23, 24]) expect(withSize(size)).toBe(20)
+  })
+
+  it('12…20 — как есть', () => {
+    for(const size of [12, 16, 20]) expect(withSize(size)).toBe(size)
+  })
+})

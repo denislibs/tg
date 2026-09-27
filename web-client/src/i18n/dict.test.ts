@@ -434,12 +434,15 @@ const COMPOSITION = {
 // (разбор — у `COMPOSITION` выше).
 // Задачей 16 плана 2D — подпись пустой выдачи селектора пиров (разбор — там же).
 // Задачей 18 плана 2D — ключи вкладки «Код-пароль» (разбор — у `COMPOSITION` выше).
+// Задачей 13 плана 2D — самодельные `Theme.Light`/`Theme.System`/`Theme.Tinted`
+// снесённого React-экрана «Общих» заменены ключами tweb `ThemeDay`/`ThemeTinted`/
+// `AutoNightSystemDefault` у всех пяти: −3 +3, число строк то же.
 const FINGERPRINT = {
-  ru: '8fe8ded0',
-  uk: 'c0937e10',
-  es: '362b8a05',
-  de: '47fb3534',
-  fr: '065d344b',
+  ru: '0eb68931',
+  uk: '164bcb21',
+  es: '23084e06',
+  de: '195e451f',
+  fr: '3830d04a',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
@@ -731,7 +734,6 @@ const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
     AttachSticker: '«sticker» — заимствование, в испанском Telegram так же',
   },
   de: {
-    'Theme.System': '«System» — немецкое слово, пишется так же',
     Stories: '«Stories» — заимствование, в немецком Telegram так же',
     'KeyboardShortcuts.Section.Stories': '«Stories» — то же заимствование, что и у ключа Stories',
     Online: '«online» — заимствование',

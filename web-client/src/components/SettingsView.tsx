@@ -25,6 +25,7 @@ import { getUserTitle } from '../core/peers/getPeerTitle'
 import { useManagers } from '../core/hooks/useManagers'
 import { createSettingsSliderHost, getSettingsSliderHost, openActiveSessionsTab } from './sidebarLeft/settingsSliderHost'
 import { AppDataAndStorageTab, AppKeyboardShortcutsTab, AppLanguageTab, AppNotificationsTab } from './solidJsTabs/tabs'
+import { AppGeneralSettingsTab } from './solidJsTabs/tabs'
 import { toastNew } from './toast'
 import StarsPopup from './stars/StarsPopup'
 import { useStarsBalance } from '../stores/starsStore'
@@ -311,6 +312,13 @@ export default function SettingsView({
                 // оригинала та же одна строка (`settings.tsx`, `makeSubTabConfig`).
                 if (it.label === 'DataSettings') {
                   void getSettingsSliderHost().openTab(AppDataAndStorageTab)
+                    .catch(() => toastNew({ langPackKey: 'Error.AnError' }))
+                  return
+                }
+                // «Общие» — вкладка слайдера (план 2D, задача 13); у оригинала
+                // та же одна строка (`settings.tsx:255`, `makeSubTabConfig`).
+                if (it.label === 'Telegram.GeneralSettingsViewController') {
+                  void getSettingsSliderHost().openTab(AppGeneralSettingsTab)
                     .catch(() => toastNew({ langPackKey: 'Error.AnError' }))
                   return
                 }

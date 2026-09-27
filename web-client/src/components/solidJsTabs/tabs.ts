@@ -303,3 +303,13 @@ export const AppAddMembersTab =
     getComponentModule: () => import('../sidebarLeft/tabs/addMembers.solid'),
   })
 ;(AppAddMembersTab as unknown as { noSame: boolean }).noSame = true
+
+// tweb :160-164. Форма обычная, без полезной нагрузки: настройки вкладка читает
+// сама (мост `useAppSettings`). Открывает её строка корня настроек
+// `Telegram.GeneralSettingsViewController` (tweb `settings.tsx:255`,
+// `makeSubTabConfig`); она сама открывает «Обои» и «Энергосбережение».
+export const AppGeneralSettingsTab =
+  scaffoldSolidJSTab({
+    title: 'Telegram.GeneralSettingsViewController',
+    getComponentModule: () => import('../sidebarLeft/tabs/generalSettings.solid'),
+  })
