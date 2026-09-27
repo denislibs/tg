@@ -44,7 +44,7 @@ const SimplePopup: Component<{
     const element = container()
     if(!props.visible || !element) return
     const trap = createFocusTrap(element)
-    trap.activate(undefined, element.querySelector<HTMLElement>('[autofocus]'))
+    trap.activate(undefined, element.querySelector<HTMLElement>('[autofocus]') ?? undefined)
     const listener = (e: KeyboardEvent) => {
       if(e.key === 'Escape' && !e.defaultPrevented) {
         e.preventDefault()
