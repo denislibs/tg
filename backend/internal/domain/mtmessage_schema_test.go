@@ -196,6 +196,10 @@ func allMessageConstructors() []any {
 		NewMessageActionTopicCreate("тема", 3),
 		NewMessageActionSuggestProfilePhoto(photo, true),
 		NewMessageActionSuggestProfilePhoto(photo, false),
+		// Предложение даты рождения — с годом и без: год необязателен и
+		// исчезает ключом, как у самого birthday.
+		NewMessageActionSuggestBirthday(NewBirthday(time.Date(1990, time.March, 8, 0, 0, 0, 0, time.UTC))),
+		NewMessageActionSuggestBirthday(NewBirthday(time.Date(BirthdayNoYear, time.May, 1, 0, 0, 0, 0, time.UTC))),
 		NewMessageActionSuggestedPostApproval(true, 8),
 		// Одобрено: pFlags.rejected нет вовсе, а не false.
 		NewMessageActionSuggestedPostApproval(false, 8),
@@ -318,6 +322,7 @@ func messageConstructorTags() []string {
 		MessageActionChatDeleteUserTag, MessageActionChatJoinedByLinkTag,
 		MessageActionPinMessageTag, MessageActionSetMessagesTTLTag,
 		MessageActionTopicCreateTag, MessageActionSuggestProfilePhotoTag,
+		MessageActionSuggestBirthdayTag,
 		MessageActionSuggestedPostApprovalTag, MessageActionPhoneCallTag,
 		MessageActionRestrictTag,
 		PhoneCallDiscardReasonMissedTag, PhoneCallDiscardReasonBusyTag,
