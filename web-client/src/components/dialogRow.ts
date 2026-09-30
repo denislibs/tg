@@ -290,12 +290,18 @@ export class DialogElement {
 }
 
 /**
- * tweb `:1952-1980` — `ul.chatlist`. Опции оригинала (`new`, `dialogSize`) у
- * наших потребителей не читаются: `SortedUserList` зовёт его без аргументов.
+ * tweb `:2348-2380` (812502980) — `ul.chatlist`. Из опций оригинала портирован
+ * `new` (`chatlist-new`, список участников вкладки «Новая группа»,
+ * `newGroup.tsx:64-66`); `dialogSize` у наших потребителей не читается.
  */
-export function createChatList() {
+export function createChatList(options: { new?: boolean } = {}) {
   const list = document.createElement('ul')
   list.classList.add('chatlist')
+
+  if(options.new) {
+    list.classList.add('chatlist-new')
+  }
+
   return list
 }
 

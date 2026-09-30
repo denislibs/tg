@@ -475,3 +475,20 @@ export const AppSharedFolderTab =
     getComponentModule: () => import('../sidebarLeft/tabs/sharedFolder.solid'),
     onOpenAfterTimeout: folderTabOpenAfterTimeout,
   })
+
+// ── «Новая группа» (tweb :282-296) — задача 0а-2 плана волны 7 ───────────────
+// Второй шаг флоу `createNewGroupTab` (`sidebarLeft/tabs/createNewGroupTab.ts`):
+// открывает его `takeOut` вкладки выбора участников. Из нагрузки оригинала —
+// только `peerIds`: `isGeoChat` у tweb без вызывающих (группа «рядом» снята),
+// а `onCreate`/`openAfter`/`title`/`asChannel` передаёт лишь добавление чата в
+// сообщество (`communities/addChatToCommunity.tsx:35`) — сообществ нет (О-5).
+type AppNewGroupTabPayload = {
+  peerIds: PeerId[]
+}
+
+export const AppNewGroupTab =
+  scaffoldSolidJSTab<AppNewGroupTabPayload>({
+    title: 'NewGroup',
+    getComponentModule: () => import('../sidebarLeft/tabs/newGroup.solid'),
+  })
+;(AppNewGroupTab as unknown as { noSame: boolean }).noSame = true

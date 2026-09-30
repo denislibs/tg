@@ -702,6 +702,7 @@ const ru = {
   ApproveNewMembers: 'Требовать одобрение администратора',
   EnterChannelName: 'Название канала',
   'CreateGroup.NameHolder': 'Название группы',
+  ChatLocation: 'Местоположение',
   DescriptionPlaceholder: 'Описание',
   DescriptionOptionalPlaceholder: 'Описание (необязательно)',
   'Channel.DescriptionPrefix': 'Вы можете добавить описание для',
@@ -1580,6 +1581,7 @@ const ru = {
   // (звонок, редактор медиа, мини-приложения, ссылки-приглашения) жила без словаря
   // вовсе — старый ключ был английской строкой, и русский её и показывал.
   AddOneMemberAlertTitle: 'Добавить участника',
+  SendMessageTo: 'Добавить людей...',
   'AutoDownloadSettings.LastDelimeter': ' и ',
   'Call.Accept': 'Принять',
   'Call.CameraOff': 'Выключить камеру',

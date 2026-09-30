@@ -1336,6 +1336,7 @@ tweb так и делает (`sharedMediaTabs[]`), снимает их `destroyS
 | О-11 | Игры (`playGame` `:1394`), url-auth (`handleUrlAuth` `:1419`), autologin-домены (`:1511`) | нет на бэкенде | боты с логином/играми |
 | О-12 | Пункты меню ⋮ и плашки шапки без бэкенда: перевод чата, снятие платы, автоматизация, бусты (если нет), `CompactDiffView`, `WelcomeMessages.DeleteAll` | детальный план Э6 составит точный список | шапка 1:1 |
 | О-13 | Возможности композера без бэкенда: эфемерный режим, предложенные посты, эффекты (если нет), AI-редактор (`inputState/aiEditorButton`) | детальный план Э7 составит точный список | композер 1:1 |
+| О-35 | Попап «пригласить ссылкой» для пропущенных при создании группы (`handleMissingInvitees`, tweb `addChatUsers.ts:15-120`; вызов — `newGroup.tsx:187`) | нет `showPickUserPopup` (попап выбора пользователей, 2C) и премиум-веток (`premium_required_for_pm`/`premium_would_allow_invite`); бэкенд пропущенных уже отдаёт (`messages.invitedUsers.missing_invitees`, 0а-2) | порт `showPickUserPopup` |
 
 ## Что остаётся волне 8 (после этой программы)
 
