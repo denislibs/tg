@@ -1,11 +1,10 @@
 import { useI18nStore } from '../../i18n'
 import type { LangPackKey } from '../../lang'
-import { startSecretChat } from '../navigation/startSecretChat'
 import { useManagers } from './useManagers'
 import type { GroupPhoto } from '../../components/NewGroupFlow'
 
-// Команды создания чатов из compose-меню сайдбара (порт tweb createChat/createChannel
-// + наш secret-handshake). Read/command-путь через managers — по инварианту слоёв
+// Команды создания чатов из compose-меню сайдбара (порт tweb createChat/createChannel).
+// Read/command-путь через managers — по инварианту слоёв
 // (вниз: View → хук → managers → сервер). Открытие созданного чата — через
 // onChatCreated (навигация живёт в родителе/navigationStore, не тут).
 export function useSidebarActions(onChatCreated?: (peerId: PeerId) => void) {
@@ -38,9 +37,5 @@ export function useSidebarActions(onChatCreated?: (peerId: PeerId) => void) {
     onChatCreated?.(peerId)
   }
 
-  // «Секретный чат» (наша фича): развилка — `core/navigation/startSecretChat.ts`, общая с
-  // Solid-вкладкой контактов (`{secret: true}`).
-  const startSecret = (userId: PeerId) => startSecretChat(managers, userId)
-
-  return { createGroup, createChannel, startSecret }
+  return { createGroup, createChannel }
 }

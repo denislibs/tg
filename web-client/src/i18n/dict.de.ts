@@ -215,7 +215,6 @@ const de = {
   'NewChannel.DefaultTitle': 'Neuer Kanal',
   'NewGroup.DefaultTitle': 'Neue Gruppe',
   NewPrivateChat: 'Neue Nachricht',
-  'Compose.NewMessage': 'Neue Nachricht',
   'Suggestion.Notifications.Title': 'Verpasse keine Nachricht! 🔔',
   'Suggestion.Notifications.Subtitle':
     'Aktiviere Benachrichtigungen, um auf dem Laufenden zu bleiben.',
@@ -499,7 +498,6 @@ const de = {
   'LoginEmail.Change': 'Login-E-Mail ändern',
   'Privacy.GroupsChoose': 'Wähle, wer dich zu Gruppen und Kanälen hinzufügen kann.',
   'Privacy.AlwaysShareCaption': 'Diese Nutzer sehen dies immer, unabhängig von der Einstellung oben.',
-  'Contacts.NotFound': 'Keine Kontakte gefunden.',
   'Translate.SectionTitle': 'Nachrichtenübersetzung',
   ShowTranslateChatButton: 'Ganze Chats übersetzen',
   DoNotTranslate: 'Nicht übersetzen',

@@ -214,7 +214,6 @@ const fr = {
   'NewChannel.DefaultTitle': 'Nouveau canal',
   'NewGroup.DefaultTitle': 'Nouveau groupe',
   NewPrivateChat: 'Nouveau message',
-  'Compose.NewMessage': 'Nouveau message',
   'Suggestion.Notifications.Title': 'Ne manquez aucun message ! 🔔',
   'Suggestion.Notifications.Subtitle':
     'Activez les notifications pour rester informé.',
@@ -498,7 +497,6 @@ const fr = {
   'LoginEmail.Change': 'Modifier l\'e-mail de connexion',
   'Privacy.GroupsChoose': 'Choisissez qui peut vous ajouter à des groupes et des canaux.',
   'Privacy.AlwaysShareCaption': 'Ces utilisateurs verront toujours ceci, quel que soit le réglage ci-dessus.',
-  'Contacts.NotFound': 'Aucun contact trouvé.',
   'Translate.SectionTitle': 'Traduction des messages',
   ShowTranslateChatButton: 'Traduire des chats entiers',
   DoNotTranslate: 'Ne pas traduire',

@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 35,
+      "version": 36,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -1357,10 +1357,6 @@
           "value": "Tag"
         },
         {
-          "key": "Compose.NewMessage",
-          "value": "New Message"
-        },
-        {
           "key": "Composer.CancelRecording",
           "value": "Cancel Recording"
         },
@@ -1407,10 +1403,6 @@
         {
           "key": "Contacts.Empty",
           "value": "No contacts"
-        },
-        {
-          "key": "Contacts.NotFound",
-          "value": "No contacts found."
         },
         {
           "key": "Continue",
@@ -5799,7 +5791,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 35,
+      "version": 36,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -7418,10 +7410,6 @@
         },
         {
           "key": "NewPrivateChat",
-          "value": "Новое сообщение"
-        },
-        {
-          "key": "Compose.NewMessage",
           "value": "Новое сообщение"
         },
         {
@@ -9356,10 +9344,6 @@
         {
           "key": "Privacy.AlwaysShareCaption",
           "value": "Эти пользователи всегда будут это видеть, независимо от настройки выше."
-        },
-        {
-          "key": "Contacts.NotFound",
-          "value": "Контакты не найдены."
         },
         {
           "key": "Translate.SectionTitle",
@@ -11633,7 +11617,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 22,
+      "version": 23,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -12408,10 +12392,6 @@
         },
         {
           "key": "NewPrivateChat",
-          "value": "Nouveau message"
-        },
-        {
-          "key": "Compose.NewMessage",
           "value": "Nouveau message"
         },
         {
@@ -13462,10 +13442,6 @@
         {
           "key": "Privacy.AlwaysShareCaption",
           "value": "Ces utilisateurs verront toujours ceci, quel que soit le réglage ci-dessus."
-        },
-        {
-          "key": "Contacts.NotFound",
-          "value": "Aucun contact trouvé."
         },
         {
           "key": "Translate.SectionTitle",
@@ -14699,7 +14675,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 22,
+      "version": 23,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -15477,10 +15453,6 @@
         },
         {
           "key": "NewPrivateChat",
-          "value": "Neue Nachricht"
-        },
-        {
-          "key": "Compose.NewMessage",
           "value": "Neue Nachricht"
         },
         {
@@ -16531,10 +16503,6 @@
         {
           "key": "Privacy.AlwaysShareCaption",
           "value": "Diese Nutzer sehen dies immer, unabhängig von der Einstellung oben."
-        },
-        {
-          "key": "Contacts.NotFound",
-          "value": "Keine Kontakte gefunden."
         },
         {
           "key": "Translate.SectionTitle",
@@ -17787,7 +17755,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 22,
+      "version": 23,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -18570,10 +18538,6 @@
         },
         {
           "key": "NewPrivateChat",
-          "value": "Nuevo mensaje"
-        },
-        {
-          "key": "Compose.NewMessage",
           "value": "Nuevo mensaje"
         },
         {
@@ -19624,10 +19588,6 @@
         {
           "key": "Privacy.AlwaysShareCaption",
           "value": "Estos usuarios siempre verán esto, sin importar el ajuste anterior."
-        },
-        {
-          "key": "Contacts.NotFound",
-          "value": "No se encontraron contactos."
         },
         {
           "key": "Translate.SectionTitle",
@@ -20873,7 +20833,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 22,
+      "version": 23,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -21663,10 +21623,6 @@
         },
         {
           "key": "NewPrivateChat",
-          "value": "Нове повідомлення"
-        },
-        {
-          "key": "Compose.NewMessage",
           "value": "Нове повідомлення"
         },
         {
@@ -22730,10 +22686,6 @@
         {
           "key": "Privacy.AlwaysShareCaption",
           "value": "Ці користувачі завжди це бачитимуть, незалежно від налаштування вище."
-        },
-        {
-          "key": "Contacts.NotFound",
-          "value": "Контакти не знайдено."
         },
         {
           "key": "Translate.SectionTitle",

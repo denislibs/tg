@@ -475,7 +475,6 @@ const ru = {
   'NewChannel.DefaultTitle': 'Новый канал',
   'NewGroup.DefaultTitle': 'Новая группа',
   NewPrivateChat: 'Новое сообщение',
-  'Compose.NewMessage': 'Новое сообщение',
   'Suggestion.Notifications.Title': 'Не пропускайте сообщения! 🔔',
   'Suggestion.Notifications.Subtitle': 'Включите уведомления, чтобы быть в курсе.',
   'Suggestion.Notifications.Dismissed':
@@ -1059,7 +1058,6 @@ const ru = {
   'LoginEmail.Change': 'Изменить email для входа',
   'Privacy.GroupsChoose': 'Выберите, кто может добавлять вас в группы и каналы.',
   'Privacy.AlwaysShareCaption': 'Эти пользователи всегда будут это видеть, независимо от настройки выше.',
-  'Contacts.NotFound': 'Контакты не найдены.',
   'Translate.SectionTitle': 'Перевод сообщений',
   ShowTranslateChatButton: 'Переводить чаты целиком',
   DoNotTranslate: 'Не переводить',

@@ -379,12 +379,17 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // (у tweb его нет — Premium открывает попап), с ним — его ключи без других
 // читателей: восемь наших `Premium.Manage.*` и `Stars.Subscription`/
 // `Stars.Subscription.Cancel`. Итог: ru 1404, uk 750, es/de 747, fr 742.
+//
+// Задача 0а-1 волны 7 (вкладка контактов вместо React-экранов «Контакты» и
+// «Новое сообщение»): −2 наших ключа у всех пяти — `Compose.NewMessage` (заголовок
+// снесённого «Нового сообщения»: у tweb это вкладка «Контакты») и `Contacts.NotFound`
+// (пустая выдача снесённого экрана). Итог: ru 1402, uk 748, es/de 745, fr 740.
 const COMPOSITION = {
-  ru: { keys: 1404, plural: 42 },
-  uk: { keys: 750, plural: 31 },
-  es: { keys: 747, plural: 30 },
-  de: { keys: 747, plural: 31 },
-  fr: { keys: 742, plural: 30 },
+  ru: { keys: 1402, plural: 42 },
+  uk: { keys: 748, plural: 31 },
+  es: { keys: 745, plural: 30 },
+  de: { keys: 745, plural: 31 },
+  fr: { keys: 740, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -509,12 +514,15 @@ const COMPOSITION = {
 // Особыми чатами — у ru +4 ключа tweb (разбор — у `COMPOSITION` выше).
 // Задачей 28 плана 2D — два ключа строк корня настроек у всех пяти, у ru — минус
 // ключи снесённого `PremiumManage` (разбор — там же).
+// Задачей 0а-1 волны 7 — минус `Compose.NewMessage` и `Contacts.NotFound` у всех пяти:
+// наши ключи снесённых React-экранов «Новое сообщение» и «Контакты» (вкладка контактов
+// tweb пустой выдачи не подписывает, а «Новое сообщение» — это она же).
 const FINGERPRINT = {
-  ru: '13447f25',
-  uk: 'f7af4022',
-  es: '5d6ff751',
-  de: 'ab245f9c',
-  fr: 'be8f0a56',
+  ru: '9ad334dc',
+  uk: '2a1f2d83',
+  es: '1d8ef75a',
+  de: 'fa667ee1',
+  fr: '2a2bbdf7',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

@@ -3,9 +3,9 @@
  * Тесты вкладки «Контакты» (`contacts.solid.tsx`, порт tweb `sidebarLeft/tabs/contacts.tsx`,
  * 812502980) и её списка (`contactsList.solid.tsx`).
  *
- * Вкладка НАСТОЯЩАЯ — `AppContactsTab` из `solidJsTabs/tabs.ts`, открытая через существующий
- * слайдер (`settingsSliderHost.ts` → `components/slider.ts`); колоночный слайдер 2D-28 здесь не
- * нужен — вкладке всё равно, чей `SidebarSlider` её держит. Стабы — только границы: менеджеры
+ * Вкладка НАСТОЯЩАЯ — `AppContactsTab` из `solidJsTabs/tabs.ts`, открытая на колоночном слайдере
+ * (`@/test/columnSlider` → `sidebarLeft/columnSlider.ts`), тем же входом, что пункты меню
+ * колонки (`openContactsTab`). Стабы — только границы: менеджеры
  * воркера, зеркала пиров и присутствия и геометрия (happy-dom её не считает).
  *
  * Предмет — форма оригинала: `#contacts-container`, поле поиска на месте заголовка и кнопка
@@ -27,7 +27,8 @@ import type SidebarSlider from '@components/slider'
 import { AppContactsTab } from '@components/solidJsTabs/tabs'
 import { openPeer } from '@core/navigation/openPeer'
 import { glyph } from '@core/tgico-icons'
-import { createSettingsSliderHost, type SettingsSliderHost } from '../settingsSliderHost'
+import { openContactsTab } from '@components/sidebarLeft/columnSlider'
+import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
 
 vi.mock('@core/navigation/openPeer', async(importOriginal) => ({
   ...await importOriginal<typeof import('@core/navigation/openPeer')>(),
@@ -46,7 +47,7 @@ const settle = async() => {
   for(let i = 0; i < 12; ++i) await pause(0)
 }
 
-let host: SettingsSliderHost
+let host: TestColumnSlider
 let book: PeerId[]
 let getContactsPeerIds: ReturnType<typeof vi.fn>
 let secretStart: ReturnType<typeof vi.fn>
@@ -83,7 +84,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = createSettingsSliderHost(columnEl, managers)
+  host = mountTestColumnSlider(columnEl, managers)
 })
 
 afterEach(async() => {
@@ -218,6 +219,39 @@ describe('вкладка контактов — жизненный цикл', ()
     const slider = tab.slider as unknown as SidebarSlider
 
     expect(slider.createTab(AppContactsTab)).toBe(tab)
+  })
+
+  // Вход пунктов колонки (`openContactsTab`): та же опция — та же вкладка (noSame tweb),
+  // другая опция `secret` (Отступление В7-1) — открытая закрывается, встаёт новая с нужной.
+  const topTab = () => host.slider.getHistory()[host.slider.getHistory().length - 1] as ContactsTab
+
+  it('openContactsTab: повторное открытие с той же опцией не создаёт второй вкладки', async() => {
+    await openContactsTab()
+    await settle()
+    const first = topTab()
+
+    await openContactsTab()
+    await settle()
+
+    expect(topTab()).toBe(first)
+    expect(host.slider.getHistory().filter((tab) => tab instanceof AppContactsTab)).toHaveLength(1)
+  })
+
+  it('openContactsTab: «секретный» поверх обычной — обычная закрыта, клик начинает секретный чат', async() => {
+    await openContactsTab()
+    await settle()
+    const plain = topTab()
+
+    await openContactsTab({ secret: true })
+    await settle()
+    const secret = topTab()
+
+    expect(secret).not.toBe(plain)
+    expect(host.slider.getHistory().filter((tab) => tab instanceof AppContactsTab)).toEqual([secret])
+    mousedown(row(secret, 12))
+    await settle()
+    expect(secretStart).toHaveBeenCalledWith(12)
+    expect(openPeer).not.toHaveBeenCalled()
   })
 
   it('после закрытия и перехода остров снят: узла нет, книга по contacts_update не перечитывается', async() => {

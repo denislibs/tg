@@ -226,7 +226,6 @@ const uk = {
   'NewChannel.DefaultTitle': 'Новий канал',
   'NewGroup.DefaultTitle': 'Нова група',
   NewPrivateChat: 'Нове повідомлення',
-  'Compose.NewMessage': 'Нове повідомлення',
   'Suggestion.Notifications.Title': 'Не пропускайте повідомлення! 🔔',
   'Suggestion.Notifications.Subtitle': 'Увімкніть сповіщення, щоб бути в курсі.',
   'Suggestion.Notifications.Dismissed':
@@ -521,7 +520,6 @@ const uk = {
   'LoginEmail.Change': 'Змінити email для входу',
   'Privacy.GroupsChoose': 'Оберіть, хто може додавати вас до груп і каналів.',
   'Privacy.AlwaysShareCaption': 'Ці користувачі завжди це бачитимуть, незалежно від налаштування вище.',
-  'Contacts.NotFound': 'Контакти не знайдено.',
   'Translate.SectionTitle': 'Переклад повідомлень',
   ShowTranslateChatButton: 'Перекладати чати повністю',
   DoNotTranslate: 'Не перекладати',
