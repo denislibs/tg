@@ -58,6 +58,14 @@ type AvatarPreviewer interface {
 	StrippedPreview(ctx context.Context, mediaID int64) ([]byte, error)
 }
 
+// AvatarSquarer отдаёт id квадратного варианта медиа для фото профиля
+// (Telegram хранит фото профиля квадратным; неквадратный исходник media
+// usecase кладёт центральным квадратом в НОВОЕ медиа). Реализуется media
+// usecase. Optional — без него аватаркой становится медиа как загружено.
+type AvatarSquarer interface {
+	SquareAvatar(ctx context.Context, mediaID int64) (int64, error)
+}
+
 // PremiumRepo persists Telegram Premium subscriptions (clone: mock checkout).
 type PremiumRepo interface {
 	// GetPremiumSubscription returns the user's subscription, or domain.ErrNotFound

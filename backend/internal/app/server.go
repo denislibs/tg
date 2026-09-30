@@ -20,6 +20,7 @@ import (
 	ivadapter "github.com/messenger-denis/backend/internal/adapter/iv"
 	"github.com/messenger-denis/backend/internal/adapter/linkpreview"
 	"github.com/messenger-denis/backend/internal/adapter/media/ffmpeg"
+	"github.com/messenger-denis/backend/internal/adapter/media/imagecrop"
 	webpushadapter "github.com/messenger-denis/backend/internal/adapter/push/webpush"
 	queueredis "github.com/messenger-denis/backend/internal/adapter/queue/redis"
 	rtredis "github.com/messenger-denis/backend/internal/adapter/realtime/redis"
@@ -259,6 +260,10 @@ func registerServer(p serverParams) {
 		// stripped-превью аватарки при её установке (media usecase генерирует по
 		// требованию, если фоновая обработка ещё не записала blur_preview).
 		p.AuthUC.SetAvatarPreviewer(mediaUC)
+		// Фото профиля у Telegram квадратное: неквадратный исходник аватарки
+		// media usecase кладёт центральным квадратом в новое медиа.
+		mediaUC.SetSquareCropper(imagecrop.Cropper{})
+		p.AuthUC.SetAvatarSquarer(mediaUC)
 		// Bot API sendPhoto/Document/Video: боты кладут медиа через media usecase.
 		p.ChatUC.SetBotMedia(botmedia.New(mediaUC))
 		log.Printf("media enabled (minio bucket %q)", p.Cfg.MinioBucket)

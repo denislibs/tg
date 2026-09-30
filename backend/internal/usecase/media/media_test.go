@@ -463,3 +463,75 @@ func TestGetContent(t *testing.T) {
 		t.Fatalf("body=%q", got)
 	}
 }
+
+// fakeCropper — SquareCropper, отдающий заранее заданный квадрат и
+// запоминающий, что ему дали.
+type fakeCropper struct {
+	out    []byte
+	side   int
+	gotSrc []byte
+	calls  int
+}
+
+func (c *fakeCropper) CropSquare(src io.Reader, _ string) ([]byte, int, error) {
+	c.calls++
+	c.gotSrc, _ = io.ReadAll(src)
+	return c.out, c.side, nil
+}
+
+// Фото профиля у Telegram квадратное (tweb кадрирует на клиенте, сервер
+// хранит квадрат): неквадратный исходник аватарки становится НОВЫМ медиа —
+// центральным квадратом того же владельца; квадрат и не-картинка остаются
+// как есть.
+func TestSquareAvatar(t *testing.T) {
+	ctx := context.Background()
+	square := []byte{0xff, 0xd8, 7}
+
+	repo := newFakeRepo()
+	repo.rows[1] = domain.Media{ID: 1, OwnerID: 7, ObjectKey: "7/tall", Mime: "image/jpeg", Width: 1920, Height: 2560}
+	repo.rows[2] = domain.Media{ID: 2, OwnerID: 7, ObjectKey: "7/sq", Mime: "image/jpeg", Width: 640, Height: 640}
+	repo.rows[3] = domain.Media{ID: 3, OwnerID: 7, ObjectKey: "7/v", Mime: "video/mp4", Width: 720, Height: 1280}
+	repo.nextID = 10
+	st := newFakeStorage()
+	st.blobs["7/tall"] = []byte("tall-jpeg")
+	cr := &fakeCropper{out: square, side: 1920}
+	s := New(repo, st, nil)
+	s.SetSquareCropper(cr)
+
+	id, err := s.SquareAvatar(ctx, 1)
+	if err != nil {
+		t.Fatalf("SquareAvatar: %v", err)
+	}
+	if id == 1 {
+		t.Fatal("неквадратная аватарка осталась исходным медиа")
+	}
+	if string(cr.gotSrc) != "tall-jpeg" {
+		t.Fatalf("кроп получил %q; want байты исходника", cr.gotSrc)
+	}
+	m := repo.rows[id]
+	if m.OwnerID != 7 || m.Mime != "image/jpeg" || m.Width != 1920 || m.Height != 1920 || m.Size != int64(len(square)) {
+		t.Fatalf("новое медиа = %+v; want владелец 7, jpeg 1920×1920, size %d", m, len(square))
+	}
+	if !bytes.Equal(st.blobs[m.ObjectKey], square) {
+		t.Fatalf("в хранилище под %q лежит %v; want квадрат", m.ObjectKey, st.blobs[m.ObjectKey])
+	}
+
+	// Квадрат и видео кроп не зовут и id не меняют.
+	for _, keep := range []int64{2, 3} {
+		cr.calls = 0
+		if got, err := s.SquareAvatar(ctx, keep); err != nil || got != keep || cr.calls != 0 {
+			t.Fatalf("media %d: id=%d err=%v calls=%d; want как есть", keep, got, err, cr.calls)
+		}
+	}
+
+	// Кроп сказал «трогать нечего» (nil) — исходник как есть.
+	cr.out, cr.calls = nil, 0
+	if got, err := s.SquareAvatar(ctx, 1); err != nil || got != 1 || cr.calls != 1 {
+		t.Fatalf("nil от кропа: id=%d err=%v calls=%d; want 1", got, err, cr.calls)
+	}
+
+	// Без кропера (опциональная зависимость) — мягкая деградация.
+	if got, err := New(repo, st, nil).SquareAvatar(ctx, 1); err != nil || got != 1 {
+		t.Fatalf("без кропера: id=%d err=%v; want 1", got, err)
+	}
+}

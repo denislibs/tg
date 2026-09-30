@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -19,10 +20,61 @@ type Interactor struct {
 	repo      MediaRepo
 	storage   ObjectStorage
 	processor MediaProcessor // optional; nil disables server-side processing
+	cropper   SquareCropper  // optional; nil — аватарки хранятся как загружены
 }
 
 func New(repo MediaRepo, storage ObjectStorage, processor MediaProcessor) *Interactor {
 	return &Interactor{repo: repo, storage: storage, processor: processor}
+}
+
+// SetSquareCropper подключает кроп фото профиля в квадрат (см. SquareAvatar).
+func (s *Interactor) SetSquareCropper(c SquareCropper) { s.cropper = c }
+
+// SquareAvatar отдаёт id медиа, годного в фото профиля: квадратного.
+//
+// Telegram хранит фото профиля квадратным — tweb кадрирует выбранный файл на
+// клиенте (PopupAvatar), а маленькие аватарки рисует без object-fit
+// (`.avatar-photo`), так что неквадратный исходник в строке чата и шапке
+// сплющивается. Клиент может и не кадрировать (регистрация, боты, сторонние
+// клиенты), поэтому квадрат обеспечивает сервер: неквадратная картинка
+// становится НОВЫМ медиа того же владельца — центральным квадратом, —
+// исходник не трогается (он может быть уже отправлен сообщением).
+// Квадрат, не-картинка и формат, который кроп не берёт, остаются как есть.
+func (s *Interactor) SquareAvatar(ctx context.Context, id int64) (int64, error) {
+	if s.cropper == nil {
+		return id, nil
+	}
+	m, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return id, err
+	}
+	if !strings.HasPrefix(m.Mime, "image/") || (m.Width > 0 && m.Width == m.Height) {
+		return id, nil
+	}
+	rc, _, err := s.storage.GetObject(ctx, m.ObjectKey)
+	if err != nil {
+		return id, err
+	}
+	defer rc.Close()
+	square, side, err := s.cropper.CropSquare(rc, m.Mime)
+	if err != nil || square == nil {
+		return id, err
+	}
+	key := fmt.Sprintf("%d/%s", m.OwnerID, randomKey())
+	if err := s.storage.PutObject(ctx, key, bytes.NewReader(square), int64(len(square)), "image/jpeg"); err != nil {
+		return id, err
+	}
+	sq, err := s.repo.Create(ctx, domain.Media{
+		OwnerID: m.OwnerID, Bucket: s.storage.Bucket(), ObjectKey: key,
+		Mime: "image/jpeg", Size: int64(len(square)), Width: side, Height: side,
+	})
+	if err != nil {
+		return id, err
+	}
+	if s.processor != nil {
+		go s.process(sq)
+	}
+	return sq.ID, nil
 }
 
 // CreateUpload records media metadata and returns the row plus a presigned PUT
