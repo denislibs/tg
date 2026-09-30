@@ -52,6 +52,7 @@ import { useLazyVisibility } from '../useLazyVisibility'
 import { useStickerViewer } from './useStickerViewer'
 import { toggleStickerSet } from '../../core/stickers/toggleStickerSet'
 import { useManagers } from '../../core/hooks/useManagers'
+import { publicStickerSetLink } from '../../core/publicLink'
 import { useMiddlewareHelper } from '../../core/hooks/useMiddlewareHelper'
 import { useRipple } from '../../shared/ui/Ripple/useRipple'
 import classNames from '../../shared/lib/classNames'
@@ -260,7 +261,8 @@ export default function StickerSetModal({ address, open = true, onClose, onExitC
 
   const { onPointerDown: footerPointerDown, ripple: footerRipple } = useRipple()
 
-  // «⋮» — копия ссылки набора (tweb buttons: [{icon: 'copy', text: 'CopyLink'}];
+  // «⋮» — копия ссылки набора (tweb buttons: [{icon: 'copy', text: 'CopyLink'}],
+  // адрес — `t.me/addstickers|addemoji/<name>` на своём хосте ссылок, core/publicLink.ts;
   // DEBUG-only «скачать» не портирован — dev-приём, вне контракта модалки).
   // anchor/open разведены, как в SendAsButton: anchor переживает exit-анимацию
   // Menu (сбрасывается в onExitComplete), open её запускает.
@@ -268,7 +270,7 @@ export default function StickerSetModal({ address, open = true, onClose, onExitC
   const [menuOpen, setMenuOpen] = useState(false)
   const copyLink = () => {
     if (!set) return
-    void navigator.clipboard.writeText(`https://t.me/addstickers/${set.short_name}`)
+    void navigator.clipboard.writeText(publicStickerSetLink(set.short_name, !!set.pFlags?.emojis))
     rootScope.dispatchEvent('ui:toast', 'Ссылка на набор скопирована')
     setMenuOpen(false)
   }
