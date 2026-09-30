@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 34,
+      "version": 35,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -573,6 +573,10 @@
           "value": "video"
         },
         {
+          "key": "CallBack",
+          "value": "Call Back"
+        },
+        {
           "key": "CallMessageCancelled",
           "value": "Cancelled call"
         },
@@ -637,8 +641,16 @@
           "value": "Speakers"
         },
         {
+          "key": "Calls",
+          "value": "Calls"
+        },
+        {
           "key": "Calls.Empty",
           "value": "No recent calls"
+        },
+        {
+          "key": "Calls.Status.Group",
+          "value": "(%1$s) %2$s"
         },
         {
           "key": "CanJoin",
@@ -3123,6 +3135,14 @@
         {
           "key": "NoReactions",
           "value": "No reactions"
+        },
+        {
+          "key": "NoRecentCalls",
+          "value": "No recent calls"
+        },
+        {
+          "key": "NoRecentCallsInfo",
+          "value": "Your recent voice and video calls will appear here."
         },
         {
           "key": "NoResult",
@@ -5831,7 +5851,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 34,
+      "version": 35,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -7323,6 +7343,26 @@
         {
           "key": "Calls.Empty",
           "value": "Нет недавних звонков"
+        },
+        {
+          "key": "Calls",
+          "value": "Звонки"
+        },
+        {
+          "key": "NoRecentCalls",
+          "value": "Нет недавних звонков"
+        },
+        {
+          "key": "NoRecentCallsInfo",
+          "value": "Здесь будут отображаться ваши недавние голосовые и видеозвонки."
+        },
+        {
+          "key": "Calls.Status.Group",
+          "value": "(%1$s) %2$s"
+        },
+        {
+          "key": "CallBack",
+          "value": "Перезвонить"
         },
         {
           "key": "CallMessageVideoIncoming",

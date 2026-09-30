@@ -370,8 +370,11 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `Peer.ServiceNotifications` (подпись служебного аккаунта, getUserStatusString
 // :19-21) и `Verified.Bot`/`Verified.Channel`/`Verified.Group` (строка
 // официальной верификации профиля, peerProfile.tsx BotVerification): ru 1412.
+//
+// Вкладка «Звонки» (задача 0а-4 волны 7): у ru +5 ключей tweb lang.ts:2015-2025 —
+// `Calls`, `NoRecentCalls`, `NoRecentCallsInfo`, `Calls.Status.Group`, `CallBack`: ru 1417.
 const COMPOSITION = {
-  ru: { keys: 1412, plural: 42 },
+  ru: { keys: 1417, plural: 42 },
   uk: { keys: 748, plural: 31 },
   es: { keys: 745, plural: 30 },
   de: { keys: 745, plural: 31 },
@@ -498,8 +501,9 @@ const COMPOSITION = {
 // Портом кнопки замка (`sidebarLeft/lockButton.solid.tsx`) — наш `PasscodeLock.LockNow`
 // заменён ключом tweb `PasscodeLock.TapToLock` у всех пяти: −1 +1, число строк то же.
 // Особыми чатами — у ru +4 ключа tweb (разбор — у `COMPOSITION` выше).
+// Вкладкой «Звонки» — у ru +5 ключей tweb (разбор — там же).
 const FINGERPRINT = {
-  ru: '75169aa2',
+  ru: 'c8c001d6',
   uk: '4c8d1a40',
   es: 'e878cf4f',
   de: '1e1c8f3e',
@@ -781,6 +785,7 @@ const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
     PaymentShippingEmailPlaceholder: '«Email» — заимствование, в русском Telegram так же',
     AttachGif: 'GIF — аббревиатура формата, не переводится',
     AppName: 'название продукта — «Telegram» не переводится (заголовок попапа без своего, tweb peer.ts:58)',
+    'Calls.Status.Group': 'чистый шаблон «(N) время» без слов — tweb lang.ts:2020, в русском Telegram тот же',
   },
   uk: {
     'Premium.Boarding.Title': 'назва продукту — «Telegram Premium» не перекладається',
