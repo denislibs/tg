@@ -58,7 +58,8 @@ export default function AddContactView({
         contactId: peerId,
         firstName: first.trim(),
         lastName: last.trim(),
-        note: note.trim(),
+        // `contacts.addContact.note` — TextWithEntities; пустая — ключа нет.
+        note: note.trim() ? { _: 'textWithEntities', text: note.trim(), entities: [] } : undefined,
         sharePhone,
       })
       onAdded?.()

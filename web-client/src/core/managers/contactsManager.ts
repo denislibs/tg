@@ -1,5 +1,6 @@
 import type { RestClient } from '../net/restClient'
 import type { UserReal } from '../peers/peer'
+import type { TextWithEntities } from '../media/messageMedia'
 import type { AppState } from '../state/state'
 import type { PeersManager } from './peersManager'
 import SearchIndex from '@lib/searchIndex'
@@ -12,12 +13,14 @@ import { getUserSearchText } from '../peers/peerSearchText'
 // `avatar_preview`, `phone`) — вторым снимком того же пользователя, который
 // уже приезжает с `/users`. Имя контакта собирает клиент из `user.first_name`/
 // `user.last_name` (`core/peers/getPeerTitle.ts`), аватарка — `user.photo`.
+//
+// Заметки и признака личного фото здесь НЕТ: у оригинала это не поля строки
+// книги, а полная карточка — `userFull.note` и `userFull.personal_photo`
+// (`privacy.profile`). Прежние `note`/`hasCustomPhoto` были всегда пустыми:
+// провод книги их не нёс.
 export interface Contact {
   userId: number
-  note: string
   sharePhone: boolean
-  /** у владельца задано личное фото этого контакта (`user.photo` уже подменён им) */
-  hasCustomPhoto: boolean
   createdAt: string
   user: UserReal
 }
@@ -29,10 +32,9 @@ export interface Contact {
  * вектором `users`: прежде карточка была вклеена в каждую строку рядом со
  * ссылкой — тот же снимок-вместо-ссылки, что убирался у диалогов.
  *
- * Наших полей строки (`note`, `share_phone`, `has_custom_photo`, `created_at`)
- * у конструктора нет: у оригинала заметок к контакту не бывает вовсе, а
- * номером делятся правилом приватности. Экраны, которым они нужны, названы
- * задачей.
+ * Наших полей строки (`share_phone`, `created_at`) у конструктора нет:
+ * номером делятся правилом приватности. Заметка и личное фото — не поля
+ * строки, а полная карточка (`userFull.note`, `userFull.personal_photo`).
  */
 export interface ContactsContacts {
   _: 'contacts.contacts'
@@ -45,7 +47,7 @@ const mapContacts = (r: ContactsContacts): Contact[] => {
   const byId = new Map((r.users ?? []).map((u) => [u.id, u]))
   return (r.contacts ?? []).flatMap((c) => {
     const user = byId.get(c.user_id)
-    return user ? [{ userId: c.user_id, note: '', sharePhone: false, hasCustomPhoto: false, createdAt: '', user }] : []
+    return user ? [{ userId: c.user_id, sharePhone: false, createdAt: '', user }] : []
   })
 }
 
@@ -56,7 +58,9 @@ export interface AddContactInput {
   phone?: string
   firstName: string
   lastName?: string
-  note?: string
+  /** `contacts.addContact.note` (flags.1?TextWithEntities): не задана — ключа
+   *  нет, и сервер прежнюю заметку не трогает */
+  note?: TextWithEntities
   sharePhone?: boolean
 }
 
@@ -287,7 +291,7 @@ export function newContactsManager({ rest, peers, getMe, state }: ContactsDeps) 
         phone: input.phone ?? '',
         first_name: input.firstName,
         last_name: input.lastName ?? '',
-        note: input.note ?? '',
+        ...(input.note ? { note: input.note } : {}),
         share_phone: input.sharePhone ?? false,
       })
       peers.saveApiPeers({ users: r.users })

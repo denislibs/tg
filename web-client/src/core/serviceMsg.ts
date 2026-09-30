@@ -22,6 +22,7 @@
 // `serviceMsgText` — их же, склеенные в строку (для превью в списке чатов, где
 // узлы не нужны).
 import { peerTitle } from './peerCache'
+import I18n from '@lib/langPack'
 import type { MessageAction } from './messages/messageAction'
 import type { MessageService, MyMessage } from './models'
 
@@ -96,6 +97,10 @@ export function serviceMsgSegs(m: MessageService, pinnedPreview?: string): Servi
       return out
         ? plain('Вы предложили установить это фото профиля')
         : [actor, t(' предлагает вам установить это фото профиля')]
+    // Предложение даты рождения — ключами tweb (`messageActionTextNewUnsafe.ts:901-906`):
+    // имя — СОБЕСЕДНИК переписки (`getNameDivHTML(message.peerId)`), не автор.
+    case 'messageActionSuggestBirthday':
+      return langSegs(out ? 'BirthdaySuggestOutgoing' : 'BirthdaySuggestIncoming', user(m.peerId))
     // Решение по предложенному посту. Канал едет ССЫЛКОЙ — имя собирает клиент.
     case 'messageActionSuggestedPostApproval': {
       const verb = a.pFlags?.rejected ? ' отклонён' : ' одобрен'
@@ -114,6 +119,18 @@ export function serviceMsgSegs(m: MessageService, pinnedPreview?: string): Servi
     // пользователь увидел бы служебную кишку вместо фразы.
     default: return plain(UNSUPPORTED_ACTION)
   }
+}
+
+/** Метка места аргумента в строке словаря: `superFormatter` кладёт строковый
+ *  аргумент в результат как есть, и по ней кусок-пир находится среди кусков
+ *  текста. */
+const PEER_SLOT = '\u0000peer'
+
+/** Фраза по ключу словаря с одним пиром на месте `%s` — сегментами, чтобы
+ *  пир доехал ссылкой (узлом `PeerTitle`), а не именем, склеенным в строку. */
+function langSegs(key: 'BirthdaySuggestIncoming' | 'BirthdaySuggestOutgoing', peer: ServiceSeg): ServiceSeg[] {
+  return I18n.format(key, false, [PEER_SLOT]).map((piece) =>
+    piece === PEER_SLOT ? peer : t(piece instanceof Node ? piece.textContent ?? '' : String(piece)))
 }
 
 /** Список добавленных — ссылками, а не именами. */

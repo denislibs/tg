@@ -379,8 +379,11 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // (у tweb его нет — Premium открывает попап), с ним — его ключи без других
 // читателей: восемь наших `Premium.Manage.*` и `Stars.Subscription`/
 // `Stars.Subscription.Cancel`. Итог: ru 1404, uk 750, es/de 747, fr 742.
+//
+// Пилюля `messageActionSuggestBirthday` (users.suggestBirthday, О-22 плана
+// волны 7): у ru +2 ключа tweb — `BirthdaySuggestIncoming`/`Outgoing`: ru 1406.
 const COMPOSITION = {
-  ru: { keys: 1404, plural: 42 },
+  ru: { keys: 1406, plural: 42 },
   uk: { keys: 750, plural: 31 },
   es: { keys: 747, plural: 30 },
   de: { keys: 747, plural: 31 },
@@ -509,8 +512,9 @@ const COMPOSITION = {
 // Особыми чатами — у ru +4 ключа tweb (разбор — у `COMPOSITION` выше).
 // Задачей 28 плана 2D — два ключа строк корня настроек у всех пяти, у ru — минус
 // ключи снесённого `PremiumManage` (разбор — там же).
+// Пилюлей предложения даты рождения — у ru +2 ключа tweb (разбор — там же).
 const FINGERPRINT = {
-  ru: '13447f25',
+  ru: '1fef5c23',
   uk: 'f7af4022',
   es: '5d6ff751',
   de: 'ab245f9c',
