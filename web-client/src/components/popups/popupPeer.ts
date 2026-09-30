@@ -265,7 +265,13 @@ export function confirmationPopup(options: {
    * инстанс отдаётся синхронно, ДО `show()`, тем же вызовом.
    */
   getPopup?: (popup: PopupPeer) => void
-}): Promise<void> {
+} & (
+  // tweb `PopupConfirmationOptions = PopupPeerOptions & …` (confirmationPopup.ts:8):
+  // аватар пира в подтверждении — первый вызывающий `confirmDeleteContacts`
+  // (`popups/deleteContacts.ts`, задача 0б-10 волны 7).
+  | { peerId?: undefined, managers?: undefined }
+  | { peerId: PeerId, managers: AvatarManagers }
+)): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     let resolved = false // simpleConfirmation.ts:33
 
@@ -291,6 +297,7 @@ export function confirmationPopup(options: {
       descriptionLangArgs: options.descriptionLangArgs,
       buttons,
       zIndex: options.zIndex,
+      ...(options.peerId !== undefined ? { peerId: options.peerId, managers: options.managers } : { peerId: undefined }),
     })
     options.getPopup?.(popup)
 

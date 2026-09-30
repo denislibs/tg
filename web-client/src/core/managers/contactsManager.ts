@@ -297,6 +297,20 @@ export function newContactsManager({ rest, peers, getMe, state }: ContactsDeps) 
 
     list,
 
+    /**
+     * Порт `isContact` (:897-899): в книге или с флагом `contact` на карточке.
+     * Расхождение: книга сначала дочитывается (`fillContacts`) — у оригинала
+     * её наполняет загрузка диалогов на старте (`storages/dialogs.ts:1832`), у
+     * нас первое чтение книги ленивое (расхождение 5), и без ожидания ответ
+     * зависел бы от того, открывал ли кто-то книгу раньше. Потребитель —
+     * вкладка «Изменить контакт» (`sidebarRight/tabs/editContact.solid.tsx`).
+     */
+    async isContact(userId: number): Promise<boolean> {
+      await fillContacts()
+      const user = peers.cachedPeer(userId)
+      return contactsList.has(userId) || !!(user?._ === 'user' && user.pFlags?.contact)
+    },
+
     // Удалённый — из книги и индекса (`onContactUpdated` → `popContact`).
     async del(contactId: number): Promise<void> {
       await rest.del(`/contacts/${contactId}`)
