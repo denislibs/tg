@@ -11,6 +11,13 @@ import StickersSearchTab from './StickersSearchTab'
 import { ManagersProvider } from '../../core/hooks/useManagers'
 import type { Managers } from '../../client/bootstrap'
 import { makeStickerSet } from '../../core/stickers/testSticker'
+import { installSidebarRight } from '../../test/sidebarRight'
+
+// Экран поиска открывает правую колонку классом `AppSidebarRight` (мост
+// `useRightColumnShown`, ВРЕМЕННО до 0б-11) — колонка нужна каждому тесту файла.
+let sidebarRight: ReturnType<typeof installSidebarRight>
+beforeEach(() => { sidebarRight = installSidebarRight() })
+afterEach(() => sidebarRight.dispose())
 
 const noop = () => {}
 
