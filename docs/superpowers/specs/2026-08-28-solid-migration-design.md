@@ -256,10 +256,10 @@ Zustand-сторов у экрана не было, поэтому DoD п.12 о�
 Дальше — этап 3 (`SharedMedia`), со своим планом; её порт тянет за собой
 `AppSearchSuper` (2843), которого у нас нет вовсе.
 | 4 | `StoryViewer`, `MediaEditor` | Крупные, но изолированные |
-| 5 | `TopbarSearch`, `EmojiDropdown` | Уже трогают чат |
-| 6 | `Composer` → класс `chat/input.ts` | Шов с лентой, требует аккуратности |
-| 7 | Оболочка сайдбара и диалоги → классы | Оболочка |
-| 8 | `Chat.tsx` → `chat.ts` + `topbar.ts`; снос React из зависимостей; `appState`/`chatsStore` на Solid | Последнее, что держит React |
+| 5 | `TopbarSearch`, `EmojiDropdown` | Уже трогают чат. **С 2026-09-30:** `TopbarSearch` уходит в волну 7 (этап 6: его монтирует сам `Chat`); `EmojiDropdown` — в волну 7 (задача 7-7), если пользователь ответит «А» на вопрос В-2 плана волны 7 |
+| 6 | `Composer` → класс `chat/input.ts` | Шов с лентой, требует аккуратности. **С 2026-09-30 вливается в волну 7** (этап 7) |
+| 7 | Оболочка сайдбара и диалоги → классы | Оболочка. **С 2026-09-30 расширена** решениями пользователя: точка входа не React (`index.html` + `src/index.ts`), `AppSidebarLeft`/`AppSidebarRight`, `AppImManager` целиком, класс `Chat` + `ChatTopbar` и композер. План программы — [`plans/2026-09-30-wave-7-shell-sidebars.md`](../plans/2026-09-30-wave-7-shell-sidebars.md) (этапы 0а–7; детальные планы этапов 4–7 — отдельными файлами перед стартом) |
+| 8 | `Chat.tsx` → `chat.ts` + `topbar.ts`; снос React из зависимостей; `appState`/`chatsStore` на Solid | Последнее, что держит React. **С 2026-09-30** `Chat.tsx` → `chat.ts` + `topbar.ts` ушёл в волну 7 (этап 6). За волной 8 остаются: `appState`/`chatsStore`/`useSettingsStore` на Solid (со сканами § 5), React-острова вне каркаса (`StoryViewer`, `MediaEditor` — волна 4; звонки, вебапп, `PopupHost`), снос React из зависимостей и сборки |
 
 Сроков в волнах нет намеренно: 43 тысячи строк не меряются спринтами, а
 называть даты, которые не из чего вывести, — вредно.
