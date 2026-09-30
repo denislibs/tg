@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { OpenPeer } from '../data'
 import { useChatStackStore } from './chatStackStore'
+import { parsePeerId } from '../core/peers/peerId'
 
 // Навигация мессенджера (де-факто роутер): какой чат/черновик открыт. Единый
 // источник истины вместо useState+ref-зеркал в App — хоткеи, SW-хендлер и
@@ -31,8 +32,10 @@ export const useNavigationStore = create<NavState>((set) => ({
     set({ selectedId: id, draftPeer: null })
     const stack = useChatStackStore.getState()
     if (id === null) { stack.clear(); return }
-    const peerId = Number(id.startsWith('draft:') ? id.slice('draft:'.length) : id)
-    if (Number.isNaN(peerId)) { stack.clear(); return }
+    // Пустой пир (`'0'`, не число) — tweb `setPeer` с `!peerId` (:3322):
+    // чата нет, колонка пуста.
+    const peerId = parsePeerId(id.startsWith('draft:') ? id.slice('draft:'.length) : id)
+    if (!peerId) { stack.clear(); return }
     stack.setPeer({ peerId, type: 'chat' })
   },
   setSelectedId: (id) => set({ selectedId: id }),
