@@ -7,6 +7,7 @@ import type { TopicRow } from '../managers/groupsManager'
 import type { OpenPeer } from '../../data'
 import { useManagers } from './useManagers'
 import { useNavigationStore } from '../../stores/navigationStore'
+import { useChatsStore } from '../../stores/chatsStore'
 import { useChatStackStore } from '../../stores/chatStackStore'
 import { peerTitle } from '../peerCache'
 import { openPeer as openPeerPlain } from '../navigation/openPeer'
@@ -52,10 +53,29 @@ export function useNavigationActions() {
 
   // Первое сообщение в черновике создало реальный чат: обновить список и открыть.
   const onChatCreated = useCallback((peerId: PeerId) => {
-    // selectChat сам обнуляет draftPeer и переключает chatStackStore на новый
-    // peerId реального чата — иначе после первого сообщения колонка осталась бы
-    // показывать инстанс черновика (draft-запись стека).
-    useNavigationStore.getState().selectChat(String(peerId))
+    const nav = useNavigationStore.getState()
+    if (nav.draftPeer?.id === peerId) {
+      // Первое сообщение пиру без диалога: у оригинала здесь не происходит
+      // НИЧЕГО — чат уже открыт тем же `peerId`, диалог просто появляется в
+      // списке. Стек не трогаем (тот же инстанс, та же лента с только что
+      // отправленным сообщением), меняется лишь ключ выбора `draft:<id>` → `<id>`
+      // (подсветка в списке, хэш `#<id>`). Сущность черновика живёт, пока
+      // диалог не доедет в список (`resolveChatEntity` отдаёт диалог первым), —
+      // `selectChat` здесь обнулил бы `draftPeer`, и до прихода диалога колонка
+      // получила бы безымянную синтетическую «группу».
+      nav.setSelectedId(String(peerId))
+      const dropDraft = () => {
+        const cur = useNavigationStore.getState()
+        if (cur.draftPeer?.id === peerId && useChatsStore.getState().dialogs.some((d) => d.peerId === peerId)) {
+          cur.setDraftPeer(null)
+        }
+      }
+      void managers.dialogs.refresh().then(dropDraft).catch(() => {})
+      return
+    }
+    // Чат открывается впервые (пересылка, новая группа/канал): selectChat
+    // обнуляет draftPeer и кладёт пира в стек.
+    nav.selectChat(String(peerId))
     // `.catch` (Minor #3 финального ревью): fire-and-forget вызов, а refresh()
     // пробрасывает HttpError — без него 401/5xx даёт unhandled rejection.
     void managers.dialogs.refresh().catch(() => {})

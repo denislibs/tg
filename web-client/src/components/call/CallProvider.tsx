@@ -5,6 +5,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import { startOutgoing, hangup } from '../../core/calls/callEngine'
 import type { Chat } from '../../data'
+import { chatPeerId, isDialogChat } from '../../core/chatEntity'
 
 interface CallContextValue {
   start: (video: boolean) => void
@@ -17,9 +18,8 @@ const CallContext = createContext<CallContextValue | null>(null)
 // callEngine. Не требует контекста — зовётся и из провайдера (хедер), и из
 // портального HeaderMenu (⋮-меню живёт вне CallProvider).
 export function startCallForChat(chat: Chat, video: boolean): void {
-  const numericChatId = Number(chat.id)
-  const isRealChat = Number.isFinite(numericChatId) && String(numericChatId) === chat.id
-  if (!isRealChat) return
+  if (!isDialogChat(chat)) return
+  const numericChatId = chatPeerId(chat)
   startOutgoing(
     {
       // Ключ приватного диалога И ЕСТЬ id собеседника — прежняя пара

@@ -131,8 +131,12 @@ export interface Chat {
   /** знаковый ключ пира строкой (`String(peerId)`). Отдельного поля
    *  «собеседник приватного чата» рядом БОЛЬШЕ НЕТ: у приватного диалога ключ
    *  и есть id собеседника, прежняя пара `id` + `peerId` описывала одно и то
-   *  же двумя числами. Число — `Number(chat.id)`. */
+   *  же двумя числами. Число — `Number(chat.id)`. Никаких префиксов: пир
+   *  без диалога — тот же `String(peerId)` с `noDialog` (`core/chatEntity.ts`). */
   id: string
+  /** пир открыт БЕЗ диалога (глобальный поиск, контакт, `@username`): диалог
+   *  заведёт первое сообщение. Гейт — `isDialogChat` (`core/chatEntity.ts`). */
+  noDialog?: boolean
   name: string
   avatar: string
   avatarText?: string

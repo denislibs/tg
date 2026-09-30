@@ -21,7 +21,7 @@ import { doubleRaf } from './core/accountTransition'
 // Сущность чата из модели данных; компонент ниже называется так же (как в tweb),
 // поэтому тип импортируется под алиасом.
 import type { Chat as ChatEntity } from './data'
-import { gradientFor } from './core/dialogToChat'
+import { resolveChatEntity } from './core/chatEntity'
 import { usePipStore } from './core/pip'
 import { useAppBootstrap } from './core/hooks/useAppBootstrap'
 import { useUrlSync } from './core/hooks/useUrlSync'
@@ -133,23 +133,6 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     void dispatchHeavyAnimationEvent(pause(transitionTime), transitionTime)
   }, [chatOpen, narrow])
 
-  // Черновик-чат (id "draft:<peerId>"), когда реального диалога ещё нет.
-  const draftChat: ChatEntity | null =
-    draftPeer && selectedId === `draft:${draftPeer.id}`
-      ? {
-          id: `draft:${draftPeer.id}`,
-          name: draftPeer.title,
-          avatar: gradientFor(draftPeer.id),
-          avatarText: draftPeer.title.charAt(0).toUpperCase() || '?',
-          // id медиа аватарки приходит готовым (`photo.photo_id`) — прежний
-          // `avatarUrl` был строкой `/media/N/content`, собранной из этого же
-          // числа.
-          photoId: draftPeer.photoId,
-          preview: '',
-          type: 'private',
-        }
-      : null
-
   const renderSidebar = (fullWidth = false) => (
     <Sidebar
       initialQuery={deep.deepDomain}
@@ -159,22 +142,10 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     />
   )
 
-  // Резолв дескриптора стека в сущность чата: реальный диалог из списка, иначе
-  // черновик (тот же peerId, что открытого черновика), иначе синтетический Chat
-  // для треда/комментариев (discussion-группа, где мы можем не состоять) —
-  // та же логика, что раньше жила в `threadChat`/`selected`, теперь по `desc`.
-  const resolveChat = (desc: ChatInstanceDesc): ChatEntity =>
-    chatList.find((c) => c.id === String(desc.peerId)) ??
-    // Ключ черновика — `draft:<peerId>`: сравниваем с ключом самого пира, а не
-    // с отдельным полем рядом (его больше нет — это было одно число дважды).
-    (draftChat && draftPeer && draftPeer.id === desc.peerId ? draftChat : null) ?? {
-      id: String(desc.peerId),
-      name: desc.thread?.title ?? '',
-      avatar: gradientFor(desc.peerId),
-      avatarText: '#',
-      preview: '',
-      type: 'group',
-    }
+  // Резолв дескриптора стека в сущность чата — `core/chatEntity.ts`: реальный
+  // диалог, иначе пир без диалога (тот же ключ, признак `noDialog`), иначе
+  // синтетический чат треда/комментариев.
+  const resolveChat = (desc: ChatInstanceDesc): ChatEntity => resolveChatEntity(desc, chatList, draftPeer)
 
   // #column-center — как в tweb (живой DOM §1): у него свой --page-chats-padding,
   // от него считаются инсеты .bubbles и маска фейдов ленты. Внутри —

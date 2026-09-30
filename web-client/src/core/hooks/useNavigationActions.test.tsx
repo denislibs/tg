@@ -68,6 +68,31 @@ describe('useNavigationActions ↔ chatStackStore (переезд с голог�
     expect(useChatStackStore.getState().stack.map((d) => d.peerId)).toEqual([777])
   })
 
+  // Пир без диалога (глобальный поиск): первое сообщение заводит диалог с ТЕМ
+  // ЖЕ ключом. У оригинала открытый чат при этом не меняется вовсе — диалог
+  // просто появляется в списке. Прежний `selectChat` обнулял `draftPeer`, и до
+  // прихода диалога колонка резолвилась в безымянную синтетическую «группу»
+  // (другой вид ленты → лента пересоздавалась без только что отправленного).
+  it('onChatCreated того же пира, что черновик, — инстанс стека тот же, черновик живёт до прихода диалога', async () => {
+    const managers = testManagers()
+    const { result } = renderHook(() => useNavigationActions(), { wrapper: withManagers(managers) })
+
+    act(() => { result.current.openPeer({ id: 42, title: 'Новый контакт' }) })
+    const before = useChatStackStore.getState().stack
+    await act(async () => { result.current.onChatCreated(42) })
+
+    expect(useNavigationStore.getState().selectedId).toBe('42')
+    expect(useChatStackStore.getState().stack).toBe(before) // инстанс не пересоздан
+    // диалога в списке ещё нет — сущность черновика нужна колонке дальше
+    expect(useNavigationStore.getState().draftPeer?.id).toBe(42)
+
+    // диалог доехал — черновик больше не нужен
+    useChatsStore.setState({ dialogs: [{ peerId: 42 } as never] })
+    await act(async () => { result.current.onChatCreated(42) })
+    expect(useNavigationStore.getState().draftPeer).toBeNull()
+    expect(useChatStackStore.getState().stack).toBe(before)
+  })
+
   it('openPublicChannel после вступления кладёт канал в стек', async () => {
     const managers = testManagers()
     const { result } = renderHook(() => useNavigationActions(), { wrapper: withManagers(managers) })

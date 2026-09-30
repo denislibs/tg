@@ -141,6 +141,9 @@ export const useChatStackStore = create<ChatStackState>((set) => ({
 
   setInnerPeer: (o) =>
     set((s) => {
+      // `if(peerId === NULL_PEER_ID || !peerId) return` (:3394): инстанса «ни о
+      // каком пире» не бывает — иначе лента и профиль уходят с ним в сеть.
+      if (!o.peerId) return s
       const stack = s.stack
       // «Тот же пир уже в стеке» → срезать всё выше него и доставить ему
       // опции (:2852-2855: `spliceChats(existingIndex + 1)` → `setPeer`).

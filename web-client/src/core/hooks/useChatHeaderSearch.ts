@@ -19,6 +19,7 @@ import { useChatsStore } from '../../stores/chatsStore'
 import { useSearchStore } from '../../stores/searchStore'
 import type { SavedTag } from '../managers/messagesManager'
 import type { Chat } from '../../data'
+import { chatPeerId, isDialogChat } from '../chatEntity'
 import { getPeerTitle } from '../peers/getPeerTitle'
 import { getPeerPhotoId, type Chat as PeerChat, type User } from '../peers/peer'
 import { getChatPhoto } from '../peers/predicates'
@@ -40,8 +41,8 @@ export function useChatHeaderSearch(chat: Chat, onJumpToSeq: (seq: number) => vo
   // (задача 8).
   const t = useT()
   const meId = useChatsStore((s) => s.meId)
-  const numericChatId = Number(chat.id)
-  const isRealChat = Number.isFinite(numericChatId) && String(numericChatId) === chat.id
+  const numericChatId = chatPeerId(chat)
+  const isRealChat = isDialogChat(chat)
 
   // * сигналы компонента (tweb :351-366)
   // `text` — то, что в поле прямо сейчас; `value` — то же, но после дебаунса
