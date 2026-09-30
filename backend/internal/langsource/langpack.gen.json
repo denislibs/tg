@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 35,
+      "version": 36,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -223,6 +223,10 @@
         {
           "key": "AutoDeleteMessages.Disable",
           "value": "Disable"
+        },
+        {
+          "key": "AutoDeleteMessages.InfoDefault",
+          "value": "Automatically delete messages for everyone in chats you start after a certain amount of time."
         },
         {
           "key": "AutoDeleteMessages.SectionCaption",
@@ -5576,6 +5580,14 @@
           "value": "Unread Messages"
         },
         {
+          "key": "UnsavedChanges",
+          "value": "Unsaved Changes"
+        },
+        {
+          "key": "UnsavedChangesDescription.Privacy",
+          "value": "You have changed some privacy settings. Save changes?"
+        },
+        {
           "key": "Updating",
           "value": "Updating..."
         },
@@ -5799,7 +5811,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 35,
+      "version": 36,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -9662,6 +9674,18 @@
           "value": "Выбрать другой срок"
         },
         {
+          "key": "AutoDeleteMessages.InfoDefault",
+          "value": "Автоматически удалять сообщения для всех в начатых вами чатах через заданное время."
+        },
+        {
+          "key": "UnsavedChanges",
+          "value": "Несохранённые изменения"
+        },
+        {
+          "key": "UnsavedChangesDescription.Privacy",
+          "value": "Вы изменили настройки конфиденциальности. Сохранить изменения?"
+        },
+        {
           "key": "Seconds",
           "forms": {
             "one_value": "%1$d секунда",
@@ -11633,7 +11657,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 22,
+      "version": 23,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -13764,6 +13788,18 @@
           "value": "Choisir un autre délai"
         },
         {
+          "key": "AutoDeleteMessages.InfoDefault",
+          "value": "Supprimer automatiquement les messages pour tous dans les discussions que vous lancez après un certain délai."
+        },
+        {
+          "key": "UnsavedChanges",
+          "value": "Modifications non enregistrées"
+        },
+        {
+          "key": "UnsavedChangesDescription.Privacy",
+          "value": "Vous avez modifié des paramètres de confidentialité. Enregistrer les modifications ?"
+        },
+        {
           "key": "Seconds",
           "forms": {
             "one_value": "%1$d seconde",
@@ -14699,7 +14735,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 22,
+      "version": 23,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -16833,6 +16869,18 @@
           "value": "Andere Zeit festlegen"
         },
         {
+          "key": "AutoDeleteMessages.InfoDefault",
+          "value": "Nachrichten in von dir gestarteten Chats nach einer bestimmten Zeit automatisch für alle löschen."
+        },
+        {
+          "key": "UnsavedChanges",
+          "value": "Ungespeicherte Änderungen"
+        },
+        {
+          "key": "UnsavedChangesDescription.Privacy",
+          "value": "Du hast Datenschutzeinstellungen geändert. Änderungen speichern?"
+        },
+        {
           "key": "Seconds",
           "forms": {
             "one_value": "%1$d Sekunde",
@@ -17787,7 +17835,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 22,
+      "version": 23,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -19926,6 +19974,18 @@
           "value": "Elegir otro plazo"
         },
         {
+          "key": "AutoDeleteMessages.InfoDefault",
+          "value": "Eliminar automáticamente los mensajes para todos en los chats que inicies después de un tiempo."
+        },
+        {
+          "key": "UnsavedChanges",
+          "value": "Cambios sin guardar"
+        },
+        {
+          "key": "UnsavedChangesDescription.Privacy",
+          "value": "Has cambiado algunos ajustes de privacidad. ¿Guardar los cambios?"
+        },
+        {
           "key": "Seconds",
           "forms": {
             "one_value": "%1$d segundo",
@@ -20873,7 +20933,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 22,
+      "version": 23,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -23030,6 +23090,18 @@
         {
           "key": "AutoDeleteMessages.SetOtherTime",
           "value": "Обрати інший строк"
+        },
+        {
+          "key": "AutoDeleteMessages.InfoDefault",
+          "value": "Автоматично видаляти повідомлення для всіх у розпочатих вами чатах через заданий час."
+        },
+        {
+          "key": "UnsavedChanges",
+          "value": "Незбережені зміни"
+        },
+        {
+          "key": "UnsavedChangesDescription.Privacy",
+          "value": "Ви змінили налаштування конфіденційності. Зберегти зміни?"
         },
         {
           "key": "Seconds",
