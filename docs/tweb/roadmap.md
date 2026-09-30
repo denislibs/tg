@@ -151,6 +151,13 @@ scroll-позиции каждого таба.
 **Готово, когда:** все экраны обеих колонок живут в стеке с общим шеллом и анимацией;
 Back работает на любую глубину; `UserInfoPanel` разобран на секции.
 
+**Состояние (2026-09-30).** Основа портирована файлом, а не «React-эквивалентом»: `components/slider.ts`
+(`SidebarSlider`), `sliderTab.ts` (`SliderSuperTab`), `solidJsTabs/*` (`scaffoldSolidJSTab`), 38 Solid-вкладок
+левой колонки (волна 2D). Остаток этапа — перенос React-экранов обеих колонок во вкладки и сами
+колонки классами tweb (`AppSidebarLeft`, `AppSidebarRight` с вкладкой `AppSharedMediaTab`). Это
+этапы 0а, 0б, 2, 3 программы [волны 7](../superpowers/plans/2026-09-30-wave-7-shell-sidebars.md).
+Колоночный слайдер левой колонки — задача 2D-28.
+
 Эталон: [right-sidebar §1–§4](right-sidebar.md) ·
 [left-sidebar §1–§2](left-sidebar.md).
 
