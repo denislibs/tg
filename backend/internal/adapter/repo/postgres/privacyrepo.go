@@ -159,6 +159,30 @@ func (r *PrivacyRepo) IsContact(ctx context.Context, ownerID, userID int64) (boo
 	return yes, err
 }
 
+// ContactCard — то, что зритель знает о пире по адресным книгам, одним
+// запросом: пир в книге зрителя, зритель в книге пира, заметка зрителя и его
+// личное фото для пира. Личное фото не требует записи в книге — как и в
+// списке диалогов, оно накладывается по одной таблице contact_custom_photo.
+func (r *PrivacyRepo) ContactCard(ctx context.Context, viewerID, targetID int64) (domain.ContactCard, error) {
+	var card domain.ContactCard
+	var noteText string
+	var noteEntities []byte
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT c.user_id IS NOT NULL,
+		        EXISTS(SELECT 1 FROM contacts m WHERE m.owner_id = $2 AND m.user_id = $1),
+		        COALESCE(c.note, ''), COALESCE(c.note_entities, '[]'),
+		        COALESCE(p.media_id, 0)
+		   FROM (SELECT 1) AS one
+		   LEFT JOIN contacts c ON c.owner_id = $1 AND c.user_id = $2
+		   LEFT JOIN contact_custom_photo p ON p.owner_id = $1 AND p.contact_user_id = $2`,
+		viewerID, targetID).Scan(&card.Contact, &card.Mutual, &noteText, &noteEntities, &card.PersonalPhotoID)
+	if err != nil {
+		return domain.ContactCard{}, err
+	}
+	card.Note = contactNote(noteText, noteEntities)
+	return card, nil
+}
+
 // privacyAllowsSQL — SQL-эквивалент domain.PrivacyRuleRecord.Allows для правила из
 // алиаса pr (может быть NULL — тогда дефолт ключа считает вызывающий запрос
 // через privacyDefaultSQL). owner/viewer — SQL-выражения с id сторон.

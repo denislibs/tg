@@ -435,6 +435,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 			pr.Post("/contacts", coh.Add)
 			pr.Get("/contacts", coh.List)
 			pr.Delete("/contacts/{userID}", coh.Delete)
+			pr.Put("/contacts/{userID}/note", coh.UpdateNote)
 
 			// Личное фото контакта (только у владельца) + предложение фото профиля.
 			cph := NewContactPhotoHandler(contactsUC, chatUC)

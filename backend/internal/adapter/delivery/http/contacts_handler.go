@@ -26,10 +26,10 @@ func NewContactsHandler(uc *usecasecontacts.Interactor) *ContactsHandler {
 // вектором `users`: прежде карточка была вклеена в каждую строку рядом со
 // ссылкой — тот же снимок-вместо-ссылки, что убирался у диалогов.
 //
-// Наши поля строки (`note`, `share_phone`, `has_custom_photo`, `created_at`)
-// у конструктора места не имеют. Заметка и «делиться номером» — предмет,
-// которого у оригинала нет вовсе (там заметок нет, а номером делятся правилом
-// приватности); названо задачей.
+// Наши поля строки (`share_phone`, `has_custom_photo`, `created_at`) у
+// конструктора места не имеют. Заметка у оригинала — не поле строки книги, а
+// userFull.note: она едет полной карточкой (/users/{id}); номером делятся
+// правилом приватности.
 func contactsContainer(list []domain.ContactRecord) domain.ContactsContacts {
 	rows := make([]domain.Contact, 0, len(list))
 	cards := make([]domain.UserReal, 0, len(list))
@@ -43,12 +43,14 @@ func contactsContainer(list []domain.ContactRecord) domain.ContactsContacts {
 }
 
 type addContactBody struct {
-	ContactID  int64  `json:"contact_id"`
-	Phone      string `json:"phone"` // добавление по номеру (когда contact_id == 0)
-	FirstName  string `json:"first_name"`
-	LastName   string `json:"last_name"`
-	Note       string `json:"note"`
-	SharePhone bool   `json:"share_phone"`
+	ContactID int64  `json:"contact_id"`
+	Phone     string `json:"phone"` // добавление по номеру (когда contact_id == 0)
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	// Note — contacts.addContact.note:flags.1?TextWithEntities. Ключа нет —
+	// заметка не трогается (правка одного имени её не стирает).
+	Note       *domain.TextWithEntities `json:"note"`
+	SharePhone bool                     `json:"share_phone"`
 }
 
 // Add saves (or edits) a contact: POST /contacts. Принимает либо contact_id
@@ -99,6 +101,9 @@ func (h *ContactsHandler) Add(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, usecasecontacts.ErrCannotAddBot):
 		writeError(w, http.StatusBadRequest, "cannot_add_bot")
 		return
+	case errors.Is(err, domain.ErrTooLong):
+		writeError(w, http.StatusBadRequest, "note_too_long")
+		return
 	case errors.Is(err, domain.ErrPrivacy):
 		writeError(w, http.StatusForbidden, "add_by_phone_restricted")
 		return
@@ -146,6 +151,43 @@ func (h *ContactsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	if !found {
 		writeError(w, http.StatusNotFound, "contact not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
+}
+
+type contactNoteBody struct {
+	Note *domain.TextWithEntities `json:"note"`
+}
+
+// UpdateNote — contacts.updateContactNote: PUT /contacts/{userID}/note,
+// тело {note: textWithEntities}. Ответ — Bool, как у оригинала; пустой текст
+// стирает заметку. 404 — пира нет в книге.
+func (h *ContactsHandler) UpdateNote(w http.ResponseWriter, r *http.Request) {
+	u, ok := UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "no user")
+		return
+	}
+	userID, ok := pathInt(w, r, "userID")
+	if !ok {
+		return
+	}
+	var body contactNoteBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Note == nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	err := h.uc.UpdateNote(r.Context(), u.ID, userID, *body.Note)
+	switch {
+	case errors.Is(err, domain.ErrTooLong):
+		writeError(w, http.StatusBadRequest, "note_too_long")
+		return
+	case errors.Is(err, domain.ErrNotFound):
+		writeError(w, http.StatusNotFound, "contact not found")
+		return
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, "update note failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
