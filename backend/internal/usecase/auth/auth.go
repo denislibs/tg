@@ -35,6 +35,7 @@ type Interactor struct {
 	partners PartnersFunc       // optional: user_update recipient set (shared-chat peers)
 	updates  UpdateLog          // optional: per-user update log for user_update (dense pts)
 	previews AvatarPreviewer    // optional: stripped-превью аватарки при её установке
+	squarer  AvatarSquarer      // optional: квадрат неквадратной аватарки
 	privacy  PrivacyChecker     // optional: видимость фото профиля в кадре user_update
 	pwFails  *failCounter       // счётчик неудачных попыток пароля на password_token
 	recFails *failCounter       // счётчик неудачных кодов восстановления на password_token
@@ -177,6 +178,7 @@ func (i *Interactor) SetPublisher(p EventPublisher)              { i.pub = p }
 func (i *Interactor) SetPartners(f PartnersFunc)                 { i.partners = f }
 func (i *Interactor) SetUpdateLog(u UpdateLog)                   { i.updates = u }
 func (i *Interactor) SetAvatarPreviewer(p AvatarPreviewer)       { i.previews = p }
+func (i *Interactor) SetAvatarSquarer(s AvatarSquarer)           { i.squarer = s }
 func (i *Interactor) SetPrivacy(p PrivacyChecker)                { i.privacy = p }
 
 // SetAccountResetWindow задаёт окно ожидания отложенного сброса аккаунта

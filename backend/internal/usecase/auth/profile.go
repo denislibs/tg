@@ -239,10 +239,26 @@ func (i *Interactor) avatarPreviewFor(ctx context.Context, mediaID int64) []byte
 	return p
 }
 
+// squareAvatar — id квадратного варианта аватарки (см. AvatarSquarer). Отказ
+// кропа не мешает поставить фото: ставится исходник (мягкая деградация, как
+// у превью).
+func (i *Interactor) squareAvatar(ctx context.Context, mediaID int64) int64 {
+	if i.squarer == nil || mediaID <= 0 {
+		return mediaID
+	}
+	id, err := i.squarer.SquareAvatar(ctx, mediaID)
+	if err != nil {
+		i.logf("[avatar] square crop for media %d: %v", mediaID, err)
+		return mediaID
+	}
+	return id
+}
+
 // SetAvatar points the user's avatar at an uploaded media object and appends it
 // to the profile-photo gallery so the two stay consistent (Telegram keeps every
 // avatar as a gallery photo). Returns the fresh user.
 func (i *Interactor) SetAvatar(ctx context.Context, id, mediaID int64) (domain.UserRecord, error) {
+	mediaID = i.squareAvatar(ctx, mediaID)
 	if _, err := i.users.AddProfilePhoto(ctx, id, mediaID, nil, i.avatarPreviewFor(ctx, mediaID)); err != nil {
 		return domain.UserRecord{}, err
 	}
@@ -256,6 +272,7 @@ func (i *Interactor) SetAvatar(ctx context.Context, id, mediaID int64) (domain.U
 // AddProfilePhoto adds a photo to the user's gallery and promotes it to the
 // current avatar. videoMediaID — необязательный видео-вариант аватарки.
 func (i *Interactor) AddProfilePhoto(ctx context.Context, userID, mediaID int64, videoMediaID *int64) (domain.ProfilePhoto, error) {
+	mediaID = i.squareAvatar(ctx, mediaID)
 	ph, err := i.users.AddProfilePhoto(ctx, userID, mediaID, videoMediaID, i.avatarPreviewFor(ctx, mediaID))
 	if err == nil {
 		if u, gerr := i.users.GetByID(ctx, userID); gerr == nil {

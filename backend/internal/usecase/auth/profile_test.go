@@ -85,6 +85,61 @@ func TestSetAvatarStrippedPreview(t *testing.T) {
 	}
 }
 
+// fakeSquarer — AvatarSquarer: квадрат для неквадратного медиа лежит под
+// другим id (map), остальные id — как есть; err — отказ кропа.
+type fakeSquarer struct {
+	to  map[int64]int64
+	err error
+}
+
+func (f *fakeSquarer) SquareAvatar(_ context.Context, mediaID int64) (int64, error) {
+	if f.err != nil {
+		return mediaID, f.err
+	}
+	if id, ok := f.to[mediaID]; ok {
+		return id, nil
+	}
+	return mediaID, nil
+}
+
+// Фото профиля у Telegram квадратное: аватаркой становится КВАДРАТ исходника
+// (media usecase кладёт его отдельным медиа), и именно его id уходит в профиль,
+// галерею и stripped-превью — иначе строка чата и шапка рисуют сплющенный
+// неквадратный исходник (tweb `.avatar-photo` без object-fit).
+func TestAvatarIsSquared(t *testing.T) {
+	ctx := context.Background()
+	i, _, _, _ := newInteractor()
+	id := seedUser(t, i, "+79990000033")
+	pv := &fakePreviewer{preview: []byte{1}}
+	i.SetAvatarPreviewer(pv)
+	i.SetAvatarSquarer(&fakeSquarer{to: map[int64]int64{42: 99, 44: 101}})
+
+	u, err := i.SetAvatar(ctx, id, 42)
+	if err != nil {
+		t.Fatalf("SetAvatar: %v", err)
+	}
+	if u.PhotoID == nil || *u.PhotoID != 99 || pv.gotID != 99 {
+		t.Fatalf("SetAvatar: photo=%v preview for %d; want квадрат 99", u.PhotoID, pv.gotID)
+	}
+
+	ph, err := i.AddProfilePhoto(ctx, id, 44, nil)
+	if err != nil {
+		t.Fatalf("AddProfilePhoto: %v", err)
+	}
+	if ph.MediaID != 101 || pv.gotID != 101 {
+		t.Fatalf("AddProfilePhoto: media=%d preview for %d; want квадрат 101", ph.MediaID, pv.gotID)
+	}
+	if u, _ := i.GetUser(ctx, id); u.PhotoID == nil || *u.PhotoID != 101 {
+		t.Fatalf("аватарка после AddProfilePhoto = %v; want 101", u.PhotoID)
+	}
+
+	// Отказ кропа — не повод не поставить фото: ставится исходник.
+	i.SetAvatarSquarer(&fakeSquarer{err: errors.New("minio down")})
+	if u, err := i.SetAvatar(ctx, id, 45); err != nil || u.PhotoID == nil || *u.PhotoID != 45 {
+		t.Fatalf("отказ кропа: photo=%v err=%v; want исходник 45", u.PhotoID, err)
+	}
+}
+
 func TestSetUsername(t *testing.T) {
 	ctx := context.Background()
 	i, _, _, _ := newInteractor()

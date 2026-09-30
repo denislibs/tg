@@ -104,6 +104,13 @@ type MediaProcessor interface {
 	Process(ctx context.Context, src io.Reader, mime string) (ProcessResult, error)
 }
 
+// SquareCropper режет изображение по центру в квадрат (фото профиля у Telegram
+// квадратное). nil без ошибки — «трогать нечего»: уже квадрат или формат не
+// поддержан. side — сторона получившегося JPEG.
+type SquareCropper interface {
+	CropSquare(src io.Reader, mime string) (jpeg []byte, side int, err error)
+}
+
 // ObjectInfo is the storage-level metadata needed to stream an object.
 type ObjectInfo struct {
 	Size        int64
