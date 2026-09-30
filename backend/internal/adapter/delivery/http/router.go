@@ -320,6 +320,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Delete("/chats/{peerID}", gh.DeleteGroup)
 		pr.Put("/chats/{peerID}/photo", gh.SetPhoto)
 		pr.Put("/chats/{peerID}/type", gh.SetType)
+		pr.Get("/chats/{peerID}/username/available", gh.CheckUsername) // channels.checkUsername
 		pr.Put("/chats/{peerID}/permissions", gh.SetPermissions)
 		pr.Put("/chats/{peerID}/reactions", gh.SetReactions)
 		pr.Put("/chats/{peerID}/history", gh.SetHistory)

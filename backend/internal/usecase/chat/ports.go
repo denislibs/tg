@@ -147,6 +147,9 @@ type GroupRepo interface {
 	// Group edit-screen settings + removed-users list.
 	Settings(ctx context.Context, chatID int64) (domain.ChatSettings, error)
 	SetType(ctx context.Context, chatID int64, isPublic bool, username string) error // domain.ErrConflict on taken username
+	// UsernameAvailable — имя свободно для chatID в общем с пользователями
+	// пространстве имён (своё имя чата свободно).
+	UsernameAvailable(ctx context.Context, username string, chatID int64) (bool, error)
 	SetPermissions(ctx context.Context, chatID int64, perms domain.MemberPerms, slowmodeSeconds int) error
 	SetReactions(ctx context.Context, chatID int64, mode string, allowed []string) error
 	SetHistoryForNew(ctx context.Context, chatID int64, visible bool) error
