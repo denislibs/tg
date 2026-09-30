@@ -1145,7 +1145,7 @@ BLOCKED (`changeAuthorizationSettings`, О-8): секции нет, у нас с
 
 ## Финал
 
-### Задача 28: корень настроек `AppSettingsTab` и снос шва
+### Задача 28: корень настроек `AppSettingsTab` и снос шва — ✅ сделано (PR feat/2d-28-settings-root-tab)
 
 **Порт:** `settings.tsx` (451) → `sidebarLeft/tabs/settings.solid.tsx`; вкладка :188. Шапка: ⋮ с
 `edit` → `AppEditProfileTab`, `qr` → `showMyQrCodePopup`, `logout` (danger) → `showLogOutPopup`
@@ -1176,6 +1176,36 @@ React, вкладками — слайдер; правило шва § 7 спе�
 `onCloseAfterTimeout → dispose` — пин «остров снят» краснеет.
 **Зависимости:** 7–27, 2C. **Готово когда:** `git grep -n "SettingsView\|SettingsSubScreen" web-client/src` пуст;
 корень на стенде: въезд из колонки, «назад» в чатлист с переходом, Esc; числа в коммит.
+
+**Итог (2026-09-30).** Взята раньше своих зависимостей 15/20–23/26/27 и 2C: колоночный слайдер —
+предусловие этапа 0а волны 7 (`2026-09-30-wave-7-shell-sidebars.md`). Поэтому два временных моста
+вместо ожидания:
+- **React-экраны вкладками** (`sidebarLeft/reactScreenTab.tsx`): «Конфиденциальность» (23),
+  «Стикеры и эмодзи» (15), «Динамики и камера» (26), «Редактировать профиль» (27) объявлены в
+  `solidJsTabs/tabs.ts` классами tweb (`AppPrivacyAndSecurityTab`, `AppStickersAndEmojiTab`,
+  `AppSpeakersAndCameraTab`, `AppEditProfileTab`) на `scaffoldReactScreenTab` — содержимое
+  React-корень кита, въезд/выход/Esc — от слайдера. Задача порта меняет одну форму объявления и
+  удаляет React-экран. Это обратный мост, которого план не заводил (правило «листья раньше
+  родителей»): он временный, с номером у каждой строки;
+- **React-попапы** (`sidebarLeft/settingsPopups.tsx`): `showPremiumPopup`/`showStarsPopup`/
+  `showMyQrCodePopup`/`showLogOutPopup`/`showSendGiftPicker` именами tweb поверх `popupStore`,
+  ВРЕМЕННО до 2C-18/19/17/13/20. Выход — без подтверждения (как пункт бургера, до 2C-13), подарок
+  — без выбора получателя (до 2C-20, как и до переезда).
+
+Шов снят: `sidebarLeft/columnSlider.ts` — `SidebarSlider` на `#column-left` (`'left'`, вкладка
+№0 — `.item-main`, `item-secondary` у вкладок по tweb `index.ts:1743-1753`); `Sidebar.tsx`
+заводит его слоем раскладки и снимает на размонтировании, `has-open-tabs` пишет по
+`onTabsCountChange`. Открыть вкладку из React-колонки — `getColumnSlider().createTab(AppXxxTab)
+.open(…)` (изнутри вкладки — `tab.slider.createTab`). Удалены `SettingsView.tsx` (+ scss, 3 теста),
+`SettingsSubScreen.tsx` (+ тест), ветка `'settings'` `SidebarScreens.tsx`, хост со слоем и
+заглушкой (`settingsSliderHost.module.scss`, `onTabsEmpty`, wiring-тест), `2fa/sliceTabsUntilSettings.ts`
+(мастер режет `sliceTabsUntilTab(AppSettingsTab)` дословно), срез О-12 у код-пароля (до
+`AppPrivacyAndSecurityTab` дословно). Продуктовый пункт «всё к tweb»: карточка телефона/имени
+снята (их показывает `PeerProfile`), экран `PremiumManage` снят вместе с
+`usePremiumSubscription`, `premium.getSubscription`/`cancelSubscription` и 10 ключами
+(ручки `/me/premium/subscription`, `/me/premium/cancel` на бэкенде остались без клиента);
+«Ночной режим» и `EmojiStatus.Set` сняты раньше (`fix/settings-root-items`). Ключи строк —
+tweb `AccountSettings.PrivacyAndSecurity`/`AccountSettings.Filters`. Новые «Отложено» — О-41, О-42.
 
 ### Задача 29: `DialogElement` на `attachRowController`, строка ссылок — `renderSearchWebPageRow` — ✅ сделано (PR feat/w2d-dialog-row)
 
@@ -1255,7 +1285,7 @@ RowTsxController` + `attachRowController(this, {…, middleware})`, `destroy()` 
 | О-9 | Переименование устройства (`activeSessions.tsx:211-236`) | сервер подставляет имя из UA (`backend/internal/usecase/auth/auth.go:291-294`) | своё имя устройства |
 | О-10 | Строка Send с `InlineSelect` (если нет настройки отправки) | выяснить в задаче 10 | Ctrl+Enter для отправки |
 | О-11 | Серверные обои (`account.getWallPapers`, `uploadWallPaper`, `saveWallPaper`; `background.tsx:404-416`, `:546-554`) | ручек обоев на бэкенде нет вовсе (выяснено задачей 12): сетка — клиентские `WALLPAPER_PRESETS`, своё фото — общая `/media/upload` + `customWallpaperMediaId`, список загруженных обоев не хранится | сетка обоев 1:1, обои по темам, загруженные обои в выдаче |
-| О-12 | `sliceTabsUntilTab(AppPrivacyAndSecurityTab)` у код-пароля | хаб — вкладка только с задачи 23 | снимается задачей 23 |
+| ~~О-12~~ | ~~`sliceTabsUntilTab(AppPrivacyAndSecurityTab)` у код-пароля~~ | **снято задачей 28**: класс `AppPrivacyAndSecurityTab` есть (мост до 23), срез дословный | — |
 | О-13 | Подтверждение почты 2FA кодом (`2fa/emailConfirmation.tsx`, ветка `EMAIL_UNCONFIRMED` в `email.tsx:74-83` и `privacyAndSecurity.tsx:261-268`), «Забыли пароль» (`forgotPasswordLink.ts`), снятие почты пропуском («Skip» шлёт `email: ''`) | нет unconfirmed pattern (`authManager.ts:118-122`, `:468-475`); пустая почта у `POST /me/password` = «оставить прежнюю» (`usecase/auth/password.go::SetPassword`) | восстановление пароля, снятие почты |
 | О-14 | Порядок стикерсетов (`reorderStickerSets`) | выяснить в задаче 15 | сортировка наборов |
 | О-15 | Платные сообщения (`privacy/messages/paidSettingsSection.tsx`) | `privacyKeyMessages` — наш конструктор, звёзд за сообщения нет | «кто может писать» 1:1 |
@@ -1270,7 +1300,7 @@ RowTsxController` + `attachRowController(this, {…, middleware})`, `destroy()` 
 | О-24 | Видео-аватар и крошилка через медиаредактор | редактор — React (`MediaEditor.tsx`), волна 4 | `AvatarEdit` 1:1 |
 | О-25 | Личный канал в профиле | выяснить в задаче 27 (`updatePersonalChannel`) | секция PersonalChannel |
 | О-26 | Поиск по настройкам и меню шапки из 34f417d12 (`SliderSuperTab.shown`, NavigationItem `settings-search`, `tg://settings/…`) | волна 4 дельты; нужен индекс вкладок, который строится после переезда всех вкладок | поиск по настройкам |
-| О-27 | Попап настроек при свёрнутой колонке (`SettingsSliderPopup`, `createTab`-override `sidebarLeft/index.ts:1730-1741`) | предмет появляется только после задачи 28 | настройки поверх чата на узкой колонке |
+| О-27 | Попап настроек при свёрнутой колонке (`SettingsSliderPopup`, `createTab`-override `sidebarLeft/index.ts:1730-1741`) | предмет появился задачей 28 (колоночный слайдер `columnSlider.ts`), порт не сделан — вкладка открывается в развёрнутой колонке (`has-open-tabs` раскрывает свёрнутую) | настройки поверх чата на узкой колонке |
 | ~~О-29~~ | ~~Модель отступов `MediaHeader` HEAD (`gap: .5rem`) и под неё `authFlow`~~ | **снято** (ветка `fix/w2d-mediaheader-rtl-overlay`): `mediaHeader.module.scss` дословно с HEAD, `auth/AuthFlow.module.scss` `.qrContainer`, карточки входа — `h1` и `class="secondary"`; отступы экрана входа = tweb HEAD, замеры — `docs/tweb/dom/auth.md` §8.4 | — |
 | О-30 | Быстрая реакция: отметка на открытии (`getQuickReaction`, `quickReaction.tsx:22-30`), запись выбора (`setDefaultReaction`, `:48-51`), превью в строке «Стикеров» и перезапрос по `quick_reaction` (`stickersAndEmoji.tsx:30-35`, `:108-110`), подъём быстрой реакции в панели/ховере (`unshiftQuickReaction`) | нет `config.reactions_default`, `messages.setDefaultReaction`, события `quick_reaction` — ни на бэке, ни на проводе (`web-client/backlogs/frontend/quick-reaction-default.md`) | поле «быстрая реакция» у пользователя + ручка чтения/записи |
 | О-31 | ~~Права отправки в селекторе пиров: `chatRightsActions`/`filterByRights`~~ — **снято** (ветка `fix/contacts-share-pickers`): фильтр `core/peers/filterByRights.ts` (порт `filterByRights` :827-834 + `canSendToUser` + `resolveChatRightsActions` из `popups/forward.tsx`), опция `chatRightsActions` в `appSelectPeers.solid.tsx` (диалоги :782-787, выдача поиска :878-883) и в React `ForwardPicker`; бэкенд отдаёт `creator`/`admin_rights`/`default_banned_rights` в векторе `chats` списка диалогов (`DialogRecord.ToChannel`). **Остаток**: звёзды за сообщение (`starsAmountByPeer`, бейдж), замок премиума (`OnlyPremiumCanMessage`), `appSelectPeers.tsx:321-365`, `:443-457` | нет `getRequirementToContact` и платы звёздами за личное сообщение | звёзды за личное сообщение + требование премиума |
@@ -1283,6 +1313,8 @@ RowTsxController` + `attachRowController(this, {…, middleware})`, `destroy()` 
 | О-38 | Карусель облачных тем `ChatThemesPicker` и ряд акцентов `AccentPickerRow` в «Общих» (`generalSettings.tsx:158-176`, `:194-267`, `components/chatThemesPicker.tsx`) | нет `account.getThemes` на бэкенде и модели `settings.themes[]` (облачная тема/акцент-пресет на базу: `accent_color`, `message_colors`, обои — `applyNewTheme`/`applyAccentPreset`/`resetActiveTheme`); глобальной акцент-деривации нет (`deriveChatThemeVars` — только колонка чата с темой), пресетов акцента `getAccentPresetsForBase` нет (сверить номер с параллельными ветками) | тема приложения из облачных тем и акцентов, обои по темам (вместе с О-11) |
 | О-39 | Тема чата у фона (`chat/bubbles/chatBackground.solid.tsx`): встроенная `ChatTheme` (`chatThemes.ts`) вместо облачной `Theme` из `appState.accountThemes` (`chat.ts:517-523`, `chatBackground.tsx:141-157`); публикует её оболочка (`App.tsx` по `useShellTheme`), а не инстанс `Chat.publishBackground` (`chat.ts:380-433`) — поэтому нет `deferReveal`/`revealPreparedBackground` (флип обоев в одном кадре с монтированием баблов, `chat.ts:436-592`), `onCachedStatus` и подсветки в контейнер чата (`:421-433`) | у ленты нет инстанса `Chat` (его роль исполняет React `Chat.tsx`), облачных тем нет (О-38) (сверить номер с параллельными ветками) | `Chat` классом (волна 8 Solid-миграции) + облачные темы |
 | О-40 | Файл обоев фона (`core/chat/chatBackgroundStore.ts`): без корзины `cachedBackgrounds`, общих object URL и SW-скоупа `backgrounds` (`lib/chatBackgroundStore.ts:40-148`); своё фото — обычное медиа (`cachedMediaUrl`/`ensureMediaUrl`), под замком без адреса в зеркале — обои темы | серверных обоев нет (О-11), медиа-конвейер без ключа недоступен (сверить номер с параллельными ветками) | серверные обои (вместе с О-11) |
+| О-41 | Гейт `premiumBlocked` Premium-секции корня (`settings.tsx:314-318`, `apiManagerProxy.isPremiumPurchaseBlocked()`) | источника «покупка Premium запрещена» у нас нет — секция видна всегда (задача 28, расхождение 5 шапки `settings.solid.tsx`) | запрет покупки Premium (регион/платформа) |
+| О-42 | Строка TON (`useStars(true)`, `hasTonTransactions`, `settings.tsx:430-437`) и бизнес-бот в счётчике «Устройств» (`getConnectedBot`, `chat_automation_update`, `:279-298`) | нет баланса/транзакций TON и подключённых бизнес-ботов на бэкенде (задача 28, расхождения 5–6) | TON-звёзды; бизнес-боты |
 
 ## Оценка объёма
 

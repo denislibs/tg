@@ -25,7 +25,7 @@ import { useSettingsStore } from '@/settings'
 import { resetPeerMirror } from '@core/peerCache'
 import contextMenuController from '@helpers/contextMenuController'
 import { AppSharedFolderTab } from '@components/solidJsTabs/tabs'
-import { createSettingsSliderHost, type SettingsSliderHost } from '../settingsSliderHost'
+import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
 
 const toastNew = vi.hoisted(() => vi.fn())
 vi.mock('@components/toast', async(importOriginal) => ({
@@ -65,7 +65,7 @@ const settle = async() => {
   for(let i = 0; i < 12; ++i) await pause(0)
 }
 
-let host: SettingsSliderHost
+let host: TestColumnSlider
 let revokeInvite: ReturnType<typeof vi.fn>
 let animate: ReturnType<typeof vi.fn>
 
@@ -96,7 +96,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = createSettingsSliderHost(columnEl, managers)
+  host = mountTestColumnSlider(columnEl, managers)
 })
 
 afterEach(async() => {

@@ -1,10 +1,11 @@
 /**
- * Тесты хоста слайдера вкладок (`settingsSliderHost.ts`). Гоняют НАСТОЯЩИЙ
- * `SidebarSlider` с НАСТОЯЩЕЙ вкладкой «Устройства» на реальном DOM
- * (happy-dom): замокан ровно один шов — менеджеры, то есть граница с воркером.
+ * Тесты колоночного слайдера (`columnSlider.ts`). Гоняют НАСТОЯЩИЙ
+ * `SidebarSlider` на разметке колонки tweb (`index.html:91-99`) с НАСТОЯЩЕЙ
+ * вкладкой «Устройства» на реальном DOM (happy-dom): замокан ровно один шов —
+ * менеджеры, то есть граница с воркером.
  *
  * Почему вкладка настоящая, а не пустышка: главный вопрос этих тестов — «когда
- * умирает экран настроек, умирает ли ВСЁ, что вкладка успела развесить». Часть
+ * умирает колонка, умирает ли ВСЁ, что вкладка успела развесить». Часть
  * этого «всего» лежит ВНЕ колонки: минутный опрос списка сессий вкладка
  * заводит на монтировании и снимает в `onCleanup` своего Solid-острова
  * (`activeSessions.solid.tsx`). Пустышка про этот путь ничего не скажет, а
@@ -24,14 +25,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Authorization } from '@layer'
 import type { Managers } from '@/client/bootstrap'
 import appNavigationController from '@core/navigation/appNavigationController'
+import type SidebarSlider from '@components/slider'
 import { AppActiveSessionsTab } from '@components/solidJsTabs/tabs'
-import s from './settingsSliderHost.module.scss'
 import {
-  createSettingsSliderHost,
-  getSettingsSliderHost,
+  createColumnSlider,
+  destroyColumnSlider,
+  getColumnSlider,
   openActiveSessionsTab,
-  type SettingsSliderHost,
-} from './settingsSliderHost'
+} from './columnSlider'
 
 type Auth = Authorization.authorization
 
@@ -65,13 +66,21 @@ function makeManagers(authorizations: Auth[] = [current, other]) {
   }
 }
 
-/** Разметка колонки: хост вешает свой слой ребёнком `#column-left`. */
+/** Разметка колонки tweb: `.sidebar-slider.tabs-container > .item-main.active`. */
 function createColumn() {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
+  const sliderEl = document.createElement('div')
+  sliderEl.classList.add('sidebar-slider', 'tabs-container')
+  const mainEl = document.createElement('div')
+  mainEl.classList.add('tabs-tab', 'sidebar-slider-item', 'item-main', 'active')
+  sliderEl.append(mainEl)
+  columnEl.append(sliderEl)
   document.body.append(columnEl)
   return columnEl
 }
+
+const sliderElOf = (columnEl: HTMLElement) => columnEl.querySelector<HTMLElement>('.sidebar-slider')!
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -98,18 +107,18 @@ function trackPoll() {
 }
 
 let columnEl: HTMLElement
-let hosts: SettingsSliderHost[]
+let sliders: SidebarSlider[]
 
 beforeEach(() => {
-  hosts = []
+  sliders = []
   columnEl = createColumn()
 })
 
 afterEach(async() => {
-  // Слои навигации и Esc — модульные синглтоны: недобитый хост достался бы
-  // следующему тесту вместе со своим слоем.
-  for(const host of hosts) {
-    host.destroy()
+  // Слои навигации и Esc — модульные синглтоны: недобитый слайдер достался бы
+  // следующему тесту вместе со своими записями.
+  for(const slider of sliders) {
+    destroyColumnSlider(slider)
   }
 
   await settle()
@@ -118,38 +127,61 @@ afterEach(async() => {
   vi.restoreAllMocks()
 })
 
-function createHost(managers: Managers) {
-  const host = createSettingsSliderHost(columnEl, managers)
-  hosts.push(host)
-  return host
+function createSlider(managers: Managers, onTabsCountChange?: () => void) {
+  const slider = createColumnSlider(columnEl, managers, onTabsCountChange)
+  sliders.push(slider)
+  return slider
 }
 
-describe('settingsSliderHost — заведение слайдера в левую колонку', () => {
-  it('вкладка въезжает в СВОЙ слой колонки, поверх React-экрана настроек', async() => {
+/** `createTab` + `open` — как строки колонки и вкладок. */
+async function openSessions(slider: SidebarSlider) {
+  const tab = slider.createTab(AppActiveSessionsTab)
+  await tab.open({ authorizations: [current, other] })
+  return tab
+}
+
+describe('columnSlider — слайдер на разметке левой колонки', () => {
+  it('вкладка встаёт соседом .item-main в колоночный .sidebar-slider, с item-secondary и записью навигации left', async() => {
     const { managers } = makeManagers()
-    const host = createHost(managers)
+    const slider = createSlider(managers)
+    const sliderEl = sliderElOf(columnEl)
+    const mainEl = sliderEl.querySelector('.item-main')!
 
-    const layer = columnEl.firstElementChild!
-    const sliderEl = layer.querySelector('.sidebar-slider.tabs-container')!
-    // Заглушка-корень: без соседа переходу не от чего ехать (см. шапку хоста).
-    expect(sliderEl.children).toHaveLength(1)
-    expect(sliderEl.firstElementChild!.classList.contains('tabs-tab')).toBe(true)
-    expect(layer.classList.contains(s.withTabs)).toBe(false)
+    // Вкладка №0 — список чатов колонки (tweb `slider.ts:46-48`).
+    expect(mainEl.classList.contains('active')).toBe(true)
+    expect(slider.hasTabsInNavigation()).toBe(false)
 
-    const tab = await host.openTab(AppActiveSessionsTab, { authorizations: [current, other] })
+    const tab = await openSessions(slider)
 
     expect(tab.container.parentElement).toBe(sliderEl)
+    expect(tab.container.previousElementSibling).toBe(mainEl)
+    // tweb `AppSidebarLeft.addTab` (:1748-1753)
+    expect(tab.container.classList.contains('item-secondary')).toBe(true)
+    expect(mainEl.classList.contains('item-secondary')).toBe(false)
     expect(tab.container.classList.contains('active')).toBe(true)
-    // Слой перестаёт быть сквозным для кликов ровно пока вкладки открыты.
-    expect(layer.classList.contains(s.withTabs)).toBe(true)
+    // `navigationType: 'left'` — как колонка tweb (`sidebarLeft/index.ts:150`)
+    expect(appNavigationController.findItemByType('left')).toBeDefined()
+    expect(slider.hasTabsInNavigation()).toBe(true)
   })
 
-  it('размонтирование экрана настроек уничтожает открытые вкладки', async() => {
+  it('onTabsCountChange зовётся на открытии и закрытии — колонка пересчитывает has-open-tabs', async() => {
     const { managers } = makeManagers()
-    const host = createHost(managers)
+    const counts: boolean[] = []
+    const slider: SidebarSlider = createSlider(managers, () => counts.push(slider.hasTabsInNavigation()))
+
+    const tab = await openSessions(slider)
+    expect(counts[counts.length - 1]).toBe(true)
+
+    tab.close()
+    expect(counts[counts.length - 1]).toBe(false)
+  })
+
+  it('размонтирование колонки уничтожает открытые вкладки', async() => {
+    const { managers } = makeManagers()
+    const slider = createSlider(managers)
     const poll = trackPoll()
 
-    const tab = await host.openTab(AppActiveSessionsTab, { authorizations: [current, other] })
+    const tab = await openSessions(slider)
     const middleware = tab.middlewareHelper.get()
     // Вкладка успела развесить своё ВНЕ колонки — иначе проверка ниже
     // проходила бы и на неразобранном Solid-острове.
@@ -157,7 +189,7 @@ describe('settingsSliderHost — заведение слайдера в леву
     expect(poll.stopped()).toBe(false)
     expect(middleware()).toBe(true)
 
-    host.destroy()
+    destroyColumnSlider(slider)
     await settle()
 
     // Узел вкладки снят ЕЮ САМОЙ (`SliderSuperTab.onCloseAfterTimeout`), а не
@@ -167,8 +199,8 @@ describe('settingsSliderHost — заведение слайдера в леву
     expect(poll.stopped()).toBe(true)
     // Миддлварь вкладки погашена — поздний ответ воркера в мёртвую вкладку не пишет.
     expect(middleware()).toBe(false)
-    // И сам слой хоста ушёл из колонки: клики снова достаются React-экрану.
-    expect(columnEl.children).toHaveLength(0)
+    // Разметка колонки — React'а: слайдер её не трогает, остаётся одна `.item-main`.
+    expect(sliderElOf(columnEl).children).toHaveLength(1)
   })
 
   it('вкладка, уходившая за своим чанком, не переживает свой экран', async() => {
@@ -176,22 +208,23 @@ describe('settingsSliderHost — заведение слайдера в леву
     // `historyTabIds`, а вкладка попадает туда только в `selectTab`, то есть
     // ПОСЛЕ `await init()`. Между `createTab` и `selectTab` лежат динамический
     // импорт чанка вкладки и ожидание данных — уйти успевают. Сценарий:
-    // настройки → «Устройства» → Back до того, как доехал чанк.
+    // настройки → «Устройства» → выход из аккаунта до того, как доехал чанк.
     const { managers } = makeManagers()
-    const host = createHost(managers)
+    const slider = createSlider(managers)
     const poll = trackPoll()
 
-    // Ждать НЕЛЬЗЯ: весь смысл в том, что экран уходит ВНУТРИ этого промиса.
-    const opening = host.openTab(AppActiveSessionsTab, { authorizations: [current, other] })
-    host.destroy()
+    // Ждать НЕЛЬЗЯ: весь смысл в том, что колонка уходит ВНУТРИ этого промиса.
+    const tab = slider.createTab(AppActiveSessionsTab)
+    const opening = tab.open({ authorizations: [current, other] })
+    destroyColumnSlider(slider)
 
-    const tab = await opening
+    await opening
     await settle()
 
     // Solid-остров разобран: если он успел смонтироваться, `onCleanup` погасил опрос.
     expect(!poll.started() || poll.stopped()).toBe(true)
     expect(tab.container.parentElement).toBeNull()
-    expect(columnEl.children).toHaveLength(0)
+    expect(sliderElOf(columnEl).children).toHaveLength(1)
 
     // Esc не съеден осиротевшим обработчиком мёртвой вкладки: запись контроллера
     // снята вместе с ней, событию некому гасить `defaultPrevented`
@@ -202,7 +235,7 @@ describe('settingsSliderHost — заведение слайдера в леву
     expect(e.defaultPrevented).toBe(false)
 
     // И Back тоже: записи истории у ненайденной вкладки быть не должно, иначе
-    // первое нажатие «назад» ПОСЛЕ выхода из настроек уходит в никуда.
+    // первое нажатие «назад» после этого уходит в никуда.
     let backsToApp = 0
     appNavigationController.pushItem({ type: 'chat', onPop: () => { ++backsToApp } })
     await pause(20) // запись истории доезжает очередью мутаций
@@ -212,11 +245,11 @@ describe('settingsSliderHost — заведение слайдера в леву
 
   it('destroy отпускает Esc: следующее нажатие достаётся приложению, а не мёртвой вкладке', async() => {
     const { managers } = makeManagers()
-    const host = createHost(managers)
+    const slider = createSlider(managers)
 
-    await host.openTab(AppActiveSessionsTab, { authorizations: [current, other] })
+    await openSessions(slider)
 
-    host.destroy()
+    destroyColumnSlider(slider)
     await settle()
 
     const e = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
@@ -227,9 +260,9 @@ describe('settingsSliderHost — заведение слайдера в леву
 
   it('Escape закрывает вкладку и НЕ проваливается дальше по стеку', async() => {
     const { managers } = makeManagers()
-    const host = createHost(managers)
+    const slider = createSlider(managers)
 
-    const tab = await host.openTab(AppActiveSessionsTab, { authorizations: [current, other] })
+    const tab = await openSessions(slider)
 
     const first = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
     window.dispatchEvent(first)
@@ -237,9 +270,9 @@ describe('settingsSliderHost — заведение слайдера в леву
 
     expect(first.defaultPrevented).toBe(true)
     expect(tab.container.parentElement).toBeNull()
-    // Экран настроек ПОД вкладкой остаётся: хост жив, снят только его слой-признак.
-    expect(columnEl.firstElementChild!.classList.contains(s.withTabs)).toBe(false)
-    expect(columnEl.children).toHaveLength(1)
+    // Под вкладкой — список чатов колонки, слайдер жив и пуст.
+    expect(slider.hasTabsInNavigation()).toBe(false)
+    expect(sliderElOf(columnEl).querySelector('.item-main')!.classList.contains('active')).toBe(true)
 
     // Закрытая вкладка обязана ОТПУСТИТЬ клавишу: следующее нажатие в контроллере
     // уже не находит её запись, событие не гасится. Осиротевший Esc-обработчик
@@ -249,52 +282,30 @@ describe('settingsSliderHost — заведение слайдера в леву
     expect(second.defaultPrevented).toBe(false)
   })
 
-  it('слайдер один на колонку: второй хост уносит вкладки первого', async() => {
+  it('слайдер один на колонку: второй уносит вкладки первого', async() => {
     const { managers } = makeManagers()
-    const first = createHost(managers)
-    const tab = await first.openTab(AppActiveSessionsTab, { authorizations: [current, other] })
+    const first = createSlider(managers)
+    const tab = await openSessions(first)
 
-    const second = createHost(managers)
+    const second = createSlider(managers)
     await settle()
 
     expect(tab.container.parentElement).toBeNull()
-    expect(columnEl.children).toHaveLength(1)
-    expect(getSettingsSliderHost()).toBe(second)
+    expect(getColumnSlider()).toBe(second)
   })
 
-  it('onTabsEmpty: зовёт, когда закрыта последняя вкладка, и молчит после отписки', async() => {
+  it('вне колонки слайдер не выдумывается — вызов падает, а не молчит', () => {
     const { managers } = makeManagers()
-    const host = createHost(managers)
-    const onEmpty = vi.fn()
-    const off = host.onTabsEmpty(onEmpty)
+    const slider = createSlider(managers)
+    expect(getColumnSlider()).toBe(slider)
 
-    const tab = await host.openTab(AppActiveSessionsTab, { authorizations: [current, other] })
-    expect(onEmpty).not.toHaveBeenCalled()
-
-    tab.close()
-    await settle()
-    expect(onEmpty).toHaveBeenCalled()
-
-    onEmpty.mockClear()
-    off()
-    const again = await host.openTab(AppActiveSessionsTab, { authorizations: [current, other] })
-    again.close()
-    await settle()
-    expect(onEmpty).not.toHaveBeenCalled()
-  })
-
-  it('вне экрана настроек хост не выдумывается — вызов падает, а не молчит', () => {
-    const { managers } = makeManagers()
-    const host = createHost(managers)
-    expect(getSettingsSliderHost()).toBe(host)
-
-    host.destroy()
-    expect(() => getSettingsSliderHost()).toThrow(/хост не заведён/)
+    destroyColumnSlider(slider)
+    expect(() => getColumnSlider()).toThrow(/слайдер не заведён/)
   })
 
   it('openActiveSessionsTab отдаёт вкладке УЖЕ загруженный список, а не пустой', async() => {
     const { managers, list } = makeManagers([current, other])
-    createHost(managers)
+    createSlider(managers)
 
     await openActiveSessionsTab(managers)
 

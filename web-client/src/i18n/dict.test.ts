@@ -370,12 +370,21 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `Peer.ServiceNotifications` (подпись служебного аккаунта, getUserStatusString
 // :19-21) и `Verified.Bot`/`Verified.Channel`/`Verified.Group` (строка
 // официальной верификации профиля, peerProfile.tsx BotVerification): ru 1412.
+//
+// Задача 28 плана 2D (корень настроек `AppSettingsTab`, порт tweb settings.tsx):
+// +2 ключа tweb lang.ts всем пяти — заголовки строк корня
+// `AccountSettings.PrivacyAndSecurity` и `AccountSettings.Filters` (:254, :256);
+// у наших `PrivacySettings`/`ChatList.Filter.List.Title` остаются читатели —
+// заголовки самих вкладок. У ru ещё −10: снесён экран подписки `PremiumManage`
+// (у tweb его нет — Premium открывает попап), с ним — его ключи без других
+// читателей: восемь наших `Premium.Manage.*` и `Stars.Subscription`/
+// `Stars.Subscription.Cancel`. Итог: ru 1404, uk 750, es/de 747, fr 742.
 const COMPOSITION = {
-  ru: { keys: 1412, plural: 42 },
-  uk: { keys: 748, plural: 31 },
-  es: { keys: 745, plural: 30 },
-  de: { keys: 745, plural: 31 },
-  fr: { keys: 740, plural: 30 },
+  ru: { keys: 1404, plural: 42 },
+  uk: { keys: 750, plural: 31 },
+  es: { keys: 747, plural: 30 },
+  de: { keys: 747, plural: 31 },
+  fr: { keys: 742, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -498,12 +507,14 @@ const COMPOSITION = {
 // Портом кнопки замка (`sidebarLeft/lockButton.solid.tsx`) — наш `PasscodeLock.LockNow`
 // заменён ключом tweb `PasscodeLock.TapToLock` у всех пяти: −1 +1, число строк то же.
 // Особыми чатами — у ru +4 ключа tweb (разбор — у `COMPOSITION` выше).
+// Задачей 28 плана 2D — два ключа строк корня настроек у всех пяти, у ru — минус
+// ключи снесённого `PremiumManage` (разбор — там же).
 const FINGERPRINT = {
-  ru: '75169aa2',
-  uk: '4c8d1a40',
-  es: 'e878cf4f',
-  de: '1e1c8f3e',
-  fr: '342d3f40',
+  ru: '13447f25',
+  uk: 'f7af4022',
+  es: '5d6ff751',
+  de: 'ab245f9c',
+  fr: 'be8f0a56',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

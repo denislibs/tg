@@ -79,6 +79,12 @@ React-корень `main.tsx`/`App.tsx`, `Sidebar.tsx`, `UserInfoPanel.tsx`, `Ch
    (`Sidebar.tsx:175`, `sidebarLeft/settingsSliderHost.ts:171`). Перенос на колоночный слайдер —
    задача **2D-28** (не сделана, `SettingsView.tsx` 391 и `SettingsSubScreen.tsx` 44 на месте).
    Адреса в тексте 2D-28 устарели: `Sidebar.tsx:350` → `:389`, `:228` → `:370`/`:245`.
+   **Снято задачей 2D-28** (PR feat/2d-28-settings-root-tab): колоночный слайдер —
+   `sidebarLeft/columnSlider.ts` (`SidebarSlider` на `#column-left`, `'left'`, вкладка №0 —
+   `.item-main`, `item-secondary` у вкладок). React-колонка открывает вкладку
+   `getColumnSlider().createTab(AppXxxTab).open(…)` (ВРЕМЕННО до 2-1 — роль синглтона
+   `appSidebarLeft`), изнутри вкладки — `tab.slider.createTab(…)`; `has-open-tabs` колонка
+   пишет по `onTabsCountChange` слайдера. Хоста `settingsSliderHost.ts` больше нет.
 5. **`has-open-tabs` пишет только `Sidebar.tsx`**, двумя путями: className `:370` и
    `setOpenTabsLeftSidebar` `:245` (объявлен в `core/dom/updateColumnWidths.ts:139`).
 6. **`is-right-column-shown` в JS пишет только счётчик** `core/hooks/useRightColumnShown.ts:17-30`.

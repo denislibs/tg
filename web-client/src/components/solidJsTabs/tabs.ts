@@ -21,14 +21,16 @@ import type { Authorization } from '@layer'
 import type { PasswordState } from '@core/managers/authManager'
 import type SliderSuperTab from '@components/sliderTab'
 import { scaffoldSolidJSTab, scaffoldSolidJSTabEventable } from './scaffoldSolidJSTab.solid'
+import { scaffoldReactScreenTab } from '../sidebarLeft/reactScreenTab'
 import type { LangPackKey } from '@/lang'
 import type { MaybePromise } from '@types'
 import type { PasscodeActions } from '@lib/passcode/actions'
 import type SidebarSlider from '@components/slider'
 
 // tweb :327-329 — вкладка получает УЖЕ загруженный список сессий, а не ходит
-// за ним сама: запрос делает открывающая сторона (у нас — `settingsSliderHost
-// ::openActiveSessionsTab`), чтобы вкладка не въезжала пустой.
+// за ним сама: запрос делает открывающая сторона (корень настроек —
+// `settings.solid.tsx::onDevicesClick`, React-«Конфиденциальность» —
+// `columnSlider.ts::openActiveSessionsTab`), чтобы вкладка не въезжала пустой.
 type AppActiveSessionsTabPayload = {
   authorizations: Authorization.authorization[]
 }
@@ -68,14 +70,7 @@ export const AppPasscodeLockTab =
     getComponentModule: () => import('../sidebarLeft/tabs/passcodeLock/mainTab.solid'),
     onOpenAfterTimeout: function() {
       // Remove the previous enter password tab
-      // (О-12) У tweb — срез до `AppPrivacyAndSecurityTab`; хаб станет вкладкой
-      // задачей 23, до неё под этой вкладкой в истории хоста только вкладки
-      // ввода кода — срезаем до корня (всё, кроме себя).
-      const slider = this.slider as unknown as SidebarSlider
-      // копия: `removeTabFromHistory` вырезает из того же массива истории
-      for(const tab of slider.getHistory().slice()) {
-        if(tab !== this) slider.removeTabFromHistory(tab)
-      }
+      (this.slider as unknown as SidebarSlider).sliceTabsUntilTab(AppPrivacyAndSecurityTab, this)
     },
   })
 
@@ -120,7 +115,7 @@ export const AppBackgroundColorTab =
 // tweb :195-199. Форма обычная, без полезной нагрузки: каталог вкладка берёт
 // сама (в свой `promiseCollector`). Открывает её строка «Quick Reaction» экрана
 // «Стикеры и эмодзи» (tweb `stickersAndEmoji.tsx:60-66`); до переезда самого
-// экрана (задача 15 плана 2D) — его React-строка через `getSettingsSliderHost`.
+// экрана (задача 15 плана 2D) — его React-строка слайдером своей вкладки.
 export const AppQuickReactionTab =
   scaffoldSolidJSTab({
     title: 'DoubleTapSetting',
@@ -307,8 +302,8 @@ export const AppAddMembersTab =
 // ── Вкладки правил приватности (tweb :59-63, :301-367; задача 17 плана 2D) ────
 // Все eventable: `PrivacySection` пишет правило на `destroy` вкладки
 // (`privacySection.tsx:271`). Открывают их строки раздела «Конфиденциальность»
-// (tweb `privacyAndSecurity.tsx:416-466`; до задачи 23 — React-экран через
-// `getSettingsSliderHost`). Расхождения с оригиналом:
+// (tweb `privacyAndSecurity.tsx:416-466`; до задачи 23 — React-экран на мосту
+// `AppPrivacyAndSecurityTab`). Расхождения с оригиналом:
 //  • полезной нагрузки нет ни у одной: у tweb «Был в сети» и «Подарки» получают
 //    `GlobalPrivacySettings` и шлют событие `privacy` (:355-365), «Сообщения» —
 //    `onSaved` (:55-63); `globalPrivacySettings` у нас нет (О-18), «Сообщения» —
@@ -392,6 +387,49 @@ export const AppGeneralSettingsTab =
   scaffoldSolidJSTab({
     title: 'Telegram.GeneralSettingsViewController',
     getComponentModule: () => import('../sidebarLeft/tabs/generalSettings.solid'),
+  })
+
+// ── Корень настроек (tweb :188-192) — задача 28 плана 2D ─────────────────────
+// Вкладка колоночного слайдера (`sidebarLeft/columnSlider.ts`); открывает её
+// пункт «Настройки» бургера и колонки папок (tweb `sidebarLeft/index.ts:765`,
+// `:841`). Форма обычная, без полезной нагрузки.
+export const AppSettingsTab =
+  scaffoldSolidJSTab({
+    title: 'Settings',
+    getComponentModule: () => import('../sidebarLeft/tabs/settings.solid'),
+  })
+
+// ── ВРЕМЕННО: React-экраны под именами вкладок tweb ──────────────────────────
+// Строки корня открывают их, как оригинал (`settings.tsx:106`, `:254-257`), но
+// содержимое до порта — React-экран на мосту `scaffoldReactScreenTab`
+// (шапка `sidebarLeft/reactScreenTab.tsx`). Задача порта меняет здесь форму на
+// `scaffoldSolidJSTab({title, getComponentModule})` по tweb и удаляет React-экран.
+
+// ВРЕМЕННО до 2D-23 (tweb :659-663, `privacyAndSecurity.tsx`)
+export const AppPrivacyAndSecurityTab =
+  scaffoldReactScreenTab({
+    getComponentModule: () => import('../settings/PrivacySecuritySettings'),
+  })
+
+// ВРЕМЕННО до 2D-15 (tweb :202-206, `stickersAndEmoji.tsx`)
+export const AppStickersAndEmojiTab =
+  scaffoldReactScreenTab({
+    getComponentModule: () => import('../settings/StickersSettings'),
+  })
+
+// ВРЕМЕННО до 2D-26 (tweb :181-185, `speakersAndCamera.tsx`)
+export const AppSpeakersAndCameraTab =
+  scaffoldReactScreenTab({
+    getComponentModule: () => import('../settings/SpeakersCamera'),
+  })
+
+// ВРЕМЕННО до 2D-27 (tweb :93-98, `editProfile.tsx`; `noSame` — :98).
+// `getEditProfileInitArgs` (предзагрузка профиля и бота) — с портом: React-экран
+// грузит своё сам.
+export const AppEditProfileTab =
+  scaffoldReactScreenTab({
+    getComponentModule: () => import('../settings/EditProfile'),
+    noSame: true,
   })
 
 // ── Папки (tweb :609-619, :804-845) — задача 24 плана 2D ─────────────────────

@@ -4,7 +4,7 @@
  * порт tweb `sidebarLeft/tabs/passcodeLock/*`, 812502980) — задача 18 плана 2D.
  *
  * Вкладки гоняются НАСТОЯЩИЕ — `AppPasscodeLockTab`/`AppPasscodeEnterPasswordTab`
- * из `solidJsTabs/tabs.ts` через хост (`settingsSliderHost.ts`), логика кода —
+ * из `solidJsTabs/tabs.ts` через колоночный слайдер (`sidebarLeft/columnSlider.ts`), логика кода —
  * настоящая (`lib/passcode/actions.ts`: PBKDF2, соли, ключ). Стабы — только
  * границы: IndexedDB (`idbKv` — словарь в памяти), канал к воркеру
  * (`invokePasscode` — шифрует хранилища там), writer офлайн-стора
@@ -30,7 +30,7 @@ import { useLockStore } from '@/stores/lockStore'
 import Icon from '@components/icon'
 import { AppPasscodeEnterPasswordTab, AppPasscodeLockTab } from '@components/solidJsTabs/tabs'
 import type SidebarSlider from '@components/slider'
-import { createSettingsSliderHost, type SettingsSliderHost } from '../../settingsSliderHost'
+import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
 import { installSpecLabelActivation } from '@/test/specLabelActivation'
 import styles from './mainTab.module.scss'
 import shortcutStyles from './shortcutBuilder.module.scss'
@@ -68,7 +68,7 @@ async function waitFor<T>(get: () => T | null | undefined | false, timeout = 300
   }
 }
 
-let host: SettingsSliderHost
+let host: TestColumnSlider
 let columnEl: HTMLElement
 let clearAll: ReturnType<typeof vi.fn>
 let uninstallLabelActivation: () => void
@@ -93,7 +93,7 @@ beforeEach(() => {
   columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = createSettingsSliderHost(columnEl, managers)
+  host = mountTestColumnSlider(columnEl, managers)
 })
 
 afterEach(async() => {
@@ -106,8 +106,8 @@ afterEach(async() => {
   confirmationPopup.mockClear()
 })
 
-/** Все открытые вкладки хоста (кроме заглушки-корня), в порядке DOM. */
-const tabs = () => [...columnEl.querySelectorAll<HTMLElement>('.sidebar-slider > .tabs-tab.sidebar-slider-item')]
+/** Все открытые вкладки хоста (кроме `.item-main` — вкладки №0), в порядке DOM. */
+const tabs = () => [...columnEl.querySelectorAll<HTMLElement>('.sidebar-slider > .tabs-tab.sidebar-slider-item:not(.item-main)')]
 const titleOf = (tab: HTMLElement) => tab.querySelector('.sidebar-header__title')?.textContent
 
 function row(root: HTMLElement, title: string) {
