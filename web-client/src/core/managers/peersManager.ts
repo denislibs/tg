@@ -3,6 +3,7 @@ import { HttpError, type RestClient } from '../net/restClient'
 import { saveUsers as persistUsers, loadUsers, saveChats as persistChats, loadChats } from '../store/persist'
 import { peerKey, type Channel, type Chat, type User, type UserReal } from '../peers/peer'
 import { isUser, toUserId } from '../peers/peerId'
+import type { PresenceEvt } from '../realtime/events'
 
 // Карточка пира — КОНСТРУКТОР схемы (`user` / `channel` / …), а не плоская
 // выдумка. Прежний `Peer {id, username, displayName, avatarUrl, avatarPreview}`
@@ -62,7 +63,19 @@ export type PeerOp = { op: 'upsert'; peers: (User | Chat)[] }
  * `onPeerOps` опционален только ради юнит-тестов самого менеджера; в проде его
  * задаёт workerCore, и это покрыто отдельным пином — workerCore.test.ts.
  */
-export function newPeersManager({ rest, onPeerOps }: { rest: Pick<RestClient, 'get'>; onPeerOps?: (ops: PeerOp[]) => void }) {
+/**
+ * `onUserStatus` — приёмник статуса из карточки: порт `saveUserStatus` внутри
+ * `appUsersManager.saveApiUser` (tweb `appUsersManager.ts:700`). У оригинала
+ * статус — поле самого `user`, и любой ответ с вектором `users` обновляет его
+ * заодно с карточкой. У нас присутствие живёт отдельным стором на главном
+ * потоке (`chatsStore.presence`), поэтому владелец карточек отдаёт статус туда
+ * тем же кадром, каким его шлёт сервер, — `updateUserStatus` (`RT.presence`).
+ */
+export function newPeersManager({ rest, onPeerOps, onUserStatus }: {
+  rest: Pick<RestClient, 'get'>
+  onPeerOps?: (ops: PeerOp[]) => void
+  onUserStatus?: (evt: PresenceEvt) => void
+}) {
   const cache = new Map<PeerId, User | Chat>()
   /**
    * Индекс `публичное имя → ключ пира` — порт `appUsersManager.usernames`
@@ -161,6 +174,12 @@ export function newPeersManager({ rest, onPeerOps }: { rest: Pick<RestClient, 'g
     // раньше давал сам персист диалогов.
     const persistChatCards: Chat[] = []
     for (const incoming of peers) {
+      // Статус — СВЕЖИЙ снимок сервера, поэтому отдаётся и тогда, когда
+      // карточка целиком совпала с лежащей: между двумя снимками присутствие
+      // могло смениться кадром, и снимок обязан его поправить.
+      if (incoming._ === 'user' && incoming.status) {
+        onUserStatus?.({ _: 'updateUserStatus', user_id: incoming.id, status: incoming.status })
+      }
       const key = peerKey(incoming)
       const prev = cache.get(key)
       const peer = prev ? mergeApiChat(prev, incoming) : incoming

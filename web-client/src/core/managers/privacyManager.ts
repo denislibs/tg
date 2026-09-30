@@ -2,6 +2,7 @@ import type { RestClient } from '../net/restClient'
 import type { Chat, UserReal } from '../peers/peer'
 import type { Peer } from '../peers/peerId'
 import { mapPeerProfile, type PeerProfile, type RawPeerProfile } from './authManager'
+import type { PeersManager } from './peersManager'
 
 // Конфиденциальность (tweb Privacy and Security): правила «кто видит/может»
 // по ключам + чёрный список + чужой профиль с применёнными правилами.
@@ -131,7 +132,11 @@ export interface ContactsBlockedSlice {
   users: UserReal[]
 }
 
-export function newPrivacyManager({ rest }: { rest: Pick<RestClient, 'get' | 'put' | 'post' | 'del'> }) {
+export function newPrivacyManager({ rest, peers }: {
+  rest: Pick<RestClient, 'get' | 'put' | 'post' | 'del'>
+  /** Владелец карточек: вектор `users` ответа профиля кладётся туда (см. `profile`). */
+  peers?: Pick<PeersManager, 'saveApiPeers'>
+}) {
   return {
     /**
      * Правила ВСЕХ ключей.
@@ -195,7 +200,13 @@ export function newPrivacyManager({ rest }: { rest: Pick<RestClient, 'get' | 'pu
      * у него нет.
      */
     async profile(userId: number): Promise<PeerProfile> {
-      return mapPeerProfile(await rest.get<RawPeerProfile>(`/users/${userId}`))
+      const full = await rest.get<RawPeerProfile>(`/users/${userId}`)
+      // Порт `appProfileManager.getProfile`: векторы ответа уходят владельцу
+      // карточек (`saveApiUsers`) — с карточкой собеседника приезжает его
+      // статус, и только отсюда его узнаёт открытый чат и профиль человека,
+      // чей диалог появился после сида присутствия.
+      peers?.saveApiPeers({ chats: full.chats, users: full.users })
+      return mapPeerProfile(full)
     },
   }
 }
