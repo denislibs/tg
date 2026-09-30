@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 35,
+      "version": 36,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -1635,10 +1635,6 @@
           "value": "Draft"
         },
         {
-          "key": "DynamicPackOrder",
-          "value": "Dynamic Pack Order"
-        },
-        {
           "key": "Edit",
           "value": "Edit"
         },
@@ -1733,6 +1729,10 @@
         {
           "key": "Effect.Remove",
           "value": "Remove Effect"
+        },
+        {
+          "key": "Emoji",
+          "value": "Emoji"
         },
         {
           "key": "Emoji.Activity",
@@ -2697,6 +2697,10 @@
         {
           "key": "LoginPassword",
           "value": "Password"
+        },
+        {
+          "key": "LoopAnimatedStickersInfo",
+          "value": "Animated stickers will play continuously in chats."
         },
         {
           "key": "ManageLinks.DeleteAll.Confirm",
@@ -4635,10 +4639,6 @@
           "value": "Settings"
         },
         {
-          "key": "Settings.BigEmoji",
-          "value": "Big Emoji"
-        },
-        {
           "key": "Settings.Limits",
           "value": "Limits"
         },
@@ -5002,20 +5002,8 @@
           }
         },
         {
-          "key": "Stickers.AddSets",
-          "value": "Add Sticker Sets"
-        },
-        {
           "key": "Stickers.ClearRecent.Text",
           "value": "Are you sure you want to clear your recent stickers?"
-        },
-        {
-          "key": "Stickers.MySets",
-          "value": "My Sticker Sets"
-        },
-        {
-          "key": "Stickers.NoSets",
-          "value": "No sticker sets installed"
         },
         {
           "key": "Stickers.RemoveFromFavorites",
@@ -5026,12 +5014,12 @@
           "value": "Added"
         },
         {
-          "key": "Stickers.SearchSets",
-          "value": "Search sticker sets"
-        },
-        {
           "key": "Stickers.SuggestStickers",
           "value": "Suggest Stickers by Emoji"
+        },
+        {
+          "key": "StickersBotInfo",
+          "value": "Artists are welcome to add their own sticker sets using our @stickers bot."
         },
         {
           "key": "StickersName",
@@ -5221,6 +5209,18 @@
           }
         },
         {
+          "key": "SuggestStickersAll",
+          "value": "All Sets"
+        },
+        {
+          "key": "SuggestStickersInstalled",
+          "value": "My Sets"
+        },
+        {
+          "key": "SuggestStickersNone",
+          "value": "None"
+        },
+        {
           "key": "SuggestedPosts.Empty",
           "value": "No suggested posts here yet…"
         },
@@ -5299,6 +5299,10 @@
         {
           "key": "Telegram.GeneralSettingsViewController",
           "value": "General Settings"
+        },
+        {
+          "key": "Telegram.InstalledStickerPacksController",
+          "value": "Stickers"
         },
         {
           "key": "Telegram.LanguageViewController",
@@ -5799,7 +5803,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 35,
+      "version": 36,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -7157,12 +7161,32 @@
           "value": "Подсказки эмодзи"
         },
         {
-          "key": "Settings.BigEmoji",
-          "value": "Большие эмодзи"
+          "key": "Emoji",
+          "value": "Эмодзи"
         },
         {
-          "key": "DynamicPackOrder",
-          "value": "Динамический порядок наборов"
+          "key": "LoopAnimatedStickersInfo",
+          "value": "Анимированные стикеры будут воспроизводиться в чатах непрерывно."
+        },
+        {
+          "key": "StickersBotInfo",
+          "value": "Художники могут добавлять свои наборы стикеров с помощью нашего бота @stickers."
+        },
+        {
+          "key": "SuggestStickersAll",
+          "value": "Все наборы"
+        },
+        {
+          "key": "SuggestStickersInstalled",
+          "value": "Мои наборы"
+        },
+        {
+          "key": "SuggestStickersNone",
+          "value": "Нет"
+        },
+        {
+          "key": "Telegram.InstalledStickerPacksController",
+          "value": "Стикеры"
         },
         {
           "key": "Call.Output",
@@ -10281,18 +10305,6 @@
           "value": "Убрать из избранного"
         },
         {
-          "key": "Stickers.MySets",
-          "value": "Мои наборы стикеров"
-        },
-        {
-          "key": "Stickers.AddSets",
-          "value": "Добавить наборы"
-        },
-        {
-          "key": "Stickers.SearchSets",
-          "value": "Поиск наборов стикеров"
-        },
-        {
           "key": "Stickers",
           "forms": {
             "one_value": "%1$d стикер",
@@ -10300,10 +10312,6 @@
             "many_value": "%1$d стикеров",
             "other_value": "%1$d стикера"
           }
-        },
-        {
-          "key": "Stickers.NoSets",
-          "value": "Нет установленных наборов"
         },
         {
           "key": "StickersTab.SearchPlaceholder",
@@ -11633,7 +11641,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 22,
+      "version": 23,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -12255,12 +12263,28 @@
           "value": "Suggérer des émojis"
         },
         {
-          "key": "Settings.BigEmoji",
-          "value": "Grands émojis"
+          "key": "Emoji",
+          "value": "Émojis"
         },
         {
-          "key": "DynamicPackOrder",
-          "value": "Ordre dynamique des packs"
+          "key": "LoopAnimatedStickersInfo",
+          "value": "Les stickers animés seront lus en boucle dans les discussions."
+        },
+        {
+          "key": "StickersBotInfo",
+          "value": "Les artistes peuvent ajouter leurs propres packs de stickers grâce à notre bot @stickers."
+        },
+        {
+          "key": "SuggestStickersAll",
+          "value": "Tous les packs"
+        },
+        {
+          "key": "SuggestStickersInstalled",
+          "value": "Mes packs"
+        },
+        {
+          "key": "SuggestStickersNone",
+          "value": "Aucun"
         },
         {
           "key": "Call.Output",
@@ -14699,7 +14723,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 22,
+      "version": 23,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -15320,12 +15344,32 @@
           "value": "Emojis vorschlagen"
         },
         {
-          "key": "Settings.BigEmoji",
-          "value": "Große Emojis"
+          "key": "Emoji",
+          "value": "Emojis"
         },
         {
-          "key": "DynamicPackOrder",
-          "value": "Dynamische Paketreihenfolge"
+          "key": "LoopAnimatedStickersInfo",
+          "value": "Animierte Sticker werden in Chats fortlaufend abgespielt."
+        },
+        {
+          "key": "StickersBotInfo",
+          "value": "Künstler können mit unserem Bot @stickers eigene Stickerpakete hinzufügen."
+        },
+        {
+          "key": "SuggestStickersAll",
+          "value": "Alle Pakete"
+        },
+        {
+          "key": "SuggestStickersInstalled",
+          "value": "Meine Pakete"
+        },
+        {
+          "key": "SuggestStickersNone",
+          "value": "Keine"
+        },
+        {
+          "key": "Telegram.InstalledStickerPacksController",
+          "value": "Sticker"
         },
         {
           "key": "Call.Output",
@@ -17787,7 +17831,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 22,
+      "version": 23,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -18413,12 +18457,28 @@
           "value": "Sugerir emojis"
         },
         {
-          "key": "Settings.BigEmoji",
-          "value": "Emojis grandes"
+          "key": "Emoji",
+          "value": "Emojis"
         },
         {
-          "key": "DynamicPackOrder",
-          "value": "Orden dinámico de paquetes"
+          "key": "LoopAnimatedStickersInfo",
+          "value": "Los stickers animados se reproducirán continuamente en los chats."
+        },
+        {
+          "key": "StickersBotInfo",
+          "value": "Los artistas pueden añadir sus propios packs de stickers con nuestro bot @stickers."
+        },
+        {
+          "key": "SuggestStickersAll",
+          "value": "Todos los packs"
+        },
+        {
+          "key": "SuggestStickersInstalled",
+          "value": "Mis packs"
+        },
+        {
+          "key": "SuggestStickersNone",
+          "value": "Ninguno"
         },
         {
           "key": "Call.Output",
@@ -20873,7 +20933,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 22,
+      "version": 23,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -21502,12 +21562,32 @@
           "value": "Підказки емодзі"
         },
         {
-          "key": "Settings.BigEmoji",
-          "value": "Великі емодзі"
+          "key": "Emoji",
+          "value": "Емодзі"
         },
         {
-          "key": "DynamicPackOrder",
-          "value": "Динамічний порядок наборів"
+          "key": "LoopAnimatedStickersInfo",
+          "value": "Анімовані стікери відтворюватимуться в чатах безперервно."
+        },
+        {
+          "key": "StickersBotInfo",
+          "value": "Художники можуть додавати власні набори стікерів за допомогою нашого бота @stickers."
+        },
+        {
+          "key": "SuggestStickersAll",
+          "value": "Усі набори"
+        },
+        {
+          "key": "SuggestStickersInstalled",
+          "value": "Мої набори"
+        },
+        {
+          "key": "SuggestStickersNone",
+          "value": "Ні"
+        },
+        {
+          "key": "Telegram.InstalledStickerPacksController",
+          "value": "Стікери"
         },
         {
           "key": "Call.Output",
