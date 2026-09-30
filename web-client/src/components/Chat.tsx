@@ -13,6 +13,7 @@ import { isPeerMuted } from '@core/dialogs/notifySettings'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import { useMediaUrl } from '../core/hooks/useMediaUrl'
+import { chatPeerId, isDialogChat } from '../core/chatEntity'
 import { chatThemeVariant } from '../chatThemes'
 import { PRESET_MODE, resolvePreset } from '../theme'
 import { applyChatTheme, clearChatTheme } from '../core/theme/themeController'
@@ -185,8 +186,12 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // Ключ открытого чата — знаковый `PeerId` (tweb `chat.peerId`). Отдельного
   // «id собеседника» рядом больше НЕТ: у приватного диалога ключ и есть id
   // собеседника, прежняя пара описывала одно число дважды.
-  const numericChatId = Number(chat.id)
-  const isRealChat = Number.isFinite(numericChatId) && String(numericChatId) === chat.id
+  // Пир без диалога (глобальный поиск, контакт, `@username`) — тот же числовой
+  // ключ (`core/chatEntity.ts`): лента, профиль и шапка открываются по нему
+  // сразу, как у оригинала; `isRealChat` («за сущностью стоит диалог») гасит
+  // лишь пути, которым без диалога нечего делать.
+  const numericChatId = chatPeerId(chat)
+  const isRealChat = isDialogChat(chat)
   // Аватарка — одно поле: id медиа приезжает готовым (`photo.photo_id`).
   const headerAvatarSrc = useMediaUrl(chat.photoId ?? null)
   const [lang] = useLang()
@@ -257,10 +262,8 @@ export default function Chat({ chat, onBack, thread }: Props) {
     }
   }, [preset, themeVariant])
 
-  const draftPeerId = chat.id.startsWith('draft:') ? Number(chat.id.slice('draft:'.length)) : null
-  // `data-peer-id` инпута (tweb input.ts): у черновика реального диалога ещё
-  // нет, но ключ будущего разговора уже известен — это id собеседника.
-  const inputPeerId = isRealChat ? numericChatId : draftPeerId ?? undefined
+  // Первое сообщение пиру без диалога заводит диалог (`useChatSend`).
+  const draftPeerId = chat.noDialog ? numericChatId : null
   const meId = useChatsStore((s) => s.meId)
   const me = useChatsStore((s) => s.me)
 
@@ -1359,7 +1362,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
             {/* Composer: owns the draft text locally so typing re-renders only it. */}
             <Composer
               key={chat.id}
-              peerId={inputPeerId}
+              peerId={numericChatId}
               reply={reply}
               editing={editing}
               forward={forward}
@@ -1403,7 +1406,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
             {scrollDownFab}
 
             <ChatInputControl
-              peerId={inputPeerId}
+              peerId={numericChatId}
               muted={muted}
               onBotStart={onBotStartClick}
               onToggleMute={onControlMuteClick}

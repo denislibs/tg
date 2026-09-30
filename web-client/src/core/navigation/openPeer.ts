@@ -21,6 +21,10 @@ export type OpenPeerManagers = Parameters<typeof loadPresence>[0]
  * становится реальным чатом лишь после первого сообщения.
  */
 export function openPeer(managers: OpenPeerManagers, peer: OpenPeer): void {
+  // Пустой ключ (`data-peer-id` без пира → 0/NaN) не открывает ничего: tweb
+  // отсекает его на входе `setInnerPeer` (appImManager.ts:3394), а `setPeer` с
+  // пустым пиром лишь уводит к списку — чата «ни о ком» нет.
+  if (!peer.id) return
   const nav = useNavigationStore.getState()
   const { meId, dialogs } = useChatsStore.getState()
   if (meId != null && peer.id === meId) return // skip self for now
